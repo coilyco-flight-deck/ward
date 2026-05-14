@@ -1,3 +1,15 @@
+# Schema: coilysiren/coilyco-ai#420 (tracker).
+catalog:
+  kind: Component
+  type: tool
+  system: coily-platform
+  owner: kai
+  lifecycle: production
+  description: "Generic-purpose cli-guard consumer for repos with external contributors. Sibling concept to coily, separated by audience."
+  dependsOn:
+    - cli-guard-go-pkg
+  providesApis: []
+
 commands:
   build:
     run: make build
