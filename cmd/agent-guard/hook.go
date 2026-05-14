@@ -3,9 +3,11 @@ package main
 import (
 	"context"
 	"encoding/json"
+	"errors"
 	"fmt"
 	"io"
 	"os"
+	"os/exec"
 	"path/filepath"
 	"strings"
 
@@ -26,13 +28,35 @@ func hookCommand() *cli.Command {
 		Commands: []*cli.Command{
 			{
 				Name:  "pre-tool-use",
-				Usage: "PreToolUse hook for the Bash tool. Routes bare-binary invocations through the local guard wrapper with a recovery hint.",
+				Usage: "PreToolUse hook for the Bash tool. Routes bare-binary invocations through the local guard wrapper with a recovery hint, and rejects guard-binary invocations resolving outside their canonical install paths.",
 				Action: func(_ context.Context, _ *cli.Command) error {
-					return runPreToolUse(os.Stdin, os.Stderr, os.Getenv)
+					return runPreToolUse(os.Stdin, os.Stderr, os.Getenv, exec.LookPath)
 				},
 			},
 		},
 	}
+}
+
+// pathLookup mirrors exec.LookPath. Indirected for tests.
+type pathLookup func(name string) (string, error)
+
+// guardBinaryPaths is the canonical install-path allow-list per known
+// guard binary. The PreToolUse hook rejects any bare invocation of one
+// of these binaries that does not resolve to a listed path. Required
+// by default per the agent-guard max-security posture (#14). No
+// opt-out for v0; #13 (externalize routing table) carries the future
+// per-consumer override path.
+var guardBinaryPaths = map[string][]string{
+	"agent-guard": {
+		"/opt/homebrew/bin/agent-guard",
+		"/usr/local/bin/agent-guard",
+		"/home/linuxbrew/.linuxbrew/bin/agent-guard",
+	},
+	"coily": {
+		"/opt/homebrew/bin/coily",
+		"/usr/local/bin/coily",
+		"/home/linuxbrew/.linuxbrew/bin/coily",
+	},
 }
 
 // hookInput is the subset of Claude Code's PreToolUse hook payload we
@@ -53,7 +77,7 @@ type hookInput struct {
 // matching route) all pass through. The hook is best-effort hint
 // surface, never a hard gate. coily lockdown / agent-guard's own
 // permissions.deny stays responsible for hard denial.
-func runPreToolUse(in io.Reader, errOut io.Writer, getenv func(string) string) error {
+func runPreToolUse(in io.Reader, errOut io.Writer, getenv func(string) string, lookup pathLookup) error {
 	// Best-effort hint surface: stdin-read failures and unparseable
 	// payloads pass through silently. Hard denial belongs to
 	// permissions.deny, not this hook.
@@ -83,6 +107,18 @@ func runPreToolUse(in io.Reader, errOut io.Writer, getenv func(string) string) e
 			continue
 		}
 		token := leadingToken(seg)
+
+		// Binary-path check fires before the routing-hint pass. A
+		// guard binary resolving outside its canonical install paths
+		// is a path-hijack candidate, surfaced with a sharper message
+		// than the routing-hint table would emit.
+		if allowed, ok := guardBinaryPaths[token]; ok {
+			if msg := checkBinaryPath(token, allowed, lookup); msg != "" {
+				_, _ = fmt.Fprintln(errOut, msg)
+				return cli.Exit("", 2)
+			}
+		}
+
 		hint := routeHint(guard, token, seg)
 		if hint == "" {
 			continue
@@ -91,6 +127,44 @@ func runPreToolUse(in io.Reader, errOut io.Writer, getenv func(string) string) e
 		return cli.Exit("", 2)
 	}
 	return nil
+}
+
+// checkBinaryPath resolves token via lookup and returns a non-empty
+// hijack-warning string when the resolved path is outside allowed.
+// ENOENT (binary not on PATH) returns "" - bash will surface the
+// command-not-found error naturally.
+//
+// Resolution uses lookup directly without canonicalizing symlinks,
+// since `command -v` returns the symlink path (e.g. brew's
+// /opt/homebrew/bin/coily symlink, not its Cellar realpath). Matching
+// the symlink is the documented contract from coily's prior shell
+// gate.
+func checkBinaryPath(token string, allowed []string, lookup pathLookup) string {
+	resolved, err := lookup(token)
+	if err != nil {
+		if errors.Is(err, exec.ErrNotFound) {
+			return ""
+		}
+		// Any other LookPath error (permission denied, malformed
+		// PATH) is a stronger signal than ENOENT. Block defensively.
+		return fmt.Sprintf(
+			"agent-guard hook: blocked `%s`. Resolution of `%s` failed: %v. Canonical install paths: %s",
+			token, token, err, strings.Join(allowed, ", "),
+		)
+	}
+	abs, absErr := filepath.Abs(resolved)
+	if absErr != nil {
+		abs = resolved
+	}
+	for _, p := range allowed {
+		if abs == p {
+			return ""
+		}
+	}
+	return fmt.Sprintf(
+		"agent-guard hook: blocked `%s`. `%s` resolves to %s, which is outside the canonical install paths (%s). This looks like a PATH-hijack of the guard binary. Reinstall via the official homebrew tap or unset the offending PATH entry.",
+		token, token, abs, strings.Join(allowed, ", "),
+	)
 }
 
 // detectGuard walks up from cwd for the nearest config marker and
