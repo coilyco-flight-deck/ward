@@ -43,7 +43,15 @@ See [`docs/`](docs/) for the full verb list and [`examples/`](examples/) for run
 
 No network, no state. Failure modes (unparseable payload, missing fields, no matching route) pass through silently. Hard denial stays the job of `permissions.deny` in the consuming repo's `.claude/settings.json`.
 
-Register in `.claude/settings.json`:
+Register the hook with one command (idempotent, safe to re-run, preserves unrelated keys):
+
+```
+agent-guard install-hooks
+```
+
+This writes the PreToolUse entry into `<git-toplevel>/.claude/settings.json`. Pass `--path <file>` to target a different settings.json, `--dry-run` to preview the merged content, or `--check` (exit non-zero when the hook is not yet registered, for CI).
+
+Or hand-roll the entry:
 
 ```json
 {

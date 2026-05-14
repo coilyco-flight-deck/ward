@@ -29,6 +29,7 @@ func main() {
 			execCommand(),
 			lintCommand(),
 			hookCommand(),
+			installHooksCommand(),
 		},
 	}
 
