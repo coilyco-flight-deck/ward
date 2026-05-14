@@ -28,6 +28,7 @@ func main() {
 			versionCommand(),
 			execCommand(),
 			lintCommand(),
+			hookCommand(),
 		},
 	}
 

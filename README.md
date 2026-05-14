@@ -37,6 +37,29 @@ agent-guard lint
 
 See [`docs/`](docs/) for the full verb list and [`examples/`](examples/) for runnable demos.
 
+## Claude Code PreToolUse hook
+
+`agent-guard hook pre-tool-use` is a stdin-driven [Claude Code hook](https://docs.claude.com/en/docs/claude-code/hooks) that catches bare invocations of wrapped binaries (`make`, `gh`, `aws`, `kubectl`, ...) and surfaces a recovery hint to the agent before it shops other shell shapes. It detects whether cwd lives under `.agent-guard/agent-guard.yaml` or `.coily/coily.yaml` and routes the hint to the matching wrapper.
+
+No network, no state. Failure modes (unparseable payload, missing fields, no matching route) pass through silently. Hard denial stays the job of `permissions.deny` in the consuming repo's `.claude/settings.json`.
+
+Register in `.claude/settings.json`:
+
+```json
+{
+  "hooks": {
+    "PreToolUse": [
+      {
+        "matcher": "Bash",
+        "hooks": [
+          { "type": "command", "command": "agent-guard hook pre-tool-use" }
+        ]
+      }
+    ]
+  }
+}
+```
+
 ## Related
 
 - [cli-guard][cli-guard] - the underlying security-boundary framework
