@@ -15,15 +15,15 @@ The boundary between agent-guard and coily is the load-bearing design choice. Tw
 
 ## Dev verbs
 
-Route through coily, not bare go:
+agent-guard dogfoods itself. Once installed (`brew install coilysiren/tap/agent-guard`), route through it, not bare go:
 
-- `coily exec build`
-- `coily exec test`
-- `coily exec vet`
-- `coily exec lint`
-- `coily exec tidy`
+- `agent-guard exec build`
+- `agent-guard exec test`
+- `agent-guard exec vet`
+- `agent-guard exec lint`
+- `agent-guard exec tidy`
 
-The `.coily/coily.yaml` ↔ `Makefile` contract is checked by `coily lint`.
+The `.coily/coily.yaml` ↔ `Makefile` contract is checked by `agent-guard lint`. Kai's own machines also accept `coily exec ...` against the same allowlist.
 
 ## v0 API discipline
 

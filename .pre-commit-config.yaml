@@ -1,4 +1,5 @@
 repos:
+  
   # BEGIN managed by coilyco-ai/scripts/apply-catalog-block-hook.py
   - repo: local
     hooks:

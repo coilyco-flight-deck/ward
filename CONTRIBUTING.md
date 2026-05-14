@@ -8,16 +8,16 @@ This project is run on volunteer time, so please have patience.
 
 1. **Open an issue first.** Every commit in this repo closes a same-repo issue (`closes #N` in the commit body). Discussion happens in the issue, the PR is the change itself. This applies even to trivial fixes, the issue gives the change a stable URL.
 2. **Stay close to scope.** agent-guard is intentionally small. It exposes a generic dev surface on top of [cli-guard](https://github.com/coilysiren/cli-guard). Features that pull this package out of its lane will get pushed back. Personal verbs belong in [coily](https://github.com/coilysiren/coily), repo-specific verbs belong in the downstream repo.
-3. **Run the dev verbs before pushing.** Local dev routes through [`coily`](https://github.com/coilysiren/coily):
+3. **Run the dev verbs before pushing.** Install agent-guard with `brew install coilysiren/tap/agent-guard`, then:
 
    ```
-   coily exec build
-   coily exec test
-   coily exec vet
-   coily exec lint
+   agent-guard exec build
+   agent-guard exec test
+   agent-guard exec vet
+   agent-guard exec lint
    ```
 
-   The `.coily/coily.yaml` ↔ Makefile contract is checked by `coily lint` and by CI on every push.
+   The `.coily/coily.yaml` ↔ Makefile contract is checked by `agent-guard lint` and by CI on every push.
 
 ## Code of Conduct
 
