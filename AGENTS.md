@@ -23,7 +23,7 @@ agent-guard dogfoods itself. Once installed (`brew install coilysiren/tap/agent-
 - `agent-guard exec lint`
 - `agent-guard exec tidy`
 
-The `.coily/coily.yaml` ↔ `Makefile` contract is checked by `agent-guard lint`. Kai's own machines also accept `coily exec ...` against the same allowlist.
+The `.agent-guard/agent-guard.yaml` ↔ `Makefile` contract is checked by `agent-guard lint`.
 
 ## v0 API discipline
 

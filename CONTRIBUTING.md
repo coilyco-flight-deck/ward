@@ -17,7 +17,7 @@ This project is run on volunteer time, so please have patience.
    agent-guard exec lint
    ```
 
-   The `.coily/coily.yaml` ↔ Makefile contract is checked by `agent-guard lint` and by CI on every push.
+   The `.agent-guard/agent-guard.yaml` ↔ Makefile contract is checked by `agent-guard lint` and by CI on every push.
 
 ## Code of Conduct
 
