@@ -1,7 +1,7 @@
 class AgentGuard < Formula
   desc "Generic-purpose cli-guard consumer for repos with external contributors"
   homepage "https://github.com/coilysiren/agent-guard"
-  url "ssh://git@github.com/coilysiren/agent-guard.git", tag: "v0.0.16", revision: "8d43ec7ecfb3594b47c66a520d09683fd616fcc5"
+  url "ssh://git@github.com/coilysiren/agent-guard.git", tag: "v0.0.18", revision: "da78e8f67878f80399d9bf49a94abd5614401db0"
   license "MIT"
   head "https://github.com/coilysiren/agent-guard.git", branch: "main"
 
