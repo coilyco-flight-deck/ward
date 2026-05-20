@@ -267,6 +267,7 @@ var coilyRoutes = map[string]string{
 	"ssh":       "use `coily ssh ...` (audited wrapper). For kai-server always `kai@kai-server`.",
 	"scp":       "use `coily ssh copy ...` (audited wrapper).",
 	"brew":      "use `coily brew ...` (scoped to the coilysiren/tap default-allow list).",
+	"mcporter":  "use `coily ops mcporter ...` (audited wrapper, hydrates env from SSM at preflight).",
 	"make":      "use `coily exec <verb>` (verbs declared in .coily/coily.yaml).",
 	"just":      "use `coily exec <verb>` (verbs declared in .coily/coily.yaml).",
 	"task":      "use `coily exec <verb>` (verbs declared in .coily/coily.yaml).",
