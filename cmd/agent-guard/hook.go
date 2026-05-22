@@ -283,6 +283,7 @@ var coilyRoutes = map[string]string{
 	"cargo":     "use `coily pkg cargo ...` (audited package-manager wrapper).",
 	"gem":       "use `coily pkg gem ...` (audited package-manager wrapper).",
 	"bundle":    "use `coily pkg bundle ...` (audited package-manager wrapper).",
+	"nix":       "use `coily pkg nix ...` (audited package-manager wrapper).",
 }
 
 // agentGuardRoutes maps a bare leading-token to a recovery hint when
