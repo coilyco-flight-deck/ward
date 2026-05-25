@@ -22,7 +22,7 @@ Downstream repos add an `.agent-guard/agent-guard.yaml` listing which Makefile t
 ## Install
 
 ```
-brew tap coilysiren/agent-guard https://github.com/coilysiren/agent-guard
+brew tap coilysiren/agent-guard https://forgejo.coilysiren.me/coilysiren/agent-guard
 brew install coilysiren/agent-guard/agent-guard
 ```
 
