@@ -14,19 +14,7 @@ import (
 	"github.com/urfave/cli/v3"
 )
 
-// installHooksCommand returns the `install-hooks` subcommand.
-//
-// Idempotently registers the agent-guard PreToolUse hook in the
-// consumer repo's `.claude/settings.json`. Designed to be safe to
-// re-run: existing unrelated entries are preserved, and re-installs
-// are no-ops.
-//
-// Target discovery (default):
-//   - `git rev-parse --show-toplevel` of cwd, plus `/.claude/settings.json`.
-//   - On failure (cwd is not in a git repo), exits with an error and
-//     suggests `--path`.
-//
-// Override: `--path <file>` names the settings.json directly.
+// installHooksCommand returns the `install-hooks` subcommand. See docs/install-hooks.md.
 func installHooksCommand() *cli.Command {
 	return &cli.Command{
 		Name:  "install-hooks",
@@ -114,8 +102,7 @@ func runInstallHooks(args installHooksArgs, out *os.File) error {
 	return nil
 }
 
-// resolveSettingsPath picks the target .claude/settings.json path.
-// Returns absolute path. Does not check whether the file exists.
+// resolveSettingsPath returns absolute settings.json path. See docs/install-hooks.md.
 func resolveSettingsPath(explicit string) (string, error) {
 	if explicit != "" {
 		abs, err := filepath.Abs(explicit)
@@ -146,9 +133,7 @@ func gitToplevel(dir string) (string, error) {
 	return strings.TrimSpace(string(out)), nil
 }
 
-// loadSettings reads the settings.json at path, returning a generic
-// map. Missing file -> empty map (a fresh install). Malformed JSON ->
-// error (caller refuses to clobber a file it cannot read).
+// loadSettings reads settings.json. Missing -> empty map. See docs/install-hooks.md.
 func loadSettings(path string) (map[string]any, error) {
 	data, err := os.ReadFile(path) // #nosec G304 -- caller-controlled target path
 	if err != nil {
@@ -170,18 +155,8 @@ func loadSettings(path string) (map[string]any, error) {
 	return m, nil
 }
 
-// ensureHook returns (present, merged) where present is true if the
-// wanted hook was already registered (no merge needed), and merged is
-// the desired settings map after ensuring the hook entry exists.
-//
-// Merge rules:
-//   - hooks key missing: add as a map.
-//   - hooks.PreToolUse missing: add as a list with our entry.
-//   - PreToolUse has a matcher="Bash" entry: ensure its hooks list
-//     contains our command. Append if not present.
-//   - No matcher="Bash" entry: append a new one.
-//
-// Unknown keys at any level are preserved.
+// ensureHook returns (present, merged) after ensuring the hook entry exists.
+// See docs/install-hooks.md for merge rules.
 func ensureHook(in map[string]any) (bool, map[string]any) {
 	out := cloneMap(in)
 	hooks, _ := out["hooks"].(map[string]any)
@@ -230,10 +205,7 @@ func ensureHook(in map[string]any) (bool, map[string]any) {
 	return false, out
 }
 
-// cloneMap shallow-clones a map[string]any so we don't mutate the
-// caller's value while merging. Nested map / slice values are not
-// deeply cloned because ensureHook only mutates the top-level
-// hooks key, but we do clone the hooks subtree it touches.
+// cloneMap shallow-clones a map[string]any. See docs/install-hooks.md.
 func cloneMap(in map[string]any) map[string]any {
 	out := make(map[string]any, len(in))
 	for k, v := range in {
@@ -257,10 +229,7 @@ func cloneMap(in map[string]any) map[string]any {
 	return out
 }
 
-// marshalSettings emits the settings map with two-space indent and a
-// trailing newline. json.MarshalIndent emits map keys in sorted order
-// at every level, which matches the shape `coily lockdown` already
-// writes so manual diffs read cleanly.
+// marshalSettings emits two-space JSON with trailing newline. See docs/install-hooks.md.
 func marshalSettings(m map[string]any) ([]byte, error) {
 	data, err := json.MarshalIndent(m, "", "  ")
 	if err != nil {

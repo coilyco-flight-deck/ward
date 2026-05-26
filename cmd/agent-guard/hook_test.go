@@ -11,11 +11,7 @@ import (
 )
 
 // runHook is the test harness for runPreToolUse. Returns (stderr, exitCode).
-// exitCode 0 means pass-through; 2 means block.
-//
-// Tests that exercise the binary-path check pass a non-nil lookup;
-// other tests use a lookup that always returns ENOENT so the path
-// check skips and only the routing-hint pass fires.
+// 0 = pass-through, 2 = block. Default lookup is ENOENT (skips path check).
 func runHook(t *testing.T, payload map[string]interface{}, env map[string]string) (string, int) {
 	t.Helper()
 	return runHookWithLookup(t, payload, env, notFoundLookup)
@@ -41,9 +37,7 @@ func runHookWithLookup(t *testing.T, payload map[string]interface{}, env map[str
 	return "", -1
 }
 
-// notFoundLookup pretends every binary is absent from PATH. The hook's
-// path-check treats ENOENT as a skip so the routing-hint pass runs
-// unimpeded.
+// notFoundLookup pretends every binary is absent from PATH. ENOENT skips path check.
 func notFoundLookup(string) (string, error) {
 	return "", exec.ErrNotFound
 }
@@ -150,9 +144,7 @@ func TestPreToolUse_AgentGuardRepoBlocksBareMake(t *testing.T) {
 }
 
 func TestPreToolUse_AgentGuardRepoDoesNotBlockGh(t *testing.T) {
-	// gh has no agent-guard wrapper. v0 routing table passes it through;
-	// any deny is the responsibility of permissions.deny in the consumer
-	// repo's settings.json.
+	// gh has no agent-guard wrapper. Pass through; permissions.deny handles deny.
 	cwd := fakeRepo(t, ".agent-guard/agent-guard.yaml")
 	stderr, code := runHook(t, map[string]interface{}{
 		"tool_name":  "Bash",
@@ -245,8 +237,7 @@ func TestPreToolUse_NoCwdFallsBackToPWD(t *testing.T) {
 
 func TestPreToolUse_NoGuardMarkerDefaultsToAgentGuardTable(t *testing.T) {
 	cwd := t.TempDir()
-	// In a directory with no marker: agent-guard table applies. `make` is
-	// in the agent-guard table, gh is not.
+	// No marker: agent-guard table applies. make is in it; gh is not.
 	stderrMake, codeMake := runHook(t, map[string]interface{}{
 		"tool_name":  "Bash",
 		"tool_input": map[string]interface{}{"command": "make build"},
@@ -267,8 +258,7 @@ func TestPreToolUse_NoGuardMarkerDefaultsToAgentGuardTable(t *testing.T) {
 
 func TestPathCheck_CoilyOnCanonicalPathPassesThrough(t *testing.T) {
 	cwd := fakeRepo(t, ".coily/coily.yaml")
-	// A canonical install path makes the path-check skip; but `coily`
-	// is not in any routing table either, so the whole hook passes.
+	// Canonical path skips path-check; coily is not in any routing table, so hook passes.
 	stderr, code := runHookWithLookup(t,
 		map[string]interface{}{
 			"tool_name":  "Bash",
@@ -326,9 +316,7 @@ func TestPathCheck_AgentGuardOffCanonicalPathBlocks(t *testing.T) {
 
 func TestPathCheck_BinaryNotFoundSkipsCheck(t *testing.T) {
 	cwd := fakeRepo(t, ".coily/coily.yaml")
-	// ENOENT from lookup -> skip the path-check. coily then falls
-	// through the routing-hint pass (which has no entry for `coily`
-	// itself, only for what coily wraps), so the hook passes through.
+	// ENOENT -> skip path-check. coily has no routing-hint entry, so hook passes through.
 	stderr, code := runHookWithLookup(t,
 		map[string]interface{}{
 			"tool_name":  "Bash",
@@ -366,9 +354,7 @@ func TestPathCheck_OtherLookupErrorBlocks(t *testing.T) {
 }
 
 func TestPathCheck_FiresBeforeRoutingHint(t *testing.T) {
-	// Even when a deeper segment would match a routing-hint, an
-	// off-canonical guard binary blocks first with the hijack
-	// message, not the routing hint.
+	// Off-canonical guard binary blocks first with hijack message, before routing hint.
 	cwd := fakeRepo(t, ".coily/coily.yaml")
 	stderr, code := runHookWithLookup(t,
 		map[string]interface{}{
@@ -391,9 +377,7 @@ func TestPathCheck_FiresBeforeRoutingHint(t *testing.T) {
 }
 
 func TestPathCheck_NonGuardBinaryIgnored(t *testing.T) {
-	// `gh` is not a guard binary. The path-check should not run on
-	// it - only the routing-hint table applies. Use a lookup that
-	// would otherwise fail, to prove the path-check is skipped.
+	// gh is not a guard binary; path-check skipped. Only routing-hint applies.
 	cwd := fakeRepo(t, ".coily/coily.yaml")
 	stderr, code := runHookWithLookup(t,
 		map[string]interface{}{

@@ -8,10 +8,7 @@ class AgentGuard < Formula
   depends_on "go" => :build
 
   def install
-    # cli-guard has no semver tags yet, consumers pin via pseudo-version.
-    # proxy.golang.org 403s the fresh pseudo-version on first fetch even
-    # though the upstream github tarball is reachable. Bypass the proxy
-    # for module fetches in the brew sandbox. See coilysiren/homebrew-tap#14.
+    # GOPROXY bypass for fresh cli-guard pseudo-versions. See docs/homebrew-build.md.
     ENV["GOPROXY"] = "direct"
     ENV["GOSUMDB"] = "off"
     ldflags = "-s -w -X main.Version=v#{version}"

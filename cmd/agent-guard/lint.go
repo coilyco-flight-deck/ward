@@ -14,14 +14,7 @@ import (
 	"gopkg.in/yaml.v3"
 )
 
-// lintCommand validates the agent-guard allowlist against the repo's
-// Makefile so the verb surface and the make-target surface cannot drift.
-// Rules:
-//
-//   - commands.<verb>.run must equal "make <verb>".
-//   - The Makefile must declare a target named <verb>.
-//   - The verb description must equal the Makefile target's `## desc`
-//     auto-help comment.
+// lintCommand validates the agent-guard allowlist against the Makefile. See docs/lint.md.
 func lintCommand() *cli.Command {
 	return &cli.Command{
 		Name:  "lint",

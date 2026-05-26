@@ -1,0 +1,72 @@
+# agent-guard hook
+
+`agent-guard hook` groups Claude Code hook entry points. Subcommands
+read a hook payload on stdin and either pass through (exit 0) or block
+with a routing hint on stderr (exit 2).
+
+Today this is wired only for PreToolUse on the Bash tool. The shape is
+extensible to other hook events when there is a reason to gate on them.
+
+## Inputs
+
+`hookInput` is the subset of Claude Code's PreToolUse payload we read.
+Unknown fields are ignored. `tool_input` is a free-form map so a
+non-Bash tool name passes through cleanly.
+
+## Guard binary path check
+
+`guardBinaryPaths` is the canonical install-path allow-list per known
+guard binary. The PreToolUse hook rejects any bare invocation of one
+of these binaries that does not resolve to a listed path. Required by
+default per the max-security posture (#14). #13 carries the future
+per-consumer override path.
+
+## runPreToolUse
+
+The testable core. Reads a hook payload, emits any block reason to
+stderr, and returns nil on pass-through. Returns a `cli.Exit` error
+with code 2 on block, which urfave/cli surfaces as the process exit
+code.
+
+Failure modes (unparseable JSON, missing fields, unknown tool, no
+matching route) all pass through. The hook is a best-effort hint
+surface, never a hard gate. coily lockdown / agent-guard's own
+`permissions.deny` stays responsible for hard denial.
+
+## checkBinaryPath
+
+Resolves token via lookup and returns a non-empty hijack-warning
+string when the resolved path is outside the allowed list. `ENOENT`
+returns `""` so bash surfaces the command-not-found error naturally.
+
+Resolution uses lookup directly without canonicalizing symlinks since
+`command -v` returns the symlink path (e.g. brew's
+`/opt/homebrew/bin/coily` symlink). Matching the symlink is the
+documented contract from coily's prior shell gate.
+
+## detectGuard
+
+Walks up from cwd for the nearest config marker and returns
+`agent-guard` or `coily`. Defaults to `agent-guard` when no marker is
+reachable so the hook still emits a usable hint in
+stranger-cloning-a-downstream-repo contexts.
+
+## splitSegments and stripEnvPrefix
+
+`splitSegments` breaks a bash command into the leading-token segments
+we want to classify. Mirrors the awk in coily's `lockdown-deny.sh`:
+splits on `$( ) || && | ; &` boundaries. Imperfect (not a shell parser).
+
+`stripEnvPrefix` peels leading `env VAR=val ...` and `sudo` tokens so
+`env FOO=bar gh issue view` classifies the same as bare `gh issue view`.
+Strips iteratively in case both env and sudo are present.
+
+## Route tables
+
+`coilyRoutes` and `agentGuardRoutes` map a bare leading-token to a
+recovery hint. agent-guard's table is smaller: it wraps only generic
+dev verbs, not Kai-personal ops binaries.
+
+`routeHint` returns the stderr block reason or `""` if the token has
+no route. `isGhGraphQLSubcommand` returns true for gh subcommands that
+route through GraphQL by default.

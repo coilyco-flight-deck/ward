@@ -14,13 +14,7 @@ import (
 	"github.com/urfave/cli/v3"
 )
 
-// execCommand returns the `exec` verb. Discovery walks up from cwd
-// looking for an agent-guard or coily allowlist, then exposes each
-// declared command as a leaf subcommand.
-//
-// When no config is reachable, `exec` is still registered (so --help
-// and the version verb behave consistently) but every invocation
-// returns a clear error pointing at the missing file.
+// execCommand returns the `exec` verb. See docs/exec-verb.md.
 func execCommand() *cli.Command {
 	cfg, loadErr := loadDefault()
 	if loadErr != nil || cfg == nil || len(cfg.Commands) == 0 {

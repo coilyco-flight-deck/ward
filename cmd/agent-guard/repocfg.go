@@ -14,11 +14,8 @@ import (
 // walking up from cwd.
 var errNoConfig = errors.New("no .agent-guard/agent-guard.yaml or .coily/coily.yaml reachable from cwd")
 
-// configCandidate names the per-level filenames agent-guard accepts. The
-// canonical home is .agent-guard/agent-guard.yaml. .coily/coily.yaml is
-// honored so repos already using coily's allowlist do not have to rename
-// the file to adopt agent-guard. The format is the cli-guard repocfg
-// format in both cases.
+// configCandidate names the per-level filenames agent-guard accepts.
+// See docs/config-discovery.md.
 type configCandidate struct {
 	dir  string
 	file string
@@ -29,9 +26,7 @@ var configCandidates = []configCandidate{
 	{dir: ".coily", file: "coily.yaml"},
 }
 
-// discoverConfig walks up from start looking for the first reachable
-// agent-guard or coily allowlist. Returns the absolute path on success
-// or errNoConfig if nothing is reachable.
+// discoverConfig walks up from start to find an allowlist. See docs/config-discovery.md.
 func discoverConfig(start string) (string, error) {
 	dir, err := filepath.Abs(start)
 	if err != nil {
@@ -56,9 +51,7 @@ func discoverConfig(start string) (string, error) {
 	}
 }
 
-// loadDefault discovers the config from cwd and parses it via cli-guard's
-// repocfg loader (which runs every argv token through the shell-
-// metacharacter policy check).
+// loadDefault discovers and parses the config from cwd. See docs/config-discovery.md.
 func loadDefault() (*repocfg.Config, error) {
 	cwd, err := os.Getwd()
 	if err != nil {

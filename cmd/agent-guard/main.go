@@ -1,9 +1,5 @@
 // Command agent-guard is the generic-purpose cli-guard consumer entry point.
-//
-// Wraps a small fixed surface of dev verbs (build, test, vet, lint, tidy)
-// behind cli-guard's policy gate. Intended for repos with external
-// contributors where coily's Kai-specific verbs would be inappropriate.
-// See README.md for the audience and scope rationale.
+// See README.md for audience and scope.
 package main
 
 import (
