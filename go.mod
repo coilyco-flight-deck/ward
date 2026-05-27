@@ -7,4 +7,6 @@ require (
 	gopkg.in/yaml.v3 v3.0.1
 )
 
-require github.com/coilysiren/cli-guard v0.0.0-20260513223938-765c06f8f779
+require github.com/coilysiren/cli-guard v0.0.0-20260527234457-c23679dccfa7
+
+require gopkg.in/natefinch/lumberjack.v2 v2.2.1 // indirect
