@@ -1,8 +1,8 @@
 # agent-guard
 
-A generic-purpose [cli-guard][cli-guard] consumer for repos that take external contributions. Sits between AI agents (or any semi-trusted automation) and the host system, with no maintainer-specific allowlists.
+A generic [cli-guard][cli-guard] consumer for repos that take external contributions. Sits between AI agents (or any semi-trusted automation) and the host system, with no maintainer-specific allowlists.
 
-`agent-guard` is to external contributors what [coily][coily] is to Kai's own machines: a thin, audited wrapper around the cli-guard primitives. coily ships personal verbs (homelab SSH, vault paths, deploy hooks). `agent-guard` ships only verbs that make sense to any contributor walking up to a repo cold.
+`agent-guard` is to external contributors what [coily][coily] is to Kai's own machines: a thin, audited wrapper around cli-guard primitives. coily ships personal verbs (homelab SSH, vault paths, deploy hooks). `agent-guard` ships only verbs that make sense to any contributor walking up to a repo cold.
 
 ## Status
 
@@ -10,14 +10,9 @@ v0. Not yet wired into any downstream. First adopter target is the urfave/cli na
 
 ## What it does
 
-Wraps a small, fixed set of dev verbs (`build`, `test`, `vet`, `lint`, `tidy`) behind cli-guard's policy gate. Every invocation:
+Wraps a small fixed set of dev verbs (`build`, `test`, `vet`, `lint`, `tidy`) behind cli-guard's policy gate. Every invocation validates argv, writes one append-only JSONL audit row, binds to a git toplevel via `--commit-scope`, and refuses repo-shaped verbs on a dirty tree.
 
-- validates argv against shell-metacharacter rejection
-- writes one append-only JSONL audit row
-- binds to a git toplevel via `--commit-scope`
-- refuses repo-shaped verbs on a dirty tree
-
-Downstream repos add an `.agent-guard/agent-guard.yaml` listing which Makefile targets are exposed. The contract is verified by `agent-guard lint`.
+Downstream repos add `.agent-guard/agent-guard.yaml` listing which Makefile targets are exposed. The contract is verified by `agent-guard lint`.
 
 ## Install
 
@@ -40,41 +35,18 @@ See [`docs/`](docs/) for the full verb list and [`examples/`](examples/) for run
 
 ## Claude Code PreToolUse hook
 
-`agent-guard hook pre-tool-use` is a stdin-driven [Claude Code hook](https://docs.claude.com/en/docs/claude-code/hooks) that does two things:
+`agent-guard hook pre-tool-use` is a stdin-driven [Claude Code hook](https://docs.claude.com/en/docs/claude-code/hooks). It does two things:
 
-1. **Binary-path check.** Required by default. When the agent invokes `agent-guard` or `coily` directly, the hook resolves the binary via `command -v` and refuses to let it run unless the resolved path is one of the canonical homebrew install paths. This blocks PATH-hijack attacks where a malicious `agent-guard` or `coily` earlier on `$PATH` would otherwise execute. agent-guard ships with maximum-security defaults; this check is on, no flag, no config.
-2. **Routing-hint surface.** Catches bare invocations of wrapped binaries (`make`, `gh`, `aws`, `kubectl`, ...) and surfaces a recovery hint to the agent before it shops other shell shapes. The hint names the wrapper the agent should use. The active table is picked by whether cwd lives under `.agent-guard/agent-guard.yaml` or `.coily/coily.yaml`.
+1. **Binary-path check.** Refuses to let `agent-guard` or `coily` run unless `command -v` resolves to a canonical homebrew install path. Blocks PATH-hijack attacks. On by default, no flag.
+2. **Routing-hint surface.** Catches bare invocations of wrapped binaries (`make`, `gh`, `aws`, `kubectl`, ...) and surfaces a recovery hint naming the right wrapper. The active table is picked by `.agent-guard/agent-guard.yaml` vs `.coily/coily.yaml` in cwd.
 
-No network, no state. Failure modes (unparseable payload, missing fields, no matching route, binary absent from PATH) pass through silently. Hard denial stays the job of `permissions.deny` in the consuming repo's `.claude/settings.json`.
+No network, no state. Failure modes pass through silently. Hard denial stays the job of `permissions.deny`.
 
-Register the hook with one command (idempotent, safe to re-run, preserves unrelated keys):
-
-```
-agent-guard install-hooks
-```
-
-This writes the PreToolUse entry into `<git-toplevel>/.claude/settings.json`. Pass `--path <file>` to target a different settings.json, `--dry-run` to preview the merged content, or `--check` (exit non-zero when the hook is not yet registered, for CI).
-
-Or hand-roll the entry:
-
-```json
-{
-  "hooks": {
-    "PreToolUse": [
-      {
-        "matcher": "Bash",
-        "hooks": [
-          { "type": "command", "command": "agent-guard hook pre-tool-use" }
-        ]
-      }
-    ]
-  }
-}
-```
+Register with `agent-guard install-hooks` (idempotent). Writes the PreToolUse entry to `<git-toplevel>/.claude/settings.json`. Flags: `--path <file>`, `--dry-run`, `--check`.
 
 ## Related
 
-- [cli-guard][cli-guard] - the underlying security-boundary framework
+- [cli-guard][cli-guard] - underlying security-boundary framework
 - [coily][coily] - Kai's personal cli-guard consumer
 - Sibling cli-* repos: [cli-mcp][cli-mcp], [cli-web-docs][cli-web-docs], [cli-web-ops][cli-web-ops]
 

@@ -11,6 +11,7 @@
 # Build artifacts
 /bin/
 /dist/
+/agent-guard
 
 # mkdocs build output
 /site/
