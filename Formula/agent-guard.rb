@@ -1,7 +1,7 @@
 class AgentGuard < Formula
   desc "Generic-purpose cli-guard consumer for repos with external contributors"
   homepage "https://forgejo.coilysiren.me/coilysiren/agent-guard"
-  url "https://forgejo.coilysiren.me/coilysiren/agent-guard.git", tag: "v0.3.0", revision: "36793fed0ee72580d357d845771f72fd6a50007b"
+  url "https://forgejo.coilysiren.me/coilysiren/agent-guard.git", tag: "v0.4.0", revision: "23fc7c1f357c72255a2c167479a67faa1ed54154"
   license "MIT"
   head "https://forgejo.coilysiren.me/coilysiren/agent-guard.git", branch: "main"
 
