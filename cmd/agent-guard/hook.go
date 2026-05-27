@@ -24,7 +24,7 @@ func hookCommand() *cli.Command {
 				Name:  "pre-tool-use",
 				Usage: "PreToolUse hook for the Bash tool. Routes bare-binary invocations through the local guard wrapper with a recovery hint, and rejects guard-binary invocations resolving outside their canonical install paths.",
 				Action: func(_ context.Context, _ *cli.Command) error {
-					return runPreToolUse(os.Stdin, os.Stderr, os.Getenv, exec.LookPath)
+					return runPreToolUse(os.Stdin, os.Stderr, os.Getenv, exec.LookPath, defaultRegistryCheck)
 				},
 			},
 		},
@@ -56,8 +56,12 @@ type hookInput struct {
 	CWD       string                 `json:"cwd"`
 }
 
+// registryCheck queries the sidequest registry. Returns the recovery
+// message on overlap, or empty on clean. err signals lookup failure.
+type registryCheck func(absPath string, lookup pathLookup) (string, error)
+
 // runPreToolUse is the testable core of the PreToolUse hook. See docs/hook.md.
-func runPreToolUse(in io.Reader, errOut io.Writer, getenv func(string) string, lookup pathLookup) error {
+func runPreToolUse(in io.Reader, errOut io.Writer, getenv func(string) string, lookup pathLookup, check registryCheck) error {
 	// Best-effort hint surface: read failures pass through. See docs/hook.md.
 	data, _ := io.ReadAll(in) //nolint:errcheck // intentional: see func doc
 	if len(data) == 0 {
@@ -66,6 +70,9 @@ func runPreToolUse(in io.Reader, errOut io.Writer, getenv func(string) string, l
 	var hi hookInput
 	if json.Unmarshal(data, &hi) != nil {
 		return nil //nolint:nilerr // intentional: malformed payload passes through silently
+	}
+	if isFileWriteTool(hi.ToolName) {
+		return checkFileWriteConflict(hi, errOut, lookup, check)
 	}
 	if hi.ToolName != "Bash" {
 		return nil
@@ -310,4 +317,49 @@ func isGhGraphQLSubcommand(seg string) bool {
 		return true
 	}
 	return false
+}
+
+// isFileWriteTool returns true for Claude Code tool names that mutate a
+// single file_path. See coilysiren/agent-guard#25.
+func isFileWriteTool(name string) bool {
+	switch name {
+	case "Edit", "Write", "MultiEdit", "NotebookEdit":
+		return true
+	}
+	return false
+}
+
+// checkFileWriteConflict blocks file-write tools when the registry has
+// an overlapping claim. Pass-through otherwise.
+func checkFileWriteConflict(hi hookInput, errOut io.Writer, lookup pathLookup, check registryCheck) error {
+	if check == nil {
+		return nil
+	}
+	path, _ := hi.ToolInput["file_path"].(string)
+	if path == "" {
+		path, _ = hi.ToolInput["notebook_path"].(string)
+	}
+	if !filepath.IsAbs(path) {
+		return nil
+	}
+	msg, err := check(path, lookup)
+	if err != nil || msg == "" {
+		return nil //nolint:nilerr // lookup failure or no conflict: pass through
+	}
+	_, _ = fmt.Fprintf(errOut, "blocked: another sidequest has claimed this path.\n%sRun `coily dispatch registry list` to see active sidequests, or wait for it to finish.\n", msg)
+	return cli.Exit("", 2)
+}
+
+// defaultRegistryCheck shells out to `coily dispatch registry check`.
+// Coily-missing on PATH is a soft pass-through.
+func defaultRegistryCheck(absPath string, lookup pathLookup) (string, error) {
+	if _, err := lookup("coily"); err != nil {
+		return "", nil //nolint:nilerr // coily not installed: pass through
+	}
+	cmd := exec.Command("coily", "dispatch", "registry", "check", absPath)
+	out, err := cmd.CombinedOutput()
+	if err == nil {
+		return "", nil
+	}
+	return string(out), nil
 }

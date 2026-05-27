@@ -25,7 +25,28 @@ func runHookWithLookup(t *testing.T, payload map[string]interface{}, env map[str
 	}
 	var errBuf bytes.Buffer
 	getenv := func(k string) string { return env[k] }
-	err = runPreToolUse(bytes.NewReader(b), &errBuf, getenv, lookup)
+	err = runPreToolUse(bytes.NewReader(b), &errBuf, getenv, lookup, nil)
+	if err == nil {
+		return errBuf.String(), 0
+	}
+	type coder interface{ ExitCode() int }
+	if c, ok := err.(coder); ok {
+		return errBuf.String(), c.ExitCode()
+	}
+	t.Fatalf("unexpected error type %T: %v", err, err)
+	return "", -1
+}
+
+// runHookWithCheck mirrors runHook but injects a registryCheck.
+func runHookWithCheck(t *testing.T, payload map[string]interface{}, check registryCheck) (string, int) {
+	t.Helper()
+	b, err := json.Marshal(payload)
+	if err != nil {
+		t.Fatalf("marshal: %v", err)
+	}
+	var errBuf bytes.Buffer
+	getenv := func(string) string { return "" }
+	err = runPreToolUse(bytes.NewReader(b), &errBuf, getenv, notFoundLookup, check)
 	if err == nil {
 		return errBuf.String(), 0
 	}
@@ -218,7 +239,7 @@ func TestPreToolUse_UnknownTokenPassesThrough(t *testing.T) {
 
 func TestPreToolUse_UnparseableJSONPassesThrough(t *testing.T) {
 	var errBuf bytes.Buffer
-	err := runPreToolUse(strings.NewReader("not json"), &errBuf, func(string) string { return "" }, notFoundLookup)
+	err := runPreToolUse(strings.NewReader("not json"), &errBuf, func(string) string { return "" }, notFoundLookup, nil)
 	if err != nil || errBuf.Len() != 0 {
 		t.Fatalf("expected pass-through, got err=%v stderr=%q", err, errBuf.String())
 	}
@@ -390,5 +411,91 @@ func TestPathCheck_NonGuardBinaryIgnored(t *testing.T) {
 	)
 	if code != 2 || !strings.Contains(stderr, "coily ops gh") {
 		t.Fatalf("expected routing hint (not hijack) for gh, got code=%d stderr=%q", code, stderr)
+	}
+}
+
+// stubCheck is a registryCheck returning the same fixed message for any path.
+func stubCheck(msg string) registryCheck {
+	return func(string, pathLookup) (string, error) { return msg, nil }
+}
+
+func TestPreToolUse_EditWithNoConflictPassesThrough(t *testing.T) {
+	stderr, code := runHookWithCheck(t, map[string]interface{}{
+		"tool_name":  "Edit",
+		"tool_input": map[string]interface{}{"file_path": "/work/foo.md"},
+	}, stubCheck(""))
+	if code != 0 || stderr != "" {
+		t.Fatalf("expected pass-through, got code=%d stderr=%q", code, stderr)
+	}
+}
+
+func TestPreToolUse_EditWithConflictBlocks(t *testing.T) {
+	stderr, code := runHookWithCheck(t, map[string]interface{}{
+		"tool_name":  "Edit",
+		"tool_input": map[string]interface{}{"file_path": "/work/foo.md"},
+	}, stubCheck("pid=42 ref=coilysiren/coily#119 claim=/work reason=ancestor\n"))
+	if code != 2 {
+		t.Fatalf("expected block (exit 2), got code=%d stderr=%q", code, stderr)
+	}
+	if !strings.Contains(stderr, "pid=42") || !strings.Contains(stderr, "coily dispatch registry list") {
+		t.Fatalf("expected holder info + recovery hint in stderr, got %q", stderr)
+	}
+}
+
+func TestPreToolUse_WriteWithConflictBlocks(t *testing.T) {
+	_, code := runHookWithCheck(t, map[string]interface{}{
+		"tool_name":  "Write",
+		"tool_input": map[string]interface{}{"file_path": "/work/x.go"},
+	}, stubCheck("pid=1 ref=r claim=/work reason=ancestor\n"))
+	if code != 2 {
+		t.Fatalf("expected Write to block, got code=%d", code)
+	}
+}
+
+func TestPreToolUse_MultiEditWithConflictBlocks(t *testing.T) {
+	_, code := runHookWithCheck(t, map[string]interface{}{
+		"tool_name":  "MultiEdit",
+		"tool_input": map[string]interface{}{"file_path": "/work/x.go"},
+	}, stubCheck("pid=1 ref=r claim=/work reason=ancestor\n"))
+	if code != 2 {
+		t.Fatalf("expected MultiEdit to block, got code=%d", code)
+	}
+}
+
+func TestPreToolUse_NotebookEditUsesNotebookPath(t *testing.T) {
+	_, code := runHookWithCheck(t, map[string]interface{}{
+		"tool_name":  "NotebookEdit",
+		"tool_input": map[string]interface{}{"notebook_path": "/work/x.ipynb"},
+	}, stubCheck("pid=1 ref=r claim=/work reason=ancestor\n"))
+	if code != 2 {
+		t.Fatalf("expected NotebookEdit to block via notebook_path, got code=%d", code)
+	}
+}
+
+func TestPreToolUse_EditWithRelativePathPassesThrough(t *testing.T) {
+	called := false
+	check := registryCheck(func(string, pathLookup) (string, error) {
+		called = true
+		return "should-not-fire", nil
+	})
+	stderr, code := runHookWithCheck(t, map[string]interface{}{
+		"tool_name":  "Edit",
+		"tool_input": map[string]interface{}{"file_path": "relative/path.md"},
+	}, check)
+	if called {
+		t.Fatalf("registry check fired for relative path; expected skip")
+	}
+	if code != 0 || stderr != "" {
+		t.Fatalf("expected pass-through for relative path, got code=%d stderr=%q", code, stderr)
+	}
+}
+
+func TestPreToolUse_EditWithNilCheckPassesThrough(t *testing.T) {
+	stderr, code := runHookWithCheck(t, map[string]interface{}{
+		"tool_name":  "Edit",
+		"tool_input": map[string]interface{}{"file_path": "/work/foo.md"},
+	}, nil)
+	if code != 0 || stderr != "" {
+		t.Fatalf("nil check should pass through, got code=%d stderr=%q", code, stderr)
 	}
 }
