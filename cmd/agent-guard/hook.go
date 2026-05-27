@@ -11,6 +11,7 @@ import (
 	"path/filepath"
 	"strings"
 
+	"github.com/coilysiren/cli-guard/dispatch"
 	"github.com/urfave/cli/v3"
 )
 
@@ -57,8 +58,8 @@ type hookInput struct {
 }
 
 // registryCheck queries the sidequest registry. Returns the recovery
-// message on overlap, or empty on clean. err signals lookup failure.
-type registryCheck func(absPath string, lookup pathLookup) (string, error)
+// message on overlap, or empty on clean.
+type registryCheck func(absPath string) (string, error)
 
 // runPreToolUse is the testable core of the PreToolUse hook. See docs/hook.md.
 func runPreToolUse(in io.Reader, errOut io.Writer, getenv func(string) string, lookup pathLookup, check registryCheck) error {
@@ -72,7 +73,7 @@ func runPreToolUse(in io.Reader, errOut io.Writer, getenv func(string) string, l
 		return nil //nolint:nilerr // intentional: malformed payload passes through silently
 	}
 	if isFileWriteTool(hi.ToolName) {
-		return checkFileWriteConflict(hi, errOut, lookup, check)
+		return checkFileWriteConflict(hi, errOut, check)
 	}
 	if hi.ToolName != "Bash" {
 		return nil
@@ -331,7 +332,7 @@ func isFileWriteTool(name string) bool {
 
 // checkFileWriteConflict blocks file-write tools when the registry has
 // an overlapping claim. Pass-through otherwise.
-func checkFileWriteConflict(hi hookInput, errOut io.Writer, lookup pathLookup, check registryCheck) error {
+func checkFileWriteConflict(hi hookInput, errOut io.Writer, check registryCheck) error {
 	if check == nil {
 		return nil
 	}
@@ -342,24 +343,28 @@ func checkFileWriteConflict(hi hookInput, errOut io.Writer, lookup pathLookup, c
 	if !filepath.IsAbs(path) {
 		return nil
 	}
-	msg, err := check(path, lookup)
+	msg, err := check(path)
 	if err != nil || msg == "" {
 		return nil //nolint:nilerr // lookup failure or no conflict: pass through
 	}
-	_, _ = fmt.Fprintf(errOut, "blocked: another sidequest has claimed this path.\n%sRun `coily dispatch registry list` to see active sidequests, or wait for it to finish.\n", msg)
+	_, _ = fmt.Fprintf(errOut, "blocked: another sidequest has claimed this path.\n%sRun `dispatch registry list` to see active sidequests, or wait for it to finish.\n", msg)
 	return cli.Exit("", 2)
 }
 
-// defaultRegistryCheck shells out to `coily dispatch registry check`.
-// Coily-missing on PATH is a soft pass-through.
-func defaultRegistryCheck(absPath string, lookup pathLookup) (string, error) {
-	if _, err := lookup("coily"); err != nil {
-		return "", nil //nolint:nilerr // coily not installed: pass through
-	}
-	cmd := exec.Command("coily", "dispatch", "registry", "check", absPath)
-	out, err := cmd.CombinedOutput()
-	if err == nil {
+// defaultRegistryCheck queries cli-guard's Registry directly. The host
+// supplies LogRoot via CLI_GUARD_DISPATCH_LOG_ROOT; unset → pass-through.
+func defaultRegistryCheck(absPath string) (string, error) {
+	logRoot := os.Getenv("CLI_GUARD_DISPATCH_LOG_ROOT")
+	if logRoot == "" {
 		return "", nil
 	}
-	return string(out), nil
+	conflicts, err := dispatch.NewRegistry(logRoot).Conflicts(absPath)
+	if err != nil || len(conflicts) == 0 {
+		return "", nil //nolint:nilerr // best-effort: walk errors pass through
+	}
+	var b strings.Builder
+	for _, c := range conflicts {
+		fmt.Fprintf(&b, "pid=%d ref=%s claim=%s reason=%s\n", c.PID, c.Ref, c.Claim, c.Reason)
+	}
+	return b.String(), nil
 }

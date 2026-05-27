@@ -416,7 +416,7 @@ func TestPathCheck_NonGuardBinaryIgnored(t *testing.T) {
 
 // stubCheck is a registryCheck returning the same fixed message for any path.
 func stubCheck(msg string) registryCheck {
-	return func(string, pathLookup) (string, error) { return msg, nil }
+	return func(string) (string, error) { return msg, nil }
 }
 
 func TestPreToolUse_EditWithNoConflictPassesThrough(t *testing.T) {
@@ -437,7 +437,7 @@ func TestPreToolUse_EditWithConflictBlocks(t *testing.T) {
 	if code != 2 {
 		t.Fatalf("expected block (exit 2), got code=%d stderr=%q", code, stderr)
 	}
-	if !strings.Contains(stderr, "pid=42") || !strings.Contains(stderr, "coily dispatch registry list") {
+	if !strings.Contains(stderr, "pid=42") || !strings.Contains(stderr, "dispatch registry list") {
 		t.Fatalf("expected holder info + recovery hint in stderr, got %q", stderr)
 	}
 }
@@ -474,7 +474,7 @@ func TestPreToolUse_NotebookEditUsesNotebookPath(t *testing.T) {
 
 func TestPreToolUse_EditWithRelativePathPassesThrough(t *testing.T) {
 	called := false
-	check := registryCheck(func(string, pathLookup) (string, error) {
+	check := registryCheck(func(string) (string, error) {
 		called = true
 		return "should-not-fire", nil
 	})
@@ -487,6 +487,14 @@ func TestPreToolUse_EditWithRelativePathPassesThrough(t *testing.T) {
 	}
 	if code != 0 || stderr != "" {
 		t.Fatalf("expected pass-through for relative path, got code=%d stderr=%q", code, stderr)
+	}
+}
+
+func TestDefaultRegistryCheck_EnvUnsetReturnsEmpty(t *testing.T) {
+	t.Setenv("CLI_GUARD_DISPATCH_LOG_ROOT", "")
+	msg, err := defaultRegistryCheck("/work/foo")
+	if err != nil || msg != "" {
+		t.Fatalf("unset env: want (\"\", nil), got (%q, %v)", msg, err)
 	}
 }
 
