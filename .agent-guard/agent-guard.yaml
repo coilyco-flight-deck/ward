@@ -7,8 +7,7 @@ catalog:
   lifecycle: production
   description: "Generic-purpose cli-guard consumer for repos with external contributors. Sibling concept to coily, separated by audience."
   dependsOn:
-    - cli-guard-go-pkg
-  providesApis: []
+    - forgejo.coilysiren.me/coilysiren/cli-guard
 
 commands:
   build:
