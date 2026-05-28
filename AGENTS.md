@@ -19,7 +19,7 @@ Single Go module. CLI at `cmd/agent-guard/`. Per-repo config lives downstream as
 
 - Upstream: `coilysiren/cli-guard` provides the policy/routing engine. Thin consumer, not a fork.
 - Sibling: `coilysiren/coily` is the personal-verbs counterpart. coily-land doesn't cross over.
-- First downstream adopters: `cli-mcp`, `cli-web-docs`, `cli-web-ops`.
+- First downstream adopter: `cli-mcp`.
 
 ## Commands
 
