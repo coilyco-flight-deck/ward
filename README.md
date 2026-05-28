@@ -6,7 +6,7 @@ A generic [cli-guard][cli-guard] consumer for repos that take external contribut
 
 ## Status
 
-v0. Not yet wired into any downstream. First adopter target is the urfave/cli namespaced repos ([cli-mcp][cli-mcp], [cli-web-docs][cli-web-docs], [cli-web-ops][cli-web-ops]).
+v0. Not yet wired into any downstream. First adopter target is [cli-mcp][cli-mcp].
 
 ## What it does
 
@@ -48,7 +48,7 @@ Register with `agent-guard install-hooks` (idempotent). Writes the PreToolUse en
 
 - [cli-guard][cli-guard] - underlying security-boundary framework
 - [coily][coily] - Kai's personal cli-guard consumer
-- Sibling cli-* repos: [cli-mcp][cli-mcp], [cli-web-docs][cli-web-docs], [cli-web-ops][cli-web-ops]
+- [cli-mcp][cli-mcp] - sibling cli-guard consumer that projects a urfave/cli tree as an MCP server
 
 ## Support
 
@@ -57,8 +57,6 @@ Bug or feature request: [create a new issue][new-issue]. Conduct: [Code of Condu
 [cli-guard]: https://github.com/coilysiren/cli-guard
 [coily]: https://github.com/coilysiren/coily
 [cli-mcp]: https://github.com/coilysiren/cli-mcp
-[cli-web-docs]: https://github.com/coilysiren/cli-web-docs
-[cli-web-ops]: https://github.com/coilysiren/cli-web-ops
 [new-issue]: https://github.com/coilysiren/agent-guard/issues/new/choose
 
 ## See also
