@@ -1,4 +1,4 @@
-# Contributing to agent-guard
+# Contributing to ward
 
 Thank you for your interest! :wave:
 
@@ -7,17 +7,17 @@ This project is run on volunteer time, so please have patience.
 ## Before you open a PR
 
 1. **Open an issue first.** Every commit in this repo closes a same-repo issue (`closes #N` in the commit body). Discussion happens in the issue, the PR is the change itself. This applies even to trivial fixes, the issue gives the change a stable URL.
-2. **Stay close to scope.** agent-guard is intentionally small. It exposes a generic dev surface on top of [cli-guard](https://github.com/coilysiren/cli-guard). Features that pull this package out of its lane will get pushed back. Personal verbs belong in [coily](https://github.com/coilysiren/coily), repo-specific verbs belong in the downstream repo.
-3. **Run the dev verbs before pushing.** Install agent-guard with `brew install coilysiren/tap/agent-guard`, then:
+2. **Stay close to scope.** ward is intentionally small. It exposes coilysiren's dev surface on top of [cli-guard](https://github.com/coilysiren/cli-guard). Features that pull this package out of its lane will get pushed back. Operator and personal-infra verbs belong in [coily](https://github.com/coilysiren/coily), repo-specific Makefile targets belong in the downstream repo's `.ward/ward.yaml`.
+3. **Run the dev verbs before pushing.** Install ward with `brew install coilysiren/agent-guard/ward`, then:
 
    ```
-   agent-guard exec build
-   agent-guard exec test
-   agent-guard exec vet
-   agent-guard exec lint
+   ward exec build
+   ward exec test
+   ward exec vet
+   ward exec lint
    ```
 
-   The `.agent-guard/agent-guard.yaml` ↔ Makefile contract is checked by `agent-guard lint` and by CI on every push.
+   The `.ward/ward.yaml` ↔ Makefile contract is checked by `ward lint` and by CI on every push.
 
 ## Code of Conduct
 

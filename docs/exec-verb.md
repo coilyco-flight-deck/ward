@@ -1,7 +1,7 @@
 # exec verb
 
-The `agent-guard exec` verb walks up from cwd looking for an
-agent-guard or coily allowlist, then exposes each declared command
+The `ward exec` verb walks up from cwd looking for a
+ward or coily allowlist, then exposes each declared command
 as a leaf subcommand.
 
 When no config is reachable, `exec` is still registered (so `--help`

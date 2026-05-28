@@ -1,6 +1,6 @@
 # install-hooks verb
 
-`agent-guard install-hooks` idempotently registers the agent-guard
+`ward install-hooks` idempotently registers the ward
 PreToolUse hook in the consumer repo's `.claude/settings.json`.
 Designed to be safe to re-run: existing unrelated entries are
 preserved, and re-installs are no-ops.
