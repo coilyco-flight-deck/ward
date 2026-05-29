@@ -1,4 +1,4 @@
-module github.com/coilysiren/agent-guard
+module github.com/coilyco-flight-deck/ward
 
 go 1.25.0
 
