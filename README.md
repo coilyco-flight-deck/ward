@@ -4,8 +4,6 @@ coilysiren's contributor-facing [cli-guard][cli-guard] consumer. `ward` sits bet
 
 `ward` is the contributor counterpart to [coily][coily]. coily is Kai's operator CLI - personal machines, homelab SSH, vault paths, deploy hooks. `ward` is the gate a contributor (human or agent) routes through to build, test, and lint coilysiren code. Both are thin, audited wrappers around the same cli-guard primitives, split by who is driving: operator vs contributor.
 
-> The repo, Go module, and Homebrew tap still carry the historical `agent-guard` slug. Only the produced binary, the `.ward/` config convention, and the project framing moved to `ward` in this pass. The remote rename is tracked separately.
-
 ## Status
 
 v0. Both downstream consumers are coilysiren-owned, so they upgrade to the `ward` binary and `.ward` config on their own schedule.
@@ -19,11 +17,11 @@ Each repo declares which Makefile targets are exposed in `.ward/ward.yaml`. The 
 ## Install
 
 ```
-brew tap coilysiren/agent-guard https://forgejo.coilysiren.me/coilysiren/agent-guard
-brew install coilysiren/agent-guard/ward
+brew tap coilyco-flight-deck/ward https://forgejo.coilysiren.me/coilyco-flight-deck/ward
+brew install coilyco-flight-deck/ward/ward
 ```
 
-The explicit-URL `brew tap` form is required because this repo isn't `homebrew-*` prefixed. The tap slug stays `coilysiren/agent-guard` until the remote rename lands. The installed binary is `ward`.
+The explicit-URL `brew tap` form is required because this repo isn't `homebrew-*` prefixed. The installed binary is `ward`.
 
 ## Usage
 
@@ -57,9 +55,9 @@ Register with `ward install-hooks` (idempotent). Writes the PreToolUse entry to 
 Bug or feature request: [create a new issue][new-issue]. Conduct: [Code of Conduct](CODE_OF_CONDUCT.md). Security: [SECURITY.md](SECURITY.md). License: [`LICENSE`](./LICENSE).
 
 [cli-guard]: https://github.com/coilysiren/cli-guard
-[coily]: https://github.com/coilysiren/coily
+[coily]: https://github.com/coilyco-bridge/coily
 [cli-mcp]: https://github.com/coilysiren/cli-mcp
-[new-issue]: https://github.com/coilysiren/agent-guard/issues/new/choose
+[new-issue]: https://github.com/coilyco-flight-deck/ward/issues/new/choose
 
 ## See also
 

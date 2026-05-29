@@ -1,11 +1,11 @@
 ---
 name: ward
-description: Pointer to the ward repo (remote slug coilysiren/agent-guard). Triggers - ward, agent-guard, cli-guard consumer, contributor gate, wardRoutes.
+description: Pointer to the ward repo (coilyco-flight-deck/ward). Triggers - ward, cli-guard consumer, contributor gate, wardRoutes.
 ---
 
 # ward
 
-Pointer to `~/projects/coilysiren/agent-guard/` (the repo folder keeps the historical `agent-guard` slug; the binary and project are `ward`).
+Pointer to `~/projects/coilyco-flight-deck/ward/`.
 
 - [`README.md`](../../../README.md) - what it is, quickstart, layout.
 - [`AGENTS.md`](../../../AGENTS.md) - agent-facing operating context for the repo.

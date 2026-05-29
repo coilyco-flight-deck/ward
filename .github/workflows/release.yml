@@ -7,8 +7,8 @@ name: release
 # satisfies the signed-commits ruleset).
 #
 # Brew install path is direct-repo (no aggregator tap):
-#   brew tap coilysiren/agent-guard https://forgejo.coilysiren.me/coilysiren/agent-guard
-#   brew install coilysiren/agent-guard/ward
+#   brew tap coilyco-flight-deck/ward https://forgejo.coilysiren.me/coilyco-flight-deck/ward
+#   brew install coilyco-flight-deck/ward/ward
 #
 # All ${{ }} interpolations are repo-controlled - no github.event.*
 # untrusted input flows into a run block.

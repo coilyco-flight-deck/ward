@@ -321,7 +321,7 @@ func isGhGraphQLSubcommand(seg string) bool {
 }
 
 // isFileWriteTool returns true for Claude Code tool names that mutate a
-// single file_path. See coilysiren/agent-guard#25.
+// single file_path. See coilyco-flight-deck/ward#25.
 func isFileWriteTool(name string) bool {
 	switch name {
 	case "Edit", "Write", "MultiEdit", "NotebookEdit":
