@@ -1,6 +1,6 @@
 # lint verb
 
-`agent-guard lint` validates the agent-guard allowlist against the
+`ward lint` validates the ward allowlist against the
 repo's `Makefile` so the verb surface and the make-target surface
 cannot drift.
 

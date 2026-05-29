@@ -1,0 +1,30 @@
+# Schema: coilysiren/agentic-os-kai#420 (tracker).
+catalog:
+  kind: Component
+  type: tool
+  system: coily-platform
+  owner: kai
+  lifecycle: production
+  description: "ward - coilysiren's contributor-facing cli-guard consumer. Carries coilysiren dev verbs; coily is the operator counterpart for Kai's personal machines."
+  dependsOn:
+    - forgejo.coilysiren.me/coilysiren/cli-guard
+
+commands:
+  build:
+    run: make build
+    description: Build all packages.
+  test:
+    run: make test
+    description: Run the unit test suite.
+  vet:
+    run: make vet
+    description: go vet across the tree.
+  lint:
+    run: make lint
+    description: Lint with golangci-lint.
+  tidy:
+    run: make tidy
+    description: go mod tidy.
+  cover:
+    run: make cover
+    description: Unit tests with a coverage profile.

@@ -17,11 +17,11 @@ Please disclose any vulnerabilities by emailing [coilysiren@gmail.com](mailto:co
 
 ## What counts as a vulnerability
 
-agent-guard wraps [cli-guard](https://github.com/coilysiren/cli-guard). Most boundary-level issues belong upstream, not here. Specifically interested in reports of:
+ward wraps [cli-guard](https://github.com/coilysiren/cli-guard). Most boundary-level issues belong upstream, not here. Specifically interested in reports of:
 
-- agent-guard verbs that bypass the cli-guard policy gate they claim to install
-- audit log entries written by agent-guard that are unparseable, truncatable, or omittable
-- `.agent-guard/agent-guard.yaml` parse paths that execute shell or import host state in ways the README does not describe
+- ward verbs that bypass the cli-guard policy gate they claim to install
+- audit log entries written by ward that are unparseable, truncatable, or omittable
+- `.ward/ward.yaml` parse paths that execute shell or import host state in ways the README does not describe
 
 Out of scope (file as regular issues, not vulnerabilities):
 

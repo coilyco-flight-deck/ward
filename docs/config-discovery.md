@@ -1,12 +1,12 @@
 # Config discovery
 
-agent-guard walks up from cwd looking for the first reachable allowlist.
+ward walks up from cwd looking for the first reachable allowlist.
 
 ## Candidate filenames
 
-- `.agent-guard/agent-guard.yaml` - canonical home.
+- `.ward/ward.yaml` - canonical home.
 - `.coily/coily.yaml` - honored so repos already using coily's
-  allowlist do not have to rename the file to adopt agent-guard.
+  allowlist do not have to rename the file to adopt ward.
 
 Both use the cli-guard `repocfg` format.
 
