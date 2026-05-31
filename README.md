@@ -1,16 +1,16 @@
 # ward
 
-coilysiren's contributor-facing [cli-guard][cli-guard] consumer. `ward` sits between AI agents (or any semi-trusted automation) and the host system when working inside a coilysiren repo, wrapping coilysiren's dev verbs behind cli-guard's policy gate.
+A contributor-facing [cli-guard][cli-guard] consumer. `ward` sits between AI agents (or any semi-trusted automation) and the host system when working inside a ward-managed repo, wrapping a project's dev verbs behind cli-guard's policy gate.
 
-`ward` is the contributor counterpart to [coily][coily]. coily is Kai's operator CLI - personal machines, homelab SSH, vault paths, deploy hooks. `ward` is the gate a contributor (human or agent) routes through to build, test, and lint coilysiren code. Both are thin, audited wrappers around the same cli-guard primitives, split by who is driving: operator vs contributor.
+`ward` is the contributor counterpart to [coily][coily]. coily is the operator CLI - personal machines, homelab SSH, vault paths, deploy hooks. `ward` is the gate a contributor (human or agent) routes through to build, test, and lint project code. Both are thin, audited wrappers around the same cli-guard primitives, split by who is driving: operator vs contributor.
 
 ## Status
 
-v0. Both downstream consumers are coilysiren-owned, so they upgrade to the `ward` binary and `.ward` config on their own schedule.
+v0. Downstream consumers upgrade to the `ward` binary and `.ward` config on their own schedule.
 
 ## What it does
 
-Wraps coilysiren's dev verbs (`build`, `test`, `vet`, `lint`, `tidy`, `cover`) behind cli-guard's policy gate. Every invocation validates argv, writes one append-only JSONL audit row, binds to a git toplevel via `--commit-scope`, and refuses repo-shaped verbs on a dirty tree.
+Wraps a project's dev verbs (`build`, `test`, `vet`, `lint`, `tidy`, `cover`) behind cli-guard's policy gate. Every invocation validates argv, writes one append-only JSONL audit row, binds to a git toplevel via `--commit-scope`, and refuses repo-shaped verbs on a dirty tree.
 
 Each repo declares which Makefile targets are exposed in `.ward/ward.yaml`. The contract is verified by `ward lint`.
 
@@ -47,14 +47,14 @@ Register with `ward install-hooks` (idempotent). Writes the PreToolUse entry to 
 ## Related
 
 - [cli-guard][cli-guard] - underlying security-boundary framework
-- [coily][coily] - Kai's operator-facing cli-guard consumer
+- [coily][coily] - the operator-facing cli-guard consumer
 - [cli-mcp][cli-mcp] - sibling cli-guard consumer that projects a urfave/cli tree as an MCP server
 
 ## Support
 
 Bug or feature request: [create a new issue][new-issue]. Conduct: [Code of Conduct](CODE_OF_CONDUCT.md). Security: [SECURITY.md](SECURITY.md). License: [`LICENSE`](./LICENSE).
 
-[cli-guard]: https://github.com/coilysiren/cli-guard
+[cli-guard]: https://forgejo.coilysiren.me/coilyco-flight-deck/cli-guard
 [coily]: https://github.com/coilyco-bridge/coily
 [cli-mcp]: https://github.com/coilysiren/cli-mcp
 [new-issue]: https://github.com/coilyco-flight-deck/ward/issues/new/choose

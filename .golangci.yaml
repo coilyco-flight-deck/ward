@@ -1,4 +1,4 @@
-# golangci-lint configuration adopted from coilysiren/coily for the cli-* family.
+# golangci-lint configuration for the cli-* family.
 #
 # Strict-ish. Leans on cyclomatic complexity checks because these packages are
 # security boundaries or wire-protocol layers and tangled branchy code is where

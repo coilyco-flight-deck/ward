@@ -49,7 +49,7 @@ documented contract from coily's prior shell gate.
 Walks up from cwd for the nearest config marker and returns
 `ward` or `coily`. Defaults to `ward` when no marker is
 reachable so the hook still emits a usable hint in
-contributor-cloning-a-coilysiren-repo contexts.
+contributor-cloning-a-ward-managed-repo contexts.
 
 ## splitSegments and stripEnvPrefix
 
@@ -65,7 +65,7 @@ Strips iteratively in case both env and sudo are present.
 
 `coilyRoutes` and `wardRoutes` map a bare leading-token to a
 recovery hint. ward's table is smaller: it wraps dev verbs, not
-Kai-personal ops binaries.
+personal ops binaries.
 
 `routeHint` returns the stderr block reason or `""` if the token has
 no route. `isGhGraphQLSubcommand` returns true for gh subcommands that

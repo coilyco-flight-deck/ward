@@ -11,4 +11,4 @@ Pointer to `~/projects/coilyco-flight-deck/ward/`.
 - [`AGENTS.md`](../../../AGENTS.md) - agent-facing operating context for the repo.
 - [`docs/FEATURES.md`](../../../docs/FEATURES.md) - what ships today.
 
-Read those before answering substantive questions about ward, the routing table, or coilysiren's contributor-facing cli-guard consumer.
+Read those before answering substantive questions about ward, the routing table, or the contributor-facing cli-guard consumer.

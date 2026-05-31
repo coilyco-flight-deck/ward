@@ -17,7 +17,7 @@ Please disclose any vulnerabilities by emailing [coilysiren@gmail.com](mailto:co
 
 ## What counts as a vulnerability
 
-ward wraps [cli-guard](https://github.com/coilysiren/cli-guard). Most boundary-level issues belong upstream, not here. Specifically interested in reports of:
+ward wraps [cli-guard](https://forgejo.coilysiren.me/coilyco-flight-deck/cli-guard). Most boundary-level issues belong upstream, not here. Specifically interested in reports of:
 
 - ward verbs that bypass the cli-guard policy gate they claim to install
 - audit log entries written by ward that are unparseable, truncatable, or omittable
@@ -25,5 +25,5 @@ ward wraps [cli-guard](https://github.com/coilysiren/cli-guard). Most boundary-l
 
 Out of scope (file as regular issues, not vulnerabilities):
 
-- bare cli-guard framework bugs, report those at [coilysiren/cli-guard](https://github.com/coilysiren/cli-guard/issues)
+- bare cli-guard framework bugs, report those at [coilyco-flight-deck/cli-guard](https://forgejo.coilysiren.me/coilyco-flight-deck/cli-guard/issues)
 - bare urfave/cli framework bugs, report those at [urfave/cli](https://github.com/urfave/cli/issues)

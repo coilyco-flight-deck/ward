@@ -4,12 +4,12 @@ Workspace conventions load globally via `~/.claude/CLAUDE.md` -> `agentic-os-kai
 
 ## Scope
 
-`ward` is coilysiren's contributor-facing [cli-guard](https://github.com/coilysiren/cli-guard) consumer: the gate a contributor (human or agent) routes through to build, test, and lint coilysiren code. It carries coilysiren's dev verbs.
+`ward` is a contributor-facing [cli-guard](https://forgejo.coilysiren.me/coilyco-flight-deck/cli-guard) consumer: the gate a contributor (human or agent) routes through to build, test, and lint project code. It carries the project's dev verbs.
 
 The boundary between ward and [coily](https://github.com/coilyco-bridge/coily) is load-bearing, but it is split by role, not by audience:
 
-- **coily is the operator CLI.** Anything touching Kai's homelab, vault, AWS account, deploy hooks, or other personal infra belongs in coily. ward never grows ops verbs.
-- **ward is the contributor gate.** It exposes the dev surface a contributor needs in a coilysiren repo (`build`, `test`, `vet`, `lint`, `tidy`, `cover`). coilysiren-specific dev verbs are welcome here. Repo-specific Makefile targets are declared per-repo in `.ward/ward.yaml`.
+- **coily is the operator CLI.** Anything touching a homelab, vault, AWS account, deploy hooks, or other personal infra belongs in coily. ward never grows ops verbs.
+- **ward is the contributor gate.** It exposes the dev surface a contributor needs in a ward-managed repo (`build`, `test`, `vet`, `lint`, `tidy`, `cover`). Project-specific dev verbs are welcome here. Repo-specific Makefile targets are declared per-repo in `.ward/ward.yaml`.
 
 ## Project shape
 
@@ -17,9 +17,9 @@ Single Go module (path `github.com/coilyco-flight-deck/ward`). CLI at `cmd/ward/
 
 ## Repo boundaries
 
-- Upstream: `coilysiren/cli-guard` provides the policy/routing engine. Thin consumer, not a fork.
+- Upstream: `coilyco-flight-deck/cli-guard` provides the policy/routing engine. Thin consumer, not a fork.
 - Sibling: `coilyco-bridge/coily` is the operator-verbs counterpart. coily-land doesn't cross over.
-- Downstream: coilysiren-owned consumers, upgraded to the `ward` binary and `.ward` config on their own schedule.
+- Downstream: consumers upgraded to the `ward` binary and `.ward` config on their own schedule.
 
 ## Commands
 
@@ -35,7 +35,7 @@ Install: `brew tap coilyco-flight-deck/ward https://forgejo.coilysiren.me/coilyc
 
 ## Validation
 
-The `.ward/ward.yaml` <-> `Makefile` contract is checked by `ward lint`. The cross-repo pre-commit suite from `coilysiren/agentic-os` runs every commit.
+The `.ward/ward.yaml` <-> `Makefile` contract is checked by `ward lint`. The cross-repo pre-commit suite from `coilyco-flight-deck/agentic-os` runs every commit.
 
 ## Safety
 
@@ -43,8 +43,8 @@ Every invocation validates argv against shell-metacharacter rejection, writes on
 
 ## Cross-repo contracts
 
-- Engine: `coilysiren/cli-guard` (pinned via go.mod).
-- Pre-commit suite: `coilysiren/agentic-os` (pinned via `rev:` in `.pre-commit-config.yaml`).
+- Engine: `coilyco-flight-deck/cli-guard` (pinned via go.mod).
+- Pre-commit suite: `coilyco-flight-deck/agentic-os` (pinned via `rev:` in `.pre-commit-config.yaml`).
 - Downstream config schema: `.ward/ward.yaml`. Schema lives here.
 
 ## Release

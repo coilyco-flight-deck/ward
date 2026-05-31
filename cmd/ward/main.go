@@ -1,4 +1,4 @@
-// Command ward is coilysiren's contributor-facing cli-guard consumer entry point.
+// Command ward is a contributor-facing cli-guard consumer entry point.
 // See README.md for audience and scope.
 package main
 
@@ -18,7 +18,7 @@ var Version = "dev"
 func main() {
 	app := &cli.Command{
 		Name:    "ward",
-		Usage:   "coilysiren's contributor-facing cli-guard consumer",
+		Usage:   "a contributor-facing cli-guard consumer",
 		Version: Version,
 		Commands: []*cli.Command{
 			versionCommand(),

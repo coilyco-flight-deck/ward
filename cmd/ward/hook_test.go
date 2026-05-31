@@ -108,7 +108,7 @@ func TestPreToolUse_CoilyRepoBlocksBareGh(t *testing.T) {
 	cwd := fakeRepo(t, ".coily/coily.yaml")
 	stderr, code := runHook(t, map[string]interface{}{
 		"tool_name":  "Bash",
-		"tool_input": map[string]interface{}{"command": "gh issue view 506 --repo coilysiren/agentic-os-kai"},
+		"tool_input": map[string]interface{}{"command": "gh issue view 506 --repo example-org/example-repo"},
 		"cwd":        cwd,
 	}, nil)
 	if code != 2 {
@@ -126,7 +126,7 @@ func TestPreToolUse_GhApiDoesNotTripGraphQLHint(t *testing.T) {
 	cwd := fakeRepo(t, ".coily/coily.yaml")
 	stderr, code := runHook(t, map[string]interface{}{
 		"tool_name":  "Bash",
-		"tool_input": map[string]interface{}{"command": "gh api /repos/coilysiren/agentic-os-kai/issues/506"},
+		"tool_input": map[string]interface{}{"command": "gh api /repos/example-org/example-repo/issues/506"},
 		"cwd":        cwd,
 	}, nil)
 	if code != 2 {
