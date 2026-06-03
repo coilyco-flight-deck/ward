@@ -507,3 +507,33 @@ func TestPreToolUse_EditWithNilCheckPassesThrough(t *testing.T) {
 		t.Fatalf("nil check should pass through, got code=%d stderr=%q", code, stderr)
 	}
 }
+
+// The de-fork onto cli-guard's engine gains the arbitrary-code-execution
+// denies ward's forked hook lacked (interpreter, scratch-exec). These lock
+// that the wiring delivers them. See ward#36 / ward#19.
+func TestPreToolUse_InterpreterDeniedAfterDefork(t *testing.T) {
+	cwd := fakeRepo(t, ".ward/ward.yaml")
+	stderr, code := runHook(t, map[string]interface{}{
+		"tool_name":  "Bash",
+		"tool_input": map[string]interface{}{"command": "python3 -c 'import os'"},
+		"cwd":        cwd,
+	}, nil)
+	if code != 2 {
+		t.Fatalf("expected interpreter deny (exit 2), got code=%d stderr=%q", code, stderr)
+	}
+	if !strings.Contains(stderr, "interpreter") {
+		t.Errorf("expected interpreter deny message, got: %s", stderr)
+	}
+}
+
+func TestPreToolUse_ScratchExecDeniedAfterDefork(t *testing.T) {
+	cwd := fakeRepo(t, ".ward/ward.yaml")
+	stderr, code := runHook(t, map[string]interface{}{
+		"tool_name":  "Bash",
+		"tool_input": map[string]interface{}{"command": "/tmp/payload.sh"},
+		"cwd":        cwd,
+	}, nil)
+	if code != 2 {
+		t.Fatalf("expected scratch-exec deny (exit 2), got code=%d stderr=%q", code, stderr)
+	}
+}

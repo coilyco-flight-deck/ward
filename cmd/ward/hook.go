@@ -3,7 +3,6 @@ package main
 import (
 	"context"
 	"encoding/json"
-	"errors"
 	"fmt"
 	"io"
 	"os"
@@ -12,6 +11,7 @@ import (
 	"strings"
 
 	"forgejo.coilysiren.me/coilyco-flight-deck/cli-guard/dispatch"
+	"forgejo.coilysiren.me/coilyco-flight-deck/cli-guard/hook"
 	"github.com/urfave/cli/v3"
 )
 
@@ -32,7 +32,8 @@ func hookCommand() *cli.Command {
 	}
 }
 
-// pathLookup mirrors exec.LookPath. Indirected for tests.
+// pathLookup mirrors exec.LookPath. Indirected for tests. Identical to
+// hook.LookPath; converted at the call into PreToolUse.
 type pathLookup func(name string) (string, error)
 
 // guardBinaryPaths is the canonical install-path allow-list per known guard binary.
@@ -61,7 +62,12 @@ type hookInput struct {
 // message on overlap, or empty on clean.
 type registryCheck func(absPath string) (string, error)
 
-// runPreToolUse is the testable core of the PreToolUse hook. See docs/hook.md.
+// runPreToolUse is the testable core of the PreToolUse hook. The Bash
+// decision is delegated to cli-guard's shared hook engine (argv split,
+// env/sudo strip, interpreter / exfil / scratch-exec denies, guard-binary
+// path integrity, and route hints). ward keeps the orchestration the engine
+// does not own: the file-write sidequest-registry check and guard selection.
+// See docs/hook.md.
 func runPreToolUse(in io.Reader, errOut io.Writer, getenv func(string) string, lookup pathLookup, check registryCheck) error {
 	// Best-effort hint surface: read failures pass through. See docs/hook.md.
 	data, _ := io.ReadAll(in) //nolint:errcheck // intentional: see func doc
@@ -87,57 +93,51 @@ func runPreToolUse(in io.Reader, errOut io.Writer, getenv func(string) string, l
 		cwd = getenv("PWD")
 	}
 	guard := detectGuard(cwd)
-	for _, seg := range splitSegments(cmd) {
-		seg = stripEnvPrefix(strings.TrimSpace(seg))
-		if seg == "" {
-			continue
-		}
-		token := leadingToken(seg)
-
-		// Binary-path check fires before the routing-hint pass. See docs/hook.md.
-		if allowed, ok := guardBinaryPaths[token]; ok {
-			if msg := checkBinaryPath(token, allowed, lookup); msg != "" {
-				_, _ = fmt.Fprintln(errOut, msg)
-				return cli.Exit("", 2)
-			}
-		}
-
-		hint := routeHint(guard, token, seg)
-		if hint == "" {
-			continue
-		}
-		_, _ = fmt.Fprintln(errOut, hint)
+	payload := hook.Payload{ToolName: hi.ToolName, ToolInput: hi.ToolInput, CWD: cwd}
+	d := hook.PreToolUse(payload, "ward", guardIntegrityRules(), routesFor(guard), hook.LookPath(lookup))
+	if d.Block {
+		_, _ = fmt.Fprintln(errOut, d.Message)
 		return cli.Exit("", 2)
 	}
 	return nil
 }
 
-// checkBinaryPath warns when token resolves outside allowed. See docs/hook.md.
-func checkBinaryPath(token string, allowed []string, lookup pathLookup) string {
-	resolved, err := lookup(token)
-	if err != nil {
-		if errors.Is(err, exec.ErrNotFound) {
-			return ""
+// guardIntegrityRules adapts guardBinaryPaths to the engine's rule shape:
+// a bare or off-PATH invocation of ward/coily resolving outside its
+// canonical install paths is a PATH-hijack and blocks.
+func guardIntegrityRules() []hook.IntegrityRule {
+	rules := make([]hook.IntegrityRule, 0, len(guardBinaryPaths))
+	for bin, paths := range guardBinaryPaths {
+		rules = append(rules, hook.IntegrityRule{Binary: bin, AllowedPaths: paths})
+	}
+	return rules
+}
+
+// routesFor builds the engine route table for the active guard. The coily
+// table carries the gh-GraphQL suffix via Route.Extra. See docs/hook.md.
+func routesFor(guard string) []hook.Route {
+	table := wardRoutes
+	if guard == "coily" {
+		table = coilyRoutes
+	}
+	routes := make([]hook.Route, 0, len(table))
+	for tok, hint := range table {
+		r := hook.Route{Token: tok, Hint: hint}
+		if tok == "gh" {
+			r.Extra = ghGraphQLExtra
 		}
-		// Non-ENOENT LookPath errors are a stronger signal than ENOENT. Block defensively.
-		return fmt.Sprintf(
-			"ward hook: blocked `%s`. Resolution of `%s` failed: %v. Canonical install paths: %s",
-			token, token, err, strings.Join(allowed, ", "),
-		)
+		routes = append(routes, r)
 	}
-	abs, absErr := filepath.Abs(resolved)
-	if absErr != nil {
-		abs = resolved
+	return routes
+}
+
+// ghGraphQLExtra appends the GraphQL-rate-limit trap to a denied gh segment
+// that routes through the GraphQL API by default.
+func ghGraphQLExtra(seg string) string {
+	if isGhGraphQLSubcommand(seg) {
+		return ghGraphQLTrap
 	}
-	for _, p := range allowed {
-		if abs == p {
-			return ""
-		}
-	}
-	return fmt.Sprintf(
-		"ward hook: blocked `%s`. `%s` resolves to %s, which is outside the canonical install paths (%s). This looks like a PATH-hijack of the guard binary. Reinstall via the official homebrew tap or unset the offending PATH entry.",
-		token, token, abs, strings.Join(allowed, ", "),
-	)
+	return ""
 }
 
 // detectGuard walks up from cwd for the nearest config marker. See docs/hook.md.
@@ -167,57 +167,6 @@ func detectGuard(start string) string {
 func fileExists(p string) bool {
 	info, err := os.Stat(p)
 	return err == nil && !info.IsDir()
-}
-
-// splitSegments breaks a bash command into leading-token segments. See docs/hook.md.
-func splitSegments(cmd string) []string {
-	replacers := []string{"$(", "\n", ")", "\n", "||", "\n", "&&", "\n", "|", "\n", ";", "\n", "&", "\n"}
-	r := strings.NewReplacer(replacers...)
-	return strings.Split(r.Replace(cmd), "\n")
-}
-
-// stripEnvPrefix peels leading `env VAR=val ...` and `sudo` tokens. See docs/hook.md.
-func stripEnvPrefix(seg string) string {
-	for {
-		trimmed := strings.TrimLeft(seg, " \t")
-		switch {
-		case strings.HasPrefix(trimmed, "sudo "):
-			seg = strings.TrimPrefix(trimmed, "sudo ")
-		case strings.HasPrefix(trimmed, "env "):
-			rest := strings.TrimPrefix(trimmed, "env ")
-			peeled := false
-			for {
-				rest = strings.TrimLeft(rest, " \t")
-				eq := strings.IndexByte(rest, '=')
-				sp := strings.IndexByte(rest, ' ')
-				if eq <= 0 || (sp >= 0 && sp < eq) {
-					break
-				}
-				if sp < 0 {
-					rest = ""
-				} else {
-					rest = rest[sp+1:]
-				}
-				peeled = true
-			}
-			if !peeled {
-				return trimmed
-			}
-			seg = rest
-		default:
-			return trimmed
-		}
-	}
-}
-
-// leadingToken returns the first whitespace-delimited token of seg.
-// "gh issue view" -> "gh", "" -> "".
-func leadingToken(seg string) string {
-	i := strings.IndexAny(seg, " \t")
-	if i < 0 {
-		return seg
-	}
-	return seg[:i]
 }
 
 // coilyRoutes maps a bare leading-token to a recovery hint when active guard is coily.
@@ -258,31 +207,6 @@ var wardRoutes = map[string]string{
 }
 
 const ghGraphQLTrap = " (and note: `gh issue view` / `gh pr view` / `gh repo view` / `gh search` use the GraphQL API by default - prefer `gh api /repos/OWNER/REPO/...` to avoid the GraphQL rate-limit budget)"
-
-// routeHint returns the stderr block reason for a (guard, token, seg). See docs/hook.md.
-func routeHint(guard, token, seg string) string {
-	table := tableFor(guard)
-	hint, ok := table[token]
-	if !ok {
-		return ""
-	}
-	out := prefix(token) + hint
-	if guard == "coily" && token == "gh" && isGhGraphQLSubcommand(seg) {
-		out += ghGraphQLTrap
-	}
-	return out
-}
-
-func tableFor(guard string) map[string]string {
-	if guard == "coily" {
-		return coilyRoutes
-	}
-	return wardRoutes
-}
-
-func prefix(token string) string {
-	return fmt.Sprintf("ward hook: blocked bare `%s`. Recovery: ", token)
-}
 
 // isGhGraphQLSubcommand returns true for gh subcommands that route through GraphQL.
 func isGhGraphQLSubcommand(seg string) bool {
