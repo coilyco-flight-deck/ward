@@ -14,13 +14,22 @@ import (
 	"gopkg.in/yaml.v3"
 )
 
-// lintCommand validates the ward allowlist against the Makefile. See docs/lint.md.
+// lintCommand is the deprecated alias for `ward doctor allowlist`. Kept for
+// one minor release so the cross-repo pre-commit suite keeps passing while
+// consumers migrate. Removal tracked in the follow-up referenced in the
+// deprecation line. See docs/lint.md.
 func lintCommand() *cli.Command {
 	return &cli.Command{
 		Name:  "lint",
-		Usage: "Lint .ward/ward.yaml (or .coily/coily.yaml) against the repo Makefile.",
+		Usage: "Deprecated alias for `ward doctor allowlist`.",
 		Action: func(_ context.Context, _ *cli.Command) error {
-			return runLint()
+			fmt.Fprintln(os.Stderr, "ward lint: deprecated, use `ward doctor allowlist` (alias removed in a future minor)")
+			summary, err := runAllowlistCheck()
+			if err != nil {
+				return err
+			}
+			fmt.Println(summary)
+			return nil
 		},
 	}
 }
@@ -28,25 +37,29 @@ func lintCommand() *cli.Command {
 // makeTargetHelp matches `target: deps  ## description` lines.
 var makeTargetHelp = regexp.MustCompile(`^([A-Za-z0-9_.-]+)\s*:[^=]*?##\s*(.*)$`)
 
-func runLint() error {
+// runAllowlistCheck validates the resolved allowlist against the repo's
+// Makefile. Returns a one-line OK summary on success; returns the collected
+// problems joined by newlines on failure. The caller decides what to write
+// where, so `ward doctor` and the `ward lint` alias share one engine.
+func runAllowlistCheck() (string, error) {
 	cwd, err := os.Getwd()
 	if err != nil {
-		return err
+		return "", err
 	}
-	yamlPath, err := discoverConfig(cwd)
+	yamlPath, err := resolveConfigPath(explicitConfigPath(), os.Getenv("WARD_CONFIG"), cwd)
 	if err != nil {
-		return err
+		return "", err
 	}
 	repoRoot := filepath.Dir(filepath.Dir(yamlPath))
 	makefilePath := filepath.Join(repoRoot, "Makefile")
 
 	verbs, err := loadYamlVerbs(yamlPath)
 	if err != nil {
-		return err
+		return "", err
 	}
 	targets, err := loadMakefileTargets(makefilePath)
 	if err != nil {
-		return err
+		return "", err
 	}
 
 	var problems []string
@@ -72,10 +85,9 @@ func runLint() error {
 		}
 	}
 	if len(problems) > 0 {
-		return errors.New(strings.Join(problems, "\n"))
+		return "", errors.New(strings.Join(problems, "\n"))
 	}
-	fmt.Printf("ward lint: %d verbs OK\n", len(verbs))
-	return nil
+	return fmt.Sprintf("ward doctor allowlist: %d verbs OK", len(verbs)), nil
 }
 
 type yamlVerb struct {
@@ -86,7 +98,8 @@ type yamlVerb struct {
 }
 
 func loadYamlVerbs(path string) ([]yamlVerb, error) {
-	data, err := os.ReadFile(path) // #nosec G304 -- discovered repo-local config path
+	path = filepath.Clean(path)
+	data, err := os.ReadFile(path) // #nosec G304 G703 -- explicit or discovered repo-local config path, cleaned
 	if err != nil {
 		return nil, fmt.Errorf("read %s: %w", path, err)
 	}
@@ -147,7 +160,8 @@ type makeTarget struct {
 }
 
 func loadMakefileTargets(path string) (map[string]makeTarget, error) {
-	f, err := os.Open(path) // #nosec G304 -- discovered repo-local Makefile
+	path = filepath.Clean(path)
+	f, err := os.Open(path) // #nosec G304 G703 -- Makefile next to the resolved config, cleaned
 	if err != nil {
 		return nil, fmt.Errorf("read %s: %w", path, err)
 	}

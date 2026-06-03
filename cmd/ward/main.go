@@ -39,6 +39,7 @@ func main() {
 		Commands: []*cli.Command{
 			versionCommand(),
 			execCommand(),
+			doctorCommand(),
 			lintCommand(),
 			hookCommand(),
 			installHooksCommand(),
