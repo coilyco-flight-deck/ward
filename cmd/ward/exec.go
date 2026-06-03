@@ -9,8 +9,8 @@ import (
 	"sort"
 	"strings"
 
-	"github.com/coilysiren/cli-guard/policy"
-	"github.com/coilysiren/cli-guard/repocfg"
+	"forgejo.coilysiren.me/coilyco-flight-deck/cli-guard/policy"
+	"forgejo.coilysiren.me/coilyco-flight-deck/cli-guard/repocfg"
 	"github.com/urfave/cli/v3"
 )
 

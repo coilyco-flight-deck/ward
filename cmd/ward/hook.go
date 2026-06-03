@@ -11,7 +11,7 @@ import (
 	"path/filepath"
 	"strings"
 
-	"github.com/coilysiren/cli-guard/dispatch"
+	"forgejo.coilysiren.me/coilyco-flight-deck/cli-guard/dispatch"
 	"github.com/urfave/cli/v3"
 )
 
