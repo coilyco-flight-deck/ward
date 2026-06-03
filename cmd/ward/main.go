@@ -15,11 +15,27 @@ import (
 // Version is set at build time via -ldflags.
 var Version = "dev"
 
+// configFlagOverride is the explicit --config path captured at startup.
+// Populated by preParseConfigFlag before cli.Command construction so
+// execCommand — whose subtree is built from the loaded config at init
+// time, before urfave parses flags — sees the override.
+var configFlagOverride string
+
+func explicitConfigPath() string { return configFlagOverride }
+
 func main() {
+	configFlagOverride = preParseConfigFlag(os.Args)
 	app := &cli.Command{
 		Name:    "ward",
 		Usage:   "a contributor-facing cli-guard consumer",
 		Version: Version,
+		Flags: []cli.Flag{
+			&cli.StringFlag{
+				Name:    "config",
+				Usage:   "Path to a ward/coily yaml allowlist. Overrides cwd walk-up. $WARD_CONFIG is the env-var equivalent; --config wins.",
+				Sources: cli.EnvVars("WARD_CONFIG"),
+			},
+		},
 		Commands: []*cli.Command{
 			versionCommand(),
 			execCommand(),
