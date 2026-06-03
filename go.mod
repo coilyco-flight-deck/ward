@@ -4,10 +4,10 @@ go 1.25.0
 
 require (
 	github.com/urfave/cli/v3 v3.9.0
-	gopkg.in/yaml.v3 v3.0.1
+	gopkg.in/yaml.v3 v3.0.1 // indirect
 )
 
-require forgejo.coilysiren.me/coilyco-flight-deck/cli-guard v0.1.1-0.20260603214925-e102d72a0130
+require forgejo.coilysiren.me/coilyco-flight-deck/cli-guard v0.1.1-0.20260603232456-4522aec0dead
 
 require (
 	golang.org/x/sys v0.44.0 // indirect

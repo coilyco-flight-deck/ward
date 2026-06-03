@@ -8,82 +8,65 @@ import (
 	"io"
 	"os"
 	"os/exec"
+	"path/filepath"
 	"strings"
 
+	"forgejo.coilysiren.me/coilyco-flight-deck/cli-guard/allowlist"
 	"forgejo.coilysiren.me/coilyco-flight-deck/cli-guard/repocfg"
 	"github.com/urfave/cli/v3"
 )
 
-// doctorCommand is ward's diagnostic umbrella. See docs/doctor.md.
+// doctorCommand is ward's single diagnostic verb. See docs/doctor.md.
 //
-// Subcommands run a single check group; calling `ward doctor` with no
-// subcommand runs every group and aggregates failures. Every group reads
-// the same resolved config (--config > $WARD_CONFIG > walk-up, per #38).
+// Runs every check group inline: allowlist (yaml ↔ Makefile contract via
+// cli-guard's allowlist package) and security (parse summary + host probes).
+// Reads the resolved config path (--config > $WARD_CONFIG > walk-up, per #38).
 func doctorCommand() *cli.Command {
 	return &cli.Command{
 		Name:  "doctor",
-		Usage: "Run ward's diagnostic check groups.",
-		Description: "Without a subcommand, runs every check group and exits non-zero on any failure. " +
-			"With a subcommand, runs that group only. Reads the resolved config path: " +
-			"--config > $WARD_CONFIG > walk-up from cwd.",
-		Action: func(_ context.Context, _ *cli.Command) error {
-			return runAllDoctorGroups(os.Stdout)
+		Usage: "Run ward's diagnostic checks against the resolved config and host.",
+		Description: "Validates the .ward/ward.yaml (or .coily/coily.yaml) allowlist " +
+			"against the repo Makefile, then probes host security posture against the " +
+			"parsed security: block: PATH posture per protected binary, passwordless sudo " +
+			"(when forbid_passwordless is set), and credential-env scan. Exits non-zero " +
+			"on any FAIL row.",
+		Flags: []cli.Flag{
+			&cli.StringSliceFlag{
+				Name:  "skip",
+				Usage: "Skip a security probe (path | sudo | credentials). Repeatable.",
+			},
+			&cli.BoolFlag{
+				Name:  "strict-credentials",
+				Usage: "Fail (not warn) when a credential_env var is set in this session.",
+			},
 		},
-		Commands: []*cli.Command{
-			{
-				Name:  "allowlist",
-				Usage: "Validate .ward/ward.yaml (or .coily/coily.yaml) against the repo Makefile.",
-				Action: func(_ context.Context, _ *cli.Command) error {
-					summary, err := runAllowlistCheck()
-					if err != nil {
-						return err
-					}
-					fmt.Println(summary)
-					return nil
-				},
-			},
-			{
-				Name:  "security",
-				Usage: "Probe host security posture against the parsed security: block.",
-				Description: "Runs three probes against the resolved config: PATH posture per " +
-					"protected binary, passwordless sudo (when forbid_passwordless is set), and " +
-					"credential-env scan. Exits non-zero on any FAIL row. --skip suppresses a probe " +
-					"(repeatable). --strict-credentials promotes credential hits from WARN to FAIL.",
-				Flags: []cli.Flag{
-					&cli.StringSliceFlag{
-						Name:  "skip",
-						Usage: "Skip the named probe (path | sudo | credentials). Repeatable.",
-					},
-					&cli.BoolFlag{
-						Name:  "strict-credentials",
-						Usage: "Fail (not warn) when a credential_env var is set in this session.",
-					},
-				},
-				Action: func(_ context.Context, cmd *cli.Command) error {
-					opts := securityOptions{
-						skips:             skipSet(cmd.StringSlice("skip")),
-						strictCredentials: cmd.Bool("strict-credentials"),
-					}
-					return runSecurityCheck(os.Stdout, opts)
-				},
-			},
+		Action: func(_ context.Context, cmd *cli.Command) error {
+			opts := doctorOptions{
+				skips:             skipSet(cmd.StringSlice("skip")),
+				strictCredentials: cmd.Bool("strict-credentials"),
+			}
+			return runDoctor(os.Stdout, opts)
 		},
 	}
 }
 
-// runAllDoctorGroups runs every check group and writes their output to out.
-// Returns a joined error when any group fails; partial output flushes either
-// way so an operator sees what passed before the failure summary.
-func runAllDoctorGroups(out io.Writer) error {
+// doctorOptions tunes ward doctor. Zero value means "run every check with
+// default (warn-not-fail) credential semantics".
+type doctorOptions struct {
+	skips             map[string]bool
+	strictCredentials bool
+}
+
+// runDoctor runs every check inline, writes per-group output to out, and
+// returns a joined error when any check failed. Partial output flushes
+// either way so an operator sees what passed before the failure summary.
+func runDoctor(out io.Writer, opts doctorOptions) error {
 	var failures []string
 
-	if summary, err := runAllowlistCheck(); err != nil {
+	if err := runAllowlist(out); err != nil {
 		failures = append(failures, "allowlist: "+err.Error())
-	} else {
-		_, _ = fmt.Fprintln(out, summary)
 	}
-
-	if err := runSecurityCheck(out, securityOptions{}); err != nil {
+	if err := runSecurity(out, opts); err != nil {
 		failures = append(failures, "security: "+err.Error())
 	}
 
@@ -93,18 +76,38 @@ func runAllDoctorGroups(out io.Writer) error {
 	return nil
 }
 
-// securityOptions tunes ward doctor security. Zero value means "run every
-// probe with default (warn-not-fail) credential semantics".
-type securityOptions struct {
-	skips             map[string]bool
-	strictCredentials bool
+// runAllowlist resolves the config path and delegates to cli-guard's
+// allowlist.Lint engine. Renders a one-line OK summary or the collected
+// Problems joined by newline.
+func runAllowlist(out io.Writer) error {
+	cwd, err := os.Getwd()
+	if err != nil {
+		return err
+	}
+	yamlPath, err := resolveConfigPath(explicitConfigPath(), os.Getenv("WARD_CONFIG"), cwd)
+	if err != nil {
+		return err
+	}
+	makefilePath := filepath.Join(filepath.Dir(filepath.Dir(yamlPath)), "Makefile")
+	problems, err := allowlist.Lint(yamlPath, makefilePath)
+	if err != nil {
+		return err
+	}
+	if len(problems) > 0 {
+		msgs := make([]string, 0, len(problems))
+		for _, p := range problems {
+			msgs = append(msgs, fmt.Sprintf("%s:%d: %s", p.File, p.Line, p.Msg))
+		}
+		return errors.New(strings.Join(msgs, "\n"))
+	}
+	_, _ = fmt.Fprintf(out, "ward doctor allowlist: OK (%s)\n", yamlPath)
+	return nil
 }
 
-// runSecurityCheck loads the resolved config, runs the host probes, writes
-// per-row results to out, and returns a non-nil error when any FAIL row
-// surfaced or when the policy declared protected binaries but every probe
-// was skipped (the operator asked to silence the group).
-func runSecurityCheck(out io.Writer, opts securityOptions) error {
+// runSecurity loads the resolved config, runs the host probes, writes
+// per-row results to out, and returns a non-nil error when any FAIL
+// row surfaced.
+func runSecurity(out io.Writer, opts doctorOptions) error {
 	cfg, err := loadDefault()
 	if err != nil {
 		return err

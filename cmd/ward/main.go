@@ -40,7 +40,6 @@ func main() {
 			versionCommand(),
 			execCommand(),
 			doctorCommand(),
-			lintCommand(),
 			hookCommand(),
 			installHooksCommand(),
 		},
