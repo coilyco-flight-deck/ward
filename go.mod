@@ -9,4 +9,8 @@ require (
 
 require forgejo.coilysiren.me/coilyco-flight-deck/cli-guard v0.1.1-0.20260603214925-e102d72a0130
 
-require gopkg.in/natefinch/lumberjack.v2 v2.2.1 // indirect
+require (
+	golang.org/x/sys v0.44.0 // indirect
+	golang.org/x/term v0.43.0 // indirect
+	gopkg.in/natefinch/lumberjack.v2 v2.2.1 // indirect
+)

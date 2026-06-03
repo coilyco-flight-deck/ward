@@ -1,10 +1,13 @@
 package main
 
 import (
+	"bytes"
 	"context"
 	"errors"
 	"fmt"
+	"io"
 	"os"
+	"os/exec"
 	"strings"
 
 	"forgejo.coilysiren.me/coilyco-flight-deck/cli-guard/repocfg"
@@ -41,57 +44,134 @@ func doctorCommand() *cli.Command {
 			},
 			{
 				Name:  "security",
-				Usage: "Summarize the parsed security: block from the resolved config.",
-				Action: func(_ context.Context, _ *cli.Command) error {
-					summary, err := runSecurityCheck()
-					if err != nil {
-						return err
+				Usage: "Probe host security posture against the parsed security: block.",
+				Description: "Runs three probes against the resolved config: PATH posture per " +
+					"protected binary, passwordless sudo (when forbid_passwordless is set), and " +
+					"credential-env scan. Exits non-zero on any FAIL row. --skip suppresses a probe " +
+					"(repeatable). --strict-credentials promotes credential hits from WARN to FAIL.",
+				Flags: []cli.Flag{
+					&cli.StringSliceFlag{
+						Name:  "skip",
+						Usage: "Skip the named probe (path | sudo | credentials). Repeatable.",
+					},
+					&cli.BoolFlag{
+						Name:  "strict-credentials",
+						Usage: "Fail (not warn) when a credential_env var is set in this session.",
+					},
+				},
+				Action: func(_ context.Context, cmd *cli.Command) error {
+					opts := securityOptions{
+						skips:             skipSet(cmd.StringSlice("skip")),
+						strictCredentials: cmd.Bool("strict-credentials"),
 					}
-					fmt.Println(summary)
-					return nil
+					return runSecurityCheck(os.Stdout, opts)
 				},
 			},
 		},
 	}
 }
 
-// runAllDoctorGroups runs every check group and prints a per-group summary
-// to out. Returns a joined error when any group fails; the partial summary
-// is still flushed so an operator sees what passed.
-func runAllDoctorGroups(out *os.File) error {
-	var summaries []string
+// runAllDoctorGroups runs every check group and writes their output to out.
+// Returns a joined error when any group fails; partial output flushes either
+// way so an operator sees what passed before the failure summary.
+func runAllDoctorGroups(out io.Writer) error {
 	var failures []string
 
 	if summary, err := runAllowlistCheck(); err != nil {
 		failures = append(failures, "allowlist: "+err.Error())
 	} else {
-		summaries = append(summaries, summary)
+		_, _ = fmt.Fprintln(out, summary)
 	}
 
-	if summary, err := runSecurityCheck(); err != nil {
+	if err := runSecurityCheck(out, securityOptions{}); err != nil {
 		failures = append(failures, "security: "+err.Error())
-	} else {
-		summaries = append(summaries, summary)
 	}
 
-	for _, s := range summaries {
-		_, _ = fmt.Fprintln(out, s)
-	}
 	if len(failures) > 0 {
 		return errors.New(strings.Join(failures, "\n"))
 	}
 	return nil
 }
 
-// runSecurityCheck loads the resolved config and reports on its security:
-// block. Returns a one-line summary on success. A zero-value Security block
-// is a pass and reports "no security: declared".
-func runSecurityCheck() (string, error) {
+// securityOptions tunes ward doctor security. Zero value means "run every
+// probe with default (warn-not-fail) credential semantics".
+type securityOptions struct {
+	skips             map[string]bool
+	strictCredentials bool
+}
+
+// runSecurityCheck loads the resolved config, runs the host probes, writes
+// per-row results to out, and returns a non-nil error when any FAIL row
+// surfaced or when the policy declared protected binaries but every probe
+// was skipped (the operator asked to silence the group).
+func runSecurityCheck(out io.Writer, opts securityOptions) error {
 	cfg, err := loadDefault()
 	if err != nil {
-		return "", err
+		return err
 	}
-	return summarizeSecurity(cfg.Security), nil
+	_, _ = fmt.Fprintln(out, summarizeSecurity(cfg.Security))
+	if securityIsZero(cfg.Security) {
+		return nil
+	}
+
+	var results []probeResult
+	if !opts.skips["path"] {
+		results = append(results, runPathPosture(cfg.Security.ProtectedBinaries, exec.LookPath)...)
+	} else {
+		results = append(results, probeResult{probe: "path", severity: sevSkip, detail: "skipped by --skip path"})
+	}
+	if !opts.skips["sudo"] {
+		results = append(results, runSudoProbe(cfg.Security.Sudo.ForbidPasswordless, defaultSudoRunner))
+	} else {
+		results = append(results, probeResult{probe: "sudo", severity: sevSkip, detail: "skipped by --skip sudo"})
+	}
+	if !opts.skips["credentials"] {
+		results = append(results, runCredEnvProbe(cfg.Security.ProtectedBinaries, os.Getenv, opts.strictCredentials)...)
+	} else {
+		results = append(results, probeResult{probe: "credentials", severity: sevSkip, detail: "skipped by --skip credentials"})
+	}
+
+	var fails []string
+	for _, r := range results {
+		_, _ = fmt.Fprintf(out, "  %-11s %-4s %s\n", r.probe, r.severity, r.detail)
+		if r.severity == sevFail {
+			fails = append(fails, fmt.Sprintf("%s: %s", r.probe, r.detail))
+		}
+	}
+	if len(fails) > 0 {
+		return errors.New(strings.Join(fails, "; "))
+	}
+	return nil
+}
+
+// skipSet normalizes the --skip flag values into a lookup map. Unknown
+// names are kept; doctor silently ignores them rather than erroring, so a
+// typo doesn't break a CI step that already passed before the typo's group
+// existed.
+func skipSet(names []string) map[string]bool {
+	out := make(map[string]bool, len(names))
+	for _, n := range names {
+		out[strings.ToLower(strings.TrimSpace(n))] = true
+	}
+	return out
+}
+
+// defaultSudoRunner runs `sudo -n true` and returns the captured stderr,
+// exit code, and any spawn error. The probe interprets exit 0 as "ran
+// without password" (the failure mode under forbid_passwordless).
+func defaultSudoRunner() (string, int, error) {
+	cmd := exec.Command("sudo", "-n", "true") // #nosec G204 -- fixed argv, no user input
+	var stderr bytes.Buffer
+	cmd.Stderr = &stderr
+	err := cmd.Run()
+	if err == nil {
+		return stderr.String(), 0, nil
+	}
+	var exitErr *exec.ExitError
+	if errors.As(err, &exitErr) {
+		return stderr.String(), exitErr.ExitCode(), nil
+	}
+	return stderr.String(), -1, err
 }
 
 // summarizeSecurity renders a one-line summary of the security: block. Kept

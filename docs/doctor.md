@@ -8,7 +8,17 @@
 - `ward doctor allowlist` — validates `.ward/ward.yaml` (or `.coily/coily.yaml`) against the repo's `Makefile`. Same contract `ward lint` enforced; the alias still works for one minor release.
 - `ward doctor security` — summarizes the parsed `security:` block from cli-guard's `repocfg`. Reports protected-binary count, sudo posture, and hook-policy presence. A config with no `security:` block is a pass and reports `no security: declared`.
 
-ward parses but does not enforce the `security:` block. Enforcement lives in `ward doctor security`'s future host probes (passwordless sudo, PATH-shim detection, credential env scan) and in the PreToolUse hook's protected-binary wiring — both tracked as separate sub-issues of #4.
+## Probes
+
+`ward doctor security` runs three host probes against the parsed `security:` block. Each probe emits one or more rows tagged with a severity. `FAIL` rows drive the exit code; `WARN`, `INFO`, `PASS`, and `SKIP` only surface text.
+
+- **`path` — PATH posture per protected binary.** Resolves each `protected_binaries[].name` via `exec.LookPath`. When `expected_real_paths` is non-empty, a mismatch is a `FAIL`. When the list is empty, the resolved location surfaces as `INFO`. A missing binary is a `WARN` (it may simply not be installed on this host).
+- **`sudo` — passwordless sudo.** Skipped unless `sudo.forbid_passwordless` is set. Runs `sudo -n true` non-interactively. A clean exit is a `FAIL` (passwordless sudo is reachable from this session). A non-zero exit with a "password required" sentinel is a `PASS`. Any other non-zero exit is a `WARN`.
+- **`credentials` — credential env scan.** Walks every `protected_binaries[].credential_env` name and reports which are set in this session. Each hit is a `WARN` by default. `--strict-credentials` promotes hits to `FAIL` so a CI step can refuse to run with credentials on the bus.
+
+`--skip <name>` (repeatable) suppresses a probe and surfaces a `SKIP` row in its place. Useful for hosts that lack the dependency (no `sudo` binary, etc).
+
+ward parses but does not enforce the `security:` block beyond these probes. PreToolUse hook wiring for protected-binary denial is tracked as a separate sub-issue of #4.
 
 ## Output
 
