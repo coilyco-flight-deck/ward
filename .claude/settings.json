@@ -6,6 +6,10 @@
           {
             "command": ".claude/lockdown-deny.sh",
             "type": "command"
+          },
+          {
+            "command": "ward hook pre-tool-use",
+            "type": "command"
           }
         ],
         "matcher": "Bash"

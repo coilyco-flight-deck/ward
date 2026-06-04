@@ -508,9 +508,8 @@ func TestPreToolUse_EditWithNilCheckPassesThrough(t *testing.T) {
 	}
 }
 
-// The de-fork onto cli-guard's engine gains the arbitrary-code-execution
-// denies ward's forked hook lacked (interpreter, scratch-exec). These lock
-// that the wiring delivers them. See ward#36 / ward#19.
+// The de-fork onto cli-guard's engine gains arbitrary-code-execution denies
+// ward's fork lacked; these lock that the wiring delivers them. See ward#36 / ward#19.
 func TestPreToolUse_InterpreterDeniedAfterDefork(t *testing.T) {
 	cwd := fakeRepo(t, ".ward/ward.yaml")
 	stderr, code := runHook(t, map[string]interface{}{

@@ -62,12 +62,8 @@ type hookInput struct {
 // message on overlap, or empty on clean.
 type registryCheck func(absPath string) (string, error)
 
-// runPreToolUse is the testable core of the PreToolUse hook. The Bash
-// decision is delegated to cli-guard's shared hook engine (argv split,
-// env/sudo strip, interpreter / exfil / scratch-exec denies, guard-binary
-// path integrity, and route hints). ward keeps the orchestration the engine
-// does not own: the file-write sidequest-registry check and guard selection.
-// See docs/hook.md.
+// runPreToolUse is the testable core of the PreToolUse hook: it delegates the
+// Bash decision to cli-guard's engine and keeps ward's registry check. See docs/hook.md.
 func runPreToolUse(in io.Reader, errOut io.Writer, getenv func(string) string, lookup pathLookup, check registryCheck) error {
 	// Best-effort hint surface: read failures pass through. See docs/hook.md.
 	data, _ := io.ReadAll(in) //nolint:errcheck // intentional: see func doc
@@ -103,9 +99,8 @@ func runPreToolUse(in io.Reader, errOut io.Writer, getenv func(string) string, l
 	return nil
 }
 
-// guardIntegrityRules adapts guardBinaryPaths to the engine's rule shape:
-// a bare or off-PATH invocation of ward/coily resolving outside its
-// canonical install paths is a PATH-hijack and blocks.
+// guardIntegrityRules adapts guardBinaryPaths to the engine's rule shape: an
+// off-PATH ward/coily resolving outside its install paths is a PATH-hijack.
 func guardIntegrityRules() []hook.IntegrityRule {
 	rules := make([]hook.IntegrityRule, 0, len(guardBinaryPaths))
 	for bin, paths := range guardBinaryPaths {

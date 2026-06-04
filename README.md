@@ -10,7 +10,7 @@ v0. Downstream consumers upgrade to the `ward` binary and `.ward` config on thei
 
 ## What it does
 
-Wraps a project's dev verbs (`build`, `test`, `vet`, `lint`, `tidy`, `cover`) behind cli-guard's policy gate. Every invocation validates argv, writes one append-only JSONL audit row, binds to a git toplevel via `--commit-scope`, and refuses repo-shaped verbs on a dirty tree.
+Wraps a project's dev verbs (`build`, `test`, `vet`, `lint`, `tidy`, `cover`) behind cli-guard's policy gate. Every invocation validates argv, writes one append-only JSONL audit row, stamps a best-effort `repo_root` (the git toplevel of cwd, empty outside any repo), and refuses repo-shaped verbs on a dirty tree.
 
 Each repo declares which Makefile targets are exposed in `.ward/ward.yaml`. The contract is verified by `ward lint`.
 

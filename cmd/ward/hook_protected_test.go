@@ -9,9 +9,8 @@ import (
 	"testing"
 )
 
-// The repocfg.Security -> []hook.Protected mapping moved to cli-guard's
-// hookcfg package; its unit tests live there. The integration tests below
-// exercise ward's end-to-end loadProtectedForCwd + runPreToolUse plumbing.
+// The repocfg.Security -> []hook.Protected mapping moved to cli-guard's hookcfg
+// package; the integration tests below exercise ward's end-to-end plumbing.
 
 // fakeWardRepoWithBody is the security-aware counterpart of fakeRepo in
 // hook_test.go: writes .ward/ward.yaml with the given body.

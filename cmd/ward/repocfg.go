@@ -26,13 +26,8 @@ var configCandidates = []configCandidate{
 	{dir: ".coily", file: "coily.yaml"},
 }
 
-// preParseConfigFlag scans args for the root-level --config flag before
-// urfave/cli sees them. Needed because execCommand builds its subtree from
-// the loaded config at init time. Recognises --config=<path>, --config <path>,
-// and the deprecated --config-path forms; stops at -- or the first positional.
-//
-// Returns "" if the flag is absent. Env-var precedence is applied at
-// resolveConfigPath, not here.
+// preParseConfigFlag scans args for the root --config flag (and deprecated
+// --config-path) before urfave/cli parses them. Returns "" if absent.
 func preParseConfigFlag(args []string) string {
 	for i := 1; i < len(args); i++ {
 		a := args[i]
@@ -54,15 +49,8 @@ func preParseConfigFlag(args []string) string {
 	return ""
 }
 
-// resolveConfigPath picks the config path using the explicit > env > walk-up
+// resolveConfigPath picks the config path by explicit > env > walk-up
 // precedence. See docs/config-discovery.md.
-//
-// explicit is the value of --config (empty if unset). env is the value of
-// $WARD_CONFIG (empty if unset). cwd is the directory the walk-up starts from.
-//
-// An explicit or env-supplied path is returned verbatim (made absolute) without
-// stat-ing; the eventual repocfg.Load call is the canonical existence check and
-// produces a clearer error than a duplicate stat here.
 func resolveConfigPath(explicit, env, cwd string) (string, error) {
 	switch {
 	case explicit != "":

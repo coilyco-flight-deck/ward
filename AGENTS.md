@@ -39,7 +39,7 @@ The `.ward/ward.yaml` <-> `Makefile` contract is checked by `ward lint`. The cro
 
 ## Safety
 
-Every invocation validates argv against shell-metacharacter rejection, writes one append-only JSONL audit row, binds to a git toplevel via `--commit-scope`, and refuses repo-shaped verbs on a dirty tree. The PreToolUse hook resolves `ward` and `coily` via `command -v` and refuses unless the resolved path is a canonical homebrew location (blocks PATH-hijack). Hard denial stays the job of `permissions.deny`.
+Every invocation validates argv against shell-metacharacter rejection, writes one append-only JSONL audit row, stamps a best-effort `repo_root` audit field, and refuses repo-shaped verbs on a dirty tree. The PreToolUse hook resolves `ward` and `coily` via `command -v` and refuses unless the resolved path is a canonical homebrew location (blocks PATH-hijack). Hard denial stays the job of `permissions.deny`.
 
 ## Cross-repo contracts
 

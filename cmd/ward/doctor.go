@@ -16,11 +16,8 @@ import (
 	"github.com/urfave/cli/v3"
 )
 
-// doctorCommand is ward's single diagnostic verb. See docs/doctor.md.
-//
-// Runs every check group inline: allowlist (yaml ↔ Makefile contract via
-// cli-guard's allowlist package) and security (parse summary + host probes).
-// Reads the resolved config path (--config > $WARD_CONFIG > walk-up, per #38).
+// doctorCommand is ward's single diagnostic verb, running the allowlist and
+// security check groups inline. See docs/doctor.md.
 func doctorCommand() *cli.Command {
 	return &cli.Command{
 		Name:  "doctor",
@@ -58,8 +55,7 @@ type doctorOptions struct {
 }
 
 // runDoctor runs every check inline, writes per-group output to out, and
-// returns a joined error when any check failed. Partial output flushes
-// either way so an operator sees what passed before the failure summary.
+// returns a joined error when any check failed.
 func runDoctor(out io.Writer, opts doctorOptions) error {
 	var failures []string
 
@@ -77,8 +73,7 @@ func runDoctor(out io.Writer, opts doctorOptions) error {
 }
 
 // runAllowlist resolves the config path and delegates to cli-guard's
-// allowlist.Lint engine. Renders a one-line OK summary or the collected
-// Problems joined by newline.
+// allowlist.Lint engine, rendering an OK summary or the collected Problems.
 func runAllowlist(out io.Writer) error {
 	cwd, err := os.Getwd()
 	if err != nil {
@@ -104,9 +99,8 @@ func runAllowlist(out io.Writer) error {
 	return nil
 }
 
-// runSecurity loads the resolved config, runs the host probes, writes
-// per-row results to out, and returns a non-nil error when any FAIL
-// row surfaced.
+// runSecurity loads the resolved config, runs the host probes, writes per-row
+// results to out, and returns a non-nil error when any FAIL row surfaced.
 func runSecurity(out io.Writer, opts doctorOptions) error {
 	cfg, err := loadDefault()
 	if err != nil {
@@ -147,10 +141,8 @@ func runSecurity(out io.Writer, opts doctorOptions) error {
 	return nil
 }
 
-// skipSet normalizes the --skip flag values into a lookup map. Unknown
-// names are kept; doctor silently ignores them rather than erroring, so a
-// typo doesn't break a CI step that already passed before the typo's group
-// existed.
+// skipSet normalizes the --skip flag values into a lookup map. Unknown names
+// are kept and silently ignored, so a typo doesn't break a passing CI step.
 func skipSet(names []string) map[string]bool {
 	out := make(map[string]bool, len(names))
 	for _, n := range names {
@@ -159,9 +151,8 @@ func skipSet(names []string) map[string]bool {
 	return out
 }
 
-// defaultSudoRunner runs `sudo -n true` and returns the captured stderr,
-// exit code, and any spawn error. The probe interprets exit 0 as "ran
-// without password" (the failure mode under forbid_passwordless).
+// defaultSudoRunner runs `sudo -n true` and returns its stderr, exit code, and
+// any spawn error. Exit 0 means it ran without a password (the failure mode).
 func defaultSudoRunner() (string, int, error) {
 	cmd := exec.Command("sudo", "-n", "true") // #nosec G204 -- fixed argv, no user input
 	var stderr bytes.Buffer

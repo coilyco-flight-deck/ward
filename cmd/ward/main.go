@@ -15,10 +15,8 @@ import (
 // Version is set at build time via -ldflags.
 var Version = "dev"
 
-// configFlagOverride is the explicit --config path captured at startup.
-// Populated by preParseConfigFlag before cli.Command construction so
-// execCommand — whose subtree is built from the loaded config at init
-// time, before urfave parses flags — sees the override.
+// configFlagOverride is the explicit --config path captured at startup by
+// preParseConfigFlag, before cli.Command construction sees it.
 var configFlagOverride string
 
 func explicitConfigPath() string { return configFlagOverride }

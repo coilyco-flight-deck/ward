@@ -31,19 +31,16 @@ type probeResult struct {
 // unit tests can swap in deterministic fakes without touching $PATH.
 type pathLookupFn func(name string) (string, error)
 
-// sudoRunner is the abstraction over running `sudo -n true`. Returns the
-// command stderr text and the process exit code. exit 0 means sudo ran
-// without prompting (the dangerous case under forbid_passwordless: true).
+// sudoRunner abstracts running `sudo -n true`, returning stderr and exit code.
+// Exit 0 means sudo ran without prompting (the dangerous case).
 type sudoRunner func() (stderr string, exitCode int, err error)
 
 // envLookup mirrors os.Getenv so the credential-env probe can be unit-tested
 // without mutating the process environment.
 type envLookup func(name string) string
 
-// runPathPosture checks each protected binary's resolved PATH location
-// against its expected_real_paths. An empty expected list emits an INFO
-// row recording the resolved path. A missing binary on PATH is a WARN
-// (the binary may simply not be installed on this host).
+// runPathPosture checks each protected binary's resolved PATH location against
+// its expected_real_paths. Empty expected emits INFO; missing-on-PATH is WARN.
 func runPathPosture(binaries []repocfg.ProtectedBinary, lookup pathLookupFn) []probeResult {
 	if len(binaries) == 0 {
 		return []probeResult{{probe: "path", severity: sevSkip, detail: "no protected_binaries declared"}}
@@ -86,8 +83,7 @@ func runPathPosture(binaries []repocfg.ProtectedBinary, lookup pathLookupFn) []p
 }
 
 // pathMatches reports whether resolved is byte-equal to any expected path.
-// Symlinks aren't followed — the policy is about which PATH entry won, not
-// the eventual inode.
+// Symlinks aren't followed: the policy is about which PATH entry won.
 func pathMatches(resolved string, expected []string) bool {
 	for _, e := range expected {
 		if e == resolved {
@@ -97,10 +93,8 @@ func pathMatches(resolved string, expected []string) bool {
 	return false
 }
 
-// runSudoProbe runs `sudo -n true` (via the injected runner) when the
-// policy forbids passwordless sudo. A clean exit means sudo ran without
-// a password — the failure case. A non-zero exit with a password-required
-// sentinel means the host is configured the way the policy wants.
+// runSudoProbe runs `sudo -n true` (via the injected runner) when the policy
+// forbids passwordless sudo. A clean exit (ran without a password) is the failure case.
 func runSudoProbe(forbid bool, runner sudoRunner) probeResult {
 	if !forbid {
 		return probeResult{probe: "sudo", severity: sevSkip, detail: "forbid_passwordless not set"}
@@ -135,8 +129,7 @@ func runSudoProbe(forbid bool, runner sudoRunner) probeResult {
 }
 
 // runCredEnvProbe walks every protected binary's credential_env names and
-// reports which are set in this session. strict promotes hits from WARN
-// to FAIL so a CI step can refuse to run with credentials on the bus.
+// reports which are set; strict promotes hits from WARN to FAIL.
 func runCredEnvProbe(binaries []repocfg.ProtectedBinary, getenv envLookup, strict bool) []probeResult {
 	type hit struct{ binary, env string }
 	var hits []hit

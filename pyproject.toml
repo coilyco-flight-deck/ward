@@ -1,0 +1,10 @@
+# Config for the agentic-os catalog pre-commit hooks. ward ships no Python;
+# this file exists only to carry per-repo hook opt-outs, which the
+# tree-walking hooks read here (they bypass pre-commit's own exclude:).
+
+[tool.agentic-os.documentation-layout]
+excludes = [
+  # Pre-existing size debt: docs/hook.md is 92 lines, over the 80-line cap.
+  # The split is tracked in coilyco-flight-deck/ward#50; drop this when it lands.
+  "docs/hook.md",
+]
