@@ -49,9 +49,9 @@ Every invocation validates argv against shell-metacharacter rejection, writes on
 
 ## Release
 
-Push to `main` triggers `.github/workflows/release.yml`: tag-action computes semver (patch default, conventional commits drive minor/major), cuts a GH Release, then `bump-formula` rewrites the formula's url+tag+revision via the Contents API and pushes back with a skip-CI marker. `Formula/ward.rb` is source of truth.
+Forgejo-canonical, on Forgejo Actions not GitHub. Push to `main` runs `.forgejo/workflows/release.yml`: `tag-bump` (semver from conventional commits) + `create-release`, then `bump-tap-formula`/`bump-formula` rewrite the formula url+tag+revision via the Forgejo Contents API (skip-CI marked). `mirror-to-github.yml` mirrors main + tags to the read-only GitHub mirror.
 
-Never write the literal skip-CI token in a commit body or you'll silently disable the release workflow on that push (GitHub greps the entire message). Quote as "skip-CI marker" if you need to describe it.
+Never write the literal skip-CI token in a commit body or it silently disables the workflow on that push. Describe it as "skip-CI marker".
 
 Post-push: verify CI at +120s (`coily ops gh run list --repo coilyco-flight-deck/ward --limit 1`). Once green: `brew upgrade coilyco-flight-deck/ward/ward`.
 

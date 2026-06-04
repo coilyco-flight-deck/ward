@@ -1,0 +1,32 @@
+name: mirror-to-github
+
+# Forgejo is the canonical source for ward. GitHub is a read-only mirror.
+# This workflow pushes Forgejo's main and tags to GitHub on every push so the
+# mirror tracks. No-ops cleanly when GITHUB_MIRROR_PAT is absent, so it can
+# land before the secret is provisioned. Mirrors the coily pattern.
+
+on:
+  push:
+    branches: [main]
+    tags: ['v*']
+
+jobs:
+  mirror:
+    runs-on: docker
+    steps:
+      - uses: actions/checkout@v6
+        with:
+          fetch-depth: 0
+
+      - name: Mirror to GitHub
+        env:
+          PAT: ${{ secrets.GITHUB_MIRROR_PAT }}
+        run: |
+          set -euo pipefail
+          if [ -z "${PAT}" ]; then
+            echo "mirror-to-github: GITHUB_MIRROR_PAT secret not set; skipping." >&2
+            exit 0
+          fi
+          git remote add github "https://x-access-token:${PAT}@github.com/coilyco-flight-deck/ward.git"
+          git push --force github main
+          git push --force --tags github
