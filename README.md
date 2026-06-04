@@ -38,9 +38,10 @@ brew install coilyco-flight-deck/ward/ward
 ward exec build
 ward exec test
 ward lint
+ward pkg brew bundle    # audited brew wrapper (parity with coily pkg brew)
 ```
 
-See [`docs/`](docs/) for the full verb list.
+`ward pkg brew` is the ward-native, audited package path so a board repo's deps install does not have to route back to coily. See [`docs/FEATURES.md`](docs/FEATURES.md) for the full verb list.
 
 ## Claude Code PreToolUse hook
 

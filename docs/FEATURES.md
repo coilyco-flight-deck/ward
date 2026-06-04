@@ -4,7 +4,16 @@ Baseline inventory of what `ward` ships. Update when a headline feature is added
 
 ## Scope
 
-Inventory placeholder. Fill in per-feature bullets as the repo accrues shipped surface.
+The contributor-facing cli-guard gate: wrap a repo's dev verbs and a small set of audited host wrappers behind cli-guard's policy + audit pipeline.
+
+## Commands
+
+- **`ward exec <verb>`** - run a repo dev verb from `.ward/ward.yaml`, argv-validated against cli-guard policy.
+- **`ward pkg brew <verb>`** - audited brew wrapper at parity with `coily pkg brew`. Mirrors brew's argv; formula/tap mutations default to primary-org taps and need `--allow-untapped` otherwise; read-only verbs and `brew bundle` pass through. Audit rows `pkg.brew.*` to `~/.coily/audit/<repo>.jsonl`. The ward-native package path for board repos.
+- **`ward doctor`** - diagnostic checks against the resolved config and host.
+- **`ward hook pre-tool-use`** - Claude Code PreToolUse hook: binary-path check + bare-command deny with routing hints.
+- **`ward install-hooks`** - idempotently register the PreToolUse hook in `.claude/settings.json`.
+- **`ward lint`** - lint `.ward/ward.yaml` against the repo Makefile.
 
 ## See also
 
