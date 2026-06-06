@@ -45,6 +45,7 @@ func main() {
 			versionCommand(),
 			execCommand(),
 			pkgCommand(),
+			gitCommand(),
 			auditCommand(),
 			doctorCommand(),
 			hookCommand(),
