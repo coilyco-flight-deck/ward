@@ -53,55 +53,52 @@ jobs:
     # Rewrite Formula/ward.rb in the centralized flight-deck tap
     # (coilyco-flight-deck/homebrew-tap) to the just-cut tag + revision. The
     # tap is where `brew install coilyco-flight-deck/tap/ward` reads from.
+    #
+    # Runs on the dedicated tap-writer runner
+    # (infrastructure/deploy/forgejo-runner-tap-writer.yml): a host executor
+    # whose system git credential helper supplies the tap-write token only
+    # when git asks (action=get). The token never enters this job's env, logs,
+    # or an Actions secret. Host executor has no node, so every step is pure
+    # shell - no JS `uses:` actions (checkout/setup-*) can run here.
     needs: release
     if: ${{ needs.release.outputs.tag != '' }}
-    runs-on: docker
+    runs-on: tap-writer
     env:
       TAG: ${{ needs.release.outputs.tag }}
       FORGEJO_BASE_URL: https://forgejo.coilysiren.me
       WARD_REPO: coilyco-flight-deck/ward
       TAP_REPO: coilyco-flight-deck/homebrew-tap
       FORMULA_PATH: Formula/ward.rb
-      FORGEJO_TOKEN: ${{ secrets.FORGEJO_TOKEN }}
     steps:
-      - uses: actions/checkout@v6
-        with:
-          ref: ${{ needs.release.outputs.tag }}
-
-      - id: rev
-        run: echo "revision=$(git rev-parse HEAD)" >> "$GITHUB_OUTPUT"
-
-      - name: Rewrite tap Formula url via forgejo Contents API
-        env:
-          NEW_REVISION: ${{ steps.rev.outputs.revision }}
+      - name: Bump tap formula and push
         run: |
-          set -euo pipefail
-          tmp=$(mktemp -d)
-          # Patch on top of the tap's live main, preserving non-version edits.
-          meta=$(curl -fsS -H "Authorization: token $FORGEJO_TOKEN" \
-            "$FORGEJO_BASE_URL/api/v1/repos/$TAP_REPO/contents/$FORMULA_PATH?ref=main")
-          cur_sha=$(jq -r '.sha' <<< "$meta")
-          jq -r '.content' <<< "$meta" | base64 -d > "$tmp/ward.rb"
-          new_line="  url \"$FORGEJO_BASE_URL/${WARD_REPO}.git\", tag: \"${TAG}\", revision: \"${NEW_REVISION}\""
+          set -eu
+          # Resolve the tagged revision without a JS checkout action.
+          git clone --no-checkout --depth 1 --branch "$TAG" \
+            "$FORGEJO_BASE_URL/$WARD_REPO.git" ward-src
+          revision=$(git -C ward-src rev-parse HEAD)
+
+          # Clone the tap's live main and patch on top, so any non-version
+          # edits (build flags, test logic) survive.
+          git clone --depth 1 "$FORGEJO_BASE_URL/$TAP_REPO.git" tap
+          cd tap
+          new_line="  url \"$FORGEJO_BASE_URL/${WARD_REPO}.git\", tag: \"${TAG}\", revision: \"${revision}\""
+          # awk so the URL's special chars don't need sed escaping.
           awk -v repl="$new_line" '
             /^  url "/ && !done { print repl; done = 1; next }
             { print }
-          ' "$tmp/ward.rb" > "$tmp/ward.new.rb"
-          mv "$tmp/ward.new.rb" "$tmp/ward.rb"
-          new_b64=$(base64 -w0 < "$tmp/ward.rb")
-          payload=$(jq -n --arg msg "chore(formula): bump ward to ${TAG} [skip ci]" \
-            --arg c "$new_b64" --arg sha "$cur_sha" --arg branch main \
-            '{message:$msg, content:$c, sha:$sha, branch:$branch}')
-          code=$(curl -sS -o /tmp/tapresp.json -w '%{http_code}' -X PUT \
-            -H "Authorization: token $FORGEJO_TOKEN" \
-            -H "Content-Type: application/json" \
-            -d "$payload" \
-            "$FORGEJO_BASE_URL/api/v1/repos/$TAP_REPO/contents/$FORMULA_PATH")
-          if [ "$code" != "200" ] && [ "$code" != "201" ]; then
-            echo "::error::forgejo tap formula bump failed: HTTP $code"
-            cat /tmp/tapresp.json
-            exit 1
+          ' "$FORMULA_PATH" > "$FORMULA_PATH.new"
+          mv "$FORMULA_PATH.new" "$FORMULA_PATH"
+
+          if git diff --quiet -- "$FORMULA_PATH"; then
+            echo "formula already at ${TAG}, nothing to push"
+            exit 0
           fi
+          git config user.name "forgejo-tap-writer"
+          git config user.email "tap-writer@coilysiren.me"
+          git commit -aqm "chore(formula): bump ward to ${TAG} [skip ci]"
+          # Auth comes from the runner's credential helper, never from env.
+          git push origin HEAD:main
 
   bump-formula:
     # In-repo fallback Formula/ward.rb on the ward repo's own forgejo main.
