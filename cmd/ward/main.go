@@ -33,6 +33,13 @@ func main() {
 				Usage:   "Path to a ward/coily yaml allowlist. Overrides cwd walk-up. $WARD_CONFIG is the env-var equivalent; --config wins.",
 				Sources: cli.EnvVars("WARD_CONFIG"),
 			},
+			&cli.BoolFlag{
+				Name: "audit-override-dirty",
+				Usage: "Bypass the clean+synced tree gate on `ward exec` repo verbs. " +
+					"Tags the audit row with audit_override=true and captures the " +
+					"working tree status. For genuine emergencies only: the gate " +
+					"exists so audit rows can be reconstructed from git history.",
+			},
 		},
 		Commands: []*cli.Command{
 			versionCommand(),

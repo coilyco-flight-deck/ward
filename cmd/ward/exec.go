@@ -4,13 +4,14 @@ import (
 	"context"
 	"fmt"
 	"os"
-	"os/exec"
 	"path/filepath"
 	"sort"
 	"strings"
 
-	"forgejo.coilysiren.me/coilyco-flight-deck/cli-guard/policy"
+	"forgejo.coilysiren.me/coilyco-flight-deck/cli-guard/audit"
+	"forgejo.coilysiren.me/coilyco-flight-deck/cli-guard/gittree"
 	"forgejo.coilysiren.me/coilyco-flight-deck/cli-guard/repocfg"
+	"forgejo.coilysiren.me/coilyco-flight-deck/cli-guard/verb"
 	"github.com/urfave/cli/v3"
 )
 
@@ -42,14 +43,17 @@ func execCommand() *cli.Command {
 		Description: fmt.Sprintf(
 			"Per-repo command declared in %s. Expands to a pre-validated argv "+
 				"and runs with cwd set to %s. Every argv token is checked against "+
-				"cli-guard's shell-metacharacter policy before execve.",
+				"cli-guard's shell-metacharacter policy before execve. Repo verbs "+
+				"require a clean+synced tree with the declaring ward.yaml committed "+
+				"so the audit row's argv can be reconstructed from git history; "+
+				"--audit-override-dirty bypasses the gate with an audit tag.",
 			cfg.Path, repoRoot,
 		),
 	}
 }
 
-// buildExecLeaf wraps a single command from the config into a cli.Command
-// whose Action runs the configured argv inside the repo that declared it.
+// buildExecLeaf wraps one config command as a cli.Command that runs the
+// argv through the verb pipeline + clean-tree gate. See docs/exec-verb.md.
 func buildExecLeaf(cfg *repocfg.Config, rc repocfg.Command) *cli.Command {
 	repoRoot := filepath.Dir(filepath.Dir(cfg.Path))
 	usage := rc.Description
@@ -61,23 +65,61 @@ func buildExecLeaf(cfg *repocfg.Config, rc repocfg.Command) *cli.Command {
 		Usage:     usage,
 		ArgsUsage: "[-- extra args]",
 		Description: fmt.Sprintf(
-			"Per-repo command declared in %s.\nExpands to: %s\nRuns in: %s",
+			"Per-repo command declared in %s.\nExpands to: %s\nRuns in: %s\n\n"+
+				"Runs through cli-guard's verb pipeline: every argv token is "+
+				"validated against the shell-metacharacter policy, one audit row "+
+				"is appended, and the clean+synced tree gate refuses if the "+
+				"declaring ward.yaml is uncommitted or the branch is out of sync "+
+				"(--audit-override-dirty bypasses with audit_override=true).",
 			cfg.Path, strings.Join(rc.Argv, " "), repoRoot,
 		),
 		Action: func(ctx context.Context, c *cli.Command) error {
-			extras := c.Args().Slice()
-			if err := policy.ValidateArgSlice("positional", extras); err != nil {
-				return fmt.Errorf("argv rejected by cli-guard policy: %w", err)
-			}
-			argv := append([]string{}, rc.Argv...)
-			argv = append(argv, extras...)
-			fmt.Fprintf(os.Stderr, "ward: exec %s in %s\n", rc.Name, repoRoot)
-			cmd := exec.CommandContext(ctx, argv[0], argv[1:]...) // #nosec G204 -- argv is loaded from the policy-validated repo allowlist
-			cmd.Dir = repoRoot
-			cmd.Stdout = os.Stdout
-			cmd.Stderr = os.Stderr
-			cmd.Stdin = os.Stdin
-			return cmd.Run()
+			return newRunner().runExecLeaf(ctx, c, cfg, rc)
 		},
 	}
+}
+
+// runExecLeaf runs one repo-declared command through the verb pipeline,
+// with the clean-tree gate firing inside the wrapped Action.
+func (r *Runner) runExecLeaf(ctx context.Context, c *cli.Command, cfg *repocfg.Config, rc repocfg.Command) error {
+	repoRoot := filepath.Dir(filepath.Dir(cfg.Path))
+	verbName := "repo." + rc.Name
+	var (
+		capturedState *gittree.State
+		overrideUsed  bool
+	)
+	spec := verb.Spec{
+		Name:       verbName,
+		SkipPolicy: rc.AllowMetacharacters,
+		ArgsFunc: func(cmd *cli.Command) (map[string]string, []string) {
+			positional := append([]string{}, rc.Argv...)
+			positional = append(positional, cmd.Args().Slice()...)
+			return nil, positional
+		},
+		OnComplete: func(rec *audit.Record) {
+			if rc.AllowMetacharacters {
+				rec.PolicySkipped = true
+			}
+			if capturedState == nil {
+				return
+			}
+			rec.WorkingTreeStatus = capturedState.Status
+			rec.AuditOverride = overrideUsed
+		},
+		Action: func(ctx context.Context, cmd *cli.Command) error {
+			state, used, err := runExecGate(cmd, repoRoot, cfg.Path, verbName)
+			if err != nil {
+				return err
+			}
+			if state.Status != "" {
+				capturedState = state
+				overrideUsed = used
+			}
+			fmt.Fprintf(os.Stderr, "ward: exec %s in %s\n", rc.Name, repoRoot)
+			argv := append([]string{}, rc.Argv[1:]...)
+			argv = append(argv, cmd.Args().Slice()...)
+			return r.Runner.ExecIn(ctx, repoRoot, rc.Argv[0], argv...)
+		},
+	}
+	return r.WrapVerb(spec, r.Audit)(ctx, c)
 }

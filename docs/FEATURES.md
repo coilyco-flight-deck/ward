@@ -8,7 +8,7 @@ The contributor-facing cli-guard gate: wrap a repo's dev verbs and a small set o
 
 ## Commands
 
-- **`ward exec <verb>`** - run a repo dev verb from `.ward/ward.yaml`, argv-validated against cli-guard policy.
+- **`ward exec <verb>`** - run a repo dev verb from `.ward/ward.yaml` through cli-guard's verb pipeline: argv-validated against the shell-metacharacter policy, one JSONL audit row per run (`repo.<verb>`), and a clean+synced tree gate (cli-guard `gittree`). The gate refuses when the declaring `ward.yaml` is uncommitted or the branch is out of sync, so the audit row's argv can be reconstructed from git history; unrelated working-tree dirt is captured in `working_tree_status` but does not refuse. `ward --audit-override-dirty exec <verb>` bypasses the gate and tags the row `audit_override=true`. See [docs/exec-verb.md](exec-verb.md).
 - **`ward pkg brew <verb>`** - audited brew wrapper at parity with `coily pkg brew`. Mirrors brew's argv; formula/tap mutations default to primary-org taps and need `--allow-untapped` otherwise; read-only verbs and `brew bundle` pass through. Audit rows `pkg.brew.*` to `~/.coily/audit/<repo>.jsonl`. The ward-native package path for board repos.
 - **`ward doctor`** - diagnostic checks against the resolved config and host.
 - **`ward hook pre-tool-use`** - Claude Code PreToolUse hook: binary-path check + bare-command deny with routing hints.
