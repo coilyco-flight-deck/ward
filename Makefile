@@ -1,4 +1,4 @@
-.PHONY: help build test vet lint tidy cover ward-kdl lock skew
+.PHONY: help build test vet lint tidy cover ward-kdl install-tmp lock skew
 
 SPECVERB_GEN := forgejo.coilysiren.me/coilyco-flight-deck/cli-guard/cmd/specverb-gen
 
@@ -17,6 +17,9 @@ build: ## Build all packages.
 ward-kdl: $(SPEC_LOCK) ## Generate (gitignored main.go) + build the isolated ward-kdl proving module.
 	cd cmd/ward-kdl && go run $(SPECVERB_GEN) --guardfile forgejo.guardfile.kdl --out main.go
 	cd cmd/ward-kdl && go build -o ../../bin/ward-kdl .
+
+install-tmp: ## Build ward-kdl + symlink it onto PATH as `ward-kdl-tmp` for ad hoc human testing.
+	./scripts/install-ward-kdl-tmp.sh
 
 $(SPEC_LOCK):
 	@echo "ward-kdl: no spec lock at $@ - run 'make lock' to fetch it" >&2; exit 1
