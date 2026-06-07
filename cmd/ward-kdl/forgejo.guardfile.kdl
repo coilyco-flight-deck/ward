@@ -1,5 +1,5 @@
 // Proving-slice Guardfile for the temporary ward-kdl CLI: the forgejo org
-// read/create/delete trio. Orgs are the safe by-hand fixture - orgDelete is
+// read/list/create/delete set. Orgs are the safe by-hand fixture - orgDelete is
 // interlocked server-side (refuses while the org owns repos), so the dangerous
 // case is unreachable. Sentences resolve through specverb's expansion table
 // (deny-by-default). base-url omits the scheme; the engine defaults https://.
@@ -13,6 +13,7 @@ wrap ward-kdl ops forgejo {
     }
 
     can read orgs
+    can list orgs
     can create orgs
     can delete orgs
 }

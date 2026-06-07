@@ -7,4 +7,9 @@ excludes = [
   # Pre-existing size debt: docs/hook.md is 92 lines, over the 80-line cap.
   # The split is tracked in coilyco-flight-deck/ward#50; drop this when it lands.
   "docs/hook.md",
+  # Generated surface reference, emitted beside its Guardfile by specverb-gen at
+  # build time (cli-guard#111). Committed as a reviewable artifact tracking the
+  # generated CLI surface; it cannot move to docs/ because the driver writes it
+  # next to the kdl, the only path it knows. Layout cap does not apply.
+  "cmd/ward-kdl/forgejo.guardfile.md",
 ]
