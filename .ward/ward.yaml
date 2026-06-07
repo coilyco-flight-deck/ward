@@ -28,3 +28,6 @@ commands:
   cover:
     run: make cover
     description: Unit tests with a coverage profile.
+  install-ward-kdl-tmp:
+    run: make install-tmp
+    description: Build ward-kdl and symlink it onto PATH as ward-kdl-tmp for ad hoc human testing.
