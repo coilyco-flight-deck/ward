@@ -27,6 +27,7 @@
 # Local dev overrides
 *.local
 
-# Vendor API spec fetched at runtime by ward-kdl; never committed (ward#62).
+# Runtime spec cache fetched by `make lock` / skew checks; never committed (ward#62).
+# The committed spec lock is a distinct name (*.swagger.lock.json) and IS tracked.
 *.swagger.v1.json
 cmd/ward-kdl/main.go

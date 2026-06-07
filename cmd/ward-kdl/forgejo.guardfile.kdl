@@ -1,5 +1,7 @@
-// Proving-slice Guardfile for the temporary ward-kdl CLI: the forgejo repo
-// read/create/delete trio. Sentences resolve through specverb's expansion table
+// Proving-slice Guardfile for the temporary ward-kdl CLI: the forgejo org
+// read/create/delete trio. Orgs are the safe by-hand fixture - orgDelete is
+// interlocked server-side (refuses while the org owns repos), so the dangerous
+// case is unreachable. Sentences resolve through specverb's expansion table
 // (deny-by-default). base-url omits the scheme; the engine defaults https://.
 wrap ward-kdl ops forgejo {
     spec forgejo.swagger.v1.json
@@ -10,7 +12,7 @@ wrap ward-kdl ops forgejo {
         ssm "/forgejo/api-token"
     }
 
-    can read repos
-    can create repos
-    can delete repos
+    can read orgs
+    can create orgs
+    can delete orgs
 }
