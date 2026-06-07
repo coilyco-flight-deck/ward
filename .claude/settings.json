@@ -6,6 +6,10 @@
           {
             "command": ".claude/lockdown-deny.sh",
             "type": "command"
+          },
+          {
+            "command": "ward hook pre-tool-use",
+            "type": "command"
           }
         ],
         "matcher": "Bash"
@@ -40,6 +44,7 @@
       "Bash(git push -f:*)",
       "Bash(git reset --hard:*)",
       "Bash(mcporter:*)",
+      "Bash(ssh:*)",
       "Read(/Users/kai/projects/coilysiren/coilyco-vault/**)",
       "Read(~/projects/coilysiren/coilyco-vault/**)"
     ]

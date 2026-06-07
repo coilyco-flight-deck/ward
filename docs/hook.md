@@ -13,6 +13,26 @@ extensible to other hook events when there is a reason to gate on them.
 Unknown fields are ignored. `tool_input` is a free-form map so a
 non-Bash tool name passes through cleanly.
 
+## Protected-binary deny
+
+When the resolved config (walk-up from the Claude-supplied `cwd`) declares
+a `security:` block, ward feeds its `protected_binaries` and
+`hooks.deny_bare_binaries` entries into cli-guard's engine as
+`hook.Protected` values. The engine matches by basename, so a single
+declaration covers:
+
+- bare token: `gcloud auth login`
+- absolute path: `/opt/homebrew/bin/gcloud auth login`
+- relative path: `./bin/gcloud auth login`
+
+Hint precedence: `hooks.route_hints[name]` when set, else the engine
+synthesizes one from `allowed_wrappers`, else a bare deny.
+
+The config load is best-effort. No config reachable, parse failure, or
+malformed YAML all pass through silently — same posture as malformed
+hook payloads. Hard denial stays the job of `permissions.deny`. See
+`loadProtectedForCwd` / `protectedFor` in `cmd/ward/hook_protected.go`.
+
 ## Guard binary path check
 
 `guardBinaryPaths` is the canonical install-path allow-list per known

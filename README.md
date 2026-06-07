@@ -10,18 +10,27 @@ v0. Downstream consumers upgrade to the `ward` binary and `.ward` config on thei
 
 ## What it does
 
-Wraps a project's dev verbs (`build`, `test`, `vet`, `lint`, `tidy`, `cover`) behind cli-guard's policy gate. Every invocation validates argv, writes one append-only JSONL audit row, binds to a git toplevel via `--commit-scope`, and refuses repo-shaped verbs on a dirty tree.
+Wraps a project's dev verbs (`build`, `test`, `vet`, `lint`, `tidy`, `cover`) behind cli-guard's policy gate. Every invocation validates argv, writes one append-only JSONL audit row, stamps a best-effort `repo_root`, and gates repo verbs on a clean+synced tree (`--audit-override-dirty` bypasses; see [`docs/exec-verb.md`](docs/exec-verb.md)).
 
 Each repo declares which Makefile targets are exposed in `.ward/ward.yaml`. The contract is verified by `ward lint`.
 
 ## Install
 
+Install from the centralized flight-deck tap:
+
+```
+brew tap coilyco-flight-deck/tap https://forgejo.coilysiren.me/coilyco-flight-deck/homebrew-tap
+brew install coilyco-flight-deck/tap/ward
+```
+
+The explicit-URL `brew tap` form is required because the tap lives on forgejo, not github.com, so brew can't auto-resolve it. The installed binary is `ward`.
+
+The old per-repo tap still works for one migration cycle as a fallback, then goes away:
+
 ```
 brew tap coilyco-flight-deck/ward https://forgejo.coilysiren.me/coilyco-flight-deck/ward
 brew install coilyco-flight-deck/ward/ward
 ```
-
-The explicit-URL `brew tap` form is required because this repo isn't `homebrew-*` prefixed. The installed binary is `ward`.
 
 ## Usage
 
@@ -29,9 +38,10 @@ The explicit-URL `brew tap` form is required because this repo isn't `homebrew-*
 ward exec build
 ward exec test
 ward lint
+ward pkg brew bundle    # audited brew wrapper (parity with coily pkg brew)
 ```
 
-See [`docs/`](docs/) for the full verb list.
+`ward pkg brew` is the ward-native, audited package path so a board repo's deps install does not have to route back to coily. See [`docs/FEATURES.md`](docs/FEATURES.md) for the full verb list.
 
 ## Claude Code PreToolUse hook
 

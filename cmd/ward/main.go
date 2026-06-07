@@ -15,15 +15,39 @@ import (
 // Version is set at build time via -ldflags.
 var Version = "dev"
 
+// configFlagOverride is the explicit --config path captured at startup by
+// preParseConfigFlag, before cli.Command construction sees it.
+var configFlagOverride string
+
+func explicitConfigPath() string { return configFlagOverride }
+
 func main() {
+	configFlagOverride = preParseConfigFlag(os.Args)
 	app := &cli.Command{
 		Name:    "ward",
 		Usage:   "a contributor-facing cli-guard consumer",
 		Version: Version,
+		Flags: []cli.Flag{
+			&cli.StringFlag{
+				Name:    "config",
+				Usage:   "Path to a ward/coily yaml allowlist. Overrides cwd walk-up. $WARD_CONFIG is the env-var equivalent; --config wins.",
+				Sources: cli.EnvVars("WARD_CONFIG"),
+			},
+			&cli.BoolFlag{
+				Name: "audit-override-dirty",
+				Usage: "Bypass the clean+synced tree gate on `ward exec` repo verbs. " +
+					"Tags the audit row with audit_override=true and captures the " +
+					"working tree status. For genuine emergencies only: the gate " +
+					"exists so audit rows can be reconstructed from git history.",
+			},
+		},
 		Commands: []*cli.Command{
 			versionCommand(),
 			execCommand(),
-			lintCommand(),
+			pkgCommand(),
+			gitCommand(),
+			auditCommand(),
+			doctorCommand(),
 			hookCommand(),
 			installHooksCommand(),
 		},

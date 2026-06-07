@@ -26,3 +26,7 @@
 
 # Local dev overrides
 *.local
+
+# Vendor API spec fetched at runtime by ward-kdl; never committed (ward#62).
+*.swagger.v1.json
+cmd/ward-kdl/main.go
