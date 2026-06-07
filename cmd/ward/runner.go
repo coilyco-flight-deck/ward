@@ -8,6 +8,7 @@ import (
 
 	"forgejo.coilysiren.me/coilyco-flight-deck/cli-guard/audit"
 	"forgejo.coilysiren.me/coilyco-flight-deck/cli-guard/config"
+	"forgejo.coilysiren.me/coilyco-flight-deck/cli-guard/sandbox"
 	"forgejo.coilysiren.me/coilyco-flight-deck/cli-guard/shell"
 	"forgejo.coilysiren.me/coilyco-flight-deck/cli-guard/verb"
 	"github.com/urfave/cli/v3"
@@ -35,9 +36,28 @@ func newRunner() *Runner {
 		os.Exit(2)
 	}
 	return &Runner{
-		Runner: &shell.Runner{Stdout: os.Stdout, Stderr: os.Stderr, Stdin: os.Stdin},
-		Audit:  aw,
+		Runner: &shell.Runner{
+			Stdout:  os.Stdout,
+			Stderr:  os.Stderr,
+			Stdin:   os.Stdin,
+			Sandbox: sandboxSpec(),
+		},
+		Audit: aw,
 	}
+}
+
+// wardSandboxTools is the set of wrapped tools ward shims inside the jail.
+// brew is the first enforced surface; extend as other passthroughs land.
+var wardSandboxTools = []string{"brew"}
+
+// sandboxSpec builds the jail spec for ward's audited verbs (inert off Linux /
+// inside a jail). Returns nil if the binary path is unresolvable.
+func sandboxSpec() *sandbox.Spec {
+	exe, err := os.Executable()
+	if err != nil {
+		return nil
+	}
+	return &sandbox.Spec{SelfExe: exe, Tools: wardSandboxTools}
 }
 
 // WrapVerb wraps spec through cli-guard's verb pipeline, setting the
