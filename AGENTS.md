@@ -49,7 +49,7 @@ Every invocation validates argv against shell-metacharacter rejection, writes on
 
 ## Release
 
-Forgejo-canonical, on Forgejo Actions not GitHub. Push to `main` runs `.forgejo/workflows/release.yml`: `tag-bump` (semver from conventional commits) + `create-release`, then `bump-tap-formula`/`bump-formula` rewrite the formula url+tag+revision via the Forgejo Contents API (skip-CI marked). `mirror-to-github.yml` mirrors main + tags to the read-only GitHub mirror.
+Forgejo-canonical, on Forgejo Actions not GitHub. Push to `main` runs `.forgejo/workflows/release.yml`: `tag-bump` (minor bump; major hand-driven) + `create-release`, then `bump-tap-formula`/`bump-formula` rewrite the formula url+tag+revision via the Forgejo Contents API (skip-CI marked). `mirror-to-github.yml` mirrors main + tags to the read-only GitHub mirror.
 
 Never write the literal skip-CI token in a commit body or it silently disables the workflow on that push. Describe it as "skip-CI marker".
 
@@ -57,7 +57,7 @@ Post-push: verify CI at +120s (`coily ops gh run list --repo coilyco-flight-deck
 
 ## Agent rules
 
-- One issue per discrete additive change. Every commit closes one with `closes #N`.
+- One issue per discrete additive change. `closes #N` encouraged, not enforced.
 - v0.x. Minor API breaks ship in `main` with a note in the commit body. Consumers pin a commit until v1.0.0. Lock the API once the downstream consumers settle.
 - Never use `--no-verify`.
 
