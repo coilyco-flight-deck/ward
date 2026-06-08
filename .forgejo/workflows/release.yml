@@ -1,22 +1,6 @@
-name: release
+# Forgejo-canonical release pipeline. See docs/release.md.
 
-# Forgejo-canonical release pipeline. Triggers on push to main against the
-# forgejo repo (forgejo.coilysiren.me/coilyco-flight-deck/ward). Conventional
-# commits drive the semver bump (patch default). Cuts the tag + release on
-# forgejo, then bumps the homebrew formula(e) so `brew upgrade ward` builds
-# the new tag from source.
-#
-# ward's formula is build-from-source (url+tag+revision -> go build), so unlike
-# o2r there are no prebuilt binaries to attach. The two bump jobs rewrite the
-# formula url line:
-#   - bump-tap-formula:  the centralized flight-deck tap (homebrew-tap).
-#   - bump-formula:      the in-repo fallback Formula/ward.rb (deprecated; drop
-#                        with the direct-repo tap next cycle).
-#
-# Both bumps carry the skip-CI marker so the formula commit does not
-# re-trigger this workflow. Shared composite actions live at
-# coilysiren/agentic-os/actions/*. Replaces the prior .github/workflows
-# release; building moved off GitHub Actions onto Forgejo.
+name: release
 
 on:
   push:
@@ -38,8 +22,6 @@ jobs:
 
       - id: tag
         uses: coilysiren/agentic-os/actions/tag-bump@main
-        # No bump input: every push-to-main release is a minor bump. For a
-        # major, cut the vN.0.0 tag by hand; pushes resume minor from there.
 
       - id: create
         if: ${{ steps.tag.outputs.new_tag != '' }}
@@ -50,16 +32,6 @@ jobs:
           body: ${{ steps.tag.outputs.changelog }}
 
   bump-tap-formula:
-    # Rewrite Formula/ward.rb in the centralized flight-deck tap
-    # (coilyco-flight-deck/homebrew-tap) to the just-cut tag + revision. The
-    # tap is where `brew install coilyco-flight-deck/tap/ward` reads from.
-    #
-    # Runs on the dedicated tap-writer runner
-    # (infrastructure/deploy/forgejo-runner-tap-writer.yml): a host executor
-    # whose system git credential helper supplies the tap-write token only
-    # when git asks (action=get). The token never enters this job's env, logs,
-    # or an Actions secret. Host executor has no node, so every step is pure
-    # shell - no JS `uses:` actions (checkout/setup-*) can run here.
     needs: release
     if: ${{ needs.release.outputs.tag != '' }}
     runs-on: tap-writer
@@ -101,8 +73,6 @@ jobs:
           git push origin HEAD:main
 
   bump-formula:
-    # In-repo fallback Formula/ward.rb on the ward repo's own forgejo main.
-    # Deprecated alongside the direct-repo tap; drop next cycle.
     needs: release
     if: ${{ needs.release.outputs.tag != '' }}
     runs-on: docker

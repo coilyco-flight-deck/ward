@@ -13,3 +13,10 @@ excludes = [
   # next to the kdl, the only path it knows. Layout cap does not apply.
   "cmd/ward-kdl/forgejo.guardfile.md",
 ]
+
+[tool.agentic-os.code-comments]
+excludes = [
+  # Managed by apply-agentic-os-hooks.py: the BEGIN/END markers are generated
+  # comments past line 1, so the YAML rule cannot apply. Mirrors agentic-os.
+  ".pre-commit-config.yaml",
+]

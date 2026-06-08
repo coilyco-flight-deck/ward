@@ -1,9 +1,6 @@
-name: mirror-to-github
+# Push Forgejo main+tags to the read-only GitHub mirror; no-ops without the PAT.
 
-# Forgejo is the canonical source for ward. GitHub is a read-only mirror.
-# This workflow pushes Forgejo's main and tags to GitHub on every push so the
-# mirror tracks. No-ops cleanly when GITHUB_MIRROR_PAT is absent, so it can
-# land before the secret is provisioned. Mirrors the coily pattern.
+name: mirror-to-github
 
 on:
   push:

@@ -1,5 +1,4 @@
-# No untrusted github.event.* values are interpolated into run blocks;
-# everything here is repo-controlled config or static commands.
+# Security: no untrusted github.event.* reaches run blocks; all commands are static.
 
 name: test
 
