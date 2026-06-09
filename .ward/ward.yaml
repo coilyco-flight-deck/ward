@@ -1,6 +1,5 @@
 # Catalog schema: coilyco-flight-deck/agentic-os.
 catalog:
-  name: ward
   description: "ward - a contributor-facing cli-guard consumer. Carries project dev verbs; coily is the operator counterpart for personal machines."
   dependsOn:
     - forgejo.coilysiren.me/coilyco-flight-deck/cli-guard
