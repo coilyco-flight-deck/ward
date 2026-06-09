@@ -1,10 +1,6 @@
 # Catalog schema: coilyco-flight-deck/agentic-os.
 catalog:
-  kind: Component
-  type: tool
-  system: coily-platform
-  owner: kai
-  lifecycle: production
+  name: ward
   description: "ward - a contributor-facing cli-guard consumer. Carries project dev verbs; coily is the operator counterpart for personal machines."
   dependsOn:
     - forgejo.coilysiren.me/coilyco-flight-deck/cli-guard
@@ -28,6 +24,6 @@ commands:
   cover:
     run: make cover
     description: Unit tests with a coverage profile.
-  install-ward-kdl-tmp:
-    run: make install-tmp
-    description: Build ward-kdl and symlink it onto PATH as ward-kdl-tmp for ad hoc human testing.
+  build-ward-kdl:
+    run: make build-ward-kdl
+    description: build or rebuild the ward-kdl binary, one shot for ease of use in development.
