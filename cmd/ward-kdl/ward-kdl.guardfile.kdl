@@ -11,4 +11,13 @@ wrap ward-kdl ops forgejo {
     can list orgs
     can create orgs
     can delete orgs
+
+    // can create issues
+    // can list issues
+    // can view issues
+    // can edit issues
+    // can comment issues
+    // can close issues
+    // can reopen issues
+    // can delete issues
 }
