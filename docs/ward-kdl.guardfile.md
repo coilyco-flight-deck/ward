@@ -48,3 +48,149 @@ Authorized by grant: can delete orgs. Destructive - mutates irreversibly.
 Positional arguments (1):
 
 - `<org>` (string)
+
+## ward-kdl ops forgejo label get
+
+`GET /repos/{owner}/{repo}/labels/{id}`
+
+Authorized by grant: can read labels. Not destructive.
+
+Positional arguments (3):
+
+- `<owner>` (string)
+- `<repo>` (string)
+- `<id>` (string)
+
+## ward-kdl ops forgejo label list
+
+`GET /repos/{owner}/{repo}/labels`
+
+Authorized by grant: can list labels. Not destructive.
+
+Positional arguments (2):
+
+- `<owner>` (string)
+- `<repo>` (string)
+
+## ward-kdl ops forgejo label create
+
+`POST /repos/{owner}/{repo}/labels`
+
+Authorized by grant: can create labels. Not destructive.
+
+Positional arguments (2):
+
+- `<owner>` (string)
+- `<repo>` (string)
+
+Options (5):
+
+- `--color` (string, required)
+- `--description` (string, optional)
+- `--exclusive` (boolean, optional)
+- `--is_archived` (boolean, optional)
+- `--name` (string, required)
+
+## ward-kdl ops forgejo label edit
+
+`PATCH /repos/{owner}/{repo}/labels/{id}`
+
+Authorized by grant: can edit labels. Not destructive.
+
+Positional arguments (3):
+
+- `<owner>` (string)
+- `<repo>` (string)
+- `<id>` (string)
+
+Options (5):
+
+- `--color` (string, optional)
+- `--description` (string, optional)
+- `--exclusive` (boolean, optional)
+- `--is_archived` (boolean, optional)
+- `--name` (string, optional)
+
+## ward-kdl ops forgejo label delete
+
+`DELETE /repos/{owner}/{repo}/labels/{id}`
+
+Authorized by grant: can delete labels. Destructive - mutates irreversibly.
+
+Positional arguments (3):
+
+- `<owner>` (string)
+- `<repo>` (string)
+- `<id>` (string)
+
+## ward-kdl ops forgejo milestone get
+
+`GET /repos/{owner}/{repo}/milestones/{id}`
+
+Authorized by grant: can read milestones. Not destructive.
+
+Positional arguments (3):
+
+- `<owner>` (string)
+- `<repo>` (string)
+- `<id>` (string)
+
+## ward-kdl ops forgejo milestone list
+
+`GET /repos/{owner}/{repo}/milestones`
+
+Authorized by grant: can list milestones. Not destructive.
+
+Positional arguments (2):
+
+- `<owner>` (string)
+- `<repo>` (string)
+
+## ward-kdl ops forgejo milestone create
+
+`POST /repos/{owner}/{repo}/milestones`
+
+Authorized by grant: can create milestones. Not destructive.
+
+Positional arguments (2):
+
+- `<owner>` (string)
+- `<repo>` (string)
+
+Options (4):
+
+- `--description` (string, optional)
+- `--due_on` (string, optional)
+- `--state` (string, optional)
+- `--title` (string, optional)
+
+## ward-kdl ops forgejo milestone edit
+
+`PATCH /repos/{owner}/{repo}/milestones/{id}`
+
+Authorized by grant: can edit milestones. Not destructive.
+
+Positional arguments (3):
+
+- `<owner>` (string)
+- `<repo>` (string)
+- `<id>` (string)
+
+Options (4):
+
+- `--description` (string, optional)
+- `--due_on` (string, optional)
+- `--state` (string, optional)
+- `--title` (string, optional)
+
+## ward-kdl ops forgejo milestone delete
+
+`DELETE /repos/{owner}/{repo}/milestones/{id}`
+
+Authorized by grant: can delete milestones. Destructive - mutates irreversibly.
+
+Positional arguments (3):
+
+- `<owner>` (string)
+- `<repo>` (string)
+- `<id>` (string)

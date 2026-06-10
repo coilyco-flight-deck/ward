@@ -12,6 +12,19 @@ wrap ward-kdl ops forgejo {
     can create orgs
     can delete orgs
 
+    // labels and milestones: all-scalar bodies, pure expansion-table rows.
+    can read labels
+    can list labels
+    can create labels
+    can edit labels
+    can delete labels
+
+    can read milestones
+    can list milestones
+    can create milestones
+    can edit milestones
+    can delete milestones
+
     // can create issues
     // can list issues
     // can view issues

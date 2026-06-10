@@ -31,3 +31,7 @@
 # The committed spec lock is a distinct name (*.swagger.lock.json) and IS tracked.
 *.swagger.v1.json
 cmd/ward-kdl/main.go
+
+# specverb-gen emits the surface reference beside the Guardfile (the only path
+# it knows); the reviewed copy lives at docs/ward-kdl.guardfile.md.
+cmd/ward-kdl/ward-kdl.guardfile.md
