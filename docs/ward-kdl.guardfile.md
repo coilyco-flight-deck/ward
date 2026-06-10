@@ -603,3 +603,86 @@ Options (2):
 
 - `--page` (integer, optional): page number of results to return (1-based)
 - `--limit` (integer, optional): page size of results, default maximum page size is 50
+
+## ward-kdl ops forgejo issue-label list
+
+`GET /repos/{owner}/{repo}/issues/{index}/labels`
+
+Authorized by grant: can list issue-labels. Not destructive.
+
+Positional arguments (3):
+
+- `<owner>` (string)
+- `<repo>` (string)
+- `<index>` (string)
+
+## ward-kdl ops forgejo issue-label add
+
+`POST /repos/{owner}/{repo}/issues/{index}/labels`
+
+Authorized by grant: can add issue-labels. Not destructive.
+
+Positional arguments (3):
+
+- `<owner>` (string)
+- `<repo>` (string)
+- `<index>` (string)
+
+Options (2):
+
+- `--labels` ([]string, optional): Labels can be a list of integers representing label IDs
+or a list of strings representing label names
+- `--updated_at` (string, optional)
+
+## ward-kdl ops forgejo issue-label set
+
+`PUT /repos/{owner}/{repo}/issues/{index}/labels`
+
+Authorized by grant: can set issue-labels. Not destructive.
+
+Positional arguments (3):
+
+- `<owner>` (string)
+- `<repo>` (string)
+- `<index>` (string)
+
+Options (2):
+
+- `--labels` ([]string, optional): Labels can be a list of integers representing label IDs
+or a list of strings representing label names
+- `--updated_at` (string, optional)
+
+## ward-kdl ops forgejo issue-label remove
+
+`DELETE /repos/{owner}/{repo}/issues/{index}/labels/{identifier}`
+
+Authorized by grant: can remove issue-labels. Not destructive.
+
+Positional arguments (4):
+
+- `<owner>` (string)
+- `<repo>` (string)
+- `<index>` (string)
+- `<identifier>` (string)
+
+Options (1):
+
+- `--updated_at` (string, optional)
+
+## ward-kdl ops forgejo release upload-asset
+
+`POST /repos/{owner}/{repo}/releases/{id}/assets`
+
+Authorized by grant: can upload release-assets. Not destructive.
+
+Positional arguments (3):
+
+- `<owner>` (string)
+- `<repo>` (string)
+- `<id>` (string)
+
+Options (3):
+
+- `--name` (string, optional): name of the attachment
+- `--attachment` (file, optional): attachment to upload (this parameter is incompatible with `external_url`)
+- `--external_url` (string, optional): url to external asset (this parameter is incompatible with `attachment`)

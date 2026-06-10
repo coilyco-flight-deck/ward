@@ -57,4 +57,13 @@ wrap ward-kdl ops forgejo {
 
     // actions tasks: the CI-run read surface.
     can list tasks
+
+    // issue-labels: the API takes names or ids directly, no pre-flight.
+    can list issue-labels
+    can add issue-labels
+    can set issue-labels
+    can remove issue-labels
+
+    // release assets: the multipart upload shape.
+    can upload release-assets
 }
