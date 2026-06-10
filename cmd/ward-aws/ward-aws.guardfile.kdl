@@ -1,0 +1,17 @@
+// The aws CLI surface as exec-dialect policy (cli-guard v0.12.0 execverb).
+// One open-passthrough grant keeps the funnel comprehensive - any service or
+// operation routes through ward - while the aws-read gate denies read-only
+// verbs touching sensitive resources pre-send (secrets / credentials /
+// tfstate / backups / admin+root role ARNs, the awsgate default set).
+// Engine-verified in cli-guard's execverb tests against this exact shape;
+// binary wiring lands with the driver exec transport (cli-guard#131).
+wrap ward ops aws {
+    exec aws
+
+    can run "*" {
+        gate aws-read {
+            allow-env "WARD_AWS_ALLOW_SENSITIVE_READ"
+        }
+        describe "open aws passthrough behind the sensitive-read gate"
+    }
+}
