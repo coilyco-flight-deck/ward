@@ -25,12 +25,14 @@ wrap ward-kdl ops forgejo {
     can edit milestones
     can delete milestones
 
-    // can create issues
-    // can list issues
-    // can view issues
-    // can edit issues
-    // can comment issues
-    // can close issues
-    // can reopen issues
-    // can delete issues
+    // issues: the array-body + query-param batch; close/reopen are
+    // fixed-body toggles, delete is the only destructive leaf.
+    can create issues
+    can list issues
+    can view issues
+    can edit issues
+    can comment issues
+    can close issues
+    can reopen issues
+    can delete issues
 }

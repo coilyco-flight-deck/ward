@@ -10,8 +10,9 @@ excludes = [
   # Generated surface reference (specverb-gen). The driver emits it beside the
   # Guardfile; the reviewed copy is committed at docs/ and grows with the verb
   # surface, so the layout cap does not apply. The beside-the-kdl emission is
-  # gitignored.
+  # gitignored but still on disk, so the tree-walking hook needs both paths.
   "docs/ward-kdl.guardfile.md",
+  "cmd/ward-kdl/ward-kdl.guardfile.md",
 ]
 
 [tool.agentic-os.code-comments]

@@ -20,7 +20,10 @@ Positional arguments (1):
 
 Authorized by grant: can list orgs. Not destructive.
 
-Takes no arguments.
+Options (2):
+
+- `--page` (integer, optional): page number of results to return (1-based)
+- `--limit` (integer, optional): page size of results
 
 ## ward-kdl ops forgejo org create
 
@@ -71,6 +74,12 @@ Positional arguments (2):
 
 - `<owner>` (string)
 - `<repo>` (string)
+
+Options (3):
+
+- `--sort` (string, optional): Specifies the sorting method: mostissues, leastissues, or reversealphabetically.
+- `--page` (integer, optional): page number of results to return (1-based)
+- `--limit` (integer, optional): page size of results
 
 ## ward-kdl ops forgejo label create
 
@@ -146,6 +155,13 @@ Positional arguments (2):
 - `<owner>` (string)
 - `<repo>` (string)
 
+Options (4):
+
+- `--state` (string, optional): Milestone state, Recognized values are open, closed and all. Defaults to "open"
+- `--name` (string, optional): filter by milestone name
+- `--page` (integer, optional): page number of results to return (1-based)
+- `--limit` (integer, optional): page size of results
+
 ## ward-kdl ops forgejo milestone create
 
 `POST /repos/{owner}/{repo}/milestones`
@@ -194,3 +210,147 @@ Positional arguments (3):
 - `<owner>` (string)
 - `<repo>` (string)
 - `<id>` (string)
+
+## ward-kdl ops forgejo issue create
+
+`POST /repos/{owner}/{repo}/issues`
+
+Authorized by grant: can create issues. Not destructive.
+
+Positional arguments (2):
+
+- `<owner>` (string)
+- `<repo>` (string)
+
+Options (9):
+
+- `--assignee` (string, optional): deprecated
+- `--assignees` ([]string, optional)
+- `--body` (string, optional)
+- `--closed` (boolean, optional)
+- `--due_date` (string, optional)
+- `--labels` ([]integer, optional): list of label ids
+- `--milestone` (integer, optional): milestone id
+- `--ref` (string, optional)
+- `--title` (string, required)
+
+## ward-kdl ops forgejo issue list
+
+`GET /repos/{owner}/{repo}/issues`
+
+Authorized by grant: can list issues. Not destructive.
+
+Positional arguments (2):
+
+- `<owner>` (string)
+- `<repo>` (string)
+
+Options (13):
+
+- `--state` (string, optional): whether issue is open or closed
+- `--labels` (string, optional): comma separated list of labels. Fetch only issues that have any of this labels. Non existent labels are discarded
+- `--q` (string, optional): search string
+- `--type` (string, optional): filter by type (issues / pulls) if set
+- `--milestones` (string, optional): comma separated list of milestone names or ids. It uses names and fall back to ids. Fetch only issues that have any of this milestones. Non existent milestones are discarded
+- `--since` (string, optional): Only show items updated after the given time. This is a timestamp in RFC 3339 format
+- `--before` (string, optional): Only show items updated before the given time. This is a timestamp in RFC 3339 format
+- `--created_by` (string, optional): Only show items which were created by the given user
+- `--assigned_by` (string, optional): Only show items for which the given user is assigned
+- `--mentioned_by` (string, optional): Only show items in which the given user was mentioned
+- `--page` (integer, optional): page number of results to return (1-based)
+- `--limit` (integer, optional): page size of results
+- `--sort` (string, optional): Type of sort
+
+## ward-kdl ops forgejo issue view
+
+`GET /repos/{owner}/{repo}/issues/{index}`
+
+Authorized by grant: can view issues. Not destructive.
+
+Positional arguments (3):
+
+- `<owner>` (string)
+- `<repo>` (string)
+- `<index>` (string)
+
+## ward-kdl ops forgejo issue edit
+
+`PATCH /repos/{owner}/{repo}/issues/{index}`
+
+Authorized by grant: can edit issues. Not destructive.
+
+Positional arguments (3):
+
+- `<owner>` (string)
+- `<repo>` (string)
+- `<index>` (string)
+
+Options (10):
+
+- `--assignee` (string, optional): deprecated
+- `--assignees` ([]string, optional)
+- `--body` (string, optional)
+- `--due_date` (string, optional)
+- `--milestone` (integer, optional)
+- `--ref` (string, optional)
+- `--state` (string, optional)
+- `--title` (string, optional)
+- `--unset_due_date` (boolean, optional)
+- `--updated_at` (string, optional)
+
+## ward-kdl ops forgejo issue comment
+
+`POST /repos/{owner}/{repo}/issues/{index}/comments`
+
+Authorized by grant: can comment issues. Not destructive.
+
+Positional arguments (3):
+
+- `<owner>` (string)
+- `<repo>` (string)
+- `<index>` (string)
+
+Options (2):
+
+- `--body` (string, required): The body of the comment
+- `--updated_at` (string, optional): The time of the comment's update, needs admin or repository owner permission
+
+## ward-kdl ops forgejo issue close
+
+`PATCH /repos/{owner}/{repo}/issues/{index}`
+
+Authorized by grant: can close issues. Not destructive.
+
+Always sends the fixed body {"state": "closed"}; takes no body flags.
+
+Positional arguments (3):
+
+- `<owner>` (string)
+- `<repo>` (string)
+- `<index>` (string)
+
+## ward-kdl ops forgejo issue reopen
+
+`PATCH /repos/{owner}/{repo}/issues/{index}`
+
+Authorized by grant: can reopen issues. Not destructive.
+
+Always sends the fixed body {"state": "open"}; takes no body flags.
+
+Positional arguments (3):
+
+- `<owner>` (string)
+- `<repo>` (string)
+- `<index>` (string)
+
+## ward-kdl ops forgejo issue delete
+
+`DELETE /repos/{owner}/{repo}/issues/{index}`
+
+Authorized by grant: can delete issues. Destructive - mutates irreversibly.
+
+Positional arguments (3):
+
+- `<owner>` (string)
+- `<repo>` (string)
+- `<index>` (string)
