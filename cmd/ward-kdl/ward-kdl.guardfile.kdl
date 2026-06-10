@@ -35,4 +35,26 @@ wrap ward-kdl ops forgejo {
     can close issues
     can reopen issues
     can delete issues
+
+    // releases: all-scalar; upload-asset (multipart) is a named follow-up.
+    can read releases
+    can list releases
+    can create releases
+    can edit releases
+    can delete releases
+
+    // repos, second batch: search-list, sparse edit (nested objects ride
+    // --body-file), fork, and the archive/unarchive boolean toggles.
+    can list repos
+    can edit repos
+    can fork repos
+    can archive repos
+    can unarchive repos
+
+    // pulls stay read-only: pr create is policy-disabled (merge to main).
+    can read pulls
+    can list pulls
+
+    // actions tasks: the CI-run read surface.
+    can list tasks
 }
