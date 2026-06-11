@@ -2,7 +2,7 @@
 
 SPECVERB_GEN := forgejo.coilysiren.me/coilyco-flight-deck/cli-guard/cmd/specverb-gen
 
-REF    ?= v0.10.0
+REF    ?= 0f1924de87f552549d1fb7a78021ef3e8818ac91
 DRIVER := forgejo.coilysiren.me/coilyco-flight-deck/cli-guard/cmd/specverb-gen@$(REF)
 export GOPRIVATE = forgejo.coilysiren.me
 
