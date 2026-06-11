@@ -32,6 +32,7 @@
 *.swagger.v1.json
 cmd/ward-kdl/main.go
 
-# specverb-gen emits the surface reference beside the Guardfile (the only path
-# it knows); the reviewed copy lives at docs/ward-kdl.guardfile.md.
-cmd/ward-kdl/ward-kdl.guardfile.md
+# specverb-gen emits one surface reference beside each Guardfile (the only path
+# it knows); the reviewed copies live at docs/ward-kdl.*.guardfile.md. One per
+# merged API (ward-kdl.<api>.guardfile.md).
+cmd/ward-kdl/ward-kdl.*.guardfile.md

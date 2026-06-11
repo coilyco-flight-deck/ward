@@ -15,8 +15,12 @@ build: ## Build all packages.
 build-ward-kdl: ## build or rebuild the ward-kdl binary, one shot for ease of use in development.
 	rm -rf bin
 	@mkdir -p bin
-	go run $(DRIVER) lock  --guardfile ./cmd/ward-kdl/ward-kdl.guardfile.kdl
-	go run $(DRIVER) build --guardfile ./cmd/ward-kdl/ward-kdl.guardfile.kdl --out bin
+	# The driver discovers every ward-kdl.*.guardfile.kdl beside this one that
+	# shares the `wrap ward-kdl` binary name and merges them into one binary,
+	# keeping each API's spec lock and reference doc separate. Adding a new
+	# ward-kdl.<api>.guardfile.kdl is the only step to grow the surface.
+	go run $(DRIVER) lock  --guardfile ./cmd/ward-kdl/ward-kdl.forgejo.guardfile.kdl
+	go run $(DRIVER) build --guardfile ./cmd/ward-kdl/ward-kdl.forgejo.guardfile.kdl --out bin
 
 test: ## Run the unit test suite.
 	go test ./...

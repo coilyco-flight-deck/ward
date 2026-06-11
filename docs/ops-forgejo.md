@@ -26,10 +26,12 @@ spec - no hand-written commands. Each leaf carries `--dry-run`, `--query`, and
 
 ## No hand-written Go
 
-`cmd/ward-kdl/` commits the Guardfile, the spec lock (below), and the module
-plumbing (`go.mod`/`go.sum` with the dev `replace`). `main.go` is generated from
-the Guardfile by `specverb-gen`, carries a `// Code generated ... DO NOT EDIT.`
-header, and is gitignored. Build:
+`cmd/ward-kdl/` commits one Guardfile per API (`ward-kdl.<api>.guardfile.kdl`,
+today just `ward-kdl.forgejo.guardfile.kdl`), each API's spec lock, and the
+shared module plumbing (`go.mod`/`go.sum` with the dev `replace`). `main.go` is
+generated from every Guardfile sharing the `wrap ward-kdl` binary name by
+`specverb-gen`, carries a `// Code generated ... DO NOT EDIT.` header, and is
+gitignored. Build:
 
 ```
 make ward-kdl   # specverb-gen -> main.go, then go build -o bin/ward-kdl
@@ -46,17 +48,23 @@ pace. Following uv's model, a committed lock decouples the two cadences:
   deliberate "absorb upstream" move.
 - **`make skew`** - fetches live and warns (kubectl-style) on drift.
 
-`resolveSpec` prefers `$WARD_KDL_SPEC`, then the embedded lock, then a bootstrap
+`resolveSpec` prefers `$WARD_KDL_OPS_FORGEJO_SPEC` (one override env var per
+merged API, keyed on the wrap group), then the embedded lock, then a bootstrap
 fetch before the first lock. The runtime cache `*.swagger.v1.json` stays
 gitignored; the lock `*.swagger.lock.json` is tracked. Pruning it to only the
 granted ops is a deferred follow-up (cli-guard#106).
 
+## Merging multiple APIs
+
+`specverb-gen` merges every `ward-kdl.<api>.guardfile.kdl` sharing the `wrap
+ward-kdl` name into one binary, each `ops <api>` its own group. Separate per API:
+the spec lock and reference doc; shared: the `main.go` and one `specverb.lock`.
+
 ## Seams
 
-The generated `mountOps` wires the specverb seams: the embedded Guardfile, the
-spec bytes, `verb.Wrap` over `~/.coily/audit/<slug>.jsonl`, and the SSM
-`TokenResolver` (resolving `/forgejo/api-token`). Mutating verbs use a
-redirect-refusing client.
+The generated `mountOps` loops the specverb seams over each merged API: embedded
+Guardfile, spec bytes, `verb.Wrap` over `~/.coily/audit/<slug>.jsonl`, and the SSM
+`TokenResolver` (`/forgejo/api-token`). The audit writer is built once; mutating verbs use a redirect-refusing client.
 
 ## Proving against the coily oracle
 
