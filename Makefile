@@ -21,6 +21,9 @@ build-ward-kdl: ## build or rebuild the ward-kdl binary, one shot for ease of us
 	# ward-kdl.<api>.guardfile.kdl is the only step to grow the surface.
 	go run $(DRIVER) lock  --guardfile ./cmd/ward-kdl/ward-kdl.forgejo.guardfile.kdl
 	go run $(DRIVER) build --guardfile ./cmd/ward-kdl/ward-kdl.forgejo.guardfile.kdl --out bin
+	# The driver writes each reference doc beside its guardfile; the committed
+	# copies live under docs/, so relocate them after every rebuild.
+	mv ./cmd/ward-kdl/ward-kdl.*.guardfile.md ./docs/
 
 test: ## Run the unit test suite.
 	go test ./...
