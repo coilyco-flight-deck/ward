@@ -1,17 +1,25 @@
-// The aws CLI surface as exec-dialect policy (cli-guard v0.12.0 execverb).
+// The aws CLI surface as exec-dialect policy (cli-guard execverb).
 // One open-passthrough grant keeps the funnel comprehensive - any service or
-// operation routes through ward - while the aws-read gate denies read-only
-// verbs touching sensitive resources pre-send (secrets / credentials /
-// tfstate / backups / admin+root role ARNs, the awsgate default set).
-// Engine-verified in cli-guard's execverb tests against this exact shape;
-// binary wiring lands with the driver exec transport (cli-guard#131).
+// operation routes through ward - while a `deny-when` guard spells the read
+// gate out in the guardfile itself: read-only verbs (get-/list-/describe-, the
+// aws CLI's own naming convention) naming a sensitive resource are denied
+// pre-send. The selector + globs read like the invocation you'd type, not an
+// opaque gate name - the resource set (secrets / credentials / tfstate /
+// backups / admin+root role ARNs) is visible here instead of baked in Go.
+// `any-arg` scans every positional; WARD_AWS_ALLOW_SENSITIVE_READ is the
+// one-shot escape for a deliberate read.
 wrap ward ops aws {
     exec aws
 
     can run "*" {
-        gate aws-read {
+        deny-when any-arg matches \
+            "*secret*" "*credential*" "*-private*" "*private-*" \
+            "*tfstate*" "*terraform-state*" "*-backup*" "*-backups*" \
+            "arn:aws:iam::*:role/*admin*" "arn:aws:iam::*:role/*root*" \
+        {
+            only-reads
             allow-env "WARD_AWS_ALLOW_SENSITIVE_READ"
         }
-        describe "open aws passthrough behind the sensitive-read gate"
+        describe "open aws passthrough; sensitive reads denied pre-send"
     }
 }
