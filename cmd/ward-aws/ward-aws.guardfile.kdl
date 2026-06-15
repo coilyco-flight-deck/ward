@@ -1,25 +1,36 @@
-// The aws CLI surface as exec-dialect policy (cli-guard execverb).
-// One open-passthrough grant keeps the funnel comprehensive - any service or
-// operation routes through ward - while a `deny-when` guard spells the read
-// gate out in the guardfile itself: read-only verbs (get-/list-/describe-, the
-// aws CLI's own naming convention) naming a sensitive resource are denied
-// pre-send. The selector + globs read like the invocation you'd type, not an
-// opaque gate name - the resource set (secrets / credentials / tfstate /
-// backups / admin+root role ARNs) is visible here instead of baked in Go.
-// `any-arg` scans every positional; WARD_AWS_ALLOW_SENSITIVE_READ is the
-// one-shot escape for a deliberate read.
+// ward ops aws - the aws CLI surface as an allowlist (cli-guard execverb).
+// Each grant reads like the invocation you'd type: `can run <service> <operation>`.
+// A per-operation guard constrains the kwarg or positional that names the
+// resource - the `--secret-id` value, the s3:// positional - with no env-var
+// escape and no opaque gate. An operation not listed here is denied.
 wrap ward ops aws {
     exec aws
 
-    can run "*" {
-        deny-when any-arg matches \
-            "*secret*" "*credential*" "*-private*" "*private-*" \
-            "*tfstate*" "*terraform-state*" "*-backup*" "*-backups*" \
-            "arn:aws:iam::*:role/*admin*" "arn:aws:iam::*:role/*root*" \
-        {
-            only-reads
-            allow-env "WARD_AWS_ALLOW_SENSITIVE_READ"
-        }
-        describe "open aws passthrough; sensitive reads denied pre-send"
+    // identity - nothing to guard
+    can run sts get-caller-identity
+    can run sts get-session-token
+
+    // ssm parameters - the --name kwarg is the resource
+    can run ssm get-parameter {
+        deny-when name matches "*/prod/*" "*secret*"
     }
+    can run ssm get-parameters-by-path
+    can run ssm put-parameter
+
+    // secrets manager - the --secret-id kwarg is the resource
+    can run secretsmanager get-secret-value {
+        deny-when secret-id matches "*prod*"
+    }
+    can run secretsmanager list-secrets
+
+    // s3 - the resource is a positional s3:// uri
+    can run s3 ls {
+        deny-when arg0 matches "*tfstate*" "*-backup*"
+    }
+    can run s3 cp
+    can run s3 sync
+
+    // ec2 - describe reads, nothing sensitive
+    can run ec2 describe-instances
+    can run ec2 describe-security-groups
 }
