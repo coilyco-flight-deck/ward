@@ -18,6 +18,10 @@ The contributor-facing cli-guard gate: wrap a repo's dev verbs and a small set o
 - **`ward lint`** - lint `.ward/ward.yaml` against the repo Makefile.
 - **`ward dispatch <surface> <ref>`** - fire `claude` against a real open issue. Four surfaces: `headless` (detached `claude -p` in a per-issue worktree+branch, fire-and-forget), `interactive` (new tab in the canonical checkout, supervised), `consult` (interactive with a raised interruption budget), `cascade` (headless plus bounded recursive sub-dispatch). Maintenance verbs `reap`/`status`/`registry`. Refs outside the primary-org set are refused; Forgejo refs resolve via a read-only Forgejo client (token from SSM), falling back to GitHub for shortform refs. The reusable subsystem lives in cli-guard `cli/dispatch`; ward supplies the host seams. The contributor-facing home for what was `coily dispatch`. See [docs/dispatch.md](dispatch.md).
 
+## Scripts
+
+- **`scripts/watch-ci.sh`** - watch a Forgejo Actions run until every job is terminal, then print a per-job status table and tail each failing job's log. Interim bridge over the audited forgejo task surface (coily today, ward as the surface migrates in via `WARD_CI_BRIDGE`); the end-state is a native hand-written `ward ci watch` verb. See [docs/ci-watch.md](ci-watch.md).
+
 ## See also
 
 - [README.md](../README.md) - human-facing intro.

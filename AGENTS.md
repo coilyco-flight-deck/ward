@@ -6,10 +6,10 @@ Workspace conventions load globally via `~/.claude/CLAUDE.md` -> `agentic-os-kai
 
 `ward` is a contributor-facing [cli-guard](https://forgejo.coilysiren.me/coilyco-flight-deck/cli-guard) consumer: the gate a contributor (human or agent) routes through to build, test, and lint project code. It carries the project's dev verbs.
 
-The boundary between ward and [coily](https://github.com/coilyco-bridge/coily) is load-bearing, but it is split by role, not by audience:
+ward is also absorbing the operator surface: [coily](https://github.com/coilyco-bridge/coily) is retiring and its ops verbs fold into ward, retiring the old "ward never grows ops verbs" boundary. Two verb kinds now:
 
-- **coily is the operator CLI.** Anything touching a homelab, vault, AWS account, deploy hooks, or other personal infra belongs in coily. ward never grows ops verbs.
-- **ward is the contributor gate.** It exposes the dev surface a contributor needs in a ward-managed repo (`build`, `test`, `vet`, `lint`, `tidy`, `cover`). Project-specific dev verbs are welcome here. Repo-specific Makefile targets are declared per-repo in `.ward/ward.yaml`.
+- **Contributor dev verbs** - `build`, `test`, `vet`, `lint`, `tidy`, `cover`, declared per-repo in `.ward/ward.yaml`.
+- **Operator verbs** - from coily. Spec REST rides ward-kdl (`ops forgejo`, `ops aws`); composite control flow is hand-written gated Go in `cmd/ward`. `scripts/watch-ci.sh` is one such bridge; see [docs/ci-watch.md](docs/ci-watch.md).
 
 ## Project shape
 
@@ -18,7 +18,7 @@ Single Go module (path `github.com/coilyco-flight-deck/ward`). CLI at `cmd/ward/
 ## Repo boundaries
 
 - Upstream: `coilyco-flight-deck/cli-guard` provides the policy/routing engine. Thin consumer, not a fork.
-- Sibling: `coilyco-bridge/coily` is the operator-verbs counterpart. coily-land doesn't cross over.
+- Retiring sibling: `coilyco-bridge/coily` is the operator CLI being wound down; its ops verbs migrate into ward. New operator work lands here, not in coily.
 - Downstream: consumers upgraded to the `ward` binary and `.ward` config on their own schedule.
 
 ## Commands
@@ -49,7 +49,7 @@ Every invocation validates argv against shell-metacharacter rejection, writes on
 
 ## Release
 
-Forgejo-canonical, on Forgejo Actions not GitHub. Push to `main` runs `.forgejo/workflows/release.yml`: `tag-bump` (minor bump; major hand-driven) + `create-release`, then `bump-tap-formula`/`bump-formula` rewrite the formula url+tag+revision via the Forgejo Contents API (skip-CI marked). `mirror-to-github.yml` mirrors main + tags to the read-only GitHub mirror.
+Forgejo-canonical, on Forgejo Actions not GitHub. Push to `main` runs `.forgejo/workflows/release.yml`: `tag-bump` (minor bump; major hand-driven) + `create-release`, then `bump-tap-formula` rewrites the centralized tap's formula url+tag+revision (skip-CI marked). `mirror-to-github.yml` mirrors main + tags to the read-only GitHub mirror.
 
 Never write the literal skip-CI token in a commit body or it silently disables the workflow on that push. Describe it as "skip-CI marker".
 
