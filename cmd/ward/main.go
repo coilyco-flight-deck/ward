@@ -68,6 +68,7 @@ func main() {
 		},
 		Commands: []*cli.Command{
 			versionCommand(),
+			upgradeCommand(),
 			execCommand(),
 			pkgCommand(),
 			gitCommand(),
