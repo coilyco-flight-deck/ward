@@ -19,18 +19,32 @@ found. Tunables are env vars (`WATCH_CI_INTERVAL`, `WATCH_CI_TIMEOUT`,
 
 The watcher's end-state home is a native `ward` verb. coily is being retired and
 its operator surface is folding into ward, so a CI watcher is squarely ward's to
-own. It is a script today for two concrete reasons:
+own.
 
-- **ward-kdl can't host it.** ward-kdl is spec-driven: the specverb engine maps
-  one swagger operation to one leaf, deny-by-default, with no hand-written Go
-  (see [ops-forgejo.md](ops-forgejo.md)). A poll-until-terminal loop that then
-  fetches logs is composite control flow, not a single REST call. The native
-  verb is therefore hand-written gated Go in `cmd/ward`, the same shape as
-  `git` / `pkg` / `upgrade` - not a ward-kdl leaf.
-- **The logs primitive isn't in ward yet.** ward-kdl already grants
-  `list tasks` (the `ListActionTasks` leaf), but there is no task-logs leaf, and
-  the Forgejo logs endpoint is a blob redirect rather than a clean scalar op.
-  Until ward owns a logs surface, the script reads logs through coily's
+The poll-until-terminal loop no longer needs hand-written Go: cli-guard's
+**complex actions** layer (cli-guard#140, v0.15.0) lets ward-kdl host a bounded
+poll over a granted leaf. That action ships today as
+`ward-kdl ops forgejo action ci-watch <owner/repo> --run <n>` - it polls the
+`list tasks` leaf every 10s up to 30m until every job of the run is terminal,
+then exits non-zero if any failed (see
+[ward-kdl.forgejo.guardfile.md](ward-kdl.forgejo.guardfile.md) and ward#90). It
+is the native replacement for this script's poll loop.
+
+Three things keep the loop in the script for now:
+
+- **The action's surface is not yet reachable here.** The action lives in the
+  generated `ward-kdl` binary; only `ward` and `coily` are installed on PATH,
+  and `ward` does not expose `ops` yet. Until the `ward-kdl ops forgejo` surface
+  is reachable from where the watcher runs, the script keeps its own loop.
+- **Latest-run defaulting is deferred.** cli-guard v1 binds `$run` only when
+  `--run` is supplied; an omitted run fails the action's condition closed rather
+  than resolving "the latest run in the listing". That resolution is a
+  pre-flight this script still does, pending cli-guard's reserved
+  `input default <jmespath>` slot (ward#90).
+- **The logs primitive isn't in ward yet.** ward-kdl grants `list tasks` (the
+  `ListActionTasks` leaf) but there is no task-logs leaf - the Forgejo logs
+  endpoint is a blob redirect, not a clean scalar op (gitea#35176). Until a logs
+  surface lands, the script tails logs through coily's
   `ops forgejo actions task logs`.
 
 ## Backend swap
@@ -47,8 +61,14 @@ native `ward ci watch` verb ships, this script retires.
 
 ## Migration checklist
 
-1. cli-guard: add a task-logs surface (specverb leaf if the endpoint can be
-   expressed, else a hand-written gated path).
-2. ward `cmd/ward`: a `ci watch` verb wrapping `list tasks` + the logs surface
-   with the poll loop, audited and cli-guard-gated.
-3. Retire `scripts/watch-ci.sh` and this doc's "why a script" section.
+1. ~~cli-guard: a bounded poll-until-terminal primitive~~ - **done**, shipped as
+   the `ci-watch` complex action (cli-guard#140 / v0.15.0, consumed in ward#90).
+2. Make the `ward-kdl ops forgejo` surface reachable from the watcher's
+   environment (fold into the installed `ward`, or install `ward-kdl`), then
+   swap this script's poll loop for the `ci-watch` action.
+3. cli-guard: `input default <jmespath>` so the action resolves the latest run
+   without `--run`, retiring this script's pre-flight resolution (ward#90).
+4. cli-guard: add a task-logs surface (specverb leaf if the endpoint can be
+   expressed, else a hand-written gated path) - gitea#35176.
+5. ward `cmd/ward`: a native `ci watch` verb over the action + logs surface,
+   then retire `scripts/watch-ci.sh` and this doc (ward#88).

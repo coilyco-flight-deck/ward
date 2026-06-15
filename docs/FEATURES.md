@@ -20,7 +20,7 @@ The contributor-facing cli-guard gate: wrap a repo's dev verbs and a small set o
 
 ## Scripts
 
-- **`scripts/watch-ci.sh`** - watch a Forgejo Actions run until every job is terminal, then print a per-job status table and tail each failing job's log. Interim bridge over the audited forgejo task surface (coily today, ward as the surface migrates in via `WARD_CI_BRIDGE`); the end-state is a native hand-written `ward ci watch` verb. See [docs/ci-watch.md](ci-watch.md).
+- **`scripts/watch-ci.sh`** - watch a Forgejo Actions run until every job is terminal, then print a per-job status table and tail each failing job's log. Its poll loop now has a native home: the `ci-watch` complex action; the script narrows to the bridge for run-defaulting and log tails. End-state: a native `ward ci watch` verb. See [docs/ci-watch.md](ci-watch.md).
 
 ## See also
 

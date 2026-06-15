@@ -4,14 +4,17 @@
 # state, then surface failures with a tail of each failing job's decoded log.
 #
 # This is an interim BRIDGE script. Its end-state home is a native `ward` verb:
-# coily is being retired and its operator surface folds into ward. Two things
-# keep this a script for now, not yet `ward ci watch`:
-#   1. ward-kdl can't host it. ward-kdl is spec-driven (one swagger operation
-#      per leaf, deny-by-default, no hand-written Go); a poll-until-terminal
-#      loop is composite control flow, not a single leaf. The native verb is
-#      therefore hand-written Go in cmd/ward, alongside git/pkg/upgrade.
-#   2. The forgejo task-logs primitive it needs lives only in coily today; ward
-#      has `list tasks` (via ward-kdl) but no logs surface yet.
+# coily is being retired and its operator surface folds into ward. The
+# poll-until-terminal loop below now has a native home - the ward-kdl
+# `ops forgejo action ci-watch` complex action (cli-guard#140) - but three
+# things keep this a script for now, not yet `ward ci watch`:
+#   1. That action lives in the generated `ward-kdl` binary, and the
+#      `ward-kdl ops forgejo` surface is not reachable from where this runs yet
+#      (only `ward`/`coily` are installed, and `ward` has no `ops`).
+#   2. Latest-run defaulting isn't in cli-guard v1 (the action needs --run), so
+#      this script still resolves the latest run as a pre-flight.
+#   3. The forgejo task-logs primitive it needs lives only in coily today; ward
+#      has `list tasks` (via ward-kdl) but no logs surface yet (gitea#35176).
 # Tracked as the migration follow-up in docs/ci-watch.md.
 #
 # Backend: the audited forgejo task surface. Today that is coily's

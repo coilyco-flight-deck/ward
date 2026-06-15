@@ -686,3 +686,17 @@ Options (3):
 - `--name` (string, optional): name of the attachment
 - `--attachment` (file, optional): attachment to upload (this parameter is incompatible with `external_url`)
 - `--external_url` (string, optional): url to external asset (this parameter is incompatible with `attachment`)
+
+## ward-kdl ops forgejo action ci-watch - Watch a CI run to completion, then surface failing-job status.
+
+Complex action. Polls `GET /repos/{owner}/{repo}/actions/tasks` every 10s, up to 30m0s, until:
+
+    length(workflow_runs[?run_number==$run && status!='success'
+        && status!='failure' && status!='cancelled'
+        && status!='skipped']) == `0`
+
+Authorized by grant: can list tasks.
+
+Exits non-zero when:
+
+    length($run_tasks.workflow_runs[?run_number==$run && status=='failure']) > `0`

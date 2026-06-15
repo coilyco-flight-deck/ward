@@ -58,6 +58,38 @@ wrap ward-kdl ops forgejo {
     // actions tasks: the CI-run read surface.
     can list tasks
 
+    // ci-watch: the first complex action - poll the granted `list tasks` leaf
+    // until every job of one run reaches a terminal state, then exit non-zero
+    // if any failed. Replaces the poll loop in scripts/watch-ci.sh; the
+    // log-tail half stays in the script until a logs leaf lands (gitea#35176).
+    //
+    // ListActionTasks returns the ActionTaskResponse wrapper
+    // ({total_count, workflow_runs:[...]}), not a bare array, so both
+    // conditions project `workflow_runs` first. Terminal states are
+    // success/failure/cancelled/skipped; anything else (unknown/waiting/
+    // running/blocked) keeps the loop going. `$run` binds only when --run is
+    // supplied; omitted, the condition naming it fails closed rather than
+    // looping on a null (latest-run defaulting is deferred - see ward#90).
+    action ci-watch {
+        describe "Watch a CI run to completion, then surface failing-job status."
+        input repo { positional; required; help "owner/name" }
+        input run  { flag; help "run number" }
+        poll list tasks {
+            args { owner-repo $repo }
+            until """
+                length(workflow_runs[?run_number==$run && status!='success'
+                        && status!='failure' && status!='cancelled'
+                        && status!='skipped']) == `0`
+                """
+            every   "10s"
+            timeout "30m"
+            as run_tasks
+        }
+        // Filter failures to $run too: the listing window can hold terminal
+        // tasks from earlier runs, and an unfiltered match would fail spuriously.
+        fail-when "length($run_tasks.workflow_runs[?run_number==$run && status=='failure']) > `0`"
+    }
+
     // issue-labels: the API takes names or ids directly, no pre-flight.
     can list issue-labels
     can add issue-labels
