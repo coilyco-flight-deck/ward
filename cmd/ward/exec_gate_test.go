@@ -7,7 +7,7 @@ import (
 	"path/filepath"
 	"testing"
 
-	"forgejo.coilysiren.me/coilyco-flight-deck/cli-guard/gittree"
+	"forgejo.coilysiren.me/coilyco-flight-deck/cli-guard/cli/gittree"
 	"github.com/urfave/cli/v3"
 )
 

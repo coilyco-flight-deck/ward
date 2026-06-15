@@ -10,8 +10,8 @@ import (
 	"path/filepath"
 	"strings"
 
-	"forgejo.coilysiren.me/coilyco-flight-deck/cli-guard/dispatch"
-	"forgejo.coilysiren.me/coilyco-flight-deck/cli-guard/hook"
+	"forgejo.coilysiren.me/coilyco-flight-deck/cli-guard/cli/dispatch"
+	"forgejo.coilysiren.me/coilyco-flight-deck/cli-guard/cli/hook"
 	"github.com/urfave/cli/v3"
 )
 

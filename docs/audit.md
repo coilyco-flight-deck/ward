@@ -4,7 +4,7 @@ ward writes one append-only JSONL row per audited invocation (every
 `ward exec` repo verb and `ward pkg brew` run) to a per-repo file:
 
 ```
-~/.coily/audit/<slug>.jsonl
+~/.ward/audit/<slug>.jsonl
 ```
 
 The `<slug>` is derived from the repo's origin remote (via
@@ -18,7 +18,7 @@ file.
 
 ```
 $ ward audit path
-/Users/you/.coily/audit/coilyco-flight-deck-ward.jsonl
+/Users/you/.ward/audit/coilyco-flight-deck-ward.jsonl
 ```
 
 `ward audit tail` streams the rows as JSONL (parse with `jq` or any JSON

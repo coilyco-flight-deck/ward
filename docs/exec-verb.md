@@ -12,7 +12,7 @@ Each leaf runs the configured argv inside the repo that declared it,
 after validating every argv token against cli-guard's
 shell-metacharacter policy. Every invocation runs through cli-guard's
 verb pipeline, so each `ward exec` run appends one JSONL audit row to
-`~/.coily/audit/<repo>.jsonl` (verb prefix `repo.<cmd>`).
+`~/.ward/audit/<repo>.jsonl` (verb prefix `repo.<cmd>`).
 
 ## Clean-tree gate
 

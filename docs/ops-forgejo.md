@@ -63,7 +63,7 @@ ward-kdl` name into one binary, each `ops <api>` its own group. Per API: the spe
 ## Seams
 
 The generated `mountOps` loops the specverb seams over each merged API: embedded
-Guardfile, spec bytes, `verb.Wrap` over `~/.coily/audit/<slug>.jsonl`, and the SSM
+Guardfile, spec bytes, `verb.Wrap` over `~/.ward/audit/<slug>.jsonl`, and the SSM
 `TokenResolver` (`/forgejo/api-token`). The audit writer is built once; mutating verbs use a redirect-refusing client.
 
 ## Proving against the coily oracle

@@ -11,8 +11,8 @@ import (
 	"path/filepath"
 	"strings"
 
-	"forgejo.coilysiren.me/coilyco-flight-deck/cli-guard/allowlist"
-	"forgejo.coilysiren.me/coilyco-flight-deck/cli-guard/repocfg"
+	"forgejo.coilysiren.me/coilyco-flight-deck/cli-guard/cli/allowlist"
+	"forgejo.coilysiren.me/coilyco-flight-deck/cli-guard/cli/repocfg"
 	"github.com/urfave/cli/v3"
 )
 

@@ -7,7 +7,7 @@ import (
 	"os"
 	"path/filepath"
 
-	"forgejo.coilysiren.me/coilyco-flight-deck/cli-guard/repocfg"
+	"forgejo.coilysiren.me/coilyco-flight-deck/cli-guard/cli/repocfg"
 )
 
 // errNoConfig is returned when no ward config can be found by

@@ -9,7 +9,7 @@ func pkgCommand() *cli.Command {
 		Name:  "pkg",
 		Usage: "Package-manager pass-throughs (audited).",
 		Description: `pkg groups ward's audited package-manager wrappers. Each subcommand
-emits an audit record to ~/.coily/audit/<repo>.jsonl, so 'ward pkg brew
+emits an audit record to ~/.ward/audit/<repo>.jsonl, so 'ward pkg brew
 bundle' runs 'brew bundle' under ward's audit + scope rules - the
 ward-native equivalent of 'coily pkg brew'.`,
 		Commands: []*cli.Command{

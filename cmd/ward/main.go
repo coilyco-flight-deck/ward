@@ -10,7 +10,7 @@ import (
 	"os/exec"
 	"path/filepath"
 
-	"forgejo.coilysiren.me/coilyco-flight-deck/cli-guard/sandbox"
+	"forgejo.coilysiren.me/coilyco-flight-deck/cli-guard/cli/sandbox"
 	"github.com/urfave/cli/v3"
 )
 
@@ -75,6 +75,7 @@ func main() {
 			doctorCommand(),
 			hookCommand(),
 			installHooksCommand(),
+			dispatchCommand(),
 		},
 	}
 

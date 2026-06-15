@@ -6,13 +6,19 @@ import (
 	"path/filepath"
 	"strings"
 
-	"forgejo.coilysiren.me/coilyco-flight-deck/cli-guard/audit"
-	"forgejo.coilysiren.me/coilyco-flight-deck/cli-guard/config"
-	"forgejo.coilysiren.me/coilyco-flight-deck/cli-guard/sandbox"
-	"forgejo.coilysiren.me/coilyco-flight-deck/cli-guard/shell"
-	"forgejo.coilysiren.me/coilyco-flight-deck/cli-guard/verb"
+	"forgejo.coilysiren.me/coilyco-flight-deck/cli-guard/cli/sandbox"
+	"forgejo.coilysiren.me/coilyco-flight-deck/cli-guard/cli/shell"
+	"forgejo.coilysiren.me/coilyco-flight-deck/cli-guard/cli/verb"
+	"forgejo.coilysiren.me/coilyco-flight-deck/cli-guard/pkg/audit"
+	"forgejo.coilysiren.me/coilyco-flight-deck/cli-guard/pkg/config"
 	"github.com/urfave/cli/v3"
 )
+
+// init registers ward's own ".ward" app dir: audit rows land in ~/.ward/audit,
+// session sentinels under it, and the dispatch queue at /tmp/ward-dispatch-queue.
+func init() {
+	config.SetAppDir(".ward")
+}
 
 // Runner owns the shell runner + audit writer for ward's audited verbs.
 // Mirrors coily's Runner minus the layered-config / lockdown-profile layer.

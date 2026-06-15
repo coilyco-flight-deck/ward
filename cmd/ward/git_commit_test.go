@@ -8,7 +8,7 @@ import (
 	"strings"
 	"testing"
 
-	"forgejo.coilysiren.me/coilyco-flight-deck/cli-guard/shell"
+	"forgejo.coilysiren.me/coilyco-flight-deck/cli-guard/cli/shell"
 )
 
 // discardRunner builds a *Runner whose shell streams are discarded, for

@@ -8,10 +8,10 @@ import (
 	"sort"
 	"strings"
 
-	"forgejo.coilysiren.me/coilyco-flight-deck/cli-guard/audit"
-	"forgejo.coilysiren.me/coilyco-flight-deck/cli-guard/gittree"
-	"forgejo.coilysiren.me/coilyco-flight-deck/cli-guard/repocfg"
-	"forgejo.coilysiren.me/coilyco-flight-deck/cli-guard/verb"
+	"forgejo.coilysiren.me/coilyco-flight-deck/cli-guard/cli/gittree"
+	"forgejo.coilysiren.me/coilyco-flight-deck/cli-guard/cli/repocfg"
+	"forgejo.coilysiren.me/coilyco-flight-deck/cli-guard/cli/verb"
+	"forgejo.coilysiren.me/coilyco-flight-deck/cli-guard/pkg/audit"
 	"github.com/urfave/cli/v3"
 )
 

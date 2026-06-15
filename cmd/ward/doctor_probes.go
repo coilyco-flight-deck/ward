@@ -5,8 +5,8 @@ import (
 	"sort"
 	"strings"
 
-	"forgejo.coilysiren.me/coilyco-flight-deck/cli-guard/repocfg"
-	"forgejo.coilysiren.me/coilyco-flight-deck/cli-guard/sudo"
+	"forgejo.coilysiren.me/coilyco-flight-deck/cli-guard/cli/repocfg"
+	"forgejo.coilysiren.me/coilyco-flight-deck/cli-guard/cli/sudo"
 )
 
 // Probe severities. PASS / FAIL drive the exit code; WARN / INFO / SKIP

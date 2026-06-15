@@ -5,7 +5,7 @@ import (
 	"strings"
 	"testing"
 
-	"forgejo.coilysiren.me/coilyco-flight-deck/cli-guard/repocfg"
+	"forgejo.coilysiren.me/coilyco-flight-deck/cli-guard/cli/repocfg"
 )
 
 func TestRunPathPosture_NoBinariesSkips(t *testing.T) {

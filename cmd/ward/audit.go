@@ -12,10 +12,10 @@ import (
 	"strings"
 	"time"
 
-	"forgejo.coilysiren.me/coilyco-flight-deck/cli-guard/audit"
-	"forgejo.coilysiren.me/coilyco-flight-deck/cli-guard/config"
-	"forgejo.coilysiren.me/coilyco-flight-deck/cli-guard/scope"
-	"forgejo.coilysiren.me/coilyco-flight-deck/cli-guard/verb"
+	"forgejo.coilysiren.me/coilyco-flight-deck/cli-guard/cli/verb"
+	"forgejo.coilysiren.me/coilyco-flight-deck/cli-guard/pkg/audit"
+	"forgejo.coilysiren.me/coilyco-flight-deck/cli-guard/pkg/config"
+	"forgejo.coilysiren.me/coilyco-flight-deck/cli-guard/pkg/scope"
 	"github.com/urfave/cli/v3"
 )
 
@@ -26,7 +26,7 @@ func auditCommand() *cli.Command {
 		Name:  "audit",
 		Usage: "Inspect this repo's ward audit log.",
 		Description: `audit reads the per-repo JSONL log ward writes under
-~/.coily/audit/<slug>.jsonl (slug derived from the repo's origin remote).
+~/.ward/audit/<slug>.jsonl (slug derived from the repo's origin remote).
 'path' prints the resolved file, 'tail' streams records.`,
 		Commands: []*cli.Command{
 			auditPathCommand(),
