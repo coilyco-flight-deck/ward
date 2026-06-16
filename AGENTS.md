@@ -31,7 +31,7 @@ ward dogfoods itself. Route through it, not bare go:
 - `ward exec lint`
 - `ward exec tidy`
 
-Install: `brew tap coilyco-flight-deck/ward https://forgejo.coilysiren.me/coilyco-flight-deck/ward && brew install coilyco-flight-deck/ward/ward`.
+Install: `brew tap coilyco-flight-deck/tap https://forgejo.coilysiren.me/coilyco-flight-deck/homebrew-tap && brew install coilyco-flight-deck/tap/ward`.
 
 ## Validation
 
@@ -53,7 +53,7 @@ Forgejo-canonical, on Forgejo Actions not GitHub. Push to `main` runs `.forgejo/
 
 Never write the literal skip-CI token in a commit body or it silently disables the workflow on that push. Describe it as "skip-CI marker".
 
-Post-push: verify CI at +120s (`coily ops gh run list --repo coilyco-flight-deck/ward --limit 1`). Once green: `brew upgrade coilyco-flight-deck/ward/ward`.
+Post-push: verify CI at +120s (`coily ops gh run list --repo coilyco-flight-deck/ward --limit 1`). Once green: `brew upgrade coilyco-flight-deck/tap/ward`.
 
 ## Agent rules
 

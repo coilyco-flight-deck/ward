@@ -11,19 +11,20 @@ import (
 )
 
 // upgradeCommand is ward's self-update shorthand: the ward-native twin of
-// `coily upgrade`, bound to the coilyco-flight-deck/ward/ward formula.
+// `coily upgrade`, bound to the coilyco-flight-deck/tap/ward formula.
 func upgradeCommand() *cli.Command {
 	return &cli.Command{
 		Name:  "upgrade",
-		Usage: "Self-update via brew (coilyco-flight-deck/ward/ward per-repo tap).",
+		Usage: "Self-update via brew (coilyco-flight-deck/tap/ward centralized flight-deck tap).",
 		Description: `upgrade runs the audited brew sequence:
 
     brew update
-    brew upgrade coilyco-flight-deck/ward/ward
+    brew upgrade coilyco-flight-deck/tap/ward
 
-The formula is the per-repo tap coilyco-flight-deck/ward/ward. Pass --dry to
-see the resolved version diff without installing (equivalent to
-` + "`brew outdated coilyco-flight-deck/ward/ward`" + `).
+The formula is the centralized flight-deck tap coilyco-flight-deck/tap/ward,
+the only tap CI keeps fresh. Pass --dry to see the resolved version diff
+without installing (equivalent to
+` + "`brew outdated coilyco-flight-deck/tap/ward`" + `).
 
 Bare brew is denied at the lockdown layer; this verb is the audited
 recovery path for an agent that needs a fresh ward binary. The
@@ -60,9 +61,9 @@ func (r *Runner) upgradeAction(ctx context.Context, c *cli.Command) error {
 	return r.WrapVerb(spec, r.Audit)(ctx, c)
 }
 
-// upgradeFormula is the qualified formula ward's self-upgrade feeds `brew
-// upgrade`; `ward pkg brew upgrade` is the path for any other formula.
-const upgradeFormula = "coilyco-flight-deck/ward/ward"
+// upgradeFormula names the centralized flight-deck tap (the only tap CI
+// bumps); the in-repo Formula/ward.rb is frozen, not an upgrade source.
+const upgradeFormula = "coilyco-flight-deck/tap/ward"
 
 // runUpgrade runs brew update + brew upgrade <formula> (or brew outdated under
 // --dry), routing each brew call through ward's egress-proxied exec path.

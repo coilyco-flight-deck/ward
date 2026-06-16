@@ -5,11 +5,11 @@ import (
 	"testing"
 )
 
-// TestUpgradeFormula_LockedToWardPerRepo pins the upgrade verb to ward's
-// per-repo formula; `ward pkg brew upgrade` is the path for any other formula.
-func TestUpgradeFormula_LockedToWardPerRepo(t *testing.T) {
-	if upgradeFormula != "coilyco-flight-deck/ward/ward" {
-		t.Errorf("upgradeFormula = %q, want %q", upgradeFormula, "coilyco-flight-deck/ward/ward")
+// TestUpgradeFormula_LockedToCentralTap pins the upgrade verb to ward's
+// centralized flight-deck tap, the only tap CI keeps fresh.
+func TestUpgradeFormula_LockedToCentralTap(t *testing.T) {
+	if upgradeFormula != "coilyco-flight-deck/tap/ward" {
+		t.Errorf("upgradeFormula = %q, want %q", upgradeFormula, "coilyco-flight-deck/tap/ward")
 	}
 	if !strings.HasPrefix(upgradeFormula, "coilyco-flight-deck/") {
 		t.Errorf("upgradeFormula = %q must live under coilyco-flight-deck/", upgradeFormula)
