@@ -15,6 +15,10 @@ excludes = [
   "cmd/ward-kdl/ward-kdl.forgejo.guardfile.md",
   "docs/ward-kdl.aws.guardfile.md",
   "cmd/ward-kdl/ward-kdl.aws.guardfile.md",
+  # Embedded container agent doctrine: a ward binary asset (go:embed), not a
+  # doc, and it must sit beside its package, so the markdown-location and size
+  # caps do not apply. See docs/container.md.
+  "cmd/ward/containerassets/AGENTS.container.md",
 ]
 
 [tool.agentic-os.code-comments]
