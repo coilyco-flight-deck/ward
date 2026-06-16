@@ -700,3 +700,7 @@ Authorized by grant: can list tasks.
 Exits non-zero when:
 
     length($run_tasks.workflow_runs[?run_number==$run && status=='failure']) > `0`
+
+## Condition language
+
+The `until` and `fail-when` expressions above are [JMESPath, Community Edition](https://jmespath.site), evaluated against the polled response as the root. A `$name` is a bound input or `as` capture, supplied through the Community Edition's variable scope - baseline JMESPath (https://jmespath.org) has no `$variable` syntax, so these expressions are not portable to an original-spec evaluator.

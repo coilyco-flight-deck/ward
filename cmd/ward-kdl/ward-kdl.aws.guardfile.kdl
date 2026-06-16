@@ -3,7 +3,7 @@
 // A per-operation guard constrains the kwarg or positional that names the
 // resource - the `--secret-id` value, the s3:// positional - with no env-var
 // escape and no opaque gate. An operation not listed here is denied.
-wrap ward ops aws {
+wrap ward-kdl ops aws {
     exec aws
 
     // identity - nothing to guard

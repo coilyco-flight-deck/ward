@@ -13,6 +13,8 @@ excludes = [
   # gitignored but still on disk, so the tree-walking hook needs both paths.
   "docs/ward-kdl.forgejo.guardfile.md",
   "cmd/ward-kdl/ward-kdl.forgejo.guardfile.md",
+  "docs/ward-kdl.aws.guardfile.md",
+  "cmd/ward-kdl/ward-kdl.aws.guardfile.md",
 ]
 
 [tool.agentic-os.code-comments]
