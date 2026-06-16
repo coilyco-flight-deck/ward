@@ -13,7 +13,7 @@ ward is also absorbing the operator surface: [coily](https://github.com/coilyco-
 
 ## Project shape
 
-Single Go module (path `github.com/coilyco-flight-deck/ward`). CLI at `cmd/ward/`. Per-repo config lives downstream as `.ward/ward.yaml`. Homebrew formula in-tree at `Formula/ward.rb`.
+Single Go module (path `github.com/coilyco-flight-deck/ward`). CLI at `cmd/ward/`. Per-repo config lives downstream as `.ward/ward.yaml`.
 
 ## Repo boundaries
 

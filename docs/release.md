@@ -30,9 +30,9 @@ One job rewrites the formula `url` line after a release:
 The prior in-repo `bump-formula` fallback (which rewrote ward's own
 `Formula/ward.rb` via the Contents API on the `docker` runner) was removed: it
 duplicated the tap bump, was already marked deprecated, and failed every release
-because that runner has no `jq`. The tap is the single source `brew` installs
-from, so the in-repo copy bought nothing. See [ci-watch.md](ci-watch.md) for the
-helper that surfaced this.
+because that runner has no `jq`. The in-repo `Formula/ward.rb` itself has since
+been deleted - the tap is the single source `brew` installs from. See
+[ci-watch.md](ci-watch.md) for the helper that surfaced this.
 
 The bump carries the `[skip ci]` marker so the formula commit does not
 re-trigger the workflow. Shared composite actions live at

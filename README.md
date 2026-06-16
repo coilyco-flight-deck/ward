@@ -23,14 +23,7 @@ brew tap coilyco-flight-deck/tap https://forgejo.coilysiren.me/coilyco-flight-de
 brew install coilyco-flight-deck/tap/ward
 ```
 
-The explicit-URL `brew tap` form is required because the tap lives on forgejo, not github.com, so brew can't auto-resolve it. The installed binary is `ward`.
-
-The old per-repo tap still works for one migration cycle as a fallback, then goes away:
-
-```
-brew tap coilyco-flight-deck/ward https://forgejo.coilysiren.me/coilyco-flight-deck/ward
-brew install coilyco-flight-deck/ward/ward
-```
+The explicit-URL `brew tap` form is required because the tap lives on forgejo, not github.com, so brew can't auto-resolve it. The installed binary is `ward`. Upgrade with `ward upgrade` (or `brew upgrade coilyco-flight-deck/tap/ward`).
 
 ## Usage
 
