@@ -63,6 +63,12 @@ wrap ward-kdl ops forgejo {
     // if any failed. Replaces the poll loop in scripts/watch-ci.sh; the
     // log-tail half stays in the script until a logs leaf lands (gitea#35176).
     //
+    // `until` and `fail-when` are JMESPath, Community Edition (jmespath.site),
+    // evaluated against the polled response as the root. A `$name` is a bound
+    // input or `as` capture, supplied through the Community Edition's variable
+    // scope - baseline JMESPath (jmespath.org) has no `$variable` syntax, so
+    // these conditions are not portable to an original-spec evaluator.
+    //
     // ListActionTasks returns the ActionTaskResponse wrapper
     // ({total_count, workflow_runs:[...]}), not a bare array, so both
     // conditions project `workflow_runs` first. Terminal states are
