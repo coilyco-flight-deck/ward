@@ -1,10 +1,8 @@
 // Trello ops surface for ward-kdl, driving the vendored trello.openapi.json
 // (OpenAPI 3.0). Trello carries mutation payloads in `in:query` params, so the
 // create/edit fields mount as flags, not a JSON body. Auth is the dual-secret
-// query-param scheme (?key=&token=). Op auto-resolution per cli-guard#147.
-// Trello's GET item endpoints are ambiguous (an id form plus a -field/-filter
-// variant share the resource segment), so most `get` leaves keep an explicit op.
-// See ../../docs/ward-kdl.trello.guardfile.md.
+// query-param scheme (?key=&token=). Every `can` resolves by convention, no
+// explicit op (cli-guard#147). See ../../docs/ward-kdl.trello.guardfile.md.
 wrap ward-kdl ops trello {
     spec trello.openapi.json
     base-url "api.trello.com/1"
@@ -16,27 +14,25 @@ wrap ward-kdl ops trello {
     // No restrict clause: Trello path params are opaque board/card/list ids with
     // no scopeable shape (unlike Forgejo's {owner}), so a glob gate is meaningless.
 
-    // boards: read/create/edit, plus the lists/cards a board holds. Board
-    // deletion is denied - it is irreversible and human-only. `get` is ambiguous
-    // (get-boards-id vs get-boards-id-field); list-lists/list-cards are non-CRUD.
-    can get board { op "get-boards-id" }
+    // boards: read/create/edit, plus the lists/cards a board holds. Board deletion
+    // is denied. list-lists/list-cards read the board's sub-collections.
+    can get board
     can create board
     can edit board
-    can list-lists board { op "get-boards-id-lists" }
-    can list-cards board { op "get-boards-id-cards" }
+    can list-lists board
+    can list-cards board
     never delete board { message "board deletion is irreversible; delete it in the Trello UI" }
 
-    // lists: read and create (standalone and onto a board). `get`/`create` are
-    // ambiguous with the board-scoped list endpoints, so they keep explicit ops.
-    can get list { op "get-lists-id" }
-    can create list { op "post-lists" }
-    can create-on-board list { op "post-boards-id-lists" }
+    // lists: read and create (standalone, and onto a board via create-on-board).
+    can get list
+    can create list
+    can create-on-board list
 
-    // cards: full read/create/edit/delete plus the comment action. `get` is
-    // ambiguous (get-cards-id vs -field/-filter); comment is a non-CRUD verb.
-    can get card { op "get-cards-id" }
+    // cards: full read/create/edit/delete plus the comment action (comment posts
+    // the card's comments sub-collection).
+    can get card
     can create card
     can edit card
     can delete card
-    can comment card { op "post-cards-id-actions-comments" }
+    can comment card
 }

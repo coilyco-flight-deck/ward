@@ -15,11 +15,11 @@ Positional arguments (2):
 - `<owner>` (string)
 - `<repo>` (string)
 
-## ward-kdl ops forgejo repo list
+## ward-kdl ops forgejo repo search
 
 `GET /repos/search`
 
-Authorized by grant: can list repo. Not destructive.
+Authorized by grant: can search repo. Not destructive.
 
 Options (17):
 

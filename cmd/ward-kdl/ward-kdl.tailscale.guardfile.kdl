@@ -1,7 +1,8 @@
 // Tailscale ops surface for ward-kdl, driving the vendored tailscale.openapi.yaml
 // (OpenAPI 3.1, YAML). Path params arrive as $refs into components/parameters and
-// the ACL body rides requestBody (json + hujson). Auth is the bearer scheme. Op
-// auto-resolution per cli-guard#147. See ../../docs/ward-kdl.tailscale.guardfile.md.
+// the ACL body rides requestBody (json + hujson). Auth is the bearer scheme. Ops
+// resolve by convention (cli-guard#147); only the ACL singleton keeps an explicit
+// op. See ../../docs/ward-kdl.tailscale.guardfile.md.
 wrap ward-kdl ops tailscale {
     spec tailscale.openapi.yaml
     base-url "api.tailscale.com/api/v2"
@@ -14,22 +15,21 @@ wrap ward-kdl ops tailscale {
     restrict tailnet matches "coily*"
 
     // devices: list and inspect. Deletion is denied - removing a device from the
-    // tailnet is disruptive and human-only. `list devices` is ambiguous with
-    // listServiceHosts (both GET, devices segment), so it keeps an explicit op.
-    can list devices { op "listTailnetDevices" }
+    // tailnet is disruptive and human-only.
+    can list devices
     can get device
     never delete device { message "removing a device from the tailnet is disruptive; do it in the admin console" }
 
-    // policy file (ACL): read and write. setPolicyFile takes json or hujson. The
-    // policy path is not a /policy collection, so these keep an explicit op.
+    // policy file (ACL): read and write. It is a singleton at /tailnet/{tailnet}/acl
+    // (GET to read, POST to write) - the path says `acl`, not `policy`, and there is
+    // no {id}, so no structural convention reaches it. These two keep an explicit op.
     can get policy { op "getPolicyFile" }
     can set policy { op "setPolicyFile" }
 
     // auth keys: list/create/revoke. Revoking a key (delete) is reversible enough
-    // (mint a new one), so it stays allowed. `create keys` is ambiguous with
-    // updateDeviceKey (both POST, keys segment), so it keeps an explicit op.
+    // (mint a new one), so it stays allowed.
     can list keys
     can get keys
-    can create keys { op "createKey" }
+    can create keys
     can delete keys
 }

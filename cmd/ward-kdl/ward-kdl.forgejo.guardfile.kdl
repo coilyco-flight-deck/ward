@@ -1,5 +1,5 @@
-// Forgejo ops surface for ward-kdl. Each `can` resolves its op by convention
-// (verb + resource -> method + path); irregular endpoints keep an explicit `op`.
+// Forgejo ops surface for ward-kdl. Every `can` resolves its operationId by
+// convention (verb + resource -> method + path); no explicit `op` anywhere.
 // Hardened per ward#109: orgs and repos lose their irreversible verbs, repo-label
 // CRUD moves to org-labels, a cross-repo issue search and a move-issue action
 // land, and every path-{owner} leaf is scoped to coily* owners. Auto-resolution
@@ -16,82 +16,78 @@ wrap ward-kdl ops forgejo {
     // Scope gate: every leaf whose path carries {owner} must name a coily* owner.
     restrict owner matches "coily*"
 
-    // repos: read/create/edit/delete. Fork and the archive/unarchive toggles are
-    // denied - they are irreversible-enough surfaces a human should drive. get,
-    // list, create, delete collide with team/org/admin repo paths in the full
-    // spec (resolution is ambiguous), so they keep an explicit op; edit is unique.
-    can get repo { op "repoGet" }
-    can list repo { op "repoSearch" }
-    can create repo { op "createCurrentUserRepo" }
+    // repos: read/create/edit/delete plus search. Fork and the archive/unarchive
+    // toggles are denied - irreversible-enough surfaces a human should drive.
+    // `search` is the cross-repo finder (GET /repos/search).
+    can get repo
+    can search repo
+    can create repo
     can edit repo
     can delete repo {
-        op "repoDelete"
         describe "irreversible: deletes the repo and all its data"
     }
     never fork repo { message "forking is a human-only operation; fork in the web UI" }
     never archive repo { message "archive/unarchive flips a repo's lifecycle; do it in the web UI" }
     never unarchive repo { message "archive/unarchive flips a repo's lifecycle; do it in the web UI" }
 
-    // orgs: read-only. Org create and delete are human-only. `list` collides with
-    // the admin/user org-list paths in the full spec, so it keeps an explicit op.
+    // orgs: read-only. Org create and delete are human-only.
     can get org
-    can list org { op "orgGetAll" }
+    can list org
     never create org { message "org creation is a human-only operation" }
     never delete org { message "org deletion is irreversible and human-only" }
 
-    // org-labels: label CRUD targets org-level labels (/orgs/{org}/labels). The
-    // resource name `org-label` does not match the path segment `labels`, so each
-    // keeps an explicit op. Issue-label attach/set/remove stays below.
-    can get org-label { op "orgGetLabel" }
-    can list org-label { op "orgListLabels" }
-    can create org-label { op "orgCreateLabel" }
-    can edit org-label { op "orgEditLabel" }
-    can delete org-label { op "orgDeleteLabel" }
+    // org-labels: the compound resource targets org-level labels (/orgs/{org}/labels),
+    // the `org` ancestor scoping it away from repo labels. Issue-label attach/set/
+    // remove stays below.
+    can get org-label
+    can list org-label
+    can create org-label
+    can edit org-label
+    can delete org-label
 
     // milestones: all-scalar CRUD plus the close/reopen fixed-body toggles (the
-    // toggles keep `op` + `body`; non-CRUD verbs do not auto-resolve).
+    // toggles resolve like edit and carry only `body`).
     can get milestone
     can list milestone
     can create milestone
     can edit milestone
     can delete milestone
-    can close milestone { op "issueEditMilestone"; body state="closed" }
-    can reopen milestone { op "issueEditMilestone"; body state="open" }
+    can close milestone { body state="closed" }
+    can reopen milestone { body state="open" }
 
     // issues: the array-body + query-param group. close/reopen are fixed-body
-    // toggles; search is the cross-repo finder; comment posts a sub-resource;
-    // delete is denied (close instead). These four keep an explicit op.
+    // toggles; search is the cross-repo finder; comment posts the comments
+    // sub-collection; delete is denied (close instead).
     can get issue
     can view issue
     can list issue
-    can search issue { op "issueSearchIssues" }
+    can search issue
     can create issue
     can edit issue
-    can comment issue { op "issueCreateComment" }
-    can close issue { op "issueEditIssue"; body state="closed" }
-    can reopen issue { op "issueEditIssue"; body state="open" }
+    can comment issue
+    can close issue { body state="closed" }
+    can reopen issue { body state="open" }
     never delete issue { message "issue deletion is irreversible; close it instead (move-issue does this)" }
 
-    // releases, with the multipart asset upload placed beside them (upload-asset
-    // is a non-CRUD verb, so it keeps an explicit op).
+    // releases, with the multipart asset upload beside them (upload-asset resolves
+    // as create-on the assets sub-collection).
     can get release
     can list release
     can create release
     can edit release
     can delete release
-    can upload-asset release { op "repoCreateReleaseAttachment" }
+    can upload-asset release
 
     // pulls: not surfaced through ward. Read them in the Forgejo web UI.
     never view pr { message "pull requests are not exposed through ward; read them in the web UI" }
     never list pr { message "pull requests are not exposed through ward; read them in the web UI" }
 
-    // issue-labels: the API takes names or ids directly, no name->id pre-flight.
-    // add/set/remove are non-CRUD verbs and list targets the attach endpoint, so
-    // each keeps an explicit op.
-    can list issue-label { op "issueGetLabels" }
-    can add issue-label { op "issueAddLabel" }
-    can set issue-label { op "issueReplaceLabels" }
-    can remove issue-label { op "issueRemoveLabel" }
+    // issue-labels: the compound resource targets the issue's labels sub-collection;
+    // add/set/remove are the membership verbs (POST/PUT/DELETE).
+    can list issue-label
+    can add issue-label
+    can set issue-label
+    can remove issue-label
 
     // actions tasks: the CI-run read surface, plus the ci-watch poll action.
     can list tasks
