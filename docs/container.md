@@ -53,13 +53,11 @@ the entrypoint drops to a shell for those modes until they land.
 ## Inside the container
 
 The entrypoint is embedded in the ward binary and bind-mounted into the
-unmodified dev-base image. It configures forgejo git auth, installs ward (the
-`ward-linux-<arch>` release matching the host, or a `--ward-source` build),
+unmodified dev-base image. It configures forgejo git auth, installs ward,
 cached-fresh-clones the target into `/workspace/<repo>`, composes the mode's
-context + permission policy (below), launches the agent, then reaps on exit. The push token
-(`/forgejo/api-token`, user `coilysiren`) is resolved **on the host** at `up`
-time and injected via a private 0600 `--env-file` removed once docker reads it -
-never in argv, an audit row, or `docker inspect`.
+context + permission policy, launches the agent, then reaps on exit. The push
+token (`/forgejo/api-token`) is resolved **on the host** and injected via a
+private 0600 `--env-file` removed once docker reads it - never in argv or audit.
 
 ## Feature-lifetime autonomy + the reaper backstop
 
@@ -76,5 +74,7 @@ every exit `ward container reap` lands clean work on `main` or salvages it
 
 ## See also
 
+[docs/container-substrate.md](container-substrate.md) - the cross-cutting
+reference repos every container warms into `/substrate`.
 [docs/FEATURES.md](FEATURES.md) - inventory. [docs/dispatch.md](dispatch.md) -
 sibling agent-launch surface. agentic-os `docs/dev-base-image.md` - the image.

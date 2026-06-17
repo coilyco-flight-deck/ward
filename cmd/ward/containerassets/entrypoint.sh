@@ -94,6 +94,74 @@ clone_target() {
   printf '%s' "$work"
 }
 
+# --- warm the substrate reference repos (best-effort; see docs/container.md) --
+# Mirror+TTL-refresh each manifest repo, then drop a working copy under DEST.
+WARD_SUBSTRATE_SEED="${WARD_SUBSTRATE_SEED:-/opt/substrate-seed}"
+WARD_SUBSTRATE_DEST="${WARD_SUBSTRATE_DEST:-/substrate}"
+WARD_SUBSTRATE_MANIFEST="${WARD_SUBSTRATE_MANIFEST:-/opt/ward/preclone-repos.txt}"
+WARD_SUBSTRATE_TTL="${WARD_SUBSTRATE_TTL:-600}"
+
+# substrate_mirror_stale: true when the mirror's last fetch is older than the
+# TTL. A missing FETCH_HEAD (just cloned/hydrated) counts as fresh, not stale.
+substrate_mirror_stale() {
+  local head="$1/FETCH_HEAD"
+  [ -f "$head" ] || return 1
+  local age=$(( $(date +%s) - $(stat -c %Y "$head" 2>/dev/null || echo 0) ))
+  [ "$age" -ge "$WARD_SUBSTRATE_TTL" ]
+}
+
+# warm_substrate_repo: ensure one repo's bare mirror exists+fresh (under an
+# flock so concurrent inits serialise), drop a working copy, always return 0.
+warm_substrate_repo() {
+  local owner="$1" name="$2" tier="$3"
+  local mirror="$WARD_GITCACHE/${owner}__${name}.git"
+  local seed="$WARD_SUBSTRATE_SEED/${owner}__${name}.git"
+  local url="$WARD_FORGEJO_BASE/$owner/$name.git"
+  (
+    flock 9
+    if [ ! -d "$mirror" ]; then
+      if [ "$tier" = image ] && [ -d "$seed" ]; then
+        log "substrate: hydrate $owner/$name from baked seed"
+        cp -a "$seed" "$mirror"
+      else
+        log "substrate: clone mirror (first time) $owner/$name"
+        git clone --mirror "$url" "$mirror" >&2 \
+          || { log "substrate: mirror clone failed $owner/$name (skipping)"; rm -rf "$mirror"; exit 0; }
+      fi
+    fi
+    if substrate_mirror_stale "$mirror"; then
+      log "substrate: refresh $owner/$name (TTL ${WARD_SUBSTRATE_TTL}s elapsed)"
+      git -C "$mirror" remote update --prune >&2 || log "substrate: refresh failed $owner/$name (using cached state)"
+    fi
+  ) 9>"$WARD_GITCACHE/.${owner}__${name}.lock" || true
+  if [ -d "$mirror" ]; then
+    local work="$WARD_SUBSTRATE_DEST/$name"
+    rm -rf "$work"
+    git clone --quiet "$mirror" "$work" >&2 \
+      && git -C "$work" remote set-url origin "$url" \
+      || log "substrate: working clone failed $owner/$name"
+  fi
+  return 0
+}
+
+warm_substrate() {
+  [ "${WARD_SUBSTRATE_SKIP:-0}" = 1 ] && { log "substrate warming skipped (WARD_SUBSTRATE_SKIP=1)"; return 0; }
+  [ -f "$WARD_SUBSTRATE_MANIFEST" ] || { log "substrate: no manifest at $WARD_SUBSTRATE_MANIFEST (skipping)"; return 0; }
+  mkdir -p "$WARD_GITCACHE" "$WARD_SUBSTRATE_DEST"
+  local ref tier owner name
+  while read -r ref tier _; do
+    case "$ref" in ''|\#*) continue ;; esac
+    owner="${ref%%/*}"; name="${ref##*/}"
+    [ -n "$owner" ] && [ -n "$name" ] || continue
+    # The target repo is cloned into /workspace by clone_target; skip it here.
+    if [ "$owner" = "$WARD_TARGET_OWNER" ] && [ "$name" = "$WARD_TARGET_NAME" ]; then
+      continue
+    fi
+    warm_substrate_repo "$owner" "$name" "${tier:-cache}"
+  done < "$WARD_SUBSTRATE_MANIFEST"
+  log "substrate ready under $WARD_SUBSTRATE_DEST"
+}
+
 # --- compose per-mode operating context (the least-context ladder) -----------
 # Levels: 2=doctrine+host context, 1=doctrine+host AGENTS.md, 0=doctrine only.
 compose_context() {
@@ -134,6 +202,7 @@ main() {
   configure_git_auth
   install_ward
   local work; work="$(clone_target)"
+  warm_substrate
   compose_context
   compose_permissions
   cd "$work"

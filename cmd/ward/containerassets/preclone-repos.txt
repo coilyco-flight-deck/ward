@@ -1,0 +1,34 @@
+# Substrate repos pre-seeded for ward container runs - cross-cutting references
+# every agent needs regardless of the target repo it was spun against.
+#
+# Format: `owner/name  tier`, one per line, '#' comments and blanks ignored.
+# Forgejo-canonical owner/name.
+#
+# EVERY repo here lives in the host-side warm gitcache as a bare --mirror clone
+# and is refreshed by a TTL-gated fetch on container init (fetch only if the
+# mirror's FETCH_HEAD is older than the TTL. An flock serialises concurrent
+# inits against the same mirror). The working copy is a cheap local clone out
+# of the mirror into the container-local fs.
+#
+# The `tier` column only controls the SEED SOURCE, split on a public/private
+# boundary so the image stays shareable:
+#   image  - public (coilysiren + coilyco-flight-deck). A bare-mirror seed is
+#            ALSO baked into the dev-base image at build time, so a cold host
+#            starts with these already warm and needs no network for them on
+#            first run. Still TTL-refreshed in the gitcache like everything else.
+#   cache  - coilyco-bridge (leak-tolerant/private). Never baked into the image.
+#            Cold-cloned into the gitcache on first use, then TTL-refreshed.
+#
+# This is the shared canonical set. The ansible local-sync
+# (infrastructure/scripts/clone-coilysiren-repos.sh) mirrors the same list.
+# The two are denormalized copies for now, not a single source of truth.
+
+coilyco-flight-deck/agentic-os        image
+coilyco-flight-deck/cli-guard         image
+coilyco-flight-deck/infrastructure    image
+coilyco-flight-deck/ward              image
+coilysiren/coilysiren                 image
+coilyco-bridge/agentic-os-kai         cache
+coilyco-bridge/coily                  cache
+coilyco-bridge/deploy                 cache
+coilyco-bridge/lore                   cache

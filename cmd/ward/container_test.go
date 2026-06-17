@@ -182,6 +182,9 @@ func TestDockerCreateArgvShape(t *testing.T) {
 		"-e WARD_CONTEXT_LEVEL=2",
 		"-e WARD_BRANCH=feat/foo",
 		"-e WARD_VERSION=v0.16.0",
+		"-e WARD_SUBSTRATE_TTL=" + containerSubstrateTTL,
+		"-e WARD_SUBSTRATE_SEED=" + containerSubstrateSeed,
+		"-e WARD_SUBSTRATE_MANIFEST=" + containerSubstrateManifest,
 	} {
 		if !strings.Contains(joined, want) {
 			t.Errorf("docker argv missing %q\n got: %s", want, joined)

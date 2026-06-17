@@ -46,7 +46,63 @@ const (
 
 	// containerLabel marks ward-managed containers for filtering.
 	containerLabel = "ward.container=1"
+
+	// containerSubstrateSeed is where the dev-base image bakes image-tier bare
+	// mirrors; the entrypoint hydrates the gitcache from here on a cold volume.
+	containerSubstrateSeed = "/opt/substrate-seed"
+
+	// containerSubstrateDest is where the entrypoint materialises substrate
+	// working copies (reference repos every agent gets regardless of target).
+	containerSubstrateDest = "/substrate"
+
+	// containerSubstrateManifest is the bind-mounted preclone manifest the
+	// entrypoint reads; it rides the same read-only assets mount as the entrypoint.
+	containerSubstrateManifest = containerWardAssets + "/" + containerSubstrateRel
+	containerSubstrateRel      = "preclone-repos.txt"
+
+	// containerSubstrateTTL is the gitcache refresh TTL (seconds): a burst of
+	// containers does one fetch per repo per window, the rest skip the gate.
+	containerSubstrateTTL = "600"
 )
+
+// substrateRepo is one entry in the container substrate manifest: a
+// Forgejo-canonical owner/name plus its seed tier (image|cache).
+type substrateRepo struct {
+	Owner string
+	Name  string
+	Tier  string
+}
+
+func (s substrateRepo) slug() string { return s.Owner + "/" + s.Name }
+
+// substrateTiers is the closed set of valid tier values. image-tier repos are
+// also baked into the image as a seed; cache-tier repos are warm-cache only.
+var substrateTiers = map[string]bool{"image": true, "cache": true}
+
+// parseSubstrateManifest parses `owner/name  tier` lines ('#' comments and
+// blanks ignored); a malformed line or unknown tier is a hard error.
+func parseSubstrateManifest(data string) ([]substrateRepo, error) {
+	var out []substrateRepo
+	for i, raw := range strings.Split(data, "\n") {
+		line := strings.TrimSpace(raw)
+		if line == "" || strings.HasPrefix(line, "#") {
+			continue
+		}
+		fields := strings.Fields(line)
+		if len(fields) != 2 {
+			return nil, fmt.Errorf("preclone-repos.txt line %d: want `owner/name tier`, got %q", i+1, line)
+		}
+		m := ownerNameRe.FindStringSubmatch(fields[0])
+		if m == nil {
+			return nil, fmt.Errorf("preclone-repos.txt line %d: %q is not owner/name", i+1, fields[0])
+		}
+		if !substrateTiers[fields[1]] {
+			return nil, fmt.Errorf("preclone-repos.txt line %d: tier %q must be image|cache", i+1, fields[1])
+		}
+		out = append(out, substrateRepo{Owner: m[1], Name: m[2], Tier: fields[1]})
+	}
+	return out, nil
+}
 
 // containerMode selects the agent harness and how much operating context the
 // container composes (progressively less, mirroring agent-compose slices).
@@ -253,6 +309,12 @@ func (p upPlan) wardEnv() map[string]string {
 		"WARD_CONTEXT_SRC":   containerContextMount,
 		"WARD_MIRROR_NAME":   p.Repo.mirrorName(),
 		"WARD_VERSION":       p.WardVersion,
+		// Substrate (reference repos warmed regardless of target). The entrypoint
+		// has matching fallback defaults, so these keep the contract one-sourced.
+		"WARD_SUBSTRATE_SEED":     containerSubstrateSeed,
+		"WARD_SUBSTRATE_DEST":     containerSubstrateDest,
+		"WARD_SUBSTRATE_MANIFEST": containerSubstrateManifest,
+		"WARD_SUBSTRATE_TTL":      containerSubstrateTTL,
 	}
 	if p.Branch != "" {
 		env["WARD_BRANCH"] = p.Branch

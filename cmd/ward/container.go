@@ -19,8 +19,18 @@ import (
 // effects + host-side forgejo-token resolution. See docs/container.md.
 
 //go:embed containerassets/entrypoint.sh containerassets/AGENTS.container.md
-//go:embed containerassets/settings.container.json
+//go:embed containerassets/settings.container.json containerassets/preclone-repos.txt
 var containerAssets embed.FS
+
+// loadSubstrateManifest parses the embedded preclone manifest - the single
+// source of truth for which reference repos every container warms.
+func loadSubstrateManifest() ([]substrateRepo, error) {
+	data, err := containerAssets.ReadFile("containerassets/" + containerSubstrateRel)
+	if err != nil {
+		return nil, err
+	}
+	return parseSubstrateManifest(string(data))
+}
 
 // forgejoTokenSSMPath is the SSM parameter NAME for the git-over-HTTPS push
 // token (user coilysiren), resolved on the host and never entering the image.
@@ -329,6 +339,7 @@ func writeContainerAssets() (dir string, cleanup func(), err error) {
 		{"entrypoint.sh", 0o755},
 		{"AGENTS.container.md", 0o644},
 		{"settings.container.json", 0o644},
+		{containerSubstrateRel, 0o644},
 	}
 	for _, f := range files {
 		data, rerr := containerAssets.ReadFile("containerassets/" + f.name)

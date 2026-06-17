@@ -61,6 +61,16 @@ the way to a clean `main` push yourself, so the reaper finds nothing to do.
 Leaving work uncommitted "for review" does not defer it to a human - it just
 makes the reaper guess. Finish the merge.
 
+## Reference repos under /substrate
+
+Cross-cutting repos every container gets regardless of target are checked out
+read-only-by-convention under `/substrate/<name>`: doctrine, skills, cross-repo
+contracts, the dev/ops CLIs. Read them when you need a convention or a
+contract. Your **work** still happens only in your target clone under
+`/workspace`. Do not commit or push anything in `/substrate` - those checkouts
+are warm-cache reference copies, not feature branches, and pushing from one is
+out of bounds the same way touching another repo is.
+
 ## Context level
 
 `WARD_CONTEXT_LEVEL` records how much operating context was composed for your
