@@ -1,6 +1,6 @@
 # ward-kdl ops aws
 
-Exec-dialect CLI. Every verb runs `aws` with the granted subcommand appended; the binary and its prefix are fixed and the caller can never substitute them.
+Exec-dialect CLI. Every verb runs `aws` with the granted subcommand (or its `argv` override) appended; the binary and its prefix are fixed and the caller can never substitute them.
 
 ## ward-kdl ops aws sts get-caller-identity
 

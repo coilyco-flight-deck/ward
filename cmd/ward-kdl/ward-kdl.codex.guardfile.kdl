@@ -1,0 +1,24 @@
+// Codex CLI launcher for ward-kdl, mounted at `ward-kdl agents codex`
+// (cli-guard execverb, exec dialect). Friendly verbs map onto the real codex
+// invocation via per-grant `argv` overrides: `launch` runs the bare binary,
+// `headless` runs the `exec` subcommand, `whoami` runs `login status`.
+// See ../../docs/ward-kdl.codex.guardfile.md.
+wrap ward-kdl agents codex {
+    exec codex
+    can run launch {
+        argv
+        describe "interactive session (bare codex)"
+    }
+    can run headless {
+        argv exec
+        describe "run codex non-interactively; pass the prompt as args"
+    }
+    can run login {
+        argv login
+        describe "manage login"
+    }
+    can run whoami {
+        argv login status
+        describe "show login status"
+    }
+}

@@ -1,0 +1,23 @@
+// Claude Code launcher for ward-kdl, mounted at `ward-kdl agents claude`
+// (cli-guard execverb, exec dialect). Friendly verbs map onto the real claude
+// invocation via per-grant `argv` overrides: `launch` runs the bare binary,
+// `headless` runs `-p` print mode. The binary is fixed; ward only decides
+// which shapes mount. See ../../docs/ward-kdl.claude.guardfile.md.
+wrap ward-kdl agents claude {
+    exec claude
+    can run launch {
+        argv
+        describe "interactive session (bare claude)"
+    }
+    can run headless {
+        argv -p
+        describe "non-interactive print mode; pass the prompt as args"
+    }
+    can run login {
+        argv auth
+        describe "manage authentication"
+    }
+    can run doctor {
+        describe "check Claude Code health"
+    }
+}

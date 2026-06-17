@@ -22,7 +22,8 @@ The contributor-facing cli-guard gate: a repo's dev verbs and audited host wrapp
 
 ## Spec-driven ops (`ward-kdl`)
 
-- **`ward-kdl ops <api> <verb>`** - guarded API verbs from KDL guardfiles (`specverb`): **forgejo** (Swagger 2.0), **trello** (OpenAPI 3.0), **tailscale**, and **open-webui** (both OpenAPI 3.1; open-webui is tailnet-only, host from SSM via `base-url { ssm }`). Each `can` resolves its op by convention; denies teach, `restrict` scopes. See [docs/ops-forgejo.md](ops-forgejo.md).
+- **`ward-kdl ops <api> <verb>`** - guarded API verbs from KDL guardfiles (`specverb`): **forgejo** (Swagger 2.0), **trello** (OpenAPI 3.0), and **tailscale** (OpenAPI 3.1). Each `can` resolves its op by convention; denies teach, `restrict` scopes. See [docs/ops-forgejo.md](ops-forgejo.md).
+- **`ward-kdl agents <target> <verb>`** - mixed-transport agent surface. **`agents ui`**: the Open WebUI API (`specverb`, tailnet-only) for Qwen chat. **`agents {claude,codex,opencode,aider,goose}`**: local-CLI launchers (`execverb`) whose `launch`/`headless`/`login`/`whoami` verbs map onto each tool's real invocation via per-grant `argv` overrides.
 
 ## Scripts
 

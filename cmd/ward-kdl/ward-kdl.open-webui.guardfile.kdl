@@ -1,8 +1,10 @@
-// Open WebUI ops surface for ward-kdl, driving the vendored open-webui.openapi.json
-// (OpenAPI 3.1, JSON). The target is the tailnet-only chat front-end for the tower's
-// Qwen (deploy surface coilyco-bridge/deploy services/open-webui). Ops are pinned
-// explicitly because Open WebUI's operationIds don't follow the verb+resource
-// convention. See ../../docs/ward-kdl.open-webui.guardfile.md.
+// Open WebUI surface for ward-kdl, mounted at `ward-kdl agents ui`, driving the
+// vendored open-webui.openapi.json (OpenAPI 3.1, JSON). The target is the
+// tailnet-only chat front-end for the tower's Qwen (deploy surface
+// coilyco-bridge/deploy services/open-webui) - the web-UI sibling of the local
+// `ward-kdl agents <cli>` launchers. Ops are pinned explicitly because Open
+// WebUI's operationIds don't follow the verb+resource convention. See
+// ../../docs/ward-kdl.open-webui.guardfile.md.
 //
 // Two SSM prerequisites (both resolved at request time, never committed - the ward
 // repo is public-mirrored and the tailnet FQDN is opaque):
@@ -10,7 +12,7 @@
 //   /coilysiren/open-webui/api-key  - a Bearer API key minted in the UI
 //                                     (Settings -> Account) or via POST
 //                                     /api/v1/auths/api_key, then put to SSM.
-wrap ward-kdl ops open-webui {
+wrap ward-kdl agents ui {
     spec open-webui.openapi.json
     base-url {
         value ssm "/coilysiren/open-webui/url"

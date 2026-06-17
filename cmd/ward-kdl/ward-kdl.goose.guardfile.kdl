@@ -1,0 +1,15 @@
+// goose launcher for ward-kdl, mounted at `ward-kdl agents goose`
+// (cli-guard execverb, exec dialect). goose configures via `goose configure`,
+// so it has no login verb: `launch` runs an interactive `session`, `headless`
+// runs `run` (pass -t <text> or -i <file>). See ../../docs/ward-kdl.goose.guardfile.md.
+wrap ward-kdl agents goose {
+    exec goose
+    can run launch {
+        argv session
+        describe "interactive chat session"
+    }
+    can run headless {
+        argv run
+        describe "execute commands from -t <text>, -i <file>, or stdin"
+    }
+}
