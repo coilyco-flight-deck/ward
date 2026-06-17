@@ -7,7 +7,7 @@ wrap ward-kdl ops tailscale {
     spec tailscale.openapi.yaml
     base-url "api.tailscale.com/api/v2"
     auth bearer {
-        ssm "/tailscale/api-key"
+        value ssm "/tailscale/api-key"
     }
     // Scope gate: every tailnet-scoped leaf must name a coily* tailnet, never
     // another org's by name. Widen this glob if the tailnet is renamed. (The API

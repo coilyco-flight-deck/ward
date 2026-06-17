@@ -8,10 +8,10 @@ wrap ward-kdl ops trello {
     base-url "api.trello.com/1"
     auth query-param {
         param key {
-            ssm "/trello/api-key"
+            value ssm "/trello/api-key"
         }
         param token {
-            ssm "/trello/api-token"
+            value ssm "/trello/api-token"
         }
     }
     // No restrict clause: Trello path params are opaque board/card/list ids with

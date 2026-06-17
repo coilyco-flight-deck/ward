@@ -1,8 +1,8 @@
 # ward-kdl ops open-webui
 
-Spec-driven CLI. Every verb issues an HTTP request against the API base (resolved from SSM /coilysiren/open-webui/url).
+Spec-driven CLI. Every verb issues an HTTP request against the API base (resolved from ssm /coilysiren/open-webui/url).
 
-Authenticates with the "Authorization" header (scheme bearer), reading the token from SSM at /coilysiren/open-webui/api-key. The token value is never shown.
+Authenticates with the "Authorization" header (scheme bearer), reading the token from ssm /coilysiren/open-webui/api-key. The token value is never shown.
 
 ## ward-kdl ops open-webui session get
 

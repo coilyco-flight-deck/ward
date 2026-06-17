@@ -2,7 +2,7 @@
 
 Spec-driven CLI. Every verb issues an HTTP request against the API base https://api.trello.com/1.
 
-Authenticates with query parameters (scheme query-param), reading each secret from SSM at key=/trello/api-key, token=/trello/api-token. The secret values are never shown.
+Authenticates with query parameters (scheme query-param), reading each secret from key=ssm /trello/api-key, token=ssm /trello/api-token. The secret values are never shown.
 
 ## ward-kdl ops trello board get
 

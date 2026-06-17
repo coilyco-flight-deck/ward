@@ -2,7 +2,7 @@
 
 Spec-driven CLI. Every verb issues an HTTP request against the API base https://api.tailscale.com/api/v2.
 
-Authenticates with the "Authorization" header (scheme bearer), reading the token from SSM at /tailscale/api-key. The token value is never shown.
+Authenticates with the "Authorization" header (scheme bearer), reading the token from ssm /tailscale/api-key. The token value is never shown.
 
 ## ward-kdl ops tailscale devices list
 

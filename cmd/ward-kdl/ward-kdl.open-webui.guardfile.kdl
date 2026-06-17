@@ -13,10 +13,10 @@
 wrap ward-kdl ops open-webui {
     spec open-webui.openapi.json
     base-url {
-        ssm "/coilysiren/open-webui/url"
+        value ssm "/coilysiren/open-webui/url"
     }
     auth bearer {
-        ssm "/coilysiren/open-webui/api-key"
+        value ssm "/coilysiren/open-webui/api-key"
     }
     // auths: whoami only. Cheapest call to validate the token. Signin/signup/api-key
     // management and all admin config are not exposed through ward.
