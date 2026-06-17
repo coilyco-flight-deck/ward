@@ -4,10 +4,6 @@
 
 [tool.agentic-os.documentation-layout]
 excludes = [
-  # The trifecta inventory index: a single-file roster of every feature, by
-  # design not split into smaller docs (it points at the per-feature docs). It
-  # grows with the feature surface, so the char cap does not apply.
-  "docs/FEATURES.md",
   # Pre-existing size debt: docs/hook.md is 92 lines, over the 80-line cap.
   # The split is tracked in coilyco-flight-deck/ward#50; drop this when it lands.
   "docs/hook.md",
