@@ -128,9 +128,21 @@ func buildUpPlan(c *cli.Command, repo targetRepo, mode containerMode, cwd, asset
 		HostCwd:        cwd,
 		Mounts:         leastAccessMounts(cwd, mountOpts{AssetsDir: assetsDir, AWSHome: awsHome, WardSource: wardSrc}),
 		Interactive:    !c.Bool("detach"),
+		TTY:            !c.Bool("detach") && terminalAttached(),
 		WardVersion:    Version,
 		WardFromSource: wardSrc != "",
 	}
+}
+
+// terminalAttached reports whether stdin and stdout are both terminals - the
+// precondition docker needs before allocating a pseudo-TTY. See docs/container.md.
+func terminalAttached() bool {
+	return isCharDevice(os.Stdin) && isCharDevice(os.Stdout)
+}
+
+func isCharDevice(f *os.File) bool {
+	fi, err := f.Stat()
+	return err == nil && fi.Mode()&os.ModeCharDevice != 0
 }
 
 // resolveTarget returns the target repo (explicit arg, else inferred from the
@@ -201,7 +213,7 @@ func containerExecCommand() *cli.Command {
 					if name == "" || len(rest) == 0 {
 						return fmt.Errorf("ward container exec: usage: ward container exec <name> -- <cmd...>")
 					}
-					return r.Runner.Exec(ctx, "docker", dockerExecArgv(name, true, rest)...)
+					return r.Runner.Exec(ctx, "docker", dockerExecArgv(name, terminalAttached(), rest)...)
 				},
 			}, r.Audit)(ctx, c)
 		},

@@ -158,6 +158,7 @@ func sampleUpPlan() upPlan {
 		HostCwd:     "/cwd",
 		Mounts:      leastAccessMounts("/cwd", mountOpts{AssetsDir: "/a"}),
 		Interactive: true,
+		TTY:         true,
 		WardVersion: "v0.16.0",
 	}
 }
@@ -218,10 +219,41 @@ func TestDockerCreateArgvDetached(t *testing.T) {
 	}
 }
 
+func TestDockerCreateArgvAttachedNoTTY(t *testing.T) {
+	// Attached (not detached) but no terminal: -i to keep stdin open, never -it
+	// (docker rejects -t without a terminal), and never -d (still attached).
+	p := sampleUpPlan()
+	p.TTY = false
+	argv := dockerCreateArgv(p, "")
+	// Exact-arg checks: the container name ("...app-deadbeef") contains the
+	// substring "-d", so substring matching would false-positive.
+	has := func(flag string) bool {
+		for _, a := range argv {
+			if a == flag {
+				return true
+			}
+		}
+		return false
+	}
+	if has("-it") {
+		t.Error("attached no-TTY run must not pass -it")
+	}
+	if has("-d") {
+		t.Error("attached no-TTY run must not pass -d (it is not detached)")
+	}
+	if !has("-i") {
+		t.Errorf("attached no-TTY run must pass -i, got: %s", strings.Join(argv, " "))
+	}
+}
+
 func TestDockerExecDownListArgv(t *testing.T) {
 	exec := dockerExecArgv("ward-eco-app-deadbeef", true, []string{"ward", "exec", "test"})
 	if strings.Join(exec, " ") != "exec -it ward-eco-app-deadbeef ward exec test" {
 		t.Errorf("exec argv wrong: %v", exec)
+	}
+	execNoTTY := dockerExecArgv("ward-eco-app-deadbeef", false, []string{"ward", "exec", "test"})
+	if strings.Join(execNoTTY, " ") != "exec -i ward-eco-app-deadbeef ward exec test" {
+		t.Errorf("exec no-TTY argv wrong: %v", execNoTTY)
 	}
 	down := dockerDownArgv("ward-eco-app-deadbeef")
 	if strings.Join(down, " ") != "rm -f ward-eco-app-deadbeef" {

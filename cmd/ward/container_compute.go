@@ -225,7 +225,11 @@ type upPlan struct {
 	ForgejoBase string
 	HostCwd     string
 	Mounts      []mountSpec
+	// Interactive attaches the run (stdin kept open); false means --detach (-d).
 	Interactive bool
+	// TTY allocates a pseudo-terminal (-t), auto-detected: true only with a real
+	// terminal, since docker rejects -t against non-terminal stdin. See docs.
+	TTY bool
 	// WardVersion pins the ward release the entrypoint downloads (matches the
 	// launcher); "dev" or "" tells the entrypoint to resolve the latest release.
 	WardVersion string
@@ -264,10 +268,15 @@ func (p upPlan) wardEnv() map[string]string {
 func dockerCreateArgv(p upPlan, envFilePath string) []string {
 	argv := []string{"run", "--name", p.Name, "--label", containerLabel, "--label", "ward.repo=" + p.Repo.slug()}
 	argv = append(argv, "--entrypoint", containerWardAssets+"/"+containerEntrypointRel)
-	if p.Interactive {
-		argv = append(argv, "-it")
-	} else {
+	switch {
+	case !p.Interactive:
 		argv = append(argv, "-d")
+	case p.TTY:
+		argv = append(argv, "-it")
+	default:
+		// Attached, no terminal (agent/CI/pipe): keep stdin open, drop -t,
+		// else docker aborts attaching stdin to a TTY-enabled container.
+		argv = append(argv, "-i")
 	}
 	for _, m := range p.Mounts {
 		argv = append(argv, "-v", m.arg())
@@ -292,11 +301,14 @@ func sortedKeys(m map[string]string) []string {
 	return keys
 }
 
-// dockerExecArgv builds `docker exec [-it] <name> <cmd...>`.
-func dockerExecArgv(name string, interactive bool, cmd []string) []string {
+// dockerExecArgv builds `docker exec -i[t] <name> <cmd...>`; tty adds -t and
+// must only be set with a real terminal, as in `run`. See docs/container.md.
+func dockerExecArgv(name string, tty bool, cmd []string) []string {
 	argv := []string{"exec"}
-	if interactive {
+	if tty {
 		argv = append(argv, "-it")
+	} else {
+		argv = append(argv, "-i")
 	}
 	argv = append(argv, name)
 	return append(argv, cmd...)
