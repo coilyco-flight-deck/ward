@@ -110,6 +110,16 @@ compose_context() {
   log "composed context (level $WARD_CONTEXT_LEVEL) at $out"
 }
 
+# --- reaper: deterministic teardown backstop (docs/container-reap.md) --------
+# Static ward code lands/salvages residual work on any agent exit; nothing lost.
+reap() {
+  trap - EXIT
+  [ -n "${WARD_REAP_WORK:-}" ] || return 0
+  log "reaping: salvage residual work before teardown"
+  ward container reap --work "$WARD_REAP_WORK" \
+    || log "reaper returned non-zero; check this log for an UNPRESERVED PATCH block before 'ward container down'"
+}
+
 # --- launch ------------------------------------------------------------------
 main() {
   configure_git_auth
@@ -117,12 +127,17 @@ main() {
   local work; work="$(clone_target)"
   compose_context
   cd "$work"
+  export WARD_REAP_WORK="$work"
+  # Arm the reaper before launching the agent; the agent is NOT exec'd, else exec
+  # would replace this shell and skip the trap, defeating the backstop.
+  trap reap EXIT
   log "ready: $WARD_TARGET_OWNER/$WARD_TARGET_NAME on $(git branch --show-current) [mode=$WARD_MODE]"
   if ! command -v "$WARD_AGENT" >/dev/null 2>&1; then
-    log "agent '$WARD_AGENT' is not in this image yet (codex/qwen install is a follow-up); dropping to a shell"
-    exec bash
+    log "agent '$WARD_AGENT' is not in this image yet (codex/qwen install is a follow-up); dropping to a shell (reaper runs on exit)"
+    bash || true
+    return
   fi
-  exec "$WARD_AGENT" "$@"
+  "$WARD_AGENT" "$@" || log "agent exited non-zero ($?); reaping anyway"
 }
 
 main "$@"

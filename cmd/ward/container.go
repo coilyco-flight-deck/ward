@@ -42,6 +42,7 @@ surface in. See docs/container.md.`,
 		Commands: []*cli.Command{
 			containerUpCommand(),
 			containerExecCommand(),
+			containerReapCommand(),
 			containerDownCommand(),
 			containerListCommand(),
 		},

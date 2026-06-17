@@ -49,6 +49,18 @@ Autonomy covers **this feature on this repo**. It does **not** extend to:
 If you hit one of those, stop and surface it. Everything inside the normal
 feature loop: keep going.
 
+## A reaper runs after you exit - do not rely on it
+
+When you exit, `ward container reap` runs automatically as deterministic static
+code. It commits anything you left loose, integrates onto `main`, and either
+pushes to `main` (if clean) or preserves your work on a `ward-salvage/<id>`
+branch with a filed issue. This is a **backstop against lost work, not a
+substitute for finishing.** A salvage branch is a degraded outcome: it means a
+human now has to clean up after you. Your job is still to drive the feature all
+the way to a clean `main` push yourself, so the reaper finds nothing to do.
+Leaving work uncommitted "for review" does not defer it to a human - it just
+makes the reaper guess. Finish the merge.
+
 ## Context level
 
 `WARD_CONTEXT_LEVEL` records how much operating context was composed for your

@@ -1,6 +1,7 @@
 package main
 
 import (
+	"bytes"
 	"context"
 	"encoding/json"
 	"fmt"
@@ -82,4 +83,106 @@ func (r *Runner) fetchForgejoIssue(ctx context.Context, owner, repo string, numb
 		return nil, fmt.Errorf("dispatch forgejo: parse %s: %w", target, err)
 	}
 	return &issue, nil
+}
+
+// forgejoClient is a minimal write-capable client built from an explicit base +
+// token, so it works inside a container ($FORGEJO_TOKEN, no SSM). Reaper's path.
+type forgejoClient struct {
+	base   string
+	token  string
+	client *http.Client
+}
+
+func newForgejoClient(base, token string) *forgejoClient {
+	return &forgejoClient{
+		base:   strings.TrimRight(base, "/"),
+		token:  token,
+		client: &http.Client{Timeout: forgejoAPIHTTPTimeout},
+	}
+}
+
+// do issues one authenticated JSON request and returns the status + raw body.
+func (c *forgejoClient) do(ctx context.Context, method, path string, payload any) (int, []byte, error) {
+	var body io.Reader
+	if payload != nil {
+		buf, err := json.Marshal(payload)
+		if err != nil {
+			return 0, nil, fmt.Errorf("forgejo: marshal %s body: %w", path, err)
+		}
+		body = bytes.NewReader(buf)
+	}
+	req, err := http.NewRequestWithContext(ctx, method, c.base+path, body)
+	if err != nil {
+		return 0, nil, fmt.Errorf("forgejo: build %s %s: %w", method, path, err)
+	}
+	req.Header.Set("Authorization", "token "+c.token)
+	req.Header.Set("Accept", "application/json")
+	if payload != nil {
+		req.Header.Set("Content-Type", "application/json")
+	}
+	resp, err := c.client.Do(req)
+	if err != nil {
+		return 0, nil, fmt.Errorf("forgejo: %s %s: %w", method, path, err)
+	}
+	defer func() { _ = resp.Body.Close() }()
+	respBody, _ := io.ReadAll(resp.Body)
+	return resp.StatusCode, respBody, nil
+}
+
+// createIssue opens a new issue and returns its number.
+func (c *forgejoClient) createIssue(ctx context.Context, owner, repo, title, body string) (int, error) {
+	path := fmt.Sprintf("/api/v1/repos/%s/%s/issues", owner, repo)
+	status, respBody, err := c.do(ctx, http.MethodPost, path, map[string]string{"title": title, "body": body})
+	if err != nil {
+		return 0, err
+	}
+	if status != http.StatusCreated && status != http.StatusOK {
+		return 0, fmt.Errorf("forgejo: create issue returned HTTP %d: %s", status, strings.TrimSpace(string(respBody)))
+	}
+	var out struct {
+		Number int `json:"number"`
+	}
+	if err := json.Unmarshal(respBody, &out); err != nil {
+		return 0, fmt.Errorf("forgejo: parse created issue: %w", err)
+	}
+	return out.Number, nil
+}
+
+// commentIssue appends a comment to an existing issue.
+func (c *forgejoClient) commentIssue(ctx context.Context, owner, repo string, number int, body string) error {
+	path := fmt.Sprintf("/api/v1/repos/%s/%s/issues/%d/comments", owner, repo, number)
+	status, respBody, err := c.do(ctx, http.MethodPost, path, map[string]string{"body": body})
+	if err != nil {
+		return err
+	}
+	if status != http.StatusCreated && status != http.StatusOK {
+		return fmt.Errorf("forgejo: comment issue #%d returned HTTP %d: %s", number, status, strings.TrimSpace(string(respBody)))
+	}
+	return nil
+}
+
+// findOpenIssueByTitlePrefix returns the first open issue whose title starts
+// with prefix, so the reaper appends instead of filing a duplicate.
+func (c *forgejoClient) findOpenIssueByTitlePrefix(ctx context.Context, owner, repo, prefix string) (number int, found bool, err error) {
+	path := fmt.Sprintf("/api/v1/repos/%s/%s/issues?state=open&type=issues&limit=50", owner, repo)
+	status, respBody, err := c.do(ctx, http.MethodGet, path, nil)
+	if err != nil {
+		return 0, false, err
+	}
+	if status != http.StatusOK {
+		return 0, false, fmt.Errorf("forgejo: list issues returned HTTP %d: %s", status, strings.TrimSpace(string(respBody)))
+	}
+	var issues []struct {
+		Number int    `json:"number"`
+		Title  string `json:"title"`
+	}
+	if err := json.Unmarshal(respBody, &issues); err != nil {
+		return 0, false, fmt.Errorf("forgejo: parse issue list: %w", err)
+	}
+	for _, i := range issues {
+		if strings.HasPrefix(i.Title, prefix) {
+			return i.Number, true, nil
+		}
+	}
+	return 0, false, nil
 }
