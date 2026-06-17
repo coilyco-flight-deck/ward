@@ -1,14 +1,20 @@
 // Ollama launcher for ward-kdl, mounted at `ward-kdl agents ollama`
-// (cli-guard execverb, exec dialect). The local-model sibling of the
-// `agents ui` ollama-* verbs (which proxy the tower's Ollama through Open
-// WebUI): this wraps the local `ollama` CLI directly, targeting OLLAMA_HOST
-// (localhost by default). Deny-by-default - only the safe read/run/pull
-// verbs mount. Destructive (rm, push, create, cp), the daemon (serve), and
-// registry auth (signin/signout) are intentionally not exposed, mirroring
-// the no-model-deletion choice in the open-webui guardfile.
+// (cli-guard execverb, exec dialect). Wraps the local `ollama` CLI but points
+// it at the tower's Ollama: OLLAMA_HOST is injected from SSM at exec time
+// (never committed - the tailnet host is opaque), so every verb targets the
+// tower's models, not localhost. The HTTP sibling is `agents ui` (Open WebUI's
+// ollama-* proxy). Deny-by-default - only the safe read/run/pull verbs mount.
+// Destructive (rm, push, create, cp), the daemon (serve), and registry auth
+// (signin/signout) are intentionally not exposed, mirroring the
+// no-model-deletion choice in the open-webui guardfile. The SSM prerequisite:
+//   /coilysiren/ollama/host - the tower Ollama URL, e.g. http://<host>:11434
 // See ../../docs/ward-kdl.ollama.guardfile.md.
 wrap ward-kdl agents ollama {
-    exec ollama
+    exec ollama {
+        env OLLAMA_HOST {
+            value ssm "/coilysiren/ollama/host"
+        }
+    }
     can run list {
         describe "list installed models"
     }

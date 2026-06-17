@@ -2,6 +2,8 @@
 
 Exec-dialect CLI. Every verb runs `ollama` with the granted subcommand (or its `argv` override) appended; the binary and its prefix are fixed and the caller can never substitute them.
 
+Env set on the process (resolved at exec time): `OLLAMA_HOST = ssm /coilysiren/ollama/host`.
+
 ## ward-kdl agents ollama list - list installed models
 
 `ollama list`
