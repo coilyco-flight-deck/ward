@@ -22,7 +22,7 @@ The contributor-facing cli-guard gate: a repo's dev verbs and audited host wrapp
 
 ## Spec-driven ops (`ward-kdl`)
 
-- **`ward-kdl ops <api> <verb>`** - guarded API verbs from KDL guardfiles (`specverb`): **forgejo** (Swagger 2.0, ward#109), **trello** (OpenAPI 3.0), **tailscale** (OpenAPI 3.1). Each `can` resolves its op by convention; denies teach, `restrict` scopes. Ships in ward's Homebrew formula, release-tag stamped (`ward-kdl --version`). See [docs/ops-forgejo.md](ops-forgejo.md).
+- **`ward-kdl ops <api> <verb>`** - guarded API verbs from KDL guardfiles (`specverb`): **forgejo** (Swagger 2.0), **trello** (OpenAPI 3.0), **tailscale**, and **open-webui** (both OpenAPI 3.1; open-webui is tailnet-only, host from SSM via `base-url { ssm }`). Each `can` resolves its op by convention; denies teach, `restrict` scopes. See [docs/ops-forgejo.md](ops-forgejo.md).
 
 ## Scripts
 

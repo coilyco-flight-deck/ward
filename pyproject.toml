@@ -19,6 +19,8 @@ excludes = [
   "cmd/ward-kdl/ward-kdl.trello.guardfile.md",
   "docs/ward-kdl.tailscale.guardfile.md",
   "cmd/ward-kdl/ward-kdl.tailscale.guardfile.md",
+  "docs/ward-kdl.open-webui.guardfile.md",
+  "cmd/ward-kdl/ward-kdl.open-webui.guardfile.md",
   # Embedded container agent doctrine: a ward binary asset (go:embed), not a
   # doc, and it must sit beside its package, so the markdown-location and size
   # caps do not apply. See docs/container.md.
