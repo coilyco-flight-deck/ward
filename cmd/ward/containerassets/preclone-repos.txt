@@ -20,8 +20,8 @@
 #            Cold-cloned into the gitcache on first use, then TTL-refreshed.
 #
 # This is the shared canonical set. The ansible local-sync
-# (infrastructure/scripts/clone-coilysiren-repos.sh) mirrors the same list.
-# The two are denormalized copies for now, not a single source of truth.
+# (infrastructure/scripts/clone-coilysiren-repos.sh) is meant to converge on the
+# same list (parity pending). The two stay denormalized copies, not one source.
 
 coilyco-flight-deck/agentic-os        image
 coilyco-flight-deck/cli-guard         image
