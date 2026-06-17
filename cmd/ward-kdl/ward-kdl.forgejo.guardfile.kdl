@@ -1,3 +1,8 @@
+// Forgejo ops surface for ward-kdl. Each `can` binds its own operationId; the
+// engine carries no expansion table. Hardened per ward#109: orgs and repos lose
+// their irreversible verbs, repo-label CRUD moves to org-labels, a cross-repo
+// issue search and a move-issue action land, and every path-{owner} leaf is
+// scoped to coily* owners. See ../../docs/ward-kdl.forgejo.guardfile.md.
 wrap ward-kdl ops forgejo {
     spec forgejo.swagger.v1.json
     base-url "forgejo.coilysiren.me/api/v1"
@@ -7,75 +12,83 @@ wrap ward-kdl ops forgejo {
         ssm "/forgejo/api-token"
     }
 
-    can read orgs
-    can list orgs
-    can create orgs
-    can delete orgs
+    // Scope gate: every leaf whose path carries {owner} must name a coily* owner.
+    restrict owner matches "coily*"
 
-    // labels and milestones: all-scalar bodies, pure expansion-table rows.
-    can read labels
-    can list labels
-    can create labels
-    can edit labels
-    can delete labels
+    // repos: read/create/edit/delete. Fork and the archive/unarchive toggles are
+    // denied - they are irreversible-enough surfaces a human should drive.
+    can get repo { op "repoGet" }
+    can list repo { op "repoSearch" }
+    can create repo { op "createCurrentUserRepo" }
+    can edit repo { op "repoEdit" }
+    can delete repo {
+        op "repoDelete"
+        describe "irreversible: deletes the repo and all its data"
+    }
+    never fork repo { message "forking is a human-only operation; fork in the web UI" }
+    never archive repo { message "archive/unarchive flips a repo's lifecycle; do it in the web UI" }
+    never unarchive repo { message "archive/unarchive flips a repo's lifecycle; do it in the web UI" }
 
-    can read milestones
-    can list milestones
-    can create milestones
-    can edit milestones
-    can delete milestones
+    // orgs: read-only. Org create and delete are human-only.
+    can get org { op "orgGet" }
+    can list org { op "orgGetAll" }
+    never create org { message "org creation is a human-only operation" }
+    never delete org { message "org deletion is irreversible and human-only" }
 
-    // issues: the array-body + query-param batch; close/reopen are
-    // fixed-body toggles, delete is the only destructive leaf.
-    can create issues
-    can list issues
-    can view issues
-    can edit issues
-    can comment issues
-    can close issues
-    can reopen issues
-    can delete issues
+    // org-labels: the label CRUD now targets org-level labels (/orgs/{org}/labels),
+    // not per-repo labels. Issue-label attach/set/remove stays below.
+    can get org-label { op "orgGetLabel" }
+    can list org-label { op "orgListLabels" }
+    can create org-label { op "orgCreateLabel" }
+    can edit org-label { op "orgEditLabel" }
+    can delete org-label { op "orgDeleteLabel" }
 
-    // releases: all-scalar; upload-asset (multipart) is a named follow-up.
-    can read releases
-    can list releases
-    can create releases
-    can edit releases
-    can delete releases
+    // milestones: all-scalar CRUD plus the close/reopen fixed-body toggles.
+    can get milestone { op "issueGetMilestone" }
+    can list milestone { op "issueGetMilestonesList" }
+    can create milestone { op "issueCreateMilestone" }
+    can edit milestone { op "issueEditMilestone" }
+    can delete milestone { op "issueDeleteMilestone" }
+    can close milestone { op "issueEditMilestone"; body state="closed" }
+    can reopen milestone { op "issueEditMilestone"; body state="open" }
 
-    // repos, second batch: search-list, sparse edit (nested objects ride
-    // --body-file), fork, and the archive/unarchive boolean toggles.
-    can list repos
-    can edit repos
-    can fork repos
-    can archive repos
-    can unarchive repos
+    // issues: the array-body + query-param group. close/reopen are fixed-body
+    // toggles; search is the cross-repo finder; delete is denied (close instead).
+    can get issue { op "issueGetIssue" }
+    can view issue { op "issueGetIssue" }
+    can list issue { op "issueListIssues" }
+    can search issue { op "issueSearchIssues" }
+    can create issue { op "issueCreateIssue" }
+    can edit issue { op "issueEditIssue" }
+    can comment issue { op "issueCreateComment" }
+    can close issue { op "issueEditIssue"; body state="closed" }
+    can reopen issue { op "issueEditIssue"; body state="open" }
+    never delete issue { message "issue deletion is irreversible; close it instead (move-issue does this)" }
 
-    // pulls stay read-only: pr create is policy-disabled (merge to main).
-    can read pulls
-    can list pulls
+    // releases, with the multipart asset upload placed beside them.
+    can get release { op "repoGetRelease" }
+    can list release { op "repoListReleases" }
+    can create release { op "repoCreateRelease" }
+    can edit release { op "repoEditRelease" }
+    can delete release { op "repoDeleteRelease" }
+    can upload-asset release { op "repoCreateReleaseAttachment" }
 
-    // actions tasks: the CI-run read surface.
-    can list tasks
+    // pulls: not surfaced through ward. Read them in the Forgejo web UI.
+    never view pr { message "pull requests are not exposed through ward; read them in the web UI" }
+    never list pr { message "pull requests are not exposed through ward; read them in the web UI" }
 
-    // ci-watch: the first complex action - poll the granted `list tasks` leaf
-    // until every job of one run reaches a terminal state, then exit non-zero
-    // if any failed. Replaces the poll loop in scripts/watch-ci.sh; the
-    // log-tail half stays in the script until a logs leaf lands (gitea#35176).
-    //
-    // `until` and `fail-when` are JMESPath, Community Edition (jmespath.site),
-    // evaluated against the polled response as the root. A `$name` is a bound
-    // input or `as` capture, supplied through the Community Edition's variable
-    // scope - baseline JMESPath (jmespath.org) has no `$variable` syntax, so
-    // these conditions are not portable to an original-spec evaluator.
-    //
-    // ListActionTasks returns the ActionTaskResponse wrapper
-    // ({total_count, workflow_runs:[...]}), not a bare array, so both
-    // conditions project `workflow_runs` first. Terminal states are
-    // success/failure/cancelled/skipped; anything else (unknown/waiting/
-    // running/blocked) keeps the loop going. `$run` binds only when --run is
-    // supplied; omitted, the condition naming it fails closed rather than
-    // looping on a null (latest-run defaulting is deferred - see ward#90).
+    // issue-labels: the API takes names or ids directly, no name->id pre-flight.
+    can list issue-label { op "issueGetLabels" }
+    can add issue-label { op "issueAddLabel" }
+    can set issue-label { op "issueReplaceLabels" }
+    can remove issue-label { op "issueRemoveLabel" }
+
+    // actions tasks: the CI-run read surface, plus the ci-watch poll action.
+    can list tasks { op "ListActionTasks" }
+
+    // ci-watch: poll the granted `list tasks` leaf until every job of one run
+    // reaches a terminal state, then exit non-zero if any failed. `until` and
+    // `fail-when` are JMESPath Community Edition; `$run` binds from --run.
     action ci-watch {
         describe "Watch a CI run to completion, then surface failing-job status."
         input repo { positional; required; help "owner/name" }
@@ -91,17 +104,31 @@ wrap ward-kdl ops forgejo {
             timeout "30m"
             as run_tasks
         }
-        // Filter failures to $run too: the listing window can hold terminal
-        // tasks from earlier runs, and an unfiltered match would fail spuriously.
         fail-when "length($run_tasks.workflow_runs[?run_number==$run && status=='failure']) > `0`"
     }
 
-    // issue-labels: the API takes names or ids directly, no pre-flight.
-    can list issue-labels
-    can add issue-labels
-    can set issue-labels
-    can remove issue-labels
-
-    // release assets: the multipart upload shape.
-    can upload release-assets
+    // move-issue: copy a source issue's title/body into a target repo, back-link
+    // the new issue on the source, then CLOSE the source - never delete it
+    // (consistent with `never delete issue`). Carrying labels/milestone needs
+    // array data-flow and is deferred; title/body move today.
+    action move-issue {
+        describe "Move an issue to another repo (copy title/body, back-link, close source). Never deletes."
+        input source { positional; required; help "source owner/name" }
+        input index  { positional; required; help "source issue number" }
+        input target { positional; required; help "target owner/name" }
+        call view issue {
+            args { owner-repo $source; index $index }
+            as src
+        }
+        call create issue {
+            args { owner-repo $target; title $src.title; body $src.body }
+            as dst
+        }
+        call comment issue {
+            args { owner-repo $source; index $index; body $dst.html_url }
+        }
+        call close issue {
+            args { owner-repo $source; index $index }
+        }
+    }
 }

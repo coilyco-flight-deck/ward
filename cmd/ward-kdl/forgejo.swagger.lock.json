@@ -5,23 +5,6 @@
     "text/plain"
   ],
   "definitions": {
-    "CreateForkOption": {
-      "description": "CreateForkOption options for creating a fork",
-      "properties": {
-        "name": {
-          "description": "name of the forked repository",
-          "type": "string",
-          "x-go-name": "Name"
-        },
-        "organization": {
-          "description": "organization name, if forking into an organization",
-          "type": "string",
-          "x-go-name": "Organization"
-        }
-      },
-      "type": "object",
-      "x-go-package": "forgejo.org/modules/structs"
-    },
     "CreateIssueCommentOption": {
       "description": "CreateIssueCommentOption options for creating a comment on an issue",
       "properties": {
@@ -163,54 +146,6 @@
       "type": "object",
       "x-go-package": "forgejo.org/modules/structs"
     },
-    "CreateOrgOption": {
-      "description": "CreateOrgOption options for creating an organization",
-      "properties": {
-        "description": {
-          "type": "string",
-          "x-go-name": "Description"
-        },
-        "email": {
-          "type": "string",
-          "x-go-name": "Email"
-        },
-        "full_name": {
-          "type": "string",
-          "x-go-name": "FullName"
-        },
-        "location": {
-          "type": "string",
-          "x-go-name": "Location"
-        },
-        "repo_admin_change_team_access": {
-          "type": "boolean",
-          "x-go-name": "RepoAdminChangeTeamAccess"
-        },
-        "username": {
-          "type": "string",
-          "x-go-name": "UserName"
-        },
-        "visibility": {
-          "description": "possible values are `public` (default), `limited` or `private`",
-          "enum": [
-            "public",
-            "limited",
-            "private"
-          ],
-          "type": "string",
-          "x-go-name": "Visibility"
-        },
-        "website": {
-          "type": "string",
-          "x-go-name": "Website"
-        }
-      },
-      "required": [
-        "username"
-      ],
-      "type": "object",
-      "x-go-package": "forgejo.org/modules/structs"
-    },
     "CreateReleaseOption": {
       "description": "CreateReleaseOption options when creating a release",
       "properties": {
@@ -245,6 +180,87 @@
       },
       "required": [
         "tag_name"
+      ],
+      "type": "object",
+      "x-go-package": "forgejo.org/modules/structs"
+    },
+    "CreateRepoOption": {
+      "description": "CreateRepoOption options when creating repository",
+      "properties": {
+        "auto_init": {
+          "description": "Whether the repository should be auto-initialized?",
+          "type": "boolean",
+          "x-go-name": "AutoInit"
+        },
+        "default_branch": {
+          "description": "DefaultBranch of the repository (used when initializes and in template)",
+          "type": "string",
+          "x-go-name": "DefaultBranch"
+        },
+        "description": {
+          "description": "Description of the repository to create",
+          "type": "string",
+          "x-go-name": "Description"
+        },
+        "gitignores": {
+          "description": "Gitignores to use",
+          "type": "string",
+          "x-go-name": "Gitignores"
+        },
+        "issue_labels": {
+          "description": "Label-Set to use",
+          "type": "string",
+          "x-go-name": "IssueLabels"
+        },
+        "license": {
+          "description": "License to use",
+          "type": "string",
+          "x-go-name": "License"
+        },
+        "name": {
+          "description": "Name of the repository to create",
+          "type": "string",
+          "uniqueItems": true,
+          "x-go-name": "Name"
+        },
+        "object_format_name": {
+          "description": "ObjectFormatName of the underlying git repository",
+          "enum": [
+            "sha1",
+            "sha256"
+          ],
+          "type": "string",
+          "x-go-name": "ObjectFormatName"
+        },
+        "private": {
+          "description": "Whether the repository is private",
+          "type": "boolean",
+          "x-go-name": "Private"
+        },
+        "readme": {
+          "description": "Readme of the repository to create",
+          "type": "string",
+          "x-go-name": "Readme"
+        },
+        "template": {
+          "description": "Whether the repository is template",
+          "type": "boolean",
+          "x-go-name": "Template"
+        },
+        "trust_model": {
+          "description": "TrustModel of the repository",
+          "enum": [
+            "default",
+            "collaborator",
+            "committer",
+            "collaboratorcommitter"
+          ],
+          "type": "string",
+          "x-go-name": "TrustModel"
+        }
+      },
+      "required": [
+        "name"
       ],
       "type": "object",
       "x-go-package": "forgejo.org/modules/structs"
@@ -695,70 +711,9 @@
         "tags": [
           "organization"
         ]
-      },
-      "post": {
-        "consumes": [
-          "application/json"
-        ],
-        "operationId": "orgCreate",
-        "parameters": [
-          {
-            "in": "body",
-            "name": "organization",
-            "required": true,
-            "schema": {
-              "$ref": "#/definitions/CreateOrgOption"
-            }
-          }
-        ],
-        "produces": [
-          "application/json"
-        ],
-        "responses": {
-          "201": {
-            "$ref": "#/responses/Organization"
-          },
-          "403": {
-            "$ref": "#/responses/forbidden"
-          },
-          "422": {
-            "$ref": "#/responses/validationError"
-          }
-        },
-        "summary": "Create an organization",
-        "tags": [
-          "organization"
-        ]
       }
     },
     "/orgs/{org}": {
-      "delete": {
-        "operationId": "orgDelete",
-        "parameters": [
-          {
-            "description": "organization that is to be deleted",
-            "in": "path",
-            "name": "org",
-            "required": true,
-            "type": "string"
-          }
-        ],
-        "produces": [
-          "application/json"
-        ],
-        "responses": {
-          "204": {
-            "$ref": "#/responses/empty"
-          },
-          "404": {
-            "$ref": "#/responses/notFound"
-          }
-        },
-        "summary": "Delete an organization",
-        "tags": [
-          "organization"
-        ]
-      },
       "get": {
         "operationId": "orgGet",
         "parameters": [
@@ -784,6 +739,381 @@
         "summary": "Get an organization",
         "tags": [
           "organization"
+        ]
+      }
+    },
+    "/orgs/{org}/labels": {
+      "get": {
+        "operationId": "orgListLabels",
+        "parameters": [
+          {
+            "description": "name of the organization",
+            "in": "path",
+            "name": "org",
+            "required": true,
+            "type": "string"
+          },
+          {
+            "description": "Specifies the sorting method: mostissues, leastissues, or reversealphabetically.",
+            "enum": [
+              "mostissues",
+              "leastissues",
+              "reversealphabetically"
+            ],
+            "in": "query",
+            "name": "sort",
+            "type": "string"
+          },
+          {
+            "description": "page number of results to return (1-based)",
+            "in": "query",
+            "name": "page",
+            "type": "integer"
+          },
+          {
+            "description": "page size of results",
+            "in": "query",
+            "name": "limit",
+            "type": "integer"
+          }
+        ],
+        "produces": [
+          "application/json"
+        ],
+        "responses": {
+          "200": {
+            "$ref": "#/responses/LabelList"
+          },
+          "404": {
+            "$ref": "#/responses/notFound"
+          }
+        },
+        "summary": "List an organization's labels",
+        "tags": [
+          "organization"
+        ]
+      },
+      "post": {
+        "consumes": [
+          "application/json"
+        ],
+        "operationId": "orgCreateLabel",
+        "parameters": [
+          {
+            "description": "name of the organization",
+            "in": "path",
+            "name": "org",
+            "required": true,
+            "type": "string"
+          },
+          {
+            "in": "body",
+            "name": "body",
+            "schema": {
+              "$ref": "#/definitions/CreateLabelOption"
+            }
+          }
+        ],
+        "produces": [
+          "application/json"
+        ],
+        "responses": {
+          "201": {
+            "$ref": "#/responses/Label"
+          },
+          "404": {
+            "$ref": "#/responses/notFound"
+          },
+          "422": {
+            "$ref": "#/responses/validationError"
+          }
+        },
+        "summary": "Create a label for an organization",
+        "tags": [
+          "organization"
+        ]
+      }
+    },
+    "/orgs/{org}/labels/{id}": {
+      "delete": {
+        "operationId": "orgDeleteLabel",
+        "parameters": [
+          {
+            "description": "name of the organization",
+            "in": "path",
+            "name": "org",
+            "required": true,
+            "type": "string"
+          },
+          {
+            "description": "id of the label to delete",
+            "format": "int64",
+            "in": "path",
+            "name": "id",
+            "required": true,
+            "type": "integer"
+          }
+        ],
+        "responses": {
+          "204": {
+            "$ref": "#/responses/empty"
+          },
+          "404": {
+            "$ref": "#/responses/notFound"
+          }
+        },
+        "summary": "Delete a label",
+        "tags": [
+          "organization"
+        ]
+      },
+      "get": {
+        "operationId": "orgGetLabel",
+        "parameters": [
+          {
+            "description": "name of the organization",
+            "in": "path",
+            "name": "org",
+            "required": true,
+            "type": "string"
+          },
+          {
+            "description": "id of the label to get",
+            "format": "int64",
+            "in": "path",
+            "name": "id",
+            "required": true,
+            "type": "integer"
+          }
+        ],
+        "produces": [
+          "application/json"
+        ],
+        "responses": {
+          "200": {
+            "$ref": "#/responses/Label"
+          },
+          "404": {
+            "$ref": "#/responses/notFound"
+          }
+        },
+        "summary": "Get a single label",
+        "tags": [
+          "organization"
+        ]
+      },
+      "patch": {
+        "consumes": [
+          "application/json"
+        ],
+        "operationId": "orgEditLabel",
+        "parameters": [
+          {
+            "description": "name of the organization",
+            "in": "path",
+            "name": "org",
+            "required": true,
+            "type": "string"
+          },
+          {
+            "description": "id of the label to edit",
+            "format": "int64",
+            "in": "path",
+            "name": "id",
+            "required": true,
+            "type": "integer"
+          },
+          {
+            "in": "body",
+            "name": "body",
+            "schema": {
+              "$ref": "#/definitions/EditLabelOption"
+            }
+          }
+        ],
+        "produces": [
+          "application/json"
+        ],
+        "responses": {
+          "200": {
+            "$ref": "#/responses/Label"
+          },
+          "404": {
+            "$ref": "#/responses/notFound"
+          },
+          "422": {
+            "$ref": "#/responses/validationError"
+          }
+        },
+        "summary": "Update a label",
+        "tags": [
+          "organization"
+        ]
+      }
+    },
+    "/repos/issues/search": {
+      "get": {
+        "operationId": "issueSearchIssues",
+        "parameters": [
+          {
+            "default": "open",
+            "description": "State of the issue",
+            "enum": [
+              "open",
+              "closed",
+              "all"
+            ],
+            "in": "query",
+            "name": "state",
+            "type": "string"
+          },
+          {
+            "description": "Comma-separated list of label names. Fetch only issues that have any of these labels. Non existent labels are discarded.",
+            "in": "query",
+            "name": "labels",
+            "type": "string"
+          },
+          {
+            "description": "Comma-separated list of milestone names. Fetch only issues that have any of these milestones. Non existent milestones are discarded.",
+            "in": "query",
+            "name": "milestones",
+            "type": "string"
+          },
+          {
+            "description": "Search string",
+            "in": "query",
+            "name": "q",
+            "type": "string"
+          },
+          {
+            "description": "Repository ID to prioritize in the results",
+            "format": "int64",
+            "in": "query",
+            "name": "priority_repo_id",
+            "type": "integer"
+          },
+          {
+            "description": "Filter by issue type",
+            "enum": [
+              "issues",
+              "pulls"
+            ],
+            "in": "query",
+            "name": "type",
+            "type": "string"
+          },
+          {
+            "description": "Only show issues updated after the given time (RFC 3339 format)",
+            "format": "date-time",
+            "in": "query",
+            "name": "since",
+            "type": "string"
+          },
+          {
+            "description": "Only show issues updated before the given time (RFC 3339 format)",
+            "format": "date-time",
+            "in": "query",
+            "name": "before",
+            "type": "string"
+          },
+          {
+            "default": false,
+            "description": "Filter issues or pulls assigned to the authenticated user",
+            "in": "query",
+            "name": "assigned",
+            "type": "boolean"
+          },
+          {
+            "default": false,
+            "description": "Filter issues or pulls created by the authenticated user",
+            "in": "query",
+            "name": "created",
+            "type": "boolean"
+          },
+          {
+            "default": false,
+            "description": "Filter issues or pulls mentioning the authenticated user",
+            "in": "query",
+            "name": "mentioned",
+            "type": "boolean"
+          },
+          {
+            "default": false,
+            "description": "Filter pull requests where the authenticated user's review was requested",
+            "in": "query",
+            "name": "review_requested",
+            "type": "boolean"
+          },
+          {
+            "default": false,
+            "description": "Filter pull requests reviewed by the authenticated user",
+            "in": "query",
+            "name": "reviewed",
+            "type": "boolean"
+          },
+          {
+            "description": "Filter by repository owner",
+            "in": "query",
+            "name": "owner",
+            "type": "string"
+          },
+          {
+            "description": "Filter by team (requires organization owner parameter)",
+            "in": "query",
+            "name": "team",
+            "type": "string"
+          },
+          {
+            "default": 1,
+            "description": "Page number of results to return (1-based)",
+            "in": "query",
+            "minimum": 1,
+            "name": "page",
+            "type": "integer"
+          },
+          {
+            "description": "Number of items per page",
+            "in": "query",
+            "minimum": 0,
+            "name": "limit",
+            "type": "integer"
+          },
+          {
+            "default": "latest",
+            "description": "Type of sort",
+            "enum": [
+              "relevance",
+              "latest",
+              "oldest",
+              "recentupdate",
+              "leastupdate",
+              "mostcomment",
+              "leastcomment",
+              "nearduedate",
+              "farduedate"
+            ],
+            "in": "query",
+            "name": "sort",
+            "type": "string"
+          }
+        ],
+        "produces": [
+          "application/json"
+        ],
+        "responses": {
+          "200": {
+            "$ref": "#/responses/IssueList"
+          },
+          "400": {
+            "$ref": "#/responses/error"
+          },
+          "422": {
+            "$ref": "#/responses/validationError"
+          }
+        },
+        "summary": "Search for issues across the repositories that the user has access to",
+        "tags": [
+          "issue"
         ]
       }
     },
@@ -931,6 +1261,77 @@
       }
     },
     "/repos/{owner}/{repo}": {
+      "delete": {
+        "operationId": "repoDelete",
+        "parameters": [
+          {
+            "description": "owner of the repo to delete",
+            "in": "path",
+            "name": "owner",
+            "required": true,
+            "type": "string"
+          },
+          {
+            "description": "name of the repo to delete",
+            "in": "path",
+            "name": "repo",
+            "required": true,
+            "type": "string"
+          }
+        ],
+        "produces": [
+          "application/json"
+        ],
+        "responses": {
+          "204": {
+            "$ref": "#/responses/empty"
+          },
+          "403": {
+            "$ref": "#/responses/forbidden"
+          },
+          "404": {
+            "$ref": "#/responses/notFound"
+          }
+        },
+        "summary": "Delete a repository",
+        "tags": [
+          "repository"
+        ]
+      },
+      "get": {
+        "operationId": "repoGet",
+        "parameters": [
+          {
+            "description": "owner of the repo",
+            "in": "path",
+            "name": "owner",
+            "required": true,
+            "type": "string"
+          },
+          {
+            "description": "name of the repo",
+            "in": "path",
+            "name": "repo",
+            "required": true,
+            "type": "string"
+          }
+        ],
+        "produces": [
+          "application/json"
+        ],
+        "responses": {
+          "200": {
+            "$ref": "#/responses/Repository"
+          },
+          "404": {
+            "$ref": "#/responses/notFound"
+          }
+        },
+        "summary": "Get a repository",
+        "tags": [
+          "repository"
+        ]
+      },
       "patch": {
         "operationId": "repoEdit",
         "parameters": [
@@ -1054,61 +1455,6 @@
           }
         },
         "summary": "List a repository's action tasks",
-        "tags": [
-          "repository"
-        ]
-      }
-    },
-    "/repos/{owner}/{repo}/forks": {
-      "post": {
-        "operationId": "createFork",
-        "parameters": [
-          {
-            "description": "owner of the repo to fork",
-            "in": "path",
-            "name": "owner",
-            "required": true,
-            "type": "string"
-          },
-          {
-            "description": "name of the repo to fork",
-            "in": "path",
-            "name": "repo",
-            "required": true,
-            "type": "string"
-          },
-          {
-            "in": "body",
-            "name": "body",
-            "schema": {
-              "$ref": "#/definitions/CreateForkOption"
-            }
-          }
-        ],
-        "produces": [
-          "application/json"
-        ],
-        "responses": {
-          "202": {
-            "$ref": "#/responses/Repository"
-          },
-          "403": {
-            "$ref": "#/responses/forbidden"
-          },
-          "404": {
-            "$ref": "#/responses/notFound"
-          },
-          "409": {
-            "description": "The repository with the same name already exists."
-          },
-          "413": {
-            "$ref": "#/responses/quotaExceeded"
-          },
-          "422": {
-            "$ref": "#/responses/validationError"
-          }
-        },
-        "summary": "Fork a repository",
         "tags": [
           "repository"
         ]
@@ -1311,48 +1657,6 @@
       }
     },
     "/repos/{owner}/{repo}/issues/{index}": {
-      "delete": {
-        "operationId": "issueDelete",
-        "parameters": [
-          {
-            "description": "owner of the repo",
-            "in": "path",
-            "name": "owner",
-            "required": true,
-            "type": "string"
-          },
-          {
-            "description": "name of the repo",
-            "in": "path",
-            "name": "repo",
-            "required": true,
-            "type": "string"
-          },
-          {
-            "description": "index of issue to delete",
-            "format": "int64",
-            "in": "path",
-            "name": "index",
-            "required": true,
-            "type": "integer"
-          }
-        ],
-        "responses": {
-          "204": {
-            "$ref": "#/responses/empty"
-          },
-          "403": {
-            "$ref": "#/responses/forbidden"
-          },
-          "404": {
-            "$ref": "#/responses/notFound"
-          }
-        },
-        "summary": "Delete an issue",
-        "tags": [
-          "issue"
-        ]
-      },
       "get": {
         "operationId": "issueGetIssue",
         "parameters": [
@@ -1735,250 +2039,6 @@
         ]
       }
     },
-    "/repos/{owner}/{repo}/labels": {
-      "get": {
-        "operationId": "issueListLabels",
-        "parameters": [
-          {
-            "description": "owner of the repo",
-            "in": "path",
-            "name": "owner",
-            "required": true,
-            "type": "string"
-          },
-          {
-            "description": "name of the repo",
-            "in": "path",
-            "name": "repo",
-            "required": true,
-            "type": "string"
-          },
-          {
-            "description": "Specifies the sorting method: mostissues, leastissues, or reversealphabetically.",
-            "enum": [
-              "mostissues",
-              "leastissues",
-              "reversealphabetically"
-            ],
-            "in": "query",
-            "name": "sort",
-            "type": "string"
-          },
-          {
-            "description": "page number of results to return (1-based)",
-            "in": "query",
-            "name": "page",
-            "type": "integer"
-          },
-          {
-            "description": "page size of results",
-            "in": "query",
-            "name": "limit",
-            "type": "integer"
-          }
-        ],
-        "produces": [
-          "application/json"
-        ],
-        "responses": {
-          "200": {
-            "$ref": "#/responses/LabelList"
-          },
-          "404": {
-            "$ref": "#/responses/notFound"
-          }
-        },
-        "summary": "Get all of a repository's labels",
-        "tags": [
-          "issue"
-        ]
-      },
-      "post": {
-        "consumes": [
-          "application/json"
-        ],
-        "operationId": "issueCreateLabel",
-        "parameters": [
-          {
-            "description": "owner of the repo",
-            "in": "path",
-            "name": "owner",
-            "required": true,
-            "type": "string"
-          },
-          {
-            "description": "name of the repo",
-            "in": "path",
-            "name": "repo",
-            "required": true,
-            "type": "string"
-          },
-          {
-            "in": "body",
-            "name": "body",
-            "schema": {
-              "$ref": "#/definitions/CreateLabelOption"
-            }
-          }
-        ],
-        "produces": [
-          "application/json"
-        ],
-        "responses": {
-          "201": {
-            "$ref": "#/responses/Label"
-          },
-          "404": {
-            "$ref": "#/responses/notFound"
-          },
-          "422": {
-            "$ref": "#/responses/validationError"
-          }
-        },
-        "summary": "Create a label",
-        "tags": [
-          "issue"
-        ]
-      }
-    },
-    "/repos/{owner}/{repo}/labels/{id}": {
-      "delete": {
-        "operationId": "issueDeleteLabel",
-        "parameters": [
-          {
-            "description": "owner of the repo",
-            "in": "path",
-            "name": "owner",
-            "required": true,
-            "type": "string"
-          },
-          {
-            "description": "name of the repo",
-            "in": "path",
-            "name": "repo",
-            "required": true,
-            "type": "string"
-          },
-          {
-            "description": "id of the label to delete",
-            "format": "int64",
-            "in": "path",
-            "name": "id",
-            "required": true,
-            "type": "integer"
-          }
-        ],
-        "responses": {
-          "204": {
-            "$ref": "#/responses/empty"
-          },
-          "404": {
-            "$ref": "#/responses/notFound"
-          }
-        },
-        "summary": "Delete a label",
-        "tags": [
-          "issue"
-        ]
-      },
-      "get": {
-        "operationId": "issueGetLabel",
-        "parameters": [
-          {
-            "description": "owner of the repo",
-            "in": "path",
-            "name": "owner",
-            "required": true,
-            "type": "string"
-          },
-          {
-            "description": "name of the repo",
-            "in": "path",
-            "name": "repo",
-            "required": true,
-            "type": "string"
-          },
-          {
-            "description": "id of the label to get",
-            "format": "int64",
-            "in": "path",
-            "name": "id",
-            "required": true,
-            "type": "integer"
-          }
-        ],
-        "produces": [
-          "application/json"
-        ],
-        "responses": {
-          "200": {
-            "$ref": "#/responses/Label"
-          },
-          "404": {
-            "$ref": "#/responses/notFound"
-          }
-        },
-        "summary": "Get a single label",
-        "tags": [
-          "issue"
-        ]
-      },
-      "patch": {
-        "consumes": [
-          "application/json"
-        ],
-        "operationId": "issueEditLabel",
-        "parameters": [
-          {
-            "description": "owner of the repo",
-            "in": "path",
-            "name": "owner",
-            "required": true,
-            "type": "string"
-          },
-          {
-            "description": "name of the repo",
-            "in": "path",
-            "name": "repo",
-            "required": true,
-            "type": "string"
-          },
-          {
-            "description": "id of the label to edit",
-            "format": "int64",
-            "in": "path",
-            "name": "id",
-            "required": true,
-            "type": "integer"
-          },
-          {
-            "in": "body",
-            "name": "body",
-            "schema": {
-              "$ref": "#/definitions/EditLabelOption"
-            }
-          }
-        ],
-        "produces": [
-          "application/json"
-        ],
-        "responses": {
-          "200": {
-            "$ref": "#/responses/Label"
-          },
-          "404": {
-            "$ref": "#/responses/notFound"
-          },
-          "422": {
-            "$ref": "#/responses/validationError"
-          }
-        },
-        "summary": "Update a label",
-        "tags": [
-          "issue"
-        ]
-      }
-    },
     "/repos/{owner}/{repo}/milestones": {
       "get": {
         "operationId": "issueGetMilestonesList",
@@ -2215,158 +2275,6 @@
         "summary": "Update a milestone",
         "tags": [
           "issue"
-        ]
-      }
-    },
-    "/repos/{owner}/{repo}/pulls": {
-      "get": {
-        "operationId": "repoListPullRequests",
-        "parameters": [
-          {
-            "description": "Owner of the repo",
-            "in": "path",
-            "name": "owner",
-            "required": true,
-            "type": "string"
-          },
-          {
-            "description": "Name of the repo",
-            "in": "path",
-            "name": "repo",
-            "required": true,
-            "type": "string"
-          },
-          {
-            "default": "open",
-            "description": "State of pull request",
-            "enum": [
-              "open",
-              "closed",
-              "all"
-            ],
-            "in": "query",
-            "name": "state",
-            "type": "string"
-          },
-          {
-            "description": "Type of sort",
-            "enum": [
-              "oldest",
-              "recentupdate",
-              "recentclose",
-              "leastupdate",
-              "mostcomment",
-              "leastcomment",
-              "priority"
-            ],
-            "in": "query",
-            "name": "sort",
-            "type": "string"
-          },
-          {
-            "description": "ID of the milestone",
-            "format": "int64",
-            "in": "query",
-            "name": "milestone",
-            "type": "integer"
-          },
-          {
-            "collectionFormat": "multi",
-            "description": "Label IDs",
-            "in": "query",
-            "items": {
-              "format": "int64",
-              "type": "integer"
-            },
-            "name": "labels",
-            "type": "array"
-          },
-          {
-            "description": "Filter by pull request author",
-            "in": "query",
-            "name": "poster",
-            "type": "string"
-          },
-          {
-            "default": 1,
-            "description": "Page number of results to return (1-based)",
-            "in": "query",
-            "minimum": 1,
-            "name": "page",
-            "type": "integer"
-          },
-          {
-            "description": "Page size of results",
-            "in": "query",
-            "minimum": 0,
-            "name": "limit",
-            "type": "integer"
-          }
-        ],
-        "produces": [
-          "application/json"
-        ],
-        "responses": {
-          "200": {
-            "$ref": "#/responses/PullRequestList"
-          },
-          "400": {
-            "$ref": "#/responses/error"
-          },
-          "404": {
-            "$ref": "#/responses/notFound"
-          },
-          "500": {
-            "$ref": "#/responses/error"
-          }
-        },
-        "summary": "List a repo's pull requests. If a pull request is selected but fails to be retrieved for any reason, it will be a null value in the list of results.",
-        "tags": [
-          "repository"
-        ]
-      }
-    },
-    "/repos/{owner}/{repo}/pulls/{index}": {
-      "get": {
-        "operationId": "repoGetPullRequest",
-        "parameters": [
-          {
-            "description": "owner of the repo",
-            "in": "path",
-            "name": "owner",
-            "required": true,
-            "type": "string"
-          },
-          {
-            "description": "name of the repo",
-            "in": "path",
-            "name": "repo",
-            "required": true,
-            "type": "string"
-          },
-          {
-            "description": "index of the pull request to get",
-            "format": "int64",
-            "in": "path",
-            "name": "index",
-            "required": true,
-            "type": "integer"
-          }
-        ],
-        "produces": [
-          "application/json"
-        ],
-        "responses": {
-          "200": {
-            "$ref": "#/responses/PullRequest"
-          },
-          "404": {
-            "$ref": "#/responses/notFound"
-          }
-        },
-        "summary": "Get a pull request",
-        "tags": [
-          "repository"
         ]
       }
     },
@@ -2693,6 +2601,54 @@
         "summary": "Create a release attachment",
         "tags": [
           "repository"
+        ]
+      }
+    },
+    "/user/repos": {
+      "post": {
+        "consumes": [
+          "application/json"
+        ],
+        "operationId": "createCurrentUserRepo",
+        "parameters": [
+          {
+            "in": "body",
+            "name": "body",
+            "schema": {
+              "$ref": "#/definitions/CreateRepoOption"
+            }
+          }
+        ],
+        "produces": [
+          "application/json"
+        ],
+        "responses": {
+          "201": {
+            "$ref": "#/responses/Repository"
+          },
+          "400": {
+            "$ref": "#/responses/error"
+          },
+          "401": {
+            "$ref": "#/responses/unauthorized"
+          },
+          "403": {
+            "$ref": "#/responses/forbidden"
+          },
+          "409": {
+            "description": "The repository with the same name already exists."
+          },
+          "413": {
+            "$ref": "#/responses/quotaExceeded"
+          },
+          "422": {
+            "$ref": "#/responses/validationError"
+          }
+        },
+        "summary": "Create a repository",
+        "tags": [
+          "repository",
+          "user"
         ]
       }
     }
