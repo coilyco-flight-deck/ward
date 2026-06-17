@@ -25,4 +25,5 @@ repos:
   - repo: https://github.com/hougesen/kdlfmt
     rev: v0.1.7
     hooks:
+      - id: kdlfmt-format
       - id: kdlfmt-check
