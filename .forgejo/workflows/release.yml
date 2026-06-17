@@ -104,19 +104,23 @@ jobs:
       - name: Bump tap formula and push
         run: |
           set -eu
-          # Resolve the tagged revision without a JS checkout action.
-          git clone --no-checkout --depth 1 --branch "$TAG" \
-            "$FORGEJO_BASE_URL/$WARD_REPO.git" ward-src
-          revision=$(git -C ward-src rev-parse HEAD)
+          # Source the release as a tarball, not a git tag+revision: Homebrew's
+          # git download strategy moves .git out during staging and then can't read
+          # the commit time, dying with `ArgumentError: no time information in ""`.
+          # Forgejo serves a stable archive per tag, so pin its sha256. See ward#116.
+          tarball_url="$FORGEJO_BASE_URL/${WARD_REPO}/archive/${TAG}.tar.gz"
+          if command -v sha256sum >/dev/null 2>&1; then sha_cmd="sha256sum"; else sha_cmd="shasum -a 256"; fi
+          sha256=$(curl -fsSL "$tarball_url" | $sha_cmd | awk '{print $1}')
 
           # Clone the tap's live main and patch on top, so any non-version
           # edits (build flags, test logic) survive.
           git clone --depth 1 "$FORGEJO_BASE_URL/$TAP_REPO.git" tap
           cd tap
-          new_line="  url \"$FORGEJO_BASE_URL/${WARD_REPO}.git\", tag: \"${TAG}\", revision: \"${revision}\""
-          # awk so the URL's special chars don't need sed escaping.
-          awk -v repl="$new_line" '
-            /^  url "/ && !done { print repl; done = 1; next }
+          # Replace the url line with the tarball url + its sha256, dropping any
+          # existing sha256 line so re-runs stay idempotent.
+          awk -v url="  url \"$tarball_url\"" -v sha="  sha256 \"$sha256\"" '
+            /^  url "/ && !done { print url; print sha; done = 1; next }
+            /^  sha256 "/ { next }
             { print }
           ' "$FORMULA_PATH" > "$FORMULA_PATH.new"
           mv "$FORMULA_PATH.new" "$FORMULA_PATH"
