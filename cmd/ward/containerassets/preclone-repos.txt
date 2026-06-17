@@ -29,6 +29,5 @@ coilyco-flight-deck/infrastructure    image
 coilyco-flight-deck/ward              image
 coilysiren/coilysiren                 image
 coilyco-bridge/agentic-os-kai         cache
-coilyco-bridge/coily                  cache
 coilyco-bridge/deploy                 cache
 coilyco-bridge/lore                   cache
