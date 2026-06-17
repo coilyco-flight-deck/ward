@@ -20,11 +20,11 @@ wrap ward-kdl ops tailscale {
     can get device
     never delete device { message "removing a device from the tailnet is disruptive; do it in the admin console" }
 
-    // policy file (ACL): read and write. It is a singleton at /tailnet/{tailnet}/acl
-    // (GET to read, POST to write) - the path says `acl`, not `policy`, and there is
-    // no {id}, so no structural convention reaches it. These two keep an explicit op.
-    can get policy { op "getPolicyFile" }
-    can set policy { op "setPolicyFile" }
+    // policy file (ACL): read and write. The path is /tailnet/{tailnet}/acl, so no
+    // structural convention reaches it - both resolve via the operationId fallback
+    // (getPolicyFile / setPolicyFile carry the `policy` word).
+    can get policy
+    can set policy
 
     // auth keys: list/create/revoke. Revoking a key (delete) is reversible enough
     // (mint a new one), so it stays allowed.
