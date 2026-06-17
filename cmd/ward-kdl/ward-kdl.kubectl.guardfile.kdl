@@ -1,0 +1,75 @@
+// ward-kdl ops kubectl - host-native kubectl as an allowlist (cli-guard
+// execverb, exec dialect). Wraps the local `kubectl` against the active
+// kubeconfig (kai-server k3s over the tailnet); the binary is fixed at parse,
+// so the caller can never substitute it. Deny-by-default: only the read verbs
+// and the friendly deploy surface (apply / scale / rollout) mount. Destructive
+// and shell-equivalent verbs (delete, drain/cordon, edit, patch, replace,
+// exec, attach, cp, port-forward) are intentionally left unexposed - they fall
+// to the host lockdown's bare-kubectl deny, mirroring the no-deletion choice in
+// the ollama and open-webui guardfiles. Every grant audit-logs through ward.
+// See ../../docs/ward-kdl.kubectl.guardfile.md.
+wrap ward-kdl ops kubectl {
+    exec kubectl
+    // reads - cluster and workload inspection
+    can run get {
+        describe "list/show resources; pass type + name as args"
+    }
+    can run describe {
+        describe "detailed resource state; pass type + name"
+    }
+    can run logs {
+        describe "pod/container logs; -f to follow, --previous for prior"
+    }
+    can run events {
+        describe "cluster events; --for to scope to a resource"
+    }
+    can run top {
+        describe "resource usage; pass `pod` or `node`"
+    }
+    can run explain {
+        describe "schema docs for a resource type"
+    }
+    can run api-resources {
+        describe "list served resource types"
+    }
+    can run api-versions {
+        describe "list served API group/versions"
+    }
+    can run cluster-info {
+        describe "control-plane + addon endpoints"
+    }
+    can run version {
+        describe "client + server version"
+    }
+    can run "config current-context" {
+        describe "name of the active kubeconfig context"
+    }
+    can run "config get-contexts" {
+        describe "list kubeconfig contexts (no secrets)"
+    }
+    // deploy surface - the friendly write verbs, all audit-logged
+    can run apply {
+        describe "apply manifests; -f <file> or -k <kustomize dir>"
+    }
+    can run scale {
+        describe "set replica count on a workload"
+    }
+    can run "rollout status" {
+        describe "watch a rollout to completion"
+    }
+    can run "rollout restart" {
+        describe "trigger a rolling restart"
+    }
+    can run "rollout history" {
+        describe "revision history for a workload"
+    }
+    can run "rollout undo" {
+        describe "roll a workload back to a prior revision"
+    }
+    // intentionally unexposed - destructive or shell-equivalent
+    never run delete
+    never run exec
+    never run drain
+    never run edit
+    never run patch
+}

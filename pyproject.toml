@@ -33,6 +33,8 @@ excludes = [
   "cmd/ward-kdl/ward-kdl.goose.guardfile.md",
   "docs/ward-kdl.ollama.guardfile.md",
   "cmd/ward-kdl/ward-kdl.ollama.guardfile.md",
+  "docs/ward-kdl.kubectl.guardfile.md",
+  "cmd/ward-kdl/ward-kdl.kubectl.guardfile.md",
   # Embedded container agent doctrine: a ward binary asset (go:embed), not a
   # doc, and it must sit beside its package, so the markdown-location and size
   # caps do not apply. See docs/container.md.
