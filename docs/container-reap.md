@@ -45,6 +45,25 @@ The agent's job is to make the reaper's job trivial: finish the feature, push to
 `main` itself, leave a clean tree. The reaper is the backstop that makes the
 guarantee real *without depending on the agent having done so*.
 
+## Operator note: don't rotate the Forgejo PAT mid-run
+
+The container's `FORGEJO_TOKEN` is a snapshot of `/forgejo/api-token` baked in at
+`ward container up` time and frozen for the container's life - the reaper reuses
+it directly and never re-resolves from SSM (by design, to keep the container off
+the AWS/SSM surface). So **rotating or revoking the Forgejo PAT while a container
+is in flight** leaves that container carrying a dead token: its final push to
+`main` fails on auth, routes to salvage, the salvage branch push fails on the
+same dead token, and the work falls through to the container-log recovery path
+(`docker logs <name>` before `ward container down`). Work is preserved but
+recovery is manual. Before rotating the PAT, run `ward container ls` and
+reap/down any in-flight containers first, or be ready to recover them from
+`docker logs`. Distinguishing this auth-cause salvage from a genuine conflict
+salvage is tracked in
+[ward#103](https://forgejo.coilysiren.me/coilyco-flight-deck/ward/issues/103).
+
+Host AWS/STS credential expiry is **not** a concern here: AWS is touched only on
+the host at `up` time to read the PAT from SSM, never during `exec` or reap.
+
 ## See also
 
 [docs/container.md](container.md) - the container subsystem.
