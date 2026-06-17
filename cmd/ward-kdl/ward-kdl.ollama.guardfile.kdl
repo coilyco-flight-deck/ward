@@ -1,0 +1,33 @@
+// Ollama launcher for ward-kdl, mounted at `ward-kdl agents ollama`
+// (cli-guard execverb, exec dialect). The local-model sibling of the
+// `agents ui` ollama-* verbs (which proxy the tower's Ollama through Open
+// WebUI): this wraps the local `ollama` CLI directly, targeting OLLAMA_HOST
+// (localhost by default). Deny-by-default - only the safe read/run/pull
+// verbs mount. Destructive (rm, push, create, cp), the daemon (serve), and
+// registry auth (signin/signout) are intentionally not exposed, mirroring
+// the no-model-deletion choice in the open-webui guardfile.
+// See ../../docs/ward-kdl.ollama.guardfile.md.
+wrap ward-kdl agents ollama {
+    exec ollama
+    can run list {
+        describe "list installed models"
+    }
+    can run ps {
+        describe "list running models"
+    }
+    can run show {
+        describe "show a model's info; pass the model name as args"
+    }
+    can run run {
+        describe "run a model: interactive, or one-shot with a prompt arg"
+    }
+    can run pull {
+        describe "pull a model from the registry; pass the model name"
+    }
+    can run stop {
+        describe "stop a running model; pass the model name"
+    }
+    can run version {
+        describe "print the Ollama version"
+    }
+}
