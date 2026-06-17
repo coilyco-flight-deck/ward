@@ -7,13 +7,15 @@ wrap ward-kdl ops trello {
     spec trello.openapi.json
     base-url "api.trello.com/1"
     auth query-param {
-        param key { ssm "/trello/api-key" }
-        param token { ssm "/trello/api-token" }
+        param key {
+            ssm "/trello/api-key"
+        }
+        param token {
+            ssm "/trello/api-token"
+        }
     }
-
     // No restrict clause: Trello path params are opaque board/card/list ids with
     // no scopeable shape (unlike Forgejo's {owner}), so a glob gate is meaningless.
-
     // boards: read/create/edit, plus the lists/cards a board holds. Board deletion
     // is denied. list-lists/list-cards read the board's sub-collections.
     can get board
@@ -21,13 +23,13 @@ wrap ward-kdl ops trello {
     can edit board
     can list-lists board
     can list-cards board
-    never delete board { message "board deletion is irreversible; delete it in the Trello UI" }
-
+    never delete board {
+        message "board deletion is irreversible; delete it in the Trello UI"
+    }
     // lists: read and create (standalone, and onto a board via create-on-board).
     can get list
     can create list
     can create-on-board list
-
     // cards: full read/create/edit/delete plus the comment action (comment posts
     // the card's comments sub-collection).
     can get card

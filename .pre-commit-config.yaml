@@ -19,3 +19,10 @@ repos:
       - id: agent-compose-dedup
       - id: trufflehog
   # END managed by agentic-os/scripts/apply-agentic-os-hooks.py
+
+  # kdlfmt check: gate the ward-kdl guardfiles on kdlfmt's format. The hook is
+  # `language: system`, so it needs kdlfmt on PATH (`brew install hougesen/tap/kdlfmt`).
+  - repo: https://github.com/hougesen/kdlfmt
+    rev: v0.1.7
+    hooks:
+      - id: kdlfmt-check
