@@ -1,0 +1,32 @@
+// Tailscale ops surface for ward-kdl, driving the vendored tailscale.openapi.yaml
+// (OpenAPI 3.1, YAML). Path params arrive as $refs into components/parameters and
+// the ACL body rides requestBody (json + hujson). Auth is the bearer scheme.
+// See ../../docs/ward-kdl.tailscale.guardfile.md.
+wrap ward-kdl ops tailscale {
+    spec tailscale.openapi.yaml
+    base-url "api.tailscale.com/api/v2"
+    auth bearer { ssm "/tailscale/api-key" }
+
+    // Scope gate: every tailnet-scoped leaf must name a coily* tailnet, never
+    // another org's by name. Widen this glob if the tailnet is renamed. (The API
+    // also accepts "-" for the default tailnet, but a bare "-" positional trips
+    // the CLI flag parser, so name the tailnet explicitly.)
+    restrict tailnet matches "coily*"
+
+    // devices: list and inspect. Deletion is denied - removing a device from the
+    // tailnet is disruptive and human-only.
+    can list devices { op "listTailnetDevices" }
+    can get device { op "getDevice" }
+    never delete device { message "removing a device from the tailnet is disruptive; do it in the admin console" }
+
+    // policy file (ACL): read and write. setPolicyFile takes json or hujson.
+    can get policy { op "getPolicyFile" }
+    can set policy { op "setPolicyFile" }
+
+    // auth keys: list/create/revoke. Revoking a key (delete) is reversible enough
+    // (mint a new one), so it stays allowed.
+    can list keys { op "listTailnetKeys" }
+    can get keys { op "getKey" }
+    can create keys { op "createKey" }
+    can delete keys { op "deleteKey" }
+}

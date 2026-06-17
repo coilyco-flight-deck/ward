@@ -1,0 +1,1283 @@
+{
+  "components": {
+    "examples": {
+      "ExampleHuJSONPolicyFile": {
+        "summary": "HuJSON policy file",
+        "value": "// Example/default ACLs for unrestricted connections.\n{\n  // Declare static groups of users beyond those in the identity service.\n  \"groups\": {\n    \"group:example\": [\"user1@example.com\", \"user2@example.com\"],\n  },\n\n  // Declare convenient hostname aliases to use in place of IP addresses.\n  \"hosts\": {\n    \"example-host-1\": \"100.100.100.100\",\n  },\n\n  // Access control lists.\n  \"acls\": [\n    // Match absolutely everything.\n      // Comment this section out if you want to define specific restrictions.\n    {\"action\": \"accept\", \"src\": [\"*\"], \"dst\": [\"*:*\"]},\n  ],\n}\n"
+      },
+      "ExampleJSONPolicyFile": {
+        "summary": "JSON policy file",
+        "value": {
+          "acls": [
+            {
+              "action": "accept",
+              "ports": [
+                "*:*"
+              ],
+              "users": [
+                "*"
+              ]
+            }
+          ],
+          "groups": {
+            "group:example": [
+              "user1@example.com",
+              "user2@example.com"
+            ]
+          },
+          "hosts": {
+            "example-host-1": "100.100.100.100"
+          }
+        }
+      }
+    },
+    "parameters": {
+      "AcceptHeaderParam": {
+        "description": "Response is encoded as JSON if `application/json` is requested, otherwise HuJSON will be returned.",
+        "in": "header",
+        "name": "Accept",
+        "schema": {
+          "type": "string"
+        }
+      },
+      "all": {
+        "description": "If set to true, this will return all auth keys, API access tokens and OAuth clients for the tailnet.",
+        "in": "query",
+        "name": "all",
+        "required": true,
+        "schema": {
+          "example": true,
+          "type": "boolean"
+        }
+      },
+      "deviceId": {
+        "description": "ID of the device. Using the device's `nodeId` is preferred, but its numeric `id` value can also be used.\n",
+        "in": "path",
+        "name": "deviceId",
+        "required": true,
+        "schema": {
+          "type": "string"
+        }
+      },
+      "fields": {
+        "description": "Optionally controls whether the response returns **all** fields or only a predefined subset of fields.\nCurrently, there are two supported options:\n\n- **`all`:** return all fields in the response\n- **`default`:** return the following fields\n  - `addresses`\n  - `id`\n  - `nodeId`\n  - `user`\n  - `name`\n  - `hostname`\n  - `clientVersion`\n  - `updateAvailable`\n  - `os`\n  - `created`\n  - `connectedToControl`\n  - `lastSeen`\n  - `keyExpiryDisabled`\n  - `expires`\n  - `authorized`\n  - `isExternal`\n  - `machineKey`\n  - `nodeKey`\n  - `blocksIncomingConnections`\n  - `tailnetLockKey`\n  - `tailnetLockError`\n  - `tags`\n  - `isEphemeral`\n\nIf the `fields` parameter is not supplied, then the default (limited fields) option is used.\n",
+        "in": "query",
+        "name": "fields",
+        "schema": {
+          "enum": [
+            "all",
+            "default"
+          ],
+          "example": "all",
+          "type": "string"
+        }
+      },
+      "keyId": {
+        "description": "The id of the key.\nThe key ID can be found in the [admin console](https://login.tailscale.com/admin/settings/keys).\n",
+        "in": "path",
+        "name": "keyId",
+        "required": true,
+        "schema": {
+          "example": "k123456CNTRL",
+          "type": "string"
+        }
+      },
+      "tailnet": {
+        "description": "The tailnet ID. \n\nTailnets created before Oct 2025 can still use the legacy ID, but the Tailnet ID is the preferred identifier.\n\nWhen specifying a tailnet in the API, you can:\n\n- Provide a dash (`-`) to reference the default tailnet of the access token being used to make the API call.\n  This is the best option for most users.\n  Your API calls would start:\n\n  ```sh\n  curl \"https://api.tailscale.com/api/v2/tailnet/-/...\"\n  ```\n\n- Provide the **tailnet ID** found on the **[General Settings](https://login.tailscale.com/admin/settings/general)**\n  page of the Tailscale admin console.\n\n  For example, if your tailnet ID name is `T1234CNTRL`, your API calls would start:\n\n  ```sh\n  curl \"https://api.tailscale.com/api/v2/tailnet/T1234CNTRL/...\"\n  ```\n\n  Learn more about [tailnet ID](https://tailscale.com/kb/1217/tailnet-name#tailnet-id).\n",
+        "in": "path",
+        "name": "tailnet",
+        "required": true,
+        "schema": {
+          "example": "example.com",
+          "type": "string"
+        }
+      }
+    },
+    "responses": {
+      "400": {
+        "content": {
+          "application/json": {
+            "schema": {
+              "$ref": "#/components/schemas/Error"
+            }
+          }
+        },
+        "description": "Bad request."
+      },
+      "403": {
+        "content": {
+          "application/json": {
+            "schema": {
+              "$ref": "#/components/schemas/Error"
+            }
+          }
+        },
+        "description": "Forbidden."
+      },
+      "404": {
+        "content": {
+          "application/json": {
+            "schema": {
+              "$ref": "#/components/schemas/Error"
+            }
+          }
+        },
+        "description": "Not found."
+      },
+      "500": {
+        "content": {
+          "application/json": {
+            "schema": {
+              "$ref": "#/components/schemas/Error"
+            }
+          }
+        },
+        "description": "Internal server error."
+      },
+      "504": {
+        "content": {
+          "application/json": {
+            "schema": {
+              "$ref": "#/components/schemas/Error"
+            }
+          }
+        },
+        "description": "Gateway timeout."
+      }
+    },
+    "schemas": {
+      "Device": {
+        "description": "A Tailscale device (sometimes referred to as *node* or *machine*), is any computer or mobile device that joins a tailnet.\n\nEach device has a unique ID (`nodeId` in the schema below) that is used to identify the device in API calls.\nThis ID can be found by going to the [Machines](https://login.tailscale.com/admin/machines) page in the admin console,\nselecting the relevant device, then finding the ID in the Machine Details section.\nYou can also [list all devices](#tag/devices/get/tailnet/{tailnet}/devices) in the tailnet to get their `nodeId` values.\n",
+        "properties": {
+          "addresses": {
+            "description": "A list of Tailscale IP addresses for the device,\nincluding both IPv4 (formatted as 100.x.y.z)\nand IPv6 (formatted as fd7a:115c:a1e0:a:b:c:d:e) addresses.\n",
+            "example": [
+              "100.87.74.78",
+              "fd7a:115c:a1e0:ac82:4843:ca90:697d:c36e"
+            ],
+            "items": {
+              "type": "string"
+            },
+            "type": "array"
+          },
+          "advertisedRoutes": {
+            "description": "The subnets this device requests to expose.\nLearn more about subnet routes at https://tailscale.com/kb/1019/.\n",
+            "example": [
+              "10.0.0.0/16",
+              "192.168.1.0/24"
+            ],
+            "items": {
+              "type": "string"
+            },
+            "type": "array"
+          },
+          "authorized": {
+            "description": "'true' if the device has been authorized to join the tailnet; otherwise, 'false'.\nLearn more about device authorization at https://tailscale.com/kb/1099/.\n",
+            "example": false,
+            "type": "boolean"
+          },
+          "blocksIncomingConnections": {
+            "description": "'true' if the device is not allowed to accept any connections over Tailscale, including pings.\nLearn more in the \"Allow incoming connections\" section of https://tailscale.com/kb/1072/.\n",
+            "example": false,
+            "type": "boolean"
+          },
+          "clientConnectivity": {
+            "description": "clientConnectivity provides a report on the device's current physical network conditions.\n",
+            "example": {
+              "clientSupports": {
+                "hairPinning": null,
+                "ipv6": false,
+                "pcp": false,
+                "pmp": false,
+                "udp": false,
+                "upnp": false
+              },
+              "endpoints": [
+                "199.9.14.201:59128",
+                "192.68.0.21:59128"
+              ],
+              "latency": {
+                "Dallas": {
+                  "latencyMs": 60.463043
+                },
+                "New York City": {
+                  "latencyMs": 31.323811,
+                  "preferred": true
+                }
+              },
+              "mappingVariesByDestIP": false
+            },
+            "properties": {
+              "clientSupports": {
+                "description": "Identifies features supported by the client.\n",
+                "properties": {
+                  "hairPinning": {
+                    "description": "This information is no longer tracked and will always be null.\n",
+                    "type": [
+                      "boolean",
+                      "null"
+                    ]
+                  },
+                  "ipv6": {
+                    "description": "'true' if the device OS supports IPv6,\nregardless of whether IPv6 internet connectivity is available.\n",
+                    "example": false,
+                    "type": [
+                      "boolean",
+                      "null"
+                    ]
+                  },
+                  "pcp": {
+                    "description": "'true' if PCP port-mapping service exists on your router.\n",
+                    "example": false,
+                    "type": [
+                      "boolean",
+                      "null"
+                    ]
+                  },
+                  "pmp": {
+                    "description": "'true' if NAT-PMP port-mapping service exists on your router.\n",
+                    "example": false,
+                    "type": [
+                      "boolean",
+                      "null"
+                    ]
+                  },
+                  "udp": {
+                    "description": "'true' if UDP traffic is enabled on the current network;\nif 'false', Tailscale may be unable to make direct connections, and will rely on our DERP servers.\n",
+                    "example": false,
+                    "type": [
+                      "boolean",
+                      "null"
+                    ]
+                  },
+                  "upnp": {
+                    "description": "'true' if UPnP port-mapping service exists on your router.\n",
+                    "example": false,
+                    "type": [
+                      "boolean",
+                      "null"
+                    ]
+                  }
+                },
+                "type": "object"
+              },
+              "endpoints": {
+                "description": "Client's magicsock UDP IP:port endpoints (IPv4 or IPv6).\n",
+                "example": [
+                  "199.9.14.201:59128",
+                  "192.68.0.21:59128"
+                ],
+                "items": {
+                  "type": "string"
+                },
+                "type": "array"
+              },
+              "latency": {
+                "additionalProperties": {
+                  "properties": {
+                    "latencyMs": {
+                      "description": "Current latency to DERP server.\n",
+                      "format": "float",
+                      "type": "number"
+                    },
+                    "preferred": {
+                      "description": "'true' for the node's preferred DERP server for incoming traffic.\n",
+                      "type": "boolean"
+                    }
+                  },
+                  "type": "object",
+                  "x-additionalPropertiesName": "DERP server location"
+                },
+                "description": "Map of DERP server locations and their current latency.",
+                "example": {
+                  "Dallas": {
+                    "latencyMs": 60.463043
+                  },
+                  "New York City": {
+                    "latencyMs": 31.323811,
+                    "preferred": true
+                  }
+                },
+                "type": "object"
+              },
+              "mappingVariesByDestIP": {
+                "description": "'true' if the host's NAT mappings vary based on the destination IP.\n",
+                "example": false,
+                "type": "boolean"
+              }
+            },
+            "type": "object"
+          },
+          "clientVersion": {
+            "description": "The version of the Tailscale client\nsoftware; this is empty for external devices.\n",
+            "example": "v1.36.0",
+            "type": "string"
+          },
+          "connectedToControl": {
+            "description": "Indicates if the device recently maintained a TCP connection to the Tailscale control server.\n",
+            "example": true,
+            "type": "boolean"
+          },
+          "created": {
+            "description": "The date on which the device was added\nto the tailnet; this is empty for external devices.\n",
+            "example": "2022-12-01T05:23:30Z",
+            "format": "date-time",
+            "type": "string"
+          },
+          "distro": {
+            "description": "distro provides details of the operating system distribution, if available.\n",
+            "example": {
+              "codeName": "Plucky Puffin",
+              "name": "ubuntu",
+              "version": "25.04"
+            },
+            "properties": {
+              "codeName": {
+                "description": "The operating system distribution code name that the device is running.\n",
+                "example": "Plucky Puffin",
+                "type": "string"
+              },
+              "name": {
+                "description": "The operating system distribution that the device is running.\n",
+                "example": "ubuntu",
+                "type": "string"
+              },
+              "version": {
+                "description": "The operating system distribution version that the device is running.\n",
+                "example": "25.04",
+                "type": "string"
+              }
+            },
+            "type": "object"
+          },
+          "enabledRoutes": {
+            "description": "The subnet routes for this device that have been approved by a tailnet admin.\nLearn more about subnet routes at https://tailscale.com/kb/1019/.\n",
+            "example": [
+              "10.0.0.0/16",
+              "192.168.1.0/24"
+            ],
+            "items": {
+              "type": "string"
+            },
+            "type": "array"
+          },
+          "expires": {
+            "description": "The expiration date of the device's auth key.\nLearn more about key expiry at https://tailscale.com/kb/1028/.\n",
+            "example": "2023-05-30T04:44:05Z",
+            "format": "date-time",
+            "type": "string"
+          },
+          "hostname": {
+            "description": "The machine name in the admin console.\nLearn more about machine names at https://tailscale.com/kb/1098/.\n",
+            "example": "pangolin",
+            "type": "string"
+          },
+          "id": {
+            "description": "The legacy identifier for a device; you\ncan supply this value wherever {deviceId} is indicated in the\nendpoint. Note that although \"id\" is still accepted, \"nodeId\" is\npreferred.\n",
+            "example": "92960230385",
+            "type": "string"
+          },
+          "isEphemeral": {
+            "description": "'true' if the device is ephemeral.\nLearn more about ephemeral nodes at https://tailscale.com/kb/1111/ephemeral-nodes.\n",
+            "example": false,
+            "type": "boolean"
+          },
+          "isExternal": {
+            "description": "'true', indicates that a device is not a member of the tailnet, but is shared in to the tailnet;\nif 'false', the device is a member of the tailnet.\nLearn more about node sharing at https://tailscale.com/kb/1084/.\n",
+            "example": false,
+            "type": "boolean"
+          },
+          "keyExpiryDisabled": {
+            "description": "'true' if the keys for the device will not expire.\nLearn more at https://tailscale.com/kb/1028/.\n",
+            "example": false,
+            "type": "boolean"
+          },
+          "lastSeen": {
+            "description": "When the device was last connected to the Tailscale control server. Omitted if the device has never been online or `connectedToControl` is true.\n",
+            "example": "2022-12-01T05:23:30Z",
+            "format": "date-time",
+            "type": "string"
+          },
+          "machineKey": {
+            "description": "For internal use and is not required for any API operations.\nThis value is empty for external devices.\n",
+            "example": "",
+            "type": "string"
+          },
+          "multipleConnections": {
+            "description": "'true', indicates that multiple devices are currently connected using the same node key, which is usually a sign of node state being copied between machines.\nIf only one device is connected using this node's key, the field is omitted.\nIf the number of live connections goes back to 0 or 1, this field is also omitted, meaning it's not sticky. In case an attacker steals node state from a legitimate node, they can mask their activities by not connecting concurrently with the legitimate node.\n",
+            "example": true,
+            "type": "boolean"
+          },
+          "name": {
+            "description": "The MagicDNS name of the device.\nLearn more about MagicDNS at https://tailscale.com/kb/1081/.\n",
+            "example": "pangolin.tailfe8c.ts.net",
+            "type": "string"
+          },
+          "nodeId": {
+            "description": "The preferred identifier for a device;\nsupply this value wherever {deviceId} is indicated in the endpoint.\n",
+            "example": "n292kg92CNTRL",
+            "type": "string"
+          },
+          "nodeKey": {
+            "description": "Mostly for internal use, required for select operations, such as adding a node to a locked tailnet.\nLearn about tailnet locks at https://tailscale.com/kb/1226/.\n",
+            "example": "nodekey:01234567890abcdef",
+            "type": "string"
+          },
+          "os": {
+            "description": "The operating system that the device is running.\n",
+            "example": "linux",
+            "type": "string"
+          },
+          "postureIdentity": {
+            "description": "Contains extra identifiers from the device when the tailnet it is connected to has device posture identification collection enabled.\nIf the device has not opted-in to posture identification collection, this will contain {\"disabled\": true}.\nLearn more about posture identity at https://tailscale.com/kb/1326/device-identity.\n",
+            "example": {
+              "serialNumbers": [
+                "CP74LFQJXM"
+              ]
+            },
+            "properties": {
+              "disabled": {
+                "type": "boolean"
+              },
+              "serialNumbers": {
+                "example": [
+                  "CP74LFQJXM"
+                ],
+                "items": {
+                  "type": "string"
+                },
+                "type": "array"
+              }
+            },
+            "type": "object"
+          },
+          "sshEnabled": {
+            "description": "'true' if Tailscale SSH is enabled on this device.\nLearn more about Tailscale SSH at https://tailscale.com/kb/1193/.\n",
+            "example": false,
+            "type": "boolean"
+          },
+          "tags": {
+            "description": "Lets you assign an identity to a device that is separate from human users, and use it as part of an ACL to restrict access.\nOnce a device is tagged, the tag is the owner of that device.\nA single node can have multiple tags assigned.\nThis value is empty for external devices.\nLearn more about tags at https://tailscale.com/kb/1068/.\n",
+            "example": [
+              "tag:golink"
+            ],
+            "items": {
+              "type": "string"
+            },
+            "type": "array"
+          },
+          "tailnetLockError": {
+            "description": "Indicates an issue with the tailnet lock node-key signature on this device.\nThis field is only populated when tailnet lock is enabled.\n",
+            "example": "",
+            "type": "string"
+          },
+          "tailnetLockKey": {
+            "description": "The node's tailnet lock key.\nEvery node generates a tailnet lock key (so the value will be present) even if tailnet lock is not enabled.\nLearn more about tailnet lock at https://tailscale.com/kb/1226/.\n",
+            "example": "",
+            "type": "string"
+          },
+          "updateAvailable": {
+            "description": "'true' if a Tailscale client version\nupgrade is available. This value is empty for external devices.\n",
+            "example": false,
+            "type": "boolean"
+          },
+          "user": {
+            "description": "The user who registered the node. For untagged nodes,\n this user is the device owner.\n",
+            "example": "amelie@example.com",
+            "type": "string"
+          }
+        },
+        "type": "object"
+      },
+      "Error": {
+        "properties": {
+          "message": {
+            "type": "string"
+          }
+        },
+        "required": [
+          "message"
+        ],
+        "type": "object"
+      },
+      "Key": {
+        "description": "An API access token or Auth Key.\n",
+        "properties": {
+          "audience": {
+            "description": "The value used when matching against the `aud` claim from an OIDC identity token.\n\nSpecifying the audience is optional as Tailscale will generate a secure audience at creation time by default.\nIt is recommended to let Tailscale generate the audience unless the identity provider you are integrating with\nrequires a specific audience format.\n\nOnly applies to federated identities.\n",
+            "example": "api.tailscale.com/Tz8TefihCR11DEVEL-kqc11MVpwu11DEVEL",
+            "type": "string"
+          },
+          "capabilities": {
+            "$ref": "#/components/schemas/KeyCapabilities"
+          },
+          "created": {
+            "example": "2021-12-09T23:22:39Z",
+            "format": "date-time",
+            "type": "string"
+          },
+          "customClaimRules": {
+            "additionalProperties": {
+              "type": "string",
+              "x-additionalPropertiesName": "Custom claim rule"
+            },
+            "description": "A map of claim names to pattern strings used to match against arbitrary claims in the OIDC identity token.\nPatterns can include `*` characters to match against any character.\n\nOnly applies to federated identities.\n",
+            "example": {
+              "exampleAdditionalClaim": "valueToMatch",
+              "otherAdditionalClaim": "valueWithWildcard*"
+            },
+            "type": "object"
+          },
+          "description": {
+            "example": "dev access",
+            "type": "string"
+          },
+          "expires": {
+            "example": "2022-03-09T23:22:39Z",
+            "format": "date-time",
+            "type": "string"
+          },
+          "expirySeconds": {
+            "description": "Duration in seconds until the key expires.\nOnly applies to auth keys.\n",
+            "example": 7776000,
+            "format": "int64",
+            "type": "integer"
+          },
+          "id": {
+            "example": "k123456CNTRL",
+            "type": "string"
+          },
+          "invalid": {
+            "description": "Response for a revoked (deleted) or expired key will have an `invalid` field set to true.\n",
+            "example": false,
+            "type": "boolean"
+          },
+          "issuer": {
+            "description": "The issuer of the OIDC identity token used in the token exchange. Must be a valid and publicly reachable https:// URL.\n\nOnly applies to federated identities.\n",
+            "example": "https://example.com",
+            "format": "uri",
+            "type": "string"
+          },
+          "key": {
+            "description": "The secret key material (only populated at creation time).",
+            "example": "tskey-auth-xxxxxxxxxxxx-xxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxx",
+            "type": "string"
+          },
+          "keyType": {
+            "description": "The type of key. Can be one of \"auth\", \"client\", \"federated\", or \"api\".\n- \"auth\" refers to machine auth keys.\n- \"client\" refers to OAuth clients.\n- \"federated\" refers to federated identities.\n- \"api\" refers to personal API access tokens or tokens generated using an OAuth client or federated identity.\n",
+            "enum": [
+              "auth",
+              "client",
+              "api",
+              "federated"
+            ],
+            "example": "auth",
+            "type": "string"
+          },
+          "revoked": {
+            "example": "2022-03-12T23:22:39Z",
+            "format": "date-time",
+            "type": "string"
+          },
+          "scopes": {
+            "description": "A list of scopes granted to the key.\n\nOnly applies to OAuth clients, API access tokens, and federated identities.\n",
+            "example": [
+              "all:read"
+            ],
+            "items": {
+              "type": "string"
+            },
+            "type": "array"
+          },
+          "subject": {
+            "description": "The pattern used when matching against the `sub` claim from an OIDC identity token.\nThis pattern can include `*` characters to match against any character.\n\nOnly applies to federated identities.\n",
+            "example": "my-example-subject-*",
+            "type": "string"
+          },
+          "tags": {
+            "description": "A list of tags associated to the trust credential. \nAuth keys created with this client must have these exact tags, or tags owned by the client's tags. \nMandatory if the scopes include \"devices:core\" or \"auth_keys\". \n\nOnly applies to OAuth clients and federated identities.\n",
+            "example": [
+              "tag:example"
+            ],
+            "items": {
+              "type": "string"
+            },
+            "type": "array"
+          },
+          "updated": {
+            "example": "2021-12-09T23:22:39Z",
+            "format": "date-time",
+            "type": "string"
+          },
+          "userId": {
+            "description": "ID of the user who created this key, empty for keys created by trust credentials.\n",
+            "example": "uscwcTtzzo11DEVEL",
+            "type": "string"
+          }
+        },
+        "type": "object"
+      },
+      "KeyCapabilities": {
+        "description": "`capabilities` is a mapping of resources to permissible actions.\n",
+        "properties": {
+          "devices": {
+            "description": "`devices` specifies the key's permissions over devices.\nThis field is only populated for auth keys.\n",
+            "properties": {
+              "create": {
+                "description": "`create` specifies the key's permissions when creating devices.\n",
+                "properties": {
+                  "ephemeral": {
+                    "description": "ephemeral for auth keys only; ephemeral keys are used to connect and then clean up short-lived devices.\nLearn about ephemeral nodes at https://tailscale.com/kb/1111/.\n",
+                    "example": false,
+                    "type": "boolean"
+                  },
+                  "preauthorized": {
+                    "description": "preauthorized for auth keys only; these are also referred to as \"pre-approved\" keys. 'true' means that devices\nregistered with this key won't require additional approval from a tailnet admin.\nLearn about device approval at https://tailscale.com/kb/1099/.\n",
+                    "example": true,
+                    "type": "boolean"
+                  },
+                  "reusable": {
+                    "description": "reusable for auth keys only; reusable auth keys can be used multiple times to register different devices.\nLearn more about reusable auth keys at https://tailscale.com/kb/1085/#types-of-auth-keys.\n",
+                    "example": true,
+                    "type": "boolean"
+                  },
+                  "tags": {
+                    "description": "tags are the tags that will be set on devices registered with this key.\nLearn about tags at https://tailscale.com/kb/1068/.\n\nWhether tags are required or optional depends on the owner of the auth key:\n- When creating an auth key owned by the tailnet (using OAuth), it must have tags. The auth tags specified for that new auth key must exactly match the tags that are on the OAuth client used to create that auth key (or they must be tags that are owned by the tags that are on the OAuth client used to create the auth key).\n- When creating an auth key owned by a user (using a user's access token), tags are optional.\n",
+                    "example": [
+                      "tag:example"
+                    ],
+                    "items": {
+                      "type": "string"
+                    },
+                    "type": "array"
+                  }
+                },
+                "type": "object"
+              }
+            },
+            "type": "object"
+          }
+        },
+        "type": "object"
+      }
+    }
+  },
+  "info": {
+    "description": "### Overview\n\n**The API endpoints documented here are stable. However, the OpenAPI spec used to generate this documentation is unstable. It may change or break without notice.**\n\nThe Tailscale API is a (mostly) RESTful API. Typically, both POST bodies and responses are JSON-encoded.\n\n### Base URL\n\nThe base URL for the Tailscale API is https://api.tailscale.com/api/v2/.\n\nExamples in this document may abbreviate this to `/api/v2/`.\n\n### Authentication\n\nRequests to the Tailscale API are authenticated with an API access token (sometimes called an API key).\nAccess tokens can be supplied as the username portion of HTTP Basic authentication\n(leave the password blank) or as an OAuth Bearer token:\n\n```\n// passing token with basic auth\ncurl -u \"tskey-api-xxxxx:\" https://api.tailscale.com/api/v2/...\n\n// passing token as bearer token\ncurl -H \"Authorization: Bearer tskey-api-xxxxx\" https://api.tailscale.com/api/v2/...\n```\n\nAccess tokens for individual users can be created and managed from the [Keys](https://login.tailscale.com/admin/settings/keys) page of the admin console. These tokens will have the same permissions as the owning user, and can be set to expire in 1 to 90 days. Access tokens are identifiable by the prefix tskey-api-.\n\nAlternatively, a trust credential (OAuth client or federated identity) can be used to create short-lived access tokens with scoped permission. Trust credentials don't expire, and can therefore be used to provide ongoing access to the API, creating access tokens as needed. Trust credentials and the access tokens they create are not tied to an individual Tailscale user. OAuth client secrets are identifiable by the prefix tskey-client-. Learn more about [trust credentials][kb-trust-credentials].\n\n[kb-trust-credentials]: https://tailscale.com/kb/1623/\n\n### Errors\n\nThe Tailscale API returns status codes consistent with standard HTTP conventions. In addition to the status code, errors may include additional information in the response body:\n\n```\n{\n  \"message\": \"additional error information\"\n}\n```\n\n### Pagination\n\nThe Tailscale API does not currently support pagination. All results are returned at once.",
+    "license": {
+      "name": "BSD 3-Clause",
+      "url": "https://github.com/tailscale/tailscale/blob/main/LICENSE"
+    },
+    "termsOfService": "https://tailscale.com/terms",
+    "title": "Tailscale API",
+    "version": "v2"
+  },
+  "openapi": "3.1.0",
+  "paths": {
+    "/device/{deviceId}": {
+      "get": {
+        "description": "Retrieve the details for the specified device.\n\nOAuth Scope: `devices:core:read`.\n",
+        "operationId": "getDevice",
+        "parameters": [
+          {
+            "$ref": "#/components/parameters/fields"
+          }
+        ],
+        "responses": {
+          "200": {
+            "content": {
+              "application/json": {
+                "schema": {
+                  "$ref": "#/components/schemas/Device"
+                }
+              }
+            },
+            "description": "Successful operation."
+          },
+          "400": {
+            "$ref": "#/components/responses/400"
+          },
+          "404": {
+            "$ref": "#/components/responses/404"
+          },
+          "500": {
+            "$ref": "#/components/responses/500"
+          },
+          "504": {
+            "$ref": "#/components/responses/504"
+          }
+        },
+        "summary": "Get a device",
+        "tags": [
+          "Devices"
+        ]
+      },
+      "parameters": [
+        {
+          "$ref": "#/components/parameters/deviceId"
+        }
+      ]
+    },
+    "/tailnet/{tailnet}/acl": {
+      "get": {
+        "description": "Retrieves the current policy file for the given tailnet; \nthis includes the ACL along with the rules and tests that have been defined.\n\nThis method can return the policy file as JSON or HuJSON, depending on the Accept header.\nThe response also includes an `ETag` header, which can be optionally included when [setting the policy file](#tag/policyfile/post/tailnet/{tailnet}/acl) to avoid missed updates.\n\nLearn more about [policy file ACL syntax](https://tailscale.com/kb/1337/acl-syntax).\n\nOAuth Scope: `policy_file:read`.\n",
+        "operationId": "getPolicyFile",
+        "parameters": [
+          {
+            "description": "Request a detailed description of the tailnet policy file by providing `details=true` in the URL query string.\nSupplying any other value for `details`, or not sending the param, is treated as sending `details=false`.\nIf using this, do not supply an `Accept` parameter in the header.\n\nThe response will contain a JSON object with the fields:\n- `acl`: a base64-encoded string representation of the huJSON format.\n- `warnings`: array of strings for syntactically valid but nonsensical entries.\n- `errors`: an array of strings for parsing failures.\n",
+            "in": "query",
+            "name": "details",
+            "schema": {
+              "type": "boolean"
+            }
+          }
+        ],
+        "responses": {
+          "200": {
+            "content": {
+              "application/hujson": {
+                "examples": {
+                  "exampleHuJSONPolicyFile": {
+                    "$ref": "#/components/examples/ExampleHuJSONPolicyFile"
+                  }
+                },
+                "schema": {
+                  "type": "string"
+                }
+              },
+              "application/json": {
+                "examples": {
+                  "exampleJSONPolicyFile": {
+                    "$ref": "#/components/examples/ExampleJSONPolicyFile"
+                  },
+                  "exampleWithDetails": {
+                    "summary": "JSON response with details=true",
+                    "value": {
+                      "acl": "Ly8gUG9raW5nIGFyb3VuZCBpbiB0aGUgQVBJIGRvY3MsIGhvcGluZyB5b3UnZCBmaW5kIHNvbWV0aGluZyBnb29kLCBlaD8KLy8gV2UgbGlrZSB5b3VyIHN0eWxlISAgR28gZ3JhYiB5b3Vyc2VsZiBhIFRhaWxzY2FsZSB0LXNoaXJ0IGlmIHRoZXJlIGFyZQovLyBzdGlsbCBzb21lIGF2YWlsYWJsZS4gQnV0IHNoaGguLi4gZG9uJ3QgdGVsbCBhbnlvbmUhCi8vCi8vICAgICAgICAgICAgIGh0dHBzOi8vc3dhZy5jb20vZ2lmdC82a29mNGs1Z3B1ZW95ZDB2NXd6MHJkYmMKewoJLy8gRGVjbGFyZSBzdGF0aWMgZ3JvdXBzIG9mIHVzZXJzIGJleW9uZCB0aG9zZSBpbiB0aGUgaWRlbnRpdHkgc2VydmljZS4KCSJncm91cHMiOiB7CgkJImdyb3VwOmV4YW1wbGUiOiBbInVzZXIxQGV4YW1wbGUuY29tIiwgInVzZXIyQGV4YW1wbGUuY29tIl0sCgl9LAoKCS8vIERlY2xhcmUgY29udmVuaWVudCBob3N0bmFtZSBhbGlhc2VzIHRvIHVzZSBpbiBwbGFjZSBvZiBJUCBhZGRyZXNzZXMuCgkiaG9zdHMiOiB7CgkJImV4YW1wbGUtaG9zdC0xIjogIjEwMC4xMDAuMTAwLjEwMCIsCgl9LAoKCS8vIEFjY2VzcyBjb250cm9sIGxpc3RzLgoJImFjbHMiOiBbCgkJLy8gTWF0Y2ggYWJzb2x1dGVseSBldmVyeXRoaW5nLgoJCS8vIENvbW1lbnQgdGhpcyBzZWN0aW9uIG91dCBpZiB5b3Ugd2FudCB0byBkZWZpbmUgc3BlY2lmaWMgcmVzdHJpY3Rpb25zLgoJCXsiYWN0aW9uIjogImFjY2VwdCIsICJ1c2VycyI6IFsiKiJdLCAicG9ydHMiOiBbIio6KiJdfSwKCV0sCn0K",
+                      "errors": null,
+                      "warnings": [
+                        "\"group:example\": user not found: \"user1@example.com\"",
+                        "\"group:example\": user not found: \"user2@example.com\""
+                      ]
+                    }
+                  }
+                },
+                "schema": {
+                  "type": "object"
+                }
+              }
+            },
+            "description": "Successful operation."
+          },
+          "400": {
+            "$ref": "#/components/responses/400"
+          },
+          "403": {
+            "$ref": "#/components/responses/403"
+          },
+          "404": {
+            "$ref": "#/components/responses/404"
+          },
+          "500": {
+            "$ref": "#/components/responses/500"
+          }
+        },
+        "summary": "Get policy file",
+        "tags": [
+          "PolicyFile"
+        ]
+      },
+      "parameters": [
+        {
+          "$ref": "#/components/parameters/tailnet"
+        },
+        {
+          "$ref": "#/components/parameters/AcceptHeaderParam"
+        }
+      ],
+      "post": {
+        "description": "Sets the ACL for the given tailnet. HuJSON and JSON are both accepted inputs.\nAn `If-Match` header can be set to avoid missed updates.\n\nOn success, returns the updated ACL in JSON or HuJSON according to the `Accept` header.\nOtherwise, errors are returned for incorrectly defined ACLs, ACLs with failing tests on attempted updates, and mismatched `If-Match` header and `ETag`.\n\nLearn more about [policy file ACL syntax](https://tailscale.com/kb/1337/acl-syntax).\n\nOAuth Scope: `policy_file`.\n",
+        "operationId": "setPolicyFile",
+        "parameters": [
+          {
+            "description": "This is a safety mechanism to avoid overwriting other users' updates to the tailnet policy file.\n\n- Set the `If-Match` value to that of the `ETag` header returned in a `GET` request to `/api/v2/tailnet/{tailnet}/acl`.\n  Tailscale compares the `ETag` value in your request to that of the current tailnet file and only replaces the file if there's a match.\n  (A mismatch indicates that another update has been made to the file.) For example: `-H \"If-Match: \\\"e0b2816b418\\\"\"`.\n- Alternately, set the `If-Match` value to `ts-default` to ensure that the policy file is replaced *only if the current policy file is still the untouched default created automatically* for each tailnet.\n  For example: `-H \"If-Match: \\\"ts-default\\\"\"`.\n",
+            "in": "header",
+            "name": "If-Match",
+            "schema": {
+              "type": "string"
+            }
+          }
+        ],
+        "requestBody": {
+          "content": {
+            "application/hujson": {
+              "examples": {
+                "exampleHuJSONPolicyFile": {
+                  "$ref": "#/components/examples/ExampleHuJSONPolicyFile"
+                }
+              },
+              "schema": {
+                "type": "string"
+              }
+            },
+            "application/json": {
+              "examples": {
+                "exampleJSONPolicyFile": {
+                  "$ref": "#/components/examples/ExampleJSONPolicyFile"
+                }
+              },
+              "schema": {
+                "type": "object"
+              }
+            }
+          }
+        },
+        "responses": {
+          "200": {
+            "content": {
+              "application/hujson": {
+                "examples": {
+                  "exampleHuJSONPolicyFile": {
+                    "$ref": "#/components/examples/ExampleHuJSONPolicyFile"
+                  }
+                },
+                "schema": {
+                  "type": "string"
+                }
+              },
+              "application/json": {
+                "examples": {
+                  "exampleJSONPolicyFile": {
+                    "$ref": "#/components/examples/ExampleJSONPolicyFile"
+                  }
+                },
+                "schema": {
+                  "type": "object"
+                }
+              }
+            },
+            "description": "Successful operation."
+          },
+          "400": {
+            "$ref": "#/components/responses/400"
+          },
+          "403": {
+            "$ref": "#/components/responses/403"
+          },
+          "404": {
+            "$ref": "#/components/responses/404"
+          },
+          "412": {
+            "content": {
+              "application/json": {
+                "schema": {
+                  "$ref": "#/components/schemas/Error"
+                }
+              }
+            },
+            "description": "If-Match hash mismatch."
+          },
+          "500": {
+            "$ref": "#/components/responses/500"
+          }
+        },
+        "summary": "Set policy file",
+        "tags": [
+          "PolicyFile"
+        ],
+        "x-codeSamples": [
+          {
+            "label": "Shell cURL",
+            "lang": "shell",
+            "source": "curl --request POST \\\n  --url https://api.tailscale.com/api/v2/tailnet/example.com/acl \\\n  --header 'Authorization: Bearer YOUR_SECRET_TOKEN' \\\n  --data-binary '{\n  \"acls\": [\n    {\n      \"action\": \"accept\",\n      \"ports\": [\n        \"*:*\"\n      ],\n      \"users\": [\n        \"*\"\n      ]\n    }\n  ],\n  \"groups\": {\n    \"group:example\": [\n      \"user1@example.com\",\n      \"user2@example.com\"\n    ]\n  },\n  \"hosts\": {\n    \"example-host-1\": \"100.100.100.100\"\n  }\n}'"
+          }
+        ]
+      }
+    },
+    "/tailnet/{tailnet}/devices": {
+      "get": {
+        "description": "Lists the devices in a tailnet.\n\nOAuth Scope: `devices:core:read`.\n",
+        "operationId": "listTailnetDevices",
+        "responses": {
+          "200": {
+            "content": {
+              "application/json": {
+                "schema": {
+                  "properties": {
+                    "devices": {
+                      "items": {
+                        "$ref": "#/components/schemas/Device"
+                      },
+                      "type": "array"
+                    }
+                  },
+                  "type": "object"
+                }
+              }
+            },
+            "description": "Successful operation."
+          },
+          "404": {
+            "$ref": "#/components/responses/404"
+          },
+          "500": {
+            "$ref": "#/components/responses/500"
+          },
+          "504": {
+            "$ref": "#/components/responses/504"
+          }
+        },
+        "summary": "List tailnet devices",
+        "tags": [
+          "Devices"
+        ]
+      },
+      "parameters": [
+        {
+          "$ref": "#/components/parameters/tailnet"
+        },
+        {
+          "$ref": "#/components/parameters/fields"
+        },
+        {
+          "description": "This endpoint supports server-side filtering of devices by specifying one\nor more filters in the form `\u003cfield\u003e=\u003cvalue\u003e`. Fields must be a top-level\ndevice property - e.g. `isEphemeral`, `tags`, `hostname`, etc. Values are\nmatched as _exact_ matches. Properties with simple types (strings, numbers,\ndates, etc) and lists are supported. Properties that are complex objects\n(e.g. `clientConnectivity`) are not supported. When multiple parameters are\nprovided, the server performs a logical `AND` across all filter parameters\nbefore returning results. For example,\n`isEphemeral=true\u0026tags=tag:prod\u0026tags=tag:subnetrouter` would return devices\nwhere `isEphemeral` is `true` and `tags` contains both `tag:prod` and\n`tag:subnetrouter`.\n",
+          "in": "query",
+          "name": "\u003cfield\u003e=\u003cvalue\u003e filters",
+          "schema": {
+            "type": "string"
+          }
+        }
+      ]
+    },
+    "/tailnet/{tailnet}/keys": {
+      "get": {
+        "description": "Returns a list of active auth keys, API access tokens and trust credentials.\n\nIf the parameter {all} was not specified, the set of keys returned depends on the access token used to make the request:\n- If the API call is made with a user-owned API access token, this returns only the keys owned by that user.\n- If the API call is made with an access token derived from an OAuth client, this returns all OAuth clients for the tailnet.\n- If the API call is made with an access token derived from a federated identity, this returns all federated identities for the tailnet.\n\nOAuth Scope: `api_access_tokens:read` grants access to personal API access tokens.\n\nOAuth Scope: `auth_keys:read` grants access to machine auth keys.\n\nOAuth Scope: `oauth_keys:read` grants access to OAuth clients and OAuth tokens.\n\nOAuth Scope: `federated_keys:read` grants access to federated identities.\n",
+        "operationId": "listTailnetKeys",
+        "parameters": [
+          {
+            "$ref": "#/components/parameters/all"
+          }
+        ],
+        "responses": {
+          "200": {
+            "content": {
+              "application/json": {
+                "schema": {
+                  "properties": {
+                    "keys": {
+                      "description": "A list of the active keys.",
+                      "example": [
+                        {
+                          "created": "2021-12-09T23:22:39Z",
+                          "description": "test key",
+                          "id": "XXXX14CNTRL",
+                          "keyType": "client",
+                          "scopes": [
+                            "all"
+                          ],
+                          "userId": "uscwcTtzzo11DEVEL"
+                        },
+                        {
+                          "created": "2021-12-09T23:22:39Z",
+                          "description": "production key",
+                          "expires": "2022-03-09T23:22:39Z",
+                          "expirySeconds": 7776000,
+                          "id": "XXXXZ3CNTRL",
+                          "keyType": "api",
+                          "scopes": [
+                            "all"
+                          ],
+                          "userId": "uscwcTtzzo11DEVEL"
+                        },
+                        {
+                          "capabilities": {
+                            "devices": {
+                              "create": {
+                                "ephemeral": false,
+                                "preauthorized": true,
+                                "reusable": true,
+                                "tags": [
+                                  "tag:example"
+                                ]
+                              }
+                            }
+                          },
+                          "created": "2021-12-09T23:22:39Z",
+                          "description": "dev access",
+                          "expires": "2022-03-09T23:22:39Z",
+                          "expirySeconds": 7776000,
+                          "id": "XXXX43CNTRL",
+                          "keyType": "auth",
+                          "userId": "uscwcTtzzo11DEVEL"
+                        }
+                      ],
+                      "items": {
+                        "$ref": "#/components/schemas/Key"
+                      },
+                      "type": "array"
+                    }
+                  },
+                  "type": "object"
+                }
+              }
+            },
+            "description": "Successful operation."
+          },
+          "404": {
+            "$ref": "#/components/responses/404"
+          },
+          "500": {
+            "$ref": "#/components/responses/500"
+          }
+        },
+        "summary": "List tailnet keys",
+        "tags": [
+          "Keys"
+        ]
+      },
+      "parameters": [
+        {
+          "$ref": "#/components/parameters/tailnet"
+        }
+      ],
+      "post": {
+        "description": "Creates a new [auth key](https://tailscale.com/kb/1085/), or [trust credential](https://tailscale.com/kb/1623/) in the specified tailnet.\nTrust credentials include [OAuth clients](https://tailscale.com/kb/1215/) and [federated identities](https://tailscale.com/kb/1581/).\nThe key will be associated with the user who owns the API access token used to make this call,\nor, if the call is made with an access token derived from an OAuth client or federated identity, the key will be owned by the tailnet.\n\nReturns a JSON object with the generated key.\nThe key should be recorded and kept safe and secure because it wields the capabilities or scopes specified in the request.\nThe identity of the key is embedded in the key itself and can be used to perform operations on the key (e.g., revoking it or retrieving information about it).\nThe full key can no longer be retrieved after the initial response.\n\nOAuth Scope: `auth_keys` grants access to create machine auth keys.\n\nOAuth Scope: `oauth_keys` grants access to create OAuth clients.\n\nOAuth Scope: `federated_keys` grants access to created federated identities.\n",
+        "operationId": "createKey",
+        "requestBody": {
+          "content": {
+            "application/json": {
+              "schema": {
+                "properties": {
+                  "audience": {
+                    "description": "The value used when matching against the `aud` claim from an OIDC identity token.\n\nSpecifying the audience is optional as Tailscale will generate a secure audience at creation time by default.\nIt is recommended to let Tailscale generate the audience unless the identity provider you are integrating with\nrequires a specific audience format.\n\nOnly applies to federated identities.\n",
+                    "example": "api.tailscale.com/Tz8TefihCR11DEVEL-kqc11MVpwu11DEVEL",
+                    "type": "string"
+                  },
+                  "capabilities": {
+                    "$ref": "#/components/schemas/KeyCapabilities"
+                  },
+                  "customClaimRules": {
+                    "additionalProperties": {
+                      "type": "string",
+                      "x-additionalPropertiesName": "Custom claim rule"
+                    },
+                    "description": "A map of claim names to pattern strings used to match against arbitrary claims in the OIDC identity token.\nPatterns can include `*` characters to match against any character.\n\nOnly applies to federated identities.\n",
+                    "example": {
+                      "exampleAdditionalClaim": "valueToMatch",
+                      "otherAdditionalClaim": "valueWithWildcard*"
+                    },
+                    "type": "object"
+                  },
+                  "description": {
+                    "description": "A short string specifying the purpose of the key. Can be a maximum of 50 alphanumeric characters. Hyphens and spaces are also allowed.\n",
+                    "example": "dev access",
+                    "type": "string"
+                  },
+                  "expirySeconds": {
+                    "description": "Specifies the duration in seconds until the key expires. Defaults to 90 days if not supplied.\n\nOnly applies to auth keys.\n",
+                    "example": 86400,
+                    "format": "int64",
+                    "type": "integer"
+                  },
+                  "issuer": {
+                    "description": "The issuer of the OIDC identity token used in the token exchange. Must be a valid and publicly reachable https:// URL.\n\nOnly applies to federated identities.\n",
+                    "example": "https://example.com",
+                    "format": "uri",
+                    "type": "string"
+                  },
+                  "keyType": {
+                    "description": "The type of key to create. Defaults to \"auth\" if omitted.\n",
+                    "enum": [
+                      "auth",
+                      "client",
+                      "federated"
+                    ],
+                    "type": "string"
+                  },
+                  "scopes": {
+                    "description": "A list of scopes to grant to the key. At least one scope is required for OAuth clients and federated identities.\nSee [trust credentials scopes](https://tailscale.com/kb/1623/trust-credentials#scopes) for a list of available scopes.\n\nOnly applies to OAuth clients and federated identities.\n",
+                    "example": [
+                      "all:read"
+                    ],
+                    "items": {
+                      "type": "string"
+                    },
+                    "type": "array"
+                  },
+                  "subject": {
+                    "description": "The pattern used when matching against the `sub` claim from an OIDC identity token.\nPatterns can include `*` characters to match against any character.\n\nOnly applies to federated identities.\n",
+                    "example": "my-example-subject-*",
+                    "type": "string"
+                  },
+                  "tags": {
+                    "description": "A list of tags associated to the trust credential. Auth keys created with this credential must have these exact tags, or tags owned by the credential's tags.\nMandatory if the scopes include \"devices:core\" or \"auth_keys\".\n\nOnly applies to OAuth clients and federated identities.\n",
+                    "example": [
+                      "tag:example"
+                    ],
+                    "items": {
+                      "type": "string"
+                    },
+                    "type": "array"
+                  }
+                },
+                "type": "object"
+              }
+            }
+          },
+          "description": "The supported fields vary depending on the value of the `keyType` field.\n\nFor auth keys, at a minimum, the request POST body must have a `capabilities` object with a `devices` object,\nthough it can be an empty JSON object.\nWith nothing else supplied, such a request generates a single-use key with no tags.\n\nFor OAuth clients, at a minimum the request POST body must have at least one scope.\n\nFor federated identities, at a minimum the request POST body must have at least one scope, a valid issuer, and a subject.\n"
+        },
+        "responses": {
+          "200": {
+            "content": {
+              "application/json": {
+                "schema": {
+                  "$ref": "#/components/schemas/Key"
+                }
+              }
+            },
+            "description": "Successful operation."
+          },
+          "404": {
+            "$ref": "#/components/responses/404"
+          },
+          "500": {
+            "$ref": "#/components/responses/500"
+          }
+        },
+        "summary": "Create an auth key or trust credential",
+        "tags": [
+          "Keys"
+        ]
+      }
+    },
+    "/tailnet/{tailnet}/keys/{keyId}": {
+      "delete": {
+        "description": "Deletes a specific api access token or auth key.\n\nOAuth Scope: `api_access_tokens` grants access to personal API access tokens.\n\nOAuth Scope: `auth_keys` grants access to machine auth keys.\n\nOAuth Scope: `oauth_keys` grants access to OAuth clients and OAuth tokens.\n\nOAuth Scope: `federated_keys` grants access to federated identities.\n",
+        "operationId": "deleteKey",
+        "responses": {
+          "200": {
+            "description": "Successful operation."
+          },
+          "403": {
+            "$ref": "#/components/responses/403"
+          },
+          "404": {
+            "$ref": "#/components/responses/404"
+          },
+          "500": {
+            "$ref": "#/components/responses/500"
+          }
+        },
+        "summary": "Delete key",
+        "tags": [
+          "Keys"
+        ]
+      },
+      "get": {
+        "description": "Returns a JSON object with information about a specific api access token, OAuth client, federated identity, or auth key, such as its creation and expiration dates and its capabilities.\n\nOAuth Scope: `api_access_tokens:read` grants access to personal API access tokens.\n\nOAuth Scope: `auth_keys:read` grants access to machine auth keys.\n\nOAuth Scope: `oauth_keys:read` grants access to OAuth clients and OAuth tokens.\n\nOAuth Scope: `federated_keys:read` grants access to federated identities.\n",
+        "operationId": "getKey",
+        "responses": {
+          "200": {
+            "content": {
+              "application/json": {
+                "schema": {
+                  "$ref": "#/components/schemas/Key"
+                }
+              }
+            },
+            "description": "Successful operation.\n\nResponse for a revoked (deleted) or expired key will have an `invalid` field set to true.\n"
+          },
+          "404": {
+            "$ref": "#/components/responses/404"
+          },
+          "500": {
+            "$ref": "#/components/responses/500"
+          }
+        },
+        "summary": "Get key",
+        "tags": [
+          "Keys"
+        ]
+      },
+      "parameters": [
+        {
+          "$ref": "#/components/parameters/tailnet"
+        },
+        {
+          "$ref": "#/components/parameters/keyId"
+        }
+      ]
+    }
+  },
+  "security": [
+    {
+      "bearerAuth": []
+    }
+  ],
+  "servers": [
+    {
+      "url": "https://api.tailscale.com/api/v2"
+    }
+  ],
+  "tags": [
+    {
+      "description": "Manage devices.\nLearn more about [managing devices](/kb/1372/manage-devices).\n",
+      "name": "Devices"
+    },
+    {
+      "description": "Manage a tailnet's policy file.\nLearn more about the [policy file and ACLs](/kb/1018/acls).\n",
+      "name": "PolicyFile",
+      "x-displayName": "Policy file"
+    },
+    {
+      "description": "Manage auth keys and API access tokens.\nLearn more about [auth keys](/kb/1085/auth-keys) and [API access tokens](/kb/1101/api#authentication).\n",
+      "name": "Keys"
+    },
+    {
+      "description": "Manage a tailnet's DNS settings.\nLearn more about [DNS in Tailscale](/kb/1054/dns).\n",
+      "name": "DNS"
+    },
+    {
+      "description": "Manage and configure network logging, configuration logging, and log streaming for a tailnet.\nLearn more about [logging and events](/kb/1349/log-events).\n",
+      "name": "Logging"
+    },
+    {
+      "description": "Manage and query users.\nLearn more about [managing users](/kb/1373/manage-users).\n",
+      "name": "Users"
+    },
+    {
+      "description": "Manage user invites.\nLearn more about about [inviting users](/kb/1371/invite-users).\n",
+      "name": "UserInvites",
+      "x-displayName": "User invites"
+    },
+    {
+      "description": "Manage device invites.\nLearn more about [sharing devices](/kb/1084/sharing).\n",
+      "name": "DeviceInvites",
+      "x-displayName": "Device invites"
+    },
+    {
+      "description": "Manage integrations with device posture data providers.\nLearn more about how to use [device posture data to secure a tailnet](/kb/1288/device-posture).\n",
+      "name": "DevicePosture",
+      "x-displayName": "Device posture"
+    },
+    {
+      "description": "Manage [contact preferences](/kb/1224/contact-preferences).\n",
+      "name": "Contacts",
+      "x-displayName": "Contact preferences"
+    },
+    {
+      "description": "Manage webhook endpoints for a tailnet.\nLearn more about [webhooks](/kb/1213/webhooks).\n",
+      "name": "Webhooks"
+    },
+    {
+      "description": "Manage settings for a tailnet.\n",
+      "name": "TailnetSettings",
+      "x-displayName": "Tailnet settings"
+    },
+    {
+      "description": "Manage Tailscale Services for a tailnet.\nLearn more about [Tailscale Services](/kb/1552/tailscale-services).\n",
+      "name": "Services",
+      "x-displayName": "Services"
+    }
+  ]
+}
