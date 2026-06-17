@@ -19,6 +19,7 @@ import (
 // effects + host-side forgejo-token resolution. See docs/container.md.
 
 //go:embed containerassets/entrypoint.sh containerassets/AGENTS.container.md
+//go:embed containerassets/settings.container.json
 var containerAssets embed.FS
 
 // forgejoTokenSSMPath is the SSM parameter NAME for the git-over-HTTPS push
@@ -327,6 +328,7 @@ func writeContainerAssets() (dir string, cleanup func(), err error) {
 	}{
 		{"entrypoint.sh", 0o755},
 		{"AGENTS.container.md", 0o644},
+		{"settings.container.json", 0o644},
 	}
 	for _, f := range files {
 		data, rerr := containerAssets.ReadFile("containerassets/" + f.name)

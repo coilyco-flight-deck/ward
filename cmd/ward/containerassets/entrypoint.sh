@@ -110,6 +110,15 @@ compose_context() {
   log "composed context (level $WARD_CONTEXT_LEVEL) at $out"
 }
 
+# --- container permission policy (the container is the permission manager) ----
+# bypassPermissions + a minimal force-push/history-rewrite deny (docs/container.md).
+compose_permissions() {
+  local out="$HOME/.claude/settings.json"
+  mkdir -p "$(dirname "$out")"
+  cp /opt/ward/settings.container.json "$out"
+  log "wrote container permission policy to $out"
+}
+
 # --- reaper: deterministic teardown backstop (docs/container-reap.md) --------
 # Static ward code lands/salvages residual work on any agent exit; nothing lost.
 reap() {
@@ -126,6 +135,7 @@ main() {
   install_ward
   local work; work="$(clone_target)"
   compose_context
+  compose_permissions
   cd "$work"
   export WARD_REAP_WORK="$work"
   # Arm the reaper before launching the agent; the agent is NOT exec'd, else exec

@@ -9,10 +9,10 @@ ward [#98](https://forgejo.coilysiren.me/coilyco-flight-deck/ward/issues/98).
 
 ## The model
 
-Three deliberate departures from a transparent, shared, bind-mounted container:
+Three departures from a transparent, shared, bind-mounted container:
 
 - **One container per run, many at once.** Every `up` makes a new uniquely-named
-  container (`ward-<repo>-<rand>`); running several at once is the default.
+  container (`ward-<repo>-<rand>`); many at once is the default.
 - **Fresh clone inside, never on the host.** The target is cloned *inside* the
   container, cached through a shared `ward-gitcache` bare mirror, never on the host.
 - **Least access.** The only default host bind is the **cwd** (read-only) plus
@@ -39,7 +39,7 @@ only when stdin and stdout are both terminals (so agent/CI/piped runs drop to
 ## Modes: progressively-less-context ladder
 
 `--mode` picks the agent harness *and* how much operating context is composed,
-mirroring agent-compose's per-harness slices:
+mirroring agent-compose's slices:
 
 - `claude` (default, level 2) - doctrine + the mounted host context (cwd's
   `CLAUDE.md`/`AGENTS.md`).
@@ -56,7 +56,7 @@ The entrypoint is embedded in the ward binary and bind-mounted into the
 unmodified dev-base image. It configures forgejo git auth, installs ward (the
 `ward-linux-<arch>` release matching the host, or a `--ward-source` build),
 cached-fresh-clones the target into `/workspace/<repo>`, composes the mode's
-context, launches the agent, then reaps on exit (below). The push token
+context + permission policy (below), launches the agent, then reaps on exit. The push token
 (`/forgejo/api-token`, user `coilysiren`) is resolved **on the host** at `up`
 time and injected via a private 0600 `--env-file` removed once docker reads it -
 never in argv, an audit row, or `docker inspect`.
@@ -67,12 +67,12 @@ The container's top-level doctrine
 ([AGENTS.container.md](../cmd/ward/containerassets/AGENTS.container.md)) composes
 at the top of the agent's context and **overrides** the host harness's hold-backs
 (commit/push only when asked, stop for conflicts), so it finishes the whole
-feature autonomously. The wall still stands at force-push, history rewrites,
-other repos, and data loss.
-
-Because a container is throwaway, the no-lost-work guarantee lives in static code:
-`ward container reap` is armed as a `trap ... EXIT` and runs on every agent exit,
-landing clean work on `main` or salvaging it. See [docs/container-reap.md](container-reap.md).
+feature autonomously, with the container's isolation as the wall (force-push,
+history rewrites, other repos, data loss stay out of reach). It is its own
+**permission manager** (`bypassPermissions`, so a headless agent never
+auto-denies; [docs/container-permissions.md](container-permissions.md)), and on
+every exit `ward container reap` lands clean work on `main` or salvages it
+([docs/container-reap.md](container-reap.md)).
 
 ## See also
 
