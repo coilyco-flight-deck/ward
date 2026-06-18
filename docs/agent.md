@@ -44,12 +44,12 @@ issue-seeding on top.
   print mode (`claude -p`), so it works to completion non-interactively and exits
   into the reaper. Read progress with `docker logs <name>` / `ward container exec`.
 
-> **Reaper caveat (ward#108).** The in-container reaper backstop can't re-exec
-> ward inside the container's restricted namespace yet (the sandbox EPERMs), so
-> *residual* uncommitted work isn't auto-salvaged. The happy path is unaffected:
-> the agent commits/merges/pushes itself via bare git per its doctrine. Until
-> #108 lands, headless runs should finish to a clean `main` push, not leave work
-> loose "for review".
+The reaper backstop salvages residual uncommitted work if the agent crashes or
+times out. (It needs ward's namespace jail to be off inside the container - the
+entrypoint exports `CLIGUARD_NO_SANDBOX=1` for exactly this, see cli-guard#153.)
+The happy path doesn't rely on it: the agent commits/merges/pushes itself via
+bare git per its doctrine, so a headless run should finish to a clean `main`
+push rather than leave work loose "for review".
 
 ## Flags
 

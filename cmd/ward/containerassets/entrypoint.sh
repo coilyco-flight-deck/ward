@@ -20,6 +20,10 @@ WARD_CONTEXT_SRC="${WARD_CONTEXT_SRC:-/opt/ward-context}"
 GIT_USER_NAME="${WARD_GIT_NAME:-ward-container}"
 GIT_USER_EMAIL="${WARD_GIT_EMAIL:-coilysiren@gmail.com}"
 
+# The container is the isolation boundary; its restricted namespace denies ward's
+# jail (cli-guard#153), breaking the reaper. Opt out. See cli-guard docs/sandbox.md.
+export CLIGUARD_NO_SANDBOX=1
+
 forgejo_host="$(printf '%s' "$WARD_FORGEJO_BASE" | sed -E 's#^https?://##; s#/.*$##')"
 
 # --- forgejo git auth (token rides --env-file, never argv) -------------------
