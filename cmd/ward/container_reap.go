@@ -124,7 +124,10 @@ func (r *Runner) captureAndCommitResidual(ctx context.Context, work string, env 
 	status, _ := r.Runner.Capture(ctx, "git", "-C", work, "status", "--porcelain")
 	_ = r.Runner.Exec(ctx, "git", "-C", work, "add", "-A")
 	if hasStagedChanges(ctx, r, work) {
-		msg := fmt.Sprintf("ward-container: residual %s work on %s", env.Mode, env.repo().slug())
+		// Tag the subject with the mode and carry the agent attribution as a
+		// Co-Authored-By trailer (ward#155), naming who produced the work.
+		msg := fmt.Sprintf("ward-container: residual %s work on %s\n\n%s",
+			env.Mode, env.repo().slug(), containerMode(env.Mode).commitTrailer())
 		if cerr := r.Runner.Exec(ctx, "git", "-C", work, "commit", "--no-verify", "-m", msg); cerr != nil {
 			fmt.Fprintf(os.Stderr, "ward container reap: residual commit failed: %v\n", cerr)
 		}
@@ -207,7 +210,7 @@ func (r *Runner) fileSalvageIssue(ctx context.Context, env reapEnv, report salva
 	if env.Token == "" {
 		return fmt.Errorf("no FORGEJO_TOKEN to file a salvage issue")
 	}
-	fc := newForgejoClient(env.Base, env.Token)
+	fc := newForgejoClient(env.Base, env.Token).withMode(containerMode(env.Mode))
 	body := salvageIssueBody(report)
 	if n, found, err := fc.findOpenIssueByTitlePrefix(ctx, env.Owner, env.Name, salvageIssueTitlePrefix); err == nil && found {
 		fmt.Fprintf(os.Stderr, "ward container reap: appending to open salvage issue #%d\n", n)

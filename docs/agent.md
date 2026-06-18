@@ -16,7 +16,9 @@ ward agent codex  work coilyco-flight-deck/ward#98 --print      # resolve + show
 
 `<name>` is the agent/mode (`claude|codex|qwen|goose`, the same context ladder as
 `container up --mode`). The issue ref is `owner/repo#N` or a full Forgejo issue
-URL.
+URL. Any appended query string (`?thing=stuff`) or hash fragment
+(`#issuecomment-149`) is ignored, so a URL copied straight from the browser works
+unedited.
 
 ## What `work` does
 

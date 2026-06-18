@@ -2,7 +2,7 @@
 
 Spec-driven CLI. Every verb issues an HTTP request against the API base https://forgejo.coilysiren.me/api/v1.
 
-Authenticates with the "Authorization" header (scheme header-token), reading the token from ssm /forgejo/api-token. The token value is never shown.
+Authenticates with the "Authorization" header (scheme header-token), reading the token from ssm /forgejo/coilyco-ops/api-token. The token value is never shown.
 
 ## ward-kdl ops forgejo repo get
 
