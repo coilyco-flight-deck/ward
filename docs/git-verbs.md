@@ -13,7 +13,12 @@ These are thin audited passthroughs to the underlying `git <verb>`:
 ward git status | log | diff | show | add
 ward git fetch | pull | push
 ward git branch | checkout | stash | restore
+ward git remote
 ```
+
+`remote` is a read passthrough for resolving repo identity, e.g. `ward
+git remote get-url origin` (and plain `ward git remote` to list remotes),
+mirroring bare `git remote ...` behind the audit pipeline.
 
 A leading `-C <dir>` is hoisted ahead of the subcommand, so `ward git
 status -C /path` runs `git -C /path status` (lets a session operate on a
