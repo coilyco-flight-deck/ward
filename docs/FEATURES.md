@@ -18,7 +18,7 @@ The contributor-facing cli-guard gate: repo dev verbs + audited host wrappers be
 - **`ward install-hooks`** - register the PreToolUse hook in `.claude/settings.json` (idempotent).
 - **`ward lint`** - lint `.ward/ward.yaml` against the repo Makefile.
 - **`ward dispatch <surface> <ref>`** - fire `claude` against a real open issue. Surfaces: `headless` (detached `claude -p`, per-issue worktree), `interactive`, `consult`, `cascade`; plus `reap`/`status`/`registry`. Off-org refs refused; Forgejo via read-only SSM-token client. See [docs/dispatch.md](dispatch.md).
-- **`ward container {up,exec,reap,down,ls}`** - ephemeral, least-access dev containers, one per `up`: target cloned fresh inside (cwd bind, read-only), `--mode claude|codex|qwen`, self-managed perms. `reap` lands clean work on `main` or salvages it. See [docs/container.md](container.md).
+- **`ward container {up,exec,reap,down,ls}`** - ephemeral, least-access dev containers, one per `up`: target cloned fresh inside (cwd bind, read-only), `--mode claude|codex|qwen|goose`, self-managed perms. `reap` lands clean work on `main` or salvages it. See [docs/container.md](container.md).
 - **`ward agent <name> {work,headless,task}`** - shortcut over `container up`: `work`/`headless` take an existing issue (branch `issue-<N>`, carry-to-merge seed), `task` *files* one from `--instructions`. Off-org refused, `--print` dry-runs. Interactive `headless` runs a pre-flight feasibility check + confirm before detaching (`--no-preflight` skips). A best-effort host-side reminder fires at dispatch when the host ward binary is behind the latest release, since a detached run buries the in-container `ward version` cue (ward#143). See [agent](agent.md).
 
 ## Spec-driven ops (`ward-kdl`)

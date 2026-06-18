@@ -6,6 +6,7 @@ import (
 	"testing"
 
 	"forgejo.coilysiren.me/coilyco-flight-deck/cli-guard/cli/shell"
+	"github.com/urfave/cli/v3"
 )
 
 func TestParseAgentIssueRef(t *testing.T) {
@@ -223,6 +224,57 @@ func TestWardEnvHeadless(t *testing.T) {
 	joined := strings.Join(dockerCreateArgv(p, ""), " ")
 	if !strings.Contains(joined, "-e WARD_HEADLESS=1") {
 		t.Errorf("docker argv missing -e WARD_HEADLESS=1\n got: %s", joined)
+	}
+}
+
+// ward#141: goose is a first-class agent surface, so `ward agent goose
+// {work,headless,task}` must exist alongside claude/codex/qwen.
+func TestAgentModesIncludeGoose(t *testing.T) {
+	found := false
+	for _, m := range agentModes {
+		if m == modeGoose {
+			found = true
+		}
+	}
+	if !found {
+		t.Errorf("agentModes missing goose; got %v", agentModes)
+	}
+	// The umbrella command must build a `goose` subcommand with work/headless/task.
+	var goose *cli.Command
+	for _, c := range agentCommand().Commands {
+		if c.Name == string(modeGoose) {
+			goose = c
+		}
+	}
+	if goose == nil {
+		t.Fatal("agent command has no goose subcommand")
+	}
+	surfaces := map[string]bool{}
+	for _, c := range goose.Commands {
+		surfaces[c.Name] = true
+	}
+	for _, want := range []string{"work", "headless", "task"} {
+		if !surfaces[want] {
+			t.Errorf("ward agent goose missing %q surface", want)
+		}
+	}
+}
+
+// A goose headless plan threads both WARD_MODE=goose and WARD_HEADLESS=1 so the
+// entrypoint picks the `goose run -t` branch.
+func TestGooseHeadlessPlanEnv(t *testing.T) {
+	p := sampleUpPlan()
+	p.Mode = modeGoose
+	p.Headless = true
+	env := p.wardEnv()
+	if env["WARD_MODE"] != "goose" {
+		t.Errorf("WARD_MODE = %q, want goose", env["WARD_MODE"])
+	}
+	if env["WARD_AGENT"] != "goose" {
+		t.Errorf("WARD_AGENT = %q, want goose", env["WARD_AGENT"])
+	}
+	if env["WARD_HEADLESS"] != "1" {
+		t.Errorf("WARD_HEADLESS = %q, want 1", env["WARD_HEADLESS"])
 	}
 }
 

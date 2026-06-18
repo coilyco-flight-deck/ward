@@ -86,7 +86,7 @@ func agentSeedPrompt(ref agentIssueRef, title string) string {
 
 // agentModes is the ordered set of agent subcommands ward exposes; each maps
 // onto a containerMode (harness + context level). claude is the daily driver.
-var agentModes = []containerMode{modeClaude, modeCodex, modeQwen}
+var agentModes = []containerMode{modeClaude, modeCodex, modeQwen, modeGoose}
 
 // agentCommand is the `ward agent` umbrella: `ward agent <name> work <issue>`.
 func agentCommand() *cli.Command {
@@ -98,7 +98,7 @@ func agentCommand() *cli.Command {
 		Name:  "agent",
 		Usage: "Send an agent into a fresh ephemeral container to carry a Forgejo issue end to end.",
 		Description: `agent is the short verb over 'ward container': pick the harness by name
-(claude|codex|qwen), then 'work <issue>' resolves the issue's repo, spins up an
+(claude|codex|qwen|goose), then 'work <issue>' resolves the issue's repo, spins up an
 ephemeral least-access container, fresh-clones the repo inside it, and launches
 the agent seeded to carry the issue to merge. One line replaces the full
 'container up <repo> --mode <m> --branch <b>' stack plus a hand-written prompt.

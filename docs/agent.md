@@ -14,7 +14,7 @@ ward agent claude headless coilyco-flight-deck/ward#98          # detached, fire
 ward agent codex  work coilyco-flight-deck/ward#98 --print      # resolve + show the plan, run nothing
 ```
 
-`<name>` is the agent/mode (`claude|codex|qwen`, the same context ladder as
+`<name>` is the agent/mode (`claude|codex|qwen|goose`, the same context ladder as
 `container up --mode`). The issue ref is `owner/repo#N` or a full Forgejo issue
 URL.
 
@@ -40,12 +40,15 @@ the carry-to-merge autonomy and the reaper backstop; `work` only seeds the issue
 - **`work`** (interactive) attaches the container to your terminal - you watch
   the agent and can step in. `--detach` backgrounds it.
 - **`headless`** is fire-and-forget: it always detaches and runs the agent in
-  print mode (`claude -p`), so it works to completion non-interactively and exits
-  into the reaper. It **streams live progress** (one line per tool call + the
-  result, via stream-json) to the container log - `docker logs <name>` /
-  `ward container exec` - so it isn't silent until done. When dispatched from a
-  terminal it first runs a **pre-flight check** (see below) so you confirm before
-  the detached run starts.
+  print mode (`claude -p`, or `goose run -t <seed>` for the goose mode), so it
+  works to completion non-interactively and exits into the reaper. For claude it
+  **streams live progress** (one line per tool call + the result, via
+  stream-json) to the container log - `docker logs <name>` / `ward container
+  exec`; goose prints its own progress to that log - so it isn't silent until
+  done. (Interactive `goose work` opens a bare `goose session`; the seed prompt
+  is not auto-delivered into a session yet, so headless is the goose surface.)
+  When dispatched from a terminal it first runs a **pre-flight check** (see
+  below) so you confirm before the detached run starts.
 - **`task`** files an issue from `--instructions` first, then runs the `headless`
   flow against it (carries to merge, `closes #N`). See [docs/agent-task.md](agent-task.md).
 
