@@ -165,13 +165,18 @@ func TestModeContextLevelLadder(t *testing.T) {
 	if modeQwen.contextLevel() != 0 {
 		t.Errorf("qwen is the minimal-context floor, got %d", modeQwen.contextLevel())
 	}
-	if modeClaude.agentBinary() != "claude" || modeCodex.agentBinary() != "codex" || modeQwen.agentBinary() != "opencode" {
+	// goose is a full carry-to-merge harness: same context tier as claude.
+	if modeGoose.contextLevel() != modeClaude.contextLevel() {
+		t.Errorf("goose must carry the same context level as claude, got %d", modeGoose.contextLevel())
+	}
+	if modeClaude.agentBinary() != "claude" || modeCodex.agentBinary() != "codex" ||
+		modeQwen.agentBinary() != "opencode" || modeGoose.agentBinary() != "goose" {
 		t.Error("mode -> agent binary mapping wrong")
 	}
 }
 
 func TestParseMode(t *testing.T) {
-	for _, ok := range []string{"claude", "codex", "qwen"} {
+	for _, ok := range []string{"claude", "codex", "qwen", "goose"} {
 		if _, err := parseMode(ok); err != nil {
 			t.Errorf("parseMode(%q) errored: %v", ok, err)
 		}
@@ -346,6 +351,35 @@ func TestEntrypointInstallsPreCommitHooks(t *testing.T) {
 	}
 	if !(clone < install && install < launch) {
 		t.Errorf("pre-commit install must run after clone and before launch: clone=%d install=%d launch=%d", clone, install, launch)
+	}
+}
+
+// TestEntrypointGooseHeadless locks ward#141: the entrypoint launches goose
+// headless as `goose run -t <seed>` (not claude's `-p` flags), and mirrors the
+// composed doctrine into goose's hints file since goose ignores ~/.claude.
+func TestEntrypointGooseHeadless(t *testing.T) {
+	data, err := containerAssets.ReadFile("containerassets/" + containerEntrypointRel)
+	if err != nil {
+		t.Fatalf("read entrypoint: %v", err)
+	}
+	script := string(data)
+	for _, want := range []string{
+		`case "$WARD_MODE" in`, // launch argv is mode-aware
+		"goose run -t",         // headless goose runs the seed to completion
+		"goose session",        // interactive goose
+		".goosehints",          // doctrine mirrored to goose's hints file
+	} {
+		if !strings.Contains(script, want) {
+			t.Errorf("entrypoint missing %q (ward#141 goose headless)", want)
+		}
+	}
+	// goose headless must not borrow claude's stream-json flags: those only apply
+	// to the claude branch. The goose `run -t` invocation precedes the claude
+	// `-p --output-format` block within the mode switch.
+	goose := strings.Index(script, "goose run -t")
+	claudeFlags := strings.Index(script, "--output-format stream-json")
+	if goose < 0 || claudeFlags < 0 || goose > claudeFlags {
+		t.Errorf("goose headless argv must be distinct from claude stream-json (goose=%d claude=%d)", goose, claudeFlags)
 	}
 }
 

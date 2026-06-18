@@ -112,6 +112,7 @@ const (
 	modeClaude containerMode = "claude"
 	modeCodex  containerMode = "codex"
 	modeQwen   containerMode = "qwen"
+	modeGoose  containerMode = "goose"
 )
 
 // agentBinary is the in-container command each mode launches.
@@ -121,6 +122,8 @@ func (m containerMode) agentBinary() string {
 		return "codex"
 	case modeQwen:
 		return "opencode"
+	case modeGoose:
+		return "goose"
 	case modeClaude:
 		return "claude"
 	default:
@@ -130,12 +133,16 @@ func (m containerMode) agentBinary() string {
 
 // contextLevel maps a mode onto the least-access context ladder: 2 = full,
 // 1 = scoped, 0 = minimal. See docs/container.md for what each level composes.
+// goose is a full carry-to-merge harness (level 2) like claude; the entrypoint
+// mirrors the composed doctrine into goose's hints file so it reads it.
 func (m containerMode) contextLevel() int {
 	switch m {
 	case modeQwen:
 		return 0
 	case modeCodex:
 		return 1
+	case modeGoose:
+		return 2
 	case modeClaude:
 		return 2
 	default:
@@ -152,8 +159,10 @@ func parseMode(s string) (containerMode, error) {
 		return modeCodex, nil
 	case modeQwen:
 		return modeQwen, nil
+	case modeGoose:
+		return modeGoose, nil
 	default:
-		return "", fmt.Errorf("unknown --mode %q: want claude|codex|qwen", s)
+		return "", fmt.Errorf("unknown --mode %q: want claude|codex|qwen|goose", s)
 	}
 }
 

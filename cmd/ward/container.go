@@ -69,7 +69,7 @@ func containerUpCommand() *cli.Command {
 		Usage:     "Start a new container and run the agent against a fresh clone of the target repo.",
 		ArgsUsage: "[owner/name | clone-url]   (omit to infer from cwd's git remote)",
 		Flags: []cli.Flag{
-			&cli.StringFlag{Name: "mode", Value: "claude", Usage: "agent + context level: claude|codex|qwen (progressively less context)"},
+			&cli.StringFlag{Name: "mode", Value: "claude", Usage: "agent + context level: claude|codex|qwen|goose (progressively less context)"},
 			&cli.StringFlag{Name: "branch", Usage: "feature branch to create/checkout inside the clone"},
 			&cli.StringFlag{Name: "image", Value: containerImageDefault, Usage: "dev-base image to run"},
 			&cli.StringFlag{Name: "tag", Value: containerImageTagDefault, Usage: "image tag"},
