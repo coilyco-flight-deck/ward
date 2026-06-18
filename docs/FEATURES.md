@@ -19,7 +19,7 @@ The contributor-facing cli-guard gate: repo dev verbs + audited host wrappers be
 - **`ward lint`** - lint `.ward/ward.yaml` against the repo Makefile.
 - **`ward dispatch <surface> <ref>`** - fire `claude` against a real open issue. Surfaces: `headless` (detached `claude -p`, per-issue worktree), `interactive`, `consult`, `cascade`; plus `reap`/`status`/`registry`. Off-org refs refused; Forgejo via read-only SSM-token client. See [docs/dispatch.md](dispatch.md).
 - **`ward container {up,exec,reap,down,ls}`** - ephemeral, least-access dev containers, one per `up`: target cloned fresh inside (cwd bind, read-only), `--mode claude|codex|qwen`, self-managed perms. `reap` lands clean work on `main` or salvages it. See [docs/container.md](container.md).
-- **`ward agent <name> {work,headless,task}`** - shortcut over `container up`: `work`/`headless` take an existing issue (branch `issue-<N>`, carry-to-merge seed), `task` *files* one from `--instructions`. Off-org refused, `--print` dry-runs. See [agent](agent.md).
+- **`ward agent <name> {work,headless,task}`** - shortcut over `container up`: `work`/`headless` take an existing issue (branch `issue-<N>`, carry-to-merge seed), `task` *files* one from `--instructions`. Off-org refused, `--print` dry-runs. Each run *reserves* the issue (local file sentinel + remote Forgejo marker comment, 2h TTL) so concurrent runs never double-work it; `--force` reclaims a stale hold. See [agent](agent.md).
 
 ## Spec-driven ops (`ward-kdl`)
 
