@@ -217,7 +217,7 @@ func (r *Runner) acquireRemoteReservation(ctx context.Context, label string, mod
 				label, ref, who)
 		}
 	}
-	if err := cl.commentIssue(ctx, ref.Owner, ref.Repo, ref.Number, reservationCommentBody(mode, container, hostname(), now)); err != nil {
+	if err := cl.withMode(mode).commentIssue(ctx, ref.Owner, ref.Repo, ref.Number, reservationCommentBody(mode, container, hostname(), now)); err != nil {
 		fmt.Fprintf(os.Stderr, "%s: note: could not post the remote reservation comment (%v); the local sentinel still holds\n", label, err)
 	}
 	return nil

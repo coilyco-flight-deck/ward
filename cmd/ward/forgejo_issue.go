@@ -91,6 +91,9 @@ type forgejoClient struct {
 	base   string
 	token  string
 	client *http.Client
+	// mode is the agent identity stamped onto every write body (ward#155);
+	// defaults to the container env, or pinned by host callers via withMode.
+	mode containerMode
 }
 
 func newForgejoClient(base, token string) *forgejoClient {
@@ -98,7 +101,15 @@ func newForgejoClient(base, token string) *forgejoClient {
 		base:   strings.TrimRight(base, "/"),
 		token:  token,
 		client: &http.Client{Timeout: forgejoAPIHTTPTimeout},
+		mode:   currentAgentMode(),
 	}
+}
+
+// withMode pins the signing identity for host-side callers that know the mode
+// rather than inheriting it from the container env. Returns the client.
+func (c *forgejoClient) withMode(m containerMode) *forgejoClient {
+	c.mode = m
+	return c
 }
 
 // do issues one authenticated JSON request and returns the status + raw body.
@@ -129,10 +140,11 @@ func (c *forgejoClient) do(ctx context.Context, method, path string, payload any
 	return resp.StatusCode, respBody, nil
 }
 
-// createIssue opens a new issue and returns its number.
+// createIssue opens a new issue and returns its number. The body is signed with
+// the agent attribution (ward#155) before it is sent.
 func (c *forgejoClient) createIssue(ctx context.Context, owner, repo, title, body string) (int, error) {
 	path := fmt.Sprintf("/api/v1/repos/%s/%s/issues", owner, repo)
-	status, respBody, err := c.do(ctx, http.MethodPost, path, map[string]string{"title": title, "body": body})
+	status, respBody, err := c.do(ctx, http.MethodPost, path, map[string]string{"title": title, "body": c.mode.signBody(body)})
 	if err != nil {
 		return 0, err
 	}
@@ -148,10 +160,11 @@ func (c *forgejoClient) createIssue(ctx context.Context, owner, repo, title, bod
 	return out.Number, nil
 }
 
-// commentIssue appends a comment to an existing issue.
+// commentIssue appends a comment to an existing issue. The body is signed with
+// the agent attribution (ward#155) before it is sent.
 func (c *forgejoClient) commentIssue(ctx context.Context, owner, repo string, number int, body string) error {
 	path := fmt.Sprintf("/api/v1/repos/%s/%s/issues/%d/comments", owner, repo, number)
-	status, respBody, err := c.do(ctx, http.MethodPost, path, map[string]string{"body": body})
+	status, respBody, err := c.do(ctx, http.MethodPost, path, map[string]string{"body": c.mode.signBody(body)})
 	if err != nil {
 		return err
 	}

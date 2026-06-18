@@ -359,7 +359,7 @@ func (r *Runner) postPreflightNoGo(ctx context.Context, mode containerMode, surf
 	if err != nil {
 		return err
 	}
-	return cl.commentIssue(ctx, ref.Owner, ref.Repo, ref.Number, preflightNoGoComment(mode, surface, reason, read))
+	return cl.withMode(mode).commentIssue(ctx, ref.Owner, ref.Repo, ref.Number, preflightNoGoComment(mode, surface, reason, read))
 }
 
 // preflightNoGoComment renders the NO-GO issue comment: reason, why nothing
@@ -593,7 +593,7 @@ func (r *Runner) runAgentTask(ctx context.Context, c *cli.Command, mode containe
 	if err != nil {
 		return fmt.Errorf("%s: %w", label, err)
 	}
-	number, err := cl.createIssue(ctx, repo.Owner, repo.Name, title, body)
+	number, err := cl.withMode(mode).createIssue(ctx, repo.Owner, repo.Name, title, body)
 	if err != nil {
 		return fmt.Errorf("%s: file issue in %s/%s: %w", label, repo.Owner, repo.Name, err)
 	}
