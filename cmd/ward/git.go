@@ -22,6 +22,7 @@ var gitPassthroughVerbs = []struct{ name, usage string }{
 	{"checkout", "git checkout - switch branches or restore files."},
 	{"stash", "git stash - shelve working-tree changes."},
 	{"restore", "git restore - restore working-tree files."},
+	{"remote", "git remote - list remotes or inspect a remote's URL (get-url)."},
 }
 
 // gitCommand groups ward's audited git verbs: thin passthroughs plus the
