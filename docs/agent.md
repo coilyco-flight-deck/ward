@@ -42,7 +42,9 @@ issue-seeding on top.
   the agent and can step in. `--detach` backgrounds it.
 - **`headless`** is fire-and-forget: it always detaches and runs the agent in
   print mode (`claude -p`), so it works to completion non-interactively and exits
-  into the reaper. Read progress with `docker logs <name>` / `ward container exec`.
+  into the reaper. It **streams live progress** (one line per tool call + the
+  result, via stream-json) to the container log - `docker logs <name>` /
+  `ward container exec` - so it isn't silent until done.
 
 The reaper backstop salvages residual work if the agent crashes (it needs ward's
 jail off in-container - the entrypoint exports `CLIGUARD_NO_SANDBOX=1`, cli-guard#153).

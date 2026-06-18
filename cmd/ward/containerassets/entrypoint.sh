@@ -225,6 +225,30 @@ reap() {
     || log "reaper returned non-zero; check this log for an UNPRESERVED PATCH block before 'ward container down'"
 }
 
+# --- headless progress (claude stream-json -> concise log lines) -------------
+# One line/event: text, "● <Tool> <arg>", errors, result. fromjson? skips junk.
+stream_progress() {
+  jq -Rr --unbuffered 'fromjson? |
+    if .type == "assistant" then
+      ( .message.content[]? |
+        if .type == "text" then
+          ( (.text // "") | gsub("\n";" ") ) as $t
+          | if ($t | length) > 0 then "  " + $t[0:140] else empty end
+        elif .type == "tool_use" then
+          "● " + .name + " "
+          + ( (.input.file_path // .input.command // .input.path // .input.pattern // .input.url // "")
+              | tostring | gsub("\n";" ") | .[0:120] )
+        else empty end )
+    elif .type == "user" then
+      ( .message.content[]? | select(.type == "tool_result" and .is_error == true) | "  ✗ (tool error)" )
+    elif .type == "result" then
+      ( "✓ result: " + (.subtype // "?")
+        + " (" + ((.num_turns // 0) | tostring) + " turns, "
+        + (((.duration_ms // 0) / 1000) | floor | tostring) + "s)" ),
+      ( (.result // "") | select(length > 0) )
+    else empty end'
+}
+
 # --- launch ------------------------------------------------------------------
 main() {
   configure_git_auth
@@ -245,21 +269,26 @@ main() {
     bash || true
     return
   fi
-  # Headless (`ward agent <name> headless`): -p runs the agent to completion
-  # non-interactively, then exits into the reaper. claude-only (only claude in-image).
-  local agent_argv=("$WARD_AGENT")
+  # Headless (`ward agent <name> headless`): -p runs to completion; stream-json +
+  # stream_progress surface live progress in the log. claude-only (in-image).
+  local agent_argv=("$WARD_AGENT") headless=0
   if [ "${WARD_HEADLESS:-0}" = 1 ]; then
-    agent_argv+=(-p)
-    log "headless: running $WARD_AGENT in print mode (-p)"
+    agent_argv+=(-p --verbose --output-format stream-json)
+    headless=1
+    log "headless: streaming $WARD_AGENT progress to this log"
   fi
   # Drop to the non-root agent user (claude refuses bypass-perms as root, ward#127);
   # setup ran as root. Keep ANTHROPIC_API_KEY from shadowing the OAuth creds.
   chown -R "$AGENT_UID:$AGENT_GID" "$work" "$AGENT_HOME/.claude" 2>/dev/null || true
   unset ANTHROPIC_API_KEY ANTHROPIC_AUTH_TOKEN 2>/dev/null || true
   log "launching $WARD_AGENT as uid $AGENT_UID"
-  setpriv --reuid="$AGENT_UID" --regid="$AGENT_GID" --init-groups \
-    env HOME="$AGENT_HOME" "${agent_argv[@]}" "$@" \
-    || log "agent exited non-zero ($?); reaping anyway"
+  local launch=(setpriv --reuid="$AGENT_UID" --regid="$AGENT_GID" --init-groups
+                env HOME="$AGENT_HOME" "${agent_argv[@]}" "$@")
+  if [ "$headless" = 1 ]; then
+    "${launch[@]}" | stream_progress || log "agent exited non-zero ($?); reaping anyway"
+  else
+    "${launch[@]}" || log "agent exited non-zero ($?); reaping anyway"
+  fi
 }
 
 main "$@"
