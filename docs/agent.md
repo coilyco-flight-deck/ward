@@ -75,6 +75,23 @@ jail off in-container - the entrypoint exports `CLIGUARD_NO_SANDBOX=1`, cli-guar
 The happy path doesn't rely on it: the agent commits/merges/pushes itself per its
 doctrine, finishing to a clean `main` push.
 
+## Host stale-ward reminder (ward#143)
+
+A `ward agent` run installs ward *inside* the container and logs its `ward
+version` there. When the run is non-interactive - `headless`/`task` (always
+detached) or `work --detach` - no human watches that log, so the cue that the
+**host** ward binary is itself behind a release is lost. To keep that awareness,
+ward does a best-effort check at the host dispatch moment (where the operator
+still is): it fetches the latest `coilyco-flight-deck/ward` release tag and, if
+the host binary is behind it, prints a two-line stderr reminder pointing at
+[`ward upgrade`](../README.md).
+
+The check is deliberately quiet and non-blocking: a `dev`/source build, no
+network, an auth wall, or an unparseable tag all stay silent rather than guess,
+and a 5s timeout means a slow Forgejo never holds up the dispatch. It is skipped
+under `--print` (a pure offline dry run). It compares only the release tag, not
+the in-container ward, because the container always pins/downloads its own.
+
 ## Credentials and user
 
 claude runs **non-root** (uid 1000): it refuses `--dangerously-skip-permissions`

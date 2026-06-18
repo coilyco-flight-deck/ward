@@ -215,6 +215,13 @@ func (r *Runner) runAgentWork(ctx context.Context, c *cli.Command, mode containe
 	if err != nil {
 		return err
 	}
+	// Remind the operator at the host dispatch moment if their ward is stale; a
+	// detached/headless run would otherwise bury the only `ward version` signal
+	// in a container log nobody watches (ward#143). --print is a pure dry run, so
+	// it stays offline.
+	if !c.Bool("print") {
+		r.maybeWarnWardOutdated(ctx)
+	}
 	if headless && preflightWanted(c) {
 		proceed, perr := r.runPreflight(ctx, mode, w)
 		if perr != nil {
@@ -490,6 +497,11 @@ func (r *Runner) runAgentTask(ctx context.Context, c *cli.Command, mode containe
 	if c.Bool("print") {
 		return printAgentTaskPlan(c, mode, repo, title, body)
 	}
+
+	// task always detaches into a headless run, so the host dispatch is the
+	// operator's last interactive moment - surface a stale-ward reminder here
+	// before it files+launches (ward#143).
+	r.maybeWarnWardOutdated(ctx)
 
 	cl, err := r.hostForgejoClient(ctx)
 	if err != nil {
