@@ -335,18 +335,6 @@ Positional arguments (3):
 - `<repo>` (string)
 - `<index>` (string)
 
-## ward-kdl ops forgejo issue view
-
-`GET /repos/{owner}/{repo}/issues/{index}`
-
-Authorized by grant: can view issue. Not destructive.
-
-Positional arguments (3):
-
-- `<owner>` (string)
-- `<repo>` (string)
-- `<index>` (string)
-
 ## ward-kdl ops forgejo issue list
 
 `GET /repos/{owner}/{repo}/issues`
@@ -493,6 +481,23 @@ Positional arguments (3):
 - `<owner>` (string)
 - `<repo>` (string)
 - `<index>` (string)
+
+## ward-kdl ops forgejo issue-comment list
+
+`GET /repos/{owner}/{repo}/issues/{index}/comments`
+
+Authorized by grant: can list issue-comment. Not destructive.
+
+Positional arguments (3):
+
+- `<owner>` (string)
+- `<repo>` (string)
+- `<index>` (string)
+
+Options (2):
+
+- `--since` (string, optional): if provided, only comments updated since the specified time are returned.
+- `--before` (string, optional): if provided, only comments updated before the provided time are returned.
 
 ## ward-kdl ops forgejo release get
 
@@ -701,6 +706,15 @@ Complex action. Runs 4 granted calls in order, threading $step.field data betwee
 2. `POST /repos/{owner}/{repo}/issues` - binds the response as `dst`
 3. `POST /repos/{owner}/{repo}/issues/{index}/comments`
 4. `PATCH /repos/{owner}/{repo}/issues/{index}`
+
+## ward-kdl ops forgejo issue view - View an issue with its full comment thread (issue + comments).
+
+Shadows the generated `issue view` leaf: invoking it runs this composite in the leaf's place.
+
+Complex action. Runs 2 granted calls in order, threading $step.field data between them:
+
+1. `GET /repos/{owner}/{repo}/issues/{index}` - binds the response as `issue`
+2. `GET /repos/{owner}/{repo}/issues/{index}/comments` - binds the response as `comments`
 
 ## Condition language
 
