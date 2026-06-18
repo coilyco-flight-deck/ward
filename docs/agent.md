@@ -72,7 +72,16 @@ no prompt to answer:
    host (`claude -p`, or `goose run -t` for the goose mode), echoes the read to
    your terminal, and parses that final verdict line
    (markdown bold, bullets, and quote markers are tolerated; the last verdict line
-   wins).
+   wins). The read is **issue-text-only**: the real run happens in a fresh clone
+   of the issue's repo inside the container, so the prompt tells the agent the host
+   cwd is unrelated scratch and to judge feasibility from the issue alone, never
+   from whatever files are in the local tree. ward also runs the read in a neutral
+   empty temp dir, **not the dispatch cwd** (ward#169), so a coding agent that
+   ignores that instruction and walks the working tree finds nothing there to
+   mistake for the clone - this is what stops a read dispatched from one repo's
+   checkout from false-flagging `WRONG-REPO` because the issue's files look
+   "missing" locally. Both levers are belt-and-suspenders; either alone kills the
+   false gate.
 2. On **GO** - or any read ward can't pin to an explicit NO-GO - the detached run
    launches. The bias is to proceed: only the agent itself saying "don't" blocks.
 3. On **NO-GO** ward launches nothing and instead **posts a comment on the issue**

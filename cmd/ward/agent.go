@@ -280,6 +280,12 @@ func preflightPrompt(ref agentIssueRef, title, body, details string) string {
 		"You are about to be sent, fire-and-forget, into an ephemeral container to carry "+
 			"this Forgejo issue end to end on your own - implement, commit, merge to main, "+
 			"push - with no human watching once you detach.\n\n"+
+			"That detached run happens in a FRESH CLONE of %s/%s pulled inside the container. "+
+			"The directory you are reading this in right now is unrelated host scratch - it may "+
+			"hold a different repo, or none at all. So judge feasibility from the issue text "+
+			"alone, never from the local working tree: a file, path, or package that looks "+
+			"missing in the current directory tells you nothing about the clone you will actually "+
+			"get, so do not conclude the issue is mis-filed just because the local tree lacks it.\n\n"+
 			"Before that detached run starts, give a quick PRE-FLIGHT read: based only on the "+
 			"issue below, do you think you can carry it to merge unattended?\n\n"+
 			"Issue: %s (%q)\n\n%s%s\n\n"+
@@ -289,10 +295,36 @@ func preflightPrompt(ref agentIssueRef, title, body, details string) string {
 			"  \"NO-GO: <reason>\" - a human should weigh in first;\n"+
 			"  \"WRONG-REPO: owner/repo - <what to file there>\" - the work plainly belongs in a "+
 			"different repo than %s/%s. Only say this when the issue text alone makes it obvious - "+
-			"do not go digging to decide it. ward will blind-file a fresh issue in that repo and "+
-			"launch nothing here.\n"+
+			"do not go digging to decide it, and never from files missing in the current directory. "+
+			"ward will blind-file a fresh issue in that repo and launch nothing here.\n"+
 			"This is a judgment call, not a commitment - be honest about ambiguity.",
-		ref, title, body, note, ref.Owner, ref.Repo)
+		ref.Owner, ref.Repo, ref, title, body, note, ref.Owner, ref.Repo)
+}
+
+// capturePreflight runs the feasibility-read argv in a fresh empty temp dir so the
+// read never inherits the dispatch cwd (ward#169; see docs/agent.md pre-flight).
+func (r *Runner) capturePreflight(ctx context.Context, argv []string) ([]byte, error) {
+	// No temp dir means no isolation, but the prompt lever still stands: fall back
+	// to a plain cwd capture rather than strand a workable issue behind flakiness.
+	dir, err := os.MkdirTemp("", "ward-preflight-*")
+	if err != nil {
+		return r.Runner.Capture(ctx, argv[0], argv[1:]...)
+	}
+	defer os.RemoveAll(dir)
+	return r.captureInDir(ctx, dir, argv[0], argv[1:]...)
+}
+
+// captureInDir runs Capture with the process cwd temporarily set to dir, restored
+// afterward (cli-guard's Capture has no Dir knob). A guarded chdir is safe here.
+func (r *Runner) captureInDir(ctx context.Context, dir, bin string, argv ...string) ([]byte, error) {
+	// The pre-flight is a sequential host one-shot, so no concurrent cwd user can
+	// race this; a failed Getwd/Chdir simply no-ops to a plain cwd capture.
+	if prev, err := os.Getwd(); err == nil {
+		if cerr := os.Chdir(dir); cerr == nil {
+			defer os.Chdir(prev) //nolint:errcheck // best-effort restore
+		}
+	}
+	return r.Runner.Capture(ctx, bin, argv...)
 }
 
 // runPreflight acts on the agent's feasibility verdict with no human, shared by
@@ -312,7 +344,8 @@ func (r *Runner) runPreflight(ctx context.Context, mode containerMode, surface s
 	pctx, cancel := context.WithTimeout(ctx, preflightTimeout)
 	defer cancel()
 	// Capture (not Exec) so ward can read the verdict; the read is echoed below.
-	out, err := r.Runner.Capture(pctx, argv[0], argv[1:]...)
+	// capturePreflight isolates it in a neutral dir, never the dispatch cwd (#169).
+	out, err := r.capturePreflight(pctx, argv)
 	read := strings.TrimSpace(string(out))
 	if read != "" {
 		fmt.Fprintf(os.Stderr, "%s\n\n", read)

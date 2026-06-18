@@ -167,6 +167,9 @@ func TestPreflightPrompt(t *testing.T) {
 		"NO-GO",
 		"WRONG-REPO",               // the ward#159 routing verdict
 		"coilyco-flight-deck/ward", // names this repo so the agent can contrast
+		"FRESH CLONE",              // ward#169: names the real clone the run gets
+		"local working tree",       // ward#169: tells it not to judge from cwd
+		"current directory",        // ward#169: missing-here means nothing
 	} {
 		if !strings.Contains(got, want) {
 			t.Errorf("preflight prompt missing %q\n got: %s", want, got)
