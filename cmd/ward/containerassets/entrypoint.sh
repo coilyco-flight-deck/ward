@@ -134,6 +134,28 @@ install_precommit_hooks() {
   fi
 }
 
+# --- agent-only commit suite (ward#139): headless/task runs only -------------
+# Enable agentic-os closes-issue + conventional-commit. See docs/agent-precommit.md.
+install_agent_precommit_hooks() {
+  local work="$1"
+  [ "${WARD_HEADLESS:-0}" = 1 ] || { log "not headless; skipping agent-only commit suite (ward#139)"; return 0; }
+  [ -f "$work/.pre-commit-config.yaml" ] || { log "no .pre-commit-config.yaml; skipping agent commit suite (ward#139)"; return 0; }
+  command -v pre-commit >/dev/null 2>&1 || { log "pre-commit not on PATH; skipping agent commit suite (ward#139)"; return 0; }
+  # Generate an agent-only config pinning the repo's agentic-os rev, then bind it
+  # as the commit-msg hook (a repo-relative path so it resolves at commit time).
+  local cfg=".git/ward-agent-precommit.yaml"
+  if ! ward container agent-precommit-config --config "$work/.pre-commit-config.yaml" > "$work/$cfg" 2>/dev/null; then
+    rm -f "$work/$cfg"
+    log "no agentic-os hooks to enable; skipping agent commit suite (ward#139)"
+    return 0
+  fi
+  if ( cd "$work" && pre-commit install --hook-type commit-msg --config "$cfg" >&2 ); then
+    log "installed agent-only commit-msg suite via $cfg (ward#139)"
+  else
+    log "agent commit suite install failed (ward#139)"
+  fi
+}
+
 # --- warm the substrate reference repos (best-effort; see docs/container.md) --
 # Mirror+TTL-refresh each manifest repo, then drop a working copy under DEST.
 WARD_SUBSTRATE_SEED="${WARD_SUBSTRATE_SEED:-/opt/substrate-seed}"
@@ -287,6 +309,7 @@ main() {
   install_ward
   local work; work="$(clone_target)"
   install_precommit_hooks "$work"
+  install_agent_precommit_hooks "$work"
   warm_substrate
   compose_context
   compose_permissions

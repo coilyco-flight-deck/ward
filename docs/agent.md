@@ -52,6 +52,9 @@ the carry-to-merge autonomy and the reaper backstop; `work` only seeds the issue
 - **`task`** files an issue from `--instructions` first, then runs the `headless`
   flow against it (carries to merge, `closes #N`). See [docs/agent-task.md](agent-task.md).
 
+Both `headless` and `task` also install an [agent-only commit suite](agent-precommit.md)
+(`closes-issue` + `conventional-commit`) that interactive `work` and humans never see.
+
 ## Headless pre-flight (ward#137)
 
 `headless` detaches into a fire-and-forget run nobody is watching, so when it is
@@ -100,8 +103,7 @@ the in-container ward, because the container always pins/downloads its own.
 claude runs **non-root** (uid 1000): it refuses `--dangerously-skip-permissions`
 as root, so the entrypoint sets up as root then drops via `setpriv`. It
 authenticates with your **Max/subscription login**, not an API key - ward
-resolves the OAuth credential on the host (macOS keychain `Claude Code-credentials`,
-else `~/.claude/.credentials.json`) and injects it into the container's
+resolves the OAuth credential on the host and injects it into the container's
 `~/.claude/.credentials.json` via the private `--env-file`, never in argv/audit.
 `ANTHROPIC_API_KEY` stays unset so it can't shadow OAuth.
 
