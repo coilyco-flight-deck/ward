@@ -19,6 +19,10 @@ WARD_AGENT="${WARD_AGENT:-claude}"
 WARD_CONTEXT_LEVEL="${WARD_CONTEXT_LEVEL:-2}"
 WARD_GITCACHE="${WARD_GITCACHE:-/gitcache}"
 WARD_CONTEXT_SRC="${WARD_CONTEXT_SRC:-/opt/ward-context}"
+# qwen rides opencode against a local ollama model; tag + endpoint are overridable.
+# See docs/agent.md (qwen).
+WARD_QWEN_MODEL="${WARD_QWEN_MODEL:-qwen2.5-coder:latest}"
+WARD_OLLAMA_URL="${WARD_OLLAMA_URL:-http://localhost:11434/v1}"
 GIT_USER_NAME="${WARD_GIT_NAME:-ward-container}"
 GIT_USER_EMAIL="${WARD_GIT_EMAIL:-coilysiren@gmail.com}"
 
@@ -92,6 +96,24 @@ install_ward_from_release() {
 install_ward() {
   if [ -n "${WARD_FROM_SOURCE:-}" ]; then install_ward_from_source; else install_ward_from_release; fi
   ward version >&2 || die "ward did not install correctly"
+}
+
+# --- install opencode (qwen mode): best-effort, never fatal -------------------
+# opencode is absent from the image; self-install it onto PATH. docs/agent.md (qwen).
+install_opencode() {
+  [ "$WARD_MODE" = qwen ] || return 0
+  if command -v opencode >/dev/null 2>&1; then
+    log "opencode already present in image; skipping install"
+    return 0
+  fi
+  log "installing opencode (qwen-backed harness; not baked into the dev-base image yet)"
+  if curl -fsSL https://opencode.ai/install | bash >&2; then
+    if [ -x "$HOME/.opencode/bin/opencode" ]; then
+      install -m 0755 "$HOME/.opencode/bin/opencode" /usr/local/bin/opencode
+    fi
+  fi
+  command -v opencode >/dev/null 2>&1 \
+    || log "opencode install failed; qwen mode will drop to a shell (use --image with opencode baked in, or fix network)"
 }
 
 # --- cached fresh clone (mirror in the shared gitcache volume) ---------------
@@ -298,6 +320,29 @@ EOF
   log "wrote codex config (approvals off, sandbox open) to $dir/config.toml"
 }
 
+# --- opencode config (qwen mode): point opencode at a local ollama qwen model -
+# Register a local ollama provider + pin the default model. docs/agent.md (qwen).
+compose_opencode_config() {
+  [ "$WARD_MODE" = qwen ] || return 0
+  local dir="$AGENT_HOME/.config/opencode"
+  mkdir -p "$dir"
+  cat > "$dir/opencode.json" <<EOF
+{
+  "\$schema": "https://opencode.ai/config.json",
+  "model": "ollama/$WARD_QWEN_MODEL",
+  "provider": {
+    "ollama": {
+      "npm": "@ai-sdk/openai-compatible",
+      "name": "Ollama (local)",
+      "options": { "baseURL": "$WARD_OLLAMA_URL" },
+      "models": { "$WARD_QWEN_MODEL": {} }
+    }
+  }
+}
+EOF
+  log "wrote qwen-backed opencode config (model ollama/$WARD_QWEN_MODEL via $WARD_OLLAMA_URL) to $dir/opencode.json"
+}
+
 # --- reaper: deterministic teardown backstop (docs/container-reap.md) --------
 # Static ward code lands/salvages residual work on any agent exit; nothing lost.
 reap() {
@@ -336,6 +381,7 @@ stream_progress() {
 main() {
   configure_git_auth
   install_ward
+  install_opencode
   local work; work="$(clone_target)"
   install_precommit_hooks "$work"
   install_agent_precommit_hooks "$work"
@@ -345,6 +391,7 @@ main() {
   write_claude_creds
   write_codex_creds
   compose_codex_config
+  compose_opencode_config
   cd "$work"
   export WARD_REAP_WORK="$work"
   # Arm the reaper before launching the agent; the agent is NOT exec'd, else exec
@@ -378,6 +425,17 @@ main() {
       log "headless: codex exec <seed> (codex prints its own progress to this log)"
     else
       agent_argv=(codex "$@")
+    fi
+    ;;
+  qwen)
+    # opencode `run <seed>` headless (prints its own progress, stream stays 0),
+    # seedless TUI interactive; provider/model come from opencode.json, not argv.
+    if [ "${WARD_HEADLESS:-0}" = 1 ]; then
+      agent_argv=(opencode run "$@")
+      log "headless: opencode run <seed> (opencode prints its own progress to this log)"
+    else
+      agent_argv=(opencode)
+      [ "$#" -gt 0 ] && log "interactive opencode TUI: seed prompt is not auto-delivered (paste the issue)"
     fi
     ;;
   *)

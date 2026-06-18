@@ -86,6 +86,38 @@ func TestAgentManifestCodexDialect(t *testing.T) {
 	}
 }
 
+// TestAgentManifestQwenDialect pins qwen's real opencode dialect (ward#187):
+// headless [opencode run], interactive [opencode], no preflight, no stream-json.
+func TestAgentManifestQwenDialect(t *testing.T) {
+	m, err := loadAgentManifest()
+	if err != nil {
+		t.Fatalf("loadAgentManifest: %v", err)
+	}
+	qwen, ok := m.adapter("qwen")
+	if !ok {
+		t.Fatal("manifest missing qwen")
+	}
+	if qwen.Binary != "opencode" {
+		t.Errorf("qwen binary = %q, want opencode", qwen.Binary)
+	}
+	if got := fmt.Sprint(qwen.Argv.Headless); got != fmt.Sprint([]string{"opencode", "run"}) {
+		t.Errorf("qwen headless argv = %v, want [opencode run]", qwen.Argv.Headless)
+	}
+	if got := fmt.Sprint(qwen.Argv.Interactive); got != fmt.Sprint([]string{"opencode"}) {
+		t.Errorf("qwen interactive argv = %v, want [opencode]", qwen.Argv.Interactive)
+	}
+	if _, ok := qwen.preflightArgv("carry it?"); ok {
+		t.Error("qwen must not advertise a host pre-flight one-shot (ollama is in-container)")
+	}
+	// qwen must not borrow claude's stream-json flags: opencode prints its own
+	// progress, so its stream is none.
+	for _, a := range qwen.Argv.Headless {
+		if a == "-p" || a == "--output-format" || a == "stream-json" {
+			t.Errorf("qwen headless argv still borrows claude's stream-json flag %q", a)
+		}
+	}
+}
+
 // TestParseAgentManifestRejects covers the validation guards so a malformed or
 // partial manifest fails loudly at load instead of driving the wrong binary.
 func TestParseAgentManifestRejects(t *testing.T) {

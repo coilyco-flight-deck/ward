@@ -4,7 +4,7 @@
 # pre-req for ward#152. aos publishes the canonical manifest; ward embeds this
 # pinned copy so a container needs no network to know its agent's dialect (the
 # same denormalized pattern as preclone-repos.txt). Schema, field semantics, and
-# the provisional codex/qwen caveat live in docs/agent-adapter-manifest.md. The
+# each agent's dialect notes live in docs/agent-adapter-manifest.md. The
 # contract test (agent_adapter_test.go) pins every entry to the still-live Go
 # switches so the ward#152 swap stays behavior-preserving.
 
@@ -34,11 +34,11 @@ agents:
   - name: qwen
     binary: opencode
     contextLevel: 0
-    stream: stream-json
+    stream: none
     auth: none
     argv:
       preflight: []
-      headless: [opencode, -p, --verbose, --output-format, stream-json]
+      headless: [opencode, run]
       interactive: [opencode]
 
   - name: goose

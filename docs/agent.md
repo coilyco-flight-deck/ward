@@ -209,6 +209,21 @@ push - without per-command approval prompts. Headless runs `codex exec <seed>`;
 interactive `work` opens a seeded `codex` TUI. The host pre-flight one-shot is not
 wired for codex yet, so the GO/NO-GO read bows out and dispatch proceeds.
 
+**qwen** (ward#187) is backed by [opencode](https://opencode.ai) talking to a
+**local ollama** model, so it needs no host credential - nothing rides the
+`--env-file`. Because the aos dev-base image does not bake opencode in yet, the
+entrypoint **self-installs the standalone opencode binary at container start**
+(best-effort, the same stance ward takes for itself; an `--image` with opencode
+baked in short-circuits it) and writes `~/.config/opencode/opencode.json`
+registering a local ollama provider with the default model pinned to
+`ollama/$WARD_QWEN_MODEL` (default `qwen2.5-coder:latest`, reachable at
+`$WARD_OLLAMA_URL`, default `http://localhost:11434/v1`). Headless runs
+`opencode run <seed>` (opencode prints its own progress, so ward pipes nothing
+through the stream-json filter); interactive `work` opens the seedless `opencode`
+TUI (the issue is pasted in by hand, like goose). There is no host pre-flight
+one-shot - the model lives in the container, not on the host - so the GO/NO-GO
+read bows out and dispatch proceeds. qwen carries the **minimal** context tier.
+
 ## Reservation (no double-work)
 
 Before a container fires, the run **reserves the issue** so a second run never

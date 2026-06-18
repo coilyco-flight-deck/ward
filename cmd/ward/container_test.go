@@ -510,6 +510,34 @@ func TestEntrypointCodexExec(t *testing.T) {
 	}
 }
 
+// TestEntrypointQwenOpencode guards the qwen launch dialect (ward#187): opencode
+// self-installed, qwen-backed config written, `opencode run` not claude's flags.
+func TestEntrypointQwenOpencode(t *testing.T) {
+	data, err := containerAssets.ReadFile("containerassets/" + containerEntrypointRel)
+	if err != nil {
+		t.Fatalf("read entrypoint: %v", err)
+	}
+	script := string(data)
+	for _, want := range []string{
+		"opencode run",            // headless qwen drives opencode's run dialect
+		"install_opencode",        // ward self-installs the standalone binary
+		"compose_opencode_config", // ...and writes the ollama-backed config
+		"ollama",                  // the provider the config registers
+		"WARD_QWEN_MODEL",         // the overridable model tag
+	} {
+		if !strings.Contains(script, want) {
+			t.Errorf("entrypoint missing %q (ward#187 qwen)", want)
+		}
+	}
+	// qwen headless must not borrow claude's stream-json flags: its `opencode run`
+	// invocation precedes the claude `-p --output-format` default branch.
+	qwen := strings.Index(script, "opencode run")
+	claudeFlags := strings.Index(script, "--output-format stream-json")
+	if qwen < 0 || claudeFlags < 0 || qwen > claudeFlags {
+		t.Errorf("qwen headless argv must be distinct from claude stream-json (qwen=%d claude=%d)", qwen, claudeFlags)
+	}
+}
+
 // TestCredEnvLines pins the per-mode credential env-file shaping (ward#178): each
 // present blob rides base64'd on its own WARD_*_B64 line, absent blobs are omitted.
 func TestCredEnvLines(t *testing.T) {

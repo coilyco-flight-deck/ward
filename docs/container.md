@@ -48,8 +48,8 @@ mirroring agent-compose's slices:
 - `qwen` (level 0) - doctrine only.
 
 The repo's in-tree `AGENTS.md` loads natively on top; the level exports as
-`WARD_CONTEXT_LEVEL`. codex/qwen/goose binaries aren't in the image yet (claude
-is), so those modes drop to a shell until they land.
+`WARD_CONTEXT_LEVEL`. codex/goose binaries aren't in the image yet (claude is), so
+they drop to a shell; qwen self-installs opencode at start (ward#187, [agent.md](agent.md)).
 
 ## Inside the container
 
@@ -59,7 +59,7 @@ cached-fresh-clones the target into `/workspace/<repo>`, installs pre-commit
 hooks ([container-precommit.md](container-precommit.md)), composes the mode's
 context + permission policy, launches the agent, then reaps on exit. The push
 token (`/forgejo/api-token`) resolves **on the host**, injected via a private
-0600 `--env-file` removed once docker reads it, never in argv or audit.
+0600 `--env-file`, never in argv or audit.
 
 ## Feature-lifetime autonomy + the reaper backstop
 
@@ -76,5 +76,5 @@ every exit `ward container reap` lands clean work on `main` or salvages it
 
 ## See also
 
-[docs/container-substrate.md](container-substrate.md) - repos warmed into `/substrate`.
+[docs/container-substrate.md](container-substrate.md) - repos in `/substrate`.
 [docs/FEATURES.md](FEATURES.md) - inventory. [docs/agent.md](agent.md) - launch surface. agentic-os `docs/dev-base-image.md` - the image.

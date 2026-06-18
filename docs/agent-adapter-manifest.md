@@ -44,22 +44,22 @@ Field notes:
 
 - `contextLevel` drives the `WARD_CONTEXT_LEVEL` ladder the entrypoint composes
   context against (full/scoped/minimal); see [container.md](container.md).
-- `stream: none` means the agent prints its own progress (goose), so ward pipes
-  nothing through its stream-json filter.
-- `argv.preflight: []` means no reliable host one-shot yet (codex/qwen), so the
-  GO/NO-GO check bows out and dispatch proceeds unguarded (ward#147, ward#148).
-- `argv.interactive` for goose is `[goose, session]`: no seed on argv, so the issue
-  is pasted in by hand.
-- `argv.headless` for codex is `[codex, exec]` - codex's non-interactive exec
-  dialect, not claude's `-p` stream-json flags. codex prints its own progress, so
-  its `stream` is `none` and ward pipes nothing through the stream-json filter
-  (ward#178). Its auth is `codex-file`: the host's `~/.codex/auth.json`, injected
-  into the container (see [agent.md](agent.md)).
+- `stream: none` means the agent prints its own progress (goose/codex/qwen), so
+  ward pipes nothing through its stream-json filter.
+- `argv.preflight: []` means no host one-shot (codex/qwen), so the GO/NO-GO check
+  bows out and dispatch proceeds (ward#147, ward#148); for qwen this is structural,
+  as ollama runs in-container.
+- `argv.interactive` for goose is `[goose, session]` and qwen's is `[opencode]`:
+  no seed on argv, so the issue is pasted in by hand.
+- `argv.headless` for codex is `[codex, exec]` and qwen's is `[opencode, run]` -
+  each its own dialect, not claude's stream-json flags (ward#178, ward#187). codex
+  auth is `codex-file` (host `~/.codex/auth.json`); qwen auth `none`.
 
-`qwen` stays **provisional**: its binary is not installed in the dev-base image
-yet, so its argv still mirrors the claude-style default branch in `entrypoint.sh`
-and firms up when the binary lands. `codex` is now wired to its real exec dialect
-(ward#178), though its install in the image remains the aos-side step.
+`codex` is wired to its exec dialect (ward#178); its image install is the aos-side
+step. `qwen` is wired to opencode's run dialect, not the old claude default branch
+(ward#187): the entrypoint writes a qwen-backed opencode config (local ollama) and
+**self-installs opencode at container start** (best-effort), so qwen is available
+without the image baking it in. See [agent.md](agent.md).
 
 ## The contract test
 
