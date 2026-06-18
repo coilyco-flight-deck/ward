@@ -209,6 +209,20 @@ push - without per-command approval prompts. Headless runs `codex exec <seed>`;
 interactive `work` opens a seeded `codex` TUI. The host pre-flight one-shot is not
 wired for codex yet, so the GO/NO-GO read bows out and dispatch proceeds.
 
+**goose** (ward#186) needs a **model provider** bound or a launched goose can do no
+work. Unlike opencode (qwen), whose provider is configured image-side, goose's
+config is ward's to seed - the same shape as codex. The default provider is the
+**tower Ollama over the tailnet** (the same provider family as qwen): ward resolves
+its endpoint host-side from SSM (`/coilysiren/ollama/host`, the param the ollama
+guardfile uses) and rides it into the container base64'd over the private
+`--env-file` as `WARD_GOOSE_OLLAMA_HOST_B64`, never in argv/audit. The entrypoint's
+`compose_goose_config` then writes `~/.config/goose/config.yaml` binding
+`GOOSE_PROVIDER`, `GOOSE_MODEL`, and `OLLAMA_HOST`. An unresolved host (no aws on
+the host) just leaves goose to its built-in default rather than failing the launch.
+Provider and model are overridable via `WARD_GOOSE_PROVIDER` / `WARD_GOOSE_MODEL`
+(default `ollama` / `qwen2.5`), so an operator can repoint goose at a cloud peer -
+plus that peer's key - without a code change.
+
 ## Reservation (no double-work)
 
 Before a container fires, the run **reserves the issue** so a second run never

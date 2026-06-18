@@ -41,6 +41,13 @@ func loadSubstrateManifest() ([]substrateRepo, error) {
 // #nosec G101 -- this is an SSM parameter path, not an embedded secret.
 const forgejoTokenSSMPath = "/forgejo/api-token"
 
+// ollamaHostSSMPath is the SSM parameter NAME for the tower Ollama endpoint
+// reached over the tailnet (the same param the ollama guardfile resolves). goose
+// runs against this provider, so ward resolves it on the host and injects it into
+// the container's goose config; the ephemeral container has no aws creds of its
+// own to resolve it. See docs/agent.md (goose, ward#186).
+const ollamaHostSSMPath = "/coilysiren/ollama/host"
+
 // containerCommand is the `ward container` umbrella.
 func containerCommand() *cli.Command {
 	return &cli.Command{
@@ -136,16 +143,22 @@ func (r *Runner) runContainerUp(ctx context.Context, c *cli.Command) error {
 type agentCreds struct {
 	Claude string
 	Codex  string
+	// GooseOllamaHost is the tower Ollama endpoint goose binds as its provider
+	// (resolved host-side from SSM; the entrypoint seeds it into goose's config).
+	GooseOllamaHost string
 }
 
 // resolveAgentCreds resolves the credential the run's mode needs (claude OAuth,
-// codex auth.json; none for the tower-auth ollama harnesses). docs/agent.md.
+// codex auth.json, goose's tower Ollama endpoint; none for qwen, whose opencode
+// provider is configured image-side). docs/agent.md.
 func (r *Runner) resolveAgentCreds(ctx context.Context, mode containerMode) agentCreds {
 	switch mode {
 	case modeClaude:
 		return agentCreds{Claude: r.resolveClaudeCreds(ctx)}
 	case modeCodex:
 		return agentCreds{Codex: r.resolveCodexCreds()}
+	case modeGoose:
+		return agentCreds{GooseOllamaHost: r.resolveOllamaHost(ctx)}
 	default:
 		return agentCreds{}
 	}
@@ -243,6 +256,21 @@ func (r *Runner) resolveCodexCreds() string {
 	return strings.TrimSpace(string(data))
 }
 
+// resolveOllamaHost reads the tower Ollama endpoint from SSM on the host (the same
+// param the ollama guardfile uses) so goose can bind it as its provider; the
+// ephemeral container can't resolve SSM itself. Best-effort: an empty return
+// leaves goose to its config default rather than failing the launch. docs/agent.md.
+func (r *Runner) resolveOllamaHost(ctx context.Context) string {
+	out, err := r.Runner.Capture(ctx, "aws", "ssm", "get-parameter",
+		"--name", ollamaHostSSMPath, "--with-decryption",
+		"--query", "Parameter.Value", "--output", "text")
+	if err != nil {
+		fmt.Fprintf(os.Stderr, "ward container: could not resolve %s from SSM (%v); goose will fall back to its config default ollama host\n", ollamaHostSSMPath, err)
+		return ""
+	}
+	return strings.TrimSpace(string(out))
+}
+
 // credEnvLines renders the base64'd per-mode credential env-file lines, one per
 // present blob; pure, so the secret-shaping is unit-testable. See docs/agent.md.
 func credEnvLines(creds agentCreds) []string {
@@ -252,6 +280,9 @@ func credEnvLines(creds agentCreds) []string {
 	}
 	if creds.Codex != "" {
 		lines = append(lines, "WARD_CODEX_AUTH_B64="+base64.StdEncoding.EncodeToString([]byte(creds.Codex)))
+	}
+	if creds.GooseOllamaHost != "" {
+		lines = append(lines, "WARD_GOOSE_OLLAMA_HOST_B64="+base64.StdEncoding.EncodeToString([]byte(creds.GooseOllamaHost)))
 	}
 	return lines
 }

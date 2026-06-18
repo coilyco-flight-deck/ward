@@ -45,7 +45,7 @@ agents:
     binary: goose
     contextLevel: 2
     stream: none
-    auth: none
+    auth: ollama
     argv:
       preflight: [goose, run, -t]
       headless: [goose, run, -t]

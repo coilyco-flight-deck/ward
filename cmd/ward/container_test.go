@@ -2,12 +2,15 @@ package main
 
 import (
 	"encoding/base64"
+	"fmt"
 	"os"
 	"path/filepath"
 	"slices"
 	"strings"
 	"testing"
 	"time"
+
+	"forgejo.coilysiren.me/coilyco-flight-deck/cli-guard/cli/shell"
 )
 
 // TestSweepStaleContainerAssets reclaims dirs past the TTL (left by detached
@@ -481,6 +484,32 @@ func TestEntrypointGooseHeadless(t *testing.T) {
 	}
 }
 
+// TestEntrypointGooseConfig guards goose's provider wiring (ward#186): the
+// entrypoint seeds ~/.config/goose/config.yaml with a provider + model so a
+// launched goose can actually run, decoding the host-resolved tower Ollama host.
+func TestEntrypointGooseConfig(t *testing.T) {
+	data, err := containerAssets.ReadFile("containerassets/" + containerEntrypointRel)
+	if err != nil {
+		t.Fatalf("read entrypoint: %v", err)
+	}
+	script := string(data)
+	for _, want := range []string{
+		"compose_goose_config",       // the seed step exists...
+		"config.yaml",                // ...and writes goose's config file
+		"GOOSE_PROVIDER",             // provider is bound
+		"GOOSE_MODEL",                // model is bound
+		"WARD_GOOSE_OLLAMA_HOST_B64", // the host-resolved tower endpoint rides the env-file
+	} {
+		if !strings.Contains(script, want) {
+			t.Errorf("entrypoint missing %q (ward#186 goose config)", want)
+		}
+	}
+	// The step must be wired into main() alongside the other credential steps.
+	if !strings.Contains(script, "\n  compose_goose_config\n") {
+		t.Error("compose_goose_config must be called in main()")
+	}
+}
+
 // TestEntrypointCodexExec guards the codex launch dialect (ward#178): codex runs
 // via `codex exec` with its auth + config written before launch, not claude flags.
 func TestEntrypointCodexExec(t *testing.T) {
@@ -530,13 +559,23 @@ func TestCredEnvLines(t *testing.T) {
 	if err != nil || string(dec) != "codex-blob" {
 		t.Errorf("codex blob did not round-trip: dec=%q err=%v", dec, err)
 	}
+	gooseOnly := credEnvLines(agentCreds{GooseOllamaHost: "http://tower:11434"})
+	if len(gooseOnly) != 1 || !strings.HasPrefix(gooseOnly[0], "WARD_GOOSE_OLLAMA_HOST_B64=") {
+		t.Fatalf("goose-only lines = %v", gooseOnly)
+	}
+	gdec, gerr := base64.StdEncoding.DecodeString(strings.TrimPrefix(gooseOnly[0], "WARD_GOOSE_OLLAMA_HOST_B64="))
+	if gerr != nil || string(gdec) != "http://tower:11434" {
+		t.Errorf("goose host did not round-trip: dec=%q err=%v", gdec, gerr)
+	}
 	if got := credEnvLines(agentCreds{Claude: "a", Codex: "b"}); len(got) != 2 {
 		t.Errorf("both creds should yield two lines, got %v", got)
 	}
 }
 
 // TestResolveAgentCredsRouting checks the host credential resolver routes by mode:
-// codex reads ~/.codex/auth.json into the Codex slot, the ollama harnesses none.
+// codex reads ~/.codex/auth.json into the Codex slot, goose resolves the tower
+// Ollama endpoint from SSM into its slot (ward#186), qwen injects nothing (its
+// opencode provider is configured image-side).
 func TestResolveAgentCredsRouting(t *testing.T) {
 	home := t.TempDir()
 	t.Setenv("HOME", home)
@@ -546,7 +585,20 @@ func TestResolveAgentCredsRouting(t *testing.T) {
 	if err := os.WriteFile(filepath.Join(home, ".codex", "auth.json"), []byte("codex-auth-blob"), 0o600); err != nil {
 		t.Fatal(err)
 	}
-	r := &Runner{}
+	// A stub `aws` so goose's SSM resolution is hermetic: it prints a known host
+	// regardless of argv, standing in for `aws ssm get-parameter`.
+	const towerHost = "http://tower.tailnet:11434"
+	stub := filepath.Join(home, "aws")
+	if err := os.WriteFile(stub, []byte("#!/bin/sh\necho "+towerHost+"\n"), 0o755); err != nil {
+		t.Fatal(err)
+	}
+	r := &Runner{Runner: &shell.Runner{Resolve: func(bin string) (string, error) {
+		if bin == "aws" {
+			return stub, nil
+		}
+		return "", fmt.Errorf("unexpected binary %q", bin)
+	}}}
+
 	got := r.resolveAgentCreds(t.Context(), modeCodex)
 	if got.Codex != "codex-auth-blob" {
 		t.Errorf("codex mode: Codex = %q, want the auth.json contents", got.Codex)
@@ -554,11 +606,17 @@ func TestResolveAgentCredsRouting(t *testing.T) {
 	if got.Claude != "" {
 		t.Errorf("codex mode must not resolve a claude credential, got %q", got.Claude)
 	}
-	// The ollama harnesses authenticate to the tower, so ward injects nothing.
-	for _, m := range []containerMode{modeQwen, modeGoose} {
-		if c := r.resolveAgentCreds(t.Context(), m); c != (agentCreds{}) {
-			t.Errorf("%s must resolve no creds, got %+v", m, c)
-		}
+	// goose binds the tower Ollama, so ward resolves and injects its endpoint.
+	goose := r.resolveAgentCreds(t.Context(), modeGoose)
+	if goose.GooseOllamaHost != towerHost {
+		t.Errorf("goose mode: GooseOllamaHost = %q, want the resolved tower host %q", goose.GooseOllamaHost, towerHost)
+	}
+	if goose.Claude != "" || goose.Codex != "" {
+		t.Errorf("goose mode must resolve only its ollama host, got %+v", goose)
+	}
+	// qwen's opencode provider is image-configured, so ward injects nothing.
+	if c := r.resolveAgentCreds(t.Context(), modeQwen); c != (agentCreds{}) {
+		t.Errorf("qwen must resolve no creds, got %+v", c)
 	}
 }
 

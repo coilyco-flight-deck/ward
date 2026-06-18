@@ -33,7 +33,7 @@ agents:
     binary: claude          # in-container command this agent launches
     contextLevel: 2         # least-access ladder: 2=full, 1=scoped, 0=minimal
     stream: stream-json     # headless stream format: stream-json | none
-    auth: claude-keychain   # host-resolved credential: claude-keychain | none
+    auth: claude-keychain   # host-resolved credential: claude-keychain | codex-file | ollama | none
     argv:
       preflight: [claude, -p]   # host one-shot prefix; prompt appended. []=none yet
       headless: [claude, -p, --verbose, --output-format, stream-json]  # seed appended
@@ -55,6 +55,11 @@ Field notes:
   its `stream` is `none` and ward pipes nothing through the stream-json filter
   (ward#178). Its auth is `codex-file`: the host's `~/.codex/auth.json`, injected
   into the container (see [agent.md](agent.md)).
+- `auth` for goose is `ollama` (ward#186): goose binds the tower Ollama over the
+  tailnet as its model provider. ward resolves the endpoint host-side from SSM and
+  the entrypoint seeds `~/.config/goose/config.yaml` (provider + model); the
+  provider/model are overridable via `WARD_GOOSE_PROVIDER` / `WARD_GOOSE_MODEL` to
+  repoint at a cloud peer. See [agent.md](agent.md).
 
 `qwen` stays **provisional**: its binary is not installed in the dev-base image
 yet, so its argv still mirrors the claude-style default branch in `entrypoint.sh`
