@@ -150,6 +150,43 @@ func (r *Runner) reserveIssue(ctx context.Context, label string, mode containerM
 	return releaseLocal, nil
 }
 
+// precheckReservation runs reserveIssue's read-only refusal half ahead of the LLM
+// pre-flight (ward#184), reusing the fetched thread; --force bypasses it. See docs.
+func (r *Runner) precheckReservation(ctx context.Context, label string, w resolvedWork, force bool) error {
+	if force {
+		return nil
+	}
+	now := time.Now().UTC()
+	if err := r.precheckLocalReservation(ctx, label, w.Ref, now); err != nil {
+		return err
+	}
+	if who, held := freshReservationComment(w.Comments, now, agentReservationTTL); held {
+		return fmt.Errorf(
+			"%s: issue %s is already reserved remotely (%s); wait for it to finish or pass --force to override",
+			label, w.Ref, who)
+	}
+	return nil
+}
+
+// precheckLocalReservation reports a conflict if a fresh local sentinel for a
+// still-running container owns ref, without writing one (shared, ward#184).
+func (r *Runner) precheckLocalReservation(ctx context.Context, label string, ref agentIssueRef, now time.Time) error {
+	path, err := agentReservationPath(ref)
+	if err != nil {
+		return fmt.Errorf("%s: resolve reservation path: %w", label, err)
+	}
+	existing, ok, rerr := readAgentReservation(path)
+	if rerr != nil {
+		return fmt.Errorf("%s: read reservation %s: %w", label, path, rerr)
+	}
+	if ok && reservationFresh(existing.At, now, agentReservationTTL) && r.containerRunning(ctx, existing.Container) {
+		return fmt.Errorf(
+			"%s: issue %s is already reserved locally by %s; wait for it to finish or pass --force to reclaim",
+			label, ref, existing.summary())
+	}
+	return nil
+}
+
 // acquireLocalReservation writes this run's sentinel (refusing a fresh one held by a
 // still-running container unless force) and returns a release that deletes it.
 func (r *Runner) acquireLocalReservation(ctx context.Context, label string, mode containerMode, ref agentIssueRef, container, branch string, now time.Time, force bool) (func(), error) {
@@ -158,14 +195,8 @@ func (r *Runner) acquireLocalReservation(ctx context.Context, label string, mode
 		return nil, fmt.Errorf("%s: resolve reservation path: %w", label, err)
 	}
 	if !force {
-		existing, ok, rerr := readAgentReservation(path)
-		if rerr != nil {
-			return nil, fmt.Errorf("%s: read reservation %s: %w", label, path, rerr)
-		}
-		if ok && reservationFresh(existing.At, now, agentReservationTTL) && r.containerRunning(ctx, existing.Container) {
-			return nil, fmt.Errorf(
-				"%s: issue %s is already reserved locally by %s; wait for it to finish or pass --force to reclaim",
-				label, ref, existing.summary())
+		if err := r.precheckLocalReservation(ctx, label, ref, now); err != nil {
+			return nil, err
 		}
 	}
 	res := agentReservation{

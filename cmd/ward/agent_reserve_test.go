@@ -159,6 +159,58 @@ func TestAcquireLocalReservationStaleReclaim(t *testing.T) {
 	release()
 }
 
+// precheckReservation refuses a fresh remote/local hold without writing a sentinel
+// (so the hold stays untaken) and --force bypasses both (ward#184 ordering).
+func TestPrecheckReservation(t *testing.T) {
+	t.Setenv("HOME", t.TempDir())
+	r := &Runner{}
+	ref := agentIssueRef{Owner: "coilyco-flight-deck", Repo: "ward", Number: 184}
+	now := time.Now().UTC()
+
+	mk := func(body string, age time.Duration, login string) issueComment {
+		c := issueComment{Body: body, CreatedAt: now.Add(-age)}
+		c.User.Login = login
+		return c
+	}
+
+	// A fresh remote reservation comment refuses, naming the holder.
+	reserved := mk(reservationCommentBody(modeClaude, "ward-x", "box", now.Add(-time.Minute)), time.Minute, "coilyco-ops")
+	w := resolvedWork{Ref: ref, Comments: []issueComment{reserved}}
+	err := r.precheckReservation(context.Background(), "lbl", w, false)
+	if err == nil || !strings.Contains(err.Error(), "reserved remotely") || !strings.Contains(err.Error(), "coilyco-ops") {
+		t.Fatalf("precheckReservation: want a remote-reservation refusal naming the holder, got %v", err)
+	}
+
+	// --force bypasses the remote refusal.
+	if err := r.precheckReservation(context.Background(), "lbl", w, true); err != nil {
+		t.Fatalf("precheckReservation --force: want bypass, got %v", err)
+	}
+
+	// The precheck must NOT have written a local sentinel - it only reads.
+	path, _ := agentReservationPath(ref)
+	if _, ok, _ := readAgentReservation(path); ok {
+		t.Error("precheckReservation must not take the hold (no sentinel should exist)")
+	}
+
+	// A clean thread (no marker) lets the run proceed to the pre-flight.
+	clean := resolvedWork{Ref: ref, Comments: []issueComment{mk("just a normal comment", time.Minute, "someone")}}
+	if err := r.precheckReservation(context.Background(), "lbl", clean, false); err != nil {
+		t.Fatalf("precheckReservation on a clean thread: want nil, got %v", err)
+	}
+
+	// A fresh local sentinel (empty container -> liveness unknown -> held) refuses
+	// even with an empty comment thread.
+	if err := writeAgentReservation(path, agentReservation{
+		Owner: ref.Owner, Repo: ref.Repo, Number: ref.Number, At: now.Add(-time.Minute),
+	}); err != nil {
+		t.Fatalf("seed local hold: %v", err)
+	}
+	if err := r.precheckReservation(context.Background(), "lbl", clean, false); err == nil ||
+		!strings.Contains(err.Error(), "reserved locally") {
+		t.Fatalf("precheckReservation: want a local-reservation refusal, got %v", err)
+	}
+}
+
 func TestFreshReservationComment(t *testing.T) {
 	now := time.Date(2026, 6, 18, 12, 0, 0, 0, time.UTC)
 	ttl := 2 * time.Hour

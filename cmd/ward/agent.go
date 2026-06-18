@@ -306,6 +306,11 @@ func (r *Runner) runAgentWork(ctx context.Context, c *cli.Command, mode containe
 		r.maybeWarnWardOutdated(ctx)
 	}
 	if headless && preflightWanted(c) {
+		// ward#184: gate on the cheap, authoritative reservation before a full LLM
+		// pre-flight is spent on an issue another run holds. See docs/agent.md.
+		if perr := r.precheckReservation(ctx, fmt.Sprintf("ward agent %s %s", mode, surface), w, c.Bool("force")); perr != nil {
+			return perr
+		}
 		proceed, perr := r.runPreflight(ctx, mode, surface, w)
 		if perr != nil {
 			return fmt.Errorf("ward agent %s %s: pre-flight: %w", mode, surface, perr)

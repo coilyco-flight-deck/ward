@@ -231,6 +231,15 @@ sentinel still guards this host - so a transient Forgejo hiccup never blocks a
 launch. `--print` reserves nothing (it's a dry run). `--force` skips both checks
 to reclaim a stale or foreign hold.
 
+For an interactive `headless` dispatch the cheap, authoritative reservation check
+runs **before the LLM pre-flight**, not after (ward#184): an issue another run
+already holds short-circuits up front rather than wasting a full model read (up
+to the 3-minute pre-flight timeout) only to fail at the launch-time gate. The
+precheck reuses the comment thread already fetched for the pre-flight (no extra
+Forgejo call) and never takes the hold itself - the authoritative two-sided
+reservation still happens at launch. `--force` bypasses the precheck just as it
+bypasses the launch-time check.
+
 ## Flags
 
 `work` carries the `container up` launch flags: `--aws`, `--detach`,
