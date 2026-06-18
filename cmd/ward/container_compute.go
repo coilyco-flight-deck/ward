@@ -131,6 +131,19 @@ func (m containerMode) agentBinary() string {
 	}
 }
 
+// hostPreflightArgv is the host one-shot argv asking this mode's agent prompt,
+// plus whether one exists (claude+goose yes, codex/qwen not yet). See docs/agent.md.
+func (m containerMode) hostPreflightArgv(prompt string) ([]string, bool) {
+	switch m {
+	case modeClaude:
+		return []string{m.agentBinary(), "-p", prompt}, true
+	case modeGoose:
+		return []string{m.agentBinary(), "run", "-t", prompt}, true
+	default:
+		return nil, false
+	}
+}
+
 // contextLevel maps a mode onto the least-access context ladder: 2 = full,
 // 1 = scoped, 0 = minimal. See docs/container.md for what each level composes.
 // goose is a full carry-to-merge harness (level 2) like claude; the entrypoint

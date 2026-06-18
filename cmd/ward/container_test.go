@@ -208,6 +208,41 @@ func TestModeContextLevelLadder(t *testing.T) {
 	}
 }
 
+// ward#148: claude+goose (the full carry-to-merge harnesses) keep parity on the
+// headless pre-flight, so both expose a host one-shot argv; codex/qwen don't yet.
+func TestHostPreflightArgvParity(t *testing.T) {
+	want := map[containerMode][]string{
+		modeClaude: {"claude", "-p", "carry it?"},
+		modeGoose:  {"goose", "run", "-t", "carry it?"},
+	}
+	for m, exp := range want {
+		argv, ok := m.hostPreflightArgv("carry it?")
+		if !ok {
+			t.Errorf("%s: expected a host pre-flight argv (parity with the other full carry-to-merge harness)", m)
+			continue
+		}
+		if len(argv) != len(exp) {
+			t.Errorf("%s: pre-flight argv = %v, want %v", m, argv, exp)
+			continue
+		}
+		for i := range exp {
+			if argv[i] != exp[i] {
+				t.Errorf("%s: pre-flight argv[%d] = %q, want %q (full %v)", m, i, argv[i], exp[i], argv)
+			}
+		}
+		if argv[0] != m.agentBinary() {
+			t.Errorf("%s: pre-flight argv must start with the agent binary %q, got %q", m, m.agentBinary(), argv[0])
+		}
+	}
+	// codex/qwen: no reliable host one-shot yet, so the pre-flight bows out and
+	// the dispatch proceeds unguarded rather than fabricating a verdict.
+	for _, m := range []containerMode{modeCodex, modeQwen} {
+		if argv, ok := m.hostPreflightArgv("carry it?"); ok {
+			t.Errorf("%s: did not expect a host pre-flight argv yet, got %v", m, argv)
+		}
+	}
+}
+
 func TestParseMode(t *testing.T) {
 	for _, ok := range []string{"claude", "codex", "qwen", "goose"} {
 		if _, err := parseMode(ok); err != nil {

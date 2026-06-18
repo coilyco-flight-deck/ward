@@ -66,8 +66,9 @@ no prompt to answer:
 
 1. The agent gets a short prompt with the issue title + body and answers, in a
    sentence or two, whether it thinks it can carry the issue to merge unattended,
-   ending on a `GO` / `NO-GO: <reason>` line. ward runs this as `claude -p` on the
-   host, echoes the read to your terminal, and parses that final verdict line
+   ending on a `GO` / `NO-GO: <reason>` line. ward runs this as a one-shot on the
+   host (`claude -p`, or `goose run -t` for the goose mode), echoes the read to
+   your terminal, and parses that final verdict line
    (markdown bold, bullets, and quote markers are tolerated; the last verdict line
    wins).
 2. On **GO** - or any read ward can't pin to an explicit NO-GO - the detached run
@@ -79,11 +80,15 @@ no prompt to answer:
 The check is skipped when there is no terminal (scripted / piped dispatch), on
 `--print` (a dry run), and with `--no-preflight` (the escape hatch for a run
 launched from a TTY that you still want to fire blind - it also re-dispatches a
-NO-GO issue once you've decided it's good to go). Non-`claude` modes, a host
-without the agent binary, or a read that doesn't complete all **proceed** rather
-than block, since none of those is the agent declining the work (and the reaper
-still backstops residual work). `task` files an issue then goes straight to the
-detached run with no pre-flight - it is the deliberately programmatic path.
+NO-GO issue once you've decided it's good to go). The gate runs for both full
+carry-to-merge harnesses, **claude and goose**, which are kept at parity here so
+a rapidly-dispatched goose chore is feasibility-checked the same way (ward#148);
+goose answers via `goose run -t`, claude via `claude -p`. Modes with no host
+one-shot wired yet (`codex`/`qwen`), a host without the agent binary, or a read
+that doesn't complete all **proceed** rather than block, since none of those is
+the agent declining the work (and the reaper still backstops residual work).
+`task` files an issue then goes straight to the detached run with no pre-flight -
+it is the deliberately programmatic path.
 
 The reaper backstop salvages residual work if the agent crashes (it needs ward's
 jail off in-container - the entrypoint exports `CLIGUARD_NO_SANDBOX=1`, cli-guard#153).
