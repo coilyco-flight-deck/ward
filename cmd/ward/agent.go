@@ -223,6 +223,9 @@ func (r *Runner) launchAgentContainer(ctx context.Context, c *cli.Command, mode 
 	if plan.Branch == "" {
 		plan.Branch = fmt.Sprintf("issue-%d", ref.Number)
 	}
+	// Override the generic ward-<repo>-<rand> name with one that names the issue
+	// and harness, so a host running several agents can tell them apart.
+	plan.Name = agentContainerName(repo, mode, ref.Number, randHex(4))
 	plan.Headless = headless
 	if detached {
 		plan.Interactive = false
@@ -400,12 +403,16 @@ func printAgentTaskPlan(c *cli.Command, mode containerMode, repo targetRepo, tit
 	if plan.Branch == "" {
 		plan.Branch = "issue-<N>"
 	}
+	// Mirror the live name shape; the real issue number lands once filed, so the
+	// placeholder reads issue-<N> like the branch above.
+	plan.Name = fmt.Sprintf("%s-%s-issue-<N>-%s-<rand>", containerNamePrefix, safeRepoName(repo), mode)
 
 	var b strings.Builder
 	fmt.Fprintf(&b, "# ward agent %s task (print)\n", mode)
 	fmt.Fprintf(&b, "headless: agent runs detached in print mode (-p)\n")
 	fmt.Fprintf(&b, "repo:    %s\n", repo.slug())
 	fmt.Fprintf(&b, "branch:  %s\n", plan.Branch)
+	fmt.Fprintf(&b, "name:    %s\n", plan.Name)
 	fmt.Fprintf(&b, "----- issue to file -----\ntitle: %s\n\n%s\n----- end -----\n", title, body)
 	fmt.Fprintf(&b, "----- seeded prompt (#N filled once filed) -----\n%s\n----- end -----\n", seed)
 	if c.Bool("no-pull") {
@@ -445,6 +452,7 @@ func printAgentPlan(c *cli.Command, p upPlan, ref agentIssueRef, title, seed, su
 	fmt.Fprintf(&b, "title:   %s\n", title)
 	fmt.Fprintf(&b, "repo:    %s\n", p.Repo.slug())
 	fmt.Fprintf(&b, "branch:  %s\n", p.Branch)
+	fmt.Fprintf(&b, "name:    %s\n", p.Name)
 	fmt.Fprintf(&b, "----- seeded prompt -----\n%s\n----- end -----\n", seed)
 	if c.Bool("no-pull") {
 		fmt.Fprintf(&b, "# pull skipped (--no-pull); image: %s\n", p.Image)

@@ -209,15 +209,30 @@ func targetFromRemoteURL(remoteURL string) (targetRepo, error) {
 // nameSanitizeRe strips characters docker forbids in a container name.
 var nameSanitizeRe = regexp.MustCompile(`[^A-Za-z0-9_.-]+`)
 
-// containerName builds the unique per-run name ward-<repo>-<rand>; the injected
-// random suffix lets many runs against one repo coexist (the default mode).
-func containerName(repo targetRepo, randSuffix string) string {
+// safeRepoName sanitizes a repo name into a docker-safe container-name segment,
+// stripping forbidden characters and falling back to "repo" when nothing's left.
+func safeRepoName(repo targetRepo) string {
 	safe := nameSanitizeRe.ReplaceAllString(repo.Name, "-")
 	safe = strings.Trim(safe, "-._")
 	if safe == "" {
 		safe = "repo"
 	}
-	return fmt.Sprintf("%s-%s-%s", containerNamePrefix, safe, randSuffix)
+	return safe
+}
+
+// containerName builds the unique per-run name ward-<repo>-<rand>; the injected
+// random suffix lets many runs against one repo coexist (the default mode).
+func containerName(repo targetRepo, randSuffix string) string {
+	return fmt.Sprintf("%s-%s-%s", containerNamePrefix, safeRepoName(repo), randSuffix)
+}
+
+// agentContainerName names an `ward agent` container meaningfully:
+// ward-<repo>-issue-<N>-<mode>-<rand>, so `docker ps` shows at a glance which
+// repo, which issue the agent is carrying, and which harness drives it - the
+// random suffix still lets concurrent runs on the same issue coexist. The
+// issue-<N> segment mirrors the default feature branch. See docs/agent.md.
+func agentContainerName(repo targetRepo, mode containerMode, issue int, randSuffix string) string {
+	return fmt.Sprintf("%s-%s-issue-%d-%s-%s", containerNamePrefix, safeRepoName(repo), issue, mode, randSuffix)
 }
 
 // mountSpec is one docker -v binding: a host path or named volume, the
