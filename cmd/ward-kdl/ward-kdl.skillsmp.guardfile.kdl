@@ -1,0 +1,30 @@
+// skillsmp.com v1 read API surface for ward-kdl, mounted at `ward-kdl pkg
+// skillsmp`, driving the hand-authored skillsmp.openapi.json. skillsmp.com
+// publishes no OpenAPI document, so the vendored spec is authored from the two
+// GET endpoints the retiring coily wrapped (`coily pkg skillsmp`); it is a
+// curated contract, not an upstream mirror, so the lock reads the vendored file
+// directly and `skew` has no live source to diff. Migrated per ward#105 - once
+// landed, the tooling-scout-capability skill flips `coily pkg skillsmp` ->
+// `ward-kdl pkg skillsmp`. See ../../docs/ward-kdl.skillsmp.guardfile.md.
+//
+// Bearer token from AWS SSM /skillsmp/api-key, resolved per request (never
+// cached, never in the audit log). Both ops own the API search term as the
+// query param `q` (mounted as `--q`, wire `?q=`), leaving the reserved
+// `--query` (JMESPath projection) / `--output` (json|yaml|text) render rail
+// free. Ops are pinned explicitly because skillsmp's flat /search + /ai-search
+// paths carry no REST resource segment for the verb+resource convention.
+wrap ward-kdl pkg skillsmp {
+    spec skillsmp.openapi.json
+    base-url "skillsmp.com/api/v1/skills"
+    auth bearer {
+        value ssm "/skillsmp/api-key"
+    }
+    // search: keyword search (GET /search). --q is the term; --sortBy/--limit/--page paginate.
+    can search skills {
+        op "searchSkills"
+    }
+    // ai-search: semantic search (GET /ai-search). --q is the natural-language term.
+    can ai-search skills {
+        op "aiSearchSkills"
+    }
+}

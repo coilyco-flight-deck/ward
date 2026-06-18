@@ -1,0 +1,97 @@
+{
+  "openapi": "3.0.3",
+  "info": {
+    "contact": { "email": "support@glama.ai", "name": "Glama", "url": "https://glama.ai" },
+    "description": "The MCP API provides access to Glama's curated directory of MCP servers (https://glama.ai/mcp/servers). This vendored copy is a curated subset of glama.ai/api/mcp/openapi.json: the deprecated GET /v1/servers/{id} lookup is dropped (upstream points callers at /v1/servers/{namespace}/{slug}), the GET /v1/servers free-text `query` parameter is omitted because it would collide with ward-kdl's reserved `--query` projection flag, and an operationId is added to each operation (upstream ships none) so ward-kdl convention resolution can bind them. Curated for ward-kdl per ward#105.",
+    "termsOfService": "https://glama.ai/policies/terms-of-service",
+    "title": "Glama MCP API",
+    "version": "1.0.0"
+  },
+  "components": {
+    "securitySchemes": {
+      "bearerAuth": {
+        "bearerFormat": "Token",
+        "description": "Token authorisation using the Bearer scheme. Token from AWS SSM /glama/api-key.",
+        "scheme": "bearer",
+        "type": "http"
+      }
+    },
+    "schemas": {}
+  },
+  "paths": {
+    "/v1/servers": {
+      "get": {
+        "operationId": "listServers",
+        "tags": ["Servers"],
+        "description": "List MCP servers in the directory. Paginate with after/first.",
+        "parameters": [
+          { "schema": { "type": "string" }, "in": "query", "name": "after", "description": "Pagination cursor." },
+          { "schema": { "type": "string" }, "in": "query", "name": "first", "description": "Page size." }
+        ],
+        "responses": {
+          "200": { "description": "Default Response", "content": { "application/json": { "schema": {} } } },
+          "500": { "description": "Default Response", "content": { "application/json": { "schema": {} } } }
+        }
+      }
+    },
+    "/v1/instances": {
+      "get": {
+        "operationId": "listInstances",
+        "summary": "Hosted MCP server instances",
+        "tags": ["Instances"],
+        "description": "Use the SSE endpoint to connect to the instance.",
+        "security": [{ "bearerAuth": [] }],
+        "responses": {
+          "200": { "description": "Default Response", "content": { "application/json": { "schema": {} } } },
+          "401": { "description": "Default Response", "content": { "application/json": { "schema": {} } } },
+          "500": { "description": "Default Response", "content": { "application/json": { "schema": {} } } }
+        }
+      }
+    },
+    "/v1/attributes": {
+      "get": {
+        "operationId": "listAttributes",
+        "summary": "MCP server attributes",
+        "tags": ["Servers"],
+        "description": "The attribute vocabulary servers are tagged with. The API exposes a limited set to avoid breaking changes.",
+        "responses": {
+          "200": { "description": "Default Response", "content": { "application/json": { "schema": {} } } }
+        }
+      }
+    },
+    "/v1/servers/{namespace}/{slug}": {
+      "get": {
+        "operationId": "getServer",
+        "tags": ["Servers"],
+        "description": "Retrieve an MCP server's details by namespace and slug.",
+        "parameters": [
+          { "schema": { "type": "string" }, "in": "path", "name": "namespace", "required": true },
+          { "schema": { "type": "string" }, "in": "path", "name": "slug", "required": true }
+        ],
+        "responses": {
+          "200": { "description": "Default Response", "content": { "application/json": { "schema": {} } } },
+          "404": { "description": "Default Response", "content": { "application/json": { "schema": {} } } },
+          "500": { "description": "Default Response", "content": { "application/json": { "schema": {} } } }
+        }
+      }
+    },
+    "/v1/telemetry/usage": {
+      "post": {
+        "operationId": "createUsage",
+        "tags": ["Telemetry"],
+        "description": "Send MCP tool usage data to the server.",
+        "responses": {
+          "200": { "description": "Default Response", "content": { "application/json": { "schema": {} } } },
+          "404": { "description": "Default Response", "content": { "application/json": { "schema": {} } } },
+          "500": { "description": "Default Response", "content": { "application/json": { "schema": {} } } }
+        }
+      }
+    }
+  },
+  "servers": [{ "url": "https://glama.ai/api/mcp" }],
+  "tags": [
+    { "description": "MCP server related endpoints", "name": "Servers" },
+    { "description": "MCP server instances hosted by Glama.", "name": "Instances" },
+    { "description": "MCP tool usage telemetry.", "name": "Telemetry" }
+  ]
+}
