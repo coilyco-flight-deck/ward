@@ -25,8 +25,8 @@ unedited.
 1. **Resolve + validate.** Parses the ref, then fetches the issue from Forgejo so
    a bad ref, a typo, or an untrusted owner fails *before* any container spins.
 2. **Trust-gate.** The target is refused unless its owner is in ward's primary-org
-   set, because the container runs under `bypassPermissions` - the same gate
-   `ward dispatch` applies. A non-`open` issue warns but proceeds.
+   set, because the container runs under `bypassPermissions`. A non-`open` issue
+   warns but proceeds.
 3. **Branch.** Derives `issue-<N>` as the feature branch (override with `--branch`).
 4. **Launch.** Spins up an interactive `ward container` against a fresh clone of
    the repo, seeded with a "read the issue, then carry it to merge" prompt.
@@ -234,6 +234,33 @@ than judging the bare issue. It shows up in `--print` (it's part of the rendered
 seed). `task` has no `--details`: its `--instructions` already *are* the full
 brief, so there's nothing separate to layer on.
 
+## `--new-tab`: the sidequest spawn (ward#174)
+
+`work` takes `--new-tab`: instead of launching the container attached to the
+current terminal, it **spawns the work into its own Warp tab**. This is the
+sidequest path - fan a tangent off into its own session without leaving the one
+you're in - and the successor to the retired `ward dispatch interactive` Warp
+seam.
+
+The mechanics are deliberately thin. `--new-tab` resolves and validates the ref
+first (the same exists/open/trusted gate as a normal run, so a bad ref fails
+before any tab opens), then writes a tiny `{schema_version, ref, mode, title}`
+JSON entry to a FIFO queue dir (`/tmp/ward-agent-queue`, mode 0600) and fires
+`open warppreview://tab_config/claude-agent-work`. The agentic-os shim of that
+name pops the oldest queue entry and runs `ward agent <mode> work <ref>` in the
+fresh tab - so the whole payload is the ref + mode, and the container does its
+own fresh clone. The unix-nanos filename prefix gives each back-to-back spawn
+its own tab without racing on a shared scratch file.
+
+Overrides: `--channel preview|stable` (which Warp build to fire into, default
+preview), `--surface tab|window` (new tab in the active window vs a fresh
+window), `--launch-name` and `--queue-dir` (must match what the shim reads).
+`--print` renders the resolved ref, the in-tab command, the Warp URL, and the
+queue entry without writing or firing anything. If `open` fails, ward leaves the
+queue entry in place and prints the `ward agent <mode> work <ref>` command to
+paste in a tab by hand. The agentic-os Warp configs and the shim live under
+`warp/` in that repo.
+
 ## Container name
 
 Where a bare `container up` names its container `ward-<repo>-<rand>`, an agent
@@ -248,5 +275,3 @@ once the issue is filed.
 
 - [docs/container.md](container.md) - the container model this wraps (ephemeral,
   fresh-clone-inside, least-access, reaper-backed).
-- [docs/dispatch.md](dispatch.md) - the host-native sibling that fires `claude`
-  against an issue in the canonical checkout instead of a fresh container.

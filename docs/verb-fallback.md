@@ -4,7 +4,7 @@
 
 `ward <leaf>` is rewritten to `ward exec <leaf>` when `<leaf>` is **not** a
 registered top-level verb (`version, upgrade, exec, pkg, git, audit, doctor,
-hook, install-hooks, dispatch, container, agent`, plus `help`) and **does**
+hook, install-hooks, container, agent`, plus `help`) and **does**
 match a command declared in the reachable `.ward/ward.yaml`. So `ward test`
 just works wherever `test` is declared, without each repo leaf being
 hardcoded as a top-level command (which would duplicate dispatch and risk

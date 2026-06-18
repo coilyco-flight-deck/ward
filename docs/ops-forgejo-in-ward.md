@@ -20,9 +20,8 @@ ward-kdl files stay the single source of truth (`make build-ward-kdl` re-runs
 ## Why `cmd/ward/forgejo_issue.go` stays
 
 ward#92 also asked to retire `forgejo_issue.go` - ward's hand-rolled Forgejo
-client behind `ward dispatch`, `ward agent`, and the container reaper. That
-retirement is **blocked** on the runtime as it stands; the file is still
-load-bearing:
+client behind `ward agent` and the container reaper. That retirement is
+**blocked** on the runtime as it stands; the file is still load-bearing:
 
 - **The argv gate rejects rich bodies.** Every wrapped verb runs its argv
   through cli-guard's shell-metacharacter policy. ward's programmatic writes
@@ -33,8 +32,8 @@ load-bearing:
   but the in-container reaper (`container_reap.go`) files salvage issues with the
   baked `$FORGEJO_TOKEN` and has no AWS/SSM.
 - **No programmatic capture.** `specverb` renders to stdout and surfaces non-2xx
-  only as an error string; the read seams need structured results, and `ward
-  dispatch`'s 404 -> GitHub fallback needs the status code the runtime hides.
+  only as an error string, but the read seams (issue + comment fetch) need the
+  decoded JSON back in Go.
 
 Full retirement waits on a programmatic-capture API in cli-guard plus a
 body-by-file / trusted-call path and a reaper auth seam - follow-up to ward#92.
@@ -42,4 +41,4 @@ body-by-file / trusted-call path and a reaper auth seam - follow-up to ward#92.
 ## See also
 
 - [ops-forgejo.md](ops-forgejo.md) - the ward-kdl proving ground + guardfile.
-- [dispatch.md](dispatch.md) - the seams `forgejo_issue.go` still serves.
+- [container-reap.md](container-reap.md) - a seam `forgejo_issue.go` still serves.
