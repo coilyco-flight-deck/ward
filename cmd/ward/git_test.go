@@ -2,9 +2,8 @@ package main
 
 import "testing"
 
-// TestGitCommandRegistersPassthroughVerbs asserts every declared passthrough
-// verb (plus the dedicated commit verb) is wired as a `ward git` subcommand.
-// remote is the read passthrough added for repo-identity resolution (ward#119).
+// TestGitCommandRegistersPassthroughVerbs asserts every declared passthrough verb
+// (plus commit, plus the ward#119 remote read passthrough) is a `ward git` subcommand.
 func TestGitCommandRegistersPassthroughVerbs(t *testing.T) {
 	cmd := gitCommand()
 	have := map[string]bool{}
