@@ -755,9 +755,10 @@ func agentTaskCommand(m containerMode) *cli.Command {
 		&cli.BoolFlag{Name: "no-preflight", Usage: "skip the pre-flight feasibility check and detach immediately"},
 	}
 	return &cli.Command{
-		Name:      "task",
-		Usage:     "Like headless, but file the issue first: --instructions becomes a fresh Forgejo issue the agent then carries end to end and closes.",
-		ArgsUsage: "[owner/repo]   (default: infer from the cwd's git origin)",
+		Name: "task",
+		Usage: "File the issue first, then carry it: a freeform '<task>' auto-routes to the right repo (ROUTE); " +
+			"an explicit owner/repo with --instructions files there directly (DIRECT).",
+		ArgsUsage: "['<task>' to auto-route | owner/repo with --instructions]",
 		Flags:     flags,
 		Action: func(ctx context.Context, c *cli.Command) error {
 			r := newRunner()
@@ -837,11 +838,25 @@ func (r *Runner) hostForgejoClient(ctx context.Context) (*forgejoClient, error) 
 	return newForgejoClient(forgejoBaseURL, token), nil
 }
 
-// runAgentTask resolves the repo, files an issue from --instructions, and runs
-// the headless container seeded to carry + close it. --print files nothing.
+// runAgentTask routes the task surface (ward#164) to ROUTE or DIRECT mode by
+// classifying the positional + flags. See docs/agent-task.md.
 func (r *Runner) runAgentTask(ctx context.Context, c *cli.Command, mode containerMode) error {
 	label := fmt.Sprintf("ward agent %s task", mode)
-	repo, _, err := r.resolveTarget(ctx, c.Args().First())
+	route, repoArg, err := classifyTaskInvocation(c.Args().First(), c.String("instructions"), c.String("instructions-file"))
+	if err != nil {
+		return fmt.Errorf("%s: %w", label, err)
+	}
+	if route {
+		return r.runAgentTaskRoute(ctx, c, mode, strings.TrimSpace(c.Args().First()))
+	}
+	return r.runAgentTaskDirect(ctx, c, mode, repoArg)
+}
+
+// runAgentTaskDirect resolves the repo, files an issue from --instructions, and
+// runs the headless carry container - today's behavior, unchanged. See docs.
+func (r *Runner) runAgentTaskDirect(ctx context.Context, c *cli.Command, mode containerMode, repoArg string) error {
+	label := fmt.Sprintf("ward agent %s task", mode)
+	repo, _, err := r.resolveTarget(ctx, repoArg)
 	if err != nil {
 		return fmt.Errorf("%s: %w", label, err)
 	}

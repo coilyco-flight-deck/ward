@@ -19,7 +19,7 @@ Contributor-facing cli-guard gate: repo dev verbs + audited host wrappers behind
 - **`ward lint`** - lint `.ward/ward.yaml` against the repo Makefile.
 - **`ward dispatch <surface> <ref>`** - fire `claude` against a real open issue. Surfaces: `headless`, `interactive`, `consult`, `cascade`, plus `reap`/`status`/`registry`. Off-org refused. See [docs/dispatch.md](dispatch.md).
 - **`ward container {up,exec,reap,down,ls}`** - ephemeral, least-access dev containers, one per `up`: target cloned fresh inside (cwd bind read-only), `--mode claude|codex|qwen|goose`. `reap` lands or salvages the work. See [docs/container.md](container.md).
-- **`ward agent <name> {work,headless,task}`** - over `container up`: `work`/`headless` take an issue, `task` *files* one. Off-org refused, `--print` dry-runs; `headless`/`task` add an [agent commit suite](agent-precommit.md). Each run *reserves* the issue (2h TTL, `--force` reclaims); `headless` pre-flights a feasibility check (GO/NO-GO/blind-fire; ward#147, ward#159). `--details` adds an authoritative steer (ward#167). See [agent](agent.md).
+- **`ward agent <name> {work,headless,task}`** - over `container up`: `work`/`headless` take an issue, `task` *files* one (DIRECT, or ROUTE to auto-place a freeform task; ward#164). Off-org refused, `--print` dry-runs; `headless`/`task` add an [agent commit suite](agent-precommit.md). Each run *reserves* the issue (2h TTL, `--force` reclaims); `headless` pre-flights a feasibility check (GO/NO-GO/blind-fire; ward#147, ward#159). `--details` adds an authoritative steer (ward#167). See [agent](agent.md).
 
 ## Spec-driven ops (`ward-kdl`)
 
