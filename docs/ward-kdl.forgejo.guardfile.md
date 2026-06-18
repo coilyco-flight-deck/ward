@@ -734,6 +734,14 @@ org creation is a human-only operation
 
 org deletion is irreversible and human-only
 
+### ward-kdl ops forgejo label create (denied)
+
+repo-level label create is policy-disabled (ward#107): it mints labels that duplicate and shadow the org P0-P4 taxonomy. Create org labels with `create org-label`.
+
+### ward-kdl ops forgejo label edit (denied)
+
+repo-level label edit is policy-disabled (ward#107): edit the org taxonomy with `edit org-label`.
+
 ### ward-kdl ops forgejo issue delete (denied)
 
 issue deletion is irreversible; close it instead (move-issue does this)
