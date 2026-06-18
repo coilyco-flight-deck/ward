@@ -161,6 +161,33 @@ func (c *forgejoClient) commentIssue(ctx context.Context, owner, repo string, nu
 	return nil
 }
 
+// issueComment is one row of an issue's comment thread - just the fields the
+// reservation check needs: body (for the marker), author, and post time.
+type issueComment struct {
+	Body      string    `json:"body"`
+	CreatedAt time.Time `json:"created_at"`
+	User      struct {
+		Login string `json:"login"`
+	} `json:"user"`
+}
+
+// listIssueComments fetches an issue's comment thread, oldest first.
+func (c *forgejoClient) listIssueComments(ctx context.Context, owner, repo string, number int) ([]issueComment, error) {
+	path := fmt.Sprintf("/api/v1/repos/%s/%s/issues/%d/comments", owner, repo, number)
+	status, respBody, err := c.do(ctx, http.MethodGet, path, nil)
+	if err != nil {
+		return nil, err
+	}
+	if status != http.StatusOK {
+		return nil, fmt.Errorf("forgejo: list comments on #%d returned HTTP %d: %s", number, status, strings.TrimSpace(string(respBody)))
+	}
+	var out []issueComment
+	if err := json.Unmarshal(respBody, &out); err != nil {
+		return nil, fmt.Errorf("forgejo: parse comments on #%d: %w", number, err)
+	}
+	return out, nil
+}
+
 // findOpenIssueByTitlePrefix returns the first open issue whose title starts
 // with prefix, so the reaper appends instead of filing a duplicate.
 func (c *forgejoClient) findOpenIssueByTitlePrefix(ctx context.Context, owner, repo, prefix string) (number int, found bool, err error) {

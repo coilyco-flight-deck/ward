@@ -143,6 +143,7 @@ func agentSurfaceCommand(m containerMode, surface string, headless bool) *cli.Co
 		&cli.BoolFlag{Name: "aws", Usage: "mount ~/.aws read-only (broad SSM read surface; off by default)"},
 		&cli.BoolFlag{Name: "print", Usage: "resolve the issue + seeded prompt + docker plan and exit; inject no push token, run nothing"},
 		&cli.BoolFlag{Name: "no-pull", Usage: "skip the image pull"},
+		&cli.BoolFlag{Name: "force", Usage: "skip the local + remote concurrency reservation checks (reclaim a stale or foreign hold)"},
 	}
 	if !headless {
 		// headless always detaches, so only the interactive surface exposes --detach.
@@ -325,6 +326,30 @@ func (r *Runner) confirmProceed(prompt string) (bool, error) {
 	}
 }
 
+// buildAgentPlan composes the container plan for a resolved issue: the seeded
+// argv, the issue-<N> branch, and the issue-naming container name. detached
+// strips the interactive/TTY flags so a backgrounded run never grabs a pty.
+func buildAgentPlan(c *cli.Command, mode containerMode, ref agentIssueRef, seed string, headless, detached bool, assetsDir string) (upPlan, error) {
+	cwd := resolveInvokeCWD()
+	if cwd == "" {
+		return upPlan{}, fmt.Errorf("cannot resolve the current directory")
+	}
+	repo := targetRepo{Owner: ref.Owner, Name: ref.Repo}
+	plan := buildUpPlan(c, repo, mode, cwd, assetsDir, []string{seed})
+	if plan.Branch == "" {
+		plan.Branch = fmt.Sprintf("issue-%d", ref.Number)
+	}
+	// Override the generic ward-<repo>-<rand> name with one that names the issue
+	// and harness, so a host running several agents can tell them apart.
+	plan.Name = agentContainerName(repo, mode, ref.Number, randHex(4))
+	plan.Headless = headless
+	if detached {
+		plan.Interactive = false
+		plan.TTY = false
+	}
+	return plan, nil
+}
+
 // launchAgentContainer turns a resolved (ref, title, seed) into the container
 // plan and fires it - the shared tail of work, headless, and task. See docs/agent.md.
 func (r *Runner) launchAgentContainer(ctx context.Context, c *cli.Command, mode containerMode, surface string, headless bool, ref agentIssueRef, title, seed string) error {
@@ -342,27 +367,28 @@ func (r *Runner) launchAgentContainer(ctx context.Context, c *cli.Command, mode 
 		defer cleanupAssets()
 	}
 
-	cwd := resolveInvokeCWD()
-	if cwd == "" {
-		return fmt.Errorf("%s: cannot resolve the current directory", label)
-	}
-	repo := targetRepo{Owner: ref.Owner, Name: ref.Repo}
-	plan := buildUpPlan(c, repo, mode, cwd, assetsDir, []string{seed})
-	if plan.Branch == "" {
-		plan.Branch = fmt.Sprintf("issue-%d", ref.Number)
-	}
-	// Override the generic ward-<repo>-<rand> name with one that names the issue
-	// and harness, so a host running several agents can tell them apart.
-	plan.Name = agentContainerName(repo, mode, ref.Number, randHex(4))
-	plan.Headless = headless
-	if detached {
-		plan.Interactive = false
-		plan.TTY = false
+	plan, err := buildAgentPlan(c, mode, ref, seed, headless, detached, assetsDir)
+	if err != nil {
+		return fmt.Errorf("%s: %w", label, err)
 	}
 
 	if c.Bool("print") {
 		return printAgentPlan(c, plan, ref, title, seed, surface)
 	}
+
+	// Reserve the issue so a second run - on this host (the file sentinel) or
+	// another (the Forgejo marker comment) - won't redundantly work it. A
+	// detached run outlives this process, so its local sentinel must persist for
+	// the container's lifetime (TTL- and liveness-bounded); an attached run
+	// releases the hold when it returns.
+	releaseReservation, err := r.reserveIssue(ctx, label, mode, ref, plan.Name, plan.Branch, c.Bool("force"))
+	if err != nil {
+		return err
+	}
+	if !detached {
+		defer releaseReservation()
+	}
+
 	if !c.Bool("no-pull") {
 		if perr := r.Runner.Exec(ctx, "docker", "pull", plan.Image); perr != nil {
 			fmt.Fprintf(os.Stderr, "%s: image pull failed (%v); trying the local image\n", label, perr)
@@ -389,6 +415,7 @@ func agentTaskCommand(m containerMode) *cli.Command {
 		&cli.BoolFlag{Name: "aws", Usage: "mount ~/.aws read-only (broad SSM read surface; off by default)"},
 		&cli.BoolFlag{Name: "print", Usage: "resolve the repo + the issue that would be filed + the docker plan and exit; file nothing, run nothing"},
 		&cli.BoolFlag{Name: "no-pull", Usage: "skip the image pull"},
+		&cli.BoolFlag{Name: "force", Usage: "skip the local + remote concurrency reservation checks (reclaim a stale or foreign hold)"},
 	}
 	return &cli.Command{
 		Name:      "task",

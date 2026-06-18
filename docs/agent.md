@@ -105,15 +105,38 @@ else `~/.claude/.credentials.json`) and injects it into the container's
 `~/.claude/.credentials.json` via the private `--env-file`, never in argv/audit.
 `ANTHROPIC_API_KEY` stays unset so it can't shadow OAuth.
 
+## Reservation (no double-work)
+
+Before a container fires, the run **reserves the issue** so a second run never
+works it at the same time - on this host or another:
+
+- **Local file sentinel.** `~/.ward/agent-reservations/<owner>-<repo>-issue-<N>.json`
+  records the container holding the issue. A fresh sentinel whose container is
+  still running blocks a new run on the same host.
+- **Remote Forgejo comment.** The run posts a marker comment (`🔒 Reserved by
+  ward agent ...`) on the issue and refuses to start if it finds a fresh one
+  already there - that's another host carrying the issue.
+
+Both holds are **TTL-bounded** (2h): an older reservation is assumed dead and
+reclaimed, so a crashed run never wedges an issue. The local sentinel is also
+reclaimed the moment its container is no longer running. An attached `work` run
+releases its sentinel when it returns; a detached run (`headless`, `task`,
+`--detach`) leaves it for the container's lifetime, bounded by the TTL +
+liveness check. Remote/network failures degrade to a warning - the local
+sentinel still guards this host - so a transient Forgejo hiccup never blocks a
+launch. `--print` reserves nothing (it's a dry run). `--force` skips both checks
+to reclaim a stale or foreign hold.
+
 ## Flags
 
 `work` carries the `container up` launch flags: `--aws`, `--detach`,
 `--tag`/`--image`, `--ward-source`, `--no-pull`, and `--branch` to override the
 `issue-<N>` default. `--print` resolves the issue and renders the seeded prompt +
 docker plan without injecting the push token or running docker - the dry-run
-preview, safe with no docker daemon up. `headless` swaps `--detach` (it always
-detaches) for `--no-preflight`, which skips the interactive pre-flight described
-above.
+preview, safe with no docker daemon up. `--force` skips the local + remote
+concurrency reservation checks (see above). `headless` swaps `--detach` (it
+always detaches) for `--no-preflight`, which skips the interactive pre-flight
+described above.
 
 ## Container name
 
