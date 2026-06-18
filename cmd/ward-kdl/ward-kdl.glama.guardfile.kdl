@@ -1,0 +1,35 @@
+// Glama MCP API surface for ward-kdl, mounted at `ward-kdl pkg glama`, driving
+// the vendored glama.openapi.json - a curated subset of
+// https://glama.ai/api/mcp/openapi.json (OpenAPI 3.0.3). Three curation edits,
+// recorded in the spec's info.description: (1) the deprecated GET
+// /v1/servers/{id} is dropped (upstream redirects to /{namespace}/{slug}, and
+// keeping both would make `get server` ambiguous); (2) GET /v1/servers' free-text
+// `query` param is omitted because a promoted `query` flag collides with
+// ward-kdl's reserved `--query` projection rail (fail-closed) - directory
+// listing paginates with --after/--first instead; (3) an operationId is added to
+// each op, since upstream ships none and convention resolution (cli-guard#147)
+// needs them. Migrated from `coily pkg glama` per ward#105; once landed the
+// tooling-scout-capability skill flips to `ward-kdl pkg glama`.
+// See ../../docs/ward-kdl.glama.guardfile.md.
+//
+// Bearer token from AWS SSM /glama/api-key, resolved per request. The directory
+// is read-only; the one write is `create usage` (POST /v1/telemetry/usage),
+// carried over from coily for parity. Projection/format ride the reserved
+// `--query` (JMESPath) / `--output` (json|yaml|text) rail.
+wrap ward-kdl pkg glama {
+    spec glama.openapi.json
+    base-url "glama.ai/api/mcp"
+    auth bearer {
+        value ssm "/glama/api-key"
+    }
+    // servers: list the directory (GET /v1/servers, paginate --after/--first) and
+    // look one up by namespace+slug (GET /v1/servers/{namespace}/{slug}).
+    can list server
+    can get server
+    // attributes: the attribute vocabulary servers are tagged with (GET /v1/attributes).
+    can list attribute
+    // instances: Glama-hosted MCP server instances (GET /v1/instances).
+    can list instance
+    // telemetry: report MCP tool usage (POST /v1/telemetry/usage). The lone write.
+    can create usage
+}

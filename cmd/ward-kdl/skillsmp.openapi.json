@@ -1,0 +1,92 @@
+{
+  "openapi": "3.0.3",
+  "info": {
+    "title": "skillsmp MCP/skills directory API",
+    "description": "The skillsmp.com v1 read API for skill discovery (https://skillsmp.com/api/v1/skills). skillsmp.com publishes no OpenAPI document, so this spec is hand-authored from the two GET endpoints the retiring coily wrapped (coilyco-bridge/coily, `coily pkg skillsmp`). It is a curated contract, not an upstream mirror. Migrated to ward-kdl per ward#105.",
+    "version": "1.0.0"
+  },
+  "servers": [
+    { "url": "https://skillsmp.com/api/v1/skills" }
+  ],
+  "components": {
+    "securitySchemes": {
+      "bearerAuth": {
+        "type": "http",
+        "scheme": "bearer",
+        "description": "Bearer token from AWS SSM /skillsmp/api-key."
+      }
+    }
+  },
+  "security": [
+    { "bearerAuth": [] }
+  ],
+  "tags": [
+    { "name": "skills", "description": "Skill discovery endpoints." }
+  ],
+  "paths": {
+    "/search": {
+      "get": {
+        "operationId": "searchSkills",
+        "summary": "Keyword search across skills.",
+        "description": "Keyword search across the skillsmp directory.",
+        "tags": ["skills"],
+        "parameters": [
+          {
+            "name": "q",
+            "in": "query",
+            "required": true,
+            "description": "Search query.",
+            "schema": { "type": "string" }
+          },
+          {
+            "name": "sortBy",
+            "in": "query",
+            "description": "Sort field (e.g. stars).",
+            "schema": { "type": "string" }
+          },
+          {
+            "name": "limit",
+            "in": "query",
+            "description": "Results per page.",
+            "schema": { "type": "integer" }
+          },
+          {
+            "name": "page",
+            "in": "query",
+            "description": "Page number (1-indexed).",
+            "schema": { "type": "integer" }
+          }
+        ],
+        "responses": {
+          "200": {
+            "description": "Matching skills.",
+            "content": { "application/json": { "schema": { "type": "object" } } }
+          }
+        }
+      }
+    },
+    "/ai-search": {
+      "get": {
+        "operationId": "aiSearchSkills",
+        "summary": "Semantic search across skills.",
+        "description": "Semantic (AI) search across the skillsmp directory.",
+        "tags": ["skills"],
+        "parameters": [
+          {
+            "name": "q",
+            "in": "query",
+            "required": true,
+            "description": "Natural-language query.",
+            "schema": { "type": "string" }
+          }
+        ],
+        "responses": {
+          "200": {
+            "description": "Matching skills.",
+            "content": { "application/json": { "schema": { "type": "object" } } }
+          }
+        }
+      }
+    }
+  }
+}

@@ -1,0 +1,117 @@
+{
+  "components": {},
+  "info": {
+    "description": "The skillsmp.com v1 read API for skill discovery (https://skillsmp.com/api/v1/skills). skillsmp.com publishes no OpenAPI document, so this spec is hand-authored from the two GET endpoints the retiring coily wrapped (coilyco-bridge/coily, `coily pkg skillsmp`). It is a curated contract, not an upstream mirror. Migrated to ward-kdl per ward#105.",
+    "title": "skillsmp MCP/skills directory API",
+    "version": "1.0.0"
+  },
+  "openapi": "3.0.3",
+  "paths": {
+    "/ai-search": {
+      "get": {
+        "description": "Semantic (AI) search across the skillsmp directory.",
+        "operationId": "aiSearchSkills",
+        "parameters": [
+          {
+            "description": "Natural-language query.",
+            "in": "query",
+            "name": "q",
+            "required": true,
+            "schema": {
+              "type": "string"
+            }
+          }
+        ],
+        "responses": {
+          "200": {
+            "content": {
+              "application/json": {
+                "schema": {
+                  "type": "object"
+                }
+              }
+            },
+            "description": "Matching skills."
+          }
+        },
+        "summary": "Semantic search across skills.",
+        "tags": [
+          "skills"
+        ]
+      }
+    },
+    "/search": {
+      "get": {
+        "description": "Keyword search across the skillsmp directory.",
+        "operationId": "searchSkills",
+        "parameters": [
+          {
+            "description": "Search query.",
+            "in": "query",
+            "name": "q",
+            "required": true,
+            "schema": {
+              "type": "string"
+            }
+          },
+          {
+            "description": "Sort field (e.g. stars).",
+            "in": "query",
+            "name": "sortBy",
+            "schema": {
+              "type": "string"
+            }
+          },
+          {
+            "description": "Results per page.",
+            "in": "query",
+            "name": "limit",
+            "schema": {
+              "type": "integer"
+            }
+          },
+          {
+            "description": "Page number (1-indexed).",
+            "in": "query",
+            "name": "page",
+            "schema": {
+              "type": "integer"
+            }
+          }
+        ],
+        "responses": {
+          "200": {
+            "content": {
+              "application/json": {
+                "schema": {
+                  "type": "object"
+                }
+              }
+            },
+            "description": "Matching skills."
+          }
+        },
+        "summary": "Keyword search across skills.",
+        "tags": [
+          "skills"
+        ]
+      }
+    }
+  },
+  "security": [
+    {
+      "bearerAuth": []
+    }
+  ],
+  "servers": [
+    {
+      "url": "https://skillsmp.com/api/v1/skills"
+    }
+  ],
+  "tags": [
+    {
+      "description": "Skill discovery endpoints.",
+      "name": "skills"
+    }
+  ]
+}
