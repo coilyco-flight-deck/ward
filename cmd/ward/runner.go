@@ -97,7 +97,7 @@ func resolveInvokeCWD() string {
 // defaultPrimaryOrgs is the fleet's primary-org set - the brew tap/formula
 // scope allowlist. Mirrors coily's defaultPrimaryOrgs.
 func defaultPrimaryOrgs() []string {
-	return []string{"coilysiren", "coilyco-bridge", "coilyco-flight-deck"}
+	return []string{"coilysiren", "coilyco-bridge", "coilyco-flight-deck", "coilyco-gaming"}
 }
 
 // primaryOrgs returns the brew tap/formula scope allowlist.
