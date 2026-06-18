@@ -78,6 +78,7 @@ func main() {
 			installHooksCommand(),
 			dispatchCommand(),
 			containerCommand(),
+			agentCommand(),
 		},
 	}
 

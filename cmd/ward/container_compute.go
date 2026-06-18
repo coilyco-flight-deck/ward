@@ -292,6 +292,9 @@ type upPlan struct {
 	// WardFromSource is set when --ward-source mounted a checkout: the
 	// entrypoint builds ward from it instead of downloading.
 	WardFromSource bool
+	// AgentArgs ride after the image as the in-container agent's argv (the
+	// entrypoint's `"$WARD_AGENT" "$@"`); empty for a bare `container up`.
+	AgentArgs []string
 }
 
 // wardEnv is the non-secret WARD_* config the entrypoint reads. Everything
@@ -350,6 +353,9 @@ func dockerCreateArgv(p upPlan, envFilePath string) []string {
 		argv = append(argv, "--env-file", envFilePath)
 	}
 	argv = append(argv, p.Image)
+	// Trailing args become the in-container agent's argv (entrypoint runs
+	// `"$WARD_AGENT" "$@"`); empty for a bare interactive `container up`.
+	argv = append(argv, p.AgentArgs...)
 	return argv
 }
 

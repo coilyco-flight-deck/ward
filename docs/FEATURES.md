@@ -1,30 +1,31 @@
 # ward features
 
-Inventory of what `ward` ships, updated when a feature is added or reshaped.
+Inventory of what `ward` ships, updated when a feature lands or reshapes.
 
 ## Scope
 
-The contributor-facing cli-guard gate: a repo's dev verbs and audited host wrappers behind cli-guard's policy + audit pipeline.
+The contributor-facing cli-guard gate: repo dev verbs + audited host wrappers behind cli-guard's policy + audit pipeline.
 
 ## Commands
 
 - **`ward exec <verb>`** - run a repo dev verb from `.ward/ward.yaml` through cli-guard's pipeline: argv-validated, one JSONL audit row (`repo.<verb>`), clean+synced tree gate (`gittree`). `--audit-override-dirty` bypasses it. See [docs/exec-verb.md](exec-verb.md).
-- **`ward pkg brew <verb>`** - audited brew wrapper at parity with `coily pkg brew`: formula/tap mutations default to primary-org taps (`--allow-untapped` otherwise), reads and `brew bundle` pass through. Rows `pkg.brew.*`.
+- **`ward pkg brew <verb>`** - audited brew wrapper: formula/tap mutations default to primary-org taps (`--allow-untapped` otherwise), reads and `brew bundle` pass through. Rows `pkg.brew.*`.
 - **`ward upgrade`** - audited ward self-update: `brew update` + `brew upgrade coilyco-flight-deck/tap/ward` (`--dry` shows the diff). Audit row `upgrade`.
-- **`ward audit {path,tail}`** - read surface over the per-repo audit log. `path` prints the resolved `~/.ward/audit/<slug>.jsonl`; `tail` streams JSONL rows (`--since`/`--follow`/`--scope`). See [docs/audit.md](audit.md).
-- **`ward git <verb>`** - audited git passthroughs (cli-guard `passthrough`): read + safe-write verbs (`git.<verb>`, `-C <dir>` hoisted). `ward git commit -m "msg" -- <path>...` is a dedicated concurrency-safe verb (private `GIT_INDEX_FILE`, explicit pathspecs, editor refused). See [docs/git-verbs.md](git-verbs.md).
+- **`ward audit {path,tail}`** - read surface over the audit log. `path` prints the resolved `~/.ward/audit/<slug>.jsonl`; `tail` streams rows (`--since`/`--follow`/`--scope`). See [docs/audit.md](audit.md).
+- **`ward git <verb>`** - audited git passthroughs (cli-guard `passthrough`): read + safe-write verbs (`git.<verb>`, `-C` hoisted). `ward git commit -m msg -- <path>...` is a concurrency-safe verb (private `GIT_INDEX_FILE`, explicit pathspecs, editor refused). See [docs/git-verbs.md](git-verbs.md).
 - **`ward doctor`** - diagnostic checks against the resolved config + host.
 - **`ward hook pre-tool-use`** - Claude Code PreToolUse hook: binary-path check + bare-command deny with routing hints.
 - **`ward install-hooks`** - register the PreToolUse hook in `.claude/settings.json` (idempotent).
 - **`ward lint`** - lint `.ward/ward.yaml` against the repo Makefile.
-- **`ward dispatch <surface> <ref>`** - fire `claude` against a real open issue. Surfaces: `headless` (detached `claude -p` per-issue worktree), `interactive`, `consult`, `cascade` (recursive sub-dispatch); plus `reap`/`status`/`registry`. Non-primary-org refs refused; Forgejo refs use a read-only SSM-token client. See [docs/dispatch.md](dispatch.md).
-- **`ward container {up,exec,reap,down,ls}`** - ephemeral, least-access dev containers, one per `up`: target cloned fresh inside (host bind: cwd, read-only), `--mode claude|codex|qwen`, self-managed perms. `reap` lands clean work on `main` or salvages to a branch. See [docs/container.md](container.md) (+ [reap](container-reap.md), [substrate](container-substrate.md)).
+- **`ward dispatch <surface> <ref>`** - fire `claude` against a real open issue. Surfaces: `headless` (detached `claude -p`, per-issue worktree), `interactive`, `consult`, `cascade`; plus `reap`/`status`/`registry`. Off-org refs refused; Forgejo via read-only SSM-token client. See [docs/dispatch.md](dispatch.md).
+- **`ward container {up,exec,reap,down,ls}`** - ephemeral, least-access dev containers, one per `up`: target cloned fresh inside (cwd bind, read-only), `--mode claude|codex|qwen`, self-managed perms. `reap` lands clean work on `main` or salvages it. See [docs/container.md](container.md).
+- **`ward agent <name> work <issue>`** - issue-seeded shortcut over `container up`: resolves repo, branches `issue-<N>`, seeds a carry-to-merge prompt; off-org refused, `--print` dry-runs. See [agent](agent.md).
 
 ## Spec-driven ops (`ward-kdl`)
 
 - **`ward-kdl ops <api> <verb>`** - guarded API verbs from KDL guardfiles (`specverb`): **forgejo** (Swagger 2.0), **trello** (OpenAPI 3.0), **tailscale** (OpenAPI 3.1). Each `can` resolves its op by convention; denies teach, `restrict` scopes. See [docs/ops-forgejo.md](ops-forgejo.md).
 - **`ward-kdl ops {aws,kubectl} <verb>`** - guarded local-CLI passthroughs (`execverb`): **aws** (SSM/S3/EC2 reads, per-op resource guards) and **kubectl** (host-native; reads + apply/scale/rollout, destructive verbs unexposed). See [aws](ward-kdl.aws.guardfile.md), [kubectl](ward-kdl.kubectl.guardfile.md).
-- **`ward-kdl agents <target> <verb>`** - mixed-transport. **`agents ui`**: the Open WebUI API (`specverb`, tailnet-only). **`agents {claude,codex,opencode,aider,goose}`**: local-CLI launchers (`execverb`), verbs via `argv` overrides. **`agents ollama`**: the tower's Ollama CLI via OLLAMA_HOST from SSM.
+- **`ward-kdl agents <target> <verb>`** - mixed-transport. **`agents ui`**: the Open WebUI API (`specverb`, tailnet-only). **`agents {claude,codex,opencode,aider,goose}`**: local-CLI launchers (`execverb`), `argv`-override verbs. **`agents ollama`**: the tower's Ollama CLI (SSM OLLAMA_HOST).
 
 ## Scripts
 

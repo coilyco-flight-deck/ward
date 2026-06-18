@@ -104,7 +104,7 @@ func (r *Runner) runContainerUp(ctx context.Context, c *cli.Command) error {
 	}
 	defer cleanupAssets()
 
-	plan := buildUpPlan(c, repo, mode, cwd, assetsDir)
+	plan := buildUpPlan(c, repo, mode, cwd, assetsDir, nil)
 
 	if c.Bool("print") {
 		return printPlan(c, plan)
@@ -124,7 +124,8 @@ func (r *Runner) runContainerUp(ctx context.Context, c *cli.Command) error {
 }
 
 // buildUpPlan assembles the pure plan from parsed flags and resolved inputs.
-func buildUpPlan(c *cli.Command, repo targetRepo, mode containerMode, cwd, assetsDir string) upPlan {
+// agentArgs seed the in-container agent's argv; `container up` passes nil.
+func buildUpPlan(c *cli.Command, repo targetRepo, mode containerMode, cwd, assetsDir string, agentArgs []string) upPlan {
 	wardSrc := c.String("ward-source")
 	awsHome := ""
 	if c.Bool("aws") {
@@ -143,6 +144,7 @@ func buildUpPlan(c *cli.Command, repo targetRepo, mode containerMode, cwd, asset
 		TTY:            !c.Bool("detach") && terminalAttached(),
 		WardVersion:    Version,
 		WardFromSource: wardSrc != "",
+		AgentArgs:      agentArgs,
 	}
 }
 
