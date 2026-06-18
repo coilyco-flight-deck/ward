@@ -7,6 +7,7 @@ import (
 	"fmt"
 	"sort"
 	"strings"
+	"time"
 )
 
 // reapAction is what the reaper does with residual work after the agent exits,
@@ -31,7 +32,38 @@ const (
 	reasonScan     reapReason = "diff flagged by the junk scan"
 	reasonPushRace reapReason = "push to main was rejected (the remote advanced)"
 	reasonPushFail reapReason = "push to main failed"
+	reasonAuthFail reapReason = "push to main was rejected on auth (dead or rotated PAT)"
 )
+
+// authFailureMarkers are substrings git/forgejo emit when a push is rejected on
+// credentials not content; matched case-insensitively against the push output.
+var authFailureMarkers = []string{
+	"authentication failed",
+	"invalid credentials",
+	"invalid username or password",
+	"could not read username",
+	"could not read password",
+	"403 forbidden",
+	"401 unauthorized",
+	"http 403",
+	"http 401",
+	"remote: forbidden",
+	"remote: unauthorized",
+	"permission denied",
+	"access denied",
+}
+
+// isAuthFailure reports whether git push output names a credential rejection
+// (the container's baked PAT went dead mid-run) rather than a content/race reject.
+func isAuthFailure(pushOutput string) bool {
+	o := strings.ToLower(pushOutput)
+	for _, m := range authFailureMarkers {
+		if strings.Contains(o, m) {
+			return true
+		}
+	}
+	return false
+}
 
 // reapInputs are the facts the reaper gathers from git + the scan before it
 // decides; a pure function of these keeps the policy testable.
@@ -180,6 +212,43 @@ func humanBytes(n int64) string {
 	}
 }
 
+// formatTokenAge renders the container's age at reap time from its RFC3339 start
+// stamp and now; reports false on a missing, unparseable, or future stamp (ward#103).
+func formatTokenAge(upAt string, now time.Time) (string, bool) {
+	s := strings.TrimSpace(upAt)
+	if s == "" {
+		return "", false
+	}
+	t, err := time.Parse(time.RFC3339, s)
+	if err != nil {
+		return "", false
+	}
+	d := now.Sub(t)
+	if d < 0 {
+		return "", false
+	}
+	return humanDuration(d), true
+}
+
+// humanDuration renders a duration as a compact age string (e.g. "3h42m",
+// "2d3h", "45s") for the salvage issue. Only the two most significant units show.
+func humanDuration(d time.Duration) string {
+	if d < time.Minute {
+		return fmt.Sprintf("%ds", int(d.Seconds()))
+	}
+	days := int(d / (24 * time.Hour))
+	hours := int((d % (24 * time.Hour)) / time.Hour)
+	mins := int((d % time.Hour) / time.Minute)
+	switch {
+	case days > 0:
+		return fmt.Sprintf("%dd%dh", days, hours)
+	case hours > 0:
+		return fmt.Sprintf("%dh%dm", hours, mins)
+	default:
+		return fmt.Sprintf("%dm", mins)
+	}
+}
+
 // --- salvage branch + issue rendering ----------------------------------------
 
 // salvageBranchPrefix namespaces every reaper-pushed branch so they are easy to
@@ -202,6 +271,12 @@ type salvageReport struct {
 	Branch   string
 	Reason   reapReason
 	Findings []scanFinding
+	// AuthCause is set when the salvage was triggered by a credential-rejected
+	// push (a dead/rotated PAT), not a content conflict or race (ward#103).
+	AuthCause bool
+	// TokenAge is the container's age at reap time (e.g. "3h42m"), a proxy for how
+	// stale the baked PAT is; empty when the start time is unknown.
+	TokenAge string
 	// Status is the `git status --porcelain` snapshot at reap time, for context.
 	Status string
 	// Base is the forgejo base URL, used to render the fetch/recover commands.
@@ -221,7 +296,16 @@ func salvageIssueBody(r salvageReport) string {
 	fmt.Fprintf(&b, "An ephemeral `ward container` (%s mode) finished but its work was **not merged to `main`**, so the reaper preserved it on a branch before the container was torn down.\n\n", r.Mode)
 	fmt.Fprintf(&b, "- **Repo:** `%s`\n", r.Repo.slug())
 	fmt.Fprintf(&b, "- **Salvage branch:** `%s`\n", r.Branch)
-	fmt.Fprintf(&b, "- **Reason:** %s\n\n", r.Reason)
+	fmt.Fprintf(&b, "- **Reason:** %s\n", r.Reason)
+	if r.TokenAge != "" {
+		fmt.Fprintf(&b, "- **Container uptime at reap:** %s (age of the baked Forgejo PAT snapshot; a long-lived container is likelier to carry a rotated token)\n", r.TokenAge)
+	}
+	b.WriteString("\n")
+
+	if r.AuthCause {
+		b.WriteString("## Likely cause: dead/rotated PAT, not a conflict\n\n")
+		b.WriteString("The push was rejected on **credentials**, not content. The Forgejo PAT baked into this container at `up` time was most likely rotated or revoked while it ran, so the final push to `main` (and any salvage-branch push) failed on auth. This is **not** a merge conflict - the work on the salvage branch should rebase and land cleanly once pushed with a live token. Don't rotate the PAT while containers are in flight; see docs/container-reap.md.\n\n")
+	}
 
 	b.WriteString("## Recover\n\n```bash\n")
 	fmt.Fprintf(&b, "git fetch %s %s\n", r.Repo.cloneURL(r.Base), r.Branch)

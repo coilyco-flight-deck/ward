@@ -1,12 +1,15 @@
 package main
 
 import (
+	"bytes"
 	"context"
 	"fmt"
+	"io"
 	"os"
 	"path/filepath"
 	"strconv"
 	"strings"
+	"time"
 
 	"forgejo.coilysiren.me/coilyco-flight-deck/cli-guard/cli/verb"
 	"github.com/urfave/cli/v3"
@@ -23,6 +26,9 @@ type reapEnv struct {
 	Base  string
 	Mode  string
 	Token string
+	// UpAt is the container's RFC3339 start stamp (WARD_CONTAINER_UP), diffed
+	// against reap time to report the baked PAT's age on a salvage (ward#103).
+	UpAt string
 }
 
 func readReapEnv() (reapEnv, error) {
@@ -32,6 +38,7 @@ func readReapEnv() (reapEnv, error) {
 		Base:  os.Getenv("WARD_FORGEJO_BASE"),
 		Mode:  os.Getenv("WARD_MODE"),
 		Token: os.Getenv("FORGEJO_TOKEN"),
+		UpAt:  os.Getenv("WARD_CONTAINER_UP"),
 	}
 	if e.Owner == "" || e.Name == "" || e.Base == "" {
 		return e, fmt.Errorf("ward container reap: missing WARD_TARGET_OWNER/NAME/WARD_FORGEJO_BASE (run inside a ward container)")
@@ -88,7 +95,7 @@ func (r *Runner) runContainerReap(ctx context.Context, c *cli.Command) error {
 	if !refExists(ctx, r, work, "origin/main") {
 		// Without a main to integrate against we cannot safely push; preserve
 		// whatever HEAD holds on a salvage branch.
-		return r.salvage(ctx, work, env, reasonPushFail, nil, statusSnapshot)
+		return r.salvage(ctx, work, env, reasonPushFail, false, nil, statusSnapshot)
 	}
 
 	residual := revCount(ctx, r, work, "origin/main..HEAD")
@@ -156,45 +163,64 @@ func (r *Runner) executeReap(ctx context.Context, work string, env reapEnv, acti
 		fmt.Fprintln(os.Stderr, "ward container reap: nothing to reap")
 		return nil
 	case reapPushMain:
-		if perr := r.Runner.Exec(ctx, "git", "-C", work, "push", "origin", "HEAD:main"); perr == nil {
+		out, perr := r.pushCapture(ctx, work, "HEAD:main")
+		if perr == nil {
 			fmt.Fprintln(os.Stderr, "ward container reap: landed on main")
 			return nil
 		}
-		fmt.Fprintln(os.Stderr, "ward container reap: push to main rejected; salvaging")
-		return r.salvage(ctx, work, env, reasonPushRace, findings, status)
+		// Classify the rejection so the salvage issue distinguishes a dead/rotated
+		// PAT (auth) from the remote simply having advanced (race) - see ward#103.
+		reason, authCause := reasonPushRace, false
+		if isAuthFailure(out) {
+			reason, authCause = reasonAuthFail, true
+		}
+		fmt.Fprintf(os.Stderr, "ward container reap: push to main rejected (%s); salvaging\n", reason)
+		return r.salvage(ctx, work, env, reason, authCause, findings, status)
 	case reapSalvage:
 		reason := reasonConflict
 		if len(findings) > 0 {
 			reason = reasonScan
 		}
-		return r.salvage(ctx, work, env, reason, findings, status)
+		return r.salvage(ctx, work, env, reason, false, findings, status)
 	}
 	return nil
 }
 
 // salvage preserves residual work on a ward-salvage/<id> branch (durable) then
 // best-effort files/appends a forgejo issue (notification); the branch goes first.
-func (r *Runner) salvage(ctx context.Context, work string, env reapEnv, reason reapReason, findings []scanFinding, status string) error {
+func (r *Runner) salvage(ctx context.Context, work string, env reapEnv, reason reapReason, authCause bool, findings []scanFinding, status string) error {
 	id := env.Name + "-" + randHex(4)
 	branch := salvageBranchName(id)
 	_ = r.Runner.Exec(ctx, "git", "-C", work, "branch", "-f", branch, "HEAD")
-	if perr := r.Runner.Exec(ctx, "git", "-C", work, "push", "origin", branch+":"+branch); perr != nil {
+	if out, perr := r.pushCapture(ctx, work, branch+":"+branch); perr != nil {
+		// The branch push reuses the same baked PAT, so a dead token fails here too;
+		// classify it so the log names the cause - no issue can be filed either (ward#103).
+		if isAuthFailure(out) {
+			authCause = true
+		}
+		cause := ""
+		if authCause {
+			cause = " on auth (the baked Forgejo PAT was likely rotated/revoked mid-run; no salvage issue could be filed for the same reason)"
+		}
 		// Remote unreachable: the container log is the only durable surface left,
 		// so emit the patch for recovery via `docker logs` before teardown.
-		fmt.Fprintf(os.Stderr, "ward container reap: salvage branch push failed (%v); dumping patch to log as last resort\n", perr)
+		fmt.Fprintf(os.Stderr, "ward container reap: salvage branch push failed%s (%v); dumping patch to log as last resort\n", cause, perr)
 		r.dumpPatch(ctx, work)
 		return fmt.Errorf("ward container reap: could not preserve work to the remote: %w", perr)
 	}
 	fmt.Fprintf(os.Stderr, "ward container reap: preserved work on %s (%s)\n", branch, reason)
 
+	age, _ := formatTokenAge(env.UpAt, time.Now())
 	report := salvageReport{
-		Repo:     env.repo(),
-		Mode:     env.Mode,
-		Branch:   branch,
-		Reason:   reason,
-		Findings: findings,
-		Status:   status,
-		Base:     env.Base,
+		Repo:      env.repo(),
+		Mode:      env.Mode,
+		Branch:    branch,
+		Reason:    reason,
+		AuthCause: authCause,
+		TokenAge:  age,
+		Findings:  findings,
+		Status:    status,
+		Base:      env.Base,
 	}
 	if ferr := r.fileSalvageIssue(ctx, env, report); ferr != nil {
 		// The branch already preserved the work; a failed issue is a missed
@@ -262,6 +288,20 @@ func (r *Runner) diffEntries(ctx context.Context, work, rangeRef string) []diffE
 		entries = append(entries, e)
 	}
 	return entries
+}
+
+// pushCapture runs `git push origin <refspec>`, teeing git's stderr diagnostics
+// to the live log while capturing them so a failure can be classified (ward#103).
+func (r *Runner) pushCapture(ctx context.Context, work, refspec string) (string, error) {
+	var buf bytes.Buffer
+	prev := r.Runner.Stderr
+	if prev == nil {
+		prev = io.Discard
+	}
+	r.Runner.Stderr = io.MultiWriter(prev, &buf)
+	err := r.Runner.Exec(ctx, "git", "-C", work, "push", "origin", refspec)
+	r.Runner.Stderr = prev
+	return buf.String(), err
 }
 
 // --- small git predicates ----------------------------------------------------

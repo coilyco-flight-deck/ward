@@ -3,6 +3,7 @@ package main
 import (
 	"strings"
 	"testing"
+	"time"
 )
 
 func TestDecideReap(t *testing.T) {
@@ -117,6 +118,96 @@ func TestSalvageBranchAndTitleStable(t *testing.T) {
 	}
 	if !strings.Contains(title, "eco-app") || !strings.Contains(title, r.Branch) {
 		t.Errorf("title %q missing repo/branch", title)
+	}
+}
+
+func TestIsAuthFailure(t *testing.T) {
+	auth := []string{
+		"remote: Invalid username or password.\nfatal: Authentication failed for 'https://forgejo.example/x.git/'",
+		"fatal: unable to access 'https://...': The requested URL returned error: 403 Forbidden",
+		"remote: Forbidden\nfatal: unable to access",
+		"error: 401 Unauthorized",
+		"fatal: could not read Username for 'https://forgejo.example': terminal prompts disabled",
+	}
+	for _, o := range auth {
+		if !isAuthFailure(o) {
+			t.Errorf("expected auth failure for %q", o)
+		}
+	}
+	notAuth := []string{
+		"! [rejected]        HEAD -> main (non-fast-forward)\nerror: failed to push some refs",
+		"hint: Updates were rejected because the remote contains work that you do not have locally.\nhint: fetch first",
+		"fatal: unable to access 'https://...': Could not resolve host: forgejo.example",
+		"",
+	}
+	for _, o := range notAuth {
+		if isAuthFailure(o) {
+			t.Errorf("did not expect auth failure for %q", o)
+		}
+	}
+}
+
+func TestFormatTokenAge(t *testing.T) {
+	up := time.Date(2026, 6, 18, 10, 0, 0, 0, time.UTC)
+	cases := []struct {
+		name string
+		upAt string
+		now  time.Time
+		want string
+		ok   bool
+	}{
+		{"hours and minutes", up.Format(time.RFC3339), up.Add(3*time.Hour + 42*time.Minute), "3h42m", true},
+		{"days and hours", up.Format(time.RFC3339), up.Add(2*24*time.Hour + 3*time.Hour), "2d3h", true},
+		{"minutes only", up.Format(time.RFC3339), up.Add(45 * time.Minute), "45m", true},
+		{"sub-minute", up.Format(time.RFC3339), up.Add(30 * time.Second), "30s", true},
+		{"empty stamp", "", up, "", false},
+		{"unparseable stamp", "not-a-time", up, "", false},
+		{"future stamp (clock skew)", up.Format(time.RFC3339), up.Add(-time.Hour), "", false},
+	}
+	for _, c := range cases {
+		got, ok := formatTokenAge(c.upAt, c.now)
+		if ok != c.ok || got != c.want {
+			t.Errorf("%s: formatTokenAge = (%q,%v), want (%q,%v)", c.name, got, ok, c.want, c.ok)
+		}
+	}
+}
+
+func TestSalvageIssueBodyStampsAuthCauseAndAge(t *testing.T) {
+	r := salvageReport{
+		Repo:      targetRepo{Owner: "coilyco-flight-deck", Name: "ward"},
+		Mode:      "claude",
+		Branch:    "ward-salvage/ward-a1b2",
+		Reason:    reasonAuthFail,
+		AuthCause: true,
+		TokenAge:  "5h12m",
+		Base:      "https://forgejo.coilysiren.me",
+	}
+	body := salvageIssueBody(r)
+	for _, want := range []string{
+		"Container uptime at reap:",
+		"5h12m",
+		"dead/rotated PAT",
+		"rebase and land cleanly",
+	} {
+		if !strings.Contains(body, want) {
+			t.Errorf("auth-cause body missing %q\n---\n%s", want, body)
+		}
+	}
+
+	// A conflict salvage (no auth cause, no stamp) must NOT claim a dead PAT.
+	conflict := salvageReport{
+		Repo:   targetRepo{Owner: "coilyco-flight-deck", Name: "ward"},
+		Mode:   "claude",
+		Branch: "ward-salvage/ward-c3d4",
+		Reason: reasonConflict,
+		Base:   "https://forgejo.coilysiren.me",
+	}
+	cbody := salvageIssueBody(conflict)
+	if strings.Contains(cbody, "dead/rotated PAT") {
+		t.Errorf("conflict body should not mention a dead PAT\n---\n%s", cbody)
+	}
+	if strings.Contains(cbody, "Container uptime at reap:") {
+		t.Errorf("conflict body should omit uptime when TokenAge is empty\n---\n%s", cbody)
 	}
 }
 

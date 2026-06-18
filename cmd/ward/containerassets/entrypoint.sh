@@ -32,6 +32,10 @@ AGENT_HOME="${WARD_AGENT_HOME:-/home/ubuntu}"
 # jail (cli-guard#153), breaking the reaper. Opt out. See cli-guard docs/sandbox.md.
 export CLIGUARD_NO_SANDBOX=1
 
+# Stamp container start (UTC RFC3339); the reaper inherits this via the trap and
+# reports the baked Forgejo PAT's age on a salvage issue (ward#103).
+export WARD_CONTAINER_UP="${WARD_CONTAINER_UP:-$(date -u +%Y-%m-%dT%H:%M:%SZ)}"
+
 forgejo_host="$(printf '%s' "$WARD_FORGEJO_BASE" | sed -E 's#^https?://##; s#/.*$##')"
 
 # --- forgejo git auth (token rides --env-file, never argv) -------------------
