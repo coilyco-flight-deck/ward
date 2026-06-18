@@ -201,6 +201,55 @@ func (c *forgejoClient) listIssueComments(ctx context.Context, owner, repo strin
 	return out, nil
 }
 
+// closeIssue flips an existing issue to the closed state (PATCH state=closed),
+// used by the task route flow to retire an intake record once it's cross-linked.
+func (c *forgejoClient) closeIssue(ctx context.Context, owner, repo string, number int) error {
+	path := fmt.Sprintf("/api/v1/repos/%s/%s/issues/%d", owner, repo, number)
+	status, respBody, err := c.do(ctx, http.MethodPatch, path, map[string]string{"state": "closed"})
+	if err != nil {
+		return err
+	}
+	if status != http.StatusOK && status != http.StatusCreated {
+		return fmt.Errorf("forgejo: close issue #%d returned HTTP %d: %s", number, status, strings.TrimSpace(string(respBody)))
+	}
+	return nil
+}
+
+// repoBrief is one row of an owner's repo list - just the fields the task route
+// survey needs to build a catalog the agent picks from (ward#164).
+type repoBrief struct {
+	Name        string `json:"name"`
+	Description string `json:"description"`
+	Archived    bool   `json:"archived"`
+	Empty       bool   `json:"empty"`
+}
+
+// listOwnerRepos lists an owner's repos, trying the org endpoint then the user
+// endpoint (a Forgejo org is a kind of user); a missing owner returns no repos.
+func (c *forgejoClient) listOwnerRepos(ctx context.Context, owner string) ([]repoBrief, error) {
+	for _, path := range []string{
+		fmt.Sprintf("/api/v1/orgs/%s/repos?limit=100", owner),
+		fmt.Sprintf("/api/v1/users/%s/repos?limit=100", owner),
+	} {
+		status, respBody, err := c.do(ctx, http.MethodGet, path, nil)
+		if err != nil {
+			return nil, err
+		}
+		if status == http.StatusNotFound {
+			continue
+		}
+		if status != http.StatusOK {
+			return nil, fmt.Errorf("forgejo: list repos for %s returned HTTP %d: %s", owner, status, strings.TrimSpace(string(respBody)))
+		}
+		var out []repoBrief
+		if err := json.Unmarshal(respBody, &out); err != nil {
+			return nil, fmt.Errorf("forgejo: parse repos for %s: %w", owner, err)
+		}
+		return out, nil
+	}
+	return nil, nil
+}
+
 // findOpenIssueByTitlePrefix returns the first open issue whose title starts
 // with prefix, so the reaper appends instead of filing a duplicate.
 func (c *forgejoClient) findOpenIssueByTitlePrefix(ctx context.Context, owner, repo, prefix string) (number int, found bool, err error) {
