@@ -1,6 +1,7 @@
 package main
 
 import (
+	"encoding/base64"
 	"os"
 	"path/filepath"
 	"slices"
@@ -477,6 +478,87 @@ func TestEntrypointGooseHeadless(t *testing.T) {
 	claudeFlags := strings.Index(script, "--output-format stream-json")
 	if goose < 0 || claudeFlags < 0 || goose > claudeFlags {
 		t.Errorf("goose headless argv must be distinct from claude stream-json (goose=%d claude=%d)", goose, claudeFlags)
+	}
+}
+
+// TestEntrypointCodexExec guards the codex launch dialect (ward#178): codex runs
+// via `codex exec` with its auth + config written before launch, not claude flags.
+func TestEntrypointCodexExec(t *testing.T) {
+	data, err := containerAssets.ReadFile("containerassets/" + containerEntrypointRel)
+	if err != nil {
+		t.Fatalf("read entrypoint: %v", err)
+	}
+	script := string(data)
+	for _, want := range []string{
+		"codex exec",           // headless codex speaks the exec dialect
+		"write_codex_creds",    // host-injected auth.json is decoded in
+		"compose_codex_config", // approvals-off / sandbox-open posture is written
+		"approval_policy",      // ...and that config sets the autonomous posture
+		"sandbox_mode",
+		"WARD_CODEX_AUTH_B64", // the env-file credential channel
+	} {
+		if !strings.Contains(script, want) {
+			t.Errorf("entrypoint missing %q (ward#178 codex)", want)
+		}
+	}
+	// codex headless must not borrow claude's stream-json flags: its `exec`
+	// invocation precedes the claude `-p --output-format` default branch.
+	codex := strings.Index(script, "codex exec")
+	claudeFlags := strings.Index(script, "--output-format stream-json")
+	if codex < 0 || claudeFlags < 0 || codex > claudeFlags {
+		t.Errorf("codex headless argv must be distinct from claude stream-json (codex=%d claude=%d)", codex, claudeFlags)
+	}
+}
+
+// TestCredEnvLines pins the per-mode credential env-file shaping (ward#178): each
+// present blob rides base64'd on its own WARD_*_B64 line, absent blobs are omitted.
+func TestCredEnvLines(t *testing.T) {
+	if got := credEnvLines(agentCreds{}); len(got) != 0 {
+		t.Errorf("no creds should yield no lines, got %v", got)
+	}
+	claudeOnly := credEnvLines(agentCreds{Claude: "claude-blob"})
+	if len(claudeOnly) != 1 || !strings.HasPrefix(claudeOnly[0], "WARD_CLAUDE_CREDS_B64=") {
+		t.Fatalf("claude-only lines = %v", claudeOnly)
+	}
+	codexOnly := credEnvLines(agentCreds{Codex: "codex-blob"})
+	if len(codexOnly) != 1 || !strings.HasPrefix(codexOnly[0], "WARD_CODEX_AUTH_B64=") {
+		t.Fatalf("codex-only lines = %v", codexOnly)
+	}
+	// The codex blob must round-trip through base64 unchanged.
+	enc := strings.TrimPrefix(codexOnly[0], "WARD_CODEX_AUTH_B64=")
+	dec, err := base64.StdEncoding.DecodeString(enc)
+	if err != nil || string(dec) != "codex-blob" {
+		t.Errorf("codex blob did not round-trip: dec=%q err=%v", dec, err)
+	}
+	if got := credEnvLines(agentCreds{Claude: "a", Codex: "b"}); len(got) != 2 {
+		t.Errorf("both creds should yield two lines, got %v", got)
+	}
+}
+
+// TestResolveAgentCredsRouting checks the host credential resolver routes by mode:
+// codex reads ~/.codex/auth.json into the Codex slot, the ollama harnesses none.
+func TestResolveAgentCredsRouting(t *testing.T) {
+	home := t.TempDir()
+	t.Setenv("HOME", home)
+	if err := os.MkdirAll(filepath.Join(home, ".codex"), 0o755); err != nil {
+		t.Fatal(err)
+	}
+	if err := os.WriteFile(filepath.Join(home, ".codex", "auth.json"), []byte("codex-auth-blob"), 0o600); err != nil {
+		t.Fatal(err)
+	}
+	r := &Runner{}
+	got := r.resolveAgentCreds(t.Context(), modeCodex)
+	if got.Codex != "codex-auth-blob" {
+		t.Errorf("codex mode: Codex = %q, want the auth.json contents", got.Codex)
+	}
+	if got.Claude != "" {
+		t.Errorf("codex mode must not resolve a claude credential, got %q", got.Claude)
+	}
+	// The ollama harnesses authenticate to the tower, so ward injects nothing.
+	for _, m := range []containerMode{modeQwen, modeGoose} {
+		if c := r.resolveAgentCreds(t.Context(), m); c != (agentCreds{}) {
+			t.Errorf("%s must resolve no creds, got %+v", m, c)
+		}
 	}
 }
 
