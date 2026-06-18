@@ -221,7 +221,7 @@ func TestTaskBody(t *testing.T) {
 
 func TestPreflightPrompt(t *testing.T) {
 	ref := agentIssueRef{Owner: "coilyco-flight-deck", Repo: "ward", Number: 137}
-	got := preflightPrompt(ref, "  pre-flight check  ", "  do the thing  ", "")
+	got := preflightPrompt(ref, "  pre-flight check  ", "  do the thing  ", "", nil)
 	for _, want := range []string{
 		"coilyco-flight-deck/ward#137", // the issue ref
 		"pre-flight check",             // title, trimmed
@@ -234,6 +234,8 @@ func TestPreflightPrompt(t *testing.T) {
 		"FRESH CLONE",              // ward#169: names the real clone the run gets
 		"local working tree",       // ward#169: tells it not to judge from cwd
 		"current directory",        // ward#169: missing-here means nothing
+		"comment thread",           // ward#154: tells the agent to weigh the comments
+		"(no comments yet)",
 	} {
 		if !strings.Contains(got, want) {
 			t.Errorf("preflight prompt missing %q\n got: %s", want, got)
@@ -244,16 +246,64 @@ func TestPreflightPrompt(t *testing.T) {
 		t.Errorf("preflight prompt should omit the steering note when details is empty; got: %s", got)
 	}
 	// A --details note is woven in for the feasibility read (ward#167).
-	withNote := preflightPrompt(ref, "t", "b", "  ship it the other way  ")
+	withNote := preflightPrompt(ref, "t", "b", "  ship it the other way  ", nil)
 	for _, want := range []string{"steering note", "--details", "ship it the other way"} {
 		if !strings.Contains(withNote, want) {
 			t.Errorf("preflight prompt with details missing %q\n got: %s", want, withNote)
 		}
 	}
 	// Empty title/body degrade gracefully, never blank-quote or dangle.
-	empty := preflightPrompt(ref, "  ", "  ", "")
+	empty := preflightPrompt(ref, "  ", "  ", "", nil)
 	if !strings.Contains(empty, "(untitled)") || !strings.Contains(empty, "(no description provided)") {
 		t.Errorf("empty title/body should render placeholders; got: %s", empty)
+	}
+	// A decision in the comments must reach the prompt - the ward#154 bug was a
+	// pre-flight that re-derived a NO-GO because it never saw the author decide.
+	withComments := preflightPrompt(ref, "title", "options A-D, no decision yet", "", []issueComment{
+		{Body: "my decision: go with option A", User: struct {
+			Login string `json:"login"`
+		}{Login: "coilysiren"}},
+	})
+	for _, want := range []string{"my decision: go with option A", "coilysiren"} {
+		if !strings.Contains(withComments, want) {
+			t.Errorf("preflight prompt should surface the author's comment %q\n got: %s", want, withComments)
+		}
+	}
+}
+
+func TestPreflightComments(t *testing.T) {
+	author := func(login string) struct {
+		Login string `json:"login"`
+	} {
+		return struct {
+			Login string `json:"login"`
+		}{Login: login}
+	}
+	comments := []issueComment{
+		{Body: "real human question", User: author("coilysiren")},
+		{Body: "reservation ping " + agentReservationMarker, User: author("ward-bot")},
+		{Body: "stale verdict\n" + preflightNoGoMarker, User: author("ward-bot")},
+		{Body: "  ", User: author("coilysiren")},
+		{Body: "my decision: option A", User: author("coilysiren")},
+	}
+	got := preflightComments(comments)
+	for _, want := range []string{"real human question", "my decision: option A", "coilysiren"} {
+		if !strings.Contains(got, want) {
+			t.Errorf("preflightComments dropped human signal %q\n got: %s", want, got)
+		}
+	}
+	for _, drop := range []string{agentReservationMarker, preflightNoGoMarker, "reservation ping", "stale verdict"} {
+		if strings.Contains(got, drop) {
+			t.Errorf("preflightComments should drop ward's own bookkeeping %q\n got: %s", drop, got)
+		}
+	}
+	// The human's decision must land after the earlier question, so the agent
+	// reads the latest word last.
+	if i, j := strings.Index(got, "real human question"), strings.Index(got, "my decision"); i < 0 || j < 0 || i > j {
+		t.Errorf("comments should render oldest-first; got: %s", got)
+	}
+	if preflightComments(nil) != "" {
+		t.Errorf("nil comments should render empty, got %q", preflightComments(nil))
 	}
 }
 
@@ -313,6 +363,7 @@ func TestPreflightNoGoComment(t *testing.T) {
 		"No container was launched",
 		"<details>",             // folds the full read away
 		"The scope is unclear.", // includes the read verbatim
+		preflightNoGoMarker,     // hidden token so later reads can drop this comment
 	} {
 		if !strings.Contains(got, want) {
 			t.Errorf("preflightNoGoComment missing %q\n got: %s", want, got)
