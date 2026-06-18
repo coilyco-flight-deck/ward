@@ -219,7 +219,7 @@ func (r *Runner) runAgentWork(ctx context.Context, c *cli.Command, mode containe
 		r.maybeWarnWardOutdated(ctx)
 	}
 	if headless && preflightWanted(c) {
-		proceed, perr := r.runPreflight(ctx, mode, w)
+		proceed, perr := r.runPreflight(ctx, mode, surface, w)
 		if perr != nil {
 			return fmt.Errorf("ward agent %s %s: pre-flight: %w", mode, surface, perr)
 		}
@@ -266,10 +266,10 @@ func preflightPrompt(ref agentIssueRef, title, body string) string {
 		ref, title, body)
 }
 
-// runPreflight acts on the agent's feasibility verdict with no human (ward#147):
-// only an explicit NO-GO blocks (comments + launches nothing). See docs/agent.md.
-func (r *Runner) runPreflight(ctx context.Context, mode containerMode, w resolvedWork) (bool, error) {
-	label := fmt.Sprintf("ward agent %s headless", mode)
+// runPreflight acts on the agent's feasibility verdict with no human, shared by
+// the headless + task surfaces (ward#147, ward#149): only NO-GO blocks. See docs.
+func (r *Runner) runPreflight(ctx context.Context, mode containerMode, surface string, w resolvedWork) (bool, error) {
+	label := fmt.Sprintf("ward agent %s %s", mode, surface)
 	bin := mode.agentBinary()
 	// Without a usable host self-assessment (only claude has one today) we can't
 	// fairly bounce the issue back, so the dispatch proceeds.
@@ -296,7 +296,7 @@ func (r *Runner) runPreflight(ctx context.Context, mode containerMode, w resolve
 
 	if verdict, reason := parsePreflightVerdict(read); verdict == verdictNoGo {
 		fmt.Fprintf(os.Stderr, "%s: pre-flight NO-GO for %s; launching nothing, commenting on the issue.\n", label, w.Ref)
-		if cerr := r.postPreflightNoGo(ctx, mode, w.Ref, reason, read); cerr != nil {
+		if cerr := r.postPreflightNoGo(ctx, mode, surface, w.Ref, reason, read); cerr != nil {
 			return false, fmt.Errorf("post NO-GO comment on %s: %w", w.Ref, cerr)
 		}
 		fmt.Fprintf(os.Stderr, "%s: commented NO-GO on %s - %s\n", label, w.Ref, w.Ref.url())
@@ -351,34 +351,36 @@ func parsePreflightVerdict(read string) (preflightVerdict, string) {
 
 // postPreflightNoGo comments the NO-GO verdict back on the issue (host Forgejo
 // client, SSM-backed token), bouncing it to a human instead of failing silently.
-func (r *Runner) postPreflightNoGo(ctx context.Context, mode containerMode, ref agentIssueRef, reason, read string) error {
+func (r *Runner) postPreflightNoGo(ctx context.Context, mode containerMode, surface string, ref agentIssueRef, reason, read string) error {
 	cl, err := r.hostForgejoClient(ctx)
 	if err != nil {
 		return err
 	}
-	return cl.commentIssue(ctx, ref.Owner, ref.Repo, ref.Number, preflightNoGoComment(mode, reason, read))
+	return cl.commentIssue(ctx, ref.Owner, ref.Repo, ref.Number, preflightNoGoComment(mode, surface, reason, read))
 }
 
 // preflightNoGoComment renders the NO-GO issue comment: reason, why nothing
-// launched, how to re-dispatch, and the full read folded away. Pure + testable.
-func preflightNoGoComment(mode containerMode, reason, read string) string {
+// launched, how to re-dispatch, the surface (headless|task), and the read. Pure.
+func preflightNoGoComment(mode containerMode, surface, reason, read string) string {
 	reason = strings.TrimSpace(reason)
 	if reason == "" {
 		reason = "(no reason given)"
 	}
 	var b strings.Builder
 	fmt.Fprintf(&b, "### 🛫 ward pre-flight: NO-GO\n\n")
-	fmt.Fprintf(&b, "`ward agent %s headless` ran a pre-flight feasibility read on this issue before "+
+	fmt.Fprintf(&b, "`ward agent %s %s` ran a pre-flight feasibility read on this issue before "+
 		"detaching a fire-and-forget run, and the agent judged it **NO-GO** - it should not be carried "+
-		"unattended until a human weighs in.\n\n", mode)
+		"unattended until a human weighs in.\n\n", mode, surface)
 	fmt.Fprintf(&b, "> %s\n\n", reason)
+	// Re-dispatch points at `headless` for both surfaces: the issue is already
+	// filed, so re-running `task` would file a duplicate.
 	fmt.Fprintf(&b, "No container was launched. Review the issue (clarify the scope, resolve the unknown, "+
 		"or split it), then re-dispatch - `ward agent %s headless <ref> --no-preflight` skips this gate "+
 		"once you've decided it's good to go.\n", mode)
 	if read = strings.TrimSpace(read); read != "" {
 		fmt.Fprintf(&b, "\n<details><summary>full pre-flight read</summary>\n\n%s\n\n</details>\n", read)
 	}
-	fmt.Fprintf(&b, "\n---\nPosted automatically by `ward agent %s headless` pre-flight (ward#147).", mode)
+	fmt.Fprintf(&b, "\n---\nPosted automatically by `ward agent %s %s` pre-flight (ward#147, ward#149).", mode, surface)
 	return b.String()
 }
 
@@ -472,6 +474,9 @@ func agentTaskCommand(m containerMode) *cli.Command {
 		&cli.BoolFlag{Name: "print", Usage: "resolve the repo + the issue that would be filed + the docker plan and exit; file nothing, run nothing"},
 		&cli.BoolFlag{Name: "no-pull", Usage: "skip the image pull"},
 		&cli.BoolFlag{Name: "force", Usage: "skip the local + remote concurrency reservation checks (reclaim a stale or foreign hold)"},
+		// task detaches into the same fire-and-forget headless run, so it gets the
+		// same autonomous pre-flight gate (ward#149); --no-preflight skips it.
+		&cli.BoolFlag{Name: "no-preflight", Usage: "skip the pre-flight feasibility check and detach immediately"},
 	}
 	return &cli.Command{
 		Name:      "task",
@@ -596,6 +601,19 @@ func (r *Runner) runAgentTask(ctx context.Context, c *cli.Command, mode containe
 	}
 	ref := agentIssueRef{Owner: repo.Owner, Repo: repo.Name, Number: number}
 	fmt.Fprintf(os.Stderr, "%s: filed %s - %s\n", label, ref, ref.url())
+
+	// task runs the exact headless flow, so it gets the same pre-flight (ward#149):
+	// a NO-GO comments on the just-filed issue and launches nothing. See docs.
+	if preflightWanted(c) {
+		proceed, perr := r.runPreflight(ctx, mode, "task", resolvedWork{Ref: ref, Title: title, Body: body})
+		if perr != nil {
+			return fmt.Errorf("%s: pre-flight: %w", label, perr)
+		}
+		if !proceed {
+			// runPreflight already reported the NO-GO and posted the issue comment.
+			return nil
+		}
+	}
 
 	seed := agentSeedPrompt(ref, title)
 	return r.launchAgentContainer(ctx, c, mode, "task", true, ref, title, seed)

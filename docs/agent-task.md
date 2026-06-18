@@ -34,6 +34,17 @@ off-org owner is refused, because the container runs under `bypassPermissions`.
 docker plan, then exits having filed nothing and run nothing - the seed prompt's
 `#N` shows as `#0` until the issue is actually filed.
 
+## Pre-flight (ward#149)
+
+Because `task` runs the exact `headless` flow, it also runs the same
+[pre-flight feasibility check](agent.md#headless-pre-flight-ward137-ward147)
+before detaching: it files the issue, then asks the agent whether it can carry it
+to merge unattended. A **GO** launches the container; a **NO-GO** launches
+nothing and comments the reason on the just-filed issue, leaving a real issue a
+human can review and re-dispatch with `ward agent <name> headless <ref>
+--no-preflight`. The check is skipped under `--print`, with `--no-preflight`, and
+when there is no terminal (scripted dispatch).
+
 ## See also
 
 - [docs/agent.md](agent.md) - the `work`/`headless` surfaces and the shared

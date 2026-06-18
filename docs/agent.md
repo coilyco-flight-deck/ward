@@ -82,8 +82,13 @@ launched from a TTY that you still want to fire blind - it also re-dispatches a
 NO-GO issue once you've decided it's good to go). Non-`claude` modes, a host
 without the agent binary, or a read that doesn't complete all **proceed** rather
 than block, since none of those is the agent declining the work (and the reaper
-still backstops residual work). `task` files an issue then goes straight to the
-detached run with no pre-flight - it is the deliberately programmatic path.
+still backstops residual work).
+
+`task` runs the **same pre-flight** (ward#149): it files the issue first, then
+gives the same GO / NO-GO read before detaching. A NO-GO comments on the
+just-filed issue and launches nothing, leaving a real issue a human can pick up
+or re-dispatch with `headless ... --no-preflight`. It honors the same skips
+(`--print`, `--no-preflight`, no terminal).
 
 The reaper backstop salvages residual work if the agent crashes (it needs ward's
 jail off in-container - the entrypoint exports `CLIGUARD_NO_SANDBOX=1`, cli-guard#153).
@@ -145,8 +150,8 @@ to reclaim a stale or foreign hold.
 `issue-<N>` default. `--print` resolves the issue and renders the seeded prompt +
 docker plan without injecting the push token or running docker - the dry-run
 preview, safe with no docker daemon up. `--force` skips the local + remote
-concurrency reservation checks (see above). `headless` swaps `--detach` (it
-always detaches) for `--no-preflight`, which skips the autonomous pre-flight
+concurrency reservation checks (see above). `headless` and `task` swap `--detach`
+(both always detach) for `--no-preflight`, which skips the autonomous pre-flight
 described above and detaches immediately.
 
 ## Container name

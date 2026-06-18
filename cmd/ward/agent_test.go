@@ -180,12 +180,12 @@ func TestParsePreflightVerdict(t *testing.T) {
 }
 
 func TestPreflightNoGoComment(t *testing.T) {
-	got := preflightNoGoComment(modeClaude, "needs human scoping", "The scope is unclear.\nNO-GO: needs human scoping")
+	got := preflightNoGoComment(modeClaude, "headless", "needs human scoping", "The scope is unclear.\nNO-GO: needs human scoping")
 	for _, want := range []string{
-		"NO-GO",               // names the verdict
-		"needs human scoping", // carries the reason
-		"ward agent claude",   // names the dispatching surface
-		"--no-preflight",      // tells the human how to re-dispatch
+		"NO-GO",                      // names the verdict
+		"needs human scoping",        // carries the reason
+		"ward agent claude headless", // names the dispatching surface
+		"--no-preflight",             // tells the human how to re-dispatch
 		"No container was launched",
 		"<details>",             // folds the full read away
 		"The scope is unclear.", // includes the read verbatim
@@ -194,8 +194,17 @@ func TestPreflightNoGoComment(t *testing.T) {
 			t.Errorf("preflightNoGoComment missing %q\n got: %s", want, got)
 		}
 	}
+	// The task surface (ward#149) attributes to `task`, but still steers the
+	// re-dispatch at `headless` since the issue is already filed.
+	task := preflightNoGoComment(modeClaude, "task", "needs human scoping", "")
+	if !strings.Contains(task, "ward agent claude task") {
+		t.Errorf("task surface should attribute to task; got: %s", task)
+	}
+	if !strings.Contains(task, "ward agent claude headless <ref> --no-preflight") {
+		t.Errorf("re-dispatch should point at headless, not task; got: %s", task)
+	}
 	// An empty reason degrades to a placeholder, never a dangling blockquote.
-	empty := preflightNoGoComment(modeClaude, "  ", "")
+	empty := preflightNoGoComment(modeClaude, "headless", "  ", "")
 	if !strings.Contains(empty, "(no reason given)") {
 		t.Errorf("empty reason should render a placeholder; got: %s", empty)
 	}
