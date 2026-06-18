@@ -173,8 +173,8 @@ so 'work' is only accepted against a trusted owner.`,
 	}
 }
 
-// agentModeCommand builds `ward agent <mode>` with its work, headless, and task
-// children.
+// agentModeCommand builds `ward agent <mode>` with its work, headless, task, and
+// reply children.
 func agentModeCommand(m containerMode) *cli.Command {
 	return &cli.Command{
 		Name:  string(m),
@@ -183,6 +183,7 @@ func agentModeCommand(m containerMode) *cli.Command {
 			agentSurfaceCommand(m, "work", false),
 			agentSurfaceCommand(m, "headless", true),
 			agentTaskCommand(m),
+			agentReplyCommand(m),
 		},
 	}
 }
