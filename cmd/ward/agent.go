@@ -173,8 +173,8 @@ so 'work' is only accepted against a trusted owner.`,
 	}
 }
 
-// agentModeCommand builds `ward agent <mode>` with its work, headless, and task
-// children.
+// agentModeCommand builds `ward agent <mode>` with its work, headless, task, and
+// reply children.
 func agentModeCommand(m containerMode) *cli.Command {
 	return &cli.Command{
 		Name:  string(m),
@@ -183,6 +183,7 @@ func agentModeCommand(m containerMode) *cli.Command {
 			agentSurfaceCommand(m, "work", false),
 			agentSurfaceCommand(m, "headless", true),
 			agentTaskCommand(m),
+			agentReplyCommand(m),
 		},
 	}
 }
@@ -736,7 +737,7 @@ func (r *Runner) launchAgentContainer(ctx context.Context, c *cli.Command, mode 
 			fmt.Fprintf(os.Stderr, "%s: image pull failed (%v); trying the local image\n", label, perr)
 		}
 	}
-	envFile, cleanupEnv, err := r.writeTokenEnvFile(ctx, r.claudeCredsForMode(ctx, mode))
+	envFile, cleanupEnv, err := r.writeTokenEnvFile(ctx, r.resolveAgentCreds(ctx, mode))
 	if err != nil {
 		return err
 	}

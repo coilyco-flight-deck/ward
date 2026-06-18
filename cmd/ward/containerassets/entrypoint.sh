@@ -272,6 +272,32 @@ write_claude_creds() {
   log "wrote claude credentials to $dir/.credentials.json"
 }
 
+# --- codex credentials (ward#178): host-resolved auth.json, ride --env-file ---
+# Host passes ~/.codex/auth.json base64'd; we decode it to the file codex reads.
+write_codex_creds() {
+  [ "$WARD_MODE" = codex ] || return 0
+  [ -n "${WARD_CODEX_AUTH_B64:-}" ] || { log "no codex credentials injected; codex will be unauthenticated (run 'codex login' on the host to seed ~/.codex/auth.json)"; return 0; }
+  local dir="$AGENT_HOME/.codex"
+  mkdir -p "$dir"
+  printf '%s' "$WARD_CODEX_AUTH_B64" | base64 -d > "$dir/auth.json"
+  chmod 600 "$dir/auth.json"
+  log "wrote codex credentials to $dir/auth.json"
+}
+
+# --- codex config (ward#178): approvals-off / sandbox-open posture -----------
+# The container is the isolation boundary, so codex needs neither. docs/agent.md.
+compose_codex_config() {
+  [ "$WARD_MODE" = codex ] || return 0
+  local dir="$AGENT_HOME/.codex"
+  mkdir -p "$dir"
+  cat > "$dir/config.toml" <<'EOF'
+# Written by the ward container entrypoint (ward#178): container is the boundary.
+approval_policy = "never"
+sandbox_mode = "danger-full-access"
+EOF
+  log "wrote codex config (approvals off, sandbox open) to $dir/config.toml"
+}
+
 # --- reaper: deterministic teardown backstop (docs/container-reap.md) --------
 # Static ward code lands/salvages residual work on any agent exit; nothing lost.
 reap() {
@@ -317,6 +343,8 @@ main() {
   compose_context
   compose_permissions
   write_claude_creds
+  write_codex_creds
+  compose_codex_config
   cd "$work"
   export WARD_REAP_WORK="$work"
   # Arm the reaper before launching the agent; the agent is NOT exec'd, else exec
@@ -342,6 +370,16 @@ main() {
       [ "$#" -gt 0 ] && log "interactive goose session: seed prompt is not auto-delivered (paste the issue)"
     fi
     ;;
+  codex)
+    # codex speaks the exec dialect: `codex exec <seed>` headless (prints its own
+    # progress, stream stays 0), seeded `codex <seed>` TUI interactive. docs/agent.md.
+    if [ "${WARD_HEADLESS:-0}" = 1 ]; then
+      agent_argv=(codex exec "$@")
+      log "headless: codex exec <seed> (codex prints its own progress to this log)"
+    else
+      agent_argv=(codex "$@")
+    fi
+    ;;
   *)
     agent_argv=("$WARD_AGENT")
     if [ "${WARD_HEADLESS:-0}" = 1 ]; then
@@ -354,7 +392,7 @@ main() {
   esac
   # Drop to the non-root agent user (claude refuses bypass-perms as root, ward#127);
   # setup ran as root. Keep ANTHROPIC_API_KEY from shadowing the OAuth creds.
-  chown -R "$AGENT_UID:$AGENT_GID" "$work" "$AGENT_HOME/.claude" "$AGENT_HOME/.config" 2>/dev/null || true
+  chown -R "$AGENT_UID:$AGENT_GID" "$work" "$AGENT_HOME/.claude" "$AGENT_HOME/.config" "$AGENT_HOME/.codex" 2>/dev/null || true
   unset ANTHROPIC_API_KEY ANTHROPIC_AUTH_TOKEN 2>/dev/null || true
   log "launching $WARD_AGENT as uid $AGENT_UID"
   local launch=(setpriv --reuid="$AGENT_UID" --regid="$AGENT_GID" --init-groups
