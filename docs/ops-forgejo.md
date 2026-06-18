@@ -74,4 +74,5 @@ cli-guard; ward-kdl carries no Go to test.
 ## See also
 
 - [FEATURES.md](FEATURES.md) - ward feature inventory.
+- [ops-forgejo-in-ward.md](ops-forgejo-in-ward.md) - the in-ward `ward ops forgejo` mount (ward#92).
 - cli-guard `specverb` - the engine ([cli-guard#75](https://forgejo.coilysiren.me/coilyco-flight-deck/cli-guard/issues/75)).

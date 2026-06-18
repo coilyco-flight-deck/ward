@@ -52,6 +52,25 @@ func newRunner() *Runner {
 	}
 }
 
+// leanRunner builds a Runner without newRunner's fatal audit preflight, so a
+// lean verb tree (dispatch, ops) constructs at startup without an os.Exit.
+func leanRunner() *Runner {
+	path, err := config.DefaultAuditPath()
+	if err != nil {
+		fmt.Fprintf(os.Stderr, "ward: fatal: resolve audit path: %v\n", err)
+		os.Exit(2)
+	}
+	return &Runner{
+		Runner: &shell.Runner{
+			Stdout:  os.Stdout,
+			Stderr:  os.Stderr,
+			Stdin:   os.Stdin,
+			Sandbox: sandboxSpec(),
+		},
+		Audit: audit.NewWriter(path),
+	}
+}
+
 // wardSandboxTools is the set of wrapped tools ward shims inside the jail.
 // brew is the first enforced surface; extend as other passthroughs land.
 var wardSandboxTools = []string{"brew"}

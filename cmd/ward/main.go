@@ -80,6 +80,7 @@ func main() {
 			dispatchCommand(),
 			containerCommand(),
 			agentCommand(),
+			opsCommand(),
 		},
 	}
 

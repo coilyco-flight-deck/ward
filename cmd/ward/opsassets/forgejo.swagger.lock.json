@@ -1,0 +1,4182 @@
+{
+  "basePath": "/api/v1",
+  "consumes": [
+    "application/json",
+    "text/plain"
+  ],
+  "definitions": {
+    "CreateIssueCommentOption": {
+      "description": "CreateIssueCommentOption options for creating a comment on an issue",
+      "properties": {
+        "body": {
+          "description": "The body of the comment",
+          "type": "string",
+          "x-go-name": "Body"
+        },
+        "updated_at": {
+          "description": "The time of the comment's update, needs admin or repository owner permission",
+          "format": "date-time",
+          "type": "string",
+          "x-go-name": "Updated"
+        }
+      },
+      "required": [
+        "body"
+      ],
+      "type": "object",
+      "x-go-package": "forgejo.org/modules/structs"
+    },
+    "CreateIssueOption": {
+      "description": "CreateIssueOption options to create one issue",
+      "properties": {
+        "assignee": {
+          "description": "deprecated",
+          "type": "string",
+          "x-go-name": "Assignee"
+        },
+        "assignees": {
+          "items": {
+            "type": "string"
+          },
+          "type": "array",
+          "x-go-name": "Assignees"
+        },
+        "body": {
+          "type": "string",
+          "x-go-name": "Body"
+        },
+        "closed": {
+          "type": "boolean",
+          "x-go-name": "Closed"
+        },
+        "due_date": {
+          "format": "date-time",
+          "type": "string",
+          "x-go-name": "Deadline"
+        },
+        "labels": {
+          "description": "list of label ids",
+          "items": {
+            "format": "int64",
+            "type": "integer"
+          },
+          "type": "array",
+          "x-go-name": "Labels"
+        },
+        "milestone": {
+          "description": "milestone id",
+          "format": "int64",
+          "type": "integer",
+          "x-go-name": "Milestone"
+        },
+        "ref": {
+          "type": "string",
+          "x-go-name": "Ref"
+        },
+        "title": {
+          "type": "string",
+          "x-go-name": "Title"
+        }
+      },
+      "required": [
+        "title"
+      ],
+      "type": "object",
+      "x-go-package": "forgejo.org/modules/structs"
+    },
+    "CreateLabelOption": {
+      "description": "CreateLabelOption options for creating a label",
+      "properties": {
+        "color": {
+          "example": "#00aabb",
+          "type": "string",
+          "x-go-name": "Color"
+        },
+        "description": {
+          "type": "string",
+          "x-go-name": "Description"
+        },
+        "exclusive": {
+          "example": false,
+          "type": "boolean",
+          "x-go-name": "Exclusive"
+        },
+        "is_archived": {
+          "example": false,
+          "type": "boolean",
+          "x-go-name": "IsArchived"
+        },
+        "name": {
+          "type": "string",
+          "x-go-name": "Name"
+        }
+      },
+      "required": [
+        "name",
+        "color"
+      ],
+      "type": "object",
+      "x-go-package": "forgejo.org/modules/structs"
+    },
+    "CreateMilestoneOption": {
+      "description": "CreateMilestoneOption options for creating a milestone",
+      "properties": {
+        "description": {
+          "type": "string",
+          "x-go-name": "Description"
+        },
+        "due_on": {
+          "format": "date-time",
+          "type": "string",
+          "x-go-name": "Deadline"
+        },
+        "state": {
+          "enum": [
+            "open",
+            "closed"
+          ],
+          "type": "string",
+          "x-go-name": "State"
+        },
+        "title": {
+          "type": "string",
+          "x-go-name": "Title"
+        }
+      },
+      "type": "object",
+      "x-go-package": "forgejo.org/modules/structs"
+    },
+    "CreateReleaseOption": {
+      "description": "CreateReleaseOption options when creating a release",
+      "properties": {
+        "body": {
+          "type": "string",
+          "x-go-name": "Note"
+        },
+        "draft": {
+          "type": "boolean",
+          "x-go-name": "IsDraft"
+        },
+        "hide_archive_links": {
+          "type": "boolean",
+          "x-go-name": "HideArchiveLinks"
+        },
+        "name": {
+          "type": "string",
+          "x-go-name": "Title"
+        },
+        "prerelease": {
+          "type": "boolean",
+          "x-go-name": "IsPrerelease"
+        },
+        "tag_name": {
+          "type": "string",
+          "x-go-name": "TagName"
+        },
+        "target_commitish": {
+          "type": "string",
+          "x-go-name": "Target"
+        }
+      },
+      "required": [
+        "tag_name"
+      ],
+      "type": "object",
+      "x-go-package": "forgejo.org/modules/structs"
+    },
+    "CreateRepoOption": {
+      "description": "CreateRepoOption options when creating repository",
+      "properties": {
+        "auto_init": {
+          "description": "Whether the repository should be auto-initialized?",
+          "type": "boolean",
+          "x-go-name": "AutoInit"
+        },
+        "default_branch": {
+          "description": "DefaultBranch of the repository (used when initializes and in template)",
+          "type": "string",
+          "x-go-name": "DefaultBranch"
+        },
+        "description": {
+          "description": "Description of the repository to create",
+          "type": "string",
+          "x-go-name": "Description"
+        },
+        "gitignores": {
+          "description": "Gitignores to use",
+          "type": "string",
+          "x-go-name": "Gitignores"
+        },
+        "issue_labels": {
+          "description": "Label-Set to use",
+          "type": "string",
+          "x-go-name": "IssueLabels"
+        },
+        "license": {
+          "description": "License to use",
+          "type": "string",
+          "x-go-name": "License"
+        },
+        "name": {
+          "description": "Name of the repository to create",
+          "type": "string",
+          "uniqueItems": true,
+          "x-go-name": "Name"
+        },
+        "object_format_name": {
+          "description": "ObjectFormatName of the underlying git repository",
+          "enum": [
+            "sha1",
+            "sha256"
+          ],
+          "type": "string",
+          "x-go-name": "ObjectFormatName"
+        },
+        "private": {
+          "description": "Whether the repository is private",
+          "type": "boolean",
+          "x-go-name": "Private"
+        },
+        "readme": {
+          "description": "Readme of the repository to create",
+          "type": "string",
+          "x-go-name": "Readme"
+        },
+        "template": {
+          "description": "Whether the repository is template",
+          "type": "boolean",
+          "x-go-name": "Template"
+        },
+        "trust_model": {
+          "description": "TrustModel of the repository",
+          "enum": [
+            "default",
+            "collaborator",
+            "committer",
+            "collaboratorcommitter"
+          ],
+          "type": "string",
+          "x-go-name": "TrustModel"
+        }
+      },
+      "required": [
+        "name"
+      ],
+      "type": "object",
+      "x-go-package": "forgejo.org/modules/structs"
+    },
+    "DeleteLabelsOption": {
+      "description": "DeleteLabelOption options for deleting a label",
+      "properties": {
+        "updated_at": {
+          "format": "date-time",
+          "type": "string",
+          "x-go-name": "Updated"
+        }
+      },
+      "type": "object",
+      "x-go-package": "forgejo.org/modules/structs"
+    },
+    "EditIssueOption": {
+      "description": "EditIssueOption options for editing an issue",
+      "properties": {
+        "assignee": {
+          "description": "deprecated",
+          "type": "string",
+          "x-go-name": "Assignee"
+        },
+        "assignees": {
+          "items": {
+            "type": "string"
+          },
+          "type": "array",
+          "x-go-name": "Assignees"
+        },
+        "body": {
+          "type": "string",
+          "x-go-name": "Body"
+        },
+        "due_date": {
+          "format": "date-time",
+          "type": "string",
+          "x-go-name": "Deadline"
+        },
+        "milestone": {
+          "format": "int64",
+          "type": "integer",
+          "x-go-name": "Milestone"
+        },
+        "ref": {
+          "type": "string",
+          "x-go-name": "Ref"
+        },
+        "state": {
+          "type": "string",
+          "x-go-name": "State"
+        },
+        "title": {
+          "type": "string",
+          "x-go-name": "Title"
+        },
+        "unset_due_date": {
+          "type": "boolean",
+          "x-go-name": "RemoveDeadline"
+        },
+        "updated_at": {
+          "format": "date-time",
+          "type": "string",
+          "x-go-name": "Updated"
+        }
+      },
+      "type": "object",
+      "x-go-package": "forgejo.org/modules/structs"
+    },
+    "EditLabelOption": {
+      "description": "EditLabelOption options for editing a label",
+      "properties": {
+        "color": {
+          "example": "#00aabb",
+          "type": "string",
+          "x-go-name": "Color"
+        },
+        "description": {
+          "type": "string",
+          "x-go-name": "Description"
+        },
+        "exclusive": {
+          "example": false,
+          "type": "boolean",
+          "x-go-name": "Exclusive"
+        },
+        "is_archived": {
+          "example": false,
+          "type": "boolean",
+          "x-go-name": "IsArchived"
+        },
+        "name": {
+          "type": "string",
+          "x-go-name": "Name"
+        }
+      },
+      "type": "object",
+      "x-go-package": "forgejo.org/modules/structs"
+    },
+    "EditMilestoneOption": {
+      "description": "EditMilestoneOption options for editing a milestone",
+      "properties": {
+        "description": {
+          "type": "string",
+          "x-go-name": "Description"
+        },
+        "due_on": {
+          "format": "date-time",
+          "type": "string",
+          "x-go-name": "Deadline"
+        },
+        "state": {
+          "type": "string",
+          "x-go-name": "State"
+        },
+        "title": {
+          "type": "string",
+          "x-go-name": "Title"
+        }
+      },
+      "type": "object",
+      "x-go-package": "forgejo.org/modules/structs"
+    },
+    "EditReleaseOption": {
+      "description": "EditReleaseOption options when editing a release",
+      "properties": {
+        "body": {
+          "type": "string",
+          "x-go-name": "Note"
+        },
+        "draft": {
+          "type": "boolean",
+          "x-go-name": "IsDraft"
+        },
+        "hide_archive_links": {
+          "type": "boolean",
+          "x-go-name": "HideArchiveLinks"
+        },
+        "name": {
+          "type": "string",
+          "x-go-name": "Title"
+        },
+        "prerelease": {
+          "type": "boolean",
+          "x-go-name": "IsPrerelease"
+        },
+        "tag_name": {
+          "type": "string",
+          "x-go-name": "TagName"
+        },
+        "target_commitish": {
+          "type": "string",
+          "x-go-name": "Target"
+        }
+      },
+      "type": "object",
+      "x-go-package": "forgejo.org/modules/structs"
+    },
+    "EditRepoOption": {
+      "description": "EditRepoOption options when editing a repository's properties",
+      "properties": {
+        "allow_fast_forward_only_merge": {
+          "description": "either `true` to allow fast-forward-only merging pull requests, or `false` to prevent fast-forward-only merging.",
+          "type": "boolean",
+          "x-go-name": "AllowFastForwardOnly"
+        },
+        "allow_manual_merge": {
+          "description": "either `true` to allow mark pr as merged manually, or `false` to prevent it.",
+          "type": "boolean",
+          "x-go-name": "AllowManualMerge"
+        },
+        "allow_merge_commits": {
+          "description": "either `true` to allow merging pull requests with a merge commit, or `false` to prevent merging pull requests with merge commits.",
+          "type": "boolean",
+          "x-go-name": "AllowMerge"
+        },
+        "allow_rebase": {
+          "description": "either `true` to allow rebase-merging pull requests, or `false` to prevent rebase-merging.",
+          "type": "boolean",
+          "x-go-name": "AllowRebase"
+        },
+        "allow_rebase_explicit": {
+          "description": "either `true` to allow rebase with explicit merge commits (--no-ff), or `false` to prevent rebase with explicit merge commits.",
+          "type": "boolean",
+          "x-go-name": "AllowRebaseMerge"
+        },
+        "allow_rebase_update": {
+          "description": "either `true` to allow updating pull request branch by rebase, or `false` to prevent it.",
+          "type": "boolean",
+          "x-go-name": "AllowRebaseUpdate"
+        },
+        "allow_squash_merge": {
+          "description": "either `true` to allow squash-merging pull requests, or `false` to prevent squash-merging.",
+          "type": "boolean",
+          "x-go-name": "AllowSquash"
+        },
+        "archived": {
+          "description": "set to `true` to archive this repository.",
+          "type": "boolean",
+          "x-go-name": "Archived"
+        },
+        "autodetect_manual_merge": {
+          "description": "either `true` to enable AutodetectManualMerge, or `false` to prevent it. Note: In some special cases, misjudgments can occur.",
+          "type": "boolean",
+          "x-go-name": "AutodetectManualMerge"
+        },
+        "default_allow_maintainer_edit": {
+          "description": "set to `true` to allow edits from maintainers by default",
+          "type": "boolean",
+          "x-go-name": "DefaultAllowMaintainerEdit"
+        },
+        "default_branch": {
+          "description": "sets the default branch for this repository.",
+          "type": "string",
+          "x-go-name": "DefaultBranch"
+        },
+        "default_delete_branch_after_merge": {
+          "description": "set to `true` to delete pr branch after merge by default",
+          "type": "boolean",
+          "x-go-name": "DefaultDeleteBranchAfterMerge"
+        },
+        "default_merge_style": {
+          "description": "set to a merge style to be used by this repository: \"merge\", \"rebase\", \"rebase-merge\", \"squash\", \"fast-forward-only\", \"manually-merged\", or \"rebase-update-only\".",
+          "type": "string",
+          "x-go-name": "DefaultMergeStyle"
+        },
+        "default_update_style": {
+          "description": "set to a update style to be used by this repository: \"rebase\" or \"merge\"",
+          "type": "string",
+          "x-go-name": "DefaultUpdateStyle"
+        },
+        "description": {
+          "description": "a short description of the repository.",
+          "type": "string",
+          "x-go-name": "Description"
+        },
+        "enable_prune": {
+          "description": "enable prune - remove obsolete remote-tracking references when mirroring",
+          "type": "boolean",
+          "x-go-name": "EnablePrune"
+        },
+        "external_tracker": {
+          "$ref": "#/definitions/ExternalTracker"
+        },
+        "external_wiki": {
+          "$ref": "#/definitions/ExternalWiki"
+        },
+        "globally_editable_wiki": {
+          "description": "set the globally editable state of the wiki",
+          "type": "boolean",
+          "x-go-name": "GloballyEditableWiki"
+        },
+        "has_actions": {
+          "description": "either `true` to enable actions unit, or `false` to disable them.",
+          "type": "boolean",
+          "x-go-name": "HasActions"
+        },
+        "has_issues": {
+          "description": "either `true` to enable issues for this repository or `false` to disable them.",
+          "type": "boolean",
+          "x-go-name": "HasIssues"
+        },
+        "has_packages": {
+          "description": "either `true` to enable packages unit, or `false` to disable them.",
+          "type": "boolean",
+          "x-go-name": "HasPackages"
+        },
+        "has_projects": {
+          "description": "either `true` to enable project unit, or `false` to disable them.",
+          "type": "boolean",
+          "x-go-name": "HasProjects"
+        },
+        "has_pull_requests": {
+          "description": "either `true` to allow pull requests, or `false` to prevent pull request.",
+          "type": "boolean",
+          "x-go-name": "HasPullRequests"
+        },
+        "has_releases": {
+          "description": "either `true` to enable releases unit, or `false` to disable them.",
+          "type": "boolean",
+          "x-go-name": "HasReleases"
+        },
+        "has_wiki": {
+          "description": "either `true` to enable the wiki for this repository or `false` to disable it.",
+          "type": "boolean",
+          "x-go-name": "HasWiki"
+        },
+        "ignore_whitespace_conflicts": {
+          "description": "either `true` to ignore whitespace for conflicts, or `false` to not ignore whitespace.",
+          "type": "boolean",
+          "x-go-name": "IgnoreWhitespaceConflicts"
+        },
+        "internal_tracker": {
+          "$ref": "#/definitions/InternalTracker"
+        },
+        "mirror_interval": {
+          "description": "set to a string like `8h30m0s` to set the mirror interval time",
+          "type": "string",
+          "x-go-name": "MirrorInterval"
+        },
+        "name": {
+          "description": "name of the repository",
+          "type": "string",
+          "uniqueItems": true,
+          "x-go-name": "Name"
+        },
+        "private": {
+          "description": "either `true` to make the repository private or `false` to make it public.\nNote: you will get a 422 error if the organization restricts changing repository visibility to organization\nowners and a non-owner tries to change the value of private.",
+          "type": "boolean",
+          "x-go-name": "Private"
+        },
+        "template": {
+          "description": "either `true` to make this repository a template or `false` to make it a normal repository",
+          "type": "boolean",
+          "x-go-name": "Template"
+        },
+        "website": {
+          "description": "a URL with more information about the repository.",
+          "type": "string",
+          "x-go-name": "Website"
+        },
+        "wiki_branch": {
+          "description": "sets the branch used for this repository's wiki.",
+          "type": "string",
+          "x-go-name": "WikiBranch"
+        }
+      },
+      "type": "object",
+      "x-go-package": "forgejo.org/modules/structs"
+    },
+    "ExternalTracker": {
+      "description": "ExternalTracker represents settings for external tracker",
+      "properties": {
+        "external_tracker_format": {
+          "description": "External Issue Tracker URL Format. Use the placeholders {user}, {repo} and {index} for the username, repository name and issue index.",
+          "type": "string",
+          "x-go-name": "ExternalTrackerFormat"
+        },
+        "external_tracker_regexp_pattern": {
+          "description": "External Issue Tracker issue regular expression",
+          "type": "string",
+          "x-go-name": "ExternalTrackerRegexpPattern"
+        },
+        "external_tracker_style": {
+          "description": "External Issue Tracker Number Format, either `numeric`, `alphanumeric`, or `regexp`",
+          "type": "string",
+          "x-go-name": "ExternalTrackerStyle"
+        },
+        "external_tracker_url": {
+          "description": "URL of external issue tracker.",
+          "type": "string",
+          "x-go-name": "ExternalTrackerURL"
+        }
+      },
+      "type": "object",
+      "x-go-package": "forgejo.org/modules/structs"
+    },
+    "ExternalWiki": {
+      "description": "ExternalWiki represents setting for external wiki",
+      "properties": {
+        "external_wiki_url": {
+          "description": "URL of external wiki.",
+          "type": "string",
+          "x-go-name": "ExternalWikiURL"
+        }
+      },
+      "type": "object",
+      "x-go-package": "forgejo.org/modules/structs"
+    },
+    "InternalTracker": {
+      "description": "InternalTracker represents settings for internal tracker",
+      "properties": {
+        "allow_only_contributors_to_track_time": {
+          "description": "Let only contributors track time (Built-in issue tracker)",
+          "type": "boolean",
+          "x-go-name": "AllowOnlyContributorsToTrackTime"
+        },
+        "enable_issue_dependencies": {
+          "description": "Enable dependencies for issues and pull requests (Built-in issue tracker)",
+          "type": "boolean",
+          "x-go-name": "EnableIssueDependencies"
+        },
+        "enable_time_tracker": {
+          "description": "Enable time tracking (Built-in issue tracker)",
+          "type": "boolean",
+          "x-go-name": "EnableTimeTracker"
+        }
+      },
+      "type": "object",
+      "x-go-package": "forgejo.org/modules/structs"
+    },
+    "IssueLabelsOption": {
+      "description": "IssueLabelsOption a collection of labels",
+      "properties": {
+        "labels": {
+          "description": "Labels can be a list of integers representing label IDs\nor a list of strings representing label names",
+          "items": {},
+          "type": "array",
+          "x-go-name": "Labels"
+        },
+        "updated_at": {
+          "format": "date-time",
+          "type": "string",
+          "x-go-name": "Updated"
+        }
+      },
+      "type": "object",
+      "x-go-package": "forgejo.org/modules/structs"
+    }
+  },
+  "info": {
+    "description": "This documentation describes the Forgejo API.",
+    "license": {
+      "name": "This file is distributed under the MIT license for the purpose of interoperability",
+      "url": "http://opensource.org/licenses/MIT"
+    },
+    "title": "Forgejo API",
+    "version": "15.0.2+gitea-1.22.0"
+  },
+  "paths": {
+    "/orgs": {
+      "get": {
+        "operationId": "orgGetAll",
+        "parameters": [
+          {
+            "description": "page number of results to return (1-based)",
+            "in": "query",
+            "name": "page",
+            "type": "integer"
+          },
+          {
+            "description": "page size of results",
+            "in": "query",
+            "name": "limit",
+            "type": "integer"
+          }
+        ],
+        "produces": [
+          "application/json"
+        ],
+        "responses": {
+          "200": {
+            "$ref": "#/responses/OrganizationList"
+          }
+        },
+        "summary": "List all organizations",
+        "tags": [
+          "organization"
+        ]
+      }
+    },
+    "/orgs/{org}": {
+      "get": {
+        "operationId": "orgGet",
+        "parameters": [
+          {
+            "description": "name of the organization to get",
+            "in": "path",
+            "name": "org",
+            "required": true,
+            "type": "string"
+          }
+        ],
+        "produces": [
+          "application/json"
+        ],
+        "responses": {
+          "200": {
+            "$ref": "#/responses/Organization"
+          },
+          "404": {
+            "$ref": "#/responses/notFound"
+          }
+        },
+        "summary": "Get an organization",
+        "tags": [
+          "organization"
+        ]
+      }
+    },
+    "/orgs/{org}/labels": {
+      "get": {
+        "operationId": "orgListLabels",
+        "parameters": [
+          {
+            "description": "name of the organization",
+            "in": "path",
+            "name": "org",
+            "required": true,
+            "type": "string"
+          },
+          {
+            "description": "Specifies the sorting method: mostissues, leastissues, or reversealphabetically.",
+            "enum": [
+              "mostissues",
+              "leastissues",
+              "reversealphabetically"
+            ],
+            "in": "query",
+            "name": "sort",
+            "type": "string"
+          },
+          {
+            "description": "page number of results to return (1-based)",
+            "in": "query",
+            "name": "page",
+            "type": "integer"
+          },
+          {
+            "description": "page size of results",
+            "in": "query",
+            "name": "limit",
+            "type": "integer"
+          }
+        ],
+        "produces": [
+          "application/json"
+        ],
+        "responses": {
+          "200": {
+            "$ref": "#/responses/LabelList"
+          },
+          "404": {
+            "$ref": "#/responses/notFound"
+          }
+        },
+        "summary": "List an organization's labels",
+        "tags": [
+          "organization"
+        ]
+      },
+      "post": {
+        "consumes": [
+          "application/json"
+        ],
+        "operationId": "orgCreateLabel",
+        "parameters": [
+          {
+            "description": "name of the organization",
+            "in": "path",
+            "name": "org",
+            "required": true,
+            "type": "string"
+          },
+          {
+            "in": "body",
+            "name": "body",
+            "schema": {
+              "$ref": "#/definitions/CreateLabelOption"
+            }
+          }
+        ],
+        "produces": [
+          "application/json"
+        ],
+        "responses": {
+          "201": {
+            "$ref": "#/responses/Label"
+          },
+          "404": {
+            "$ref": "#/responses/notFound"
+          },
+          "422": {
+            "$ref": "#/responses/validationError"
+          }
+        },
+        "summary": "Create a label for an organization",
+        "tags": [
+          "organization"
+        ]
+      }
+    },
+    "/orgs/{org}/labels/{id}": {
+      "delete": {
+        "operationId": "orgDeleteLabel",
+        "parameters": [
+          {
+            "description": "name of the organization",
+            "in": "path",
+            "name": "org",
+            "required": true,
+            "type": "string"
+          },
+          {
+            "description": "id of the label to delete",
+            "format": "int64",
+            "in": "path",
+            "name": "id",
+            "required": true,
+            "type": "integer"
+          }
+        ],
+        "responses": {
+          "204": {
+            "$ref": "#/responses/empty"
+          },
+          "404": {
+            "$ref": "#/responses/notFound"
+          }
+        },
+        "summary": "Delete a label",
+        "tags": [
+          "organization"
+        ]
+      },
+      "get": {
+        "operationId": "orgGetLabel",
+        "parameters": [
+          {
+            "description": "name of the organization",
+            "in": "path",
+            "name": "org",
+            "required": true,
+            "type": "string"
+          },
+          {
+            "description": "id of the label to get",
+            "format": "int64",
+            "in": "path",
+            "name": "id",
+            "required": true,
+            "type": "integer"
+          }
+        ],
+        "produces": [
+          "application/json"
+        ],
+        "responses": {
+          "200": {
+            "$ref": "#/responses/Label"
+          },
+          "404": {
+            "$ref": "#/responses/notFound"
+          }
+        },
+        "summary": "Get a single label",
+        "tags": [
+          "organization"
+        ]
+      },
+      "patch": {
+        "consumes": [
+          "application/json"
+        ],
+        "operationId": "orgEditLabel",
+        "parameters": [
+          {
+            "description": "name of the organization",
+            "in": "path",
+            "name": "org",
+            "required": true,
+            "type": "string"
+          },
+          {
+            "description": "id of the label to edit",
+            "format": "int64",
+            "in": "path",
+            "name": "id",
+            "required": true,
+            "type": "integer"
+          },
+          {
+            "in": "body",
+            "name": "body",
+            "schema": {
+              "$ref": "#/definitions/EditLabelOption"
+            }
+          }
+        ],
+        "produces": [
+          "application/json"
+        ],
+        "responses": {
+          "200": {
+            "$ref": "#/responses/Label"
+          },
+          "404": {
+            "$ref": "#/responses/notFound"
+          },
+          "422": {
+            "$ref": "#/responses/validationError"
+          }
+        },
+        "summary": "Update a label",
+        "tags": [
+          "organization"
+        ]
+      }
+    },
+    "/repos/issues/search": {
+      "get": {
+        "operationId": "issueSearchIssues",
+        "parameters": [
+          {
+            "default": "open",
+            "description": "State of the issue",
+            "enum": [
+              "open",
+              "closed",
+              "all"
+            ],
+            "in": "query",
+            "name": "state",
+            "type": "string"
+          },
+          {
+            "description": "Comma-separated list of label names. Fetch only issues that have any of these labels. Non existent labels are discarded.",
+            "in": "query",
+            "name": "labels",
+            "type": "string"
+          },
+          {
+            "description": "Comma-separated list of milestone names. Fetch only issues that have any of these milestones. Non existent milestones are discarded.",
+            "in": "query",
+            "name": "milestones",
+            "type": "string"
+          },
+          {
+            "description": "Search string",
+            "in": "query",
+            "name": "q",
+            "type": "string"
+          },
+          {
+            "description": "Repository ID to prioritize in the results",
+            "format": "int64",
+            "in": "query",
+            "name": "priority_repo_id",
+            "type": "integer"
+          },
+          {
+            "description": "Filter by issue type",
+            "enum": [
+              "issues",
+              "pulls"
+            ],
+            "in": "query",
+            "name": "type",
+            "type": "string"
+          },
+          {
+            "description": "Only show issues updated after the given time (RFC 3339 format)",
+            "format": "date-time",
+            "in": "query",
+            "name": "since",
+            "type": "string"
+          },
+          {
+            "description": "Only show issues updated before the given time (RFC 3339 format)",
+            "format": "date-time",
+            "in": "query",
+            "name": "before",
+            "type": "string"
+          },
+          {
+            "default": false,
+            "description": "Filter issues or pulls assigned to the authenticated user",
+            "in": "query",
+            "name": "assigned",
+            "type": "boolean"
+          },
+          {
+            "default": false,
+            "description": "Filter issues or pulls created by the authenticated user",
+            "in": "query",
+            "name": "created",
+            "type": "boolean"
+          },
+          {
+            "default": false,
+            "description": "Filter issues or pulls mentioning the authenticated user",
+            "in": "query",
+            "name": "mentioned",
+            "type": "boolean"
+          },
+          {
+            "default": false,
+            "description": "Filter pull requests where the authenticated user's review was requested",
+            "in": "query",
+            "name": "review_requested",
+            "type": "boolean"
+          },
+          {
+            "default": false,
+            "description": "Filter pull requests reviewed by the authenticated user",
+            "in": "query",
+            "name": "reviewed",
+            "type": "boolean"
+          },
+          {
+            "description": "Filter by repository owner",
+            "in": "query",
+            "name": "owner",
+            "type": "string"
+          },
+          {
+            "description": "Filter by team (requires organization owner parameter)",
+            "in": "query",
+            "name": "team",
+            "type": "string"
+          },
+          {
+            "default": 1,
+            "description": "Page number of results to return (1-based)",
+            "in": "query",
+            "minimum": 1,
+            "name": "page",
+            "type": "integer"
+          },
+          {
+            "description": "Number of items per page",
+            "in": "query",
+            "minimum": 0,
+            "name": "limit",
+            "type": "integer"
+          },
+          {
+            "default": "latest",
+            "description": "Type of sort",
+            "enum": [
+              "relevance",
+              "latest",
+              "oldest",
+              "recentupdate",
+              "leastupdate",
+              "mostcomment",
+              "leastcomment",
+              "nearduedate",
+              "farduedate"
+            ],
+            "in": "query",
+            "name": "sort",
+            "type": "string"
+          }
+        ],
+        "produces": [
+          "application/json"
+        ],
+        "responses": {
+          "200": {
+            "$ref": "#/responses/IssueList"
+          },
+          "400": {
+            "$ref": "#/responses/error"
+          },
+          "422": {
+            "$ref": "#/responses/validationError"
+          }
+        },
+        "summary": "Search for issues across the repositories that the user has access to",
+        "tags": [
+          "issue"
+        ]
+      }
+    },
+    "/repos/search": {
+      "get": {
+        "operationId": "repoSearch",
+        "parameters": [
+          {
+            "description": "keyword",
+            "in": "query",
+            "name": "q",
+            "type": "string"
+          },
+          {
+            "description": "Limit search to repositories with keyword as topic",
+            "in": "query",
+            "name": "topic",
+            "type": "boolean"
+          },
+          {
+            "description": "include search of keyword within repository description",
+            "in": "query",
+            "name": "includeDesc",
+            "type": "boolean"
+          },
+          {
+            "description": "search only for repos that the user with the given id owns or contributes to",
+            "format": "int64",
+            "in": "query",
+            "name": "uid",
+            "type": "integer"
+          },
+          {
+            "description": "repo owner to prioritize in the results",
+            "format": "int64",
+            "in": "query",
+            "name": "priority_owner_id",
+            "type": "integer"
+          },
+          {
+            "description": "search only for repos that belong to the given team id",
+            "format": "int64",
+            "in": "query",
+            "name": "team_id",
+            "type": "integer"
+          },
+          {
+            "description": "search only for repos that the user with the given id has starred",
+            "format": "int64",
+            "in": "query",
+            "name": "starredBy",
+            "type": "integer"
+          },
+          {
+            "description": "include private repositories this user has access to (defaults to true)",
+            "in": "query",
+            "name": "private",
+            "type": "boolean"
+          },
+          {
+            "description": "show only public, private or all repositories (defaults to all)",
+            "in": "query",
+            "name": "is_private",
+            "type": "boolean"
+          },
+          {
+            "description": "include template repositories this user has access to (defaults to true)",
+            "in": "query",
+            "name": "template",
+            "type": "boolean"
+          },
+          {
+            "description": "show only archived, non-archived or all repositories (defaults to all)",
+            "in": "query",
+            "name": "archived",
+            "type": "boolean"
+          },
+          {
+            "description": "type of repository to search for. Supported values are \"fork\", \"source\", \"mirror\" and \"collaborative\"",
+            "in": "query",
+            "name": "mode",
+            "type": "string"
+          },
+          {
+            "description": "if `uid` is given, search only for repos that the user owns",
+            "in": "query",
+            "name": "exclusive",
+            "type": "boolean"
+          },
+          {
+            "description": "sort repos by attribute. Supported values are \"alpha\", \"created\", \"updated\", \"size\", \"git_size\", \"lfs_size\", \"stars\", \"forks\" and \"id\". Default is \"alpha\"",
+            "enum": [
+              "alpha",
+              "created",
+              "updated",
+              "size",
+              "git_size",
+              "lfs_size",
+              "id",
+              "stars",
+              "forks"
+            ],
+            "in": "query",
+            "name": "sort",
+            "type": "string"
+          },
+          {
+            "description": "sort order, either \"asc\" (ascending) or \"desc\" (descending). Default is \"asc\", ignored if \"sort\" is not specified.",
+            "enum": [
+              "asc",
+              "desc"
+            ],
+            "in": "query",
+            "name": "order",
+            "type": "string"
+          },
+          {
+            "description": "page number of results to return (1-based)",
+            "in": "query",
+            "name": "page",
+            "type": "integer"
+          },
+          {
+            "description": "page size of results",
+            "in": "query",
+            "name": "limit",
+            "type": "integer"
+          }
+        ],
+        "produces": [
+          "application/json"
+        ],
+        "responses": {
+          "200": {
+            "$ref": "#/responses/SearchResults"
+          },
+          "422": {
+            "$ref": "#/responses/validationError"
+          }
+        },
+        "summary": "Search for repositories",
+        "tags": [
+          "repository"
+        ]
+      }
+    },
+    "/repos/{owner}/{repo}": {
+      "delete": {
+        "operationId": "repoDelete",
+        "parameters": [
+          {
+            "description": "owner of the repo to delete",
+            "in": "path",
+            "name": "owner",
+            "required": true,
+            "type": "string"
+          },
+          {
+            "description": "name of the repo to delete",
+            "in": "path",
+            "name": "repo",
+            "required": true,
+            "type": "string"
+          }
+        ],
+        "produces": [
+          "application/json"
+        ],
+        "responses": {
+          "204": {
+            "$ref": "#/responses/empty"
+          },
+          "403": {
+            "$ref": "#/responses/forbidden"
+          },
+          "404": {
+            "$ref": "#/responses/notFound"
+          }
+        },
+        "summary": "Delete a repository",
+        "tags": [
+          "repository"
+        ]
+      },
+      "get": {
+        "operationId": "repoGet",
+        "parameters": [
+          {
+            "description": "owner of the repo",
+            "in": "path",
+            "name": "owner",
+            "required": true,
+            "type": "string"
+          },
+          {
+            "description": "name of the repo",
+            "in": "path",
+            "name": "repo",
+            "required": true,
+            "type": "string"
+          }
+        ],
+        "produces": [
+          "application/json"
+        ],
+        "responses": {
+          "200": {
+            "$ref": "#/responses/Repository"
+          },
+          "404": {
+            "$ref": "#/responses/notFound"
+          }
+        },
+        "summary": "Get a repository",
+        "tags": [
+          "repository"
+        ]
+      },
+      "patch": {
+        "operationId": "repoEdit",
+        "parameters": [
+          {
+            "description": "owner of the repo to edit",
+            "in": "path",
+            "name": "owner",
+            "required": true,
+            "type": "string"
+          },
+          {
+            "description": "name of the repo to edit",
+            "in": "path",
+            "name": "repo",
+            "required": true,
+            "type": "string"
+          },
+          {
+            "description": "Properties of a repo that you can edit",
+            "in": "body",
+            "name": "body",
+            "schema": {
+              "$ref": "#/definitions/EditRepoOption"
+            }
+          }
+        ],
+        "produces": [
+          "application/json"
+        ],
+        "responses": {
+          "200": {
+            "$ref": "#/responses/Repository"
+          },
+          "403": {
+            "$ref": "#/responses/forbidden"
+          },
+          "404": {
+            "$ref": "#/responses/notFound"
+          },
+          "422": {
+            "$ref": "#/responses/validationError"
+          }
+        },
+        "summary": "Edit a repository's properties. Only fields that are set will be changed.",
+        "tags": [
+          "repository"
+        ]
+      }
+    },
+    "/repos/{owner}/{repo}/actions/tasks": {
+      "get": {
+        "operationId": "ListActionTasks",
+        "parameters": [
+          {
+            "description": "owner of the repo",
+            "in": "path",
+            "name": "owner",
+            "required": true,
+            "type": "string"
+          },
+          {
+            "description": "name of the repo",
+            "in": "path",
+            "name": "repo",
+            "required": true,
+            "type": "string"
+          },
+          {
+            "description": "page number of results to return (1-based)",
+            "in": "query",
+            "name": "page",
+            "type": "integer"
+          },
+          {
+            "description": "page size of results, default maximum page size is 50",
+            "in": "query",
+            "name": "limit",
+            "type": "integer"
+          },
+          {
+            "description": "Returns workflow tasks with the check run status or conclusion that is specified.\n For example, a conclusion can be success or a status can be in_progress.\n",
+            "in": "query",
+            "items": {
+              "enum": [
+                "unknown",
+                "waiting",
+                "running",
+                "success",
+                "failure",
+                "cancelled",
+                "skipped",
+                "blocked"
+              ],
+              "type": "string"
+            },
+            "name": "status",
+            "type": "array"
+          }
+        ],
+        "produces": [
+          "application/json"
+        ],
+        "responses": {
+          "200": {
+            "$ref": "#/responses/TasksList"
+          },
+          "400": {
+            "$ref": "#/responses/error"
+          },
+          "403": {
+            "$ref": "#/responses/forbidden"
+          },
+          "404": {
+            "$ref": "#/responses/notFound"
+          },
+          "409": {
+            "$ref": "#/responses/conflict"
+          },
+          "422": {
+            "$ref": "#/responses/validationError"
+          }
+        },
+        "summary": "List a repository's action tasks",
+        "tags": [
+          "repository"
+        ]
+      }
+    },
+    "/repos/{owner}/{repo}/issues": {
+      "get": {
+        "operationId": "issueListIssues",
+        "parameters": [
+          {
+            "description": "owner of the repo",
+            "in": "path",
+            "name": "owner",
+            "required": true,
+            "type": "string"
+          },
+          {
+            "description": "name of the repo",
+            "in": "path",
+            "name": "repo",
+            "required": true,
+            "type": "string"
+          },
+          {
+            "description": "whether issue is open or closed",
+            "enum": [
+              "closed",
+              "open",
+              "all"
+            ],
+            "in": "query",
+            "name": "state",
+            "type": "string"
+          },
+          {
+            "description": "comma separated list of labels. Fetch only issues that have any of this labels. Non existent labels are discarded",
+            "in": "query",
+            "name": "labels",
+            "type": "string"
+          },
+          {
+            "description": "search string",
+            "in": "query",
+            "name": "q",
+            "type": "string"
+          },
+          {
+            "description": "filter by type (issues / pulls) if set",
+            "enum": [
+              "issues",
+              "pulls"
+            ],
+            "in": "query",
+            "name": "type",
+            "type": "string"
+          },
+          {
+            "description": "comma separated list of milestone names or ids. It uses names and fall back to ids. Fetch only issues that have any of this milestones. Non existent milestones are discarded",
+            "in": "query",
+            "name": "milestones",
+            "type": "string"
+          },
+          {
+            "description": "Only show items updated after the given time. This is a timestamp in RFC 3339 format",
+            "format": "date-time",
+            "in": "query",
+            "name": "since",
+            "type": "string"
+          },
+          {
+            "description": "Only show items updated before the given time. This is a timestamp in RFC 3339 format",
+            "format": "date-time",
+            "in": "query",
+            "name": "before",
+            "type": "string"
+          },
+          {
+            "description": "Only show items which were created by the given user",
+            "in": "query",
+            "name": "created_by",
+            "type": "string"
+          },
+          {
+            "description": "Only show items for which the given user is assigned",
+            "in": "query",
+            "name": "assigned_by",
+            "type": "string"
+          },
+          {
+            "description": "Only show items in which the given user was mentioned",
+            "in": "query",
+            "name": "mentioned_by",
+            "type": "string"
+          },
+          {
+            "description": "page number of results to return (1-based)",
+            "in": "query",
+            "name": "page",
+            "type": "integer"
+          },
+          {
+            "description": "page size of results",
+            "in": "query",
+            "name": "limit",
+            "type": "integer"
+          },
+          {
+            "default": "latest",
+            "description": "Type of sort",
+            "enum": [
+              "relevance",
+              "latest",
+              "oldest",
+              "recentupdate",
+              "leastupdate",
+              "mostcomment",
+              "leastcomment",
+              "nearduedate",
+              "farduedate"
+            ],
+            "in": "query",
+            "name": "sort",
+            "type": "string"
+          }
+        ],
+        "produces": [
+          "application/json"
+        ],
+        "responses": {
+          "200": {
+            "$ref": "#/responses/IssueList"
+          },
+          "404": {
+            "$ref": "#/responses/notFound"
+          },
+          "422": {
+            "$ref": "#/responses/validationError"
+          }
+        },
+        "summary": "List a repository's issues",
+        "tags": [
+          "issue"
+        ]
+      },
+      "post": {
+        "consumes": [
+          "application/json"
+        ],
+        "operationId": "issueCreateIssue",
+        "parameters": [
+          {
+            "description": "owner of the repo",
+            "in": "path",
+            "name": "owner",
+            "required": true,
+            "type": "string"
+          },
+          {
+            "description": "name of the repo",
+            "in": "path",
+            "name": "repo",
+            "required": true,
+            "type": "string"
+          },
+          {
+            "in": "body",
+            "name": "body",
+            "schema": {
+              "$ref": "#/definitions/CreateIssueOption"
+            }
+          }
+        ],
+        "produces": [
+          "application/json"
+        ],
+        "responses": {
+          "201": {
+            "$ref": "#/responses/Issue"
+          },
+          "403": {
+            "$ref": "#/responses/forbidden"
+          },
+          "404": {
+            "$ref": "#/responses/notFound"
+          },
+          "412": {
+            "$ref": "#/responses/error"
+          },
+          "422": {
+            "$ref": "#/responses/validationError"
+          },
+          "423": {
+            "$ref": "#/responses/repoArchivedError"
+          }
+        },
+        "summary": "Create an issue. If using deadline only the date will be taken into account, and time of day ignored.",
+        "tags": [
+          "issue"
+        ]
+      }
+    },
+    "/repos/{owner}/{repo}/issues/{index}": {
+      "get": {
+        "operationId": "issueGetIssue",
+        "parameters": [
+          {
+            "description": "owner of the repo",
+            "in": "path",
+            "name": "owner",
+            "required": true,
+            "type": "string"
+          },
+          {
+            "description": "name of the repo",
+            "in": "path",
+            "name": "repo",
+            "required": true,
+            "type": "string"
+          },
+          {
+            "description": "index of the issue to get",
+            "format": "int64",
+            "in": "path",
+            "name": "index",
+            "required": true,
+            "type": "integer"
+          }
+        ],
+        "produces": [
+          "application/json"
+        ],
+        "responses": {
+          "200": {
+            "$ref": "#/responses/Issue"
+          },
+          "404": {
+            "$ref": "#/responses/notFound"
+          }
+        },
+        "summary": "Get an issue",
+        "tags": [
+          "issue"
+        ]
+      },
+      "patch": {
+        "consumes": [
+          "application/json"
+        ],
+        "operationId": "issueEditIssue",
+        "parameters": [
+          {
+            "description": "owner of the repo",
+            "in": "path",
+            "name": "owner",
+            "required": true,
+            "type": "string"
+          },
+          {
+            "description": "name of the repo",
+            "in": "path",
+            "name": "repo",
+            "required": true,
+            "type": "string"
+          },
+          {
+            "description": "index of the issue to edit",
+            "format": "int64",
+            "in": "path",
+            "name": "index",
+            "required": true,
+            "type": "integer"
+          },
+          {
+            "in": "body",
+            "name": "body",
+            "schema": {
+              "$ref": "#/definitions/EditIssueOption"
+            }
+          }
+        ],
+        "produces": [
+          "application/json"
+        ],
+        "responses": {
+          "201": {
+            "$ref": "#/responses/Issue"
+          },
+          "403": {
+            "$ref": "#/responses/forbidden"
+          },
+          "404": {
+            "$ref": "#/responses/notFound"
+          },
+          "412": {
+            "$ref": "#/responses/error"
+          }
+        },
+        "summary": "Edit an issue. If using deadline only the date will be taken into account, and time of day ignored.",
+        "tags": [
+          "issue"
+        ]
+      }
+    },
+    "/repos/{owner}/{repo}/issues/{index}/comments": {
+      "post": {
+        "consumes": [
+          "application/json"
+        ],
+        "operationId": "issueCreateComment",
+        "parameters": [
+          {
+            "description": "owner of the repo",
+            "in": "path",
+            "name": "owner",
+            "required": true,
+            "type": "string"
+          },
+          {
+            "description": "name of the repo",
+            "in": "path",
+            "name": "repo",
+            "required": true,
+            "type": "string"
+          },
+          {
+            "description": "index of the issue",
+            "format": "int64",
+            "in": "path",
+            "name": "index",
+            "required": true,
+            "type": "integer"
+          },
+          {
+            "in": "body",
+            "name": "body",
+            "schema": {
+              "$ref": "#/definitions/CreateIssueCommentOption"
+            }
+          }
+        ],
+        "produces": [
+          "application/json"
+        ],
+        "responses": {
+          "201": {
+            "$ref": "#/responses/Comment"
+          },
+          "403": {
+            "$ref": "#/responses/forbidden"
+          },
+          "404": {
+            "$ref": "#/responses/notFound"
+          },
+          "423": {
+            "$ref": "#/responses/repoArchivedError"
+          },
+          "500": {
+            "$ref": "#/responses/internalServerError"
+          }
+        },
+        "summary": "Add a comment to an issue",
+        "tags": [
+          "issue"
+        ]
+      }
+    },
+    "/repos/{owner}/{repo}/issues/{index}/labels": {
+      "get": {
+        "operationId": "issueGetLabels",
+        "parameters": [
+          {
+            "description": "owner of the repo",
+            "in": "path",
+            "name": "owner",
+            "required": true,
+            "type": "string"
+          },
+          {
+            "description": "name of the repo",
+            "in": "path",
+            "name": "repo",
+            "required": true,
+            "type": "string"
+          },
+          {
+            "description": "index of the issue",
+            "format": "int64",
+            "in": "path",
+            "name": "index",
+            "required": true,
+            "type": "integer"
+          }
+        ],
+        "produces": [
+          "application/json"
+        ],
+        "responses": {
+          "200": {
+            "$ref": "#/responses/LabelListWithoutPagination"
+          },
+          "404": {
+            "$ref": "#/responses/notFound"
+          }
+        },
+        "summary": "Get an issue's labels",
+        "tags": [
+          "issue"
+        ]
+      },
+      "post": {
+        "consumes": [
+          "application/json"
+        ],
+        "operationId": "issueAddLabel",
+        "parameters": [
+          {
+            "description": "owner of the repo",
+            "in": "path",
+            "name": "owner",
+            "required": true,
+            "type": "string"
+          },
+          {
+            "description": "name of the repo",
+            "in": "path",
+            "name": "repo",
+            "required": true,
+            "type": "string"
+          },
+          {
+            "description": "index of the issue",
+            "format": "int64",
+            "in": "path",
+            "name": "index",
+            "required": true,
+            "type": "integer"
+          },
+          {
+            "in": "body",
+            "name": "body",
+            "schema": {
+              "$ref": "#/definitions/IssueLabelsOption"
+            }
+          }
+        ],
+        "produces": [
+          "application/json"
+        ],
+        "responses": {
+          "200": {
+            "$ref": "#/responses/LabelListWithoutPagination"
+          },
+          "403": {
+            "$ref": "#/responses/forbidden"
+          },
+          "404": {
+            "$ref": "#/responses/notFound"
+          }
+        },
+        "summary": "Add a label to an issue",
+        "tags": [
+          "issue"
+        ]
+      },
+      "put": {
+        "consumes": [
+          "application/json"
+        ],
+        "operationId": "issueReplaceLabels",
+        "parameters": [
+          {
+            "description": "owner of the repo",
+            "in": "path",
+            "name": "owner",
+            "required": true,
+            "type": "string"
+          },
+          {
+            "description": "name of the repo",
+            "in": "path",
+            "name": "repo",
+            "required": true,
+            "type": "string"
+          },
+          {
+            "description": "index of the issue",
+            "format": "int64",
+            "in": "path",
+            "name": "index",
+            "required": true,
+            "type": "integer"
+          },
+          {
+            "in": "body",
+            "name": "body",
+            "schema": {
+              "$ref": "#/definitions/IssueLabelsOption"
+            }
+          }
+        ],
+        "produces": [
+          "application/json"
+        ],
+        "responses": {
+          "200": {
+            "$ref": "#/responses/LabelListWithoutPagination"
+          },
+          "403": {
+            "$ref": "#/responses/forbidden"
+          },
+          "404": {
+            "$ref": "#/responses/notFound"
+          }
+        },
+        "summary": "Replace an issue's labels",
+        "tags": [
+          "issue"
+        ]
+      }
+    },
+    "/repos/{owner}/{repo}/issues/{index}/labels/{identifier}": {
+      "delete": {
+        "operationId": "issueRemoveLabel",
+        "parameters": [
+          {
+            "description": "owner of the repo",
+            "in": "path",
+            "name": "owner",
+            "required": true,
+            "type": "string"
+          },
+          {
+            "description": "name of the repo",
+            "in": "path",
+            "name": "repo",
+            "required": true,
+            "type": "string"
+          },
+          {
+            "description": "index of the issue",
+            "format": "int64",
+            "in": "path",
+            "name": "index",
+            "required": true,
+            "type": "integer"
+          },
+          {
+            "description": "name or id of the label to remove",
+            "in": "path",
+            "name": "identifier",
+            "required": true,
+            "type": "string"
+          },
+          {
+            "in": "body",
+            "name": "body",
+            "schema": {
+              "$ref": "#/definitions/DeleteLabelsOption"
+            }
+          }
+        ],
+        "produces": [
+          "application/json"
+        ],
+        "responses": {
+          "204": {
+            "$ref": "#/responses/empty"
+          },
+          "403": {
+            "$ref": "#/responses/forbidden"
+          },
+          "404": {
+            "$ref": "#/responses/notFound"
+          },
+          "422": {
+            "$ref": "#/responses/validationError"
+          }
+        },
+        "summary": "Remove a label from an issue",
+        "tags": [
+          "issue"
+        ]
+      }
+    },
+    "/repos/{owner}/{repo}/milestones": {
+      "get": {
+        "operationId": "issueGetMilestonesList",
+        "parameters": [
+          {
+            "description": "owner of the repo",
+            "in": "path",
+            "name": "owner",
+            "required": true,
+            "type": "string"
+          },
+          {
+            "description": "name of the repo",
+            "in": "path",
+            "name": "repo",
+            "required": true,
+            "type": "string"
+          },
+          {
+            "description": "Milestone state, Recognized values are open, closed and all. Defaults to \"open\"",
+            "in": "query",
+            "name": "state",
+            "type": "string"
+          },
+          {
+            "description": "filter by milestone name",
+            "in": "query",
+            "name": "name",
+            "type": "string"
+          },
+          {
+            "description": "page number of results to return (1-based)",
+            "in": "query",
+            "name": "page",
+            "type": "integer"
+          },
+          {
+            "description": "page size of results",
+            "in": "query",
+            "name": "limit",
+            "type": "integer"
+          }
+        ],
+        "produces": [
+          "application/json"
+        ],
+        "responses": {
+          "200": {
+            "$ref": "#/responses/MilestoneList"
+          },
+          "404": {
+            "$ref": "#/responses/notFound"
+          }
+        },
+        "summary": "Get all of a repository's opened milestones",
+        "tags": [
+          "issue"
+        ]
+      },
+      "post": {
+        "consumes": [
+          "application/json"
+        ],
+        "operationId": "issueCreateMilestone",
+        "parameters": [
+          {
+            "description": "owner of the repo",
+            "in": "path",
+            "name": "owner",
+            "required": true,
+            "type": "string"
+          },
+          {
+            "description": "name of the repo",
+            "in": "path",
+            "name": "repo",
+            "required": true,
+            "type": "string"
+          },
+          {
+            "in": "body",
+            "name": "body",
+            "schema": {
+              "$ref": "#/definitions/CreateMilestoneOption"
+            }
+          }
+        ],
+        "produces": [
+          "application/json"
+        ],
+        "responses": {
+          "201": {
+            "$ref": "#/responses/Milestone"
+          },
+          "404": {
+            "$ref": "#/responses/notFound"
+          }
+        },
+        "summary": "Create a milestone",
+        "tags": [
+          "issue"
+        ]
+      }
+    },
+    "/repos/{owner}/{repo}/milestones/{id}": {
+      "delete": {
+        "operationId": "issueDeleteMilestone",
+        "parameters": [
+          {
+            "description": "owner of the repo",
+            "in": "path",
+            "name": "owner",
+            "required": true,
+            "type": "string"
+          },
+          {
+            "description": "name of the repo",
+            "in": "path",
+            "name": "repo",
+            "required": true,
+            "type": "string"
+          },
+          {
+            "description": "the milestone to delete, identified by ID and if not available by name",
+            "format": "int64",
+            "in": "path",
+            "name": "id",
+            "required": true,
+            "type": "integer"
+          }
+        ],
+        "responses": {
+          "204": {
+            "$ref": "#/responses/empty"
+          },
+          "404": {
+            "$ref": "#/responses/notFound"
+          }
+        },
+        "summary": "Delete a milestone",
+        "tags": [
+          "issue"
+        ]
+      },
+      "get": {
+        "operationId": "issueGetMilestone",
+        "parameters": [
+          {
+            "description": "owner of the repo",
+            "in": "path",
+            "name": "owner",
+            "required": true,
+            "type": "string"
+          },
+          {
+            "description": "name of the repo",
+            "in": "path",
+            "name": "repo",
+            "required": true,
+            "type": "string"
+          },
+          {
+            "description": "the milestone to get, identified by ID and if not available by name",
+            "format": "int64",
+            "in": "path",
+            "name": "id",
+            "required": true,
+            "type": "integer"
+          }
+        ],
+        "produces": [
+          "application/json"
+        ],
+        "responses": {
+          "200": {
+            "$ref": "#/responses/Milestone"
+          },
+          "404": {
+            "$ref": "#/responses/notFound"
+          }
+        },
+        "summary": "Get a milestone",
+        "tags": [
+          "issue"
+        ]
+      },
+      "patch": {
+        "consumes": [
+          "application/json"
+        ],
+        "operationId": "issueEditMilestone",
+        "parameters": [
+          {
+            "description": "owner of the repo",
+            "in": "path",
+            "name": "owner",
+            "required": true,
+            "type": "string"
+          },
+          {
+            "description": "name of the repo",
+            "in": "path",
+            "name": "repo",
+            "required": true,
+            "type": "string"
+          },
+          {
+            "description": "the milestone to edit, identified by ID and if not available by name",
+            "format": "int64",
+            "in": "path",
+            "name": "id",
+            "required": true,
+            "type": "integer"
+          },
+          {
+            "in": "body",
+            "name": "body",
+            "schema": {
+              "$ref": "#/definitions/EditMilestoneOption"
+            }
+          }
+        ],
+        "produces": [
+          "application/json"
+        ],
+        "responses": {
+          "200": {
+            "$ref": "#/responses/Milestone"
+          },
+          "404": {
+            "$ref": "#/responses/notFound"
+          }
+        },
+        "summary": "Update a milestone",
+        "tags": [
+          "issue"
+        ]
+      }
+    },
+    "/repos/{owner}/{repo}/releases": {
+      "get": {
+        "operationId": "repoListReleases",
+        "parameters": [
+          {
+            "description": "owner of the repo",
+            "in": "path",
+            "name": "owner",
+            "required": true,
+            "type": "string"
+          },
+          {
+            "description": "name of the repo",
+            "in": "path",
+            "name": "repo",
+            "required": true,
+            "type": "string"
+          },
+          {
+            "description": "filter (exclude / include) drafts, if you dont have repo write access none will show",
+            "in": "query",
+            "name": "draft",
+            "type": "boolean"
+          },
+          {
+            "description": "filter (exclude / include) pre-releases",
+            "in": "query",
+            "name": "pre-release",
+            "type": "boolean"
+          },
+          {
+            "description": "Search string",
+            "in": "query",
+            "name": "q",
+            "type": "string"
+          },
+          {
+            "description": "page number of results to return (1-based)",
+            "in": "query",
+            "name": "page",
+            "type": "integer"
+          },
+          {
+            "description": "page size of results",
+            "in": "query",
+            "name": "limit",
+            "type": "integer"
+          }
+        ],
+        "produces": [
+          "application/json"
+        ],
+        "responses": {
+          "200": {
+            "$ref": "#/responses/ReleaseList"
+          },
+          "404": {
+            "$ref": "#/responses/notFound"
+          }
+        },
+        "summary": "List a repo's releases",
+        "tags": [
+          "repository"
+        ]
+      },
+      "post": {
+        "consumes": [
+          "application/json"
+        ],
+        "operationId": "repoCreateRelease",
+        "parameters": [
+          {
+            "description": "owner of the repo",
+            "in": "path",
+            "name": "owner",
+            "required": true,
+            "type": "string"
+          },
+          {
+            "description": "name of the repo",
+            "in": "path",
+            "name": "repo",
+            "required": true,
+            "type": "string"
+          },
+          {
+            "in": "body",
+            "name": "body",
+            "schema": {
+              "$ref": "#/definitions/CreateReleaseOption"
+            }
+          }
+        ],
+        "produces": [
+          "application/json"
+        ],
+        "responses": {
+          "201": {
+            "$ref": "#/responses/Release"
+          },
+          "404": {
+            "$ref": "#/responses/notFound"
+          },
+          "409": {
+            "$ref": "#/responses/error"
+          },
+          "422": {
+            "$ref": "#/responses/validationError"
+          }
+        },
+        "summary": "Create a release",
+        "tags": [
+          "repository"
+        ]
+      }
+    },
+    "/repos/{owner}/{repo}/releases/{id}": {
+      "delete": {
+        "operationId": "repoDeleteRelease",
+        "parameters": [
+          {
+            "description": "owner of the repo",
+            "in": "path",
+            "name": "owner",
+            "required": true,
+            "type": "string"
+          },
+          {
+            "description": "name of the repo",
+            "in": "path",
+            "name": "repo",
+            "required": true,
+            "type": "string"
+          },
+          {
+            "description": "id of the release to delete",
+            "format": "int64",
+            "in": "path",
+            "name": "id",
+            "required": true,
+            "type": "integer"
+          }
+        ],
+        "responses": {
+          "204": {
+            "$ref": "#/responses/empty"
+          },
+          "404": {
+            "$ref": "#/responses/notFound"
+          },
+          "422": {
+            "$ref": "#/responses/validationError"
+          }
+        },
+        "summary": "Delete a release",
+        "tags": [
+          "repository"
+        ]
+      },
+      "get": {
+        "operationId": "repoGetRelease",
+        "parameters": [
+          {
+            "description": "owner of the repo",
+            "in": "path",
+            "name": "owner",
+            "required": true,
+            "type": "string"
+          },
+          {
+            "description": "name of the repo",
+            "in": "path",
+            "name": "repo",
+            "required": true,
+            "type": "string"
+          },
+          {
+            "description": "id of the release to get",
+            "format": "int64",
+            "in": "path",
+            "name": "id",
+            "required": true,
+            "type": "integer"
+          }
+        ],
+        "produces": [
+          "application/json"
+        ],
+        "responses": {
+          "200": {
+            "$ref": "#/responses/Release"
+          },
+          "404": {
+            "$ref": "#/responses/notFound"
+          }
+        },
+        "summary": "Get a release",
+        "tags": [
+          "repository"
+        ]
+      },
+      "patch": {
+        "consumes": [
+          "application/json"
+        ],
+        "operationId": "repoEditRelease",
+        "parameters": [
+          {
+            "description": "owner of the repo",
+            "in": "path",
+            "name": "owner",
+            "required": true,
+            "type": "string"
+          },
+          {
+            "description": "name of the repo",
+            "in": "path",
+            "name": "repo",
+            "required": true,
+            "type": "string"
+          },
+          {
+            "description": "id of the release to edit",
+            "format": "int64",
+            "in": "path",
+            "name": "id",
+            "required": true,
+            "type": "integer"
+          },
+          {
+            "in": "body",
+            "name": "body",
+            "schema": {
+              "$ref": "#/definitions/EditReleaseOption"
+            }
+          }
+        ],
+        "produces": [
+          "application/json"
+        ],
+        "responses": {
+          "200": {
+            "$ref": "#/responses/Release"
+          },
+          "404": {
+            "$ref": "#/responses/notFound"
+          }
+        },
+        "summary": "Update a release",
+        "tags": [
+          "repository"
+        ]
+      }
+    },
+    "/repos/{owner}/{repo}/releases/{id}/assets": {
+      "post": {
+        "consumes": [
+          "multipart/form-data",
+          "application/octet-stream"
+        ],
+        "operationId": "repoCreateReleaseAttachment",
+        "parameters": [
+          {
+            "description": "owner of the repo",
+            "in": "path",
+            "name": "owner",
+            "required": true,
+            "type": "string"
+          },
+          {
+            "description": "name of the repo",
+            "in": "path",
+            "name": "repo",
+            "required": true,
+            "type": "string"
+          },
+          {
+            "description": "id of the release",
+            "format": "int64",
+            "in": "path",
+            "name": "id",
+            "required": true,
+            "type": "integer"
+          },
+          {
+            "description": "name of the attachment",
+            "in": "query",
+            "name": "name",
+            "type": "string"
+          },
+          {
+            "description": "attachment to upload (this parameter is incompatible with `external_url`)",
+            "in": "formData",
+            "name": "attachment",
+            "type": "file"
+          },
+          {
+            "description": "url to external asset (this parameter is incompatible with `attachment`)",
+            "in": "formData",
+            "name": "external_url",
+            "type": "string"
+          }
+        ],
+        "produces": [
+          "application/json"
+        ],
+        "responses": {
+          "201": {
+            "$ref": "#/responses/Attachment"
+          },
+          "400": {
+            "$ref": "#/responses/error"
+          },
+          "404": {
+            "$ref": "#/responses/notFound"
+          },
+          "413": {
+            "$ref": "#/responses/quotaExceeded"
+          }
+        },
+        "summary": "Create a release attachment",
+        "tags": [
+          "repository"
+        ]
+      }
+    },
+    "/user/repos": {
+      "post": {
+        "consumes": [
+          "application/json"
+        ],
+        "operationId": "createCurrentUserRepo",
+        "parameters": [
+          {
+            "in": "body",
+            "name": "body",
+            "schema": {
+              "$ref": "#/definitions/CreateRepoOption"
+            }
+          }
+        ],
+        "produces": [
+          "application/json"
+        ],
+        "responses": {
+          "201": {
+            "$ref": "#/responses/Repository"
+          },
+          "400": {
+            "$ref": "#/responses/error"
+          },
+          "401": {
+            "$ref": "#/responses/unauthorized"
+          },
+          "403": {
+            "$ref": "#/responses/forbidden"
+          },
+          "409": {
+            "description": "The repository with the same name already exists."
+          },
+          "413": {
+            "$ref": "#/responses/quotaExceeded"
+          },
+          "422": {
+            "$ref": "#/responses/validationError"
+          }
+        },
+        "summary": "Create a repository",
+        "tags": [
+          "repository",
+          "user"
+        ]
+      }
+    }
+  },
+  "produces": [
+    "application/json",
+    "text/html"
+  ],
+  "responses": {
+    "AccessToken": {
+      "description": "AccessToken represents an API access token.",
+      "schema": {
+        "$ref": "#/definitions/AccessToken"
+      }
+    },
+    "AccessTokenList": {
+      "description": "AccessTokenList",
+      "headers": {
+        "X-Total-Count": {
+          "description": "The total number of access tokens",
+          "format": "int64",
+          "type": "integer"
+        }
+      },
+      "schema": {
+        "items": {
+          "$ref": "#/definitions/AccessToken"
+        },
+        "type": "array"
+      }
+    },
+    "ActionRun": {
+      "description": "ActionRun",
+      "schema": {
+        "$ref": "#/definitions/ActionRun"
+      }
+    },
+    "ActionRunList": {
+      "description": "ActionRunList",
+      "schema": {
+        "$ref": "#/definitions/ListActionRunResponse"
+      }
+    },
+    "ActionRunner": {
+      "description": "ActionRunner represents a runner",
+      "schema": {
+        "$ref": "#/definitions/ActionRunner"
+      }
+    },
+    "ActionRunnerList": {
+      "description": "ActionRunnerList is a list of Forgejo Action runners",
+      "headers": {
+        "Link": {
+          "description": "Links to other pages, if any",
+          "type": "string"
+        },
+        "X-Total-Count": {
+          "description": "Total number of runners matching the search criteria (excluding page and limit)",
+          "format": "int64",
+          "type": "integer"
+        }
+      },
+      "schema": {
+        "items": {
+          "$ref": "#/definitions/ActionRunner"
+        },
+        "type": "array"
+      }
+    },
+    "ActionVariable": {
+      "description": "ActionVariable",
+      "schema": {
+        "$ref": "#/definitions/ActionVariable"
+      }
+    },
+    "ActivityFeedsList": {
+      "description": "ActivityFeedsList",
+      "headers": {
+        "X-Total-Count": {
+          "description": "The total number of activity feeds",
+          "format": "int64",
+          "type": "integer"
+        }
+      },
+      "schema": {
+        "items": {
+          "$ref": "#/definitions/Activity"
+        },
+        "type": "array"
+      }
+    },
+    "ActivityPub": {
+      "description": "ActivityPub",
+      "schema": {
+        "$ref": "#/definitions/ActivityPub"
+      }
+    },
+    "AnnotatedTag": {
+      "description": "AnnotatedTag",
+      "schema": {
+        "$ref": "#/definitions/AnnotatedTag"
+      }
+    },
+    "Attachment": {
+      "description": "Attachment",
+      "schema": {
+        "$ref": "#/definitions/Attachment"
+      }
+    },
+    "AttachmentList": {
+      "description": "AttachmentList",
+      "schema": {
+        "items": {
+          "$ref": "#/definitions/Attachment"
+        },
+        "type": "array"
+      }
+    },
+    "BlockedUserList": {
+      "description": "BlockedUserList",
+      "schema": {
+        "items": {
+          "$ref": "#/definitions/BlockedUser"
+        },
+        "type": "array"
+      }
+    },
+    "Branch": {
+      "description": "Branch",
+      "schema": {
+        "$ref": "#/definitions/Branch"
+      }
+    },
+    "BranchList": {
+      "description": "BranchList",
+      "headers": {
+        "X-Total-Count": {
+          "description": "The total number of branches",
+          "format": "int64",
+          "type": "integer"
+        }
+      },
+      "schema": {
+        "items": {
+          "$ref": "#/definitions/Branch"
+        },
+        "type": "array"
+      }
+    },
+    "BranchProtection": {
+      "description": "BranchProtection",
+      "schema": {
+        "$ref": "#/definitions/BranchProtection"
+      }
+    },
+    "BranchProtectionList": {
+      "description": "BranchProtectionList",
+      "schema": {
+        "items": {
+          "$ref": "#/definitions/BranchProtection"
+        },
+        "type": "array"
+      }
+    },
+    "ChangedFileList": {
+      "description": "ChangedFileList",
+      "headers": {
+        "X-Total-Count": {
+          "description": "The total number of changed files",
+          "format": "int64",
+          "type": "integer"
+        }
+      },
+      "schema": {
+        "items": {
+          "$ref": "#/definitions/ChangedFile"
+        },
+        "type": "array"
+      }
+    },
+    "ChangedFileListWithPagination": {
+      "description": "ChangedFileListWithPagination",
+      "headers": {
+        "X-HasMore": {
+          "description": "True if there is another page",
+          "type": "boolean"
+        },
+        "X-Page": {
+          "description": "The current page",
+          "format": "int64",
+          "type": "integer"
+        },
+        "X-PageCount": {
+          "description": "Total number of pages",
+          "format": "int64",
+          "type": "integer"
+        },
+        "X-PerPage": {
+          "description": "Commits per page",
+          "format": "int64",
+          "type": "integer"
+        }
+      },
+      "schema": {
+        "items": {
+          "$ref": "#/definitions/ChangedFile"
+        },
+        "type": "array"
+      }
+    },
+    "CombinedStatus": {
+      "description": "CombinedStatus",
+      "schema": {
+        "$ref": "#/definitions/CombinedStatus"
+      }
+    },
+    "Comment": {
+      "description": "Comment",
+      "schema": {
+        "$ref": "#/definitions/Comment"
+      }
+    },
+    "CommentList": {
+      "description": "CommentList",
+      "headers": {
+        "X-Total-Count": {
+          "description": "The total number of comments",
+          "format": "int64",
+          "type": "integer"
+        }
+      },
+      "schema": {
+        "items": {
+          "$ref": "#/definitions/Comment"
+        },
+        "type": "array"
+      }
+    },
+    "CommentListWithoutPagination": {
+      "description": "CommentListWithoutPagination - Comments without pagination headers",
+      "schema": {
+        "items": {
+          "$ref": "#/definitions/Comment"
+        },
+        "type": "array"
+      }
+    },
+    "Commit": {
+      "description": "Commit",
+      "schema": {
+        "$ref": "#/definitions/Commit"
+      }
+    },
+    "CommitList": {
+      "description": "CommitList",
+      "schema": {
+        "items": {
+          "$ref": "#/definitions/Commit"
+        },
+        "type": "array"
+      }
+    },
+    "CommitStatus": {
+      "description": "CommitStatus",
+      "schema": {
+        "$ref": "#/definitions/CommitStatus"
+      }
+    },
+    "CommitStatusList": {
+      "description": "CommitStatusList",
+      "headers": {
+        "X-Total-Count": {
+          "description": "The total number of commit statuses",
+          "format": "int64",
+          "type": "integer"
+        }
+      },
+      "schema": {
+        "items": {
+          "$ref": "#/definitions/CommitStatus"
+        },
+        "type": "array"
+      }
+    },
+    "CommitStatusListWithoutPagination": {
+      "description": "CommitStatusListWithoutPagination - Commit statuses without pagination headers",
+      "schema": {
+        "items": {
+          "$ref": "#/definitions/CommitStatus"
+        },
+        "type": "array"
+      }
+    },
+    "Compare": {
+      "description": "",
+      "schema": {
+        "$ref": "#/definitions/Compare"
+      }
+    },
+    "ContentsListResponse": {
+      "description": "ContentsListResponse",
+      "schema": {
+        "items": {
+          "$ref": "#/definitions/ContentsResponse"
+        },
+        "type": "array"
+      }
+    },
+    "ContentsResponse": {
+      "description": "ContentsResponse",
+      "schema": {
+        "$ref": "#/definitions/ContentsResponse"
+      }
+    },
+    "CronList": {
+      "description": "CronList",
+      "headers": {
+        "X-Total-Count": {
+          "description": "The total number of cron jobs",
+          "format": "int64",
+          "type": "integer"
+        }
+      },
+      "schema": {
+        "items": {
+          "$ref": "#/definitions/Cron"
+        },
+        "type": "array"
+      }
+    },
+    "DeployKey": {
+      "description": "DeployKey",
+      "schema": {
+        "$ref": "#/definitions/DeployKey"
+      }
+    },
+    "DeployKeyList": {
+      "description": "DeployKeyList",
+      "headers": {
+        "X-Total-Count": {
+          "description": "The total number of deploy keys",
+          "format": "int64",
+          "type": "integer"
+        }
+      },
+      "schema": {
+        "items": {
+          "$ref": "#/definitions/DeployKey"
+        },
+        "type": "array"
+      }
+    },
+    "DispatchWorkflowRun": {
+      "description": "DispatchWorkflowRun is a Workflow Run after dispatching",
+      "schema": {
+        "$ref": "#/definitions/DispatchWorkflowRun"
+      }
+    },
+    "EmailList": {
+      "description": "EmailList",
+      "schema": {
+        "items": {
+          "$ref": "#/definitions/Email"
+        },
+        "type": "array"
+      }
+    },
+    "EmptyRepository": {
+      "description": "EmptyRepository",
+      "schema": {
+        "$ref": "#/definitions/APIError"
+      }
+    },
+    "FileDeleteResponse": {
+      "description": "FileDeleteResponse",
+      "schema": {
+        "$ref": "#/definitions/FileDeleteResponse"
+      }
+    },
+    "FileResponse": {
+      "description": "FileResponse",
+      "schema": {
+        "$ref": "#/definitions/FileResponse"
+      }
+    },
+    "FilesResponse": {
+      "description": "FilesResponse",
+      "schema": {
+        "$ref": "#/definitions/FilesResponse"
+      }
+    },
+    "GPGKey": {
+      "description": "GPGKey",
+      "schema": {
+        "$ref": "#/definitions/GPGKey"
+      }
+    },
+    "GPGKeyList": {
+      "description": "GPGKeyList",
+      "schema": {
+        "items": {
+          "$ref": "#/definitions/GPGKey"
+        },
+        "type": "array"
+      }
+    },
+    "GeneralAPISettings": {
+      "description": "GeneralAPISettings",
+      "schema": {
+        "$ref": "#/definitions/GeneralAPISettings"
+      }
+    },
+    "GeneralAttachmentSettings": {
+      "description": "GeneralAttachmentSettings",
+      "schema": {
+        "$ref": "#/definitions/GeneralAttachmentSettings"
+      }
+    },
+    "GeneralRepoSettings": {
+      "description": "GeneralRepoSettings",
+      "schema": {
+        "$ref": "#/definitions/GeneralRepoSettings"
+      }
+    },
+    "GeneralUISettings": {
+      "description": "GeneralUISettings",
+      "schema": {
+        "$ref": "#/definitions/GeneralUISettings"
+      }
+    },
+    "GitBlob": {
+      "description": "GitBlob",
+      "schema": {
+        "$ref": "#/definitions/GitBlob"
+      }
+    },
+    "GitBlobList": {
+      "description": "GitBlobList",
+      "schema": {
+        "items": {
+          "$ref": "#/definitions/GitBlob"
+        },
+        "type": "array"
+      }
+    },
+    "GitHook": {
+      "description": "GitHook",
+      "schema": {
+        "$ref": "#/definitions/GitHook"
+      }
+    },
+    "GitHookList": {
+      "description": "GitHookList",
+      "schema": {
+        "items": {
+          "$ref": "#/definitions/GitHook"
+        },
+        "type": "array"
+      }
+    },
+    "GitTreeResponse": {
+      "description": "GitTreeResponse",
+      "schema": {
+        "$ref": "#/definitions/GitTreeResponse"
+      }
+    },
+    "GitignoreTemplateInfo": {
+      "description": "GitignoreTemplateInfo",
+      "schema": {
+        "$ref": "#/definitions/GitignoreTemplateInfo"
+      }
+    },
+    "GitignoreTemplateList": {
+      "description": "GitignoreTemplateList",
+      "schema": {
+        "items": {
+          "type": "string"
+        },
+        "type": "array"
+      }
+    },
+    "Hook": {
+      "description": "Hook",
+      "schema": {
+        "$ref": "#/definitions/Hook"
+      }
+    },
+    "HookList": {
+      "description": "HookList",
+      "headers": {
+        "X-Total-Count": {
+          "description": "The total number of hooks",
+          "format": "int64",
+          "type": "integer"
+        }
+      },
+      "schema": {
+        "items": {
+          "$ref": "#/definitions/Hook"
+        },
+        "type": "array"
+      }
+    },
+    "HookListWithoutPagination": {
+      "description": "HookListWithoutPagination - Hooks without pagination headers",
+      "schema": {
+        "items": {
+          "$ref": "#/definitions/Hook"
+        },
+        "type": "array"
+      }
+    },
+    "Issue": {
+      "description": "Issue",
+      "schema": {
+        "$ref": "#/definitions/Issue"
+      }
+    },
+    "IssueDeadline": {
+      "description": "IssueDeadline",
+      "schema": {
+        "$ref": "#/definitions/IssueDeadline"
+      }
+    },
+    "IssueList": {
+      "description": "IssueList",
+      "schema": {
+        "items": {
+          "$ref": "#/definitions/Issue"
+        },
+        "type": "array"
+      }
+    },
+    "IssueListWithoutPagination": {
+      "description": "IssueListWithoutPagination - Issues without pagination headers (used for pinned issues, dependencies, etc.)",
+      "schema": {
+        "items": {
+          "$ref": "#/definitions/Issue"
+        },
+        "type": "array"
+      }
+    },
+    "IssueTemplates": {
+      "description": "IssueTemplates",
+      "schema": {
+        "items": {
+          "$ref": "#/definitions/IssueTemplate"
+        },
+        "type": "array"
+      }
+    },
+    "Label": {
+      "description": "Label",
+      "schema": {
+        "$ref": "#/definitions/Label"
+      }
+    },
+    "LabelList": {
+      "description": "LabelList",
+      "headers": {
+        "X-Total-Count": {
+          "description": "The total number of labels",
+          "format": "int64",
+          "type": "integer"
+        }
+      },
+      "schema": {
+        "items": {
+          "$ref": "#/definitions/Label"
+        },
+        "type": "array"
+      }
+    },
+    "LabelListWithoutPagination": {
+      "description": "LabelListWithoutPagination - Labels for a specific issue (no pagination headers)",
+      "schema": {
+        "items": {
+          "$ref": "#/definitions/Label"
+        },
+        "type": "array"
+      }
+    },
+    "LabelTemplateInfo": {
+      "description": "LabelTemplateInfo",
+      "schema": {
+        "items": {
+          "$ref": "#/definitions/LabelTemplate"
+        },
+        "type": "array"
+      }
+    },
+    "LabelTemplateList": {
+      "description": "LabelTemplateList",
+      "schema": {
+        "items": {
+          "type": "string"
+        },
+        "type": "array"
+      }
+    },
+    "LanguageStatistics": {
+      "description": "LanguageStatistics",
+      "schema": {
+        "additionalProperties": {
+          "format": "int64",
+          "type": "integer"
+        },
+        "type": "object"
+      }
+    },
+    "LicenseTemplateInfo": {
+      "description": "LicenseTemplateInfo",
+      "schema": {
+        "$ref": "#/definitions/LicenseTemplateInfo"
+      }
+    },
+    "LicenseTemplateList": {
+      "description": "LicenseTemplateList",
+      "schema": {
+        "items": {
+          "$ref": "#/definitions/LicensesTemplateListEntry"
+        },
+        "type": "array"
+      }
+    },
+    "MarkdownRender": {
+      "description": "MarkdownRender is a rendered markdown document",
+      "schema": {
+        "type": "string"
+      }
+    },
+    "MarkupRender": {
+      "description": "MarkupRender is a rendered markup document",
+      "schema": {
+        "type": "string"
+      }
+    },
+    "Milestone": {
+      "description": "Milestone",
+      "schema": {
+        "$ref": "#/definitions/Milestone"
+      }
+    },
+    "MilestoneList": {
+      "description": "MilestoneList",
+      "headers": {
+        "X-Total-Count": {
+          "description": "The total number of milestones",
+          "format": "int64",
+          "type": "integer"
+        }
+      },
+      "schema": {
+        "items": {
+          "$ref": "#/definitions/Milestone"
+        },
+        "type": "array"
+      }
+    },
+    "NodeInfo": {
+      "description": "NodeInfo",
+      "schema": {
+        "$ref": "#/definitions/NodeInfo"
+      }
+    },
+    "Note": {
+      "description": "Note",
+      "schema": {
+        "$ref": "#/definitions/Note"
+      }
+    },
+    "NotificationCount": {
+      "description": "Number of unread notifications",
+      "schema": {
+        "$ref": "#/definitions/NotificationCount"
+      }
+    },
+    "NotificationThread": {
+      "description": "NotificationThread",
+      "schema": {
+        "$ref": "#/definitions/NotificationThread"
+      }
+    },
+    "NotificationThreadList": {
+      "description": "NotificationThreadList",
+      "headers": {
+        "X-Total-Count": {
+          "description": "The total number of notification threads",
+          "format": "int64",
+          "type": "integer"
+        }
+      },
+      "schema": {
+        "items": {
+          "$ref": "#/definitions/NotificationThread"
+        },
+        "type": "array"
+      }
+    },
+    "NotificationThreadListWithoutPagination": {
+      "description": "NotificationThreadListWithoutPagination - Notification threads without pagination headers",
+      "schema": {
+        "items": {
+          "$ref": "#/definitions/NotificationThread"
+        },
+        "type": "array"
+      }
+    },
+    "OAuth2Application": {
+      "description": "OAuth2Application",
+      "schema": {
+        "$ref": "#/definitions/OAuth2Application"
+      }
+    },
+    "OAuth2ApplicationList": {
+      "description": "OAuth2ApplicationList",
+      "headers": {
+        "X-Total-Count": {
+          "description": "The total number of OAuth2 applications",
+          "format": "int64",
+          "type": "integer"
+        }
+      },
+      "schema": {
+        "items": {
+          "$ref": "#/definitions/OAuth2Application"
+        },
+        "type": "array"
+      }
+    },
+    "Organization": {
+      "description": "Organization",
+      "schema": {
+        "$ref": "#/definitions/Organization"
+      }
+    },
+    "OrganizationList": {
+      "description": "OrganizationList",
+      "headers": {
+        "X-Total-Count": {
+          "description": "The total number of organizations",
+          "format": "int64",
+          "type": "integer"
+        }
+      },
+      "schema": {
+        "items": {
+          "$ref": "#/definitions/Organization"
+        },
+        "type": "array"
+      }
+    },
+    "OrganizationListWithoutPagination": {
+      "description": "OrganizationListWithoutPagination - Organizations without pagination headers",
+      "schema": {
+        "items": {
+          "$ref": "#/definitions/Organization"
+        },
+        "type": "array"
+      }
+    },
+    "OrganizationPermissions": {
+      "description": "OrganizationPermissions",
+      "schema": {
+        "$ref": "#/definitions/OrganizationPermissions"
+      }
+    },
+    "Outbox": {
+      "description": "Outbox",
+      "schema": {
+        "$ref": "#/definitions/ForgeOutbox"
+      }
+    },
+    "Package": {
+      "description": "Package",
+      "schema": {
+        "$ref": "#/definitions/Package"
+      }
+    },
+    "PackageFileList": {
+      "description": "PackageFileList",
+      "schema": {
+        "items": {
+          "$ref": "#/definitions/PackageFile"
+        },
+        "type": "array"
+      }
+    },
+    "PackageList": {
+      "description": "PackageList",
+      "headers": {
+        "X-Total-Count": {
+          "description": "The total number of packages",
+          "format": "int64",
+          "type": "integer"
+        }
+      },
+      "schema": {
+        "items": {
+          "$ref": "#/definitions/Package"
+        },
+        "type": "array"
+      }
+    },
+    "PublicKey": {
+      "description": "PublicKey",
+      "schema": {
+        "$ref": "#/definitions/PublicKey"
+      }
+    },
+    "PublicKeyList": {
+      "description": "PublicKeyList",
+      "schema": {
+        "items": {
+          "$ref": "#/definitions/PublicKey"
+        },
+        "type": "array"
+      }
+    },
+    "PullRequest": {
+      "description": "PullRequest",
+      "schema": {
+        "$ref": "#/definitions/PullRequest"
+      }
+    },
+    "PullRequestList": {
+      "description": "PullRequestList",
+      "schema": {
+        "items": {
+          "$ref": "#/definitions/PullRequest"
+        },
+        "type": "array"
+      }
+    },
+    "PullReview": {
+      "description": "PullReview",
+      "schema": {
+        "$ref": "#/definitions/PullReview"
+      }
+    },
+    "PullReviewComment": {
+      "description": "PullComment",
+      "schema": {
+        "$ref": "#/definitions/PullReviewComment"
+      }
+    },
+    "PullReviewCommentList": {
+      "description": "PullCommentList",
+      "schema": {
+        "items": {
+          "$ref": "#/definitions/PullReviewComment"
+        },
+        "type": "array"
+      }
+    },
+    "PullReviewList": {
+      "description": "PullReviewList",
+      "headers": {
+        "X-Total-Count": {
+          "description": "The total number of pull reviews",
+          "format": "int64",
+          "type": "integer"
+        }
+      },
+      "schema": {
+        "items": {
+          "$ref": "#/definitions/PullReview"
+        },
+        "type": "array"
+      }
+    },
+    "PullReviewListWithoutPagination": {
+      "description": "PullReviewListWithoutPagination - Review requests without pagination headers",
+      "schema": {
+        "items": {
+          "$ref": "#/definitions/PullReview"
+        },
+        "type": "array"
+      }
+    },
+    "PushMirror": {
+      "description": "PushMirror",
+      "schema": {
+        "$ref": "#/definitions/PushMirror"
+      }
+    },
+    "PushMirrorList": {
+      "description": "PushMirrorList",
+      "headers": {
+        "X-Total-Count": {
+          "description": "The total number of push mirrors",
+          "format": "int64",
+          "type": "integer"
+        }
+      },
+      "schema": {
+        "items": {
+          "$ref": "#/definitions/PushMirror"
+        },
+        "type": "array"
+      }
+    },
+    "QuotaGroup": {
+      "description": "QuotaGroup",
+      "schema": {
+        "$ref": "#/definitions/QuotaGroup"
+      }
+    },
+    "QuotaGroupList": {
+      "description": "QuotaGroupList",
+      "schema": {
+        "$ref": "#/definitions/QuotaGroupList"
+      }
+    },
+    "QuotaInfo": {
+      "description": "QuotaInfo",
+      "schema": {
+        "$ref": "#/definitions/QuotaInfo"
+      }
+    },
+    "QuotaRuleInfo": {
+      "description": "QuotaRuleInfo",
+      "schema": {
+        "$ref": "#/definitions/QuotaRuleInfo"
+      }
+    },
+    "QuotaRuleInfoList": {
+      "description": "QuotaRuleInfoList",
+      "schema": {
+        "items": {
+          "$ref": "#/definitions/QuotaRuleInfo"
+        },
+        "type": "array"
+      }
+    },
+    "QuotaUsedArtifactList": {
+      "description": "QuotaUsedArtifactList",
+      "schema": {
+        "$ref": "#/definitions/QuotaUsedArtifactList"
+      }
+    },
+    "QuotaUsedAttachmentList": {
+      "description": "QuotaUsedAttachmentList",
+      "schema": {
+        "$ref": "#/definitions/QuotaUsedAttachmentList"
+      }
+    },
+    "QuotaUsedPackageList": {
+      "description": "QuotaUsedPackageList",
+      "schema": {
+        "$ref": "#/definitions/QuotaUsedPackageList"
+      }
+    },
+    "Reaction": {
+      "description": "Reaction",
+      "schema": {
+        "$ref": "#/definitions/Reaction"
+      }
+    },
+    "ReactionList": {
+      "description": "ReactionList",
+      "headers": {
+        "X-Total-Count": {
+          "description": "The total number of reactions",
+          "format": "int64",
+          "type": "integer"
+        }
+      },
+      "schema": {
+        "items": {
+          "$ref": "#/definitions/Reaction"
+        },
+        "type": "array"
+      }
+    },
+    "ReactionListWithoutPagination": {
+      "description": "ReactionListWithoutPagination - Reactions for a specific comment (no pagination headers)",
+      "schema": {
+        "items": {
+          "$ref": "#/definitions/Reaction"
+        },
+        "type": "array"
+      }
+    },
+    "Reference": {
+      "description": "Reference",
+      "schema": {
+        "$ref": "#/definitions/Reference"
+      }
+    },
+    "ReferenceList": {
+      "description": "ReferenceList",
+      "schema": {
+        "items": {
+          "$ref": "#/definitions/Reference"
+        },
+        "type": "array"
+      }
+    },
+    "RegisterRunnerResponse": {
+      "description": "RegisterRunnerResponse contains the details of the just registered runner.",
+      "schema": {
+        "$ref": "#/definitions/RegisterRunnerResponse"
+      }
+    },
+    "RegistrationToken": {
+      "description": "RegistrationToken is a string used to register a runner with a server",
+      "schema": {
+        "$ref": "#/definitions/RegistrationToken"
+      }
+    },
+    "Release": {
+      "description": "Release",
+      "schema": {
+        "$ref": "#/definitions/Release"
+      }
+    },
+    "ReleaseList": {
+      "description": "ReleaseList",
+      "headers": {
+        "X-Total-Count": {
+          "description": "The total number of releases",
+          "format": "int64",
+          "type": "integer"
+        }
+      },
+      "schema": {
+        "items": {
+          "$ref": "#/definitions/Release"
+        },
+        "type": "array"
+      }
+    },
+    "RepoCollaboratorPermission": {
+      "description": "RepoCollaboratorPermission",
+      "schema": {
+        "$ref": "#/definitions/RepoCollaboratorPermission"
+      }
+    },
+    "RepoIssueConfig": {
+      "description": "RepoIssueConfig",
+      "schema": {
+        "$ref": "#/definitions/IssueConfig"
+      }
+    },
+    "RepoIssueConfigValidation": {
+      "description": "RepoIssueConfigValidation",
+      "schema": {
+        "$ref": "#/definitions/IssueConfigValidation"
+      }
+    },
+    "RepoNewIssuePinsAllowed": {
+      "description": "RepoNewIssuePinsAllowed",
+      "schema": {
+        "$ref": "#/definitions/NewIssuePinsAllowed"
+      }
+    },
+    "Repository": {
+      "description": "Repository",
+      "schema": {
+        "$ref": "#/definitions/Repository"
+      }
+    },
+    "RepositoryList": {
+      "description": "RepositoryList",
+      "headers": {
+        "X-Total-Count": {
+          "description": "The total number of repositories",
+          "format": "int64",
+          "type": "integer"
+        }
+      },
+      "schema": {
+        "items": {
+          "$ref": "#/definitions/Repository"
+        },
+        "type": "array"
+      }
+    },
+    "RepositoryListWithoutPagination": {
+      "description": "RepositoryListWithoutPagination - Repositories without pagination headers",
+      "schema": {
+        "items": {
+          "$ref": "#/definitions/Repository"
+        },
+        "type": "array"
+      }
+    },
+    "RunJobList": {
+      "description": "RunJobList is a list of action run jobs",
+      "schema": {
+        "items": {
+          "$ref": "#/definitions/ActionRunJob"
+        },
+        "type": "array"
+      }
+    },
+    "SearchResults": {
+      "description": "SearchResults",
+      "schema": {
+        "$ref": "#/definitions/SearchResults"
+      }
+    },
+    "Secret": {
+      "description": "Secret",
+      "schema": {
+        "$ref": "#/definitions/Secret"
+      }
+    },
+    "SecretList": {
+      "description": "SecretList",
+      "headers": {
+        "X-Total-Count": {
+          "description": "The total number of secrets",
+          "format": "int64",
+          "type": "integer"
+        }
+      },
+      "schema": {
+        "items": {
+          "$ref": "#/definitions/Secret"
+        },
+        "type": "array"
+      }
+    },
+    "ServerVersion": {
+      "description": "ServerVersion",
+      "schema": {
+        "$ref": "#/definitions/ServerVersion"
+      }
+    },
+    "StopWatch": {
+      "description": "StopWatch",
+      "schema": {
+        "$ref": "#/definitions/StopWatch"
+      }
+    },
+    "StopWatchList": {
+      "description": "StopWatchList",
+      "headers": {
+        "X-Total-Count": {
+          "description": "The total number of stop watches",
+          "format": "int64",
+          "type": "integer"
+        }
+      },
+      "schema": {
+        "items": {
+          "$ref": "#/definitions/StopWatch"
+        },
+        "type": "array"
+      }
+    },
+    "StringSlice": {
+      "description": "StringSlice",
+      "schema": {
+        "items": {
+          "type": "string"
+        },
+        "type": "array"
+      }
+    },
+    "SyncForkInfo": {
+      "description": "SyncForkInfo",
+      "schema": {
+        "$ref": "#/definitions/SyncForkInfo"
+      }
+    },
+    "Tag": {
+      "description": "Tag",
+      "schema": {
+        "$ref": "#/definitions/Tag"
+      }
+    },
+    "TagList": {
+      "description": "TagList",
+      "headers": {
+        "X-Total-Count": {
+          "description": "The total number of tags",
+          "format": "int64",
+          "type": "integer"
+        }
+      },
+      "schema": {
+        "items": {
+          "$ref": "#/definitions/Tag"
+        },
+        "type": "array"
+      }
+    },
+    "TagProtection": {
+      "description": "TagProtection",
+      "schema": {
+        "$ref": "#/definitions/TagProtection"
+      }
+    },
+    "TagProtectionList": {
+      "description": "TagProtectionList",
+      "schema": {
+        "items": {
+          "$ref": "#/definitions/TagProtection"
+        },
+        "type": "array"
+      }
+    },
+    "TasksList": {
+      "description": "TasksList",
+      "schema": {
+        "$ref": "#/definitions/ActionTaskResponse"
+      }
+    },
+    "Team": {
+      "description": "Team",
+      "schema": {
+        "$ref": "#/definitions/Team"
+      }
+    },
+    "TeamList": {
+      "description": "TeamList",
+      "headers": {
+        "X-Total-Count": {
+          "description": "The total number of teams",
+          "format": "int64",
+          "type": "integer"
+        }
+      },
+      "schema": {
+        "items": {
+          "$ref": "#/definitions/Team"
+        },
+        "type": "array"
+      }
+    },
+    "TeamListWithoutPagination": {
+      "description": "TeamListWithoutPagination - Teams without pagination headers",
+      "schema": {
+        "items": {
+          "$ref": "#/definitions/Team"
+        },
+        "type": "array"
+      }
+    },
+    "TimelineList": {
+      "description": "TimelineList",
+      "headers": {
+        "X-Total-Count": {
+          "description": "The total number of timeline comments",
+          "format": "int64",
+          "type": "integer"
+        }
+      },
+      "schema": {
+        "items": {
+          "$ref": "#/definitions/TimelineComment"
+        },
+        "type": "array"
+      }
+    },
+    "TopicListResponse": {
+      "description": "TopicListResponse",
+      "schema": {
+        "items": {
+          "$ref": "#/definitions/TopicResponse"
+        },
+        "type": "array"
+      }
+    },
+    "TopicNames": {
+      "description": "TopicNames",
+      "schema": {
+        "$ref": "#/definitions/TopicName"
+      }
+    },
+    "TrackedTime": {
+      "description": "TrackedTime",
+      "schema": {
+        "$ref": "#/definitions/TrackedTime"
+      }
+    },
+    "TrackedTimeList": {
+      "description": "TrackedTimeList",
+      "headers": {
+        "X-Total-Count": {
+          "description": "The total number of tracked times",
+          "format": "int64",
+          "type": "integer"
+        }
+      },
+      "schema": {
+        "items": {
+          "$ref": "#/definitions/TrackedTime"
+        },
+        "type": "array"
+      }
+    },
+    "TrackedTimeListWithoutPagination": {
+      "description": "TrackedTimeListWithoutPagination - Tracked times for a specific user (no pagination headers)",
+      "schema": {
+        "items": {
+          "$ref": "#/definitions/TrackedTime"
+        },
+        "type": "array"
+      }
+    },
+    "User": {
+      "description": "User",
+      "schema": {
+        "$ref": "#/definitions/User"
+      }
+    },
+    "UserHeatmapData": {
+      "description": "UserHeatmapData",
+      "schema": {
+        "items": {
+          "$ref": "#/definitions/UserHeatmapData"
+        },
+        "type": "array"
+      }
+    },
+    "UserList": {
+      "description": "UserList",
+      "schema": {
+        "items": {
+          "$ref": "#/definitions/User"
+        },
+        "type": "array"
+      }
+    },
+    "UserSettings": {
+      "description": "UserSettings",
+      "schema": {
+        "$ref": "#/definitions/UserSettings"
+      }
+    },
+    "VariableList": {
+      "description": "VariableList",
+      "headers": {
+        "X-Total-Count": {
+          "description": "The total number of variables",
+          "format": "int64",
+          "type": "integer"
+        }
+      },
+      "schema": {
+        "items": {
+          "$ref": "#/definitions/ActionVariable"
+        },
+        "type": "array"
+      }
+    },
+    "WatchInfo": {
+      "description": "WatchInfo",
+      "schema": {
+        "$ref": "#/definitions/WatchInfo"
+      }
+    },
+    "WikiCommitList": {
+      "description": "WikiCommitList",
+      "headers": {
+        "X-Total-Count": {
+          "description": "The total number of wiki commits",
+          "format": "int64",
+          "type": "integer"
+        }
+      },
+      "schema": {
+        "$ref": "#/definitions/WikiCommitList"
+      }
+    },
+    "WikiPage": {
+      "description": "WikiPage",
+      "schema": {
+        "$ref": "#/definitions/WikiPage"
+      }
+    },
+    "WikiPageList": {
+      "description": "WikiPageList",
+      "headers": {
+        "X-Total-Count": {
+          "description": "The total number of wiki pages",
+          "format": "int64",
+          "type": "integer"
+        }
+      },
+      "schema": {
+        "items": {
+          "$ref": "#/definitions/WikiPageMetaData"
+        },
+        "type": "array"
+      }
+    },
+    "boolean": {
+      "description": "Boolean"
+    },
+    "conflict": {
+      "description": "APIConflict is a conflict empty response"
+    },
+    "empty": {
+      "description": "APIEmpty is an empty response"
+    },
+    "error": {
+      "description": "APIError is error format response",
+      "schema": {
+        "$ref": "#/definitions/APIError"
+      }
+    },
+    "forbidden": {
+      "description": "APIForbiddenError is a forbidden error response",
+      "schema": {
+        "$ref": "#/definitions/APIForbiddenError"
+      }
+    },
+    "internalServerError": {
+      "description": "APIInternalServerError is an error that is raised when an internal server error occurs",
+      "schema": {
+        "$ref": "#/definitions/APIInternalServerError"
+      }
+    },
+    "invalidTopicsError": {
+      "description": "APIInvalidTopicsError is error format response to invalid topics",
+      "schema": {
+        "$ref": "#/definitions/APIInvalidTopicsError"
+      }
+    },
+    "notFound": {
+      "description": "APINotFound is a not found error response",
+      "schema": {
+        "$ref": "#/definitions/APINotFound"
+      }
+    },
+    "parameterBodies": {
+      "description": "parameterBodies",
+      "schema": {
+        "$ref": "#/definitions/RegisterRunnerOptions"
+      }
+    },
+    "quotaExceeded": {
+      "description": "QuotaExceeded",
+      "headers": {
+        "message": {
+          "type": "string"
+        },
+        "user_id": {
+          "format": "int64",
+          "type": "integer"
+        },
+        "username": {
+          "type": "string"
+        }
+      }
+    },
+    "redirect": {
+      "description": "APIRedirect is a redirect response"
+    },
+    "repoArchivedError": {
+      "description": "APIRepoArchivedError is an error that is raised when an archived repo should be modified",
+      "schema": {
+        "$ref": "#/definitions/APIRepoArchivedError"
+      }
+    },
+    "string": {
+      "description": "APIString is a string response",
+      "schema": {
+        "type": "string"
+      }
+    },
+    "unauthorized": {
+      "description": "APIUnauthorizedError is a unauthorized error response",
+      "schema": {
+        "$ref": "#/definitions/APIUnauthorizedError"
+      }
+    },
+    "validationError": {
+      "description": "APIValidationError is error format response related to input validation",
+      "schema": {
+        "$ref": "#/definitions/APIValidationError"
+      }
+    }
+  },
+  "schemes": [
+    "https",
+    "http"
+  ],
+  "security": [
+    {
+      "BasicAuth": []
+    },
+    {
+      "AuthorizationHeaderToken": []
+    },
+    {
+      "SudoParam": []
+    },
+    {
+      "SudoHeader": []
+    },
+    {
+      "TOTPHeader": []
+    }
+  ],
+  "securityDefinitions": {
+    "AuthorizationHeaderToken": {
+      "description": "API tokens must be prepended with \"token\" followed by a space.",
+      "in": "header",
+      "name": "Authorization",
+      "type": "apiKey"
+    },
+    "BasicAuth": {
+      "type": "basic"
+    },
+    "SudoHeader": {
+      "description": "Sudo API request as the user provided as the key. Admin privileges are required.",
+      "in": "header",
+      "name": "Sudo",
+      "type": "apiKey"
+    },
+    "SudoParam": {
+      "description": "Sudo API request as the user provided as the key. Admin privileges are required.",
+      "in": "query",
+      "name": "sudo",
+      "type": "apiKey"
+    },
+    "TOTPHeader": {
+      "description": "Must be used in combination with BasicAuth if two-factor authentication is enabled.",
+      "in": "header",
+      "name": "X-FORGEJO-OTP",
+      "type": "apiKey"
+    }
+  },
+  "swagger": "2.0"
+}

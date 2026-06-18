@@ -1,0 +1,206 @@
+// Forgejo ops surface for ward-kdl. Every `can` resolves its operationId by
+// convention (verb + resource -> method + path); the only explicit `op` pins are
+// on the repo-label denials below, where a bare `label` would resolve org-ward.
+// Hardened per ward#109: orgs and repos lose their irreversible verbs, repo-label
+// CRUD moves to org-labels, a cross-repo issue search and a move-issue action
+// land, and every path-{owner} leaf is scoped to coily* owners. Repo-level label
+// create/edit are additionally policy-disabled per ward#107 (dup P0-P4 prevention).
+// Auto-resolution per cli-guard#147. See ../../docs/ward-kdl.forgejo.guardfile.md.
+wrap ward-kdl ops forgejo {
+    spec forgejo.swagger.v1.json
+    base-url "forgejo.coilysiren.me/api/v1"
+    // Authenticate as the `coilyco-ops` Forgejo bot, not a human's personal PAT
+    // (ward#151). The bot's token lives at SSM /forgejo/coilyco-ops/api-token,
+    // minted with scopes write:repository write:issue read:user write:organization
+    // by infrastructure/scripts/provision-coilyco-ops-bot.sh (also the rotation
+    // path - a re-run revokes and re-mints). Keeping ward-kdl off the operator's
+    // own /forgejo/api-token means automated ops attribute to the bot.
+    auth header-token {
+        header Authorization
+        prefix "token "
+        value ssm "/forgejo/coilyco-ops/api-token"
+    }
+    // Scope gate: every leaf whose path carries {owner} must name a coily* owner.
+    restrict owner matches coily*
+    // repos: read/create/edit/delete plus search. Fork and the archive/unarchive
+    // toggles are denied - irreversible-enough surfaces a human should drive.
+    // `search` is the cross-repo finder (GET /repos/search).
+    can get repo
+    can search repo
+    can create repo
+    can edit repo
+    can delete repo {
+        describe "irreversible: deletes the repo and all its data"
+    }
+    never fork repo {
+        message "forking is a human-only operation; fork in the web UI"
+    }
+    never archive repo {
+        message "archive/unarchive flips a repo's lifecycle; do it in the web UI"
+    }
+    never unarchive repo {
+        message "archive/unarchive flips a repo's lifecycle; do it in the web UI"
+    }
+    // orgs: read-only. Org create and delete are human-only.
+    can get org
+    can list org
+    never create org {
+        message "org creation is a human-only operation"
+    }
+    never delete org {
+        message "org deletion is irreversible and human-only"
+    }
+    // org-labels: the compound resource targets org-level labels (/orgs/{org}/labels),
+    // the `org` ancestor scoping it away from repo labels. Issue-label attach/set/
+    // remove stays below.
+    can get org-label
+    can list org-label
+    can create org-label
+    can edit org-label
+    can delete org-label
+    // repo-labels: the repo-scoped create/edit leaves are policy-disabled (ward#107).
+    // A repo-level label (POST/PATCH /repos/{owner}/{repo}/labels) that duplicates an
+    // org label silently shadows it; that path minted the off-palette dup P0-P4 labels
+    // across 26 repos (340 tags re-pointed, 67 labels deleted - coilyco-bridge/coily#248).
+    // The op is pinned because a bare `label` resource otherwise resolves to the shallower
+    // org path: mint and rename labels through the org-label leaves above, attach existing
+    // ones through the issue-label leaves below.
+    never create label {
+        op issueCreateLabel
+        message "repo-level label create is policy-disabled (ward#107): it mints labels that duplicate and shadow the org P0-P4 taxonomy. Create org labels with `create org-label`."
+    }
+    never edit label {
+        op issueEditLabel
+        message "repo-level label edit is policy-disabled (ward#107): edit the org taxonomy with `edit org-label`."
+    }
+    // milestones: all-scalar CRUD plus the close/reopen fixed-body toggles (the
+    // toggles resolve like edit and carry only `body`).
+    can get milestone
+    can list milestone
+    can create milestone
+    can edit milestone
+    can delete milestone
+    can close milestone {
+        body state=closed
+    }
+    can reopen milestone {
+        body state=open
+    }
+    // issues: the array-body + query-param group. close/reopen are fixed-body
+    // toggles; search is the cross-repo finder; comment posts the comments
+    // sub-collection; delete is denied (close instead).
+    can get issue
+    can view issue
+    can list issue
+    can search issue
+    can create issue
+    can edit issue
+    can comment issue
+    can close issue {
+        body state=closed
+    }
+    can reopen issue {
+        body state=open
+    }
+    never delete issue {
+        message "issue deletion is irreversible; close it instead (move-issue does this)"
+    }
+    // releases, with the multipart asset upload beside them (upload-asset resolves
+    // as create-on the assets sub-collection).
+    can get release
+    can list release
+    can create release
+    can edit release
+    can delete release
+    can upload-asset release
+    // pulls: not surfaced through ward. Read them in the Forgejo web UI.
+    never view pr {
+        message "pull requests are not exposed through ward; read them in the web UI"
+    }
+    never list pr {
+        message "pull requests are not exposed through ward; read them in the web UI"
+    }
+    // issue-labels: the compound resource targets the issue's labels sub-collection;
+    // add/set/remove are the membership verbs (POST/PUT/DELETE).
+    can list issue-label
+    can add issue-label
+    can set issue-label
+    can remove issue-label
+    // actions tasks: the CI-run read surface, plus the ci-watch poll action.
+    can list tasks
+    // ci-watch: poll the granted `list tasks` leaf until every job of one run
+    // reaches a terminal state, then exit non-zero if any failed. `until` and
+    // `fail-when` are JMESPath Community Edition; `$run` binds from --run.
+    action ci-watch {
+        describe "Watch a CI run to completion, then surface failing-job status."
+        input repo {
+            positional
+            required
+            help "owner/name"
+        }
+        input run {
+            flag
+            help "run number"
+        }
+        poll list tasks {
+            args {
+                owner-repo $repo
+            }
+            until "length(workflow_runs[?run_number==$run && status!='success'\n        && status!='failure' && status!='cancelled'\n        && status!='skipped']) == `0`"
+            every "10s"
+            timeout "30m"
+            as run_tasks
+        }
+        fail-when "length($run_tasks.workflow_runs[?run_number==$run && status=='failure']) > `0`"
+    }
+    // move-issue: copy a source issue's title/body into a target repo, back-link
+    // the new issue on the source, then CLOSE the source - never delete it
+    // (consistent with `never delete issue`). Carrying labels/milestone needs
+    // array data-flow and is deferred; title/body move today.
+    action move-issue {
+        describe "Move an issue to another repo (copy title/body, back-link, close source). Never deletes."
+        input source {
+            positional
+            required
+            help "source owner/name"
+        }
+        input index {
+            positional
+            required
+            help "source issue number"
+        }
+        input target {
+            positional
+            required
+            help "target owner/name"
+        }
+        call view issue {
+            args {
+                owner-repo $source
+                index $index
+            }
+            as src
+        }
+        call create issue {
+            args {
+                owner-repo $target
+                title $src.title
+                body $src.body
+            }
+            as dst
+        }
+        call comment issue {
+            args {
+                owner-repo $source
+                index $index
+                body $dst.html_url
+            }
+        }
+        call close issue {
+            args {
+                owner-repo $source
+                index $index
+            }
+        }
+    }
+}

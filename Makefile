@@ -1,4 +1,4 @@
-.PHONY: help build test vet lint tidy cover install ward-kdl install-tmp lock skew
+.PHONY: help build test vet lint tidy cover install ward-kdl install-tmp lock skew sync-ops-assets
 
 SPECVERB_GEN := forgejo.coilysiren.me/coilyco-flight-deck/cli-guard/cmd/specverb-gen
 
@@ -28,6 +28,14 @@ build-ward-kdl: ## build or rebuild the ward-kdl binary, one shot for ease of us
 	# The driver writes each reference doc beside its guardfile; the committed
 	# copies live under docs/, so relocate them after every rebuild.
 	mv ./cmd/ward-kdl/ward-kdl.*.guardfile.md ./docs/
+	$(MAKE) sync-ops-assets
+
+sync-ops-assets: ## Mirror the canonical forgejo guardfile + spec lock into cmd/ward for embedding (ward#92).
+	# go:embed cannot reach a sibling dir, so `ward ops forgejo` embeds copies of
+	# the ward-kdl canonical files. Re-sync after every lock; opsassets_test.go
+	# fails the build on drift.
+	cp ./cmd/ward-kdl/ward-kdl.forgejo.guardfile.kdl ./cmd/ward/opsassets/forgejo.guardfile.kdl
+	cp ./cmd/ward-kdl/forgejo.swagger.lock.json      ./cmd/ward/opsassets/forgejo.swagger.lock.json
 
 test: ## Run the unit test suite.
 	go test ./...

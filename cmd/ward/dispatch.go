@@ -1,15 +1,11 @@
 package main
 
 import (
-	"fmt"
 	"os"
 	"path/filepath"
 
 	"forgejo.coilysiren.me/coilyco-flight-deck/cli-guard/cli/dispatch"
-	"forgejo.coilysiren.me/coilyco-flight-deck/cli-guard/cli/shell"
 	"forgejo.coilysiren.me/coilyco-flight-deck/cli-guard/cli/verb"
-	"forgejo.coilysiren.me/coilyco-flight-deck/cli-guard/pkg/audit"
-	"forgejo.coilysiren.me/coilyco-flight-deck/cli-guard/pkg/config"
 	"github.com/urfave/cli/v3"
 )
 
@@ -58,22 +54,7 @@ func dispatchLogRoot() (string, error) {
 
 // dispatchRunner builds a Runner for the dispatch tree without newRunner's
 // fatal audit preflight, so a lean verb like `ward version` never os.Exits.
-func dispatchRunner() *Runner {
-	path, err := config.DefaultAuditPath()
-	if err != nil {
-		fmt.Fprintf(os.Stderr, "ward: fatal: resolve audit path: %v\n", err)
-		os.Exit(2)
-	}
-	return &Runner{
-		Runner: &shell.Runner{
-			Stdout:  os.Stdout,
-			Stderr:  os.Stderr,
-			Stdin:   os.Stdin,
-			Sandbox: sandboxSpec(),
-		},
-		Audit: audit.NewWriter(path),
-	}
-}
+func dispatchRunner() *Runner { return leanRunner() }
 
 // dispatchCommand builds the dispatch umbrella verb from cli-guard, wiring
 // ward's runner, audit pipeline, and workspace seams. See docs/dispatch.md.
