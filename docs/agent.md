@@ -169,9 +169,17 @@ version` there. When the run is non-interactive - `headless`/`task` (always
 detached) or `work --detach` - no human watches that log, so the cue that the
 **host** ward binary is itself behind a release is lost. To keep that awareness,
 ward does a best-effort check at the host dispatch moment (where the operator
-still is): it fetches the latest `coilyco-flight-deck/ward` release tag and, if
+still is): it resolves the latest `coilyco-flight-deck/ward` release tag and, if
 the host binary is behind it, prints a two-line stderr reminder pointing at
 [`ward upgrade`](../README.md).
+
+The lookup routes through the in-binary [`ward ops forgejo`](ops-forgejo-in-ward.md)
+specverb (ward#172) rather than a hand-rolled HTTP client: it shells the host
+ward to `ops forgejo release list <owner> <repo> --draft=false --pre-release=false
+--query "[0].tag_name" --output text`, so the audited, SSM-authed guardfile leaf
+does the call and the `--query` projection hands back just the scalar tag. The
+filters mirror the old `/releases/latest` semantics (newest published, non-draft,
+non-prerelease).
 
 The check is deliberately quiet and non-blocking: a `dev`/source build, no
 network, an auth wall, or an unparseable tag all stay silent rather than guess,

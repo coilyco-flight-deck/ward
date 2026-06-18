@@ -2,10 +2,8 @@ package main
 
 import (
 	"context"
-	"encoding/json"
 	"fmt"
 	"io"
-	"net/http"
 	"os"
 	"strconv"
 	"strings"
@@ -30,7 +28,7 @@ func (r *Runner) maybeWarnWardOutdated(ctx context.Context) {
 	if !versionLooksReleased(Version) {
 		return
 	}
-	latest, ok := fetchLatestWardTag(ctx)
+	latest, ok := r.fetchLatestWardTag(ctx)
 	if !ok {
 		return
 	}
@@ -60,37 +58,39 @@ func versionLooksReleased(v string) bool {
 	return v != "" && v != "dev"
 }
 
-// fetchLatestWardTag GETs the latest ward release tag from Forgejo, best-effort and
-// unauthenticated. ok is false on any failure so the caller stays silent.
-func fetchLatestWardTag(ctx context.Context) (string, bool) {
+// fetchLatestWardTag resolves the newest ward release tag through the in-binary
+// `ward ops forgejo release list` specverb (ward#172). See docs/agent.md.
+func (r *Runner) fetchLatestWardTag(ctx context.Context) (string, bool) {
+	if r == nil || r.Runner == nil {
+		return "", false
+	}
+	owner, repo, ok := strings.Cut(wardReleaseRepo, "/")
+	if !ok || owner == "" || repo == "" {
+		return "", false
+	}
+	exe, err := os.Executable()
+	if err != nil {
+		return "", false
+	}
+
 	cctx, cancel := context.WithTimeout(ctx, wardReleaseCheckTimeout)
 	defer cancel()
-	url := fmt.Sprintf("%s/api/v1/repos/%s/releases/latest",
-		strings.TrimRight(forgejoBaseURL, "/"), wardReleaseRepo)
-	req, err := http.NewRequestWithContext(cctx, http.MethodGet, url, nil)
+
+	// Swallow the specverb's own stderr (SSM miss, upstream error): this nag is
+	// silent on failure, so its chatter would only confuse. Stdout is captured.
+	prevErr := r.Runner.Stderr
+	r.Runner.Stderr = io.Discard
+	out, err := r.Runner.Capture(cctx, exe,
+		"ops", "forgejo", "release", "list", owner, repo,
+		"--draft=false", "--pre-release=false",
+		"--query", "[0].tag_name",
+		"--output", "text",
+	)
+	r.Runner.Stderr = prevErr
 	if err != nil {
 		return "", false
 	}
-	req.Header.Set("Accept", "application/json")
-	resp, err := http.DefaultClient.Do(req)
-	if err != nil {
-		return "", false
-	}
-	defer func() { _ = resp.Body.Close() }()
-	if resp.StatusCode != http.StatusOK {
-		return "", false
-	}
-	body, err := io.ReadAll(io.LimitReader(resp.Body, 1<<16))
-	if err != nil {
-		return "", false
-	}
-	var rel struct {
-		TagName string `json:"tag_name"`
-	}
-	if err := json.Unmarshal(body, &rel); err != nil {
-		return "", false
-	}
-	tag := strings.TrimSpace(rel.TagName)
+	tag := strings.TrimSpace(string(out))
 	if tag == "" {
 		return "", false
 	}

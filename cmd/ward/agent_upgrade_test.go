@@ -1,6 +1,7 @@
 package main
 
 import (
+	"context"
 	"strings"
 	"testing"
 )
@@ -75,6 +76,18 @@ func TestVersionLooksReleased(t *testing.T) {
 		if got := versionLooksReleased(tc.in); got != tc.want {
 			t.Errorf("versionLooksReleased(%q) = %v, want %v", tc.in, got, tc.want)
 		}
+	}
+}
+
+// fetchLatestWardTag stays quiet (ok=false) rather than panicking when it has no
+// runner to shell the specverb through - best-effort, never blocks dispatch.
+func TestFetchLatestWardTagQuietWithoutRunner(t *testing.T) {
+	if _, ok := (&Runner{}).fetchLatestWardTag(context.Background()); ok {
+		t.Error("fetchLatestWardTag with a nil shell runner should report ok=false")
+	}
+	var r *Runner
+	if _, ok := r.fetchLatestWardTag(context.Background()); ok {
+		t.Error("fetchLatestWardTag on a nil receiver should report ok=false")
 	}
 }
 
