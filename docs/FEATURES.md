@@ -4,7 +4,7 @@ Inventory of what `ward` ships.
 
 ## Scope
 
-Contributor-facing cli-guard gate: repo dev verbs + audited host wrappers behind cli-guard's pipeline.
+Contributor-facing cli-guard gate: repo dev verbs + audited host wrappers.
 
 ## Commands
 
@@ -19,14 +19,14 @@ Contributor-facing cli-guard gate: repo dev verbs + audited host wrappers behind
 - **`ward lint`** - lint `.ward/ward.yaml` against the repo Makefile.
 - **`ward dispatch <surface> <ref>`** - fire `claude` against a real open issue. Surfaces: `headless`, `interactive`, `consult`, `cascade`, plus `reap`/`status`/`registry`. Off-org refused. See [docs/dispatch.md](dispatch.md).
 - **`ward container {up,exec,reap,down,ls}`** - ephemeral, least-access dev containers, one per `up`: target cloned fresh inside (cwd bind read-only), `--mode claude|codex|qwen|goose`. `reap` lands or salvages the work. See [docs/container.md](container.md).
-- **`ward agent <name> {work,headless,task}`** - over `container up`: `work`/`headless` take an issue, `task` *files* one. Off-org refused, `--print` dry-runs; `headless`/`task` add an [agent commit suite](agent-precommit.md). Each run *reserves* the issue (2h TTL, `--force` reclaims); `headless` pre-flights a feasibility check (GO/NO-GO/blind-fire; ward#147, ward#159). `--details` adds an authoritative steer (ward#167). See [agent](agent.md).
+- **`ward agent <name> {work,headless,task}`** - over `container up`: `work`/`headless` take an issue, `task` *files* one. Off-org refused, `--print` dry-runs; `headless`/`task` add an [agent commit suite](agent-precommit.md). Each run *reserves* the issue (2h TTL, `--force` reclaims); `headless` pre-flights a feasibility check (GO/NO-GO; ward#147). `--details` adds an authoritative steer. See [agent](agent.md).
 
 ## Spec-driven ops (`ward-kdl`)
 
-- **`ward-kdl ops <api> <verb>`** - guarded API verbs from KDL guardfiles (`specverb`): **forgejo** (Swagger 2.0), **trello**/**tailscale** (OpenAPI 3.0/3.1). Denies teach, `restrict` scopes. See [docs/ops-forgejo.md](ops-forgejo.md).
-- **`ward-kdl ops {aws,kubectl} <verb>`** - guarded local-CLI passthroughs (`execverb`): **aws** (SSM/S3/EC2 reads) and **kubectl** (reads + apply/scale/rollout; destructive verbs unexposed). See [aws](ward-kdl.aws.guardfile.md), [kubectl](ward-kdl.kubectl.guardfile.md).
+- **`ward-kdl ops <api> <verb>`** - `specverb` API verbs: **forgejo** (Swagger 2.0), **trello**/**tailscale** (OpenAPI 3.0/3.1). Denies teach, `restrict` scopes. See [docs/ops-forgejo.md](ops-forgejo.md).
+- **`ward-kdl ops {aws,kubectl} <verb>`** - `execverb` local-CLI passthroughs: **aws** (SSM/S3/EC2 reads) and **kubectl** (reads + apply/scale/rollout; destructive verbs unexposed). See [aws](ward-kdl.aws.guardfile.md), [kubectl](ward-kdl.kubectl.guardfile.md).
 - **`ward-kdl agents <target> <verb>`** - mixed-transport. **`agents ui`**: Open WebUI API (`specverb`, tailnet-only). **`agents {claude,codex,opencode,aider,goose}`**: local-CLI launchers (`execverb`, `argv`-override). **`agents ollama`**: the tower's Ollama.
-- **`ward-kdl pkg <api> <resource> <verb>`** - package-directory lookups (`specverb`): **skillsmp** (skill discovery) and **glama** (Glama MCP directory), migrated from `coily pkg` per ward#105. See [skillsmp](ward-kdl.skillsmp.guardfile.md), [glama](ward-kdl.glama.guardfile.md).
+- **`ward-kdl pkg <resource> <verb>`** - `specverb` package-directory lookups: **skillsmp** (skills) and **glama** (Glama MCP), from `coily pkg` (ward#105); plus **`ward-kdl pkg brew <verb>`** - brew reads/passthrough (`execverb`, jailed; scoped verbs in ward#95). See [skillsmp](ward-kdl.skillsmp.guardfile.md), [glama](ward-kdl.glama.guardfile.md), [brew](ward-kdl.brew.guardfile.md).
 
 ## Scripts
 
