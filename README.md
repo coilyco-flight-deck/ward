@@ -1,6 +1,6 @@
 # ward
 
-A contributor-facing [cli-guard][cli-guard] consumer. `ward` sits between AI agents (or any semi-trusted automation) and the host system when working inside a ward-managed repo, wrapping a project's dev verbs behind cli-guard's policy gate.
+**ward is a harness driver.** It drives an agent harness (claude, goose, codex, qwen) into an ephemeral container to carry a Forgejo issue end to end, then gates every dev verb it (or any semi-trusted automation) runs behind [cli-guard][cli-guard]'s policy.
 
 `ward` is the contributor counterpart to [coily][coily]. coily is the operator CLI - personal machines, homelab SSH, vault paths, deploy hooks. `ward` is the gate a contributor (human or agent) routes through to build, test, and lint project code. Both are thin, audited wrappers around the same cli-guard primitives, split by who is driving: operator vs contributor.
 
