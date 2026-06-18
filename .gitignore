@@ -27,6 +27,11 @@
 # Local dev overrides
 *.local
 
+# Stray Python lockfile: ward ships no Python and denies bare `uv` (cmd/ward/hook.go).
+# A uv.lock only ever lands here if a uv-using tool (e.g. pre-commit's Python hook
+# envs) drops one in the tree. Never tracked - keep it invisible rather than churn.
+uv.lock
+
 # Runtime spec cache fetched by `make lock` / skew checks; never committed (ward#62).
 # The committed spec lock is a distinct name (*.swagger.lock.json) and IS tracked.
 *.swagger.v1.json
