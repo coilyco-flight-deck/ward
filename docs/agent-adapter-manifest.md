@@ -33,7 +33,7 @@ agents:
     binary: claude          # in-container command this agent launches
     contextLevel: 2         # least-access ladder: 2=full, 1=scoped, 0=minimal
     stream: stream-json     # headless stream format: stream-json | none
-    auth: claude-keychain   # host-resolved credential: claude-keychain | none
+    auth: claude-keychain   # host-resolved credential: claude-keychain | codex-file | ollama | none
     argv:
       preflight: [claude, -p]   # host one-shot prefix; prompt appended. []=none yet
       headless: [claude, -p, --verbose, --output-format, stream-json]  # seed appended
@@ -54,20 +54,19 @@ Field notes:
 - `argv.headless` for codex is `[codex, exec]` and qwen's is `[opencode, run]` -
   each its own dialect, not claude's stream-json flags (ward#178, ward#187). codex
   auth is `codex-file` (host `~/.codex/auth.json`); qwen auth `none`.
+- `auth: ollama` (goose, ward#186): goose binds the tower Ollama, whose endpoint
+  ward resolves host-side from SSM and seeds into `~/.config/goose/config.yaml`.
 
-`codex` is wired to its exec dialect (ward#178); its image install is the aos-side
-step. `qwen` is wired to opencode's run dialect, not the old claude default branch
-(ward#187): the entrypoint writes a qwen-backed opencode config (local ollama) and
-**self-installs opencode at container start** (best-effort), so qwen is available
-without the image baking it in. See [agent.md](agent.md).
+`qwen` no longer mirrors the claude default branch (ward#187): the entrypoint writes
+its opencode config and **self-installs opencode at container start** (best-effort),
+so qwen is available without the image baking it in. See [agent.md](agent.md).
 
 ## The contract test
 
 [`agent_adapter_test.go`](../cmd/ward/agent_adapter_test.go) asserts the embedded
-manifest agrees, entry for entry, with the still-live Go switches. That is what
-makes this a real pre-req rather than parallel drift: when #152 swaps the switches
-for manifest lookups, the swap is **provably behavior-preserving**. Change the
-manifest and the switch in lockstep, or the test fails.
+manifest agrees, entry for entry, with the still-live Go switches. When #152 swaps
+the switches for manifest lookups, the swap is **provably behavior-preserving**.
+Change the manifest and the switch in lockstep, or the test fails.
 
 ## See also
 

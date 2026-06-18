@@ -343,6 +343,29 @@ EOF
   log "wrote qwen-backed opencode config (model ollama/$WARD_QWEN_MODEL via $WARD_OLLAMA_URL) to $dir/opencode.json"
 }
 
+# --- goose config (ward#186): bind a model provider so goose can run -----------
+# Seed ~/.config/goose/config.yaml with provider + model (tower Ollama). docs/agent.md.
+compose_goose_config() {
+  [ "$WARD_MODE" = goose ] || return 0
+  local dir="$AGENT_HOME/.config/goose"
+  mkdir -p "$dir"
+  local provider="${WARD_GOOSE_PROVIDER:-ollama}"
+  local model="${WARD_GOOSE_MODEL:-qwen2.5}"
+  local host=""
+  [ -n "${WARD_GOOSE_OLLAMA_HOST_B64:-}" ] && host="$(printf '%s' "$WARD_GOOSE_OLLAMA_HOST_B64" | base64 -d)"
+  {
+    echo "# Written by the ward container entrypoint (ward#186): bind goose's provider."
+    echo "GOOSE_PROVIDER: $provider"
+    echo "GOOSE_MODEL: $model"
+    [ -n "$host" ] && echo "OLLAMA_HOST: $host"
+  } > "$dir/config.yaml"
+  if [ "$provider" = ollama ] && [ -z "$host" ]; then
+    log "wrote goose config (provider=$provider model=$model) to $dir/config.yaml; no tower Ollama host resolved, goose will use its built-in default"
+  else
+    log "wrote goose config (provider=$provider model=$model) to $dir/config.yaml"
+  fi
+}
+
 # --- reaper: deterministic teardown backstop (docs/container-reap.md) --------
 # Static ward code lands/salvages residual work on any agent exit; nothing lost.
 reap() {
@@ -392,6 +415,7 @@ main() {
   write_codex_creds
   compose_codex_config
   compose_opencode_config
+  compose_goose_config
   cd "$work"
   export WARD_REAP_WORK="$work"
   # Arm the reaper before launching the agent; the agent is NOT exec'd, else exec
