@@ -341,6 +341,9 @@ type upPlan struct {
 	// Headless runs the in-container agent in print mode (claude -p), exporting
 	// WARD_HEADLESS=1; set by `ward agent <name> headless`, which also detaches.
 	Headless bool
+	// Ask runs the in-container agent one-shot, attached (claude -p plain, no
+	// stream-json); exports WARD_ASK=1, set by `ward agent <name> ask`.
+	Ask bool
 }
 
 // wardEnv is the non-secret WARD_* config the entrypoint reads. Everything
@@ -373,6 +376,9 @@ func (p upPlan) wardEnv() map[string]string {
 	}
 	if p.Headless {
 		env["WARD_HEADLESS"] = "1"
+	}
+	if p.Ask {
+		env["WARD_ASK"] = "1"
 	}
 	return env
 }

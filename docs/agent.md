@@ -73,6 +73,11 @@ and by the harness (ward#157):
   and launches nothing, with no prompt to answer.
 - **`task`** files an issue from `--instructions` first, then runs the `headless`
   flow against it (carries to merge, `closes #N`). See [docs/agent-task.md](agent-task.md).
+- **`reply`** researches an issue one-shot and posts the answer as a comment - no
+  container, no code change. See [docs/agent-reply.md](agent-reply.md).
+- **`ask`** answers a freeform question one-shot *inside* a fresh container (so the
+  answer can lean on the repo clone and operating context) and streams it inline - no
+  issue, no code change, no comment. See [docs/agent-ask.md](agent-ask.md).
 
 Both `headless` and `task` also install an [agent-only commit suite](agent-precommit.md)
 (`closes-issue` + `conventional-commit`) that interactive `work` and humans never see.

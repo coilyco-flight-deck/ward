@@ -184,6 +184,7 @@ func agentModeCommand(m containerMode) *cli.Command {
 			agentSurfaceCommand(m, "headless", true),
 			agentTaskCommand(m),
 			agentReplyCommand(m),
+			agentAskCommand(m),
 		},
 	}
 }

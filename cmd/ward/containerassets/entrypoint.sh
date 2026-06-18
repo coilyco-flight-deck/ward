@@ -427,36 +427,38 @@ main() {
     bash || true
     return
   fi
-  # Build per-mode argv from seed "$@": claude positional, goose run -t/session, and
-  # codex/qwen passthrough (docs/ward-kdl.goose.guardfile.md). stream gates the pipe.
+  # Build per-mode argv from seed "$@" (claude positional, goose/codex/qwen dialects);
+  # headless+ask share the one-shot argv, only claude diverges (ask=plain -p).
   local stream=0
   local -a agent_argv
+  local oneshot=0
+  { [ "${WARD_HEADLESS:-0}" = 1 ] || [ "${WARD_ASK:-0}" = 1 ]; } && oneshot=1
   case "$WARD_MODE" in
   goose)
-    if [ "${WARD_HEADLESS:-0}" = 1 ]; then
+    if [ "$oneshot" = 1 ]; then
       agent_argv=(goose run -t "$@")
-      log "headless: goose run -t <seed> (goose prints its own progress to this log)"
+      log "one-shot: goose run -t <prompt> (goose prints to this log)"
     else
       agent_argv=(goose session)
       [ "$#" -gt 0 ] && log "interactive goose session: seed prompt is not auto-delivered (paste the issue)"
     fi
     ;;
   codex)
-    # codex speaks the exec dialect: `codex exec <seed>` headless (prints its own
+    # codex speaks the exec dialect: `codex exec <prompt>` one-shot (prints its own
     # progress, stream stays 0), seeded `codex <seed>` TUI interactive. docs/agent.md.
-    if [ "${WARD_HEADLESS:-0}" = 1 ]; then
+    if [ "$oneshot" = 1 ]; then
       agent_argv=(codex exec "$@")
-      log "headless: codex exec <seed> (codex prints its own progress to this log)"
+      log "one-shot: codex exec <prompt> (codex prints to this log)"
     else
       agent_argv=(codex "$@")
     fi
     ;;
   qwen)
-    # opencode `run <seed>` headless (prints its own progress, stream stays 0),
+    # opencode `run <prompt>` one-shot (prints its own progress, stream stays 0),
     # seedless TUI interactive; provider/model come from opencode.json, not argv.
-    if [ "${WARD_HEADLESS:-0}" = 1 ]; then
+    if [ "$oneshot" = 1 ]; then
       agent_argv=(opencode run "$@")
-      log "headless: opencode run <seed> (opencode prints its own progress to this log)"
+      log "one-shot: opencode run <prompt> (opencode prints to this log)"
     else
       agent_argv=(opencode)
       [ "$#" -gt 0 ] && log "interactive opencode TUI: seed prompt is not auto-delivered (paste the issue)"
@@ -464,7 +466,12 @@ main() {
     ;;
   *)
     agent_argv=("$WARD_AGENT")
-    if [ "${WARD_HEADLESS:-0}" = 1 ]; then
+    if [ "${WARD_ASK:-0}" = 1 ]; then
+      # ask: plain `claude -p <question>` so the answer streams clean to the
+      # attached terminal (no stream-json progress wrapper). See docs/agent-ask.md.
+      agent_argv+=(-p)
+      log "ask: $WARD_AGENT -p <question> (one-shot answer to this terminal)"
+    elif [ "${WARD_HEADLESS:-0}" = 1 ]; then
       agent_argv+=(-p --verbose --output-format stream-json)
       stream=1
       log "headless: streaming $WARD_AGENT progress to this log"
