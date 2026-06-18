@@ -30,6 +30,11 @@ func (r agentIssueRef) String() string {
 	return fmt.Sprintf("%s/%s#%d", r.Owner, r.Repo, r.Number)
 }
 
+// repoSlug renders the owner/repo pair without the issue number.
+func (r agentIssueRef) repoSlug() string {
+	return r.Owner + "/" + r.Repo
+}
+
 // url renders the canonical Forgejo issue URL for the seeded prompt.
 func (r agentIssueRef) url() string {
 	return fmt.Sprintf("%s/%s/%s/issues/%d", strings.TrimRight(forgejoBaseURL, "/"), r.Owner, r.Repo, r.Number)
@@ -258,10 +263,15 @@ func preflightPrompt(ref agentIssueRef, title, body string) string {
 			"issue below, do you think you can carry it to merge unattended?\n\n"+
 			"Issue: %s (%q)\n\n%s\n\n"+
 			"Answer in 2-4 sentences naming the main risk or unknown, then a final line of "+
-			"exactly \"GO\" if you would take it on unattended or \"NO-GO: <reason>\" if a human "+
-			"should weigh in first. This is a judgment call, not a commitment - be honest about "+
-			"ambiguity.",
-		ref, title, body)
+			"exactly one of:\n"+
+			"  \"GO\" - you would take it on unattended;\n"+
+			"  \"NO-GO: <reason>\" - a human should weigh in first;\n"+
+			"  \"WRONG-REPO: owner/repo - <what to file there>\" - the work plainly belongs in a "+
+			"different repo than %s/%s. Only say this when the issue text alone makes it obvious - "+
+			"do not go digging to decide it. ward will blind-file a fresh issue in that repo and "+
+			"launch nothing here.\n"+
+			"This is a judgment call, not a commitment - be honest about ambiguity.",
+		ref, title, body, ref.Owner, ref.Repo)
 }
 
 // runPreflight acts on the agent's feasibility verdict with no human, shared by
@@ -293,15 +303,79 @@ func (r *Runner) runPreflight(ctx context.Context, mode containerMode, surface s
 		return true, nil
 	}
 
-	if verdict, reason := parsePreflightVerdict(read); verdict == verdictNoGo {
+	switch outcome := parsePreflightVerdict(read); outcome.Verdict {
+	case verdictWrongRepo:
+		return r.handlePreflightWrongRepo(ctx, mode, surface, w, outcome, read)
+	case verdictNoGo:
 		fmt.Fprintf(os.Stderr, "%s: pre-flight NO-GO for %s; launching nothing, commenting on the issue.\n", label, w.Ref)
-		if cerr := r.postPreflightNoGo(ctx, mode, surface, w.Ref, reason, read); cerr != nil {
+		if cerr := r.postPreflightNoGo(ctx, mode, surface, w.Ref, outcome.Reason, read); cerr != nil {
 			return false, fmt.Errorf("post NO-GO comment on %s: %w", w.Ref, cerr)
 		}
 		fmt.Fprintf(os.Stderr, "%s: commented NO-GO on %s - %s\n", label, w.Ref, w.Ref.url())
 		return false, nil
+	default:
+		return true, nil
 	}
-	return true, nil
+}
+
+// wrongRepoTarget splits a parsed WRONG-REPO "owner/repo" into a targetRepo,
+// failing only on an empty/half target (callers treat that as a NO-GO).
+func wrongRepoTarget(s string) (targetRepo, bool) {
+	owner, name, ok := strings.Cut(strings.TrimSpace(s), "/")
+	if !ok || owner == "" || name == "" {
+		return targetRepo{}, false
+	}
+	return targetRepo{Owner: owner, Name: name}, true
+}
+
+// handlePreflightWrongRepo acts on a WRONG-REPO verdict (ward#159): blind-fire
+// into a trusted target repo, else bounce to a human. See docs/agent.md.
+func (r *Runner) handlePreflightWrongRepo(ctx context.Context, mode containerMode, surface string, w resolvedWork, outcome preflightOutcome, read string) (bool, error) {
+	label := fmt.Sprintf("ward agent %s %s", mode, surface)
+	target, ok := wrongRepoTarget(outcome.Repo)
+	sameRepo := ok && target.Owner == w.Ref.Owner && target.Name == w.Ref.Repo
+	// An untrusted repo, the issue's own repo, or a half target is no blind-fire
+	// target: bounce to a human rather than guessing.
+	if !ok || sameRepo || !r.ownerAllowed(target.Owner) {
+		reason := outcome.Reason
+		if reason == "" {
+			reason = "agent flagged this as belonging in another repo"
+		}
+		switch {
+		case !ok:
+			reason = "agent flagged WRONG-REPO but named no usable owner/repo: " + reason
+		case sameRepo:
+			reason = "agent flagged WRONG-REPO but named this same repo: " + reason
+		default:
+			reason = fmt.Sprintf("agent routed this to untrusted repo %s (not in %s): %s",
+				target.slug(), strings.Join(r.primaryOrgs(), ", "), reason)
+		}
+		fmt.Fprintf(os.Stderr, "%s: pre-flight WRONG-REPO unusable for %s; bouncing to a human.\n", label, w.Ref)
+		if cerr := r.postPreflightNoGo(ctx, mode, surface, w.Ref, reason, read); cerr != nil {
+			return false, fmt.Errorf("post NO-GO comment on %s: %w", w.Ref, cerr)
+		}
+		return false, nil
+	}
+
+	fmt.Fprintf(os.Stderr, "%s: pre-flight WRONG-REPO for %s -> %s; blind-firing an issue there, launching nothing.\n", label, w.Ref, target.slug())
+	cl, err := r.hostForgejoClient(ctx)
+	if err != nil {
+		return false, err
+	}
+	number, err := cl.createIssue(ctx, target.Owner, target.Name,
+		w.Title, blindfireIssueBody(mode, surface, w, outcome.Reason))
+	if err != nil {
+		return false, fmt.Errorf("blind-fire issue into %s: %w", target.slug(), err)
+	}
+	filed := agentIssueRef{Owner: target.Owner, Repo: target.Name, Number: number}
+	fmt.Fprintf(os.Stderr, "%s: blind-fired %s - %s\n", label, filed, filed.url())
+	// Point the original issue at the freshly-filed one so the trail is visible.
+	if cerr := cl.commentIssue(ctx, w.Ref.Owner, w.Ref.Repo, w.Ref.Number,
+		preflightWrongRepoComment(mode, surface, filed, outcome.Reason, read)); cerr != nil {
+		return false, fmt.Errorf("comment WRONG-REPO routing on %s: %w", w.Ref, cerr)
+	}
+	fmt.Fprintf(os.Stderr, "%s: noted the routing on %s - %s\n", label, w.Ref, w.Ref.url())
+	return false, nil
 }
 
 // hostHasBinary reports whether bin resolves on the host PATH.
@@ -314,12 +388,16 @@ func hostHasBinary(bin string) bool {
 type preflightVerdict int
 
 const (
-	verdictUnknown preflightVerdict = iota // no clear verdict line - treated as proceed
-	verdictGo                              // an explicit GO
-	verdictNoGo                            // an explicit NO-GO (carries a reason)
+	verdictUnknown   preflightVerdict = iota // no clear verdict line - treated as proceed
+	verdictGo                                // an explicit GO
+	verdictNoGo                              // an explicit NO-GO (carries a reason)
+	verdictWrongRepo                         // an explicit WRONG-REPO (carries a target repo + reason)
 )
 
 var (
+	// preflightWrongRepoRE matches a WRONG-REPO line (hyphen, space, or run-together),
+	// capturing the owner/repo target then the reason; checked before the NO-GO form.
+	preflightWrongRepoRE = regexp.MustCompile(`(?i)^wrong[-\s]?repo\b[\s:.\-–—]*([A-Za-z0-9._-]+/[A-Za-z0-9._-]+)\b[\s:.\-–—]*(.*)$`)
 	// preflightNoGoRE matches a verdict line opening with NO-GO (hyphen, space, or
 	// run-together) and captures the trailing reason. Checked before the GO form.
 	preflightNoGoRE = regexp.MustCompile(`(?i)^no[-\s]?go\b[\s:.\-–—]*(.*)$`)
@@ -328,24 +406,36 @@ var (
 	preflightGoRE = regexp.MustCompile(`(?i)^go\b[\s.!]*$`)
 )
 
-// parsePreflightVerdict reads the agent's final GO / NO-GO line, tolerating
-// decoration; the last verdict line wins. NO-GO carries its reason. See docs.
-func parsePreflightVerdict(read string) (preflightVerdict, string) {
-	verdict, reason := verdictUnknown, ""
+// preflightOutcome is ward's parsed read of the verdict line: the verdict, an
+// optional reason, and a WRONG-REPO target as owner/repo (empty otherwise).
+type preflightOutcome struct {
+	Verdict preflightVerdict
+	Reason  string
+	Repo    string
+}
+
+// parsePreflightVerdict reads the agent's final GO / NO-GO / WRONG-REPO line,
+// tolerating decoration; the last verdict line wins. See docs/agent.md.
+func parsePreflightVerdict(read string) preflightOutcome {
+	out := preflightOutcome{Verdict: verdictUnknown}
 	for _, raw := range strings.Split(read, "\n") {
 		s := strings.TrimSpace(strings.Trim(strings.TrimSpace(raw), "*_`>#-•·"))
 		if s == "" {
 			continue
 		}
+		if m := preflightWrongRepoRE.FindStringSubmatch(s); m != nil {
+			out = preflightOutcome{Verdict: verdictWrongRepo, Repo: m[1], Reason: strings.TrimSpace(m[2])}
+			continue
+		}
 		if m := preflightNoGoRE.FindStringSubmatch(s); m != nil {
-			verdict, reason = verdictNoGo, strings.TrimSpace(m[1])
+			out = preflightOutcome{Verdict: verdictNoGo, Reason: strings.TrimSpace(m[1])}
 			continue
 		}
 		if preflightGoRE.MatchString(s) {
-			verdict, reason = verdictGo, ""
+			out = preflightOutcome{Verdict: verdictGo}
 		}
 	}
-	return verdict, reason
+	return out
 }
 
 // postPreflightNoGo comments the NO-GO verdict back on the issue (host Forgejo
@@ -380,6 +470,51 @@ func preflightNoGoComment(mode containerMode, surface, reason, read string) stri
 		fmt.Fprintf(&b, "\n<details><summary>full pre-flight read</summary>\n\n%s\n\n</details>\n", read)
 	}
 	fmt.Fprintf(&b, "\n---\nPosted automatically by `ward agent %s %s` pre-flight (ward#147, ward#149).", mode, surface)
+	return b.String()
+}
+
+// blindfireIssueBody renders the WRONG-REPO blind-fire body (ward#159): source
+// text verbatim + reason + provenance, reusing the read so it costs no cycles.
+func blindfireIssueBody(mode containerMode, surface string, w resolvedWork, reason string) string {
+	reason = strings.TrimSpace(reason)
+	if reason == "" {
+		reason = "(no reason given)"
+	}
+	body := strings.TrimSpace(w.Body)
+	if body == "" {
+		body = "(the source issue had no description)"
+	}
+	var b strings.Builder
+	fmt.Fprintf(&b, "Routed here from %s by `ward agent %s %s` pre-flight (ward#159): the feasibility "+
+		"read judged this work belongs in this repo, not %s/%s.\n\n", w.Ref, mode, surface, w.Ref.Owner, w.Ref.Repo)
+	fmt.Fprintf(&b, "> %s\n\n", reason)
+	fmt.Fprintf(&b, "This was filed blind from the source issue's text - nobody searched this repo first, "+
+		"so confirm it fits before working it.\n\n")
+	fmt.Fprintf(&b, "---\n### Source issue (%s)\n\n%s\n", w.Ref, body)
+	fmt.Fprintf(&b, "\n---\nFiled automatically by `ward agent %s %s` pre-flight (ward#159).", mode, surface)
+	return b.String()
+}
+
+// preflightWrongRepoComment renders the note left on the original issue after a
+// blind-fire: where the work was routed, why, and the read. Mirrors the NO-GO form.
+func preflightWrongRepoComment(mode containerMode, surface string, filed agentIssueRef, reason, read string) string {
+	reason = strings.TrimSpace(reason)
+	if reason == "" {
+		reason = "(no reason given)"
+	}
+	var b strings.Builder
+	fmt.Fprintf(&b, "### 🎯 ward pre-flight: WRONG-REPO\n\n")
+	fmt.Fprintf(&b, "`ward agent %s %s` ran a pre-flight read on this issue and judged the work "+
+		"belongs in **%s**, not here. Rather than burn cycles searching, it blind-fired a fresh "+
+		"issue there:\n\n", mode, surface, filed.repoSlug())
+	fmt.Fprintf(&b, "- %s - %s\n\n", filed, filed.url())
+	fmt.Fprintf(&b, "> %s\n\n", reason)
+	fmt.Fprintf(&b, "No container was launched here. If the routing is wrong, close %s and re-dispatch "+
+		"this issue with `ward agent %s headless <ref> --no-preflight` to skip the gate.\n", filed, mode)
+	if read = strings.TrimSpace(read); read != "" {
+		fmt.Fprintf(&b, "\n<details><summary>full pre-flight read</summary>\n\n%s\n\n</details>\n", read)
+	}
+	fmt.Fprintf(&b, "\n---\nPosted automatically by `ward agent %s %s` pre-flight (ward#159).", mode, surface)
 	return b.String()
 }
 

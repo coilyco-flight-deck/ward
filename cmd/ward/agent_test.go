@@ -133,6 +133,8 @@ func TestPreflightPrompt(t *testing.T) {
 		"PRE-FLIGHT",                   // names the check
 		"GO",                           // asks for the verdict
 		"NO-GO",
+		"WRONG-REPO",               // the ward#159 routing verdict
+		"coilyco-flight-deck/ward", // names this repo so the agent can contrast
 	} {
 		if !strings.Contains(got, want) {
 			t.Errorf("preflight prompt missing %q\n got: %s", want, got)
@@ -151,29 +153,41 @@ func TestParsePreflightVerdict(t *testing.T) {
 		read       string
 		want       preflightVerdict
 		wantReason string
+		wantRepo   string
 	}{
-		{"bare go", "Looks doable.\nGO", verdictGo, ""},
-		{"go with punctuation", "Risk is low.\nGO.", verdictGo, ""},
-		{"nogo with reason", "Scope is unclear.\nNO-GO: needs human scoping", verdictNoGo, "needs human scoping"},
-		{"nogo no hyphen", "NO GO: the API isn't decided", verdictNoGo, "the API isn't decided"},
-		{"nogo run together", "NOGO: ambiguous", verdictNoGo, "ambiguous"},
-		{"nogo bare", "NO-GO", verdictNoGo, ""},
-		{"markdown bold nogo", "**NO-GO: blocked on a decision**", verdictNoGo, "blocked on a decision"},
-		{"bulleted go", "- GO", verdictGo, ""},
-		{"quoted go", "> GO", verdictGo, ""},
-		{"last line wins", "NO-GO: early doubt\nOn reflection it's fine.\nGO", verdictGo, ""},
-		{"inline go is not a verdict", "I think we should go ahead and try.", verdictUnknown, ""},
-		{"empty", "", verdictUnknown, ""},
-		{"prose only", "This needs more thought before anyone takes it on.", verdictUnknown, ""},
+		{"bare go", "Looks doable.\nGO", verdictGo, "", ""},
+		{"go with punctuation", "Risk is low.\nGO.", verdictGo, "", ""},
+		{"nogo with reason", "Scope is unclear.\nNO-GO: needs human scoping", verdictNoGo, "needs human scoping", ""},
+		{"nogo no hyphen", "NO GO: the API isn't decided", verdictNoGo, "the API isn't decided", ""},
+		{"nogo run together", "NOGO: ambiguous", verdictNoGo, "ambiguous", ""},
+		{"nogo bare", "NO-GO", verdictNoGo, "", ""},
+		{"markdown bold nogo", "**NO-GO: blocked on a decision**", verdictNoGo, "blocked on a decision", ""},
+		{"bulleted go", "- GO", verdictGo, "", ""},
+		{"quoted go", "> GO", verdictGo, "", ""},
+		{"last line wins", "NO-GO: early doubt\nOn reflection it's fine.\nGO", verdictGo, "", ""},
+		{"inline go is not a verdict", "I think we should go ahead and try.", verdictUnknown, "", ""},
+		{"empty", "", verdictUnknown, "", ""},
+		{"prose only", "This needs more thought before anyone takes it on.", verdictUnknown, "", ""},
+		// WRONG-REPO (ward#159): captures the target repo + the trailing reason.
+		{"wrong-repo with reason", "This is an ops verb.\nWRONG-REPO: coilyco-bridge/coily - belongs with ops", verdictWrongRepo, "belongs with ops", "coilyco-bridge/coily"},
+		{"wrong-repo no hyphen", "WRONG REPO coilyco-flight-deck/cli-guard: engine change", verdictWrongRepo, "engine change", "coilyco-flight-deck/cli-guard"},
+		{"wrong-repo run together", "WRONGREPO coilyco-bridge/coily", verdictWrongRepo, "", "coilyco-bridge/coily"},
+		{"wrong-repo bare repo only", "WRONG-REPO: coilyco-bridge/coily", verdictWrongRepo, "", "coilyco-bridge/coily"},
+		{"wrong-repo markdown bold", "**WRONG-REPO: coilyco-bridge/coily - move it**", verdictWrongRepo, "move it", "coilyco-bridge/coily"},
+		{"wrong-repo without a repo is not a verdict", "WRONG-REPO: it goes elsewhere", verdictUnknown, "", ""},
+		{"wrong-repo beats nogo on the same line concept", "NO-GO: hmm\nWRONG-REPO: coilyco-bridge/coily - clearer", verdictWrongRepo, "clearer", "coilyco-bridge/coily"},
 	}
 	for _, c := range cases {
 		t.Run(c.name, func(t *testing.T) {
-			got, reason := parsePreflightVerdict(c.read)
-			if got != c.want {
-				t.Errorf("parsePreflightVerdict(%q) verdict = %v, want %v", c.read, got, c.want)
+			got := parsePreflightVerdict(c.read)
+			if got.Verdict != c.want {
+				t.Errorf("parsePreflightVerdict(%q) verdict = %v, want %v", c.read, got.Verdict, c.want)
 			}
-			if reason != c.wantReason {
-				t.Errorf("parsePreflightVerdict(%q) reason = %q, want %q", c.read, reason, c.wantReason)
+			if got.Reason != c.wantReason {
+				t.Errorf("parsePreflightVerdict(%q) reason = %q, want %q", c.read, got.Reason, c.wantReason)
+			}
+			if got.Repo != c.wantRepo {
+				t.Errorf("parsePreflightVerdict(%q) repo = %q, want %q", c.read, got.Repo, c.wantRepo)
 			}
 		})
 	}
@@ -205,6 +219,86 @@ func TestPreflightNoGoComment(t *testing.T) {
 	}
 	// An empty reason degrades to a placeholder, never a dangling blockquote.
 	empty := preflightNoGoComment(modeClaude, "headless", "  ", "")
+	if !strings.Contains(empty, "(no reason given)") {
+		t.Errorf("empty reason should render a placeholder; got: %s", empty)
+	}
+	if strings.Contains(empty, "<details>") {
+		t.Errorf("an empty read should omit the details block; got: %s", empty)
+	}
+}
+
+func TestWrongRepoTarget(t *testing.T) {
+	cases := []struct {
+		in        string
+		wantOwner string
+		wantName  string
+		wantOK    bool
+	}{
+		{"coilyco-bridge/coily", "coilyco-bridge", "coily", true},
+		{"  coilyco-flight-deck/cli-guard  ", "coilyco-flight-deck", "cli-guard", true},
+		{"", "", "", false},
+		{"noslash", "", "", false},
+		{"owner/", "", "", false},
+		{"/repo", "", "", false},
+	}
+	for _, c := range cases {
+		got, ok := wrongRepoTarget(c.in)
+		if ok != c.wantOK {
+			t.Errorf("wrongRepoTarget(%q) ok = %v, want %v", c.in, ok, c.wantOK)
+			continue
+		}
+		if ok && (got.Owner != c.wantOwner || got.Name != c.wantName) {
+			t.Errorf("wrongRepoTarget(%q) = %s, want %s/%s", c.in, got.slug(), c.wantOwner, c.wantName)
+		}
+	}
+}
+
+func TestBlindfireIssueBody(t *testing.T) {
+	w := resolvedWork{
+		Ref:  agentIssueRef{Owner: "coilyco-flight-deck", Repo: "ward", Number: 159},
+		Body: "Make ward route ops verbs to coily.",
+	}
+	got := blindfireIssueBody(modeClaude, "headless", w, "this is an ops verb")
+	for _, want := range []string{
+		"coilyco-flight-deck/ward#159",        // names the source issue
+		"this is an ops verb",                 // the routing reason
+		"Make ward route ops verbs to coily.", // the source body, verbatim
+		"ward#159",                            // provenance to this feature
+		"filed blind",                         // flags that nobody searched
+	} {
+		if !strings.Contains(got, want) {
+			t.Errorf("blindfireIssueBody missing %q\n got: %s", want, got)
+		}
+	}
+	// An empty reason and empty body degrade to placeholders, never dangle.
+	empty := blindfireIssueBody(modeClaude, "task", resolvedWork{Ref: w.Ref}, "  ")
+	if !strings.Contains(empty, "(no reason given)") {
+		t.Errorf("empty reason should render a placeholder; got: %s", empty)
+	}
+	if !strings.Contains(empty, "(the source issue had no description)") {
+		t.Errorf("empty body should render a placeholder; got: %s", empty)
+	}
+}
+
+func TestPreflightWrongRepoComment(t *testing.T) {
+	filed := agentIssueRef{Owner: "coilyco-bridge", Repo: "coily", Number: 42}
+	got := preflightWrongRepoComment(modeClaude, "headless", filed, "ops verb", "It's ops.\nWRONG-REPO: coilyco-bridge/coily - ops verb")
+	for _, want := range []string{
+		"WRONG-REPO",           // names the verdict
+		"coilyco-bridge/coily", // the target repo slug
+		filed.url(),            // links the freshly-filed issue
+		"ops verb",             // the reason
+		"No container was launched here",
+		"--no-preflight", // how to override if the routing is wrong
+		"<details>",      // folds the read away
+		"It's ops.",      // the read verbatim
+	} {
+		if !strings.Contains(got, want) {
+			t.Errorf("preflightWrongRepoComment missing %q\n got: %s", want, got)
+		}
+	}
+	// An empty read omits the details block; an empty reason degrades gracefully.
+	empty := preflightWrongRepoComment(modeClaude, "task", filed, "  ", "")
 	if !strings.Contains(empty, "(no reason given)") {
 		t.Errorf("empty reason should render a placeholder; got: %s", empty)
 	}

@@ -76,6 +76,33 @@ no prompt to answer:
 3. On **NO-GO** ward launches nothing and instead **posts a comment on the issue**
    with the reason, the full read (folded away), and how to re-dispatch. The work
    lands back in front of a human rather than failing silently.
+4. On **WRONG-REPO** (ward#159) - the agent judged, from the issue text alone,
+   that the work plainly belongs in a *different* repo - ward **blind-fires** a
+   fresh issue into that repo and launches nothing here. See below.
+
+### WRONG-REPO blind-fire (ward#159)
+
+Sometimes the pre-flight read makes it obvious the issue was filed in the wrong
+place - an ops verb that belongs on `coily`, an engine change that belongs on
+`cli-guard`. The agent can end its read with `WRONG-REPO: owner/repo - <what to
+file there>` instead of GO/NO-GO. The point is to **not burn cycles searching**:
+the verdict comes from the issue text alone (the prompt tells the agent not to go
+digging), and ward acts on it cheaply:
+
+- It **blind-fires** a new issue into the named repo, reusing the source issue's
+  text verbatim plus the routing reason and a provenance footer - no search, no
+  second agent run. The new issue is flagged "filed blind ... confirm it fits
+  before working it," since nobody looked at the target repo first.
+- It **comments on the original issue** pointing at the freshly-filed one, with
+  the full read folded away, and notes how to override (`--no-preflight`) if the
+  routing is wrong.
+- Nothing launches on either side. A human (or a later `ward agent` run) picks up
+  the routed issue.
+
+Guardrails: the target repo must be in ward's primary-org trust set (the same
+gate `work` applies to its own owner), and it can't be the issue's own repo. If
+the agent names an untrusted repo, no usable `owner/repo`, or the same repo, the
+verdict degrades to a **NO-GO bounce** so a human routes it instead.
 
 The check is skipped when there is no terminal (scripted / piped dispatch), on
 `--print` (a dry run), and with `--no-preflight` (the escape hatch for a run
