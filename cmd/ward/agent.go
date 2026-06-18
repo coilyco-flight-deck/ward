@@ -271,9 +271,10 @@ func preflightPrompt(ref agentIssueRef, title, body string) string {
 func (r *Runner) runPreflight(ctx context.Context, mode containerMode, surface string, w resolvedWork) (bool, error) {
 	label := fmt.Sprintf("ward agent %s %s", mode, surface)
 	bin := mode.agentBinary()
-	// Without a usable host self-assessment (only claude has one today) we can't
-	// fairly bounce the issue back, so the dispatch proceeds.
-	if mode != modeClaude || !hostHasBinary(bin) {
+	argv, ok := mode.hostPreflightArgv(preflightPrompt(w.Ref, w.Title, w.Body))
+	// No host self-assessment (claude+goose have one, codex/qwen don't) or no
+	// binary on PATH: can't fairly bounce the issue, so the dispatch proceeds.
+	if !ok || !hostHasBinary(bin) {
 		fmt.Fprintf(os.Stderr, "%s: %s self-assessment unavailable on this host; proceeding with the detached run.\n", label, bin)
 		return true, nil
 	}
@@ -282,14 +283,14 @@ func (r *Runner) runPreflight(ctx context.Context, mode containerMode, surface s
 	pctx, cancel := context.WithTimeout(ctx, preflightTimeout)
 	defer cancel()
 	// Capture (not Exec) so ward can read the verdict; the read is echoed below.
-	out, err := r.Runner.Capture(pctx, bin, "-p", preflightPrompt(w.Ref, w.Title, w.Body))
+	out, err := r.Runner.Capture(pctx, argv[0], argv[1:]...)
 	read := strings.TrimSpace(string(out))
 	if read != "" {
 		fmt.Fprintf(os.Stderr, "%s\n\n", read)
 	}
 	if err != nil {
 		// A read that didn't complete is not the agent saying no: fail open so a
-		// flaky host claude never strands an otherwise-workable issue.
+		// flaky host agent never strands an otherwise-workable issue.
 		fmt.Fprintf(os.Stderr, "%s: pre-flight read did not complete (%v); proceeding with the detached run.\n", label, err)
 		return true, nil
 	}
