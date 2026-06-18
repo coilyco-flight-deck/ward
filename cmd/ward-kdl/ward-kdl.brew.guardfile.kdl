@@ -15,10 +15,19 @@
 // forwards verbatim). The scoped mutating verbs - formula-scoped install/
 // uninstall/upgrade/reinstall/link/unlink/pin/unpin, tap-scoped tap/untap, and
 // the touch-everything cleanup/autoremove - carry the primary-org tap scope and
-// the `--allow-untapped` opt-in, so they land separately in ward#95 (pkg brew
-// -> ward-kdl) with their gating intact. They are listed as `never run` here to
+// the `--allow-untapped` opt-out.
+//
+// ward#95 decided that scope policy does NOT fit the exec dialect and is not
+// reachable as a complex action from ward at cli-guard v0.43.0: the `when` /
+// `deny-when` guards are existential (∃ one match) where the rule is universal
+// (∀ formula in-scope), have no conditional escape hatch for `--allow-untapped`,
+// can't strip that ward-side flag before forwarding to brew, can't deny a bare
+// zero-positional `upgrade`, and the gate registry is closed (only `aws-read`,
+// no `Config.Gates` seam). So the scoped half stays as hand-written gated Go
+// (cmd/ward/pkg_brew.go) - mirroring ward#92's forgejo_issue.go outcome - until
+// cli-guard grows a custom-gate seam. They are listed as `never run` here to
 // mark the boundary; an unlisted verb is denied either way.
-// See ../../docs/ward-kdl.brew.guardfile.md.
+// Full rationale: ../../docs/ward-kdl.brew.scoped.md.
 wrap ward-kdl pkg brew {
     exec brew
     // reads - inspection verbs, nothing mutated
@@ -63,8 +72,8 @@ wrap ward-kdl pkg brew {
     can run bundle {
         describe "install from a Brewfile; pass --file to point at one"
     }
-    // scoped mutating verbs - primary-org tap scope + --allow-untapped, landing
-    // in ward#95 (pkg brew -> ward-kdl) with their gating; denied until then
+    // scoped mutating verbs - primary-org tap scope + --allow-untapped, kept as
+    // gated Go in cmd/ward/pkg_brew.go (ward#95 decision); denied here
     never run install
     never run uninstall
     never run upgrade
