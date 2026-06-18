@@ -4,11 +4,13 @@ import (
 	"context"
 	"crypto/rand"
 	"embed"
+	"encoding/base64"
 	"encoding/hex"
 	"fmt"
 	"io"
 	"os"
 	"path/filepath"
+	"runtime"
 	"strings"
 	"time"
 
@@ -119,13 +121,22 @@ func (r *Runner) runContainerUp(ctx context.Context, c *cli.Command) error {
 			fmt.Fprintf(os.Stderr, "ward container: image pull failed (%v); trying the local image\n", perr)
 		}
 	}
-	envFile, cleanupEnv, err := r.writeTokenEnvFile(ctx)
+	envFile, cleanupEnv, err := r.writeTokenEnvFile(ctx, r.claudeCredsForMode(ctx, mode))
 	if err != nil {
 		return err
 	}
 	defer cleanupEnv()
 
 	return r.Runner.Exec(ctx, "docker", dockerCreateArgv(plan, envFile)...)
+}
+
+// claudeCredsForMode resolves the claude credential only for claude mode (codex/
+// qwen need none); returns "" otherwise so the env-file omits it.
+func (r *Runner) claudeCredsForMode(ctx context.Context, mode containerMode) string {
+	if mode != modeClaude {
+		return ""
+	}
+	return r.resolveClaudeCreds(ctx)
 }
 
 // buildUpPlan assembles the pure plan from parsed flags and resolved inputs.
@@ -183,9 +194,34 @@ func (r *Runner) resolveTarget(ctx context.Context, arg string) (targetRepo, str
 	return repo, cwd, err
 }
 
-// writeTokenEnvFile resolves the forgejo token on the host into a private
-// (0600) --env-file, so it never enters argv/audit; the caller removes it.
-func (r *Runner) writeTokenEnvFile(ctx context.Context) (path string, cleanup func(), err error) {
+// claudeKeychainService is the macOS login-keychain service holding the Max/Pro
+// OAuth credential Claude Code reads; resolved on the host, never in the image.
+const claudeKeychainService = "Claude Code-credentials"
+
+// resolveClaudeCreds returns the claude OAuth blob (Max login) for the container's
+// ~/.claude/.credentials.json: macOS keychain, else the file. See docs/agent.md.
+func (r *Runner) resolveClaudeCreds(ctx context.Context) string {
+	if runtime.GOOS == "darwin" {
+		out, err := r.Runner.Capture(ctx, "security", "find-generic-password",
+			"-s", claudeKeychainService, "-w")
+		if err != nil {
+			fmt.Fprintf(os.Stderr, "ward container: could not read claude credentials from keychain (%v); claude will be unauthenticated\n", err)
+			return ""
+		}
+		return strings.TrimSpace(string(out))
+	}
+	path := filepath.Join(homeDir(), ".claude", ".credentials.json")
+	data, err := os.ReadFile(path) // #nosec G304 -- fixed per-user claude creds path
+	if err != nil {
+		fmt.Fprintf(os.Stderr, "ward container: could not read %s (%v); claude will be unauthenticated\n", path, err)
+		return ""
+	}
+	return strings.TrimSpace(string(data))
+}
+
+// writeTokenEnvFile resolves the forgejo token (+ optional base64'd claude creds)
+// into a private 0600 --env-file, so neither enters argv/audit. Caller removes it.
+func (r *Runner) writeTokenEnvFile(ctx context.Context, claudeCreds string) (path string, cleanup func(), err error) {
 	out, err := r.Runner.Capture(ctx, "aws", "ssm", "get-parameter",
 		"--name", forgejoTokenSSMPath, "--with-decryption",
 		"--query", "Parameter.Value", "--output", "text")
@@ -208,6 +244,16 @@ func (r *Runner) writeTokenEnvFile(ctx context.Context) (path string, cleanup fu
 		_ = f.Close()
 		cleanup()
 		return "", func() {}, fmt.Errorf("ward container: write env-file: %w", werr)
+	}
+	// Claude credentials ride base64'd on one line (the raw JSON may span lines,
+	// which a docker --env-file cannot represent); the entrypoint decodes it.
+	if claudeCreds != "" {
+		enc := base64.StdEncoding.EncodeToString([]byte(claudeCreds))
+		if _, werr := fmt.Fprintf(f, "WARD_CLAUDE_CREDS_B64=%s\n", enc); werr != nil {
+			_ = f.Close()
+			cleanup()
+			return "", func() {}, fmt.Errorf("ward container: write claude creds to env-file: %w", werr)
+		}
 	}
 	if cerr := f.Close(); cerr != nil {
 		cleanup()

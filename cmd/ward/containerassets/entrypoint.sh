@@ -20,6 +20,12 @@ WARD_CONTEXT_SRC="${WARD_CONTEXT_SRC:-/opt/ward-context}"
 GIT_USER_NAME="${WARD_GIT_NAME:-ward-container}"
 GIT_USER_EMAIL="${WARD_GIT_EMAIL:-coilysiren@gmail.com}"
 
+# The agent process drops to this non-root user: claude refuses
+# --dangerously-skip-permissions as root (ward#127). Setup stays root.
+AGENT_UID="${WARD_AGENT_UID:-1000}"
+AGENT_GID="${WARD_AGENT_GID:-1000}"
+AGENT_HOME="${WARD_AGENT_HOME:-/home/ubuntu}"
+
 # The container is the isolation boundary; its restricted namespace denies ward's
 # jail (cli-guard#153), breaking the reaper. Opt out. See cli-guard docs/sandbox.md.
 export CLIGUARD_NO_SANDBOX=1
@@ -27,14 +33,21 @@ export CLIGUARD_NO_SANDBOX=1
 forgejo_host="$(printf '%s' "$WARD_FORGEJO_BASE" | sed -E 's#^https?://##; s#/.*$##')"
 
 # --- forgejo git auth (token rides --env-file, never argv) -------------------
+# Written --system so the root reaper and the dropped non-root agent both read it.
 configure_git_auth() {
-  git config --global user.name "$GIT_USER_NAME"
-  git config --global user.email "$GIT_USER_EMAIL"
-  git config --global init.defaultBranch main
+  git config --system user.name "$GIT_USER_NAME"
+  git config --system user.email "$GIT_USER_EMAIL"
+  git config --system init.defaultBranch main
+  # The clone is chowned to the agent user, so root (reaper) and the agent both
+  # operate a tree they may not own; bless it to avoid git's dubious-ownership halt.
+  git config --system --add safe.directory '*'
   if [ -n "${FORGEJO_TOKEN:-}" ]; then
-    git config --global credential.helper store
-    printf 'https://%s:%s@%s\n' coilysiren "$FORGEJO_TOKEN" "$forgejo_host" > "$HOME/.git-credentials"
-    chmod 600 "$HOME/.git-credentials"
+    git config --system credential.helper 'store --file=/etc/ward-git-credentials'
+    printf 'https://%s:%s@%s\n' coilysiren "$FORGEJO_TOKEN" "$forgejo_host" > /etc/ward-git-credentials
+    # Readable by root (reaper) and the dropped agent group, not world. Without
+    # this the non-root agent can't use the helper and must fall back to the env.
+    chown "root:$AGENT_GID" /etc/ward-git-credentials
+    chmod 640 /etc/ward-git-credentials
   else
     log "no FORGEJO_TOKEN: clone/push will only work for anonymous repos"
   fi
@@ -169,7 +182,7 @@ warm_substrate() {
 # --- compose per-mode operating context (the least-context ladder) -----------
 # Levels: 2=doctrine+host context, 1=doctrine+host AGENTS.md, 0=doctrine only.
 compose_context() {
-  local out="$HOME/.claude/CLAUDE.md"
+  local out="$AGENT_HOME/.claude/CLAUDE.md"
   mkdir -p "$(dirname "$out")"
   cat /opt/ward/AGENTS.container.md > "$out"
   if [ "$WARD_CONTEXT_LEVEL" -ge 2 ] && [ -d "$WARD_CONTEXT_SRC" ]; then
@@ -185,10 +198,21 @@ compose_context() {
 # --- container permission policy (the container is the permission manager) ----
 # bypassPermissions + a minimal force-push/history-rewrite deny (docs/container.md).
 compose_permissions() {
-  local out="$HOME/.claude/settings.json"
+  local out="$AGENT_HOME/.claude/settings.json"
   mkdir -p "$(dirname "$out")"
   cp /opt/ward/settings.container.json "$out"
   log "wrote container permission policy to $out"
+}
+
+# --- claude credentials (Max OAuth; host-resolved, ride --env-file) ----------
+# Host passes the credential base64'd; we decode it to the file claude reads.
+write_claude_creds() {
+  [ -n "${WARD_CLAUDE_CREDS_B64:-}" ] || { log "no claude credentials injected; claude will be unauthenticated"; return 0; }
+  local dir="$AGENT_HOME/.claude"
+  mkdir -p "$dir"
+  printf '%s' "$WARD_CLAUDE_CREDS_B64" | base64 -d > "$dir/.credentials.json"
+  chmod 600 "$dir/.credentials.json"
+  log "wrote claude credentials to $dir/.credentials.json"
 }
 
 # --- reaper: deterministic teardown backstop (docs/container-reap.md) --------
@@ -209,6 +233,7 @@ main() {
   warm_substrate
   compose_context
   compose_permissions
+  write_claude_creds
   cd "$work"
   export WARD_REAP_WORK="$work"
   # Arm the reaper before launching the agent; the agent is NOT exec'd, else exec
@@ -227,7 +252,14 @@ main() {
     agent_argv+=(-p)
     log "headless: running $WARD_AGENT in print mode (-p)"
   fi
-  "${agent_argv[@]}" "$@" || log "agent exited non-zero ($?); reaping anyway"
+  # Drop to the non-root agent user (claude refuses bypass-perms as root, ward#127);
+  # setup ran as root. Keep ANTHROPIC_API_KEY from shadowing the OAuth creds.
+  chown -R "$AGENT_UID:$AGENT_GID" "$work" "$AGENT_HOME/.claude" 2>/dev/null || true
+  unset ANTHROPIC_API_KEY ANTHROPIC_AUTH_TOKEN 2>/dev/null || true
+  log "launching $WARD_AGENT as uid $AGENT_UID"
+  setpriv --reuid="$AGENT_UID" --regid="$AGENT_GID" --init-groups \
+    env HOME="$AGENT_HOME" "${agent_argv[@]}" "$@" \
+    || log "agent exited non-zero ($?); reaping anyway"
 }
 
 main "$@"

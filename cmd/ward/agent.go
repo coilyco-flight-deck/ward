@@ -229,7 +229,7 @@ func (r *Runner) runAgentWork(ctx context.Context, c *cli.Command, mode containe
 			fmt.Fprintf(os.Stderr, "%s: image pull failed (%v); trying the local image\n", label, perr)
 		}
 	}
-	envFile, cleanupEnv, err := r.writeTokenEnvFile(ctx)
+	envFile, cleanupEnv, err := r.writeTokenEnvFile(ctx, r.claudeCredsForMode(ctx, mode))
 	if err != nil {
 		return err
 	}

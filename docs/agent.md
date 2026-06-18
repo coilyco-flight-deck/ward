@@ -44,12 +44,20 @@ issue-seeding on top.
   print mode (`claude -p`), so it works to completion non-interactively and exits
   into the reaper. Read progress with `docker logs <name>` / `ward container exec`.
 
-The reaper backstop salvages residual uncommitted work if the agent crashes or
-times out. (It needs ward's namespace jail to be off inside the container - the
-entrypoint exports `CLIGUARD_NO_SANDBOX=1` for exactly this, see cli-guard#153.)
-The happy path doesn't rely on it: the agent commits/merges/pushes itself via
-bare git per its doctrine, so a headless run should finish to a clean `main`
-push rather than leave work loose "for review".
+The reaper backstop salvages residual work if the agent crashes (it needs ward's
+jail off in-container - the entrypoint exports `CLIGUARD_NO_SANDBOX=1`, cli-guard#153).
+The happy path doesn't rely on it: the agent commits/merges/pushes itself per its
+doctrine, finishing to a clean `main` push rather than leaving work "for review".
+
+## Credentials and user
+
+claude runs **non-root** (uid 1000): it refuses `--dangerously-skip-permissions`
+as root with no env escape, so the entrypoint sets up as root then drops via
+`setpriv`. It authenticates with your **Max/subscription login**, not an API key -
+ward resolves the OAuth credential on the host (macOS keychain
+`Claude Code-credentials`, else `~/.claude/.credentials.json`) and injects it into
+the container's `~/.claude/.credentials.json` via the private `--env-file`, never
+in argv/audit. `ANTHROPIC_API_KEY` stays unset so it can't shadow OAuth.
 
 ## Flags
 
