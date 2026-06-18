@@ -26,9 +26,9 @@ Each leaf carries `--dry-run`, `--query`, and `--output`. Hardened per
 `repo fork`/`archive`/`unarchive`, `org create`/`delete`, `issue delete`, and
 the `pr` leaves are **denied** (each teaches why on invocation); label CRUD
 targets org-labels; a cross-repo `issue search` and a `move-issue` action
-(view -> create -> back-link -> close, never delete) land; and
-`restrict owner matches "coily*"` scopes every {owner} leaf. The two complex
-actions are `ci-watch` (poll) and `move-issue` (call sequence).
+(copy, back-link, close; never delete) land; and `restrict owner matches
+"coily*"` scopes every {owner} leaf. The complex actions are `ci-watch` (poll),
+`move-issue` (call sequence), and `issue view` (a shadow returning issue + comments).
 
 ## No hand-written Go
 

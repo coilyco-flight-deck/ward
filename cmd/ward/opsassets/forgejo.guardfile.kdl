@@ -105,6 +105,12 @@ wrap ward-kdl ops forgejo {
     never delete issue {
         message "issue deletion is irreversible; close it instead (move-issue does this)"
     }
+    // issue comments (read): the comments sub-collection GET, pinned by op (the
+    // convention resolves `list issue-comment` against issueGetComments poorly).
+    // The `view issue` shadow action below chains this so a view returns the thread.
+    can list issue-comment {
+        op issueGetComments
+    }
     // releases, with the multipart asset upload beside them (upload-asset resolves
     // as create-on the assets sub-collection).
     can get release
@@ -201,6 +207,44 @@ wrap ward-kdl ops forgejo {
                 owner-repo $source
                 index $index
             }
+        }
+    }
+    // view issue: shadow the generated `issue view` leaf so a view returns the
+    // issue AND its full comment thread - the failure mode where an agent reads
+    // the body and misses the comments (ward#170 pre-flight thread). Same 3-arg
+    // signature as the leaf it replaces; combines both calls into {issue,comments}.
+    action view issue {
+        describe "View an issue with its full comment thread (issue + comments)."
+        input owner {
+            positional
+            required
+            help "repo owner"
+        }
+        input repo {
+            positional
+            required
+            help "repo name"
+        }
+        input index {
+            positional
+            required
+            help "issue number"
+        }
+        call view issue {
+            args {
+                owner $owner
+                repo $repo
+                index $index
+            }
+            as issue
+        }
+        call list issue-comment {
+            args {
+                owner $owner
+                repo $repo
+                index $index
+            }
+            as comments
         }
     }
 }

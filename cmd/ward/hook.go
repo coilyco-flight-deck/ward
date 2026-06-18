@@ -91,7 +91,7 @@ func runPreToolUse(in io.Reader, errOut io.Writer, getenv func(string) string, l
 	guard := detectGuard(cwd)
 	payload := hook.Payload{ToolName: hi.ToolName, ToolInput: hi.ToolInput, CWD: cwd}
 	protected := loadProtectedForCwd(cwd)
-	d := hook.PreToolUse(payload, "ward", guardIntegrityRules(), routesFor(guard), hook.LookPath(lookup), protected...)
+	d := hook.PreToolUse(payload, "ward", guardIntegrityRules(), routesFor(guard), hook.LookPath(lookup), protected)
 	if d.Block {
 		_, _ = fmt.Fprintln(errOut, d.Message)
 		return cli.Exit("", 2)

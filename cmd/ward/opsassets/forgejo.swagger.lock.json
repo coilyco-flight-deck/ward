@@ -5,6 +5,309 @@
     "text/plain"
   ],
   "definitions": {
+    "APIError": {
+      "description": "APIError is an api error with a message",
+      "properties": {
+        "message": {
+          "type": "string",
+          "x-go-name": "Message"
+        },
+        "url": {
+          "type": "string",
+          "x-go-name": "URL"
+        }
+      },
+      "type": "object",
+      "x-go-package": "forgejo.org/modules/structs"
+    },
+    "APIForbiddenError": {
+      "properties": {
+        "message": {
+          "type": "string",
+          "x-go-name": "Message"
+        },
+        "url": {
+          "type": "string",
+          "x-go-name": "URL"
+        }
+      },
+      "type": "object",
+      "x-go-package": "forgejo.org/services/context"
+    },
+    "APIInternalServerError": {
+      "properties": {
+        "message": {
+          "type": "string",
+          "x-go-name": "Message"
+        },
+        "url": {
+          "type": "string",
+          "x-go-name": "URL"
+        }
+      },
+      "type": "object",
+      "x-go-package": "forgejo.org/services/context"
+    },
+    "APINotFound": {
+      "properties": {
+        "errors": {
+          "items": {
+            "type": "string"
+          },
+          "type": "array",
+          "x-go-name": "Errors"
+        },
+        "message": {
+          "type": "string",
+          "x-go-name": "Message"
+        },
+        "url": {
+          "type": "string",
+          "x-go-name": "URL"
+        }
+      },
+      "type": "object",
+      "x-go-package": "forgejo.org/services/context"
+    },
+    "APIRepoArchivedError": {
+      "properties": {
+        "message": {
+          "type": "string",
+          "x-go-name": "Message"
+        },
+        "url": {
+          "type": "string",
+          "x-go-name": "URL"
+        }
+      },
+      "type": "object",
+      "x-go-package": "forgejo.org/services/context"
+    },
+    "APIUnauthorizedError": {
+      "properties": {
+        "message": {
+          "type": "string",
+          "x-go-name": "Message"
+        },
+        "url": {
+          "type": "string",
+          "x-go-name": "URL"
+        }
+      },
+      "type": "object",
+      "x-go-package": "forgejo.org/services/context"
+    },
+    "APIValidationError": {
+      "properties": {
+        "message": {
+          "type": "string",
+          "x-go-name": "Message"
+        },
+        "url": {
+          "type": "string",
+          "x-go-name": "URL"
+        }
+      },
+      "type": "object",
+      "x-go-package": "forgejo.org/services/context"
+    },
+    "ActionTask": {
+      "description": "ActionTask represents a ActionTask",
+      "properties": {
+        "created_at": {
+          "format": "date-time",
+          "type": "string",
+          "x-go-name": "CreatedAt"
+        },
+        "display_title": {
+          "type": "string",
+          "x-go-name": "DisplayTitle"
+        },
+        "event": {
+          "type": "string",
+          "x-go-name": "Event"
+        },
+        "head_branch": {
+          "type": "string",
+          "x-go-name": "HeadBranch"
+        },
+        "head_sha": {
+          "type": "string",
+          "x-go-name": "HeadSHA"
+        },
+        "id": {
+          "format": "int64",
+          "type": "integer",
+          "x-go-name": "ID"
+        },
+        "name": {
+          "type": "string",
+          "x-go-name": "Name"
+        },
+        "run_number": {
+          "format": "int64",
+          "type": "integer",
+          "x-go-name": "RunNumber"
+        },
+        "run_started_at": {
+          "format": "date-time",
+          "type": "string",
+          "x-go-name": "RunStartedAt"
+        },
+        "status": {
+          "type": "string",
+          "x-go-name": "Status"
+        },
+        "updated_at": {
+          "format": "date-time",
+          "type": "string",
+          "x-go-name": "UpdatedAt"
+        },
+        "url": {
+          "type": "string",
+          "x-go-name": "URL"
+        },
+        "workflow_id": {
+          "type": "string",
+          "x-go-name": "WorkflowID"
+        }
+      },
+      "type": "object",
+      "x-go-package": "forgejo.org/modules/structs"
+    },
+    "ActionTaskResponse": {
+      "description": "ActionTaskResponse returns a ActionTask",
+      "properties": {
+        "total_count": {
+          "format": "int64",
+          "type": "integer",
+          "x-go-name": "TotalCount"
+        },
+        "workflow_runs": {
+          "items": {
+            "$ref": "#/definitions/ActionTask"
+          },
+          "type": "array",
+          "x-go-name": "Entries"
+        }
+      },
+      "type": "object",
+      "x-go-package": "forgejo.org/modules/structs"
+    },
+    "Attachment": {
+      "description": "Attachment a generic attachment",
+      "properties": {
+        "browser_download_url": {
+          "type": "string",
+          "x-go-name": "DownloadURL"
+        },
+        "created_at": {
+          "format": "date-time",
+          "type": "string",
+          "x-go-name": "Created"
+        },
+        "download_count": {
+          "format": "int64",
+          "type": "integer",
+          "x-go-name": "DownloadCount"
+        },
+        "id": {
+          "format": "int64",
+          "type": "integer",
+          "x-go-name": "ID"
+        },
+        "name": {
+          "type": "string",
+          "x-go-name": "Name"
+        },
+        "size": {
+          "format": "int64",
+          "type": "integer",
+          "x-go-name": "Size"
+        },
+        "type": {
+          "enum": [
+            "attachment",
+            "external"
+          ],
+          "type": "string",
+          "x-go-name": "Type"
+        },
+        "uuid": {
+          "type": "string",
+          "x-go-name": "UUID"
+        }
+      },
+      "type": "object",
+      "x-go-package": "forgejo.org/modules/structs"
+    },
+    "Comment": {
+      "description": "Comment represents a comment on a commit or issue",
+      "properties": {
+        "assets": {
+          "description": "The attachments to the comment",
+          "items": {
+            "$ref": "#/definitions/Attachment"
+          },
+          "type": "array",
+          "x-go-name": "Attachments"
+        },
+        "body": {
+          "description": "The body of the comment",
+          "type": "string",
+          "x-go-name": "Body"
+        },
+        "created_at": {
+          "description": "The time of the comment's creation",
+          "format": "date-time",
+          "type": "string",
+          "x-go-name": "Created"
+        },
+        "html_url": {
+          "description": "The HTML URL of the comment",
+          "type": "string",
+          "x-go-name": "HTMLURL"
+        },
+        "id": {
+          "description": "The identifier of the comment",
+          "format": "int64",
+          "type": "integer",
+          "x-go-name": "ID"
+        },
+        "issue_url": {
+          "description": "The HTML URL of the issue if the comment is posted on an issue, else empty string",
+          "type": "string",
+          "x-go-name": "IssueURL"
+        },
+        "original_author": {
+          "description": "The original author that posted the comment if it was not posted locally, else empty string",
+          "type": "string",
+          "x-go-name": "OriginalAuthor"
+        },
+        "original_author_id": {
+          "description": "The ID of the original author that posted the comment if it was not posted locally, else 0",
+          "format": "int64",
+          "type": "integer",
+          "x-go-name": "OriginalAuthorID"
+        },
+        "pull_request_url": {
+          "description": "The HTML URL of the pull request if the comment is posted on a pull request, else empty string",
+          "type": "string",
+          "x-go-name": "PRURL"
+        },
+        "updated_at": {
+          "description": "The time of the comment's update",
+          "format": "date-time",
+          "type": "string",
+          "x-go-name": "Updated"
+        },
+        "user": {
+          "$ref": "#/definitions/User"
+        }
+      },
+      "type": "object",
+      "x-go-package": "forgejo.org/modules/structs"
+    },
     "CreateIssueCommentOption": {
       "description": "CreateIssueCommentOption options for creating a comment on an issue",
       "properties": {
@@ -653,6 +956,125 @@
       "type": "object",
       "x-go-package": "forgejo.org/modules/structs"
     },
+    "Issue": {
+      "description": "Issue represents an issue in a repository",
+      "properties": {
+        "assets": {
+          "items": {
+            "$ref": "#/definitions/Attachment"
+          },
+          "type": "array",
+          "x-go-name": "Attachments"
+        },
+        "assignee": {
+          "$ref": "#/definitions/User"
+        },
+        "assignees": {
+          "items": {
+            "$ref": "#/definitions/User"
+          },
+          "type": "array",
+          "x-go-name": "Assignees"
+        },
+        "body": {
+          "type": "string",
+          "x-go-name": "Body"
+        },
+        "closed_at": {
+          "format": "date-time",
+          "type": "string",
+          "x-go-name": "Closed"
+        },
+        "comments": {
+          "format": "int64",
+          "type": "integer",
+          "x-go-name": "Comments"
+        },
+        "created_at": {
+          "format": "date-time",
+          "type": "string",
+          "x-go-name": "Created"
+        },
+        "due_date": {
+          "format": "date-time",
+          "type": "string",
+          "x-go-name": "Deadline"
+        },
+        "html_url": {
+          "type": "string",
+          "x-go-name": "HTMLURL"
+        },
+        "id": {
+          "format": "int64",
+          "type": "integer",
+          "x-go-name": "ID"
+        },
+        "is_locked": {
+          "type": "boolean",
+          "x-go-name": "IsLocked"
+        },
+        "labels": {
+          "items": {
+            "$ref": "#/definitions/Label"
+          },
+          "type": "array",
+          "x-go-name": "Labels"
+        },
+        "milestone": {
+          "$ref": "#/definitions/Milestone"
+        },
+        "number": {
+          "format": "int64",
+          "type": "integer",
+          "x-go-name": "Index"
+        },
+        "original_author": {
+          "type": "string",
+          "x-go-name": "OriginalAuthor"
+        },
+        "original_author_id": {
+          "format": "int64",
+          "type": "integer",
+          "x-go-name": "OriginalAuthorID"
+        },
+        "pin_order": {
+          "format": "int64",
+          "type": "integer",
+          "x-go-name": "PinOrder"
+        },
+        "pull_request": {
+          "$ref": "#/definitions/PullRequestMeta"
+        },
+        "ref": {
+          "type": "string",
+          "x-go-name": "Ref"
+        },
+        "repository": {
+          "$ref": "#/definitions/RepositoryMeta"
+        },
+        "state": {
+          "$ref": "#/definitions/StateType"
+        },
+        "title": {
+          "type": "string",
+          "x-go-name": "Title"
+        },
+        "updated_at": {
+          "format": "date-time",
+          "type": "string",
+          "x-go-name": "Updated"
+        },
+        "url": {
+          "type": "string",
+          "x-go-name": "URL"
+        },
+        "user": {
+          "$ref": "#/definitions/User"
+        }
+      },
+      "type": "object",
+      "x-go-package": "forgejo.org/modules/structs"
+    },
     "IssueLabelsOption": {
       "description": "IssueLabelsOption a collection of labels",
       "properties": {
@@ -666,6 +1088,851 @@
           "format": "date-time",
           "type": "string",
           "x-go-name": "Updated"
+        }
+      },
+      "type": "object",
+      "x-go-package": "forgejo.org/modules/structs"
+    },
+    "Label": {
+      "description": "Label a label to an issue or a pr",
+      "properties": {
+        "color": {
+          "example": "00aabb",
+          "type": "string",
+          "x-go-name": "Color"
+        },
+        "description": {
+          "type": "string",
+          "x-go-name": "Description"
+        },
+        "exclusive": {
+          "example": false,
+          "type": "boolean",
+          "x-go-name": "Exclusive"
+        },
+        "id": {
+          "format": "int64",
+          "type": "integer",
+          "x-go-name": "ID"
+        },
+        "is_archived": {
+          "example": false,
+          "type": "boolean",
+          "x-go-name": "IsArchived"
+        },
+        "name": {
+          "type": "string",
+          "x-go-name": "Name"
+        },
+        "url": {
+          "type": "string",
+          "x-go-name": "URL"
+        }
+      },
+      "type": "object",
+      "x-go-package": "forgejo.org/modules/structs"
+    },
+    "Milestone": {
+      "description": "Milestone milestone is a collection of issues on one repository",
+      "properties": {
+        "closed_at": {
+          "format": "date-time",
+          "type": "string",
+          "x-go-name": "Closed"
+        },
+        "closed_issues": {
+          "format": "int64",
+          "type": "integer",
+          "x-go-name": "ClosedIssues"
+        },
+        "created_at": {
+          "format": "date-time",
+          "type": "string",
+          "x-go-name": "Created"
+        },
+        "description": {
+          "type": "string",
+          "x-go-name": "Description"
+        },
+        "due_on": {
+          "format": "date-time",
+          "type": "string",
+          "x-go-name": "Deadline"
+        },
+        "id": {
+          "format": "int64",
+          "type": "integer",
+          "x-go-name": "ID"
+        },
+        "open_issues": {
+          "format": "int64",
+          "type": "integer",
+          "x-go-name": "OpenIssues"
+        },
+        "state": {
+          "$ref": "#/definitions/StateType"
+        },
+        "title": {
+          "type": "string",
+          "x-go-name": "Title"
+        },
+        "updated_at": {
+          "format": "date-time",
+          "type": "string",
+          "x-go-name": "Updated"
+        }
+      },
+      "type": "object",
+      "x-go-package": "forgejo.org/modules/structs"
+    },
+    "Organization": {
+      "description": "Organization represents an organization",
+      "properties": {
+        "avatar_url": {
+          "type": "string",
+          "x-go-name": "AvatarURL"
+        },
+        "description": {
+          "type": "string",
+          "x-go-name": "Description"
+        },
+        "email": {
+          "type": "string",
+          "x-go-name": "Email"
+        },
+        "full_name": {
+          "type": "string",
+          "x-go-name": "FullName"
+        },
+        "id": {
+          "format": "int64",
+          "type": "integer",
+          "x-go-name": "ID"
+        },
+        "location": {
+          "type": "string",
+          "x-go-name": "Location"
+        },
+        "name": {
+          "type": "string",
+          "x-go-name": "Name"
+        },
+        "repo_admin_change_team_access": {
+          "type": "boolean",
+          "x-go-name": "RepoAdminChangeTeamAccess"
+        },
+        "username": {
+          "description": "deprecated",
+          "type": "string",
+          "x-go-name": "UserName"
+        },
+        "visibility": {
+          "type": "string",
+          "x-go-name": "Visibility"
+        },
+        "website": {
+          "type": "string",
+          "x-go-name": "Website"
+        }
+      },
+      "type": "object",
+      "x-go-package": "forgejo.org/modules/structs"
+    },
+    "Permission": {
+      "description": "Permission represents a set of permissions",
+      "properties": {
+        "admin": {
+          "type": "boolean",
+          "x-go-name": "Admin"
+        },
+        "pull": {
+          "type": "boolean",
+          "x-go-name": "Pull"
+        },
+        "push": {
+          "type": "boolean",
+          "x-go-name": "Push"
+        }
+      },
+      "type": "object",
+      "x-go-package": "forgejo.org/modules/structs"
+    },
+    "PullRequestMeta": {
+      "description": "PullRequestMeta PR info if an issue is a PR",
+      "properties": {
+        "draft": {
+          "type": "boolean",
+          "x-go-name": "IsWorkInProgress"
+        },
+        "html_url": {
+          "type": "string",
+          "x-go-name": "HTMLURL"
+        },
+        "merged": {
+          "type": "boolean",
+          "x-go-name": "HasMerged"
+        },
+        "merged_at": {
+          "format": "date-time",
+          "type": "string",
+          "x-go-name": "Merged"
+        }
+      },
+      "type": "object",
+      "x-go-package": "forgejo.org/modules/structs"
+    },
+    "Release": {
+      "description": "Release represents a repository release",
+      "properties": {
+        "archive_download_count": {
+          "$ref": "#/definitions/TagArchiveDownloadCount"
+        },
+        "assets": {
+          "items": {
+            "$ref": "#/definitions/Attachment"
+          },
+          "type": "array",
+          "x-go-name": "Attachments"
+        },
+        "author": {
+          "$ref": "#/definitions/User"
+        },
+        "body": {
+          "type": "string",
+          "x-go-name": "Note"
+        },
+        "created_at": {
+          "format": "date-time",
+          "type": "string",
+          "x-go-name": "CreatedAt"
+        },
+        "draft": {
+          "type": "boolean",
+          "x-go-name": "IsDraft"
+        },
+        "hide_archive_links": {
+          "type": "boolean",
+          "x-go-name": "HideArchiveLinks"
+        },
+        "html_url": {
+          "type": "string",
+          "x-go-name": "HTMLURL"
+        },
+        "id": {
+          "format": "int64",
+          "type": "integer",
+          "x-go-name": "ID"
+        },
+        "name": {
+          "type": "string",
+          "x-go-name": "Title"
+        },
+        "prerelease": {
+          "type": "boolean",
+          "x-go-name": "IsPrerelease"
+        },
+        "published_at": {
+          "format": "date-time",
+          "type": "string",
+          "x-go-name": "PublishedAt"
+        },
+        "tag_name": {
+          "type": "string",
+          "x-go-name": "TagName"
+        },
+        "tarball_url": {
+          "type": "string",
+          "x-go-name": "TarURL"
+        },
+        "target_commitish": {
+          "type": "string",
+          "x-go-name": "Target"
+        },
+        "upload_url": {
+          "type": "string",
+          "x-go-name": "UploadURL"
+        },
+        "url": {
+          "type": "string",
+          "x-go-name": "URL"
+        },
+        "zipball_url": {
+          "type": "string",
+          "x-go-name": "ZipURL"
+        }
+      },
+      "type": "object",
+      "x-go-package": "forgejo.org/modules/structs"
+    },
+    "RepoTransfer": {
+      "description": "RepoTransfer represents a pending repo transfer",
+      "properties": {
+        "doer": {
+          "$ref": "#/definitions/User"
+        },
+        "recipient": {
+          "$ref": "#/definitions/User"
+        },
+        "teams": {
+          "items": {
+            "$ref": "#/definitions/Team"
+          },
+          "type": "array",
+          "x-go-name": "Teams"
+        }
+      },
+      "type": "object",
+      "x-go-package": "forgejo.org/modules/structs"
+    },
+    "Repository": {
+      "description": "Repository represents a repository",
+      "properties": {
+        "allow_fast_forward_only_merge": {
+          "type": "boolean",
+          "x-go-name": "AllowFastForwardOnly"
+        },
+        "allow_merge_commits": {
+          "type": "boolean",
+          "x-go-name": "AllowMerge"
+        },
+        "allow_rebase": {
+          "type": "boolean",
+          "x-go-name": "AllowRebase"
+        },
+        "allow_rebase_explicit": {
+          "type": "boolean",
+          "x-go-name": "AllowRebaseMerge"
+        },
+        "allow_rebase_update": {
+          "type": "boolean",
+          "x-go-name": "AllowRebaseUpdate"
+        },
+        "allow_squash_merge": {
+          "type": "boolean",
+          "x-go-name": "AllowSquash"
+        },
+        "archived": {
+          "type": "boolean",
+          "x-go-name": "Archived"
+        },
+        "archived_at": {
+          "format": "date-time",
+          "type": "string",
+          "x-go-name": "ArchivedAt"
+        },
+        "avatar_url": {
+          "type": "string",
+          "x-go-name": "AvatarURL"
+        },
+        "clone_url": {
+          "type": "string",
+          "x-go-name": "CloneURL"
+        },
+        "created_at": {
+          "format": "date-time",
+          "type": "string",
+          "x-go-name": "Created"
+        },
+        "default_allow_maintainer_edit": {
+          "type": "boolean",
+          "x-go-name": "DefaultAllowMaintainerEdit"
+        },
+        "default_branch": {
+          "type": "string",
+          "x-go-name": "DefaultBranch"
+        },
+        "default_delete_branch_after_merge": {
+          "type": "boolean",
+          "x-go-name": "DefaultDeleteBranchAfterMerge"
+        },
+        "default_merge_style": {
+          "type": "string",
+          "x-go-name": "DefaultMergeStyle"
+        },
+        "default_update_style": {
+          "type": "string",
+          "x-go-name": "DefaultUpdateStyle"
+        },
+        "description": {
+          "type": "string",
+          "x-go-name": "Description"
+        },
+        "empty": {
+          "type": "boolean",
+          "x-go-name": "Empty"
+        },
+        "external_tracker": {
+          "$ref": "#/definitions/ExternalTracker"
+        },
+        "external_wiki": {
+          "$ref": "#/definitions/ExternalWiki"
+        },
+        "fork": {
+          "type": "boolean",
+          "x-go-name": "Fork"
+        },
+        "forks_count": {
+          "format": "int64",
+          "type": "integer",
+          "x-go-name": "Forks"
+        },
+        "full_name": {
+          "type": "string",
+          "x-go-name": "FullName"
+        },
+        "globally_editable_wiki": {
+          "type": "boolean",
+          "x-go-name": "GloballyEditableWiki"
+        },
+        "has_actions": {
+          "type": "boolean",
+          "x-go-name": "HasActions"
+        },
+        "has_issues": {
+          "type": "boolean",
+          "x-go-name": "HasIssues"
+        },
+        "has_packages": {
+          "type": "boolean",
+          "x-go-name": "HasPackages"
+        },
+        "has_projects": {
+          "type": "boolean",
+          "x-go-name": "HasProjects"
+        },
+        "has_pull_requests": {
+          "type": "boolean",
+          "x-go-name": "HasPullRequests"
+        },
+        "has_releases": {
+          "type": "boolean",
+          "x-go-name": "HasReleases"
+        },
+        "has_wiki": {
+          "description": "is the wiki enabled",
+          "type": "boolean",
+          "x-go-name": "HasWiki"
+        },
+        "has_wiki_contents": {
+          "description": "have wiki pages ever been created",
+          "type": "boolean",
+          "x-go-name": "HasWikiContents"
+        },
+        "html_url": {
+          "type": "string",
+          "x-go-name": "HTMLURL"
+        },
+        "id": {
+          "format": "int64",
+          "type": "integer",
+          "x-go-name": "ID"
+        },
+        "ignore_whitespace_conflicts": {
+          "type": "boolean",
+          "x-go-name": "IgnoreWhitespaceConflicts"
+        },
+        "internal": {
+          "type": "boolean",
+          "x-go-name": "Internal"
+        },
+        "internal_tracker": {
+          "$ref": "#/definitions/InternalTracker"
+        },
+        "language": {
+          "type": "string",
+          "x-go-name": "Language"
+        },
+        "languages_url": {
+          "type": "string",
+          "x-go-name": "LanguagesURL"
+        },
+        "link": {
+          "type": "string",
+          "x-go-name": "Link"
+        },
+        "mirror": {
+          "type": "boolean",
+          "x-go-name": "Mirror"
+        },
+        "mirror_interval": {
+          "type": "string",
+          "x-go-name": "MirrorInterval"
+        },
+        "mirror_updated": {
+          "format": "date-time",
+          "type": "string",
+          "x-go-name": "MirrorUpdated"
+        },
+        "name": {
+          "type": "string",
+          "x-go-name": "Name"
+        },
+        "object_format_name": {
+          "description": "ObjectFormatName of the underlying git repository",
+          "enum": [
+            "sha1",
+            "sha256"
+          ],
+          "type": "string",
+          "x-go-name": "ObjectFormatName"
+        },
+        "open_issues_count": {
+          "format": "int64",
+          "type": "integer",
+          "x-go-name": "OpenIssues"
+        },
+        "open_pr_counter": {
+          "format": "int64",
+          "type": "integer",
+          "x-go-name": "OpenPulls"
+        },
+        "original_url": {
+          "type": "string",
+          "x-go-name": "OriginalURL"
+        },
+        "owner": {
+          "$ref": "#/definitions/User"
+        },
+        "parent": {
+          "$ref": "#/definitions/Repository"
+        },
+        "permissions": {
+          "$ref": "#/definitions/Permission"
+        },
+        "private": {
+          "type": "boolean",
+          "x-go-name": "Private"
+        },
+        "release_counter": {
+          "format": "int64",
+          "type": "integer",
+          "x-go-name": "Releases"
+        },
+        "repo_transfer": {
+          "$ref": "#/definitions/RepoTransfer"
+        },
+        "size": {
+          "format": "int64",
+          "type": "integer",
+          "x-go-name": "Size"
+        },
+        "ssh_url": {
+          "type": "string",
+          "x-go-name": "SSHURL"
+        },
+        "stars_count": {
+          "format": "int64",
+          "type": "integer",
+          "x-go-name": "Stars"
+        },
+        "template": {
+          "type": "boolean",
+          "x-go-name": "Template"
+        },
+        "topics": {
+          "items": {
+            "type": "string"
+          },
+          "type": "array",
+          "x-go-name": "Topics"
+        },
+        "updated_at": {
+          "format": "date-time",
+          "type": "string",
+          "x-go-name": "Updated"
+        },
+        "url": {
+          "type": "string",
+          "x-go-name": "URL"
+        },
+        "watchers_count": {
+          "format": "int64",
+          "type": "integer",
+          "x-go-name": "Watchers"
+        },
+        "website": {
+          "type": "string",
+          "x-go-name": "Website"
+        },
+        "wiki_branch": {
+          "type": "string",
+          "x-go-name": "WikiBranch"
+        },
+        "wiki_clone_url": {
+          "type": "string",
+          "x-go-name": "WikiCloneURL"
+        },
+        "wiki_ssh_url": {
+          "type": "string",
+          "x-go-name": "WikiSSHURL"
+        }
+      },
+      "type": "object",
+      "x-go-package": "forgejo.org/modules/structs"
+    },
+    "RepositoryMeta": {
+      "description": "RepositoryMeta basic repository information",
+      "properties": {
+        "full_name": {
+          "type": "string",
+          "x-go-name": "FullName"
+        },
+        "id": {
+          "format": "int64",
+          "type": "integer",
+          "x-go-name": "ID"
+        },
+        "name": {
+          "type": "string",
+          "x-go-name": "Name"
+        },
+        "owner": {
+          "type": "string",
+          "x-go-name": "Owner"
+        }
+      },
+      "type": "object",
+      "x-go-package": "forgejo.org/modules/structs"
+    },
+    "SearchResults": {
+      "description": "SearchResults results of a successful search",
+      "properties": {
+        "data": {
+          "items": {
+            "$ref": "#/definitions/Repository"
+          },
+          "type": "array",
+          "x-go-name": "Data"
+        },
+        "ok": {
+          "type": "boolean",
+          "x-go-name": "OK"
+        }
+      },
+      "type": "object",
+      "x-go-package": "forgejo.org/modules/structs"
+    },
+    "StateType": {
+      "description": "StateType issue state type",
+      "type": "string",
+      "x-go-package": "forgejo.org/modules/structs"
+    },
+    "TagArchiveDownloadCount": {
+      "description": "TagArchiveDownloadCount counts how many times a archive was downloaded",
+      "properties": {
+        "tar_gz": {
+          "format": "int64",
+          "type": "integer",
+          "x-go-name": "TarGz"
+        },
+        "zip": {
+          "format": "int64",
+          "type": "integer",
+          "x-go-name": "Zip"
+        }
+      },
+      "type": "object",
+      "x-go-package": "forgejo.org/modules/structs"
+    },
+    "Team": {
+      "description": "Team represents a team in an organization",
+      "properties": {
+        "can_create_org_repo": {
+          "type": "boolean",
+          "x-go-name": "CanCreateOrgRepo"
+        },
+        "description": {
+          "type": "string",
+          "x-go-name": "Description"
+        },
+        "id": {
+          "format": "int64",
+          "type": "integer",
+          "x-go-name": "ID"
+        },
+        "includes_all_repositories": {
+          "type": "boolean",
+          "x-go-name": "IncludesAllRepositories"
+        },
+        "name": {
+          "type": "string",
+          "x-go-name": "Name"
+        },
+        "organization": {
+          "$ref": "#/definitions/Organization"
+        },
+        "permission": {
+          "enum": [
+            "none",
+            "read",
+            "write",
+            "admin",
+            "owner"
+          ],
+          "type": "string",
+          "x-go-name": "Permission"
+        },
+        "units": {
+          "example": [
+            "repo.code",
+            "repo.issues",
+            "repo.ext_issues",
+            "repo.wiki",
+            "repo.pulls",
+            "repo.releases",
+            "repo.projects",
+            "repo.ext_wiki"
+          ],
+          "items": {
+            "type": "string"
+          },
+          "type": "array",
+          "x-go-name": "Units"
+        },
+        "units_map": {
+          "additionalProperties": {
+            "type": "string"
+          },
+          "example": {
+            "repo.actions": "none",
+            "repo.code": "read",
+            "repo.ext_issues": "none",
+            "repo.ext_wiki": "none",
+            "repo.issues": "write",
+            "repo.packages": "none",
+            "repo.projects": "none",
+            "repo.pulls": "owner",
+            "repo.releases": "none",
+            "repo.wiki": "admin"
+          },
+          "type": "object",
+          "x-go-name": "UnitsMap"
+        }
+      },
+      "type": "object",
+      "x-go-package": "forgejo.org/modules/structs"
+    },
+    "User": {
+      "description": "User represents a user",
+      "properties": {
+        "active": {
+          "description": "Is user active",
+          "type": "boolean",
+          "x-go-name": "IsActive"
+        },
+        "avatar_url": {
+          "description": "URL to the user's avatar",
+          "type": "string",
+          "x-go-name": "AvatarURL"
+        },
+        "created": {
+          "format": "date-time",
+          "type": "string",
+          "x-go-name": "Created"
+        },
+        "description": {
+          "description": "the user's description",
+          "type": "string",
+          "x-go-name": "Description"
+        },
+        "email": {
+          "format": "email",
+          "type": "string",
+          "x-go-name": "Email"
+        },
+        "followers_count": {
+          "description": "user counts",
+          "format": "int64",
+          "type": "integer",
+          "x-go-name": "Followers"
+        },
+        "following_count": {
+          "format": "int64",
+          "type": "integer",
+          "x-go-name": "Following"
+        },
+        "full_name": {
+          "description": "the user's full name",
+          "type": "string",
+          "x-go-name": "FullName"
+        },
+        "html_url": {
+          "description": "URL to the user's profile page",
+          "type": "string",
+          "x-go-name": "HTMLURL"
+        },
+        "id": {
+          "description": "the user's id",
+          "format": "int64",
+          "type": "integer",
+          "x-go-name": "ID"
+        },
+        "is_admin": {
+          "description": "Is the user an administrator",
+          "type": "boolean",
+          "x-go-name": "IsAdmin"
+        },
+        "language": {
+          "description": "User locale",
+          "type": "string",
+          "x-go-name": "Language"
+        },
+        "last_login": {
+          "format": "date-time",
+          "type": "string",
+          "x-go-name": "LastLogin"
+        },
+        "location": {
+          "description": "the user's location",
+          "type": "string",
+          "x-go-name": "Location"
+        },
+        "login": {
+          "description": "the user's username",
+          "type": "string",
+          "x-go-name": "UserName"
+        },
+        "login_name": {
+          "default": "empty",
+          "description": "the user's authentication sign-in name.",
+          "type": "string",
+          "x-go-name": "LoginName"
+        },
+        "prohibit_login": {
+          "description": "Is user login prohibited",
+          "type": "boolean",
+          "x-go-name": "ProhibitLogin"
+        },
+        "pronouns": {
+          "description": "the user's pronouns",
+          "type": "string",
+          "x-go-name": "Pronouns"
+        },
+        "restricted": {
+          "description": "Is user restricted",
+          "type": "boolean",
+          "x-go-name": "Restricted"
+        },
+        "source_id": {
+          "description": "The ID of the user's Authentication Source",
+          "format": "int64",
+          "type": "integer",
+          "x-go-name": "SourceID"
+        },
+        "starred_repos_count": {
+          "format": "int64",
+          "type": "integer",
+          "x-go-name": "StarredRepos"
+        },
+        "visibility": {
+          "description": "User visibility level option: public, limited, private",
+          "type": "string",
+          "x-go-name": "Visibility"
+        },
+        "website": {
+          "description": "the user's website",
+          "type": "string",
+          "x-go-name": "Website"
         }
       },
       "type": "object",
@@ -1759,6 +3026,68 @@
       }
     },
     "/repos/{owner}/{repo}/issues/{index}/comments": {
+      "get": {
+        "operationId": "issueGetComments",
+        "parameters": [
+          {
+            "description": "owner of the repo",
+            "in": "path",
+            "name": "owner",
+            "required": true,
+            "type": "string"
+          },
+          {
+            "description": "name of the repo",
+            "in": "path",
+            "name": "repo",
+            "required": true,
+            "type": "string"
+          },
+          {
+            "description": "index of the issue",
+            "format": "int64",
+            "in": "path",
+            "name": "index",
+            "required": true,
+            "type": "integer"
+          },
+          {
+            "description": "if provided, only comments updated since the specified time are returned.",
+            "format": "date-time",
+            "in": "query",
+            "name": "since",
+            "type": "string"
+          },
+          {
+            "description": "if provided, only comments updated before the provided time are returned.",
+            "format": "date-time",
+            "in": "query",
+            "name": "before",
+            "type": "string"
+          }
+        ],
+        "produces": [
+          "application/json"
+        ],
+        "responses": {
+          "200": {
+            "$ref": "#/responses/CommentList"
+          },
+          "404": {
+            "$ref": "#/responses/notFound"
+          },
+          "422": {
+            "$ref": "#/responses/validationError"
+          },
+          "500": {
+            "$ref": "#/responses/internalServerError"
+          }
+        },
+        "summary": "List all comments on an issue",
+        "tags": [
+          "issue"
+        ]
+      },
       "post": {
         "consumes": [
           "application/json"
@@ -2658,211 +3987,10 @@
     "text/html"
   ],
   "responses": {
-    "AccessToken": {
-      "description": "AccessToken represents an API access token.",
-      "schema": {
-        "$ref": "#/definitions/AccessToken"
-      }
-    },
-    "AccessTokenList": {
-      "description": "AccessTokenList",
-      "headers": {
-        "X-Total-Count": {
-          "description": "The total number of access tokens",
-          "format": "int64",
-          "type": "integer"
-        }
-      },
-      "schema": {
-        "items": {
-          "$ref": "#/definitions/AccessToken"
-        },
-        "type": "array"
-      }
-    },
-    "ActionRun": {
-      "description": "ActionRun",
-      "schema": {
-        "$ref": "#/definitions/ActionRun"
-      }
-    },
-    "ActionRunList": {
-      "description": "ActionRunList",
-      "schema": {
-        "$ref": "#/definitions/ListActionRunResponse"
-      }
-    },
-    "ActionRunner": {
-      "description": "ActionRunner represents a runner",
-      "schema": {
-        "$ref": "#/definitions/ActionRunner"
-      }
-    },
-    "ActionRunnerList": {
-      "description": "ActionRunnerList is a list of Forgejo Action runners",
-      "headers": {
-        "Link": {
-          "description": "Links to other pages, if any",
-          "type": "string"
-        },
-        "X-Total-Count": {
-          "description": "Total number of runners matching the search criteria (excluding page and limit)",
-          "format": "int64",
-          "type": "integer"
-        }
-      },
-      "schema": {
-        "items": {
-          "$ref": "#/definitions/ActionRunner"
-        },
-        "type": "array"
-      }
-    },
-    "ActionVariable": {
-      "description": "ActionVariable",
-      "schema": {
-        "$ref": "#/definitions/ActionVariable"
-      }
-    },
-    "ActivityFeedsList": {
-      "description": "ActivityFeedsList",
-      "headers": {
-        "X-Total-Count": {
-          "description": "The total number of activity feeds",
-          "format": "int64",
-          "type": "integer"
-        }
-      },
-      "schema": {
-        "items": {
-          "$ref": "#/definitions/Activity"
-        },
-        "type": "array"
-      }
-    },
-    "ActivityPub": {
-      "description": "ActivityPub",
-      "schema": {
-        "$ref": "#/definitions/ActivityPub"
-      }
-    },
-    "AnnotatedTag": {
-      "description": "AnnotatedTag",
-      "schema": {
-        "$ref": "#/definitions/AnnotatedTag"
-      }
-    },
     "Attachment": {
       "description": "Attachment",
       "schema": {
         "$ref": "#/definitions/Attachment"
-      }
-    },
-    "AttachmentList": {
-      "description": "AttachmentList",
-      "schema": {
-        "items": {
-          "$ref": "#/definitions/Attachment"
-        },
-        "type": "array"
-      }
-    },
-    "BlockedUserList": {
-      "description": "BlockedUserList",
-      "schema": {
-        "items": {
-          "$ref": "#/definitions/BlockedUser"
-        },
-        "type": "array"
-      }
-    },
-    "Branch": {
-      "description": "Branch",
-      "schema": {
-        "$ref": "#/definitions/Branch"
-      }
-    },
-    "BranchList": {
-      "description": "BranchList",
-      "headers": {
-        "X-Total-Count": {
-          "description": "The total number of branches",
-          "format": "int64",
-          "type": "integer"
-        }
-      },
-      "schema": {
-        "items": {
-          "$ref": "#/definitions/Branch"
-        },
-        "type": "array"
-      }
-    },
-    "BranchProtection": {
-      "description": "BranchProtection",
-      "schema": {
-        "$ref": "#/definitions/BranchProtection"
-      }
-    },
-    "BranchProtectionList": {
-      "description": "BranchProtectionList",
-      "schema": {
-        "items": {
-          "$ref": "#/definitions/BranchProtection"
-        },
-        "type": "array"
-      }
-    },
-    "ChangedFileList": {
-      "description": "ChangedFileList",
-      "headers": {
-        "X-Total-Count": {
-          "description": "The total number of changed files",
-          "format": "int64",
-          "type": "integer"
-        }
-      },
-      "schema": {
-        "items": {
-          "$ref": "#/definitions/ChangedFile"
-        },
-        "type": "array"
-      }
-    },
-    "ChangedFileListWithPagination": {
-      "description": "ChangedFileListWithPagination",
-      "headers": {
-        "X-HasMore": {
-          "description": "True if there is another page",
-          "type": "boolean"
-        },
-        "X-Page": {
-          "description": "The current page",
-          "format": "int64",
-          "type": "integer"
-        },
-        "X-PageCount": {
-          "description": "Total number of pages",
-          "format": "int64",
-          "type": "integer"
-        },
-        "X-PerPage": {
-          "description": "Commits per page",
-          "format": "int64",
-          "type": "integer"
-        }
-      },
-      "schema": {
-        "items": {
-          "$ref": "#/definitions/ChangedFile"
-        },
-        "type": "array"
-      }
-    },
-    "CombinedStatus": {
-      "description": "CombinedStatus",
-      "schema": {
-        "$ref": "#/definitions/CombinedStatus"
       }
     },
     "Comment": {
@@ -2887,290 +4015,10 @@
         "type": "array"
       }
     },
-    "CommentListWithoutPagination": {
-      "description": "CommentListWithoutPagination - Comments without pagination headers",
-      "schema": {
-        "items": {
-          "$ref": "#/definitions/Comment"
-        },
-        "type": "array"
-      }
-    },
-    "Commit": {
-      "description": "Commit",
-      "schema": {
-        "$ref": "#/definitions/Commit"
-      }
-    },
-    "CommitList": {
-      "description": "CommitList",
-      "schema": {
-        "items": {
-          "$ref": "#/definitions/Commit"
-        },
-        "type": "array"
-      }
-    },
-    "CommitStatus": {
-      "description": "CommitStatus",
-      "schema": {
-        "$ref": "#/definitions/CommitStatus"
-      }
-    },
-    "CommitStatusList": {
-      "description": "CommitStatusList",
-      "headers": {
-        "X-Total-Count": {
-          "description": "The total number of commit statuses",
-          "format": "int64",
-          "type": "integer"
-        }
-      },
-      "schema": {
-        "items": {
-          "$ref": "#/definitions/CommitStatus"
-        },
-        "type": "array"
-      }
-    },
-    "CommitStatusListWithoutPagination": {
-      "description": "CommitStatusListWithoutPagination - Commit statuses without pagination headers",
-      "schema": {
-        "items": {
-          "$ref": "#/definitions/CommitStatus"
-        },
-        "type": "array"
-      }
-    },
-    "Compare": {
-      "description": "",
-      "schema": {
-        "$ref": "#/definitions/Compare"
-      }
-    },
-    "ContentsListResponse": {
-      "description": "ContentsListResponse",
-      "schema": {
-        "items": {
-          "$ref": "#/definitions/ContentsResponse"
-        },
-        "type": "array"
-      }
-    },
-    "ContentsResponse": {
-      "description": "ContentsResponse",
-      "schema": {
-        "$ref": "#/definitions/ContentsResponse"
-      }
-    },
-    "CronList": {
-      "description": "CronList",
-      "headers": {
-        "X-Total-Count": {
-          "description": "The total number of cron jobs",
-          "format": "int64",
-          "type": "integer"
-        }
-      },
-      "schema": {
-        "items": {
-          "$ref": "#/definitions/Cron"
-        },
-        "type": "array"
-      }
-    },
-    "DeployKey": {
-      "description": "DeployKey",
-      "schema": {
-        "$ref": "#/definitions/DeployKey"
-      }
-    },
-    "DeployKeyList": {
-      "description": "DeployKeyList",
-      "headers": {
-        "X-Total-Count": {
-          "description": "The total number of deploy keys",
-          "format": "int64",
-          "type": "integer"
-        }
-      },
-      "schema": {
-        "items": {
-          "$ref": "#/definitions/DeployKey"
-        },
-        "type": "array"
-      }
-    },
-    "DispatchWorkflowRun": {
-      "description": "DispatchWorkflowRun is a Workflow Run after dispatching",
-      "schema": {
-        "$ref": "#/definitions/DispatchWorkflowRun"
-      }
-    },
-    "EmailList": {
-      "description": "EmailList",
-      "schema": {
-        "items": {
-          "$ref": "#/definitions/Email"
-        },
-        "type": "array"
-      }
-    },
-    "EmptyRepository": {
-      "description": "EmptyRepository",
-      "schema": {
-        "$ref": "#/definitions/APIError"
-      }
-    },
-    "FileDeleteResponse": {
-      "description": "FileDeleteResponse",
-      "schema": {
-        "$ref": "#/definitions/FileDeleteResponse"
-      }
-    },
-    "FileResponse": {
-      "description": "FileResponse",
-      "schema": {
-        "$ref": "#/definitions/FileResponse"
-      }
-    },
-    "FilesResponse": {
-      "description": "FilesResponse",
-      "schema": {
-        "$ref": "#/definitions/FilesResponse"
-      }
-    },
-    "GPGKey": {
-      "description": "GPGKey",
-      "schema": {
-        "$ref": "#/definitions/GPGKey"
-      }
-    },
-    "GPGKeyList": {
-      "description": "GPGKeyList",
-      "schema": {
-        "items": {
-          "$ref": "#/definitions/GPGKey"
-        },
-        "type": "array"
-      }
-    },
-    "GeneralAPISettings": {
-      "description": "GeneralAPISettings",
-      "schema": {
-        "$ref": "#/definitions/GeneralAPISettings"
-      }
-    },
-    "GeneralAttachmentSettings": {
-      "description": "GeneralAttachmentSettings",
-      "schema": {
-        "$ref": "#/definitions/GeneralAttachmentSettings"
-      }
-    },
-    "GeneralRepoSettings": {
-      "description": "GeneralRepoSettings",
-      "schema": {
-        "$ref": "#/definitions/GeneralRepoSettings"
-      }
-    },
-    "GeneralUISettings": {
-      "description": "GeneralUISettings",
-      "schema": {
-        "$ref": "#/definitions/GeneralUISettings"
-      }
-    },
-    "GitBlob": {
-      "description": "GitBlob",
-      "schema": {
-        "$ref": "#/definitions/GitBlob"
-      }
-    },
-    "GitBlobList": {
-      "description": "GitBlobList",
-      "schema": {
-        "items": {
-          "$ref": "#/definitions/GitBlob"
-        },
-        "type": "array"
-      }
-    },
-    "GitHook": {
-      "description": "GitHook",
-      "schema": {
-        "$ref": "#/definitions/GitHook"
-      }
-    },
-    "GitHookList": {
-      "description": "GitHookList",
-      "schema": {
-        "items": {
-          "$ref": "#/definitions/GitHook"
-        },
-        "type": "array"
-      }
-    },
-    "GitTreeResponse": {
-      "description": "GitTreeResponse",
-      "schema": {
-        "$ref": "#/definitions/GitTreeResponse"
-      }
-    },
-    "GitignoreTemplateInfo": {
-      "description": "GitignoreTemplateInfo",
-      "schema": {
-        "$ref": "#/definitions/GitignoreTemplateInfo"
-      }
-    },
-    "GitignoreTemplateList": {
-      "description": "GitignoreTemplateList",
-      "schema": {
-        "items": {
-          "type": "string"
-        },
-        "type": "array"
-      }
-    },
-    "Hook": {
-      "description": "Hook",
-      "schema": {
-        "$ref": "#/definitions/Hook"
-      }
-    },
-    "HookList": {
-      "description": "HookList",
-      "headers": {
-        "X-Total-Count": {
-          "description": "The total number of hooks",
-          "format": "int64",
-          "type": "integer"
-        }
-      },
-      "schema": {
-        "items": {
-          "$ref": "#/definitions/Hook"
-        },
-        "type": "array"
-      }
-    },
-    "HookListWithoutPagination": {
-      "description": "HookListWithoutPagination - Hooks without pagination headers",
-      "schema": {
-        "items": {
-          "$ref": "#/definitions/Hook"
-        },
-        "type": "array"
-      }
-    },
     "Issue": {
       "description": "Issue",
       "schema": {
         "$ref": "#/definitions/Issue"
-      }
-    },
-    "IssueDeadline": {
-      "description": "IssueDeadline",
-      "schema": {
-        "$ref": "#/definitions/IssueDeadline"
       }
     },
     "IssueList": {
@@ -3178,24 +4026,6 @@
       "schema": {
         "items": {
           "$ref": "#/definitions/Issue"
-        },
-        "type": "array"
-      }
-    },
-    "IssueListWithoutPagination": {
-      "description": "IssueListWithoutPagination - Issues without pagination headers (used for pinned issues, dependencies, etc.)",
-      "schema": {
-        "items": {
-          "$ref": "#/definitions/Issue"
-        },
-        "type": "array"
-      }
-    },
-    "IssueTemplates": {
-      "description": "IssueTemplates",
-      "schema": {
-        "items": {
-          "$ref": "#/definitions/IssueTemplate"
         },
         "type": "array"
       }
@@ -3231,61 +4061,6 @@
         "type": "array"
       }
     },
-    "LabelTemplateInfo": {
-      "description": "LabelTemplateInfo",
-      "schema": {
-        "items": {
-          "$ref": "#/definitions/LabelTemplate"
-        },
-        "type": "array"
-      }
-    },
-    "LabelTemplateList": {
-      "description": "LabelTemplateList",
-      "schema": {
-        "items": {
-          "type": "string"
-        },
-        "type": "array"
-      }
-    },
-    "LanguageStatistics": {
-      "description": "LanguageStatistics",
-      "schema": {
-        "additionalProperties": {
-          "format": "int64",
-          "type": "integer"
-        },
-        "type": "object"
-      }
-    },
-    "LicenseTemplateInfo": {
-      "description": "LicenseTemplateInfo",
-      "schema": {
-        "$ref": "#/definitions/LicenseTemplateInfo"
-      }
-    },
-    "LicenseTemplateList": {
-      "description": "LicenseTemplateList",
-      "schema": {
-        "items": {
-          "$ref": "#/definitions/LicensesTemplateListEntry"
-        },
-        "type": "array"
-      }
-    },
-    "MarkdownRender": {
-      "description": "MarkdownRender is a rendered markdown document",
-      "schema": {
-        "type": "string"
-      }
-    },
-    "MarkupRender": {
-      "description": "MarkupRender is a rendered markup document",
-      "schema": {
-        "type": "string"
-      }
-    },
     "Milestone": {
       "description": "Milestone",
       "schema": {
@@ -3304,77 +4079,6 @@
       "schema": {
         "items": {
           "$ref": "#/definitions/Milestone"
-        },
-        "type": "array"
-      }
-    },
-    "NodeInfo": {
-      "description": "NodeInfo",
-      "schema": {
-        "$ref": "#/definitions/NodeInfo"
-      }
-    },
-    "Note": {
-      "description": "Note",
-      "schema": {
-        "$ref": "#/definitions/Note"
-      }
-    },
-    "NotificationCount": {
-      "description": "Number of unread notifications",
-      "schema": {
-        "$ref": "#/definitions/NotificationCount"
-      }
-    },
-    "NotificationThread": {
-      "description": "NotificationThread",
-      "schema": {
-        "$ref": "#/definitions/NotificationThread"
-      }
-    },
-    "NotificationThreadList": {
-      "description": "NotificationThreadList",
-      "headers": {
-        "X-Total-Count": {
-          "description": "The total number of notification threads",
-          "format": "int64",
-          "type": "integer"
-        }
-      },
-      "schema": {
-        "items": {
-          "$ref": "#/definitions/NotificationThread"
-        },
-        "type": "array"
-      }
-    },
-    "NotificationThreadListWithoutPagination": {
-      "description": "NotificationThreadListWithoutPagination - Notification threads without pagination headers",
-      "schema": {
-        "items": {
-          "$ref": "#/definitions/NotificationThread"
-        },
-        "type": "array"
-      }
-    },
-    "OAuth2Application": {
-      "description": "OAuth2Application",
-      "schema": {
-        "$ref": "#/definitions/OAuth2Application"
-      }
-    },
-    "OAuth2ApplicationList": {
-      "description": "OAuth2ApplicationList",
-      "headers": {
-        "X-Total-Count": {
-          "description": "The total number of OAuth2 applications",
-          "format": "int64",
-          "type": "integer"
-        }
-      },
-      "schema": {
-        "items": {
-          "$ref": "#/definitions/OAuth2Application"
         },
         "type": "array"
       }
@@ -3401,265 +4105,6 @@
         "type": "array"
       }
     },
-    "OrganizationListWithoutPagination": {
-      "description": "OrganizationListWithoutPagination - Organizations without pagination headers",
-      "schema": {
-        "items": {
-          "$ref": "#/definitions/Organization"
-        },
-        "type": "array"
-      }
-    },
-    "OrganizationPermissions": {
-      "description": "OrganizationPermissions",
-      "schema": {
-        "$ref": "#/definitions/OrganizationPermissions"
-      }
-    },
-    "Outbox": {
-      "description": "Outbox",
-      "schema": {
-        "$ref": "#/definitions/ForgeOutbox"
-      }
-    },
-    "Package": {
-      "description": "Package",
-      "schema": {
-        "$ref": "#/definitions/Package"
-      }
-    },
-    "PackageFileList": {
-      "description": "PackageFileList",
-      "schema": {
-        "items": {
-          "$ref": "#/definitions/PackageFile"
-        },
-        "type": "array"
-      }
-    },
-    "PackageList": {
-      "description": "PackageList",
-      "headers": {
-        "X-Total-Count": {
-          "description": "The total number of packages",
-          "format": "int64",
-          "type": "integer"
-        }
-      },
-      "schema": {
-        "items": {
-          "$ref": "#/definitions/Package"
-        },
-        "type": "array"
-      }
-    },
-    "PublicKey": {
-      "description": "PublicKey",
-      "schema": {
-        "$ref": "#/definitions/PublicKey"
-      }
-    },
-    "PublicKeyList": {
-      "description": "PublicKeyList",
-      "schema": {
-        "items": {
-          "$ref": "#/definitions/PublicKey"
-        },
-        "type": "array"
-      }
-    },
-    "PullRequest": {
-      "description": "PullRequest",
-      "schema": {
-        "$ref": "#/definitions/PullRequest"
-      }
-    },
-    "PullRequestList": {
-      "description": "PullRequestList",
-      "schema": {
-        "items": {
-          "$ref": "#/definitions/PullRequest"
-        },
-        "type": "array"
-      }
-    },
-    "PullReview": {
-      "description": "PullReview",
-      "schema": {
-        "$ref": "#/definitions/PullReview"
-      }
-    },
-    "PullReviewComment": {
-      "description": "PullComment",
-      "schema": {
-        "$ref": "#/definitions/PullReviewComment"
-      }
-    },
-    "PullReviewCommentList": {
-      "description": "PullCommentList",
-      "schema": {
-        "items": {
-          "$ref": "#/definitions/PullReviewComment"
-        },
-        "type": "array"
-      }
-    },
-    "PullReviewList": {
-      "description": "PullReviewList",
-      "headers": {
-        "X-Total-Count": {
-          "description": "The total number of pull reviews",
-          "format": "int64",
-          "type": "integer"
-        }
-      },
-      "schema": {
-        "items": {
-          "$ref": "#/definitions/PullReview"
-        },
-        "type": "array"
-      }
-    },
-    "PullReviewListWithoutPagination": {
-      "description": "PullReviewListWithoutPagination - Review requests without pagination headers",
-      "schema": {
-        "items": {
-          "$ref": "#/definitions/PullReview"
-        },
-        "type": "array"
-      }
-    },
-    "PushMirror": {
-      "description": "PushMirror",
-      "schema": {
-        "$ref": "#/definitions/PushMirror"
-      }
-    },
-    "PushMirrorList": {
-      "description": "PushMirrorList",
-      "headers": {
-        "X-Total-Count": {
-          "description": "The total number of push mirrors",
-          "format": "int64",
-          "type": "integer"
-        }
-      },
-      "schema": {
-        "items": {
-          "$ref": "#/definitions/PushMirror"
-        },
-        "type": "array"
-      }
-    },
-    "QuotaGroup": {
-      "description": "QuotaGroup",
-      "schema": {
-        "$ref": "#/definitions/QuotaGroup"
-      }
-    },
-    "QuotaGroupList": {
-      "description": "QuotaGroupList",
-      "schema": {
-        "$ref": "#/definitions/QuotaGroupList"
-      }
-    },
-    "QuotaInfo": {
-      "description": "QuotaInfo",
-      "schema": {
-        "$ref": "#/definitions/QuotaInfo"
-      }
-    },
-    "QuotaRuleInfo": {
-      "description": "QuotaRuleInfo",
-      "schema": {
-        "$ref": "#/definitions/QuotaRuleInfo"
-      }
-    },
-    "QuotaRuleInfoList": {
-      "description": "QuotaRuleInfoList",
-      "schema": {
-        "items": {
-          "$ref": "#/definitions/QuotaRuleInfo"
-        },
-        "type": "array"
-      }
-    },
-    "QuotaUsedArtifactList": {
-      "description": "QuotaUsedArtifactList",
-      "schema": {
-        "$ref": "#/definitions/QuotaUsedArtifactList"
-      }
-    },
-    "QuotaUsedAttachmentList": {
-      "description": "QuotaUsedAttachmentList",
-      "schema": {
-        "$ref": "#/definitions/QuotaUsedAttachmentList"
-      }
-    },
-    "QuotaUsedPackageList": {
-      "description": "QuotaUsedPackageList",
-      "schema": {
-        "$ref": "#/definitions/QuotaUsedPackageList"
-      }
-    },
-    "Reaction": {
-      "description": "Reaction",
-      "schema": {
-        "$ref": "#/definitions/Reaction"
-      }
-    },
-    "ReactionList": {
-      "description": "ReactionList",
-      "headers": {
-        "X-Total-Count": {
-          "description": "The total number of reactions",
-          "format": "int64",
-          "type": "integer"
-        }
-      },
-      "schema": {
-        "items": {
-          "$ref": "#/definitions/Reaction"
-        },
-        "type": "array"
-      }
-    },
-    "ReactionListWithoutPagination": {
-      "description": "ReactionListWithoutPagination - Reactions for a specific comment (no pagination headers)",
-      "schema": {
-        "items": {
-          "$ref": "#/definitions/Reaction"
-        },
-        "type": "array"
-      }
-    },
-    "Reference": {
-      "description": "Reference",
-      "schema": {
-        "$ref": "#/definitions/Reference"
-      }
-    },
-    "ReferenceList": {
-      "description": "ReferenceList",
-      "schema": {
-        "items": {
-          "$ref": "#/definitions/Reference"
-        },
-        "type": "array"
-      }
-    },
-    "RegisterRunnerResponse": {
-      "description": "RegisterRunnerResponse contains the details of the just registered runner.",
-      "schema": {
-        "$ref": "#/definitions/RegisterRunnerResponse"
-      }
-    },
-    "RegistrationToken": {
-      "description": "RegistrationToken is a string used to register a runner with a server",
-      "schema": {
-        "$ref": "#/definitions/RegistrationToken"
-      }
-    },
     "Release": {
       "description": "Release",
       "schema": {
@@ -3682,68 +4127,10 @@
         "type": "array"
       }
     },
-    "RepoCollaboratorPermission": {
-      "description": "RepoCollaboratorPermission",
-      "schema": {
-        "$ref": "#/definitions/RepoCollaboratorPermission"
-      }
-    },
-    "RepoIssueConfig": {
-      "description": "RepoIssueConfig",
-      "schema": {
-        "$ref": "#/definitions/IssueConfig"
-      }
-    },
-    "RepoIssueConfigValidation": {
-      "description": "RepoIssueConfigValidation",
-      "schema": {
-        "$ref": "#/definitions/IssueConfigValidation"
-      }
-    },
-    "RepoNewIssuePinsAllowed": {
-      "description": "RepoNewIssuePinsAllowed",
-      "schema": {
-        "$ref": "#/definitions/NewIssuePinsAllowed"
-      }
-    },
     "Repository": {
       "description": "Repository",
       "schema": {
         "$ref": "#/definitions/Repository"
-      }
-    },
-    "RepositoryList": {
-      "description": "RepositoryList",
-      "headers": {
-        "X-Total-Count": {
-          "description": "The total number of repositories",
-          "format": "int64",
-          "type": "integer"
-        }
-      },
-      "schema": {
-        "items": {
-          "$ref": "#/definitions/Repository"
-        },
-        "type": "array"
-      }
-    },
-    "RepositoryListWithoutPagination": {
-      "description": "RepositoryListWithoutPagination - Repositories without pagination headers",
-      "schema": {
-        "items": {
-          "$ref": "#/definitions/Repository"
-        },
-        "type": "array"
-      }
-    },
-    "RunJobList": {
-      "description": "RunJobList is a list of action run jobs",
-      "schema": {
-        "items": {
-          "$ref": "#/definitions/ActionRunJob"
-        },
-        "type": "array"
       }
     },
     "SearchResults": {
@@ -3752,296 +4139,11 @@
         "$ref": "#/definitions/SearchResults"
       }
     },
-    "Secret": {
-      "description": "Secret",
-      "schema": {
-        "$ref": "#/definitions/Secret"
-      }
-    },
-    "SecretList": {
-      "description": "SecretList",
-      "headers": {
-        "X-Total-Count": {
-          "description": "The total number of secrets",
-          "format": "int64",
-          "type": "integer"
-        }
-      },
-      "schema": {
-        "items": {
-          "$ref": "#/definitions/Secret"
-        },
-        "type": "array"
-      }
-    },
-    "ServerVersion": {
-      "description": "ServerVersion",
-      "schema": {
-        "$ref": "#/definitions/ServerVersion"
-      }
-    },
-    "StopWatch": {
-      "description": "StopWatch",
-      "schema": {
-        "$ref": "#/definitions/StopWatch"
-      }
-    },
-    "StopWatchList": {
-      "description": "StopWatchList",
-      "headers": {
-        "X-Total-Count": {
-          "description": "The total number of stop watches",
-          "format": "int64",
-          "type": "integer"
-        }
-      },
-      "schema": {
-        "items": {
-          "$ref": "#/definitions/StopWatch"
-        },
-        "type": "array"
-      }
-    },
-    "StringSlice": {
-      "description": "StringSlice",
-      "schema": {
-        "items": {
-          "type": "string"
-        },
-        "type": "array"
-      }
-    },
-    "SyncForkInfo": {
-      "description": "SyncForkInfo",
-      "schema": {
-        "$ref": "#/definitions/SyncForkInfo"
-      }
-    },
-    "Tag": {
-      "description": "Tag",
-      "schema": {
-        "$ref": "#/definitions/Tag"
-      }
-    },
-    "TagList": {
-      "description": "TagList",
-      "headers": {
-        "X-Total-Count": {
-          "description": "The total number of tags",
-          "format": "int64",
-          "type": "integer"
-        }
-      },
-      "schema": {
-        "items": {
-          "$ref": "#/definitions/Tag"
-        },
-        "type": "array"
-      }
-    },
-    "TagProtection": {
-      "description": "TagProtection",
-      "schema": {
-        "$ref": "#/definitions/TagProtection"
-      }
-    },
-    "TagProtectionList": {
-      "description": "TagProtectionList",
-      "schema": {
-        "items": {
-          "$ref": "#/definitions/TagProtection"
-        },
-        "type": "array"
-      }
-    },
     "TasksList": {
       "description": "TasksList",
       "schema": {
         "$ref": "#/definitions/ActionTaskResponse"
       }
-    },
-    "Team": {
-      "description": "Team",
-      "schema": {
-        "$ref": "#/definitions/Team"
-      }
-    },
-    "TeamList": {
-      "description": "TeamList",
-      "headers": {
-        "X-Total-Count": {
-          "description": "The total number of teams",
-          "format": "int64",
-          "type": "integer"
-        }
-      },
-      "schema": {
-        "items": {
-          "$ref": "#/definitions/Team"
-        },
-        "type": "array"
-      }
-    },
-    "TeamListWithoutPagination": {
-      "description": "TeamListWithoutPagination - Teams without pagination headers",
-      "schema": {
-        "items": {
-          "$ref": "#/definitions/Team"
-        },
-        "type": "array"
-      }
-    },
-    "TimelineList": {
-      "description": "TimelineList",
-      "headers": {
-        "X-Total-Count": {
-          "description": "The total number of timeline comments",
-          "format": "int64",
-          "type": "integer"
-        }
-      },
-      "schema": {
-        "items": {
-          "$ref": "#/definitions/TimelineComment"
-        },
-        "type": "array"
-      }
-    },
-    "TopicListResponse": {
-      "description": "TopicListResponse",
-      "schema": {
-        "items": {
-          "$ref": "#/definitions/TopicResponse"
-        },
-        "type": "array"
-      }
-    },
-    "TopicNames": {
-      "description": "TopicNames",
-      "schema": {
-        "$ref": "#/definitions/TopicName"
-      }
-    },
-    "TrackedTime": {
-      "description": "TrackedTime",
-      "schema": {
-        "$ref": "#/definitions/TrackedTime"
-      }
-    },
-    "TrackedTimeList": {
-      "description": "TrackedTimeList",
-      "headers": {
-        "X-Total-Count": {
-          "description": "The total number of tracked times",
-          "format": "int64",
-          "type": "integer"
-        }
-      },
-      "schema": {
-        "items": {
-          "$ref": "#/definitions/TrackedTime"
-        },
-        "type": "array"
-      }
-    },
-    "TrackedTimeListWithoutPagination": {
-      "description": "TrackedTimeListWithoutPagination - Tracked times for a specific user (no pagination headers)",
-      "schema": {
-        "items": {
-          "$ref": "#/definitions/TrackedTime"
-        },
-        "type": "array"
-      }
-    },
-    "User": {
-      "description": "User",
-      "schema": {
-        "$ref": "#/definitions/User"
-      }
-    },
-    "UserHeatmapData": {
-      "description": "UserHeatmapData",
-      "schema": {
-        "items": {
-          "$ref": "#/definitions/UserHeatmapData"
-        },
-        "type": "array"
-      }
-    },
-    "UserList": {
-      "description": "UserList",
-      "schema": {
-        "items": {
-          "$ref": "#/definitions/User"
-        },
-        "type": "array"
-      }
-    },
-    "UserSettings": {
-      "description": "UserSettings",
-      "schema": {
-        "$ref": "#/definitions/UserSettings"
-      }
-    },
-    "VariableList": {
-      "description": "VariableList",
-      "headers": {
-        "X-Total-Count": {
-          "description": "The total number of variables",
-          "format": "int64",
-          "type": "integer"
-        }
-      },
-      "schema": {
-        "items": {
-          "$ref": "#/definitions/ActionVariable"
-        },
-        "type": "array"
-      }
-    },
-    "WatchInfo": {
-      "description": "WatchInfo",
-      "schema": {
-        "$ref": "#/definitions/WatchInfo"
-      }
-    },
-    "WikiCommitList": {
-      "description": "WikiCommitList",
-      "headers": {
-        "X-Total-Count": {
-          "description": "The total number of wiki commits",
-          "format": "int64",
-          "type": "integer"
-        }
-      },
-      "schema": {
-        "$ref": "#/definitions/WikiCommitList"
-      }
-    },
-    "WikiPage": {
-      "description": "WikiPage",
-      "schema": {
-        "$ref": "#/definitions/WikiPage"
-      }
-    },
-    "WikiPageList": {
-      "description": "WikiPageList",
-      "headers": {
-        "X-Total-Count": {
-          "description": "The total number of wiki pages",
-          "format": "int64",
-          "type": "integer"
-        }
-      },
-      "schema": {
-        "items": {
-          "$ref": "#/definitions/WikiPageMetaData"
-        },
-        "type": "array"
-      }
-    },
-    "boolean": {
-      "description": "Boolean"
     },
     "conflict": {
       "description": "APIConflict is a conflict empty response"
@@ -4067,22 +4169,10 @@
         "$ref": "#/definitions/APIInternalServerError"
       }
     },
-    "invalidTopicsError": {
-      "description": "APIInvalidTopicsError is error format response to invalid topics",
-      "schema": {
-        "$ref": "#/definitions/APIInvalidTopicsError"
-      }
-    },
     "notFound": {
       "description": "APINotFound is a not found error response",
       "schema": {
         "$ref": "#/definitions/APINotFound"
-      }
-    },
-    "parameterBodies": {
-      "description": "parameterBodies",
-      "schema": {
-        "$ref": "#/definitions/RegisterRunnerOptions"
       }
     },
     "quotaExceeded": {
@@ -4100,19 +4190,10 @@
         }
       }
     },
-    "redirect": {
-      "description": "APIRedirect is a redirect response"
-    },
     "repoArchivedError": {
       "description": "APIRepoArchivedError is an error that is raised when an archived repo should be modified",
       "schema": {
         "$ref": "#/definitions/APIRepoArchivedError"
-      }
-    },
-    "string": {
-      "description": "APIString is a string response",
-      "schema": {
-        "type": "string"
       }
     },
     "unauthorized": {
