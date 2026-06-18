@@ -187,6 +187,19 @@ concurrency reservation checks (see above). `headless` and `task` swap `--detach
 (both always detach) for `--no-preflight`, which skips the autonomous pre-flight
 described above and detaches immediately.
 
+### `--details` (ward#167)
+
+`work` and `headless` take `--details "<note>"`: extra operator instructions
+woven into the run at dispatch, for when the issue text isn't the whole story
+("I actually want you to do it like this..."). The note rides as a final
+paragraph of the **seeded prompt** - marked as added via `--details` and flagged
+**authoritative over the issue text where they conflict** - so a single line can
+steer or correct the run without editing the issue. It is also folded into the
+**pre-flight read**, so the feasibility verdict accounts for the steer rather
+than judging the bare issue. It shows up in `--print` (it's part of the rendered
+seed). `task` has no `--details`: its `--instructions` already *are* the full
+brief, so there's nothing separate to layer on.
+
 ## Container name
 
 Where a bare `container up` names its container `ward-<repo>-<rand>`, an agent

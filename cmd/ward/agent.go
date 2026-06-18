@@ -75,14 +75,14 @@ func parseAgentIssueRef(s string) (agentIssueRef, error) {
 	return agentIssueRef{Owner: m[1], Repo: m[2], Number: n}, nil
 }
 
-// agentSeedPrompt is the lean instruction the in-container agent opens with:
-// it names the issue and the first move (read it). See docs/agent.md.
-func agentSeedPrompt(ref agentIssueRef, title string) string {
+// agentSeedPrompt seeds the in-container agent: names the issue, the first move
+// (read it), and an optional authoritative --details note (ward#167). See docs.
+func agentSeedPrompt(ref agentIssueRef, title, details string) string {
 	title = strings.TrimSpace(title)
 	if title == "" {
 		title = "(untitled)"
 	}
-	return fmt.Sprintf(
+	seed := fmt.Sprintf(
 		"Work on Forgejo issue %s (%q).\n\n"+
 			"URL: %s\n\n"+
 			"First action: read the full issue body and comment thread at that URL before "+
@@ -90,6 +90,13 @@ func agentSeedPrompt(ref agentIssueRef, title string) string {
 			"implement, commit, merge to main, push - and close the issue with a commit "+
 			"trailer: closes #%d.",
 		ref, title, ref.url(), ref.Number)
+	if details = strings.TrimSpace(details); details != "" {
+		seed += fmt.Sprintf(
+			"\n\nOperator note (added at dispatch via --details; treat it as authoritative and "+
+				"let it override the issue text where they conflict):\n%s",
+			details)
+	}
+	return seed
 }
 
 // agentModes is the ordered set of agent subcommands ward exposes; each maps
@@ -145,6 +152,7 @@ func agentSurfaceCommand(m containerMode, surface string, headless bool) *cli.Co
 	}
 	flags := []cli.Flag{
 		&cli.StringFlag{Name: "branch", Usage: "feature branch to create inside the clone (default: issue-<N>)"},
+		&cli.StringFlag{Name: "details", Usage: "extra operator instructions woven into the seeded prompt + pre-flight read (overrides the issue text on conflict)"},
 		&cli.StringFlag{Name: "image", Value: containerImageDefault, Usage: "dev-base image to run"},
 		&cli.StringFlag{Name: "tag", Value: containerImageTagDefault, Usage: "image tag"},
 		&cli.StringFlag{Name: "ward-source", Usage: "mount a local ward checkout and build ward from it instead of downloading the release"},
@@ -179,13 +187,14 @@ func agentSurfaceCommand(m containerMode, surface string, headless bool) *cli.Co
 	}
 }
 
-// resolvedWork bundles what resolveAgentWork produces: the parsed ref, the
-// issue's title + body (body feeds the pre-flight read), and the seeded prompt.
+// resolvedWork bundles resolveAgentWork's output: ref, title, body (feeds the
+// pre-flight), the operator --details note (ward#167), and the seeded prompt.
 type resolvedWork struct {
-	Ref   agentIssueRef
-	Title string
-	Body  string
-	Seed  string
+	Ref     agentIssueRef
+	Title   string
+	Body    string
+	Details string
+	Seed    string
 }
 
 // resolveAgentWork parses + trust-gates the ref, fetches the issue (failing fast
@@ -210,7 +219,8 @@ func (r *Runner) resolveAgentWork(ctx context.Context, c *cli.Command, mode cont
 		fmt.Fprintf(os.Stderr, "%s: note: issue %s is %s, not open - working it anyway.\n", label, ref, st)
 	}
 	title := strings.TrimSpace(issue.Title)
-	return resolvedWork{Ref: ref, Title: title, Body: issue.Body, Seed: agentSeedPrompt(ref, title)}, nil
+	details := strings.TrimSpace(c.String("details"))
+	return resolvedWork{Ref: ref, Title: title, Body: issue.Body, Details: details, Seed: agentSeedPrompt(ref, title, details)}, nil
 }
 
 // runAgentWork resolves the issue, seeds the prompt, runs the autonomous
@@ -250,7 +260,7 @@ func preflightWanted(c *cli.Command) bool {
 
 // preflightPrompt asks the about-to-detach agent for a feasibility read ending on
 // a GO / NO-GO line ward parses (parsePreflightVerdict). Pure + testable.
-func preflightPrompt(ref agentIssueRef, title, body string) string {
+func preflightPrompt(ref agentIssueRef, title, body, details string) string {
 	title = strings.TrimSpace(title)
 	if title == "" {
 		title = "(untitled)"
@@ -259,13 +269,20 @@ func preflightPrompt(ref agentIssueRef, title, body string) string {
 	if body == "" {
 		body = "(no description provided)"
 	}
+	note := ""
+	if details = strings.TrimSpace(details); details != "" {
+		note = fmt.Sprintf(
+			"\n\nThe operator also attached this steering note at dispatch (--details), which the "+
+				"detached run will treat as authoritative over the issue text - weigh it in your read:\n%s",
+			details)
+	}
 	return fmt.Sprintf(
 		"You are about to be sent, fire-and-forget, into an ephemeral container to carry "+
 			"this Forgejo issue end to end on your own - implement, commit, merge to main, "+
 			"push - with no human watching once you detach.\n\n"+
 			"Before that detached run starts, give a quick PRE-FLIGHT read: based only on the "+
 			"issue below, do you think you can carry it to merge unattended?\n\n"+
-			"Issue: %s (%q)\n\n%s\n\n"+
+			"Issue: %s (%q)\n\n%s%s\n\n"+
 			"Answer in 2-4 sentences naming the main risk or unknown, then a final line of "+
 			"exactly one of:\n"+
 			"  \"GO\" - you would take it on unattended;\n"+
@@ -275,7 +292,7 @@ func preflightPrompt(ref agentIssueRef, title, body string) string {
 			"do not go digging to decide it. ward will blind-file a fresh issue in that repo and "+
 			"launch nothing here.\n"+
 			"This is a judgment call, not a commitment - be honest about ambiguity.",
-		ref, title, body, ref.Owner, ref.Repo)
+		ref, title, body, note, ref.Owner, ref.Repo)
 }
 
 // runPreflight acts on the agent's feasibility verdict with no human, shared by
@@ -283,7 +300,7 @@ func preflightPrompt(ref agentIssueRef, title, body string) string {
 func (r *Runner) runPreflight(ctx context.Context, mode containerMode, surface string, w resolvedWork) (bool, error) {
 	label := fmt.Sprintf("ward agent %s %s", mode, surface)
 	bin := mode.agentBinary()
-	argv, ok := mode.hostPreflightArgv(preflightPrompt(w.Ref, w.Title, w.Body))
+	argv, ok := mode.hostPreflightArgv(preflightPrompt(w.Ref, w.Title, w.Body, w.Details))
 	// No host self-assessment (claude+goose have one, codex/qwen don't) or no
 	// binary on PATH: can't fairly bounce the issue, so the dispatch proceeds.
 	if !ok || !hostHasBinary(bin) {
@@ -749,7 +766,9 @@ func (r *Runner) runAgentTask(ctx context.Context, c *cli.Command, mode containe
 		}
 	}
 
-	seed := agentSeedPrompt(ref, title)
+	// task carries its full instruction set in the filed issue body, so it has no
+	// separate --details note to weave in (ward#167).
+	seed := agentSeedPrompt(ref, title, "")
 	return r.launchAgentContainer(ctx, c, mode, "task", true, ref, title, seed)
 }
 
@@ -763,7 +782,7 @@ func printAgentTaskPlan(c *cli.Command, mode containerMode, repo targetRepo, tit
 	// A placeholder ref renders the seed shape; the real number is only known
 	// once the issue is filed (which --print deliberately skips).
 	previewRef := agentIssueRef{Owner: repo.Owner, Repo: repo.Name, Number: 0}
-	seed := agentSeedPrompt(previewRef, title)
+	seed := agentSeedPrompt(previewRef, title, "")
 	plan := buildUpPlan(c, repo, mode, "", "", []string{seed})
 	plan.Headless = true
 	plan.Interactive = false

@@ -67,7 +67,7 @@ func TestAgentIssueRefURL(t *testing.T) {
 
 func TestAgentSeedPrompt(t *testing.T) {
 	ref := agentIssueRef{Owner: "coilyco-flight-deck", Repo: "ward", Number: 98}
-	got := agentSeedPrompt(ref, "  container verb family  ")
+	got := agentSeedPrompt(ref, "  container verb family  ", "")
 	for _, want := range []string{
 		"coilyco-flight-deck/ward#98",
 		"container verb family",    // title, trimmed
@@ -79,9 +79,33 @@ func TestAgentSeedPrompt(t *testing.T) {
 			t.Errorf("seed prompt missing %q\n got: %s", want, got)
 		}
 	}
+	// No --details note when none is passed (and no dangling "Operator note" header).
+	if strings.Contains(got, "Operator note") {
+		t.Errorf("seed prompt should omit the operator note when details is empty\n got: %s", got)
+	}
 	// An empty title degrades gracefully, never blank-quotes.
-	if !strings.Contains(agentSeedPrompt(ref, "   "), "(untitled)") {
+	if !strings.Contains(agentSeedPrompt(ref, "   ", ""), "(untitled)") {
 		t.Error("empty title should render as (untitled)")
+	}
+}
+
+func TestAgentSeedPromptDetails(t *testing.T) {
+	ref := agentIssueRef{Owner: "coilyco-flight-deck", Repo: "ward", Number: 98}
+	got := agentSeedPrompt(ref, "container verb family", "  do it like this instead, not that  ")
+	for _, want := range []string{
+		"Operator note",            // the labeled note section (ward#167)
+		"--details",                // names where it came from
+		"do it like this instead",  // the note, trimmed
+		"override the issue text",  // the precedence instruction
+		"read the full issue body", // the base seed survives
+	} {
+		if !strings.Contains(got, want) {
+			t.Errorf("seed prompt missing %q\n got: %s", want, got)
+		}
+	}
+	// Whitespace-only details is treated as no note.
+	if strings.Contains(agentSeedPrompt(ref, "t", "   \n  "), "Operator note") {
+		t.Error("whitespace-only details should not render an operator note")
 	}
 }
 
@@ -133,7 +157,7 @@ func TestTaskBody(t *testing.T) {
 
 func TestPreflightPrompt(t *testing.T) {
 	ref := agentIssueRef{Owner: "coilyco-flight-deck", Repo: "ward", Number: 137}
-	got := preflightPrompt(ref, "  pre-flight check  ", "  do the thing  ")
+	got := preflightPrompt(ref, "  pre-flight check  ", "  do the thing  ", "")
 	for _, want := range []string{
 		"coilyco-flight-deck/ward#137", // the issue ref
 		"pre-flight check",             // title, trimmed
@@ -148,8 +172,19 @@ func TestPreflightPrompt(t *testing.T) {
 			t.Errorf("preflight prompt missing %q\n got: %s", want, got)
 		}
 	}
+	// No steering note appears when --details is empty.
+	if strings.Contains(got, "steering note") {
+		t.Errorf("preflight prompt should omit the steering note when details is empty; got: %s", got)
+	}
+	// A --details note is woven in for the feasibility read (ward#167).
+	withNote := preflightPrompt(ref, "t", "b", "  ship it the other way  ")
+	for _, want := range []string{"steering note", "--details", "ship it the other way"} {
+		if !strings.Contains(withNote, want) {
+			t.Errorf("preflight prompt with details missing %q\n got: %s", want, withNote)
+		}
+	}
 	// Empty title/body degrade gracefully, never blank-quote or dangle.
-	empty := preflightPrompt(ref, "  ", "  ")
+	empty := preflightPrompt(ref, "  ", "  ", "")
 	if !strings.Contains(empty, "(untitled)") || !strings.Contains(empty, "(no description provided)") {
 		t.Errorf("empty title/body should render placeholders; got: %s", empty)
 	}
