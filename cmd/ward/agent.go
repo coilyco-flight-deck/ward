@@ -211,10 +211,8 @@ func (r *Runner) runAgentWork(ctx context.Context, c *cli.Command, mode containe
 	if err != nil {
 		return err
 	}
-	// Remind the operator at the host dispatch moment if their ward is stale; a
-	// detached/headless run would otherwise bury the only `ward version` signal
-	// in a container log nobody watches (ward#143). --print is a pure dry run, so
-	// it stays offline.
+	// Warn at host dispatch if ward is stale; a detached run buries the only
+	// `ward version` signal in a container log (ward#143). --print stays offline.
 	if !c.Bool("print") {
 		r.maybeWarnWardOutdated(ctx)
 	}
@@ -385,9 +383,8 @@ func preflightNoGoComment(mode containerMode, surface, reason, read string) stri
 	return b.String()
 }
 
-// buildAgentPlan composes the container plan for a resolved issue: the seeded
-// argv, the issue-<N> branch, and the issue-naming container name. detached
-// strips the interactive/TTY flags so a backgrounded run never grabs a pty.
+// buildAgentPlan composes the container plan (seeded argv, issue-<N> branch, named
+// container) for a resolved issue. detached strips TTY flags so it never grabs a pty.
 func buildAgentPlan(c *cli.Command, mode containerMode, ref agentIssueRef, seed string, headless, detached bool, assetsDir string) (upPlan, error) {
 	cwd := resolveInvokeCWD()
 	if cwd == "" {
@@ -435,11 +432,8 @@ func (r *Runner) launchAgentContainer(ctx context.Context, c *cli.Command, mode 
 		return printAgentPlan(c, plan, ref, title, seed, surface)
 	}
 
-	// Reserve the issue so a second run - on this host (the file sentinel) or
-	// another (the Forgejo marker comment) - won't redundantly work it. A
-	// detached run outlives this process, so its local sentinel must persist for
-	// the container's lifetime (TTL- and liveness-bounded); an attached run
-	// releases the hold when it returns.
+	// Reserve the issue so another run (file sentinel here, Forgejo marker elsewhere)
+	// won't redo it. Detached holds for the container's life; attached releases on return.
 	releaseReservation, err := r.reserveIssue(ctx, label, mode, ref, plan.Name, plan.Branch, c.Bool("force"))
 	if err != nil {
 		return err
@@ -587,9 +581,8 @@ func (r *Runner) runAgentTask(ctx context.Context, c *cli.Command, mode containe
 		return printAgentTaskPlan(c, mode, repo, title, body)
 	}
 
-	// task always detaches into a headless run, so the host dispatch is the
-	// operator's last interactive moment - surface a stale-ward reminder here
-	// before it files+launches (ward#143).
+	// task always detaches, so host dispatch is the last interactive moment - surface
+	// a stale-ward reminder before it files+launches (ward#143).
 	r.maybeWarnWardOutdated(ctx)
 
 	cl, err := r.hostForgejoClient(ctx)

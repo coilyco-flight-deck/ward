@@ -13,18 +13,8 @@ import (
 	"forgejo.coilysiren.me/coilyco-flight-deck/cli-guard/pkg/config"
 )
 
-// agent_reserve.go gives every `ward agent` run a two-sided reservation so a
-// second run never works the same issue at the same time:
-//
-//   - locally, a file sentinel under ~/.ward/agent-reservations names the issue
-//     a run is carrying (with the container that holds it), and
-//   - remotely, a marker comment on the Forgejo issue advertises the hold to
-//     other hosts.
-//
-// Both are TTL-bounded: a reservation older than agentReservationTTL is treated
-// as stale (a crashed or long-dead run shouldn't wedge the issue forever), and
-// the local sentinel is additionally reclaimed the moment its container is no
-// longer running. --force overrides both checks. See docs/agent.md.
+// agent_reserve.go gives every `ward agent` run a two-sided reservation (local
+// sentinel + Forgejo marker comment), TTL-bounded, --force overrides. See docs/agent.md.
 
 // agentReservationsSubdir is the directory under ~/.ward holding one sentinel
 // file per reserved issue.
@@ -101,7 +91,7 @@ func readAgentReservation(path string) (*agentReservation, bool, error) {
 	}
 	var res agentReservation
 	if err := json.Unmarshal(b, &res); err != nil {
-		//nolint:nilerr // a corrupt sentinel is treated as absent, not a hard error, so it can't wedge the issue
+		//nolint:nilerr // a corrupt sentinel is treated as absent so it can't wedge the issue
 		return nil, false, nil
 	}
 	return &res, true, nil
@@ -145,11 +135,8 @@ func hostname() string {
 	return "unknown"
 }
 
-// reserveIssue acquires both sides of the reservation before a container fires.
-// It returns a release for the local sentinel; the caller decides whether to
-// call it (attached runs release on return, detached runs leave it for the TTL).
-// A remote-side failure rolls the local hold back so a fixed retry isn't
-// self-blocked.
+// reserveIssue acquires both reservation sides before a container fires, returning a
+// local-sentinel release; a remote-side failure rolls the local hold back.
 func (r *Runner) reserveIssue(ctx context.Context, label string, mode containerMode, ref agentIssueRef, container, branch string, force bool) (func(), error) {
 	now := time.Now().UTC()
 	releaseLocal, err := r.acquireLocalReservation(ctx, label, mode, ref, container, branch, now, force)
@@ -163,9 +150,8 @@ func (r *Runner) reserveIssue(ctx context.Context, label string, mode containerM
 	return releaseLocal, nil
 }
 
-// acquireLocalReservation writes this run's sentinel, refusing if a fresh one is
-// already held by a still-running container (unless force). It returns a release
-// that deletes the sentinel.
+// acquireLocalReservation writes this run's sentinel (refusing a fresh one held by a
+// still-running container unless force) and returns a release that deletes it.
 func (r *Runner) acquireLocalReservation(ctx context.Context, label string, mode containerMode, ref agentIssueRef, container, branch string, now time.Time, force bool) (func(), error) {
 	path, err := agentReservationPath(ref)
 	if err != nil {
@@ -199,9 +185,8 @@ func (r *Runner) acquireLocalReservation(ctx context.Context, label string, mode
 	return func() { _ = removeAgentReservation(path) }, nil
 }
 
-// containerRunning reports whether a container with the given name is currently
-// running. An empty name or an indeterminate docker error is treated as "still
-// running" so a reservation is never reclaimed on a false negative.
+// containerRunning reports whether the named container is running; an empty name or
+// indeterminate docker error is treated as "running" to avoid false-negative reclaims.
 func (r *Runner) containerRunning(ctx context.Context, name string) bool {
 	if strings.TrimSpace(name) == "" {
 		return true
@@ -214,10 +199,8 @@ func (r *Runner) containerRunning(ctx context.Context, name string) bool {
 	return strings.TrimSpace(string(out)) != ""
 }
 
-// acquireRemoteReservation refuses when a fresh reservation comment already sits
-// on the issue (unless force), otherwise posts one. Network/auth failures
-// degrade to a warning - the local sentinel still guards this host - so a
-// transient Forgejo hiccup never blocks a launch.
+// acquireRemoteReservation refuses on a fresh reservation comment (unless force), else
+// posts one; network/auth failures degrade to a warning since the local sentinel holds.
 func (r *Runner) acquireRemoteReservation(ctx context.Context, label string, mode containerMode, ref agentIssueRef, container string, now time.Time, force bool) error {
 	cl, err := r.hostForgejoClient(ctx)
 	if err != nil {

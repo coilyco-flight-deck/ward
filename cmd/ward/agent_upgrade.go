@@ -12,12 +12,8 @@ import (
 	"time"
 )
 
-// agent_upgrade.go surfaces a host-side "your ward is behind the latest release"
-// reminder when a human dispatches `ward agent`. A non-interactive agent run
-// (headless/task detach, or `work --detach`) only logs its `ward version` line
-// inside the container, where no human is watching - so the cue that the *host*
-// ward binary is stale and wants a `brew upgrade` is lost. This re-surfaces that
-// signal at the host dispatch moment, where the operator still is. See ward#143.
+// agent_upgrade.go re-surfaces the "host ward is behind latest" reminder at `ward
+// agent` dispatch, since a detached run logs its version unseen. See ward#143.
 
 // wardReleaseRepo is the repo whose latest release defines "current ward".
 const wardReleaseRepo = "coilyco-flight-deck/ward"
@@ -26,10 +22,8 @@ const wardReleaseRepo = "coilyco-flight-deck/ward"
 // unreachable Forgejo never holds up an agent dispatch.
 const wardReleaseCheckTimeout = 5 * time.Second
 
-// maybeWarnWardOutdated prints a best-effort reminder to stderr when the host
-// ward binary is behind the latest published release. It never errors and never
-// blocks dispatch: a dev build, no network, an auth wall, or an unparseable tag
-// all just stay quiet rather than guess.
+// maybeWarnWardOutdated prints a best-effort stderr reminder when the host ward is
+// behind latest. It never errors or blocks dispatch: any failure stays quiet.
 func (r *Runner) maybeWarnWardOutdated(ctx context.Context) {
 	// A dev/source build has no meaningful "latest release" to chase, and the
 	// brew-upgrade path doesn't apply to it - skip before touching the network.
@@ -66,9 +60,8 @@ func versionLooksReleased(v string) bool {
 	return v != "" && v != "dev"
 }
 
-// fetchLatestWardTag GETs the latest ward release tag from Forgejo, best-effort
-// and unauthenticated (the instance serves this repo's API publicly). ok is
-// false on any failure so the caller stays silent rather than guess.
+// fetchLatestWardTag GETs the latest ward release tag from Forgejo, best-effort and
+// unauthenticated. ok is false on any failure so the caller stays silent.
 func fetchLatestWardTag(ctx context.Context) (string, bool) {
 	cctx, cancel := context.WithTimeout(ctx, wardReleaseCheckTimeout)
 	defer cancel()
@@ -104,9 +97,8 @@ func fetchLatestWardTag(ctx context.Context) (string, bool) {
 	return tag, true
 }
 
-// versionBehind reports whether current is an older release than latest. A dev
-// build, an unparseable tag on either side, or current >= latest all return
-// false: the reminder only fires on a confident "you are behind".
+// versionBehind reports whether current is an older release than latest. A dev build,
+// an unparseable tag, or current >= latest all return false (only fires when confident).
 func versionBehind(current, latest string) bool {
 	if !versionLooksReleased(current) {
 		return false
@@ -124,10 +116,8 @@ func versionBehind(current, latest string) bool {
 	return false
 }
 
-// parseSemver splits a vX.Y.Z tag into its three numeric components, tolerating
-// a missing leading v, fewer than three parts (zero-padded), and a -prerelease
-// or +build suffix on the last part. ok is false if any present component is
-// non-numeric, so a malformed tag fails closed (no nag).
+// parseSemver splits a vX.Y.Z tag into 3 numeric parts, tolerating a missing v, short
+// tags (zero-padded), and -pre/+build suffixes. ok is false on a non-numeric component.
 func parseSemver(tag string) (parts [3]int, ok bool) {
 	s := strings.TrimSpace(tag)
 	s = strings.TrimPrefix(s, "v")

@@ -238,9 +238,8 @@ compose_context() {
     printf '\n\n---\n\n' >> "$out"; cat "$WARD_CONTEXT_SRC/AGENTS.md" >> "$out"
   fi
   log "composed context (level $WARD_CONTEXT_LEVEL) at $out"
-  # goose does not read ~/.claude/CLAUDE.md; mirror the same composed doctrine
-  # into its global hints file so a `goose run` carries the carry-to-merge
-  # autonomy + context the seed prompt assumes. See docs/agent.md (goose).
+  # goose ignores ~/.claude/CLAUDE.md; mirror composed doctrine into its hints
+  # file so `goose run` carries the seed prompt's context. See docs/agent.md (goose).
   if [ "$WARD_MODE" = goose ]; then
     local ghints="$AGENT_HOME/.config/goose/.goosehints"
     mkdir -p "$(dirname "$ghints")"
@@ -325,15 +324,8 @@ main() {
     bash || true
     return
   fi
-  # Compose the per-mode agent argv. The seed prompt rides as "$@" (one arg);
-  # each harness takes it differently, so build the full argv here:
-  #   claude  - prompt is positional; headless adds `-p stream-json` and pipes
-  #             through stream_progress for concise live log lines.
-  #   goose   - headless is `goose run -t <prompt>` (runs to completion, prints
-  #             its own progress); interactive is `goose session`. See the goose
-  #             guardfile (docs/ward-kdl.goose.guardfile.md) for the mapping.
-  #   codex/qwen - best-effort passthrough until their headless flags are wired.
-  # stream gates the stream_progress pipe (claude stream-json only).
+  # Build per-mode argv from seed "$@": claude positional, goose run -t/session, and
+  # codex/qwen passthrough (docs/ward-kdl.goose.guardfile.md). stream gates the pipe.
   local stream=0
   local -a agent_argv
   case "$WARD_MODE" in

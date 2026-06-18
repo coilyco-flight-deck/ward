@@ -144,10 +144,8 @@ func (m containerMode) hostPreflightArgv(prompt string) ([]string, bool) {
 	}
 }
 
-// contextLevel maps a mode onto the least-access context ladder: 2 = full,
-// 1 = scoped, 0 = minimal. See docs/container.md for what each level composes.
-// goose is a full carry-to-merge harness (level 2) like claude; the entrypoint
-// mirrors the composed doctrine into goose's hints file so it reads it.
+// contextLevel maps a mode onto the least-access ladder (2=full, 1=scoped, 0=minimal);
+// see docs/container.md. goose is full (level 2) like claude, mirrored to its hints file.
 func (m containerMode) contextLevel() int {
 	switch m {
 	case modeQwen:
@@ -248,11 +246,8 @@ func containerName(repo targetRepo, randSuffix string) string {
 	return fmt.Sprintf("%s-%s-%s", containerNamePrefix, safeRepoName(repo), randSuffix)
 }
 
-// agentContainerName names an `ward agent` container meaningfully:
-// ward-<repo>-issue-<N>-<mode>-<rand>, so `docker ps` shows at a glance which
-// repo, which issue the agent is carrying, and which harness drives it - the
-// random suffix still lets concurrent runs on the same issue coexist. The
-// issue-<N> segment mirrors the default feature branch. See docs/agent.md.
+// agentContainerName names an `ward agent` container ward-<repo>-issue-<N>-<mode>-<rand>,
+// so `docker ps` shows repo/issue/harness; suffix lets runs coexist. See docs/agent.md.
 func agentContainerName(repo targetRepo, mode containerMode, issue int, randSuffix string) string {
 	return fmt.Sprintf("%s-%s-issue-%d-%s-%s", containerNamePrefix, safeRepoName(repo), issue, mode, randSuffix)
 }

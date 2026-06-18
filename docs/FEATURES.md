@@ -1,6 +1,6 @@
 # ward features
 
-Inventory of what `ward` ships, updated when a feature lands or reshapes.
+Inventory of what `ward` ships, updated when a feature lands.
 
 ## Scope
 
@@ -10,7 +10,7 @@ The contributor-facing cli-guard gate: repo dev verbs + audited host wrappers be
 
 - **`ward exec <verb>`** - run a repo dev verb from `.ward/ward.yaml` through cli-guard's pipeline: argv-validated, one JSONL audit row, clean+synced tree gate. `--audit-override-dirty` bypasses it. See [docs/exec-verb.md](exec-verb.md).
 - **`ward pkg brew <verb>`** - audited brew wrapper: formula/tap mutations default to primary-org taps (`--allow-untapped` otherwise), reads and `brew bundle` pass through.
-- **`ward upgrade`** - audited ward self-update: `brew update` + `brew upgrade coilyco-flight-deck/tap/ward` (`--dry` diffs).
+- **`ward upgrade`** - audited self-update: `brew update` + `brew upgrade coilyco-flight-deck/tap/ward` (`--dry`).
 - **`ward audit {path,tail}`** - read surface over the audit log. `path` prints the resolved `~/.ward/audit/<slug>.jsonl`; `tail` streams rows (`--since`/`--follow`). See [docs/audit.md](audit.md).
 - **`ward git <verb>`** - audited git passthroughs (cli-guard `passthrough`): read + safe-write verbs (`git.<verb>`, `-C` hoisted). `ward git commit -m msg -- <path>...` is a concurrency-safe verb (private `GIT_INDEX_FILE`, explicit pathspecs, editor refused). See [docs/git-verbs.md](git-verbs.md).
 - **`ward doctor`** - diagnostic checks against the resolved config + host.
@@ -18,8 +18,8 @@ The contributor-facing cli-guard gate: repo dev verbs + audited host wrappers be
 - **`ward install-hooks`** - register the PreToolUse hook in `.claude/settings.json` (idempotent).
 - **`ward lint`** - lint `.ward/ward.yaml` against the repo Makefile.
 - **`ward dispatch <surface> <ref>`** - fire `claude` against a real open issue. Surfaces: `headless` (detached `claude -p`), `interactive`, `consult`, `cascade`; plus `reap`/`status`/`registry`. Off-org refs refused. See [docs/dispatch.md](dispatch.md).
-- **`ward container {up,exec,reap,down,ls}`** - ephemeral, least-access dev containers, one per `up`: target cloned fresh inside (cwd bind, read-only), `--mode claude|codex|qwen|goose`, self-managed perms. `reap` lands clean work on `main` or salvages it. See [docs/container.md](container.md).
-- **`ward agent <name> {work,headless,task}`** - shortcut over `container up`: `work`/`headless` take an existing issue, `task` *files* one. Off-org refused, `--print` dry-runs; `headless`/`task` add an [agent commit suite](agent-precommit.md). Each run *reserves* the issue (2h TTL) so concurrent runs never double-work it (`--force` reclaims); `headless` pre-flights a fire-and-forget feasibility check - GO launches, NO-GO comments on the issue (`--no-preflight` skips, ward#147). See [agent](agent.md).
+- **`ward container {up,exec,reap,down,ls}`** - ephemeral, least-access dev containers, one per `up`: target cloned fresh inside (cwd bind, read-only), `--mode claude|codex|qwen|goose`, self-managed perms. `reap` lands or salvages the work. See [docs/container.md](container.md).
+- **`ward agent <name> {work,headless,task}`** - shortcut over `container up`: `work`/`headless` take an existing issue, `task` *files* one. Off-org refused, `--print` dry-runs; `headless`/`task` add an [agent commit suite](agent-precommit.md). Each run *reserves* the issue (2h TTL, `--force` reclaims) against double-work; `headless` pre-flights a fire-and-forget feasibility check (GO launches, NO-GO comments; `--no-preflight` skips, ward#147). See [agent](agent.md).
 
 ## Spec-driven ops (`ward-kdl`)
 

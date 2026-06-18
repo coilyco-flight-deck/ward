@@ -7,6 +7,9 @@ excludes = [
   # Pre-existing size debt: docs/hook.md is 92 lines, over the 80-line cap.
   # The split is tracked in coilyco-flight-deck/ward#50; drop this when it lands.
   "docs/hook.md",
+  # Size debt: docs/agent.md is 167 lines / ~9.4k chars, landed via the agent
+  # feature merges (bypassing pre-commit). Split tracked in ward#150; drop then.
+  "docs/agent.md",
   # Generated surface reference (specverb-gen). The driver emits it beside the
   # Guardfile; the reviewed copy is committed at docs/ and grows with the verb
   # surface, so the layout cap does not apply. The beside-the-kdl emission is

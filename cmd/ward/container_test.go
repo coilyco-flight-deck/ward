@@ -453,9 +453,8 @@ func TestEntrypointInstallsAgentCommitSuite(t *testing.T) {
 	}
 }
 
-// TestEntrypointGooseHeadless locks ward#141: the entrypoint launches goose
-// headless as `goose run -t <seed>` (not claude's `-p` flags), and mirrors the
-// composed doctrine into goose's hints file since goose ignores ~/.claude.
+// TestEntrypointGooseHeadless locks ward#141: entrypoint runs `goose run -t <seed>`
+// (not claude `-p`) and mirrors doctrine into .goosehints since goose ignores ~/.claude.
 func TestEntrypointGooseHeadless(t *testing.T) {
 	data, err := containerAssets.ReadFile("containerassets/" + containerEntrypointRel)
 	if err != nil {
@@ -472,9 +471,8 @@ func TestEntrypointGooseHeadless(t *testing.T) {
 			t.Errorf("entrypoint missing %q (ward#141 goose headless)", want)
 		}
 	}
-	// goose headless must not borrow claude's stream-json flags: those only apply
-	// to the claude branch. The goose `run -t` invocation precedes the claude
-	// `-p --output-format` block within the mode switch.
+	// goose headless must not borrow claude's stream-json flags: the goose `run -t`
+	// invocation precedes the claude `-p --output-format` block in the mode switch.
 	goose := strings.Index(script, "goose run -t")
 	claudeFlags := strings.Index(script, "--output-format stream-json")
 	if goose < 0 || claudeFlags < 0 || goose > claudeFlags {
