@@ -21,10 +21,10 @@ wrap ward-kdl pkg skillsmp {
     }
     // search: keyword search (GET /search). --q is the term; --sortBy/--limit/--page paginate.
     can search skills {
-        op "searchSkills"
+        op searchSkills
     }
     // ai-search: semantic search (GET /ai-search). --q is the natural-language term.
     can ai-search skills {
-        op "aiSearchSkills"
+        op aiSearchSkills
     }
 }
