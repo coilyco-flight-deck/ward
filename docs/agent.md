@@ -10,7 +10,8 @@ hand-written prompt.
 ```bash
 ward agent claude work coilyco-flight-deck/ward#98
 ward agent claude work https://forgejo.coilysiren.me/coilyco-flight-deck/ward/issues/98
-ward agent codex  work coilyco-flight-deck/ward#98 --print   # resolve + show the plan, run nothing
+ward agent claude headless coilyco-flight-deck/ward#98          # detached, fire-and-forget
+ward agent codex  work coilyco-flight-deck/ward#98 --print      # resolve + show the plan, run nothing
 ```
 
 `<name>` is the agent/mode (`claude|codex|qwen`, the same context ladder as
@@ -34,6 +35,21 @@ container doctrine
 ([AGENTS.container.md](../cmd/ward/containerassets/AGENTS.container.md)) supplies
 the carry-to-merge autonomy and the reaper backstop - `work` only adds the
 issue-seeding on top.
+
+## work vs headless
+
+- **`work`** (interactive) attaches the container to your terminal - you watch
+  the agent and can step in. `--detach` backgrounds it.
+- **`headless`** is fire-and-forget: it always detaches and runs the agent in
+  print mode (`claude -p`), so it works to completion non-interactively and exits
+  into the reaper. Read progress with `docker logs <name>` / `ward container exec`.
+
+> **Reaper caveat (ward#108).** The in-container reaper backstop can't re-exec
+> ward inside the container's restricted namespace yet (the sandbox EPERMs), so
+> *residual* uncommitted work isn't auto-salvaged. The happy path is unaffected:
+> the agent commits/merges/pushes itself via bare git per its doctrine. Until
+> #108 lands, headless runs should finish to a clean `main` push, not leave work
+> loose "for review".
 
 ## Flags
 

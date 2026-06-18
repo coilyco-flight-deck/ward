@@ -1,10 +1,45 @@
 package main
 
 import (
+	"os"
+	"path/filepath"
 	"slices"
 	"strings"
 	"testing"
+	"time"
 )
+
+// TestSweepStaleContainerAssets reclaims dirs past the TTL (left by detached
+// runs) while sparing fresh ones and unrelated dirs.
+func TestSweepStaleContainerAssets(t *testing.T) {
+	tmp := t.TempDir()
+	t.Setenv("TMPDIR", tmp)
+	if os.TempDir() != tmp {
+		t.Skipf("TMPDIR override not honored (os.TempDir()=%s)", os.TempDir())
+	}
+	stale := filepath.Join(tmp, containerAssetsPrefix+"stale")
+	fresh := filepath.Join(tmp, containerAssetsPrefix+"fresh")
+	other := filepath.Join(tmp, "unrelated-dir")
+	for _, d := range []string{stale, fresh, other} {
+		if err := os.MkdirAll(d, 0o755); err != nil {
+			t.Fatal(err)
+		}
+	}
+	past := time.Now().Add(-2 * containerAssetsTTL)
+	if err := os.Chtimes(stale, past, past); err != nil {
+		t.Fatal(err)
+	}
+	sweepStaleContainerAssets()
+	if _, err := os.Stat(stale); !os.IsNotExist(err) {
+		t.Error("stale asset dir should have been swept")
+	}
+	if _, err := os.Stat(fresh); err != nil {
+		t.Error("fresh asset dir must survive the sweep")
+	}
+	if _, err := os.Stat(other); err != nil {
+		t.Error("unrelated dir must not be touched")
+	}
+}
 
 func TestParseRepoRef(t *testing.T) {
 	cases := []struct {

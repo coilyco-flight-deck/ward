@@ -118,6 +118,23 @@ func TestDockerCreateArgvSeedsAgentArgs(t *testing.T) {
 	}
 }
 
+// Headless threads WARD_HEADLESS=1 into the container env (the entrypoint runs
+// claude -p); a non-headless plan must not set it.
+func TestWardEnvHeadless(t *testing.T) {
+	p := sampleUpPlan()
+	if _, ok := p.wardEnv()["WARD_HEADLESS"]; ok {
+		t.Error("non-headless plan must not set WARD_HEADLESS")
+	}
+	p.Headless = true
+	if got := p.wardEnv()["WARD_HEADLESS"]; got != "1" {
+		t.Errorf("headless plan WARD_HEADLESS = %q, want 1", got)
+	}
+	joined := strings.Join(dockerCreateArgv(p, ""), " ")
+	if !strings.Contains(joined, "-e WARD_HEADLESS=1") {
+		t.Errorf("docker argv missing -e WARD_HEADLESS=1\n got: %s", joined)
+	}
+}
+
 // A bare up plan (no AgentArgs) still ends at the image - container up's shape.
 func TestDockerCreateArgvNoAgentArgs(t *testing.T) {
 	p := sampleUpPlan()

@@ -216,7 +216,14 @@ main() {
     bash || true
     return
   fi
-  "$WARD_AGENT" "$@" || log "agent exited non-zero ($?); reaping anyway"
+  # Headless (`ward agent <name> headless`): -p runs the agent to completion
+  # non-interactively, then exits into the reaper. claude-only (only claude in-image).
+  local agent_argv=("$WARD_AGENT")
+  if [ "${WARD_HEADLESS:-0}" = 1 ]; then
+    agent_argv+=(-p)
+    log "headless: running $WARD_AGENT in print mode (-p)"
+  fi
+  "${agent_argv[@]}" "$@" || log "agent exited non-zero ($?); reaping anyway"
 }
 
 main "$@"

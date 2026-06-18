@@ -295,6 +295,9 @@ type upPlan struct {
 	// AgentArgs ride after the image as the in-container agent's argv (the
 	// entrypoint's `"$WARD_AGENT" "$@"`); empty for a bare `container up`.
 	AgentArgs []string
+	// Headless runs the in-container agent in print mode (claude -p), exporting
+	// WARD_HEADLESS=1; set by `ward agent <name> headless`, which also detaches.
+	Headless bool
 }
 
 // wardEnv is the non-secret WARD_* config the entrypoint reads. Everything
@@ -324,6 +327,9 @@ func (p upPlan) wardEnv() map[string]string {
 	}
 	if p.WardFromSource {
 		env["WARD_FROM_SOURCE"] = containerWardSrcMount
+	}
+	if p.Headless {
+		env["WARD_HEADLESS"] = "1"
 	}
 	return env
 }

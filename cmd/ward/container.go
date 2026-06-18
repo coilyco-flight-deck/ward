@@ -10,6 +10,7 @@ import (
 	"os"
 	"path/filepath"
 	"strings"
+	"time"
 
 	"forgejo.coilysiren.me/coilyco-flight-deck/cli-guard/cli/verb"
 	"github.com/urfave/cli/v3"
@@ -102,7 +103,11 @@ func (r *Runner) runContainerUp(ctx context.Context, c *cli.Command) error {
 	if err != nil {
 		return err
 	}
-	defer cleanupAssets()
+	// A detached run leaves its assets for the next sweep (it cannot delete the
+	// still-mounted dir on return); an attached run cleans up on exit.
+	if !c.Bool("detach") {
+		defer cleanupAssets()
+	}
 
 	plan := buildUpPlan(c, repo, mode, cwd, assetsDir, nil)
 
@@ -326,10 +331,36 @@ func homeDir() string {
 	return os.Getenv("HOME")
 }
 
+// containerAssetsPrefix names the per-run asset dirs so the stale sweep can
+// find them; containerAssetsTTL is how long one may linger before reclaim.
+const containerAssetsPrefix = "ward-container-assets-"
+
+const containerAssetsTTL = time.Hour
+
+// sweepStaleContainerAssets reclaims asset dirs past the TTL - left by detached
+// runs that cannot delete their own still-mounted dir on return. Best-effort.
+func sweepStaleContainerAssets() {
+	entries, err := os.ReadDir(os.TempDir())
+	if err != nil {
+		return
+	}
+	for _, e := range entries {
+		if !e.IsDir() || !strings.HasPrefix(e.Name(), containerAssetsPrefix) {
+			continue
+		}
+		info, ierr := e.Info()
+		if ierr != nil || time.Since(info.ModTime()) < containerAssetsTTL {
+			continue
+		}
+		_ = os.RemoveAll(filepath.Join(os.TempDir(), e.Name()))
+	}
+}
+
 // writeContainerAssets materializes the embedded entrypoint + doctrine into a
-// per-run tmp dir the container mounts read-only at /opt/ward.
+// per-run tmp dir mounted read-only at /opt/ward, sweeping stale dirs first.
 func writeContainerAssets() (dir string, cleanup func(), err error) {
-	dir, err = os.MkdirTemp("", "ward-container-assets-*")
+	sweepStaleContainerAssets()
+	dir, err = os.MkdirTemp("", containerAssetsPrefix+"*")
 	if err != nil {
 		return "", func() {}, fmt.Errorf("ward container: create assets dir: %w", err)
 	}

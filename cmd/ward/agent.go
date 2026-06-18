@@ -111,38 +111,51 @@ so 'work' is only accepted against a trusted owner.`,
 	}
 }
 
-// agentModeCommand builds `ward agent <mode>` carrying its `work` child.
+// agentModeCommand builds `ward agent <mode>` with its work + headless children.
 func agentModeCommand(m containerMode) *cli.Command {
 	return &cli.Command{
-		Name:     string(m),
-		Usage:    fmt.Sprintf("Drive %s against a Forgejo issue in an ephemeral container.", m),
-		Commands: []*cli.Command{agentWorkCommand(m)},
+		Name:  string(m),
+		Usage: fmt.Sprintf("Drive %s against a Forgejo issue in an ephemeral container.", m),
+		Commands: []*cli.Command{
+			agentSurfaceCommand(m, "work", false),
+			agentSurfaceCommand(m, "headless", true),
+		},
 	}
 }
 
-// agentWorkCommand builds `ward agent <mode> work <issue>`. Flags mirror the
-// shared `container up` launch flags (minus --mode, fixed by the parent).
-func agentWorkCommand(m containerMode) *cli.Command {
+// agentSurfaceCommand builds `ward agent <mode> {work,headless} <issue>`: work
+// is interactive, headless detaches + runs print mode. See docs/agent.md.
+func agentSurfaceCommand(m containerMode, surface string, headless bool) *cli.Command {
+	usage := "Resolve the issue's repo, spin up a fresh container, and seed the agent to carry it end to end."
+	if headless {
+		usage = "Like work, but detached + non-interactive (claude -p): fire-and-forget, read the container log."
+	}
+	flags := []cli.Flag{
+		&cli.StringFlag{Name: "branch", Usage: "feature branch to create inside the clone (default: issue-<N>)"},
+		&cli.StringFlag{Name: "image", Value: containerImageDefault, Usage: "dev-base image to run"},
+		&cli.StringFlag{Name: "tag", Value: containerImageTagDefault, Usage: "image tag"},
+		&cli.StringFlag{Name: "ward-source", Usage: "mount a local ward checkout and build ward from it instead of downloading the release"},
+		&cli.BoolFlag{Name: "aws", Usage: "mount ~/.aws read-only (broad SSM read surface; off by default)"},
+		&cli.BoolFlag{Name: "print", Usage: "resolve the issue + seeded prompt + docker plan and exit; inject no push token, run nothing"},
+		&cli.BoolFlag{Name: "no-pull", Usage: "skip the image pull"},
+	}
+	if !headless {
+		// headless always detaches, so only the interactive surface exposes --detach.
+		flags = append(flags, &cli.BoolFlag{Name: "detach", Aliases: []string{"d"}, Usage: "run detached instead of interactive"})
+	}
 	return &cli.Command{
-		Name:      "work",
-		Usage:     "Resolve the issue's repo, spin up a fresh container, and seed the agent to carry it end to end.",
+		Name:      surface,
+		Usage:     usage,
 		ArgsUsage: "<owner/repo#N | forgejo-issue-url>",
-		Flags: []cli.Flag{
-			&cli.StringFlag{Name: "branch", Usage: "feature branch to create inside the clone (default: issue-<N>)"},
-			&cli.StringFlag{Name: "image", Value: containerImageDefault, Usage: "dev-base image to run"},
-			&cli.StringFlag{Name: "tag", Value: containerImageTagDefault, Usage: "image tag"},
-			&cli.StringFlag{Name: "ward-source", Usage: "mount a local ward checkout and build ward from it instead of downloading the release"},
-			&cli.BoolFlag{Name: "aws", Usage: "mount ~/.aws read-only (broad SSM read surface; off by default)"},
-			&cli.BoolFlag{Name: "detach", Aliases: []string{"d"}, Usage: "run detached instead of interactive"},
-			&cli.BoolFlag{Name: "print", Usage: "resolve the issue + seeded prompt + docker plan and exit; inject no push token, run nothing"},
-			&cli.BoolFlag{Name: "no-pull", Usage: "skip the image pull"},
-		},
+		Flags:     flags,
 		Action: func(ctx context.Context, c *cli.Command) error {
 			r := newRunner()
 			return r.WrapVerb(verb.Spec{
-				Name:       "agent." + string(m) + ".work",
+				Name:       "agent." + string(m) + "." + surface,
 				SkipPolicy: true,
-				Action:     func(ctx context.Context, cmd *cli.Command) error { return r.runAgentWork(ctx, cmd, m) },
+				Action: func(ctx context.Context, cmd *cli.Command) error {
+					return r.runAgentWork(ctx, cmd, m, surface, headless)
+				},
 			}, r.Audit)(ctx, c)
 		},
 	}
@@ -150,57 +163,70 @@ func agentWorkCommand(m containerMode) *cli.Command {
 
 // resolveAgentWork parses + trust-gates the ref, fetches the issue (failing fast
 // before any container spins), and returns the ref, title, and seeded prompt.
-func (r *Runner) resolveAgentWork(ctx context.Context, c *cli.Command, mode containerMode) (agentIssueRef, string, string, error) {
+func (r *Runner) resolveAgentWork(ctx context.Context, c *cli.Command, mode containerMode, surface string) (agentIssueRef, string, string, error) {
+	label := fmt.Sprintf("ward agent %s %s", mode, surface)
 	ref, err := parseAgentIssueRef(c.Args().First())
 	if err != nil {
-		return agentIssueRef{}, "", "", fmt.Errorf("ward agent %s work: %w", mode, err)
+		return agentIssueRef{}, "", "", fmt.Errorf("%s: %w", label, err)
 	}
 	// Trust gate: the in-container agent runs under bypassPermissions, so only
 	// spin one up for an owner in the primary-org set. Mirrors dispatch's check.
 	if !r.ownerAllowed(ref.Owner) {
-		return agentIssueRef{}, "", "", fmt.Errorf("ward agent %s work: refusing untrusted owner %q (allowed: %s)",
-			mode, ref.Owner, strings.Join(r.primaryOrgs(), ", "))
+		return agentIssueRef{}, "", "", fmt.Errorf("%s: refusing untrusted owner %q (allowed: %s)",
+			label, ref.Owner, strings.Join(r.primaryOrgs(), ", "))
 	}
 	issue, err := r.fetchForgejoIssue(ctx, ref.Owner, ref.Repo, ref.Number)
 	if err != nil {
-		return agentIssueRef{}, "", "", fmt.Errorf("ward agent %s work: resolve issue %s: %w", mode, ref, err)
+		return agentIssueRef{}, "", "", fmt.Errorf("%s: resolve issue %s: %w", label, ref, err)
 	}
 	if st := strings.ToLower(strings.TrimSpace(issue.State)); st != "" && st != "open" {
-		fmt.Fprintf(os.Stderr, "ward agent %s work: note: issue %s is %s, not open - working it anyway.\n", mode, ref, st)
+		fmt.Fprintf(os.Stderr, "%s: note: issue %s is %s, not open - working it anyway.\n", label, ref, st)
 	}
 	return ref, strings.TrimSpace(issue.Title), agentSeedPrompt(ref, issue.Title), nil
 }
 
 // runAgentWork resolves the issue, composes the seed prompt, and launches the
-// container plan. --print resolves no push token and runs no docker.
-func (r *Runner) runAgentWork(ctx context.Context, c *cli.Command, mode containerMode) error {
-	ref, title, seed, err := r.resolveAgentWork(ctx, c, mode)
+// container plan. headless forces detach + print mode; --print runs no docker.
+func (r *Runner) runAgentWork(ctx context.Context, c *cli.Command, mode containerMode, surface string, headless bool) error {
+	label := fmt.Sprintf("ward agent %s %s", mode, surface)
+	ref, title, seed, err := r.resolveAgentWork(ctx, c, mode, surface)
 	if err != nil {
 		return err
 	}
 
+	// headless always detaches; the interactive surface honors --detach.
+	detached := headless || c.Bool("detach")
 	assetsDir, cleanupAssets, err := writeContainerAssets()
 	if err != nil {
 		return err
 	}
-	defer cleanupAssets()
+	// A detached run leaves its assets for the next sweep (it cannot delete the
+	// still-mounted dir on return); an attached run cleans up on exit.
+	if !detached {
+		defer cleanupAssets()
+	}
 
 	cwd := resolveInvokeCWD()
 	if cwd == "" {
-		return fmt.Errorf("ward agent %s work: cannot resolve the current directory", mode)
+		return fmt.Errorf("%s: cannot resolve the current directory", label)
 	}
 	repo := targetRepo{Owner: ref.Owner, Name: ref.Repo}
 	plan := buildUpPlan(c, repo, mode, cwd, assetsDir, []string{seed})
 	if plan.Branch == "" {
 		plan.Branch = fmt.Sprintf("issue-%d", ref.Number)
 	}
+	plan.Headless = headless
+	if detached {
+		plan.Interactive = false
+		plan.TTY = false
+	}
 
 	if c.Bool("print") {
-		return printAgentPlan(c, plan, ref, title, seed)
+		return printAgentPlan(c, plan, ref, title, seed, surface)
 	}
 	if !c.Bool("no-pull") {
 		if perr := r.Runner.Exec(ctx, "docker", "pull", plan.Image); perr != nil {
-			fmt.Fprintf(os.Stderr, "ward agent %s work: image pull failed (%v); trying the local image\n", mode, perr)
+			fmt.Fprintf(os.Stderr, "%s: image pull failed (%v); trying the local image\n", label, perr)
 		}
 	}
 	envFile, cleanupEnv, err := r.writeTokenEnvFile(ctx)
@@ -223,13 +249,16 @@ func (r *Runner) ownerAllowed(owner string) bool {
 
 // printAgentPlan renders the resolved issue, the seeded prompt, and the docker
 // plan without firing - the dry-run preview, safe with no docker daemon.
-func printAgentPlan(c *cli.Command, p upPlan, ref agentIssueRef, title, seed string) error {
+func printAgentPlan(c *cli.Command, p upPlan, ref agentIssueRef, title, seed, surface string) error {
 	out := c.Root().Writer
 	if out == nil {
 		out = os.Stdout
 	}
 	var b strings.Builder
-	fmt.Fprintf(&b, "# ward agent %s work (print)\n", p.Mode)
+	fmt.Fprintf(&b, "# ward agent %s %s (print)\n", p.Mode, surface)
+	if p.Headless {
+		fmt.Fprintf(&b, "headless: agent runs detached in print mode (-p)\n")
+	}
 	fmt.Fprintf(&b, "issue:   %s\n", ref)
 	fmt.Fprintf(&b, "url:     %s\n", ref.url())
 	fmt.Fprintf(&b, "title:   %s\n", title)
