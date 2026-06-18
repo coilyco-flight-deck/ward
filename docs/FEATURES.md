@@ -4,7 +4,7 @@ Inventory of what `ward` ships, updated when a feature lands or reshapes.
 
 ## Scope
 
-The contributor-facing cli-guard gate: repo dev verbs + audited host wrappers behind cli-guard's policy + audit pipeline.
+The contributor-facing cli-guard gate: repo dev verbs + audited host wrappers behind cli-guard's pipeline.
 
 ## Commands
 
@@ -19,11 +19,11 @@ The contributor-facing cli-guard gate: repo dev verbs + audited host wrappers be
 - **`ward lint`** - lint `.ward/ward.yaml` against the repo Makefile.
 - **`ward dispatch <surface> <ref>`** - fire `claude` against a real open issue. Surfaces: `headless` (detached `claude -p`, per-issue worktree), `interactive`, `consult`, `cascade`; plus `reap`/`status`/`registry`. Off-org refs refused; Forgejo via read-only SSM-token client. See [docs/dispatch.md](dispatch.md).
 - **`ward container {up,exec,reap,down,ls}`** - ephemeral, least-access dev containers, one per `up`: target cloned fresh inside (cwd bind, read-only), `--mode claude|codex|qwen`, self-managed perms. `reap` lands clean work on `main` or salvages it. See [docs/container.md](container.md).
-- **`ward agent <name> work <issue>`** - issue-seeded shortcut over `container up`: resolves repo, branches `issue-<N>`, seeds a carry-to-merge prompt; off-org refused, `--print` dry-runs. See [agent](agent.md).
+- **`ward agent <name> {work,headless,task}`** - shortcut over `container up`: `work`/`headless` take an existing issue (branch `issue-<N>`, carry-to-merge seed), `task` *files* one from `--instructions`. Off-org refused, `--print` dry-runs. See [agent](agent.md).
 
 ## Spec-driven ops (`ward-kdl`)
 
-- **`ward-kdl ops <api> <verb>`** - guarded API verbs from KDL guardfiles (`specverb`): **forgejo** (Swagger 2.0), **trello** (OpenAPI 3.0), **tailscale** (OpenAPI 3.1). Each `can` resolves its op by convention; denies teach, `restrict` scopes. See [docs/ops-forgejo.md](ops-forgejo.md).
+- **`ward-kdl ops <api> <verb>`** - guarded API verbs from KDL guardfiles (`specverb`): **forgejo** (Swagger 2.0), **trello** (OpenAPI 3.0), **tailscale** (OpenAPI 3.1). Denies teach, `restrict` scopes. See [docs/ops-forgejo.md](ops-forgejo.md).
 - **`ward-kdl ops {aws,kubectl} <verb>`** - guarded local-CLI passthroughs (`execverb`): **aws** (SSM/S3/EC2 reads, per-op resource guards) and **kubectl** (host-native; reads + apply/scale/rollout, destructive verbs unexposed). See [aws](ward-kdl.aws.guardfile.md), [kubectl](ward-kdl.kubectl.guardfile.md).
 - **`ward-kdl agents <target> <verb>`** - mixed-transport. **`agents ui`**: the Open WebUI API (`specverb`, tailnet-only). **`agents {claude,codex,opencode,aider,goose}`**: local-CLI launchers (`execverb`), `argv`-override verbs. **`agents ollama`**: the tower's Ollama CLI (SSM OLLAMA_HOST).
 

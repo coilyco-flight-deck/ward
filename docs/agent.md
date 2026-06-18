@@ -33,8 +33,7 @@ The seed prompt rides as the in-container agent's argv (the entrypoint's
 `"$WARD_AGENT" "$@"`), so the agent opens already pointed at the issue. The
 container doctrine
 ([AGENTS.container.md](../cmd/ward/containerassets/AGENTS.container.md)) supplies
-the carry-to-merge autonomy and the reaper backstop - `work` only adds the
-issue-seeding on top.
+the carry-to-merge autonomy and the reaper backstop; `work` only seeds the issue.
 
 ## work vs headless
 
@@ -45,21 +44,23 @@ issue-seeding on top.
   into the reaper. It **streams live progress** (one line per tool call + the
   result, via stream-json) to the container log - `docker logs <name>` /
   `ward container exec` - so it isn't silent until done.
+- **`task`** files an issue from `--instructions` first, then runs the `headless`
+  flow against it (carries to merge, `closes #N`). See [docs/agent-task.md](agent-task.md).
 
 The reaper backstop salvages residual work if the agent crashes (it needs ward's
 jail off in-container - the entrypoint exports `CLIGUARD_NO_SANDBOX=1`, cli-guard#153).
 The happy path doesn't rely on it: the agent commits/merges/pushes itself per its
-doctrine, finishing to a clean `main` push rather than leaving work "for review".
+doctrine, finishing to a clean `main` push.
 
 ## Credentials and user
 
 claude runs **non-root** (uid 1000): it refuses `--dangerously-skip-permissions`
-as root with no env escape, so the entrypoint sets up as root then drops via
-`setpriv`. It authenticates with your **Max/subscription login**, not an API key -
-ward resolves the OAuth credential on the host (macOS keychain
-`Claude Code-credentials`, else `~/.claude/.credentials.json`) and injects it into
-the container's `~/.claude/.credentials.json` via the private `--env-file`, never
-in argv/audit. `ANTHROPIC_API_KEY` stays unset so it can't shadow OAuth.
+as root, so the entrypoint sets up as root then drops via `setpriv`. It
+authenticates with your **Max/subscription login**, not an API key - ward
+resolves the OAuth credential on the host (macOS keychain `Claude Code-credentials`,
+else `~/.claude/.credentials.json`) and injects it into the container's
+`~/.claude/.credentials.json` via the private `--env-file`, never in argv/audit.
+`ANTHROPIC_API_KEY` stays unset so it can't shadow OAuth.
 
 ## Flags
 

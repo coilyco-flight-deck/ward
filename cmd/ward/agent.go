@@ -111,7 +111,8 @@ so 'work' is only accepted against a trusted owner.`,
 	}
 }
 
-// agentModeCommand builds `ward agent <mode>` with its work + headless children.
+// agentModeCommand builds `ward agent <mode>` with its work, headless, and task
+// children.
 func agentModeCommand(m containerMode) *cli.Command {
 	return &cli.Command{
 		Name:  string(m),
@@ -119,6 +120,7 @@ func agentModeCommand(m containerMode) *cli.Command {
 		Commands: []*cli.Command{
 			agentSurfaceCommand(m, "work", false),
 			agentSurfaceCommand(m, "headless", true),
+			agentTaskCommand(m),
 		},
 	}
 }
@@ -188,11 +190,17 @@ func (r *Runner) resolveAgentWork(ctx context.Context, c *cli.Command, mode cont
 // runAgentWork resolves the issue, composes the seed prompt, and launches the
 // container plan. headless forces detach + print mode; --print runs no docker.
 func (r *Runner) runAgentWork(ctx context.Context, c *cli.Command, mode containerMode, surface string, headless bool) error {
-	label := fmt.Sprintf("ward agent %s %s", mode, surface)
 	ref, title, seed, err := r.resolveAgentWork(ctx, c, mode, surface)
 	if err != nil {
 		return err
 	}
+	return r.launchAgentContainer(ctx, c, mode, surface, headless, ref, title, seed)
+}
+
+// launchAgentContainer turns a resolved (ref, title, seed) into the container
+// plan and fires it - the shared tail of work, headless, and task. See docs/agent.md.
+func (r *Runner) launchAgentContainer(ctx context.Context, c *cli.Command, mode containerMode, surface string, headless bool, ref agentIssueRef, title, seed string) error {
+	label := fmt.Sprintf("ward agent %s %s", mode, surface)
 
 	// headless always detaches; the interactive surface honors --detach.
 	detached := headless || c.Bool("detach")
@@ -235,6 +243,179 @@ func (r *Runner) runAgentWork(ctx context.Context, c *cli.Command, mode containe
 	}
 	defer cleanupEnv()
 	return r.Runner.Exec(ctx, "docker", dockerCreateArgv(plan, envFile)...)
+}
+
+// agentTaskCommand builds `ward agent <mode> task [owner/repo]`: files an issue
+// from --instructions, then runs the headless flow against it. See docs/agent.md.
+func agentTaskCommand(m containerMode) *cli.Command {
+	flags := []cli.Flag{
+		&cli.StringFlag{Name: "instructions", Aliases: []string{"i"}, Usage: "the task to file as the issue body (first line becomes the title)"},
+		&cli.StringFlag{Name: "instructions-file", Usage: "read the instructions from a file instead of --instructions (escape hatch for long bodies)"},
+		&cli.StringFlag{Name: "branch", Usage: "feature branch to create inside the clone (default: issue-<N>)"},
+		&cli.StringFlag{Name: "image", Value: containerImageDefault, Usage: "dev-base image to run"},
+		&cli.StringFlag{Name: "tag", Value: containerImageTagDefault, Usage: "image tag"},
+		&cli.StringFlag{Name: "ward-source", Usage: "mount a local ward checkout and build ward from it instead of downloading the release"},
+		&cli.BoolFlag{Name: "aws", Usage: "mount ~/.aws read-only (broad SSM read surface; off by default)"},
+		&cli.BoolFlag{Name: "print", Usage: "resolve the repo + the issue that would be filed + the docker plan and exit; file nothing, run nothing"},
+		&cli.BoolFlag{Name: "no-pull", Usage: "skip the image pull"},
+	}
+	return &cli.Command{
+		Name:      "task",
+		Usage:     "Like headless, but file the issue first: --instructions becomes a fresh Forgejo issue the agent then carries end to end and closes.",
+		ArgsUsage: "[owner/repo]   (default: infer from the cwd's git origin)",
+		Flags:     flags,
+		Action: func(ctx context.Context, c *cli.Command) error {
+			r := newRunner()
+			return r.WrapVerb(verb.Spec{
+				Name:       "agent." + string(m) + ".task",
+				SkipPolicy: true,
+				Action: func(ctx context.Context, cmd *cli.Command) error {
+					return r.runAgentTask(ctx, cmd, m)
+				},
+			}, r.Audit)(ctx, c)
+		},
+	}
+}
+
+// taskInstructions reads the task body from --instructions, falling back to
+// --instructions-file. Exactly one source must be non-empty.
+func taskInstructions(c *cli.Command) (string, error) {
+	inline := strings.TrimSpace(c.String("instructions"))
+	file := strings.TrimSpace(c.String("instructions-file"))
+	switch {
+	case inline != "" && file != "":
+		return "", fmt.Errorf("pass either --instructions or --instructions-file, not both")
+	case inline != "":
+		return inline, nil
+	case file != "":
+		b, err := os.ReadFile(file)
+		if err != nil {
+			return "", fmt.Errorf("read --instructions-file %q: %w", file, err)
+		}
+		s := strings.TrimSpace(string(b))
+		if s == "" {
+			return "", fmt.Errorf("--instructions-file %q is empty", file)
+		}
+		return s, nil
+	default:
+		return "", fmt.Errorf("no task given: pass --instructions \"...\" or --instructions-file <path>")
+	}
+}
+
+// taskTitleMaxLen caps the derived issue title so a wall-of-text first line
+// doesn't become an unwieldy title.
+const taskTitleMaxLen = 72
+
+// taskTitle derives the issue title from the first non-empty line of the
+// instructions, truncated on a rune boundary with an ellipsis.
+func taskTitle(instructions string) string {
+	first := ""
+	for _, line := range strings.Split(instructions, "\n") {
+		if s := strings.TrimSpace(line); s != "" {
+			first = s
+			break
+		}
+	}
+	if first == "" {
+		first = "agent task"
+	}
+	r := []rune(first)
+	if len(r) > taskTitleMaxLen {
+		return strings.TrimSpace(string(r[:taskTitleMaxLen])) + "…"
+	}
+	return first
+}
+
+// taskBody is the filed issue body: the full instructions plus a provenance
+// footer marking it as agent-filed rather than hand-written.
+func taskBody(mode containerMode, instructions string) string {
+	return fmt.Sprintf("%s\n\n---\nFiled by `ward agent %s task`.", instructions, mode)
+}
+
+// hostForgejoClient builds a write-capable Forgejo client from the SSM bearer
+// token (the host path; the in-container reaper uses $FORGEJO_TOKEN instead).
+func (r *Runner) hostForgejoClient(ctx context.Context) (*forgejoClient, error) {
+	token, err := r.forgejoAPIToken(ctx)
+	if err != nil {
+		return nil, err
+	}
+	return newForgejoClient(forgejoBaseURL, token), nil
+}
+
+// runAgentTask resolves the repo, files an issue from --instructions, and runs
+// the headless container seeded to carry + close it. --print files nothing.
+func (r *Runner) runAgentTask(ctx context.Context, c *cli.Command, mode containerMode) error {
+	label := fmt.Sprintf("ward agent %s task", mode)
+	repo, _, err := r.resolveTarget(ctx, c.Args().First())
+	if err != nil {
+		return fmt.Errorf("%s: %w", label, err)
+	}
+	// Same trust gate as work/headless: the container runs bypassPermissions, so
+	// only file + work against an owner in the primary-org set.
+	if !r.ownerAllowed(repo.Owner) {
+		return fmt.Errorf("%s: refusing untrusted owner %q (allowed: %s)",
+			label, repo.Owner, strings.Join(r.primaryOrgs(), ", "))
+	}
+	instructions, err := taskInstructions(c)
+	if err != nil {
+		return fmt.Errorf("%s: %w", label, err)
+	}
+	title := taskTitle(instructions)
+	body := taskBody(mode, instructions)
+
+	if c.Bool("print") {
+		return printAgentTaskPlan(c, mode, repo, title, body)
+	}
+
+	cl, err := r.hostForgejoClient(ctx)
+	if err != nil {
+		return fmt.Errorf("%s: %w", label, err)
+	}
+	number, err := cl.createIssue(ctx, repo.Owner, repo.Name, title, body)
+	if err != nil {
+		return fmt.Errorf("%s: file issue in %s/%s: %w", label, repo.Owner, repo.Name, err)
+	}
+	ref := agentIssueRef{Owner: repo.Owner, Repo: repo.Name, Number: number}
+	fmt.Fprintf(os.Stderr, "%s: filed %s - %s\n", label, ref, ref.url())
+
+	seed := agentSeedPrompt(ref, title)
+	return r.launchAgentContainer(ctx, c, mode, "task", true, ref, title, seed)
+}
+
+// printAgentTaskPlan renders the repo, the issue that *would* be filed, and the
+// docker plan without filing or firing - the dry-run preview for task.
+func printAgentTaskPlan(c *cli.Command, mode containerMode, repo targetRepo, title, body string) error {
+	out := c.Root().Writer
+	if out == nil {
+		out = os.Stdout
+	}
+	// A placeholder ref renders the seed shape; the real number is only known
+	// once the issue is filed (which --print deliberately skips).
+	previewRef := agentIssueRef{Owner: repo.Owner, Repo: repo.Name, Number: 0}
+	seed := agentSeedPrompt(previewRef, title)
+	plan := buildUpPlan(c, repo, mode, "", "", []string{seed})
+	plan.Headless = true
+	plan.Interactive = false
+	plan.TTY = false
+	if plan.Branch == "" {
+		plan.Branch = "issue-<N>"
+	}
+
+	var b strings.Builder
+	fmt.Fprintf(&b, "# ward agent %s task (print)\n", mode)
+	fmt.Fprintf(&b, "headless: agent runs detached in print mode (-p)\n")
+	fmt.Fprintf(&b, "repo:    %s\n", repo.slug())
+	fmt.Fprintf(&b, "branch:  %s\n", plan.Branch)
+	fmt.Fprintf(&b, "----- issue to file -----\ntitle: %s\n\n%s\n----- end -----\n", title, body)
+	fmt.Fprintf(&b, "----- seeded prompt (#N filled once filed) -----\n%s\n----- end -----\n", seed)
+	if c.Bool("no-pull") {
+		fmt.Fprintf(&b, "# pull skipped (--no-pull); image: %s\n", plan.Image)
+	} else {
+		fmt.Fprintf(&b, "docker pull %s\n", plan.Image)
+	}
+	fmt.Fprintf(&b, "docker %s\n", strings.Join(dockerCreateArgv(plan, "<ward-forgejo-token-envfile>"), " "))
+	_, err := io.WriteString(out, b.String())
+	return err
 }
 
 // ownerAllowed reports whether owner is in ward's primary-org trust set.

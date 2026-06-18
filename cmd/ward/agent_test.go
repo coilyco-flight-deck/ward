@@ -89,6 +89,38 @@ func TestOwnerAllowed(t *testing.T) {
 	}
 }
 
+func TestTaskTitle(t *testing.T) {
+	cases := []struct {
+		in   string
+		want string
+	}{
+		{"add a --task flag", "add a --task flag"},
+		{"\n\n  add a --task flag  \n\nmore body", "add a --task flag"}, // first non-empty line, trimmed
+		{"", "agent task"},          // empty degrades, never blank
+		{"   \n  \n", "agent task"}, // whitespace-only degrades too
+		{strings.Repeat("x", 80), strings.Repeat("x", taskTitleMaxLen) + "…"}, // truncated + ellipsis
+	}
+	for _, c := range cases {
+		if got := taskTitle(c.in); got != c.want {
+			t.Errorf("taskTitle(%q) = %q, want %q", c.in, got, c.want)
+		}
+	}
+	// A truncated title must stay within the cap (plus the single ellipsis rune).
+	if got := []rune(taskTitle(strings.Repeat("y", 200))); len(got) != taskTitleMaxLen+1 {
+		t.Errorf("truncated title rune len = %d, want %d", len(got), taskTitleMaxLen+1)
+	}
+}
+
+func TestTaskBody(t *testing.T) {
+	got := taskBody(modeClaude, "do the thing")
+	if !strings.Contains(got, "do the thing") {
+		t.Error("body must carry the instructions verbatim")
+	}
+	if !strings.Contains(got, "ward agent claude task") {
+		t.Errorf("body must mark provenance; got: %s", got)
+	}
+}
+
 // TestDockerCreateArgvSeedsAgentArgs verifies the seeded prompt rides as the
 // in-container agent's argv: after the image, never as a -e env, never leaked.
 func TestDockerCreateArgvSeedsAgentArgs(t *testing.T) {
