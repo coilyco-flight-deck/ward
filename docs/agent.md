@@ -70,6 +70,16 @@ else `~/.claude/.credentials.json`) and injects it into the container's
 docker plan without injecting the push token or running docker - the dry-run
 preview, safe with no docker daemon up.
 
+## Container name
+
+Where a bare `container up` names its container `ward-<repo>-<rand>`, an agent
+run names it for the work it carries: `ward-<repo>-issue-<N>-<mode>-<rand>`. So
+`docker ps` reads the repo, the issue, and the harness at a glance, and a host
+driving several agents at once can tell them apart - the `<rand>` suffix still
+keeps concurrent runs on the same issue from colliding. `task` shows the shape
+as `ward-<repo>-issue-<N>-<mode>-<rand>` under `--print`; the real number lands
+once the issue is filed.
+
 ## See also
 
 - [docs/container.md](container.md) - the container model this wraps (ephemeral,
