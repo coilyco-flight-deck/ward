@@ -25,7 +25,7 @@ Contributor-facing cli-guard gate: repo dev verbs + audited host wrappers behind
 
 - **`ward-kdl ops <api> <verb>`** - guarded API verbs from KDL guardfiles (`specverb`): **forgejo** (Swagger 2.0), **trello**/**tailscale** (OpenAPI 3.0/3.1). Denies teach, `restrict` scopes. See [docs/ops-forgejo.md](ops-forgejo.md).
 - **`ward-kdl ops {aws,kubectl} <verb>`** - guarded local-CLI passthroughs (`execverb`): **aws** (SSM/S3/EC2 reads) and **kubectl** (reads + apply/scale/rollout; destructive verbs unexposed). See [aws](ward-kdl.aws.guardfile.md), [kubectl](ward-kdl.kubectl.guardfile.md).
-- **`ward-kdl agents <target> <verb>`** - mixed-transport. **`agents ui`**: Open WebUI API (`specverb`, tailnet-only). **`agents {claude,codex,opencode,aider,goose}`**: local-CLI launchers (`execverb`, `argv`-override). **`agents ollama`**: the tower's Ollama.
+- **`ward-kdl agents <target> <verb>`** - mixed-transport. **`agents {claude,codex,opencode,aider,goose}`**: local-CLI launchers (`execverb`, `argv`-override). **`agents ollama`**: the tower's Ollama.
 - **`ward-kdl pkg <api> <resource> <verb>`** - package-directory lookups (`specverb`): **skillsmp** (skill discovery) and **glama** (Glama MCP directory), migrated from `coily pkg` per ward#105. See [skillsmp](ward-kdl.skillsmp.guardfile.md), [glama](ward-kdl.glama.guardfile.md).
 
 ## Scripts
