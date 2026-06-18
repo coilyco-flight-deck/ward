@@ -231,14 +231,15 @@ func agentSurfaceCommand(m containerMode, surface string, headless bool) *cli.Co
 	}
 }
 
-// resolvedWork bundles resolveAgentWork's output: ref, title, body (feeds the
-// pre-flight), the operator --details note (ward#167), and the seeded prompt.
+// resolvedWork bundles resolveAgentWork's output: ref, title, body, comment thread
+// (ward#154), the --details note (ward#167), and the seeded prompt.
 type resolvedWork struct {
-	Ref     agentIssueRef
-	Title   string
-	Body    string
-	Details string
-	Seed    string
+	Ref      agentIssueRef
+	Title    string
+	Body     string
+	Comments []issueComment
+	Details  string
+	Seed     string
 }
 
 // resolveAgentWork parses + trust-gates the ref, fetches the issue (failing fast
@@ -264,7 +265,23 @@ func (r *Runner) resolveAgentWork(ctx context.Context, c *cli.Command, mode cont
 	}
 	title := strings.TrimSpace(issue.Title)
 	details := strings.TrimSpace(c.String("details"))
-	return resolvedWork{Ref: ref, Title: title, Body: issue.Body, Details: details, Seed: agentSeedPrompt(ref, title, issue.Body, details, mode)}, nil
+	// Fetch comments so the pre-flight sees decisions made there, not just the
+	// body (ward#154); degrade to a body-only read on failure (the prior behavior).
+	comments, cerr := r.fetchIssueComments(ctx, ref)
+	if cerr != nil {
+		fmt.Fprintf(os.Stderr, "%s: note: could not read comments on %s (%v); pre-flight reads the body only\n", label, ref, cerr)
+	}
+	return resolvedWork{Ref: ref, Title: title, Body: issue.Body, Comments: comments, Details: details, Seed: agentSeedPrompt(ref, title, issue.Body, details, mode)}, nil
+}
+
+// fetchIssueComments returns the comment thread (oldest first) for the pre-flight
+// read via the host Forgejo client; caller degrades gracefully on error.
+func (r *Runner) fetchIssueComments(ctx context.Context, ref agentIssueRef) ([]issueComment, error) {
+	cl, err := r.hostForgejoClient(ctx)
+	if err != nil {
+		return nil, err
+	}
+	return cl.listIssueComments(ctx, ref.Owner, ref.Repo, ref.Number)
 }
 
 // runAgentWork resolves the issue, seeds the prompt, runs the autonomous
@@ -302,9 +319,9 @@ func preflightWanted(c *cli.Command) bool {
 	return terminalAttached() && !c.Bool("print") && !c.Bool("no-preflight")
 }
 
-// preflightPrompt asks the about-to-detach agent for a feasibility read ending on
-// a GO / NO-GO line ward parses (parsePreflightVerdict). Pure + testable.
-func preflightPrompt(ref agentIssueRef, title, body, details string) string {
+// preflightPrompt asks the about-to-detach agent for a feasibility read ending on a
+// GO / NO-GO line, feeding the --details note + comments too (ward#154/#167; see docs).
+func preflightPrompt(ref agentIssueRef, title, body, details string, comments []issueComment) string {
 	title = strings.TrimSpace(title)
 	if title == "" {
 		title = "(untitled)"
@@ -320,6 +337,10 @@ func preflightPrompt(ref agentIssueRef, title, body, details string) string {
 				"detached run will treat as authoritative over the issue text - weigh it in your read:\n%s",
 			details)
 	}
+	thread := preflightComments(comments)
+	if thread == "" {
+		thread = "(no comments yet)"
+	}
 	return fmt.Sprintf(
 		"You are about to be sent, fire-and-forget, into an ephemeral container to carry "+
 			"this Forgejo issue end to end on your own - implement, commit, merge to main, "+
@@ -330,9 +351,13 @@ func preflightPrompt(ref agentIssueRef, title, body, details string) string {
 			"alone, never from the local working tree: a file, path, or package that looks "+
 			"missing in the current directory tells you nothing about the clone you will actually "+
 			"get, so do not conclude the issue is mis-filed just because the local tree lacks it.\n\n"+
-			"Before that detached run starts, give a quick PRE-FLIGHT read: based only on the "+
-			"issue below, do you think you can carry it to merge unattended?\n\n"+
+			"Before that detached run starts, give a quick PRE-FLIGHT read: based on the issue "+
+			"AND its comment thread below, do you think you can carry it to merge unattended? "+
+			"Later comments can supersede the original description - the author may have answered "+
+			"an open question or picked among options there, so weigh the latest word, not just "+
+			"the initial framing.\n\n"+
 			"Issue: %s (%q)\n\n%s%s\n\n"+
+			"Comment thread (oldest first):\n\n%s\n\n"+
 			"Answer in 2-4 sentences naming the main risk or unknown, then a final line of "+
 			"exactly one of:\n"+
 			"  \"GO\" - you would take it on unattended;\n"+
@@ -342,7 +367,25 @@ func preflightPrompt(ref agentIssueRef, title, body, details string) string {
 			"do not go digging to decide it, and never from files missing in the current directory. "+
 			"ward will blind-file a fresh issue in that repo and launch nothing here.\n"+
 			"This is a judgment call, not a commitment - be honest about ambiguity.",
-		ref.Owner, ref.Repo, ref, title, body, note, ref.Owner, ref.Repo)
+		ref.Owner, ref.Repo, ref, title, body, note, thread, ref.Owner, ref.Repo)
+}
+
+// preflightComments renders the human comment thread (oldest first) for the
+// pre-flight, dropping ward's own bookkeeping so only human words sway it (see docs).
+func preflightComments(comments []issueComment) string {
+	var b strings.Builder
+	for _, c := range comments {
+		body := strings.TrimSpace(c.Body)
+		if body == "" || strings.Contains(c.Body, agentReservationMarker) || strings.Contains(c.Body, preflightNoGoMarker) {
+			continue
+		}
+		who := strings.TrimSpace(c.User.Login)
+		if who == "" {
+			who = "(unknown author)"
+		}
+		fmt.Fprintf(&b, "--- comment by %s (%s) ---\n%s\n\n", who, c.CreatedAt.Format(time.RFC3339), body)
+	}
+	return strings.TrimSpace(b.String())
 }
 
 // capturePreflight runs the feasibility-read argv in a fresh empty temp dir so the
@@ -376,7 +419,7 @@ func (r *Runner) captureInDir(ctx context.Context, dir, bin string, argv ...stri
 func (r *Runner) runPreflight(ctx context.Context, mode containerMode, surface string, w resolvedWork) (bool, error) {
 	label := fmt.Sprintf("ward agent %s %s", mode, surface)
 	bin := mode.agentBinary()
-	argv, ok := mode.hostPreflightArgv(preflightPrompt(w.Ref, w.Title, w.Body, w.Details))
+	argv, ok := mode.hostPreflightArgv(preflightPrompt(w.Ref, w.Title, w.Body, w.Details, w.Comments))
 	// No host self-assessment (claude+goose have one, codex/qwen don't) or no
 	// binary on PATH: can't fairly bounce the issue, so the dispatch proceeds.
 	if !ok || !hostHasBinary(bin) {
@@ -547,6 +590,10 @@ func (r *Runner) postPreflightNoGo(ctx context.Context, mode containerMode, surf
 	return cl.withMode(mode).commentIssue(ctx, ref.Owner, ref.Repo, ref.Number, preflightNoGoComment(mode, surface, reason, read))
 }
 
+// preflightNoGoMarker tags every NO-GO comment so a later pre-flight read can
+// drop ward's own prior verdicts from the thread it weighs (ward#154).
+const preflightNoGoMarker = "<!-- ward-preflight-nogo -->"
+
 // preflightNoGoComment renders the NO-GO issue comment: reason, why nothing
 // launched, how to re-dispatch, the surface (headless|task), and the read. Pure.
 func preflightNoGoComment(mode containerMode, surface, reason, read string) string {
@@ -568,7 +615,7 @@ func preflightNoGoComment(mode containerMode, surface, reason, read string) stri
 	if read = strings.TrimSpace(read); read != "" {
 		fmt.Fprintf(&b, "\n<details><summary>full pre-flight read</summary>\n\n%s\n\n</details>\n", read)
 	}
-	fmt.Fprintf(&b, "\n---\nPosted automatically by `ward agent %s %s` pre-flight (ward#147, ward#149).", mode, surface)
+	fmt.Fprintf(&b, "\n---\nPosted automatically by `ward agent %s %s` pre-flight (ward#147, ward#149).\n%s", mode, surface, preflightNoGoMarker)
 	return b.String()
 }
 

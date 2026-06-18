@@ -84,11 +84,18 @@ pre-flight *before* detaching. The gate is **fire-and-forget from your POV**
 (ward#147): you launch and walk away, and ward acts on the agent's verdict with
 no prompt to answer:
 
-1. The agent gets a short prompt with the issue title + body and answers, in a
-   sentence or two, whether it thinks it can carry the issue to merge unattended,
-   ending on a `GO` / `NO-GO: <reason>` line. ward runs this as a one-shot on the
-   host (`claude -p`, or `goose run -t` for the goose mode), echoes the read to
-   your terminal, and parses that final verdict line
+1. The agent gets a short prompt with the issue title + body **and its comment
+   thread** and answers, in a sentence or two, whether it thinks it can carry the
+   issue to merge unattended, ending on a `GO` / `NO-GO: <reason>` line. The
+   thread is fed so a decision the author made in the comments overrides the
+   original framing (ward#154) - the prompt tells the agent to weigh the latest
+   word, not just the body, so re-dispatching after answering an open question in
+   a comment actually clears the gate. ward's own automated comments (reservation
+   pings and prior NO-GO verdicts, both carrying a hidden marker) are stripped
+   from that thread, so only human words sway the read and a stale NO-GO posted
+   after the author decided can't anchor the next one. ward runs this as a
+   one-shot on the host (`claude -p`, or `goose run -t` for the goose mode),
+   echoes the read to your terminal, and parses that final verdict line
    (markdown bold, bullets, and quote markers are tolerated; the last verdict line
    wins). The read is **issue-text-only**: the real run happens in a fresh clone
    of the issue's repo inside the container, so the prompt tells the agent the host
