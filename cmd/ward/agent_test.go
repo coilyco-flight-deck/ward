@@ -1,11 +1,9 @@
 package main
 
 import (
-	"bytes"
 	"strings"
 	"testing"
 
-	"forgejo.coilysiren.me/coilyco-flight-deck/cli-guard/cli/shell"
 	"github.com/urfave/cli/v3"
 )
 
@@ -147,37 +145,62 @@ func TestPreflightPrompt(t *testing.T) {
 	}
 }
 
-func TestConfirmProceed(t *testing.T) {
+func TestParsePreflightVerdict(t *testing.T) {
 	cases := []struct {
-		in   string
-		want bool
+		name       string
+		read       string
+		want       preflightVerdict
+		wantReason string
 	}{
-		{"y\n", true},
-		{"yes\n", true},
-		{"  Y  \n", true},
-		{"YES\n", true},
-		{"n\n", false},
-		{"no\n", false},
-		{"\n", false},      // bare enter defaults to no
-		{"", false},        // EOF / closed stdin defaults to no
-		{"maybe\n", false}, // anything unrecognized is a no
-		{"yep\n", false},   // only y/yes count
+		{"bare go", "Looks doable.\nGO", verdictGo, ""},
+		{"go with punctuation", "Risk is low.\nGO.", verdictGo, ""},
+		{"nogo with reason", "Scope is unclear.\nNO-GO: needs human scoping", verdictNoGo, "needs human scoping"},
+		{"nogo no hyphen", "NO GO: the API isn't decided", verdictNoGo, "the API isn't decided"},
+		{"nogo run together", "NOGO: ambiguous", verdictNoGo, "ambiguous"},
+		{"nogo bare", "NO-GO", verdictNoGo, ""},
+		{"markdown bold nogo", "**NO-GO: blocked on a decision**", verdictNoGo, "blocked on a decision"},
+		{"bulleted go", "- GO", verdictGo, ""},
+		{"quoted go", "> GO", verdictGo, ""},
+		{"last line wins", "NO-GO: early doubt\nOn reflection it's fine.\nGO", verdictGo, ""},
+		{"inline go is not a verdict", "I think we should go ahead and try.", verdictUnknown, ""},
+		{"empty", "", verdictUnknown, ""},
+		{"prose only", "This needs more thought before anyone takes it on.", verdictUnknown, ""},
 	}
 	for _, c := range cases {
-		var out bytes.Buffer
-		r := &Runner{Runner: &shell.Runner{Stdin: strings.NewReader(c.in), Stdout: &out, Stderr: &out}}
-		got, err := r.confirmProceed("proceed? ")
-		if err != nil {
-			t.Errorf("confirmProceed(%q): unexpected error %v", c.in, err)
-			continue
-		}
-		if got != c.want {
-			t.Errorf("confirmProceed(%q) = %v, want %v", c.in, got, c.want)
+		t.Run(c.name, func(t *testing.T) {
+			got, reason := parsePreflightVerdict(c.read)
+			if got != c.want {
+				t.Errorf("parsePreflightVerdict(%q) verdict = %v, want %v", c.read, got, c.want)
+			}
+			if reason != c.wantReason {
+				t.Errorf("parsePreflightVerdict(%q) reason = %q, want %q", c.read, reason, c.wantReason)
+			}
+		})
+	}
+}
+
+func TestPreflightNoGoComment(t *testing.T) {
+	got := preflightNoGoComment(modeClaude, "needs human scoping", "The scope is unclear.\nNO-GO: needs human scoping")
+	for _, want := range []string{
+		"NO-GO",               // names the verdict
+		"needs human scoping", // carries the reason
+		"ward agent claude",   // names the dispatching surface
+		"--no-preflight",      // tells the human how to re-dispatch
+		"No container was launched",
+		"<details>",             // folds the full read away
+		"The scope is unclear.", // includes the read verbatim
+	} {
+		if !strings.Contains(got, want) {
+			t.Errorf("preflightNoGoComment missing %q\n got: %s", want, got)
 		}
 	}
-	// A nil stdin must never silently fire the detached run.
-	if got, err := (&Runner{Runner: &shell.Runner{}}).confirmProceed("x"); got || err != nil {
-		t.Errorf("confirmProceed with nil stdin = %v, %v; want false, nil", got, err)
+	// An empty reason degrades to a placeholder, never a dangling blockquote.
+	empty := preflightNoGoComment(modeClaude, "  ", "")
+	if !strings.Contains(empty, "(no reason given)") {
+		t.Errorf("empty reason should render a placeholder; got: %s", empty)
+	}
+	if strings.Contains(empty, "<details>") {
+		t.Errorf("an empty read should omit the details block; got: %s", empty)
 	}
 }
 

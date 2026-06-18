@@ -1,7 +1,6 @@
 package main
 
 import (
-	"bufio"
 	"context"
 	"fmt"
 	"io"
@@ -149,10 +148,9 @@ func agentSurfaceCommand(m containerMode, surface string, headless bool) *cli.Co
 		// headless always detaches, so only the interactive surface exposes --detach.
 		flags = append(flags, &cli.BoolFlag{Name: "detach", Aliases: []string{"d"}, Usage: "run detached instead of interactive"})
 	} else {
-		// headless detaches into a fire-and-forget run; an interactive dispatch
-		// gets a pre-flight feasibility check first (ward#137). --no-preflight is
-		// the escape hatch for scripted runs launched from a TTY.
-		flags = append(flags, &cli.BoolFlag{Name: "no-preflight", Usage: "skip the interactive pre-flight feasibility check before detaching"})
+		// headless gets an autonomous pre-flight before detaching (ward#137,
+		// ward#147; see docs/agent.md); --no-preflight skips it.
+		flags = append(flags, &cli.BoolFlag{Name: "no-preflight", Usage: "skip the pre-flight feasibility check and detach immediately"})
 	}
 	return &cli.Command{
 		Name:      surface,
@@ -206,11 +204,8 @@ func (r *Runner) resolveAgentWork(ctx context.Context, c *cli.Command, mode cont
 	return resolvedWork{Ref: ref, Title: title, Body: issue.Body, Seed: agentSeedPrompt(ref, title)}, nil
 }
 
-// runAgentWork resolves the issue, composes the seed prompt, and launches the
-// container plan. headless forces detach + print mode; --print runs no docker.
-// An interactively-dispatched headless run first does a quick pre-flight check
-// (ward#137): the agent reads the issue and the operator confirms before the
-// fire-and-forget run detaches.
+// runAgentWork resolves the issue, seeds the prompt, runs the autonomous
+// pre-flight for interactive headless runs (runPreflight), and launches.
 func (r *Runner) runAgentWork(ctx context.Context, c *cli.Command, mode containerMode, surface string, headless bool) error {
 	w, err := r.resolveAgentWork(ctx, c, mode, surface)
 	if err != nil {
@@ -229,7 +224,7 @@ func (r *Runner) runAgentWork(ctx context.Context, c *cli.Command, mode containe
 			return fmt.Errorf("ward agent %s %s: pre-flight: %w", mode, surface, perr)
 		}
 		if !proceed {
-			fmt.Fprintf(os.Stderr, "ward agent %s %s: pre-flight declined; nothing launched.\n", mode, surface)
+			// runPreflight already reported the NO-GO and posted the issue comment.
 			return nil
 		}
 	}
@@ -240,16 +235,14 @@ func (r *Runner) runAgentWork(ctx context.Context, c *cli.Command, mode containe
 // operator's terminal hostage before the real run even starts.
 const preflightTimeout = 3 * time.Minute
 
-// preflightWanted gates the headless pre-flight to the "dispatched interactively"
-// case from ward#137: a human at the terminal, never a --print dry run, and
-// honoring the --no-preflight escape hatch for scripted-from-a-TTY launches.
+// preflightWanted gates the pre-flight to an interactive dispatch (a human at the
+// terminal who walked away), never --print, honoring --no-preflight. See docs.
 func preflightWanted(c *cli.Command) bool {
 	return terminalAttached() && !c.Bool("print") && !c.Bool("no-preflight")
 }
 
-// preflightPrompt asks the about-to-detach agent for a quick feasibility read on
-// the issue. ward never parses the verdict - it is shown to the operator, who
-// makes the call at the confirm prompt - so this stays a pure, testable string.
+// preflightPrompt asks the about-to-detach agent for a feasibility read ending on
+// a GO / NO-GO line ward parses (parsePreflightVerdict). Pure + testable.
 func preflightPrompt(ref agentIssueRef, title, body string) string {
 	title = strings.TrimSpace(title)
 	if title == "" {
@@ -273,28 +266,43 @@ func preflightPrompt(ref agentIssueRef, title, body string) string {
 		ref, title, body)
 }
 
-// runPreflight runs the about-to-detach agent's quick feasibility read, then asks
-// the operator to confirm the detached run; it returns whether to proceed. A
-// missing or non-claude agent binary skips the self-assessment but still confirms,
-// so the "before detaching" gate holds even when the read itself can't run.
+// runPreflight acts on the agent's feasibility verdict with no human (ward#147):
+// only an explicit NO-GO blocks (comments + launches nothing). See docs/agent.md.
 func (r *Runner) runPreflight(ctx context.Context, mode containerMode, w resolvedWork) (bool, error) {
 	label := fmt.Sprintf("ward agent %s headless", mode)
 	bin := mode.agentBinary()
-	// Only claude has a settled host print-mode invocation today (and is the only
-	// in-image agent); for other modes, skip the read and fall back to a plain
-	// confirm rather than guess an invocation.
-	if mode == modeClaude && hostHasBinary(bin) {
-		fmt.Fprintf(os.Stderr, "%s: pre-flight - asking %s whether it can carry %s before detaching...\n\n", label, bin, w.Ref)
-		pctx, cancel := context.WithTimeout(ctx, preflightTimeout)
-		defer cancel()
-		if err := r.Runner.Exec(pctx, bin, "-p", preflightPrompt(w.Ref, w.Title, w.Body)); err != nil {
-			fmt.Fprintf(os.Stderr, "\n%s: pre-flight read did not complete (%v); decide from the issue itself.\n", label, err)
-		}
-		fmt.Fprintln(os.Stderr)
-	} else {
-		fmt.Fprintf(os.Stderr, "%s: %s self-assessment unavailable on this host; confirm from the issue itself.\n", label, bin)
+	// Without a usable host self-assessment (only claude has one today) we can't
+	// fairly bounce the issue back, so the dispatch proceeds.
+	if mode != modeClaude || !hostHasBinary(bin) {
+		fmt.Fprintf(os.Stderr, "%s: %s self-assessment unavailable on this host; proceeding with the detached run.\n", label, bin)
+		return true, nil
 	}
-	return r.confirmProceed(fmt.Sprintf("Launch the detached headless run for %s? [y/N] ", w.Ref))
+
+	fmt.Fprintf(os.Stderr, "%s: pre-flight - asking %s whether it can carry %s before detaching...\n\n", label, bin, w.Ref)
+	pctx, cancel := context.WithTimeout(ctx, preflightTimeout)
+	defer cancel()
+	// Capture (not Exec) so ward can read the verdict; the read is echoed below.
+	out, err := r.Runner.Capture(pctx, bin, "-p", preflightPrompt(w.Ref, w.Title, w.Body))
+	read := strings.TrimSpace(string(out))
+	if read != "" {
+		fmt.Fprintf(os.Stderr, "%s\n\n", read)
+	}
+	if err != nil {
+		// A read that didn't complete is not the agent saying no: fail open so a
+		// flaky host claude never strands an otherwise-workable issue.
+		fmt.Fprintf(os.Stderr, "%s: pre-flight read did not complete (%v); proceeding with the detached run.\n", label, err)
+		return true, nil
+	}
+
+	if verdict, reason := parsePreflightVerdict(read); verdict == verdictNoGo {
+		fmt.Fprintf(os.Stderr, "%s: pre-flight NO-GO for %s; launching nothing, commenting on the issue.\n", label, w.Ref)
+		if cerr := r.postPreflightNoGo(ctx, mode, w.Ref, reason, read); cerr != nil {
+			return false, fmt.Errorf("post NO-GO comment on %s: %w", w.Ref, cerr)
+		}
+		fmt.Fprintf(os.Stderr, "%s: commented NO-GO on %s - %s\n", label, w.Ref, w.Ref.url())
+		return false, nil
+	}
+	return true, nil
 }
 
 // hostHasBinary reports whether bin resolves on the host PATH.
@@ -303,27 +311,75 @@ func hostHasBinary(bin string) bool {
 	return err == nil
 }
 
-// confirmProceed prints prompt and reads one line from the runner's stdin,
-// returning true only on an explicit yes. Anything else - including EOF or a
-// closed/piped stdin - is a no, so the detached run never fires unconfirmed.
-func (r *Runner) confirmProceed(prompt string) (bool, error) {
-	if r.Runner == nil || r.Runner.Stdin == nil {
-		return false, nil
+// preflightVerdict is ward's read of the agent's pre-flight self-assessment.
+type preflightVerdict int
+
+const (
+	verdictUnknown preflightVerdict = iota // no clear verdict line - treated as proceed
+	verdictGo                              // an explicit GO
+	verdictNoGo                            // an explicit NO-GO (carries a reason)
+)
+
+var (
+	// preflightNoGoRE matches a verdict line opening with NO-GO (hyphen, space, or
+	// run-together) and captures the trailing reason. Checked before the GO form.
+	preflightNoGoRE = regexp.MustCompile(`(?i)^no[-\s]?go\b[\s:.\-–—]*(.*)$`)
+	// preflightGoRE matches a bare GO verdict line; the prompt asks for exactly GO,
+	// so an inline "...go ahead" never trips it.
+	preflightGoRE = regexp.MustCompile(`(?i)^go\b[\s.!]*$`)
+)
+
+// parsePreflightVerdict reads the agent's final GO / NO-GO line, tolerating
+// decoration; the last verdict line wins. NO-GO carries its reason. See docs.
+func parsePreflightVerdict(read string) (preflightVerdict, string) {
+	verdict, reason := verdictUnknown, ""
+	for _, raw := range strings.Split(read, "\n") {
+		s := strings.TrimSpace(strings.Trim(strings.TrimSpace(raw), "*_`>#-•·"))
+		if s == "" {
+			continue
+		}
+		if m := preflightNoGoRE.FindStringSubmatch(s); m != nil {
+			verdict, reason = verdictNoGo, strings.TrimSpace(m[1])
+			continue
+		}
+		if preflightGoRE.MatchString(s) {
+			verdict, reason = verdictGo, ""
+		}
 	}
-	fmt.Fprint(os.Stderr, prompt)
-	line, err := bufio.NewReader(r.Runner.Stdin).ReadString('\n')
-	switch err {
-	case nil, io.EOF:
-		// A final line without a trailing newline still arrives alongside io.EOF.
-	default:
-		return false, err
+	return verdict, reason
+}
+
+// postPreflightNoGo comments the NO-GO verdict back on the issue (host Forgejo
+// client, SSM-backed token), bouncing it to a human instead of failing silently.
+func (r *Runner) postPreflightNoGo(ctx context.Context, mode containerMode, ref agentIssueRef, reason, read string) error {
+	cl, err := r.hostForgejoClient(ctx)
+	if err != nil {
+		return err
 	}
-	switch strings.ToLower(strings.TrimSpace(line)) {
-	case "y", "yes":
-		return true, nil
-	default:
-		return false, nil
+	return cl.commentIssue(ctx, ref.Owner, ref.Repo, ref.Number, preflightNoGoComment(mode, reason, read))
+}
+
+// preflightNoGoComment renders the NO-GO issue comment: reason, why nothing
+// launched, how to re-dispatch, and the full read folded away. Pure + testable.
+func preflightNoGoComment(mode containerMode, reason, read string) string {
+	reason = strings.TrimSpace(reason)
+	if reason == "" {
+		reason = "(no reason given)"
 	}
+	var b strings.Builder
+	fmt.Fprintf(&b, "### 🛫 ward pre-flight: NO-GO\n\n")
+	fmt.Fprintf(&b, "`ward agent %s headless` ran a pre-flight feasibility read on this issue before "+
+		"detaching a fire-and-forget run, and the agent judged it **NO-GO** - it should not be carried "+
+		"unattended until a human weighs in.\n\n", mode)
+	fmt.Fprintf(&b, "> %s\n\n", reason)
+	fmt.Fprintf(&b, "No container was launched. Review the issue (clarify the scope, resolve the unknown, "+
+		"or split it), then re-dispatch - `ward agent %s headless <ref> --no-preflight` skips this gate "+
+		"once you've decided it's good to go.\n", mode)
+	if read = strings.TrimSpace(read); read != "" {
+		fmt.Fprintf(&b, "\n<details><summary>full pre-flight read</summary>\n\n%s\n\n</details>\n", read)
+	}
+	fmt.Fprintf(&b, "\n---\nPosted automatically by `ward agent %s headless` pre-flight (ward#147).", mode)
+	return b.String()
 }
 
 // buildAgentPlan composes the container plan for a resolved issue: the seeded

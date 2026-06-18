@@ -48,30 +48,39 @@ the carry-to-merge autonomy and the reaper backstop; `work` only seeds the issue
   done. (Interactive `goose work` opens a bare `goose session`; the seed prompt
   is not auto-delivered into a session yet, so headless is the goose surface.)
   When dispatched from a terminal it first runs a **pre-flight check** (see
-  below) so you confirm before the detached run starts.
+  below) - fire-and-forget: a GO launches the run, a NO-GO comments on the issue
+  and launches nothing, with no prompt to answer.
 - **`task`** files an issue from `--instructions` first, then runs the `headless`
   flow against it (carries to merge, `closes #N`). See [docs/agent-task.md](agent-task.md).
 
-## Headless pre-flight (ward#137)
+## Headless pre-flight (ward#137, ward#147)
 
 `headless` detaches into a fire-and-forget run nobody is watching, so when it is
 **dispatched interactively** (a human at the terminal) ward inserts a quick
-pre-flight *before* detaching:
+pre-flight *before* detaching. The gate is **fire-and-forget from your POV**
+(ward#147): you launch and walk away, and ward acts on the agent's verdict with
+no prompt to answer:
 
 1. The agent gets a short prompt with the issue title + body and answers, in a
-   sentence or two, whether it thinks it can carry the issue to merge unattended
-   (ending on a `GO` / `NO-GO: <reason>` line). ward runs this as `claude -p` on
-   the host and streams the read to your terminal; it never parses the verdict.
-2. ward then asks `Launch the detached headless run for <ref>? [y/N]`. Only an
-   explicit `y`/`yes` launches; anything else (incl. a bare enter or closed
-   stdin) aborts and spins up nothing.
+   sentence or two, whether it thinks it can carry the issue to merge unattended,
+   ending on a `GO` / `NO-GO: <reason>` line. ward runs this as `claude -p` on the
+   host, echoes the read to your terminal, and parses that final verdict line
+   (markdown bold, bullets, and quote markers are tolerated; the last verdict line
+   wins).
+2. On **GO** - or any read ward can't pin to an explicit NO-GO - the detached run
+   launches. The bias is to proceed: only the agent itself saying "don't" blocks.
+3. On **NO-GO** ward launches nothing and instead **posts a comment on the issue**
+   with the reason, the full read (folded away), and how to re-dispatch. The work
+   lands back in front of a human rather than failing silently.
 
 The check is skipped when there is no terminal (scripted / piped dispatch), on
 `--print` (a dry run), and with `--no-preflight` (the escape hatch for a run
-launched from a TTY that you still want to fire blind). Non-`claude` modes, or a
-host without the agent binary, skip the self-assessment but still ask you to
-confirm, so the gate holds either way. `task` files an issue then goes straight
-to the detached run with no pre-flight - it is the deliberately programmatic path.
+launched from a TTY that you still want to fire blind - it also re-dispatches a
+NO-GO issue once you've decided it's good to go). Non-`claude` modes, a host
+without the agent binary, or a read that doesn't complete all **proceed** rather
+than block, since none of those is the agent declining the work (and the reaper
+still backstops residual work). `task` files an issue then goes straight to the
+detached run with no pre-flight - it is the deliberately programmatic path.
 
 The reaper backstop salvages residual work if the agent crashes (it needs ward's
 jail off in-container - the entrypoint exports `CLIGUARD_NO_SANDBOX=1`, cli-guard#153).
@@ -135,8 +144,8 @@ to reclaim a stale or foreign hold.
 docker plan without injecting the push token or running docker - the dry-run
 preview, safe with no docker daemon up. `--force` skips the local + remote
 concurrency reservation checks (see above). `headless` swaps `--detach` (it
-always detaches) for `--no-preflight`, which skips the interactive pre-flight
-described above.
+always detaches) for `--no-preflight`, which skips the autonomous pre-flight
+described above and detaches immediately.
 
 ## Container name
 
