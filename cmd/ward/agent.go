@@ -366,7 +366,8 @@ func (r *Runner) handlePreflightWrongRepo(ctx context.Context, mode containerMod
 	if err != nil {
 		return false, err
 	}
-	number, err := cl.createIssue(ctx, target.Owner, target.Name,
+	signed := cl.withMode(mode)
+	number, err := signed.createIssue(ctx, target.Owner, target.Name,
 		w.Title, blindfireIssueBody(mode, surface, w, outcome.Reason))
 	if err != nil {
 		return false, fmt.Errorf("blind-fire issue into %s: %w", target.slug(), err)
@@ -374,7 +375,7 @@ func (r *Runner) handlePreflightWrongRepo(ctx context.Context, mode containerMod
 	filed := agentIssueRef{Owner: target.Owner, Repo: target.Name, Number: number}
 	fmt.Fprintf(os.Stderr, "%s: blind-fired %s - %s\n", label, filed, filed.url())
 	// Point the original issue at the freshly-filed one so the trail is visible.
-	if cerr := cl.commentIssue(ctx, w.Ref.Owner, w.Ref.Repo, w.Ref.Number,
+	if cerr := signed.commentIssue(ctx, w.Ref.Owner, w.Ref.Repo, w.Ref.Number,
 		preflightWrongRepoComment(mode, surface, filed, outcome.Reason, read)); cerr != nil {
 		return false, fmt.Errorf("comment WRONG-REPO routing on %s: %w", w.Ref, cerr)
 	}
