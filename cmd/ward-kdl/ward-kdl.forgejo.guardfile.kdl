@@ -7,10 +7,16 @@
 wrap ward-kdl ops forgejo {
     spec forgejo.swagger.v1.json
     base-url "forgejo.coilysiren.me/api/v1"
+    // Authenticate as the `coilyco-ops` Forgejo bot, not a human's personal PAT
+    // (ward#151). The bot's token lives at SSM /forgejo/coilyco-ops/api-token,
+    // minted with scopes write:repository write:issue read:user write:organization
+    // by infrastructure/scripts/provision-coilyco-ops-bot.sh (also the rotation
+    // path - a re-run revokes and re-mints). Keeping ward-kdl off the operator's
+    // own /forgejo/api-token means automated ops attribute to the bot.
     auth header-token {
         header Authorization
         prefix "token "
-        value ssm "/forgejo/api-token"
+        value ssm "/forgejo/coilyco-ops/api-token"
     }
     // Scope gate: every leaf whose path carries {owner} must name a coily* owner.
     restrict owner matches coily*
