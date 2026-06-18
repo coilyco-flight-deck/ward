@@ -60,13 +60,14 @@ and by the harness (ward#157):
 - **`work`** (interactive) attaches the container to your terminal - you watch
   the agent and can step in. `--detach` backgrounds it.
 - **`headless`** is fire-and-forget: it always detaches and runs the agent in
-  print mode (`claude -p`, or `goose run -t <seed>` for the goose mode), so it
-  works to completion non-interactively and exits into the reaper. For claude it
-  **streams live progress** (one line per tool call + the result, via
-  stream-json) to the container log - `docker logs <name>` / `ward container
-  exec`; goose prints its own progress to that log - so it isn't silent until
-  done. (Interactive `goose work` opens a bare `goose session`; the seed prompt
-  is not auto-delivered into a session yet, so headless is the goose surface.)
+  print mode (`claude -p`, `codex exec <seed>` for codex, or `goose run -t <seed>`
+  for goose), so it works to completion non-interactively and exits into the
+  reaper. For claude it **streams live progress** (one line per tool call + the
+  result, via stream-json) to the container log - `docker logs <name>` / `ward
+  container exec`; codex and goose print their own progress to that log - so it
+  isn't silent until done. (Interactive `goose work` opens a bare `goose session`;
+  the seed prompt is not auto-delivered into a session yet, so headless is the
+  goose surface. Interactive `codex work` opens a seeded `codex` TUI.)
   When dispatched from a terminal it first runs a **pre-flight check** (see
   below) - fire-and-forget: a GO launches the run, a NO-GO comments on the issue
   and launches nothing, with no prompt to answer.
@@ -187,6 +188,18 @@ authenticates with your **Max/subscription login**, not an API key - ward
 resolves the OAuth credential on the host and injects it into the container's
 `~/.claude/.credentials.json` via the private `--env-file`, never in argv/audit.
 `ANTHROPIC_API_KEY` stays unset so it can't shadow OAuth.
+
+**codex** (ward#178) follows the same shape. ward resolves the host's
+`~/.codex/auth.json` (the `codex login` blob - ChatGPT login or API key) and
+injects it into the container's `~/.codex/auth.json` over the same private
+`--env-file`, never in argv/audit; an absent host file just leaves codex
+unauthenticated rather than failing the launch. Because the container is the
+isolation boundary (like claude's `bypassPermissions` here), the entrypoint also
+writes `~/.codex/config.toml` with `approval_policy = "never"` and
+`sandbox_mode = "danger-full-access"`, so codex carries the issue - edit, commit,
+push - without per-command approval prompts. Headless runs `codex exec <seed>`;
+interactive `work` opens a seeded `codex` TUI. The host pre-flight one-shot is not
+wired for codex yet, so the GO/NO-GO read bows out and dispatch proceeds.
 
 ## Reservation (no double-work)
 

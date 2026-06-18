@@ -24,11 +24,11 @@ agents:
   - name: codex
     binary: codex
     contextLevel: 1
-    stream: stream-json
-    auth: none
+    stream: none
+    auth: codex-file
     argv:
       preflight: []
-      headless: [codex, -p, --verbose, --output-format, stream-json]
+      headless: [codex, exec]
       interactive: [codex]
 
   - name: qwen

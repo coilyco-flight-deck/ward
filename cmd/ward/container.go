@@ -122,7 +122,7 @@ func (r *Runner) runContainerUp(ctx context.Context, c *cli.Command) error {
 			fmt.Fprintf(os.Stderr, "ward container: image pull failed (%v); trying the local image\n", perr)
 		}
 	}
-	envFile, cleanupEnv, err := r.writeTokenEnvFile(ctx, r.claudeCredsForMode(ctx, mode))
+	envFile, cleanupEnv, err := r.writeTokenEnvFile(ctx, r.resolveAgentCreds(ctx, mode))
 	if err != nil {
 		return err
 	}
@@ -131,13 +131,24 @@ func (r *Runner) runContainerUp(ctx context.Context, c *cli.Command) error {
 	return r.Runner.Exec(ctx, "docker", dockerCreateArgv(plan, envFile)...)
 }
 
-// claudeCredsForMode resolves the claude credential only for claude mode (codex/
-// qwen need none); returns "" otherwise so the env-file omits it.
-func (r *Runner) claudeCredsForMode(ctx context.Context, mode containerMode) string {
-	if mode != modeClaude {
-		return ""
+// agentCreds bundles the host-resolved per-mode credential blobs ward injects
+// (base64'd) into the container env-file. See docs/agent.md (ward#178).
+type agentCreds struct {
+	Claude string
+	Codex  string
+}
+
+// resolveAgentCreds resolves the credential the run's mode needs (claude OAuth,
+// codex auth.json; none for the tower-auth ollama harnesses). docs/agent.md.
+func (r *Runner) resolveAgentCreds(ctx context.Context, mode containerMode) agentCreds {
+	switch mode {
+	case modeClaude:
+		return agentCreds{Claude: r.resolveClaudeCreds(ctx)}
+	case modeCodex:
+		return agentCreds{Codex: r.resolveCodexCreds()}
+	default:
+		return agentCreds{}
 	}
-	return r.resolveClaudeCreds(ctx)
 }
 
 // buildUpPlan assembles the pure plan from parsed flags and resolved inputs.
@@ -220,9 +231,34 @@ func (r *Runner) resolveClaudeCreds(ctx context.Context) string {
 	return strings.TrimSpace(string(data))
 }
 
-// writeTokenEnvFile resolves the forgejo token (+ optional base64'd claude creds)
-// into a private 0600 --env-file, so neither enters argv/audit. Caller removes it.
-func (r *Runner) writeTokenEnvFile(ctx context.Context, claudeCreds string) (path string, cleanup func(), err error) {
+// resolveCodexCreds reads the container's ~/.codex/auth.json from the host file
+// (best-effort: an empty return leaves codex unauthenticated). docs/agent.md.
+func (r *Runner) resolveCodexCreds() string {
+	path := filepath.Join(homeDir(), ".codex", "auth.json")
+	data, err := os.ReadFile(path) // #nosec G304 -- fixed per-user codex creds path
+	if err != nil {
+		fmt.Fprintf(os.Stderr, "ward container: could not read %s (%v); codex will be unauthenticated\n", path, err)
+		return ""
+	}
+	return strings.TrimSpace(string(data))
+}
+
+// credEnvLines renders the base64'd per-mode credential env-file lines, one per
+// present blob; pure, so the secret-shaping is unit-testable. See docs/agent.md.
+func credEnvLines(creds agentCreds) []string {
+	var lines []string
+	if creds.Claude != "" {
+		lines = append(lines, "WARD_CLAUDE_CREDS_B64="+base64.StdEncoding.EncodeToString([]byte(creds.Claude)))
+	}
+	if creds.Codex != "" {
+		lines = append(lines, "WARD_CODEX_AUTH_B64="+base64.StdEncoding.EncodeToString([]byte(creds.Codex)))
+	}
+	return lines
+}
+
+// writeTokenEnvFile resolves the forgejo token (+ optional base64'd agent creds)
+// into a private 0600 --env-file, so none enters argv/audit. Caller removes it.
+func (r *Runner) writeTokenEnvFile(ctx context.Context, creds agentCreds) (path string, cleanup func(), err error) {
 	out, err := r.Runner.Capture(ctx, "aws", "ssm", "get-parameter",
 		"--name", forgejoTokenSSMPath, "--with-decryption",
 		"--query", "Parameter.Value", "--output", "text")
@@ -246,14 +282,13 @@ func (r *Runner) writeTokenEnvFile(ctx context.Context, claudeCreds string) (pat
 		cleanup()
 		return "", func() {}, fmt.Errorf("ward container: write env-file: %w", werr)
 	}
-	// Claude credentials ride base64'd on one line (the raw JSON may span lines,
-	// which a docker --env-file cannot represent); the entrypoint decodes it.
-	if claudeCreds != "" {
-		enc := base64.StdEncoding.EncodeToString([]byte(claudeCreds))
-		if _, werr := fmt.Fprintf(f, "WARD_CLAUDE_CREDS_B64=%s\n", enc); werr != nil {
+	// Agent credentials (claude OAuth, codex auth.json) ride base64'd, one line
+	// each, after the token; the entrypoint decodes whichever its mode needs.
+	for _, line := range credEnvLines(creds) {
+		if _, werr := fmt.Fprintf(f, "%s\n", line); werr != nil {
 			_ = f.Close()
 			cleanup()
-			return "", func() {}, fmt.Errorf("ward container: write claude creds to env-file: %w", werr)
+			return "", func() {}, fmt.Errorf("ward container: write agent creds to env-file: %w", werr)
 		}
 	}
 	if cerr := f.Close(); cerr != nil {

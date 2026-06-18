@@ -50,10 +50,16 @@ Field notes:
   GO/NO-GO check bows out and dispatch proceeds unguarded (ward#147, ward#148).
 - `argv.interactive` for goose is `[goose, session]`: no seed on argv, so the issue
   is pasted in by hand.
+- `argv.headless` for codex is `[codex, exec]` - codex's non-interactive exec
+  dialect, not claude's `-p` stream-json flags. codex prints its own progress, so
+  its `stream` is `none` and ward pipes nothing through the stream-json filter
+  (ward#178). Its auth is `codex-file`: the host's `~/.codex/auth.json`, injected
+  into the container (see [agent.md](agent.md)).
 
-`codex`/`qwen` are **provisional**: their binaries are not installed in the
-dev-base image yet, so their argv mirrors the claude-style default branch in
-`entrypoint.sh` and firms up when the binaries land.
+`qwen` stays **provisional**: its binary is not installed in the dev-base image
+yet, so its argv still mirrors the claude-style default branch in `entrypoint.sh`
+and firms up when the binary lands. `codex` is now wired to its real exec dialect
+(ward#178), though its install in the image remains the aos-side step.
 
 ## The contract test
 
