@@ -4,6 +4,11 @@ The `ward exec` verb walks up from cwd looking for a
 ward or coily allowlist, then exposes each declared command
 as a leaf subcommand.
 
+Unknown top-level verbs that match a declared leaf fall back to `exec`
+automatically (`ward test` -> `ward exec test`), and every ward-managed repo
+is expected to declare the `build`/`test`/`install` triple. See
+[docs/verb-fallback.md](verb-fallback.md).
+
 When no config is reachable, `exec` is still registered (so `--help`
 and the `version` verb behave consistently) but every invocation
 returns a clear error pointing at the missing file.

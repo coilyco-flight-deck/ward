@@ -11,6 +11,9 @@ commands:
   test:
     run: make test
     description: Run the unit test suite.
+  install:
+    run: make install
+    description: Install the ward + ward-kdl binaries into GOBIN (build/test/install triple).
   vet:
     run: make vet
     description: go vet across the tree.

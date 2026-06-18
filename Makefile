@@ -1,4 +1,4 @@
-.PHONY: help build test vet lint tidy cover ward-kdl install-tmp lock skew
+.PHONY: help build test vet lint tidy cover install ward-kdl install-tmp lock skew
 
 SPECVERB_GEN := forgejo.coilysiren.me/coilyco-flight-deck/cli-guard/cmd/specverb-gen
 
@@ -31,6 +31,9 @@ build-ward-kdl: ## build or rebuild the ward-kdl binary, one shot for ease of us
 
 test: ## Run the unit test suite.
 	go test ./...
+
+install: ## Install the ward + ward-kdl binaries into GOBIN (the Go-CLI install verb).
+	go install ./...
 
 vet: ## go vet across the tree.
 	go vet ./...
