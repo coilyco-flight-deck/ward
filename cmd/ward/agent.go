@@ -35,13 +35,17 @@ func (r agentIssueRef) url() string {
 	return fmt.Sprintf("%s/%s/%s/issues/%d", strings.TrimRight(forgejoBaseURL, "/"), r.Owner, r.Repo, r.Number)
 }
 
-// agentIssueShortRE matches owner/repo#N.
-var agentIssueShortRE = regexp.MustCompile(`^([A-Za-z0-9._-]+)/([A-Za-z0-9._-]+)#(\d+)$`)
+// agentRefTrailerRE swallows an optional trailing slash plus any appended
+// ?query and/or #fragment, so a browser-copied ref parses unedited (see docs).
+const agentRefTrailerRE = `/?(?:[?#].*)?$`
 
-// agentIssueURLRE matches <forgejoBaseURL>/owner/repo/issues/N (trailing slash
-// optional). A follow-up unifies this with cli-guard dispatch.parseIssueRef.
+// agentIssueShortRE matches owner/repo#N, ignoring any appended query/fragment.
+var agentIssueShortRE = regexp.MustCompile(`^([A-Za-z0-9._-]+)/([A-Za-z0-9._-]+)#(\d+)` + agentRefTrailerRE)
+
+// agentIssueURLRE matches <forgejoBaseURL>/owner/repo/issues/N, query/fragment
+// ignored. A follow-up unifies this with cli-guard dispatch.parseIssueRef.
 var agentIssueURLRE = regexp.MustCompile(`^` + regexp.QuoteMeta(strings.TrimRight(forgejoBaseURL, "/")) +
-	`/([A-Za-z0-9._-]+)/([A-Za-z0-9._-]+)/issues/(\d+)/?$`)
+	`/([A-Za-z0-9._-]+)/([A-Za-z0-9._-]+)/issues/(\d+)` + agentRefTrailerRE)
 
 // parseAgentIssueRef resolves the work target from owner/repo#N or a Forgejo
 // issue URL. The number is validated positive; everything else is a hard error.
@@ -355,7 +359,7 @@ func (r *Runner) postPreflightNoGo(ctx context.Context, mode containerMode, surf
 	if err != nil {
 		return err
 	}
-	return cl.commentIssue(ctx, ref.Owner, ref.Repo, ref.Number, preflightNoGoComment(mode, surface, reason, read))
+	return cl.withMode(mode).commentIssue(ctx, ref.Owner, ref.Repo, ref.Number, preflightNoGoComment(mode, surface, reason, read))
 }
 
 // preflightNoGoComment renders the NO-GO issue comment: reason, why nothing
@@ -589,7 +593,7 @@ func (r *Runner) runAgentTask(ctx context.Context, c *cli.Command, mode containe
 	if err != nil {
 		return fmt.Errorf("%s: %w", label, err)
 	}
-	number, err := cl.createIssue(ctx, repo.Owner, repo.Name, title, body)
+	number, err := cl.withMode(mode).createIssue(ctx, repo.Owner, repo.Name, title, body)
 	if err != nil {
 		return fmt.Errorf("%s: file issue in %s/%s: %w", label, repo.Owner, repo.Name, err)
 	}

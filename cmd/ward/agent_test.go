@@ -19,6 +19,14 @@ func TestParseAgentIssueRef(t *testing.T) {
 		{"  coilyco-flight-deck/ward#98  ", "coilyco-flight-deck", "ward", 98, false},
 		{forgejoBaseURL + "/coilyco-flight-deck/ward/issues/98", "coilyco-flight-deck", "ward", 98, false},
 		{forgejoBaseURL + "/coilyco-flight-deck/ward/issues/98/", "coilyco-flight-deck", "ward", 98, false},
+		// Appended hash fragment (e.g. a comment anchor) is ignored. (#158)
+		{forgejoBaseURL + "/coilyco-flight-deck/ward/issues/151#issuecomment-14958", "coilyco-flight-deck", "ward", 151, false},
+		// Appended query string is ignored. (#158)
+		{forgejoBaseURL + "/coilyco-flight-deck/ward/issues/151?thing=stuff", "coilyco-flight-deck", "ward", 151, false},
+		// Trailing slash plus query string, both ignored. (#158)
+		{forgejoBaseURL + "/coilyco-flight-deck/ward/issues/151/?thing=stuff", "coilyco-flight-deck", "ward", 151, false},
+		// Short form also tolerates an appended query/fragment. (#158)
+		{"coilyco-flight-deck/ward#98?thing=stuff", "coilyco-flight-deck", "ward", 98, false},
 		{"", "", "", 0, true},
 		{"coilyco-flight-deck/ward", "", "", 0, true},               // no #N
 		{"coilyco-flight-deck/ward#0", "", "", 0, true},             // non-positive
