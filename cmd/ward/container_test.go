@@ -318,6 +318,37 @@ func TestImageRef(t *testing.T) {
 	}
 }
 
+// TestEntrypointInstallsPreCommitHooks locks the ward#133 fix: the entrypoint
+// registers pre-commit hooks after the clone (a fresh clone ships none).
+func TestEntrypointInstallsPreCommitHooks(t *testing.T) {
+	data, err := containerAssets.ReadFile("containerassets/" + containerEntrypointRel)
+	if err != nil {
+		t.Fatalf("read entrypoint: %v", err)
+	}
+	script := string(data)
+	for _, want := range []string{
+		"install_precommit_hooks()",         // the function exists
+		"install_precommit_hooks \"$work\"", // main() invokes it on the clone
+		".pre-commit-config.yaml",           // gated on a config being present
+		"pre-commit install",                // registers the default hook
+	} {
+		if !strings.Contains(script, want) {
+			t.Errorf("entrypoint missing %q (ward#133 pre-commit parity)", want)
+		}
+	}
+	// It must run after the clone (work exists) and before the agent launches,
+	// so the hooks are in place for the first commit.
+	clone := strings.Index(script, "work=\"$(clone_target)\"")
+	install := strings.Index(script, "install_precommit_hooks \"$work\"")
+	launch := strings.Index(script, "log \"launching $WARD_AGENT")
+	if clone < 0 || install < 0 || launch < 0 {
+		t.Fatalf("entrypoint markers not found: clone=%d install=%d launch=%d", clone, install, launch)
+	}
+	if !(clone < install && install < launch) {
+		t.Errorf("pre-commit install must run after clone and before launch: clone=%d install=%d launch=%d", clone, install, launch)
+	}
+}
+
 func TestRepoCloneURLAndMirror(t *testing.T) {
 	r := targetRepo{Owner: "coilyco-gaming", Name: "eco-app"}
 	if got := r.cloneURL("https://forgejo.coilysiren.me"); got != "https://forgejo.coilysiren.me/coilyco-gaming/eco-app.git" {

@@ -2,8 +2,10 @@
 # ward container entrypoint. Bind-mounted into the aos dev-base image at
 # /opt/ward/entrypoint.sh by `ward container up` (it is embedded in the ward
 # binary, not baked into the image). Responsibilities, in order: install ward,
-# configure forgejo git auth, cached-fresh-clone the target repo, compose the
-# per-mode operating context, then exec the agent. See ward docs/container.md.
+# configure forgejo git auth, cached-fresh-clone the target repo, install the
+# repo's pre-commit hooks so agent commits hit the same gate a human's do,
+# compose the per-mode operating context, then exec the agent. See ward
+# docs/container.md.
 set -euo pipefail
 
 log() { printf 'ward-container: %s\n' "$*" >&2; }
@@ -109,6 +111,27 @@ clone_target() {
     git -C "$work" checkout -B "$WARD_BRANCH" >&2
   fi
   printf '%s' "$work"
+}
+
+# --- pre-commit parity (ward#133): register hooks a fresh clone lacks --------
+# Else agent commits bypass the repo's pre-commit gate. See docs/container-precommit.md.
+install_precommit_hooks() {
+  local work="$1"
+  # No config, or no pre-commit in the image: log and move on, never abort startup.
+  [ -f "$work/.pre-commit-config.yaml" ] || { log "no .pre-commit-config.yaml in $work; skipping pre-commit install"; return 0; }
+  if ! command -v pre-commit >/dev/null 2>&1; then
+    log "pre-commit not on PATH; agent commits will NOT run the repo hook suite (ward#133)"
+    return 0
+  fi
+  # The reaper commits --no-verify by design, so this only re-gates the agent's
+  # own commits. Hook environments install lazily on first commit (cheap+offline).
+  if ( cd "$work" \
+        && pre-commit install >&2 \
+        && pre-commit install --hook-type commit-msg >&2 ); then
+    log "installed pre-commit hooks in $work (ward#133)"
+  else
+    log "pre-commit install failed in $work; agent commits may bypass the hook suite (ward#133)"
+  fi
 }
 
 # --- warm the substrate reference repos (best-effort; see docs/container.md) --
@@ -254,6 +277,7 @@ main() {
   configure_git_auth
   install_ward
   local work; work="$(clone_target)"
+  install_precommit_hooks "$work"
   warm_substrate
   compose_context
   compose_permissions
