@@ -1,8 +1,12 @@
 package main
 
 import (
+	"bytes"
 	"strings"
 	"testing"
+
+	"forgejo.coilysiren.me/coilyco-flight-deck/cli-guard/cli/shell"
+	"github.com/urfave/cli/v3"
 )
 
 func TestParseAgentIssueRef(t *testing.T) {
@@ -121,6 +125,62 @@ func TestTaskBody(t *testing.T) {
 	}
 }
 
+func TestPreflightPrompt(t *testing.T) {
+	ref := agentIssueRef{Owner: "coilyco-flight-deck", Repo: "ward", Number: 137}
+	got := preflightPrompt(ref, "  pre-flight check  ", "  do the thing  ")
+	for _, want := range []string{
+		"coilyco-flight-deck/ward#137", // the issue ref
+		"pre-flight check",             // title, trimmed
+		"do the thing",                 // body, trimmed
+		"PRE-FLIGHT",                   // names the check
+		"GO",                           // asks for the verdict
+		"NO-GO",
+	} {
+		if !strings.Contains(got, want) {
+			t.Errorf("preflight prompt missing %q\n got: %s", want, got)
+		}
+	}
+	// Empty title/body degrade gracefully, never blank-quote or dangle.
+	empty := preflightPrompt(ref, "  ", "  ")
+	if !strings.Contains(empty, "(untitled)") || !strings.Contains(empty, "(no description provided)") {
+		t.Errorf("empty title/body should render placeholders; got: %s", empty)
+	}
+}
+
+func TestConfirmProceed(t *testing.T) {
+	cases := []struct {
+		in   string
+		want bool
+	}{
+		{"y\n", true},
+		{"yes\n", true},
+		{"  Y  \n", true},
+		{"YES\n", true},
+		{"n\n", false},
+		{"no\n", false},
+		{"\n", false},      // bare enter defaults to no
+		{"", false},        // EOF / closed stdin defaults to no
+		{"maybe\n", false}, // anything unrecognized is a no
+		{"yep\n", false},   // only y/yes count
+	}
+	for _, c := range cases {
+		var out bytes.Buffer
+		r := &Runner{Runner: &shell.Runner{Stdin: strings.NewReader(c.in), Stdout: &out, Stderr: &out}}
+		got, err := r.confirmProceed("proceed? ")
+		if err != nil {
+			t.Errorf("confirmProceed(%q): unexpected error %v", c.in, err)
+			continue
+		}
+		if got != c.want {
+			t.Errorf("confirmProceed(%q) = %v, want %v", c.in, got, c.want)
+		}
+	}
+	// A nil stdin must never silently fire the detached run.
+	if got, err := (&Runner{Runner: &shell.Runner{}}).confirmProceed("x"); got || err != nil {
+		t.Errorf("confirmProceed with nil stdin = %v, %v; want false, nil", got, err)
+	}
+}
+
 // TestDockerCreateArgvSeedsAgentArgs verifies the seeded prompt rides as the
 // in-container agent's argv: after the image, never as a -e env, never leaked.
 func TestDockerCreateArgvSeedsAgentArgs(t *testing.T) {
@@ -164,6 +224,57 @@ func TestWardEnvHeadless(t *testing.T) {
 	joined := strings.Join(dockerCreateArgv(p, ""), " ")
 	if !strings.Contains(joined, "-e WARD_HEADLESS=1") {
 		t.Errorf("docker argv missing -e WARD_HEADLESS=1\n got: %s", joined)
+	}
+}
+
+// ward#141: goose is a first-class agent surface, so `ward agent goose
+// {work,headless,task}` must exist alongside claude/codex/qwen.
+func TestAgentModesIncludeGoose(t *testing.T) {
+	found := false
+	for _, m := range agentModes {
+		if m == modeGoose {
+			found = true
+		}
+	}
+	if !found {
+		t.Errorf("agentModes missing goose; got %v", agentModes)
+	}
+	// The umbrella command must build a `goose` subcommand with work/headless/task.
+	var goose *cli.Command
+	for _, c := range agentCommand().Commands {
+		if c.Name == string(modeGoose) {
+			goose = c
+		}
+	}
+	if goose == nil {
+		t.Fatal("agent command has no goose subcommand")
+	}
+	surfaces := map[string]bool{}
+	for _, c := range goose.Commands {
+		surfaces[c.Name] = true
+	}
+	for _, want := range []string{"work", "headless", "task"} {
+		if !surfaces[want] {
+			t.Errorf("ward agent goose missing %q surface", want)
+		}
+	}
+}
+
+// A goose headless plan threads both WARD_MODE=goose and WARD_HEADLESS=1 so the
+// entrypoint picks the `goose run -t` branch.
+func TestGooseHeadlessPlanEnv(t *testing.T) {
+	p := sampleUpPlan()
+	p.Mode = modeGoose
+	p.Headless = true
+	env := p.wardEnv()
+	if env["WARD_MODE"] != "goose" {
+		t.Errorf("WARD_MODE = %q, want goose", env["WARD_MODE"])
+	}
+	if env["WARD_AGENT"] != "goose" {
+		t.Errorf("WARD_AGENT = %q, want goose", env["WARD_AGENT"])
+	}
+	if env["WARD_HEADLESS"] != "1" {
+		t.Errorf("WARD_HEADLESS = %q, want 1", env["WARD_HEADLESS"])
 	}
 }
 

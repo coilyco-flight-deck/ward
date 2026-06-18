@@ -14,7 +14,7 @@ ward agent claude headless coilyco-flight-deck/ward#98          # detached, fire
 ward agent codex  work coilyco-flight-deck/ward#98 --print      # resolve + show the plan, run nothing
 ```
 
-`<name>` is the agent/mode (`claude|codex|qwen`, the same context ladder as
+`<name>` is the agent/mode (`claude|codex|qwen|goose`, the same context ladder as
 `container up --mode`). The issue ref is `owner/repo#N` or a full Forgejo issue
 URL.
 
@@ -40,17 +40,60 @@ the carry-to-merge autonomy and the reaper backstop; `work` only seeds the issue
 - **`work`** (interactive) attaches the container to your terminal - you watch
   the agent and can step in. `--detach` backgrounds it.
 - **`headless`** is fire-and-forget: it always detaches and runs the agent in
-  print mode (`claude -p`), so it works to completion non-interactively and exits
-  into the reaper. It **streams live progress** (one line per tool call + the
-  result, via stream-json) to the container log - `docker logs <name>` /
-  `ward container exec` - so it isn't silent until done.
+  print mode (`claude -p`, or `goose run -t <seed>` for the goose mode), so it
+  works to completion non-interactively and exits into the reaper. For claude it
+  **streams live progress** (one line per tool call + the result, via
+  stream-json) to the container log - `docker logs <name>` / `ward container
+  exec`; goose prints its own progress to that log - so it isn't silent until
+  done. (Interactive `goose work` opens a bare `goose session`; the seed prompt
+  is not auto-delivered into a session yet, so headless is the goose surface.)
+  When dispatched from a terminal it first runs a **pre-flight check** (see
+  below) so you confirm before the detached run starts.
 - **`task`** files an issue from `--instructions` first, then runs the `headless`
   flow against it (carries to merge, `closes #N`). See [docs/agent-task.md](agent-task.md).
+
+## Headless pre-flight (ward#137)
+
+`headless` detaches into a fire-and-forget run nobody is watching, so when it is
+**dispatched interactively** (a human at the terminal) ward inserts a quick
+pre-flight *before* detaching:
+
+1. The agent gets a short prompt with the issue title + body and answers, in a
+   sentence or two, whether it thinks it can carry the issue to merge unattended
+   (ending on a `GO` / `NO-GO: <reason>` line). ward runs this as `claude -p` on
+   the host and streams the read to your terminal; it never parses the verdict.
+2. ward then asks `Launch the detached headless run for <ref>? [y/N]`. Only an
+   explicit `y`/`yes` launches; anything else (incl. a bare enter or closed
+   stdin) aborts and spins up nothing.
+
+The check is skipped when there is no terminal (scripted / piped dispatch), on
+`--print` (a dry run), and with `--no-preflight` (the escape hatch for a run
+launched from a TTY that you still want to fire blind). Non-`claude` modes, or a
+host without the agent binary, skip the self-assessment but still ask you to
+confirm, so the gate holds either way. `task` files an issue then goes straight
+to the detached run with no pre-flight - it is the deliberately programmatic path.
 
 The reaper backstop salvages residual work if the agent crashes (it needs ward's
 jail off in-container - the entrypoint exports `CLIGUARD_NO_SANDBOX=1`, cli-guard#153).
 The happy path doesn't rely on it: the agent commits/merges/pushes itself per its
 doctrine, finishing to a clean `main` push.
+
+## Host stale-ward reminder (ward#143)
+
+A `ward agent` run installs ward *inside* the container and logs its `ward
+version` there. When the run is non-interactive - `headless`/`task` (always
+detached) or `work --detach` - no human watches that log, so the cue that the
+**host** ward binary is itself behind a release is lost. To keep that awareness,
+ward does a best-effort check at the host dispatch moment (where the operator
+still is): it fetches the latest `coilyco-flight-deck/ward` release tag and, if
+the host binary is behind it, prints a two-line stderr reminder pointing at
+[`ward upgrade`](../README.md).
+
+The check is deliberately quiet and non-blocking: a `dev`/source build, no
+network, an auth wall, or an unparseable tag all stay silent rather than guess,
+and a 5s timeout means a slow Forgejo never holds up the dispatch. It is skipped
+under `--print` (a pure offline dry run). It compares only the release tag, not
+the in-container ward, because the container always pins/downloads its own.
 
 ## Credentials and user
 
@@ -91,7 +134,9 @@ to reclaim a stale or foreign hold.
 `issue-<N>` default. `--print` resolves the issue and renders the seeded prompt +
 docker plan without injecting the push token or running docker - the dry-run
 preview, safe with no docker daemon up. `--force` skips the local + remote
-concurrency reservation checks (see below).
+concurrency reservation checks (see above). `headless` swaps `--detach` (it
+always detaches) for `--no-preflight`, which skips the interactive pre-flight
+described above.
 
 ## Container name
 

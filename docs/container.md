@@ -43,12 +43,15 @@ mirroring agent-compose's slices:
 
 - `claude` (default, level 2) - doctrine + the mounted host context (cwd's
   `CLAUDE.md`/`AGENTS.md`).
+- `goose` (level 2) - same full context as claude; the entrypoint mirrors the
+  composed doctrine into goose's `~/.config/goose/.goosehints` (goose does not
+  read `~/.claude/CLAUDE.md`).
 - `codex` (level 1) - doctrine + only the cwd's `AGENTS.md`.
 - `qwen` (level 0) - doctrine only.
 
 The repo's in-tree `AGENTS.md` loads natively on top; the level exports as
-`WARD_CONTEXT_LEVEL`. codex/qwen binaries aren't in the image yet (claude is), so
-the entrypoint drops to a shell for those modes until they land.
+`WARD_CONTEXT_LEVEL`. codex/qwen/goose binaries aren't in the image yet (claude
+is), so the entrypoint drops to a shell for those modes until they land.
 
 ## Inside the container
 

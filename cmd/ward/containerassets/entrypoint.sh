@@ -216,6 +216,15 @@ compose_context() {
     printf '\n\n---\n\n' >> "$out"; cat "$WARD_CONTEXT_SRC/AGENTS.md" >> "$out"
   fi
   log "composed context (level $WARD_CONTEXT_LEVEL) at $out"
+  # goose does not read ~/.claude/CLAUDE.md; mirror the same composed doctrine
+  # into its global hints file so a `goose run` carries the carry-to-merge
+  # autonomy + context the seed prompt assumes. See docs/agent.md (goose).
+  if [ "$WARD_MODE" = goose ]; then
+    local ghints="$AGENT_HOME/.config/goose/.goosehints"
+    mkdir -p "$(dirname "$ghints")"
+    cp "$out" "$ghints"
+    log "mirrored composed context into $ghints (goose hints)"
+  fi
 }
 
 # --- container permission policy (the container is the permission manager) ----
@@ -289,26 +298,49 @@ main() {
   trap reap EXIT
   log "ready: $WARD_TARGET_OWNER/$WARD_TARGET_NAME on $(git branch --show-current) [mode=$WARD_MODE]"
   if ! command -v "$WARD_AGENT" >/dev/null 2>&1; then
-    log "agent '$WARD_AGENT' is not in this image yet (codex/qwen install is a follow-up); dropping to a shell (reaper runs on exit)"
+    log "agent '$WARD_AGENT' is not in this image yet (codex/qwen/goose install is a follow-up); dropping to a shell (reaper runs on exit)"
     bash || true
     return
   fi
-  # Headless (`ward agent <name> headless`): -p runs to completion; stream-json +
-  # stream_progress surface live progress in the log. claude-only (in-image).
-  local agent_argv=("$WARD_AGENT") headless=0
-  if [ "${WARD_HEADLESS:-0}" = 1 ]; then
-    agent_argv+=(-p --verbose --output-format stream-json)
-    headless=1
-    log "headless: streaming $WARD_AGENT progress to this log"
-  fi
+  # Compose the per-mode agent argv. The seed prompt rides as "$@" (one arg);
+  # each harness takes it differently, so build the full argv here:
+  #   claude  - prompt is positional; headless adds `-p stream-json` and pipes
+  #             through stream_progress for concise live log lines.
+  #   goose   - headless is `goose run -t <prompt>` (runs to completion, prints
+  #             its own progress); interactive is `goose session`. See the goose
+  #             guardfile (docs/ward-kdl.goose.guardfile.md) for the mapping.
+  #   codex/qwen - best-effort passthrough until their headless flags are wired.
+  # stream gates the stream_progress pipe (claude stream-json only).
+  local stream=0
+  local -a agent_argv
+  case "$WARD_MODE" in
+  goose)
+    if [ "${WARD_HEADLESS:-0}" = 1 ]; then
+      agent_argv=(goose run -t "$@")
+      log "headless: goose run -t <seed> (goose prints its own progress to this log)"
+    else
+      agent_argv=(goose session)
+      [ "$#" -gt 0 ] && log "interactive goose session: seed prompt is not auto-delivered (paste the issue)"
+    fi
+    ;;
+  *)
+    agent_argv=("$WARD_AGENT")
+    if [ "${WARD_HEADLESS:-0}" = 1 ]; then
+      agent_argv+=(-p --verbose --output-format stream-json)
+      stream=1
+      log "headless: streaming $WARD_AGENT progress to this log"
+    fi
+    agent_argv+=("$@")
+    ;;
+  esac
   # Drop to the non-root agent user (claude refuses bypass-perms as root, ward#127);
   # setup ran as root. Keep ANTHROPIC_API_KEY from shadowing the OAuth creds.
-  chown -R "$AGENT_UID:$AGENT_GID" "$work" "$AGENT_HOME/.claude" 2>/dev/null || true
+  chown -R "$AGENT_UID:$AGENT_GID" "$work" "$AGENT_HOME/.claude" "$AGENT_HOME/.config" 2>/dev/null || true
   unset ANTHROPIC_API_KEY ANTHROPIC_AUTH_TOKEN 2>/dev/null || true
   log "launching $WARD_AGENT as uid $AGENT_UID"
   local launch=(setpriv --reuid="$AGENT_UID" --regid="$AGENT_GID" --init-groups
-                env HOME="$AGENT_HOME" "${agent_argv[@]}" "$@")
-  if [ "$headless" = 1 ]; then
+                env HOME="$AGENT_HOME" "${agent_argv[@]}")
+  if [ "$stream" = 1 ]; then
     "${launch[@]}" | stream_progress || log "agent exited non-zero ($?); reaping anyway"
   else
     "${launch[@]}" || log "agent exited non-zero ($?); reaping anyway"
