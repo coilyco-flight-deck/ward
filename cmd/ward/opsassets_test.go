@@ -4,6 +4,8 @@ import (
 	"bytes"
 	"os"
 	"testing"
+
+	"github.com/urfave/cli/v3"
 )
 
 // canonicalOpsAssets pairs each embedded copy with the ward-kdl source it must
@@ -47,6 +49,20 @@ func TestOpsForgejoMounts(t *testing.T) {
 	}
 }
 
+func TestOpsForgejoIssueListAllMounts(t *testing.T) {
+	forgejo, err := buildForgejoOps()
+	if err != nil {
+		t.Fatalf("buildForgejoOps: %v", err)
+	}
+	issue := commandNamed(forgejo.Commands, "issue")
+	if issue == nil {
+		t.Fatalf("forgejo group missing issue command; got %v", commandNames(forgejo.Commands))
+	}
+	if commandNamed(issue.Commands, "list-all") == nil {
+		t.Fatalf("issue command missing list-all; got %v", commandNames(issue.Commands))
+	}
+}
+
 // TestOpsCommandShape asserts the umbrella mounts forgejo under `ops`, the shape
 // main.go registers.
 func TestOpsCommandShape(t *testing.T) {
@@ -63,4 +79,21 @@ func TestOpsCommandShape(t *testing.T) {
 	if !found {
 		t.Error("ops umbrella is missing the forgejo group")
 	}
+}
+
+func commandNamed(cmds []*cli.Command, name string) *cli.Command {
+	for _, cmd := range cmds {
+		if cmd.Name == name {
+			return cmd
+		}
+	}
+	return nil
+}
+
+func commandNames(cmds []*cli.Command) []string {
+	names := make([]string, 0, len(cmds))
+	for _, cmd := range cmds {
+		names = append(names, cmd.Name)
+	}
+	return names
 }

@@ -1,14 +1,14 @@
 {
   "version": 2,
   "go": "1.25.5",
-  "cliGuard": "v0.43.0",
+  "cliGuard": "v0.44.0",
   "goMod": [
     "module specverbgen.local/build",
     "",
     "go 1.25.5",
     "",
     "require (",
-    "\tforgejo.coilysiren.me/coilyco-flight-deck/cli-guard v0.43.0",
+    "\tforgejo.coilysiren.me/coilyco-flight-deck/cli-guard v0.44.0",
     "\tgithub.com/aws/aws-sdk-go-v2/config v1.32.25",
     "\tgithub.com/aws/aws-sdk-go-v2/service/ssm v1.69.3",
     "\tgithub.com/urfave/cli/v3 v3.9.0",
@@ -56,8 +56,8 @@
     ")"
   ],
   "goSum": [
-    "forgejo.coilysiren.me/coilyco-flight-deck/cli-guard v0.43.0 h1:dwQ9JX1z0688Rvntwuj1wdbuKcvW9AkDhB089VeSAnA=",
-    "forgejo.coilysiren.me/coilyco-flight-deck/cli-guard v0.43.0/go.mod h1:Pzz+QJWnzkoVdkqoq5vFLaVUVezqufl7ieIB9ZGL6kg=",
+    "forgejo.coilysiren.me/coilyco-flight-deck/cli-guard v0.44.0 h1:8yDYppb9a4iNMY7UNdilNC6f34Vrt6V5qLkSwA3rrwU=",
+    "forgejo.coilysiren.me/coilyco-flight-deck/cli-guard v0.44.0/go.mod h1:Pzz+QJWnzkoVdkqoq5vFLaVUVezqufl7ieIB9ZGL6kg=",
     "github.com/aws/aws-sdk-go-v2 v1.42.0 h1:XvXMJTkFQtpBKIWZnmr9ZEOc2InWM2yldjXEJ/bymhA=",
     "github.com/aws/aws-sdk-go-v2 v1.42.0/go.mod h1:27+ACypSLljLAEKsCYOmrjKh83vuTRkuAe9Uv/3A4bg=",
     "github.com/aws/aws-sdk-go-v2/config v1.32.25 h1:ACCejvStYoilgwrfegSt5ZntCbPrk52qfwyNcnl3omM=",

@@ -92,6 +92,89 @@ wrap ward-kdl ops forgejo {
     can get issue
     can view issue
     can list issue
+    action list-all issue {
+        describe "List all issues by auto-paginating issue list."
+        input owner {
+            positional
+            required
+            help "repo owner"
+        }
+        input repo {
+            positional
+            required
+            help "repo name"
+        }
+        input state {
+            flag
+            help "whether issue is open or closed"
+        }
+        input labels {
+            flag
+            help "comma separated list of labels"
+        }
+        input q {
+            flag
+            help "search string"
+        }
+        input type {
+            flag
+            help "filter by type (issues / pulls)"
+        }
+        input milestones {
+            flag
+            help "comma separated list of milestone names or ids"
+        }
+        input since {
+            flag
+            help "Only show items updated after the given RFC3339 time"
+        }
+        input before {
+            flag
+            help "Only show items updated before the given RFC3339 time"
+        }
+        input created_by {
+            flag
+            help "Only show items created by the given user"
+        }
+        input assigned_by {
+            flag
+            help "Only show items assigned by the given user"
+        }
+        input mentioned_by {
+            flag
+            help "Only show items mentioning the given user"
+        }
+        input limit {
+            flag
+            help "page size of results"
+        }
+        input sort {
+            flag
+            help "Type of sort"
+        }
+        collect list issue {
+            args {
+                owner $owner
+                repo $repo
+                state $state
+                labels $labels
+                q $q
+                type $type
+                milestones $milestones
+                since $since
+                before $before
+                created_by $created_by
+                assigned_by $assigned_by
+                mentioned_by $mentioned_by
+                sort $sort
+            }
+            page-param page
+            limit-param limit
+            limit $limit
+            default-limit "50"
+            as issues
+        }
+    }
     can search issue
     can create issue
     can edit issue

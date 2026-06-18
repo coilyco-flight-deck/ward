@@ -684,6 +684,14 @@ Options (2):
 - `--page` (integer, optional): page number of results to return (1-based)
 - `--limit` (integer, optional): page size of results, default maximum page size is 50
 
+## ward-kdl ops forgejo issue list-all - List all issues by auto-paginating issue list.
+
+Shadows the generated `issue list-all` leaf: invoking it runs this composite in the leaf's place.
+
+Complex action. Collects every page from `GET /repos/{owner}/{repo}/issues`, incrementing `page` and appending array responses until a page returns fewer than `50` item(s).
+
+Authorized by grant: can list issue.
+
 ## ward-kdl ops forgejo action ci-watch - Watch a CI run to completion, then surface failing-job status.
 
 Complex action. Polls `GET /repos/{owner}/{repo}/actions/tasks` every 10s, up to 30m0s, until:

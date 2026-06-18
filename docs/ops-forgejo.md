@@ -25,10 +25,10 @@ Each leaf carries `--dry-run`, `--query`, and `--output`. Hardened per
 [ward#109](https://forgejo.coilysiren.me/coilyco-flight-deck/ward/issues/109):
 `repo fork`/`archive`/`unarchive`, `org create`/`delete`, `issue delete`, and
 the `pr` leaves are **denied** (each teaches why on invocation); label CRUD
-targets org-labels; a cross-repo `issue search` and a `move-issue` action
-(copy, back-link, close; never delete) land; and `restrict owner matches
-"coily*"` scopes every {owner} leaf. The complex actions are `ci-watch` (poll),
-`move-issue` (call sequence), and `issue view` (a shadow returning issue + comments).
+targets org-labels; cross-repo `issue search`; `issue list-all`; and
+`move-issue` (copy, back-link, close). `restrict owner matches "coily*"` scopes
+every {owner} leaf. The complex actions are `ci-watch` (poll), `issue list-all`
+(collect), `move-issue` (call sequence), and `issue view` (issue + comments).
 
 ## No hand-written Go
 
