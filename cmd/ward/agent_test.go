@@ -79,7 +79,7 @@ func TestAgentSeedPrompt(t *testing.T) {
 
 func TestOwnerAllowed(t *testing.T) {
 	r := &Runner{}
-	for _, ok := range []string{"coilysiren", "coilyco-bridge", "coilyco-flight-deck"} {
+	for _, ok := range []string{"coilysiren", "coilyco-bridge", "coilyco-flight-deck", "coilyco-gaming"} {
 		if !r.ownerAllowed(ok) {
 			t.Errorf("ownerAllowed(%q) = false, want true", ok)
 		}

@@ -35,8 +35,8 @@ Maintenance verbs: `ward dispatch reap` (remove merged dispatch worktrees),
 ## Seams ward supplies
 
 - **Allowed owner.** `coilysiren`, plus the primary-org set
-  (`coilysiren`, `coilyco-bridge`, `coilyco-flight-deck`) via `primaryOrgs()`.
-  Refs outside the set are refused.
+  (`coilysiren`, `coilyco-bridge`, `coilyco-flight-deck`, `coilyco-gaming`) via
+  `primaryOrgs()`. Refs outside the set are refused.
 - **Workspace layout.** `localRepoPath` scans `~/projects/<org>/<repo>` across
   every primary org and falls back to `~/projects/coilysiren/<repo>`. Worktrees
   land under `~/projects/coilysiren/.dispatch-worktrees`, headless logs under
