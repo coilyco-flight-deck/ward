@@ -123,6 +123,39 @@ func TestContainerNameUniqueAndSafe(t *testing.T) {
 	}
 }
 
+func TestAgentContainerNameIsMeaningful(t *testing.T) {
+	repo := targetRepo{Owner: "coilyco-flight-deck", Name: "ward"}
+	got := agentContainerName(repo, modeClaude, 140, "a1b2c3d4")
+	want := "ward-ward-issue-140-claude-a1b2c3d4"
+	if got != want {
+		t.Errorf("agentContainerName = %q, want %q", got, want)
+	}
+	// The repo, issue, and harness must all be legible in the name so a host
+	// running several agents can tell them apart at a glance.
+	for _, frag := range []string{"ward", "issue-140", "claude"} {
+		if !strings.Contains(got, frag) {
+			t.Errorf("name %q missing %q", got, frag)
+		}
+	}
+	// The random suffix keeps concurrent runs on the same issue from colliding.
+	other := agentContainerName(repo, modeClaude, 140, "e5f6a7b8")
+	if got == other {
+		t.Fatalf("two runs on the same issue must not collide: %q == %q", got, other)
+	}
+	// The mode distinguishes a claude run from a codex run on the same issue.
+	if agentContainerName(repo, modeCodex, 140, "a1b2c3d4") == got {
+		t.Error("different harnesses on the same issue must produce different names")
+	}
+	// docker-forbidden characters in the repo name must be sanitized away.
+	weird := targetRepo{Owner: "x", Name: "we/ird name!"}
+	dirty := agentContainerName(weird, modeQwen, 7, "deadbeef")
+	for _, bad := range []string{"/", " ", "!"} {
+		if strings.Contains(dirty, bad) {
+			t.Errorf("sanitized name %q still contains %q", dirty, bad)
+		}
+	}
+}
+
 func TestLeastAccessMountsDefaultIsCwdOnly(t *testing.T) {
 	mounts := leastAccessMounts("/home/kai/projects/coilyco-bridge/agentic-os-kai", mountOpts{AssetsDir: "/tmp/ward-assets"})
 	// The target repo must never be a host bind: only cwd + assets binds, plus

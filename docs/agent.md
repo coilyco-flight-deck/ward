@@ -47,8 +47,31 @@ the carry-to-merge autonomy and the reaper backstop; `work` only seeds the issue
   exec`; goose prints its own progress to that log - so it isn't silent until
   done. (Interactive `goose work` opens a bare `goose session`; the seed prompt
   is not auto-delivered into a session yet, so headless is the goose surface.)
+  When dispatched from a terminal it first runs a **pre-flight check** (see
+  below) so you confirm before the detached run starts.
 - **`task`** files an issue from `--instructions` first, then runs the `headless`
   flow against it (carries to merge, `closes #N`). See [docs/agent-task.md](agent-task.md).
+
+## Headless pre-flight (ward#137)
+
+`headless` detaches into a fire-and-forget run nobody is watching, so when it is
+**dispatched interactively** (a human at the terminal) ward inserts a quick
+pre-flight *before* detaching:
+
+1. The agent gets a short prompt with the issue title + body and answers, in a
+   sentence or two, whether it thinks it can carry the issue to merge unattended
+   (ending on a `GO` / `NO-GO: <reason>` line). ward runs this as `claude -p` on
+   the host and streams the read to your terminal; it never parses the verdict.
+2. ward then asks `Launch the detached headless run for <ref>? [y/N]`. Only an
+   explicit `y`/`yes` launches; anything else (incl. a bare enter or closed
+   stdin) aborts and spins up nothing.
+
+The check is skipped when there is no terminal (scripted / piped dispatch), on
+`--print` (a dry run), and with `--no-preflight` (the escape hatch for a run
+launched from a TTY that you still want to fire blind). Non-`claude` modes, or a
+host without the agent binary, skip the self-assessment but still ask you to
+confirm, so the gate holds either way. `task` files an issue then goes straight
+to the detached run with no pre-flight - it is the deliberately programmatic path.
 
 The reaper backstop salvages residual work if the agent crashes (it needs ward's
 jail off in-container - the entrypoint exports `CLIGUARD_NO_SANDBOX=1`, cli-guard#153).
@@ -71,7 +94,19 @@ else `~/.claude/.credentials.json`) and injects it into the container's
 `--tag`/`--image`, `--ward-source`, `--no-pull`, and `--branch` to override the
 `issue-<N>` default. `--print` resolves the issue and renders the seeded prompt +
 docker plan without injecting the push token or running docker - the dry-run
-preview, safe with no docker daemon up.
+preview, safe with no docker daemon up. `headless` swaps `--detach` (it always
+detaches) for `--no-preflight`, which skips the interactive pre-flight described
+above.
+
+## Container name
+
+Where a bare `container up` names its container `ward-<repo>-<rand>`, an agent
+run names it for the work it carries: `ward-<repo>-issue-<N>-<mode>-<rand>`. So
+`docker ps` reads the repo, the issue, and the harness at a glance, and a host
+driving several agents at once can tell them apart - the `<rand>` suffix still
+keeps concurrent runs on the same issue from colliding. `task` shows the shape
+as `ward-<repo>-issue-<N>-<mode>-<rand>` under `--print`; the real number lands
+once the issue is filed.
 
 ## See also
 
