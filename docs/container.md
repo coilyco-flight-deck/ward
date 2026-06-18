@@ -77,4 +77,4 @@ every exit `ward container reap` lands clean work on `main` or salvages it
 ## See also
 
 [docs/container-substrate.md](container-substrate.md) - repos warmed into `/substrate`.
-[docs/FEATURES.md](FEATURES.md) - inventory. [docs/dispatch.md](dispatch.md) - launch surface. agentic-os `docs/dev-base-image.md` - the image.
+[docs/FEATURES.md](FEATURES.md) - inventory. [docs/agent.md](agent.md) - launch surface. agentic-os `docs/dev-base-image.md` - the image.

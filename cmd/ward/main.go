@@ -77,7 +77,6 @@ func main() {
 			doctorCommand(),
 			hookCommand(),
 			installHooksCommand(),
-			dispatchCommand(),
 			containerCommand(),
 			agentCommand(),
 		},

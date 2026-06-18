@@ -208,6 +208,9 @@ func agentSurfaceCommand(m containerMode, surface string, headless bool) *cli.Co
 	if !headless {
 		// headless always detaches, so only the interactive surface exposes --detach.
 		flags = append(flags, &cli.BoolFlag{Name: "detach", Aliases: []string{"d"}, Usage: "run detached instead of interactive"})
+		// --new-tab spawns the work into its own Warp tab (the sidequest path,
+		// ward#174); only the interactive work surface offers it.
+		flags = append(flags, agentTabFlags()...)
 	} else {
 		// headless gets an autonomous pre-flight before detaching (ward#137,
 		// ward#147; see docs/agent.md); --no-preflight skips it.
@@ -290,6 +293,11 @@ func (r *Runner) runAgentWork(ctx context.Context, c *cli.Command, mode containe
 	w, err := r.resolveAgentWork(ctx, c, mode, surface)
 	if err != nil {
 		return err
+	}
+	// --new-tab spawns the work into its own Warp tab (the sidequest path) rather
+	// than launching here; the ref is already validated. See docs/agent.md, ward#174.
+	if !headless && c.Bool("new-tab") {
+		return r.runAgentNewTab(ctx, c, mode, w)
 	}
 	// Warn at host dispatch if ward is stale; a detached run buries the only
 	// `ward version` signal in a container log (ward#143). --print stays offline.
