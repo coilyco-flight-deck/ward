@@ -42,9 +42,17 @@ Maintenance verbs: `ward dispatch reap` (remove merged dispatch worktrees),
   land under `~/projects/coilysiren/.dispatch-worktrees`, headless logs under
   `~/projects/coilysiren/.dispatch-logs` - both outside any repo.
 - **Issue resolution.** A minimal read-only Forgejo client
-  (`forgejo.coilysiren.me`, bearer token from SSM `/forgejo/api-token`)
+  (`forgejo.coilysiren.me`, bearer token from SSM `/forgejo/coilyco-ops/api-token`)
   resolves Forgejo refs; a 404 falls back to GitHub via the dispatch package's
   default `gh` resolver for shortform refs.
+- **Bot attribution.** The host-side bearer authenticates as the `coilyco-ops`
+  bot, not the operator's PAT (ward#160, after #151's ward-kdl move). The token
+  (SSM `/forgejo/coilyco-ops/api-token`, minted+rotated by
+  `provision-coilyco-ops-bot.sh`) feeds `forgejoAPIToken()` - the bearer for the
+  agent issue-verb and `ward dispatch` issue-filing - so automated issue
+  create/comment attributes to the bot. The container git-push token
+  (`container.go`) stays personal: it needs collaborator push, tracked
+  separately.
 
 ## `.ward` namespace
 

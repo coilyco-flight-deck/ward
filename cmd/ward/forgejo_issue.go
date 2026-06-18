@@ -20,9 +20,9 @@ import (
 // (the opaque bearer token lives in SSM, below).
 const forgejoBaseURL = "https://forgejo.coilysiren.me"
 
-// forgejoSSMTokenPath is the SSM path holding the bearer API token. A
-// meaningful path, not a credential; fetched with --with-decryption at use.
-const forgejoSSMTokenPath = "/forgejo/api-token" //nolint:gosec // SSM path, not a credential
+// forgejoSSMTokenPath is the SSM path holding the bearer API token: the
+// `coilyco-ops` bot, not a human PAT (ward#160). See docs/dispatch.md.
+const forgejoSSMTokenPath = "/forgejo/coilyco-ops/api-token" //nolint:gosec // SSM path, not a credential
 
 // forgejoAPIHTTPTimeout caps each Forgejo API call so a stalled DNS or hung
 // connection fails fast.
