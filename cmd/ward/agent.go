@@ -1,13 +1,16 @@
 package main
 
 import (
+	"bufio"
 	"context"
 	"fmt"
 	"io"
 	"os"
+	"os/exec"
 	"regexp"
 	"strconv"
 	"strings"
+	"time"
 
 	"forgejo.coilysiren.me/coilyco-flight-deck/cli-guard/cli/verb"
 	"github.com/urfave/cli/v3"
@@ -144,6 +147,11 @@ func agentSurfaceCommand(m containerMode, surface string, headless bool) *cli.Co
 	if !headless {
 		// headless always detaches, so only the interactive surface exposes --detach.
 		flags = append(flags, &cli.BoolFlag{Name: "detach", Aliases: []string{"d"}, Usage: "run detached instead of interactive"})
+	} else {
+		// headless detaches into a fire-and-forget run; an interactive dispatch
+		// gets a pre-flight feasibility check first (ward#137). --no-preflight is
+		// the escape hatch for scripted runs launched from a TTY.
+		flags = append(flags, &cli.BoolFlag{Name: "no-preflight", Usage: "skip the interactive pre-flight feasibility check before detaching"})
 	}
 	return &cli.Command{
 		Name:      surface,
@@ -163,38 +171,151 @@ func agentSurfaceCommand(m containerMode, surface string, headless bool) *cli.Co
 	}
 }
 
+// resolvedWork bundles what resolveAgentWork produces: the parsed ref, the
+// issue's title + body (body feeds the pre-flight read), and the seeded prompt.
+type resolvedWork struct {
+	Ref   agentIssueRef
+	Title string
+	Body  string
+	Seed  string
+}
+
 // resolveAgentWork parses + trust-gates the ref, fetches the issue (failing fast
-// before any container spins), and returns the ref, title, and seeded prompt.
-func (r *Runner) resolveAgentWork(ctx context.Context, c *cli.Command, mode containerMode, surface string) (agentIssueRef, string, string, error) {
+// before any container spins), and returns the ref, title, body, and seed prompt.
+func (r *Runner) resolveAgentWork(ctx context.Context, c *cli.Command, mode containerMode, surface string) (resolvedWork, error) {
 	label := fmt.Sprintf("ward agent %s %s", mode, surface)
 	ref, err := parseAgentIssueRef(c.Args().First())
 	if err != nil {
-		return agentIssueRef{}, "", "", fmt.Errorf("%s: %w", label, err)
+		return resolvedWork{}, fmt.Errorf("%s: %w", label, err)
 	}
 	// Trust gate: the in-container agent runs under bypassPermissions, so only
 	// spin one up for an owner in the primary-org set. Mirrors dispatch's check.
 	if !r.ownerAllowed(ref.Owner) {
-		return agentIssueRef{}, "", "", fmt.Errorf("%s: refusing untrusted owner %q (allowed: %s)",
+		return resolvedWork{}, fmt.Errorf("%s: refusing untrusted owner %q (allowed: %s)",
 			label, ref.Owner, strings.Join(r.primaryOrgs(), ", "))
 	}
 	issue, err := r.fetchForgejoIssue(ctx, ref.Owner, ref.Repo, ref.Number)
 	if err != nil {
-		return agentIssueRef{}, "", "", fmt.Errorf("%s: resolve issue %s: %w", label, ref, err)
+		return resolvedWork{}, fmt.Errorf("%s: resolve issue %s: %w", label, ref, err)
 	}
 	if st := strings.ToLower(strings.TrimSpace(issue.State)); st != "" && st != "open" {
 		fmt.Fprintf(os.Stderr, "%s: note: issue %s is %s, not open - working it anyway.\n", label, ref, st)
 	}
-	return ref, strings.TrimSpace(issue.Title), agentSeedPrompt(ref, issue.Title), nil
+	title := strings.TrimSpace(issue.Title)
+	return resolvedWork{Ref: ref, Title: title, Body: issue.Body, Seed: agentSeedPrompt(ref, title)}, nil
 }
 
 // runAgentWork resolves the issue, composes the seed prompt, and launches the
 // container plan. headless forces detach + print mode; --print runs no docker.
+// An interactively-dispatched headless run first does a quick pre-flight check
+// (ward#137): the agent reads the issue and the operator confirms before the
+// fire-and-forget run detaches.
 func (r *Runner) runAgentWork(ctx context.Context, c *cli.Command, mode containerMode, surface string, headless bool) error {
-	ref, title, seed, err := r.resolveAgentWork(ctx, c, mode, surface)
+	w, err := r.resolveAgentWork(ctx, c, mode, surface)
 	if err != nil {
 		return err
 	}
-	return r.launchAgentContainer(ctx, c, mode, surface, headless, ref, title, seed)
+	if headless && preflightWanted(c) {
+		proceed, perr := r.runPreflight(ctx, mode, w)
+		if perr != nil {
+			return fmt.Errorf("ward agent %s %s: pre-flight: %w", mode, surface, perr)
+		}
+		if !proceed {
+			fmt.Fprintf(os.Stderr, "ward agent %s %s: pre-flight declined; nothing launched.\n", mode, surface)
+			return nil
+		}
+	}
+	return r.launchAgentContainer(ctx, c, mode, surface, headless, w.Ref, w.Title, w.Seed)
+}
+
+// preflightTimeout caps the pre-flight read so a wedged agent can't hold the
+// operator's terminal hostage before the real run even starts.
+const preflightTimeout = 3 * time.Minute
+
+// preflightWanted gates the headless pre-flight to the "dispatched interactively"
+// case from ward#137: a human at the terminal, never a --print dry run, and
+// honoring the --no-preflight escape hatch for scripted-from-a-TTY launches.
+func preflightWanted(c *cli.Command) bool {
+	return terminalAttached() && !c.Bool("print") && !c.Bool("no-preflight")
+}
+
+// preflightPrompt asks the about-to-detach agent for a quick feasibility read on
+// the issue. ward never parses the verdict - it is shown to the operator, who
+// makes the call at the confirm prompt - so this stays a pure, testable string.
+func preflightPrompt(ref agentIssueRef, title, body string) string {
+	title = strings.TrimSpace(title)
+	if title == "" {
+		title = "(untitled)"
+	}
+	body = strings.TrimSpace(body)
+	if body == "" {
+		body = "(no description provided)"
+	}
+	return fmt.Sprintf(
+		"You are about to be sent, fire-and-forget, into an ephemeral container to carry "+
+			"this Forgejo issue end to end on your own - implement, commit, merge to main, "+
+			"push - with no human watching once you detach.\n\n"+
+			"Before that detached run starts, give a quick PRE-FLIGHT read: based only on the "+
+			"issue below, do you think you can carry it to merge unattended?\n\n"+
+			"Issue: %s (%q)\n\n%s\n\n"+
+			"Answer in 2-4 sentences naming the main risk or unknown, then a final line of "+
+			"exactly \"GO\" if you would take it on unattended or \"NO-GO: <reason>\" if a human "+
+			"should weigh in first. This is a judgment call, not a commitment - be honest about "+
+			"ambiguity.",
+		ref, title, body)
+}
+
+// runPreflight runs the about-to-detach agent's quick feasibility read, then asks
+// the operator to confirm the detached run; it returns whether to proceed. A
+// missing or non-claude agent binary skips the self-assessment but still confirms,
+// so the "before detaching" gate holds even when the read itself can't run.
+func (r *Runner) runPreflight(ctx context.Context, mode containerMode, w resolvedWork) (bool, error) {
+	label := fmt.Sprintf("ward agent %s headless", mode)
+	bin := mode.agentBinary()
+	// Only claude has a settled host print-mode invocation today (and is the only
+	// in-image agent); for other modes, skip the read and fall back to a plain
+	// confirm rather than guess an invocation.
+	if mode == modeClaude && hostHasBinary(bin) {
+		fmt.Fprintf(os.Stderr, "%s: pre-flight - asking %s whether it can carry %s before detaching...\n\n", label, bin, w.Ref)
+		pctx, cancel := context.WithTimeout(ctx, preflightTimeout)
+		defer cancel()
+		if err := r.Runner.Exec(pctx, bin, "-p", preflightPrompt(w.Ref, w.Title, w.Body)); err != nil {
+			fmt.Fprintf(os.Stderr, "\n%s: pre-flight read did not complete (%v); decide from the issue itself.\n", label, err)
+		}
+		fmt.Fprintln(os.Stderr)
+	} else {
+		fmt.Fprintf(os.Stderr, "%s: %s self-assessment unavailable on this host; confirm from the issue itself.\n", label, bin)
+	}
+	return r.confirmProceed(fmt.Sprintf("Launch the detached headless run for %s? [y/N] ", w.Ref))
+}
+
+// hostHasBinary reports whether bin resolves on the host PATH.
+func hostHasBinary(bin string) bool {
+	_, err := exec.LookPath(bin)
+	return err == nil
+}
+
+// confirmProceed prints prompt and reads one line from the runner's stdin,
+// returning true only on an explicit yes. Anything else - including EOF or a
+// closed/piped stdin - is a no, so the detached run never fires unconfirmed.
+func (r *Runner) confirmProceed(prompt string) (bool, error) {
+	if r.Runner == nil || r.Runner.Stdin == nil {
+		return false, nil
+	}
+	fmt.Fprint(os.Stderr, prompt)
+	line, err := bufio.NewReader(r.Runner.Stdin).ReadString('\n')
+	switch err {
+	case nil, io.EOF:
+		// A final line without a trailing newline still arrives alongside io.EOF.
+	default:
+		return false, err
+	}
+	switch strings.ToLower(strings.TrimSpace(line)) {
+	case "y", "yes":
+		return true, nil
+	default:
+		return false, nil
+	}
 }
 
 // launchAgentContainer turns a resolved (ref, title, seed) into the container

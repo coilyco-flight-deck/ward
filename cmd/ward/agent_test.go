@@ -1,8 +1,11 @@
 package main
 
 import (
+	"bytes"
 	"strings"
 	"testing"
+
+	"forgejo.coilysiren.me/coilyco-flight-deck/cli-guard/cli/shell"
 )
 
 func TestParseAgentIssueRef(t *testing.T) {
@@ -118,6 +121,62 @@ func TestTaskBody(t *testing.T) {
 	}
 	if !strings.Contains(got, "ward agent claude task") {
 		t.Errorf("body must mark provenance; got: %s", got)
+	}
+}
+
+func TestPreflightPrompt(t *testing.T) {
+	ref := agentIssueRef{Owner: "coilyco-flight-deck", Repo: "ward", Number: 137}
+	got := preflightPrompt(ref, "  pre-flight check  ", "  do the thing  ")
+	for _, want := range []string{
+		"coilyco-flight-deck/ward#137", // the issue ref
+		"pre-flight check",             // title, trimmed
+		"do the thing",                 // body, trimmed
+		"PRE-FLIGHT",                   // names the check
+		"GO",                           // asks for the verdict
+		"NO-GO",
+	} {
+		if !strings.Contains(got, want) {
+			t.Errorf("preflight prompt missing %q\n got: %s", want, got)
+		}
+	}
+	// Empty title/body degrade gracefully, never blank-quote or dangle.
+	empty := preflightPrompt(ref, "  ", "  ")
+	if !strings.Contains(empty, "(untitled)") || !strings.Contains(empty, "(no description provided)") {
+		t.Errorf("empty title/body should render placeholders; got: %s", empty)
+	}
+}
+
+func TestConfirmProceed(t *testing.T) {
+	cases := []struct {
+		in   string
+		want bool
+	}{
+		{"y\n", true},
+		{"yes\n", true},
+		{"  Y  \n", true},
+		{"YES\n", true},
+		{"n\n", false},
+		{"no\n", false},
+		{"\n", false},      // bare enter defaults to no
+		{"", false},        // EOF / closed stdin defaults to no
+		{"maybe\n", false}, // anything unrecognized is a no
+		{"yep\n", false},   // only y/yes count
+	}
+	for _, c := range cases {
+		var out bytes.Buffer
+		r := &Runner{Runner: &shell.Runner{Stdin: strings.NewReader(c.in), Stdout: &out, Stderr: &out}}
+		got, err := r.confirmProceed("proceed? ")
+		if err != nil {
+			t.Errorf("confirmProceed(%q): unexpected error %v", c.in, err)
+			continue
+		}
+		if got != c.want {
+			t.Errorf("confirmProceed(%q) = %v, want %v", c.in, got, c.want)
+		}
+	}
+	// A nil stdin must never silently fire the detached run.
+	if got, err := (&Runner{Runner: &shell.Runner{}}).confirmProceed("x"); got || err != nil {
+		t.Errorf("confirmProceed with nil stdin = %v, %v; want false, nil", got, err)
 	}
 }
 

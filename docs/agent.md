@@ -43,9 +43,32 @@ the carry-to-merge autonomy and the reaper backstop; `work` only seeds the issue
   print mode (`claude -p`), so it works to completion non-interactively and exits
   into the reaper. It **streams live progress** (one line per tool call + the
   result, via stream-json) to the container log - `docker logs <name>` /
-  `ward container exec` - so it isn't silent until done.
+  `ward container exec` - so it isn't silent until done. When dispatched from a
+  terminal it first runs a **pre-flight check** (see below) so you confirm before
+  the detached run starts.
 - **`task`** files an issue from `--instructions` first, then runs the `headless`
   flow against it (carries to merge, `closes #N`). See [docs/agent-task.md](agent-task.md).
+
+## Headless pre-flight (ward#137)
+
+`headless` detaches into a fire-and-forget run nobody is watching, so when it is
+**dispatched interactively** (a human at the terminal) ward inserts a quick
+pre-flight *before* detaching:
+
+1. The agent gets a short prompt with the issue title + body and answers, in a
+   sentence or two, whether it thinks it can carry the issue to merge unattended
+   (ending on a `GO` / `NO-GO: <reason>` line). ward runs this as `claude -p` on
+   the host and streams the read to your terminal; it never parses the verdict.
+2. ward then asks `Launch the detached headless run for <ref>? [y/N]`. Only an
+   explicit `y`/`yes` launches; anything else (incl. a bare enter or closed
+   stdin) aborts and spins up nothing.
+
+The check is skipped when there is no terminal (scripted / piped dispatch), on
+`--print` (a dry run), and with `--no-preflight` (the escape hatch for a run
+launched from a TTY that you still want to fire blind). Non-`claude` modes, or a
+host without the agent binary, skip the self-assessment but still ask you to
+confirm, so the gate holds either way. `task` files an issue then goes straight
+to the detached run with no pre-flight - it is the deliberately programmatic path.
 
 The reaper backstop salvages residual work if the agent crashes (it needs ward's
 jail off in-container - the entrypoint exports `CLIGUARD_NO_SANDBOX=1`, cli-guard#153).
@@ -68,7 +91,9 @@ else `~/.claude/.credentials.json`) and injects it into the container's
 `--tag`/`--image`, `--ward-source`, `--no-pull`, and `--branch` to override the
 `issue-<N>` default. `--print` resolves the issue and renders the seeded prompt +
 docker plan without injecting the push token or running docker - the dry-run
-preview, safe with no docker daemon up.
+preview, safe with no docker daemon up. `headless` swaps `--detach` (it always
+detaches) for `--no-preflight`, which skips the interactive pre-flight described
+above.
 
 ## Container name
 
