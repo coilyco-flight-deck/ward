@@ -67,7 +67,8 @@ func TestAgentIssueRefURL(t *testing.T) {
 
 func TestAgentSeedPrompt(t *testing.T) {
 	ref := agentIssueRef{Owner: "coilyco-flight-deck", Repo: "ward", Number: 98}
-	got := agentSeedPrompt(ref, "  container verb family  ", "")
+	// A vision-capable harness with a real body keeps the read-it-at-the-URL flow.
+	got := agentSeedPrompt(ref, "  container verb family  ", "do the thing", "", modeClaude)
 	for _, want := range []string{
 		"coilyco-flight-deck/ward#98",
 		"container verb family",    // title, trimmed
@@ -84,14 +85,77 @@ func TestAgentSeedPrompt(t *testing.T) {
 		t.Errorf("seed prompt should omit the operator note when details is empty\n got: %s", got)
 	}
 	// An empty title degrades gracefully, never blank-quotes.
-	if !strings.Contains(agentSeedPrompt(ref, "   ", ""), "(untitled)") {
+	if !strings.Contains(agentSeedPrompt(ref, "   ", "b", "", modeClaude), "(untitled)") {
 		t.Error("empty title should render as (untitled)")
+	}
+}
+
+// TestAgentSeedPromptEmptyBody covers ward#157: an empty body must be called out
+// explicitly for every harness, never implying there is content to go find.
+func TestAgentSeedPromptEmptyBody(t *testing.T) {
+	ref := agentIssueRef{Owner: "coilyco-flight-deck", Repo: "ward", Number: 151}
+	for _, mode := range agentModes {
+		got := agentSeedPrompt(ref, "setup ward-kdl", "   \n  ", "", mode)
+		if !strings.Contains(got, "This issue has no body") {
+			t.Errorf("%s: empty body should be called out explicitly\n got: %s", mode, got)
+		}
+		if !strings.Contains(got, "work from the title alone") {
+			t.Errorf("%s: empty body should point at the title\n got: %s", mode, got)
+		}
+		// The hallucination trigger - sending the agent off to "read the full issue
+		// body" at the URL - must be gone when there is no body.
+		if strings.Contains(got, "read the full issue body") {
+			t.Errorf("%s: empty body must drop the read-it-at-the-URL instruction\n got: %s", mode, got)
+		}
+		if !strings.Contains(got, "closes #151") {
+			t.Errorf("%s: close trailer missing\n got: %s", mode, got)
+		}
+	}
+}
+
+// TestAgentSeedPromptNonVisionInlines covers ward#157 steps 2+3: a non-vision
+// local harness gets the media-stripped body inlined instead of a URL to read.
+func TestAgentSeedPromptNonVisionInlines(t *testing.T) {
+	ref := agentIssueRef{Owner: "coilyco-flight-deck", Repo: "ward", Number: 98}
+	body := "Real instructions here.\n\n![screenshot](https://imgur.com/7K8q4pQ.png)\n\nSee https://example.com/shot.PNG?v=2 too.\n\nKeep https://example.com/page for context."
+	got := agentSeedPrompt(ref, "fix it", body, "", modeGoose)
+	for _, want := range []string{
+		"issue body (inlined; media stripped)", // the inline marker
+		"Real instructions here.",              // the real content survives
+		"Keep https://example.com/page",        // non-image links survive
+		"do not re-fetch the URL",              // the inline instruction
+	} {
+		if !strings.Contains(got, want) {
+			t.Errorf("non-vision seed missing %q\n got: %s", want, got)
+		}
+	}
+	for _, unwanted := range []string{
+		"7K8q4pQ.png",              // the markdown image is gone
+		"shot.PNG",                 // the bare image URL is gone
+		"read the full issue body", // not sent off to read the URL
+	} {
+		if strings.Contains(got, unwanted) {
+			t.Errorf("non-vision seed should strip %q\n got: %s", unwanted, got)
+		}
+	}
+	// A vision-capable harness still reads the body at the URL, no inlining.
+	vis := agentSeedPrompt(ref, "fix it", body, "", modeClaude)
+	if strings.Contains(vis, "inlined; media stripped") {
+		t.Errorf("vision harness should not inline the body\n got: %s", vis)
+	}
+	if !strings.Contains(vis, "read the full issue body") {
+		t.Errorf("vision harness should keep the read-it-at-the-URL flow\n got: %s", vis)
+	}
+	// A body that is nothing but an image collapses to the empty-body path.
+	onlyImg := agentSeedPrompt(ref, "fix it", "![x](https://imgur.com/a.png)", "", modeGoose)
+	if !strings.Contains(onlyImg, "This issue has no body") {
+		t.Errorf("image-only body should fall back to the empty-body action\n got: %s", onlyImg)
 	}
 }
 
 func TestAgentSeedPromptDetails(t *testing.T) {
 	ref := agentIssueRef{Owner: "coilyco-flight-deck", Repo: "ward", Number: 98}
-	got := agentSeedPrompt(ref, "container verb family", "  do it like this instead, not that  ")
+	got := agentSeedPrompt(ref, "container verb family", "a body", "  do it like this instead, not that  ", modeClaude)
 	for _, want := range []string{
 		"Operator note",            // the labeled note section (ward#167)
 		"--details",                // names where it came from
@@ -104,7 +168,7 @@ func TestAgentSeedPromptDetails(t *testing.T) {
 		}
 	}
 	// Whitespace-only details is treated as no note.
-	if strings.Contains(agentSeedPrompt(ref, "t", "   \n  "), "Operator note") {
+	if strings.Contains(agentSeedPrompt(ref, "t", "b", "   \n  ", modeClaude), "Operator note") {
 		t.Error("whitespace-only details should not render an operator note")
 	}
 }

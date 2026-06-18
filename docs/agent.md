@@ -37,6 +37,24 @@ container doctrine
 ([AGENTS.container.md](../cmd/ward/containerassets/AGENTS.container.md)) supplies
 the carry-to-merge autonomy and the reaper backstop; `work` only seeds the issue.
 
+The seed's first move is shaped by the body ward already fetched at resolve time
+and by the harness (ward#157):
+
+- **Empty body, any harness.** The prompt says so outright ("this issue has no
+  body, work from the title alone") rather than telling the agent to go read
+  content that isn't there. An empty field plus a "go read it" instruction is
+  what made qwen pattern-complete the gap with a fabricated screenshot URL,
+  `read_image` it, and hard-kill the turn on a multimodal 400 against a
+  non-vision ollama model.
+- **Non-vision local harness (qwen/goose), real body.** The body is **inlined**
+  into the seed with image markup (`![..](..)` embeds and bare image URLs)
+  stripped, and the "read it at the URL" instruction is dropped - so the model
+  has nothing to re-fetch or hallucinate around, and no screenshot to re-trip the
+  multimodal 400. A body that is nothing but media collapses to the empty-body
+  path above.
+- **Vision-capable harness (claude/codex).** Keeps the original read-it-at-the-URL
+  flow for non-empty bodies.
+
 ## work vs headless
 
 - **`work`** (interactive) attaches the container to your terminal - you watch

@@ -115,6 +115,17 @@ const (
 	modeGoose  containerMode = "goose"
 )
 
+// visionCapable reports whether the harness can take multimodal blocks; the
+// local ollama harnesses (qwen/goose) can't, so read_image 400s them (ward#157).
+func (m containerMode) visionCapable() bool {
+	switch m {
+	case modeQwen, modeGoose:
+		return false
+	default:
+		return true
+	}
+}
+
 // agentBinary is the in-container command each mode launches.
 func (m containerMode) agentBinary() string {
 	switch m {

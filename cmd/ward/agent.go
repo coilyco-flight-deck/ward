@@ -75,28 +75,72 @@ func parseAgentIssueRef(s string) (agentIssueRef, error) {
 	return agentIssueRef{Owner: m[1], Repo: m[2], Number: n}, nil
 }
 
-// agentSeedPrompt seeds the in-container agent: names the issue, the first move
-// (read it), and an optional authoritative --details note (ward#167). See docs.
-func agentSeedPrompt(ref agentIssueRef, title, details string) string {
+// markdownImageRE matches inline ![alt](url) image embeds.
+var markdownImageRE = regexp.MustCompile(`!\[[^\]]*\]\([^)\s]*\)`)
+
+// bareImageURLRE matches a standalone http(s) URL ending in a common image
+// extension (with an optional query string), e.g. a pasted screenshot link.
+var bareImageURLRE = regexp.MustCompile(`(?i)https?://\S+?\.(?:png|jpe?g|gif|webp|bmp|svg|tiff?)(?:\?\S*)?`)
+
+// collapseBlankRunsRE squashes a run of 3+ newlines (left behind once media is
+// stripped) back down to a single blank line.
+var collapseBlankRunsRE = regexp.MustCompile(`\n{3,}`)
+
+// stripIssueMedia drops ![..](..) embeds and bare image URLs (then tidies the
+// gaps), so a non-vision harness has no screenshot to read_image (ward#157).
+func stripIssueMedia(body string) string {
+	body = markdownImageRE.ReplaceAllString(body, "")
+	body = bareImageURLRE.ReplaceAllString(body, "")
+	body = collapseBlankRunsRE.ReplaceAllString(body, "\n\n")
+	return strings.TrimSpace(body)
+}
+
+// emptyBodySeedAction is the first move when an issue has no body: work from the
+// title, don't go hunting content that isn't there (ward#157). See docs/agent.md.
+const emptyBodySeedAction = "This issue has no body, so work from the title alone - do not hunt for " +
+	"issue content, screenshots, or other artifacts that are not there (an empty body is not an " +
+	"invitation to invent one). The comment thread at that URL may hold later context worth a quick read."
+
+// agentSeedPrompt seeds the agent: the issue, a mode-aware first move (ward#157),
+// and an optional authoritative --details note (ward#167). See docs/agent.md.
+func agentSeedPrompt(ref agentIssueRef, title, body, details string, mode containerMode) string {
 	title = strings.TrimSpace(title)
 	if title == "" {
 		title = "(untitled)"
 	}
+	body = strings.TrimSpace(body)
+
+	action := "First action: read the full issue body and comment thread at that URL before doing anything else."
+	inline := ""
+	switch {
+	case body == "":
+		action = emptyBodySeedAction
+	case !mode.visionCapable():
+		if stripped := stripIssueMedia(body); stripped == "" {
+			// The body was nothing but media; once stripped it's effectively empty.
+			action = emptyBodySeedAction
+		} else {
+			action = "The full issue body is inlined below, between the markers; work from it " +
+				"directly and do not re-fetch the URL. Image markup has been stripped out. Skim the " +
+				"comment thread at that URL only for later context."
+			inline = "\n\n----- issue body (inlined; media stripped) -----\n" + stripped + "\n----- end issue body -----"
+		}
+	}
+
 	seed := fmt.Sprintf(
 		"Work on Forgejo issue %s (%q).\n\n"+
 			"URL: %s\n\n"+
-			"First action: read the full issue body and comment thread at that URL before "+
-			"doing anything else. Then carry it end to end per your container doctrine - "+
+			"%s Then carry it end to end per your container doctrine - "+
 			"implement, commit, merge to main, push - and close the issue with a commit "+
 			"trailer: closes #%d.",
-		ref, title, ref.url(), ref.Number)
+		ref, title, ref.url(), action, ref.Number)
 	if details = strings.TrimSpace(details); details != "" {
 		seed += fmt.Sprintf(
 			"\n\nOperator note (added at dispatch via --details; treat it as authoritative and "+
 				"let it override the issue text where they conflict):\n%s",
 			details)
 	}
-	return seed
+	return seed + inline
 }
 
 // agentModes is the ordered set of agent subcommands ward exposes; each maps
@@ -220,7 +264,7 @@ func (r *Runner) resolveAgentWork(ctx context.Context, c *cli.Command, mode cont
 	}
 	title := strings.TrimSpace(issue.Title)
 	details := strings.TrimSpace(c.String("details"))
-	return resolvedWork{Ref: ref, Title: title, Body: issue.Body, Details: details, Seed: agentSeedPrompt(ref, title, details)}, nil
+	return resolvedWork{Ref: ref, Title: title, Body: issue.Body, Details: details, Seed: agentSeedPrompt(ref, title, issue.Body, details, mode)}, nil
 }
 
 // runAgentWork resolves the issue, seeds the prompt, runs the autonomous
@@ -799,9 +843,9 @@ func (r *Runner) runAgentTask(ctx context.Context, c *cli.Command, mode containe
 		}
 	}
 
-	// task carries its full instruction set in the filed issue body, so it has no
-	// separate --details note to weave in (ward#167).
-	seed := agentSeedPrompt(ref, title, "")
+	// task's full instruction set is the filed body, so no --details note (ward#167);
+	// a non-vision harness inlines that body directly (ward#157).
+	seed := agentSeedPrompt(ref, title, body, "", mode)
 	return r.launchAgentContainer(ctx, c, mode, "task", true, ref, title, seed)
 }
 
@@ -815,7 +859,7 @@ func printAgentTaskPlan(c *cli.Command, mode containerMode, repo targetRepo, tit
 	// A placeholder ref renders the seed shape; the real number is only known
 	// once the issue is filed (which --print deliberately skips).
 	previewRef := agentIssueRef{Owner: repo.Owner, Repo: repo.Name, Number: 0}
-	seed := agentSeedPrompt(previewRef, title, "")
+	seed := agentSeedPrompt(previewRef, title, body, "", mode)
 	plan := buildUpPlan(c, repo, mode, "", "", []string{seed})
 	plan.Headless = true
 	plan.Interactive = false
