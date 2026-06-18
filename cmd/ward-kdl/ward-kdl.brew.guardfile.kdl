@@ -18,7 +18,7 @@
 // the `--allow-untapped` opt-out.
 //
 // ward#95 decided that scope policy does NOT fit the exec dialect and is not
-// reachable as a complex action from ward at cli-guard v0.32.0: the `when` /
+// reachable as a complex action from ward at cli-guard v0.43.0: the `when` /
 // `deny-when` guards are existential (∃ one match) where the rule is universal
 // (∀ formula in-scope), have no conditional escape hatch for `--allow-untapped`,
 // can't strip that ward-side flag before forwarding to brew, can't deny a bare

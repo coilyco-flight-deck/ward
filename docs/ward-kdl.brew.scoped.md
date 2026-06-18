@@ -21,7 +21,7 @@ opt-out: **formula-scoped** (`install`/`uninstall`/`upgrade`/`reinstall`/`link`/
 ## Decision
 
 **Fits neither the exec dialect's guards nor a complex action at cli-guard
-v0.32.0 - stays hand-written gated Go (`cmd/ward/pkg_brew.go`).** The guardfile
+v0.43.0 - stays hand-written gated Go (`cmd/ward/pkg_brew.go`).** The guardfile
 keeps only the read/passthrough half and marks every scoped verb `never run`.
 Mirrors ward#92's "`forgejo_issue.go` stays load-bearing"
 ([ops-forgejo-in-ward.md](ops-forgejo-in-ward.md)).
