@@ -14,14 +14,14 @@ import (
 )
 
 // forgejo_issue.go is ward's minimal, read-only Forgejo client - just enough
-// for `ward dispatch` to resolve a Forgejo issue ref. See docs/dispatch.md.
+// for `ward agent` to resolve a Forgejo issue ref. See docs/agent.md.
 
 // forgejoBaseURL is the Forgejo origin. A meaningful host, safe to hardcode
 // (the opaque bearer token lives in SSM, below).
 const forgejoBaseURL = "https://forgejo.coilysiren.me"
 
 // forgejoSSMTokenPath is the SSM path holding the bearer API token: the
-// `coilyco-ops` bot, not a human PAT (ward#160). See docs/dispatch.md.
+// `coilyco-ops` bot, not a human PAT (ward#160). See docs/agent.md.
 const forgejoSSMTokenPath = "/forgejo/coilyco-ops/api-token" //nolint:gosec // SSM path, not a credential
 
 // forgejoAPIHTTPTimeout caps each Forgejo API call so a stalled DNS or hung

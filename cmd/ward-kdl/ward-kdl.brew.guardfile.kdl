@@ -1,0 +1,80 @@
+// ward-kdl pkg brew - the brew passthrough surface as an allowlist (cli-guard
+// execverb, exec dialect). Re-expresses the read/passthrough half of ward's
+// hand-rolled `ward pkg brew` wrapper (cmd/ward/pkg_brew.go) as a guardfile,
+// per the coily -> ward -> ward-kdl consolidation (ward#94, epic ward#91).
+//
+// The binary is fixed at parse, so the caller can never substitute it, and
+// every verb runs under cli-guard's sandbox jail: ward is bind-mounted over
+// `brew` inside the jail, so a grandchild that re-invokes brew re-enters the
+// gate rather than escaping it. That jail / grandchild enforcement is the
+// property this re-expression preserves - it rides the exec dialect, not the
+// retired Go.
+//
+// Deny-by-default. Only the read-only and pure-passthrough verbs mount here:
+// the inspection reads, `brew update`, and `brew bundle` (which the Go wrapper
+// forwards verbatim). The scoped mutating verbs - formula-scoped install/
+// uninstall/upgrade/reinstall/link/unlink/pin/unpin, tap-scoped tap/untap, and
+// the touch-everything cleanup/autoremove - carry the primary-org tap scope and
+// the `--allow-untapped` opt-in, so they land separately in ward#95 (pkg brew
+// -> ward-kdl) with their gating intact. They are listed as `never run` here to
+// mark the boundary; an unlisted verb is denied either way.
+// See ../../docs/ward-kdl.brew.guardfile.md.
+wrap ward-kdl pkg brew {
+    exec brew
+    // reads - inspection verbs, nothing mutated
+    can run search {
+        describe "search formulae/casks by name or regex"
+    }
+    can run info {
+        describe "show formula/cask metadata; pass the name"
+    }
+    can run list {
+        describe "list installed formulae/casks"
+    }
+    can run deps {
+        describe "show a formula's dependency tree"
+    }
+    can run leaves {
+        describe "list installed formulae not depended on"
+    }
+    can run outdated {
+        describe "list formulae with a newer version available"
+    }
+    can run doctor {
+        describe "diagnose common brew problems"
+    }
+    can run config {
+        describe "print brew's configuration"
+    }
+    can run commands {
+        describe "list available brew commands"
+    }
+    can run "services list" {
+        describe "list managed services and their state"
+    }
+    can run "services info" {
+        describe "detail a managed service; pass the name"
+    }
+    // passthrough - mutates brew's own state, not the install graph; the Go
+    // wrapper forwards these verbatim, so they pass through here too
+    can run update {
+        describe "refresh formulae definitions from the taps"
+    }
+    can run bundle {
+        describe "install from a Brewfile; pass --file to point at one"
+    }
+    // scoped mutating verbs - primary-org tap scope + --allow-untapped, landing
+    // in ward#95 (pkg brew -> ward-kdl) with their gating; denied until then
+    never run install
+    never run uninstall
+    never run upgrade
+    never run reinstall
+    never run link
+    never run unlink
+    never run pin
+    never run unpin
+    never run tap
+    never run untap
+    never run cleanup
+    never run autoremove
+}
