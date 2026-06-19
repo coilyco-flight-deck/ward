@@ -1,0 +1,82 @@
+// ward docker - host-native docker as an allowlist (cli-guard execverb, exec
+// dialect). Wraps the local `docker` against the host daemon; the binary is
+// fixed at parse, so the caller can never substitute it. Deny-by-default: only
+// read-only inspection verbs mount - container/image/volume/network listing and
+// state, logs, resource usage, daemon info. Every grant audit-logs through ward.
+//
+// Mutating and shell-equivalent verbs (run, rm, kill, stop, start, restart,
+// build, push, pull, cp, commit, attach, save/load, prune) are intentionally
+// left unexposed - they fall to the host lockdown's bare-docker deny, mirroring
+// the no-deletion choice in the kubectl and ollama guardfiles. `exec` is the
+// privileged shell-into-a-container verb; it is denied here and gated
+// separately in ward#220 (read-only exec into warded containers), so it does
+// not belong on this read-only surface.
+//
+// Note on streaming verbs: `logs -f`, `stats`, and `events` follow/stream by
+// default. For a one-shot snapshot pass `--no-stream` (stats) or omit `-f`
+// (logs) / `--since ... --until 0s` (events) so an agent call returns.
+// See ../../docs/ward-kdl.docker.guardfile.md.
+wrap ward-kdl docker {
+    exec docker
+    // containers - listing and per-container state
+    can run ps {
+        describe "list containers; -a for stopped, --format to project fields"
+    }
+    can run logs {
+        describe "container logs; -f to follow (omit for a snapshot), --tail N"
+    }
+    can run top {
+        describe "running processes in a container"
+    }
+    can run stats {
+        describe "live resource usage; pass --no-stream for a one-shot snapshot"
+    }
+    can run inspect {
+        describe "low-level JSON for a container/image/volume/network"
+    }
+    can run port {
+        describe "published port mappings for a container"
+    }
+    can run diff {
+        describe "filesystem changes against a container's image"
+    }
+    // images
+    can run images {
+        describe "list images; --format to project fields"
+    }
+    can run history {
+        describe "layer history of an image"
+    }
+    // daemon + objects
+    can run version {
+        describe "client + daemon version"
+    }
+    can run info {
+        describe "daemon-wide info and counts"
+    }
+    can run events {
+        describe "daemon event stream; --since/--until to bound and exit"
+    }
+    can run "volume ls" {
+        describe "list volumes"
+    }
+    can run "volume inspect" {
+        describe "low-level JSON for a volume"
+    }
+    can run "network ls" {
+        describe "list networks"
+    }
+    can run "network inspect" {
+        describe "low-level JSON for a network"
+    }
+    can run "system df" {
+        describe "disk usage by images, containers, volumes, cache"
+    }
+    // intentionally unexposed - mutating or shell-equivalent
+    never run exec
+    never run run
+    never run rm
+    never run kill
+    never run build
+    never run "system prune"
+}

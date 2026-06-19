@@ -24,6 +24,7 @@ Contributor-facing cli-guard gate: repo dev verbs + audited host wrappers.
 
 - **`ward-kdl ops <api> <verb>`** - `specverb` API verbs: **forgejo** (Swagger 2.0, incl. `issue list-all`), **trello**/**tailscale** (OpenAPI 3.x). Denies teach. See [ops-forgejo](ops-forgejo.md).
 - **`ward-kdl ops {aws,kubectl} <verb>`** - `execverb` local-CLI passthroughs: **aws** (SSM/S3/EC2 reads) and **kubectl** (reads + apply/scale/rollout; destructive verbs unexposed). See [aws](ward-kdl.aws.guardfile.md), [kubectl](ward-kdl.kubectl.guardfile.md).
+- **`ward-kdl docker <verb>`** - `execverb` read-only Docker inspection (containers/images/volumes/networks, `logs`, `stats`, `inspect`, `events`); mutating + shell verbs unexposed, `exec` gated separately (ward#220). See [docker](ward-kdl.docker.guardfile.md).
 - **`ward-kdl agents <target> <verb>`** - mixed-transport. **`agents {claude,codex,opencode,aider,goose}`**: local-CLI launchers (`execverb`, `argv`-override). **`agents ollama`**: the tower's Ollama.
 - **`ward-kdl pkg <resource> <verb>`** - `specverb` package-directory lookups: **skillsmp** (skills) and **glama** (Glama MCP), from `coily pkg` (ward#105); plus **`ward-kdl pkg brew <verb>`** - brew reads/passthrough (`execverb`, jailed; scoped verbs stay Go, [ward#95](ward-kdl.brew.scoped.md)). See [skillsmp](ward-kdl.skillsmp.guardfile.md), [glama](ward-kdl.glama.guardfile.md).
 

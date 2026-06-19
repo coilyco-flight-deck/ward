@@ -7,6 +7,9 @@ excludes = [
   # Pre-existing size debt: docs/hook.md is 92 lines, over the 80-line cap.
   # The split is tracked in coilyco-flight-deck/ward#50; drop this when it lands.
   "docs/hook.md",
+  # Size debt: docs/FEATURES.md passed the 4000-char cap as the verb surface grew
+  # (the ward-kdl ops section is the split candidate). Tracked in ward#224; drop then.
+  "docs/FEATURES.md",
   # Size debt: docs/agent.md is 167 lines / ~9.4k chars, landed via the agent
   # feature merges (bypassing pre-commit). Split tracked in ward#150; drop then.
   "docs/agent.md",
@@ -38,6 +41,8 @@ excludes = [
   "cmd/ward-kdl/ward-kdl.ollama.guardfile.md",
   "docs/ward-kdl.kubectl.guardfile.md",
   "cmd/ward-kdl/ward-kdl.kubectl.guardfile.md",
+  "docs/ward-kdl.docker.guardfile.md",
+  "cmd/ward-kdl/ward-kdl.docker.guardfile.md",
   "docs/ward-kdl.brew.guardfile.md",
   "cmd/ward-kdl/ward-kdl.brew.guardfile.md",
   # Embedded container agent doctrine: a ward binary asset (go:embed), not a
