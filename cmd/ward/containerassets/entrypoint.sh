@@ -400,6 +400,26 @@ stream_progress() {
     else empty end'
 }
 
+# --- pre-launch auth smoke test (ward#222; see docs/agent.md) ----------------
+# Bounded claude probe as the agent user; abort loudly on can't-auth (no silent hang).
+smoke_test_claude_auth() {
+  { [ "$WARD_AGENT" = claude ] && [ "${WARD_HEADLESS:-0}" = 1 ]; } || return 0
+  [ "${WARD_SMOKE_TEST_SKIP:-0}" = 1 ] && { log "auth smoke test skipped (WARD_SMOKE_TEST_SKIP=1)"; return 0; }
+  command -v claude >/dev/null 2>&1 || return 0
+  log "auth smoke test: probing claude before launch (ward#222)"
+  local out rc=0
+  out="$(timeout 90 setpriv --reuid="$AGENT_UID" --regid="$AGENT_GID" --init-groups \
+          env HOME="$AGENT_HOME" claude -p --output-format json \
+          "Reply with the single word: ok" </dev/null 2>/dev/null)" || rc=$?
+  if [ "$rc" -eq 124 ]; then
+    die "auth smoke test: claude -p did not respond within 90s - credentials are unusable in-container (ward#222). Refresh the host claude login (re-run 'claude' on the host) and relaunch; WARD_SMOKE_TEST_SKIP=1 bypasses."
+  fi
+  if [ "$rc" -ne 0 ] || [ -z "$out" ]; then
+    die "auth smoke test: claude -p produced no usable output (exit $rc) - credentials are unusable in-container (ward#222). Refresh the host claude login and relaunch; WARD_SMOKE_TEST_SKIP=1 bypasses."
+  fi
+  log "auth smoke test: claude responded, auth OK"
+}
+
 # --- launch ------------------------------------------------------------------
 main() {
   configure_git_auth
@@ -483,11 +503,18 @@ main() {
   # setup ran as root. Keep ANTHROPIC_API_KEY from shadowing the OAuth creds.
   chown -R "$AGENT_UID:$AGENT_GID" "$work" "$AGENT_HOME/.claude" "$AGENT_HOME/.config" "$AGENT_HOME/.codex" 2>/dev/null || true
   unset ANTHROPIC_API_KEY ANTHROPIC_AUTH_TOKEN 2>/dev/null || true
+  # Fail loud before launch if claude can't authenticate (ward#222): a clear
+  # abort beats a silent multi-minute hang. Runs as the agent user, post-chown.
+  smoke_test_claude_auth
   log "launching $WARD_AGENT as uid $AGENT_UID"
   local launch=(setpriv --reuid="$AGENT_UID" --regid="$AGENT_GID" --init-groups
                 env HOME="$AGENT_HOME" "${agent_argv[@]}")
+  # One-shot modes (headless/ask) take no interactive input; pin stdin to /dev/null
+  # so a stuck agent gets EOF and exits instead of blocking forever (ward#222).
   if [ "$stream" = 1 ]; then
-    "${launch[@]}" | stream_progress || log "agent exited non-zero ($?); reaping anyway"
+    "${launch[@]}" </dev/null | stream_progress || log "agent exited non-zero ($?); reaping anyway"
+  elif [ "$oneshot" = 1 ]; then
+    "${launch[@]}" </dev/null || log "agent exited non-zero ($?); reaping anyway"
   else
     "${launch[@]}" || log "agent exited non-zero ($?); reaping anyway"
   fi

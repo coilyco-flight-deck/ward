@@ -6,6 +6,7 @@ import (
 	"embed"
 	"encoding/base64"
 	"encoding/hex"
+	"encoding/json"
 	"fmt"
 	"io"
 	"os"
@@ -222,6 +223,7 @@ const claudeKeychainService = "Claude Code-credentials"
 // resolveClaudeCreds returns the claude OAuth blob (Max login) for the container's
 // ~/.claude/.credentials.json: macOS keychain, else the file. See docs/agent.md.
 func (r *Runner) resolveClaudeCreds(ctx context.Context) string {
+	var blob string
 	if runtime.GOOS == "darwin" {
 		out, err := r.Runner.Capture(ctx, "security", "find-generic-password",
 			"-s", claudeKeychainService, "-w")
@@ -229,15 +231,53 @@ func (r *Runner) resolveClaudeCreds(ctx context.Context) string {
 			fmt.Fprintf(os.Stderr, "ward container: could not read claude credentials from keychain (%v); claude will be unauthenticated\n", err)
 			return ""
 		}
-		return strings.TrimSpace(string(out))
+		blob = strings.TrimSpace(string(out))
+	} else {
+		path := filepath.Join(homeDir(), ".claude", ".credentials.json")
+		data, err := os.ReadFile(path) // #nosec G304 -- fixed per-user claude creds path
+		if err != nil {
+			fmt.Fprintf(os.Stderr, "ward container: could not read %s (%v); claude will be unauthenticated\n", path, err)
+			return ""
+		}
+		blob = strings.TrimSpace(string(data))
 	}
-	path := filepath.Join(homeDir(), ".claude", ".credentials.json")
-	data, err := os.ReadFile(path) // #nosec G304 -- fixed per-user claude creds path
-	if err != nil {
-		fmt.Fprintf(os.Stderr, "ward container: could not read %s (%v); claude will be unauthenticated\n", path, err)
-		return ""
+	// Early heads-up only (ward#222): the blob still ships - the in-container auth
+	// smoke test is the hard gate - but the cause is now visible host-side.
+	if ok, reason := claudeCredsHealth(blob, time.Now()); !ok {
+		fmt.Fprintf(os.Stderr, "ward container: claude credentials look unusable (%s); the in-container auth smoke test will fail loudly (ward#222)\n", reason)
 	}
-	return strings.TrimSpace(string(data))
+	return blob
+}
+
+// claudeCredsHealth flags a clearly-unusable claude OAuth blob (empty, no access
+// token, expired) before it ships into a container (ward#222). Pure + testable.
+func claudeCredsHealth(blob string, now time.Time) (ok bool, reason string) {
+	blob = strings.TrimSpace(blob)
+	if blob == "" {
+		return false, "empty credentials"
+	}
+	var parsed struct {
+		ClaudeAiOauth struct {
+			AccessToken string `json:"accessToken"`
+			ExpiresAt   int64  `json:"expiresAt"`
+		} `json:"claudeAiOauth"`
+		AccessToken string `json:"accessToken"`
+		ExpiresAt   int64  `json:"expiresAt"`
+	}
+	if err := json.Unmarshal([]byte(blob), &parsed); err != nil {
+		return true, "" // unrecognised shape; defer to the smoke test
+	}
+	token, exp := parsed.ClaudeAiOauth.AccessToken, parsed.ClaudeAiOauth.ExpiresAt
+	if token == "" {
+		token, exp = parsed.AccessToken, parsed.ExpiresAt
+	}
+	if token == "" {
+		return false, "no accessToken in credentials"
+	}
+	if exp > 0 && now.After(time.UnixMilli(exp)) {
+		return false, fmt.Sprintf("access token expired %s ago (re-run 'claude' on the host to refresh)", now.Sub(time.UnixMilli(exp)).Round(time.Second))
+	}
+	return true, ""
 }
 
 // resolveCodexCreds reads the container's ~/.codex/auth.json from the host file

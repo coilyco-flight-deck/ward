@@ -654,3 +654,36 @@ func TestRepoCloneURLAndMirror(t *testing.T) {
 		t.Errorf("mirrorName = %q", got)
 	}
 }
+
+func TestClaudeCredsHealth(t *testing.T) {
+	now := time.Date(2026, 6, 19, 12, 0, 0, 0, time.UTC)
+	future := now.Add(time.Hour).UnixMilli()
+	past := now.Add(-time.Hour).UnixMilli()
+	tests := []struct {
+		name    string
+		blob    string
+		wantOK  bool
+		wantSub string // substring expected in reason when !wantOK
+	}{
+		{"empty", "", false, "empty"},
+		{"whitespace only", "   \n", false, "empty"},
+		{"healthy nested claudeAiOauth", fmt.Sprintf(`{"claudeAiOauth":{"accessToken":"tok","expiresAt":%d}}`, future), true, ""},
+		{"healthy top-level fallback", fmt.Sprintf(`{"accessToken":"tok","expiresAt":%d}`, future), true, ""},
+		{"healthy no expiry", `{"claudeAiOauth":{"accessToken":"tok"}}`, true, ""},
+		{"expired token", fmt.Sprintf(`{"claudeAiOauth":{"accessToken":"tok","expiresAt":%d}}`, past), false, "expired"},
+		{"no access token", `{"claudeAiOauth":{"expiresAt":12345}}`, false, "no accessToken"},
+		{"unrecognised but valid json", `{"something":"else"}`, false, "no accessToken"},
+		{"not json at all", "not-json-blob", true, ""}, // defer to in-container smoke test
+	}
+	for _, tc := range tests {
+		t.Run(tc.name, func(t *testing.T) {
+			ok, reason := claudeCredsHealth(tc.blob, now)
+			if ok != tc.wantOK {
+				t.Fatalf("ok = %v, want %v (reason=%q)", ok, tc.wantOK, reason)
+			}
+			if !tc.wantOK && tc.wantSub != "" && !strings.Contains(reason, tc.wantSub) {
+				t.Errorf("reason = %q, want substring %q", reason, tc.wantSub)
+			}
+		})
+	}
+}
