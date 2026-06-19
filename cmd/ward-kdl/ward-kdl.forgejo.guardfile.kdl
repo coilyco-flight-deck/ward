@@ -50,6 +50,16 @@ wrap ward-kdl ops forgejo {
     never delete org {
         message "org deletion is irreversible and human-only"
     }
+    // org-repos: create a repo inside an existing org (POST /orgs/{org}/repos), the
+    // org-scoped sibling of `create repo` (which targets /user/repos, a path the bot
+    // lacks write:user for). The coilyco-ops token already carries write:organization,
+    // so this is a missing verb, not a missing scope (ward#218). Org create/delete
+    // stay human-only above; this creates repos within an org, not orgs themselves.
+    // The op is pinned because `create org-repo` otherwise matches both createOrgRepo
+    // and the deprecated alias.
+    can create org-repo {
+        op createOrgRepo
+    }
     // org-labels: the compound resource targets org-level labels (/orgs/{org}/labels),
     // the `org` ancestor scoping it away from repo labels. Issue-label attach/set/
     // remove stays below.

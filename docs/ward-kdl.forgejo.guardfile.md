@@ -141,6 +141,31 @@ Options (2):
 - `--page` (integer, optional): page number of results to return (1-based)
 - `--limit` (integer, optional): page size of results
 
+## ward-kdl ops forgejo org-repo create
+
+`POST /orgs/{org}/repos`
+
+Authorized by grant: can create org-repo. Not destructive.
+
+Positional arguments (1):
+
+- `<org>` (string)
+
+Options (12):
+
+- `--auto_init` (boolean, optional): Whether the repository should be auto-initialized?
+- `--default_branch` (string, optional): DefaultBranch of the repository (used when initializes and in template)
+- `--description` (string, optional): Description of the repository to create
+- `--gitignores` (string, optional): Gitignores to use
+- `--issue_labels` (string, optional): Label-Set to use
+- `--license` (string, optional): License to use
+- `--name` (string, required): Name of the repository to create
+- `--object_format_name` (string, optional): ObjectFormatName of the underlying git repository
+- `--private` (boolean, optional): Whether the repository is private
+- `--readme` (string, optional): Readme of the repository to create
+- `--template` (boolean, optional): Whether the repository is template
+- `--trust_model` (string, optional): TrustModel of the repository
+
 ## ward-kdl ops forgejo org-label get
 
 `GET /orgs/{org}/labels/{id}`

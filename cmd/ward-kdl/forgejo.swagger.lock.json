@@ -2218,6 +2218,51 @@
         ]
       }
     },
+    "/orgs/{org}/repos": {
+      "post": {
+        "consumes": [
+          "application/json"
+        ],
+        "operationId": "createOrgRepo",
+        "parameters": [
+          {
+            "description": "name of organization",
+            "in": "path",
+            "name": "org",
+            "required": true,
+            "type": "string"
+          },
+          {
+            "in": "body",
+            "name": "body",
+            "schema": {
+              "$ref": "#/definitions/CreateRepoOption"
+            }
+          }
+        ],
+        "produces": [
+          "application/json"
+        ],
+        "responses": {
+          "201": {
+            "$ref": "#/responses/Repository"
+          },
+          "400": {
+            "$ref": "#/responses/error"
+          },
+          "403": {
+            "$ref": "#/responses/forbidden"
+          },
+          "404": {
+            "$ref": "#/responses/notFound"
+          }
+        },
+        "summary": "Create a repository in an organization",
+        "tags": [
+          "organization"
+        ]
+      }
+    },
     "/repos/issues/search": {
       "get": {
         "operationId": "issueSearchIssues",
