@@ -65,6 +65,7 @@ surface in. See docs/container.md.`,
 			containerDownCommand(),
 			containerListCommand(),
 			containerAgentPreCommitCommand(),
+			containerBootstrapCommand(),
 		},
 	}
 }
