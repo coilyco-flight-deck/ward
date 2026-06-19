@@ -344,6 +344,9 @@ type upPlan struct {
 	// Ask runs the in-container agent one-shot, attached (claude -p plain, no
 	// stream-json); exports WARD_ASK=1, set by `ward agent <name> ask`.
 	Ask bool
+	// GoBootstrap (EXPERIMENTAL, ward#181) exports WARD_USE_GO_BOOTSTRAP=1 so the
+	// entrypoint delegates to `ward container bootstrap` instead of its bash logic.
+	GoBootstrap bool
 }
 
 // wardEnv is the non-secret WARD_* config the entrypoint reads. Everything
@@ -379,6 +382,9 @@ func (p upPlan) wardEnv() map[string]string {
 	}
 	if p.Ask {
 		env["WARD_ASK"] = "1"
+	}
+	if p.GoBootstrap {
+		env["WARD_USE_GO_BOOTSTRAP"] = "1"
 	}
 	return env
 }

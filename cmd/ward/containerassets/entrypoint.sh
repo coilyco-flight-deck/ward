@@ -424,6 +424,12 @@ smoke_test_claude_auth() {
 main() {
   configure_git_auth
   install_ward
+  # EXPERIMENTAL opt-in (ward#181): hand off to the Go bootstrap once ward installs.
+  if [ "${WARD_USE_GO_BOOTSTRAP:-0}" = 1 ] && command -v ward >/dev/null 2>&1; then
+    log "delegating to the Go container bootstrap (ward#181, WARD_USE_GO_BOOTSTRAP=1)"
+    cd /workspace 2>/dev/null || true
+    exec ward container bootstrap "$@"
+  fi
   install_opencode
   local work; work="$(clone_target)"
   install_precommit_hooks "$work"

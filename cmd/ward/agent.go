@@ -206,6 +206,7 @@ func agentSurfaceCommand(m containerMode, surface string, headless bool) *cli.Co
 		&cli.BoolFlag{Name: "print", Usage: "resolve the issue + seeded prompt + docker plan and exit; inject no push token, run nothing"},
 		&cli.BoolFlag{Name: "no-pull", Usage: "skip the image pull"},
 		&cli.BoolFlag{Name: "force", Usage: "skip the local + remote concurrency reservation checks (reclaim a stale or foreign hold)"},
+		&cli.BoolFlag{Name: "go-bootstrap", Usage: "EXPERIMENTAL (ward#181): after ward installs, delegate to the Go 'ward container bootstrap' instead of the bash entrypoint logic. Requires ward in-container - use --ward-source until the image bakes it."},
 	}
 	if !headless {
 		// headless always detaches, so only the interactive surface exposes --detach.
@@ -768,6 +769,7 @@ func agentTaskCommand(m containerMode) *cli.Command {
 		// task detaches into the same fire-and-forget headless run, so it gets the
 		// same autonomous pre-flight gate (ward#149); --no-preflight skips it.
 		&cli.BoolFlag{Name: "no-preflight", Usage: "skip the pre-flight feasibility check and detach immediately"},
+		&cli.BoolFlag{Name: "go-bootstrap", Usage: "EXPERIMENTAL (ward#181): after ward installs, delegate to the Go 'ward container bootstrap' instead of the bash entrypoint logic. Requires ward in-container - use --ward-source until the image bakes it."},
 	}
 	return &cli.Command{
 		Name: "task",

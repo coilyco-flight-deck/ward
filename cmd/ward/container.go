@@ -85,6 +85,7 @@ func containerUpCommand() *cli.Command {
 			&cli.BoolFlag{Name: "detach", Aliases: []string{"d"}, Usage: "run detached instead of interactive"},
 			&cli.BoolFlag{Name: "print", Usage: "print the docker invocation and exit; resolve no secrets, run nothing"},
 			&cli.BoolFlag{Name: "no-pull", Usage: "skip the image pull"},
+			&cli.BoolFlag{Name: "go-bootstrap", Usage: "EXPERIMENTAL (ward#181): after ward installs, delegate to the Go 'ward container bootstrap' instead of the bash entrypoint logic. Requires ward in-container - use --ward-source until the image bakes it."},
 		},
 		Action: func(ctx context.Context, c *cli.Command) error {
 			r := newRunner()
@@ -184,6 +185,7 @@ func buildUpPlan(c *cli.Command, repo targetRepo, mode containerMode, cwd, asset
 		WardVersion:    Version,
 		WardFromSource: wardSrc != "",
 		AgentArgs:      agentArgs,
+		GoBootstrap:    c.Bool("go-bootstrap"),
 	}
 }
 
