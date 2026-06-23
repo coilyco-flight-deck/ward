@@ -10,9 +10,6 @@ excludes = [
   # Size debt: docs/FEATURES.md passed the 4000-char cap as the verb surface grew
   # (the ward-kdl ops section is the split candidate). Tracked in ward#224; drop then.
   "docs/FEATURES.md",
-  # Size debt: docs/agent.md is 167 lines / ~9.4k chars, landed via the agent
-  # feature merges (bypassing pre-commit). Split tracked in ward#150; drop then.
-  "docs/agent.md",
   # Generated surface reference (specverb-gen). The driver emits it beside the
   # Guardfile; the reviewed copy is committed at docs/ and grows with the verb
   # surface, so the layout cap does not apply. The beside-the-kdl emission is

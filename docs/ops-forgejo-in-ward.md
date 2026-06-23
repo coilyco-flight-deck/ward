@@ -45,7 +45,7 @@ The one read that *didn't* need a struct - the `ward agent` stale-ward check's
 onto this mount. A single scalar clears the capture blocker without a new API:
 ward shells itself to `ops forgejo release list <owner> <repo> --query
 "[0].tag_name" --output text` and reads the projected tag off stdout (see
-[agent.md](agent.md#host-stale-ward-reminder-ward143)). `forgejo_issue.go` can't
+[agent-reservation.md](agent-reservation.md#host-stale-ward-reminder-ward143)). `forgejo_issue.go` can't
 follow suit - it needs whole `Issue`/comment objects, not a `--query` scalar, and
 still hits the body-gate and reaper-auth blockers above.
 

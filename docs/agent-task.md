@@ -30,7 +30,7 @@ Pass exactly one of `--instructions`/`-i` or `--instructions-file` (the escape
 hatch for long bodies). The **title** is the first non-empty instruction line
 (≤72 runes); the **body** is the instructions plus a provenance footer. DIRECT
 runs the exact `headless` flow, including the same
-[pre-flight feasibility check](agent.md#headless-pre-flight-ward137-ward147)
+[pre-flight feasibility check](agent-preflight.md#ward-agent-headless-pre-flight-ward137-ward147)
 before detaching (a NO-GO comments and launches nothing).
 
 ## ROUTE mode (ward#164)
