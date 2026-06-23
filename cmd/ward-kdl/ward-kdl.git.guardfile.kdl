@@ -1,0 +1,26 @@
+// ward-kdl git - the contributor git surface as an allowlist (cli-guard
+// execverb, exec dialect). Wraps the local `git`; the binary is fixed at parse,
+// so the caller can never substitute it, and every verb runs under cli-guard's
+// sandbox jail (ward bind-mounted over `git` inside the jail) so a grandchild
+// that re-invokes git re-enters the gate rather than escaping it. Every grant
+// audit-logs through ward.
+//
+// Deny-by-default and deliberately minimal: this guardfile opens with the
+// single read-only `status` verb (ward#226). The issue's broader ask - commit,
+// push, and the rest of ward's hand-rolled `ward git` surface (cmd/ward/git.go,
+// docs/git-verbs.md) - was scoped down in the thread to "just git status" as the
+// first guardfile-expressed leaf. The mutating and history-rewriting verbs stay
+// on the hand-written Go surface for now; growing this allowlist one verb at a
+// time is how the git surface migrates onto ward-kdl, mirroring the brew
+// consolidation (ward#94, epic ward#91).
+//
+// An unlisted verb is denied either way; the read-only opener matches the
+// deny-by-default stance of the docker and kubectl guardfiles.
+// See ../../docs/ward-kdl.git.guardfile.md.
+wrap ward-kdl git {
+    exec git
+    // reads - inspection verbs, nothing mutated
+    can run status {
+        describe "show the working tree state; -s for short format, -b for branch"
+    }
+}
