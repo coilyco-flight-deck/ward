@@ -39,7 +39,7 @@ func (r *Runner) maybeWarnWardOutdated(ctx context.Context) {
 	if r != nil && r.Runner != nil && r.Runner.Stderr != nil {
 		w = r.Runner.Stderr
 	}
-	fmt.Fprint(w, wardOutdatedNotice(Version, latest))
+	_, _ = fmt.Fprint(w, wardOutdatedNotice(Version, latest))
 }
 
 // wardOutdatedNotice is the two-line stderr reminder, kept pure so it is

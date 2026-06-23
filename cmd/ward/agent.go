@@ -463,7 +463,9 @@ func (r *Runner) runPreflight(ctx context.Context, mode containerMode, surface s
 
 	switch outcome := parsePreflightVerdict(read); outcome.Verdict {
 	case verdictWrongRepo:
-		return r.handlePreflightWrongRepo(ctx, mode, surface, w, outcome, read)
+		// WRONG-REPO always launches nothing here (it either blind-fires elsewhere
+		// or bounces to a human), so proceed is false regardless of the error.
+		return false, r.handlePreflightWrongRepo(ctx, mode, surface, w, outcome, read)
 	case verdictNoGo:
 		fmt.Fprintf(os.Stderr, "%s: pre-flight NO-GO for %s; launching nothing, commenting on the issue.\n", label, w.Ref)
 		if cerr := r.postPreflightNoGo(ctx, mode, surface, w.Ref, outcome.Reason, read); cerr != nil {
@@ -471,8 +473,29 @@ func (r *Runner) runPreflight(ctx context.Context, mode containerMode, surface s
 		}
 		fmt.Fprintf(os.Stderr, "%s: commented NO-GO on %s - %s\n", label, w.Ref, w.Ref.url())
 		return false, nil
+	case verdictUnknown, verdictGo:
+		// No clear verdict line or an explicit GO: proceed with the detached run.
+		return true, nil
 	default:
 		return true, nil
+	}
+}
+
+// wrongRepoBounceReason builds the human-facing reason a WRONG-REPO verdict is
+// unusable: no usable owner/repo, the issue's own repo, or an untrusted owner.
+func wrongRepoBounceReason(outcome preflightOutcome, target targetRepo, orgs []string, ok, sameRepo bool) string {
+	reason := outcome.Reason
+	if reason == "" {
+		reason = "agent flagged this as belonging in another repo"
+	}
+	switch {
+	case !ok:
+		return "agent flagged WRONG-REPO but named no usable owner/repo: " + reason
+	case sameRepo:
+		return "agent flagged WRONG-REPO but named this same repo: " + reason
+	default:
+		return fmt.Sprintf("agent routed this to untrusted repo %s (not in %s): %s",
+			target.slug(), strings.Join(orgs, ", "), reason)
 	}
 }
 
@@ -487,54 +510,42 @@ func wrongRepoTarget(s string) (targetRepo, bool) {
 }
 
 // handlePreflightWrongRepo acts on a WRONG-REPO verdict (ward#159): blind-fire
-// into a trusted target repo, else bounce to a human. See docs/agent.md.
-func (r *Runner) handlePreflightWrongRepo(ctx context.Context, mode containerMode, surface string, w resolvedWork, outcome preflightOutcome, read string) (bool, error) {
+// into a trusted target repo, else bounce to a human (always launches nothing).
+func (r *Runner) handlePreflightWrongRepo(ctx context.Context, mode containerMode, surface string, w resolvedWork, outcome preflightOutcome, read string) error {
 	label := fmt.Sprintf("ward agent %s %s", mode, surface)
 	target, ok := wrongRepoTarget(outcome.Repo)
 	sameRepo := ok && target.Owner == w.Ref.Owner && target.Name == w.Ref.Repo
 	// An untrusted repo, the issue's own repo, or a half target is no blind-fire
 	// target: bounce to a human rather than guessing.
 	if !ok || sameRepo || !r.ownerAllowed(target.Owner) {
-		reason := outcome.Reason
-		if reason == "" {
-			reason = "agent flagged this as belonging in another repo"
-		}
-		switch {
-		case !ok:
-			reason = "agent flagged WRONG-REPO but named no usable owner/repo: " + reason
-		case sameRepo:
-			reason = "agent flagged WRONG-REPO but named this same repo: " + reason
-		default:
-			reason = fmt.Sprintf("agent routed this to untrusted repo %s (not in %s): %s",
-				target.slug(), strings.Join(r.primaryOrgs(), ", "), reason)
-		}
+		reason := wrongRepoBounceReason(outcome, target, r.primaryOrgs(), ok, sameRepo)
 		fmt.Fprintf(os.Stderr, "%s: pre-flight WRONG-REPO unusable for %s; bouncing to a human.\n", label, w.Ref)
 		if cerr := r.postPreflightNoGo(ctx, mode, surface, w.Ref, reason, read); cerr != nil {
-			return false, fmt.Errorf("post NO-GO comment on %s: %w", w.Ref, cerr)
+			return fmt.Errorf("post NO-GO comment on %s: %w", w.Ref, cerr)
 		}
-		return false, nil
+		return nil
 	}
 
 	fmt.Fprintf(os.Stderr, "%s: pre-flight WRONG-REPO for %s -> %s; blind-firing an issue there, launching nothing.\n", label, w.Ref, target.slug())
 	cl, err := r.hostForgejoClient(ctx)
 	if err != nil {
-		return false, err
+		return err
 	}
 	signed := cl.withMode(mode)
 	number, err := signed.createIssue(ctx, target.Owner, target.Name,
 		w.Title, blindfireIssueBody(mode, surface, w, outcome.Reason))
 	if err != nil {
-		return false, fmt.Errorf("blind-fire issue into %s: %w", target.slug(), err)
+		return fmt.Errorf("blind-fire issue into %s: %w", target.slug(), err)
 	}
 	filed := agentIssueRef{Owner: target.Owner, Repo: target.Name, Number: number}
 	fmt.Fprintf(os.Stderr, "%s: blind-fired %s - %s\n", label, filed, filed.url())
 	// Point the original issue at the freshly-filed one so the trail is visible.
 	if cerr := signed.commentIssue(ctx, w.Ref.Owner, w.Ref.Repo, w.Ref.Number,
 		preflightWrongRepoComment(mode, surface, filed, outcome.Reason, read)); cerr != nil {
-		return false, fmt.Errorf("comment WRONG-REPO routing on %s: %w", w.Ref, cerr)
+		return fmt.Errorf("comment WRONG-REPO routing on %s: %w", w.Ref, cerr)
 	}
 	fmt.Fprintf(os.Stderr, "%s: noted the routing on %s - %s\n", label, w.Ref, w.Ref.url())
-	return false, nil
+	return nil
 }
 
 // hostHasBinary reports whether bin resolves on the host PATH.
@@ -698,7 +709,7 @@ func buildAgentPlan(c *cli.Command, mode containerMode, ref agentIssueRef, seed 
 	}
 	// Override the generic ward-<repo>-<rand> name with one that names the issue
 	// and harness, so a host running several agents can tell them apart.
-	plan.Name = agentContainerName(repo, mode, ref.Number, randHex(4))
+	plan.Name = agentContainerName(repo, mode, ref.Number, randHex())
 	plan.Headless = headless
 	if detached {
 		plan.Interactive = false

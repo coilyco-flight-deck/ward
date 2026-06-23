@@ -86,7 +86,7 @@ func (r *Runner) runAgentAsk(ctx context.Context, c *cli.Command, mode container
 	plan.Ask = true
 	// Name it ward-<repo>-ask-<mode>-<rand> so `docker ps` tells an ask run apart
 	// from a carry run or a bare `container up`.
-	plan.Name = fmt.Sprintf("%s-%s-ask-%s-%s", containerNamePrefix, safeRepoName(repo), mode, randHex(4))
+	plan.Name = fmt.Sprintf("%s-%s-ask-%s-%s", containerNamePrefix, safeRepoName(repo), mode, randHex())
 
 	if c.Bool("print") {
 		return printAgentAskPlan(c, plan, question, seed)

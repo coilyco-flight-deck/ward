@@ -121,6 +121,8 @@ func (m containerMode) visionCapable() bool {
 	switch m {
 	case modeQwen, modeGoose:
 		return false
+	case modeClaude, modeCodex:
+		return true
 	default:
 		return true
 	}
@@ -150,6 +152,8 @@ func (m containerMode) hostPreflightArgv(prompt string) ([]string, bool) {
 		return []string{m.agentBinary(), "-p", prompt}, true
 	case modeGoose:
 		return []string{m.agentBinary(), "run", "-t", prompt}, true
+	case modeCodex, modeQwen:
+		return nil, false
 	default:
 		return nil, false
 	}

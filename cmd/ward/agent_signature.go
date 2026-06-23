@@ -30,12 +30,6 @@ func (m containerMode) agentIdentity() (name, pronouns string) {
 	}
 }
 
-// agentDisplayName is the human-facing name a mode signs with.
-func (m containerMode) agentDisplayName() string {
-	name, _ := m.agentIdentity()
-	return name
-}
-
 // agentAttribution renders the one-line identity, e.g. "Claude (she/her)" when
 // pronouns are known, otherwise just "Goose".
 func (m containerMode) agentAttribution() string {

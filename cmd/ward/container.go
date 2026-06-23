@@ -162,6 +162,9 @@ func (r *Runner) resolveAgentCreds(ctx context.Context, mode containerMode) agen
 		return agentCreds{Codex: r.resolveCodexCreds()}
 	case modeGoose:
 		return agentCreds{GooseOllamaHost: r.resolveOllamaHost(ctx)}
+	case modeQwen:
+		// qwen runs against a local ollama; no host credential to inject.
+		return agentCreds{}
 	default:
 		return agentCreds{}
 	}
@@ -181,7 +184,7 @@ func buildUpPlan(c *cli.Command, repo targetRepo, mode containerMode, cwd, asset
 	}
 	return upPlan{
 		Image:          imageRef(c.String("image"), c.String("tag")),
-		Name:           containerName(repo, randHex(4)),
+		Name:           containerName(repo, randHex()),
 		Repo:           repo,
 		Mode:           mode,
 		Branch:         c.String("branch"),
@@ -470,14 +473,14 @@ func printPlan(c *cli.Command, p upPlan) error {
 	return err
 }
 
-// randHex returns n random bytes as a lowercase hex string, the unique suffix
-// that lets repeated `ward container up` calls coexist.
-func randHex(n int) string {
-	b := make([]byte, n)
+// randHex returns 4 random bytes as an 8-char lowercase hex string, the unique
+// suffix that lets repeated `ward container up` calls coexist.
+func randHex() string {
+	b := make([]byte, 4)
 	if _, err := rand.Read(b); err != nil {
 		// rand.Read never fails on supported platforms; fall back so a name is
 		// still produced rather than panicking a dev command.
-		return "00000000"[:2*n]
+		return "00000000"
 	}
 	return hex.EncodeToString(b)
 }

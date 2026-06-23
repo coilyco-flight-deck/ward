@@ -58,6 +58,7 @@ linters:
         - G302
         - G304
         - G306
+        - G703
     errcheck:
       check-type-assertions: false
       exclude-functions:

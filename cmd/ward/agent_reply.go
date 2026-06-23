@@ -108,37 +108,9 @@ func agentReplyCommand(m containerMode) *cli.Command {
 func (r *Runner) runAgentReply(ctx context.Context, c *cli.Command, mode containerMode) error {
 	label := fmt.Sprintf("ward agent %s reply", mode)
 
-	ref, err := parseAgentIssueRef(c.Args().First())
+	ref, prompt, level, err := r.validateReplyInputs(c, mode, label)
 	if err != nil {
-		return fmt.Errorf("%s: %w", label, err)
-	}
-	// Everything after the ref is the reply prompt, joined so an unquoted
-	// multi-word prompt still works (the canonical form is one quoted arg).
-	prompt := strings.TrimSpace(strings.Join(c.Args().Tail(), " "))
-	if prompt == "" {
-		return fmt.Errorf("%s: no reply prompt: pass it after the issue ref, e.g. %s <ref> \"what would it take to...\"", label, label)
-	}
-
-	level, err := parseReplyThoroughness(c.String("thoroughness"))
-	if err != nil {
-		return fmt.Errorf("%s: %w", label, err)
-	}
-
-	// Trust gate: reply writes a comment under ward's bot identity, so only act on
-	// an owner in the primary-org set - the same gate work/task apply.
-	if !r.ownerAllowed(ref.Owner) {
-		return fmt.Errorf("%s: refusing untrusted owner %q (allowed: %s)",
-			label, ref.Owner, strings.Join(r.primaryOrgs(), ", "))
-	}
-
-	// reply rides the host self-assessment slot (claude/goose), the same one the
-	// pre-flight and route survey use. Modes without one can't run it.
-	bin := mode.agentBinary()
-	if _, ok := mode.hostPreflightArgv("probe"); !ok {
-		return fmt.Errorf("%s: reply runs a host one-shot, which %s lacks (only claude|goose are wired); use one of those", label, bin)
-	}
-	if !hostHasBinary(bin) {
-		return fmt.Errorf("%s: reply needs %s on PATH to research; install it or use a mode whose binary is present", label, bin)
+		return err
 	}
 
 	// Fetch the issue (fail fast before any research) and its thread for context.
@@ -179,6 +151,44 @@ func (r *Runner) runAgentReply(ctx context.Context, c *cli.Command, mode contain
 	}
 	fmt.Fprintf(os.Stderr, "%s: posted a %s reply on %s - %s\n", label, level.Name, ref, ref.url())
 	return nil
+}
+
+// validateReplyInputs parses and gates the reply argv: a valid issue ref, a
+// non-empty prompt, a known thoroughness, a trusted owner, and a wired mode.
+func (r *Runner) validateReplyInputs(c *cli.Command, mode containerMode, label string) (agentIssueRef, string, replyThoroughness, error) {
+	ref, err := parseAgentIssueRef(c.Args().First())
+	if err != nil {
+		return agentIssueRef{}, "", replyThoroughness{}, fmt.Errorf("%s: %w", label, err)
+	}
+	// Everything after the ref is the reply prompt, joined so an unquoted
+	// multi-word prompt still works (the canonical form is one quoted arg).
+	prompt := strings.TrimSpace(strings.Join(c.Args().Tail(), " "))
+	if prompt == "" {
+		return agentIssueRef{}, "", replyThoroughness{}, fmt.Errorf("%s: no reply prompt: pass it after the issue ref, e.g. %s <ref> \"what would it take to...\"", label, label)
+	}
+
+	level, err := parseReplyThoroughness(c.String("thoroughness"))
+	if err != nil {
+		return agentIssueRef{}, "", replyThoroughness{}, fmt.Errorf("%s: %w", label, err)
+	}
+
+	// Trust gate: reply writes a comment under ward's bot identity, so only act on
+	// an owner in the primary-org set - the same gate work/task apply.
+	if !r.ownerAllowed(ref.Owner) {
+		return agentIssueRef{}, "", replyThoroughness{}, fmt.Errorf("%s: refusing untrusted owner %q (allowed: %s)",
+			label, ref.Owner, strings.Join(r.primaryOrgs(), ", "))
+	}
+
+	// reply rides the host self-assessment slot (claude/goose), the same one the
+	// pre-flight and route survey use. Modes without one can't run it.
+	bin := mode.agentBinary()
+	if _, ok := mode.hostPreflightArgv("probe"); !ok {
+		return agentIssueRef{}, "", replyThoroughness{}, fmt.Errorf("%s: reply runs a host one-shot, which %s lacks (only claude|goose are wired); use one of those", label, bin)
+	}
+	if !hostHasBinary(bin) {
+		return agentIssueRef{}, "", replyThoroughness{}, fmt.Errorf("%s: reply needs %s on PATH to research; install it or use a mode whose binary is present", label, bin)
+	}
+	return ref, prompt, level, nil
 }
 
 // captureReplyResearch runs the host one-shot research argv in a neutral temp dir

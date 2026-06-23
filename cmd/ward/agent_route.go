@@ -64,17 +64,8 @@ func classifyTaskInvocation(arg, inline, file string) (route bool, repoArg strin
 func (r *Runner) runAgentTaskRoute(ctx context.Context, c *cli.Command, mode containerMode, taskText string) error {
 	label := fmt.Sprintf("ward agent %s task", mode)
 	taskText = strings.TrimSpace(taskText)
-	if taskText == "" {
-		return fmt.Errorf("%s: empty task", label)
-	}
-	// Parity gate (ward#148): the survey needs a host self-assessment slot +
-	// binary on PATH (claude/goose); else steer to DIRECT. See docs/agent-task.md.
-	bin := mode.agentBinary()
-	if _, ok := mode.hostPreflightArgv("probe"); !ok {
-		return fmt.Errorf("%s: route mode surveys repos with a host self-assessment slot, which %s lacks (ward#148); pass an explicit owner/repo with --instructions to file directly", label, bin)
-	}
-	if !hostHasBinary(bin) {
-		return fmt.Errorf("%s: route mode needs %s on PATH to survey repos; pass an explicit owner/repo with --instructions to file directly", label, bin)
+	if err := r.routeSurveyPreconditions(mode, taskText, label); err != nil {
+		return err
 	}
 
 	title := taskTitle(taskText)
@@ -108,18 +99,12 @@ func (r *Runner) runAgentTaskRoute(ctx context.Context, c *cli.Command, mode con
 		return r.bounceRouteToHuman(ctx, signed, label, mode, intake, reason, read)
 	}
 	if outcome.Verdict != routeRepo {
-		reason := outcome.Note
-		if outcome.Verdict == routeUnknown {
-			reason = "the survey returned no clear REPO/UNCLEAR verdict"
-		}
-		return r.bounceRouteToHuman(ctx, signed, label, mode, intake, reason, read)
+		return r.bounceRouteToHuman(ctx, signed, label, mode, intake, routeBounceReason(outcome), read)
 	}
 
 	// Validate the routed target: a trusted owner, and never the inbox itself.
-	target, ok := wrongRepoTarget(outcome.Repo)
-	if !ok || !r.ownerAllowed(target.Owner) || (target.Owner == inboxOwner && target.Name == inboxRepo) {
-		reason := fmt.Sprintf("survey routed to an unusable target %q (it must be a trusted owner - %s - and not the inbox itself)",
-			outcome.Repo, strings.Join(r.primaryOrgs(), ", "))
+	target, reason, ok := r.resolveRouteTarget(outcome)
+	if !ok {
 		return r.bounceRouteToHuman(ctx, signed, label, mode, intake, reason, read)
 	}
 
@@ -146,6 +131,43 @@ func (r *Runner) runAgentTaskRoute(ctx context.Context, c *cli.Command, mode con
 	// served as the feasibility gate, so ROUTE skips the separate pre-flight.
 	seed := agentSeedPrompt(child, title, childBody, "", mode)
 	return r.launchAgentContainer(ctx, c, mode, "task", true, child, title, seed)
+}
+
+// routeSurveyPreconditions gates ROUTE before it files anything: a non-empty task
+// and a mode with a host self-assessment slot + binary (claude/goose). ward#148.
+func (r *Runner) routeSurveyPreconditions(mode containerMode, taskText, label string) error {
+	if taskText == "" {
+		return fmt.Errorf("%s: empty task", label)
+	}
+	bin := mode.agentBinary()
+	if _, ok := mode.hostPreflightArgv("probe"); !ok {
+		return fmt.Errorf("%s: route mode surveys repos with a host self-assessment slot, which %s lacks (ward#148); pass an explicit owner/repo with --instructions to file directly", label, bin)
+	}
+	if !hostHasBinary(bin) {
+		return fmt.Errorf("%s: route mode needs %s on PATH to survey repos; pass an explicit owner/repo with --instructions to file directly", label, bin)
+	}
+	return nil
+}
+
+// routeBounceReason renders the human-bounce reason for a non-REPO survey
+// verdict: an explicit UNCLEAR note, or the no-clear-verdict fallback.
+func routeBounceReason(outcome routeOutcome) string {
+	if outcome.Verdict == routeUnknown {
+		return "the survey returned no clear REPO/UNCLEAR verdict"
+	}
+	return outcome.Note
+}
+
+// resolveRouteTarget validates the survey's routed repo: a trusted owner that is
+// never the inbox itself. On rejection it returns the human-bounce reason and false.
+func (r *Runner) resolveRouteTarget(outcome routeOutcome) (targetRepo, string, bool) {
+	target, ok := wrongRepoTarget(outcome.Repo)
+	if !ok || !r.ownerAllowed(target.Owner) || (target.Owner == inboxOwner && target.Name == inboxRepo) {
+		reason := fmt.Sprintf("survey routed to an unusable target %q (it must be a trusted owner - %s - and not the inbox itself)",
+			outcome.Repo, strings.Join(r.primaryOrgs(), ", "))
+		return targetRepo{}, reason, false
+	}
+	return target, "", true
 }
 
 // bounceRouteToHuman comments the UNCLEAR verdict on the still-open intake record

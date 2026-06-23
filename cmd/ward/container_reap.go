@@ -189,7 +189,7 @@ func (r *Runner) executeReap(ctx context.Context, work string, env reapEnv, acti
 // salvage preserves residual work on a ward-salvage/<id> branch (durable) then
 // best-effort files/appends a forgejo issue (notification); the branch goes first.
 func (r *Runner) salvage(ctx context.Context, work string, env reapEnv, reason reapReason, authCause bool, findings []scanFinding, status string) error {
-	id := env.Name + "-" + randHex(4)
+	id := env.Name + "-" + randHex()
 	branch := salvageBranchName(id)
 	_ = r.Runner.Exec(ctx, "git", "-C", work, "branch", "-f", branch, "HEAD")
 	if out, perr := r.pushCapture(ctx, work, branch+":"+branch); perr != nil {

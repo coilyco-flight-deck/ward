@@ -504,7 +504,7 @@ func TestEntrypointInstallsPreCommitHooks(t *testing.T) {
 	if clone < 0 || install < 0 || launch < 0 {
 		t.Fatalf("entrypoint markers not found: clone=%d install=%d launch=%d", clone, install, launch)
 	}
-	if !(clone < install && install < launch) {
+	if clone >= install || install >= launch {
 		t.Errorf("pre-commit install must run after clone and before launch: clone=%d install=%d launch=%d", clone, install, launch)
 	}
 }
@@ -535,7 +535,7 @@ func TestEntrypointInstallsAgentCommitSuite(t *testing.T) {
 	if clone < 0 || install < 0 || launch < 0 {
 		t.Fatalf("entrypoint markers not found: clone=%d install=%d launch=%d", clone, install, launch)
 	}
-	if !(clone < install && install < launch) {
+	if clone >= install || install >= launch {
 		t.Errorf("agent commit suite must install after clone and before launch: clone=%d install=%d launch=%d", clone, install, launch)
 	}
 }
@@ -569,7 +569,7 @@ func TestEntrypointClonesExtraRepos(t *testing.T) {
 	if clone < 0 || extra < 0 || launch < 0 {
 		t.Fatalf("entrypoint markers not found: clone=%d extra=%d launch=%d", clone, extra, launch)
 	}
-	if !(clone < extra && extra < launch) {
+	if clone >= extra || extra >= launch {
 		t.Errorf("clone_extra_repos must run after clone_target and before launch: clone=%d extra=%d launch=%d", clone, extra, launch)
 	}
 }

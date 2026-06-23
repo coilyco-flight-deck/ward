@@ -5,6 +5,7 @@ import (
 	"context"
 	"encoding/base64"
 	"encoding/json"
+	"errors"
 	"fmt"
 	"io"
 	"os"
@@ -233,7 +234,8 @@ func (r *Runner) runContainerBootstrap(ctx context.Context, c *cli.Command) erro
 	}
 
 	blog("launching %s as uid %s", e.Agent, e.AgentUID)
-	return r.launchAgent(ctx, e, work, argv, stream)
+	r.launchAgent(ctx, e, work, argv, stream)
+	return nil
 }
 
 // --- forgejo git auth (token rides --env-file, never argv) -------------------
@@ -378,7 +380,7 @@ func (r *Runner) cloneExtraRepo(ctx context.Context, e bootstrapEnv, repo target
 
 // installPreCommitHooks ports install_precommit_hooks: register the repo's
 // pre-commit + commit-msg hooks so agent commits hit the same gate a human's do.
-func (r *Runner) installPreCommitHooks(ctx context.Context, e bootstrapEnv, work string) {
+func (r *Runner) installPreCommitHooks(ctx context.Context, _ bootstrapEnv, work string) {
 	if !isFile(filepath.Join(work, ".pre-commit-config.yaml")) {
 		blog("no .pre-commit-config.yaml in %s; skipping pre-commit install", work)
 		return
@@ -807,7 +809,7 @@ func (r *Runner) reapWorkTree(ctx context.Context, work string, env reapEnv) err
 // smokeTestClaudeAuth ports smoke_test_claude_auth: a bounded claude probe as
 // the agent user; abort loudly on can't-auth (no silent hang). claude headless only.
 func (r *Runner) smokeTestClaudeAuth(ctx context.Context, e bootstrapEnv) error {
-	if !(e.Agent == "claude" && e.Headless) {
+	if e.Agent != "claude" || !e.Headless {
 		return nil
 	}
 	if os.Getenv("WARD_SMOKE_TEST_SKIP") == "1" {
@@ -846,7 +848,8 @@ func (r *Runner) captureProbe(ctx context.Context, argv []string) (string, int) 
 	rc := 0
 	if err != nil {
 		rc = 1
-		if ee, ok := err.(*exec.ExitError); ok {
+		var ee *exec.ExitError
+		if errors.As(err, &ee) {
 			rc = ee.ExitCode()
 		}
 	}
@@ -856,8 +859,8 @@ func (r *Runner) captureProbe(ctx context.Context, argv []string) (string, int) 
 // --- launch ------------------------------------------------------------------
 
 // launchAgent ports the tail of main(): drop to the agent user via setpriv and
-// run the agent, piping headless stream-json through streamProgress.
-func (r *Runner) launchAgent(ctx context.Context, e bootstrapEnv, work string, argv []string, stream bool) error {
+// run the agent (stream-json piped through streamProgress). Non-zero exit just logs.
+func (r *Runner) launchAgent(ctx context.Context, e bootstrapEnv, work string, argv []string, stream bool) {
 	launch := append(setprivPrefix(e), argv...)
 	switch {
 	case stream:
@@ -873,7 +876,6 @@ func (r *Runner) launchAgent(ctx context.Context, e bootstrapEnv, work string, a
 			blog("agent exited non-zero (%v); reaping anyway", rerr)
 		}
 	}
-	return nil
 }
 
 // runWithStdin runs launch in work with stdin from stdinPath (os.DevNull pins
@@ -1025,7 +1027,7 @@ func streamProgress(in io.Reader, w io.Writer) {
 			continue
 		}
 		for _, out := range streamProgressLines(ev) {
-			fmt.Fprintln(w, out)
+			_, _ = fmt.Fprintln(w, out)
 		}
 	}
 }
@@ -1071,37 +1073,57 @@ func (t streamToolInput) firstNonEmpty() string {
 // streamProgressLines maps one stream-json event to its concise output lines,
 // matching the bash jq filter (assistant text/tool_use, user tool error, result).
 func streamProgressLines(ev streamEvent) []string {
-	var out []string
 	switch ev.Type {
 	case "assistant":
-		for _, c := range ev.Message.Content {
-			switch c.Type {
-			case "text":
-				t := strings.ReplaceAll(c.Text, "\n", " ")
-				if len(t) > 0 {
-					out = append(out, "  "+truncate(t, 140))
-				}
-			case "tool_use":
-				arg := strings.ReplaceAll(c.Input.firstNonEmpty(), "\n", " ")
-				out = append(out, "● "+c.Name+" "+truncate(arg, 120))
-			}
-		}
+		return assistantProgressLines(ev)
 	case "user":
-		for _, c := range ev.Message.Content {
-			if c.Type == "tool_result" && c.IsError {
-				out = append(out, "  ✗ (tool error)")
-			}
-		}
+		return userProgressLines(ev)
 	case "result":
-		subtype := ev.Subtype
-		if subtype == "" {
-			subtype = "?"
+		return resultProgressLines(ev)
+	default:
+		return nil
+	}
+}
+
+// assistantProgressLines renders an assistant event's text + tool_use blocks.
+func assistantProgressLines(ev streamEvent) []string {
+	var out []string
+	for _, c := range ev.Message.Content {
+		switch c.Type {
+		case "text":
+			t := strings.ReplaceAll(c.Text, "\n", " ")
+			if len(t) > 0 {
+				out = append(out, "  "+truncate(t, 140))
+			}
+		case "tool_use":
+			arg := strings.ReplaceAll(c.Input.firstNonEmpty(), "\n", " ")
+			out = append(out, "● "+c.Name+" "+truncate(arg, 120))
 		}
-		secs := int(ev.DurationMs / 1000)
-		out = append(out, fmt.Sprintf("✓ result: %s (%d turns, %ds)", subtype, ev.NumTurns, secs))
-		if ev.Result != "" {
-			out = append(out, ev.Result)
+	}
+	return out
+}
+
+// userProgressLines surfaces a one-line marker for each errored tool result.
+func userProgressLines(ev streamEvent) []string {
+	var out []string
+	for _, c := range ev.Message.Content {
+		if c.Type == "tool_result" && c.IsError {
+			out = append(out, "  ✗ (tool error)")
 		}
+	}
+	return out
+}
+
+// resultProgressLines renders the terminal result summary (subtype, turns, secs).
+func resultProgressLines(ev streamEvent) []string {
+	subtype := ev.Subtype
+	if subtype == "" {
+		subtype = "?"
+	}
+	secs := int(ev.DurationMs / 1000)
+	out := []string{fmt.Sprintf("✓ result: %s (%d turns, %ds)", subtype, ev.NumTurns, secs)}
+	if ev.Result != "" {
+		out = append(out, ev.Result)
 	}
 	return out
 }

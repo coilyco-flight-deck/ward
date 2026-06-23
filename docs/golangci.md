@@ -11,6 +11,10 @@ branchy code is where the bugs live. Run with `coily exec lint`.
   layer; refusing it here would defeat the point of the wrappers.
 - **G301/G302/G304/G306** (file permissions) - perms are managed deliberately
   per call site. Trust the per-site choice over a blanket rule.
+- **G703** is the taint-analysis variant of G304 (path traversal via a
+  variable). ward's file paths are operating-context (env-derived work dirs,
+  fixed system locations like `/etc/ward-git-credentials`), not untrusted remote
+  input, so the same rationale that excludes G304/G306 applies.
 
 ## Lint exclusion rules
 
