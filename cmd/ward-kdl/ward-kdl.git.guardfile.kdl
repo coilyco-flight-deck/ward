@@ -5,22 +5,62 @@
 // that re-invokes git re-enters the gate rather than escaping it. Every grant
 // audit-logs through ward.
 //
-// Deny-by-default and deliberately minimal: this guardfile opens with the
-// single read-only `status` verb (ward#226). The issue's broader ask - commit,
-// push, and the rest of ward's hand-rolled `ward git` surface (cmd/ward/git.go,
-// docs/git-verbs.md) - was scoped down in the thread to "just git status" as the
-// first guardfile-expressed leaf. The mutating and history-rewriting verbs stay
-// on the hand-written Go surface for now; growing this allowlist one verb at a
-// time is how the git surface migrates onto ward-kdl, mirroring the brew
-// consolidation (ward#94, epic ward#91).
+// Deny-by-default and read-only. ward#226 opened this guardfile with the single
+// `status` verb; ward#235 grows it with the other common git verbs that stay
+// read-only no matter what flags follow - history, diffs, object dumps, blame.
+// These can never mutate the tree, the index, or refs, so passing their flags
+// through unrestricted (the exec dialect's model) is safe.
 //
-// An unlisted verb is denied either way; the read-only opener matches the
+// What is deliberately NOT here:
+//   - Mutating, network, and history-rewriting verbs (add, commit, push, pull,
+//     fetch, checkout, restore, stash, merge, rebase, reset, ...) stay on the
+//     hand-written `ward git` Go surface (cmd/ward/git.go, docs/git-verbs.md),
+//     where commit is concurrency-safe across shared checkouts. A few are spelled
+//     out as `never run` below to make the boundary explicit, mirroring the
+//     docker and kubectl guardfiles; the rest are denied by default anyway.
+//   - List-or-mutate verbs whose read form is common but whose flags also write
+//     (branch, tag, remote, config: `branch -D`, `tag -d`, `remote add`,
+//     `config key value`). Because flags pass through unrestricted there is no
+//     way to grant only the read form here, so they stay off this surface until
+//     the dialect can scope them.
+//
+// An unlisted verb is denied either way; the read-only set matches the
 // deny-by-default stance of the docker and kubectl guardfiles.
 // See ../../docs/ward-kdl.git.guardfile.md.
 wrap ward-kdl git {
     exec git
-    // reads - inspection verbs, nothing mutated
+    // reads - inspection verbs, nothing mutated regardless of flags
     can run status {
         describe "show the working tree state; -s for short format, -b for branch"
     }
+    can run log {
+        describe "commit history; --oneline, -p for patches, -n N to limit, --stat for a diffstat"
+    }
+    can run show {
+        describe "show a commit/tag/blob; --stat, -p, or <rev>:<path> to dump a file at a rev"
+    }
+    can run diff {
+        describe "working-tree/index/tree differences; --stat, --cached, or a <rev> range"
+    }
+    can run blame {
+        describe "line-by-line last-modified revision and author for a file"
+    }
+    can run describe {
+        describe "name a commit from the nearest tag; --tags, --dirty, --always"
+    }
+    can run shortlog {
+        describe "commit log grouped and counted by author; -s -n for a contributor leaderboard"
+    }
+    // intentionally unexposed - mutating, network, or history-rewriting; these
+    // stay on the hand-written `ward git` surface (commit there is concurrency-safe)
+    never run add
+    never run commit
+    never run push
+    never run pull
+    never run fetch
+    never run checkout
+    never run restore
+    never run reset
+    never run rebase
+    never run merge
 }
