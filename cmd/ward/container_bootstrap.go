@@ -44,6 +44,9 @@ type bootstrapEnv struct {
 	Headless     bool
 	Ask          bool
 	ForgejoHost  string
+	// ExtraRepos are the additional writable repos this run was granted via
+	// --with-repo (WARD_EXTRA_REPOS); each is cloned full under /workspace (ward#230).
+	ExtraRepos []targetRepo
 	// Substrate config (best-effort reference-repo warming).
 	SubstrateSeed     string
 	SubstrateDest     string
@@ -100,7 +103,31 @@ func readBootstrapEnv() (bootstrapEnv, error) {
 		return e, fmt.Errorf("missing WARD_FORGEJO_BASE")
 	}
 	e.ForgejoHost = forgejoHostFromBase(e.ForgejoBase)
+	e.ExtraRepos = parseExtraReposEnv(os.Getenv("WARD_EXTRA_REPOS"), e.TargetOwner, e.TargetName)
 	return e, nil
+}
+
+// parseExtraReposEnv parses the space-separated WARD_EXTRA_REPOS list, dropping
+// blanks, the target, dups, and (leniently) malformed entries (ward#230).
+func parseExtraReposEnv(raw, targetOwner, targetName string) []targetRepo {
+	var out []targetRepo
+	seen := map[string]bool{}
+	for _, ref := range strings.Fields(raw) {
+		owner, name, ok := splitOwnerName(ref)
+		if !ok {
+			continue
+		}
+		if owner == targetOwner && name == targetName {
+			continue
+		}
+		slug := owner + "/" + name
+		if seen[slug] {
+			continue
+		}
+		seen[slug] = true
+		out = append(out, targetRepo{Owner: owner, Name: name})
+	}
+	return out
 }
 
 // forgejoHostFromBase strips scheme + path off the base URL, leaving the host;
@@ -167,6 +194,7 @@ func (r *Runner) runContainerBootstrap(ctx context.Context, c *cli.Command) erro
 	}
 	r.installPreCommitHooks(ctx, e, work)
 	r.installAgentPreCommitHooks(ctx, e, work)
+	r.cloneExtraRepos(ctx, e)
 	r.warmSubstrate(ctx, e)
 	r.composeContext(e)
 	r.composePermissions(e)
@@ -291,6 +319,59 @@ func (r *Runner) cloneTarget(ctx context.Context, e bootstrapEnv) (string, error
 		_ = r.Runner.Exec(ctx, "git", "-C", work, "checkout", "-B", e.Branch)
 	}
 	return work, nil
+}
+
+// --- additional granted repos (ward#230): clone+operate beyond the target ----
+
+// cloneExtraRepos clones each granted extra repo as a full feature working copy
+// under /workspace; best-effort per repo. See docs/container-multi-repo.md.
+func (r *Runner) cloneExtraRepos(ctx context.Context, e bootstrapEnv) {
+	if len(e.ExtraRepos) == 0 {
+		return
+	}
+	_ = os.MkdirAll(e.GitCache, 0o755)
+	for _, repo := range e.ExtraRepos {
+		r.cloneExtraRepo(ctx, e, repo)
+	}
+}
+
+// cloneExtraRepo mirrors+working-clones one granted repo under /workspace/<name>
+// with the target's push posture + pre-commit gate; flock-guarded, never fatal.
+func (r *Runner) cloneExtraRepo(ctx context.Context, e bootstrapEnv, repo targetRepo) {
+	mirror := filepath.Join(e.GitCache, repo.Owner+"__"+repo.Name+".git")
+	url := e.ForgejoBase + "/" + repo.Owner + "/" + repo.Name + ".git"
+	lock := filepath.Join(e.GitCache, "."+repo.Owner+"__"+repo.Name+".lock")
+	r.withFlock(lock, func() {
+		if isDir(mirror) {
+			blog("extra-repo: refreshing cached mirror %s/%s", repo.Owner, repo.Name)
+			if uerr := r.Runner.Exec(ctx, "git", "-C", mirror, "remote", "update", "--prune"); uerr != nil {
+				blog("extra-repo: mirror refresh failed %s/%s (using cached state)", repo.Owner, repo.Name)
+			}
+		} else {
+			blog("extra-repo: cloning mirror (first time) %s/%s", repo.Owner, repo.Name)
+			if cerr := r.Runner.Exec(ctx, "git", "clone", "--mirror", url, mirror); cerr != nil {
+				blog("extra-repo: mirror clone failed %s/%s (skipping)", repo.Owner, repo.Name)
+				_ = os.RemoveAll(mirror)
+			}
+		}
+	})
+	if !isDir(mirror) {
+		return
+	}
+	work := "/workspace/" + repo.Name
+	_ = os.RemoveAll(work)
+	if cerr := r.Runner.Exec(ctx, "git", "clone", mirror, work); cerr != nil {
+		blog("extra-repo: working clone failed %s/%s", repo.Owner, repo.Name)
+		return
+	}
+	_ = r.Runner.Exec(ctx, "git", "-C", work, "remote", "set-url", "origin", url)
+	_ = r.Runner.Exec(ctx, "git", "-C", work, "config", "push.default", "current")
+	if e.Branch != "" {
+		_ = r.Runner.Exec(ctx, "git", "-C", work, "checkout", "-B", e.Branch)
+	}
+	r.installPreCommitHooks(ctx, e, work)
+	r.installAgentPreCommitHooks(ctx, e, work)
+	blog("extra-repo: ready %s/%s at %s", repo.Owner, repo.Name, work)
 }
 
 // --- pre-commit parity (ward#133) --------------------------------------------
@@ -911,12 +992,20 @@ func logAgentArgv(e bootstrapEnv, seed []string) {
 // chownAgentTree ports the launch-time chown: hand the work tree + agent config
 // dirs to the non-root agent user. Best-effort, like the bash `|| true`.
 func (r *Runner) chownAgentTree(ctx context.Context, e bootstrapEnv, work string) {
-	_ = r.Runner.Exec(ctx, "chown", "-R", e.AgentUID+":"+e.AgentGID,
+	paths := []string{
 		work,
 		filepath.Join(e.AgentHome, ".claude"),
 		filepath.Join(e.AgentHome, ".config"),
 		filepath.Join(e.AgentHome, ".codex"),
-	)
+	}
+	// Hand each granted extra-repo tree to the agent user too (ward#230); they
+	// were cloned as root, like the target. Skip any that failed to clone.
+	for _, repo := range e.ExtraRepos {
+		if dest := "/workspace/" + repo.Name; isDir(dest) {
+			paths = append(paths, dest)
+		}
+	}
+	_ = r.Runner.Exec(ctx, "chown", append([]string{"-R", e.AgentUID + ":" + e.AgentGID}, paths...)...)
 }
 
 // --- headless progress (claude stream-json -> concise log lines) -------------

@@ -347,6 +347,51 @@ type upPlan struct {
 	// GoBootstrap (EXPERIMENTAL, ward#181) exports WARD_USE_GO_BOOTSTRAP=1 so the
 	// entrypoint delegates to `ward container bootstrap` instead of its bash logic.
 	GoBootstrap bool
+	// ExtraRepos are additional writable repos this run was granted to clone +
+	// operate against (--with-repo, ward#230); see docs/container-multi-repo.md.
+	ExtraRepos []targetRepo
+}
+
+// parseExtraRepos resolves the --with-repo grant (bare owner/name or clone URL):
+// drops the target + dups, errors on a bad ref or workspace collision (ward#230).
+func parseExtraRepos(refs []string, target targetRepo) ([]targetRepo, error) {
+	var out []targetRepo
+	seenSlug := map[string]bool{}
+	// workspace dir name -> claiming slug; seed with the target to catch clobbers.
+	seenName := map[string]string{target.Name: target.slug()}
+	for _, ref := range refs {
+		ref = strings.TrimSpace(ref)
+		if ref == "" {
+			continue
+		}
+		repo, err := parseRepoRef(ref)
+		if err != nil {
+			return nil, fmt.Errorf("--with-repo %q: %w", ref, err)
+		}
+		if repo.Owner == target.Owner && repo.Name == target.Name {
+			continue // the target is always cloned; naming it is a no-op
+		}
+		if seenSlug[repo.slug()] {
+			continue
+		}
+		if claimed, ok := seenName[repo.Name]; ok {
+			return nil, fmt.Errorf("--with-repo %q collides on workspace dir /workspace/%s with %s", repo.slug(), repo.Name, claimed)
+		}
+		seenSlug[repo.slug()] = true
+		seenName[repo.Name] = repo.slug()
+		out = append(out, repo)
+	}
+	return out, nil
+}
+
+// extraReposEnv renders the granted extra repos as a space-separated owner/name
+// list for WARD_EXTRA_REPOS, the form the entrypoint word-splits. Pure.
+func extraReposEnv(repos []targetRepo) string {
+	slugs := make([]string, len(repos))
+	for i, r := range repos {
+		slugs[i] = r.slug()
+	}
+	return strings.Join(slugs, " ")
 }
 
 // wardEnv is the non-secret WARD_* config the entrypoint reads. Everything
@@ -385,6 +430,9 @@ func (p upPlan) wardEnv() map[string]string {
 	}
 	if p.GoBootstrap {
 		env["WARD_USE_GO_BOOTSTRAP"] = "1"
+	}
+	if len(p.ExtraRepos) > 0 {
+		env["WARD_EXTRA_REPOS"] = extraReposEnv(p.ExtraRepos)
 	}
 	return env
 }

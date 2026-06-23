@@ -193,6 +193,45 @@ func TestReadBootstrapEnvDefaults(t *testing.T) {
 	}
 }
 
+// TestParseExtraReposEnv covers the in-container WARD_EXTRA_REPOS parse (ward#230):
+// whitespace-split, target + dup dropped, malformed entries skipped leniently.
+func TestParseExtraReposEnv(t *testing.T) {
+	got := parseExtraReposEnv(
+		"coilyco-gaming/eco-protos coilysiren/ward coilyco-gaming/eco-protos garbage coilysiren/eco-app",
+		"coilysiren", "eco-app")
+	want := []targetRepo{
+		{Owner: "coilyco-gaming", Name: "eco-protos"},
+		{Owner: "coilysiren", Name: "ward"},
+	}
+	if len(got) != len(want) {
+		t.Fatalf("got %d repos, want %d: %+v", len(got), len(want), got)
+	}
+	for i := range want {
+		if got[i] != want[i] {
+			t.Errorf("repo[%d] = %+v, want %+v", i, got[i], want[i])
+		}
+	}
+	if r := parseExtraReposEnv("", "o", "n"); r != nil {
+		t.Errorf("empty WARD_EXTRA_REPOS should parse to nil, got %+v", r)
+	}
+}
+
+// TestReadBootstrapEnvExtraRepos asserts readBootstrapEnv lifts WARD_EXTRA_REPOS
+// into e.ExtraRepos, dropping the target (ward#230).
+func TestReadBootstrapEnvExtraRepos(t *testing.T) {
+	t.Setenv("WARD_TARGET_OWNER", "coilysiren")
+	t.Setenv("WARD_TARGET_NAME", "ward")
+	t.Setenv("WARD_FORGEJO_BASE", "https://forgejo.coilysiren.me")
+	t.Setenv("WARD_EXTRA_REPOS", "coilyco-gaming/eco-protos coilysiren/ward")
+	e, err := readBootstrapEnv()
+	if err != nil {
+		t.Fatalf("unexpected error: %v", err)
+	}
+	if len(e.ExtraRepos) != 1 || e.ExtraRepos[0].slug() != "coilyco-gaming/eco-protos" {
+		t.Errorf("ExtraRepos = %+v, want only coilyco-gaming/eco-protos (target dropped)", e.ExtraRepos)
+	}
+}
+
 // TestReadBootstrapEnvRequired asserts each missing required var errors.
 func TestReadBootstrapEnvRequired(t *testing.T) {
 	cases := []struct {

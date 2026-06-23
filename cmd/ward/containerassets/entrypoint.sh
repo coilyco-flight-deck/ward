@@ -25,6 +25,9 @@ WARD_QWEN_MODEL="${WARD_QWEN_MODEL:-qwen2.5-coder:latest}"
 WARD_OLLAMA_URL="${WARD_OLLAMA_URL:-http://localhost:11434/v1}"
 GIT_USER_NAME="${WARD_GIT_NAME:-ward-container}"
 GIT_USER_EMAIL="${WARD_GIT_EMAIL:-coilysiren@gmail.com}"
+# Additional writable repos this run was explicitly granted (--with-repo,
+# ward#230): a space-separated owner/name list, each cloned full under /workspace.
+WARD_EXTRA_REPOS="${WARD_EXTRA_REPOS:-}"
 
 # The agent process drops to this non-root user: claude refuses
 # --dangerously-skip-permissions as root (ward#127). Setup stays root.
@@ -180,6 +183,54 @@ install_agent_precommit_hooks() {
   else
     log "agent commit suite install failed (ward#139)"
   fi
+}
+
+# --- additional granted repos (ward#230): clone+operate beyond the target -----
+# Clone each --with-repo grant full under /workspace. See docs/container-multi-repo.md.
+clone_extra_repo() {
+  local owner="$1" name="$2"
+  local mirror="$WARD_GITCACHE/${owner}__${name}.git"
+  local url="$WARD_FORGEJO_BASE/$owner/$name.git"
+  # Refresh the shared bare mirror under an flock (many containers may share it),
+  # mirroring warm_substrate_repo; then drop a fresh writable working copy.
+  (
+    flock 9
+    if [ -d "$mirror" ]; then
+      log "extra-repo: refreshing cached mirror $owner/$name"
+      git -C "$mirror" remote update --prune >&2 || log "extra-repo: mirror refresh failed $owner/$name (using cached state)"
+    else
+      log "extra-repo: cloning mirror (first time) $owner/$name"
+      git clone --mirror "$url" "$mirror" >&2 \
+        || { log "extra-repo: mirror clone failed $owner/$name (skipping)"; rm -rf "$mirror"; exit 0; }
+    fi
+  ) 9>"$WARD_GITCACHE/.${owner}__${name}.lock" || true
+  [ -d "$mirror" ] || return 0
+  local dest="/workspace/$name"
+  rm -rf "$dest"
+  if ! git clone "$mirror" "$dest" >&2; then
+    log "extra-repo: working clone failed $owner/$name"
+    return 0
+  fi
+  git -C "$dest" remote set-url origin "$url"
+  git -C "$dest" config push.default current
+  [ -n "${WARD_BRANCH:-}" ] && git -C "$dest" checkout -B "$WARD_BRANCH" >&2
+  install_precommit_hooks "$dest"
+  install_agent_precommit_hooks "$dest"
+  log "extra-repo: ready $owner/$name at $dest"
+  return 0
+}
+
+clone_extra_repos() {
+  [ -n "${WARD_EXTRA_REPOS:-}" ] || return 0
+  mkdir -p "$WARD_GITCACHE"
+  local ref owner name
+  for ref in $WARD_EXTRA_REPOS; do
+    owner="${ref%%/*}"; name="${ref##*/}"
+    [ -n "$owner" ] && [ -n "$name" ] || continue
+    # The target is cloned by clone_target; never re-clone it as an extra.
+    if [ "$owner" = "$WARD_TARGET_OWNER" ] && [ "$name" = "$WARD_TARGET_NAME" ]; then continue; fi
+    clone_extra_repo "$owner" "$name"
+  done
 }
 
 # --- warm the substrate reference repos (best-effort; see docs/container.md) --
@@ -434,6 +485,7 @@ main() {
   local work; work="$(clone_target)"
   install_precommit_hooks "$work"
   install_agent_precommit_hooks "$work"
+  clone_extra_repos
   warm_substrate
   compose_context
   compose_permissions
@@ -508,6 +560,8 @@ main() {
   # Drop to the non-root agent user (claude refuses bypass-perms as root, ward#127);
   # setup ran as root. Keep ANTHROPIC_API_KEY from shadowing the OAuth creds.
   chown -R "$AGENT_UID:$AGENT_GID" "$work" "$AGENT_HOME/.claude" "$AGENT_HOME/.config" "$AGENT_HOME/.codex" 2>/dev/null || true
+  # Hand each granted extra-repo tree to the agent user too (ward#230); cloned as root.
+  for ref in ${WARD_EXTRA_REPOS:-}; do chown -R "$AGENT_UID:$AGENT_GID" "/workspace/${ref##*/}" 2>/dev/null || true; done
   unset ANTHROPIC_API_KEY ANTHROPIC_AUTH_TOKEN 2>/dev/null || true
   # Fail loud before launch if claude can't authenticate (ward#222): a clear
   # abort beats a silent multi-minute hang. Runs as the agent user, post-chown.

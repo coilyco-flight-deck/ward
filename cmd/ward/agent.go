@@ -198,6 +198,7 @@ func agentSurfaceCommand(m containerMode, surface string, headless bool) *cli.Co
 	}
 	flags := []cli.Flag{
 		&cli.StringFlag{Name: "branch", Usage: "feature branch to create inside the clone (default: issue-<N>)"},
+		&cli.StringSliceFlag{Name: "with-repo", Usage: "grant the agent an additional writable repo to clone + operate against (owner/name; repeatable). Cloned as a full feature copy under /workspace alongside the issue's repo (ward#230)."},
 		&cli.StringFlag{Name: "details", Usage: "extra operator instructions woven into the seeded prompt + pre-flight read (overrides the issue text on conflict)"},
 		&cli.StringFlag{Name: "image", Value: containerImageDefault, Usage: "dev-base image to run"},
 		&cli.StringFlag{Name: "tag", Value: containerImageTagDefault, Usage: "image tag"},
@@ -688,7 +689,10 @@ func buildAgentPlan(c *cli.Command, mode containerMode, ref agentIssueRef, seed 
 		return upPlan{}, fmt.Errorf("cannot resolve the current directory")
 	}
 	repo := targetRepo{Owner: ref.Owner, Name: ref.Repo}
-	plan := buildUpPlan(c, repo, mode, cwd, assetsDir, []string{seed})
+	plan, err := buildUpPlan(c, repo, mode, cwd, assetsDir, []string{seed})
+	if err != nil {
+		return upPlan{}, err
+	}
 	if plan.Branch == "" {
 		plan.Branch = fmt.Sprintf("issue-%d", ref.Number)
 	}
@@ -759,6 +763,7 @@ func agentTaskCommand(m containerMode) *cli.Command {
 		&cli.StringFlag{Name: "instructions", Aliases: []string{"i"}, Usage: "the task to file as the issue body (first line becomes the title)"},
 		&cli.StringFlag{Name: "instructions-file", Usage: "read the instructions from a file instead of --instructions (escape hatch for long bodies)"},
 		&cli.StringFlag{Name: "branch", Usage: "feature branch to create inside the clone (default: issue-<N>)"},
+		&cli.StringSliceFlag{Name: "with-repo", Usage: "grant the agent an additional writable repo to clone + operate against (owner/name; repeatable). Cloned as a full feature copy under /workspace alongside the filed issue's repo (ward#230)."},
 		&cli.StringFlag{Name: "image", Value: containerImageDefault, Usage: "dev-base image to run"},
 		&cli.StringFlag{Name: "tag", Value: containerImageTagDefault, Usage: "image tag"},
 		&cli.StringFlag{Name: "ward-source", Usage: "mount a local ward checkout and build ward from it instead of downloading the release"},
@@ -939,7 +944,10 @@ func printAgentTaskPlan(c *cli.Command, mode containerMode, repo targetRepo, tit
 	// once the issue is filed (which --print deliberately skips).
 	previewRef := agentIssueRef{Owner: repo.Owner, Repo: repo.Name, Number: 0}
 	seed := agentSeedPrompt(previewRef, title, body, "", mode)
-	plan := buildUpPlan(c, repo, mode, "", "", []string{seed})
+	plan, err := buildUpPlan(c, repo, mode, "", "", []string{seed})
+	if err != nil {
+		return err
+	}
 	plan.Headless = true
 	plan.Interactive = false
 	plan.TTY = false
@@ -964,8 +972,8 @@ func printAgentTaskPlan(c *cli.Command, mode containerMode, repo targetRepo, tit
 		fmt.Fprintf(&b, "docker pull %s\n", plan.Image)
 	}
 	fmt.Fprintf(&b, "docker %s\n", strings.Join(dockerCreateArgv(plan, "<ward-forgejo-token-envfile>"), " "))
-	_, err := io.WriteString(out, b.String())
-	return err
+	_, werr := io.WriteString(out, b.String())
+	return werr
 }
 
 // ownerAllowed reports whether owner is in ward's primary-org trust set.

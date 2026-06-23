@@ -258,6 +258,89 @@ func TestParseMode(t *testing.T) {
 	}
 }
 
+// TestParseExtraRepos covers the --with-repo grant parsing (ward#230): refs,
+// target drop, dedupe, and the two hard errors (bad ref, workspace collision).
+func TestParseExtraRepos(t *testing.T) {
+	target := targetRepo{Owner: "coilyco-gaming", Name: "eco-app"}
+
+	// Bare owner/name and a clone URL both resolve; order preserved.
+	got, err := parseExtraRepos([]string{
+		"coilyco-gaming/eco-protos",
+		"https://forgejo.coilysiren.me/coilyco-flight-deck/cli-guard.git",
+	}, target)
+	if err != nil {
+		t.Fatalf("unexpected error: %v", err)
+	}
+	want := []targetRepo{
+		{Owner: "coilyco-gaming", Name: "eco-protos"},
+		{Owner: "coilyco-flight-deck", Name: "cli-guard"},
+	}
+	if len(got) != len(want) {
+		t.Fatalf("got %d repos, want %d: %+v", len(got), len(want), got)
+	}
+	for i := range want {
+		if got[i] != want[i] {
+			t.Errorf("repo[%d] = %+v, want %+v", i, got[i], want[i])
+		}
+	}
+
+	// The target itself, blanks, and exact duplicates are dropped (not errors).
+	got, err = parseExtraRepos([]string{
+		"coilyco-gaming/eco-app", // the target: no-op
+		"  ",                     // blank
+		"coilyco-gaming/eco-protos",
+		"coilyco-gaming/eco-protos", // dup slug
+	}, target)
+	if err != nil {
+		t.Fatalf("unexpected error: %v", err)
+	}
+	if len(got) != 1 || got[0].Name != "eco-protos" {
+		t.Errorf("target/blank/dup not collapsed to one: %+v", got)
+	}
+
+	// A malformed ref is a hard error.
+	if _, err := parseExtraRepos([]string{"not a repo ref"}, target); err == nil {
+		t.Error("malformed --with-repo ref should error")
+	}
+
+	// Two grants whose names collide on /workspace/<name> is a hard error, even
+	// across different owners (they would clobber the same working dir).
+	if _, err := parseExtraRepos([]string{"orgA/shared", "orgB/shared"}, target); err == nil {
+		t.Error("workspace-dir name collision should error")
+	}
+	// A grant colliding with the target's own workspace dir also errors.
+	if _, err := parseExtraRepos([]string{"otherorg/eco-app"}, target); err == nil {
+		t.Error("grant colliding with the target workspace dir should error")
+	}
+}
+
+// TestWardEnvExtraRepos asserts the grant list rides WARD_EXTRA_REPOS as a
+// space-separated slug list, and is absent when no repo is granted (ward#230).
+func TestWardEnvExtraRepos(t *testing.T) {
+	p := sampleUpPlan()
+	if _, ok := p.wardEnv()["WARD_EXTRA_REPOS"]; ok {
+		t.Error("WARD_EXTRA_REPOS must be absent when no --with-repo is granted")
+	}
+	p.ExtraRepos = []targetRepo{
+		{Owner: "coilyco-gaming", Name: "eco-protos"},
+		{Owner: "coilyco-flight-deck", Name: "cli-guard"},
+	}
+	if got := p.wardEnv()["WARD_EXTRA_REPOS"]; got != "coilyco-gaming/eco-protos coilyco-flight-deck/cli-guard" {
+		t.Errorf("WARD_EXTRA_REPOS = %q, want the space-separated slug list", got)
+	}
+	// And it must reach the docker argv as a single -e element (spaces and all).
+	argv := dockerCreateArgv(p, "")
+	var found bool
+	for _, a := range argv {
+		if a == "WARD_EXTRA_REPOS=coilyco-gaming/eco-protos coilyco-flight-deck/cli-guard" {
+			found = true
+		}
+	}
+	if !found {
+		t.Errorf("WARD_EXTRA_REPOS not passed as one -e argv element: %v", argv)
+	}
+}
+
 func sampleUpPlan() upPlan {
 	repo := targetRepo{Owner: "coilyco-gaming", Name: "eco-app"}
 	return upPlan{
@@ -454,6 +537,40 @@ func TestEntrypointInstallsAgentCommitSuite(t *testing.T) {
 	}
 	if !(clone < install && install < launch) {
 		t.Errorf("agent commit suite must install after clone and before launch: clone=%d install=%d launch=%d", clone, install, launch)
+	}
+}
+
+// TestEntrypointClonesExtraRepos locks ward#230: when granted extra repos, the
+// entrypoint clones each full under /workspace, after the target, before launch.
+func TestEntrypointClonesExtraRepos(t *testing.T) {
+	data, err := containerAssets.ReadFile("containerassets/" + containerEntrypointRel)
+	if err != nil {
+		t.Fatalf("read entrypoint: %v", err)
+	}
+	script := string(data)
+	for _, want := range []string{
+		"clone_extra_repos()",                          // the loop exists
+		"clone_extra_repo()",                           // the per-repo helper exists
+		"clone_extra_repos",                            // main() invokes it
+		"WARD_EXTRA_REPOS",                             // reads the grant list
+		"for ref in $WARD_EXTRA_REPOS",                 // word-splits the list
+		"git -C \"$dest\" config push.default current", // a real push posture
+		"install_precommit_hooks \"$dest\"",            // same commit gate as the target
+	} {
+		if !strings.Contains(script, want) {
+			t.Errorf("entrypoint missing %q (ward#230 multi-repo)", want)
+		}
+	}
+	// It must run after the target clone and before the agent launches, so the
+	// granted clones are ready (and the target is never re-cloned as an extra).
+	clone := strings.Index(script, "work=\"$(clone_target)\"")
+	extra := strings.Index(script, "\n  clone_extra_repos\n")
+	launch := strings.Index(script, "log \"launching $WARD_AGENT")
+	if clone < 0 || extra < 0 || launch < 0 {
+		t.Fatalf("entrypoint markers not found: clone=%d extra=%d launch=%d", clone, extra, launch)
+	}
+	if !(clone < extra && extra < launch) {
+		t.Errorf("clone_extra_repos must run after clone_target and before launch: clone=%d extra=%d launch=%d", clone, extra, launch)
 	}
 }
 

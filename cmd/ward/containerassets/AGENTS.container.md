@@ -39,15 +39,35 @@ container's lifetime *is* the feature's lifetime.
 
 ## Where the wall still is
 
-Autonomy covers **this feature on this repo**. It does **not** extend to:
+Autonomy covers **this feature on this repo** (and any repos this run was
+explicitly granted - see "Additional granted repos" below). It does **not**
+extend to:
 
 - Force-pushing, rewriting published history, or deleting branches/tags others
   may depend on.
-- Touching repos other than the target.
+- Touching repos other than the target and the explicitly-granted set.
 - Destroying data, or any action outside the git feature->merge->push loop.
 
 If you hit one of those, stop and surface it. Everything inside the normal
 feature loop: keep going.
+
+## Additional granted repos (multi-repo runs)
+
+A run may be launched with **explicitly granted extra repos** (`ward container
+up --with-repo owner/name`, also on `ward agent`). Each one is cloned as a
+**full feature working copy** under `/workspace/<name>`, exactly like the
+target: a real forgejo push remote, the same feature branch, and the same
+pre-commit gate. When - and only when - a task instructs you to work across
+these repos, you may commit, merge, and push them just as you do the target.
+
+The wall still holds for everything else: operate **only** on the target and
+the repos in this granted set, never any other repo. `/substrate` stays
+read-only reference (below).
+
+One asymmetry to respect: the reaper backstops **only the target**. It will not
+salvage or push the extra repos for you, so drive each granted repo all the way
+to its own clean push **before you exit** - do not leave extra-repo work loose
+expecting the reaper to land it.
 
 ## A reaper runs after you exit - do not rely on it
 
@@ -66,8 +86,9 @@ makes the reaper guess. Finish the merge.
 Cross-cutting repos every container gets regardless of target are checked out
 read-only-by-convention under `/substrate/<name>`: doctrine, skills, cross-repo
 contracts, the dev/ops CLIs. Read them when you need a convention or a
-contract. Your **work** still happens only in your target clone under
-`/workspace`. Do not commit or push anything in `/substrate` - those checkouts
+contract. Your **work** happens in your target clone - plus any granted extra
+repos (above) - under `/workspace`. Do not commit or push anything in
+`/substrate` - those checkouts
 are warm-cache reference copies, not feature branches, and pushing from one is
 out of bounds the same way touching another repo is.
 

@@ -78,6 +78,7 @@ func containerUpCommand() *cli.Command {
 		Flags: []cli.Flag{
 			&cli.StringFlag{Name: "mode", Value: "claude", Usage: "agent + context level: claude|codex|qwen|goose (progressively less context)"},
 			&cli.StringFlag{Name: "branch", Usage: "feature branch to create/checkout inside the clone"},
+			&cli.StringSliceFlag{Name: "with-repo", Usage: "grant the agent an additional writable repo to clone + operate against (owner/name; repeatable). Cloned as a full feature copy under /workspace alongside the target (ward#230)."},
 			&cli.StringFlag{Name: "image", Value: containerImageDefault, Usage: "dev-base image to run"},
 			&cli.StringFlag{Name: "tag", Value: containerImageTagDefault, Usage: "image tag"},
 			&cli.StringFlag{Name: "ward-source", Usage: "mount a local ward checkout and build ward from it instead of downloading the release"},
@@ -119,7 +120,10 @@ func (r *Runner) runContainerUp(ctx context.Context, c *cli.Command) error {
 		defer cleanupAssets()
 	}
 
-	plan := buildUpPlan(c, repo, mode, cwd, assetsDir, nil)
+	plan, err := buildUpPlan(c, repo, mode, cwd, assetsDir, nil)
+	if err != nil {
+		return err
+	}
 
 	if c.Bool("print") {
 		return printPlan(c, plan)
@@ -163,13 +167,17 @@ func (r *Runner) resolveAgentCreds(ctx context.Context, mode containerMode) agen
 	}
 }
 
-// buildUpPlan assembles the pure plan from parsed flags and resolved inputs.
-// agentArgs seed the in-container agent's argv; `container up` passes nil.
-func buildUpPlan(c *cli.Command, repo targetRepo, mode containerMode, cwd, assetsDir string, agentArgs []string) upPlan {
+// buildUpPlan assembles the pure plan from parsed flags and resolved inputs;
+// agentArgs seed the agent's argv. Errors only on a bad --with-repo (ward#230).
+func buildUpPlan(c *cli.Command, repo targetRepo, mode containerMode, cwd, assetsDir string, agentArgs []string) (upPlan, error) {
 	wardSrc := c.String("ward-source")
 	awsHome := ""
 	if c.Bool("aws") {
 		awsHome = filepath.Join(homeDir(), ".aws")
+	}
+	extra, err := parseExtraRepos(c.StringSlice("with-repo"), repo)
+	if err != nil {
+		return upPlan{}, err
 	}
 	return upPlan{
 		Image:          imageRef(c.String("image"), c.String("tag")),
@@ -186,7 +194,8 @@ func buildUpPlan(c *cli.Command, repo targetRepo, mode containerMode, cwd, asset
 		WardFromSource: wardSrc != "",
 		AgentArgs:      agentArgs,
 		GoBootstrap:    c.Bool("go-bootstrap"),
-	}
+		ExtraRepos:     extra,
+	}, nil
 }
 
 // terminalAttached reports whether stdin and stdout are both terminals - the

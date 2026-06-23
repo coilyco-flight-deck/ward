@@ -24,6 +24,7 @@ func agentAskCommand(m containerMode) *cli.Command {
 		ArgsUsage: "<question>",
 		Flags: []cli.Flag{
 			&cli.StringFlag{Name: "repo", Usage: "owner/repo to clone for context (default: inferred from the cwd's git origin)"},
+			&cli.StringSliceFlag{Name: "with-repo", Usage: "clone an additional repo for context (owner/name; repeatable), landed under /workspace alongside the primary repo (ward#230)."},
 			&cli.StringFlag{Name: "image", Value: containerImageDefault, Usage: "dev-base image to run"},
 			&cli.StringFlag{Name: "tag", Value: containerImageTagDefault, Usage: "image tag"},
 			&cli.StringFlag{Name: "ward-source", Usage: "mount a local ward checkout and build ward from it instead of downloading the release"},
@@ -78,7 +79,10 @@ func (r *Runner) runAgentAsk(ctx context.Context, c *cli.Command, mode container
 	// ask always runs attached and ephemeral, so its assets clean up on return.
 	defer cleanupAssets()
 
-	plan := buildUpPlan(c, repo, mode, cwd, assetsDir, []string{seed})
+	plan, err := buildUpPlan(c, repo, mode, cwd, assetsDir, []string{seed})
+	if err != nil {
+		return err
+	}
 	plan.Ask = true
 	// Name it ward-<repo>-ask-<mode>-<rand> so `docker ps` tells an ask run apart
 	// from a carry run or a bare `container up`.

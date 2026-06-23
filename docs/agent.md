@@ -289,8 +289,10 @@ bypasses the launch-time check.
 ## Flags
 
 `work` carries the `container up` launch flags: `--aws`, `--detach`,
-`--tag`/`--image`, `--ward-source`, `--no-pull`, and `--branch` to override the
-`issue-<N>` default. `--print` resolves the issue and renders the seeded prompt +
+`--tag`/`--image`, `--ward-source`, `--no-pull`, `--branch` to override the
+`issue-<N>` default, and `--with-repo owner/name` (repeatable) to grant extra
+writable repos cloned full alongside the issue's repo (multi-repo runs,
+[container-multi-repo.md](container-multi-repo.md)). `--print` resolves the issue and renders the seeded prompt +
 docker plan without injecting the push token or running docker - the dry-run
 preview, safe with no docker daemon up. `--force` skips the local + remote
 concurrency reservation checks (see above). `headless` and `task` swap `--detach`
