@@ -10,9 +10,13 @@ by **repo omission**:
 - **ROUTE** (ward#164) — a freeform task as the positional argument and *no*
   repo; ward finds the repo for you.
 
-A positional that parses as `owner/repo` is DIRECT; a freeform positional with no
-instruction flag is ROUTE. Passing *both* a freeform positional and
-`--instructions`/`--instructions-file` is a contradiction and errors.
+A positional is DIRECT **only** when it is a strict repo ref — a bare
+`owner/repo[#N]` or a Forgejo issue URL — normalized to that `owner/repo`.
+Everything else is ROUTE freeform content carried verbatim: a URL of any other
+shape (an actions run, job, or commit), prose, or a pointer with an embedded URL.
+ward never mines an `owner/repo` out of arbitrary URL path segments (ward#234), so
+handing `task` a broken-CI-run URL points the agent at it instead of refusing on a
+phantom owner. Passing *both* a freeform positional and `--instructions` errors.
 
 ## Usage
 

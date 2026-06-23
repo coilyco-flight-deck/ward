@@ -64,9 +64,19 @@ func parseAgentIssueRef(s string) (agentIssueRef, error) {
 		m = agentIssueURLRE.FindStringSubmatch(s)
 	}
 	if m == nil {
+		base := strings.TrimRight(forgejoBaseURL, "/")
+		// A non-issue URL is a valid freeform pointer, just not an issue ref -
+		// steer to the task verb that carries arbitrary pointers (ward#234).
+		if strings.Contains(s, "://") {
+			return agentIssueRef{}, fmt.Errorf(
+				"cannot parse issue ref %q: want owner/repo#N or %s/owner/repo/issues/N; "+
+					"for a non-issue pointer (a CI run, job, or commit URL), hand it to the freeform "+
+					"task verb instead: ward agent <name> task '<url>'",
+				s, base)
+		}
 		return agentIssueRef{}, fmt.Errorf(
 			"cannot parse issue ref %q: want owner/repo#N or %s/owner/repo/issues/N",
-			s, strings.TrimRight(forgejoBaseURL, "/"))
+			s, base)
 	}
 	n, err := strconv.Atoi(m[3])
 	if err != nil || n <= 0 {

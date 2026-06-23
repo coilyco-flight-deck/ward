@@ -41,9 +41,10 @@ func classifyTaskInvocation(arg, inline, file string) (route bool, repoArg strin
 	inline = strings.TrimSpace(inline)
 	file = strings.TrimSpace(file)
 	if arg != "" {
-		if _, perr := parseRepoRef(arg); perr == nil {
-			// An explicit owner/repo positional is DIRECT, unchanged behavior.
-			return false, arg, nil
+		if slug, ok := taskRepoRef(arg); ok {
+			// An explicit owner/repo positional (bare ref or issue URL) is DIRECT,
+			// normalized to its canonical slug; unchanged behavior. See taskRepoRef.
+			return false, slug, nil
 		}
 		// A freeform positional is the task text (ROUTE); a competing instruction
 		// flag is a contradiction.
@@ -57,6 +58,26 @@ func classifyTaskInvocation(arg, inline, file string) (route bool, repoArg strin
 		return false, "", nil
 	}
 	return false, "", fmt.Errorf("no task given: pass a freeform task ('ward agent <name> task \"do the thing\"') to auto-route it, or an explicit owner/repo with --instructions")
+}
+
+// taskRepoRef coerces a `task` positional to an owner/repo slug ONLY for a bare
+// `owner/repo[#N]` or a Forgejo issue URL; else false for ROUTE (ward#234; docs).
+func taskRepoRef(arg string) (string, bool) {
+	arg = strings.TrimSpace(arg)
+	if arg == "" {
+		return "", false
+	}
+	// owner/repo#N or a Forgejo issue URL: parseAgentIssueRef is already strict.
+	if ref, err := parseAgentIssueRef(arg); err == nil {
+		return ref.Owner + "/" + ref.Repo, true
+	}
+	// A bare owner/repo (no issue number); a scheme or scp host disqualifies it,
+	// keeping this a bare ref and never a path-segment lift out of a longer URL.
+	if !strings.Contains(arg, "://") && !strings.Contains(arg, "@") && ownerNameRe.MatchString(arg) {
+		m := ownerNameRe.FindStringSubmatch(arg)
+		return m[1] + "/" + m[2], true
+	}
+	return "", false
 }
 
 // runAgentTaskRoute carries ROUTE mode (ward#164): intake -> survey -> scoped

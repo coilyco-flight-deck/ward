@@ -21,6 +21,12 @@ func TestClassifyTaskInvocation(t *testing.T) {
 		// An explicit owner/repo positional stays DIRECT (today's behavior).
 		{"explicit repo", "coilyco-flight-deck/ward", "fix the thing", "", false, "coilyco-flight-deck/ward", false},
 		{"explicit repo no flag", "coilyco-flight-deck/ward", "", "", false, "coilyco-flight-deck/ward", false},
+		// An issue URL / owner/repo#N positional is DIRECT, normalized to its slug (ward#234).
+		{"issue url", forgejoBaseURL + "/coilyco-flight-deck/ward/issues/98", "fix the thing", "", false, "coilyco-flight-deck/ward", false},
+		{"owner/repo#N", "coilyco-flight-deck/ward#98", "fix the thing", "", false, "coilyco-flight-deck/ward", false},
+		// A non-issue URL is freeform content, no phantom owner (ward#234).
+		{"actions run url is freeform", forgejoBaseURL + "/coilyco-flight-deck/ward/actions/runs/301", "", "", true, "", false},
+		{"prose with embedded url is freeform", "fix CI: " + forgejoBaseURL + "/coilyco-flight-deck/ward/actions/runs/301/jobs/0/attempt/1", "", "", true, "", false},
 		// No positional + instructions is DIRECT with cwd inference.
 		{"cwd inference", "", "fix the flaky test", "", false, "", false},
 		{"cwd inference via file", "", "", "task.md", false, "", false},
@@ -45,6 +51,38 @@ func TestClassifyTaskInvocation(t *testing.T) {
 			if route != c.wantRoute || repo != c.wantRepo {
 				t.Errorf("classifyTaskInvocation(%q,%q,%q) = route=%v repo=%q, want route=%v repo=%q",
 					c.arg, c.inline, c.file, route, repo, c.wantRoute, c.wantRepo)
+			}
+		})
+	}
+}
+
+func TestTaskRepoRef(t *testing.T) {
+	cases := []struct {
+		name     string
+		arg      string
+		wantSlug string
+		wantOK   bool
+	}{
+		// The two strict ref shapes coerce to a canonical owner/repo slug.
+		{"bare ref", "coilyco-flight-deck/ward", "coilyco-flight-deck/ward", true},
+		{"bare ref trimmed", "  coilyco-flight-deck/ward  ", "coilyco-flight-deck/ward", true},
+		{"bare ref dot-git", "coilyco-flight-deck/ward.git", "coilyco-flight-deck/ward", true},
+		{"owner/repo#N", "coilyco-flight-deck/ward#98", "coilyco-flight-deck/ward", true},
+		{"issue url", forgejoBaseURL + "/coilyco-flight-deck/ward/issues/98", "coilyco-flight-deck/ward", true},
+		// Every other shape is left for ROUTE - no phantom owner lifted (ward#234).
+		{"actions run url", forgejoBaseURL + "/coilyco-flight-deck/ward/actions/runs/301", "", false},
+		{"jobs attempt url", forgejoBaseURL + "/coilyco-flight-deck/ward/actions/runs/301/jobs/0/attempt/1", "", false},
+		{"bare repo url no issue", forgejoBaseURL + "/coilyco-flight-deck/ward", "", false},
+		{"clone url", forgejoBaseURL + "/coilyco-flight-deck/ward.git", "", false},
+		{"prose with embedded url", "fix CI: " + forgejoBaseURL + "/coilyco-flight-deck/ward/actions/runs/301", "", false},
+		{"bare prose", "do the dishes", "", false},
+		{"empty", "", "", false},
+	}
+	for _, c := range cases {
+		t.Run(c.name, func(t *testing.T) {
+			slug, ok := taskRepoRef(c.arg)
+			if ok != c.wantOK || slug != c.wantSlug {
+				t.Errorf("taskRepoRef(%q) = %q,%v; want %q,%v", c.arg, slug, ok, c.wantSlug, c.wantOK)
 			}
 		})
 	}
