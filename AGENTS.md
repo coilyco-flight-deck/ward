@@ -49,7 +49,7 @@ Every invocation validates argv against shell-metacharacter rejection, writes on
 
 ## Release
 
-Forgejo-canonical, on Forgejo Actions not GitHub. Push to `main` runs `.forgejo/workflows/release.yml`: `tag-bump` (minor bump; major hand-driven) + `create-release`, then `bump-tap-formula` rewrites the centralized tap's formula url+tag+revision (skip-CI marked). `mirror-to-github.yml` mirrors main + tags to the read-only GitHub mirror.
+Forgejo-canonical, on Forgejo Actions not GitHub. Push to `main` runs `.forgejo/workflows/release.yml`: `tag-bump` (minor bump; major hand-driven) + `create-release`, then `bump-tap-formula` rewrites the tap's formula `url`+`sha256` to the new tag (skip-CI marked), failing loudly if the write does not land. `mirror-to-github.yml` mirrors main + tags to the read-only GitHub mirror.
 
 Never write the literal skip-CI token in a commit body or it silently disables the workflow on that push. Describe it as "skip-CI marker".
 

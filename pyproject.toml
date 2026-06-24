@@ -7,9 +7,6 @@ excludes = [
   # Pre-existing size debt: docs/hook.md is 92 lines, over the 80-line cap.
   # The split is tracked in coilyco-flight-deck/ward#50; drop this when it lands.
   "docs/hook.md",
-  # Size debt: docs/FEATURES.md passed the 4000-char cap as the verb surface grew
-  # (the ward-kdl ops section is the split candidate). Tracked in ward#224; drop then.
-  "docs/FEATURES.md",
   # Generated surface reference (specverb-gen). The driver emits it beside the
   # Guardfile; the reviewed copy is committed at docs/ and grows with the verb
   # surface, so the layout cap does not apply. The beside-the-kdl emission is
@@ -53,4 +50,12 @@ excludes = [
   # Managed by apply-agentic-os-hooks.py: the BEGIN/END markers are generated
   # comments past line 1, so the YAML rule cannot apply. Mirrors agentic-os.
   ".pre-commit-config.yaml",
+  # ward-kdl guardfiles: hand-authored policy DSL where each can/never leaf
+  # carries its allow/deny rationale inline (issue cites, scope notes) for
+  # auditability, so "move durable detail to docs/" does not apply - the
+  # guardfile auto-generates its own .md surface, itself excluded from
+  # documentation-layout above. v0.65.0 began linting .kdl; see ward#136.
+  "cmd/ward-kdl/*.guardfile.kdl",
+  # The go:embed copy beside the ward binary: same source, same rationale.
+  "cmd/ward/opsassets/*.guardfile.kdl",
 ]

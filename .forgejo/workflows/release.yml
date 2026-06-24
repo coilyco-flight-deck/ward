@@ -103,7 +103,10 @@ jobs:
     steps:
       - name: Bump tap formula and push
         run: |
-          set -eu
+          # pipefail matters: the sha256 below is computed through a pipe, and
+          # without it a failed tarball fetch would hash an empty/error body into
+          # a bogus digest and the release would ship a broken formula silently.
+          set -euo pipefail
           # Source the release as a tarball, not a git tag+revision: Homebrew's
           # git download strategy moves .git out during staging and then can't read
           # the commit time, dying with `ArgumentError: no time information in ""`.
@@ -111,6 +114,10 @@ jobs:
           tarball_url="$FORGEJO_BASE_URL/${WARD_REPO}/archive/${TAG}.tar.gz"
           if command -v sha256sum >/dev/null 2>&1; then sha_cmd="sha256sum"; else sha_cmd="shasum -a 256"; fi
           sha256=$(curl -fsSL "$tarball_url" | $sha_cmd | awk '{print $1}')
+          if ! printf '%s' "$sha256" | grep -Eq '^[0-9a-f]{64}$'; then
+            echo "::error::computed sha256 '${sha256}' for ${tarball_url} is not a 64-hex digest; refusing to write formula" >&2
+            exit 1
+          fi
 
           # Clone the tap's live main and patch on top, so any non-version
           # edits (build flags, test logic) survive.
@@ -132,5 +139,22 @@ jobs:
           git config user.name "forgejo-tap-writer"
           git config user.email "tap-writer@coilysiren.me"
           git commit -aqm "chore(formula): bump ward to ${TAG} [skip ci]"
-          # Auth comes from the runner's credential helper, never from env.
-          git push origin HEAD:main
+          # Auth comes from the runner's credential helper, never from env. A
+          # missing or rotated tap-write credential makes this push exit non-zero,
+          # which (set -e) now fails the release loudly rather than stalling the
+          # tap behind a green build. This is the failure mode behind ward#237.
+          if ! git push origin HEAD:main; then
+            echo "::error::push of ${FORMULA_PATH} to ${TAP_REPO} failed; the tap-write credential on the tap-writer runner is likely missing or rotated (see docs/release.md)" >&2
+            exit 1
+          fi
+
+          # Read the tap back and confirm main now serves ${TAG}. This catches a
+          # push that reports success but does not land the bump, so a stale tap
+          # can never masquerade as a green release (ward#237 acceptance: the bump
+          # step fails the release loudly on write errors).
+          published=$(curl -fsSL "$FORGEJO_BASE_URL/$TAP_REPO/raw/branch/main/$FORMULA_PATH" || true)
+          if ! printf '%s' "$published" | grep -q "/archive/${TAG}.tar.gz"; then
+            echo "::error::tap ${TAP_REPO} main does not serve ${TAG} after push; formula bump did not land" >&2
+            exit 1
+          fi
+          echo "tap ${TAP_REPO} formula bumped to ${TAG}"
