@@ -42,6 +42,8 @@ excludes = [
   "cmd/ward-kdl/ward-kdl.docker.guardfile.md",
   "docs/ward-kdl.brew.guardfile.md",
   "cmd/ward-kdl/ward-kdl.brew.guardfile.md",
+  "docs/ward-kdl.glitchtip.guardfile.md",
+  "cmd/ward-kdl/ward-kdl.glitchtip.guardfile.md",
   # Embedded container agent doctrine: a ward binary asset (go:embed), not a
   # doc, and it must sit beside its package, so the markdown-location and size
   # caps do not apply. See docs/container.md.
