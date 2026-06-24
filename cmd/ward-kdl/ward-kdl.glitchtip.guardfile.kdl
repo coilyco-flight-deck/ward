@@ -1,0 +1,125 @@
+// GlitchTip ops surface for ward-kdl, driving the vendored glitchtip.openapi.json
+// (OpenAPI 3.1, django-ninja). GlitchTip is the self-hosted, Sentry-compatible
+// error tracker on kai-server; this surface exists to bulk-provision the ~20
+// projects + their DSNs (ward#170) instead of hand-clicking each in the UI, so
+// the Sentry retirement / DSN cutover (infrastructure#395) can proceed.
+//
+// The host is opaque (the tailnet FQDN is a SecureString), so base-url resolves
+// from SSM at request time rather than sitting literal in the file - the block
+// form mirrors how infrastructure keeps tailnet hosts out of tracked files. Auth
+// is the API's TokenAuth scheme: HTTP bearer, the token minted into SSM with
+// scopes org:read team:admin project:read project:write project:admin event:read.
+//
+// Every `can` resolves its operationId by convention (verb + resource -> method +
+// path; cli-guard#147). One nuance vs the generic skeleton: GlitchTip's path
+// segment is `organizations`, which singularizes to `organization`, so the org
+// resource is `organization`, not the shorter `org` Forgejo uses (its segment is
+// `orgs`). The bulk-provisioning create is pinned to its operationId since it is
+// the load-bearing op of `provision-project`. Modelled on the tailscale guardfile
+// (OpenAPI 3.1, bearer, SSM) and the forgejo guardfile (the `action` block).
+// See ../../docs/ward-kdl.glitchtip.guardfile.md.
+wrap ward-kdl ops glitchtip {
+    spec glitchtip.openapi.json
+    // Block form: the tailnet FQDN behind base-url is opaque (SecureString in
+    // SSM /glitchtip/base-url, e.g. https://glitchtip.<tailnet>.ts.net). The spec
+    // paths already carry the /api/0 prefix, so base-url is just the host.
+    base-url {
+        value ssm "/glitchtip/base-url"
+    }
+    // TokenAuth = HTTP bearer. The bearer scheme sets Authorization: Bearer <token>.
+    auth bearer {
+        value ssm "/glitchtip/api-token"
+    }
+    // organizations (org:read): read-only. The instance's single org is created
+    // by a human on first login; create/delete stay human-only and irreversible.
+    can get organization
+    can list organization
+    never create organization {
+        message "org creation is human-only; do it in the UI on first login"
+    }
+    never delete organization {
+        message "org deletion is irreversible and human-only"
+    }
+    // teams (team:admin): projects are created under a team, so team create is
+    // needed for provisioning. `list team` resolves to the org-scoped collection
+    // (the shallowest of the three `.../teams/` GETs wins). No delete: detaching a
+    // team reshapes membership and is a human-only call in the UI.
+    can get team
+    can list team
+    can create team
+    // projects (project:read/write/admin): the bulk-provisioning surface.
+    // `list project` resolves to the top-level GET /api/0/projects/ (shallowest);
+    // create lives under POST /api/0/teams/{org}/{team}/projects/, pinned to its
+    // operationId because it is the op `provision-project` stands on.
+    can get project
+    can list project
+    can create project {
+        op apps_projects_api_create_project
+    }
+    can edit project
+    can delete project {
+        describe "irreversible: deletes the project and all of its events"
+    }
+    // project keys / DSNs (project:admin): the `project-key` compound resource
+    // targets the keys sub-collection under a project (/projects/{org}/{proj}/keys).
+    // Creating a key mints a DSN; these are the rows the cutover reads to swap the
+    // /sentry-dsn/<slug> SSM SecureStrings.
+    can list project-key
+    can get project-key
+    can create project-key
+    can delete project-key
+    // read-only triage (event:read): issues and events are inspected, never
+    // mutated, through ward. `list issue` resolves to the org-scoped collection
+    // and `list event` to the issue-scoped one (shallowest of each).
+    can list issue
+    can get issue
+    can list event
+    can get event
+    // ingest is the SDK's job, never a ward verb. (`store event` is not a granted
+    // leaf either way; this denial documents the boundary explicitly.)
+    never store event {
+        message "event ingest is the SDK's job, not ward"
+    }
+    // provision-project: the payoff. Create a project under a team, then mint a
+    // DSN for it, in one audited sequence. The final call's response is a
+    // ProjectKey - its `dsn.public` is the value the cutover writes into
+    // /sentry-dsn/<slug>. Name the project to mirror the param slug (e.g. backend,
+    // eco-mcp-app, galaxy-gen, website, kai-server) so the cutover is a pure
+    // value-swap: GlitchTip derives the project slug from the name, so a slug-form
+    // name lands the slug deterministically. Only `name` is bound - GlitchTip's
+    // other ProjectIn/ProjectKeyIn fields (slug, platform, key name) are nullable
+    // anyOf schemas that do not lower to flags; set platform in the UI if needed.
+    action provision-project {
+        describe "Create a project under a team and mint its DSN in one shot."
+        input organization {
+            positional
+            required
+            help "organization slug"
+        }
+        input team {
+            positional
+            required
+            help "team slug the project is created under"
+        }
+        input name {
+            positional
+            required
+            help "project name; use the slug form, mirroring /sentry-dsn/<slug>"
+        }
+        call create project {
+            args {
+                organization_slug $organization
+                team_slug $team
+                name $name
+            }
+            as project
+        }
+        call create project-key {
+            args {
+                organization_slug $organization
+                project_slug $project.slug
+            }
+            as key
+        }
+    }
+}

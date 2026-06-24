@@ -1,0 +1,4873 @@
+{
+  "components": {
+    "schemas": {
+      "APIEventBreadcrumb": {
+        "description": "Slightly modified Breadcrumb for sentry api compatibility",
+        "properties": {
+          "category": {
+            "anyOf": [
+              {
+                "type": "string"
+              },
+              {
+                "type": "null"
+              }
+            ],
+            "title": "Category"
+          },
+          "data": {
+            "anyOf": [
+              {
+                "additionalProperties": true,
+                "type": "object"
+              },
+              {
+                "type": "null"
+              }
+            ],
+            "title": "Data"
+          },
+          "event_id": {
+            "anyOf": [
+              {
+                "type": "string"
+              },
+              {
+                "type": "null"
+              }
+            ],
+            "title": "Event Id"
+          },
+          "level": {
+            "anyOf": [
+              {
+                "enum": [
+                  "fatal",
+                  "error",
+                  "warning",
+                  "info",
+                  "debug"
+                ],
+                "type": "string"
+              },
+              {
+                "type": "null"
+              }
+            ],
+            "default": "info",
+            "title": "Level"
+          },
+          "message": {
+            "anyOf": [
+              {
+                "type": "string"
+              },
+              {
+                "type": "null"
+              }
+            ],
+            "title": "Message"
+          },
+          "timestamp": {
+            "anyOf": [
+              {
+                "format": "date-time",
+                "type": "string"
+              },
+              {
+                "type": "null"
+              }
+            ],
+            "title": "Timestamp"
+          },
+          "type": {
+            "anyOf": [
+              {
+                "type": "string"
+              },
+              {
+                "type": "null"
+              }
+            ],
+            "default": "default",
+            "title": "Type"
+          }
+        },
+        "title": "APIEventBreadcrumb",
+        "type": "object"
+      },
+      "AppContext": {
+        "properties": {
+          "app_build": {
+            "anyOf": [
+              {
+                "type": "string"
+              },
+              {
+                "type": "null"
+              }
+            ]
+          },
+          "app_identifier": {
+            "anyOf": [
+              {
+                "type": "string"
+              },
+              {
+                "type": "null"
+              }
+            ]
+          },
+          "app_memory": {
+            "anyOf": [
+              {
+                "type": "integer"
+              },
+              {
+                "type": "null"
+              }
+            ]
+          },
+          "app_name": {
+            "anyOf": [
+              {
+                "type": "string"
+              },
+              {
+                "type": "null"
+              }
+            ]
+          },
+          "app_start_time": {
+            "anyOf": [
+              {
+                "type": "string"
+              },
+              {
+                "type": "null"
+              }
+            ]
+          },
+          "app_version": {
+            "anyOf": [
+              {
+                "type": "string"
+              },
+              {
+                "type": "null"
+              }
+            ]
+          },
+          "build_type": {
+            "anyOf": [
+              {
+                "type": "string"
+              },
+              {
+                "type": "null"
+              }
+            ]
+          },
+          "device_app_hash": {
+            "anyOf": [
+              {
+                "type": "string"
+              },
+              {
+                "type": "null"
+              }
+            ]
+          },
+          "in_foreground": {
+            "anyOf": [
+              {
+                "type": "boolean"
+              },
+              {
+                "type": "null"
+              }
+            ]
+          },
+          "type": {
+            "const": "app",
+            "default": "app",
+            "type": "string"
+          }
+        },
+        "type": "object"
+      },
+      "BreadcrumbsEntry": {
+        "properties": {
+          "data": {
+            "additionalProperties": {
+              "items": {
+                "$ref": "#/components/schemas/APIEventBreadcrumb"
+              },
+              "type": "array"
+            },
+            "propertyNames": {
+              "const": "values"
+            },
+            "title": "Data",
+            "type": "object"
+          },
+          "type": {
+            "const": "breadcrumbs",
+            "title": "Type",
+            "type": "string"
+          }
+        },
+        "required": [
+          "type",
+          "data"
+        ],
+        "title": "BreadcrumbsEntry",
+        "type": "object"
+      },
+      "BrowserContext": {
+        "properties": {
+          "name": {
+            "type": "string"
+          },
+          "type": {
+            "const": "browser",
+            "default": "browser",
+            "type": "string"
+          },
+          "version": {
+            "anyOf": [
+              {
+                "type": "string"
+              },
+              {
+                "type": "null"
+              }
+            ]
+          }
+        },
+        "required": [
+          "name"
+        ],
+        "type": "object"
+      },
+      "CSPEntry": {
+        "properties": {
+          "data": {
+            "additionalProperties": true,
+            "title": "Data",
+            "type": "object"
+          },
+          "type": {
+            "const": "csp",
+            "title": "Type",
+            "type": "string"
+          }
+        },
+        "required": [
+          "type",
+          "data"
+        ],
+        "title": "CSPEntry",
+        "type": "object"
+      },
+      "CloudResourceContext": {
+        "properties": {
+          "cloud": {
+            "additionalProperties": true,
+            "title": "Cloud",
+            "type": "object"
+          },
+          "host": {
+            "additionalProperties": true,
+            "title": "Host",
+            "type": "object"
+          },
+          "type": {
+            "const": "cloud_resource",
+            "default": "cloud_resource",
+            "title": "Type",
+            "type": "string"
+          }
+        },
+        "required": [
+          "cloud",
+          "host"
+        ],
+        "title": "CloudResourceContext",
+        "type": "object"
+      },
+      "CultureContext": {
+        "properties": {
+          "calendar": {
+            "anyOf": [
+              {
+                "type": "string"
+              },
+              {
+                "type": "null"
+              }
+            ]
+          },
+          "display_name": {
+            "anyOf": [
+              {
+                "type": "string"
+              },
+              {
+                "type": "null"
+              }
+            ]
+          },
+          "is_24_hour_format": {
+            "anyOf": [
+              {
+                "type": "boolean"
+              },
+              {
+                "type": "null"
+              }
+            ]
+          },
+          "locale": {
+            "anyOf": [
+              {
+                "type": "string"
+              },
+              {
+                "type": "null"
+              }
+            ]
+          },
+          "timezone": {
+            "anyOf": [
+              {
+                "type": "string"
+              },
+              {
+                "type": "null"
+              }
+            ]
+          },
+          "type": {
+            "const": "culture",
+            "default": "culture",
+            "type": "string"
+          }
+        },
+        "type": "object"
+      },
+      "DeviceContext": {
+        "properties": {
+          "arch": {
+            "anyOf": [
+              {
+                "type": "string"
+              },
+              {
+                "type": "null"
+              }
+            ]
+          },
+          "battery_level": {
+            "anyOf": [
+              {
+                "type": "number"
+              },
+              {
+                "type": "null"
+              }
+            ]
+          },
+          "battery_status": {
+            "anyOf": [
+              {
+                "type": "string"
+              },
+              {
+                "type": "null"
+              }
+            ]
+          },
+          "boot_time": {
+            "anyOf": [
+              {
+                "type": "string"
+              },
+              {
+                "type": "null"
+              }
+            ]
+          },
+          "brand": {
+            "anyOf": [
+              {
+                "type": "string"
+              },
+              {
+                "type": "null"
+              }
+            ]
+          },
+          "charging": {
+            "anyOf": [
+              {
+                "type": "boolean"
+              },
+              {
+                "type": "null"
+              }
+            ]
+          },
+          "cpu_description": {
+            "anyOf": [
+              {
+                "type": "string"
+              },
+              {
+                "type": "null"
+              }
+            ]
+          },
+          "device_type": {
+            "anyOf": [
+              {
+                "type": "string"
+              },
+              {
+                "type": "null"
+              }
+            ]
+          },
+          "device_unique_identifier": {
+            "anyOf": [
+              {
+                "type": "string"
+              },
+              {
+                "type": "null"
+              }
+            ]
+          },
+          "external_free_storage": {
+            "anyOf": [
+              {
+                "type": "integer"
+              },
+              {
+                "type": "null"
+              }
+            ]
+          },
+          "external_storage_size": {
+            "anyOf": [
+              {
+                "type": "integer"
+              },
+              {
+                "type": "null"
+              }
+            ]
+          },
+          "family": {
+            "anyOf": [
+              {
+                "type": "string"
+              },
+              {
+                "type": "null"
+              }
+            ]
+          },
+          "free_memory": {
+            "anyOf": [
+              {
+                "type": "integer"
+              },
+              {
+                "type": "null"
+              }
+            ]
+          },
+          "free_storage": {
+            "anyOf": [
+              {
+                "type": "integer"
+              },
+              {
+                "type": "null"
+              }
+            ]
+          },
+          "language": {
+            "anyOf": [
+              {
+                "type": "string"
+              },
+              {
+                "type": "null"
+              }
+            ]
+          },
+          "low_memory": {
+            "anyOf": [
+              {
+                "type": "boolean"
+              },
+              {
+                "type": "null"
+              }
+            ]
+          },
+          "manufacturer": {
+            "anyOf": [
+              {
+                "type": "string"
+              },
+              {
+                "type": "null"
+              }
+            ]
+          },
+          "memory_size": {
+            "anyOf": [
+              {
+                "type": "integer"
+              },
+              {
+                "type": "null"
+              }
+            ]
+          },
+          "model": {
+            "anyOf": [
+              {
+                "type": "string"
+              },
+              {
+                "type": "null"
+              }
+            ]
+          },
+          "model_id": {
+            "anyOf": [
+              {
+                "type": "string"
+              },
+              {
+                "type": "null"
+              }
+            ]
+          },
+          "name": {
+            "anyOf": [
+              {
+                "type": "string"
+              },
+              {
+                "type": "null"
+              }
+            ]
+          },
+          "online": {
+            "anyOf": [
+              {
+                "type": "boolean"
+              },
+              {
+                "type": "null"
+              }
+            ]
+          },
+          "orientation": {
+            "anyOf": [
+              {
+                "type": "string"
+              },
+              {
+                "type": "null"
+              }
+            ]
+          },
+          "processor_count": {
+            "anyOf": [
+              {
+                "type": "integer"
+              },
+              {
+                "type": "null"
+              }
+            ]
+          },
+          "processor_frequency": {
+            "anyOf": [
+              {
+                "type": "number"
+              },
+              {
+                "type": "null"
+              }
+            ]
+          },
+          "screen_density": {
+            "anyOf": [
+              {
+                "type": "number"
+              },
+              {
+                "type": "null"
+              }
+            ]
+          },
+          "screen_dpi": {
+            "anyOf": [
+              {
+                "type": "number"
+              },
+              {
+                "type": "null"
+              }
+            ]
+          },
+          "screen_height_pixels": {
+            "anyOf": [
+              {
+                "type": "integer"
+              },
+              {
+                "type": "null"
+              }
+            ]
+          },
+          "screen_resolution": {
+            "anyOf": [
+              {
+                "type": "string"
+              },
+              {
+                "type": "null"
+              }
+            ]
+          },
+          "screen_width_pixels": {
+            "anyOf": [
+              {
+                "type": "integer"
+              },
+              {
+                "type": "null"
+              }
+            ]
+          },
+          "simulator": {
+            "anyOf": [
+              {
+                "type": "boolean"
+              },
+              {
+                "type": "null"
+              }
+            ]
+          },
+          "storage_size": {
+            "anyOf": [
+              {
+                "type": "integer"
+              },
+              {
+                "type": "null"
+              }
+            ]
+          },
+          "supports_accelerometer": {
+            "anyOf": [
+              {
+                "type": "boolean"
+              },
+              {
+                "type": "null"
+              }
+            ]
+          },
+          "supports_audio": {
+            "anyOf": [
+              {
+                "type": "boolean"
+              },
+              {
+                "type": "null"
+              }
+            ]
+          },
+          "supports_gyroscope": {
+            "anyOf": [
+              {
+                "type": "boolean"
+              },
+              {
+                "type": "null"
+              }
+            ]
+          },
+          "supports_location_service": {
+            "anyOf": [
+              {
+                "type": "boolean"
+              },
+              {
+                "type": "null"
+              }
+            ]
+          },
+          "supports_vibration": {
+            "anyOf": [
+              {
+                "type": "boolean"
+              },
+              {
+                "type": "null"
+              }
+            ]
+          },
+          "timezone": {
+            "anyOf": [
+              {
+                "type": "string"
+              },
+              {
+                "type": "null"
+              }
+            ]
+          },
+          "type": {
+            "const": "device",
+            "default": "device",
+            "type": "string"
+          },
+          "usable_memory": {
+            "anyOf": [
+              {
+                "type": "integer"
+              },
+              {
+                "type": "null"
+              }
+            ]
+          }
+        },
+        "type": "object"
+      },
+      "EventProcessingError": {
+        "description": "Represents a single error encountered during event processing,\nmatching the Sentry event schema.",
+        "properties": {
+          "name": {
+            "anyOf": [
+              {
+                "type": "string"
+              },
+              {
+                "type": "null"
+              }
+            ],
+            "title": "Name"
+          },
+          "type": {
+            "title": "Type",
+            "type": "string"
+          },
+          "value": {
+            "anyOf": [
+              {},
+              {
+                "type": "null"
+              }
+            ],
+            "title": "Value"
+          }
+        },
+        "required": [
+          "type"
+        ],
+        "title": "EventProcessingError",
+        "type": "object"
+      },
+      "EventStatusDisplay": {
+        "enum": [
+          "unresolved",
+          "resolved",
+          "ignored"
+        ],
+        "title": "EventStatusDisplay",
+        "type": "string"
+      },
+      "ExceptionEntry": {
+        "properties": {
+          "data": {
+            "additionalProperties": true,
+            "title": "Data",
+            "type": "object"
+          },
+          "type": {
+            "const": "exception",
+            "title": "Type",
+            "type": "string"
+          }
+        },
+        "required": [
+          "type",
+          "data"
+        ],
+        "title": "ExceptionEntry",
+        "type": "object"
+      },
+      "GPUContext": {
+        "properties": {
+          "api_type": {
+            "anyOf": [
+              {
+                "type": "string"
+              },
+              {
+                "type": "null"
+              }
+            ]
+          },
+          "graphics_shader_level": {
+            "anyOf": [
+              {
+                "type": "string"
+              },
+              {
+                "type": "null"
+              }
+            ]
+          },
+          "id": {
+            "anyOf": [
+              {
+                "type": "string"
+              },
+              {
+                "type": "null"
+              }
+            ]
+          },
+          "max_texture_size": {
+            "anyOf": [
+              {
+                "type": "integer"
+              },
+              {
+                "type": "null"
+              }
+            ]
+          },
+          "memory_size": {
+            "anyOf": [
+              {
+                "type": "integer"
+              },
+              {
+                "type": "null"
+              }
+            ]
+          },
+          "multi_threaded_rendering": {
+            "anyOf": [
+              {
+                "type": "boolean"
+              },
+              {
+                "type": "null"
+              }
+            ]
+          },
+          "name": {
+            "type": "string"
+          },
+          "npot_support": {
+            "anyOf": [
+              {
+                "type": "string"
+              },
+              {
+                "type": "null"
+              }
+            ]
+          },
+          "supports_compute_shaders": {
+            "anyOf": [
+              {
+                "type": "boolean"
+              },
+              {
+                "type": "null"
+              }
+            ]
+          },
+          "supports_draw_call_instancing": {
+            "anyOf": [
+              {
+                "type": "boolean"
+              },
+              {
+                "type": "null"
+              }
+            ]
+          },
+          "supports_geometry_shaders": {
+            "anyOf": [
+              {
+                "type": "boolean"
+              },
+              {
+                "type": "null"
+              }
+            ]
+          },
+          "supports_ray_tracing": {
+            "anyOf": [
+              {
+                "type": "boolean"
+              },
+              {
+                "type": "null"
+              }
+            ]
+          },
+          "type": {
+            "const": "gpu",
+            "default": "gpu",
+            "type": "string"
+          },
+          "vendor_id": {
+            "anyOf": [
+              {
+                "type": "string"
+              },
+              {
+                "type": "null"
+              }
+            ]
+          },
+          "vendor_name": {
+            "anyOf": [
+              {
+                "type": "string"
+              },
+              {
+                "type": "null"
+              }
+            ]
+          },
+          "version": {
+            "anyOf": [
+              {
+                "type": "string"
+              },
+              {
+                "type": "null"
+              }
+            ]
+          }
+        },
+        "required": [
+          "name"
+        ],
+        "type": "object"
+      },
+      "IssueActorSchema": {
+        "properties": {
+          "email": {
+            "anyOf": [
+              {
+                "type": "string"
+              },
+              {
+                "type": "null"
+              }
+            ],
+            "title": "Email"
+          },
+          "id": {
+            "title": "Id",
+            "type": "string"
+          },
+          "name": {
+            "title": "Name",
+            "type": "string"
+          },
+          "slug": {
+            "anyOf": [
+              {
+                "type": "string"
+              },
+              {
+                "type": "null"
+              }
+            ],
+            "title": "Slug"
+          },
+          "type": {
+            "enum": [
+              "user",
+              "team"
+            ],
+            "title": "Type",
+            "type": "string"
+          },
+          "username": {
+            "anyOf": [
+              {
+                "type": "string"
+              },
+              {
+                "type": "null"
+              }
+            ],
+            "title": "Username"
+          }
+        },
+        "required": [
+          "type",
+          "id",
+          "name"
+        ],
+        "title": "IssueActorSchema",
+        "type": "object"
+      },
+      "IssueDetailSchema": {
+        "properties": {
+          "assignedTo": {
+            "anyOf": [
+              {
+                "$ref": "#/components/schemas/IssueActorSchema"
+              },
+              {
+                "type": "null"
+              }
+            ]
+          },
+          "count": {
+            "title": "Count",
+            "type": "string"
+          },
+          "culprit": {
+            "anyOf": [
+              {
+                "maxLength": 1024,
+                "type": "string"
+              },
+              {
+                "type": "null"
+              }
+            ],
+            "title": "Culprit"
+          },
+          "firstRelease": {
+            "anyOf": [
+              {
+                "$ref": "#/components/schemas/IssueReleaseSchema"
+              },
+              {
+                "type": "null"
+              }
+            ]
+          },
+          "firstSeen": {
+            "format": "date-time",
+            "title": "Firstseen",
+            "type": "string"
+          },
+          "id": {
+            "title": "Id",
+            "type": "string"
+          },
+          "lastRelease": {
+            "anyOf": [
+              {
+                "$ref": "#/components/schemas/IssueReleaseSchema"
+              },
+              {
+                "type": "null"
+              }
+            ]
+          },
+          "lastSeen": {
+            "format": "date-time",
+            "title": "Lastseen",
+            "type": "string"
+          },
+          "level": {
+            "$ref": "#/components/schemas/LogLevelDisplay"
+          },
+          "logger": {
+            "anyOf": [
+              {
+                "type": "string"
+              },
+              {
+                "type": "null"
+              }
+            ],
+            "title": "Logger"
+          },
+          "matchingEventId": {
+            "anyOf": [
+              {
+                "type": "string"
+              },
+              {
+                "type": "null"
+              }
+            ],
+            "title": "Matchingeventid"
+          },
+          "metadata": {
+            "additionalProperties": true,
+            "title": "Metadata",
+            "type": "object"
+          },
+          "numComments": {
+            "title": "Numcomments",
+            "type": "integer"
+          },
+          "permalink": {
+            "anyOf": [
+              {
+                "type": "string"
+              },
+              {
+                "type": "null"
+              }
+            ],
+            "default": "Not implemented",
+            "title": "Permalink"
+          },
+          "project": {
+            "$ref": "#/components/schemas/ProjectReference"
+          },
+          "shareId": {
+            "anyOf": [
+              {
+                "type": "integer"
+              },
+              {
+                "type": "null"
+              }
+            ],
+            "title": "Shareid"
+          },
+          "shortId": {
+            "title": "Shortid",
+            "type": "string"
+          },
+          "stats": {
+            "anyOf": [
+              {
+                "additionalProperties": {
+                  "items": {
+                    "items": {
+                      "type": "number"
+                    },
+                    "type": "array"
+                  },
+                  "type": "array"
+                },
+                "type": "object"
+              },
+              {
+                "type": "null"
+              }
+            ],
+            "default": {
+              "24h": []
+            },
+            "title": "Stats"
+          },
+          "status": {
+            "$ref": "#/components/schemas/EventStatusDisplay"
+          },
+          "statusDetails": {
+            "anyOf": [
+              {
+                "additionalProperties": {
+                  "type": "string"
+                },
+                "type": "object"
+              },
+              {
+                "type": "null"
+              }
+            ],
+            "title": "Statusdetails"
+          },
+          "subscriptionDetails": {
+            "anyOf": [
+              {
+                "type": "string"
+              },
+              {
+                "type": "null"
+              }
+            ],
+            "title": "Subscriptiondetails"
+          },
+          "title": {
+            "maxLength": 255,
+            "title": "Title",
+            "type": "string"
+          },
+          "type": {
+            "$ref": "#/components/schemas/IssueEventTypeDisplay"
+          },
+          "userCount": {
+            "anyOf": [
+              {
+                "type": "integer"
+              },
+              {
+                "type": "null"
+              }
+            ],
+            "default": 0,
+            "title": "Usercount"
+          },
+          "userReportCount": {
+            "title": "Userreportcount",
+            "type": "integer"
+          }
+        },
+        "required": [
+          "id",
+          "count",
+          "type",
+          "level",
+          "status",
+          "metadata",
+          "project",
+          "shortId",
+          "numComments",
+          "firstSeen",
+          "lastSeen",
+          "title",
+          "userReportCount"
+        ],
+        "title": "IssueDetailSchema",
+        "type": "object"
+      },
+      "IssueEventDetailSchema": {
+        "properties": {
+          "context": {
+            "anyOf": [
+              {
+                "additionalProperties": true,
+                "type": "object"
+              },
+              {
+                "type": "null"
+              }
+            ],
+            "title": "Context"
+          },
+          "contexts": {
+            "anyOf": [
+              {
+                "additionalProperties": {
+                  "anyOf": [
+                    {
+                      "discriminator": {
+                        "mapping": {
+                          "app": "#/components/schemas/AppContext",
+                          "browser": "#/components/schemas/BrowserContext",
+                          "cloud_resource": "#/components/schemas/CloudResourceContext",
+                          "culture": "#/components/schemas/CultureContext",
+                          "device": "#/components/schemas/DeviceContext",
+                          "gpu": "#/components/schemas/GPUContext",
+                          "os": "#/components/schemas/OSContext",
+                          "replay": "#/components/schemas/ReplayContext",
+                          "response": "#/components/schemas/ResponseContext",
+                          "runtime": "#/components/schemas/RuntimeContext",
+                          "state": "#/components/schemas/StateContext",
+                          "trace": "#/components/schemas/TraceContext"
+                        },
+                        "propertyName": "type"
+                      },
+                      "oneOf": [
+                        {
+                          "$ref": "#/components/schemas/DeviceContext"
+                        },
+                        {
+                          "$ref": "#/components/schemas/OSContext"
+                        },
+                        {
+                          "$ref": "#/components/schemas/RuntimeContext"
+                        },
+                        {
+                          "$ref": "#/components/schemas/AppContext"
+                        },
+                        {
+                          "$ref": "#/components/schemas/BrowserContext"
+                        },
+                        {
+                          "$ref": "#/components/schemas/GPUContext"
+                        },
+                        {
+                          "$ref": "#/components/schemas/StateContext"
+                        },
+                        {
+                          "$ref": "#/components/schemas/CultureContext"
+                        },
+                        {
+                          "$ref": "#/components/schemas/CloudResourceContext"
+                        },
+                        {
+                          "$ref": "#/components/schemas/TraceContext"
+                        },
+                        {
+                          "$ref": "#/components/schemas/ReplayContext"
+                        },
+                        {
+                          "$ref": "#/components/schemas/ResponseContext"
+                        }
+                      ]
+                    },
+                    {}
+                  ]
+                },
+                "type": "object"
+              },
+              {
+                "type": "null"
+              }
+            ],
+            "title": "Contexts"
+          },
+          "culprit": {
+            "anyOf": [
+              {
+                "type": "string"
+              },
+              {
+                "type": "null"
+              }
+            ],
+            "title": "Culprit"
+          },
+          "dateCreated": {
+            "format": "date-time",
+            "title": "Datecreated",
+            "type": "string"
+          },
+          "dateReceived": {
+            "format": "date-time",
+            "title": "Datereceived",
+            "type": "string"
+          },
+          "dist": {
+            "anyOf": [
+              {
+                "type": "string"
+              },
+              {
+                "type": "null"
+              }
+            ],
+            "title": "Dist"
+          },
+          "entries": {
+            "items": {
+              "discriminator": {
+                "mapping": {
+                  "breadcrumbs": "#/components/schemas/BreadcrumbsEntry",
+                  "csp": "#/components/schemas/CSPEntry",
+                  "exception": "#/components/schemas/ExceptionEntry",
+                  "message": "#/components/schemas/MessageEntry",
+                  "request": "#/components/schemas/RequestEntry"
+                },
+                "propertyName": "type"
+              },
+              "oneOf": [
+                {
+                  "$ref": "#/components/schemas/BreadcrumbsEntry"
+                },
+                {
+                  "$ref": "#/components/schemas/CSPEntry"
+                },
+                {
+                  "$ref": "#/components/schemas/ExceptionEntry"
+                },
+                {
+                  "$ref": "#/components/schemas/MessageEntry"
+                },
+                {
+                  "$ref": "#/components/schemas/RequestEntry"
+                }
+              ]
+            },
+            "title": "Entries",
+            "type": "array"
+          },
+          "errors": {
+            "anyOf": [
+              {
+                "items": {
+                  "$ref": "#/components/schemas/EventProcessingError"
+                },
+                "type": "array"
+              },
+              {
+                "type": "null"
+              }
+            ],
+            "title": "Errors"
+          },
+          "eventID": {
+            "title": "Eventid",
+            "type": "string"
+          },
+          "groupID": {
+            "title": "Groupid",
+            "type": "string"
+          },
+          "id": {
+            "title": "Id",
+            "type": "string"
+          },
+          "message": {
+            "title": "Message",
+            "type": "string"
+          },
+          "metadata": {
+            "additionalProperties": {
+              "type": "string"
+            },
+            "title": "Metadata",
+            "type": "object"
+          },
+          "nextEventID": {
+            "anyOf": [
+              {
+                "type": "string"
+              },
+              {
+                "type": "null"
+              }
+            ],
+            "title": "Nexteventid"
+          },
+          "packages": {
+            "anyOf": [
+              {
+                "additionalProperties": {
+                  "anyOf": [
+                    {
+                      "type": "string"
+                    },
+                    {
+                      "type": "null"
+                    }
+                  ]
+                },
+                "type": "object"
+              },
+              {
+                "type": "null"
+              }
+            ],
+            "title": "Packages"
+          },
+          "platform": {
+            "anyOf": [
+              {
+                "type": "string"
+              },
+              {
+                "type": "null"
+              }
+            ],
+            "title": "Platform"
+          },
+          "previousEventID": {
+            "anyOf": [
+              {
+                "type": "string"
+              },
+              {
+                "type": "null"
+              }
+            ],
+            "title": "Previouseventid"
+          },
+          "projectID": {
+            "title": "Projectid",
+            "type": "integer"
+          },
+          "sdk": {
+            "anyOf": [
+              {
+                "additionalProperties": true,
+                "type": "object"
+              },
+              {
+                "type": "null"
+              }
+            ],
+            "title": "Sdk"
+          },
+          "tags": {
+            "default": [],
+            "items": {
+              "additionalProperties": {
+                "anyOf": [
+                  {
+                    "type": "string"
+                  },
+                  {
+                    "type": "null"
+                  }
+                ]
+              },
+              "type": "object"
+            },
+            "title": "Tags",
+            "type": "array"
+          },
+          "title": {
+            "maxLength": 255,
+            "title": "Title",
+            "type": "string"
+          },
+          "type": {
+            "title": "Type",
+            "type": "string"
+          },
+          "user": {
+            "anyOf": [
+              {},
+              {
+                "type": "null"
+              }
+            ],
+            "title": "User"
+          },
+          "userReport": {
+            "anyOf": [
+              {
+                "$ref": "#/components/schemas/UserReportSchema"
+              },
+              {
+                "type": "null"
+              }
+            ]
+          }
+        },
+        "required": [
+          "id",
+          "eventID",
+          "projectID",
+          "groupID",
+          "dateCreated",
+          "dateReceived",
+          "type",
+          "message",
+          "title",
+          "userReport"
+        ],
+        "title": "IssueEventDetailSchema",
+        "type": "object"
+      },
+      "IssueEventSchema": {
+        "properties": {
+          "context": {
+            "anyOf": [
+              {
+                "additionalProperties": true,
+                "type": "object"
+              },
+              {
+                "type": "null"
+              }
+            ],
+            "title": "Context"
+          },
+          "contexts": {
+            "anyOf": [
+              {
+                "additionalProperties": {
+                  "anyOf": [
+                    {
+                      "discriminator": {
+                        "mapping": {
+                          "app": "#/components/schemas/AppContext",
+                          "browser": "#/components/schemas/BrowserContext",
+                          "cloud_resource": "#/components/schemas/CloudResourceContext",
+                          "culture": "#/components/schemas/CultureContext",
+                          "device": "#/components/schemas/DeviceContext",
+                          "gpu": "#/components/schemas/GPUContext",
+                          "os": "#/components/schemas/OSContext",
+                          "replay": "#/components/schemas/ReplayContext",
+                          "response": "#/components/schemas/ResponseContext",
+                          "runtime": "#/components/schemas/RuntimeContext",
+                          "state": "#/components/schemas/StateContext",
+                          "trace": "#/components/schemas/TraceContext"
+                        },
+                        "propertyName": "type"
+                      },
+                      "oneOf": [
+                        {
+                          "$ref": "#/components/schemas/DeviceContext"
+                        },
+                        {
+                          "$ref": "#/components/schemas/OSContext"
+                        },
+                        {
+                          "$ref": "#/components/schemas/RuntimeContext"
+                        },
+                        {
+                          "$ref": "#/components/schemas/AppContext"
+                        },
+                        {
+                          "$ref": "#/components/schemas/BrowserContext"
+                        },
+                        {
+                          "$ref": "#/components/schemas/GPUContext"
+                        },
+                        {
+                          "$ref": "#/components/schemas/StateContext"
+                        },
+                        {
+                          "$ref": "#/components/schemas/CultureContext"
+                        },
+                        {
+                          "$ref": "#/components/schemas/CloudResourceContext"
+                        },
+                        {
+                          "$ref": "#/components/schemas/TraceContext"
+                        },
+                        {
+                          "$ref": "#/components/schemas/ReplayContext"
+                        },
+                        {
+                          "$ref": "#/components/schemas/ResponseContext"
+                        }
+                      ]
+                    },
+                    {}
+                  ]
+                },
+                "type": "object"
+              },
+              {
+                "type": "null"
+              }
+            ],
+            "title": "Contexts"
+          },
+          "culprit": {
+            "anyOf": [
+              {
+                "type": "string"
+              },
+              {
+                "type": "null"
+              }
+            ],
+            "title": "Culprit"
+          },
+          "dateCreated": {
+            "format": "date-time",
+            "title": "Datecreated",
+            "type": "string"
+          },
+          "dateReceived": {
+            "format": "date-time",
+            "title": "Datereceived",
+            "type": "string"
+          },
+          "dist": {
+            "anyOf": [
+              {
+                "type": "string"
+              },
+              {
+                "type": "null"
+              }
+            ],
+            "title": "Dist"
+          },
+          "entries": {
+            "items": {
+              "discriminator": {
+                "mapping": {
+                  "breadcrumbs": "#/components/schemas/BreadcrumbsEntry",
+                  "csp": "#/components/schemas/CSPEntry",
+                  "exception": "#/components/schemas/ExceptionEntry",
+                  "message": "#/components/schemas/MessageEntry",
+                  "request": "#/components/schemas/RequestEntry"
+                },
+                "propertyName": "type"
+              },
+              "oneOf": [
+                {
+                  "$ref": "#/components/schemas/BreadcrumbsEntry"
+                },
+                {
+                  "$ref": "#/components/schemas/CSPEntry"
+                },
+                {
+                  "$ref": "#/components/schemas/ExceptionEntry"
+                },
+                {
+                  "$ref": "#/components/schemas/MessageEntry"
+                },
+                {
+                  "$ref": "#/components/schemas/RequestEntry"
+                }
+              ]
+            },
+            "title": "Entries",
+            "type": "array"
+          },
+          "errors": {
+            "anyOf": [
+              {
+                "items": {
+                  "$ref": "#/components/schemas/EventProcessingError"
+                },
+                "type": "array"
+              },
+              {
+                "type": "null"
+              }
+            ],
+            "title": "Errors"
+          },
+          "eventID": {
+            "title": "Eventid",
+            "type": "string"
+          },
+          "groupID": {
+            "title": "Groupid",
+            "type": "string"
+          },
+          "id": {
+            "title": "Id",
+            "type": "string"
+          },
+          "message": {
+            "title": "Message",
+            "type": "string"
+          },
+          "metadata": {
+            "additionalProperties": {
+              "type": "string"
+            },
+            "title": "Metadata",
+            "type": "object"
+          },
+          "packages": {
+            "anyOf": [
+              {
+                "additionalProperties": {
+                  "anyOf": [
+                    {
+                      "type": "string"
+                    },
+                    {
+                      "type": "null"
+                    }
+                  ]
+                },
+                "type": "object"
+              },
+              {
+                "type": "null"
+              }
+            ],
+            "title": "Packages"
+          },
+          "platform": {
+            "anyOf": [
+              {
+                "type": "string"
+              },
+              {
+                "type": "null"
+              }
+            ],
+            "title": "Platform"
+          },
+          "projectID": {
+            "title": "Projectid",
+            "type": "integer"
+          },
+          "sdk": {
+            "anyOf": [
+              {
+                "additionalProperties": true,
+                "type": "object"
+              },
+              {
+                "type": "null"
+              }
+            ],
+            "title": "Sdk"
+          },
+          "tags": {
+            "default": [],
+            "items": {
+              "additionalProperties": {
+                "anyOf": [
+                  {
+                    "type": "string"
+                  },
+                  {
+                    "type": "null"
+                  }
+                ]
+              },
+              "type": "object"
+            },
+            "title": "Tags",
+            "type": "array"
+          },
+          "title": {
+            "maxLength": 255,
+            "title": "Title",
+            "type": "string"
+          },
+          "type": {
+            "title": "Type",
+            "type": "string"
+          },
+          "user": {
+            "anyOf": [
+              {},
+              {
+                "type": "null"
+              }
+            ],
+            "title": "User"
+          }
+        },
+        "required": [
+          "id",
+          "eventID",
+          "projectID",
+          "groupID",
+          "dateCreated",
+          "dateReceived",
+          "type",
+          "message",
+          "title"
+        ],
+        "title": "IssueEventSchema",
+        "type": "object"
+      },
+      "IssueEventTypeDisplay": {
+        "enum": [
+          "default",
+          "error",
+          "csp"
+        ],
+        "title": "IssueEventTypeDisplay",
+        "type": "string"
+      },
+      "IssueReleaseSchema": {
+        "properties": {
+          "dateCreated": {
+            "format": "date-time",
+            "title": "Datecreated",
+            "type": "string"
+          },
+          "dateReleased": {
+            "anyOf": [
+              {
+                "format": "date-time",
+                "type": "string"
+              },
+              {
+                "type": "null"
+              }
+            ],
+            "title": "Datereleased"
+          },
+          "shortVersion": {
+            "title": "Shortversion",
+            "type": "string"
+          },
+          "version": {
+            "maxLength": 255,
+            "title": "Version",
+            "type": "string"
+          }
+        },
+        "required": [
+          "shortVersion",
+          "dateCreated",
+          "dateReleased",
+          "version"
+        ],
+        "title": "IssueReleaseSchema",
+        "type": "object"
+      },
+      "IssueSchema": {
+        "properties": {
+          "assignedTo": {
+            "anyOf": [
+              {
+                "$ref": "#/components/schemas/IssueActorSchema"
+              },
+              {
+                "type": "null"
+              }
+            ]
+          },
+          "count": {
+            "title": "Count",
+            "type": "string"
+          },
+          "culprit": {
+            "anyOf": [
+              {
+                "maxLength": 1024,
+                "type": "string"
+              },
+              {
+                "type": "null"
+              }
+            ],
+            "title": "Culprit"
+          },
+          "firstRelease": {
+            "anyOf": [
+              {
+                "$ref": "#/components/schemas/IssueReleaseSchema"
+              },
+              {
+                "type": "null"
+              }
+            ]
+          },
+          "firstSeen": {
+            "format": "date-time",
+            "title": "Firstseen",
+            "type": "string"
+          },
+          "id": {
+            "title": "Id",
+            "type": "string"
+          },
+          "lastRelease": {
+            "anyOf": [
+              {
+                "$ref": "#/components/schemas/IssueReleaseSchema"
+              },
+              {
+                "type": "null"
+              }
+            ]
+          },
+          "lastSeen": {
+            "format": "date-time",
+            "title": "Lastseen",
+            "type": "string"
+          },
+          "level": {
+            "$ref": "#/components/schemas/LogLevelDisplay"
+          },
+          "logger": {
+            "anyOf": [
+              {
+                "type": "string"
+              },
+              {
+                "type": "null"
+              }
+            ],
+            "title": "Logger"
+          },
+          "matchingEventId": {
+            "anyOf": [
+              {
+                "type": "string"
+              },
+              {
+                "type": "null"
+              }
+            ],
+            "title": "Matchingeventid"
+          },
+          "metadata": {
+            "additionalProperties": true,
+            "title": "Metadata",
+            "type": "object"
+          },
+          "numComments": {
+            "title": "Numcomments",
+            "type": "integer"
+          },
+          "permalink": {
+            "anyOf": [
+              {
+                "type": "string"
+              },
+              {
+                "type": "null"
+              }
+            ],
+            "default": "Not implemented",
+            "title": "Permalink"
+          },
+          "project": {
+            "$ref": "#/components/schemas/ProjectReference"
+          },
+          "shareId": {
+            "anyOf": [
+              {
+                "type": "integer"
+              },
+              {
+                "type": "null"
+              }
+            ],
+            "title": "Shareid"
+          },
+          "shortId": {
+            "title": "Shortid",
+            "type": "string"
+          },
+          "stats": {
+            "anyOf": [
+              {
+                "additionalProperties": {
+                  "items": {
+                    "items": {
+                      "type": "number"
+                    },
+                    "type": "array"
+                  },
+                  "type": "array"
+                },
+                "type": "object"
+              },
+              {
+                "type": "null"
+              }
+            ],
+            "default": {
+              "24h": []
+            },
+            "title": "Stats"
+          },
+          "status": {
+            "$ref": "#/components/schemas/EventStatusDisplay"
+          },
+          "statusDetails": {
+            "anyOf": [
+              {
+                "additionalProperties": {
+                  "type": "string"
+                },
+                "type": "object"
+              },
+              {
+                "type": "null"
+              }
+            ],
+            "title": "Statusdetails"
+          },
+          "subscriptionDetails": {
+            "anyOf": [
+              {
+                "type": "string"
+              },
+              {
+                "type": "null"
+              }
+            ],
+            "title": "Subscriptiondetails"
+          },
+          "title": {
+            "maxLength": 255,
+            "title": "Title",
+            "type": "string"
+          },
+          "type": {
+            "$ref": "#/components/schemas/IssueEventTypeDisplay"
+          },
+          "userCount": {
+            "anyOf": [
+              {
+                "type": "integer"
+              },
+              {
+                "type": "null"
+              }
+            ],
+            "default": 0,
+            "title": "Usercount"
+          }
+        },
+        "required": [
+          "id",
+          "count",
+          "type",
+          "level",
+          "status",
+          "metadata",
+          "project",
+          "shortId",
+          "numComments",
+          "firstSeen",
+          "lastSeen",
+          "title"
+        ],
+        "title": "IssueSchema",
+        "type": "object"
+      },
+      "KeyRateLimit": {
+        "properties": {
+          "count": {
+            "title": "Count",
+            "type": "integer"
+          },
+          "window": {
+            "title": "Window",
+            "type": "integer"
+          }
+        },
+        "required": [
+          "window",
+          "count"
+        ],
+        "title": "KeyRateLimit",
+        "type": "object"
+      },
+      "LogLevelDisplay": {
+        "enum": [
+          "sample",
+          "debug",
+          "info",
+          "warning",
+          "error",
+          "fatal"
+        ],
+        "title": "LogLevelDisplay",
+        "type": "string"
+      },
+      "MessageEntry": {
+        "properties": {
+          "data": {
+            "additionalProperties": true,
+            "title": "Data",
+            "type": "object"
+          },
+          "type": {
+            "const": "message",
+            "title": "Type",
+            "type": "string"
+          }
+        },
+        "required": [
+          "type",
+          "data"
+        ],
+        "title": "MessageEntry",
+        "type": "object"
+      },
+      "OSContext": {
+        "properties": {
+          "build": {
+            "anyOf": [
+              {
+                "type": "string"
+              },
+              {
+                "type": "null"
+              }
+            ]
+          },
+          "kernel_version": {
+            "anyOf": [
+              {
+                "type": "string"
+              },
+              {
+                "type": "null"
+              }
+            ]
+          },
+          "name": {
+            "type": "string"
+          },
+          "raw_description": {
+            "anyOf": [
+              {
+                "type": "string"
+              },
+              {
+                "type": "null"
+              }
+            ]
+          },
+          "rooted": {
+            "anyOf": [
+              {
+                "type": "boolean"
+              },
+              {
+                "type": "null"
+              }
+            ]
+          },
+          "theme": {
+            "anyOf": [
+              {
+                "type": "string"
+              },
+              {
+                "type": "null"
+              }
+            ]
+          },
+          "type": {
+            "const": "os",
+            "default": "os",
+            "type": "string"
+          },
+          "version": {
+            "anyOf": [
+              {
+                "type": "string"
+              },
+              {
+                "type": "null"
+              }
+            ]
+          }
+        },
+        "required": [
+          "name"
+        ],
+        "type": "object"
+      },
+      "OrganizationDetailSchema": {
+        "properties": {
+          "access": {
+            "items": {
+              "enum": [
+                "org:read",
+                "org:write",
+                "org:admin",
+                "org:integrations",
+                "member:read",
+                "member:write",
+                "member:admin",
+                "team:read",
+                "team:write",
+                "team:admin",
+                "project:read",
+                "project:write",
+                "project:admin",
+                "project:releases",
+                "event:read",
+                "event:write",
+                "event:admin"
+              ],
+              "type": "string"
+            },
+            "title": "Access",
+            "type": "array"
+          },
+          "avatar": {
+            "additionalProperties": {
+              "anyOf": [
+                {
+                  "type": "string"
+                },
+                {
+                  "type": "null"
+                }
+              ]
+            },
+            "default": {
+              "avatarType": "",
+              "avatarUuid": null
+            },
+            "title": "Avatar",
+            "type": "object"
+          },
+          "dateCreated": {
+            "format": "date-time",
+            "title": "Datecreated",
+            "type": "string"
+          },
+          "eventThrottleRate": {
+            "default": 0,
+            "description": "Probability (in percent) on how many events are throttled. Used for throttling at project level",
+            "title": "Event Throttle Rate",
+            "type": "integer"
+          },
+          "id": {
+            "title": "Id",
+            "type": "string"
+          },
+          "isAcceptingEvents": {
+            "default": true,
+            "description": "Used for throttling at org level",
+            "title": "Is Accepting Events",
+            "type": "boolean"
+          },
+          "isEarlyAdopter": {
+            "default": false,
+            "title": "Isearlyadopter",
+            "type": "boolean"
+          },
+          "name": {
+            "description": "The name of the organization",
+            "maxLength": 200,
+            "title": "Name",
+            "type": "string"
+          },
+          "openMembership": {
+            "default": true,
+            "description": "Allow any organization member to join any team",
+            "title": "Open Membership",
+            "type": "boolean"
+          },
+          "projects": {
+            "items": {
+              "$ref": "#/components/schemas/ProjectTeamSchema"
+            },
+            "title": "Projects",
+            "type": "array"
+          },
+          "require2fa": {
+            "default": false,
+            "title": "Require2Fa",
+            "type": "boolean"
+          },
+          "slug": {
+            "description": "The name in all lowercase, suitable for URL identification",
+            "maxLength": 200,
+            "title": "Slug",
+            "type": "string"
+          },
+          "status": {
+            "additionalProperties": {
+              "type": "string"
+            },
+            "default": {
+              "id": "active",
+              "name": "active"
+            },
+            "title": "Status",
+            "type": "object"
+          },
+          "teams": {
+            "items": {
+              "$ref": "#/components/schemas/TeamSchema"
+            },
+            "title": "Teams",
+            "type": "array"
+          }
+        },
+        "required": [
+          "name",
+          "id",
+          "dateCreated",
+          "slug",
+          "projects",
+          "teams",
+          "access"
+        ],
+        "title": "OrganizationDetailSchema",
+        "type": "object"
+      },
+      "OrganizationSchema": {
+        "properties": {
+          "avatar": {
+            "additionalProperties": {
+              "anyOf": [
+                {
+                  "type": "string"
+                },
+                {
+                  "type": "null"
+                }
+              ]
+            },
+            "default": {
+              "avatarType": "",
+              "avatarUuid": null
+            },
+            "title": "Avatar",
+            "type": "object"
+          },
+          "dateCreated": {
+            "format": "date-time",
+            "title": "Datecreated",
+            "type": "string"
+          },
+          "eventThrottleRate": {
+            "default": 0,
+            "description": "Probability (in percent) on how many events are throttled. Used for throttling at project level",
+            "title": "Event Throttle Rate",
+            "type": "integer"
+          },
+          "id": {
+            "title": "Id",
+            "type": "string"
+          },
+          "isAcceptingEvents": {
+            "default": true,
+            "description": "Used for throttling at org level",
+            "title": "Is Accepting Events",
+            "type": "boolean"
+          },
+          "isEarlyAdopter": {
+            "default": false,
+            "title": "Isearlyadopter",
+            "type": "boolean"
+          },
+          "name": {
+            "description": "The name of the organization",
+            "maxLength": 200,
+            "title": "Name",
+            "type": "string"
+          },
+          "require2fa": {
+            "default": false,
+            "title": "Require2Fa",
+            "type": "boolean"
+          },
+          "slug": {
+            "description": "The name in all lowercase, suitable for URL identification",
+            "maxLength": 200,
+            "title": "Slug",
+            "type": "string"
+          },
+          "status": {
+            "additionalProperties": {
+              "type": "string"
+            },
+            "default": {
+              "id": "active",
+              "name": "active"
+            },
+            "title": "Status",
+            "type": "object"
+          }
+        },
+        "required": [
+          "name",
+          "id",
+          "dateCreated",
+          "slug"
+        ],
+        "title": "OrganizationSchema",
+        "type": "object"
+      },
+      "ProjectIn": {
+        "properties": {
+          "eventThrottleRate": {
+            "anyOf": [
+              {
+                "type": "integer"
+              },
+              {
+                "type": "null"
+              }
+            ],
+            "title": "Eventthrottlerate"
+          },
+          "name": {
+            "maxLength": 64,
+            "title": "Name",
+            "type": "string"
+          },
+          "platform": {
+            "anyOf": [
+              {
+                "type": "string"
+              },
+              {
+                "type": "null"
+              }
+            ],
+            "title": "Platform"
+          },
+          "slug": {
+            "anyOf": [
+              {
+                "type": "string"
+              },
+              {
+                "type": "null"
+              }
+            ],
+            "title": "Slug"
+          }
+        },
+        "required": [
+          "name"
+        ],
+        "title": "ProjectIn",
+        "type": "object"
+      },
+      "ProjectKeyIn": {
+        "properties": {
+          "name": {
+            "anyOf": [
+              {
+                "type": "string"
+              },
+              {
+                "type": "null"
+              }
+            ],
+            "title": "Name"
+          },
+          "rateLimit": {
+            "anyOf": [
+              {
+                "$ref": "#/components/schemas/KeyRateLimit"
+              },
+              {
+                "type": "null"
+              }
+            ]
+          }
+        },
+        "title": "ProjectKeyIn",
+        "type": "object"
+      },
+      "ProjectKeySchema": {
+        "description": "A project key (DSN) provides a public authentication string used for event\ningestion.",
+        "properties": {
+          "dateCreated": {
+            "format": "date-time",
+            "title": "Datecreated",
+            "type": "string"
+          },
+          "dsn": {
+            "additionalProperties": {
+              "type": "string"
+            },
+            "title": "Dsn",
+            "type": "object"
+          },
+          "id": {
+            "format": "uuid",
+            "title": "Id",
+            "type": "string"
+          },
+          "label": {
+            "anyOf": [
+              {
+                "type": "string"
+              },
+              {
+                "type": "null"
+              }
+            ],
+            "title": "Label"
+          },
+          "name": {
+            "anyOf": [
+              {
+                "type": "string"
+              },
+              {
+                "type": "null"
+              }
+            ],
+            "title": "Name"
+          },
+          "projectID": {
+            "title": "Projectid",
+            "type": "integer"
+          },
+          "public": {
+            "format": "uuid",
+            "title": "Public",
+            "type": "string"
+          },
+          "rateLimit": {
+            "anyOf": [
+              {
+                "$ref": "#/components/schemas/KeyRateLimit"
+              },
+              {
+                "type": "null"
+              }
+            ]
+          }
+        },
+        "required": [
+          "dateCreated",
+          "id",
+          "dsn",
+          "label",
+          "public",
+          "projectID"
+        ],
+        "title": "ProjectKeySchema",
+        "type": "object"
+      },
+      "ProjectOrganizationSchema": {
+        "properties": {
+          "avatar": {
+            "additionalProperties": {
+              "anyOf": [
+                {
+                  "type": "string"
+                },
+                {
+                  "type": "null"
+                }
+              ]
+            },
+            "default": {
+              "avatarType": "",
+              "avatarUuid": null
+            },
+            "title": "Avatar",
+            "type": "object"
+          },
+          "color": {
+            "default": "",
+            "title": "Color",
+            "type": "string"
+          },
+          "dateCreated": {
+            "format": "date-time",
+            "title": "Datecreated",
+            "type": "string"
+          },
+          "eventThrottleRate": {
+            "default": 0,
+            "description": "Probability (in percent) on how many events are throttled. Used for throttling at project level",
+            "title": "Event Throttle Rate",
+            "type": "integer"
+          },
+          "features": {
+            "default": [],
+            "items": {
+              "type": "string"
+            },
+            "title": "Features",
+            "type": "array"
+          },
+          "firstEvent": {
+            "anyOf": [
+              {
+                "format": "date-time",
+                "type": "string"
+              },
+              {
+                "type": "null"
+              }
+            ],
+            "title": "First Event"
+          },
+          "hasAccess": {
+            "default": true,
+            "title": "Hasaccess",
+            "type": "boolean"
+          },
+          "id": {
+            "title": "Id",
+            "type": "string"
+          },
+          "isBookmarked": {
+            "default": false,
+            "title": "Isbookmarked",
+            "type": "boolean"
+          },
+          "isInternal": {
+            "default": false,
+            "title": "Isinternal",
+            "type": "boolean"
+          },
+          "isMember": {
+            "title": "Ismember",
+            "type": "boolean"
+          },
+          "isPublic": {
+            "default": false,
+            "title": "Ispublic",
+            "type": "boolean"
+          },
+          "name": {
+            "maxLength": 64,
+            "title": "Name",
+            "type": "string"
+          },
+          "organization": {
+            "$ref": "#/components/schemas/OrganizationSchema"
+          },
+          "platform": {
+            "anyOf": [
+              {
+                "type": "string"
+              },
+              {
+                "type": "null"
+              }
+            ],
+            "title": "Platform"
+          },
+          "scrubIPAddresses": {
+            "title": "Scrubipaddresses",
+            "type": "boolean"
+          },
+          "slug": {
+            "anyOf": [
+              {
+                "type": "string"
+              },
+              {
+                "type": "null"
+              }
+            ],
+            "title": "Slug"
+          }
+        },
+        "required": [
+          "name",
+          "id",
+          "isMember",
+          "scrubIPAddresses",
+          "dateCreated",
+          "organization"
+        ],
+        "title": "ProjectOrganizationSchema",
+        "type": "object"
+      },
+      "ProjectReference": {
+        "properties": {
+          "id": {
+            "title": "Id",
+            "type": "string"
+          },
+          "name": {
+            "maxLength": 64,
+            "title": "Name",
+            "type": "string"
+          },
+          "platform": {
+            "anyOf": [
+              {
+                "maxLength": 64,
+                "type": "string"
+              },
+              {
+                "type": "null"
+              }
+            ],
+            "title": "Platform"
+          },
+          "slug": {
+            "anyOf": [
+              {
+                "type": "string"
+              },
+              {
+                "type": "null"
+              }
+            ],
+            "title": "Slug"
+          }
+        },
+        "required": [
+          "id",
+          "name"
+        ],
+        "title": "ProjectReference",
+        "type": "object"
+      },
+      "ProjectSchema": {
+        "description": "A project is an organizational unit for GlitchTip events. It may contain\nDSN keys, be connected to exactly one organization, and provide user permissions\nthrough teams.",
+        "properties": {
+          "avatar": {
+            "additionalProperties": {
+              "anyOf": [
+                {
+                  "type": "string"
+                },
+                {
+                  "type": "null"
+                }
+              ]
+            },
+            "default": {
+              "avatarType": "",
+              "avatarUuid": null
+            },
+            "title": "Avatar",
+            "type": "object"
+          },
+          "color": {
+            "default": "",
+            "title": "Color",
+            "type": "string"
+          },
+          "dateCreated": {
+            "format": "date-time",
+            "title": "Datecreated",
+            "type": "string"
+          },
+          "eventThrottleRate": {
+            "default": 0,
+            "description": "Probability (in percent) on how many events are throttled. Used for throttling at project level",
+            "title": "Event Throttle Rate",
+            "type": "integer"
+          },
+          "features": {
+            "default": [],
+            "items": {
+              "type": "string"
+            },
+            "title": "Features",
+            "type": "array"
+          },
+          "firstEvent": {
+            "anyOf": [
+              {
+                "format": "date-time",
+                "type": "string"
+              },
+              {
+                "type": "null"
+              }
+            ],
+            "title": "First Event"
+          },
+          "hasAccess": {
+            "default": true,
+            "title": "Hasaccess",
+            "type": "boolean"
+          },
+          "id": {
+            "title": "Id",
+            "type": "string"
+          },
+          "isBookmarked": {
+            "default": false,
+            "title": "Isbookmarked",
+            "type": "boolean"
+          },
+          "isInternal": {
+            "default": false,
+            "title": "Isinternal",
+            "type": "boolean"
+          },
+          "isMember": {
+            "title": "Ismember",
+            "type": "boolean"
+          },
+          "isPublic": {
+            "default": false,
+            "title": "Ispublic",
+            "type": "boolean"
+          },
+          "name": {
+            "maxLength": 64,
+            "title": "Name",
+            "type": "string"
+          },
+          "platform": {
+            "anyOf": [
+              {
+                "type": "string"
+              },
+              {
+                "type": "null"
+              }
+            ],
+            "title": "Platform"
+          },
+          "scrubIPAddresses": {
+            "title": "Scrubipaddresses",
+            "type": "boolean"
+          },
+          "slug": {
+            "anyOf": [
+              {
+                "type": "string"
+              },
+              {
+                "type": "null"
+              }
+            ],
+            "title": "Slug"
+          }
+        },
+        "required": [
+          "name",
+          "id",
+          "isMember",
+          "scrubIPAddresses",
+          "dateCreated"
+        ],
+        "title": "ProjectSchema",
+        "type": "object"
+      },
+      "ProjectTeamSchema": {
+        "description": "Project Schema with related teams",
+        "properties": {
+          "avatar": {
+            "additionalProperties": {
+              "anyOf": [
+                {
+                  "type": "string"
+                },
+                {
+                  "type": "null"
+                }
+              ]
+            },
+            "default": {
+              "avatarType": "",
+              "avatarUuid": null
+            },
+            "title": "Avatar",
+            "type": "object"
+          },
+          "color": {
+            "default": "",
+            "title": "Color",
+            "type": "string"
+          },
+          "dateCreated": {
+            "format": "date-time",
+            "title": "Datecreated",
+            "type": "string"
+          },
+          "eventThrottleRate": {
+            "default": 0,
+            "description": "Probability (in percent) on how many events are throttled. Used for throttling at project level",
+            "title": "Event Throttle Rate",
+            "type": "integer"
+          },
+          "features": {
+            "default": [],
+            "items": {
+              "type": "string"
+            },
+            "title": "Features",
+            "type": "array"
+          },
+          "firstEvent": {
+            "anyOf": [
+              {
+                "format": "date-time",
+                "type": "string"
+              },
+              {
+                "type": "null"
+              }
+            ],
+            "title": "First Event"
+          },
+          "hasAccess": {
+            "default": true,
+            "title": "Hasaccess",
+            "type": "boolean"
+          },
+          "id": {
+            "title": "Id",
+            "type": "string"
+          },
+          "isBookmarked": {
+            "default": false,
+            "title": "Isbookmarked",
+            "type": "boolean"
+          },
+          "isInternal": {
+            "default": false,
+            "title": "Isinternal",
+            "type": "boolean"
+          },
+          "isMember": {
+            "title": "Ismember",
+            "type": "boolean"
+          },
+          "isPublic": {
+            "default": false,
+            "title": "Ispublic",
+            "type": "boolean"
+          },
+          "name": {
+            "maxLength": 64,
+            "title": "Name",
+            "type": "string"
+          },
+          "platform": {
+            "anyOf": [
+              {
+                "type": "string"
+              },
+              {
+                "type": "null"
+              }
+            ],
+            "title": "Platform"
+          },
+          "scrubIPAddresses": {
+            "title": "Scrubipaddresses",
+            "type": "boolean"
+          },
+          "slug": {
+            "anyOf": [
+              {
+                "type": "string"
+              },
+              {
+                "type": "null"
+              }
+            ],
+            "title": "Slug"
+          },
+          "teams": {
+            "items": {
+              "$ref": "#/components/schemas/TeamSlugSchema"
+            },
+            "title": "Teams",
+            "type": "array"
+          }
+        },
+        "required": [
+          "name",
+          "id",
+          "isMember",
+          "scrubIPAddresses",
+          "dateCreated",
+          "teams"
+        ],
+        "title": "ProjectTeamSchema",
+        "type": "object"
+      },
+      "ReplayContext": {
+        "properties": {
+          "replay_id": {
+            "title": "Replay Id",
+            "type": "string"
+          },
+          "type": {
+            "const": "replay",
+            "default": "replay",
+            "title": "Type",
+            "type": "string"
+          }
+        },
+        "required": [
+          "replay_id"
+        ],
+        "title": "ReplayContext",
+        "type": "object"
+      },
+      "Request": {
+        "properties": {
+          "apiTarget": {
+            "anyOf": [
+              {
+                "type": "string"
+              },
+              {
+                "type": "null"
+              }
+            ],
+            "title": "Apitarget"
+          },
+          "bodySize": {
+            "anyOf": [
+              {
+                "type": "integer"
+              },
+              {
+                "type": "null"
+              }
+            ],
+            "title": "Bodysize"
+          },
+          "cookies": {
+            "anyOf": [
+              {
+                "type": "string"
+              },
+              {
+                "items": {
+                  "items": {
+                    "anyOf": [
+                      {
+                        "type": "string"
+                      },
+                      {
+                        "type": "null"
+                      }
+                    ]
+                  },
+                  "type": "array"
+                },
+                "type": "array"
+              },
+              {
+                "additionalProperties": {
+                  "anyOf": [
+                    {
+                      "type": "string"
+                    },
+                    {
+                      "type": "null"
+                    }
+                  ]
+                },
+                "type": "object"
+              },
+              {
+                "type": "null"
+              }
+            ],
+            "title": "Cookies"
+          },
+          "data": {
+            "anyOf": [
+              {
+                "type": "string"
+              },
+              {
+                "additionalProperties": true,
+                "type": "object"
+              },
+              {
+                "items": {},
+                "type": "array"
+              },
+              {},
+              {
+                "type": "null"
+              }
+            ],
+            "title": "Data"
+          },
+          "env": {
+            "anyOf": [
+              {
+                "additionalProperties": true,
+                "type": "object"
+              },
+              {
+                "type": "null"
+              }
+            ],
+            "title": "Env"
+          },
+          "fragment": {
+            "anyOf": [
+              {
+                "type": "string"
+              },
+              {
+                "type": "null"
+              }
+            ],
+            "title": "Fragment"
+          },
+          "headers": {
+            "anyOf": [
+              {
+                "items": {
+                  "items": {
+                    "anyOf": [
+                      {
+                        "type": "string"
+                      },
+                      {
+                        "type": "null"
+                      }
+                    ]
+                  },
+                  "type": "array"
+                },
+                "type": "array"
+              },
+              {
+                "type": "null"
+              }
+            ],
+            "title": "Headers"
+          },
+          "inferredContentType": {
+            "anyOf": [
+              {
+                "type": "string"
+              },
+              {
+                "type": "null"
+              }
+            ],
+            "readOnly": true,
+            "title": "Inferredcontenttype"
+          },
+          "method": {
+            "anyOf": [
+              {
+                "type": "string"
+              },
+              {
+                "type": "null"
+              }
+            ],
+            "title": "Method"
+          },
+          "protocol": {
+            "anyOf": [
+              {
+                "type": "string"
+              },
+              {
+                "type": "null"
+              }
+            ],
+            "title": "Protocol"
+          },
+          "query": {
+            "anyOf": [
+              {
+                "items": {
+                  "items": {
+                    "anyOf": [
+                      {
+                        "type": "string"
+                      },
+                      {
+                        "type": "null"
+                      }
+                    ]
+                  },
+                  "type": "array"
+                },
+                "type": "array"
+              },
+              {
+                "type": "null"
+              }
+            ],
+            "title": "Query"
+          },
+          "url": {
+            "anyOf": [
+              {
+                "type": "string"
+              },
+              {
+                "type": "null"
+              }
+            ],
+            "title": "Url"
+          }
+        },
+        "required": [
+          "inferredContentType"
+        ],
+        "title": "Request",
+        "type": "object"
+      },
+      "RequestEntry": {
+        "properties": {
+          "data": {
+            "$ref": "#/components/schemas/Request"
+          },
+          "type": {
+            "const": "request",
+            "title": "Type",
+            "type": "string"
+          }
+        },
+        "required": [
+          "type",
+          "data"
+        ],
+        "title": "RequestEntry",
+        "type": "object"
+      },
+      "ResponseContext": {
+        "properties": {
+          "status_code": {
+            "title": "Status Code",
+            "type": "integer"
+          },
+          "type": {
+            "const": "response",
+            "default": "response",
+            "title": "Type",
+            "type": "string"
+          }
+        },
+        "required": [
+          "status_code"
+        ],
+        "title": "ResponseContext",
+        "type": "object"
+      },
+      "RuntimeContext": {
+        "properties": {
+          "name": {
+            "anyOf": [
+              {
+                "type": "string"
+              },
+              {
+                "type": "null"
+              }
+            ]
+          },
+          "raw_description": {
+            "anyOf": [
+              {
+                "type": "string"
+              },
+              {
+                "type": "null"
+              }
+            ]
+          },
+          "type": {
+            "const": "runtime",
+            "default": "runtime",
+            "type": "string"
+          },
+          "version": {
+            "anyOf": [
+              {
+                "type": "string"
+              },
+              {
+                "type": "null"
+              }
+            ]
+          }
+        },
+        "type": "object"
+      },
+      "StateContext": {
+        "properties": {
+          "state": {
+            "additionalProperties": true,
+            "title": "State",
+            "type": "object"
+          },
+          "type": {
+            "const": "state",
+            "default": "state",
+            "title": "Type",
+            "type": "string"
+          }
+        },
+        "required": [
+          "state"
+        ],
+        "title": "StateContext",
+        "type": "object"
+      },
+      "TeamIn": {
+        "properties": {
+          "slug": {
+            "maxLength": 50,
+            "pattern": "^[-a-zA-Z0-9_]+$",
+            "title": "Slug",
+            "type": "string"
+          }
+        },
+        "required": [
+          "slug"
+        ],
+        "title": "TeamIn",
+        "type": "object"
+      },
+      "TeamProjectSchema": {
+        "description": "TeamSchema with related projects",
+        "properties": {
+          "dateCreated": {
+            "format": "date-time",
+            "title": "Datecreated",
+            "type": "string"
+          },
+          "id": {
+            "title": "Id",
+            "type": "string"
+          },
+          "isMember": {
+            "title": "Ismember",
+            "type": "boolean"
+          },
+          "memberCount": {
+            "title": "Membercount",
+            "type": "integer"
+          },
+          "projects": {
+            "default": [],
+            "items": {
+              "$ref": "#/components/schemas/ProjectSchema"
+            },
+            "title": "Projects",
+            "type": "array"
+          },
+          "slug": {
+            "maxLength": 50,
+            "pattern": "^[-a-zA-Z0-9_]+$",
+            "title": "Slug",
+            "type": "string"
+          }
+        },
+        "required": [
+          "id",
+          "slug",
+          "dateCreated",
+          "isMember",
+          "memberCount"
+        ],
+        "title": "TeamProjectSchema",
+        "type": "object"
+      },
+      "TeamSchema": {
+        "properties": {
+          "dateCreated": {
+            "format": "date-time",
+            "title": "Datecreated",
+            "type": "string"
+          },
+          "id": {
+            "title": "Id",
+            "type": "string"
+          },
+          "isMember": {
+            "title": "Ismember",
+            "type": "boolean"
+          },
+          "memberCount": {
+            "title": "Membercount",
+            "type": "integer"
+          },
+          "slug": {
+            "maxLength": 50,
+            "pattern": "^[-a-zA-Z0-9_]+$",
+            "title": "Slug",
+            "type": "string"
+          }
+        },
+        "required": [
+          "id",
+          "slug",
+          "dateCreated",
+          "isMember",
+          "memberCount"
+        ],
+        "title": "TeamSchema",
+        "type": "object"
+      },
+      "TeamSlugSchema": {
+        "description": "Used in relations including organization projects",
+        "properties": {
+          "id": {
+            "title": "Id",
+            "type": "string"
+          },
+          "slug": {
+            "title": "Slug",
+            "type": "string"
+          }
+        },
+        "required": [
+          "id",
+          "slug"
+        ],
+        "title": "TeamSlugSchema",
+        "type": "object"
+      },
+      "TraceContext": {
+        "properties": {
+          "client_sample_rate": {
+            "anyOf": [
+              {
+                "type": "number"
+              },
+              {
+                "type": "null"
+              }
+            ]
+          },
+          "dynamic_sampling_context": {
+            "anyOf": [
+              {
+                "additionalProperties": true,
+                "type": "object"
+              },
+              {
+                "type": "null"
+              }
+            ]
+          },
+          "exclusive_time": {
+            "anyOf": [
+              {
+                "type": "number"
+              },
+              {
+                "type": "null"
+              }
+            ]
+          },
+          "op": {
+            "anyOf": [
+              {
+                "type": "string"
+              },
+              {
+                "type": "null"
+              }
+            ]
+          },
+          "origin": {
+            "anyOf": [
+              {
+                "type": "string"
+              },
+              {
+                "type": "null"
+              }
+            ]
+          },
+          "parent_span_id": {
+            "anyOf": [
+              {
+                "type": "string"
+              },
+              {
+                "type": "null"
+              }
+            ]
+          },
+          "span_id": {
+            "type": "string"
+          },
+          "status": {
+            "anyOf": [
+              {
+                "type": "string"
+              },
+              {
+                "type": "null"
+              }
+            ]
+          },
+          "tags": {
+            "anyOf": [
+              {
+                "additionalProperties": true,
+                "type": "object"
+              },
+              {
+                "items": {},
+                "type": "array"
+              },
+              {
+                "type": "null"
+              }
+            ]
+          },
+          "trace_id": {
+            "type": "string"
+          },
+          "type": {
+            "const": "trace",
+            "default": "trace",
+            "type": "string"
+          }
+        },
+        "required": [
+          "trace_id",
+          "span_id"
+        ],
+        "type": "object"
+      },
+      "UserReportSchema": {
+        "properties": {
+          "comments": {
+            "title": "Comments",
+            "type": "string"
+          },
+          "dateCreated": {
+            "format": "date-time",
+            "title": "Datecreated",
+            "type": "string"
+          },
+          "email": {
+            "maxLength": 254,
+            "title": "Email",
+            "type": "string"
+          },
+          "event": {
+            "additionalProperties": {
+              "type": "string"
+            },
+            "title": "Event",
+            "type": "object"
+          },
+          "eventID": {
+            "title": "Eventid",
+            "type": "string"
+          },
+          "id": {
+            "anyOf": [
+              {
+                "type": "integer"
+              },
+              {
+                "type": "null"
+              }
+            ],
+            "title": "ID"
+          },
+          "name": {
+            "maxLength": 128,
+            "title": "Name",
+            "type": "string"
+          },
+          "user": {
+            "anyOf": [
+              {
+                "type": "string"
+              },
+              {
+                "type": "null"
+              }
+            ],
+            "title": "User"
+          }
+        },
+        "required": [
+          "eventID",
+          "event",
+          "dateCreated",
+          "name",
+          "email",
+          "comments"
+        ],
+        "title": "UserReportSchema",
+        "type": "object"
+      }
+    }
+  },
+  "info": {
+    "title": "GlitchTip API",
+    "version": "1.0.0"
+  },
+  "openapi": "3.1.0",
+  "paths": {
+    "/api/0/issues/{issue_id}/": {
+      "get": {
+        "operationId": "apps_issue_events_api_issues_get_issue",
+        "parameters": [
+          {
+            "in": "path",
+            "name": "issue_id",
+            "required": true,
+            "schema": {
+              "title": "Issue Id",
+              "type": "integer"
+            }
+          }
+        ],
+        "responses": {
+          "200": {
+            "content": {
+              "application/json": {
+                "schema": {
+                  "$ref": "#/components/schemas/IssueDetailSchema"
+                }
+              }
+            },
+            "description": "OK"
+          }
+        },
+        "security": [
+          {
+            "TokenAuth": []
+          },
+          {
+            "SessionAuth": []
+          }
+        ],
+        "summary": "Get Issue",
+        "tags": [
+          "Issues"
+        ]
+      }
+    },
+    "/api/0/issues/{issue_id}/events/": {
+      "get": {
+        "operationId": "apps_issue_events_api_events_list_issue_event",
+        "parameters": [
+          {
+            "in": "path",
+            "name": "issue_id",
+            "required": true,
+            "schema": {
+              "title": "Issue Id",
+              "type": "integer"
+            }
+          },
+          {
+            "description": "Number of results to return per page.",
+            "in": "query",
+            "name": "limit",
+            "schema": {
+              "anyOf": [
+                {
+                  "type": "integer"
+                },
+                {
+                  "type": "null"
+                }
+              ],
+              "description": "Number of results to return per page.",
+              "title": "Limit"
+            }
+          },
+          {
+            "description": "The pagination cursor value.",
+            "in": "query",
+            "name": "cursor",
+            "schema": {
+              "anyOf": [
+                {
+                  "type": "string"
+                },
+                {
+                  "type": "null"
+                }
+              ],
+              "description": "The pagination cursor value.",
+              "title": "Cursor"
+            }
+          }
+        ],
+        "responses": {
+          "200": {
+            "content": {
+              "application/json": {
+                "schema": {
+                  "items": {
+                    "$ref": "#/components/schemas/IssueEventSchema"
+                  },
+                  "title": "Response",
+                  "type": "array"
+                }
+              }
+            },
+            "description": "OK"
+          }
+        },
+        "security": [
+          {
+            "TokenAuth": []
+          },
+          {
+            "SessionAuth": []
+          }
+        ],
+        "summary": "List Issue Event",
+        "tags": [
+          "Issues"
+        ]
+      }
+    },
+    "/api/0/issues/{issue_id}/events/{event_id}/": {
+      "get": {
+        "operationId": "apps_issue_events_api_events_get_issue_event",
+        "parameters": [
+          {
+            "in": "path",
+            "name": "issue_id",
+            "required": true,
+            "schema": {
+              "title": "Issue Id",
+              "type": "integer"
+            }
+          },
+          {
+            "in": "path",
+            "name": "event_id",
+            "required": true,
+            "schema": {
+              "format": "uuid",
+              "title": "Event Id",
+              "type": "string"
+            }
+          }
+        ],
+        "responses": {
+          "200": {
+            "content": {
+              "application/json": {
+                "schema": {
+                  "$ref": "#/components/schemas/IssueEventDetailSchema"
+                }
+              }
+            },
+            "description": "OK"
+          }
+        },
+        "security": [
+          {
+            "TokenAuth": []
+          },
+          {
+            "SessionAuth": []
+          }
+        ],
+        "summary": "Get Issue Event",
+        "tags": [
+          "Issues"
+        ]
+      }
+    },
+    "/api/0/organizations/": {
+      "get": {
+        "description": "Return list of all organizations the user has access to.",
+        "operationId": "apps_organizations_ext_api_list_organizations",
+        "parameters": [
+          {
+            "in": "query",
+            "name": "owner",
+            "schema": {
+              "anyOf": [
+                {
+                  "type": "boolean"
+                },
+                {
+                  "type": "null"
+                }
+              ],
+              "title": "Owner"
+            }
+          },
+          {
+            "in": "query",
+            "name": "query",
+            "schema": {
+              "anyOf": [
+                {
+                  "type": "string"
+                },
+                {
+                  "type": "null"
+                }
+              ],
+              "title": "Query"
+            }
+          },
+          {
+            "in": "query",
+            "name": "sortBy",
+            "schema": {
+              "anyOf": [
+                {
+                  "type": "string"
+                },
+                {
+                  "type": "null"
+                }
+              ],
+              "title": "Sortby"
+            }
+          },
+          {
+            "description": "Number of results to return per page.",
+            "in": "query",
+            "name": "limit",
+            "schema": {
+              "anyOf": [
+                {
+                  "type": "integer"
+                },
+                {
+                  "type": "null"
+                }
+              ],
+              "description": "Number of results to return per page.",
+              "title": "Limit"
+            }
+          },
+          {
+            "description": "The pagination cursor value.",
+            "in": "query",
+            "name": "cursor",
+            "schema": {
+              "anyOf": [
+                {
+                  "type": "string"
+                },
+                {
+                  "type": "null"
+                }
+              ],
+              "description": "The pagination cursor value.",
+              "title": "Cursor"
+            }
+          }
+        ],
+        "responses": {
+          "200": {
+            "content": {
+              "application/json": {
+                "schema": {
+                  "items": {
+                    "$ref": "#/components/schemas/OrganizationSchema"
+                  },
+                  "title": "Response",
+                  "type": "array"
+                }
+              }
+            },
+            "description": "OK"
+          }
+        },
+        "security": [
+          {
+            "TokenAuth": []
+          },
+          {
+            "SessionAuth": []
+          }
+        ],
+        "summary": "List Organizations"
+      }
+    },
+    "/api/0/organizations/{organization_slug}/": {
+      "get": {
+        "description": "Return Organization with project and team details.",
+        "operationId": "apps_organizations_ext_api_get_organization",
+        "parameters": [
+          {
+            "in": "path",
+            "name": "organization_slug",
+            "required": true,
+            "schema": {
+              "title": "Organization Slug",
+              "type": "string"
+            }
+          }
+        ],
+        "responses": {
+          "200": {
+            "content": {
+              "application/json": {
+                "schema": {
+                  "$ref": "#/components/schemas/OrganizationDetailSchema"
+                }
+              }
+            },
+            "description": "OK"
+          }
+        },
+        "security": [
+          {
+            "TokenAuth": []
+          },
+          {
+            "SessionAuth": []
+          }
+        ],
+        "summary": "Get Organization"
+      }
+    },
+    "/api/0/organizations/{organization_slug}/issues/": {
+      "get": {
+        "operationId": "apps_issue_events_api_issues_list_issues",
+        "parameters": [
+          {
+            "in": "path",
+            "name": "organization_slug",
+            "required": true,
+            "schema": {
+              "title": "Organization Slug",
+              "type": "string"
+            }
+          },
+          {
+            "in": "query",
+            "name": "id",
+            "schema": {
+              "anyOf": [
+                {
+                  "items": {
+                    "type": "integer"
+                  },
+                  "type": "array"
+                },
+                {
+                  "type": "null"
+                }
+              ],
+              "title": "Id"
+            }
+          },
+          {
+            "in": "query",
+            "name": "start",
+            "schema": {
+              "anyOf": [
+                {
+                  "format": "date-time",
+                  "type": "string"
+                },
+                {
+                  "type": "null"
+                }
+              ],
+              "title": "Start"
+            }
+          },
+          {
+            "in": "query",
+            "name": "end",
+            "schema": {
+              "anyOf": [
+                {
+                  "format": "date-time",
+                  "type": "string"
+                },
+                {
+                  "type": "null"
+                }
+              ],
+              "title": "End"
+            }
+          },
+          {
+            "in": "query",
+            "name": "project",
+            "schema": {
+              "anyOf": [
+                {
+                  "items": {
+                    "type": "integer"
+                  },
+                  "type": "array"
+                },
+                {
+                  "type": "null"
+                }
+              ],
+              "title": "Project"
+            }
+          },
+          {
+            "in": "query",
+            "name": "environment",
+            "schema": {
+              "anyOf": [
+                {
+                  "items": {
+                    "type": "string"
+                  },
+                  "type": "array"
+                },
+                {
+                  "type": "null"
+                }
+              ],
+              "title": "Environment"
+            }
+          },
+          {
+            "in": "query",
+            "name": "query",
+            "schema": {
+              "anyOf": [
+                {
+                  "type": "string"
+                },
+                {
+                  "type": "null"
+                }
+              ],
+              "title": "Query"
+            }
+          },
+          {
+            "in": "query",
+            "name": "sort",
+            "schema": {
+              "default": "-last_seen",
+              "enum": [
+                "last_seen",
+                "first_seen",
+                "count",
+                "priority",
+                "-last_seen",
+                "-first_seen",
+                "-count",
+                "-priority"
+              ],
+              "title": "Sort",
+              "type": "string"
+            }
+          },
+          {
+            "description": "Number of results to return per page.",
+            "in": "query",
+            "name": "limit",
+            "schema": {
+              "anyOf": [
+                {
+                  "type": "integer"
+                },
+                {
+                  "type": "null"
+                }
+              ],
+              "description": "Number of results to return per page.",
+              "title": "Limit"
+            }
+          },
+          {
+            "description": "The pagination cursor value.",
+            "in": "query",
+            "name": "cursor",
+            "schema": {
+              "anyOf": [
+                {
+                  "type": "string"
+                },
+                {
+                  "type": "null"
+                }
+              ],
+              "description": "The pagination cursor value.",
+              "title": "Cursor"
+            }
+          }
+        ],
+        "responses": {
+          "200": {
+            "content": {
+              "application/json": {
+                "schema": {
+                  "items": {
+                    "$ref": "#/components/schemas/IssueSchema"
+                  },
+                  "title": "Response",
+                  "type": "array"
+                }
+              }
+            },
+            "description": "OK"
+          }
+        },
+        "security": [
+          {
+            "TokenAuth": []
+          },
+          {
+            "SessionAuth": []
+          }
+        ],
+        "summary": "List Issues",
+        "tags": [
+          "Issues"
+        ]
+      }
+    },
+    "/api/0/organizations/{organization_slug}/teams/": {
+      "get": {
+        "operationId": "apps_teams_api_list_teams",
+        "parameters": [
+          {
+            "in": "path",
+            "name": "organization_slug",
+            "required": true,
+            "schema": {
+              "title": "Organization Slug",
+              "type": "string"
+            }
+          },
+          {
+            "description": "Number of results to return per page.",
+            "in": "query",
+            "name": "limit",
+            "schema": {
+              "anyOf": [
+                {
+                  "type": "integer"
+                },
+                {
+                  "type": "null"
+                }
+              ],
+              "description": "Number of results to return per page.",
+              "title": "Limit"
+            }
+          },
+          {
+            "description": "The pagination cursor value.",
+            "in": "query",
+            "name": "cursor",
+            "schema": {
+              "anyOf": [
+                {
+                  "type": "string"
+                },
+                {
+                  "type": "null"
+                }
+              ],
+              "description": "The pagination cursor value.",
+              "title": "Cursor"
+            }
+          }
+        ],
+        "responses": {
+          "200": {
+            "content": {
+              "application/json": {
+                "schema": {
+                  "items": {
+                    "$ref": "#/components/schemas/TeamProjectSchema"
+                  },
+                  "title": "Response",
+                  "type": "array"
+                }
+              }
+            },
+            "description": "OK"
+          }
+        },
+        "security": [
+          {
+            "TokenAuth": []
+          },
+          {
+            "SessionAuth": []
+          }
+        ],
+        "summary": "List Teams"
+      },
+      "post": {
+        "operationId": "apps_teams_api_create_team",
+        "parameters": [
+          {
+            "in": "path",
+            "name": "organization_slug",
+            "required": true,
+            "schema": {
+              "title": "Organization Slug",
+              "type": "string"
+            }
+          }
+        ],
+        "requestBody": {
+          "content": {
+            "application/json": {
+              "schema": {
+                "$ref": "#/components/schemas/TeamIn"
+              }
+            }
+          },
+          "required": true
+        },
+        "responses": {
+          "201": {
+            "content": {
+              "application/json": {
+                "schema": {
+                  "$ref": "#/components/schemas/TeamProjectSchema"
+                }
+              }
+            },
+            "description": "Created"
+          }
+        },
+        "security": [
+          {
+            "TokenAuth": []
+          },
+          {
+            "SessionAuth": []
+          }
+        ],
+        "summary": "Create Team"
+      }
+    },
+    "/api/0/projects/": {
+      "get": {
+        "description": "List all projects that a user has access to",
+        "operationId": "apps_projects_api_list_projects",
+        "parameters": [
+          {
+            "description": "Number of results to return per page.",
+            "in": "query",
+            "name": "limit",
+            "schema": {
+              "anyOf": [
+                {
+                  "type": "integer"
+                },
+                {
+                  "type": "null"
+                }
+              ],
+              "description": "Number of results to return per page.",
+              "title": "Limit"
+            }
+          },
+          {
+            "description": "The pagination cursor value.",
+            "in": "query",
+            "name": "cursor",
+            "schema": {
+              "anyOf": [
+                {
+                  "type": "string"
+                },
+                {
+                  "type": "null"
+                }
+              ],
+              "description": "The pagination cursor value.",
+              "title": "Cursor"
+            }
+          }
+        ],
+        "responses": {
+          "200": {
+            "content": {
+              "application/json": {
+                "schema": {
+                  "items": {
+                    "$ref": "#/components/schemas/ProjectOrganizationSchema"
+                  },
+                  "title": "Response",
+                  "type": "array"
+                }
+              }
+            },
+            "description": "OK"
+          }
+        },
+        "security": [
+          {
+            "TokenAuth": []
+          },
+          {
+            "SessionAuth": []
+          }
+        ],
+        "summary": "List Projects"
+      }
+    },
+    "/api/0/projects/{organization_slug}/{project_slug}/": {
+      "delete": {
+        "operationId": "apps_projects_api_delete_project",
+        "parameters": [
+          {
+            "in": "path",
+            "name": "organization_slug",
+            "required": true,
+            "schema": {
+              "title": "Organization Slug",
+              "type": "string"
+            }
+          },
+          {
+            "in": "path",
+            "name": "project_slug",
+            "required": true,
+            "schema": {
+              "title": "Project Slug",
+              "type": "string"
+            }
+          }
+        ],
+        "responses": {
+          "204": {
+            "description": "No Content"
+          }
+        },
+        "security": [
+          {
+            "TokenAuth": []
+          },
+          {
+            "SessionAuth": []
+          }
+        ],
+        "summary": "Delete Project"
+      },
+      "get": {
+        "operationId": "apps_projects_api_get_project",
+        "parameters": [
+          {
+            "in": "path",
+            "name": "organization_slug",
+            "required": true,
+            "schema": {
+              "title": "Organization Slug",
+              "type": "string"
+            }
+          },
+          {
+            "in": "path",
+            "name": "project_slug",
+            "required": true,
+            "schema": {
+              "title": "Project Slug",
+              "type": "string"
+            }
+          }
+        ],
+        "responses": {
+          "200": {
+            "content": {
+              "application/json": {
+                "schema": {
+                  "$ref": "#/components/schemas/ProjectOrganizationSchema"
+                }
+              }
+            },
+            "description": "OK"
+          }
+        },
+        "security": [
+          {
+            "TokenAuth": []
+          },
+          {
+            "SessionAuth": []
+          }
+        ],
+        "summary": "Get Project"
+      },
+      "put": {
+        "operationId": "apps_projects_api_update_project",
+        "parameters": [
+          {
+            "in": "path",
+            "name": "organization_slug",
+            "required": true,
+            "schema": {
+              "title": "Organization Slug",
+              "type": "string"
+            }
+          },
+          {
+            "in": "path",
+            "name": "project_slug",
+            "required": true,
+            "schema": {
+              "title": "Project Slug",
+              "type": "string"
+            }
+          }
+        ],
+        "requestBody": {
+          "content": {
+            "application/json": {
+              "schema": {
+                "$ref": "#/components/schemas/ProjectIn"
+              }
+            }
+          },
+          "required": true
+        },
+        "responses": {
+          "200": {
+            "content": {
+              "application/json": {
+                "schema": {
+                  "$ref": "#/components/schemas/ProjectOrganizationSchema"
+                }
+              }
+            },
+            "description": "OK"
+          }
+        },
+        "security": [
+          {
+            "TokenAuth": []
+          },
+          {
+            "SessionAuth": []
+          }
+        ],
+        "summary": "Update Project"
+      }
+    },
+    "/api/0/projects/{organization_slug}/{project_slug}/keys/": {
+      "get": {
+        "description": "List all DSN keys for a given project",
+        "operationId": "apps_projects_api_list_project_keys",
+        "parameters": [
+          {
+            "in": "path",
+            "name": "organization_slug",
+            "required": true,
+            "schema": {
+              "title": "Organization Slug",
+              "type": "string"
+            }
+          },
+          {
+            "in": "path",
+            "name": "project_slug",
+            "required": true,
+            "schema": {
+              "title": "Project Slug",
+              "type": "string"
+            }
+          },
+          {
+            "in": "query",
+            "name": "status",
+            "schema": {
+              "anyOf": [
+                {
+                  "type": "string"
+                },
+                {
+                  "type": "null"
+                }
+              ],
+              "title": "Status"
+            }
+          },
+          {
+            "description": "Number of results to return per page.",
+            "in": "query",
+            "name": "limit",
+            "schema": {
+              "anyOf": [
+                {
+                  "type": "integer"
+                },
+                {
+                  "type": "null"
+                }
+              ],
+              "description": "Number of results to return per page.",
+              "title": "Limit"
+            }
+          },
+          {
+            "description": "The pagination cursor value.",
+            "in": "query",
+            "name": "cursor",
+            "schema": {
+              "anyOf": [
+                {
+                  "type": "string"
+                },
+                {
+                  "type": "null"
+                }
+              ],
+              "description": "The pagination cursor value.",
+              "title": "Cursor"
+            }
+          }
+        ],
+        "responses": {
+          "200": {
+            "content": {
+              "application/json": {
+                "schema": {
+                  "items": {
+                    "$ref": "#/components/schemas/ProjectKeySchema"
+                  },
+                  "title": "Response",
+                  "type": "array"
+                }
+              }
+            },
+            "description": "OK"
+          }
+        },
+        "security": [
+          {
+            "TokenAuth": []
+          },
+          {
+            "SessionAuth": []
+          }
+        ],
+        "summary": "List Project Keys"
+      },
+      "post": {
+        "description": "Create new key for project. Rate limiting not implemented.",
+        "operationId": "apps_projects_api_create_project_key",
+        "parameters": [
+          {
+            "in": "path",
+            "name": "organization_slug",
+            "required": true,
+            "schema": {
+              "title": "Organization Slug",
+              "type": "string"
+            }
+          },
+          {
+            "in": "path",
+            "name": "project_slug",
+            "required": true,
+            "schema": {
+              "title": "Project Slug",
+              "type": "string"
+            }
+          }
+        ],
+        "requestBody": {
+          "content": {
+            "application/json": {
+              "schema": {
+                "$ref": "#/components/schemas/ProjectKeyIn"
+              }
+            }
+          },
+          "required": true
+        },
+        "responses": {
+          "201": {
+            "content": {
+              "application/json": {
+                "schema": {
+                  "$ref": "#/components/schemas/ProjectKeySchema"
+                }
+              }
+            },
+            "description": "Created"
+          }
+        },
+        "security": [
+          {
+            "TokenAuth": []
+          },
+          {
+            "SessionAuth": []
+          }
+        ],
+        "summary": "Create Project Key"
+      }
+    },
+    "/api/0/projects/{organization_slug}/{project_slug}/keys/{key_id}/": {
+      "delete": {
+        "operationId": "apps_projects_api_delete_project_key",
+        "parameters": [
+          {
+            "in": "path",
+            "name": "organization_slug",
+            "required": true,
+            "schema": {
+              "title": "Organization Slug",
+              "type": "string"
+            }
+          },
+          {
+            "in": "path",
+            "name": "project_slug",
+            "required": true,
+            "schema": {
+              "title": "Project Slug",
+              "type": "string"
+            }
+          },
+          {
+            "in": "path",
+            "name": "key_id",
+            "required": true,
+            "schema": {
+              "format": "uuid",
+              "title": "Key Id",
+              "type": "string"
+            }
+          }
+        ],
+        "responses": {
+          "204": {
+            "description": "No Content"
+          }
+        },
+        "security": [
+          {
+            "TokenAuth": []
+          },
+          {
+            "SessionAuth": []
+          }
+        ],
+        "summary": "Delete Project Key"
+      },
+      "get": {
+        "operationId": "apps_projects_api_get_project_key",
+        "parameters": [
+          {
+            "in": "path",
+            "name": "organization_slug",
+            "required": true,
+            "schema": {
+              "title": "Organization Slug",
+              "type": "string"
+            }
+          },
+          {
+            "in": "path",
+            "name": "project_slug",
+            "required": true,
+            "schema": {
+              "title": "Project Slug",
+              "type": "string"
+            }
+          },
+          {
+            "in": "path",
+            "name": "key_id",
+            "required": true,
+            "schema": {
+              "format": "uuid",
+              "title": "Key Id",
+              "type": "string"
+            }
+          }
+        ],
+        "responses": {
+          "200": {
+            "content": {
+              "application/json": {
+                "schema": {
+                  "$ref": "#/components/schemas/ProjectKeySchema"
+                }
+              }
+            },
+            "description": "OK"
+          }
+        },
+        "security": [
+          {
+            "TokenAuth": []
+          },
+          {
+            "SessionAuth": []
+          }
+        ],
+        "summary": "Get Project Key"
+      }
+    },
+    "/api/0/teams/{organization_slug}/{team_slug}/": {
+      "get": {
+        "operationId": "apps_teams_api_get_team",
+        "parameters": [
+          {
+            "in": "path",
+            "name": "organization_slug",
+            "required": true,
+            "schema": {
+              "title": "Organization Slug",
+              "type": "string"
+            }
+          },
+          {
+            "in": "path",
+            "name": "team_slug",
+            "required": true,
+            "schema": {
+              "title": "Team Slug",
+              "type": "string"
+            }
+          }
+        ],
+        "responses": {
+          "200": {
+            "content": {
+              "application/json": {
+                "schema": {
+                  "$ref": "#/components/schemas/TeamProjectSchema"
+                }
+              }
+            },
+            "description": "OK"
+          }
+        },
+        "security": [
+          {
+            "TokenAuth": []
+          },
+          {
+            "SessionAuth": []
+          }
+        ],
+        "summary": "Get Team"
+      }
+    },
+    "/api/0/teams/{organization_slug}/{team_slug}/projects/": {
+      "post": {
+        "description": "Create a new project given a team and organization",
+        "operationId": "apps_projects_api_create_project",
+        "parameters": [
+          {
+            "in": "path",
+            "name": "organization_slug",
+            "required": true,
+            "schema": {
+              "title": "Organization Slug",
+              "type": "string"
+            }
+          },
+          {
+            "in": "path",
+            "name": "team_slug",
+            "required": true,
+            "schema": {
+              "title": "Team Slug",
+              "type": "string"
+            }
+          }
+        ],
+        "requestBody": {
+          "content": {
+            "application/json": {
+              "schema": {
+                "$ref": "#/components/schemas/ProjectIn"
+              }
+            }
+          },
+          "required": true
+        },
+        "responses": {
+          "201": {
+            "content": {
+              "application/json": {
+                "schema": {
+                  "$ref": "#/components/schemas/ProjectSchema"
+                }
+              }
+            },
+            "description": "Created"
+          }
+        },
+        "security": [
+          {
+            "TokenAuth": []
+          },
+          {
+            "SessionAuth": []
+          }
+        ],
+        "summary": "Create Project"
+      }
+    }
+  }
+}

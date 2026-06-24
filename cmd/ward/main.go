@@ -12,6 +12,7 @@ import (
 	"strings"
 
 	"forgejo.coilysiren.me/coilyco-flight-deck/cli-guard/cli/sandbox"
+	"forgejo.coilysiren.me/coilyco-flight-deck/cli-guard/pkg/exitcode"
 	"github.com/urfave/cli/v3"
 )
 
@@ -80,6 +81,7 @@ func main() {
 			containerCommand(),
 			agentCommand(),
 			opsCommand(),
+			ciCommand(),
 		},
 	}
 
@@ -89,6 +91,12 @@ func main() {
 
 	if err := app.Run(context.Background(), os.Args); err != nil {
 		fmt.Fprintln(os.Stderr, "ward:", err)
+		// A verb's declared exit code (exitcode.Coded, e.g. `ci watch`'s 0/1/2/3)
+		// wins, then a subprocess's own code, then 1.
+		var coded exitcode.Coded
+		if errors.As(err, &coded) {
+			os.Exit(coded.Code())
+		}
 		var ee *exec.ExitError
 		if errors.As(err, &ee) {
 			os.Exit(ee.ExitCode())
