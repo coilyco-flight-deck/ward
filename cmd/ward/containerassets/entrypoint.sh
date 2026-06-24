@@ -60,12 +60,25 @@ configure_git_auth() {
     git config --system credential.helper 'store --file=/etc/ward-git-credentials'
     # Push as the coilyco-ops bot: FORGEJO_TOKEN is the bot's (ward#245).
     printf 'https://%s:%s@%s\n' coilyco-ops "$FORGEJO_TOKEN" "$forgejo_host" > /etc/ward-git-credentials
-    # Readable by root (reaper) and the dropped agent group, not world. Without
-    # this the non-root agent can't use the helper and must fall back to the env.
+    # Readable by root (reaper) and the dropped agent group, not world; git's store
+    # helper clobbers this on clone, so it's re-asserted before the drop (ward#288).
     chown "root:$AGENT_GID" /etc/ward-git-credentials
     chmod 640 /etc/ward-git-credentials
   else
     log "no FORGEJO_TOKEN: clone/push will only work for anonymous repos"
+  fi
+}
+
+# Re-assert the credential perms git's `store` helper clobbers on the clones;
+# fail loud if the agent still can't read it (ward#288, docs/agent-credentials.md).
+ensure_git_cred_readable() {
+  local f=/etc/ward-git-credentials
+  [ -e "$f" ] || return 0
+  chown "root:$AGENT_GID" "$f"
+  chmod 640 "$f"
+  if ! setpriv --reuid="$AGENT_UID" --regid="$AGENT_GID" --init-groups \
+        sh -c 'test -r /etc/ward-git-credentials'; then
+    die "git credential file $f is unreadable by the agent (uid $AGENT_UID gid $AGENT_GID) after re-perm; push would fall back to the human token and leak attribution (ward#288)"
   fi
 }
 
@@ -583,6 +596,7 @@ main() {
   chown -R "$AGENT_UID:$AGENT_GID" "$work" "$AGENT_HOME/.claude" "$AGENT_HOME/.config" "$AGENT_HOME/.codex" 2>/dev/null || true
   # Hand each granted extra-repo tree to the agent user too (ward#230); cloned as root.
   for ref in ${WARD_EXTRA_REPOS:-}; do chown -R "$AGENT_UID:$AGENT_GID" "/workspace/${ref##*/}" 2>/dev/null || true; done
+  ensure_git_cred_readable  # re-assert creds the clones clobbered (ward#288)
   unset ANTHROPIC_API_KEY ANTHROPIC_AUTH_TOKEN 2>/dev/null || true
   # Fail loud before launch if claude can't authenticate (ward#222): a clear
   # abort beats a silent multi-minute hang. Runs as the agent user, post-chown.

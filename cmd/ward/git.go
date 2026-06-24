@@ -8,7 +8,7 @@ import (
 )
 
 // gitPassthroughVerbs is the audited git set fronted by `ward git <verb>`.
-// commit is absent (dedicated verb in git_commit.go). See docs/git-verbs.md.
+// commit/clone are dedicated verbs (git_commit.go, git_clone.go); see docs.
 var gitPassthroughVerbs = []struct{ name, usage string }{
 	{"status", "git status - show the working tree state."},
 	{"log", "git log - show commit history."},
@@ -26,9 +26,9 @@ var gitPassthroughVerbs = []struct{ name, usage string }{
 }
 
 // gitCommand groups ward's audited git verbs: thin passthroughs plus the
-// concurrency-safe commit. See docs/git-verbs.md.
+// concurrency-safe commit and the destination-gated clone. See docs/git-verbs.md.
 func gitCommand() *cli.Command {
-	subs := []*cli.Command{gitCommitCommand()}
+	subs := []*cli.Command{gitCommitCommand(), gitCloneCommand()}
 	for _, v := range gitPassthroughVerbs {
 		subs = append(subs, gitPassthroughLeaf(v.name, v.usage))
 	}

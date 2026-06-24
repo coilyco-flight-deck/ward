@@ -24,6 +24,18 @@ A leading `-C <dir>` is hoisted ahead of the subcommand, so `ward git
 status -C /path` runs `git -C /path status` (lets a session operate on a
 repo other than cwd).
 
+## clone (destination-gated)
+
+`clone` is not a passthrough. It wraps `git clone` behind a destination
+gate so an agent cannot drop an unwanted **persistent** checkout into the
+tracked workspace. A clone is allowed iff its resolved destination is
+under an ephemeral root (`/tmp`/`$TMPDIR`) OR the repo is on a hardcoded
+allowlist. See [docs/git-clone.md](git-clone.md) for the full walkthrough.
+
+```
+ward git clone <url> [dir]
+```
+
 ## commit (concurrency-safe)
 
 `commit` is not a passthrough. It is a dedicated verb that is safe when
