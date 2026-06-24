@@ -37,6 +37,10 @@ from the cwd's git origin. The surface words below override that default.
 - **`ask`** answers a freeform question one-shot *inside* a fresh container (so the
   answer can lean on the repo clone and operating context) and streams it inline - no
   issue, no code change, no comment. See [docs/agent-ask.md](agent-ask.md).
+- **`sandbox`** drops you into a *live interactive* agent in a fresh container with
+  no issue and no seed - the unguided scratch session, `ask`'s interactive sibling.
+  Writable (push token like `work`), so it can commit/merge/push; nothing is
+  assigned. See [docs/agent-sandbox.md](agent-sandbox.md).
 
 `task` runs the **same pre-flight** ([docs/agent-preflight.md](agent-preflight.md))
 as `headless` (ward#149): it files the issue first, then gives the same GO / NO-GO
