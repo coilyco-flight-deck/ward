@@ -1,0 +1,79 @@
+// SigNoz ops surface for ward-kdl, driving the vendored signoz.openapi.json - a
+// hand-authored minimal spec (SigNoz publishes no usable OpenAPI: its upstream
+// docs/api/openapi.yml ships components/schemas with no paths). The spec models
+// only the CRU endpoints granted below; delete/destroy verbs are denied here and
+// never compile in. SigNoz is the traces + logs pane on ser8 (signoz/signoz
+// 0.128.0, org coilyco). See ../../docs/ward-kdl.signoz.guardfile.md.
+//
+// base-url is opaque: the UI rides a tailnet HTTPS service (TS_HOSTNAME signoz),
+// whose FQDN is a SecureString, so the host resolves from SSM at request time -
+// the block form, mirroring the glitchtip guardfile. Spec paths carry the full
+// /api prefix, so the SSM value is host-only.
+//
+// Auth is a static SigNoz API key (a service-account PAT), minted in the UI and
+// stashed in SSM. SigNoz keys ride the SIGNOZ-API-KEY header verbatim (no
+// "Bearer " prefix), NOT the email/password session exchange the deploy scripts
+// use (POST /api/v2/sessions/email_password) - a clean static header-token, like
+// forgejo. The SSM key + its SSM.md row are minted by a human; see ward#241's
+// follow-up. Every `can` resolves its operationId by convention (cli-guard#147);
+// the query/pipeline ops pin `op` because their paths are not CRUD-shaped.
+wrap ward-kdl ops signoz {
+    spec signoz.openapi.json
+    base-url {
+        value ssm "/coilysiren/signoz-ser8/base-url"
+    }
+    auth header-token {
+        header SIGNOZ-API-KEY
+        value ssm "/coilysiren/signoz-ser8/api-token"
+    }
+    // query: run a v3 range query over traces/logs/metrics. A POST that reads
+    // telemetry; op pinned since /api/v3/query_range is not CRUD-shaped.
+    can create query-range {
+        op queryRange
+        describe "execute a v3 range query (POST /api/v3/query_range). A POST that READS telemetry - nothing is created. Supply the builder/clickhouse/promql tree via --body-file; --start/--end (epoch ms) and --step are convenience flags."
+    }
+    // log pipelines: read the active set and apply a new version. SigNoz keeps
+    // prior versions server-side, so there is no delete - rollback re-applies.
+    can get pipeline {
+        op getLatestPipelines
+        describe "the active log-pipeline set (GET /api/v1/logs/pipelines/latest). op pinned: the path ends in a static /latest, not an item {id}, so convention `get` would not resolve it."
+    }
+    can create pipeline {
+        op createPipeline
+        describe "apply a new log-pipeline version (POST /api/v1/logs/pipelines). Versioned server-side, so this is append-only: rollback is re-applying a prior set, never a delete. Supply the full set via --body-file."
+    }
+    // dashboards: full CRU. Delete is denied below (it drops the dashboard and
+    // all of its panels irreversibly).
+    can get dashboard {
+        describe "a dashboard's full configuration (GET /api/v1/dashboards/{uuid})"
+    }
+    can list dashboard {
+        describe "all dashboards with their summaries (GET /api/v1/dashboards)"
+    }
+    can create dashboard {
+        describe "create a dashboard (POST /api/v1/dashboards). Supply the JSON document via --body-file; --title/--description/--tags lower to flags."
+    }
+    can edit dashboard {
+        describe "replace a dashboard by uuid (PUT /api/v1/dashboards/{uuid}). Supply the JSON document via --body-file."
+    }
+    never delete dashboard {
+        message "dashboard deletion is irreversible (drops the dashboard and all its panels); do it in the SigNoz UI. ward exposes create/read/update only (ward#241)."
+    }
+    // alert rules: full CRU. Delete is denied below; the enable/disable toggle
+    // is deliberately unsurfaced too (silencing an alert is effectively destructive).
+    can get rule {
+        describe "an alert rule (GET /api/v1/rules/{id})"
+    }
+    can list rule {
+        describe "all alert rules (GET /api/v1/rules)"
+    }
+    can create rule {
+        describe "create an alert rule (POST /api/v1/rules). Supply the JSON document via --body-file; --alert/--ruleType/--alertType/--evalWindow/--frequency lower to flags."
+    }
+    can edit rule {
+        describe "replace an alert rule by id (PUT /api/v1/rules/{id}). Supply the JSON document via --body-file."
+    }
+    never delete rule {
+        message "alert-rule deletion is irreversible; do it in the SigNoz UI. ward exposes create/read/update only, and the enable/disable toggle is deliberately not surfaced (ward#241)."
+    }
+}

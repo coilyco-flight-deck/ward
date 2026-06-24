@@ -2,9 +2,9 @@
 
 **ward is a harness driver.** It drives an agent harness (claude, goose, codex, qwen) into an ephemeral container to carry a Forgejo issue end to end, then gates every dev verb it (or any semi-trusted automation) runs behind [cli-guard][cli-guard]'s policy.
 
-The thing it produces is a **warded agent**: an agent ward drives into a container and gates behind cli-guard policy. Read "warded" as a protective circle around the agent - the lockdown deny-list and allowlisted verbs bounding its reach, not "warded off". Both senses point toward bounded autonomy.
+The thing it produces is a **warded agent**: an agent ward drives into a container and gates behind cli-guard policy. Read "warded" as a protective circle around the agent - deny-list and allowlisted verbs bounding its reach, not "warded off".
 
-`ward` is the contributor-facing cli-guard consumer, now also absorbing the operator surface from the retiring [coily][coily] (spec REST on `ward-kdl`). Both are thin, audited wrappers around the same cli-guard primitives.
+`ward` is the contributor-facing cli-guard consumer, now also absorbing the operator surface from the retiring [coily][coily] (spec REST on `ward-kdl`).
 
 ## Status
 
@@ -67,6 +67,7 @@ Bug or feature request: [create a new issue][new-issue]. Conduct: [Code of Condu
 ## See also
 
 - [docs/architecture.md](docs/architecture.md) - ward in three layers (cli-guard, ward-kdl, ward).
+- [docs/comparison-openshell.md](docs/comparison-openshell.md) - ward vs NVIDIA OpenShell: verb-level gate vs kernel sandbox.
 - [AGENTS.md](AGENTS.md) - agent-facing operating rules.
 - [docs/FEATURES.md](docs/FEATURES.md) - inventory of what ships today.
 - [.ward/ward.yaml](.ward/ward.yaml) - allowlisted commands.

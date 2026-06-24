@@ -568,14 +568,6 @@ Positional arguments (3):
 - `<repo>` (string)
 - `<user>` (string)
 
-## ward-kdl-write ops forgejo token get
-
-`GET /user/gpg_key_token`
-
-Authorized by grant: can get "*". Not destructive.
-
-Takes no arguments.
-
 ## ward-kdl-write ops forgejo tree get
 
 `GET /repos/{owner}/{repo}/git/trees/{sha}`

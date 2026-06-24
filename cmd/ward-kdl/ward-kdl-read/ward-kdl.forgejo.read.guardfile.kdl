@@ -8,7 +8,7 @@
 // This file is the singleton-bearing root of the chain: it declares the `spec`,
 // `base-url`, and `auth` the write and admin tiers inherit (cli-guard#160 only
 // pulls a singleton into a child that declares none). Auto-resolution per
-// cli-guard#147. See ../../docs/ward-kdl.forgejo.read.guardfile.md.
+// cli-guard#147. See ../../../docs/ward-kdl.forgejo.read.guardfile.md.
 wrap ward-kdl-read ops forgejo {
     spec forgejo.swagger.v1.json
     base-url "forgejo.coilysiren.me/api/v1"
