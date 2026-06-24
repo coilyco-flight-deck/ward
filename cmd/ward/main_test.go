@@ -141,3 +141,54 @@ func TestMaybeRewriteToExec(t *testing.T) {
 		}
 	})
 }
+
+func TestMaybeRewriteWardedShim(t *testing.T) {
+	cases := []struct {
+		name string
+		args []string
+		want []string
+	}{
+		{
+			name: "warded splices in drive",
+			args: []string{"warded", "claude", "summarize X"},
+			want: []string{"ward", "drive", "claude", "summarize X"},
+		},
+		{
+			name: "warded by absolute path still rewrites",
+			args: []string{"/usr/local/bin/warded", "codex", "explain Y"},
+			want: []string{"ward", "drive", "codex", "explain Y"},
+		},
+		{
+			name: "bare warded rewrites to bare drive (drive reports the missing harness)",
+			args: []string{"warded"},
+			want: []string{"ward", "drive"},
+		},
+		{
+			name: "flags ride through after drive",
+			args: []string{"warded", "claude", "do X", "--print"},
+			want: []string{"ward", "drive", "claude", "do X", "--print"},
+		},
+		{
+			name: "ward itself is untouched",
+			args: []string{"ward", "drive", "claude", "x"},
+			want: []string{"ward", "drive", "claude", "x"},
+		},
+		{
+			name: "another tool name is untouched",
+			args: []string{"/usr/local/bin/brew", "install", "x"},
+			want: []string{"/usr/local/bin/brew", "install", "x"},
+		},
+		{
+			name: "empty argv is untouched",
+			args: []string{},
+			want: []string{},
+		},
+	}
+	for _, tc := range cases {
+		t.Run(tc.name, func(t *testing.T) {
+			if got := maybeRewriteWardedShim(tc.args); !reflect.DeepEqual(got, tc.want) {
+				t.Fatalf("maybeRewriteWardedShim(%v) = %v, want %v", tc.args, got, tc.want)
+			}
+		})
+	}
+}

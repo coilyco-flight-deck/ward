@@ -49,6 +49,10 @@ func main() {
 		os.Args = append(rewritten, os.Args[1:]...)
 	}
 
+	// Public-face shim: invoked as `warded` (a symlink), rewrite argv to the
+	// canonical `ward drive <args>` machinery (ward#247). See docs/drive.md.
+	os.Args = maybeRewriteWardedShim(os.Args)
+
 	configFlagOverride = preParseConfigFlag(os.Args)
 	app := &cli.Command{
 		Name:    "ward",
@@ -80,6 +84,7 @@ func main() {
 			installHooksCommand(),
 			containerCommand(),
 			agentCommand(),
+			driveCommand(),
 			opsCommand(),
 			ciCommand(),
 		},
@@ -166,6 +171,21 @@ func maybeRewriteToExec(args []string, topLevel map[string]bool) []string {
 		}
 	}
 	return args
+}
+
+// wardedShimName is the public-face binary basename: a `warded` symlink to the
+// ward binary becomes the product's user-facing command (ward#247). See docs/drive.md.
+const wardedShimName = "warded"
+
+// maybeRewriteWardedShim rewrites `warded <args>` (the symlink basename) to
+// `ward drive <args>`; any other basename is untouched. Pure for testing.
+func maybeRewriteWardedShim(args []string) []string {
+	if len(args) == 0 || filepath.Base(args[0]) != wardedShimName {
+		return args
+	}
+	rewritten := make([]string, 0, len(args)+1)
+	rewritten = append(rewritten, "ward", "drive")
+	return append(rewritten, args[1:]...)
 }
 
 func versionCommand() *cli.Command {
