@@ -1,7 +1,7 @@
 #!/usr/bin/env bash
 # ward container entrypoint. Bind-mounted into the aos dev-base image at
-# /opt/ward/entrypoint.sh by `ward container up` (it is embedded in the ward
-# binary, not baked into the image). Responsibilities, in order: install ward,
+# /opt/ward/entrypoint.sh by `ward agent` at container bring-up (it is embedded
+# in the ward binary, not baked into the image). Responsibilities, in order: install ward,
 # configure forgejo git auth, cached-fresh-clone the target repo, install the
 # repo's pre-commit hooks so agent commits hit the same gate a human's do,
 # compose the per-mode operating context, then exec the agent. See ward
@@ -407,7 +407,7 @@ reap() {
   [ -n "${WARD_REAP_WORK:-}" ] || return 0
   log "reaping: salvage residual work before teardown"
   ward container reap --work "$WARD_REAP_WORK" \
-    || log "reaper returned non-zero; check this log for an UNPRESERVED PATCH block before 'ward container down'"
+    || log "reaper returned non-zero; check this log for an UNPRESERVED PATCH block before the container is removed"
 }
 
 # --- headless progress (claude stream-json -> concise log lines) -------------

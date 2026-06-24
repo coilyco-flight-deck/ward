@@ -1,9 +1,11 @@
 # ward agent
 
-`ward agent work <issue>` is the short verb over [`ward container`](container.md)
-for the common case: take a Forgejo issue and put an agent on it end to end. One
-line replaces the full `container up <repo> --mode <m> --branch <b>` stack plus a
-hand-written prompt.
+`ward agent work <issue>` is **the** entrypoint to the ephemeral
+[container](container.md) subsystem for the common case: take a Forgejo issue and
+put an agent on it end to end. It shares the container bring-up Go directly (it
+does not shell out). ward#263 retired the old hand-run `ward container up` /
+`exec` / `down` / `ls` verbs, so `ward agent` is now the single launch surface;
+one line replaces a full bring-up stack plus a hand-written prompt.
 
 ## Usage
 
@@ -15,8 +17,8 @@ ward agent work coilyco-flight-deck/ward#98 --driver codex --print   # pick a ha
 ```
 
 The surface (`work|headless|task|reply|ask`) comes first; `--driver` picks the
-agent/mode (`claude|codex|qwen|goose`, default `claude`, the same context ladder
-as `container up --mode`). ward#185 moved the harness off a subcommand slot onto
+agent/mode (`claude|codex|qwen|goose`, default `claude`, the container context
+ladder). ward#185 moved the harness off a subcommand slot onto
 `--driver`, leaving room for a future `--reviewer` role flag. The issue ref is
 `owner/repo#N` or a full Forgejo issue URL. Any appended query string
 (`?thing=stuff`) or hash fragment (`#issuecomment-149`) is ignored, so a URL

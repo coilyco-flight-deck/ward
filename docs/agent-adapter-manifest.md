@@ -29,7 +29,7 @@ see [container-substrate.md](container-substrate.md)). The loader is
 ```yaml
 schemaVersion: 1
 agents:
-  - name: claude            # the --mode value and short agent name
+  - name: claude            # the --driver value and short agent name
     binary: claude          # in-container command this agent launches
     contextLevel: 2         # least-access ladder: 2=full, 1=scoped, 0=minimal
     stream: stream-json     # headless stream format: stream-json | none

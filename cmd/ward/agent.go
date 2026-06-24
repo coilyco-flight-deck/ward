@@ -15,8 +15,8 @@ import (
 	"github.com/urfave/cli/v3"
 )
 
-// agent.go wires the `ward agent work <issue>` surface: sugar over
-// `container up` that seeds a fresh container to work an issue. See docs/agent.md.
+// agent.go wires `ward agent work <issue>`: the container bring-up entrypoint
+// (ward#263), sharing the bring-up Go directly, not shelling out. See docs/agent.md.
 
 // agentIssueRef is a parsed issue reference for `ward agent ... work`. Only the
 // owner/repo#N short form and the Forgejo issue URL are accepted (no GitHub).
@@ -203,8 +203,7 @@ func agentCommand() *cli.Command {
 (claude|codex|qwen|goose, default claude). 'work <issue>' resolves the issue's
 repo, spins up an ephemeral least-access container, fresh-clones the repo inside
 it, and launches the agent seeded to carry the issue to merge. One line replaces
-the full 'container up <repo> --mode <m> --branch <b>' stack plus a hand-written
-prompt.
+a full container bring-up stack plus a hand-written prompt.
 
   ward agent work coilyco-flight-deck/ward#98                       # --driver defaults to claude
   ward agent headless coilyco-flight-deck/ward#98 --driver codex    # pick another harness

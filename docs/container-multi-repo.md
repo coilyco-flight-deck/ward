@@ -15,16 +15,16 @@ widen that wall, and it widens it to exactly the named set - never further.
 ## Usage
 
 ```bash
-# Carry a feature in eco-app, also granting write access to eco-protos:
-ward container up coilyco-gaming/eco-app --with-repo coilyco-gaming/eco-protos
+# Carry an issue in eco-app, also granting write access to eco-protos:
+ward agent work coilyco-gaming/eco-app#42 --with-repo coilyco-gaming/eco-protos
 
 # Repeatable; each grant is a bare owner/name or a forgejo clone URL:
-ward container up coilyco-gaming/eco-app \
+ward agent work coilyco-gaming/eco-app#42 \
   --with-repo coilyco-gaming/eco-protos \
   --with-repo coilyco-flight-deck/cli-guard
 
-# Also on the agent surfaces (the issue's repo is the target):
-ward agent work coilyco-gaming/eco-app#42 --with-repo coilyco-gaming/eco-protos
+# headless takes the same grants:
+ward agent headless coilyco-gaming/eco-app#42 --with-repo coilyco-gaming/eco-protos
 ```
 
 A grant that names the target is a harmless no-op (the target is always cloned).

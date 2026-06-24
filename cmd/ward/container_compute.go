@@ -40,8 +40,8 @@ const (
 	// off by default; the forgejo token is injected single-purpose instead).
 	containerAWSMount = "/root/.aws"
 
-	// containerNamePrefix anchors every ward-managed container name so `ls`
-	// and `down` can filter the host's container set.
+	// containerNamePrefix anchors every ward-managed container name so a
+	// `docker ps` filter can pick ward's containers out of the host's set.
 	containerNamePrefix = "ward"
 
 	// containerLabel marks ward-managed containers for filtering.
@@ -215,8 +215,8 @@ var ownerNameRe = regexp.MustCompile(`^([A-Za-z0-9._-]+)/([A-Za-z0-9._-]+?)(?:\.
 // remote (https://host/owner/name.git, git@host:owner/name.git).
 var repoPathRe = regexp.MustCompile(`[:/]([A-Za-z0-9._-]+)/([A-Za-z0-9._-]+?)(?:\.git)?/?$`)
 
-// parseRepoRef resolves a `ward container up` arg (bare owner/name, https clone
-// URL, or scp-style remote) into a targetRepo. Empty means infer from cwd.
+// parseRepoRef resolves a target ref (bare owner/name, https clone URL, or
+// scp-style remote) into a targetRepo. Empty means infer from cwd.
 func parseRepoRef(ref string) (targetRepo, error) {
 	ref = strings.TrimSpace(ref)
 	if ref == "" {
@@ -317,7 +317,7 @@ func leastAccessMounts(hostCwd string, opts mountOpts) []mountSpec {
 	return mounts
 }
 
-// upPlan is the fully-resolved description of one `ward container up`, minus
+// upPlan is the fully-resolved description of one container bring-up, minus
 // the forgejo token (held out so it never reaches a print path or audit row).
 type upPlan struct {
 	Image       string
@@ -340,7 +340,7 @@ type upPlan struct {
 	// entrypoint builds ward from it instead of downloading.
 	WardFromSource bool
 	// AgentArgs ride after the image as the in-container agent's argv (the
-	// entrypoint's `"$WARD_AGENT" "$@"`); empty for a bare `container up`.
+	// entrypoint's `"$WARD_AGENT" "$@"`); empty for a bare interactive bring-up.
 	AgentArgs []string
 	// Headless runs the in-container agent in print mode (claude -p), exporting
 	// WARD_HEADLESS=1; set by `ward agent headless`, which also detaches.
@@ -467,7 +467,7 @@ func dockerCreateArgv(p upPlan, envFilePath string) []string {
 	}
 	argv = append(argv, p.Image)
 	// Trailing args become the in-container agent's argv (entrypoint runs
-	// `"$WARD_AGENT" "$@"`); empty for a bare interactive `container up`.
+	// `"$WARD_AGENT" "$@"`); empty for a bare interactive bring-up.
 	argv = append(argv, p.AgentArgs...)
 	return argv
 }
@@ -480,35 +480,6 @@ func sortedKeys(m map[string]string) []string {
 	}
 	sort.Strings(keys)
 	return keys
-}
-
-// dockerExecArgv builds `docker exec -i[t] <name> <cmd...>`; tty adds -t and
-// must only be set with a real terminal, as in `run`. See docs/container.md.
-func dockerExecArgv(name string, tty bool, cmd []string) []string {
-	argv := []string{"exec"}
-	if tty {
-		argv = append(argv, "-it")
-	} else {
-		argv = append(argv, "-i")
-	}
-	argv = append(argv, name)
-	return append(argv, cmd...)
-}
-
-// dockerDownArgv builds `docker rm -f <name>`. The shared gitcache volume is
-// never removed here - it is the point of the cache.
-func dockerDownArgv(name string) []string {
-	return []string{"rm", "-f", name}
-}
-
-// dockerListArgv builds `docker ps` filtered to ward-managed containers.
-func dockerListArgv(all bool) []string {
-	argv := []string{"ps"}
-	if all {
-		argv = append(argv, "-a")
-	}
-	return append(argv, "--filter", "label="+containerLabel,
-		"--format", "table {{.Names}}\t{{.Status}}\t{{.Label \"ward.repo\"}}")
 }
 
 // imageRef joins an image and tag, leaving an already-tagged or digest-pinned

@@ -2,7 +2,7 @@
 
 **ward is a harness driver.** It drives an agent harness (claude, goose, codex, qwen) into an ephemeral container to carry a Forgejo issue end to end, then gates every dev verb it runs behind [cli-guard][cli-guard]'s policy.
 
-The thing it produces is a **warded agent**: an agent ward drives into a container and gates behind cli-guard policy. Read "warded" as a protective circle around the agent - the lockdown deny-list and allowlisted verbs bounding its reach, not "warded off".
+The thing it produces is a **warded agent**: an agent ward drives into a container and gates behind cli-guard policy. Read "warded" as a protective circle - the deny-list and allowlisted verbs bounding its reach, not "warded off".
 
 Its public face is **`warded`** - a thin symlink onto the `ward drive <harness>` machinery (ward#247): `warded claude "..."` reads like `sudo`/`firejail`, one token for "containment tool for agents". See [`docs/drive.md`](docs/drive.md).
 

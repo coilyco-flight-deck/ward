@@ -11,8 +11,8 @@ behind. See [docs/agent.md](agent.md) for the family overview.
   print mode (`claude -p`, `codex exec <seed>` for codex, or `goose run -t <seed>`
   for goose), so it works to completion non-interactively and exits into the
   reaper. For claude it **streams live progress** (one line per tool call + the
-  result, via stream-json) to the container log - `docker logs <name>` / `ward
-  container exec`; codex and goose print their own progress to that log - so it
+  result, via stream-json) to the container log - `docker logs <name>` / `docker
+  exec <name> ...`; codex and goose print their own progress to that log - so it
   isn't silent until done. (Interactive `goose work` opens a bare `goose session`;
   the seed prompt is not auto-delivered into a session yet, so headless is the
   goose surface. Interactive `codex work` opens a seeded `codex` TUI.)

@@ -8,7 +8,7 @@ conflicting default from a host harness base (`~/.claude/CLAUDE.md`, Codex
 
 ## What this container is
 
-- A throwaway box spun up by `ward container up` to carry **one feature from
+- A throwaway box spun up by `ward agent` to carry **one feature from
   start to merge**. Its working tree is a **fresh clone** of the target repo,
   pulled inside the container - not a host checkout, not a worktree. Nothing you
   do here touches the host's repo tree.
