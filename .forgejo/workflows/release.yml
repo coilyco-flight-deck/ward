@@ -93,7 +93,7 @@ jobs:
   bump-tap-formula:
     needs: release
     if: ${{ needs.release.outputs.tag != '' }}
-    runs-on: tap-writer
+    runs-on: docker
     env:
       TAG: ${{ needs.release.outputs.tag }}
       FORGEJO_BASE_URL: https://forgejo.coilysiren.me
@@ -102,11 +102,22 @@ jobs:
       FORMULA_PATH: Formula/ward.rb
     steps:
       - name: Bump tap formula and push
+        env:
+          TAP_WRITE_TOKEN: ${{ secrets.TAP_WRITE_TOKEN }}
         run: |
           # pipefail matters: the sha256 below is computed through a pipe, and
           # without it a failed tarball fetch would hash an empty/error body into
           # a bogus digest and the release would ship a broken formula silently.
           set -euo pipefail
+          # Push auth is an explicit Actions secret, mirroring publish-binaries'
+          # CI_RELEASE_TOKEN: one rotatable, visible credential instead of the
+          # tap-writer runner's hidden git credential helper, which broke silently
+          # and froze the tap at v0.96.0 (ward#237, ward#243). Guard up front so a
+          # missing secret fails loudly here rather than at the push.
+          if [ -z "${TAP_WRITE_TOKEN:-}" ]; then
+            echo "::error::TAP_WRITE_TOKEN not set; cannot push tap formula" >&2
+            exit 1
+          fi
           # Source the release as a tarball, not a git tag+revision: Homebrew's
           # git download strategy moves .git out during staging and then can't read
           # the commit time, dying with `ArgumentError: no time information in ""`.
@@ -139,12 +150,15 @@ jobs:
           git config user.name "forgejo-tap-writer"
           git config user.email "tap-writer@coilysiren.me"
           git commit -aqm "chore(formula): bump ward to ${TAG} [skip ci]"
-          # Auth comes from the runner's credential helper, never from env. A
-          # missing or rotated tap-write credential makes this push exit non-zero,
-          # which (set -e) now fails the release loudly rather than stalling the
-          # tap behind a green build. This is the failure mode behind ward#237.
-          if ! git push origin HEAD:main; then
-            echo "::error::push of ${FORMULA_PATH} to ${TAP_REPO} failed; the tap-write credential on the tap-writer runner is likely missing or rotated (see docs/release.md)" >&2
+          # Authenticate the push with TAP_WRITE_TOKEN in the URL. The token is
+          # never echoed: it lives only in this variable (no `set -x`), and git
+          # masks credentials in the userinfo of any URL it prints on failure. A
+          # missing, rotated, or under-scoped token makes the push exit non-zero,
+          # which (set -e) fails the release loudly rather than stalling the tap
+          # behind a green build. This is the failure mode behind ward#237.
+          push_url="https://coilysiren:${TAP_WRITE_TOKEN}@forgejo.coilysiren.me/${TAP_REPO}.git"
+          if ! git push "$push_url" HEAD:main; then
+            echo "::error::push of ${FORMULA_PATH} to ${TAP_REPO} failed; TAP_WRITE_TOKEN is likely missing, rotated, or lacks push scope (see docs/release.md)" >&2
             exit 1
           fi
 

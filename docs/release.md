@@ -22,12 +22,26 @@ One job rewrites the formula `url` line after a release:
 
 - **bump-tap-formula** - rewrites `Formula/ward.rb` in the centralized
   flight-deck tap (`coilyco-flight-deck/homebrew-tap`), where
-  `brew install coilyco-flight-deck/tap/ward` reads from. Runs on the dedicated
-  `tap-writer` runner (`infrastructure/deploy/forgejo-runner-tap-writer.yml`): a
-  host executor whose system git credential helper supplies the tap-write token
-  only when git asks (`action=get`). The token never enters the job env, logs,
-  or an Actions secret. The host executor has no node, so every step is pure
-  shell - no JS `uses:` actions can run there.
+  `brew install coilyco-flight-deck/tap/ward` reads from. Runs on the `docker`
+  runner and authenticates the push with the `TAP_WRITE_TOKEN` repo Actions
+  secret carried in the push URL (never echoed; git masks credentials in any URL
+  it prints), mirroring how `publish-binaries` uses `CI_RELEASE_TOKEN`. The job
+  guards up front and fails loudly if the secret is unset.
+
+#### Required Actions secrets
+
+Set both in ward -> Settings -> Actions -> Secrets:
+
+- `CI_RELEASE_TOKEN` - used by `publish-binaries` to upload release assets to
+  ward's own releases.
+- `TAP_WRITE_TOKEN` - used by `bump-tap-formula` to push the formula bump.
+  Scope: push to `coilyco-flight-deck/homebrew-tap`.
+
+The prior `tap-writer` runner credential helper
+(`infrastructure/deploy/forgejo-runner-tap-writer.yml`) is retired: it broke
+silently and froze the tap at v0.96.0 (the root cause behind ward#237). The
+credential now lives in one rotatable, visible place instead of a hidden runner
+config.
 
 ### Failing loudly on write errors
 
@@ -38,14 +52,16 @@ without bumping the tap because the tap-write credential broke):
 - `pipefail` aborts if the tarball fetch behind the piped `sha256` fails, instead
   of hashing an empty body into a bogus digest.
 - The computed `sha256` must be a 64-hex digest before any formula is written.
-- A non-zero `git push` (the symptom of a missing or rotated tap-write
-  credential) fails the job with an `::error::` annotation naming the likely
-  cause.
+- The step fails up front with an `::error::` annotation if `TAP_WRITE_TOKEN` is
+  unset.
+- A non-zero `git push` (the symptom of a missing, rotated, or under-scoped
+  `TAP_WRITE_TOKEN`) fails the job with an `::error::` annotation naming the
+  likely cause.
 - After pushing, the step re-reads the tap's `main` and asserts it now serves the
   new tag; a push that reports success but does not land fails the release.
 
-If a release goes red here, the fix is operational: restore the tap-writer
-runner's git credential (the `infrastructure` deploy that provisions it). The
+If a release goes red here, the fix is operational: set or rotate the
+`TAP_WRITE_TOKEN` Actions secret in ward -> Settings -> Actions -> Secrets. The
 bump is idempotent and backfilling - it rewrites `url`/`sha256` against whatever
 the live tap currently holds - so the next green release advances the tap to the
 latest tag regardless of how many bumps were missed.
