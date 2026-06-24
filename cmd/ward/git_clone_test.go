@@ -101,7 +101,11 @@ func TestCloneGate(t *testing.T) {
 	}{
 		{"ephemeral dest, off-allowlist repo", "https://evil.example/x/y.git", filepath.Join("/tmp", "y"), true},
 		{"platform-temp dest, off-allowlist repo", "https://evil.example/x/y.git", filepath.Join(tmp, "y"), true},
-		{"persistent dest, allowlisted repo", "https://forgejo.coilysiren.me/coilyco-flight-deck/ward.git", filepath.Join(persistent, "ward"), true},
+		{"persistent dest, allowlisted repo", "https://forgejo.coilysiren.me/coilyco-flight-deck/agentic-os.git", filepath.Join(persistent, "agentic-os"), true},
+		{"persistent dest, hardware repo under correct owner", "git@github.com:coilyco-bridge/agentic-os-hardware.git", filepath.Join(persistent, "agentic-os-hardware"), true},
+		{"persistent dest, ward is no longer allowlisted", "https://forgejo.coilysiren.me/coilyco-flight-deck/ward.git", filepath.Join(persistent, "ward"), false},
+		{"persistent dest, cli-guard is no longer allowlisted", "https://forgejo.coilysiren.me/coilyco-flight-deck/cli-guard.git", filepath.Join(persistent, "cli-guard"), false},
+		{"persistent dest, hardware repo under wrong owner", "git@github.com:coilyco-flight-deck/agentic-os-hardware.git", filepath.Join(persistent, "agentic-os-hardware"), false},
 		{"persistent dest, off-allowlist repo", "https://evil.example/x/y.git", filepath.Join(persistent, "y"), false},
 		{"persistent dest, local-path url", "/some/local/repo", filepath.Join(persistent, "repo"), false},
 		{"lookalike /tmpfoo is not ephemeral", "https://evil.example/x/y.git", "/tmpfoo/y", false},

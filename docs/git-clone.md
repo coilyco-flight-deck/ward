@@ -32,9 +32,12 @@ Otherwise (off-allowlist repo into a non-ephemeral destination): refused.
   guardfile glob (the exec dialect's matcher only sees argv tokens, never
   cwd). A leading `-C <dir>` selects the base directory.
 - **Hardcoded, tamper-resistant allowlist.** The allowlist is baked into
-  the binary (`cmd/ward/git_clone.go`), seeded from the fleet substrate
-  set (cf. `cmd/ward/containerassets/preclone-repos.txt`). ward never
-  reads it from an agent-writable file, so an agent cannot widen its own
+  the binary (`cmd/ward/git_clone.go`), curated to the fleet's on-disk
+  intent (cf. `agentic-os-kai scripts/repos-on-disk.txt`), not the broader
+  substrate preclone set (ward#290). ward itself and cli-guard are
+  deliberately off it - agents that need either clone into `/tmp`
+  (ephemeral), which the gate already allows. ward never reads the
+  allowlist from an agent-writable file, so an agent cannot widen its own
   escape hatch. To add a repo that belongs persistently, edit the
   allowlist in source and ship a new build.
 

@@ -15,15 +15,13 @@ import (
 // cloneAllowlist is the baked-in set of repos (owner/name, lowercased) that may
 // be cloned into a persistent path. Never read from disk. See docs/git-clone.md.
 var cloneAllowlist = map[string]bool{
-	"coilyco-flight-deck/agentic-os":          true,
-	"coilyco-flight-deck/agentic-os-hardware": true,
-	"coilyco-flight-deck/cli-guard":           true,
-	"coilyco-flight-deck/infrastructure":      true,
-	"coilyco-flight-deck/ward":                true,
-	"coilysiren/coilysiren":                   true,
-	"coilyco-bridge/agentic-os-kai":           true,
-	"coilyco-bridge/deploy":                   true,
-	"coilyco-bridge/lore":                     true,
+	"coilyco-flight-deck/agentic-os":     true,
+	"coilyco-bridge/agentic-os-hardware": true,
+	"coilyco-bridge/agentic-os-kai":      true,
+	"coilyco-bridge/deploy":              true,
+	"coilyco-flight-deck/infrastructure": true,
+	"coilyco-bridge/lore":                true,
+	"coilysiren/coilysiren":              true,
 }
 
 // cloneValueFlags are the `git clone` options that consume the next argv token,
