@@ -21,8 +21,7 @@
 wrap ward-kdl ops glitchtip {
     spec glitchtip.openapi.json
     // Block form: the tailnet FQDN behind base-url is opaque (SecureString in
-    // SSM /glitchtip/base-url, e.g. https://glitchtip.<tailnet>.ts.net). The spec
-    // paths already carry the /api/0 prefix, so base-url is just the host.
+    // SSM /glitchtip/base-url); spec paths already carry /api/0, so this is host-only.
     base-url {
         value ssm "/glitchtip/base-url"
     }
@@ -41,36 +40,34 @@ wrap ward-kdl ops glitchtip {
         message "org deletion is irreversible and human-only"
     }
     // teams (team:admin): projects are created under a team, so team create is
-    // needed for provisioning. `list team` resolves to the org-scoped collection
-    // (the shallowest of the three `.../teams/` GETs wins). No delete: detaching a
-    // team reshapes membership and is a human-only call in the UI.
+    // needed for provisioning. No delete - detaching reshapes membership (human-only).
     can get team
-    can list team
+    can list team {
+        describe "resolves to the org-scoped collection (shallowest of the three `.../teams/` GETs)"
+    }
     can create team
     // projects (project:read/write/admin): the bulk-provisioning surface.
-    // `list project` resolves to the top-level GET /api/0/projects/ (shallowest);
-    // create lives under POST /api/0/teams/{org}/{team}/projects/, pinned to its
-    // operationId because it is the op `provision-project` stands on.
+    // `list project` resolves to the top-level GET /api/0/projects/ (shallowest).
     can get project
     can list project
     can create project {
         op apps_projects_api_create_project
+        describe "create lives under POST /api/0/teams/{org}/{team}/projects/, pinned to its operationId because it is the op `provision-project` stands on."
     }
     can edit project
     can delete project {
         describe "irreversible: deletes the project and all of its events"
     }
-    // project keys / DSNs (project:admin): the `project-key` compound resource
-    // targets the keys sub-collection under a project (/projects/{org}/{proj}/keys).
-    // Creating a key mints a DSN; these are the rows the cutover reads to swap the
-    // /sentry-dsn/<slug> SSM SecureStrings.
+    // project keys / DSNs (project:admin): keys sub-collection under a project
+    // (/projects/{org}/{proj}/keys). Creating a key mints a DSN.
     can list project-key
     can get project-key
-    can create project-key
+    can create project-key {
+        describe "mints a DSN; these are the rows the cutover reads to swap the /sentry-dsn/<slug> SSM SecureStrings."
+    }
     can delete project-key
-    // read-only triage (event:read): issues and events are inspected, never
-    // mutated, through ward. `list issue` resolves to the org-scoped collection
-    // and `list event` to the issue-scoped one (shallowest of each).
+    // read-only triage (event:read): issues and events are inspected, never mutated.
+    // `list issue` resolves org-scoped, `list event` issue-scoped (shallowest each).
     can list issue
     can get issue
     can list event
@@ -80,17 +77,10 @@ wrap ward-kdl ops glitchtip {
     never store event {
         message "event ingest is the SDK's job, not ward"
     }
-    // provision-project: the payoff. Create a project under a team, then mint a
-    // DSN for it, in one audited sequence. The final call's response is a
-    // ProjectKey - its `dsn.public` is the value the cutover writes into
-    // /sentry-dsn/<slug>. Name the project to mirror the param slug (e.g. backend,
-    // eco-mcp-app, galaxy-gen, website, kai-server) so the cutover is a pure
-    // value-swap: GlitchTip derives the project slug from the name, so a slug-form
-    // name lands the slug deterministically. Only `name` is bound - GlitchTip's
-    // other ProjectIn/ProjectKeyIn fields (slug, platform, key name) are nullable
-    // anyOf schemas that do not lower to flags; set platform in the UI if needed.
+    // provision-project: the payoff. Create a project under a team, then mint its
+    // DSN in one audited sequence. See describe for the slug/binding rationale.
     action provision-project {
-        describe "Create a project under a team and mint its DSN in one shot."
+        describe "Create a project under a team and mint its DSN in one shot. The final call returns a ProjectKey whose `dsn.public` is what the cutover writes into /sentry-dsn/<slug>. Name the project to mirror the param slug (e.g. backend, eco-mcp-app, galaxy-gen, website, kai-server) so the cutover is a pure value-swap: GlitchTip derives the project slug from the name, so a slug-form name lands deterministically. Only `name` is bound - the other ProjectIn/ProjectKeyIn fields (slug, platform, key name) are nullable anyOf schemas that do not lower to flags; set platform in the UI if needed."
         input organization {
             positional
             required

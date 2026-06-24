@@ -9,10 +9,8 @@ wrap ward-kdl ops tailscale {
     auth bearer {
         value ssm "/tailscale/api-key"
     }
-    // Scope gate: every tailnet-scoped leaf must name a coily* tailnet, never
-    // another org's by name. Widen this glob if the tailnet is renamed. (The API
-    // also accepts "-" for the default tailnet, but a bare "-" positional trips
-    // the CLI flag parser, so name the tailnet explicitly.)
+    // Scope gate: every tailnet-scoped leaf must name a coily* tailnet (widen if
+    // renamed). Name it explicitly - the API's "-" default trips the flag parser.
     restrict tailnet matches coily*
     // devices: list and inspect. Deletion is denied - removing a device from the
     // tailnet is disruptive and human-only.
@@ -21,9 +19,8 @@ wrap ward-kdl ops tailscale {
     never delete device {
         message "removing a device from the tailnet is disruptive; do it in the admin console"
     }
-    // policy file (ACL): read and write. The path is /tailnet/{tailnet}/acl, so no
-    // structural convention reaches it - both resolve via the operationId fallback
-    // (getPolicyFile / setPolicyFile carry the `policy` word).
+    // policy file (ACL): read and write. Path is /tailnet/{tailnet}/acl, so both
+    // resolve via the operationId fallback (getPolicyFile / setPolicyFile).
     can get policy
     can set policy
     // auth keys: list/create/revoke. Revoking a key (delete) is reversible enough

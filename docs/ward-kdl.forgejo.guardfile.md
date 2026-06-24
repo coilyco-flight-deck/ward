@@ -15,7 +15,7 @@ Positional arguments (2):
 - `<owner>` (string)
 - `<repo>` (string)
 
-## ward-kdl ops forgejo repo search
+## ward-kdl ops forgejo repo search - cross-repo repo finder (GET /repos/search)
 
 `GET /repos/search`
 
@@ -141,7 +141,7 @@ Options (2):
 - `--page` (integer, optional): page number of results to return (1-based)
 - `--limit` (integer, optional): page size of results
 
-## ward-kdl ops forgejo org-repo create
+## ward-kdl ops forgejo org-repo create - create a repo inside an existing org (POST /orgs/{org}/repos); the org-scoped sibling of `create repo` (which targets /user/repos, a path the bot lacks write:user for). The coilyco-ops token already carries write:organization, so this is a missing verb, not a missing scope (ward#218). op pinned because a bare `create org-repo` also matches the deprecated alias. Org create/delete stay human-only; this creates repos within an org, not orgs themselves.
 
 `POST /orgs/{org}/repos`
 
@@ -166,7 +166,7 @@ Options (12):
 - `--template` (boolean, optional): Whether the repository is template
 - `--trust_model` (string, optional): TrustModel of the repository
 
-## ward-kdl ops forgejo org-repo list
+## ward-kdl ops forgejo org-repo list - list the repos an org owns (GET /orgs/{org}/repos). The route survey (ward#92) catalogs each primary org's repos through this leaf; `user-repo list` covers the one primary owner that is a user, not an org.
 
 `GET /orgs/{org}/repos`
 
@@ -181,7 +181,7 @@ Options (2):
 - `--page` (integer, optional): page number of results to return (1-based)
 - `--limit` (integer, optional): page size of results
 
-## ward-kdl ops forgejo user-repo list
+## ward-kdl ops forgejo user-repo list - list the repos a user owns (GET /users/{username}/repos). coilysiren is a user, not an org, so the route survey reaches its repos here rather than through `org-repo list`. Read-only, the survey's other half.
 
 `GET /users/{username}/repos`
 
@@ -537,7 +537,7 @@ Positional arguments (3):
 - `<repo>` (string)
 - `<index>` (string)
 
-## ward-kdl ops forgejo issue-comment list
+## ward-kdl ops forgejo issue-comment list - the comments sub-collection GET, pinned by op (the convention resolves `list issue-comment` against issueGetComments poorly). The `view issue` shadow action below chains this so a view returns the thread.
 
 `GET /repos/{owner}/{repo}/issues/{index}/comments`
 
@@ -770,7 +770,7 @@ Complex action. Runs 4 granted calls in order, threading $step.field data betwee
 3. `POST /repos/{owner}/{repo}/issues/{index}/comments`
 4. `PATCH /repos/{owner}/{repo}/issues/{index}`
 
-## ward-kdl ops forgejo issue view - View an issue with its full comment thread (issue + comments).
+## ward-kdl ops forgejo issue view - View an issue with its full comment thread (issue + comments). Shadows the generated `issue view` (same 3-arg signature) so a view never misses the comments - the ward#170 failure mode where an agent reads the body and skips the thread. ward#225: ward's CLI renders this through a lean projection that collapses every commenter to its login literal, so a multi-comment issue no longer repeats each commenter's full profile once per comment; the guardfile shape is unchanged.
 
 Shadows the generated `issue view` leaf: invoking it runs this composite in the leaf's place.
 

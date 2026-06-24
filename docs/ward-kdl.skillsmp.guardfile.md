@@ -4,7 +4,7 @@ Spec-driven CLI. Every verb issues an HTTP request against the API base https://
 
 Authenticates with the "Authorization" header (scheme bearer), reading the token from ssm /skillsmp/api-key. The token value is never shown.
 
-## ward-kdl pkg skillsmp skills search
+## ward-kdl pkg skillsmp skills search - keyword search (GET /search). --q is the term; --sortBy/--limit/--page paginate.
 
 `GET /search`
 

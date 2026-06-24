@@ -16,13 +16,15 @@ wrap ward-kdl ops trello {
     }
     // No restrict clause: Trello path params are opaque board/card/list ids with
     // no scopeable shape (unlike Forgejo's {owner}), so a glob gate is meaningless.
-    // boards: read/create/edit, plus the lists/cards a board holds. Board deletion
-    // is denied. list-lists/list-cards read the board's sub-collections.
     can get board
     can create board
     can edit board
-    can list-lists board
-    can list-cards board
+    can list-lists board {
+        describe "read a board's lists sub-collection"
+    }
+    can list-cards board {
+        describe "read a board's cards sub-collection"
+    }
     never delete board {
         message "board deletion is irreversible; delete it in the Trello UI"
     }

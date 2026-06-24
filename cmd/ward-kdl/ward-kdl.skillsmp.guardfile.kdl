@@ -19,9 +19,9 @@ wrap ward-kdl pkg skillsmp {
     auth bearer {
         value ssm "/skillsmp/api-key"
     }
-    // search: keyword search (GET /search). --q is the term; --sortBy/--limit/--page paginate.
     can search skills {
         op searchSkills
+        describe "keyword search (GET /search). --q is the term; --sortBy/--limit/--page paginate."
     }
     // ai-search: semantic search (GET /ai-search). --q is the natural-language term.
     can ai-search skills {

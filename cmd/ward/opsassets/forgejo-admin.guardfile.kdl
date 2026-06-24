@@ -24,8 +24,7 @@ wrap ward ops forgejo {
         argv-prefix kai@kai-server k3s kubectl -n forgejo exec "deploy/forgejo" -- forgejo
     }
     // admin user: read the user list, create a user. Both are server-side only
-    // (no REST verb). create's flags (--username / --email / --password / ...)
-    // pass through; the transport and `forgejo` entrypoint stay fixed.
+    // (no REST verb); create's flags pass through, transport/entrypoint stay fixed.
     can run "admin user list" {
         describe "list users (forgejo admin user list)"
     }
@@ -36,13 +35,10 @@ wrap ward ops forgejo {
     can run "admin auth list" {
         describe "list authentication sources (forgejo admin auth list)"
     }
-    // doctor: run diagnostic checks. `--fix` is the only mutating flag on
-    // `forgejo doctor check`, so denying just it keeps the leaf read-only - it
-    // can diagnose but never repair - while the benign selection flags
-    // (--run/--all/--list/--log-file) and --help still pass through. The sibling
-    // mutating subcommand (`doctor recreate-table`) is simply never granted.
+    // doctor: run diagnostic checks. `--fix` is the only mutating flag, so
+    // denying just it keeps the leaf read-only (the sibling recreate-table is ungranted).
     can run "doctor check" {
         deny-flag --fix
-        describe "run diagnostic checks (forgejo doctor check); read-only, --fix denied"
+        describe "run diagnostic checks (forgejo doctor check); read-only, --fix denied. Denying the only mutating flag lets it diagnose but never repair, while the benign selection flags (--run/--all/--list/--log-file) and --help still pass through."
     }
 }

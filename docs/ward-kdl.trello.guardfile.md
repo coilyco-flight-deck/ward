@@ -86,7 +86,7 @@ Options (15):
 - `--prefs/cardAging` (string, optional): One of: pirate, regular
 - `--prefs/calendarFeedEnabled` (boolean, optional): Determines whether the calendar feed is enabled or not.
 
-## ward-kdl ops trello board list-lists
+## ward-kdl ops trello board list-lists - read a board's lists sub-collection
 
 `GET /boards/{id}/lists`
 
@@ -103,7 +103,7 @@ Options (4):
 - `--filter` (string, optional): Filter to apply to Lists
 - `--fields` (string, optional): `all` or a comma-separated list of list [fields](/cloud/trello/guides/rest-api/object-definitions/)
 
-## ward-kdl ops trello board list-cards
+## ward-kdl ops trello board list-cards - read a board's cards sub-collection
 
 `GET /boards/{id}/cards`
 

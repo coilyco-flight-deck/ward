@@ -9,12 +9,8 @@
 wrap ward-kdl ops forgejo {
     spec forgejo.swagger.v1.json
     base-url "forgejo.coilysiren.me/api/v1"
-    // Authenticate as the `coilyco-ops` Forgejo bot, not a human's personal PAT
-    // (ward#151). The bot's token lives at SSM /forgejo/coilyco-ops/api-token,
-    // minted with scopes write:repository write:issue read:user write:organization
-    // by infrastructure/scripts/provision-coilyco-ops-bot.sh (also the rotation
-    // path - a re-run revokes and re-mints). Keeping ward-kdl off the operator's
-    // own /forgejo/api-token means automated ops attribute to the bot.
+    // Auth as the coilyco-ops bot, not a personal PAT (ward#151), so automated
+    // ops attribute to the bot. Token + scopes: provision-coilyco-ops-bot.sh.
     auth header-token {
         header Authorization
         prefix "token "
@@ -22,11 +18,12 @@ wrap ward-kdl ops forgejo {
     }
     // Scope gate: every leaf whose path carries {owner} must name a coily* owner.
     restrict owner matches coily*
-    // repos: read/create/edit/delete plus search. Fork and the archive/unarchive
-    // toggles are denied - irreversible-enough surfaces a human should drive.
-    // `search` is the cross-repo finder (GET /repos/search).
+    // repos: read/create/edit/delete plus the cross-repo `search` finder. Fork
+    // and archive/unarchive are denied below as human-only irreversible toggles.
     can get repo
-    can search repo
+    can search repo {
+        describe "cross-repo repo finder (GET /repos/search)"
+    }
     can create repo
     can edit repo
     can delete repo {
@@ -50,45 +47,30 @@ wrap ward-kdl ops forgejo {
     never delete org {
         message "org deletion is irreversible and human-only"
     }
-    // org-repos: create a repo inside an existing org (POST /orgs/{org}/repos), the
-    // org-scoped sibling of `create repo` (which targets /user/repos, a path the bot
-    // lacks write:user for). The coilyco-ops token already carries write:organization,
-    // so this is a missing verb, not a missing scope (ward#218). Org create/delete
-    // stay human-only above; this creates repos within an org, not orgs themselves.
-    // The op is pinned because `create org-repo` otherwise matches both createOrgRepo
-    // and the deprecated alias.
     can create org-repo {
         op createOrgRepo
+        describe "create a repo inside an existing org (POST /orgs/{org}/repos); the org-scoped sibling of `create repo` (which targets /user/repos, a path the bot lacks write:user for). The coilyco-ops token already carries write:organization, so this is a missing verb, not a missing scope (ward#218). op pinned because a bare `create org-repo` also matches the deprecated alias. Org create/delete stay human-only; this creates repos within an org, not orgs themselves."
     }
-    // org-repos (read): list the repos an org owns (GET /orgs/{org}/repos). The
-    // route survey (ward#92) catalogs each primary org's repos through this leaf;
-    // `user-repo list` below covers the one primary owner that is a user, not an org.
     can list org-repo {
         op orgListRepos
+        describe "list the repos an org owns (GET /orgs/{org}/repos). The route survey (ward#92) catalogs each primary org's repos through this leaf; `user-repo list` covers the one primary owner that is a user, not an org."
     }
-    // user-repos (read): list the repos a user owns (GET /users/{username}/repos).
-    // coilysiren is a user, not an org, so the route survey reaches its repos here
-    // rather than through `org-repo list`. Read-only, the survey's other half.
     can list user-repo {
         op userListRepos
+        describe "list the repos a user owns (GET /users/{username}/repos). coilysiren is a user, not an org, so the route survey reaches its repos here rather than through `org-repo list`. Read-only, the survey's other half."
     }
-    // org-labels: the compound resource targets org-level labels (/orgs/{org}/labels),
-    // the `org` ancestor scoping it away from repo labels. Issue-label attach/set/
-    // remove stays below.
+    // org-labels: org-level labels (/orgs/{org}/labels); the `org` ancestor scopes
+    // them away from repo labels. Issue-label attach/set/remove stays below.
     can get org-label
     can list org-label
     can create org-label
     can edit org-label
     can delete org-label
-    // repo-labels: the repo-scoped create/edit leaves are policy-disabled (ward#107).
-    // A repo-level label (POST/PATCH /repos/{owner}/{repo}/labels) that duplicates an
-    // org label silently shadows it; that path minted the off-palette dup P0-P4 labels
-    // across 26 repos (340 tags re-pointed, 67 labels deleted - coilyco-bridge/coily#248).
-    // The op is pinned because a bare `label` resource otherwise resolves to the shallower
-    // org path: mint and rename labels through the org-label leaves above, attach existing
-    // ones through the issue-label leaves below.
+    // repo-labels: repo-scoped label create/edit are policy-disabled (ward#107);
+    // mint/rename via org-label above, attach via issue-label below. op pinned.
     never create label {
         op issueCreateLabel
+        describe "op pinned because a bare `label` resource otherwise resolves to the shallower org path. A repo-level label (POST/PATCH /repos/{owner}/{repo}/labels) that duplicates an org label silently shadows it; that path minted the off-palette dup P0-P4 labels across 26 repos (340 tags re-pointed, 67 labels deleted - coilyco-bridge/coily#248)."
         message "repo-level label create is policy-disabled (ward#107): it mints labels that duplicate and shadow the org P0-P4 taxonomy. Create org labels with `create org-label`."
     }
     never edit label {
@@ -109,8 +91,7 @@ wrap ward-kdl ops forgejo {
         body state=open
     }
     // issues: the array-body + query-param group. close/reopen are fixed-body
-    // toggles; search is the cross-repo finder; comment posts the comments
-    // sub-collection; delete is denied (close instead).
+    // toggles; delete is denied (close instead); search is the cross-repo finder.
     can get issue
     can view issue
     can list issue
@@ -210,11 +191,9 @@ wrap ward-kdl ops forgejo {
     never delete issue {
         message "issue deletion is irreversible; close it instead (move-issue does this)"
     }
-    // issue comments (read): the comments sub-collection GET, pinned by op (the
-    // convention resolves `list issue-comment` against issueGetComments poorly).
-    // The `view issue` shadow action below chains this so a view returns the thread.
     can list issue-comment {
         op issueGetComments
+        describe "the comments sub-collection GET, pinned by op (the convention resolves `list issue-comment` against issueGetComments poorly). The `view issue` shadow action below chains this so a view returns the thread."
     }
     // releases, with the multipart asset upload beside them (upload-asset resolves
     // as create-on the assets sub-collection).
@@ -239,9 +218,8 @@ wrap ward-kdl ops forgejo {
     can remove issue-label
     // actions tasks: the CI-run read surface, plus the ci-watch poll action.
     can list tasks
-    // ci-watch: poll the granted `list tasks` leaf until every job of one run
-    // reaches a terminal state, then exit non-zero if any failed. `until` and
-    // `fail-when` are JMESPath Community Edition; `$run` binds from --run.
+    // ci-watch: poll `list tasks` until every job of one run reaches a terminal
+    // state, then exit non-zero if any failed. JMESPath; `$run` binds from --run.
     action ci-watch {
         describe "Watch a CI run to completion, then surface failing-job status."
         input repo {
@@ -264,10 +242,8 @@ wrap ward-kdl ops forgejo {
         }
         fail-when "length($run_tasks.workflow_runs[?run_number==$run && status=='failure']) > `0`"
     }
-    // move-issue: copy a source issue's title/body into a target repo, back-link
-    // the new issue on the source, then CLOSE the source - never delete it
-    // (consistent with `never delete issue`). Carrying labels/milestone needs
-    // array data-flow and is deferred; title/body move today.
+    // move-issue: copy title/body to a target repo, back-link, then CLOSE the
+    // source (never delete). Carrying labels/milestone is deferred (array flow).
     action move-issue {
         describe "Move an issue to another repo (copy title/body, back-link, close source). Never deletes."
         input source {
@@ -315,15 +291,9 @@ wrap ward-kdl ops forgejo {
         }
     }
     // view issue: shadow the generated `issue view` leaf so a view returns the
-    // issue AND its full comment thread - the failure mode where an agent reads
-    // the body and misses the comments (ward#170 pre-flight thread). Same 3-arg
-    // signature as the leaf it replaces; combines both calls into {issue,comments}.
-    // ward#225: ward's CLI renders this leaf through a lean projection that
-    // collapses every user to its login literal - the raw API nests each
-    // commenter's full profile into every comment, so a multi-comment issue
-    // carried the same profile once per comment. The guardfile shape is unchanged.
+    // issue AND its comment thread (ward#170). See describe for the ward#225 note.
     action view issue {
-        describe "View an issue with its full comment thread (issue + comments)."
+        describe "View an issue with its full comment thread (issue + comments). Shadows the generated `issue view` (same 3-arg signature) so a view never misses the comments - the ward#170 failure mode where an agent reads the body and skips the thread. ward#225: ward's CLI renders this through a lean projection that collapses every commenter to its login literal, so a multi-comment issue no longer repeats each commenter's full profile once per comment; the guardfile shape is unchanged."
         input owner {
             positional
             required

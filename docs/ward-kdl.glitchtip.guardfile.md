@@ -33,7 +33,7 @@ Positional arguments (2):
 - `<organization_slug>` (string)
 - `<team_slug>` (string)
 
-## ward-kdl ops glitchtip team list
+## ward-kdl ops glitchtip team list - resolves to the org-scoped collection (shallowest of the three `.../teams/` GETs)
 
 `GET /api/0/organizations/{organization_slug}/teams/`
 
@@ -76,7 +76,7 @@ Authorized by grant: can list project. Not destructive.
 
 Takes no arguments.
 
-## ward-kdl ops glitchtip project create
+## ward-kdl ops glitchtip project create - create lives under POST /api/0/teams/{org}/{team}/projects/, pinned to its operationId because it is the op `provision-project` stands on.
 
 `POST /api/0/teams/{organization_slug}/{team_slug}/projects/`
 
@@ -140,7 +140,7 @@ Positional arguments (3):
 - `<project_slug>` (string)
 - `<key_id>` (string)
 
-## ward-kdl ops glitchtip project-key create
+## ward-kdl ops glitchtip project-key create - mints a DSN; these are the rows the cutover reads to swap the /sentry-dsn/<slug> SSM SecureStrings.
 
 `POST /api/0/projects/{organization_slug}/{project_slug}/keys/`
 
@@ -208,7 +208,7 @@ Positional arguments (2):
 - `<issue_id>` (string)
 - `<event_id>` (string)
 
-## ward-kdl ops glitchtip action provision-project - Create a project under a team and mint its DSN in one shot.
+## ward-kdl ops glitchtip action provision-project - Create a project under a team and mint its DSN in one shot. The final call returns a ProjectKey whose `dsn.public` is what the cutover writes into /sentry-dsn/<slug>. Name the project to mirror the param slug (e.g. backend, eco-mcp-app, galaxy-gen, website, kai-server) so the cutover is a pure value-swap: GlitchTip derives the project slug from the name, so a slug-form name lands deterministically. Only `name` is bound - the other ProjectIn/ProjectKeyIn fields (slug, platform, key name) are nullable anyOf schemas that do not lower to flags; set platform in the UI if needed.
 
 Complex action. Runs 2 granted calls in order, threading $step.field data between them:
 
