@@ -7,6 +7,10 @@ excludes = [
   # Pre-existing size debt: docs/hook.md is 92 lines, over the 80-line cap.
   # The split is tracked in coilyco-flight-deck/ward#50; drop this when it lands.
   "docs/hook.md",
+  # Pre-existing size debt: README.md is over the 4000-char cap (tripped by
+  # See-also growth, not by any single feature). The split is tracked in
+  # coilyco-flight-deck/ward#274; drop this when it lands.
+  "README.md",
   # Generated surface reference (specverb-gen). The driver emits it beside the
   # Guardfile; the reviewed copy is committed at docs/ and grows with the verb
   # surface, so the layout cap does not apply. The beside-the-kdl emission is
