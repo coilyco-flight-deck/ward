@@ -221,7 +221,7 @@ func TestTaskBody(t *testing.T) {
 
 func TestPreflightPrompt(t *testing.T) {
 	ref := agentIssueRef{Owner: "coilyco-flight-deck", Repo: "ward", Number: 137}
-	got := preflightPrompt(ref, "  pre-flight check  ", "  do the thing  ", "", nil)
+	got := preflightPrompt(ref, "  pre-flight check  ", "  do the thing  ", "", nil, nil)
 	for _, want := range []string{
 		"coilyco-flight-deck/ward#137", // the issue ref
 		"pre-flight check",             // title, trimmed
@@ -246,14 +246,14 @@ func TestPreflightPrompt(t *testing.T) {
 		t.Errorf("preflight prompt should omit the steering note when details is empty; got: %s", got)
 	}
 	// A --details note is woven in for the feasibility read (ward#167).
-	withNote := preflightPrompt(ref, "t", "b", "  ship it the other way  ", nil)
+	withNote := preflightPrompt(ref, "t", "b", "  ship it the other way  ", nil, nil)
 	for _, want := range []string{"steering note", "--details", "ship it the other way"} {
 		if !strings.Contains(withNote, want) {
 			t.Errorf("preflight prompt with details missing %q\n got: %s", want, withNote)
 		}
 	}
 	// Empty title/body degrade gracefully, never blank-quote or dangle.
-	empty := preflightPrompt(ref, "  ", "  ", "", nil)
+	empty := preflightPrompt(ref, "  ", "  ", "", nil, nil)
 	if !strings.Contains(empty, "(untitled)") || !strings.Contains(empty, "(no description provided)") {
 		t.Errorf("empty title/body should render placeholders; got: %s", empty)
 	}
@@ -263,11 +263,31 @@ func TestPreflightPrompt(t *testing.T) {
 		{Body: "my decision: go with option A", User: struct {
 			Login string `json:"login"`
 		}{Login: "coilysiren"}},
-	})
+	}, nil)
 	for _, want := range []string{"my decision: go with option A", "coilysiren"} {
 		if !strings.Contains(withComments, want) {
 			t.Errorf("preflight prompt should surface the author's comment %q\n got: %s", want, withComments)
 		}
+	}
+	// ward#266: a --with-repo grant must reach the prompt so the read knows the run
+	// gets that repo too and won't NO-GO/WRONG-REPO work whose deliverable lands there.
+	withExtra := preflightPrompt(ref, "migrate sandbox into cli-guard", "move the package", "", nil,
+		[]targetRepo{{Owner: "coilyco-flight-deck", Name: "cli-guard"}})
+	for _, want := range []string{
+		"coilyco-flight-deck/cli-guard", // names the granted repo
+		"--with-repo",                   // names how it was granted
+		"WRITABLE",                      // tells the agent it can author there
+		"squarely in scope",             // cross-repo work is not a NO-GO
+		"FRESH CLONES",                  // plural clone scope when a repo is granted
+	} {
+		if !strings.Contains(withExtra, want) {
+			t.Errorf("preflight prompt with --with-repo grant missing %q\n got: %s", want, withExtra)
+		}
+	}
+	// With no grant, the single-repo framing (and the substrings other tests pin)
+	// must survive untouched.
+	if strings.Contains(got, "GRANTED EXTRA REPOS") {
+		t.Errorf("preflight prompt should omit the extra-repo note when none granted; got: %s", got)
 	}
 }
 

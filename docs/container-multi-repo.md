@@ -67,6 +67,12 @@ entrypoint's `clone_extra_repos`, and the Go `ward container bootstrap`'s
 `cloneExtraRepos` (ward#181). The two stay in parity, like the rest of the
 entrypoint port.
 
+## Pre-flight knows the grant
+
+The pre-flight read ([docs/agent-preflight.md](agent-preflight.md)) is fed the
+`--with-repo` list and told the grants are writable, so a cross-repo migration
+whose deliverable lands in a granted repo is in scope, not a false `NO-GO` (ward#266).
+
 ## See also
 
 [docs/container.md](container.md) - the container model and lifecycle.

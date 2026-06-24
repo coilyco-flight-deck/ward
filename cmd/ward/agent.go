@@ -286,6 +286,9 @@ type resolvedWork struct {
 	Comments []issueComment
 	Details  string
 	Seed     string
+	// ExtraRepos are the --with-repo grants the run also clones writable (ward#230);
+	// the pre-flight must hear about them or it false-NO-GOs cross-repo work (ward#266).
+	ExtraRepos []targetRepo
 }
 
 // resolveAgentWork parses + trust-gates the ref, fetches the issue (failing fast
@@ -317,7 +320,13 @@ func (r *Runner) resolveAgentWork(ctx context.Context, c *cli.Command, mode cont
 	if cerr != nil {
 		fmt.Fprintf(os.Stderr, "%s: note: could not read comments on %s (%v); pre-flight reads the body only\n", label, ref, cerr)
 	}
-	return resolvedWork{Ref: ref, Title: title, Body: issue.Body, Comments: comments, Details: details, Seed: agentSeedPrompt(ref, title, issue.Body, details, mode)}, nil
+	// Resolve --with-repo now so the pre-flight knows the run gets these repos too;
+	// a bad ref fails fast here, matching buildUpPlan's own parse (ward#266).
+	extra, eerr := parseExtraRepos(c.StringSlice("with-repo"), targetRepo{Owner: ref.Owner, Name: ref.Repo})
+	if eerr != nil {
+		return resolvedWork{}, fmt.Errorf("%s: %w", label, eerr)
+	}
+	return resolvedWork{Ref: ref, Title: title, Body: issue.Body, Comments: comments, Details: details, ExtraRepos: extra, Seed: agentSeedPrompt(ref, title, issue.Body, details, mode)}, nil
 }
 
 // fetchIssueComments returns the comment thread (oldest first) for the pre-flight
@@ -376,8 +385,8 @@ func preflightWanted(c *cli.Command) bool {
 }
 
 // preflightPrompt asks the about-to-detach agent for a feasibility read ending on a
-// GO / NO-GO line, feeding the --details note + comments too (ward#154/#167; see docs).
-func preflightPrompt(ref agentIssueRef, title, body, details string, comments []issueComment) string {
+// GO / NO-GO line, feeding --details, comments, and --with-repo grants (ward#266).
+func preflightPrompt(ref agentIssueRef, title, body, details string, comments []issueComment, extra []targetRepo) string {
 	title = strings.TrimSpace(title)
 	if title == "" {
 		title = "(untitled)"
@@ -397,16 +406,36 @@ func preflightPrompt(ref agentIssueRef, title, body, details string, comments []
 	if thread == "" {
 		thread = "(no comments yet)"
 	}
+	// Name the --with-repo grants in the prompt or the read false-NO-GOs cross-repo
+	// work as unreachable from "a ward-only clone" - the exact ward#266 failure.
+	cloneScope := fmt.Sprintf("a FRESH CLONE of %s/%s", ref.Owner, ref.Repo)
+	extraNote := ""
+	if len(extra) > 0 {
+		slugs := make([]string, len(extra))
+		for i, repo := range extra {
+			slugs[i] = repo.slug()
+		}
+		joined := strings.Join(slugs, ", ")
+		cloneScope = fmt.Sprintf("FRESH CLONES of %s/%s AND of %s", ref.Owner, ref.Repo, joined)
+		extraNote = fmt.Sprintf(
+			"\n\nThis dispatch GRANTED EXTRA REPOS via --with-repo: %s. Each lands as a full, "+
+				"WRITABLE working copy under /workspace beside the issue's repo, so cross-repo work "+
+				"spanning them - creating a package in one, moving code across the boundary, wiring "+
+				"the seams, landing a coordinated change - is squarely in scope for this run. Do NOT "+
+				"answer NO-GO or WRONG-REPO merely because the deliverable lands in one of these "+
+				"granted repos (%s) rather than %s/%s; you will have all of them in hand.",
+			joined, joined, ref.Owner, ref.Repo)
+	}
 	return fmt.Sprintf(
 		"You are about to be sent, fire-and-forget, into an ephemeral container to carry "+
 			"this Forgejo issue end to end on your own - implement, commit, merge to main, "+
 			"push - with no human watching once you detach.\n\n"+
-			"That detached run happens in a FRESH CLONE of %s/%s pulled inside the container. "+
+			"That detached run happens in %s pulled inside the container. "+
 			"The directory you are reading this in right now is unrelated host scratch - it may "+
 			"hold a different repo, or none at all. So judge feasibility from the issue text "+
 			"alone, never from the local working tree: a file, path, or package that looks "+
 			"missing in the current directory tells you nothing about the clone you will actually "+
-			"get, so do not conclude the issue is mis-filed just because the local tree lacks it.\n\n"+
+			"get, so do not conclude the issue is mis-filed just because the local tree lacks it.%s\n\n"+
 			"Before that detached run starts, give a quick PRE-FLIGHT read: based on the issue "+
 			"AND its comment thread below, do you think you can carry it to merge unattended? "+
 			"Later comments can supersede the original description - the author may have answered "+
@@ -423,7 +452,7 @@ func preflightPrompt(ref agentIssueRef, title, body, details string, comments []
 			"do not go digging to decide it, and never from files missing in the current directory. "+
 			"ward will blind-file a fresh issue in that repo and launch nothing here.\n"+
 			"This is a judgment call, not a commitment - be honest about ambiguity.",
-		ref.Owner, ref.Repo, ref, title, body, note, thread, ref.Owner, ref.Repo)
+		cloneScope, extraNote, ref, title, body, note, thread, ref.Owner, ref.Repo)
 }
 
 // preflightComments renders the human comment thread (oldest first) for the
@@ -475,7 +504,7 @@ func (r *Runner) captureInDir(ctx context.Context, dir, bin string, argv ...stri
 func (r *Runner) runPreflight(ctx context.Context, mode containerMode, surface string, w resolvedWork) (bool, error) {
 	label := agentCmdline(mode, surface)
 	bin := mode.agentBinary()
-	argv, ok := mode.hostPreflightArgv(preflightPrompt(w.Ref, w.Title, w.Body, w.Details, w.Comments))
+	argv, ok := mode.hostPreflightArgv(preflightPrompt(w.Ref, w.Title, w.Body, w.Details, w.Comments, w.ExtraRepos))
 	// No host self-assessment (claude+goose have one, codex/qwen don't) or no
 	// binary on PATH: can't fairly bounce the issue, so the dispatch proceeds.
 	if !ok || !hostHasBinary(bin) {
