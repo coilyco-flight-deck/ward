@@ -32,13 +32,15 @@ agent issues is gated by cli-guard policy and written to the audit log. The
 boundary is the product: drive is how you watch an agent run bounded.
 
   ward drive claude "summarize how the audit log is written"
-  warded claude "summarize how the audit log is written"     # the public face
-  ward drive codex "what does exec_gate.go enforce?" --repo coilyco-flight-deck/ward
-  warded claude "..." --print                                 # show the plan, run nothing
+  warded claude "summarize how the audit log is written"      # the public face
+  ward drive --repo coilyco-flight-deck/ward codex "what does exec_gate.go enforce?"
+  warded --print claude "summarize how the audit log is written"   # show the plan, run nothing
 
-The harness is the first positional; everything after it is the prompt. Off-org
-repos are refused. drive is one-shot and attached - the container is thrown away
-on exit - so to carry a Forgejo issue to merge, reach for 'ward agent work'.`,
+The harness is the first bare token. ward flags go before it; everything after
+it is the prompt, taken raw - a '--print' inside the prompt stays prompt text,
+not a ward flag (ward#248). Use '--' for explicit passthrough. Off-org repos are
+refused. drive is one-shot and attached - the container is thrown away on exit -
+so to carry a Forgejo issue to merge, reach for 'ward agent work'.`,
 		Flags: []cli.Flag{
 			&cli.StringFlag{Name: "repo", Usage: "owner/repo to clone for context (default: inferred from the cwd's git origin)"},
 			&cli.StringSliceFlag{Name: "with-repo", Usage: "clone an additional repo for context (owner/name; repeatable), landed under /workspace alongside the primary repo (ward#230)."},
@@ -81,6 +83,48 @@ func parseDriveArgs(args []string) (containerMode, string, error) {
 		return "", "", fmt.Errorf("no prompt: pass it after the harness, e.g. `warded %s \"summarize how X works\"`", mode)
 	}
 	return mode, prompt, nil
+}
+
+// driveValueFlags are `drive` flags whose space-form value the harness-boundary
+// scan must skip (ward#248). Keep in sync with driveCommand's value flags above.
+var driveValueFlags = map[string]bool{
+	"--repo":        true,
+	"--with-repo":   true,
+	"--image":       true,
+	"--tag":         true,
+	"--ward-source": true,
+}
+
+// maybeInsertDriveBoundary splices `--` after the `ward drive` harness so cli stops
+// parsing flags there: ward flags before it, prompt after raw (ward#248, docs/drive.md).
+func maybeInsertDriveBoundary(args []string) []string {
+	idx := firstSubcommandIndex(args)
+	if idx < 0 || args[idx] != "drive" {
+		return args
+	}
+	for i := idx + 1; i < len(args); i++ {
+		a := args[i]
+		if a == "--" {
+			return args // explicit boundary already present
+		}
+		if strings.HasPrefix(a, "-") {
+			if driveValueFlags[a] && i+1 < len(args) {
+				i++ // skip the flag's space-form value
+			}
+			continue
+		}
+		// args[i] is the harness. Splice `--` after it, unless it is the last
+		// token (no prompt to protect) or a `--` already follows.
+		if i+1 >= len(args) || args[i+1] == "--" {
+			return args
+		}
+		out := make([]string, 0, len(args)+1)
+		out = append(out, args[:i+1]...)
+		out = append(out, "--")
+		out = append(out, args[i+1:]...)
+		return out
+	}
+	return args
 }
 
 // runDrive resolves the context repo, seeds the prompt, and runs the harness one-shot

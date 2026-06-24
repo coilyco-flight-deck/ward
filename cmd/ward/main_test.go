@@ -192,3 +192,79 @@ func TestMaybeRewriteWardedShim(t *testing.T) {
 		})
 	}
 }
+
+func TestMaybeInsertDriveBoundary(t *testing.T) {
+	cases := []struct {
+		name string
+		args []string
+		want []string
+	}{
+		{
+			name: "splices -- after harness so the prompt is raw",
+			args: []string{"ward", "drive", "claude", "summarize X"},
+			want: []string{"ward", "drive", "claude", "--", "summarize X"},
+		},
+		{
+			name: "ward flag before harness is preserved, boundary after harness",
+			args: []string{"ward", "drive", "--print", "claude", "summarize X"},
+			want: []string{"ward", "drive", "--print", "claude", "--", "summarize X"},
+		},
+		{
+			name: "space-form value flag is skipped when finding the harness",
+			args: []string{"ward", "drive", "--repo", "o/r", "codex", "what is X"},
+			want: []string{"ward", "drive", "--repo", "o/r", "codex", "--", "what is X"},
+		},
+		{
+			name: "equals-form value flag needs no value skip",
+			args: []string{"ward", "drive", "--repo=o/r", "codex", "what is X"},
+			want: []string{"ward", "drive", "--repo=o/r", "codex", "--", "what is X"},
+		},
+		{
+			name: "a flag-looking token in the prompt is protected by the spliced --",
+			args: []string{"ward", "drive", "claude", "explain the --print flag"},
+			want: []string{"ward", "drive", "claude", "--", "explain the --print flag"},
+		},
+		{
+			name: "explicit -- already present is left untouched",
+			args: []string{"ward", "drive", "claude", "--", "literal --print"},
+			want: []string{"ward", "drive", "claude", "--", "literal --print"},
+		},
+		{
+			name: "harness with no prompt is untouched (nothing to protect)",
+			args: []string{"ward", "drive", "claude"},
+			want: []string{"ward", "drive", "claude"},
+		},
+		{
+			name: "harness-less drive (only flags) is untouched",
+			args: []string{"ward", "drive", "--print"},
+			want: []string{"ward", "drive", "--print"},
+		},
+		{
+			name: "drive --help is untouched (cli renders help)",
+			args: []string{"ward", "drive", "--help"},
+			want: []string{"ward", "drive", "--help"},
+		},
+		{
+			name: "root flag before drive is carried, harness still found",
+			args: []string{"ward", "--config", "/a/b.yaml", "drive", "claude", "do X"},
+			want: []string{"ward", "--config", "/a/b.yaml", "drive", "claude", "--", "do X"},
+		},
+		{
+			name: "non-drive verb is untouched",
+			args: []string{"ward", "exec", "build", "claude", "x"},
+			want: []string{"ward", "exec", "build", "claude", "x"},
+		},
+		{
+			name: "repeatable with-repo skips each value",
+			args: []string{"ward", "drive", "--with-repo", "o/a", "--with-repo", "o/b", "qwen", "go"},
+			want: []string{"ward", "drive", "--with-repo", "o/a", "--with-repo", "o/b", "qwen", "--", "go"},
+		},
+	}
+	for _, tc := range cases {
+		t.Run(tc.name, func(t *testing.T) {
+			if got := maybeInsertDriveBoundary(tc.args); !reflect.DeepEqual(got, tc.want) {
+				t.Fatalf("maybeInsertDriveBoundary(%v) = %v, want %v", tc.args, got, tc.want)
+			}
+		})
+	}
+}

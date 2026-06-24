@@ -53,6 +53,10 @@ func main() {
 	// canonical `ward drive <args>` machinery (ward#247). See docs/drive.md.
 	os.Args = maybeRewriteWardedShim(os.Args)
 
+	// Flag boundary: the harness arg splits ward flags from the prompt, so a
+	// prompt holding `--print`/`--repo` is not eaten as a ward flag (ward#248).
+	os.Args = maybeInsertDriveBoundary(os.Args)
+
 	configFlagOverride = preParseConfigFlag(os.Args)
 	app := &cli.Command{
 		Name:    "ward",
