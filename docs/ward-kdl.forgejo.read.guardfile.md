@@ -333,19 +333,6 @@ Positional arguments (2):
 - `<org>` (string)
 - `<username>` (string)
 
-## ward-kdl-read ops forgejo pull get
-
-`GET /repos/{owner}/{repo}/pulls/{index}/reviews/{id}`
-
-Authorized by grant: can get "*". Not destructive.
-
-Positional arguments (4):
-
-- `<owner>` (string)
-- `<repo>` (string)
-- `<index>` (string)
-- `<id>` (string)
-
 ## ward-kdl-read ops forgejo push_mirror get
 
 `GET /repos/{owner}/{repo}/push_mirrors/{name}`
@@ -567,14 +554,6 @@ Positional arguments (3):
 - `<owner>` (string)
 - `<repo>` (string)
 - `<user>` (string)
-
-## ward-kdl-read ops forgejo token get
-
-`GET /user/gpg_key_token`
-
-Authorized by grant: can get "*". Not destructive.
-
-Takes no arguments.
 
 ## ward-kdl-read ops forgejo tree get
 
