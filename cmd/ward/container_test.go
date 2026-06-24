@@ -509,34 +509,24 @@ func TestEntrypointInstallsPreCommitHooks(t *testing.T) {
 	}
 }
 
-// TestEntrypointInstallsAgentCommitSuite locks the ward#139 fix: the headless-
-// gated agent commit-msg suite installs after the clone, before the launch.
-func TestEntrypointInstallsAgentCommitSuite(t *testing.T) {
+// TestEntrypointNoAgentCommitGate locks the ward#244 fix: ward must never inject
+// the retired, unsatisfiable agent-only commit-msg gate.
+func TestEntrypointNoAgentCommitGate(t *testing.T) {
 	data, err := containerAssets.ReadFile("containerassets/" + containerEntrypointRel)
 	if err != nil {
 		t.Fatalf("read entrypoint: %v", err)
 	}
 	script := string(data)
-	for _, want := range []string{
-		"install_agent_precommit_hooks()",                    // the function exists
-		"install_agent_precommit_hooks \"$work\"",            // main() invokes it on the clone
-		"[ \"${WARD_HEADLESS:-0}\" = 1 ]",                    // gated on a headless/task run
-		"ward container agent-precommit-config",              // generates the agent config
-		"pre-commit install --hook-type commit-msg --config", // binds it as the commit-msg hook
+	for _, banned := range []string{
+		"install_agent_precommit_hooks", // the retired function
+		"agent-precommit-config",        // the retired generator subcommand
+		"ward-agent-precommit.yaml",     // the injected (unsatisfiable) config
+		"closes-issue",                  // a retired hook id it referenced
+		"conventional-commit",           // a retired hook id it referenced
 	} {
-		if !strings.Contains(script, want) {
-			t.Errorf("entrypoint missing %q (ward#139 agent-only commit suite)", want)
+		if strings.Contains(script, banned) {
+			t.Errorf("entrypoint still references retired agent commit gate %q (ward#244)", banned)
 		}
-	}
-	// It must run after the clone (work exists) and before the agent launches.
-	clone := strings.Index(script, "work=\"$(clone_target)\"")
-	install := strings.Index(script, "install_agent_precommit_hooks \"$work\"")
-	launch := strings.Index(script, "log \"launching $WARD_AGENT")
-	if clone < 0 || install < 0 || launch < 0 {
-		t.Fatalf("entrypoint markers not found: clone=%d install=%d launch=%d", clone, install, launch)
-	}
-	if clone >= install || install >= launch {
-		t.Errorf("agent commit suite must install after clone and before launch: clone=%d install=%d launch=%d", clone, install, launch)
 	}
 }
 

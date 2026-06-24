@@ -53,8 +53,7 @@ ask reuses the container's one-shot argv, attached rather than detached:
 
 The container exports `WARD_ASK=1`; the entrypoint treats headless and ask as one-shot
 together and only diverges for claude (ask drops the stream-json wrapper). ask never
-sets `WARD_HEADLESS`, so the agent-only commit suite is skipped - there is nothing to
-commit.
+sets `WARD_HEADLESS` and makes no commits - there is nothing to commit.
 
 ## `--print`
 

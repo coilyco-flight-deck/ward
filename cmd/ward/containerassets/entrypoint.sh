@@ -166,28 +166,6 @@ install_precommit_hooks() {
   fi
 }
 
-# --- agent-only commit suite (ward#139): headless/task runs only -------------
-# Enable agentic-os closes-issue + conventional-commit. See docs/agent-precommit.md.
-install_agent_precommit_hooks() {
-  local work="$1"
-  [ "${WARD_HEADLESS:-0}" = 1 ] || { log "not headless; skipping agent-only commit suite (ward#139)"; return 0; }
-  [ -f "$work/.pre-commit-config.yaml" ] || { log "no .pre-commit-config.yaml; skipping agent commit suite (ward#139)"; return 0; }
-  command -v pre-commit >/dev/null 2>&1 || { log "pre-commit not on PATH; skipping agent commit suite (ward#139)"; return 0; }
-  # Generate an agent-only config pinning the repo's agentic-os rev, then bind it
-  # as the commit-msg hook (a repo-relative path so it resolves at commit time).
-  local cfg=".git/ward-agent-precommit.yaml"
-  if ! ward container agent-precommit-config --config "$work/.pre-commit-config.yaml" > "$work/$cfg" 2>/dev/null; then
-    rm -f "$work/$cfg"
-    log "no agentic-os hooks to enable; skipping agent commit suite (ward#139)"
-    return 0
-  fi
-  if ( cd "$work" && pre-commit install --hook-type commit-msg --config "$cfg" >&2 ); then
-    log "installed agent-only commit-msg suite via $cfg (ward#139)"
-  else
-    log "agent commit suite install failed (ward#139)"
-  fi
-}
-
 # --- additional granted repos (ward#230): clone+operate beyond the target -----
 # Clone each --with-repo grant full under /workspace. See docs/container-multi-repo.md.
 clone_extra_repo() {
@@ -218,7 +196,6 @@ clone_extra_repo() {
   git -C "$dest" config push.default current
   [ -n "${WARD_BRANCH:-}" ] && git -C "$dest" checkout -B "$WARD_BRANCH" >&2
   install_precommit_hooks "$dest"
-  install_agent_precommit_hooks "$dest"
   log "extra-repo: ready $owner/$name at $dest"
   return 0
 }
@@ -487,7 +464,6 @@ main() {
   install_opencode
   local work; work="$(clone_target)"
   install_precommit_hooks "$work"
-  install_agent_precommit_hooks "$work"
   clone_extra_repos
   warm_substrate
   compose_context

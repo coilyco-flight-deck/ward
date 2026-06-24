@@ -28,9 +28,6 @@ behind. See [docs/agent.md](agent.md) for the family overview.
   answer can lean on the repo clone and operating context) and streams it inline - no
   issue, no code change, no comment. See [docs/agent-ask.md](agent-ask.md).
 
-Both `headless` and `task` also install an [agent-only commit suite](agent-precommit.md)
-(`closes-issue` + `conventional-commit`) that interactive `work` and humans never see.
-
 `task` runs the **same pre-flight** ([docs/agent-preflight.md](agent-preflight.md))
 as `headless` (ward#149): it files the issue first, then gives the same GO / NO-GO
 read before detaching. A NO-GO comments on the just-filed issue and launches

@@ -29,7 +29,7 @@ The surface is split across focused docs:
 - [docs/agent-work.md](agent-work.md) - what `work` does (resolve, trust-gate,
   branch, launch), the seed prompt, and the per-run container name.
 - [docs/agent-subcommands.md](agent-subcommands.md) - `work` vs `headless`, plus
-  `task`, `reply`, `ask`, the agent-only commit suite, and the reaper backstop.
+  `task`, `reply`, `ask`, and the reaper backstop.
 - [docs/agent-preflight.md](agent-preflight.md) - the headless GO/NO-GO
   pre-flight and when it is skipped.
 - [docs/agent-wrong-repo.md](agent-wrong-repo.md) - the WRONG-REPO blind-fire

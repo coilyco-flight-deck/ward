@@ -196,7 +196,6 @@ func (r *Runner) runContainerBootstrap(ctx context.Context, c *cli.Command) erro
 		return cerr
 	}
 	r.installPreCommitHooks(ctx, e, work)
-	r.installAgentPreCommitHooks(ctx, e, work)
 	r.cloneExtraRepos(ctx, e)
 	r.warmSubstrate(ctx, e)
 	r.composeContext(e)
@@ -375,7 +374,6 @@ func (r *Runner) cloneExtraRepo(ctx context.Context, e bootstrapEnv, repo target
 		_ = r.Runner.Exec(ctx, "git", "-C", work, "checkout", "-B", e.Branch)
 	}
 	r.installPreCommitHooks(ctx, e, work)
-	r.installAgentPreCommitHooks(ctx, e, work)
 	blog("extra-repo: ready %s/%s at %s", repo.Owner, repo.Name, work)
 }
 
@@ -399,49 +397,6 @@ func (r *Runner) installPreCommitHooks(ctx context.Context, _ bootstrapEnv, work
 		blog("installed pre-commit hooks in %s (ward#133)", work)
 	} else {
 		blog("pre-commit install failed in %s; agent commits may bypass the hook suite (ward#133)", work)
-	}
-}
-
-// --- agent-only commit suite (ward#139): headless runs only ------------------
-
-// installAgentPreCommitHooks ports install_agent_precommit_hooks: in headless
-// runs, generate + install the agentic-os agent-only commit-msg suite.
-func (r *Runner) installAgentPreCommitHooks(ctx context.Context, e bootstrapEnv, work string) {
-	if !e.Headless {
-		blog("not headless; skipping agent-only commit suite (ward#139)")
-		return
-	}
-	if !isFile(filepath.Join(work, ".pre-commit-config.yaml")) {
-		blog("no .pre-commit-config.yaml; skipping agent commit suite (ward#139)")
-		return
-	}
-	if !commandExists("pre-commit") {
-		blog("pre-commit not on PATH; skipping agent commit suite (ward#139)")
-		return
-	}
-	// Generate the agent-only config in-process (the bash shelled out to `ward
-	// container agent-precommit-config`), then bind it as the commit-msg hook.
-	cfgRel := ".git/ward-agent-precommit.yaml"
-	cfgAbs := filepath.Join(work, cfgRel)
-	repoCfg, rerr := os.ReadFile(filepath.Join(work, ".pre-commit-config.yaml")) // #nosec G304 -- repo config path
-	if rerr != nil {
-		blog("no agentic-os hooks to enable; skipping agent commit suite (ward#139)")
-		return
-	}
-	out, gerr := agentPreCommitConfig(repoCfg)
-	if gerr != nil {
-		_ = os.Remove(cfgAbs)
-		blog("no agentic-os hooks to enable; skipping agent commit suite (ward#139)")
-		return
-	}
-	if werr := os.WriteFile(cfgAbs, out, 0o644); werr != nil { // #nosec G306 -- repo-relative config, not a secret
-		blog("agent commit suite install failed (ward#139)")
-		return
-	}
-	if ierr := r.execIn(ctx, work, "pre-commit", "install", "--hook-type", "commit-msg", "--config", cfgRel); ierr == nil {
-		blog("installed agent-only commit-msg suite via %s (ward#139)", cfgRel)
-	} else {
-		blog("agent commit suite install failed (ward#139)")
 	}
 }
 
