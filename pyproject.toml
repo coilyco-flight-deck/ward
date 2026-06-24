@@ -45,6 +45,8 @@ excludes = [
   "cmd/ward-kdl/ward-kdl.brew.guardfile.md",
   "docs/ward-kdl.glitchtip.guardfile.md",
   "cmd/ward-kdl/ward-kdl.glitchtip.guardfile.md",
+  "docs/ward-kdl.signoz.guardfile.md",
+  "cmd/ward-kdl/ward-kdl.signoz.guardfile.md",
   # Forgejo permission tiers (ward#240): one generated surface reference per
   # read/write/admin binary, emitted beside the kdl in its cmd/ward-kdl/ward-kdl-<tier>/
   # subdir and reviewed at docs/. Same generated-and-uncapped rationale as above.
