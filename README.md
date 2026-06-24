@@ -8,7 +8,7 @@ The thing it produces is a **warded agent**: an agent ward drives into a contain
 
 ## Status
 
-v0. Downstream consumers upgrade to the `ward` binary and `.ward` config on their own schedule.
+v0.x. Downstream consumers upgrade to the `ward` binary and `.ward` config on their own schedule.
 
 ## What it does
 
