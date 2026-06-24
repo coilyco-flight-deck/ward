@@ -9,7 +9,7 @@ Workspace conventions load globally via `~/.claude/CLAUDE.md` -> `agentic-os-kai
 ward is also absorbing the operator surface: [coily](https://github.com/coilyco-bridge/coily) is retiring and its ops verbs fold into ward, retiring the old "ward never grows ops verbs" boundary. Two verb kinds now:
 
 - **Contributor dev verbs** - `build`, `test`, `vet`, `lint`, `tidy`, `cover`, declared per-repo in `.ward/ward.yaml`.
-- **Operator verbs** - from coily. Spec REST rides ward-kdl (`ops forgejo`, `ops aws`); composite control flow is hand-written gated Go in `cmd/ward`. `scripts/watch-ci.sh` is one such bridge; see [docs/ci-watch.md](docs/ci-watch.md).
+- **Operator verbs** - from coily. Spec REST rides ward-kdl (`ops forgejo`, `ops aws`); composite control flow is hand-written gated Go in `cmd/ward`. `ward ci watch` (ward#88) is one such verb; see [docs/ci-watch.md](docs/ci-watch.md).
 
 ## Project shape
 
@@ -49,7 +49,7 @@ Every invocation validates argv against shell-metacharacter rejection, writes on
 
 ## Release
 
-Forgejo-canonical, on Forgejo Actions not GitHub. Push to `main` runs `.forgejo/workflows/release.yml`: `tag-bump` (minor bump; major hand-driven) + `create-release`, then `bump-tap-formula` rewrites the centralized tap's formula url+tag+revision (skip-CI marked). `mirror-to-github.yml` mirrors main + tags to the read-only GitHub mirror.
+Forgejo-canonical, on Forgejo Actions not GitHub. Push to `main` runs `.forgejo/workflows/release.yml`: `tag-bump` (minor bump; major hand-driven) + `create-release`, then `bump-tap-formula` rewrites the tap's formula `url`+`sha256` to the new tag (skip-CI marked), failing loudly if the write does not land. `mirror-to-github.yml` mirrors main + tags to the read-only GitHub mirror.
 
 Never write the literal skip-CI token in a commit body or it silently disables the workflow on that push. Describe it as "skip-CI marker".
 

@@ -250,7 +250,7 @@ func TestFreshReservationComment(t *testing.T) {
 func TestReservationCommentBodyHasMarker(t *testing.T) {
 	now := time.Date(2026, 6, 18, 12, 0, 0, 0, time.UTC)
 	body := reservationCommentBody(modeCodex, "ward-ward-issue-142-codex-abcd", "tower", now)
-	for _, want := range []string{agentReservationMarker, "ward agent codex", "ward-ward-issue-142-codex-abcd", "tower"} {
+	for _, want := range []string{agentReservationMarker, "ward agent --driver codex", "ward-ward-issue-142-codex-abcd", "tower"} {
 		if !strings.Contains(body, want) {
 			t.Errorf("reservation comment missing %q\n got: %s", want, body)
 		}

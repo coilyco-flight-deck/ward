@@ -19,6 +19,18 @@ byte-for-byte copies of `cmd/ward-kdl/`'s canonical guardfile + spec lock. The
 ward-kdl files stay the single source of truth (`make build-ward-kdl` re-runs
 `make sync-ops-assets`); `cmd/ward/opsassets_test.go` fails the build on drift.
 
+## The remote-exec slice grafted alongside (ward#81)
+
+The four server-side `forgejo` maintenance subcommands with no REST equivalent
+(`admin user list/create`, `admin auth list`, `doctor check`) ride the
+**exec dialect** instead, so `ward ops forgejo` now mounts both transports.
+`graftForgejoAdminExec` (`cmd/ward/ops.go`) parses the embedded
+`opsassets/forgejo-admin.guardfile.kdl`, `execverb.Build`s it, and appends the
+built `admin`/`doctor` subtrees onto the same `forgejo` command - two transports
+under one operator verb. That guardfile is ward-proper-only (no ward-kdl mirror,
+no spec lock, no SSM token), so it lives directly under `opsassets/` and is
+absent from the drift map. See [ops-forgejo-admin.md](ops-forgejo-admin.md).
+
 ## `forgejo_issue.go` is retired (ward#92)
 
 ward's hand-rolled Forgejo client is gone. Everything `ward agent` and the
@@ -28,25 +40,20 @@ salvage append, and the route survey - now routes through this mount via
 own `ops forgejo` leaves. The three seams that once blocked the cut all resolved
 in the runtime (cli-guard v0.44.0):
 
-- **Rich bodies ride `--body-file`.** Programmatic writes (salvage reports,
-  reservation/pre-flight comments) are markdown full of backticks, `$`, and
-  newlines that the argv shell-metacharacter gate refuses inline. `forgejo_ops.go`
-  signs the body, writes it to a temp JSON file, and passes `--body-file <path>`;
-  the path carries no metacharacters and the body never touches the gate.
+- **Rich bodies ride `--body-file`.** Markdown writes (salvage reports,
+  reservation/pre-flight comments) carry backticks, `$`, and newlines the argv
+  metachar gate refuses inline; `forgejo_ops.go` signs the body and passes it via
+  a temp `--body-file`, so the body never touches the gate.
 - **One auth seam covers host and container.** The guardfile's `value ssm` address
   resolves through `forgejoTokenResolver` (`ops.go`): the baked `$FORGEJO_TOKEN`
-  inside a container (the reaper has no AWS/SSM), else the coilyco-ops bot token
-  from SSM on a host. The reaper drives the same client the host flows do.
-- **Reads capture `--output json`.** Each read leaf renders its response body to
-  stdout; `forgejo_ops.go` captures it and `json.Unmarshal`s the `Issue` /
-  comment / repo structs back in Go - no new cli-guard API, just the rendered
-  body plus a decode.
+  in a container (no AWS/SSM), else the coilyco-ops bot token from SSM on a host.
+- **Reads capture `--output json`.** Each read leaf renders its body to stdout;
+  `forgejo_ops.go` captures and `json.Unmarshal`s the structs back in Go.
 
-The survey's owner-repo listing needed two read leaves the guardfile did not yet
-grant, so ward#92 grew it by two: `org-repo list` (GET /orgs/{org}/repos) and
-`user-repo list` (GET /users/{username}/repos), the org and user halves the
-catalog walks across the primary owners (the coilyco-* orgs and the coilysiren
-user). The forgejo surface is now 42 leaves.
+The survey's owner-repo listing grew the surface by two read leaves (now 42):
+`org-repo list` (GET /orgs/{org}/repos) and `user-repo list`
+(GET /users/{username}/repos) - the org and user halves of the primary owners
+(the coilyco-* orgs and the coilysiren user).
 
 The stale-ward release-tag scalar read had already moved onto this mount ahead of
 the rest (ward#172): `ops forgejo release list <owner> <repo> --query
@@ -56,4 +63,5 @@ the rest (ward#172): `ops forgejo release list <owner> <repo> --query
 ## See also
 
 - [ops-forgejo.md](ops-forgejo.md) - the ward-kdl proving ground + guardfile.
+- [ops-forgejo-view.md](ops-forgejo-view.md) - the lean `issue view` override.
 - [container-reap.md](container-reap.md) - the reaper's salvage-issue seam, now on this mount.

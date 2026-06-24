@@ -197,6 +197,110 @@ func (c *forgejoClient) listOwnerRepos(ctx context.Context, owner string) ([]rep
 	return nil, lastErr
 }
 
+// leanIssueView is the {issue, comments} projection the `issue view` override
+// prints, trimmed to usernames so a reader isn't handed a full profile per comment.
+type leanIssueView struct {
+	Issue    leanIssue     `json:"issue"`
+	Comments []leanComment `json:"comments"`
+}
+
+// leanIssue is the issue half of leanIssueView (ward#225).
+type leanIssue struct {
+	Number    int       `json:"number"`
+	Title     string    `json:"title"`
+	State     string    `json:"state"`
+	User      string    `json:"user"`
+	Labels    []string  `json:"labels,omitempty"`
+	Assignees []string  `json:"assignees,omitempty"`
+	Comments  int       `json:"comments"`
+	CreatedAt time.Time `json:"created_at"`
+	UpdatedAt time.Time `json:"updated_at"`
+	HTMLURL   string    `json:"html_url"`
+	Body      string    `json:"body"`
+}
+
+// leanComment is one thread row of leanIssueView - author login, time, body.
+type leanComment struct {
+	User      string    `json:"user"`
+	CreatedAt time.Time `json:"created_at"`
+	Body      string    `json:"body"`
+}
+
+// forgejoIssueRaw is the slice of Forgejo's issue JSON leanIssue projects from.
+type forgejoIssueRaw struct {
+	Number    int       `json:"number"`
+	Title     string    `json:"title"`
+	Body      string    `json:"body"`
+	State     string    `json:"state"`
+	HTMLURL   string    `json:"html_url"`
+	Comments  int       `json:"comments"`
+	CreatedAt time.Time `json:"created_at"`
+	UpdatedAt time.Time `json:"updated_at"`
+	User      struct {
+		Login string `json:"login"`
+	} `json:"user"`
+	Labels []struct {
+		Name string `json:"name"`
+	} `json:"labels"`
+	Assignees []struct {
+		Login string `json:"login"`
+	} `json:"assignees"`
+}
+
+// lean projects the raw issue down to the reader-facing leanIssue.
+func (raw forgejoIssueRaw) lean() leanIssue {
+	li := leanIssue{
+		Number:    raw.Number,
+		Title:     raw.Title,
+		State:     raw.State,
+		User:      raw.User.Login,
+		Comments:  raw.Comments,
+		CreatedAt: raw.CreatedAt,
+		UpdatedAt: raw.UpdatedAt,
+		HTMLURL:   raw.HTMLURL,
+		Body:      raw.Body,
+	}
+	for _, l := range raw.Labels {
+		li.Labels = append(li.Labels, l.Name)
+	}
+	for _, a := range raw.Assignees {
+		li.Assignees = append(li.Assignees, a.Login)
+	}
+	return li
+}
+
+// viewIssue fetches an issue and its comment thread, projected to the lean shape
+// (ward#225), reading both through the ops mount.
+func (c *forgejoClient) viewIssue(ctx context.Context, owner, repo string, number int) (*leanIssueView, error) {
+	out, err := c.run(ctx, "issue", "get", owner, repo, strconv.Itoa(number), "--output", "json")
+	if err != nil {
+		return nil, fmt.Errorf("forgejo: view issue %s/%s#%d: %w", owner, repo, number, err)
+	}
+	var raw forgejoIssueRaw
+	if err := json.Unmarshal(out, &raw); err != nil {
+		return nil, fmt.Errorf("forgejo: parse issue %s/%s#%d: %w", owner, repo, number, err)
+	}
+	comments, err := c.listIssueComments(ctx, owner, repo, number)
+	if err != nil {
+		return nil, err
+	}
+	return leanView(raw, comments), nil
+}
+
+// leanView projects a raw issue plus its comment thread to the reader-facing
+// {issue, comments} shape - the pure half of viewIssue (ward#225).
+func leanView(raw forgejoIssueRaw, comments []issueComment) *leanIssueView {
+	view := &leanIssueView{Issue: raw.lean(), Comments: make([]leanComment, 0, len(comments))}
+	for _, cm := range comments {
+		view.Comments = append(view.Comments, leanComment{
+			User:      cm.User.Login,
+			CreatedAt: cm.CreatedAt,
+			Body:      cm.Body,
+		})
+	}
+	return view
+}
+
 // writeForgejoBody marshals a request body to a temp JSON file for --body-file,
 // returning the path and a cleanup that removes it. Keeps markdown off the argv gate.
 func writeForgejoBody(obj map[string]string) (path string, cleanup func(), err error) {

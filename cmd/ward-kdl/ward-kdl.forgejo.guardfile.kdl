@@ -318,6 +318,10 @@ wrap ward-kdl ops forgejo {
     // issue AND its full comment thread - the failure mode where an agent reads
     // the body and misses the comments (ward#170 pre-flight thread). Same 3-arg
     // signature as the leaf it replaces; combines both calls into {issue,comments}.
+    // ward#225: ward's CLI renders this leaf through a lean projection that
+    // collapses every user to its login literal - the raw API nests each
+    // commenter's full profile into every comment, so a multi-comment issue
+    // carried the same profile once per comment. The guardfile shape is unchanged.
     action view issue {
         describe "View an issue with its full comment thread (issue + comments)."
         input owner {

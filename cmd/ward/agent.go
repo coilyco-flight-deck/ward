@@ -15,7 +15,7 @@ import (
 	"github.com/urfave/cli/v3"
 )
 
-// agent.go wires the `ward agent <name> work <issue>` surface: sugar over
+// agent.go wires the `ward agent work <issue>` surface: sugar over
 // `container up` that seeds a fresh container to work an issue. See docs/agent.md.
 
 // agentIssueRef is a parsed issue reference for `ward agent ... work`. Only the
@@ -71,7 +71,7 @@ func parseAgentIssueRef(s string) (agentIssueRef, error) {
 			return agentIssueRef{}, fmt.Errorf(
 				"cannot parse issue ref %q: want owner/repo#N or %s/owner/repo/issues/N; "+
 					"for a non-issue pointer (a CI run, job, or commit URL), hand it to the freeform "+
-					"task verb instead: ward agent <name> task '<url>'",
+					"task verb instead: ward agent task '<url>'",
 				s, base)
 		}
 		return agentIssueRef{}, fmt.Errorf(
@@ -153,60 +153,86 @@ func agentSeedPrompt(ref agentIssueRef, title, body, details string, mode contai
 	return seed + inline
 }
 
-// agentModes is the ordered set of agent subcommands ward exposes; each maps
-// onto a containerMode (harness + context level). claude is the daily driver.
+// agentModes is the ordered set of harnesses ward can drive (claude is the default
+// --driver); it is the source of truth for the --driver choices (ward#185).
 var agentModes = []containerMode{modeClaude, modeCodex, modeQwen, modeGoose}
 
-// agentCommand is the `ward agent` umbrella: `ward agent <name> work <issue>`.
-func agentCommand() *cli.Command {
-	subs := make([]*cli.Command, 0, len(agentModes))
+// agentDriverChoices renders the supported --driver values as a pipe list, e.g.
+// "claude|codex|qwen|goose", for flag usage and error text.
+func agentDriverChoices() string {
+	names := make([]string, 0, len(agentModes))
 	for _, m := range agentModes {
-		subs = append(subs, agentModeCommand(m))
+		names = append(names, string(m))
 	}
+	return strings.Join(names, "|")
+}
+
+// agentDriverFlag selects the harness driving a surface, defaulting to claude so
+// the short path `ward agent headless <ref>` still works (ward#185). See docs/agent.md.
+func agentDriverFlag() cli.Flag {
+	return &cli.StringFlag{
+		Name:  "driver",
+		Value: string(modeClaude),
+		Usage: "harness that drives the work: " + agentDriverChoices() + " (default claude)",
+	}
+}
+
+// agentDriver resolves the --driver flag to a containerMode (defaulting to
+// claude), erroring on an unknown harness with a --driver-shaped message.
+func agentDriver(c *cli.Command) (containerMode, error) {
+	m, err := parseMode(c.String("driver"))
+	if err != nil {
+		return "", fmt.Errorf("invalid --driver %q: want %s", c.String("driver"), agentDriverChoices())
+	}
+	return m, nil
+}
+
+// agentCmdline renders the canonical `ward agent <surface> --driver <mode>` form
+// (ward#185) for labels, provenance lines, and the re-dispatch hints ward prints.
+func agentCmdline(mode containerMode, surface string) string {
+	return fmt.Sprintf("ward agent %s --driver %s", surface, mode)
+}
+
+// agentCommand is the `ward agent` umbrella: `ward agent <surface> [--driver <m>]`.
+func agentCommand() *cli.Command {
 	return &cli.Command{
 		Name:  "agent",
 		Usage: "Send an agent into a fresh ephemeral container to carry a Forgejo issue end to end.",
-		Description: `agent is the short verb over 'ward container': pick the harness by name
-(claude|codex|qwen|goose), then 'work <issue>' resolves the issue's repo, spins up an
-ephemeral least-access container, fresh-clones the repo inside it, and launches
-the agent seeded to carry the issue to merge. One line replaces the full
-'container up <repo> --mode <m> --branch <b>' stack plus a hand-written prompt.
+		Description: `agent is the short verb over 'ward container': pick a surface
+(work|headless|task|reply|ask), and --driver picks the harness
+(claude|codex|qwen|goose, default claude). 'work <issue>' resolves the issue's
+repo, spins up an ephemeral least-access container, fresh-clones the repo inside
+it, and launches the agent seeded to carry the issue to merge. One line replaces
+the full 'container up <repo> --mode <m> --branch <b>' stack plus a hand-written
+prompt.
 
-  ward agent claude work coilyco-flight-deck/ward#98
-  ward agent claude work https://forgejo.coilysiren.me/coilyco-flight-deck/ward/issues/98
-  ward agent codex work coilyco-flight-deck/ward#98 --print   # resolve + show the plan, run nothing
+  ward agent work coilyco-flight-deck/ward#98                       # --driver defaults to claude
+  ward agent headless coilyco-flight-deck/ward#98 --driver codex    # pick another harness
+  ward agent work https://forgejo.coilysiren.me/coilyco-flight-deck/ward/issues/98
+  ward agent work coilyco-flight-deck/ward#98 --print               # resolve + show the plan, run nothing
 
 See docs/container.md for the container model (ephemeral, fresh-clone-inside,
 reaper-backed). The agent runs under the container's bypassPermissions policy,
 so 'work' is only accepted against a trusted owner.`,
-		Commands: subs,
-	}
-}
-
-// agentModeCommand builds `ward agent <mode>` with its work, headless, task, and
-// reply children.
-func agentModeCommand(m containerMode) *cli.Command {
-	return &cli.Command{
-		Name:  string(m),
-		Usage: fmt.Sprintf("Drive %s against a Forgejo issue in an ephemeral container.", m),
 		Commands: []*cli.Command{
-			agentSurfaceCommand(m, "work", false),
-			agentSurfaceCommand(m, "headless", true),
-			agentTaskCommand(m),
-			agentReplyCommand(m),
-			agentAskCommand(m),
+			agentSurfaceCommand("work", false),
+			agentSurfaceCommand("headless", true),
+			agentTaskCommand(),
+			agentReplyCommand(),
+			agentAskCommand(),
 		},
 	}
 }
 
-// agentSurfaceCommand builds `ward agent <mode> {work,headless} <issue>`: work
-// is interactive, headless detaches + runs print mode. See docs/agent.md.
-func agentSurfaceCommand(m containerMode, surface string, headless bool) *cli.Command {
+// agentSurfaceCommand builds `ward agent {work,headless} <issue>` (ward#185): work is
+// interactive, headless detaches + runs print mode. --driver picks the harness.
+func agentSurfaceCommand(surface string, headless bool) *cli.Command {
 	usage := "Resolve the issue's repo, spin up a fresh container, and seed the agent to carry it end to end."
 	if headless {
 		usage = "Like work, but detached + non-interactive (claude -p): fire-and-forget, read the container log."
 	}
 	flags := []cli.Flag{
+		agentDriverFlag(),
 		&cli.StringFlag{Name: "branch", Usage: "feature branch to create inside the clone (default: issue-<N>)"},
 		&cli.StringSliceFlag{Name: "with-repo", Usage: "grant the agent an additional writable repo to clone + operate against (owner/name; repeatable). Cloned as a full feature copy under /workspace alongside the issue's repo (ward#230)."},
 		&cli.StringFlag{Name: "details", Usage: "extra operator instructions woven into the seeded prompt + pre-flight read (overrides the issue text on conflict)"},
@@ -237,11 +263,15 @@ func agentSurfaceCommand(m containerMode, surface string, headless bool) *cli.Co
 		Flags:     flags,
 		Action: func(ctx context.Context, c *cli.Command) error {
 			r := newRunner()
+			mode, err := agentDriver(c)
+			if err != nil {
+				return fmt.Errorf("ward agent %s: %w", surface, err)
+			}
 			return r.WrapVerb(verb.Spec{
-				Name:       "agent." + string(m) + "." + surface,
+				Name:       "agent." + string(mode) + "." + surface,
 				SkipPolicy: true,
 				Action: func(ctx context.Context, cmd *cli.Command) error {
-					return r.runAgentWork(ctx, cmd, m, surface, headless)
+					return r.runAgentWork(ctx, cmd, mode, surface, headless)
 				},
 			}, r.Audit)(ctx, c)
 		},
@@ -262,7 +292,7 @@ type resolvedWork struct {
 // resolveAgentWork parses + trust-gates the ref, fetches the issue (failing fast
 // before any container spins), and returns the ref, title, body, and seed prompt.
 func (r *Runner) resolveAgentWork(ctx context.Context, c *cli.Command, mode containerMode, surface string) (resolvedWork, error) {
-	label := fmt.Sprintf("ward agent %s %s", mode, surface)
+	label := agentCmdline(mode, surface)
 	ref, err := parseAgentIssueRef(c.Args().First())
 	if err != nil {
 		return resolvedWork{}, fmt.Errorf("%s: %w", label, err)
@@ -321,12 +351,12 @@ func (r *Runner) runAgentWork(ctx context.Context, c *cli.Command, mode containe
 	if headless && preflightWanted(c) {
 		// ward#184: gate on the cheap, authoritative reservation before a full LLM
 		// pre-flight is spent on an issue another run holds. See docs/agent.md.
-		if perr := r.precheckReservation(ctx, fmt.Sprintf("ward agent %s %s", mode, surface), w, c.Bool("force")); perr != nil {
+		if perr := r.precheckReservation(ctx, agentCmdline(mode, surface), w, c.Bool("force")); perr != nil {
 			return perr
 		}
 		proceed, perr := r.runPreflight(ctx, mode, surface, w)
 		if perr != nil {
-			return fmt.Errorf("ward agent %s %s: pre-flight: %w", mode, surface, perr)
+			return fmt.Errorf("%s: pre-flight: %w", agentCmdline(mode, surface), perr)
 		}
 		if !proceed {
 			// runPreflight already reported the NO-GO and posted the issue comment.
@@ -444,7 +474,7 @@ func (r *Runner) captureInDir(ctx context.Context, dir, bin string, argv ...stri
 // runPreflight acts on the agent's feasibility verdict with no human, shared by
 // the headless + task surfaces (ward#147, ward#149): only NO-GO blocks. See docs.
 func (r *Runner) runPreflight(ctx context.Context, mode containerMode, surface string, w resolvedWork) (bool, error) {
-	label := fmt.Sprintf("ward agent %s %s", mode, surface)
+	label := agentCmdline(mode, surface)
 	bin := mode.agentBinary()
 	argv, ok := mode.hostPreflightArgv(preflightPrompt(w.Ref, w.Title, w.Body, w.Details, w.Comments))
 	// No host self-assessment (claude+goose have one, codex/qwen don't) or no
@@ -522,7 +552,7 @@ func wrongRepoTarget(s string) (targetRepo, bool) {
 // handlePreflightWrongRepo acts on a WRONG-REPO verdict (ward#159): blind-fire
 // into a trusted target repo, else bounce to a human (always launches nothing).
 func (r *Runner) handlePreflightWrongRepo(ctx context.Context, mode containerMode, surface string, w resolvedWork, outcome preflightOutcome, read string) error {
-	label := fmt.Sprintf("ward agent %s %s", mode, surface)
+	label := agentCmdline(mode, surface)
 	target, ok := wrongRepoTarget(outcome.Repo)
 	sameRepo := ok && target.Owner == w.Ref.Owner && target.Name == w.Ref.Repo
 	// An untrusted repo, the issue's own repo, or a half target is no blind-fire
@@ -641,19 +671,19 @@ func preflightNoGoComment(mode containerMode, surface, reason, read string) stri
 	}
 	var b strings.Builder
 	fmt.Fprintf(&b, "### 🛫 ward pre-flight: NO-GO\n\n")
-	fmt.Fprintf(&b, "`ward agent %s %s` ran a pre-flight feasibility read on this issue before "+
+	fmt.Fprintf(&b, "`%s` ran a pre-flight feasibility read on this issue before "+
 		"detaching a fire-and-forget run, and the agent judged it **NO-GO** - it should not be carried "+
-		"unattended until a human weighs in.\n\n", mode, surface)
+		"unattended until a human weighs in.\n\n", agentCmdline(mode, surface))
 	fmt.Fprintf(&b, "> %s\n\n", reason)
 	// Re-dispatch points at `headless` for both surfaces: the issue is already
 	// filed, so re-running `task` would file a duplicate.
 	fmt.Fprintf(&b, "No container was launched. Review the issue (clarify the scope, resolve the unknown, "+
-		"or split it), then re-dispatch - `ward agent %s headless <ref> --no-preflight` skips this gate "+
-		"once you've decided it's good to go.\n", mode)
+		"or split it), then re-dispatch - `%s <ref> --no-preflight` skips this gate "+
+		"once you've decided it's good to go.\n", agentCmdline(mode, "headless"))
 	if read = strings.TrimSpace(read); read != "" {
 		fmt.Fprintf(&b, "\n<details><summary>full pre-flight read</summary>\n\n%s\n\n</details>\n", read)
 	}
-	fmt.Fprintf(&b, "\n---\nPosted automatically by `ward agent %s %s` pre-flight (ward#147, ward#149).\n%s", mode, surface, preflightNoGoMarker)
+	fmt.Fprintf(&b, "\n---\nPosted automatically by `%s` pre-flight (ward#147, ward#149).\n%s", agentCmdline(mode, surface), preflightNoGoMarker)
 	return b.String()
 }
 
@@ -669,13 +699,13 @@ func blindfireIssueBody(mode containerMode, surface string, w resolvedWork, reas
 		body = "(the source issue had no description)"
 	}
 	var b strings.Builder
-	fmt.Fprintf(&b, "Routed here from %s by `ward agent %s %s` pre-flight (ward#159): the feasibility "+
-		"read judged this work belongs in this repo, not %s/%s.\n\n", w.Ref, mode, surface, w.Ref.Owner, w.Ref.Repo)
+	fmt.Fprintf(&b, "Routed here from %s by `%s` pre-flight (ward#159): the feasibility "+
+		"read judged this work belongs in this repo, not %s/%s.\n\n", w.Ref, agentCmdline(mode, surface), w.Ref.Owner, w.Ref.Repo)
 	fmt.Fprintf(&b, "> %s\n\n", reason)
 	fmt.Fprintf(&b, "This was filed blind from the source issue's text - nobody searched this repo first, "+
 		"so confirm it fits before working it.\n\n")
 	fmt.Fprintf(&b, "---\n### Source issue (%s)\n\n%s\n", w.Ref, body)
-	fmt.Fprintf(&b, "\n---\nFiled automatically by `ward agent %s %s` pre-flight (ward#159).", mode, surface)
+	fmt.Fprintf(&b, "\n---\nFiled automatically by `%s` pre-flight (ward#159).", agentCmdline(mode, surface))
 	return b.String()
 }
 
@@ -688,17 +718,17 @@ func preflightWrongRepoComment(mode containerMode, surface string, filed agentIs
 	}
 	var b strings.Builder
 	fmt.Fprintf(&b, "### 🎯 ward pre-flight: WRONG-REPO\n\n")
-	fmt.Fprintf(&b, "`ward agent %s %s` ran a pre-flight read on this issue and judged the work "+
+	fmt.Fprintf(&b, "`%s` ran a pre-flight read on this issue and judged the work "+
 		"belongs in **%s**, not here. Rather than burn cycles searching, it blind-fired a fresh "+
-		"issue there:\n\n", mode, surface, filed.repoSlug())
+		"issue there:\n\n", agentCmdline(mode, surface), filed.repoSlug())
 	fmt.Fprintf(&b, "- %s - %s\n\n", filed, filed.url())
 	fmt.Fprintf(&b, "> %s\n\n", reason)
 	fmt.Fprintf(&b, "No container was launched here. If the routing is wrong, close %s and re-dispatch "+
-		"this issue with `ward agent %s headless <ref> --no-preflight` to skip the gate.\n", filed, mode)
+		"this issue with `%s <ref> --no-preflight` to skip the gate.\n", filed, agentCmdline(mode, "headless"))
 	if read = strings.TrimSpace(read); read != "" {
 		fmt.Fprintf(&b, "\n<details><summary>full pre-flight read</summary>\n\n%s\n\n</details>\n", read)
 	}
-	fmt.Fprintf(&b, "\n---\nPosted automatically by `ward agent %s %s` pre-flight (ward#159).", mode, surface)
+	fmt.Fprintf(&b, "\n---\nPosted automatically by `%s` pre-flight (ward#159).", agentCmdline(mode, surface))
 	return b.String()
 }
 
@@ -731,7 +761,7 @@ func buildAgentPlan(c *cli.Command, mode containerMode, ref agentIssueRef, seed 
 // launchAgentContainer turns a resolved (ref, title, seed) into the container
 // plan and fires it - the shared tail of work, headless, and task. See docs/agent.md.
 func (r *Runner) launchAgentContainer(ctx context.Context, c *cli.Command, mode containerMode, surface string, headless bool, ref agentIssueRef, title, seed string) error {
-	label := fmt.Sprintf("ward agent %s %s", mode, surface)
+	label := agentCmdline(mode, surface)
 
 	// headless always detaches; the interactive surface honors --detach.
 	detached := headless || c.Bool("detach")
@@ -777,10 +807,11 @@ func (r *Runner) launchAgentContainer(ctx context.Context, c *cli.Command, mode 
 	return r.Runner.Exec(ctx, "docker", dockerCreateArgv(plan, envFile)...)
 }
 
-// agentTaskCommand builds `ward agent <mode> task [owner/repo]`: files an issue
+// agentTaskCommand builds `ward agent task [owner/repo]`: files an issue
 // from --instructions, then runs the headless flow against it. See docs/agent.md.
-func agentTaskCommand(m containerMode) *cli.Command {
+func agentTaskCommand() *cli.Command {
 	flags := []cli.Flag{
+		agentDriverFlag(),
 		&cli.StringFlag{Name: "instructions", Aliases: []string{"i"}, Usage: "the task to file as the issue body (first line becomes the title)"},
 		&cli.StringFlag{Name: "instructions-file", Usage: "read the instructions from a file instead of --instructions (escape hatch for long bodies)"},
 		&cli.StringFlag{Name: "branch", Usage: "feature branch to create inside the clone (default: issue-<N>)"},
@@ -805,11 +836,15 @@ func agentTaskCommand(m containerMode) *cli.Command {
 		Flags:     flags,
 		Action: func(ctx context.Context, c *cli.Command) error {
 			r := newRunner()
+			mode, err := agentDriver(c)
+			if err != nil {
+				return fmt.Errorf("ward agent task: %w", err)
+			}
 			return r.WrapVerb(verb.Spec{
-				Name:       "agent." + string(m) + ".task",
+				Name:       "agent." + string(mode) + ".task",
 				SkipPolicy: true,
 				Action: func(ctx context.Context, cmd *cli.Command) error {
-					return r.runAgentTask(ctx, cmd, m)
+					return r.runAgentTask(ctx, cmd, mode)
 				},
 			}, r.Audit)(ctx, c)
 		},
@@ -868,13 +903,13 @@ func taskTitle(instructions string) string {
 // taskBody is the filed issue body: the full instructions plus a provenance
 // footer marking it as agent-filed rather than hand-written.
 func taskBody(mode containerMode, instructions string) string {
-	return fmt.Sprintf("%s\n\n---\nFiled by `ward agent %s task`.", instructions, mode)
+	return fmt.Sprintf("%s\n\n---\nFiled by `%s`.", instructions, agentCmdline(mode, "task"))
 }
 
 // runAgentTask routes the task surface (ward#164) to ROUTE or DIRECT mode by
 // classifying the positional + flags. See docs/agent-task.md.
 func (r *Runner) runAgentTask(ctx context.Context, c *cli.Command, mode containerMode) error {
-	label := fmt.Sprintf("ward agent %s task", mode)
+	label := agentCmdline(mode, "task")
 	route, repoArg, err := classifyTaskInvocation(c.Args().First(), c.String("instructions"), c.String("instructions-file"))
 	if err != nil {
 		return fmt.Errorf("%s: %w", label, err)
@@ -888,7 +923,7 @@ func (r *Runner) runAgentTask(ctx context.Context, c *cli.Command, mode containe
 // runAgentTaskDirect resolves the repo, files an issue from --instructions, and
 // runs the headless carry container - today's behavior, unchanged. See docs.
 func (r *Runner) runAgentTaskDirect(ctx context.Context, c *cli.Command, mode containerMode, repoArg string) error {
-	label := fmt.Sprintf("ward agent %s task", mode)
+	label := agentCmdline(mode, "task")
 	repo, _, err := r.resolveTarget(ctx, repoArg)
 	if err != nil {
 		return fmt.Errorf("%s: %w", label, err)
@@ -970,7 +1005,7 @@ func printAgentTaskPlan(c *cli.Command, mode containerMode, repo targetRepo, tit
 	plan.Name = fmt.Sprintf("%s-%s-issue-<N>-%s-<rand>", containerNamePrefix, safeRepoName(repo), mode)
 
 	var b strings.Builder
-	fmt.Fprintf(&b, "# ward agent %s task (print)\n", mode)
+	fmt.Fprintf(&b, "# %s (print)\n", agentCmdline(mode, "task"))
 	fmt.Fprintf(&b, "headless: agent runs detached in print mode (-p)\n")
 	fmt.Fprintf(&b, "repo:    %s\n", repo.slug())
 	fmt.Fprintf(&b, "branch:  %s\n", plan.Branch)
@@ -1005,7 +1040,7 @@ func printAgentPlan(c *cli.Command, p upPlan, ref agentIssueRef, title, seed, su
 		out = os.Stdout
 	}
 	var b strings.Builder
-	fmt.Fprintf(&b, "# ward agent %s %s (print)\n", p.Mode, surface)
+	fmt.Fprintf(&b, "# %s (print)\n", agentCmdline(p.Mode, surface))
 	if p.Headless {
 		fmt.Fprintf(&b, "headless: agent runs detached in print mode (-p)\n")
 	}
