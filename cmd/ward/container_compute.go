@@ -352,14 +352,14 @@ type upPlan struct {
 	// entrypoint delegates to `ward container bootstrap` instead of its bash logic.
 	GoBootstrap bool
 	// ExtraRepos are additional writable repos this run was granted to clone +
-	// operate against (--with-repo, ward#230); see docs/container-multi-repo.md.
+	// operate against (--repo, ward#230); see docs/container-multi-repo.md.
 	ExtraRepos []targetRepo
 	// Issue is the carried issue number (0 for a bare `container up`), exported as
 	// WARD_TARGET_ISSUE so the reaper can release a pre-launch hold (ward#264).
 	Issue int
 }
 
-// parseExtraRepos resolves the --with-repo grant (bare owner/name or clone URL):
+// parseExtraRepos resolves the --repo grant (bare owner/name or clone URL):
 // drops the target + dups, errors on a bad ref or workspace collision (ward#230).
 func parseExtraRepos(refs []string, target targetRepo) ([]targetRepo, error) {
 	var out []targetRepo
@@ -373,7 +373,7 @@ func parseExtraRepos(refs []string, target targetRepo) ([]targetRepo, error) {
 		}
 		repo, err := parseRepoRef(ref)
 		if err != nil {
-			return nil, fmt.Errorf("--with-repo %q: %w", ref, err)
+			return nil, fmt.Errorf("--repo %q: %w", ref, err)
 		}
 		if repo.Owner == target.Owner && repo.Name == target.Name {
 			continue // the target is always cloned; naming it is a no-op
@@ -382,7 +382,7 @@ func parseExtraRepos(refs []string, target targetRepo) ([]targetRepo, error) {
 			continue
 		}
 		if claimed, ok := seenName[repo.Name]; ok {
-			return nil, fmt.Errorf("--with-repo %q collides on workspace dir /workspace/%s with %s", repo.slug(), repo.Name, claimed)
+			return nil, fmt.Errorf("--repo %q collides on workspace dir /workspace/%s with %s", repo.slug(), repo.Name, claimed)
 		}
 		seenSlug[repo.slug()] = true
 		seenName[repo.Name] = repo.slug()

@@ -233,7 +233,7 @@ func agentSurfaceCommand(surface string, headless bool) *cli.Command {
 	flags := []cli.Flag{
 		agentDriverFlag(),
 		&cli.StringFlag{Name: "branch", Usage: "feature branch to create inside the clone (default: issue-<N>)"},
-		&cli.StringSliceFlag{Name: "with-repo", Usage: "grant the agent an additional writable repo to clone + operate against (owner/name; repeatable). Cloned as a full feature copy under /workspace alongside the issue's repo (ward#230)."},
+		&cli.StringSliceFlag{Name: "repo", Aliases: []string{"with-repo"}, Usage: "grant the agent an additional writable repo to clone + operate against (owner/name; repeatable). Cloned as a full feature copy under /workspace alongside the issue's repo (ward#230, ward#280; --with-repo is the legacy alias)."},
 		&cli.StringFlag{Name: "details", Usage: "extra operator instructions woven into the seeded prompt + pre-flight read (overrides the issue text on conflict)"},
 		&cli.StringFlag{Name: "image", Value: containerImageDefault, Usage: "dev-base image to run"},
 		&cli.StringFlag{Name: "tag", Value: containerImageTagDefault, Usage: "image tag"},
@@ -820,7 +820,7 @@ func agentTaskCommand() *cli.Command {
 		&cli.StringFlag{Name: "instructions", Aliases: []string{"i"}, Usage: "the task to file as the issue body (first line becomes the title)"},
 		&cli.StringFlag{Name: "instructions-file", Usage: "read the instructions from a file instead of --instructions (escape hatch for long bodies)"},
 		&cli.StringFlag{Name: "branch", Usage: "feature branch to create inside the clone (default: issue-<N>)"},
-		&cli.StringSliceFlag{Name: "with-repo", Usage: "grant the agent an additional writable repo to clone + operate against (owner/name; repeatable). Cloned as a full feature copy under /workspace alongside the filed issue's repo (ward#230)."},
+		&cli.StringSliceFlag{Name: "repo", Aliases: []string{"with-repo"}, Usage: "grant the agent an additional writable repo to clone + operate against (owner/name; repeatable). Cloned as a full feature copy under /workspace alongside the filed issue's repo (ward#230, ward#280; --with-repo is the legacy alias)."},
 		&cli.StringFlag{Name: "image", Value: containerImageDefault, Usage: "dev-base image to run"},
 		&cli.StringFlag{Name: "tag", Value: containerImageTagDefault, Usage: "image tag"},
 		&cli.StringFlag{Name: "ward-source", Usage: "mount a local ward checkout and build ward from it instead of downloading the release"},

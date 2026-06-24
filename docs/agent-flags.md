@@ -7,9 +7,9 @@ for the verb family.
 
 `work` carries the container bring-up launch flags: `--aws`, `--detach`,
 `--tag`/`--image`, `--ward-source`, `--no-pull`, `--branch` to override the
-`issue-<N>` default, and `--with-repo owner/name` (repeatable) to grant extra
-writable repos cloned full alongside the issue's repo (multi-repo runs,
-[container-multi-repo.md](container-multi-repo.md)). `--print` resolves the issue and renders the seeded prompt +
+`issue-<N>` default, and `--repo owner/name` (repeatable; `--with-repo` is the
+legacy alias, ward#280) to grant extra writable repos cloned full alongside the
+issue's repo (multi-repo runs, [container-multi-repo.md](container-multi-repo.md)). `--print` resolves the issue and renders the seeded prompt +
 docker plan without injecting the push token or running docker - the dry-run
 preview, safe with no docker daemon up. `--force` skips the local + remote
 concurrency reservation checks (see [docs/agent-reservation.md](agent-reservation.md)). `headless` and `task` swap `--detach`

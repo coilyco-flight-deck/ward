@@ -1,6 +1,7 @@
 package main
 
 import (
+	"context"
 	"encoding/base64"
 	"fmt"
 	"os"
@@ -12,6 +13,7 @@ import (
 	"time"
 
 	"forgejo.coilysiren.me/coilyco-flight-deck/cli-guard/cli/shell"
+	"github.com/urfave/cli/v3"
 )
 
 // TestSweepStaleContainerAssets reclaims dirs past the TTL (left by detached
@@ -259,7 +261,7 @@ func TestParseMode(t *testing.T) {
 	}
 }
 
-// TestParseExtraRepos covers the --with-repo grant parsing (ward#230): refs,
+// TestParseExtraRepos covers the --repo grant parsing (ward#230): refs,
 // target drop, dedupe, and the two hard errors (bad ref, workspace collision).
 func TestParseExtraRepos(t *testing.T) {
 	target := targetRepo{Owner: "coilyco-gaming", Name: "eco-app"}
@@ -301,7 +303,7 @@ func TestParseExtraRepos(t *testing.T) {
 
 	// A malformed ref is a hard error.
 	if _, err := parseExtraRepos([]string{"not a repo ref"}, target); err == nil {
-		t.Error("malformed --with-repo ref should error")
+		t.Error("malformed --repo ref should error")
 	}
 
 	// Two grants whose names collide on /workspace/<name> is a hard error, even
@@ -315,12 +317,61 @@ func TestParseExtraRepos(t *testing.T) {
 	}
 }
 
+// TestAgentGrantFlagName pins the agent extra-repo grant as "--repo" with the
+// "--with-repo" alias, and proves the "with-repo" lookup resolves it (ward#280).
+func TestAgentGrantFlagName(t *testing.T) {
+	for _, cmd := range []*cli.Command{
+		agentSurfaceCommand("work", false),
+		agentSurfaceCommand("headless", true),
+		agentTaskCommand(),
+	} {
+		var grant cli.Flag
+		for _, f := range cmd.Flags {
+			if slices.Contains(f.Names(), "with-repo") {
+				grant = f
+				break
+			}
+		}
+		if grant == nil {
+			t.Fatalf("%s: no grant flag reachable by the shared \"with-repo\" key", cmd.Name)
+		}
+		names := grant.Names()
+		if !slices.Contains(names, "repo") {
+			t.Errorf("%s: grant flag missing the shortened \"repo\" name; got %v", cmd.Name, names)
+		}
+		if !slices.Contains(names, "with-repo") {
+			t.Errorf("%s: grant flag dropped the \"with-repo\" alias; got %v", cmd.Name, names)
+		}
+		if _, ok := grant.(*cli.StringSliceFlag); !ok {
+			t.Errorf("%s: grant flag is %T, want a repeatable *cli.StringSliceFlag", cmd.Name, grant)
+		}
+	}
+
+	// And the shortened name reaches the reader buildUpPlan uses: `--repo` must
+	// surface through the shared `StringSlice("with-repo")` lookup, repeatably.
+	var got []string
+	probe := &cli.Command{
+		Name:  "probe",
+		Flags: []cli.Flag{&cli.StringSliceFlag{Name: "repo", Aliases: []string{"with-repo"}}},
+		Action: func(_ context.Context, c *cli.Command) error {
+			got = c.StringSlice("with-repo")
+			return nil
+		},
+	}
+	if err := probe.Run(context.Background(), []string{"probe", "--repo", "o/a", "--repo", "o/b"}); err != nil {
+		t.Fatalf("probe run: %v", err)
+	}
+	if want := []string{"o/a", "o/b"}; !slices.Equal(got, want) {
+		t.Errorf("--repo via the with-repo lookup = %v, want %v", got, want)
+	}
+}
+
 // TestWardEnvExtraRepos asserts the grant list rides WARD_EXTRA_REPOS as a
 // space-separated slug list, and is absent when no repo is granted (ward#230).
 func TestWardEnvExtraRepos(t *testing.T) {
 	p := sampleUpPlan()
 	if _, ok := p.wardEnv()["WARD_EXTRA_REPOS"]; ok {
-		t.Error("WARD_EXTRA_REPOS must be absent when no --with-repo is granted")
+		t.Error("WARD_EXTRA_REPOS must be absent when no --repo is granted")
 	}
 	p.ExtraRepos = []targetRepo{
 		{Owner: "coilyco-gaming", Name: "eco-protos"},

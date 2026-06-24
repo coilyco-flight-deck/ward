@@ -47,7 +47,7 @@ type bootstrapEnv struct {
 	Ask          bool
 	ForgejoHost  string
 	// ExtraRepos are the additional writable repos this run was granted via
-	// --with-repo (WARD_EXTRA_REPOS); each is cloned full under /workspace (ward#230).
+	// --repo (WARD_EXTRA_REPOS); each is cloned full under /workspace (ward#230).
 	ExtraRepos []targetRepo
 	// Substrate config (best-effort reference-repo warming).
 	SubstrateSeed     string

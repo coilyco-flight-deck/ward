@@ -27,8 +27,8 @@ WARD_OLLAMA_URL="${WARD_OLLAMA_URL:-http://localhost:11434/v1}"
 # load-bearing match Forgejo links on (ward#245, docs/agent-attribution.md).
 GIT_USER_NAME="${WARD_GIT_NAME:-coilyco-ops}"
 GIT_USER_EMAIL="${WARD_GIT_EMAIL:-coilyco-ops@coilysiren.me}"
-# Additional writable repos this run was explicitly granted (--with-repo,
-# ward#230): a space-separated owner/name list, each cloned full under /workspace.
+# Additional writable repos this run was explicitly granted (--repo, ward#230):
+# a space-separated owner/name list, each cloned full under /workspace.
 WARD_EXTRA_REPOS="${WARD_EXTRA_REPOS:-}"
 
 # The agent process drops to this non-root user: claude refuses
@@ -170,7 +170,7 @@ install_precommit_hooks() {
 }
 
 # --- additional granted repos (ward#230): clone+operate beyond the target -----
-# Clone each --with-repo grant full under /workspace. See docs/container-multi-repo.md.
+# Clone each --repo grant full under /workspace. See docs/container-multi-repo.md.
 clone_extra_repo() {
   local owner="$1" name="$2"
   local mirror="$WARD_GITCACHE/${owner}__${name}.git"

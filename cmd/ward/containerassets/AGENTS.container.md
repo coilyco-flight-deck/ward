@@ -53,8 +53,8 @@ feature loop: keep going.
 
 ## Additional granted repos (multi-repo runs)
 
-A run may be launched with **explicitly granted extra repos** (`ward container
-up --with-repo owner/name`, also on `ward agent`). Each one is cloned as a
+A run may be launched with **explicitly granted extra repos** (`ward agent
+... --repo owner/name`; `--with-repo` is the legacy alias). Each one is cloned as a
 **full feature working copy** under `/workspace/<name>`, exactly like the
 target: a real forgejo push remote, the same feature branch, and the same
 pre-commit gate. When - and only when - a task instructs you to work across

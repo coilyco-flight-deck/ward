@@ -91,13 +91,15 @@ func (r *Runner) resolveAgentCreds(ctx context.Context, mode containerMode) agen
 }
 
 // buildUpPlan assembles the pure plan from parsed flags and resolved inputs;
-// agentArgs seed the agent's argv. Errors only on a bad --with-repo (ward#230).
+// agentArgs seed the agent's argv. Errors only on a bad --repo grant (ward#230).
 func buildUpPlan(c *cli.Command, repo targetRepo, mode containerMode, cwd, assetsDir string, agentArgs []string) (upPlan, error) {
 	wardSrc := c.String("ward-source")
 	awsHome := ""
 	if c.Bool("aws") {
 		awsHome = filepath.Join(homeDir(), ".aws")
 	}
+	// "with-repo" is the shared lookup key: the canonical name on drive/ask, the
+	// alias of "--repo" on the agent surfaces (ward#280, docs/container-multi-repo.md).
 	extra, err := parseExtraRepos(c.StringSlice("with-repo"), repo)
 	if err != nil {
 		return upPlan{}, err
