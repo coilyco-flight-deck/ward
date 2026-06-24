@@ -1,75 +1,73 @@
-# ward drive / warded - the flag boundary
+# ward drive / warded
 
-`ward drive <harness> [args...]` runs a headless harness (gptme, goose, ...)
-behind ward's policy and audit boundary. Its public face is **`warded`** - a
-thin argv shim so the one-liner reads like `sudo`, `timeout`, `nice`,
-`firejail`:
+`ward drive <harness> "<prompt>"` is the canonical machinery behind the **warded
+agent**: spin up a fresh, least-access, ephemeral container - the same
+fresh-clone-plus-operating-context the [`ward agent`](agent.md) surfaces get - run the
+named harness **one-shot** against your prompt, and stream the output back to your
+terminal. Every command the agent issues is gated by [cli-guard](architecture.md) policy
+and written to an append-only audit row. The boundary is the product: a denied command
+is the gate working, not a failure to route around.
 
-```
-warded --policy=strict gptme "deploy the thing"
-```
+`warded` is the **public face** - a thin symlink to the `ward` binary that the multicall
+rewrite turns into `ward drive <args>`, not a second code path (ward#247). `warded
+claude "..."` reads like `sudo`, `timeout`, `nice`, `firejail`: one token an SRE parses
+as "containment tool for agents", instantiating the warded-agent noun a bare `run`
+cannot carry. `run` was rejected for colliding with `ward exec`.
 
-An SRE parses that as "firejail for agents" in one token, and it instantiates
-the "warded agent" noun. `warded` is a multicall name for the same binary, not
-a second code path: invoked as `warded`, ward rewrites its own argv to
-`ward drive ...` before anything else runs (ward#247).
+## Usage
 
-## The boundary
-
-The hard part is one line of grammar:
-
-```
-warded [ward flags] <harness> [harness flags...]
-```
-
-- **The first bare (non-flag) token after `drive` is the harness.** Everything
-  before it is a ward flag; everything after it is the harness's own argv,
-  passed through verbatim.
-- **`--` forces passthrough.** `warded gptme -- --non-interactive "..."` hands
-  `--non-interactive` to gptme even though it sits right after the harness. A
-  single `--` immediately after the harness is the marker and is stripped; any
-  later `--` is the harness's own and survives.
-
-So in `warded --policy=strict gptme --non-interactive "deploy"`:
-
-- `--policy=strict` is **ward's** (the policy profile the harness runs under),
-- `gptme` is the harness,
-- `--non-interactive "deploy"` is **gptme's**, untouched.
-
-## Why ward owns the split (ward#248)
-
-urfave/cli cannot express "parse my flags, then stop at the first positional and
-hand the rest through raw." By default it keeps parsing flags past the harness
-token and rejects the harness's own flags as undefined - `--non-interactive`
-comes back as `flag provided but not defined`. So the `drive` command sets
-`SkipFlagParsing: true`: cli hands ward every token after `drive` untouched, and
-ward's own `splitDriveArgs` draws the boundary. That is what the issue means by
-"skip-flag-parsing past the harness arg."
-
-A flag that looks like ward's but is not - `warded --bogus gptme` - is a
-boundary error, not a silent passthrough. The message names the boundary,
-because the boundary is the product: harness flags belong after the harness name
-(or after `--`), ward flags before it.
-
-## Today's behavior
-
-This milestone ships the surface and the boundary parsing. `ward drive` resolves
-the invocation and prints the parsed plan:
-
-```
-$ warded --policy=strict gptme --non-interactive "deploy the thing"
-ward drive (parsed plan):
-  policy:  strict
-  harness: gptme
-  argv:    gptme --non-interactive "deploy the thing"
-  (guarded execution is not yet wired; this prints the parsed invocation)
+```bash
+warded claude "summarize how the audit log is written"
+ward drive claude "summarize how the audit log is written"   # same thing, canonical spelling
+warded codex "what does exec_gate.go enforce?" --repo coilyco-flight-deck/ward
+warded claude "trace the drive path" --print                 # show the plan, run nothing
 ```
 
-Guarded container execution of the resolved harness - the part that makes a
-denial show up on screen - lands in ward#249.
+The first positional is the harness (`claude|codex|qwen|goose`); everything after it is
+the prompt. It is canonically one quoted argument, but trailing words are joined so an
+unquoted multi-word prompt still works.
+
+## What it does
+
+1. **Split** the tail into the harness (first token, validated) and the prompt (the
+   rest, joined). Both are required.
+2. **Resolve** the context repo: `--repo owner/repo`, else inferred from the cwd's git
+   origin - the resolution `ward container up` and [`ask`](agent-ask.md) use.
+3. **Trust-gate** the owner (primary-org set): drive spins a bypassPermissions container
+   and clones the repo, so the same gate `work`/`ask` apply.
+4. **Spin up** a fresh attached ephemeral container that fresh-clones the repo and runs
+   the harness one-shot, **streaming** the output; the [reaper](container-reap.md)
+   sweeps it on exit.
+
+The seed names the boundary: the agent is a warded agent in a guarded, ephemeral
+container where every command is cli-guard-gated and audited, the run is one-shot, and
+work needing a branch and merge belongs to [`ward agent work`](agent.md), not here.
+
+## Relationship to `ward agent`
+
+drive is the raw "run this harness under ward" primitive the launch pitch leads with.
+The [`ward agent`](agent.md) surfaces (`work`, `headless`, `task`, `reply`, `ask`) are
+the issue-oriented sugar - they resolve a Forgejo issue, reserve it, pre-flight, and
+carry it to merge. drive does none of that: one-shot, attached, ephemeral. It reuses
+`ask`'s one-shot attached branch (`WARD_ASK=1`); the seed, not the env, frames the run,
+and the container is named `ward-<repo>-drive-<mode>-<rand>`.
+
+## Flags
+
+`--print` renders the repo, prompt, seed, and docker plan, then exits without pulling,
+cloning, or running (safe with no docker daemon). `--repo`, `--with-repo`, `--image`,
+`--tag`, `--ward-source`, `--aws`, and `--no-pull` mirror [`container up`](container.md).
+drive is always attached and ephemeral - no `--detach`, no branch, no reservation.
+
+## Shipping the `warded` symlink
+
+The container [entrypoint](container.md) symlinks `warded -> ward` next to the binary,
+so the demo runs `warded claude "..."` with no extra step. On a host install the homebrew
+formula provides it (`bin.install_symlink "ward" => "warded"` in the tap's
+`Formula/ward.rb`); the multicall rewrite does the rest either way.
 
 ## See also
 
-- [docs/architecture.md](architecture.md) - ward as the run-time product
-  (`warded`) over cli-guard and ward-kdl.
-- [docs/FEATURES.md](FEATURES.md) - the command inventory.
+- [docs/architecture.md](architecture.md) - ward in three layers; `warded` is the product.
+- [docs/agent.md](agent.md) - the `ward agent` umbrella for issue-oriented surfaces.
+- [docs/container.md](container.md) - the ephemeral, fresh-clone-inside container model.

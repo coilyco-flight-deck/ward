@@ -1,198 +1,106 @@
 package main
 
 import (
-	"errors"
-	"reflect"
+	"strings"
 	"testing"
 )
 
-func TestSplitDriveArgs(t *testing.T) {
-	cases := []struct {
-		name        string
-		args        []string
-		wantWard    []string
-		wantHarness string
-		wantHargs   []string
-		wantErr     bool
-	}{
-		{
-			name:        "ward flag equals form then harness then harness flags",
-			args:        []string{"--policy=strict", "gptme", "--non-interactive", "deploy"},
-			wantWard:    []string{"--policy=strict"},
-			wantHarness: "gptme",
-			wantHargs:   []string{"--non-interactive", "deploy"},
-		},
-		{
-			name:        "ward flag space form skips its value",
-			args:        []string{"--policy", "strict", "gptme", "--foo"},
-			wantWard:    []string{"--policy", "strict"},
-			wantHarness: "gptme",
-			wantHargs:   []string{"--foo"},
-		},
-		{
-			name:        "explicit -- after harness is stripped once",
-			args:        []string{"gptme", "--", "--non-interactive", "deploy"},
-			wantHarness: "gptme",
-			wantHargs:   []string{"--non-interactive", "deploy"},
-		},
-		{
-			name:        "second -- after harness is preserved as a harness arg",
-			args:        []string{"gptme", "--", "--", "deploy"},
-			wantHarness: "gptme",
-			wantHargs:   []string{"--", "deploy"},
-		},
-		{
-			name:        "leading -- before harness names the next token",
-			args:        []string{"--", "gptme", "--foo"},
-			wantHarness: "gptme",
-			wantHargs:   []string{"--foo"},
-		},
-		{
-			name:        "bare harness with only a positional arg",
-			args:        []string{"gptme", "deploy the thing"},
-			wantHarness: "gptme",
-			wantHargs:   []string{"deploy the thing"},
-		},
-		{
-			name:        "harness with no args",
-			args:        []string{"gptme"},
-			wantHarness: "gptme",
-			wantHargs:   nil,
-		},
-		{
-			name:        "non-value ward bool flag then harness",
-			args:        []string{"--print", "gptme", "--foo"},
-			wantWard:    []string{"--print"},
-			wantHarness: "gptme",
-			wantHargs:   []string{"--foo"},
-		},
-		{
-			name:    "no harness, only ward flags",
-			args:    []string{"--policy=strict"},
-			wantErr: true,
-		},
-		{
-			name:    "empty args",
-			args:    []string{},
-			wantErr: true,
-		},
-		{
-			name:    "dangling -- with nothing after",
-			args:    []string{"--policy=strict", "--"},
-			wantErr: true,
-		},
-	}
-	for _, tc := range cases {
-		t.Run(tc.name, func(t *testing.T) {
-			inv, err := splitDriveArgs(tc.args)
-			if tc.wantErr {
-				if !errors.Is(err, errNoHarness) {
-					t.Fatalf("splitDriveArgs(%v) err = %v, want errNoHarness", tc.args, err)
-				}
-				return
-			}
-			if err != nil {
-				t.Fatalf("splitDriveArgs(%v) unexpected err = %v", tc.args, err)
-			}
-			if !reflect.DeepEqual(nilIfEmpty(inv.WardArgs), nilIfEmpty(tc.wantWard)) {
-				t.Errorf("WardArgs = %#v, want %#v", inv.WardArgs, tc.wantWard)
-			}
-			if inv.Harness != tc.wantHarness {
-				t.Errorf("Harness = %q, want %q", inv.Harness, tc.wantHarness)
-			}
-			if !reflect.DeepEqual(nilIfEmpty(inv.HarnessArgs), nilIfEmpty(tc.wantHargs)) {
-				t.Errorf("HarnessArgs = %#v, want %#v", inv.HarnessArgs, tc.wantHargs)
-			}
-		})
+// drive is a top-level verb (the canonical machinery), not an `agent` surface.
+func TestDriveIsTopLevelVerb(t *testing.T) {
+	cmd := driveCommand()
+	if cmd.Name != "drive" {
+		t.Fatalf("driveCommand name = %q, want %q", cmd.Name, "drive")
 	}
 }
 
-// nilIfEmpty normalizes an empty slice to nil so DeepEqual treats a nil and an
-// empty slice as equal (the splitter mixes the two, and the difference is moot).
-func nilIfEmpty(s []string) []string {
-	if len(s) == 0 {
-		return nil
-	}
-	return s
+func TestParseDriveArgs(t *testing.T) {
+	t.Run("harness then prompt", func(t *testing.T) {
+		mode, prompt, err := parseDriveArgs([]string{"claude", "summarize", "the", "audit", "log"})
+		if err != nil {
+			t.Fatalf("unexpected error: %v", err)
+		}
+		if mode != modeClaude {
+			t.Errorf("mode = %q, want claude", mode)
+		}
+		if prompt != "summarize the audit log" {
+			t.Errorf("prompt = %q, want the joined tail", prompt)
+		}
+	})
+
+	t.Run("single quoted prompt arg", func(t *testing.T) {
+		mode, prompt, err := parseDriveArgs([]string{"codex", "what does exec_gate.go enforce?"})
+		if err != nil {
+			t.Fatalf("unexpected error: %v", err)
+		}
+		if mode != modeCodex {
+			t.Errorf("mode = %q, want codex", mode)
+		}
+		if prompt != "what does exec_gate.go enforce?" {
+			t.Errorf("prompt = %q", prompt)
+		}
+	})
+
+	t.Run("no args names the harness choices", func(t *testing.T) {
+		_, _, err := parseDriveArgs(nil)
+		if err == nil || !strings.Contains(err.Error(), "no harness") {
+			t.Fatalf("want a no-harness error, got %v", err)
+		}
+		if !strings.Contains(err.Error(), agentDriverChoices()) {
+			t.Errorf("no-harness error should list the harness choices: %v", err)
+		}
+	})
+
+	t.Run("unknown harness is rejected", func(t *testing.T) {
+		_, _, err := parseDriveArgs([]string{"gptme", "do a thing"})
+		if err == nil || !strings.Contains(err.Error(), "invalid harness") {
+			t.Fatalf("want an invalid-harness error, got %v", err)
+		}
+	})
+
+	t.Run("harness with no prompt is rejected", func(t *testing.T) {
+		_, _, err := parseDriveArgs([]string{"claude", "   "})
+		if err == nil || !strings.Contains(err.Error(), "no prompt") {
+			t.Fatalf("want a no-prompt error, got %v", err)
+		}
+	})
 }
 
-func TestParseDriveWardFlags(t *testing.T) {
-	cases := []struct {
-		name       string
-		wardArgs   []string
-		wantPolicy string
-		wantHelp   bool
-		wantErr    bool
-	}{
-		{name: "empty", wardArgs: nil},
-		{name: "policy equals", wardArgs: []string{"--policy=strict"}, wantPolicy: "strict"},
-		{name: "policy space", wardArgs: []string{"--policy", "strict"}, wantPolicy: "strict"},
-		{name: "help long", wardArgs: []string{"--help"}, wantHelp: true},
-		{name: "help short", wardArgs: []string{"-h"}, wantHelp: true},
-		{name: "policy missing value", wardArgs: []string{"--policy"}, wantErr: true},
-		{name: "unknown ward flag", wardArgs: []string{"--bogus"}, wantErr: true},
-		{name: "harness flag leaked before harness", wardArgs: []string{"--non-interactive"}, wantErr: true},
-	}
-	for _, tc := range cases {
-		t.Run(tc.name, func(t *testing.T) {
-			f, err := parseDriveWardFlags(tc.wardArgs)
-			if tc.wantErr {
-				if err == nil {
-					t.Fatalf("parseDriveWardFlags(%v) err = nil, want error", tc.wardArgs)
-				}
-				return
-			}
-			if err != nil {
-				t.Fatalf("parseDriveWardFlags(%v) unexpected err = %v", tc.wardArgs, err)
-			}
-			if f.Policy != tc.wantPolicy {
-				t.Errorf("Policy = %q, want %q", f.Policy, tc.wantPolicy)
-			}
-			if f.Help != tc.wantHelp {
-				t.Errorf("Help = %v, want %v", f.Help, tc.wantHelp)
-			}
-		})
-	}
-}
-
-func TestRenderArgv(t *testing.T) {
-	cases := []struct {
-		argv []string
-		want string
-	}{
-		{[]string{"gptme", "--foo"}, "gptme --foo"},
-		{[]string{"gptme", "deploy the thing"}, `gptme "deploy the thing"`},
-		{[]string{"gptme", ""}, `gptme ""`},
-	}
-	for _, tc := range cases {
-		if got := renderArgv(tc.argv); got != tc.want {
-			t.Errorf("renderArgv(%#v) = %q, want %q", tc.argv, got, tc.want)
+// drivePrompt names the boundary, carries the prompt verbatim, frames the inline
+// one-shot output contract, and points persistence-needing work at agent work.
+func TestDrivePrompt(t *testing.T) {
+	got := drivePrompt("list the deny rules in the forgejo guardfile")
+	for _, want := range []string{
+		"list the deny rules in the forgejo guardfile", // the prompt verbatim
+		"warded agent",        // names the noun
+		"cli-guard policy",    // names the boundary
+		"audit log",           // names the audit trail
+		"streams straight to", // the inline-to-terminal contract
+		"one-shot",            // the ephemerality contract
+		"ward agent work",     // where to go for persisted, merged work
+	} {
+		if !strings.Contains(got, want) {
+			t.Errorf("drive prompt missing %q\n---\n%s", want, got)
 		}
 	}
 }
 
-func TestWantsDriveHelp(t *testing.T) {
-	cases := []struct {
-		raw  []string
-		want bool
-	}{
-		{nil, true},
-		{[]string{"--help"}, true},
-		{[]string{"-h"}, true},
-		{[]string{"--policy=strict"}, false},
-		{[]string{"--policy"}, false},
-	}
-	for _, tc := range cases {
-		if got := wantsDriveHelp(tc.raw); got != tc.want {
-			t.Errorf("wantsDriveHelp(%#v) = %v, want %v", tc.raw, got, tc.want)
-		}
+// An empty prompt degrades to a readable placeholder, never a blank seed.
+func TestDrivePromptEmpty(t *testing.T) {
+	got := drivePrompt("   ")
+	if !strings.Contains(got, "(no prompt given)") {
+		t.Errorf("drive prompt missing the empty placeholder\n---\n%s", got)
 	}
 }
 
-// TestWardedPublicFaceShim documents the argv0 rewrite contract: invoking the
-// binary as `warded` is `ward drive` with the same trailing args.
-func TestWardedPublicFaceShim(t *testing.T) {
-	if wardedPublicFace != "warded" {
-		t.Fatalf("wardedPublicFace = %q, want warded", wardedPublicFace)
+// A drive plan rides the same one-shot attached branch as ask (WARD_ASK=1): the
+// seed, not the env, is what makes a drive run read-only or not.
+func TestDrivePlanUsesAskBranch(t *testing.T) {
+	p := sampleUpPlan()
+	p.Ask = true
+	if got := p.wardEnv()["WARD_ASK"]; got != "1" {
+		t.Errorf("drive plan WARD_ASK = %q, want 1", got)
+	}
+	if _, ok := p.wardEnv()["WARD_HEADLESS"]; ok {
+		t.Error("drive plan must not set WARD_HEADLESS (drive is attached, not detached)")
 	}
 }
