@@ -47,13 +47,17 @@ const agentRefTrailerRE = `/?(?:[?#].*)?$`
 // agentIssueShortRE matches owner/repo#N, ignoring any appended query/fragment.
 var agentIssueShortRE = regexp.MustCompile(`^([A-Za-z0-9._-]+)/([A-Za-z0-9._-]+)#(\d+)` + agentRefTrailerRE)
 
+// agentIssueBareRE matches a bare `#N` or `N` ref (no owner/repo), which
+// resolveAgentIssueRef fills from the cwd's git origin (ward#282).
+var agentIssueBareRE = regexp.MustCompile(`^#?(\d+)` + agentRefTrailerRE)
+
 // agentIssueURLRE matches <forgejoBaseURL>/owner/repo/issues/N, query/fragment
 // ignored. A follow-up unifies this with cli-guard dispatch.parseIssueRef.
 var agentIssueURLRE = regexp.MustCompile(`^` + regexp.QuoteMeta(strings.TrimRight(forgejoBaseURL, "/")) +
 	`/([A-Za-z0-9._-]+)/([A-Za-z0-9._-]+)/issues/(\d+)` + agentRefTrailerRE)
 
-// parseAgentIssueRef resolves the work target from owner/repo#N or a Forgejo
-// issue URL. The number is validated positive; everything else is a hard error.
+// parseAgentIssueRef resolves owner/repo#N, a Forgejo issue URL, or a bare #N / N
+// (owner/repo empty for resolveAgentIssueRef to fill, ward#282); number must be positive.
 func parseAgentIssueRef(s string) (agentIssueRef, error) {
 	s = strings.TrimSpace(s)
 	if s == "" {
@@ -64,18 +68,27 @@ func parseAgentIssueRef(s string) (agentIssueRef, error) {
 		m = agentIssueURLRE.FindStringSubmatch(s)
 	}
 	if m == nil {
+		// A bare #N / N ref carries only the number; resolveAgentIssueRef fills
+		// owner/repo from the cwd's git origin (ward#282).
+		if bm := agentIssueBareRE.FindStringSubmatch(s); bm != nil {
+			n, err := strconv.Atoi(bm[1])
+			if err != nil || n <= 0 {
+				return agentIssueRef{}, fmt.Errorf("issue number must be a positive integer in %q", s)
+			}
+			return agentIssueRef{Number: n}, nil
+		}
 		base := strings.TrimRight(forgejoBaseURL, "/")
 		// A non-issue URL is a valid freeform pointer, just not an issue ref -
 		// steer to the task verb that carries arbitrary pointers (ward#234).
 		if strings.Contains(s, "://") {
 			return agentIssueRef{}, fmt.Errorf(
-				"cannot parse issue ref %q: want owner/repo#N or %s/owner/repo/issues/N; "+
+				"cannot parse issue ref %q: want owner/repo#N, a bare #N, or %s/owner/repo/issues/N; "+
 					"for a non-issue pointer (a CI run, job, or commit URL), hand it to the freeform "+
 					"task verb instead: ward agent task '<url>'",
 				s, base)
 		}
 		return agentIssueRef{}, fmt.Errorf(
-			"cannot parse issue ref %q: want owner/repo#N or %s/owner/repo/issues/N",
+			"cannot parse issue ref %q: want owner/repo#N, a bare #N, or %s/owner/repo/issues/N",
 			s, base)
 	}
 	n, err := strconv.Atoi(m[3])
@@ -83,6 +96,26 @@ func parseAgentIssueRef(s string) (agentIssueRef, error) {
 		return agentIssueRef{}, fmt.Errorf("issue number must be a positive integer in %q", s)
 	}
 	return agentIssueRef{Owner: m[1], Repo: m[2], Number: n}, nil
+}
+
+// resolveAgentIssueRef parses the ref and, for a bare #N / N, fills owner/repo from
+// the cwd's git origin via resolveTarget - the inference ask/task use (ward#282).
+func (r *Runner) resolveAgentIssueRef(ctx context.Context, arg string) (agentIssueRef, error) {
+	ref, err := parseAgentIssueRef(arg)
+	if err != nil {
+		return agentIssueRef{}, err
+	}
+	if ref.Owner != "" && ref.Repo != "" {
+		return ref, nil
+	}
+	repo, _, terr := r.resolveTarget(ctx, "")
+	if terr != nil {
+		return agentIssueRef{}, fmt.Errorf(
+			"bare issue ref %q needs a repo, but the current directory has no git origin to infer one from "+
+				"(use owner/repo#%d or run from inside the repo's checkout): %w", arg, ref.Number, terr)
+	}
+	ref.Owner, ref.Repo = repo.Owner, repo.Name
+	return ref, nil
 }
 
 // markdownImageRE matches inline ![alt](url) image embeds.
@@ -206,26 +239,35 @@ func agentCmdline(mode containerMode, surface string) string {
 	return fmt.Sprintf("ward agent %s --driver %s", surface, mode)
 }
 
-// agentCommand is the `ward agent` umbrella: `ward agent <surface> [--driver <m>]`.
+// agentCommand is the `ward agent` umbrella the `warded` public face fronts
+// (ward#247, ward#282); a bare ref dispatches the default headless carry.
 func agentCommand() *cli.Command {
 	return &cli.Command{
 		Name:  "agent",
-		Usage: "Send an agent into a fresh ephemeral container to carry a Forgejo issue end to end.",
-		Description: `agent is the short verb over 'ward container': pick a surface
-(work|headless|task|reply|ask), and --driver picks the harness
-(claude|codex|qwen|goose, default claude). 'work <issue>' resolves the issue's
-repo, spins up an ephemeral least-access container, fresh-clones the repo inside
-it, and launches the agent seeded to carry the issue to merge. One line replaces
-a full container bring-up stack plus a hand-written prompt.
+		Usage: "Send an agent into a fresh ephemeral container to carry a Forgejo issue end to end (a bare ref runs headless).",
+		Description: `agent is the issue-carrying dispatcher (the spelling 'warded' fronts).
+Pick a surface (work|headless|task|reply|ask) and --driver picks the harness
+(claude|codex|qwen|goose, default claude). A BARE REF with no surface word runs
+the 'headless' carry - the fire-and-forget default. A bare #N (or N) infers the
+owner/repo from the cwd's git origin; owner/repo#N and a full Forgejo issue URL
+also work. One line replaces a full container bring-up stack plus a prompt.
 
-  ward agent work coilyco-flight-deck/ward#98                       # --driver defaults to claude
-  ward agent headless coilyco-flight-deck/ward#98 --driver codex    # pick another harness
-  ward agent work https://forgejo.coilysiren.me/coilyco-flight-deck/ward/issues/98
-  ward agent work coilyco-flight-deck/ward#98 --print               # resolve + show the plan, run nothing
+  warded coilyco-flight-deck/ward#98          # bare ref -> headless (warded face)
+  warded #98                                  # owner/repo inferred from the cwd
+  warded work #98                             # interactive: attach and watch
+  warded headless #98 --driver codex          # pick another harness
+  ward agent work coilyco-flight-deck/ward#98 # the canonical spelling warded fronts
+  ward agent headless coilyco-flight-deck/ward#98 --driver codex
+  ward agent #98 --print                      # resolve + show the plan, run nothing
 
-See docs/container.md for the container model (ephemeral, fresh-clone-inside,
-reaper-backed). The agent runs under the container's bypassPermissions policy,
-so 'work' is only accepted against a trusted owner.`,
+See docs/agent.md for the warded face and docs/container.md for the container
+model (ephemeral, fresh-clone-inside, reaper-backed). The agent runs under the
+container's bypassPermissions policy, so a carry is only accepted against a
+trusted owner.`,
+		// The umbrella carries the headless flag set + a default-surface action so a
+		// bare ref (the warded face, ward#282) runs headless; empty shows subcommand help.
+		Flags:  agentSurfaceFlags(true),
+		Action: agentDefaultSurfaceAction(),
 		Commands: []*cli.Command{
 			agentSurfaceCommand("work", false),
 			agentSurfaceCommand("headless", true),
@@ -236,13 +278,20 @@ so 'work' is only accepted against a trusted owner.`,
 	}
 }
 
-// agentSurfaceCommand builds `ward agent {work,headless} <issue>` (ward#185): work is
-// interactive, headless detaches + runs print mode. --driver picks the harness.
-func agentSurfaceCommand(surface string, headless bool) *cli.Command {
-	usage := "Resolve the issue's repo, spin up a fresh container, and seed the agent to carry it end to end."
-	if headless {
-		usage = "Like work, but detached + non-interactive (claude -p): fire-and-forget, read the container log."
+// agentDefaultSurfaceAction is the umbrella default: empty shows subcommand help; a
+// bare ref runs the 'headless' carry, so `warded #98` is fire-and-forget (ward#282).
+func agentDefaultSurfaceAction() cli.ActionFunc {
+	return func(ctx context.Context, c *cli.Command) error {
+		if c.Args().Len() == 0 {
+			return cli.ShowSubcommandHelp(c)
+		}
+		return agentSurfaceAction("headless", true)(ctx, c)
 	}
+}
+
+// agentSurfaceFlags builds the launch flag set shared by work/headless and the
+// bare-ref default; headless toggles detach-only vs interactive flags (ward#282).
+func agentSurfaceFlags(headless bool) []cli.Flag {
 	flags := []cli.Flag{
 		agentDriverFlag(),
 		&cli.StringFlag{Name: "branch", Usage: "feature branch to create inside the clone (default: issue-<N>)"},
@@ -268,25 +317,41 @@ func agentSurfaceCommand(surface string, headless bool) *cli.Command {
 		// ward#147; see docs/agent.md); --no-preflight skips it.
 		flags = append(flags, &cli.BoolFlag{Name: "no-preflight", Usage: "skip the pre-flight feasibility check and detach immediately"})
 	}
+	return flags
+}
+
+// agentSurfaceAction builds the audited action that resolves the issue, seeds, and
+// launches a surface (work/headless), shared by the named surfaces + default (ward#282).
+func agentSurfaceAction(surface string, headless bool) cli.ActionFunc {
+	return func(ctx context.Context, c *cli.Command) error {
+		r := newRunner()
+		mode, err := agentDriver(c)
+		if err != nil {
+			return fmt.Errorf("ward agent %s: %w", surface, err)
+		}
+		return r.WrapVerb(verb.Spec{
+			Name:       "agent." + string(mode) + "." + surface,
+			SkipPolicy: true,
+			Action: func(ctx context.Context, cmd *cli.Command) error {
+				return r.runAgentWork(ctx, cmd, mode, surface, headless)
+			},
+		}, r.Audit)(ctx, c)
+	}
+}
+
+// agentSurfaceCommand builds `ward agent {work,headless} <issue>` (ward#185): work is
+// interactive, headless detaches + runs print mode. --driver picks the harness.
+func agentSurfaceCommand(surface string, headless bool) *cli.Command {
+	usage := "Resolve the issue's repo, spin up a fresh container, and seed the agent to carry it end to end."
+	if headless {
+		usage = "Like work, but detached + non-interactive (claude -p): fire-and-forget, read the container log."
+	}
 	return &cli.Command{
 		Name:      surface,
 		Usage:     usage,
-		ArgsUsage: "<owner/repo#N | forgejo-issue-url>",
-		Flags:     flags,
-		Action: func(ctx context.Context, c *cli.Command) error {
-			r := newRunner()
-			mode, err := agentDriver(c)
-			if err != nil {
-				return fmt.Errorf("ward agent %s: %w", surface, err)
-			}
-			return r.WrapVerb(verb.Spec{
-				Name:       "agent." + string(mode) + "." + surface,
-				SkipPolicy: true,
-				Action: func(ctx context.Context, cmd *cli.Command) error {
-					return r.runAgentWork(ctx, cmd, mode, surface, headless)
-				},
-			}, r.Audit)(ctx, c)
-		},
+		ArgsUsage: "<owner/repo#N | #N | forgejo-issue-url>",
+		Flags:     agentSurfaceFlags(headless),
+		Action:    agentSurfaceAction(surface, headless),
 	}
 }
 
@@ -308,7 +373,7 @@ type resolvedWork struct {
 // before any container spins), and returns the ref, title, body, and seed prompt.
 func (r *Runner) resolveAgentWork(ctx context.Context, c *cli.Command, mode containerMode, surface string) (resolvedWork, error) {
 	label := agentCmdline(mode, surface)
-	ref, err := parseAgentIssueRef(c.Args().First())
+	ref, err := r.resolveAgentIssueRef(ctx, c.Args().First())
 	if err != nil {
 		return resolvedWork{}, fmt.Errorf("%s: %w", label, err)
 	}

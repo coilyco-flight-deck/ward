@@ -67,8 +67,9 @@ func taskRepoRef(arg string) (string, bool) {
 	if arg == "" {
 		return "", false
 	}
-	// owner/repo#N or a Forgejo issue URL: parseAgentIssueRef is already strict.
-	if ref, err := parseAgentIssueRef(arg); err == nil {
+	// owner/repo#N or an issue URL is DIRECT; a bare #N / N (owner/repo empty,
+	// ward#282) is not - let it fall through to ROUTE freeform text.
+	if ref, err := parseAgentIssueRef(arg); err == nil && ref.Owner != "" && ref.Repo != "" {
 		return ref.Owner + "/" + ref.Repo, true
 	}
 	// A bare owner/repo (no issue number); a scheme or scp host disqualifies it,

@@ -113,7 +113,7 @@ func agentReplyCommand() *cli.Command {
 func (r *Runner) runAgentReply(ctx context.Context, c *cli.Command, mode containerMode) error {
 	label := agentCmdline(mode, "reply")
 
-	ref, prompt, level, err := r.validateReplyInputs(c, mode, label)
+	ref, prompt, level, err := r.validateReplyInputs(ctx, c, mode, label)
 	if err != nil {
 		return err
 	}
@@ -160,8 +160,8 @@ func (r *Runner) runAgentReply(ctx context.Context, c *cli.Command, mode contain
 
 // validateReplyInputs parses and gates the reply argv: a valid issue ref, a
 // non-empty prompt, a known thoroughness, a trusted owner, and a wired mode.
-func (r *Runner) validateReplyInputs(c *cli.Command, mode containerMode, label string) (agentIssueRef, string, replyThoroughness, error) {
-	ref, err := parseAgentIssueRef(c.Args().First())
+func (r *Runner) validateReplyInputs(ctx context.Context, c *cli.Command, mode containerMode, label string) (agentIssueRef, string, replyThoroughness, error) {
+	ref, err := r.resolveAgentIssueRef(ctx, c.Args().First())
 	if err != nil {
 		return agentIssueRef{}, "", replyThoroughness{}, fmt.Errorf("%s: %w", label, err)
 	}

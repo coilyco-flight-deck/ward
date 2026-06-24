@@ -4,7 +4,7 @@
 
 The thing it produces is a **warded agent**: an agent ward drives into a container and gates behind cli-guard policy. Read "warded" as a protective circle - the deny-list and allowlisted verbs bounding its reach, not "warded off".
 
-Its public face is **`warded`** - a thin symlink onto the `ward drive <harness>` machinery (ward#247): `warded claude "..."` reads like `sudo`/`firejail`, one token for "containment tool for agents". See [`docs/drive.md`](docs/drive.md).
+Its public face is **`warded`** - a thin symlink onto the `ward agent` dispatcher (ward#247, ward#282): `warded #98` carries a Forgejo issue end to end, and reads like `sudo`/`firejail`, one token for "containment tool for agents". A bare ref runs the fire-and-forget `headless` carry; `warded work #98` attaches to watch. See [`docs/agent.md`](docs/agent.md).
 
 `ward` is the contributor-facing cli-guard consumer, now also absorbing the operator surface from the retiring [coily][coily] (spec REST on `ward-kdl`).
 
