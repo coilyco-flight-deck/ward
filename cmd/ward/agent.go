@@ -246,7 +246,7 @@ func agentCommand() *cli.Command {
 		Name:  "agent",
 		Usage: "Send an agent into a fresh ephemeral container to carry a Forgejo issue end to end (a bare ref runs headless).",
 		Description: `agent is the issue-carrying dispatcher (the spelling 'warded' fronts).
-Pick a surface (work|headless|task|reply|ask) and --driver picks the harness
+Pick a surface (work|headless|task|reply|ask|sandbox) and --driver picks the harness
 (claude|codex|qwen|goose, default claude). A BARE REF with no surface word runs
 the 'headless' carry - the fire-and-forget default. A bare #N (or N) infers the
 owner/repo from the cwd's git origin; owner/repo#N and a full Forgejo issue URL
@@ -256,6 +256,7 @@ also work. One line replaces a full container bring-up stack plus a prompt.
   warded #98                                  # owner/repo inferred from the cwd
   warded work #98                             # interactive: attach and watch
   warded headless #98 --driver codex          # pick another harness
+  warded sandbox                              # interactive agent, fresh clone, no issue
   ward agent work coilyco-flight-deck/ward#98 # the canonical spelling warded fronts
   ward agent headless coilyco-flight-deck/ward#98 --driver codex
   ward agent #98 --print                      # resolve + show the plan, run nothing
@@ -274,6 +275,7 @@ trusted owner.`,
 			agentTaskCommand(),
 			agentReplyCommand(),
 			agentAskCommand(),
+			agentSandboxCommand(),
 		},
 	}
 }

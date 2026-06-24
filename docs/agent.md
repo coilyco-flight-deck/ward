@@ -26,10 +26,11 @@ warded headless #98 --driver codex          # pick another harness
 warded task "fix the flaky exec_gate test"  # file the issue, then carry it
 warded ask "how is the audit log written?"
 warded reply #98
+warded sandbox                              # interactive agent, fresh clone, no issue
 ward agent work coilyco-flight-deck/ward#98 # the canonical spelling warded fronts
 ```
 
-The surface (`work|headless|task|reply|ask`) comes first; `--driver` picks the
+The surface (`work|headless|task|reply|ask|sandbox`) comes first; `--driver` picks the
 agent/mode (`claude|codex|qwen|goose`, default `claude`, the container context
 ladder). ward#185 moved the harness off a subcommand slot onto `--driver`,
 leaving room for a future `--reviewer` role flag.
@@ -51,7 +52,9 @@ The surface is split across focused docs:
 - [docs/agent-work.md](agent-work.md) - what `work` does (resolve, trust-gate,
   branch, launch), the seed prompt, and the per-run container name.
 - [docs/agent-subcommands.md](agent-subcommands.md) - `work` vs `headless`, plus
-  `task`, `reply`, `ask`, and the reaper backstop.
+  `task`, `reply`, `ask`, `sandbox`, and the reaper backstop.
+- [docs/agent-sandbox.md](agent-sandbox.md) - `sandbox`, the unguided interactive
+  session (fresh clone, no issue, no seed).
 - [docs/agent-preflight.md](agent-preflight.md) - the headless GO/NO-GO
   pre-flight and when it is skipped.
 - [docs/agent-wrong-repo.md](agent-wrong-repo.md) - the WRONG-REPO blind-fire
