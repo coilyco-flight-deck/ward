@@ -2,7 +2,7 @@
 
 `.golangci.yaml` is strict-ish, leaning on cyclomatic-complexity checks because
 these packages are security boundaries or wire-protocol layers and tangled
-branchy code is where the bugs live. Run with `coily exec lint`.
+branchy code is where the bugs live. Run with `ward exec lint`.
 
 ## gosec exclusions
 
