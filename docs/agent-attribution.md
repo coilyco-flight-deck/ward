@@ -33,6 +33,36 @@ pinned explicitly via `forgejoClient.withMode` by host-side callers - the
 reservation comment, the preflight NO-GO comment, and `ward agent task` issue
 filing - that already know the mode rather than inheriting it from the env.
 
+## Git commit author + push identity (the coilyco-ops bot)
+
+Distinct from the body footer above: the **git author/committer** on
+warded-agent commits, the **tap-bump author** in `.forgejo/workflows/release.yml`,
+and the **git-over-HTTPS push user** all attribute to the `coilyco-ops` bot
+([ward#245](https://forgejo.coilysiren.me/coilyco-flight-deck/ward/issues/245),
+folding in agentic-os#252 and infra#384 step 2).
+
+Per agentic-os#244 an aos bot uses its agent name as both git name and
+git-email prefix. The **email is load-bearing**: Forgejo links a commit to an
+account by matching the commit email against an address registered on that
+account, so the bot's registered email (`coilyco-ops@coilysiren.me`, set by
+infrastructure's `provision-coilyco-ops-bot.sh`) turns a plain author string
+into an account-linked, avatar-bearing attribution. The display **name** may
+stay descriptive (e.g. `forgejo-tap-writer` on tap bumps).
+
+Three knobs carry this, all defaulting to the bot and overridable by env:
+
+- **Warded-agent author** - `WARD_GIT_NAME` / `WARD_GIT_EMAIL`, defaulting to
+  the bot in both `entrypoint.sh` and Go `container_bootstrap.go`. Replaces the
+  old `ward-container <coilysiren@gmail.com>`.
+- **Push user** - the git-over-HTTPS userinfo in the credential helper line is
+  `coilyco-ops`; the `FORGEJO_TOKEN` it pairs with is the bot's.
+- **Tap bump** - `release.yml`'s `bump-tap-formula` sets `user.email` to the bot
+  (keeping the `forgejo-tap-writer` name); push auth rides
+  `secrets.TAP_WRITE_TOKEN` (ward#243), untouched here.
+
+The bot account must have the chosen email registered for the link to resolve;
+that registration is an infrastructure step, not a ward code concern.
+
 ## Out of scope: the ward-kdl specverb path
 
 `ward-kdl ops forgejo` (the spec-driven REST path) assembles its bodies in

@@ -23,8 +23,10 @@ WARD_CONTEXT_SRC="${WARD_CONTEXT_SRC:-/opt/ward-context}"
 # See docs/agent.md (qwen).
 WARD_QWEN_MODEL="${WARD_QWEN_MODEL:-qwen2.5-coder:latest}"
 WARD_OLLAMA_URL="${WARD_OLLAMA_URL:-http://localhost:11434/v1}"
-GIT_USER_NAME="${WARD_GIT_NAME:-ward-container}"
-GIT_USER_EMAIL="${WARD_GIT_EMAIL:-coilysiren@gmail.com}"
+# Warded-agent commits attribute to the coilyco-ops bot; the email is the
+# load-bearing match Forgejo links on (ward#245, docs/agent-attribution.md).
+GIT_USER_NAME="${WARD_GIT_NAME:-coilyco-ops}"
+GIT_USER_EMAIL="${WARD_GIT_EMAIL:-coilyco-ops@coilysiren.me}"
 # Additional writable repos this run was explicitly granted (--with-repo,
 # ward#230): a space-separated owner/name list, each cloned full under /workspace.
 WARD_EXTRA_REPOS="${WARD_EXTRA_REPOS:-}"
@@ -56,7 +58,8 @@ configure_git_auth() {
   git config --system --add safe.directory '*'
   if [ -n "${FORGEJO_TOKEN:-}" ]; then
     git config --system credential.helper 'store --file=/etc/ward-git-credentials'
-    printf 'https://%s:%s@%s\n' coilysiren "$FORGEJO_TOKEN" "$forgejo_host" > /etc/ward-git-credentials
+    # Push as the coilyco-ops bot: FORGEJO_TOKEN is the bot's (ward#245).
+    printf 'https://%s:%s@%s\n' coilyco-ops "$FORGEJO_TOKEN" "$forgejo_host" > /etc/ward-git-credentials
     # Readable by root (reaper) and the dropped agent group, not world. Without
     # this the non-root agent can't use the helper and must fall back to the env.
     chown "root:$AGENT_GID" /etc/ward-git-credentials

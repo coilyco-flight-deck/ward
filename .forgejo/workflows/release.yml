@@ -147,8 +147,10 @@ jobs:
             echo "formula already at ${TAG}, nothing to push"
             exit 0
           fi
+          # Tap bump attributes to the coilyco-ops bot via its registered email,
+          # the match Forgejo links on (ward#245, docs/agent-attribution.md).
           git config user.name "forgejo-tap-writer"
-          git config user.email "tap-writer@coilysiren.me"
+          git config user.email "coilyco-ops@coilysiren.me"
           git commit -aqm "chore(formula): bump ward to ${TAG} [skip ci]"
           # Authenticate the push with TAP_WRITE_TOKEN in the URL. The token is
           # never echoed: it lives only in this variable (no `set -x`), and git

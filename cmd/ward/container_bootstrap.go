@@ -78,8 +78,10 @@ func readBootstrapEnv() (bootstrapEnv, error) {
 		ContextSrc:   envOr("WARD_CONTEXT_SRC", "/opt/ward-context"),
 		QwenModel:    envOr("WARD_QWEN_MODEL", "qwen2.5-coder:latest"),
 		OllamaURL:    envOr("WARD_OLLAMA_URL", "http://localhost:11434/v1"),
-		GitUserName:  envOr("WARD_GIT_NAME", "ward-container"),
-		GitUserEmail: envOr("WARD_GIT_EMAIL", "coilysiren@gmail.com"),
+		// Warded-agent commits attribute to the coilyco-ops bot; the email is the
+		// load-bearing match Forgejo links on (ward#245, docs/agent-attribution.md).
+		GitUserName:  envOr("WARD_GIT_NAME", "coilyco-ops"),
+		GitUserEmail: envOr("WARD_GIT_EMAIL", "coilyco-ops@coilysiren.me"),
 		AgentUID:     envOr("WARD_AGENT_UID", "1000"),
 		AgentGID:     envOr("WARD_AGENT_GID", "1000"),
 		AgentHome:    envOr("WARD_AGENT_HOME", "/home/ubuntu"),
@@ -254,7 +256,8 @@ func (r *Runner) configureGitAuth(ctx context.Context, e bootstrapEnv) {
 	}
 	_ = r.Runner.Exec(ctx, "git", "config", "--system", "credential.helper",
 		"store --file=/etc/ward-git-credentials")
-	cred := fmt.Sprintf("https://%s:%s@%s\n", "coilysiren", token, e.ForgejoHost)
+	// Push as the coilyco-ops bot: FORGEJO_TOKEN is the bot's (ward#245).
+	cred := fmt.Sprintf("https://%s:%s@%s\n", "coilyco-ops", token, e.ForgejoHost)
 	if werr := os.WriteFile("/etc/ward-git-credentials", []byte(cred), 0o640); werr != nil {
 		blog("could not write git credentials: %v", werr)
 		return
