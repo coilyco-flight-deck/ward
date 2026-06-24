@@ -17,6 +17,18 @@ byte-for-byte copies of `cmd/ward-kdl/`'s canonical guardfile + spec lock. The
 ward-kdl files stay the single source of truth (`make build-ward-kdl` re-runs
 `make sync-ops-assets`); `cmd/ward/opsassets_test.go` fails the build on drift.
 
+## The remote-exec slice grafted alongside (ward#81)
+
+The four server-side `forgejo` maintenance subcommands with no REST equivalent
+(`admin user list/create`, `admin auth list`, `doctor check`) ride the
+**exec dialect** instead, so `ward ops forgejo` now mounts both transports.
+`graftForgejoAdminExec` (`cmd/ward/ops.go`) parses the embedded
+`opsassets/forgejo-admin.guardfile.kdl`, `execverb.Build`s it, and appends the
+built `admin`/`doctor` subtrees onto the same `forgejo` command - two transports
+under one operator verb. That guardfile is ward-proper-only (no ward-kdl mirror,
+no spec lock, no SSM token), so it lives directly under `opsassets/` and is
+absent from the drift map. See [ops-forgejo-admin.md](ops-forgejo-admin.md).
+
 ## Why `cmd/ward/forgejo_issue.go` stays
 
 ward#92 also asked to retire `forgejo_issue.go` - ward's hand-rolled Forgejo

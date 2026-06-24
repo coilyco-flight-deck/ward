@@ -23,6 +23,7 @@ Contributor-facing cli-guard gate: repo dev verbs + audited host wrappers.
 ## Spec-driven ops (`ward-kdl`)
 
 - **`ward-kdl ops <api> <verb>`** - `specverb` API verbs: **forgejo** (Swagger 2.0, incl. `issue list-all`), **trello**/**tailscale** (OpenAPI 3.x). Denies teach. See [ops-forgejo](ops-forgejo.md).
+- **`ward ops forgejo {admin,doctor} <verb>`** - `execverb` remote-exec slice grafted onto the in-binary forgejo group (ward#81): `admin user list/create`, `admin auth list`, `doctor check` (`--fix` denied, read-only). The four server-side `forgejo` subcommands with no REST equivalent, run by `ssh kai@kai-server k3s kubectl -n forgejo exec deploy/forgejo -- forgejo ...` over a fixed argv-prefix. See [ops-forgejo-admin](ops-forgejo-admin.md).
 - **`ward-kdl ops {aws,kubectl} <verb>`** - `execverb` local-CLI passthroughs: **aws** (SSM/S3/EC2 reads) and **kubectl** (reads + apply/scale/rollout; destructive verbs unexposed). See [aws](ward-kdl.aws.guardfile.md), [kubectl](ward-kdl.kubectl.guardfile.md).
 - **`ward-kdl docker <verb>`** - `execverb` read-only Docker inspection (containers/images/volumes/networks, `logs`, `stats`, `inspect`, `events`); mutating + shell verbs unexposed, `exec` gated separately (ward#220). See [docker](ward-kdl.docker.guardfile.md).
 - **`ward-kdl agents <target> <verb>`** - mixed-transport. **`agents {claude,codex,opencode,aider,goose}`**: local-CLI launchers (`execverb`, `argv`-override). **`agents ollama`**: the tower's Ollama.
