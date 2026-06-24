@@ -17,7 +17,7 @@
 // `orgs`). The bulk-provisioning create is pinned to its operationId since it is
 // the load-bearing op of `provision-project`. Modelled on the tailscale guardfile
 // (OpenAPI 3.1, bearer, SSM) and the forgejo guardfile (the `action` block).
-// See ../../docs/ward-kdl.glitchtip.guardfile.md.
+// See ../../docs/ward-kdl/ward-kdl.glitchtip.guardfile.md.
 wrap ward-kdl ops glitchtip {
     spec glitchtip.openapi.json
     // Block form: the tailnet FQDN behind base-url is opaque (SecureString in

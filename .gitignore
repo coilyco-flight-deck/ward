@@ -41,7 +41,7 @@ cmd/ward-kdl/ward-kdl-write/main.go
 cmd/ward-kdl/ward-kdl-admin/main.go
 
 # specverb-gen emits one surface reference beside each Guardfile (the only path
-# it knows); the reviewed copies live at docs/ward-kdl.*.guardfile.md. One per
+# it knows); the reviewed copies live under docs/ward-kdl/ (ward#279). One per
 # merged API (ward-kdl.<api>.guardfile.md), one per forgejo tier subdir (ward#240).
 cmd/ward-kdl/ward-kdl.*.guardfile.md
 cmd/ward-kdl/ward-kdl-read/ward-kdl.*.guardfile.md

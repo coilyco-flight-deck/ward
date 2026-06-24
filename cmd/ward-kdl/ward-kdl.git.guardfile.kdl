@@ -26,7 +26,7 @@
 //
 // An unlisted verb is denied either way; the read-only set matches the
 // deny-by-default stance of the docker and kubectl guardfiles.
-// See ../../docs/ward-kdl.git.guardfile.md.
+// See ../../docs/ward-kdl/ward-kdl.git.guardfile.md.
 wrap ward-kdl git {
     exec git
     // reads - inspection verbs, nothing mutated regardless of flags

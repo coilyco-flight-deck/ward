@@ -2,7 +2,7 @@
 // (OpenAPI 3.0). Trello carries mutation payloads in `in:query` params, so the
 // create/edit fields mount as flags, not a JSON body. Auth is the dual-secret
 // query-param scheme (?key=&token=). Every `can` resolves by convention, no
-// explicit op (cli-guard#147). See ../../docs/ward-kdl.trello.guardfile.md.
+// explicit op (cli-guard#147). See ../../docs/ward-kdl/ward-kdl.trello.guardfile.md.
 wrap ward-kdl ops trello {
     spec trello.openapi.json
     base-url "api.trello.com/1"

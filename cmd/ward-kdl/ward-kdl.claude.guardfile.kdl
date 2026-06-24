@@ -2,7 +2,7 @@
 // (cli-guard execverb, exec dialect). Friendly verbs map onto the real claude
 // invocation via per-grant `argv` overrides: `launch` runs the bare binary,
 // `headless` runs `-p` print mode. The binary is fixed; ward only decides
-// which shapes mount. See ../../docs/ward-kdl.claude.guardfile.md.
+// which shapes mount. See ../../docs/ward-kdl/ward-kdl.claude.guardfile.md.
 wrap ward-kdl agents claude {
     exec claude
     can run launch {

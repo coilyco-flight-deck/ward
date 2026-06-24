@@ -8,7 +8,7 @@
 // server-side admin/doctor subcommands: those have no REST equivalent and ride
 // the exec-dialect ../../ward/opsassets/forgejo-admin.guardfile.kdl instead.
 // `restrict` is child-local under inherit, so the coily*-owner scope gate is
-// re-declared here. See ../../../docs/ward-kdl.forgejo.admin.guardfile.md.
+// re-declared here. See ../../../docs/ward-kdl/ward-kdl.forgejo.admin.guardfile.md.
 wrap ward-kdl-admin ops forgejo {
     inherit "../ward-kdl-write/ward-kdl.forgejo.write.guardfile.kdl"
     // Scope gate: re-declared because restrict does not inherit (cli-guard#160).

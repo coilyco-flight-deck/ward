@@ -7,7 +7,7 @@
 //
 // `restrict` is child-local under inherit, so the coily*-owner scope gate is
 // re-declared here rather than inherited. See
-// ../../../docs/ward-kdl.forgejo.write.guardfile.md.
+// ../../../docs/ward-kdl/ward-kdl.forgejo.write.guardfile.md.
 wrap ward-kdl-write ops forgejo {
     inherit "../ward-kdl-read/ward-kdl.forgejo.read.guardfile.kdl"
     // Scope gate: re-declared because restrict does not inherit (cli-guard#160).

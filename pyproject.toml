@@ -11,51 +11,16 @@ excludes = [
   # See-also growth, not by any single feature). The split is tracked in
   # coilyco-flight-deck/ward#274; drop this when it lands.
   "README.md",
-  # Generated surface reference (specverb-gen). The driver emits it beside the
-  # Guardfile; the reviewed copy is committed at docs/ and grows with the verb
-  # surface, so the layout cap does not apply. The beside-the-kdl emission is
-  # gitignored but still on disk, so the tree-walking hook needs both paths.
-  "docs/ward-kdl.forgejo.guardfile.md",
-  "cmd/ward-kdl/ward-kdl.forgejo.guardfile.md",
-  "docs/ward-kdl.aws.guardfile.md",
-  "cmd/ward-kdl/ward-kdl.aws.guardfile.md",
-  "docs/ward-kdl.trello.guardfile.md",
-  "cmd/ward-kdl/ward-kdl.trello.guardfile.md",
-  "docs/ward-kdl.tailscale.guardfile.md",
-  "cmd/ward-kdl/ward-kdl.tailscale.guardfile.md",
-  "docs/ward-kdl.open-webui.guardfile.md",
-  "cmd/ward-kdl/ward-kdl.open-webui.guardfile.md",
-  "docs/ward-kdl.claude.guardfile.md",
-  "cmd/ward-kdl/ward-kdl.claude.guardfile.md",
-  "docs/ward-kdl.codex.guardfile.md",
-  "cmd/ward-kdl/ward-kdl.codex.guardfile.md",
-  "docs/ward-kdl.opencode.guardfile.md",
-  "cmd/ward-kdl/ward-kdl.opencode.guardfile.md",
-  "docs/ward-kdl.aider.guardfile.md",
-  "cmd/ward-kdl/ward-kdl.aider.guardfile.md",
-  "docs/ward-kdl.goose.guardfile.md",
-  "cmd/ward-kdl/ward-kdl.goose.guardfile.md",
-  "docs/ward-kdl.ollama.guardfile.md",
-  "cmd/ward-kdl/ward-kdl.ollama.guardfile.md",
-  "docs/ward-kdl.kubectl.guardfile.md",
-  "cmd/ward-kdl/ward-kdl.kubectl.guardfile.md",
-  "docs/ward-kdl.docker.guardfile.md",
-  "cmd/ward-kdl/ward-kdl.docker.guardfile.md",
-  "docs/ward-kdl.brew.guardfile.md",
-  "cmd/ward-kdl/ward-kdl.brew.guardfile.md",
-  "docs/ward-kdl.glitchtip.guardfile.md",
-  "cmd/ward-kdl/ward-kdl.glitchtip.guardfile.md",
-  "docs/ward-kdl.signoz.guardfile.md",
-  "cmd/ward-kdl/ward-kdl.signoz.guardfile.md",
-  # Forgejo permission tiers (ward#240): one generated surface reference per
-  # read/write/admin binary, emitted beside the kdl in its cmd/ward-kdl/ward-kdl-<tier>/
-  # subdir and reviewed at docs/. Same generated-and-uncapped rationale as above.
-  "docs/ward-kdl.forgejo.read.guardfile.md",
-  "cmd/ward-kdl/ward-kdl-read/ward-kdl.forgejo.read.guardfile.md",
-  "docs/ward-kdl.forgejo.write.guardfile.md",
-  "cmd/ward-kdl/ward-kdl-write/ward-kdl.forgejo.write.guardfile.md",
-  "docs/ward-kdl.forgejo.admin.guardfile.md",
-  "cmd/ward-kdl/ward-kdl-admin/ward-kdl.forgejo.admin.guardfile.md",
+  # Generated surface reference (specverb-gen). The driver emits one beside each
+  # Guardfile; the reviewed copies are committed under docs/ward-kdl/ (ward#279)
+  # and grow with the verb surface, so the layout size cap does not apply. One
+  # slash-less basename glob covers every generated doc wherever it lands - the
+  # reviewed copy under docs/ward-kdl/ and the gitignored beside-the-kdl emission
+  # under cmd/ward-kdl/ (incl. the per-tier ward-kdl-<read,write,admin>/ subdirs,
+  # ward#240). The directory pattern keeps the docs/ward-kdl/ subfolder itself
+  # from tripping the docs-flatness rule.
+  "ward-kdl.*.guardfile.md",
+  "docs/ward-kdl/**",
   # Embedded container agent doctrine: a ward binary asset (go:embed), not a
   # doc, and it must sit beside its package, so the markdown-location and size
   # caps do not apply. See docs/container.md.
