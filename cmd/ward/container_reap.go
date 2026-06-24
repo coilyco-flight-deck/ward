@@ -53,8 +53,9 @@ func (e reapEnv) repo() targetRepo { return targetRepo{Owner: e.Owner, Name: e.N
 
 func containerReapCommand() *cli.Command {
 	return &cli.Command{
-		Name:  "reap",
-		Usage: "Salvage residual work before container teardown: land it on main if clean, else push a salvage branch and file a forgejo issue.",
+		Name:   "reap",
+		Hidden: true, // ward#263: entrypoint-internal, not a hand-run verb
+		Usage:  "Salvage residual work before container teardown: land it on main if clean, else push a salvage branch and file a forgejo issue.",
 		Description: `reap runs once the agent exits, on every exit, as deterministic static
 code. It stages and commits anything the agent left uncommitted, integrates
 onto the latest main, and then: if the diff is clean and integrates, pushes

@@ -63,7 +63,7 @@ func (r *Runner) runAgentAsk(ctx context.Context, c *cli.Command, mode container
 	}
 
 	// The context repo is --repo, else inferred from the cwd's git origin (the
-	// same resolution `ward container up` uses for its positional).
+	// same target resolution the container bring-up uses).
 	repo, cwd, err := r.resolveTarget(ctx, strings.TrimSpace(c.String("repo")))
 	if err != nil {
 		return fmt.Errorf("%s: %w", label, err)
@@ -90,7 +90,7 @@ func (r *Runner) runAgentAsk(ctx context.Context, c *cli.Command, mode container
 	}
 	plan.Ask = true
 	// Name it ward-<repo>-ask-<mode>-<rand> so `docker ps` tells an ask run apart
-	// from a carry run or a bare `container up`.
+	// from a carry run or a bare interactive bring-up.
 	plan.Name = fmt.Sprintf("%s-%s-ask-%s-%s", containerNamePrefix, safeRepoName(repo), mode, randHex())
 
 	if c.Bool("print") {

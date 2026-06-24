@@ -8,19 +8,17 @@ import (
 	"encoding/hex"
 	"encoding/json"
 	"fmt"
-	"io"
 	"os"
 	"path/filepath"
 	"runtime"
 	"strings"
 	"time"
 
-	"forgejo.coilysiren.me/coilyco-flight-deck/cli-guard/cli/verb"
 	"github.com/urfave/cli/v3"
 )
 
-// container.go wires the `ward container` verb family and owns the docker side
-// effects + host-side forgejo-token resolution. See docs/container.md.
+// container.go wires the hidden `ward container` plumbing namespace (ward#263:
+// reap/bootstrap) + docker side effects + host forgejo-token resolution.
 
 //go:embed containerassets/entrypoint.sh containerassets/AGENTS.container.md
 //go:embed containerassets/settings.container.json containerassets/preclone-repos.txt
@@ -46,99 +44,22 @@ const forgejoTokenSSMPath = "/forgejo/api-token"
 // ward resolves it host-side (the container has no aws creds). docs/agent.md (ward#186).
 const ollamaHostSSMPath = "/coilysiren/ollama/host"
 
-// containerCommand is the `ward container` umbrella.
+// containerCommand is the Hidden `ward container` umbrella (ward#263): only the
+// entrypoint-internal reap/bootstrap leaves remain. See docs/container.md.
 func containerCommand() *cli.Command {
 	return &cli.Command{
-		Name:  "container",
-		Usage: "Ephemeral, least-access dev containers (one per run) that clone fresh and carry a feature to merge.",
-		Description: `container spins up a throwaway docker container per invocation to work a
-single feature end to end - implement, commit, merge to main, resolve
-conflicts, and push. The target repo is cloned fresh inside the container
-(cached in a shared volume), never bind-mounted, so the host's repo tree is
-untouched and any number of containers can run at once. Only the cwd is
-mounted (read-only, for operating context); --aws opts the broader SSM read
-surface in. See docs/container.md.`,
+		Name:   "container",
+		Hidden: true,
+		Usage:  "Entrypoint-internal container plumbing (reap/bootstrap). Use `ward agent` to run a feature.",
+		Description: `container is plumbing-only as of ward#263: the user-facing lifecycle verbs
+(up/exec/down/ls) were retired in favour of ` + "`ward agent`" + `. The leaves that
+remain here - reap and bootstrap - are invoked by the in-container entrypoint,
+not by hand. See docs/agent.md for the contributor surface.`,
 		Commands: []*cli.Command{
-			containerUpCommand(),
-			containerExecCommand(),
 			containerReapCommand(),
-			containerDownCommand(),
-			containerListCommand(),
 			containerBootstrapCommand(),
 		},
 	}
-}
-
-func containerUpCommand() *cli.Command {
-	return &cli.Command{
-		Name:      "up",
-		Usage:     "Start a new container and run the agent against a fresh clone of the target repo.",
-		ArgsUsage: "[owner/name | clone-url]   (omit to infer from cwd's git remote)",
-		Flags: []cli.Flag{
-			&cli.StringFlag{Name: "mode", Value: "claude", Usage: "agent + context level: claude|codex|qwen|goose (progressively less context)"},
-			&cli.StringFlag{Name: "branch", Usage: "feature branch to create/checkout inside the clone"},
-			&cli.StringSliceFlag{Name: "with-repo", Usage: "grant the agent an additional writable repo to clone + operate against (owner/name; repeatable). Cloned as a full feature copy under /workspace alongside the target (ward#230)."},
-			&cli.StringFlag{Name: "image", Value: containerImageDefault, Usage: "dev-base image to run"},
-			&cli.StringFlag{Name: "tag", Value: containerImageTagDefault, Usage: "image tag"},
-			&cli.StringFlag{Name: "ward-source", Usage: "mount a local ward checkout and build ward from it instead of downloading the release"},
-			&cli.BoolFlag{Name: "aws", Usage: "mount ~/.aws read-only (broad SSM read surface; off by default)"},
-			&cli.BoolFlag{Name: "detach", Aliases: []string{"d"}, Usage: "run detached instead of interactive"},
-			&cli.BoolFlag{Name: "print", Usage: "print the docker invocation and exit; resolve no secrets, run nothing"},
-			&cli.BoolFlag{Name: "no-pull", Usage: "skip the image pull"},
-			&cli.BoolFlag{Name: "go-bootstrap", Usage: "EXPERIMENTAL (ward#181): after ward installs, delegate to the Go 'ward container bootstrap' instead of the bash entrypoint logic. Requires ward in-container - use --ward-source until the image bakes it."},
-		},
-		Action: func(ctx context.Context, c *cli.Command) error {
-			r := newRunner()
-			return r.WrapVerb(verb.Spec{
-				Name:       "container.up",
-				SkipPolicy: true,
-				Action:     func(ctx context.Context, cmd *cli.Command) error { return r.runContainerUp(ctx, cmd) },
-			}, r.Audit)(ctx, c)
-		},
-	}
-}
-
-// runContainerUp resolves the target, builds the plan, and runs docker. In
-// --print mode it resolves no secrets and runs nothing.
-func (r *Runner) runContainerUp(ctx context.Context, c *cli.Command) error {
-	mode, err := parseMode(c.String("mode"))
-	if err != nil {
-		return err
-	}
-	repo, cwd, err := r.resolveTarget(ctx, c.Args().First())
-	if err != nil {
-		return err
-	}
-	assetsDir, cleanupAssets, err := writeContainerAssets()
-	if err != nil {
-		return err
-	}
-	// A detached run leaves its assets for the next sweep (it cannot delete the
-	// still-mounted dir on return); an attached run cleans up on exit.
-	if !c.Bool("detach") {
-		defer cleanupAssets()
-	}
-
-	plan, err := buildUpPlan(c, repo, mode, cwd, assetsDir, nil)
-	if err != nil {
-		return err
-	}
-
-	if c.Bool("print") {
-		return printPlan(c, plan)
-	}
-	if !c.Bool("no-pull") {
-		if perr := r.Runner.Exec(ctx, "docker", "pull", plan.Image); perr != nil {
-			fmt.Fprintf(os.Stderr, "ward container: image pull failed (%v); trying the local image\n", perr)
-		}
-	}
-	envFile, cleanupEnv, err := r.writeTokenEnvFile(ctx, r.resolveAgentCreds(ctx, mode))
-	if err != nil {
-		return err
-	}
-	defer cleanupEnv()
-
-	return r.Runner.Exec(ctx, "docker", dockerCreateArgv(plan, envFile)...)
 }
 
 // agentCreds bundles the host-resolved per-mode credential blobs ward injects
@@ -377,103 +298,8 @@ func (r *Runner) writeTokenEnvFile(ctx context.Context, creds agentCreds) (path 
 	return path, cleanup, nil
 }
 
-func containerExecCommand() *cli.Command {
-	return &cli.Command{
-		Name:            "exec",
-		Usage:           "Run a command inside a running ward container: ward container exec <name> -- <cmd...>",
-		ArgsUsage:       "<name> -- <cmd...>",
-		SkipFlagParsing: true,
-		Action: func(ctx context.Context, c *cli.Command) error {
-			r := newRunner()
-			return r.WrapVerb(verb.Spec{
-				Name:       "container.exec",
-				SkipPolicy: true,
-				Action: func(ctx context.Context, cmd *cli.Command) error {
-					name, rest := splitExecArgs(cmd.Args().Slice())
-					if name == "" || len(rest) == 0 {
-						return fmt.Errorf("ward container exec: usage: ward container exec <name> -- <cmd...>")
-					}
-					return r.Runner.Exec(ctx, "docker", dockerExecArgv(name, terminalAttached(), rest)...)
-				},
-			}, r.Audit)(ctx, c)
-		},
-	}
-}
-
-// splitExecArgs peels the container name off the front and the command after
-// the first `--`.
-func splitExecArgs(argv []string) (name string, cmd []string) {
-	if len(argv) == 0 {
-		return "", nil
-	}
-	name = argv[0]
-	for i, a := range argv[1:] {
-		if a == "--" {
-			return name, argv[1+i+1:]
-		}
-	}
-	return name, argv[1:]
-}
-
-func containerDownCommand() *cli.Command {
-	return &cli.Command{
-		Name:      "down",
-		Usage:     "Stop and remove a ward container (the shared gitcache volume is kept).",
-		ArgsUsage: "<name>",
-		Action: func(ctx context.Context, c *cli.Command) error {
-			r := newRunner()
-			return r.WrapVerb(verb.Spec{
-				Name:       "container.down",
-				SkipPolicy: true,
-				Action: func(ctx context.Context, cmd *cli.Command) error {
-					name := cmd.Args().First()
-					if name == "" {
-						return fmt.Errorf("ward container down: name the container (see `ward container ls`)")
-					}
-					return r.Runner.Exec(ctx, "docker", dockerDownArgv(name)...)
-				},
-			}, r.Audit)(ctx, c)
-		},
-	}
-}
-
-func containerListCommand() *cli.Command {
-	return &cli.Command{
-		Name:    "ls",
-		Aliases: []string{"list"},
-		Usage:   "List ward-managed containers.",
-		Flags:   []cli.Flag{&cli.BoolFlag{Name: "all", Aliases: []string{"a"}, Usage: "include stopped containers"}},
-		Action: func(ctx context.Context, c *cli.Command) error {
-			r := newRunner()
-			return r.WrapVerb(verb.Spec{
-				Name:       "container.ls",
-				SkipPolicy: true,
-				Action: func(ctx context.Context, cmd *cli.Command) error {
-					return r.Runner.Exec(ctx, "docker", dockerListArgv(cmd.Bool("all"))...)
-				},
-			}, r.Audit)(ctx, c)
-		},
-	}
-}
-
-// printPlan emits the docker invocation for --print: the token is never
-// resolved, so the env-file appears as a redacted placeholder.
-func printPlan(c *cli.Command, p upPlan) error {
-	out := c.Root().Writer
-	if out == nil {
-		out = os.Stdout
-	}
-	pull := fmt.Sprintf("docker pull %s\n", p.Image)
-	if c.Bool("no-pull") {
-		pull = fmt.Sprintf("# pull skipped (--no-pull); image: %s\n", p.Image)
-	}
-	run := fmt.Sprintf("docker %s\n", strings.Join(dockerCreateArgv(p, "<ward-forgejo-token-envfile>"), " "))
-	_, err := io.WriteString(out, pull+run)
-	return err
-}
-
 // randHex returns 4 random bytes as an 8-char lowercase hex string, the unique
-// suffix that lets repeated `ward container up` calls coexist.
+// suffix that lets repeated container bring-ups against one repo coexist.
 func randHex() string {
 	b := make([]byte, 4)
 	if _, err := rand.Read(b); err != nil {

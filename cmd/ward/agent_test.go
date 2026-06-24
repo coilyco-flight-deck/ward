@@ -577,7 +577,7 @@ func TestGooseHeadlessPlanEnv(t *testing.T) {
 	}
 }
 
-// A bare up plan (no AgentArgs) still ends at the image - container up's shape.
+// A bare plan (no AgentArgs) still ends at the image - the interactive bring-up shape.
 func TestDockerCreateArgvNoAgentArgs(t *testing.T) {
 	p := sampleUpPlan()
 	p.AgentArgs = nil

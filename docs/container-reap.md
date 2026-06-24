@@ -11,8 +11,8 @@ guarantee does **not** live in the agent. It lives here.
 The entrypoint arms `reap` as a `trap ... EXIT` and does **not** `exec` the
 agent, so the reaper fires on every exit path - clean finish, crash, or Ctrl-C.
 By the time it runs, the agent's permissions are out of the loop, so nothing it
-does (or refuses to do) can defeat it. Normally automatic; runnable by hand via
-`ward container exec <name> -- ward container reap`.
+does (or refuses to do) can defeat it. It runs automatically; `ward container
+reap` stays a hidden (ward#263) verb the entrypoint calls, no longer hand-run.
 
 ## What it does
 
@@ -36,7 +36,7 @@ junk to `main` - a false-positive scan only parks clean work, never discards it.
 The branch push comes before the issue, so a failed issue is a missed
 notification, not lost work. If even the branch push fails (remote unreachable),
 the reaper dumps the patch to the container log, recoverable via `docker logs`
-before `ward container down`. It uses the container's `FORGEJO_TOKEN` directly,
+before the container is removed. It uses the container's `FORGEJO_TOKEN` directly,
 so filing needs no `--aws`/SSM surface.
 
 The agent's job is to make the reaper's trivial: finish the feature, push to
@@ -45,15 +45,15 @@ real *without depending on the agent having done so*.
 
 ## Operator note: don't rotate the PAT mid-run
 
-The container's `FORGEJO_TOKEN` is a snapshot of `/forgejo/api-token` baked in at
-`ward container up` time and frozen for the container's life - the reaper reuses
-it directly and never re-resolves from SSM (by design, to keep the container off
-the AWS/SSM surface). So **rotating or revoking the Forgejo PAT while a container
+The container's `FORGEJO_TOKEN` is `/forgejo/api-token` baked in at `ward agent`
+bring-up time and frozen for the container's life - the
+reaper reuses it and never re-resolves from SSM (keeping the container off
+AWS/SSM). So **rotating or revoking the Forgejo PAT while a container
 is in flight** leaves it carrying a dead token: the final push to `main` fails on
 auth, routes to salvage, the salvage branch push fails on the same dead token,
 and the work falls through to the container-log recovery path (`docker logs
-<name>`). Work is preserved but recovery is manual. Before rotating the PAT,
-`ward container ls` and reap/down in-flight containers.
+<name>`). Work is preserved but recovery is manual. Before rotating the PAT, let
+in-flight `ward agent` runs finish (or `docker ps`/`docker rm` them).
 
 So an auth-cause salvage reads distinct from a conflict (ward#103), the reaper
 classifies the push: output matching credential-rejection markers
@@ -65,7 +65,7 @@ from the entrypoint's `WARD_CONTAINER_UP`. When the token is fully dead the issu
 can't be filed either, so the cause is named in the log above the patch dump.
 
 Host AWS/STS expiry is **not** a concern: AWS is touched only on the host at
-`up` time to read the PAT from SSM, never during `exec` or reap.
+bring-up time to read the PAT from SSM, never during reap.
 
 ## See also
 

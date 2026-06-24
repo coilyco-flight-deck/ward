@@ -728,15 +728,15 @@ func (r *Runner) reap(ctx context.Context, work string) {
 	blog("reaping: salvage residual work before teardown")
 	env, eerr := readReapEnv()
 	if eerr != nil {
-		blog("reaper returned non-zero; check this log for an UNPRESERVED PATCH block before 'ward container down'")
+		blog("reaper returned non-zero; check this log for an UNPRESERVED PATCH block before the container is removed")
 		return
 	}
 	if !isGitWorkTree(ctx, r, work) {
-		blog("reaper returned non-zero; check this log for an UNPRESERVED PATCH block before 'ward container down'")
+		blog("reaper returned non-zero; check this log for an UNPRESERVED PATCH block before the container is removed")
 		return
 	}
 	if rerr := r.reapWorkTree(ctx, work, env); rerr != nil {
-		blog("reaper returned non-zero; check this log for an UNPRESERVED PATCH block before 'ward container down'")
+		blog("reaper returned non-zero; check this log for an UNPRESERVED PATCH block before the container is removed")
 	}
 }
 

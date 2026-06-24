@@ -1,55 +1,57 @@
 # ward container
 
-`ward container` spins up an **ephemeral, least-access dev container per run** to
-carry a single feature from start to merge - implement, commit, merge to `main`,
-resolve conflicts, push - then throw the container away. It wraps the
-aos-published dev-base image. Epic
-[ward#98](https://forgejo.coilysiren.me/coilyco-flight-deck/ward/issues/98).
+The **container subsystem** spins up an **ephemeral, least-access dev container
+per run** to carry a single feature start to merge - implement, commit, merge to
+`main`, resolve conflicts, push - then throw the container away. It wraps the
+aos-published dev-base image (epic
+[ward#98](https://forgejo.coilysiren.me/coilyco-flight-deck/ward/issues/98)).
+
+The user-facing entrypoint is **[`ward agent`](agent.md)**, not a `ward
+container` verb: ward#263 retired the hand-run `up`/`exec`/`down`/`ls` leaves,
+leaving `ward container` plumbing-only and hidden from `ward --help` (only the
+entrypoint-internal `reap`/`bootstrap` remain; manual debug uses raw `docker`).
 
 ## The model
 
 Three departures from a transparent, shared, bind-mounted container:
-
-- **One container per run, many at once.** Every `up` makes a new uniquely-named
-  container (`ward-<repo>-<rand>`); many at once is the default.
-- **Fresh clone inside, never on the host.** The target is cloned *inside* the
-  container, cached through a shared `ward-gitcache` bare mirror, never on the host.
-- **Least access.** The only default host bind is the **cwd** (read-only) plus
-  ward's embedded entrypoint/doctrine. `~/.aws` is opt-in via `--aws`.
+- **One container per run, many at once** - each launch is uniquely named
+  (`ward-<repo>-<rand>`); concurrent runs are the default.
+- **Fresh clone inside, never on the host** - cached through a shared
+  `ward-gitcache` bare mirror, so the host's repo tree stays untouched.
+- **Least access** - the only default host bind is the **cwd** (read-only) plus
+  ward's entrypoint/doctrine; `~/.aws` is opt-in via `--aws`.
 
 ## Usage
 
+Launch through [`ward agent`](agent.md):
+
 ```bash
-ward container up                         # infer target from cwd's git origin
-ward container up coilyco-gaming/eco-app --branch feat/x   # --print shows the docker cmd only
-ward container ls
-ward container exec ward-eco-app-a4154198 -- ward exec test
-ward container reap                                # teardown reaper by hand (normally automatic)
-ward container down ward-eco-app-a4154198          # keeps the gitcache volume
+ward agent work coilyco-gaming/eco-app#123                 # carry an issue end to end
+ward agent headless coilyco-gaming/eco-app#123             # detached, fire-and-forget
+ward agent work coilyco-gaming/eco-app#123 --driver codex --print   # show the docker cmd only
 ```
 
-`ward container up --help` lists the full flag set (`--mode`, `--branch`,
-`--image`/`--tag`, `--ward-source`, `--aws`, `--detach`, `--print`, `--no-pull`).
-The run attaches by default; the pseudo-TTY (`-t`) is **auto-detected**, added
-only when stdin and stdout are both terminals (so agent/CI/piped runs drop to
-`-i`). `--detach` runs fully backgrounded (`-d`).
+`ward agent work --help` lists the launch flags `work` carries from this
+subsystem (`--driver`, `--aws`, `--detach`, `--print`, `--no-pull`,
+`--ward-source`, ...; see [docs/agent-flags.md](agent-flags.md)). The run
+attaches by default; the pseudo-TTY (`-t`) is **auto-detected**, on only when
+stdin and stdout are both terminals. `--detach`/`headless` background it (`-d`).
 
 ## Modes: progressively-less-context ladder
 
-`--mode` picks the agent harness *and* how much operating context is composed,
-mirroring agent-compose's slices:
+`ward agent`'s `--driver` picks the agent harness *and* how much operating
+context is composed, mirroring agent-compose's slices:
 
 - `claude` (default, level 2) - doctrine + the mounted host context (cwd's
   `CLAUDE.md`/`AGENTS.md`).
-- `goose` (level 2) - same full context as claude; the entrypoint mirrors the
-  composed doctrine into goose's `~/.config/goose/.goosehints` (goose does not
-  read `~/.claude/CLAUDE.md`).
+- `goose` (level 2) - same context as claude, mirrored into goose's
+  `~/.config/goose/.goosehints` (goose ignores `~/.claude/CLAUDE.md`).
 - `codex` (level 1) - doctrine + only the cwd's `AGENTS.md`.
 - `qwen` (level 0) - doctrine only.
 
-The repo's in-tree `AGENTS.md` loads natively on top; the level exports as
-`WARD_CONTEXT_LEVEL`. codex/goose binaries aren't in the image yet (claude is), so
-they drop to a shell; qwen self-installs opencode at start (ward#187, [agent.md](agent.md)).
+The repo's in-tree `AGENTS.md` loads on top; the level exports as
+`WARD_CONTEXT_LEVEL`. codex/goose drop to a shell (not yet imaged); qwen
+self-installs opencode (ward#187, [agent.md](agent.md)).
 
 ## Inside the container
 
@@ -58,8 +60,8 @@ unmodified dev-base image. It configures forgejo git auth, installs ward,
 cached-fresh-clones the target into `/workspace/<repo>`, installs pre-commit
 hooks ([container-precommit.md](container-precommit.md)), composes the mode's
 context + permission policy, launches the agent, then reaps on exit. The push
-token (`/forgejo/api-token`) resolves **on the host**, injected via a private
-0600 `--env-file`, never in argv or audit.
+token (`/forgejo/api-token`) resolves **on the host**, via a private 0600
+`--env-file`, never in argv or audit.
 
 ## Feature-lifetime autonomy + the reaper backstop
 
@@ -70,11 +72,9 @@ at the top of the agent's context and **overrides** the host harness's hold-back
 feature autonomously, with the container's isolation as the wall (force-push,
 history rewrites, other repos, data loss stay out of reach). It is its own
 **permission manager** (`bypassPermissions`;
-[docs/container-permissions.md](container-permissions.md)), and on
-every exit `ward container reap` lands clean work on `main` or salvages it
-([docs/container-reap.md](container-reap.md)).
+[docs/container-permissions.md](container-permissions.md)), and on every exit the
+reaper lands clean work on `main` or salvages it ([reap](container-reap.md)).
 
 ## See also
 
-[docs/container-substrate.md](container-substrate.md) - repos in `/substrate`.
-[docs/FEATURES.md](FEATURES.md) - inventory. [docs/agent.md](agent.md) - launch surface. agentic-os `docs/dev-base-image.md` - the image.
+[container-substrate](container-substrate.md) - `/substrate` repos. [FEATURES](FEATURES.md) - inventory. [agent](agent.md) - launch surface. agentic-os `docs/dev-base-image.md`.
