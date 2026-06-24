@@ -1,13 +1,18 @@
 # ward agent: subcommand surfaces
 
 The `ward agent` verbs differ in how attached they are and what they leave
-behind. See [docs/agent.md](agent.md) for the family overview.
+behind. See [docs/agent.md](agent.md) for the family overview and the `warded`
+public face (`warded <surface> <ref>`, the spelling these examples front).
+
+A **bare ref with no surface word runs `headless`** (ward#282): `warded #98`
+dispatches the fire-and-forget carry, and a bare `#N` / `N` infers `owner/repo`
+from the cwd's git origin. The surface words below override that default.
 
 ## work vs headless
 
 - **`work`** (interactive) attaches the container to your terminal - you watch
   the agent and can step in. `--detach` backgrounds it.
-- **`headless`** is fire-and-forget: it always detaches and runs the agent in
+- **`headless`** is the bare-ref default and is fire-and-forget: it always detaches and runs the agent in
   print mode (`claude -p`, `codex exec <seed>` for codex, or `goose run -t <seed>`
   for goose), so it works to completion non-interactively and exits into the
   reaper. For claude it **streams live progress** (one line per tool call + the

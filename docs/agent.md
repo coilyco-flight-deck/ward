@@ -1,28 +1,48 @@
 # ward agent
 
-`ward agent work <issue>` is **the** entrypoint to the ephemeral
-[container](container.md) subsystem for the common case: take a Forgejo issue and
-put an agent on it end to end. It shares the container bring-up Go directly (it
-does not shell out). ward#263 retired the old hand-run `ward container up` /
-`exec` / `down` / `ls` verbs, so `ward agent` is now the single launch surface;
-one line replaces a full bring-up stack plus a hand-written prompt.
+`ward agent` is **the** entrypoint to the ephemeral [container](container.md)
+subsystem: take a Forgejo issue and put an agent on it end to end. It shares the
+container bring-up Go directly (it does not shell out). ward#263 retired the old
+hand-run `ward container up` / `exec` / `down` / `ls` verbs, so `ward agent` is
+now the single launch surface; one line replaces a full bring-up stack plus a
+hand-written prompt.
+
+## The `warded` public face
+
+`warded` is the product's user-facing command: a thin `ward` symlink the
+multicall rewrite turns into `ward agent <args>`, not a second code path
+(ward#247, ward#282). So `warded #98` *is* `ward agent #98` - the ergonomic daily
+driver for the dispatcher Kai runs dozens of times a day. Read "warded" as a
+protective circle: the deny-list and allowlisted verbs bounding the agent's
+reach. Everything below applies to both spellings.
 
 ## Usage
 
 ```bash
-ward agent work coilyco-flight-deck/ward#98                          # --driver defaults to claude
-ward agent work https://forgejo.coilysiren.me/coilyco-flight-deck/ward/issues/98
-ward agent headless coilyco-flight-deck/ward#98                      # detached, fire-and-forget
-ward agent work coilyco-flight-deck/ward#98 --driver codex --print   # pick a harness; show the plan, run nothing
+warded coilyco-flight-deck/ward#98          # bare ref -> headless (the fire-and-forget default)
+warded #98                                  # owner/repo inferred from the cwd's git origin
+warded work #98                             # interactive: attach and watch
+warded headless #98 --driver codex          # pick another harness
+warded task "fix the flaky exec_gate test"  # file the issue, then carry it
+warded ask "how is the audit log written?"
+warded reply #98
+ward agent work coilyco-flight-deck/ward#98 # the canonical spelling warded fronts
 ```
 
 The surface (`work|headless|task|reply|ask`) comes first; `--driver` picks the
 agent/mode (`claude|codex|qwen|goose`, default `claude`, the container context
-ladder). ward#185 moved the harness off a subcommand slot onto
-`--driver`, leaving room for a future `--reviewer` role flag. The issue ref is
-`owner/repo#N` or a full Forgejo issue URL. Any appended query string
-(`?thing=stuff`) or hash fragment (`#issuecomment-149`) is ignored, so a URL
-copied straight from the browser works unedited.
+ladder). ward#185 moved the harness off a subcommand slot onto `--driver`,
+leaving room for a future `--reviewer` role flag.
+
+**A bare ref with no surface word runs the `headless` carry** (ward#282) - the
+fire-and-forget default, since by the time the issue exists the design is done
+and the PR is the review gate. The issue ref is `owner/repo#N`, a full Forgejo
+issue URL, or a **bare `#N` / `N`** that infers `owner/repo` from the cwd's git
+origin (so `warded #98` from inside the ward checkout means
+`coilyco-flight-deck/ward#98`, mirroring how `ask` already infers its context
+repo). Any appended query string (`?thing=stuff`) or hash fragment
+(`#issuecomment-149`) is ignored, so a URL copied straight from the browser works
+unedited.
 
 ## Topics
 

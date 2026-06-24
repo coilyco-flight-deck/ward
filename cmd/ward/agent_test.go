@@ -1,11 +1,79 @@
 package main
 
 import (
+	"fmt"
+	"os"
+	"path/filepath"
 	"strings"
 	"testing"
 
+	"forgejo.coilysiren.me/coilyco-flight-deck/cli-guard/cli/shell"
 	"github.com/urfave/cli/v3"
 )
+
+// TestResolveAgentIssueRef covers ward#282: a bare #N / N fills owner/repo from the
+// cwd's git origin; a full owner/repo#N passes through; no origin is a clear error.
+func TestResolveAgentIssueRef(t *testing.T) {
+	// A stub `git` that echoes a forgejo origin regardless of argv, standing in
+	// for `git -C <cwd> remote get-url origin`.
+	cwd := t.TempDir()
+	t.Setenv("COILY_INVOKE_CWD", cwd)
+	gitStub := filepath.Join(t.TempDir(), "git")
+	if err := os.WriteFile(gitStub, []byte("#!/bin/sh\necho https://forgejo.coilysiren.me/coilyco-flight-deck/ward.git\n"), 0o755); err != nil { //nolint:gosec
+		t.Fatal(err)
+	}
+	withGit := &Runner{Runner: &shell.Runner{Resolve: func(bin string) (string, error) {
+		if bin == "git" {
+			return gitStub, nil
+		}
+		return "", fmt.Errorf("unexpected binary %q", bin)
+	}}}
+
+	t.Run("bare #N fills owner/repo from the git origin", func(t *testing.T) {
+		ref, err := withGit.resolveAgentIssueRef(t.Context(), "#98")
+		if err != nil {
+			t.Fatalf("unexpected error: %v", err)
+		}
+		if ref.Owner != "coilyco-flight-deck" || ref.Repo != "ward" || ref.Number != 98 {
+			t.Fatalf("resolveAgentIssueRef(#98) = %+v, want coilyco-flight-deck/ward#98", ref)
+		}
+	})
+
+	t.Run("bare N (no hash) also infers the repo", func(t *testing.T) {
+		ref, err := withGit.resolveAgentIssueRef(t.Context(), "98")
+		if err != nil || ref.repoSlug() != "coilyco-flight-deck/ward" || ref.Number != 98 {
+			t.Fatalf("resolveAgentIssueRef(98) = %+v, %v", ref, err)
+		}
+	})
+
+	t.Run("full owner/repo#N passes through without consulting git", func(t *testing.T) {
+		// Resolve fails for every binary, so a git call would surface as an error.
+		noGit := &Runner{Runner: &shell.Runner{Resolve: func(bin string) (string, error) {
+			return "", fmt.Errorf("git must not be called for a full ref (got %q)", bin)
+		}}}
+		ref, err := noGit.resolveAgentIssueRef(t.Context(), "coilyco-flight-deck/ward#5")
+		if err != nil {
+			t.Fatalf("unexpected error: %v", err)
+		}
+		if ref.Owner != "coilyco-flight-deck" || ref.Repo != "ward" || ref.Number != 5 {
+			t.Fatalf("resolveAgentIssueRef(full) = %+v, want coilyco-flight-deck/ward#5", ref)
+		}
+	})
+
+	t.Run("bare ref with no inferable origin is an error", func(t *testing.T) {
+		// A stub `git` that exits non-zero, as it would in a directory with no origin.
+		failGit := filepath.Join(t.TempDir(), "git")
+		if err := os.WriteFile(failGit, []byte("#!/bin/sh\nexit 1\n"), 0o755); err != nil { //nolint:gosec
+			t.Fatal(err)
+		}
+		noOrigin := &Runner{Runner: &shell.Runner{Resolve: func(bin string) (string, error) {
+			return failGit, nil
+		}}}
+		if _, err := noOrigin.resolveAgentIssueRef(t.Context(), "#98"); err == nil {
+			t.Fatal("expected an error for a bare ref with no git origin to infer from")
+		}
+	})
+}
 
 func TestParseAgentIssueRef(t *testing.T) {
 	cases := []struct {
@@ -27,10 +95,16 @@ func TestParseAgentIssueRef(t *testing.T) {
 		{forgejoBaseURL + "/coilyco-flight-deck/ward/issues/151/?thing=stuff", "coilyco-flight-deck", "ward", 151, false},
 		// Short form also tolerates an appended query/fragment. (#158)
 		{"coilyco-flight-deck/ward#98?thing=stuff", "coilyco-flight-deck", "ward", 98, false},
+		// Bare #N / N: owner/repo left empty for resolveAgentIssueRef to fill (#282).
+		{"#98", "", "", 98, false},
+		{"98", "", "", 98, false},
+		{"  #98  ", "", "", 98, false},
+		{"#98?thing=stuff", "", "", 98, false},
 		{"", "", "", 0, true},
 		{"coilyco-flight-deck/ward", "", "", 0, true},               // no #N
 		{"coilyco-flight-deck/ward#0", "", "", 0, true},             // non-positive
 		{"coilyco-flight-deck/ward#-3", "", "", 0, true},            // negative
+		{"#0", "", "", 0, true},                                     // bare non-positive
 		{"https://github.com/owner/repo/issues/1", "", "", 0, true}, // GitHub URL rejected
 		{"not-a-ref", "", "", 0, true},
 	}

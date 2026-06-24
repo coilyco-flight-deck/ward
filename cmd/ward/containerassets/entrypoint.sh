@@ -102,7 +102,7 @@ install_ward_from_release() {
 install_ward() {
   if [ -n "${WARD_FROM_SOURCE:-}" ]; then install_ward_from_source; else install_ward_from_release; fi
   # warded is the public-face shim: the same binary symlinked, multicall-rewritten
-  # to `ward drive <args>` so the demo runs `warded claude "..."` (ward#247).
+  # to `ward agent <args>` so `warded #98` fronts the dispatcher (ward#247, ward#282).
   ln -sf ward /usr/local/bin/warded
   ward version >&2 || die "ward did not install correctly"
 }

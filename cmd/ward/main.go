@@ -50,12 +50,8 @@ func main() {
 	}
 
 	// Public-face shim: invoked as `warded` (a symlink), rewrite argv to the
-	// canonical `ward drive <args>` machinery (ward#247). See docs/drive.md.
+	// canonical `ward agent <args>` machinery (ward#247, ward#282). See docs/agent.md.
 	os.Args = maybeRewriteWardedShim(os.Args)
-
-	// Flag boundary: the harness arg splits ward flags from the prompt, so a
-	// prompt holding `--print`/`--repo` is not eaten as a ward flag (ward#248).
-	os.Args = maybeInsertDriveBoundary(os.Args)
 
 	configFlagOverride = preParseConfigFlag(os.Args)
 	app := &cli.Command{
@@ -88,7 +84,6 @@ func main() {
 			installHooksCommand(),
 			containerCommand(),
 			agentCommand(),
-			driveCommand(),
 			opsCommand(),
 			ciCommand(),
 		},
@@ -178,17 +173,17 @@ func maybeRewriteToExec(args []string, topLevel map[string]bool) []string {
 }
 
 // wardedShimName is the public-face binary basename: a `warded` symlink to the
-// ward binary becomes the product's user-facing command (ward#247). See docs/drive.md.
+// ward binary becomes the product's user-facing command (ward#247). See docs/agent.md.
 const wardedShimName = "warded"
 
 // maybeRewriteWardedShim rewrites `warded <args>` (the symlink basename) to
-// `ward drive <args>`; any other basename is untouched. Pure for testing.
+// `ward agent <args>` (ward#282); any other basename is untouched. Pure for testing.
 func maybeRewriteWardedShim(args []string) []string {
 	if len(args) == 0 || filepath.Base(args[0]) != wardedShimName {
 		return args
 	}
 	rewritten := make([]string, 0, len(args)+1)
-	rewritten = append(rewritten, "ward", "drive")
+	rewritten = append(rewritten, "ward", "agent")
 	return append(rewritten, args[1:]...)
 }
 
