@@ -19,14 +19,11 @@ Contributor-facing cli-guard gate: repo dev verbs + audited host wrappers.
 - **`ward lint`** - lint `.ward/ward.yaml` against the repo Makefile.
 - **`ward container {up,exec,reap,down,ls}`** - ephemeral, least-access dev containers, one per `up`: target cloned fresh inside (cwd bind read-only), `--mode claude|codex|qwen|goose`. `--with-repo owner/name` grants extra writable repos cloned full alongside the target (multi-repo runs, ward#230). `reap` lands or salvages the work. See [docs/container.md](container.md), [docs/container-multi-repo.md](container-multi-repo.md).
 - **`ward agent <name> {work,headless,task,reply,ask}`** - over `container up`: `work`/`headless` take an issue, `task` *files* one (ward#164), `reply` researches one-shot and comments back (no container; ward#179), `ask` answers a freeform question one-shot in a fresh container, streamed inline (no issue/comment). Off-org refused, `--print` dry-runs; `headless`/`task` add an [agent commit suite](agent-precommit.md). Issue runs *reserve* it (2h TTL, `--force` reclaims); `headless` pre-flights feasibility (ward#147, #159). `--details` adds a steer (ward#167). `work --new-tab` spawns its own Warp tab (ward#174). See [agent](agent.md), [agent-reply](agent-reply.md), [agent-ask](agent-ask.md).
+- **`ward ci watch [owner/repo]`** - watch a Forgejo Actions run until every job is terminal, then print a per-job status table and link each failing job's run page. Native hand-written verb (the poll loop is composite control flow the deny-by-default specverb engine can't host); audited, read-only. Exit `0`/`1`/`2`/`3` = passed/failed/timed-out/no-run. Replaces the retired `scripts/watch-ci.sh` (ward#88). See [docs/ci-watch.md](ci-watch.md).
 
 ## Spec-driven ops (`ward-kdl`)
 
 `ward-kdl` carries the spec-driven (`specverb`) and passthrough (`execverb`) verb surfaces - `ops` (forgejo/trello/tailscale/aws/kubectl), `docker`, `agents`, and `pkg`. See [docs/ward-kdl-surface.md](ward-kdl-surface.md) for the per-surface breakdown. The in-binary `ward ops forgejo` also grafts a remote-exec admin/doctor slice (ward#81); see [ops-forgejo-admin](ops-forgejo-admin.md).
-
-## Scripts
-
-- **`scripts/watch-ci.sh`** - watch a Forgejo Actions run until every job is terminal, then print a per-job status table and tail each failing job's log (`ci-watch` action). See [docs/ci-watch.md](ci-watch.md).
 
 ## See also
 
