@@ -60,6 +60,18 @@ wrap ward-kdl ops forgejo {
     can create org-repo {
         op createOrgRepo
     }
+    // org-repos (read): list the repos an org owns (GET /orgs/{org}/repos). The
+    // route survey (ward#92) catalogs each primary org's repos through this leaf;
+    // `user-repo list` below covers the one primary owner that is a user, not an org.
+    can list org-repo {
+        op orgListRepos
+    }
+    // user-repos (read): list the repos a user owns (GET /users/{username}/repos).
+    // coilysiren is a user, not an org, so the route survey reaches its repos here
+    // rather than through `org-repo list`. Read-only, the survey's other half.
+    can list user-repo {
+        op userListRepos
+    }
     // org-labels: the compound resource targets org-level labels (/orgs/{org}/labels),
     // the `org` ancestor scoping it away from repo labels. Issue-label attach/set/
     // remove stays below.

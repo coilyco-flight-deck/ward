@@ -236,7 +236,13 @@ func (r *Runner) fileSalvageIssue(ctx context.Context, env reapEnv, report salva
 	if env.Token == "" {
 		return fmt.Errorf("no FORGEJO_TOKEN to file a salvage issue")
 	}
-	fc := newForgejoClient(env.Base, env.Token).withMode(containerMode(env.Mode))
+	// The ops mount authenticates from $FORGEJO_TOKEN inside a container (via
+	// forgejoTokenResolver), so the reaper drives the same client host flows do.
+	fc, err := r.hostForgejoClient(ctx)
+	if err != nil {
+		return err
+	}
+	fc = fc.withMode(containerMode(env.Mode))
 	body := salvageIssueBody(report)
 	if n, found, err := fc.findOpenIssueByTitlePrefix(ctx, env.Owner, env.Name, salvageIssueTitlePrefix); err == nil && found {
 		fmt.Fprintf(os.Stderr, "ward container reap: appending to open salvage issue #%d\n", n)

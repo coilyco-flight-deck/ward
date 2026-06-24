@@ -871,16 +871,6 @@ func taskBody(mode containerMode, instructions string) string {
 	return fmt.Sprintf("%s\n\n---\nFiled by `ward agent %s task`.", instructions, mode)
 }
 
-// hostForgejoClient builds a write-capable Forgejo client from the SSM bearer
-// token (the host path; the in-container reaper uses $FORGEJO_TOKEN instead).
-func (r *Runner) hostForgejoClient(ctx context.Context) (*forgejoClient, error) {
-	token, err := r.forgejoAPIToken(ctx)
-	if err != nil {
-		return nil, err
-	}
-	return newForgejoClient(forgejoBaseURL, token), nil
-}
-
 // runAgentTask routes the task surface (ward#164) to ROUTE or DIRECT mode by
 // classifying the positional + flags. See docs/agent-task.md.
 func (r *Runner) runAgentTask(ctx context.Context, c *cli.Command, mode containerMode) error {

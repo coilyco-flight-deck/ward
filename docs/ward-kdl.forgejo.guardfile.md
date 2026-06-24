@@ -166,6 +166,36 @@ Options (12):
 - `--template` (boolean, optional): Whether the repository is template
 - `--trust_model` (string, optional): TrustModel of the repository
 
+## ward-kdl ops forgejo org-repo list
+
+`GET /orgs/{org}/repos`
+
+Authorized by grant: can list org-repo. Not destructive.
+
+Positional arguments (1):
+
+- `<org>` (string)
+
+Options (2):
+
+- `--page` (integer, optional): page number of results to return (1-based)
+- `--limit` (integer, optional): page size of results
+
+## ward-kdl ops forgejo user-repo list
+
+`GET /users/{username}/repos`
+
+Authorized by grant: can list user-repo. Not destructive.
+
+Positional arguments (1):
+
+- `<username>` (string)
+
+Options (2):
+
+- `--page` (integer, optional): page number of results to return (1-based)
+- `--limit` (integer, optional): page size of results
+
 ## ward-kdl ops forgejo org-label get
 
 `GET /orgs/{org}/labels/{id}`

@@ -4,6 +4,7 @@ import (
 	"context"
 	"embed"
 	"fmt"
+	"os"
 	"strings"
 
 	"forgejo.coilysiren.me/coilyco-flight-deck/cli-guard/cli/verb"
@@ -73,16 +74,25 @@ func buildForgejoOps() (*cli.Command, error) {
 		Wrap: func(s verb.Spec) cli.ActionFunc {
 			return r.WrapVerb(s, r.Audit)
 		},
-		// The guardfile's `value ssm` auth resolves through ward's audited aws
-		// runner (no AWS SDK), lazily - mount and --dry-run never touch SSM.
+		// The guardfile's `value ssm` auth resolves through forgejoTokenResolver,
+		// lazily - mount and --dry-run never touch the token source.
 		Providers: map[string]valuesource.Provider{
-			"ssm": r.ssmValueResolver,
+			"ssm": r.forgejoTokenResolver,
 		},
 	})
 }
 
+// forgejoTokenResolver resolves the Forgejo bot token: the baked $FORGEJO_TOKEN in
+// a container (no SSM/aws), else the coilyco-ops bot token from SSM on a host.
+func (r *Runner) forgejoTokenResolver(ctx context.Context, ssmPath string) (string, error) {
+	if tok := strings.TrimSpace(os.Getenv("FORGEJO_TOKEN")); tok != "" {
+		return tok, nil
+	}
+	return r.ssmValueResolver(ctx, ssmPath)
+}
+
 // ssmValueResolver fetches an SSM SecureString through ward's audited aws runner,
-// parameterized by the guardfile-supplied path (vs forgejoAPIToken's hardcoded one).
+// parameterized by the guardfile-supplied path.
 func (r *Runner) ssmValueResolver(ctx context.Context, ssmPath string) (string, error) {
 	out, err := r.Runner.Capture(ctx, "aws",
 		"ssm", "get-parameter",

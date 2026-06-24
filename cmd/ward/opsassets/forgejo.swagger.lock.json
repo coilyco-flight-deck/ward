@@ -2219,6 +2219,45 @@
       }
     },
     "/orgs/{org}/repos": {
+      "get": {
+        "operationId": "orgListRepos",
+        "parameters": [
+          {
+            "description": "name of the organization",
+            "in": "path",
+            "name": "org",
+            "required": true,
+            "type": "string"
+          },
+          {
+            "description": "page number of results to return (1-based)",
+            "in": "query",
+            "name": "page",
+            "type": "integer"
+          },
+          {
+            "description": "page size of results",
+            "in": "query",
+            "name": "limit",
+            "type": "integer"
+          }
+        ],
+        "produces": [
+          "application/json"
+        ],
+        "responses": {
+          "200": {
+            "$ref": "#/responses/RepositoryList"
+          },
+          "404": {
+            "$ref": "#/responses/notFound"
+          }
+        },
+        "summary": "List an organization's repos",
+        "tags": [
+          "organization"
+        ]
+      },
       "post": {
         "consumes": [
           "application/json"
@@ -4025,6 +4064,47 @@
           "user"
         ]
       }
+    },
+    "/users/{username}/repos": {
+      "get": {
+        "operationId": "userListRepos",
+        "parameters": [
+          {
+            "description": "username of user",
+            "in": "path",
+            "name": "username",
+            "required": true,
+            "type": "string"
+          },
+          {
+            "description": "page number of results to return (1-based)",
+            "in": "query",
+            "name": "page",
+            "type": "integer"
+          },
+          {
+            "description": "page size of results",
+            "in": "query",
+            "name": "limit",
+            "type": "integer"
+          }
+        ],
+        "produces": [
+          "application/json"
+        ],
+        "responses": {
+          "200": {
+            "$ref": "#/responses/RepositoryList"
+          },
+          "404": {
+            "$ref": "#/responses/notFound"
+          }
+        },
+        "summary": "List the repos owned by the given user",
+        "tags": [
+          "user"
+        ]
+      }
     }
   },
   "produces": [
@@ -4176,6 +4256,22 @@
       "description": "Repository",
       "schema": {
         "$ref": "#/definitions/Repository"
+      }
+    },
+    "RepositoryList": {
+      "description": "RepositoryList",
+      "headers": {
+        "X-Total-Count": {
+          "description": "The total number of repositories",
+          "format": "int64",
+          "type": "integer"
+        }
+      },
+      "schema": {
+        "items": {
+          "$ref": "#/definitions/Repository"
+        },
+        "type": "array"
       }
     },
     "SearchResults": {

@@ -1,8 +1,10 @@
 # `ward ops forgejo` (in-binary mount)
 
 ward#92 cut the `ward` binary over to the ward-kdl forgejo guardfile: `ward ops
-forgejo <verb>` mounts the full 40-leaf `specverb` surface directly in the
-shipped binary, alongside the out-of-band [`ward-kdl`](ops-forgejo.md).
+forgejo <verb>` mounts the full 42-leaf `specverb` surface directly in the
+shipped binary, alongside the out-of-band [`ward-kdl`](ops-forgejo.md). Every
+Forgejo call ward makes - `ward agent`, the container reaper - routes through
+this mount; the old hand-rolled client is retired (see below).
 
 The forgejo guardfile is pure `specverb` (HTTP/REST), so it carries no AWS SDK
 and folds into ward's normal `go build` cleanly - unlike the exec-transport
@@ -17,39 +19,41 @@ byte-for-byte copies of `cmd/ward-kdl/`'s canonical guardfile + spec lock. The
 ward-kdl files stay the single source of truth (`make build-ward-kdl` re-runs
 `make sync-ops-assets`); `cmd/ward/opsassets_test.go` fails the build on drift.
 
-## Why `cmd/ward/forgejo_issue.go` stays
+## `forgejo_issue.go` is retired (ward#92)
 
-ward#92 also asked to retire `forgejo_issue.go` - ward's hand-rolled Forgejo
-client behind `ward agent` and the container reaper. That retirement is
-**blocked** on the runtime as it stands; the file is still load-bearing:
+ward's hand-rolled Forgejo client is gone. Everything `ward agent` and the
+container reaper need - issue/comment reads, issue/comment writes, close, the
+salvage append, and the route survey - now routes through this mount via
+`cmd/ward/forgejo_ops.go`, a thin client that shells the ward binary back to its
+own `ops forgejo` leaves. The three seams that once blocked the cut all resolved
+in the runtime (cli-guard v0.44.0):
 
-- **The argv gate rejects rich bodies.** Every wrapped verb runs its argv
-  through cli-guard's shell-metacharacter policy. ward's programmatic writes
-  (salvage reports, reservation/pre-flight comments) are markdown full of
-  backticks, `$`, and newlines; routed as `--body` they are refused, and the
-  guardfile exposes no file-based body input.
-- **SSM-only auth vs. the no-SSM reaper.** The guardfile authenticates from SSM,
-  but the in-container reaper (`container_reap.go`) files salvage issues with the
-  baked `$FORGEJO_TOKEN` and has no AWS/SSM.
-- **No programmatic capture.** `specverb` renders to stdout and surfaces non-2xx
-  only as an error string, but the read seams (issue + comment fetch) need the
-  decoded JSON *structs* back in Go.
+- **Rich bodies ride `--body-file`.** Programmatic writes (salvage reports,
+  reservation/pre-flight comments) are markdown full of backticks, `$`, and
+  newlines that the argv shell-metacharacter gate refuses inline. `forgejo_ops.go`
+  signs the body, writes it to a temp JSON file, and passes `--body-file <path>`;
+  the path carries no metacharacters and the body never touches the gate.
+- **One auth seam covers host and container.** The guardfile's `value ssm` address
+  resolves through `forgejoTokenResolver` (`ops.go`): the baked `$FORGEJO_TOKEN`
+  inside a container (the reaper has no AWS/SSM), else the coilyco-ops bot token
+  from SSM on a host. The reaper drives the same client the host flows do.
+- **Reads capture `--output json`.** Each read leaf renders its response body to
+  stdout; `forgejo_ops.go` captures it and `json.Unmarshal`s the `Issue` /
+  comment / repo structs back in Go - no new cli-guard API, just the rendered
+  body plus a decode.
 
-Full retirement waits on a programmatic-capture API in cli-guard plus a
-body-by-file / trusted-call path and a reaper auth seam - follow-up to ward#92.
+The survey's owner-repo listing needed two read leaves the guardfile did not yet
+grant, so ward#92 grew it by two: `org-repo list` (GET /orgs/{org}/repos) and
+`user-repo list` (GET /users/{username}/repos), the org and user halves the
+catalog walks across the primary owners (the coilyco-* orgs and the coilysiren
+user). The forgejo surface is now 42 leaves.
 
-### What did migrate: the scalar-read seam (ward#172)
-
-The one read that *didn't* need a struct - the `ward agent` stale-ward check's
-"latest ward release tag" lookup - moved off its own hand-rolled HTTP client and
-onto this mount. A single scalar clears the capture blocker without a new API:
-ward shells itself to `ops forgejo release list <owner> <repo> --query
-"[0].tag_name" --output text` and reads the projected tag off stdout (see
-[agent-reservation.md](agent-reservation.md#host-stale-ward-reminder-ward143)). `forgejo_issue.go` can't
-follow suit - it needs whole `Issue`/comment objects, not a `--query` scalar, and
-still hits the body-gate and reaper-auth blockers above.
+The stale-ward release-tag scalar read had already moved onto this mount ahead of
+the rest (ward#172): `ops forgejo release list <owner> <repo> --query
+"[0].tag_name" --output text` (see
+[agent-reservation.md](agent-reservation.md#host-stale-ward-reminder-ward143)).
 
 ## See also
 
 - [ops-forgejo.md](ops-forgejo.md) - the ward-kdl proving ground + guardfile.
-- [container-reap.md](container-reap.md) - a seam `forgejo_issue.go` still serves.
+- [container-reap.md](container-reap.md) - the reaper's salvage-issue seam, now on this mount.
