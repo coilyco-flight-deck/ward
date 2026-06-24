@@ -19,7 +19,12 @@ behind. See [docs/agent.md](agent.md) for the family overview.
   When dispatched from a terminal it first runs a **pre-flight check** (see
   [docs/agent-preflight.md](agent-preflight.md)) - fire-and-forget: a GO launches
   the run, a NO-GO comments on the issue and launches nothing, with no prompt to
-  answer.
+  answer. Its seed also asks it to **close with a "how it felt" comment** (ward#281):
+  once the work is merged and pushed, the agent posts a short, candid retrospective
+  on the issue - how the work went, what fought back, its confidence, any follow-ups.
+  A fire-and-forget run has no human in the loop, so this comment is the only voice
+  it leaves behind. `task` and ROUTE inherit it (they run the same headless carry);
+  interactive `work` omits it (a human is already watching).
 - **`task`** files an issue from `--instructions` first, then runs the `headless`
   flow against it (carries to merge, `closes #N`). See [docs/agent-task.md](agent-task.md).
 - **`reply`** researches an issue one-shot and posts the answer as a comment - no

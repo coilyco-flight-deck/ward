@@ -68,7 +68,7 @@ func TestAgentIssueRefURL(t *testing.T) {
 func TestAgentSeedPrompt(t *testing.T) {
 	ref := agentIssueRef{Owner: "coilyco-flight-deck", Repo: "ward", Number: 98}
 	// A vision-capable harness with a real body keeps the read-it-at-the-URL flow.
-	got := agentSeedPrompt(ref, "  container verb family  ", "do the thing", "", modeClaude)
+	got := agentSeedPrompt(ref, "  container verb family  ", "do the thing", "", modeClaude, false)
 	for _, want := range []string{
 		"coilyco-flight-deck/ward#98",
 		"container verb family",    // title, trimmed
@@ -85,7 +85,7 @@ func TestAgentSeedPrompt(t *testing.T) {
 		t.Errorf("seed prompt should omit the operator note when details is empty\n got: %s", got)
 	}
 	// An empty title degrades gracefully, never blank-quotes.
-	if !strings.Contains(agentSeedPrompt(ref, "   ", "b", "", modeClaude), "(untitled)") {
+	if !strings.Contains(agentSeedPrompt(ref, "   ", "b", "", modeClaude, false), "(untitled)") {
 		t.Error("empty title should render as (untitled)")
 	}
 }
@@ -95,7 +95,7 @@ func TestAgentSeedPrompt(t *testing.T) {
 func TestAgentSeedPromptEmptyBody(t *testing.T) {
 	ref := agentIssueRef{Owner: "coilyco-flight-deck", Repo: "ward", Number: 151}
 	for _, mode := range agentModes {
-		got := agentSeedPrompt(ref, "setup ward-kdl", "   \n  ", "", mode)
+		got := agentSeedPrompt(ref, "setup ward-kdl", "   \n  ", "", mode, false)
 		if !strings.Contains(got, "This issue has no body") {
 			t.Errorf("%s: empty body should be called out explicitly\n got: %s", mode, got)
 		}
@@ -118,7 +118,7 @@ func TestAgentSeedPromptEmptyBody(t *testing.T) {
 func TestAgentSeedPromptNonVisionInlines(t *testing.T) {
 	ref := agentIssueRef{Owner: "coilyco-flight-deck", Repo: "ward", Number: 98}
 	body := "Real instructions here.\n\n![screenshot](https://imgur.com/7K8q4pQ.png)\n\nSee https://example.com/shot.PNG?v=2 too.\n\nKeep https://example.com/page for context."
-	got := agentSeedPrompt(ref, "fix it", body, "", modeGoose)
+	got := agentSeedPrompt(ref, "fix it", body, "", modeGoose, false)
 	for _, want := range []string{
 		"issue body (inlined; media stripped)", // the inline marker
 		"Real instructions here.",              // the real content survives
@@ -139,7 +139,7 @@ func TestAgentSeedPromptNonVisionInlines(t *testing.T) {
 		}
 	}
 	// A vision-capable harness still reads the body at the URL, no inlining.
-	vis := agentSeedPrompt(ref, "fix it", body, "", modeClaude)
+	vis := agentSeedPrompt(ref, "fix it", body, "", modeClaude, false)
 	if strings.Contains(vis, "inlined; media stripped") {
 		t.Errorf("vision harness should not inline the body\n got: %s", vis)
 	}
@@ -147,7 +147,7 @@ func TestAgentSeedPromptNonVisionInlines(t *testing.T) {
 		t.Errorf("vision harness should keep the read-it-at-the-URL flow\n got: %s", vis)
 	}
 	// A body that is nothing but an image collapses to the empty-body path.
-	onlyImg := agentSeedPrompt(ref, "fix it", "![x](https://imgur.com/a.png)", "", modeGoose)
+	onlyImg := agentSeedPrompt(ref, "fix it", "![x](https://imgur.com/a.png)", "", modeGoose, false)
 	if !strings.Contains(onlyImg, "This issue has no body") {
 		t.Errorf("image-only body should fall back to the empty-body action\n got: %s", onlyImg)
 	}
@@ -155,7 +155,7 @@ func TestAgentSeedPromptNonVisionInlines(t *testing.T) {
 
 func TestAgentSeedPromptDetails(t *testing.T) {
 	ref := agentIssueRef{Owner: "coilyco-flight-deck", Repo: "ward", Number: 98}
-	got := agentSeedPrompt(ref, "container verb family", "a body", "  do it like this instead, not that  ", modeClaude)
+	got := agentSeedPrompt(ref, "container verb family", "a body", "  do it like this instead, not that  ", modeClaude, false)
 	for _, want := range []string{
 		"Operator note",            // the labeled note section (ward#167)
 		"--details",                // names where it came from
@@ -168,8 +168,39 @@ func TestAgentSeedPromptDetails(t *testing.T) {
 		}
 	}
 	// Whitespace-only details is treated as no note.
-	if strings.Contains(agentSeedPrompt(ref, "t", "b", "   \n  ", modeClaude), "Operator note") {
+	if strings.Contains(agentSeedPrompt(ref, "t", "b", "   \n  ", modeClaude, false), "Operator note") {
 		t.Error("whitespace-only details should not render an operator note")
+	}
+}
+
+// TestAgentSeedPromptHeadlessReflection covers ward#281: a headless, fire-and-forget
+// run closes its seed with a "how it felt" retrospective ask; interactive work omits it.
+func TestAgentSeedPromptHeadlessReflection(t *testing.T) {
+	ref := agentIssueRef{Owner: "coilyco-flight-deck", Repo: "ward", Number: 281}
+	headless := agentSeedPrompt(ref, "post a felt comment", "do the thing", "", modeClaude, true)
+	for _, want := range []string{
+		"how the",     // names the retrospective shape
+		"\"felt\"",    // the word the issue asks for, quoted
+		"closes #281", // the base carry-to-merge seed survives
+	} {
+		if !strings.Contains(headless, want) {
+			t.Errorf("headless seed missing %q\n got: %s", want, headless)
+		}
+	}
+	// The reflection is the final ask, after the close trailer (it runs last).
+	if strings.Index(headless, "\"felt\"") < strings.Index(headless, "closes #281") {
+		t.Errorf("reflection should follow the carry-to-merge instruction\n got: %s", headless)
+	}
+	// Interactive work has a human watching, so it omits the reflection entirely.
+	interactive := agentSeedPrompt(ref, "post a felt comment", "do the thing", "", modeClaude, false)
+	if strings.Contains(interactive, "\"felt\"") {
+		t.Errorf("interactive work seed should omit the headless reflection\n got: %s", interactive)
+	}
+	// The reflection rides on the headless flag, not the harness - every driver gets it.
+	for _, mode := range agentModes {
+		if !strings.Contains(agentSeedPrompt(ref, "t", "a body", "", mode, true), "\"felt\"") {
+			t.Errorf("%s: headless seed should carry the reflection ask", mode)
+		}
 	}
 }
 

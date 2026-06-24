@@ -111,9 +111,17 @@ const emptyBodySeedAction = "This issue has no body, so work from the title alon
 	"issue content, screenshots, or other artifacts that are not there (an empty body is not an " +
 	"invitation to invent one). The comment thread at that URL may hold later context worth a quick read."
 
-// agentSeedPrompt seeds the agent: the issue, a mode-aware first move (ward#157),
-// and an optional authoritative --details note (ward#167). See docs/agent.md.
-func agentSeedPrompt(ref agentIssueRef, title, body, details string, mode containerMode) string {
+// headlessReflectionAction is the headless run's closing move (ward#281): post a
+// short "how it felt" retrospective once merged - see docs/agent-subcommands.md.
+const headlessReflectionAction = "Finally, as your very last step - only after the work is committed, merged " +
+	"to main, and pushed - post a SHORT comment on this issue (a few sentences, in your own voice) on how the " +
+	"implementation \"felt\": how the work went, anything that surprised you or fought back, how confident you " +
+	"are in the result, and any rough edges or follow-ups worth filing. This is a candid retrospective, not a " +
+	"status report or a changelog - keep it brief and honest, and post it even if the work went smoothly."
+
+// agentSeedPrompt seeds the agent: the issue, a mode-aware first move (ward#157), an
+// optional --details note (ward#167), and a headless "felt" reflection (ward#281).
+func agentSeedPrompt(ref agentIssueRef, title, body, details string, mode containerMode, headless bool) string {
 	title = strings.TrimSpace(title)
 	if title == "" {
 		title = "(untitled)"
@@ -149,6 +157,11 @@ func agentSeedPrompt(ref agentIssueRef, title, body, details string, mode contai
 			"\n\nOperator note (added at dispatch via --details; treat it as authoritative and "+
 				"let it override the issue text where they conflict):\n%s",
 			details)
+	}
+	// A headless run detaches with no human watching, so ask it to close with a
+	// short retrospective comment - the only voice it leaves behind (ward#281).
+	if headless {
+		seed += "\n\n" + headlessReflectionAction
 	}
 	return seed + inline
 }
@@ -326,7 +339,10 @@ func (r *Runner) resolveAgentWork(ctx context.Context, c *cli.Command, mode cont
 	if eerr != nil {
 		return resolvedWork{}, fmt.Errorf("%s: %w", label, eerr)
 	}
-	return resolvedWork{Ref: ref, Title: title, Body: issue.Body, Comments: comments, Details: details, ExtraRepos: extra, Seed: agentSeedPrompt(ref, title, issue.Body, details, mode)}, nil
+	// headless detaches fire-and-forget, so its seed gets the closing reflection
+	// (ward#281); interactive work has a human watching and skips it.
+	headless := surface == "headless"
+	return resolvedWork{Ref: ref, Title: title, Body: issue.Body, Comments: comments, Details: details, ExtraRepos: extra, Seed: agentSeedPrompt(ref, title, issue.Body, details, mode, headless)}, nil
 }
 
 // fetchIssueComments returns the comment thread (oldest first) for the pre-flight
@@ -1007,9 +1023,9 @@ func (r *Runner) runAgentTaskDirect(ctx context.Context, c *cli.Command, mode co
 		}
 	}
 
-	// task's full instruction set is the filed body, so no --details note (ward#167);
-	// a non-vision harness inlines that body directly (ward#157).
-	seed := agentSeedPrompt(ref, title, body, "", mode)
+	// task's full instructions are the filed body (no --details, ward#167); it runs
+	// the headless carry, so the seed is headless: inlined body + reflection (#157/#281).
+	seed := agentSeedPrompt(ref, title, body, "", mode, true)
 	return r.launchAgentContainer(ctx, c, mode, "task", true, ref, title, seed)
 }
 
@@ -1023,7 +1039,7 @@ func printAgentTaskPlan(c *cli.Command, mode containerMode, repo targetRepo, tit
 	// A placeholder ref renders the seed shape; the real number is only known
 	// once the issue is filed (which --print deliberately skips).
 	previewRef := agentIssueRef{Owner: repo.Owner, Repo: repo.Name, Number: 0}
-	seed := agentSeedPrompt(previewRef, title, body, "", mode)
+	seed := agentSeedPrompt(previewRef, title, body, "", mode, true)
 	plan, err := buildUpPlan(c, repo, mode, "", "", []string{seed})
 	if err != nil {
 		return err
