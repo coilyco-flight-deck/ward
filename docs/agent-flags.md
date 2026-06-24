@@ -5,7 +5,7 @@ for the verb family.
 
 ## Flags
 
-`work` carries the `container up` launch flags: `--aws`, `--detach`,
+`work` carries the container bring-up launch flags: `--aws`, `--detach`,
 `--tag`/`--image`, `--ward-source`, `--no-pull`, `--branch` to override the
 `issue-<N>` default, and `--with-repo owner/name` (repeatable) to grant extra
 writable repos cloned full alongside the issue's repo (multi-repo runs,
@@ -59,4 +59,4 @@ paste in a tab by hand. The agentic-os Warp configs and the shim live under
 ## See also
 
 - [docs/agent.md](agent.md) - the `ward agent` verb family and usage.
-- [docs/container.md](container.md) - the `container up` flags `work` carries.
+- [docs/container.md](container.md) - the container bring-up flags `work` carries.

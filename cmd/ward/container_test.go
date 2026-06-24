@@ -5,6 +5,7 @@ import (
 	"fmt"
 	"os"
 	"path/filepath"
+	"regexp"
 	"slices"
 	"strings"
 	"testing"
@@ -444,23 +445,113 @@ func TestDockerCreateArgvAttachedNoTTY(t *testing.T) {
 	}
 }
 
-func TestDockerExecDownListArgv(t *testing.T) {
-	exec := dockerExecArgv("ward-eco-app-deadbeef", true, []string{"ward", "exec", "test"})
-	if strings.Join(exec, " ") != "exec -it ward-eco-app-deadbeef ward exec test" {
-		t.Errorf("exec argv wrong: %v", exec)
+// TestContainerNamespaceHiddenPlumbingOnly locks in ward#263: the container
+// umbrella is Hidden with only reap+bootstrap (Hidden); up/exec/down/ls are gone.
+func TestContainerNamespaceHiddenPlumbingOnly(t *testing.T) {
+	c := containerCommand()
+	if !c.Hidden {
+		t.Error("container umbrella must be Hidden so `ward --help` drops it (ward#263)")
 	}
-	execNoTTY := dockerExecArgv("ward-eco-app-deadbeef", false, []string{"ward", "exec", "test"})
-	if strings.Join(execNoTTY, " ") != "exec -i ward-eco-app-deadbeef ward exec test" {
-		t.Errorf("exec no-TTY argv wrong: %v", execNoTTY)
+	got := map[string]bool{}
+	for _, sub := range c.Commands {
+		got[sub.Name] = true
+		if !sub.Hidden {
+			t.Errorf("remaining container leaf %q must be Hidden (entrypoint-internal)", sub.Name)
+		}
 	}
-	down := dockerDownArgv("ward-eco-app-deadbeef")
-	if strings.Join(down, " ") != "rm -f ward-eco-app-deadbeef" {
-		t.Errorf("down argv wrong: %v", down)
+	for _, want := range []string{"reap", "bootstrap"} {
+		if !got[want] {
+			t.Errorf("entrypoint-internal leaf %q must stay registered+resolvable", want)
+		}
 	}
-	list := dockerListArgv(true)
-	lj := strings.Join(list, " ")
-	if !strings.Contains(lj, "ps") || !strings.Contains(lj, "-a") || !strings.Contains(lj, "label="+containerLabel) {
-		t.Errorf("list argv wrong: %v", list)
+	for _, gone := range []string{"up", "exec", "down", "ls", "list"} {
+		if got[gone] {
+			t.Errorf("retired user-facing verb %q must be removed (ward#263)", gone)
+		}
+	}
+}
+
+// TestEntrypointContainerVerbsResolve is the static acceptance gate (ward#263):
+// every `ward container <verb>` the entrypoint invokes must resolve to a leaf.
+func TestEntrypointContainerVerbsResolve(t *testing.T) {
+	data, err := containerAssets.ReadFile("containerassets/entrypoint.sh")
+	if err != nil {
+		t.Fatalf("read embedded entrypoint: %v", err)
+	}
+	registered := map[string]bool{}
+	for _, sub := range containerCommand().Commands {
+		registered[sub.Name] = true
+	}
+	re := regexp.MustCompile(`ward container ([a-z][a-z0-9-]*)`)
+	var found int
+	// Skip comments and string-emitting builtins (echo/printf/log/...): prose like
+	// "the ward container entrypoint" is a noun phrase, not an invocation.
+	emitter := regexp.MustCompile(`^(echo|printf|log|cat|die)\b`)
+	for _, line := range strings.Split(string(data), "\n") {
+		trimmed := strings.TrimSpace(line)
+		if strings.HasPrefix(trimmed, "#") || emitter.MatchString(trimmed) {
+			continue
+		}
+		for _, m := range re.FindAllStringSubmatch(line, -1) {
+			found++
+			if !registered[m[1]] {
+				t.Errorf("entrypoint calls `ward container %s` but no such leaf is registered", m[1])
+			}
+		}
+	}
+	if found == 0 {
+		t.Fatal("expected the entrypoint to invoke at least one `ward container <verb>`")
+	}
+}
+
+func TestDockerExitedListArgv(t *testing.T) {
+	argv := strings.Join(dockerExitedListArgv(), " ")
+	for _, want := range []string{"ps", "-a", "label=" + containerLabel, "status=exited", "{{.Names}}"} {
+		if !strings.Contains(argv, want) {
+			t.Errorf("exited-list argv %q missing %q", argv, want)
+		}
+	}
+}
+
+func TestStaleContainersToReap(t *testing.T) {
+	// `docker ps` lists newest first; the sweep keeps the leading `keep` for
+	// post-mortem and returns the older tail for removal.
+	const ps = "ward-c-newest\nward-c-2\nward-c-3\nward-c-oldest\n"
+	cases := []struct {
+		name string
+		in   string
+		keep int
+		want []string
+	}{
+		{"keeps newest, reaps tail", ps, 2, []string{"ward-c-3", "ward-c-oldest"}},
+		{"keep covers all", ps, 4, nil},
+		{"keep exceeds count", ps, 10, nil},
+		{"keep zero reaps all", "ward-a\nward-b\n", 0, []string{"ward-a", "ward-b"}},
+		{"negative keep clamps to zero", "ward-a\n", -3, []string{"ward-a"}},
+		{"blank lines ignored", "\nward-a\n\n  \nward-b\n", 1, []string{"ward-b"}},
+		{"empty input", "", 2, nil},
+	}
+	for _, c := range cases {
+		t.Run(c.name, func(t *testing.T) {
+			got := staleContainersToReap(c.in, c.keep)
+			if strings.Join(got, ",") != strings.Join(c.want, ",") {
+				t.Errorf("staleContainersToReap(keep=%d) = %v, want %v", c.keep, got, c.want)
+			}
+		})
+	}
+}
+
+func TestDockerRmArgv(t *testing.T) {
+	if got := dockerRmArgv(nil); got != nil {
+		t.Errorf("empty names should yield nil argv, got %v", got)
+	}
+	got := strings.Join(dockerRmArgv([]string{"ward-a", "ward-b"}), " ")
+	if got != "rm ward-a ward-b" {
+		t.Errorf("rm argv wrong: %q", got)
+	}
+	// The sweep targets only already-exited containers, so -f is never added.
+	if strings.Contains(got, "-f") {
+		t.Errorf("stale sweep must not force-kill: %q", got)
 	}
 }
 

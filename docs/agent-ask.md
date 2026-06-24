@@ -28,7 +28,7 @@ any trailing words are joined so an unquoted multi-word question still works.
 
 1. **Join + validate** the question (required).
 2. **Resolve** the context repo: `--repo owner/repo`, else inferred from the cwd's
-   git origin - the same resolution `ward container up` uses for its positional.
+   git origin - the same target resolution the container bring-up uses.
 3. **Trust-gate** the owner (primary-org set), since ask spins a bypassPermissions
    container and clones the repo - the same gate `work`/`task` apply.
 4. **Spin up** a fresh ephemeral container, attached, that fresh-clones the repo and
@@ -64,7 +64,7 @@ daemon.
 ## Other flags
 
 `--repo`, `--image`, `--tag`, `--ward-source`, `--aws`, and `--no-pull` mirror
-[`ward container up`](container.md) / [`work`](agent.md). ask is always attached and
+the [container](container.md) bring-up flags [`work`](agent.md) carries. ask is always attached and
 ephemeral, so there is no `--detach`, no branch, and no reservation.
 
 ## See also

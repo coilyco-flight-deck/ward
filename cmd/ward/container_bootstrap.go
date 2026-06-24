@@ -2,6 +2,7 @@ package main
 
 import (
 	"bufio"
+	"bytes"
 	"context"
 	"encoding/base64"
 	"encoding/json"
@@ -728,15 +729,15 @@ func (r *Runner) reap(ctx context.Context, work string) {
 	blog("reaping: salvage residual work before teardown")
 	env, eerr := readReapEnv()
 	if eerr != nil {
-		blog("reaper returned non-zero; check this log for an UNPRESERVED PATCH block before 'ward container down'")
+		blog("reaper returned non-zero; check this log for an UNPRESERVED PATCH block before the container is removed")
 		return
 	}
 	if !isGitWorkTree(ctx, r, work) {
-		blog("reaper returned non-zero; check this log for an UNPRESERVED PATCH block before 'ward container down'")
+		blog("reaper returned non-zero; check this log for an UNPRESERVED PATCH block before the container is removed")
 		return
 	}
 	if rerr := r.reapWorkTree(ctx, work, env); rerr != nil {
-		blog("reaper returned non-zero; check this log for an UNPRESERVED PATCH block before 'ward container down'")
+		blog("reaper returned non-zero; check this log for an UNPRESERVED PATCH block before the container is removed")
 	}
 }
 
@@ -762,10 +763,29 @@ func (r *Runner) reapWorkTree(ctx context.Context, work string, env reapEnv) err
 	return r.executeReap(ctx, work, env, action, findings, statusSnapshot)
 }
 
-// --- pre-launch auth smoke test (ward#222) -----------------------------------
+// --- pre-launch auth smoke test (ward#222, disk-aware diagnostics ward#273) --
 
-// smokeTestClaudeAuth ports smoke_test_claude_auth: a bounded claude probe as
-// the agent user; abort loudly on can't-auth (no silent hang). claude headless only.
+// smokeTestDiskPaths are the mounts whose exhaustion stalls claude at startup:
+// / and /workspace (clone + agent HOME), where a full disk wedges ~/.claude (ward#273).
+var smokeTestDiskPaths = []string{"/", "/workspace"}
+
+// smokeTestDiskFloorBytes is the free-space floor below which a claude startup
+// hang is far more likely disk exhaustion than an auth failure (ward#273).
+const smokeTestDiskFloorBytes = 512 * 1024 * 1024 // 512MiB
+
+// authErrorMarkers mark a real credential rejection, not a disk/network hang, so
+// re-login is suggested only on a true auth failure (synced with entrypoint.sh).
+var authErrorMarkers = []string{
+	"not logged in",
+	"401",
+	"invalid api key",
+	"authentication_error",
+	"unauthorized",
+	"please run /login",
+}
+
+// smokeTestClaudeAuth ports smoke_test_claude_auth: a bounded claude probe as the
+// agent user. A timeout/non-auth stall reports disk, not the login (ward#222, ward#273).
 func (r *Runner) smokeTestClaudeAuth(ctx context.Context, e bootstrapEnv) error {
 	if e.Agent != "claude" || !e.Headless {
 		return nil
@@ -777,33 +797,102 @@ func (r *Runner) smokeTestClaudeAuth(ctx context.Context, e bootstrapEnv) error 
 	if !commandExists("claude") {
 		return nil
 	}
+	// Pre-flight headroom (ward#273): surface a near-full disk now, before the
+	// 90s wait, so a disk problem cannot masquerade as an auth problem later.
+	if low := lowDiskPaths(smokeTestDiskPaths, smokeTestDiskFloorBytes); len(low) > 0 {
+		blog("auth smoke test: WARNING low disk before probe - %s; a claude startup hang here is likely disk exhaustion, not credentials (ward#273)", diskReport(smokeTestDiskPaths))
+	}
 	blog("auth smoke test: probing claude before launch (ward#222)")
 	probeCtx, cancel := context.WithTimeout(ctx, 90*time.Second)
 	defer cancel()
 	argv := append(setprivPrefix(e), "claude", "-p", "--output-format", "json", "Reply with the single word: ok")
-	out, rc := r.captureProbe(probeCtx, argv)
+	out, stderr, rc := r.captureProbe(probeCtx, argv)
 	if probeCtx.Err() == context.DeadlineExceeded {
-		return fmt.Errorf("auth smoke test: claude -p did not respond within 90s - credentials are unusable in-container (ward#222). Refresh the host claude login (re-run 'claude' on the host) and relaunch; WARD_SMOKE_TEST_SKIP=1 bypasses")
+		return fmt.Errorf("auth smoke test: claude -p did not respond within 90s - a startup hang, not necessarily an auth problem (ward#222, ward#273). Likely causes: a full disk (claude cannot write ~/.claude), network, or a slow cold start. Disk: %s. If disk is low, free space on the Docker host; otherwise refresh the host claude login (re-run 'claude' on the host) and relaunch. WARD_SMOKE_TEST_SKIP=1 bypasses", diskReport(smokeTestDiskPaths))
 	}
 	if rc != 0 || strings.TrimSpace(out) == "" {
-		return fmt.Errorf("auth smoke test: claude -p produced no usable output (exit %d) - credentials are unusable in-container (ward#222). Refresh the host claude login and relaunch; WARD_SMOKE_TEST_SKIP=1 bypasses", rc)
+		if looksLikeAuthError(stderr) || looksLikeAuthError(out) {
+			return fmt.Errorf("auth smoke test: claude -p rejected the credentials (exit %d) - they are unusable in-container (ward#222). Refresh the host claude login (re-run 'claude' on the host) and relaunch; WARD_SMOKE_TEST_SKIP=1 bypasses", rc)
+		}
+		return fmt.Errorf("auth smoke test: claude -p produced no usable output (exit %d) without an auth error - more likely a disk/network/startup problem than credentials (ward#222, ward#273). Disk: %s. WARD_SMOKE_TEST_SKIP=1 bypasses", rc, diskReport(smokeTestDiskPaths))
 	}
 	blog("auth smoke test: claude responded, auth OK")
 	return nil
 }
 
-// captureProbe runs the smoke-test argv with stdin pinned to /dev/null and
-// stderr discarded, capturing stdout; returns stdout + exit code.
-func (r *Runner) captureProbe(ctx context.Context, argv []string) (string, int) {
+// looksLikeAuthError reports whether s carries a genuine credential-rejection
+// marker, so re-login is only suggested for real auth failures (ward#273).
+func looksLikeAuthError(s string) bool {
+	l := strings.ToLower(s)
+	for _, m := range authErrorMarkers {
+		if strings.Contains(l, m) {
+			return true
+		}
+	}
+	return false
+}
+
+// lowDiskPaths returns the subset of paths whose free space is below floor
+// bytes. Unstattable paths are skipped (ward#273).
+func lowDiskPaths(paths []string, floor uint64) []string {
+	var low []string
+	for _, p := range paths {
+		free, _, err := diskFreeBytes(p)
+		if err != nil {
+			continue
+		}
+		if free < floor {
+			low = append(low, p)
+		}
+	}
+	return low
+}
+
+// diskReport renders free/total disk per path as one string, e.g.
+// "/ 1.2GiB free of 50.0GiB; ...". Unstattable paths are skipped (ward#273).
+func diskReport(paths []string) string {
+	var parts []string
+	for _, p := range paths {
+		free, total, err := diskFreeBytes(p)
+		if err != nil {
+			continue
+		}
+		parts = append(parts, fmt.Sprintf("%s %s free of %s", p, diskBytes(free), diskBytes(total)))
+	}
+	if len(parts) == 0 {
+		return "disk usage unavailable"
+	}
+	return strings.Join(parts, "; ")
+}
+
+// diskBytes renders a byte count compactly in binary units, spanning B..EiB so
+// multi-GiB disk totals read naturally (the reap-side humanBytes caps at MiB) (ward#273).
+func diskBytes(b uint64) string {
+	const unit = 1024
+	if b < unit {
+		return fmt.Sprintf("%dB", b)
+	}
+	div, exp := uint64(unit), 0
+	for n := b / unit; n >= unit; n /= unit {
+		div *= unit
+		exp++
+	}
+	return fmt.Sprintf("%.1f%ciB", float64(b)/float64(div), "KMGTPE"[exp])
+}
+
+// captureProbe runs the smoke-test argv with /dev/null stdin and a capped stderr
+// capture, returning stdout, stderr, rc; stderr feeds the auth-vs-disk split (ward#273).
+func (r *Runner) captureProbe(ctx context.Context, argv []string) (stdout, stderr string, rc int) {
 	devnull, _ := os.Open(os.DevNull)
 	if devnull != nil {
 		defer func() { _ = devnull.Close() }()
 	}
+	errBuf := &capBuffer{max: 8192}
 	cmd := exec.CommandContext(ctx, argv[0], argv[1:]...) // #nosec G204 -- fixed setpriv/claude argv
 	cmd.Stdin = devnull
-	cmd.Stderr = io.Discard
+	cmd.Stderr = errBuf
 	out, err := cmd.Output()
-	rc := 0
+	rc = 0
 	if err != nil {
 		rc = 1
 		var ee *exec.ExitError
@@ -811,8 +900,28 @@ func (r *Runner) captureProbe(ctx context.Context, argv []string) (string, int) 
 			rc = ee.ExitCode()
 		}
 	}
-	return string(out), rc
+	return string(out), errBuf.String(), rc
 }
+
+// capBuffer retains at most max bytes but always reports a full write, so a probe
+// streaming endless stderr neither blocks nor balloons memory (ward#273).
+type capBuffer struct {
+	b   bytes.Buffer
+	max int
+}
+
+func (c *capBuffer) Write(p []byte) (int, error) {
+	if room := c.max - c.b.Len(); room > 0 {
+		if room < len(p) {
+			_, _ = c.b.Write(p[:room])
+		} else {
+			_, _ = c.b.Write(p)
+		}
+	}
+	return len(p), nil // claim full write so the child never blocks on a full pipe
+}
+
+func (c *capBuffer) String() string { return c.b.String() }
 
 // --- launch ------------------------------------------------------------------
 
