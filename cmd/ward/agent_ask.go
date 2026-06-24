@@ -101,6 +101,9 @@ func (r *Runner) runAgentAsk(ctx context.Context, c *cli.Command, mode container
 	// surface a stale-ward reminder before the container spins (ward#143).
 	r.maybeWarnWardOutdated(ctx)
 
+	// Reclaim dead containers' writable layers before adding one more, so a busy
+	// fleet can't exhaust the docker disk and wedge new launches (ward#272).
+	r.sweepStaleContainers(ctx)
 	if !c.Bool("no-pull") {
 		if perr := r.Runner.Exec(ctx, "docker", "pull", plan.Image); perr != nil {
 			fmt.Fprintf(os.Stderr, "%s: image pull failed (%v); trying the local image\n", label, perr)

@@ -482,6 +482,46 @@ func sortedKeys(m map[string]string) []string {
 	return keys
 }
 
+// containerReapKeep is how many most-recently-exited ward containers the stale
+// sweep keeps for post-mortem; older ones are reclaimed (docs/container-cleanup.md).
+const containerReapKeep = 10
+
+// dockerExitedListArgv builds the `docker ps` query for exited ward-managed
+// containers, newest first, one name per line - the stale-sweep input (ward#272).
+func dockerExitedListArgv() []string {
+	return []string{"ps", "-a",
+		"--filter", "label=" + containerLabel,
+		"--filter", "status=exited",
+		"--format", "{{.Names}}"}
+}
+
+// staleContainersToReap returns the exited-container names past the keep window
+// (newest first, as `docker ps` lists them); blanks ignored, keep-or-fewer is nil.
+func staleContainersToReap(psOutput string, keep int) []string {
+	var names []string
+	for _, line := range strings.Split(psOutput, "\n") {
+		if n := strings.TrimSpace(line); n != "" {
+			names = append(names, n)
+		}
+	}
+	if keep < 0 {
+		keep = 0
+	}
+	if len(names) <= keep {
+		return nil
+	}
+	return names[keep:]
+}
+
+// dockerRmArgv builds `docker rm <names...>` (no -f: the sweep targets only
+// already-exited containers, never running ones). Empty names yields nil.
+func dockerRmArgv(names []string) []string {
+	if len(names) == 0 {
+		return nil
+	}
+	return append([]string{"rm"}, names...)
+}
+
 // imageRef joins an image and tag, leaving an already-tagged or digest-pinned
 // ref untouched.
 func imageRef(image, tag string) string {

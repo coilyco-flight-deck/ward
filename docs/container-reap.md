@@ -36,8 +36,8 @@ junk to `main` - a false-positive scan only parks clean work, never discards it.
 The branch push comes before the issue, so a failed issue is a missed
 notification, not lost work. If even the branch push fails (remote unreachable),
 the reaper dumps the patch to the container log, recoverable via `docker logs`
-before the container is removed. It uses the container's `FORGEJO_TOKEN` directly,
-so filing needs no `--aws`/SSM surface.
+while it survives the keep-10 sweep ([container-cleanup.md](container-cleanup.md)).
+Filing uses the baked `FORGEJO_TOKEN`, no SSM.
 
 The agent's job is to make the reaper's trivial: finish the feature, push to
 `main`, leave a clean tree. The reaper is the backstop that makes the guarantee

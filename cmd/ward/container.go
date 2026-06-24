@@ -343,6 +343,27 @@ func sweepStaleContainerAssets() {
 	}
 }
 
+// sweepStaleContainers host-side-reclaims exited ward containers' writable layers
+// before a run, keeping the recent containerReapKeep (docs/container-cleanup.md).
+func (r *Runner) sweepStaleContainers(ctx context.Context) {
+	out, err := r.Runner.Capture(ctx, "docker", dockerExitedListArgv()...)
+	if err != nil {
+		// No docker / daemon down / query failed: nothing to sweep, and the
+		// cleanup courtesy must never block a launch.
+		return
+	}
+	stale := staleContainersToReap(string(out), containerReapKeep)
+	if len(stale) == 0 {
+		return
+	}
+	fmt.Fprintf(os.Stderr, "ward container: reclaiming %d exited ward container(s) past the keep-%d window (ward#272)\n", len(stale), containerReapKeep)
+	// `docker rm` returns non-zero if one name raced into removal; the rest still
+	// go, so a missed reclaim is logged, never a launch failure.
+	if rmErr := r.Runner.Exec(ctx, "docker", dockerRmArgv(stale)...); rmErr != nil {
+		fmt.Fprintf(os.Stderr, "ward container: stale-container sweep had a non-zero rm (%v); continuing\n", rmErr)
+	}
+}
+
 // writeContainerAssets materializes the embedded entrypoint + doctrine into a
 // per-run tmp dir mounted read-only at /opt/ward, sweeping stale dirs first.
 func writeContainerAssets() (dir string, cleanup func(), err error) {

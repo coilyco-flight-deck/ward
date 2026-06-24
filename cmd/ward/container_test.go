@@ -504,6 +504,57 @@ func TestEntrypointContainerVerbsResolve(t *testing.T) {
 	}
 }
 
+func TestDockerExitedListArgv(t *testing.T) {
+	argv := strings.Join(dockerExitedListArgv(), " ")
+	for _, want := range []string{"ps", "-a", "label=" + containerLabel, "status=exited", "{{.Names}}"} {
+		if !strings.Contains(argv, want) {
+			t.Errorf("exited-list argv %q missing %q", argv, want)
+		}
+	}
+}
+
+func TestStaleContainersToReap(t *testing.T) {
+	// `docker ps` lists newest first; the sweep keeps the leading `keep` for
+	// post-mortem and returns the older tail for removal.
+	const ps = "ward-c-newest\nward-c-2\nward-c-3\nward-c-oldest\n"
+	cases := []struct {
+		name string
+		in   string
+		keep int
+		want []string
+	}{
+		{"keeps newest, reaps tail", ps, 2, []string{"ward-c-3", "ward-c-oldest"}},
+		{"keep covers all", ps, 4, nil},
+		{"keep exceeds count", ps, 10, nil},
+		{"keep zero reaps all", "ward-a\nward-b\n", 0, []string{"ward-a", "ward-b"}},
+		{"negative keep clamps to zero", "ward-a\n", -3, []string{"ward-a"}},
+		{"blank lines ignored", "\nward-a\n\n  \nward-b\n", 1, []string{"ward-b"}},
+		{"empty input", "", 2, nil},
+	}
+	for _, c := range cases {
+		t.Run(c.name, func(t *testing.T) {
+			got := staleContainersToReap(c.in, c.keep)
+			if strings.Join(got, ",") != strings.Join(c.want, ",") {
+				t.Errorf("staleContainersToReap(keep=%d) = %v, want %v", c.keep, got, c.want)
+			}
+		})
+	}
+}
+
+func TestDockerRmArgv(t *testing.T) {
+	if got := dockerRmArgv(nil); got != nil {
+		t.Errorf("empty names should yield nil argv, got %v", got)
+	}
+	got := strings.Join(dockerRmArgv([]string{"ward-a", "ward-b"}), " ")
+	if got != "rm ward-a ward-b" {
+		t.Errorf("rm argv wrong: %q", got)
+	}
+	// The sweep targets only already-exited containers, so -f is never added.
+	if strings.Contains(got, "-f") {
+		t.Errorf("stale sweep must not force-kill: %q", got)
+	}
+}
+
 func TestImageRef(t *testing.T) {
 	cases := []struct{ image, tag, want string }{
 		{"forgejo.coilysiren.me/coilyco-flight-deck/agentic-os", "latest", "forgejo.coilysiren.me/coilyco-flight-deck/agentic-os:latest"},
