@@ -28,6 +28,10 @@ const agentReservationTTL = 2 * time.Hour
 // comment so the remote check can recognize one regardless of its prose.
 const agentReservationMarker = "<!-- ward-agent-reservation -->"
 
+// agentReservationReleaseMarker is the token a release comment carries to retract
+// a reservation a pre-launch-death container took (ward#264, docs/agent-reservation.md).
+const agentReservationReleaseMarker = "<!-- ward-agent-reservation-released -->"
+
 // agentReservation is the local sentinel payload: who holds an issue, in which
 // container, since when. Persisted as pretty JSON so a human can read it.
 type agentReservation struct {
@@ -254,23 +258,43 @@ func (r *Runner) acquireRemoteReservation(ctx context.Context, label string, mod
 	return nil
 }
 
-// freshReservationComment returns a description of the most recent still-fresh
-// reservation comment, if any, and whether one was found.
+// freshReservationComment describes the still-blocking reservation on the thread,
+// if any: the latest fresh reservation with no release (ward#264) at/after it.
 func freshReservationComment(comments []issueComment, now time.Time, ttl time.Duration) (string, bool) {
-	for _, c := range comments {
+	var latest *issueComment
+	var released time.Time
+	for i := range comments {
+		c := &comments[i]
+		// Test release first: its marker is a distinct substring, but ordering the
+		// check keeps the intent obvious.
+		if strings.Contains(c.Body, agentReservationReleaseMarker) {
+			if c.CreatedAt.After(released) {
+				released = c.CreatedAt
+			}
+			continue
+		}
 		if !strings.Contains(c.Body, agentReservationMarker) {
 			continue
 		}
 		if !reservationFresh(c.CreatedAt, now, ttl) {
 			continue
 		}
-		who := c.User.Login
-		if who == "" {
-			who = "another run"
+		if latest == nil || c.CreatedAt.After(latest.CreatedAt) {
+			latest = c
 		}
-		return fmt.Sprintf("by @%s at %s", who, c.CreatedAt.UTC().Format(time.RFC3339)), true
 	}
-	return "", false
+	if latest == nil {
+		return "", false
+	}
+	// A release stamped at or after the latest reservation retracts it.
+	if !released.Before(latest.CreatedAt) {
+		return "", false
+	}
+	who := latest.User.Login
+	if who == "" {
+		who = "another run"
+	}
+	return fmt.Sprintf("by @%s at %s", who, latest.CreatedAt.UTC().Format(time.RFC3339)), true
 }
 
 // reservationCommentBody is the marker comment a run posts to claim an issue.
@@ -280,4 +304,14 @@ func reservationCommentBody(mode containerMode, container, host string, now time
 			"Concurrent `ward agent` runs are blocked until it finishes or the reservation goes stale (%s TTL); "+
 			"`--force` overrides.",
 		agentReservationMarker, mode, container, host, now.Format(time.RFC3339), agentReservationTTL)
+}
+
+// reservationReleaseCommentBody is the marker comment the reaper posts to retract
+// a reservation whose container exited having done nothing (ward#264).
+func reservationReleaseCommentBody(mode containerMode, container string) string {
+	return fmt.Sprintf(
+		"%s\n🔓 Reservation released by `ward container reap` — container `%s` (`--driver %s`) exited without "+
+			"launching the agent (smoke-test death, ward#222/#264), so the hold it took is retracted. "+
+			"A plain `ward agent` retry no longer needs `--force`.",
+		agentReservationReleaseMarker, container, mode)
 }

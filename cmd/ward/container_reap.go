@@ -29,17 +29,30 @@ type reapEnv struct {
 	// UpAt is the container's RFC3339 start stamp (WARD_CONTAINER_UP), diffed
 	// against reap time to report the baked PAT's age on a salvage (ward#103).
 	UpAt string
+	// Issue is the carried issue number (WARD_TARGET_ISSUE, 0 for a bare `up`); a
+	// clean reap releases the reservation on it if the agent never launched (ward#264).
+	Issue int
+	// Launched mirrors WARD_AGENT_LAUNCHED: set once the entrypoint reaches the
+	// agent launch. Unset means a pre-launch death (e.g. the ward#222 smoke test).
+	Launched bool
 }
+
+// envAgentLaunched is the entrypoint flag exported just before the agent launches,
+// read by the reaper to tell a smoke-test death from a real agent run (ward#264).
+const envAgentLaunched = "WARD_AGENT_LAUNCHED"
 
 func readReapEnv() (reapEnv, error) {
 	e := reapEnv{
-		Owner: os.Getenv("WARD_TARGET_OWNER"),
-		Name:  os.Getenv("WARD_TARGET_NAME"),
-		Base:  os.Getenv("WARD_FORGEJO_BASE"),
-		Mode:  os.Getenv("WARD_MODE"),
-		Token: os.Getenv("FORGEJO_TOKEN"),
-		UpAt:  os.Getenv("WARD_CONTAINER_UP"),
+		Owner:    os.Getenv("WARD_TARGET_OWNER"),
+		Name:     os.Getenv("WARD_TARGET_NAME"),
+		Base:     os.Getenv("WARD_FORGEJO_BASE"),
+		Mode:     os.Getenv("WARD_MODE"),
+		Token:    os.Getenv("FORGEJO_TOKEN"),
+		UpAt:     os.Getenv("WARD_CONTAINER_UP"),
+		Launched: os.Getenv(envAgentLaunched) == "1",
 	}
+	// A missing/garbage WARD_TARGET_ISSUE parses to 0: "no issue to release".
+	e.Issue, _ = strconv.Atoi(os.Getenv("WARD_TARGET_ISSUE"))
 	if e.Owner == "" || e.Name == "" || e.Base == "" {
 		return e, fmt.Errorf("ward container reap: missing WARD_TARGET_OWNER/NAME/WARD_FORGEJO_BASE (run inside a ward container)")
 	}
@@ -50,6 +63,12 @@ func readReapEnv() (reapEnv, error) {
 }
 
 func (e reapEnv) repo() targetRepo { return targetRepo{Owner: e.Owner, Name: e.Name} }
+
+// reservationReleasable reports whether a clean reap should retract this run's
+// hold: only a container that carried an issue and never launched the agent (ward#264).
+func (e reapEnv) reservationReleasable() bool {
+	return !e.Launched && e.Issue != 0
+}
 
 func containerReapCommand() *cli.Command {
 	return &cli.Command{
@@ -102,6 +121,7 @@ func (r *Runner) runContainerReap(ctx context.Context, c *cli.Command) error {
 	residual := revCount(ctx, r, work, "origin/main..HEAD")
 	if residual == 0 && strings.TrimSpace(statusSnapshot) == "" {
 		fmt.Fprintln(os.Stderr, "ward container reap: nothing to reap (tree clean, HEAD on origin/main)")
+		r.releaseReservationIfUnstarted(ctx, env)
 		return nil
 	}
 
@@ -257,6 +277,30 @@ func (r *Runner) fileSalvageIssue(ctx context.Context, env reapEnv, report salva
 	}
 	fmt.Fprintf(os.Stderr, "ward container reap: filed salvage issue #%d\n", n)
 	return nil
+}
+
+// releaseReservationIfUnstarted retracts the remote issue reservation on a clean
+// reap when the agent never launched (ward#264, docs/agent-reservation.md).
+func (r *Runner) releaseReservationIfUnstarted(ctx context.Context, env reapEnv) {
+	if !env.reservationReleasable() {
+		return
+	}
+	if env.Token == "" {
+		fmt.Fprintln(os.Stderr, "ward container reap: no FORGEJO_TOKEN to release the issue reservation")
+		return
+	}
+	fc, err := r.hostForgejoClient(ctx)
+	if err != nil {
+		fmt.Fprintf(os.Stderr, "ward container reap: could not build forgejo client to release reservation: %v\n", err)
+		return
+	}
+	fc = fc.withMode(containerMode(env.Mode))
+	body := reservationReleaseCommentBody(containerMode(env.Mode), env.Name)
+	if err := fc.commentIssue(ctx, env.Owner, env.Name, env.Issue, body); err != nil {
+		fmt.Fprintf(os.Stderr, "ward container reap: could not release issue reservation on #%d: %v\n", env.Issue, err)
+		return
+	}
+	fmt.Fprintf(os.Stderr, "ward container reap: released issue reservation on #%d (container exited pre-launch, did no work)\n", env.Issue)
 }
 
 // dumpPatch writes the residual diff to stderr as a final recovery surface when

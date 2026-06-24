@@ -587,6 +587,9 @@ main() {
   # Fail loud before launch if claude can't authenticate (ward#222): a clear
   # abort beats a silent multi-minute hang. Runs as the agent user, post-chown.
   smoke_test_claude_auth
+  # Mark that we reached the real agent launch (post-smoke-test); the reaper reads
+  # this on a clean teardown to release a pre-launch-death hold (ward#264, docs).
+  export WARD_AGENT_LAUNCHED=1
   log "launching $WARD_AGENT as uid $AGENT_UID"
   local launch=(setpriv --reuid="$AGENT_UID" --regid="$AGENT_GID" --init-groups
                 env HOME="$AGENT_HOME" "${agent_argv[@]}")

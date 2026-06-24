@@ -354,6 +354,9 @@ type upPlan struct {
 	// ExtraRepos are additional writable repos this run was granted to clone +
 	// operate against (--with-repo, ward#230); see docs/container-multi-repo.md.
 	ExtraRepos []targetRepo
+	// Issue is the carried issue number (0 for a bare `container up`), exported as
+	// WARD_TARGET_ISSUE so the reaper can release a pre-launch hold (ward#264).
+	Issue int
 }
 
 // parseExtraRepos resolves the --with-repo grant (bare owner/name or clone URL):
@@ -422,6 +425,9 @@ func (p upPlan) wardEnv() map[string]string {
 	}
 	if p.Branch != "" {
 		env["WARD_BRANCH"] = p.Branch
+	}
+	if p.Issue != 0 {
+		env["WARD_TARGET_ISSUE"] = fmt.Sprintf("%d", p.Issue)
 	}
 	if p.WardFromSource {
 		env["WARD_FROM_SOURCE"] = containerWardSrcMount

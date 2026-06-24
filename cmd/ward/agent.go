@@ -749,6 +749,9 @@ func buildAgentPlan(c *cli.Command, mode containerMode, ref agentIssueRef, seed 
 	// Override the generic ward-<repo>-<rand> name with one that names the issue
 	// and harness, so a host running several agents can tell them apart.
 	plan.Name = agentContainerName(repo, mode, ref.Number, randHex())
+	// Carry the issue number into the container so the reaper can release the
+	// reservation this run took if the container dies pre-launch (ward#264).
+	plan.Issue = ref.Number
 	plan.Headless = headless
 	if detached {
 		plan.Interactive = false
