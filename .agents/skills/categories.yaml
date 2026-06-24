@@ -1,0 +1,25 @@
+# Skill-category + structural spec for ward's own .agents/skills/ surface.
+#
+# ward authors skills that reference exactly this repo - the "a single-repo
+# skill belongs in that repo" rule (ward#286). check-skills validates every
+# skill here against this spec; without it the hook is a no-op and ward's own
+# skills ship unchecked. Mirrors the relevant slice of agentic-os-kai's
+# categories.yaml (the canonical taxonomy), narrowed to what ward hosts.
+categories:
+
+  - id: repo
+    kind: prefix
+    prefix: repo-
+    role: repo-pointer
+    enforce_status: false
+
+  - id: tooling
+    kind: prefix
+    prefix: tooling-
+    enforce_status: false
+
+forbidden_body_strings: []
+
+max_skill_md_lines: 500
+max_skill_md_bytes: 10000
+max_description_bytes: 200
