@@ -41,6 +41,15 @@ excludes = [
   "cmd/ward-kdl/ward-kdl.brew.guardfile.md",
   "docs/ward-kdl.glitchtip.guardfile.md",
   "cmd/ward-kdl/ward-kdl.glitchtip.guardfile.md",
+  # Forgejo permission tiers (ward#240): one generated surface reference per
+  # read/write/admin binary, emitted beside the kdl in cmd/ward-kdl-forgejo/ and
+  # reviewed at docs/. Same generated-and-uncapped rationale as the surfaces above.
+  "docs/ward-kdl.forgejo.read.guardfile.md",
+  "cmd/ward-kdl-forgejo/ward-kdl.forgejo.read.guardfile.md",
+  "docs/ward-kdl.forgejo.write.guardfile.md",
+  "cmd/ward-kdl-forgejo/ward-kdl.forgejo.write.guardfile.md",
+  "docs/ward-kdl.forgejo.admin.guardfile.md",
+  "cmd/ward-kdl-forgejo/ward-kdl.forgejo.admin.guardfile.md",
   # Embedded container agent doctrine: a ward binary asset (go:embed), not a
   # doc, and it must sit beside its package, so the markdown-location and size
   # caps do not apply. See docs/container.md.

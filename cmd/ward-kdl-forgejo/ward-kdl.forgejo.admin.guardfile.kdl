@@ -1,0 +1,19 @@
+// Forgejo ADMIN tier - the top of the read ⊂ write ⊂ admin chain (ward#240).
+// `inherit` (cli-guard#160) composes the whole write tier (which itself composes
+// read), so this file only adds the one verb the lower tiers withhold: delete.
+// The `ward-kdl-admin` binary therefore mounts get/list/create/edit/delete
+// across every resource that exposes them - the full destructive CRUD surface.
+//
+// "admin" here means the irreversible REST verb (delete), not Forgejo's
+// server-side admin/doctor subcommands: those have no REST equivalent and ride
+// the exec-dialect ../ward/opsassets/forgejo-admin.guardfile.kdl instead.
+// `restrict` is child-local under inherit, so the coily*-owner scope gate is
+// re-declared here. See ../../docs/ward-kdl.forgejo.admin.guardfile.md.
+wrap ward-kdl-admin ops forgejo {
+    inherit ward-kdl.forgejo.write.guardfile.kdl
+    // Scope gate: re-declared because restrict does not inherit (cli-guard#160).
+    restrict owner matches coily*
+    // admin tier adds the irreversible delete verb across every resource that
+    // exposes it; combined with the inherited read+write verbs this is full CRUD.
+    can delete *
+}

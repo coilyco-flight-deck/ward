@@ -1,0 +1,18 @@
+// Forgejo WRITE tier - the middle of the read ⊂ write ⊂ admin chain (ward#240).
+// `inherit` (cli-guard#160) pulls in every grant of the read tier (and its
+// spec/base-url/auth singletons, which this file does not restate), then layers
+// the two write-side convention verbs on top. The result is read + create/edit:
+// a `ward-kdl-write` binary that can author content but never delete it - the
+// delete leaf is still not compiled in (that is the admin tier).
+//
+// `restrict` is child-local under inherit, so the coily*-owner scope gate is
+// re-declared here rather than inherited. See
+// ../../docs/ward-kdl.forgejo.write.guardfile.md.
+wrap ward-kdl-write ops forgejo {
+    inherit ward-kdl.forgejo.read.guardfile.kdl
+    // Scope gate: re-declared because restrict does not inherit (cli-guard#160).
+    restrict owner matches coily*
+    // write tier adds the two write-side convention verbs across every resource.
+    can create *
+    can edit *
+}

@@ -1,0 +1,29 @@
+// Forgejo READ tier - the base of the read ⊂ write ⊂ admin chain (ward#240).
+// A standalone `ward-kdl-read` binary whose only forgejo verbs are the two
+// read-side convention verbs, expressed once as wildcards (cli-guard#159) so the
+// surface tracks the spec instead of hand-listing every resource. Everything
+// else stays unmounted = denied, by structure: a `create`/`edit`/`delete` leaf
+// is never compiled into this binary, so it cannot be invoked at all.
+//
+// This file is the singleton-bearing root of the chain: it declares the `spec`,
+// `base-url`, and `auth` the write and admin tiers inherit (cli-guard#160 only
+// pulls a singleton into a child that declares none). Auto-resolution per
+// cli-guard#147. See ../../docs/ward-kdl.forgejo.read.guardfile.md.
+wrap ward-kdl-read ops forgejo {
+    spec forgejo.swagger.v1.json
+    base-url "forgejo.coilysiren.me/api/v1"
+    // Auth as the coilyco-ops bot, not a personal PAT (ward#151), so automated
+    // ops attribute to the bot. Token + scopes: provision-coilyco-ops-bot.sh.
+    auth header-token {
+        header Authorization
+        prefix "token "
+        value ssm "/forgejo/coilyco-ops/api-token"
+    }
+    // Scope gate: every leaf whose path carries {owner} must name a coily* owner.
+    // restrict is child-local (not inherited), so write and admin re-declare it.
+    restrict owner matches coily*
+    // read tier: the two read-side convention verbs across every resource that
+    // exposes them. No create/edit/delete/toggle leaves mount here.
+    can get *
+    can list *
+}
