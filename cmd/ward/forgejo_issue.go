@@ -202,7 +202,7 @@ func (c *forgejoClient) listIssueComments(ctx context.Context, owner, repo strin
 }
 
 // leanIssueView is the trimmed `issue view` payload: issue + comments, every
-// user a login literal (ward#225). See docs/ops-forgejo-in-ward.md.
+// user a login literal (ward#225). See docs/ops-forgejo-view.md.
 type leanIssueView struct {
 	Issue    leanIssue     `json:"issue"`
 	Comments []leanComment `json:"comments"`

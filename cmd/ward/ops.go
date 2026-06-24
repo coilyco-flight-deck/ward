@@ -8,6 +8,7 @@ import (
 	"strconv"
 	"strings"
 
+	"forgejo.coilysiren.me/coilyco-flight-deck/cli-guard/cli/execverb"
 	"forgejo.coilysiren.me/coilyco-flight-deck/cli-guard/cli/verb"
 	"forgejo.coilysiren.me/coilyco-flight-deck/cli-guard/http/guardfile"
 	"forgejo.coilysiren.me/coilyco-flight-deck/cli-guard/http/respfmt"
@@ -19,17 +20,19 @@ import (
 // ops.go mounts the ward-kdl forgejo guardfile runtime inside the ward binary
 // as `ward ops forgejo` (ward#92). See docs/ops-forgejo.md.
 
-// opsAssets embeds copies of the cmd/ward-kdl forgejo guardfile + spec lock
-// (opsassets_test.go guards drift). See docs/ops-forgejo-in-ward.md.
+// opsAssets embeds the forgejo REST guardfile + spec lock plus the exec-dialect
+// admin/doctor guardfile (ward#81). See docs/ops-forgejo-in-ward.md.
 
 //go:embed opsassets/forgejo.guardfile.kdl opsassets/forgejo.swagger.lock.json
+//go:embed opsassets/forgejo-admin.guardfile.kdl
 var opsAssets embed.FS
 
-// opsForgejoGuardfilePath / opsForgejoSpecLockPath name the embed paths once, so
-// the runtime mount and the drift test agree.
+// Embed paths named once so the runtime mount and the drift test agree; the
+// admin path is the exec-dialect remote-exec slice (ward#81).
 const (
-	opsForgejoGuardfilePath = "opsassets/forgejo.guardfile.kdl"
-	opsForgejoSpecLockPath  = "opsassets/forgejo.swagger.lock.json"
+	opsForgejoGuardfilePath      = "opsassets/forgejo.guardfile.kdl"
+	opsForgejoSpecLockPath       = "opsassets/forgejo.swagger.lock.json"
+	opsForgejoAdminGuardfilePath = "opsassets/forgejo-admin.guardfile.kdl"
 )
 
 // opsCommand is the `ops` umbrella: operator verbs run by cli-guard's specverb
@@ -86,11 +89,43 @@ func buildForgejoOps() (*cli.Command, error) {
 		return nil, err
 	}
 	r.overrideForgejoViewIssue(forgejo)
+
+	// Graft the exec-dialect admin/doctor remote-exec slice onto the same
+	// forgejo group, so both transports share one operator verb (ward#81).
+	if err := graftForgejoAdminExec(forgejo, r); err != nil {
+		return nil, err
+	}
 	return forgejo, nil
 }
 
+// graftForgejoAdminExec appends the exec-dialect guardfile's built admin/doctor
+// subtrees onto forgejo. See docs/ops-forgejo-admin.md.
+func graftForgejoAdminExec(forgejo *cli.Command, r *Runner) error {
+	gfBytes, err := opsAssets.ReadFile(opsForgejoAdminGuardfilePath)
+	if err != nil {
+		return fmt.Errorf("read embedded admin guardfile: %w", err)
+	}
+	gf, err := execverb.Parse(gfBytes)
+	if err != nil {
+		return fmt.Errorf("parse admin guardfile: %w", err)
+	}
+	group, err := execverb.Build(execverb.Config{
+		Guardfile: gf,
+		Wrap: func(s verb.Spec) cli.ActionFunc {
+			return r.WrapVerb(s, r.Audit)
+		},
+		// Run is nil: the exec-dialect leaves shell out to the real `ssh`
+		// transport. The wrapped binary owns its own credentials, so no SSM auth.
+	})
+	if err != nil {
+		return fmt.Errorf("build admin guardfile: %w", err)
+	}
+	forgejo.Commands = append(forgejo.Commands, group.Commands...)
+	return nil
+}
+
 // overrideForgejoViewIssue swaps the built `issue view` leaf for the lean
-// projection (ward#225). See docs/ops-forgejo-in-ward.md.
+// projection (ward#225). See docs/ops-forgejo-view.md.
 func (r *Runner) overrideForgejoViewIssue(forgejo *cli.Command) {
 	issue := subCommandNamed(forgejo, "issue")
 	if issue == nil {

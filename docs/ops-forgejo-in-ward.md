@@ -17,6 +17,18 @@ byte-for-byte copies of `cmd/ward-kdl/`'s canonical guardfile + spec lock. The
 ward-kdl files stay the single source of truth (`make build-ward-kdl` re-runs
 `make sync-ops-assets`); `cmd/ward/opsassets_test.go` fails the build on drift.
 
+## The remote-exec slice grafted alongside (ward#81)
+
+The four server-side `forgejo` maintenance subcommands with no REST equivalent
+(`admin user list/create`, `admin auth list`, `doctor check`) ride the
+**exec dialect** instead, so `ward ops forgejo` now mounts both transports.
+`graftForgejoAdminExec` (`cmd/ward/ops.go`) parses the embedded
+`opsassets/forgejo-admin.guardfile.kdl`, `execverb.Build`s it, and appends the
+built `admin`/`doctor` subtrees onto the same `forgejo` command - two transports
+under one operator verb. That guardfile is ward-proper-only (no ward-kdl mirror,
+no spec lock, no SSM token), so it lives directly under `opsassets/` and is
+absent from the drift map. See [ops-forgejo-admin.md](ops-forgejo-admin.md).
+
 ## Why `cmd/ward/forgejo_issue.go` stays
 
 ward#92 also asked to retire `forgejo_issue.go` - ward's hand-rolled Forgejo
@@ -49,20 +61,8 @@ ward shells itself to `ops forgejo release list <owner> <repo> --query
 follow suit - it needs whole `Issue`/comment objects, not a `--query` scalar, and
 still hits the body-gate and reaper-auth blockers above.
 
-### The lean `issue view` override (ward#225)
-
-The verbatim-render limit bites on read too. The Forgejo API nests every
-commenter's full profile into every comment, so `issue view` printed the same
-profile once per comment when the reader only wants the username. The engine
-has no per-call projection and cli-guard is pinned, so ward renders this one
-leaf: `overrideForgejoViewIssue` swaps the built leaf's action for
-`runForgejoViewIssue`, which fetches via `forgejo_issue.go`'s `viewIssue` seam
-and prints a lean `{issue, comments}` with every user a login literal. It keeps
-the `restrict owner coily*` gate and `--output`/`--dry-run`, and leaves the
-guardfile untouched - `move-issue`'s `call view issue` uses the `can view issue`
-grant, not this CLI leaf. A cli-guard projection would fold it back - follow-up.
-
 ## See also
 
 - [ops-forgejo.md](ops-forgejo.md) - the ward-kdl proving ground + guardfile.
+- [ops-forgejo-view.md](ops-forgejo-view.md) - the lean `issue view` override.
 - [container-reap.md](container-reap.md) - a seam `forgejo_issue.go` still serves.

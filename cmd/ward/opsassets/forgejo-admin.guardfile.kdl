@@ -1,0 +1,48 @@
+// Forgejo admin/doctor remote-exec surface for ward (cli-guard execverb, exec
+// dialect). The last non-HTTP slice of the 40-leaf forgejo operator surface
+// (ward#75, ward#81): four `forgejo` server-side subcommands that have no REST
+// equivalent and so cannot ride the specverb tree beside them. They are reached
+// by `kubectl exec` into the in-cluster forgejo deployment over ssh to
+// kai-server.
+//
+// The transport is pinned as an unoverridable argv-prefix: ssh to kai-server,
+// then `k3s kubectl -n forgejo exec deploy/forgejo -- forgejo`. The caller can
+// never substitute the binary (ssh), the host, the namespace, the pod, or the
+// remote `forgejo` entrypoint - only the granted subcommand and its caller args
+// ride after the `--`. Deny-by-default: only the four leaves below mount; the
+// `exec` block fixes the binary at parse so it can never be swapped.
+//
+// Mounted in ward proper via execverb.Build plus a graft of the admin/doctor
+// subtrees onto the existing `ward ops forgejo` specverb tree (cmd/ward/ops.go),
+// so the REST surface and the remote-exec surface share one `ops forgejo`
+// command. The group's last segment is `forgejo` precisely so its built
+// children (`admin`, `doctor`) graft as siblings of the REST resources. ward-kdl
+// carrying these (the no-code driver learning the exec transport for this group)
+// is the follow-up; see ../../docs/ops-forgejo-admin.md.
+wrap ward ops forgejo {
+    exec ssh {
+        argv-prefix kai@kai-server k3s kubectl -n forgejo exec "deploy/forgejo" -- forgejo
+    }
+    // admin user: read the user list, create a user. Both are server-side only
+    // (no REST verb). create's flags (--username / --email / --password / ...)
+    // pass through; the transport and `forgejo` entrypoint stay fixed.
+    can run "admin user list" {
+        describe "list users (forgejo admin user list)"
+    }
+    can run "admin user create" {
+        describe "create a user (forgejo admin user create --username ... --email ...)"
+    }
+    // admin auth: list the configured authentication sources.
+    can run "admin auth list" {
+        describe "list authentication sources (forgejo admin auth list)"
+    }
+    // doctor: run diagnostic checks. `--fix` is the only mutating flag on
+    // `forgejo doctor check`, so denying just it keeps the leaf read-only - it
+    // can diagnose but never repair - while the benign selection flags
+    // (--run/--all/--list/--log-file) and --help still pass through. The sibling
+    // mutating subcommand (`doctor recreate-table`) is simply never granted.
+    can run "doctor check" {
+        deny-flag --fix
+        describe "run diagnostic checks (forgejo doctor check); read-only, --fix denied"
+    }
+}
