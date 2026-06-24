@@ -14,9 +14,12 @@ The spec-driven and passthrough verb surfaces carried by `ward-kdl`, split out o
 - **`ward-kdl agents <target> <verb>`** - mixed-transport. **`agents {claude,codex,opencode,aider,goose}`**: local-CLI launchers (`execverb`, `argv`-override). **`agents ollama`**: the tower's Ollama.
 - **`ward-kdl pkg <resource> <verb>`** - `specverb` package-directory lookups: **skillsmp** (skills) and **glama** (Glama MCP), from `coily pkg` (ward#105); plus **`ward-kdl pkg brew <verb>`** - brew reads/passthrough (`execverb`, jailed; scoped verbs stay Go, [ward#95](ward-kdl.brew.scoped.md)). See [skillsmp](ward-kdl/ward-kdl.skillsmp.guardfile.md), [glama](ward-kdl/ward-kdl.glama.guardfile.md).
 
+The **exec-dialect** surfaces above (`docker`, `agents`, `ops {aws,kubectl}`) are also auto-mounted into the `ward` binary at their own `wrap` path, so `ward docker ...` / `ward agents ...` / `ward ops aws ...` route to the same guarded surface (ward#284). `git` and `pkg brew` keep their hand-written `ward` surfaces. See [ward-kdl-in-ward](ward-kdl-in-ward.md).
+
 ## See also
 
 - [FEATURES.md](FEATURES.md) - inventory of what ships today.
+- [ward-kdl-in-ward.md](ward-kdl-in-ward.md) - exec guardfiles auto-mounted into `ward`.
 - [.ward/ward.yaml](../.ward/ward.yaml) - allowlisted commands.
 
 Cross-reference convention from [coilysiren/agentic-os#59](https://github.com/coilysiren/agentic-os/issues/59).

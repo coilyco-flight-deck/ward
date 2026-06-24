@@ -1,0 +1,31 @@
+// ward ops aws - the aws CLI surface as an allowlist (cli-guard execverb).
+// Each grant reads like the invocation you'd type: `can run <service> <operation>`.
+// A per-operation guard constrains the kwarg or positional that names the
+// resource - the `--secret-id` value, the s3:// positional - with no env-var
+// escape and no opaque gate. An operation not listed here is denied.
+wrap ward-kdl ops aws {
+    exec aws
+    // identity - nothing to guard
+    can run sts get-caller-identity
+    can run sts get-session-token
+    // ssm parameters - the --name kwarg is the resource
+    can run ssm get-parameter {
+        deny-when name matches "*/prod/*" *secret*
+    }
+    can run ssm get-parameters-by-path
+    can run ssm put-parameter
+    // secrets manager - the --secret-id kwarg is the resource
+    can run secretsmanager get-secret-value {
+        deny-when secret-id matches *prod*
+    }
+    can run secretsmanager list-secrets
+    // s3 - the resource is a positional s3:// uri
+    can run s3 ls {
+        deny-when arg0 matches *tfstate* *-backup*
+    }
+    can run s3 cp
+    can run s3 sync
+    // ec2 - describe reads, nothing sensitive
+    can run ec2 describe-instances
+    can run ec2 describe-security-groups
+}
