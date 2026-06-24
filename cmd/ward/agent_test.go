@@ -269,19 +269,19 @@ func TestPreflightPrompt(t *testing.T) {
 			t.Errorf("preflight prompt should surface the author's comment %q\n got: %s", want, withComments)
 		}
 	}
-	// ward#266: a --with-repo grant must reach the prompt so the read knows the run
+	// ward#266: a --repo grant must reach the prompt so the read knows the run
 	// gets that repo too and won't NO-GO/WRONG-REPO work whose deliverable lands there.
 	withExtra := preflightPrompt(ref, "migrate sandbox into cli-guard", "move the package", "", nil,
 		[]targetRepo{{Owner: "coilyco-flight-deck", Name: "cli-guard"}})
 	for _, want := range []string{
 		"coilyco-flight-deck/cli-guard", // names the granted repo
-		"--with-repo",                   // names how it was granted
+		"--repo",                        // names how it was granted (ward#280)
 		"WRITABLE",                      // tells the agent it can author there
 		"squarely in scope",             // cross-repo work is not a NO-GO
 		"FRESH CLONES",                  // plural clone scope when a repo is granted
 	} {
 		if !strings.Contains(withExtra, want) {
-			t.Errorf("preflight prompt with --with-repo grant missing %q\n got: %s", want, withExtra)
+			t.Errorf("preflight prompt with --repo grant missing %q\n got: %s", want, withExtra)
 		}
 	}
 	// With no grant, the single-repo framing (and the substrings other tests pin)

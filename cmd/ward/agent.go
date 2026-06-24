@@ -286,7 +286,7 @@ type resolvedWork struct {
 	Comments []issueComment
 	Details  string
 	Seed     string
-	// ExtraRepos are the --with-repo grants the run also clones writable (ward#230);
+	// ExtraRepos are the --repo grants the run also clones writable (ward#230);
 	// the pre-flight must hear about them or it false-NO-GOs cross-repo work (ward#266).
 	ExtraRepos []targetRepo
 }
@@ -320,8 +320,8 @@ func (r *Runner) resolveAgentWork(ctx context.Context, c *cli.Command, mode cont
 	if cerr != nil {
 		fmt.Fprintf(os.Stderr, "%s: note: could not read comments on %s (%v); pre-flight reads the body only\n", label, ref, cerr)
 	}
-	// Resolve --with-repo now so the pre-flight knows the run gets these repos too;
-	// a bad ref fails fast here, matching buildUpPlan's own parse (ward#266).
+	// Resolve the --repo grants now so the pre-flight knows the run gets these repos
+	// too ("with-repo" is the shared lookup key; ward#266, ward#280).
 	extra, eerr := parseExtraRepos(c.StringSlice("with-repo"), targetRepo{Owner: ref.Owner, Name: ref.Repo})
 	if eerr != nil {
 		return resolvedWork{}, fmt.Errorf("%s: %w", label, eerr)
@@ -385,7 +385,7 @@ func preflightWanted(c *cli.Command) bool {
 }
 
 // preflightPrompt asks the about-to-detach agent for a feasibility read ending on a
-// GO / NO-GO line, feeding --details, comments, and --with-repo grants (ward#266).
+// GO / NO-GO line, feeding --details, comments, and --repo grants (ward#266).
 func preflightPrompt(ref agentIssueRef, title, body, details string, comments []issueComment, extra []targetRepo) string {
 	title = strings.TrimSpace(title)
 	if title == "" {
@@ -406,7 +406,7 @@ func preflightPrompt(ref agentIssueRef, title, body, details string, comments []
 	if thread == "" {
 		thread = "(no comments yet)"
 	}
-	// Name the --with-repo grants in the prompt or the read false-NO-GOs cross-repo
+	// Name the --repo grants in the prompt or the read false-NO-GOs cross-repo
 	// work as unreachable from "a ward-only clone" - the exact ward#266 failure.
 	cloneScope := fmt.Sprintf("a FRESH CLONE of %s/%s", ref.Owner, ref.Repo)
 	extraNote := ""
@@ -418,7 +418,7 @@ func preflightPrompt(ref agentIssueRef, title, body, details string, comments []
 		joined := strings.Join(slugs, ", ")
 		cloneScope = fmt.Sprintf("FRESH CLONES of %s/%s AND of %s", ref.Owner, ref.Repo, joined)
 		extraNote = fmt.Sprintf(
-			"\n\nThis dispatch GRANTED EXTRA REPOS via --with-repo: %s. Each lands as a full, "+
+			"\n\nThis dispatch GRANTED EXTRA REPOS via --repo: %s. Each lands as a full, "+
 				"WRITABLE working copy under /workspace beside the issue's repo, so cross-repo work "+
 				"spanning them - creating a package in one, moving code across the boundary, wiring "+
 				"the seams, landing a coordinated change - is squarely in scope for this run. Do NOT "+

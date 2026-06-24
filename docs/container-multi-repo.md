@@ -6,8 +6,7 @@ A task sometimes spans repos, though - a contract change in one repo and its
 consumer in another. `--repo` grants a run **additional writable repos**,
 explicitly, so the agent can clone and operate against more than the target.
 Epic [ward#230](https://forgejo.coilysiren.me/coilyco-flight-deck/ward/issues/230);
-shortened from `--with-repo` in [ward#280](https://forgejo.coilysiren.me/coilyco-flight-deck/ward/issues/280)
-(`--with-repo` stays as a back-compat alias).
+shortened from `--with-repo` (kept as a back-compat alias) in [ward#280](https://forgejo.coilysiren.me/coilyco-flight-deck/ward/issues/280).
 
 This is deliberately opt-in. The container doctrine
 ([AGENTS.container.md](../cmd/ward/containerassets/AGENTS.container.md)) walls an
@@ -62,9 +61,8 @@ in as many words.
 
 ## Plumbing
 
-`--repo` (the slice flag still registered under the `with-repo` key for the
-back-compat alias) flows host-side -> container as the space-separated `owner/name`
-list `WARD_EXTRA_REPOS` (`upPlan.ExtraRepos`, validated by `parseExtraRepos`).
+`--repo` (registered under the `with-repo` key for the back-compat alias) flows host-side -> container
+as the space-separated `owner/name` list `WARD_EXTRA_REPOS` (`upPlan.ExtraRepos`, validated by `parseExtraRepos`).
 Both bootstrap paths read it and clone the set after the target: the bash
 entrypoint's `clone_extra_repos`, and the Go `ward container bootstrap`'s
 `cloneExtraRepos` (ward#181). The two stay in parity, like the rest of the
@@ -72,9 +70,8 @@ entrypoint port.
 
 ## Pre-flight knows the grant
 
-The pre-flight read ([docs/agent-preflight.md](agent-preflight.md)) is fed the
-`--with-repo` list and told the grants are writable, so a cross-repo migration
-whose deliverable lands in a granted repo is in scope, not a false `NO-GO` (ward#266).
+The pre-flight read ([docs/agent-preflight.md](agent-preflight.md)) is fed the `--repo` list and told the
+grants are writable, so a cross-repo migration whose deliverable lands in a granted repo is in scope, not a false `NO-GO` (ward#266).
 
 ## See also
 
