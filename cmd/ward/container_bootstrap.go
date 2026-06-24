@@ -14,6 +14,7 @@ import (
 	"path/filepath"
 	"strconv"
 	"strings"
+	"syscall"
 	"time"
 
 	"forgejo.coilysiren.me/coilyco-flight-deck/cli-guard/cli/verb"
@@ -225,6 +226,12 @@ func (r *Runner) runContainerBootstrap(ctx context.Context, c *cli.Command) erro
 	// Drop to the non-root agent user (claude refuses bypass-perms as root, ward#127);
 	// setup ran as root. Keep ANTHROPIC_API_KEY from shadowing the OAuth creds.
 	r.chownAgentTree(ctx, e, work)
+	// Re-assert the credential perms git's `store` helper clobbered on the clones,
+	// else the dropped agent falls back to the human token (ward#288).
+	if cerr := r.ensureGitCredReadable(e); cerr != nil {
+		blog("fatal: %v", cerr)
+		return cerr
+	}
 	_ = os.Unsetenv("ANTHROPIC_API_KEY")
 	_ = os.Unsetenv("ANTHROPIC_AUTH_TOKEN")
 
@@ -262,11 +269,44 @@ func (r *Runner) configureGitAuth(ctx context.Context, e bootstrapEnv) {
 		blog("could not write git credentials: %v", werr)
 		return
 	}
-	// Readable by root (reaper) and the dropped agent group, not world.
+	// Readable by root (reaper) and the dropped agent group, not world; git's store
+	// helper clobbers this on clone, re-asserted before the drop (ward#288).
 	if gid, gerr := strconv.Atoi(e.AgentGID); gerr == nil {
 		_ = os.Chown("/etc/ward-git-credentials", 0, gid)
 	}
 	_ = os.Chmod("/etc/ward-git-credentials", 0o640)
+}
+
+// ensureGitCredReadable re-asserts the credential perms git's `store` helper
+// clobbers on the root-phase clones; fails loud (ward#288, docs/agent-credentials.md).
+func (r *Runner) ensureGitCredReadable(e bootstrapEnv) error {
+	const f = "/etc/ward-git-credentials"
+	if !fileExists(f) {
+		return nil
+	}
+	gid, gerr := strconv.Atoi(e.AgentGID)
+	if gerr != nil {
+		return fmt.Errorf("ward#288: agent gid %q is not numeric, cannot group-own %s", e.AgentGID, f)
+	}
+	if cerr := os.Chown(f, 0, gid); cerr != nil {
+		return fmt.Errorf("ward#288: could not group-own %s to gid %d: %w", f, gid, cerr)
+	}
+	if cerr := os.Chmod(f, 0o640); cerr != nil {
+		return fmt.Errorf("ward#288: could not chmod %s to 0640: %w", f, cerr)
+	}
+	// Confirm the agent gid actually carries group-read, so a regression fails here
+	// instead of degrading to the human-token fallback.
+	info, serr := os.Stat(f)
+	if serr != nil {
+		return fmt.Errorf("ward#288: could not stat %s after re-perm: %w", f, serr)
+	}
+	if info.Mode().Perm()&0o040 == 0 {
+		return fmt.Errorf("ward#288: %s is not group-readable after re-perm (mode %o); agent push would fall back to the human token and leak attribution", f, info.Mode().Perm())
+	}
+	if st, ok := info.Sys().(*syscall.Stat_t); ok && int(st.Gid) != gid {
+		return fmt.Errorf("ward#288: %s is group-owned by gid %d, not the agent gid %d; agent cannot read the bot credential", f, st.Gid, gid)
+	}
+	return nil
 }
 
 // --- install opencode (qwen mode): best-effort, never fatal ------------------
