@@ -12,7 +12,7 @@ Contributor-facing cli-guard gate: repo dev verbs + audited host wrappers.
 - **`ward pkg brew <verb>`** - audited brew wrapper: formula/tap mutations default to primary-org taps (`--allow-untapped` else), reads pass through.
 - **`ward upgrade`** - audited self-update via `brew upgrade coilyco-flight-deck/tap/ward` (`--dry`).
 - **`ward audit {path,tail}`** - read surface over the audit log: `path` prints the log path, `tail` streams rows (`--since`/`--follow`). See [docs/audit.md](audit.md).
-- **`ward git <verb>`** - audited git passthroughs: read + safe-write verbs (`-C` hoisted), plus a concurrency-safe `ward git commit -m msg -- <path>...` (private index). See [docs/git-verbs.md](git-verbs.md).
+- **`ward git <verb>`** - audited git passthroughs (`-C` hoisted), concurrency-safe `ward git commit`, and destination-gated `ward git clone` (ward#285). See [git-verbs.md](git-verbs.md).
 - **`ward doctor`** - diagnostic checks against the config + host.
 - **`ward hook pre-tool-use`** - Claude Code PreToolUse hook: binary-path check + bare-command deny with routing hints.
 - **`ward install-hooks`** - register the PreToolUse hook in `.claude/settings.json`.

@@ -26,7 +26,7 @@ func TestContainerSettingsPolicy(t *testing.T) {
 		t.Errorf("defaultMode = %q, want bypassPermissions", s.Permissions.DefaultMode)
 	}
 	joined := strings.Join(s.Permissions.Deny, " ")
-	for _, want := range []string{"git push --force", "git push -f", "git reset --hard", "git clean -fd"} {
+	for _, want := range []string{"git push --force", "git push -f", "git reset --hard", "git clean -fd", "git clone"} {
 		if !strings.Contains(joined, want) {
 			t.Errorf("deny wall missing %q; got %v", want, s.Permissions.Deny)
 		}
