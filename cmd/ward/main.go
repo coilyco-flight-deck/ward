@@ -31,6 +31,10 @@ var sandboxShimSubcommand = map[string][]string{
 	"brew": {"pkg", "brew"},
 }
 
+// wardedPublicFace is the basename ward installs as its public face: invoking
+// the binary as `warded` is a thin multicall shim for `ward drive` (ward#247).
+const wardedPublicFace = "warded"
+
 func main() {
 	// Internal jail-helper re-exec, before normal CLI parsing; never returns on
 	// success (it execs the real tool).
@@ -47,6 +51,12 @@ func main() {
 	if sub, ok := sandboxShimSubcommand[filepath.Base(os.Args[0])]; ok {
 		rewritten := append([]string{"ward"}, sub...)
 		os.Args = append(rewritten, os.Args[1:]...)
+	}
+
+	// Public-face shim: invoked as `warded`, rewrite to `ward drive <args>` - a
+	// thin argv rewrite, not a second code path (ward#247; see docs/drive.md).
+	if filepath.Base(os.Args[0]) == wardedPublicFace {
+		os.Args = append([]string{"ward", "drive"}, os.Args[1:]...)
 	}
 
 	configFlagOverride = preParseConfigFlag(os.Args)
@@ -80,6 +90,7 @@ func main() {
 			installHooksCommand(),
 			containerCommand(),
 			agentCommand(),
+			driveCommand(),
 			opsCommand(),
 			ciCommand(),
 		},

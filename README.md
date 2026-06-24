@@ -36,7 +36,7 @@ ward lint
 ward pkg brew bundle    # audited brew wrapper (parity with coily pkg brew)
 ```
 
-`ward pkg brew` is the ward-native audited package path, so a board repo's deps install need not route back to coily. See [`docs/FEATURES.md`](docs/FEATURES.md) for the verb list.
+See [`docs/FEATURES.md`](docs/FEATURES.md) for the full verb list.
 
 ## Claude Code PreToolUse hook
 
