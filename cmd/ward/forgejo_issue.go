@@ -201,6 +201,110 @@ func (c *forgejoClient) listIssueComments(ctx context.Context, owner, repo strin
 	return out, nil
 }
 
+// leanIssueView is the trimmed `issue view` payload: issue + comments, every
+// user a login literal (ward#225). See docs/ops-forgejo-in-ward.md.
+type leanIssueView struct {
+	Issue    leanIssue     `json:"issue"`
+	Comments []leanComment `json:"comments"`
+}
+
+// leanIssue is the issue itself, with user/assignees/labels reduced to the
+// scalar names a reader scans for - never the nested profile objects.
+type leanIssue struct {
+	Number    int       `json:"number"`
+	Title     string    `json:"title"`
+	State     string    `json:"state"`
+	User      string    `json:"user"`
+	Labels    []string  `json:"labels,omitempty"`
+	Assignees []string  `json:"assignees,omitempty"`
+	Comments  int       `json:"comments"`
+	CreatedAt time.Time `json:"created_at"`
+	UpdatedAt time.Time `json:"updated_at"`
+	HTMLURL   string    `json:"html_url"`
+	Body      string    `json:"body"`
+}
+
+// leanComment is one comment row: author login, post time, body. No profile.
+type leanComment struct {
+	User      string    `json:"user"`
+	CreatedAt time.Time `json:"created_at"`
+	Body      string    `json:"body"`
+}
+
+// forgejoIssueRaw is the issue subset the lean view keeps; unmarshalling into
+// these typed fields IS the projection - unnamed profile fields are dropped.
+type forgejoIssueRaw struct {
+	Number    int       `json:"number"`
+	Title     string    `json:"title"`
+	Body      string    `json:"body"`
+	State     string    `json:"state"`
+	HTMLURL   string    `json:"html_url"`
+	Comments  int       `json:"comments"`
+	CreatedAt time.Time `json:"created_at"`
+	UpdatedAt time.Time `json:"updated_at"`
+	User      struct {
+		Login string `json:"login"`
+	} `json:"user"`
+	Labels []struct {
+		Name string `json:"name"`
+	} `json:"labels"`
+	Assignees []struct {
+		Login string `json:"login"`
+	} `json:"assignees"`
+}
+
+// lean collapses the raw issue into its scalar-name projection.
+func (raw forgejoIssueRaw) lean() leanIssue {
+	li := leanIssue{
+		Number:    raw.Number,
+		Title:     raw.Title,
+		State:     raw.State,
+		User:      raw.User.Login,
+		Comments:  raw.Comments,
+		CreatedAt: raw.CreatedAt,
+		UpdatedAt: raw.UpdatedAt,
+		HTMLURL:   raw.HTMLURL,
+		Body:      raw.Body,
+	}
+	for _, l := range raw.Labels {
+		li.Labels = append(li.Labels, l.Name)
+	}
+	for _, a := range raw.Assignees {
+		li.Assignees = append(li.Assignees, a.Login)
+	}
+	return li
+}
+
+// viewIssue fetches an issue and its comment thread, projected to the lean shape
+// so a reader gets usernames, not a full profile repeated per comment (ward#225).
+func (c *forgejoClient) viewIssue(ctx context.Context, owner, repo string, number int) (*leanIssueView, error) {
+	path := fmt.Sprintf("/api/v1/repos/%s/%s/issues/%d", owner, repo, number)
+	status, respBody, err := c.do(ctx, http.MethodGet, path, nil)
+	if err != nil {
+		return nil, err
+	}
+	if status != http.StatusOK {
+		return nil, fmt.Errorf("forgejo: view issue #%d returned HTTP %d: %s", number, status, strings.TrimSpace(string(respBody)))
+	}
+	var raw forgejoIssueRaw
+	if err := json.Unmarshal(respBody, &raw); err != nil {
+		return nil, fmt.Errorf("forgejo: parse issue #%d: %w", number, err)
+	}
+	comments, err := c.listIssueComments(ctx, owner, repo, number)
+	if err != nil {
+		return nil, err
+	}
+	view := &leanIssueView{Issue: raw.lean(), Comments: make([]leanComment, 0, len(comments))}
+	for _, cm := range comments {
+		view.Comments = append(view.Comments, leanComment{
+			User:      cm.User.Login,
+			CreatedAt: cm.CreatedAt,
+			Body:      cm.Body,
+		})
+	}
+	return view, nil
+}
+
 // closeIssue flips an existing issue to the closed state (PATCH state=closed),
 // used by the task route flow to retire an intake record once it's cross-linked.
 func (c *forgejoClient) closeIssue(ctx context.Context, owner, repo string, number int) error {

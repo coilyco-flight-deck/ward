@@ -49,6 +49,19 @@ ward shells itself to `ops forgejo release list <owner> <repo> --query
 follow suit - it needs whole `Issue`/comment objects, not a `--query` scalar, and
 still hits the body-gate and reaper-auth blockers above.
 
+### The lean `issue view` override (ward#225)
+
+The verbatim-render limit bites on read too. The Forgejo API nests every
+commenter's full profile into every comment, so `issue view` printed the same
+profile once per comment when the reader only wants the username. The engine
+has no per-call projection and cli-guard is pinned, so ward renders this one
+leaf: `overrideForgejoViewIssue` swaps the built leaf's action for
+`runForgejoViewIssue`, which fetches via `forgejo_issue.go`'s `viewIssue` seam
+and prints a lean `{issue, comments}` with every user a login literal. It keeps
+the `restrict owner coily*` gate and `--output`/`--dry-run`, and leaves the
+guardfile untouched - `move-issue`'s `call view issue` uses the `can view issue`
+grant, not this CLI leaf. A cli-guard projection would fold it back - follow-up.
+
 ## See also
 
 - [ops-forgejo.md](ops-forgejo.md) - the ward-kdl proving ground + guardfile.
