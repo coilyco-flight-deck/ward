@@ -431,22 +431,61 @@ stream_progress() {
     else empty end'
 }
 
-# --- pre-launch auth smoke test (ward#222; see docs/agent.md) ----------------
-# Bounded claude probe as the agent user; abort loudly on can't-auth (no silent hang).
+# --- pre-launch auth smoke test (ward#222; disk-aware diagnostics ward#273) --
+
+# Bounded claude probe as the agent user. A full disk stalls startup like a bad
+# credential, so a stall reports disk, not the login (see docs/agent-credentials.md).
+SMOKE_DISK_PATHS="/ /workspace"
+SMOKE_DISK_FLOOR_KB=524288 # 512MiB, matches smokeTestDiskFloorBytes in the Go port
+
+# disk_report PATH... -> "/ 1.2G free of 50G; /workspace ..." (ward#273)
+disk_report() {
+  local p avail size out=""
+  for p in "$@"; do
+    [ -e "$p" ] || continue
+    avail="$(df -h -P "$p" 2>/dev/null | awk 'NR==2{print $4}')"
+    size="$(df -h -P "$p" 2>/dev/null | awk 'NR==2{print $2}')"
+    [ -n "$avail" ] || continue
+    out="${out:+$out; }$p $avail free of $size"
+  done
+  [ -n "$out" ] && printf '%s' "$out" || printf 'disk usage unavailable'
+}
+
+# low_disk_warn: warn loudly if any smoke-test path is under the headroom floor.
+low_disk_warn() {
+  local p avail
+  for p in $SMOKE_DISK_PATHS; do
+    [ -e "$p" ] || continue
+    avail="$(df -P "$p" 2>/dev/null | awk 'NR==2{print $4}')"
+    [ -n "$avail" ] || continue
+    if [ "$avail" -lt "$SMOKE_DISK_FLOOR_KB" ]; then
+      log "auth smoke test: WARNING low disk before probe - $(disk_report $SMOKE_DISK_PATHS); a claude startup hang here is likely disk exhaustion, not credentials (ward#273)"
+      return 0
+    fi
+  done
+  return 0 # set -e: a fall-through must not exit on the last falsy [ -lt ] test
+}
+
 smoke_test_claude_auth() {
   { [ "$WARD_AGENT" = claude ] && [ "${WARD_HEADLESS:-0}" = 1 ]; } || return 0
   [ "${WARD_SMOKE_TEST_SKIP:-0}" = 1 ] && { log "auth smoke test skipped (WARD_SMOKE_TEST_SKIP=1)"; return 0; }
   command -v claude >/dev/null 2>&1 || return 0
+  low_disk_warn
   log "auth smoke test: probing claude before launch (ward#222)"
-  local out rc=0
+  local out rc=0 errf err
+  errf="$(mktemp 2>/dev/null || echo /tmp/ward-smoke-stderr.$$)"
   out="$(timeout 90 setpriv --reuid="$AGENT_UID" --regid="$AGENT_GID" --init-groups \
           env HOME="$AGENT_HOME" claude -p --output-format json \
-          "Reply with the single word: ok" </dev/null 2>/dev/null)" || rc=$?
+          "Reply with the single word: ok" </dev/null 2>"$errf")" || rc=$?
+  err="$(cat "$errf" 2>/dev/null)"; rm -f "$errf"
   if [ "$rc" -eq 124 ]; then
-    die "auth smoke test: claude -p did not respond within 90s - credentials are unusable in-container (ward#222). Refresh the host claude login (re-run 'claude' on the host) and relaunch; WARD_SMOKE_TEST_SKIP=1 bypasses."
+    die "auth smoke test: claude -p did not respond within 90s - a startup hang, not necessarily an auth problem (ward#222, ward#273). Likely causes: a full disk (claude cannot write ~/.claude), network, or a slow cold start. Disk: $(disk_report $SMOKE_DISK_PATHS). If disk is low, free space on the Docker host; otherwise refresh the host claude login (re-run 'claude' on the host) and relaunch. WARD_SMOKE_TEST_SKIP=1 bypasses."
   fi
   if [ "$rc" -ne 0 ] || [ -z "$out" ]; then
-    die "auth smoke test: claude -p produced no usable output (exit $rc) - credentials are unusable in-container (ward#222). Refresh the host claude login and relaunch; WARD_SMOKE_TEST_SKIP=1 bypasses."
+    if printf '%s\n%s' "$err" "$out" | grep -qiE 'not logged in|401|invalid api key|authentication_error|unauthorized|please run /login'; then
+      die "auth smoke test: claude -p rejected the credentials (exit $rc) - they are unusable in-container (ward#222). Refresh the host claude login (re-run 'claude' on the host) and relaunch; WARD_SMOKE_TEST_SKIP=1 bypasses."
+    fi
+    die "auth smoke test: claude -p produced no usable output (exit $rc) without an auth error - more likely a disk/network/startup problem than credentials (ward#222, ward#273). Disk: $(disk_report $SMOKE_DISK_PATHS). WARD_SMOKE_TEST_SKIP=1 bypasses."
   fi
   log "auth smoke test: claude responded, auth OK"
 }

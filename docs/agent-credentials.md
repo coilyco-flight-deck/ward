@@ -21,7 +21,16 @@ the entrypoint probes `claude -p` once, as the agent user, bounded (90s) and wit
 clear error** (the reaper still runs) instead of letting it silently hang. The
 host-side resolver also warns when the resolved blob is empty, has no access
 token, or is expired (`re-run 'claude' on the host to refresh`). The probe is
-headless-claude only; set `WARD_SMOKE_TEST_SKIP=1` to bypass it. One-shot launches
+headless-claude only; set `WARD_SMOKE_TEST_SKIP=1` to bypass it.
+
+**Disk-aware diagnostics (ward#273).** A full Docker disk hangs claude startup
+the same way a bad credential does (it cannot write `~/.claude`), so the smoke
+test no longer blames the (valid) login on every stall. It pre-flight checks
+free space on `/` and `/workspace` against a 512MiB floor and warns before the
+90s wait, reports actual `df` headroom in the timeout and non-auth failure
+messages, and only suggests re-login when the probe surfaces a genuine auth
+marker (`401`, `Not logged in`, `invalid api key`, ...). The Go port
+(`WARD_USE_GO_BOOTSTRAP=1`) and the shell entrypoint carry the same split. One-shot launches
 (headless/ask) additionally pin agent stdin to `/dev/null` so a wedged agent gets
 EOF and exits rather than blocking on an open pipe.
 
