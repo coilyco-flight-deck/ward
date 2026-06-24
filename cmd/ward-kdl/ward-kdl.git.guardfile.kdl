@@ -12,10 +12,11 @@
 // through unrestricted (the exec dialect's model) is safe.
 //
 // What is deliberately NOT here:
-//   - Mutating, network, and history-rewriting verbs (add, commit, push, pull,
-//     fetch, checkout, restore, stash, merge, rebase, reset, ...) stay on the
-//     hand-written `ward git` Go surface (cmd/ward/git.go, docs/git-verbs.md),
-//     where commit is concurrency-safe across shared checkouts. A few are spelled
+//   - Mutating, network, and history-rewriting verbs (add, clone, commit, push,
+//     pull, fetch, checkout, restore, stash, merge, rebase, reset, ...) stay on
+//     the hand-written `ward git` Go surface (cmd/ward/git.go, docs/git-verbs.md),
+//     where commit is concurrency-safe across shared checkouts and clone is
+//     destination-gated (ward#285). A few are spelled
 //     out as `never run` below to make the boundary explicit, mirroring the
 //     docker and kubectl guardfiles; the rest are denied by default anyway.
 //   - List-or-mutate verbs whose read form is common but whose flags also write
@@ -54,6 +55,7 @@ wrap ward-kdl git {
     // intentionally unexposed - mutating, network, or history-rewriting; these
     // stay on the hand-written `ward git` surface (commit there is concurrency-safe)
     never run add
+    never run clone
     never run commit
     never run push
     never run pull
