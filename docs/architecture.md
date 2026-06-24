@@ -1,3 +1,6 @@
+---
+doc_goal: Make a new contributor grasp ward as a deliberate containment system where the boundary is the product, not a tidy permission wrapper - and feel why the cli-guard / ward-kdl / ward split is load-bearing rather than incidental.
+---
 # Architecture: ward in three layers
 
 ward is a permissions, policy, and audit layer for headless agents that hold real credentials and act on live infrastructure. Three pieces make that work, and they're easy to tell apart by their **job** - and, crucially, by **when** they run.
