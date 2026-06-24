@@ -2,7 +2,7 @@
 // (cli-guard execverb, exec dialect). Friendly verbs map onto the real codex
 // invocation via per-grant `argv` overrides: `launch` runs the bare binary,
 // `headless` runs the `exec` subcommand, `whoami` runs `login status`.
-// See ../../docs/ward-kdl.codex.guardfile.md.
+// See ../../docs/ward-kdl/ward-kdl.codex.guardfile.md.
 wrap ward-kdl agents codex {
     exec codex
     can run launch {

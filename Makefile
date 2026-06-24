@@ -26,8 +26,9 @@ build-ward-kdl: ## build or rebuild the ward-kdl binary, one shot for ease of us
 	go run $(DRIVER) lock  --guardfile ./cmd/ward-kdl/ward-kdl.forgejo.guardfile.kdl
 	go run $(DRIVER) build --guardfile ./cmd/ward-kdl/ward-kdl.forgejo.guardfile.kdl --out bin --set-version $(KDL_VERSION)
 	# The driver writes each reference doc beside its guardfile; the committed
-	# copies live under docs/, so relocate them after every rebuild.
-	mv ./cmd/ward-kdl/ward-kdl.*.guardfile.md ./docs/
+	# copies live under docs/ward-kdl/, so relocate them after every rebuild.
+	@mkdir -p docs/ward-kdl
+	mv ./cmd/ward-kdl/ward-kdl.*.guardfile.md ./docs/ward-kdl/
 	$(MAKE) build-ward-kdl-forgejo-tiers
 	$(MAKE) sync-ops-assets
 
@@ -42,7 +43,7 @@ build-ward-kdl-forgejo-tiers: ## build the read/write/admin forgejo tier binarie
 	# get/list surface, write read + create/edit, admin the full CRUD superset.
 	# write/admin `inherit` the read tier's spec/base-url/auth singletons across the
 	# sibling subdirs by relative path. `gen` then writes each tier's main.go and
-	# reference doc beside its guardfile; the reviewed copies live under docs/.
+	# reference doc beside its guardfile; the reviewed copies live under docs/ward-kdl/.
 	go run $(DRIVER) lock  --guardfile ./cmd/ward-kdl/ward-kdl-read/ward-kdl.forgejo.read.guardfile.kdl
 	go run $(DRIVER) lock  --guardfile ./cmd/ward-kdl/ward-kdl-write/ward-kdl.forgejo.write.guardfile.kdl
 	go run $(DRIVER) lock  --guardfile ./cmd/ward-kdl/ward-kdl-admin/ward-kdl.forgejo.admin.guardfile.kdl
@@ -52,9 +53,10 @@ build-ward-kdl-forgejo-tiers: ## build the read/write/admin forgejo tier binarie
 	go run $(DRIVER) gen   --guardfile ./cmd/ward-kdl/ward-kdl-read/ward-kdl.forgejo.read.guardfile.kdl
 	go run $(DRIVER) gen   --guardfile ./cmd/ward-kdl/ward-kdl-write/ward-kdl.forgejo.write.guardfile.kdl
 	go run $(DRIVER) gen   --guardfile ./cmd/ward-kdl/ward-kdl-admin/ward-kdl.forgejo.admin.guardfile.kdl
-	mv ./cmd/ward-kdl/ward-kdl-read/ward-kdl.*.guardfile.md  ./docs/
-	mv ./cmd/ward-kdl/ward-kdl-write/ward-kdl.*.guardfile.md ./docs/
-	mv ./cmd/ward-kdl/ward-kdl-admin/ward-kdl.*.guardfile.md ./docs/
+	@mkdir -p docs/ward-kdl
+	mv ./cmd/ward-kdl/ward-kdl-read/ward-kdl.*.guardfile.md  ./docs/ward-kdl/
+	mv ./cmd/ward-kdl/ward-kdl-write/ward-kdl.*.guardfile.md ./docs/ward-kdl/
+	mv ./cmd/ward-kdl/ward-kdl-admin/ward-kdl.*.guardfile.md ./docs/ward-kdl/
 
 sync-ops-assets: ## Mirror the canonical forgejo guardfile + spec lock into cmd/ward for embedding (ward#92).
 	# go:embed cannot reach a sibling dir, so `ward ops forgejo` embeds copies of

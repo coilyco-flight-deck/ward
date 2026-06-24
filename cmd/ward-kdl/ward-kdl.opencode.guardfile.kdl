@@ -2,7 +2,7 @@
 // (cli-guard execverb, exec dialect). Friendly verbs map onto the real opencode
 // invocation via per-grant `argv` overrides: `launch` runs the bare TUI,
 // `headless` runs the `run` subcommand, `login`/`whoami` map onto `auth`.
-// See ../../docs/ward-kdl.opencode.guardfile.md.
+// See ../../docs/ward-kdl/ward-kdl.opencode.guardfile.md.
 wrap ward-kdl agents opencode {
     exec opencode
     can run launch {

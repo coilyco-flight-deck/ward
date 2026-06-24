@@ -15,7 +15,7 @@
 // Note on streaming verbs: `logs -f`, `stats`, and `events` follow/stream by
 // default. For a one-shot snapshot pass `--no-stream` (stats) or omit `-f`
 // (logs) / `--since ... --until 0s` (events) so an agent call returns.
-// See ../../docs/ward-kdl.docker.guardfile.md.
+// See ../../docs/ward-kdl/ward-kdl.docker.guardfile.md.
 wrap ward-kdl docker {
     exec docker
     // containers - listing and per-container state

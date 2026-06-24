@@ -2,7 +2,7 @@
 // (OpenAPI 3.1, YAML). Path params arrive as $refs into components/parameters and
 // the ACL body rides requestBody (json + hujson). Auth is the bearer scheme. Ops
 // resolve by convention (cli-guard#147); only the ACL singleton keeps an explicit
-// op. See ../../docs/ward-kdl.tailscale.guardfile.md.
+// op. See ../../docs/ward-kdl/ward-kdl.tailscale.guardfile.md.
 wrap ward-kdl ops tailscale {
     spec tailscale.openapi.yaml
     base-url "api.tailscale.com/api/v2"

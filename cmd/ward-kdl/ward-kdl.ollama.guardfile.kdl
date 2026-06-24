@@ -7,7 +7,7 @@
 // registry auth (signin/signout) are intentionally not exposed. The SSM
 // prerequisite:
 //   /coilysiren/ollama/host - the tower Ollama URL, e.g. http://<host>:11434
-// See ../../docs/ward-kdl.ollama.guardfile.md.
+// See ../../docs/ward-kdl/ward-kdl.ollama.guardfile.md.
 wrap ward-kdl agents ollama {
     exec ollama {
         env OLLAMA_HOST {

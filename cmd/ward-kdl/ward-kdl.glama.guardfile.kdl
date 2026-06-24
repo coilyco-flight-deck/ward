@@ -10,7 +10,7 @@
 // each op, since upstream ships none and convention resolution (cli-guard#147)
 // needs them. Migrated from `coily pkg glama` per ward#105; once landed the
 // tooling-scout-capability skill flips to `ward-kdl pkg glama`.
-// See ../../docs/ward-kdl.glama.guardfile.md.
+// See ../../docs/ward-kdl/ward-kdl.glama.guardfile.md.
 //
 // Bearer token from AWS SSM /glama/api-key, resolved per request. The directory
 // is read-only; the one write is `create usage` (POST /v1/telemetry/usage),

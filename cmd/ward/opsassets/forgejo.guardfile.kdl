@@ -5,7 +5,8 @@
 // CRUD moves to org-labels, a cross-repo issue search and a move-issue action
 // land, and every path-{owner} leaf is scoped to coily* owners. Repo-level label
 // create/edit are additionally policy-disabled per ward#107 (dup P0-P4 prevention).
-// Auto-resolution per cli-guard#147. See ../../docs/ward-kdl.forgejo.guardfile.md.
+// Auto-resolution per cli-guard#147. See
+// ../../docs/ward-kdl/ward-kdl.forgejo.guardfile.md.
 wrap ward-kdl ops forgejo {
     spec forgejo.swagger.v1.json
     base-url "forgejo.coilysiren.me/api/v1"

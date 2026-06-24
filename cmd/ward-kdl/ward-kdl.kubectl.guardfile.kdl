@@ -7,7 +7,7 @@
 // exec, attach, cp, port-forward) are intentionally left unexposed - they fall
 // to the host lockdown's bare-kubectl deny, mirroring the no-deletion choice in
 // the ollama guardfile. Every grant audit-logs through ward.
-// See ../../docs/ward-kdl.kubectl.guardfile.md.
+// See ../../docs/ward-kdl/ward-kdl.kubectl.guardfile.md.
 wrap ward-kdl ops kubectl {
     exec kubectl
     // reads - cluster and workload inspection

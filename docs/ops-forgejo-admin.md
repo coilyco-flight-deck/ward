@@ -64,5 +64,5 @@ through the library mount.
 - [ops-forgejo-in-ward.md](ops-forgejo-in-ward.md) - the in-binary `specverb`
   forgejo mount this slice grafts onto.
 - [ops-forgejo.md](ops-forgejo.md) - the ward-kdl proving ground + REST guardfile.
-- [ward-kdl.kubectl.guardfile.md](ward-kdl.kubectl.guardfile.md) - the sibling
+- [ward-kdl.kubectl.guardfile.md](ward-kdl/ward-kdl.kubectl.guardfile.md) - the sibling
   `execverb` kubectl surface.
