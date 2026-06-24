@@ -1,6 +1,6 @@
 # ward agent reply
 
-`ward agent <name> reply <issue-ref> <prompt>` is the one-shot research surface of
+`ward agent reply <issue-ref> <prompt>` is the one-shot research surface of
 [`ward agent`](agent.md): point it at a Forgejo issue and a question, and it does a
 single research/investigation pass at a chosen depth and posts the result **as a
 comment on that issue**. Unlike `work`/`headless`/`task` it never spins a container,
@@ -10,9 +10,9 @@ touches code, or carries the issue to merge - the whole job is one good comment
 ## Usage
 
 ```bash
-ward agent claude reply coilyco-flight-deck/ward#98 "what would it take to support X?"
-ward agent claude reply coilyco-flight-deck/ward#98 "deep dive on the root cause" --thoroughness deep
-ward agent claude reply coilyco-flight-deck/ward#98 "quick gut check" --print   # show the prompt, post nothing
+ward agent reply coilyco-flight-deck/ward#98 "what would it take to support X?"
+ward agent reply coilyco-flight-deck/ward#98 "deep dive on the root cause" --thoroughness deep
+ward agent reply coilyco-flight-deck/ward#98 "quick gut check" --print   # show the prompt, post nothing
 ```
 
 The signature mirrors `task` with the arguments swapped to fit a reply: **arg0 is

@@ -5,16 +5,15 @@ import (
 	"testing"
 )
 
-// Every mode must expose an `ask` surface alongside work/headless/task/reply.
-func TestAgentModesHaveAskSurface(t *testing.T) {
+// `ask` is a top-level agent surface alongside work/headless/task/reply (ward#185
+// moved the harness onto --driver, so surfaces sit directly under `agent`).
+func TestAgentHasAskSurface(t *testing.T) {
+	surfaces := map[string]bool{}
 	for _, c := range agentCommand().Commands {
-		surfaces := map[string]bool{}
-		for _, sub := range c.Commands {
-			surfaces[sub.Name] = true
-		}
-		if !surfaces["ask"] {
-			t.Errorf("ward agent %s missing %q surface", c.Name, "ask")
-		}
+		surfaces[c.Name] = true
+	}
+	if !surfaces["ask"] {
+		t.Errorf("ward agent missing %q surface; got %v", "ask", surfaces)
 	}
 }
 

@@ -1,6 +1,6 @@
 # Agent-only commit suite
 
-`ward agent <name> headless` and `ward agent <name> task` run the in-container
+`ward agent headless` and `ward agent task` run the in-container
 agent non-interactively, end to end, to a clean `main` push. With no human in
 the loop, those runs can hold commits to a bar a human would find too annoying
 live - exactly the checks

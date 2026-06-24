@@ -343,10 +343,10 @@ type upPlan struct {
 	// entrypoint's `"$WARD_AGENT" "$@"`); empty for a bare `container up`.
 	AgentArgs []string
 	// Headless runs the in-container agent in print mode (claude -p), exporting
-	// WARD_HEADLESS=1; set by `ward agent <name> headless`, which also detaches.
+	// WARD_HEADLESS=1; set by `ward agent headless`, which also detaches.
 	Headless bool
 	// Ask runs the in-container agent one-shot, attached (claude -p plain, no
-	// stream-json); exports WARD_ASK=1, set by `ward agent <name> ask`.
+	// stream-json); exports WARD_ASK=1, set by `ward agent ask`.
 	Ask bool
 	// GoBootstrap (EXPERIMENTAL, ward#181) exports WARD_USE_GO_BOOTSTRAP=1 so the
 	// entrypoint delegates to `ward container bootstrap` instead of its bash logic.

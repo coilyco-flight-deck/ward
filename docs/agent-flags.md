@@ -42,7 +42,7 @@ first (the same exists/open/trusted gate as a normal run, so a bad ref fails
 before any tab opens), then writes a tiny `{schema_version, ref, mode, title}`
 JSON entry to a FIFO queue dir (`/tmp/ward-agent-queue`, mode 0600) and fires
 `open warppreview://tab_config/claude-agent-work`. The agentic-os shim of that
-name pops the oldest queue entry and runs `ward agent <mode> work <ref>` in the
+name pops the oldest queue entry and runs `ward agent work <ref> --driver <mode>` in the
 fresh tab - so the whole payload is the ref + mode, and the container does its
 own fresh clone. The unix-nanos filename prefix gives each back-to-back spawn
 its own tab without racing on a shared scratch file.
@@ -52,7 +52,7 @@ preview), `--surface tab|window` (new tab in the active window vs a fresh
 window), `--launch-name` and `--queue-dir` (must match what the shim reads).
 `--print` renders the resolved ref, the in-tab command, the Warp URL, and the
 queue entry without writing or firing anything. If `open` fails, ward leaves the
-queue entry in place and prints the `ward agent <mode> work <ref>` command to
+queue entry in place and prints the `ward agent work <ref> --driver <mode>` command to
 paste in a tab by hand. The agentic-os Warp configs and the shim live under
 `warp/` in that repo.
 

@@ -72,4 +72,4 @@ Change the manifest and the switch in lockstep, or the test fails.
 
 - ward#152 - the consumer: replace the switches/cases with manifest-backed lookup.
 - [container.md](container.md) - the container the manifest drives.
-- [agent.md](agent.md) - `ward agent <name>`, which selects the mode.
+- [agent.md](agent.md) - `ward agent <surface> --driver <name>`, which selects the mode.

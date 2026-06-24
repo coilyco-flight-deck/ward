@@ -1,6 +1,6 @@
 # ward agent
 
-`ward agent <name> work <issue>` is the short verb over [`ward container`](container.md)
+`ward agent work <issue>` is the short verb over [`ward container`](container.md)
 for the common case: take a Forgejo issue and put an agent on it end to end. One
 line replaces the full `container up <repo> --mode <m> --branch <b>` stack plus a
 hand-written prompt.
@@ -8,17 +8,19 @@ hand-written prompt.
 ## Usage
 
 ```bash
-ward agent claude work coilyco-flight-deck/ward#98
-ward agent claude work https://forgejo.coilysiren.me/coilyco-flight-deck/ward/issues/98
-ward agent claude headless coilyco-flight-deck/ward#98          # detached, fire-and-forget
-ward agent codex  work coilyco-flight-deck/ward#98 --print      # resolve + show the plan, run nothing
+ward agent work coilyco-flight-deck/ward#98                          # --driver defaults to claude
+ward agent work https://forgejo.coilysiren.me/coilyco-flight-deck/ward/issues/98
+ward agent headless coilyco-flight-deck/ward#98                      # detached, fire-and-forget
+ward agent work coilyco-flight-deck/ward#98 --driver codex --print   # pick a harness; show the plan, run nothing
 ```
 
-`<name>` is the agent/mode (`claude|codex|qwen|goose`, the same context ladder as
-`container up --mode`). The issue ref is `owner/repo#N` or a full Forgejo issue
-URL. Any appended query string (`?thing=stuff`) or hash fragment
-(`#issuecomment-149`) is ignored, so a URL copied straight from the browser works
-unedited.
+The surface (`work|headless|task|reply|ask`) comes first; `--driver` picks the
+agent/mode (`claude|codex|qwen|goose`, default `claude`, the same context ladder
+as `container up --mode`). ward#185 moved the harness off a subcommand slot onto
+`--driver`, leaving room for a future `--reviewer` role flag. The issue ref is
+`owner/repo#N` or a full Forgejo issue URL. Any appended query string
+(`?thing=stuff`) or hash fragment (`#issuecomment-149`) is ignored, so a URL
+copied straight from the browser works unedited.
 
 ## Topics
 

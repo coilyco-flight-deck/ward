@@ -1,6 +1,6 @@
 # ward agent ask
 
-`ward agent <name> ask <question>` is the inline question surface of
+`ward agent ask <question>` is the inline question surface of
 [`ward agent`](agent.md): spin up a fresh ephemeral container - the same
 fresh-clone-plus-operating-context the carry surfaces get - run the agent **one-shot**
 against your question, and stream the answer straight back to your terminal. Unlike
@@ -15,10 +15,10 @@ the repo clone and the operating doctrine the agent reads on boot.
 ## Usage
 
 ```bash
-ward agent claude ask "how does the reaper back-stop residual work?"
-ward agent claude ask "what would break if WARD_GITCACHE moved?" --repo coilyco-flight-deck/ward
-ward agent goose ask "summarize the release flow"
-ward agent claude ask "trace the ask path" --print   # show the repo + prompt + docker plan, run nothing
+ward agent ask "how does the reaper back-stop residual work?"
+ward agent ask "what would break if WARD_GITCACHE moved?" --repo coilyco-flight-deck/ward
+ward agent ask "summarize the release flow" --driver goose
+ward agent ask "trace the ask path" --print   # show the repo + prompt + docker plan, run nothing
 ```
 
 The whole argument tail is the question. It is canonically one quoted argument, but
