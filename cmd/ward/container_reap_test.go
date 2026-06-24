@@ -6,6 +6,43 @@ import (
 	"time"
 )
 
+// TestReadReapEnvIssueAndLaunched asserts the reaper reads the ward#264 signals
+// (WARD_TARGET_ISSUE, WARD_AGENT_LAUNCHED) and gates the release on them.
+func TestReadReapEnvIssueAndLaunched(t *testing.T) {
+	t.Setenv("WARD_TARGET_OWNER", "coilyco-flight-deck")
+	t.Setenv("WARD_TARGET_NAME", "ward")
+	t.Setenv("WARD_FORGEJO_BASE", "https://forgejo.coilysiren.me")
+
+	// Pre-launch death carrying an issue: releasable.
+	t.Setenv("WARD_TARGET_ISSUE", "264")
+	t.Setenv(envAgentLaunched, "")
+	e, err := readReapEnv()
+	if err != nil {
+		t.Fatalf("readReapEnv: %v", err)
+	}
+	if e.Issue != 264 || e.Launched {
+		t.Fatalf("want Issue=264 Launched=false, got Issue=%d Launched=%v", e.Issue, e.Launched)
+	}
+	if !e.reservationReleasable() {
+		t.Error("a pre-launch death carrying an issue should be releasable")
+	}
+
+	// Agent launched: not releasable even with an issue.
+	t.Setenv(envAgentLaunched, "1")
+	e, _ = readReapEnv()
+	if !e.Launched || e.reservationReleasable() {
+		t.Errorf("a launched run must keep its hold, got Launched=%v releasable=%v", e.Launched, e.reservationReleasable())
+	}
+
+	// No issue (bare `container up`): nothing to release, garbage parses to 0.
+	t.Setenv("WARD_TARGET_ISSUE", "not-a-number")
+	t.Setenv(envAgentLaunched, "")
+	e, _ = readReapEnv()
+	if e.Issue != 0 || e.reservationReleasable() {
+		t.Errorf("a garbage/absent issue must be 0 and not releasable, got Issue=%d releasable=%v", e.Issue, e.reservationReleasable())
+	}
+}
+
 func TestDecideReap(t *testing.T) {
 	cases := []struct {
 		name string

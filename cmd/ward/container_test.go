@@ -342,6 +342,19 @@ func TestWardEnvExtraRepos(t *testing.T) {
 	}
 }
 
+// TestWardEnvTargetIssue asserts the carried issue rides WARD_TARGET_ISSUE (ward#264)
+// and is absent for a bare `container up` (Issue 0).
+func TestWardEnvTargetIssue(t *testing.T) {
+	p := sampleUpPlan()
+	if _, ok := p.wardEnv()["WARD_TARGET_ISSUE"]; ok {
+		t.Error("WARD_TARGET_ISSUE must be absent when no issue is carried (Issue 0)")
+	}
+	p.Issue = 264
+	if got := p.wardEnv()["WARD_TARGET_ISSUE"]; got != "264" {
+		t.Errorf("WARD_TARGET_ISSUE = %q, want 264", got)
+	}
+}
+
 func sampleUpPlan() upPlan {
 	repo := targetRepo{Owner: "coilyco-gaming", Name: "eco-app"}
 	return upPlan{

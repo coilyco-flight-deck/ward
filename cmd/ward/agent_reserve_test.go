@@ -245,6 +245,32 @@ func TestFreshReservationComment(t *testing.T) {
 	if _, held := freshReservationComment([]issueComment{mk("plain", time.Minute, "x")}, now, ttl); held {
 		t.Error("a non-reservation comment must not block")
 	}
+
+	release := reservationReleaseCommentBody(modeClaude, "ward-x")
+
+	// A release stamped after the reservation retracts it (ward#264): a smoke-test
+	// death frees the hold instead of wedging the issue until the TTL lapses.
+	if _, held := freshReservationComment([]issueComment{
+		mk(reserved, 30*time.Minute, "coilyco-ops"),
+		mk(release, 29*time.Minute, "coilyco-ops"),
+	}, now, ttl); held {
+		t.Error("a release after the reservation must free the issue")
+	}
+
+	// A release marker is a distinct substring from the reservation marker, so a
+	// lone release without a reservation simply leaves the issue free, not held.
+	if _, held := freshReservationComment([]issueComment{mk(release, time.Minute, "coilyco-ops")}, now, ttl); held {
+		t.Error("a lone release comment must not register as a reservation")
+	}
+
+	// A reservation NEWER than the release still blocks (a fresh reserve/release
+	// cycle followed by a new hold): the latest of each marker is what counts.
+	if _, held := freshReservationComment([]issueComment{
+		mk(release, 40*time.Minute, "coilyco-ops"),
+		mk(reserved, 30*time.Minute, "coilyco-ops"),
+	}, now, ttl); !held {
+		t.Error("a reservation posted after the release must still block")
+	}
 }
 
 func TestReservationCommentBodyHasMarker(t *testing.T) {

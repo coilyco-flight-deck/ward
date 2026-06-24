@@ -19,20 +19,26 @@ Both holds are **TTL-bounded** (2h): an older reservation is assumed dead and
 reclaimed, so a crashed run never wedges an issue. The local sentinel is also
 reclaimed the moment its container is no longer running. An attached `work` run
 releases its sentinel when it returns; a detached run (`headless`, `task`,
-`--detach`) leaves it for the container's lifetime, bounded by the TTL +
-liveness check. Remote/network failures degrade to a warning - the local
-sentinel still guards this host - so a transient Forgejo hiccup never blocks a
-launch. `--print` reserves nothing (it's a dry run). `--force` skips both checks
-to reclaim a stale or foreign hold.
+`--detach`) leaves it for the container's lifetime. Remote/network failures
+degrade to a warning - the local sentinel still guards this host. `--print`
+reserves nothing (a dry run). `--force` skips both checks to reclaim a stale or
+foreign hold.
 
-For an interactive `headless` dispatch the cheap, authoritative reservation check
-runs **before the LLM pre-flight**, not after (ward#184): an issue another run
-already holds short-circuits up front rather than wasting a full model read (up
-to the 3-minute pre-flight timeout) only to fail at the launch-time gate. The
-precheck reuses the comment thread already fetched for the pre-flight (no extra
-Forgejo call) and never takes the hold itself - the authoritative two-sided
-reservation still happens at launch. `--force` bypasses the precheck just as it
-bypasses the launch-time check.
+## Pre-launch death releases the hold (ward#264)
+
+A container that dies at the [ward#222 smoke test](agent.md) did nothing, yet its
+remote hold blocks a plain retry for the full TTL. So on a clean teardown where the
+agent never launched, the [reaper](container-reap.md) posts a **release marker
+comment**, and `freshReservationComment` treats a reservation as free once a
+release was posted at or after it (newest marker of each kind wins). The retry
+then needs no `--force`.
+
+For an interactive `headless` dispatch the cheap reservation check runs **before
+the LLM pre-flight**, not after (ward#184): an issue another run already holds
+short-circuits up front rather than wasting a full model read only to fail at the
+launch-time gate. The precheck reuses the thread already fetched for the pre-flight
+(no extra Forgejo call) and never takes the hold itself - the authoritative
+two-sided reservation still happens at launch. `--force` bypasses both.
 
 ## Host stale-ward reminder (ward#143)
 
