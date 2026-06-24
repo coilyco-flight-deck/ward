@@ -214,7 +214,7 @@ func TestTaskBody(t *testing.T) {
 	if !strings.Contains(got, "do the thing") {
 		t.Error("body must carry the instructions verbatim")
 	}
-	if !strings.Contains(got, "ward agent claude task") {
+	if !strings.Contains(got, "ward agent task --driver claude") {
 		t.Errorf("body must mark provenance; got: %s", got)
 	}
 }
@@ -356,10 +356,10 @@ func TestParsePreflightVerdict(t *testing.T) {
 func TestPreflightNoGoComment(t *testing.T) {
 	got := preflightNoGoComment(modeClaude, "headless", "needs human scoping", "The scope is unclear.\nNO-GO: needs human scoping")
 	for _, want := range []string{
-		"NO-GO",                      // names the verdict
-		"needs human scoping",        // carries the reason
-		"ward agent claude headless", // names the dispatching surface
-		"--no-preflight",             // tells the human how to re-dispatch
+		"NO-GO",                               // names the verdict
+		"needs human scoping",                 // carries the reason
+		"ward agent headless --driver claude", // names the dispatching surface
+		"--no-preflight",                      // tells the human how to re-dispatch
 		"No container was launched",
 		"<details>",             // folds the full read away
 		"The scope is unclear.", // includes the read verbatim
@@ -372,10 +372,10 @@ func TestPreflightNoGoComment(t *testing.T) {
 	// The task surface (ward#149) attributes to `task`, but still steers the
 	// re-dispatch at `headless` since the issue is already filed.
 	task := preflightNoGoComment(modeClaude, "task", "needs human scoping", "")
-	if !strings.Contains(task, "ward agent claude task") {
+	if !strings.Contains(task, "ward agent task --driver claude") {
 		t.Errorf("task surface should attribute to task; got: %s", task)
 	}
-	if !strings.Contains(task, "ward agent claude headless <ref> --no-preflight") {
+	if !strings.Contains(task, "ward agent headless --driver claude <ref> --no-preflight") {
 		t.Errorf("re-dispatch should point at headless, not task; got: %s", task)
 	}
 	// An empty reason degrades to a placeholder, never a dangling blockquote.
@@ -514,8 +514,8 @@ func TestWardEnvHeadless(t *testing.T) {
 	}
 }
 
-// ward#141: goose is a first-class agent surface, so `ward agent goose
-// {work,headless,task}` must exist alongside claude/codex/qwen.
+// ward#141/#185: goose stays a first-class driver (in agentModes + the --driver
+// choices), and each top-level surface carries a --driver flag.
 func TestAgentModesIncludeGoose(t *testing.T) {
 	found := false
 	for _, m := range agentModes {
@@ -526,25 +526,37 @@ func TestAgentModesIncludeGoose(t *testing.T) {
 	if !found {
 		t.Errorf("agentModes missing goose; got %v", agentModes)
 	}
-	// The umbrella command must build a `goose` subcommand with work/headless/task.
-	var goose *cli.Command
+	if !strings.Contains(agentDriverChoices(), "goose") {
+		t.Errorf("--driver choices missing goose; got %q", agentDriverChoices())
+	}
+	// Each top-level surface must exist and carry a --driver flag (so any harness,
+	// goose included, is selectable on it).
+	surfaces := map[string]*cli.Command{}
 	for _, c := range agentCommand().Commands {
-		if c.Name == string(modeGoose) {
-			goose = c
+		surfaces[c.Name] = c
+	}
+	for _, want := range []string{"work", "headless", "task", "reply", "ask"} {
+		cmd, ok := surfaces[want]
+		if !ok {
+			t.Errorf("ward agent missing %q surface", want)
+			continue
+		}
+		if !commandHasFlag(cmd, "driver") {
+			t.Errorf("ward agent %s missing the --driver flag", want)
 		}
 	}
-	if goose == nil {
-		t.Fatal("agent command has no goose subcommand")
-	}
-	surfaces := map[string]bool{}
-	for _, c := range goose.Commands {
-		surfaces[c.Name] = true
-	}
-	for _, want := range []string{"work", "headless", "task"} {
-		if !surfaces[want] {
-			t.Errorf("ward agent goose missing %q surface", want)
+}
+
+// commandHasFlag reports whether cmd declares a flag with the given name.
+func commandHasFlag(cmd *cli.Command, name string) bool {
+	for _, f := range cmd.Flags {
+		for _, n := range f.Names() {
+			if n == name {
+				return true
+			}
 		}
 	}
+	return false
 }
 
 // A goose headless plan threads both WARD_MODE=goose and WARD_HEADLESS=1 so the

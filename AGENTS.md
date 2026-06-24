@@ -9,7 +9,7 @@ Workspace conventions load globally via `~/.claude/CLAUDE.md` -> `agentic-os-kai
 ward is also absorbing the operator surface: [coily](https://github.com/coilyco-bridge/coily) is retiring and its ops verbs fold into ward, retiring the old "ward never grows ops verbs" boundary. Two verb kinds now:
 
 - **Contributor dev verbs** - `build`, `test`, `vet`, `lint`, `tidy`, `cover`, declared per-repo in `.ward/ward.yaml`.
-- **Operator verbs** - from coily. Spec REST rides ward-kdl (`ops forgejo`, `ops aws`); composite control flow is hand-written gated Go in `cmd/ward`. `ward ci watch` (the native CI watcher, ward#88) is one such verb; see [docs/ci-watch.md](docs/ci-watch.md).
+- **Operator verbs** - from coily. Spec REST rides ward-kdl (`ops forgejo`, `ops aws`); composite control flow is hand-written gated Go in `cmd/ward`. `ward ci watch` (ward#88) is one such verb; see [docs/ci-watch.md](docs/ci-watch.md).
 
 ## Project shape
 

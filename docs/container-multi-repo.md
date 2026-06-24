@@ -24,7 +24,7 @@ ward container up coilyco-gaming/eco-app \
   --with-repo coilyco-flight-deck/cli-guard
 
 # Also on the agent surfaces (the issue's repo is the target):
-ward agent claude work coilyco-gaming/eco-app#42 --with-repo coilyco-gaming/eco-protos
+ward agent work coilyco-gaming/eco-app#42 --with-repo coilyco-gaming/eco-protos
 ```
 
 A grant that names the target is a harmless no-op (the target is always cloned).

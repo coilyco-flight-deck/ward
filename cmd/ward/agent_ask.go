@@ -11,18 +11,19 @@ import (
 	"github.com/urfave/cli/v3"
 )
 
-// agent_ask.go wires `ward agent <name> ask <question>`: run the agent one-shot in a
+// agent_ask.go wires `ward agent ask <question>`: run the agent one-shot in a
 // fresh container, streaming the answer inline. See docs/agent-ask.md.
 
-// agentAskCommand builds `ward agent <mode> ask <question>` so the answer can lean
-// on the container's fresh clone + operating context. See docs/agent-ask.md.
-func agentAskCommand(m containerMode) *cli.Command {
+// agentAskCommand builds `ward agent ask <question>` so the answer leans on the
+// container's fresh clone + context. --driver picks the harness. See docs/agent-ask.md.
+func agentAskCommand() *cli.Command {
 	return &cli.Command{
 		Name: "ask",
 		Usage: "Ask the agent a one-shot question inside a fresh container (repo clone + operating context) " +
 			"and stream the answer inline - no issue, no code change, no comment.",
 		ArgsUsage: "<question>",
 		Flags: []cli.Flag{
+			agentDriverFlag(),
 			&cli.StringFlag{Name: "repo", Usage: "owner/repo to clone for context (default: inferred from the cwd's git origin)"},
 			&cli.StringSliceFlag{Name: "with-repo", Usage: "clone an additional repo for context (owner/name; repeatable), landed under /workspace alongside the primary repo (ward#230)."},
 			&cli.StringFlag{Name: "image", Value: containerImageDefault, Usage: "dev-base image to run"},
@@ -34,11 +35,15 @@ func agentAskCommand(m containerMode) *cli.Command {
 		},
 		Action: func(ctx context.Context, c *cli.Command) error {
 			r := newRunner()
+			mode, err := agentDriver(c)
+			if err != nil {
+				return fmt.Errorf("ward agent ask: %w", err)
+			}
 			return r.WrapVerb(verb.Spec{
-				Name:       "agent." + string(m) + ".ask",
+				Name:       "agent." + string(mode) + ".ask",
 				SkipPolicy: true,
 				Action: func(ctx context.Context, cmd *cli.Command) error {
-					return r.runAgentAsk(ctx, cmd, m)
+					return r.runAgentAsk(ctx, cmd, mode)
 				},
 			}, r.Audit)(ctx, c)
 		},
@@ -48,7 +53,7 @@ func agentAskCommand(m containerMode) *cli.Command {
 // runAgentAsk resolves the context repo, seeds the question, spins up a fresh
 // attached container, and runs the agent one-shot so the answer streams inline.
 func (r *Runner) runAgentAsk(ctx context.Context, c *cli.Command, mode containerMode) error {
-	label := fmt.Sprintf("ward agent %s ask", mode)
+	label := agentCmdline(mode, "ask")
 
 	// The whole arg tail is the question, joined so an unquoted multi-word
 	// question still works (the canonical form is one quoted arg).
@@ -137,7 +142,7 @@ func printAgentAskPlan(c *cli.Command, p upPlan, question, seed string) error {
 		out = os.Stdout
 	}
 	var b strings.Builder
-	fmt.Fprintf(&b, "# ward agent %s ask (print)\n", p.Mode)
+	fmt.Fprintf(&b, "# %s (print)\n", agentCmdline(p.Mode, "ask"))
 	fmt.Fprintf(&b, "ask: agent runs one-shot, attached, in a fresh ephemeral container\n")
 	fmt.Fprintf(&b, "repo:   %s\n", p.Repo.slug())
 	fmt.Fprintf(&b, "name:   %s\n", p.Name)

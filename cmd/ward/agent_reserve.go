@@ -276,7 +276,7 @@ func freshReservationComment(comments []issueComment, now time.Time, ttl time.Du
 // reservationCommentBody is the marker comment a run posts to claim an issue.
 func reservationCommentBody(mode containerMode, container, host string, now time.Time) string {
 	return fmt.Sprintf(
-		"%s\n🔒 Reserved by `ward agent %s` — container `%s` on host `%s` is carrying this issue (reserved %s). "+
+		"%s\n🔒 Reserved by `ward agent --driver %s` — container `%s` on host `%s` is carrying this issue (reserved %s). "+
 			"Concurrent `ward agent` runs are blocked until it finishes or the reservation goes stale (%s TTL); "+
 			"`--force` overrides.",
 		agentReservationMarker, mode, container, host, now.Format(time.RFC3339), agentReservationTTL)

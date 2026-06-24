@@ -14,8 +14,8 @@ import (
 	"github.com/urfave/cli/v3"
 )
 
-// agent_tab.go is the sidequest spawn seam for `ward agent <mode> work <ref>
-// --new-tab`: queue a {ref,mode} entry + fire Warp. See docs/agent.md, ward#174.
+// agent_tab.go is the sidequest spawn seam for `ward agent work <ref> --new-tab`:
+// queue a {ref,mode} entry + fire Warp. See docs/agent.md, ward#174.
 
 // Defaults for the agent <-> Warp seam. The agentic-os shim reads from the queue
 // dir, the URI fires warp(preview)://(tab_config|launch)/<name>.
@@ -88,7 +88,7 @@ func agentTabURL(channel, surface, launchName string) (string, error) {
 // `work` surface. They mirror the retired dispatch-interactive flags.
 func agentTabFlags() []cli.Flag {
 	return []cli.Flag{
-		&cli.BoolFlag{Name: "new-tab", Usage: "spawn the work into its own Warp tab (running `ward agent <mode> work <ref>`) instead of launching the container in this terminal - the sidequest spawn path"},
+		&cli.BoolFlag{Name: "new-tab", Usage: "spawn the work into its own Warp tab (running `ward agent work <ref> --driver <mode>`) instead of launching the container in this terminal - the sidequest spawn path"},
 		&cli.StringFlag{Name: "queue-dir", Value: defaultAgentTabQueueDir(), Usage: "override the --new-tab queue directory. Must match the path the Warp shim reads."},
 		&cli.StringFlag{Name: "launch-name", Value: defaultAgentTabLaunchName, Usage: "override the Warp config name fired via warp(preview)://(tab_config|launch)/<name>."},
 		&cli.StringFlag{Name: "channel", Value: defaultAgentTabChannel, Usage: "Warp channel to fire the --new-tab URL into. `preview` (default) or `stable`."},
@@ -99,7 +99,7 @@ func agentTabFlags() []cli.Flag {
 // runAgentNewTab queues the resolved ref + mode and fires the Warp URI so a
 // fresh tab runs the agent. The ref is pre-validated; --print fires nothing.
 func (r *Runner) runAgentNewTab(ctx context.Context, c *cli.Command, mode containerMode, w resolvedWork) error {
-	label := fmt.Sprintf("ward agent %s work --new-tab", mode)
+	label := agentCmdline(mode, "work") + " --new-tab"
 	queueDir := c.String("queue-dir")
 	launchName := c.String("launch-name")
 	channel := c.String("channel")
@@ -119,12 +119,12 @@ func (r *Runner) runAgentNewTab(ctx context.Context, c *cli.Command, mode contai
 
 	if c.Bool("print") {
 		entryJSON, _ := json.MarshalIndent(entry, "", "  ")
-		fmt.Printf("# ward agent %s work --new-tab (--print)\n", mode)
+		fmt.Printf("# %s --new-tab (--print)\n", agentCmdline(mode, "work"))
 		fmt.Printf("issue:       %s\n", w.Ref)
 		fmt.Printf("queue-dir:   %s\n", queueDir)
 		fmt.Printf("channel:     %s\n", channel)
 		fmt.Printf("surface:     %s\n", surface)
-		fmt.Printf("tab-command: ward agent %s work %s\n", mode, w.Ref)
+		fmt.Printf("tab-command: %s %s\n", agentCmdline(mode, "work"), w.Ref)
 		fmt.Printf("warp-url:    %s\n", url)
 		fmt.Printf("----- queue entry -----\n%s\n----- end -----\n", string(entryJSON))
 		return nil
@@ -173,7 +173,7 @@ func writeAgentTabQueueEntry(dir string, entry agentTabQueueEntry) (string, erro
 // printAgentTabFallback emits the paste-in-a-tab command when the Warp fire
 // fails; the queue entry is left in place for the shim to consume on retry.
 func printAgentTabFallback(mode containerMode, ref fmt.Stringer, url, queuePath string, openErr error) {
-	fmt.Fprintf(os.Stderr, "ward agent %s work --new-tab: %s did not fire (%v).\n", mode, url, openErr)
+	fmt.Fprintf(os.Stderr, "%s --new-tab: %s did not fire (%v).\n", agentCmdline(mode, "work"), url, openErr)
 	fmt.Fprintf(os.Stderr, "Queue entry left at %s for the shim to consume on retry.\n", queuePath)
-	fmt.Fprintf(os.Stderr, "Or run this in a new tab yourself:\n\n  ward agent %s work %s\n\n", mode, ref)
+	fmt.Fprintf(os.Stderr, "Or run this in a new tab yourself:\n\n  %s %s\n\n", agentCmdline(mode, "work"), ref)
 }

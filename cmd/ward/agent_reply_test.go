@@ -141,7 +141,7 @@ func TestReplyCommentUnsigned(t *testing.T) {
 	if strings.Contains(got, agentSignatureMarker) {
 		t.Errorf("reply comment should not pre-sign; signBody handles that at send time:\n%s", got)
 	}
-	if !strings.Contains(got, "ward agent goose reply") {
+	if !strings.Contains(got, "ward agent reply --driver goose") {
 		t.Errorf("reply comment should name the driving mode:\n%s", got)
 	}
 }

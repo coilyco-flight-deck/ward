@@ -1,6 +1,6 @@
 # ward agent task
 
-`ward agent <name> task` is the from-scratch sibling of [`headless`](agent.md):
+`ward agent task` is the from-scratch sibling of [`headless`](agent.md):
 `work`/`headless` need an issue that already exists; `task` *files* one, carries
 it to merge, and **closes it (`closes #N`)**. It runs in one of two modes, chosen
 by **repo omission**:
@@ -21,11 +21,11 @@ phantom owner. Passing *both* a freeform positional and `--instructions` errors.
 ## Usage
 
 ```bash
-ward agent claude task "the reaper test is flaky, make it deterministic"   # ROUTE
-ward agent claude task coilyco-flight-deck/ward -i "add a --foo flag"        # DIRECT
-ward agent claude task -i "fix the flaky reaper test"          # DIRECT, repo from cwd
-ward agent claude task coilyco-flight-deck/ward --instructions-file ./task.md
-ward agent claude task coilyco-flight-deck/ward -i "x" --print   # show plan, file nothing
+ward agent task "the reaper test is flaky, make it deterministic"   # ROUTE
+ward agent task coilyco-flight-deck/ward -i "add a --foo flag"        # DIRECT
+ward agent task -i "fix the flaky reaper test"          # DIRECT, repo from cwd
+ward agent task coilyco-flight-deck/ward --instructions-file ./task.md
+ward agent task coilyco-flight-deck/ward -i "x" --print   # show plan, file nothing
 ```
 
 ## DIRECT mode
@@ -61,7 +61,7 @@ The survey *is* ROUTE's feasibility gate, so ROUTE skips the headless pre-flight
 
 The survey is a host one-shot agent call, so ROUTE only works for a mode with a
 host self-assessment slot — `claude`/`goose` have one; `codex`/`qwen` don't, and
-are steered to DIRECT (`ward agent codex task <owner/repo> -i "..."`).
+are steered to DIRECT (`ward agent task <owner/repo> -i "..." --driver codex`).
 
 ## Trust gate and dry-run
 
