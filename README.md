@@ -66,6 +66,7 @@ Bug or feature request: [create a new issue][new-issue]. Conduct: [Code of Condu
 
 ## See also
 
+- [docs/architecture.md](docs/architecture.md) - ward in three layers (cli-guard, ward-kdl, ward).
 - [AGENTS.md](AGENTS.md) - agent-facing operating rules.
 - [docs/FEATURES.md](docs/FEATURES.md) - inventory of what ships today.
 - [.ward/ward.yaml](.ward/ward.yaml) - allowlisted commands.
