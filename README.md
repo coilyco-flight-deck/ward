@@ -4,7 +4,7 @@
 
 The thing it produces is a **warded agent**: an agent ward drives into a container and gates behind cli-guard policy. Read "warded" as a protective circle around the agent - the lockdown deny-list and allowlisted verbs bounding its reach, not "warded off". Both senses point toward bounded autonomy.
 
-`ward` is the contributor counterpart to [coily][coily], the operator CLI (personal machines, deploy hooks). Both are thin, audited wrappers around the same cli-guard primitives, split by who drives: operator vs contributor.
+`ward` is the contributor-facing cli-guard consumer, now also absorbing the operator surface from the retiring [coily][coily] (spec REST on `ward-kdl`). Both are thin, audited wrappers around the same cli-guard primitives.
 
 ## Status
 
