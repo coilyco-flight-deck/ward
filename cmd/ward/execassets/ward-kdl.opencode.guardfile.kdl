@@ -1,0 +1,24 @@
+// opencode launcher for ward-kdl, mounted at `ward-kdl agents opencode`
+// (cli-guard execverb, exec dialect). Friendly verbs map onto the real opencode
+// invocation via per-grant `argv` overrides: `launch` runs the bare TUI,
+// `headless` runs the `run` subcommand, `login`/`whoami` map onto `auth`.
+// See ../../docs/ward-kdl/ward-kdl.opencode.guardfile.md.
+wrap ward-kdl agents opencode {
+    exec opencode
+    can run launch {
+        argv
+        describe "interactive TUI (bare opencode)"
+    }
+    can run headless {
+        argv run
+        describe "run opencode with a message; pass it as args"
+    }
+    can run login {
+        argv auth login
+        describe "log in to a provider"
+    }
+    can run whoami {
+        argv auth list
+        describe "list providers and credentials"
+    }
+}

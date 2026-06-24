@@ -1,4 +1,4 @@
-.PHONY: help build test vet lint tidy cover install ward-kdl install-tmp lock skew sync-ops-assets build-ward-kdl build-ward-kdl-forgejo-tiers
+.PHONY: help build test vet lint tidy cover install ward-kdl install-tmp lock skew sync-ops-assets sync-exec-assets build-ward-kdl build-ward-kdl-forgejo-tiers
 
 SPECVERB_GEN := forgejo.coilysiren.me/coilyco-flight-deck/cli-guard/cmd/specverb-gen
 
@@ -31,6 +31,7 @@ build-ward-kdl: ## build or rebuild the ward-kdl binary, one shot for ease of us
 	mv ./cmd/ward-kdl/ward-kdl.*.guardfile.md ./docs/ward-kdl/
 	$(MAKE) build-ward-kdl-forgejo-tiers
 	$(MAKE) sync-ops-assets
+	$(MAKE) sync-exec-assets
 
 build-ward-kdl-forgejo-tiers: ## build the read/write/admin forgejo tier binaries (ward#240).
 	@mkdir -p bin
@@ -64,6 +65,19 @@ sync-ops-assets: ## Mirror the canonical forgejo guardfile + spec lock into cmd/
 	# fails the build on drift.
 	cp ./cmd/ward-kdl/ward-kdl.forgejo.guardfile.kdl ./cmd/ward/opsassets/forgejo.guardfile.kdl
 	cp ./cmd/ward-kdl/forgejo.swagger.lock.json      ./cmd/ward/opsassets/forgejo.swagger.lock.json
+
+sync-exec-assets: ## Mirror the exec-dialect ward-kdl guardfiles into cmd/ward for embedding (ward#284).
+	# `ward` auto-mounts every exec-dialect ward-kdl.*.guardfile.kdl under its own
+	# wrap path (cmd/ward/wardkdl_exec.go) - the same auto-discovery the ward-kdl
+	# build uses, no per-guardfile graft. go:embed can't reach the sibling dir, so
+	# mirror the exec-dialect sources here; an exec guardfile is the one with an
+	# `exec <bin>` node (spec-dialect ones carry `spec`/`base-url` instead).
+	# execassets_test.go fails the build on drift, so re-sync after every change.
+	@mkdir -p ./cmd/ward/execassets
+	rm -f ./cmd/ward/execassets/*.guardfile.kdl
+	@for f in ./cmd/ward-kdl/ward-kdl.*.guardfile.kdl; do \
+		if grep -qE '^[[:space:]]+exec ' "$$f"; then cp "$$f" ./cmd/ward/execassets/; fi; \
+	done
 
 test: ## Run the unit test suite.
 	go test ./...

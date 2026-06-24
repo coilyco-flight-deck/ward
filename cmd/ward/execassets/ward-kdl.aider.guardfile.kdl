@@ -1,0 +1,15 @@
+// aider launcher for ward-kdl, mounted at `ward-kdl agents aider`
+// (cli-guard execverb, exec dialect). aider authenticates via API keys, so it
+// has no login verb: `launch` runs the bare binary, `headless` runs `--message`
+// for a single non-interactive turn. See ../../docs/ward-kdl/ward-kdl.aider.guardfile.md.
+wrap ward-kdl agents aider {
+    exec aider
+    can run launch {
+        argv
+        describe "interactive session (bare aider)"
+    }
+    can run headless {
+        argv --message
+        describe "single non-interactive message; pass it as args"
+    }
+}

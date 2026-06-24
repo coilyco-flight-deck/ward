@@ -89,6 +89,12 @@ func main() {
 		},
 	}
 
+	// Auto-mount the exec-dialect ward-kdl guardfiles before the verb set is
+	// read, so they count as top-level verbs (ward#284). A failure is non-fatal.
+	if err := mountWardKdlExec(app, leanRunner()); err != nil {
+		fmt.Fprintln(os.Stderr, "ward: warning: ward-kdl exec mount degraded:", err)
+	}
+
 	// Unknown-verb fallback: `ward <leaf>` -> `ward exec <leaf>` for a declared
 	// leaf that isn't a top-level verb. See docs/verb-fallback.md, issue #87.
 	os.Args = maybeRewriteToExec(os.Args, topLevelVerbs(app))
