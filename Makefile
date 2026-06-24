@@ -37,18 +37,24 @@ build-ward-kdl-forgejo-tiers: ## build the read/write/admin forgejo tier binarie
 	# (cli-guard#160) over wildcard `"*"` grants (cli-guard#159). Each tier is its
 	# own standalone binary, so a withheld verb is absent at compile time, not just
 	# denied at runtime: ward-kdl-read has no create/edit/delete leaf, ward-kdl-write
-	# no delete leaf. The three share one spec lock - it is locked once from the
-	# admin tier (the widest slice); read/write embed that superset and let their
-	# own grants, not the lock, decide which leaves compile in. `gen` then refreshes
-	# the read/write reference docs from the committed lock without re-pruning it
-	# (a per-tier `lock` would shrink the shared file and break the other builds).
-	go run $(DRIVER) lock  --guardfile ./cmd/ward-kdl-forgejo/ward-kdl.forgejo.admin.guardfile.kdl
-	go run $(DRIVER) build --guardfile ./cmd/ward-kdl-forgejo/ward-kdl.forgejo.read.guardfile.kdl  --out bin --set-version $(KDL_VERSION)
-	go run $(DRIVER) build --guardfile ./cmd/ward-kdl-forgejo/ward-kdl.forgejo.write.guardfile.kdl --out bin --set-version $(KDL_VERSION)
-	go run $(DRIVER) build --guardfile ./cmd/ward-kdl-forgejo/ward-kdl.forgejo.admin.guardfile.kdl --out bin --set-version $(KDL_VERSION)
-	go run $(DRIVER) gen   --guardfile ./cmd/ward-kdl-forgejo/ward-kdl.forgejo.read.guardfile.kdl
-	go run $(DRIVER) gen   --guardfile ./cmd/ward-kdl-forgejo/ward-kdl.forgejo.write.guardfile.kdl
-	mv ./cmd/ward-kdl-forgejo/ward-kdl.*.guardfile.md ./docs/
+	# no delete leaf. Each tier lives in its own subdir under cmd/ward-kdl/ with its
+	# own spec lock, so each `lock` freezes exactly its tier's slice - read the
+	# get/list surface, write read + create/edit, admin the full CRUD superset.
+	# write/admin `inherit` the read tier's spec/base-url/auth singletons across the
+	# sibling subdirs by relative path. `gen` then writes each tier's main.go and
+	# reference doc beside its guardfile; the reviewed copies live under docs/.
+	go run $(DRIVER) lock  --guardfile ./cmd/ward-kdl/ward-kdl-read/ward-kdl.forgejo.read.guardfile.kdl
+	go run $(DRIVER) lock  --guardfile ./cmd/ward-kdl/ward-kdl-write/ward-kdl.forgejo.write.guardfile.kdl
+	go run $(DRIVER) lock  --guardfile ./cmd/ward-kdl/ward-kdl-admin/ward-kdl.forgejo.admin.guardfile.kdl
+	go run $(DRIVER) build --guardfile ./cmd/ward-kdl/ward-kdl-read/ward-kdl.forgejo.read.guardfile.kdl   --out bin --set-version $(KDL_VERSION)
+	go run $(DRIVER) build --guardfile ./cmd/ward-kdl/ward-kdl-write/ward-kdl.forgejo.write.guardfile.kdl --out bin --set-version $(KDL_VERSION)
+	go run $(DRIVER) build --guardfile ./cmd/ward-kdl/ward-kdl-admin/ward-kdl.forgejo.admin.guardfile.kdl --out bin --set-version $(KDL_VERSION)
+	go run $(DRIVER) gen   --guardfile ./cmd/ward-kdl/ward-kdl-read/ward-kdl.forgejo.read.guardfile.kdl
+	go run $(DRIVER) gen   --guardfile ./cmd/ward-kdl/ward-kdl-write/ward-kdl.forgejo.write.guardfile.kdl
+	go run $(DRIVER) gen   --guardfile ./cmd/ward-kdl/ward-kdl-admin/ward-kdl.forgejo.admin.guardfile.kdl
+	mv ./cmd/ward-kdl/ward-kdl-read/ward-kdl.*.guardfile.md  ./docs/
+	mv ./cmd/ward-kdl/ward-kdl-write/ward-kdl.*.guardfile.md ./docs/
+	mv ./cmd/ward-kdl/ward-kdl-admin/ward-kdl.*.guardfile.md ./docs/
 
 sync-ops-assets: ## Mirror the canonical forgejo guardfile + spec lock into cmd/ward for embedding (ward#92).
 	# go:embed cannot reach a sibling dir, so `ward ops forgejo` embeds copies of

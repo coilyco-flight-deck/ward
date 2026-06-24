@@ -7,8 +7,9 @@ excludes = [
   # Pre-existing size debt: docs/hook.md is 92 lines, over the 80-line cap.
   # The split is tracked in coilyco-flight-deck/ward#50; drop this when it lands.
   "docs/hook.md",
-  # Pre-existing size debt: README.md is 4094 chars, over the 4000-char cap (it
-  # crossed in 34a6fd7). The split is tracked in ward#276; drop this when it lands.
+  # Pre-existing size debt: README.md is over the 4000-char cap (tripped by
+  # See-also growth, not by any single feature). The split is tracked in
+  # coilyco-flight-deck/ward#274; drop this when it lands.
   "README.md",
   # Generated surface reference (specverb-gen). The driver emits it beside the
   # Guardfile; the reviewed copy is committed at docs/ and grows with the verb
@@ -47,14 +48,14 @@ excludes = [
   "docs/ward-kdl.signoz.guardfile.md",
   "cmd/ward-kdl/ward-kdl.signoz.guardfile.md",
   # Forgejo permission tiers (ward#240): one generated surface reference per
-  # read/write/admin binary, emitted beside the kdl in cmd/ward-kdl-forgejo/ and
-  # reviewed at docs/. Same generated-and-uncapped rationale as the surfaces above.
+  # read/write/admin binary, emitted beside the kdl in its cmd/ward-kdl/ward-kdl-<tier>/
+  # subdir and reviewed at docs/. Same generated-and-uncapped rationale as above.
   "docs/ward-kdl.forgejo.read.guardfile.md",
-  "cmd/ward-kdl-forgejo/ward-kdl.forgejo.read.guardfile.md",
+  "cmd/ward-kdl/ward-kdl-read/ward-kdl.forgejo.read.guardfile.md",
   "docs/ward-kdl.forgejo.write.guardfile.md",
-  "cmd/ward-kdl-forgejo/ward-kdl.forgejo.write.guardfile.md",
+  "cmd/ward-kdl/ward-kdl-write/ward-kdl.forgejo.write.guardfile.md",
   "docs/ward-kdl.forgejo.admin.guardfile.md",
-  "cmd/ward-kdl-forgejo/ward-kdl.forgejo.admin.guardfile.md",
+  "cmd/ward-kdl/ward-kdl-admin/ward-kdl.forgejo.admin.guardfile.md",
   # Embedded container agent doctrine: a ward binary asset (go:embed), not a
   # doc, and it must sit beside its package, so the markdown-location and size
   # caps do not apply. See docs/container.md.
