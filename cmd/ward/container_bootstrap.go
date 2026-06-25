@@ -202,6 +202,7 @@ func (r *Runner) runContainerBootstrap(ctx context.Context, c *cli.Command) erro
 		return cerr
 	}
 	r.installPreCommitHooks(ctx, e, work)
+	r.installReadOnlyPushGuard(ctx, e, work)
 	r.cloneExtraRepos(ctx, e)
 	r.warmSubstrate(ctx, e)
 	r.composeContext(e)
@@ -433,6 +434,7 @@ func (r *Runner) cloneExtraRepo(ctx context.Context, e bootstrapEnv, repo target
 		_ = r.Runner.Exec(ctx, "git", "-C", work, "checkout", "-B", e.Branch)
 	}
 	r.installPreCommitHooks(ctx, e, work)
+	r.installReadOnlyPushGuard(ctx, e, work)
 	blog("extra-repo: ready %s/%s at %s", repo.Owner, repo.Name, work)
 }
 
@@ -457,6 +459,38 @@ func (r *Runner) installPreCommitHooks(ctx context.Context, _ bootstrapEnv, work
 	} else {
 		blog("pre-commit install failed in %s; agent commits may bypass the hook suite (ward#133)", work)
 	}
+}
+
+// --- read-only push guard (ward#299) -----------------------------------------
+
+// readOnlyPushGuardHook is the per-clone pre-push hook body: it fires before git
+// contacts the remote with the clear named wall (ward#299, docs/agent-explore.md).
+const readOnlyPushGuardHook = `#!/bin/sh
+# ward#299 read-only explore push guard (message layer; bypassable). See ward#293.
+echo "ward: read-only explore session - push is disabled (ward#293)." >&2
+echo "Nothing leaves this container. Commit/branch locally all you like." >&2
+exit 1
+`
+
+// installReadOnlyPushGuard ports install_readonly_push_guard: a read-only session
+// lands a per-clone pre-push hook (ward#299). No-op otherwise. docs/agent-explore.md.
+func (r *Runner) installReadOnlyPushGuard(_ context.Context, e bootstrapEnv, work string) {
+	if !e.ReadOnly {
+		return
+	}
+	hookDir := filepath.Join(work, ".git", "hooks")
+	if !isDir(hookDir) {
+		blog("no .git/hooks in %s; skipping read-only push guard (ward#299)", work)
+		return
+	}
+	hook := filepath.Join(hookDir, "pre-push")
+	if werr := os.WriteFile(hook, []byte(readOnlyPushGuardHook), 0o755); werr != nil {
+		blog("could not install read-only push guard in %s: %v (ward#299)", work, werr)
+		return
+	}
+	// chmod too: WriteFile only sets the mode on create, and git needs the exec bit.
+	_ = os.Chmod(hook, 0o755)
+	blog("installed read-only push guard in %s (ward#299)", work)
 }
 
 // --- warm the substrate reference repos (best-effort) ------------------------

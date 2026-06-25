@@ -1,6 +1,7 @@
 package main
 
 import (
+	"context"
 	"encoding/json"
 	"os"
 	"path/filepath"
@@ -243,6 +244,56 @@ func TestSeedClaudeOnboarding(t *testing.T) {
 		r.seedClaudeOnboarding(bootstrapEnv{Mode: "codex", AgentHome: home})
 		if _, err := os.Stat(filepath.Join(home, ".claude.json")); !os.IsNotExist(err) {
 			t.Errorf("codex mode should not write claude.json (err=%v)", err)
+		}
+	})
+}
+
+// TestInstallReadOnlyPushGuard covers ward#299: a read-only session lands the
+// per-clone pre-push hook; a writable session and a missing .git/hooks do not.
+func TestInstallReadOnlyPushGuard(t *testing.T) {
+	r := &Runner{}
+
+	t.Run("read-only session installs the executable hook", func(t *testing.T) {
+		work := t.TempDir()
+		if err := os.MkdirAll(filepath.Join(work, ".git", "hooks"), 0o755); err != nil {
+			t.Fatalf("mkdir .git/hooks: %v", err)
+		}
+		r.installReadOnlyPushGuard(context.Background(), bootstrapEnv{ReadOnly: true}, work)
+		hook := filepath.Join(work, ".git", "hooks", "pre-push")
+		fi, err := os.Stat(hook)
+		if err != nil {
+			t.Fatalf("expected pre-push hook: %v", err)
+		}
+		if fi.Mode().Perm()&0o100 == 0 {
+			t.Errorf("pre-push hook is not executable: %v", fi.Mode())
+		}
+		body, err := os.ReadFile(hook)
+		if err != nil {
+			t.Fatalf("read hook: %v", err)
+		}
+		for _, want := range []string{"#!/bin/sh", "read-only explore session - push is disabled (ward#293)", "exit 1"} {
+			if !strings.Contains(string(body), want) {
+				t.Errorf("hook missing %q:\n%s", want, body)
+			}
+		}
+	})
+
+	t.Run("writable session installs nothing", func(t *testing.T) {
+		work := t.TempDir()
+		if err := os.MkdirAll(filepath.Join(work, ".git", "hooks"), 0o755); err != nil {
+			t.Fatalf("mkdir .git/hooks: %v", err)
+		}
+		r.installReadOnlyPushGuard(context.Background(), bootstrapEnv{ReadOnly: false}, work)
+		if _, err := os.Stat(filepath.Join(work, ".git", "hooks", "pre-push")); !os.IsNotExist(err) {
+			t.Errorf("writable session should not write pre-push (err=%v)", err)
+		}
+	})
+
+	t.Run("missing .git/hooks is tolerated", func(t *testing.T) {
+		work := t.TempDir()
+		r.installReadOnlyPushGuard(context.Background(), bootstrapEnv{ReadOnly: true}, work)
+		if _, err := os.Stat(filepath.Join(work, ".git", "hooks", "pre-push")); !os.IsNotExist(err) {
+			t.Errorf("no .git/hooks should be a no-op (err=%v)", err)
 		}
 	})
 }
