@@ -16,19 +16,21 @@ concurrency reservation checks (see [docs/agent-reservation.md](agent-reservatio
 (both always detach) for `--no-preflight`, which skips the autonomous pre-flight
 ([docs/agent-preflight.md](agent-preflight.md)) and detaches immediately.
 
-## Quiet launch for detached runs (ward#306)
+## Quiet launch for detached runs (ward#306, ward#322)
 
-A detached launch (`headless`, `task`, any `--detach`) is not watched, so
-docker's chatter below the verdict is noise: the pull status lines, the `docker
-scout` footer, and the container-id hash `docker run -d` echoes. Those runs now
-drop it (`DOCKER_CLI_HINTS=false` plus a swallowed stdout). An **interactive**
-run streams docker unchanged.
+A detached launch (`headless`, `task`, any `--detach`) isn't watched, so docker's
+chatter is dropped: pull lines, the `docker scout` footer, the container-id hash
+(`DOCKER_CLI_HINTS=false` plus a swallowed stdout). An **interactive** run streams
+it unchanged. The pull is the one exception (ward#322): silencing it hid
+slow/mid-push-registry stalls, so a detached pull names itself up front (`pulling
+<image> (silenced; ...)`) and beats a periodic `still pulling` heartbeat while
+in flight, then still falls back to the local image on failure.
 
 ## `--details` (ward#167)
 
 `work` and `headless` take `--details "<note>"`: extra operator instructions
-woven into the run at dispatch, for when the issue text isn't the whole story
-("I actually want you to do it like this..."). The note rides as a final
+woven into the run at dispatch, for when the issue text isn't the whole story.
+The note rides as a final
 paragraph of the **seeded prompt** - marked as added via `--details` and flagged
 **authoritative over the issue text where they conflict** - so a single line can
 steer or correct the run without editing the issue. It is also folded into the
@@ -45,23 +47,22 @@ sidequest path - fan a tangent off into its own session without leaving the one
 you're in - and the successor to the retired `ward dispatch interactive` Warp
 seam.
 
-The mechanics are deliberately thin. `--new-tab` resolves and validates the ref
-first (the same exists/open/trusted gate as a normal run, so a bad ref fails
-before any tab opens), then writes a tiny `{schema_version, ref, mode, title}`
-JSON entry to a FIFO queue dir (`/tmp/ward-agent-queue`, mode 0600) and fires
+The mechanics are thin. `--new-tab` validates the ref first (the same
+exists/open/trusted gate, so a bad ref fails before any tab opens), then writes a
+tiny `{schema_version, ref, mode, title}` JSON entry to a FIFO queue dir
+(`/tmp/ward-agent-queue`, mode 0600) and fires
 `open warppreview://tab_config/claude-agent-work`. The agentic-os shim of that
-name pops the oldest queue entry and runs `ward agent work <ref> --driver <mode>` in the
-fresh tab - so the whole payload is the ref + mode, and the container does its
-own fresh clone. The unix-nanos filename prefix gives each back-to-back spawn
-its own tab without racing on a shared scratch file.
+name pops the oldest entry and runs `ward agent work <ref> --driver <mode>` in
+the fresh tab. A unix-nanos filename prefix gives each back-to-back spawn its own
+tab without racing on a shared scratch file.
 
 Overrides: `--channel preview|stable` (which Warp build to fire into, default
 preview), `--surface tab|window` (new tab in the active window vs a fresh
-window), `--launch-name` and `--queue-dir` (must match what the shim reads).
+window), `--launch-name` and `--queue-dir` (must match the shim).
 `--print` renders the resolved ref, the in-tab command, the Warp URL, and the
 queue entry without writing or firing anything. If `open` fails, ward leaves the
-queue entry in place and prints the `ward agent work <ref> --driver <mode>` command to
-paste in a tab by hand. The agentic-os Warp configs and the shim live under
+queue entry in place and prints the `ward agent work <ref> --driver <mode>`
+command to paste by hand. The agentic-os Warp configs and the shim live under
 `warp/` in that repo.
 
 ## See also
