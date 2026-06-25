@@ -57,12 +57,12 @@ the agent drops to non-root, so the file must be group-readable by the agent gid
 
 **The clobber (ward#288).** git's `store` helper rewrites it to `0600 root:root`
 on each successful auth, so the root-phase clones strip the group-read perms. An
-unreadable file then sends the push down git's env fallback (`FORGEJO_TOKEN`),
-Kai's own on a personal host - attributing the merge to `coilysiren`, not the bot.
-The bootstrap re-asserts the perms before the drop and fails loud if the agent
-still cannot read it. Both the shell entrypoint and the Go port carry it.
+unreadable file then sends the push down git's env fallback (`FORGEJO_TOKEN`) -
+attributing the merge to `coilysiren`, not the bot. The bootstrap re-asserts the
+perms before the drop and fails loud if the agent still cannot read it.
 
 ## See also
 
 - [docs/agent-local-harnesses.md](agent-local-harnesses.md) - qwen and goose (local models).
+- [docs/agent-host-net.md](agent-host-net.md) - `--host-net`, the tailnet route.
 - [docs/agent.md](agent.md) - the `ward agent` verb family and usage.

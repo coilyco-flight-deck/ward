@@ -100,8 +100,11 @@ func buildUpPlan(c *cli.Command, repo targetRepo, mode containerMode, cwd, asset
 	if v := strings.TrimSpace(c.String("ward-version")); v != "" {
 		wardVersion = v
 	}
+	// --host-net joins the host network for a tailnet route (ward#330); the tower
+	// FQDN is SSM-only, so it implies the --aws mount. See docs/agent-host-net.md.
+	hostNet := c.Bool("host-net")
 	awsHome := ""
-	if c.Bool("aws") {
+	if c.Bool("aws") || hostNet {
 		awsHome = filepath.Join(homeDir(), ".aws")
 	}
 	// "with-repo" is the shared lookup key: the canonical name on drive/ask, the
@@ -126,6 +129,7 @@ func buildUpPlan(c *cli.Command, repo targetRepo, mode containerMode, cwd, asset
 		AgentArgs:      agentArgs,
 		GoBootstrap:    c.Bool("go-bootstrap"),
 		ExtraRepos:     extra,
+		HostNet:        hostNet,
 	}, nil
 }
 

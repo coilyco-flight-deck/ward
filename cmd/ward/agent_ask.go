@@ -31,6 +31,7 @@ func agentAskCommand() *cli.Command {
 			&cli.StringFlag{Name: "ward-source", Usage: "mount a local ward checkout and build ward from it instead of downloading the release"},
 			&cli.StringFlag{Name: "ward-version", Sources: cli.EnvVars(envAgentVersion), Usage: "ward release the container downloads (default: this host's ward; env: WARD_AGENT_VERSION)"},
 			&cli.BoolFlag{Name: "aws", Usage: "mount ~/.aws read-only (broad SSM read surface; off by default)"},
+			hostNetFlag(),
 			&cli.BoolFlag{Name: "print", Usage: "resolve the repo + question + docker plan and exit; clone nothing, run nothing"},
 			&cli.BoolFlag{Name: "no-pull", Usage: "skip the image pull"},
 		},

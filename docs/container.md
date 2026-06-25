@@ -19,7 +19,8 @@ Three departures from a transparent, shared, bind-mounted container:
 - **Fresh clone inside, never on the host** - cached through a shared
   `ward-gitcache` bare mirror, so the host's repo tree stays untouched.
 - **Least access** - the only default host bind is the **cwd** (read-only) plus
-  ward's entrypoint/doctrine; `~/.aws` is opt-in via `--aws`.
+  ward's entrypoint/doctrine; `~/.aws` is opt-in via `--aws`, and `--host-net`
+  opts into the host's tailnet route ([agent-host-net.md](agent-host-net.md)).
 
 ## Usage
 
@@ -44,8 +45,7 @@ context is composed, mirroring agent-compose's slices:
 
 - `claude` (default, level 2) - doctrine + the mounted host context (cwd's
   `CLAUDE.md`/`AGENTS.md`).
-- `goose` (level 2) - same context as claude, mirrored into goose's
-  `~/.config/goose/.goosehints` (goose ignores `~/.claude/CLAUDE.md`).
+- `goose` (level 2) - same context as claude, mirrored to `.goosehints`.
 - `codex` (level 1) - doctrine + only the cwd's `AGENTS.md`.
 - `qwen` (level 0) - doctrine only.
 
@@ -57,10 +57,10 @@ self-installs opencode (ward#187, [agent.md](agent.md)).
 
 The entrypoint is embedded in the ward binary and bind-mounted into the
 unmodified dev-base image. It configures forgejo git auth, installs ward,
-cached-fresh-clones the target into `/workspace/<repo>`, installs pre-commit
-hooks ([container-precommit.md](container-precommit.md)), composes the mode's
-context + permission policy, launches the agent, then reaps on exit. The push
-token (`/forgejo/api-token`) resolves **on the host**, via a private 0600
+clones the target into `/workspace/<repo>`, installs pre-commit hooks
+([container-precommit.md](container-precommit.md)), composes context +
+permissions, launches the agent, then reaps. The push token
+(`/forgejo/api-token`) resolves **on the host**, via a private 0600
 `--env-file`, never in argv or audit.
 
 ## Feature-lifetime autonomy + the reaper backstop
@@ -70,7 +70,7 @@ The container's top-level doctrine
 at the top of the agent's context and **overrides** the host harness's hold-backs
 (commit/push only when asked, stop for conflicts), so it finishes the whole
 feature autonomously, with the container's isolation as the wall (force-push,
-history rewrites, other repos, data loss stay out of reach). It is its own
+other repos, data loss stay out of reach). It is its own
 **permission manager** (`bypassPermissions`;
 [docs/container-permissions.md](container-permissions.md)), and on every exit the
 reaper lands clean work on `main` or salvages it ([reap](container-reap.md)).

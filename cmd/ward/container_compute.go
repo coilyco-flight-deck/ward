@@ -379,6 +379,9 @@ type upPlan struct {
 	// ReadOnly marks a read-only scratch session (`ward agent explore`, ward#293):
 	// exports WARD_READONLY=1. See docs/agent-explore.md for what it enforces.
 	ReadOnly bool
+	// HostNet joins the container to the host network (--network=host) so a carry
+	// inherits the host's tailnet route (--host-net, ward#330). docs/agent-host-net.md.
+	HostNet bool
 }
 
 // parseExtraRepos resolves the --repo grant (bare owner/name or clone URL):
@@ -479,11 +482,17 @@ func (p upPlan) wardEnv() map[string]string {
 // dockerArgvHead is the verb + name/labels + entrypoint shared by the run and
 // create argv builders.
 func dockerArgvHead(verb string, p upPlan) []string {
-	return []string{
+	argv := []string{
 		verb, "--name", p.Name,
 		"--label", containerLabel, "--label", "ward.repo=" + p.Repo.slug(),
 		"--entrypoint", containerWardAssets + "/" + containerEntrypointRel,
 	}
+	// --host-net (ward#330) shares the host's network namespace so the carry
+	// inherits the host's tailnet route. See docs/agent-host-net.md.
+	if p.HostNet {
+		argv = append(argv, "--network=host")
+	}
+	return argv
 }
 
 // appendEnvAndImage appends the WARD_* env, the --env-file, the image, and the agent

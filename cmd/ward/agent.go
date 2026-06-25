@@ -257,6 +257,17 @@ func agentDriverFlag() cli.Flag {
 	}
 }
 
+// hostNetFlag is the opt-in network escalation (ward#330): join a carry to the host
+// network for a tailnet route, mirroring --aws and implying it. docs/agent-host-net.md.
+func hostNetFlag() cli.Flag {
+	return &cli.BoolFlag{
+		Name: "host-net",
+		Usage: "join the container to the host network (--network=host) so it inherits the host's " +
+			"tailnet route to tailnet-only hosts like kai-tower-3026; implies --aws (the tower FQDN is " +
+			"SSM-only). Drops the cwd-only least-access isolation; off by default (ward#330)",
+	}
+}
+
 // agentDriver resolves the --driver flag to a containerMode (defaulting to
 // claude), erroring on an unknown harness with a --driver-shaped message.
 func agentDriver(c *cli.Command) (containerMode, error) {
@@ -341,6 +352,7 @@ func agentSurfaceFlags(headless bool) []cli.Flag {
 		&cli.StringFlag{Name: "ward-source", Usage: "mount a local ward checkout and build ward from it instead of downloading the release"},
 		&cli.StringFlag{Name: "ward-version", Sources: cli.EnvVars(envAgentVersion), Usage: "ward release the container downloads (default: this host's ward; env: WARD_AGENT_VERSION)"},
 		&cli.BoolFlag{Name: "aws", Usage: "mount ~/.aws read-only (broad SSM read surface; off by default)"},
+		hostNetFlag(),
 		&cli.BoolFlag{Name: "print", Usage: "resolve the issue + seeded prompt + docker plan and exit; inject no push token, run nothing"},
 		&cli.BoolFlag{Name: "no-pull", Usage: "skip the image pull"},
 		&cli.BoolFlag{Name: "force", Usage: "skip the local + remote concurrency reservation checks (reclaim a stale or foreign hold)"},
@@ -1123,6 +1135,7 @@ func agentTaskCommand() *cli.Command {
 		&cli.StringFlag{Name: "ward-source", Usage: "mount a local ward checkout and build ward from it instead of downloading the release"},
 		&cli.StringFlag{Name: "ward-version", Sources: cli.EnvVars(envAgentVersion), Usage: "ward release the container downloads (default: this host's ward; env: WARD_AGENT_VERSION)"},
 		&cli.BoolFlag{Name: "aws", Usage: "mount ~/.aws read-only (broad SSM read surface; off by default)"},
+		hostNetFlag(),
 		&cli.BoolFlag{Name: "print", Usage: "resolve the repo + the issue that would be filed + the docker plan and exit; file nothing, run nothing"},
 		&cli.BoolFlag{Name: "no-pull", Usage: "skip the image pull"},
 		&cli.BoolFlag{Name: "force", Usage: "skip the local + remote concurrency reservation checks (reclaim a stale or foreign hold)"},

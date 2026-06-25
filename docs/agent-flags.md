@@ -5,7 +5,9 @@ for the verb family.
 
 ## Flags
 
-`work` carries the container bring-up launch flags: `--aws`, `--detach`,
+`work` carries the container bring-up launch flags: `--aws`, `--host-net` (host
+network for a tailnet route, implies `--aws`; [agent-host-net.md](agent-host-net.md)),
+`--detach`,
 `--tag`/`--image`/`--ward-version` (pin once via `WARD_AGENT_{TAG,IMAGE,VERSION}`,
 ward#312), `--ward-source`, `--no-pull`, `--branch` to override the
 `issue-<N>` default, and `--repo owner/name` (repeatable; `--with-repo` is the
@@ -22,9 +24,8 @@ A detached launch (`headless`, `task`, any `--detach`) isn't watched, so docker'
 chatter is dropped: pull lines, the `docker scout` footer, the container-id hash
 (`DOCKER_CLI_HINTS=false` plus a swallowed stdout). An **interactive** run streams
 it unchanged. The pull is the one exception (ward#322): silencing it hid
-slow/mid-push-registry stalls, so a detached pull names itself up front (`pulling
-<image> (silenced; ...)`) and beats a periodic `still pulling` heartbeat while
-in flight, then still falls back to the local image on failure.
+slow/mid-push-registry stalls, so a detached pull names itself up front and beats
+a periodic `still pulling` heartbeat, then falls back to the local image on failure.
 
 ## `--details` (ward#167)
 
@@ -34,8 +35,8 @@ The note rides as a final
 paragraph of the **seeded prompt** - marked as added via `--details` and flagged
 **authoritative over the issue text where they conflict** - so a single line can
 steer or correct the run without editing the issue. It is also folded into the
-**pre-flight read**, so the feasibility verdict accounts for the steer rather
-than judging the bare issue. It shows up in `--print` (it's part of the rendered
+**pre-flight read**, so the feasibility verdict accounts for the steer. It shows
+up in `--print` (it's part of the rendered
 seed). `task` has no `--details`: its `--instructions` already *are* the full
 brief, so there's nothing separate to layer on.
 
