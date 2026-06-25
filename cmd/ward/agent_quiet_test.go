@@ -128,7 +128,14 @@ func TestAgentLaunchSilencesDockerNoiseWhenHeadless(t *testing.T) {
 		t.Fatalf("read hints log: %v", err)
 	}
 	lines := strings.Split(strings.TrimSpace(string(got)), "\n")
-	want := []string{"hints=false", "hints=", "hints=false", "hints="}
+	// headless create is one silenced `docker run` on a host; in a container it
+	// dispatches via create+cp+start (ward#323), so it emits a second silenced call.
+	want := []string{"hints=false"}
+	if inContainer() {
+		want = append(want, "hints=false") // the silenced `start` (ward#340)
+	}
+	// then: interactive create (loud), headless pull (silenced), interactive pull (loud).
+	want = append(want, "hints=", "hints=false", "hints=")
 	if len(lines) != len(want) {
 		t.Fatalf("hints log = %v, want %v", lines, want)
 	}
