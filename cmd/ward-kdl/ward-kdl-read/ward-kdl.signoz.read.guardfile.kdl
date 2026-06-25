@@ -1,0 +1,47 @@
+// SigNoz READ tier - the base of the read ⊂ write ⊂ admin chain for the signoz
+// area (ward#338, the second area to tier after forgejo). A `ward-kdl-read`
+// binary whose only signoz verbs are the semantic reads: the active log-pipeline
+// set and the get/list pair over dashboards and alert rules. Everything else -
+// create/edit and the (already-denied) deletes - is never compiled into this
+// binary, so it cannot be invoked at all.
+//
+// This file is the singleton-bearing root of the signoz chain: it declares the
+// `spec`, `base-url`, and `auth` the write and admin tiers inherit (cli-guard#160
+// only pulls a singleton into a child that declares none). The spec is the same
+// hand-authored minimal document the monolith drives (signoz.openapi.json,
+// vendored beside this guardfile by `make build-ward-kdl-tiers`); base-url and
+// auth resolve from SSM at request time, mirroring ../ward-kdl.signoz.guardfile.kdl.
+// See ../../../docs/ward-kdl/ward-kdl.signoz.read.guardfile.md.
+//
+// SigNoz uses explicit per-resource leaves, not forgejo's `can get *` wildcards,
+// because its operationIds are not all CRUD-shaped (the query/pipeline paths pin
+// `op`); each leaf carries the describe text verbatim from the monolith so the
+// tiered surface reads identically to the curated one.
+wrap ward-kdl-read ops signoz {
+    spec signoz.openapi.json
+    base-url {
+        value ssm "/coilysiren/signoz-ser8/base-url"
+    }
+    auth header-token {
+        header SIGNOZ-API-KEY
+        value ssm "/coilysiren/signoz-ser8/api-token"
+    }
+    // read tier: the semantic reads only. No create/edit leaf mounts here, and
+    // signoz has no allowed delete at any tier (the deletes are denied at write).
+    can get pipeline {
+        op getLatestPipelines
+        describe "the active log-pipeline set (GET /api/v1/logs/pipelines/latest). op pinned: the path ends in a static /latest, not an item {id}, so convention `get` would not resolve it."
+    }
+    can get dashboard {
+        describe "a dashboard's full configuration (GET /api/v1/dashboards/{uuid})"
+    }
+    can list dashboard {
+        describe "all dashboards with their summaries (GET /api/v1/dashboards)"
+    }
+    can get rule {
+        describe "an alert rule (GET /api/v1/rules/{id})"
+    }
+    can list rule {
+        describe "all alert rules (GET /api/v1/rules)"
+    }
+}

@@ -1,0 +1,547 @@
+{
+  "components": {},
+  "info": {
+    "contact": {
+      "email": "coilysiren@gmail.com",
+      "name": "coilyco",
+      "url": "https://signoz.io"
+    },
+    "description": "Hand-authored minimal spec for the self-hosted SigNoz (signoz/signoz 0.128.0) on ser8, org coilyco. SigNoz does not publish a usable public OpenAPI document: its upstream docs/api/openapi.yml ships components/schemas only, with no paths block, so nothing vendorable covers the endpoints this surface grants. This file therefore models only the CRU endpoints ward-kdl exposes - v3 query_range, the logs/pipelines apply pair, dashboards, and alert rules - per the issue decision to fall back to a hand-authored minimal spec (coilyco-flight-deck/ward#241). Mutating bodies are complex JSON documents; the engine supplies the full payload via --body-file, while the scalar fields modeled here lower to convenience flags. Auth is the SIGNOZ-API-KEY apiKey header (a static SigNoz PAT), not the email/password session exchange the deploy scripts use. Delete/destroy verbs are intentionally not in this spec: they are denied in the guardfile and so never compile into the surface.",
+    "title": "SigNoz ser8 (ward-kdl curated subset)",
+    "version": "0.128.0"
+  },
+  "openapi": "3.0.3",
+  "paths": {
+    "/api/v1/dashboards": {
+      "get": {
+        "description": "List all dashboards with their summaries.",
+        "operationId": "listDashboards",
+        "responses": {
+          "200": {
+            "content": {
+              "application/json": {
+                "schema": {}
+              }
+            },
+            "description": "dashboard list"
+          }
+        },
+        "summary": "List dashboards",
+        "tags": [
+          "Dashboards"
+        ]
+      },
+      "post": {
+        "description": "Create a dashboard from its JSON document. Supply the full document via --body-file; the scalar fields below lower to convenience flags.",
+        "operationId": "createDashboard",
+        "requestBody": {
+          "content": {
+            "application/json": {
+              "schema": {
+                "properties": {
+                  "description": {
+                    "description": "dashboard description",
+                    "type": "string"
+                  },
+                  "layout": {
+                    "description": "panel layout; via --body-file",
+                    "items": {},
+                    "type": "array"
+                  },
+                  "tags": {
+                    "description": "dashboard tags",
+                    "items": {
+                      "type": "string"
+                    },
+                    "type": "array"
+                  },
+                  "title": {
+                    "description": "dashboard title",
+                    "type": "string"
+                  },
+                  "variables": {
+                    "description": "template variables; via --body-file",
+                    "type": "object"
+                  },
+                  "widgets": {
+                    "description": "panel widgets; via --body-file",
+                    "items": {},
+                    "type": "array"
+                  }
+                },
+                "type": "object"
+              }
+            }
+          },
+          "required": true
+        },
+        "responses": {
+          "200": {
+            "content": {
+              "application/json": {
+                "schema": {}
+              }
+            },
+            "description": "created"
+          }
+        },
+        "summary": "Create a dashboard",
+        "tags": [
+          "Dashboards"
+        ]
+      }
+    },
+    "/api/v1/dashboards/{uuid}": {
+      "get": {
+        "description": "Retrieve a dashboard's full configuration by uuid.",
+        "operationId": "getDashboard",
+        "parameters": [
+          {
+            "description": "dashboard uuid",
+            "in": "path",
+            "name": "uuid",
+            "required": true,
+            "schema": {
+              "type": "string"
+            }
+          }
+        ],
+        "responses": {
+          "200": {
+            "content": {
+              "application/json": {
+                "schema": {}
+              }
+            },
+            "description": "dashboard"
+          },
+          "404": {
+            "content": {
+              "application/json": {
+                "schema": {}
+              }
+            },
+            "description": "not found"
+          }
+        },
+        "summary": "Get a dashboard",
+        "tags": [
+          "Dashboards"
+        ]
+      },
+      "put": {
+        "description": "Replace a dashboard's configuration by uuid. Supply the full document via --body-file; the scalar fields below lower to convenience flags.",
+        "operationId": "updateDashboard",
+        "parameters": [
+          {
+            "description": "dashboard uuid",
+            "in": "path",
+            "name": "uuid",
+            "required": true,
+            "schema": {
+              "type": "string"
+            }
+          }
+        ],
+        "requestBody": {
+          "content": {
+            "application/json": {
+              "schema": {
+                "properties": {
+                  "description": {
+                    "description": "dashboard description",
+                    "type": "string"
+                  },
+                  "layout": {
+                    "description": "panel layout; via --body-file",
+                    "items": {},
+                    "type": "array"
+                  },
+                  "tags": {
+                    "description": "dashboard tags",
+                    "items": {
+                      "type": "string"
+                    },
+                    "type": "array"
+                  },
+                  "title": {
+                    "description": "dashboard title",
+                    "type": "string"
+                  },
+                  "variables": {
+                    "description": "template variables; via --body-file",
+                    "type": "object"
+                  },
+                  "widgets": {
+                    "description": "panel widgets; via --body-file",
+                    "items": {},
+                    "type": "array"
+                  }
+                },
+                "type": "object"
+              }
+            }
+          },
+          "required": true
+        },
+        "responses": {
+          "200": {
+            "content": {
+              "application/json": {
+                "schema": {}
+              }
+            },
+            "description": "updated"
+          }
+        },
+        "summary": "Update a dashboard",
+        "tags": [
+          "Dashboards"
+        ]
+      }
+    },
+    "/api/v1/logs/pipelines": {
+      "post": {
+        "description": "POST the full desired pipeline set as a new version. SigNoz retains prior versions server-side, so rollback is re-applying an earlier set, never a delete. Supply the set via --body-file.",
+        "operationId": "createPipeline",
+        "requestBody": {
+          "content": {
+            "application/json": {
+              "schema": {
+                "properties": {
+                  "pipelines": {
+                    "description": "the ordered pipeline objects; supply the full set via --body-file",
+                    "items": {},
+                    "type": "array"
+                  }
+                },
+                "required": [
+                  "pipelines"
+                ],
+                "type": "object"
+              }
+            }
+          },
+          "required": true
+        },
+        "responses": {
+          "200": {
+            "content": {
+              "application/json": {
+                "schema": {}
+              }
+            },
+            "description": "applied"
+          }
+        },
+        "summary": "Apply a new log pipeline version",
+        "tags": [
+          "Pipelines"
+        ]
+      }
+    },
+    "/api/v1/logs/pipelines/latest": {
+      "get": {
+        "description": "Return the latest applied version of the log-parsing pipeline set.",
+        "operationId": "getLatestPipelines",
+        "responses": {
+          "200": {
+            "content": {
+              "application/json": {
+                "schema": {}
+              }
+            },
+            "description": "the active pipeline set"
+          }
+        },
+        "summary": "Get the active log pipeline set",
+        "tags": [
+          "Pipelines"
+        ]
+      }
+    },
+    "/api/v1/rules": {
+      "get": {
+        "description": "List all alert rules.",
+        "operationId": "listRules",
+        "responses": {
+          "200": {
+            "content": {
+              "application/json": {
+                "schema": {}
+              }
+            },
+            "description": "rule list"
+          }
+        },
+        "summary": "List alert rules",
+        "tags": [
+          "Rules"
+        ]
+      },
+      "post": {
+        "description": "Create an alert rule from its JSON document. Supply the full document via --body-file; the scalar fields below lower to convenience flags.",
+        "operationId": "createRule",
+        "requestBody": {
+          "content": {
+            "application/json": {
+              "schema": {
+                "properties": {
+                  "alert": {
+                    "description": "alert (rule) name",
+                    "type": "string"
+                  },
+                  "alertType": {
+                    "description": "alert type, e.g. METRIC_BASED_ALERT",
+                    "type": "string"
+                  },
+                  "annotations": {
+                    "description": "rule annotations; via --body-file",
+                    "type": "object"
+                  },
+                  "condition": {
+                    "description": "the alert condition tree; via --body-file",
+                    "type": "object"
+                  },
+                  "evalWindow": {
+                    "description": "evaluation window, e.g. 5m0s",
+                    "type": "string"
+                  },
+                  "frequency": {
+                    "description": "evaluation frequency, e.g. 1m0s",
+                    "type": "string"
+                  },
+                  "labels": {
+                    "description": "rule labels; via --body-file",
+                    "type": "object"
+                  },
+                  "ruleType": {
+                    "description": "rule type, e.g. threshold_rule or prom_rule",
+                    "type": "string"
+                  }
+                },
+                "type": "object"
+              }
+            }
+          },
+          "required": true
+        },
+        "responses": {
+          "200": {
+            "content": {
+              "application/json": {
+                "schema": {}
+              }
+            },
+            "description": "created"
+          }
+        },
+        "summary": "Create an alert rule",
+        "tags": [
+          "Rules"
+        ]
+      }
+    },
+    "/api/v1/rules/{id}": {
+      "get": {
+        "description": "Retrieve an alert rule by id.",
+        "operationId": "getRule",
+        "parameters": [
+          {
+            "description": "rule id",
+            "in": "path",
+            "name": "id",
+            "required": true,
+            "schema": {
+              "type": "string"
+            }
+          }
+        ],
+        "responses": {
+          "200": {
+            "content": {
+              "application/json": {
+                "schema": {}
+              }
+            },
+            "description": "rule"
+          },
+          "404": {
+            "content": {
+              "application/json": {
+                "schema": {}
+              }
+            },
+            "description": "not found"
+          }
+        },
+        "summary": "Get an alert rule",
+        "tags": [
+          "Rules"
+        ]
+      },
+      "put": {
+        "description": "Replace an alert rule by id. Supply the full document via --body-file; the scalar fields below lower to convenience flags.",
+        "operationId": "updateRule",
+        "parameters": [
+          {
+            "description": "rule id",
+            "in": "path",
+            "name": "id",
+            "required": true,
+            "schema": {
+              "type": "string"
+            }
+          }
+        ],
+        "requestBody": {
+          "content": {
+            "application/json": {
+              "schema": {
+                "properties": {
+                  "alert": {
+                    "description": "alert (rule) name",
+                    "type": "string"
+                  },
+                  "alertType": {
+                    "description": "alert type, e.g. METRIC_BASED_ALERT",
+                    "type": "string"
+                  },
+                  "annotations": {
+                    "description": "rule annotations; via --body-file",
+                    "type": "object"
+                  },
+                  "condition": {
+                    "description": "the alert condition tree; via --body-file",
+                    "type": "object"
+                  },
+                  "evalWindow": {
+                    "description": "evaluation window, e.g. 5m0s",
+                    "type": "string"
+                  },
+                  "frequency": {
+                    "description": "evaluation frequency, e.g. 1m0s",
+                    "type": "string"
+                  },
+                  "labels": {
+                    "description": "rule labels; via --body-file",
+                    "type": "object"
+                  },
+                  "ruleType": {
+                    "description": "rule type, e.g. threshold_rule or prom_rule",
+                    "type": "string"
+                  }
+                },
+                "type": "object"
+              }
+            }
+          },
+          "required": true
+        },
+        "responses": {
+          "200": {
+            "content": {
+              "application/json": {
+                "schema": {}
+              }
+            },
+            "description": "updated"
+          }
+        },
+        "summary": "Update an alert rule",
+        "tags": [
+          "Rules"
+        ]
+      }
+    },
+    "/api/v3/query_range": {
+      "post": {
+        "description": "Execute a query against traces, logs, or metrics over a time range. A POST that reads telemetry; nothing is created or mutated.",
+        "operationId": "queryRange",
+        "requestBody": {
+          "content": {
+            "application/json": {
+              "schema": {
+                "properties": {
+                  "compositeQuery": {
+                    "description": "the builder/clickhouse/promql query tree; supply via --body-file",
+                    "type": "object"
+                  },
+                  "end": {
+                    "description": "range end, epoch milliseconds",
+                    "type": "integer"
+                  },
+                  "start": {
+                    "description": "range start, epoch milliseconds",
+                    "type": "integer"
+                  },
+                  "step": {
+                    "description": "step interval in seconds",
+                    "type": "integer"
+                  }
+                },
+                "required": [
+                  "start",
+                  "end"
+                ],
+                "type": "object"
+              }
+            }
+          },
+          "required": true
+        },
+        "responses": {
+          "200": {
+            "content": {
+              "application/json": {
+                "schema": {}
+              }
+            },
+            "description": "query result"
+          },
+          "400": {
+            "content": {
+              "application/json": {
+                "schema": {}
+              }
+            },
+            "description": "bad query"
+          }
+        },
+        "summary": "Run a v3 range query",
+        "tags": [
+          "Query"
+        ]
+      }
+    }
+  },
+  "security": [
+    {
+      "SigNozApiKey": []
+    }
+  ],
+  "servers": [
+    {
+      "description": "host resolved at runtime from AWS SSM /coilysiren/signoz-ser8/base-url; spec paths carry the full /api prefix",
+      "url": "https://signoz.ser8.invalid"
+    }
+  ],
+  "tags": [
+    {
+      "description": "v3 range queries over traces, logs, and metrics",
+      "name": "Query"
+    },
+    {
+      "description": "log-parsing ingest pipelines",
+      "name": "Pipelines"
+    },
+    {
+      "description": "dashboards",
+      "name": "Dashboards"
+    },
+    {
+      "description": "alert rules",
+      "name": "Rules"
+    }
+  ]
+}

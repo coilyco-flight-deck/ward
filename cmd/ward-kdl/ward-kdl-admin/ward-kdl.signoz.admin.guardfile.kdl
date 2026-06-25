@@ -1,0 +1,20 @@
+// SigNoz ADMIN tier - the top of the read ⊂ write ⊂ admin chain (ward#338).
+// `inherit` (cli-guard#160) composes the whole write tier (which itself composes
+// read). For most areas admin is where the irreversible `delete` verb is added,
+// but signoz is CRU-only: every delete is denied and the spec models no delete
+// path (ward#241), so there is nothing for admin to add. admin == write here.
+//
+// That is correct and intended, and it is the structural point this run proves:
+// the read ⊂ write ⊂ admin chain composes even when the top tier adds nothing,
+// so an area that tops out below delete still gets a real `ward-kdl-admin` member
+// rather than a gap. Keep this file as the explicit tier anchor even though its
+// body is empty but for the inherit - dropping it would leave admin without a
+// signoz surface while read and write carry one.
+//
+// `restrict` does not inherit (cli-guard#160), but signoz has no owner/scope gate
+// to re-declare. See ../../../docs/ward-kdl/ward-kdl.signoz.admin.guardfile.md.
+wrap ward-kdl-admin ops signoz {
+    // No verbs added: signoz has no allowed delete, so the admin surface equals
+    // the inherited write surface (read + create/edit + the append-only creates).
+    inherit "../ward-kdl-write/ward-kdl.signoz.write.guardfile.kdl"
+}

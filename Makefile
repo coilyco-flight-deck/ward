@@ -1,4 +1,4 @@
-.PHONY: help build test vet lint tidy cover install ward-kdl install-tmp lock skew sync-ops-assets sync-exec-assets build-ward-kdl build-ward-kdl-forgejo-tiers workspace
+.PHONY: help build test vet lint tidy cover install ward-kdl install-tmp lock skew sync-ops-assets sync-exec-assets build-ward-kdl build-ward-kdl-tiers build-ward-kdl-forgejo-tiers workspace
 
 SPECVERB_GEN := forgejo.coilysiren.me/coilyco-flight-deck/cli-guard/cmd/specverb-gen
 
@@ -58,35 +58,48 @@ build-ward-kdl: ## build or rebuild the ward-kdl binary, one shot for ease of us
 	# copies live under docs/ward-kdl/, so relocate them after every rebuild.
 	@mkdir -p docs/ward-kdl
 	mv ./cmd/ward-kdl/ward-kdl.*.guardfile.md ./docs/ward-kdl/
-	$(MAKE) build-ward-kdl-forgejo-tiers
+	$(MAKE) build-ward-kdl-tiers
 	$(MAKE) sync-ops-assets
 	$(MAKE) sync-exec-assets
 
-build-ward-kdl-forgejo-tiers: ## build the read/write/admin forgejo tier binaries (ward#240).
-	@mkdir -p bin
-	# Forgejo permission tiers: read ⊂ write ⊂ admin, composed by `inherit`
-	# (cli-guard#160) over wildcard `"*"` grants (cli-guard#159). Each tier is its
-	# own standalone binary, so a withheld verb is absent at compile time, not just
-	# denied at runtime: ward-kdl-read has no create/edit/delete leaf, ward-kdl-write
-	# no delete leaf. Each tier lives in its own subdir under cmd/ward-kdl/ with its
-	# own spec lock, so each `lock` freezes exactly its tier's slice - read the
-	# get/list surface, write read + create/edit, admin the full CRUD superset.
-	# write/admin `inherit` the read tier's spec/base-url/auth singletons across the
-	# sibling subdirs by relative path. `gen` then writes each tier's main.go and
-	# reference doc beside its guardfile; the reviewed copies live under docs/ward-kdl/.
-	go run $(DRIVER) lock  --guardfile ./cmd/ward-kdl/ward-kdl-read/ward-kdl.forgejo.read.guardfile.kdl
-	go run $(DRIVER) lock  --guardfile ./cmd/ward-kdl/ward-kdl-write/ward-kdl.forgejo.write.guardfile.kdl
-	go run $(DRIVER) lock  --guardfile ./cmd/ward-kdl/ward-kdl-admin/ward-kdl.forgejo.admin.guardfile.kdl
-	go run $(DRIVER) build --guardfile ./cmd/ward-kdl/ward-kdl-read/ward-kdl.forgejo.read.guardfile.kdl   --out bin --set-version $(KDL_VERSION)
-	go run $(DRIVER) build --guardfile ./cmd/ward-kdl/ward-kdl-write/ward-kdl.forgejo.write.guardfile.kdl --out bin --set-version $(KDL_VERSION)
-	go run $(DRIVER) build --guardfile ./cmd/ward-kdl/ward-kdl-admin/ward-kdl.forgejo.admin.guardfile.kdl --out bin --set-version $(KDL_VERSION)
-	go run $(DRIVER) gen   --guardfile ./cmd/ward-kdl/ward-kdl-read/ward-kdl.forgejo.read.guardfile.kdl
-	go run $(DRIVER) gen   --guardfile ./cmd/ward-kdl/ward-kdl-write/ward-kdl.forgejo.write.guardfile.kdl
-	go run $(DRIVER) gen   --guardfile ./cmd/ward-kdl/ward-kdl-admin/ward-kdl.forgejo.admin.guardfile.kdl
-	@mkdir -p docs/ward-kdl
-	mv ./cmd/ward-kdl/ward-kdl-read/ward-kdl.*.guardfile.md  ./docs/ward-kdl/
-	mv ./cmd/ward-kdl/ward-kdl-write/ward-kdl.*.guardfile.md ./docs/ward-kdl/
-	mv ./cmd/ward-kdl/ward-kdl-admin/ward-kdl.*.guardfile.md ./docs/ward-kdl/
+build-ward-kdl-tiers: ## build the read/write/admin tier binaries, discovering every area dropped into each tier subdir (ward#240, ward#338).
+	@mkdir -p bin docs/ward-kdl
+	# Permission tiers: read ⊂ write ⊂ admin, composed by `inherit` (cli-guard#160)
+	# over per-area grants (forgejo's wildcard `"*"`, cli-guard#159; signoz's
+	# explicit per-resource leaves). Each tier is its own standalone binary under
+	# cmd/ward-kdl/ward-kdl-<tier>/, so a withheld verb is absent at compile time,
+	# not just denied at runtime: ward-kdl-read has no create/edit/delete leaf,
+	# ward-kdl-write no delete leaf. The driver merges EVERY ward-kdl.*.guardfile.kdl
+	# in a tier subdir that shares the `wrap ward-kdl-<tier>` binary name into one
+	# binary, keeping each area's spec lock + reference doc separate - so one tier
+	# binary carries every area dropped into its subdir (ward#338 proves this on
+	# forgejo+signoz). write/admin `inherit` the read tier's spec/base-url/auth
+	# singletons across the sibling subdirs by relative path.
+	#
+	# This loop is area-discovering, not a hardcoded triplet: it globs each tier
+	# subdir, so adding an area is dropping its three tier guardfiles - no target
+	# edit. A vendored-spec area (signoz) names a `spec` file that exists beside the
+	# canonical base guardfile; that file is copied into each tier subdir before
+	# locking so `lock` reads it locally and the inheriting members resolve the same
+	# spec relative to their own dir. A remote-spec area (forgejo) names a spec with
+	# no base-dir file, so nothing is copied and `lock` fetches it upstream.
+	@set -e; \
+	for gf in cmd/ward-kdl/ward-kdl-read/ward-kdl.*.guardfile.kdl; do \
+		spec=$$(awk '/^[[:space:]]*spec /{print $$2; exit}' "$$gf"); \
+		[ -n "$$spec" ] && [ -f "cmd/ward-kdl/$$spec" ] || continue; \
+		for tier in read write admin; do cp "cmd/ward-kdl/$$spec" "cmd/ward-kdl/ward-kdl-$$tier/$$spec"; done; \
+	done; \
+	for tier in read write admin; do \
+		dir=cmd/ward-kdl/ward-kdl-$$tier; \
+		for gf in $$dir/ward-kdl.*.guardfile.kdl; do \
+			go run $(DRIVER) lock  --guardfile "$$gf"; \
+			go run $(DRIVER) build --guardfile "$$gf" --out bin --set-version $(KDL_VERSION); \
+			go run $(DRIVER) gen   --guardfile "$$gf"; \
+		done; \
+		mv $$dir/ward-kdl.*.guardfile.md docs/ward-kdl/; \
+	done
+
+build-ward-kdl-forgejo-tiers: build-ward-kdl-tiers ## Back-compat alias for build-ward-kdl-tiers (ward#338 generalized it past forgejo).
 
 sync-ops-assets: ## Mirror the canonical forgejo guardfile + spec lock into cmd/ward for embedding (ward#92).
 	# go:embed cannot reach a sibling dir, so `ward ops forgejo` embeds copies of
