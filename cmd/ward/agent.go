@@ -873,6 +873,16 @@ func buildAgentPlan(c *cli.Command, mode containerMode, ref agentIssueRef, seed 
 	return plan, nil
 }
 
+// carryingLine renders the one-line "what am I about to work on" echo (ward#307):
+// label, ref, title - returning "" for an empty title so a seedless run stays quiet.
+func carryingLine(label string, ref agentIssueRef, title string) string {
+	t := strings.TrimSpace(title)
+	if t == "" {
+		return ""
+	}
+	return fmt.Sprintf("%s: carrying %s - %q", label, ref, t)
+}
+
 // launchAgentContainer turns a resolved (ref, title, seed) into the container
 // plan and fires it - the shared tail of work, headless, and task. See docs/agent.md.
 func (r *Runner) launchAgentContainer(ctx context.Context, c *cli.Command, mode containerMode, surface string, headless bool, ref agentIssueRef, title, seed string) error {
@@ -897,6 +907,12 @@ func (r *Runner) launchAgentContainer(ctx context.Context, c *cli.Command, mode 
 
 	if c.Bool("print") {
 		return printAgentPlan(c, plan, ref, title, seed, surface)
+	}
+
+	// Echo the issue title so the operator sees *what* this run carries, not just the
+	// opaque ref number - the one line saying the right issue is in flight (ward#307).
+	if line := carryingLine(label, ref, title); line != "" {
+		fmt.Fprintln(os.Stderr, line)
 	}
 
 	// Reserve the issue so another run (file sentinel here, Forgejo marker elsewhere)

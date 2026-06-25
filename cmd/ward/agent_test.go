@@ -139,6 +139,20 @@ func TestAgentIssueRefURL(t *testing.T) {
 	}
 }
 
+func TestCarryingLine(t *testing.T) {
+	ref := agentIssueRef{Owner: "coilyco-flight-deck", Repo: "ward", Number: 307}
+	// A real title echoes the label, the ref, and the quoted title (ward#307).
+	got := carryingLine("ward agent --driver claude", ref, "  echo the issue title  ")
+	want := `ward agent --driver claude: carrying coilyco-flight-deck/ward#307 - "echo the issue title"`
+	if got != want {
+		t.Errorf("carryingLine() = %q, want %q", got, want)
+	}
+	// An issueless (seedless) surface passes a blank title and must stay quiet.
+	if got := carryingLine("ward agent sandbox", ref, "   "); got != "" {
+		t.Errorf("carryingLine() with blank title = %q, want empty", got)
+	}
+}
+
 func TestAgentSeedPrompt(t *testing.T) {
 	ref := agentIssueRef{Owner: "coilyco-flight-deck", Repo: "ward", Number: 98}
 	// A vision-capable harness with a real body keeps the read-it-at-the-URL flow.
