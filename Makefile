@@ -1,4 +1,4 @@
-.PHONY: help build test vet lint tidy cover install ward-kdl install-tmp lock skew sync-ops-assets sync-exec-assets build-ward-kdl build-ward-kdl-tiers build-ward-kdl-forgejo-tiers workspace
+.PHONY: help build test vet lint tidy cover install ward-kdl install-tmp lock skew sync-ops-assets sync-exec-assets build-ward-kdl build-ward-kdl-tiers build-ward-kdl-forgejo-tiers workspace agent-roster
 
 SPECVERB_GEN := forgejo.coilysiren.me/coilyco-flight-deck/cli-guard/cmd/specverb-gen
 
@@ -121,6 +121,12 @@ sync-exec-assets: ## Mirror the exec-dialect ward-kdl guardfiles into cmd/ward f
 	@for f in ./cmd/ward-kdl/ward-kdl.*.guardfile.kdl; do \
 		if grep -qE '^[[:space:]]+exec ' "$$f"; then cp "$$f" ./cmd/ward/execassets/; fi; \
 	done
+
+agent-roster: ## Regenerate docs/agent-roster.md from the code roster - the binary describing its own roles (ward#348).
+	# The flat agent-role list is generated, never hand-edited: `ward agent roster`
+	# walks the roles agentCommand() registers and prints the committed doc body.
+	# agent_roster_test.go fails the build on drift, so re-run after touching the roster.
+	go run ./cmd/ward agent roster --markdown > docs/agent-roster.md
 
 test: ## Run the unit test suite.
 	go test ./...

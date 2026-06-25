@@ -13,32 +13,33 @@ cwd's git origin. The role words below override that default.
 
 ## The four roles
 
-- **`engineer`** (was `headless` + `work` + `task`) implements a ticket end to end. The
-  argument type selects the mode:
-  - **A ref** carries that existing issue. **Detached** fire-and-forget by default (was
-    `headless`): runs the agent in print mode (`claude -p`, `codex exec`, `goose run -t`),
-    works to completion non-interactively, and exits into the reaper. For claude it
-    **streams live progress** to the container log. When dispatched from a terminal it
-    first runs a **pre-flight check** ([docs/agent-preflight.md](agent-preflight.md)): a
-    GO launches, a NO-GO comments and launches nothing. Its detached seed asks it to
-    **close with a "how it felt" comment** (ward#281) led by a `WARD-OUTCOME` line
-    (ward#310). `--watch` (`-w`) flips it to **interactive, attached** (was `work`) - a
-    human is watching, so it omits the closing retrospective.
-  - **Freeform text** files an issue first, then carries it (was `task`): DIRECT for an
-    explicit `owner/repo`, ROUTE for a freeform task with no repo (ward#164). See
-    [docs/agent-engineer.md](agent-engineer.md).
-- **`architect`** (was `explore`) is a *read-only interactive* session in a fresh
-  container, no issue, no seed - reads the repo, scopes, and dispatches work, but the
-  push credential is revoked after the clone and the reaper skips salvage (ward#293).
-  See [docs/agent-architect.md](agent-architect.md).
-- **`director`** (was `backlog`) is an *autonomous supervised loop*, not an
-  issue-carrying role: it dispatches queued headless-lane issues up to `--max-parallel`,
-  polls their `WARD-OUTCOME` comments, and repeats until the lane drains (ward#346). See
-  [docs/agent-director.md](agent-director.md).
-- **`advisor`** (was `reply` + `ask`) answers and writes no code. The argument type
-  selects the mode: **a ref** researches the issue one-shot and posts the answer as a
-  comment (was `reply`); **freeform text** answers a question one-shot *inside* a fresh
-  container and streams it inline (was `ask`). See [docs/agent-advisor.md](agent-advisor.md).
+The canonical flat enumeration of the roles - one row each, with the tagline and the
+ref-vs-freeform invocation modes - lives in **[agent-roster.md](agent-roster.md)**,
+generated from the code roster by `ward agent roster` so it can never go stale
+(ward#348). That page is the one source of truth for *which* roles exist; this doc and
+the per-role docs ([agent-engineer.md](agent-engineer.md), [agent-architect.md](agent-architect.md),
+[agent-director.md](agent-director.md), [agent-advisor.md](agent-advisor.md)) carry the
+prose detail behind each row. Run `warded roster` for the list live at the terminal.
+
+The notes below are the behavioral detail the flat roster does not capture:
+
+- **`engineer`** (was `headless` + `work` + `task`) - the **detached** ref carry runs the
+  agent in print mode (`claude -p`, `codex exec`, `goose run -t`) to completion and exits
+  into the reaper; for claude it **streams live progress** to the container log. From a
+  terminal it first runs a **pre-flight check** ([agent-preflight.md](agent-preflight.md)):
+  a GO launches, a NO-GO comments and launches nothing. Its detached seed asks it to
+  **close with a "how it felt" comment** (ward#281) led by a `WARD-OUTCOME` line
+  (ward#310). `--watch` (`-w`) flips it to **interactive, attached** (was `work`), which
+  omits the closing retrospective. Freeform text files an issue first, then carries it:
+  DIRECT for an explicit `owner/repo`, ROUTE for a freeform task with no repo (ward#164).
+- **`architect`** (was `explore`) - the push credential is revoked after the clone and
+  the reaper skips salvage (ward#293).
+- **`director`** (was `backlog`) - dispatches queued headless-lane issues up to
+  `--max-parallel`, polls their `WARD-OUTCOME` comments, and repeats until the lane
+  drains (ward#346).
+- **`advisor`** (was `reply` + `ask`) - the ref mode researches one-shot and posts the
+  answer as a comment; freeform answers one-shot *inside* a fresh container and streams
+  it inline.
 
 ## Pre-flight parity
 
@@ -58,6 +59,7 @@ finishing to a clean `main` push.
 
 ## See also
 
+- [docs/agent-roster.md](agent-roster.md) - the generated flat list of every role.
 - [docs/agent.md](agent.md) - the `ward agent` roster and usage.
 - [docs/agent-engineer.md](agent-engineer.md) - what the engineer carry does step by step.
 - [docs/agent-preflight.md](agent-preflight.md) - the detached GO/NO-GO pre-flight.

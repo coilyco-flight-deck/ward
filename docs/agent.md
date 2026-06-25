@@ -54,6 +54,7 @@ ward#347). The ref is `owner/repo#N`, a full Forgejo URL, or a bare `#N` / `N` i
 
 ## Topics
 
+- [agent-roster.md](agent-roster.md) - the generated flat list of every role (one row each; `ward agent roster`).
 - [agent-subcommands.md](agent-subcommands.md) - the four roles compared + the reaper.
 - [agent-preflight.md](agent-preflight.md) - the detached GO/NO-GO pre-flight.
 - [agent-wrong-repo.md](agent-wrong-repo.md) - the WRONG-REPO blind-fire path.
