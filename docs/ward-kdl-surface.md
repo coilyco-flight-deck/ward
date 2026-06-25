@@ -1,7 +1,9 @@
 # ward-kdl verb surface
 
 The spec-driven and passthrough verb surfaces carried by `ward-kdl`, split out of
-[FEATURES.md](FEATURES.md) under the documentation-layout cap (ward#224).
+[FEATURES.md](FEATURES.md) under the documentation-layout cap (ward#224). For what
+`ward-kdl` **is** - the build-time generator behind every surface below - see
+[ward-kdl.md](ward-kdl.md).
 
 ## Spec-driven ops (`ward-kdl`)
 
@@ -18,6 +20,7 @@ The **exec-dialect** surfaces above (`docker`, `agents`, `ops {aws,kubectl}`) ar
 
 ## See also
 
+- [ward-kdl.md](ward-kdl.md) - what `ward-kdl` is: the build-time generator behind these surfaces.
 - [FEATURES.md](FEATURES.md) - inventory of what ships today.
 - [ward-kdl-in-ward.md](ward-kdl-in-ward.md) - exec guardfiles auto-mounted into `ward`.
 - [.ward/ward.yaml](../.ward/ward.yaml) - allowlisted commands.

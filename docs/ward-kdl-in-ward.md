@@ -71,6 +71,7 @@ sync-exec-assets` (folded into `make build-ward-kdl`).
 
 ## See also
 
+- [ward-kdl.md](ward-kdl.md) - what `ward-kdl` is: the build-time generator.
 - [ops-forgejo-admin.md](ops-forgejo-admin.md) - the one-off graft this generalizes.
 - [ward-kdl-surface.md](ward-kdl-surface.md) - the full ward-kdl verb surface.
 - [git-verbs.md](git-verbs.md) - the hand-written `ward git` surface that wins the collision.

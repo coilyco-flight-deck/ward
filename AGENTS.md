@@ -4,12 +4,12 @@ Workspace conventions load globally via `~/.claude/CLAUDE.md` -> `agentic-os-kai
 
 ## Scope
 
-`ward` is a contributor-facing [cli-guard](https://forgejo.coilysiren.me/coilyco-flight-deck/cli-guard) consumer: the gate a contributor (human or agent) routes through to build, test, and lint project code. It carries the project's dev verbs.
+`ward` is a contributor-facing [cli-guard](https://forgejo.coilysiren.me/coilyco-flight-deck/cli-guard) consumer: the gate a contributor (human or agent) routes through to build, test, and lint project code.
 
-ward is also absorbing the operator surface: [coily](https://github.com/coilyco-bridge/coily) is retiring and its ops verbs fold into ward, retiring the old "ward never grows ops verbs" boundary. Two verb kinds now:
+ward also carries the operator surface from the retiring [coily](https://github.com/coilyco-bridge/coily). Three roles, by **when** they run: cli-guard the **engine**, [ward-kdl](docs/ward-kdl.md) the **build-time generator** (guardfile in, audited CLI out), `ward` the **run-time product** that embeds those surfaces. Two verb kinds now:
 
 - **Contributor dev verbs** - `build`, `test`, `vet`, `lint`, `tidy`, `cover`, declared per-repo in `.ward/ward.yaml`.
-- **Operator verbs** - from coily. Spec REST rides ward-kdl (`ops forgejo`, `ops aws`); composite control flow is hand-written gated Go in `cmd/ward`. `ward ci watch` (ward#88) is one such verb; see [docs/ci-watch.md](docs/ci-watch.md).
+- **Operator verbs** - [ward-kdl](docs/ward-kdl.md) generates the `ward ops <api>` REST surfaces (`ops forgejo`, `ops aws`). Composite control flow stays hand-written Go in `cmd/ward` - `ward ci watch` (ward#88, [docs/ci-watch.md](docs/ci-watch.md)).
 
 ## Project shape
 
@@ -18,8 +18,8 @@ Single Go module (path `github.com/coilyco-flight-deck/ward`). CLI at `cmd/ward/
 ## Repo boundaries
 
 - Upstream: `coilyco-flight-deck/cli-guard` provides the policy/routing engine. Thin consumer, not a fork.
-- Retiring sibling: `coilyco-bridge/coily` is the operator CLI being wound down; its ops verbs migrate into ward. New operator work lands here, not in coily.
-- Downstream: consumers upgraded to the `ward` binary and `.ward` config on their own schedule.
+- Retiring sibling: `coilyco-bridge/coily` - ops verbs migrate into ward. New operator work lands here, not coily.
+- Downstream: consumers upgrade to the `ward` binary and `.ward` config on their own schedule.
 
 ## Commands
 
@@ -31,7 +31,7 @@ ward dogfoods itself. Route through it, not bare go:
 - `ward exec lint`
 - `ward exec tidy`
 
-Install: `brew tap coilyco-flight-deck/tap https://forgejo.coilysiren.me/coilyco-flight-deck/homebrew-tap && brew install coilyco-flight-deck/tap/ward`.
+Install via the flight-deck brew tap - see [README.md](README.md).
 
 ## Validation
 

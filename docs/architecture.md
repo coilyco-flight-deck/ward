@@ -11,7 +11,7 @@ A Go library of the actual guardrails: deny-by-structure command lockdown, the O
 
 ## ward-kdl - the generator (build time)
 
-You write a **guardfile** - a small [KDL](https://kdl.dev) policy file: for an API, `can get "*"`, `never delete "*"`. `ward-kdl` compiles that guardfile plus the API's OpenAPI spec into a **scoped, audited CLI binary**. It is `protoc` for permissions: a grammar (the guardfile) in, a typed least-privilege surface out. You rarely run `ward-kdl` by hand - you run what it produces.
+You write a **guardfile** - a small [KDL](https://kdl.dev) policy file: for an API, `can get "*"`, `never delete "*"`. `ward-kdl` compiles that guardfile plus the API's OpenAPI spec into a **scoped, audited CLI binary**. It is `protoc` for permissions: a grammar (the guardfile) in, a typed least-privilege surface out. You rarely run `ward-kdl` by hand - you run what it produces. [ward-kdl.md](ward-kdl.md) is the authoritative writeup of this layer.
 
 ## ward (public face: `warded`) - the product (run time)
 

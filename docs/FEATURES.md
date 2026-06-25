@@ -23,9 +23,9 @@ Contributor-facing cli-guard gate: repo dev verbs + audited host wrappers.
 
 ## Spec-driven ops (`ward-kdl`)
 
-`ward-kdl` carries the spec-driven (`specverb`) and passthrough (`execverb`) verb surfaces - `ops` (forgejo/trello/tailscale/glitchtip/signoz/aws/kubectl), `docker`, `agents`, and `pkg`. See [docs/ward-kdl-surface.md](ward-kdl-surface.md) for the per-surface breakdown. The in-binary `ward ops forgejo` also grafts a remote-exec admin/doctor slice (ward#81); see [ops-forgejo-admin](ops-forgejo-admin.md). Forgejo also ships as three permission-tiered binaries - `ward-kdl-{read,write,admin}` (ward#240).
+`ward-kdl` is the build-time generator that compiles a guardfile into an audited CLI ([docs/ward-kdl.md](ward-kdl.md)). It carries the spec-driven and passthrough verb surfaces - `ops` (forgejo/trello/tailscale/glitchtip/signoz/aws/kubectl), `docker`, `agents`, and `pkg` ([ward-kdl-surface.md](ward-kdl-surface.md) breaks them down per-surface). The in-binary `ward ops forgejo` also grafts a remote-exec admin slice (ward#81, [ops-forgejo-admin](ops-forgejo-admin.md)) and ships as `ward-kdl-{read,write,admin}` permission tiers (ward#240).
 
-The **exec-dialect** guardfiles auto-mount into `ward` at their `wrap` path (`ward docker`, `ward agents`, `ward ops aws`) with no per-guardfile graft; `git` / `pkg brew` keep hand-written surfaces (ward#284). See [in-ward](ward-kdl-in-ward.md).
+The **exec-dialect** guardfiles auto-mount into `ward` at their `wrap` path with no per-guardfile graft. `git` / `pkg brew` keep hand-written surfaces (ward#284). See [in-ward](ward-kdl-in-ward.md).
 
 ## See also
 
