@@ -34,9 +34,9 @@ The notes below are the behavioral detail the flat roster does not capture:
   DIRECT for an explicit `owner/repo`, ROUTE for a freeform task with no repo (ward#164).
 - **`architect`** (was `explore`) - the push credential is revoked after the clone and
   the reaper skips salvage (ward#293).
-- **`director`** (was `backlog`) - dispatches queued headless-lane issues up to
-  `--max-parallel`, polls their `WARD-OUTCOME` comments, and repeats until the lane
-  drains (ward#346).
+- **`director`** (was `backlog`) - an attached heartbeat: polls `WARD-OUTCOME`, an LLM
+  one-shot picks which queued issues to dispatch under `--max-parallel`, surfacing on
+  drain (ward#346, ward#351).
 - **`advisor`** (was `reply` + `ask`) - the ref mode researches one-shot and posts the
   answer as a comment; freeform answers one-shot *inside* a fresh container and streams
   it inline.

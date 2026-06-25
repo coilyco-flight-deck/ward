@@ -41,7 +41,7 @@ var agentRoleInfos = map[string]agentRoleInfo{
 	},
 	"director": {
 		Tagline: "Autonomously drives a repo's headless lane to drain.",
-		Modes:   "Autonomous supervised loop over a repo's backlog (`--repo` scope); no ref.",
+		Modes:   "Attached LLM-in-the-loop heartbeat over a repo's backlog (`--repo` scope); surfaces an interactive session on drain; no ref.",
 	},
 	"advisor": {
 		Tagline: "Answers without writing code.",

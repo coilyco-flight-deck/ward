@@ -1,35 +1,46 @@
 # ward agent director
 
 `ward agent director` (public face `warded director`) is the **autonomous backlog
-supervisor** role of the startup roster (ward#347, was `backlog`): it drives a repo's
-headless lane to drain with no human in the inner loop, dispatching engineers and
-reconciling their outcomes, reusing ward's own dispatch internals rather than shelling
-out. It is the first dispatch-safe slice of ward#324 and subsumes ward#310. It ports the
-deterministic backbone of agentic-os's `backlog-loop.py` into ward; the unblock
-conversation and human-in-the-loop judgment are deliberately out of this slice.
+supervisor** role (ward#347, was `backlog`): it drives a repo's headless lane to drain,
+dispatching engineers and reconciling outcomes via ward's own internals.
+Its deterministic backbone ports agentic-os's `backlog-loop.py` (ward#346, subsuming
+ward#310); ward#351 turned the loop into an **LLM-in-the-loop heartbeat** that surfaces
+an interactive session on drain instead of exiting.
 
-## The cycle
+## The heartbeat (ward#351)
 
-One run loops until the headless lane drains or a limit is hit:
+`director` is **attached/interactive only** - there is no `--detach` (a detached director
+poses runaway-dispatch risk). Each tick:
 
-1. **Refresh** each repo's ledger from the live backlog, ranking open issues into lanes
-   by tier (`P0`-`P4`) and mode (`headless`/`interactive`/`consult`) labels.
-   `ward exec goose-triage` writes those labels; this loop only reads them.
-2. **Dispatch** queued headless-lane issues up to `--max-parallel`, via ward's native
-   engineer carry (`runAgentWork`/`launchAgentContainer` in-process, the same path a
-   bare-ref `ward agent engineer` takes, audited as `agent.<mode>.engineer`).
-3. **Poll** the dispatched containers; on exit, read the `WARD-OUTCOME` comment and
+1. **Poll + reconcile** in-flight engineers: on exit read each `WARD-OUTCOME` comment and
    classify the run `done` / `blocked` / `failed`.
-4. **Reconcile** by parking blocked/failed and pulling the next queued issue.
-5. **Repeat** on `--poll-interval` until nothing is queued or in flight (or
-   `--max-cycles` hits), then print a summary.
+2. **Refresh** each ledger from the live backlog, ranking issues into lanes by tier
+   (`P0`-`P4`) and mode (`headless`/`interactive`/`consult`) labels (`goose-triage`
+   writes them; the loop only reads).
+3. **Decide** via a host one-shot (`claude -p` / `goose run -t`) handed the ranked queued
+   candidates, the free-slot budget, the in-flight set, and recent outcomes; it answers on
+   a `DISPATCH: <numbers>` / `DISPATCH: none` line. It can only **narrow or hold** what
+   rank offers, and **fails open to rank** (no host one-shot, no binary, a timed-out read,
+   or no clear verdict all dispatch the top `avail` picks - the #346 floor).
+4. **Dispatch** the chosen set via the native engineer carry (the bare-ref path, audited
+   `agent.<mode>.engineer`).
+5. **Sleep** `--poll-interval` with **no LLM held open**, so an idle heartbeat is free.
 
-Only the **headless** lane is auto-dispatched; interactive/consult issues are surfaced
-in the status print, never launched.
+Only the **headless** lane is auto-dispatched; interactive/consult issues are surfaced,
+never launched.
+
+## Drain → surface (ward#351)
+
+When the lane drains - **nothing queued and nothing in flight** - the director does not
+exit. It reports the disposition (done / parked-blocked / parked-failed) and surfaces a
+**read-only architect session** on the scope's lead repo for new direction. That blocks
+until the human exits; the heartbeat then **resumes** if the queue refilled, else stops.
+With no terminal it cannot surface, so a drain there exits cleanly. Collapsing the
+standalone `architect` into this phase is a later slice (ward#350).
 
 ## The WARD-OUTCOME marker (ward#310)
 
-A detached engineer carry ends natively by leading its closing retrospective with one line:
+A detached engineer carry ends by leading its closing retrospective with one line:
 
 ```
 WARD-OUTCOME: done - <what landed>
@@ -37,34 +48,29 @@ WARD-OUTCOME: blocked - <the decision/fact needed from a human>
 WARD-OUTCOME: failed - <why>
 ```
 
-This is baked into the detached seed, so **every** engineer carry emits it. The loop
-reads only that line and never injects a protocol comment. A container that exits with
-no marker is parked `failed` (`exited-no-outcome`) so the loop drains rather than
-spinning - read its log before retrying.
+Baked into the seed, so every carry emits it; the loop reads only that line. A container
+that exits with no marker is parked `failed` (`exited-no-outcome`) - read its log.
 
 ## Scope, ledger, trust
 
-`--repo a/b,c/d` (comma-separated, de-duped, order-preserving) spans many repos in one
-run; the default is the cwd git origin. State lives in a durable per-repo YAML ledger
-under `~/.ward/backlog/<owner-name>.yaml`, written atomically each transition, so a
-killed loop resumes from disk and a dispatched issue is never re-dispatched. Dispatch is
-refused unless every scope repo is owned by a trusted org (`ownerAllowed`, mirroring the
-engineer carry); the verb audits one row per run.
+`--repo a/b,c/d` (comma-separated, de-duped) spans many repos; the default is the cwd git
+origin. State lives in a durable per-repo YAML ledger under `~/.ward/backlog/`, written
+atomically each transition, so a killed loop resumes and a dispatched issue is never
+re-dispatched. Dispatch is refused unless every scope repo is a trusted owner
+(`ownerAllowed`); the verb audits one row per run.
 
 ## Flags
 
-- `--repo a/b,c/d` - scope (default: cwd git origin).
-- `--max-parallel N` (2) - in-flight container cap.
-- `--driver` (claude) - the harness for dispatched runs.
-- `--triage` - run `ward exec goose-triage` across the scope before the first refresh.
-- `--limit` (50) - open issues read per repo per refresh.
-- `--poll-interval` (30s), `--max-cycles` (0 = until drained), `--dry-run`.
+- `--repo a/b,c/d` - scope (default: cwd git origin); `--max-parallel N` (2) - in-flight cap.
+- `--driver` (claude) - harness for dispatched runs and the per-tick decision.
+- `--triage` - `ward exec goose-triage` across the scope first; `--limit` (50) per refresh.
+- `--poll-interval` (30s) - heartbeat sleep; `--max-cycles` (0=until drained); `--dry-run`.
 
 ## Out of scope (this slice)
 
-Named scope-as-ward-type (ward#324), the auto-unblock conversation, the full
-automation-mode/dispatch-ceiling axis beyond `--max-parallel`, retiring
-`backlog-loop.py`, and exposing the loop's steps as CLI sub-verbs.
+Named scope-as-ward-type (ward#324), the dispatch-ceiling axis beyond `--max-parallel`,
+retiring `backlog-loop.py`, the architect collapse (ward#350), mid-drain steering UX, and
+manager-skill refinement.
 
 ## See also
 

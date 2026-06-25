@@ -105,22 +105,25 @@ type backlogConfig struct {
 func agentDirectorCommand() *cli.Command {
 	return &cli.Command{
 		Name:      "director",
-		Usage:     "Autonomously drive a repo's headless lane to drain: refresh, dispatch engineers, poll, reconcile (ward#346).",
+		Usage:     "Run an attached LLM-in-the-loop heartbeat over a repo's headless lane: poll, decide, dispatch, and surface on drain (ward#351).",
 		ArgsUsage: "(scope via --repo; default: the cwd git origin)",
-		Description: `director runs an autonomous supervised loop over a repo's open backlog. Each cycle
-it refreshes the ledger from the live backlog (ranking issues into lanes by
-tier/mode labels), dispatches queued headless-lane issues up to --max-parallel via
-ward's native engineer carry, polls the dispatched containers, reads each one's
-WARD-OUTCOME comment to classify done/blocked/failed, then repeats until the
-headless lane drains or a limit is hit.
+		Description: `director runs an attached, autonomous heartbeat over a repo's open backlog. Each
+tick it reconciles in-flight engineers (reading their WARD-OUTCOME comments),
+refreshes the ledger from the live backlog (ranking issues into lanes by tier/mode
+labels), asks a host one-shot which queued headless issues to dispatch under
+--max-parallel, dispatches the chosen set via ward's native engineer carry, then
+sleeps cheaply with no LLM held open. When the headless lane drains - nothing queued
+and nothing in flight - it surfaces an interactive session for new direction rather
+than exiting, and resumes the heartbeat if the queue refills (ward#351).
 
   warded director --repo coilyco-flight-deck/ward         # one repo
   warded director --repo a/b,c/d --max-parallel 3         # comma-separated scope
   warded director --dry-run                                # ranked lanes + planned dispatches, launch nothing
 
-State lives in a durable per-repo ledger under ~/.ward/backlog, so a killed loop
-resumes from disk. Only the narrow headless lane is auto-dispatched; interactive
-and consult issues are surfaced, not launched. See docs/agent-director.md.`,
+It is attached/interactive only - there is no --detach (a detached director poses
+runaway-dispatch risk). State lives in a durable per-repo ledger under ~/.ward/backlog,
+so a killed loop resumes from disk. Only the narrow headless lane is auto-dispatched;
+interactive and consult issues are surfaced, not launched. See docs/agent-director.md.`,
 		Flags: []cli.Flag{
 			agentDriverFlag(),
 			&cli.StringFlag{Name: "repo", Usage: "comma-separated scope 'a/b,c/d' (default: the cwd git origin)"},
@@ -128,7 +131,7 @@ and consult issues are surfaced, not launched. See docs/agent-director.md.`,
 			&cli.BoolFlag{Name: "triage", Usage: "run `ward exec goose-triage` across the scope before the first refresh"},
 			&cli.IntFlag{Name: "limit", Value: 50, Usage: "open issues read per repo per refresh"},
 			&cli.DurationFlag{Name: "poll-interval", Value: 30 * time.Second, Usage: "wait between dispatch/poll cycles"},
-			&cli.IntFlag{Name: "max-cycles", Value: 0, Usage: "stop after N cycles (0 = run until the lane drains)"},
+			&cli.IntFlag{Name: "max-cycles", Value: 0, Usage: "stop after N heartbeat ticks (0 = run until drained with no new direction)"},
 			&cli.BoolFlag{Name: "dry-run", Usage: "show the ranked lanes + planned dispatches, then exit without launching"},
 		},
 		Action: func(ctx context.Context, c *cli.Command) error {
@@ -194,8 +197,8 @@ func (r *Runner) backlogTrustGate(label string, repos []string) error {
 	return nil
 }
 
-// driveBacklog is the loop body: optional triage, refresh, then dispatch/poll
-// cycles until the headless lane drains or a limit is hit, then a summary.
+// driveBacklog sets the heartbeat up: optional triage, the initial refresh + status
+// print + --dry-run preview, then hands the live backend to runDirectorLoop (ward#351).
 func (r *Runner) driveBacklog(ctx context.Context, label string, repos []string, cfg backlogConfig) error {
 	if cfg.triage && !cfg.dryRun {
 		r.backlogTriage(ctx, label, repos)
@@ -209,46 +212,7 @@ func (r *Runner) driveBacklog(ctx context.Context, label string, repos []string,
 	if cfg.dryRun {
 		return r.backlogPrintPlanned(label, repos, cfg.maxParallel)
 	}
-	for cycle := 1; ; cycle++ {
-		if err := r.backlogDispatchCycle(ctx, label, repos, cfg); err != nil {
-			return err
-		}
-		stop, err := r.backlogCycleWait(ctx, label, repos, cfg, cycle)
-		if err != nil {
-			return err
-		}
-		if stop {
-			break
-		}
-	}
-	return r.backlogPrintSummary(repos)
-}
-
-// backlogCycleWait stops the loop when the lane is drained or --max-cycles is hit;
-// otherwise it waits --poll-interval, polls, and re-refreshes. stop=true ends it.
-func (r *Runner) backlogCycleWait(ctx context.Context, label string, repos []string, cfg backlogConfig, cycle int) (bool, error) {
-	queued, inflight := backlogLaneCounts(r.backlogScopeEntries(repos))
-	if queued == 0 && inflight == 0 {
-		fmt.Fprintf(os.Stderr, "%s: headless lane drained - nothing queued or in flight.\n", label)
-		return true, nil
-	}
-	if cfg.maxCycles > 0 && cycle >= cfg.maxCycles {
-		fmt.Fprintf(os.Stderr, "%s: reached --max-cycles %d (%d queued, %d in flight); stopping.\n",
-			label, cfg.maxCycles, queued, inflight)
-		return true, nil
-	}
-	fmt.Fprintf(os.Stderr, "%s: cycle %d - %d in flight, %d queued; polling in %s ...\n",
-		label, cycle, inflight, queued, cfg.pollInterval)
-	if err := backlogSleep(ctx, cfg.pollInterval); err != nil {
-		return false, err
-	}
-	r.backlogPoll(ctx, label, repos)
-	// Re-refresh so issues closed/promoted/filed since the last pass are picked up;
-	// a transient read error is non-fatal (the next cycle retries).
-	if err := r.backlogRefresh(ctx, label, repos, cfg.limit); err != nil {
-		fmt.Fprintf(os.Stderr, "%s: note: refresh failed (%v); continuing with the prior ledger\n", label, err)
-	}
-	return false, nil
+	return runDirectorLoop(ctx, cfg, &liveDirector{r: r, label: label, repos: repos, cfg: cfg})
 }
 
 // out returns the run's user-facing writer (lanes, summary), falling back to stdout.
@@ -685,28 +649,6 @@ func (r *Runner) backlogRefresh(ctx context.Context, label string, repos []strin
 		if serr := saveBacklogLedger(led); serr != nil {
 			return fmt.Errorf("%s: %w", label, serr)
 		}
-	}
-	return nil
-}
-
-// backlogDispatchCycle launches queued headless issues up to the in-flight cap,
-// using ward's native headless carry. Records each launch in the ledger.
-func (r *Runner) backlogDispatchCycle(ctx context.Context, label string, repos []string, cfg backlogConfig) error {
-	entries := r.backlogScopeEntries(repos)
-	_, inflight := backlogLaneCounts(entries)
-	avail := cfg.maxParallel - inflight
-	if avail <= 0 {
-		return nil
-	}
-	launched := 0
-	for _, p := range backlogQueuedPicks(entries) {
-		if launched >= avail {
-			break
-		}
-		if err := r.backlogDispatchOne(ctx, label, cfg.mode, p); err != nil {
-			return err
-		}
-		launched++
 	}
 	return nil
 }
