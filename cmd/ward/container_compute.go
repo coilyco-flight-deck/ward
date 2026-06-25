@@ -438,6 +438,11 @@ func (p upPlan) wardEnv() map[string]string {
 		"WARD_CONTEXT_SRC":   containerContextMount,
 		"WARD_MIRROR_NAME":   p.Repo.mirrorName(),
 		"WARD_VERSION":       p.WardVersion,
+		// Terminal color: a bare TERM=xterm with no COLORTERM makes the in-container
+		// agent (Claude Code) downgrade its own message/diff/syntax palette to ~mono.
+		// Advertise 256-color + truecolor so the agent's output renders in color.
+		"TERM":      "xterm-256color",
+		"COLORTERM": "truecolor",
 		// Substrate (reference repos warmed regardless of target). The entrypoint
 		// has matching fallback defaults, so these keep the contract one-sourced.
 		"WARD_SUBSTRATE_SEED":     containerSubstrateSeed,
