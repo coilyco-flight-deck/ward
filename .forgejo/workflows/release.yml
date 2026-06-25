@@ -108,6 +108,92 @@ jobs:
             echo "uploaded ward-linux-${arch}"
           done
 
+  publish-kdl-write:
+    needs: release
+    if: ${{ needs.release.outputs.tag != '' }}
+    runs-on: docker
+    env:
+      TAG: ${{ needs.release.outputs.tag }}
+      GO_VERSION: "1.26.4"
+      KDL_GEN_REF: v0.48.0
+      KDL_GUARDFILE: ./cmd/ward-kdl/ward-kdl-write/ward-kdl.forgejo.write.guardfile.kdl
+      GOPRIVATE: forgejo.coilysiren.me
+      FORGEJO_API: https://forgejo.coilysiren.me/api/v1/repos/coilyco-flight-deck/ward
+    steps:
+      - uses: actions/checkout@v6
+        with:
+          ref: ${{ needs.release.outputs.tag }}
+          fetch-depth: 0
+
+      - name: Install Go
+        run: |
+          set -euo pipefail
+          curl -fsSL "https://go.dev/dl/go${GO_VERSION}.linux-amd64.tar.gz" -o /tmp/go.tar.gz
+          tar -xzf /tmp/go.tar.gz -C /usr/local
+          echo "/usr/local/go/bin" >> "$GITHUB_PATH"
+
+      - name: Build ward-kdl-write (linux amd64 + arm64)
+        timeout-minutes: 15
+        run: |
+          set -euo pipefail
+          # The write-tier binary the in-container broker shells (ward#329); the
+          # entrypoint downloads it from this release. Generated, not a plain ./cmd
+          # build: the generator (KDL_GEN_REF, in lockstep with the Makefile's REF)
+          # renders + builds it. See docs/broker.md, docs/ward-kdl.md.
+          # GOPROXY=direct so fresh cli-guard pseudo-versions resolve, mirroring
+          # publish-binaries and the brew formula. See docs/homebrew-build.md.
+          export GOPROXY=direct GOSUMDB=off
+          mkdir -p dist
+          gen="forgejo.coilysiren.me/coilyco-flight-deck/cli-guard/cmd/specverb-gen@${KDL_GEN_REF}"
+          bound() { if command -v timeout >/dev/null 2>&1; then timeout 240 "$@"; else "$@"; fi; }
+          # amd64 (host): the generator renders + builds the tier binary directly.
+          for attempt in 1 2 3; do
+            if bound go run "$gen" build --guardfile "$KDL_GUARDFILE" \
+                 --out dist/ward-kdl-write-linux-amd64 --set-version "$TAG"; then break; fi
+            if [ "$attempt" -eq 3 ]; then
+              echo "::error::ward-kdl-write amd64 build failed after 3 attempts" >&2
+              exit 1
+            fi
+            echo "ward-kdl-write build attempt ${attempt} failed/timed out; retrying in 5s" >&2
+            sleep 5
+          done
+          # arm64: specverb-gen build is host-arch only, so cross-build from the
+          # self-contained module it just materialized in the generator cache. The
+          # CI cache is fresh, so exactly one cache dir exists for this guardfile.
+          cachedir="$(find "$HOME/.cli-guard/cache/specverb" -mindepth 1 -maxdepth 1 -type d | head -1)"
+          if [ -z "$cachedir" ] || [ ! -f "$cachedir/main.go" ]; then
+            echo "::error::could not locate the generator cache module for the arm64 cross-build" >&2
+            exit 1
+          fi
+          ( cd "$cachedir" && GOOS=linux GOARCH=arm64 go build -trimpath \
+              -ldflags "-s -w -X main.Version=${TAG}" \
+              -o "${GITHUB_WORKSPACE}/dist/ward-kdl-write-linux-arm64" . )
+          ls -l dist
+
+      - name: Upload ward-kdl-write as release assets
+        env:
+          TOKEN: ${{ secrets.CI_RELEASE_TOKEN }}
+        run: |
+          set -euo pipefail
+          if [ -z "${TOKEN:-}" ]; then
+            echo "::error::CI_RELEASE_TOKEN not set; cannot upload ward-kdl-write assets" >&2
+            exit 1
+          fi
+          rel_id=$(curl -fsSL -H "Authorization: token ${TOKEN}" \
+            "${FORGEJO_API}/releases/tags/${TAG}" \
+            | grep -oE '"id"[[:space:]]*:[[:space:]]*[0-9]+' | head -1 | grep -oE '[0-9]+')
+          if [ -z "${rel_id:-}" ]; then
+            echo "::error::no release found for tag ${TAG}" >&2
+            exit 1
+          fi
+          for arch in amd64 arm64; do
+            curl -fsSL -X POST -H "Authorization: token ${TOKEN}" \
+              -H "Content-Type: application/octet-stream" \
+              --data-binary @"dist/ward-kdl-write-linux-${arch}" \
+              "${FORGEJO_API}/releases/${rel_id}/assets?name=ward-kdl-write-linux-${arch}"
+            echo "uploaded ward-kdl-write-linux-${arch}"
+          done
+
   bump-tap-formula:
     needs: release
     if: ${{ needs.release.outputs.tag != '' }}

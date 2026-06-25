@@ -554,6 +554,29 @@ func tsSidecarRunArgv(carryName, repoSlug, envFilePath string) []string {
 	return append(argv, tsSidecarImage)
 }
 
+// hostNetTailnetWarning returns a loud warning (and true) when a --host-net carry
+// is unlikely to reach the tailnet on this host (ward#332; docs/agent-host-net.md).
+func hostNetTailnetWarning(goos string, hasTailscale0 bool) (string, bool) {
+	// Non-Linux is Docker Desktop: the carry joins a LinuxKit VM netns, never a
+	// tailnet node, so hasTailscale0 (the Mac's, not the VM's) is ignored here.
+	if goos != "linux" {
+		return "WARNING: --host-net cannot reach the tailnet on Docker Desktop.\n" +
+			"  The container joins the LinuxKit VM's network namespace, not your\n" +
+			"  " + goos + " host, so it inherits no tailscale0 and no MagicDNS - tailnet\n" +
+			"  names (api, kai-tower-3026) will not resolve inside the carry.\n" +
+			"  --host-net only reaches the tailnet on a native-Linux host that is\n" +
+			"  itself a tailnet node. See docs/agent-host-net.md (ward#332).", true
+	}
+	if !hasTailscale0 {
+		return "WARNING: --host-net found no tailscale0 on this host's network namespace.\n" +
+			"  The carry joins this netns, so without a tailscale0 device it gets no\n" +
+			"  tailnet route and MagicDNS names (api, kai-tower-3026) will not resolve.\n" +
+			"  Bring this host onto the tailnet, or adopt the in-container tailscaled\n" +
+			"  sidecar. See docs/agent-host-net.md (ward#332).", true
+	}
+	return "", false
+}
+
 // appendEnvAndImage appends the WARD_* env, the --env-file, the image, and the agent
 // argv - the tail both builders share. The token rides --env-file, never inlined.
 func appendEnvAndImage(argv []string, p upPlan, envFilePath string) []string {

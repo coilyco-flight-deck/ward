@@ -1063,6 +1063,9 @@ func (r *Runner) beatPullHeartbeat(w io.Writer, label, image string) func() {
 // createAgentContainer fires `docker run`: interactive streams to the terminal;
 // detached swallows the lone container-id hash docker echoes (ward#306).
 func (r *Runner) createAgentContainer(ctx context.Context, plan upPlan, envFile string) error {
+	// --host-net only carries the tailnet on a host that is itself a tailnet node;
+	// warn loudly when it won't, so a no-op route doesn't read as success (ward#332).
+	r.maybeWarnHostNet(plan)
 	// The sidecar must exist before the carry's --network=container attaches to it.
 	if plan.TSSidecar {
 		if err := r.startTSSidecar(ctx, plan); err != nil {

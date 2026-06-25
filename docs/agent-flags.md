@@ -6,9 +6,10 @@ for the verb family.
 ## Flags
 
 `work` carries the container bring-up launch flags: `--aws`, the
-mutually-exclusive tailnet routes `--host-net`
-([agent-host-net.md](agent-host-net.md)) and `--ts-sidecar`
-([agent-ts-sidecar.md](agent-ts-sidecar.md), both imply `--aws`), `--detach`,
+mutually-exclusive tailnet routes `--host-net` (native-Linux host route; no-op +
+warns elsewhere, ward#332; [agent-host-net.md](agent-host-net.md)) and
+`--ts-sidecar` (the Docker Desktop sidecar, ward#333;
+[agent-ts-sidecar.md](agent-ts-sidecar.md)) - both imply `--aws`, `--detach`,
 `--tag`/`--image`/`--ward-version` (pin once via `WARD_AGENT_{TAG,IMAGE,VERSION}`,
 ward#312), `--ward-source`, `--no-pull`, `--branch` to override the
 `issue-<N>` default, and `--repo owner/name` (repeatable; `--with-repo` is the
@@ -33,9 +34,8 @@ a periodic `still pulling` heartbeat, then falls back to the local image.
 `work` and `headless` take `--details "<note>"`: extra operator instructions
 woven into the run at dispatch, for when the issue text isn't the whole story.
 The note rides as a final
-paragraph of the **seeded prompt** - marked as added via `--details` and flagged
-**authoritative over the issue text where they conflict** - so a single line can
-steer or correct the run without editing the issue. It is also folded into the
+paragraph of the **seeded prompt**, flagged **authoritative over the issue text
+where they conflict** - so a single line can steer the run without editing it. It is also folded into the
 **pre-flight read**, so the feasibility verdict accounts for the steer. It shows
 up in `--print` (it's part of the rendered
 seed). `task` has no `--details`: its `--instructions` already *are* the full
@@ -46,8 +46,7 @@ brief, so there's nothing separate to layer on.
 `work` takes `--new-tab`: instead of launching the container attached to the
 current terminal, it **spawns the work into its own Warp tab**. This is the
 sidequest path - fan a tangent off into its own session without leaving the one
-you're in - and the successor to the retired `ward dispatch interactive` Warp
-seam.
+you're in.
 
 The mechanics are thin. `--new-tab` validates the ref first (the same
 exists/open/trusted gate, so a bad ref fails before any tab opens), then writes a

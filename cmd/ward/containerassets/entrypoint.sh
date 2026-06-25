@@ -109,6 +109,55 @@ grant_docker_socket_access() {
   fi
 }
 
+# --- root credential broker (ward#329); the explore hardening, docs/broker.md --
+# Root daemon holds the token + serves write-tier forgejo ops over an agent socket.
+WARD_BROKER_SOCK_PATH="${WARD_BROKER_SOCK:-/run/ward/broker.sock}"
+
+# install_ward_kdl_write fetches the write-tier binary the broker shells (release
+# path only; best-effort - a miss just leaves the broker unstarted). docs/broker.md.
+install_ward_kdl_write() {
+  command -v ward-kdl-write >/dev/null 2>&1 && return 0
+  if [ -n "${WARD_FROM_SOURCE:-}" ]; then
+    log "broker: ward-kdl-write is not built from the mounted source (RO mount); broker skipped this run (ward#331)"
+    return 0
+  fi
+  local tag asset
+  tag="$(resolve_ward_tag)"
+  [ -n "$tag" ] && [ "$tag" != "null" ] || { log "broker: no release tag resolved for ward-kdl-write; broker skipped"; return 0; }
+  asset="$WARD_FORGEJO_BASE/coilyco-flight-deck/ward/releases/download/$tag/ward-kdl-write-linux-$(arch)"
+  log "broker: downloading ward-kdl-write $tag for linux-$(arch)"
+  if curl -fsSL -H "Authorization: token ${FORGEJO_TOKEN:-}" -o /usr/local/bin/ward-kdl-write "$asset"; then
+    chmod 0755 /usr/local/bin/ward-kdl-write
+  else
+    rm -f /usr/local/bin/ward-kdl-write
+    log "broker: ward-kdl-write download failed ($asset); broker skipped (older release without the tier asset?)"
+  fi
+}
+
+# start_broker brings the broker up and exports WARD_BROKER_SOCK once the socket
+# exists. Best-effort: a miss leaves the agent on the dual-mode token path.
+start_broker() {
+  [ "${WARD_READONLY:-0}" = 1 ] || return 0
+  [ -n "${FORGEJO_TOKEN:-}" ] || { log "broker: no FORGEJO_TOKEN to hold; skipping broker"; return 0; }
+  install_ward_kdl_write
+  command -v ward-kdl-write >/dev/null 2>&1 || return 0
+  mkdir -p "$(dirname "$WARD_BROKER_SOCK_PATH")"
+  log "broker: starting root credential broker on $WARD_BROKER_SOCK_PATH (socket gid $AGENT_GID)"
+  ward container broker --socket "$WARD_BROKER_SOCK_PATH" --group "$AGENT_GID" >&2 &
+  local waited
+  for waited in $(seq 1 15); do
+    [ -S "$WARD_BROKER_SOCK_PATH" ] && break
+    sleep 0.2
+  done
+  : "$waited" # silence "unused": the loop's effect is the bounded wait, not the value
+  if [ -S "$WARD_BROKER_SOCK_PATH" ]; then
+    export WARD_BROKER_SOCK="$WARD_BROKER_SOCK_PATH"
+    log "broker: ready; exported WARD_BROKER_SOCK=$WARD_BROKER_SOCK_PATH for the dropped agent"
+  else
+    log "broker: socket did not appear at $WARD_BROKER_SOCK_PATH; continuing without the broker"
+  fi
+}
+
 # Bridge a root:root docker socket to an agent-group-owned socket via root socat, so
 # the agent reaches it through DOCKER_HOST with no host-perm change (ward#319).
 bridge_docker_socket() {
@@ -753,6 +802,7 @@ main() {
   if [ "${WARD_READONLY:-0}" = 1 ]; then
     revoke_push_credential    # explore: drop this clone's push wiring, keep the dispatch token (ward#315)
     grant_docker_socket_access # explore: let the agent dispatch siblings via the mounted socket (ward#315)
+    start_broker              # explore: root credential broker holds the token; agent reaches the forge via the socket (ward#329)
   else
     ensure_git_cred_readable # re-assert creds the clones clobbered (ward#288)
   fi
