@@ -6,7 +6,8 @@ for the verb family.
 ## Flags
 
 `work` carries the container bring-up launch flags: `--aws`, `--host-net` (host
-network for a tailnet route, implies `--aws`; [agent-host-net.md](agent-host-net.md)),
+network for a native-Linux tailnet route, implies `--aws`; no-op + warns
+elsewhere, ward#332; [agent-host-net.md](agent-host-net.md)),
 `--detach`,
 `--tag`/`--image`/`--ward-version` (pin once via `WARD_AGENT_{TAG,IMAGE,VERSION}`,
 ward#312), `--ward-source`, `--no-pull`, `--branch` to override the
@@ -32,9 +33,8 @@ a periodic `still pulling` heartbeat, then falls back to the local image on fail
 `work` and `headless` take `--details "<note>"`: extra operator instructions
 woven into the run at dispatch, for when the issue text isn't the whole story.
 The note rides as a final
-paragraph of the **seeded prompt** - marked as added via `--details` and flagged
-**authoritative over the issue text where they conflict** - so a single line can
-steer or correct the run without editing the issue. It is also folded into the
+paragraph of the **seeded prompt**, flagged **authoritative over the issue text
+where they conflict** - so a single line can steer the run without editing it. It is also folded into the
 **pre-flight read**, so the feasibility verdict accounts for the steer. It shows
 up in `--print` (it's part of the rendered
 seed). `task` has no `--details`: its `--instructions` already *are* the full
