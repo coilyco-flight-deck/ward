@@ -1,6 +1,8 @@
 package main
 
 import (
+	"os"
+	"path/filepath"
 	"slices"
 	"strings"
 	"testing"
@@ -193,6 +195,32 @@ func TestReadBootstrapEnvDefaults(t *testing.T) {
 	if e.Headless || e.Ask {
 		t.Errorf("Headless/Ask should default false: %v/%v", e.Headless, e.Ask)
 	}
+}
+
+// TestSeedClaudeOnboarding covers ward#305: claude mode seeds ~/.claude.json so the
+// interactive session skips the first-run theme picker; other modes write nothing.
+func TestSeedClaudeOnboarding(t *testing.T) {
+	r := &Runner{}
+
+	t.Run("claude mode seeds onboarding", func(t *testing.T) {
+		home := t.TempDir()
+		r.seedClaudeOnboarding(bootstrapEnv{Mode: "claude", AgentHome: home})
+		data, err := os.ReadFile(filepath.Join(home, ".claude.json"))
+		if err != nil {
+			t.Fatalf("expected ~/.claude.json: %v", err)
+		}
+		if !strings.Contains(string(data), `"hasCompletedOnboarding":true`) {
+			t.Errorf("claude.json missing onboarding flag: %s", data)
+		}
+	})
+
+	t.Run("non-claude mode writes nothing", func(t *testing.T) {
+		home := t.TempDir()
+		r.seedClaudeOnboarding(bootstrapEnv{Mode: "codex", AgentHome: home})
+		if _, err := os.Stat(filepath.Join(home, ".claude.json")); !os.IsNotExist(err) {
+			t.Errorf("codex mode should not write claude.json (err=%v)", err)
+		}
+	})
 }
 
 // TestParseExtraReposEnv covers the in-container WARD_EXTRA_REPOS parse (ward#230):

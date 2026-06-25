@@ -207,6 +207,7 @@ func (r *Runner) runContainerBootstrap(ctx context.Context, c *cli.Command) erro
 	r.composeContext(e)
 	r.composePermissions(e)
 	r.writeClaudeCreds(e)
+	r.seedClaudeOnboarding(e)
 	r.writeCodexCreds(e)
 	r.composeCodexConfig(e)
 	r.composeOpencodeConfig(e)
@@ -679,6 +680,21 @@ func (r *Runner) writeClaudeCreds(e bootstrapEnv) {
 		return
 	}
 	blog("wrote claude credentials to %s", out)
+}
+
+// seedClaudeOnboarding writes ~/.claude.json marking onboarding complete so an
+// interactive claude session skips the first-run theme picker (ward#305).
+func (r *Runner) seedClaudeOnboarding(e bootstrapEnv) {
+	if e.Mode != "claude" {
+		return
+	}
+	out := filepath.Join(e.AgentHome, ".claude.json")
+	const cfg = `{"hasCompletedOnboarding":true,"theme":"dark"}`
+	if werr := os.WriteFile(out, []byte(cfg), 0o644); werr != nil { // #nosec G306 -- onboarding flags, not a secret
+		blog("could not seed claude onboarding: %v", werr)
+		return
+	}
+	blog("seeded claude onboarding (skip first-run wizard) at %s", out)
 }
 
 // --- codex credentials (ward#178) --------------------------------------------
