@@ -46,12 +46,8 @@ const forgejoTokenSSMPath = "/forgejo/api-token"
 const ollamaHostSSMPath = "/coilysiren/ollama/host"
 
 // tsAuthKeySSMPath is the reusable + ephemeral tag:proxy tailscale auth key the
-// userspace sidecar joins with; host-resolved, env-file-injected (ward#333).
+// sidecar joins with; the only SSM dep a --ts-sidecar carry has (ward#333, ward#337).
 const tsAuthKeySSMPath = "/coilysiren/mac-proxy/ts-authkey"
-
-// towerTailnetIPSSMPath is the kai-tower-3026 tailnet IP a --ts-sidecar carry dials
-// :11434 on through the proxy (by IP, skipping MagicDNS; sharp-edges doctrine).
-const towerTailnetIPSSMPath = "/coilysiren/kai-tower-3026/tailnet-ip"
 
 // containerCommand is the Hidden `ward container` umbrella (ward#263): only the
 // entrypoint-internal reap/bootstrap leaves remain. See docs/container.md.
@@ -80,9 +76,6 @@ type agentCreds struct {
 	// GooseOllamaHost is the tower Ollama endpoint goose binds as its provider
 	// (resolved host-side from SSM; the entrypoint seeds it into goose's config).
 	GooseOllamaHost string
-	// TowerOllamaHost is the kai-tower-3026 ollama endpoint a --ts-sidecar carry dials
-	// through the proxy; host-resolved, env-file base64'd like the others (ward#333).
-	TowerOllamaHost string
 }
 
 // resolveAgentCreds resolves the credential the run's mode needs (claude OAuth,
@@ -101,16 +94,6 @@ func (r *Runner) resolveAgentCreds(ctx context.Context, mode containerMode) agen
 	default:
 		return agentCreds{}
 	}
-}
-
-// resolveCredsForPlan resolves the mode's creds plus, for a --ts-sidecar carry, the
-// tower endpoint it dials through the proxy - shared by every surface (ward#333).
-func (r *Runner) resolveCredsForPlan(ctx context.Context, mode containerMode, plan upPlan) agentCreds {
-	creds := r.resolveAgentCreds(ctx, mode)
-	if plan.TSSidecar {
-		creds.TowerOllamaHost = r.resolveTowerOllamaURL(ctx)
-	}
-	return creds
 }
 
 // buildUpPlan assembles the pure plan from parsed flags and resolved inputs;
@@ -310,23 +293,6 @@ func (r *Runner) resolveOllamaHost(ctx context.Context) string {
 	return strings.TrimSpace(string(out))
 }
 
-// resolveTowerOllamaURL reads the tower tailnet IP from SSM host-side and renders
-// the ollama URL the carry dials through the proxy. Best-effort: empty on failure.
-func (r *Runner) resolveTowerOllamaURL(ctx context.Context) string {
-	out, err := r.Runner.Capture(ctx, "aws", "ssm", "get-parameter",
-		"--name", towerTailnetIPSSMPath, "--with-decryption",
-		"--query", "Parameter.Value", "--output", "text")
-	if err != nil {
-		fmt.Fprintf(os.Stderr, "ward container: could not resolve %s from SSM (%v); the --ts-sidecar carry will have no tower endpoint\n", towerTailnetIPSSMPath, err)
-		return ""
-	}
-	ip := strings.TrimSpace(string(out))
-	if ip == "" {
-		return ""
-	}
-	return "http://" + ip + ":" + towerOllamaPort
-}
-
 // credEnvLines renders the base64'd per-mode credential env-file lines, one per
 // present blob; pure, so the secret-shaping is unit-testable. See docs/agent.md.
 func credEnvLines(creds agentCreds) []string {
@@ -339,9 +305,6 @@ func credEnvLines(creds agentCreds) []string {
 	}
 	if creds.GooseOllamaHost != "" {
 		lines = append(lines, "WARD_GOOSE_OLLAMA_HOST_B64="+base64.StdEncoding.EncodeToString([]byte(creds.GooseOllamaHost)))
-	}
-	if creds.TowerOllamaHost != "" {
-		lines = append(lines, "WARD_TOWER_OLLAMA_B64="+base64.StdEncoding.EncodeToString([]byte(creds.TowerOllamaHost)))
 	}
 	return lines
 }

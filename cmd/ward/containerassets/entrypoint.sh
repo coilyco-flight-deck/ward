@@ -737,6 +737,11 @@ main() {
   # would replace this shell and skip the trap, defeating the backstop.
   trap reap EXIT
   log "ready: $WARD_TARGET_OWNER/$WARD_TARGET_NAME on $(git branch --show-current) [mode=$WARD_MODE]"
+  # --ts-sidecar carry: surface the tower route (by MagicDNS name through the proxy)
+  # the agent can dial; both vars are plain in the agent's env (ward#337).
+  if [ -n "${WARD_TS_SOCKS5:-}" ]; then
+    log "tailnet route ready: dial the tower at \$WARD_TOWER_OLLAMA (${WARD_TOWER_OLLAMA:-unset}) through \$WARD_TS_SOCKS5 ($WARD_TS_SOCKS5), e.g. curl --proxy \"\$WARD_TS_SOCKS5\" \"\$WARD_TOWER_OLLAMA/api/tags\" (ward#337)"
+  fi
   if ! command -v "$WARD_AGENT" >/dev/null 2>&1; then
     log "agent '$WARD_AGENT' is not in this image yet (codex/qwen/goose install is a follow-up); dropping to a shell (reaper runs on exit)"
     bash || true

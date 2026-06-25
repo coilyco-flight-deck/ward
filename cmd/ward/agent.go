@@ -965,7 +965,7 @@ func (r *Runner) launchAgentContainer(ctx context.Context, c *cli.Command, mode 
 	if !c.Bool("no-pull") {
 		r.pullAgentImage(ctx, plan, label)
 	}
-	envFile, cleanupEnv, err := r.writeTokenEnvFile(ctx, r.resolveCredsForPlan(ctx, mode, plan))
+	envFile, cleanupEnv, err := r.writeTokenEnvFile(ctx, r.resolveAgentCreds(ctx, mode))
 	if err != nil {
 		return err
 	}

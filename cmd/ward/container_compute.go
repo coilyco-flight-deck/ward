@@ -87,6 +87,10 @@ const (
 	// carry reaches it over a shared netns, so it binds loopback not 0.0.0.0.
 	tsSidecarSocks5Host = "127.0.0.1:1055"
 
+	// tsSidecarSocks5Scheme is socks5h (not socks5): the proxy resolves the tower's
+	// MagicDNS name tailnet-side, so the carry dials by name (ward#337; the doc).
+	tsSidecarSocks5Scheme = "socks5h://"
+
 	// tsSidecarHostname is the tailnet node name the sidecar registers under - the
 	// tag:proxy node the /coilysiren/mac-proxy/ts-authkey key is minted for.
 	tsSidecarHostname = "mac-proxy"
@@ -99,8 +103,16 @@ const (
 	// whose carry is gone and reclaim it (ward#333).
 	tsSidecarLabel = "ward.sidecar=ts"
 
+	// towerMagicDNSName is the tower's MagicDNS node name; a --ts-sidecar carry dials
+	// it by name through the proxy (resolved tailnet-side), no SSM IP lookup (ward#337).
+	towerMagicDNSName = "kai-tower-3026"
+
 	// towerOllamaPort is the port kai-tower-3026 serves ollama on over the tailnet.
 	towerOllamaPort = "11434"
+
+	// towerOllamaURL is the by-name endpoint a --ts-sidecar carry dials through the
+	// proxy; a constant, no per-launch SSM IP lookup (ward#337; the doc).
+	towerOllamaURL = "http://" + towerMagicDNSName + ":" + towerOllamaPort
 )
 
 // substrateRepo is one entry in the container substrate manifest: a
@@ -503,9 +515,11 @@ func (p upPlan) wardEnv() map[string]string {
 		env["WARD_READONLY"] = "1"
 	}
 	if p.TSSidecar {
-		// Per-connection proxy for the tower only, never a host-wide ALL_PROXY (the
-		// proxy carries the tailnet, not public egress). Tower URL rides the env-file.
-		env["WARD_TS_SOCKS5"] = "socks5://" + tsSidecarSocks5Host
+		// Per-connection proxy for the tower only, never a host-wide ALL_PROXY; socks5h
+		// so the proxy resolves the tower's MagicDNS name tailnet-side (ward#337).
+		env["WARD_TS_SOCKS5"] = tsSidecarSocks5Scheme + tsSidecarSocks5Host
+		// A MagicDNS name, not a secret IP, so it rides plain (no SSM lookup; ward#337).
+		env["WARD_TOWER_OLLAMA"] = towerOllamaURL
 	}
 	if p.GoBootstrap {
 		env["WARD_USE_GO_BOOTSTRAP"] = "1"

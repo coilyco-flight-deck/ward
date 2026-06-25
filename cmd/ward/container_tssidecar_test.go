@@ -73,17 +73,29 @@ func TestTSSidecarRunArgv(t *testing.T) {
 	}
 }
 
-// TestTSSidecarWardEnv: a --ts-sidecar carry is told the per-connection SOCKS5 proxy
-// address (never a host-wide ALL_PROXY); a default carry is told nothing.
+// TestTSSidecarWardEnv: a --ts-sidecar carry is told the socks5h proxy + by-name tower
+// endpoint, never a host-wide ALL_PROXY; a default carry is told neither (ward#337).
 func TestTSSidecarWardEnv(t *testing.T) {
 	p := sampleUpPlan()
 	if _, ok := p.wardEnv()["WARD_TS_SOCKS5"]; ok {
 		t.Error("default carry must not set WARD_TS_SOCKS5")
 	}
+	if _, ok := p.wardEnv()["WARD_TOWER_OLLAMA"]; ok {
+		t.Error("default carry must not set WARD_TOWER_OLLAMA")
+	}
 	p.TSSidecar = true
 	env := p.wardEnv()
-	if got := env["WARD_TS_SOCKS5"]; got != "socks5://"+tsSidecarSocks5Host {
-		t.Errorf("WARD_TS_SOCKS5 = %q, want socks5://%s", got, tsSidecarSocks5Host)
+	// socks5h (not socks5): the proxy resolves the tower's MagicDNS name tailnet-side,
+	// which is what lets the carry dial by name without a local resolver (ward#337).
+	if got := env["WARD_TS_SOCKS5"]; got != "socks5h://"+tsSidecarSocks5Host {
+		t.Errorf("WARD_TS_SOCKS5 = %q, want socks5h://%s", got, tsSidecarSocks5Host)
+	}
+	// The tower endpoint is the MagicDNS name (by name, no SSM IP), dialed :11434.
+	if got := env["WARD_TOWER_OLLAMA"]; got != towerOllamaURL {
+		t.Errorf("WARD_TOWER_OLLAMA = %q, want %q", got, towerOllamaURL)
+	}
+	if !strings.Contains(env["WARD_TOWER_OLLAMA"], towerMagicDNSName) {
+		t.Errorf("WARD_TOWER_OLLAMA must dial the tower by MagicDNS name %q; got %q", towerMagicDNSName, env["WARD_TOWER_OLLAMA"])
 	}
 	// Per-connection only: never a blanket ALL_PROXY (the proxy reaches the tailnet,
 	// not the public internet, so routing everything through it would break egress).
@@ -94,17 +106,14 @@ func TestTSSidecarWardEnv(t *testing.T) {
 	}
 }
 
-// TestCredEnvLinesTower: the tower endpoint rides the env-file base64'd, like the
-// other endpoints, since the tailnet IP is SSM-held.
-func TestCredEnvLinesTower(t *testing.T) {
-	lines := credEnvLines(agentCreds{TowerOllamaHost: "http://100.64.0.1:11434"})
-	joined := strings.Join(lines, "\n")
-	if !strings.Contains(joined, "WARD_TOWER_OLLAMA_B64=") {
-		t.Errorf("expected WARD_TOWER_OLLAMA_B64 line; got: %v", lines)
-	}
-	// The plaintext endpoint must not appear (it is base64'd).
-	if strings.Contains(joined, "100.64.0.1") {
-		t.Errorf("tower endpoint must be base64'd, not plaintext; got: %v", lines)
+// TestCredEnvLinesNoTower: the tower endpoint is no longer a base64'd cred line - it
+// dials by MagicDNS name (a non-secret), so it rides plain in wardEnv (ward#337).
+func TestCredEnvLinesNoTower(t *testing.T) {
+	lines := credEnvLines(agentCreds{Claude: "blob", GooseOllamaHost: "http://h:11434"})
+	for _, l := range lines {
+		if strings.Contains(l, "WARD_TOWER_OLLAMA") {
+			t.Errorf("tower endpoint must not ride the cred env-file; got: %v", lines)
+		}
 	}
 	if got := credEnvLines(agentCreds{}); len(got) != 0 {
 		t.Errorf("no creds -> no lines; got: %v", got)
@@ -189,7 +198,7 @@ func TestBuildUpPlanTSSidecar(t *testing.T) {
 	} else if p.HostNet {
 		t.Error("--ts-sidecar must not set HostNet")
 	} else if !hasAWSMount(p) {
-		t.Error("--ts-sidecar should imply the ~/.aws mount (auth key + tower IP are SSM-only)")
+		t.Error("--ts-sidecar should imply the ~/.aws mount (the auth key is SSM-only)")
 	}
 
 	// --host-net + --ts-sidecar: mutually exclusive, a hard error.
