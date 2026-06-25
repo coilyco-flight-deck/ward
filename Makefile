@@ -1,9 +1,26 @@
-.PHONY: help build test vet lint tidy cover install ward-kdl install-tmp lock skew sync-ops-assets sync-exec-assets build-ward-kdl build-ward-kdl-forgejo-tiers
+.PHONY: help build test vet lint tidy cover install ward-kdl install-tmp lock skew sync-ops-assets sync-exec-assets build-ward-kdl build-ward-kdl-forgejo-tiers workspace
 
 SPECVERB_GEN := forgejo.coilysiren.me/coilyco-flight-deck/cli-guard/cmd/specverb-gen
 
-REF    ?= v0.48.0
-DRIVER := forgejo.coilysiren.me/coilyco-flight-deck/cli-guard/cmd/specverb-gen@$(REF)
+REF ?= v0.48.0
+
+# DRIVER is the specverb-gen invocation `make build-ward-kdl` runs. By default it
+# pins the published cli-guard module version (`$(SPECVERB_GEN)@$(REF)`) - the
+# cross-module release dance (ward#326): a cli-guard change is only usable here
+# after a tag + `go get` bump + REF bump. When a gitignored go.work exists (see
+# the `workspace` target) drop the `@$(REF)`, so `go run` resolves specverb-gen
+# from the sibling working tree through the workspace - no tag, no `go get`, no
+# REF bump. go.work is absent in CI and the warded headless clone, so single-repo
+# builds always take the pinned-version branch and resolve from the module pin.
+ifeq ($(wildcard go.work),)
+DRIVER := $(SPECVERB_GEN)@$(REF)
+else
+DRIVER := $(SPECVERB_GEN)
+endif
+
+# Go directive for a generated go.work, kept in lockstep with go.mod's `go` line.
+GO_VERSION := $(shell awk '/^go [0-9]/ {print $$2; exit}' go.mod)
+
 export GOPRIVATE = forgejo.coilysiren.me
 
 # ward-kdl reports the ward release tag via its --version. A dev `make` build
@@ -15,6 +32,18 @@ help: ## Print this help.
 
 build: ## Build all packages.
 	go build ./...
+
+workspace: ## Write a gitignored go.work resolving cli-guard from a sibling ../cli-guard checkout (ward#326 - kills the cross-module release dance for local dev).
+	@test -d ../cli-guard || { \
+		echo "make workspace: sibling checkout ../cli-guard not found." >&2; \
+		echo "  Clone cli-guard beside ward first, e.g.:" >&2; \
+		echo "    git clone https://forgejo.coilysiren.me/coilyco-flight-deck/cli-guard ../cli-guard" >&2; \
+		exit 1; \
+	}
+	@printf 'go %s\n\nuse (\n\t.\n\t../cli-guard\n)\n' '$(GO_VERSION)' > go.work
+	@echo "wrote ./go.work -> use (. ../cli-guard)"
+	@echo "cli-guard now resolves from the local working tree: no tag, no 'go get', no REF bump."
+	@echo "go.work + go.work.sum are gitignored; delete go.work to return to the pinned module version ($(REF))."
 
 build-ward-kdl: ## build or rebuild the ward-kdl binary, one shot for ease of use in development.
 	rm -rf bin
