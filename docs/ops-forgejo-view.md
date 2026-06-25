@@ -28,5 +28,6 @@ into the guardfile - a follow-up, like the programmatic-capture API.
 
 ## See also
 
+- [ops-forgejo-quiet.md](ops-forgejo-quiet.md) - the sibling `issue create --quiet` machine-output override.
 - [ops-forgejo-in-ward.md](ops-forgejo-in-ward.md) - the in-binary mount + read seams.
 - [ops-forgejo.md](ops-forgejo.md) - the ward-kdl proving ground + guardfile.
