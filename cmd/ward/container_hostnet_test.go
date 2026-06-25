@@ -28,6 +28,37 @@ func TestDockerArgvHostNet(t *testing.T) {
 	}
 }
 
+// ward#332: hostNetTailnetWarning fires on Docker Desktop (any non-Linux ward
+// host) and on a Linux host with no tailscale0, and stays quiet otherwise.
+func TestHostNetTailnetWarning(t *testing.T) {
+	// Docker Desktop: the joined netns is the LinuxKit VM, never a tailnet node,
+	// so the warning fires regardless of what the Mac/Windows host has.
+	for _, goos := range []string{"darwin", "windows"} {
+		for _, hasTS := range []bool{true, false} {
+			msg, warn := hostNetTailnetWarning(goos, hasTS)
+			if !warn {
+				t.Errorf("goos=%s hasTailscale0=%v: want a warning, got none", goos, hasTS)
+			}
+			if !strings.Contains(msg, "Docker Desktop") || !strings.Contains(msg, goos) {
+				t.Errorf("goos=%s: warning should name Docker Desktop and the host OS; got: %s", goos, msg)
+			}
+		}
+	}
+
+	// Native Linux, no tailscale0: ward shares the daemon's netns, so a missing
+	// device means no tailnet route - warn.
+	if msg, warn := hostNetTailnetWarning("linux", false); !warn {
+		t.Error("linux without tailscale0: want a warning")
+	} else if !strings.Contains(msg, "tailscale0") {
+		t.Errorf("linux warning should name tailscale0; got: %s", msg)
+	}
+
+	// Native Linux with tailscale0: the route looks usable - stay quiet.
+	if msg, warn := hostNetTailnetWarning("linux", true); warn || msg != "" {
+		t.Errorf("linux with tailscale0: want no warning, got %q", msg)
+	}
+}
+
 // hostNetProbeFlags mirrors the launch flag set buildUpPlan reads, so a probe
 // command can exercise the --host-net plumbing without a real surface.
 func hostNetProbeFlags() []cli.Flag {

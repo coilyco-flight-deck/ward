@@ -8,6 +8,7 @@ import (
 	"encoding/hex"
 	"encoding/json"
 	"fmt"
+	"net"
 	"os"
 	"path/filepath"
 	"runtime"
@@ -131,6 +132,36 @@ func buildUpPlan(c *cli.Command, repo targetRepo, mode containerMode, cwd, asset
 		ExtraRepos:     extra,
 		HostNet:        hostNet,
 	}, nil
+}
+
+// localHasTailscale0 reports whether a tailscale0 interface exists on this host's
+// netns (the netns a --host-net carry joins on Linux); a probe error reads false.
+func localHasTailscale0() bool {
+	ifaces, err := net.Interfaces()
+	if err != nil {
+		return false
+	}
+	for _, ifi := range ifaces {
+		if ifi.Name == "tailscale0" {
+			return true
+		}
+	}
+	return false
+}
+
+// maybeWarnHostNet prints the tailnet-unreachable warning when a --host-net plan
+// won't inherit a tailnet route here (ward#332); a no-op unless plan.HostNet set.
+func (r *Runner) maybeWarnHostNet(plan upPlan) {
+	if !plan.HostNet {
+		return
+	}
+	if msg, warn := hostNetTailnetWarning(runtime.GOOS, localHasTailscale0()); warn {
+		w := r.Runner.Stderr
+		if w == nil {
+			w = os.Stderr
+		}
+		fmt.Fprintln(w, msg)
+	}
 }
 
 // terminalAttached reports whether stdin and stdout are both terminals - the
