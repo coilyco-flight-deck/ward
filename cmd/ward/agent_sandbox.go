@@ -109,9 +109,7 @@ func (r *Runner) runScratchSession(ctx context.Context, c *cli.Command, mode con
 	r.maybeWarnWardOutdated(ctx)
 	r.sweepStaleContainers(ctx)
 	if !c.Bool("no-pull") {
-		if perr := r.Runner.Exec(ctx, "docker", "pull", plan.Image); perr != nil {
-			fmt.Fprintf(os.Stderr, "%s: image pull failed (%v); trying the local image\n", label, perr)
-		}
+		r.pullAgentImage(ctx, plan, label)
 	}
 	envFile, cleanupEnv, err := r.writeTokenEnvFile(ctx, r.resolveAgentCreds(ctx, mode))
 	if err != nil {
@@ -123,7 +121,7 @@ func (r *Runner) runScratchSession(ctx context.Context, c *cli.Command, mode con
 		access = "read-only"
 	}
 	fmt.Fprintf(os.Stderr, "%s: opening an interactive %s %s session on %s in a fresh container...\n\n", label, access, mode.agentBinary(), repo.slug())
-	return r.Runner.Exec(ctx, "docker", dockerCreateArgv(plan, envFile)...)
+	return r.createAgentContainer(ctx, plan, envFile)
 }
 
 // printScratchPlan renders the resolved repo + docker plan without cloning or
