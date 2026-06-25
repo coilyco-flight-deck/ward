@@ -16,6 +16,14 @@ concurrency reservation checks (see [docs/agent-reservation.md](agent-reservatio
 (both always detach) for `--no-preflight`, which skips the autonomous pre-flight
 ([docs/agent-preflight.md](agent-preflight.md)) and detaches immediately.
 
+## Quiet launch for detached runs (ward#306)
+
+A detached launch (`headless`, `task`, any `--detach`) is not watched, so
+docker's chatter below the verdict is noise: the pull status lines, the `docker
+scout` footer, and the container-id hash `docker run -d` echoes. Those runs now
+drop it (`DOCKER_CLI_HINTS=false` plus a swallowed stdout). An **interactive**
+run streams docker unchanged.
+
 ## `--details` (ward#167)
 
 `work` and `headless` take `--details "<note>"`: extra operator instructions

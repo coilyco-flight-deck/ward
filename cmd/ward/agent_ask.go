@@ -105,9 +105,7 @@ func (r *Runner) runAgentAsk(ctx context.Context, c *cli.Command, mode container
 	// fleet can't exhaust the docker disk and wedge new launches (ward#272).
 	r.sweepStaleContainers(ctx)
 	if !c.Bool("no-pull") {
-		if perr := r.Runner.Exec(ctx, "docker", "pull", plan.Image); perr != nil {
-			fmt.Fprintf(os.Stderr, "%s: image pull failed (%v); trying the local image\n", label, perr)
-		}
+		r.pullAgentImage(ctx, plan, label)
 	}
 	envFile, cleanupEnv, err := r.writeTokenEnvFile(ctx, r.resolveAgentCreds(ctx, mode))
 	if err != nil {
@@ -115,7 +113,7 @@ func (r *Runner) runAgentAsk(ctx context.Context, c *cli.Command, mode container
 	}
 	defer cleanupEnv()
 	fmt.Fprintf(os.Stderr, "%s: asking %s about %s in a fresh container...\n\n", label, mode.agentBinary(), repo.slug())
-	return r.Runner.Exec(ctx, "docker", dockerCreateArgv(plan, envFile)...)
+	return r.createAgentContainer(ctx, plan, envFile)
 }
 
 // askPrompt light-wraps the question so the in-container agent answers inline (no

@@ -913,16 +913,55 @@ func (r *Runner) launchAgentContainer(ctx context.Context, c *cli.Command, mode 
 	// agent fleet can't exhaust the docker disk and wedge new launches (ward#272).
 	r.sweepStaleContainers(ctx)
 	if !c.Bool("no-pull") {
-		if perr := r.Runner.Exec(ctx, "docker", "pull", plan.Image); perr != nil {
-			fmt.Fprintf(os.Stderr, "%s: image pull failed (%v); trying the local image\n", label, perr)
-		}
+		r.pullAgentImage(ctx, plan, label)
 	}
 	envFile, cleanupEnv, err := r.writeTokenEnvFile(ctx, r.resolveAgentCreds(ctx, mode))
 	if err != nil {
 		return err
 	}
 	defer cleanupEnv()
-	return r.Runner.Exec(ctx, "docker", dockerCreateArgv(plan, envFile)...)
+	return r.createAgentContainer(ctx, plan, envFile)
+}
+
+// pullAgentImage pulls plan.Image: an interactive run streams docker's output;
+// a detached run swallows the pull chatter and scout hint (ward#306).
+func (r *Runner) pullAgentImage(ctx context.Context, plan upPlan, label string) {
+	var perr error
+	if plan.Interactive {
+		perr = r.Runner.Exec(ctx, "docker", "pull", plan.Image)
+	} else {
+		perr = r.runDockerSilenced(ctx, true, "pull", plan.Image)
+	}
+	if perr != nil {
+		fmt.Fprintf(os.Stderr, "%s: image pull failed (%v); trying the local image\n", label, perr)
+	}
+}
+
+// createAgentContainer fires `docker run`: interactive streams to the terminal;
+// detached swallows the lone container-id hash docker echoes (ward#306).
+func (r *Runner) createAgentContainer(ctx context.Context, plan upPlan, envFile string) error {
+	argv := dockerCreateArgv(plan, envFile)
+	if plan.Interactive {
+		return r.Runner.Exec(ctx, "docker", argv...)
+	}
+	return r.runDockerSilenced(ctx, false, argv...)
+}
+
+// runDockerSilenced runs docker with the CLI hint banner off and stdout dropped
+// (stderr too when silenceStderr), keeping a detached launch quiet (ward#306).
+func (r *Runner) runDockerSilenced(ctx context.Context, silenceStderr bool, argv ...string) error {
+	// Launches are sequential per process, so swapping the shared Runner's
+	// writers/env around one call and restoring them on return is safe.
+	saveOut, saveErr, saveEnv := r.Runner.Stdout, r.Runner.Stderr, r.Runner.Env
+	r.Runner.Stdout = io.Discard
+	if silenceStderr {
+		r.Runner.Stderr = io.Discard
+	}
+	r.Runner.Env = append(append([]string(nil), saveEnv...), "DOCKER_CLI_HINTS=false")
+	defer func() {
+		r.Runner.Stdout, r.Runner.Stderr, r.Runner.Env = saveOut, saveErr, saveEnv
+	}()
+	return r.Runner.Exec(ctx, "docker", argv...)
 }
 
 // agentTaskCommand builds `ward agent task [owner/repo]`: files an issue
