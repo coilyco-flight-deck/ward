@@ -94,18 +94,21 @@ func (r *Runner) WrapVerb(spec verb.Spec, writer *audit.Writer) cli.ActionFunc {
 	return verb.Wrap(spec, writer)
 }
 
-// resolveInvokeCWD picks the operator's invoke-time cwd (vs the post-cd
-// subprocess cwd): $COILY_INVOKE_CWD, then $OLDPWD, then os.Getwd().
+// startupCWD is the process cwd captured at load, before any verb-time chdir, so
+// resolveInvokeCWD reports where the operator actually launched ward.
+var startupCWD, _ = os.Getwd()
+
+// resolveInvokeCWD reports the operator's invoke-time cwd: COILY_INVOKE_CWD override,
+// then the startup cwd, then a live os.Getwd(). $OLDPWD is not consulted (ward#302).
 func resolveInvokeCWD() string {
-	for _, env := range []string{"COILY_INVOKE_CWD", "OLDPWD"} {
-		v := strings.TrimSpace(os.Getenv(env))
-		if v == "" {
-			continue
-		}
+	if v := strings.TrimSpace(os.Getenv("COILY_INVOKE_CWD")); v != "" {
 		// #nosec G304 -- read-only stat for cwd routing; no file open follows.
 		if info, err := os.Stat(filepath.Clean(v)); err == nil && info.IsDir() {
 			return v
 		}
+	}
+	if startupCWD != "" {
+		return startupCWD
 	}
 	if cwd, err := os.Getwd(); err == nil {
 		return cwd
