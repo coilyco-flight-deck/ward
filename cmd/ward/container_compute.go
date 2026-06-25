@@ -49,8 +49,8 @@ const (
 	// off by default; the forgejo token is injected single-purpose instead).
 	containerAWSMount = "/root/.aws"
 
-	// containerDockerSock is the host docker socket bound into an explore session so
-	// it can dispatch sibling runs; same path both sides (ward#315). docs/agent-explore.md.
+	// containerDockerSock is the host docker socket bound into an architect session so
+	// it can dispatch sibling runs; same path both sides (ward#315). See agent-architect.md.
 	containerDockerSock = "/var/run/docker.sock"
 
 	// containerNamePrefix anchors every ward-managed container name so a
@@ -399,10 +399,10 @@ type upPlan struct {
 	// entrypoint's `"$WARD_AGENT" "$@"`); empty for a bare interactive bring-up.
 	AgentArgs []string
 	// Headless runs the in-container agent in print mode (claude -p), exporting
-	// WARD_HEADLESS=1; set by `ward agent headless`, which also detaches.
+	// WARD_HEADLESS=1; set by the detached `ward agent engineer` carry.
 	Headless bool
 	// Ask runs the in-container agent one-shot, attached (claude -p plain, no
-	// stream-json); exports WARD_ASK=1, set by `ward agent ask`.
+	// stream-json); exports WARD_ASK=1, set by `ward agent advisor`'s freeform mode.
 	Ask bool
 	// GoBootstrap (EXPERIMENTAL, ward#181) exports WARD_USE_GO_BOOTSTRAP=1 so the
 	// entrypoint delegates to `ward container bootstrap` instead of its bash logic.
@@ -413,8 +413,8 @@ type upPlan struct {
 	// Issue is the carried issue number (0 for a bare `container up`), exported as
 	// WARD_TARGET_ISSUE so the reaper can release a pre-launch hold (ward#264).
 	Issue int
-	// ReadOnly marks a read-only scratch session (`ward agent explore`, ward#293):
-	// exports WARD_READONLY=1. See docs/agent-explore.md for what it enforces.
+	// ReadOnly marks a read-only scratch session (`ward agent architect`, ward#293):
+	// exports WARD_READONLY=1. See docs/agent-architect.md for what it enforces.
 	ReadOnly bool
 	// HostNet joins the container to the host network (--network=host) so a carry
 	// inherits the host's tailnet route (--host-net, ward#330). docs/agent-host-net.md.

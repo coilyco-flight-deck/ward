@@ -4,7 +4,7 @@ Detail backing [`../SKILL.md`](../SKILL.md) steps 1-2. Surfaces are in [`surface
 
 ## Parse rules
 
-Recognize the shape `[ward ]agent <surface>? <owner-tokens> <repo-tokens> [issue|number|ticket|hash|pound|#] <N>`, or the legacy `[coily ]dispatch <...>` shape.
+Recognize the shape `[ward ]agent <role>? <owner-tokens> <repo-tokens> [issue|number|ticket|hash|pound|#] <N>`, or the legacy `[coily ]dispatch <...>` shape.
 
 **Filler to drop:** "the", "issue", "number", "ticket", "hash", "pound", "on", "for", "please". Also drop a repeated "coily" used as a dictation discourse marker rather than the actual repo name - e.g. "coily-siren coily-issue 125", the second "coily" is filler.
 

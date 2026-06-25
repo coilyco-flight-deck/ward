@@ -1,8 +1,8 @@
 # Root credential broker (ward side)
 
-The **root credential broker** hardens read-only [`explore`](agent-explore.md):
+The **root credential broker** hardens the read-only [`architect`](agent-architect.md):
 today the session keeps `FORGEJO_TOKEN` in the agent's env, the *same* bot token a
-determined agent could rebuild a push from (the soft edge, ward#318). The broker
+agent could rebuild a push from (the soft edge, ward#318). The broker
 closes that gap - a **root daemon** holds the token; the dropped, non-root agent
 reaches the forge through a unix socket, holding nothing.
 
@@ -75,5 +75,5 @@ env->SSM path - it never blocks a launch.
 ## See also
 
 - `cli-guard/pkg/broker` - the policy core (cli-guard#167).
-- [docs/agent-explore.md](agent-explore.md) - the session this hardens.
+- [docs/agent-architect.md](agent-architect.md) - the session this hardens.
 - [docs/ward-kdl.md](ward-kdl.md) - the tier binaries the executor shells.

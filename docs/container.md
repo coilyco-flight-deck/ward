@@ -27,13 +27,13 @@ Three departures from a transparent, shared, bind-mounted container:
 Launch through [`ward agent`](agent.md):
 
 ```bash
-ward agent work coilyco-gaming/eco-app#123                 # carry an issue end to end
-ward agent headless coilyco-gaming/eco-app#123             # detached, fire-and-forget
-ward agent work coilyco-gaming/eco-app#123 --driver codex --print   # show the docker cmd only
+ward agent engineer coilyco-gaming/eco-app#123             # carry an issue end to end (detached)
+ward agent engineer coilyco-gaming/eco-app#123 --watch     # attached, fire-and-forget off
+ward agent engineer coilyco-gaming/eco-app#123 --driver codex --print   # show the docker cmd only
 ```
 
-`ward agent work --help` lists the launch flags `work` carries from this
-subsystem (`--driver`, `--aws`, `--detach`, `--print`, `--no-pull`,
+`ward agent engineer --help` lists the launch flags the carry brings from this
+subsystem (`--driver`, `--aws`, `--watch`, `--print`, `--no-pull`,
 `--ward-source`, ...; see [docs/agent-flags.md](agent-flags.md)). The run
 attaches by default; the pseudo-TTY (`-t`) is **auto-detected**, on only when
 stdin and stdout are both terminals. `--detach`/`headless` background it (`-d`).

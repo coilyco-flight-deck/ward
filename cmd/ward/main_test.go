@@ -155,8 +155,8 @@ func TestMaybeRewriteWardedShim(t *testing.T) {
 		},
 		{
 			name: "warded by absolute path still rewrites",
-			args: []string{"/usr/local/bin/warded", "work", "#98"},
-			want: []string{"ward", "agent", "work", "#98"},
+			args: []string{"/usr/local/bin/warded", "engineer", "#98"},
+			want: []string{"ward", "agent", "engineer", "#98"},
 		},
 		{
 			name: "bare warded rewrites to bare agent (agent shows the surface help)",
@@ -164,14 +164,14 @@ func TestMaybeRewriteWardedShim(t *testing.T) {
 			want: []string{"ward", "agent"},
 		},
 		{
-			name: "surface + flags ride through after agent",
-			args: []string{"warded", "headless", "#98", "--driver", "codex"},
-			want: []string{"ward", "agent", "headless", "#98", "--driver", "codex"},
+			name: "role + flags ride through after agent",
+			args: []string{"warded", "engineer", "#98", "--driver", "codex"},
+			want: []string{"ward", "agent", "engineer", "#98", "--driver", "codex"},
 		},
 		{
 			name: "ward itself is untouched",
-			args: []string{"ward", "agent", "work", "#98"},
-			want: []string{"ward", "agent", "work", "#98"},
+			args: []string{"ward", "agent", "engineer", "#98"},
+			want: []string{"ward", "agent", "engineer", "#98"},
 		},
 		{
 			name: "another tool name is untouched",

@@ -13,8 +13,8 @@ import (
 	"github.com/urfave/cli/v3"
 )
 
-// agent_route.go adds ROUTE mode to `ward agent task` (ward#164): a
-// freeform task with no repo routes to one live-surveyed. See docs/agent-task.md.
+// agent_route.go adds ROUTE mode to the engineer freeform mode (ward#347, was task;
+// ward#164): a freeform task with no repo routes to one live-surveyed.
 
 const (
 	// inboxOwner / inboxRepo is the intake repo every routed task lands in first,
@@ -35,7 +35,7 @@ type repoCatalogEntry struct {
 }
 
 // classifyTaskInvocation decides ROUTE vs DIRECT from the positional arg and the
-// instruction flags (ward#164); see docs/agent-task.md. Contradictions error.
+// instruction flags (ward#164); see docs/agent-engineer.md. Contradictions error.
 func classifyTaskInvocation(arg, inline, file string) (route bool, repoArg string, err error) {
 	arg = strings.TrimSpace(arg)
 	inline = strings.TrimSpace(inline)
@@ -57,7 +57,7 @@ func classifyTaskInvocation(arg, inline, file string) (route bool, repoArg strin
 	if inline != "" || file != "" {
 		return false, "", nil
 	}
-	return false, "", fmt.Errorf("no task given: pass a freeform task ('ward agent task \"do the thing\"') to auto-route it, or an explicit owner/repo with --instructions")
+	return false, "", fmt.Errorf("no task given: pass a freeform task ('ward agent engineer \"do the thing\"') to auto-route it, or an explicit owner/repo with --instructions")
 }
 
 // taskRepoRef coerces a `task` positional to an owner/repo slug ONLY for a bare
@@ -82,9 +82,9 @@ func taskRepoRef(arg string) (string, bool) {
 }
 
 // runAgentTaskRoute carries ROUTE mode (ward#164): intake -> survey -> scoped
-// child -> close intake -> carry. --print files nothing. See docs/agent-task.md.
+// child -> close intake -> carry. --print files nothing. See docs/agent-engineer.md.
 func (r *Runner) runAgentTaskRoute(ctx context.Context, c *cli.Command, mode containerMode, taskText string) error {
-	label := agentCmdline(mode, "task")
+	label := agentCmdline(mode, "engineer")
 	taskText = strings.TrimSpace(taskText)
 	if err := r.routeSurveyPreconditions(mode, taskText, label); err != nil {
 		return err
@@ -217,7 +217,7 @@ func (r *Runner) surveyRoute(ctx context.Context, mode containerMode, taskText s
 	if !ok {
 		return routeOutcome{}, "", fmt.Errorf("no host self-assessment slot for %s", mode)
 	}
-	fmt.Fprintf(os.Stderr, "%s: route survey - asking %s to route this task across %d repos...\n\n", agentCmdline(mode, "task"), mode.agentBinary(), len(catalog))
+	fmt.Fprintf(os.Stderr, "%s: route survey - asking %s to route this task across %d repos...\n\n", agentCmdline(mode, "engineer"), mode.agentBinary(), len(catalog))
 	sctx, cancel := context.WithTimeout(ctx, routeSurveyTimeout)
 	defer cancel()
 	out, err := r.capturePreflight(sctx, argv)
@@ -242,7 +242,7 @@ func (r *Runner) surveyRepoCatalog(ctx context.Context) ([]repoCatalogEntry, err
 	for _, owner := range r.primaryOrgs() {
 		repos, err := cl.listOwnerRepos(ctx, owner)
 		if err != nil {
-			fmt.Fprintf(os.Stderr, "ward agent task: note: could not list repos for %s (%v); skipping it in the survey\n", owner, err)
+			fmt.Fprintf(os.Stderr, "ward agent engineer: note: could not list repos for %s (%v); skipping it in the survey\n", owner, err)
 			continue
 		}
 		for _, rb := range repos {
@@ -351,9 +351,9 @@ func routeIntakeBody(mode containerMode, taskText string) string {
 	var b strings.Builder
 	fmt.Fprintf(&b, "Intake record for a freeform task captured by `%s` (ward#164). The literal "+
 		"ask is below; ward surveys the fleet's repos and routes a scoped child issue to the correct one, "+
-		"then cross-links and closes this record.\n\n", agentCmdline(mode, "task"))
+		"then cross-links and closes this record.\n\n", agentCmdline(mode, "engineer"))
 	fmt.Fprintf(&b, "---\n### Task (verbatim)\n\n%s\n", taskText)
-	fmt.Fprintf(&b, "\n---\nFiled by `%s` (intake; ward#164).", agentCmdline(mode, "task"))
+	fmt.Fprintf(&b, "\n---\nFiled by `%s` (intake; ward#164).", agentCmdline(mode, "engineer"))
 	return b.String()
 }
 
@@ -365,12 +365,12 @@ func routeChildBody(mode containerMode, taskText, scoped string, intake agentIss
 		taskText = "(no task given)"
 	}
 	var b strings.Builder
-	fmt.Fprintf(&b, "Routed here from the intake record %s by `%s` (ward#164).\n\n", intake, agentCmdline(mode, "task"))
+	fmt.Fprintf(&b, "Routed here from the intake record %s by `%s` (ward#164).\n\n", intake, agentCmdline(mode, "engineer"))
 	if scoped = strings.TrimSpace(scoped); scoped != "" {
 		fmt.Fprintf(&b, "**Scoped for this repo:** %s\n\n", scoped)
 	}
 	fmt.Fprintf(&b, "---\n### Original task (verbatim)\n\n%s\n", taskText)
-	fmt.Fprintf(&b, "\n---\nFiled by `%s` route mode (ward#164); intake record: %s", agentCmdline(mode, "task"), intake.url())
+	fmt.Fprintf(&b, "\n---\nFiled by `%s` route mode (ward#164); intake record: %s", agentCmdline(mode, "engineer"), intake.url())
 	return b.String()
 }
 
@@ -379,7 +379,7 @@ func routeChildBody(mode containerMode, taskText, scoped string, intake agentIss
 func routeRoutedComment(mode containerMode, child agentIssueRef, scoped, read string) string {
 	var b strings.Builder
 	fmt.Fprintf(&b, "### 🧭 ward task route\n\n")
-	fmt.Fprintf(&b, "`%s` surveyed the fleet and routed this task to **%s**:\n\n", agentCmdline(mode, "task"), child.repoSlug())
+	fmt.Fprintf(&b, "`%s` surveyed the fleet and routed this task to **%s**:\n\n", agentCmdline(mode, "engineer"), child.repoSlug())
 	fmt.Fprintf(&b, "- %s - %s\n\n", child, child.url())
 	if scoped = strings.TrimSpace(scoped); scoped != "" {
 		fmt.Fprintf(&b, "> %s\n\n", scoped)
@@ -388,7 +388,7 @@ func routeRoutedComment(mode containerMode, child agentIssueRef, scoped, read st
 	if read = strings.TrimSpace(read); read != "" {
 		fmt.Fprintf(&b, "\n<details><summary>full route survey</summary>\n\n%s\n\n</details>\n", read)
 	}
-	fmt.Fprintf(&b, "\n---\nPosted automatically by `%s` route (ward#164).", agentCmdline(mode, "task"))
+	fmt.Fprintf(&b, "\n---\nPosted automatically by `%s` route (ward#164).", agentCmdline(mode, "engineer"))
 	return b.String()
 }
 
@@ -403,14 +403,14 @@ func routeUnclearComment(mode containerMode, reason, read string) string {
 	fmt.Fprintf(&b, "### 🧭 ward task route: UNCLEAR\n\n")
 	fmt.Fprintf(&b, "`%s` surveyed the fleet but could not confidently route this task, so it "+
 		"filed nothing downstream and launched no container. This intake record stays open for a human to "+
-		"route.\n\n", agentCmdline(mode, "task"))
+		"route.\n\n", agentCmdline(mode, "engineer"))
 	fmt.Fprintf(&b, "> %s\n\n", reason)
 	fmt.Fprintf(&b, "Once you know the target repo, re-dispatch in DIRECT mode - `%s <owner/repo> "+
-		"-i \"...\"` - or file the issue by hand and run `%s <ref>`.\n", agentCmdline(mode, "task"), agentCmdline(mode, "headless"))
+		"-i \"...\"` - or file the issue by hand and run `%s <ref>`.\n", agentCmdline(mode, "engineer"), agentCmdline(mode, "engineer"))
 	if read = strings.TrimSpace(read); read != "" {
 		fmt.Fprintf(&b, "\n<details><summary>full route survey</summary>\n\n%s\n\n</details>\n", read)
 	}
-	fmt.Fprintf(&b, "\n---\nPosted automatically by `%s` route (ward#164).", agentCmdline(mode, "task"))
+	fmt.Fprintf(&b, "\n---\nPosted automatically by `%s` route (ward#164).", agentCmdline(mode, "engineer"))
 	return b.String()
 }
 
@@ -422,7 +422,7 @@ func printAgentTaskRoutePlan(c *cli.Command, mode containerMode, taskText, title
 		out = os.Stdout
 	}
 	var b strings.Builder
-	fmt.Fprintf(&b, "# %s (print, route mode)\n", agentCmdline(mode, "task"))
+	fmt.Fprintf(&b, "# %s (print, route mode)\n", agentCmdline(mode, "engineer"))
 	fmt.Fprintf(&b, "mode:    route (no explicit owner/repo given)\n")
 	fmt.Fprintf(&b, "intake:  %s/%s (the literal task is filed here first, then routed live)\n", inboxOwner, inboxRepo)
 	fmt.Fprintf(&b, "title:   %s\n", title)

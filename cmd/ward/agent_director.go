@@ -19,11 +19,11 @@ import (
 	"gopkg.in/yaml.v3"
 )
 
-// agent_backlog.go is `ward agent backlog`: an autonomous supervised loop draining
-// a repo's headless lane (ward#346, subsuming ward#310). See docs/agent-backlog.md.
+// agent_director.go is `ward agent director`, the autonomous backlog-supervisor role
+// (ward#347, was backlog; ward#346, subsuming ward#310). See docs/agent-director.md.
 
 // wardOutcomeMarker leads a headless run's final comment (ward#310); the loop reads
-// only this line to classify the run. See docs/agent-backlog.md.
+// only this line to classify the run. See docs/agent-director.md.
 const wardOutcomeMarker = "WARD-OUTCOME:"
 
 // backlogLedgerSubdir is the directory under ~/.ward holding one durable per-repo
@@ -89,7 +89,7 @@ type backlogLedger struct {
 	Issues  map[string]*backlogEntry `yaml:"issues"`
 }
 
-// backlogConfig is the resolved knob set for one `ward agent backlog` run.
+// backlogConfig is the resolved knob set for one `ward agent director` run.
 type backlogConfig struct {
 	mode         containerMode
 	maxParallel  int
@@ -100,27 +100,27 @@ type backlogConfig struct {
 	triage       bool
 }
 
-// agentBacklogCommand wires `ward agent backlog` (registered in agentCommand,
-// audited via WrapVerb, trust-gated through ownerAllowed). See docs/agent-backlog.md.
-func agentBacklogCommand() *cli.Command {
+// agentDirectorCommand wires `ward agent director` (audited via WrapVerb, trust-gated
+// through ownerAllowed; ward#347, was backlog). See docs/agent-director.md.
+func agentDirectorCommand() *cli.Command {
 	return &cli.Command{
-		Name:      "backlog",
-		Usage:     "Autonomously drive a repo's headless lane to drain: refresh, dispatch, poll, reconcile (ward#346).",
+		Name:      "director",
+		Usage:     "Autonomously drive a repo's headless lane to drain: refresh, dispatch engineers, poll, reconcile (ward#346).",
 		ArgsUsage: "(scope via --repo; default: the cwd git origin)",
-		Description: `backlog runs an autonomous supervised loop over a repo's open backlog. Each cycle
+		Description: `director runs an autonomous supervised loop over a repo's open backlog. Each cycle
 it refreshes the ledger from the live backlog (ranking issues into lanes by
 tier/mode labels), dispatches queued headless-lane issues up to --max-parallel via
-ward's native headless carry, polls the dispatched containers, reads each one's
+ward's native engineer carry, polls the dispatched containers, reads each one's
 WARD-OUTCOME comment to classify done/blocked/failed, then repeats until the
 headless lane drains or a limit is hit.
 
-  warded backlog --repo coilyco-flight-deck/ward         # one repo
-  warded backlog --repo a/b,c/d --max-parallel 3         # comma-separated scope
-  warded backlog --dry-run                                # ranked lanes + planned dispatches, launch nothing
+  warded director --repo coilyco-flight-deck/ward         # one repo
+  warded director --repo a/b,c/d --max-parallel 3         # comma-separated scope
+  warded director --dry-run                                # ranked lanes + planned dispatches, launch nothing
 
 State lives in a durable per-repo ledger under ~/.ward/backlog, so a killed loop
 resumes from disk. Only the narrow headless lane is auto-dispatched; interactive
-and consult issues are surfaced, not launched. See docs/agent-backlog.md.`,
+and consult issues are surfaced, not launched. See docs/agent-director.md.`,
 		Flags: []cli.Flag{
 			agentDriverFlag(),
 			&cli.StringFlag{Name: "repo", Usage: "comma-separated scope 'a/b,c/d' (default: the cwd git origin)"},
@@ -135,10 +135,10 @@ and consult issues are surfaced, not launched. See docs/agent-backlog.md.`,
 			r := newRunner()
 			mode, err := agentDriver(c)
 			if err != nil {
-				return fmt.Errorf("ward agent backlog: %w", err)
+				return fmt.Errorf("ward agent director: %w", err)
 			}
 			return r.WrapVerb(verb.Spec{
-				Name:       "agent." + string(mode) + ".backlog",
+				Name:       "agent." + string(mode) + ".director",
 				SkipPolicy: true,
 				Action: func(ctx context.Context, cmd *cli.Command) error {
 					return r.runAgentBacklog(ctx, cmd, mode)
@@ -148,9 +148,10 @@ and consult issues are surfaced, not launched. See docs/agent-backlog.md.`,
 	}
 }
 
-// runAgentBacklog resolves + trust-gates the scope, then drives the loop.
+// runAgentBacklog resolves + trust-gates the scope, then drives the loop (the
+// director role's loop body; ward#347).
 func (r *Runner) runAgentBacklog(ctx context.Context, c *cli.Command, mode containerMode) error {
-	label := agentCmdline(mode, "backlog")
+	label := agentCmdline(mode, "director")
 	def := ""
 	if repo, _, err := r.resolveTarget(ctx, ""); err == nil {
 		def = repo.slug()
@@ -734,11 +735,11 @@ func (r *Runner) backlogDispatchOne(ctx context.Context, label string, mode cont
 	return nil
 }
 
-// backlogDispatch launches one issue's headless carry in-process via the headless
-// surface command (the native runAgentWork path). See docs/agent-backlog.md.
+// backlogDispatch launches one issue's headless carry in-process via the engineer
+// command (a bare ref carries detached; the native runAgentWork path; ward#347).
 func (r *Runner) backlogDispatch(ctx context.Context, mode containerMode, ref agentIssueRef) error {
-	cmd := agentSurfaceCommand("headless", true)
-	argv := []string{"headless", ref.String(), "--driver", string(mode), "--no-preflight"}
+	cmd := agentEngineerCommand()
+	argv := []string{"engineer", ref.String(), "--driver", string(mode), "--no-preflight"}
 	return cmd.Run(ctx, argv)
 }
 
@@ -874,7 +875,7 @@ func (r *Runner) backlogPrintPlanned(label string, repos []string, maxParallel i
 	for i, p := range picks {
 		marker := "  (queued, waits for a free slot)"
 		if i < n {
-			marker = "  -> ward agent headless " + p.repo + "#" + strconv.Itoa(p.Num)
+			marker = "  -> ward agent engineer " + p.repo + "#" + strconv.Itoa(p.Num)
 		}
 		fmt.Fprintf(&b, "    %-30s [%-2s] %s%s\n",
 			p.repo+"#"+strconv.Itoa(p.Num), tierOrDash(p.Tier), backlogTruncate(p.Title, 50), marker)

@@ -8,12 +8,11 @@ import (
 	"strings"
 	"time"
 
-	"forgejo.coilysiren.me/coilyco-flight-deck/cli-guard/cli/verb"
 	"github.com/urfave/cli/v3"
 )
 
-// agent_reply.go wires `ward agent reply <issue-ref> <prompt>` (ward#179):
-// a host one-shot research pass posted as an issue comment. See docs/agent-reply.md.
+// agent_reply.go is the advisor role's ref mode (ward#347, was reply; ward#179): a host
+// one-shot research pass posted as an issue comment. See docs/agent-advisor.md.
 
 // replyThoroughness is one rung of the reply depth ladder: how hard the host
 // one-shot digs, the wall-clock it gets, and the steer woven into its prompt.
@@ -73,45 +72,10 @@ func parseReplyThoroughness(s string) (replyThoroughness, error) {
 	return replyThoroughness{}, fmt.Errorf("unknown --thoroughness %q: want %s", s, strings.Join(names, "|"))
 }
 
-// agentReplyCommand builds `ward agent reply <issue-ref> <prompt>`: a host one-shot
-// research reply as one comment. --driver picks the harness. See docs/agent-reply.md.
-func agentReplyCommand() *cli.Command {
-	return &cli.Command{
-		Name: "reply",
-		Usage: "Research an issue one-shot (to a chosen thoroughness) and post the result as an issue comment " +
-			"- no container, no code change.",
-		ArgsUsage: "<owner/repo#N | forgejo-issue-url> <prompt>",
-		Flags: []cli.Flag{
-			agentDriverFlag(),
-			&cli.StringFlag{
-				Name:    "thoroughness",
-				Aliases: []string{"depth"},
-				Value:   defaultReplyThoroughness,
-				Usage:   "how hard to dig: quick|standard|deep (deeper gets a longer timeout)",
-			},
-			&cli.BoolFlag{Name: "print", Usage: "resolve the issue + render the research prompt and exit; research nothing, post nothing"},
-		},
-		Action: func(ctx context.Context, c *cli.Command) error {
-			r := newRunner()
-			mode, err := agentDriver(c)
-			if err != nil {
-				return fmt.Errorf("ward agent reply: %w", err)
-			}
-			return r.WrapVerb(verb.Spec{
-				Name:       "agent." + string(mode) + ".reply",
-				SkipPolicy: true,
-				Action: func(ctx context.Context, cmd *cli.Command) error {
-					return r.runAgentReply(ctx, cmd, mode)
-				},
-			}, r.Audit)(ctx, c)
-		},
-	}
-}
-
-// runAgentReply fetches the issue + thread, runs the host one-shot research at the
-// chosen depth, and posts the result as a comment. Read-only: no container spins.
+// runAgentReply fetches the issue + thread, runs the host one-shot research at the chosen
+// depth, and posts the result as a comment (advisor ref mode; ward#347, was reply).
 func (r *Runner) runAgentReply(ctx context.Context, c *cli.Command, mode containerMode) error {
-	label := agentCmdline(mode, "reply")
+	label := agentCmdline(mode, "advisor")
 
 	ref, prompt, level, err := r.validateReplyInputs(ctx, c, mode, label)
 	if err != nil {
@@ -204,7 +168,7 @@ func (r *Runner) captureReplyResearch(ctx context.Context, mode containerMode, r
 		// Guarded earlier, but stay honest rather than panic on a nil argv.
 		return "", fmt.Errorf("no host one-shot slot for %s", mode)
 	}
-	fmt.Fprintf(os.Stderr, "%s: researching %s at %s depth (up to %s)...\n\n", agentCmdline(mode, "reply"), ref, level.Name, level.Timeout)
+	fmt.Fprintf(os.Stderr, "%s: researching %s at %s depth (up to %s)...\n\n", agentCmdline(mode, "advisor"), ref, level.Name, level.Timeout)
 	rctx, cancel := context.WithTimeout(ctx, level.Timeout)
 	defer cancel()
 	out, err := r.capturePreflight(rctx, argv)
@@ -273,12 +237,12 @@ func replyComment(mode containerMode, level replyThoroughness, prompt, read stri
 		read = "(the research produced no output)"
 	}
 	var b strings.Builder
-	fmt.Fprintf(&b, "### 🔎 ward agent reply\n\n")
-	fmt.Fprintf(&b, "`%s` ran a one-shot **%s** research pass on this question:\n\n", agentCmdline(mode, "reply"), level.Name)
+	fmt.Fprintf(&b, "### 🔎 ward agent advisor\n\n")
+	fmt.Fprintf(&b, "`%s` ran a one-shot **%s** research pass on this question:\n\n", agentCmdline(mode, "advisor"), level.Name)
 	fmt.Fprintf(&b, "> %s\n\n", strings.ReplaceAll(prompt, "\n", "\n> "))
 	fmt.Fprintf(&b, "---\n\n%s\n\n", read)
 	fmt.Fprintf(&b, "---\nResearched and posted automatically by `%s` (ward#179). "+
-		"This is one-shot research, not a carried change - verify before acting on it.\n%s", agentCmdline(mode, "reply"), replyReplyMarker)
+		"This is one-shot research, not a carried change - verify before acting on it.\n%s", agentCmdline(mode, "advisor"), replyReplyMarker)
 	return b.String()
 }
 
@@ -290,7 +254,7 @@ func printAgentReplyPlan(c *cli.Command, mode containerMode, ref agentIssueRef, 
 		out = os.Stdout
 	}
 	var b strings.Builder
-	fmt.Fprintf(&b, "# %s (print)\n", agentCmdline(mode, "reply"))
+	fmt.Fprintf(&b, "# %s (print, ref mode)\n", agentCmdline(mode, "advisor"))
 	fmt.Fprintf(&b, "issue:        %s\n", ref)
 	fmt.Fprintf(&b, "url:          %s\n", ref.url())
 	fmt.Fprintf(&b, "title:        %s\n", title)

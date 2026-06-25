@@ -148,7 +148,7 @@ func TestCarryingLine(t *testing.T) {
 		t.Errorf("carryingLine() = %q, want %q", got, want)
 	}
 	// An issueless (seedless) surface passes a blank title and must stay quiet.
-	if got := carryingLine("ward agent sandbox", ref, "   "); got != "" {
+	if got := carryingLine("ward agent architect", ref, "   "); got != "" {
 		t.Errorf("carryingLine() with blank title = %q, want empty", got)
 	}
 }
@@ -357,7 +357,7 @@ func TestTaskBody(t *testing.T) {
 	if !strings.Contains(got, "do the thing") {
 		t.Error("body must carry the instructions verbatim")
 	}
-	if !strings.Contains(got, "ward agent task --driver claude") {
+	if !strings.Contains(got, "ward agent engineer --driver claude") {
 		t.Errorf("body must mark provenance; got: %s", got)
 	}
 }
@@ -517,11 +517,11 @@ func TestParsePreflightVerdict(t *testing.T) {
 }
 
 func TestPreflightNoGoComment(t *testing.T) {
-	got := preflightNoGoComment(modeClaude, "headless", "needs human scoping", "The scope is unclear.\nNO-GO: needs human scoping")
+	got := preflightNoGoComment(modeClaude, "engineer", "needs human scoping", "The scope is unclear.\nNO-GO: needs human scoping")
 	for _, want := range []string{
 		"NO-GO",                               // names the verdict
 		"needs human scoping",                 // carries the reason
-		"ward agent headless --driver claude", // names the dispatching surface
+		"ward agent engineer --driver claude", // names the dispatching role
 		"--no-preflight",                      // tells the human how to re-dispatch
 		"No container was launched",
 		"<details>",             // folds the full read away
@@ -532,17 +532,13 @@ func TestPreflightNoGoComment(t *testing.T) {
 			t.Errorf("preflightNoGoComment missing %q\n got: %s", want, got)
 		}
 	}
-	// The task surface (ward#149) attributes to `task`, but still steers the
-	// re-dispatch at `headless` since the issue is already filed.
-	task := preflightNoGoComment(modeClaude, "task", "needs human scoping", "")
-	if !strings.Contains(task, "ward agent task --driver claude") {
-		t.Errorf("task surface should attribute to task; got: %s", task)
-	}
-	if !strings.Contains(task, "ward agent headless --driver claude <ref> --no-preflight") {
-		t.Errorf("re-dispatch should point at headless, not task; got: %s", task)
+	// The re-dispatch steers at the engineer carry since the issue is already filed,
+	// so a freeform engineer run would file a duplicate (ward#347).
+	if !strings.Contains(got, "ward agent engineer --driver claude <ref> --no-preflight") {
+		t.Errorf("re-dispatch should point at the engineer carry; got: %s", got)
 	}
 	// An empty reason degrades to a placeholder, never a dangling blockquote.
-	empty := preflightNoGoComment(modeClaude, "headless", "  ", "")
+	empty := preflightNoGoComment(modeClaude, "engineer", "  ", "")
 	if !strings.Contains(empty, "(no reason given)") {
 		t.Errorf("empty reason should render a placeholder; got: %s", empty)
 	}
@@ -582,7 +578,7 @@ func TestBlindfireIssueBody(t *testing.T) {
 		Ref:  agentIssueRef{Owner: "coilyco-flight-deck", Repo: "ward", Number: 159},
 		Body: "Make ward route ops verbs to coily.",
 	}
-	got := blindfireIssueBody(modeClaude, "headless", w, "this is an ops verb")
+	got := blindfireIssueBody(modeClaude, "engineer", w, "this is an ops verb")
 	for _, want := range []string{
 		"coilyco-flight-deck/ward#159",        // names the source issue
 		"this is an ops verb",                 // the routing reason
@@ -595,7 +591,7 @@ func TestBlindfireIssueBody(t *testing.T) {
 		}
 	}
 	// An empty reason and empty body degrade to placeholders, never dangle.
-	empty := blindfireIssueBody(modeClaude, "task", resolvedWork{Ref: w.Ref}, "  ")
+	empty := blindfireIssueBody(modeClaude, "engineer", resolvedWork{Ref: w.Ref}, "  ")
 	if !strings.Contains(empty, "(no reason given)") {
 		t.Errorf("empty reason should render a placeholder; got: %s", empty)
 	}
@@ -606,7 +602,7 @@ func TestBlindfireIssueBody(t *testing.T) {
 
 func TestPreflightWrongRepoComment(t *testing.T) {
 	filed := agentIssueRef{Owner: "coilyco-bridge", Repo: "coily", Number: 42}
-	got := preflightWrongRepoComment(modeClaude, "headless", filed, "ops verb", "It's ops.\nWRONG-REPO: coilyco-bridge/coily - ops verb")
+	got := preflightWrongRepoComment(modeClaude, "engineer", filed, "ops verb", "It's ops.\nWRONG-REPO: coilyco-bridge/coily - ops verb")
 	for _, want := range []string{
 		"WRONG-REPO",           // names the verdict
 		"coilyco-bridge/coily", // the target repo slug
@@ -622,7 +618,7 @@ func TestPreflightWrongRepoComment(t *testing.T) {
 		}
 	}
 	// An empty read omits the details block; an empty reason degrades gracefully.
-	empty := preflightWrongRepoComment(modeClaude, "task", filed, "  ", "")
+	empty := preflightWrongRepoComment(modeClaude, "engineer", filed, "  ", "")
 	if !strings.Contains(empty, "(no reason given)") {
 		t.Errorf("empty reason should render a placeholder; got: %s", empty)
 	}
@@ -692,20 +688,35 @@ func TestAgentModesIncludeGoose(t *testing.T) {
 	if !strings.Contains(agentDriverChoices(), "goose") {
 		t.Errorf("--driver choices missing goose; got %q", agentDriverChoices())
 	}
-	// Each top-level surface must exist and carry a --driver flag (so any harness,
+	// Each top-level role must exist and carry a --driver flag (so any harness,
 	// goose included, is selectable on it).
 	surfaces := map[string]*cli.Command{}
 	for _, c := range agentCommand().Commands {
 		surfaces[c.Name] = c
 	}
-	for _, want := range []string{"work", "headless", "task", "reply", "ask"} {
+	for _, want := range []string{"engineer", "architect", "director", "advisor"} {
 		cmd, ok := surfaces[want]
 		if !ok {
-			t.Errorf("ward agent missing %q surface", want)
+			t.Errorf("ward agent missing %q role", want)
 			continue
 		}
 		if !commandHasFlag(cmd, "driver") {
 			t.Errorf("ward agent %s missing the --driver flag", want)
+		}
+	}
+}
+
+// TestRetiredVerbsErrorAsUnknown covers ward#347's hard rename: a bare `ward agent
+// <old-verb>` (not a ref) errors as an unknown command, not filed as freeform work.
+func TestRetiredVerbsErrorAsUnknown(t *testing.T) {
+	for _, verb := range []string{"explore", "sandbox", "headless", "work", "reply", "ask", "backlog"} {
+		err := agentCommand().Run(t.Context(), []string{"agent", verb})
+		if err == nil {
+			t.Errorf("ward agent %q should error (retired verb), got nil", verb)
+			continue
+		}
+		if !strings.Contains(err.Error(), "unknown command") {
+			t.Errorf("ward agent %q should report an unknown command; got: %v", verb, err)
 		}
 	}
 }
@@ -755,10 +766,10 @@ func TestDockerCreateArgvNoAgentArgs(t *testing.T) {
 func TestAgentImageFlagsCarryEnvSources(t *testing.T) {
 	wantEnv := map[string]string{"image": envAgentImage, "tag": envAgentTag, "ward-version": envAgentVersion}
 	sets := map[string][]cli.Flag{
-		"surface": agentSurfaceFlags(true),
-		"scratch": agentScratchFlags(),
-		"task":    agentTaskCommand().Flags,
-		"ask":     agentAskCommand().Flags,
+		"surface":  agentSurfaceFlags(true),
+		"scratch":  agentScratchFlags(),
+		"engineer": agentEngineerCommand().Flags,
+		"advisor":  agentAdvisorCommand().Flags,
 	}
 	for name, flags := range sets {
 		seen := map[string]bool{}

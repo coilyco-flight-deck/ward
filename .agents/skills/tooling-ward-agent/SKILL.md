@@ -1,19 +1,19 @@
 ---
 name: tooling-ward-agent
-description: Normalize a dictated ward agent phrase to a canonical owner/repo#N and pick a surface (work/headless). Triggers - ward agent, dispatch, fire an agent, spawn an agent, fan out.
+description: Normalize a dictated ward agent phrase to owner/repo#N and dispatch the engineer carry (detached, or --watch). Triggers - ward agent, dispatch, fire an agent, spawn an agent, fan out.
 ---
 
 # tooling-ward-agent
 
-`ward agent <surface> <ref>` is a privileged op: it spins an ephemeral container that fresh-clones the repo and carries a Forgejo issue to merge under `bypassPermissions`. Mis-parsing a dictated ref silently sends an agent at the wrong issue. This skill normalizes a dictated reference into a canonical `owner/repo#N` and picks the surface. (Successor to the retired `ward dispatch`/`ward drive`; ward#174, ward#282.) Canonical in `coilyco-flight-deck/ward` (ward#286), so it versions with the code it documents.
+`ward agent <role> <ref>` is a privileged op: it spins an ephemeral container that fresh-clones the repo and carries a Forgejo issue to merge under `bypassPermissions`. Mis-parsing a dictated ref silently sends an agent at the wrong issue. This skill normalizes a dictated reference into a canonical `owner/repo#N` and dispatches the engineer carry (successor to `ward dispatch`/`ward drive`; ward#174, ward#282; roster rename ward#347). Canonical in `coilyco-flight-deck/ward` (ward#286).
 
 ## Assumptions
 
-Fan-out happens *before* this skill (`writing-to-issues`/`tooling-sidequest` sliced the work and filed the issues). This skill takes one dictated reference to one already-open issue, resolves it, picks a surface, hands off - it does not slice work or create issues.
+Fan-out happens *before* this skill (`writing-to-issues`/`tooling-sidequest` sliced the work and filed the issues). This skill takes one dictated reference to one already-open issue, resolves it, dispatches the engineer carry, hands off - it does not slice work or create issues.
 
 ## When to fire
 
-Any user phrase containing "dispatch", "agent", or "spawn" plus a numeric tail, especially when tokens look like mangled issue-ref dictation. Also "fan out", "run claude on", and interactive-intent phrasing ("open one for me", "spin this up", "let me iterate on this", "HITL this") paired with an issue.
+Any user phrase containing "dispatch", "agent", or "spawn" plus a numeric tail. Also "fan out", "run claude on", and interactive-intent phrasing ("open one for me", "spin this up", "let me iterate on this", "HITL this") paired with an issue.
 
 Do NOT fire when the user already typed a clean `owner/repo#N` or a Forgejo issue URL - pass straight through to `ward agent`. A bare `#N` from inside a repo checkout also passes straight through: `ward agent` infers `owner/repo` from the cwd's git origin (ward#282).
 
@@ -39,17 +39,16 @@ Confirm one line with the issue title from the Forgejo API (`ward ops forgejo is
 
 Skip confirmation only on a unique, unambiguous match; ALWAYS confirm when two repos fuzzy-match. Refuse (naming the failing condition) if the issue is closed, the owner is outside the four-fleet-org trust set (see `references/normalization.md`), the repo did not resolve, or the lookup errors.
 
-## Step 4: pick the surface
+## Step 4: dispatch the engineer carry
 
-`ward agent <surface> <ref>` takes a surface (`work`|`headless`, plus `task`|`reply`|`ask`) and `--driver` picks the harness (claude|codex|qwen|goose, default claude). A **bare ref with no surface word runs headless** - the fire-and-forget default (the PR is the review gate). Explicit surface words always win. Heuristics and worked examples are in [`references/surfaces.md`](references/surfaces.md).
+`ward agent <role> <ref>` takes a role (`engineer`|`architect`|`director`|`advisor`; ward#347) and `--driver` picks the harness (default claude). This skill dispatches **`engineer`** - implement a ticket end to end. A **bare ref runs the engineer carry** (detached, fire-and-forget; the PR is the review gate); `--watch` (`-w`) attaches it when Kai signals supervision. Explicit words win. Heuristics + examples: [`references/surfaces.md`](references/surfaces.md).
 
 ```bash
-ward agent headless coilyco-flight-deck/<repo>#<N>   # detached, fire-and-forget
-ward agent coilyco-flight-deck/<repo>#<N>            # bare ref -> same headless carry
+ward agent engineer coilyco-flight-deck/<repo>#<N>           # detached, fire-and-forget
+ward agent engineer coilyco-flight-deck/<repo>#<N> --watch   # attached, pair-with-me
 ```
 
 ## Out of scope
 
-* Container model, clone, prompt seeding, reservation, reaper, audit (owned by `ward agent` / `ward container`).
-* Authoring the issue body (Kai's job).
-* Slicing work into multiple issues (`writing-to-issues`, `tooling-sidequest`).
+* Container model, clone, seeding, reservation, reaper, audit (owned by `ward agent`).
+* Authoring the issue body (Kai's job); slicing work into issues (`writing-to-issues`, `tooling-sidequest`).

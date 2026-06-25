@@ -9,15 +9,21 @@ import (
 	"forgejo.coilysiren.me/coilyco-flight-deck/cli-guard/pkg/broker"
 )
 
-// `explore` is a top-level agent surface alongside work/headless/task/reply/ask/
-// sandbox: the read-only sibling of `sandbox` (ward#293).
-func TestAgentHasExploreSurface(t *testing.T) {
+// `architect` is a top-level role of the startup roster (ward#347, was `explore`):
+// the read-only interactive scoping session. The writable `sandbox` was removed.
+func TestAgentHasArchitectRole(t *testing.T) {
 	surfaces := map[string]bool{}
 	for _, c := range agentCommand().Commands {
 		surfaces[c.Name] = true
 	}
-	if !surfaces["explore"] {
-		t.Errorf("ward agent missing %q surface; got %v", "explore", surfaces)
+	if !surfaces["architect"] {
+		t.Errorf("ward agent missing %q role; got %v", "architect", surfaces)
+	}
+	// The retired verbs are gone outright (hard rename, no aliases; ward#347).
+	for _, gone := range []string{"explore", "sandbox"} {
+		if surfaces[gone] {
+			t.Errorf("retired verb %q must be gone after the architect rename; got %v", gone, surfaces)
+		}
 	}
 }
 
@@ -142,8 +148,8 @@ func TestComposeContextReadOnlyBlock(t *testing.T) {
 	if !strings.Contains(readonly, marker) {
 		t.Error("a read-only session must get the read-only restriction block")
 	}
-	if !strings.Contains(readonly, "warded explore") {
-		t.Error("the read-only block should name the warded explore surface")
+	if !strings.Contains(readonly, "warded architect") {
+		t.Error("the read-only block should name the warded architect surface")
 	}
 	// ward#315: the reframed block permits dispatch (file + commission a sibling),
 	// not just "do not push". It must invite filing issues and dispatching headless.
@@ -158,8 +164,8 @@ func TestComposeContextReadOnlyBlock(t *testing.T) {
 	if !strings.Contains(readonly, "obligation, not a") {
 		t.Error("the read-only block should frame capture-and-dispatch as an obligation, not a 'may' (ward#320)")
 	}
-	if !strings.Contains(readonly, "This is not the backlog loop") {
-		t.Error("the read-only block should contrast explore with the supervised backlog loop (ward#320)")
+	if !strings.Contains(readonly, "This is not the director loop") {
+		t.Error("the read-only block should contrast the architect with the supervised director loop (ward#320)")
 	}
 	if !strings.Contains(readonly, "without babysitting") {
 		t.Error("the read-only block should frame explore as capture-and-dispatch without babysitting (ward#320)")

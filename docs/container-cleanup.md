@@ -23,7 +23,7 @@ relies on.
 ## The sweep
 
 Reclamation is host-side instead. Every container-launching dispatch (`ward
-agent` work/headless/task, `ward agent ask`) first sweeps exited
+agent engineer`, `ward agent advisor` freeform) first sweeps exited
 ward containers before adding one more:
 
 1. List exited containers carrying the `ward.container=1` label, newest first

@@ -10,7 +10,7 @@ REF ?= v0.48.0
 # after a tag + `go get` bump + REF bump. When a gitignored go.work exists (see
 # the `workspace` target) drop the `@$(REF)`, so `go run` resolves specverb-gen
 # from the sibling working tree through the workspace - no tag, no `go get`, no
-# REF bump. go.work is absent in CI and the warded headless clone, so single-repo
+# REF bump. go.work is absent in CI and the warded engineer-carry clone, so single-repo
 # builds always take the pinned-version branch and resolve from the module pin.
 ifeq ($(wildcard go.work),)
 DRIVER := $(SPECVERB_GEN)@$(REF)

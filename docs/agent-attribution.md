@@ -30,7 +30,7 @@ remembering to. It is idempotent - the hidden marker guards against a double sig
 
 The mode is read from `WARD_AGENT`, then `WARD_MODE` (the in-container case), or
 pinned explicitly via `forgejoClient.withMode` by host-side callers - the
-reservation comment, the preflight NO-GO comment, and `ward agent task` issue
+reservation comment, the preflight NO-GO comment, and `ward agent engineer` issue
 filing - that already know the mode rather than inheriting it from the env.
 
 ## Git commit author + push identity (the coilyco-ops bot)

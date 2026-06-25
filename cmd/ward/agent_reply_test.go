@@ -110,7 +110,7 @@ func TestReplyComment(t *testing.T) {
 	got := replyComment(modeClaude, level, "what would it take?", "Here is the answer.")
 
 	for _, want := range []string{
-		"ward agent reply",      // header
+		"ward agent advisor",    // header
 		"one-shot **standard**", // the depth in the header
 		"> what would it take?", // the quoted question
 		"Here is the answer.",   // the research body, inline
@@ -141,7 +141,7 @@ func TestReplyCommentUnsigned(t *testing.T) {
 	if strings.Contains(got, agentSignatureMarker) {
 		t.Errorf("reply comment should not pre-sign; signBody handles that at send time:\n%s", got)
 	}
-	if !strings.Contains(got, "ward agent reply --driver goose") {
+	if !strings.Contains(got, "ward agent advisor --driver goose") {
 		t.Errorf("reply comment should name the driving mode:\n%s", got)
 	}
 }

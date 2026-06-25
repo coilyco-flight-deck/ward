@@ -83,7 +83,7 @@ func TestAgentLaunchSilencesDockerNoiseWhenHeadless(t *testing.T) {
 		r, out, errb := bufRunner(stub)
 		p := sampleUpPlan()
 		p.Interactive = false
-		r.pullAgentImage(t.Context(), p, "ward agent headless")
+		r.pullAgentImage(t.Context(), p, "ward agent engineer")
 		// Docker's own stdout/scout-hint stay silenced (ward#306)...
 		if out.Len() != 0 {
 			t.Errorf("headless pull leaked docker stdout: %q", out.String())
@@ -105,7 +105,7 @@ func TestAgentLaunchSilencesDockerNoiseWhenHeadless(t *testing.T) {
 		r.pullHeartbeatInterval = 10 * time.Millisecond
 		p := sampleUpPlan()
 		p.Interactive = false
-		r.pullAgentImage(t.Context(), p, "ward agent headless")
+		r.pullAgentImage(t.Context(), p, "ward agent engineer")
 		if !strings.Contains(errb.String(), "still pulling "+p.Image) {
 			t.Errorf("slow headless pull must emit a heartbeat, got stderr=%q", errb.String())
 		}
@@ -115,7 +115,7 @@ func TestAgentLaunchSilencesDockerNoiseWhenHeadless(t *testing.T) {
 		r, out, _ := bufRunner(stub)
 		p := sampleUpPlan()
 		p.Interactive = true
-		r.pullAgentImage(t.Context(), p, "ward agent work")
+		r.pullAgentImage(t.Context(), p, "ward agent engineer")
 		if !strings.Contains(out.String(), "deadbeefcontainerid") {
 			t.Errorf("interactive pull must stream docker output, got %q", out.String())
 		}

@@ -17,15 +17,14 @@ widen that wall, and it widens it to exactly the named set - never further.
 
 ```bash
 # Carry an issue in eco-app, also granting write access to eco-protos:
-ward agent work coilyco-gaming/eco-app#42 --repo coilyco-gaming/eco-protos
+ward agent engineer coilyco-gaming/eco-app#42 --repo coilyco-gaming/eco-protos
 
 # Repeatable; each grant is a bare owner/name or a forgejo clone URL:
-ward agent work coilyco-gaming/eco-app#42 \
+ward agent engineer coilyco-gaming/eco-app#42 \
   --repo coilyco-gaming/eco-protos \
   --repo coilyco-flight-deck/cli-guard
 
-# headless takes the same grants:
-ward agent headless coilyco-gaming/eco-app#42 --repo coilyco-gaming/eco-protos
+# --watch (attached) takes the same grants.
 ```
 
 A grant that names the target is a harmless no-op (the target is always cloned).

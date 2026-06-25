@@ -321,9 +321,7 @@ func TestParseExtraRepos(t *testing.T) {
 // "--with-repo" alias, and proves the "with-repo" lookup resolves it (ward#280).
 func TestAgentGrantFlagName(t *testing.T) {
 	for _, cmd := range []*cli.Command{
-		agentSurfaceCommand("work", false),
-		agentSurfaceCommand("headless", true),
-		agentTaskCommand(),
+		agentEngineerCommand(),
 	} {
 		var grant cli.Flag
 		for _, f := range cmd.Flags {

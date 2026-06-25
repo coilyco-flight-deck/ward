@@ -162,11 +162,11 @@ func TestParseRouteVerdict(t *testing.T) {
 func TestRouteIntakeBody(t *testing.T) {
 	got := routeIntakeBody(modeClaude, "  do the dishes  ")
 	for _, want := range []string{
-		"do the dishes",                   // the literal task, trimmed
-		"Task (verbatim)",                 // the verbatim section header
-		"ward#164",                        // provenance to this feature
-		"ward agent task --driver claude", // names the filing surface
-		"surveys the fleet",               // explains what happens next
+		"do the dishes",                       // the literal task, trimmed
+		"Task (verbatim)",                     // the verbatim section header
+		"ward#164",                            // provenance to this feature
+		"ward agent engineer --driver claude", // names the filing role
+		"surveys the fleet",                   // explains what happens next
 	} {
 		if !strings.Contains(got, want) {
 			t.Errorf("routeIntakeBody missing %q\n got: %s", want, got)
@@ -229,10 +229,10 @@ func TestRouteUnclearComment(t *testing.T) {
 		"ward and cli-guard both fit", // carries the reason
 		"could not confidently route", // explains the bounce
 		"stays open for a human",
-		"ward agent task --driver claude <owner/repo>", // how to re-dispatch DIRECT
-		"ward agent headless --driver claude",          // the by-hand alternative
-		"<details>",                                    // folds the read away
-		"Could be two repos.",                          // the read verbatim
+		"ward agent engineer --driver claude <owner/repo>", // how to re-dispatch DIRECT
+		"ward agent engineer --driver claude",              // the by-hand alternative
+		"<details>",                                        // folds the read away
+		"Could be two repos.",                              // the read verbatim
 		"ward#164",
 	} {
 		if !strings.Contains(got, want) {

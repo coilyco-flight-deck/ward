@@ -52,7 +52,7 @@ and the two are **mutually exclusive** - pick the one for your host:
 
 ```bash
 # Docker Desktop (host VM is not a tailnet node): the sidecar route.
-warded work coilyco-flight-deck/agent-proxy#1 --ts-sidecar
+warded engineer coilyco-flight-deck/agent-proxy#1 --watch --ts-sidecar
 ```
 
 `--print` shows both the sidecar `docker run` and the carry's

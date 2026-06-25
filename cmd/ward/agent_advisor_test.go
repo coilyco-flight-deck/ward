@@ -5,15 +5,21 @@ import (
 	"testing"
 )
 
-// `ask` is a top-level agent surface alongside work/headless/task/reply (ward#185
-// moved the harness onto --driver, so surfaces sit directly under `agent`).
-func TestAgentHasAskSurface(t *testing.T) {
+// `advisor` is a top-level role (ward#347): it answers without writing code, merging
+// the retired reply + ask verbs (ref researches + comments, freeform answers inline).
+func TestAgentHasAdvisorRole(t *testing.T) {
 	surfaces := map[string]bool{}
 	for _, c := range agentCommand().Commands {
 		surfaces[c.Name] = true
 	}
-	if !surfaces["ask"] {
-		t.Errorf("ward agent missing %q surface; got %v", "ask", surfaces)
+	if !surfaces["advisor"] {
+		t.Errorf("ward agent missing %q role; got %v", "advisor", surfaces)
+	}
+	// The retired verbs are gone outright (hard rename, no aliases; ward#347).
+	for _, gone := range []string{"reply", "ask"} {
+		if surfaces[gone] {
+			t.Errorf("retired verb %q must be gone after the advisor rename; got %v", gone, surfaces)
+		}
 	}
 }
 
