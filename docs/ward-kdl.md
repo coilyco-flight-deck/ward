@@ -54,6 +54,7 @@ ward-kdl's `surface.Markdown()`, so they describe one area's verbs and sit
 
 ## See also
 
+- [cmd/ward-kdl/README.md](../cmd/ward-kdl/README.md) - the guardfiles+locks dir this doc describes (not a Go package).
 - [architecture.md](architecture.md) - the three-layer model (cli-guard / ward-kdl / ward).
 - [ward-kdl-surface.md](ward-kdl-surface.md) - the full generated verb surface, area by area.
 - [ward-kdl-in-ward.md](ward-kdl-in-ward.md) - how exec guardfiles auto-mount into `ward`.

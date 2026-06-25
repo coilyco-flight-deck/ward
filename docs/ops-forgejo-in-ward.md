@@ -1,23 +1,24 @@
 # `ward ops forgejo` (in-binary mount)
 
 ward#92 cut the `ward` binary over to the ward-kdl forgejo guardfile: `ward ops
-forgejo <verb>` mounts the full 42-leaf `specverb` surface directly in the
+forgejo <verb>` mounts the 42-leaf `specverb` surface directly in the
 shipped binary, alongside the out-of-band [`ward-kdl`](ops-forgejo.md). Every
 Forgejo call ward makes - `ward agent`, the container reaper - routes through
-this mount; the old hand-rolled client is retired (see below).
+this mount (the old hand-rolled client is retired, below).
 
 The forgejo guardfile is pure `specverb` (HTTP/REST), so it carries no AWS SDK
-and folds into ward's normal `go build` cleanly - unlike the exec-transport
-surfaces that keep ward-kdl out-of-band. `cmd/ward/ops.go` parses the embedded
+and folds into ward's normal `go build` cleanly. `cmd/ward/ops.go` parses the embedded
 guardfile + pruned spec lock and `specverb.Build`s the `forgejo` group under a
-new `ops` umbrella, wrapping every leaf through ward's audit pipeline. The bot
+new `ops` umbrella, re-rooted from `ward-kdl` to `ward` (ward#270) so its leaves
+audit as `ward.ops.forgejo.*`, wrapping each through ward's audit pipeline. The bot
 token (`value ssm`) resolves through ward's audited `aws ssm` runner, not the
 AWS SDK, and lazily - mount and `--dry-run` never touch SSM.
 
 `go:embed` cannot reach a sibling directory, so `cmd/ward/opsassets/` holds
-byte-for-byte copies of `cmd/ward-kdl/`'s canonical guardfile + spec lock. The
-ward-kdl files stay the single source of truth (`make build-ward-kdl` re-runs
-`make sync-ops-assets`); `cmd/ward/opsassets_test.go` fails the build on drift.
+`.generated.`-marked copies of `cmd/ward-kdl/`'s canonical guardfile + spec lock
+(`opsassets/README.md`). The ward-kdl files stay the single source of
+truth (`make build-ward-kdl` re-runs `make sync-ops-assets`);
+`cmd/ward/opsassets_test.go` fails the build on drift.
 
 ## The remote-exec slice grafted alongside (ward#81)
 

@@ -61,10 +61,11 @@ build-ward-kdl-forgejo-tiers: ## build the read/write/admin forgejo tier binarie
 
 sync-ops-assets: ## Mirror the canonical forgejo guardfile + spec lock into cmd/ward for embedding (ward#92).
 	# go:embed cannot reach a sibling dir, so `ward ops forgejo` embeds copies of
-	# the ward-kdl canonical files. Re-sync after every lock; opsassets_test.go
-	# fails the build on drift.
-	cp ./cmd/ward-kdl/ward-kdl.forgejo.guardfile.kdl ./cmd/ward/opsassets/forgejo.guardfile.kdl
-	cp ./cmd/ward-kdl/forgejo.swagger.lock.json      ./cmd/ward/opsassets/forgejo.swagger.lock.json
+	# the ward-kdl canonical files. The `.generated.` infix marks each copy as
+	# derived, not hand-edited (ward#270); see cmd/ward/opsassets/README.md.
+	# Re-sync after every lock; opsassets_test.go fails the build on drift.
+	cp ./cmd/ward-kdl/ward-kdl.forgejo.guardfile.kdl ./cmd/ward/opsassets/forgejo.guardfile.generated.kdl
+	cp ./cmd/ward-kdl/forgejo.swagger.lock.json      ./cmd/ward/opsassets/forgejo.swagger.lock.generated.json
 
 sync-exec-assets: ## Mirror the exec-dialect ward-kdl guardfiles into cmd/ward for embedding (ward#284).
 	# `ward` auto-mounts every exec-dialect ward-kdl.*.guardfile.kdl under its own

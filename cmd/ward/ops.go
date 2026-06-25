@@ -19,21 +19,21 @@ import (
 	"github.com/urfave/cli/v3"
 )
 
-// ops.go mounts the ward-kdl forgejo guardfile runtime inside the ward binary
-// as `ward ops forgejo` (ward#92). See docs/ops-forgejo.md.
+// ops.go is ward's OWN in-binary embed of the forgejo guardfile runtime, mounted
+// as `ward ops forgejo` (ward#92, #270). See docs/ops-forgejo-in-ward.md.
 
-// opsAssets embeds the forgejo REST guardfile + spec lock plus the exec-dialect
-// admin/doctor guardfile (ward#81). See docs/ops-forgejo-in-ward.md.
+// opsAssets embeds the forgejo REST guardfile + spec lock (`.generated.` = cp
+// copies of cmd/ward-kdl/) plus the hand-written admin/doctor guardfile (ward#81).
 
-//go:embed opsassets/forgejo.guardfile.kdl opsassets/forgejo.swagger.lock.json
+//go:embed opsassets/*.generated.kdl opsassets/*.generated.json
 //go:embed opsassets/forgejo-admin.guardfile.kdl
 var opsAssets embed.FS
 
 // Embed paths named once so the runtime mount and the drift test agree; the
 // admin path is the exec-dialect remote-exec slice (ward#81).
 const (
-	opsForgejoGuardfilePath      = "opsassets/forgejo.guardfile.kdl"
-	opsForgejoSpecLockPath       = "opsassets/forgejo.swagger.lock.json"
+	opsForgejoGuardfilePath      = "opsassets/forgejo.guardfile.generated.kdl"
+	opsForgejoSpecLockPath       = "opsassets/forgejo.swagger.lock.generated.json"
 	opsForgejoAdminGuardfilePath = "opsassets/forgejo-admin.guardfile.kdl"
 )
 
@@ -70,6 +70,9 @@ func buildForgejoOps() (*cli.Command, error) {
 	if err != nil {
 		return nil, fmt.Errorf("parse guardfile: %w", err)
 	}
+	// Re-root the group prefix to ward's brand so these in-process verbs audit as
+	// `ward.ops.forgejo.*`, not `ward-kdl.*` (ward#270, docs/ops-forgejo-in-ward.md).
+	rerootGroupToWard(gf.Group)
 	spec, err := opsAssets.ReadFile(opsForgejoSpecLockPath)
 	if err != nil {
 		return nil, fmt.Errorf("read embedded spec lock: %w", err)
@@ -148,7 +151,7 @@ func (r *Runner) overrideForgejoViewIssue(forgejo *cli.Command) {
 		return
 	}
 	view.Action = r.WrapVerb(verb.Spec{
-		Name:       "ward-kdl.ops.forgejo.issue.view",
+		Name:       "ward.ops.forgejo.issue.view",
 		SkipPolicy: true, // read-only GETs; this leaf does its own scope gate below
 		ArgsFunc: func(c *cli.Command) (map[string]string, []string) {
 			return nil, c.Args().Slice()
@@ -247,6 +250,14 @@ func captureLeafStdout(fn func() error) (string, error) {
 		return "", fmt.Errorf("capture stdout: %w", readErr)
 	}
 	return string(out), nil
+}
+
+// rerootGroupToWard rewrites a parsed guardfile's leading group token from the
+// ward-kdl generator brand to `ward` (ward#270). A no-op if already `ward`.
+func rerootGroupToWard(group []string) {
+	if len(group) > 0 && group[0] == "ward-kdl" {
+		group[0] = "ward"
+	}
 }
 
 // subCommandNamed returns parent's subcommand named name, or nil.

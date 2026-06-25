@@ -3,6 +3,7 @@ package main
 import (
 	"bytes"
 	"os"
+	"strings"
 	"testing"
 
 	"github.com/urfave/cli/v3"
@@ -88,6 +89,37 @@ func commandNamed(cmds []*cli.Command, name string) *cli.Command {
 		}
 	}
 	return nil
+}
+
+// TestRerootGroupToWard asserts the helper swaps the ward-kdl brand for ward,
+// and is a no-op otherwise (ward#270).
+func TestRerootGroupToWard(t *testing.T) {
+	g := []string{"ward-kdl", "ops", "forgejo"}
+	rerootGroupToWard(g)
+	if g[0] != "ward" {
+		t.Errorf("group[0] = %q, want %q", g[0], "ward")
+	}
+	already := []string{"ward", "ops", "forgejo"}
+	rerootGroupToWard(already)
+	if already[0] != "ward" {
+		t.Errorf("no-op case mutated group[0] to %q", already[0])
+	}
+	rerootGroupToWard(nil) // must not panic on an empty group
+}
+
+// TestOpsForgejoNamespaceRerooted asserts the in-binary forgejo group mounts
+// under ward's own brand, not the standalone ward-kdl binary's (ward#270).
+func TestOpsForgejoNamespaceRerooted(t *testing.T) {
+	forgejo, err := buildForgejoOps()
+	if err != nil {
+		t.Fatalf("buildForgejoOps: %v", err)
+	}
+	if !strings.Contains(forgejo.Usage, "ward ops forgejo") {
+		t.Errorf("forgejo group Usage = %q, want it to name `ward ops forgejo`", forgejo.Usage)
+	}
+	if strings.Contains(forgejo.Usage, "ward-kdl") {
+		t.Errorf("forgejo group Usage = %q still carries the ward-kdl brand", forgejo.Usage)
+	}
 }
 
 func commandNames(cmds []*cli.Command) []string {
