@@ -191,6 +191,11 @@ func agentSeedPrompt(ref agentIssueRef, title, body, details string, mode contai
 				"let it override the issue text where they conflict):\n%s",
 			details)
 	}
+	// Front-load the subsystem context this issue names (ward#236): hand the
+	// matching skill/doc paths over up front instead of trusting lazy discovery.
+	if block := subsystemSeedBlock(ref, title, body); block != "" {
+		seed += "\n\n" + block
+	}
 	// A headless run detaches with no human watching, so ask it to close with a
 	// short retrospective comment - the only voice it leaves behind (ward#281).
 	if headless {
@@ -513,6 +518,7 @@ func preflightPrompt(ref agentIssueRef, title, body, details string, comments []
 				"granted repos (%s) rather than %s/%s; you will have all of them in hand.",
 			joined, joined, ref.Owner, ref.Repo)
 	}
+	gate := subsystemPreflightBlock(ref, title, body)
 	return fmt.Sprintf(
 		"You are about to be sent, fire-and-forget, into an ephemeral container to carry "+
 			"this Forgejo issue end to end on your own - implement, commit, merge to main, "+
@@ -529,8 +535,13 @@ func preflightPrompt(ref agentIssueRef, title, body, details string, comments []
 			"an open question or picked among options there, so weigh the latest word, not just "+
 			"the initial framing.\n\n"+
 			"Issue: %s (%q)\n\n%s%s\n\n"+
-			"Comment thread (oldest first):\n\n%s\n\n"+
-			"Answer in 2-4 sentences naming the main risk or unknown, then a final line of "+
+			"Comment thread (oldest first):\n\n%s%s\n\n"+
+			"Before the verdict line, add a \"Context to front-load:\" line that names the "+
+			"conventions and subsystems this work touches (the schemas, file layouts, and wiring "+
+			"you will need to know), and confirm you will READ each one in the clone before your "+
+			"first edit, not discover it lazily mid-task. Naming a gap is not closing it: a "+
+			"convention you can only locate is still unread. If there are none, say so explicitly.\n\n"+
+			"Then answer in 2-4 sentences naming the main risk or unknown, then a final line of "+
 			"exactly one of:\n"+
 			"  \"GO\" - you would take it on unattended;\n"+
 			"  \"NO-GO: <reason>\" - a human should weigh in first;\n"+
@@ -539,7 +550,7 @@ func preflightPrompt(ref agentIssueRef, title, body, details string, comments []
 			"do not go digging to decide it, and never from files missing in the current directory. "+
 			"ward will blind-file a fresh issue in that repo and launch nothing here.\n"+
 			"This is a judgment call, not a commitment - be honest about ambiguity.",
-		cloneScope, extraNote, ref, title, body, note, thread, ref.Owner, ref.Repo)
+		cloneScope, extraNote, ref, title, body, note, thread, gate, ref.Owner, ref.Repo)
 }
 
 // preflightComments renders the human comment thread (oldest first) for the
