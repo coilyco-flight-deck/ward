@@ -233,11 +233,18 @@ install_precommit_hooks() {
   fi
 }
 
-# --- read-only push guard (ward#299): a per-clone pre-push hook that fails fast
-# with a clear message instead of the opaque auth error. See docs/agent-explore.md.
+# --- read-only push guard: strip origin's push URL (ward#327) and land a per-clone
+# pre-push hook that fails fast with a clear message (ward#299). docs/agent-explore.md.
 install_readonly_push_guard() {
   local work="$1"
   [ "${WARD_READONLY:-0}" = 1 ] || return 0
+  # ward#327: point origin's push URL at a dead no-push:// scheme (fetch stays
+  # intact) so a push has no target. Synced with revokeClonePushURL; best-effort.
+  if git -C "$work" remote set-url --push origin no-push://read-only-explore 2>/dev/null; then
+    log "stripped origin push URL on $work -> no-push://read-only-explore (ward#327)"
+  else
+    log "could not strip push URL on $work; credential drop + pre-push hook still guard it (ward#327)"
+  fi
   local dir="$work/.git/hooks"
   [ -d "$dir" ] || { log "no .git/hooks in $work; skipping read-only push guard (ward#299)"; return 0; }
   cat > "$dir/pre-push" <<'HOOK'

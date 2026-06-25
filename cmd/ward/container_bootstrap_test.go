@@ -3,12 +3,22 @@ package main
 import (
 	"context"
 	"encoding/json"
+	"io"
 	"os"
+	"os/exec"
 	"path/filepath"
 	"slices"
 	"strings"
 	"testing"
+
+	"forgejo.coilysiren.me/coilyco-flight-deck/cli-guard/cli/shell"
 )
+
+// gitRunner builds a Runner whose shell.Runner resolves git on PATH (stdio
+// discarded); bare &Runner{} has a nil shell.Runner and would panic (ward#327).
+func gitRunner() *Runner {
+	return &Runner{Runner: &shell.Runner{Stdout: io.Discard, Stderr: io.Discard}}
+}
 
 // TestStreamProgress asserts the stream-json -> concise-line port matches the
 // bash jq filter for the event kinds it handles.
@@ -248,10 +258,48 @@ func TestSeedClaudeOnboarding(t *testing.T) {
 	})
 }
 
+// TestRevokeClonePushURL covers ward#327: a read-only session points origin's push
+// URL at the dead no-push:// scheme while leaving the fetch URL intact.
+func TestRevokeClonePushURL(t *testing.T) {
+	if _, err := exec.LookPath("git"); err != nil {
+		t.Skip("git not on PATH")
+	}
+	work := t.TempDir()
+	const origin = "https://forgejo.example/owner/repo.git"
+	for _, argv := range [][]string{
+		{"-C", work, "init", "-q"},
+		{"-C", work, "remote", "add", "origin", origin},
+	} {
+		if out, err := exec.Command("git", argv...).CombinedOutput(); err != nil {
+			t.Fatalf("git %v: %v\n%s", argv, err, out)
+		}
+	}
+
+	gitRunner().revokeClonePushURL(context.Background(), work)
+
+	push := gitURL(t, work, "--push")
+	if push != noPushURL {
+		t.Errorf("push URL = %q, want %q", push, noPushURL)
+	}
+	if fetch := gitURL(t, work, "--all"); !strings.Contains(fetch, origin) {
+		t.Errorf("fetch URL %q lost the original %q; strip must leave fetch intact", fetch, origin)
+	}
+}
+
+// gitURL reads origin's configured URL(s); flag selects --push or --all.
+func gitURL(t *testing.T, work, flag string) string {
+	t.Helper()
+	out, err := exec.Command("git", "-C", work, "remote", "get-url", flag, "origin").CombinedOutput()
+	if err != nil {
+		t.Fatalf("git remote get-url %s: %v\n%s", flag, err, out)
+	}
+	return strings.TrimSpace(string(out))
+}
+
 // TestInstallReadOnlyPushGuard covers ward#299: a read-only session lands the
 // per-clone pre-push hook; a writable session and a missing .git/hooks do not.
 func TestInstallReadOnlyPushGuard(t *testing.T) {
-	r := &Runner{}
+	r := gitRunner()
 
 	t.Run("read-only session installs the executable hook", func(t *testing.T) {
 		work := t.TempDir()

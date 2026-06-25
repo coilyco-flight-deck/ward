@@ -533,12 +533,27 @@ echo "Commit/branch locally; to ship, file an issue + dispatch 'warded #N'." >&2
 exit 1
 `
 
+// noPushURL is the dead push target a read-only clone's origin push URL is pointed
+// at: a scheme git cannot resolve, so a push has nowhere to go (ward#327).
+const noPushURL = "no-push://read-only-explore"
+
+// revokeClonePushURL points a read-only clone's origin push URL at noPushURL,
+// leaving fetch intact: a target boundary past the credential drop + hook (ward#327).
+func (r *Runner) revokeClonePushURL(ctx context.Context, work string) {
+	if err := r.Runner.Exec(ctx, "git", "-C", work, "remote", "set-url", "--push", "origin", noPushURL); err != nil {
+		blog("could not strip push URL on %s; credential drop + pre-push hook still guard it (ward#327): %v", work, err)
+		return
+	}
+	blog("stripped origin push URL on %s -> %s (ward#327)", work, noPushURL)
+}
+
 // installReadOnlyPushGuard ports install_readonly_push_guard: a read-only session
-// lands a per-clone pre-push hook (ward#299). No-op otherwise. docs/agent-explore.md.
-func (r *Runner) installReadOnlyPushGuard(_ context.Context, e bootstrapEnv, work string) {
+// strips origin's push URL (ward#327) + lands a pre-push hook (ward#299, see docs).
+func (r *Runner) installReadOnlyPushGuard(ctx context.Context, e bootstrapEnv, work string) {
 	if !e.ReadOnly {
 		return
 	}
+	r.revokeClonePushURL(ctx, work)
 	hookDir := filepath.Join(work, ".git", "hooks")
 	if !isDir(hookDir) {
 		blog("no .git/hooks in %s; skipping read-only push guard (ward#299)", work)
