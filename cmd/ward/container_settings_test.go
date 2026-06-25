@@ -14,6 +14,7 @@ func TestContainerSettingsPolicy(t *testing.T) {
 		t.Fatalf("read embedded settings: %v", err)
 	}
 	var s struct {
+		TUI         string `json:"tui"`
 		Permissions struct {
 			DefaultMode string   `json:"defaultMode"`
 			Deny        []string `json:"deny"`
@@ -24,6 +25,10 @@ func TestContainerSettingsPolicy(t *testing.T) {
 	}
 	if s.Permissions.DefaultMode != "bypassPermissions" {
 		t.Errorf("defaultMode = %q, want bypassPermissions", s.Permissions.DefaultMode)
+	}
+	// Fresh containers default to the fullscreen flicker-free renderer (ward#317).
+	if s.TUI != "fullscreen" {
+		t.Errorf("tui = %q, want fullscreen", s.TUI)
 	}
 	joined := strings.Join(s.Permissions.Deny, " ")
 	for _, want := range []string{"git push --force", "git push -f", "git reset --hard", "git clean -fd", "git clone"} {
