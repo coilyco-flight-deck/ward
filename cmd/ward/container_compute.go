@@ -18,6 +18,11 @@ const (
 	// containerImageTagDefault tracks the image's :latest moving tag.
 	containerImageTagDefault = "latest"
 
+	// envAgentImage / envAgentTag pin the dev-base image + tag once for every
+	// `ward agent` dispatch; an explicit --image/--tag still overrides (ward#312).
+	envAgentImage = "WARD_AGENT_IMAGE"
+	envAgentTag   = "WARD_AGENT_TAG"
+
 	// containerWardAssets is where ward's embedded entrypoint + doctrine are
 	// bind-mounted, read-only. The image bakes none of this in.
 	containerWardAssets    = "/opt/ward"

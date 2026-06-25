@@ -257,6 +257,7 @@ also work. One line replaces a full container bring-up stack plus a prompt.
   warded work #98                             # interactive: attach and watch
   warded headless #98 --driver codex          # pick another harness
   warded sandbox                              # interactive agent, fresh clone, no issue
+  warded headless #98 --tag v0.148.0          # pin the dev-base image tag (env: WARD_AGENT_TAG)
   ward agent work coilyco-flight-deck/ward#98 # the canonical spelling warded fronts
   ward agent headless coilyco-flight-deck/ward#98 --driver codex
   ward agent #98 --print                      # resolve + show the plan, run nothing
@@ -300,8 +301,8 @@ func agentSurfaceFlags(headless bool) []cli.Flag {
 		&cli.StringFlag{Name: "branch", Usage: "feature branch to create inside the clone (default: issue-<N>)"},
 		&cli.StringSliceFlag{Name: "repo", Aliases: []string{"with-repo"}, Usage: "grant the agent an additional writable repo to clone + operate against (owner/name; repeatable). Cloned as a full feature copy under /workspace alongside the issue's repo (ward#230, ward#280; --with-repo is the legacy alias)."},
 		&cli.StringFlag{Name: "details", Usage: "extra operator instructions woven into the seeded prompt + pre-flight read (overrides the issue text on conflict)"},
-		&cli.StringFlag{Name: "image", Value: containerImageDefault, Usage: "dev-base image to run"},
-		&cli.StringFlag{Name: "tag", Value: containerImageTagDefault, Usage: "image tag"},
+		&cli.StringFlag{Name: "image", Value: containerImageDefault, Sources: cli.EnvVars(envAgentImage), Usage: "dev-base image to run (env: WARD_AGENT_IMAGE)"},
+		&cli.StringFlag{Name: "tag", Value: containerImageTagDefault, Sources: cli.EnvVars(envAgentTag), Usage: "image tag (env: WARD_AGENT_TAG)"},
 		&cli.StringFlag{Name: "ward-source", Usage: "mount a local ward checkout and build ward from it instead of downloading the release"},
 		&cli.BoolFlag{Name: "aws", Usage: "mount ~/.aws read-only (broad SSM read surface; off by default)"},
 		&cli.BoolFlag{Name: "print", Usage: "resolve the issue + seeded prompt + docker plan and exit; inject no push token, run nothing"},
@@ -989,8 +990,8 @@ func agentTaskCommand() *cli.Command {
 		&cli.StringFlag{Name: "instructions-file", Usage: "read the instructions from a file instead of --instructions (escape hatch for long bodies)"},
 		&cli.StringFlag{Name: "branch", Usage: "feature branch to create inside the clone (default: issue-<N>)"},
 		&cli.StringSliceFlag{Name: "repo", Aliases: []string{"with-repo"}, Usage: "grant the agent an additional writable repo to clone + operate against (owner/name; repeatable). Cloned as a full feature copy under /workspace alongside the filed issue's repo (ward#230, ward#280; --with-repo is the legacy alias)."},
-		&cli.StringFlag{Name: "image", Value: containerImageDefault, Usage: "dev-base image to run"},
-		&cli.StringFlag{Name: "tag", Value: containerImageTagDefault, Usage: "image tag"},
+		&cli.StringFlag{Name: "image", Value: containerImageDefault, Sources: cli.EnvVars(envAgentImage), Usage: "dev-base image to run (env: WARD_AGENT_IMAGE)"},
+		&cli.StringFlag{Name: "tag", Value: containerImageTagDefault, Sources: cli.EnvVars(envAgentTag), Usage: "image tag (env: WARD_AGENT_TAG)"},
 		&cli.StringFlag{Name: "ward-source", Usage: "mount a local ward checkout and build ward from it instead of downloading the release"},
 		&cli.BoolFlag{Name: "aws", Usage: "mount ~/.aws read-only (broad SSM read surface; off by default)"},
 		&cli.BoolFlag{Name: "print", Usage: "resolve the repo + the issue that would be filed + the docker plan and exit; file nothing, run nothing"},

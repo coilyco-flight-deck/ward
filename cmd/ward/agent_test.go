@@ -725,3 +725,38 @@ func TestDockerCreateArgvNoAgentArgs(t *testing.T) {
 		t.Errorf("with no agent args the image must be the final arg, got %q", argv[len(argv)-1])
 	}
 }
+
+// TestAgentImageFlagsCarryEnvSources covers ward#312: --image/--tag take a default
+// from WARD_AGENT_IMAGE / WARD_AGENT_TAG on every agent surface (pin once, no flag).
+func TestAgentImageFlagsCarryEnvSources(t *testing.T) {
+	wantEnv := map[string]string{"image": envAgentImage, "tag": envAgentTag}
+	sets := map[string][]cli.Flag{
+		"surface": agentSurfaceFlags(true),
+		"scratch": agentScratchFlags(),
+		"task":    agentTaskCommand().Flags,
+		"ask":     agentAskCommand().Flags,
+	}
+	for name, flags := range sets {
+		seen := map[string]bool{}
+		for _, f := range flags {
+			sf, ok := f.(*cli.StringFlag)
+			if !ok {
+				continue
+			}
+			want, tracked := wantEnv[sf.Name]
+			if !tracked {
+				continue
+			}
+			seen[sf.Name] = true
+			envs := f.(interface{ GetEnvVars() []string }).GetEnvVars()
+			if !strings.Contains(strings.Join(envs, ","), want) {
+				t.Errorf("%s: flag --%s missing env source %q (have %v)", name, sf.Name, want, envs)
+			}
+		}
+		for flag := range wantEnv {
+			if !seen[flag] {
+				t.Errorf("%s: no --%s flag found", name, flag)
+			}
+		}
+	}
+}
