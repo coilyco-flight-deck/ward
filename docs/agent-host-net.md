@@ -40,16 +40,17 @@ systemd-resolved MagicDNS config
 
 ## The cross-platform answer: the `--ts-sidecar` sibling (ward#333)
 
-The **portable** route - and the **only** one on Docker Desktop - is an
-in-container tailscale node, not a host route. ward ships this as
-**`--ts-sidecar`**: a **userspace** tailscale SOCKS5 sidecar the carry shares the
-netns of and routes the tower through, mutually exclusive with `--host-net` and
-likewise implying `--aws`. See [agent-ts-sidecar.md](agent-ts-sidecar.md).
+The **portable** route - and the **only** one on Docker Desktop - reaches the
+tailnet through a SOCKS5 proxy that *is* a tailnet node. ward ships this as
+**`--ts-sidecar`**: it **attaches the carry to a standing, shared mac-proxy box**
+over the `ward-tailnet` docker network (ward#349, the ward half of agentic-os#291).
+It is mutually exclusive with `--host-net`, and - unlike it - **needs no SSM and
+does not imply `--aws`**. See [agent-ts-sidecar.md](agent-ts-sidecar.md).
 
-The heavier full-tunnel variant (in-container `tailscaled` on `/dev/net/tun`)
-stays scope-only: it needs `NET_ADMIN` plus human-gated key/tag/ACL decisions a
-headless run must not pick. `--ts-sidecar`'s userspace SOCKS5 sidesteps the TUN
-escalation, which is why it is the variant that ships.
+Earlier `--ts-sidecar` minted a userspace sidecar per run (ward#333); ward#349
+retired that for the standing box. The full-tunnel variant (in-container
+`tailscaled` on `/dev/net/tun`) stays scope-only: it needs `NET_ADMIN` plus
+human-gated key/tag/ACL decisions a headless run must not pick.
 
 ## Wiring
 

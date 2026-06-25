@@ -8,8 +8,9 @@ for the roster.
 The engineer carry brings the container bring-up launch flags: `--aws`, the
 mutually-exclusive tailnet routes `--host-net` (native-Linux host route; no-op +
 warns elsewhere, ward#332; [agent-host-net.md](agent-host-net.md)) and
-`--ts-sidecar` (the Docker Desktop sidecar, ward#333, by-name tower reach in
-ward#337; [agent-ts-sidecar.md](agent-ts-sidecar.md)) - both imply `--aws`,
+`--ts-sidecar` (the Docker Desktop route to the standing mac-proxy box, ward#349;
+[agent-ts-sidecar.md](agent-ts-sidecar.md)) - `--host-net` implies `--aws`,
+`--ts-sidecar` does not,
 `--tag`/`--image`/`--ward-version` (pin once via `WARD_AGENT_{TAG,IMAGE,VERSION}`,
 ward#312), `--ward-source`, `--no-pull`, `--branch` to override the
 `issue-<N>` default, and `--repo owner/name` (repeatable; `--with-repo` is the

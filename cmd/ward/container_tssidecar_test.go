@@ -2,14 +2,19 @@ package main
 
 import (
 	"context"
+	"io"
+	"os"
+	"path/filepath"
+	"strconv"
 	"strings"
 	"testing"
 
+	"forgejo.coilysiren.me/coilyco-flight-deck/cli-guard/cli/shell"
 	"github.com/urfave/cli/v3"
 )
 
-// ward#333: --ts-sidecar joins the carry to a userspace SOCKS5 sidecar's netns
-// (--network=container:<name>-ts); off by default it stays absent.
+// ward#349: --ts-sidecar attaches the carry to the shared ward-tailnet network
+// (--network=ward-tailnet); off by default no --network is passed.
 func TestDockerArgvTSSidecar(t *testing.T) {
 	// Default plan: no --network at all.
 	if joined := strings.Join(dockerCreateArgv(sampleUpPlan(), ""), " "); strings.Contains(joined, "--network") {
@@ -18,14 +23,17 @@ func TestDockerArgvTSSidecar(t *testing.T) {
 
 	p := sampleUpPlan()
 	p.TSSidecar = true
-	want := "--network=container:" + tsSidecarName(p.Name)
+	want := "--network=" + wardTailnetNetwork
 	joined := strings.Join(dockerCreateArgv(p, ""), " ")
 	if !strings.Contains(joined, want) {
 		t.Errorf("--ts-sidecar run must pass %q; got: %s", want, joined)
 	}
-	// It is the sidecar netns, never the host network.
+	// It joins ward-tailnet, never the host network or a per-run sidecar netns.
 	if strings.Contains(joined, "--network=host") {
 		t.Errorf("--ts-sidecar must not pass --network=host; got: %s", joined)
+	}
+	if strings.Contains(joined, "--network=container:") {
+		t.Errorf("--ts-sidecar must not join a per-run sidecar netns; got: %s", joined)
 	}
 	// The flag rides the shared head, so the no-binds (create) builder carries it too.
 	if j := strings.Join(dockerCreateNoBindsArgv(p, ""), " "); !strings.Contains(j, want) {
@@ -33,48 +41,38 @@ func TestDockerArgvTSSidecar(t *testing.T) {
 	}
 }
 
-// TestTSSidecarRunArgv covers the userspace sidecar's `docker run -d` shape: detached,
-// named off the carry, labelled, userspace + loopback SOCKS5, auth via env-file only.
-func TestTSSidecarRunArgv(t *testing.T) {
-	argv := tsSidecarRunArgv("ward-eco-app-deadbeef", "coilyco-gaming/eco-app", "/tmp/ward-ts-env-xyz")
-	joined := strings.Join(argv, " ")
-
-	if argv[0] != "run" || argv[1] != "-d" {
-		t.Errorf("sidecar argv must start `run -d`; got: %v", argv[:2])
-	}
-	for _, want := range []string{
-		"--name ward-eco-app-deadbeef-ts",
-		"--label " + containerLabel,
-		"--label " + tsSidecarLabel,
-		"--label ward.repo=coilyco-gaming/eco-app",
-		"--hostname " + tsSidecarHostname,
-		"-e TS_USERSPACE=true",
-		"-e TS_SOCKS5_SERVER=" + tsSidecarSocks5Host,
-		"--env-file /tmp/ward-ts-env-xyz",
-		tsSidecarImage,
-	} {
+// TestDockerTailnetInspectArgv: the preflight reads the names attached to the
+// ward-tailnet network; the inspect fails (non-zero) when the network is absent.
+func TestDockerTailnetInspectArgv(t *testing.T) {
+	joined := strings.Join(dockerTailnetInspectArgv(), " ")
+	for _, want := range []string{"network", "inspect", wardTailnetNetwork, "{{range .Containers}}{{.Name}} {{end}}"} {
 		if !strings.Contains(joined, want) {
-			t.Errorf("sidecar argv missing %q; got: %s", want, joined)
+			t.Errorf("tailnet inspect argv missing %q; got: %s", want, joined)
 		}
-	}
-	// Userspace mode escalates nothing: no TUN device, no NET_ADMIN.
-	for _, forbidden := range []string{"/dev/net/tun", "NET_ADMIN", "--privileged"} {
-		if strings.Contains(joined, forbidden) {
-			t.Errorf("sidecar argv must not contain %q; got: %s", forbidden, joined)
-		}
-	}
-	// The auth key never rides argv - it lives in the --env-file only.
-	if strings.Contains(joined, "TS_AUTHKEY") {
-		t.Errorf("sidecar argv must not inline TS_AUTHKEY; got: %s", joined)
-	}
-	// The loopback bind is loopback (the carry shares the netns), never 0.0.0.0.
-	if strings.Contains(joined, "0.0.0.0:1055") {
-		t.Errorf("sidecar SOCKS5 must bind loopback, not 0.0.0.0; got: %s", joined)
 	}
 }
 
-// TestTSSidecarWardEnv: a --ts-sidecar carry is told the socks5h proxy + by-name tower
-// endpoint, never a host-wide ALL_PROXY; a default carry is told neither (ward#337).
+// TestProxyBoxAttached: the standing box is detected among the network's attached
+// container names; an absent box (or empty output, the missing-network case) is not.
+func TestProxyBoxAttached(t *testing.T) {
+	if !proxyBoxAttached("some-carry " + proxyBoxName + " other-carry ") {
+		t.Errorf("proxyBoxAttached should find %q among attached names", proxyBoxName)
+	}
+	if proxyBoxAttached("some-carry other-carry ") {
+		t.Error("proxyBoxAttached must be false when the box is not attached")
+	}
+	// Empty inspect output (the network does not exist) -> not attached.
+	if proxyBoxAttached("") {
+		t.Error("proxyBoxAttached must be false on empty output (missing network)")
+	}
+	// A substring of the box name must not false-match.
+	if proxyBoxAttached("mac-proxy-staging ") {
+		t.Error("proxyBoxAttached must match the box name exactly, not as a substring")
+	}
+}
+
+// TestTSSidecarWardEnv: a --ts-sidecar carry is told the socks5h proxy by the box's
+// name + the by-name tower endpoint, never ALL_PROXY; a default carry, neither.
 func TestTSSidecarWardEnv(t *testing.T) {
 	p := sampleUpPlan()
 	if _, ok := p.wardEnv()["WARD_TS_SOCKS5"]; ok {
@@ -85,10 +83,17 @@ func TestTSSidecarWardEnv(t *testing.T) {
 	}
 	p.TSSidecar = true
 	env := p.wardEnv()
-	// socks5h (not socks5): the proxy resolves the tower's MagicDNS name tailnet-side,
-	// which is what lets the carry dial by name without a local resolver (ward#337).
-	if got := env["WARD_TS_SOCKS5"]; got != "socks5h://"+tsSidecarSocks5Host {
-		t.Errorf("WARD_TS_SOCKS5 = %q, want socks5h://%s", got, tsSidecarSocks5Host)
+	// socks5h://mac-proxy:1055 - the box dialed by name, socks5h so it resolves the
+	// tower's MagicDNS name tailnet-side (ward#349; the doc).
+	if got, want := env["WARD_TS_SOCKS5"], "socks5h://"+proxyBoxHost; got != want {
+		t.Errorf("WARD_TS_SOCKS5 = %q, want %q", got, want)
+	}
+	if !strings.Contains(env["WARD_TS_SOCKS5"], proxyBoxName) {
+		t.Errorf("WARD_TS_SOCKS5 must dial the box by name %q; got %q", proxyBoxName, env["WARD_TS_SOCKS5"])
+	}
+	// The proxy is reached by name, never loopback (the box is not a netns peer now).
+	if strings.Contains(env["WARD_TS_SOCKS5"], "127.0.0.1") {
+		t.Errorf("WARD_TS_SOCKS5 must dial the box by name, not loopback; got %q", env["WARD_TS_SOCKS5"])
 	}
 	// The tower endpoint is the MagicDNS name (by name, no SSM IP), dialed :11434.
 	if got := env["WARD_TOWER_OLLAMA"]; got != towerOllamaURL {
@@ -120,27 +125,50 @@ func TestCredEnvLinesNoTower(t *testing.T) {
 	}
 }
 
-// TestOrphanedSidecars: a sidecar whose carry is gone is reclaimed; one whose carry
-// still exists is left alone; a non-sidecar carry is never touched.
-func TestOrphanedSidecars(t *testing.T) {
-	ps := strings.Join([]string{
-		"ward-eco-app-live-0001",    // a live carry
-		"ward-eco-app-live-0001-ts", // its sidecar - carry present, keep
-		"ward-eco-app-dead-0002-ts", // sidecar whose carry is gone - orphan
-		"ward-eco-app-plain-0003",   // a carry with no sidecar - ignore
-	}, "\n")
-	got := orphanedSidecars(ps)
-	if len(got) != 1 || got[0] != "ward-eco-app-dead-0002-ts" {
-		t.Errorf("orphanedSidecars = %v, want [ward-eco-app-dead-0002-ts]", got)
+// fakeDockerRunner builds a Runner whose "docker" resolves to a tiny shell script
+// emitting `stdout` and exiting `code`, so the preflight can be exercised offline.
+func fakeDockerRunner(t *testing.T, stdout string, code int) *Runner {
+	t.Helper()
+	dir := t.TempDir()
+	script := filepath.Join(dir, "docker")
+	body := "#!/bin/sh\nprintf '%s' " + shellQuote(stdout) + "\nexit " + strconv.Itoa(code) + "\n"
+	if err := os.WriteFile(script, []byte(body), 0o700); err != nil { // #nosec G306 -- test fixture
+		t.Fatalf("write fake docker: %v", err)
 	}
-	if got := orphanedSidecars(""); got != nil {
-		t.Errorf("empty input -> nil; got: %v", got)
+	return &Runner{Runner: &shell.Runner{
+		Stderr:  io.Discard,
+		Resolve: func(bin string) (string, error) { return script, nil },
+	}}
+}
+
+func shellQuote(s string) string { return "'" + strings.ReplaceAll(s, "'", `'\''`) + "'" }
+
+// TestPreflightTailnetProxy covers ward#349: the standing box must be attached to
+// ward-tailnet; a missing network (inspect fails) or an unattached box is a clear error.
+func TestPreflightTailnetProxy(t *testing.T) {
+	ctx := context.Background()
+
+	// Network exists and the box is attached -> the preflight passes.
+	if err := fakeDockerRunner(t, "some-carry "+proxyBoxName+" ", 0).preflightTailnetProxy(ctx); err != nil {
+		t.Errorf("box attached: preflight should pass; got: %v", err)
 	}
-	if argv := dockerForceRmArgv(nil); argv != nil {
-		t.Errorf("dockerForceRmArgv(nil) must be nil; got: %v", argv)
+
+	// Missing network: `docker network inspect` exits non-zero -> the clear error.
+	err := fakeDockerRunner(t, "Error: No such network: ward-tailnet\n", 1).preflightTailnetProxy(ctx)
+	if err == nil {
+		t.Fatal("missing network: preflight should error")
 	}
-	if argv := dockerForceRmArgv([]string{"a", "b"}); strings.Join(argv, " ") != "rm -f a b" {
-		t.Errorf("dockerForceRmArgv = %v, want [rm -f a b]", argv)
+	for _, want := range []string{"standing tailnet proxy not found", "agentic-os#291"} {
+		if !strings.Contains(err.Error(), want) {
+			t.Errorf("missing-network error %q must contain %q", err, want)
+		}
+	}
+
+	// Network exists but the box is not attached -> the same clear error.
+	if err := fakeDockerRunner(t, "some-other-carry ", 0).preflightTailnetProxy(ctx); err == nil {
+		t.Error("box unattached: preflight should error")
+	} else if !strings.Contains(err.Error(), "standing tailnet proxy not found") {
+		t.Errorf("box-unattached error %q must name the standing proxy", err)
 	}
 }
 
@@ -161,8 +189,8 @@ func tsSidecarProbeFlags() []cli.Flag {
 	}
 }
 
-// TestBuildUpPlanTSSidecar covers ward#333: --ts-sidecar sets TSSidecar, implies the
-// ~/.aws mount, and is mutually exclusive with --host-net.
+// TestBuildUpPlanTSSidecar covers ward#349: --ts-sidecar sets TSSidecar, no longer
+// implies the ~/.aws mount (it needs no SSM), and is mutually exclusive with --host-net.
 func TestBuildUpPlanTSSidecar(t *testing.T) {
 	run := func(args []string) (upPlan, error) {
 		var got upPlan
@@ -190,20 +218,29 @@ func TestBuildUpPlanTSSidecar(t *testing.T) {
 		return false
 	}
 
-	// --ts-sidecar: TSSidecar set, HostNet off, AND ~/.aws implied.
+	// --ts-sidecar: TSSidecar set, HostNet off, and NO ~/.aws (the box needs no SSM).
 	if p, err := run([]string{"--ts-sidecar"}); err != nil {
 		t.Fatalf("--ts-sidecar: unexpected error: %v", err)
 	} else if !p.TSSidecar {
 		t.Error("--ts-sidecar: TSSidecar should be true")
 	} else if p.HostNet {
 		t.Error("--ts-sidecar must not set HostNet")
-	} else if !hasAWSMount(p) {
-		t.Error("--ts-sidecar should imply the ~/.aws mount (the auth key is SSM-only)")
+	} else if hasAWSMount(p) {
+		t.Error("--ts-sidecar must not imply the ~/.aws mount (the standing box needs no SSM; ward#349)")
 	}
 
 	// --host-net + --ts-sidecar: mutually exclusive, a hard error.
 	if _, err := run([]string{"--host-net", "--ts-sidecar"}); err == nil {
 		t.Error("--host-net + --ts-sidecar must be a mutual-exclusion error")
+	}
+
+	// --host-net still implies the ~/.aws mount (the tower FQDN is SSM-only).
+	if p, err := run([]string{"--host-net"}); err != nil {
+		t.Fatalf("--host-net: unexpected error: %v", err)
+	} else if !p.HostNet {
+		t.Error("--host-net: HostNet should be true")
+	} else if !hasAWSMount(p) {
+		t.Error("--host-net should still imply the ~/.aws mount (the tower FQDN is SSM-only)")
 	}
 
 	// --aws alone: the SSM mount, but neither network escalation.

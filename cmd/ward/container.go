@@ -46,10 +46,6 @@ const forgejoTokenSSMPath = "/forgejo/api-token"
 // ward resolves it host-side (the container has no aws creds). docs/agent.md (ward#186).
 const ollamaHostSSMPath = "/coilysiren/ollama/host"
 
-// tsAuthKeySSMPath is the reusable + ephemeral tag:proxy tailscale auth key the
-// sidecar joins with; the only SSM dep a --ts-sidecar carry has (ward#333, ward#337).
-const tsAuthKeySSMPath = "/coilysiren/mac-proxy/ts-authkey"
-
 // containerCommand is the Hidden `ward container` umbrella (ward#263): only the
 // entrypoint-internal reap/bootstrap leaves remain. See docs/container.md.
 func containerCommand() *cli.Command {
@@ -107,15 +103,15 @@ func buildUpPlan(c *cli.Command, repo targetRepo, mode containerMode, cwd, asset
 	if v := strings.TrimSpace(c.String("ward-version")); v != "" {
 		wardVersion = v
 	}
-	// Mutually-exclusive tailnet routes; either needs SSM, so either implies --aws.
-	// --host-net joins the host's namespace (ward#330), --ts-sidecar a sidecar's (ward#333).
+	// Mutually-exclusive tailnet routes (off by default). --host-net implies --aws (the
+	// tower FQDN is SSM-only); --ts-sidecar needs no SSM (ward#349). docs/agent-flags.md.
 	hostNet := c.Bool("host-net")
 	tsSidecar := c.Bool("ts-sidecar")
 	if hostNet && tsSidecar {
-		return upPlan{}, fmt.Errorf("--host-net and --ts-sidecar are mutually exclusive: --host-net inherits the host's tailnet route, --ts-sidecar runs a userspace SOCKS5 sidecar for Docker Desktop where the host VM is not a tailnet node (ward#333)")
+		return upPlan{}, fmt.Errorf("--host-net and --ts-sidecar are mutually exclusive: --host-net inherits the host's tailnet route, --ts-sidecar attaches to the standing mac-proxy box over ward-tailnet for Docker Desktop where the host VM is not a tailnet node (ward#349)")
 	}
 	awsHome := ""
-	if c.Bool("aws") || hostNet || tsSidecar {
+	if c.Bool("aws") || hostNet {
 		awsHome = filepath.Join(homeDir(), ".aws")
 	}
 	// "with-repo" is the shared lookup key: the canonical name on drive/ask, the
@@ -367,78 +363,14 @@ func (r *Runner) writeTokenEnvFile(ctx context.Context, target broker.Target, cr
 	return path, cleanup, nil
 }
 
-// writeTSAuthEnvFile resolves the tag:proxy auth key from SSM into a private 0600
-// --env-file (TS_AUTHKEY), never argv/audit; the sidecar reads it (ward#333).
-func (r *Runner) writeTSAuthEnvFile(ctx context.Context) (path string, cleanup func(), err error) {
-	out, cerr := r.Runner.Capture(ctx, "aws", "ssm", "get-parameter",
-		"--name", tsAuthKeySSMPath, "--with-decryption",
-		"--query", "Parameter.Value", "--output", "text")
-	if cerr != nil {
-		return "", func() {}, fmt.Errorf("ward container: resolve %s from SSM (host needs aws creds): %w", tsAuthKeySSMPath, cerr)
-	}
-	key := strings.TrimSpace(string(out))
-	if key == "" {
-		return "", func() {}, fmt.Errorf("ward container: %s resolved empty; cannot start the tailscale sidecar", tsAuthKeySSMPath)
-	}
-	f, ferr := os.CreateTemp("", "ward-ts-authkey-env-*")
-	if ferr != nil {
-		return "", func() {}, fmt.Errorf("ward container: create ts-authkey env-file: %w", ferr)
-	}
-	path = f.Name()
-	cleanup = func() { _ = os.Remove(path) }
-	if cherr := f.Chmod(0o600); cherr != nil {
-		_ = f.Close()
-		cleanup()
-		return "", func() {}, fmt.Errorf("ward container: secure ts-authkey env-file: %w", cherr)
-	}
-	if _, werr := fmt.Fprintf(f, "TS_AUTHKEY=%s\n", key); werr != nil {
-		_ = f.Close()
-		cleanup()
-		return "", func() {}, fmt.Errorf("ward container: write ts-authkey env-file: %w", werr)
-	}
-	if clerr := f.Close(); clerr != nil {
-		cleanup()
-		return "", func() {}, fmt.Errorf("ward container: close ts-authkey env-file: %w", clerr)
-	}
-	return path, cleanup, nil
-}
-
-// startTSSidecar resolves the tag:proxy key from SSM and runs the userspace SOCKS5
-// sidecar detached, TS_AUTHKEY in an env-file (ward#333; reach awaits infra#400).
-func (r *Runner) startTSSidecar(ctx context.Context, plan upPlan) error {
-	envFile, cleanup, err := r.writeTSAuthEnvFile(ctx)
-	if err != nil {
-		return err
-	}
-	defer cleanup()
-	argv := tsSidecarRunArgv(plan.Name, plan.Repo.slug(), envFile)
-	if rerr := r.runDockerSilenced(ctx, false, argv...); rerr != nil {
-		return fmt.Errorf("ward container: start tailscale sidecar %s: %w", tsSidecarName(plan.Name), rerr)
+// preflightTailnetProxy verifies the standing mac-proxy box is attached to the
+// ward-tailnet network before a --ts-sidecar carry attaches (ward#349; the doc).
+func (r *Runner) preflightTailnetProxy(ctx context.Context) error {
+	out, err := r.Runner.Capture(ctx, "docker", dockerTailnetInspectArgv()...)
+	if err != nil || !proxyBoxAttached(string(out)) {
+		return fmt.Errorf("ward container: standing tailnet proxy not found - converge the mac-proxy infra role (agentic-os#291)")
 	}
 	return nil
-}
-
-// stopTSSidecar force-removes a carry's sidecar (best-effort) on the attached path;
-// a detached carry's is reclaimed by the next launch's orphan sweep (ward#333).
-func (r *Runner) stopTSSidecar(ctx context.Context, carryName string) {
-	_ = r.runDockerSilenced(ctx, true, "rm", "-f", tsSidecarName(carryName))
-}
-
-// sweepOrphanedSidecars force-removes sidecars whose carry is gone (best-effort,
-// never blocks a launch; ward#333).
-func (r *Runner) sweepOrphanedSidecars(ctx context.Context) {
-	out, err := r.Runner.Capture(ctx, "docker", dockerWardListArgv()...)
-	if err != nil {
-		return
-	}
-	orphans := orphanedSidecars(string(out))
-	if len(orphans) == 0 {
-		return
-	}
-	fmt.Fprintf(os.Stderr, "ward container: reclaiming %d orphaned tailscale sidecar(s) whose carry is gone (ward#333)\n", len(orphans))
-	if rmErr := r.runDockerSilenced(ctx, true, dockerForceRmArgv(orphans)...); rmErr != nil {
-		fmt.Fprintf(os.Stderr, "ward container: orphan-sidecar sweep had a non-zero rm (%v); continuing\n", rmErr)
-	}
 }
 
 // randHex returns 4 random bytes as an 8-char lowercase hex string, the unique
@@ -489,9 +421,6 @@ func sweepStaleContainerAssets() {
 // sweepStaleContainers host-side-reclaims exited ward containers' writable layers
 // before a run, keeping the recent containerReapKeep (docs/container-cleanup.md).
 func (r *Runner) sweepStaleContainers(ctx context.Context) {
-	// Reclaim any sidecar whose carry has been reaped, so a detached --ts-sidecar
-	// run leaves no lingering proxy (ward#333).
-	r.sweepOrphanedSidecars(ctx)
 	out, err := r.Runner.Capture(ctx, "docker", dockerExitedListArgv()...)
 	if err != nil {
 		// No docker / daemon down / query failed: nothing to sweep, and the

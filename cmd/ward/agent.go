@@ -240,15 +240,16 @@ func hostNetFlag() cli.Flag {
 	}
 }
 
-// tsSidecarFlag is the Docker Desktop sibling of --host-net (ward#333): a userspace
-// tailscale SOCKS5 sidecar for tailnet reach. Implies --aws; excludes --host-net.
+// tsSidecarFlag is the Docker Desktop sibling of --host-net (ward#333, ward#349):
+// attach to the standing tailnet proxy for tailnet reach. Excludes --host-net.
 func tsSidecarFlag() cli.Flag {
 	return &cli.BoolFlag{
 		Name: "ts-sidecar",
-		Usage: "run a userspace tailscale SOCKS5 sidecar next to the carry and route tailnet-only hosts " +
-			"like kai-tower-3026 through it - the Docker Desktop path where --host-net can't reach the " +
-			"tailnet (the LinuxKit VM is not a tailnet node); implies --aws (the auth key + tower IP are " +
-			"SSM-only); mutually exclusive with --host-net; off by default (ward#333)",
+		Usage: "attach to the standing tailnet proxy (the mac-proxy SOCKS5 box on the shared ward-tailnet " +
+			"docker network) and route tailnet-only hosts like kai-tower-3026 through it - the Docker " +
+			"Desktop path where --host-net can't reach the tailnet (the LinuxKit VM is not a tailnet node); " +
+			"needs no SSM (the box is converged by ansible, dialed by name); mutually exclusive with " +
+			"--host-net; off by default (ward#349)",
 	}
 }
 
@@ -1008,17 +1009,14 @@ func (r *Runner) createAgentContainer(ctx context.Context, plan upPlan, envFile 
 	// --host-net only carries the tailnet on a host that is itself a tailnet node;
 	// warn loudly when it won't, so a no-op route doesn't read as success (ward#332).
 	r.maybeWarnHostNet(plan)
-	// The sidecar must exist before the carry's --network=container attaches to it.
+	// The standing mac-proxy box on ward-tailnet must exist before the carry attaches
+	// to it - ward attaches and preflights, never converges the box (ward#349).
 	if plan.TSSidecar {
-		if err := r.startTSSidecar(ctx, plan); err != nil {
+		if err := r.preflightTailnetProxy(ctx); err != nil {
 			return err
 		}
 	}
 	if plan.Interactive {
-		// Attached: tear the sidecar down on return (detached relies on the sweep).
-		if plan.TSSidecar {
-			defer r.stopTSSidecar(ctx, plan.Name)
-		}
 		return r.Runner.Exec(ctx, "docker", dockerCreateArgv(plan, envFile)...)
 	}
 	if inContainer() {
@@ -1291,8 +1289,9 @@ func printAgentPlan(c *cli.Command, p upPlan, ref agentIssueRef, title, seed, su
 		fmt.Fprintf(&b, "docker pull %s\n", p.Image)
 	}
 	if p.TSSidecar {
-		// The carry joins this sidecar's netns, so it is brought up first (ward#333).
-		fmt.Fprintf(&b, "docker %s\n", strings.Join(tsSidecarRunArgv(p.Name, p.Repo.slug(), "<ward-ts-authkey-envfile>"), " "))
+		// The carry attaches to the standing mac-proxy box over ward-tailnet (shown in
+		// the run argv's --network below); ward preflights the box, never starts it (ward#349).
+		fmt.Fprintf(&b, "# preflight: docker %s (mac-proxy must be attached)\n", strings.Join(dockerTailnetInspectArgv(), " "))
 	}
 	fmt.Fprintf(&b, "docker %s\n", strings.Join(dockerCreateArgv(p, "<ward-forgejo-token-envfile>"), " "))
 	_, err := io.WriteString(out, b.String())
