@@ -108,10 +108,13 @@ func (e *wardKdlWriteExecutor) CommentIssue(ctx context.Context, target broker.T
 	return res, nil
 }
 
-// Dispatch is unserved in Unit B (routing is Unit C); the authorizer already
-// rejects OpDispatch, so this is the defensive backstop the contract requires.
+// Dispatch vends the seed for target - the root-held forge token on Result.Detail,
+// so a `warded #N` seeds its child env-file broker-side (ward#334; docs/broker.md).
 func (e *wardKdlWriteExecutor) Dispatch(_ context.Context, _ broker.Target) (broker.Result, error) {
-	return broker.Result{}, fmt.Errorf("broker: dispatch is not served by the %s executor (ward#331 Unit B; routing is Unit C)", wardKdlWriteBin)
+	if e.token == "" {
+		return broker.Result{}, fmt.Errorf("broker: dispatch seed unavailable: no %s held", credseed.EnvForgejoToken)
+	}
+	return broker.Result{Detail: e.token}, nil
 }
 
 // parseIssueResult best-effort projects a forgejo issue/comment JSON object into
@@ -132,12 +135,13 @@ func parseIssueResult(out []byte) broker.Result {
 	return broker.Result{Number: payload.Number, URL: url}
 }
 
-// writeTierOps is the broker op allowlist this daemon serves: file / edit /
-// comment. broker.OpDispatch is absent, so a dispatch request is out-of-tier.
+// writeTierOps is the op allowlist this daemon serves: file / edit / comment, plus
+// dispatch (the seed vend, ward#334). Delete/admin stay absent - refused out-of-tier.
 var writeTierOps = map[broker.Op]bool{
 	broker.OpFileIssue:    true,
 	broker.OpEditIssue:    true,
 	broker.OpCommentIssue: true,
+	broker.OpDispatch:     true,
 }
 
 // writeTierAuthorizer is the broker.Authorizer: the write-op allowlist + Policy's

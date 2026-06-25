@@ -15,6 +15,7 @@ import (
 	"strings"
 	"time"
 
+	"forgejo.coilysiren.me/coilyco-flight-deck/cli-guard/pkg/broker"
 	"github.com/urfave/cli/v3"
 )
 
@@ -309,9 +310,12 @@ func credEnvLines(creds agentCreds) []string {
 	return lines
 }
 
-// resolveForgejoToken prefers an already-present FORGEJO_TOKEN over SSM, so a
-// `warded #N` dispatched from inside an explore box resolves locally (ward#315).
-func (r *Runner) resolveForgejoToken(ctx context.Context) (string, error) {
+// resolveForgejoToken resolves the child env-file's forge token: the broker seed
+// first (broker-side, not a token the agent holds; ward#334), then env, then SSM.
+func (r *Runner) resolveForgejoToken(ctx context.Context, target broker.Target) (string, error) {
+	if tok, ok := r.brokerDispatchSeed(ctx, target); ok {
+		return tok, nil
+	}
 	if tok := strings.TrimSpace(os.Getenv("FORGEJO_TOKEN")); tok != "" {
 		return tok, nil
 	}
@@ -324,10 +328,10 @@ func (r *Runner) resolveForgejoToken(ctx context.Context) (string, error) {
 	return strings.TrimSpace(string(out)), nil
 }
 
-// writeTokenEnvFile resolves the forgejo token (+ optional base64'd agent creds)
-// into a private 0600 --env-file, so none enters argv/audit. Caller removes it.
-func (r *Runner) writeTokenEnvFile(ctx context.Context, creds agentCreds) (path string, cleanup func(), err error) {
-	token, err := r.resolveForgejoToken(ctx)
+// writeTokenEnvFile resolves the forgejo token (+ optional base64'd agent creds) into a
+// private 0600 --env-file (none enters argv/audit); target lets a brokered box seed it.
+func (r *Runner) writeTokenEnvFile(ctx context.Context, target broker.Target, creds agentCreds) (path string, cleanup func(), err error) {
+	token, err := r.resolveForgejoToken(ctx, target)
 	if err != nil {
 		return "", func() {}, err
 	}

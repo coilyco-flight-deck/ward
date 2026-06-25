@@ -5,6 +5,8 @@ import (
 	"path/filepath"
 	"strings"
 	"testing"
+
+	"forgejo.coilysiren.me/coilyco-flight-deck/cli-guard/pkg/broker"
 )
 
 // `explore` is a top-level agent surface alongside work/headless/task/reply/ask/
@@ -61,8 +63,9 @@ func TestResolveForgejoTokenPrefersEnv(t *testing.T) {
 	stub := tokenStub(t, "ssm-token")
 	r, _, _ := bufRunner(stub)
 
+	// No WARD_BROKER_SOCK here, so the broker seed is inert and the env/SSM path runs.
 	t.Setenv("FORGEJO_TOKEN", "env-token")
-	got, err := r.resolveForgejoToken(t.Context())
+	got, err := r.resolveForgejoToken(t.Context(), broker.Target{})
 	if err != nil {
 		t.Fatalf("resolveForgejoToken (env set): %v", err)
 	}
@@ -71,7 +74,7 @@ func TestResolveForgejoTokenPrefersEnv(t *testing.T) {
 	}
 
 	t.Setenv("FORGEJO_TOKEN", "")
-	got, err = r.resolveForgejoToken(t.Context())
+	got, err = r.resolveForgejoToken(t.Context(), broker.Target{})
 	if err != nil {
 		t.Fatalf("resolveForgejoToken (env empty): %v", err)
 	}

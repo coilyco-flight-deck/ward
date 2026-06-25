@@ -82,7 +82,9 @@ func buildForgejoOps() (*cli.Command, error) {
 		Guardfile: gf,
 		Spec:      spec,
 		Wrap: func(s verb.Spec) cli.ActionFunc {
-			return r.WrapVerb(s, r.Audit)
+			// Brokered (WARD_BROKER_SOCK set): writes route to the broker, out-of-tier
+			// mutations refuse, reads stay direct. Unset: unchanged (ward#334).
+			return r.brokerForgejoAction(s.Name, r.WrapVerb(s, r.Audit))
 		},
 		// The guardfile's `value ssm` auth resolves through forgejoTokenResolver,
 		// lazily - mount and --dry-run never touch the token source.

@@ -87,10 +87,28 @@ func TestExecutorCommentIssueArgvAndResultNumber(t *testing.T) {
 	}
 }
 
-func TestExecutorDispatchUnserved(t *testing.T) {
-	ex := &wardKdlWriteExecutor{token: "tok", run: (&recordingRunner{}).run}
+// Unit C: Dispatch vends the root-held token as the child env-file seed; it
+// shells nothing (no recordingRunner call) - the seed rides Result.Detail.
+func TestExecutorDispatchVendsSeed(t *testing.T) {
+	rr := &recordingRunner{}
+	ex := &wardKdlWriteExecutor{token: "tok", run: rr.run}
+	res, err := ex.Dispatch(context.Background(), broker.Target{Owner: "coilyco", Repo: "r", Number: 1})
+	if err != nil {
+		t.Fatalf("Dispatch should be served in Unit C: %v", err)
+	}
+	if res.Detail != "tok" {
+		t.Errorf("dispatch seed = %q, want the held token in Result.Detail", res.Detail)
+	}
+	if rr.args != nil {
+		t.Errorf("Dispatch must not shell the write binary; ran %v", rr.args)
+	}
+}
+
+// With no token held, Dispatch errors rather than vending an empty seed.
+func TestExecutorDispatchNoToken(t *testing.T) {
+	ex := &wardKdlWriteExecutor{token: "", run: (&recordingRunner{}).run}
 	if _, err := ex.Dispatch(context.Background(), broker.Target{Owner: "coilyco", Repo: "r", Number: 1}); err == nil {
-		t.Fatal("Dispatch should be unserved in Unit B")
+		t.Fatal("Dispatch with no token should error, not vend an empty seed")
 	}
 }
 
@@ -115,7 +133,9 @@ func TestWriteTierAuthorizer(t *testing.T) {
 		{"file issue ok", broker.Request{Op: broker.OpFileIssue, Target: broker.Target{Owner: "coilyco-flight-deck", Repo: "ward"}, Title: "t"}, true},
 		{"edit issue ok", broker.Request{Op: broker.OpEditIssue, Target: broker.Target{Owner: "coilyco", Repo: "ward", Number: 3}}, true},
 		{"comment ok", broker.Request{Op: broker.OpCommentIssue, Target: broker.Target{Owner: "coilyco", Repo: "ward", Number: 3}}, true},
-		{"dispatch rejected (out of tier)", broker.Request{Op: broker.OpDispatch, Target: broker.Target{Owner: "coilyco", Repo: "ward", Number: 3}}, false},
+		{"dispatch ok (Unit C, served with a number)", broker.Request{Op: broker.OpDispatch, Target: broker.Target{Owner: "coilyco", Repo: "ward", Number: 3}}, true},
+		{"dispatch without number rejected", broker.Request{Op: broker.OpDispatch, Target: broker.Target{Owner: "coilyco", Repo: "ward"}}, false},
+		{"dispatch non-coily owner rejected", broker.Request{Op: broker.OpDispatch, Target: broker.Target{Owner: "evilcorp", Repo: "ward", Number: 3}}, false},
 		{"non-coily owner rejected", broker.Request{Op: broker.OpFileIssue, Target: broker.Target{Owner: "evilcorp", Repo: "ward"}, Title: "t"}, false},
 		{"file issue without title rejected", broker.Request{Op: broker.OpFileIssue, Target: broker.Target{Owner: "coilyco", Repo: "ward"}}, false},
 		{"edit without number rejected", broker.Request{Op: broker.OpEditIssue, Target: broker.Target{Owner: "coilyco", Repo: "ward"}}, false},
@@ -133,8 +153,8 @@ func TestWriteTierAuthorizer(t *testing.T) {
 	}
 }
 
-// TestBrokerServerRoundTrip runs the full path over a real unix socket: a write
-// op is accepted + reaches the executor, an out-of-tier dispatch refused.
+// TestBrokerServerRoundTrip runs the full path over a real unix socket: a write op
+// reaches the executor, a numbered dispatch is served, a number-less one refused.
 func TestBrokerServerRoundTrip(t *testing.T) {
 	dir := t.TempDir()
 	sock := filepath.Join(dir, "broker.sock")
@@ -176,16 +196,29 @@ func TestBrokerServerRoundTrip(t *testing.T) {
 		t.Error("executor.FileIssue was not invoked")
 	}
 
-	// Out-of-tier dispatch is refused at authz, before the executor.
+	// A numbered dispatch is served in Unit C: it reaches the executor and returns.
 	dresp, err := client.Dispatch(ctx, broker.Target{Owner: "coilyco", Repo: "ward", Number: 1})
 	if err != nil {
 		t.Fatalf("client.Dispatch transport: %v", err)
 	}
-	if dresp.OK || dresp.Error == "" {
-		t.Errorf("dispatch should be refused, got %+v", dresp)
+	if !dresp.OK {
+		t.Errorf("numbered dispatch should be served, got %+v", dresp)
+	}
+	if !fake.dispatchCalled {
+		t.Error("numbered dispatch should reach the executor")
+	}
+
+	// A number-less dispatch is still refused at authz, before the executor.
+	fake.dispatchCalled = false
+	nresp, err := client.Dispatch(ctx, broker.Target{Owner: "coilyco", Repo: "ward"})
+	if err != nil {
+		t.Fatalf("client.Dispatch (no number) transport: %v", err)
+	}
+	if nresp.OK || nresp.Error == "" {
+		t.Errorf("number-less dispatch should be refused, got %+v", nresp)
 	}
 	if fake.dispatchCalled {
-		t.Error("dispatch reached the executor; it should be refused at authz")
+		t.Error("number-less dispatch reached the executor; it should be refused at authz")
 	}
 }
 
