@@ -1,6 +1,6 @@
 // Forgejo WRITE tier - the middle of the read ⊂ write ⊂ admin chain (ward#240).
 // `inherit` (cli-guard#160) pulls in every grant of the read tier (and its
-// spec/base-url/auth singletons, which this file does not restate), then layers
+// spec/base-url singletons, which this file does not restate), then layers
 // the two write-side convention verbs on top. The result is read + create/edit:
 // a `ward-kdl-write` binary that can author content but never delete it - the
 // delete leaf is still not compiled in (that is the admin tier).
@@ -12,6 +12,13 @@ wrap ward-kdl-write ops forgejo {
     inherit "../ward-kdl-read/ward-kdl.forgejo.read.guardfile.kdl"
     // Scope gate: re-declared because restrict does not inherit (cli-guard#160).
     restrict owner matches coily*
+    // Auth override (ward#331): the in-container broker shells this binary where
+    // there is no SSM, so write reads its token from env. See ../../../docs/broker.md.
+    auth header-token {
+        header Authorization
+        prefix "token "
+        value env "FORGEJO_TOKEN"
+    }
     // write tier adds the two write-side convention verbs across every resource.
     can create *
     can edit *

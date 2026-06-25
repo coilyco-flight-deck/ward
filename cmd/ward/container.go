@@ -58,6 +58,7 @@ not by hand. See docs/agent.md for the contributor surface.`,
 		Commands: []*cli.Command{
 			containerReapCommand(),
 			containerBootstrapCommand(),
+			containerBrokerCommand(),
 		},
 	}
 }
