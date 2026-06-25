@@ -157,6 +157,15 @@ func (c *forgejoClient) closeIssue(ctx context.Context, owner, repo string, numb
 	return nil
 }
 
+// reopenIssue flips a closed issue back open (the fixed-body reopen toggle); the
+// reaper uses it to undo a `closes #N` when a granted repo failed to land (ward#291).
+func (c *forgejoClient) reopenIssue(ctx context.Context, owner, repo string, number int) error {
+	if _, err := c.run(ctx, "issue", "reopen", owner, repo, strconv.Itoa(number)); err != nil {
+		return fmt.Errorf("forgejo: reopen issue %s/%s#%d: %w", owner, repo, number, err)
+	}
+	return nil
+}
+
 // findOpenIssueByTitlePrefix returns the first open issue whose title starts with
 // prefix, so the reaper appends instead of filing a duplicate salvage issue.
 func (c *forgejoClient) findOpenIssueByTitlePrefix(ctx context.Context, owner, repo, prefix string) (number int, found bool, err error) {

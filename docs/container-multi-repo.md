@@ -52,21 +52,21 @@ containers don't race a mirror.
 
 ## The reaper boundary
 
-The teardown reaper ([container-reap.md](container-reap.md)) backstops **only the
-target** (`$WARD_REAP_WORK`). It does **not** salvage, integrate, or push the
-granted extra repos. So on a multi-repo run the agent must drive each granted
-repo all the way to its own clean push **before it exits** - loose work in an
-extra repo is lost, not deferred to a human. The doctrine says this to the agent
-in as many words.
+The teardown reaper ([container-reap.md](container-reap.md)) **lands** only the
+target (`$WARD_REAP_WORK`) - it never pushes a granted repo to `main`, so the
+agent must drive each grant to its own clean push **before it exits**. It does
+**verify** them, though (ward#291): it reads `WARD_EXTRA_REPOS` and checks each
+granted clone's `HEAD` reached the freshly-fetched `origin/main`. A grant that
+never landed (primary push fires `closes #N` while a non-fast-forward or dead PAT
+rejects the secondary) is preserved on a `ward-salvage/<id>` branch and the issue
+**reopened** with a recovery comment - surfaced and preserved, not silently lost.
 
 ## Plumbing
 
-`--repo` (registered under the `with-repo` key for the back-compat alias) flows host-side -> container
-as the space-separated `owner/name` list `WARD_EXTRA_REPOS` (`upPlan.ExtraRepos`, validated by `parseExtraRepos`).
-Both bootstrap paths read it and clone the set after the target: the bash
-entrypoint's `clone_extra_repos`, and the Go `ward container bootstrap`'s
-`cloneExtraRepos` (ward#181). The two stay in parity, like the rest of the
-entrypoint port.
+`--repo` (the `with-repo` key carries the alias) flows host-side -> container as
+the space-separated `owner/name` list `WARD_EXTRA_REPOS` (`upPlan.ExtraRepos`,
+validated by `parseExtraRepos`). Both bootstrap paths clone the set after the
+target: the bash `clone_extra_repos` and the Go `cloneExtraRepos` (ward#181).
 
 ## Pre-flight knows the grant
 
@@ -76,5 +76,5 @@ grants are writable, so a cross-repo migration whose deliverable lands in a gran
 ## See also
 
 [docs/container.md](container.md) - the container model and lifecycle.
-[docs/container-substrate.md](container-substrate.md) - the read-only `/substrate` references.
+[docs/container-substrate.md](container-substrate.md) - read-only `/substrate`.
 [docs/container-reap.md](container-reap.md) - the teardown reaper.

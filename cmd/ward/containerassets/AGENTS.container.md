@@ -64,10 +64,16 @@ The wall still holds for everything else: operate **only** on the target and
 the repos in this granted set, never any other repo. `/substrate` stays
 read-only reference (below).
 
-One asymmetry to respect: the reaper backstops **only the target**. It will not
-salvage or push the extra repos for you, so drive each granted repo all the way
-to its own clean push **before you exit** - do not leave extra-repo work loose
-expecting the reaper to land it.
+One asymmetry to respect: the reaper does not **land** the extra repos for you -
+it never pushes a granted repo to its `main`, so driving each granted repo all
+the way to its own clean push **before you exit** is still your job. What the
+reaper now does (ward#291) is **verify**: after you exit it fetches each granted
+repo and checks your push actually landed (local `HEAD` on the freshly-fetched
+`origin/main`). A grant that did not land is treated as a hard failure, not a
+silent success - the reaper preserves its work on a `ward-salvage/<id>` branch
+and **reopens the issue with a comment**, undoing any `closes #N` your target
+push tripped. So a half-landed cross-repo run can no longer read as "done", but
+that backstop is a tripwire, not a finisher: land every granted repo yourself.
 
 ## A reaper runs after you exit - do not rely on it
 

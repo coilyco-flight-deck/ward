@@ -43,6 +43,68 @@ func TestReadReapEnvIssueAndLaunched(t *testing.T) {
 	}
 }
 
+// TestReadReapEnvParsesExtraRepos covers ward#291: the reaper reads WARD_EXTRA_REPOS
+// so it can verify each --repo grant landed, dropping the target and malformed entries.
+func TestReadReapEnvParsesExtraRepos(t *testing.T) {
+	t.Setenv("WARD_TARGET_OWNER", "coilyco-flight-deck")
+	t.Setenv("WARD_TARGET_NAME", "ward")
+	t.Setenv("WARD_FORGEJO_BASE", "https://forgejo.coilysiren.me")
+	t.Setenv("WARD_TARGET_ISSUE", "291")
+	// The target itself, a blank, and a malformed token all drop out; two grants stay.
+	t.Setenv("WARD_EXTRA_REPOS", "coilyco-bridge/agentic-os-kai  garbage coilyco-flight-deck/ward coilyco-flight-deck/cli-guard")
+	e, err := readReapEnv()
+	if err != nil {
+		t.Fatalf("readReapEnv: %v", err)
+	}
+	got := make([]string, len(e.ExtraRepos))
+	for i, r := range e.ExtraRepos {
+		got[i] = r.slug()
+	}
+	want := []string{"coilyco-bridge/agentic-os-kai", "coilyco-flight-deck/cli-guard"}
+	if strings.Join(got, ",") != strings.Join(want, ",") {
+		t.Errorf("ExtraRepos = %v, want %v", got, want)
+	}
+}
+
+// TestExtraRepoWorkDir pins the granted-repo working-copy layout the reaper verifies.
+func TestExtraRepoWorkDir(t *testing.T) {
+	got := extraRepoWorkDir(targetRepo{Owner: "coilyco-bridge", Name: "agentic-os-kai"})
+	if got != "/workspace/agentic-os-kai" {
+		t.Errorf("extraRepoWorkDir = %q, want /workspace/agentic-os-kai", got)
+	}
+}
+
+// TestUnlandedExtraReposComment covers ward#291: the reopen comment names each
+// un-landed grant, renders a recover block, and degrades loudly on a failed push.
+func TestUnlandedExtraReposComment(t *testing.T) {
+	env := reapEnv{Owner: "coilyco-flight-deck", Name: "ward", Base: "https://forgejo.coilysiren.me"}
+	reports := []extraRepoUnlanded{
+		{Repo: targetRepo{Owner: "coilyco-bridge", Name: "agentic-os-kai"}, Ahead: 2, Branch: "ward-salvage/agentic-os-kai-abc123"},
+		{Repo: targetRepo{Owner: "coilyco-flight-deck", Name: "cli-guard"}, NoMain: true, PushErr: "remote: forbidden\nfatal: unable to access"},
+	}
+	got := unlandedExtraReposComment(env, reports)
+	for _, want := range []string{
+		"Reopened",                                // the headline undoing the close
+		"coilyco-flight-deck/ward",                // the issue's own repo, named
+		"coilyco-bridge/agentic-os-kai",           // the un-landed grant
+		"2 local commit(s) never reached",         // the ahead count
+		"ward-salvage/agentic-os-kai-abc123",      // the salvage branch
+		"git fetch https://forgejo.coilysiren.me", // the recover command
+		"no `main` branch to compare",             // the no-main verdict
+		"salvage-branch push also failed",         // the degraded preservation
+		"remote: forbidden",                       // the push error's first line
+		"native issue in the granted",             // the ward#291 guidance
+	} {
+		if !strings.Contains(got, want) {
+			t.Errorf("comment missing %q\n got: %s", want, got)
+		}
+	}
+	// The multi-line push error collapses to its first line only.
+	if strings.Contains(got, "unable to access") {
+		t.Errorf("push error should collapse to its first line\n got: %s", got)
+	}
+}
+
 func TestDecideReap(t *testing.T) {
 	cases := []struct {
 		name string

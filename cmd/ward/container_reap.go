@@ -38,6 +38,9 @@ type reapEnv struct {
 	// ReadOnly mirrors WARD_READONLY (ward#293): a read-only explore session, so the
 	// reaper skips salvage (it would otherwise push whatever the agent left behind).
 	ReadOnly bool
+	// ExtraRepos mirrors WARD_EXTRA_REPOS (ward#230): the --repo grants this run
+	// cloned writable. The reaper verifies each one landed before done (ward#291).
+	ExtraRepos []targetRepo
 }
 
 // envAgentLaunched is the entrypoint flag exported just before the agent launches,
@@ -57,6 +60,7 @@ func readReapEnv() (reapEnv, error) {
 	}
 	// A missing/garbage WARD_TARGET_ISSUE parses to 0: "no issue to release".
 	e.Issue, _ = strconv.Atoi(os.Getenv("WARD_TARGET_ISSUE"))
+	e.ExtraRepos = parseExtraReposEnv(os.Getenv("WARD_EXTRA_REPOS"), e.Owner, e.Name)
 	if e.Owner == "" || e.Name == "" || e.Base == "" {
 		return e, fmt.Errorf("ward container reap: missing WARD_TARGET_OWNER/NAME/WARD_FORGEJO_BASE (run inside a ward container)")
 	}
@@ -99,8 +103,8 @@ torn down. Normally invoked by the container entrypoint, not by hand.`,
 	}
 }
 
-// runContainerReap is the reaper's control flow: capture -> integrate -> decide
-// -> land or salvage. Every git step tolerates failure and falls toward salvage.
+// runContainerReap is the reaper's control flow: reap the target tree, then verify
+// every --repo grant actually landed (ward#291) so a half-landed run can't read done.
 func (r *Runner) runContainerReap(ctx context.Context, c *cli.Command) error {
 	env, err := readReapEnv()
 	if err != nil {
@@ -116,7 +120,18 @@ func (r *Runner) runContainerReap(ctx context.Context, c *cli.Command) error {
 	if !isGitWorkTree(ctx, r, work) {
 		return fmt.Errorf("ward container reap: %q is not a git work tree", work)
 	}
+	terr := r.reapTargetTree(ctx, work, env, true)
+	r.verifyExtraReposLanded(ctx, env)
+	return terr
+}
 
+// reapTargetTree is the target half of a reap: capture -> integrate -> decide ->
+// land or salvage; a fully-clean reap optionally releases the reservation (ward#264).
+func (r *Runner) reapTargetTree(ctx context.Context, work string, env reapEnv, releaseReservation bool) error {
+	if env.ReadOnly {
+		fmt.Fprintln(os.Stderr, "ward container reap: read-only session, nothing to salvage (skipping)")
+		return nil
+	}
 	statusSnapshot := r.captureAndCommitResidual(ctx, work, env)
 
 	// Refresh remote-tracking refs so we integrate against the latest main; a
@@ -131,7 +146,9 @@ func (r *Runner) runContainerReap(ctx context.Context, c *cli.Command) error {
 	residual := revCount(ctx, r, work, "origin/main..HEAD")
 	if residual == 0 && strings.TrimSpace(statusSnapshot) == "" {
 		fmt.Fprintln(os.Stderr, "ward container reap: nothing to reap (tree clean, HEAD on origin/main)")
-		r.releaseReservationIfUnstarted(ctx, env)
+		if releaseReservation {
+			r.releaseReservationIfUnstarted(ctx, env)
+		}
 		return nil
 	}
 
@@ -156,16 +173,22 @@ func resolveReapWork(c *cli.Command) string {
 	return resolveInvokeCWD()
 }
 
-// captureAndCommitResidual snapshots the tree, then stages and commits whatever
-// the agent left loose. The commit bypasses hooks to preserve work, not re-gate it.
+// captureAndCommitResidual snapshots the target tree, then stages and commits
+// whatever the agent left loose (bypassing hooks: preserve work, not re-gate it).
 func (r *Runner) captureAndCommitResidual(ctx context.Context, work string, env reapEnv) string {
+	return r.captureAndCommitResidualRepo(ctx, work, env.Mode, env.repo().slug())
+}
+
+// captureAndCommitResidualRepo is the per-repo half: snapshot, stage, and commit
+// loose work in any clone (the target or a --repo grant), tagged with mode + slug.
+func (r *Runner) captureAndCommitResidualRepo(ctx context.Context, work, mode, slug string) string {
 	status, _ := r.Runner.Capture(ctx, "git", "-C", work, "status", "--porcelain")
 	_ = r.Runner.Exec(ctx, "git", "-C", work, "add", "-A")
 	if hasStagedChanges(ctx, r, work) {
 		// Tag the subject with the mode and carry the agent attribution as a
 		// Co-Authored-By trailer (ward#155), naming who produced the work.
 		msg := fmt.Sprintf("ward-container: residual %s work on %s\n\n%s",
-			env.Mode, env.repo().slug(), containerMode(env.Mode).commitTrailer())
+			mode, slug, containerMode(mode).commitTrailer())
 		if cerr := r.Runner.Exec(ctx, "git", "-C", work, "commit", "--no-verify", "-m", msg); cerr != nil {
 			fmt.Fprintf(os.Stderr, "ward container reap: residual commit failed: %v\n", cerr)
 		}
@@ -311,6 +334,106 @@ func (r *Runner) releaseReservationIfUnstarted(ctx context.Context, env reapEnv)
 		return
 	}
 	fmt.Fprintf(os.Stderr, "ward container reap: released issue reservation on #%d (container exited pre-launch, did no work)\n", env.Issue)
+}
+
+// --- granted-repo (--repo) push verification (ward#291) ----------------------
+
+// verifyExtraReposLanded checks each --repo grant landed on its remote main before
+// the run reads as done (ward#291); an un-pushed grant is preserved + surfaced.
+func (r *Runner) verifyExtraReposLanded(ctx context.Context, env reapEnv) {
+	if env.ReadOnly || len(env.ExtraRepos) == 0 {
+		return
+	}
+	var unlanded []extraRepoUnlanded
+	for _, repo := range env.ExtraRepos {
+		work := extraRepoWorkDir(repo)
+		if !isGitWorkTree(ctx, r, work) {
+			// The bootstrap clone never landed (already logged there): nothing to
+			// verify and nothing to recover, so don't flag a phantom failure.
+			fmt.Fprintf(os.Stderr, "ward container reap: granted repo %s has no clone at %s; skipping push verification\n", repo.slug(), work)
+			continue
+		}
+		if rep, landed := r.checkExtraRepoLanded(ctx, env, repo, work); !landed {
+			unlanded = append(unlanded, rep)
+		}
+	}
+	if len(unlanded) == 0 {
+		fmt.Fprintln(os.Stderr, "ward container reap: all granted repos verified landed on main")
+		return
+	}
+	r.reportUnlandedExtraRepos(ctx, env, unlanded)
+}
+
+// checkExtraRepoLanded reports whether a grant's local HEAD is contained in its
+// freshly-fetched origin/main; un-landed work is committed + preserved first.
+func (r *Runner) checkExtraRepoLanded(ctx context.Context, env reapEnv, repo targetRepo, work string) (extraRepoUnlanded, bool) {
+	status := r.captureAndCommitResidualRepo(ctx, work, env.Mode, repo.slug())
+	_ = r.Runner.Exec(ctx, "git", "-C", work, "fetch", "origin")
+	rep := extraRepoUnlanded{Repo: repo, Status: status}
+	if !refExists(ctx, r, work, "origin/main") {
+		// No remote main to compare against: we cannot prove the work landed, so
+		// treat it as un-landed and preserve whatever HEAD holds.
+		rep.NoMain = true
+		r.preserveExtraRepo(ctx, work, env, &rep)
+		return rep, false
+	}
+	ahead := revCount(ctx, r, work, "origin/main..HEAD")
+	if ahead == 0 {
+		// HEAD is contained in the freshly-fetched remote main: the push landed.
+		return extraRepoUnlanded{}, true
+	}
+	rep.Ahead = ahead
+	r.preserveExtraRepo(ctx, work, env, &rep)
+	return rep, false
+}
+
+// preserveExtraRepo pushes a granted repo's un-landed work to a salvage branch so
+// it survives teardown; a push failure falls back to dumping the patch to the log.
+func (r *Runner) preserveExtraRepo(ctx context.Context, work string, env reapEnv, rep *extraRepoUnlanded) {
+	branch := salvageBranchName(rep.Repo.Name + "-" + randHex())
+	_ = r.Runner.Exec(ctx, "git", "-C", work, "branch", "-f", branch, "HEAD")
+	if out, perr := r.pushCapture(ctx, work, branch+":"+branch); perr != nil {
+		if rep.PushErr = strings.TrimSpace(out); rep.PushErr == "" {
+			rep.PushErr = perr.Error()
+		}
+		fmt.Fprintf(os.Stderr, "ward container reap: granted repo %s salvage-branch push failed (%v); dumping patch to log\n", rep.Repo.slug(), perr)
+		r.dumpPatch(ctx, work)
+		return
+	}
+	rep.Branch = branch
+	fmt.Fprintf(os.Stderr, "ward container reap: preserved un-landed granted-repo work on %s (%s)\n", branch, rep.Repo.slug())
+}
+
+// reportUnlandedExtraRepos undoes the run's apparent success: it reopens the target
+// issue (cancelling any `closes #N`) and comments which grants did not land.
+func (r *Runner) reportUnlandedExtraRepos(ctx context.Context, env reapEnv, reports []extraRepoUnlanded) {
+	for _, rep := range reports {
+		fmt.Fprintf(os.Stderr, "ward container reap: granted repo %s did NOT land (%d un-pushed commit(s))\n", rep.Repo.slug(), rep.Ahead)
+	}
+	if env.Issue == 0 {
+		fmt.Fprintln(os.Stderr, "ward container reap: no target issue to flag the un-landed granted repos on")
+		return
+	}
+	if env.Token == "" {
+		fmt.Fprintln(os.Stderr, "ward container reap: no FORGEJO_TOKEN to flag the un-landed granted repos on the issue")
+		return
+	}
+	fc, err := r.hostForgejoClient(ctx)
+	if err != nil {
+		fmt.Fprintf(os.Stderr, "ward container reap: could not build forgejo client to flag un-landed granted repos: %v\n", err)
+		return
+	}
+	fc = fc.withMode(containerMode(env.Mode))
+	// Reopen first (idempotent on an already-open issue), then comment: the issue
+	// must not read "done" while a granted repo's committed work is unreachable.
+	if rerr := fc.reopenIssue(ctx, env.Owner, env.Name, env.Issue); rerr != nil {
+		fmt.Fprintf(os.Stderr, "ward container reap: could not reopen issue #%d: %v\n", env.Issue, rerr)
+	}
+	if cerr := fc.commentIssue(ctx, env.Owner, env.Name, env.Issue, unlandedExtraReposComment(env, reports)); cerr != nil {
+		fmt.Fprintf(os.Stderr, "ward container reap: could not comment un-landed granted repos on #%d: %v\n", env.Issue, cerr)
+		return
+	}
+	fmt.Fprintf(os.Stderr, "ward container reap: reopened #%d and flagged %d un-landed granted repo(s)\n", env.Issue, len(reports))
 }
 
 // dumpPatch writes the residual diff to stderr as a final recovery surface when

@@ -152,9 +152,36 @@ const headlessReflectionAction = "Finally, as your very last step - only after t
 	"are in the result, and any rough edges or follow-ups worth filing. This is a candid retrospective, not a " +
 	"status report or a changelog - keep it brief and honest, and post it even if the work went smoothly."
 
-// agentSeedPrompt seeds the agent: the issue, a mode-aware first move (ward#157), an
-// optional --details note (ward#167), and a headless "felt" reflection (ward#281).
-func agentSeedPrompt(ref agentIssueRef, title, body, details string, mode containerMode, headless bool) string {
+// grantedRepoDoneClause widens the done-condition for a --repo grant (ward#291):
+// every granted repo must be pushed AND verified landed, not just the issue's repo.
+func grantedRepoDoneClause(extra []targetRepo) string {
+	if len(extra) == 0 {
+		return ""
+	}
+	slugs := make([]string, len(extra))
+	for i, repo := range extra {
+		slugs[i] = repo.slug()
+	}
+	joined := strings.Join(slugs, ", ")
+	return fmt.Sprintf(
+		"\n\nThis run was GRANTED EXTRA WRITABLE REPOS via --repo: %s (full feature copies "+
+			"under /workspace beside the issue's repo). Your done-condition is NOT just the "+
+			"issue's own repo: every granted repo you touch must be pushed AND VERIFIED to have "+
+			"landed. After pushing each one, fetch its remote and confirm your push actually "+
+			"advanced the target ref - local HEAD must match the freshly-fetched remote main - "+
+			"because a secondary push can be silently rejected (a non-fast-forward on a busy main, "+
+			"a dead/rotated PAT) while the primary push succeeds. Do NOT post the closing "+
+			"retrospective or treat the issue as done until every granted repo is verified landed. "+
+			"A granted repo that did not land is a hard failure to call out, not a silent success. "+
+			"And when a --repo grant exists only to push work into that second repo, prefer filing "+
+			"that work as its own native issue in that repo instead - a single-repo run sidesteps "+
+			"this cross-repo push failure mode entirely.",
+		joined)
+}
+
+// agentSeedPrompt seeds the agent: the issue, a first move (ward#157), --details
+// (ward#167), a granted-repo done-condition (ward#291), a reflection (ward#281).
+func agentSeedPrompt(ref agentIssueRef, title, body, details string, mode containerMode, headless bool, extra []targetRepo) string {
 	title = strings.TrimSpace(title)
 	if title == "" {
 		title = "(untitled)"
@@ -191,6 +218,8 @@ func agentSeedPrompt(ref agentIssueRef, title, body, details string, mode contai
 				"let it override the issue text where they conflict):\n%s",
 			details)
 	}
+	// A --repo grant widens "done" to every granted repo, verified landed (ward#291).
+	seed += grantedRepoDoneClause(extra)
 	// A headless run detaches with no human watching, so ask it to close with a
 	// short retrospective comment - the only voice it leaves behind (ward#281).
 	if headless {
@@ -413,7 +442,7 @@ func (r *Runner) resolveAgentWork(ctx context.Context, c *cli.Command, mode cont
 	// headless detaches fire-and-forget, so its seed gets the closing reflection
 	// (ward#281); interactive work has a human watching and skips it.
 	headless := surface == "headless"
-	return resolvedWork{Ref: ref, Title: title, Body: issue.Body, Comments: comments, Details: details, ExtraRepos: extra, Seed: agentSeedPrompt(ref, title, issue.Body, details, mode, headless)}, nil
+	return resolvedWork{Ref: ref, Title: title, Body: issue.Body, Comments: comments, Details: details, ExtraRepos: extra, Seed: agentSeedPrompt(ref, title, issue.Body, details, mode, headless, extra)}, nil
 }
 
 // fetchIssueComments returns the comment thread (oldest first) for the pre-flight
@@ -1152,7 +1181,7 @@ func (r *Runner) runAgentTaskDirect(ctx context.Context, c *cli.Command, mode co
 
 	// task's full instructions are the filed body (no --details, ward#167); it runs
 	// the headless carry, so the seed is headless: inlined body + reflection (#157/#281).
-	seed := agentSeedPrompt(ref, title, body, "", mode, true)
+	seed := agentSeedPrompt(ref, title, body, "", mode, true, nil)
 	return r.launchAgentContainer(ctx, c, mode, "task", true, ref, title, seed)
 }
 
@@ -1166,7 +1195,7 @@ func printAgentTaskPlan(c *cli.Command, mode containerMode, repo targetRepo, tit
 	// A placeholder ref renders the seed shape; the real number is only known
 	// once the issue is filed (which --print deliberately skips).
 	previewRef := agentIssueRef{Owner: repo.Owner, Repo: repo.Name, Number: 0}
-	seed := agentSeedPrompt(previewRef, title, body, "", mode, true)
+	seed := agentSeedPrompt(previewRef, title, body, "", mode, true, nil)
 	plan, err := buildUpPlan(c, repo, mode, "", "", []string{seed})
 	if err != nil {
 		return err

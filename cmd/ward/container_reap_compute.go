@@ -328,6 +328,92 @@ func salvageIssueBody(r salvageReport) string {
 	return b.String()
 }
 
+// --- granted-repo (--repo) push verification (ward#291) ----------------------
+
+// containerWorkspace is where the entrypoint clones the target and every --repo
+// grant, as /workspace/<name>; mirrors cloneExtraRepo's layout (ward#230).
+const containerWorkspace = "/workspace"
+
+// extraRepoWorkDir is the in-container working copy of a granted repo, the tree
+// the reaper verifies actually landed before the run reads as done.
+func extraRepoWorkDir(repo targetRepo) string {
+	return containerWorkspace + "/" + repo.Name
+}
+
+// extraRepoUnlanded is one granted repo the reaper could not confirm landed on its
+// remote main: the verification verdict plus how its work was preserved (ward#291).
+type extraRepoUnlanded struct {
+	Repo targetRepo
+	// Branch is the salvage branch the un-landed work was pushed to, empty when the
+	// salvage-branch push itself failed (work is then only in the container log).
+	Branch string
+	// Ahead is the count of local commits not on the freshly-fetched remote main.
+	Ahead int
+	// Status is the `git status --porcelain` snapshot of the granted clone at reap.
+	Status string
+	// NoMain marks a granted repo whose remote had no main to verify against, so the
+	// reaper could not prove the work landed and treated it as un-landed.
+	NoMain bool
+	// PushErr is the salvage-branch push error, set when even preservation failed.
+	PushErr string
+}
+
+// unlandedExtraReposComment renders the reaper's comment for the reopened issue:
+// which grants did not land, where each was preserved, and how to recover (ward#291).
+func unlandedExtraReposComment(env reapEnv, reports []extraRepoUnlanded) string {
+	var b strings.Builder
+	b.WriteString("## ⚠️ Reopened: a granted `--repo` push did not land\n\n")
+	fmt.Fprintf(&b, "This run held `--repo` grants and closed against `%s`, but the reaper could not confirm "+
+		"every granted repo's work reached its `main`. A secondary push can be silently rejected (a "+
+		"non-fast-forward on a busy `main`, a dead/rotated PAT) while the primary push succeeds, so the "+
+		"issue is **reopened** rather than left reading \"done\" with the cross-repo half lost.\n\n",
+		env.repo().slug())
+	for _, rep := range sortedUnlanded(reports) {
+		fmt.Fprintf(&b, "### `%s`\n\n", rep.Repo.slug())
+		if rep.NoMain {
+			b.WriteString("- **Verdict:** could not verify - the remote had no `main` branch to compare against.\n")
+		} else {
+			fmt.Fprintf(&b, "- **Verdict:** %d local commit(s) never reached `origin/main`.\n", rep.Ahead)
+		}
+		switch {
+		case rep.Branch != "":
+			fmt.Fprintf(&b, "- **Preserved on:** `%s`\n\n", rep.Branch)
+			b.WriteString("```bash\n")
+			fmt.Fprintf(&b, "git fetch %s %s\n", rep.Repo.cloneURL(env.Base), rep.Branch)
+			fmt.Fprintf(&b, "git checkout -b %s FETCH_HEAD\n", rep.Branch)
+			b.WriteString("```\n")
+		default:
+			b.WriteString("- **Preserved on:** none - the salvage-branch push also failed")
+			if rep.PushErr != "" {
+				fmt.Fprintf(&b, " (`%s`)", firstLine(rep.PushErr))
+			}
+			b.WriteString("; recover the patch from this container's `docker logs` before teardown.\n")
+		}
+		b.WriteString("\n")
+	}
+	b.WriteString("Re-run the cross-repo half, or - per ward#291 - file it as a native issue in the granted " +
+		"repo so it becomes a single-repo carry that sidesteps this failure mode.\n")
+	return b.String()
+}
+
+// sortedUnlanded orders un-landed grants by slug for deterministic rendering.
+func sortedUnlanded(in []extraRepoUnlanded) []extraRepoUnlanded {
+	out := append([]extraRepoUnlanded(nil), in...)
+	sort.Slice(out, func(i, j int) bool { return out[i].Repo.slug() < out[j].Repo.slug() })
+	return out
+}
+
+// firstLine returns the first non-empty line of s, trimmed, so a multi-line git
+// error collapses to a single readable clause in the issue comment.
+func firstLine(s string) string {
+	for _, line := range strings.Split(s, "\n") {
+		if t := strings.TrimSpace(line); t != "" {
+			return t
+		}
+	}
+	return strings.TrimSpace(s)
+}
+
 // sortedFindings returns findings ordered by path for deterministic rendering.
 func sortedFindings(in []scanFinding) []scanFinding {
 	out := append([]scanFinding(nil), in...)

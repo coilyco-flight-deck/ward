@@ -865,31 +865,12 @@ func (r *Runner) reap(ctx context.Context, work string) {
 	}
 }
 
-// reapWorkTree runs the same capture->integrate->land/salvage flow as
-// runContainerReap, against an already-validated work tree.
+// reapWorkTree reaps the target tree then verifies every --repo grant landed too
+// (ward#291); the entrypoint defer never releases the reservation (agent launched).
 func (r *Runner) reapWorkTree(ctx context.Context, work string, env reapEnv) error {
-	if env.ReadOnly {
-		// A read-only explore session never mutates the remote (ward#293).
-		fmt.Fprintln(os.Stderr, "ward container reap: read-only session, nothing to salvage (skipping)")
-		return nil
-	}
-	statusSnapshot := r.captureAndCommitResidual(ctx, work, env)
-	_ = r.Runner.Exec(ctx, "git", "-C", work, "fetch", "origin")
-	if !refExists(ctx, r, work, "origin/main") {
-		return r.salvage(ctx, work, env, reasonPushFail, false, nil, statusSnapshot)
-	}
-	residual := revCount(ctx, r, work, "origin/main..HEAD")
-	if residual == 0 && strings.TrimSpace(statusSnapshot) == "" {
-		fmt.Fprintln(os.Stderr, "ward container reap: nothing to reap (tree clean, HEAD on origin/main)")
-		return nil
-	}
-	findings := scanDiff(r.diffEntries(ctx, work, "origin/main...HEAD"))
-	action := decideReap(reapInputs{
-		HasResidualWork:  residual > 0,
-		IntegrationClean: r.integrate(ctx, work, residual),
-		Findings:         findings,
-	})
-	return r.executeReap(ctx, work, env, action, findings, statusSnapshot)
+	terr := r.reapTargetTree(ctx, work, env, false)
+	r.verifyExtraReposLanded(ctx, env)
+	return terr
 }
 
 // --- pre-launch auth smoke test (ward#222, disk-aware diagnostics ward#273) --
