@@ -271,7 +271,7 @@ func TestInstallReadOnlyPushGuard(t *testing.T) {
 		if err != nil {
 			t.Fatalf("read hook: %v", err)
 		}
-		for _, want := range []string{"#!/bin/sh", "read-only explore session - push is disabled (ward#293)", "exit 1"} {
+		for _, want := range []string{"#!/bin/sh", "this clone can't push (ward#293, ward#315)", "exit 1"} {
 			if !strings.Contains(string(body), want) {
 				t.Errorf("hook missing %q:\n%s", want, body)
 			}

@@ -32,6 +32,65 @@ func TestReadOnlyPlanExportsFlag(t *testing.T) {
 	}
 }
 
+// The docker socket binds read-write at the same path both sides and is NOT in the
+// least-access default - only explore opts in (ward#315).
+func TestDockerSockMount(t *testing.T) {
+	m := dockerSockMount()
+	if m.Source != "/var/run/docker.sock" || m.Target != "/var/run/docker.sock" {
+		t.Errorf("docker sock mount = %s -> %s, want /var/run/docker.sock both sides", m.Source, m.Target)
+	}
+	if m.ReadOnly {
+		t.Error("docker sock mount must be read-write (the docker client writes to it)")
+	}
+	if m.Volume {
+		t.Error("docker sock mount must be a host bind, not a named volume")
+	}
+	if arg := m.arg(); arg != "/var/run/docker.sock:/var/run/docker.sock" {
+		t.Errorf("docker sock mount arg = %q, want unsuffixed host bind", arg)
+	}
+	for _, def := range leastAccessMounts("/cwd", mountOpts{AssetsDir: "/a"}) {
+		if def.Source == "/var/run/docker.sock" {
+			t.Error("the least-access default must not bind the docker socket; only explore opts in")
+		}
+	}
+}
+
+// resolveForgejoToken prefers an already-present FORGEJO_TOKEN over the host SSM
+// lookup, so a `warded #N` dispatched from inside an explore box resolves (ward#315).
+func TestResolveForgejoTokenPrefersEnv(t *testing.T) {
+	stub := tokenStub(t, "ssm-token")
+	r, _, _ := bufRunner(stub)
+
+	t.Setenv("FORGEJO_TOKEN", "env-token")
+	got, err := r.resolveForgejoToken(t.Context())
+	if err != nil {
+		t.Fatalf("resolveForgejoToken (env set): %v", err)
+	}
+	if got != "env-token" {
+		t.Errorf("with FORGEJO_TOKEN set, resolveForgejoToken = %q, want the env value (no SSM call)", got)
+	}
+
+	t.Setenv("FORGEJO_TOKEN", "")
+	got, err = r.resolveForgejoToken(t.Context())
+	if err != nil {
+		t.Fatalf("resolveForgejoToken (env empty): %v", err)
+	}
+	if got != "ssm-token" {
+		t.Errorf("with FORGEJO_TOKEN empty, resolveForgejoToken = %q, want the SSM fallback", got)
+	}
+}
+
+// tokenStub writes a stand-in binary that echoes a fixed token, standing in for the
+// `aws ssm get-parameter` call resolveForgejoToken makes when the env var is unset.
+func tokenStub(t *testing.T, token string) string {
+	t.Helper()
+	stub := filepath.Join(t.TempDir(), "aws")
+	if err := os.WriteFile(stub, []byte("#!/bin/sh\necho "+token+"\n"), 0o755); err != nil { //nolint:gosec
+		t.Fatal(err)
+	}
+	return stub
+}
+
 // readBootstrapEnv maps WARD_READONLY onto bootstrapEnv.ReadOnly (the in-container
 // side that revokes the credential + composes the restriction).
 func TestReadBootstrapEnvReadOnly(t *testing.T) {
@@ -82,6 +141,14 @@ func TestComposeContextReadOnlyBlock(t *testing.T) {
 	}
 	if !strings.Contains(readonly, "warded explore") {
 		t.Error("the read-only block should name the warded explore surface")
+	}
+	// ward#315: the reframed block permits dispatch (file + commission a sibling),
+	// not just "do not push". It must invite filing issues and dispatching headless.
+	if !strings.Contains(readonly, "File issues") {
+		t.Error("the read-only block should tell the agent it may file issues (ward#315)")
+	}
+	if !strings.Contains(readonly, "Dispatch a sibling headless run") {
+		t.Error("the read-only block should tell the agent it may dispatch a sibling run (ward#315)")
 	}
 }
 

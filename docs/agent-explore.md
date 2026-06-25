@@ -3,15 +3,16 @@
 `ward agent explore` is the **read-only** sibling of
 [`ward agent sandbox`](agent-sandbox.md): the same seedless interactive bring-up -
 a fresh ephemeral container with a fresh clone plus the composed operating context,
-dropping you into a live agent with **no issue and no seed** - except the run gets
-**no push credential**. The agent can read the repo, search it, and run read-only
-commands, but it **cannot mutate the canonical remote**: no commit-and-push, no
-merge to `main`, no PRs or issues.
+**no issue and no seed** - except this clone **cannot push to its own remote**.
 
-Where `sandbox` is a full writable scratch box (it gets the same push token a `work`
-carry gets), `explore` is for when you want a hard guarantee that nothing leaves the
-box - a safe read of unfamiliar or sensitive code, a review-by-conversation, a spike
-you do not want pushed by accident.
+"Read-only" means exactly that and no more: nothing leaves *this clone*. It does
+**not** seal the session off. Dispatching commissioned work is the **point** of
+explore - you read and reason in a no-direct-push box, and the natural product is
+**file the issue, dispatch the headless fix**. So explore keeps a **dispatch-only
+capability**: the forgejo token survives the revoke (it can file issues and launch a
+sibling run) and the host docker socket is mounted (so `warded #N` works from inside).
+The dispatched run does its own implement -> commit -> merge -> push in its **own**
+sealed container, never touching this clone (ward#315).
 
 ## Usage
 
@@ -26,54 +27,52 @@ It takes no positional argument. The flags mirror [`sandbox`](agent-sandbox.md):
 `--repo`, `--with-repo`, `--image`, `--tag`, `--ward-source`, `--aws`, `--print`,
 `--no-pull`, `--driver`.
 
-## How read-only is enforced
+## What read-only enforces
 
-Three layers, one soft and two the agent cannot route around:
+Layers that scope the box to **push-to-this-clone**, not to dispatch:
 
-1. **Composed restriction (soft).** A seedless session has no prompt to carry the
-   "do not push" rule, so it rides in the **operating context**: the entrypoint
-   appends a read-only block to the composed `CLAUDE.md` that overrides the container
-   doctrine's "implement, commit, merge, push" mandate (the static entry context the
-   surface needs, ward#293).
-2. **Revoked push credential (hard).** The clone still happens with the bot
-   credential (private repos clone), but **before the agent drops** the entrypoint
-   removes `/etc/ward-git-credentials`, drops the system `credential.helper`, and
-   unsets `FORGEJO_TOKEN`. After that a `git push` - or a hand-built authenticated
-   URL - has nothing to authenticate with.
-3. **Reaper skips salvage.** The reaper, which normally pushes whatever the agent
-   left behind, short-circuits when `WARD_READONLY` is set - so the teardown backstop
-   cannot undo the guarantee.
+1. **Composed restriction (soft).** The entrypoint appends a read-only block to the
+   composed `CLAUDE.md`: this clone does not push, but filing issues and dispatching
+   `warded #N` are encouraged (ward#293, ward#315).
+2. **Scoped push revoke.** Before the agent drops, the entrypoint removes
+   `/etc/ward-git-credentials` and drops the system `credential.helper`, so a push
+   from this clone has nothing to authenticate with. `FORGEJO_TOKEN` is **kept** for
+   the dispatch-only path.
+3. **Pre-push message layer (ward#299).** A per-clone `pre-push` hook prints a clear
+   named wall before git reaches the remote (the bare revoke fails with an opaque
+   `could not read Username`). Message layer only - bypassable (`--no-verify`, `rm`).
+4. **Reaper skips salvage.** The reaper short-circuits on `WARD_READONLY`, so the
+   teardown backstop cannot push this clone's tree either.
 
-The agent can still `git commit` locally (harmless); only the network mutation is
-blocked. On exit the throwaway clone is swept by the [reaper](container-reap.md).
+Local `git commit` still works (harmless). On exit the clone is swept by the
+[reaper](container-reap.md).
 
-### The pre-push message layer (ward#299)
+**The soft edge (ward#315).** The dispatch token is the *same* bot token, so a
+determined agent could hand-build a push URL. The restriction forbids it, but it is a
+convention - the hard fix is a **dispatch-only credential**, deferred to ward#315.
 
-On its own the revoked credential surfaces an **opaque** failure: `git push` dies
-with a generic `could not read Username`, and a drifted session burns turns on
-it. So a read-only session also lands a per-clone `pre-push` git hook (on the work
-clone and each `--repo` extra) that fires **before** git reaches the remote:
+## Dispatching from inside explore
 
-```
-ward: read-only explore session - push is disabled (ward#293).
-Nothing leaves this container. Commit/branch locally all you like.
+```bash
+ward ops forgejo issue create ...    # file the work
+warded coilyco-flight-deck/ward#NNN  # dispatch a sealed headless fix
 ```
 
-This is purely the **clear-message layer**: the hook is bypassable (`--no-verify`,
-or `rm`), and the revoked credential stays the backstop. A git-level hook (not a
-`PreToolUse` hook) covers every driver, and per-clone (not `core.hooksPath`)
-avoids shadowing the pre-commit install. Tradeoff: an ad-hoc mid-session clone
-does not inherit it. Both the entrypoint and Go bootstrap install it.
+The sibling resolves the token from the container's env (no host SSM/AWS), clones
+fresh, and runs its own lifecycle.
+
+> **Open item (ward#315):** the dropped agent is non-root but the mounted socket is
+> root-owned, so the socket-access grant has a host side-effect (chmod vs. a socat
+> bridge). Not wired yet - dispatch fails on a socket permission error until it lands.
 
 ## `--print`
 
-Resolves the repo and renders the docker plan, then exits without pulling, cloning,
-or running anything. The plan prints `access: read-only (push credential revoked
-after clone)` and `WARD_READONLY=1`. Safe with no docker daemon.
+Renders the docker plan and exits without pulling, cloning, or running. It prints
+`access: read-only (...)`, `WARD_READONLY=1`, and the docker socket bind. Safe with
+no docker daemon.
 
 ## See also
 
 - [docs/agent-sandbox.md](agent-sandbox.md) - `sandbox`, the writable sibling.
 - [docs/agent.md](agent.md) - the `ward agent` umbrella.
-- [docs/agent-ask.md](agent-ask.md) - `ask`, the one-shot read-only question surface.
-- [docs/container-reap.md](container-reap.md) - the reaper that sweeps the run on exit.
+- [docs/container-reap.md](container-reap.md) - the reaper that sweeps the run.

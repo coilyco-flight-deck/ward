@@ -49,6 +49,10 @@ const (
 	// off by default; the forgejo token is injected single-purpose instead).
 	containerAWSMount = "/root/.aws"
 
+	// containerDockerSock is the host docker socket bound into an explore session so
+	// it can dispatch sibling runs; same path both sides (ward#315). docs/agent-explore.md.
+	containerDockerSock = "/var/run/docker.sock"
+
 	// containerNamePrefix anchors every ward-managed container name so a
 	// `docker ps` filter can pick ward's containers out of the host's set.
 	containerNamePrefix = "ward"
@@ -324,6 +328,12 @@ func leastAccessMounts(hostCwd string, opts mountOpts) []mountSpec {
 		mounts = append(mounts, mountSpec{Source: opts.WardSource, Target: containerWardSrcMount, ReadOnly: true, Volume: false})
 	}
 	return mounts
+}
+
+// dockerSockMount binds the host docker socket read-write for explore's dispatch
+// path; not in the least-access default, only explore opts in (ward#315).
+func dockerSockMount() mountSpec {
+	return mountSpec{Source: containerDockerSock, Target: containerDockerSock, ReadOnly: false, Volume: false}
 }
 
 // upPlan is the fully-resolved description of one container bring-up, minus

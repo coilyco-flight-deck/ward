@@ -98,6 +98,11 @@ func (r *Runner) runScratchSession(ctx context.Context, c *cli.Command, mode con
 		return err
 	}
 	plan.ReadOnly = readOnly
+	if readOnly {
+		// Explore keeps a dispatch-only capability: bind the docker socket so the
+		// agent can commission a sealed sibling run (ward#315). docs/agent-explore.md.
+		plan.Mounts = append(plan.Mounts, dockerSockMount())
+	}
 	// Name it ward-<repo>-<surface>-<mode>-<rand> so `docker ps` tells the run apart.
 	plan.Name = fmt.Sprintf("%s-%s-%s-%s-%s", containerNamePrefix, safeRepoName(repo), surface, mode, randHex())
 
@@ -134,7 +139,7 @@ func printScratchPlan(c *cli.Command, p upPlan, readOnly bool) error {
 	}
 	access := "writable"
 	if readOnly {
-		access = "read-only (push credential revoked after clone)"
+		access = "read-only (this clone's push wiring revoked; dispatch token + docker socket kept)"
 	}
 	var b strings.Builder
 	fmt.Fprintf(&b, "# %s (print)\n", agentCmdline(p.Mode, scratchSurface(readOnly)))

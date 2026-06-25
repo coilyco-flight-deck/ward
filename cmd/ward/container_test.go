@@ -678,7 +678,7 @@ func TestEntrypointInstallsReadOnlyPushGuard(t *testing.T) {
 		"install_readonly_push_guard \"$dest\"", // and on each --repo extra
 		"[ \"${WARD_READONLY:-0}\" = 1 ]",       // gated on read-only
 		".git/hooks",                            // lands a per-clone hook
-		"push is disabled (ward#293)",           // the clear message
+		"this clone can't push (ward#293, ward#315)", // the clear message
 	} {
 		if !strings.Contains(script, want) {
 			t.Errorf("entrypoint missing %q (ward#299 read-only push guard)", want)

@@ -264,16 +264,28 @@ func credEnvLines(creds agentCreds) []string {
 	return lines
 }
 
-// writeTokenEnvFile resolves the forgejo token (+ optional base64'd agent creds)
-// into a private 0600 --env-file, so none enters argv/audit. Caller removes it.
-func (r *Runner) writeTokenEnvFile(ctx context.Context, creds agentCreds) (path string, cleanup func(), err error) {
+// resolveForgejoToken prefers an already-present FORGEJO_TOKEN over SSM, so a
+// `warded #N` dispatched from inside an explore box resolves locally (ward#315).
+func (r *Runner) resolveForgejoToken(ctx context.Context) (string, error) {
+	if tok := strings.TrimSpace(os.Getenv("FORGEJO_TOKEN")); tok != "" {
+		return tok, nil
+	}
 	out, err := r.Runner.Capture(ctx, "aws", "ssm", "get-parameter",
 		"--name", forgejoTokenSSMPath, "--with-decryption",
 		"--query", "Parameter.Value", "--output", "text")
 	if err != nil {
-		return "", func() {}, fmt.Errorf("ward container: resolve %s from SSM (host needs aws creds): %w", forgejoTokenSSMPath, err)
+		return "", fmt.Errorf("ward container: resolve %s from SSM (host needs aws creds, or set FORGEJO_TOKEN): %w", forgejoTokenSSMPath, err)
 	}
-	token := strings.TrimSpace(string(out))
+	return strings.TrimSpace(string(out)), nil
+}
+
+// writeTokenEnvFile resolves the forgejo token (+ optional base64'd agent creds)
+// into a private 0600 --env-file, so none enters argv/audit. Caller removes it.
+func (r *Runner) writeTokenEnvFile(ctx context.Context, creds agentCreds) (path string, cleanup func(), err error) {
+	token, err := r.resolveForgejoToken(ctx)
+	if err != nil {
+		return "", func() {}, err
+	}
 	f, err := os.CreateTemp("", "ward-forgejo-env-*")
 	if err != nil {
 		return "", func() {}, fmt.Errorf("ward container: create env-file: %w", err)

@@ -69,13 +69,20 @@ configure_git_auth() {
   fi
 }
 
-# Strip the bot push credential before the agent drops - the hard half of a
-# read-only session (ward#293). See docs/agent-explore.md.
+# Scope the read-only revoke to push-to-this-clone: drop the git push wiring but
+# KEEP FORGEJO_TOKEN for dispatch-only (file/launch, not push). docs/agent-explore.md.
 revoke_push_credential() {
   rm -f /etc/ward-git-credentials
   git config --system --unset-all credential.helper 2>/dev/null || true
-  unset FORGEJO_TOKEN
-  log "read-only session: revoked the push credential (no commit-push/merge to the remote; ward#293)"
+  log "read-only session: dropped this clone's push wiring; FORGEJO_TOKEN kept for dispatch-only (file/launch, no push; ward#315)"
+}
+
+# Let the dropped agent reach the mounted docker socket so `warded #N` can dispatch
+# a sibling run. TODO(ward#315): grant step is Kai's call - see docs/agent-explore.md.
+grant_docker_socket_access() {
+  local sock=/var/run/docker.sock
+  [ -S "$sock" ] || { log "explore: no docker socket mounted - dispatch unavailable this run (ward#315)"; return 0; }
+  log "explore: docker socket mounted but agent access grant is not wired yet (TODO ward#315); dispatch will fail until the grant mechanism lands"
 }
 
 # Re-assert the credential perms git's `store` helper clobbers on the clones;
@@ -200,9 +207,9 @@ install_readonly_push_guard() {
   [ -d "$dir" ] || { log "no .git/hooks in $work; skipping read-only push guard (ward#299)"; return 0; }
   cat > "$dir/pre-push" <<'HOOK'
 #!/bin/sh
-# ward#299 read-only explore push guard (message layer; bypassable). See ward#293.
-echo "ward: read-only explore session - push is disabled (ward#293)." >&2
-echo "Nothing leaves this container. Commit/branch locally all you like." >&2
+# ward#299 read-only explore push guard (message layer; bypassable). See ward#315.
+echo "ward: read-only explore - this clone can't push (ward#293, ward#315)." >&2
+echo "Commit/branch locally; to ship, file an issue + dispatch 'warded #N'." >&2
 exit 1
 HOOK
   chmod 0755 "$dir/pre-push"
@@ -348,18 +355,28 @@ compose_context() {
 
 ## Read-only session (this overrides the autonomy doctrine above)
 
-This is a **read-only explore session** (`warded explore`). The
-"implement, commit, merge, push" mandate stated above does **not** apply here.
-You have a fresh clone and the full operating context to read, search, and run
-read-only commands - but you must **not** mutate the canonical remote in any way:
+This is a **read-only explore session** (`warded explore`). Here "read-only" means
+one thing: **this clone cannot push to its own remote**, so nothing leaves this clone. It
+does not mean you are sealed off. The natural product of an explore session is
+commissioned work, and that still ships.
 
-- **Do not** commit and push, merge to `main`, or open/close PRs or issues.
-- **Do not** try to authenticate a push by any other route.
+You **may**:
 
-The push credential has been **removed** from this container, so a push would
-fail regardless. Treat the repo as reference material: read it, reason about it,
-answer questions, scratch in the working tree if it helps you think - but nothing
-leaves this box. When you are done, just exit.
+- **File issues** for anything worth tracking (`ward ops forgejo issue create ...`).
+- **Dispatch a sibling headless run** to do the actual fix - `warded <owner/repo>#N`
+  spins up its own sealed container with its own credential and lifecycle, does its
+  own implement -> commit -> merge -> push there, and never touches this clone.
+
+You **must not**:
+
+- Commit and push **this clone**, or merge this clone's tree to `main`.
+- Hand-build an authenticated push URL to get this clone's tree onto the remote by
+  another route. (A dispatch-only credential is the proper guard here; until it
+  lands, this is a convention you keep - ward#315.)
+
+This clone's push wiring has been removed, so a direct `git push` from here fails.
+Read the repo, reason about it, answer questions, scratch in the working tree if it
+helps you think - then either **file + dispatch** the work or just exit.
 EOF
   fi
   log "composed context (level $WARD_CONTEXT_LEVEL$([ "${WARD_READONLY:-0}" = 1 ] && echo ', read-only')) at $out"
@@ -672,7 +689,8 @@ main() {
   # Hand each granted extra-repo tree to the agent user too (ward#230); cloned as root.
   for ref in ${WARD_EXTRA_REPOS:-}; do chown -R "$AGENT_UID:$AGENT_GID" "/workspace/${ref##*/}" 2>/dev/null || true; done
   if [ "${WARD_READONLY:-0}" = 1 ]; then
-    revoke_push_credential   # read-only explore: strip the push cred + token (ward#293)
+    revoke_push_credential    # explore: drop this clone's push wiring, keep the dispatch token (ward#315)
+    grant_docker_socket_access # explore: let the agent dispatch siblings via the mounted socket (ward#315)
   else
     ensure_git_cred_readable # re-assert creds the clones clobbered (ward#288)
   fi

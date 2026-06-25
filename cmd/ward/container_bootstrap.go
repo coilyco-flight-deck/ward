@@ -233,9 +233,10 @@ func (r *Runner) runContainerBootstrap(ctx context.Context, c *cli.Command) erro
 	// setup ran as root. Keep ANTHROPIC_API_KEY from shadowing the OAuth creds.
 	r.chownAgentTree(ctx, e, work)
 	if e.ReadOnly {
-		// Read-only session: strip the push credential now that the clone is done,
-		// so the dropped agent cannot push (ward#293).
+		// Explore: scope push off this clone but keep the dispatch token + socket so
+		// it can commission sibling runs (ward#293, ward#315).
 		r.revokePushCredential(ctx)
+		r.grantDockerSocketAccess()
 	} else if cerr := r.ensureGitCredReadable(e); cerr != nil {
 		// Re-assert the credential perms git's `store` helper clobbered on the clones,
 		// else the dropped agent falls back to the human token (ward#288).
@@ -287,13 +288,23 @@ func (r *Runner) configureGitAuth(ctx context.Context, e bootstrapEnv) {
 	_ = os.Chmod("/etc/ward-git-credentials", 0o640)
 }
 
-// revokePushCredential strips the bot push credential before the agent drops, the
-// hard half of a read-only session (ward#293). See docs/agent-explore.md.
+// revokePushCredential scopes the revoke to push-to-this-clone: it drops the git
+// push wiring but keeps FORGEJO_TOKEN for dispatch (ward#315). docs/agent-explore.md.
 func (r *Runner) revokePushCredential(ctx context.Context) {
 	_ = os.Remove("/etc/ward-git-credentials")
 	_ = r.Runner.Exec(ctx, "git", "config", "--system", "--unset-all", "credential.helper")
-	_ = os.Unsetenv("FORGEJO_TOKEN")
-	blog("read-only session: revoked the push credential (no commit-push/merge to the remote; ward#293)")
+	blog("read-only session: dropped this clone's push wiring; FORGEJO_TOKEN kept for dispatch-only (file/launch, no push; ward#315)")
+}
+
+// grantDockerSocketAccess lets the dropped agent reach the mounted socket to dispatch
+// a sibling. TODO(ward#315): grant step is Kai's call - see docs/agent-explore.md.
+func (r *Runner) grantDockerSocketAccess() {
+	const sock = "/var/run/docker.sock"
+	if !isSocket(sock) {
+		blog("explore: no docker socket mounted - dispatch unavailable this run (ward#315)")
+		return
+	}
+	blog("explore: docker socket mounted but agent access grant is not wired yet (TODO ward#315); dispatch will fail until Kai picks the grant mechanism")
 }
 
 // ensureGitCredReadable re-asserts the credential perms git's `store` helper
@@ -466,9 +477,9 @@ func (r *Runner) installPreCommitHooks(ctx context.Context, _ bootstrapEnv, work
 // readOnlyPushGuardHook is the per-clone pre-push hook body: it fires before git
 // contacts the remote with the clear named wall (ward#299, docs/agent-explore.md).
 const readOnlyPushGuardHook = `#!/bin/sh
-# ward#299 read-only explore push guard (message layer; bypassable). See ward#293.
-echo "ward: read-only explore session - push is disabled (ward#293)." >&2
-echo "Nothing leaves this container. Commit/branch locally all you like." >&2
+# ward#299 read-only explore push guard (message layer; bypassable). See ward#315.
+echo "ward: read-only explore - this clone can't push (ward#293, ward#315)." >&2
+echo "Commit/branch locally; to ship, file an issue + dispatch 'warded #N'." >&2
 exit 1
 `
 
@@ -612,18 +623,28 @@ const readOnlyContextBlock = `
 
 ## Read-only session (this overrides the autonomy doctrine above)
 
-This is a **read-only explore session** (` + "`warded explore`" + `). The
-"implement, commit, merge, push" mandate stated above does **not** apply here.
-You have a fresh clone and the full operating context to read, search, and run
-read-only commands - but you must **not** mutate the canonical remote in any way:
+This is a **read-only explore session** (` + "`warded explore`" + `). Here "read-only" means
+one thing: **this clone cannot push to its own remote**, so nothing leaves this clone. It
+does not mean you are sealed off. The natural product of an explore session is
+commissioned work, and that still ships.
 
-- **Do not** commit and push, merge to ` + "`main`" + `, or open/close PRs or issues.
-- **Do not** try to authenticate a push by any other route.
+You **may**:
 
-The push credential has been **removed** from this container, so a push would
-fail regardless. Treat the repo as reference material: read it, reason about it,
-answer questions, scratch in the working tree if it helps you think - but nothing
-leaves this box. When you are done, just exit.
+- **File issues** for anything worth tracking (` + "`ward ops forgejo issue create ...`" + `).
+- **Dispatch a sibling headless run** to do the actual fix - ` + "`warded <owner/repo>#N`" + `
+  spins up its own sealed container with its own credential and lifecycle, does its
+  own implement -> commit -> merge -> push there, and never touches this clone.
+
+You **must not**:
+
+- Commit and push **this clone**, or merge this clone's tree to ` + "`main`" + `.
+- Hand-build an authenticated push URL to get this clone's tree onto the remote by
+  another route. (A dispatch-only credential is the proper guard here; until it
+  lands, this is a convention you keep - ward#315.)
+
+This clone's push wiring has been removed, so a direct ` + "`git push`" + ` from here fails.
+Read the repo, reason about it, answer questions, scratch in the working tree if it
+helps you think - then either **file + dispatch** the work or just exit.
 `
 
 // readOnlyTag annotates a log line when the run is read-only.
@@ -1399,6 +1420,13 @@ func isExecutable(path string) bool {
 func isDir(path string) bool {
 	fi, err := os.Stat(path)
 	return err == nil && fi.IsDir()
+}
+
+// isSocket reports whether path exists and is a unix socket (`[ -S ]`); used to
+// probe the mounted docker socket before granting dispatch access (ward#315).
+func isSocket(path string) bool {
+	fi, err := os.Stat(path)
+	return err == nil && fi.Mode()&os.ModeSocket != 0
 }
 
 func isFile(path string) bool {
