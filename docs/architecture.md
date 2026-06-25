@@ -24,3 +24,36 @@ The CLI you actually run. It **embeds** the ward-kdl-generated surfaces (`ward o
 ## The boundary this implies
 
 The model only stays true if the boundary it claims is real: the only Go in **ward** is the run-time product (agent + exec + the embedding); everything reusable-and-policy lives in **cli-guard**; everything guardfile→binary lives in **ward-kdl**. Where that boundary is still blurry today is tracked as cleanup - the articulation comes first, the code catches up.
+
+## Considered and rejected: folding cli-guard into ward
+
+Release friction - keeping `cli-guard` and `ward` in step across a module
+boundary - has more than once prompted "why not merge cli-guard into ward and be
+done with the boundary?" It was considered and **rejected** (ward#325). The
+boundary is load-bearing; collapsing it inverts the architecture.
+
+cli-guard is the engine *both* other layers stand on:
+
+- **ward** (run time) imports cli-guard as a library - ~23 packages of it.
+- **ward-kdl** (build time) *is* a cli-guard driver: `specverb-gen` wrapped
+  around a guardfile.
+
+Fold cli-guard into ward and ward-kdl's dependency inverts: the build-time
+generator would have to depend on the run-time product to reach the engine -
+a compiler depending on the application it compiles. ward is also where the
+live-credential, agent-facing surface lives, so the merge would drag
+credential-bearing run-time code into the build step whose whole job is to emit
+*least-privilege* surfaces. Backwards on both counts.
+
+The merge also erases the one thing the three-layer split exists to give: an
+**independently auditable enforcement boundary**. cli-guard "holds no opinions
+about *your* APIs" precisely because it is a separate, reusable core someone
+else could build on. Dissolve it into ward and the enforcement core is no longer
+separable from the product that uses it - there is nothing left to audit on its
+own.
+
+The release friction is real, but the fix is a **Go workspace** (`go.work`) that
+lets the inner dev loop resolve cli-guard locally without version churn - the
+boundary stays, only dev-time resolution gets easier. Collapsing the module
+boundary to save a few release steps trades a load-bearing wall for a
+convenience.
