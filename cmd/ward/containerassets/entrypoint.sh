@@ -374,6 +374,16 @@ write_claude_creds() {
   log "wrote claude credentials to $dir/.credentials.json"
 }
 
+# --- claude onboarding seed (ward#305): skip the interactive first-run wizard --
+# No ~/.claude.json opens claude on the theme picker (looks like a cred prompt).
+seed_claude_onboarding() {
+  [ "$WARD_MODE" = claude ] || return 0
+  local out="$AGENT_HOME/.claude.json"
+  mkdir -p "$AGENT_HOME"
+  printf '%s' '{"hasCompletedOnboarding":true,"theme":"dark"}' > "$out"
+  log "seeded claude onboarding (skip first-run wizard) at $out"
+}
+
 # --- codex credentials (ward#178): host-resolved auth.json, ride --env-file ---
 # Host passes ~/.codex/auth.json base64'd; we decode it to the file codex reads.
 write_codex_creds() {
@@ -559,6 +569,7 @@ main() {
   compose_context
   compose_permissions
   write_claude_creds
+  seed_claude_onboarding
   write_codex_creds
   compose_codex_config
   compose_opencode_config
@@ -628,7 +639,7 @@ main() {
   esac
   # Drop to the non-root agent user (claude refuses bypass-perms as root, ward#127);
   # setup ran as root. Keep ANTHROPIC_API_KEY from shadowing the OAuth creds.
-  chown -R "$AGENT_UID:$AGENT_GID" "$work" "$AGENT_HOME/.claude" "$AGENT_HOME/.config" "$AGENT_HOME/.codex" 2>/dev/null || true
+  chown -R "$AGENT_UID:$AGENT_GID" "$work" "$AGENT_HOME/.claude" "$AGENT_HOME/.claude.json" "$AGENT_HOME/.config" "$AGENT_HOME/.codex" 2>/dev/null || true
   # Hand each granted extra-repo tree to the agent user too (ward#230); cloned as root.
   for ref in ${WARD_EXTRA_REPOS:-}; do chown -R "$AGENT_UID:$AGENT_GID" "/workspace/${ref##*/}" 2>/dev/null || true; done
   if [ "${WARD_READONLY:-0}" = 1 ]; then
