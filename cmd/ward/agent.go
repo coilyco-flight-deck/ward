@@ -7,11 +7,12 @@ import (
 	"os"
 	"os/exec"
 	"regexp"
-	"strconv"
 	"strings"
 	"time"
 
 	"forgejo.coilysiren.me/coilyco-flight-deck/cli-guard/cli/verb"
+	"forgejo.coilysiren.me/coilyco-flight-deck/cli-guard/pkg/issueref"
+	"forgejo.coilysiren.me/coilyco-flight-deck/cli-guard/pkg/ownertrust"
 	"github.com/urfave/cli/v3"
 )
 
@@ -40,62 +41,27 @@ func (r agentIssueRef) url() string {
 	return fmt.Sprintf("%s/%s/%s/issues/%d", strings.TrimRight(forgejoBaseURL, "/"), r.Owner, r.Repo, r.Number)
 }
 
-// agentRefTrailerRE swallows an optional trailing slash plus any appended
-// ?query and/or #fragment, so a browser-copied ref parses unedited (see docs).
-const agentRefTrailerRE = `/?(?:[?#].*)?$`
-
-// agentIssueShortRE matches owner/repo#N, ignoring any appended query/fragment.
-var agentIssueShortRE = regexp.MustCompile(`^([A-Za-z0-9._-]+)/([A-Za-z0-9._-]+)#(\d+)` + agentRefTrailerRE)
-
-// agentIssueBareRE matches a bare `#N` or `N` ref (no owner/repo), which
-// resolveAgentIssueRef fills from the cwd's git origin (ward#282).
-var agentIssueBareRE = regexp.MustCompile(`^#?(\d+)` + agentRefTrailerRE)
-
-// agentIssueURLRE matches <forgejoBaseURL>/owner/repo/issues/N, query/fragment
-// ignored. A follow-up unifies this with cli-guard dispatch.parseIssueRef.
-var agentIssueURLRE = regexp.MustCompile(`^` + regexp.QuoteMeta(strings.TrimRight(forgejoBaseURL, "/")) +
-	`/([A-Za-z0-9._-]+)/([A-Za-z0-9._-]+)/issues/(\d+)` + agentRefTrailerRE)
-
-// parseAgentIssueRef resolves owner/repo#N, a Forgejo issue URL, or a bare #N / N
-// (owner/repo empty for resolveAgentIssueRef to fill, ward#282); number must be positive.
+// parseAgentIssueRef resolves owner/repo#N, a Forgejo URL, or a bare #N / N via
+// cli-guard's pkg/issueref; ward keeps the task-verb steer (ward#234, ward#282).
 func parseAgentIssueRef(s string) (agentIssueRef, error) {
 	s = strings.TrimSpace(s)
 	if s == "" {
 		return agentIssueRef{}, fmt.Errorf("empty issue reference")
 	}
-	m := agentIssueShortRE.FindStringSubmatch(s)
-	if m == nil {
-		m = agentIssueURLRE.FindStringSubmatch(s)
+	ref, err := issueref.Parse(s, forgejoBaseURL)
+	if err == nil {
+		return agentIssueRef{Owner: ref.Owner, Repo: ref.Repo, Number: ref.Number}, nil
 	}
-	if m == nil {
-		// A bare #N / N ref carries only the number; resolveAgentIssueRef fills
-		// owner/repo from the cwd's git origin (ward#282).
-		if bm := agentIssueBareRE.FindStringSubmatch(s); bm != nil {
-			n, err := strconv.Atoi(bm[1])
-			if err != nil || n <= 0 {
-				return agentIssueRef{}, fmt.Errorf("issue number must be a positive integer in %q", s)
-			}
-			return agentIssueRef{Number: n}, nil
-		}
-		base := strings.TrimRight(forgejoBaseURL, "/")
-		// A non-issue URL is a valid freeform pointer, just not an issue ref -
-		// steer to the task verb that carries arbitrary pointers (ward#234).
-		if strings.Contains(s, "://") {
-			return agentIssueRef{}, fmt.Errorf(
-				"cannot parse issue ref %q: want owner/repo#N, a bare #N, or %s/owner/repo/issues/N; "+
-					"for a non-issue pointer (a CI run, job, or commit URL), hand it to the freeform "+
-					"task verb instead: ward agent task '<url>'",
-				s, base)
-		}
+	// A non-issue URL is a valid freeform pointer, just not an issue ref -
+	// steer to the task verb that carries arbitrary pointers (ward#234).
+	if strings.Contains(s, "://") {
 		return agentIssueRef{}, fmt.Errorf(
-			"cannot parse issue ref %q: want owner/repo#N, a bare #N, or %s/owner/repo/issues/N",
-			s, base)
+			"cannot parse issue ref %q: want owner/repo#N, a bare #N, or %s/owner/repo/issues/N; "+
+				"for a non-issue pointer (a CI run, job, or commit URL), hand it to the freeform "+
+				"task verb instead: ward agent task '<url>'",
+			s, strings.TrimRight(forgejoBaseURL, "/"))
 	}
-	n, err := strconv.Atoi(m[3])
-	if err != nil || n <= 0 {
-		return agentIssueRef{}, fmt.Errorf("issue number must be a positive integer in %q", s)
-	}
-	return agentIssueRef{Owner: m[1], Repo: m[2], Number: n}, nil
+	return agentIssueRef{}, err
 }
 
 // resolveAgentIssueRef parses the ref and, for a bare #N / N, fills owner/repo from
@@ -1365,14 +1331,10 @@ func printAgentTaskPlan(c *cli.Command, mode containerMode, repo targetRepo, tit
 	return werr
 }
 
-// ownerAllowed reports whether owner is in ward's primary-org trust set.
+// ownerAllowed reports whether owner is in ward's primary-org trust set, via
+// cli-guard's pkg/ownertrust (ward supplies the accepted set).
 func (r *Runner) ownerAllowed(owner string) bool {
-	for _, o := range r.primaryOrgs() {
-		if owner == o {
-			return true
-		}
-	}
-	return false
+	return ownertrust.List{Extra: r.primaryOrgs()}.Allowed(owner)
 }
 
 // printAgentPlan renders the resolved issue, the seeded prompt, and the docker

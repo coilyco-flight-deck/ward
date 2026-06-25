@@ -8,6 +8,8 @@ import (
 	"sort"
 	"strings"
 	"time"
+
+	"forgejo.coilysiren.me/coilyco-flight-deck/cli-guard/pkg/scan"
 )
 
 // reapAction is what the reaper does with residual work after the agent exits,
@@ -73,7 +75,7 @@ type reapInputs struct {
 	// IntegrationClean: residual work rebased onto origin/main without conflict.
 	IntegrationClean bool
 	// Findings are junk-scan hits on the residual diff; non-empty -> salvage.
-	Findings []scanFinding
+	Findings []scan.Finding
 }
 
 // decideReap is the whole policy: clean tree -> nothing; clean integration +
@@ -86,130 +88,6 @@ func decideReap(in reapInputs) reapAction {
 		return reapPushMain
 	}
 	return reapSalvage
-}
-
-// --- junk scan ---------------------------------------------------------------
-
-// diffEntry is one path in the residual diff, with enough metadata for the
-// scan: its size and whether git treated it as binary.
-type diffEntry struct {
-	Path   string
-	Bytes  int64
-	Binary bool
-}
-
-// scanFinding is one reason a path should not auto-land on main.
-type scanFinding struct {
-	Path   string
-	Reason string
-}
-
-const (
-	// oversizedBlobBytes flags any file this large or larger - almost always a
-	// build artifact or a vendored binary rather than authored source.
-	oversizedBlobBytes int64 = 5 << 20 // 5 MiB
-	// binaryBlobBytes flags binaries at a lower bar than text, since a large
-	// committed binary is rarely intended.
-	binaryBlobBytes int64 = 1 << 20 // 1 MiB
-)
-
-// vendoredDirs mark machine-generated or fetched trees. High-confidence names
-// only; ambiguous source-or-build names (build, dist, out) are omitted.
-var vendoredDirs = map[string]bool{
-	"node_modules": true,
-	"vendor":       true,
-	"__pycache__":  true,
-	".venv":        true,
-	"venv":         true,
-	".next":        true,
-	".terraform":   true,
-	".gradle":      true,
-	"target":       true,
-}
-
-// secretBasenames are filenames that are credential material by convention.
-var secretBasenames = map[string]bool{
-	".env":             true,
-	".git-credentials": true,
-	".netrc":           true,
-	".pgpass":          true,
-	"credentials":      true,
-	"id_rsa":           true,
-	"id_dsa":           true,
-	"id_ecdsa":         true,
-	"id_ed25519":       true,
-}
-
-// secretSuffixes are extensions that are key material by convention.
-var secretSuffixes = []string{".pem", ".key", ".p12", ".pfx", ".keystore", ".jks"}
-
-// scanDiff flags paths that should not silently land on main: vendored trees,
-// credential-shaped files, oversized/large-binary blobs. First match per path wins.
-func scanDiff(entries []diffEntry) []scanFinding {
-	var out []scanFinding
-	for _, e := range entries {
-		if seg, ok := vendoredSegment(e.Path); ok {
-			out = append(out, scanFinding{e.Path, "vendored/generated tree (" + seg + "/)"})
-			continue
-		}
-		if reason, ok := secretLikePath(e.Path); ok {
-			out = append(out, scanFinding{e.Path, reason})
-			continue
-		}
-		if e.Binary && e.Bytes >= binaryBlobBytes {
-			out = append(out, scanFinding{e.Path, "large binary blob (" + humanBytes(e.Bytes) + ")"})
-			continue
-		}
-		if e.Bytes >= oversizedBlobBytes {
-			out = append(out, scanFinding{e.Path, "oversized file (" + humanBytes(e.Bytes) + ")"})
-			continue
-		}
-	}
-	return out
-}
-
-// vendoredSegment reports the first path segment that names a vendored tree.
-func vendoredSegment(path string) (string, bool) {
-	for _, seg := range strings.Split(path, "/") {
-		if vendoredDirs[seg] {
-			return seg, true
-		}
-	}
-	return "", false
-}
-
-// secretLikePath reports whether a path is credential-shaped by basename or
-// extension. `.env.example`/`.env.sample` are explicitly allowed (templates).
-func secretLikePath(path string) (string, bool) {
-	base := path
-	if i := strings.LastIndex(path, "/"); i >= 0 {
-		base = path[i+1:]
-	}
-	if secretBasenames[base] {
-		return "credential-shaped file (" + base + ")", true
-	}
-	if strings.HasPrefix(base, ".env.") &&
-		!strings.HasSuffix(base, ".example") && !strings.HasSuffix(base, ".sample") {
-		return "environment file (" + base + ")", true
-	}
-	for _, suf := range secretSuffixes {
-		if strings.HasSuffix(base, suf) {
-			return "key material (" + base + ")", true
-		}
-	}
-	return "", false
-}
-
-// humanBytes renders a size as a compact MiB/KiB string for issue text.
-func humanBytes(n int64) string {
-	switch {
-	case n >= 1<<20:
-		return fmt.Sprintf("%.1f MiB", float64(n)/(1<<20))
-	case n >= 1<<10:
-		return fmt.Sprintf("%.1f KiB", float64(n)/(1<<10))
-	default:
-		return fmt.Sprintf("%d B", n)
-	}
 }
 
 // formatTokenAge renders the container's age at reap time from its RFC3339 start
@@ -270,7 +148,7 @@ type salvageReport struct {
 	Mode     string
 	Branch   string
 	Reason   reapReason
-	Findings []scanFinding
+	Findings []scan.Finding
 	// AuthCause is set when the salvage was triggered by a credential-rejected
 	// push (a dead/rotated PAT), not a content conflict or race (ward#103).
 	AuthCause bool
@@ -415,8 +293,8 @@ func firstLine(s string) string {
 }
 
 // sortedFindings returns findings ordered by path for deterministic rendering.
-func sortedFindings(in []scanFinding) []scanFinding {
-	out := append([]scanFinding(nil), in...)
+func sortedFindings(in []scan.Finding) []scan.Finding {
+	out := append([]scan.Finding(nil), in...)
 	sort.Slice(out, func(i, j int) bool { return out[i].Path < out[j].Path })
 	return out
 }

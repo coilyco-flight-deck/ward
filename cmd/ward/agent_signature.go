@@ -4,10 +4,12 @@ import (
 	"fmt"
 	"os"
 	"strings"
+
+	"forgejo.coilysiren.me/coilyco-flight-deck/cli-guard/pkg/attribution"
 )
 
-// agent_signature.go signs the content bodies ward emits to Forgejo (and the
-// reaper commit) with the driving agent's identity. See docs/agent-attribution.md.
+// agent_signature.go signs ward's Forgejo bodies and reaper commit with the
+// agent's identity via cli-guard's pkg/attribution. See docs/agent-attribution.md.
 
 // agentSignatureMarker is the hidden, idempotent marker on a signed body: an
 // HTML comment, so it stays invisible in rendered Forgejo markdown.
@@ -30,33 +32,34 @@ func (m containerMode) agentIdentity() (name, pronouns string) {
 	}
 }
 
+// agentSigner builds the cli-guard signer for this mode: the mode's identity
+// plus ward's idempotency marker, footer tail, and Co-Authored-By email domain.
+func (m containerMode) agentSigner() attribution.Signer {
+	name, pronouns := m.agentIdentity()
+	return attribution.Signer{
+		Identity: attribution.Identity{Name: name, Pronouns: pronouns},
+		Marker:   agentSignatureMarker,
+		Via:      "via `ward agent`",
+		Email:    fmt.Sprintf("%s@ward.agent", m),
+	}
+}
+
 // agentAttribution renders the one-line identity, e.g. "Claude (she/her)" when
 // pronouns are known, otherwise just "Goose".
 func (m containerMode) agentAttribution() string {
-	name, pronouns := m.agentIdentity()
-	if pronouns != "" {
-		return fmt.Sprintf("%s (%s)", name, pronouns)
-	}
-	return name
+	return m.agentSigner().Identity.Label()
 }
 
 // signBody idempotently appends the agent attribution footer to a markdown
 // body; an empty body becomes the footer alone, never empty.
 func (m containerMode) signBody(body string) string {
-	if strings.Contains(body, agentSignatureMarker) {
-		return body
-	}
-	footer := fmt.Sprintf("%s\n— %s, via `ward agent`", agentSignatureMarker, m.agentAttribution())
-	if strings.TrimSpace(body) == "" {
-		return footer
-	}
-	return strings.TrimRight(body, "\n") + "\n\n" + footer
+	return m.agentSigner().SignBody(body)
 }
 
 // commitTrailer is the git Co-Authored-By trailer tagging a commit with the
 // agent that produced the work.
 func (m containerMode) commitTrailer() string {
-	return fmt.Sprintf("Co-Authored-By: %s <%s@ward.agent>", m.agentAttribution(), m)
+	return m.agentSigner().CommitTrailer()
 }
 
 // currentAgentMode resolves the running context's agent from WARD_AGENT then
