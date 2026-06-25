@@ -6,6 +6,7 @@ import (
 	"path/filepath"
 	"strings"
 	"testing"
+	"time"
 
 	"forgejo.coilysiren.me/coilyco-flight-deck/cli-guard/cli/shell"
 )
@@ -19,6 +20,18 @@ func dockerStub(t *testing.T, logPath string) string {
 		"echo \"hints=$DOCKER_CLI_HINTS\" >> " + logPath + "\n" +
 		"echo deadbeefcontainerid\n" +
 		"echo \"What's next: docker scout quickview ...\" 1>&2\n"
+	if err := os.WriteFile(stub, []byte(script), 0o755); err != nil { //nolint:gosec
+		t.Fatal(err)
+	}
+	return stub
+}
+
+// slowDockerStub writes a stand-in `docker` that sleeps long enough for the
+// shrunk heartbeat interval to fire at least once before the pull returns.
+func slowDockerStub(t *testing.T) string {
+	t.Helper()
+	stub := filepath.Join(t.TempDir(), "docker")
+	script := "#!/bin/sh\nsleep 0.1\n"
 	if err := os.WriteFile(stub, []byte(script), 0o755); err != nil { //nolint:gosec
 		t.Fatal(err)
 	}
@@ -66,13 +79,35 @@ func TestAgentLaunchSilencesDockerNoiseWhenHeadless(t *testing.T) {
 		}
 	})
 
-	t.Run("headless pull swallows stdout, stderr, and the scout hint", func(t *testing.T) {
+	t.Run("headless pull swallows docker chatter but names the pull (ward#322)", func(t *testing.T) {
 		r, out, errb := bufRunner(stub)
 		p := sampleUpPlan()
 		p.Interactive = false
 		r.pullAgentImage(t.Context(), p, "ward agent headless")
-		if out.Len() != 0 || errb.Len() != 0 {
-			t.Errorf("headless pull leaked output: stdout=%q stderr=%q", out.String(), errb.String())
+		// Docker's own stdout/scout-hint stay silenced (ward#306)...
+		if out.Len() != 0 {
+			t.Errorf("headless pull leaked docker stdout: %q", out.String())
+		}
+		if strings.Contains(errb.String(), "docker scout") {
+			t.Errorf("headless pull leaked the scout hint: %q", errb.String())
+		}
+		// ...but the silenced pull now announces itself so a stall is attributable.
+		if !strings.Contains(errb.String(), "pulling "+p.Image) {
+			t.Errorf("headless pull must name the pull, got stderr=%q", errb.String())
+		}
+	})
+
+	// ward#322: a slow silenced pull beats a periodic "still pulling" line, so a
+	// slow/mid-push registry stall stays visible instead of hanging silently.
+	t.Run("headless pull beats a heartbeat on a slow pull", func(t *testing.T) {
+		slow := slowDockerStub(t)
+		r, _, errb := bufRunner(slow)
+		r.pullHeartbeatInterval = 10 * time.Millisecond
+		p := sampleUpPlan()
+		p.Interactive = false
+		r.pullAgentImage(t.Context(), p, "ward agent headless")
+		if !strings.Contains(errb.String(), "still pulling "+p.Image) {
+			t.Errorf("slow headless pull must emit a heartbeat, got stderr=%q", errb.String())
 		}
 	})
 

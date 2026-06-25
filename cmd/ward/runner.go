@@ -5,6 +5,7 @@ import (
 	"os"
 	"path/filepath"
 	"strings"
+	"time"
 
 	"forgejo.coilysiren.me/coilyco-flight-deck/cli-guard/cli/sandbox"
 	"forgejo.coilysiren.me/coilyco-flight-deck/cli-guard/cli/shell"
@@ -25,6 +26,10 @@ func init() {
 type Runner struct {
 	Runner *shell.Runner
 	Audit  *audit.Writer
+
+	// pullHeartbeatInterval overrides the silenced-pull heartbeat cadence
+	// (ward#322); zero means pullHeartbeatDefault. A field so tests can shrink it.
+	pullHeartbeatInterval time.Duration
 }
 
 // newRunner builds the production Runner, lazily (only inside a pkg action)

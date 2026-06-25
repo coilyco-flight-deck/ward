@@ -982,28 +982,114 @@ func (r *Runner) launchAgentContainer(ctx context.Context, c *cli.Command, mode 
 	return r.createAgentContainer(ctx, plan, envFile)
 }
 
-// pullAgentImage pulls plan.Image: an interactive run streams docker's output;
-// a detached run swallows the pull chatter and scout hint (ward#306).
+// pullHeartbeatDefault is how often a silenced detached pull beats a "still
+// pulling" line so a stall on a slow/mid-push registry stays attributable.
+const pullHeartbeatDefault = 30 * time.Second
+
+// pullAgentImage pulls plan.Image: interactive streams docker, detached silences
+// it but names the pull + beats a heartbeat (ward#306, ward#322; docs/agent-flags.md).
 func (r *Runner) pullAgentImage(ctx context.Context, plan upPlan, label string) {
 	var perr error
 	if plan.Interactive {
 		perr = r.Runner.Exec(ctx, "docker", "pull", plan.Image)
 	} else {
+		// Capture the live stderr before runDockerSilenced swaps it for
+		// io.Discard; the named line and heartbeat must outlive the silencing.
+		w := r.Runner.Stderr
+		fmt.Fprintf(w, "%s: pulling %s (silenced; this can stall on a mid-push registry)\n", label, plan.Image)
+		stop := r.beatPullHeartbeat(w, label, plan.Image)
 		perr = r.runDockerSilenced(ctx, true, "pull", plan.Image)
+		stop()
 	}
 	if perr != nil {
 		fmt.Fprintf(os.Stderr, "%s: image pull failed (%v); trying the local image\n", label, perr)
 	}
 }
 
+// beatPullHeartbeat prints a "still pulling" line to w every interval until the
+// returned stop func is called, which drains the goroutine first (ward#322).
+func (r *Runner) beatPullHeartbeat(w io.Writer, label, image string) func() {
+	interval := r.pullHeartbeatInterval
+	if interval <= 0 {
+		interval = pullHeartbeatDefault
+	}
+	done, stopped := make(chan struct{}), make(chan struct{})
+	go func() {
+		defer close(stopped)
+		ticker := time.NewTicker(interval)
+		defer ticker.Stop()
+		start := time.Now()
+		for {
+			select {
+			case <-done:
+				return
+			case <-ticker.C:
+				fmt.Fprintf(w, "%s: still pulling %s (%s elapsed; a mid-push registry can be slow)\n",
+					label, image, time.Since(start).Round(time.Second))
+			}
+		}
+	}()
+	return func() {
+		close(done)
+		<-stopped
+	}
+}
+
 // createAgentContainer fires `docker run`: interactive streams to the terminal;
 // detached swallows the lone container-id hash docker echoes (ward#306).
 func (r *Runner) createAgentContainer(ctx context.Context, plan upPlan, envFile string) error {
-	argv := dockerCreateArgv(plan, envFile)
 	if plan.Interactive {
-		return r.Runner.Exec(ctx, "docker", argv...)
+		return r.Runner.Exec(ctx, "docker", dockerCreateArgv(plan, envFile)...)
 	}
-	return r.runDockerSilenced(ctx, false, argv...)
+	if inContainer() {
+		// Dispatching from inside a container (e.g. `warded #N` from explore): the
+		// daemon can't see this container's host-bind sources, so create + cp + start.
+		return r.createDetachedViaCopy(ctx, plan, envFile)
+	}
+	return r.runDockerSilenced(ctx, false, dockerCreateArgv(plan, envFile)...)
+}
+
+// createDetachedViaCopy creates the sibling with volume mounts only, `docker cp`s the
+// host-bind sources in, then starts it - host-path-independent dispatch (ward#323).
+func (r *Runner) createDetachedViaCopy(ctx context.Context, plan upPlan, envFile string) error {
+	out, err := r.captureDockerSilenced(ctx, dockerCreateNoBindsArgv(plan, envFile)...)
+	if err != nil {
+		return fmt.Errorf("ward container: create sibling: %w", err)
+	}
+	id := strings.TrimSpace(out)
+	if id == "" {
+		return fmt.Errorf("ward container: docker create returned no container id")
+	}
+	for _, m := range hostBindMounts(plan) {
+		if !pathExists(m.Source) {
+			continue // an unset optional bind (e.g. --aws) has no source to copy
+		}
+		if cerr := r.Runner.Exec(ctx, "docker", "cp", m.Source+"/.", id+":"+m.Target); cerr != nil {
+			return fmt.Errorf("ward container: docker cp %s -> %s: %w", m.Source, m.Target, cerr)
+		}
+	}
+	return r.runDockerSilenced(ctx, false, "start", id)
+}
+
+// captureDockerSilenced runs docker capturing stdout (the created container id) with
+// the CLI hint banner off, so a create's id reads clean (ward#306-style).
+func (r *Runner) captureDockerSilenced(ctx context.Context, argv ...string) (string, error) {
+	saveEnv := r.Runner.Env
+	r.Runner.Env = append(append([]string(nil), saveEnv...), "DOCKER_CLI_HINTS=false")
+	defer func() { r.Runner.Env = saveEnv }()
+	out, err := r.Runner.Capture(ctx, "docker", argv...)
+	return string(out), err
+}
+
+// inContainer reports whether ward runs inside a container (the docker /.dockerenv
+// marker), where host bind-mount sources don't resolve on the daemon (ward#323).
+func inContainer() bool { return fileExists("/.dockerenv") }
+
+// pathExists reports whether a path exists, file or directory (fileExists excludes
+// dirs, but bind sources like the assets dir and cwd are directories).
+func pathExists(p string) bool {
+	_, err := os.Stat(p)
+	return err == nil
 }
 
 // runDockerSilenced runs docker with the CLI hint banner off and stdout dropped

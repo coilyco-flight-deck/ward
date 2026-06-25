@@ -476,11 +476,35 @@ func (p upPlan) wardEnv() map[string]string {
 	return env
 }
 
-// dockerCreateArgv assembles the `docker run` argv. The token rides --env-file
-// (envFilePath), never inlined, so the argv is safe to print; "" omits it.
+// dockerArgvHead is the verb + name/labels + entrypoint shared by the run and
+// create argv builders.
+func dockerArgvHead(verb string, p upPlan) []string {
+	return []string{
+		verb, "--name", p.Name,
+		"--label", containerLabel, "--label", "ward.repo=" + p.Repo.slug(),
+		"--entrypoint", containerWardAssets + "/" + containerEntrypointRel,
+	}
+}
+
+// appendEnvAndImage appends the WARD_* env, the --env-file, the image, and the agent
+// argv - the tail both builders share. The token rides --env-file, never inlined.
+func appendEnvAndImage(argv []string, p upPlan, envFilePath string) []string {
+	for _, k := range sortedKeys(p.wardEnv()) {
+		argv = append(argv, "-e", k+"="+p.wardEnv()[k])
+	}
+	if envFilePath != "" {
+		argv = append(argv, "--env-file", envFilePath)
+	}
+	argv = append(argv, p.Image)
+	// Trailing args become the in-container agent's argv (entrypoint runs
+	// `"$WARD_AGENT" "$@"`); empty for a bare interactive bring-up.
+	return append(argv, p.AgentArgs...)
+}
+
+// dockerCreateArgv assembles `docker run` with every mount as a -v bind. Used on a
+// host, where bind sources resolve on the daemon's filesystem.
 func dockerCreateArgv(p upPlan, envFilePath string) []string {
-	argv := []string{"run", "--name", p.Name, "--label", containerLabel, "--label", "ward.repo=" + p.Repo.slug()}
-	argv = append(argv, "--entrypoint", containerWardAssets+"/"+containerEntrypointRel)
+	argv := dockerArgvHead("run", p)
 	switch {
 	case !p.Interactive:
 		argv = append(argv, "-d")
@@ -494,17 +518,31 @@ func dockerCreateArgv(p upPlan, envFilePath string) []string {
 	for _, m := range p.Mounts {
 		argv = append(argv, "-v", m.arg())
 	}
-	for _, k := range sortedKeys(p.wardEnv()) {
-		argv = append(argv, "-e", k+"="+p.wardEnv()[k])
+	return appendEnvAndImage(argv, p, envFilePath)
+}
+
+// dockerCreateNoBindsArgv assembles `docker create` (stopped) with only volume mounts;
+// host binds are docker-cp'd in after, for an in-container dispatch (ward#323).
+func dockerCreateNoBindsArgv(p upPlan, envFilePath string) []string {
+	argv := dockerArgvHead("create", p)
+	for _, m := range p.Mounts {
+		if m.Volume {
+			argv = append(argv, "-v", m.arg())
+		}
 	}
-	if envFilePath != "" {
-		argv = append(argv, "--env-file", envFilePath)
+	return appendEnvAndImage(argv, p, envFilePath)
+}
+
+// hostBindMounts returns the non-volume mounts - the host-path binds docker-cp'd into
+// the sibling when bind sources won't resolve on the daemon (ward#323).
+func hostBindMounts(p upPlan) []mountSpec {
+	var out []mountSpec
+	for _, m := range p.Mounts {
+		if !m.Volume {
+			out = append(out, m)
+		}
 	}
-	argv = append(argv, p.Image)
-	// Trailing args become the in-container agent's argv (entrypoint runs
-	// `"$WARD_AGENT" "$@"`); empty for a bare interactive bring-up.
-	argv = append(argv, p.AgentArgs...)
-	return argv
+	return out
 }
 
 // sortedKeys returns the map's keys in sorted order for deterministic argv.

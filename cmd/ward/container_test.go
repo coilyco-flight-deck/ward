@@ -484,6 +484,60 @@ func TestDockerCreateArgvDetached(t *testing.T) {
 	}
 }
 
+// ward#323: the in-container dispatch creates the sibling with ONLY volume mounts
+// (host binds are docker-cp'd in after); bind sources don't resolve on the daemon.
+func TestDockerCreateNoBindsArgv(t *testing.T) {
+	argv := dockerCreateNoBindsArgv(sampleUpPlan(), "/tmp/ward-env-xyz")
+	joined := strings.Join(argv, " ")
+	if argv[0] != "create" {
+		t.Errorf("argv[0] = %q, want create (a stopped container to cp into)", argv[0])
+	}
+	for _, want := range []string{
+		"--name ward-eco-app-deadbeef",
+		"--entrypoint " + containerWardAssets + "/" + containerEntrypointRel,
+		"-v " + containerGitcacheVol + ":" + containerGitcacheMnt, // the named volume survives
+		"--env-file /tmp/ward-env-xyz",
+		"-e WARD_TARGET_REPO=coilyco-gaming/eco-app",
+	} {
+		if !strings.Contains(joined, want) {
+			t.Errorf("create argv missing %q\n got: %s", want, joined)
+		}
+	}
+	// The host-path binds (cwd context, assets dir) must NOT be -v mounts here.
+	for _, banned := range []string{"/cwd:" + containerContextMount, "/a:" + containerWardAssets} {
+		if strings.Contains(joined, banned) {
+			t.Errorf("create argv must not bind host path %q (it is docker-cp'd in)\n got: %s", banned, joined)
+		}
+	}
+	for _, a := range argv {
+		if a == "-d" || a == "-it" || a == "-i" {
+			t.Errorf("create makes a stopped container; run-mode flag %q belongs to start", a)
+		}
+	}
+}
+
+// hostBindMounts returns exactly the non-volume mounts - the ones docker-cp'd into a
+// sibling - and never the named volume (ward#323).
+func TestHostBindMounts(t *testing.T) {
+	binds := hostBindMounts(sampleUpPlan())
+	for _, m := range binds {
+		if m.Volume {
+			t.Errorf("hostBindMounts returned a volume mount %s:%s", m.Source, m.Target)
+		}
+	}
+	var targets []string
+	for _, m := range binds {
+		targets = append(targets, m.Target)
+	}
+	joined := strings.Join(targets, " ")
+	if !strings.Contains(joined, containerContextMount) || !strings.Contains(joined, containerWardAssets) {
+		t.Errorf("hostBindMounts should include the cwd context + assets binds, got targets %v", targets)
+	}
+	if strings.Contains(joined, containerGitcacheMnt) {
+		t.Error("hostBindMounts must exclude the gitcache named volume")
+	}
+}
+
 func TestDockerCreateArgvAttachedNoTTY(t *testing.T) {
 	// Attached (not detached) but no terminal: -i to keep stdin open, never -it
 	// (docker rejects -t without a terminal), and never -d (still attached).
@@ -675,11 +729,11 @@ func TestEntrypointInstallsReadOnlyPushGuard(t *testing.T) {
 	}
 	script := string(data)
 	for _, want := range []string{
-		"install_readonly_push_guard()",         // the function exists
-		"install_readonly_push_guard \"$work\"", // main() invokes it on the clone
-		"install_readonly_push_guard \"$dest\"", // and on each --repo extra
-		"[ \"${WARD_READONLY:-0}\" = 1 ]",       // gated on read-only
-		".git/hooks",                            // lands a per-clone hook
+		"install_readonly_push_guard()",              // the function exists
+		"install_readonly_push_guard \"$work\"",      // main() invokes it on the clone
+		"install_readonly_push_guard \"$dest\"",      // and on each --repo extra
+		"[ \"${WARD_READONLY:-0}\" = 1 ]",            // gated on read-only
+		".git/hooks",                                 // lands a per-clone hook
 		"this clone can't push (ward#293, ward#315)", // the clear message
 	} {
 		if !strings.Contains(script, want) {
@@ -703,11 +757,11 @@ func TestEntrypointBridgesRootRootSocket(t *testing.T) {
 	}
 	script := string(data)
 	for _, want := range []string{
-		"bridge_docker_socket()",                       // the bridge function exists
-		"bridge_docker_socket \"$sock\"",               // the root:root branch calls it
-		"UNIX-LISTEN:$bridge,fork,group=$AGENT_GID",    // socat exposes an agent-group socket
-		"UNIX-CONNECT:$sock",                           // bridged to the real host socket
-		"export DOCKER_HOST=\"unix://$bridge\"",        // the agent reaches it via DOCKER_HOST
+		"bridge_docker_socket()",                    // the bridge function exists
+		"bridge_docker_socket \"$sock\"",            // the root:root branch calls it
+		"UNIX-LISTEN:$bridge,fork,group=$AGENT_GID", // socat exposes an agent-group socket
+		"UNIX-CONNECT:$sock",                        // bridged to the real host socket
+		"export DOCKER_HOST=\"unix://$bridge\"",     // the agent reaches it via DOCKER_HOST
 	} {
 		if !strings.Contains(script, want) {
 			t.Errorf("entrypoint missing %q (ward#319 socat bridge)", want)
