@@ -57,6 +57,9 @@ func (r *Runner) hostForgejoClient(_ context.Context) (*forgejoClient, error) {
 	if err != nil {
 		return nil, fmt.Errorf("forgejo: resolve ward binary: %w", err)
 	}
+	// Shell back to canonical ward, not the invoked `warded` shim, so the `ops`
+	// call skips the warded->`ward agent` rewrite that rejects --output (ward#304).
+	exe = canonicalWardExe(exe)
 	return &forgejoClient{r: r, exe: exe, mode: currentAgentMode()}, nil
 }
 

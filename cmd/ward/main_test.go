@@ -192,3 +192,51 @@ func TestMaybeRewriteWardedShim(t *testing.T) {
 		})
 	}
 }
+
+func TestCanonicalWardExe(t *testing.T) {
+	// EvalSymlinks canonicalizes the path (on macOS /var -> /private/var), so resolve
+	// the temp roots up front to compare against the same canonical form.
+	dir, err := filepath.EvalSymlinks(t.TempDir())
+	if err != nil {
+		t.Fatalf("eval temp dir: %v", err)
+	}
+	ward := filepath.Join(dir, "ward")
+	if err := os.WriteFile(ward, []byte("#!/bin/sh\n"), 0o755); err != nil { // #nosec G306 -- test fixture
+		t.Fatalf("write ward fixture: %v", err)
+	}
+
+	// warded as a symlink to ward (the brew install shape): EvalSymlinks lands on ward.
+	wardedLink := filepath.Join(dir, "warded")
+	if err := os.Symlink(ward, wardedLink); err != nil {
+		t.Fatalf("symlink warded->ward: %v", err)
+	}
+	// warded as a standalone file beside a real ward (non-symlink install): basename swap.
+	dir2, err := filepath.EvalSymlinks(t.TempDir())
+	if err != nil {
+		t.Fatalf("eval temp dir: %v", err)
+	}
+	ward2 := filepath.Join(dir2, "ward")
+	wardedFile := filepath.Join(dir2, "warded")
+	for _, p := range []string{ward2, wardedFile} {
+		if err := os.WriteFile(p, []byte("#!/bin/sh\n"), 0o755); err != nil { // #nosec G306 -- test fixture
+			t.Fatalf("write %s: %v", p, err)
+		}
+	}
+
+	cases := []struct {
+		name string
+		exe  string
+		want string
+	}{
+		{"ward stays ward", ward, ward},
+		{"warded symlink resolves to ward", wardedLink, ward},
+		{"warded file swaps to sibling ward", wardedFile, ward2},
+	}
+	for _, tc := range cases {
+		t.Run(tc.name, func(t *testing.T) {
+			if got := canonicalWardExe(tc.exe); got != tc.want {
+				t.Fatalf("canonicalWardExe(%q) = %q, want %q", tc.exe, got, tc.want)
+			}
+		})
+	}
+}

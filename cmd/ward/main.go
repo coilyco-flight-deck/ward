@@ -193,6 +193,22 @@ func maybeRewriteWardedShim(args []string) []string {
 	return append(rewritten, args[1:]...)
 }
 
+// canonicalWardExe maps a public-face `warded` path back to the `ward` binary so an
+// internal `ops` shell-back skips the warded->`ward agent` rewrite (ward#304).
+func canonicalWardExe(exe string) string {
+	if resolved, err := filepath.EvalSymlinks(exe); err == nil {
+		exe = resolved
+	}
+	if filepath.Base(exe) == wardedShimName {
+		if ward := filepath.Join(filepath.Dir(exe), "ward"); ward != exe {
+			if st, err := os.Stat(ward); err == nil && !st.IsDir() {
+				exe = ward
+			}
+		}
+	}
+	return exe
+}
+
 func versionCommand() *cli.Command {
 	return &cli.Command{
 		Name:  "version",
