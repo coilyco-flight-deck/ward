@@ -53,12 +53,30 @@ jobs:
           echo "/usr/local/go/bin" >> "$GITHUB_PATH"
 
       - name: Cross-compile ward (linux amd64 + arm64)
+        timeout-minutes: 12
         run: |
           set -euo pipefail
           # GOPROXY=direct so fresh cli-guard pseudo-versions resolve, mirroring
           # the brew formula's build. See docs/homebrew-build.md.
           export GOPROXY=direct GOSUMDB=off
           mkdir -p dist
+          # Pre-fetch modules in a bounded, retried block before building. A
+          # GOPROXY=direct git fetch hung ~5min then failed in run 405 and shipped
+          # v0.149.0 with zero binaries: the build step died, so the Upload step
+          # never ran. The only network-flaky part is resolving the cli-guard
+          # pseudo-version; bounding each attempt and retrying lets a transient
+          # hang recover instead of silently dropping a release's assets. The
+          # go build below then runs against the warm cache. See docs/release.md.
+          bound() { if command -v timeout >/dev/null 2>&1; then timeout 180 "$@"; else "$@"; fi; }
+          for attempt in 1 2 3; do
+            if bound go mod download; then break; fi
+            if [ "$attempt" -eq 3 ]; then
+              echo "::error::go mod download failed after 3 attempts (GOPROXY=direct fetch); release binaries not built" >&2
+              exit 1
+            fi
+            echo "go mod download attempt ${attempt} failed/timed out; retrying in 5s" >&2
+            sleep 5
+          done
           for arch in amd64 arm64; do
             GOOS=linux GOARCH="$arch" go build -trimpath \
               -ldflags "-s -w -X main.Version=${TAG}" \
