@@ -1,6 +1,7 @@
 package main
 
 import (
+	"encoding/json"
 	"os"
 	"path/filepath"
 	"slices"
@@ -204,13 +205,36 @@ func TestSeedClaudeOnboarding(t *testing.T) {
 
 	t.Run("claude mode seeds onboarding", func(t *testing.T) {
 		home := t.TempDir()
-		r.seedClaudeOnboarding(bootstrapEnv{Mode: "claude", AgentHome: home})
+		r.seedClaudeOnboarding(bootstrapEnv{Mode: "claude", AgentHome: home, TargetName: "ward"})
 		data, err := os.ReadFile(filepath.Join(home, ".claude.json"))
 		if err != nil {
 			t.Fatalf("expected ~/.claude.json: %v", err)
 		}
-		if !strings.Contains(string(data), `"hasCompletedOnboarding":true`) {
+		// Decode so we assert the nested shape claude persists (ward#313): bypass-mode
+		// acceptance at top level + folder trust under launch cwd /workspace/<target>.
+		var got struct {
+			HasCompletedOnboarding        bool `json:"hasCompletedOnboarding"`
+			BypassPermissionsModeAccepted bool `json:"bypassPermissionsModeAccepted"`
+			Projects                      map[string]struct {
+				HasTrustDialogAccepted        bool `json:"hasTrustDialogAccepted"`
+				HasCompletedProjectOnboarding bool `json:"hasCompletedProjectOnboarding"`
+			} `json:"projects"`
+		}
+		if err := json.Unmarshal(data, &got); err != nil {
+			t.Fatalf("claude.json is not valid JSON: %v\n%s", err, data)
+		}
+		if !got.HasCompletedOnboarding {
 			t.Errorf("claude.json missing onboarding flag: %s", data)
+		}
+		if !got.BypassPermissionsModeAccepted {
+			t.Errorf("claude.json missing bypassPermissionsModeAccepted: %s", data)
+		}
+		proj, ok := got.Projects["/workspace/ward"]
+		if !ok {
+			t.Fatalf("claude.json missing projects[/workspace/ward]: %s", data)
+		}
+		if !proj.HasTrustDialogAccepted || !proj.HasCompletedProjectOnboarding {
+			t.Errorf("claude.json missing folder-trust flags for launch cwd: %s", data)
 		}
 	})
 

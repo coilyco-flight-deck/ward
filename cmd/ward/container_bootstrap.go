@@ -682,19 +682,35 @@ func (r *Runner) writeClaudeCreds(e bootstrapEnv) {
 	blog("wrote claude credentials to %s", out)
 }
 
-// seedClaudeOnboarding writes ~/.claude.json marking onboarding complete so an
-// interactive claude session skips the first-run theme picker (ward#305).
+// seedClaudeOnboarding writes ~/.claude.json so interactive claude skips its
+// first-run gates: theme picker (ward#305) + bypass-mode/folder-trust (ward#313).
 func (r *Runner) seedClaudeOnboarding(e bootstrapEnv) {
 	if e.Mode != "claude" {
 		return
 	}
+	work := "/workspace/" + e.TargetName
+	cfg := map[string]any{
+		"hasCompletedOnboarding":        true,
+		"theme":                         "dark",
+		"bypassPermissionsModeAccepted": true,
+		"projects": map[string]any{
+			work: map[string]any{
+				"hasTrustDialogAccepted":        true,
+				"hasCompletedProjectOnboarding": true,
+			},
+		},
+	}
+	data, merr := json.Marshal(cfg)
+	if merr != nil {
+		blog("could not build claude onboarding config: %v", merr)
+		return
+	}
 	out := filepath.Join(e.AgentHome, ".claude.json")
-	const cfg = `{"hasCompletedOnboarding":true,"theme":"dark"}`
-	if werr := os.WriteFile(out, []byte(cfg), 0o644); werr != nil { // #nosec G306 -- onboarding flags, not a secret
+	if werr := os.WriteFile(out, data, 0o644); werr != nil { // #nosec G306 -- onboarding flags, not a secret
 		blog("could not seed claude onboarding: %v", werr)
 		return
 	}
-	blog("seeded claude onboarding (skip first-run wizard) at %s", out)
+	blog("seeded claude onboarding (skip first-run wizard + bypass/trust gates) at %s", out)
 }
 
 // --- codex credentials (ward#178) --------------------------------------------

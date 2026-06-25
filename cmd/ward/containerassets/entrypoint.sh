@@ -374,14 +374,23 @@ write_claude_creds() {
   log "wrote claude credentials to $dir/.credentials.json"
 }
 
-# --- claude onboarding seed (ward#305): skip the interactive first-run wizard --
-# No ~/.claude.json opens claude on the theme picker (looks like a cred prompt).
+# --- claude onboarding seed (ward#305, ward#313): skip the first-run gates -----
+# Theme picker (ward#305) + bypass-mode acceptance & folder trust (ward#313).
+
+# Trust is keyed under the launch cwd ($work=/workspace/<tgt>); without these an
+# interactive/headless explore hangs on the unanswered accept-risk/trust dialogs.
 seed_claude_onboarding() {
   [ "$WARD_MODE" = claude ] || return 0
+  local work="$1"
   local out="$AGENT_HOME/.claude.json"
   mkdir -p "$AGENT_HOME"
-  printf '%s' '{"hasCompletedOnboarding":true,"theme":"dark"}' > "$out"
-  log "seeded claude onboarding (skip first-run wizard) at $out"
+  jq -n --arg work "$work" '{
+    hasCompletedOnboarding: true,
+    theme: "dark",
+    bypassPermissionsModeAccepted: true,
+    projects: { ($work): { hasTrustDialogAccepted: true, hasCompletedProjectOnboarding: true } }
+  }' > "$out"
+  log "seeded claude onboarding (skip first-run wizard + bypass/trust gates) at $out"
 }
 
 # --- codex credentials (ward#178): host-resolved auth.json, ride --env-file ---
@@ -569,7 +578,7 @@ main() {
   compose_context
   compose_permissions
   write_claude_creds
-  seed_claude_onboarding
+  seed_claude_onboarding "$work"
   write_codex_creds
   compose_codex_config
   compose_opencode_config
