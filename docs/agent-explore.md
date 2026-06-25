@@ -47,6 +47,24 @@ Three layers, one soft and two the agent cannot route around:
 The agent can still `git commit` locally (harmless); only the network mutation is
 blocked. On exit the throwaway clone is swept by the [reaper](container-reap.md).
 
+### The pre-push message layer (ward#299)
+
+On its own the revoked credential surfaces an **opaque** failure: `git push` dies
+with a generic `could not read Username`, and a drifted session burns turns on
+it. So a read-only session also lands a per-clone `pre-push` git hook (on the work
+clone and each `--repo` extra) that fires **before** git reaches the remote:
+
+```
+ward: read-only explore session - push is disabled (ward#293).
+Nothing leaves this container. Commit/branch locally all you like.
+```
+
+This is purely the **clear-message layer**: the hook is bypassable (`--no-verify`,
+or `rm`), and the revoked credential stays the backstop. A git-level hook (not a
+`PreToolUse` hook) covers every driver, and per-clone (not `core.hooksPath`)
+avoids shadowing the pre-commit install. Tradeoff: an ad-hoc mid-session clone
+does not inherit it. Both the entrypoint and Go bootstrap install it.
+
 ## `--print`
 
 Resolves the repo and renders the docker plan, then exits without pulling, cloning,

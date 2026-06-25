@@ -664,6 +664,34 @@ func TestEntrypointInstallsPreCommitHooks(t *testing.T) {
 	}
 }
 
+// TestEntrypointInstallsReadOnlyPushGuard locks ward#299: a read-only session
+// lands the per-clone pre-push hook on the work clone and each --repo extra.
+func TestEntrypointInstallsReadOnlyPushGuard(t *testing.T) {
+	data, err := containerAssets.ReadFile("containerassets/" + containerEntrypointRel)
+	if err != nil {
+		t.Fatalf("read entrypoint: %v", err)
+	}
+	script := string(data)
+	for _, want := range []string{
+		"install_readonly_push_guard()",         // the function exists
+		"install_readonly_push_guard \"$work\"", // main() invokes it on the clone
+		"install_readonly_push_guard \"$dest\"", // and on each --repo extra
+		"[ \"${WARD_READONLY:-0}\" = 1 ]",       // gated on read-only
+		".git/hooks",                            // lands a per-clone hook
+		"push is disabled (ward#293)",           // the clear message
+	} {
+		if !strings.Contains(script, want) {
+			t.Errorf("entrypoint missing %q (ward#299 read-only push guard)", want)
+		}
+	}
+	// The guard rides alongside the pre-commit install: after the clone, before launch.
+	install := strings.Index(script, "install_readonly_push_guard \"$work\"")
+	launch := strings.Index(script, "log \"launching $WARD_AGENT")
+	if install < 0 || launch < 0 || install >= launch {
+		t.Errorf("read-only push guard must install after clone and before launch: install=%d launch=%d", install, launch)
+	}
+}
+
 // TestEntrypointNoAgentCommitGate locks the ward#244 fix: ward must never inject
 // the retired, unsatisfiable agent-only commit-msg gate.
 func TestEntrypointNoAgentCommitGate(t *testing.T) {

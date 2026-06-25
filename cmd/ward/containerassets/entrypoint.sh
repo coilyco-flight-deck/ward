@@ -191,6 +191,24 @@ install_precommit_hooks() {
   fi
 }
 
+# --- read-only push guard (ward#299): a per-clone pre-push hook that fails fast
+# with a clear message instead of the opaque auth error. See docs/agent-explore.md.
+install_readonly_push_guard() {
+  local work="$1"
+  [ "${WARD_READONLY:-0}" = 1 ] || return 0
+  local dir="$work/.git/hooks"
+  [ -d "$dir" ] || { log "no .git/hooks in $work; skipping read-only push guard (ward#299)"; return 0; }
+  cat > "$dir/pre-push" <<'HOOK'
+#!/bin/sh
+# ward#299 read-only explore push guard (message layer; bypassable). See ward#293.
+echo "ward: read-only explore session - push is disabled (ward#293)." >&2
+echo "Nothing leaves this container. Commit/branch locally all you like." >&2
+exit 1
+HOOK
+  chmod 0755 "$dir/pre-push"
+  log "installed read-only push guard in $work (ward#299)"
+}
+
 # --- additional granted repos (ward#230): clone+operate beyond the target -----
 # Clone each --repo grant full under /workspace. See docs/container-multi-repo.md.
 clone_extra_repo() {
@@ -221,6 +239,7 @@ clone_extra_repo() {
   git -C "$dest" config push.default current
   [ -n "${WARD_BRANCH:-}" ] && git -C "$dest" checkout -B "$WARD_BRANCH" >&2
   install_precommit_hooks "$dest"
+  install_readonly_push_guard "$dest"
   log "extra-repo: ready $owner/$name at $dest"
   return 0
 }
@@ -573,6 +592,7 @@ main() {
   install_opencode
   local work; work="$(clone_target)"
   install_precommit_hooks "$work"
+  install_readonly_push_guard "$work"
   clone_extra_repos
   warm_substrate
   compose_context

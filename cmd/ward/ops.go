@@ -5,6 +5,7 @@ import (
 	"embed"
 	"encoding/json"
 	"fmt"
+	"io"
 	"os"
 	"strconv"
 	"strings"
@@ -90,6 +91,7 @@ func buildForgejoOps() (*cli.Command, error) {
 		return nil, err
 	}
 	r.overrideForgejoViewIssue(forgejo)
+	r.overrideForgejoCreateIssue(forgejo)
 
 	// Graft the exec-dialect admin/doctor remote-exec slice onto the same
 	// forgejo group, so both transports share one operator verb (ward#81).
@@ -155,6 +157,98 @@ func (r *Runner) overrideForgejoViewIssue(forgejo *cli.Command) {
 	}, r.Audit)
 }
 
+// flagQuiet is the machine-output flag overrideForgejoCreateIssue grafts onto
+// `issue create` (ward#316).
+const flagQuiet = "quiet"
+
+// overrideForgejoCreateIssue grafts a --quiet machine-output mode onto `issue
+// create`: terse `{owner}/{repo}#N` over YAML (docs/ops-forgejo-quiet.md, ward#316).
+func (r *Runner) overrideForgejoCreateIssue(forgejo *cli.Command) {
+	issue := subCommandNamed(forgejo, "issue")
+	if issue == nil {
+		return
+	}
+	create := subCommandNamed(issue, "create")
+	if create == nil {
+		return
+	}
+	orig := create.Action
+	create.Flags = append(create.Flags, &cli.BoolFlag{
+		Name:  flagQuiet,
+		Usage: "on success print only the created issue ref ({owner}/{repo}#N) to stdout; signal failure by exit code",
+	})
+	create.Action = func(ctx context.Context, cmd *cli.Command) error {
+		return runForgejoCreateIssueQuiet(ctx, cmd, orig)
+	}
+}
+
+// runForgejoCreateIssueQuiet delegates to the engine action untouched unless
+// --quiet is set, then projects+reshapes the new number to a ref (ward#316).
+func runForgejoCreateIssueQuiet(ctx context.Context, cmd *cli.Command, orig cli.ActionFunc) error {
+	if !cmd.Bool(flagQuiet) || cmd.Bool(flagDryRun) {
+		return orig(ctx, cmd)
+	}
+	if cmd.IsSet(flagOutput) || cmd.IsSet(flagQuery) {
+		return fmt.Errorf("ward ops forgejo issue create: --quiet cannot combine with --output/--query")
+	}
+	args := cmd.Args().Slice()
+	if len(args) < 2 {
+		return fmt.Errorf("ward ops forgejo issue create: need <owner> <repo>, got %d arg(s)", len(args))
+	}
+	owner, repo := args[0], args[1]
+	// Force the engine to render only the new number as a bare scalar, then
+	// reshape it into the ref. The leaf already carries --output/--query.
+	if err := cmd.Set(flagOutput, respfmt.OutputText); err != nil {
+		return fmt.Errorf("ward ops forgejo issue create: force --output: %w", err)
+	}
+	if err := cmd.Set(flagQuery, "number"); err != nil {
+		return fmt.Errorf("ward ops forgejo issue create: force --query: %w", err)
+	}
+	out, err := captureLeafStdout(func() error { return orig(ctx, cmd) })
+	if err != nil {
+		return err
+	}
+	ref, err := formatCreatedIssueRef(owner, repo, out)
+	if err != nil {
+		return err
+	}
+	fmt.Println(ref)
+	return nil
+}
+
+// formatCreatedIssueRef turns the engine's number projection into the terse
+// `{owner}/{repo}#N` ref, rejecting any non-numeric capture (ward#316).
+func formatCreatedIssueRef(owner, repo, captured string) (string, error) {
+	num := strings.TrimSpace(captured)
+	if _, err := strconv.Atoi(num); err != nil {
+		return "", fmt.Errorf("ward ops forgejo issue create: unexpected response %q (no issue number)", captured)
+	}
+	return fmt.Sprintf("%s/%s#%s", owner, repo, num), nil
+}
+
+// captureLeafStdout redirects os.Stdout for fn and returns what it wrote; the
+// payload is one tiny scalar, well under the pipe buffer, so no deadlock (ward#316).
+func captureLeafStdout(fn func() error) (string, error) {
+	orig := os.Stdout
+	pr, pw, err := os.Pipe()
+	if err != nil {
+		return "", fmt.Errorf("capture stdout: %w", err)
+	}
+	os.Stdout = pw
+	runErr := fn()
+	_ = pw.Close()
+	os.Stdout = orig
+	out, readErr := io.ReadAll(pr)
+	_ = pr.Close()
+	if runErr != nil {
+		return "", runErr
+	}
+	if readErr != nil {
+		return "", fmt.Errorf("capture stdout: %w", readErr)
+	}
+	return string(out), nil
+}
+
 // subCommandNamed returns parent's subcommand named name, or nil.
 func subCommandNamed(parent *cli.Command, name string) *cli.Command {
 	for _, c := range parent.Commands {
@@ -212,6 +306,7 @@ func (r *Runner) runForgejoViewIssue(ctx context.Context, cmd *cli.Command) erro
 const (
 	flagOutput = "output"
 	flagDryRun = "dry-run"
+	flagQuery  = "query"
 )
 
 // ssmValueResolver fetches an SSM SecureString through ward's audited aws runner,
