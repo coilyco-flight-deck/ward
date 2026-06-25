@@ -108,15 +108,20 @@ jobs:
             echo "uploaded ward-linux-${arch}"
           done
 
-  publish-kdl-write:
+  publish-kdl-tiers:
     needs: release
     if: ${{ needs.release.outputs.tag != '' }}
     runs-on: docker
+    strategy:
+      fail-fast: false
+      matrix:
+        tier: [read, write, admin]
     env:
       TAG: ${{ needs.release.outputs.tag }}
       GO_VERSION: "1.26.4"
       KDL_GEN_REF: v0.48.0
-      KDL_GUARDFILE: ./cmd/ward-kdl/ward-kdl-write/ward-kdl.forgejo.write.guardfile.kdl
+      TIER: ${{ matrix.tier }}
+      KDL_GUARDFILE: ./cmd/ward-kdl/ward-kdl-${{ matrix.tier }}/ward-kdl.forgejo.${{ matrix.tier }}.guardfile.kdl
       GOPRIVATE: forgejo.coilysiren.me
       FORGEJO_API: https://forgejo.coilysiren.me/api/v1/repos/coilyco-flight-deck/ward
     steps:
@@ -132,14 +137,18 @@ jobs:
           tar -xzf /tmp/go.tar.gz -C /usr/local
           echo "/usr/local/go/bin" >> "$GITHUB_PATH"
 
-      - name: Build ward-kdl-write (linux amd64 + arm64)
+      - name: Build ward-kdl-${{ matrix.tier }} (linux amd64 + arm64)
         timeout-minutes: 15
         run: |
           set -euo pipefail
-          # The write-tier binary the in-container broker shells (ward#329); the
-          # entrypoint downloads it from this release. Generated, not a plain ./cmd
-          # build: the generator (KDL_GEN_REF, in lockstep with the Makefile's REF)
-          # renders + builds it. See docs/broker.md, docs/ward-kdl.md.
+          # Generated, not a plain ./cmd build: the generator (KDL_GEN_REF, in
+          # lockstep with the Makefile's REF) renders + builds the tier binary,
+          # entered via the tier's forgejo guardfile. The driver discovers and
+          # merges EVERY ward-kdl.*.guardfile.kdl in the tier subdir that shares
+          # the `wrap ward-kdl-<tier>` name (forgejo + signoz today), so the asset
+          # carries the FULL tier surface, not just forgejo (ward#338, ward#343) -
+          # matching `make build-ward-kdl-tiers`. The write tier is the one the
+          # in-container broker shells (ward#329). See docs/broker.md, docs/ward-kdl.md.
           # GOPROXY=direct so fresh cli-guard pseudo-versions resolve, mirroring
           # publish-binaries and the brew formula. See docs/homebrew-build.md.
           export GOPROXY=direct GOSUMDB=off
@@ -149,17 +158,19 @@ jobs:
           # amd64 (host): the generator renders + builds the tier binary directly.
           for attempt in 1 2 3; do
             if bound go run "$gen" build --guardfile "$KDL_GUARDFILE" \
-                 --out dist/ward-kdl-write-linux-amd64 --set-version "$TAG"; then break; fi
+                 --out "dist/ward-kdl-${TIER}-linux-amd64" --set-version "$TAG"; then break; fi
             if [ "$attempt" -eq 3 ]; then
-              echo "::error::ward-kdl-write amd64 build failed after 3 attempts" >&2
+              echo "::error::ward-kdl-${TIER} amd64 build failed after 3 attempts" >&2
               exit 1
             fi
-            echo "ward-kdl-write build attempt ${attempt} failed/timed out; retrying in 5s" >&2
+            echo "ward-kdl-${TIER} build attempt ${attempt} failed/timed out; retrying in 5s" >&2
             sleep 5
           done
           # arm64: specverb-gen build is host-arch only, so cross-build from the
           # self-contained module it just materialized in the generator cache. The
-          # CI cache is fresh, so exactly one cache dir exists for this guardfile.
+          # CI cache is fresh and this is one matrix job per tier (not a loop), so
+          # exactly one cache dir exists - keeping this single-result `find`
+          # unambiguous, which is why the tiers fan out as separate jobs.
           cachedir="$(find "$HOME/.cli-guard/cache/specverb" -mindepth 1 -maxdepth 1 -type d | head -1)"
           if [ -z "$cachedir" ] || [ ! -f "$cachedir/main.go" ]; then
             echo "::error::could not locate the generator cache module for the arm64 cross-build" >&2
@@ -167,16 +178,16 @@ jobs:
           fi
           ( cd "$cachedir" && GOOS=linux GOARCH=arm64 go build -trimpath \
               -ldflags "-s -w -X main.Version=${TAG}" \
-              -o "${GITHUB_WORKSPACE}/dist/ward-kdl-write-linux-arm64" . )
+              -o "${GITHUB_WORKSPACE}/dist/ward-kdl-${TIER}-linux-arm64" . )
           ls -l dist
 
-      - name: Upload ward-kdl-write as release assets
+      - name: Upload ward-kdl-${{ matrix.tier }} as release assets
         env:
           TOKEN: ${{ secrets.CI_RELEASE_TOKEN }}
         run: |
           set -euo pipefail
           if [ -z "${TOKEN:-}" ]; then
-            echo "::error::CI_RELEASE_TOKEN not set; cannot upload ward-kdl-write assets" >&2
+            echo "::error::CI_RELEASE_TOKEN not set; cannot upload ward-kdl-${TIER} assets" >&2
             exit 1
           fi
           rel_id=$(curl -fsSL -H "Authorization: token ${TOKEN}" \
@@ -189,9 +200,9 @@ jobs:
           for arch in amd64 arm64; do
             curl -fsSL -X POST -H "Authorization: token ${TOKEN}" \
               -H "Content-Type: application/octet-stream" \
-              --data-binary @"dist/ward-kdl-write-linux-${arch}" \
-              "${FORGEJO_API}/releases/${rel_id}/assets?name=ward-kdl-write-linux-${arch}"
-            echo "uploaded ward-kdl-write-linux-${arch}"
+              --data-binary @"dist/ward-kdl-${TIER}-linux-${arch}" \
+              "${FORGEJO_API}/releases/${rel_id}/assets?name=ward-kdl-${TIER}-linux-${arch}"
+            echo "uploaded ward-kdl-${TIER}-linux-${arch}"
           done
 
   bump-tap-formula:
