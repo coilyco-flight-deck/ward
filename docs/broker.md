@@ -20,9 +20,9 @@ authorizer, executor interface, server - lives in `cli-guard/pkg/broker`
 - **The executor** (`cmd/ward/broker_exec.go`) shells
   `ward-kdl-write ops forgejo <verb>` for **file / edit / comment issue**, seeding
   the bot token into the subprocess env (env, never argv).
-- **The authorizer** is the write tier: the file/edit/comment op allowlist +
-  `broker.Policy`'s invariants + a `coily*` owner gate. `dispatch` is **not**
-  allowed, so it is refused out-of-tier before the executor runs (routing is Unit C).
+- **The authorizer** is the write tier: the file/edit/comment/`dispatch` op
+  allowlist + `broker.Policy`'s invariants + a `coily*` owner gate. Delete/admin
+  and every other op stay out, refused out-of-tier before the executor runs.
 
 ## ward-kdl-write + auth
 
@@ -52,12 +52,25 @@ The release publishes the tier binary via `publish-kdl-write`
 (`.forgejo/workflows/release.yml`): amd64 through the generator, arm64 cross-built
 from the module the generator materializes in its cache.
 
+## Routing the clients (Unit C)
+
+`cmd/ward/broker_client.go` is one shared `broker.Client` wrapper both chokepoints
+route through when `WARD_BROKER_SOCK` is set:
+
+1. **`ops forgejo <verb>`** (`ops.go`): the specverb `Wrap` classifies by the leaf's
+   `verb.Spec.Name` tail. Issue create/edit/comment/close/reopen forward as the
+   matching `broker.Op`; reads + `--dry-run` go direct; other mutations refuse
+   locally ("write tier only").
+2. **`warded #N` dispatch** (`resolveForgejoToken`): the child env-file's token is
+   seeded from the broker's `dispatch #N` response, not a token the agent holds.
+
+The three failure modes (unreachable, out-of-tier, relayed forge error) word apart.
+
 ## Dual mode (not a cutover)
 
-Additive: `FORGEJO_TOKEN` is **still** present and clients are **not** rewired.
-The broker rides alongside. Unit C rewires clients to the socket; Unit D drops the
-raw token. Any broker-path failure falls back to the token path - it never blocks a
-launch.
+`FORGEJO_TOKEN` is **still** present alongside the broker. Unit C rewires the
+clients; Unit D drops the raw token. A dispatch-seed failure falls back to the
+env->SSM path - it never blocks a launch.
 
 ## See also
 

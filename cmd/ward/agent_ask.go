@@ -109,7 +109,7 @@ func (r *Runner) runAgentAsk(ctx context.Context, c *cli.Command, mode container
 	if !c.Bool("no-pull") {
 		r.pullAgentImage(ctx, plan, label)
 	}
-	envFile, cleanupEnv, err := r.writeTokenEnvFile(ctx, r.resolveAgentCreds(ctx, mode))
+	envFile, cleanupEnv, err := r.writeTokenEnvFile(ctx, planDispatchTarget(plan), r.resolveAgentCreds(ctx, mode))
 	if err != nil {
 		return err
 	}
