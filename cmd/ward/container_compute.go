@@ -78,6 +78,31 @@ const (
 	containerSubstrateTTL = "600"
 )
 
+const (
+	// tsSidecarImage is the upstream tailscale image the carry's userspace SOCKS5
+	// sidecar runs (no /dev/net/tun, no NET_ADMIN, no route; ward#333).
+	tsSidecarImage = "tailscale/tailscale:latest"
+
+	// tsSidecarSocks5Host is the loopback SOCKS5 the userspace sidecar serves; the
+	// carry reaches it over a shared netns, so it binds loopback not 0.0.0.0.
+	tsSidecarSocks5Host = "127.0.0.1:1055"
+
+	// tsSidecarHostname is the tailnet node name the sidecar registers under - the
+	// tag:proxy node the /coilysiren/mac-proxy/ts-authkey key is minted for.
+	tsSidecarHostname = "mac-proxy"
+
+	// tsSidecarSuffix names a carry's sidecar off the carry, so the carry joins its
+	// netns deterministically and the orphan sweep can pair the two back up.
+	tsSidecarSuffix = "-ts"
+
+	// tsSidecarLabel marks the userspace sidecars so the orphan sweep can find one
+	// whose carry is gone and reclaim it (ward#333).
+	tsSidecarLabel = "ward.sidecar=ts"
+
+	// towerOllamaPort is the port kai-tower-3026 serves ollama on over the tailnet.
+	towerOllamaPort = "11434"
+)
+
 // substrateRepo is one entry in the container substrate manifest: a
 // Forgejo-canonical owner/name plus its seed tier (image|cache).
 type substrateRepo struct {
@@ -382,7 +407,14 @@ type upPlan struct {
 	// HostNet joins the container to the host network (--network=host) so a carry
 	// inherits the host's tailnet route (--host-net, ward#330). docs/agent-host-net.md.
 	HostNet bool
+	// TSSidecar joins the carry to a userspace tailscale SOCKS5 sidecar's netns for
+	// tailnet reach on Docker Desktop (--ts-sidecar, ward#333). docs/agent-ts-sidecar.md.
+	TSSidecar bool
 }
+
+// tsSidecarName derives the userspace tailscale sidecar's container name from the
+// carry's name, so the carry can join its netns deterministically (ward#333).
+func tsSidecarName(carry string) string { return carry + tsSidecarSuffix }
 
 // parseExtraRepos resolves the --repo grant (bare owner/name or clone URL):
 // drops the target + dups, errors on a bad ref or workspace collision (ward#230).
@@ -470,6 +502,11 @@ func (p upPlan) wardEnv() map[string]string {
 	if p.ReadOnly {
 		env["WARD_READONLY"] = "1"
 	}
+	if p.TSSidecar {
+		// Per-connection proxy for the tower only, never a host-wide ALL_PROXY (the
+		// proxy carries the tailnet, not public egress). Tower URL rides the env-file.
+		env["WARD_TS_SOCKS5"] = "socks5://" + tsSidecarSocks5Host
+	}
 	if p.GoBootstrap {
 		env["WARD_USE_GO_BOOTSTRAP"] = "1"
 	}
@@ -487,12 +524,34 @@ func dockerArgvHead(verb string, p upPlan) []string {
 		"--label", containerLabel, "--label", "ward.repo=" + p.Repo.slug(),
 		"--entrypoint", containerWardAssets + "/" + containerEntrypointRel,
 	}
-	// --host-net (ward#330) shares the host's network namespace so the carry
-	// inherits the host's tailnet route. See docs/agent-host-net.md.
-	if p.HostNet {
+	// Tailnet route (mutually exclusive, off by default): --host-net shares the
+	// host's namespace (ward#330), --ts-sidecar the sidecar's (ward#333).
+	switch {
+	case p.TSSidecar:
+		argv = append(argv, "--network=container:"+tsSidecarName(p.Name))
+	case p.HostNet:
 		argv = append(argv, "--network=host")
 	}
 	return argv
+}
+
+// tsSidecarRunArgv builds the `docker run -d` argv for the userspace tailscale
+// SOCKS5 sidecar a --ts-sidecar carry joins (TS_AUTHKEY rides the env-file; ward#333).
+func tsSidecarRunArgv(carryName, repoSlug, envFilePath string) []string {
+	argv := []string{
+		"run", "-d",
+		"--name", tsSidecarName(carryName),
+		"--label", containerLabel,
+		"--label", tsSidecarLabel,
+		"--label", "ward.repo=" + repoSlug,
+		"--hostname", tsSidecarHostname,
+		"-e", "TS_USERSPACE=true",
+		"-e", "TS_SOCKS5_SERVER=" + tsSidecarSocks5Host,
+	}
+	if envFilePath != "" {
+		argv = append(argv, "--env-file", envFilePath)
+	}
+	return append(argv, tsSidecarImage)
 }
 
 // appendEnvAndImage appends the WARD_* env, the --env-file, the image, and the agent
@@ -602,6 +661,47 @@ func dockerRmArgv(names []string) []string {
 		return nil
 	}
 	return append([]string{"rm"}, names...)
+}
+
+// dockerWardListArgv lists every ward-managed container by name (running + exited),
+// the input the orphan-sidecar sweep pairs carries against sidecars (ward#333).
+func dockerWardListArgv() []string {
+	return []string{"ps", "-a",
+		"--filter", "label=" + containerLabel,
+		"--format", "{{.Names}}"}
+}
+
+// orphanedSidecars returns the -ts sidecar names whose carry is no longer among
+// the ward containers (dockerWardListArgv's output, one name per line; ward#333).
+func orphanedSidecars(psOutput string) []string {
+	present := map[string]bool{}
+	var names []string
+	for _, line := range strings.Split(psOutput, "\n") {
+		if n := strings.TrimSpace(line); n != "" {
+			present[n] = true
+			names = append(names, n)
+		}
+	}
+	var orphans []string
+	for _, n := range names {
+		carry := strings.TrimSuffix(n, tsSidecarSuffix)
+		if carry == n {
+			continue // not a sidecar name
+		}
+		if !present[carry] {
+			orphans = append(orphans, n)
+		}
+	}
+	return orphans
+}
+
+// dockerForceRmArgv builds `docker rm -f <names...>` - the orphan-sidecar sweep
+// targets still-running userspace sidecars, so it forces. Empty names yields nil.
+func dockerForceRmArgv(names []string) []string {
+	if len(names) == 0 {
+		return nil
+	}
+	return append([]string{"rm", "-f"}, names...)
 }
 
 // imageRef joins an image and tag, leaving an already-tagged or digest-pinned

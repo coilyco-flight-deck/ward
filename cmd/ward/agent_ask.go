@@ -32,6 +32,7 @@ func agentAskCommand() *cli.Command {
 			&cli.StringFlag{Name: "ward-version", Sources: cli.EnvVars(envAgentVersion), Usage: "ward release the container downloads (default: this host's ward; env: WARD_AGENT_VERSION)"},
 			&cli.BoolFlag{Name: "aws", Usage: "mount ~/.aws read-only (broad SSM read surface; off by default)"},
 			hostNetFlag(),
+			tsSidecarFlag(),
 			&cli.BoolFlag{Name: "print", Usage: "resolve the repo + question + docker plan and exit; clone nothing, run nothing"},
 			&cli.BoolFlag{Name: "no-pull", Usage: "skip the image pull"},
 		},
@@ -109,7 +110,7 @@ func (r *Runner) runAgentAsk(ctx context.Context, c *cli.Command, mode container
 	if !c.Bool("no-pull") {
 		r.pullAgentImage(ctx, plan, label)
 	}
-	envFile, cleanupEnv, err := r.writeTokenEnvFile(ctx, r.resolveAgentCreds(ctx, mode))
+	envFile, cleanupEnv, err := r.writeTokenEnvFile(ctx, r.resolveCredsForPlan(ctx, mode, plan))
 	if err != nil {
 		return err
 	}

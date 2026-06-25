@@ -268,6 +268,18 @@ func hostNetFlag() cli.Flag {
 	}
 }
 
+// tsSidecarFlag is the Docker Desktop sibling of --host-net (ward#333): a userspace
+// tailscale SOCKS5 sidecar for tailnet reach. Implies --aws; excludes --host-net.
+func tsSidecarFlag() cli.Flag {
+	return &cli.BoolFlag{
+		Name: "ts-sidecar",
+		Usage: "run a userspace tailscale SOCKS5 sidecar next to the carry and route tailnet-only hosts " +
+			"like kai-tower-3026 through it - the Docker Desktop path where --host-net can't reach the " +
+			"tailnet (the LinuxKit VM is not a tailnet node); implies --aws (the auth key + tower IP are " +
+			"SSM-only); mutually exclusive with --host-net; off by default (ward#333)",
+	}
+}
+
 // agentDriver resolves the --driver flag to a containerMode (defaulting to
 // claude), erroring on an unknown harness with a --driver-shaped message.
 func agentDriver(c *cli.Command) (containerMode, error) {
@@ -353,6 +365,7 @@ func agentSurfaceFlags(headless bool) []cli.Flag {
 		&cli.StringFlag{Name: "ward-version", Sources: cli.EnvVars(envAgentVersion), Usage: "ward release the container downloads (default: this host's ward; env: WARD_AGENT_VERSION)"},
 		&cli.BoolFlag{Name: "aws", Usage: "mount ~/.aws read-only (broad SSM read surface; off by default)"},
 		hostNetFlag(),
+		tsSidecarFlag(),
 		&cli.BoolFlag{Name: "print", Usage: "resolve the issue + seeded prompt + docker plan and exit; inject no push token, run nothing"},
 		&cli.BoolFlag{Name: "no-pull", Usage: "skip the image pull"},
 		&cli.BoolFlag{Name: "force", Usage: "skip the local + remote concurrency reservation checks (reclaim a stale or foreign hold)"},
@@ -986,7 +999,7 @@ func (r *Runner) launchAgentContainer(ctx context.Context, c *cli.Command, mode 
 	if !c.Bool("no-pull") {
 		r.pullAgentImage(ctx, plan, label)
 	}
-	envFile, cleanupEnv, err := r.writeTokenEnvFile(ctx, r.resolveAgentCreds(ctx, mode))
+	envFile, cleanupEnv, err := r.writeTokenEnvFile(ctx, r.resolveCredsForPlan(ctx, mode, plan))
 	if err != nil {
 		return err
 	}
@@ -1050,7 +1063,17 @@ func (r *Runner) beatPullHeartbeat(w io.Writer, label, image string) func() {
 // createAgentContainer fires `docker run`: interactive streams to the terminal;
 // detached swallows the lone container-id hash docker echoes (ward#306).
 func (r *Runner) createAgentContainer(ctx context.Context, plan upPlan, envFile string) error {
+	// The sidecar must exist before the carry's --network=container attaches to it.
+	if plan.TSSidecar {
+		if err := r.startTSSidecar(ctx, plan); err != nil {
+			return err
+		}
+	}
 	if plan.Interactive {
+		// Attached: tear the sidecar down on return (detached relies on the sweep).
+		if plan.TSSidecar {
+			defer r.stopTSSidecar(ctx, plan.Name)
+		}
 		return r.Runner.Exec(ctx, "docker", dockerCreateArgv(plan, envFile)...)
 	}
 	if inContainer() {
@@ -1136,6 +1159,7 @@ func agentTaskCommand() *cli.Command {
 		&cli.StringFlag{Name: "ward-version", Sources: cli.EnvVars(envAgentVersion), Usage: "ward release the container downloads (default: this host's ward; env: WARD_AGENT_VERSION)"},
 		&cli.BoolFlag{Name: "aws", Usage: "mount ~/.aws read-only (broad SSM read surface; off by default)"},
 		hostNetFlag(),
+		tsSidecarFlag(),
 		&cli.BoolFlag{Name: "print", Usage: "resolve the repo + the issue that would be filed + the docker plan and exit; file nothing, run nothing"},
 		&cli.BoolFlag{Name: "no-pull", Usage: "skip the image pull"},
 		&cli.BoolFlag{Name: "force", Usage: "skip the local + remote concurrency reservation checks (reclaim a stale or foreign hold)"},
@@ -1371,6 +1395,10 @@ func printAgentPlan(c *cli.Command, p upPlan, ref agentIssueRef, title, seed, su
 		fmt.Fprintf(&b, "# pull skipped (--no-pull); image: %s\n", p.Image)
 	} else {
 		fmt.Fprintf(&b, "docker pull %s\n", p.Image)
+	}
+	if p.TSSidecar {
+		// The carry joins this sidecar's netns, so it is brought up first (ward#333).
+		fmt.Fprintf(&b, "docker %s\n", strings.Join(tsSidecarRunArgv(p.Name, p.Repo.slug(), "<ward-ts-authkey-envfile>"), " "))
 	}
 	fmt.Fprintf(&b, "docker %s\n", strings.Join(dockerCreateArgv(p, "<ward-forgejo-token-envfile>"), " "))
 	_, err := io.WriteString(out, b.String())

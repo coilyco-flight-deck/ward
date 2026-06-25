@@ -1,4 +1,4 @@
-# ward agent: --host-net (tailnet route)
+# ward agent: tailnet route (--host-net / --ts-sidecar)
 
 `--host-net` is the **opt-in network escalation** (ward#330): join a carry to the
 host network namespace (`docker run --network=host`) so it inherits the host's
@@ -42,8 +42,19 @@ warded work coilyco-flight-deck/agent-proxy#1 --host-net
 which resolves the FQDN from SSM and reaches `http://$TOWER:11434` inside the
 container.
 
+## On Docker Desktop, use `--ts-sidecar` instead
+
+`--host-net` only helps when the host is *itself* a tailnet node. On **Docker
+Desktop** it is not - the daemon runs inside a LinuxKit VM with no `tailscale0`
+(ward#332) - so `--network=host` lands the carry on a namespace that still can't
+reach the tower. `--ts-sidecar` (ward#333) is the route for that host: a
+userspace tailscale SOCKS5 sidecar the carry routes the tower through. It is the
+mutually-exclusive sibling of `--host-net` and likewise implies `--aws`. See
+[agent-ts-sidecar.md](agent-ts-sidecar.md).
+
 ## See also
 
+- [agent-ts-sidecar.md](agent-ts-sidecar.md) - the Docker Desktop sibling route.
 - [container.md](container.md) - the least-access model this widens.
 - [agent-flags.md](agent-flags.md) - the launch flag list.
 - [agent-credentials.md](agent-credentials.md) - how routes + creds are seeded.
