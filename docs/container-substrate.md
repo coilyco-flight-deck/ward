@@ -32,6 +32,18 @@ Warming is **best-effort** - any failure logs and the container continues, since
 the target work is the job. `WARD_SUBSTRATE_SKIP=1` skips it entirely. The
 agent-facing note lives in [AGENTS.container.md](../cmd/ward/containerassets/AGENTS.container.md).
 
+## When a repo lands in both trees
+
+Because both the substrate working copy and the target/granted clones hydrate
+from the same shared `ward-gitcache` mirror, a repo on the substrate manifest
+that is *also* the target (or a `--repo` grant) ends up under **both**
+`/substrate/<name>` and `/workspace/<name>`, starting at the same HEAD. That
+overlap is expected, not a bug: the split is by *role*, not by which repos exist
+where. `/workspace/<name>` is authoritative for work; `/substrate/<name>` stays
+read-only reference even for a repo being actively changed. The doctrine spells
+out the read-from-either / act-only-on-`/workspace` rule for agents in
+[AGENTS.container.md](../cmd/ward/containerassets/AGENTS.container.md).
+
 ## See also
 
 [docs/container.md](container.md) - the container model and lifecycle.

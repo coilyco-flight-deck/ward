@@ -98,6 +98,23 @@ repos (above) - under `/workspace`. Do not commit or push anything in
 are warm-cache reference copies, not feature branches, and pushing from one is
 out of bounds the same way touching another repo is.
 
+**The same repo can sit in both trees at once.** When the target (or a granted
+repo) is also on the substrate manifest, you'll find it under **both**
+`/workspace/<name>` and `/substrate/<name>` - two working copies hydrated from
+the one shared gitcache mirror, so they start at the **same HEAD**. This is not a
+conflict to resolve; it is the expected overlap. The rule that picks between them
+is simple:
+
+- `/workspace/<name>` is **authoritative for work** - edits, commits, the feature
+  branch, the push all happen here.
+- `/substrate/<name>` is **read-only reference**, never a work surface, even when
+  it mirrors a repo you're actively changing.
+
+So when both exist you may **read** from either copy, but **act only** on the
+`/workspace` one. Once you start editing, the `/substrate` copy is a stale
+snapshot of where you began - don't read it back as the current state of your
+work, and never try to "sync" your changes into it.
+
 ## Context level
 
 `WARD_CONTEXT_LEVEL` records how much operating context was composed for your
