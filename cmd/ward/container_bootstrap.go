@@ -678,12 +678,22 @@ one thing: **this clone cannot push to its own remote**, so nothing leaves this 
 does not mean you are sealed off. The natural product of an explore session is
 commissioned work, and that still ships.
 
-You **may**:
+Capture-and-dispatch is an **obligation, not a "may"**. Every work item you surface -
+a bug, a missing test, a follow-up, anything worth doing - you **must**:
 
-- **File issues** for anything worth tracking (` + "`ward ops forgejo issue create ...`" + `).
+- **File an issue** for it (` + "`ward ops forgejo issue create ...`" + `), then
 - **Dispatch a sibling headless run** to do the actual fix - ` + "`warded <owner/repo>#N`" + `
   spins up its own sealed container with its own credential and lifecycle, does its
   own implement -> commit -> merge -> push there, and never touches this clone.
+
+Do not let a work item die in the conversation. If you named it, capture it and
+dispatch it before you move on.
+
+**This is not the backlog loop.** The supervised backlog loop polls outcomes,
+surfaces blockers, and does chatty back-and-forth with a human in the seat. Explore
+is the opposite discipline: **capture-and-dispatch and move on without babysitting**.
+You file the issue, fire the headless run, and let it carry itself to merge - you do
+not sit on it, poll it, or wait for it to report back.
 
 **How this is wired** (you do not set any of it up - it is ready):
 

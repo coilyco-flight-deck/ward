@@ -144,11 +144,22 @@ func TestComposeContextReadOnlyBlock(t *testing.T) {
 	}
 	// ward#315: the reframed block permits dispatch (file + commission a sibling),
 	// not just "do not push". It must invite filing issues and dispatching headless.
-	if !strings.Contains(readonly, "File issues") {
-		t.Error("the read-only block should tell the agent it may file issues (ward#315)")
+	if !strings.Contains(readonly, "File an issue") {
+		t.Error("the read-only block should tell the agent to file an issue (ward#315)")
 	}
 	if !strings.Contains(readonly, "Dispatch a sibling headless run") {
-		t.Error("the read-only block should tell the agent it may dispatch a sibling run (ward#315)")
+		t.Error("the read-only block should tell the agent to dispatch a sibling run (ward#315)")
+	}
+	// ward#320: capture-and-dispatch is an obligation, not a "may". The block must
+	// frame it imperatively and contrast with the chatty supervised backlog loop.
+	if !strings.Contains(readonly, "obligation, not a") {
+		t.Error("the read-only block should frame capture-and-dispatch as an obligation, not a 'may' (ward#320)")
+	}
+	if !strings.Contains(readonly, "This is not the backlog loop") {
+		t.Error("the read-only block should contrast explore with the supervised backlog loop (ward#320)")
+	}
+	if !strings.Contains(readonly, "without babysitting") {
+		t.Error("the read-only block should frame explore as capture-and-dispatch without babysitting (ward#320)")
 	}
 }
 
