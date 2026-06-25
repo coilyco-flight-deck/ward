@@ -357,6 +357,9 @@ type upPlan struct {
 	// Issue is the carried issue number (0 for a bare `container up`), exported as
 	// WARD_TARGET_ISSUE so the reaper can release a pre-launch hold (ward#264).
 	Issue int
+	// ReadOnly marks a read-only scratch session (`ward agent explore`, ward#293):
+	// exports WARD_READONLY=1. See docs/agent-explore.md for what it enforces.
+	ReadOnly bool
 }
 
 // parseExtraRepos resolves the --repo grant (bare owner/name or clone URL):
@@ -437,6 +440,9 @@ func (p upPlan) wardEnv() map[string]string {
 	}
 	if p.Ask {
 		env["WARD_ASK"] = "1"
+	}
+	if p.ReadOnly {
+		env["WARD_READONLY"] = "1"
 	}
 	if p.GoBootstrap {
 		env["WARD_USE_GO_BOOTSTRAP"] = "1"

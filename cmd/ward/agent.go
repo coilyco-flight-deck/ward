@@ -276,6 +276,7 @@ trusted owner.`,
 			agentReplyCommand(),
 			agentAskCommand(),
 			agentSandboxCommand(),
+			agentExploreCommand(),
 		},
 	}
 }

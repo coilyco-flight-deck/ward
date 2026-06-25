@@ -69,6 +69,15 @@ configure_git_auth() {
   fi
 }
 
+# Strip the bot push credential before the agent drops - the hard half of a
+# read-only session (ward#293). See docs/agent-explore.md.
+revoke_push_credential() {
+  rm -f /etc/ward-git-credentials
+  git config --system --unset-all credential.helper 2>/dev/null || true
+  unset FORGEJO_TOKEN
+  log "read-only session: revoked the push credential (no commit-push/merge to the remote; ward#293)"
+}
+
 # Re-assert the credential perms git's `store` helper clobbers on the clones;
 # fail loud if the agent still can't read it (ward#288, docs/agent-credentials.md).
 ensure_git_cred_readable() {
@@ -310,7 +319,31 @@ compose_context() {
   elif [ "$WARD_CONTEXT_LEVEL" -eq 1 ] && [ -f "$WARD_CONTEXT_SRC/AGENTS.md" ]; then
     printf '\n\n---\n\n' >> "$out"; cat "$WARD_CONTEXT_SRC/AGENTS.md" >> "$out"
   fi
-  log "composed context (level $WARD_CONTEXT_LEVEL) at $out"
+  # Read-only static entry context (a seedless run has no seed to carry it; ward#293).
+  # Kept in sync with readOnlyContextBlock in container_bootstrap.go.
+  if [ "${WARD_READONLY:-0}" = 1 ]; then
+    cat >> "$out" <<'EOF'
+
+
+---
+
+## Read-only session (this overrides the autonomy doctrine above)
+
+This is a **read-only explore session** (`warded explore`). The
+"implement, commit, merge, push" mandate stated above does **not** apply here.
+You have a fresh clone and the full operating context to read, search, and run
+read-only commands - but you must **not** mutate the canonical remote in any way:
+
+- **Do not** commit and push, merge to `main`, or open/close PRs or issues.
+- **Do not** try to authenticate a push by any other route.
+
+The push credential has been **removed** from this container, so a push would
+fail regardless. Treat the repo as reference material: read it, reason about it,
+answer questions, scratch in the working tree if it helps you think - but nothing
+leaves this box. When you are done, just exit.
+EOF
+  fi
+  log "composed context (level $WARD_CONTEXT_LEVEL$([ "${WARD_READONLY:-0}" = 1 ] && echo ', read-only')) at $out"
   # goose ignores ~/.claude/CLAUDE.md; mirror composed doctrine into its hints
   # file so `goose run` carries the seed prompt's context. See docs/agent.md (goose).
   if [ "$WARD_MODE" = goose ]; then
@@ -418,6 +451,8 @@ compose_goose_config() {
 reap() {
   trap - EXIT
   [ -n "${WARD_REAP_WORK:-}" ] || return 0
+  # A read-only explore session never mutates the remote (ward#293): skip salvage.
+  [ "${WARD_READONLY:-0}" = 1 ] && { log "read-only session: nothing to salvage (skipping reap)"; return 0; }
   log "reaping: salvage residual work before teardown"
   ward container reap --work "$WARD_REAP_WORK" \
     || log "reaper returned non-zero; check this log for an UNPRESERVED PATCH block before the container is removed"
@@ -596,7 +631,11 @@ main() {
   chown -R "$AGENT_UID:$AGENT_GID" "$work" "$AGENT_HOME/.claude" "$AGENT_HOME/.config" "$AGENT_HOME/.codex" 2>/dev/null || true
   # Hand each granted extra-repo tree to the agent user too (ward#230); cloned as root.
   for ref in ${WARD_EXTRA_REPOS:-}; do chown -R "$AGENT_UID:$AGENT_GID" "/workspace/${ref##*/}" 2>/dev/null || true; done
-  ensure_git_cred_readable  # re-assert creds the clones clobbered (ward#288)
+  if [ "${WARD_READONLY:-0}" = 1 ]; then
+    revoke_push_credential   # read-only explore: strip the push cred + token (ward#293)
+  else
+    ensure_git_cred_readable # re-assert creds the clones clobbered (ward#288)
+  fi
   unset ANTHROPIC_API_KEY ANTHROPIC_AUTH_TOKEN 2>/dev/null || true
   # Fail loud before launch if claude can't authenticate (ward#222): a clear
   # abort beats a silent multi-minute hang. Runs as the agent user, post-chown.

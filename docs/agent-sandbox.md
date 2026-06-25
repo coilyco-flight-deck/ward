@@ -15,7 +15,9 @@ now back under the agent umbrella where the credentials and trust gate live.
 It is **writable**, not read-only: the run gets the same push token a `work` carry
 gets, so the agent can commit, merge, and push - it is a full scratch dev box in a
 throwaway clone, just with nothing assigned. Use it to poke at the repo with an
-agent, try a spike, or hand-drive work that has no issue yet.
+agent, try a spike, or hand-drive work that has no issue yet. When you want the same
+bring-up but with a hard guarantee that nothing leaves the box, reach for its
+read-only sibling [`ward agent explore`](agent-explore.md) instead.
 
 ## Usage
 
@@ -69,6 +71,7 @@ is no issue to reserve).
 ## See also
 
 - [docs/agent.md](agent.md) - the `ward agent` umbrella.
+- [docs/agent-explore.md](agent-explore.md) - `explore`, the read-only sibling.
 - [docs/agent-ask.md](agent-ask.md) - `ask`, the one-shot question sibling.
 - [docs/container.md](container.md) - the ephemeral, fresh-clone-inside container model.
 - [docs/container-reap.md](container-reap.md) - the reaper that sweeps the run on exit.

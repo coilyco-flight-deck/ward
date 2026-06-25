@@ -46,7 +46,10 @@ type bootstrapEnv struct {
 	Branch       string
 	Headless     bool
 	Ask          bool
-	ForgejoHost  string
+	// ReadOnly is the read-only scratch session (WARD_READONLY, ward#293): revoke
+	// the push credential, compose the restriction. See docs/agent-explore.md.
+	ReadOnly    bool
+	ForgejoHost string
 	// ExtraRepos are the additional writable repos this run was granted via
 	// --repo (WARD_EXTRA_REPOS); each is cloned full under /workspace (ward#230).
 	ExtraRepos []targetRepo
@@ -91,6 +94,7 @@ func readBootstrapEnv() (bootstrapEnv, error) {
 		Branch:       os.Getenv("WARD_BRANCH"),
 		Headless:     os.Getenv("WARD_HEADLESS") == "1",
 		Ask:          os.Getenv("WARD_ASK") == "1",
+		ReadOnly:     os.Getenv("WARD_READONLY") == "1",
 
 		SubstrateSeed:     envOr("WARD_SUBSTRATE_SEED", "/opt/substrate-seed"),
 		SubstrateDest:     envOr("WARD_SUBSTRATE_DEST", "/substrate"),
@@ -226,9 +230,13 @@ func (r *Runner) runContainerBootstrap(ctx context.Context, c *cli.Command) erro
 	// Drop to the non-root agent user (claude refuses bypass-perms as root, ward#127);
 	// setup ran as root. Keep ANTHROPIC_API_KEY from shadowing the OAuth creds.
 	r.chownAgentTree(ctx, e, work)
-	// Re-assert the credential perms git's `store` helper clobbered on the clones,
-	// else the dropped agent falls back to the human token (ward#288).
-	if cerr := r.ensureGitCredReadable(e); cerr != nil {
+	if e.ReadOnly {
+		// Read-only session: strip the push credential now that the clone is done,
+		// so the dropped agent cannot push (ward#293).
+		r.revokePushCredential(ctx)
+	} else if cerr := r.ensureGitCredReadable(e); cerr != nil {
+		// Re-assert the credential perms git's `store` helper clobbered on the clones,
+		// else the dropped agent falls back to the human token (ward#288).
 		blog("fatal: %v", cerr)
 		return cerr
 	}
@@ -275,6 +283,15 @@ func (r *Runner) configureGitAuth(ctx context.Context, e bootstrapEnv) {
 		_ = os.Chown("/etc/ward-git-credentials", 0, gid)
 	}
 	_ = os.Chmod("/etc/ward-git-credentials", 0o640)
+}
+
+// revokePushCredential strips the bot push credential before the agent drops, the
+// hard half of a read-only session (ward#293). See docs/agent-explore.md.
+func (r *Runner) revokePushCredential(ctx context.Context) {
+	_ = os.Remove("/etc/ward-git-credentials")
+	_ = r.Runner.Exec(ctx, "git", "config", "--system", "--unset-all", "credential.helper")
+	_ = os.Unsetenv("FORGEJO_TOKEN")
+	blog("read-only session: revoked the push credential (no commit-push/merge to the remote; ward#293)")
 }
 
 // ensureGitCredReadable re-asserts the credential perms git's `store` helper
@@ -552,6 +569,36 @@ func splitOwnerName(ref string) (owner, name string, ok bool) {
 
 // --- compose per-mode operating context (the least-context ladder) -----------
 
+// readOnlyContextBlock is a read-only session's static "do not push" entry context
+// (ward#293). Kept in sync with the same block in entrypoint.sh's compose_context.
+const readOnlyContextBlock = `
+
+---
+
+## Read-only session (this overrides the autonomy doctrine above)
+
+This is a **read-only explore session** (` + "`warded explore`" + `). The
+"implement, commit, merge, push" mandate stated above does **not** apply here.
+You have a fresh clone and the full operating context to read, search, and run
+read-only commands - but you must **not** mutate the canonical remote in any way:
+
+- **Do not** commit and push, merge to ` + "`main`" + `, or open/close PRs or issues.
+- **Do not** try to authenticate a push by any other route.
+
+The push credential has been **removed** from this container, so a push would
+fail regardless. Treat the repo as reference material: read it, reason about it,
+answer questions, scratch in the working tree if it helps you think - but nothing
+leaves this box. When you are done, just exit.
+`
+
+// readOnlyTag annotates a log line when the run is read-only.
+func readOnlyTag(readOnly bool) string {
+	if readOnly {
+		return ", read-only"
+	}
+	return ""
+}
+
 // composeContext ports compose_context: write AGENTS.container.md as the base
 // CLAUDE.md, appending host context per the level ladder; mirror to goose hints.
 func (r *Runner) composeContext(e bootstrapEnv) {
@@ -574,8 +621,13 @@ func (r *Runner) composeContext(e bootstrapEnv) {
 			buf = append(buf, extra...)
 		}
 	}
+	// A read-only session has no seed to carry the "do not push" constraint, so it
+	// rides here as static entry context, overriding the autonomy doctrine (ward#293).
+	if e.ReadOnly {
+		buf = append(buf, []byte(readOnlyContextBlock)...)
+	}
 	_ = os.WriteFile(out, buf, 0o644) // #nosec G306 -- operating context, not a secret
-	blog("composed context (level %s) at %s", e.ContextLevel, out)
+	blog("composed context (level %s%s) at %s", e.ContextLevel, readOnlyTag(e.ReadOnly), out)
 	if e.Mode == "goose" {
 		ghints := filepath.Join(e.AgentHome, ".config", "goose", ".goosehints")
 		_ = os.MkdirAll(filepath.Dir(ghints), 0o755)
@@ -784,6 +836,11 @@ func (r *Runner) reap(ctx context.Context, work string) {
 // reapWorkTree runs the same capture->integrate->land/salvage flow as
 // runContainerReap, against an already-validated work tree.
 func (r *Runner) reapWorkTree(ctx context.Context, work string, env reapEnv) error {
+	if env.ReadOnly {
+		// A read-only explore session never mutates the remote (ward#293).
+		fmt.Fprintln(os.Stderr, "ward container reap: read-only session, nothing to salvage (skipping)")
+		return nil
+	}
 	statusSnapshot := r.captureAndCommitResidual(ctx, work, env)
 	_ = r.Runner.Exec(ctx, "git", "-C", work, "fetch", "origin")
 	if !refExists(ctx, r, work, "origin/main") {

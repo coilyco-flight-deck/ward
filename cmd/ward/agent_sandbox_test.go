@@ -18,8 +18,7 @@ func TestAgentHasSandboxSurface(t *testing.T) {
 }
 
 // A sandbox plan is the bare interactive bring-up: empty AgentArgs (no seed),
-// neither WARD_ASK nor WARD_HEADLESS, attached with a TTY. The entrypoint then
-// launches a plain agent REPL, so the docker argv ends at the image.
+// neither WARD_ASK nor WARD_HEADLESS, attached with a TTY, argv ending at the image.
 func TestSandboxPlanBareInteractive(t *testing.T) {
 	p := sampleUpPlan()
 	p.AgentArgs = nil

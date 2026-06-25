@@ -35,6 +35,9 @@ type reapEnv struct {
 	// Launched mirrors WARD_AGENT_LAUNCHED: set once the entrypoint reaches the
 	// agent launch. Unset means a pre-launch death (e.g. the ward#222 smoke test).
 	Launched bool
+	// ReadOnly mirrors WARD_READONLY (ward#293): a read-only explore session, so the
+	// reaper skips salvage (it would otherwise push whatever the agent left behind).
+	ReadOnly bool
 }
 
 // envAgentLaunched is the entrypoint flag exported just before the agent launches,
@@ -50,6 +53,7 @@ func readReapEnv() (reapEnv, error) {
 		Token:    os.Getenv("FORGEJO_TOKEN"),
 		UpAt:     os.Getenv("WARD_CONTAINER_UP"),
 		Launched: os.Getenv(envAgentLaunched) == "1",
+		ReadOnly: os.Getenv("WARD_READONLY") == "1",
 	}
 	// A missing/garbage WARD_TARGET_ISSUE parses to 0: "no issue to release".
 	e.Issue, _ = strconv.Atoi(os.Getenv("WARD_TARGET_ISSUE"))
@@ -101,6 +105,12 @@ func (r *Runner) runContainerReap(ctx context.Context, c *cli.Command) error {
 	env, err := readReapEnv()
 	if err != nil {
 		return err
+	}
+	if env.ReadOnly {
+		// A read-only explore session never mutates the remote (ward#293): skip
+		// capture/commit/push outright, leaving the throwaway clone untouched.
+		fmt.Fprintln(os.Stderr, "ward container reap: read-only session, nothing to salvage (skipping)")
+		return nil
 	}
 	work := resolveReapWork(c)
 	if !isGitWorkTree(ctx, r, work) {

@@ -11,29 +11,33 @@ import (
 	"github.com/urfave/cli/v3"
 )
 
-// agent_sandbox.go wires `ward agent sandbox`: drop into an interactive agent in
-// a fresh container with no issue and no seed - the unguided scratch session.
-// See docs/agent-sandbox.md.
+// agent_sandbox.go wires `ward agent sandbox`: the writable seedless interactive
+// scratch session. Shares runScratchSession with `explore`. See docs/agent-sandbox.md.
 
-// agentSandboxCommand builds `ward agent sandbox` so a human can poke around in a
-// fresh clone + operating context with a live agent, carrying no issue (ward#292).
-// It is the interactive sibling of `ask`: same container, no seed, no one-shot.
+// agentScratchFlags is the flag set the two seedless scratch surfaces (sandbox +
+// explore) share; they differ only in whether the session can push.
+func agentScratchFlags() []cli.Flag {
+	return []cli.Flag{
+		agentDriverFlag(),
+		&cli.StringFlag{Name: "repo", Usage: "owner/repo to clone for context (default: inferred from the cwd's git origin)"},
+		&cli.StringSliceFlag{Name: "with-repo", Usage: "clone an additional repo for context (owner/name; repeatable), landed under /workspace alongside the primary repo (ward#230)."},
+		&cli.StringFlag{Name: "image", Value: containerImageDefault, Usage: "dev-base image to run"},
+		&cli.StringFlag{Name: "tag", Value: containerImageTagDefault, Usage: "image tag"},
+		&cli.StringFlag{Name: "ward-source", Usage: "mount a local ward checkout and build ward from it instead of downloading the release"},
+		&cli.BoolFlag{Name: "aws", Usage: "mount ~/.aws read-only (broad SSM read surface; off by default)"},
+		&cli.BoolFlag{Name: "print", Usage: "resolve the repo + docker plan and exit; clone nothing, run nothing"},
+		&cli.BoolFlag{Name: "no-pull", Usage: "skip the image pull"},
+	}
+}
+
+// agentSandboxCommand builds `ward agent sandbox`: a writable seedless scratch
+// session, the interactive sibling of `ask` (ward#292).
 func agentSandboxCommand() *cli.Command {
 	return &cli.Command{
 		Name: "sandbox",
 		Usage: "Drop into an interactive agent in a fresh ephemeral container (repo clone + operating context) " +
 			"with no issue and no seed - an unguided, writable scratch session.",
-		Flags: []cli.Flag{
-			agentDriverFlag(),
-			&cli.StringFlag{Name: "repo", Usage: "owner/repo to clone for context (default: inferred from the cwd's git origin)"},
-			&cli.StringSliceFlag{Name: "with-repo", Usage: "clone an additional repo for context (owner/name; repeatable), landed under /workspace alongside the primary repo (ward#230)."},
-			&cli.StringFlag{Name: "image", Value: containerImageDefault, Usage: "dev-base image to run"},
-			&cli.StringFlag{Name: "tag", Value: containerImageTagDefault, Usage: "image tag"},
-			&cli.StringFlag{Name: "ward-source", Usage: "mount a local ward checkout and build ward from it instead of downloading the release"},
-			&cli.BoolFlag{Name: "aws", Usage: "mount ~/.aws read-only (broad SSM read surface; off by default)"},
-			&cli.BoolFlag{Name: "print", Usage: "resolve the repo + docker plan and exit; clone nothing, run nothing"},
-			&cli.BoolFlag{Name: "no-pull", Usage: "skip the image pull"},
-		},
+		Flags: agentScratchFlags(),
 		Action: func(ctx context.Context, c *cli.Command) error {
 			r := newRunner()
 			mode, err := agentDriver(c)
@@ -44,19 +48,27 @@ func agentSandboxCommand() *cli.Command {
 				Name:       "agent." + string(mode) + ".sandbox",
 				SkipPolicy: true,
 				Action: func(ctx context.Context, cmd *cli.Command) error {
-					return r.runAgentSandbox(ctx, cmd, mode)
+					return r.runScratchSession(ctx, cmd, mode, false)
 				},
 			}, r.Audit)(ctx, c)
 		},
 	}
 }
 
-// runAgentSandbox resolves the context repo, spins up a fresh attached container
-// with no seed, and drops the human into the interactive agent. The session is
-// writable (it gets the push token like `work`), so it can commit/merge/push;
-// the only difference from a carry is that nothing is assigned. See docs/agent-sandbox.md.
-func (r *Runner) runAgentSandbox(ctx context.Context, c *cli.Command, mode containerMode) error {
-	label := agentCmdline(mode, "sandbox")
+// scratchSurface names the seedless interactive surface a run came in on, so the
+// shared bring-up labels its command line, container name, and audit verb right.
+func scratchSurface(readOnly bool) string {
+	if readOnly {
+		return "explore"
+	}
+	return "sandbox"
+}
+
+// runScratchSession is the seedless interactive bring-up `sandbox` and `explore`
+// share; readOnly exports WARD_READONLY=1 (ward#293). See docs/agent-explore.md.
+func (r *Runner) runScratchSession(ctx context.Context, c *cli.Command, mode containerMode, readOnly bool) error {
+	surface := scratchSurface(readOnly)
+	label := agentCmdline(mode, surface)
 
 	// The context repo is --repo, else inferred from the cwd's git origin (the
 	// same target resolution ask + the container bring-up use).
@@ -64,9 +76,8 @@ func (r *Runner) runAgentSandbox(ctx context.Context, c *cli.Command, mode conta
 	if err != nil {
 		return fmt.Errorf("%s: %w", label, err)
 	}
-	// Trust gate: sandbox spins a bypassPermissions container with a push token and
-	// clones the repo, so only act on an owner in the primary-org set - the same
-	// gate work/task/ask apply.
+	// Trust gate: a bypassPermissions clone of private code, so only act on an owner
+	// in the primary-org set - the same gate work/task/ask apply (read-only or not).
 	if !r.ownerAllowed(repo.Owner) {
 		return fmt.Errorf("%s: refusing untrusted owner %q (allowed: %s)",
 			label, repo.Owner, strings.Join(r.primaryOrgs(), ", "))
@@ -76,7 +87,7 @@ func (r *Runner) runAgentSandbox(ctx context.Context, c *cli.Command, mode conta
 	if err != nil {
 		return err
 	}
-	// sandbox always runs attached and ephemeral, so its assets clean up on return.
+	// The session always runs attached and ephemeral, so its assets clean up on return.
 	defer cleanupAssets()
 
 	// No seed: empty AgentArgs is the bare interactive bring-up, so the entrypoint
@@ -85,20 +96,17 @@ func (r *Runner) runAgentSandbox(ctx context.Context, c *cli.Command, mode conta
 	if err != nil {
 		return err
 	}
-	// Name it ward-<repo>-sandbox-<mode>-<rand> so `docker ps` tells a sandbox run
-	// apart from a carry run or an ask run.
-	plan.Name = fmt.Sprintf("%s-%s-sandbox-%s-%s", containerNamePrefix, safeRepoName(repo), mode, randHex())
+	plan.ReadOnly = readOnly
+	// Name it ward-<repo>-<surface>-<mode>-<rand> so `docker ps` tells the run apart.
+	plan.Name = fmt.Sprintf("%s-%s-%s-%s-%s", containerNamePrefix, safeRepoName(repo), surface, mode, randHex())
 
 	if c.Bool("print") {
-		return printAgentSandboxPlan(c, plan)
+		return printScratchPlan(c, plan, readOnly)
 	}
 
-	// sandbox is interactive (a human is at the terminal), so this dispatch is the
-	// moment to surface a stale-ward reminder before the container spins (ward#143).
+	// Interactive dispatch: warn on a stale ward (ward#143), then reclaim dead
+	// containers' layers so a busy fleet can't wedge new launches (ward#272).
 	r.maybeWarnWardOutdated(ctx)
-
-	// Reclaim dead containers' writable layers before adding one more, so a busy
-	// fleet can't exhaust the docker disk and wedge new launches (ward#272).
 	r.sweepStaleContainers(ctx)
 	if !c.Bool("no-pull") {
 		if perr := r.Runner.Exec(ctx, "docker", "pull", plan.Image); perr != nil {
@@ -110,20 +118,29 @@ func (r *Runner) runAgentSandbox(ctx context.Context, c *cli.Command, mode conta
 		return err
 	}
 	defer cleanupEnv()
-	fmt.Fprintf(os.Stderr, "%s: opening an interactive %s session on %s in a fresh container...\n\n", label, mode.agentBinary(), repo.slug())
+	access := "writable"
+	if readOnly {
+		access = "read-only"
+	}
+	fmt.Fprintf(os.Stderr, "%s: opening an interactive %s %s session on %s in a fresh container...\n\n", label, access, mode.agentBinary(), repo.slug())
 	return r.Runner.Exec(ctx, "docker", dockerCreateArgv(plan, envFile)...)
 }
 
-// printAgentSandboxPlan renders the resolved repo and the docker plan without
-// cloning or firing - the dry-run preview for sandbox. There is no seed to show.
-func printAgentSandboxPlan(c *cli.Command, p upPlan) error {
+// printScratchPlan renders the resolved repo + docker plan without cloning or
+// firing - the dry-run preview for sandbox + explore. There is no seed to show.
+func printScratchPlan(c *cli.Command, p upPlan, readOnly bool) error {
 	out := c.Root().Writer
 	if out == nil {
 		out = os.Stdout
 	}
+	access := "writable"
+	if readOnly {
+		access = "read-only (push credential revoked after clone)"
+	}
 	var b strings.Builder
-	fmt.Fprintf(&b, "# %s (print)\n", agentCmdline(p.Mode, "sandbox"))
-	fmt.Fprintf(&b, "sandbox: agent runs interactive, attached, in a fresh ephemeral container (no seed)\n")
+	fmt.Fprintf(&b, "# %s (print)\n", agentCmdline(p.Mode, scratchSurface(readOnly)))
+	fmt.Fprintf(&b, "%s: agent runs interactive, attached, in a fresh ephemeral container (no seed)\n", scratchSurface(readOnly))
+	fmt.Fprintf(&b, "access: %s\n", access)
 	fmt.Fprintf(&b, "repo:   %s\n", p.Repo.slug())
 	fmt.Fprintf(&b, "name:   %s\n", p.Name)
 	if c.Bool("no-pull") {
