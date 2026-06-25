@@ -48,9 +48,9 @@ Started **as root, before the privilege-drop**, gated on `WARD_READONLY`:
 2. `start_broker` runs the daemon, waits for the socket, then exports
    `WARD_BROKER_SOCK` so the dropped agent inherits it.
 
-The release publishes the tier binary via `publish-kdl-write`
-(`.forgejo/workflows/release.yml`): amd64 through the generator, arm64 cross-built
-from the module the generator materializes in its cache.
+The release publishes the tier binaries via the `publish-kdl-tiers` matrix job
+(`.forgejo/workflows/release.yml`), one per tier; the broker downloads `write`:
+amd64 through the generator, arm64 cross-built from the generator's cache module.
 
 ## Routing the clients (Unit C)
 

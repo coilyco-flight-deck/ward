@@ -8,7 +8,8 @@ homebrew formula(e) so `brew upgrade ward` builds the new tag from source.
 ward's formula is build-from-source (a per-tag tarball `url` + `sha256` ->
 `go build`, since ward#116), so unlike o2r there are no prebuilt binaries to
 attach. The `publish-binaries` job still uploads linux binaries as release
-assets for convenience, but `brew` never consumes them.
+assets for convenience, but `brew` never consumes them; `publish-kdl-tiers`
+attaches the six `ward-kdl-<tier>-linux-<arch>` tier assets.
 
 ## Version bump
 
