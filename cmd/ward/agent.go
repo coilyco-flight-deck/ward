@@ -110,13 +110,20 @@ const emptyBodySeedAction = "This issue has no body, so work from the title alon
 	"issue content, screenshots, or other artifacts that are not there (an empty body is not an " +
 	"invitation to invent one). The comment thread at that URL may hold later context worth a quick read."
 
-// headlessReflectionAction is the headless run's closing move (ward#281): post a
-// short "how it felt" retrospective once merged - see docs/agent-subcommands.md.
+// headlessReflectionAction is the headless run's closing move (ward#281, ward#310):
+// a "how it felt" retro led by a WARD-OUTCOME line. See docs/agent-backlog.md.
 const headlessReflectionAction = "Finally, as your very last step - only after the work is committed, merged " +
 	"to main, and pushed - post a SHORT comment on this issue (a few sentences, in your own voice) on how the " +
 	"implementation \"felt\": how the work went, anything that surprised you or fought back, how confident you " +
 	"are in the result, and any rough edges or follow-ups worth filing. This is a candid retrospective, not a " +
-	"status report or a changelog - keep it brief and honest, and post it even if the work went smoothly."
+	"status report or a changelog - keep it brief and honest, and post it even if the work went smoothly.\n\n" +
+	"Begin that final comment with a single machine-readable status line - its very first line, exactly one of:\n" +
+	"  `" + wardOutcomeMarker + " done - <one line on what landed>`\n" +
+	"  `" + wardOutcomeMarker + " blocked - <the one specific decision or piece of information you need from a human>`\n" +
+	"  `" + wardOutcomeMarker + " failed - <why, briefly>`\n" +
+	"then your retrospective on the lines below it. A supervising backlog loop (ward agent backlog) reads only that " +
+	"first line to classify the run, so for a normal carry that you merged and pushed it is `" + wardOutcomeMarker +
+	" done`; reserve blocked/failed for a run that genuinely could not land."
 
 // grantedRepoDoneClause widens the done-condition for a --repo grant (ward#291):
 // every granted repo must be pushed AND verified landed, not just the issue's repo.
@@ -269,7 +276,7 @@ func agentCommand() *cli.Command {
 		Name:  "agent",
 		Usage: "Send an agent into a fresh ephemeral container to carry a Forgejo issue end to end (a bare ref runs headless).",
 		Description: `agent is the issue-carrying dispatcher (the spelling 'warded' fronts).
-Pick a surface (work|headless|task|reply|ask|sandbox) and --driver picks the harness
+Pick a surface (work|headless|task|reply|ask|sandbox|backlog) and --driver picks the harness
 (claude|codex|qwen|goose, default claude). A BARE REF with no surface word runs
 the 'headless' carry - the fire-and-forget default. A bare #N (or N) infers the
 owner/repo from the cwd's git origin; owner/repo#N and a full Forgejo issue URL
@@ -302,6 +309,7 @@ trusted owner.`,
 			agentAskCommand(),
 			agentSandboxCommand(),
 			agentExploreCommand(),
+			agentBacklogCommand(),
 		},
 	}
 }

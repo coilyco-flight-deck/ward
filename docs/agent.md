@@ -28,6 +28,7 @@ warded ask "how is the audit log written?"
 warded reply #98
 warded sandbox                              # interactive agent, fresh clone, no issue
 warded explore                              # like sandbox, but read-only (cannot push)
+warded backlog --repo owner/name            # autonomous loop draining the headless lane
 ward agent work coilyco-flight-deck/ward#98 # the canonical spelling warded fronts
 ```
 
@@ -37,14 +38,10 @@ ladder). ward#185 moved the harness off a subcommand slot onto `--driver`,
 leaving room for a future `--reviewer` role flag.
 
 **A bare ref with no surface word runs the `headless` carry** (ward#282) - the
-fire-and-forget default, since by the time the issue exists the design is done
-and the PR is the review gate. The issue ref is `owner/repo#N`, a full Forgejo
-issue URL, or a **bare `#N` / `N`** that infers `owner/repo` from the cwd's git
-origin (so `warded #98` from inside the ward checkout means
-`coilyco-flight-deck/ward#98`, mirroring how `ask` already infers its context
-repo). Any appended query string (`?thing=stuff`) or hash fragment
-(`#issuecomment-149`) is ignored, so a URL copied straight from the browser works
-unedited.
+fire-and-forget default. The issue ref is `owner/repo#N`, a full Forgejo issue
+URL, or a **bare `#N` / `N`** that infers `owner/repo` from the cwd's git origin
+(so `warded #98` in the ward checkout means `coilyco-flight-deck/ward#98`). Any
+query string or `#fragment` is ignored, so a browser-copied URL works unedited.
 
 ## Topics
 
@@ -69,6 +66,8 @@ The surface is split across focused docs:
   `--force` reclaim, and the host stale-ward reminder.
 - [docs/agent-flags.md](agent-flags.md) - launch flags, `--details`, and the
   `--new-tab` sidequest spawn.
+- [docs/agent-backlog.md](agent-backlog.md) - `backlog`, the autonomous supervised
+  loop that drives a repo's headless lane to drain (ward#346).
 
 ## See also
 

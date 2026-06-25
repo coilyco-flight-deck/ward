@@ -188,6 +188,33 @@ func (c *forgejoClient) findOpenIssueByTitlePrefix(ctx context.Context, owner, r
 	return 0, false, nil
 }
 
+// listOpenIssues lists a repo's open issues (not pulls) with their labels, the
+// backlog loop's ranking input (ward#346). Mirrors backlog-loop.py's fetch.
+func (c *forgejoClient) listOpenIssues(ctx context.Context, owner, repo string, limit int) ([]backlogIssue, error) {
+	if limit <= 0 {
+		limit = 50
+	}
+	out, err := c.run(ctx, "issue", "list", owner, repo, "--state", "open", "--type", "issues", "--limit", strconv.Itoa(limit), "--output", "json")
+	if err != nil {
+		return nil, fmt.Errorf("forgejo: list open issues in %s/%s: %w", owner, repo, err)
+	}
+	var raw []forgejoIssueRaw
+	if err := json.Unmarshal(out, &raw); err != nil {
+		return nil, fmt.Errorf("forgejo: parse issue list for %s/%s: %w", owner, repo, err)
+	}
+	issues := make([]backlogIssue, 0, len(raw))
+	for _, ri := range raw {
+		bi := backlogIssue{Number: ri.Number, Title: ri.Title, URL: ri.HTMLURL}
+		for _, l := range ri.Labels {
+			if l.Name != "" {
+				bi.Labels = append(bi.Labels, l.Name)
+			}
+		}
+		issues = append(issues, bi)
+	}
+	return issues, nil
+}
+
 // listOwnerRepos lists an owner's repos, trying the org leaf then the user leaf
 // (the survey's primary owners are both - coilyco-* orgs and the coilysiren user).
 func (c *forgejoClient) listOwnerRepos(ctx context.Context, owner string) ([]repoBrief, error) {

@@ -10,26 +10,23 @@ from the cwd's git origin. The surface words below override that default.
 
 ## work vs headless
 
-- **`work`** (interactive) attaches the container to your terminal - you watch
-  the agent and can step in. `--detach` backgrounds it.
+- **`work`** (interactive) attaches the container to your terminal - you watch and
+  can step in. `--detach` backgrounds it.
 - **`headless`** is the bare-ref default and is fire-and-forget: it always detaches and runs the agent in
   print mode (`claude -p`, `codex exec <seed>` for codex, or `goose run -t <seed>`
   for goose), so it works to completion non-interactively and exits into the
   reaper. For claude it **streams live progress** (one line per tool call + the
   result, via stream-json) to the container log - `docker logs <name>` / `docker
   exec <name> ...`; codex and goose print their own progress to that log - so it
-  isn't silent until done. (Interactive `goose work` opens a bare `goose session`;
-  the seed prompt is not auto-delivered into a session yet, so headless is the
-  goose surface. Interactive `codex work` opens a seeded `codex` TUI.)
+  isn't silent until done. (Interactive `goose work` opens a bare `goose session`
+  without the seed, so headless is the goose surface; `codex work` opens a seeded TUI.)
   When dispatched from a terminal it first runs a **pre-flight check** (see
   [docs/agent-preflight.md](agent-preflight.md)) - fire-and-forget: a GO launches
   the run, a NO-GO comments on the issue and launches nothing, with no prompt to
-  answer. Its seed also asks it to **close with a "how it felt" comment** (ward#281):
-  once the work is merged and pushed, the agent posts a short, candid retrospective
-  on the issue - how the work went, what fought back, its confidence, any follow-ups.
-  A fire-and-forget run has no human in the loop, so this comment is the only voice
-  it leaves behind. `task` and ROUTE inherit it (they run the same headless carry);
-  interactive `work` omits it (a human is already watching).
+  answer. Its seed also asks it to **close with a "how it felt" comment** (ward#281)
+  led by a `WARD-OUTCOME` line (ward#310) - the only voice a fire-and-forget run
+  leaves behind. `task` and ROUTE inherit it; interactive `work` omits it (a human
+  is already watching).
 - **`task`** files an issue from `--instructions` first, then runs the `headless`
   flow against it (carries to merge, `closes #N`). See [docs/agent-task.md](agent-task.md).
 - **`reply`** researches an issue one-shot and posts the answer as a comment - no
@@ -41,6 +38,10 @@ from the cwd's git origin. The surface words below override that default.
   seed - writable, nothing assigned. See [docs/agent-sandbox.md](agent-sandbox.md).
 - **`explore`** is the **read-only** `sandbox`: push credential revoked after the
   clone, reaper skips salvage (ward#293). See [docs/agent-explore.md](agent-explore.md).
+- **`backlog`** is an *autonomous supervised loop*, not an issue-carrying surface:
+  it dispatches queued headless-lane issues up to `--max-parallel`, polls their
+  `WARD-OUTCOME` comments, and repeats until the lane drains (ward#346). See
+  [docs/agent-backlog.md](agent-backlog.md).
 
 `task` runs the **same pre-flight** ([docs/agent-preflight.md](agent-preflight.md))
 as `headless` (ward#149): it files the issue first, then gives the same GO / NO-GO
