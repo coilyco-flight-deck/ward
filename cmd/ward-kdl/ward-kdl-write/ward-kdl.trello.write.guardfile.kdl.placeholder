@@ -1,0 +1,9 @@
+// Trello WRITE tier - PLACEHOLDER (ward#344). Verbless skeleton for the ward#339
+// migration; staged-only via the `.guardfile.kdl.placeholder` suffix (see the
+// read sibling for the full why and the wiring recipe). `inherit` (cli-guard#160)
+// composes the read tier's grants plus its spec/base-url/auth singletons by
+// relative path; the write-side verbs land here when ward#339 wires the area.
+wrap ward-kdl-write ops trello {
+    inherit "../ward-kdl-read/ward-kdl.trello.read.guardfile.kdl"
+    // TODO(ward#339): tier verbs
+}

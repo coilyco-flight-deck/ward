@@ -1,0 +1,35 @@
+// Trello READ tier - PLACEHOLDER (ward#344, scaffolding for the ward#339 tier
+// migration). Verbless on purpose: this run only moves the spec areas into the
+// per-tier folders and stands up the read ⊂ write ⊂ admin skeleton BEFORE any
+// per-verb tiering - no can/never/override yet (that is the ward#339 fan-out,
+// gated on cli-guard#169).
+//
+// Staged-only: this file carries the `.guardfile.kdl.placeholder` suffix so it is
+// NOT matched by specgen's `*.guardfile.kdl` discovery glob. A verbless surface
+// fails `lock`/`gen` with "spec has no paths", and discovery is directory-wide,
+// so an in-glob verbless file would red the whole tier build - not just itself.
+// To WIRE this area in, the ward#339 run: (1) `git mv` all three tier files,
+// dropping the `.placeholder` suffix, then (2) replaces the `TODO(ward#339)`
+// marker below with the tiered verbs. The base monolith
+// ../ward-kdl.trello.guardfile.kdl stays canonical and untouched.
+//
+// Singleton-bearing root of the chain: declares the spec/base-url/auth that the
+// write+admin tiers inherit (cli-guard#160 only pulls a singleton into a child
+// that declares none). The `spec` names the base file at cmd/ward-kdl/<spec>;
+// `make build-ward-kdl-tiers` copies it into each tier dir once the area is wired
+// (ward#338), the copies gitignored, the base file the single source of truth.
+wrap ward-kdl-read ops trello {
+    spec trello.openapi.json
+    base-url "api.trello.com/1"
+    auth query-param {
+        param key {
+            value ssm "/trello/api-key"
+        }
+        param token {
+            value ssm "/trello/api-token"
+        }
+    }
+    // No restrict: Trello path params are opaque board/card/list ids with no
+    // scopeable shape (unlike Forgejo's {owner}), so a glob gate is meaningless.
+    // TODO(ward#339): tier verbs
+}

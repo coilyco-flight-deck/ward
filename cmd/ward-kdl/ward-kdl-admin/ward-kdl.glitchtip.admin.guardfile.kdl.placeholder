@@ -1,0 +1,9 @@
+// GlitchTip ADMIN tier - PLACEHOLDER (ward#344). Verbless skeleton for the
+// ward#339 migration; staged-only via the `.guardfile.kdl.placeholder` suffix
+// (see the read sibling). `inherit` (cli-guard#160) composes the whole write tier
+// (which composes read); the admin-only verbs (the irreversible project /
+// project-key `delete`s) land here when ward#339 wires the area.
+wrap ward-kdl-admin ops glitchtip {
+    inherit "../ward-kdl-write/ward-kdl.glitchtip.write.guardfile.kdl"
+    // TODO(ward#339): tier verbs
+}

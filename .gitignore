@@ -47,16 +47,20 @@ cmd/ward-kdl/ward-kdl-read/main.go
 cmd/ward-kdl/ward-kdl-write/main.go
 cmd/ward-kdl/ward-kdl-admin/main.go
 
-# A tiered area whose spec is a vendored local file (e.g. signoz) needs that spec
-# read locally at lock time in each tier subdir, since the inheriting write/admin
-# members resolve the same `spec` relative to their own dir. `make
-# build-ward-kdl-tiers` copies the canonical cmd/ward-kdl/<spec> into each tier
-# subdir before locking, so the copies are build-time inputs (like the generated
-# main.go), never a source of truth - the committed spec is the base-dir one, and
-# each tier's pruned *.openapi.lock.json IS tracked (ward#338).
+# A tiered area whose spec is a vendored local file (e.g. signoz .json, tailscale
+# .yaml) needs that spec read locally at lock time in each tier subdir, since the
+# inheriting write/admin members resolve the same `spec` relative to their own
+# dir. `make build-ward-kdl-tiers` copies the canonical cmd/ward-kdl/<spec> into
+# each tier subdir before locking, so the copies are build-time inputs (like the
+# generated main.go), never a source of truth - the committed spec is the base-dir
+# one, and each tier's pruned *.openapi.lock.json IS tracked (ward#338). The .yaml
+# arm lands the rest of the spec areas' vendored copies (tailscale; ward#344).
 cmd/ward-kdl/ward-kdl-read/*.openapi.json
 cmd/ward-kdl/ward-kdl-write/*.openapi.json
 cmd/ward-kdl/ward-kdl-admin/*.openapi.json
+cmd/ward-kdl/ward-kdl-read/*.openapi.yaml
+cmd/ward-kdl/ward-kdl-write/*.openapi.yaml
+cmd/ward-kdl/ward-kdl-admin/*.openapi.yaml
 
 # specverb-gen emits one surface reference beside each Guardfile (the only path
 # it knows); the reviewed copies live under docs/ward-kdl/ (ward#279). One per
