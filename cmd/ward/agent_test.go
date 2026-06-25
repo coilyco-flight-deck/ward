@@ -729,7 +729,7 @@ func TestDockerCreateArgvNoAgentArgs(t *testing.T) {
 // TestAgentImageFlagsCarryEnvSources covers ward#312: --image/--tag take a default
 // from WARD_AGENT_IMAGE / WARD_AGENT_TAG on every agent surface (pin once, no flag).
 func TestAgentImageFlagsCarryEnvSources(t *testing.T) {
-	wantEnv := map[string]string{"image": envAgentImage, "tag": envAgentTag}
+	wantEnv := map[string]string{"image": envAgentImage, "tag": envAgentTag, "ward-version": envAgentVersion}
 	sets := map[string][]cli.Flag{
 		"surface": agentSurfaceFlags(true),
 		"scratch": agentScratchFlags(),

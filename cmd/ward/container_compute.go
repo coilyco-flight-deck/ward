@@ -23,6 +23,10 @@ const (
 	envAgentImage = "WARD_AGENT_IMAGE"
 	envAgentTag   = "WARD_AGENT_TAG"
 
+	// envAgentVersion pins the ward release the container downloads, independent of
+	// the dev-base image tag; --ward-version overrides it per run (ward#312).
+	envAgentVersion = "WARD_AGENT_VERSION"
+
 	// containerWardAssets is where ward's embedded entrypoint + doctrine are
 	// bind-mounted, read-only. The image bakes none of this in.
 	containerWardAssets    = "/opt/ward"

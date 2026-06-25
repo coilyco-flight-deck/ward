@@ -94,6 +94,12 @@ func (r *Runner) resolveAgentCreds(ctx context.Context, mode containerMode) agen
 // agentArgs seed the agent's argv. Errors only on a bad --repo grant (ward#230).
 func buildUpPlan(c *cli.Command, repo targetRepo, mode containerMode, cwd, assetsDir string, agentArgs []string) (upPlan, error) {
 	wardSrc := c.String("ward-source")
+	// The container downloads this host's ward version by default; --ward-version
+	// (env WARD_AGENT_VERSION) overrides it to pin a known-good release (ward#312).
+	wardVersion := Version
+	if v := strings.TrimSpace(c.String("ward-version")); v != "" {
+		wardVersion = v
+	}
 	awsHome := ""
 	if c.Bool("aws") {
 		awsHome = filepath.Join(homeDir(), ".aws")
@@ -115,7 +121,7 @@ func buildUpPlan(c *cli.Command, repo targetRepo, mode containerMode, cwd, asset
 		Mounts:         leastAccessMounts(cwd, mountOpts{AssetsDir: assetsDir, AWSHome: awsHome, WardSource: wardSrc}),
 		Interactive:    !c.Bool("detach"),
 		TTY:            !c.Bool("detach") && terminalAttached(),
-		WardVersion:    Version,
+		WardVersion:    wardVersion,
 		WardFromSource: wardSrc != "",
 		AgentArgs:      agentArgs,
 		GoBootstrap:    c.Bool("go-bootstrap"),

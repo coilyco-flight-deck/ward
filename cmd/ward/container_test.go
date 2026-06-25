@@ -949,3 +949,42 @@ func TestClaudeCredsHealth(t *testing.T) {
 		})
 	}
 }
+
+// TestBuildUpPlanWardVersion covers ward#312: --ward-version (env WARD_AGENT_VERSION)
+// overrides the host ward version the container downloads; unset keeps Version.
+func TestBuildUpPlanWardVersion(t *testing.T) {
+	run := func(args []string) string {
+		var got string
+		probe := &cli.Command{
+			Name: "probe",
+			Flags: []cli.Flag{
+				&cli.StringFlag{Name: "ward-version", Sources: cli.EnvVars(envAgentVersion)},
+				&cli.StringFlag{Name: "ward-source"},
+				&cli.StringFlag{Name: "image", Value: containerImageDefault},
+				&cli.StringFlag{Name: "tag", Value: containerImageTagDefault},
+				&cli.StringFlag{Name: "branch"},
+				&cli.StringSliceFlag{Name: "repo", Aliases: []string{"with-repo"}},
+				&cli.BoolFlag{Name: "aws"},
+				&cli.BoolFlag{Name: "detach"},
+			},
+			Action: func(_ context.Context, c *cli.Command) error {
+				p, err := buildUpPlan(c, targetRepo{Owner: "o", Name: "r"}, modeClaude, t.TempDir(), t.TempDir(), nil)
+				if err != nil {
+					return err
+				}
+				got = p.WardVersion
+				return nil
+			},
+		}
+		if err := probe.Run(context.Background(), append([]string{"probe"}, args...)); err != nil {
+			t.Fatalf("probe run: %v", err)
+		}
+		return got
+	}
+	if got := run([]string{"--ward-version", "v0.148.0"}); got != "v0.148.0" {
+		t.Errorf("--ward-version override: WardVersion = %q, want v0.148.0", got)
+	}
+	if got := run(nil); got != Version {
+		t.Errorf("unset: WardVersion = %q, want host Version %q", got, Version)
+	}
+}
