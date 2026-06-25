@@ -12,8 +12,10 @@ the issue end to end. See [docs/agent.md](agent.md) for the verb family.
    set, because the container runs under `bypassPermissions`. A non-`open` issue
    warns but proceeds.
 3. **Branch.** Derives `issue-<N>` as the feature branch (override with `--branch`).
-4. **Launch.** Spins up an interactive `ward container` against a fresh clone of
-   the repo, seeded with a "read the issue, then carry it to merge" prompt.
+4. **Launch.** Echoes the issue title to stderr (`carrying <ref> - "<title>"`,
+   ward#307) so the operator sees *what* is in flight, not just the opaque ref,
+   then spins up an interactive `ward container` against a fresh clone of the
+   repo, seeded with a "read the issue, then carry it to merge" prompt.
 
 The seed prompt rides as the in-container agent's argv (the entrypoint's
 `"$WARD_AGENT" "$@"`), so the agent opens already pointed at the issue. The
