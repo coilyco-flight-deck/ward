@@ -88,15 +88,29 @@ func runPreToolUse(in io.Reader, errOut io.Writer, getenv func(string) string, l
 	if cwd == "" {
 		cwd = getenv("PWD")
 	}
-	guard := detectGuard(cwd)
+	reg := wardGuardRegistry()
+	guard, _ := reg.Guard(reg.Detect(cwd))
 	payload := hook.Payload{ToolName: hi.ToolName, ToolInput: hi.ToolInput, CWD: cwd}
 	protected := loadProtectedForCwd(cwd)
-	d := hook.PreToolUse(payload, "ward", guardIntegrityRules(), routesFor(guard), hook.LookPath(lookup), protected)
+	d := hook.PreToolUse(payload, "ward", guard.Integrity, guard.Routes, hook.LookPath(lookup), protected)
 	if d.Block {
 		_, _ = fmt.Fprintln(errOut, d.Message)
 		return cli.Exit("", 2)
 	}
 	return nil
+}
+
+// wardGuardRegistry is ward's guard table (ward, then coily) in cli-guard's
+// registry shape; ward is the Default for an unmarked tree. See docs/hook.md.
+func wardGuardRegistry() hook.Registry {
+	integrity := guardIntegrityRules()
+	return hook.Registry{
+		Default: "ward",
+		Guards: []hook.Guard{
+			{Name: "ward", Marker: ".ward/ward.yaml", Routes: routeTable(wardRoutes), Integrity: integrity},
+			{Name: "coily", Marker: ".coily/coily.yaml", Routes: routeTable(coilyRoutes), Integrity: integrity},
+		},
+	}
 }
 
 // guardIntegrityRules adapts guardBinaryPaths to the engine's rule shape: an
@@ -109,13 +123,9 @@ func guardIntegrityRules() []hook.IntegrityRule {
 	return rules
 }
 
-// routesFor builds the engine route table for the active guard. The coily
-// table carries the gh-GraphQL suffix via Route.Extra. See docs/hook.md.
-func routesFor(guard string) []hook.Route {
-	table := wardRoutes
-	if guard == "coily" {
-		table = coilyRoutes
-	}
+// routeTable converts a token->hint map to the engine's route slice. The gh
+// token carries the GraphQL-rate-limit suffix via Route.Extra. See docs/hook.md.
+func routeTable(table map[string]string) []hook.Route {
 	routes := make([]hook.Route, 0, len(table))
 	for tok, hint := range table {
 		r := hook.Route{Token: tok, Hint: hint}
@@ -136,30 +146,7 @@ func ghGraphQLExtra(seg string) string {
 	return ""
 }
 
-// detectGuard walks up from cwd for the nearest config marker. See docs/hook.md.
-func detectGuard(start string) string {
-	if start == "" {
-		return "ward"
-	}
-	dir, err := filepath.Abs(start)
-	if err != nil {
-		return "ward"
-	}
-	for {
-		if fileExists(filepath.Join(dir, ".ward", "ward.yaml")) {
-			return "ward"
-		}
-		if fileExists(filepath.Join(dir, ".coily", "coily.yaml")) {
-			return "coily"
-		}
-		parent := filepath.Dir(dir)
-		if parent == dir {
-			return "ward"
-		}
-		dir = parent
-	}
-}
-
+// fileExists reports whether p is an existing regular file (not a directory).
 func fileExists(p string) bool {
 	info, err := os.Stat(p)
 	return err == nil && !info.IsDir()

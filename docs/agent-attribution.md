@@ -22,11 +22,11 @@ resolves whole to the claude identity, mirroring the claude default elsewhere.
 
 ## How it is applied
 
-`signBody` appends an attribution footer to a markdown body, and `commitTrailer`
-renders the git `Co-Authored-By` line. Signing happens once, at the
-`forgejoClient.createIssue` / `commentIssue` choke points, so every ward-emitted
-write body is attributed without each call site remembering to. It is idempotent
-- a hidden `<!-- ward-agent-signature -->` marker guards against a double sign.
+`signBody` and `commitTrailer` delegate to cli-guard's `pkg/attribution`, with
+ward supplying the per-mode identity and `<!-- ward-agent-signature -->` marker.
+Signing happens once, at the `forgejoClient.createIssue` / `commentIssue` choke
+points, so every ward-emitted write body is attributed without each call site
+remembering to. It is idempotent - the hidden marker guards against a double sign.
 
 The mode is read from `WARD_AGENT`, then `WARD_MODE` (the in-container case), or
 pinned explicitly via `forgejoClient.withMode` by host-side callers - the

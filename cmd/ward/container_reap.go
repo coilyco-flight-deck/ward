@@ -12,6 +12,7 @@ import (
 	"time"
 
 	"forgejo.coilysiren.me/coilyco-flight-deck/cli-guard/cli/verb"
+	"forgejo.coilysiren.me/coilyco-flight-deck/cli-guard/pkg/scan"
 	"github.com/urfave/cli/v3"
 )
 
@@ -152,7 +153,7 @@ func (r *Runner) reapTargetTree(ctx context.Context, work string, env reapEnv, r
 		return nil
 	}
 
-	findings := scanDiff(r.diffEntries(ctx, work, "origin/main...HEAD"))
+	findings := scan.Diff(r.diffEntries(ctx, work, "origin/main...HEAD"))
 	action := decideReap(reapInputs{
 		HasResidualWork:  residual > 0,
 		IntegrationClean: r.integrate(ctx, work, residual),
@@ -211,7 +212,7 @@ func (r *Runner) integrate(ctx context.Context, work string, residual int) bool 
 
 // executeReap carries out the decided action: do nothing, push to main (falling
 // to salvage if the push is rejected), or salvage.
-func (r *Runner) executeReap(ctx context.Context, work string, env reapEnv, action reapAction, findings []scanFinding, status string) error {
+func (r *Runner) executeReap(ctx context.Context, work string, env reapEnv, action reapAction, findings []scan.Finding, status string) error {
 	switch action {
 	case reapNothing:
 		fmt.Fprintln(os.Stderr, "ward container reap: nothing to reap")
@@ -242,7 +243,7 @@ func (r *Runner) executeReap(ctx context.Context, work string, env reapEnv, acti
 
 // salvage preserves residual work on a ward-salvage/<id> branch (durable) then
 // best-effort files/appends a forgejo issue (notification); the branch goes first.
-func (r *Runner) salvage(ctx context.Context, work string, env reapEnv, reason reapReason, authCause bool, findings []scanFinding, status string) error {
+func (r *Runner) salvage(ctx context.Context, work string, env reapEnv, reason reapReason, authCause bool, findings []scan.Finding, status string) error {
 	id := env.Name + "-" + randHex()
 	branch := salvageBranchName(id)
 	_ = r.Runner.Exec(ctx, "git", "-C", work, "branch", "-f", branch, "HEAD")
@@ -448,12 +449,12 @@ func (r *Runner) dumpPatch(ctx context.Context, work string) {
 
 // diffEntries parses `git diff --numstat` into scan-ready entries, pairing each
 // path with its worktree size and binary flag (--no-renames splits renames).
-func (r *Runner) diffEntries(ctx context.Context, work, rangeRef string) []diffEntry {
+func (r *Runner) diffEntries(ctx context.Context, work, rangeRef string) []scan.Entry {
 	out, err := r.Runner.Capture(ctx, "git", "-C", work, "diff", "--no-renames", "--numstat", rangeRef)
 	if err != nil {
 		return nil
 	}
-	var entries []diffEntry
+	var entries []scan.Entry
 	for _, line := range strings.Split(string(out), "\n") {
 		if strings.TrimSpace(line) == "" {
 			continue
@@ -463,7 +464,7 @@ func (r *Runner) diffEntries(ctx context.Context, work, rangeRef string) []diffE
 			continue
 		}
 		path := fields[2]
-		e := diffEntry{Path: path, Binary: fields[0] == "-" && fields[1] == "-"}
+		e := scan.Entry{Path: path, Binary: fields[0] == "-" && fields[1] == "-"}
 		// #nosec G304,G703 -- read-only Size() stat of a path git itself just
 		// reported in this repo's own diff; no file contents are opened.
 		if fi, statErr := os.Stat(filepath.Join(work, path)); statErr == nil {

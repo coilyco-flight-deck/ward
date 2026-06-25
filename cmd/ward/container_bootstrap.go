@@ -19,6 +19,7 @@ import (
 	"time"
 
 	"forgejo.coilysiren.me/coilyco-flight-deck/cli-guard/cli/verb"
+	"forgejo.coilysiren.me/coilyco-flight-deck/cli-guard/pkg/flock"
 	"github.com/urfave/cli/v3"
 )
 
@@ -1116,7 +1117,7 @@ func diskReport(paths []string) string {
 }
 
 // diskBytes renders a byte count compactly in binary units, spanning B..EiB so
-// multi-GiB disk totals read naturally (the reap-side humanBytes caps at MiB) (ward#273).
+// multi-GiB disk totals read clean (reap-side scan.HumanBytes caps at MiB) (ward#273).
 func diskBytes(b uint64) string {
 	const unit = 1024
 	if b < unit {
@@ -1482,11 +1483,11 @@ func (r *Runner) withFlock(lockPath string, fn func()) {
 		return
 	}
 	defer func() { _ = f.Close() }()
-	if lerr := flockExclusive(f); lerr != nil {
+	if lerr := flock.Exclusive(f); lerr != nil {
 		fn()
 		return
 	}
-	defer func() { _ = flockUnlock(f) }()
+	defer func() { _ = flock.Unlock(f) }()
 	fn()
 }
 

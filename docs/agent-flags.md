@@ -5,19 +5,20 @@ for the verb family.
 
 ## Flags
 
-`work` carries the container bring-up launch flags: `--aws`, `--host-net` (host
-network for a native-Linux tailnet route, implies `--aws`; no-op + warns
-elsewhere, ward#332; [agent-host-net.md](agent-host-net.md)),
-`--detach`,
+`work` carries the container bring-up launch flags: `--aws`, the
+mutually-exclusive tailnet routes `--host-net` (native-Linux host route; no-op +
+warns elsewhere, ward#332; [agent-host-net.md](agent-host-net.md)) and
+`--ts-sidecar` (the Docker Desktop sidecar, ward#333;
+[agent-ts-sidecar.md](agent-ts-sidecar.md)) - both imply `--aws`, `--detach`,
 `--tag`/`--image`/`--ward-version` (pin once via `WARD_AGENT_{TAG,IMAGE,VERSION}`,
 ward#312), `--ward-source`, `--no-pull`, `--branch` to override the
 `issue-<N>` default, and `--repo owner/name` (repeatable; `--with-repo` is the
 legacy alias, ward#280) to grant extra writable repos cloned alongside the
-issue's repo ([container-multi-repo.md](container-multi-repo.md)). `--print` renders the seeded prompt +
-docker plan without the push token or docker - the dry-run preview. `--force` skips the local + remote
+issue's repo ([container-multi-repo.md](container-multi-repo.md)). `--print` renders the seed +
+docker plan with no push token - a dry run. `--force` skips the
 concurrency reservation checks (see [docs/agent-reservation.md](agent-reservation.md)). `headless` and `task` swap `--detach`
 (both always detach) for `--no-preflight`, which skips the autonomous pre-flight
-([docs/agent-preflight.md](agent-preflight.md)) and detaches immediately.
+([docs/agent-preflight.md](agent-preflight.md)) and detaches.
 
 ## Quiet launch for detached runs (ward#306, ward#322)
 
@@ -26,7 +27,7 @@ chatter is dropped: pull lines, the `docker scout` footer, the container-id hash
 (`DOCKER_CLI_HINTS=false` plus a swallowed stdout). An **interactive** run streams
 it unchanged. The pull is the one exception (ward#322): silencing it hid
 slow/mid-push-registry stalls, so a detached pull names itself up front and beats
-a periodic `still pulling` heartbeat, then falls back to the local image on failure.
+a periodic `still pulling` heartbeat, then falls back to the local image.
 
 ## `--details` (ward#167)
 
@@ -45,8 +46,7 @@ brief, so there's nothing separate to layer on.
 `work` takes `--new-tab`: instead of launching the container attached to the
 current terminal, it **spawns the work into its own Warp tab**. This is the
 sidequest path - fan a tangent off into its own session without leaving the one
-you're in - and the successor to the retired `ward dispatch interactive` Warp
-seam.
+you're in.
 
 The mechanics are thin. `--new-tab` validates the ref first (the same
 exists/open/trusted gate, so a bad ref fails before any tab opens), then writes a

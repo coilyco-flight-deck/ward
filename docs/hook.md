@@ -41,6 +41,10 @@ of these binaries that does not resolve to a listed path. Required by
 default per the max-security posture (#14). #13 carries the future
 per-consumer override path.
 
+ward assembles its guards (the markers, route tables, and integrity rules
+below) into cli-guard's `hook.Registry` via `wardGuardRegistry`. The
+registry holds the engine-shaped guard table; ward supplies the data.
+
 ## runPreToolUse
 
 The testable core. Reads a hook payload, emits any block reason to
@@ -64,12 +68,12 @@ Resolution uses lookup directly without canonicalizing symlinks since
 `/opt/homebrew/bin/coily` symlink). Matching the symlink is the
 documented contract from coily's prior shell gate.
 
-## detectGuard
+## Guard detection
 
-Walks up from cwd for the nearest config marker and returns
-`ward` or `coily`. Defaults to `ward` when no marker is
-reachable so the hook still emits a usable hint in
-contributor-cloning-a-ward-managed-repo contexts.
+`wardGuardRegistry().Detect(cwd)` walks up from cwd for the nearest config
+marker and returns `ward` or `coily` (cli-guard's `hook.Registry.Detect`).
+It defaults to `ward` when no marker is reachable so the hook still emits a
+usable hint in contributor-cloning-a-ward-managed-repo contexts.
 
 ## splitSegments and stripEnvPrefix
 
@@ -85,8 +89,9 @@ Strips iteratively in case both env and sudo are present.
 
 `coilyRoutes` and `wardRoutes` map a bare leading-token to a
 recovery hint. ward's table is smaller: it wraps dev verbs, not
-personal ops binaries.
+personal ops binaries. `routeTable` converts the active guard's map into
+the engine's `[]hook.Route`, attaching the GraphQL-rate-limit suffix to the
+`gh` token via `Route.Extra`.
 
-`routeHint` returns the stderr block reason or `""` if the token has
-no route. `isGhGraphQLSubcommand` returns true for gh subcommands that
-route through GraphQL by default.
+`isGhGraphQLSubcommand` returns true for gh subcommands that route through
+GraphQL by default.

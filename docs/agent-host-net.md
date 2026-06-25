@@ -1,4 +1,4 @@
-# ward agent: --host-net (tailnet route)
+# ward agent: tailnet route (--host-net / --ts-sidecar)
 
 `--host-net` is the **opt-in network escalation** (ward#330): join a carry to the
 host network namespace (`docker run --network=host`) so it inherits the host's
@@ -38,20 +38,18 @@ Even on native Linux a container often still needs `100.100.100.100` added to it
 systemd-resolved MagicDNS config
 ([tailscale/tailscale#14467](https://github.com/tailscale/tailscale/issues/14467)).
 
-## The cross-platform answer: in-container tailscale sidecar (scope only)
+## The cross-platform answer: the `--ts-sidecar` sibling (ward#333)
 
 The **portable** route - and the **only** one on Docker Desktop - is an
-in-container `tailscaled`: run it inside the container (ephemeral tagged auth key),
-or as a sidecar the app shares the netns of (`network_mode: service:tailscale`), so
-the carry is its own tailnet node regardless of the docker host's kernel. See
-Tailscale's [Docker Desktop](https://tailscale.com/docs/features/containers/docker/docker-desktop)
-and [connect-a-container](https://tailscale.com/docs/features/containers/docker/how-to/connect-docker-container) guides.
+in-container tailscale node, not a host route. ward ships this as
+**`--ts-sidecar`**: a **userspace** tailscale SOCKS5 sidecar the carry shares the
+netns of and routes the tower through, mutually exclusive with `--host-net` and
+likewise implying `--aws`. See [agent-ts-sidecar.md](agent-ts-sidecar.md).
 
-**Scope/spec only, not shipped.** Standing it up needs an ephemeral tagged auth
-key, a node tag, and an ACL grant for that tag - a real secret-handling decision
-that is **human-gated** and must not be picked by a headless run (the "no auth key,
-no minting" line ward#330 drew). Until then, `--host-net` on a native-Linux tailnet
-host is the only path that ships.
+The heavier full-tunnel variant (in-container `tailscaled` on `/dev/net/tun`)
+stays scope-only: it needs `NET_ADMIN` plus human-gated key/tag/ACL decisions a
+headless run must not pick. `--ts-sidecar`'s userspace SOCKS5 sidesteps the TUN
+escalation, which is why it is the variant that ships.
 
 ## Wiring
 
@@ -73,6 +71,7 @@ resolves the FQDN from SSM and reaches `http://$TOWER:11434` inside the containe
 
 ## See also
 
+- [agent-ts-sidecar.md](agent-ts-sidecar.md) - the Docker Desktop sibling route.
 - [container.md](container.md) - the least-access model this widens.
 - [agent-flags.md](agent-flags.md) - the launch flag list.
 - [agent-credentials.md](agent-credentials.md) - how routes + creds are seeded.

@@ -46,6 +46,14 @@ const forgejoTokenSSMPath = "/forgejo/api-token"
 // ward resolves it host-side (the container has no aws creds). docs/agent.md (ward#186).
 const ollamaHostSSMPath = "/coilysiren/ollama/host"
 
+// tsAuthKeySSMPath is the reusable + ephemeral tag:proxy tailscale auth key the
+// userspace sidecar joins with; host-resolved, env-file-injected (ward#333).
+const tsAuthKeySSMPath = "/coilysiren/mac-proxy/ts-authkey"
+
+// towerTailnetIPSSMPath is the kai-tower-3026 tailnet IP a --ts-sidecar carry dials
+// :11434 on through the proxy (by IP, skipping MagicDNS; sharp-edges doctrine).
+const towerTailnetIPSSMPath = "/coilysiren/kai-tower-3026/tailnet-ip"
+
 // containerCommand is the Hidden `ward container` umbrella (ward#263): only the
 // entrypoint-internal reap/bootstrap leaves remain. See docs/container.md.
 func containerCommand() *cli.Command {
@@ -73,6 +81,9 @@ type agentCreds struct {
 	// GooseOllamaHost is the tower Ollama endpoint goose binds as its provider
 	// (resolved host-side from SSM; the entrypoint seeds it into goose's config).
 	GooseOllamaHost string
+	// TowerOllamaHost is the kai-tower-3026 ollama endpoint a --ts-sidecar carry dials
+	// through the proxy; host-resolved, env-file base64'd like the others (ward#333).
+	TowerOllamaHost string
 }
 
 // resolveAgentCreds resolves the credential the run's mode needs (claude OAuth,
@@ -93,6 +104,16 @@ func (r *Runner) resolveAgentCreds(ctx context.Context, mode containerMode) agen
 	}
 }
 
+// resolveCredsForPlan resolves the mode's creds plus, for a --ts-sidecar carry, the
+// tower endpoint it dials through the proxy - shared by every surface (ward#333).
+func (r *Runner) resolveCredsForPlan(ctx context.Context, mode containerMode, plan upPlan) agentCreds {
+	creds := r.resolveAgentCreds(ctx, mode)
+	if plan.TSSidecar {
+		creds.TowerOllamaHost = r.resolveTowerOllamaURL(ctx)
+	}
+	return creds
+}
+
 // buildUpPlan assembles the pure plan from parsed flags and resolved inputs;
 // agentArgs seed the agent's argv. Errors only on a bad --repo grant (ward#230).
 func buildUpPlan(c *cli.Command, repo targetRepo, mode containerMode, cwd, assetsDir string, agentArgs []string) (upPlan, error) {
@@ -103,11 +124,15 @@ func buildUpPlan(c *cli.Command, repo targetRepo, mode containerMode, cwd, asset
 	if v := strings.TrimSpace(c.String("ward-version")); v != "" {
 		wardVersion = v
 	}
-	// --host-net joins the host network for a tailnet route (ward#330); the tower
-	// FQDN is SSM-only, so it implies the --aws mount. See docs/agent-host-net.md.
+	// Mutually-exclusive tailnet routes; either needs SSM, so either implies --aws.
+	// --host-net joins the host's namespace (ward#330), --ts-sidecar a sidecar's (ward#333).
 	hostNet := c.Bool("host-net")
+	tsSidecar := c.Bool("ts-sidecar")
+	if hostNet && tsSidecar {
+		return upPlan{}, fmt.Errorf("--host-net and --ts-sidecar are mutually exclusive: --host-net inherits the host's tailnet route, --ts-sidecar runs a userspace SOCKS5 sidecar for Docker Desktop where the host VM is not a tailnet node (ward#333)")
+	}
 	awsHome := ""
-	if c.Bool("aws") || hostNet {
+	if c.Bool("aws") || hostNet || tsSidecar {
 		awsHome = filepath.Join(homeDir(), ".aws")
 	}
 	// "with-repo" is the shared lookup key: the canonical name on drive/ask, the
@@ -133,6 +158,7 @@ func buildUpPlan(c *cli.Command, repo targetRepo, mode containerMode, cwd, asset
 		GoBootstrap:    c.Bool("go-bootstrap"),
 		ExtraRepos:     extra,
 		HostNet:        hostNet,
+		TSSidecar:      tsSidecar,
 	}, nil
 }
 
@@ -285,6 +311,23 @@ func (r *Runner) resolveOllamaHost(ctx context.Context) string {
 	return strings.TrimSpace(string(out))
 }
 
+// resolveTowerOllamaURL reads the tower tailnet IP from SSM host-side and renders
+// the ollama URL the carry dials through the proxy. Best-effort: empty on failure.
+func (r *Runner) resolveTowerOllamaURL(ctx context.Context) string {
+	out, err := r.Runner.Capture(ctx, "aws", "ssm", "get-parameter",
+		"--name", towerTailnetIPSSMPath, "--with-decryption",
+		"--query", "Parameter.Value", "--output", "text")
+	if err != nil {
+		fmt.Fprintf(os.Stderr, "ward container: could not resolve %s from SSM (%v); the --ts-sidecar carry will have no tower endpoint\n", towerTailnetIPSSMPath, err)
+		return ""
+	}
+	ip := strings.TrimSpace(string(out))
+	if ip == "" {
+		return ""
+	}
+	return "http://" + ip + ":" + towerOllamaPort
+}
+
 // credEnvLines renders the base64'd per-mode credential env-file lines, one per
 // present blob; pure, so the secret-shaping is unit-testable. See docs/agent.md.
 func credEnvLines(creds agentCreds) []string {
@@ -297,6 +340,9 @@ func credEnvLines(creds agentCreds) []string {
 	}
 	if creds.GooseOllamaHost != "" {
 		lines = append(lines, "WARD_GOOSE_OLLAMA_HOST_B64="+base64.StdEncoding.EncodeToString([]byte(creds.GooseOllamaHost)))
+	}
+	if creds.TowerOllamaHost != "" {
+		lines = append(lines, "WARD_TOWER_OLLAMA_B64="+base64.StdEncoding.EncodeToString([]byte(creds.TowerOllamaHost)))
 	}
 	return lines
 }
@@ -358,6 +404,80 @@ func (r *Runner) writeTokenEnvFile(ctx context.Context, target broker.Target, cr
 	return path, cleanup, nil
 }
 
+// writeTSAuthEnvFile resolves the tag:proxy auth key from SSM into a private 0600
+// --env-file (TS_AUTHKEY), never argv/audit; the sidecar reads it (ward#333).
+func (r *Runner) writeTSAuthEnvFile(ctx context.Context) (path string, cleanup func(), err error) {
+	out, cerr := r.Runner.Capture(ctx, "aws", "ssm", "get-parameter",
+		"--name", tsAuthKeySSMPath, "--with-decryption",
+		"--query", "Parameter.Value", "--output", "text")
+	if cerr != nil {
+		return "", func() {}, fmt.Errorf("ward container: resolve %s from SSM (host needs aws creds): %w", tsAuthKeySSMPath, cerr)
+	}
+	key := strings.TrimSpace(string(out))
+	if key == "" {
+		return "", func() {}, fmt.Errorf("ward container: %s resolved empty; cannot start the tailscale sidecar", tsAuthKeySSMPath)
+	}
+	f, ferr := os.CreateTemp("", "ward-ts-authkey-env-*")
+	if ferr != nil {
+		return "", func() {}, fmt.Errorf("ward container: create ts-authkey env-file: %w", ferr)
+	}
+	path = f.Name()
+	cleanup = func() { _ = os.Remove(path) }
+	if cherr := f.Chmod(0o600); cherr != nil {
+		_ = f.Close()
+		cleanup()
+		return "", func() {}, fmt.Errorf("ward container: secure ts-authkey env-file: %w", cherr)
+	}
+	if _, werr := fmt.Fprintf(f, "TS_AUTHKEY=%s\n", key); werr != nil {
+		_ = f.Close()
+		cleanup()
+		return "", func() {}, fmt.Errorf("ward container: write ts-authkey env-file: %w", werr)
+	}
+	if clerr := f.Close(); clerr != nil {
+		cleanup()
+		return "", func() {}, fmt.Errorf("ward container: close ts-authkey env-file: %w", clerr)
+	}
+	return path, cleanup, nil
+}
+
+// startTSSidecar resolves the tag:proxy key from SSM and runs the userspace SOCKS5
+// sidecar detached, TS_AUTHKEY in an env-file (ward#333; reach awaits infra#400).
+func (r *Runner) startTSSidecar(ctx context.Context, plan upPlan) error {
+	envFile, cleanup, err := r.writeTSAuthEnvFile(ctx)
+	if err != nil {
+		return err
+	}
+	defer cleanup()
+	argv := tsSidecarRunArgv(plan.Name, plan.Repo.slug(), envFile)
+	if rerr := r.runDockerSilenced(ctx, false, argv...); rerr != nil {
+		return fmt.Errorf("ward container: start tailscale sidecar %s: %w", tsSidecarName(plan.Name), rerr)
+	}
+	return nil
+}
+
+// stopTSSidecar force-removes a carry's sidecar (best-effort) on the attached path;
+// a detached carry's is reclaimed by the next launch's orphan sweep (ward#333).
+func (r *Runner) stopTSSidecar(ctx context.Context, carryName string) {
+	_ = r.runDockerSilenced(ctx, true, "rm", "-f", tsSidecarName(carryName))
+}
+
+// sweepOrphanedSidecars force-removes sidecars whose carry is gone (best-effort,
+// never blocks a launch; ward#333).
+func (r *Runner) sweepOrphanedSidecars(ctx context.Context) {
+	out, err := r.Runner.Capture(ctx, "docker", dockerWardListArgv()...)
+	if err != nil {
+		return
+	}
+	orphans := orphanedSidecars(string(out))
+	if len(orphans) == 0 {
+		return
+	}
+	fmt.Fprintf(os.Stderr, "ward container: reclaiming %d orphaned tailscale sidecar(s) whose carry is gone (ward#333)\n", len(orphans))
+	if rmErr := r.runDockerSilenced(ctx, true, dockerForceRmArgv(orphans)...); rmErr != nil {
+		fmt.Fprintf(os.Stderr, "ward container: orphan-sidecar sweep had a non-zero rm (%v); continuing\n", rmErr)
+	}
+}
+
 // randHex returns 4 random bytes as an 8-char lowercase hex string, the unique
 // suffix that lets repeated container bring-ups against one repo coexist.
 func randHex() string {
@@ -406,6 +526,9 @@ func sweepStaleContainerAssets() {
 // sweepStaleContainers host-side-reclaims exited ward containers' writable layers
 // before a run, keeping the recent containerReapKeep (docs/container-cleanup.md).
 func (r *Runner) sweepStaleContainers(ctx context.Context) {
+	// Reclaim any sidecar whose carry has been reaped, so a detached --ts-sidecar
+	// run leaves no lingering proxy (ward#333).
+	r.sweepOrphanedSidecars(ctx)
 	out, err := r.Runner.Capture(ctx, "docker", dockerExitedListArgv()...)
 	if err != nil {
 		// No docker / daemon down / query failed: nothing to sweep, and the
