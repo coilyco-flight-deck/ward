@@ -11,6 +11,7 @@ import (
 	"io"
 	"os"
 	"os/exec"
+	"os/user"
 	"path/filepath"
 	"strconv"
 	"strings"
@@ -236,7 +237,7 @@ func (r *Runner) runContainerBootstrap(ctx context.Context, c *cli.Command) erro
 		// Explore: scope push off this clone but keep the dispatch token + socket so
 		// it can commission sibling runs (ward#293, ward#315).
 		r.revokePushCredential(ctx)
-		r.grantDockerSocketAccess()
+		r.grantDockerSocketAccess(ctx, e)
 	} else if cerr := r.ensureGitCredReadable(e); cerr != nil {
 		// Re-assert the credential perms git's `store` helper clobbered on the clones,
 		// else the dropped agent falls back to the human token (ward#288).
@@ -297,14 +298,47 @@ func (r *Runner) revokePushCredential(ctx context.Context) {
 }
 
 // grantDockerSocketAccess lets the dropped agent reach the mounted socket to dispatch
-// a sibling. TODO(ward#315): grant step is Kai's call - see docs/agent-explore.md.
-func (r *Runner) grantDockerSocketAccess() {
+// a sibling. Grant via the socket's owning group, never a chmod/chown: the bind mount
+// shares the host inode, so a perm change would linger on the host. Adding the agent to
+// the socket's group is a container-only credential picked up by `setpriv --init-groups`.
+// A root:root socket has no usable group; the socat bridge for it is deferred to ward#319.
+func (r *Runner) grantDockerSocketAccess(ctx context.Context, e bootstrapEnv) {
 	const sock = "/var/run/docker.sock"
 	if !isSocket(sock) {
 		blog("explore: no docker socket mounted - dispatch unavailable this run (ward#315)")
 		return
 	}
-	blog("explore: docker socket mounted but agent access grant is not wired yet (TODO ward#315); dispatch will fail until Kai picks the grant mechanism")
+	info, err := os.Stat(sock)
+	if err != nil {
+		blog("explore: could not stat docker socket; dispatch may fail: %v (ward#315)", err)
+		return
+	}
+	st, ok := info.Sys().(*syscall.Stat_t)
+	if !ok {
+		blog("explore: could not read docker socket gid; dispatch may fail (ward#315)")
+		return
+	}
+	sockgid := int(st.Gid)
+	if sockgid == 0 {
+		blog("explore: docker socket is root-owned (gid 0) with no usable group; group-grant can't reach it - dispatch needs the socat bridge (ward#319)")
+		return
+	}
+	u, uerr := user.LookupId(e.AgentUID)
+	if uerr != nil {
+		blog("explore: no passwd entry for uid %s; cannot group-grant the socket (ward#315)", e.AgentUID)
+		return
+	}
+	gidStr := strconv.Itoa(sockgid)
+	// Create a group with the socket's gid if none exists (container-only), then add
+	// the agent to it. No chmod/chown touches the bind-mounted socket inode.
+	if _, gerr := user.LookupGroupId(gidStr); gerr != nil {
+		_ = r.Runner.Exec(ctx, "groupadd", "-g", gidStr, "dockerhost")
+	}
+	if aerr := r.Runner.Exec(ctx, "usermod", "-aG", gidStr, u.Username); aerr != nil {
+		blog("explore: could not add %s to socket group (gid %s); dispatch may fail: %v (ward#315)", u.Username, gidStr, aerr)
+		return
+	}
+	blog("explore: granted docker socket access to %s via group gid %s; no socket perms changed (ward#315)", u.Username, gidStr)
 }
 
 // ensureGitCredReadable re-asserts the credential perms git's `store` helper
@@ -635,12 +669,22 @@ You **may**:
   spins up its own sealed container with its own credential and lifecycle, does its
   own implement -> commit -> merge -> push there, and never touches this clone.
 
+**How this is wired** (you do not set any of it up - it is ready):
+
+- A ` + "`FORGEJO_TOKEN`" + ` (the coilyco-ops bot's) is present, so ` + "`ward ops forgejo ...`" + ` and
+  the dispatcher authenticate out of the box. The token is the bot's full credential,
+  so the no-push rule below is a convention you keep, not yet a credential boundary
+  (a dispatch-only token is tracked in ward#318).
+- The host docker socket is mounted at ` + "`/var/run/docker.sock`" + `, so a dispatched
+  ` + "`warded #N`" + ` can spawn its sibling container. If you hit a socket permission error on
+  dispatch, the group-grant did not reach this host's socket - see ward#319.
+
 You **must not**:
 
 - Commit and push **this clone**, or merge this clone's tree to ` + "`main`" + `.
 - Hand-build an authenticated push URL to get this clone's tree onto the remote by
   another route. (A dispatch-only credential is the proper guard here; until it
-  lands, this is a convention you keep - ward#315.)
+  lands, this is a convention you keep - ward#318.)
 
 This clone's push wiring has been removed, so a direct ` + "`git push`" + ` from here fails.
 Read the repo, reason about it, answer questions, scratch in the working tree if it

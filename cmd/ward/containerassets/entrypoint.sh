@@ -78,11 +78,39 @@ revoke_push_credential() {
 }
 
 # Let the dropped agent reach the mounted docker socket so `warded #N` can dispatch
-# a sibling run. TODO(ward#315): grant step is Kai's call - see docs/agent-explore.md.
+# a sibling run. Grant via the socket's owning GROUP, never a chmod/chown: the bind
+# mount shares the host inode, so mutating perms would linger on the host. Adding the
+# agent to the socket's group is a container-only credential change picked up by the
+# `setpriv --init-groups` drop. Group-grant can't reach a root:root socket - the
+# root socat bridge for that is deferred to ward#319. See docs/agent-explore.md.
 grant_docker_socket_access() {
   local sock=/var/run/docker.sock
   [ -S "$sock" ] || { log "explore: no docker socket mounted - dispatch unavailable this run (ward#315)"; return 0; }
-  log "explore: docker socket mounted but agent access grant is not wired yet (TODO ward#315); dispatch will fail until the grant mechanism lands"
+  local sockgid agent_user grp
+  sockgid="$(stat -c %g "$sock" 2>/dev/null)" || sockgid=""
+  if [ -z "$sockgid" ]; then
+    log "explore: could not read docker socket gid; dispatch may fail (ward#315)"
+    return 0
+  fi
+  if [ "$sockgid" = 0 ]; then
+    log "explore: docker socket is root-owned (gid 0) with no usable group; group-grant can't reach it - dispatch needs the socat bridge (ward#319)"
+    return 0
+  fi
+  agent_user="$(getent passwd "$AGENT_UID" | cut -d: -f1)"
+  if [ -z "$agent_user" ]; then
+    log "explore: no passwd entry for uid $AGENT_UID; cannot group-grant the socket (ward#315)"
+    return 0
+  fi
+  grp="$(getent group "$sockgid" | cut -d: -f1)"
+  if [ -z "$grp" ]; then
+    grp=dockerhost
+    groupadd -g "$sockgid" "$grp" 2>/dev/null || true
+  fi
+  if usermod -aG "$sockgid" "$agent_user" 2>/dev/null; then
+    log "explore: granted docker socket access to $agent_user via group $grp (gid $sockgid); no socket perms changed (ward#315)"
+  else
+    log "explore: could not add $agent_user to socket group $grp (gid $sockgid); dispatch may fail (ward#315)"
+  fi
 }
 
 # Re-assert the credential perms git's `store` helper clobbers on the clones;
@@ -367,12 +395,22 @@ You **may**:
   spins up its own sealed container with its own credential and lifecycle, does its
   own implement -> commit -> merge -> push there, and never touches this clone.
 
+**How this is wired** (you do not set any of it up - it is ready):
+
+- A `FORGEJO_TOKEN` (the coilyco-ops bot's) is present, so `ward ops forgejo ...` and
+  the dispatcher authenticate out of the box. The token is the bot's full credential,
+  so the no-push rule below is a convention you keep, not yet a credential boundary
+  (a dispatch-only token is tracked in ward#318).
+- The host docker socket is mounted at `/var/run/docker.sock`, so a dispatched
+  `warded #N` can spawn its sibling container. If you hit a socket permission error on
+  dispatch, the group-grant did not reach this host's socket - see ward#319.
+
 You **must not**:
 
 - Commit and push **this clone**, or merge this clone's tree to `main`.
 - Hand-build an authenticated push URL to get this clone's tree onto the remote by
   another route. (A dispatch-only credential is the proper guard here; until it
-  lands, this is a convention you keep - ward#315.)
+  lands, this is a convention you keep - ward#318.)
 
 This clone's push wiring has been removed, so a direct `git push` from here fails.
 Read the repo, reason about it, answer questions, scratch in the working tree if it

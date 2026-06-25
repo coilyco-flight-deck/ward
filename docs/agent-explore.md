@@ -47,9 +47,9 @@ Layers that scope the box to **push-to-this-clone**, not to dispatch:
 Local `git commit` still works (harmless). On exit the clone is swept by the
 [reaper](container-reap.md).
 
-**The soft edge (ward#315).** The dispatch token is the *same* bot token, so a
+**The soft edge (ward#318).** The dispatch token is the *same* bot token, so a
 determined agent could hand-build a push URL. The restriction forbids it, but it is a
-convention - the hard fix is a **dispatch-only credential**, deferred to ward#315.
+convention - the hard fix is a **dispatch-only credential**, deferred to ward#318.
 
 ## Dispatching from inside explore
 
@@ -61,9 +61,13 @@ warded coilyco-flight-deck/ward#NNN  # dispatch a sealed headless fix
 The sibling resolves the token from the container's env (no host SSM/AWS), clones
 fresh, and runs its own lifecycle.
 
-> **Open item (ward#315):** the dropped agent is non-root but the mounted socket is
-> root-owned, so the socket-access grant has a host side-effect (chmod vs. a socat
-> bridge). Not wired yet - dispatch fails on a socket permission error until it lands.
+**Socket access.** The dropped agent is non-root, but `grant_docker_socket_access`
+adds it to the mounted socket's **owning group** (created in-container if absent), so
+the drop's `setpriv --init-groups` carries socket access. No `chmod`/`chown` touches
+the socket: the bind mount shares the host inode, so a perm change would linger on the
+host. This reaches the common `root:docker 0660` socket; it cannot reach a `root:root`
+socket (no usable group), where dispatch still fails - the **root socat bridge** for
+that case is deferred to ward#319.
 
 ## `--print`
 
