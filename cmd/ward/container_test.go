@@ -694,6 +694,27 @@ func TestEntrypointInstallsReadOnlyPushGuard(t *testing.T) {
 	}
 }
 
+// TestEntrypointBridgesRootRootSocket locks ward#319: a root:root docker socket (no
+// group to join) is reached via a root socat bridge the agent uses through DOCKER_HOST.
+func TestEntrypointBridgesRootRootSocket(t *testing.T) {
+	data, err := containerAssets.ReadFile("containerassets/" + containerEntrypointRel)
+	if err != nil {
+		t.Fatalf("read entrypoint: %v", err)
+	}
+	script := string(data)
+	for _, want := range []string{
+		"bridge_docker_socket()",                       // the bridge function exists
+		"bridge_docker_socket \"$sock\"",               // the root:root branch calls it
+		"UNIX-LISTEN:$bridge,fork,group=$AGENT_GID",    // socat exposes an agent-group socket
+		"UNIX-CONNECT:$sock",                           // bridged to the real host socket
+		"export DOCKER_HOST=\"unix://$bridge\"",        // the agent reaches it via DOCKER_HOST
+	} {
+		if !strings.Contains(script, want) {
+			t.Errorf("entrypoint missing %q (ward#319 socat bridge)", want)
+		}
+	}
+}
+
 // TestEntrypointNoAgentCommitGate locks the ward#244 fix: ward must never inject
 // the retired, unsatisfiable agent-only commit-msg gate.
 func TestEntrypointNoAgentCommitGate(t *testing.T) {

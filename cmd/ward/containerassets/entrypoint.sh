@@ -77,12 +77,8 @@ revoke_push_credential() {
   log "read-only session: dropped this clone's push wiring; FORGEJO_TOKEN kept for dispatch-only (file/launch, no push; ward#315)"
 }
 
-# Let the dropped agent reach the mounted docker socket so `warded #N` can dispatch
-# a sibling run. Grant via the socket's owning GROUP, never a chmod/chown: the bind
-# mount shares the host inode, so mutating perms would linger on the host. Adding the
-# agent to the socket's group is a container-only credential change picked up by the
-# `setpriv --init-groups` drop. Group-grant can't reach a root:root socket - the
-# root socat bridge for that is deferred to ward#319. See docs/agent-explore.md.
+# Let the dropped agent reach the mounted docker socket so `warded #N` can dispatch a
+# sibling, no host-inode chmod (ward#315, ward#319). See docs/agent-explore.md.
 grant_docker_socket_access() {
   local sock=/var/run/docker.sock
   [ -S "$sock" ] || { log "explore: no docker socket mounted - dispatch unavailable this run (ward#315)"; return 0; }
@@ -93,7 +89,7 @@ grant_docker_socket_access() {
     return 0
   fi
   if [ "$sockgid" = 0 ]; then
-    log "explore: docker socket is root-owned (gid 0) with no usable group; group-grant can't reach it - dispatch needs the socat bridge (ward#319)"
+    bridge_docker_socket "$sock"  # root:root: no group to join, bridge it (ward#319)
     return 0
   fi
   agent_user="$(getent passwd "$AGENT_UID" | cut -d: -f1)"
@@ -111,6 +107,17 @@ grant_docker_socket_access() {
   else
     log "explore: could not add $agent_user to socket group $grp (gid $sockgid); dispatch may fail (ward#315)"
   fi
+}
+
+# Bridge a root:root docker socket to an agent-group-owned socket via root socat, so
+# the agent reaches it through DOCKER_HOST with no host-perm change (ward#319).
+bridge_docker_socket() {
+  local sock="$1" bridge=/tmp/docker-agent.sock
+  command -v socat >/dev/null 2>&1 || { log "explore: socat absent from image; dispatch unavailable on a root:root socket (ward#319)"; return 0; }
+  rm -f "$bridge"
+  socat "UNIX-LISTEN:$bridge,fork,group=$AGENT_GID,mode=0660" "UNIX-CONNECT:$sock" &
+  export DOCKER_HOST="unix://$bridge"
+  log "explore: bridged root:root docker socket to $bridge for the agent (gid $AGENT_GID; ward#319)"
 }
 
 # Re-assert the credential perms git's `store` helper clobbers on the clones;

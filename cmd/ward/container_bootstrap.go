@@ -298,10 +298,7 @@ func (r *Runner) revokePushCredential(ctx context.Context) {
 }
 
 // grantDockerSocketAccess lets the dropped agent reach the mounted socket to dispatch
-// a sibling. Grant via the socket's owning group, never a chmod/chown: the bind mount
-// shares the host inode, so a perm change would linger on the host. Adding the agent to
-// the socket's group is a container-only credential picked up by `setpriv --init-groups`.
-// A root:root socket has no usable group; the socat bridge for it is deferred to ward#319.
+// a sibling, no host-inode chmod (ward#315, ward#319). See docs/agent-explore.md.
 func (r *Runner) grantDockerSocketAccess(ctx context.Context, e bootstrapEnv) {
 	const sock = "/var/run/docker.sock"
 	if !isSocket(sock) {
@@ -320,7 +317,7 @@ func (r *Runner) grantDockerSocketAccess(ctx context.Context, e bootstrapEnv) {
 	}
 	sockgid := int(st.Gid)
 	if sockgid == 0 {
-		blog("explore: docker socket is root-owned (gid 0) with no usable group; group-grant can't reach it - dispatch needs the socat bridge (ward#319)")
+		r.bridgeDockerSocket(ctx, e, sock) // root:root: no group to join, bridge it (ward#319)
 		return
 	}
 	u, uerr := user.LookupId(e.AgentUID)
@@ -339,6 +336,25 @@ func (r *Runner) grantDockerSocketAccess(ctx context.Context, e bootstrapEnv) {
 		return
 	}
 	blog("explore: granted docker socket access to %s via group gid %s; no socket perms changed (ward#315)", u.Username, gidStr)
+}
+
+// bridgeDockerSocket bridges a root:root docker socket to an agent-group-owned socket
+// via root socat, reached through DOCKER_HOST with no host-perm change (ward#319).
+func (r *Runner) bridgeDockerSocket(ctx context.Context, e bootstrapEnv, sock string) {
+	const bridge = "/tmp/docker-agent.sock"
+	if !commandExists("socat") {
+		blog("explore: socat absent from image; dispatch unavailable on a root:root socket (ward#319)")
+		return
+	}
+	_ = os.Remove(bridge)
+	listen := fmt.Sprintf("UNIX-LISTEN:%s,fork,group=%s,mode=0660", bridge, e.AgentGID)
+	cmd := exec.CommandContext(ctx, "socat", listen, "UNIX-CONNECT:"+sock) // #nosec G204 -- fixed socat bridge argv
+	if serr := cmd.Start(); serr != nil {
+		blog("explore: could not start docker socket bridge; dispatch may fail: %v (ward#319)", serr)
+		return
+	}
+	_ = os.Setenv("DOCKER_HOST", "unix://"+bridge)
+	blog("explore: bridged root:root docker socket to %s for the agent (gid %s; ward#319)", bridge, e.AgentGID)
 }
 
 // ensureGitCredReadable re-asserts the credential perms git's `store` helper

@@ -61,13 +61,11 @@ warded coilyco-flight-deck/ward#NNN  # dispatch a sealed headless fix
 The sibling resolves the token from the container's env (no host SSM/AWS), clones
 fresh, and runs its own lifecycle.
 
-**Socket access.** The dropped agent is non-root, but `grant_docker_socket_access`
-adds it to the mounted socket's **owning group** (created in-container if absent), so
-the drop's `setpriv --init-groups` carries socket access. No `chmod`/`chown` touches
-the socket: the bind mount shares the host inode, so a perm change would linger on the
-host. This reaches the common `root:docker 0660` socket; it cannot reach a `root:root`
-socket (no usable group), where dispatch still fails - the **root socat bridge** for
-that case is deferred to ward#319.
+**Socket access.** The dropped agent is non-root, and neither path mutates host perms.
+For a group-owned socket (the common `root:docker 0660`), `grant_docker_socket_access`
+adds the agent to the socket's owning group. For a `root:root` socket (no group to
+join), a root `socat` bridge exposes an agent-group-owned socket the agent reaches via
+`DOCKER_HOST` (ward#319).
 
 ## `--print`
 
