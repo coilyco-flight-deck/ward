@@ -480,6 +480,54 @@ func TestGooseConfigYAML(t *testing.T) {
 	}
 }
 
+// TestComposeContextRuntimeDoctrineLoadPoints covers ward#377 for Go bootstrap:
+// canonical AGENTS.md feeds Codex, Claude, and Goose load points.
+func TestComposeContextRuntimeDoctrineLoadPoints(t *testing.T) {
+	const marker = "director's read-only surface session"
+	r := &Runner{}
+
+	home := t.TempDir()
+	r.composeContext(bootstrapEnv{
+		Mode:         "codex",
+		ContextLevel: "0",
+		ContextSrc:   filepath.Join(t.TempDir(), "absent"),
+		AgentHome:    home,
+		ReadOnly:     true,
+	})
+	for _, path := range []string{
+		filepath.Join(home, "AGENTS.md"),
+		filepath.Join(home, ".codex", "AGENTS.md"),
+		filepath.Join(home, ".claude", "CLAUDE.md"),
+	} {
+		data, err := os.ReadFile(path)
+		if err != nil {
+			t.Fatalf("expected runtime doctrine at %s: %v", path, err)
+		}
+		if !strings.Contains(string(data), marker) {
+			t.Errorf("%s missing read-only director doctrine", path)
+		}
+	}
+	if target, err := os.Readlink(filepath.Join(home, ".codex", "AGENTS.md")); err == nil && target != filepath.Join("..", "AGENTS.md") {
+		t.Errorf("codex AGENTS.md link target = %q, want ../AGENTS.md", target)
+	}
+
+	gooseHome := t.TempDir()
+	r.composeContext(bootstrapEnv{
+		Mode:         "goose",
+		ContextLevel: "0",
+		ContextSrc:   filepath.Join(t.TempDir(), "absent"),
+		AgentHome:    gooseHome,
+		ReadOnly:     true,
+	})
+	ghints, err := os.ReadFile(filepath.Join(gooseHome, ".config", "goose", ".goosehints"))
+	if err != nil {
+		t.Fatalf("expected goose hints mirror: %v", err)
+	}
+	if !strings.Contains(string(ghints), marker) {
+		t.Error("goose hints missing read-only director doctrine")
+	}
+}
+
 // TestWriteCredsScrubsEnv asserts each Go-bootstrap cred step writes its file
 // then scrubs its bootstrap-only *_B64 env var, so it can't leak (ward#357).
 func TestWriteCredsScrubsEnv(t *testing.T) {
