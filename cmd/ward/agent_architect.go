@@ -102,9 +102,8 @@ func (r *Runner) runScratchSession(ctx context.Context, c *cli.Command, mode con
 		return printScratchPlan(c, plan, readOnly)
 	}
 
-	// Interactive dispatch: warn on a stale ward (ward#143), then reclaim dead
-	// containers' layers so a busy fleet can't wedge new launches (ward#272).
-	r.maybeWarnWardOutdated(ctx)
+	// Interactive dispatch: reclaim dead containers' layers so a busy fleet can't
+	// wedge new launches (ward#272). The stale-ward heads-up (ward#143) rides the gate.
 	r.sweepStaleContainers(ctx)
 	if !c.Bool("no-pull") {
 		r.pullAgentImage(ctx, plan, label)
@@ -114,6 +113,17 @@ func (r *Runner) runScratchSession(ctx context.Context, c *cli.Command, mode con
 		return err
 	}
 	defer cleanupEnv()
+
+	// Pre-launch gate before the fullscreen TUI (ward#366); see docs/agent-gate.md.
+	// proceed=false means an upgrade re-launch superseded this process's launch.
+	proceed, err := r.runScratchGate(ctx, c, plan, readOnly, label)
+	if err != nil {
+		return err
+	}
+	if !proceed {
+		return nil
+	}
+
 	access := "writable"
 	if readOnly {
 		access = "read-only"

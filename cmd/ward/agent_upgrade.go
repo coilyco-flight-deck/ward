@@ -24,16 +24,8 @@ const wardReleaseCheckTimeout = 5 * time.Second
 // maybeWarnWardOutdated prints a best-effort stderr reminder when the host ward is
 // behind latest. It never errors or blocks dispatch: any failure stays quiet.
 func (r *Runner) maybeWarnWardOutdated(ctx context.Context) {
-	// A dev/source build has no meaningful "latest release" to chase, and the
-	// brew-upgrade path doesn't apply to it - skip before touching the network.
-	if !version.LooksReleased(Version) {
-		return
-	}
-	latest, ok := r.fetchLatestWardTag(ctx)
-	if !ok {
-		return
-	}
-	if !version.Behind(Version, latest) {
+	latest, behind := r.wardOutdated(ctx)
+	if !behind {
 		return
 	}
 	w := io.Writer(os.Stderr)
@@ -41,6 +33,21 @@ func (r *Runner) maybeWarnWardOutdated(ctx context.Context) {
 		w = r.Runner.Stderr
 	}
 	_, _ = fmt.Fprint(w, wardOutdatedNotice(Version, latest))
+}
+
+// wardOutdated reports the latest ward release tag and whether the host binary is
+// behind it. Best-effort and quiet on every failure mode (the gate + heads-up share it).
+func (r *Runner) wardOutdated(ctx context.Context) (latest string, behind bool) {
+	// A dev/source build has no meaningful "latest release" to chase, and the
+	// brew-upgrade path doesn't apply to it - skip before touching the network.
+	if !version.LooksReleased(Version) {
+		return "", false
+	}
+	tag, ok := r.fetchLatestWardTag(ctx)
+	if !ok {
+		return "", false
+	}
+	return tag, version.Behind(Version, tag)
 }
 
 // wardOutdatedNotice is the two-line stderr reminder, kept pure so it is
