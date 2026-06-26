@@ -521,7 +521,10 @@ write_claude_creds() {
   mkdir -p "$dir"
   printf '%s' "$WARD_CLAUDE_CREDS_B64" | base64 -d > "$dir/.credentials.json"
   chmod 600 "$dir/.credentials.json"
-  log "wrote claude credentials to $dir/.credentials.json"
+  # Bootstrap-only channel; scrub it so the live OAuth token can't leak on a
+  # subprocess `env` dump (ward#357). Mirrors the git-cred scrub above.
+  unset WARD_CLAUDE_CREDS_B64
+  log "wrote claude credentials to $dir/.credentials.json (scrubbed WARD_CLAUDE_CREDS_B64 from env)"
 }
 
 # --- claude onboarding seed (ward#305, ward#313): skip the first-run gates -----
@@ -552,7 +555,10 @@ write_codex_creds() {
   mkdir -p "$dir"
   printf '%s' "$WARD_CODEX_AUTH_B64" | base64 -d > "$dir/auth.json"
   chmod 600 "$dir/auth.json"
-  log "wrote codex credentials to $dir/auth.json"
+  # Bootstrap-only delivery channel; codex reads the file, not the env. Scrub it so
+  # the ChatGPT/API-key blob does not linger in the agent's environment (ward#357).
+  unset WARD_CODEX_AUTH_B64
+  log "wrote codex credentials to $dir/auth.json (scrubbed WARD_CODEX_AUTH_B64 from env)"
 }
 
 # --- codex config (ward#178): approvals-off / sandbox-open posture -----------
@@ -602,6 +608,9 @@ compose_goose_config() {
   local model="${WARD_GOOSE_MODEL:-qwen2.5}"
   local host=""
   [ -n "${WARD_GOOSE_OLLAMA_HOST_B64:-}" ] && host="$(printf '%s' "$WARD_GOOSE_OLLAMA_HOST_B64" | base64 -d)"
+  # The tower host (tailnet endpoint) is the secret in this env; scrub it once
+  # decoded - same treatment as the cred blobs (ward#357).
+  unset WARD_GOOSE_OLLAMA_HOST_B64
   # --ts-sidecar, no SSM host: route goose at the loopback forwarder (ward#359).
   if [ -z "$host" ] && [ -n "${WARD_TS_SOCKS5:-}" ]; then
     host="localhost:11434"

@@ -820,7 +820,10 @@ func (r *Runner) writeClaudeCreds(e bootstrapEnv) {
 		blog("could not write claude credentials: %v", werr)
 		return
 	}
-	blog("wrote claude credentials to %s", out)
+	// Bootstrap-only channel; scrub it so the live OAuth token can't leak on a
+	// subprocess `env` dump (ward#357). Mirrors entrypoint.sh write_claude_creds.
+	_ = os.Unsetenv("WARD_CLAUDE_CREDS_B64")
+	blog("wrote claude credentials to %s (scrubbed WARD_CLAUDE_CREDS_B64 from env)", out)
 }
 
 // seedClaudeOnboarding writes ~/.claude.json so interactive claude skips its
@@ -879,7 +882,10 @@ func (r *Runner) writeCodexCreds(e bootstrapEnv) {
 		blog("could not write codex credentials: %v", werr)
 		return
 	}
-	blog("wrote codex credentials to %s", out)
+	// Bootstrap-only delivery channel; codex reads the file, not the env. Scrub it
+	// so the ChatGPT/API-key blob does not linger in the agent's env (ward#357).
+	_ = os.Unsetenv("WARD_CODEX_AUTH_B64")
+	blog("wrote codex credentials to %s (scrubbed WARD_CODEX_AUTH_B64 from env)", out)
 }
 
 // --- codex config (ward#178): approvals-off / sandbox-open -------------------
@@ -957,6 +963,9 @@ func (r *Runner) composeGooseConfig(e bootstrapEnv) {
 		if dec, derr := base64.StdEncoding.DecodeString(b64); derr == nil {
 			host = string(dec)
 		}
+		// Seeded to config.yaml; the tower host (tailnet endpoint) is the secret in
+		// this env, so scrub it once decoded - same treatment as the creds (ward#357).
+		_ = os.Unsetenv("WARD_GOOSE_OLLAMA_HOST_B64")
 	}
 	body := gooseConfigYAML(provider, model, host)
 	out := filepath.Join(dir, "config.yaml")

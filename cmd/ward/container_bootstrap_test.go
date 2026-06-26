@@ -2,6 +2,7 @@ package main
 
 import (
 	"context"
+	"encoding/base64"
 	"encoding/json"
 	"io"
 	"os"
@@ -476,6 +477,40 @@ func TestGooseConfigYAML(t *testing.T) {
 	withHost := gooseConfigYAML("ollama", "qwen2.5", "http://tower:11434")
 	if !strings.Contains(withHost, "OLLAMA_HOST: http://tower:11434") {
 		t.Errorf("with-host config should include OLLAMA_HOST:\n%s", withHost)
+	}
+}
+
+// TestWriteCredsScrubsEnv asserts each Go-bootstrap cred step writes its file
+// then scrubs its bootstrap-only *_B64 env var, so it can't leak (ward#357).
+func TestWriteCredsScrubsEnv(t *testing.T) {
+	home := t.TempDir()
+	r := gitRunner()
+
+	// claude (any mode): plain "{}" base64'd is enough to exercise the write+scrub.
+	t.Setenv("WARD_CLAUDE_CREDS_B64", base64.StdEncoding.EncodeToString([]byte(`{"ok":1}`)))
+	r.writeClaudeCreds(bootstrapEnv{AgentHome: home})
+	if _, err := os.Stat(filepath.Join(home, ".claude", ".credentials.json")); err != nil {
+		t.Fatalf("expected ~/.claude/.credentials.json written: %v", err)
+	}
+	if v := os.Getenv("WARD_CLAUDE_CREDS_B64"); v != "" {
+		t.Errorf("WARD_CLAUDE_CREDS_B64 should be scrubbed after seeding, got %q", v)
+	}
+
+	// codex (codex mode only).
+	t.Setenv("WARD_CODEX_AUTH_B64", base64.StdEncoding.EncodeToString([]byte(`{"ok":1}`)))
+	r.writeCodexCreds(bootstrapEnv{Mode: "codex", AgentHome: home})
+	if _, err := os.Stat(filepath.Join(home, ".codex", "auth.json")); err != nil {
+		t.Fatalf("expected ~/.codex/auth.json written: %v", err)
+	}
+	if v := os.Getenv("WARD_CODEX_AUTH_B64"); v != "" {
+		t.Errorf("WARD_CODEX_AUTH_B64 should be scrubbed after seeding, got %q", v)
+	}
+
+	// goose ollama host (goose mode only): the tailnet endpoint is the secret here.
+	t.Setenv("WARD_GOOSE_OLLAMA_HOST_B64", base64.StdEncoding.EncodeToString([]byte("http://tower:11434")))
+	r.composeGooseConfig(bootstrapEnv{Mode: "goose", AgentHome: home})
+	if v := os.Getenv("WARD_GOOSE_OLLAMA_HOST_B64"); v != "" {
+		t.Errorf("WARD_GOOSE_OLLAMA_HOST_B64 should be scrubbed after seeding, got %q", v)
 	}
 }
 

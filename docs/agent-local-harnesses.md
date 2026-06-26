@@ -31,7 +31,10 @@ host-side from SSM (`/coilysiren/ollama/host`, the param the ollama guardfile us
 and rides it into the container base64'd over the private `--env-file` as
 `WARD_GOOSE_OLLAMA_HOST_B64`, never in argv/audit. The entrypoint's
 `compose_goose_config` then writes `~/.config/goose/config.yaml` binding
-`GOOSE_PROVIDER`, `GOOSE_MODEL`, and `OLLAMA_HOST`. An unresolved host (no aws on
+`GOOSE_PROVIDER`, `GOOSE_MODEL`, and `OLLAMA_HOST`, and scrubs
+`WARD_GOOSE_OLLAMA_HOST_B64` from the env once decoded so the tailnet endpoint
+does not linger in the agent's environment (ward#357, the same cleanup the
+claude/codex cred blobs get). An unresolved host (no aws on
 the host) just leaves goose to its built-in default rather than failing the launch.
 Provider and model are overridable via `WARD_GOOSE_PROVIDER` / `WARD_GOOSE_MODEL`
 (default `ollama` / `qwen2.5`), so an operator can repoint goose at a cloud peer -
