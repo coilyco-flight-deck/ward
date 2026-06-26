@@ -26,13 +26,15 @@ headless-claude only; set `WARD_SMOKE_TEST_SKIP=1` to bypass it.
 **Disk-aware diagnostics (ward#273).** A full Docker disk hangs claude startup
 the same way a bad credential does (it cannot write `~/.claude`), so the smoke
 test no longer blames the (valid) login on every stall. It pre-flight checks
-free space on `/` and `/workspace` against a 512MiB floor and warns before the
-90s wait, reports actual `df` headroom in the timeout and non-auth failure
-messages, and only suggests re-login when the probe surfaces a genuine auth
-marker (`401`, `Not logged in`, `invalid api key`, ...). The Go port
-(`WARD_USE_GO_BOOTSTRAP=1`) and the shell entrypoint carry the same split. One-shot launches
-(headless/ask) additionally pin agent stdin to `/dev/null` so a wedged agent gets
-EOF and exits rather than blocking on an open pipe.
+free space against a 512MiB floor, reports `df` headroom in failure
+messages, and only suggests re-login on a genuine auth marker (`401`, `Not
+logged in`, `invalid api key`, ...); the Go port matches.
+
+**Env scrub after seeding (ward#357).** `WARD_CLAUDE_CREDS_B64` /
+`WARD_CODEX_AUTH_B64` are bootstrap-only: the entrypoint (and the Go bootstrap)
+`unset`s each after decoding it to its mode-600 file, mirroring the
+git-credential scrub, so the live OAuth token can't leak on an `env` dump. Auth
+still works - harnesses read it.
 
 ## codex
 
