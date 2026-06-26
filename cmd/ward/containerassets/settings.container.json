@@ -1,13 +1,6 @@
 {
   "tui": "fullscreen",
   "permissions": {
-    "defaultMode": "bypassPermissions",
-    "deny": [
-      "Bash(git push --force:*)",
-      "Bash(git push -f:*)",
-      "Bash(git reset --hard:*)",
-      "Bash(git clean -fd:*)",
-      "Bash(git clone:*)"
-    ]
+    "defaultMode": "bypassPermissions"
   }
 }

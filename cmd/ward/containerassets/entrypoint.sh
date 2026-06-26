@@ -514,7 +514,7 @@ EOF
 }
 
 # --- container permission policy (the container is the permission manager) ----
-# bypassPermissions + a minimal force-push/history-rewrite deny (docs/container.md).
+# bypassPermissions, no deny list - isolation is the sole wall (docs/container.md).
 compose_permissions() {
   local out="$AGENT_HOME/.claude/settings.json"
   mkdir -p "$(dirname "$out")"
