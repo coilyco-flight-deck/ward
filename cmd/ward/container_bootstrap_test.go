@@ -192,7 +192,7 @@ func TestReadBootstrapEnvDefaults(t *testing.T) {
 		"Agent":        "claude",
 		"ContextLevel": "2",
 		"GitCache":     "/gitcache",
-		"QwenModel":    "qwen2.5-coder:latest",
+		"QwenModel":    "qwen3-coder:30b",
 		"OllamaURL":    "http://localhost:11434/v1",
 		"GitUserName":  "coilyco-ops",
 		"GitUserEmail": "coilyco-ops@coilysiren.me",
@@ -451,12 +451,12 @@ func TestSplitOwnerName(t *testing.T) {
 // TestOpencodeConfigJSON keeps the literal $schema key (not interpolated) and
 // interpolates the model + URL in the right places.
 func TestOpencodeConfigJSON(t *testing.T) {
-	got := opencodeConfigJSON("qwen2.5-coder:latest", "http://localhost:11434/v1")
+	got := opencodeConfigJSON("qwen3-coder:30b", "http://localhost:11434/v1")
 	for _, want := range []string{
 		`"$schema": "https://opencode.ai/config.json"`,
-		`"model": "ollama/qwen2.5-coder:latest"`,
+		`"model": "ollama/qwen3-coder:30b"`,
 		`"baseURL": "http://localhost:11434/v1"`,
-		`"qwen2.5-coder:latest": {}`,
+		`"qwen3-coder:30b": {}`,
 	} {
 		if !strings.Contains(got, want) {
 			t.Errorf("opencode config missing %q in:\n%s", want, got)
@@ -467,14 +467,14 @@ func TestOpencodeConfigJSON(t *testing.T) {
 // TestGooseConfigYAML omits OLLAMA_HOST when no host resolved, includes it
 // otherwise, matching the bash heredoc.
 func TestGooseConfigYAML(t *testing.T) {
-	noHost := gooseConfigYAML("ollama", "qwen2.5", "")
+	noHost := gooseConfigYAML("ollama", "qwen3-coder:30b", "")
 	if strings.Contains(noHost, "OLLAMA_HOST") {
 		t.Errorf("no-host config should omit OLLAMA_HOST:\n%s", noHost)
 	}
-	if !strings.Contains(noHost, "GOOSE_PROVIDER: ollama") || !strings.Contains(noHost, "GOOSE_MODEL: qwen2.5") {
+	if !strings.Contains(noHost, "GOOSE_PROVIDER: ollama") || !strings.Contains(noHost, "GOOSE_MODEL: qwen3-coder:30b") {
 		t.Errorf("missing provider/model:\n%s", noHost)
 	}
-	withHost := gooseConfigYAML("ollama", "qwen2.5", "http://tower:11434")
+	withHost := gooseConfigYAML("ollama", "qwen3-coder:30b", "http://tower:11434")
 	if !strings.Contains(withHost, "OLLAMA_HOST: http://tower:11434") {
 		t.Errorf("with-host config should include OLLAMA_HOST:\n%s", withHost)
 	}

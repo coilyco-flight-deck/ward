@@ -83,7 +83,7 @@ func readBootstrapEnv() (bootstrapEnv, error) {
 		ContextLevel: envOr("WARD_CONTEXT_LEVEL", "2"),
 		GitCache:     envOr("WARD_GITCACHE", "/gitcache"),
 		ContextSrc:   envOr("WARD_CONTEXT_SRC", "/opt/ward-context"),
-		QwenModel:    envOr("WARD_QWEN_MODEL", "qwen2.5-coder:latest"),
+		QwenModel:    envOr("WARD_QWEN_MODEL", "qwen3-coder:30b"),
 		OllamaURL:    envOr("WARD_OLLAMA_URL", "http://localhost:11434/v1"),
 		// Warded-agent commits attribute to the coilyco-ops bot; the email is the
 		// load-bearing match Forgejo links on (ward#245, docs/agent-attribution.md).
@@ -987,7 +987,7 @@ func (r *Runner) composeGooseConfig(e bootstrapEnv) {
 	dir := filepath.Join(e.AgentHome, ".config", "goose")
 	_ = os.MkdirAll(dir, 0o755)
 	provider := envOr("WARD_GOOSE_PROVIDER", "ollama")
-	model := envOr("WARD_GOOSE_MODEL", "qwen2.5")
+	model := envOr("WARD_GOOSE_MODEL", "qwen3-coder:30b")
 	host := ""
 	if b64 := os.Getenv("WARD_GOOSE_OLLAMA_HOST_B64"); b64 != "" {
 		if dec, derr := base64.StdEncoding.DecodeString(b64); derr == nil {

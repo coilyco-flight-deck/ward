@@ -21,7 +21,7 @@ WARD_GITCACHE="${WARD_GITCACHE:-/gitcache}"
 WARD_CONTEXT_SRC="${WARD_CONTEXT_SRC:-/opt/ward-context}"
 # qwen rides opencode against a local ollama model; tag + endpoint are overridable.
 # See docs/agent.md (qwen).
-WARD_QWEN_MODEL="${WARD_QWEN_MODEL:-qwen2.5-coder:latest}"
+WARD_QWEN_MODEL="${WARD_QWEN_MODEL:-qwen3-coder:30b}"
 WARD_OLLAMA_URL="${WARD_OLLAMA_URL:-http://localhost:11434/v1}"
 # --ts-sidecar carry: the loopback forwarder's no-proxy tower endpoint (ward#359).
 # Plain localhost; the forwarder bridges it to the tower through $WARD_TS_SOCKS5.
@@ -628,7 +628,7 @@ compose_goose_config() {
   local dir="$AGENT_HOME/.config/goose"
   mkdir -p "$dir"
   local provider="${WARD_GOOSE_PROVIDER:-ollama}"
-  local model="${WARD_GOOSE_MODEL:-qwen2.5}"
+  local model="${WARD_GOOSE_MODEL:-qwen3-coder:30b}"
   local host=""
   [ -n "${WARD_GOOSE_OLLAMA_HOST_B64:-}" ] && host="$(printf '%s' "$WARD_GOOSE_OLLAMA_HOST_B64" | base64 -d)"
   # The tower host (tailnet endpoint) is the secret in this env; scrub it once

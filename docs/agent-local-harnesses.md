@@ -13,8 +13,7 @@ entrypoint **self-installs the standalone opencode binary at container start**
 (best-effort, the same stance ward takes for itself; an `--image` with opencode
 baked in short-circuits it) and writes `~/.config/opencode/opencode.json`
 registering a local ollama provider with the default model pinned to
-`ollama/$WARD_QWEN_MODEL` (default `qwen2.5-coder:latest`, reachable at
-`$WARD_OLLAMA_URL`, default `http://localhost:11434/v1`). Headless runs
+`ollama/$WARD_QWEN_MODEL` reachable at `$WARD_OLLAMA_URL`. Headless runs
 `opencode run <seed>` (opencode prints its own progress, so ward pipes nothing
 through the stream-json filter); interactive `work` opens the seedless `opencode`
 TUI (the issue is pasted in by hand, like goose). There is no host pre-flight
@@ -36,8 +35,8 @@ and rides it into the container base64'd over the private `--env-file` as
 does not linger in the agent's environment (ward#357, the same cleanup the
 claude/codex cred blobs get). An unresolved host (no aws on
 the host) just leaves goose to its built-in default rather than failing the launch.
-Provider and model are overridable via `WARD_GOOSE_PROVIDER` / `WARD_GOOSE_MODEL`
-(default `ollama` / `qwen2.5`), so an operator can repoint goose at a cloud peer -
+Provider and model are overridable via `WARD_GOOSE_PROVIDER` / `WARD_GOOSE_MODEL`,
+so an operator can repoint goose at a cloud peer -
 plus that peer's key - without a code change.
 
 ## See also
