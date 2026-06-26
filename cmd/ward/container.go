@@ -433,9 +433,9 @@ func (r *Runner) sweepStaleContainers(ctx context.Context) {
 		return
 	}
 	fmt.Fprintf(os.Stderr, "ward container: reclaiming %d exited ward container(s) past the keep-%d window (ward#272)\n", len(stale), containerReapKeep)
-	// `docker rm` returns non-zero if one name raced into removal; the rest still
-	// go, so a missed reclaim is logged, never a launch failure.
-	if rmErr := r.Runner.Exec(ctx, "docker", dockerRmArgv(stale)...); rmErr != nil {
+	// Drain each container's console+transcript+meta to the host archive BEFORE the
+	// rm takes them with it (ward#363); a raced/missed rm is logged, never fatal.
+	if rmErr := r.drainStaleContainers(ctx, stale); rmErr != nil {
 		fmt.Fprintf(os.Stderr, "ward container: stale-container sweep had a non-zero rm (%v); continuing\n", rmErr)
 	}
 }
