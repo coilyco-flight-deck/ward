@@ -10,7 +10,7 @@ func TestGitCommandRegistersPassthroughVerbs(t *testing.T) {
 	for _, sub := range cmd.Commands {
 		have[sub.Name] = true
 	}
-	want := []string{"commit", "remote", "status", "fetch", "push"}
+	want := []string{"commit", "remote", "status", "fetch", "push", "grep", "grep-remote"}
 	for _, name := range want {
 		if !have[name] {
 			t.Errorf("ward git missing subcommand %q", name)

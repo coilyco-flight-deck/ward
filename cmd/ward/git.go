@@ -14,6 +14,7 @@ var gitPassthroughVerbs = []struct{ name, usage string }{
 	{"log", "git log - show commit history."},
 	{"diff", "git diff - show changes."},
 	{"show", "git show - show a commit or object."},
+	{"grep", "git grep - search tracked file contents (read-only)."},
 	{"add", "git add - stage changes."},
 	{"fetch", "git fetch - download objects and refs from a remote."},
 	{"pull", "git pull - fetch and integrate."},
@@ -28,7 +29,7 @@ var gitPassthroughVerbs = []struct{ name, usage string }{
 // gitCommand groups ward's audited git verbs: thin passthroughs plus the
 // concurrency-safe commit and the destination-gated clone. See docs/git-verbs.md.
 func gitCommand() *cli.Command {
-	subs := []*cli.Command{gitCommitCommand(), gitCloneCommand()}
+	subs := []*cli.Command{gitCommitCommand(), gitCloneCommand(), gitGrepRemoteCommand()}
 	for _, v := range gitPassthroughVerbs {
 		subs = append(subs, gitPassthroughLeaf(v.name, v.usage))
 	}
