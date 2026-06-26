@@ -1,10 +1,188 @@
 package main
 
 import (
+	"errors"
 	"reflect"
 	"testing"
 	"time"
+
+	"github.com/urfave/cli/v3"
 )
+
+// TestDirectorDispatchDisposition covers ward#352: a reservation conflict defers (stays
+// `queued`, flagged "deferred"); any other dispatch error parks `failed`.
+func TestDirectorDispatchDisposition(t *testing.T) {
+	conflict := newReservationConflict("issue a/b#5 is already reserved remotely")
+	state, outcome, deferred := directorDispatchDisposition(conflict)
+	if !deferred {
+		t.Error("a reservation conflict must defer, not fail")
+	}
+	if state != "queued" {
+		t.Errorf("deferred state = %q, want queued (eligible for a later tick)", state)
+	}
+	if outcome == nil || outcome.Status != "deferred" {
+		t.Errorf("deferred outcome = %+v, want status=deferred", outcome)
+	}
+
+	state, outcome, deferred = directorDispatchDisposition(errors.New("image pull failed"))
+	if deferred {
+		t.Error("a genuine launch failure must not defer")
+	}
+	if state != "failed" {
+		t.Errorf("launch-failure state = %q, want failed", state)
+	}
+	if outcome == nil || outcome.Status != "dispatch-error" {
+		t.Errorf("failure outcome = %+v, want status=dispatch-error", outcome)
+	}
+}
+
+// TestDispatchCarryEngineerArgv covers ward#355: each set flag is forwarded into the
+// engineer argv, booleans only when true, --force only when the operator opted in.
+func TestDispatchCarryEngineerArgv(t *testing.T) {
+	ref := agentIssueRef{Owner: "coilyco-flight-deck", Repo: "ward", Number: 42}
+
+	// A bare carry: just the driver + the headless detach, no escalations.
+	bare := dispatchCarry{driver: modeClaude}.engineerArgv(ref)
+	wantBare := []string{"engineer", "coilyco-flight-deck/ward#42", "--driver", "claude", "--no-preflight"}
+	if !reflect.DeepEqual(bare, wantBare) {
+		t.Errorf("bare argv = %v, want %v", bare, wantBare)
+	}
+	for _, unwanted := range []string{"--aws", "--host-net", "--ts-sidecar", "--force", "--ward-version"} {
+		if containsArg(bare, unwanted) {
+			t.Errorf("bare argv should not carry %q: %v", unwanted, bare)
+		}
+	}
+
+	// A fully-loaded carry forwards the resolved container intent.
+	full := dispatchCarry{
+		driver: modeGoose, image: "ghcr.io/x/dev", tag: "v9", wardVersion: "v0.58.0",
+		aws: true, hostNet: true, tsSidecar: false, force: true,
+	}.engineerArgv(ref)
+	for _, want := range [][2]string{
+		{"--driver", "goose"}, {"--image", "ghcr.io/x/dev"}, {"--tag", "v9"},
+		{"--ward-version", "v0.58.0"},
+	} {
+		if !argFollowedBy(full, want[0], want[1]) {
+			t.Errorf("argv missing %s %s: %v", want[0], want[1], full)
+		}
+	}
+	for _, want := range []string{"--aws", "--host-net", "--force", "--no-preflight"} {
+		if !containsArg(full, want) {
+			t.Errorf("argv missing %q: %v", want, full)
+		}
+	}
+	if containsArg(full, "--ts-sidecar") {
+		t.Errorf("argv should not carry --ts-sidecar when false: %v", full)
+	}
+}
+
+// TestDirectorEngineerDriver covers the two-level driver precedence (ward#355): set
+// --engineer-driver wins; else the engineers inherit director's --driver.
+func TestDirectorEngineerDriver(t *testing.T) {
+	inherit := directorFlagSet(t, map[string]string{})
+	if got, err := directorEngineerDriver(inherit, modeGoose); err != nil || got != modeGoose {
+		t.Errorf("unset --engineer-driver should inherit director's mode: got %q err %v", got, err)
+	}
+	override := directorFlagSet(t, map[string]string{"engineer-driver": "codex"})
+	if got, err := directorEngineerDriver(override, modeGoose); err != nil || got != modeCodex {
+		t.Errorf("--engineer-driver codex should override: got %q err %v", got, err)
+	}
+	bad := directorFlagSet(t, map[string]string{"engineer-driver": "nope"})
+	if _, err := directorEngineerDriver(bad, modeClaude); err == nil {
+		t.Error("an unknown --engineer-driver must error")
+	}
+}
+
+// TestDirectorFlagsParity covers ward#355's acceptance: director carries the shared
+// container/harness flags at parity, but never the engineer-carry / detach specifics.
+func TestDirectorFlagsParity(t *testing.T) {
+	cmd := agentDirectorCommand()
+	for _, want := range []string{
+		"image", "tag", "ward-source", "ward-version", "aws", "host-net", "ts-sidecar",
+		"no-pull", "print", "with-repo", "force", "engineer-driver", "driver",
+	} {
+		if !commandHasFlag(cmd, want) {
+			t.Errorf("ward agent director missing --%s at parity (ward#355)", want)
+		}
+	}
+	for _, unwanted := range []string{"branch", "no-preflight", "watch", "detach"} {
+		if commandHasFlag(cmd, unwanted) {
+			t.Errorf("ward agent director must NOT add --%s (ward#355)", unwanted)
+		}
+	}
+}
+
+// containsArg reports whether argv holds the literal flag token.
+func containsArg(argv []string, want string) bool {
+	for _, a := range argv {
+		if a == want {
+			return true
+		}
+	}
+	return false
+}
+
+// argFollowedBy reports whether flag appears immediately before val in argv.
+func argFollowedBy(argv []string, flag, val string) bool {
+	for i := 0; i < len(argv)-1; i++ {
+		if argv[i] == flag && argv[i+1] == val {
+			return true
+		}
+	}
+	return false
+}
+
+// directorFlagSet parses director's flags with the given string flags set, so the driver
+// resolvers can be exercised without a full run.
+func directorFlagSet(t *testing.T, set map[string]string) *cli.Command {
+	t.Helper()
+	cmd := &cli.Command{Name: "director", Flags: directorFlags()}
+	args := []string{"director"}
+	for k, v := range set {
+		args = append(args, "--"+k, v)
+	}
+	if err := cmd.Run(t.Context(), args); err != nil {
+		// A nil Action means Run just parses; an error here is a real parse fault.
+		t.Fatalf("parse director flags %v: %v", set, err)
+	}
+	return cmd
+}
+
+// TestDirectorSurfaceArgv covers ward#355: director's drain surface inherits its
+// container/harness flags and runs on director's OWN driver, never the engineer driver.
+func TestDirectorSurfaceArgv(t *testing.T) {
+	cfg := backlogConfig{
+		mode:       modeClaude,
+		carry:      dispatchCarry{driver: modeGoose, image: "img", tag: "t1", wardVersion: "v1", aws: true, tsSidecar: true},
+		wardSource: "/src/ward",
+		noPull:     true,
+		withRepo:   []string{"a/b", "c/d"},
+	}
+	argv := directorSurfaceArgv("coilyco-flight-deck/ward", cfg)
+	if argv[0] != architectSurface {
+		t.Errorf("surface argv[0] = %q, want %q", argv[0], architectSurface)
+	}
+	if !argFollowedBy(argv, "--driver", "claude") {
+		t.Errorf("surface must run on director's own driver (claude), not the engineer driver: %v", argv)
+	}
+	for _, want := range [][2]string{
+		{"--repo", "coilyco-flight-deck/ward"}, {"--image", "img"}, {"--tag", "t1"},
+		{"--ward-version", "v1"}, {"--ward-source", "/src/ward"},
+		{"--with-repo", "a/b"}, {"--with-repo", "c/d"},
+	} {
+		if !argFollowedBy(argv, want[0], want[1]) {
+			t.Errorf("surface argv missing %s %s: %v", want[0], want[1], argv)
+		}
+	}
+	for _, want := range []string{"--aws", "--ts-sidecar", "--no-pull"} {
+		if !containsArg(argv, want) {
+			t.Errorf("surface argv missing %q: %v", want, argv)
+		}
+	}
+	if containsArg(argv, "goose") {
+		t.Errorf("surface argv must not carry the engineer driver: %v", argv)
+	}
+}
 
 func TestParseScopeRepos(t *testing.T) {
 	cases := []struct {

@@ -16,6 +16,25 @@ import (
 // agent_reserve.go gives every `ward agent` run a two-sided reservation (local
 // sentinel + Forgejo marker comment), TTL-bounded, --force overrides. See docs/agent.md.
 
+// reservationConflictError marks a refusal because another run already holds the issue's
+// reservation - not a launch failure, so the director defers it (ward#352).
+type reservationConflictError struct{ msg string }
+
+func (e *reservationConflictError) Error() string { return e.msg }
+
+// newReservationConflict builds a typed conflict refusal with a formatted message, so a
+// caller can recover the intent with isReservationConflict regardless of the prose.
+func newReservationConflict(format string, args ...any) error {
+	return &reservationConflictError{msg: fmt.Sprintf(format, args...)}
+}
+
+// isReservationConflict reports whether err is (or wraps) a reservation-conflict refusal
+// - "another run beat me to it" - vs a genuine launch failure (ward#352).
+func isReservationConflict(err error) bool {
+	var rc *reservationConflictError
+	return errors.As(err, &rc)
+}
+
 // agentReservationsSubdir is the directory under ~/.ward holding one sentinel
 // file per reserved issue.
 const agentReservationsSubdir = "agent-reservations"
@@ -165,7 +184,7 @@ func (r *Runner) precheckReservation(ctx context.Context, label string, w resolv
 		return err
 	}
 	if who, held := freshReservationComment(w.Comments, now, agentReservationTTL); held {
-		return fmt.Errorf(
+		return newReservationConflict(
 			"%s: issue %s is already reserved remotely (%s); wait for it to finish or pass --force to override",
 			label, w.Ref, who)
 	}
@@ -184,7 +203,7 @@ func (r *Runner) precheckLocalReservation(ctx context.Context, label string, ref
 		return fmt.Errorf("%s: read reservation %s: %w", label, path, rerr)
 	}
 	if ok && reservationFresh(existing.At, now, agentReservationTTL) && r.containerRunning(ctx, existing.Container) {
-		return fmt.Errorf(
+		return newReservationConflict(
 			"%s: issue %s is already reserved locally by %s; wait for it to finish or pass --force to reclaim",
 			label, ref, existing.summary())
 	}
@@ -247,7 +266,7 @@ func (r *Runner) acquireRemoteReservation(ctx context.Context, label string, mod
 		if lerr != nil {
 			fmt.Fprintf(os.Stderr, "%s: note: could not read issue comments to check for a remote reservation (%v); proceeding\n", label, lerr)
 		} else if who, held := freshReservationComment(comments, now, agentReservationTTL); held {
-			return fmt.Errorf(
+			return newReservationConflict(
 				"%s: issue %s is already reserved remotely (%s); wait for it to finish or pass --force to override",
 				label, ref, who)
 		}

@@ -89,6 +89,47 @@ type backlogLedger struct {
 	Issues  map[string]*backlogEntry `yaml:"issues"`
 }
 
+// dispatchCarry is the container/harness flag set the director forwards into each
+// engineer it dispatches, so the run inherits the operator's container intent (ward#355).
+type dispatchCarry struct {
+	driver      containerMode // the engineer driver: --engineer-driver, else director's --driver
+	image       string
+	tag         string
+	wardVersion string
+	aws         bool
+	hostNet     bool
+	tsSidecar   bool
+	force       bool
+}
+
+// engineerArgv renders the `ward agent engineer` argv that carries one issue, forwarding
+// every set container/harness flag so the engineer matches director's intent (ward#355).
+func (c dispatchCarry) engineerArgv(ref agentIssueRef) []string {
+	argv := []string{"engineer", ref.String(), "--driver", string(c.driver), "--no-preflight"}
+	if img := strings.TrimSpace(c.image); img != "" {
+		argv = append(argv, "--image", img)
+	}
+	if tag := strings.TrimSpace(c.tag); tag != "" {
+		argv = append(argv, "--tag", tag)
+	}
+	if v := strings.TrimSpace(c.wardVersion); v != "" {
+		argv = append(argv, "--ward-version", v)
+	}
+	if c.aws {
+		argv = append(argv, "--aws")
+	}
+	if c.hostNet {
+		argv = append(argv, "--host-net")
+	}
+	if c.tsSidecar {
+		argv = append(argv, "--ts-sidecar")
+	}
+	if c.force {
+		argv = append(argv, "--force")
+	}
+	return argv
+}
+
 // backlogConfig is the resolved knob set for one `ward agent director` run.
 type backlogConfig struct {
 	mode         containerMode
@@ -97,7 +138,51 @@ type backlogConfig struct {
 	pollInterval time.Duration
 	maxCycles    int
 	dryRun       bool
+	print        bool
 	triage       bool
+	carry        dispatchCarry
+	// surface fields configure director's OWN session - the architect surface it drops into
+	// on drain (ward#355): ward-source + with-repo + no-pull on top of carry's fields.
+	wardSource string
+	noPull     bool
+	withRepo   []string
+}
+
+// directorFlags is director's flag set: backlog/heartbeat knobs plus container/harness
+// parity with engineer + architect (ward#355). See docs/agent-director.md for what + why.
+func directorFlags() []cli.Flag {
+	flags := []cli.Flag{
+		agentDriverFlag(),
+		&cli.StringFlag{Name: "engineer-driver", Usage: "harness for the engineers the director dispatches: " + agentDriverChoices() + " (default: inherit --driver)"},
+		&cli.StringFlag{Name: "repo", Usage: "comma-separated scope 'a/b,c/d' (default: the cwd git origin)"},
+		&cli.StringSliceFlag{Name: "with-repo", Usage: "grant director's own session an additional writable repo to clone (owner/name; repeatable), landed under /workspace alongside the scope (ward#230)."},
+		&cli.IntFlag{Name: "max-parallel", Value: 2, Usage: "in-flight container cap"},
+		&cli.BoolFlag{Name: "triage", Usage: "run `ward exec goose-triage` across the scope before the first refresh"},
+		&cli.IntFlag{Name: "limit", Value: 50, Usage: "open issues read per repo per refresh"},
+		&cli.DurationFlag{Name: "poll-interval", Value: 30 * time.Second, Usage: "wait between dispatch/poll cycles"},
+		&cli.IntFlag{Name: "max-cycles", Value: 0, Usage: "stop after N heartbeat ticks (0 = run until drained with no new direction)"},
+		&cli.BoolFlag{Name: "dry-run", Usage: "show the ranked lanes + planned dispatches, then exit without launching"},
+	}
+	flags = append(flags, agentImageFlags()...)
+	return append(flags,
+		&cli.BoolFlag{Name: "print", Usage: "resolve director's container/harness plan + the planned dispatches and exit; launch nothing"},
+		&cli.BoolFlag{Name: "no-pull", Usage: "skip the image pull"},
+		&cli.BoolFlag{Name: "force", Usage: "propagate --force to dispatched engineers so they reclaim a stale or foreign reservation instead of deferring (ward#352); off by default"},
+	)
+}
+
+// directorEngineerDriver resolves the dispatched-engineer harness: --engineer-driver if
+// set, else director's own --driver (the two-level precedence Kai asked for on ward#355).
+func directorEngineerDriver(c *cli.Command, directorMode containerMode) (containerMode, error) {
+	raw := strings.TrimSpace(c.String("engineer-driver"))
+	if raw == "" {
+		return directorMode, nil
+	}
+	m, err := parseMode(raw)
+	if err != nil {
+		return "", fmt.Errorf("invalid --engineer-driver %q: want %s", raw, agentDriverChoices())
+	}
+	return m, nil
 }
 
 // agentDirectorCommand wires `ward agent director` (audited via WrapVerb, trust-gated
@@ -124,16 +209,7 @@ It is attached/interactive only - there is no --detach (a detached director pose
 runaway-dispatch risk). State lives in a durable per-repo ledger under ~/.ward/backlog,
 so a killed loop resumes from disk. Only the narrow headless lane is auto-dispatched;
 interactive and consult issues are surfaced, not launched. See docs/agent-director.md.`,
-		Flags: []cli.Flag{
-			agentDriverFlag(),
-			&cli.StringFlag{Name: "repo", Usage: "comma-separated scope 'a/b,c/d' (default: the cwd git origin)"},
-			&cli.IntFlag{Name: "max-parallel", Value: 2, Usage: "in-flight container cap"},
-			&cli.BoolFlag{Name: "triage", Usage: "run `ward exec goose-triage` across the scope before the first refresh"},
-			&cli.IntFlag{Name: "limit", Value: 50, Usage: "open issues read per repo per refresh"},
-			&cli.DurationFlag{Name: "poll-interval", Value: 30 * time.Second, Usage: "wait between dispatch/poll cycles"},
-			&cli.IntFlag{Name: "max-cycles", Value: 0, Usage: "stop after N heartbeat ticks (0 = run until drained with no new direction)"},
-			&cli.BoolFlag{Name: "dry-run", Usage: "show the ranked lanes + planned dispatches, then exit without launching"},
-		},
+		Flags: directorFlags(),
 		Action: func(ctx context.Context, c *cli.Command) error {
 			r := newRunner()
 			mode, err := agentDriver(c)
@@ -166,6 +242,14 @@ func (r *Runner) runAgentBacklog(ctx context.Context, c *cli.Command, mode conta
 	if err := r.backlogTrustGate(label, repos); err != nil {
 		return err
 	}
+	engDriver, err := directorEngineerDriver(c, mode)
+	if err != nil {
+		return fmt.Errorf("%s: %w", label, err)
+	}
+	hostNet, tsSidecar := c.Bool("host-net"), c.Bool("ts-sidecar")
+	if hostNet && tsSidecar {
+		return fmt.Errorf("%s: --host-net and --ts-sidecar are mutually exclusive (ward#349)", label)
+	}
 	cfg := backlogConfig{
 		mode:         mode,
 		maxParallel:  c.Int("max-parallel"),
@@ -173,7 +257,21 @@ func (r *Runner) runAgentBacklog(ctx context.Context, c *cli.Command, mode conta
 		pollInterval: c.Duration("poll-interval"),
 		maxCycles:    c.Int("max-cycles"),
 		dryRun:       c.Bool("dry-run"),
+		print:        c.Bool("print"),
 		triage:       c.Bool("triage"),
+		carry: dispatchCarry{
+			driver:      engDriver,
+			image:       c.String("image"),
+			tag:         c.String("tag"),
+			wardVersion: strings.TrimSpace(c.String("ward-version")),
+			aws:         c.Bool("aws"),
+			hostNet:     hostNet,
+			tsSidecar:   tsSidecar,
+			force:       c.Bool("force"),
+		},
+		wardSource: strings.TrimSpace(c.String("ward-source")),
+		noPull:     c.Bool("no-pull"),
+		withRepo:   c.StringSlice("with-repo"),
 	}
 	if cfg.maxParallel < 1 {
 		cfg.maxParallel = 1
@@ -200,7 +298,9 @@ func (r *Runner) backlogTrustGate(label string, repos []string) error {
 // driveBacklog sets the heartbeat up: optional triage, the initial refresh + status
 // print + --dry-run preview, then hands the live backend to runDirectorLoop (ward#351).
 func (r *Runner) driveBacklog(ctx context.Context, label string, repos []string, cfg backlogConfig) error {
-	if cfg.triage && !cfg.dryRun {
+	// --print and --dry-run are both launch-nothing previews, so neither triggers triage.
+	preview := cfg.dryRun || cfg.print
+	if cfg.triage && !preview {
 		r.backlogTriage(ctx, label, repos)
 	}
 	if err := r.backlogRefresh(ctx, label, repos, cfg.limit); err != nil {
@@ -209,7 +309,14 @@ func (r *Runner) driveBacklog(ctx context.Context, label string, repos []string,
 	if err := r.backlogPrintStatus(repos); err != nil {
 		return err
 	}
-	if cfg.dryRun {
+	// --print additionally renders director's own container/harness plan (the driver split,
+	// the image pin, the forwarded flags) before the planned dispatches (ward#355).
+	if cfg.print {
+		if err := r.backlogPrintDirectorPlan(label, repos, cfg); err != nil {
+			return err
+		}
+	}
+	if preview {
 		return r.backlogPrintPlanned(label, repos, cfg.maxParallel)
 	}
 	return runDirectorLoop(ctx, cfg, &liveDirector{r: r, label: label, repos: repos, cfg: cfg})
@@ -653,16 +760,21 @@ func (r *Runner) backlogRefresh(ctx context.Context, label string, repos []strin
 	return nil
 }
 
-// backlogDispatchOne launches one queued issue and records the transition: a launch
-// error parks the issue failed; success records it dispatched with its container.
-func (r *Runner) backlogDispatchOne(ctx context.Context, label string, mode containerMode, p *backlogEntry) error {
+// backlogDispatchOne launches one queued issue and records the transition. A launch error
+// is classified (ward#352): a reservation conflict defers, anything else parks failed.
+func (r *Runner) backlogDispatchOne(ctx context.Context, label string, carry dispatchCarry, p *backlogEntry) error {
 	ref := agentIssueRef{Owner: ownerOf(p.repo), Repo: nameOf(p.repo), Number: p.Num}
 	fmt.Fprintf(os.Stderr, "%s: dispatching %s ...\n", label, ref)
-	if derr := r.backlogDispatch(ctx, mode, ref); derr != nil {
-		fmt.Fprintf(os.Stderr, "%s: dispatch FAILED for %s: %v\n", label, ref, derr)
+	if derr := r.backlogDispatch(ctx, carry, ref); derr != nil {
+		state, outcome, deferred := directorDispatchDisposition(derr)
+		if deferred {
+			fmt.Fprintf(os.Stderr, "%s: deferring %s: %v (left eligible, retried on a later tick)\n", label, ref, derr)
+		} else {
+			fmt.Fprintf(os.Stderr, "%s: dispatch FAILED for %s: %v\n", label, ref, derr)
+		}
 		return r.updateBacklogEntry(p.repo, p.Num, func(e *backlogEntry) {
-			e.State = "failed"
-			e.LastOutcome = &backlogOutcome{Status: "dispatch-error", Text: backlogTruncate(derr.Error(), 300)}
+			e.State = state
+			e.LastOutcome = outcome
 		})
 	}
 	container := r.backlogRunningContainer(ctx, targetRepo{Owner: ref.Owner, Name: ref.Repo}, ref.Number)
@@ -677,12 +789,20 @@ func (r *Runner) backlogDispatchOne(ctx context.Context, label string, mode cont
 	return nil
 }
 
-// backlogDispatch launches one issue's headless carry in-process via the engineer
-// command (a bare ref carries detached; the native runAgentWork path; ward#347).
-func (r *Runner) backlogDispatch(ctx context.Context, mode containerMode, ref agentIssueRef) error {
+// directorDispatchDisposition classifies a dispatch error for the ledger (ward#352): a
+// conflict defers (stays queued/eligible), any other error parks failed. Pure + testable.
+func directorDispatchDisposition(err error) (state string, outcome *backlogOutcome, deferred bool) {
+	if isReservationConflict(err) {
+		return "queued", &backlogOutcome{Status: "deferred", Text: backlogTruncate(err.Error(), 300)}, true
+	}
+	return "failed", &backlogOutcome{Status: "dispatch-error", Text: backlogTruncate(err.Error(), 300)}, false
+}
+
+// backlogDispatch launches one issue's headless carry in-process via the engineer command
+// (ward#347), forwarding director's container/harness carry into its argv (ward#355).
+func (r *Runner) backlogDispatch(ctx context.Context, carry dispatchCarry, ref agentIssueRef) error {
 	cmd := agentEngineerCommand()
-	argv := []string{"engineer", ref.String(), "--driver", string(mode), "--no-preflight"}
-	return cmd.Run(ctx, argv)
+	return cmd.Run(ctx, carry.engineerArgv(ref))
 }
 
 // backlogPoll reconciles each dispatched issue across the scope against reality.
@@ -823,6 +943,45 @@ func (r *Runner) backlogPrintPlanned(label string, repos []string, maxParallel i
 			p.repo+"#"+strconv.Itoa(p.Num), tierOrDash(p.Tier), backlogTruncate(p.Title, 50), marker)
 	}
 	return r.emit(b.String())
+}
+
+// backlogPrintDirectorPlan renders director's OWN container/harness plan for --print
+// (ward#355): the driver split, the image pin, the dispatch argv. Launches nothing.
+func (r *Runner) backlogPrintDirectorPlan(label string, repos []string, cfg backlogConfig) error {
+	cy := cfg.carry
+	var b strings.Builder
+	fmt.Fprintf(&b, "\n# %s (print)\n", label)
+	fmt.Fprintf(&b, "scope:           %s\n", strings.Join(repos, ", "))
+	fmt.Fprintf(&b, "director driver: %s (its own heartbeat one-shot + drain surface)\n", cfg.mode)
+	fmt.Fprintf(&b, "engineer driver: %s (the engineers it dispatches)\n", cy.driver)
+	fmt.Fprintf(&b, "max-parallel:    %d\n", cfg.maxParallel)
+	fmt.Fprintf(&b, "image:           %s\n", imageRef(cy.image, cy.tag))
+	fmt.Fprintf(&b, "ward-version:    %s\n", directorWardVersion(cy.wardVersion))
+	if cfg.wardSource != "" {
+		fmt.Fprintf(&b, "ward-source:     %s (surface session builds ward from here)\n", cfg.wardSource)
+	}
+	fmt.Fprintf(&b, "aws:             %t\n", cy.aws)
+	fmt.Fprintf(&b, "host-net:        %t\n", cy.hostNet)
+	fmt.Fprintf(&b, "ts-sidecar:      %t\n", cy.tsSidecar)
+	fmt.Fprintf(&b, "no-pull:         %t\n", cfg.noPull)
+	fmt.Fprintf(&b, "force:           %t (propagated to engineers; default defers on a reservation conflict)\n", cy.force)
+	if len(cfg.withRepo) > 0 {
+		fmt.Fprintf(&b, "with-repo:       %s (cloned into the surface session)\n", strings.Join(cfg.withRepo, ", "))
+	}
+	// Show the exact argv each dispatch forwards, with a placeholder ref slot.
+	argv := cy.engineerArgv(agentIssueRef{Owner: "owner", Repo: "repo", Number: 0})
+	argv[1] = "<owner/repo#N>"
+	fmt.Fprintf(&b, "dispatch:        ward agent %s\n", strings.Join(argv, " "))
+	return r.emit(b.String())
+}
+
+// directorWardVersion renders the ward release the dispatches pin: the explicit
+// --ward-version, else this host's ward (the buildUpPlan default).
+func directorWardVersion(v string) string {
+	if strings.TrimSpace(v) == "" {
+		return Version + " (this host)"
+	}
+	return v
 }
 
 // backlogPrintSummary prints the terminal disposition of the run by state.

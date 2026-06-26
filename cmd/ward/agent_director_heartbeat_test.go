@@ -2,6 +2,7 @@ package main
 
 import (
 	"context"
+	"errors"
 	"reflect"
 	"strings"
 	"testing"
@@ -216,6 +217,66 @@ func TestRunDirectorLoopExitsWhenNoSurface(t *testing.T) {
 	}
 	if f.dispatched != nil {
 		t.Errorf("nothing should dispatch, got %v", f.dispatched)
+	}
+}
+
+// dispoDirector is a directorBackend that applies the live ward#352 disposition to a
+// per-issue injected error: the loop seam sees a conflict (defer) vs a real failure.
+type dispoDirector struct {
+	*fakeDirector
+	errs map[int]error
+}
+
+func (d *dispoDirector) dispatch(ctx context.Context, p *backlogEntry) error {
+	if err := d.errs[p.Num]; err != nil {
+		state, outcome, _ := directorDispatchDisposition(err)
+		p.State = state
+		p.LastOutcome = outcome
+		return nil
+	}
+	return d.fakeDirector.dispatch(ctx, p)
+}
+
+// TestRunDirectorLoopDefersReservationConflict covers ward#352: a reservation conflict
+// leaves the issue queued/eligible, never failed, never dispatched (backend seam).
+func TestRunDirectorLoopDefersReservationConflict(t *testing.T) {
+	issue := &backlogEntry{Num: 5, Title: "held elsewhere", Tier: "P0", Lane: "headless", State: "queued"}
+	d := &dispoDirector{
+		fakeDirector: &fakeDirector{list: []*backlogEntry{issue}},
+		errs:         map[int]error{5: newReservationConflict("issue a/b#5 is already reserved remotely")},
+	}
+	cfg := backlogConfig{maxParallel: 2, pollInterval: time.Millisecond, maxCycles: 2}
+
+	if err := runDirectorLoop(context.Background(), cfg, d); err != nil {
+		t.Fatalf("loop returned error: %v", err)
+	}
+	if issue.State != "queued" {
+		t.Errorf("a deferred issue must stay queued/eligible, got %q", issue.State)
+	}
+	if d.dispatched != nil {
+		t.Errorf("a deferred dispatch did not launch, so nothing should count as dispatched, got %v", d.dispatched)
+	}
+	if d.maxCycleCalls != 1 {
+		t.Errorf("the loop should bound on --max-cycles (held lane never drains), maxCycle=%d", d.maxCycleCalls)
+	}
+}
+
+// TestRunDirectorLoopParksRealFailure confirms the other half of ward#352: a real launch
+// failure still parks the issue failed (then the lane drains and surfaces).
+func TestRunDirectorLoopParksRealFailure(t *testing.T) {
+	issue := &backlogEntry{Num: 5, Title: "real failure", Tier: "P0", Lane: "headless", State: "queued"}
+	d := &dispoDirector{
+		fakeDirector: &fakeDirector{list: []*backlogEntry{issue}},
+		errs:         map[int]error{5: errors.New("image pull failed")},
+	}
+	d.surfaceFn = func() (bool, error) { return false, nil } // non-interactive: drain exits cleanly
+	cfg := backlogConfig{maxParallel: 2, pollInterval: time.Millisecond, maxCycles: 5}
+
+	if err := runDirectorLoop(context.Background(), cfg, d); err != nil {
+		t.Fatalf("loop returned error: %v", err)
+	}
+	if issue.State != "failed" {
+		t.Errorf("a genuine launch failure must park failed, got %q", issue.State)
 	}
 }
 

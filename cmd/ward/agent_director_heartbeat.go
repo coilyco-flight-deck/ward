@@ -148,11 +148,11 @@ func (d *liveDirector) decide(ctx context.Context, picks []*backlogEntry, avail 
 }
 
 func (d *liveDirector) dispatch(ctx context.Context, p *backlogEntry) error {
-	return d.r.backlogDispatchOne(ctx, d.label, d.cfg.mode, p)
+	return d.r.backlogDispatchOne(ctx, d.label, d.cfg.carry, p)
 }
 
 func (d *liveDirector) surface(ctx context.Context) (bool, error) {
-	return d.r.directorSurface(ctx, d.label, d.repos[0], d.cfg.mode)
+	return d.r.directorSurface(ctx, d.label, d.repos[0], d.cfg)
 }
 
 func (d *liveDirector) sleep(ctx context.Context, dur time.Duration) error {
@@ -326,20 +326,57 @@ func selectDirectorPicks(picks []*backlogEntry, nums []int, avail int) []*backlo
 
 // --- the interactive surface -----------------------------------------------
 
-// directorSurface hands control to a read-only architect session on the scope's lead
-// repo on drain (ward#351); ran=false (no terminal) tells the loop to exit cleanly.
-func (r *Runner) directorSurface(ctx context.Context, label, contextRepo string, mode containerMode) (bool, error) {
+// directorSurface hands control to a read-only architect session on drain (ward#351).
+// ran=false (no terminal) exits the loop; it inherits director's flags (ward#355).
+func (r *Runner) directorSurface(ctx context.Context, label, contextRepo string, cfg backlogConfig) (bool, error) {
 	if !terminalAttached() {
 		fmt.Fprintf(os.Stderr, "%s: headless lane drained and no terminal attached; nothing to surface to, exiting.\n", label)
 		return false, nil
 	}
 	fmt.Fprintf(os.Stderr, "%s: headless lane drained - surfacing a read-only %s session on %s for new direction "+
-		"(the heartbeat resumes when the queue refills; exit it to stop)...\n\n", label, mode.agentBinary(), contextRepo)
+		"(the heartbeat resumes when the queue refills; exit it to stop)...\n\n", label, cfg.mode.agentBinary(), contextRepo)
 	cmd := agentArchitectCommand()
-	if err := cmd.Run(ctx, []string{architectSurface, "--repo", contextRepo, "--driver", string(mode)}); err != nil {
+	if err := cmd.Run(ctx, directorSurfaceArgv(contextRepo, cfg)); err != nil {
 		return true, fmt.Errorf("%s: interactive surface session: %w", label, err)
 	}
 	return true, nil
+}
+
+// directorSurfaceArgv builds the architect-surface argv from director's forwarded flags.
+// It runs on director's OWN --driver (cfg.mode), never the engineer driver (ward#355).
+func directorSurfaceArgv(contextRepo string, cfg backlogConfig) []string {
+	cy := cfg.carry
+	argv := []string{architectSurface, "--repo", contextRepo, "--driver", string(cfg.mode)}
+	if v := strings.TrimSpace(cy.image); v != "" {
+		argv = append(argv, "--image", v)
+	}
+	if v := strings.TrimSpace(cy.tag); v != "" {
+		argv = append(argv, "--tag", v)
+	}
+	if v := strings.TrimSpace(cy.wardVersion); v != "" {
+		argv = append(argv, "--ward-version", v)
+	}
+	if v := strings.TrimSpace(cfg.wardSource); v != "" {
+		argv = append(argv, "--ward-source", v)
+	}
+	if cy.aws {
+		argv = append(argv, "--aws")
+	}
+	if cy.hostNet {
+		argv = append(argv, "--host-net")
+	}
+	if cy.tsSidecar {
+		argv = append(argv, "--ts-sidecar")
+	}
+	if cfg.noPull {
+		argv = append(argv, "--no-pull")
+	}
+	for _, wr := range cfg.withRepo {
+		if s := strings.TrimSpace(wr); s != "" {
+			argv = append(argv, "--with-repo", s)
+		}
+	}
+	return argv
 }
 
 // backlogPrintDrained reports the drained headless lane with its terminal disposition

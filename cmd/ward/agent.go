@@ -333,6 +333,20 @@ func agentDefaultSurfaceAction() cli.ActionFunc {
 	}
 }
 
+// agentImageFlags is the shared container image/ward-build/escalation flag block every
+// dispatching role layers its own flags on top of (ward#355); --print stays per-role.
+func agentImageFlags() []cli.Flag {
+	return []cli.Flag{
+		&cli.StringFlag{Name: "image", Value: containerImageDefault, Sources: cli.EnvVars(envAgentImage), Usage: "dev-base image to run (env: WARD_AGENT_IMAGE)"},
+		&cli.StringFlag{Name: "tag", Value: containerImageTagDefault, Sources: cli.EnvVars(envAgentTag), Usage: "image tag (env: WARD_AGENT_TAG)"},
+		&cli.StringFlag{Name: "ward-source", Usage: "mount a local ward checkout and build ward from it instead of downloading the release"},
+		&cli.StringFlag{Name: "ward-version", Sources: cli.EnvVars(envAgentVersion), Usage: "ward release the container downloads (default: this host's ward; env: WARD_AGENT_VERSION)"},
+		&cli.BoolFlag{Name: "aws", Usage: "mount ~/.aws read-only (broad SSM read surface; off by default)"},
+		hostNetFlag(),
+		tsSidecarFlag(),
+	}
+}
+
 // agentSurfaceFlags builds the launch flag set shared by work/headless and the
 // bare-ref default; headless toggles detach-only vs interactive flags (ward#282).
 func agentSurfaceFlags(headless bool) []cli.Flag {
@@ -341,18 +355,14 @@ func agentSurfaceFlags(headless bool) []cli.Flag {
 		&cli.StringFlag{Name: "branch", Usage: "feature branch to create inside the clone (default: issue-<N>)"},
 		&cli.StringSliceFlag{Name: "repo", Aliases: []string{"with-repo"}, Usage: "grant the agent an additional writable repo to clone + operate against (owner/name; repeatable). Cloned as a full feature copy under /workspace alongside the issue's repo (ward#230, ward#280; --with-repo is the legacy alias)."},
 		&cli.StringFlag{Name: "details", Usage: "extra operator instructions woven into the seeded prompt + pre-flight read (overrides the issue text on conflict)"},
-		&cli.StringFlag{Name: "image", Value: containerImageDefault, Sources: cli.EnvVars(envAgentImage), Usage: "dev-base image to run (env: WARD_AGENT_IMAGE)"},
-		&cli.StringFlag{Name: "tag", Value: containerImageTagDefault, Sources: cli.EnvVars(envAgentTag), Usage: "image tag (env: WARD_AGENT_TAG)"},
-		&cli.StringFlag{Name: "ward-source", Usage: "mount a local ward checkout and build ward from it instead of downloading the release"},
-		&cli.StringFlag{Name: "ward-version", Sources: cli.EnvVars(envAgentVersion), Usage: "ward release the container downloads (default: this host's ward; env: WARD_AGENT_VERSION)"},
-		&cli.BoolFlag{Name: "aws", Usage: "mount ~/.aws read-only (broad SSM read surface; off by default)"},
-		hostNetFlag(),
-		tsSidecarFlag(),
+	}
+	flags = append(flags, agentImageFlags()...)
+	flags = append(flags,
 		&cli.BoolFlag{Name: "print", Usage: "resolve the issue + seeded prompt + docker plan and exit; inject no push token, run nothing"},
 		&cli.BoolFlag{Name: "no-pull", Usage: "skip the image pull"},
 		&cli.BoolFlag{Name: "force", Usage: "skip the local + remote concurrency reservation checks (reclaim a stale or foreign hold)"},
 		&cli.BoolFlag{Name: "go-bootstrap", Usage: "EXPERIMENTAL (ward#181): after ward installs, delegate to the Go 'ward container bootstrap' instead of the bash entrypoint logic. Requires ward in-container - use --ward-source until the image bakes it."},
-	}
+	)
 	if !headless {
 		// headless always detaches, so only the interactive surface exposes --detach.
 		flags = append(flags, &cli.BoolFlag{Name: "detach", Aliases: []string{"d"}, Usage: "run detached instead of interactive"})

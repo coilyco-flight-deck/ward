@@ -21,20 +21,16 @@ const architectSurface = "architect"
 // agentScratchFlags is the flag set the seedless scratch bring-up uses; architect is
 // its only caller now that sandbox is gone (ward#347).
 func agentScratchFlags() []cli.Flag {
-	return []cli.Flag{
+	flags := []cli.Flag{
 		agentDriverFlag(),
 		&cli.StringFlag{Name: "repo", Usage: "owner/repo to clone for context (default: inferred from the cwd's git origin)"},
 		&cli.StringSliceFlag{Name: "with-repo", Usage: "clone an additional repo for context (owner/name; repeatable), landed under /workspace alongside the primary repo (ward#230)."},
-		&cli.StringFlag{Name: "image", Value: containerImageDefault, Sources: cli.EnvVars(envAgentImage), Usage: "dev-base image to run (env: WARD_AGENT_IMAGE)"},
-		&cli.StringFlag{Name: "tag", Value: containerImageTagDefault, Sources: cli.EnvVars(envAgentTag), Usage: "image tag (env: WARD_AGENT_TAG)"},
-		&cli.StringFlag{Name: "ward-source", Usage: "mount a local ward checkout and build ward from it instead of downloading the release"},
-		&cli.StringFlag{Name: "ward-version", Sources: cli.EnvVars(envAgentVersion), Usage: "ward release the container downloads (default: this host's ward; env: WARD_AGENT_VERSION)"},
-		&cli.BoolFlag{Name: "aws", Usage: "mount ~/.aws read-only (broad SSM read surface; off by default)"},
-		hostNetFlag(),
-		tsSidecarFlag(),
+	}
+	flags = append(flags, agentImageFlags()...)
+	return append(flags,
 		&cli.BoolFlag{Name: "print", Usage: "resolve the repo + docker plan and exit; clone nothing, run nothing"},
 		&cli.BoolFlag{Name: "no-pull", Usage: "skip the image pull"},
-	}
+	)
 }
 
 // agentArchitectCommand builds `ward agent architect`: a read-only interactive session

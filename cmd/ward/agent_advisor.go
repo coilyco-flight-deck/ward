@@ -17,7 +17,7 @@ import (
 // agentAdvisorFlags is the advisor role's flag set: the reply depth ladder (ref mode)
 // unioned with the scratch-container flags the inline answer (freeform mode) needs.
 func agentAdvisorFlags() []cli.Flag {
-	return []cli.Flag{
+	flags := []cli.Flag{
 		agentDriverFlag(),
 		// Ref mode (was `reply`): how hard the host one-shot research digs.
 		&cli.StringFlag{
@@ -29,16 +29,12 @@ func agentAdvisorFlags() []cli.Flag {
 		// Freeform mode (was `ask`): the fresh container the inline answer leans on.
 		&cli.StringFlag{Name: "repo", Usage: "freeform mode: owner/repo to clone for context (default: inferred from the cwd's git origin)"},
 		&cli.StringSliceFlag{Name: "with-repo", Usage: "freeform mode: clone an additional repo for context (owner/name; repeatable), landed under /workspace alongside the primary repo (ward#230)."},
-		&cli.StringFlag{Name: "image", Value: containerImageDefault, Sources: cli.EnvVars(envAgentImage), Usage: "dev-base image to run (env: WARD_AGENT_IMAGE)"},
-		&cli.StringFlag{Name: "tag", Value: containerImageTagDefault, Sources: cli.EnvVars(envAgentTag), Usage: "image tag (env: WARD_AGENT_TAG)"},
-		&cli.StringFlag{Name: "ward-source", Usage: "mount a local ward checkout and build ward from it instead of downloading the release"},
-		&cli.StringFlag{Name: "ward-version", Sources: cli.EnvVars(envAgentVersion), Usage: "ward release the container downloads (default: this host's ward; env: WARD_AGENT_VERSION)"},
-		&cli.BoolFlag{Name: "aws", Usage: "mount ~/.aws read-only (broad SSM read surface; off by default)"},
-		hostNetFlag(),
-		tsSidecarFlag(),
+	}
+	flags = append(flags, agentImageFlags()...)
+	return append(flags,
 		&cli.BoolFlag{Name: "print", Usage: "resolve the inputs + render the prompt + plan and exit; research nothing, post nothing, run nothing"},
 		&cli.BoolFlag{Name: "no-pull", Usage: "skip the image pull"},
-	}
+	)
 }
 
 // agentAdvisorCommand builds `ward agent advisor`: a ref researches the issue and posts

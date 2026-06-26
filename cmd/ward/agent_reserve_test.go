@@ -2,6 +2,8 @@ package main
 
 import (
 	"context"
+	"errors"
+	"fmt"
 	"os"
 	"strings"
 	"testing"
@@ -270,6 +272,29 @@ func TestFreshReservationComment(t *testing.T) {
 		mk(reserved, 30*time.Minute, "coilyco-ops"),
 	}, now, ttl); !held {
 		t.Error("a reservation posted after the release must still block")
+	}
+}
+
+// TestIsReservationConflict covers ward#352's classifier: a typed conflict (even wrapped)
+// reads as a conflict; a plain launch error and nil do not.
+func TestIsReservationConflict(t *testing.T) {
+	conflict := newReservationConflict("issue %s is already reserved remotely", "a/b#5")
+	cases := []struct {
+		name string
+		err  error
+		want bool
+	}{
+		{"typed conflict", conflict, true},
+		{"wrapped conflict", fmt.Errorf("dispatch: %w", conflict), true},
+		{"plain launch error", errors.New("image pull failed"), false},
+		{"nil", nil, false},
+	}
+	for _, c := range cases {
+		t.Run(c.name, func(t *testing.T) {
+			if got := isReservationConflict(c.err); got != c.want {
+				t.Errorf("isReservationConflict(%v) = %v, want %v", c.err, got, c.want)
+			}
+		})
 	}
 }
 
