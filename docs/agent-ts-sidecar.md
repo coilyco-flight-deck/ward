@@ -54,7 +54,7 @@ curl --proxy "$WARD_TS_SOCKS5" "$WARD_TOWER_OLLAMA/api/tags"
 imply `--aws`** (it needs no SSM):
 
 ```bash
-warded engineer coilyco-flight-deck/agent-proxy#1 --watch --ts-sidecar
+warded engineer coilyco-flight-deck/agent-proxy#1 --ts-sidecar
 ```
 
 `--print` shows the preflight `docker network inspect` line and the carry's

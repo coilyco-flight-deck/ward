@@ -33,7 +33,7 @@ type agentRoleInfo struct {
 var agentRoleInfos = map[string]agentRoleInfo{
 	"engineer": {
 		Tagline: "Implements a ticket end to end.",
-		Modes:   "A ref carries that issue (detached fire-and-forget; `--watch` attaches); freeform text files an issue first, then carries it.",
+		Modes:   "A ref carries that issue detached, fire-and-forget; freeform text files an issue first, then carries it. Detached-only - interactive work funnels to the director.",
 	},
 	"architect": {
 		Tagline: "Reads the clone, scopes and dispatches work - but cannot push.",

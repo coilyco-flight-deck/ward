@@ -28,15 +28,15 @@ Launch through [`ward agent`](agent.md):
 
 ```bash
 ward agent engineer coilyco-gaming/eco-app#123             # carry an issue end to end (detached)
-ward agent engineer coilyco-gaming/eco-app#123 --watch     # attached, fire-and-forget off
 ward agent engineer coilyco-gaming/eco-app#123 --driver codex --print   # show the docker cmd only
 ```
 
 `ward agent engineer --help` lists the launch flags the carry brings from this
-subsystem (`--driver`, `--aws`, `--watch`, `--print`, `--no-pull`,
-`--ward-source`, ...; see [docs/agent-flags.md](agent-flags.md)). The run
-attaches by default; the pseudo-TTY (`-t`) is **auto-detected**, on only when
-stdin and stdout are both terminals. `--detach`/`headless` background it (`-d`).
+subsystem (`--driver`, `--aws`, `--print`, `--no-pull`, `--ward-source`, ...;
+see [docs/agent-flags.md](agent-flags.md)). The **engineer carry always
+detaches** (ward#356): print mode in the background, no attach surface
+(interactive work goes to the [director](agent-director.md)). The attached,
+auto-TTY (`-t`) shape belongs to `architect` and `ward container up`, not engineer.
 
 ## Modes: progressively-less-context ladder
 

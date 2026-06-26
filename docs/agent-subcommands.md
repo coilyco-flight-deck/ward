@@ -23,15 +23,15 @@ prose detail behind each row. Run `warded roster` for the list live at the termi
 
 The notes below are the behavioral detail the flat roster does not capture:
 
-- **`engineer`** (was `headless` + `work` + `task`) - the **detached** ref carry runs the
-  agent in print mode (`claude -p`, `codex exec`, `goose run -t`) to completion and exits
-  into the reaper; for claude it **streams live progress** to the container log. From a
-  terminal it first runs a **pre-flight check** ([agent-preflight.md](agent-preflight.md)):
-  a GO launches, a NO-GO comments and launches nothing. Its detached seed asks it to
-  **close with a "how it felt" comment** (ward#281) led by a `WARD-OUTCOME` line
-  (ward#310). `--watch` (`-w`) flips it to **interactive, attached** (was `work`), which
-  omits the closing retrospective. Freeform text files an issue first, then carries it:
-  DIRECT for an explicit `owner/repo`, ROUTE for a freeform task with no repo (ward#164).
+- **`engineer`** (was `headless` + `task`) - **detached only** (ward#356): the ref carry
+  runs the agent in print mode (`claude -p`, `codex exec`, `goose run -t`) to completion
+  and exits into the reaper; for claude it **streams live progress** to the container log.
+  From a terminal it first runs a **pre-flight check** ([agent-preflight.md](agent-preflight.md)):
+  a GO launches, a NO-GO comments and launches nothing. Its seed asks it to **close with a
+  "how it felt" comment** (ward#281) led by a `WARD-OUTCOME` line (ward#310). No attach
+  surface: `work`/`--watch`/`--new-tab` are retired, interactive work funnels to `director`.
+  Freeform text files an issue first, then carries it: DIRECT for an explicit `owner/repo`,
+  ROUTE for a freeform task with no repo (ward#164).
 - **`architect`** (was `explore`) - the push credential is revoked after the clone and
   the reaper skips salvage (ward#293).
 - **`director`** (was `backlog`) - an attached heartbeat: polls `WARD-OUTCOME`, an LLM

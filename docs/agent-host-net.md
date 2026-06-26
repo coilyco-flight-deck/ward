@@ -65,7 +65,7 @@ The tower's FQDN is SSM-only (never hardcoded), and a route with no resolver is
 useless - so `--host-net` **implies the `~/.aws` mount** `--aws` adds. A tower carry:
 
 ```bash
-warded engineer coilyco-flight-deck/agent-proxy#1 --watch --host-net
+warded engineer coilyco-flight-deck/agent-proxy#1 --host-net
 ```
 
 resolves the FQDN from SSM and reaches `http://$TOWER:11434` inside the container.
