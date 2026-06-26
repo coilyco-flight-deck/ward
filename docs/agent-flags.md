@@ -8,20 +8,21 @@ for the roster.
 The engineer carry brings the container bring-up launch flags: `--aws`, the
 mutually-exclusive tailnet routes `--host-net` (native-Linux host route; no-op +
 warns elsewhere, ward#332; [agent-host-net.md](agent-host-net.md)) and
-`--ts-sidecar` (the Docker Desktop route to the standing mac-proxy box, ward#349;
-[agent-ts-sidecar.md](agent-ts-sidecar.md)) - `--host-net` implies `--aws`,
-`--ts-sidecar` does not,
+`--ts-sidecar` (Docker Desktop route to the mac-proxy box, ward#349; forwards the
+tower to `localhost:11434`, no `--proxy`, ward#359;
+[agent-ts-sidecar.md](agent-ts-sidecar.md)) - `--host-net`
+implies `--aws`, `--ts-sidecar` does not,
 `--tag`/`--image`/`--ward-version` (pin once via `WARD_AGENT_{TAG,IMAGE,VERSION}`,
 ward#312), `--ward-source`, `--no-pull`, `--branch` to override the
 `issue-<N>` default, and `--repo owner/name` (repeatable; `--with-repo` is the
-legacy alias, ward#280) to grant extra writable repos cloned alongside the
-issue's repo ([container-multi-repo.md](container-multi-repo.md)). `--print` renders the seed +
-docker plan with no push token - a dry run. `--force` skips the
-concurrency reservation checks (see [docs/agent-reservation.md](agent-reservation.md)). The carry
-**always detaches** (ward#356): there is no attach surface - the old `--watch` (`-w`) and
-its `--new-tab` Warp spawn are retired; interactive work funnels to the
-[director](agent-director.md). The carry also takes `--no-preflight`, which skips the
-autonomous pre-flight ([docs/agent-preflight.md](agent-preflight.md)) and detaches immediately.
+legacy alias, ward#280) to grant extra repos cloned alongside the issue's repo
+([container-multi-repo.md](container-multi-repo.md)). `--print` renders the seed +
+docker plan with no push token - a dry run. `--force` skips the reservation
+checks (see [docs/agent-reservation.md](agent-reservation.md)). The carry
+**always detaches** (ward#356): there is no attach surface - the old `--watch`
+(`-w`) and its `--new-tab` Warp spawn are retired, interactive work funnels to the
+[director](agent-director.md). The carry also takes `--no-preflight`, which skips
+the pre-flight ([docs/agent-preflight.md](agent-preflight.md)) and detaches immediately.
 
 ## Quiet launch for detached runs (ward#306, ward#322)
 

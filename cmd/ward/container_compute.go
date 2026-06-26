@@ -508,6 +508,9 @@ func (p upPlan) wardEnv() map[string]string {
 		env["WARD_TS_SOCKS5"] = proxySocks5Scheme + proxyBoxHost
 		// A MagicDNS name, not a secret IP, so it rides plain (no SSM lookup; ward#337).
 		env["WARD_TOWER_OLLAMA"] = towerOllamaURL
+		// The loopback forwarder's no-proxy endpoint: tools dial the tower at plain
+		// localhost:11434 with no --proxy once the carry starts the forwarder (ward#359).
+		env["WARD_TOWER_OLLAMA_LOCAL"] = towerOllamaLocalURL
 	}
 	if p.GoBootstrap {
 		env["WARD_USE_GO_BOOTSTRAP"] = "1"
