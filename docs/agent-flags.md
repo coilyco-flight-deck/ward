@@ -8,23 +8,24 @@ for the roster.
 The engineer carry brings the container bring-up launch flags: `--aws`, the
 mutually-exclusive tailnet routes `--host-net` (native-Linux host route; no-op +
 warns elsewhere, ward#332; [agent-host-net.md](agent-host-net.md)) and
-`--ts-sidecar` (the Docker Desktop route to the standing mac-proxy box, ward#349;
-[agent-ts-sidecar.md](agent-ts-sidecar.md)) - `--host-net` implies `--aws`,
-`--ts-sidecar` does not,
+`--ts-sidecar` (Docker Desktop route to the mac-proxy box, ward#349; forwards the
+tower to `localhost:11434`, no `--proxy`, ward#359;
+[agent-ts-sidecar.md](agent-ts-sidecar.md)) - `--host-net`
+implies `--aws`, `--ts-sidecar` does not,
 `--tag`/`--image`/`--ward-version` (pin once via `WARD_AGENT_{TAG,IMAGE,VERSION}`,
 ward#312), `--ward-source`, `--no-pull`, `--branch` to override the
 `issue-<N>` default, and `--repo owner/name` (repeatable; `--with-repo` is the
-legacy alias, ward#280) to grant extra writable repos cloned alongside the
-issue's repo ([container-multi-repo.md](container-multi-repo.md)). `--print` renders the seed +
-docker plan with no push token - a dry run. `--force` skips the
-concurrency reservation checks (see [docs/agent-reservation.md](agent-reservation.md)). The carry
-**detaches by default**; `--watch` (`-w`) attaches it interactively instead. The detached
-carry also takes `--no-preflight`, which skips the autonomous pre-flight
+legacy alias, ward#280) to grant extra repos cloned alongside the issue's repo
+([container-multi-repo.md](container-multi-repo.md)). `--print` renders the seed +
+docker plan with no push token - a dry run. `--force` skips the reservation
+checks (see [docs/agent-reservation.md](agent-reservation.md)). The carry
+**detaches by default**; `--watch` (`-w`) attaches it instead. The detached
+carry also takes `--no-preflight`, which skips the pre-flight
 ([docs/agent-preflight.md](agent-preflight.md)) and detaches immediately.
 
 ## Quiet launch for detached runs (ward#306, ward#322)
 
-A detached launch (the default engineer carry, i.e. without `--watch`) isn't watched, so docker's
+A detached launch (the default engineer carry, without `--watch`) isn't watched, so docker's
 chatter is dropped: pull lines, the `docker scout` footer, the container-id hash
 (`DOCKER_CLI_HINTS=false` plus a swallowed stdout). An **interactive** run streams
 it unchanged. The pull is the one exception (ward#322): silencing it hid

@@ -23,6 +23,9 @@ WARD_CONTEXT_SRC="${WARD_CONTEXT_SRC:-/opt/ward-context}"
 # See docs/agent.md (qwen).
 WARD_QWEN_MODEL="${WARD_QWEN_MODEL:-qwen2.5-coder:latest}"
 WARD_OLLAMA_URL="${WARD_OLLAMA_URL:-http://localhost:11434/v1}"
+# --ts-sidecar carry: the loopback forwarder's no-proxy tower endpoint (ward#359).
+# Plain localhost; the forwarder bridges it to the tower through $WARD_TS_SOCKS5.
+WARD_TOWER_OLLAMA_LOCAL="${WARD_TOWER_OLLAMA_LOCAL:-http://localhost:11434}"
 # Warded-agent commits attribute to the coilyco-ops bot; the email is the
 # load-bearing match Forgejo links on (ward#245, docs/agent-attribution.md).
 GIT_USER_NAME="${WARD_GIT_NAME:-coilyco-ops}"
@@ -599,6 +602,11 @@ compose_goose_config() {
   local model="${WARD_GOOSE_MODEL:-qwen2.5}"
   local host=""
   [ -n "${WARD_GOOSE_OLLAMA_HOST_B64:-}" ] && host="$(printf '%s' "$WARD_GOOSE_OLLAMA_HOST_B64" | base64 -d)"
+  # --ts-sidecar, no SSM host: route goose at the loopback forwarder (ward#359).
+  if [ -z "$host" ] && [ -n "${WARD_TS_SOCKS5:-}" ]; then
+    host="localhost:11434"
+    log "goose: binding OLLAMA_HOST=$host (the --ts-sidecar loopback forwarder; ward#359)"
+  fi
   {
     echo "# Written by the ward container entrypoint (ward#186): bind goose's provider."
     echo "GOOSE_PROVIDER: $provider"
@@ -610,6 +618,29 @@ compose_goose_config() {
   else
     log "wrote goose config (provider=$provider model=$model) to $dir/config.yaml"
   fi
+}
+
+# --- tower loopback forwarder (--ts-sidecar, ward#359): userspace SOCKS5->TCP so
+# the tower is plain localhost:11434, no --proxy, no cap. docs/agent-ts-sidecar.md.
+TOWER_FORWARDER_PID=""
+
+start_tower_forwarder() {
+  # Only in a --ts-sidecar carry (WARD_TS_SOCKS5 present); a non-sidecar carry is
+  # unchanged. ward backgrounds the forwarder it already installed.
+  [ -n "${WARD_TS_SOCKS5:-}" ] || return 0
+  if ! command -v ward >/dev/null 2>&1; then
+    log "tower forwarder: ward not on PATH, skipping localhost:11434 forwarder (the --proxy path still works)"
+    return 0
+  fi
+  ward container forward &
+  TOWER_FORWARDER_PID=$!
+  log "tower forwarder up (pid $TOWER_FORWARDER_PID): dial the tower at \$WARD_TOWER_OLLAMA_LOCAL ($WARD_TOWER_OLLAMA_LOCAL) with no --proxy, e.g. curl \"\$WARD_TOWER_OLLAMA_LOCAL/api/tags\" (ward#359)"
+}
+
+stop_tower_forwarder() {
+  [ -n "$TOWER_FORWARDER_PID" ] || return 0
+  kill "$TOWER_FORWARDER_PID" 2>/dev/null || true
+  TOWER_FORWARDER_PID=""
 }
 
 # --- reaper: deterministic teardown backstop (docs/container-reap.md) --------
@@ -733,15 +764,17 @@ main() {
   compose_goose_config
   cd "$work"
   export WARD_REAP_WORK="$work"
-  # Arm the reaper before launching the agent; the agent is NOT exec'd, else exec
-  # would replace this shell and skip the trap, defeating the backstop.
-  trap reap EXIT
+  # Arm the reaper (+ tower forwarder teardown, ward#359) before launching the agent;
+  # the agent is NOT exec'd, else exec would skip the trap, defeating the backstop.
+  trap 'stop_tower_forwarder; reap' EXIT
   log "ready: $WARD_TARGET_OWNER/$WARD_TARGET_NAME on $(git branch --show-current) [mode=$WARD_MODE]"
   # --ts-sidecar carry: surface the tower route (by MagicDNS name through the proxy)
   # the agent can dial; both vars are plain in the agent's env (ward#337).
   if [ -n "${WARD_TS_SOCKS5:-}" ]; then
     log "tailnet route ready: dial the tower at \$WARD_TOWER_OLLAMA (${WARD_TOWER_OLLAMA:-unset}) through \$WARD_TS_SOCKS5 ($WARD_TS_SOCKS5), e.g. curl --proxy \"\$WARD_TS_SOCKS5\" \"\$WARD_TOWER_OLLAMA/api/tags\" (ward#337)"
   fi
+  # Start the no-proxy loopback forwarder (ward#359); no-op unless --ts-sidecar.
+  start_tower_forwarder
   if ! command -v "$WARD_AGENT" >/dev/null 2>&1; then
     log "agent '$WARD_AGENT' is not in this image yet (codex/qwen/goose install is a follow-up); dropping to a shell (reaper runs on exit)"
     bash || true

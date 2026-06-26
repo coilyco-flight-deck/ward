@@ -61,6 +61,7 @@ not by hand. See docs/agent.md for the contributor surface.`,
 			containerReapCommand(),
 			containerBootstrapCommand(),
 			containerBrokerCommand(),
+			containerForwardCommand(),
 		},
 	}
 }
