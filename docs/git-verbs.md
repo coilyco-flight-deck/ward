@@ -10,19 +10,19 @@ group (coily#7).
 These are thin audited passthroughs to the underlying `git <verb>`:
 
 ```
-ward git status | log | diff | show | add
+ward git status | log | diff | show | grep | add
 ward git fetch | pull | push
 ward git branch | checkout | stash | restore
 ward git remote
 ```
 
-`remote` is a read passthrough for resolving repo identity, e.g. `ward
-git remote get-url origin` (and plain `ward git remote` to list remotes),
-mirroring bare `git remote ...` behind the audit pipeline.
+`grep` is a read-only content search over the current clone (flags pass to
+`git grep`). `remote` resolves repo identity, e.g. `ward git remote
+get-url origin` (plain `ward git remote` lists remotes), mirroring bare
+`git remote ...` behind the audit pipeline.
 
-A leading `-C <dir>` is hoisted ahead of the subcommand, so `ward git
-status -C /path` runs `git -C /path status` (lets a session operate on a
-repo other than cwd).
+A leading `-C <dir>` is hoisted ahead of the subcommand: `ward git status
+-C /path` runs `git -C /path status` (operate on a repo other than cwd).
 
 ## clone (destination-gated)
 
@@ -35,6 +35,14 @@ allowlist. See [docs/git-clone.md](git-clone.md) for the full walkthrough.
 ```
 ward git clone <url> [dir]
 ```
+
+## grep-remote (ephemeral-clone code search)
+
+Forgejo has no REST code-search, so `ward git grep-remote <owner/repo>
+<pattern> [flags]` shallow-clones the repo (`--depth 1`) into an ephemeral
+temp dir via the `ward git clone` gate, greps tracked files at HEAD, then
+removes it. Args after the repo forward to `git grep`; scope is clone-local
+(no cross-repo or server-side search). A no-match grep (exit 1) is empty.
 
 ## commit (concurrency-safe)
 

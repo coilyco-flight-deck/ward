@@ -208,6 +208,51 @@ func TestParseScopeRepos(t *testing.T) {
 	}
 }
 
+// TestDirectorHasOrgFlag covers ward#370: director takes a repeatable --org scope flag.
+func TestDirectorHasOrgFlag(t *testing.T) {
+	if !commandHasFlag(agentDirectorCommand(), "org") {
+		t.Errorf("ward agent director missing --org scope flag (ward#370)")
+	}
+}
+
+func TestMergeScopeRepos(t *testing.T) {
+	cases := []struct {
+		name  string
+		lists [][]string
+		want  []string
+	}{
+		{"explicit then org, union", [][]string{{"a/b"}, {"a/c", "a/d"}}, []string{"a/b", "a/c", "a/d"}},
+		{"de-dupes across lists, order-preserving", [][]string{{"a/b", "a/c"}, {"a/c", "a/b", "a/e"}}, []string{"a/b", "a/c", "a/e"}},
+		{"trims blanks", [][]string{{" a/b ", ""}, {"a/c"}}, []string{"a/b", "a/c"}},
+		{"all empty", [][]string{nil, {}}, nil},
+	}
+	for _, c := range cases {
+		t.Run(c.name, func(t *testing.T) {
+			got := mergeScopeRepos(c.lists...)
+			if !reflect.DeepEqual(got, c.want) {
+				t.Errorf("mergeScopeRepos(%v) = %v, want %v", c.lists, got, c.want)
+			}
+		})
+	}
+}
+
+func TestOrgReposToSlugs(t *testing.T) {
+	repos := []repoBrief{
+		{Name: "live"},
+		{Name: "stale", Archived: true},
+		{Name: "blank", Empty: true},
+		{Name: "ward"},
+	}
+	got := orgReposToSlugs("coilyco-flight-deck", repos)
+	want := []string{"coilyco-flight-deck/live", "coilyco-flight-deck/ward"}
+	if !reflect.DeepEqual(got, want) {
+		t.Errorf("orgReposToSlugs dropped/kept wrong repos = %v, want %v", got, want)
+	}
+	if s := orgReposToSlugs("org", []repoBrief{{Name: "x", Archived: true}}); len(s) != 0 {
+		t.Errorf("orgReposToSlugs(all archived) = %v, want empty", s)
+	}
+}
+
 func TestBacklogLaneForLabels(t *testing.T) {
 	cases := []struct {
 		labels []string

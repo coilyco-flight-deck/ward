@@ -8,19 +8,19 @@ Contributor-facing cli-guard gate: repo dev verbs + audited host wrappers.
 
 ## Commands
 
-- **`ward exec <verb>`** - run a repo dev verb (`.ward/ward.yaml`) through cli-guard: argv-validated, one JSONL audit row, clean+synced tree gate. See [docs/exec-verb.md](exec-verb.md).
+- **`ward exec <verb>`** - run a repo dev verb (`.ward/ward.yaml`) through cli-guard: argv-validated, one JSONL audit row, clean+synced tree gate. See [exec-verb.md](exec-verb.md).
 - **`ward pkg brew <verb>`** - audited brew wrapper: formula/tap mutations default to primary-org taps (`--allow-untapped` else), reads pass through.
 - **`ward upgrade`** - audited self-update via `brew upgrade coilyco-flight-deck/tap/ward` (`--dry`).
-- **`ward audit {path,tail}`** - read surface over the audit log: `path` prints the log path, `tail` streams rows (`--since`/`--follow`). See [docs/audit.md](audit.md).
-- **`ward git <verb>`** - audited git passthroughs (`-C` hoisted), concurrency-safe `ward git commit`, and destination-gated `ward git clone` (ward#285). See [git-verbs.md](git-verbs.md).
+- **`ward audit {path,tail}`** - read surface over the audit log: `path` prints the log path, `tail` streams rows (`--since`/`--follow`). See [audit.md](audit.md).
+- **`ward git <verb>`** - audited passthroughs, concurrency-safe `commit`, destination-gated `clone` (ward#285), ephemeral-clone search `grep`/`grep-remote` (ward#369). See [git-verbs.md](git-verbs.md).
 - **`ward doctor`** - diagnostic checks against the config + host.
 - **`ward hook pre-tool-use`** - Claude Code PreToolUse hook: binary-path check + bare-command deny with routing hints.
 - **`ward install-hooks`** - register the PreToolUse hook in `.claude/settings.json`.
 - **`ward lint`** - lint `.ward/ward.yaml` against the repo Makefile.
-- **`ward agent {engineer,director,advisor} [--driver <name>]`** (public face: **`warded <role> <ref>`**) - a startup-role roster (ward#347, ward#353): `engineer` implements **detached only** (ward#356), `director` a headless-lane heartbeat that **surfaces a read-only session** on drain (ward#351, ward#353; was `architect`, ward#293), `advisor` answers without code. `warded` is a `ward` symlink (ward#282); a **bare ref runs `engineer`**, a bare `#N` infers `owner/repo`. `--driver` picks a harness (`claude|codex|qwen|goose`; ward#185); `--repo` grants repos; `--host-net`/`--ts-sidecar` reach the tailnet (ward#349). Off-org refused; `--print` dry-runs; the engineer pre-flights (ward#147). `warded roster` lists roles (ward#348). See [agent](agent.md).
+- **`ward agent {engineer,director,advisor} [--driver <name>]`** (public face: **`warded <role> <ref>`**) - a startup-role roster (ward#347, ward#353): `engineer` implements **detached only** (ward#356), `director` a headless-lane heartbeat that **surfaces a read-only session** on drain (ward#351, ward#353; was `architect`, ward#293) + `--org` scope (ward#370), `advisor` answers without code. `warded` is a `ward` symlink (ward#282); a **bare ref runs `engineer`**, a bare `#N` infers `owner/repo`. `--driver` picks a harness (ward#185); `--repo`/`--org` scope; `--host-net`/`--ts-sidecar` reach the tailnet (ward#349). Off-org refused; `--print` dry-runs; the engineer pre-flights (ward#147). `warded roster` lists roles (ward#348). See [agent](agent.md).
 - **`ward container {reap,bootstrap}`** *(hidden, entrypoint-internal; ward#263)* - in-container plumbing: `reap` lands/salvages on teardown and verifies each `--repo` grant landed (ward#291); `bootstrap` is the Go PID-1 entrypoint port (ward#181). See [reap](container-reap.md).
 - **Agent-run observability** *(ward#363)* - the keep-10 sweep **drains** each exited run's console + transcript + secret-free `meta.json` to `~/.ward/agent-logs/<container>/` before `docker rm`. An opt-in extractor (`WARD_AGENT_TELEMETRY=1`, **default-OFF**) ships one **redacted envelope per tool call** as OTLP logs to SigNoz. See [agent-observability.md](agent-observability.md).
-- **`ward ci watch [owner/repo]`** - watch a Forgejo Actions run until every job is terminal, then print a per-job status table linking each failing job. Audited, read-only. Exit `0`/`1`/`2`/`3` = passed/failed/timed-out/no-run (ward#88). See [docs/ci-watch.md](ci-watch.md).
+- **`ward ci watch [owner/repo]`** - watch a Forgejo Actions run until every job is terminal, then print a per-job status table linking each failing job. Audited, read-only. Exit `0`/`1`/`2`/`3` = passed/failed/timed-out/no-run (ward#88). See [ci-watch.md](ci-watch.md).
 
 ## Spec-driven ops (`ward-kdl`)
 
