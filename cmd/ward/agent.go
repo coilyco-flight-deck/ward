@@ -315,12 +315,14 @@ trusted owner.`,
 	}
 }
 
-// agentDefaultSurfaceAction is the umbrella default: empty shows help, a parseable ref
-// runs the engineer carry, any other bare word errors as unknown (ward#282, ward#347).
+// agentDefaultSurfaceAction is the umbrella default: empty prints the role roster
+// (ward#360), a parseable ref runs the engineer carry, else errors (ward#282, ward#347).
 func agentDefaultSurfaceAction() cli.ActionFunc {
 	return func(ctx context.Context, c *cli.Command) error {
 		if c.Args().Len() == 0 {
-			return cli.ShowSubcommandHelp(c)
+			// Truly-empty `warded` answers "who can I send in?" from the generated
+			// roster (ward#360), not the flag dump; the bare-ref default is untouched.
+			return agentRosterDefault(c)
 		}
 		arg := strings.TrimSpace(c.Args().First())
 		if _, err := parseAgentIssueRef(arg); err != nil {

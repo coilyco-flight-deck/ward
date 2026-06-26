@@ -135,6 +135,28 @@ func agentRosterTable() (string, error) {
 	return b.String(), nil
 }
 
+// agentRosterDefaultFooter orients a bare `warded` after the roster: how to launch a
+// role or hand a bare ref to the engineer carry (ward#360). It names no role itself.
+const agentRosterDefaultFooter = "\nPick a role above, or hand a bare ref straight to the engineer carry:\n" +
+	"  warded <ref>         # e.g. warded #98 or owner/repo#N - the engineer carry default\n" +
+	"  warded <role> ...    # send in a specific role from the roster above\n" +
+	"  ward agent roster    # reprint this roster on its own\n"
+
+// agentRosterDefault prints the roster table + launch-hint footer for a truly-empty
+// `warded` (ward#360), reusing the ward#348 source so it auto-tracks registered roles.
+func agentRosterDefault(c *cli.Command) error {
+	table, err := agentRosterTable()
+	if err != nil {
+		return fmt.Errorf("ward agent: %w", err)
+	}
+	w := c.Root().Writer
+	if w == nil {
+		w = os.Stdout
+	}
+	_, err = io.WriteString(w, table+agentRosterDefaultFooter)
+	return err
+}
+
 // agentRosterCommand builds `ward agent roster`: a read-only self-describe verb (no
 // audit/clean-tree gate) printing the roster - table, or the doc body under --markdown.
 func agentRosterCommand() *cli.Command {
