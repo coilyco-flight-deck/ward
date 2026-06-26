@@ -525,6 +525,9 @@ func preflightPrompt(ref agentIssueRef, title, body, details string, comments []
 			"alone, never from the local working tree: a file, path, or package that looks "+
 			"missing in the current directory tells you nothing about the clone you will actually "+
 			"get, so do not conclude the issue is mis-filed just because the local tree lacks it.%s\n\n"+
+			"Important context: this pre-flight read happens in a temporary host scratch directory. "+
+			"The work itself will take place in %s. This is the repository you should explore for any needed "+
+			"conventions, schemas, file layouts, or wiring patterns required to complete this task.%s\n\n"+
 			"Before that detached run starts, give a quick PRE-FLIGHT read: based on the issue "+
 			"AND its comment thread below, do you think you can carry it to merge unattended? "+
 			"Later comments can supersede the original description - the author may have answered "+
@@ -546,7 +549,7 @@ func preflightPrompt(ref agentIssueRef, title, body, details string, comments []
 			"do not go digging to decide it, and never from files missing in the current directory. "+
 			"ward will blind-file a fresh issue in that repo and launch nothing here.\n"+
 			"This is a judgment call, not a commitment - be honest about ambiguity.",
-		cloneScope, extraNote, ref, title, body, note, thread, gate, ref.Owner, ref.Repo)
+		cloneScope, extraNote, cloneScope, extraNote, ref, title, body, note, thread, gate, ref.Owner, ref.Repo)
 }
 
 // preflightComments renders the human comment thread (oldest first) for the
