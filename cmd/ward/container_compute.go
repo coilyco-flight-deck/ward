@@ -53,6 +53,10 @@ const (
 	// so it can dispatch sibling runs; same path both sides (ward#315). See container.md.
 	containerDockerSock = "/var/run/docker.sock"
 
+	// containerDispatchBrokerSock is the narrow host-side dispatch broker socket
+	// exposed into a director read-only surface (ward#378).
+	containerDispatchBrokerSock = "/run/ward/dispatch-broker.sock"
+
 	// containerLabel marks ward-managed containers for filtering; identity rides
 	// labels, not the name, now (ward#364, docs/container.md).
 	containerLabel = "ward=true"
@@ -422,6 +426,9 @@ type upPlan struct {
 	// ReadOnly marks a read-only surface session (the director's drain surface, ward#293,
 	// ward#353): exports WARD_READONLY=1. See docs/agent-surface.md.
 	ReadOnly bool
+	// DispatchBrokerSock, when set, exports WARD_DISPATCH_BROKER_SOCK so an
+	// in-container director surface forwards sibling dispatch to host ward.
+	DispatchBrokerSock string
 	// HostNet joins the container to the host network (--network=host) so a carry
 	// inherits the host's tailnet route (--host-net, ward#330). docs/agent-host-net.md.
 	HostNet bool
@@ -518,6 +525,9 @@ func (p upPlan) wardEnv() map[string]string {
 	}
 	if p.ReadOnly {
 		env["WARD_READONLY"] = "1"
+	}
+	if p.DispatchBrokerSock != "" {
+		env[envDispatchBrokerSocket] = p.DispatchBrokerSock
 	}
 	if p.TSSidecar {
 		// Per-connection proxy (never a host-wide ALL_PROXY), the box dialed by name;

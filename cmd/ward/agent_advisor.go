@@ -68,6 +68,9 @@ func agentAdvisorCommand() *cli.Command {
 func (r *Runner) runAgentAdvisor(ctx context.Context, c *cli.Command, mode containerMode) error {
 	arg := strings.TrimSpace(c.Args().First())
 	if _, err := parseAgentIssueRef(arg); err == nil {
+		if forwarded, ferr := r.maybeForwardAgentDispatchToHostBroker(ctx, c, "advisor", mode); forwarded {
+			return ferr
+		}
 		return r.runAgentReply(ctx, c, mode)
 	}
 	return r.runAgentAsk(ctx, c, mode)

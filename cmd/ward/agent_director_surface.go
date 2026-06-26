@@ -62,45 +62,17 @@ func directorSurfaceCommand() *cli.Command {
 // exports WARD_READONLY=1 (ward#293). See docs/agent-surface.md.
 func (r *Runner) runScratchSession(ctx context.Context, c *cli.Command, mode containerMode, readOnly bool) error {
 	label := agentCmdline(mode, directorSurfaceVerb)
-
-	// The context repo is --repo, else inferred from the cwd's git origin (the
-	// same target resolution the container bring-up uses).
-	repo, cwd, err := r.resolveTarget(ctx, strings.TrimSpace(c.String("repo")))
-	if err != nil {
-		return fmt.Errorf("%s: %w", label, err)
-	}
-	// Trust gate: a bypassPermissions clone of private code, so only act on an owner
-	// in the primary-org set - the same gate the engineer + advisor roles apply.
-	if !r.ownerAllowed(repo.Owner) {
-		return fmt.Errorf("%s: refusing untrusted owner %q (allowed: %s)",
-			label, repo.Owner, strings.Join(r.primaryOrgs(), ", "))
-	}
-
-	assetsDir, cleanupAssets, err := writeContainerAssets()
+	plan, cleanupAssets, err := r.prepareScratchPlan(ctx, c, mode, readOnly, label)
 	if err != nil {
 		return err
 	}
 	// The session always runs attached and ephemeral, so its assets clean up on return.
 	defer cleanupAssets()
 
-	// No seed: empty AgentArgs is the bare interactive bring-up, so the entrypoint
-	// launches a plain agent REPL (claude / goose session / codex / opencode).
-	plan, err := buildUpPlan(c, repo, mode, cwd, assetsDir, nil)
-	if err != nil {
-		return err
-	}
-	plan.ReadOnly = readOnly
-	if readOnly {
-		// Keep a dispatch-only capability: bind the docker socket so the agent can
-		// commission a sealed sibling run (ward#315). docs/agent-surface.md.
-		plan.Mounts = append(plan.Mounts, dockerSockMount())
-	}
-	// Name it session-<driver>-<machine> (issueless, so the machine id disambiguates
-	// concurrent surface sessions) and label ward.role=session (ward#364, ward#353).
-	plan.Role = roleSession
-	plan.Name = containerRoleName(roleSession, mode, repo, 0, plan.Machine)
-
 	if c.Bool("print") {
+		if readOnly {
+			plan.Mounts = append(plan.Mounts, dispatchBrokerMount("<host-dispatch-broker.sock>"))
+		}
 		return printScratchPlan(c, plan, readOnly)
 	}
 
@@ -110,6 +82,11 @@ func (r *Runner) runScratchSession(ctx context.Context, c *cli.Command, mode con
 	if !c.Bool("no-pull") {
 		r.pullAgentImage(ctx, plan, label)
 	}
+	cleanupBroker, err := r.attachHostDispatchBroker(ctx, &plan, readOnly, label)
+	if err != nil {
+		return err
+	}
+	defer cleanupBroker()
 	envFile, cleanupEnv, err := r.writeTokenEnvFile(ctx, planDispatchTarget(plan), r.resolveAgentCreds(ctx, mode))
 	if err != nil {
 		return err
@@ -130,8 +107,61 @@ func (r *Runner) runScratchSession(ctx context.Context, c *cli.Command, mode con
 	if readOnly {
 		access = "read-only"
 	}
-	fmt.Fprintf(os.Stderr, "%s: opening an interactive %s %s session on %s in a fresh container...\n\n", label, access, mode.agentBinary(), repo.slug())
+	fmt.Fprintf(os.Stderr, "%s: opening an interactive %s %s session on %s in a fresh container...\n\n", label, access, mode.agentBinary(), plan.Repo.slug())
 	return r.createAgentContainer(ctx, plan, envFile)
+}
+
+func (r *Runner) prepareScratchPlan(ctx context.Context, c *cli.Command, mode containerMode, readOnly bool, label string) (upPlan, func(), error) {
+	// The context repo is --repo, else inferred from the cwd's git origin (the
+	// same target resolution the container bring-up uses).
+	repo, cwd, err := r.resolveTarget(ctx, strings.TrimSpace(c.String("repo")))
+	if err != nil {
+		return upPlan{}, func() {}, fmt.Errorf("%s: %w", label, err)
+	}
+	// Trust gate: a bypassPermissions clone of private code, so only act on an owner
+	// in the primary-org set - the same gate the engineer + advisor roles apply.
+	if !r.ownerAllowed(repo.Owner) {
+		return upPlan{}, func() {}, fmt.Errorf("%s: refusing untrusted owner %q (allowed: %s)",
+			label, repo.Owner, strings.Join(r.primaryOrgs(), ", "))
+	}
+	assetsDir, cleanupAssets, err := writeContainerAssets()
+	if err != nil {
+		return upPlan{}, func() {}, err
+	}
+	// No seed: empty AgentArgs is the bare interactive bring-up, so the entrypoint
+	// launches a plain agent REPL (claude / goose session / codex / opencode).
+	plan, err := buildUpPlan(c, repo, mode, cwd, assetsDir, nil)
+	if err != nil {
+		cleanupAssets()
+		return upPlan{}, func() {}, err
+	}
+	plan.ReadOnly = readOnly
+	if readOnly {
+		plan.DispatchBrokerSock = containerDispatchBrokerSock
+	}
+	// Name it session-<driver>-<machine> (issueless, so the machine id disambiguates
+	// concurrent surface sessions) and label ward.role=session (ward#364, ward#353).
+	plan.Role = roleSession
+	plan.Name = containerRoleName(roleSession, mode, repo, 0, plan.Machine)
+	return plan, cleanupAssets, nil
+}
+
+func (r *Runner) attachHostDispatchBroker(ctx context.Context, plan *upPlan, readOnly bool, label string) (func(), error) {
+	if !readOnly {
+		return func() {}, nil
+	}
+	bctx, cancel := context.WithCancel(ctx)
+	hostSock, cleanup, err := r.startHostDispatchBroker(bctx, plan.Name)
+	if err != nil {
+		cancel()
+		return func() {}, err
+	}
+	plan.Mounts = append(plan.Mounts, dispatchBrokerMount(hostSock))
+	fmt.Fprintf(os.Stderr, "%s: host dispatch broker ready for %s at %s\n", label, plan.Name, hostSock)
+	return func() {
+		cancel()
+		cleanup()
+	}, nil
 }
 
 // printScratchPlan renders the resolved repo + docker plan without cloning or firing
@@ -143,7 +173,7 @@ func printScratchPlan(c *cli.Command, p upPlan, readOnly bool) error {
 	}
 	access := "writable"
 	if readOnly {
-		access = "read-only (this clone's push wiring revoked; dispatch token + docker socket kept)"
+		access = "read-only (this clone's push wiring revoked; host dispatch broker mounted)"
 	}
 	var b strings.Builder
 	fmt.Fprintf(&b, "# %s (print)\n", agentCmdline(p.Mode, directorSurfaceVerb))

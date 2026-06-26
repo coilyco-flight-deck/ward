@@ -65,6 +65,9 @@ func (r *Runner) runAgentEngineer(ctx context.Context, c *cli.Command, mode cont
 		// Not an issue ref: freeform instructions (or a bare owner/repo + --instructions).
 		return r.runAgentTask(ctx, c, mode)
 	}
+	if forwarded, err := r.maybeForwardAgentDispatchToHostBroker(ctx, c, "engineer", mode); forwarded {
+		return err
+	}
 	// A ref always carries detached, fire-and-forget (ward#356).
 	return r.runAgentWork(ctx, c, mode, "engineer")
 }

@@ -494,9 +494,11 @@ scrollback. Reserve an in-session subagent for read-only fan-out that only feeds
   the dispatcher authenticate out of the box. The token is the bot's full credential,
   so the no-push rule below is a convention you keep, not yet a credential boundary
   (a dispatch-only token is tracked in ward#318).
-- The host docker socket is mounted at `/var/run/docker.sock`, so a dispatched
-  `warded #N` can spawn its sibling container. If you hit a socket permission error on
-  dispatch, the group-grant did not reach this host's socket - see ward#319.
+- A host dispatch broker is mounted at `$WARD_DISPATCH_BROKER_SOCK`, so a dispatched
+  `warded #N`, `warded engineer #N`, or `warded advisor #N "question"` asks host ward
+  to launch the sibling from the native host context. Host ward resolves Claude/Codex/
+  Goose credentials there and launches the child; this container does not need a raw
+  Docker dispatch surface for that path.
 
 You **must not**:
 
@@ -869,7 +871,6 @@ main() {
   for ref in ${WARD_EXTRA_REPOS:-}; do chown -R "$AGENT_UID:$AGENT_GID" "/workspace/${ref##*/}" 2>/dev/null || true; done
   if [ "${WARD_READONLY:-0}" = 1 ]; then
     revoke_push_credential    # explore: drop this clone's push wiring, keep the dispatch token (ward#315)
-    grant_docker_socket_access # explore: let the agent dispatch siblings via the mounted socket (ward#315)
     start_broker              # explore: root credential broker holds the token; agent reaches the forge via the socket (ward#329)
   else
     ensure_git_cred_readable # re-assert creds the clones clobbered (ward#288)
