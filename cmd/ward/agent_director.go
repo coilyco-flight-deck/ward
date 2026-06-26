@@ -155,6 +155,7 @@ func directorFlags() []cli.Flag {
 		agentDriverFlag(),
 		&cli.StringFlag{Name: "engineer-driver", Usage: "harness for the engineers the director dispatches: " + agentDriverChoices() + " (default: inherit --driver)"},
 		&cli.StringFlag{Name: "repo", Usage: "comma-separated scope 'a/b,c/d' (default: the cwd git origin)"},
+		&cli.StringSliceFlag{Name: "org", Usage: "expand every repo an org owns into the scope (owner; repeatable), unioned with --repo and de-duped (ward#370)"},
 		&cli.StringSliceFlag{Name: "with-repo", Usage: "grant director's own session an additional writable repo to clone (owner/name; repeatable), landed under /workspace alongside the scope (ward#230)."},
 		&cli.IntFlag{Name: "max-parallel", Value: 2, Usage: "in-flight container cap"},
 		&cli.BoolFlag{Name: "triage", Usage: "run `ward exec goose-triage` across the scope before the first refresh"},
@@ -203,6 +204,7 @@ than exiting, and resumes the heartbeat if the queue refills (ward#351).
 
   warded director --repo coilyco-flight-deck/ward         # one repo
   warded director --repo a/b,c/d --max-parallel 3         # comma-separated scope
+  warded director --org coilyco-flight-deck                # every repo the org owns (ward#370)
   warded director --dry-run                                # ranked lanes + planned dispatches, launch nothing
 
 It is attached/interactive only - there is no --detach (a detached director poses
@@ -231,13 +233,9 @@ interactive and consult issues are surfaced, not launched. See docs/agent-direct
 // director role's loop body; ward#347).
 func (r *Runner) runAgentBacklog(ctx context.Context, c *cli.Command, mode containerMode) error {
 	label := agentCmdline(mode, "director")
-	def := ""
-	if repo, _, err := r.resolveTarget(ctx, ""); err == nil {
-		def = repo.slug()
-	}
-	repos := parseScopeRepos(c.String("repo"), def)
-	if len(repos) == 0 {
-		return fmt.Errorf("%s: no --repo given and no git origin found in the current directory", label)
+	repos, err := r.resolveDirectorScope(ctx, c, label)
+	if err != nil {
+		return err
 	}
 	if err := r.backlogTrustGate(label, repos); err != nil {
 		return err
@@ -338,33 +336,111 @@ func (r *Runner) emit(s string) error {
 
 // --- scope parsing ---------------------------------------------------------
 
+// resolveDirectorScope unions the explicit --repo slugs with each --org's expansion
+// (de-duped), falling back to the cwd git origin when neither is given (ward#370).
+func (r *Runner) resolveDirectorScope(ctx context.Context, c *cli.Command, label string) ([]string, error) {
+	explicit := parseScopeRepos(c.String("repo"), "")
+	orgs := dedupeSlugs(c.StringSlice("org"))
+	if len(explicit) == 0 && len(orgs) == 0 {
+		def := ""
+		if repo, _, err := r.resolveTarget(ctx, ""); err == nil {
+			def = repo.slug()
+		}
+		repos := parseScopeRepos("", def)
+		if len(repos) == 0 {
+			return nil, fmt.Errorf("%s: no --repo/--org given and no git origin found in the current directory", label)
+		}
+		return repos, nil
+	}
+	expanded, err := r.expandOrgScopes(ctx, label, orgs)
+	if err != nil {
+		return nil, err
+	}
+	repos := mergeScopeRepos(explicit, expanded)
+	if len(repos) == 0 {
+		return nil, fmt.Errorf("%s: --repo/--org scope resolved to no repos", label)
+	}
+	return repos, nil
+}
+
+// expandOrgScopes expands each --org to its repo slugs via the existing org-repo-list
+// endpoint; an org that lists no usable repos errors rather than draining empty.
+func (r *Runner) expandOrgScopes(ctx context.Context, label string, orgs []string) ([]string, error) {
+	if len(orgs) == 0 {
+		return nil, nil
+	}
+	cl, err := r.hostForgejoClient(ctx)
+	if err != nil {
+		return nil, fmt.Errorf("%s: %w", label, err)
+	}
+	var out []string
+	for _, org := range orgs {
+		repos, lerr := cl.listOwnerRepos(ctx, org)
+		if lerr != nil {
+			return nil, fmt.Errorf("%s: cannot expand --org %q: %w", label, org, lerr)
+		}
+		slugs := orgReposToSlugs(org, repos)
+		if len(slugs) == 0 {
+			return nil, fmt.Errorf("%s: --org %q expanded to no repos (unknown org, or only archived/empty repos)", label, org)
+		}
+		out = append(out, slugs...)
+	}
+	return out, nil
+}
+
+// orgReposToSlugs maps an org's repo list to owner/name scope slugs, dropping
+// archived and empty repos (nothing for an engineer to carry there). Pure + testable.
+func orgReposToSlugs(org string, repos []repoBrief) []string {
+	var slugs []string
+	for _, rb := range repos {
+		if rb.Archived || rb.Empty {
+			continue
+		}
+		slugs = append(slugs, org+"/"+rb.Name)
+	}
+	return slugs
+}
+
 // parseScopeRepos resolves the scope: a comma-separated --repo list, else the
 // git-origin default; de-duped, order-preserving. Ports backlog-loop.py's parse_repos.
 func parseScopeRepos(raw, def string) []string {
 	if strings.TrimSpace(raw) == "" {
 		raw = def
 	}
-	if strings.TrimSpace(raw) == "" {
-		return nil
+	return dedupeSlugs(strings.Split(raw, ","))
+}
+
+// mergeScopeRepos unions the given slug lists into one de-duped, order-preserving
+// scope - explicit --repo slugs first, then each --org's expansion (ward#370).
+func mergeScopeRepos(lists ...[]string) []string {
+	var all []string
+	for _, l := range lists {
+		all = append(all, l...)
 	}
-	var seen []string
-	for _, slug := range strings.Split(raw, ",") {
+	return dedupeSlugs(all)
+}
+
+// dedupeSlugs trims blanks and drops duplicate slugs, preserving first-seen order -
+// the shared normalizer behind --repo parsing and the --org union.
+func dedupeSlugs(in []string) []string {
+	var out []string
+	for _, slug := range in {
 		slug = strings.TrimSpace(slug)
 		if slug == "" {
 			continue
 		}
 		dup := false
-		for _, s := range seen {
+		for _, s := range out {
 			if s == slug {
 				dup = true
 				break
 			}
 		}
 		if !dup {
-			seen = append(seen, slug)
+			out = append(out, slug)
 		}
 	}
-	return seen
+	return out
 }
 
 // --- ranking ---------------------------------------------------------------
