@@ -3,43 +3,41 @@
 The `ward agent` roles differ in what they do, how attached they are, and what they
 leave behind. See [docs/agent.md](agent.md) for the family overview and the `warded`
 public face (`warded <role> <ref>`, the spelling these examples front). The roster is a
-hard rename of the old verbs (ward#347): `work`/`headless`/`task` → `engineer`,
-`explore` → `architect`, `backlog` → `director`, `reply`/`ask` → `advisor`, and the
-writable `sandbox` is removed. The old spellings error as unknown commands.
+hard rename of the old verbs (ward#347): `work`/`headless`/`task` → `engineer`, `backlog` →
+`director`, `reply`/`ask` → `advisor`, `sandbox` removed, and ward#353 folded the read-only
+`explore`/`architect` into the **director's surface phase**. The old spellings error as
+unknown commands.
 
 A **bare ref with no role word runs `engineer`** (ward#282, ward#347): `warded #98`
-dispatches the fire-and-forget carry, and a bare `#N` / `N` infers `owner/repo` from the
-cwd's git origin. The role words below override that default.
+dispatches the fire-and-forget carry, and a bare `#N`/`N` infers `owner/repo` from the cwd
+origin. The role words below override that default.
 
-## The four roles
+## The three roles
 
 The canonical flat enumeration of the roles - one row each, with the tagline and the
 ref-vs-freeform invocation modes - lives in **[agent-roster.md](agent-roster.md)**,
 generated from the code roster by `ward agent roster` so it can never go stale
-(ward#348). That page is the one source of truth for *which* roles exist; this doc and
-the per-role docs ([agent-engineer.md](agent-engineer.md), [agent-architect.md](agent-architect.md),
-[agent-director.md](agent-director.md), [agent-advisor.md](agent-advisor.md)) carry the
-prose detail behind each row. Run `warded roster` for the list live at the terminal.
+(ward#348). That page is the one source of truth for *which* roles exist; this doc and the
+per-role docs ([agent-engineer.md](agent-engineer.md), [agent-director.md](agent-director.md)
++ its [surface](agent-surface.md), [agent-advisor.md](agent-advisor.md)) carry the prose
+detail behind each row. Run `warded roster` for the list live at the terminal.
 
 The notes below are the behavioral detail the flat roster does not capture:
 
 - **`engineer`** (was `headless` + `task`) - **detached only** (ward#356): the ref carry
-  runs the agent in print mode (`claude -p`, `codex exec`, `goose run -t`) to completion
-  and exits into the reaper; for claude it **streams live progress** to the container log.
-  From a terminal it first runs a **pre-flight check** ([agent-preflight.md](agent-preflight.md)):
-  a GO launches, a NO-GO comments and launches nothing. Its seed asks it to **close with a
-  "how it felt" comment** (ward#281) led by a `WARD-OUTCOME` line (ward#310). No attach
-  surface: `work`/`--watch`/`--new-tab` are retired, interactive work funnels to `director`.
-  Freeform text files an issue first, then carries it: DIRECT for an explicit `owner/repo`,
-  ROUTE for a freeform task with no repo (ward#164).
-- **`architect`** (was `explore`) - the push credential is revoked after the clone and
-  the reaper skips salvage (ward#293).
+  runs the agent in print mode (`claude -p` etc.) to completion and exits into the reaper;
+  for claude it **streams live progress** to the container log. From a terminal it first runs
+  a **pre-flight check** ([agent-preflight.md](agent-preflight.md)): a GO launches, a NO-GO
+  comments and launches nothing. Its seed **closes with a "how it felt" comment** (ward#281)
+  led by a `WARD-OUTCOME` line (ward#310). No attach surface (`work`/`--watch` retired);
+  interactive work funnels to `director`. Freeform text files an issue first, then carries it:
+  DIRECT for an explicit `owner/repo`, ROUTE for a freeform task with no repo (ward#164).
 - **`director`** (was `backlog`) - an attached heartbeat: polls `WARD-OUTCOME`, an LLM
-  one-shot picks which queued issues to dispatch under `--max-parallel`, surfacing on
-  drain (ward#346, ward#351).
+  one-shot picks which queued issues to dispatch under `--max-parallel`, and on drain surfaces
+  a **read-only scope + dispatch session** (push credential revoked, reaper skips salvage;
+  ward#293, ward#351, ward#353; [agent-surface.md](agent-surface.md)).
 - **`advisor`** (was `reply` + `ask`) - the ref mode researches one-shot and posts the
-  answer as a comment; freeform answers one-shot *inside* a fresh container and streams
-  it inline.
+  answer as a comment; freeform answers *inside* a fresh container and streams it inline.
 
 ## Pre-flight parity
 

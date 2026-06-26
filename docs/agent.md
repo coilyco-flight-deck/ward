@@ -13,26 +13,25 @@ into `ward agent <args>`, not a second code path (ward#247, ward#282). So `warde
 *is* `ward agent #98`. Read "warded" as a protective circle - the deny-list and
 allowlisted verbs bounding the agent's reach. Everything below applies to both spellings.
 
-## The startup-role roster (ward#347)
+## The startup-role roster (ward#347, ward#353)
 
 The surface is a roster of **startup roles** - short nouns that read like a team, not
-modes you invoke. You do not run `explore`, you send in your **architect**. The two
-merged roles key the mode on the **argument type** (a ref acts on an issue, freeform
-text files/answers it):
+modes you invoke. You do not run `backlog`, you send in your **director**. The **argument
+type** keys the mode (a ref acts on an issue, freeform text files/answers it):
 
 - **`engineer`** (was `headless`+`task`) - implements a ticket end to end, **detached only**
   (ward#356): a ref carries it fire-and-forget, freeform text files one first then carries
   it; interactive work goes to the director. [agent-engineer.md](agent-engineer.md).
-- **`architect`** (was `explore`) - read-only interactive session: reads the clone,
-  scopes, files + dispatches work, cannot push. [agent-architect.md](agent-architect.md).
 - **`director`** (was `backlog`) - autonomous backlog supervisor: dispatches engineers,
-  polls outcomes, drains the lane. [agent-director.md](agent-director.md).
+  polls outcomes, drains the lane, and **surfaces a read-only scope + dispatch session** on
+  drain. [agent-director.md](agent-director.md).
 - **`advisor`** (was `reply`+`ask`) - answers, writes no code: a ref comments, freeform
   answers inline. [agent-advisor.md](agent-advisor.md).
 
-The writable seedless `sandbox` was **removed outright** - the architect is the one
-seedless interactive session, and it is read-only. The old verb spellings are gone (hard
-rename, no aliases): `warded explore`, `warded sandbox`, etc. error as unknown commands.
+ward#353 collapsed the old standalone `architect` (was `explore`) read-only role into the
+director's surface phase - both did the same job, so the roster is now three. The read-only
+surface survives as [the director's surface session](agent-surface.md); `warded
+architect`/`explore`, the writable `sandbox`, etc. error as unknown commands.
 
 ## Usage
 
@@ -41,8 +40,7 @@ warded coilyco-flight-deck/ward#98              # bare ref -> engineer carry (fi
 warded #98                                      # owner/repo inferred from the cwd's git origin
 warded engineer #98                             # implement a ticket: detached fire-and-forget
 warded engineer "fix the flaky exec_gate test"  # freeform -> file an issue first, then carry
-warded architect                                # read-only scoping session
-warded director --repo owner/name               # autonomous headless-lane loop
+warded director --repo owner/name               # autonomous headless-lane loop; surfaces a read-only session on drain
 warded advisor #98 "what would it take to..."   # research the issue, post a comment
 warded advisor "how is the audit log written?"  # answer a freeform question inline
 ```
@@ -55,7 +53,8 @@ ward#347). The ref is `owner/repo#N`, a full Forgejo URL, or a bare `#N` / `N` i
 ## Topics
 
 - [agent-roster.md](agent-roster.md) - the generated flat list of every role (one row each; `ward agent roster`).
-- [agent-subcommands.md](agent-subcommands.md) - the four roles compared + the reaper.
+- [agent-subcommands.md](agent-subcommands.md) - the three roles compared + the reaper.
+- [agent-surface.md](agent-surface.md) - the director's read-only surface (was the architect role).
 - [agent-preflight.md](agent-preflight.md) - the detached GO/NO-GO pre-flight.
 - [agent-wrong-repo.md](agent-wrong-repo.md) - the WRONG-REPO blind-fire path.
 - [agent-credentials.md](agent-credentials.md) - claude/codex credential seeding.

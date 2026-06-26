@@ -48,8 +48,8 @@ type bootstrapEnv struct {
 	Branch       string
 	Headless     bool
 	Ask          bool
-	// ReadOnly is the read-only scratch session (WARD_READONLY, ward#293): revoke
-	// the push credential, compose the restriction. See docs/agent-architect.md.
+	// ReadOnly is the read-only surface session (WARD_READONLY, ward#293): revoke
+	// the push credential, compose the restriction. See docs/agent-surface.md.
 	ReadOnly    bool
 	ForgejoHost string
 	// ExtraRepos are the additional writable repos this run was granted via
@@ -290,8 +290,8 @@ func (r *Runner) configureGitAuth(ctx context.Context, e bootstrapEnv) {
 	_ = os.Chmod("/etc/ward-git-credentials", 0o640)
 }
 
-// revokePushCredential scopes the revoke to push-to-this-clone: it drops the git
-// push wiring but keeps FORGEJO_TOKEN for dispatch (ward#315). docs/agent-architect.md.
+// revokePushCredential scopes the revoke to push-to-this-clone: it drops the git push
+// wiring but keeps FORGEJO_TOKEN for dispatch (ward#315). See agent-surface.md.
 func (r *Runner) revokePushCredential(ctx context.Context) {
 	_ = os.Remove("/etc/ward-git-credentials")
 	_ = r.Runner.Exec(ctx, "git", "config", "--system", "--unset-all", "credential.helper")
@@ -299,7 +299,7 @@ func (r *Runner) revokePushCredential(ctx context.Context) {
 }
 
 // grantDockerSocketAccess lets the dropped agent reach the mounted socket to dispatch
-// a sibling, no host-inode chmod (ward#315, ward#319). See docs/agent-architect.md.
+// a sibling, no host-inode chmod (ward#315, ward#319). See agent-surface.md.
 func (r *Runner) grantDockerSocketAccess(ctx context.Context, e bootstrapEnv) {
 	const sock = "/var/run/docker.sock"
 	if !isSocket(sock) {
@@ -526,7 +526,7 @@ func (r *Runner) installPreCommitHooks(ctx context.Context, _ bootstrapEnv, work
 // --- read-only push guard (ward#299) -----------------------------------------
 
 // readOnlyPushGuardHook is the per-clone pre-push hook body: it fires before git
-// contacts the remote with the clear named wall (ward#299, docs/agent-architect.md).
+// contacts the remote with the clear named wall (ward#299, agent-surface.md).
 const readOnlyPushGuardHook = `#!/bin/sh
 # ward#299 read-only explore push guard (message layer; bypassable). See ward#315.
 echo "ward: read-only explore - this clone can't push (ward#293, ward#315)." >&2
@@ -689,10 +689,11 @@ const readOnlyContextBlock = `
 
 ## Read-only session (this overrides the autonomy doctrine above)
 
-This is a **read-only architect session** (` + "`warded architect`" + `). Here "read-only" means
-one thing: **this clone cannot push to its own remote**, so nothing leaves this clone. It
-does not mean you are sealed off. The natural product of an architect session is
-commissioned work, and that still ships.
+This is the **director's read-only surface session** (` + "`warded director`" + ` surfaced it when the
+headless lane drained, or at startup before the first drain). Here "read-only" means one
+thing: **this clone cannot push to its own remote**, so nothing leaves this clone. It does
+not mean you are sealed off. The natural product of a surface session is commissioned work,
+and that still ships.
 
 Capture-and-dispatch is an **obligation, not a "may"**. Every work item you surface -
 a bug, a missing test, a follow-up, anything worth doing - you **must**:
@@ -705,11 +706,11 @@ a bug, a missing test, a follow-up, anything worth doing - you **must**:
 Do not let a work item die in the conversation. If you named it, capture it and
 dispatch it before you move on.
 
-**This is not the director loop.** The supervised director loop polls outcomes,
-surfaces blockers, and does chatty back-and-forth with a human in the seat. The architect
-is the opposite discipline: **capture-and-dispatch and move on without babysitting**.
-You file the issue, fire the headless run, and let it carry itself to merge - you do
-not sit on it, poll it, or wait for it to report back.
+**Capture-and-dispatch and move on without babysitting.** The director heartbeat that
+surfaced you is what polls outcomes, reconciles the lane, and does the chatty back-and-forth
+- your job in this seat is to read, scope, file, and fire, then **exit to hand control back
+to the heartbeat**. You file the issue, fire the headless run, and let it carry itself to
+merge - you do not sit on it, poll it, or wait for it to report back.
 
 **How this is wired** (you do not set any of it up - it is ready):
 

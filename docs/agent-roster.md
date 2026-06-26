@@ -12,8 +12,7 @@ terminal; the per-role docs each row links to carry the prose detail. See
 | Role | What this specialist does | Invocation modes |
 | --- | --- | --- |
 | [`warded engineer`](agent-engineer.md) | Implements a ticket end to end. | A ref carries that issue detached, fire-and-forget; freeform text files an issue first, then carries it. Detached-only - interactive work funnels to the director. |
-| [`warded architect`](agent-architect.md) | Reads the clone, scopes and dispatches work - but cannot push. | Seedless read-only interactive session; no ref, no issue. |
-| [`warded director`](agent-director.md) | Autonomously drives a repo's headless lane to drain. | Attached LLM-in-the-loop heartbeat over a repo's backlog (`--repo` scope); surfaces an interactive session on drain; no ref. |
+| [`warded director`](agent-director.md) | Autonomously drives a repo's headless lane to drain. | Attached LLM-in-the-loop heartbeat over a repo's backlog (`--repo` scope); surfaces a read-only scope + dispatch session on drain; no ref. |
 | [`warded advisor`](agent-advisor.md) | Answers without writing code. | A ref researches the issue and posts the answer as a comment; freeform text answers inline. |
 
 ## See also

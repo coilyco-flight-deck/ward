@@ -11,15 +11,15 @@ import (
 	"github.com/urfave/cli/v3"
 )
 
-// agent_architect.go wires `ward agent architect`, the read-only interactive scoping
-// role (ward#347, was explore; sandbox removed). See docs/agent-architect.md.
+// agent_director_surface.go is the director's read-only interactive surface phase: the
+// seedless bring-up it drops into on drain (ward#353). See docs/agent-surface.md.
 
-// architectSurface names the seedless interactive role for the shared bring-up's
-// command line, container name, and audit verb.
-const architectSurface = "architect"
+// directorSurfaceVerb names the surface for its command line, name, and audit verb.
+// Internal: `warded surface` is not registered, only the director reaches it.
+const directorSurfaceVerb = "surface"
 
-// agentScratchFlags is the flag set the seedless scratch bring-up uses; architect is
-// its only caller now that sandbox is gone (ward#347).
+// agentScratchFlags is the flag set the seedless surface bring-up uses; the director's
+// surface phase is its only caller now the standalone architect is gone (ward#353).
 func agentScratchFlags() []cli.Flag {
 	flags := []cli.Flag{
 		agentDriverFlag(),
@@ -33,22 +33,22 @@ func agentScratchFlags() []cli.Flag {
 	)
 }
 
-// agentArchitectCommand builds `ward agent architect`: a read-only interactive session
-// that reads the repo but cannot push. Shares runScratchSession, readOnly=true (#347).
-func agentArchitectCommand() *cli.Command {
+// directorSurfaceCommand builds the surface as an internal, unregistered command the
+// director runs via directorSurfaceArgv; `warded surface` errors as unknown (ward#353).
+func directorSurfaceCommand() *cli.Command {
 	return &cli.Command{
-		Name: "architect",
-		Usage: "Drop into a read-only interactive agent in a fresh ephemeral container (repo clone + operating " +
-			"context) with no issue and no seed - reads the repo and scopes + dispatches work, but cannot commit, push, or merge.",
+		Name: directorSurfaceVerb,
+		Usage: "The director's read-only interactive surface (internal): a fresh ephemeral container (repo clone + " +
+			"operating context) with no issue and no seed - reads the repo and scopes + dispatches work, but cannot commit, push, or merge.",
 		Flags: agentScratchFlags(),
 		Action: func(ctx context.Context, c *cli.Command) error {
 			r := newRunner()
 			mode, err := agentDriver(c)
 			if err != nil {
-				return fmt.Errorf("ward agent architect: %w", err)
+				return fmt.Errorf("ward agent %s: %w", directorSurfaceVerb, err)
 			}
 			return r.WrapVerb(verb.Spec{
-				Name:       "agent." + string(mode) + "." + architectSurface,
+				Name:       "agent." + string(mode) + "." + directorSurfaceVerb,
 				SkipPolicy: true,
 				Action: func(ctx context.Context, cmd *cli.Command) error {
 					return r.runScratchSession(ctx, cmd, mode, true)
@@ -58,10 +58,10 @@ func agentArchitectCommand() *cli.Command {
 	}
 }
 
-// runScratchSession is the seedless interactive bring-up architect uses; readOnly
-// exports WARD_READONLY=1 (ward#293), revoking this clone's push. See agent-architect.md.
+// runScratchSession is the seedless interactive bring-up the surface phase uses; readOnly
+// exports WARD_READONLY=1 (ward#293). See docs/agent-surface.md.
 func (r *Runner) runScratchSession(ctx context.Context, c *cli.Command, mode containerMode, readOnly bool) error {
-	label := agentCmdline(mode, architectSurface)
+	label := agentCmdline(mode, directorSurfaceVerb)
 
 	// The context repo is --repo, else inferred from the cwd's git origin (the
 	// same target resolution the container bring-up uses).
@@ -91,14 +91,14 @@ func (r *Runner) runScratchSession(ctx context.Context, c *cli.Command, mode con
 	}
 	plan.ReadOnly = readOnly
 	if readOnly {
-		// Architect keeps a dispatch-only capability: bind the docker socket so the
-		// agent can commission a sealed sibling run (ward#315). docs/agent-architect.md.
+		// Keep a dispatch-only capability: bind the docker socket so the agent can
+		// commission a sealed sibling run (ward#315). docs/agent-surface.md.
 		plan.Mounts = append(plan.Mounts, dockerSockMount())
 	}
-	// Name it architect-<driver>-<machine> (issueless, so the machine id
-	// disambiguates concurrent scratch sessions) and label ward.role=architect (ward#364).
-	plan.Role = roleArchitect
-	plan.Name = containerRoleName(roleArchitect, mode, repo, 0, plan.Machine)
+	// Name it session-<driver>-<machine> (issueless, so the machine id disambiguates
+	// concurrent surface sessions) and label ward.role=session (ward#364, ward#353).
+	plan.Role = roleSession
+	plan.Name = containerRoleName(roleSession, mode, repo, 0, plan.Machine)
 
 	if c.Bool("print") {
 		return printScratchPlan(c, plan, readOnly)
@@ -135,7 +135,7 @@ func (r *Runner) runScratchSession(ctx context.Context, c *cli.Command, mode con
 }
 
 // printScratchPlan renders the resolved repo + docker plan without cloning or firing
-// - the dry-run preview for architect. There is no seed to show.
+// - the dry-run preview for the surface session. There is no seed to show.
 func printScratchPlan(c *cli.Command, p upPlan, readOnly bool) error {
 	out := c.Root().Writer
 	if out == nil {
@@ -146,8 +146,8 @@ func printScratchPlan(c *cli.Command, p upPlan, readOnly bool) error {
 		access = "read-only (this clone's push wiring revoked; dispatch token + docker socket kept)"
 	}
 	var b strings.Builder
-	fmt.Fprintf(&b, "# %s (print)\n", agentCmdline(p.Mode, architectSurface))
-	fmt.Fprintf(&b, "%s: agent runs interactive, attached, in a fresh ephemeral container (no seed)\n", architectSurface)
+	fmt.Fprintf(&b, "# %s (print)\n", agentCmdline(p.Mode, directorSurfaceVerb))
+	fmt.Fprintf(&b, "%s: agent runs interactive, attached, in a fresh ephemeral container (no seed)\n", directorSurfaceVerb)
 	fmt.Fprintf(&b, "access: %s\n", access)
 	fmt.Fprintf(&b, "repo:   %s\n", p.Repo.slug())
 	fmt.Fprintf(&b, "name:   %s\n", p.Name)

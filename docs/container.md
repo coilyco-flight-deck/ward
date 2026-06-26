@@ -36,7 +36,7 @@ subsystem (`--driver`, `--aws`, `--print`, `--no-pull`, `--ward-source`, ...;
 see [docs/agent-flags.md](agent-flags.md)). The **engineer carry always
 detaches** (ward#356): print mode in the background, no attach surface
 (interactive work goes to the [director](agent-director.md)). The attached,
-auto-TTY (`-t`) shape belongs to `architect` and `ward container up`, not engineer.
+auto-TTY (`-t`) shape belongs to the [director's surface](agent-surface.md).
 
 ## Modes: progressively-less-context ladder
 

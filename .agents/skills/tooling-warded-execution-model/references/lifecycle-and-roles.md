@@ -26,21 +26,22 @@ merge, then is thrown away (`docs/container.md`):
   keeping the 10 most recent for `docker logs` post-mortem. Work is always preserved to the
   remote before exit, so a swept container loses only its log.
 
-## The roles (startup roster, ward#347)
+## The roles (startup roster, ward#347, ward#353)
 
-Four roles, keyed on the role word and the argument type (`docs/agent.md`):
+Three roles, keyed on the role word and the argument type (`docs/agent.md`):
 
 - **`engineer`** - implements a ticket end to end (implement → commit → merge → push →
-  `closes #N`). A bare ref with no role word *is* an engineer carry. Detached by default;
-  `--watch` attaches. Trust-gated owner, `bypassPermissions`. `docs/agent-engineer.md`.
-- **`architect`** - read-only scoping session, `WARD_READONLY=1`. Reads the clone, scopes,
-  **files + dispatches** work, **cannot push this clone**. Capture-and-dispatch is an
-  obligation, not a "may". `docs/agent-architect.md`.
+  `closes #N`). A bare ref with no role word *is* an engineer carry. Detached only
+  (ward#356). Trust-gated owner, `bypassPermissions`. `docs/agent-engineer.md`.
 - **`director`** - attached backlog supervisor: dispatches engineers, polls `WARD-OUTCOME`
-  markers, drains the lane. `docs/agent-director.md`.
+  markers, drains the lane, and on drain (or before the first drain) **surfaces a read-only
+  scope + dispatch session** (`WARD_READONLY=1`) that reads the clone, **files + dispatches**
+  work, but **cannot push this clone** - capture-and-dispatch is an obligation, not a "may".
+  ward#353 folded the old standalone `architect` role into this surface. `docs/agent-director.md`,
+  `docs/agent-surface.md`.
 - **`advisor`** - answers, writes no code (a ref comments, freeform answers inline).
 
-**What read-only enforces** (architect): a composed restriction block, the git credential
+**What read-only enforces** (the director's surface): a composed restriction block, the git credential
 helper dropped, the `origin` push URL repointed to a dead `no-push://` target, a `pre-push`
 message hook, and the reaper short-circuiting salvage on `WARD_READONLY`. Local `git
 commit` still works; nothing leaves the clone. The dispatch token is the *same* bot token,

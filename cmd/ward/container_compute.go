@@ -49,8 +49,8 @@ const (
 	// off by default; the forgejo token is injected single-purpose instead).
 	containerAWSMount = "/root/.aws"
 
-	// containerDockerSock is the host docker socket bound into an architect session so
-	// it can dispatch sibling runs; same path both sides (ward#315). See agent-architect.md.
+	// containerDockerSock is the host docker socket bound into a read-only surface session
+	// so it can dispatch sibling runs; same path both sides (ward#315). See container.md.
 	containerDockerSock = "/var/run/docker.sock"
 
 	// containerLabel marks ward-managed containers for filtering; identity rides
@@ -162,13 +162,12 @@ const (
 	modeGoose  containerMode = "goose"
 )
 
-// container roles lead the name + the ward.role label (ward#364). director has no
-// role: it is a host loop, not a container (docs/container.md, docs/agent-director.md).
+// container roles lead the name + the ward.role label (ward#364). director is a host
+// loop, not a container, but its surface session runs as roleSession (ward#353).
 const (
-	roleEngineer  = "engineer"
-	roleAdvisor   = "advisor"
-	roleArchitect = "architect"
-	roleSession   = "session"
+	roleEngineer = "engineer"
+	roleAdvisor  = "advisor"
+	roleSession  = "session"
 )
 
 // visionCapable reports whether the harness can take multimodal blocks; the
@@ -381,7 +380,7 @@ func dockerSockMount() mountSpec {
 type upPlan struct {
 	Image string
 	Name  string
-	// Role leads the name + the ward.role label (engineer/advisor/architect/session).
+	// Role leads the name + the ward.role label (engineer/advisor/session).
 	Role string
 	// Machine is the per-container disambiguator on the ward.machine label (ward#364).
 	Machine     string
@@ -420,8 +419,8 @@ type upPlan struct {
 	// Issue is the carried issue number (0 for a bare `container up`), exported as
 	// WARD_TARGET_ISSUE so the reaper can release a pre-launch hold (ward#264).
 	Issue int
-	// ReadOnly marks a read-only scratch session (`ward agent architect`, ward#293):
-	// exports WARD_READONLY=1. See docs/agent-architect.md for what it enforces.
+	// ReadOnly marks a read-only surface session (the director's drain surface, ward#293,
+	// ward#353): exports WARD_READONLY=1. See docs/agent-surface.md.
 	ReadOnly bool
 	// HostNet joins the container to the host network (--network=host) so a carry
 	// inherits the host's tailnet route (--host-net, ward#330). docs/agent-host-net.md.

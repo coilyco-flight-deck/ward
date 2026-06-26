@@ -73,7 +73,7 @@ configure_git_auth() {
 }
 
 # Scope the read-only revoke to push-to-this-clone: drop the git push wiring but
-# KEEP FORGEJO_TOKEN for dispatch-only (file/launch, not push). docs/agent-architect.md.
+# KEEP FORGEJO_TOKEN for dispatch-only (file/launch, not push). agent-surface.md.
 revoke_push_credential() {
   rm -f /etc/ward-git-credentials
   git config --system --unset-all credential.helper 2>/dev/null || true
@@ -81,7 +81,7 @@ revoke_push_credential() {
 }
 
 # Let the dropped agent reach the mounted docker socket so `warded #N` can dispatch a
-# sibling, no host-inode chmod (ward#315, ward#319). See docs/agent-architect.md.
+# sibling, no host-inode chmod (ward#315, ward#319). See docs/agent-surface.md.
 grant_docker_socket_access() {
   local sock=/var/run/docker.sock
   [ -S "$sock" ] || { log "explore: no docker socket mounted - dispatch unavailable this run (ward#315)"; return 0; }
@@ -286,7 +286,7 @@ install_precommit_hooks() {
 }
 
 # --- read-only push guard: strip origin's push URL (ward#327) and land a per-clone
-# pre-push hook that fails fast with a clear message (ward#299). docs/agent-architect.md.
+# pre-push hook that fails fast with a clear message (ward#299). agent-surface.md.
 install_readonly_push_guard() {
   local work="$1"
   [ "${WARD_READONLY:-0}" = 1 ] || return 0
@@ -449,10 +449,11 @@ compose_context() {
 
 ## Read-only session (this overrides the autonomy doctrine above)
 
-This is a **read-only architect session** (`warded architect`). Here "read-only" means
-one thing: **this clone cannot push to its own remote**, so nothing leaves this clone. It
-does not mean you are sealed off. The natural product of an architect session is
-commissioned work, and that still ships.
+This is the **director's read-only surface session** (`warded director` surfaced it when the
+headless lane drained, or at startup before the first drain). Here "read-only" means one
+thing: **this clone cannot push to its own remote**, so nothing leaves this clone. It does
+not mean you are sealed off. The natural product of a surface session is commissioned work,
+and that still ships.
 
 Capture-and-dispatch is an **obligation, not a "may"**. Every work item you surface -
 a bug, a missing test, a follow-up, anything worth doing - you **must**:
@@ -465,11 +466,11 @@ a bug, a missing test, a follow-up, anything worth doing - you **must**:
 Do not let a work item die in the conversation. If you named it, capture it and
 dispatch it before you move on.
 
-**This is not the director loop.** The supervised director loop polls outcomes,
-surfaces blockers, and does chatty back-and-forth with a human in the seat. The architect
-is the opposite discipline: **capture-and-dispatch and move on without babysitting**.
-You file the issue, fire the headless run, and let it carry itself to merge - you do
-not sit on it, poll it, or wait for it to report back.
+**Capture-and-dispatch and move on without babysitting.** The director heartbeat that
+surfaced you is what polls outcomes, reconciles the lane, and does the chatty back-and-forth
+- your job in this seat is to read, scope, file, and fire, then **exit to hand control back
+to the heartbeat**. You file the issue, fire the headless run, and let it carry itself to
+merge - you do not sit on it, poll it, or wait for it to report back.
 
 **How this is wired** (you do not set any of it up - it is ready):
 

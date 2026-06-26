@@ -35,13 +35,9 @@ var agentRoleInfos = map[string]agentRoleInfo{
 		Tagline: "Implements a ticket end to end.",
 		Modes:   "A ref carries that issue detached, fire-and-forget; freeform text files an issue first, then carries it. Detached-only - interactive work funnels to the director.",
 	},
-	"architect": {
-		Tagline: "Reads the clone, scopes and dispatches work - but cannot push.",
-		Modes:   "Seedless read-only interactive session; no ref, no issue.",
-	},
 	"director": {
 		Tagline: "Autonomously drives a repo's headless lane to drain.",
-		Modes:   "Attached LLM-in-the-loop heartbeat over a repo's backlog (`--repo` scope); surfaces an interactive session on drain; no ref.",
+		Modes:   "Attached LLM-in-the-loop heartbeat over a repo's backlog (`--repo` scope); surfaces a read-only scope + dispatch session on drain; no ref.",
 	},
 	"advisor": {
 		Tagline: "Answers without writing code.",

@@ -9,20 +9,24 @@ import (
 	"forgejo.coilysiren.me/coilyco-flight-deck/cli-guard/pkg/broker"
 )
 
-// `architect` is a top-level role of the startup roster (ward#347, was `explore`):
-// the read-only interactive scoping session. The writable `sandbox` was removed.
-func TestAgentHasArchitectRole(t *testing.T) {
+// ward#353 collapsed `architect` into the director's surface phase: the roster is now
+// engineer/director/advisor, and `warded architect` errors as an unknown command.
+func TestArchitectRoleCollapsedIntoDirectorSurface(t *testing.T) {
 	surfaces := map[string]bool{}
 	for _, c := range agentCommand().Commands {
 		surfaces[c.Name] = true
 	}
-	if !surfaces["architect"] {
-		t.Errorf("ward agent missing %q role; got %v", "architect", surfaces)
+	// The roster is exactly the three roles (plus the roster meta verb).
+	for _, want := range []string{"engineer", "director", "advisor"} {
+		if !surfaces[want] {
+			t.Errorf("ward agent missing %q role; got %v", want, surfaces)
+		}
 	}
-	// The retired verbs are gone outright (hard rename, no aliases; ward#347).
-	for _, gone := range []string{"explore", "sandbox"} {
+	// architect (and the older explore/sandbox, and the internal surface verb) is never
+	// a registered role - all hard renames, no aliases (ward#353, ward#347).
+	for _, gone := range []string{"architect", "explore", "sandbox", "surface"} {
 		if surfaces[gone] {
-			t.Errorf("retired verb %q must be gone after the architect rename; got %v", gone, surfaces)
+			t.Errorf("retired/internal verb %q must not be a registered role; got %v", gone, surfaces)
 		}
 	}
 }
@@ -135,7 +139,7 @@ func TestReadReapEnvReadOnly(t *testing.T) {
 }
 
 // composeContext appends the read-only restriction block only for a read-only run,
-// since a seedless explore session has no prompt to carry the "do not push" rule.
+// since a seedless surface session has no prompt to carry the "do not push" rule.
 func TestComposeContextReadOnlyBlock(t *testing.T) {
 	const marker = "Read-only session (this overrides the autonomy doctrine above)"
 	r := &Runner{}
@@ -148,8 +152,8 @@ func TestComposeContextReadOnlyBlock(t *testing.T) {
 	if !strings.Contains(readonly, marker) {
 		t.Error("a read-only session must get the read-only restriction block")
 	}
-	if !strings.Contains(readonly, "warded architect") {
-		t.Error("the read-only block should name the warded architect surface")
+	if !strings.Contains(readonly, "warded director") {
+		t.Error("the read-only block should name the warded director surface (ward#353)")
 	}
 	// ward#315: the reframed block permits dispatch (file + commission a sibling),
 	// not just "do not push". It must invite filing issues and dispatching headless.
@@ -160,15 +164,17 @@ func TestComposeContextReadOnlyBlock(t *testing.T) {
 		t.Error("the read-only block should tell the agent to dispatch a sibling run (ward#315)")
 	}
 	// ward#320: capture-and-dispatch is an obligation, not a "may". The block must
-	// frame it imperatively and contrast with the chatty supervised backlog loop.
+	// frame it imperatively.
 	if !strings.Contains(readonly, "obligation, not a") {
 		t.Error("the read-only block should frame capture-and-dispatch as an obligation, not a 'may' (ward#320)")
 	}
-	if !strings.Contains(readonly, "This is not the director loop") {
-		t.Error("the read-only block should contrast the architect with the supervised director loop (ward#320)")
+	// ward#353: the surface is now the director's own drain-surface, so the block tells
+	// the agent to file + fire and hand control back to the heartbeat, not babysit.
+	if !strings.Contains(readonly, "hand control back") || !strings.Contains(readonly, "heartbeat") {
+		t.Error("the read-only block should tell the surface to hand control back to the director heartbeat (ward#353)")
 	}
 	if !strings.Contains(readonly, "without babysitting") {
-		t.Error("the read-only block should frame explore as capture-and-dispatch without babysitting (ward#320)")
+		t.Error("the read-only block should frame the surface as capture-and-dispatch without babysitting (ward#320)")
 	}
 }
 

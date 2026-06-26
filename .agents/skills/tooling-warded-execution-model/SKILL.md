@@ -18,8 +18,8 @@ is the model *under* that verb, written from ward's `docs/` and `cmd/ward/`.
   permission policy, agent doctrine - and need to decide *which repo owns it*.
 - You are reasoning about what a warded agent **may and may not do** (push, dispatch) or
   **why** a run salvaged, parked, or read as blocked.
-- Anyone asks how the container lifecycle, `/workspace` vs `/substrate`, or the read-only
-  architect session work (detail in
+- Anyone asks how the container lifecycle, `/workspace` vs `/substrate`, or the director's
+  surface session work (detail in
   [`references/lifecycle-and-roles.md`](references/lifecycle-and-roles.md)).
 
 Do **not** fire to *dispatch* an agent - that is `tooling-ward-agent`. This skill informs
@@ -36,9 +36,9 @@ default is to assume the first:
 - **ward** composes everything an **agent inside a container** reads, fresh on every
   bring-up; nothing the host converges reaches it. The surfaces live in
   `cmd/ward/containerassets/` - `AGENTS.container.md` (doctrine),
-  `settings.container.json` (the permission/hook policy: `bypassPermissions` + the
-  force-push deny), `entrypoint.sh` (`compose_context` / `compose_permissions`) - plus
-  `cmd/ward/agent_architect.go` (`WARD_READONLY`).
+  `settings.container.json` (the policy: `bypassPermissions` + the force-push deny),
+  `entrypoint.sh` (`compose_context`/`compose_permissions`) - plus
+  `cmd/ward/agent_director_surface.go` (`WARD_READONLY`).
 
 The container **does not inherit the host's converged hooks or settings**: ward writes the
 agent's `~/.claude/settings.json` and `CLAUDE.md` from those assets each bring-up. So a fix
@@ -60,7 +60,7 @@ ward#354). Full surface map: [`references/host-vs-container.md`](references/host
 
 ## Out of scope / see also
 
-- Lifecycle, the four roles, `/workspace` vs `/substrate`, the read-only architect -
+- Lifecycle, the three roles, `/workspace` vs `/substrate`, the director's surface -
   [`references/lifecycle-and-roles.md`](references/lifecycle-and-roles.md).
 - Resolving a dictated ref and firing a carry -
   [`tooling-ward-agent`](../tooling-ward-agent/SKILL.md).

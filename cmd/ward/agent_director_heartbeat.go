@@ -149,7 +149,7 @@ func directorDispatchTick(ctx context.Context, cfg backlogConfig, be directorBac
 // --- live backend ----------------------------------------------------------
 
 // liveDirector is the production directorBackend, driving the real ledger, LLM one-shot,
-// engineer dispatch, and architect surface for one director run.
+// engineer dispatch, and read-only surface session for one director run.
 type liveDirector struct {
 	r     *Runner
 	label string
@@ -356,8 +356,8 @@ func selectDirectorPicks(picks []*backlogEntry, nums []int, avail int) []*backlo
 
 // --- the interactive surface -----------------------------------------------
 
-// directorSurface hands control to a read-only architect session on drain (ward#351).
-// ran=false (no terminal) exits the loop; it inherits director's flags (ward#355).
+// directorSurface hands control to the director's read-only surface session on drain
+// (ward#351, ward#353); ran=false (no terminal) exits the loop. Inherits its flags.
 func (r *Runner) directorSurface(ctx context.Context, label, contextRepo string, cfg backlogConfig) (bool, error) {
 	if !terminalAttached() {
 		fmt.Fprintf(os.Stderr, "%s: headless lane drained and no terminal attached; nothing to surface to, exiting.\n", label)
@@ -365,7 +365,7 @@ func (r *Runner) directorSurface(ctx context.Context, label, contextRepo string,
 	}
 	fmt.Fprintf(os.Stderr, "%s: surfacing a read-only %s session on %s for direction "+
 		"(the heartbeat resumes when the headless lane has work; exit it to stop)...\n\n", label, cfg.mode.agentBinary(), contextRepo)
-	cmd := agentArchitectCommand()
+	cmd := directorSurfaceCommand()
 	if err := cmd.Run(ctx, directorSurfaceArgv(contextRepo, cfg)); err != nil {
 		return true, fmt.Errorf("%s: interactive surface session: %w", label, err)
 	}
@@ -399,11 +399,11 @@ func kickoffDrainNow(line string) bool {
 	}
 }
 
-// directorSurfaceArgv builds the architect-surface argv from director's forwarded flags.
+// directorSurfaceArgv builds the surface-session argv from director's forwarded flags.
 // It runs on director's OWN --driver (cfg.mode), never the engineer driver (ward#355).
 func directorSurfaceArgv(contextRepo string, cfg backlogConfig) []string {
 	cy := cfg.carry
-	argv := []string{architectSurface, "--repo", contextRepo, "--driver", string(cfg.mode)}
+	argv := []string{directorSurfaceVerb, "--repo", contextRepo, "--driver", string(cfg.mode)}
 	if v := strings.TrimSpace(cy.image); v != "" {
 		argv = append(argv, "--image", v)
 	}

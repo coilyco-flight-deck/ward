@@ -277,7 +277,7 @@ func agentCommand() *cli.Command {
 		Usage: "Send an agent into a fresh ephemeral container to carry a Forgejo issue end to end (a bare ref runs the engineer carry).",
 		Description: `agent is the issue-carrying dispatcher (the spelling 'warded' fronts), a
 roster of startup roles (ward#347): you do not invoke a mode, you send in a
-role. Pick a role (engineer|architect|director|advisor) and --driver picks the
+role. Pick a role (engineer|director|advisor) and --driver picks the
 harness (claude|codex|qwen|goose, default claude). A BARE REF with no role word
 runs the 'engineer' carry - the fire-and-forget default. A bare #N (or N) infers
 the owner/repo from the cwd's git origin; owner/repo#N and a full Forgejo issue
@@ -288,8 +288,7 @@ URL also work. One line replaces a full container bring-up stack plus a prompt.
   warded engineer #98                         # implement a ticket: detached fire-and-forget
   warded engineer "fix the flaky exec_gate test" # freeform -> file an issue first, then carry
   warded engineer #98 --driver codex          # pick another harness
-  warded architect                            # read-only interactive session, scope + dispatch
-  warded director --repo coilyco-flight-deck/ward # autonomous backlog supervisor
+  warded director --repo coilyco-flight-deck/ward # autonomous backlog supervisor (surfaces a read-only scope + dispatch session on drain)
   warded advisor #98 "what would it take to..."   # research the issue, post the answer
   warded advisor "how is the audit log written?"  # answer a freeform question inline
   ward agent engineer coilyco-flight-deck/ward#98 # the canonical spelling warded fronts
@@ -305,7 +304,6 @@ trusted owner.`,
 		Action: agentDefaultSurfaceAction(),
 		Commands: []*cli.Command{
 			agentEngineerCommand(),
-			agentArchitectCommand(),
 			agentDirectorCommand(),
 			agentAdvisorCommand(),
 			// roster is a self-describe verb, not a startup role: it prints the
@@ -326,7 +324,7 @@ func agentDefaultSurfaceAction() cli.ActionFunc {
 		}
 		arg := strings.TrimSpace(c.Args().First())
 		if _, err := parseAgentIssueRef(arg); err != nil {
-			return fmt.Errorf("unknown command %q for 'ward agent' (roles: engineer, architect, director, advisor); "+
+			return fmt.Errorf("unknown command %q for 'ward agent' (roles: engineer, director, advisor); "+
 				"a bare ref like #98 or owner/repo#N runs the engineer carry, and freeform work goes to "+
 				"`ward agent engineer \"<instructions>\"`", arg)
 		}

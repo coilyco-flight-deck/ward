@@ -141,15 +141,15 @@ type backlogConfig struct {
 	print        bool
 	triage       bool
 	carry        dispatchCarry
-	// surface fields configure director's OWN session - the architect surface it drops into
-	// on drain (ward#355): ward-source + with-repo + no-pull on top of carry's fields.
+	// surface fields configure director's OWN surface session (ward#355, ward#353):
+	// ward-source + with-repo + no-pull on top of carry's fields.
 	wardSource string
 	noPull     bool
 	withRepo   []string
 }
 
 // directorFlags is director's flag set: backlog/heartbeat knobs plus container/harness
-// parity with engineer + architect (ward#355). See docs/agent-director.md for what + why.
+// parity with the engineer carry + its surface (ward#355). See docs/agent-director.md.
 func directorFlags() []cli.Flag {
 	flags := []cli.Flag{
 		agentDriverFlag(),

@@ -115,7 +115,7 @@ func TestReadScratchGateChoice(t *testing.T) {
 func TestRunScratchGateTTYEnterLaunches(t *testing.T) {
 	defer stubGateTTY(t, true)()
 	r, errb := gateRunner("\n")
-	proceed, err := r.runScratchGate(t.Context(), nil, sampleUpPlan(), false, "ward agent architect")
+	proceed, err := r.runScratchGate(t.Context(), nil, sampleUpPlan(), false, "ward agent surface")
 	if err != nil {
 		t.Fatalf("runScratchGate: %v", err)
 	}
@@ -133,7 +133,7 @@ func TestRunScratchGateNoTTYFallsThrough(t *testing.T) {
 	defer stubGateTTY(t, false)()
 	// A stdin that would BLOCK if read, proving the non-TTY path never reads it.
 	r, errb := gateRunner("u\n")
-	proceed, err := r.runScratchGate(t.Context(), nil, sampleUpPlan(), false, "ward agent architect")
+	proceed, err := r.runScratchGate(t.Context(), nil, sampleUpPlan(), false, "ward agent surface")
 	if err != nil {
 		t.Fatalf("runScratchGate: %v", err)
 	}

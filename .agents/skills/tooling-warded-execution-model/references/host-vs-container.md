@@ -8,7 +8,7 @@ two homes for fleet config, and how to tell which one owns a given fix.
 | | Converged by **host ansible** (infrastructure repo) | Composed by **ward** at container bring-up (this repo) |
 | --- | --- | --- |
 | Audience | the operator's own laptop/server harness | everything an **agent inside a container** reads |
-| Examples | `~/.claude/CLAUDE.md`, host hooks, host permissions; roles `agent-compose`, `claude-hooks` | `cmd/ward/containerassets/AGENTS.container.md`, `settings.container.json`, `entrypoint.sh`, `cmd/ward/agent_architect.go` |
+| Examples | `~/.claude/CLAUDE.md`, host hooks, host permissions; roles `agent-compose`, `claude-hooks` | `cmd/ward/containerassets/AGENTS.container.md`, `settings.container.json`, `entrypoint.sh`, `cmd/ward/agent_director_surface.go` |
 | Lifetime | persists on a long-lived host | re-composed fresh into every throwaway container |
 | Reach | does **not** reach into a container | the only thing a container reads |
 
@@ -28,7 +28,7 @@ So the surface that controls *agent-in-container* behavior is ward's container a
   governs a warded agent.
 - **Top-of-context doctrine** → `AGENTS.container.md` (the autonomy override, the
   `/substrate` rule, the reaper note).
-- **Per-mode composition / read-only wiring** → `entrypoint.sh` and `agent_architect.go`
+- **Per-mode composition / read-only wiring** → `entrypoint.sh` and `agent_director_surface.go`
   (`WARD_READONLY`, the read-only context block, the push-URL strip).
 
 ## The concrete miss this corrects

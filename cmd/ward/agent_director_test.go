@@ -159,8 +159,8 @@ func TestDirectorSurfaceArgv(t *testing.T) {
 		withRepo:   []string{"a/b", "c/d"},
 	}
 	argv := directorSurfaceArgv("coilyco-flight-deck/ward", cfg)
-	if argv[0] != architectSurface {
-		t.Errorf("surface argv[0] = %q, want %q", argv[0], architectSurface)
+	if argv[0] != directorSurfaceVerb {
+		t.Errorf("surface argv[0] = %q, want %q", argv[0], directorSurfaceVerb)
 	}
 	if !argFollowedBy(argv, "--driver", "claude") {
 		t.Errorf("surface must run on director's own driver (claude), not the engineer driver: %v", argv)

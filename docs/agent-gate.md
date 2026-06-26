@@ -1,7 +1,8 @@
 # ward agent: interactive pre-launch gate (ward#366)
 
-The seedless interactive bring-up (`runScratchSession`, shared by `warded
-architect` directly and `warded director`'s drain-surface) resolved a visible
+The seedless interactive bring-up (`runScratchSession`, the director's read-only
+surface - both its drain-surface and its init-gate "scope now" path; ward#353)
+resolved a visible
 chunk of state - repo, mode, access, image, ward version, `--with-repo` grants -
 then **immediately** `docker run` into the fullscreen agent TUI. That metadata
 scrolled past the instant the alt-screen took the terminal, with nowhere to act
@@ -70,6 +71,6 @@ See `cmd/ward/agent_gate.go`.
 
 ## See also
 
-- [docs/agent-architect.md](agent-architect.md) - the read-only session the gate fronts.
+- [docs/agent-surface.md](agent-surface.md) - the read-only surface the gate fronts.
 - [docs/agent-preflight.md](agent-preflight.md) - the detached GO/NO-GO pre-flight.
 - [docs/hook.md](hook.md) - the path-canonicalization the re-exec mirrors.

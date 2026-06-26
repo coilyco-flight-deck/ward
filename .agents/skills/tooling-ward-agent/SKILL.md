@@ -41,7 +41,7 @@ Skip confirmation only on a unique, unambiguous match; ALWAYS confirm when two r
 
 ## Step 4: dispatch the engineer carry
 
-`ward agent <role> <ref>` takes a role (`engineer`|`architect`|`director`|`advisor`; ward#347) and `--driver` picks the harness (default claude). This skill dispatches **`engineer`**, which is **detached / autonomous only** (ward#356): a bare ref runs it fire-and-forget; the PR is the review gate. No attach surface - hands-on work is the `director`, not this skill. Heuristics + examples: [`references/surfaces.md`](references/surfaces.md).
+`ward agent <role> <ref>` takes a role (`engineer`|`director`|`advisor`; ward#347, ward#353) and `--driver` picks the harness (default claude). This skill dispatches **`engineer`**, which is **detached / autonomous only** (ward#356): a bare ref runs it fire-and-forget; the PR is the review gate. No attach surface - hands-on work is the `director`, not this skill. Heuristics + examples: [`references/surfaces.md`](references/surfaces.md).
 
 ```bash
 ward agent engineer coilyco-flight-deck/<repo>#<N>           # detached, fire-and-forget

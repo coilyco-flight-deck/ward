@@ -148,7 +148,7 @@ func TestCarryingLine(t *testing.T) {
 		t.Errorf("carryingLine() = %q, want %q", got, want)
 	}
 	// An issueless (seedless) surface passes a blank title and must stay quiet.
-	if got := carryingLine("ward agent architect", ref, "   "); got != "" {
+	if got := carryingLine("ward agent surface", ref, "   "); got != "" {
 		t.Errorf("carryingLine() with blank title = %q, want empty", got)
 	}
 }
@@ -694,7 +694,7 @@ func TestAgentModesIncludeGoose(t *testing.T) {
 	for _, c := range agentCommand().Commands {
 		surfaces[c.Name] = c
 	}
-	for _, want := range []string{"engineer", "architect", "director", "advisor"} {
+	for _, want := range []string{"engineer", "director", "advisor"} {
 		cmd, ok := surfaces[want]
 		if !ok {
 			t.Errorf("ward agent missing %q role", want)

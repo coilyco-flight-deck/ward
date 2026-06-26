@@ -36,7 +36,7 @@ func TestAgentRosterCommandRegistered(t *testing.T) {
 }
 
 // TestAgentRosterEnumeratesEveryRole asserts every registered non-meta role has a
-// descriptor and the four roles are all covered (ward#348).
+// descriptor and the three roles are all covered (ward#348, ward#353).
 func TestAgentRosterEnumeratesEveryRole(t *testing.T) {
 	rows, err := agentRosterRows()
 	if err != nil {
@@ -49,7 +49,7 @@ func TestAgentRosterEnumeratesEveryRole(t *testing.T) {
 			t.Errorf("role %q has an empty tagline or modes column", r.Role)
 		}
 	}
-	for _, role := range []string{"engineer", "architect", "director", "advisor"} {
+	for _, role := range []string{"engineer", "director", "advisor"} {
 		if !got[role] {
 			t.Errorf("roster missing the %q role; got %v", role, rosterRoleNames(rows))
 		}
