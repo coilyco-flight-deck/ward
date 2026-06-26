@@ -441,6 +441,15 @@ func TestWardEnvTargetIssue(t *testing.T) {
 	}
 }
 
+// TestWardEnvContainerName asserts the friendly docker --name (plan.Name) rides
+// WARD_CONTAINER_NAME so in-container tooling can show it (ward#365).
+func TestWardEnvContainerName(t *testing.T) {
+	p := sampleUpPlan()
+	if got := p.wardEnv()["WARD_CONTAINER_NAME"]; got != p.Name {
+		t.Errorf("WARD_CONTAINER_NAME = %q, want the docker --name %q", got, p.Name)
+	}
+}
+
 func sampleUpPlan() upPlan {
 	repo := targetRepo{Owner: "coilyco-gaming", Name: "eco-app"}
 	return upPlan{
@@ -479,6 +488,7 @@ func TestDockerCreateArgvShape(t *testing.T) {
 		"--entrypoint " + containerWardAssets + "/" + containerEntrypointRel,
 		"-it",
 		"--env-file /tmp/ward-env-xyz",
+		"-e WARD_CONTAINER_NAME=engineer-claude-eco-app-140",
 		"-e WARD_TARGET_REPO=coilyco-gaming/eco-app",
 		"-e WARD_MODE=claude",
 		"-e WARD_CONTEXT_LEVEL=2",
