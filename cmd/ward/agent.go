@@ -286,7 +286,6 @@ URL also work. One line replaces a full container bring-up stack plus a prompt.
   warded coilyco-flight-deck/ward#98          # bare ref -> engineer carry (warded face)
   warded #98                                  # owner/repo inferred from the cwd
   warded engineer #98                         # implement a ticket: detached fire-and-forget
-  warded engineer #98 --watch                 # interactive: attach and pair (-w)
   warded engineer "fix the flaky exec_gate test" # freeform -> file an issue first, then carry
   warded engineer #98 --driver codex          # pick another harness
   warded architect                            # read-only interactive session, scope + dispatch
@@ -347,9 +346,9 @@ func agentImageFlags() []cli.Flag {
 	}
 }
 
-// agentSurfaceFlags builds the launch flag set shared by work/headless and the
-// bare-ref default; headless toggles detach-only vs interactive flags (ward#282).
-func agentSurfaceFlags(headless bool) []cli.Flag {
+// agentSurfaceFlags builds the detached launch flag set shared by the engineer carry,
+// the bare-ref default, and the freeform task - no interactive surface here (ward#356).
+func agentSurfaceFlags() []cli.Flag {
 	flags := []cli.Flag{
 		agentDriverFlag(),
 		&cli.StringFlag{Name: "branch", Usage: "feature branch to create inside the clone (default: issue-<N>)"},
@@ -363,17 +362,9 @@ func agentSurfaceFlags(headless bool) []cli.Flag {
 		&cli.BoolFlag{Name: "force", Usage: "skip the local + remote concurrency reservation checks (reclaim a stale or foreign hold)"},
 		&cli.BoolFlag{Name: "go-bootstrap", Usage: "EXPERIMENTAL (ward#181): after ward installs, delegate to the Go 'ward container bootstrap' instead of the bash entrypoint logic. Requires ward in-container - use --ward-source until the image bakes it."},
 	)
-	if !headless {
-		// headless always detaches, so only the interactive surface exposes --detach.
-		flags = append(flags, &cli.BoolFlag{Name: "detach", Aliases: []string{"d"}, Usage: "run detached instead of interactive"})
-		// --new-tab spawns the work into its own Warp tab (the sidequest path,
-		// ward#174); only the interactive work surface offers it.
-		flags = append(flags, agentTabFlags()...)
-	} else {
-		// headless gets an autonomous pre-flight before detaching (ward#137,
-		// ward#147; see docs/agent.md); --no-preflight skips it.
-		flags = append(flags, &cli.BoolFlag{Name: "no-preflight", Usage: "skip the pre-flight feasibility check and detach immediately"})
-	}
+	// The detached carry gets an autonomous pre-flight before launching (ward#137,
+	// ward#147; see docs/agent.md); --no-preflight skips it and detaches immediately.
+	flags = append(flags, &cli.BoolFlag{Name: "no-preflight", Usage: "skip the pre-flight feasibility check and detach immediately"})
 	return flags
 }
 
@@ -393,7 +384,7 @@ type resolvedWork struct {
 
 // resolveAgentWork parses + trust-gates the ref, fetches the issue (failing fast
 // before any container spins), and returns the ref, title, body, and seed prompt.
-func (r *Runner) resolveAgentWork(ctx context.Context, c *cli.Command, mode containerMode, surface string, headless bool) (resolvedWork, error) {
+func (r *Runner) resolveAgentWork(ctx context.Context, c *cli.Command, mode containerMode, surface string) (resolvedWork, error) {
 	label := agentCmdline(mode, surface)
 	ref, err := r.resolveAgentIssueRef(ctx, c.Args().First())
 	if err != nil {
@@ -426,9 +417,9 @@ func (r *Runner) resolveAgentWork(ctx context.Context, c *cli.Command, mode cont
 	if eerr != nil {
 		return resolvedWork{}, fmt.Errorf("%s: %w", label, eerr)
 	}
-	// headless detaches fire-and-forget, so its seed gets the closing reflection
-	// (ward#281); an interactive --watch carry has a human watching and skips it.
-	return resolvedWork{Ref: ref, Title: title, Body: issue.Body, Comments: comments, Details: details, ExtraRepos: extra, Seed: agentSeedPrompt(ref, title, issue.Body, details, mode, headless, extra)}, nil
+	// The carry detaches fire-and-forget (ward#356), so its seed always gets the
+	// closing reflection - the only voice it leaves behind (ward#281).
+	return resolvedWork{Ref: ref, Title: title, Body: issue.Body, Comments: comments, Details: details, ExtraRepos: extra, Seed: agentSeedPrompt(ref, title, issue.Body, details, mode, true, extra)}, nil
 }
 
 // fetchIssueComments returns the comment thread (oldest first) for the pre-flight
@@ -442,23 +433,18 @@ func (r *Runner) fetchIssueComments(ctx context.Context, ref agentIssueRef) ([]i
 }
 
 // runAgentWork resolves the issue, seeds the prompt, runs the autonomous
-// pre-flight for interactive headless runs (runPreflight), and launches.
-func (r *Runner) runAgentWork(ctx context.Context, c *cli.Command, mode containerMode, surface string, headless bool) error {
-	w, err := r.resolveAgentWork(ctx, c, mode, surface, headless)
+// pre-flight (runPreflight), and launches the detached carry (ward#356).
+func (r *Runner) runAgentWork(ctx context.Context, c *cli.Command, mode containerMode, surface string) error {
+	w, err := r.resolveAgentWork(ctx, c, mode, surface)
 	if err != nil {
 		return err
-	}
-	// --new-tab spawns the work into its own Warp tab (the sidequest path) rather
-	// than launching here; the ref is already validated. See docs/agent.md, ward#174.
-	if !headless && c.Bool("new-tab") {
-		return r.runAgentNewTab(ctx, c, mode, w)
 	}
 	// Warn at host dispatch if ward is stale; a detached run buries the only
 	// `ward version` signal in a container log (ward#143). --print stays offline.
 	if !c.Bool("print") {
 		r.maybeWarnWardOutdated(ctx)
 	}
-	if headless && preflightWanted(c) {
+	if preflightWanted(c) {
 		// ward#184: gate on the cheap, authoritative reservation before a full LLM
 		// pre-flight is spent on an issue another run holds. See docs/agent.md.
 		if perr := r.precheckReservation(ctx, agentCmdline(mode, surface), w, c.Bool("force")); perr != nil {
@@ -473,7 +459,7 @@ func (r *Runner) runAgentWork(ctx context.Context, c *cli.Command, mode containe
 			return nil
 		}
 	}
-	return r.launchAgentContainer(ctx, c, mode, surface, headless, w.Ref, w.Title, w.Seed)
+	return r.launchAgentContainer(ctx, c, mode, surface, w.Ref, w.Title, w.Seed)
 }
 
 // preflightTimeout caps the pre-flight read so a wedged agent can't hold the
@@ -868,9 +854,9 @@ func preflightWrongRepoComment(mode containerMode, surface string, filed agentIs
 	return b.String()
 }
 
-// buildAgentPlan composes the container plan (seeded argv, issue-<N> branch, named
-// container) for a resolved issue. detached strips TTY flags so it never grabs a pty.
-func buildAgentPlan(c *cli.Command, mode containerMode, ref agentIssueRef, seed string, headless, detached bool, assetsDir string) (upPlan, error) {
+// buildAgentPlan composes the detached container plan (seeded argv, issue-<N> branch,
+// named container) for a resolved issue; it strips TTY flags so it never grabs a pty.
+func buildAgentPlan(c *cli.Command, mode containerMode, ref agentIssueRef, seed string, assetsDir string) (upPlan, error) {
 	cwd := resolveInvokeCWD()
 	if cwd == "" {
 		return upPlan{}, fmt.Errorf("cannot resolve the current directory")
@@ -889,11 +875,9 @@ func buildAgentPlan(c *cli.Command, mode containerMode, ref agentIssueRef, seed 
 	// Carry the issue number into the container so the reaper can release the
 	// reservation this run took if the container dies pre-launch (ward#264).
 	plan.Issue = ref.Number
-	plan.Headless = headless
-	if detached {
-		plan.Interactive = false
-		plan.TTY = false
-	}
+	plan.Headless = true
+	plan.Interactive = false
+	plan.TTY = false
 	return plan, nil
 }
 
@@ -907,24 +891,19 @@ func carryingLine(label string, ref agentIssueRef, title string) string {
 	return fmt.Sprintf("%s: carrying %s - %q", label, ref, t)
 }
 
-// launchAgentContainer turns a resolved (ref, title, seed) into the container
-// plan and fires it - the shared tail of work, headless, and task. See docs/agent.md.
-func (r *Runner) launchAgentContainer(ctx context.Context, c *cli.Command, mode containerMode, surface string, headless bool, ref agentIssueRef, title, seed string) error {
+// launchAgentContainer turns a resolved (ref, title, seed) into the container plan and
+// fires it detached - the shared tail of engineer, freeform task, and route (ward#356).
+func (r *Runner) launchAgentContainer(ctx context.Context, c *cli.Command, mode containerMode, surface string, ref agentIssueRef, title, seed string) error {
 	label := agentCmdline(mode, surface)
 
-	// headless always detaches; the interactive surface honors --detach.
-	detached := headless || c.Bool("detach")
-	assetsDir, cleanupAssets, err := writeContainerAssets()
+	// A detached run leaves its assets for the next sweep (it cannot delete the
+	// still-mounted dir on return), so the cleanup hook is discarded.
+	assetsDir, _, err := writeContainerAssets()
 	if err != nil {
 		return err
 	}
-	// A detached run leaves its assets for the next sweep (it cannot delete the
-	// still-mounted dir on return); an attached run cleans up on exit.
-	if !detached {
-		defer cleanupAssets()
-	}
 
-	plan, err := buildAgentPlan(c, mode, ref, seed, headless, detached, assetsDir)
+	plan, err := buildAgentPlan(c, mode, ref, seed, assetsDir)
 	if err != nil {
 		return fmt.Errorf("%s: %w", label, err)
 	}
@@ -939,14 +918,10 @@ func (r *Runner) launchAgentContainer(ctx context.Context, c *cli.Command, mode 
 		fmt.Fprintln(os.Stderr, line)
 	}
 
-	// Reserve the issue so another run (file sentinel here, Forgejo marker elsewhere)
-	// won't redo it. Detached holds for the container's life; attached releases on return.
-	releaseReservation, err := r.reserveIssue(ctx, label, mode, ref, plan.Name, plan.Branch, c.Bool("force"))
-	if err != nil {
+	// Reserve the issue so another run won't redo it; a detached run holds the
+	// reservation for the container's life, so the release hook is discarded.
+	if _, err := r.reserveIssue(ctx, label, mode, ref, plan.Name, plan.Branch, c.Bool("force")); err != nil {
 		return err
-	}
-	if !detached {
-		defer releaseReservation()
 	}
 
 	// Reclaim dead containers' writable layers before adding one more, so the
@@ -1225,7 +1200,7 @@ func (r *Runner) runAgentTaskDirect(ctx context.Context, c *cli.Command, mode co
 	// The freeform instructions are the filed body (no --details, ward#167); it runs
 	// the headless carry, so the seed is headless: inlined body + reflection (#157/#281).
 	seed := agentSeedPrompt(ref, title, body, "", mode, true, nil)
-	return r.launchAgentContainer(ctx, c, mode, "engineer", true, ref, title, seed)
+	return r.launchAgentContainer(ctx, c, mode, "engineer", ref, title, seed)
 }
 
 // printAgentTaskPlan renders the repo, the issue that *would* be filed, and the

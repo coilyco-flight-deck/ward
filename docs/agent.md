@@ -20,9 +20,9 @@ modes you invoke. You do not run `explore`, you send in your **architect**. The 
 merged roles key the mode on the **argument type** (a ref acts on an issue, freeform
 text files/answers it):
 
-- **`engineer`** (was `headless`+`work`+`task`) - implements a ticket end to end: a ref
-  carries it (detached; `--watch` attaches), freeform text files one first then carries
-  it. [agent-engineer.md](agent-engineer.md).
+- **`engineer`** (was `headless`+`task`) - implements a ticket end to end, **detached only**
+  (ward#356): a ref carries it fire-and-forget, freeform text files one first then carries
+  it; interactive work goes to the director. [agent-engineer.md](agent-engineer.md).
 - **`architect`** (was `explore`) - read-only interactive session: reads the clone,
   scopes, files + dispatches work, cannot push. [agent-architect.md](agent-architect.md).
 - **`director`** (was `backlog`) - autonomous backlog supervisor: dispatches engineers,
@@ -39,7 +39,7 @@ rename, no aliases): `warded explore`, `warded sandbox`, etc. error as unknown c
 ```bash
 warded coilyco-flight-deck/ward#98              # bare ref -> engineer carry (fire-and-forget)
 warded #98                                      # owner/repo inferred from the cwd's git origin
-warded engineer #98 --watch                     # interactive: attach and pair (-w)
+warded engineer #98                             # implement a ticket: detached fire-and-forget
 warded engineer "fix the flaky exec_gate test"  # freeform -> file an issue first, then carry
 warded architect                                # read-only scoping session
 warded director --repo owner/name               # autonomous headless-lane loop
@@ -61,5 +61,5 @@ ward#347). The ref is `owner/repo#N`, a full Forgejo URL, or a bare `#N` / `N` i
 - [agent-credentials.md](agent-credentials.md) - claude/codex credential seeding.
 - [agent-local-harnesses.md](agent-local-harnesses.md) - qwen + goose (Ollama).
 - [agent-reservation.md](agent-reservation.md) - reservation, TTL, `--force`, stale warn.
-- [agent-flags.md](agent-flags.md) - launch flags, `--details`, `--new-tab`.
+- [agent-flags.md](agent-flags.md) - launch flags and `--details`.
 - [container.md](container.md) - the container model (ephemeral, fresh-clone, reaper).

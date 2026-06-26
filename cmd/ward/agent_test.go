@@ -766,7 +766,7 @@ func TestDockerCreateArgvNoAgentArgs(t *testing.T) {
 func TestAgentImageFlagsCarryEnvSources(t *testing.T) {
 	wantEnv := map[string]string{"image": envAgentImage, "tag": envAgentTag, "ward-version": envAgentVersion}
 	sets := map[string][]cli.Flag{
-		"surface":  agentSurfaceFlags(true),
+		"surface":  agentSurfaceFlags(),
 		"scratch":  agentScratchFlags(),
 		"engineer": agentEngineerCommand().Flags,
 		"advisor":  agentAdvisorCommand().Flags,

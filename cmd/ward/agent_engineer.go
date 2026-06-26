@@ -9,18 +9,13 @@ import (
 	"github.com/urfave/cli/v3"
 )
 
-// agent_engineer.go wires `ward agent engineer`, the implement-a-ticket role
-// (ward#347, merging work/headless/task by arg type). See docs/agent-engineer.md.
+// agent_engineer.go wires `ward agent engineer`, the detached-only implement-a-ticket
+// role (ward#347; the attach was dropped in ward#356). See docs/agent-engineer.md.
 
-// agentEngineerFlags is the engineer flag set: the shared carry flags (+ --no-preflight),
-// --watch to attach (was work), the --new-tab seam, and the freeform issue instructions.
+// agentEngineerFlags is the engineer flag set: the shared detached carry flags
+// (+ --no-preflight) and freeform instructions. No --watch/--new-tab (ward#356).
 func agentEngineerFlags() []cli.Flag {
-	flags := agentSurfaceFlags(true)
-	// --watch (-w) flips the default detached carry to an attached, pair-with-me
-	// session (was the `work` surface; ward#347).
-	flags = append(flags, &cli.BoolFlag{Name: "watch", Aliases: []string{"w"}, Usage: "attach and pair interactively instead of detaching fire-and-forget (was `work`)"})
-	// The --new-tab sidequest spawn rides with --watch (was a `work`-only seam; ward#174).
-	flags = append(flags, agentTabFlags()...)
+	flags := agentSurfaceFlags()
 	// Freeform mode files an issue first (was `task`): the positional carries the text,
 	// these escape hatches handle a long body or a bare owner/repo + instructions.
 	flags = append(flags,
@@ -30,12 +25,12 @@ func agentEngineerFlags() []cli.Flag {
 	return flags
 }
 
-// agentEngineerCommand builds `ward agent engineer`: a ref carries a ticket (detached;
-// --watch attaches), freeform files one first then carries it. docs/agent-engineer.md.
+// agentEngineerCommand builds `ward agent engineer`: a ref carries a ticket detached,
+// freeform files one first then carries it (detached too). docs/agent-engineer.md.
 func agentEngineerCommand() *cli.Command {
 	return &cli.Command{
 		Name: "engineer",
-		Usage: "Implement a ticket end to end: a ref carries it (detached; --watch attaches), " +
+		Usage: "Implement a ticket end to end: a ref carries it detached, " +
 			"freeform text files an issue first then carries it.",
 		ArgsUsage: "<owner/repo#N | #N | forgejo-issue-url | '<freeform instructions>'>",
 		Flags:     agentEngineerFlags(),
@@ -63,14 +58,13 @@ func agentEngineerAction() cli.ActionFunc {
 }
 
 // runAgentEngineer dispatches by argument type (ward#347): a parseable ref carries it
-// (detached, or --watch); anything else files an issue first then carries it (was task).
+// detached; anything else files an issue then carries it (detached-only; ward#356).
 func (r *Runner) runAgentEngineer(ctx context.Context, c *cli.Command, mode containerMode) error {
 	arg := strings.TrimSpace(c.Args().First())
 	if _, err := parseAgentIssueRef(arg); err != nil {
 		// Not an issue ref: freeform instructions (or a bare owner/repo + --instructions).
 		return r.runAgentTask(ctx, c, mode)
 	}
-	// A ref carries: detached fire-and-forget by default, attached under --watch.
-	headless := !c.Bool("watch")
-	return r.runAgentWork(ctx, c, mode, "engineer", headless)
+	// A ref always carries detached, fire-and-forget (ward#356).
+	return r.runAgentWork(ctx, c, mode, "engineer")
 }

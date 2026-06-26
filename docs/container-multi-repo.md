@@ -24,7 +24,7 @@ ward agent engineer coilyco-gaming/eco-app#42 \
   --repo coilyco-gaming/eco-protos \
   --repo coilyco-flight-deck/cli-guard
 
-# --watch (attached) takes the same grants.
+# the freeform engineer carry takes the same grants.
 ```
 
 A grant that names the target is a harmless no-op (the target is always cloned).

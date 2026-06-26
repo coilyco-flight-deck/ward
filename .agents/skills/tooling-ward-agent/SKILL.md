@@ -1,6 +1,6 @@
 ---
 name: tooling-ward-agent
-description: Normalize a dictated ward agent phrase to owner/repo#N and dispatch the engineer carry (detached, or --watch). Triggers - ward agent, dispatch, fire an agent, spawn an agent, fan out.
+description: Normalize a dictated ward agent phrase to owner/repo#N and dispatch the detached engineer carry. Triggers - ward agent, dispatch, fire an agent, spawn an agent, fan out.
 ---
 
 # tooling-ward-agent
@@ -13,7 +13,7 @@ Fan-out happens *before* this skill (`writing-to-issues`/`tooling-sidequest` sli
 
 ## When to fire
 
-Any user phrase containing "dispatch", "agent", or "spawn" plus a numeric tail. Also "fan out", "run claude on", and interactive-intent phrasing ("open one for me", "spin this up", "let me iterate on this", "HITL this") paired with an issue.
+Any user phrase containing "dispatch", "agent", or "spawn" plus a numeric tail. Also "fan out" and "run claude on" paired with an issue. **Interactive-intent phrasing** ("open one for me", "let me iterate on this", "HITL this") no longer maps to engineer - it is detached-only (ward#356); route that to the `director`, out of this skill's scope.
 
 Do NOT fire when the user already typed a clean `owner/repo#N` or a Forgejo issue URL - pass straight through to `ward agent`. A bare `#N` from inside a repo checkout also passes straight through: `ward agent` infers `owner/repo` from the cwd's git origin (ward#282).
 
@@ -41,11 +41,10 @@ Skip confirmation only on a unique, unambiguous match; ALWAYS confirm when two r
 
 ## Step 4: dispatch the engineer carry
 
-`ward agent <role> <ref>` takes a role (`engineer`|`architect`|`director`|`advisor`; ward#347) and `--driver` picks the harness (default claude). This skill dispatches **`engineer`** - implement a ticket end to end. A **bare ref runs the engineer carry** (detached, fire-and-forget; the PR is the review gate); `--watch` (`-w`) attaches it when Kai signals supervision. Explicit words win. Heuristics + examples: [`references/surfaces.md`](references/surfaces.md).
+`ward agent <role> <ref>` takes a role (`engineer`|`architect`|`director`|`advisor`; ward#347) and `--driver` picks the harness (default claude). This skill dispatches **`engineer`**, which is **detached / autonomous only** (ward#356): a bare ref runs it fire-and-forget; the PR is the review gate. No attach surface - hands-on work is the `director`, not this skill. Heuristics + examples: [`references/surfaces.md`](references/surfaces.md).
 
 ```bash
 ward agent engineer coilyco-flight-deck/<repo>#<N>           # detached, fire-and-forget
-ward agent engineer coilyco-flight-deck/<repo>#<N> --watch   # attached, pair-with-me
 ```
 
 ## Out of scope
