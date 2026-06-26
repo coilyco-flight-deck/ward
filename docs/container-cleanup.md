@@ -29,7 +29,11 @@ ward containers before adding one more:
 1. List exited containers carrying the `ward.container=1` label, newest first
    (`docker ps -a --filter label=... --filter status=exited`).
 2. Keep the most recent `containerReapKeep` (10) for `docker logs` post-mortem.
-3. `docker rm` the older tail (no `-f`: only already-exited containers are ever
+3. **Drain** the older tail to `~/.ward/agent-logs/<container>/` (console log,
+   transcript, `meta.json`) **before** removing it - the `rm` takes the log and
+   the writable layer with it, so the drain is ordered first (ward#363,
+   [agent-observability.md](agent-observability.md)).
+4. `docker rm` the older tail (no `-f`: only already-exited containers are ever
    targeted, so a running run is never touched).
 
 This is **self-correcting**: the same fleet activity that creates dead containers
