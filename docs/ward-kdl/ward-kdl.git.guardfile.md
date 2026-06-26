@@ -43,3 +43,9 @@ Flags: unrestricted passthrough.
 `git shortlog`
 
 Flags: unrestricted passthrough.
+
+## ward-kdl git grep - search tracked file contents; -n, -i, -l, -e, regex
+
+`git grep`
+
+Flags: unrestricted passthrough.

@@ -7,9 +7,10 @@
 //
 // Deny-by-default and read-only. ward#226 opened this guardfile with the single
 // `status` verb; ward#235 grows it with the other common git verbs that stay
-// read-only no matter what flags follow - history, diffs, object dumps, blame.
-// These can never mutate the tree, the index, or refs, so passing their flags
-// through unrestricted (the exec dialect's model) is safe.
+// read-only no matter what flags follow - history, diffs, object dumps, blame;
+// ward#369 adds `grep`, content search over tracked files. These can never
+// mutate the tree, the index, or refs, so passing their flags through
+// unrestricted (the exec dialect's model) is safe.
 //
 // What is deliberately NOT here:
 //   - Mutating, network, and history-rewriting verbs (add, clone, commit, push,
@@ -51,6 +52,9 @@ wrap ward-kdl git {
     }
     can run shortlog {
         describe "commit log grouped and counted by author; -s -n for a contributor leaderboard"
+    }
+    can run grep {
+        describe "search tracked file contents; -n, -i, -l, -e, regex"
     }
     // intentionally unexposed - mutating, network, or history-rewriting; these
     // stay on the hand-written `ward git` surface (commit there is concurrency-safe)
