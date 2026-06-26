@@ -477,17 +477,20 @@ func extraReposEnv(repos []targetRepo) string {
 // here is safe to print and to record; the token never appears.
 func (p upPlan) wardEnv() map[string]string {
 	env := map[string]string{
-		"WARD_TARGET_REPO":   p.Repo.slug(),
-		"WARD_TARGET_OWNER":  p.Repo.Owner,
-		"WARD_TARGET_NAME":   p.Repo.Name,
-		"WARD_FORGEJO_BASE":  p.ForgejoBase,
-		"WARD_MODE":          string(p.Mode),
-		"WARD_CONTEXT_LEVEL": fmt.Sprintf("%d", p.Mode.contextLevel()),
-		"WARD_AGENT":         p.Mode.agentBinary(),
-		"WARD_GITCACHE":      containerGitcacheMnt,
-		"WARD_CONTEXT_SRC":   containerContextMount,
-		"WARD_MIRROR_NAME":   p.Repo.mirrorName(),
-		"WARD_VERSION":       p.WardVersion,
+		// The friendly docker --name (plan.Name) so in-container tooling (the status
+		// line) can show it; HOSTNAME carries only the container ID (ward#365).
+		"WARD_CONTAINER_NAME": p.Name,
+		"WARD_TARGET_REPO":    p.Repo.slug(),
+		"WARD_TARGET_OWNER":   p.Repo.Owner,
+		"WARD_TARGET_NAME":    p.Repo.Name,
+		"WARD_FORGEJO_BASE":   p.ForgejoBase,
+		"WARD_MODE":           string(p.Mode),
+		"WARD_CONTEXT_LEVEL":  fmt.Sprintf("%d", p.Mode.contextLevel()),
+		"WARD_AGENT":          p.Mode.agentBinary(),
+		"WARD_GITCACHE":       containerGitcacheMnt,
+		"WARD_CONTEXT_SRC":    containerContextMount,
+		"WARD_MIRROR_NAME":    p.Repo.mirrorName(),
+		"WARD_VERSION":        p.WardVersion,
 		// Terminal color: a bare TERM with no COLORTERM makes the in-container agent
 		// downgrade its palette to ~mono; advertise 256-color + truecolor for color.
 		"TERM":      "xterm-256color",

@@ -94,6 +94,34 @@ func TestAgentRosterMarkdownShape(t *testing.T) {
 	}
 }
 
+// TestAgentRosterDefaultPrintsRoster asserts the truly-empty `warded` path renders the
+// generated role roster + launch hint, not the CLI flag dump (ward#360).
+func TestAgentRosterDefaultPrintsRoster(t *testing.T) {
+	var buf strings.Builder
+	cmd := agentCommand()
+	cmd.Writer = &buf
+	if err := agentRosterDefault(cmd); err != nil {
+		t.Fatalf("agentRosterDefault: %v", err)
+	}
+	out := buf.String()
+	for _, want := range []string{
+		"the startup-role roster",
+		"warded engineer - Implements a ticket end to end.",
+		"warded advisor - Answers without writing code.",
+		"ward agent roster", // the launch-hint footer
+	} {
+		if !strings.Contains(out, want) {
+			t.Errorf("bare-warded roster output missing %q; got:\n%s", want, out)
+		}
+	}
+	// The whole point of ward#360: this is the roster, not the flag wall.
+	for _, unwanted := range []string{"GLOBAL OPTIONS", "--driver"} {
+		if strings.Contains(out, unwanted) {
+			t.Errorf("bare-warded output leaked the CLI flag dump (%q); got:\n%s", unwanted, out)
+		}
+	}
+}
+
 func rosterRoleNames(rows []agentRosterRow) []string {
 	names := make([]string, 0, len(rows))
 	for _, r := range rows {
