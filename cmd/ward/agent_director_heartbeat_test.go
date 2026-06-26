@@ -104,6 +104,18 @@ type fakeDirector struct {
 	maxCycleCalls int
 	summaryCalls  int
 	sleeps        int
+	// kickoffFn drives the ward#361 init gate; nil defaults to draining now (true), so
+	// every pre-existing test keeps its prior "drain immediately" behavior unchanged.
+	kickoffFn    func() (bool, error)
+	kickoffCalls int
+}
+
+func (f *fakeDirector) confirmKickoff(context.Context) (bool, error) {
+	f.kickoffCalls++
+	if f.kickoffFn != nil {
+		return f.kickoffFn()
+	}
+	return true, nil
 }
 
 func (f *fakeDirector) poll(context.Context) {
@@ -217,6 +229,172 @@ func TestRunDirectorLoopExitsWhenNoSurface(t *testing.T) {
 	}
 	if f.dispatched != nil {
 		t.Errorf("nothing should dispatch, got %v", f.dispatched)
+	}
+}
+
+// TestKickoffDrainNow covers the ward#361 init-gate parser: only n/no surfaces first;
+// a bare Enter, y/yes, EOF, or any unrecognized line drains now (the bias to proceed).
+func TestKickoffDrainNow(t *testing.T) {
+	cases := []struct {
+		in   string
+		want bool
+	}{
+		{"", true}, // bare Enter / EOF -> drain
+		{"\n", true},
+		{"y", true},
+		{"yes", true},
+		{"Y\n", true},
+		{"  yes  ", true},
+		{"maybe", true}, // unrecognized -> proceed
+		{"n", false},
+		{"no", false},
+		{"N\n", false},
+		{"  No ", false},
+	}
+	for _, c := range cases {
+		if got := kickoffDrainNow(c.in); got != c.want {
+			t.Errorf("kickoffDrainNow(%q) = %v, want %v", c.in, got, c.want)
+		}
+	}
+}
+
+// TestRunDirectorLoopKickoffNoSurfacesFirst covers the ward#361 "no" branch: the human is
+// handed a session BEFORE any dispatch; the heartbeat then resumes, the gate asked once.
+func TestRunDirectorLoopKickoffNoSurfacesFirst(t *testing.T) {
+	issue := &backlogEntry{Num: 5, Title: "queued at launch", Tier: "P0", Lane: "headless", State: "queued"}
+	f := &fakeDirector{list: []*backlogEntry{issue}}
+	f.kickoffFn = func() (bool, error) { return false, nil } // "no": talk first
+	var dispatchedAtFirstSurface []int
+	f.surfaceFn = func() (bool, error) {
+		if f.surfaceCalls == 1 {
+			dispatchedAtFirstSurface = append([]int(nil), f.dispatched...)
+		}
+		return true, nil
+	}
+	cfg := backlogConfig{maxParallel: 2, pollInterval: time.Millisecond}
+
+	if err := runDirectorLoop(context.Background(), cfg, f); err != nil {
+		t.Fatalf("loop returned error: %v", err)
+	}
+	if f.kickoffCalls != 1 {
+		t.Errorf("kickoff asked %d times, want exactly 1 (init only)", f.kickoffCalls)
+	}
+	if len(dispatchedAtFirstSurface) != 0 {
+		t.Errorf("no -> surface must precede any dispatch, but %v were already dispatched", dispatchedAtFirstSurface)
+	}
+	if !reflect.DeepEqual(f.dispatched, []int{5}) {
+		t.Errorf("dispatched = %v, want [5] (the drain resumes after the opening surface)", f.dispatched)
+	}
+}
+
+// TestRunDirectorLoopKickoffYesDrainsImmediately covers the "yes" branch: no opening
+// surface, the queued work dispatches on the first tick, and the gate is asked once.
+func TestRunDirectorLoopKickoffYesDrainsImmediately(t *testing.T) {
+	issue := &backlogEntry{Num: 5, Title: "actionable", Tier: "P0", Lane: "headless", State: "queued"}
+	f := &fakeDirector{list: []*backlogEntry{issue}}
+	f.kickoffFn = func() (bool, error) { return true, nil } // "yes": drain now
+	cfg := backlogConfig{maxParallel: 2, pollInterval: time.Millisecond}
+
+	if err := runDirectorLoop(context.Background(), cfg, f); err != nil {
+		t.Fatalf("loop returned error: %v", err)
+	}
+	if f.kickoffCalls != 1 {
+		t.Errorf("kickoff asked %d times, want exactly 1", f.kickoffCalls)
+	}
+	if !reflect.DeepEqual(f.dispatched, []int{5}) {
+		t.Errorf("dispatched = %v, want [5]", f.dispatched)
+	}
+	// One surface only - the drain after the dispatch reconciles, never a kickoff surface.
+	if f.surfaceCalls != 1 {
+		t.Errorf("surface count = %d, want 1 (drain only, no opening surface)", f.surfaceCalls)
+	}
+}
+
+// TestRunDirectorLoopKickoffAskedOnce confirms the gate is asked exactly once even when
+// the run surfaces, refills, resumes, and drains a second time (ward#361).
+func TestRunDirectorLoopKickoffAskedOnce(t *testing.T) {
+	issue := &backlogEntry{Num: 5, Title: "first", Tier: "P0", Lane: "headless", State: "queued"}
+	f := &fakeDirector{list: []*backlogEntry{issue}}
+	refilled := false
+	f.surfaceFn = func() (bool, error) {
+		if !refilled {
+			refilled = true
+			f.list = append(f.list, &backlogEntry{Num: 6, Title: "second", Tier: "P1", Lane: "headless", State: "queued"})
+		}
+		return true, nil
+	}
+	cfg := backlogConfig{maxParallel: 2, pollInterval: time.Millisecond}
+
+	if err := runDirectorLoop(context.Background(), cfg, f); err != nil {
+		t.Fatalf("loop returned error: %v", err)
+	}
+	if f.kickoffCalls != 1 {
+		t.Errorf("kickoff asked %d times across drain/resume cycles, want exactly 1", f.kickoffCalls)
+	}
+}
+
+// TestRunDirectorLoopKickoffNoExitsWhenNoSurface confirms a "no" answer with no session
+// available (no terminal to surface to) ends the run before any dispatch.
+func TestRunDirectorLoopKickoffNoExitsWhenNoSurface(t *testing.T) {
+	issue := &backlogEntry{Num: 5, Title: "queued", Tier: "P0", Lane: "headless", State: "queued"}
+	f := &fakeDirector{list: []*backlogEntry{issue}}
+	f.kickoffFn = func() (bool, error) { return false, nil }
+	f.surfaceFn = func() (bool, error) { return false, nil } // no session available
+	cfg := backlogConfig{maxParallel: 2, pollInterval: time.Millisecond}
+
+	if err := runDirectorLoop(context.Background(), cfg, f); err != nil {
+		t.Fatalf("loop returned error: %v", err)
+	}
+	if f.dispatched != nil {
+		t.Errorf("kickoff-no with no surface must end before any dispatch, got %v", f.dispatched)
+	}
+	if f.surfaceCalls != 1 {
+		t.Errorf("surface attempted %d times, want 1", f.surfaceCalls)
+	}
+}
+
+// TestRunDirectorLoopKickoffError confirms a gate error aborts the run.
+func TestRunDirectorLoopKickoffError(t *testing.T) {
+	f := &fakeDirector{}
+	f.kickoffFn = func() (bool, error) { return false, errors.New("boom") }
+	cfg := backlogConfig{maxParallel: 2, pollInterval: time.Millisecond}
+
+	if err := runDirectorLoop(context.Background(), cfg, f); err == nil {
+		t.Fatal("a kickoff-gate error must propagate, got nil")
+	}
+}
+
+// TestDirectorConfirmKickoff drives the live gate through its terminal seam: no terminal
+// proceeds with the drain; an attached terminal reads stdin and branches on the answer.
+func TestDirectorConfirmKickoff(t *testing.T) {
+	t.Run("no terminal proceeds with the drain", func(t *testing.T) {
+		defer stubGateTTY(t, false)()
+		r, _ := gateRunner("")
+		if !r.directorConfirmKickoff("director") {
+			t.Error("no terminal should drain now (the autonomous default)")
+		}
+	})
+	cases := []struct {
+		name string
+		in   string
+		want bool
+	}{
+		{"enter drains", "\n", true},
+		{"yes drains", "y\n", true},
+		{"no surfaces", "n\n", false},
+		{"no word surfaces", "no\n", false},
+	}
+	for _, c := range cases {
+		t.Run(c.name, func(t *testing.T) {
+			defer stubGateTTY(t, true)()
+			r, errb := gateRunner(c.in)
+			if got := r.directorConfirmKickoff("director"); got != c.want {
+				t.Errorf("directorConfirmKickoff(%q) = %v, want %v", c.in, got, c.want)
+			}
+			if !strings.Contains(errb.String(), "drain") {
+				t.Errorf("gate prompt should mention draining the backlog, got %q", errb.String())
+			}
+		})
 	}
 }
 
