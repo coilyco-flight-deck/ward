@@ -428,8 +428,15 @@ warm_substrate() {
 
 # --- compose per-mode operating context (the least-context ladder) -----------
 # Levels: 2=doctrine+host context, 1=doctrine+host AGENTS.md, 0=doctrine only.
+link_or_copy_context() {
+  local link_target="$1" src="$2" dest="$3"
+  mkdir -p "$(dirname "$dest")"
+  rm -f "$dest"
+  ln -s "$link_target" "$dest" 2>/dev/null || cp "$src" "$dest"
+}
+
 compose_context() {
-  local out="$AGENT_HOME/.claude/CLAUDE.md"
+  local out="$AGENT_HOME/AGENTS.md"
   mkdir -p "$(dirname "$out")"
   cat /opt/ward/AGENTS.container.md > "$out"
   if [ "$WARD_CONTEXT_LEVEL" -ge 2 ] && [ -d "$WARD_CONTEXT_SRC" ]; then
@@ -504,6 +511,10 @@ helps you think - then either **file + dispatch** the work or just exit.
 EOF
   fi
   log "composed context (level $WARD_CONTEXT_LEVEL$([ "${WARD_READONLY:-0}" = 1 ] && echo ', read-only')) at $out"
+  link_or_copy_context "../AGENTS.md" "$out" "$AGENT_HOME/.claude/CLAUDE.md"
+  log "linked Claude context load point to $out"
+  link_or_copy_context "../AGENTS.md" "$out" "$AGENT_HOME/.codex/AGENTS.md"
+  log "linked Codex context load point to $out"
   # goose ignores ~/.claude/CLAUDE.md; mirror composed doctrine into its hints
   # file so `goose run` carries the seed prompt's context. See docs/agent.md (goose).
   if [ "$WARD_MODE" = goose ]; then
@@ -853,7 +864,7 @@ main() {
   esac
   # Drop to the non-root agent user (claude refuses bypass-perms as root, ward#127);
   # setup ran as root. Keep ANTHROPIC_API_KEY from shadowing the OAuth creds.
-  chown -R "$AGENT_UID:$AGENT_GID" "$work" "$AGENT_HOME/.claude" "$AGENT_HOME/.claude.json" "$AGENT_HOME/.config" "$AGENT_HOME/.codex" 2>/dev/null || true
+  chown -R "$AGENT_UID:$AGENT_GID" "$work" "$AGENT_HOME/AGENTS.md" "$AGENT_HOME/.claude" "$AGENT_HOME/.claude.json" "$AGENT_HOME/.config" "$AGENT_HOME/.codex" 2>/dev/null || true
   # Hand each granted extra-repo tree to the agent user too (ward#230); cloned as root.
   for ref in ${WARD_EXTRA_REPOS:-}; do chown -R "$AGENT_UID:$AGENT_GID" "/workspace/${ref##*/}" 2>/dev/null || true; done
   if [ "${WARD_READONLY:-0}" = 1 ]; then

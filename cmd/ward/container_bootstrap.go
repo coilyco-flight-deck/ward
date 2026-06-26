@@ -751,10 +751,10 @@ func readOnlyTag(readOnly bool) string {
 	return ""
 }
 
-// composeContext ports compose_context: write AGENTS.container.md as the base
-// CLAUDE.md, appending host context per the level ladder; mirror to goose hints.
+// composeContext ports compose_context: write canonical AGENTS.md, then wire
+// Claude/Codex load points and Goose hints to that composed doctrine.
 func (r *Runner) composeContext(e bootstrapEnv) {
-	out := filepath.Join(e.AgentHome, ".claude", "CLAUDE.md")
+	out := filepath.Join(e.AgentHome, "AGENTS.md")
 	_ = os.MkdirAll(filepath.Dir(out), 0o755)
 	base, _ := os.ReadFile("/opt/ward/AGENTS.container.md") // #nosec G304 -- bind-mounted doctrine
 	buf := append([]byte{}, base...)
@@ -780,12 +780,32 @@ func (r *Runner) composeContext(e bootstrapEnv) {
 	}
 	_ = os.WriteFile(out, buf, 0o644) // #nosec G306 -- operating context, not a secret
 	blog("composed context (level %s%s) at %s", e.ContextLevel, readOnlyTag(e.ReadOnly), out)
+	r.linkOrCopyContext(filepath.Join("..", "AGENTS.md"), filepath.Join(e.AgentHome, ".claude", "CLAUDE.md"), out)
+	blog("linked Claude context load point to %s", out)
+	r.linkOrCopyContext(filepath.Join("..", "AGENTS.md"), filepath.Join(e.AgentHome, ".codex", "AGENTS.md"), out)
+	blog("linked Codex context load point to %s", out)
 	if e.Mode == "goose" {
 		ghints := filepath.Join(e.AgentHome, ".config", "goose", ".goosehints")
 		_ = os.MkdirAll(filepath.Dir(ghints), 0o755)
 		if werr := os.WriteFile(ghints, buf, 0o644); werr == nil { // #nosec G306 -- goose hints
 			blog("mirrored composed context into %s (goose hints)", ghints)
 		}
+	}
+}
+
+func (r *Runner) linkOrCopyContext(linkTarget, dest, src string) {
+	_ = os.MkdirAll(filepath.Dir(dest), 0o755)
+	_ = os.Remove(dest)
+	if err := os.Symlink(linkTarget, dest); err == nil {
+		return
+	}
+	data, err := os.ReadFile(src) // #nosec G304 -- src is the composed context path.
+	if err != nil {
+		blog("could not read context for %s: %v", dest, err)
+		return
+	}
+	if werr := os.WriteFile(dest, data, 0o644); werr != nil { // #nosec G306 -- operating context
+		blog("could not write context fallback %s: %v", dest, werr)
 	}
 }
 
@@ -1333,6 +1353,7 @@ func logAgentArgv(e bootstrapEnv, seed []string) {
 func (r *Runner) chownAgentTree(ctx context.Context, e bootstrapEnv, work string) {
 	paths := []string{
 		work,
+		filepath.Join(e.AgentHome, "AGENTS.md"),
 		filepath.Join(e.AgentHome, ".claude"),
 		filepath.Join(e.AgentHome, ".claude.json"), // onboarding seed, so claude can persist updates (ward#305)
 		filepath.Join(e.AgentHome, ".config"),

@@ -903,6 +903,27 @@ func TestEntrypointGooseHeadless(t *testing.T) {
 	}
 }
 
+// TestEntrypointComposesCanonicalAgentDoctrine guards ward#377: bash writes one
+// canonical runtime doctrine file, then wires harness load points to it.
+func TestEntrypointComposesCanonicalAgentDoctrine(t *testing.T) {
+	data, err := containerAssets.ReadFile("containerassets/" + containerEntrypointRel)
+	if err != nil {
+		t.Fatalf("read entrypoint: %v", err)
+	}
+	script := string(data)
+	for _, want := range []string{
+		`local out="$AGENT_HOME/AGENTS.md"`,
+		`link_or_copy_context "../AGENTS.md" "$out" "$AGENT_HOME/.claude/CLAUDE.md"`,
+		`link_or_copy_context "../AGENTS.md" "$out" "$AGENT_HOME/.codex/AGENTS.md"`,
+		`cp "$out" "$ghints"`,
+		`"$AGENT_HOME/AGENTS.md"`,
+	} {
+		if !strings.Contains(script, want) {
+			t.Errorf("entrypoint missing %q (ward#377 canonical runtime doctrine)", want)
+		}
+	}
+}
+
 // TestEntrypointGooseConfig guards goose's provider wiring (ward#186): the entrypoint
 // seeds ~/.config/goose/config.yaml with provider + model from the resolved host.
 func TestEntrypointGooseConfig(t *testing.T) {
