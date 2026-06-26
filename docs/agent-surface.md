@@ -15,10 +15,10 @@ The director surfaces a read-only session in two places (see [agent-director.md]
 
 - **The init gate (ward#361).** Before the first drain tick the director asks "drain now?";
   answering **no** surfaces a session first, so you can scope and dispatch *before* any
-  autonomous drain. This is the "just scope now" path the old `warded architect` served.
+  drain. This is the "just scope now" path the old `warded architect` served.
 - **Drain → surface (ward#351).** When the headless lane drains - nothing queued or in flight -
-  the director surfaces a session on the lead repo for new direction, then resumes its
-  heartbeat if the queue refilled (else stops).
+  the director surfaces a session on the lead repo, then resumes the heartbeat if the queue
+  refilled (else stops).
 
 The surface runs on the director's OWN `--driver` and inherits its container/harness flags
 (ward#355). It is internal plumbing: there is no `warded surface` command, and `warded
@@ -33,26 +33,24 @@ touching this clone; ward#315), not left to die in the conversation. The job is
 **capture-and-dispatch and move on without babysitting** - the director heartbeat that
 surfaced you polls outcomes and reconciles the lane once you exit back to it.
 
+**Prefer a sibling dispatch over an in-session subagent (ward#374).** For delegable work - a
+design, a research dig, an implementation - reach for a sibling warded run (`warded advisor
+#N`, `warded engineer #N`) before a subagent: the sibling lands a durable, attributable
+artifact (issue thread, pushed commit) the next carry can read, where a subagent's output
+dies in scrollback. Reserve a subagent for read-only fan-out feeding only **your** reasoning.
+
 ## What read-only enforces
 
-Layers scoping the box to **push-to-this-clone**, not dispatch:
-
-1. **Composed restriction (soft).** A read-only block in the composed `CLAUDE.md`: this clone
-   does not push, but filing + dispatching is **obligatory** (ward#293).
-2. **Scoped push revoke.** The entrypoint removes `/etc/ward-git-credentials` and drops the
-   system `credential.helper`. `FORGEJO_TOKEN` is **kept** for the dispatch-only path.
-3. **Stripped push URL (ward#327).** The `origin` push URL is pointed at a dead `no-push://`
-   target (fetch left intact), so the push *target* is gone, not just the credential.
-4. **Pre-push message layer (ward#299).** A per-clone `pre-push` hook prints a clear named
-   wall before git reaches the remote. Bypassable message layer only.
-5. **Reaper skips salvage.** The reaper short-circuits on `WARD_READONLY`, so the teardown
-   backstop cannot push this tree either.
-
+Layers scope the box to **push-to-this-clone**, not dispatch: the composed `CLAUDE.md`
+carries a read-only block (ward#293); the entrypoint drops `/etc/ward-git-credentials` and
+the system `credential.helper` (keeping `FORGEJO_TOKEN` for dispatch); `origin`'s push URL is
+stripped to a dead `no-push://` target (ward#327, fetch intact), so the push *target* is gone,
+not just the credential; a per-clone `pre-push` hook prints a named wall (ward#299,
+bypassable); and the reaper short-circuits on `WARD_READONLY`, so teardown can't push either.
 Local `git commit` still works; on exit the clone is swept by the [reaper](container-reap.md).
 
-**The soft edge (ward#318).** The dispatch token is the *same* bot token, so an agent could
-`set-url --push` back. Stripping the URL raises the bar; the hard fix is a **dispatch-only
-credential**, deferred to ward#318.
+**The soft edge (ward#318).** The dispatch token is the same bot token, so the no-push rule
+is convention until a **dispatch-only credential** lands (ward#318).
 
 ## Dispatching from inside the surface session
 
@@ -62,8 +60,8 @@ warded coilyco-flight-deck/ward#NNN  # dispatch a sealed engineer carry
 ```
 
 The sibling reads the token from its env, clones fresh, runs its own lifecycle. The dropped
-agent is non-root, so the entrypoint group-grants or `socat`-bridges the mounted docker
-socket so dispatch works (ward#319).
+agent is non-root, so the entrypoint group-grants or bridges the mounted docker socket
+(ward#319).
 
 ## See also
 

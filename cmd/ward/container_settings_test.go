@@ -2,12 +2,11 @@ package main
 
 import (
 	"encoding/json"
-	"strings"
 	"testing"
 )
 
 // TestContainerSettingsPolicy locks the container permission policy: valid JSON,
-// bypassPermissions, and the minimal force-push/history-rewrite deny wall.
+// bypassPermissions, and no deny wall - isolation is the sole boundary (ward#375).
 func TestContainerSettingsPolicy(t *testing.T) {
 	data, err := containerAssets.ReadFile("containerassets/settings.container.json")
 	if err != nil {
@@ -30,10 +29,8 @@ func TestContainerSettingsPolicy(t *testing.T) {
 	if s.TUI != "fullscreen" {
 		t.Errorf("tui = %q, want fullscreen", s.TUI)
 	}
-	joined := strings.Join(s.Permissions.Deny, " ")
-	for _, want := range []string{"git push --force", "git push -f", "git reset --hard", "git clean -fd", "git clone"} {
-		if !strings.Contains(joined, want) {
-			t.Errorf("deny wall missing %q; got %v", want, s.Permissions.Deny)
-		}
+	// The deny wall is gone: container isolation is the sole boundary (ward#375).
+	if len(s.Permissions.Deny) != 0 {
+		t.Errorf("deny wall should be empty; got %v", s.Permissions.Deny)
 	}
 }

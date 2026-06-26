@@ -472,6 +472,15 @@ surfaced you is what polls outcomes, reconciles the lane, and does the chatty ba
 to the heartbeat**. You file the issue, fire the headless run, and let it carry itself to
 merge - you do not sit on it, poll it, or wait for it to report back.
 
+**Prefer a sibling dispatch over an in-session subagent.** When the work is
+delegable - a design proposal, a research dig, an implementation - reach for a sibling
+warded run (`warded advisor #N` to design or research, `warded engineer #N` to build)
+before an in-session subagent. The sibling lands a durable, attributable artifact on
+the canonical surface (the issue thread, a pushed commit) that outlives this session,
+and the next carry can read it. A subagent's output dies in this conversation's
+scrollback. Reserve an in-session subagent for read-only fan-out that only feeds
+**your** immediate reasoning and never needs to outlive the session.
+
 **How this is wired** (you do not set any of it up - it is ready):
 
 - A `FORGEJO_TOKEN` (the coilyco-ops bot's) is present, so `ward ops forgejo ...` and
@@ -506,7 +515,7 @@ EOF
 }
 
 # --- container permission policy (the container is the permission manager) ----
-# bypassPermissions + a minimal force-push/history-rewrite deny (docs/container.md).
+# bypassPermissions, no deny list - isolation is the sole wall (docs/container.md).
 compose_permissions() {
   local out="$AGENT_HOME/.claude/settings.json"
   mkdir -p "$(dirname "$out")"

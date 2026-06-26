@@ -22,30 +22,25 @@ the harness permission system:
 
 The blast radius is the single target repo's own history, in a disposable box.
 
-## The minimal deny wall
+## No deny wall
 
-`bypassPermissions` still honors `permissions.deny` (and Claude Code's built-in
-`rm -rf /` circuit breaker), so the policy keeps a small wall against
-agent-error damage to the target repo's `main`:
-
-```json
-"deny": [
-  "Bash(git push --force:*)",
-  "Bash(git push -f:*)",
-  "Bash(git reset --hard:*)",
-  "Bash(git clean -fd:*)"
-]
-```
-
-These guard force-push, history rewrites, and hard resets - the
-[AGENTS.container.md](../cmd/ward/containerassets/AGENTS.container.md) wall, made
-enforceable. Everything inside the normal feature loop is allowed.
+The container writes **no** `permissions.deny` list. There is no
+harness-level guard against force-push, history rewrites, or hard resets - the
+container's isolation (the four bullets above) is the **sole** boundary. This is
+the deliberate, more-aggressive posture: the disposable clone, the read-only
+host tree, the repo-scoped push token, and the unreachable other repos already
+bound the blast radius to one repo's history in a throwaway box, so a redundant
+deny list buys nothing and is dropped. The
+[AGENTS.container.md](../cmd/ward/containerassets/AGENTS.container.md) wall
+(force-push, other repos, data loss out of bounds) stays a doctrine the agent
+follows, not an enforced rule.
 
 ## Not in the repo
 
-The deny wall lives **only** in the container's user-level settings, never written
-into any target repo. Repos carry no lockdown of their own for the container to
-inherit; the container composes its policy fresh each run.
+No deny wall lives anywhere - neither in the container's user-level settings
+nor in any target repo. Repos carry no lockdown of their own for the container
+to inherit; the container composes its policy fresh each run, and that policy is
+now `bypassPermissions` with nothing denied.
 
 ## See also
 

@@ -176,6 +176,14 @@ func TestComposeContextReadOnlyBlock(t *testing.T) {
 	if !strings.Contains(readonly, "without babysitting") {
 		t.Error("the read-only block should frame the surface as capture-and-dispatch without babysitting (ward#320)")
 	}
+	// ward#374: prefer a sibling warded dispatch over an in-session subagent. The block
+	// must steer delegable work to a durable sibling run, not a scrollback-bound subagent.
+	if !strings.Contains(readonly, "Prefer a sibling dispatch over an in-session subagent") {
+		t.Error("the read-only block should prefer a sibling dispatch over an in-session subagent (ward#374)")
+	}
+	if !strings.Contains(readonly, "Reserve an in-session subagent for read-only fan-out") {
+		t.Error("the read-only block should reserve a subagent for read-only fan-out that feeds only its own reasoning (ward#374)")
+	}
 }
 
 // composeInto runs composeContext against a temp AGENT_HOME with no host context
