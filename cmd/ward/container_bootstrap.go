@@ -705,6 +705,15 @@ a bug, a missing test, a follow-up, anything worth doing - you **must**:
 Do not let a work item die in the conversation. If you named it, capture it and
 dispatch it before you move on.
 
+**Prefer a sibling dispatch over an in-session subagent.** When the work is
+delegable - a design proposal, a research dig, an implementation - reach for a sibling
+warded run (` + "`warded advisor #N`" + ` to design or research, ` + "`warded engineer #N`" + ` to build)
+before an in-session subagent. The sibling lands a durable, attributable artifact on
+the canonical surface (the issue thread, a pushed commit) that outlives this session,
+and the next carry can read it. A subagent's output dies in this conversation's
+scrollback. Reserve an in-session subagent for read-only fan-out that only feeds
+**your** immediate reasoning and never needs to outlive the session.
+
 **This is not the director loop.** The supervised director loop polls outcomes,
 surfaces blockers, and does chatty back-and-forth with a human in the seat. The architect
 is the opposite discipline: **capture-and-dispatch and move on without babysitting**.
