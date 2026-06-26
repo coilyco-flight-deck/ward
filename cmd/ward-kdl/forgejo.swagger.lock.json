@@ -241,6 +241,52 @@
       "type": "object",
       "x-go-package": "forgejo.org/modules/structs"
     },
+    "Branch": {
+      "description": "Branch represents a repository branch",
+      "properties": {
+        "commit": {
+          "$ref": "#/definitions/PayloadCommit"
+        },
+        "effective_branch_protection_name": {
+          "type": "string",
+          "x-go-name": "EffectiveBranchProtectionName"
+        },
+        "enable_status_check": {
+          "type": "boolean",
+          "x-go-name": "EnableStatusCheck"
+        },
+        "name": {
+          "type": "string",
+          "x-go-name": "Name"
+        },
+        "protected": {
+          "type": "boolean",
+          "x-go-name": "Protected"
+        },
+        "required_approvals": {
+          "format": "int64",
+          "type": "integer",
+          "x-go-name": "RequiredApprovals"
+        },
+        "status_check_contexts": {
+          "items": {
+            "type": "string"
+          },
+          "type": "array",
+          "x-go-name": "StatusCheckContexts"
+        },
+        "user_can_merge": {
+          "type": "boolean",
+          "x-go-name": "UserCanMerge"
+        },
+        "user_can_push": {
+          "type": "boolean",
+          "x-go-name": "UserCanPush"
+        }
+      },
+      "type": "object",
+      "x-go-package": "forgejo.org/modules/structs"
+    },
     "Comment": {
       "description": "Comment represents a comment on a commit or issue",
       "properties": {
@@ -305,6 +351,133 @@
           "$ref": "#/definitions/User"
         }
       },
+      "type": "object",
+      "x-go-package": "forgejo.org/modules/structs"
+    },
+    "Commit": {
+      "properties": {
+        "author": {
+          "$ref": "#/definitions/User"
+        },
+        "commit": {
+          "$ref": "#/definitions/RepoCommit"
+        },
+        "committer": {
+          "$ref": "#/definitions/User"
+        },
+        "created": {
+          "format": "date-time",
+          "type": "string",
+          "x-go-name": "Created"
+        },
+        "files": {
+          "items": {
+            "$ref": "#/definitions/CommitAffectedFiles"
+          },
+          "type": "array",
+          "x-go-name": "Files"
+        },
+        "html_url": {
+          "type": "string",
+          "x-go-name": "HTMLURL"
+        },
+        "parents": {
+          "items": {
+            "$ref": "#/definitions/CommitMeta"
+          },
+          "type": "array",
+          "x-go-name": "Parents"
+        },
+        "sha": {
+          "type": "string",
+          "x-go-name": "SHA"
+        },
+        "stats": {
+          "$ref": "#/definitions/CommitStats"
+        },
+        "url": {
+          "type": "string",
+          "x-go-name": "URL"
+        }
+      },
+      "title": "Commit contains information generated from a Git commit.",
+      "type": "object",
+      "x-go-package": "forgejo.org/modules/structs"
+    },
+    "CommitAffectedFiles": {
+      "description": "CommitAffectedFiles store information about files affected by the commit",
+      "properties": {
+        "filename": {
+          "type": "string",
+          "x-go-name": "Filename"
+        },
+        "status": {
+          "type": "string",
+          "x-go-name": "Status"
+        }
+      },
+      "type": "object",
+      "x-go-package": "forgejo.org/modules/structs"
+    },
+    "CommitMeta": {
+      "properties": {
+        "created": {
+          "format": "date-time",
+          "type": "string",
+          "x-go-name": "Created"
+        },
+        "sha": {
+          "type": "string",
+          "x-go-name": "SHA"
+        },
+        "url": {
+          "type": "string",
+          "x-go-name": "URL"
+        }
+      },
+      "title": "CommitMeta contains meta information of a commit in terms of API.",
+      "type": "object",
+      "x-go-package": "forgejo.org/modules/structs"
+    },
+    "CommitStats": {
+      "description": "CommitStats is statistics for a RepoCommit",
+      "properties": {
+        "additions": {
+          "format": "int64",
+          "type": "integer",
+          "x-go-name": "Additions"
+        },
+        "deletions": {
+          "format": "int64",
+          "type": "integer",
+          "x-go-name": "Deletions"
+        },
+        "total": {
+          "format": "int64",
+          "type": "integer",
+          "x-go-name": "Total"
+        }
+      },
+      "type": "object",
+      "x-go-package": "forgejo.org/modules/structs"
+    },
+    "CommitUser": {
+      "properties": {
+        "date": {
+          "type": "string",
+          "x-go-name": "Date"
+        },
+        "email": {
+          "format": "email",
+          "type": "string",
+          "x-go-name": "Email"
+        },
+        "name": {
+          "type": "string",
+          "x-go-name": "Name"
+        }
+      },
+      "title": "CommitUser contains information of a user in the context of a commit.",
       "type": "object",
       "x-go-package": "forgejo.org/modules/structs"
     },
@@ -1238,6 +1411,108 @@
       "type": "object",
       "x-go-package": "forgejo.org/modules/structs"
     },
+    "PayloadCommit": {
+      "description": "PayloadCommit represents a commit",
+      "properties": {
+        "added": {
+          "items": {
+            "type": "string"
+          },
+          "type": "array",
+          "x-go-name": "Added"
+        },
+        "author": {
+          "$ref": "#/definitions/PayloadUser"
+        },
+        "committer": {
+          "$ref": "#/definitions/PayloadUser"
+        },
+        "id": {
+          "description": "sha1 hash of the commit",
+          "type": "string",
+          "x-go-name": "ID"
+        },
+        "message": {
+          "type": "string",
+          "x-go-name": "Message"
+        },
+        "modified": {
+          "items": {
+            "type": "string"
+          },
+          "type": "array",
+          "x-go-name": "Modified"
+        },
+        "removed": {
+          "items": {
+            "type": "string"
+          },
+          "type": "array",
+          "x-go-name": "Removed"
+        },
+        "timestamp": {
+          "format": "date-time",
+          "type": "string",
+          "x-go-name": "Timestamp"
+        },
+        "url": {
+          "type": "string",
+          "x-go-name": "URL"
+        },
+        "verification": {
+          "$ref": "#/definitions/PayloadCommitVerification"
+        }
+      },
+      "type": "object",
+      "x-go-package": "forgejo.org/modules/structs"
+    },
+    "PayloadCommitVerification": {
+      "description": "PayloadCommitVerification represents the GPG verification of a commit",
+      "properties": {
+        "payload": {
+          "type": "string",
+          "x-go-name": "Payload"
+        },
+        "reason": {
+          "type": "string",
+          "x-go-name": "Reason"
+        },
+        "signature": {
+          "type": "string",
+          "x-go-name": "Signature"
+        },
+        "signer": {
+          "$ref": "#/definitions/PayloadUser"
+        },
+        "verified": {
+          "type": "boolean",
+          "x-go-name": "Verified"
+        }
+      },
+      "type": "object",
+      "x-go-package": "forgejo.org/modules/structs"
+    },
+    "PayloadUser": {
+      "description": "PayloadUser represents the author or committer of a commit",
+      "properties": {
+        "email": {
+          "format": "email",
+          "type": "string",
+          "x-go-name": "Email"
+        },
+        "name": {
+          "description": "Full name of the commit author",
+          "type": "string",
+          "x-go-name": "Name"
+        },
+        "username": {
+          "type": "string",
+          "x-go-name": "UserName"
+        }
+      },
+      "type": "object",
+      "x-go-package": "forgejo.org/modules/structs"
+    },
     "Permission": {
       "description": "Permission represents a set of permissions",
       "properties": {
@@ -1361,6 +1636,33 @@
           "x-go-name": "ZipURL"
         }
       },
+      "type": "object",
+      "x-go-package": "forgejo.org/modules/structs"
+    },
+    "RepoCommit": {
+      "properties": {
+        "author": {
+          "$ref": "#/definitions/CommitUser"
+        },
+        "committer": {
+          "$ref": "#/definitions/CommitUser"
+        },
+        "message": {
+          "type": "string",
+          "x-go-name": "Message"
+        },
+        "tree": {
+          "$ref": "#/definitions/CommitMeta"
+        },
+        "url": {
+          "type": "string",
+          "x-go-name": "URL"
+        },
+        "verification": {
+          "$ref": "#/definitions/PayloadCommitVerification"
+        }
+      },
+      "title": "RepoCommit contains information of a commit in the context of a repository.",
       "type": "object",
       "x-go-package": "forgejo.org/modules/structs"
     },
@@ -1717,6 +2019,39 @@
       "type": "string",
       "x-go-package": "forgejo.org/modules/structs"
     },
+    "Tag": {
+      "description": "Tag represents a repository tag",
+      "properties": {
+        "archive_download_count": {
+          "$ref": "#/definitions/TagArchiveDownloadCount"
+        },
+        "commit": {
+          "$ref": "#/definitions/CommitMeta"
+        },
+        "id": {
+          "type": "string",
+          "x-go-name": "ID"
+        },
+        "message": {
+          "type": "string",
+          "x-go-name": "Message"
+        },
+        "name": {
+          "type": "string",
+          "x-go-name": "Name"
+        },
+        "tarball_url": {
+          "type": "string",
+          "x-go-name": "TarballURL"
+        },
+        "zipball_url": {
+          "type": "string",
+          "x-go-name": "ZipballURL"
+        }
+      },
+      "type": "object",
+      "x-go-package": "forgejo.org/modules/structs"
+    },
     "TagArchiveDownloadCount": {
       "description": "TagArchiveDownloadCount counts how many times a archive was downloaded",
       "properties": {
@@ -1807,6 +2142,37 @@
           },
           "type": "object",
           "x-go-name": "UnitsMap"
+        }
+      },
+      "type": "object",
+      "x-go-package": "forgejo.org/modules/structs"
+    },
+    "TopicResponse": {
+      "description": "TopicResponse for returning topics",
+      "properties": {
+        "created": {
+          "format": "date-time",
+          "type": "string",
+          "x-go-name": "Created"
+        },
+        "id": {
+          "format": "int64",
+          "type": "integer",
+          "x-go-name": "ID"
+        },
+        "repo_count": {
+          "format": "int64",
+          "type": "integer",
+          "x-go-name": "RepoCount"
+        },
+        "topic_name": {
+          "type": "string",
+          "x-go-name": "Name"
+        },
+        "updated": {
+          "format": "date-time",
+          "type": "string",
+          "x-go-name": "Updated"
         }
       },
       "type": "object",
@@ -2213,6 +2579,47 @@
           }
         },
         "summary": "Update a label",
+        "tags": [
+          "organization"
+        ]
+      }
+    },
+    "/orgs/{org}/members": {
+      "get": {
+        "operationId": "orgListMembers",
+        "parameters": [
+          {
+            "description": "name of the organization",
+            "in": "path",
+            "name": "org",
+            "required": true,
+            "type": "string"
+          },
+          {
+            "description": "page number of results to return (1-based)",
+            "in": "query",
+            "name": "page",
+            "type": "integer"
+          },
+          {
+            "description": "page size of results",
+            "in": "query",
+            "name": "limit",
+            "type": "integer"
+          }
+        ],
+        "produces": [
+          "application/json"
+        ],
+        "responses": {
+          "200": {
+            "$ref": "#/responses/UserList"
+          },
+          "404": {
+            "$ref": "#/responses/notFound"
+          }
+        },
+        "summary": "List an organization's members",
         "tags": [
           "organization"
         ]
@@ -2806,6 +3213,138 @@
           }
         },
         "summary": "List a repository's action tasks",
+        "tags": [
+          "repository"
+        ]
+      }
+    },
+    "/repos/{owner}/{repo}/branches": {
+      "get": {
+        "operationId": "repoListBranches",
+        "parameters": [
+          {
+            "description": "owner of the repo",
+            "in": "path",
+            "name": "owner",
+            "required": true,
+            "type": "string"
+          },
+          {
+            "description": "name of the repo",
+            "in": "path",
+            "name": "repo",
+            "required": true,
+            "type": "string"
+          },
+          {
+            "description": "page number of results to return (1-based)",
+            "in": "query",
+            "name": "page",
+            "type": "integer"
+          },
+          {
+            "description": "page size of results",
+            "in": "query",
+            "name": "limit",
+            "type": "integer"
+          }
+        ],
+        "produces": [
+          "application/json"
+        ],
+        "responses": {
+          "200": {
+            "$ref": "#/responses/BranchList"
+          }
+        },
+        "summary": "List a repository's branches",
+        "tags": [
+          "repository"
+        ]
+      }
+    },
+    "/repos/{owner}/{repo}/commits": {
+      "get": {
+        "operationId": "repoGetAllCommits",
+        "parameters": [
+          {
+            "description": "owner of the repo",
+            "in": "path",
+            "name": "owner",
+            "required": true,
+            "type": "string"
+          },
+          {
+            "description": "name of the repo",
+            "in": "path",
+            "name": "repo",
+            "required": true,
+            "type": "string"
+          },
+          {
+            "description": "SHA or branch to start listing commits from (usually 'master')",
+            "in": "query",
+            "name": "sha",
+            "type": "string"
+          },
+          {
+            "description": "filepath of a file/dir",
+            "in": "query",
+            "name": "path",
+            "type": "string"
+          },
+          {
+            "description": "include diff stats for every commit (disable for speedup, default 'true')",
+            "in": "query",
+            "name": "stat",
+            "type": "boolean"
+          },
+          {
+            "description": "include verification for every commit (disable for speedup, default 'true')",
+            "in": "query",
+            "name": "verification",
+            "type": "boolean"
+          },
+          {
+            "description": "include a list of affected files for every commit (disable for speedup, default 'true')",
+            "in": "query",
+            "name": "files",
+            "type": "boolean"
+          },
+          {
+            "description": "page number of results to return (1-based)",
+            "in": "query",
+            "name": "page",
+            "type": "integer"
+          },
+          {
+            "description": "page size of results (ignored if used with 'path')",
+            "in": "query",
+            "name": "limit",
+            "type": "integer"
+          },
+          {
+            "description": "commits that match the given specifier will not be listed.",
+            "in": "query",
+            "name": "not",
+            "type": "string"
+          }
+        ],
+        "produces": [
+          "application/json"
+        ],
+        "responses": {
+          "200": {
+            "$ref": "#/responses/CommitList"
+          },
+          "404": {
+            "$ref": "#/responses/notFound"
+          },
+          "409": {
+            "$ref": "#/responses/EmptyRepository"
+          }
+        },
+        "summary": "Get a list of all commits from a repository",
         "tags": [
           "repository"
         ]
@@ -4017,6 +4556,110 @@
         ]
       }
     },
+    "/repos/{owner}/{repo}/tags": {
+      "get": {
+        "operationId": "repoListTags",
+        "parameters": [
+          {
+            "description": "owner of the repo",
+            "in": "path",
+            "name": "owner",
+            "required": true,
+            "type": "string"
+          },
+          {
+            "description": "name of the repo",
+            "in": "path",
+            "name": "repo",
+            "required": true,
+            "type": "string"
+          },
+          {
+            "description": "page number of results to return (1-based)",
+            "in": "query",
+            "name": "page",
+            "type": "integer"
+          },
+          {
+            "description": "page size of results, default maximum page size is 50",
+            "in": "query",
+            "name": "limit",
+            "type": "integer"
+          }
+        ],
+        "produces": [
+          "application/json"
+        ],
+        "responses": {
+          "200": {
+            "$ref": "#/responses/TagList"
+          },
+          "404": {
+            "$ref": "#/responses/notFound"
+          }
+        },
+        "summary": "List a repository's tags",
+        "tags": [
+          "repository"
+        ]
+      }
+    },
+    "/topics/search": {
+      "get": {
+        "operationId": "topicSearch",
+        "parameters": [
+          {
+            "description": "keyword to search for",
+            "in": "query",
+            "name": "q",
+            "required": true,
+            "type": "string"
+          },
+          {
+            "description": "page number of results to return (1-based)",
+            "in": "query",
+            "name": "page",
+            "type": "integer"
+          },
+          {
+            "description": "page size of results",
+            "in": "query",
+            "name": "limit",
+            "type": "integer"
+          }
+        ],
+        "produces": [
+          "application/json"
+        ],
+        "responses": {
+          "200": {
+            "description": "SearchResults of a successful search",
+            "schema": {
+              "properties": {
+                "topics": {
+                  "items": {
+                    "$ref": "#/definitions/TopicResponse"
+                  },
+                  "type": "array"
+                }
+              },
+              "title": "TopicSearchResults",
+              "type": "object"
+            }
+          },
+          "403": {
+            "$ref": "#/responses/forbidden"
+          },
+          "404": {
+            "$ref": "#/responses/notFound"
+          }
+        },
+        "summary": "Search for topics by keyword",
+        "tags": [
+          "repository"
+        ]
+      }
+    },
     "/user/repos": {
       "post": {
         "consumes": [
@@ -4061,6 +4704,79 @@
         "summary": "Create a repository",
         "tags": [
           "repository",
+          "user"
+        ]
+      }
+    },
+    "/users/search": {
+      "get": {
+        "operationId": "userSearch",
+        "parameters": [
+          {
+            "description": "keyword",
+            "in": "query",
+            "name": "q",
+            "type": "string"
+          },
+          {
+            "description": "ID of the user to search for",
+            "format": "int64",
+            "in": "query",
+            "name": "uid",
+            "type": "integer"
+          },
+          {
+            "description": "sort order of results",
+            "enum": [
+              "oldest",
+              "newest",
+              "alphabetically",
+              "reversealphabetically",
+              "recentupdate",
+              "leastupdate"
+            ],
+            "in": "query",
+            "name": "sort",
+            "type": "string"
+          },
+          {
+            "description": "page number of results to return (1-based)",
+            "in": "query",
+            "name": "page",
+            "type": "integer"
+          },
+          {
+            "description": "page size of results",
+            "in": "query",
+            "name": "limit",
+            "type": "integer"
+          }
+        ],
+        "produces": [
+          "application/json"
+        ],
+        "responses": {
+          "200": {
+            "description": "SearchResults of a successful search",
+            "schema": {
+              "properties": {
+                "data": {
+                  "items": {
+                    "$ref": "#/definitions/User"
+                  },
+                  "type": "array"
+                },
+                "ok": {
+                  "type": "boolean"
+                }
+              },
+              "title": "UserSearchResults",
+              "type": "object"
+            }
+          }
+        },
+        "summary": "Search for users",
+        "tags": [
           "user"
         ]
       }
@@ -4118,6 +4834,22 @@
         "$ref": "#/definitions/Attachment"
       }
     },
+    "BranchList": {
+      "description": "BranchList",
+      "headers": {
+        "X-Total-Count": {
+          "description": "The total number of branches",
+          "format": "int64",
+          "type": "integer"
+        }
+      },
+      "schema": {
+        "items": {
+          "$ref": "#/definitions/Branch"
+        },
+        "type": "array"
+      }
+    },
     "Comment": {
       "description": "Comment",
       "schema": {
@@ -4138,6 +4870,21 @@
           "$ref": "#/definitions/Comment"
         },
         "type": "array"
+      }
+    },
+    "CommitList": {
+      "description": "CommitList",
+      "schema": {
+        "items": {
+          "$ref": "#/definitions/Commit"
+        },
+        "type": "array"
+      }
+    },
+    "EmptyRepository": {
+      "description": "EmptyRepository",
+      "schema": {
+        "$ref": "#/definitions/APIError"
       }
     },
     "Issue": {
@@ -4280,10 +5027,35 @@
         "$ref": "#/definitions/SearchResults"
       }
     },
+    "TagList": {
+      "description": "TagList",
+      "headers": {
+        "X-Total-Count": {
+          "description": "The total number of tags",
+          "format": "int64",
+          "type": "integer"
+        }
+      },
+      "schema": {
+        "items": {
+          "$ref": "#/definitions/Tag"
+        },
+        "type": "array"
+      }
+    },
     "TasksList": {
       "description": "TasksList",
       "schema": {
         "$ref": "#/definitions/ActionTaskResponse"
+      }
+    },
+    "UserList": {
+      "description": "UserList",
+      "schema": {
+        "items": {
+          "$ref": "#/definitions/User"
+        },
+        "type": "array"
       }
     },
     "conflict": {

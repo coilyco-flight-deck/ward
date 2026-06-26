@@ -60,6 +60,14 @@ wrap ward-kdl ops forgejo {
         op userListRepos
         describe "list the repos a user owns (GET /users/{username}/repos). coilysiren is a user, not an org, so the route survey reaches its repos here rather than through `org-repo list`. Read-only, the survey's other half."
     }
+    // search finders: global read-only finders keyed on a query string, with no
+    // {owner}/{org} path param to gate - server-wide reads, no new behavior (ward#368).
+    can search user {
+        describe "user finder (GET /users/search)"
+    }
+    can search topic {
+        describe "topic finder (GET /topics/search)"
+    }
     // org-labels: org-level labels (/orgs/{org}/labels); the `org` ancestor scopes
     // them away from repo labels. Issue-label attach/set/remove stays below.
     can get org-label
@@ -67,6 +75,11 @@ wrap ward-kdl ops forgejo {
     can create org-label
     can edit org-label
     can delete org-label
+    // org-members: the org membership roster (GET /orgs/{org}/members); the `org`
+    // ancestor scopes it like the org-label/org-repo siblings. Read-only (ward#368).
+    can list org-member {
+        describe "org member list (GET /orgs/{org}/members)"
+    }
     // repo-labels: repo-scoped label create/edit are policy-disabled (ward#107);
     // mint/rename via org-label above, attach via issue-label below. op pinned.
     never create label {
@@ -195,6 +208,19 @@ wrap ward-kdl ops forgejo {
     can list issue-comment {
         op issueGetComments
         describe "the comments sub-collection GET, pinned by op (the convention resolves `list issue-comment` against issueGetComments poorly). The `view issue` shadow action below chains this so a view returns the thread."
+    }
+    // repo refs: read-only list sub-collections (commits/branches/tags), each
+    // {owner}-scoped by the coily* gate above; native GETs, no new behavior (ward#368).
+    can list commit {
+        op repoGetAllCommits
+        describe "commit list (GET /repos/{owner}/{repo}/commits). op pinned because the operationId is repoGetAllCommits - a `get`-shaped id the `list commit` convention does not reach."
+    }
+    can list branch {
+        op repoListBranches
+        describe "branch list (GET /repos/{owner}/{repo}/branches). op pinned because a bare `list branch` otherwise resolves to repoListBranchProtection (GET .../branch_protections), the shallower branch-prefixed match."
+    }
+    can list tag {
+        describe "tag list (GET /repos/{owner}/{repo}/tags)"
     }
     // releases, with the multipart asset upload beside them (upload-asset resolves
     // as create-on the assets sub-collection).

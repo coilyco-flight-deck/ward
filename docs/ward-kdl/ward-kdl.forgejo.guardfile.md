@@ -196,6 +196,32 @@ Options (2):
 - `--page` (integer, optional): page number of results to return (1-based)
 - `--limit` (integer, optional): page size of results
 
+## ward-kdl ops forgejo user search - user finder (GET /users/search)
+
+`GET /users/search`
+
+Authorized by grant: can search user. Not destructive.
+
+Options (5):
+
+- `--q` (string, optional): keyword
+- `--uid` (integer, optional): ID of the user to search for
+- `--sort` (string, optional): sort order of results
+- `--page` (integer, optional): page number of results to return (1-based)
+- `--limit` (integer, optional): page size of results
+
+## ward-kdl ops forgejo topic search - topic finder (GET /topics/search)
+
+`GET /topics/search`
+
+Authorized by grant: can search topic. Not destructive.
+
+Options (3):
+
+- `--q` (string, required): keyword to search for
+- `--page` (integer, optional): page number of results to return (1-based)
+- `--limit` (integer, optional): page size of results
+
 ## ward-kdl ops forgejo org-label get
 
 `GET /orgs/{org}/labels/{id}`
@@ -270,6 +296,21 @@ Positional arguments (2):
 
 - `<org>` (string)
 - `<id>` (string)
+
+## ward-kdl ops forgejo org-member list - org member list (GET /orgs/{org}/members)
+
+`GET /orgs/{org}/members`
+
+Authorized by grant: can list org-member. Not destructive.
+
+Positional arguments (1):
+
+- `<org>` (string)
+
+Options (2):
+
+- `--page` (integer, optional): page number of results to return (1-based)
+- `--limit` (integer, optional): page size of results
 
 ## ward-kdl ops forgejo milestone get
 
@@ -553,6 +594,60 @@ Options (2):
 
 - `--since` (string, optional): if provided, only comments updated since the specified time are returned.
 - `--before` (string, optional): if provided, only comments updated before the provided time are returned.
+
+## ward-kdl ops forgejo commit list - commit list (GET /repos/{owner}/{repo}/commits). op pinned because the operationId is repoGetAllCommits - a `get`-shaped id the `list commit` convention does not reach.
+
+`GET /repos/{owner}/{repo}/commits`
+
+Authorized by grant: can list commit. Not destructive.
+
+Positional arguments (2):
+
+- `<owner>` (string)
+- `<repo>` (string)
+
+Options (8):
+
+- `--sha` (string, optional): SHA or branch to start listing commits from (usually 'master')
+- `--path` (string, optional): filepath of a file/dir
+- `--stat` (boolean, optional): include diff stats for every commit (disable for speedup, default 'true')
+- `--verification` (boolean, optional): include verification for every commit (disable for speedup, default 'true')
+- `--files` (boolean, optional): include a list of affected files for every commit (disable for speedup, default 'true')
+- `--page` (integer, optional): page number of results to return (1-based)
+- `--limit` (integer, optional): page size of results (ignored if used with 'path')
+- `--not` (string, optional): commits that match the given specifier will not be listed.
+
+## ward-kdl ops forgejo branch list - branch list (GET /repos/{owner}/{repo}/branches). op pinned because a bare `list branch` otherwise resolves to repoListBranchProtection (GET .../branch_protections), the shallower branch-prefixed match.
+
+`GET /repos/{owner}/{repo}/branches`
+
+Authorized by grant: can list branch. Not destructive.
+
+Positional arguments (2):
+
+- `<owner>` (string)
+- `<repo>` (string)
+
+Options (2):
+
+- `--page` (integer, optional): page number of results to return (1-based)
+- `--limit` (integer, optional): page size of results
+
+## ward-kdl ops forgejo tag list - tag list (GET /repos/{owner}/{repo}/tags)
+
+`GET /repos/{owner}/{repo}/tags`
+
+Authorized by grant: can list tag. Not destructive.
+
+Positional arguments (2):
+
+- `<owner>` (string)
+- `<repo>` (string)
+
+Options (2):
+
+- `--page` (integer, optional): page number of results to return (1-based)
+- `--limit` (integer, optional): page size of results, default maximum page size is 50
 
 ## ward-kdl ops forgejo release get
 
