@@ -869,12 +869,11 @@ func buildAgentPlan(c *cli.Command, mode containerMode, ref agentIssueRef, seed 
 	if plan.Branch == "" {
 		plan.Branch = fmt.Sprintf("issue-%d", ref.Number)
 	}
-	// Override the generic ward-<repo>-<rand> name with one that names the issue
-	// and harness, so a host running several agents can tell them apart.
-	plan.Name = agentContainerName(repo, mode, ref.Number, randHex())
-	// Carry the issue number into the container so the reaper can release the
-	// reservation this run took if the container dies pre-launch (ward#264).
+	// Re-cast the session plan as an engineer carry: role-led name, unique by
+	// repo+issue (ward#364). Issue also carries so the reaper can release it (ward#264).
+	plan.Role = roleEngineer
 	plan.Issue = ref.Number
+	plan.Name = containerRoleName(roleEngineer, mode, repo, ref.Number, plan.Machine)
 	plan.Headless = true
 	plan.Interactive = false
 	plan.TTY = false
@@ -927,6 +926,10 @@ func (r *Runner) launchAgentContainer(ctx context.Context, c *cli.Command, mode 
 	// Reclaim dead containers' writable layers before adding one more, so the
 	// agent fleet can't exhaust the docker disk and wedge new launches (ward#272).
 	r.sweepStaleContainers(ctx)
+
+	// The engineer name is deterministic, so an exited same-issue corpse in the
+	// keep-N window would block the name; clear it for reuse (ward#364).
+	r.clearExitedContainer(ctx, plan.Name)
 	if !c.Bool("no-pull") {
 		r.pullAgentImage(ctx, plan, label)
 	}
@@ -1221,12 +1224,13 @@ func printAgentTaskPlan(c *cli.Command, mode containerMode, repo targetRepo, tit
 	plan.Headless = true
 	plan.Interactive = false
 	plan.TTY = false
+	plan.Role = roleEngineer
 	if plan.Branch == "" {
 		plan.Branch = "issue-<N>"
 	}
-	// Mirror the live name shape; the real issue number lands once filed, so the
-	// placeholder reads issue-<N> like the branch above.
-	plan.Name = fmt.Sprintf("%s-%s-issue-<N>-%s-<rand>", containerNamePrefix, safeRepoName(repo), mode)
+	// Mirror the live engineer name shape; the real issue number lands once filed,
+	// so the placeholder reads engineer-<driver>-<repo>-<N> with <N> unresolved.
+	plan.Name = fmt.Sprintf("%s-%s-%s-<N>", roleEngineer, mode, safeRepoName(repo))
 
 	var b strings.Builder
 	fmt.Fprintf(&b, "# %s (print)\n", agentCmdline(mode, "engineer"))

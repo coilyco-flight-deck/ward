@@ -26,7 +26,7 @@ Reclamation is host-side instead. Every container-launching dispatch (`ward
 agent engineer`, `ward agent advisor` freeform) first sweeps exited
 ward containers before adding one more:
 
-1. List exited containers carrying the `ward.container=1` label, newest first
+1. List exited containers carrying the `ward=true` label, newest first
    (`docker ps -a --filter label=... --filter status=exited`).
 2. Keep the most recent `containerReapKeep` (10) for `docker logs` post-mortem.
 3. **Drain** the older tail to `~/.ward/agent-logs/<container>/` (console log,
@@ -35,6 +35,13 @@ ward containers before adding one more:
    [agent-observability.md](agent-observability.md)).
 4. `docker rm` the older tail (no `-f`: only already-exited containers are ever
    targeted, so a running run is never touched).
+
+An engineer carry additionally clears any **exited same-name** container before it
+launches: its name is deterministic (`engineer-<driver>-<repo>-<N>`, ward#364), so a
+prior attempt on the same issue still inside the keep-10 window would otherwise
+collide on the docker name. Only an exited corpse is force-removed (a live duplicate
+is already blocked by the reservation); the issueless roles carry a machine suffix
+and never collide.
 
 This is **self-correcting**: the same fleet activity that creates dead containers
 is what prunes them, exactly when disk pressure would otherwise build. It is

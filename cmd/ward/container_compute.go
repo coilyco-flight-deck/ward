@@ -53,12 +53,17 @@ const (
 	// it can dispatch sibling runs; same path both sides (ward#315). See agent-architect.md.
 	containerDockerSock = "/var/run/docker.sock"
 
-	// containerNamePrefix anchors every ward-managed container name so a
-	// `docker ps` filter can pick ward's containers out of the host's set.
-	containerNamePrefix = "ward"
+	// containerLabel marks ward-managed containers for filtering; identity rides
+	// labels, not the name, now (ward#364, docs/container.md).
+	containerLabel = "ward=true"
 
-	// containerLabel marks ward-managed containers for filtering.
-	containerLabel = "ward.container=1"
+	// The ward.* label keys carrying a run's identity for poll/reaper/sweep: role
+	// and driver always, repo always, issue on an engineer carry, machine the id.
+	labelRole    = "ward.role"
+	labelDriver  = "ward.driver"
+	labelRepo    = "ward.repo"
+	labelIssue   = "ward.issue"
+	labelMachine = "ward.machine"
 
 	// containerSubstrateSeed is where the dev-base image bakes image-tier bare
 	// mirrors; the entrypoint hydrates the gitcache from here on a cold volume.
@@ -155,6 +160,15 @@ const (
 	modeCodex  containerMode = "codex"
 	modeQwen   containerMode = "qwen"
 	modeGoose  containerMode = "goose"
+)
+
+// container roles lead the name + the ward.role label (ward#364). director has no
+// role: it is a host loop, not a container (docs/container.md, docs/agent-director.md).
+const (
+	roleEngineer  = "engineer"
+	roleAdvisor   = "advisor"
+	roleArchitect = "architect"
+	roleSession   = "session"
 )
 
 // visionCapable reports whether the harness can take multimodal blocks; the
@@ -297,16 +311,13 @@ func safeRepoName(repo targetRepo) string {
 	return safe
 }
 
-// containerName builds the unique per-run name ward-<repo>-<rand>; the injected
-// random suffix lets many runs against one repo coexist (the default mode).
-func containerName(repo targetRepo, randSuffix string) string {
-	return fmt.Sprintf("%s-%s-%s", containerNamePrefix, safeRepoName(repo), randSuffix)
-}
-
-// agentContainerName names an `ward agent` container ward-<repo>-issue-<N>-<mode>-<rand>,
-// so `docker ps` shows repo/issue/harness; suffix lets runs coexist. See docs/agent.md.
-func agentContainerName(repo targetRepo, mode containerMode, issue int, randSuffix string) string {
-	return fmt.Sprintf("%s-%s-issue-%d-%s-%s", containerNamePrefix, safeRepoName(repo), issue, mode, randSuffix)
+// containerRoleName builds the role-led, prefixless container name (ward#364):
+// engineer-<driver>-<repo>-<N> for a carry, else <role>-<driver>-<machine>.
+func containerRoleName(role string, mode containerMode, repo targetRepo, issue int, machine string) string {
+	if role == roleEngineer {
+		return fmt.Sprintf("%s-%s-%s-%d", role, mode, safeRepoName(repo), issue)
+	}
+	return fmt.Sprintf("%s-%s-%s", role, mode, machine)
 }
 
 // mountSpec is one docker -v binding: a host path or named volume, the
@@ -368,8 +379,12 @@ func dockerSockMount() mountSpec {
 // upPlan is the fully-resolved description of one container bring-up, minus
 // the forgejo token (held out so it never reaches a print path or audit row).
 type upPlan struct {
-	Image       string
-	Name        string
+	Image string
+	Name  string
+	// Role leads the name + the ward.role label (engineer/advisor/architect/session).
+	Role string
+	// Machine is the per-container disambiguator on the ward.machine label (ward#364).
+	Machine     string
 	Repo        targetRepo
 	Mode        containerMode
 	Branch      string
@@ -521,14 +536,36 @@ func (p upPlan) wardEnv() map[string]string {
 	return env
 }
 
+// labels is the ward.* identity set a container wears for poll/reaper/sweep; issue
+// rides only an engineer carry, machine only when set (ward#364, docs/container.md).
+func (p upPlan) labels() []string {
+	role := p.Role
+	if role == "" {
+		role = roleSession
+	}
+	out := []string{
+		containerLabel,
+		labelRole + "=" + role,
+		labelDriver + "=" + string(p.Mode),
+		labelRepo + "=" + p.Repo.slug(),
+	}
+	if p.Machine != "" {
+		out = append(out, labelMachine+"="+p.Machine)
+	}
+	if p.Issue > 0 {
+		out = append(out, fmt.Sprintf("%s=%d", labelIssue, p.Issue))
+	}
+	return out
+}
+
 // dockerArgvHead is the verb + name/labels + entrypoint shared by the run and
 // create argv builders.
 func dockerArgvHead(verb string, p upPlan) []string {
-	argv := []string{
-		verb, "--name", p.Name,
-		"--label", containerLabel, "--label", "ward.repo=" + p.Repo.slug(),
-		"--entrypoint", containerWardAssets + "/" + containerEntrypointRel,
+	argv := []string{verb, "--name", p.Name}
+	for _, l := range p.labels() {
+		argv = append(argv, "--label", l)
 	}
+	argv = append(argv, "--entrypoint", containerWardAssets+"/"+containerEntrypointRel)
 	// Tailnet route (mutually exclusive, off by default): --host-net shares the host's
 	// namespace (ward#330), --ts-sidecar joins the shared ward-tailnet net (ward#349).
 	switch {

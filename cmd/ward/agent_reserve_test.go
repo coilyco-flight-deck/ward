@@ -58,7 +58,7 @@ func TestAgentReservationRoundTrip(t *testing.T) {
 	}
 	want := agentReservation{
 		Owner: ref.Owner, Repo: ref.Repo, Number: ref.Number,
-		Mode: "claude", Container: "ward-ward-issue-142-claude-abcd",
+		Mode: "claude", Container: "engineer-claude-ward-142",
 		Branch: "issue-142", Host: "box", PID: 4242,
 		At: time.Date(2026, 6, 18, 12, 0, 0, 0, time.UTC),
 	}
@@ -300,8 +300,8 @@ func TestIsReservationConflict(t *testing.T) {
 
 func TestReservationCommentBodyHasMarker(t *testing.T) {
 	now := time.Date(2026, 6, 18, 12, 0, 0, 0, time.UTC)
-	body := reservationCommentBody(modeCodex, "ward-ward-issue-142-codex-abcd", "tower", now)
-	for _, want := range []string{agentReservationMarker, "ward agent --driver codex", "ward-ward-issue-142-codex-abcd", "tower"} {
+	body := reservationCommentBody(modeCodex, "engineer-codex-ward-142", "tower", now)
+	for _, want := range []string{agentReservationMarker, "ward agent --driver codex", "engineer-codex-ward-142", "tower"} {
 		if !strings.Contains(body, want) {
 			t.Errorf("reservation comment missing %q\n got: %s", want, body)
 		}

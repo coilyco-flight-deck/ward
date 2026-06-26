@@ -95,8 +95,10 @@ func (r *Runner) runScratchSession(ctx context.Context, c *cli.Command, mode con
 		// agent can commission a sealed sibling run (ward#315). docs/agent-architect.md.
 		plan.Mounts = append(plan.Mounts, dockerSockMount())
 	}
-	// Name it ward-<repo>-architect-<mode>-<rand> so `docker ps` tells the run apart.
-	plan.Name = fmt.Sprintf("%s-%s-%s-%s-%s", containerNamePrefix, safeRepoName(repo), architectSurface, mode, randHex())
+	// Name it architect-<driver>-<machine> (issueless, so the machine id
+	// disambiguates concurrent scratch sessions) and label ward.role=architect (ward#364).
+	plan.Role = roleArchitect
+	plan.Name = containerRoleName(roleArchitect, mode, repo, 0, plan.Machine)
 
 	if c.Bool("print") {
 		return printScratchPlan(c, plan, readOnly)

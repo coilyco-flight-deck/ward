@@ -14,8 +14,8 @@ entrypoint-internal `reap`/`bootstrap` remain; manual debug uses raw `docker`).
 ## The model
 
 Three departures from a transparent, shared, bind-mounted container:
-- **One container per run, many at once** - each launch is uniquely named
-  (`ward-<repo>-<rand>`); concurrent runs are the default.
+- **One container per run, many at once** - each named for its role, e.g.
+  `engineer-<driver>-<repo>-<N>`; `ward.*` labels carry identity.
 - **Fresh clone inside, never on the host** - cached through a shared
   `ward-gitcache` bare mirror, so the host's repo tree stays untouched.
 - **Least access** - the only default host bind is the **cwd** (read-only) plus

@@ -259,7 +259,7 @@ func TestRankBacklogIssues(t *testing.T) {
 func TestRefreshBacklogLedger(t *testing.T) {
 	led := &backlogLedger{Repo: "a/b", Issues: map[string]*backlogEntry{
 		// already dispatched: must be preserved, not reset to queued
-		"5": {Num: 5, Lane: "headless", State: "dispatched", Container: "ward-b-issue-5-claude-x"},
+		"5": {Num: 5, Lane: "headless", State: "dispatched", Container: "engineer-claude-b-5"},
 		// previously surfaced (interactive), now re-triaged into headless -> promote to queued
 		"7": {Num: 7, Lane: "interactive", State: "surfaced"},
 		// a done issue that has since closed (absent from the live set) -> dropped

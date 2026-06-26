@@ -121,9 +121,14 @@ func buildUpPlan(c *cli.Command, repo targetRepo, mode containerMode, cwd, asset
 	if err != nil {
 		return upPlan{}, err
 	}
+	// The per-container machine id: rides the ward.machine label, names issueless
+	// roles. A role-led carry overrides Role+Name after this (ward#364).
+	machine := randHex()
 	return upPlan{
 		Image:          imageRef(c.String("image"), c.String("tag")),
-		Name:           containerName(repo, randHex()),
+		Name:           containerRoleName(roleSession, mode, repo, 0, machine),
+		Role:           roleSession,
+		Machine:        machine,
 		Repo:           repo,
 		Mode:           mode,
 		Branch:         c.String("branch"),
@@ -437,6 +442,22 @@ func (r *Runner) sweepStaleContainers(ctx context.Context) {
 	// rm takes them with it (ward#363); a raced/missed rm is logged, never fatal.
 	if rmErr := r.drainStaleContainers(ctx, stale); rmErr != nil {
 		fmt.Fprintf(os.Stderr, "ward container: stale-container sweep had a non-zero rm (%v); continuing\n", rmErr)
+	}
+}
+
+// clearExitedContainer force-removes an exited container holding name so a reused
+// engineer name can launch; a running one is left alone, errors never block (ward#364).
+func (r *Runner) clearExitedContainer(ctx context.Context, name string) {
+	if strings.TrimSpace(name) == "" {
+		return
+	}
+	out, err := r.Runner.Capture(ctx, "docker", "ps", "-a",
+		"--filter", "name=^"+name+"$", "--filter", "status=exited", "--format", "{{.Names}}")
+	if err != nil || strings.TrimSpace(string(out)) == "" {
+		return
+	}
+	if rmErr := r.Runner.Exec(ctx, "docker", "rm", "-f", name); rmErr != nil {
+		fmt.Fprintf(os.Stderr, "ward container: could not clear exited container %q for name reuse (%v); continuing\n", name, rmErr)
 	}
 }
 

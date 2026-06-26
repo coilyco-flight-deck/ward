@@ -871,18 +871,18 @@ func (r *Runner) backlogContainerRunning(ctx context.Context, repo targetRepo, e
 	return r.backlogRunningContainer(ctx, repo, e.Num) != ""
 }
 
-// backlogRunningContainer returns the running ward container carrying an issue via
-// docker ps on the `-issue-<N>-` name convention, "" when none.
+// backlogRunningContainer returns the running engineer carrying repo#num, found by
+// its ward.role/ward.repo/ward.issue labels (AND-combined), "" when none (ward#364).
 func (r *Runner) backlogRunningContainer(ctx context.Context, repo targetRepo, num int) string {
-	seg := fmt.Sprintf("-issue-%d-", num)
-	out, err := r.Runner.Capture(ctx, "docker", "ps", "--format", "{{.Names}}", "--filter", "name="+seg)
+	out, err := r.Runner.Capture(ctx, "docker", "ps", "--format", "{{.Names}}",
+		"--filter", "label="+labelRole+"="+roleEngineer,
+		"--filter", "label="+labelRepo+"="+repo.slug(),
+		"--filter", fmt.Sprintf("label=%s=%d", labelIssue, num))
 	if err != nil {
 		return ""
 	}
-	safe := safeRepoName(repo)
 	for _, line := range strings.Split(string(out), "\n") {
-		nm := strings.TrimSpace(line)
-		if nm != "" && strings.Contains(nm, seg) && strings.Contains(nm, safe) {
+		if nm := strings.TrimSpace(line); nm != "" {
 			return nm
 		}
 	}

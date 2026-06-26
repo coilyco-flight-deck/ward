@@ -112,9 +112,10 @@ func (r *Runner) runAgentAsk(ctx context.Context, c *cli.Command, mode container
 		return err
 	}
 	plan.Ask = true
-	// Name it ward-<repo>-ask-<mode>-<rand> so `docker ps` tells an inline answer apart
-	// from a carry run or a bare interactive bring-up.
-	plan.Name = fmt.Sprintf("%s-%s-ask-%s-%s", containerNamePrefix, safeRepoName(repo), mode, randHex())
+	// Name it advisor-<driver>-<machine> (issueless, so the machine id disambiguates
+	// concurrent answers) and label it ward.role=advisor (ward#364).
+	plan.Role = roleAdvisor
+	plan.Name = containerRoleName(roleAdvisor, mode, repo, 0, plan.Machine)
 
 	if c.Bool("print") {
 		return printAgentAskPlan(c, plan, question, seed)

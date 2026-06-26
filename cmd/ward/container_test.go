@@ -110,19 +110,23 @@ func TestTargetFromRemoteURL(t *testing.T) {
 	}
 }
 
-func TestContainerNameUniqueAndSafe(t *testing.T) {
+func TestSessionContainerNameUniqueAndSafe(t *testing.T) {
 	repo := targetRepo{Owner: "coilyco-gaming", Name: "eco-app"}
-	a := containerName(repo, "a1b2c3d4")
-	b := containerName(repo, "e5f6a7b8")
+	a := containerRoleName(roleSession, modeClaude, repo, 0, "a1b2c3d4")
+	b := containerRoleName(roleSession, modeClaude, repo, 0, "e5f6a7b8")
 	if a == b {
-		t.Fatalf("two runs against the same repo must not collide: %q == %q", a, b)
+		t.Fatalf("two issueless runs must not collide on the machine suffix: %q == %q", a, b)
 	}
-	if !strings.HasPrefix(a, "ward-eco-app-") {
-		t.Errorf("name %q missing ward-<repo>- prefix", a)
+	// Role-led + prefixless: no ward- prefix any more (ward#364).
+	if !strings.HasPrefix(a, "session-claude-") {
+		t.Errorf("name %q missing the session-<driver>- lead", a)
+	}
+	if strings.HasPrefix(a, "ward-") {
+		t.Errorf("name %q still carries the dropped ward- prefix", a)
 	}
 	// docker forbids these; sanitization must strip them.
 	weird := targetRepo{Owner: "x", Name: "we/ird name!"}
-	got := containerName(weird, "deadbeef")
+	got := containerRoleName(roleSession, modeClaude, weird, 0, "deadbeef")
 	for _, bad := range []string{"/", " ", "!"} {
 		if strings.Contains(got, bad) {
 			t.Errorf("sanitized name %q still contains %q", got, bad)
@@ -130,36 +134,68 @@ func TestContainerNameUniqueAndSafe(t *testing.T) {
 	}
 }
 
-func TestAgentContainerNameIsMeaningful(t *testing.T) {
+func TestEngineerContainerNameIsRepoIssueUnique(t *testing.T) {
 	repo := targetRepo{Owner: "coilyco-flight-deck", Name: "ward"}
-	got := agentContainerName(repo, modeClaude, 140, "a1b2c3d4")
-	want := "ward-ward-issue-140-claude-a1b2c3d4"
+	// The engineer name is unique by repo+issue, no random suffix (ward#364): the
+	// machine arg is ignored, identity rides the ward.machine label instead.
+	got := containerRoleName(roleEngineer, modeClaude, repo, 140, "a1b2c3d4")
+	want := "engineer-claude-ward-140"
 	if got != want {
-		t.Errorf("agentContainerName = %q, want %q", got, want)
+		t.Errorf("engineer name = %q, want %q", got, want)
 	}
-	// The repo, issue, and harness must all be legible in the name so a host
-	// running several agents can tell them apart at a glance.
-	for _, frag := range []string{"ward", "issue-140", "claude"} {
+	// The role, harness, repo, and issue must all be legible at a glance.
+	for _, frag := range []string{"engineer", "claude", "ward", "140"} {
 		if !strings.Contains(got, frag) {
 			t.Errorf("name %q missing %q", got, frag)
 		}
 	}
-	// The random suffix keeps concurrent runs on the same issue from colliding.
-	other := agentContainerName(repo, modeClaude, 140, "e5f6a7b8")
-	if got == other {
-		t.Fatalf("two runs on the same issue must not collide: %q == %q", got, other)
+	// Same repo+issue is deterministic (the machine suffix never enters the name).
+	if other := containerRoleName(roleEngineer, modeClaude, repo, 140, "e5f6a7b8"); other != got {
+		t.Errorf("engineer name must be machine-independent: %q != %q", other, got)
 	}
-	// The mode distinguishes a claude run from a codex run on the same issue.
-	if agentContainerName(repo, modeCodex, 140, "a1b2c3d4") == got {
+	// A different issue and a different harness each change the name.
+	if containerRoleName(roleEngineer, modeClaude, repo, 141, "a1b2c3d4") == got {
+		t.Error("different issues on the same repo must produce different names")
+	}
+	if containerRoleName(roleEngineer, modeCodex, repo, 140, "a1b2c3d4") == got {
 		t.Error("different harnesses on the same issue must produce different names")
 	}
 	// docker-forbidden characters in the repo name must be sanitized away.
 	weird := targetRepo{Owner: "x", Name: "we/ird name!"}
-	dirty := agentContainerName(weird, modeQwen, 7, "deadbeef")
+	dirty := containerRoleName(roleEngineer, modeQwen, weird, 7, "deadbeef")
 	for _, bad := range []string{"/", " ", "!"} {
 		if strings.Contains(dirty, bad) {
 			t.Errorf("sanitized name %q still contains %q", dirty, bad)
 		}
+	}
+}
+
+func TestUpPlanLabels(t *testing.T) {
+	repo := targetRepo{Owner: "coilyco-flight-deck", Name: "ward"}
+	// An engineer carry: role/driver/repo + the carried issue + a machine id.
+	eng := upPlan{Role: roleEngineer, Mode: modeClaude, Repo: repo, Issue: 364, Machine: "deadbeef"}
+	got := strings.Join(eng.labels(), " ")
+	for _, want := range []string{
+		"ward=true", "ward.role=engineer", "ward.driver=claude",
+		"ward.repo=coilyco-flight-deck/ward", "ward.issue=364", "ward.machine=deadbeef",
+	} {
+		if !strings.Contains(got, want) {
+			t.Errorf("engineer labels %q missing %q", got, want)
+		}
+	}
+	// An issueless run (advisor here): no ward.issue label, role defaults absent -> session.
+	adv := upPlan{Role: roleAdvisor, Mode: modeCodex, Repo: repo, Machine: "beadfeed"}
+	got = strings.Join(adv.labels(), " ")
+	if strings.Contains(got, "ward.issue") {
+		t.Errorf("issueless run must not carry a ward.issue label: %q", got)
+	}
+	if !strings.Contains(got, "ward.role=advisor") || !strings.Contains(got, "ward.driver=codex") {
+		t.Errorf("advisor labels %q missing role/driver", got)
+	}
+	// A plan with no Role set falls back to the session role so the label is never blank.
+	bare := upPlan{Mode: modeClaude, Repo: repo}
+	if !strings.Contains(strings.Join(bare.labels(), " "), "ward.role=session") {
+		t.Errorf("roleless plan should label ward.role=session, got %v", bare.labels())
 	}
 }
 
@@ -395,6 +431,7 @@ func TestWardEnvExtraRepos(t *testing.T) {
 // and is absent for a bare `container up` (Issue 0).
 func TestWardEnvTargetIssue(t *testing.T) {
 	p := sampleUpPlan()
+	p.Issue = 0
 	if _, ok := p.wardEnv()["WARD_TARGET_ISSUE"]; ok {
 		t.Error("WARD_TARGET_ISSUE must be absent when no issue is carried (Issue 0)")
 	}
@@ -408,7 +445,10 @@ func sampleUpPlan() upPlan {
 	repo := targetRepo{Owner: "coilyco-gaming", Name: "eco-app"}
 	return upPlan{
 		Image:       "forgejo.coilysiren.me/coilyco-flight-deck/agentic-os:latest",
-		Name:        "ward-eco-app-deadbeef",
+		Name:        "engineer-claude-eco-app-140",
+		Role:        roleEngineer,
+		Machine:     "deadbeef",
+		Issue:       140,
 		Repo:        repo,
 		Mode:        modeClaude,
 		Branch:      "feat/foo",
@@ -429,9 +469,13 @@ func TestDockerCreateArgvShape(t *testing.T) {
 		t.Errorf("argv[0] = %q, want run", argv[0])
 	}
 	for _, want := range []string{
-		"--name ward-eco-app-deadbeef",
+		"--name engineer-claude-eco-app-140",
 		"--label " + containerLabel,
+		"--label ward.role=engineer",
+		"--label ward.driver=claude",
 		"--label ward.repo=coilyco-gaming/eco-app",
+		"--label ward.machine=deadbeef",
+		"--label ward.issue=140",
 		"--entrypoint " + containerWardAssets + "/" + containerEntrypointRel,
 		"-it",
 		"--env-file /tmp/ward-env-xyz",
@@ -491,7 +535,7 @@ func TestDockerCreateNoBindsArgv(t *testing.T) {
 		t.Errorf("argv[0] = %q, want create (a stopped container to cp into)", argv[0])
 	}
 	for _, want := range []string{
-		"--name ward-eco-app-deadbeef",
+		"--name engineer-claude-eco-app-140",
 		"--entrypoint " + containerWardAssets + "/" + containerEntrypointRel,
 		"-v " + containerGitcacheVol + ":" + containerGitcacheMnt, // the named volume survives
 		"--env-file /tmp/ward-env-xyz",
