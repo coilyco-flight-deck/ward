@@ -1,7 +1,6 @@
-// Package goose is the goose harness's agentsapi.Agent (ward#412, Phase 2 of
-// ward#401). It carries goose's inert data record and forwards its capability
-// behaviour to the still-live cmd/ward funcs via closures core injects; no
-// behaviour lives here. See docs/agentsapi.md.
+// Package goose is the goose harness's agentsapi.Agent (ward#401 Phase 3,
+// following ward#412). It owns goose's inert data record AND its config-compose
+// behaviour (provider/model + host-resolved ollama endpoint). See docs/agentsapi.md.
 package goose
 
 import (
@@ -32,11 +31,9 @@ var record = agentsapi.Manifest{
 	Identity: attribution.Identity{Name: "Goose"},
 }
 
-// Agent is goose's agentsapi.Agent; core injects the config-composer closure
-// (composeGooseConfig, which also seeds the host-resolved ollama endpoint).
-type Agent struct {
-	ComposeConfigFn func(agentsapi.RunCtx) error // -> composeGooseConfig
-}
+// Agent is goose's agentsapi.Agent. Phase 3 (ward#425) drained the behaviour
+// home, so it carries no state.
+type Agent struct{}
 
 // Compile-time proof goose implements the core contract plus its one capability.
 var (
@@ -44,7 +41,7 @@ var (
 	_ agentsapi.ConfigComposer = Agent{}
 )
 
-// New returns goose's Agent with no capabilities wired (DATA-only).
+// New returns goose's Agent.
 func New() Agent { return Agent{} }
 
 // Name is the roster key.
@@ -75,12 +72,4 @@ func (a Agent) LaunchArgv(rc agentsapi.RunCtx) (argv []string, stream bool) {
 		return append([]string{"goose", "run", "-t"}, rc.Seed...), false
 	}
 	return []string{"goose", "session"}, false
-}
-
-// ComposeConfig writes goose's provider/model config (+ host ollama endpoint).
-func (a Agent) ComposeConfig(rc agentsapi.RunCtx) error {
-	if a.ComposeConfigFn == nil {
-		return nil
-	}
-	return a.ComposeConfigFn(rc)
 }

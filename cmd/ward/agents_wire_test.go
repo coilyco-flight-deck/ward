@@ -58,8 +58,8 @@ func TestRegistryConfigComposersWrite(t *testing.T) {
 		rel  string // config path relative to AgentHome the folder func writes
 	}{
 		{modeCodex, filepath.Join(".codex", "config.toml")},
-		// opencode + goose config composers land in the folders in the next drain
-		// step (ward#425 Part B); until then they stay wired via wireAgent.
+		{modeOpencode, filepath.Join(".config", "opencode", "opencode.json")},
+		{modeGoose, filepath.Join(".config", "goose", "config.yaml")},
 	}
 	for _, tc := range cases {
 		t.Run(string(tc.mode), func(t *testing.T) {
@@ -123,8 +123,8 @@ func TestLookupAgentResolvesModes(t *testing.T) {
 	}
 }
 
-// TestComposeAgentContainerPerMode confirms the Phase 3 dispatch helper runs only
-// each wired mode's capabilities (claude onboarding, codex/opencode/goose config).
+// TestComposeAgentContainerPerMode confirms the dispatch helper runs only each
+// mode's capabilities (claude onboarding, codex/opencode/goose config), no bleed.
 func TestComposeAgentContainerPerMode(t *testing.T) {
 	cases := []struct {
 		mode    containerMode
@@ -140,14 +140,10 @@ func TestComposeAgentContainerPerMode(t *testing.T) {
 		t.Run(string(tc.mode), func(t *testing.T) {
 			home := t.TempDir()
 			r := testRunner()
-			a, ok := r.wireAgent(tc.mode)
-			if !ok {
-				t.Fatalf("wireAgent(%s) not ok", tc.mode)
-			}
+			a := lookupAgent(tc.mode)
 			// TargetName drives claude's onboarding project entry; the model/url feed
-			// the opencode composer. WARD_MODE gates the guarded live funcs.
-			t.Setenv("WARD_MODE", string(tc.mode))
-			rc := r.runCtxFromEnv(context.Background(), bootstrapEnv{
+			// the opencode composer.
+			rc := r.agentRunCtx(context.Background(), bootstrapEnv{
 				Mode:       string(tc.mode),
 				AgentHome:  home,
 				TargetName: "ward",

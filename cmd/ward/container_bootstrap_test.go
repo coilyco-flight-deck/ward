@@ -2,7 +2,6 @@ package main
 
 import (
 	"context"
-	"encoding/base64"
 	"io"
 	"os"
 	"os/exec"
@@ -415,37 +414,8 @@ func TestSplitOwnerName(t *testing.T) {
 	}
 }
 
-// TestOpencodeConfigJSON keeps the literal $schema key (not interpolated) and
-// interpolates the model + URL in the right places.
-func TestOpencodeConfigJSON(t *testing.T) {
-	got := opencodeConfigJSON("qwen3-coder:30b", "http://localhost:11434/v1")
-	for _, want := range []string{
-		`"$schema": "https://opencode.ai/config.json"`,
-		`"model": "ollama/qwen3-coder:30b"`,
-		`"baseURL": "http://localhost:11434/v1"`,
-		`"qwen3-coder:30b": {}`,
-	} {
-		if !strings.Contains(got, want) {
-			t.Errorf("opencode config missing %q in:\n%s", want, got)
-		}
-	}
-}
-
-// TestGooseConfigYAML omits OLLAMA_HOST when no host resolved, includes it
-// otherwise, matching the bash heredoc.
-func TestGooseConfigYAML(t *testing.T) {
-	noHost := gooseConfigYAML("ollama", "qwen3-coder:30b", "")
-	if strings.Contains(noHost, "OLLAMA_HOST") {
-		t.Errorf("no-host config should omit OLLAMA_HOST:\n%s", noHost)
-	}
-	if !strings.Contains(noHost, "GOOSE_PROVIDER: ollama") || !strings.Contains(noHost, "GOOSE_MODEL: qwen3-coder:30b") {
-		t.Errorf("missing provider/model:\n%s", noHost)
-	}
-	withHost := gooseConfigYAML("ollama", "qwen3-coder:30b", "http://tower:11434")
-	if !strings.Contains(withHost, "OLLAMA_HOST: http://tower:11434") {
-		t.Errorf("with-host config should include OLLAMA_HOST:\n%s", withHost)
-	}
-}
+// opencode + goose config composers drained to their folders in ward#425
+// Phase 3; TestConfigJSON / TestConfigYAML live there now.
 
 // TestComposeContextRuntimeDoctrineLoadPoints covers ward#377 for Go bootstrap:
 // canonical AGENTS.md feeds Codex, Claude, and Goose load points.
@@ -495,19 +465,7 @@ func TestComposeContextRuntimeDoctrineLoadPoints(t *testing.T) {
 	}
 }
 
-// TestGooseOllamaHostScrubsEnv asserts the goose config step scrubs its
-// WARD_GOOSE_OLLAMA_HOST_B64 env var so it can't leak (ward#357).
-func TestGooseOllamaHostScrubsEnv(t *testing.T) {
-	home := t.TempDir()
-	r := gitRunner()
-
-	// goose ollama host (goose mode only): the tailnet endpoint is the secret here.
-	t.Setenv("WARD_GOOSE_OLLAMA_HOST_B64", base64.StdEncoding.EncodeToString([]byte("http://tower:11434")))
-	r.composeGooseConfig(bootstrapEnv{Mode: "goose", AgentHome: home})
-	if v := os.Getenv("WARD_GOOSE_OLLAMA_HOST_B64"); v != "" {
-		t.Errorf("WARD_GOOSE_OLLAMA_HOST_B64 should be scrubbed after seeding, got %q", v)
-	}
-}
+// The goose ollama-host scrub test drained to internal/agents/goose (ward#425).
 
 // splitNonEmpty splits text into non-empty trimmed lines for assertions.
 func splitNonEmpty(s string) []string {

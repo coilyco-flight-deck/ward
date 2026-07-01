@@ -3,7 +3,6 @@ package main
 import (
 	"bufio"
 	"context"
-	"encoding/base64"
 	"encoding/json"
 	"fmt"
 	"io"
@@ -227,14 +226,14 @@ func (r *Runner) runContainerBootstrap(ctx context.Context, c *cli.Command) erro
 		_ = os.Setenv("WARD_CONTAINER_UP", time.Now().UTC().Format("2006-01-02T15:04:05Z"))
 	}
 
-	// Phase 3 (ward#418): dispatch every per-agent seam through the registry + SPI
-	// capability interfaces, feature-tested per mode; switches stay live for Phase 4.
+	// Dispatch every per-agent seam through the registry + the agentsapi capability
+	// interfaces, feature-tested per mode; the mode/argv switches stay live for Phase 4.
 	mode, perr := parseMode(e.Mode)
 	if perr != nil {
 		mode = modeClaude // match the switches' default-to-claude arm
 	}
-	agent, _ := r.wireAgent(mode)
-	rc := r.runCtxFromEnv(ctx, e, agentArgs)
+	agent := lookupAgent(mode)
+	rc := r.agentRunCtx(ctx, e, agentArgs)
 
 	r.configureGitAuth(ctx, e)
 	// Installer: opencode self-installs before the clone (absent from the image).
@@ -429,31 +428,6 @@ func (r *Runner) ensureGitCredReadable(e bootstrapEnv) error {
 		return fmt.Errorf("ward#288: %s is group-owned by gid %d, not the agent gid %d; agent cannot read the bot credential", f, st.Gid, gid)
 	}
 	return nil
-}
-
-// --- install opencode (qwen mode): best-effort, never fatal ------------------
-
-// installOpencode ports install_opencode: self-install opencode onto PATH for
-// qwen mode (absent from the image). Best-effort; never fatal.
-func (r *Runner) installOpencode(ctx context.Context, e bootstrapEnv) {
-	if e.Mode != "opencode" && e.Mode != "qwen" {
-		return
-	}
-	if commandExists("opencode") {
-		blog("opencode already present in image; skipping install")
-		return
-	}
-	blog("installing opencode (qwen-backed harness; not baked into the dev-base image yet)")
-	// The bash pipes `curl ... | bash`; reproduce via `bash -c` so the installer's
-	// own redirects to stderr are preserved (its stdout is the script, not output).
-	_ = r.Runner.Exec(ctx, "bash", "-c", "curl -fsSL https://opencode.ai/install | bash >&2")
-	src := filepath.Join(os.Getenv("HOME"), ".opencode", "bin", "opencode")
-	if isExecutable(src) {
-		_ = r.Runner.Exec(ctx, "install", "-m", "0755", src, "/usr/local/bin/opencode")
-	}
-	if !commandExists("opencode") {
-		blog("opencode install failed; qwen mode will drop to a shell (use --image with opencode baked in, or fix network)")
-	}
 }
 
 // --- cached fresh clone (mirror in the shared gitcache volume) ---------------
@@ -869,89 +843,6 @@ func (r *Runner) composePermissions(e bootstrapEnv) {
 	blog("wrote container permission policy to %s", out)
 }
 
-// --- opencode config (qwen mode) ---------------------------------------------
-
-// composeOpencodeConfig ports compose_opencode_config: point opencode at the
-// local ollama qwen model. qwen mode only.
-func (r *Runner) composeOpencodeConfig(e bootstrapEnv) {
-	if e.Mode != "opencode" && e.Mode != "qwen" {
-		return
-	}
-	dir := filepath.Join(e.AgentHome, ".config", "opencode")
-	_ = os.MkdirAll(dir, 0o755)
-	body := opencodeConfigJSON(e.QwenModel, e.OllamaURL)
-	out := filepath.Join(dir, "opencode.json")
-	if werr := os.WriteFile(out, []byte(body), 0o644); werr != nil { // #nosec G306 -- config, not a secret
-		blog("could not write opencode config: %v", werr)
-		return
-	}
-	blog("wrote qwen-backed opencode config (model ollama/%s via %s) to %s", e.QwenModel, e.OllamaURL, out)
-}
-
-// opencodeConfigJSON renders the qwen-backed opencode config, matching the bash
-// heredoc byte-for-byte (the $schema key is literal, not interpolated).
-func opencodeConfigJSON(model, ollamaURL string) string {
-	return fmt.Sprintf(`{
-  "$schema": "https://opencode.ai/config.json",
-  "model": "ollama/%s",
-  "provider": {
-    "ollama": {
-      "npm": "@ai-sdk/openai-compatible",
-      "name": "Ollama (local)",
-      "options": { "baseURL": "%s" },
-      "models": { "%s": {} }
-    }
-  }
-}
-`, model, ollamaURL, model)
-}
-
-// --- goose config (ward#186) -------------------------------------------------
-
-// composeGooseConfig ports compose_goose_config: seed goose's config.yaml with
-// provider + model (+ tower Ollama host if resolved). goose mode only.
-func (r *Runner) composeGooseConfig(e bootstrapEnv) {
-	if e.Mode != "goose" {
-		return
-	}
-	dir := filepath.Join(e.AgentHome, ".config", "goose")
-	_ = os.MkdirAll(dir, 0o755)
-	provider := envOr("WARD_GOOSE_PROVIDER", "ollama")
-	model := envOr("WARD_GOOSE_MODEL", "qwen3-coder:30b")
-	host := ""
-	if b64 := os.Getenv("WARD_GOOSE_OLLAMA_HOST_B64"); b64 != "" {
-		if dec, derr := base64.StdEncoding.DecodeString(b64); derr == nil {
-			host = string(dec)
-		}
-		// Seeded to config.yaml; the tower host (tailnet endpoint) is the secret in
-		// this env, so scrub it once decoded - same treatment as the creds (ward#357).
-		_ = os.Unsetenv("WARD_GOOSE_OLLAMA_HOST_B64")
-	}
-	body := gooseConfigYAML(provider, model, host)
-	out := filepath.Join(dir, "config.yaml")
-	if werr := os.WriteFile(out, []byte(body), 0o644); werr != nil { // #nosec G306 -- config, not a secret
-		blog("could not write goose config: %v", werr)
-		return
-	}
-	if provider == "ollama" && host == "" {
-		blog("wrote goose config (provider=%s model=%s) to %s; no tower Ollama host resolved, goose will use its built-in default", provider, model, out)
-	} else {
-		blog("wrote goose config (provider=%s model=%s) to %s", provider, model, out)
-	}
-}
-
-// gooseConfigYAML renders goose's config.yaml, matching the bash heredoc lines.
-func gooseConfigYAML(provider, model, host string) string {
-	var b strings.Builder
-	b.WriteString("# Written by the ward container entrypoint (ward#186): bind goose's provider.\n")
-	fmt.Fprintf(&b, "GOOSE_PROVIDER: %s\n", provider)
-	fmt.Fprintf(&b, "GOOSE_MODEL: %s\n", model)
-	if host != "" {
-		fmt.Fprintf(&b, "OLLAMA_HOST: %s\n", host)
-	}
-	return b.String()
-}
-
 // --- reaper: deterministic teardown backstop ---------------------------------
 
 // reap ports the bash reap() EXIT trap: salvage residual work before teardown.
@@ -1305,12 +1196,6 @@ func (r *Runner) withFlock(lockPath string, fn func()) {
 func commandExists(bin string) bool {
 	_, err := exec.LookPath(bin)
 	return err == nil
-}
-
-// isExecutable reports whether path exists and has any execute bit (`[ -x ]`).
-func isExecutable(path string) bool {
-	fi, err := os.Stat(path)
-	return err == nil && !fi.IsDir() && fi.Mode()&0o111 != 0
 }
 
 func isDir(path string) bool {

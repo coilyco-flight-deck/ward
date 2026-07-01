@@ -1,9 +1,7 @@
-// Package opencode is the opencode harness's agentsapi.Agent (ward#412, Phase 2
-// of ward#401). opencode drives a local ollama-backed model (qwen today); the
-// ward#401 roster untangle renamed the mode "qwen" -> "opencode" so the roster
-// key names the harness, not its backing model. It forwards its capability
-// behaviour to the still-live cmd/ward funcs via closures core injects; no
-// behaviour lives here. See docs/agentsapi.md.
+// Package opencode is the opencode harness's agentsapi.Agent (ward#401 Phase 3,
+// following ward#412). opencode drives a local ollama-backed model (qwen today);
+// the ward#401 roster untangle renamed the mode "qwen" -> "opencode". It owns its
+// config-compose + self-install behaviour directly now. See docs/agentsapi.md.
 package opencode
 
 import (
@@ -36,12 +34,9 @@ var record = agentsapi.Manifest{
 	Identity: attribution.Identity{Name: "Qwen"},
 }
 
-// Agent is opencode's agentsapi.Agent; core injects the capability closures
-// (composeOpencodeConfig, installOpencode). It resolves no host credential.
-type Agent struct {
-	ComposeConfigFn func(agentsapi.RunCtx) error // -> composeOpencodeConfig
-	InstallFn       func(agentsapi.RunCtx) error // -> installOpencode
-}
+// Agent is opencode's agentsapi.Agent. Phase 3 (ward#425) drained the behaviour
+// home, so it carries no state. It resolves no host credential.
+type Agent struct{}
 
 // Compile-time proof opencode implements the core contract plus its capabilities
 // (config composer + self-installer). It is deliberately not a CredentialProvider.
@@ -51,7 +46,7 @@ var (
 	_ agentsapi.Installer      = Agent{}
 )
 
-// New returns opencode's Agent with no capabilities wired (DATA-only).
+// New returns opencode's Agent.
 func New() Agent { return Agent{} }
 
 // Name is the roster key.
@@ -80,20 +75,4 @@ func (a Agent) LaunchArgv(rc agentsapi.RunCtx) (argv []string, stream bool) {
 		return append([]string{"opencode", "run"}, rc.Seed...), false
 	}
 	return []string{"opencode"}, false
-}
-
-// ComposeConfig writes the ollama-backed opencode config in-container.
-func (a Agent) ComposeConfig(rc agentsapi.RunCtx) error {
-	if a.ComposeConfigFn == nil {
-		return nil
-	}
-	return a.ComposeConfigFn(rc)
-}
-
-// Install self-installs the opencode binary (absent from the image).
-func (a Agent) Install(rc agentsapi.RunCtx) error {
-	if a.InstallFn == nil {
-		return nil
-	}
-	return a.InstallFn(rc)
 }
