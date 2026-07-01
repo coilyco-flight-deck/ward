@@ -176,7 +176,7 @@ func directorFlags() []cli.Flag {
 	flags := []cli.Flag{
 		agentDriverFlag(),
 		&cli.StringFlag{Name: "engineer-driver", Usage: "harness for the engineers the director dispatches: " + agentDriverChoices() + " (default: inherit --driver)"},
-		&cli.StringFlag{Name: "repo", Usage: "comma-separated scope 'a/b,c/d' (default: the cwd git origin)"},
+		&cli.StringFlag{Name: "repo", Usage: "comma-separated scope 'a/b,c/d' (default: director.default-scope from ~/.ward/config.yaml, else the cwd git origin)"},
 		&cli.StringSliceFlag{Name: "org", Usage: "expand every repo an org owns into the scope (owner; repeatable), unioned with --repo and de-duped (ward#370)"},
 		&cli.StringSliceFlag{Name: "with-repo", Usage: "grant director's own session an additional writable repo to clone (owner/name; repeatable), landed under /workspace alongside the scope (ward#230)."},
 		&cli.IntFlag{Name: "max-parallel", Value: 2, Usage: "in-flight container cap"},
@@ -359,21 +359,13 @@ func (r *Runner) emit(s string) error {
 
 // --- scope parsing ---------------------------------------------------------
 
-// resolveDirectorScope unions the explicit --repo slugs with each --org's expansion
-// (de-duped), falling back to the cwd git origin when neither is given (ward#370).
+// resolveDirectorScope unions explicit --repo slugs with each --org's expansion,
+// falling back to the config default then the cwd origin (ward#370, ward#398).
 func (r *Runner) resolveDirectorScope(ctx context.Context, c *cli.Command, label string) ([]string, error) {
 	explicit := parseScopeRepos(c.String("repo"), "")
 	orgs := dedupeSlugs(c.StringSlice("org"))
 	if len(explicit) == 0 && len(orgs) == 0 {
-		def := ""
-		if repo, _, err := r.resolveTarget(ctx, ""); err == nil {
-			def = repo.slug()
-		}
-		repos := parseScopeRepos("", def)
-		if len(repos) == 0 {
-			return nil, fmt.Errorf("%s: no --repo/--org given and no git origin found in the current directory", label)
-		}
-		return repos, nil
+		return r.resolveDirectorDefaultScope(ctx, label)
 	}
 	expanded, err := r.expandOrgScopes(ctx, label, orgs)
 	if err != nil {
@@ -384,6 +376,71 @@ func (r *Runner) resolveDirectorScope(ctx context.Context, c *cli.Command, label
 		return nil, fmt.Errorf("%s: --repo/--org scope resolved to no repos", label)
 	}
 	return repos, nil
+}
+
+// resolveDirectorDefaultScope resolves the no-flag scope (ward#398): the config-stored
+// director.default-scope wins over the cwd origin. See docs/agent-director.md.
+func (r *Runner) resolveDirectorDefaultScope(ctx context.Context, label string) ([]string, error) {
+	cfgOrgs, cfgRepos, err := loadDirectorDefaultScope()
+	if err != nil {
+		return nil, fmt.Errorf("%s: %w", label, err)
+	}
+	if len(cfgOrgs) > 0 || len(cfgRepos) > 0 {
+		expanded, eerr := r.expandOrgScopes(ctx, label, cfgOrgs)
+		if eerr != nil {
+			return nil, eerr
+		}
+		repos := mergeScopeRepos(cfgRepos, expanded)
+		if len(repos) == 0 {
+			return nil, fmt.Errorf("%s: director.default-scope resolved to no repos", label)
+		}
+		return repos, nil
+	}
+	def := ""
+	if repo, _, terr := r.resolveTarget(ctx, ""); terr == nil {
+		def = repo.slug()
+	}
+	repos := parseScopeRepos("", def)
+	if len(repos) == 0 {
+		return nil, fmt.Errorf("%s: no --repo/--org given, no director.default-scope in ~/.ward/config.yaml, and no git origin found in the current directory", label)
+	}
+	return repos, nil
+}
+
+// wardGlobalConfig is the slice of ~/.ward/config.yaml ward reads today: only the
+// host-owned director.default-scope, the no-flag director fallback scope (ward#398).
+type wardGlobalConfig struct {
+	Director struct {
+		DefaultScope []string `yaml:"default-scope"`
+	} `yaml:"director"`
+}
+
+// loadDirectorDefaultScope reads director.default-scope from ~/.ward/config.yaml,
+// partitioning into org tokens and owner/name slugs; a missing file is no error.
+func loadDirectorDefaultScope() (orgs, repos []string, err error) {
+	path, err := config.GlobalConfigPath()
+	if err != nil {
+		return nil, nil, err
+	}
+	var cfg wardGlobalConfig
+	if oerr := config.OverlayFile(&cfg, path); oerr != nil {
+		return nil, nil, oerr
+	}
+	orgs, repos = partitionScopeEntries(cfg.Director.DefaultScope)
+	return orgs, repos, nil
+}
+
+// partitionScopeEntries splits a de-duped scope list into org tokens (no slash) and
+// bare owner/name repo slugs. Pure + testable; the split key is a single '/'.
+func partitionScopeEntries(entries []string) (orgs, repos []string) {
+	for _, e := range dedupeSlugs(entries) {
+		if strings.Contains(e, "/") {
+			repos = append(repos, e)
+		} else {
+			orgs = append(orgs, e)
+		}
+	}
+	return orgs, repos
 }
 
 // expandOrgScopes expands each --org to its repo slugs via the existing org-repo-list
