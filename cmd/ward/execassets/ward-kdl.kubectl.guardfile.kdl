@@ -2,7 +2,8 @@
 // execverb, exec dialect). Wraps the local `kubectl` against the active
 // kubeconfig (kai-server k3s over the tailnet); the binary is fixed at parse,
 // so the caller can never substitute it. Deny-by-default: only the read verbs
-// and the friendly deploy surface (apply / scale / rollout) mount. Destructive
+// (including `diff`, the non-mutating server-side preview of an apply) and the
+// friendly deploy surface (apply / scale / rollout) mount. Destructive
 // and shell-equivalent verbs (delete, drain/cordon, edit, patch, replace,
 // exec, attach, cp, port-forward) are intentionally left unexposed - they fall
 // to the host lockdown's bare-kubectl deny, mirroring the no-deletion choice in
@@ -46,6 +47,9 @@ wrap ward-kdl ops kubectl {
     }
     can run "config get-contexts" {
         describe "list kubeconfig contexts (no secrets)"
+    }
+    can run diff {
+        describe "preview an apply: server-side dry-run diff of a manifest vs live state; -f <file> or -k <kustomize dir>"
     }
     // deploy surface - the friendly write verbs, all audit-logged
     can run apply {
