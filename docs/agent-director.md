@@ -57,7 +57,7 @@ falls back to the cwd origin, flags override. Host-owned, no default.
 
 ## Flags
 
-- `--repo`/`--org` scope (ward#370); `--max-parallel N` (2); `--triage`/`--no-triage` (startup
+- `--repo`/`--org` scope (ward#370); `--max-parallel N` (10); `--triage`/`--no-triage` (startup
   triage, on by default; ward#397); `--limit` (50); `--poll-interval` (30s); `--max-cycles`
   (0=drained); `--dry-run`. `--driver` (claude) drives director's OWN session;
   `--engineer-driver` overrides the engineer harness (ward#355).
