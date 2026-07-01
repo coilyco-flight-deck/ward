@@ -3,15 +3,14 @@
 `ward agent advisor` (public face `warded advisor`) is the **counsel** role of the
 startup roster (ward#347): it answers and **writes no code**. It merges the retired
 `reply` + `ask` verbs, and **the argument type selects the mode**. See
-[docs/agent.md](agent.md) for the roster.
+[docs/agent.md](agent.md).
 
 ## Usage
 
 ```bash
-warded advisor coilyco-flight-deck/ward#98 "what would it take to support X?"   # ref (was reply)
-warded advisor #98 "deep dive on the root cause" --thoroughness deep
-warded advisor "how does the reaper back-stop residual work?"                   # freeform (was ask)
-warded advisor "what would break if WARD_GITCACHE moved?" --repo coilyco-flight-deck/ward
+warded advisor coilyco-flight-deck/ward#98 "what would it take?" --thoroughness deep   # ref (was reply)
+warded advisor "how does the reaper back-stop residual work?"                          # freeform: interactive seeded session (ward#388)
+warded advisor "summarize the audit-log schema" --oneshot --repo coilyco-flight-deck/ward   # freeform: force the one-shot answer
 ```
 
 ## Argument-type dispatch
@@ -45,21 +44,31 @@ Scales the steer and the timeout; an unknown value is a hard error.
 The read runs in a clean dir with no checkout, so the prompt supplies the clone URL and
 lets it investigate (clone, web) when the depth warrants.
 
-## Freeform mode: inline answer (was `ask`)
+## Freeform mode: seeded session (was `ask`)
 
 Runs *inside* a fresh container (not a bare host one-shot) so the answer can lean on the
-repo clone and operating context. It joins + validates the question, resolves the
-context repo (`--repo`, else the cwd's git origin), trust-gates the owner, spins a fresh
-attached container, runs the agent one-shot, and streams the answer inline; the
-[reaper](container-reap.md) sweeps it on exit. The prompt is explicit that it is
-**read-only** (read, search, run read-only commands - never commit, push, or open
-anything). The container exports `WARD_ASK=1`.
+repo clone and operating context. It resolves the context repo (`--repo`, else the cwd's
+git origin), trust-gates the owner, and spins a fresh attached container seeded with the
+question; the [reaper](container-reap.md) sweeps it on exit. Either way the agent stays
+**read-only** - never commit, push, open anything, or carry work to merge.
+
+**Interactive by default (ward#388).** With a terminal attached, the freeform advisor
+drops you into a **live seeded session** - it answers, then stays for follow-ups, since a
+scratch clone plus operating context is the surface you want to keep poking at. This is
+the plain `claude <seed>` launch, seeded with `interactivePrompt`.
+
+**One-shot fallback + escape hatch.** With no TTY (piped, CI, the host-broker dispatch a
+[director surface](agent-surface.md) uses) interactive can't work, so it falls back to
+the **one-shot streamed answer**: `WARD_ASK=1`, the `claude -p` branch, one inline answer
+seeded with `askPrompt`. `--oneshot` (alias `--answer`) forces that path even under a
+TTY. The switch is `terminalAttached()`, the same signal driving `plan.TTY`.
 
 ## `--print`
 
 A ref renders the ref, depth, prompt, and research prompt (it still fetches the issue,
 so it needs the Forgejo token); a freeform question renders the question, seed, and
-docker plan. Either way it researches/runs nothing and posts nothing.
+docker plan, stating which path will run (interactive vs one-shot `WARD_ASK=1`). Neither
+researches, runs, nor posts anything.
 
 ## See also
 

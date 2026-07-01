@@ -26,12 +26,13 @@ type** keys the mode (a ref acts on an issue, freeform text files/answers it):
   polls outcomes, drains the lane, and **surfaces a read-only scope + dispatch session** on
   drain. [agent-director.md](agent-director.md).
 - **`advisor`** (was `reply`+`ask`) - answers, writes no code: a ref comments, freeform
-  answers inline. [agent-advisor.md](agent-advisor.md).
+  is interactive (`--oneshot`/no-TTY streams one answer; ward#388).
+  [agent-advisor.md](agent-advisor.md).
 
-ward#353 collapsed the old standalone `architect` (was `explore`) read-only role into the
-director's surface phase - both did the same job, so the roster is now three. The read-only
-surface survives as [the director's surface session](agent-surface.md); `warded
-architect`/`explore`, the writable `sandbox`, etc. error as unknown commands.
+ward#353 folded the old standalone `architect`/`explore` role into the director's surface
+phase, so the roster is now three; the read-only surface survives as [the director's
+surface session](agent-surface.md). `warded architect`/`explore`/`sandbox` now error as
+unknown commands.
 
 ## Usage
 
@@ -42,7 +43,7 @@ warded engineer #98                             # implement a ticket: detached f
 warded engineer "fix the flaky exec_gate test"  # freeform -> file an issue first, then carry
 warded director --repo owner/name               # autonomous headless-lane loop; surfaces a read-only session on drain
 warded advisor #98 "what would it take to..."   # research the issue, post a comment
-warded advisor "how is the audit log written?"  # answer a freeform question inline
+warded advisor "how is the audit log written?"  # freeform: interactive (--oneshot = one answer)
 ```
 
 The role comes first; `--driver` picks the harness (`claude|codex|qwen|goose`, default

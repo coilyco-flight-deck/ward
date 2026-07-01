@@ -29,6 +29,9 @@ func agentAdvisorFlags() []cli.Flag {
 		// Freeform mode (was `ask`): the fresh container the inline answer leans on.
 		&cli.StringFlag{Name: "repo", Usage: "freeform mode: owner/repo to clone for context (default: inferred from the cwd's git origin)"},
 		&cli.StringSliceFlag{Name: "with-repo", Usage: "freeform mode: clone an additional repo for context (owner/name; repeatable), landed under /workspace alongside the primary repo (ward#230)."},
+		// Freeform mode is interactive by default under a TTY (ward#388); --oneshot
+		// forces the streamed one-shot answer even on a terminal (scripting escape hatch).
+		&cli.BoolFlag{Name: "oneshot", Aliases: []string{"answer"}, Usage: "freeform mode: force the one-shot streamed answer even under a TTY (default: interactive seeded session when a terminal is attached)"},
 	}
 	flags = append(flags, agentImageFlags()...)
 	return append(flags,
@@ -43,7 +46,7 @@ func agentAdvisorCommand() *cli.Command {
 	return &cli.Command{
 		Name: "advisor",
 		Usage: "Answer without writing code: a ref researches the issue and posts the answer as a comment; " +
-			"freeform text answers the question inline. No code change.",
+			"freeform text opens an interactive seeded session (one-shot streamed answer with no TTY or --oneshot). No code change.",
 		ArgsUsage: "<owner/repo#N | forgejo-issue-url> <prompt> | '<question>'",
 		Flags:     agentAdvisorFlags(),
 		Action: func(ctx context.Context, c *cli.Command) error {
@@ -76,8 +79,8 @@ func (r *Runner) runAgentAdvisor(ctx context.Context, c *cli.Command, mode conta
 	return r.runAgentAsk(ctx, c, mode)
 }
 
-// runAgentAsk seeds the question, spins up a fresh attached container, and runs the
-// agent one-shot so the answer streams inline (advisor freeform mode; ward#347, was ask).
+// runAgentAsk seeds the freeform question and spins a fresh attached container (was ask):
+// interactive by default, one-shot with no TTY or --oneshot (ward#347, ward#388).
 func (r *Runner) runAgentAsk(ctx context.Context, c *cli.Command, mode containerMode) error {
 	label := agentCmdline(mode, "advisor")
 
@@ -101,7 +104,14 @@ func (r *Runner) runAgentAsk(ctx context.Context, c *cli.Command, mode container
 			label, repo.Owner, strings.Join(r.primaryOrgs(), ", "))
 	}
 
-	seed := askPrompt(question)
+	// Interactive by default under a TTY; one-shot streamed answer with no TTY
+	// (piped/CI/host-broker) or --oneshot. terminalAttached() drives plan.TTY (ward#388).
+	oneshot := c.Bool("oneshot") || !terminalAttached()
+
+	seed := interactivePrompt(question)
+	if oneshot {
+		seed = askPrompt(question)
+	}
 
 	assetsDir, cleanupAssets, err := writeContainerAssets()
 	if err != nil {
@@ -114,7 +124,9 @@ func (r *Runner) runAgentAsk(ctx context.Context, c *cli.Command, mode container
 	if err != nil {
 		return err
 	}
-	plan.Ask = true
+	// Only the one-shot path exports WARD_ASK=1 (claude -p): the interactive default
+	// leaves it unset so the entrypoint takes the plain seeded `claude <seed>` branch.
+	plan.Ask = oneshot
 	// Name it advisor-<driver>-<machine> (issueless, so the machine id disambiguates
 	// concurrent answers) and label it ward.role=advisor (ward#364).
 	plan.Role = roleAdvisor
@@ -139,7 +151,11 @@ func (r *Runner) runAgentAsk(ctx context.Context, c *cli.Command, mode container
 		return err
 	}
 	defer cleanupEnv()
-	fmt.Fprintf(os.Stderr, "%s: answering with %s about %s in a fresh container...\n\n", label, mode.agentBinary(), repo.slug())
+	if plan.Ask {
+		fmt.Fprintf(os.Stderr, "%s: answering with %s about %s in a fresh container...\n\n", label, mode.agentBinary(), repo.slug())
+	} else {
+		fmt.Fprintf(os.Stderr, "%s: opening an interactive %s session about %s in a fresh container (read-only; follow up as you like)...\n\n", label, mode.agentBinary(), repo.slug())
+	}
 	return r.createAgentContainer(ctx, plan, envFile)
 }
 
@@ -162,6 +178,26 @@ func askPrompt(question string) string {
 		question)
 }
 
+// interactivePrompt frames the freeform advisor's default seeded session (ward#388): a
+// conversational opener inviting follow-up, same read-only guardrails as askPrompt. Pure.
+func interactivePrompt(question string) string {
+	question = strings.TrimSpace(question)
+	if question == "" {
+		question = "(no question given)"
+	}
+	return fmt.Sprintf(
+		"You are in an interactive advisory session with a human at the terminal. Answer the "+
+			"question below, then stay and take follow-ups conversationally - this is a live "+
+			"back-and-forth, not a one-shot, so it is fine to ask a clarifying question and to "+
+			"build on earlier answers.\n\n"+
+			"You are an advisor, NOT an implementer: do NOT change code, commit, push, open "+
+			"anything, or carry any issue to merge. You have a fresh clone of this repo and the "+
+			"usual operating context - read the code, run read-only commands, and search as needed "+
+			"to ground your answers, but every action stays read-only.\n\n"+
+			"----- the question -----\n%s\n----- end question -----",
+		question)
+}
+
 // printAgentAskPlan renders the repo, question, seeded prompt, and docker plan without
 // cloning or firing - the dry-run preview for the advisor's freeform mode.
 func printAgentAskPlan(c *cli.Command, p upPlan, question, seed string) error {
@@ -171,7 +207,11 @@ func printAgentAskPlan(c *cli.Command, p upPlan, question, seed string) error {
 	}
 	var b strings.Builder
 	fmt.Fprintf(&b, "# %s (print, freeform mode)\n", agentCmdline(p.Mode, "advisor"))
-	fmt.Fprintf(&b, "advisor: agent runs one-shot, attached, in a fresh ephemeral container\n")
+	if p.Ask {
+		fmt.Fprintf(&b, "advisor: agent runs one-shot, attached, in a fresh ephemeral container (WARD_ASK=1; --oneshot or no TTY)\n")
+	} else {
+		fmt.Fprintf(&b, "advisor: agent runs interactive + seeded, attached, in a fresh ephemeral container (TTY attached; follow-ups welcome)\n")
+	}
 	fmt.Fprintf(&b, "repo:   %s\n", p.Repo.slug())
 	fmt.Fprintf(&b, "name:   %s\n", p.Name)
 	fmt.Fprintf(&b, "----- question -----\n%s\n----- end -----\n", question)
