@@ -1,0 +1,85 @@
+// Fleet config for ward (cli-guard fleetconfig, DIALECT 2). This is NOT a
+// guardfile: it names which agents the ward fleet can run and how each one is
+// launched (binary, context level, argv shape, model), never a permission. The
+// `.fleet.kdl` suffix - no `.guardfile.` infix - keeps it out of the ward-kdl
+// guardfile auto-discovery glob (ward-kdl.*.guardfile.kdl) and the exec/ops
+// mirrors; it rides its own embed dir (cmd/ward/fleetassets/) and parser
+// (cmd/ward/fleet.go via pkg/fleetconfig), legibly partitioned from the
+// permission dialect (aos#310 §6, ward#415).
+//
+// This file is the single hand-edited source. `make sync-fleet-assets` copies
+// it to cmd/ward/fleetassets/fleet.generated.kdl for go:embed (which cannot
+// reach this sibling dir); fleetassets_test.go fails the build on drift.
+//
+// The roster + per-agent divergence is the same data as
+// cmd/ward/containerassets/agent-adapters.yaml and the container_bootstrap.go
+// env-defaults, restated here in the ratified fleet grammar. The three-way
+// contract test (agent_adapter_test.go) pins fleet.generated.kdl <->
+// agent-adapters.yaml <-> the parseMode roster so the three cannot diverge.
+//
+// POST-#412 roster: `opencode` is the canonical harness key (qwen is only the
+// backing model + a deprecated --mode alias). Nothing reads this manifest at
+// runtime yet - that wiring is a later issue; this phase authors + embeds + pins.
+fleet {
+    schema-version 2
+    // defaults mirror the container_bootstrap.go env-default constants: WARD_MODE
+    // -> defaults.agent, WARD_GIT_NAME/WARD_GIT_EMAIL -> defaults.attribution.
+    defaults {
+        agent claude
+        attribution name=coilyco-ops email=coilyco-ops@coilysiren.me
+    }
+    // claude: full context (level 2), stream-json headless, keychain auth.
+    agent claude {
+        binary claude
+        context-level 2
+        stream stream-json
+        auth claude-keychain
+        argv {
+            preflight claude -p
+            headless claude -p --verbose --output-format stream-json
+            interactive claude
+        }
+    }
+    // codex: scoped context (level 1), no stream, codex-file auth, no pre-flight.
+    // Cheapest bootstrap settings: WARD_CODEX_MODEL/_REASONING_EFFORT/_VERBOSITY.
+    agent codex {
+        binary codex
+        context-level 1
+        stream none
+        auth codex-file
+        model gpt-5.4-mini
+        reasoning-effort low
+        verbosity low
+        argv {
+            headless codex exec
+            interactive codex
+        }
+    }
+    // opencode: minimal context (level 0), no stream, no host auth, no pre-flight.
+    // WARD_QWEN_MODEL/WARD_OLLAMA_URL -> model/endpoint (canonical post-#412).
+    agent opencode {
+        binary opencode
+        context-level 0
+        stream none
+        auth none
+        model qwen3-coder:30b
+        endpoint "http://localhost:11434/v1"
+        argv {
+            headless opencode run
+            interactive opencode
+        }
+    }
+    // goose: full context (level 2) like claude, no stream, ollama auth. Carries a
+    // host pre-flight one-shot (`goose run -t`), same argv as its headless launch.
+    agent goose {
+        binary goose
+        context-level 2
+        stream none
+        auth ollama
+        argv {
+            preflight goose run -t
+            headless goose run -t
+            interactive goose session
+        }
+    }
+}

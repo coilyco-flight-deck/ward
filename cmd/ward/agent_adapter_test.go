@@ -2,7 +2,10 @@ package main
 
 import (
 	"fmt"
+	"strings"
 	"testing"
+
+	"forgejo.coilysiren.me/coilyco-flight-deck/cli-guard/pkg/fleetconfig"
 )
 
 // TestAgentManifestParses guards the embedded manifest: it must parse, declare
@@ -155,5 +158,96 @@ func TestParseAgentManifestAccepts(t *testing.T) {
 	argv, ok := a.preflightArgv("go?")
 	if !ok || fmt.Sprint(argv) != fmt.Sprint([]string{"claude", "-p", "go?"}) {
 		t.Errorf("preflightArgv = %v (ok=%v), want [claude -p go?]", argv, ok)
+	}
+}
+
+// fleetAgent looks a parsed fleet agent up by name (test helper).
+func fleetAgent(f fleetconfig.Fleet, name string) (fleetconfig.Agent, bool) {
+	for _, a := range f.Agents {
+		if a.Name == name {
+			return a, true
+		}
+	}
+	return fleetconfig.Agent{}, false
+}
+
+// TestFleetManifestSwitchesThreeWayPin is the ward#415 three-way contract:
+// fleet.generated.kdl, agent-adapters.yaml, and the parseMode roster must agree.
+func TestFleetManifestSwitchesThreeWayPin(t *testing.T) {
+	fleet, err := loadFleetConfig()
+	if err != nil {
+		t.Fatalf("loadFleetConfig: %v", err)
+	}
+	manifest, err := loadAgentManifest()
+	if err != nil {
+		t.Fatalf("loadAgentManifest: %v", err)
+	}
+
+	// Roster sizes must match the canonical parseMode set exactly, so an agent
+	// added to one source but not the others is caught, not silently tolerated.
+	if len(fleet.Agents) != len(agentModes) {
+		t.Errorf("fleet has %d agents, want %d (the agentModes roster)", len(fleet.Agents), len(agentModes))
+	}
+	if len(manifest.Agents) != len(agentModes) {
+		t.Errorf("manifest has %d agents, want %d (the agentModes roster)", len(manifest.Agents), len(agentModes))
+	}
+
+	for _, mode := range agentModes {
+		name := string(mode)
+		fa, ok := fleetAgent(fleet, name)
+		if !ok {
+			t.Errorf("fleet.generated.kdl is missing agent %q (in the parseMode roster)", name)
+			continue
+		}
+		ad, ok := manifest.adapter(name)
+		if !ok {
+			t.Errorf("agent-adapters.yaml is missing agent %q (in the parseMode roster)", name)
+			continue
+		}
+
+		// The parseMode roster is the third anchor: its name must round-trip, and
+		// its own switches (binary, context level) must agree with both sources.
+		rt, err := parseMode(name)
+		if err != nil || rt != mode {
+			t.Errorf("parseMode(%q) = %q, %v; want %q", name, rt, err, mode)
+		}
+		if fa.Binary != mode.agentBinary() || ad.Binary != mode.agentBinary() {
+			t.Errorf("%s binary: fleet %q / manifest %q / switch %q disagree", name, fa.Binary, ad.Binary, mode.agentBinary())
+		}
+		if fa.ContextLevel != mode.contextLevel() || ad.ContextLevel != mode.contextLevel() {
+			t.Errorf("%s contextLevel: fleet %d / manifest %d / switch %d disagree", name, fa.ContextLevel, ad.ContextLevel, mode.contextLevel())
+		}
+
+		// Stream + auth are fleet<->manifest fields (no Go switch); pin them so the
+		// two denormalized copies cannot drift apart.
+		if fa.Stream != ad.Stream {
+			t.Errorf("%s stream: fleet %q != manifest %q", name, fa.Stream, ad.Stream)
+		}
+		if fa.Auth != ad.Auth {
+			t.Errorf("%s auth: fleet %q != manifest %q", name, fa.Auth, ad.Auth)
+		}
+
+		// argv (all three modes) must agree token-for-token across fleet + manifest.
+		if got, want := strings.Join(fa.Argv.Preflight, " "), strings.Join(ad.Argv.Preflight, " "); got != want {
+			t.Errorf("%s preflight argv: fleet %q != manifest %q", name, got, want)
+		}
+		if got, want := strings.Join(fa.Argv.Headless, " "), strings.Join(ad.Argv.Headless, " "); got != want {
+			t.Errorf("%s headless argv: fleet %q != manifest %q", name, got, want)
+		}
+		if got, want := strings.Join(fa.Argv.Interactive, " "), strings.Join(ad.Argv.Interactive, " "); got != want {
+			t.Errorf("%s interactive argv: fleet %q != manifest %q", name, got, want)
+		}
+	}
+
+	// The qwen back-compat alias resolves to the canonical opencode roster key, and
+	// no source carries a literal `qwen` agent (opencode is canonical post-#412).
+	if rt, err := parseMode(modeQwenAlias); err != nil || rt != modeOpencode {
+		t.Errorf("parseMode(%q) = %q, %v; want %q (opencode canonical)", modeQwenAlias, rt, err, modeOpencode)
+	}
+	if _, ok := fleetAgent(fleet, modeQwenAlias); ok {
+		t.Errorf("fleet.generated.kdl carries a %q agent; %q is a back-compat alias, opencode is canonical", modeQwenAlias, modeQwenAlias)
+	}
+	if _, ok := manifest.adapter(modeQwenAlias); ok {
+		t.Errorf("agent-adapters.yaml carries a %q agent; %q is a back-compat alias, opencode is canonical", modeQwenAlias, modeQwenAlias)
 	}
 }

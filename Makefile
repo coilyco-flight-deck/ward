@@ -1,4 +1,4 @@
-.PHONY: help build test vet lint tidy cover install ward-kdl install-tmp lock skew sync-ops-assets sync-exec-assets build-ward-kdl build-ward-kdl-tiers build-ward-kdl-forgejo-tiers workspace agent-roster
+.PHONY: help build test vet lint tidy cover install ward-kdl install-tmp lock skew sync-ops-assets sync-exec-assets sync-fleet-assets build-ward-kdl build-ward-kdl-tiers build-ward-kdl-forgejo-tiers workspace agent-roster
 
 SPECVERB_GEN := forgejo.coilysiren.me/coilyco-flight-deck/cli-guard/cmd/specverb-gen
 
@@ -61,6 +61,7 @@ build-ward-kdl: ## build or rebuild the ward-kdl binary, one shot for ease of us
 	$(MAKE) build-ward-kdl-tiers
 	$(MAKE) sync-ops-assets
 	$(MAKE) sync-exec-assets
+	$(MAKE) sync-fleet-assets
 
 build-ward-kdl-tiers: ## build the read/write/admin tier binaries, discovering every area dropped into each tier subdir (ward#240, ward#338).
 	@mkdir -p bin docs/ward-kdl
@@ -121,6 +122,15 @@ sync-exec-assets: ## Mirror the exec-dialect ward-kdl guardfiles into cmd/ward f
 	@for f in ./cmd/ward-kdl/ward-kdl.*.guardfile.kdl; do \
 		if grep -qE '^[[:space:]]+exec ' "$$f"; then cp "$$f" ./cmd/ward/execassets/; fi; \
 	done
+
+sync-fleet-assets: ## Mirror the dialect-2 ward-kdl.fleet.kdl into cmd/ward for embedding (ward#415).
+	# The fleet config is dialect 2 (fleetconfig, not a guardfile): it names the
+	# agent roster + launch shape, never a permission. go:embed can't reach the
+	# sibling cmd/ward-kdl/ dir, so mirror the one canonical source here as
+	# fleet.generated.kdl (the `.generated.` infix marks it derived, ward#270).
+	# fleetassets_test.go fails the build on drift, so re-sync after every change.
+	@mkdir -p ./cmd/ward/fleetassets
+	cp ./cmd/ward-kdl/ward-kdl.fleet.kdl ./cmd/ward/fleetassets/fleet.generated.kdl
 
 agent-roster: ## Regenerate docs/agent-roster.md from the code roster - the binary describing its own roles (ward#348).
 	# The flat agent-role list is generated, never hand-edited: `ward agent roster`
