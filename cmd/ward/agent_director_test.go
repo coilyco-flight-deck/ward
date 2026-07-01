@@ -2,6 +2,8 @@ package main
 
 import (
 	"errors"
+	"os"
+	"path/filepath"
 	"reflect"
 	"testing"
 	"time"
@@ -207,6 +209,68 @@ func TestParseScopeRepos(t *testing.T) {
 			}
 		})
 	}
+}
+
+func TestPartitionScopeEntries(t *testing.T) {
+	cases := []struct {
+		name      string
+		entries   []string
+		wantOrgs  []string
+		wantRepos []string
+	}{
+		{"orgs only", []string{"coilyco-flight-deck", "coilyco-bridge"}, []string{"coilyco-flight-deck", "coilyco-bridge"}, nil},
+		{"repos only", []string{"a/b", "c/d"}, nil, []string{"a/b", "c/d"}},
+		{"mixed, order-preserving", []string{"a/b", "org", "c/d"}, []string{"org"}, []string{"a/b", "c/d"}},
+		{"de-dupes and trims blanks", []string{" org ", "org", "", "a/b", "a/b"}, []string{"org"}, []string{"a/b"}},
+		{"empty", nil, nil, nil},
+	}
+	for _, c := range cases {
+		t.Run(c.name, func(t *testing.T) {
+			gotOrgs, gotRepos := partitionScopeEntries(c.entries)
+			if !reflect.DeepEqual(gotOrgs, c.wantOrgs) {
+				t.Errorf("partitionScopeEntries(%v) orgs = %v, want %v", c.entries, gotOrgs, c.wantOrgs)
+			}
+			if !reflect.DeepEqual(gotRepos, c.wantRepos) {
+				t.Errorf("partitionScopeEntries(%v) repos = %v, want %v", c.entries, gotRepos, c.wantRepos)
+			}
+		})
+	}
+}
+
+// TestLoadDirectorDefaultScope covers ward#398: the config-stored fallback scope is read
+// from ~/.ward/config.yaml, partitioned into orgs vs repos; a missing file is no error.
+func TestLoadDirectorDefaultScope(t *testing.T) {
+	t.Run("missing file yields empties, no error", func(t *testing.T) {
+		t.Setenv("HOME", t.TempDir())
+		orgs, repos, err := loadDirectorDefaultScope()
+		if err != nil {
+			t.Fatalf("loadDirectorDefaultScope() unexpected error: %v", err)
+		}
+		if len(orgs) != 0 || len(repos) != 0 {
+			t.Errorf("missing config should yield empty scope, got orgs=%v repos=%v", orgs, repos)
+		}
+	})
+	t.Run("orgs and bare repos partitioned", func(t *testing.T) {
+		home := t.TempDir()
+		t.Setenv("HOME", home)
+		if err := os.MkdirAll(filepath.Join(home, ".ward"), 0o750); err != nil {
+			t.Fatalf("mkdir: %v", err)
+		}
+		yaml := "director:\n  default-scope: [coilyco-flight-deck, coilyco-bridge, some/repo]\n"
+		if err := os.WriteFile(filepath.Join(home, ".ward", "config.yaml"), []byte(yaml), 0o600); err != nil {
+			t.Fatalf("write config: %v", err)
+		}
+		orgs, repos, err := loadDirectorDefaultScope()
+		if err != nil {
+			t.Fatalf("loadDirectorDefaultScope() error: %v", err)
+		}
+		if want := []string{"coilyco-flight-deck", "coilyco-bridge"}; !reflect.DeepEqual(orgs, want) {
+			t.Errorf("orgs = %v, want %v", orgs, want)
+		}
+		if want := []string{"some/repo"}; !reflect.DeepEqual(repos, want) {
+			t.Errorf("repos = %v, want %v", repos, want)
+		}
+	})
 }
 
 // TestDirectorHasOrgFlag covers ward#370: director takes a repeatable --org scope flag.
