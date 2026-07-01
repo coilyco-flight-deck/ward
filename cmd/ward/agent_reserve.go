@@ -315,12 +315,12 @@ func postReservationComment(ctx context.Context, attempts int, backoff time.Dura
 	return attempts, err
 }
 
-// warnRemoteReservationLost prints the loud, greppable WARN for a carry whose remote
+// warnRemoteReservationLost prints the loud, greppable WARN for a run whose remote
 // reservation could not be posted; the run proceeds on the local sentinel (ward#402).
 func warnRemoteReservationLost(label string, ref agentIssueRef, detail string) {
 	fmt.Fprintf(os.Stderr,
 		"%s: warning: %s for %s (%s); the local sentinel still holds this host, but cross-host dedup and "+
-			"the issue-thread reservation signal are LOST for this carry - check the host forgejo token/SSM "+
+			"the issue-thread reservation signal are LOST for this run - check the host forgejo token/SSM "+
 			"path and this issue's thread (ward#402)\n",
 		label, reservationWarnToken, ref, detail)
 }
