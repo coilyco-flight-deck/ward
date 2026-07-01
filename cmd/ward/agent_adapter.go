@@ -7,6 +7,7 @@ import (
 	"embed"
 	"fmt"
 
+	"forgejo.coilysiren.me/coilyco-flight-deck/cli-guard/pkg/fleetconfig"
 	"gopkg.in/yaml.v3"
 )
 
@@ -66,9 +67,44 @@ func (m agentManifest) adapter(name string) (agentAdapter, bool) {
 	return agentAdapter{}, false
 }
 
-// loadAgentManifest parses the embedded agent-adapter manifest - the pinned copy
-// of the aos-published source, read with no network (mirrors loadSubstrateManifest).
+// loadAgentManifest builds the manifest from the embedded dialect-2 fleet config
+// (fleet.go) - the runtime source as of ward#416; the YAML stays for the drift pin.
 func loadAgentManifest() (agentManifest, error) {
+	f, err := loadFleetConfig()
+	if err != nil {
+		return agentManifest{}, fmt.Errorf("agent-adapter manifest (from fleet): %w", err)
+	}
+	m := fleetToAgentManifest(f)
+	if err := validateAgentManifest(m); err != nil {
+		return agentManifest{}, err
+	}
+	return m, nil
+}
+
+// fleetToAgentManifest projects a parsed fleet roster onto the adapter shape the
+// launcher reads (binary/context-level/stream/auth/argv); model/endpoint go direct.
+func fleetToAgentManifest(f fleetconfig.Fleet) agentManifest {
+	m := agentManifest{SchemaVersion: agentAdapterSchemaVersion}
+	for _, a := range f.Agents {
+		m.Agents = append(m.Agents, agentAdapter{
+			Name:         a.Name,
+			Binary:       a.Binary,
+			ContextLevel: a.ContextLevel,
+			Stream:       a.Stream,
+			Auth:         a.Auth,
+			Argv: agentArgv{
+				Preflight:   a.Argv.Preflight,
+				Headless:    a.Argv.Headless,
+				Interactive: a.Argv.Interactive,
+			},
+		})
+	}
+	return m
+}
+
+// loadAgentManifestYAML parses the embedded agent-adapters.yaml, kept only for the
+// three-way drift pin until issue 6 deletes it; loadAgentManifest is the runtime read.
+func loadAgentManifestYAML() (agentManifest, error) {
 	data, err := agentAdapterAsset.ReadFile("containerassets/" + agentAdaptersRel)
 	if err != nil {
 		return agentManifest{}, err
@@ -76,40 +112,49 @@ func loadAgentManifest() (agentManifest, error) {
 	return parseAgentManifest(data)
 }
 
-// parseAgentManifest unmarshals and validates the manifest. Validation is strict
-// so a malformed or partial manifest fails loudly rather than driving the wrong binary.
+// parseAgentManifest unmarshals + validates the YAML manifest, failing loud on a
+// malformed one. Validation is shared with the fleet path via validateAgentManifest.
 func parseAgentManifest(data []byte) (agentManifest, error) {
 	var m agentManifest
 	if err := yaml.Unmarshal(data, &m); err != nil {
 		return agentManifest{}, fmt.Errorf("agent-adapter manifest: %w", err)
 	}
+	if err := validateAgentManifest(m); err != nil {
+		return agentManifest{}, err
+	}
+	return m, nil
+}
+
+// validateAgentManifest enforces the schema on an already-parsed manifest,
+// whichever source built it (YAML file or the projected fleet roster).
+func validateAgentManifest(m agentManifest) error {
 	if m.SchemaVersion != agentAdapterSchemaVersion {
-		return agentManifest{}, fmt.Errorf("agent-adapter manifest: schemaVersion %d, want %d", m.SchemaVersion, agentAdapterSchemaVersion)
+		return fmt.Errorf("agent-adapter manifest: schemaVersion %d, want %d", m.SchemaVersion, agentAdapterSchemaVersion)
 	}
 	if len(m.Agents) == 0 {
-		return agentManifest{}, fmt.Errorf("agent-adapter manifest: no agents defined")
+		return fmt.Errorf("agent-adapter manifest: no agents defined")
 	}
 	seen := map[string]bool{}
 	for i, a := range m.Agents {
 		if a.Name == "" {
-			return agentManifest{}, fmt.Errorf("agent-adapter manifest: agent %d has no name", i)
+			return fmt.Errorf("agent-adapter manifest: agent %d has no name", i)
 		}
 		if seen[a.Name] {
-			return agentManifest{}, fmt.Errorf("agent-adapter manifest: duplicate agent %q", a.Name)
+			return fmt.Errorf("agent-adapter manifest: duplicate agent %q", a.Name)
 		}
 		seen[a.Name] = true
 		if a.Binary == "" {
-			return agentManifest{}, fmt.Errorf("agent-adapter manifest: agent %q has no binary", a.Name)
+			return fmt.Errorf("agent-adapter manifest: agent %q has no binary", a.Name)
 		}
 		if a.ContextLevel < 0 || a.ContextLevel > 2 {
-			return agentManifest{}, fmt.Errorf("agent-adapter manifest: agent %q contextLevel %d out of range 0..2", a.Name, a.ContextLevel)
+			return fmt.Errorf("agent-adapter manifest: agent %q contextLevel %d out of range 0..2", a.Name, a.ContextLevel)
 		}
 		if len(a.Argv.Headless) == 0 {
-			return agentManifest{}, fmt.Errorf("agent-adapter manifest: agent %q has no headless argv", a.Name)
+			return fmt.Errorf("agent-adapter manifest: agent %q has no headless argv", a.Name)
 		}
 		if a.Argv.Headless[0] != a.Binary {
-			return agentManifest{}, fmt.Errorf("agent-adapter manifest: agent %q headless argv starts with %q, not its binary %q", a.Name, a.Argv.Headless[0], a.Binary)
+			return fmt.Errorf("agent-adapter manifest: agent %q headless argv starts with %q, not its binary %q", a.Name, a.Argv.Headless[0], a.Binary)
 		}
 	}
-	return m, nil
+	return nil
 }
