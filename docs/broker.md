@@ -1,41 +1,34 @@
 # Root credential broker (ward side)
 
 The **root credential broker** hardens the [director's surface](agent-surface.md):
-the session keeps `FORGEJO_TOKEN` in the agent's env, the same bot token an agent
-could rebuild a push from (ward#318). The broker closes that gap - a **root daemon**
-holds it; the dropped agent reaches the forge through a socket, holding nothing.
+the session would otherwise keep `FORGEJO_TOKEN` in the agent's env, the bot token a
+push rebuilds from (ward#318). The broker closes that gap - a **root daemon** holds
+it; the dropped agent reaches the forge through a socket.
 
 This is the **ward side** (ward#329 Unit B). The **policy core** - protocol,
 authorizer, executor interface, server - lives in `cli-guard/pkg/broker`
-(cli-guard#167): policy core in cli-guard, glue + credential in ward.
+(cli-guard#167): policy in cli-guard, glue + credential in ward.
 
 ## The pieces
 
 - **`ward container broker`** (`cmd/ward/broker.go`) is the daemon's `main`: it
   resolves the root-held `FORGEJO_TOKEN`, opens the socket and permissions it
-  `root:<agent-gid>` mode `0660` (group-readable, never world), then serves until
-  a signal cancels it. `broker.Server` only listens on an already-permissioned
-  socket; socket creation is the caller's job.
-- **The executor** (`cmd/ward/broker_exec.go`) shells
-  `ward-kdl-write ops forgejo <verb>` for **file / edit / comment issue**, seeding
-  the bot token into the subprocess env (env, never argv).
+  `root:<agent-gid>` mode `0660` (group-readable, never world), then serves until a
+  signal cancels it. `broker.Server` only listens on an already-permissioned socket.
+- **The executor** (`cmd/ward/broker_exec.go`) shells `ward-kdl-write ops forgejo
+  <verb>` for **file / edit / comment issue**, seeding the bot token into the env.
 - **The authorizer** is the write tier: the file/edit/comment/`dispatch` op
   allowlist + `broker.Policy`'s invariants + a `coily*` owner gate. Delete/admin
-  and every other op stay out, refused out-of-tier before the executor runs.
+  and every other op refuse out-of-tier before the executor runs.
 
 ## ward-kdl-write + auth
 
 The executor shells the **write tier** (ward#240): `read + create/edit`, delete
-absent at compile time. The standalone binary embeds its inherit-flattened
-guardfile, self-contained in-container.
-
-There is no AWS in an explore container, so the write guardfile **overrides** the
-inherited SSM auth with `value env "FORGEJO_TOKEN"` (a singleton, so write-tier
-only; read/admin stay SSM) - the token the daemon holds.
-
-> The generated write guardfile doc still names the read-tier SSM auth in its
-> header (the renderer reads the inheritance root); the compiled binary uses the
-> env auth, the source of truth.
+absent at compile time; the standalone binary embeds its inherit-flattened
+guardfile. With no AWS in an explore container, the write guardfile **overrides**
+the inherited SSM auth with `value env "FORGEJO_TOKEN"` (write-tier only; read/admin
+stay SSM) - the token the daemon holds. The generated guardfile doc still names the
+SSM auth in its header; the compiled binary uses the env auth.
 
 ## Lifecycle (entrypoint)
 
@@ -43,14 +36,12 @@ Started **as root, before the privilege-drop**, gated on `WARD_READONLY`:
 
 1. `install_ward_kdl_write` downloads `ward-kdl-write-linux-<arch>` from the same
    release `ward` came from (best-effort; a miss leaves the broker unstarted).
-2. `start_broker` runs the daemon, waits for the socket, exports `WARD_BROKER_SOCK`
-   for the dropped agent, and sends fd 1+2 to `WARD_BROKER_LOG` (default
-   `/run/ward/broker.log`), never the shared TTY - a raw per-op `ward-broker:` line
-   would corrupt a read-only director's Claude Code TUI input bar (ward#389).
+2. `start_broker` runs the daemon, waits for the socket, exports `WARD_BROKER_SOCK`,
+   and sends fd 1+2 to `WARD_BROKER_LOG` (default `/run/ward/broker.log`), never the
+   shared TTY - a raw per-op line would corrupt the director's Claude Code TUI (ward#389).
 
-The release publishes the tier binaries via the `publish-kdl-tiers` matrix job
-(`.forgejo/workflows/release.yml`), one per tier; the broker downloads `write`:
-amd64 through the generator, arm64 cross-built from the generator's cache module.
+The release publishes the tier binaries via the `publish-kdl-tiers` matrix job; the
+broker downloads `write`.
 
 ## Routing the clients (Unit C)
 
@@ -59,18 +50,24 @@ route through when `WARD_BROKER_SOCK` is set:
 
 1. **`ops forgejo <verb>`** (`ops.go`): the specverb `Wrap` classifies by the leaf's
    `verb.Spec.Name` tail. Issue create/edit/comment/close/reopen forward as the
-   matching `broker.Op`; reads + `--dry-run` go direct; other mutations refuse
-   locally ("write tier only").
+   matching `broker.Op`; reads + `--dry-run` go direct; other mutations refuse locally.
 2. **`warded #N` dispatch** (`resolveForgejoToken`): the child env-file's token is
    seeded from the broker's `dispatch #N` response, not a token the agent holds.
-
-The three failure modes - unreachable, out-of-tier, relayed forge error - differ.
 
 ## Dual mode (not a cutover)
 
 `FORGEJO_TOKEN` is **still** present alongside the broker. Unit C rewires the
-clients; Unit D drops the raw token. A dispatch-seed failure falls back to
-env->SSM, never blocking a launch.
+clients; Unit D drops the raw token. A dispatch-seed failure falls back to env->SSM.
+
+## Not the dispatch broker (ward#382)
+
+Two brokers share the name. **This credential broker** is an in-container **unix
+socket** (`/run/ward/broker.sock`). The **dispatch broker** (`agent_dispatch_broker.go`)
+launches carries over **TCP on the docker gateway** (`WARD_DISPATCH_BROKER_ADDR`, a
+per-launch token) - not a bind-mount, which lands as an **empty dir** under Docker
+Desktop / linuxkit (ward#382, ward#391; see [agent-surface.md](agent-surface.md)).
+Dialing this socket from a dispatch client answers `unsupported protocol version`,
+a `wrong broker` hint.
 
 ## See also
 

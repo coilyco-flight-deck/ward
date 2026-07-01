@@ -304,7 +304,11 @@ func sendDispatchBrokerRequest(ctx context.Context, addr string, req dispatchBro
 	var d net.Dialer
 	conn, err := d.DialContext(ctx, "tcp", addr)
 	if err != nil {
-		return fmt.Errorf("%w: dial %s: %w", errDispatchBrokerUnavailable, addr, err)
+		// Papercut #1 (ward#382): fail loud - name the transport + addr so an
+		// unreachable host dispatch broker never reads as a bare dial error.
+		return fmt.Errorf("%w: the host dispatch broker did not answer at %s "+
+			"(WARD_DISPATCH_BROKER_ADDR, TCP over the docker gateway - see ward#382): %w",
+			errDispatchBrokerUnavailable, addr, err)
 	}
 	defer func() { _ = conn.Close() }()
 	if err := json.NewEncoder(conn).Encode(req); err != nil {
@@ -312,10 +316,23 @@ func sendDispatchBrokerRequest(ctx context.Context, addr string, req dispatchBro
 	}
 	var resp dispatchBrokerResponse
 	if err := json.NewDecoder(conn).Decode(&resp); err != nil {
-		return fmt.Errorf("dispatch broker: read response: %w", err)
+		return fmt.Errorf("dispatch broker: read response from %s: %w", addr, err)
 	}
 	if !resp.OK {
+		// Papercut #2 (ward#382): the credential broker answers a dispatch dial with a
+		// protocol-version refusal - surface it as a "wrong broker" hint, not a bare string.
+		if isCredentialBrokerReply(resp.Error) {
+			return fmt.Errorf("%w: %s answered as the credential broker, not the dispatch broker "+
+				"(WARD_DISPATCH_BROKER_ADDR points at the wrong broker - see ward#382)",
+				errDispatchBrokerUnavailable, addr)
+		}
 		return fmt.Errorf("dispatch broker: %s", resp.Error)
 	}
 	return nil
+}
+
+// isCredentialBrokerReply spots the credential broker's protocol-version refusal:
+// the dispatch client reached cmd/ward/broker.go, not the dispatch broker (ward#382).
+func isCredentialBrokerReply(msg string) bool {
+	return strings.Contains(msg, "unsupported protocol version")
 }

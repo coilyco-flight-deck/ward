@@ -3,6 +3,7 @@ package main
 import (
 	"context"
 	"encoding/json"
+	"errors"
 	"net"
 	"reflect"
 	"strings"
@@ -182,6 +183,61 @@ func TestNoBrokerKeepsDirectDispatchPath(t *testing.T) {
 	}
 	if forwarded {
 		t.Fatal("direct host dispatch should not forward without broker env")
+	}
+}
+
+// TestDispatchBrokerUnreachableFailsLoud locks papercut #1 (ward#382): an addr with
+// nothing listening errors with errDispatchBrokerUnavailable and names the addr.
+func TestDispatchBrokerUnreachableFailsLoud(t *testing.T) {
+	// Bind then immediately close to get an addr guaranteed to refuse the dial.
+	ln, err := net.Listen("tcp", "127.0.0.1:0")
+	if err != nil {
+		t.Fatalf("listen: %v", err)
+	}
+	addr := ln.Addr().String()
+	_ = ln.Close()
+
+	err = sendDispatchBrokerRequest(t.Context(), addr, dispatchBrokerRequest{Role: "engineer"})
+	if err == nil {
+		t.Fatal("dial to a closed addr unexpectedly succeeded")
+	}
+	if !errors.Is(err, errDispatchBrokerUnavailable) {
+		t.Errorf("error = %v, want errors.Is errDispatchBrokerUnavailable", err)
+	}
+	if !strings.Contains(err.Error(), addr) {
+		t.Errorf("error %q does not name the addr %q", err, addr)
+	}
+}
+
+// TestDispatchBrokerWrongBrokerHint locks papercut #2 (ward#382): a dial that reaches
+// the credential broker (a protocol-version refusal) surfaces a "wrong broker" hint.
+func TestDispatchBrokerWrongBrokerHint(t *testing.T) {
+	ln, err := net.Listen("tcp", "127.0.0.1:0")
+	if err != nil {
+		t.Fatalf("listen: %v", err)
+	}
+	defer ln.Close()
+	go func() {
+		conn, err := ln.Accept()
+		if err != nil {
+			return
+		}
+		defer conn.Close()
+		var req dispatchBrokerRequest
+		_ = json.NewDecoder(conn).Decode(&req)
+		// Mimic the credential broker refusing the dispatch protocol handshake.
+		_ = json.NewEncoder(conn).Encode(dispatchBrokerResponse{
+			OK:    false,
+			Error: "unsupported protocol version 0 (want 1)",
+		})
+	}()
+
+	err = sendDispatchBrokerRequest(t.Context(), ln.Addr().String(), dispatchBrokerRequest{Role: "engineer"})
+	if err == nil {
+		t.Fatal("credential-broker reply unexpectedly accepted")
+	}
+	if !strings.Contains(err.Error(), "wrong broker") {
+		t.Errorf("error %q does not carry the wrong-broker hint", err)
 	}
 }
 
