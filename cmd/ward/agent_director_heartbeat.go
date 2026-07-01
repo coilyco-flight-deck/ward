@@ -40,6 +40,9 @@ type directorBackend interface {
 	surface(ctx context.Context) (ran bool, err error)
 	// sleep waits one heartbeat interval, returning early on cancellation.
 	sleep(ctx context.Context, d time.Duration) error
+	// offerSurface is the slots-full sleep (ward#409): on a terminal it offers a keypress
+	// to seize the surface, else sleeps quietly. See the docs. surfaced=the human took it.
+	offerSurface(ctx context.Context, d time.Duration) (surfaced bool, err error)
 	// reportDrained prints the "headless backlog drained" summary.
 	reportDrained() error
 	// reportMaxCycles notes a stop forced by --max-cycles.
@@ -84,10 +87,26 @@ func runDirectorLoop(ctx context.Context, cfg backlogConfig, be directorBackend)
 		if err := directorDispatchTick(ctx, cfg, be, entries, inflight); err != nil {
 			return err
 		}
-		if err := be.sleep(ctx, cfg.pollInterval); err != nil {
+		if err := directorWait(ctx, cfg, be, inflight); err != nil {
 			return err
 		}
 	}
+}
+
+// directorWait ends a tick's sleep window: slots-full offers an on-demand surface
+// (ward#409), every quiet case just sleeps. See the docs; both re-poll next tick.
+func directorWait(ctx context.Context, cfg backlogConfig, be directorBackend, inflight int) error {
+	if directorSlotsFull(cfg, inflight) {
+		_, err := be.offerSurface(ctx, cfg.pollInterval)
+		return err
+	}
+	return be.sleep(ctx, cfg.pollInterval)
+}
+
+// directorSlotsFull is the ward#409 offer condition: no free slot (avail <= 0) with
+// engineers still in flight - the tick can't schedule, the lane isn't drained. Pure.
+func directorSlotsFull(cfg backlogConfig, inflight int) bool {
+	return inflight > 0 && cfg.maxParallel-inflight <= 0
 }
 
 // directorKickoff runs the one-time init gate (ward#361): "yes" returns to drain, "no"
@@ -188,6 +207,44 @@ func (d *liveDirector) surface(ctx context.Context) (bool, error) {
 func (d *liveDirector) sleep(ctx context.Context, dur time.Duration) error {
 	fmt.Fprintf(os.Stderr, "%s: heartbeat - sleeping %s before the next tick (no active LLM)...\n", d.label, dur)
 	return backlogSleep(ctx, dur)
+}
+
+// offerSurface is the ward#409 slots-full sleep: on Enter it hands off through the SAME
+// directorSurface path as the drain, else sleeps quietly. See docs/agent-director.md.
+func (d *liveDirector) offerSurface(ctx context.Context, dur time.Duration) (bool, error) {
+	if !terminalAttached() {
+		return false, d.sleep(ctx, dur)
+	}
+	// Read the controlling terminal on its OWN fd, closed before the surface attaches to
+	// stdin, so the deadline never touches fd 0. No controlling tty falls back to a sleep.
+	tty, err := os.OpenFile("/dev/tty", os.O_RDONLY, 0)
+	if err != nil {
+		return false, d.sleep(ctx, dur)
+	}
+	pressed, err := directorAwaitEnter(ctx, tty, d.label, d.cfg, dur)
+	_ = tty.Close()
+	if err != nil || !pressed {
+		return false, err
+	}
+	return d.r.directorSurface(ctx, d.label, d.repos[0], d.cfg)
+}
+
+// directorAwaitEnter waits up to dur for Enter on tty under a read deadline, so it can't
+// wedge the heartbeat; pressed=keypress, false=window elapsed, ctx cancel returns err.
+func directorAwaitEnter(ctx context.Context, tty *os.File, label string, cfg backlogConfig, dur time.Duration) (bool, error) {
+	fmt.Fprintf(os.Stderr, "%s: all %d engineer slot(s) busy and work still draining - press Enter to drop into "+
+		"an interactive %s session now, else polling in %s...\n", label, cfg.maxParallel, cfg.mode.agentBinary(), dur)
+	_ = tty.SetReadDeadline(time.Now().Add(dur))
+	done := make(chan error, 1)
+	go func() { _, rerr := bufio.NewReader(tty).ReadString('\n'); done <- rerr }()
+	select {
+	case <-ctx.Done():
+		return false, ctx.Err()
+	case rerr := <-done:
+		// A nil read is a keypress; a deadline / closed-tty error just means the window
+		// elapsed with no input, so resume the heartbeat rather than surfacing.
+		return rerr == nil, nil
+	}
 }
 
 func (d *liveDirector) reportDrained() error { return d.r.backlogPrintDrained(d.label, d.repos) }

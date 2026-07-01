@@ -104,6 +104,10 @@ type fakeDirector struct {
 	maxCycleCalls int
 	summaryCalls  int
 	sleeps        int
+	// offerFn drives the ward#409 slots-full on-demand surface offer; nil defaults to the
+	// window elapsing with no keypress (false), the loop then re-polls without surfacing.
+	offerFn    func() (bool, error)
+	offerCalls int
 	// kickoffFn drives the ward#361 init gate; nil defaults to draining now (true), so
 	// every pre-existing test keeps its prior "drain immediately" behavior unchanged.
 	kickoffFn    func() (bool, error)
@@ -157,9 +161,17 @@ func (f *fakeDirector) surface(context.Context) (bool, error) {
 }
 
 func (f *fakeDirector) sleep(context.Context, time.Duration) error { f.sleeps++; return nil }
-func (f *fakeDirector) reportDrained() error                       { f.drainedCalls++; return nil }
-func (f *fakeDirector) reportMaxCycles(int, int)                   { f.maxCycleCalls++ }
-func (f *fakeDirector) summary() error                             { f.summaryCalls++; return nil }
+
+func (f *fakeDirector) offerSurface(context.Context, time.Duration) (bool, error) {
+	f.offerCalls++
+	if f.offerFn != nil {
+		return f.offerFn()
+	}
+	return false, nil
+}
+func (f *fakeDirector) reportDrained() error     { f.drainedCalls++; return nil }
+func (f *fakeDirector) reportMaxCycles(int, int) { f.maxCycleCalls++ }
+func (f *fakeDirector) summary() error           { f.summaryCalls++; return nil }
 
 // TestRunDirectorLoopSmoke is the acceptance smoke: one actionable issue dispatches,
 // reconciles its WARD-OUTCOME next tick, then drains and surfaces (does not exit).
@@ -477,5 +489,69 @@ func TestRunDirectorLoopMaxCycles(t *testing.T) {
 	}
 	if f.surfaceCalls != 0 {
 		t.Errorf("a non-drained max-cycles stop should not surface, got %d", f.surfaceCalls)
+	}
+}
+
+// TestDirectorSlotsFull covers the ward#409 offer condition: it fires only when engineers
+// are in flight AND no slot is free (the tick can't schedule, the lane isn't drained).
+func TestDirectorSlotsFull(t *testing.T) {
+	cases := []struct {
+		maxParallel, inflight int
+		want                  bool
+	}{
+		{2, 0, false}, // idle: free slots, nothing in flight
+		{2, 1, false}, // a free slot remains
+		{2, 2, true},  // full, work in flight -> offer
+		{1, 1, true},  // full at cap 1 -> offer
+		{2, 3, true},  // over cap (defensive): still full
+		{0, 0, false}, // nothing in flight is never the offer case
+	}
+	for _, c := range cases {
+		cfg := backlogConfig{maxParallel: c.maxParallel}
+		if got := directorSlotsFull(cfg, c.inflight); got != c.want {
+			t.Errorf("directorSlotsFull(max=%d, inflight=%d) = %v, want %v", c.maxParallel, c.inflight, got, c.want)
+		}
+	}
+}
+
+// stuckDirector keeps its in-flight engineer draining forever (poll never reconciles), so
+// the slots-full sleep window - and the ward#409 on-demand surface offer - is exercised.
+type stuckDirector struct{ *fakeDirector }
+
+func (d *stuckDirector) poll(context.Context) {} // engineers never finish this run
+
+// TestRunDirectorLoopOffersSurfaceWhenSlotsFull confirms a tick that can't schedule -
+// slots full, in flight - takes the offer path, not the sleep, and dispatches nothing.
+func TestRunDirectorLoopOffersSurfaceWhenSlotsFull(t *testing.T) {
+	inflight := &backlogEntry{Num: 5, Title: "long run", Tier: "P0", Lane: "headless", State: "dispatched"}
+	d := &stuckDirector{fakeDirector: &fakeDirector{list: []*backlogEntry{inflight}}}
+	cfg := backlogConfig{maxParallel: 1, pollInterval: time.Millisecond, maxCycles: 3}
+
+	if err := runDirectorLoop(context.Background(), cfg, d); err != nil {
+		t.Fatalf("loop returned error: %v", err)
+	}
+	if d.offerCalls == 0 {
+		t.Errorf("a slots-full tick must offer the on-demand surface, offerCalls=%d", d.offerCalls)
+	}
+	if d.sleeps != 0 {
+		t.Errorf("the slots-full path offers rather than plain-sleeps, sleeps=%d", d.sleeps)
+	}
+	if d.dispatched != nil {
+		t.Errorf("no free slot, so nothing dispatches, got %v", d.dispatched)
+	}
+}
+
+// TestRunDirectorLoopQuietWhenSlotsFree confirms the quiet path holds: a free slot keeps
+// the loop plain-sleeping, never prompting - the ward#409 offer stays slots-full-only.
+func TestRunDirectorLoopQuietWhenSlotsFree(t *testing.T) {
+	issue := &backlogEntry{Num: 5, Title: "actionable", Tier: "P0", Lane: "headless", State: "queued"}
+	f := &fakeDirector{list: []*backlogEntry{issue}}
+	cfg := backlogConfig{maxParallel: 2, pollInterval: time.Millisecond}
+
+	if err := runDirectorLoop(context.Background(), cfg, f); err != nil {
+		t.Fatalf("loop returned error: %v", err)
+	}
+	if f.offerCalls != 0 {
+		t.Errorf("free slots keep the quiet sleep path, offerCalls=%d want 0", f.offerCalls)
 	}
 }

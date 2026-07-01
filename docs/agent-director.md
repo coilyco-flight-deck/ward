@@ -32,12 +32,11 @@ An opt-in (ward#350), asked **once at init**, never per tick; no terminal drains
 
 Only the **headless** lane auto-dispatches; interactive/consult surface.
 
-## Drain → surface (ward#351, ward#353)
+## Surface: drain + on-demand (ward#351/#353/#409)
 
-When the lane drains - **nothing queued or in flight** - director surfaces a **read-only scope
-+ dispatch session** (the old `architect` role; [agent-surface.md](agent-surface.md)),
-blocking until the human exits; the heartbeat **resumes** if the queue refilled, else stops
-(ward#350).
+On drain (nothing queued or in flight) director opens a **read-only** dispatch session,
+resuming on refill else stopping (ward#350). It also offers **on-demand** when a tick can't
+schedule (slots full, in flight): [director-on-demand-surface.md](director-on-demand-surface.md).
 
 ## The WARD-OUTCOME marker (ward#310)
 
