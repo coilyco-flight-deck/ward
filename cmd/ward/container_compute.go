@@ -53,9 +53,9 @@ const (
 	// so it can dispatch sibling runs; same path both sides (ward#315). See container.md.
 	containerDockerSock = "/var/run/docker.sock"
 
-	// containerDispatchBrokerSock is the narrow host-side dispatch broker socket
-	// exposed into a director read-only surface (ward#378).
-	containerDispatchBrokerSock = "/run/ward/dispatch-broker.sock"
+	// containerHostGateway is the DNS name the container dials to reach the host
+	// broker's TCP port; Linux wires it with --add-host=...:host-gateway (ward#391).
+	containerHostGateway = "host.docker.internal"
 
 	// containerLabel marks ward-managed containers for filtering; identity rides
 	// labels, not the name, now (ward#364, docs/container.md).
@@ -426,9 +426,12 @@ type upPlan struct {
 	// ReadOnly marks a read-only surface session (the director's drain surface, ward#293,
 	// ward#353): exports WARD_READONLY=1. See docs/agent-surface.md.
 	ReadOnly bool
-	// DispatchBrokerSock, when set, exports WARD_DISPATCH_BROKER_SOCK so an
-	// in-container director surface forwards sibling dispatch to host ward.
-	DispatchBrokerSock string
+	// DispatchBrokerAddr, when set, exports WARD_DISPATCH_BROKER_ADDR (host.docker
+	// .internal:<port>) and flips on the --add-host wiring (ward#391).
+	DispatchBrokerAddr string
+	// DispatchBrokerToken exports WARD_DISPATCH_BROKER_TOKEN, the per-launch secret
+	// the surface echoes back so the host broker authenticates the dial.
+	DispatchBrokerToken string
 	// HostNet joins the container to the host network (--network=host) so a carry
 	// inherits the host's tailnet route (--host-net, ward#330). docs/agent-host-net.md.
 	HostNet bool
@@ -526,8 +529,9 @@ func (p upPlan) wardEnv() map[string]string {
 	if p.ReadOnly {
 		env["WARD_READONLY"] = "1"
 	}
-	if p.DispatchBrokerSock != "" {
-		env[envDispatchBrokerSocket] = p.DispatchBrokerSock
+	if p.DispatchBrokerAddr != "" {
+		env[envDispatchBrokerAddr] = p.DispatchBrokerAddr
+		env[envDispatchBrokerToken] = p.DispatchBrokerToken
 	}
 	if p.TSSidecar {
 		// Per-connection proxy (never a host-wide ALL_PROXY), the box dialed by name;
@@ -585,6 +589,11 @@ func dockerArgvHead(verb string, p upPlan) []string {
 		argv = append(argv, "--network="+wardTailnetNetwork)
 	case p.HostNet:
 		argv = append(argv, "--network=host")
+	}
+	// Map host.docker.internal to the host gateway so the surface's broker dial
+	// works on Linux too; --network=host already resolves it, so skip it there.
+	if p.DispatchBrokerAddr != "" && !p.HostNet {
+		argv = append(argv, "--add-host", containerHostGateway+":host-gateway")
 	}
 	return argv
 }

@@ -494,10 +494,11 @@ scrollback. Reserve an in-session subagent for read-only fan-out that only feeds
   the dispatcher authenticate out of the box. The token is the bot's full credential,
   so the no-push rule below is a convention you keep, not yet a credential boundary
   (a dispatch-only token is tracked in ward#318).
-- A host dispatch broker is mounted at `$WARD_DISPATCH_BROKER_SOCK`, so a dispatched
-  `warded #N`, `warded engineer #N`, or `warded advisor #N "question"` asks host ward
-  to launch the sibling from the native host context. Host ward resolves Claude/Codex/
-  Goose credentials there and launches the child; this container does not need a raw
+- A host dispatch broker is reachable over TCP at `$WARD_DISPATCH_BROKER_ADDR`
+  (guarded by `$WARD_DISPATCH_BROKER_TOKEN`), so a dispatched `warded #N`, `warded
+  engineer #N`, or `warded advisor #N "question"` asks host ward to launch the
+  sibling from the native host context. Host ward resolves Claude/Codex/Goose
+  credentials there and launches the child; this container does not need a raw
   Docker dispatch surface for that path.
 
 You **must not**:

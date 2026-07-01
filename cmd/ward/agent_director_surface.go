@@ -71,7 +71,8 @@ func (r *Runner) runScratchSession(ctx context.Context, c *cli.Command, mode con
 
 	if c.Bool("print") {
 		if readOnly {
-			plan.Mounts = append(plan.Mounts, dispatchBrokerMount("<host-dispatch-broker.sock>"))
+			plan.DispatchBrokerAddr = containerHostGateway + ":<port>"
+			plan.DispatchBrokerToken = "<dispatch-broker-token>"
 		}
 		return printScratchPlan(c, plan, readOnly)
 	}
@@ -136,9 +137,9 @@ func (r *Runner) prepareScratchPlan(ctx context.Context, c *cli.Command, mode co
 		return upPlan{}, func() {}, err
 	}
 	plan.ReadOnly = readOnly
-	if readOnly {
-		plan.DispatchBrokerSock = containerDispatchBrokerSock
-	}
+	// The broker's host:port + token are set later in attachHostDispatchBroker,
+	// once the TCP listener binds and its ephemeral port is known (ward#391).
+
 	// Name it session-<driver>-<machine> (issueless, so the machine id disambiguates
 	// concurrent surface sessions) and label ward.role=session (ward#364, ward#353).
 	plan.Role = roleSession
@@ -151,13 +152,14 @@ func (r *Runner) attachHostDispatchBroker(ctx context.Context, plan *upPlan, rea
 		return func() {}, nil
 	}
 	bctx, cancel := context.WithCancel(ctx)
-	hostSock, cleanup, err := r.startHostDispatchBroker(bctx, plan.Name)
+	addr, token, cleanup, err := r.startHostDispatchBroker(bctx, plan.Name)
 	if err != nil {
 		cancel()
 		return func() {}, err
 	}
-	plan.Mounts = append(plan.Mounts, dispatchBrokerMount(hostSock))
-	fmt.Fprintf(os.Stderr, "%s: host dispatch broker ready for %s at %s\n", label, plan.Name, hostSock)
+	plan.DispatchBrokerAddr = addr
+	plan.DispatchBrokerToken = token
+	fmt.Fprintf(os.Stderr, "%s: host dispatch broker ready for %s at %s\n", label, plan.Name, addr)
 	return func() {
 		cancel()
 		cleanup()
@@ -173,7 +175,7 @@ func printScratchPlan(c *cli.Command, p upPlan, readOnly bool) error {
 	}
 	access := "writable"
 	if readOnly {
-		access = "read-only (this clone's push wiring revoked; host dispatch broker mounted)"
+		access = "read-only (this clone's push wiring revoked; host dispatch broker reachable over TCP)"
 	}
 	var b strings.Builder
 	fmt.Fprintf(&b, "# %s (print)\n", agentCmdline(p.Mode, directorSurfaceVerb))

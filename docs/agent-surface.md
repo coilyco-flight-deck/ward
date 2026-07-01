@@ -55,11 +55,15 @@ warded coilyco-flight-deck/ward#NNN  # dispatch a sealed engineer carry
 ```
 
 The surface forwards `warded engineer ...` and `warded advisor ...` ref-mode dispatches to
-a host-side broker mounted into the session. Host ward then launches the sibling from the
-native host context, so Claude/Codex/Goose credentials resolve from the host home rather
-than from the director container. The broker accepts only that constrained dispatch API;
-unrelated ward verbs and arbitrary shell never cross it. The sibling still clones fresh and
-runs its own lifecycle.
+a host-side broker over TCP (guarded by a per-launch token). Host ward then launches the
+sibling from the native host context, so Claude/Codex/Goose credentials resolve from the
+host home rather than from the director container. The broker accepts only that constrained
+dispatch API; unrelated ward verbs and arbitrary shell never cross it. The sibling still
+clones fresh and runs its own lifecycle.
+
+Transport is TCP, not a unix-socket bind-mount: a bind-mounted host socket lands as an empty
+directory under Docker Desktop's file-sharing, so every dispatch dialed a dir (EACCES,
+ward#391).
 
 ## See also
 

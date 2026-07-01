@@ -4,7 +4,6 @@ import (
 	"context"
 	"encoding/json"
 	"net"
-	"path/filepath"
 	"reflect"
 	"strings"
 	"testing"
@@ -63,9 +62,9 @@ func TestBrokerEngineerArgvForwardsApprovedFlags(t *testing.T) {
 }
 
 func TestForwardAgentDispatchToHostBrokerSendsCanonicalRequest(t *testing.T) {
-	dir := t.TempDir()
-	socket := filepath.Join(dir, "broker.sock")
-	ln, err := net.Listen("unix", socket)
+	// ward#391: the transport is TCP over the docker gateway, not a unix socket, so
+	// the stub broker listens on a loopback TCP port and the container dials it.
+	ln, err := net.Listen("tcp", "127.0.0.1:0")
 	if err != nil {
 		t.Fatalf("listen broker: %v", err)
 	}
@@ -84,7 +83,8 @@ func TestForwardAgentDispatchToHostBrokerSendsCanonicalRequest(t *testing.T) {
 		_ = json.NewEncoder(conn).Encode(dispatchBrokerResponse{OK: true})
 	}()
 
-	t.Setenv(envDispatchBrokerSocket, socket)
+	t.Setenv(envDispatchBrokerAddr, ln.Addr().String())
+	t.Setenv(envDispatchBrokerToken, "nonce-123")
 	t.Setenv("WARD_READONLY", "1")
 	t.Setenv("WARD_CONTAINER_NAME", "session-codex-host")
 	cmd := parseCommandForTest(t, agentEngineerFlags(), []string{
@@ -101,29 +101,79 @@ func TestForwardAgentDispatchToHostBrokerSendsCanonicalRequest(t *testing.T) {
 	if req.Role != "engineer" || req.Requester != "session-codex-host" {
 		t.Fatalf("request identity = role %q requester %q", req.Role, req.Requester)
 	}
+	if req.Token != "nonce-123" {
+		t.Errorf("forwarded token = %q, want the per-launch nonce", req.Token)
+	}
 	want := []string{"engineer", "coilyco-flight-deck/ward#378", "--driver", "claude", "--no-preflight"}
 	if !reflect.DeepEqual(req.Argv, want) {
 		t.Errorf("forwarded argv = %v, want %v", req.Argv, want)
 	}
 }
 
-func TestDispatchBrokerEnvAndMountArePlanLocal(t *testing.T) {
+func TestDispatchBrokerEnvIsPlanLocal(t *testing.T) {
 	p := sampleUpPlan()
-	if _, ok := p.wardEnv()[envDispatchBrokerSocket]; ok {
-		t.Fatal("direct host dispatch plan unexpectedly has a dispatch broker env")
+	if _, ok := p.wardEnv()[envDispatchBrokerAddr]; ok {
+		t.Fatal("direct host dispatch plan unexpectedly has a dispatch broker addr env")
 	}
-	p.DispatchBrokerSock = containerDispatchBrokerSock
-	if got := p.wardEnv()[envDispatchBrokerSocket]; got != containerDispatchBrokerSock {
-		t.Errorf("broker env = %q, want %q", got, containerDispatchBrokerSock)
+	p.DispatchBrokerAddr = containerHostGateway + ":54321"
+	p.DispatchBrokerToken = "nonce-abc"
+	env := p.wardEnv()
+	if got := env[envDispatchBrokerAddr]; got != containerHostGateway+":54321" {
+		t.Errorf("broker addr env = %q, want %q", got, containerHostGateway+":54321")
 	}
-	m := dispatchBrokerMount("/tmp/host-broker.sock")
-	if m.Source != "/tmp/host-broker.sock" || m.Target != containerDispatchBrokerSock || m.ReadOnly || m.Volume {
-		t.Errorf("dispatchBrokerMount = %+v", m)
+	if got := env[envDispatchBrokerToken]; got != "nonce-abc" {
+		t.Errorf("broker token env = %q, want nonce-abc", got)
+	}
+}
+
+// TestDispatchBrokerAddHostWiredForSurface locks the ward#391 Linux fallback: a
+// surface plan wires --add-host, a plain plan does not (see the mapping below).
+func TestDispatchBrokerAddHostWiredForSurface(t *testing.T) {
+	p := sampleUpPlan()
+	if containsArg(dockerCreateArgv(p, ""), "--add-host") {
+		t.Fatal("plain plan unexpectedly wires --add-host")
+	}
+	p.DispatchBrokerAddr = containerHostGateway + ":1"
+	argv := dockerCreateArgv(p, "")
+	if !argFollowedBy(argv, "--add-host", containerHostGateway+":host-gateway") {
+		t.Errorf("surface plan missing --add-host mapping: %v", argv)
+	}
+}
+
+// TestDispatchBrokerTokenGate covers the auth the TCP port leans on: a mismatched
+// token is refused before dispatch, a matching one reaches validation (ward#391).
+func TestDispatchBrokerTokenGate(t *testing.T) {
+	for _, tc := range []struct {
+		name    string
+		token   string
+		wantSub string
+	}{
+		{"mismatched token rejected", "wrong", "token rejected"},
+		{"matching token reaches validation", "secret", "refused"},
+	} {
+		t.Run(tc.name, func(t *testing.T) {
+			client, server := net.Pipe()
+			go (&Runner{}).handleHostDispatchBrokerConn(context.Background(), server, "host", "secret")
+			// Role "nope" fails validation, so a matching token stops at a validation
+			// error ("refused") - proving it passed the token gate without dispatching.
+			_ = json.NewEncoder(client).Encode(dispatchBrokerRequest{Role: "nope", Argv: []string{"nope"}, Token: tc.token})
+			var resp dispatchBrokerResponse
+			if err := json.NewDecoder(client).Decode(&resp); err != nil {
+				t.Fatalf("decode response: %v", err)
+			}
+			_ = client.Close()
+			if resp.OK {
+				t.Fatal("expected a refusal, got OK")
+			}
+			if !strings.Contains(resp.Error, tc.wantSub) {
+				t.Errorf("error = %q, want contains %q", resp.Error, tc.wantSub)
+			}
+		})
 	}
 }
 
 func TestNoBrokerKeepsDirectDispatchPath(t *testing.T) {
-	t.Setenv(envDispatchBrokerSocket, "")
+	t.Setenv(envDispatchBrokerAddr, "")
 	t.Setenv("WARD_READONLY", "")
 	cmd := parseCommandForTest(t, agentEngineerFlags(), []string{"engineer", "coilyco-flight-deck/ward#1"})
 	forwarded, err := (&Runner{}).maybeForwardAgentDispatchToHostBroker(context.Background(), cmd, "engineer", modeClaude)

@@ -2,21 +2,32 @@ package main
 
 import (
 	"context"
+	"crypto/rand"
+	"crypto/subtle"
+	"encoding/hex"
 	"encoding/json"
 	"errors"
 	"fmt"
 	"net"
 	"os"
-	"path/filepath"
 	"strings"
 
 	"github.com/urfave/cli/v3"
 )
 
 // agent_dispatch_broker.go wires ward#378: director surfaces ask host ward to
-// launch sibling engineer/advisor runs through a narrow socket API.
+// launch sibling engineer/advisor runs. TCP transport + token gate: ward#391.
 
-const envDispatchBrokerSocket = "WARD_DISPATCH_BROKER_SOCK"
+const (
+	// envDispatchBrokerAddr carries host.docker.internal:<port> the surface dials;
+	// envDispatchBrokerToken the per-launch nonce it echoes back (ward#391).
+	envDispatchBrokerAddr  = "WARD_DISPATCH_BROKER_ADDR"
+	envDispatchBrokerToken = "WARD_DISPATCH_BROKER_TOKEN"
+
+	// dispatchBrokerListenAddr binds an ephemeral TCP port on all interfaces so the
+	// container reaches it via the docker gateway; the token is the access control.
+	dispatchBrokerListenAddr = "0.0.0.0:0"
+)
 
 var errDispatchBrokerUnavailable = errors.New("dispatch broker unavailable")
 
@@ -24,6 +35,9 @@ type dispatchBrokerRequest struct {
 	Role      string   `json:"role"`
 	Argv      []string `json:"argv"`
 	Requester string   `json:"requester,omitempty"`
+	// Token is the per-launch shared secret the surface echoes back so the host
+	// broker authenticates the dial (the TCP port has no socket file perms).
+	Token string `json:"token,omitempty"`
 }
 
 type dispatchBrokerResponse struct {
@@ -31,25 +45,36 @@ type dispatchBrokerResponse struct {
 	Error string `json:"error,omitempty"`
 }
 
-// startHostDispatchBroker serves validated dispatch requests until ctx ends.
-// The returned host socket is mounted into the director surface container.
-func (r *Runner) startHostDispatchBroker(ctx context.Context, requester string) (socket string, cleanup func(), err error) {
-	dir, err := os.MkdirTemp("", "ward-dispatch-broker-*")
+// startHostDispatchBroker serves validated dispatch requests until ctx ends. It
+// returns the host:port the container dials + the token it must echo (ward#391).
+func (r *Runner) startHostDispatchBroker(ctx context.Context, requester string) (addr, token string, cleanup func(), err error) {
+	token, err = newDispatchBrokerToken()
 	if err != nil {
-		return "", func() {}, fmt.Errorf("ward dispatch broker: create socket dir: %w", err)
+		return "", "", func() {}, fmt.Errorf("ward dispatch broker: mint token: %w", err)
 	}
-	cleanup = func() { _ = os.RemoveAll(dir) }
-	socket = filepath.Join(dir, "broker.sock")
-	ln, err := net.Listen("unix", socket)
+	// Bind all interfaces: the container reaches the host via the docker gateway,
+	// and loopback is unreachable from the LinuxKit VM. The token guards it.
+	ln, err := net.Listen("tcp", dispatchBrokerListenAddr) //nolint:gosec // gateway-reachable bind, guarded by the per-launch token
 	if err != nil {
-		cleanup()
-		return "", func() {}, fmt.Errorf("ward dispatch broker: listen: %w", err)
+		return "", "", func() {}, fmt.Errorf("ward dispatch broker: listen: %w", err)
 	}
-	go r.serveHostDispatchBroker(ctx, ln, requester)
-	return socket, cleanup, nil
+	port := ln.Addr().(*net.TCPAddr).Port
+	addr = fmt.Sprintf("%s:%d", containerHostGateway, port)
+	go r.serveHostDispatchBroker(ctx, ln, requester, token)
+	return addr, token, func() {}, nil
 }
 
-func (r *Runner) serveHostDispatchBroker(ctx context.Context, ln net.Listener, requester string) {
+// newDispatchBrokerToken mints a 256-bit hex nonce as the per-launch shared
+// secret guarding the TCP transport (no socket file perm to lean on).
+func newDispatchBrokerToken() (string, error) {
+	buf := make([]byte, 32)
+	if _, err := rand.Read(buf); err != nil {
+		return "", err
+	}
+	return hex.EncodeToString(buf), nil
+}
+
+func (r *Runner) serveHostDispatchBroker(ctx context.Context, ln net.Listener, requester, token string) {
 	go func() {
 		<-ctx.Done()
 		_ = ln.Close()
@@ -63,15 +88,19 @@ func (r *Runner) serveHostDispatchBroker(ctx context.Context, ln net.Listener, r
 			fmt.Fprintf(os.Stderr, "ward dispatch broker: accept: %v\n", err)
 			continue
 		}
-		go r.handleHostDispatchBrokerConn(ctx, conn, requester)
+		go r.handleHostDispatchBrokerConn(ctx, conn, requester, token)
 	}
 }
 
-func (r *Runner) handleHostDispatchBrokerConn(ctx context.Context, conn net.Conn, requester string) {
+func (r *Runner) handleHostDispatchBrokerConn(ctx context.Context, conn net.Conn, requester, token string) {
 	defer func() { _ = conn.Close() }()
 	var req dispatchBrokerRequest
 	if err := json.NewDecoder(conn).Decode(&req); err != nil {
 		writeDispatchBrokerResponse(conn, fmt.Errorf("decode request: %w", err))
+		return
+	}
+	if subtle.ConstantTimeCompare([]byte(req.Token), []byte(token)) != 1 {
+		writeDispatchBrokerResponse(conn, errors.New("dispatch broker: token rejected"))
 		return
 	}
 	if req.Requester == "" {
@@ -183,8 +212,8 @@ func emptyDefault(s, fallback string) string {
 // maybeForwardAgentDispatchToHostBroker is the in-container ref-mode gate.
 // It only runs inside a read-only director surface with a broker socket.
 func (r *Runner) maybeForwardAgentDispatchToHostBroker(ctx context.Context, c *cli.Command, role string, mode containerMode) (bool, error) {
-	sock := strings.TrimSpace(os.Getenv(envDispatchBrokerSocket))
-	if sock == "" || os.Getenv("WARD_READONLY") != "1" {
+	addr := strings.TrimSpace(os.Getenv(envDispatchBrokerAddr))
+	if addr == "" || os.Getenv("WARD_READONLY") != "1" {
 		return false, nil
 	}
 	var argv []string
@@ -208,8 +237,9 @@ func (r *Runner) maybeForwardAgentDispatchToHostBroker(ctx context.Context, c *c
 		Role:      role,
 		Argv:      argv,
 		Requester: strings.TrimSpace(os.Getenv("WARD_CONTAINER_NAME")),
+		Token:     strings.TrimSpace(os.Getenv(envDispatchBrokerToken)),
 	}
-	if err := sendDispatchBrokerRequest(ctx, sock, req); err != nil {
+	if err := sendDispatchBrokerRequest(ctx, addr, req); err != nil {
 		return true, err
 	}
 	fmt.Fprintf(os.Stderr, "ward dispatch broker: forwarded `ward agent %s` to host ward\n", strings.Join(argv, " "))
@@ -270,11 +300,11 @@ func appendBrokerContainerFlags(argv []string, c *cli.Command) []string {
 	return argv
 }
 
-func sendDispatchBrokerRequest(ctx context.Context, socket string, req dispatchBrokerRequest) error {
+func sendDispatchBrokerRequest(ctx context.Context, addr string, req dispatchBrokerRequest) error {
 	var d net.Dialer
-	conn, err := d.DialContext(ctx, "unix", socket)
+	conn, err := d.DialContext(ctx, "tcp", addr)
 	if err != nil {
-		return fmt.Errorf("%w: dial %s: %w", errDispatchBrokerUnavailable, socket, err)
+		return fmt.Errorf("%w: dial %s: %w", errDispatchBrokerUnavailable, addr, err)
 	}
 	defer func() { _ = conn.Close() }()
 	if err := json.NewEncoder(conn).Encode(req); err != nil {
@@ -288,8 +318,4 @@ func sendDispatchBrokerRequest(ctx context.Context, socket string, req dispatchB
 		return fmt.Errorf("dispatch broker: %s", resp.Error)
 	}
 	return nil
-}
-
-func dispatchBrokerMount(hostSocket string) mountSpec {
-	return mountSpec{Source: hostSocket, Target: containerDispatchBrokerSock, ReadOnly: false, Volume: false}
 }
