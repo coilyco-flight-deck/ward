@@ -9,9 +9,14 @@ ward is a permissions, policy, and audit layer for headless agents that hold rea
 
 A Go library of the actual guardrails: deny-by-structure command lockdown, the OpenAPI→audited-verb engine (`specverb`), passthrough dialects (`execverb`), and the ephemeral-container sandbox. It holds no opinions about *your* APIs - it is the reusable enforcement core. You could build your own tool on it.
 
-## ward-kdl - the generator (build time)
+## ward-kdl - the build-time authoring layer
 
-You write a **guardfile** - a small [KDL](https://kdl.dev) policy file: for an API, `can get "*"`, `never delete "*"`. `ward-kdl` compiles that guardfile plus the API's OpenAPI spec into a **scoped, audited CLI binary**. It is `protoc` for permissions: a grammar (the guardfile) in, a typed least-privilege surface out. You rarely run `ward-kdl` by hand - you run what it produces. [ward-kdl.md](ward-kdl.md) is the authoritative writeup of this layer.
+You author a source file, cli-guard validates or compiles it, and `ward`
+embeds the result. `ward-kdl` spans three dialects: permission surfaces
+(`*.guardfile.kdl`), fleet-config manifests (`ward-kdl.fleet.kdl`), and the
+operator-local `~/.ward/fleet.local.kdl` boundary. Source in, artifact out,
+nothing fetched at runtime. [ward-kdl.md](ward-kdl.md) is the authoritative
+writeup of this layer.
 
 ## ward (public face: `warded`) - the product (run time)
 
@@ -35,8 +40,8 @@ boundary is load-bearing; collapsing it inverts the architecture.
 cli-guard is the engine *both* other layers stand on:
 
 - **ward** (run time) imports cli-guard as a library - ~23 packages of it.
-- **ward-kdl** (build time) *is* a cli-guard driver: `specverb-gen` wrapped
-  around a guardfile.
+- **ward-kdl** (build time) *is* the build-time authoring layer: it writes the
+  guardfile or fleet manifest that cli-guard validates and ward embeds.
 
 Fold cli-guard into ward and ward-kdl's dependency inverts: the build-time
 generator would have to depend on the run-time product to reach the engine -

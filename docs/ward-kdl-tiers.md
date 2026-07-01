@@ -56,7 +56,7 @@ additive scaffolding beside the base, never a migration of it.
 
 ## See also
 
-- [ward-kdl.md](ward-kdl.md) - what ward-kdl is: the build-time generator.
+- [ward-kdl.md](ward-kdl.md) - what ward-kdl is: the build-time authoring layer.
 - [ward-kdl-surface.md](ward-kdl-surface.md) - the full generated verb surface.
 - the wired references: forgejo
   [read](ward-kdl/ward-kdl.forgejo.read.guardfile.md) /

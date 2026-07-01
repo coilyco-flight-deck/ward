@@ -9,7 +9,7 @@ The merge mechanics live upstream in cli-guard's
 [`cli/hook.Installer`](https://forgejo.coilysiren.me/coilyco-flight-deck/cli-guard);
 ward owns only the `install-hooks` command surface and the entry it
 registers (`Matcher: "Bash"`, `Command: "ward hook pre-tool-use"`). See
-[ward-kdl.md](ward-kdl.md) for the engine/generator/product split.
+[ward-kdl.md](ward-kdl.md) for the engine/authoring-layer/product split.
 
 ## Target discovery
 
