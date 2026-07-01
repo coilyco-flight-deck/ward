@@ -179,7 +179,7 @@ func directorFlags() []cli.Flag {
 		&cli.StringFlag{Name: "repo", Usage: "comma-separated scope 'a/b,c/d' (default: director.default-scope from ~/.ward/config.yaml, else the cwd git origin)"},
 		&cli.StringSliceFlag{Name: "org", Usage: "expand every repo an org owns into the scope (owner; repeatable), unioned with --repo and de-duped (ward#370)"},
 		&cli.StringSliceFlag{Name: "with-repo", Usage: "grant director's own session an additional writable repo to clone (owner/name; repeatable), landed under /workspace alongside the scope (ward#230)."},
-		&cli.IntFlag{Name: "max-parallel", Value: 2, Usage: "in-flight container cap"},
+		&cli.IntFlag{Name: "max-parallel", Value: 10, Usage: "in-flight container cap"},
 		&cli.BoolFlag{Name: "triage", Value: true, Usage: "run the startup triage pass before the init gate: label each untriaged open issue's tier (P0-P4) + automation mode (headless/interactive/consult) to warm the headless lane (ward#397). On by default; --no-triage skips it"},
 		&cli.BoolFlag{Name: "no-triage", Usage: "skip the startup triage pass and leave existing labels untouched (ward#397)"},
 		&cli.IntFlag{Name: "limit", Value: 50, Usage: "open issues read per repo per refresh"},
