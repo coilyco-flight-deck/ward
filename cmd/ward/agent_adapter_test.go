@@ -178,9 +178,11 @@ func TestFleetManifestSwitchesThreeWayPin(t *testing.T) {
 	if err != nil {
 		t.Fatalf("loadFleetConfig: %v", err)
 	}
-	manifest, err := loadAgentManifest()
+	// Load the YAML from its own source (loadAgentManifest is now fleet-derived,
+	// ward#416) so this still catches agent-adapters.yaml drifting from the fleet.
+	manifest, err := loadAgentManifestYAML()
 	if err != nil {
-		t.Fatalf("loadAgentManifest: %v", err)
+		t.Fatalf("loadAgentManifestYAML: %v", err)
 	}
 
 	// Roster sizes must match the canonical parseMode set exactly, so an agent

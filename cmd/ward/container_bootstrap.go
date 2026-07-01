@@ -19,6 +19,7 @@ import (
 	"time"
 
 	"forgejo.coilysiren.me/coilyco-flight-deck/cli-guard/cli/verb"
+	"forgejo.coilysiren.me/coilyco-flight-deck/cli-guard/pkg/fleetconfig"
 	"forgejo.coilysiren.me/coilyco-flight-deck/cli-guard/pkg/flock"
 	"github.com/urfave/cli/v3"
 )
@@ -76,28 +77,49 @@ func envOr(key, def string) string {
 	return def
 }
 
+// fleetAgentByName returns the named agent from the parsed fleet, or a zero Agent
+// when absent (its empty fields then flow through as the envOr default).
+func fleetAgentByName(f fleetconfig.Fleet, name string) fleetconfig.Agent {
+	for _, a := range f.Agents {
+		if a.Name == name {
+			return a
+		}
+	}
+	return fleetconfig.Agent{}
+}
+
 // readBootstrapEnv reads + defaults the entrypoint env, erroring on a missing
 // required var (the bash `: "${X:?...}"` checks). Pure given the environment.
 func readBootstrapEnv() (bootstrapEnv, error) {
+	// Defaults now source from the embedded fleet config (env > manifest, ward#416);
+	// opencode is canonical (qwen is the alias), so it feeds the qwen/ollama defaults.
+	fleet, ferr := loadFleetConfig()
+	if ferr != nil {
+		return bootstrapEnv{}, fmt.Errorf("load embedded fleet config for bootstrap defaults: %w", ferr)
+	}
+	opencode := fleetAgentByName(fleet, "opencode")
+	codex := fleetAgentByName(fleet, "codex")
+	attribution := fleet.Defaults.Attribution
 	e := bootstrapEnv{
 		TargetOwner:  os.Getenv("WARD_TARGET_OWNER"),
 		TargetName:   os.Getenv("WARD_TARGET_NAME"),
 		ForgejoBase:  os.Getenv("WARD_FORGEJO_BASE"),
-		Mode:         envOr("WARD_MODE", "claude"),
+		Mode:         envOr("WARD_MODE", fleet.Defaults.Agent),
 		Agent:        envOr("WARD_AGENT", "claude"),
 		ContextLevel: envOr("WARD_CONTEXT_LEVEL", "2"),
 		GitCache:     envOr("WARD_GITCACHE", "/gitcache"),
 		ContextSrc:   envOr("WARD_CONTEXT_SRC", "/opt/ward-context"),
-		QwenModel:    envOr("WARD_QWEN_MODEL", "qwen3-coder:30b"),
-		OllamaURL:    envOr("WARD_OLLAMA_URL", "http://localhost:11434/v1"),
-		// Cheapest codex settings (ward#379): mini model, low reasoning + verbosity.
-		CodexModel:     envOr("WARD_CODEX_MODEL", "gpt-5.4-mini"),
-		CodexEffort:    envOr("WARD_CODEX_REASONING_EFFORT", "low"),
-		CodexVerbosity: envOr("WARD_CODEX_VERBOSITY", "low"),
-		// Warded-agent commits attribute to the coilyco-ops bot; the email is the
-		// load-bearing match Forgejo links on (ward#245, docs/agent-attribution.md).
-		GitUserName:  envOr("WARD_GIT_NAME", "coilyco-ops"),
-		GitUserEmail: envOr("WARD_GIT_EMAIL", "coilyco-ops@coilysiren.me"),
+		QwenModel:    envOr("WARD_QWEN_MODEL", opencode.Model),
+		OllamaURL:    envOr("WARD_OLLAMA_URL", opencode.Endpoint),
+		// Cheapest codex settings (ward#379): mini model, low reasoning + verbosity,
+		// the defaults now sourced from the fleet manifest's codex node.
+		CodexModel:     envOr("WARD_CODEX_MODEL", codex.Model),
+		CodexEffort:    envOr("WARD_CODEX_REASONING_EFFORT", codex.ReasoningEffort),
+		CodexVerbosity: envOr("WARD_CODEX_VERBOSITY", codex.Verbosity),
+		// Bot attribution: email is the load-bearing Forgejo match (ward#245); both
+		// default from the fleet manifest's defaults.attribution.
+		GitUserName:  envOr("WARD_GIT_NAME", attribution.Name),
+		GitUserEmail: envOr("WARD_GIT_EMAIL", attribution.Email),
 		AgentUID:     envOr("WARD_AGENT_UID", "1000"),
 		AgentGID:     envOr("WARD_AGENT_GID", "1000"),
 		AgentHome:    envOr("WARD_AGENT_HOME", "/home/ubuntu"),
