@@ -39,15 +39,14 @@ The engineer always **detaches** fire-and-forget (was `headless`): print mode
 (`claude -p`/`codex exec`/`goose run -t`). From a terminal it first runs a **pre-flight**
 ([agent-preflight.md](agent-preflight.md)): a GO launches, a NO-GO comments and launches
 nothing. Its seed closes with a `WARD-OUTCOME`-led retro (ward#281, ward#310) the
-[director](agent-director.md) reads, and is shaped by body + harness (ward#157, ward#400):
-empty bodies say so, **every** driver gets the body inlined as a **frozen snapshot** at
-dispatch (non-vision stripped, vision verbatim), logged and greppable without
-`--print`.
+[director](agent-director.md) reads, and is shaped by the body (ward#157, ward#400):
+empty bodies say so, **every** driver gets the body inlined **verbatim** as a **frozen
+snapshot** at dispatch (image markup intact, a no-vision line, URL live for
+comments - ward#405 dropped the strip), **logged** for `grep`.
 
 Because that snapshot is never re-read, a **reserved issue is immutable** to the run in
-flight - corrections go to a new issue, not a comment: see
-[reserved means immutable](agent-reserved-immutable.md). There is **no attach surface**
-(ward#356); interactive work funnels to the [director](agent-director.md).
+flight - a correction after dispatch goes to a new issue, not an edit or comment: see
+[reserved means immutable](agent-reserved-immutable.md).
 
 **Stopping the engineer.** `docker container stop engineer-<driver>-<repo>-<issue>` halts a
 mis-scoped one - see [container-stop.md](container-stop.md) for the reaper interaction.

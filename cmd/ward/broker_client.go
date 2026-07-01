@@ -185,7 +185,7 @@ func forgejoWritePayload(cmd *cli.Command) (title, body, state string, err error
 	title = cmd.String("title")
 	body = cmd.String("body")
 	state = cmd.String("state")
-	bodyFile := strings.TrimSpace(cmd.String("body-file"))
+	bodyFile := strings.TrimSpace(cmd.String(flagBodyFile))
 	if bodyFile == "" {
 		return title, body, state, nil
 	}

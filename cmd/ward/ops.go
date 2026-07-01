@@ -97,6 +97,7 @@ func buildForgejoOps() (*cli.Command, error) {
 	}
 	r.overrideForgejoViewIssue(forgejo)
 	r.overrideForgejoCreateIssue(forgejo)
+	r.overrideForgejoCommentIssue(forgejo)
 
 	// Graft the exec-dialect admin/doctor remote-exec slice onto the same
 	// forgejo group, so both transports share one operator verb (ward#81).
@@ -252,6 +253,59 @@ func captureLeafStdout(fn func() error) (string, error) {
 		return "", fmt.Errorf("capture stdout: %w", readErr)
 	}
 	return string(out), nil
+}
+
+// flagBodyFile is the file-backed body flag specverb synthesizes on generated
+// write leaves; the ward#380 `issue comment` shadow lost it (ward#404).
+const flagBodyFile = "body-file"
+
+// overrideForgejoCommentIssue grafts `--body-file` back onto the `issue comment`
+// shadow so commentIssue's file-backed body is accepted again (ward#404).
+func (r *Runner) overrideForgejoCommentIssue(forgejo *cli.Command) {
+	issue := subCommandNamed(forgejo, "issue")
+	if issue == nil {
+		return
+	}
+	comment := subCommandNamed(issue, "comment")
+	if comment == nil {
+		return
+	}
+	comment.Flags = append(comment.Flags, &cli.StringFlag{
+		Name:  flagBodyFile,
+		Usage: "path to a JSON file supplying the comment body ({\"body\": ...}); exclusive with --body",
+	})
+	orig := comment.Action
+	comment.Action = func(ctx context.Context, cmd *cli.Command) error {
+		return runForgejoCommentIssueBodyFile(ctx, cmd, orig)
+	}
+}
+
+// runForgejoCommentIssueBodyFile resolves `--body-file` into `--body`, then
+// delegates; absent --body-file it is a pass-through (ward#404).
+func runForgejoCommentIssueBodyFile(ctx context.Context, cmd *cli.Command, orig cli.ActionFunc) error {
+	bodyFile := strings.TrimSpace(cmd.String(flagBodyFile))
+	if bodyFile == "" {
+		return orig(ctx, cmd)
+	}
+	if cmd.IsSet("body") {
+		return fmt.Errorf("ward ops forgejo issue comment: --body and --%s are mutually exclusive", flagBodyFile)
+	}
+	raw, err := os.ReadFile(bodyFile) // #nosec G304 -- operator-supplied request body path, same as the direct leaf
+	if err != nil {
+		return fmt.Errorf("ward ops forgejo issue comment: read --%s %s: %w", flagBodyFile, bodyFile, err)
+	}
+	var obj map[string]any
+	if uerr := json.Unmarshal(raw, &obj); uerr != nil {
+		return fmt.Errorf("ward ops forgejo issue comment: parse --%s %s as JSON: %w", flagBodyFile, bodyFile, uerr)
+	}
+	body := stringField(obj, "body")
+	if body == "" {
+		return fmt.Errorf("ward ops forgejo issue comment: --%s %s has no non-empty \"body\" field", flagBodyFile, bodyFile)
+	}
+	if err := cmd.Set("body", body); err != nil {
+		return fmt.Errorf("ward ops forgejo issue comment: bind body from --%s: %w", flagBodyFile, err)
+	}
+	return orig(ctx, cmd)
 }
 
 // rerootGroupToWard rewrites a parsed guardfile's leading group token from the

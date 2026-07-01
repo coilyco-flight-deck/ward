@@ -63,3 +63,43 @@ func TestCreateIssueBodyIsSigned(t *testing.T) {
 		t.Fatalf("body lost the signature marker after round-trip: %q", got["body"])
 	}
 }
+
+// TestForgejoClientInvocationsUseAcceptedFlags is the ward#404 skew guard: every
+// flag forgejoClient passes on an `ops forgejo` verb must be one the verb accepts.
+func TestForgejoClientInvocationsUseAcceptedFlags(t *testing.T) {
+	forgejo, err := buildForgejoOps()
+	if err != nil {
+		t.Fatalf("buildForgejoOps: %v", err)
+	}
+	// Mirrors the c.run(...) call sites in forgejo_ops.go: the verb path each
+	// client method drives, and the flags it passes on that verb.
+	cases := []struct {
+		name  string
+		path  []string
+		flags []string
+	}{
+		{name: "getIssue", path: []string{"issue", "get"}, flags: []string{flagOutput}},
+		{name: "listIssueComments", path: []string{"issue-comment", "list"}, flags: []string{flagOutput}},
+		{name: "createIssue", path: []string{"issue", "create"}, flags: []string{flagBodyFile, flagOutput}},
+		{name: "commentIssue", path: []string{"issue", "comment"}, flags: []string{flagBodyFile}},
+		{name: "closeIssue", path: []string{"issue", "close"}, flags: nil},
+		{name: "reopenIssue", path: []string{"issue", "reopen"}, flags: nil},
+		{name: "listIssues", path: []string{"issue", "list"}, flags: []string{"state", "type", "limit", flagOutput}},
+	}
+	for _, tc := range cases {
+		t.Run(tc.name, func(t *testing.T) {
+			cmd := forgejo
+			for _, seg := range tc.path {
+				cmd = subCommandNamed(cmd, seg)
+				if cmd == nil {
+					t.Fatalf("verb path %v: no command at segment %q", tc.path, seg)
+				}
+			}
+			for _, fl := range tc.flags {
+				if !hasFlagNamed(cmd, fl) {
+					t.Errorf("verb %v does not accept --%s, but %s passes it", tc.path, fl, tc.name)
+				}
+			}
+		})
+	}
+}

@@ -90,19 +90,6 @@ var markdownImageRE = regexp.MustCompile(`!\[[^\]]*\]\([^)\s]*\)`)
 // extension (with an optional query string), e.g. a pasted screenshot link.
 var bareImageURLRE = regexp.MustCompile(`(?i)https?://\S+?\.(?:png|jpe?g|gif|webp|bmp|svg|tiff?)(?:\?\S*)?`)
 
-// collapseBlankRunsRE squashes a run of 3+ newlines (left behind once media is
-// stripped) back down to a single blank line.
-var collapseBlankRunsRE = regexp.MustCompile(`\n{3,}`)
-
-// stripIssueMedia drops ![..](..) embeds and bare image URLs (then tidies the
-// gaps), so a non-vision harness has no screenshot to read_image (ward#157).
-func stripIssueMedia(body string) string {
-	body = markdownImageRE.ReplaceAllString(body, "")
-	body = bareImageURLRE.ReplaceAllString(body, "")
-	body = collapseBlankRunsRE.ReplaceAllString(body, "\n\n")
-	return strings.TrimSpace(body)
-}
-
 // emptyBodySeedAction is the first move when an issue has no body: work from the
 // title, don't go hunting content that isn't there (ward#157). See docs/agent.md.
 const emptyBodySeedAction = "This issue has no body, so work from the title alone - do not hunt for " +
@@ -151,9 +138,9 @@ func grantedRepoDoneClause(extra []targetRepo) string {
 		joined)
 }
 
-// agentSeedPrompt seeds the agent: the issue, a first move (ward#157), --details
-// (ward#167), a granted-repo done-condition (ward#291), a reflection (ward#281).
-func agentSeedPrompt(ref agentIssueRef, title, body, details string, mode containerMode, headless bool, extra []targetRepo) string {
+// agentSeedPrompt seeds the agent, harness-agnostic (ward#405): the issue, a first
+// move (ward#157), --details (ward#167), a done-condition (ward#291), a retro (#281).
+func agentSeedPrompt(ref agentIssueRef, title, body, details string, headless bool, extra []targetRepo) string {
 	title = strings.TrimSpace(title)
 	if title == "" {
 		title = "(untitled)"
@@ -164,29 +151,20 @@ func agentSeedPrompt(ref agentIssueRef, title, body, details string, mode contai
 	switch {
 	case body == "":
 		action = emptyBodySeedAction
-	case !mode.visionCapable():
-		if stripped := stripIssueMedia(body); stripped == "" {
-			// The body was nothing but media; once stripped it's effectively empty.
-			action = emptyBodySeedAction
-		} else {
-			action = "The full issue body is inlined below, between the markers; work from it " +
-				"directly as a frozen snapshot taken at dispatch. Image markup has been stripped out. Skim the " +
-				"comment thread at that URL only for later context."
-			inline = "\n\n----- issue body (inlined; media stripped) -----\n" + stripped + "\n----- end issue body -----"
-		}
+	case markdownImageRE.MatchString(body) || bareImageURLRE.MatchString(body):
+		// Inline the body verbatim as a frozen snapshot for every driver, image markup
+		// kept, URL live for comments + images (ward#400, ward#405).
+		action = "The full issue body is inlined below, between the markers - work from that " +
+			"frozen snapshot as your task text rather than re-fetching it. Images in the body are " +
+			"linked by URL: fetch the URL to render them, and to read the live comment thread for " +
+			"context added after dispatch. If your harness cannot read images, work from the " +
+			"surrounding text."
+		inline = "\n\n----- issue body (inlined) -----\n" + body + "\n----- end issue body -----"
 	default:
-		// Vision-capable driver (claude, the default): inline the body verbatim as a
-		// frozen snapshot, URL kept live for comments + images (ward#400).
-		if markdownImageRE.MatchString(body) || bareImageURLRE.MatchString(body) {
-			action = "The full issue body is inlined below, between the markers - work from that " +
-				"frozen snapshot as your task text rather than re-fetching it. The body references images " +
-				"that are not inlined: fetch the URL to render those, and to read the live comment thread " +
-				"for context added after dispatch."
-		} else {
-			action = "The full issue body is inlined below, between the markers - work from that " +
-				"frozen snapshot as your task text rather than re-fetching it. Fetch the URL only to read " +
-				"the live comment thread for context added after dispatch."
-		}
+		// No images: inline verbatim, URL only for the live comment thread.
+		action = "The full issue body is inlined below, between the markers - work from that " +
+			"frozen snapshot as your task text rather than re-fetching it. Fetch the URL only to read " +
+			"the live comment thread for context added after dispatch."
 		inline = "\n\n----- issue body (inlined) -----\n" + body + "\n----- end issue body -----"
 	}
 
@@ -475,7 +453,7 @@ func (r *Runner) resolveAgentWork(ctx context.Context, c *cli.Command, mode cont
 	}
 	// The engineer detaches fire-and-forget (ward#356), so its seed always gets the
 	// closing reflection - the only voice it leaves behind (ward#281).
-	return resolvedWork{Ref: ref, Title: title, Body: issue.Body, Comments: comments, Details: details, ExtraRepos: extra, Seed: agentSeedPrompt(ref, title, issue.Body, details, mode, true, extra)}, nil
+	return resolvedWork{Ref: ref, Title: title, Body: issue.Body, Comments: comments, Details: details, ExtraRepos: extra, Seed: agentSeedPrompt(ref, title, issue.Body, details, true, extra)}, nil
 }
 
 // fetchIssueComments returns the comment thread (oldest first) for the pre-flight
@@ -1321,7 +1299,7 @@ func (r *Runner) runAgentTaskDirect(ctx context.Context, c *cli.Command, mode co
 
 	// The freeform instructions are the filed body (no --details, ward#167); it runs
 	// the headless run, so the seed is headless: inlined body + reflection (#157/#281).
-	seed := agentSeedPrompt(ref, title, body, "", mode, true, nil)
+	seed := agentSeedPrompt(ref, title, body, "", true, nil)
 	return r.launchAgentContainer(ctx, c, mode, "engineer", ref, title, seed, justification)
 }
 
@@ -1335,7 +1313,7 @@ func printAgentTaskPlan(c *cli.Command, mode containerMode, repo targetRepo, tit
 	// A placeholder ref renders the seed shape; the real number is only known
 	// once the issue is filed (which --print deliberately skips).
 	previewRef := agentIssueRef{Owner: repo.Owner, Repo: repo.Name, Number: 0}
-	seed := agentSeedPrompt(previewRef, title, body, "", mode, true, nil)
+	seed := agentSeedPrompt(previewRef, title, body, "", true, nil)
 	plan, err := buildUpPlan(c, repo, mode, "", "", []string{seed})
 	if err != nil {
 		return err
