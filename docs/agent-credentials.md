@@ -66,5 +66,5 @@ perms before the drop and fails loud if the agent still cannot read it.
 ## See also
 
 - [docs/agent-local-harnesses.md](agent-local-harnesses.md) - qwen and goose (local models).
-- [docs/agent-host-net.md](agent-host-net.md) - `--host-net`, the tailnet route.
+- [docs/agent-host-net.md](agent-host-net.md) - `--tailnet`, the tailnet route.
 - [docs/agent.md](agent.md) - the `ward agent` verb family and usage.

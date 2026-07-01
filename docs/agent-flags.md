@@ -3,26 +3,35 @@
 Launch flags for the `engineer` carry (ward#347). See [docs/agent.md](agent.md)
 for the roster.
 
-## Flags
+## The flag surface (trimmed ~24 -> ~10 in ward#362)
 
-The engineer carry brings the container bring-up launch flags: `--aws`, the
-mutually-exclusive tailnet routes `--host-net` (native-Linux host route; no-op +
-warns elsewhere, ward#332; [agent-host-net.md](agent-host-net.md)) and
-`--ts-sidecar` (Docker Desktop route to the mac-proxy box, ward#349; forwards the
-tower to `localhost:11434`, no `--proxy`, ward#359;
-[agent-ts-sidecar.md](agent-ts-sidecar.md)) - `--host-net`
-implies `--aws`, `--ts-sidecar` does not,
-`--tag`/`--image`/`--ward-version` (pin once via `WARD_AGENT_{TAG,IMAGE,VERSION}`,
-ward#312), `--ward-source`, `--no-pull`, `--branch` to override the
-`issue-<N>` default, and `--repo owner/name` (repeatable; `--with-repo` is the
-legacy alias, ward#280) to grant extra repos cloned alongside the issue's repo
-([container-multi-repo.md](container-multi-repo.md)). `--print` renders the seed +
-docker plan with no push token - a dry run. `--force` skips the reservation
-checks (see [docs/agent-reservation.md](agent-reservation.md)). The carry
-**always detaches** (ward#356): there is no attach surface - the old `--watch`
-(`-w`) and its `--new-tab` Warp spawn are retired, interactive work funnels to the
-[director](agent-director.md). The carry also takes `--no-preflight`, which skips
-the pre-flight ([docs/agent-preflight.md](agent-preflight.md)) and detaches immediately.
+The shared launch helpers show ~10 visible flags: the positional ref/task, `--driver`,
+`--repo`, `--details`, `--aws`, `--tailnet`, `--print`, `--force`, `--no-preflight`, and
+(engineer freeform) `--instructions-file`. The trim lands in the shared helpers, so it
+applies to the engineer, director, and advisor surfaces at once.
+
+`--tailnet` (ward#362) joins the container to the tailnet to reach tailnet-only hosts like
+`kai-tower-3026`, **auto-selecting the mechanism by platform**: the native-Linux host route
+(`--network=host`, ward#330, [agent-host-net.md](agent-host-net.md)) or the SOCKS5 sidecar
+on Docker Desktop (ward#349, [agent-ts-sidecar.md](agent-ts-sidecar.md)). It **implies
+`--aws`**. `--repo owner/name` (repeatable, ward#280) grants extra writable repos
+([container-multi-repo.md](container-multi-repo.md)). `--print` is a dry run. `--force`
+skips the reservation checks ([agent-reservation.md](agent-reservation.md)) and
+`--no-preflight` skips the pre-flight ([agent-preflight.md](agent-preflight.md)). The carry
+**always detaches** (ward#356).
+
+### Hidden but functional (ward#362)
+
+* `--tailnet-mode auto|host-net|sidecar` - pin the mechanism (a non-auto value implies `--tailnet`).
+* `--tag` / `--image` / `--ward-version` - pin the image, env-backed via `WARD_AGENT_{TAG,IMAGE,VERSION}` (ward#312).
+* `--ward-source` - build ward from a local checkout (development-only).
+* `--branch` - override the `issue-<N>` branch default. `--no-pull` - reuse the cached image.
+
+### Deleted (ward#362)
+
+* `--instructions` / `-i` - use the freeform positional, or `--instructions-file` in DIRECT mode.
+* `--with-repo` - the alias of `--repo` is gone (advisor and director keep their own separate `--with-repo`).
+* `--go-bootstrap` - the experimental ward#181 toggle left the surface.
 
 ## Quiet launch for detached runs (ward#306, ward#322)
 
@@ -38,8 +47,8 @@ The engineer carry's **ref mode** takes `--details "<note>"`: extra operator ins
 woven in at dispatch as a final paragraph of the **seeded prompt**, flagged
 **authoritative over the issue text** where they conflict - so a single line steers the
 run without editing it. It is also folded into the **pre-flight read** and shows up in
-`--print`. The **freeform mode** has no `--details` - its `--instructions` already *are*
-the full brief.
+`--print`. The **freeform mode** has no `--details` - its positional text (or
+`--instructions-file`) already **is** the full brief.
 
 ## Retired: `--watch` and `--new-tab` (ward#356)
 

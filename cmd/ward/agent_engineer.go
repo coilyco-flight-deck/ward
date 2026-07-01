@@ -16,11 +16,10 @@ import (
 // (+ --no-preflight) and freeform instructions. No --watch/--new-tab (ward#356).
 func agentEngineerFlags() []cli.Flag {
 	flags := agentSurfaceFlags()
-	// Freeform mode files an issue first (was `task`): the positional carries the text,
-	// these escape hatches handle a long body or a bare owner/repo + instructions.
+	// Freeform mode files an issue first (was `task`): the positional carries the task text
+	// (inline --instructions retired in ward#362); --instructions-file handles a long body.
 	flags = append(flags,
-		&cli.StringFlag{Name: "instructions", Aliases: []string{"i"}, Usage: "freeform mode: the task to file as the issue body (first line becomes the title)"},
-		&cli.StringFlag{Name: "instructions-file", Usage: "freeform mode: read the instructions from a file instead of --instructions (escape hatch for long bodies)"},
+		&cli.StringFlag{Name: "instructions-file", Usage: "freeform mode: read the task body from a file (escape hatch for long bodies, or a bare owner/repo + a filed brief)"},
 	)
 	return flags
 }
@@ -62,7 +61,7 @@ func agentEngineerAction() cli.ActionFunc {
 func (r *Runner) runAgentEngineer(ctx context.Context, c *cli.Command, mode containerMode) error {
 	arg := strings.TrimSpace(c.Args().First())
 	if _, err := parseAgentIssueRef(arg); err != nil {
-		// Not an issue ref: freeform instructions (or a bare owner/repo + --instructions).
+		// Not an issue ref: freeform instructions (or a bare owner/repo + --instructions-file).
 		return r.runAgentTask(ctx, c, mode)
 	}
 	if forwarded, err := r.maybeForwardAgentDispatchToHostBroker(ctx, c, "engineer", mode); forwarded {

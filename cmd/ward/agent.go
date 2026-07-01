@@ -229,28 +229,69 @@ func agentDriverFlag() cli.Flag {
 	}
 }
 
-// hostNetFlag is the opt-in network escalation (ward#330): join a carry to the host
-// network for a tailnet route, mirroring --aws and implying it. docs/agent-host-net.md.
-func hostNetFlag() cli.Flag {
-	return &cli.BoolFlag{
-		Name: "host-net",
-		Usage: "join the container to the host network (--network=host) so it inherits the host's " +
-			"tailnet route to tailnet-only hosts like kai-tower-3026; implies --aws (the tower FQDN is " +
-			"SSM-only). Drops the cwd-only least-access isolation; off by default (ward#330)",
+// Tailnet mechanism selectors for the hidden --tailnet-mode escape hatch (ward#362):
+// auto picks by platform, the other two pin a mechanism.
+const (
+	tailnetModeAuto    = "auto"     // pick by platform: host-net on Linux, sidecar on Docker Desktop
+	tailnetModeHostNet = "host-net" // force the --network=host route (ward#330)
+	tailnetModeSidecar = "sidecar"  // force the ward-tailnet SOCKS5 sidecar route (ward#349)
+)
+
+// tailnetFlags is the consolidated tailnet route (ward#362): a visible --tailnet plus
+// a hidden --tailnet-mode. See docs/agent-flags.md.
+func tailnetFlags() []cli.Flag {
+	return []cli.Flag{
+		&cli.BoolFlag{
+			Name: "tailnet",
+			Usage: "join the container to the tailnet so it reaches tailnet-only hosts like kai-tower-3026; " +
+				"auto-selects the mechanism by platform - the host-network route on native Linux (ward#330), " +
+				"the SOCKS5 sidecar on Docker Desktop where the host VM is not a tailnet node (ward#349). " +
+				"Implies --aws; off by default (ward#362)",
+		},
+		&cli.StringFlag{
+			Name:   "tailnet-mode",
+			Value:  tailnetModeAuto,
+			Hidden: true,
+			Usage:  "override the tailnet mechanism: auto|host-net|sidecar (default auto: pick by platform); implies --tailnet when set to a non-auto value (ward#362)",
+		},
 	}
 }
 
-// tsSidecarFlag is the Docker Desktop sibling of --host-net (ward#333, ward#349):
-// attach to the standing tailnet proxy for tailnet reach. Excludes --host-net.
-func tsSidecarFlag() cli.Flag {
-	return &cli.BoolFlag{
-		Name: "ts-sidecar",
-		Usage: "attach to the standing tailnet proxy (the mac-proxy SOCKS5 box on the shared ward-tailnet " +
-			"docker network) and route tailnet-only hosts like kai-tower-3026 through it - the Docker " +
-			"Desktop path where --host-net can't reach the tailnet (the LinuxKit VM is not a tailnet node); " +
-			"needs no SSM (the box is converged by ansible, dialed by name); mutually exclusive with " +
-			"--host-net; off by default (ward#349)",
+// tailnetEnabled reports whether a run wants the tailnet: --tailnet, or an explicit
+// non-auto --tailnet-mode (the escape hatch can stand on its own). See tailnetFlags.
+func tailnetEnabled(c *cli.Command) bool {
+	if c.Bool("tailnet") {
+		return true
 	}
+	m := strings.TrimSpace(c.String("tailnet-mode"))
+	return c.IsSet("tailnet-mode") && m != "" && m != tailnetModeAuto
+}
+
+// resolveTailnet maps --tailnet / --tailnet-mode to the host-net vs sidecar mechanism
+// (ward#362): auto picks host-net on Linux, else sidecar; off returns both false.
+func resolveTailnet(c *cli.Command, goos string) (hostNet, tsSidecar bool, err error) {
+	if !tailnetEnabled(c) {
+		return false, false, nil
+	}
+	switch mode := strings.TrimSpace(c.String("tailnet-mode")); mode {
+	case "", tailnetModeAuto:
+		if goos == "linux" {
+			return true, false, nil
+		}
+		return false, true, nil
+	case tailnetModeHostNet:
+		return true, false, nil
+	case tailnetModeSidecar:
+		return false, true, nil
+	default:
+		return false, false, fmt.Errorf("invalid --tailnet-mode %q: want %s|%s|%s", mode, tailnetModeAuto, tailnetModeHostNet, tailnetModeSidecar)
+	}
+}
+
+// extraRepoGrant reads the extra-writable-repo grant under either name: engineer's --repo
+// or advisor/director's own --with-repo (ward#362 dropped the alias; nil-safe).
+func extraRepoGrant(c *cli.Command) []string {
+	return append(append([]string{}, c.StringSlice("repo")...), c.StringSlice("with-repo")...)
 }
 
 // agentDriver resolves the --driver flag to a containerMode (defaulting to
@@ -335,15 +376,16 @@ func agentDefaultSurfaceAction() cli.ActionFunc {
 // agentImageFlags is the shared container image/ward-build/escalation flag block every
 // dispatching role layers its own flags on top of (ward#355); --print stays per-role.
 func agentImageFlags() []cli.Flag {
-	return []cli.Flag{
-		&cli.StringFlag{Name: "image", Value: containerImageDefault, Sources: cli.EnvVars(envAgentImage), Usage: "dev-base image to run (env: WARD_AGENT_IMAGE)"},
-		&cli.StringFlag{Name: "tag", Value: containerImageTagDefault, Sources: cli.EnvVars(envAgentTag), Usage: "image tag (env: WARD_AGENT_TAG)"},
-		&cli.StringFlag{Name: "ward-source", Usage: "mount a local ward checkout and build ward from it instead of downloading the release"},
-		&cli.StringFlag{Name: "ward-version", Sources: cli.EnvVars(envAgentVersion), Usage: "ward release the container downloads (default: this host's ward; env: WARD_AGENT_VERSION)"},
+	// The image/ward-build/pinning group stays functional but hidden (ward#362): env-backed
+	// or dev-only. --aws + the consolidated tailnet route stay visible.
+	flags := []cli.Flag{
+		&cli.StringFlag{Name: "image", Value: containerImageDefault, Hidden: true, Sources: cli.EnvVars(envAgentImage), Usage: "dev-base image to run (env: WARD_AGENT_IMAGE)"},
+		&cli.StringFlag{Name: "tag", Value: containerImageTagDefault, Hidden: true, Sources: cli.EnvVars(envAgentTag), Usage: "image tag; per-run pinning (env: WARD_AGENT_TAG)"},
+		&cli.StringFlag{Name: "ward-source", Hidden: true, Usage: "development-only: mount a local ward checkout and build ward from it instead of downloading the release"},
+		&cli.StringFlag{Name: "ward-version", Hidden: true, Sources: cli.EnvVars(envAgentVersion), Usage: "ward release the container downloads (default: this host's ward; env: WARD_AGENT_VERSION)"},
 		&cli.BoolFlag{Name: "aws", Usage: "mount ~/.aws read-only (broad SSM read surface; off by default)"},
-		hostNetFlag(),
-		tsSidecarFlag(),
 	}
+	return append(flags, tailnetFlags()...)
 }
 
 // agentSurfaceFlags builds the detached launch flag set shared by the engineer carry,
@@ -351,16 +393,17 @@ func agentImageFlags() []cli.Flag {
 func agentSurfaceFlags() []cli.Flag {
 	flags := []cli.Flag{
 		agentDriverFlag(),
-		&cli.StringFlag{Name: "branch", Usage: "feature branch to create inside the clone (default: issue-<N>)"},
-		&cli.StringSliceFlag{Name: "repo", Aliases: []string{"with-repo"}, Usage: "grant the agent an additional writable repo to clone + operate against (owner/name; repeatable). Cloned as a full feature copy under /workspace alongside the issue's repo (ward#230, ward#280; --with-repo is the legacy alias)."},
+		// --branch is hidden (ward#362): the issue-<N> default is the intelligent choice.
+		&cli.StringFlag{Name: "branch", Hidden: true, Usage: "feature branch to create inside the clone (default: issue-<N>)"},
+		&cli.StringSliceFlag{Name: "repo", Usage: "grant the agent an additional writable repo to clone + operate against (owner/name; repeatable). Cloned as a full feature copy under /workspace alongside the issue's repo (ward#230, ward#280)."},
 		&cli.StringFlag{Name: "details", Usage: "extra operator instructions woven into the seeded prompt + pre-flight read (overrides the issue text on conflict)"},
 	}
 	flags = append(flags, agentImageFlags()...)
 	flags = append(flags,
 		&cli.BoolFlag{Name: "print", Usage: "resolve the issue + seeded prompt + docker plan and exit; inject no push token, run nothing"},
-		&cli.BoolFlag{Name: "no-pull", Usage: "skip the image pull"},
+		// --no-pull is hidden (ward#362): a cached-image optimization, not everyday surface.
+		&cli.BoolFlag{Name: "no-pull", Hidden: true, Usage: "skip the image pull (use the cached local image)"},
 		&cli.BoolFlag{Name: "force", Usage: "skip the local + remote concurrency reservation checks (reclaim a stale or foreign hold)"},
-		&cli.BoolFlag{Name: "go-bootstrap", Usage: "EXPERIMENTAL (ward#181): after ward installs, delegate to the Go 'ward container bootstrap' instead of the bash entrypoint logic. Requires ward in-container - use --ward-source until the image bakes it."},
 	)
 	// The detached carry gets an autonomous pre-flight before launching (ward#137,
 	// ward#147; see docs/agent.md); --no-preflight skips it and detaches immediately.
@@ -411,9 +454,9 @@ func (r *Runner) resolveAgentWork(ctx context.Context, c *cli.Command, mode cont
 	if cerr != nil {
 		fmt.Fprintf(os.Stderr, "%s: note: could not read comments on %s (%v); pre-flight reads the body only\n", label, ref, cerr)
 	}
-	// Resolve the --repo grants now so the pre-flight knows the run gets these repos
-	// too ("with-repo" is the shared lookup key; ward#266, ward#280).
-	extra, eerr := parseExtraRepos(c.StringSlice("with-repo"), targetRepo{Owner: ref.Owner, Name: ref.Repo})
+	// Resolve the --repo grants now so the pre-flight sees these repos too (ward#266,
+	// ward#280; extraRepoGrant reads --repo, the --with-repo alias gone in ward#362).
+	extra, eerr := parseExtraRepos(extraRepoGrant(c), targetRepo{Owner: ref.Owner, Name: ref.Repo})
 	if eerr != nil {
 		return resolvedWork{}, fmt.Errorf("%s: %w", label, eerr)
 	}
@@ -1081,29 +1124,22 @@ func (r *Runner) runDockerSilenced(ctx context.Context, silenceStderr bool, argv
 	return r.Runner.Exec(ctx, "docker", argv...)
 }
 
-// taskInstructions reads the task body from --instructions, falling back to
-// --instructions-file. Exactly one source must be non-empty.
+// taskInstructions reads the DIRECT-mode task body from --instructions-file, the only
+// source now the inline --instructions flag is retired (ward#362).
 func taskInstructions(c *cli.Command) (string, error) {
-	inline := strings.TrimSpace(c.String("instructions"))
 	file := strings.TrimSpace(c.String("instructions-file"))
-	switch {
-	case inline != "" && file != "":
-		return "", fmt.Errorf("pass either --instructions or --instructions-file, not both")
-	case inline != "":
-		return inline, nil
-	case file != "":
-		b, err := os.ReadFile(file)
-		if err != nil {
-			return "", fmt.Errorf("read --instructions-file %q: %w", file, err)
-		}
-		s := strings.TrimSpace(string(b))
-		if s == "" {
-			return "", fmt.Errorf("--instructions-file %q is empty", file)
-		}
-		return s, nil
-	default:
-		return "", fmt.Errorf("no task given: pass --instructions \"...\" or --instructions-file <path>")
+	if file == "" {
+		return "", fmt.Errorf("no task given: pass the task as the freeform positional, or an explicit owner/repo with --instructions-file <path>")
 	}
+	b, err := os.ReadFile(file)
+	if err != nil {
+		return "", fmt.Errorf("read --instructions-file %q: %w", file, err)
+	}
+	s := strings.TrimSpace(string(b))
+	if s == "" {
+		return "", fmt.Errorf("--instructions-file %q is empty", file)
+	}
+	return s, nil
 }
 
 // taskTitleMaxLen caps the derived issue title so a wall-of-text first line
@@ -1140,7 +1176,7 @@ func taskBody(mode containerMode, instructions string) string {
 // to ROUTE or DIRECT (ward#164) by the positional, files an issue, then carries it.
 func (r *Runner) runAgentTask(ctx context.Context, c *cli.Command, mode containerMode) error {
 	label := agentCmdline(mode, "engineer")
-	route, repoArg, err := classifyTaskInvocation(c.Args().First(), c.String("instructions"), c.String("instructions-file"))
+	route, repoArg, err := classifyTaskInvocation(c.Args().First(), c.String("instructions-file"))
 	if err != nil {
 		return fmt.Errorf("%s: %w", label, err)
 	}
@@ -1150,7 +1186,7 @@ func (r *Runner) runAgentTask(ctx context.Context, c *cli.Command, mode containe
 	return r.runAgentTaskDirect(ctx, c, mode, repoArg)
 }
 
-// runAgentTaskDirect resolves the repo, files an issue from --instructions, and
+// runAgentTaskDirect resolves the repo, files an issue from --instructions-file, and
 // runs the headless carry container - today's behavior, unchanged. See docs.
 func (r *Runner) runAgentTaskDirect(ctx context.Context, c *cli.Command, mode containerMode, repoArg string) error {
 	label := agentCmdline(mode, "engineer")

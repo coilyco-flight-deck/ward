@@ -1,8 +1,14 @@
-# ward agent: tailnet route (--host-net / --ts-sidecar)
+# ward agent: tailnet route (--tailnet)
 
-`--host-net` is the **opt-in network escalation** (ward#330): join a carry to the
-host network namespace (`docker run --network=host`) so it inherits the host's
-`tailscale0` + MagicDNS and can reach tailnet-only hosts like `kai-tower-3026`.
+`--tailnet` is the **opt-in network escalation** (ward#330, consolidated ward#362):
+one user flag that reaches tailnet-only hosts like `kai-tower-3026`. It **auto-selects
+the mechanism by platform** - the host-network route on native Linux, the SOCKS5
+sidecar on Docker Desktop (where the host VM is not a tailnet node) - and implies
+`--aws` on both. The hidden `--tailnet-mode auto|host-net|sidecar` pins the mechanism.
+
+This doc covers the **host-net** mechanism (the **sidecar** is in
+[agent-ts-sidecar.md](agent-ts-sidecar.md)): joining a carry to the host network
+namespace (`docker run --network=host`) so it inherits the host's `tailscale0` + MagicDNS.
 
 ## Why it exists
 
@@ -19,56 +25,45 @@ on a native-Linux host that is itself on the tailnet**.
 
 ## It does nothing for the tailnet on Docker Desktop (ward#332)
 
-On **Docker Desktop** (macOS/Windows) the daemon runs inside a **LinuxKit VM**;
-tailscale runs on the Mac/Windows host one layer up. `--network=host` joins the
-carry to the **VM's** netns, which is **not** a tailnet node: no `tailscale0`, no
-MagicDNS, so tailnet names (`api`, `kai-tower-3026`) do not resolve and
-`--host-net` is a **no-op for tailnet access** however the host is configured. A
-documented Tailscale + Docker Desktop limitation, not a ward bug - it confines
-`--host-net` to native-Linux tailnet hosts.
+On **Docker Desktop** (macOS/Windows) the daemon runs inside a **LinuxKit VM**, so
+`--network=host` joins the carry to the **VM's** netns, which is **not** a tailnet node:
+no `tailscale0`, no MagicDNS, so tailnet names do not resolve and host-net is a **no-op
+for tailnet access**. A documented Tailscale + Docker Desktop limitation, not a ward bug,
+which is why `--tailnet` auto-selects the sidecar there instead.
 
-ward **detects and warns**: when `--host-net` is set but the route is unlikely to
-reach the tailnet - a non-Linux host (Docker Desktop), or Linux with no
-`tailscale0` in the joined netns - it prints a loud `WARNING:` at launch so a
-no-op route never reads as success. The carry still launches; the warning just
-says the tailnet route will not be there.
+ward **detects and warns**: when host-net is chosen but unlikely to reach the tailnet (a
+non-Linux host, or Linux with no `tailscale0` in the joined netns) it prints a loud
+`WARNING:` at launch so a no-op route never reads as success. The carry still launches.
 
-Even on native Linux a container often still needs `100.100.100.100` added to its
-`/etc/resolv.conf`: container DNS does not inherit the host's per-link
-systemd-resolved MagicDNS config
-([tailscale/tailscale#14467](https://github.com/tailscale/tailscale/issues/14467)).
+Even on native Linux a container often needs `100.100.100.100` added to its
+`/etc/resolv.conf`: container DNS does not inherit the host's per-link systemd-resolved
+MagicDNS config ([tailscale/tailscale#14467](https://github.com/tailscale/tailscale/issues/14467)).
 
-## The cross-platform answer: the `--ts-sidecar` sibling (ward#333)
-
-The **portable** route - and the **only** one on Docker Desktop - reaches the
-tailnet through a SOCKS5 proxy that *is* a tailnet node. ward ships this as
-**`--ts-sidecar`**: it **attaches the carry to a standing, shared mac-proxy box**
-over the `ward-tailnet` docker network (ward#349, the ward half of agentic-os#291).
-It is mutually exclusive with `--host-net`, and - unlike it - **needs no SSM and
-does not imply `--aws`**. See [agent-ts-sidecar.md](agent-ts-sidecar.md).
-
-Earlier `--ts-sidecar` minted a userspace sidecar per run (ward#333); ward#349
-retired that for the standing box. The full-tunnel variant (in-container
-`tailscaled` on `/dev/net/tun`) stays scope-only: it needs `NET_ADMIN` plus
-human-gated key/tag/ACL decisions a headless run must not pick.
+The portable route, and the only one on Docker Desktop, is the **sidecar**: a SOCKS5
+proxy that **is** a tailnet node, which `--tailnet` auto-selects there (ward#349). See
+[agent-ts-sidecar.md](agent-ts-sidecar.md).
 
 ## Wiring
 
-A shared `hostNetFlag()` on the four container-spinning surfaces threads
-`upPlan.HostNet` into `--network=host` from `dockerArgvHead` (shows in `--print`);
-the warning fires from `createAgentContainer`, the shared launch point.
+A shared `tailnetFlags()` on the four container-spinning surfaces registers
+`--tailnet` + the hidden `--tailnet-mode`. `resolveTailnet` picks the mechanism by
+platform (ward#362), and the host-net choice threads `upPlan.HostNet` into
+`--network=host` from `dockerArgvHead` (shows in `--print`). The warning fires from
+`createAgentContainer`, the shared launch point.
 
 ## Off by default, and it implies `--aws`
 
-`--host-net` **widens isolation** to the host's full network view, so it is opt-in.
+`--tailnet` **widens isolation** to the host's network view, so it is opt-in.
 The tower's FQDN is SSM-only (never hardcoded), and a route with no resolver is
-useless - so `--host-net` **implies the `~/.aws` mount** `--aws` adds. A tower carry:
+useless - so `--tailnet` **implies the `~/.aws` mount** `--aws` adds, on both
+mechanisms (ward#362). A tower carry pinned to the host-net route:
 
 ```bash
-warded engineer coilyco-flight-deck/agent-proxy#1 --host-net
+warded engineer coilyco-flight-deck/agent-proxy#1 --tailnet --tailnet-mode host-net
 ```
 
 resolves the FQDN from SSM and reaches `http://$TOWER:11434` inside the container.
+Plain `--tailnet` picks host-net automatically on native Linux.
 
 ## See also
 

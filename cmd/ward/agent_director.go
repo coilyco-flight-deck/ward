@@ -8,6 +8,7 @@ import (
 	"os"
 	"path/filepath"
 	"regexp"
+	"runtime"
 	"sort"
 	"strconv"
 	"strings"
@@ -118,14 +119,33 @@ func (c dispatchCarry) engineerArgv(ref agentIssueRef) []string {
 	if c.aws {
 		argv = append(argv, "--aws")
 	}
-	if c.hostNet {
-		argv = append(argv, "--host-net")
-	}
-	if c.tsSidecar {
-		argv = append(argv, "--ts-sidecar")
-	}
+	argv = appendTailnetArgv(argv, c.hostNet, c.tsSidecar)
 	if c.force {
 		argv = append(argv, "--force")
+	}
+	return argv
+}
+
+// tailnetPlanLabel renders a resolved tailnet route for a --print plan: off, or on with
+// the concrete mechanism the platform selected (ward#362).
+func tailnetPlanLabel(hostNet, tsSidecar bool) string {
+	switch {
+	case hostNet:
+		return "on (" + tailnetModeHostNet + ")"
+	case tsSidecar:
+		return "on (" + tailnetModeSidecar + ")"
+	}
+	return "off"
+}
+
+// appendTailnetArgv forwards a resolved tailnet mechanism to a child as --tailnet plus an
+// explicit --tailnet-mode, so the child pins the same route, no re-resolving (ward#362).
+func appendTailnetArgv(argv []string, hostNet, tsSidecar bool) []string {
+	switch {
+	case hostNet:
+		return append(argv, "--tailnet", "--tailnet-mode", tailnetModeHostNet)
+	case tsSidecar:
+		return append(argv, "--tailnet", "--tailnet-mode", tailnetModeSidecar)
 	}
 	return argv
 }
@@ -244,9 +264,9 @@ func (r *Runner) runAgentBacklog(ctx context.Context, c *cli.Command, mode conta
 	if err != nil {
 		return fmt.Errorf("%s: %w", label, err)
 	}
-	hostNet, tsSidecar := c.Bool("host-net"), c.Bool("ts-sidecar")
-	if hostNet && tsSidecar {
-		return fmt.Errorf("%s: --host-net and --ts-sidecar are mutually exclusive (ward#349)", label)
+	hostNet, tsSidecar, err := resolveTailnet(c, runtime.GOOS)
+	if err != nil {
+		return fmt.Errorf("%s: %w", label, err)
 	}
 	cfg := backlogConfig{
 		mode:         mode,
@@ -1037,8 +1057,7 @@ func (r *Runner) backlogPrintDirectorPlan(label string, repos []string, cfg back
 		fmt.Fprintf(&b, "ward-source:     %s (surface session builds ward from here)\n", cfg.wardSource)
 	}
 	fmt.Fprintf(&b, "aws:             %t\n", cy.aws)
-	fmt.Fprintf(&b, "host-net:        %t\n", cy.hostNet)
-	fmt.Fprintf(&b, "ts-sidecar:      %t\n", cy.tsSidecar)
+	fmt.Fprintf(&b, "tailnet:         %s\n", tailnetPlanLabel(cy.hostNet, cy.tsSidecar))
 	fmt.Fprintf(&b, "no-pull:         %t\n", cfg.noPull)
 	fmt.Fprintf(&b, "force:           %t (propagated to engineers; default defers on a reservation conflict)\n", cy.force)
 	if len(cfg.withRepo) > 0 {

@@ -9,48 +9,46 @@ func TestClassifyTaskInvocation(t *testing.T) {
 	cases := []struct {
 		name      string
 		arg       string
-		inline    string
 		file      string
 		wantRoute bool
 		wantRepo  string
 		wantErr   bool
 	}{
-		// A freeform positional with no instruction flag is ROUTE mode.
-		{"freeform task", "do the dishes", "", "", true, "", false},
-		{"freeform with spaces trimmed", "  clean up the logs  ", "", "", true, "", false},
-		// An explicit owner/repo positional stays DIRECT (today's behavior).
-		{"explicit repo", "coilyco-flight-deck/ward", "fix the thing", "", false, "coilyco-flight-deck/ward", false},
-		{"explicit repo no flag", "coilyco-flight-deck/ward", "", "", false, "coilyco-flight-deck/ward", false},
+		// A freeform positional with no --instructions-file is ROUTE mode.
+		{"freeform task", "do the dishes", "", true, "", false},
+		{"freeform with spaces trimmed", "  clean up the logs  ", "", true, "", false},
+		// An explicit owner/repo positional stays DIRECT (today's behavior); the body
+		// comes from --instructions-file now the inline flag is retired (ward#362).
+		{"explicit repo with file", "coilyco-flight-deck/ward", "task.md", false, "coilyco-flight-deck/ward", false},
+		{"explicit repo no flag", "coilyco-flight-deck/ward", "", false, "coilyco-flight-deck/ward", false},
 		// An issue URL / owner/repo#N positional is DIRECT, normalized to its slug (ward#234).
-		{"issue url", forgejoBaseURL + "/coilyco-flight-deck/ward/issues/98", "fix the thing", "", false, "coilyco-flight-deck/ward", false},
-		{"owner/repo#N", "coilyco-flight-deck/ward#98", "fix the thing", "", false, "coilyco-flight-deck/ward", false},
+		{"issue url", forgejoBaseURL + "/coilyco-flight-deck/ward/issues/98", "task.md", false, "coilyco-flight-deck/ward", false},
+		{"owner/repo#N", "coilyco-flight-deck/ward#98", "task.md", false, "coilyco-flight-deck/ward", false},
 		// A non-issue URL is freeform content, no phantom owner (ward#234).
-		{"actions run url is freeform", forgejoBaseURL + "/coilyco-flight-deck/ward/actions/runs/301", "", "", true, "", false},
-		{"prose with embedded url is freeform", "fix CI: " + forgejoBaseURL + "/coilyco-flight-deck/ward/actions/runs/301/jobs/0/attempt/1", "", "", true, "", false},
-		// No positional + instructions is DIRECT with cwd inference.
-		{"cwd inference", "", "fix the flaky test", "", false, "", false},
-		{"cwd inference via file", "", "", "task.md", false, "", false},
-		// A freeform positional AND an instruction flag is a contradiction.
-		{"freeform plus inline", "do the dishes", "also this", "", false, "", true},
-		{"freeform plus file", "do the dishes", "", "task.md", false, "", true},
+		{"actions run url is freeform", forgejoBaseURL + "/coilyco-flight-deck/ward/actions/runs/301", "", true, "", false},
+		{"prose with embedded url is freeform", "fix CI: " + forgejoBaseURL + "/coilyco-flight-deck/ward/actions/runs/301/jobs/0/attempt/1", "", true, "", false},
+		// No positional + --instructions-file is DIRECT with cwd inference.
+		{"cwd inference via file", "", "task.md", false, "", false},
+		// A freeform positional AND --instructions-file is a contradiction.
+		{"freeform plus file", "do the dishes", "task.md", false, "", true},
 		// Nothing at all is an error.
-		{"empty", "", "", "", false, "", true},
+		{"empty", "", "", false, "", true},
 	}
 	for _, c := range cases {
 		t.Run(c.name, func(t *testing.T) {
-			route, repo, err := classifyTaskInvocation(c.arg, c.inline, c.file)
+			route, repo, err := classifyTaskInvocation(c.arg, c.file)
 			if c.wantErr {
 				if err == nil {
-					t.Fatalf("classifyTaskInvocation(%q,%q,%q): want error, got route=%v repo=%q", c.arg, c.inline, c.file, route, repo)
+					t.Fatalf("classifyTaskInvocation(%q,%q): want error, got route=%v repo=%q", c.arg, c.file, route, repo)
 				}
 				return
 			}
 			if err != nil {
-				t.Fatalf("classifyTaskInvocation(%q,%q,%q): unexpected error %v", c.arg, c.inline, c.file, err)
+				t.Fatalf("classifyTaskInvocation(%q,%q): unexpected error %v", c.arg, c.file, err)
 			}
 			if route != c.wantRoute || repo != c.wantRepo {
-				t.Errorf("classifyTaskInvocation(%q,%q,%q) = route=%v repo=%q, want route=%v repo=%q",
-					c.arg, c.inline, c.file, route, repo, c.wantRoute, c.wantRepo)
+				t.Errorf("classifyTaskInvocation(%q,%q) = route=%v repo=%q, want route=%v repo=%q",
+					c.arg, c.file, route, repo, c.wantRoute, c.wantRepo)
 			}
 		})
 	}

@@ -10,7 +10,6 @@ import (
 	"testing"
 
 	"forgejo.coilysiren.me/coilyco-flight-deck/cli-guard/cli/shell"
-	"github.com/urfave/cli/v3"
 )
 
 // ward#349: --ts-sidecar attaches the carry to the shared ward-tailnet network
@@ -172,83 +171,5 @@ func TestPreflightTailnetProxy(t *testing.T) {
 	}
 }
 
-// tsSidecarProbeFlags mirrors buildUpPlan's launch flag set with both network
-// escalations registered, so a probe can exercise the --ts-sidecar plumbing.
-func tsSidecarProbeFlags() []cli.Flag {
-	return []cli.Flag{
-		&cli.StringFlag{Name: "ward-source"},
-		&cli.StringFlag{Name: "ward-version"},
-		&cli.StringFlag{Name: "image", Value: containerImageDefault},
-		&cli.StringFlag{Name: "tag", Value: containerImageTagDefault},
-		&cli.StringFlag{Name: "branch"},
-		&cli.StringSliceFlag{Name: "repo", Aliases: []string{"with-repo"}},
-		&cli.BoolFlag{Name: "aws"},
-		hostNetFlag(),
-		tsSidecarFlag(),
-		&cli.BoolFlag{Name: "detach"},
-	}
-}
-
-// TestBuildUpPlanTSSidecar covers ward#349: --ts-sidecar sets TSSidecar, no longer
-// implies the ~/.aws mount (it needs no SSM), and is mutually exclusive with --host-net.
-func TestBuildUpPlanTSSidecar(t *testing.T) {
-	run := func(args []string) (upPlan, error) {
-		var got upPlan
-		var perr error
-		probe := &cli.Command{
-			Name:  "probe",
-			Flags: tsSidecarProbeFlags(),
-			Action: func(_ context.Context, c *cli.Command) error {
-				got, perr = buildUpPlan(c, targetRepo{Owner: "o", Name: "r"}, modeClaude, t.TempDir(), t.TempDir(), nil)
-				return nil
-			},
-		}
-		if err := probe.Run(context.Background(), append([]string{"probe"}, args...)); err != nil {
-			t.Fatalf("probe run: %v", err)
-		}
-		return got, perr
-	}
-
-	hasAWSMount := func(p upPlan) bool {
-		for _, m := range p.Mounts {
-			if m.Target == containerAWSMount {
-				return true
-			}
-		}
-		return false
-	}
-
-	// --ts-sidecar: TSSidecar set, HostNet off, and NO ~/.aws (the box needs no SSM).
-	if p, err := run([]string{"--ts-sidecar"}); err != nil {
-		t.Fatalf("--ts-sidecar: unexpected error: %v", err)
-	} else if !p.TSSidecar {
-		t.Error("--ts-sidecar: TSSidecar should be true")
-	} else if p.HostNet {
-		t.Error("--ts-sidecar must not set HostNet")
-	} else if hasAWSMount(p) {
-		t.Error("--ts-sidecar must not imply the ~/.aws mount (the standing box needs no SSM; ward#349)")
-	}
-
-	// --host-net + --ts-sidecar: mutually exclusive, a hard error.
-	if _, err := run([]string{"--host-net", "--ts-sidecar"}); err == nil {
-		t.Error("--host-net + --ts-sidecar must be a mutual-exclusion error")
-	}
-
-	// --host-net still implies the ~/.aws mount (the tower FQDN is SSM-only).
-	if p, err := run([]string{"--host-net"}); err != nil {
-		t.Fatalf("--host-net: unexpected error: %v", err)
-	} else if !p.HostNet {
-		t.Error("--host-net: HostNet should be true")
-	} else if !hasAWSMount(p) {
-		t.Error("--host-net should still imply the ~/.aws mount (the tower FQDN is SSM-only)")
-	}
-
-	// --aws alone: the SSM mount, but neither network escalation.
-	if p, err := run([]string{"--aws"}); err != nil {
-		t.Fatalf("--aws: unexpected error: %v", err)
-	} else if p.TSSidecar || p.HostNet {
-		t.Errorf("--aws alone: TSSidecar=%v HostNet=%v, want both false", p.TSSidecar, p.HostNet)
-	} else if !hasAWSMount(p) {
-		t.Error("--aws should still mount ~/.aws")
-	}
-}
+// The buildUpPlan tailnet plumbing is covered by TestBuildUpPlanTailnet in
+// container_hostnet_test.go now the two escalations are one --tailnet flag (ward#362).

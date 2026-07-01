@@ -353,42 +353,39 @@ func TestParseExtraRepos(t *testing.T) {
 	}
 }
 
-// TestAgentGrantFlagName pins the agent extra-repo grant as "--repo" with the
-// "--with-repo" alias, and proves the "with-repo" lookup resolves it (ward#280).
+// TestAgentGrantFlagName pins the extra-repo grant as a repeatable "--repo" with the
+// legacy "--with-repo" alias removed (ward#362), and that extraRepoGrant resolves it.
 func TestAgentGrantFlagName(t *testing.T) {
 	for _, cmd := range []*cli.Command{
 		agentEngineerCommand(),
 	} {
 		var grant cli.Flag
 		for _, f := range cmd.Flags {
-			if slices.Contains(f.Names(), "with-repo") {
+			if slices.Contains(f.Names(), "repo") {
 				grant = f
 				break
 			}
 		}
 		if grant == nil {
-			t.Fatalf("%s: no grant flag reachable by the shared \"with-repo\" key", cmd.Name)
+			t.Fatalf("%s: no --repo grant flag on the engineer surface", cmd.Name)
 		}
 		names := grant.Names()
-		if !slices.Contains(names, "repo") {
-			t.Errorf("%s: grant flag missing the shortened \"repo\" name; got %v", cmd.Name, names)
-		}
-		if !slices.Contains(names, "with-repo") {
-			t.Errorf("%s: grant flag dropped the \"with-repo\" alias; got %v", cmd.Name, names)
+		if slices.Contains(names, "with-repo") {
+			t.Errorf("%s: the legacy --with-repo alias must be gone (ward#362); got %v", cmd.Name, names)
 		}
 		if _, ok := grant.(*cli.StringSliceFlag); !ok {
 			t.Errorf("%s: grant flag is %T, want a repeatable *cli.StringSliceFlag", cmd.Name, grant)
 		}
 	}
 
-	// And the shortened name reaches the reader buildUpPlan uses: `--repo` must
-	// surface through the shared `StringSlice("with-repo")` lookup, repeatably.
+	// And `--repo` reaches the reader buildUpPlan uses: extraRepoGrant must surface a
+	// repeatable --repo (the engineer surface path, no alias) as the extra-repo grant.
 	var got []string
 	probe := &cli.Command{
 		Name:  "probe",
-		Flags: []cli.Flag{&cli.StringSliceFlag{Name: "repo", Aliases: []string{"with-repo"}}},
+		Flags: []cli.Flag{&cli.StringSliceFlag{Name: "repo"}},
 		Action: func(_ context.Context, c *cli.Command) error {
-			got = c.StringSlice("with-repo")
+			got = extraRepoGrant(c)
 			return nil
 		},
 	}
@@ -396,7 +393,7 @@ func TestAgentGrantFlagName(t *testing.T) {
 		t.Fatalf("probe run: %v", err)
 	}
 	if want := []string{"o/a", "o/b"}; !slices.Equal(got, want) {
-		t.Errorf("--repo via the with-repo lookup = %v, want %v", got, want)
+		t.Errorf("--repo via extraRepoGrant = %v, want %v", got, want)
 	}
 }
 
@@ -1141,7 +1138,7 @@ func TestBuildUpPlanWardVersion(t *testing.T) {
 				&cli.StringFlag{Name: "image", Value: containerImageDefault},
 				&cli.StringFlag{Name: "tag", Value: containerImageTagDefault},
 				&cli.StringFlag{Name: "branch"},
-				&cli.StringSliceFlag{Name: "repo", Aliases: []string{"with-repo"}},
+				&cli.StringSliceFlag{Name: "repo"},
 				&cli.BoolFlag{Name: "aws"},
 				&cli.BoolFlag{Name: "detach"},
 			},

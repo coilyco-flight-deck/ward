@@ -162,10 +162,10 @@ func validateDispatchBrokerArgv(role string, tail []string) error {
 	valueFlags := map[string]bool{"--driver": true}
 	boolFlags := map[string]bool{"--print": true}
 	if role == "engineer" {
-		for _, f := range []string{"--image", "--tag", "--ward-version", "--branch", "--repo", "--with-repo"} {
+		for _, f := range []string{"--image", "--tag", "--ward-version", "--branch", "--repo", "--tailnet-mode"} {
 			valueFlags[f] = true
 		}
-		for _, f := range []string{"--aws", "--host-net", "--ts-sidecar", "--no-pull", "--go-bootstrap", "--force", "--no-preflight"} {
+		for _, f := range []string{"--aws", "--tailnet", "--no-pull", "--force", "--no-preflight"} {
 			boolFlags[f] = true
 		}
 		return validateDispatchBrokerFlags(role, tail, valueFlags, boolFlags, false)
@@ -282,17 +282,17 @@ func brokerAdvisorArgv(c *cli.Command, mode containerMode, ref agentIssueRef) []
 }
 
 func appendBrokerContainerFlags(argv []string, c *cli.Command) []string {
-	for _, name := range []string{"image", "tag", "ward-version", "branch"} {
+	for _, name := range []string{"image", "tag", "ward-version", "branch", "tailnet-mode"} {
 		if v := strings.TrimSpace(c.String(name)); c.IsSet(name) && v != "" {
 			argv = append(argv, "--"+name, v)
 		}
 	}
-	for _, repo := range c.StringSlice("with-repo") {
+	for _, repo := range extraRepoGrant(c) {
 		if repo = strings.TrimSpace(repo); repo != "" {
 			argv = append(argv, "--repo", repo)
 		}
 	}
-	for _, name := range []string{"aws", "host-net", "ts-sidecar", "no-pull", "go-bootstrap"} {
+	for _, name := range []string{"aws", "tailnet", "no-pull"} {
 		if c.Bool(name) {
 			argv = append(argv, "--"+name)
 		}

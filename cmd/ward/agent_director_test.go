@@ -47,32 +47,30 @@ func TestDispatchCarryEngineerArgv(t *testing.T) {
 	if !reflect.DeepEqual(bare, wantBare) {
 		t.Errorf("bare argv = %v, want %v", bare, wantBare)
 	}
-	for _, unwanted := range []string{"--aws", "--host-net", "--ts-sidecar", "--force", "--ward-version"} {
+	for _, unwanted := range []string{"--aws", "--tailnet", "--tailnet-mode", "--force", "--ward-version"} {
 		if containsArg(bare, unwanted) {
 			t.Errorf("bare argv should not carry %q: %v", unwanted, bare)
 		}
 	}
 
-	// A fully-loaded carry forwards the resolved container intent.
+	// A fully-loaded carry forwards the resolved container intent; a resolved host-net
+	// route forwards as the consolidated --tailnet + an explicit --tailnet-mode (ward#362).
 	full := dispatchCarry{
 		driver: modeGoose, image: "ghcr.io/x/dev", tag: "v9", wardVersion: "v0.58.0",
 		aws: true, hostNet: true, tsSidecar: false, force: true,
 	}.engineerArgv(ref)
 	for _, want := range [][2]string{
 		{"--driver", "goose"}, {"--image", "ghcr.io/x/dev"}, {"--tag", "v9"},
-		{"--ward-version", "v0.58.0"},
+		{"--ward-version", "v0.58.0"}, {"--tailnet-mode", "host-net"},
 	} {
 		if !argFollowedBy(full, want[0], want[1]) {
 			t.Errorf("argv missing %s %s: %v", want[0], want[1], full)
 		}
 	}
-	for _, want := range []string{"--aws", "--host-net", "--force", "--no-preflight"} {
+	for _, want := range []string{"--aws", "--tailnet", "--force", "--no-preflight"} {
 		if !containsArg(full, want) {
 			t.Errorf("argv missing %q: %v", want, full)
 		}
-	}
-	if containsArg(full, "--ts-sidecar") {
-		t.Errorf("argv should not carry --ts-sidecar when false: %v", full)
 	}
 }
 
@@ -98,7 +96,7 @@ func TestDirectorEngineerDriver(t *testing.T) {
 func TestDirectorFlagsParity(t *testing.T) {
 	cmd := agentDirectorCommand()
 	for _, want := range []string{
-		"image", "tag", "ward-source", "ward-version", "aws", "host-net", "ts-sidecar",
+		"image", "tag", "ward-source", "ward-version", "aws", "tailnet", "tailnet-mode",
 		"no-pull", "print", "with-repo", "force", "engineer-driver", "driver",
 	} {
 		if !commandHasFlag(cmd, want) {
@@ -174,10 +172,13 @@ func TestDirectorSurfaceArgv(t *testing.T) {
 			t.Errorf("surface argv missing %s %s: %v", want[0], want[1], argv)
 		}
 	}
-	for _, want := range []string{"--aws", "--ts-sidecar", "--no-pull"} {
+	for _, want := range []string{"--aws", "--tailnet", "--no-pull"} {
 		if !containsArg(argv, want) {
 			t.Errorf("surface argv missing %q: %v", want, argv)
 		}
+	}
+	if !argFollowedBy(argv, "--tailnet-mode", "sidecar") {
+		t.Errorf("surface argv must forward the resolved sidecar mechanism as --tailnet-mode sidecar: %v", argv)
 	}
 	if containsArg(argv, "goose") {
 		t.Errorf("surface argv must not carry the engineer driver: %v", argv)

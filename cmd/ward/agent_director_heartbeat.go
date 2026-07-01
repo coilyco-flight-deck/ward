@@ -419,12 +419,7 @@ func directorSurfaceArgv(contextRepo string, cfg backlogConfig) []string {
 	if cy.aws {
 		argv = append(argv, "--aws")
 	}
-	if cy.hostNet {
-		argv = append(argv, "--host-net")
-	}
-	if cy.tsSidecar {
-		argv = append(argv, "--ts-sidecar")
-	}
+	argv = appendTailnetArgv(argv, cy.hostNet, cy.tsSidecar)
 	if cfg.noPull {
 		argv = append(argv, "--no-pull")
 	}

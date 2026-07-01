@@ -41,7 +41,7 @@ func TestBrokerEngineerArgvForwardsApprovedFlags(t *testing.T) {
 		"--driver", "claude",
 		"--image", "img", "--tag", "t1", "--ward-version", "v1",
 		"--repo", "coilyco-flight-deck/cli-guard",
-		"--aws", "--ts-sidecar", "--force", "--no-preflight",
+		"--aws", "--tailnet", "--tailnet-mode", "sidecar", "--force", "--no-preflight",
 	})
 	got := brokerEngineerArgv(cmd, modeClaude, agentIssueRef{Owner: "coilyco-flight-deck", Repo: "ward", Number: 42})
 	for _, want := range [][]string{
@@ -50,12 +50,13 @@ func TestBrokerEngineerArgvForwardsApprovedFlags(t *testing.T) {
 		{"--tag", "t1"},
 		{"--ward-version", "v1"},
 		{"--repo", "coilyco-flight-deck/cli-guard"},
+		{"--tailnet-mode", "sidecar"},
 	} {
 		if !argFollowedBy(got, want[0], want[1]) {
 			t.Errorf("forwarded argv missing %s %s: %v", want[0], want[1], got)
 		}
 	}
-	for _, want := range []string{"engineer", "coilyco-flight-deck/ward#42", "--aws", "--ts-sidecar", "--force", "--no-preflight"} {
+	for _, want := range []string{"engineer", "coilyco-flight-deck/ward#42", "--aws", "--tailnet", "--force", "--no-preflight"} {
 		if !containsArg(got, want) {
 			t.Errorf("forwarded argv missing %q: %v", want, got)
 		}

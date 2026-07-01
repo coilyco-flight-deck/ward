@@ -34,11 +34,10 @@ type repoCatalogEntry struct {
 	Description string
 }
 
-// classifyTaskInvocation decides ROUTE vs DIRECT from the positional arg and the
-// instruction flags (ward#164); see docs/agent-engineer.md. Contradictions error.
-func classifyTaskInvocation(arg, inline, file string) (route bool, repoArg string, err error) {
+// classifyTaskInvocation decides ROUTE vs DIRECT from the positional + instructions-file
+// (ward#164; inline --instructions retired in ward#362). See docs/agent-engineer.md.
+func classifyTaskInvocation(arg, file string) (route bool, repoArg string, err error) {
 	arg = strings.TrimSpace(arg)
-	inline = strings.TrimSpace(inline)
 	file = strings.TrimSpace(file)
 	if arg != "" {
 		if slug, ok := taskRepoRef(arg); ok {
@@ -46,18 +45,18 @@ func classifyTaskInvocation(arg, inline, file string) (route bool, repoArg strin
 			// normalized to its canonical slug; unchanged behavior. See taskRepoRef.
 			return false, slug, nil
 		}
-		// A freeform positional is the task text (ROUTE); a competing instruction
-		// flag is a contradiction.
-		if inline != "" || file != "" {
-			return false, "", fmt.Errorf("got a freeform task as the positional argument and also --instructions/--instructions-file; pass the task one way, not both")
+		// A freeform positional is the task text (ROUTE); a competing --instructions-file
+		// is a contradiction.
+		if file != "" {
+			return false, "", fmt.Errorf("got a freeform task as the positional argument and also --instructions-file; pass the task one way, not both")
 		}
 		return true, "", nil
 	}
-	// No positional: DIRECT with a cwd-inferred repo iff instructions were given.
-	if inline != "" || file != "" {
+	// No positional: DIRECT with a cwd-inferred repo iff --instructions-file was given.
+	if file != "" {
 		return false, "", nil
 	}
-	return false, "", fmt.Errorf("no task given: pass a freeform task ('ward agent engineer \"do the thing\"') to auto-route it, or an explicit owner/repo with --instructions")
+	return false, "", fmt.Errorf("no task given: pass a freeform task ('ward agent engineer \"do the thing\"') to auto-route it, or an explicit owner/repo with --instructions-file")
 }
 
 // taskRepoRef coerces a `task` positional to an owner/repo slug ONLY for a bare
@@ -163,10 +162,10 @@ func (r *Runner) routeSurveyPreconditions(mode containerMode, taskText, label st
 	}
 	bin := mode.agentBinary()
 	if _, ok := mode.hostPreflightArgv("probe"); !ok {
-		return fmt.Errorf("%s: route mode surveys repos with a host self-assessment slot, which %s lacks (ward#148); pass an explicit owner/repo with --instructions to file directly", label, bin)
+		return fmt.Errorf("%s: route mode surveys repos with a host self-assessment slot, which %s lacks (ward#148); pass an explicit owner/repo with --instructions-file to file directly", label, bin)
 	}
 	if !hostHasBinary(bin) {
-		return fmt.Errorf("%s: route mode needs %s on PATH to survey repos; pass an explicit owner/repo with --instructions to file directly", label, bin)
+		return fmt.Errorf("%s: route mode needs %s on PATH to survey repos; pass an explicit owner/repo with --instructions-file to file directly", label, bin)
 	}
 	return nil
 }
@@ -406,7 +405,7 @@ func routeUnclearComment(mode containerMode, reason, read string) string {
 		"route.\n\n", agentCmdline(mode, "engineer"))
 	fmt.Fprintf(&b, "> %s\n\n", reason)
 	fmt.Fprintf(&b, "Once you know the target repo, re-dispatch in DIRECT mode - `%s <owner/repo> "+
-		"-i \"...\"` - or file the issue by hand and run `%s <ref>`.\n", agentCmdline(mode, "engineer"), agentCmdline(mode, "engineer"))
+		"--instructions-file <path>` - or file the issue by hand and run `%s <ref>`.\n", agentCmdline(mode, "engineer"), agentCmdline(mode, "engineer"))
 	if read = strings.TrimSpace(read); read != "" {
 		fmt.Fprintf(&b, "\n<details><summary>full route survey</summary>\n\n%s\n\n</details>\n", read)
 	}

@@ -104,20 +104,19 @@ func buildUpPlan(c *cli.Command, repo targetRepo, mode containerMode, cwd, asset
 	if v := strings.TrimSpace(c.String("ward-version")); v != "" {
 		wardVersion = v
 	}
-	// Mutually-exclusive tailnet routes (off by default). --host-net implies --aws (the
-	// tower FQDN is SSM-only); --ts-sidecar needs no SSM (ward#349). docs/agent-flags.md.
-	hostNet := c.Bool("host-net")
-	tsSidecar := c.Bool("ts-sidecar")
-	if hostNet && tsSidecar {
-		return upPlan{}, fmt.Errorf("--host-net and --ts-sidecar are mutually exclusive: --host-net inherits the host's tailnet route, --ts-sidecar attaches to the standing mac-proxy box over ward-tailnet for Docker Desktop where the host VM is not a tailnet node (ward#349)")
+	// Consolidated tailnet route (ward#362): --tailnet auto-selects host-net vs the sidecar
+	// by platform (--tailnet-mode overrides); it implies --aws. docs/agent-flags.md.
+	hostNet, tsSidecar, err := resolveTailnet(c, runtime.GOOS)
+	if err != nil {
+		return upPlan{}, err
 	}
 	awsHome := ""
-	if c.Bool("aws") || hostNet {
+	if c.Bool("aws") || tailnetEnabled(c) {
 		awsHome = filepath.Join(homeDir(), ".aws")
 	}
-	// "with-repo" is the shared lookup key: the canonical name on drive/ask, the
-	// alias of "--repo" on the agent surfaces (ward#280, docs/container-multi-repo.md).
-	extra, err := parseExtraRepos(c.StringSlice("with-repo"), repo)
+	// extraRepoGrant reads the --repo grant on the agent surfaces and --with-repo on
+	// advisor/director (ward#280, ward#362; docs/container-multi-repo.md).
+	extra, err := parseExtraRepos(extraRepoGrant(c), repo)
 	if err != nil {
 		return upPlan{}, err
 	}
@@ -140,7 +139,6 @@ func buildUpPlan(c *cli.Command, repo targetRepo, mode containerMode, cwd, asset
 		WardVersion:    wardVersion,
 		WardFromSource: wardSrc != "",
 		AgentArgs:      agentArgs,
-		GoBootstrap:    c.Bool("go-bootstrap"),
 		ExtraRepos:     extra,
 		HostNet:        hostNet,
 		TSSidecar:      tsSidecar,

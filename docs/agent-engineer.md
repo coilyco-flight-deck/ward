@@ -26,7 +26,7 @@ errors on non-ref text → freeform):
 
 - **A ref** (`owner/repo#N`, a bare `#N` / `N` inferring `owner/repo` from the cwd's
   git origin, or a Forgejo issue URL) carries that existing issue.
-- **Freeform text** (or a bare `owner/repo` plus `--instructions`) files an issue
+- **Freeform text** (or a bare `owner/repo` plus `--instructions-file`) files an issue
   first, then carries it (the retired `task` flow).
 
 ## Ref mode: the detached carry
@@ -52,16 +52,15 @@ Warp spawn (ward#174) are retired; interactive work funnels to the
 When the argument is not a ref, engineer files an issue, carries it, and closes it.
 Two sub-modes by repo omission:
 
-- **DIRECT** — an explicit `owner/repo` (or `--instructions`/`-i` with cwd inference);
-  filed there and carried, same detached carry + pre-flight. Title is the first
-  instruction line (≤72 runes); body is the instructions + a provenance footer.
+- **DIRECT** — an explicit `owner/repo` (or `--instructions-file` with cwd inference; the
+  inline `--instructions`/`-i` was retired in ward#362); filed there and carried, same
+  detached carry + pre-flight. Title is the first instruction line (≤72 runes); body is the
+  instructions + a provenance footer.
 - **ROUTE** (ward#164) — a freeform task and no repo. ward files an intake record in
   `coilysiren/inbox`, surveys the fleet one-shot to route it (`REPO` / `UNCLEAR`),
   files a scoped child, cross-links + closes intake, then carries the child. An
   UNCLEAR or untrusted target bounces to a human. The survey *is* the gate (ROUTE
   skips the pre-flight); it needs a claude/goose host slot, else use DIRECT (ward#148).
-
-Pass exactly one of `--instructions`/`-i` or `--instructions-file`.
 
 ## Trust gate and dry-run
 

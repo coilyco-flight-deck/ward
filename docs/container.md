@@ -19,7 +19,7 @@ Three departures from a transparent, shared, bind-mounted container:
 - **Fresh clone inside, never on the host** - cached through a shared
   `ward-gitcache` bare mirror, so the host's repo tree stays untouched.
 - **Least access** - the only default host bind is the **cwd** (read-only) plus
-  ward's entrypoint/doctrine; `~/.aws` is opt-in via `--aws`, and `--host-net`
+  ward's entrypoint/doctrine; `~/.aws` is opt-in via `--aws`, and `--tailnet`
   opts into the host's tailnet route ([agent-host-net.md](agent-host-net.md)).
 
 ## Usage

@@ -3,7 +3,7 @@
 The seedless interactive bring-up (`runScratchSession`, the director's read-only
 surface - both its drain-surface and its init-gate "scope now" path; ward#353)
 resolved a visible
-chunk of state - repo, mode, access, image, ward version, `--with-repo` grants -
+chunk of state - repo, mode, access, image, ward version, `--repo` grants -
 then **immediately** `docker run` into the fullscreen agent TUI. That metadata
 scrolled past the instant the alt-screen took the terminal, with nowhere to act
 on it (notably, no chance to refresh a stale `ward` first). The **pre-launch

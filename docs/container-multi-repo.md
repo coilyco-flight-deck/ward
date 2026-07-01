@@ -5,8 +5,8 @@ By default a `ward container` run is single-repo: it clones one target into
 A task sometimes spans repos, though - a contract change in one repo and its
 consumer in another. `--repo` grants a run **additional writable repos**,
 explicitly, so the agent can clone and operate against more than the target.
-Epic [ward#230](https://forgejo.coilysiren.me/coilyco-flight-deck/ward/issues/230);
-shortened from `--with-repo` (kept as a back-compat alias) in [ward#280](https://forgejo.coilysiren.me/coilyco-flight-deck/ward/issues/280).
+Epic [ward#230](https://forgejo.coilysiren.me/coilyco-flight-deck/ward/issues/230).
+Shortened from `--with-repo` in [ward#280](https://forgejo.coilysiren.me/coilyco-flight-deck/ward/issues/280); that alias was dropped in ward#362, so the flag is now just `--repo`.
 
 This is deliberately opt-in. The container doctrine
 ([AGENTS.container.md](../cmd/ward/containerassets/AGENTS.container.md)) walls an
@@ -62,7 +62,7 @@ rejects the secondary) is preserved on a `ward-salvage/<id>` branch and the issu
 
 ## Plumbing
 
-`--repo` (the `with-repo` key carries the alias) flows host-side -> container as
+`--repo` flows host-side -> container as
 the space-separated `owner/name` list `WARD_EXTRA_REPOS` (`upPlan.ExtraRepos`,
 validated by `parseExtraRepos`). Both bootstrap paths clone the set after the
 target: the bash `clone_extra_repos` and the Go `cloneExtraRepos` (ward#181).

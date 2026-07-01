@@ -58,7 +58,7 @@ loop resumes and an issue is never re-dispatched. Dispatch is refused unless eve
 - `--driver` (claude) drives director's OWN session (decision one-shot + drain surface);
   `--engineer-driver` overrides the dispatched-engineer harness, else inherits `--driver` (ward#355).
 - Container/harness parity (ward#355): `--image`/`--tag`, `--ward-source`/`--ward-version`,
-  `--aws`, `--host-net`/`--ts-sidecar`, `--no-pull`, `--with-repo`, `--print`, `--force`. The
+  `--aws`, `--tailnet`, `--no-pull`, `--with-repo`, `--print`, `--force`. The
   dispatch subset propagates into each engineer; the full set configures the surface. `--print`
   launches nothing. `--branch`/`--no-preflight` and `--watch`/`--detach` are absent (ward#350).
 

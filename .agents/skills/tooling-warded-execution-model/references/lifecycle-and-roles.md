@@ -12,7 +12,7 @@ merge, then is thrown away (`docs/container.md`):
   container (cached via a shared `ward-gitcache` bare mirror); the host's repo tree is
   never touched. Many run at once, each uniquely named (`ward-<repo>-<rand>`).
 - **Least access.** The only default host bind is the cwd (read-only) plus ward's
-  entrypoint/doctrine; `~/.aws` (`--aws`) and the host tailnet route (`--host-net`) are
+  entrypoint/doctrine; `~/.aws` (`--aws`) and the host tailnet route (`--tailnet`) are
   opt-in.
 - **The reaper backstop** (`docs/container-reap.md`). On *every* exit (clean, crash,
   Ctrl-C) `ward container reap` fires as a `trap ... EXIT`, after the agent's permissions
