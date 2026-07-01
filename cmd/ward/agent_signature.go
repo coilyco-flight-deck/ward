@@ -49,19 +49,19 @@ func (m containerMode) agentSigner() attribution.Signer {
 // agentAttribution renders the one-line identity, e.g. "Claude (she/her)" when
 // pronouns are known, otherwise just "Goose".
 func (m containerMode) agentAttribution() string {
-	return m.agentSigner().Identity.Label()
+	return lookupAgent(m).Signer().Identity.Label()
 }
 
 // signBody idempotently appends the agent attribution footer to a markdown
 // body; an empty body becomes the footer alone, never empty.
 func (m containerMode) signBody(body string) string {
-	return m.agentSigner().SignBody(body)
+	return lookupAgent(m).Signer().SignBody(body)
 }
 
 // commitTrailer is the git Co-Authored-By trailer tagging a commit with the
 // agent that produced the work.
 func (m containerMode) commitTrailer() string {
-	return m.agentSigner().CommitTrailer()
+	return lookupAgent(m).Signer().CommitTrailer()
 }
 
 // currentAgentMode resolves the running context's agent from WARD_AGENT then

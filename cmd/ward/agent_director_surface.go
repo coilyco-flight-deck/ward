@@ -108,7 +108,7 @@ func (r *Runner) runScratchSession(ctx context.Context, c *cli.Command, mode con
 	if readOnly {
 		access = "read-only"
 	}
-	fmt.Fprintf(os.Stderr, "%s: opening an interactive %s %s session on %s in a fresh container...\n\n", label, access, mode.agentBinary(), plan.Repo.slug())
+	fmt.Fprintf(os.Stderr, "%s: opening an interactive %s %s session on %s in a fresh container...\n\n", label, access, lookupAgent(mode).Record().Binary, plan.Repo.slug())
 	return r.createAgentContainer(ctx, plan, envFile)
 }
 

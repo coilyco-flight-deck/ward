@@ -21,6 +21,7 @@ import (
 	"forgejo.coilysiren.me/coilyco-flight-deck/cli-guard/cli/verb"
 	"forgejo.coilysiren.me/coilyco-flight-deck/cli-guard/pkg/fleetconfig"
 	"forgejo.coilysiren.me/coilyco-flight-deck/cli-guard/pkg/flock"
+	"github.com/coilyco-flight-deck/ward/internal/agentspi"
 	"github.com/urfave/cli/v3"
 )
 
@@ -228,8 +229,20 @@ func (r *Runner) runContainerBootstrap(ctx context.Context, c *cli.Command) erro
 		_ = os.Setenv("WARD_CONTAINER_UP", time.Now().UTC().Format("2006-01-02T15:04:05Z"))
 	}
 
+	// Phase 3 (ward#418): dispatch every per-agent seam through the registry + SPI
+	// capability interfaces, feature-tested per mode; switches stay live for Phase 4.
+	mode, perr := parseMode(e.Mode)
+	if perr != nil {
+		mode = modeClaude // match the switches' default-to-claude arm
+	}
+	agent, _ := r.wireAgent(mode)
+	rc := r.runCtxFromEnv(ctx, e, agentArgs)
+
 	r.configureGitAuth(ctx, e)
-	r.installOpencode(ctx, e)
+	// Installer: opencode self-installs before the clone (absent from the image).
+	if inst, ok := agent.(agentspi.Installer); ok {
+		_ = inst.Install(rc)
+	}
 	work, cerr := r.cloneTarget(ctx, e)
 	if cerr != nil {
 		return cerr
@@ -240,12 +253,9 @@ func (r *Runner) runContainerBootstrap(ctx context.Context, c *cli.Command) erro
 	r.warmSubstrate(ctx, e)
 	r.composeContext(e)
 	r.composePermissions(e)
-	r.writeClaudeCreds(e)
-	r.seedClaudeOnboarding(e)
-	r.writeCodexCreds(e)
-	r.composeCodexConfig(e)
-	r.composeOpencodeConfig(e)
-	r.composeGooseConfig(e)
+	// Creds write + onboarding seed + config compose, each feature-tested per mode
+	// (Phase 3, ward#418); composeAgentContainer holds the order.
+	composeAgentContainer(agent, rc)
 
 	_ = os.Setenv("WARD_REAP_WORK", work)
 	defer r.reap(ctx, work)
@@ -279,11 +289,13 @@ func (r *Runner) runContainerBootstrap(ctx context.Context, c *cli.Command) erro
 	_ = os.Unsetenv("ANTHROPIC_API_KEY")
 	_ = os.Unsetenv("ANTHROPIC_AUTH_TOKEN")
 
-	// Fail loud before launch if claude can't authenticate (ward#222): a clear
-	// abort beats a silent multi-minute hang. Runs as the agent user, post-chown.
-	if serr := r.smokeTestClaudeAuth(ctx, e); serr != nil {
-		blog("fatal: %v", serr)
-		return serr
+	// LaunchGate feature-test (only claude wires one, ward#418): fail loud before
+	// launch if claude can't authenticate (ward#222), as the agent user post-chown.
+	if lg, ok := agent.(agentspi.LaunchGate); ok {
+		if serr := lg.PreLaunchCheck(rc); serr != nil {
+			blog("fatal: %v", serr)
+			return serr
+		}
 	}
 
 	blog("launching %s as uid %s", e.Agent, e.AgentUID)

@@ -108,3 +108,61 @@ func TestRegistryAgentsNoOpUnwired(t *testing.T) {
 		t.Errorf("unwired agents wrote %d entries under HOME, want 0", len(entries))
 	}
 }
+
+// TestLookupAgentResolvesModes pins the Phase 3 (ward#418) data-read surface: every
+// mode resolves to its record, qwen folds to opencode, unknown falls back to claude.
+func TestLookupAgentResolvesModes(t *testing.T) {
+	for _, mode := range agentModes {
+		if got := lookupAgent(mode).Name(); got != string(mode) {
+			t.Errorf("lookupAgent(%s).Name() = %q, want %q", mode, got, mode)
+		}
+	}
+	if got := lookupAgent(modeQwenAlias).Name(); got != "opencode" {
+		t.Errorf("lookupAgent(qwen).Name() = %q, want opencode", got)
+	}
+	if got := lookupAgent("no-such-mode").Name(); got != "claude" {
+		t.Errorf("lookupAgent(unknown).Name() = %q, want claude fallback", got)
+	}
+}
+
+// TestComposeAgentContainerPerMode confirms the Phase 3 dispatch helper runs only
+// each wired mode's capabilities (claude onboarding, codex/opencode/goose config).
+func TestComposeAgentContainerPerMode(t *testing.T) {
+	cases := []struct {
+		mode    containerMode
+		present string // a path (relative to HOME) the mode's setup must write
+		absent  string // a path a different mode would write, proving no bleed
+	}{
+		{modeClaude, ".claude.json", filepath.Join(".codex", "config.toml")},
+		{modeCodex, filepath.Join(".codex", "config.toml"), ".claude.json"},
+		{modeOpencode, filepath.Join(".config", "opencode", "opencode.json"), filepath.Join(".codex", "config.toml")},
+		{modeGoose, filepath.Join(".config", "goose", "config.yaml"), filepath.Join(".codex", "config.toml")},
+	}
+	for _, tc := range cases {
+		t.Run(string(tc.mode), func(t *testing.T) {
+			home := t.TempDir()
+			r := testRunner()
+			a, ok := r.wireAgent(tc.mode)
+			if !ok {
+				t.Fatalf("wireAgent(%s) not ok", tc.mode)
+			}
+			// TargetName drives claude's onboarding project entry; the model/url feed
+			// the opencode composer. WARD_MODE gates the guarded live funcs.
+			t.Setenv("WARD_MODE", string(tc.mode))
+			rc := r.runCtxFromEnv(context.Background(), bootstrapEnv{
+				Mode:       string(tc.mode),
+				AgentHome:  home,
+				TargetName: "ward",
+				QwenModel:  "qwen3-coder:30b",
+				OllamaURL:  "http://localhost:11434/v1",
+			}, nil)
+			composeAgentContainer(a, rc)
+			if _, err := os.Stat(filepath.Join(home, tc.present)); err != nil {
+				t.Errorf("%s: composeAgentContainer did not write %s: %v", tc.mode, tc.present, err)
+			}
+			if _, err := os.Stat(filepath.Join(home, tc.absent)); err == nil {
+				t.Errorf("%s: composeAgentContainer wrote %s from another mode", tc.mode, tc.absent)
+			}
+		})
+	}
+}

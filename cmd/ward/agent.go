@@ -637,8 +637,8 @@ func (r *Runner) captureInDir(ctx context.Context, dir, bin string, argv ...stri
 // the headless + task surfaces (ward#147, ward#149): only NO-GO blocks. See docs.
 func (r *Runner) runPreflight(ctx context.Context, mode containerMode, surface string, w resolvedWork) (bool, string, error) {
 	label := agentCmdline(mode, surface)
-	bin := mode.agentBinary()
-	argv, ok := mode.hostPreflightArgv(preflightPrompt(w.Ref, w.Title, w.Body, w.Details, w.Comments, w.ExtraRepos))
+	bin := lookupAgent(mode).Record().Binary
+	argv, ok := lookupAgent(mode).PreflightArgv(preflightPrompt(w.Ref, w.Title, w.Body, w.Details, w.Comments, w.ExtraRepos))
 	// No host self-assessment (claude+goose have one, codex/opencode don't) or no
 	// binary on PATH: can't fairly bounce the issue, so the dispatch proceeds.
 	if !ok || !hostHasBinary(bin) {

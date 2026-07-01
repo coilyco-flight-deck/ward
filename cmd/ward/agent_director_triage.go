@@ -235,8 +235,8 @@ func parseTriageVerdicts(read string) map[int]triageVerdict {
 // backlogTriage is the startup triage pass (ward#397): label each untriaged open issue's
 // tier + mode across the scope. Best effort and fail-closed; no one-shot writes nothing.
 func (r *Runner) backlogTriage(ctx context.Context, label string, repos []string, mode containerMode, limit int) {
-	bin := mode.agentBinary()
-	if _, ok := mode.hostPreflightArgv("probe"); !ok || !hostHasBinary(bin) {
+	bin := lookupAgent(mode).Record().Binary
+	if _, ok := lookupAgent(mode).PreflightArgv("probe"); !ok || !hostHasBinary(bin) {
 		fmt.Fprintf(os.Stderr, "%s: note: %s self-assessment unavailable; skipping startup triage.\n", label, bin)
 		return
 	}
@@ -265,7 +265,7 @@ func (r *Runner) triageRepo(ctx context.Context, label, repo string, cl *forgejo
 		fmt.Fprintf(os.Stderr, "%s: triage - %s already fully labeled (%d open); nothing to do.\n", label, repo, len(issues))
 		return
 	}
-	fmt.Fprintf(os.Stderr, "%s: triage - judging %d untriaged issue(s) in %s with %s...\n", label, len(cands), repo, mode.agentBinary())
+	fmt.Fprintf(os.Stderr, "%s: triage - judging %d untriaged issue(s) in %s with %s...\n", label, len(cands), repo, lookupAgent(mode).Record().Binary)
 	verdicts, ok := r.triageJudge(ctx, label, mode, cands)
 	if !ok {
 		return
@@ -277,7 +277,7 @@ func (r *Runner) triageRepo(ctx context.Context, label, repo string, cl *forgejo
 // triageJudge runs the batched judgment one-shot and parses its verdicts; ok=false on an
 // incomplete read, so the caller writes nothing (fail-closed).
 func (r *Runner) triageJudge(ctx context.Context, label string, mode containerMode, cands []triageCandidate) (map[int]triageVerdict, bool) {
-	argv, ok := mode.hostPreflightArgv(triagePrompt(cands))
+	argv, ok := lookupAgent(mode).PreflightArgv(triagePrompt(cands))
 	if !ok {
 		return nil, false
 	}

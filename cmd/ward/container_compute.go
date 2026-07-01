@@ -197,7 +197,7 @@ func (m containerMode) agentBinary() string {
 
 // hostPreflightArgv is the host one-shot argv asking this mode's agent prompt,
 // plus whether one exists (claude+goose yes, codex/qwen not yet). See docs/agent.md.
-func (m containerMode) hostPreflightArgv(prompt string) ([]string, bool) {
+func (m containerMode) hostPreflightArgv(prompt string) ([]string, bool) { //nolint:unparam // ward#418 flipped the varying-prompt callers to the registry; only the contract test's constant prompt remains until Phase 4 deletes this switch
 	switch m {
 	case modeClaude:
 		return []string{m.agentBinary(), "-p", prompt}, true
@@ -482,6 +482,7 @@ func extraReposEnv(repos []targetRepo) string {
 // wardEnv is the non-secret WARD_* config the entrypoint reads. Everything
 // here is safe to print and to record; the token never appears.
 func (p upPlan) wardEnv() map[string]string {
+	rec := lookupAgent(p.Mode).Record() // registry data reads (Phase 3, ward#418)
 	env := map[string]string{
 		// The friendly docker --name (plan.Name) so in-container tooling (the status
 		// line) can show it; HOSTNAME carries only the container ID (ward#365).
@@ -491,8 +492,8 @@ func (p upPlan) wardEnv() map[string]string {
 		"WARD_TARGET_NAME":    p.Repo.Name,
 		"WARD_FORGEJO_BASE":   p.ForgejoBase,
 		"WARD_MODE":           string(p.Mode),
-		"WARD_CONTEXT_LEVEL":  fmt.Sprintf("%d", p.Mode.contextLevel()),
-		"WARD_AGENT":          p.Mode.agentBinary(),
+		"WARD_CONTEXT_LEVEL":  fmt.Sprintf("%d", rec.ContextLevel),
+		"WARD_AGENT":          rec.Binary,
 		"WARD_GITCACHE":       containerGitcacheMnt,
 		"WARD_CONTEXT_SRC":    containerContextMount,
 		"WARD_MIRROR_NAME":    p.Repo.mirrorName(),

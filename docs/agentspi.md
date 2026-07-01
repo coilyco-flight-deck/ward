@@ -39,29 +39,27 @@ agent.(agentspi.Installer); ok { ... }` instead of a guard clause.
 `Exec` is the subprocess seam (`*shell.Runner` satisfies it); `Logger` is the
 blog-style stderr logger (`blog()`).
 
-## Phase 1 scope
+## Phase rollout (ward#401)
 
-The Phase 1 carve (ward#410) added the types plus the `agentHostCtx`/`agentRunCtx`
-views in [`cmd/ward/agentspi_ctx.go`](../cmd/ward/agentspi_ctx.go), no registry.
+- **Phase 1 (ward#410)** carved the types + the `agentHostCtx`/`agentRunCtx` views
+  in [`agentspi_ctx.go`](../cmd/ward/agentspi_ctx.go); no registry.
+- **Phase 2 (ward#412)** landed `internal/agents/{claude,codex,opencode,goose}` +
+  `registry.go`, each `Agent` implementing exactly its capabilities. Data is pure
+  per-package; capability methods forward to closures core injects in
+  [`agents_wire.go`](../cmd/ward/agents_wire.go) (`WriteCreds` -> `writeClaudeCreds`).
+  No call site flips - the switches stay live.
+- **Phase 3 (ward#418)** flips core control flow to the registry.
+  [`runContainerBootstrap`](../cmd/ward/container_bootstrap.go) dispatches
+  capabilities via `wireAgent(mode)` + feature-tests (each fires only for the
+  modes that implement it), and the `agentBinary`/`contextLevel`/`hostPreflightArgv`
+  /`agentSigner` data reads resolve through `lookupAgent(mode).Record()` (fleetconfig
+  -sourced, ward#416). Switches stay unreferenced-but-live.
+- **Phase 4** deletes the dead switches, `parseMode` last.
 
-## Phase 2 scope (ward#412)
-
-The packages `internal/agents/{claude,codex,opencode,goose}` land, each an `Agent`
-implementing exactly the capabilities it supports, plus `registry.go` (`Registry()`
-+ `Lookup(mode)`). **No core call site flips** - the switches stay live and both
-run simultaneously.
-
-- **Data is pure, manifest-free** (the fleet read is Phase 3): `Name`/`Record`/
-  `Signer`/`PreflightArgv`/`LaunchArgv` are hardcoded per package. The contract
-  test [`agents_registry_contract_test.go`](../cmd/ward/agents_registry_contract_test.go)
-  pins the registry to the live switches entry-for-entry (extending ward#152).
-- **Capabilities delegate.** A sub-package cannot reach `package main`, so each
-  capability method forwards to a closure core injects in
-  [`cmd/ward/agents_wire.go`](../cmd/ward/agents_wire.go) - `WriteCreds` ->
-  `writeClaudeCreds`, etc. The registry serves DATA-only agents (closures nil, a
-  safe no-op); `wireAgent` + its test prove the routing before Phase 3 cuts over.
-- **qwen -> opencode untangle:** the roster key names the harness, not its qwen
-  model. `--mode qwen` stays a deprecated alias; the signing persona stays "Qwen".
+The contract test [`agents_registry_contract_test.go`](../cmd/ward/agents_registry_contract_test.go)
+pins the registry to the live switches entry-for-entry (ward#152) at every step.
+The **qwen -> opencode** untangle keeps `--mode qwen` a deprecated alias; the
+signing persona stays "Qwen".
 
 ## See also
 

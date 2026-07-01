@@ -1,6 +1,7 @@
 package main
 
 import (
+	"context"
 	"strings"
 
 	"github.com/coilyco-flight-deck/ward/internal/agents"
@@ -49,6 +50,52 @@ func envLinesFromCredLines(lines []string) []agentspi.EnvLine {
 		return nil
 	}
 	return out
+}
+
+// lookupAgent resolves a mode to its DATA-only registry agent, the Record()/
+// Signer()/PreflightArgv() read surface; unknown -> claude (Phase 3, ward#418).
+func lookupAgent(mode containerMode) agentspi.Agent {
+	if a, ok := agents.Lookup(string(mode)); ok {
+		return a
+	}
+	a, _ := agents.Lookup("claude")
+	return a
+}
+
+// runCtxFromEnv builds the in-container RunCtx the capabilities + LaunchArgv read
+// from the entrypoint env - the inverse of envFromRunCtx (Phase 3, ward#418).
+func (r *Runner) runCtxFromEnv(ctx context.Context, e bootstrapEnv, seed []string) agentspi.RunCtx {
+	return agentspi.RunCtx{
+		Ctx:            ctx,
+		AgentHome:      e.AgentHome,
+		TargetName:     e.TargetName,
+		AgentUID:       e.AgentUID,
+		AgentGID:       e.AgentGID,
+		Headless:       e.Headless,
+		Ask:            e.Ask,
+		CodexModel:     e.CodexModel,
+		CodexEffort:    e.CodexEffort,
+		CodexVerbosity: e.CodexVerbosity,
+		OpencodeModel:  e.QwenModel,
+		OllamaURL:      e.OllamaURL,
+		Seed:           seed,
+		Exec:           r.Runner,
+		Log:            blog,
+	}
+}
+
+// composeAgentContainer runs the in-container setup capabilities feature-tested,
+// keeping the old creds -> onboarding -> config order (Phase 3, ward#418).
+func composeAgentContainer(agent agentspi.Agent, rc agentspi.RunCtx) {
+	if cp, ok := agent.(agentspi.CredentialProvider); ok {
+		_ = cp.WriteCreds(rc)
+	}
+	if seeder, ok := agent.(agentspi.OnboardingSeeder); ok {
+		_ = seeder.SeedOnboarding(rc)
+	}
+	if cc, ok := agent.(agentspi.ConfigComposer); ok {
+		_ = cc.ComposeConfig(rc)
+	}
 }
 
 // wireAgent returns the registry agent for mode with its capability closures

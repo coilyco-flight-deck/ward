@@ -150,8 +150,8 @@ func (r *Runner) validateReplyInputs(ctx context.Context, c *cli.Command, mode c
 
 	// reply rides the host self-assessment slot (claude/goose), the same one the
 	// pre-flight and route survey use. Modes without one can't run it.
-	bin := mode.agentBinary()
-	if _, ok := mode.hostPreflightArgv("probe"); !ok {
+	bin := lookupAgent(mode).Record().Binary
+	if _, ok := lookupAgent(mode).PreflightArgv("probe"); !ok {
 		return agentIssueRef{}, "", replyThoroughness{}, fmt.Errorf("%s: reply runs a host one-shot, which %s lacks (only claude|goose are wired); use one of those", label, bin)
 	}
 	if !hostHasBinary(bin) {
@@ -163,7 +163,7 @@ func (r *Runner) validateReplyInputs(ctx context.Context, c *cli.Command, mode c
 // captureReplyResearch runs the host one-shot research argv in a neutral temp dir
 // (never the dispatch cwd; mirrors the pre-flight), bounded by the level timeout.
 func (r *Runner) captureReplyResearch(ctx context.Context, mode containerMode, ref agentIssueRef, level replyThoroughness, research string) (string, error) {
-	argv, ok := mode.hostPreflightArgv(research)
+	argv, ok := lookupAgent(mode).PreflightArgv(research)
 	if !ok {
 		// Guarded earlier, but stay honest rather than panic on a nil argv.
 		return "", fmt.Errorf("no host one-shot slot for %s", mode)
@@ -260,7 +260,7 @@ func printAgentReplyPlan(c *cli.Command, mode containerMode, ref agentIssueRef, 
 	fmt.Fprintf(&b, "title:        %s\n", title)
 	fmt.Fprintf(&b, "thoroughness: %s (timeout %s)\n", level.Name, level.Timeout)
 	fmt.Fprintf(&b, "----- reply prompt -----\n%s\n----- end -----\n", prompt)
-	fmt.Fprintf(&b, "----- research prompt (host one-shot; %s -p) -----\n%s\n----- end -----\n", mode.agentBinary(), research)
+	fmt.Fprintf(&b, "----- research prompt (host one-shot; %s -p) -----\n%s\n----- end -----\n", lookupAgent(mode).Record().Binary, research)
 	fmt.Fprintf(&b, "# would research host-side, then post the result as a comment on %s\n", ref)
 	_, err := io.WriteString(out, b.String())
 	return err

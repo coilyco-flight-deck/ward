@@ -233,7 +233,7 @@ func (d *liveDirector) offerSurface(ctx context.Context, dur time.Duration) (boo
 // wedge the heartbeat; pressed=keypress, false=window elapsed, ctx cancel returns err.
 func directorAwaitEnter(ctx context.Context, tty *os.File, label string, cfg backlogConfig, dur time.Duration) (bool, error) {
 	fmt.Fprintf(os.Stderr, "%s: all %d engineer slot(s) busy and work still draining - press Enter to drop into "+
-		"an interactive %s session now, else polling in %s...\n", label, cfg.maxParallel, cfg.mode.agentBinary(), dur)
+		"an interactive %s session now, else polling in %s...\n", label, cfg.maxParallel, lookupAgent(cfg.mode).Record().Binary, dur)
 	_ = tty.SetReadDeadline(time.Now().Add(dur))
 	done := make(chan error, 1)
 	go func() { _, rerr := bufio.NewReader(tty).ReadString('\n'); done <- rerr }()
@@ -265,8 +265,8 @@ func (r *Runner) directorDecide(ctx context.Context, label string, mode containe
 	if len(floor) > avail {
 		floor = floor[:avail]
 	}
-	bin := mode.agentBinary()
-	argv, ok := mode.hostPreflightArgv(directorDecidePrompt(picks, avail, entries))
+	bin := lookupAgent(mode).Record().Binary
+	argv, ok := lookupAgent(mode).PreflightArgv(directorDecidePrompt(picks, avail, entries))
 	if !ok || !hostHasBinary(bin) {
 		fmt.Fprintf(os.Stderr, "%s: %s self-assessment unavailable; dispatching the top %d queued issue(s) by rank.\n", label, bin, len(floor))
 		return floor
@@ -421,7 +421,7 @@ func (r *Runner) directorSurface(ctx context.Context, label, contextRepo string,
 		return false, nil
 	}
 	fmt.Fprintf(os.Stderr, "%s: surfacing a read-only %s session on %s for direction "+
-		"(the heartbeat resumes when the headless lane has work; exit it to stop)...\n\n", label, cfg.mode.agentBinary(), contextRepo)
+		"(the heartbeat resumes when the headless lane has work; exit it to stop)...\n\n", label, lookupAgent(cfg.mode).Record().Binary, contextRepo)
 	cmd := directorSurfaceCommand()
 	if err := cmd.Run(ctx, directorSurfaceArgv(contextRepo, cfg)); err != nil {
 		return true, fmt.Errorf("%s: interactive surface session: %w", label, err)

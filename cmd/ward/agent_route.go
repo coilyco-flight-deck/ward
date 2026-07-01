@@ -162,8 +162,8 @@ func (r *Runner) routeSurveyPreconditions(mode containerMode, taskText, label st
 	if taskText == "" {
 		return fmt.Errorf("%s: empty task", label)
 	}
-	bin := mode.agentBinary()
-	if _, ok := mode.hostPreflightArgv("probe"); !ok {
+	bin := lookupAgent(mode).Record().Binary
+	if _, ok := lookupAgent(mode).PreflightArgv("probe"); !ok {
 		return fmt.Errorf("%s: route mode surveys repos with a host self-assessment slot, which %s lacks (ward#148); pass an explicit owner/repo with --instructions-file to file directly", label, bin)
 	}
 	if !hostHasBinary(bin) {
@@ -214,11 +214,11 @@ func (r *Runner) surveyRoute(ctx context.Context, mode containerMode, taskText s
 	if len(catalog) == 0 {
 		return routeOutcome{}, "", fmt.Errorf("no candidate repos found across %s", strings.Join(r.primaryOrgs(), ", "))
 	}
-	argv, ok := mode.hostPreflightArgv(routeSurveyPrompt(taskText, renderRepoCatalog(catalog)))
+	argv, ok := lookupAgent(mode).PreflightArgv(routeSurveyPrompt(taskText, renderRepoCatalog(catalog)))
 	if !ok {
 		return routeOutcome{}, "", fmt.Errorf("no host self-assessment slot for %s", mode)
 	}
-	fmt.Fprintf(os.Stderr, "%s: route survey - asking %s to route this task across %d repos...\n\n", agentCmdline(mode, "engineer"), mode.agentBinary(), len(catalog))
+	fmt.Fprintf(os.Stderr, "%s: route survey - asking %s to route this task across %d repos...\n\n", agentCmdline(mode, "engineer"), lookupAgent(mode).Record().Binary, len(catalog))
 	sctx, cancel := context.WithTimeout(ctx, routeSurveyTimeout)
 	defer cancel()
 	out, err := r.capturePreflight(sctx, argv)

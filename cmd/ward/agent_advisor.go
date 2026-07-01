@@ -152,9 +152,9 @@ func (r *Runner) runAgentAsk(ctx context.Context, c *cli.Command, mode container
 	}
 	defer cleanupEnv()
 	if plan.Ask {
-		fmt.Fprintf(os.Stderr, "%s: answering with %s about %s in a fresh container...\n\n", label, mode.agentBinary(), repo.slug())
+		fmt.Fprintf(os.Stderr, "%s: answering with %s about %s in a fresh container...\n\n", label, lookupAgent(mode).Record().Binary, repo.slug())
 	} else {
-		fmt.Fprintf(os.Stderr, "%s: opening an interactive %s session about %s in a fresh container (read-only; follow up as you like)...\n\n", label, mode.agentBinary(), repo.slug())
+		fmt.Fprintf(os.Stderr, "%s: opening an interactive %s session about %s in a fresh container (read-only; follow up as you like)...\n\n", label, lookupAgent(mode).Record().Binary, repo.slug())
 	}
 	return r.createAgentContainer(ctx, plan, envFile)
 }

@@ -67,7 +67,7 @@ func newScratchGateStatus(p upPlan, readOnly, behind bool, current, latest strin
 		access:      access,
 		repo:        p.Repo.slug(),
 		mode:        string(p.Mode),
-		agentBinary: p.Mode.agentBinary(),
+		agentBinary: lookupAgent(p.Mode).Record().Binary,
 		image:       p.Image,
 		wardVersion: wv,
 		withRepos:   extras,
