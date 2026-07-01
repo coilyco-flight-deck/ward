@@ -176,7 +176,7 @@ func TestPrecheckReservation(t *testing.T) {
 	}
 
 	// A fresh remote reservation comment refuses, naming the holder.
-	reserved := mk(reservationCommentBody(modeClaude, "ward-x", "box", now.Add(-time.Minute)), time.Minute, "coilyco-ops")
+	reserved := mk(reservationCommentBody(modeClaude, "ward-x", "box", now.Add(-time.Minute), ""), time.Minute, "coilyco-ops")
 	w := resolvedWork{Ref: ref, Comments: []issueComment{reserved}}
 	err := r.precheckReservation(context.Background(), "lbl", w, false)
 	if err == nil || !strings.Contains(err.Error(), "reserved remotely") || !strings.Contains(err.Error(), "coilyco-ops") {
@@ -221,7 +221,7 @@ func TestFreshReservationComment(t *testing.T) {
 		c.User.Login = login
 		return c
 	}
-	reserved := reservationCommentBody(modeClaude, "ward-x", "box", now.Add(-30*time.Minute))
+	reserved := reservationCommentBody(modeClaude, "ward-x", "box", now.Add(-30*time.Minute), "")
 
 	// A fresh marker comment is a conflict and names its author.
 	who, held := freshReservationComment([]issueComment{
@@ -300,10 +300,31 @@ func TestIsReservationConflict(t *testing.T) {
 
 func TestReservationCommentBodyHasMarker(t *testing.T) {
 	now := time.Date(2026, 6, 18, 12, 0, 0, 0, time.UTC)
-	body := reservationCommentBody(modeCodex, "engineer-codex-ward-142", "tower", now)
+	body := reservationCommentBody(modeCodex, "engineer-codex-ward-142", "tower", now, "")
 	for _, want := range []string{agentReservationMarker, "ward agent --driver codex", "engineer-codex-ward-142", "tower"} {
 		if !strings.Contains(body, want) {
 			t.Errorf("reservation comment missing %q\n got: %s", want, body)
 		}
+	}
+	// With no justification the comment stays bare - no empty GO block (ward#383).
+	if strings.Contains(body, "GO") {
+		t.Errorf("reservation comment folded in a GO block with no justification\n got: %s", body)
+	}
+}
+
+// TestReservationCommentBodyFoldsJustification pins ward#383: a GO pre-flight read
+// is folded into the reservation comment, verbatim, inside a collapsed block.
+func TestReservationCommentBodyFoldsJustification(t *testing.T) {
+	now := time.Date(2026, 6, 18, 12, 0, 0, 0, time.UTC)
+	read := "Main risk is the schema migration.\n\nGO"
+	body := reservationCommentBody(modeClaude, "engineer-claude-ward-383", "box", now, "  "+read+"  ")
+	for _, want := range []string{"pre-flight read (GO)", "<details>", read, "**GO**"} {
+		if !strings.Contains(body, want) {
+			t.Errorf("reservation comment missing %q\n got: %s", want, body)
+		}
+	}
+	// The marker still leads so freshReservationComment recognizes it as a hold.
+	if !strings.HasPrefix(body, agentReservationMarker) {
+		t.Errorf("reservation comment lost its leading marker\n got: %s", body)
 	}
 }

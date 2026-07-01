@@ -160,13 +160,13 @@ func hostname() string {
 
 // reserveIssue acquires both reservation sides before a container fires, returning a
 // local-sentinel release; a remote-side failure rolls the local hold back.
-func (r *Runner) reserveIssue(ctx context.Context, label string, mode containerMode, ref agentIssueRef, container, branch string, force bool) (func(), error) {
+func (r *Runner) reserveIssue(ctx context.Context, label string, mode containerMode, ref agentIssueRef, container, branch, justification string, force bool) (func(), error) {
 	now := time.Now().UTC()
 	releaseLocal, err := r.acquireLocalReservation(ctx, label, mode, ref, container, branch, now, force)
 	if err != nil {
 		return nil, err
 	}
-	if err := r.acquireRemoteReservation(ctx, label, mode, ref, container, now, force); err != nil {
+	if err := r.acquireRemoteReservation(ctx, label, mode, ref, container, justification, now, force); err != nil {
 		releaseLocal()
 		return nil, err
 	}
@@ -255,7 +255,7 @@ func (r *Runner) containerRunning(ctx context.Context, name string) bool {
 
 // acquireRemoteReservation refuses on a fresh reservation comment (unless force), else
 // posts one; network/auth failures degrade to a warning since the local sentinel holds.
-func (r *Runner) acquireRemoteReservation(ctx context.Context, label string, mode containerMode, ref agentIssueRef, container string, now time.Time, force bool) error {
+func (r *Runner) acquireRemoteReservation(ctx context.Context, label string, mode containerMode, ref agentIssueRef, container, justification string, now time.Time, force bool) error {
 	cl, err := r.hostForgejoClient(ctx)
 	if err != nil {
 		fmt.Fprintf(os.Stderr, "%s: note: skipping remote reservation (%v); the local sentinel still holds\n", label, err)
@@ -271,7 +271,7 @@ func (r *Runner) acquireRemoteReservation(ctx context.Context, label string, mod
 				label, ref, who)
 		}
 	}
-	if err := cl.withMode(mode).commentIssue(ctx, ref.Owner, ref.Repo, ref.Number, reservationCommentBody(mode, container, hostname(), now)); err != nil {
+	if err := cl.withMode(mode).commentIssue(ctx, ref.Owner, ref.Repo, ref.Number, reservationCommentBody(mode, container, hostname(), now, justification)); err != nil {
 		fmt.Fprintf(os.Stderr, "%s: note: could not post the remote reservation comment (%v); the local sentinel still holds\n", label, err)
 	}
 	return nil
@@ -316,13 +316,21 @@ func freshReservationComment(comments []issueComment, now time.Time, ttl time.Du
 	return fmt.Sprintf("by @%s at %s", who, latest.CreatedAt.UTC().Format(time.RFC3339)), true
 }
 
-// reservationCommentBody is the marker comment a run posts to claim an issue.
-func reservationCommentBody(mode containerMode, container, host string, now time.Time) string {
-	return fmt.Sprintf(
+// reservationCommentBody is the marker comment a run posts to claim an issue. A
+// non-empty justification is folded in as the pre-flight's GO read (ward#383).
+func reservationCommentBody(mode containerMode, container, host string, now time.Time, justification string) string {
+	body := fmt.Sprintf(
 		"%s\n🔒 Reserved by `ward agent --driver %s` — container `%s` on host `%s` is carrying this issue (reserved %s). "+
 			"Concurrent `ward agent` runs are blocked until it finishes or the reservation goes stale (%s TTL); "+
 			"`--force` overrides.",
 		agentReservationMarker, mode, container, host, now.Format(time.RFC3339), agentReservationTTL)
+	if justification = strings.TrimSpace(justification); justification != "" {
+		body += fmt.Sprintf(
+			"\n\nThe pre-flight judged this issue **GO** for an unattended carry. Its justification:\n\n"+
+				"<details><summary>pre-flight read (GO)</summary>\n\n%s\n\n</details>\n",
+			justification)
+	}
+	return body
 }
 
 // reservationReleaseCommentBody is the marker comment the reaper posts to retract
