@@ -1,21 +1,13 @@
 package main
 
-// agent_adapter.go reads the aos-published agent-adapter manifest (per-agent
-// binary, context level, argv dialect, stream, auth). See docs/agent-adapter-manifest.md.
+// agent_adapter.go projects the embedded fleet roster onto the launcher's adapter
+// shape. ward#419 dropped the YAML mirror; see docs/agent-adapter-manifest.md.
 
 import (
-	"embed"
 	"fmt"
 
 	"forgejo.coilysiren.me/coilyco-flight-deck/cli-guard/pkg/fleetconfig"
-	"gopkg.in/yaml.v3"
 )
-
-//go:embed containerassets/agent-adapters.yaml
-var agentAdapterAsset embed.FS
-
-// agentAdaptersRel is the embedded manifest, alongside the other container assets.
-const agentAdaptersRel = "agent-adapters.yaml"
 
 // agentAdapterSchemaVersion is the manifest schema this build understands.
 const agentAdapterSchemaVersion = 1
@@ -23,20 +15,20 @@ const agentAdapterSchemaVersion = 1
 // agentArgv holds the argv prefixes for the three ways ward invokes an agent;
 // the prompt (preflight) or seed (headless/interactive) is appended by the caller.
 type agentArgv struct {
-	Preflight   []string `yaml:"preflight"`
-	Headless    []string `yaml:"headless"`
-	Interactive []string `yaml:"interactive"`
+	Preflight   []string
+	Headless    []string
+	Interactive []string
 }
 
 // agentAdapter is one agent's full divergence record, replacing the per-mode
 // Go switches and bash cases. See docs/agent-adapter-manifest.md for the schema.
 type agentAdapter struct {
-	Name         string    `yaml:"name"`
-	Binary       string    `yaml:"binary"`
-	ContextLevel int       `yaml:"contextLevel"`
-	Stream       string    `yaml:"stream"`
-	Auth         string    `yaml:"auth"`
-	Argv         agentArgv `yaml:"argv"`
+	Name         string
+	Binary       string
+	ContextLevel int
+	Stream       string
+	Auth         string
+	Argv         agentArgv
 }
 
 // preflightArgv returns the host one-shot argv with the prompt appended, plus
@@ -53,8 +45,8 @@ func (a agentAdapter) preflightArgv(prompt string) ([]string, bool) {
 
 // agentManifest is the parsed manifest: a schema version plus the agent records.
 type agentManifest struct {
-	SchemaVersion int            `yaml:"schemaVersion"`
-	Agents        []agentAdapter `yaml:"agents"`
+	SchemaVersion int
+	Agents        []agentAdapter
 }
 
 // adapter looks an agent up by name (the --mode value).
@@ -68,7 +60,7 @@ func (m agentManifest) adapter(name string) (agentAdapter, bool) {
 }
 
 // loadAgentManifest builds the manifest from the embedded dialect-2 fleet config
-// (fleet.go) - the runtime source as of ward#416; the YAML stays for the drift pin.
+// (fleet.go) - the sole source since ward#419 deleted the agent-adapters.yaml mirror.
 func loadAgentManifest() (agentManifest, error) {
 	f, err := loadFleetConfig()
 	if err != nil {
@@ -102,31 +94,8 @@ func fleetToAgentManifest(f fleetconfig.Fleet) agentManifest {
 	return m
 }
 
-// loadAgentManifestYAML parses the embedded agent-adapters.yaml, kept only for the
-// three-way drift pin until issue 6 deletes it; loadAgentManifest is the runtime read.
-func loadAgentManifestYAML() (agentManifest, error) {
-	data, err := agentAdapterAsset.ReadFile("containerassets/" + agentAdaptersRel)
-	if err != nil {
-		return agentManifest{}, err
-	}
-	return parseAgentManifest(data)
-}
-
-// parseAgentManifest unmarshals + validates the YAML manifest, failing loud on a
-// malformed one. Validation is shared with the fleet path via validateAgentManifest.
-func parseAgentManifest(data []byte) (agentManifest, error) {
-	var m agentManifest
-	if err := yaml.Unmarshal(data, &m); err != nil {
-		return agentManifest{}, fmt.Errorf("agent-adapter manifest: %w", err)
-	}
-	if err := validateAgentManifest(m); err != nil {
-		return agentManifest{}, err
-	}
-	return m, nil
-}
-
-// validateAgentManifest enforces the schema on an already-parsed manifest,
-// whichever source built it (YAML file or the projected fleet roster).
+// validateAgentManifest enforces the schema on the projected fleet roster, so a
+// malformed embed fails loud at load instead of driving the wrong binary.
 func validateAgentManifest(m agentManifest) error {
 	if m.SchemaVersion != agentAdapterSchemaVersion {
 		return fmt.Errorf("agent-adapter manifest: schemaVersion %d, want %d", m.SchemaVersion, agentAdapterSchemaVersion)

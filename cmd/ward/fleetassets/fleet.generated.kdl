@@ -11,15 +11,15 @@
 // it to cmd/ward/fleetassets/fleet.generated.kdl for go:embed (which cannot
 // reach this sibling dir); fleetassets_test.go fails the build on drift.
 //
-// The roster + per-agent divergence is the same data as
-// cmd/ward/containerassets/agent-adapters.yaml and the container_bootstrap.go
-// env-defaults, restated here in the ratified fleet grammar. The three-way
-// contract test (agent_adapter_test.go) pins fleet.generated.kdl <->
-// agent-adapters.yaml <-> the parseMode roster so the three cannot diverge.
+// This is the single source of the roster + per-agent divergence, feeding the
+// container_bootstrap.go env-defaults, restated in the ratified fleet grammar.
+// ward#419 deleted the old agent-adapters.yaml mirror, collapsing the ward#415
+// three-way pin to a two-way one: the contract test (agent_adapter_test.go,
+// TestFleetSwitchesTwoWayPin) pins fleet.generated.kdl <-> the parseMode roster.
 //
 // POST-#412 roster: `opencode` is the canonical harness key (qwen is only the
-// backing model + a deprecated --mode alias). Nothing reads this manifest at
-// runtime yet - that wiring is a later issue; this phase authors + embeds + pins.
+// backing model + a deprecated --mode alias). The runtime reads this manifest
+// (bootstrap defaults + the launcher-facing projection in agent_adapter.go).
 fleet {
     schema-version 2
     // defaults mirror the container_bootstrap.go env-default constants: WARD_MODE
