@@ -84,6 +84,7 @@ func main() {
 			installHooksCommand(),
 			containerCommand(),
 			agentCommand(),
+			agentsCommand(),
 			opsCommand(),
 			ciCommand(),
 		},
