@@ -15,7 +15,7 @@ import (
 	"github.com/urfave/cli/v3"
 )
 
-// agent.go wires the `ward agent` umbrella + the shared carry internals the engineer
+// agent.go wires the `ward agent` umbrella + the shared dispatch internals the engineer
 // role uses (ward#263, ward#347), sharing the bring-up Go directly. See docs/agent.md.
 
 // agentIssueRef is a parsed issue reference for `ward agent ... work`. Only the
@@ -121,7 +121,7 @@ const headlessReflectionAction = "Finally, as your very last step - only after t
 	"  `" + wardOutcomeMarker + " blocked - <the one specific decision or piece of information you need from a human>`\n" +
 	"  `" + wardOutcomeMarker + " failed - <why, briefly>`\n" +
 	"then your retrospective on the lines below it. A supervising director loop (ward agent director) reads only that " +
-	"first line to classify the run, so for a normal carry that you merged and pushed it is `" + wardOutcomeMarker +
+	"first line to classify the run, so for a normal run that you merged and pushed it is `" + wardOutcomeMarker +
 	" done`; reserve blocked/failed for a run that genuinely could not land."
 
 // grantedRepoDoneClause widens the done-condition for a --repo grant (ward#291):
@@ -324,20 +324,20 @@ func agentCmdline(mode containerMode, surface string) string {
 }
 
 // agentCommand is the `ward agent` umbrella the `warded` public face fronts
-// (ward#247, ward#282); a bare ref dispatches the default engineer carry (ward#347).
+// (ward#247, ward#282); a bare ref dispatches the default engineer (ward#347).
 func agentCommand() *cli.Command {
 	return &cli.Command{
 		Name:  "agent",
-		Usage: "Send an agent into a fresh ephemeral container to carry a Forgejo issue end to end (a bare ref runs the engineer carry).",
+		Usage: "Send an agent into a fresh ephemeral container to carry a Forgejo issue end to end (a bare ref runs the engineer).",
 		Description: `agent is the issue-carrying dispatcher (the spelling 'warded' fronts), a
 roster of startup roles (ward#347): you do not invoke a mode, you send in a
 role. Pick a role (engineer|director|advisor) and --driver picks the
 harness (claude|codex|qwen|goose, default claude). A BARE REF with no role word
-runs the 'engineer' carry - the fire-and-forget default. A bare #N (or N) infers
+runs the 'engineer' role - the fire-and-forget default. A bare #N (or N) infers
 the owner/repo from the cwd's git origin; owner/repo#N and a full Forgejo issue
 URL also work. One line replaces a full container bring-up stack plus a prompt.
 
-  warded coilyco-flight-deck/ward#98          # bare ref -> engineer carry (warded face)
+  warded coilyco-flight-deck/ward#98          # bare ref -> engineer run (warded face)
   warded #98                                  # owner/repo inferred from the cwd
   warded engineer #98                         # implement a ticket: detached fire-and-forget
   warded engineer "fix the flaky exec_gate test" # freeform -> file an issue first, then carry
@@ -350,10 +350,10 @@ URL also work. One line replaces a full container bring-up stack plus a prompt.
 
 See docs/agent.md for the warded face and docs/container.md for the container
 model (ephemeral, fresh-clone-inside, reaper-backed). The agent runs under the
-container's bypassPermissions policy, so a carry is only accepted against a
+container's bypassPermissions policy, so a run is only accepted against a
 trusted owner.`,
 		// The umbrella carries the engineer flag set + a default-role action so a
-		// bare ref (the warded face, ward#282) runs the engineer carry; empty shows help.
+		// bare ref (the warded face, ward#282) runs the engineer; empty shows help.
 		Flags:  agentEngineerFlags(),
 		Action: agentDefaultSurfaceAction(),
 		Commands: []*cli.Command{
@@ -368,7 +368,7 @@ trusted owner.`,
 }
 
 // agentDefaultSurfaceAction is the umbrella default: empty prints the role roster
-// (ward#360), a parseable ref runs the engineer carry, else errors (ward#282, ward#347).
+// (ward#360), a parseable ref runs the engineer, else errors (ward#282, ward#347).
 func agentDefaultSurfaceAction() cli.ActionFunc {
 	return func(ctx context.Context, c *cli.Command) error {
 		if c.Args().Len() == 0 {
@@ -379,7 +379,7 @@ func agentDefaultSurfaceAction() cli.ActionFunc {
 		arg := strings.TrimSpace(c.Args().First())
 		if _, err := parseAgentIssueRef(arg); err != nil {
 			return fmt.Errorf("unknown command %q for 'ward agent' (roles: engineer, director, advisor); "+
-				"a bare ref like #98 or owner/repo#N runs the engineer carry, and freeform work goes to "+
+				"a bare ref like #98 or owner/repo#N runs the engineer, and freeform work goes to "+
 				"`ward agent engineer \"<instructions>\"`", arg)
 		}
 		return agentEngineerAction()(ctx, c)
@@ -401,7 +401,7 @@ func agentImageFlags() []cli.Flag {
 	return append(flags, tailnetFlags()...)
 }
 
-// agentSurfaceFlags builds the detached launch flag set shared by the engineer carry,
+// agentSurfaceFlags builds the detached launch flag set shared by the engineer,
 // the bare-ref default, and the freeform task - no interactive surface here (ward#356).
 func agentSurfaceFlags() []cli.Flag {
 	flags := []cli.Flag{
@@ -418,7 +418,7 @@ func agentSurfaceFlags() []cli.Flag {
 		&cli.BoolFlag{Name: "no-pull", Hidden: true, Usage: "skip the image pull (use the cached local image)"},
 		&cli.BoolFlag{Name: "force", Usage: "skip the local + remote concurrency reservation checks (reclaim a stale or foreign hold)"},
 	)
-	// The detached carry gets an autonomous pre-flight before launching (ward#137,
+	// The detached run gets an autonomous pre-flight before launching (ward#137,
 	// ward#147; see docs/agent.md); --no-preflight skips it and detaches immediately.
 	flags = append(flags, &cli.BoolFlag{Name: "no-preflight", Usage: "skip the pre-flight feasibility check and detach immediately"})
 	return flags
@@ -473,7 +473,7 @@ func (r *Runner) resolveAgentWork(ctx context.Context, c *cli.Command, mode cont
 	if eerr != nil {
 		return resolvedWork{}, fmt.Errorf("%s: %w", label, eerr)
 	}
-	// The carry detaches fire-and-forget (ward#356), so its seed always gets the
+	// The engineer detaches fire-and-forget (ward#356), so its seed always gets the
 	// closing reflection - the only voice it leaves behind (ward#281).
 	return resolvedWork{Ref: ref, Title: title, Body: issue.Body, Comments: comments, Details: details, ExtraRepos: extra, Seed: agentSeedPrompt(ref, title, issue.Body, details, mode, true, extra)}, nil
 }
@@ -489,7 +489,7 @@ func (r *Runner) fetchIssueComments(ctx context.Context, ref agentIssueRef) ([]i
 }
 
 // runAgentWork resolves the issue, seeds the prompt, runs the autonomous
-// pre-flight (runPreflight), and launches the detached carry (ward#356).
+// pre-flight (runPreflight), and launches the detached run (ward#356).
 func (r *Runner) runAgentWork(ctx context.Context, c *cli.Command, mode containerMode, surface string) error {
 	w, err := r.resolveAgentWork(ctx, c, mode, surface)
 	if err != nil {
@@ -807,7 +807,7 @@ func (s dispatchDockerState) blocked() (bool, string) {
 	if !s.inContainer || s.dockerOnPath {
 		return false, ""
 	}
-	const base = "cannot dispatch a sibling carry from inside this container: no docker client on PATH (explore can file but cannot dispatch)"
+	const base = "cannot dispatch a sibling run from inside this container: no docker client on PATH (explore can file but cannot dispatch)"
 	var detail string
 	switch {
 	case s.brokerAddr != "" && !s.readOnly:
@@ -901,7 +901,7 @@ func preflightNoGoComment(mode containerMode, surface, reason, read string) stri
 		"detaching a fire-and-forget run, and the agent judged it **NO-GO** - it should not be carried "+
 		"unattended until a human weighs in.\n\n", agentCmdline(mode, surface))
 	fmt.Fprintf(&b, "> %s\n\n", reason)
-	// Re-dispatch points at the `engineer` carry: the issue is already filed, so a
+	// Re-dispatch points at the `engineer`: the issue is already filed, so a
 	// freeform engineer run would file a duplicate (ward#347).
 	fmt.Fprintf(&b, "No container was launched. Review the issue (clarify the scope, resolve the unknown, "+
 		"or split it), then re-dispatch - `%s <ref> --no-preflight` skips this gate "+
@@ -973,7 +973,7 @@ func buildAgentPlan(c *cli.Command, mode containerMode, ref agentIssueRef, seed 
 	if plan.Branch == "" {
 		plan.Branch = fmt.Sprintf("issue-%d", ref.Number)
 	}
-	// Re-cast the session plan as an engineer carry: role-led name, unique by
+	// Re-cast the session plan as an engineer: role-led name, unique by
 	// repo+issue (ward#364). Issue also carries so the reaper can release it (ward#264).
 	plan.Role = roleEngineer
 	plan.Issue = ref.Number
@@ -1123,7 +1123,7 @@ func (r *Runner) createAgentContainer(ctx context.Context, plan upPlan, envFile 
 	// --host-net only carries the tailnet on a host that is itself a tailnet node;
 	// warn loudly when it won't, so a no-op route doesn't read as success (ward#332).
 	r.maybeWarnHostNet(plan)
-	// The standing mac-proxy box on ward-tailnet must exist before the carry attaches
+	// The standing mac-proxy box on ward-tailnet must exist before the run attaches
 	// to it - ward attaches and preflights, never converges the box (ward#349).
 	if plan.TSSidecar {
 		if err := r.preflightTailnetProxy(ctx); err != nil {
@@ -1264,14 +1264,14 @@ func (r *Runner) runAgentTask(ctx context.Context, c *cli.Command, mode containe
 }
 
 // runAgentTaskDirect resolves the repo, files an issue from --instructions-file, and
-// runs the headless carry container - today's behavior, unchanged. See docs.
+// runs the headless container - today's behavior, unchanged. See docs.
 func (r *Runner) runAgentTaskDirect(ctx context.Context, c *cli.Command, mode containerMode, repoArg string) error {
 	label := agentCmdline(mode, "engineer")
 	repo, _, err := r.resolveTarget(ctx, repoArg)
 	if err != nil {
 		return fmt.Errorf("%s: %w", label, err)
 	}
-	// Same trust gate as the engineer carry: the container runs bypassPermissions, so
+	// Same trust gate as the engineer: the container runs bypassPermissions, so
 	// only file + work against an owner in the primary-org set.
 	if !r.ownerAllowed(repo.Owner) {
 		return fmt.Errorf("%s: refusing untrusted owner %q (allowed: %s)",
@@ -1320,7 +1320,7 @@ func (r *Runner) runAgentTaskDirect(ctx context.Context, c *cli.Command, mode co
 	}
 
 	// The freeform instructions are the filed body (no --details, ward#167); it runs
-	// the headless carry, so the seed is headless: inlined body + reflection (#157/#281).
+	// the headless run, so the seed is headless: inlined body + reflection (#157/#281).
 	seed := agentSeedPrompt(ref, title, body, "", mode, true, nil)
 	return r.launchAgentContainer(ctx, c, mode, "engineer", ref, title, seed, justification)
 }
@@ -1400,7 +1400,7 @@ func printAgentPlan(c *cli.Command, p upPlan, ref agentIssueRef, title, seed, su
 		fmt.Fprintf(&b, "docker pull %s\n", p.Image)
 	}
 	if p.TSSidecar {
-		// The carry attaches to the standing mac-proxy box over ward-tailnet (shown in
+		// The run attaches to the standing mac-proxy box over ward-tailnet (shown in
 		// the run argv's --network below); ward preflights the box, never starts it (ward#349).
 		fmt.Fprintf(&b, "# preflight: docker %s (mac-proxy must be attached)\n", strings.Join(dockerTailnetInspectArgv(), " "))
 	}

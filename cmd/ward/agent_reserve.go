@@ -326,7 +326,7 @@ func reservationCommentBody(mode containerMode, container, host string, now time
 		agentReservationMarker, mode, container, host, now.Format(time.RFC3339), agentReservationTTL)
 	if justification = strings.TrimSpace(justification); justification != "" {
 		body += fmt.Sprintf(
-			"\n\nThe pre-flight judged this issue **GO** for an unattended carry. Its justification:\n\n"+
+			"\n\nThe pre-flight judged this issue **GO** for an unattended run. Its justification:\n\n"+
 				"<details><summary>pre-flight read (GO)</summary>\n\n%s\n\n</details>\n",
 			justification)
 	}

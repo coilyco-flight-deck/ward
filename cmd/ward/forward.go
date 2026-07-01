@@ -18,10 +18,10 @@ import (
 
 const (
 	// forwardListenAddr is the loopback endpoint the forwarder listens on inside the
-	// carry; it shadows the tower's Ollama port so localhost:11434 IS the tower.
+	// run; it shadows the tower's Ollama port so localhost:11434 IS the tower.
 	forwardListenAddr = "127.0.0.1:" + towerOllamaPort
 
-	// towerOllamaLocalURL is the no-proxy endpoint a --ts-sidecar carry dials once the
+	// towerOllamaLocalURL is the no-proxy endpoint a --ts-sidecar run dials once the
 	// forwarder is up; exported as WARD_TOWER_OLLAMA_LOCAL alongside the --proxy vars.
 	towerOllamaLocalURL = "http://localhost:" + towerOllamaPort
 
@@ -30,14 +30,14 @@ const (
 )
 
 // containerForwardCommand is the Hidden `ward container forward` leaf the
-// entrypoint backgrounds in a --ts-sidecar carry; not a hand-run verb (ward#359).
+// entrypoint backgrounds in a --ts-sidecar run; not a hand-run verb (ward#359).
 func containerForwardCommand() *cli.Command {
 	return &cli.Command{
 		Name:   "forward",
 		Hidden: true, // entrypoint-internal, not a hand-run verb
-		Usage:  "Entrypoint-internal SOCKS5 loopback forwarder: expose the tailnet Ollama tower at 127.0.0.1:11434 inside a --ts-sidecar carry so tools dial it with no --proxy.",
+		Usage:  "Entrypoint-internal SOCKS5 loopback forwarder: expose the tailnet Ollama tower at 127.0.0.1:11434 inside a --ts-sidecar run so tools dial it with no --proxy.",
 		Description: `forward is the no-capability slice of the full-tunnel epic (ward#359). In a
---ts-sidecar carry it listens on 127.0.0.1:11434 and bridges each TCP connection
+--ts-sidecar run it listens on 127.0.0.1:11434 and bridges each TCP connection
 to ` + towerMagicDNSName + `:` + towerOllamaPort + ` through the standing mac-proxy
 SOCKS5 box named by $` + "WARD_TS_SOCKS5" + ` (socks5h: the proxy resolves the tower's
 MagicDNS name tailnet-side). LLM clients then auto-route at localhost:11434 with no
@@ -67,11 +67,11 @@ no NET_ADMIN, no /dev/net/tun, no ALL_PROXY. See docs/agent-ts-sidecar.md.`,
 }
 
 // runContainerForward resolves the proxy + target, opens the loopback listener,
-// and serves connections until the context is cancelled (the carry tears down).
+// and serves connections until the context is cancelled (the run tears down).
 func runContainerForward(ctx context.Context, c *cli.Command) error {
 	socks5 := strings.TrimSpace(c.String("socks5"))
 	if socks5 == "" {
-		return fmt.Errorf("ward container forward: no SOCKS5 proxy set (pass --socks5 or $WARD_TS_SOCKS5); the forwarder only runs in a --ts-sidecar carry (ward#359)")
+		return fmt.Errorf("ward container forward: no SOCKS5 proxy set (pass --socks5 or $WARD_TS_SOCKS5); the forwarder only runs in a --ts-sidecar container (ward#359)")
 	}
 	proxyAddr, err := parseSocks5ProxyAddr(socks5)
 	if err != nil {

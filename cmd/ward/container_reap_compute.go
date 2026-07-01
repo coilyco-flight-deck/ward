@@ -270,7 +270,7 @@ func unlandedExtraReposComment(env reapEnv, reports []extraRepoUnlanded) string 
 		b.WriteString("\n")
 	}
 	b.WriteString("Re-run the cross-repo half, or - per ward#291 - file it as a native issue in the granted " +
-		"repo so it becomes a single-repo carry that sidesteps this failure mode.\n")
+		"repo so it becomes a single-repo run that sidesteps this failure mode.\n")
 	return b.String()
 }
 

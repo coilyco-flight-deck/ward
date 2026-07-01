@@ -23,7 +23,7 @@ WARD_CONTEXT_SRC="${WARD_CONTEXT_SRC:-/opt/ward-context}"
 # See docs/agent.md (qwen).
 WARD_QWEN_MODEL="${WARD_QWEN_MODEL:-qwen3-coder:30b}"
 WARD_OLLAMA_URL="${WARD_OLLAMA_URL:-http://localhost:11434/v1}"
-# --ts-sidecar carry: the loopback forwarder's no-proxy tower endpoint (ward#359).
+# --ts-sidecar run: the loopback forwarder's no-proxy tower endpoint (ward#359).
 # Plain localhost; the forwarder bridges it to the tower through $WARD_TS_SOCKS5.
 WARD_TOWER_OLLAMA_LOCAL="${WARD_TOWER_OLLAMA_LOCAL:-http://localhost:11434}"
 # Warded-agent commits attribute to the coilyco-ops bot; the email is the
@@ -489,7 +489,7 @@ delegable - a design proposal, a research dig, an implementation - reach for a s
 warded run (`warded advisor #N` to design or research, `warded engineer #N` to build)
 before an in-session subagent. The sibling lands a durable, attributable artifact on
 the canonical surface (the issue thread, a pushed commit) that outlives this session,
-and the next carry can read it. A subagent's output dies in this conversation's
+and the next run can read it. A subagent's output dies in this conversation's
 scrollback. Reserve an in-session subagent for read-only fan-out that only feeds
 **your** immediate reasoning and never needs to outlive the session.
 
@@ -670,7 +670,7 @@ compose_goose_config() {
 TOWER_FORWARDER_PID=""
 
 start_tower_forwarder() {
-  # Only in a --ts-sidecar carry (WARD_TS_SOCKS5 present); a non-sidecar carry is
+  # Only in a --ts-sidecar run (WARD_TS_SOCKS5 present); a non-sidecar run is
   # unchanged. ward backgrounds the forwarder it already installed.
   [ -n "${WARD_TS_SOCKS5:-}" ] || return 0
   if ! command -v ward >/dev/null 2>&1; then
@@ -813,7 +813,7 @@ main() {
   # the agent is NOT exec'd, else exec would skip the trap, defeating the backstop.
   trap 'stop_tower_forwarder; reap' EXIT
   log "ready: $WARD_TARGET_OWNER/$WARD_TARGET_NAME on $(git branch --show-current) [mode=$WARD_MODE]"
-  # --ts-sidecar carry: surface the tower route (by MagicDNS name through the proxy)
+  # --ts-sidecar run: surface the tower route (by MagicDNS name through the proxy)
   # the agent can dial; both vars are plain in the agent's env (ward#337).
   if [ -n "${WARD_TS_SOCKS5:-}" ]; then
     log "tailnet route ready: dial the tower at \$WARD_TOWER_OLLAMA (${WARD_TOWER_OLLAMA:-unset}) through \$WARD_TS_SOCKS5 ($WARD_TS_SOCKS5), e.g. curl --proxy \"\$WARD_TS_SOCKS5\" \"\$WARD_TOWER_OLLAMA/api/tags\" (ward#337)"
