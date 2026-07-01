@@ -30,19 +30,19 @@ conversation.
 
 **Prefer a sibling dispatch over an in-session subagent (ward#374).** For delegable work
 reach for a sibling warded run (`warded advisor #N`, `warded engineer #N`) before a
-subagent: the sibling lands a durable, attributable artifact (issue thread, pushed commit)
-the next run can read, where a subagent's output dies in scrollback. Reserve a subagent
-for read-only fan-out feeding only **your** reasoning.
+subagent: the sibling lands a durable artifact (issue thread, pushed commit) the next run
+can read, where a subagent's output dies in scrollback. Reserve a subagent for read-only
+fan-out feeding only **your** reasoning.
 
 ## What read-only enforces
 
 Layers scope the box to **push-to-this-clone**, not dispatch: the composed `CLAUDE.md`
 carries a read-only block (ward#293); the entrypoint drops `/etc/ward-git-credentials` and
 the system `credential.helper` (keeping `FORGEJO_TOKEN` for dispatch); `origin`'s push URL is
-stripped to a dead `no-push://` target (ward#327), so the push target is gone,
-not just the credential; a per-clone `pre-push` hook prints a named wall (ward#299,
-bypassable); and the reaper short-circuits on `WARD_READONLY`, so teardown can't push.
-Local `git commit` still works; on exit the clone is swept by the [reaper](container-reap.md).
+stripped to a dead `no-push://` target (ward#327); a per-clone `pre-push` hook prints a
+named wall (ward#299, bypassable); and the reaper short-circuits on `WARD_READONLY`, so
+teardown can't push. Local `git commit` still works; on exit the clone is swept by the
+[reaper](container-reap.md).
 
 **The soft edge (ward#318).** The dispatch token is the same bot token, so the no-push rule
 is convention until a **dispatch-only credential** lands.
@@ -55,17 +55,18 @@ warded coilyco-flight-deck/ward#NNN  # dispatch a sealed engineer
 ```
 
 The surface forwards `warded engineer ...` and `warded advisor ...` ref-mode dispatches to
-a host-side broker over TCP (guarded by a per-launch token). Host ward then launches the
+a host-side broker over TCP (guarded by a per-launch token). Host ward launches the
 sibling from the native host context, so Claude/Codex/Goose credentials resolve from the
-host home rather than from the director container. The broker accepts only that constrained
-dispatch API; unrelated ward verbs and arbitrary shell never cross it. The sibling still
-clones fresh and runs its own lifecycle.
+host home, not the director container. The broker accepts only that constrained
+dispatch API; unrelated ward verbs and arbitrary shell never cross it.
 
 Transport is TCP, not a unix-socket bind-mount: under Docker Desktop a bind-mounted host
-socket lands as an empty dir, so dispatches dialed a dir (EACCES, ward#391).
+socket lands as an empty dir, so dispatches dialed a dir (ward#391).
 
 A surface session is where an operator notices a dispatched run is mis-scoped: stop it
-with `docker container stop` ([container-stop.md](container-stop.md)).
+with `docker container stop` ([container-stop.md](container-stop.md)). A reserved issue is
+**immutable** to the run carrying it, so corrections filed here go to a new issue: see
+[reserved means immutable](agent-reserved-immutable.md).
 
 ## See also
 

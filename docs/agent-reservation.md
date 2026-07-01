@@ -15,56 +15,59 @@ works it at once, on this host or another:
   ward agent ...`) on the issue and refuses to start if it finds a fresh one
   already there - that's another host carrying the issue. When the dispatch cleared
   an explicit **GO** [pre-flight](agent-preflight.md), that comment folds in the
-  agent's GO read (collapsed), so the reservation records *why* the issue was
-  judged carriable (ward#383).
+  collapsed GO read, so the reservation records *why* the issue was judged
+  carriable (ward#383).
 
 Both holds are **TTL-bounded** (2h): an older reservation is assumed dead and
 reclaimed, so a crashed run never wedges an issue. The local sentinel is also
-reclaimed once its container stops running. An attached `work` run releases its
-sentinel when it returns; a detached run (`headless`, `task`, `--detach`) leaves
-it for the container's lifetime. `--print` reserves nothing.
-`--force` skips both checks to reclaim a stale or foreign hold.
+reclaimed once its container stops running. A detached run leaves its sentinel
+for the container's lifetime. `--print` reserves nothing. `--force` skips both
+checks to reclaim a stale or foreign hold.
 
-The remote comment is the **only** cross-host dedup + thread signal (the sentinel is
-same-host), so a failed post is not silent (ward#402): it retries,
-then warns with the greppable token `remote reservation NOT posted`. On
-the **broker-dispatched** path a run's stderr is redirected into
-`~/.ward/agent-logs/dispatch/*.log`, so the token lets an operator `grep` those logs,
-checking the host Forgejo token/SSM path first.
+The remote comment is the **only** cross-host dedup + thread signal, so a failed
+post is not silent (ward#402): it retries, then warns with
+the greppable token `remote reservation NOT posted`. On the **broker-dispatched**
+path stderr goes to `~/.ward/agent-logs/dispatch/*.log`, so that token lets an
+operator `grep` those logs, checking the host Forgejo token/SSM path first.
+
+## Reserved means immutable
+
+While a reservation stands, the issue is **immutable** to the run carrying it - it
+seeds the body once and never re-reads. A correction found after dispatch goes to
+a **new issue**, not an edit or comment on the reserved one: see
+[reserved means immutable](agent-reserved-immutable.md).
 
 ## Pre-launch death releases the hold (ward#264)
 
 A container that dies at the [ward#222 smoke test](agent.md) did nothing, yet its
-remote hold blocks a plain retry for the full TTL. So on a clean teardown where the
+hold blocks a plain retry for the full TTL. So on a clean teardown where the
 agent never launched, the [reaper](container-reap.md) posts a **release marker
 comment**, and `freshReservationComment` frees a reservation once a release is
-posted at or after it (newest marker of each kind wins), so the retry needs no
-`--force`.
+posted at or after it (newest marker of each kind wins), so the retry needs no `--force`.
 
-For an interactive `headless` dispatch the cheap reservation check runs **before
-the LLM pre-flight**, not after (ward#184): an issue another run already holds
+For an interactive dispatch the cheap reservation check runs **before the LLM
+pre-flight**, not after (ward#184): an issue another run already holds
 short-circuits up front rather than wasting a full model read. The precheck reuses
-the already-fetched thread and never takes the hold - the two-sided reservation
-still happens at launch. `--force` bypasses both.
+the already-fetched thread and never takes the hold. `--force` bypasses both.
 
 ## Host stale-ward reminder (ward#143)
 
 A `ward agent` run installs ward *inside* the container and logs its `ward
-version` there. When the run is non-interactive - `headless`/`task` (always
-detached) or `work --detach` - no human watches that log, so the cue that the
-**host** ward binary is itself behind a release is lost. To keep that awareness,
-ward does a best-effort check at the host dispatch moment: it resolves the latest
-`coilyco-flight-deck/ward` release tag and, if the host binary is behind it,
-prints a two-line stderr reminder pointing at [`ward upgrade`](../README.md).
+version` there. When the run is detached, no human watches that log, so the cue
+that the **host** ward binary is itself behind a release is lost. To keep that
+awareness, ward does a best-effort check at the host dispatch moment: it resolves
+the latest `coilyco-flight-deck/ward` release tag and, if the host binary is
+behind it, prints a two-line stderr reminder pointing at
+[`ward upgrade`](../README.md).
 
 The lookup routes through the in-binary [`ward ops forgejo`](ops-forgejo-in-ward.md)
-`release list` specverb (ward#172), whose `--query "[0].tag_name"` projection hands
-back the newest published non-prerelease tag through the audited, SSM-authed leaf.
+`release list` specverb (ward#172), whose `--query "[0].tag_name"` projection returns
+the newest published non-prerelease tag via the audited SSM-authed leaf.
 
-The check is deliberately quiet and non-blocking: a `dev`/source build, no
-network, an auth wall, or an unparseable tag all stay silent rather than guess,
-and a 5s timeout means a slow Forgejo never holds up the dispatch. It is skipped
-under `--print`, and compares only the release tag (the container pins its own).
+The check is quiet and non-blocking: a `dev`/source build, no network, an auth
+wall, or an unparseable tag all stay silent, and a 5s timeout keeps a slow
+Forgejo from holding up the dispatch. It is skipped under `--print`
+and compares only the release tag (the container pins its own).
 
 ## See also
 
