@@ -4,6 +4,7 @@ import (
 	"context"
 	"encoding/base64"
 	"fmt"
+	"io"
 	"os"
 	"path/filepath"
 	"regexp"
@@ -11,6 +12,8 @@ import (
 	"strings"
 	"testing"
 	"time"
+
+	"github.com/coilyco-flight-deck/ward/internal/agentsapi"
 
 	"forgejo.coilysiren.me/coilyco-flight-deck/cli-guard/cli/shell"
 	"github.com/urfave/cli/v3"
@@ -1005,41 +1008,18 @@ func TestEntrypointQwenOpencode(t *testing.T) {
 	}
 }
 
-// TestCredEnvLines pins the per-mode credential env-file shaping (ward#178): each
-// present blob rides base64'd on its own WARD_*_B64 line, absent blobs are omitted.
-func TestCredEnvLines(t *testing.T) {
-	if got := credEnvLines(agentCreds{}); len(got) != 0 {
-		t.Errorf("no creds should yield no lines, got %v", got)
+// envLineValue returns the value of the first env-file line with key, or "".
+func envLineValue(lines []agentsapi.EnvLine, key string) (string, bool) {
+	for _, l := range lines {
+		if l.Key == key {
+			return l.Value, true
+		}
 	}
-	claudeOnly := credEnvLines(agentCreds{Claude: "claude-blob"})
-	if len(claudeOnly) != 1 || !strings.HasPrefix(claudeOnly[0], "WARD_CLAUDE_CREDS_B64=") {
-		t.Fatalf("claude-only lines = %v", claudeOnly)
-	}
-	codexOnly := credEnvLines(agentCreds{Codex: "codex-blob"})
-	if len(codexOnly) != 1 || !strings.HasPrefix(codexOnly[0], "WARD_CODEX_AUTH_B64=") {
-		t.Fatalf("codex-only lines = %v", codexOnly)
-	}
-	// The codex blob must round-trip through base64 unchanged.
-	enc := strings.TrimPrefix(codexOnly[0], "WARD_CODEX_AUTH_B64=")
-	dec, err := base64.StdEncoding.DecodeString(enc)
-	if err != nil || string(dec) != "codex-blob" {
-		t.Errorf("codex blob did not round-trip: dec=%q err=%v", dec, err)
-	}
-	gooseOnly := credEnvLines(agentCreds{GooseOllamaHost: "http://tower:11434"})
-	if len(gooseOnly) != 1 || !strings.HasPrefix(gooseOnly[0], "WARD_GOOSE_OLLAMA_HOST_B64=") {
-		t.Fatalf("goose-only lines = %v", gooseOnly)
-	}
-	gdec, gerr := base64.StdEncoding.DecodeString(strings.TrimPrefix(gooseOnly[0], "WARD_GOOSE_OLLAMA_HOST_B64="))
-	if gerr != nil || string(gdec) != "http://tower:11434" {
-		t.Errorf("goose host did not round-trip: dec=%q err=%v", gdec, gerr)
-	}
-	if got := credEnvLines(agentCreds{Claude: "a", Codex: "b"}); len(got) != 2 {
-		t.Errorf("both creds should yield two lines, got %v", got)
-	}
+	return "", false
 }
 
-// TestResolveAgentCredsRouting checks the resolver routes by mode: codex reads
-// auth.json, goose resolves the tower Ollama from SSM (ward#186), qwen none.
+// TestResolveAgentCredsRouting checks the host resolver routes by mode through the
+// drained CredentialProvider seam (codex auth.json, goose SSM, opencode none; ward#425).
 func TestResolveAgentCredsRouting(t *testing.T) {
 	home := t.TempDir()
 	t.Setenv("HOME", home)
@@ -1056,30 +1036,40 @@ func TestResolveAgentCredsRouting(t *testing.T) {
 	if err := os.WriteFile(stub, []byte("#!/bin/sh\necho "+towerHost+"\n"), 0o755); err != nil {
 		t.Fatal(err)
 	}
-	r := &Runner{Runner: &shell.Runner{Resolve: func(bin string) (string, error) {
+	r := &Runner{Runner: &shell.Runner{Stderr: io.Discard, Resolve: func(bin string) (string, error) {
 		if bin == "aws" {
 			return stub, nil
 		}
 		return "", fmt.Errorf("unexpected binary %q", bin)
 	}}}
 
-	got := r.resolveAgentCreds(t.Context(), modeCodex)
-	if got.Codex != "codex-auth-blob" {
-		t.Errorf("codex mode: Codex = %q, want the auth.json contents", got.Codex)
+	codex := r.resolveAgentCreds(t.Context(), modeCodex)
+	enc, ok := envLineValue(codex, "WARD_CODEX_AUTH_B64")
+	if !ok {
+		t.Fatalf("codex mode: no WARD_CODEX_AUTH_B64 line, got %+v", codex)
 	}
-	if got.Claude != "" {
-		t.Errorf("codex mode must not resolve a claude credential, got %q", got.Claude)
+	dec, err := base64.StdEncoding.DecodeString(enc)
+	if err != nil || string(dec) != "codex-auth-blob" {
+		t.Errorf("codex blob did not round-trip: dec=%q err=%v", dec, err)
+	}
+	if _, ok := envLineValue(codex, "WARD_CLAUDE_CREDS_B64"); ok {
+		t.Errorf("codex mode must not resolve a claude credential, got %+v", codex)
 	}
 	// goose binds the tower Ollama, so ward resolves and injects its endpoint.
 	goose := r.resolveAgentCreds(t.Context(), modeGoose)
-	if goose.GooseOllamaHost != towerHost {
-		t.Errorf("goose mode: GooseOllamaHost = %q, want the resolved tower host %q", goose.GooseOllamaHost, towerHost)
+	genc, ok := envLineValue(goose, "WARD_GOOSE_OLLAMA_HOST_B64")
+	if !ok {
+		t.Fatalf("goose mode: no WARD_GOOSE_OLLAMA_HOST_B64 line, got %+v", goose)
 	}
-	if goose.Claude != "" || goose.Codex != "" {
+	gdec, gerr := base64.StdEncoding.DecodeString(genc)
+	if gerr != nil || string(gdec) != towerHost {
+		t.Errorf("goose host did not round-trip: dec=%q err=%v", gdec, gerr)
+	}
+	if len(goose) != 1 {
 		t.Errorf("goose mode must resolve only its ollama host, got %+v", goose)
 	}
 	// opencode's provider is image-configured (local ollama), so ward injects nothing.
-	if c := r.resolveAgentCreds(t.Context(), modeOpencode); c != (agentCreds{}) {
+	if c := r.resolveAgentCreds(t.Context(), modeOpencode); len(c) != 0 {
 		t.Errorf("opencode must resolve no creds, got %+v", c)
 	}
 }
@@ -1094,38 +1084,8 @@ func TestRepoCloneURLAndMirror(t *testing.T) {
 	}
 }
 
-func TestClaudeCredsHealth(t *testing.T) {
-	now := time.Date(2026, 6, 19, 12, 0, 0, 0, time.UTC)
-	future := now.Add(time.Hour).UnixMilli()
-	past := now.Add(-time.Hour).UnixMilli()
-	tests := []struct {
-		name    string
-		blob    string
-		wantOK  bool
-		wantSub string // substring expected in reason when !wantOK
-	}{
-		{"empty", "", false, "empty"},
-		{"whitespace only", "   \n", false, "empty"},
-		{"healthy nested claudeAiOauth", fmt.Sprintf(`{"claudeAiOauth":{"accessToken":"tok","expiresAt":%d}}`, future), true, ""},
-		{"healthy top-level fallback", fmt.Sprintf(`{"accessToken":"tok","expiresAt":%d}`, future), true, ""},
-		{"healthy no expiry", `{"claudeAiOauth":{"accessToken":"tok"}}`, true, ""},
-		{"expired token", fmt.Sprintf(`{"claudeAiOauth":{"accessToken":"tok","expiresAt":%d}}`, past), false, "expired"},
-		{"no access token", `{"claudeAiOauth":{"expiresAt":12345}}`, false, "no accessToken"},
-		{"unrecognised but valid json", `{"something":"else"}`, false, "no accessToken"},
-		{"not json at all", "not-json-blob", true, ""}, // defer to in-container smoke test
-	}
-	for _, tc := range tests {
-		t.Run(tc.name, func(t *testing.T) {
-			ok, reason := claudeCredsHealth(tc.blob, now)
-			if ok != tc.wantOK {
-				t.Fatalf("ok = %v, want %v (reason=%q)", ok, tc.wantOK, reason)
-			}
-			if !tc.wantOK && tc.wantSub != "" && !strings.Contains(reason, tc.wantSub) {
-				t.Errorf("reason = %q, want substring %q", reason, tc.wantSub)
-			}
-		})
-	}
-}
+// claudeCredsHealth drained to internal/agents/claude in ward#425 Phase 3; its
+// table test lives there now (creds_test.go).
 
 // TestBuildUpPlanWardVersion covers ward#312: --ward-version (env WARD_AGENT_VERSION)
 // overrides the host ward version the container downloads; unset keeps Version.

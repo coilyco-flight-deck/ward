@@ -1,7 +1,7 @@
-// Package codex is the codex harness's agentsapi.Agent (ward#412, Phase 2 of
-// ward#401). It carries codex's inert data record and forwards its capability
-// behaviour to the still-live cmd/ward funcs via closures core injects; no
-// behaviour lives here. See docs/agentsapi.md.
+// Package codex is the codex harness's agentsapi.Agent (ward#401 Phase 3,
+// following ward#412). It owns codex's inert data record AND its capability
+// behaviour: credential resolve/write and config compose live here now, not
+// behind a closure into core. See docs/agentsapi.md.
 package codex
 
 import (
@@ -32,13 +32,9 @@ var record = agentsapi.Manifest{
 	Identity: attribution.Identity{Name: "Codex"},
 }
 
-// Agent is codex's agentsapi.Agent; core injects the capability closures
-// (writeCodexCreds, resolveCodexCreds, composeCodexConfig).
-type Agent struct {
-	ResolveCredsFn  func(agentsapi.HostCtx) []agentsapi.EnvLine // -> resolveCodexCreds + credEnvLines
-	WriteCredsFn    func(agentsapi.RunCtx) error               // -> writeCodexCreds
-	ComposeConfigFn func(agentsapi.RunCtx) error               // -> composeCodexConfig
-}
+// Agent is codex's agentsapi.Agent. Phase 3 (ward#425) drained the behaviour
+// home, so it carries no state.
+type Agent struct{}
 
 // Compile-time proof codex implements the core contract plus its capabilities.
 var (
@@ -47,7 +43,7 @@ var (
 	_ agentsapi.ConfigComposer     = Agent{}
 )
 
-// New returns codex's Agent with no capabilities wired (DATA-only).
+// New returns codex's Agent.
 func New() Agent { return Agent{} }
 
 // Name is the roster key.
@@ -75,28 +71,4 @@ func (a Agent) LaunchArgv(rc agentsapi.RunCtx) (argv []string, stream bool) {
 		return append([]string{"codex", "exec"}, rc.Seed...), false
 	}
 	return append([]string{"codex"}, rc.Seed...), false
-}
-
-// ResolveCreds runs host-side, returning the env-file lines to inject.
-func (a Agent) ResolveCreds(hc agentsapi.HostCtx) []agentsapi.EnvLine {
-	if a.ResolveCredsFn == nil {
-		return nil
-	}
-	return a.ResolveCredsFn(hc)
-}
-
-// WriteCreds decodes the host-injected auth.json into ~/.codex/auth.json.
-func (a Agent) WriteCreds(rc agentsapi.RunCtx) error {
-	if a.WriteCredsFn == nil {
-		return nil
-	}
-	return a.WriteCredsFn(rc)
-}
-
-// ComposeConfig writes codex's approvals-off/sandbox-open config in-container.
-func (a Agent) ComposeConfig(rc agentsapi.RunCtx) error {
-	if a.ComposeConfigFn == nil {
-		return nil
-	}
-	return a.ComposeConfigFn(rc)
 }

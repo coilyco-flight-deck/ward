@@ -1,4 +1,4 @@
-package main
+package claude
 
 import (
 	"context"
@@ -75,8 +75,7 @@ func TestDiskReportAndLowDiskPaths(t *testing.T) {
 }
 
 func TestCaptureProbeStdoutStderr(t *testing.T) {
-	r := &Runner{}
-	out, errOut, rc := r.captureProbe(context.Background(),
+	out, errOut, rc := captureProbe(context.Background(),
 		[]string{"sh", "-c", "printf hi; printf oops >&2; exit 3"})
 	if strings.TrimSpace(out) != "hi" {
 		t.Errorf("stdout = %q, want %q", out, "hi")

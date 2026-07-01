@@ -2,11 +2,8 @@ package main
 
 import (
 	"context"
-	"strings"
 
 	"github.com/coilyco-flight-deck/ward/internal/agents"
-	"github.com/coilyco-flight-deck/ward/internal/agents/claude"
-	"github.com/coilyco-flight-deck/ward/internal/agents/codex"
 	"github.com/coilyco-flight-deck/ward/internal/agents/goose"
 	"github.com/coilyco-flight-deck/ward/internal/agents/opencode"
 	"github.com/coilyco-flight-deck/ward/internal/agentsapi"
@@ -33,23 +30,6 @@ func envFromRunCtx(name string, rc agentsapi.RunCtx) bootstrapEnv {
 		QwenModel:      rc.OpencodeModel,
 		OllamaURL:      rc.OllamaURL,
 	}
-}
-
-// envLinesFromCredLines converts the live credEnvLines output ("KEY=VALUE") into
-// the SPI's []agentsapi.EnvLine, so ResolveCreds reuses the exact host resolution.
-func envLinesFromCredLines(lines []string) []agentsapi.EnvLine {
-	out := make([]agentsapi.EnvLine, 0, len(lines))
-	for _, l := range lines {
-		k, v, ok := strings.Cut(l, "=")
-		if !ok {
-			continue
-		}
-		out = append(out, agentsapi.EnvLine{Key: k, Value: v})
-	}
-	if len(out) == 0 {
-		return nil
-	}
-	return out
 }
 
 // lookupAgent resolves a mode to its DATA-only registry agent, the Record()/
@@ -102,23 +82,9 @@ func composeAgentContainer(agent agentsapi.Agent, rc agentsapi.RunCtx) {
 // bound to this Runner's live funcs; unknown modes mirror agents.Lookup.
 func (r *Runner) wireAgent(mode containerMode) (agentsapi.Agent, bool) {
 	switch mode {
-	case modeClaude:
-		return claude.Agent{
-			ResolveCredsFn: func(hc agentsapi.HostCtx) []agentsapi.EnvLine {
-				return envLinesFromCredLines(credEnvLines(r.resolveAgentCreds(hc.Ctx, modeClaude)))
-			},
-			WriteCredsFn:     func(rc agentsapi.RunCtx) error { r.writeClaudeCreds(envFromRunCtx("claude", rc)); return nil },
-			SeedOnboardingFn: func(rc agentsapi.RunCtx) error { r.seedClaudeOnboarding(envFromRunCtx("claude", rc)); return nil },
-			PreLaunchCheckFn: func(rc agentsapi.RunCtx) error { return r.smokeTestClaudeAuth(rc.Ctx, envFromRunCtx("claude", rc)) },
-		}, true
-	case modeCodex:
-		return codex.Agent{
-			ResolveCredsFn: func(hc agentsapi.HostCtx) []agentsapi.EnvLine {
-				return envLinesFromCredLines(credEnvLines(r.resolveAgentCreds(hc.Ctx, modeCodex)))
-			},
-			WriteCredsFn:    func(rc agentsapi.RunCtx) error { r.writeCodexCreds(envFromRunCtx("codex", rc)); return nil },
-			ComposeConfigFn: func(rc agentsapi.RunCtx) error { r.composeCodexConfig(envFromRunCtx("codex", rc)); return nil },
-		}, true
+	case modeClaude, modeCodex:
+		// Drained to their folders (ward#425): the registry agent owns the behaviour.
+		return agents.Lookup(string(mode))
 	case modeOpencode:
 		return opencode.Agent{
 			ComposeConfigFn: func(rc agentsapi.RunCtx) error { r.composeOpencodeConfig(envFromRunCtx("opencode", rc)); return nil },

@@ -2,6 +2,7 @@ package main
 
 import (
 	"context"
+	"fmt"
 	"io"
 	"os"
 	"path/filepath"
@@ -110,16 +111,22 @@ func TestTSSidecarWardEnv(t *testing.T) {
 	}
 }
 
-// TestCredEnvLinesNoTower: the tower endpoint is no longer a base64'd cred line - it
-// dials by MagicDNS name (a non-secret), so it rides plain in wardEnv (ward#337).
+// TestCredEnvLinesNoTower pins that no mode's ResolveCreds emits a WARD_TOWER_OLLAMA
+// key (the tower dials by MagicDNS, ward#337) and opencode injects nothing (ward#425).
 func TestCredEnvLinesNoTower(t *testing.T) {
-	lines := credEnvLines(agentCreds{Claude: "blob", GooseOllamaHost: "http://h:11434"})
-	for _, l := range lines {
-		if strings.Contains(l, "WARD_TOWER_OLLAMA") {
-			t.Errorf("tower endpoint must not ride the cred env-file; got: %v", lines)
+	home := t.TempDir()
+	t.Setenv("HOME", home)
+	r := &Runner{Runner: &shell.Runner{Stderr: io.Discard, Resolve: func(string) (string, error) {
+		return "", fmt.Errorf("no external binaries in this hermetic test")
+	}}}
+	for _, mode := range []containerMode{modeClaude, modeCodex, modeGoose, modeOpencode} {
+		for _, l := range r.resolveAgentCreds(t.Context(), mode) {
+			if strings.Contains(l.Key, "WARD_TOWER_OLLAMA") {
+				t.Errorf("tower endpoint must not ride the cred env-file; got: %v", l)
+			}
 		}
 	}
-	if got := credEnvLines(agentCreds{}); len(got) != 0 {
+	if got := r.resolveAgentCreds(t.Context(), modeOpencode); len(got) != 0 {
 		t.Errorf("no creds -> no lines; got: %v", got)
 	}
 }

@@ -14,98 +14,96 @@ import (
 	"forgejo.coilysiren.me/coilyco-flight-deck/cli-guard/cli/shell"
 )
 
-// agents_wire_test.go proves the ward#412 delegation: a wired agent's capability
-// methods route to the live cmd/ward funcs; DATA-only registry agents no-op.
+// agents_wire_test.go proves the ward#425 drain: the registry agents own their
+// capability behaviour directly (no closures into core).
 
 func testRunner() *Runner { return &Runner{Runner: &shell.Runner{Stderr: io.Discard}} }
 
-// TestWiredClaudeWriteCredsDelegates confirms claude's wired WriteCreds runs the
-// live writeClaudeCreds: the base64 blob lands as ~/.claude/.credentials.json.
-func TestWiredClaudeWriteCredsDelegates(t *testing.T) {
+// discardLog is the no-op Logger the ctx helpers pass where blog is not wanted.
+func discardLog(string, ...any) {}
+
+// TestRegistryClaudeWriteCreds confirms claude's registry agent writes the injected
+// base64 blob to ~/.claude/.credentials.json (behaviour lives in the folder, ward#425).
+func TestRegistryClaudeWriteCreds(t *testing.T) {
 	home := t.TempDir()
 	const secret = `{"claudeAiOauth":{"accessToken":"tok"}}`
 	t.Setenv("WARD_CLAUDE_CREDS_B64", base64.StdEncoding.EncodeToString([]byte(secret)))
 
-	r := testRunner()
-	a, ok := r.wireAgent(modeClaude)
+	a, ok := agents.Lookup(string(modeClaude))
 	if !ok {
-		t.Fatal("wireAgent(modeClaude) not ok")
+		t.Fatal("Lookup(claude) not ok")
 	}
 	cp, ok := a.(agentsapi.CredentialProvider)
 	if !ok {
-		t.Fatal("wired claude must be a CredentialProvider")
+		t.Fatal("claude must be a CredentialProvider")
 	}
-	rc := agentsapi.RunCtx{Ctx: context.Background(), AgentHome: home}
+	rc := agentsapi.RunCtx{Ctx: context.Background(), AgentHome: home, Log: discardLog}
 	if err := cp.WriteCreds(rc); err != nil {
 		t.Fatalf("WriteCreds: %v", err)
 	}
 	got, err := os.ReadFile(filepath.Join(home, ".claude", ".credentials.json"))
 	if err != nil {
-		t.Fatalf("delegated writeClaudeCreds did not write the cred file: %v", err)
+		t.Fatalf("WriteCreds did not write the cred file: %v", err)
 	}
 	if string(got) != secret {
 		t.Errorf("cred file = %q, want %q", got, secret)
 	}
 }
 
-// TestWiredConfigComposersDelegate confirms each config-composer agent's wired
-// ComposeConfig runs the matching live compose func (side effect: the file lands).
-func TestWiredConfigComposersDelegate(t *testing.T) {
+// TestRegistryConfigComposersWrite confirms each config-composer registry agent's
+// ComposeConfig writes its file (behaviour lives in the folders now, ward#425).
+func TestRegistryConfigComposersWrite(t *testing.T) {
 	cases := []struct {
 		mode containerMode
-		rel  string // config path relative to AgentHome the live func writes
+		rel  string // config path relative to AgentHome the folder func writes
 	}{
 		{modeCodex, filepath.Join(".codex", "config.toml")},
-		{modeOpencode, filepath.Join(".config", "opencode", "opencode.json")},
-		{modeGoose, filepath.Join(".config", "goose", "config.yaml")},
+		// opencode + goose config composers land in the folders in the next drain
+		// step (ward#425 Part B); until then they stay wired via wireAgent.
 	}
 	for _, tc := range cases {
 		t.Run(string(tc.mode), func(t *testing.T) {
 			home := t.TempDir()
-			r := testRunner()
-			a, ok := r.wireAgent(tc.mode)
+			a, ok := agents.Lookup(string(tc.mode))
 			if !ok {
-				t.Fatalf("wireAgent(%s) not ok", tc.mode)
+				t.Fatalf("Lookup(%s) not ok", tc.mode)
 			}
 			cc, ok := a.(agentsapi.ConfigComposer)
 			if !ok {
-				t.Fatalf("wired %s must be a ConfigComposer", tc.mode)
+				t.Fatalf("%s must be a ConfigComposer", tc.mode)
 			}
-			rc := agentsapi.RunCtx{Ctx: context.Background(), AgentHome: home, OpencodeModel: "qwen3-coder:30b", OllamaURL: "http://localhost:11434/v1"}
+			rc := agentsapi.RunCtx{Ctx: context.Background(), AgentHome: home, Log: discardLog, OpencodeModel: "qwen3-coder:30b", OllamaURL: "http://localhost:11434/v1"}
 			if err := cc.ComposeConfig(rc); err != nil {
 				t.Fatalf("ComposeConfig: %v", err)
 			}
 			if _, err := os.Stat(filepath.Join(home, tc.rel)); err != nil {
-				t.Errorf("delegated compose for %s did not write %s: %v", tc.mode, tc.rel, err)
+				t.Errorf("ComposeConfig for %s did not write %s: %v", tc.mode, tc.rel, err)
 			}
 		})
 	}
 }
 
-// TestRegistryAgentsNoOpUnwired confirms the DATA-only registry agents forward to
-// nil closures safely (no panic, no filesystem write) - Phase 2 flips no call site.
-func TestRegistryAgentsNoOpUnwired(t *testing.T) {
-	home := t.TempDir()
-	rc := agentsapi.RunCtx{Ctx: context.Background(), AgentHome: home}
+// TestCredWritesSafeWithoutInjection confirms WriteCreds no-ops without a *_B64
+// blob and ResolveCreds yields nil when the host source is missing (no panic).
+func TestCredWritesSafeWithoutInjection(t *testing.T) {
 	for _, mode := range agentModes {
 		a, _ := agents.Lookup(string(mode))
-		if cp, ok := a.(agentsapi.CredentialProvider); ok {
-			if err := cp.WriteCreds(rc); err != nil {
-				t.Errorf("%s: unwired WriteCreds returned %v, want nil no-op", mode, err)
-			}
-			if lines := cp.ResolveCreds(agentsapi.HostCtx{Ctx: context.Background()}); lines != nil {
-				t.Errorf("%s: unwired ResolveCreds returned %v, want nil", mode, lines)
-			}
+		cp, ok := a.(agentsapi.CredentialProvider)
+		if !ok {
+			continue
 		}
-		if cc, ok := a.(agentsapi.ConfigComposer); ok {
-			if err := cc.ComposeConfig(rc); err != nil {
-				t.Errorf("%s: unwired ComposeConfig returned %v, want nil no-op", mode, err)
-			}
+		home := t.TempDir()
+		rc := agentsapi.RunCtx{Ctx: context.Background(), AgentHome: home, Log: discardLog}
+		if err := cp.WriteCreds(rc); err != nil {
+			t.Errorf("%s: WriteCreds no-inject returned %v", mode, err)
 		}
-	}
-	// Nothing should have been written by the unwired no-ops.
-	if entries, _ := os.ReadDir(home); len(entries) != 0 {
-		t.Errorf("unwired agents wrote %d entries under HOME, want 0", len(entries))
+		if _, err := os.Stat(filepath.Join(home, ".claude", ".credentials.json")); err == nil {
+			t.Errorf("%s: WriteCreds wrote a claude cred file with nothing injected", mode)
+		}
+		hc := agentsapi.HostCtx{Ctx: context.Background(), GOOS: "linux", Home: t.TempDir(), Exec: &shell.Runner{Stderr: io.Discard}, Log: discardLog}
+		if lines := cp.ResolveCreds(hc); lines != nil {
+			t.Errorf("%s: ResolveCreds with missing source = %v, want nil", mode, lines)
+		}
 	}
 }
 

@@ -1,7 +1,8 @@
-// Package claude is the claude harness's agentsapi.Agent (ward#412, Phase 2 of
-// ward#401). It carries claude's inert data record and forwards its capability
-// behaviour to the still-live cmd/ward funcs via closures core injects; no
-// behaviour lives here. See docs/agentsapi.md.
+// Package claude is the claude harness's agentsapi.Agent (ward#401 Phase 3,
+// following ward#412). It owns claude's inert data record AND its capability
+// behaviour: credential resolve/write, onboarding seed, and the pre-launch auth
+// smoke test all live here now, not behind a closure into core. See
+// docs/agentsapi.md.
 package claude
 
 import (
@@ -34,14 +35,9 @@ var record = agentsapi.Manifest{
 	Identity: attribution.Identity{Name: "Claude", Pronouns: "she/her"},
 }
 
-// Agent is claude's agentsapi.Agent; core injects the capability closures so the
-// behaviour keeps living in the entrypoint funcs. A nil closure is a safe no-op.
-type Agent struct {
-	ResolveCredsFn   func(agentsapi.HostCtx) []agentsapi.EnvLine // -> resolveClaudeCreds + credEnvLines
-	WriteCredsFn     func(agentsapi.RunCtx) error               // -> writeClaudeCreds
-	SeedOnboardingFn func(agentsapi.RunCtx) error               // -> seedClaudeOnboarding
-	PreLaunchCheckFn func(agentsapi.RunCtx) error               // -> smokeTestClaudeAuth
-}
+// Agent is claude's agentsapi.Agent; Phase 3 (ward#425) drained the behaviour
+// home, so it carries no state (methods act on the passed RunCtx/HostCtx).
+type Agent struct{}
 
 // Compile-time proof claude implements the core contract plus exactly the
 // capabilities it supports (credentials, onboarding seed, launch gate).
@@ -52,8 +48,7 @@ var (
 	_ agentsapi.LaunchGate         = Agent{}
 )
 
-// New returns claude's Agent with no capabilities wired (DATA-only); core wires
-// the closures at dispatch.
+// New returns claude's Agent.
 func New() Agent { return Agent{} }
 
 // Name is the roster key (the --mode value).
@@ -91,36 +86,4 @@ func (a Agent) LaunchArgv(rc agentsapi.RunCtx) (argv []string, stream bool) {
 	}
 	argv = append(argv, rc.Seed...)
 	return argv, stream
-}
-
-// ResolveCreds runs host-side, returning the env-file lines to inject.
-func (a Agent) ResolveCreds(hc agentsapi.HostCtx) []agentsapi.EnvLine {
-	if a.ResolveCredsFn == nil {
-		return nil
-	}
-	return a.ResolveCredsFn(hc)
-}
-
-// WriteCreds runs in-container, decoding the blob into ~/.claude/.credentials.json.
-func (a Agent) WriteCreds(rc agentsapi.RunCtx) error {
-	if a.WriteCredsFn == nil {
-		return nil
-	}
-	return a.WriteCredsFn(rc)
-}
-
-// SeedOnboarding seeds ~/.claude.json so interactive claude skips its first-run gates.
-func (a Agent) SeedOnboarding(rc agentsapi.RunCtx) error {
-	if a.SeedOnboardingFn == nil {
-		return nil
-	}
-	return a.SeedOnboardingFn(rc)
-}
-
-// PreLaunchCheck runs claude's auth smoke test, which can abort the run.
-func (a Agent) PreLaunchCheck(rc agentsapi.RunCtx) error {
-	if a.PreLaunchCheckFn == nil {
-		return nil
-	}
-	return a.PreLaunchCheckFn(rc)
 }

@@ -3,7 +3,6 @@ package main
 import (
 	"context"
 	"encoding/base64"
-	"encoding/json"
 	"io"
 	"os"
 	"os/exec"
@@ -224,54 +223,8 @@ func TestReadBootstrapEnvDefaults(t *testing.T) {
 	}
 }
 
-// TestSeedClaudeOnboarding covers ward#305: claude mode seeds ~/.claude.json so the
-// interactive session skips the first-run theme picker; other modes write nothing.
-func TestSeedClaudeOnboarding(t *testing.T) {
-	r := &Runner{}
-
-	t.Run("claude mode seeds onboarding", func(t *testing.T) {
-		home := t.TempDir()
-		r.seedClaudeOnboarding(bootstrapEnv{Mode: "claude", AgentHome: home, TargetName: "ward"})
-		data, err := os.ReadFile(filepath.Join(home, ".claude.json"))
-		if err != nil {
-			t.Fatalf("expected ~/.claude.json: %v", err)
-		}
-		// Decode so we assert the nested shape claude persists (ward#313): bypass-mode
-		// acceptance at top level + folder trust under launch cwd /workspace/<target>.
-		var got struct {
-			HasCompletedOnboarding        bool `json:"hasCompletedOnboarding"`
-			BypassPermissionsModeAccepted bool `json:"bypassPermissionsModeAccepted"`
-			Projects                      map[string]struct {
-				HasTrustDialogAccepted        bool `json:"hasTrustDialogAccepted"`
-				HasCompletedProjectOnboarding bool `json:"hasCompletedProjectOnboarding"`
-			} `json:"projects"`
-		}
-		if err := json.Unmarshal(data, &got); err != nil {
-			t.Fatalf("claude.json is not valid JSON: %v\n%s", err, data)
-		}
-		if !got.HasCompletedOnboarding {
-			t.Errorf("claude.json missing onboarding flag: %s", data)
-		}
-		if !got.BypassPermissionsModeAccepted {
-			t.Errorf("claude.json missing bypassPermissionsModeAccepted: %s", data)
-		}
-		proj, ok := got.Projects["/workspace/ward"]
-		if !ok {
-			t.Fatalf("claude.json missing projects[/workspace/ward]: %s", data)
-		}
-		if !proj.HasTrustDialogAccepted || !proj.HasCompletedProjectOnboarding {
-			t.Errorf("claude.json missing folder-trust flags for launch cwd: %s", data)
-		}
-	})
-
-	t.Run("non-claude mode writes nothing", func(t *testing.T) {
-		home := t.TempDir()
-		r.seedClaudeOnboarding(bootstrapEnv{Mode: "codex", AgentHome: home})
-		if _, err := os.Stat(filepath.Join(home, ".claude.json")); !os.IsNotExist(err) {
-			t.Errorf("codex mode should not write claude.json (err=%v)", err)
-		}
-	})
-}
+// Claude onboarding + creds and codex creds/config drained to their agent
+// folders in ward#425 Phase 3; their tests live there now (internal/agents/*).
 
 // TestRevokeClonePushURL covers ward#327: a read-only session points origin's push
 // URL at the dead no-push:// scheme while leaving the fetch URL intact.
@@ -542,81 +495,17 @@ func TestComposeContextRuntimeDoctrineLoadPoints(t *testing.T) {
 	}
 }
 
-// TestWriteCredsScrubsEnv asserts each Go-bootstrap cred step writes its file
-// then scrubs its bootstrap-only *_B64 env var, so it can't leak (ward#357).
-func TestWriteCredsScrubsEnv(t *testing.T) {
+// TestGooseOllamaHostScrubsEnv asserts the goose config step scrubs its
+// WARD_GOOSE_OLLAMA_HOST_B64 env var so it can't leak (ward#357).
+func TestGooseOllamaHostScrubsEnv(t *testing.T) {
 	home := t.TempDir()
 	r := gitRunner()
-
-	// claude (any mode): plain "{}" base64'd is enough to exercise the write+scrub.
-	t.Setenv("WARD_CLAUDE_CREDS_B64", base64.StdEncoding.EncodeToString([]byte(`{"ok":1}`)))
-	r.writeClaudeCreds(bootstrapEnv{AgentHome: home})
-	if _, err := os.Stat(filepath.Join(home, ".claude", ".credentials.json")); err != nil {
-		t.Fatalf("expected ~/.claude/.credentials.json written: %v", err)
-	}
-	if v := os.Getenv("WARD_CLAUDE_CREDS_B64"); v != "" {
-		t.Errorf("WARD_CLAUDE_CREDS_B64 should be scrubbed after seeding, got %q", v)
-	}
-
-	// codex (codex mode only).
-	t.Setenv("WARD_CODEX_AUTH_B64", base64.StdEncoding.EncodeToString([]byte(`{"ok":1}`)))
-	r.writeCodexCreds(bootstrapEnv{Mode: "codex", AgentHome: home})
-	if _, err := os.Stat(filepath.Join(home, ".codex", "auth.json")); err != nil {
-		t.Fatalf("expected ~/.codex/auth.json written: %v", err)
-	}
-	if v := os.Getenv("WARD_CODEX_AUTH_B64"); v != "" {
-		t.Errorf("WARD_CODEX_AUTH_B64 should be scrubbed after seeding, got %q", v)
-	}
 
 	// goose ollama host (goose mode only): the tailnet endpoint is the secret here.
 	t.Setenv("WARD_GOOSE_OLLAMA_HOST_B64", base64.StdEncoding.EncodeToString([]byte("http://tower:11434")))
 	r.composeGooseConfig(bootstrapEnv{Mode: "goose", AgentHome: home})
 	if v := os.Getenv("WARD_GOOSE_OLLAMA_HOST_B64"); v != "" {
 		t.Errorf("WARD_GOOSE_OLLAMA_HOST_B64 should be scrubbed after seeding, got %q", v)
-	}
-}
-
-// TestComposeCodexConfigCheapDefaults guards the cheapest-by-default codex
-// posture (ward#379): mini model + low reasoning/verbosity, WARD_CODEX_* overrides.
-func TestComposeCodexConfigCheapDefaults(t *testing.T) {
-	home := t.TempDir()
-	r := gitRunner()
-
-	// Non-codex modes must not write the config at all.
-	r.composeCodexConfig(bootstrapEnv{Mode: "claude", AgentHome: home})
-	if _, err := os.Stat(filepath.Join(home, ".codex", "config.toml")); err == nil {
-		t.Fatal("claude mode should not write ~/.codex/config.toml")
-	}
-
-	// Cheap defaults land for a codex run.
-	e := bootstrapEnv{Mode: "codex", AgentHome: home,
-		CodexModel: "gpt-5.4-mini", CodexEffort: "low", CodexVerbosity: "low"}
-	r.composeCodexConfig(e)
-	got, err := os.ReadFile(filepath.Join(home, ".codex", "config.toml"))
-	if err != nil {
-		t.Fatalf("expected ~/.codex/config.toml written: %v", err)
-	}
-	for _, want := range []string{
-		"approval_policy = \"never\"",
-		"sandbox_mode = \"danger-full-access\"",
-		"model = \"gpt-5.4-mini\"",
-		"model_reasoning_effort = \"low\"",
-		"model_verbosity = \"low\"",
-	} {
-		if !strings.Contains(string(got), want) {
-			t.Errorf("config.toml missing %q\n---\n%s", want, got)
-		}
-	}
-
-	// Overrides flow straight through to the written config.
-	e2 := bootstrapEnv{Mode: "codex", AgentHome: home,
-		CodexModel: "gpt-5.5", CodexEffort: "high", CodexVerbosity: "medium"}
-	r.composeCodexConfig(e2)
-	got2, _ := os.ReadFile(filepath.Join(home, ".codex", "config.toml"))
-	for _, want := range []string{"model = \"gpt-5.5\"", "model_reasoning_effort = \"high\"", "model_verbosity = \"medium\""} {
-		if !strings.Contains(string(got2), want) {
-			t.Errorf("overridden config.toml missing %q\n---\n%s", want, got2)
-		}
 	}
 }
 
