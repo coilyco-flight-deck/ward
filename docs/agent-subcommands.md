@@ -9,7 +9,7 @@ hard rename of the old verbs (ward#347): `work`/`headless`/`task` → `engineer`
 unknown commands.
 
 A **bare ref with no role word runs `engineer`** (ward#282, ward#347): `warded #98`
-dispatches the fire-and-forget carry, and a bare `#N`/`N` infers `owner/repo` from the cwd
+dispatches the fire-and-forget engineer, and a bare `#N`/`N` infers `owner/repo` from the cwd
 origin. The role words below override that default.
 
 ## The three roles
@@ -24,7 +24,7 @@ detail behind each row. Run `warded roster` for the list live at the terminal.
 
 The notes below are the behavioral detail the flat roster does not capture:
 
-- **`engineer`** (was `headless` + `task`) - **detached only** (ward#356): the ref carry
+- **`engineer`** (was `headless` + `task`) - **detached only** (ward#356): a ref
   runs the agent in print mode (`claude -p` etc.) to completion and exits into the reaper;
   for claude it **streams live progress** to the container log. From a terminal it first runs
   a **pre-flight check** ([agent-preflight.md](agent-preflight.md)): a GO launches, a NO-GO
@@ -41,7 +41,7 @@ The notes below are the behavioral detail the flat roster does not capture:
 
 ## Pre-flight parity
 
-The engineer carry runs the **same pre-flight** ([docs/agent-preflight.md](agent-preflight.md))
+The engineer runs the **same pre-flight** ([docs/agent-preflight.md](agent-preflight.md))
 in both ref and freeform mode (ward#149): freeform files the issue first, then gives the
 same GO / NO-GO read before detaching. A NO-GO comments on the just-filed issue and
 launches nothing, leaving a real issue a human can pick up or re-dispatch with
@@ -59,5 +59,5 @@ finishing to a clean `main` push.
 
 - [docs/agent-roster.md](agent-roster.md) - the generated flat list of every role.
 - [docs/agent.md](agent.md) - the `ward agent` roster and usage.
-- [docs/agent-engineer.md](agent-engineer.md) - what the engineer carry does step by step.
+- [docs/agent-engineer.md](agent-engineer.md) - what the engineer does step by step.
 - [docs/agent-preflight.md](agent-preflight.md) - the detached GO/NO-GO pre-flight.

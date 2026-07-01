@@ -33,7 +33,7 @@ type directorBackend interface {
 	// decide is the LLM one-shot: from the ranked picks, budget, and ledger state it
 	// returns which entries to dispatch this tick (<= avail).
 	decide(ctx context.Context, picks []*backlogEntry, avail int, entries []*backlogEntry) []*backlogEntry
-	// dispatch launches one chosen issue's engineer carry and records the transition.
+	// dispatch launches one chosen issue's engineer run and records the transition.
 	dispatch(ctx context.Context, p *backlogEntry) error
 	// surface hands control to an interactive session on drain; ran=false means none
 	// was available (no terminal), so the loop exits cleanly.
@@ -178,7 +178,7 @@ func (d *liveDirector) decide(ctx context.Context, picks []*backlogEntry, avail 
 }
 
 func (d *liveDirector) dispatch(ctx context.Context, p *backlogEntry) error {
-	return d.r.backlogDispatchOne(ctx, d.label, d.cfg.carry, p)
+	return d.r.backlogDispatchOne(ctx, d.label, d.cfg.dispatch, p)
 }
 
 func (d *liveDirector) surface(ctx context.Context) (bool, error) {
@@ -402,7 +402,7 @@ func kickoffDrainNow(line string) bool {
 // directorSurfaceArgv builds the surface-session argv from director's forwarded flags.
 // It runs on director's OWN --driver (cfg.mode), never the engineer driver (ward#355).
 func directorSurfaceArgv(contextRepo string, cfg backlogConfig) []string {
-	cy := cfg.carry
+	cy := cfg.dispatch
 	argv := []string{directorSurfaceVerb, "--repo", contextRepo, "--driver", string(cfg.mode)}
 	if v := strings.TrimSpace(cy.image); v != "" {
 		argv = append(argv, "--image", v)

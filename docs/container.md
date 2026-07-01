@@ -31,9 +31,9 @@ ward agent engineer coilyco-gaming/eco-app#123             # carry an issue end 
 ward agent engineer coilyco-gaming/eco-app#123 --driver codex --print   # show the docker cmd only
 ```
 
-`ward agent engineer --help` lists the launch flags the carry brings from this
+`ward agent engineer --help` lists the launch flags the engineer brings from this
 subsystem (`--driver`, `--aws`, `--print`, `--no-pull`, `--ward-source`, ...;
-see [docs/agent-flags.md](agent-flags.md)). The **engineer carry always
+see [docs/agent-flags.md](agent-flags.md)). The **engineer always
 detaches** (ward#356): print mode in the background, no attach surface
 (interactive work goes to the [director](agent-director.md)). The attached,
 auto-TTY (`-t`) shape belongs to the [director's surface](agent-surface.md).

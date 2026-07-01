@@ -27,7 +27,7 @@ An opt-in (ward#350), asked **once at init**, never per tick; no terminal drains
    (`P0`-`P4`) and mode (`headless`/`interactive`/`consult`).
 3. **Decide** via a host one-shot over the ranked candidates; it answers `DISPATCH:
    <numbers>`/`none`, can only **narrow or hold**, and **fails open to rank** (#346).
-4. **Dispatch** the chosen set via the engineer carry (`agent.<mode>.engineer`).
+4. **Dispatch** the chosen set via the engineer (`agent.<mode>.engineer`).
 5. **Sleep** `--poll-interval`, **no LLM held open**.
 
 Only the **headless** lane auto-dispatches; interactive/consult surface.
@@ -76,4 +76,4 @@ later; only a real launch error parks `failed`. `--force` reclaims a stale/forei
 
 - [docs/agent.md](agent.md) - the `ward agent` roster + `warded` face.
 - [docs/agent-surface.md](agent-surface.md) - the read-only surface it drops into.
-- [docs/agent-engineer.md](agent-engineer.md) - the carry it dispatches.
+- [docs/agent-engineer.md](agent-engineer.md) - the engineer it dispatches.

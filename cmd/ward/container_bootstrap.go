@@ -726,7 +726,7 @@ delegable - a design proposal, a research dig, an implementation - reach for a s
 warded run (` + "`warded advisor #N`" + ` to design or research, ` + "`warded engineer #N`" + ` to build)
 before an in-session subagent. The sibling lands a durable, attributable artifact on
 the canonical surface (the issue thread, a pushed commit) that outlives this session,
-and the next carry can read it. A subagent's output dies in this conversation's
+and the next run can read it. A subagent's output dies in this conversation's
 scrollback. Reserve an in-session subagent for read-only fan-out that only feeds
 **your** immediate reasoning and never needs to outlive the session.
 
@@ -938,7 +938,7 @@ func (r *Runner) composeCodexConfig(e bootstrapEnv) {
 	dir := filepath.Join(e.AgentHome, ".codex")
 	_ = os.MkdirAll(dir, 0o755)
 	// Cheapest codex settings by default (ward#379): mini model + low reasoning +
-	// verbosity, the least ChatGPT-plan usage per carry; WARD_CODEX_* overrides.
+	// verbosity, the least ChatGPT-plan usage per run; WARD_CODEX_* overrides.
 	body := "# Written by the ward container entrypoint (ward#178): container is the boundary.\n" +
 		"approval_policy = \"never\"\n" +
 		"sandbox_mode = \"danger-full-access\"\n" +

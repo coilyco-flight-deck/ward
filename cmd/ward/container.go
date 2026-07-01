@@ -121,7 +121,7 @@ func buildUpPlan(c *cli.Command, repo targetRepo, mode containerMode, cwd, asset
 		return upPlan{}, err
 	}
 	// The per-container machine id: rides the ward.machine label, names issueless
-	// roles. A role-led carry overrides Role+Name after this (ward#364).
+	// roles. A role-led run overrides Role+Name after this (ward#364).
 	machine := randHex()
 	return upPlan{
 		Image:          imageRef(c.String("image"), c.String("tag")),
@@ -146,7 +146,7 @@ func buildUpPlan(c *cli.Command, repo targetRepo, mode containerMode, cwd, asset
 }
 
 // localHasTailscale0 reports whether a tailscale0 interface exists on this host's
-// netns (the netns a --host-net carry joins on Linux); a probe error reads false.
+// netns (the netns a --host-net run joins on Linux); a probe error reads false.
 func localHasTailscale0() bool {
 	ifaces, err := net.Interfaces()
 	if err != nil {
@@ -368,7 +368,7 @@ func (r *Runner) writeTokenEnvFile(ctx context.Context, target broker.Target, cr
 }
 
 // preflightTailnetProxy verifies the standing mac-proxy box is attached to the
-// ward-tailnet network before a --ts-sidecar carry attaches (ward#349; the doc).
+// ward-tailnet network before a --ts-sidecar run attaches (ward#349; the doc).
 func (r *Runner) preflightTailnetProxy(ctx context.Context) error {
 	out, err := r.Runner.Capture(ctx, "docker", dockerTailnetInspectArgv()...)
 	if err != nil || !proxyBoxAttached(string(out)) {

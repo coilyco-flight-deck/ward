@@ -95,7 +95,7 @@ func (r *Runner) runAgentTaskRoute(ctx context.Context, c *cli.Command, mode con
 		return printAgentTaskRoutePlan(c, mode, taskText, title)
 	}
 
-	// ROUTE always detaches the eventual carry, so host dispatch is the last
+	// ROUTE always detaches the eventual run, so host dispatch is the last
 	// interactive moment - surface a stale-ward reminder before it files (ward#143).
 	r.maybeWarnWardOutdated(ctx)
 
@@ -144,13 +144,13 @@ func (r *Runner) runAgentTaskRoute(ctx context.Context, c *cli.Command, mode con
 	}
 	if cerr := signed.closeIssue(ctx, intake.Owner, intake.Repo, intake.Number); cerr != nil {
 		// The child is filed and cross-linked; a failed close is cosmetic, so warn
-		// rather than strand the carry.
+		// rather than strand the run.
 		fmt.Fprintf(os.Stderr, "%s: note: could not close intake %s (%v); it's cross-linked, close it by hand\n", label, intake, cerr)
 	}
 
 	// 5. Carry the child to merge in a headless container. The survey already
 	// served as the feasibility gate, so ROUTE skips the separate pre-flight.
-	seed := agentSeedPrompt(child, title, childBody, "", mode, true, nil)
+	seed := agentSeedPrompt(child, title, childBody, "", true, nil)
 	// ROUTE used the survey as its feasibility gate, not the GO pre-flight, so there
 	// is no GO justification to fold into the reservation comment (ward#383).
 	return r.launchAgentContainer(ctx, c, mode, "task", child, title, seed, "")

@@ -1,15 +1,15 @@
 ---
 name: tooling-ward-agent
-description: Normalize a dictated ward agent phrase to owner/repo#N and dispatch the detached engineer carry. Triggers - ward agent, dispatch, fire an agent, spawn an agent, fan out.
+description: Normalize a dictated ward agent phrase to owner/repo#N and dispatch the detached engineer. Triggers - ward agent, dispatch, fire an agent, spawn an agent, fan out.
 ---
 
 # tooling-ward-agent
 
-`ward agent <role> <ref>` is a privileged op: it spins an ephemeral container that fresh-clones the repo and carries a Forgejo issue to merge under `bypassPermissions`. Mis-parsing a dictated ref silently sends an agent at the wrong issue. This skill normalizes a dictated reference into a canonical `owner/repo#N` and dispatches the engineer carry (successor to `ward dispatch`/`ward drive`; ward#174, ward#282; roster rename ward#347). Canonical in `coilyco-flight-deck/ward` (ward#286).
+`ward agent <role> <ref>` is a privileged op: it spins an ephemeral container that fresh-clones the repo and carries a Forgejo issue to merge under `bypassPermissions`. Mis-parsing a dictated ref silently sends an agent at the wrong issue. This skill normalizes a dictated reference into a canonical `owner/repo#N` and dispatches the engineer (successor to `ward dispatch`/`ward drive`; ward#174, ward#282; roster rename ward#347). Canonical in `coilyco-flight-deck/ward` (ward#286).
 
 ## Assumptions
 
-Fan-out happens *before* this skill (`writing-to-issues`/`tooling-sidequest` sliced the work and filed the issues). This skill takes one dictated reference to one already-open issue, resolves it, dispatches the engineer carry, hands off - it does not slice work or create issues.
+Fan-out happens *before* this skill (`writing-to-issues`/`tooling-sidequest` sliced the work and filed the issues). This skill takes one dictated reference to one already-open issue, resolves it, dispatches the engineer, hands off - it does not slice work or create issues.
 
 ## When to fire
 
@@ -39,7 +39,7 @@ Confirm one line with the issue title from the Forgejo API (`ward ops forgejo is
 
 Skip confirmation only on a unique, unambiguous match; ALWAYS confirm when two repos fuzzy-match. Refuse (naming the failing condition) if the issue is closed, the owner is outside the four-fleet-org trust set (see `references/normalization.md`), the repo did not resolve, or the lookup errors.
 
-## Step 4: dispatch the engineer carry
+## Step 4: dispatch the engineer
 
 `ward agent <role> <ref>` takes a role (`engineer`|`director`|`advisor`; ward#347, ward#353) and `--driver` picks the harness (default claude). This skill dispatches **`engineer`**, which is **detached / autonomous only** (ward#356): a bare ref runs it fire-and-forget; the PR is the review gate. No attach surface - hands-on work is the `director`, not this skill. Heuristics + examples: [`references/surfaces.md`](references/surfaces.md).
 

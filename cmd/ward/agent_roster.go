@@ -132,9 +132,9 @@ func agentRosterTable() (string, error) {
 }
 
 // agentRosterDefaultFooter orients a bare `warded` after the roster: how to launch a
-// role or hand a bare ref to the engineer carry (ward#360). It names no role itself.
-const agentRosterDefaultFooter = "\nPick a role above, or hand a bare ref straight to the engineer carry:\n" +
-	"  warded <ref>         # e.g. warded #98 or owner/repo#N - the engineer carry default\n" +
+// role or hand a bare ref to the engineer (ward#360). It names no role itself.
+const agentRosterDefaultFooter = "\nPick a role above, or hand a bare ref straight to the engineer:\n" +
+	"  warded <ref>         # e.g. warded #98 or owner/repo#N - the engineer default\n" +
 	"  warded <role> ...    # send in a specific role from the roster above\n" +
 	"  ward agent roster    # reprint this roster on its own\n"
 

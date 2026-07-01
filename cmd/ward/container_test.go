@@ -172,7 +172,7 @@ func TestEngineerContainerNameIsRepoIssueUnique(t *testing.T) {
 
 func TestUpPlanLabels(t *testing.T) {
 	repo := targetRepo{Owner: "coilyco-flight-deck", Name: "ward"}
-	// An engineer carry: role/driver/repo + the carried issue + a machine id.
+	// An engineer run: role/driver/repo + the carried issue + a machine id.
 	eng := upPlan{Role: roleEngineer, Mode: modeClaude, Repo: repo, Issue: 364, Machine: "deadbeef"}
 	got := strings.Join(eng.labels(), " ")
 	for _, want := range []string{

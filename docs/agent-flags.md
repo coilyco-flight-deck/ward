@@ -1,6 +1,6 @@
 # ward agent: flags
 
-Launch flags for the `engineer` carry (ward#347). See [docs/agent.md](agent.md)
+Launch flags for the `engineer` role (ward#347). See [docs/agent.md](agent.md)
 for the roster.
 
 ## The flag surface (trimmed ~24 -> ~10 in ward#362)
@@ -17,7 +17,7 @@ on Docker Desktop (ward#349, [agent-ts-sidecar.md](agent-ts-sidecar.md)). It **i
 `--aws`**. `--repo owner/name` (repeatable, ward#280) grants extra writable repos
 ([container-multi-repo.md](container-multi-repo.md)). `--print` is a dry run. `--force`
 skips the reservation checks ([agent-reservation.md](agent-reservation.md)) and
-`--no-preflight` skips the pre-flight ([agent-preflight.md](agent-preflight.md)). The carry
+`--no-preflight` skips the pre-flight ([agent-preflight.md](agent-preflight.md)). The engineer
 **always detaches** (ward#356).
 
 ### Hidden but functional (ward#362)
@@ -35,7 +35,7 @@ skips the reservation checks ([agent-reservation.md](agent-reservation.md)) and
 
 ## Quiet launch for detached runs (ward#306, ward#322)
 
-A detached launch (the engineer carry, always detached now; ward#356) isn't watched, so docker's
+A detached launch (the engineer, always detached now; ward#356) isn't watched, so docker's
 chatter is dropped: pull lines, the `docker scout` footer, the container-id hash
 (`DOCKER_CLI_HINTS=false` plus a swallowed stdout). The pull is the one exception (ward#322): silencing it hid
 slow/mid-push-registry stalls, so a detached pull names itself up front and beats
@@ -43,7 +43,7 @@ a periodic `still pulling` heartbeat, then falls back to the local image.
 
 ## `--details` (ward#167)
 
-The engineer carry's **ref mode** takes `--details "<note>"`: extra operator instructions
+The engineer's **ref mode** takes `--details "<note>"`: extra operator instructions
 woven in at dispatch as a final paragraph of the **seeded prompt**, flagged
 **authoritative over the issue text** where they conflict - so a single line steers the
 run without editing it. It is also folded into the **pre-flight read** and shows up in
@@ -53,7 +53,7 @@ run without editing it. It is also folded into the **pre-flight read** and shows
 ## Retired: `--watch` and `--new-tab` (ward#356)
 
 Engineer once had an attach-and-pair surface - `--watch` (`-w`, the old `work`) ran the
-container attached to your terminal, and `--new-tab` (ward#174) spawned that attached carry
+container attached to your terminal, and `--new-tab` (ward#174) spawned that attached run
 into its own Warp tab (the sidequest path). Both are **gone** (ward#356): engineer is
 detached / autonomous only, and all interactive agent work funnels to the
 [director](agent-director.md) (the managed shell). The flags error as unknown.
@@ -61,4 +61,4 @@ detached / autonomous only, and all interactive agent work funnels to the
 ## See also
 
 - [docs/agent.md](agent.md) - the `ward agent` roster and usage.
-- [docs/container.md](container.md) - the container bring-up flags the engineer carry brings.
+- [docs/container.md](container.md) - the container bring-up flags the engineer brings.

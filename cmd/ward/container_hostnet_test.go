@@ -8,7 +8,7 @@ import (
 	"github.com/urfave/cli/v3"
 )
 
-// ward#330: --host-net appends --network=host so the carry inherits the host's
+// ward#330: --host-net appends --network=host so the run inherits the host's
 // tailnet route; off by default it stays absent (the least-access bridge).
 func TestDockerArgvHostNet(t *testing.T) {
 	// Default plan: no --network=host (least-access bridge).

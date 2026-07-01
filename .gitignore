@@ -11,7 +11,7 @@
 # Local-dev Go workspace, generated on demand by `make workspace` when cli-guard
 # is checked out side by side at ../cli-guard (ward#326). Never committed: a
 # tracked `use (. ../cli-guard)` would break single-repo builds in CI and the
-# warded engineer-carry clone, where the sibling is absent and `go build` would fail.
+# warded engineer clone, where the sibling is absent and `go build` would fail.
 /go.work
 /go.work.sum
 
