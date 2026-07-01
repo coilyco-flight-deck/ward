@@ -1,0 +1,35 @@
+// ward-kdl ops forgejo-key - read ONLY the Forgejo API token from the k3s
+// external-secrets mirror through kubectl (cli-guard execverb, exec dialect).
+// This is the non-2FA path to the token: external-secrets mirrors
+// /forgejo/api-token (SSM) into the `forgejo-runner-secrets` Secret (key
+// `api-token`, namespace `forgejo`) using static AWS creds, so a scoped kubectl
+// reader over the tailnet reaches it without an AWS call or a 2FA prompt
+// (ward#386). The single `read` grant pins the ENTIRE kubectl invocation with an
+// `argv` override and then seals it against any caller expansion:
+//
+//   - `deny-when any-arg matches "*"` refuses every trailing positional, so the
+//     caller can never append another resource/secret name.
+//   - `allow-flag` names one impossible sentinel flag, making the flag policy a
+//     strict allowlist that admits nothing - every real caller flag (`-n`, `-o`,
+//     `--namespace`, `--kubeconfig`, ...) is refused, so a namespace/output-format
+//     pivot is blocked.
+//
+// Together these two guards are the interim spelling of the `sealed` clause
+// (cli-guard#173): freeze the argv, forbid trailing caller tokens. When that
+// sugar lands upstream this collapses to a single `sealed` line. The
+// `go-template` with `base64decode` decodes the token in-line, matching the old
+// `ssm get-parameter --output text` behaviour. The key `api-token` carries a
+// hyphen, so it is read with `index .data "api-token"` - dotted field access
+// (`.data.api-token`) is invalid Go-template syntax. Every call audit-logs
+// through ward like any other ops verb.
+// See ../../docs/ward-kdl/ward-kdl.forgejo-key.guardfile.md.
+wrap ward-kdl ops forgejo-key {
+    exec kubectl
+    can run read {
+        argv get secret forgejo-runner-secrets -n forgejo -o "go-template={{index .data \"api-token\" | base64decode}}"
+        // seal the argv: no trailing positionals, no caller flags (see header).
+        deny-when any-arg matches *
+        allow-flag --ward-sealed-single-key
+        describe "read ONLY the forgejo api-token from the k3s external-secrets mirror, decoded"
+    }
+}
