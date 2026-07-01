@@ -762,6 +762,44 @@ func hostHasBinary(bin string) bool {
 	return err == nil
 }
 
+// dispatchDockerState captures the signals deciding whether an in-container sibling
+// dispatch can reach docker (ward#321); see docs/agent-surface.md.
+type dispatchDockerState struct {
+	inContainer  bool
+	dockerOnPath bool
+	brokerAddr   string
+	readOnly     bool
+}
+
+// currentDispatchDockerState probes the live process for the dispatch signals.
+func currentDispatchDockerState() dispatchDockerState {
+	return dispatchDockerState{
+		inContainer:  inContainer(),
+		dockerOnPath: hostHasBinary("docker"),
+		brokerAddr:   strings.TrimSpace(os.Getenv(envDispatchBrokerAddr)),
+		readOnly:     os.Getenv("WARD_READONLY") == "1",
+	}
+}
+
+// blocked reports whether this dispatch is doomed at the docker shell-out, with the
+// loud reason if so: an in-container dispatch with no docker client (ward#321).
+func (s dispatchDockerState) blocked() (bool, string) {
+	if !s.inContainer || s.dockerOnPath {
+		return false, ""
+	}
+	const base = "cannot dispatch a sibling carry from inside this container: no docker client on PATH (explore can file but cannot dispatch)"
+	var detail string
+	switch {
+	case s.brokerAddr != "" && !s.readOnly:
+		detail = "a host dispatch broker is attached but WARD_READONLY is unset, so the broker forward was skipped and dispatch fell through to a docker client that is not installed"
+	case s.brokerAddr != "":
+		detail = "the host dispatch broker forward did not fire for this dispatch and no docker client is installed to fall back to"
+	default:
+		detail = "no host dispatch broker is attached (WARD_DISPATCH_BROKER_ADDR unset) and the image carries no docker client, so neither dispatch path is available"
+	}
+	return true, fmt.Sprintf("%s - %s. A director surface session dispatches over the host broker; a plain container needs a docker client in the image. See docs/agent-surface.md", base, detail)
+}
+
 // preflightVerdict is ward's read of the agent's pre-flight self-assessment.
 type preflightVerdict int
 
@@ -940,6 +978,16 @@ func carryingLine(label string, ref agentIssueRef, title string) string {
 // fires it detached - the shared tail of engineer, freeform task, and route (ward#356).
 func (r *Runner) launchAgentContainer(ctx context.Context, c *cli.Command, mode containerMode, surface string, ref agentIssueRef, title, seed string) error {
 	label := agentCmdline(mode, surface)
+
+	// Fail a doomed in-container dispatch loudly at bring-up, not at the raw
+	// `exec: "docker"` lookup later (ward#321); --print warns but still renders.
+	if blocked, reason := currentDispatchDockerState().blocked(); blocked {
+		if c.Bool("print") {
+			fmt.Fprintf(os.Stderr, "%s: warning: %s\n", label, reason)
+		} else {
+			return fmt.Errorf("%s: %s", label, reason)
+		}
+	}
 
 	// A detached run leaves its assets for the next sweep (it cannot delete the
 	// still-mounted dir on return), so the cleanup hook is discarded.
