@@ -240,3 +240,49 @@ func TestCanonicalWardExe(t *testing.T) {
 		})
 	}
 }
+
+// TestCanonicalWardExeFallback covers the host advisor break (ward#393): a `warded` shim
+// with no sibling `ward` resolves via the allow-list, then PATH, never back to the shim.
+func TestCanonicalWardExeFallback(t *testing.T) {
+	shimDir, err := filepath.EvalSymlinks(t.TempDir())
+	if err != nil {
+		t.Fatalf("eval temp dir: %v", err)
+	}
+	warded := filepath.Join(shimDir, "warded")
+	if err := os.WriteFile(warded, []byte("#!/bin/sh\n"), 0o755); err != nil { // #nosec G306 -- test fixture
+		t.Fatalf("write warded fixture: %v", err)
+	}
+
+	// A real `ward` reachable only through PATH (no sibling next to the shim).
+	pathDir, err := filepath.EvalSymlinks(t.TempDir())
+	if err != nil {
+		t.Fatalf("eval temp dir: %v", err)
+	}
+	pathWard := filepath.Join(pathDir, "ward")
+	if err := os.WriteFile(pathWard, []byte("#!/bin/sh\n"), 0o755); err != nil { // #nosec G306 -- test fixture
+		t.Fatalf("write ward fixture: %v", err)
+	}
+
+	t.Run("never returns the shim when a ward resolves", func(t *testing.T) {
+		t.Setenv("PATH", pathDir)
+		// The allow-list wins when a canonical ward is installed on this host; only
+		// otherwise does it fall through to the PATH `ward`. Either way, not the shim.
+		want := canonicalWardPath()
+		if want == "" {
+			want = pathWard
+		}
+		if got := canonicalWardExe(warded); got != want {
+			t.Fatalf("canonicalWardExe(%q) = %q, want %q", warded, got, want)
+		}
+	})
+
+	t.Run("returns the shim when nothing resolves", func(t *testing.T) {
+		if canonicalWardPath() != "" {
+			t.Skip("a canonical ward is installed here; the shim can never be the last resort")
+		}
+		t.Setenv("PATH", "")
+		if got := canonicalWardExe(warded); got != warded {
+			t.Fatalf("canonicalWardExe(%q) = %q, want the shim unchanged", warded, got)
+		}
+	})
+}

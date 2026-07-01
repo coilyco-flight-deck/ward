@@ -38,17 +38,19 @@ still works - harnesses read it.
 
 ## codex
 
-**codex** (ward#178) follows the same shape. ward resolves the host's
-`~/.codex/auth.json` (the `codex login` blob - ChatGPT login or API key) and
-injects it into the container's `~/.codex/auth.json` over the same private
-`--env-file`, never in argv/audit; an absent host file just leaves codex
-unauthenticated rather than failing the launch. Because the container is the
-isolation boundary (like claude's `bypassPermissions` here), the entrypoint also
-writes `~/.codex/config.toml` with `approval_policy = "never"` and
-`sandbox_mode = "danger-full-access"`, so codex carries the issue - edit, commit,
-push - without per-command approval prompts. Headless runs `codex exec <seed>`;
-interactive `work` opens a seeded `codex` TUI. The host pre-flight one-shot is not
-wired for codex yet, so the GO/NO-GO read bows out and dispatch proceeds.
+**codex** (ward#178) follows the same shape: ward injects the host's
+`~/.codex/auth.json` (`codex login` - ChatGPT login or API key) over the private
+`--env-file`, never in argv/audit; an absent file leaves codex unauthenticated.
+Because the container is the isolation boundary, the entrypoint writes
+`~/.codex/config.toml` with `approval_policy = "never"` and
+`sandbox_mode = "danger-full-access"`, so codex works unprompted. That config also
+pins the **cheapest codex posture by default** (ward#379): mini model, low
+reasoning effort, low verbosity - the least usage per carry, each overridable via
+`WARD_CODEX_MODEL`, `WARD_CODEX_REASONING_EFFORT`,
+`WARD_CODEX_VERBOSITY`.
+
+Headless runs `codex exec <seed>`; interactive `work` opens a seeded `codex` TUI.
+The GO/NO-GO pre-flight is not wired for codex yet, so dispatch proceeds.
 
 ## forgejo git auth
 

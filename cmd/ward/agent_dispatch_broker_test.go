@@ -4,10 +4,14 @@ import (
 	"context"
 	"encoding/json"
 	"errors"
+	"fmt"
 	"net"
+	"os"
+	"path/filepath"
 	"reflect"
 	"strings"
 	"testing"
+	"time"
 
 	"github.com/urfave/cli/v3"
 )
@@ -198,7 +202,7 @@ func TestDispatchBrokerUnreachableFailsLoud(t *testing.T) {
 	addr := ln.Addr().String()
 	_ = ln.Close()
 
-	err = sendDispatchBrokerRequest(t.Context(), addr, dispatchBrokerRequest{Role: "engineer"})
+	_, err = sendDispatchBrokerRequest(t.Context(), addr, dispatchBrokerRequest{Role: "engineer"})
 	if err == nil {
 		t.Fatal("dial to a closed addr unexpectedly succeeded")
 	}
@@ -233,12 +237,72 @@ func TestDispatchBrokerWrongBrokerHint(t *testing.T) {
 		})
 	}()
 
-	err = sendDispatchBrokerRequest(t.Context(), ln.Addr().String(), dispatchBrokerRequest{Role: "engineer"})
+	_, err = sendDispatchBrokerRequest(t.Context(), ln.Addr().String(), dispatchBrokerRequest{Role: "engineer"})
 	if err == nil {
 		t.Fatal("credential-broker reply unexpectedly accepted")
 	}
 	if !strings.Contains(err.Error(), "wrong broker") {
 		t.Errorf("error %q does not carry the wrong-broker hint", err)
+	}
+}
+
+// TestDispatchLogNameIsStampedAndAttributable locks the ward#389 log basename: a UTC
+// minute stamp for sortable re-dispatches plus a filesystem-safe requester + ref slug.
+func TestDispatchLogNameIsStampedAndAttributable(t *testing.T) {
+	at := time.Date(2026, 7, 1, 12, 0, 0, 0, time.UTC)
+	req := dispatchBrokerRequest{
+		Requester: "session-claude-ward-x",
+		Argv:      []string{"engineer", "coilyco-flight-deck/ward#389", "--driver", "claude"},
+	}
+	got := dispatchLogName(req, at)
+	want := "20260701T120000Z-session-claude-ward-x-coilyco-flight-deck-ward-389.log"
+	if got != want {
+		t.Errorf("dispatchLogName() = %q, want %q", got, want)
+	}
+	// A requester-less request still yields a sane, collision-free basename.
+	bare := dispatchLogName(dispatchBrokerRequest{Argv: []string{"advisor"}}, at)
+	if !strings.HasPrefix(bare, "20260701T120000Z-unknown") || !strings.HasSuffix(bare, ".log") {
+		t.Errorf("requester-less dispatchLogName() = %q, want stamped unknown-*.log", bare)
+	}
+}
+
+// TestServedCarryStdioLandsInLogNotTTY is the ward#389 regression: the redirect routes a
+// served carry's os.Stdout/os.Stderr bytes into the per-dispatch log, then restores them.
+func TestServedCarryStdioLandsInLogNotTTY(t *testing.T) {
+	t.Setenv("HOME", t.TempDir())
+	req := dispatchBrokerRequest{
+		Requester: "session-claude-ward-1",
+		Argv:      []string{"engineer", "coilyco-flight-deck/ward#1", "--driver", "claude"},
+	}
+	logf, logPath, err := openDispatchLog(req, time.Now())
+	if err != nil {
+		t.Fatalf("openDispatchLog: %v", err)
+	}
+	if want := filepath.Join(agentLogsDir(), dispatchLogsSubdir); !strings.HasPrefix(logPath, want) {
+		t.Errorf("log path %q not under %q", logPath, want)
+	}
+
+	origOut, origErr := os.Stdout, os.Stderr
+	restore := redirectStdioToLog(logf)
+	if os.Stdout != logf || os.Stderr != logf {
+		restore()
+		_ = logf.Close()
+		t.Fatal("redirect did not point os.Stdout/os.Stderr at the log file")
+	}
+	// A byte a served carry would emit lands in the log, not on the terminal.
+	fmt.Fprint(os.Stderr, "session-claude-ward-1: pulling some-image\n")
+	restore()
+	_ = logf.Close()
+
+	if os.Stdout != origOut || os.Stderr != origErr {
+		t.Fatal("restore did not put os.Stdout/os.Stderr back")
+	}
+	body, err := os.ReadFile(logPath) // #nosec G304 -- test-controlled temp path
+	if err != nil {
+		t.Fatalf("read log: %v", err)
+	}
+	if !strings.Contains(string(body), "pulling some-image") {
+		t.Errorf("carry output did not land in the log; got %q", body)
 	}
 }
 

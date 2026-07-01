@@ -10,8 +10,12 @@ import (
 	"fmt"
 	"net"
 	"os"
+	"path/filepath"
 	"strings"
+	"sync"
+	"time"
 
+	"forgejo.coilysiren.me/coilyco-flight-deck/cli-guard/pkg/config"
 	"github.com/urfave/cli/v3"
 )
 
@@ -43,7 +47,18 @@ type dispatchBrokerRequest struct {
 type dispatchBrokerResponse struct {
 	OK    bool   `json:"ok"`
 	Error string `json:"error,omitempty"`
+	// LogPath is the host path the served carry's stdout/stderr were redirected to,
+	// so the requesting surface can name it without any bytes hitting the TTY (ward#389).
+	LogPath string `json:"log_path,omitempty"`
 }
+
+// dispatchStdioMu serializes the process-global os.Stdout/os.Stderr swap that keeps
+// a served carry's deploy output off the shared read-only TUI (ward#389).
+var dispatchStdioMu sync.Mutex
+
+// dispatchLogsSubdir is the per-host dir under ~/.ward/agent-logs (agentLogsDir)
+// holding one file per forwarded carry, sibling to the drained-container archives.
+const dispatchLogsSubdir = "dispatch"
 
 // startHostDispatchBroker serves validated dispatch requests until ctx ends. It
 // returns the host:port the container dials + the token it must echo (ward#391).
@@ -96,41 +111,91 @@ func (r *Runner) handleHostDispatchBrokerConn(ctx context.Context, conn net.Conn
 	defer func() { _ = conn.Close() }()
 	var req dispatchBrokerRequest
 	if err := json.NewDecoder(conn).Decode(&req); err != nil {
-		writeDispatchBrokerResponse(conn, fmt.Errorf("decode request: %w", err))
+		writeDispatchBrokerResponse(conn, "", fmt.Errorf("decode request: %w", err))
 		return
 	}
 	if subtle.ConstantTimeCompare([]byte(req.Token), []byte(token)) != 1 {
-		writeDispatchBrokerResponse(conn, errors.New("dispatch broker: token rejected"))
+		writeDispatchBrokerResponse(conn, "", errors.New("dispatch broker: token rejected"))
 		return
 	}
 	if req.Requester == "" {
 		req.Requester = requester
 	}
-	err := r.runHostDispatchBrokerRequest(ctx, req)
-	writeDispatchBrokerResponse(conn, err)
+	logPath, err := r.runHostDispatchBrokerRequest(ctx, req)
+	writeDispatchBrokerResponse(conn, logPath, err)
 }
 
-func writeDispatchBrokerResponse(conn net.Conn, err error) {
-	resp := dispatchBrokerResponse{OK: err == nil}
+func writeDispatchBrokerResponse(conn net.Conn, logPath string, err error) {
+	resp := dispatchBrokerResponse{OK: err == nil, LogPath: logPath}
 	if err != nil {
 		resp.Error = err.Error()
 	}
 	_ = json.NewEncoder(conn).Encode(resp)
 }
 
-func (r *Runner) runHostDispatchBrokerRequest(ctx context.Context, req dispatchBrokerRequest) error {
+// runHostDispatchBrokerRequest serves one validated carry in-process, redirecting its
+// deploy output to a per-dispatch log so it can't corrupt the surface TUI (ward#389).
+func (r *Runner) runHostDispatchBrokerRequest(ctx context.Context, req dispatchBrokerRequest) (string, error) {
 	if err := validateDispatchBrokerRequest(req); err != nil {
-		return err
+		return "", err
 	}
-	fmt.Fprintf(os.Stderr, "ward dispatch broker: %s requested `ward agent %s`\n",
+	logf, logPath, err := openDispatchLog(req, time.Now())
+	if err != nil {
+		// Fail loud rather than fall back to the TTY: a broken log dir must not
+		// silently reroute the flood back onto the corrupted surface (ward#389).
+		return "", fmt.Errorf("dispatch broker: open carry log: %w", err)
+	}
+	defer func() { _ = logf.Close() }()
+	restore := redirectStdioToLog(logf)
+	defer restore()
+
+	_, _ = fmt.Fprintf(logf, "ward dispatch broker: %s requested `ward agent %s`\n",
 		emptyDefault(req.Requester, "unknown-container"), strings.Join(req.Argv, " "))
 	switch req.Role {
 	case "engineer":
-		return agentEngineerCommand().Run(ctx, req.Argv)
+		return logPath, agentEngineerCommand().Run(ctx, req.Argv)
 	case "advisor":
-		return agentAdvisorCommand().Run(ctx, req.Argv)
+		return logPath, agentAdvisorCommand().Run(ctx, req.Argv)
 	default:
-		return fmt.Errorf("role %q is not dispatchable", req.Role)
+		return logPath, fmt.Errorf("role %q is not dispatchable", req.Role)
+	}
+}
+
+// openDispatchLog creates ~/.ward/agent-logs/dispatch and opens the per-dispatch
+// log file for req, stamped at now so re-dispatches of the same ref don't collide.
+func openDispatchLog(req dispatchBrokerRequest, now time.Time) (*os.File, string, error) {
+	dir := filepath.Join(agentLogsDir(), dispatchLogsSubdir)
+	if err := os.MkdirAll(dir, 0o755); err != nil {
+		return nil, "", err
+	}
+	path := filepath.Join(dir, dispatchLogName(req, now))
+	f, err := os.OpenFile(path, os.O_CREATE|os.O_WRONLY|os.O_APPEND, 0o644) // #nosec G304 -- ward-derived path under ~/.ward
+	if err != nil {
+		return nil, "", err
+	}
+	return f, path, nil
+}
+
+// dispatchLogName builds a filesystem-safe per-dispatch basename: a UTC stamp (sortable,
+// distinct re-dispatches) plus a requester + ref slug (attributable). Pure, for testing.
+func dispatchLogName(req dispatchBrokerRequest, now time.Time) string {
+	ref := ""
+	if len(req.Argv) >= 2 {
+		ref = req.Argv[1]
+	}
+	slug := config.SanitizeSlug(emptyDefault(req.Requester, "unknown") + "-" + ref)
+	return fmt.Sprintf("%s-%s.log", now.UTC().Format("20060102T150405Z"), slug)
+}
+
+// redirectStdioToLog swaps process os.Stdout/os.Stderr to logf for one served carry (read
+// at run time by its newRunner + subprocesses), serialized by dispatchStdioMu (ward#389).
+func redirectStdioToLog(logf *os.File) func() {
+	dispatchStdioMu.Lock()
+	prevOut, prevErr := os.Stdout, os.Stderr
+	os.Stdout, os.Stderr = logf, logf
+	return func() {
+		os.Stdout, os.Stderr = prevOut, prevErr
+		dispatchStdioMu.Unlock()
 	}
 }
 
@@ -239,10 +304,18 @@ func (r *Runner) maybeForwardAgentDispatchToHostBroker(ctx context.Context, c *c
 		Requester: strings.TrimSpace(os.Getenv("WARD_CONTAINER_NAME")),
 		Token:     strings.TrimSpace(os.Getenv(envDispatchBrokerToken)),
 	}
-	if err := sendDispatchBrokerRequest(ctx, addr, req); err != nil {
+	logPath, err := sendDispatchBrokerRequest(ctx, addr, req)
+	if err != nil {
 		return true, err
 	}
-	fmt.Fprintf(os.Stderr, "ward dispatch broker: forwarded `ward agent %s` to host ward\n", strings.Join(argv, " "))
+	// This line is captured as tool output by the surface agent, not written to the
+	// raw TTY, so naming the host-side carry log here is safe and aids discovery.
+	if logPath != "" {
+		fmt.Fprintf(os.Stderr, "ward dispatch broker: forwarded `ward agent %s` to host ward (carry output on the host at %s)\n",
+			strings.Join(argv, " "), logPath)
+	} else {
+		fmt.Fprintf(os.Stderr, "ward dispatch broker: forwarded `ward agent %s` to host ward\n", strings.Join(argv, " "))
+	}
 	return true, nil
 }
 
@@ -300,35 +373,35 @@ func appendBrokerContainerFlags(argv []string, c *cli.Command) []string {
 	return argv
 }
 
-func sendDispatchBrokerRequest(ctx context.Context, addr string, req dispatchBrokerRequest) error {
+func sendDispatchBrokerRequest(ctx context.Context, addr string, req dispatchBrokerRequest) (string, error) {
 	var d net.Dialer
 	conn, err := d.DialContext(ctx, "tcp", addr)
 	if err != nil {
 		// Papercut #1 (ward#382): fail loud - name the transport + addr so an
 		// unreachable host dispatch broker never reads as a bare dial error.
-		return fmt.Errorf("%w: the host dispatch broker did not answer at %s "+
+		return "", fmt.Errorf("%w: the host dispatch broker did not answer at %s "+
 			"(WARD_DISPATCH_BROKER_ADDR, TCP over the docker gateway - see ward#382): %w",
 			errDispatchBrokerUnavailable, addr, err)
 	}
 	defer func() { _ = conn.Close() }()
 	if err := json.NewEncoder(conn).Encode(req); err != nil {
-		return fmt.Errorf("dispatch broker: send request: %w", err)
+		return "", fmt.Errorf("dispatch broker: send request: %w", err)
 	}
 	var resp dispatchBrokerResponse
 	if err := json.NewDecoder(conn).Decode(&resp); err != nil {
-		return fmt.Errorf("dispatch broker: read response from %s: %w", addr, err)
+		return "", fmt.Errorf("dispatch broker: read response from %s: %w", addr, err)
 	}
 	if !resp.OK {
 		// Papercut #2 (ward#382): the credential broker answers a dispatch dial with a
 		// protocol-version refusal - surface it as a "wrong broker" hint, not a bare string.
 		if isCredentialBrokerReply(resp.Error) {
-			return fmt.Errorf("%w: %s answered as the credential broker, not the dispatch broker "+
+			return "", fmt.Errorf("%w: %s answered as the credential broker, not the dispatch broker "+
 				"(WARD_DISPATCH_BROKER_ADDR points at the wrong broker - see ward#382)",
 				errDispatchBrokerUnavailable, addr)
 		}
-		return fmt.Errorf("dispatch broker: %s", resp.Error)
+		return resp.LogPath, fmt.Errorf("dispatch broker: %s", resp.Error)
 	}
-	return nil
+	return resp.LogPath, nil
 }
 
 // isCredentialBrokerReply spots the credential broker's protocol-version refusal:
