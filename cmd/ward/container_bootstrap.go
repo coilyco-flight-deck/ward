@@ -95,15 +95,15 @@ func readBootstrapEnv() (bootstrapEnv, error) {
 	if ferr != nil {
 		return bootstrapEnv{}, fmt.Errorf("load embedded fleet config for bootstrap defaults: %w", ferr)
 	}
-	opencode := fleetAgentByName(fleet, "opencode")
-	codex := fleetAgentByName(fleet, "codex")
+	opencode := fleetAgentByName(fleet, string(modeOpencode))
+	codex := fleetAgentByName(fleet, string(modeCodex))
 	attribution := fleet.Defaults.Attribution
 	e := bootstrapEnv{
 		TargetOwner:  os.Getenv("WARD_TARGET_OWNER"),
 		TargetName:   os.Getenv("WARD_TARGET_NAME"),
 		ForgejoBase:  os.Getenv("WARD_FORGEJO_BASE"),
 		Mode:         envOr("WARD_MODE", fleet.Defaults.Agent),
-		Agent:        envOr("WARD_AGENT", "claude"),
+		Agent:        envOr("WARD_AGENT", string(modeClaude)),
 		ContextLevel: envOr("WARD_CONTEXT_LEVEL", "2"),
 		GitCache:     envOr("WARD_GITCACHE", "/gitcache"),
 		ContextSrc:   envOr("WARD_CONTEXT_SRC", "/opt/ward-context"),
@@ -799,8 +799,8 @@ func (r *Runner) composeContext(e bootstrapEnv) {
 	blog("linked Claude context load point to %s", out)
 	r.linkOrCopyContext(filepath.Join("..", "AGENTS.md"), filepath.Join(e.AgentHome, ".codex", "AGENTS.md"), out)
 	blog("linked Codex context load point to %s", out)
-	if e.Mode == "goose" {
-		ghints := filepath.Join(e.AgentHome, ".config", "goose", ".goosehints")
+	if e.Mode == string(modeGoose) {
+		ghints := filepath.Join(e.AgentHome, gooseHintsRel)
 		_ = os.MkdirAll(filepath.Dir(ghints), 0o755)
 		if werr := os.WriteFile(ghints, buf, 0o644); werr == nil { // #nosec G306 -- goose hints
 			blog("mirrored composed context into %s (goose hints)", ghints)
@@ -943,69 +943,6 @@ func setprivPrefix(e bootstrapEnv) []string {
 	return []string{
 		"setpriv", "--reuid=" + e.AgentUID, "--regid=" + e.AgentGID, "--init-groups",
 		"env", "HOME=" + e.AgentHome,
-	}
-}
-
-// buildAgentArgv ports the per-mode argv builder from main(): returns the agent
-// argv (without the setpriv prefix) and whether to stream-wrap its output. Pure.
-func buildAgentArgv(e bootstrapEnv, seed []string) (argv []string, stream bool) {
-	switch e.Mode {
-	case "goose":
-		if e.oneshot() {
-			return append([]string{"goose", "run", "-t"}, seed...), false
-		}
-		return []string{"goose", "session"}, false
-	case "codex":
-		if e.oneshot() {
-			return append([]string{"codex", "exec"}, seed...), false
-		}
-		return append([]string{"codex"}, seed...), false
-	case "opencode", "qwen": // "qwen" is the retired alias (ward#401), still honoured
-		if e.oneshot() {
-			return append([]string{"opencode", "run"}, seed...), false
-		}
-		return []string{"opencode"}, false
-	default:
-		argv = []string{e.Agent}
-		switch {
-		case e.Ask:
-			argv = append(argv, "-p")
-		case e.Headless:
-			argv = append(argv, "-p", "--verbose", "--output-format", "stream-json")
-			stream = true
-		}
-		argv = append(argv, seed...)
-		return argv, stream
-	}
-}
-
-// logAgentArgv emits the same per-mode launch notes main() logged alongside the
-// argv build (kept separate from buildAgentArgv so that stays pure).
-func logAgentArgv(e bootstrapEnv, seed []string) {
-	switch e.Mode {
-	case "goose":
-		if e.oneshot() {
-			blog("one-shot: goose run -t <prompt> (goose prints to this log)")
-		} else if len(seed) > 0 {
-			blog("interactive goose session: seed prompt is not auto-delivered (paste the issue)")
-		}
-	case "codex":
-		if e.oneshot() {
-			blog("one-shot: codex exec <prompt> (codex prints to this log)")
-		}
-	case "opencode", "qwen": // "qwen" is the retired alias (ward#401), still honoured
-		if e.oneshot() {
-			blog("one-shot: opencode run <prompt> (opencode prints to this log)")
-		} else if len(seed) > 0 {
-			blog("interactive opencode TUI: seed prompt is not auto-delivered (paste the issue)")
-		}
-	default:
-		switch {
-		case e.Ask:
-			blog("ask: %s -p <question> (one-shot answer to this terminal)", e.Agent)
-		case e.Headless:
-			blog("headless: streaming %s progress to this log", e.Agent)
-		}
 	}
 }
 

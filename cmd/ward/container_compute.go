@@ -171,6 +171,10 @@ const (
 // parseMode still accepts it (deprecation warning) so --mode qwen keeps working.
 const modeQwenAlias = "qwen"
 
+// gooseHintsRel is goose's in-HOME hints path composeContext mirrors the doctrine
+// into; it lives with the mode table so core's context composer stays agent-neutral.
+const gooseHintsRel = ".config/goose/.goosehints"
+
 // container roles lead the name + the ward.role label (ward#364). director is a host
 // loop, not a container, but its surface session runs as roleSession (ward#353).
 const (
@@ -754,4 +758,67 @@ func imageRef(image, tag string) string {
 		tag = containerImageTagDefault
 	}
 	return image + ":" + tag
+}
+
+// buildAgentArgv is the per-mode in-container argv builder (no setpriv prefix) +
+// whether to stream-wrap output. Pure; the mode/argv switch dies in Phase 4 (#401).
+func buildAgentArgv(e bootstrapEnv, seed []string) (argv []string, stream bool) {
+	switch e.Mode {
+	case "goose":
+		if e.oneshot() {
+			return append([]string{"goose", "run", "-t"}, seed...), false
+		}
+		return []string{"goose", "session"}, false
+	case "codex":
+		if e.oneshot() {
+			return append([]string{"codex", "exec"}, seed...), false
+		}
+		return append([]string{"codex"}, seed...), false
+	case "opencode", "qwen": // "qwen" is the retired alias (ward#401), still honoured
+		if e.oneshot() {
+			return append([]string{"opencode", "run"}, seed...), false
+		}
+		return []string{"opencode"}, false
+	default:
+		argv = []string{e.Agent}
+		switch {
+		case e.Ask:
+			argv = append(argv, "-p")
+		case e.Headless:
+			argv = append(argv, "-p", "--verbose", "--output-format", "stream-json")
+			stream = true
+		}
+		argv = append(argv, seed...)
+		return argv, stream
+	}
+}
+
+// logAgentArgv emits the per-mode launch notes alongside buildAgentArgv (kept
+// separate so that stays pure); the same Phase 4 mode switch (#401).
+func logAgentArgv(e bootstrapEnv, seed []string) {
+	switch e.Mode {
+	case "goose":
+		if e.oneshot() {
+			blog("one-shot: goose run -t <prompt> (goose prints to this log)")
+		} else if len(seed) > 0 {
+			blog("interactive goose session: seed prompt is not auto-delivered (paste the issue)")
+		}
+	case "codex":
+		if e.oneshot() {
+			blog("one-shot: codex exec <prompt> (codex prints to this log)")
+		}
+	case "opencode", "qwen": // "qwen" is the retired alias (ward#401), still honoured
+		if e.oneshot() {
+			blog("one-shot: opencode run <prompt> (opencode prints to this log)")
+		} else if len(seed) > 0 {
+			blog("interactive opencode TUI: seed prompt is not auto-delivered (paste the issue)")
+		}
+	default:
+		switch {
+		case e.Ask:
+			blog("ask: %s -p <question> (one-shot answer to this terminal)", e.Agent)
+		case e.Headless:
+			blog("headless: streaming %s progress to this log", e.Agent)
+		}
+	}
 }

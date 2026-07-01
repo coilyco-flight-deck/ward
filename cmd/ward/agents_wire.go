@@ -14,7 +14,7 @@ func lookupAgent(mode containerMode) agentsapi.Agent {
 	if a, ok := agents.Lookup(string(mode)); ok {
 		return a
 	}
-	a, _ := agents.Lookup("claude")
+	a, _ := agents.Lookup(string(modeClaude))
 	return a
 }
 
