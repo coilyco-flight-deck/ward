@@ -487,13 +487,14 @@ func (r *Runner) runAgentWork(ctx context.Context, c *cli.Command, mode containe
 	if !c.Bool("print") {
 		r.maybeWarnWardOutdated(ctx)
 	}
+	var justification string
 	if preflightWanted(c) {
 		// ward#184: gate on the cheap, authoritative reservation before a full LLM
 		// pre-flight is spent on an issue another run holds. See docs/agent.md.
 		if perr := r.precheckReservation(ctx, agentCmdline(mode, surface), w, c.Bool("force")); perr != nil {
 			return perr
 		}
-		proceed, perr := r.runPreflight(ctx, mode, surface, w)
+		proceed, read, perr := r.runPreflight(ctx, mode, surface, w)
 		if perr != nil {
 			return fmt.Errorf("%s: pre-flight: %w", agentCmdline(mode, surface), perr)
 		}
@@ -501,8 +502,10 @@ func (r *Runner) runAgentWork(ctx context.Context, c *cli.Command, mode containe
 			// runPreflight already reported the NO-GO and posted the issue comment.
 			return nil
 		}
+		// On a GO, carry the read into the reservation comment (ward#383).
+		justification = read
 	}
-	return r.launchAgentContainer(ctx, c, mode, surface, w.Ref, w.Title, w.Seed)
+	return r.launchAgentContainer(ctx, c, mode, surface, w.Ref, w.Title, w.Seed, justification)
 }
 
 // preflightTimeout caps the pre-flight read so a wedged agent can't hold the
@@ -641,7 +644,7 @@ func (r *Runner) captureInDir(ctx context.Context, dir, bin string, argv ...stri
 
 // runPreflight acts on the agent's feasibility verdict with no human, shared by
 // the headless + task surfaces (ward#147, ward#149): only NO-GO blocks. See docs.
-func (r *Runner) runPreflight(ctx context.Context, mode containerMode, surface string, w resolvedWork) (bool, error) {
+func (r *Runner) runPreflight(ctx context.Context, mode containerMode, surface string, w resolvedWork) (bool, string, error) {
 	label := agentCmdline(mode, surface)
 	bin := mode.agentBinary()
 	argv, ok := mode.hostPreflightArgv(preflightPrompt(w.Ref, w.Title, w.Body, w.Details, w.Comments, w.ExtraRepos))
@@ -649,7 +652,7 @@ func (r *Runner) runPreflight(ctx context.Context, mode containerMode, surface s
 	// binary on PATH: can't fairly bounce the issue, so the dispatch proceeds.
 	if !ok || !hostHasBinary(bin) {
 		fmt.Fprintf(os.Stderr, "%s: %s self-assessment unavailable on this host; proceeding with the detached run.\n", label, bin)
-		return true, nil
+		return true, "", nil
 	}
 
 	fmt.Fprintf(os.Stderr, "%s: pre-flight - asking %s whether it can carry %s before detaching...\n\n", label, bin, w.Ref)
@@ -666,26 +669,30 @@ func (r *Runner) runPreflight(ctx context.Context, mode containerMode, surface s
 		// A read that didn't complete is not the agent saying no: fail open so a
 		// flaky host agent never strands an otherwise-workable issue.
 		fmt.Fprintf(os.Stderr, "%s: pre-flight read did not complete (%v); proceeding with the detached run.\n", label, err)
-		return true, nil
+		return true, "", nil
 	}
 
 	switch outcome := parsePreflightVerdict(read); outcome.Verdict {
 	case verdictWrongRepo:
 		// WRONG-REPO always launches nothing here (it either blind-fires elsewhere
 		// or bounces to a human), so proceed is false regardless of the error.
-		return false, r.handlePreflightWrongRepo(ctx, mode, surface, w, outcome, read)
+		return false, "", r.handlePreflightWrongRepo(ctx, mode, surface, w, outcome, read)
 	case verdictNoGo:
 		fmt.Fprintf(os.Stderr, "%s: pre-flight NO-GO for %s; launching nothing, commenting on the issue.\n", label, w.Ref)
 		if cerr := r.postPreflightNoGo(ctx, mode, surface, w.Ref, outcome.Reason, read); cerr != nil {
-			return false, fmt.Errorf("post NO-GO comment on %s: %w", w.Ref, cerr)
+			return false, "", fmt.Errorf("post NO-GO comment on %s: %w", w.Ref, cerr)
 		}
 		fmt.Fprintf(os.Stderr, "%s: commented NO-GO on %s - %s\n", label, w.Ref, w.Ref.url())
-		return false, nil
-	case verdictUnknown, verdictGo:
-		// No clear verdict line or an explicit GO: proceed with the detached run.
-		return true, nil
+		return false, "", nil
+	case verdictGo:
+		// An explicit GO: proceed and hand the read back so the reservation comment
+		// records the agent's own justification for carrying it (ward#383).
+		return true, read, nil
+	case verdictUnknown:
+		// No clear verdict line: proceed, but there is no GO conclusion to justify.
+		return true, "", nil
 	default:
-		return true, nil
+		return true, "", nil
 	}
 }
 
@@ -760,6 +767,44 @@ func (r *Runner) handlePreflightWrongRepo(ctx context.Context, mode containerMod
 func hostHasBinary(bin string) bool {
 	_, err := exec.LookPath(bin)
 	return err == nil
+}
+
+// dispatchDockerState captures the signals deciding whether an in-container sibling
+// dispatch can reach docker (ward#321); see docs/agent-surface.md.
+type dispatchDockerState struct {
+	inContainer  bool
+	dockerOnPath bool
+	brokerAddr   string
+	readOnly     bool
+}
+
+// currentDispatchDockerState probes the live process for the dispatch signals.
+func currentDispatchDockerState() dispatchDockerState {
+	return dispatchDockerState{
+		inContainer:  inContainer(),
+		dockerOnPath: hostHasBinary("docker"),
+		brokerAddr:   strings.TrimSpace(os.Getenv(envDispatchBrokerAddr)),
+		readOnly:     os.Getenv("WARD_READONLY") == "1",
+	}
+}
+
+// blocked reports whether this dispatch is doomed at the docker shell-out, with the
+// loud reason if so: an in-container dispatch with no docker client (ward#321).
+func (s dispatchDockerState) blocked() (bool, string) {
+	if !s.inContainer || s.dockerOnPath {
+		return false, ""
+	}
+	const base = "cannot dispatch a sibling carry from inside this container: no docker client on PATH (explore can file but cannot dispatch)"
+	var detail string
+	switch {
+	case s.brokerAddr != "" && !s.readOnly:
+		detail = "a host dispatch broker is attached but WARD_READONLY is unset, so the broker forward was skipped and dispatch fell through to a docker client that is not installed"
+	case s.brokerAddr != "":
+		detail = "the host dispatch broker forward did not fire for this dispatch and no docker client is installed to fall back to"
+	default:
+		detail = "no host dispatch broker is attached (WARD_DISPATCH_BROKER_ADDR unset) and the image carries no docker client, so neither dispatch path is available"
+	}
+	return true, fmt.Sprintf("%s - %s. A director surface session dispatches over the host broker; a plain container needs a docker client in the image. See docs/agent-surface.md", base, detail)
 }
 
 // preflightVerdict is ward's read of the agent's pre-flight self-assessment.
@@ -938,8 +983,18 @@ func carryingLine(label string, ref agentIssueRef, title string) string {
 
 // launchAgentContainer turns a resolved (ref, title, seed) into the container plan and
 // fires it detached - the shared tail of engineer, freeform task, and route (ward#356).
-func (r *Runner) launchAgentContainer(ctx context.Context, c *cli.Command, mode containerMode, surface string, ref agentIssueRef, title, seed string) error {
+func (r *Runner) launchAgentContainer(ctx context.Context, c *cli.Command, mode containerMode, surface string, ref agentIssueRef, title, seed, justification string) error {
 	label := agentCmdline(mode, surface)
+
+	// Fail a doomed in-container dispatch loudly at bring-up, not at the raw
+	// `exec: "docker"` lookup later (ward#321); --print warns but still renders.
+	if blocked, reason := currentDispatchDockerState().blocked(); blocked {
+		if c.Bool("print") {
+			fmt.Fprintf(os.Stderr, "%s: warning: %s\n", label, reason)
+		} else {
+			return fmt.Errorf("%s: %s", label, reason)
+		}
+	}
 
 	// A detached run leaves its assets for the next sweep (it cannot delete the
 	// still-mounted dir on return), so the cleanup hook is discarded.
@@ -965,7 +1020,7 @@ func (r *Runner) launchAgentContainer(ctx context.Context, c *cli.Command, mode 
 
 	// Reserve the issue so another run won't redo it; a detached run holds the
 	// reservation for the container's life, so the release hook is discarded.
-	if _, err := r.reserveIssue(ctx, label, mode, ref, plan.Name, plan.Branch, c.Bool("force")); err != nil {
+	if _, err := r.reserveIssue(ctx, label, mode, ref, plan.Name, plan.Branch, justification, c.Bool("force")); err != nil {
 		return err
 	}
 
@@ -1228,8 +1283,9 @@ func (r *Runner) runAgentTaskDirect(ctx context.Context, c *cli.Command, mode co
 
 	// The freeform engineer run carries headless, so it gets the same pre-flight
 	// (ward#149): a NO-GO comments on the just-filed issue and launches nothing.
+	var justification string
 	if preflightWanted(c) {
-		proceed, perr := r.runPreflight(ctx, mode, "engineer", resolvedWork{Ref: ref, Title: title, Body: body})
+		proceed, read, perr := r.runPreflight(ctx, mode, "engineer", resolvedWork{Ref: ref, Title: title, Body: body})
 		if perr != nil {
 			return fmt.Errorf("%s: pre-flight: %w", label, perr)
 		}
@@ -1237,12 +1293,14 @@ func (r *Runner) runAgentTaskDirect(ctx context.Context, c *cli.Command, mode co
 			// runPreflight already reported the NO-GO and posted the issue comment.
 			return nil
 		}
+		// On a GO, carry the read into the reservation comment (ward#383).
+		justification = read
 	}
 
 	// The freeform instructions are the filed body (no --details, ward#167); it runs
 	// the headless carry, so the seed is headless: inlined body + reflection (#157/#281).
 	seed := agentSeedPrompt(ref, title, body, "", mode, true, nil)
-	return r.launchAgentContainer(ctx, c, mode, "engineer", ref, title, seed)
+	return r.launchAgentContainer(ctx, c, mode, "engineer", ref, title, seed, justification)
 }
 
 // printAgentTaskPlan renders the repo, the issue that *would* be filed, and the

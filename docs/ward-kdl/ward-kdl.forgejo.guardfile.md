@@ -533,23 +533,6 @@ Options (10):
 - `--unset_due_date` (boolean, optional)
 - `--updated_at` (string, optional)
 
-## ward-kdl ops forgejo issue comment
-
-`POST /repos/{owner}/{repo}/issues/{index}/comments`
-
-Authorized by grant: can comment issue. Not destructive.
-
-Positional arguments (3):
-
-- `<owner>` (string)
-- `<repo>` (string)
-- `<index>` (string)
-
-Options (2):
-
-- `--body` (string, required): The body of the comment
-- `--updated_at` (string, optional): The time of the comment's update, needs admin or repository owner permission
-
 ## ward-kdl ops forgejo issue close
 
 `PATCH /repos/{owner}/{repo}/issues/{index}`
@@ -873,6 +856,19 @@ Complex action. Runs 2 granted calls in order, threading $step.field data betwee
 
 1. `GET /repos/{owner}/{repo}/issues/{index}` - binds the response as `issue`
 2. `GET /repos/{owner}/{repo}/issues/{index}/comments` - binds the response as `comments`
+
+## ward-kdl ops forgejo issue comment - Post a comment on an issue, warning when the issue is closed (ward#380). Shadows the generated `issue comment` leaf (same 3-arg + --body signature): it GETs the issue to read its state, posts the comment, then `fail-when`s on state=='closed' so commenting on a closed issue exits non-zero instead of passing silently. The comment IS still created - the non-zero exit and the issue body in the output are the warning that the target was closed, not a block on the post. Renders {comment, issue} together like every mount call action.
+
+Shadows the generated `issue comment` leaf: invoking it runs this composite in the leaf's place.
+
+Complex action. Runs 2 granted calls in order, threading $step.field data between them:
+
+1. `GET /repos/{owner}/{repo}/issues/{index}` - binds the response as `issue`
+2. `POST /repos/{owner}/{repo}/issues/{index}/comments` - binds the response as `comment`
+
+Exits non-zero when:
+
+    $issue.state == 'closed'
 
 ## Condition language
 

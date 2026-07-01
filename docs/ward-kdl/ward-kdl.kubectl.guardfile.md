@@ -74,6 +74,12 @@ Flags: unrestricted passthrough.
 
 Flags: unrestricted passthrough.
 
+## ward-kdl ops kubectl diff - preview an apply: server-side dry-run diff of a manifest vs live state; -f <file> or -k <kustomize dir>
+
+`kubectl diff`
+
+Flags: unrestricted passthrough.
+
 ## ward-kdl ops kubectl apply - apply manifests; -f <file> or -k <kustomize dir>
 
 `kubectl apply`
