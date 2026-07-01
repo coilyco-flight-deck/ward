@@ -1,9 +1,10 @@
 # Agent-adapter manifest
 
-The single source of **per-agent divergence** ward needs to drive a harness - the
-binary it launches, how much context it carries, its argv dialect, its headless
-stream format, and its auth. It lets ward be a *generic, manifest-backed driver*
-instead of hardcoding each agent in Go switches
+The single source of **per-agent divergence** ward needs to drive a harness is
+the fleet manifest (`fleetconfig.Fleet`) and its launcher projection. It covers
+the binary it launches, how much context it carries, its argv dialect, its
+headless stream format, and its auth. It lets ward be a *generic,
+manifest-backed driver* instead of hardcoding each agent in Go switches
 ([`container_compute.go`](../cmd/ward/container_compute.go): `agentBinary`,
 `contextLevel`, `hostPreflightArgv`) and bash cases
 ([`entrypoint.sh`](../cmd/ward/containerassets/entrypoint.sh)). ward#152 removes
@@ -11,15 +12,15 @@ those switches for manifest lookups; a test pins it to today's behavior first.
 
 ## Where it lives, who publishes it
 
-The single hand-edited source is the dialect-2 fleet config
+The hand-edited source is the dialect-2 fleet config
 [`ward-kdl.fleet.kdl`](../cmd/ward-kdl/ward-kdl.fleet.kdl), embedded via
 [`fleet.generated.kdl`](../cmd/ward/fleetassets/fleet.generated.kdl) (`make
-sync-fleet-assets` mirrors it; a drift test fails the build), so a container needs
-no network to know its agent's dialect. [`agent_adapter.go`](../cmd/ward/agent_adapter.go)
+sync-fleet-assets` mirrors it; a drift test fails the build), so a container
+needs no network to know its agent's dialect. [`agent_adapter.go`](../cmd/ward/agent_adapter.go)
 is the launcher-facing projection: `loadAgentManifest` parses the embedded fleet
 (via [`fleet.go`](../cmd/ward/fleet.go)) and `fleetToAgentManifest` flattens it,
-`validateAgentManifest` guarding the result. ward#419 (aos#310 §6) deleted the old
-`agent-adapters.yaml` mirror + its `parseAgentManifest` loader; the KDL is now sole.
+`validateAgentManifest` guarding the result. The docs page is the schema note for
+that projection.
 
 ## Schema (schemaVersion 1)
 

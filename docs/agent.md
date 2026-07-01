@@ -34,6 +34,9 @@ phase, so the roster is now three; the read-only surface survives as [the direct
 surface session](agent-surface.md). `warded architect`/`explore`/`sandbox` now error as
 unknown commands.
 
+The startup roles are the **roles axis**. Per-agent docs live under
+`internal/agents/<name>`.
+
 ## Usage
 
 ```bash
@@ -58,8 +61,6 @@ ward#347). The ref is `owner/repo#N`, a full Forgejo URL, or a bare `#N` / `N` i
 - [agent-surface.md](agent-surface.md) - the director's read-only surface (was the architect role).
 - [agent-preflight.md](agent-preflight.md) - the detached GO/NO-GO pre-flight.
 - [agent-wrong-repo.md](agent-wrong-repo.md) - the WRONG-REPO blind-fire path.
-- [agent-credentials.md](agent-credentials.md) - claude/codex credential seeding.
-- [agent-local-harnesses.md](agent-local-harnesses.md) - qwen + goose (Ollama).
 - [agent-reservation.md](agent-reservation.md) - reservation, TTL, `--force`, stale warn.
 - [agent-flags.md](agent-flags.md) - launch flags and `--details`.
 - [container.md](container.md) - the container model (ephemeral, fresh-clone, reaper).

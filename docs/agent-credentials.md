@@ -1,8 +1,7 @@
-# ward agent: credentials (claude, codex)
+# ward agent: shared credentials
 
 How ward seeds each harness's host credential into the container. The
-local-model harnesses (qwen, goose) need no host credential - see
-[docs/agent-local-harnesses.md](agent-local-harnesses.md).
+per-agent specifics live in the harness pages.
 
 ## claude
 
@@ -22,13 +21,6 @@ clear error** (the reaper still runs) instead of letting it silently hang. The
 host-side resolver also warns when the resolved blob is empty, has no access
 token, or is expired (`re-run 'claude' on the host to refresh`). The probe is
 headless-claude only; set `WARD_SMOKE_TEST_SKIP=1` to bypass it.
-
-**Disk-aware diagnostics (ward#273).** A full Docker disk hangs claude startup
-the same way a bad credential does (it cannot write `~/.claude`), so the smoke
-test no longer blames the (valid) login on every stall. It pre-flight checks
-free space against a 512MiB floor, reports `df` headroom in failure
-messages, and only suggests re-login on a genuine auth marker (`401`, `Not
-logged in`, `invalid api key`, ...); the Go port matches.
 
 **Env scrub after seeding (ward#357).** `WARD_CLAUDE_CREDS_B64` /
 `WARD_CODEX_AUTH_B64` are bootstrap-only: the entrypoint (and the Go bootstrap)
@@ -67,6 +59,7 @@ perms before the drop and fails loud if the agent still cannot read it.
 
 ## See also
 
-- [docs/agent-local-harnesses.md](agent-local-harnesses.md) - qwen and goose (local models).
+- [docs/agent-claude.md](agent-claude.md) - claude harness details.
+- [docs/agent-codex.md](agent-codex.md) - codex harness details.
 - [docs/agent-host-net.md](agent-host-net.md) - `--tailnet`, the tailnet route.
 - [docs/agent.md](agent.md) - the `ward agent` verb family and usage.
