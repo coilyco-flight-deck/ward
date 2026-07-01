@@ -9,8 +9,8 @@ import (
 	"forgejo.coilysiren.me/coilyco-flight-deck/cli-guard/cli/shell"
 )
 
-// agentspi_ctx_test.go pins the Phase 1 carve (ward#410): every field the
-// agentspi views expose maps to its real source, and the Exec + Log seams wire.
+// agentsapi_ctx_test.go pins the Phase 1 carve (ward#410): every field the
+// agentsapi views expose maps to its real source, and the Exec + Log seams wire.
 
 func TestAgentRunCtxCarve(t *testing.T) {
 	e := bootstrapEnv{

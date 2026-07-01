@@ -1,4 +1,4 @@
-package agentspi
+package agentsapi
 
 import "forgejo.coilysiren.me/coilyco-flight-deck/cli-guard/pkg/attribution"
 

@@ -1,4 +1,4 @@
-package agentspi
+package agentsapi
 
 import "context"
 

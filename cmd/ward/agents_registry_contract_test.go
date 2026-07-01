@@ -5,13 +5,13 @@ import (
 	"testing"
 
 	"github.com/coilyco-flight-deck/ward/internal/agents"
-	"github.com/coilyco-flight-deck/ward/internal/agentspi"
+	"github.com/coilyco-flight-deck/ward/internal/agentsapi"
 )
 
 // runCtxForPosture builds the narrow RunCtx the registry's LaunchArgv reads for a
 // given launch posture, so the contract test can compare it to buildAgentArgv.
-func runCtxForPosture(seed []string, headless, ask bool) agentspi.RunCtx {
-	return agentspi.RunCtx{Seed: seed, Headless: headless, Ask: ask}
+func runCtxForPosture(seed []string, headless, ask bool) agentsapi.RunCtx {
+	return agentsapi.RunCtx{Seed: seed, Headless: headless, Ask: ask}
 }
 
 // agents_registry_contract_test.go is the ward#412 generalized contract: the

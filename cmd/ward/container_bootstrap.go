@@ -21,7 +21,7 @@ import (
 	"forgejo.coilysiren.me/coilyco-flight-deck/cli-guard/cli/verb"
 	"forgejo.coilysiren.me/coilyco-flight-deck/cli-guard/pkg/fleetconfig"
 	"forgejo.coilysiren.me/coilyco-flight-deck/cli-guard/pkg/flock"
-	"github.com/coilyco-flight-deck/ward/internal/agentspi"
+	"github.com/coilyco-flight-deck/ward/internal/agentsapi"
 	"github.com/urfave/cli/v3"
 )
 
@@ -240,7 +240,7 @@ func (r *Runner) runContainerBootstrap(ctx context.Context, c *cli.Command) erro
 
 	r.configureGitAuth(ctx, e)
 	// Installer: opencode self-installs before the clone (absent from the image).
-	if inst, ok := agent.(agentspi.Installer); ok {
+	if inst, ok := agent.(agentsapi.Installer); ok {
 		_ = inst.Install(rc)
 	}
 	work, cerr := r.cloneTarget(ctx, e)
@@ -291,7 +291,7 @@ func (r *Runner) runContainerBootstrap(ctx context.Context, c *cli.Command) erro
 
 	// LaunchGate feature-test (only claude wires one, ward#418): fail loud before
 	// launch if claude can't authenticate (ward#222), as the agent user post-chown.
-	if lg, ok := agent.(agentspi.LaunchGate); ok {
+	if lg, ok := agent.(agentsapi.LaunchGate); ok {
 		if serr := lg.PreLaunchCheck(rc); serr != nil {
 			blog("fatal: %v", serr)
 			return serr

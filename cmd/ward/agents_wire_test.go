@@ -9,7 +9,7 @@ import (
 	"testing"
 
 	"github.com/coilyco-flight-deck/ward/internal/agents"
-	"github.com/coilyco-flight-deck/ward/internal/agentspi"
+	"github.com/coilyco-flight-deck/ward/internal/agentsapi"
 
 	"forgejo.coilysiren.me/coilyco-flight-deck/cli-guard/cli/shell"
 )
@@ -31,11 +31,11 @@ func TestWiredClaudeWriteCredsDelegates(t *testing.T) {
 	if !ok {
 		t.Fatal("wireAgent(modeClaude) not ok")
 	}
-	cp, ok := a.(agentspi.CredentialProvider)
+	cp, ok := a.(agentsapi.CredentialProvider)
 	if !ok {
 		t.Fatal("wired claude must be a CredentialProvider")
 	}
-	rc := agentspi.RunCtx{Ctx: context.Background(), AgentHome: home}
+	rc := agentsapi.RunCtx{Ctx: context.Background(), AgentHome: home}
 	if err := cp.WriteCreds(rc); err != nil {
 		t.Fatalf("WriteCreds: %v", err)
 	}
@@ -67,11 +67,11 @@ func TestWiredConfigComposersDelegate(t *testing.T) {
 			if !ok {
 				t.Fatalf("wireAgent(%s) not ok", tc.mode)
 			}
-			cc, ok := a.(agentspi.ConfigComposer)
+			cc, ok := a.(agentsapi.ConfigComposer)
 			if !ok {
 				t.Fatalf("wired %s must be a ConfigComposer", tc.mode)
 			}
-			rc := agentspi.RunCtx{Ctx: context.Background(), AgentHome: home, OpencodeModel: "qwen3-coder:30b", OllamaURL: "http://localhost:11434/v1"}
+			rc := agentsapi.RunCtx{Ctx: context.Background(), AgentHome: home, OpencodeModel: "qwen3-coder:30b", OllamaURL: "http://localhost:11434/v1"}
 			if err := cc.ComposeConfig(rc); err != nil {
 				t.Fatalf("ComposeConfig: %v", err)
 			}
@@ -86,18 +86,18 @@ func TestWiredConfigComposersDelegate(t *testing.T) {
 // nil closures safely (no panic, no filesystem write) - Phase 2 flips no call site.
 func TestRegistryAgentsNoOpUnwired(t *testing.T) {
 	home := t.TempDir()
-	rc := agentspi.RunCtx{Ctx: context.Background(), AgentHome: home}
+	rc := agentsapi.RunCtx{Ctx: context.Background(), AgentHome: home}
 	for _, mode := range agentModes {
 		a, _ := agents.Lookup(string(mode))
-		if cp, ok := a.(agentspi.CredentialProvider); ok {
+		if cp, ok := a.(agentsapi.CredentialProvider); ok {
 			if err := cp.WriteCreds(rc); err != nil {
 				t.Errorf("%s: unwired WriteCreds returned %v, want nil no-op", mode, err)
 			}
-			if lines := cp.ResolveCreds(agentspi.HostCtx{Ctx: context.Background()}); lines != nil {
+			if lines := cp.ResolveCreds(agentsapi.HostCtx{Ctx: context.Background()}); lines != nil {
 				t.Errorf("%s: unwired ResolveCreds returned %v, want nil", mode, lines)
 			}
 		}
-		if cc, ok := a.(agentspi.ConfigComposer); ok {
+		if cc, ok := a.(agentsapi.ConfigComposer); ok {
 			if err := cc.ComposeConfig(rc); err != nil {
 				t.Errorf("%s: unwired ComposeConfig returned %v, want nil no-op", mode, err)
 			}

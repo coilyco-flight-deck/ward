@@ -40,4 +40,4 @@ typed value, not the `director.default-scope` feature.
 ## See also
 
 - [agent-director.md](agent-director.md) - the director scope resolution ward#396 hangs on this reader.
-- [agentspi.md](agentspi.md) - the sibling internal contract carved for the agent seam.
+- [agentsapi.md](agentsapi.md) - the sibling internal contract carved for the agent seam.

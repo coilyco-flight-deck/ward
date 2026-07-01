@@ -1,13 +1,13 @@
-// Package opencode is the opencode harness's agentspi.Agent (ward#412, Phase 2
+// Package opencode is the opencode harness's agentsapi.Agent (ward#412, Phase 2
 // of ward#401). opencode drives a local ollama-backed model (qwen today); the
 // ward#401 roster untangle renamed the mode "qwen" -> "opencode" so the roster
 // key names the harness, not its backing model. It forwards its capability
 // behaviour to the still-live cmd/ward funcs via closures core injects; no
-// behaviour lives here. See docs/agentspi.md.
+// behaviour lives here. See docs/agentsapi.md.
 package opencode
 
 import (
-	"github.com/coilyco-flight-deck/ward/internal/agentspi"
+	"github.com/coilyco-flight-deck/ward/internal/agentsapi"
 
 	"forgejo.coilysiren.me/coilyco-flight-deck/cli-guard/pkg/attribution"
 )
@@ -22,13 +22,13 @@ const (
 
 // record mirrors the agent-adapter manifest + the cmd/ward switches: opencode is
 // the minimal-context floor, needs no host credential (local ollama).
-var record = agentspi.Manifest{
+var record = agentsapi.Manifest{
 	Name:         "opencode",
 	Binary:       "opencode",
 	ContextLevel: 0,
 	Stream:       "none",
 	Auth:         "none",
-	Argv: agentspi.Argv{
+	Argv: agentsapi.Argv{
 		Preflight:   nil,
 		Headless:    []string{"opencode", "run"},
 		Interactive: []string{"opencode"},
@@ -36,19 +36,19 @@ var record = agentspi.Manifest{
 	Identity: attribution.Identity{Name: "Qwen"},
 }
 
-// Agent is opencode's agentspi.Agent; core injects the capability closures
+// Agent is opencode's agentsapi.Agent; core injects the capability closures
 // (composeOpencodeConfig, installOpencode). It resolves no host credential.
 type Agent struct {
-	ComposeConfigFn func(agentspi.RunCtx) error // -> composeOpencodeConfig
-	InstallFn       func(agentspi.RunCtx) error // -> installOpencode
+	ComposeConfigFn func(agentsapi.RunCtx) error // -> composeOpencodeConfig
+	InstallFn       func(agentsapi.RunCtx) error // -> installOpencode
 }
 
 // Compile-time proof opencode implements the core contract plus its capabilities
 // (config composer + self-installer). It is deliberately not a CredentialProvider.
 var (
-	_ agentspi.Agent          = Agent{}
-	_ agentspi.ConfigComposer = Agent{}
-	_ agentspi.Installer      = Agent{}
+	_ agentsapi.Agent          = Agent{}
+	_ agentsapi.ConfigComposer = Agent{}
+	_ agentsapi.Installer      = Agent{}
 )
 
 // New returns opencode's Agent with no capabilities wired (DATA-only).
@@ -58,7 +58,7 @@ func New() Agent { return Agent{} }
 func (a Agent) Name() string { return record.Name }
 
 // Record returns opencode's inert data record.
-func (a Agent) Record() agentspi.Manifest { return record }
+func (a Agent) Record() agentsapi.Manifest { return record }
 
 // Signer builds opencode's cli-guard signer; mirrors cmd/ward's agentSigner.
 func (a Agent) Signer() attribution.Signer {
@@ -75,7 +75,7 @@ func (a Agent) PreflightArgv(string) ([]string, bool) { return nil, false }
 
 // LaunchArgv builds opencode's in-container argv; mirrors cmd/ward's buildAgentArgv.
 // Interactive drops the seed (the opencode TUI is not auto-fed a prompt).
-func (a Agent) LaunchArgv(rc agentspi.RunCtx) (argv []string, stream bool) {
+func (a Agent) LaunchArgv(rc agentsapi.RunCtx) (argv []string, stream bool) {
 	if rc.Headless || rc.Ask {
 		return append([]string{"opencode", "run"}, rc.Seed...), false
 	}
@@ -83,7 +83,7 @@ func (a Agent) LaunchArgv(rc agentspi.RunCtx) (argv []string, stream bool) {
 }
 
 // ComposeConfig writes the ollama-backed opencode config in-container.
-func (a Agent) ComposeConfig(rc agentspi.RunCtx) error {
+func (a Agent) ComposeConfig(rc agentsapi.RunCtx) error {
 	if a.ComposeConfigFn == nil {
 		return nil
 	}
@@ -91,7 +91,7 @@ func (a Agent) ComposeConfig(rc agentspi.RunCtx) error {
 }
 
 // Install self-installs the opencode binary (absent from the image).
-func (a Agent) Install(rc agentspi.RunCtx) error {
+func (a Agent) Install(rc agentsapi.RunCtx) error {
 	if a.InstallFn == nil {
 		return nil
 	}

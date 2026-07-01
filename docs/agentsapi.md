@@ -1,6 +1,6 @@
-# agentspi: the agent-agnostic contract
+# agentsapi: the agent-agnostic contract
 
-`internal/agentspi` is ward's per-agent seam contract (ward#410, Phase 1 of
+`internal/agentsapi` is ward's per-agent seam contract (ward#410, Phase 1 of
 ward#401). It is a **types-only, behaviour-free** package: the `Agent` interface,
 the optional capability interfaces core feature-tests, and the narrow value
 types that cross the core-to-agent boundary. Phase 2 adds
@@ -14,7 +14,7 @@ ward is one flat `package main` in `cmd/ward` with **unexported**
 `Runner`/`bootstrapEnv`. A sub-package cannot reach those symbols, so the seam
 needs its own narrow value types rather than passing the whole `Runner` across
 the boundary (which would reintroduce the import cycle the split removes).
-`agentspi` imports only `pkg/attribution` and the stdlib, so any agent package
+`agentsapi` imports only `pkg/attribution` and the stdlib, so any agent package
 can import it freely.
 
 ## The interfaces
@@ -27,7 +27,7 @@ can import it freely.
 * `LaunchGate` - a pre-launch check that can abort the run (claude's smoke test).
 
 An agent that does not do X omits the impl, so core writes `if c, ok :=
-agent.(agentspi.Installer); ok { ... }` instead of a guard clause.
+agent.(agentsapi.Installer); ok { ... }` instead of a guard clause.
 
 ## The value types
 
@@ -42,7 +42,7 @@ blog-style stderr logger (`blog()`).
 ## Phase rollout (ward#401)
 
 - **Phase 1 (ward#410)** carved the types + the `agentHostCtx`/`agentRunCtx` views
-  in [`agentspi_ctx.go`](../cmd/ward/agentspi_ctx.go); no registry.
+  in [`agentsapi_ctx.go`](../cmd/ward/agentsapi_ctx.go); no registry.
 - **Phase 2 (ward#412)** landed `internal/agents/{claude,codex,opencode,goose}` +
   `registry.go`, each `Agent` implementing exactly its capabilities. Data is pure
   per-package; capability methods forward to closures core injects in
