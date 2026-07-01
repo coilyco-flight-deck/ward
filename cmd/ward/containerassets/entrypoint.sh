@@ -590,18 +590,25 @@ write_codex_creds() {
   log "wrote codex credentials to $dir/auth.json (scrubbed WARD_CODEX_AUTH_B64 from env)"
 }
 
-# --- codex config (ward#178): approvals-off / sandbox-open posture -----------
-# The container is the isolation boundary, so codex needs neither. docs/agent.md.
+# --- codex config (ward#178): approvals-off / sandbox-open + cheapest posture -
+# Cheapest codex settings by default (ward#379); WARD_CODEX_* overrides.
 compose_codex_config() {
   [ "$WARD_MODE" = codex ] || return 0
   local dir="$AGENT_HOME/.codex"
   mkdir -p "$dir"
-  cat > "$dir/config.toml" <<'EOF'
+  local model="${WARD_CODEX_MODEL:-gpt-5.4-mini}"
+  local effort="${WARD_CODEX_REASONING_EFFORT:-low}"
+  local verbosity="${WARD_CODEX_VERBOSITY:-low}"
+  cat > "$dir/config.toml" <<EOF
 # Written by the ward container entrypoint (ward#178): container is the boundary.
 approval_policy = "never"
 sandbox_mode = "danger-full-access"
+# Cheapest codex settings by default (ward#379); override with WARD_CODEX_*.
+model = "$model"
+model_reasoning_effort = "$effort"
+model_verbosity = "$verbosity"
 EOF
-  log "wrote codex config (approvals off, sandbox open) to $dir/config.toml"
+  log "wrote codex config (approvals off, sandbox open, model $model / effort $effort / verbosity $verbosity) to $dir/config.toml"
 }
 
 # --- opencode config (qwen mode): point opencode at a local ollama qwen model -

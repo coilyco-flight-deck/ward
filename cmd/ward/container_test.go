@@ -963,7 +963,9 @@ func TestEntrypointCodexExec(t *testing.T) {
 		"compose_codex_config", // approvals-off / sandbox-open posture is written
 		"approval_policy",      // ...and that config sets the autonomous posture
 		"sandbox_mode",
-		"WARD_CODEX_AUTH_B64", // the env-file credential channel
+		"model_reasoning_effort", // ...and the cheapest-by-default cost levers (ward#379)
+		"WARD_CODEX_MODEL",       // the overridable cheap-model tag
+		"WARD_CODEX_AUTH_B64",    // the env-file credential channel
 	} {
 		if !strings.Contains(script, want) {
 			t.Errorf("entrypoint missing %q (ward#178 codex)", want)

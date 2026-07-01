@@ -39,15 +39,20 @@ type bootstrapEnv struct {
 	ContextSrc   string
 	QwenModel    string
 	OllamaURL    string
-	GitUserName  string
-	GitUserEmail string
-	AgentUID     string
-	AgentGID     string
-	AgentHome    string
-	MirrorName   string
-	Branch       string
-	Headless     bool
-	Ask          bool
+	// Cheapest codex posture by default (ward#379): mini model + low reasoning +
+	// verbosity, each overridable via WARD_CODEX_*. docs/agent-credentials.md.
+	CodexModel     string
+	CodexEffort    string
+	CodexVerbosity string
+	GitUserName    string
+	GitUserEmail   string
+	AgentUID       string
+	AgentGID       string
+	AgentHome      string
+	MirrorName     string
+	Branch         string
+	Headless       bool
+	Ask            bool
 	// ReadOnly is the read-only surface session (WARD_READONLY, ward#293): revoke
 	// the push credential, compose the restriction. See docs/agent-surface.md.
 	ReadOnly    bool
@@ -85,6 +90,10 @@ func readBootstrapEnv() (bootstrapEnv, error) {
 		ContextSrc:   envOr("WARD_CONTEXT_SRC", "/opt/ward-context"),
 		QwenModel:    envOr("WARD_QWEN_MODEL", "qwen3-coder:30b"),
 		OllamaURL:    envOr("WARD_OLLAMA_URL", "http://localhost:11434/v1"),
+		// Cheapest codex settings (ward#379): mini model, low reasoning + verbosity.
+		CodexModel:     envOr("WARD_CODEX_MODEL", "gpt-5.4-mini"),
+		CodexEffort:    envOr("WARD_CODEX_REASONING_EFFORT", "low"),
+		CodexVerbosity: envOr("WARD_CODEX_VERBOSITY", "low"),
 		// Warded-agent commits attribute to the coilyco-ops bot; the email is the
 		// load-bearing match Forgejo links on (ward#245, docs/agent-attribution.md).
 		GitUserName:  envOr("WARD_GIT_NAME", "coilyco-ops"),
@@ -928,15 +937,21 @@ func (r *Runner) composeCodexConfig(e bootstrapEnv) {
 	}
 	dir := filepath.Join(e.AgentHome, ".codex")
 	_ = os.MkdirAll(dir, 0o755)
+	// Cheapest codex settings by default (ward#379): mini model + low reasoning +
+	// verbosity, the least ChatGPT-plan usage per carry; WARD_CODEX_* overrides.
 	body := "# Written by the ward container entrypoint (ward#178): container is the boundary.\n" +
 		"approval_policy = \"never\"\n" +
-		"sandbox_mode = \"danger-full-access\"\n"
+		"sandbox_mode = \"danger-full-access\"\n" +
+		"# Cheapest codex settings by default (ward#379); override with WARD_CODEX_*.\n" +
+		"model = \"" + e.CodexModel + "\"\n" +
+		"model_reasoning_effort = \"" + e.CodexEffort + "\"\n" +
+		"model_verbosity = \"" + e.CodexVerbosity + "\"\n"
 	out := filepath.Join(dir, "config.toml")
 	if werr := os.WriteFile(out, []byte(body), 0o644); werr != nil { // #nosec G306 -- config, not a secret
 		blog("could not write codex config: %v", werr)
 		return
 	}
-	blog("wrote codex config (approvals off, sandbox open) to %s", out)
+	blog("wrote codex config (approvals off, sandbox open, model %s / effort %s / verbosity %s) to %s", e.CodexModel, e.CodexEffort, e.CodexVerbosity, out)
 }
 
 // --- opencode config (qwen mode) ---------------------------------------------

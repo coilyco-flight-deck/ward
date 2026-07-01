@@ -161,6 +161,7 @@ func TestReadBootstrapEnvDefaults(t *testing.T) {
 	for _, k := range []string{
 		"WARD_MODE", "WARD_AGENT", "WARD_CONTEXT_LEVEL", "WARD_GITCACHE", "WARD_CONTEXT_SRC",
 		"WARD_QWEN_MODEL", "WARD_OLLAMA_URL", "WARD_GIT_NAME", "WARD_GIT_EMAIL",
+		"WARD_CODEX_MODEL", "WARD_CODEX_REASONING_EFFORT", "WARD_CODEX_VERBOSITY",
 		"WARD_AGENT_UID", "WARD_AGENT_GID", "WARD_AGENT_HOME", "WARD_BRANCH",
 		"WARD_HEADLESS", "WARD_ASK", "WARD_MIRROR_NAME", "WARD_SUBSTRATE_SKIP",
 	} {
@@ -175,30 +176,36 @@ func TestReadBootstrapEnvDefaults(t *testing.T) {
 		t.Fatalf("unexpected error: %v", err)
 	}
 	checks := map[string]string{
-		"Mode":         e.Mode,
-		"Agent":        e.Agent,
-		"ContextLevel": e.ContextLevel,
-		"GitCache":     e.GitCache,
-		"QwenModel":    e.QwenModel,
-		"OllamaURL":    e.OllamaURL,
-		"GitUserName":  e.GitUserName,
-		"GitUserEmail": e.GitUserEmail,
-		"AgentUID":     e.AgentUID,
-		"AgentHome":    e.AgentHome,
-		"ForgejoHost":  e.ForgejoHost,
+		"Mode":           e.Mode,
+		"Agent":          e.Agent,
+		"ContextLevel":   e.ContextLevel,
+		"GitCache":       e.GitCache,
+		"QwenModel":      e.QwenModel,
+		"OllamaURL":      e.OllamaURL,
+		"CodexModel":     e.CodexModel,
+		"CodexEffort":    e.CodexEffort,
+		"CodexVerbosity": e.CodexVerbosity,
+		"GitUserName":    e.GitUserName,
+		"GitUserEmail":   e.GitUserEmail,
+		"AgentUID":       e.AgentUID,
+		"AgentHome":      e.AgentHome,
+		"ForgejoHost":    e.ForgejoHost,
 	}
 	want := map[string]string{
-		"Mode":         "claude",
-		"Agent":        "claude",
-		"ContextLevel": "2",
-		"GitCache":     "/gitcache",
-		"QwenModel":    "qwen3-coder:30b",
-		"OllamaURL":    "http://localhost:11434/v1",
-		"GitUserName":  "coilyco-ops",
-		"GitUserEmail": "coilyco-ops@coilysiren.me",
-		"AgentUID":     "1000",
-		"AgentHome":    "/home/ubuntu",
-		"ForgejoHost":  "forgejo.coilysiren.me",
+		"Mode":           "claude",
+		"Agent":          "claude",
+		"ContextLevel":   "2",
+		"GitCache":       "/gitcache",
+		"QwenModel":      "qwen3-coder:30b",
+		"OllamaURL":      "http://localhost:11434/v1",
+		"CodexModel":     "gpt-5.4-mini",
+		"CodexEffort":    "low",
+		"CodexVerbosity": "low",
+		"GitUserName":    "coilyco-ops",
+		"GitUserEmail":   "coilyco-ops@coilysiren.me",
+		"AgentUID":       "1000",
+		"AgentHome":      "/home/ubuntu",
+		"ForgejoHost":    "forgejo.coilysiren.me",
 	}
 	for field, got := range checks {
 		if got != want[field] {
@@ -559,6 +566,50 @@ func TestWriteCredsScrubsEnv(t *testing.T) {
 	r.composeGooseConfig(bootstrapEnv{Mode: "goose", AgentHome: home})
 	if v := os.Getenv("WARD_GOOSE_OLLAMA_HOST_B64"); v != "" {
 		t.Errorf("WARD_GOOSE_OLLAMA_HOST_B64 should be scrubbed after seeding, got %q", v)
+	}
+}
+
+// TestComposeCodexConfigCheapDefaults guards the cheapest-by-default codex
+// posture (ward#379): mini model + low reasoning/verbosity, WARD_CODEX_* overrides.
+func TestComposeCodexConfigCheapDefaults(t *testing.T) {
+	home := t.TempDir()
+	r := gitRunner()
+
+	// Non-codex modes must not write the config at all.
+	r.composeCodexConfig(bootstrapEnv{Mode: "claude", AgentHome: home})
+	if _, err := os.Stat(filepath.Join(home, ".codex", "config.toml")); err == nil {
+		t.Fatal("claude mode should not write ~/.codex/config.toml")
+	}
+
+	// Cheap defaults land for a codex run.
+	e := bootstrapEnv{Mode: "codex", AgentHome: home,
+		CodexModel: "gpt-5.4-mini", CodexEffort: "low", CodexVerbosity: "low"}
+	r.composeCodexConfig(e)
+	got, err := os.ReadFile(filepath.Join(home, ".codex", "config.toml"))
+	if err != nil {
+		t.Fatalf("expected ~/.codex/config.toml written: %v", err)
+	}
+	for _, want := range []string{
+		"approval_policy = \"never\"",
+		"sandbox_mode = \"danger-full-access\"",
+		"model = \"gpt-5.4-mini\"",
+		"model_reasoning_effort = \"low\"",
+		"model_verbosity = \"low\"",
+	} {
+		if !strings.Contains(string(got), want) {
+			t.Errorf("config.toml missing %q\n---\n%s", want, got)
+		}
+	}
+
+	// Overrides flow straight through to the written config.
+	e2 := bootstrapEnv{Mode: "codex", AgentHome: home,
+		CodexModel: "gpt-5.5", CodexEffort: "high", CodexVerbosity: "medium"}
+	r.composeCodexConfig(e2)
+	got2, _ := os.ReadFile(filepath.Join(home, ".codex", "config.toml"))
+	for _, want := range []string{"model = \"gpt-5.5\"", "model_reasoning_effort = \"high\"", "model_verbosity = \"medium\""} {
+		if !strings.Contains(string(got2), want) {
+			t.Errorf("overridden config.toml missing %q\n---\n%s", want, got2)
+		}
 	}
 }
 
