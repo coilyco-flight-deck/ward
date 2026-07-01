@@ -193,20 +193,29 @@ func maybeRewriteWardedShim(args []string) []string {
 	return append(rewritten, args[1:]...)
 }
 
-// canonicalWardExe maps a public-face `warded` path back to the `ward` binary so an
-// internal `ops` shell-back skips the warded->`ward agent` rewrite (ward#304).
+// canonicalWardExe maps the public-face `warded` shim back to a real `ward` binary so an
+// internal `ops` shell-back skips the warded->`ward agent` rewrite (ward#304, ward#393).
 func canonicalWardExe(exe string) string {
 	if resolved, err := filepath.EvalSymlinks(exe); err == nil {
 		exe = resolved
 	}
-	if filepath.Base(exe) == wardedShimName {
-		if ward := filepath.Join(filepath.Dir(exe), "ward"); ward != exe {
-			if st, err := os.Stat(ward); err == nil && !st.IsDir() {
-				exe = ward
-			}
+	if filepath.Base(exe) != wardedShimName {
+		return exe
+	}
+	// The shim is unusable for `ops` (rejects --output, may miss on the host PATH:
+	// ward#393), so resolve a real `ward`: sibling, then allow-list, then PATH.
+	if ward := filepath.Join(filepath.Dir(exe), "ward"); ward != exe {
+		if st, err := os.Stat(ward); err == nil && !st.IsDir() {
+			return ward
 		}
 	}
-	return exe
+	if p := canonicalWardPath(); p != "" {
+		return p
+	}
+	if p, err := exec.LookPath("ward"); err == nil {
+		return p
+	}
+	return exe // no `ward` anywhere - hand back the shim as a genuine last resort.
 }
 
 func versionCommand() *cli.Command {
