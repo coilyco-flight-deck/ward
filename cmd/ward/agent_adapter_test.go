@@ -2,6 +2,9 @@ package main
 
 import (
 	"fmt"
+	"os"
+	"path/filepath"
+	"reflect"
 	"testing"
 
 	"forgejo.coilysiren.me/coilyco-flight-deck/cli-guard/pkg/fleetconfig"
@@ -176,48 +179,38 @@ func fleetAgent(f fleetconfig.Fleet, name string) (fleetconfig.Agent, bool) {
 	return fleetconfig.Agent{}, false
 }
 
-// TestFleetSwitchesTwoWayPin is the ward#419 contract (collapsed from the ward#415
-// three-way pin when the YAML leg went): fleet.generated.kdl <-> parseMode roster.
-func TestFleetSwitchesTwoWayPin(t *testing.T) {
+// TestFleetMatchesGoldenFixture is the Phase 4 contract: the embedded fleet must
+// match the committed golden fixture byte-for-byte after parsing.
+func TestFleetMatchesGoldenFixture(t *testing.T) {
 	fleet, err := loadFleetConfig()
 	if err != nil {
 		t.Fatalf("loadFleetConfig: %v", err)
 	}
-
-	// Roster sizes must match the canonical parseMode set exactly, so an agent
-	// added to one source but not the other is caught, not silently tolerated.
-	if len(fleet.Agents) != len(agentModes) {
-		t.Errorf("fleet has %d agents, want %d (the agentModes roster)", len(fleet.Agents), len(agentModes))
+	b, err := os.ReadFile(filepath.Join("testdata", "fleet.generated.golden.kdl"))
+	if err != nil {
+		t.Fatalf("read golden fleet: %v", err)
 	}
-
-	for _, mode := range agentModes {
-		name := string(mode)
-		fa, ok := fleetAgent(fleet, name)
-		if !ok {
-			t.Errorf("fleet.generated.kdl is missing agent %q (in the parseMode roster)", name)
-			continue
-		}
-
-		// The parseMode roster is the second anchor: its name must round-trip, and
-		// its own switches (binary, context level) must agree with the fleet.
-		rt, err := parseMode(name)
-		if err != nil || rt != mode {
-			t.Errorf("parseMode(%q) = %q, %v; want %q", name, rt, err, mode)
-		}
-		if fa.Binary != mode.agentBinary() {
-			t.Errorf("%s binary: fleet %q != switch %q", name, fa.Binary, mode.agentBinary())
-		}
-		if fa.ContextLevel != mode.contextLevel() {
-			t.Errorf("%s contextLevel: fleet %d != switch %d", name, fa.ContextLevel, mode.contextLevel())
-		}
+	want, err := fleetconfig.Parse(b)
+	if err != nil {
+		t.Fatalf("parse golden fleet: %v", err)
 	}
-
-	// The qwen back-compat alias resolves to the canonical opencode roster key, and
-	// no source carries a literal `qwen` agent (opencode is canonical post-#412).
-	if rt, err := parseMode(modeQwenAlias); err != nil || rt != modeOpencode {
-		t.Errorf("parseMode(%q) = %q, %v; want %q (opencode canonical)", modeQwenAlias, rt, err, modeOpencode)
+	if !reflect.DeepEqual(fleet, want) {
+		t.Fatalf("embedded fleet does not match golden fixture")
 	}
 	if _, ok := fleetAgent(fleet, modeQwenAlias); ok {
 		t.Errorf("fleet.generated.kdl carries a %q agent; %q is a back-compat alias, opencode is canonical", modeQwenAlias, modeQwenAlias)
+	}
+	if rt, err := parseMode(modeQwenAlias); err != nil || rt != modeOpencode {
+		t.Errorf("parseMode(%q) = %q, %v; want %q (opencode canonical)", modeQwenAlias, rt, err, modeOpencode)
+	}
+	for _, a := range fleet.Agents {
+		rt, err := parseMode(a.Name)
+		if err != nil {
+			t.Errorf("parseMode(%q): %v", a.Name, err)
+			continue
+		}
+		if rt != containerMode(a.Name) {
+			t.Errorf("parseMode(%q) = %q, want %q", a.Name, rt, a.Name)
+		}
 	}
 }

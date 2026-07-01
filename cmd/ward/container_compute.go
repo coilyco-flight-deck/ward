@@ -227,25 +227,23 @@ func (m containerMode) contextLevel() int {
 	}
 }
 
-// parseMode validates a --mode value; the retired "qwen" key aliases to opencode
-// with a deprecation warning (ward#401). See docs/agentspi.md.
+// parseMode validates a --mode value against the embedded fleet roster.
+// qwen still aliases to opencode with a deprecation warning (ward#401).
 func parseMode(s string) (containerMode, error) {
 	if s == modeQwenAlias {
 		fmt.Fprintln(os.Stderr, "ward: --mode qwen is deprecated; use --mode opencode (qwen is the backing model, opencode the harness). Aliasing to opencode for now.")
 		return modeOpencode, nil
 	}
-	switch containerMode(s) {
-	case modeClaude:
-		return modeClaude, nil
-	case modeCodex:
-		return modeCodex, nil
-	case modeOpencode:
-		return modeOpencode, nil
-	case modeGoose:
-		return modeGoose, nil
-	default:
-		return "", fmt.Errorf("unknown --mode %q: want claude|codex|opencode|goose (qwen is a deprecated alias for opencode)", s)
+	fleet, err := loadFleetConfig()
+	if err != nil {
+		return "", err
 	}
+	for _, a := range fleet.Agents {
+		if a.Name == s {
+			return containerMode(a.Name), nil
+		}
+	}
+	return "", fmt.Errorf("unknown --mode %q: want a fleet agent name (qwen is a deprecated alias for opencode)", s)
 }
 
 // targetRepo is a forgejo owner/name pair the container clones and works.

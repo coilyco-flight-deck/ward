@@ -196,9 +196,21 @@ func agentSeedPrompt(ref agentIssueRef, title, body, details string, headless bo
 	return seed + inline
 }
 
-// agentModes is the ordered set of harnesses ward can drive (claude is the default
-// --driver); it is the source of truth for the --driver choices (ward#185).
-var agentModes = []containerMode{modeClaude, modeCodex, modeOpencode, modeGoose}
+// agentModes is the ordered set of harnesses ward can drive, derived from the
+// embedded fleet config so the roster lives in one place.
+var agentModes = mustAgentModes()
+
+func mustAgentModes() []containerMode {
+	fleet, err := loadFleetConfig()
+	if err != nil {
+		panic(fmt.Sprintf("load embedded fleet config for agent modes: %v", err))
+	}
+	out := make([]containerMode, 0, len(fleet.Agents))
+	for _, a := range fleet.Agents {
+		out = append(out, containerMode(a.Name))
+	}
+	return out
+}
 
 // agentDriverChoices renders the supported --driver values as a pipe list, e.g.
 // "claude|codex|opencode|goose", for flag usage and error text.
