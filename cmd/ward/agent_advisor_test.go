@@ -48,6 +48,54 @@ func TestAskPromptEmpty(t *testing.T) {
 	}
 }
 
+// interactivePrompt frames a read-only, conversational session that invites
+// follow-up and carries the question verbatim (ward#388, the freeform default).
+func TestInteractivePrompt(t *testing.T) {
+	got := interactivePrompt("how does the reaper work?")
+	for _, want := range []string{
+		"how does the reaper work?", // the question verbatim
+		"interactive advisory",      // the conversational framing
+		"follow-up",                 // invites back-and-forth
+		"NOT an implementer",        // the read-only contract
+		"fresh clone of this repo",  // it may lean on the clone's context
+	} {
+		if !strings.Contains(got, want) {
+			t.Errorf("interactive prompt missing %q\n---\n%s", want, got)
+		}
+	}
+	// It must NOT carry the one-shot "streams straight to a terminal / no preamble"
+	// framing - that steer belongs to askPrompt, not the conversational session.
+	if strings.Contains(got, "no preamble") {
+		t.Errorf("interactive prompt should not carry the one-shot no-preamble steer\n---\n%s", got)
+	}
+}
+
+// An empty question degrades to the same readable placeholder in the interactive path.
+func TestInteractivePromptEmpty(t *testing.T) {
+	got := interactivePrompt("   ")
+	if !strings.Contains(got, "(no question given)") {
+		t.Errorf("interactive prompt missing the empty placeholder\n---\n%s", got)
+	}
+}
+
+// The advisor role exposes the --oneshot escape hatch (alias --answer) so scripting can
+// force the one-shot answer even under a TTY (ward#388; --print stays the dry-run).
+func TestAdvisorHasOneshotFlag(t *testing.T) {
+	names := map[string]bool{}
+	for _, f := range agentAdvisorFlags() {
+		for _, n := range f.Names() {
+			names[n] = true
+		}
+	}
+	if !names["oneshot"] {
+		t.Errorf("advisor flags missing --oneshot; got %v", names)
+	}
+	// --answer is the documented alias; Names() folds aliases in, so it lands in names too.
+	if !names["answer"] {
+		t.Errorf("advisor flags missing --answer alias for --oneshot; got %v", names)
+	}
+}
+
 // An ask plan threads WARD_ASK=1 (and not WARD_HEADLESS) so the entrypoint picks
 // the plain one-shot branch; a non-ask plan must not set it.
 func TestWardEnvAsk(t *testing.T) {

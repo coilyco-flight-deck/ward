@@ -115,6 +115,9 @@ grant_docker_socket_access() {
 # --- root credential broker (ward#329); the explore hardening, docs/broker.md --
 # Root daemon holds the token + serves write-tier forgejo ops over an agent socket.
 WARD_BROKER_SOCK_PATH="${WARD_BROKER_SOCK:-/run/ward/broker.sock}"
+# Broker daemon logs go to this file, never the shared TTY a read-only director
+# TUI owns (ward#389, docs/broker.md). Under the writable socket dir.
+WARD_BROKER_LOG_PATH="${WARD_BROKER_LOG:-/run/ward/broker.log}"
 
 # install_ward_kdl_write fetches the write-tier binary the broker shells (release
 # path only; best-effort - a miss just leaves the broker unstarted). docs/broker.md.
@@ -144,9 +147,11 @@ start_broker() {
   [ -n "${FORGEJO_TOKEN:-}" ] || { log "broker: no FORGEJO_TOKEN to hold; skipping broker"; return 0; }
   install_ward_kdl_write
   command -v ward-kdl-write >/dev/null 2>&1 || return 0
-  mkdir -p "$(dirname "$WARD_BROKER_SOCK_PATH")"
-  log "broker: starting root credential broker on $WARD_BROKER_SOCK_PATH (socket gid $AGENT_GID)"
-  ward container broker --socket "$WARD_BROKER_SOCK_PATH" --group "$AGENT_GID" >&2 &
+  mkdir -p "$(dirname "$WARD_BROKER_SOCK_PATH")" "$(dirname "$WARD_BROKER_LOG_PATH")"
+  log "broker: starting root credential broker on $WARD_BROKER_SOCK_PATH (socket gid $AGENT_GID); daemon log -> $WARD_BROKER_LOG_PATH"
+  # fd 1+2 -> log file, NEVER >&2: the daemon logs every served op and would
+  # otherwise corrupt the shared read-only director TUI's input bar (ward#389).
+  ward container broker --socket "$WARD_BROKER_SOCK_PATH" --group "$AGENT_GID" >>"$WARD_BROKER_LOG_PATH" 2>&1 &
   local waited
   for waited in $(seq 1 15); do
     [ -S "$WARD_BROKER_SOCK_PATH" ] && break
