@@ -36,6 +36,11 @@ ward containers before adding one more:
 4. `docker rm` the older tail (no `-f`: only already-exited containers are ever
    targeted, so a running run is never touched).
 
+Stopping a carry is a different lifecycle. This sweep `docker rm`s an **exited**
+container to reclaim disk. To halt a still-**running** carry (a mis-scoped one killed
+mid-flight), the verb is `docker container stop <name>`, not `rm`/`-f` - see
+[container-stop.md](container-stop.md) for the deterministic name and what a stop reaps.
+
 An engineer carry additionally clears any **exited same-name** container before it
 launches: its name is deterministic (`engineer-<driver>-<repo>-<N>`, ward#364), so a
 prior attempt on the same issue still inside the keep-10 window would otherwise
@@ -59,4 +64,5 @@ containers past the window are gone.
 
 [docs/container.md](container.md) - container subsystem.
 [docs/container-reap.md](container-reap.md) - the teardown reaper.
+[docs/container-stop.md](container-stop.md) - stopping a running carry (`docker container stop`, not `rm`).
 [docs/FEATURES.md](FEATURES.md) - inventory.

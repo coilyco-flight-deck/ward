@@ -43,9 +43,11 @@ var (
 )
 
 // backlogIssue is one open issue read from the live backlog, the ranking input.
+// Body is populated for the startup triage pass (ward#397); ranking ignores it.
 type backlogIssue struct {
 	Number int
 	Title  string
+	Body   string
 	Labels []string
 	URL    string
 }
@@ -178,7 +180,8 @@ func directorFlags() []cli.Flag {
 		&cli.StringSliceFlag{Name: "org", Usage: "expand every repo an org owns into the scope (owner; repeatable), unioned with --repo and de-duped (ward#370)"},
 		&cli.StringSliceFlag{Name: "with-repo", Usage: "grant director's own session an additional writable repo to clone (owner/name; repeatable), landed under /workspace alongside the scope (ward#230)."},
 		&cli.IntFlag{Name: "max-parallel", Value: 2, Usage: "in-flight container cap"},
-		&cli.BoolFlag{Name: "triage", Usage: "run `ward exec goose-triage` across the scope before the first refresh"},
+		&cli.BoolFlag{Name: "triage", Value: true, Usage: "run the startup triage pass before the init gate: label each untriaged open issue's tier (P0-P4) + automation mode (headless/interactive/consult) to warm the headless lane (ward#397). On by default; --no-triage skips it"},
+		&cli.BoolFlag{Name: "no-triage", Usage: "skip the startup triage pass and leave existing labels untouched (ward#397)"},
 		&cli.IntFlag{Name: "limit", Value: 50, Usage: "open issues read per repo per refresh"},
 		&cli.DurationFlag{Name: "poll-interval", Value: 30 * time.Second, Usage: "wait between dispatch/poll cycles"},
 		&cli.IntFlag{Name: "max-cycles", Value: 0, Usage: "stop after N heartbeat ticks (0 = run until drained with no new direction)"},
@@ -276,7 +279,7 @@ func (r *Runner) runAgentBacklog(ctx context.Context, c *cli.Command, mode conta
 		maxCycles:    c.Int("max-cycles"),
 		dryRun:       c.Bool("dry-run"),
 		print:        c.Bool("print"),
-		triage:       c.Bool("triage"),
+		triage:       c.Bool("triage") && !c.Bool("no-triage"),
 		carry: dispatchCarry{
 			driver:      engDriver,
 			image:       c.String("image"),
@@ -319,7 +322,7 @@ func (r *Runner) driveBacklog(ctx context.Context, label string, repos []string,
 	// --print and --dry-run are both launch-nothing previews, so neither triggers triage.
 	preview := cfg.dryRun || cfg.print
 	if cfg.triage && !preview {
-		r.backlogTriage(ctx, label, repos)
+		r.backlogTriage(ctx, label, repos, cfg.mode, cfg.limit)
 	}
 	if err := r.backlogRefresh(ctx, label, repos, cfg.limit); err != nil {
 		return err
@@ -871,23 +874,6 @@ func backlogTierIndex(tier string) int {
 }
 
 // --- loop steps ------------------------------------------------------------
-
-// backlogTriage runs `ward exec goose-triage` across the scope so the loop owns its
-// own inputs (the labels select reads). Best effort: a failure is noted, not fatal.
-func (r *Runner) backlogTriage(ctx context.Context, label string, repos []string) {
-	exe, err := os.Executable()
-	if err != nil {
-		fmt.Fprintf(os.Stderr, "%s: note: cannot resolve ward binary for --triage (%v); skipping triage\n", label, err)
-		return
-	}
-	exe = canonicalWardExe(exe)
-	for _, repo := range repos {
-		fmt.Fprintf(os.Stderr, "%s: triaging %s (ward exec goose-triage) ...\n", label, repo)
-		if terr := r.Runner.Exec(ctx, exe, "exec", "goose-triage", "--", "--repo", repo); terr != nil {
-			fmt.Fprintf(os.Stderr, "%s: note: triage of %s failed (%v); continuing with the existing labels\n", label, repo, terr)
-		}
-	}
-}
 
 // backlogRefresh rebuilds each repo's ledger from its live open backlog.
 func (r *Runner) backlogRefresh(ctx context.Context, label string, repos []string, limit int) error {

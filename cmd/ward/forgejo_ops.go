@@ -204,7 +204,7 @@ func (c *forgejoClient) listOpenIssues(ctx context.Context, owner, repo string, 
 	}
 	issues := make([]backlogIssue, 0, len(raw))
 	for _, ri := range raw {
-		bi := backlogIssue{Number: ri.Number, Title: ri.Title, URL: ri.HTMLURL}
+		bi := backlogIssue{Number: ri.Number, Title: ri.Title, Body: ri.Body, URL: ri.HTMLURL}
 		for _, l := range ri.Labels {
 			if l.Name != "" {
 				bi.Labels = append(bi.Labels, l.Name)
@@ -213,6 +213,22 @@ func (c *forgejoClient) listOpenIssues(ctx context.Context, owner, repo string, 
 		issues = append(issues, bi)
 	}
 	return issues, nil
+}
+
+// addIssueLabels adds the labels (by name) to an open issue - the write side of startup
+// triage (ward#397); an undefined label errors, up to the best-effort caller.
+func (c *forgejoClient) addIssueLabels(ctx context.Context, owner, repo string, number int, labels []string) error {
+	if len(labels) == 0 {
+		return nil
+	}
+	args := []string{"issue-label", "add", owner, repo, strconv.Itoa(number)}
+	for _, l := range labels {
+		args = append(args, "--labels", l)
+	}
+	if _, err := c.run(ctx, args...); err != nil {
+		return fmt.Errorf("forgejo: add labels %v to %s/%s#%d: %w", labels, owner, repo, number, err)
+	}
+	return nil
 }
 
 // listOwnerRepos lists an owner's repos, trying the org leaf then the user leaf
