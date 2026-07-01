@@ -75,7 +75,9 @@ func TestReplyResearchPrompt(t *testing.T) {
 	for _, want := range []string{
 		"one-shot research",
 		"NOT implementing",             // the read-only contract
-		"becomes the issue comment",    // stdout-is-the-comment contract
+		"```json",                      // the structured-emit contract
+		"\"issues\"",                   // the fan-out spec list
+		"2+ DISTINCT repos",            // the fan-out trigger steer
 		"coilyco-flight-deck/ward#179", // the ref
 		ref.url(),                      // the URL
 		"the body text",                // the issue body
@@ -143,5 +145,145 @@ func TestReplyCommentUnsigned(t *testing.T) {
 	}
 	if !strings.Contains(got, "ward agent advisor --driver goose") {
 		t.Errorf("reply comment should name the driving mode:\n%s", got)
+	}
+}
+
+// A fenced ```json plan decodes into the summary + ordered specs; a prose read
+// (no block) fails to parse so the caller falls back to a raw comment (ward#424).
+func TestParseReplyPlan(t *testing.T) {
+	read := "here is my thinking\n\n```json\n{\"summary\":\"S\",\"issues\":[" +
+		"{\"repo\":\"coilyco-flight-deck/cli-guard\",\"title\":\"grammar\",\"body\":\"B1\"}," +
+		"{\"repo\":\"coilyco-flight-deck/ward\",\"title\":\"migrate\",\"body\":\"B2\"}]}\n```\ntrailing"
+	p, ok := parseReplyPlan(read)
+	if !ok {
+		t.Fatalf("parseReplyPlan: expected the fenced block to decode")
+	}
+	if p.Summary != "S" || len(p.Issues) != 2 {
+		t.Fatalf("parseReplyPlan: got summary %q, %d issues", p.Summary, len(p.Issues))
+	}
+	if p.Issues[0].Repo != "coilyco-flight-deck/cli-guard" || p.Issues[1].Title != "migrate" {
+		t.Errorf("parseReplyPlan: specs decoded wrong: %+v", p.Issues)
+	}
+
+	if _, ok := parseReplyPlan("just prose, no json here"); ok {
+		t.Errorf("parseReplyPlan: prose with no block should not parse")
+	}
+	if _, ok := parseReplyPlan("```json\n{not valid json\n```"); ok {
+		t.Errorf("parseReplyPlan: a malformed block should not parse")
+	}
+}
+
+// A bare {...} span (no fence) is still recovered; broken braces are rejected.
+func TestExtractJSONBlock(t *testing.T) {
+	if got, ok := extractJSONBlock("noise {\"a\":1} tail"); !ok || got != "{\"a\":1}" {
+		t.Errorf("extractJSONBlock bare span = %q, %v", got, ok)
+	}
+	if _, ok := extractJSONBlock("no braces at all"); ok {
+		t.Errorf("extractJSONBlock: text with no braces should fail")
+	}
+}
+
+func TestSplitRepoSlug(t *testing.T) {
+	cases := []struct {
+		in          string
+		owner, name string
+		ok          bool
+	}{
+		{"coilyco-flight-deck/ward", "coilyco-flight-deck", "ward", true},
+		{"  owner/name  ", "owner", "name", true},
+		{"owner/name#5", "", "", false}, // a smuggled ref
+		{"owner name", "", "", false},   // whitespace
+		{"owner", "", "", false},        // no slash
+		{"a/b/c", "", "", false},        // too many parts
+		{"/name", "", "", false},
+		{"owner/", "", "", false},
+	}
+	for _, c := range cases {
+		o, n, ok := splitRepoSlug(c.in)
+		if o != c.owner || n != c.name || ok != c.ok {
+			t.Errorf("splitRepoSlug(%q) = (%q,%q,%v), want (%q,%q,%v)", c.in, o, n, ok, c.owner, c.name, c.ok)
+		}
+	}
+}
+
+// The trust gate drops untrusted owners and malformed slugs; only trusted, named
+// specs survive, and distinctRepoCount reflects the surviving repos (ward#424).
+func TestPartitionReplySpecs(t *testing.T) {
+	r := &Runner{}
+	specs := []replyIssueSpec{
+		{Repo: "coilyco-flight-deck/cli-guard", Title: "a", Body: "b"},
+		{Repo: "coilyco-flight-deck/ward", Title: "c", Body: "d"},
+		{Repo: "evilcorp/pwn", Title: "x", Body: "y"},        // untrusted -> dropped
+		{Repo: "coilyco-flight-deck/ward#9", Title: "z"},     // malformed -> dropped
+		{Repo: "coilysiren/agentic-os", Title: "", Body: ""}, // empty title -> dropped
+	}
+	allowed, dropped := r.partitionReplySpecs(specs)
+	if len(allowed) != 2 {
+		t.Fatalf("partitionReplySpecs: want 2 allowed, got %d (%+v)", len(allowed), allowed)
+	}
+	if len(dropped) != 3 {
+		t.Fatalf("partitionReplySpecs: want 3 dropped, got %d (%+v)", len(dropped), dropped)
+	}
+	if distinctRepoCount(allowed) != 2 {
+		t.Errorf("distinctRepoCount = %d, want 2", distinctRepoCount(allowed))
+	}
+	// Two specs in the same repo count as one distinct repo (no fan-out trigger).
+	same := []resolvedReplySpec{{Owner: "o", Name: "r"}, {Owner: "o", Name: "r"}}
+	if distinctRepoCount(same) != 1 {
+		t.Errorf("distinctRepoCount(same-repo) = %d, want 1", distinctRepoCount(same))
+	}
+}
+
+func TestSingleComment(t *testing.T) {
+	p := &replyPlan{Summary: "top overview", Issues: []replyIssueSpec{{Title: "T", Body: "the body"}}}
+	got := p.singleComment()
+	for _, want := range []string{"top overview", "### T", "the body"} {
+		if !strings.Contains(got, want) {
+			t.Errorf("singleComment missing %q\n---\n%s", want, got)
+		}
+	}
+	// An all-empty plan yields an empty string (caller falls back to the raw read).
+	if (&replyPlan{}).singleComment() != "" {
+		t.Errorf("empty plan should render an empty comment")
+	}
+}
+
+func TestReplyChildBody(t *testing.T) {
+	source := agentIssueRef{Owner: "coilyco-flight-deck", Repo: "cli-guard", Number: 179}
+	first := replyChildBody("do the grammar work", source, 1, 3, "")
+	if !strings.Contains(first, "do the grammar work") || !strings.Contains(first, "part 1 of 3") {
+		t.Errorf("child body missing content/position:\n%s", first)
+	}
+	if strings.Contains(first, "Upstream dependency") {
+		t.Errorf("the first child should have no upstream:\n%s", first)
+	}
+	second := replyChildBody("migrate", source, 2, 3, "coilyco-flight-deck/cli-guard#500")
+	if !strings.Contains(second, "Upstream dependency: coilyco-flight-deck/cli-guard#500") {
+		t.Errorf("later child should cross-link its upstream:\n%s", second)
+	}
+}
+
+func TestFanOutIndexComment(t *testing.T) {
+	level, _ := parseReplyThoroughness("deep")
+	created := []createdReplyChild{
+		{Ref: agentIssueRef{Owner: "coilyco-flight-deck", Repo: "cli-guard", Number: 501}, Title: "grammar\nsupport"},
+		{Ref: agentIssueRef{Owner: "coilyco-flight-deck", Repo: "ward", Number: 425}, Title: "ward-kdl migration"},
+	}
+	dropped := []droppedReplySpec{{Repo: "evilcorp/pwn", Reason: "untrusted owner \"evilcorp\""}}
+	got := fanOutIndexComment(modeClaude, level, "what would it take?", "the overview", created, dropped)
+	for _, want := range []string{
+		"cross-repo fan-out",
+		"> what would it take?",
+		"the overview",
+		"coilyco-flight-deck/cli-guard#501",
+		"grammar support", // title flattened to one line
+		"coilyco-flight-deck/ward#425",
+		"Dropped (not filed)",
+		"evilcorp/pwn",
+		replyReplyMarker,
+	} {
+		if !strings.Contains(got, want) {
+			t.Errorf("fan-out index missing %q\n---\n%s", want, got)
+		}
 	}
 }
