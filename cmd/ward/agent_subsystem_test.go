@@ -88,14 +88,14 @@ func TestSubsystemSeedBlock(t *testing.T) {
 func TestAgentSeedPromptFrontLoads(t *testing.T) {
 	ref := wardRef(236)
 	got := agentSeedPrompt(ref, "feat(agent-dispatch): front-load subsystem context",
-		"Scan the issue body for ward-kdl, guardfile, ward exec, headless keywords.", "", modeClaude, true, nil)
+		"Scan the issue body for ward-kdl, guardfile, ward exec, headless keywords.", "", true, nil)
 	for _, want := range []string{"Front-load before you plan", "docs/ward-kdl.md", "docs/agent.md"} {
 		if !strings.Contains(got, want) {
 			t.Errorf("headless seed should front-load subsystem context; missing %q\n got: %s", want, got)
 		}
 	}
 	// A plain ward issue keeps the original seed with no front-load block.
-	plain := agentSeedPrompt(ref, "fix a typo", "just a wording change", "", modeClaude, true, nil)
+	plain := agentSeedPrompt(ref, "fix a typo", "just a wording change", "", true, nil)
 	if strings.Contains(plain, "Front-load before you plan") {
 		t.Errorf("a plain issue's seed should carry no front-load block; got: %s", plain)
 	}

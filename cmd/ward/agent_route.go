@@ -150,7 +150,7 @@ func (r *Runner) runAgentTaskRoute(ctx context.Context, c *cli.Command, mode con
 
 	// 5. Carry the child to merge in a headless container. The survey already
 	// served as the feasibility gate, so ROUTE skips the separate pre-flight.
-	seed := agentSeedPrompt(child, title, childBody, "", mode, true, nil)
+	seed := agentSeedPrompt(child, title, childBody, "", true, nil)
 	// ROUTE used the survey as its feasibility gate, not the GO pre-flight, so there
 	// is no GO justification to fold into the reservation comment (ward#383).
 	return r.launchAgentContainer(ctx, c, mode, "task", child, title, seed, "")

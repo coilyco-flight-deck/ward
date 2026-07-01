@@ -39,10 +39,10 @@ The carry always **detaches** fire-and-forget (was `headless`): print mode (`cla
 `codex exec`, `goose run -t`). From a terminal it first runs a **pre-flight**
 ([agent-preflight.md](agent-preflight.md)): a GO launches, a NO-GO comments and launches
 nothing. Its seed closes with a `WARD-OUTCOME`-led retro (ward#281, ward#310) the
-[director](agent-director.md) reads, and is shaped by body + harness (ward#157, ward#400):
-empty bodies say so, **every** driver gets the body inlined as a **frozen snapshot** at
-dispatch (non-vision stripped, vision verbatim; URL kept for comments/images), and the
-seed is **logged at dispatch**, greppable without `--print`.
+[director](agent-director.md) reads, and is shaped by the body (ward#157, ward#400):
+empty bodies say so, **every** driver gets the body inlined **verbatim** as a **frozen
+snapshot** at dispatch (image markup intact, a no-vision line, URL live for
+comments - ward#405 dropped the strip), **logged** for `grep`.
 
 There is **no attach surface** (ward#356): the old `work`/`--watch` (ward#174) is
 retired; interactive work funnels to the [director](agent-director.md).
