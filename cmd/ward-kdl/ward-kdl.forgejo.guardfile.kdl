@@ -353,4 +353,47 @@ wrap ward-kdl ops forgejo {
             as comments
         }
     }
+    // comment issue: shadow the leaf so a comment on a CLOSED issue warns instead
+    // of posting silently - get-then-comment with a fail-when over state (ward#380).
+    action comment issue {
+        describe "Post a comment on an issue, warning when the issue is closed (ward#380). Shadows the generated `issue comment` leaf (same 3-arg + --body signature): it GETs the issue to read its state, posts the comment, then `fail-when`s on state=='closed' so commenting on a closed issue exits non-zero instead of passing silently. The comment IS still created - the non-zero exit and the issue body in the output are the warning that the target was closed, not a block on the post. Renders {comment, issue} together like every mount call action."
+        input owner {
+            positional
+            required
+            help "repo owner"
+        }
+        input repo {
+            positional
+            required
+            help "repo name"
+        }
+        input index {
+            positional
+            required
+            help "issue number"
+        }
+        input body {
+            flag
+            required
+            help "The body of the comment"
+        }
+        call get issue {
+            args {
+                owner $owner
+                repo $repo
+                index $index
+            }
+            as issue
+        }
+        call comment issue {
+            args {
+                owner $owner
+                repo $repo
+                index $index
+                body $body
+            }
+            as comment
+        }
+        fail-when "$issue.state == 'closed'"
+    }
 }
