@@ -38,13 +38,13 @@ func TestDirectorDispatchDisposition(t *testing.T) {
 	}
 }
 
-// TestDispatchCarryEngineerArgv covers ward#355: each set flag is forwarded into the
+// TestDispatchEngineerArgv covers ward#355: each set flag is forwarded into the
 // engineer argv, booleans only when true, --force only when the operator opted in.
-func TestDispatchCarryEngineerArgv(t *testing.T) {
+func TestDispatchEngineerArgv(t *testing.T) {
 	ref := agentIssueRef{Owner: "coilyco-flight-deck", Repo: "ward", Number: 42}
 
-	// A bare carry: just the driver + the headless detach, no escalations.
-	bare := dispatchCarry{driver: modeClaude}.engineerArgv(ref)
+	// A bare dispatch: just the driver + the headless detach, no escalations.
+	bare := dispatchEngineer{driver: modeClaude}.engineerArgv(ref)
 	wantBare := []string{"engineer", "coilyco-flight-deck/ward#42", "--driver", "claude", "--no-preflight"}
 	if !reflect.DeepEqual(bare, wantBare) {
 		t.Errorf("bare argv = %v, want %v", bare, wantBare)
@@ -55,9 +55,9 @@ func TestDispatchCarryEngineerArgv(t *testing.T) {
 		}
 	}
 
-	// A fully-loaded carry forwards the resolved container intent; a resolved host-net
+	// A fully-loaded dispatch forwards the resolved container intent; a resolved host-net
 	// route forwards as the consolidated --tailnet + an explicit --tailnet-mode (ward#362).
-	full := dispatchCarry{
+	full := dispatchEngineer{
 		driver: modeGoose, image: "ghcr.io/x/dev", tag: "v9", wardVersion: "v0.58.0",
 		aws: true, hostNet: true, tsSidecar: false, force: true,
 	}.engineerArgv(ref)
@@ -94,7 +94,7 @@ func TestDirectorEngineerDriver(t *testing.T) {
 }
 
 // TestDirectorFlagsParity covers ward#355's acceptance: director carries the shared
-// container/harness flags at parity, but never the engineer-carry / detach specifics.
+// container/harness flags at parity, but never the engineer / detach specifics.
 func TestDirectorFlagsParity(t *testing.T) {
 	cmd := agentDirectorCommand()
 	for _, want := range []string{
@@ -153,7 +153,7 @@ func directorFlagSet(t *testing.T, set map[string]string) *cli.Command {
 func TestDirectorSurfaceArgv(t *testing.T) {
 	cfg := backlogConfig{
 		mode:       modeClaude,
-		carry:      dispatchCarry{driver: modeGoose, image: "img", tag: "t1", wardVersion: "v1", aws: true, tsSidecar: true},
+		dispatch:   dispatchEngineer{driver: modeGoose, image: "img", tag: "t1", wardVersion: "v1", aws: true, tsSidecar: true},
 		wardSource: "/src/ward",
 		noPull:     true,
 		withRepo:   []string{"a/b", "c/d"},

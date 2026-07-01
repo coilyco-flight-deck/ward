@@ -13,10 +13,10 @@ A **bare ref with no role word also routes to engineer** (ward#282, ward#347), s
 ## Usage
 
 ```bash
-warded engineer coilyco-flight-deck/ward#98     # ref -> detached carry
+warded engineer coilyco-flight-deck/ward#98     # ref -> detached run
 warded engineer "fix the flaky exec_gate test"  # freeform -> file an issue, then carry
 warded engineer coilyco-flight-deck/ward -i "add a --foo flag"   # freeform DIRECT
-warded #98                                      # bare ref -> the engineer carry (default)
+warded #98                                      # bare ref -> the engineer (default)
 ```
 
 ## Argument-type dispatch
@@ -29,13 +29,13 @@ errors on non-ref text → freeform):
 - **Freeform text** (or a bare `owner/repo` plus `--instructions-file`) files an issue
   first, then carries it (the retired `task` flow).
 
-## Ref mode: the detached carry
+## Ref mode: the detached run
 
 It validates the ref (a bad ref or untrusted owner fails first),
 branches `issue-<N>` (override `--branch`), and launches a fresh-clone `ward container`
 seeded to carry the issue.
 
-The carry always **detaches** fire-and-forget (was `headless`): print mode (`claude -p`,
+The engineer always **detaches** fire-and-forget (was `headless`): print mode (`claude -p`,
 `codex exec`, `goose run -t`). From a terminal it first runs a **pre-flight**
 ([agent-preflight.md](agent-preflight.md)): a GO launches, a NO-GO comments and launches
 nothing. Its seed closes with a `WARD-OUTCOME`-led retro (ward#281, ward#310) the
@@ -47,7 +47,7 @@ comments - ward#405 dropped the strip), **logged** for `grep`.
 There is **no attach surface** (ward#356): the old `work`/`--watch` (ward#174) is
 retired; interactive work funnels to the [director](agent-director.md).
 
-**Stopping a carry.** `docker container stop engineer-<driver>-<repo>-<issue>` halts a
+**Stopping the engineer.** `docker container stop engineer-<driver>-<repo>-<issue>` halts a
 mis-scoped one (e.g. `engineer-claude-ward-398`) - see
 [container-stop.md](container-stop.md) for the reaper interaction.
 
@@ -57,7 +57,7 @@ When the argument is not a ref, engineer files an issue, carries it, and closes 
 Two sub-modes by repo omission:
 
 - **DIRECT** — an explicit `owner/repo` (or `--instructions-file` with cwd inference);
-  filed there and carried, same detached carry + pre-flight. Title is the first
+  filed there and carried, same detached run + pre-flight. Title is the first
   instruction line (≤72 runes); body is the
   instructions + a provenance footer.
 - **ROUTE** (ward#164) — a freeform task and no repo. ward files an intake record in

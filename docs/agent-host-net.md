@@ -7,33 +7,33 @@ sidecar on Docker Desktop (where the host VM is not a tailnet node) - and implie
 `--aws` on both. The hidden `--tailnet-mode auto|host-net|sidecar` pins the mechanism.
 
 This doc covers the **host-net** mechanism (the **sidecar** is in
-[agent-ts-sidecar.md](agent-ts-sidecar.md)): joining a carry to the host network
+[agent-ts-sidecar.md](agent-ts-sidecar.md)): joining a run to the host network
 namespace (`docker run --network=host`) so it inherits the host's `tailscale0` + MagicDNS.
 
 ## Why it exists
 
-The least-access default ([container.md](container.md)) lands a carry on docker's
+The least-access default ([container.md](container.md)) lands a run on docker's
 bridge: public internet, but **not** the host's tailnet-only hosts. `kai-tower-3026`
-serves ollama over the tailnet at an SSM-held FQDN, so a carry can't live-test it.
+serves ollama over the tailnet at an SSM-held FQDN, so a run can't live-test it.
 
 ## What it does, and where it works
 
 `--network=host` joins the container to the **docker daemon's** network namespace.
-That netns is a tailnet node - so the carry inherits `tailscale0` + MagicDNS and
+That netns is a tailnet node - so the run inherits `tailscale0` + MagicDNS and
 reaches the tower directly, no in-container `tailscaled`/auth key/minting - **only
 on a native-Linux host that is itself on the tailnet**.
 
 ## It does nothing for the tailnet on Docker Desktop (ward#332)
 
 On **Docker Desktop** (macOS/Windows) the daemon runs inside a **LinuxKit VM**, so
-`--network=host` joins the carry to the **VM's** netns, which is **not** a tailnet node:
+`--network=host` joins the run to the **VM's** netns, which is **not** a tailnet node:
 no `tailscale0`, no MagicDNS, so tailnet names do not resolve and host-net is a **no-op
 for tailnet access**. A documented Tailscale + Docker Desktop limitation, not a ward bug,
 which is why `--tailnet` auto-selects the sidecar there instead.
 
 ward **detects and warns**: when host-net is chosen but unlikely to reach the tailnet (a
 non-Linux host, or Linux with no `tailscale0` in the joined netns) it prints a loud
-`WARNING:` at launch so a no-op route never reads as success. The carry still launches.
+`WARNING:` at launch so a no-op route never reads as success. The run still launches.
 
 Even on native Linux a container often needs `100.100.100.100` added to its
 `/etc/resolv.conf`: container DNS does not inherit the host's per-link systemd-resolved
@@ -56,7 +56,7 @@ platform (ward#362), and the host-net choice threads `upPlan.HostNet` into
 `--tailnet` **widens isolation** to the host's network view, so it is opt-in.
 The tower's FQDN is SSM-only (never hardcoded), and a route with no resolver is
 useless - so `--tailnet` **implies the `~/.aws` mount** `--aws` adds, on both
-mechanisms (ward#362). A tower carry pinned to the host-net route:
+mechanisms (ward#362). A tower run pinned to the host-net route:
 
 ```bash
 warded engineer coilyco-flight-deck/agent-proxy#1 --tailnet --tailnet-mode host-net

@@ -45,7 +45,7 @@ Because the container is the isolation boundary, the entrypoint writes
 `~/.codex/config.toml` with `approval_policy = "never"` and
 `sandbox_mode = "danger-full-access"`, so codex works unprompted. That config also
 pins the **cheapest codex posture by default** (ward#379): mini model, low
-reasoning effort, low verbosity - the least usage per carry, each overridable via
+reasoning effort, low verbosity - the least usage per run, each overridable via
 `WARD_CODEX_MODEL`, `WARD_CODEX_REASONING_EFFORT`,
 `WARD_CODEX_VERBOSITY`.
 

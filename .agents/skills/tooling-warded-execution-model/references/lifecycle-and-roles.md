@@ -31,7 +31,7 @@ merge, then is thrown away (`docs/container.md`):
 Three roles, keyed on the role word and the argument type (`docs/agent.md`):
 
 - **`engineer`** - implements a ticket end to end (implement → commit → merge → push →
-  `closes #N`). A bare ref with no role word *is* an engineer carry. Detached only
+  `closes #N`). A bare ref with no role word *is* an engineer run. Detached only
   (ward#356). Trust-gated owner, `bypassPermissions`. `docs/agent-engineer.md`.
 - **`director`** - attached backlog supervisor: dispatches engineers, polls `WARD-OUTCOME`
   markers, drains the lane, and on drain (or before the first drain) **surfaces a read-only

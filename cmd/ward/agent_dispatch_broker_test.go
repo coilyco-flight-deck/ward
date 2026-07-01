@@ -266,9 +266,9 @@ func TestDispatchLogNameIsStampedAndAttributable(t *testing.T) {
 	}
 }
 
-// TestServedCarryStdioLandsInLogNotTTY is the ward#389 regression: the redirect routes a
-// served carry's os.Stdout/os.Stderr bytes into the per-dispatch log, then restores them.
-func TestServedCarryStdioLandsInLogNotTTY(t *testing.T) {
+// TestServedRunStdioLandsInLogNotTTY is the ward#389 regression: the redirect routes a
+// served run's os.Stdout/os.Stderr bytes into the per-dispatch log, then restores them.
+func TestServedRunStdioLandsInLogNotTTY(t *testing.T) {
 	t.Setenv("HOME", t.TempDir())
 	req := dispatchBrokerRequest{
 		Requester: "session-claude-ward-1",
@@ -289,7 +289,7 @@ func TestServedCarryStdioLandsInLogNotTTY(t *testing.T) {
 		_ = logf.Close()
 		t.Fatal("redirect did not point os.Stdout/os.Stderr at the log file")
 	}
-	// A byte a served carry would emit lands in the log, not on the terminal.
+	// A byte a served run would emit lands in the log, not on the terminal.
 	fmt.Fprint(os.Stderr, "session-claude-ward-1: pulling some-image\n")
 	restore()
 	_ = logf.Close()
@@ -302,7 +302,7 @@ func TestServedCarryStdioLandsInLogNotTTY(t *testing.T) {
 		t.Fatalf("read log: %v", err)
 	}
 	if !strings.Contains(string(body), "pulling some-image") {
-		t.Errorf("carry output did not land in the log; got %q", body)
+		t.Errorf("run output did not land in the log; got %q", body)
 	}
 }
 

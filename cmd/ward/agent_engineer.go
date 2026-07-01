@@ -12,7 +12,7 @@ import (
 // agent_engineer.go wires `ward agent engineer`, the detached-only implement-a-ticket
 // role (ward#347; the attach was dropped in ward#356). See docs/agent-engineer.md.
 
-// agentEngineerFlags is the engineer flag set: the shared detached carry flags
+// agentEngineerFlags is the engineer flag set: the shared detached run flags
 // (+ --no-preflight) and freeform instructions. No --watch/--new-tab (ward#356).
 func agentEngineerFlags() []cli.Flag {
 	flags := agentSurfaceFlags()
@@ -38,7 +38,7 @@ func agentEngineerCommand() *cli.Command {
 }
 
 // agentEngineerAction builds the audited engineer action; it is also the umbrella
-// default so a bare ref routes to the engineer carry (ward#282, ward#347).
+// default so a bare ref routes to the engineer (ward#282, ward#347).
 func agentEngineerAction() cli.ActionFunc {
 	return func(ctx context.Context, c *cli.Command) error {
 		r := newRunner()

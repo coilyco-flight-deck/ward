@@ -12,7 +12,7 @@ import (
 	"forgejo.coilysiren.me/coilyco-flight-deck/cli-guard/cli/shell"
 )
 
-// ward#349: --ts-sidecar attaches the carry to the shared ward-tailnet network
+// ward#349: --ts-sidecar attaches the run to the shared ward-tailnet network
 // (--network=ward-tailnet); off by default no --network is passed.
 func TestDockerArgvTSSidecar(t *testing.T) {
 	// Default plan: no --network at all.
@@ -70,15 +70,15 @@ func TestProxyBoxAttached(t *testing.T) {
 	}
 }
 
-// TestTSSidecarWardEnv: a --ts-sidecar carry is told the socks5h proxy by the box's
-// name + the by-name tower endpoint, never ALL_PROXY; a default carry, neither.
+// TestTSSidecarWardEnv: a --ts-sidecar run is told the socks5h proxy by the box's
+// name + the by-name tower endpoint, never ALL_PROXY; a default run, neither.
 func TestTSSidecarWardEnv(t *testing.T) {
 	p := sampleUpPlan()
 	if _, ok := p.wardEnv()["WARD_TS_SOCKS5"]; ok {
-		t.Error("default carry must not set WARD_TS_SOCKS5")
+		t.Error("default run must not set WARD_TS_SOCKS5")
 	}
 	if _, ok := p.wardEnv()["WARD_TOWER_OLLAMA"]; ok {
-		t.Error("default carry must not set WARD_TOWER_OLLAMA")
+		t.Error("default run must not set WARD_TOWER_OLLAMA")
 	}
 	p.TSSidecar = true
 	env := p.wardEnv()
@@ -105,7 +105,7 @@ func TestTSSidecarWardEnv(t *testing.T) {
 	// not the public internet, so routing everything through it would break egress).
 	for k := range env {
 		if strings.EqualFold(k, "ALL_PROXY") {
-			t.Errorf("a --ts-sidecar carry must not set %s (per-connection, not host-wide)", k)
+			t.Errorf("a --ts-sidecar run must not set %s (per-connection, not host-wide)", k)
 		}
 	}
 }

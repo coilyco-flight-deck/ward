@@ -563,10 +563,10 @@ func TestPreflightNoGoComment(t *testing.T) {
 			t.Errorf("preflightNoGoComment missing %q\n got: %s", want, got)
 		}
 	}
-	// The re-dispatch steers at the engineer carry since the issue is already filed,
+	// The re-dispatch steers at the engineer since the issue is already filed,
 	// so a freeform engineer run would file a duplicate (ward#347).
 	if !strings.Contains(got, "ward agent engineer --driver claude <ref> --no-preflight") {
-		t.Errorf("re-dispatch should point at the engineer carry; got: %s", got)
+		t.Errorf("re-dispatch should point at the engineer; got: %s", got)
 	}
 	// An empty reason degrades to a placeholder, never a dangling blockquote.
 	empty := preflightNoGoComment(modeClaude, "engineer", "  ", "")

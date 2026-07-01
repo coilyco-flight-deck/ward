@@ -92,9 +92,9 @@ type backlogLedger struct {
 	Issues  map[string]*backlogEntry `yaml:"issues"`
 }
 
-// dispatchCarry is the container/harness flag set the director forwards into each
+// dispatchEngineer is the container/harness flag set the director forwards into each
 // engineer it dispatches, so the run inherits the operator's container intent (ward#355).
-type dispatchCarry struct {
+type dispatchEngineer struct {
 	driver      containerMode // the engineer driver: --engineer-driver, else director's --driver
 	image       string
 	tag         string
@@ -107,7 +107,7 @@ type dispatchCarry struct {
 
 // engineerArgv renders the `ward agent engineer` argv that carries one issue, forwarding
 // every set container/harness flag so the engineer matches director's intent (ward#355).
-func (c dispatchCarry) engineerArgv(ref agentIssueRef) []string {
+func (c dispatchEngineer) engineerArgv(ref agentIssueRef) []string {
 	argv := []string{"engineer", ref.String(), "--driver", string(c.driver), "--no-preflight"}
 	if img := strings.TrimSpace(c.image); img != "" {
 		argv = append(argv, "--image", img)
@@ -162,16 +162,16 @@ type backlogConfig struct {
 	dryRun       bool
 	print        bool
 	triage       bool
-	carry        dispatchCarry
+	dispatch     dispatchEngineer
 	// surface fields configure director's OWN surface session (ward#355, ward#353):
-	// ward-source + with-repo + no-pull on top of carry's fields.
+	// ward-source + with-repo + no-pull on top of dispatch's fields.
 	wardSource string
 	noPull     bool
 	withRepo   []string
 }
 
 // directorFlags is director's flag set: backlog/heartbeat knobs plus container/harness
-// parity with the engineer carry + its surface (ward#355). See docs/agent-director.md.
+// parity with the engineer + its surface (ward#355). See docs/agent-director.md.
 func directorFlags() []cli.Flag {
 	flags := []cli.Flag{
 		agentDriverFlag(),
@@ -220,7 +220,7 @@ func agentDirectorCommand() *cli.Command {
 tick it reconciles in-flight engineers (reading their WARD-OUTCOME comments),
 refreshes the ledger from the live backlog (ranking issues into lanes by tier/mode
 labels), asks a host one-shot which queued headless issues to dispatch under
---max-parallel, dispatches the chosen set via ward's native engineer carry, then
+--max-parallel, dispatches the chosen set via ward's native engineer, then
 sleeps cheaply with no LLM held open. When the headless lane drains - nothing queued
 and nothing in flight - it surfaces an interactive session for new direction rather
 than exiting, and resumes the heartbeat if the queue refills (ward#351).
@@ -280,7 +280,7 @@ func (r *Runner) runAgentBacklog(ctx context.Context, c *cli.Command, mode conta
 		dryRun:       c.Bool("dry-run"),
 		print:        c.Bool("print"),
 		triage:       c.Bool("triage") && !c.Bool("no-triage"),
-		carry: dispatchCarry{
+		dispatch: dispatchEngineer{
 			driver:      engDriver,
 			image:       c.String("image"),
 			tag:         c.String("tag"),
@@ -901,10 +901,10 @@ func (r *Runner) backlogRefresh(ctx context.Context, label string, repos []strin
 
 // backlogDispatchOne launches one queued issue and records the transition. A launch error
 // is classified (ward#352): a reservation conflict defers, anything else parks failed.
-func (r *Runner) backlogDispatchOne(ctx context.Context, label string, carry dispatchCarry, p *backlogEntry) error {
+func (r *Runner) backlogDispatchOne(ctx context.Context, label string, dispatch dispatchEngineer, p *backlogEntry) error {
 	ref := agentIssueRef{Owner: ownerOf(p.repo), Repo: nameOf(p.repo), Number: p.Num}
 	fmt.Fprintf(os.Stderr, "%s: dispatching %s ...\n", label, ref)
-	if derr := r.backlogDispatch(ctx, carry, ref); derr != nil {
+	if derr := r.backlogDispatch(ctx, dispatch, ref); derr != nil {
 		state, outcome, deferred := directorDispatchDisposition(derr)
 		if deferred {
 			fmt.Fprintf(os.Stderr, "%s: deferring %s: %v (left eligible, retried on a later tick)\n", label, ref, derr)
@@ -937,11 +937,11 @@ func directorDispatchDisposition(err error) (state string, outcome *backlogOutco
 	return "failed", &backlogOutcome{Status: "dispatch-error", Text: backlogTruncate(err.Error(), 300)}, false
 }
 
-// backlogDispatch launches one issue's headless carry in-process via the engineer command
-// (ward#347), forwarding director's container/harness carry into its argv (ward#355).
-func (r *Runner) backlogDispatch(ctx context.Context, carry dispatchCarry, ref agentIssueRef) error {
+// backlogDispatch launches one issue's headless run in-process via the engineer command
+// (ward#347), forwarding director's container/harness flags into its argv (ward#355).
+func (r *Runner) backlogDispatch(ctx context.Context, dispatch dispatchEngineer, ref agentIssueRef) error {
 	cmd := agentEngineerCommand()
-	return cmd.Run(ctx, carry.engineerArgv(ref))
+	return cmd.Run(ctx, dispatch.engineerArgv(ref))
 }
 
 // backlogPoll reconciles each dispatched issue across the scope against reality.
@@ -1087,7 +1087,7 @@ func (r *Runner) backlogPrintPlanned(label string, repos []string, maxParallel i
 // backlogPrintDirectorPlan renders director's OWN container/harness plan for --print
 // (ward#355): the driver split, the image pin, the dispatch argv. Launches nothing.
 func (r *Runner) backlogPrintDirectorPlan(label string, repos []string, cfg backlogConfig) error {
-	cy := cfg.carry
+	cy := cfg.dispatch
 	var b strings.Builder
 	fmt.Fprintf(&b, "\n# %s (print)\n", label)
 	fmt.Fprintf(&b, "scope:           %s\n", strings.Join(repos, ", "))

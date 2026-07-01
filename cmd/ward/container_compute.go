@@ -62,7 +62,7 @@ const (
 	containerLabel = "ward=true"
 
 	// The ward.* label keys carrying a run's identity for poll/reaper/sweep: role
-	// and driver always, repo always, issue on an engineer carry, machine the id.
+	// and driver always, repo always, issue on an engineer run, machine the id.
 	labelRole    = "ward.role"
 	labelDriver  = "ward.driver"
 	labelRepo    = "ward.repo"
@@ -89,29 +89,29 @@ const (
 
 const (
 	// wardTailnetNetwork is the shared user-defined docker network the standing
-	// mac-proxy box and every --ts-sidecar carry attach to (ward#349; the doc).
+	// mac-proxy box and every --ts-sidecar run attach to (ward#349; the doc).
 	wardTailnetNetwork = "ward-tailnet"
 
 	// proxyBoxName is the standing proxy box's container name + hostname on
-	// ward-tailnet; a carry dials it by this name, never a per-run sidecar (ward#349).
+	// ward-tailnet; a run dials it by this name, never a per-run sidecar (ward#349).
 	proxyBoxName = "mac-proxy"
 
-	// proxyBoxHost is the by-name SOCKS5 endpoint a carry dials on ward-tailnet:
+	// proxyBoxHost is the by-name SOCKS5 endpoint a run dials on ward-tailnet:
 	// the standing box on :1055, replacing the old loopback sidecar (ward#349).
 	proxyBoxHost = proxyBoxName + ":1055"
 
 	// proxySocks5Scheme is socks5h (not socks5): the proxy resolves the tower's
-	// MagicDNS name tailnet-side, so the carry dials by name (ward#337; the doc).
+	// MagicDNS name tailnet-side, so the run dials by name (ward#337; the doc).
 	proxySocks5Scheme = "socks5h://"
 
-	// towerMagicDNSName is the tower's MagicDNS node name; a --ts-sidecar carry dials
+	// towerMagicDNSName is the tower's MagicDNS node name; a --ts-sidecar run dials
 	// it by name through the proxy (resolved tailnet-side), no SSM IP lookup (ward#337).
 	towerMagicDNSName = "kai-tower-3026"
 
 	// towerOllamaPort is the port kai-tower-3026 serves ollama on over the tailnet.
 	towerOllamaPort = "11434"
 
-	// towerOllamaURL is the by-name endpoint a --ts-sidecar carry dials through the
+	// towerOllamaURL is the by-name endpoint a --ts-sidecar run dials through the
 	// proxy; a constant, no per-launch SSM IP lookup (ward#337; the doc).
 	towerOllamaURL = "http://" + towerMagicDNSName + ":" + towerOllamaPort
 )
@@ -302,7 +302,7 @@ func safeRepoName(repo targetRepo) string {
 }
 
 // containerRoleName builds the role-led, prefixless container name (ward#364):
-// engineer-<driver>-<repo>-<N> for a carry, else <role>-<driver>-<machine>.
+// engineer-<driver>-<repo>-<N> for an engineer, else <role>-<driver>-<machine>.
 func containerRoleName(role string, mode containerMode, repo targetRepo, issue int, machine string) string {
 	if role == roleEngineer {
 		return fmt.Sprintf("%s-%s-%s-%d", role, mode, safeRepoName(repo), issue)
@@ -396,7 +396,7 @@ type upPlan struct {
 	// entrypoint's `"$WARD_AGENT" "$@"`); empty for a bare interactive bring-up.
 	AgentArgs []string
 	// Headless runs the in-container agent in print mode (claude -p), exporting
-	// WARD_HEADLESS=1; set by the detached `ward agent engineer` carry.
+	// WARD_HEADLESS=1; set by the detached `ward agent engineer` run.
 	Headless bool
 	// Ask runs the in-container agent one-shot, attached (claude -p plain, no
 	// stream-json); exports WARD_ASK=1, set by `ward agent advisor`'s freeform mode.
@@ -419,10 +419,10 @@ type upPlan struct {
 	// DispatchBrokerToken exports WARD_DISPATCH_BROKER_TOKEN, the per-launch secret
 	// the surface echoes back so the host broker authenticates the dial.
 	DispatchBrokerToken string
-	// HostNet joins the container to the host network (--network=host) so a carry
+	// HostNet joins the container to the host network (--network=host) so a run
 	// inherits the host's tailnet route (--host-net, ward#330). docs/agent-host-net.md.
 	HostNet bool
-	// TSSidecar attaches the carry to the shared ward-tailnet network so it reaches
+	// TSSidecar attaches the run to the shared ward-tailnet network so it reaches
 	// the standing mac-proxy box (--ts-sidecar, ward#349). docs/agent-ts-sidecar.md.
 	TSSidecar bool
 }
@@ -527,7 +527,7 @@ func (p upPlan) wardEnv() map[string]string {
 		// A MagicDNS name, not a secret IP, so it rides plain (no SSM lookup; ward#337).
 		env["WARD_TOWER_OLLAMA"] = towerOllamaURL
 		// The loopback forwarder's no-proxy endpoint: tools dial the tower at plain
-		// localhost:11434 with no --proxy once the carry starts the forwarder (ward#359).
+		// localhost:11434 with no --proxy once the run starts the forwarder (ward#359).
 		env["WARD_TOWER_OLLAMA_LOCAL"] = towerOllamaLocalURL
 	}
 	if p.GoBootstrap {
@@ -540,7 +540,7 @@ func (p upPlan) wardEnv() map[string]string {
 }
 
 // labels is the ward.* identity set a container wears for poll/reaper/sweep; issue
-// rides only an engineer carry, machine only when set (ward#364, docs/container.md).
+// rides only an engineer run, machine only when set (ward#364, docs/container.md).
 func (p upPlan) labels() []string {
 	role := p.Role
 	if role == "" {
@@ -603,22 +603,22 @@ func dockerTailnetInspectArgv() []string {
 		"--format", "{{range .Containers}}{{.Name}} {{end}}"}
 }
 
-// hostNetTailnetWarning returns a loud warning (and true) when a --host-net carry
+// hostNetTailnetWarning returns a loud warning (and true) when a --host-net run
 // is unlikely to reach the tailnet on this host (ward#332; docs/agent-host-net.md).
 func hostNetTailnetWarning(goos string, hasTailscale0 bool) (string, bool) {
-	// Non-Linux is Docker Desktop: the carry joins a LinuxKit VM netns, never a
+	// Non-Linux is Docker Desktop: the run joins a LinuxKit VM netns, never a
 	// tailnet node, so hasTailscale0 (the Mac's, not the VM's) is ignored here.
 	if goos != "linux" {
 		return "WARNING: --host-net cannot reach the tailnet on Docker Desktop.\n" +
 			"  The container joins the LinuxKit VM's network namespace, not your\n" +
 			"  " + goos + " host, so it inherits no tailscale0 and no MagicDNS - tailnet\n" +
-			"  names (api, kai-tower-3026) will not resolve inside the carry.\n" +
+			"  names (api, kai-tower-3026) will not resolve inside the run.\n" +
 			"  --host-net only reaches the tailnet on a native-Linux host that is\n" +
 			"  itself a tailnet node. See docs/agent-host-net.md (ward#332).", true
 	}
 	if !hasTailscale0 {
 		return "WARNING: --host-net found no tailscale0 on this host's network namespace.\n" +
-			"  The carry joins this netns, so without a tailscale0 device it gets no\n" +
+			"  The run joins this netns, so without a tailscale0 device it gets no\n" +
 			"  tailnet route and MagicDNS names (api, kai-tower-3026) will not resolve.\n" +
 			"  Bring this host onto the tailnet, or adopt the in-container tailscaled\n" +
 			"  sidecar. See docs/agent-host-net.md (ward#332).", true

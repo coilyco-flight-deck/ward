@@ -31,7 +31,7 @@ conversation.
 **Prefer a sibling dispatch over an in-session subagent (ward#374).** For delegable work
 reach for a sibling warded run (`warded advisor #N`, `warded engineer #N`) before a
 subagent: the sibling lands a durable, attributable artifact (issue thread, pushed commit)
-the next carry can read, where a subagent's output dies in scrollback. Reserve a subagent
+the next run can read, where a subagent's output dies in scrollback. Reserve a subagent
 for read-only fan-out feeding only **your** reasoning.
 
 ## What read-only enforces
@@ -51,7 +51,7 @@ is convention until a **dispatch-only credential** lands.
 
 ```bash
 ward ops forgejo issue create ...    # file the work
-warded coilyco-flight-deck/ward#NNN  # dispatch a sealed engineer carry
+warded coilyco-flight-deck/ward#NNN  # dispatch a sealed engineer
 ```
 
 The surface forwards `warded engineer ...` and `warded advisor ...` ref-mode dispatches to
@@ -64,7 +64,7 @@ clones fresh and runs its own lifecycle.
 Transport is TCP, not a unix-socket bind-mount: under Docker Desktop a bind-mounted host
 socket lands as an empty dir, so dispatches dialed a dir (EACCES, ward#391).
 
-A surface session is where an operator notices a dispatched carry is mis-scoped: stop it
+A surface session is where an operator notices a dispatched run is mis-scoped: stop it
 with `docker container stop` ([container-stop.md](container-stop.md)).
 
 ## See also

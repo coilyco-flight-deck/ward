@@ -28,7 +28,7 @@ it for the container's lifetime. `--print` reserves nothing.
 The remote comment is the **only** cross-host dedup + thread signal (the sentinel is
 same-host), so a failed post is not silent (ward#402): it retries,
 then warns with the greppable token `remote reservation NOT posted`. On
-the **broker-dispatched** path a carry's stderr is redirected into
+the **broker-dispatched** path a run's stderr is redirected into
 `~/.ward/agent-logs/dispatch/*.log`, so the token lets an operator `grep` those logs,
 checking the host Forgejo token/SSM path first.
 

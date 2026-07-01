@@ -9,7 +9,7 @@ description: The warded-agent execution model - container lifecycle, roles, /wor
 is a throwaway box, not a process on a converged host. The reflex an agent brings - "fleet
 config and hooks are converged by host ansible" - is **wrong inside ward** and routes fixes
 to the wrong repo. This skill is the durable corrective. Dispatch (resolving a ref, firing
-a carry) is the sibling [`tooling-ward-agent`](../tooling-ward-agent/SKILL.md); this skill
+a run) is the sibling [`tooling-ward-agent`](../tooling-ward-agent/SKILL.md); this skill
 is the model *under* that verb, written from ward's `docs/` and `cmd/ward/`.
 
 ## When to fire
@@ -62,7 +62,7 @@ ward#354). Full surface map: [`references/host-vs-container.md`](references/host
 
 - Lifecycle, the three roles, `/workspace` vs `/substrate`, the director's surface -
   [`references/lifecycle-and-roles.md`](references/lifecycle-and-roles.md).
-- Resolving a dictated ref and firing a carry -
+- Resolving a dictated ref and firing a run -
   [`tooling-ward-agent`](../tooling-ward-agent/SKILL.md).
 - Pre-flight, reservation, credentials seeding - ward's `docs/agent-preflight.md`,
   `docs/agent-reservation.md`, `docs/agent-credentials.md`.

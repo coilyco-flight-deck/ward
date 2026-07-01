@@ -47,17 +47,17 @@ type dispatchBrokerRequest struct {
 type dispatchBrokerResponse struct {
 	OK    bool   `json:"ok"`
 	Error string `json:"error,omitempty"`
-	// LogPath is the host path the served carry's stdout/stderr were redirected to,
+	// LogPath is the host path the served run's stdout/stderr were redirected to,
 	// so the requesting surface can name it without any bytes hitting the TTY (ward#389).
 	LogPath string `json:"log_path,omitempty"`
 }
 
 // dispatchStdioMu serializes the process-global os.Stdout/os.Stderr swap that keeps
-// a served carry's deploy output off the shared read-only TUI (ward#389).
+// a served run's deploy output off the shared read-only TUI (ward#389).
 var dispatchStdioMu sync.Mutex
 
 // dispatchLogsSubdir is the per-host dir under ~/.ward/agent-logs (agentLogsDir)
-// holding one file per forwarded carry, sibling to the drained-container archives.
+// holding one file per forwarded run, sibling to the drained-container archives.
 const dispatchLogsSubdir = "dispatch"
 
 // startHostDispatchBroker serves validated dispatch requests until ctx ends. It
@@ -133,7 +133,7 @@ func writeDispatchBrokerResponse(conn net.Conn, logPath string, err error) {
 	_ = json.NewEncoder(conn).Encode(resp)
 }
 
-// runHostDispatchBrokerRequest serves one validated carry in-process, redirecting its
+// runHostDispatchBrokerRequest serves one validated run in-process, redirecting its
 // deploy output to a per-dispatch log so it can't corrupt the surface TUI (ward#389).
 func (r *Runner) runHostDispatchBrokerRequest(ctx context.Context, req dispatchBrokerRequest) (string, error) {
 	if err := validateDispatchBrokerRequest(req); err != nil {
@@ -143,7 +143,7 @@ func (r *Runner) runHostDispatchBrokerRequest(ctx context.Context, req dispatchB
 	if err != nil {
 		// Fail loud rather than fall back to the TTY: a broken log dir must not
 		// silently reroute the flood back onto the corrupted surface (ward#389).
-		return "", fmt.Errorf("dispatch broker: open carry log: %w", err)
+		return "", fmt.Errorf("dispatch broker: open run log: %w", err)
 	}
 	defer func() { _ = logf.Close() }()
 	restore := redirectStdioToLog(logf)
@@ -187,7 +187,7 @@ func dispatchLogName(req dispatchBrokerRequest, now time.Time) string {
 	return fmt.Sprintf("%s-%s.log", now.UTC().Format("20060102T150405Z"), slug)
 }
 
-// redirectStdioToLog swaps process os.Stdout/os.Stderr to logf for one served carry (read
+// redirectStdioToLog swaps process os.Stdout/os.Stderr to logf for one served run (read
 // at run time by its newRunner + subprocesses), serialized by dispatchStdioMu (ward#389).
 func redirectStdioToLog(logf *os.File) func() {
 	dispatchStdioMu.Lock()
@@ -309,9 +309,9 @@ func (r *Runner) maybeForwardAgentDispatchToHostBroker(ctx context.Context, c *c
 		return true, err
 	}
 	// This line is captured as tool output by the surface agent, not written to the
-	// raw TTY, so naming the host-side carry log here is safe and aids discovery.
+	// raw TTY, so naming the host-side run log here is safe and aids discovery.
 	if logPath != "" {
-		fmt.Fprintf(os.Stderr, "ward dispatch broker: forwarded `ward agent %s` to host ward (carry output on the host at %s)\n",
+		fmt.Fprintf(os.Stderr, "ward dispatch broker: forwarded `ward agent %s` to host ward (run output on the host at %s)\n",
 			strings.Join(argv, " "), logPath)
 	} else {
 		fmt.Fprintf(os.Stderr, "ward dispatch broker: forwarded `ward agent %s` to host ward\n", strings.Join(argv, " "))

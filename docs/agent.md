@@ -37,7 +37,7 @@ unknown commands.
 ## Usage
 
 ```bash
-warded coilyco-flight-deck/ward#98              # bare ref -> engineer carry (fire-and-forget)
+warded coilyco-flight-deck/ward#98              # bare ref -> engineer run (fire-and-forget)
 warded #98                                      # owner/repo inferred from the cwd's git origin
 warded engineer #98                             # implement a ticket: detached fire-and-forget
 warded engineer "fix the flaky exec_gate test"  # freeform -> file an issue first, then carry
@@ -47,7 +47,7 @@ warded advisor "how is the audit log written?"  # freeform: interactive (--onesh
 ```
 
 The role comes first; `--driver` picks the harness (`claude|codex|qwen|goose`, default
-claude; ward#185). **A bare ref with no role word runs the `engineer` carry** (ward#282,
+claude; ward#185). **A bare ref with no role word runs the `engineer` role** (ward#282,
 ward#347). The ref is `owner/repo#N`, a full Forgejo URL, or a bare `#N` / `N` inferring
 `owner/repo` from the cwd's git origin; any query string or `#fragment` is ignored.
 

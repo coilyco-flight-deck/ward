@@ -63,7 +63,7 @@ clients; Unit D drops the raw token. A dispatch-seed failure falls back to env->
 
 Two brokers share the name. **This credential broker** is an in-container **unix
 socket** (`/run/ward/broker.sock`). The **dispatch broker** (`agent_dispatch_broker.go`)
-launches carries over **TCP on the docker gateway** (`WARD_DISPATCH_BROKER_ADDR`, a
+launches runs over **TCP on the docker gateway** (`WARD_DISPATCH_BROKER_ADDR`, a
 per-launch token) - not a bind-mount, which lands as an **empty dir** under Docker
 Desktop / linuxkit (ward#382, ward#391; see [agent-surface.md](agent-surface.md)).
 Dialing this socket from a dispatch client answers `unsupported protocol version`,
