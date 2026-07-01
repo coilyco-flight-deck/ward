@@ -404,7 +404,7 @@ func (r *Runner) ensureGitCredReadable(e bootstrapEnv) error {
 // installOpencode ports install_opencode: self-install opencode onto PATH for
 // qwen mode (absent from the image). Best-effort; never fatal.
 func (r *Runner) installOpencode(ctx context.Context, e bootstrapEnv) {
-	if e.Mode != "qwen" {
+	if e.Mode != "opencode" && e.Mode != "qwen" {
 		return
 	}
 	if commandExists("opencode") {
@@ -959,7 +959,7 @@ func (r *Runner) composeCodexConfig(e bootstrapEnv) {
 // composeOpencodeConfig ports compose_opencode_config: point opencode at the
 // local ollama qwen model. qwen mode only.
 func (r *Runner) composeOpencodeConfig(e bootstrapEnv) {
-	if e.Mode != "qwen" {
+	if e.Mode != "opencode" && e.Mode != "qwen" {
 		return
 	}
 	dir := filepath.Join(e.AgentHome, ".config", "opencode")
@@ -1314,7 +1314,7 @@ func buildAgentArgv(e bootstrapEnv, seed []string) (argv []string, stream bool) 
 			return append([]string{"codex", "exec"}, seed...), false
 		}
 		return append([]string{"codex"}, seed...), false
-	case "qwen":
+	case "opencode", "qwen": // "qwen" is the retired alias (ward#401), still honoured
 		if e.oneshot() {
 			return append([]string{"opencode", "run"}, seed...), false
 		}
@@ -1347,7 +1347,7 @@ func logAgentArgv(e bootstrapEnv, seed []string) {
 		if e.oneshot() {
 			blog("one-shot: codex exec <prompt> (codex prints to this log)")
 		}
-	case "qwen":
+	case "opencode", "qwen": // "qwen" is the retired alias (ward#401), still honoured
 		if e.oneshot() {
 			blog("one-shot: opencode run <prompt> (opencode prints to this log)")
 		} else if len(seed) > 0 {

@@ -86,34 +86,34 @@ func TestAgentManifestCodexDialect(t *testing.T) {
 	}
 }
 
-// TestAgentManifestQwenDialect pins qwen's real opencode dialect (ward#187):
-// headless [opencode run], interactive [opencode], no preflight, no stream-json.
-func TestAgentManifestQwenDialect(t *testing.T) {
+// TestAgentManifestOpencodeDialect pins opencode's real dialect (ward#187; roster
+// key renamed from qwen by ward#401): headless [opencode run], no stream-json.
+func TestAgentManifestOpencodeDialect(t *testing.T) {
 	m, err := loadAgentManifest()
 	if err != nil {
 		t.Fatalf("loadAgentManifest: %v", err)
 	}
-	qwen, ok := m.adapter("qwen")
+	opencode, ok := m.adapter("opencode")
 	if !ok {
-		t.Fatal("manifest missing qwen")
+		t.Fatal("manifest missing opencode")
 	}
-	if qwen.Binary != "opencode" {
-		t.Errorf("qwen binary = %q, want opencode", qwen.Binary)
+	if opencode.Binary != "opencode" {
+		t.Errorf("opencode binary = %q, want opencode", opencode.Binary)
 	}
-	if got := fmt.Sprint(qwen.Argv.Headless); got != fmt.Sprint([]string{"opencode", "run"}) {
-		t.Errorf("qwen headless argv = %v, want [opencode run]", qwen.Argv.Headless)
+	if got := fmt.Sprint(opencode.Argv.Headless); got != fmt.Sprint([]string{"opencode", "run"}) {
+		t.Errorf("opencode headless argv = %v, want [opencode run]", opencode.Argv.Headless)
 	}
-	if got := fmt.Sprint(qwen.Argv.Interactive); got != fmt.Sprint([]string{"opencode"}) {
-		t.Errorf("qwen interactive argv = %v, want [opencode]", qwen.Argv.Interactive)
+	if got := fmt.Sprint(opencode.Argv.Interactive); got != fmt.Sprint([]string{"opencode"}) {
+		t.Errorf("opencode interactive argv = %v, want [opencode]", opencode.Argv.Interactive)
 	}
-	if _, ok := qwen.preflightArgv("carry it?"); ok {
-		t.Error("qwen must not advertise a host pre-flight one-shot (ollama is in-container)")
+	if _, ok := opencode.preflightArgv("carry it?"); ok {
+		t.Error("opencode must not advertise a host pre-flight one-shot (ollama is in-container)")
 	}
-	// qwen must not borrow claude's stream-json flags: opencode prints its own
+	// opencode must not borrow claude's stream-json flags: it prints its own
 	// progress, so its stream is none.
-	for _, a := range qwen.Argv.Headless {
+	for _, a := range opencode.Argv.Headless {
 		if a == "-p" || a == "--output-format" || a == "stream-json" {
-			t.Errorf("qwen headless argv still borrows claude's stream-json flag %q", a)
+			t.Errorf("opencode headless argv still borrows claude's stream-json flag %q", a)
 		}
 	}
 }

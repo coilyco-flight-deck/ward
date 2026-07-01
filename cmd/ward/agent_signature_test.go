@@ -7,10 +7,10 @@ import (
 
 func TestAgentAttribution(t *testing.T) {
 	cases := map[containerMode]string{
-		modeClaude: "Claude (she/her)",
-		modeCodex:  "Codex",
-		modeQwen:   "Qwen",
-		modeGoose:  "Goose",
+		modeClaude:   "Claude (she/her)",
+		modeCodex:    "Codex",
+		modeOpencode: "Qwen", // opencode harness signs as its backing model persona
+		modeGoose:    "Goose",
 	}
 	for mode, want := range cases {
 		if got := mode.agentAttribution(); got != want {
@@ -86,9 +86,9 @@ func TestCurrentAgentMode(t *testing.T) {
 	}{
 		{"goose", "", modeGoose},
 		{"", "codex", modeCodex},
-		{"qwen", "claude", modeQwen}, // WARD_AGENT wins over WARD_MODE
-		{"", "", modeClaude},         // unset defaults to claude
-		{"bogus", "", modeClaude},    // unrecognized defaults to claude
+		{"qwen", "claude", modeOpencode}, // WARD_AGENT wins; qwen aliases to opencode
+		{"", "", modeClaude},             // unset defaults to claude
+		{"bogus", "", modeClaude},        // unrecognized defaults to claude
 	}
 	for _, c := range cases {
 		t.Setenv("WARD_AGENT", c.agent)

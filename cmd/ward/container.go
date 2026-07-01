@@ -86,8 +86,8 @@ func (r *Runner) resolveAgentCreds(ctx context.Context, mode containerMode) agen
 		return agentCreds{Codex: r.resolveCodexCreds()}
 	case modeGoose:
 		return agentCreds{GooseOllamaHost: r.resolveOllamaHost(ctx)}
-	case modeQwen:
-		// qwen runs against a local ollama; no host credential to inject.
+	case modeOpencode:
+		// opencode runs against a local ollama; no host credential to inject.
 		return agentCreds{}
 	default:
 		return agentCreds{}

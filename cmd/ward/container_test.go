@@ -162,7 +162,7 @@ func TestEngineerContainerNameIsRepoIssueUnique(t *testing.T) {
 	}
 	// docker-forbidden characters in the repo name must be sanitized away.
 	weird := targetRepo{Owner: "x", Name: "we/ird name!"}
-	dirty := containerRoleName(roleEngineer, modeQwen, weird, 7, "deadbeef")
+	dirty := containerRoleName(roleEngineer, modeOpencode, weird, 7, "deadbeef")
 	for _, bad := range []string{"/", " ", "!"} {
 		if strings.Contains(dirty, bad) {
 			t.Errorf("sanitized name %q still contains %q", dirty, bad)
@@ -235,24 +235,24 @@ func TestModeContextLevelLadder(t *testing.T) {
 	if modeClaude.contextLevel() <= modeCodex.contextLevel() {
 		t.Error("claude must carry more context than codex")
 	}
-	if modeCodex.contextLevel() <= modeQwen.contextLevel() {
-		t.Error("codex must carry more context than qwen")
+	if modeCodex.contextLevel() <= modeOpencode.contextLevel() {
+		t.Error("codex must carry more context than opencode")
 	}
-	if modeQwen.contextLevel() != 0 {
-		t.Errorf("qwen is the minimal-context floor, got %d", modeQwen.contextLevel())
+	if modeOpencode.contextLevel() != 0 {
+		t.Errorf("opencode is the minimal-context floor, got %d", modeOpencode.contextLevel())
 	}
 	// goose is a full carry-to-merge harness: same context tier as claude.
 	if modeGoose.contextLevel() != modeClaude.contextLevel() {
 		t.Errorf("goose must carry the same context level as claude, got %d", modeGoose.contextLevel())
 	}
 	if modeClaude.agentBinary() != "claude" || modeCodex.agentBinary() != "codex" ||
-		modeQwen.agentBinary() != "opencode" || modeGoose.agentBinary() != "goose" {
+		modeOpencode.agentBinary() != "opencode" || modeGoose.agentBinary() != "goose" {
 		t.Error("mode -> agent binary mapping wrong")
 	}
 }
 
 // ward#148: claude+goose (the full carry-to-merge harnesses) keep parity on the
-// headless pre-flight, so both expose a host one-shot argv; codex/qwen don't yet.
+// headless pre-flight, so both expose a host one-shot argv; codex/opencode don't yet.
 func TestHostPreflightArgvParity(t *testing.T) {
 	want := map[containerMode][]string{
 		modeClaude: {"claude", "-p", "carry it?"},
@@ -277,9 +277,9 @@ func TestHostPreflightArgvParity(t *testing.T) {
 			t.Errorf("%s: pre-flight argv must start with the agent binary %q, got %q", m, m.agentBinary(), argv[0])
 		}
 	}
-	// codex/qwen: no reliable host one-shot yet, so the pre-flight bows out and
+	// codex/opencode: no reliable host one-shot yet, so the pre-flight bows out and
 	// the dispatch proceeds unguarded rather than fabricating a verdict.
-	for _, m := range []containerMode{modeCodex, modeQwen} {
+	for _, m := range []containerMode{modeCodex, modeOpencode} {
 		if argv, ok := m.hostPreflightArgv("carry it?"); ok {
 			t.Errorf("%s: did not expect a host pre-flight argv yet, got %v", m, argv)
 		}
@@ -287,7 +287,7 @@ func TestHostPreflightArgvParity(t *testing.T) {
 }
 
 func TestParseMode(t *testing.T) {
-	for _, ok := range []string{"claude", "codex", "qwen", "goose"} {
+	for _, ok := range []string{"claude", "codex", "opencode", "goose", "qwen"} { // qwen still parses (deprecated alias)
 		if _, err := parseMode(ok); err != nil {
 			t.Errorf("parseMode(%q) errored: %v", ok, err)
 		}
@@ -1078,9 +1078,9 @@ func TestResolveAgentCredsRouting(t *testing.T) {
 	if goose.Claude != "" || goose.Codex != "" {
 		t.Errorf("goose mode must resolve only its ollama host, got %+v", goose)
 	}
-	// qwen's opencode provider is image-configured, so ward injects nothing.
-	if c := r.resolveAgentCreds(t.Context(), modeQwen); c != (agentCreds{}) {
-		t.Errorf("qwen must resolve no creds, got %+v", c)
+	// opencode's provider is image-configured (local ollama), so ward injects nothing.
+	if c := r.resolveAgentCreds(t.Context(), modeOpencode); c != (agentCreds{}) {
+		t.Errorf("opencode must resolve no creds, got %+v", c)
 	}
 }
 

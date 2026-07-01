@@ -5,6 +5,7 @@ package main
 
 import (
 	"fmt"
+	"os"
 	"regexp"
 	"sort"
 	"strings"
@@ -160,11 +161,15 @@ func parseSubstrateManifest(data string) ([]substrateRepo, error) {
 type containerMode string
 
 const (
-	modeClaude containerMode = "claude"
-	modeCodex  containerMode = "codex"
-	modeQwen   containerMode = "qwen"
-	modeGoose  containerMode = "goose"
+	modeClaude   containerMode = "claude"
+	modeCodex    containerMode = "codex"
+	modeOpencode containerMode = "opencode"
+	modeGoose    containerMode = "goose"
 )
+
+// modeQwenAlias is the retired roster key ward#401 renamed to modeOpencode;
+// parseMode still accepts it (deprecation warning) so --mode qwen keeps working.
+const modeQwenAlias = "qwen"
 
 // container roles lead the name + the ward.role label (ward#364). director is a host
 // loop, not a container, but its surface session runs as roleSession (ward#353).
@@ -179,7 +184,7 @@ func (m containerMode) agentBinary() string {
 	switch m {
 	case modeCodex:
 		return "codex"
-	case modeQwen:
+	case modeOpencode:
 		return "opencode"
 	case modeGoose:
 		return "goose"
@@ -198,7 +203,7 @@ func (m containerMode) hostPreflightArgv(prompt string) ([]string, bool) {
 		return []string{m.agentBinary(), "-p", prompt}, true
 	case modeGoose:
 		return []string{m.agentBinary(), "run", "-t", prompt}, true
-	case modeCodex, modeQwen:
+	case modeCodex, modeOpencode:
 		return nil, false
 	default:
 		return nil, false
@@ -209,7 +214,7 @@ func (m containerMode) hostPreflightArgv(prompt string) ([]string, bool) {
 // see docs/container.md. goose is full (level 2) like claude, mirrored to its hints file.
 func (m containerMode) contextLevel() int {
 	switch m {
-	case modeQwen:
+	case modeOpencode:
 		return 0
 	case modeCodex:
 		return 1
@@ -222,19 +227,24 @@ func (m containerMode) contextLevel() int {
 	}
 }
 
-// parseMode validates a --mode value.
+// parseMode validates a --mode value; the retired "qwen" key aliases to opencode
+// with a deprecation warning (ward#401). See docs/agentspi.md.
 func parseMode(s string) (containerMode, error) {
+	if s == modeQwenAlias {
+		fmt.Fprintln(os.Stderr, "ward: --mode qwen is deprecated; use --mode opencode (qwen is the backing model, opencode the harness). Aliasing to opencode for now.")
+		return modeOpencode, nil
+	}
 	switch containerMode(s) {
 	case modeClaude:
 		return modeClaude, nil
 	case modeCodex:
 		return modeCodex, nil
-	case modeQwen:
-		return modeQwen, nil
+	case modeOpencode:
+		return modeOpencode, nil
 	case modeGoose:
 		return modeGoose, nil
 	default:
-		return "", fmt.Errorf("unknown --mode %q: want claude|codex|qwen|goose", s)
+		return "", fmt.Errorf("unknown --mode %q: want claude|codex|opencode|goose (qwen is a deprecated alias for opencode)", s)
 	}
 }
 

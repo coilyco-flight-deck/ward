@@ -44,22 +44,22 @@ Field notes:
 
 - `contextLevel` drives the `WARD_CONTEXT_LEVEL` ladder the entrypoint composes
   context against (full/scoped/minimal); see [container.md](container.md).
-- `stream: none` means the agent prints its own progress (goose/codex/qwen), so
+- `stream: none` means the agent prints its own progress (goose/codex/opencode), so
   ward pipes nothing through its stream-json filter.
-- `argv.preflight: []` means no host one-shot (codex/qwen), so the GO/NO-GO check
-  bows out and dispatch proceeds (ward#147, ward#148); for qwen this is structural,
+- `argv.preflight: []` means no host one-shot (codex/opencode), so the GO/NO-GO check
+  bows out and dispatch proceeds (ward#147, ward#148); for opencode this is structural,
   as ollama runs in-container.
-- `argv.interactive` for goose is `[goose, session]` and qwen's is `[opencode]`:
+- `argv.interactive` for goose is `[goose, session]` and opencode's is `[opencode]`:
   no seed on argv, so the issue is pasted in by hand.
-- `argv.headless` for codex is `[codex, exec]` and qwen's is `[opencode, run]` -
+- `argv.headless` for codex is `[codex, exec]` and opencode's is `[opencode, run]` -
   each its own dialect, not claude's stream-json flags (ward#178, ward#187). codex
-  auth is `codex-file` (host `~/.codex/auth.json`); qwen auth `none`.
+  auth is `codex-file` (host `~/.codex/auth.json`); opencode auth `none`.
 - `auth: ollama` (goose, ward#186): goose binds the tower Ollama, whose endpoint
   ward resolves host-side from SSM and seeds into `~/.config/goose/config.yaml`.
 
-`qwen` no longer mirrors the claude default branch (ward#187): the entrypoint writes
-its opencode config and **self-installs opencode at container start** (best-effort),
-so qwen is available without the image baking it in. See [agent.md](agent.md).
+The `opencode` entry (roster key renamed from `qwen` by ward#401; `--mode qwen`
+still aliases) **self-installs opencode at container start** (best-effort), so it
+needs no image baking (ward#187). See [agent.md](agent.md).
 
 ## The contract test
 

@@ -198,10 +198,10 @@ func agentSeedPrompt(ref agentIssueRef, title, body, details string, headless bo
 
 // agentModes is the ordered set of harnesses ward can drive (claude is the default
 // --driver); it is the source of truth for the --driver choices (ward#185).
-var agentModes = []containerMode{modeClaude, modeCodex, modeQwen, modeGoose}
+var agentModes = []containerMode{modeClaude, modeCodex, modeOpencode, modeGoose}
 
 // agentDriverChoices renders the supported --driver values as a pipe list, e.g.
-// "claude|codex|qwen|goose", for flag usage and error text.
+// "claude|codex|opencode|goose", for flag usage and error text.
 func agentDriverChoices() string {
 	names := make([]string, 0, len(agentModes))
 	for _, m := range agentModes {
@@ -310,7 +310,7 @@ func agentCommand() *cli.Command {
 		Description: `agent is the issue-carrying dispatcher (the spelling 'warded' fronts), a
 roster of startup roles (ward#347): you do not invoke a mode, you send in a
 role. Pick a role (engineer|director|advisor) and --driver picks the
-harness (claude|codex|qwen|goose, default claude). A BARE REF with no role word
+harness (claude|codex|opencode|goose, default claude). A BARE REF with no role word
 runs the 'engineer' role - the fire-and-forget default. A bare #N (or N) infers
 the owner/repo from the cwd's git origin; owner/repo#N and a full Forgejo issue
 URL also work. One line replaces a full container bring-up stack plus a prompt.
@@ -639,7 +639,7 @@ func (r *Runner) runPreflight(ctx context.Context, mode containerMode, surface s
 	label := agentCmdline(mode, surface)
 	bin := mode.agentBinary()
 	argv, ok := mode.hostPreflightArgv(preflightPrompt(w.Ref, w.Title, w.Body, w.Details, w.Comments, w.ExtraRepos))
-	// No host self-assessment (claude+goose have one, codex/qwen don't) or no
+	// No host self-assessment (claude+goose have one, codex/opencode don't) or no
 	// binary on PATH: can't fairly bounce the issue, so the dispatch proceeds.
 	if !ok || !hostHasBinary(bin) {
 		fmt.Fprintf(os.Stderr, "%s: %s self-assessment unavailable on this host; proceeding with the detached run.\n", label, bin)

@@ -46,7 +46,7 @@ warded advisor #98 "what would it take to..."   # research the issue, post a com
 warded advisor "how is the audit log written?"  # freeform: interactive (--oneshot = one answer)
 ```
 
-The role comes first; `--driver` picks the harness (`claude|codex|qwen|goose`, default
+The role comes first; `--driver` picks the harness (`claude|codex|opencode|goose`, default
 claude; ward#185). **A bare ref with no role word runs the `engineer` role** (ward#282,
 ward#347). The ref is `owner/repo#N`, a full Forgejo URL, or a bare `#N` / `N` inferring
 `owner/repo` from the cwd's git origin; any query string or `#fragment` is ignored.

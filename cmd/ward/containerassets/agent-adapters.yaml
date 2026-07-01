@@ -31,7 +31,7 @@ agents:
       headless: [codex, exec]
       interactive: [codex]
 
-  - name: qwen
+  - name: opencode
     binary: opencode
     contextLevel: 0
     stream: none

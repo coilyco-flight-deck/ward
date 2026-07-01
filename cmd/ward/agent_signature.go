@@ -21,7 +21,9 @@ func (m containerMode) agentIdentity() (name, pronouns string) {
 	switch m {
 	case modeCodex:
 		return "Codex", ""
-	case modeQwen:
+	case modeOpencode:
+		// The harness renamed qwen->opencode (ward#401), but the signing persona
+		// stays "Qwen" - the backing model is who the work is attributed to.
 		return "Qwen", ""
 	case modeGoose:
 		return "Goose", ""
