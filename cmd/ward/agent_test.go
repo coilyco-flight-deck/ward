@@ -155,18 +155,25 @@ func TestCarryingLine(t *testing.T) {
 
 func TestAgentSeedPrompt(t *testing.T) {
 	ref := agentIssueRef{Owner: "coilyco-flight-deck", Repo: "ward", Number: 98}
-	// A vision-capable harness with a real body keeps the read-it-at-the-URL flow.
+	// A vision-capable harness with a real body gets the body inlined as a frozen
+	// snapshot at dispatch, not a URL to go fetch (ward#400).
 	got := agentSeedPrompt(ref, "  container verb family  ", "do the thing", "", modeClaude, false, nil)
 	for _, want := range []string{
 		"coilyco-flight-deck/ward#98",
-		"container verb family",    // title, trimmed
-		ref.url(),                  // the read-it-first URL
-		"closes #98",               // the close trailer
-		"read the full issue body", // first-action instruction
+		"container verb family",            // title, trimmed
+		ref.url(),                          // the URL still rides for comments/images
+		"closes #98",                       // the close trailer
+		"----- issue body (inlined) -----", // the frozen snapshot marker
+		"do the thing",                     // the body itself is inlined
+		"work from that frozen snapshot",   // first-action instruction
 	} {
 		if !strings.Contains(got, want) {
 			t.Errorf("seed prompt missing %q\n got: %s", want, got)
 		}
+	}
+	// The old fetch-it-at-runtime instruction is gone for the default driver (ward#400).
+	if strings.Contains(got, "read the full issue body") {
+		t.Errorf("vision seed should inline the body, not send the agent to fetch it\n got: %s", got)
 	}
 	// No --details note when none is passed (and no dangling "Operator note" header).
 	if strings.Contains(got, "Operator note") {
@@ -211,7 +218,7 @@ func TestAgentSeedPromptNonVisionInlines(t *testing.T) {
 		"issue body (inlined; media stripped)", // the inline marker
 		"Real instructions here.",              // the real content survives
 		"Keep https://example.com/page",        // non-image links survive
-		"do not re-fetch the URL",              // the inline instruction
+		"frozen snapshot taken at dispatch",    // the inline instruction
 	} {
 		if !strings.Contains(got, want) {
 			t.Errorf("non-vision seed missing %q\n got: %s", want, got)
@@ -226,13 +233,25 @@ func TestAgentSeedPromptNonVisionInlines(t *testing.T) {
 			t.Errorf("non-vision seed should strip %q\n got: %s", unwanted, got)
 		}
 	}
-	// A vision-capable harness still reads the body at the URL, no inlining.
+	// A vision-capable harness also inlines the body now (ward#400), but VERBATIM -
+	// media markup kept, so the vision driver can fetch the URL to render the images.
 	vis := agentSeedPrompt(ref, "fix it", body, "", modeClaude, false, nil)
-	if strings.Contains(vis, "inlined; media stripped") {
-		t.Errorf("vision harness should not inline the body\n got: %s", vis)
+	for _, want := range []string{
+		"----- issue body (inlined) -----", // inlined, not media-stripped marker
+		"Real instructions here.",          // the body content
+		"7K8q4pQ.png",                      // the image markup is preserved for the vision driver
+		"work from that frozen snapshot",   // the frozen-snapshot instruction
+		"fetch the URL to render those",    // the media issue keeps images reachable
+	} {
+		if !strings.Contains(vis, want) {
+			t.Errorf("vision seed missing %q\n got: %s", want, vis)
+		}
 	}
-	if !strings.Contains(vis, "read the full issue body") {
-		t.Errorf("vision harness should keep the read-it-at-the-URL flow\n got: %s", vis)
+	if strings.Contains(vis, "inlined; media stripped") {
+		t.Errorf("vision harness should inline verbatim, not media-stripped\n got: %s", vis)
+	}
+	if strings.Contains(vis, "read the full issue body") {
+		t.Errorf("vision harness should inline the body, not fetch it at the URL\n got: %s", vis)
 	}
 	// A body that is nothing but an image collapses to the empty-body path.
 	onlyImg := agentSeedPrompt(ref, "fix it", "![x](https://imgur.com/a.png)", "", modeGoose, false, nil)
@@ -245,11 +264,11 @@ func TestAgentSeedPromptDetails(t *testing.T) {
 	ref := agentIssueRef{Owner: "coilyco-flight-deck", Repo: "ward", Number: 98}
 	got := agentSeedPrompt(ref, "container verb family", "a body", "  do it like this instead, not that  ", modeClaude, false, nil)
 	for _, want := range []string{
-		"Operator note",            // the labeled note section (ward#167)
-		"--details",                // names where it came from
-		"do it like this instead",  // the note, trimmed
-		"override the issue text",  // the precedence instruction
-		"read the full issue body", // the base seed survives
+		"Operator note",                  // the labeled note section (ward#167)
+		"--details",                      // names where it came from
+		"do it like this instead",        // the note, trimmed
+		"override the issue text",        // the precedence instruction
+		"work from that frozen snapshot", // the base seed survives
 	} {
 		if !strings.Contains(got, want) {
 			t.Errorf("seed prompt missing %q\n got: %s", want, got)
@@ -258,6 +277,24 @@ func TestAgentSeedPromptDetails(t *testing.T) {
 	// Whitespace-only details is treated as no note.
 	if strings.Contains(agentSeedPrompt(ref, "t", "b", "   \n  ", modeClaude, false, nil), "Operator note") {
 		t.Error("whitespace-only details should not render an operator note")
+	}
+}
+
+// TestSeedLogBlock covers ward#400: the dump wraps the whole seed - inlined body
+// included - in greppable markers so the task text is auditable without --print.
+func TestSeedLogBlock(t *testing.T) {
+	ref := agentIssueRef{Owner: "coilyco-flight-deck", Repo: "ward", Number: 400}
+	seed := agentSeedPrompt(ref, "dump the seed", "the frozen task text", "", modeClaude, true, nil)
+	block := seedLogBlock(seed)
+	for _, want := range []string{
+		"----- seeded prompt -----", // the greppable open marker
+		"----- end -----",           // the close marker
+		"the frozen task text",      // the inlined body rides in the dump
+		"closes #400",               // the full seed, not just the title
+	} {
+		if !strings.Contains(block, want) {
+			t.Errorf("seed log block missing %q\n got: %s", want, block)
+		}
 	}
 }
 

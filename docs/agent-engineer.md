@@ -35,13 +35,14 @@ It validates the ref (a bad ref or untrusted owner fails first),
 branches `issue-<N>` (override `--branch`), and launches a fresh-clone `ward container`
 seeded to carry the issue.
 
-The carry always **detaches** fire-and-forget (was `headless`): print mode
-(`claude -p`, `codex exec`, `goose run -t`), streaming progress to the container log
-for claude. From a terminal it first runs a **pre-flight** ([agent-preflight.md](agent-preflight.md)):
-a GO launches, a NO-GO comments and launches nothing. Its seed asks it to close with a
-`WARD-OUTCOME`-led retrospective (ward#281, ward#310) the [director](agent-director.md)
-loop reads. The seed's first move is shaped by body and harness (ward#157): empty
-bodies say so, non-vision harnesses get the body inlined with media stripped.
+The carry always **detaches** fire-and-forget (was `headless`): print mode (`claude -p`,
+`codex exec`, `goose run -t`). From a terminal it first runs a **pre-flight**
+([agent-preflight.md](agent-preflight.md)): a GO launches, a NO-GO comments and launches
+nothing. Its seed closes with a `WARD-OUTCOME`-led retro (ward#281, ward#310) the
+[director](agent-director.md) reads, and is shaped by body + harness (ward#157, ward#400):
+empty bodies say so, **every** driver gets the body inlined as a **frozen snapshot** at
+dispatch (non-vision stripped, vision verbatim; URL kept for comments/images), and the
+seed is **logged at dispatch**, greppable without `--print`.
 
 There is **no attach surface** (ward#356): the old `work`/`--watch` (ward#174) is
 retired; interactive work funnels to the [director](agent-director.md).
@@ -60,8 +61,8 @@ Two sub-modes by repo omission:
   instruction line (≤72 runes); body is the
   instructions + a provenance footer.
 - **ROUTE** (ward#164) — a freeform task and no repo. ward files an intake record in
-  `coilysiren/inbox`, surveys the fleet one-shot to route it (`REPO` / `UNCLEAR`),
-  files a scoped child, cross-links + closes intake, then carries the child. An
+  `coilysiren/inbox`, surveys the fleet to route it (`REPO`/`UNCLEAR`), files a scoped
+  child, cross-links + closes intake, then carries the child. An
   UNCLEAR or untrusted target bounces to a human. The survey *is* the gate (ROUTE
   skips the pre-flight); it needs a claude/goose host slot, else use DIRECT (ward#148).
 
@@ -69,7 +70,7 @@ Two sub-modes by repo omission:
 
 The trust gate runs before anything is filed (in ROUTE the routed target too).
 `--print` files/runs nothing: a ref renders the seed + plan; freeform renders the
-issue that would be filed (`#N` shows `#0`); ROUTE renders the intake + live flow.
+issue that would be filed; ROUTE renders the intake + live flow.
 
 ## See also
 

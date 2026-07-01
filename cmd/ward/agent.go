@@ -160,8 +160,7 @@ func agentSeedPrompt(ref agentIssueRef, title, body, details string, mode contai
 	}
 	body = strings.TrimSpace(body)
 
-	action := "First action: read the full issue body and comment thread at that URL before doing anything else."
-	inline := ""
+	var action, inline string
 	switch {
 	case body == "":
 		action = emptyBodySeedAction
@@ -171,10 +170,24 @@ func agentSeedPrompt(ref agentIssueRef, title, body, details string, mode contai
 			action = emptyBodySeedAction
 		} else {
 			action = "The full issue body is inlined below, between the markers; work from it " +
-				"directly and do not re-fetch the URL. Image markup has been stripped out. Skim the " +
+				"directly as a frozen snapshot taken at dispatch. Image markup has been stripped out. Skim the " +
 				"comment thread at that URL only for later context."
 			inline = "\n\n----- issue body (inlined; media stripped) -----\n" + stripped + "\n----- end issue body -----"
 		}
+	default:
+		// Vision-capable driver (claude, the default): inline the body verbatim as a
+		// frozen snapshot, URL kept live for comments + images (ward#400).
+		if markdownImageRE.MatchString(body) || bareImageURLRE.MatchString(body) {
+			action = "The full issue body is inlined below, between the markers - work from that " +
+				"frozen snapshot as your task text rather than re-fetching it. The body references images " +
+				"that are not inlined: fetch the URL to render those, and to read the live comment thread " +
+				"for context added after dispatch."
+		} else {
+			action = "The full issue body is inlined below, between the markers - work from that " +
+				"frozen snapshot as your task text rather than re-fetching it. Fetch the URL only to read " +
+				"the live comment thread for context added after dispatch."
+		}
+		inline = "\n\n----- issue body (inlined) -----\n" + body + "\n----- end issue body -----"
 	}
 
 	seed := fmt.Sprintf(
@@ -971,6 +984,12 @@ func buildAgentPlan(c *cli.Command, mode containerMode, ref agentIssueRef, seed 
 	return plan, nil
 }
 
+// seedLogBlock wraps the seeded prompt in greppable markers, shared by --print and the
+// detached-run startup dump (ward#400); public issue text only, no tokens to spill.
+func seedLogBlock(seed string) string {
+	return fmt.Sprintf("----- seeded prompt -----\n%s\n----- end -----\n", seed)
+}
+
 // carryingLine renders the one-line "what am I about to work on" echo (ward#307):
 // label, ref, title - returning "" for an empty title so a seedless run stays quiet.
 func carryingLine(label string, ref agentIssueRef, title string) string {
@@ -1017,6 +1036,9 @@ func (r *Runner) launchAgentContainer(ctx context.Context, c *cli.Command, mode 
 	if line := carryingLine(label, ref, title); line != "" {
 		fmt.Fprintln(os.Stderr, line)
 	}
+	// Dump the full seed (frozen issue body included) so a killed run leaves an
+	// auditable record of its task text, not just the title (ward#400).
+	fmt.Fprintln(os.Stderr, seedLogBlock(seed))
 
 	// Reserve the issue so another run won't redo it; a detached run holds the
 	// reservation for the container's life, so the release hook is discarded.
@@ -1371,7 +1393,7 @@ func printAgentPlan(c *cli.Command, p upPlan, ref agentIssueRef, title, seed, su
 	fmt.Fprintf(&b, "repo:    %s\n", p.Repo.slug())
 	fmt.Fprintf(&b, "branch:  %s\n", p.Branch)
 	fmt.Fprintf(&b, "name:    %s\n", p.Name)
-	fmt.Fprintf(&b, "----- seeded prompt -----\n%s\n----- end -----\n", seed)
+	fmt.Fprint(&b, seedLogBlock(seed))
 	if c.Bool("no-pull") {
 		fmt.Fprintf(&b, "# pull skipped (--no-pull); image: %s\n", p.Image)
 	} else {
