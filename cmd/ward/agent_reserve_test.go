@@ -298,6 +298,66 @@ func TestIsReservationConflict(t *testing.T) {
 	}
 }
 
+// TestPostReservationComment covers ward#402's bounded retry: a clean first post, a
+// ride over transient failures, and a give-up after the attempts run out.
+func TestPostReservationComment(t *testing.T) {
+	transient := errors.New("rate limited")
+
+	// Succeeds first try: one attempt, no sleeps.
+	t.Run("first try", func(t *testing.T) {
+		sleeps := 0
+		calls := 0
+		tries, err := postReservationComment(context.Background(), 3, time.Second,
+			func(time.Duration) { sleeps++ },
+			func(context.Context) error { calls++; return nil })
+		if err != nil || tries != 1 || calls != 1 || sleeps != 0 {
+			t.Fatalf("first-try: tries=%d calls=%d sleeps=%d err=%v", tries, calls, sleeps, err)
+		}
+	})
+
+	// Fails twice then lands: three calls, two backoff sleeps, nil error.
+	t.Run("retry then succeed", func(t *testing.T) {
+		sleeps := 0
+		calls := 0
+		tries, err := postReservationComment(context.Background(), 3, time.Second,
+			func(time.Duration) { sleeps++ },
+			func(context.Context) error {
+				calls++
+				if calls < 3 {
+					return transient
+				}
+				return nil
+			})
+		if err != nil || tries != 3 || calls != 3 || sleeps != 2 {
+			t.Fatalf("retry-then-succeed: tries=%d calls=%d sleeps=%d err=%v", tries, calls, sleeps, err)
+		}
+	})
+
+	// Always fails: exhausts attempts, returns the last error, sleeps attempts-1 times
+	// (never after the final try).
+	t.Run("exhausts", func(t *testing.T) {
+		sleeps := 0
+		calls := 0
+		tries, err := postReservationComment(context.Background(), 3, time.Second,
+			func(time.Duration) { sleeps++ },
+			func(context.Context) error { calls++; return transient })
+		if !errors.Is(err, transient) || tries != 3 || calls != 3 || sleeps != 2 {
+			t.Fatalf("exhausts: tries=%d calls=%d sleeps=%d err=%v", tries, calls, sleeps, err)
+		}
+	})
+
+	// A non-positive attempt count is clamped to one real try (no sleep).
+	t.Run("clamps attempts", func(t *testing.T) {
+		calls := 0
+		tries, err := postReservationComment(context.Background(), 0, time.Second,
+			func(time.Duration) { t.Fatal("must not sleep on a single attempt") },
+			func(context.Context) error { calls++; return transient })
+		if !errors.Is(err, transient) || tries != 1 || calls != 1 {
+			t.Fatalf("clamps: tries=%d calls=%d err=%v", tries, calls, err)
+		}
+	})
+}
+
 func TestReservationCommentBodyHasMarker(t *testing.T) {
 	now := time.Date(2026, 6, 18, 12, 0, 0, 0, time.UTC)
 	body := reservationCommentBody(modeCodex, "engineer-codex-ward-142", "tower", now, "")

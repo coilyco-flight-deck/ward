@@ -1,7 +1,7 @@
 # ward agent: reservation and host checks
 
 How a `ward agent` run avoids double-work and nudges a stale host binary. See
-[docs/agent.md](agent.md) for the verb family.
+[docs/agent.md](agent.md).
 
 ## Reservation (no double-work)
 
@@ -20,26 +20,32 @@ works it at once, on this host or another:
 
 Both holds are **TTL-bounded** (2h): an older reservation is assumed dead and
 reclaimed, so a crashed run never wedges an issue. The local sentinel is also
-reclaimed once its container stops running. An attached `work` run
-releases its sentinel when it returns; a detached run (`headless`, `task`,
-`--detach`) leaves it for the container's lifetime. Remote/network failures
-degrade to a warning - the local sentinel still holds. `--print` reserves nothing.
+reclaimed once its container stops running. An attached `work` run releases its
+sentinel when it returns; a detached run (`headless`, `task`, `--detach`) leaves
+it for the container's lifetime. `--print` reserves nothing.
 `--force` skips both checks to reclaim a stale or foreign hold.
+
+The remote comment is the **only** cross-host dedup + thread signal (the sentinel is
+same-host), so a failed post is not silent (ward#402): it retries,
+then warns with the greppable token `remote reservation NOT posted`. On
+the **broker-dispatched** path a carry's stderr is redirected into
+`~/.ward/agent-logs/dispatch/*.log`, so the token lets an operator `grep` those logs,
+checking the host Forgejo token/SSM path first.
 
 ## Pre-launch death releases the hold (ward#264)
 
 A container that dies at the [ward#222 smoke test](agent.md) did nothing, yet its
 remote hold blocks a plain retry for the full TTL. So on a clean teardown where the
 agent never launched, the [reaper](container-reap.md) posts a **release marker
-comment**, and `freshReservationComment` treats a reservation as free once a
-release was posted at or after it (newest marker of each kind wins), so the retry
-needs no `--force`.
+comment**, and `freshReservationComment` frees a reservation once a release is
+posted at or after it (newest marker of each kind wins), so the retry needs no
+`--force`.
 
 For an interactive `headless` dispatch the cheap reservation check runs **before
 the LLM pre-flight**, not after (ward#184): an issue another run already holds
 short-circuits up front rather than wasting a full model read. The precheck reuses
-the already-fetched thread (no extra Forgejo call) and never takes the hold - the
-two-sided reservation still happens at launch. `--force` bypasses both.
+the already-fetched thread and never takes the hold - the two-sided reservation
+still happens at launch. `--force` bypasses both.
 
 ## Host stale-ward reminder (ward#143)
 
@@ -52,17 +58,13 @@ ward does a best-effort check at the host dispatch moment: it resolves the lates
 prints a two-line stderr reminder pointing at [`ward upgrade`](../README.md).
 
 The lookup routes through the in-binary [`ward ops forgejo`](ops-forgejo-in-ward.md)
-specverb (ward#172) rather than a hand-rolled HTTP client: it shells the host
-ward to `ops forgejo release list <owner> <repo> --draft=false --pre-release=false
---query "[0].tag_name" --output text`, so the audited, SSM-authed guardfile leaf
-does the call and the `--query` projection hands back just the scalar tag,
-mirroring the old `/releases/latest` semantics (newest published, non-prerelease).
+`release list` specverb (ward#172), whose `--query "[0].tag_name"` projection hands
+back the newest published non-prerelease tag through the audited, SSM-authed leaf.
 
 The check is deliberately quiet and non-blocking: a `dev`/source build, no
 network, an auth wall, or an unparseable tag all stay silent rather than guess,
 and a 5s timeout means a slow Forgejo never holds up the dispatch. It is skipped
-under `--print`. It compares only the release tag, not the in-container ward,
-because the container always pins/downloads its own.
+under `--print`, and compares only the release tag (the container pins its own).
 
 ## See also
 

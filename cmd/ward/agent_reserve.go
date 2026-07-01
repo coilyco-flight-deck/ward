@@ -253,28 +253,76 @@ func (r *Runner) containerRunning(ctx context.Context, name string) bool {
 	return strings.TrimSpace(string(out)) != ""
 }
 
+// remoteReservationPostAttempts / remoteReservationPostBackoff bound the best-effort
+// retry on the reservation-comment post - it rides a transient failure (ward#402).
+const (
+	remoteReservationPostAttempts = 3
+	remoteReservationPostBackoff  = 2 * time.Second
+)
+
+// reservationPostSleep is the backoff wait between reservation-post retries, a
+// package var so a test stubs the real sleep out.
+var reservationPostSleep = time.Sleep
+
+// reservationWarnToken is the stable, greppable substring every dropped-reservation
+// WARN carries, so an operator sweeps the dispatch logs by grep (ward#402).
+const reservationWarnToken = "remote reservation NOT posted"
+
 // acquireRemoteReservation refuses on a fresh reservation comment (unless force), else
-// posts one; network/auth failures degrade to a warning since the local sentinel holds.
+// posts one - best-effort but no longer silent: retried, then a WARN (ward#402, docs).
 func (r *Runner) acquireRemoteReservation(ctx context.Context, label string, mode containerMode, ref agentIssueRef, container, justification string, now time.Time, force bool) error {
 	cl, err := r.hostForgejoClient(ctx)
 	if err != nil {
-		fmt.Fprintf(os.Stderr, "%s: note: skipping remote reservation (%v); the local sentinel still holds\n", label, err)
+		warnRemoteReservationLost(label, ref, fmt.Sprintf("could not build the forgejo client: %v", err))
 		return nil
 	}
 	if !force {
 		comments, lerr := cl.listIssueComments(ctx, ref.Owner, ref.Repo, ref.Number)
 		if lerr != nil {
-			fmt.Fprintf(os.Stderr, "%s: note: could not read issue comments to check for a remote reservation (%v); proceeding\n", label, lerr)
+			fmt.Fprintf(os.Stderr, "%s: warning: could not read issue comments to check for a remote reservation (%v); proceeding without the cross-host conflict check\n", label, lerr)
 		} else if who, held := freshReservationComment(comments, now, agentReservationTTL); held {
 			return newReservationConflict(
 				"%s: issue %s is already reserved remotely (%s); wait for it to finish or pass --force to override",
 				label, ref, who)
 		}
 	}
-	if err := cl.withMode(mode).commentIssue(ctx, ref.Owner, ref.Repo, ref.Number, reservationCommentBody(mode, container, hostname(), now, justification)); err != nil {
-		fmt.Fprintf(os.Stderr, "%s: note: could not post the remote reservation comment (%v); the local sentinel still holds\n", label, err)
+	tries, perr := postReservationComment(ctx, remoteReservationPostAttempts, remoteReservationPostBackoff, reservationPostSleep,
+		func(ctx context.Context) error {
+			return cl.withMode(mode).commentIssue(ctx, ref.Owner, ref.Repo, ref.Number,
+				reservationCommentBody(mode, container, hostname(), now, justification))
+		})
+	if perr != nil {
+		warnRemoteReservationLost(label, ref, fmt.Sprintf("post failed after %d attempt(s): %v", tries, perr))
 	}
 	return nil
+}
+
+// postReservationComment runs post up to attempts times, sleeping backoff between tries
+// (never after the last), returning the attempt count + final error (nil on success).
+func postReservationComment(ctx context.Context, attempts int, backoff time.Duration, sleep func(time.Duration), post func(context.Context) error) (int, error) {
+	if attempts < 1 {
+		attempts = 1
+	}
+	var err error
+	for attempt := 1; attempt <= attempts; attempt++ {
+		if err = post(ctx); err == nil {
+			return attempt, nil
+		}
+		if attempt < attempts {
+			sleep(backoff)
+		}
+	}
+	return attempts, err
+}
+
+// warnRemoteReservationLost prints the loud, greppable WARN for a carry whose remote
+// reservation could not be posted; the run proceeds on the local sentinel (ward#402).
+func warnRemoteReservationLost(label string, ref agentIssueRef, detail string) {
+	fmt.Fprintf(os.Stderr,
+		"%s: warning: %s for %s (%s); the local sentinel still holds this host, but cross-host dedup and "+
+			"the issue-thread reservation signal are LOST for this carry - check the host forgejo token/SSM "+
+			"path and this issue's thread (ward#402)\n",
+		label, reservationWarnToken, ref, detail)
 }
 
 // freshReservationComment describes the still-blocking reservation on the thread,
