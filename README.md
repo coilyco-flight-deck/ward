@@ -1,10 +1,8 @@
 # ward
 
-**ward is a harness driver with a policy gate.** It drives an agent harness (claude, goose, codex, qwen) into an ephemeral container to carry a Forgejo issue end to end, and it gates every dev verb - whether you or the agent runs it - behind [cli-guard][cli-guard]'s allowlist-and-deny policy.
+**ward wraps a project's dev verbs - `build`, `test`, `vet`, `lint`, `tidy`, `cover` - behind a policy gate, so nothing reaches `make` or `go` unchecked.** Every run validates its own arguments, appends one line to an audit log, and is refused if it could not be reconstructed from git history. It is the single command a contributor (human or agent) routes build-and-test work through. All it needs is a repo with a `.ward/ward.yaml` and Homebrew.
 
-The thing it produces is a **warded agent**: an agent ward drives into a container and bounds behind cli-guard policy. Read "warded" as a protective circle - the deny-list and allowlisted verbs bounding its reach, not "warded off".
-
-Its public face is **`warded`** - a thin symlink onto the `ward agent` dispatcher (ward#247, ward#282). `warded #98` carries a Forgejo issue end to end and reads like `sudo`/`firejail`: one token for "containment tool for agents". See [`docs/agent.md`](docs/agent.md).
+ward has a second half for running coding agents: `ward agent` drives a harness (claude, codex, goose, ...) into a throwaway container to carry a Forgejo issue from fresh clone to merged `main`, its reach bounded by that container. That surface is exposed as **`warded`**, a thin symlink onto `ward agent`. The name, the three-layer split it sits on, and the operator surface it absorbs are covered below and in [`docs/architecture.md`](docs/architecture.md).
 
 ## Who it's for
 
@@ -68,11 +66,11 @@ ward pkg brew bundle     # audited brew wrapper
 ward audit tail --follow # stream the audit log
 ```
 
-The agent driver, against a Forgejo issue:
+The agent driver, against a Forgejo issue. `warded` is a thin symlink onto `ward agent` - read it as a protective circle, the container bounding the agent's reach, not "warded off":
 
 ```
 warded #98               # put an engineer on issue #98, fire-and-forget
-warded engineer #98 --watch      # ...and attach to watch
+warded engineer #98      # ...spelled out; the engineer role runs detached
 warded director --org coilyco-flight-deck   # a heartbeat that drains a backlog lane
 warded advisor #98       # answer/triage a ref, writing no code
 ```
