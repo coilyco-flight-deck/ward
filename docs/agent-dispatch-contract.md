@@ -10,8 +10,10 @@ honest.
 
 ## Dispatch exit codes
 
-`0` means a container detached (then poll its `meta.json` outcome below); every
-non-zero code is a distinct "nothing launched here" ending:
+Three buckets: `0` **launched**, `1` **error** (dispatch broke), and `2`-`5`
+**refused** (a gate declined to launch). `0` means a container detached (then poll
+its `meta.json` outcome below); every non-zero code is a distinct
+"nothing launched here" ending:
 
 * `0` - **launched** - a container detached (also a `--print` dry run, and a pre-flight that could not read a verdict so failed open); the run's fate is the `meta.json` outcome, not the exit code.
 * `1` - **launch-failure** - bring-up itself failed, or the issue could not be resolved / fetched; a subprocess (docker) with no more specific code also surfaces here.
@@ -22,10 +24,12 @@ non-zero code is a distinct "nothing launched here" ending:
 
 Codes `4` and `5` only ever arise from the **interactive** pre-flight, which is
 skipped without a TTY (scripted / piped, `--print`, `--no-preflight`) - so a
-headless supervisor dispatching into a pipe sees only `0`/`1`/`2`/`3`. `0`/`1`/`2`
-line up with the shared cli-guard exit-code contract (success / generic /
-policy-denied); `3`-`5` are `ward agent`-specific. Source of truth:
-`dispatchExitCodes` in `cmd/ward/agent_exit.go`.
+headless supervisor dispatching into a pipe sees only `0`/`1`/`2`/`3`. That
+host pre-flight is slated for removal (ward#162); once it is gone the NO-GO /
+WRONG-REPO judgement moves in-container and is reported through the `meta.json`
+outcome below, not a dispatch code. `0`/`1`/`2` line up with the shared cli-guard
+exit-code contract (success / generic / policy-denied); `3`-`5` are `ward
+agent`-specific. Source of truth: `dispatchExitCodes` in `cmd/ward/agent_exit.go`.
 
 ## meta.json outcome enum
 

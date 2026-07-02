@@ -55,7 +55,7 @@ brew tap coilyco-flight-deck/tap https://forgejo.coilysiren.me/coilyco-flight-de
 brew install coilyco-flight-deck/tap/ward
 ```
 
-The explicit-URL form is required because the tap lives on forgejo, not github.com. The formula installs `ward` and the spec-driven `ward-kdl` (both stamped with the release tag) plus the `warded` symlink. Upgrade with `ward upgrade`.
+The explicit-URL form is required because the tap lives on forgejo, not github.com. The formula installs `ward` (stamped with the release tag) plus the `warded` symlink, and nothing else. The `ward-kdl` authoring binary is **not** installed - its surfaces are already embedded in `ward`, so end users need neither it nor the tier CLIs (ward#455). Spec authors who need `ward-kdl` itself build it from a ward checkout - see [ward-kdl-authoring.md](docs/ward-kdl-authoring.md). Upgrade with `ward upgrade`.
 
 **Releases live on Forgejo.** This repo is canonical on [forgejo.coilysiren.me/coilyco-flight-deck/ward](https://forgejo.coilysiren.me/coilyco-flight-deck/ward); the github.com copy is a read-only mirror of `main` + tags only, so its Releases page is intentionally empty - see the [canonical releases](https://forgejo.coilysiren.me/coilyco-flight-deck/ward/releases) for the current version and changelog.
 
@@ -92,7 +92,7 @@ A `warded` run that failed or seemed to do nothing has a single symptom-indexed 
 `ward` absorbs the operator surface from the retiring [coily][coily]. The pieces are easiest to keep straight by **when** each runs:
 
 - **[cli-guard][cli-guard]** - the **engine**. The policy-and-routing framework ward consumes (pinned via go.mod). Thin consumer, not a fork.
-- **[`ward-kdl`](docs/ward-kdl.md)** - the **build-time generator**. Compiles a KDL guardfile into an audited CLI: the `ward ops <api>` REST surfaces (forgejo, aws, tailscale, ...) shipped as `ward-kdl-{read,write,admin}` tiers.
+- **[`ward-kdl`](docs/ward-kdl.md)** - the **build-time generator**. Compiles a KDL guardfile into an audited CLI: the `ward ops <api>` REST surfaces (forgejo, aws, tailscale, ...), buildable as `ward-kdl-{read,write,admin}` tiers. Not a public install artifact - its surfaces are embedded in `ward` (ward#455).
 - **`ward`** - the **run-time product**. Embeds those generated surfaces and adds the `agent` + `exec` layers. Composite control flow (the `agent` roster, `git`) stays hand-written Go.
 
 See [`docs/architecture.md`](docs/architecture.md).
