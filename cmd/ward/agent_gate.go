@@ -9,6 +9,7 @@ import (
 	"strings"
 	"syscall"
 
+	"forgejo.coilysiren.me/coilyco-flight-deck/cli-guard/pkg/version"
 	"github.com/urfave/cli/v3"
 )
 
@@ -30,6 +31,23 @@ const (
 	gateLaunch  gateChoice = iota // proceed straight into the TUI launch (Enter)
 	gateUpgrade                   // upgrade the host ward, then re-launch
 )
+
+// wardDowngradeGuard refuses a container ward pin older than the dispatching host: it
+// ships an older, buggy reaper (docs/agent-ward-downgrade.md, ward#529). allow opts in.
+func wardDowngradeGuard(resolved, host string, allow bool) error {
+	if !version.Behind(resolved, host) {
+		return nil // equal, newer, or nothing to compare against - fine.
+	}
+	if allow {
+		return nil // operator explicitly opted into the older reaper.
+	}
+	return fmt.Errorf(
+		"refusing to dispatch a container pinned to ward %s, older than this host's ward %s: "+
+			"the in-container reaper is the last line against lost or false-salvaged work, and an "+
+			"older reaper can reproduce already-fixed bugs (ward#529). Pass --allow-ward-downgrade "+
+			"to override, or clear --ward-version / WARD_AGENT_VERSION to inherit this host's ward",
+		resolved, host)
+}
 
 // scratchGateStatus is the compact pre-flight summary the gate renders before the
 // alt-screen TUI takes the terminal - the facts printScratchPlan already knows.

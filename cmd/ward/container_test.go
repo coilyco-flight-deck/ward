@@ -1158,3 +1158,48 @@ func TestBuildUpPlanWardVersion(t *testing.T) {
 		t.Errorf("unset: WardVersion = %q, want host Version %q", got, Version)
 	}
 }
+
+// TestBuildUpPlanWardDowngradeGuard covers ward#529: a --ward-version pin older than the
+// host's ward is refused at plan-build time unless --allow-ward-downgrade opts in.
+func TestBuildUpPlanWardDowngradeGuard(t *testing.T) {
+	prev := Version
+	Version = "v0.298.0"
+	defer func() { Version = prev }()
+
+	run := func(args []string) error {
+		probe := &cli.Command{
+			Name: "probe",
+			Flags: []cli.Flag{
+				&cli.StringFlag{Name: "ward-version", Sources: cli.EnvVars(envAgentVersion)},
+				&cli.StringFlag{Name: "ward-source"},
+				&cli.StringFlag{Name: "image", Value: containerImageDefault},
+				&cli.StringFlag{Name: "tag", Value: containerImageTagDefault},
+				&cli.StringFlag{Name: "branch"},
+				&cli.StringSliceFlag{Name: "repo"},
+				&cli.BoolFlag{Name: "allow-ward-downgrade"},
+				&cli.BoolFlag{Name: "aws"},
+				&cli.BoolFlag{Name: "detach"},
+			},
+			Action: func(_ context.Context, c *cli.Command) error {
+				_, err := buildUpPlan(c, targetRepo{Owner: "o", Name: "r"}, modeClaude, t.TempDir(), t.TempDir(), nil, false)
+				return err
+			},
+		}
+		return probe.Run(context.Background(), append([]string{"probe"}, args...))
+	}
+
+	if err := run([]string{"--ward-version", "v0.297.0"}); err == nil {
+		t.Error("a --ward-version older than the host must be refused")
+	} else if !strings.Contains(err.Error(), "v0.297.0") || !strings.Contains(err.Error(), "v0.298.0") {
+		t.Errorf("refusal must name both versions; got: %v", err)
+	}
+	if err := run([]string{"--ward-version", "v0.297.0", "--allow-ward-downgrade"}); err != nil {
+		t.Errorf("--allow-ward-downgrade must opt past the refusal; got: %v", err)
+	}
+	if err := run([]string{"--ward-version", "v0.298.0"}); err != nil {
+		t.Errorf("an equal pin must build unchanged; got: %v", err)
+	}
+	if err := run([]string{"--ward-version", "v0.299.0"}); err != nil {
+		t.Errorf("a newer pin must build unchanged; got: %v", err)
+	}
+}

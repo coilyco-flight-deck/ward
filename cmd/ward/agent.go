@@ -425,6 +425,7 @@ func agentImageFlags() []cli.Flag {
 		&cli.StringFlag{Name: "tag", Value: containerImageTagDefault, Hidden: true, Sources: cli.EnvVars(envAgentTag), Usage: "image tag; per-run pinning (env: WARD_AGENT_TAG)"},
 		&cli.StringFlag{Name: "ward-source", Hidden: true, Usage: "development-only: mount a local ward checkout and build ward from it instead of downloading the release"},
 		&cli.StringFlag{Name: "ward-version", Hidden: true, Sources: cli.EnvVars(envAgentVersion), Usage: "ward release the container downloads (default: this host's ward; env: WARD_AGENT_VERSION)"},
+		&cli.BoolFlag{Name: "allow-ward-downgrade", Hidden: true, Usage: "permit a --ward-version pin older than this host's ward (ships an older in-container reaper; ward#529)"},
 		&cli.BoolFlag{Name: "aws", Usage: "mount ~/.aws read-only (broad SSM read surface; off by default)"},
 	}
 	return append(flags, tailnetFlags()...)

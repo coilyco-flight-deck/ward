@@ -24,6 +24,7 @@ skips the reservation checks ([agent-reservation.md](agent-reservation.md)) and
 
 * `--tailnet-mode auto|host-net|sidecar` - pin the mechanism (a non-auto value implies `--tailnet`).
 * `--tag` / `--image` / `--ward-version` - pin the image, env-backed via `WARD_AGENT_{TAG,IMAGE,VERSION}` (ward#312).
+* `--allow-ward-downgrade` - permit a `--ward-version` pin **older** than this host's ward. Refused by default: the pin is what the container's in-process reaper runs, and an older reaper can reproduce already-fixed lost/false-salvage bugs (ward#529). An equal-or-newer pin needs no flag.
 * `--ward-source` - build ward from a local checkout (development-only).
 * `--branch` - override the `issue-<N>` branch default. `--no-pull` - reuse the cached image.
 

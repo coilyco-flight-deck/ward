@@ -145,6 +145,39 @@ func TestRunScratchGateNoTTYFallsThrough(t *testing.T) {
 	}
 }
 
+// A ward pin older than this host's is refused by default (naming both versions); an
+// equal-or-newer pin passes, and --allow-ward-downgrade opts past a downgrade (ward#529).
+func TestWardDowngradeGuard(t *testing.T) {
+	cases := []struct {
+		name             string
+		resolved, host   string
+		allow            bool
+		wantErr          bool
+		wantNamesInError []string
+	}{
+		{name: "downgrade refused", resolved: "v0.297.0", host: "v0.298.0", wantErr: true, wantNamesInError: []string{"v0.297.0", "v0.298.0"}},
+		{name: "downgrade minor", resolved: "v0.298.0", host: "v0.299.5", wantErr: true, wantNamesInError: []string{"v0.298.0", "v0.299.5"}},
+		{name: "equal allowed", resolved: "v0.298.0", host: "v0.298.0"},
+		{name: "newer allowed", resolved: "v0.299.0", host: "v0.298.0"},
+		{name: "downgrade opted in", resolved: "v0.297.0", host: "v0.298.0", allow: true},
+		{name: "dev host never refuses", resolved: "v0.297.0", host: "dev"},
+		{name: "dev pin never refuses", resolved: "dev", host: "v0.298.0"},
+	}
+	for _, tc := range cases {
+		t.Run(tc.name, func(t *testing.T) {
+			err := wardDowngradeGuard(tc.resolved, tc.host, tc.allow)
+			if tc.wantErr != (err != nil) {
+				t.Fatalf("wardDowngradeGuard(%q, %q, allow=%v) err=%v, wantErr=%v", tc.resolved, tc.host, tc.allow, err, tc.wantErr)
+			}
+			for _, want := range tc.wantNamesInError {
+				if !strings.Contains(err.Error(), want) {
+					t.Errorf("refusal must name %q; got: %v", want, err)
+				}
+			}
+		})
+	}
+}
+
 // stubGateTTY swaps the gate's terminal probe for the run, restoring it on cleanup.
 func stubGateTTY(t *testing.T, attached bool) func() {
 	t.Helper()

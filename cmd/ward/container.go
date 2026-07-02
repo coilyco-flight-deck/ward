@@ -98,6 +98,11 @@ func buildUpPlan(c *cli.Command, repo targetRepo, mode containerMode, cwd, asset
 	if v := strings.TrimSpace(c.String("ward-version")); v != "" {
 		wardVersion = v
 	}
+	// A pin behind this host ships an older in-container reaper - the last line against
+	// lost/false-salvaged work - so refuse the downgrade unless opted in (ward#529).
+	if err := wardDowngradeGuard(wardVersion, Version, c.Bool("allow-ward-downgrade")); err != nil {
+		return upPlan{}, err
+	}
 	// Consolidated tailnet route (ward#362): --tailnet auto-selects host-net vs the sidecar
 	// by platform (--tailnet-mode overrides); it implies --aws. docs/agent-flags.md.
 	hostNet, tsSidecar, err := resolveTailnet(c, runtime.GOOS)
