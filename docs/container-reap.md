@@ -2,9 +2,8 @@
 
 `ward container reap` is the deterministic teardown backstop for
 [`ward container`](container.md). A container is throwaway: once it goes down,
-anything not pushed is gone, so the usual harness hedge - "left it uncommitted,
-for review" - silently loses work. The no-lost-work guarantee lives here, not in
-the agent.
+anything not pushed is gone. The no-lost-work guarantee lives here, not in the
+agent.
 
 ## How it runs
 
@@ -17,22 +16,21 @@ does can defeat it. It is a hidden (ward#263) verb the entrypoint calls.
 
 1. Stages and commits anything the agent left loose (`git add -A` + a
    `--no-verify` residual commit - the goal is to preserve work, not re-gate it).
-2. Verifies the carried issue has the same-repo `closes #N` reference. Missing
+2. Records dispatch-time run provenance. See [run provenance](container-reap-provenance.md).
+3. Verifies the carried issue has the same-repo `closes #N` reference. Missing
    reference means salvage, not push.
-3. Fetches origin and integrates onto the latest `main` (`rebase`; conflicts
-   route to salvage).
-4. Scans the residual diff for content that should never silently land on `main`:
+4. Integrates onto the latest `main` (`rebase`; conflicts route to salvage).
+5. Scans the residual diff for content that should never silently land on `main`:
    vendored/generated trees (`node_modules`, `vendor`, ...), credential-shaped
    files (`.env`, `*.pem`/`*.key`, `id_rsa`, ...), and oversized binary blobs.
-5. Decides deterministically:
+6. Decides deterministically:
    - clean diff + clean integration -> **push straight to `main`**.
    - anything else (conflict, scan finding, rejected push) -> **salvage**: push
      the work to a `ward-salvage/<id>` branch (durable), then file or append to a
      `[ward-salvage]` forgejo issue with recovery commands + findings (notification).
-6. Verifies each `--repo` grant landed (ward#291): reads `WARD_EXTRA_REPOS` and
-   checks the closing-reference discipline plus whether `HEAD` reached
-   `origin/main`. Un-pushed grants are preserved on `ward-salvage/<id>` and the
-   target issue is reopened with a recovery comment (undoing any `closes #N`).
+7. Verifies each `--repo` grant landed (ward#291): reads `WARD_EXTRA_REPOS`,
+   checks the closing-reference discipline, and reopens the issue if any grant
+   did not reach `origin/main`.
 
 ## Why this shape
 

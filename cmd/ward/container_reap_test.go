@@ -269,6 +269,55 @@ func TestIssueClosingReferencePresent(t *testing.T) {
 	}
 }
 
+func TestRunProvenanceLandedRejectsPreexistingCommit(t *testing.T) {
+	repo := t.TempDir()
+	runGit(t, repo, "init", "-b", "main")
+	runGit(t, repo, "config", "user.email", "test@example.com")
+	runGit(t, repo, "config", "user.name", "Test User")
+	runGitCommitAt(t, repo, "2026-07-02T05:19:32Z", "base.txt", "base\n", "stale carry\n\ncloses #512")
+	runGit(t, repo, "remote", "add", "origin", repo)
+	runGit(t, repo, "update-ref", "refs/remotes/origin/main", "HEAD")
+	reservedAt := "2026-07-02T05:39:58Z"
+	prov := runProvenance{
+		RunID:        "engineer-goose-infrastructure-426",
+		Repo:         "coilyco-flight-deck/infrastructure",
+		Issue:        513,
+		ReservedAt:   reservedAt,
+		BaselineMain: mustGitRev(t, repo, "origin/main"),
+	}
+	r := &Runner{Runner: &shell.Runner{Resolve: shell.PathResolver}}
+	if r.runProvenanceLanded(t.Context(), repo, prov, 513) {
+		t.Fatal("preexisting commit on origin/main must not satisfy a newer run reservation")
+	}
+}
+
+func TestRunProvenanceLandedRequiresMatchingIssueAfterReservation(t *testing.T) {
+	repo := t.TempDir()
+	runGit(t, repo, "init", "-b", "main")
+	runGit(t, repo, "config", "user.email", "test@example.com")
+	runGit(t, repo, "config", "user.name", "Test User")
+	runGitCommitAt(t, repo, "2026-07-02T05:19:32Z", "base.txt", "base\n", "stale carry\n\ncloses #512")
+	runGit(t, repo, "remote", "add", "origin", repo)
+	runGit(t, repo, "update-ref", "refs/remotes/origin/main", "HEAD")
+	runGitCommitAt(t, repo, "2026-07-02T05:45:00Z", "feat.txt", "fresh\n", "fresh carry\n\ncloses #513")
+	runGit(t, repo, "update-ref", "refs/remotes/origin/main", "HEAD")
+	prov := runProvenance{
+		RunID:        "engineer-goose-infrastructure-426",
+		Repo:         "coilyco-flight-deck/infrastructure",
+		Issue:        513,
+		ReservedAt:   "2026-07-02T05:39:58Z",
+		BaselineMain: mustGitRev(t, repo, "HEAD~1"),
+	}
+	r := &Runner{Runner: &shell.Runner{Resolve: shell.PathResolver}}
+	if !r.runProvenanceLanded(t.Context(), repo, prov, 513) {
+		t.Fatal("matching issue commit after reservation should satisfy the provenance proof")
+	}
+	prov.Issue = 514
+	if r.runProvenanceLanded(t.Context(), repo, prov, 514) {
+		t.Fatal("adjacent issue numbers must not cross-attribute landed history")
+	}
+}
+
 func runGit(t *testing.T, dir string, argv ...string) {
 	t.Helper()
 	cmd := exec.Command("git", argv...)
@@ -277,6 +326,37 @@ func runGit(t *testing.T, dir string, argv ...string) {
 	if err != nil {
 		t.Fatalf("git %v failed: %v\n%s", argv, err, string(out))
 	}
+}
+
+func runGitCommitAt(t *testing.T, dir, date, path, content, message string) {
+	t.Helper()
+	if err := os.WriteFile(filepath.Join(dir, path), []byte(content), 0o644); err != nil {
+		t.Fatal(err)
+	}
+	cmd := exec.Command("git", "add", path)
+	cmd.Dir = dir
+	if out, err := cmd.CombinedOutput(); err != nil {
+		t.Fatalf("git add failed: %v\n%s", err, string(out))
+	}
+	cmd = exec.Command("git", "commit", "-m", message)
+	cmd.Dir = dir
+	cmd.Env = append(os.Environ(),
+		"GIT_AUTHOR_DATE="+date,
+		"GIT_COMMITTER_DATE="+date,
+	)
+	if out, err := cmd.CombinedOutput(); err != nil {
+		t.Fatalf("git commit failed: %v\n%s", err, string(out))
+	}
+}
+
+func mustGitRev(t *testing.T, dir, ref string) string {
+	t.Helper()
+	cmd := exec.Command("git", "-C", dir, "rev-parse", ref)
+	out, err := cmd.CombinedOutput()
+	if err != nil {
+		t.Fatalf("git rev-parse %s failed: %v\n%s", ref, err, string(out))
+	}
+	return strings.TrimSpace(string(out))
 }
 
 func TestSalvageIssueBodyRendersRecoveryAndFindings(t *testing.T) {

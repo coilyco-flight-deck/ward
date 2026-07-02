@@ -3,6 +3,7 @@ package main
 import (
 	"bytes"
 	"context"
+	"encoding/json"
 	"fmt"
 	"io"
 	"os"
@@ -144,12 +145,21 @@ func (r *Runner) reapTargetTree(ctx context.Context, work string, env reapEnv, r
 		return r.salvage(ctx, work, env, reasonPushFail, false, nil, statusSnapshot)
 	}
 
-	residual := revCount(ctx, r, work, "origin/main..HEAD")
+	prov, perr := r.readRunProvenance(work)
+	if perr != nil {
+		return r.salvage(ctx, work, env, reasonConflict, false, nil, statusSnapshot)
+	}
 	if env.Issue != 0 && !r.issueClosingReferencePresent(ctx, work, env.Issue) {
 		fmt.Fprintf(os.Stderr, "ward container reap: missing closes #%d in committed work; salvaging instead of landing on main\n", env.Issue)
 		return r.salvage(ctx, work, env, reasonCloseRef, false, nil, statusSnapshot)
 	}
 
+	residual := revCount(ctx, r, work, "origin/main..HEAD")
+	findings := scan.Diff(r.diffEntries(ctx, work, "origin/main...HEAD"))
+	if !r.runProvenanceLanded(ctx, work, prov, env.Issue) {
+		fmt.Fprintln(os.Stderr, "ward container reap: no run-owned landed commit after dispatch; salvaging instead of claiming success")
+		return r.salvage(ctx, work, env, reasonConflict, false, findings, statusSnapshot)
+	}
 	if residual == 0 && strings.TrimSpace(statusSnapshot) == "" {
 		fmt.Fprintln(os.Stderr, "ward container reap: nothing to reap (tree clean, HEAD on origin/main)")
 		if releaseReservation {
@@ -158,13 +168,12 @@ func (r *Runner) reapTargetTree(ctx context.Context, work string, env reapEnv, r
 		return nil
 	}
 
-	findings := scan.Diff(r.diffEntries(ctx, work, "origin/main...HEAD"))
 	action := decideReap(reapInputs{
-		HasResidualWork:  residual > 0,
+		HasResidualWork:  residual > 0 || strings.TrimSpace(statusSnapshot) != "",
 		IntegrationClean: r.integrate(ctx, work, residual),
 		Findings:         findings,
 	})
-	return r.executeReap(ctx, work, env, action, findings, statusSnapshot)
+	return r.executeReap(ctx, work, env, action, findings, statusSnapshot, prov)
 }
 
 // resolveReapWork picks the clone work tree: --work, then $WARD_REAP_WORK (set
@@ -217,12 +226,16 @@ func (r *Runner) integrate(ctx context.Context, work string, residual int) bool 
 
 // executeReap carries out the decided action: do nothing, push to main (falling
 // to salvage if the push is rejected), or salvage.
-func (r *Runner) executeReap(ctx context.Context, work string, env reapEnv, action reapAction, findings []scan.Finding, status string) error {
+func (r *Runner) executeReap(ctx context.Context, work string, env reapEnv, action reapAction, findings []scan.Finding, status string, prov runProvenance) error {
 	switch action {
 	case reapNothing:
 		fmt.Fprintln(os.Stderr, "ward container reap: nothing to reap")
 		return nil
 	case reapPushMain:
+		if ok := r.runProvenanceLanded(ctx, work, prov, env.Issue); !ok {
+			fmt.Fprintln(os.Stderr, "ward container reap: remote main has no run-owned commit after dispatch; salvaging")
+			return r.salvage(ctx, work, env, reasonConflict, false, findings, status)
+		}
 		out, perr := r.pushCapture(ctx, work, "HEAD:main")
 		if perr == nil {
 			fmt.Fprintln(os.Stderr, "ward container reap: landed on main")
@@ -244,6 +257,50 @@ func (r *Runner) executeReap(ctx context.Context, work string, env reapEnv, acti
 		return r.salvage(ctx, work, env, reason, false, findings, status)
 	}
 	return nil
+}
+
+func (r *Runner) readRunProvenance(work string) (runProvenance, error) {
+	var prov runProvenance
+	data, err := os.ReadFile(filepath.Join(work, runProvenanceFile))
+	if err != nil {
+		return prov, fmt.Errorf("read run provenance: %w", err)
+	}
+	if uerr := json.Unmarshal(data, &prov); uerr != nil {
+		return prov, fmt.Errorf("parse run provenance: %w", uerr)
+	}
+	return prov, nil
+}
+
+func (r *Runner) runProvenanceLanded(ctx context.Context, work string, prov runProvenance, issue int) bool {
+	if issue == 0 || prov.BaselineMain == "" {
+		return false
+	}
+	out, err := r.Runner.Capture(ctx, "git", "-C", work, "log", "--format=%H%x00%cI%x00%B%x00", prov.BaselineMain+"..origin/main")
+	if err != nil {
+		return false
+	}
+	reservedAt, rerr := time.Parse(time.RFC3339, prov.ReservedAt)
+	if rerr != nil {
+		return false
+	}
+	want := fmt.Sprintf("closes #%d", issue)
+	fields := strings.Split(string(out), "\x00")
+	for i := 0; i+2 < len(fields); i += 3 {
+		hash := strings.TrimSpace(fields[i])
+		tsRaw := strings.TrimSpace(fields[i+1])
+		body := fields[i+2]
+		if hash == "" || tsRaw == "" {
+			continue
+		}
+		ts, terr := time.Parse(time.RFC3339, tsRaw)
+		if terr != nil || ts.Before(reservedAt) {
+			continue
+		}
+		if strings.Contains(strings.ToLower(body), want) {
+			return true
+		}
+	}
+	return false
 }
 
 // salvage preserves residual work on a ward-salvage/<id> branch (durable) then

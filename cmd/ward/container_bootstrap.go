@@ -32,6 +32,8 @@ type bootstrapEnv struct {
 	TargetName   string
 	ForgejoBase  string
 	Mode         string
+	Container    string
+	Issue        int
 	Agent        string
 	ContextLevel string
 	GitCache     string
@@ -65,6 +67,18 @@ type bootstrapEnv struct {
 	SubstrateManifest string
 	SubstrateTTL      string
 	SubstrateSkip     bool
+}
+
+const runProvenanceFile = ".ward-run-provenance.json"
+
+// runProvenance records the dispatch-time identity and remote baseline so the
+// reaper can prove later success came from this run, not stale history.
+type runProvenance struct {
+	RunID        string `json:"run_id"`
+	Repo         string `json:"repo"`
+	Issue        int    `json:"issue"`
+	ReservedAt   string `json:"reserved_at"`
+	BaselineMain string `json:"baseline_main"`
 }
 
 // envOr returns the env var or a default, mirroring bash `${X:-default}`.
@@ -103,6 +117,8 @@ func readBootstrapEnv() (bootstrapEnv, error) {
 		TargetName:   os.Getenv("WARD_TARGET_NAME"),
 		ForgejoBase:  os.Getenv("WARD_FORGEJO_BASE"),
 		Mode:         envOr("WARD_MODE", fleet.Defaults.Agent),
+		Container:    os.Getenv("WARD_CONTAINER_NAME"),
+		Issue:        0,
 		Agent:        envOr("WARD_AGENT", string(modeClaude)),
 		ContextLevel: envOr("WARD_CONTEXT_LEVEL", "2"),
 		GitCache:     envOr("WARD_GITCACHE", "/gitcache"),
@@ -144,6 +160,7 @@ func readBootstrapEnv() (bootstrapEnv, error) {
 	}
 	e.ForgejoHost = forgejoHostFromBase(e.ForgejoBase)
 	e.ExtraRepos = parseExtraReposEnv(os.Getenv("WARD_EXTRA_REPOS"), e.TargetOwner, e.TargetName)
+	e.Issue, _ = strconv.Atoi(os.Getenv("WARD_TARGET_ISSUE"))
 	return e, nil
 }
 
@@ -243,6 +260,10 @@ func (r *Runner) runContainerBootstrap(ctx context.Context, c *cli.Command) erro
 	work, cerr := r.cloneTarget(ctx, e)
 	if cerr != nil {
 		return cerr
+	}
+	if perr := r.writeRunProvenance(ctx, work, e); perr != nil {
+		blog("fatal: %v", perr)
+		return perr
 	}
 	r.installPreCommitHooks(ctx, e, work)
 	r.installReadOnlyPushGuard(ctx, e, work)
@@ -460,6 +481,36 @@ func (r *Runner) cloneTarget(ctx context.Context, e bootstrapEnv) (string, error
 		_ = r.Runner.Exec(ctx, "git", "-C", work, "checkout", "-B", e.Branch)
 	}
 	return work, nil
+}
+
+// writeRunProvenance captures the dispatch-time identity and remote baseline so
+// the reaper can prove later success came from this run, not stale history.
+func (r *Runner) writeRunProvenance(ctx context.Context, work string, e bootstrapEnv) error {
+	if e.Issue == 0 {
+		return nil
+	}
+	baseline := r.captureTrim(ctx, "git", "-C", work, "rev-parse", "origin/main")
+	if baseline == "" {
+		return fmt.Errorf("ward container bootstrap: capture origin/main baseline")
+	}
+	prov := runProvenance{
+		RunID:        e.Container,
+		Repo:         e.TargetOwner + "/" + e.TargetName,
+		Issue:        e.Issue,
+		ReservedAt:   os.Getenv("WARD_CONTAINER_UP"),
+		BaselineMain: baseline,
+	}
+	data, merr := json.MarshalIndent(prov, "", "  ")
+	if merr != nil {
+		return fmt.Errorf("ward container bootstrap: marshal provenance: %w", merr)
+	}
+	data = append(data, '\n')
+	path := filepath.Join(work, runProvenanceFile)
+	if werr := os.WriteFile(path, data, 0o600); werr != nil {
+		return fmt.Errorf("ward container bootstrap: write provenance %s: %w", path, werr)
+	}
+	blog("recorded run provenance at %s", path)
+	return nil
 }
 
 // --- additional granted repos (ward#230): clone+operate beyond the target ----
