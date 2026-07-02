@@ -148,7 +148,8 @@ func (r *Runner) reapTargetTree(ctx context.Context, work string, env reapEnv, r
 	if !refExists(ctx, r, work, "origin/main") {
 		// Without a main to integrate against we cannot safely push; preserve
 		// whatever HEAD holds on a salvage branch.
-		return r.salvage(ctx, work, env, reasonPushFail, false, nil, statusSnapshot)
+		return r.salvage(ctx, work, env, reasonPushFail, false, nil, statusSnapshot,
+			reapDecision{Gate: "no origin/main to integrate against", ProvState: "not read (no origin/main)"})
 	}
 
 	// Nothing to reap comes FIRST, ahead of every salvage gate: a clean tree with
@@ -166,17 +167,23 @@ func (r *Runner) reapTargetTree(ctx context.Context, work string, env reapEnv, r
 	prov, perr := r.readRunProvenance(work)
 	if perr != nil {
 		fmt.Fprintf(os.Stderr, "ward container reap: provenance missing or unreadable: %v\n", perr)
-		return r.salvage(ctx, work, env, reasonConflict, false, nil, statusSnapshot)
+		return r.salvage(ctx, work, env, reasonConflict, false, nil, statusSnapshot,
+			reapDecision{Gate: "provenance missing or unreadable", ProvState: "missing or unreadable"})
 	}
+	// The run-owned-landed verdict is computed once here and reused by every gate
+	// below (including executeReap) so the diagnostics block reports what each saw.
+	landed := r.runProvenanceLanded(ctx, work, prov, env.Issue)
 	if env.Issue != 0 && !r.issueClosingReferencePresent(ctx, work, env.Issue) {
 		fmt.Fprintf(os.Stderr, "ward container reap: missing closes #%d in committed work; salvaging instead of landing on main\n", env.Issue)
-		return r.salvage(ctx, work, env, reasonCloseRef, false, nil, statusSnapshot)
+		return r.salvage(ctx, work, env, reasonCloseRef, false, nil, statusSnapshot,
+			reapDecision{Gate: "missing same-repo closing reference", ProvState: "present", Landed: landed})
 	}
 
 	findings := scan.Diff(r.diffEntries(ctx, work, "origin/main...HEAD"))
-	if !r.runProvenanceLanded(ctx, work, prov, env.Issue) {
+	if !landed {
 		fmt.Fprintln(os.Stderr, "ward container reap: no run-owned landed commit after dispatch; salvaging instead of claiming success")
-		return r.salvage(ctx, work, env, reasonConflict, false, findings, statusSnapshot)
+		return r.salvage(ctx, work, env, reasonConflict, false, findings, statusSnapshot,
+			reapDecision{Gate: "no run-owned landed commit after dispatch", ProvState: "present"})
 	}
 
 	action := decideReap(reapInputs{
@@ -185,7 +192,7 @@ func (r *Runner) reapTargetTree(ctx context.Context, work string, env reapEnv, r
 		Findings:         findings,
 	})
 	fmt.Fprintf(os.Stderr, "ward container reap: decision=%d for %s\n", action, work)
-	return r.executeReap(ctx, work, env, action, findings, statusSnapshot, prov)
+	return r.executeReap(ctx, work, env, action, findings, statusSnapshot, landed)
 }
 
 // resolveReapWork picks the clone work tree: --work, then $WARD_REAP_WORK (set
@@ -244,15 +251,16 @@ func (r *Runner) integrate(ctx context.Context, work string, residual int) bool 
 
 // executeReap carries out the decided action: do nothing, push to main (falling
 // to salvage if the push is rejected), or salvage.
-func (r *Runner) executeReap(ctx context.Context, work string, env reapEnv, action reapAction, findings []scan.Finding, status string, prov runProvenance) error {
+func (r *Runner) executeReap(ctx context.Context, work string, env reapEnv, action reapAction, findings []scan.Finding, status string, landed bool) error {
 	switch action {
 	case reapNothing:
 		fmt.Fprintln(os.Stderr, "ward container reap: nothing to reap")
 		return nil
 	case reapPushMain:
-		if ok := r.runProvenanceLanded(ctx, work, prov, env.Issue); !ok {
+		if !landed {
 			fmt.Fprintln(os.Stderr, "ward container reap: remote main has no run-owned commit after dispatch; salvaging")
-			return r.salvage(ctx, work, env, reasonConflict, false, findings, status)
+			return r.salvage(ctx, work, env, reasonConflict, false, findings, status,
+				reapDecision{Gate: "remote main has no run-owned commit (pre-push recheck)", ProvState: "present"})
 		}
 		fmt.Fprintln(os.Stderr, "ward container reap: push to main start")
 		out, perr := r.pushCapture(ctx, work, "HEAD:main")
@@ -267,13 +275,15 @@ func (r *Runner) executeReap(ctx context.Context, work string, env reapEnv, acti
 			reason, authCause = reasonAuthFail, true
 		}
 		fmt.Fprintf(os.Stderr, "ward container reap: push to main rejected (%s); salvaging\n", reason)
-		return r.salvage(ctx, work, env, reason, authCause, findings, status)
+		return r.salvage(ctx, work, env, reason, authCause, findings, status,
+			reapDecision{Gate: "push to main rejected", ProvState: "present", Landed: true})
 	case reapSalvage:
-		reason := reasonConflict
+		reason, gate := reasonConflict, "merge conflict integrating onto main"
 		if len(findings) > 0 {
-			reason = reasonScan
+			reason, gate = reasonScan, "junk scan flagged the diff"
 		}
-		return r.salvage(ctx, work, env, reason, false, findings, status)
+		return r.salvage(ctx, work, env, reason, false, findings, status,
+			reapDecision{Gate: gate, ProvState: "present", Landed: true})
 	}
 	return nil
 }
@@ -324,10 +334,17 @@ func (r *Runner) runProvenanceLanded(ctx context.Context, work string, prov runP
 
 // salvage preserves residual work on a ward-salvage/<id> branch (durable) then
 // best-effort files/appends a forgejo issue (notification); the branch goes first.
-func (r *Runner) salvage(ctx context.Context, work string, env reapEnv, reason reapReason, authCause bool, findings []scan.Finding, status string) error {
+func (r *Runner) salvage(ctx context.Context, work string, env reapEnv, reason reapReason, authCause bool, findings []scan.Finding, status string, dec reapDecision) error {
 	id := env.Name + "-" + randHex()
 	branch := salvageBranchName(id)
 	fmt.Fprintf(os.Stderr, "ward container reap: salvage start branch=%s reason=%s\n", branch, reason)
+
+	// Dump the debugging block to stderr FIRST (ward#531): a dead-PAT salvage files
+	// no issue, so the container log is the only surface these facts reach.
+	age, _ := formatTokenAge(env.UpAt, time.Now())
+	diag := r.gatherReapDiagnostics(ctx, work, reason, dec, status, age)
+	fmt.Fprintf(os.Stderr, "%s\n", renderReapDiagnostics(diag))
+
 	_ = r.Runner.Exec(ctx, "git", "-C", work, "branch", "-f", branch, "HEAD")
 	if out, perr := r.pushCapture(ctx, work, branch+":"+branch); perr != nil {
 		// The branch push reuses the same baked PAT, so a dead token fails here too;
@@ -347,18 +364,18 @@ func (r *Runner) salvage(ctx context.Context, work string, env reapEnv, reason r
 	}
 	fmt.Fprintf(os.Stderr, "ward container reap: preserved work on %s (%s)\n", branch, reason)
 
-	age, _ := formatTokenAge(env.UpAt, time.Now())
 	report := salvageReport{
-		Repo:      env.repo(),
-		Mode:      env.Mode,
-		Branch:    branch,
-		Reason:    reason,
-		AuthCause: authCause,
-		TokenAge:  age,
-		Findings:  findings,
-		Status:    status,
-		Base:      env.Base,
-		Issue:     env.Issue,
+		Repo:        env.repo(),
+		Mode:        env.Mode,
+		Branch:      branch,
+		Reason:      reason,
+		AuthCause:   authCause,
+		TokenAge:    age,
+		Findings:    findings,
+		Status:      status,
+		Base:        env.Base,
+		Issue:       env.Issue,
+		Diagnostics: diag,
 	}
 	if ferr := r.fileSalvageIssue(ctx, env, report); ferr != nil {
 		// The branch already preserved the work; a failed issue is a missed
@@ -627,6 +644,60 @@ func (r *Runner) pushCapture(ctx context.Context, work, refspec string) (string,
 	err := r.Runner.Exec(ctx, "git", "-C", work, "push", "origin", refspec)
 	r.Runner.Stderr = prev
 	return buf.String(), err
+}
+
+// --- reap diagnostics (ward#531) ---------------------------------------------
+
+// gatherReapDiagnostics assembles the debugging block a salvage/fail site emits
+// (ward#531): reaper ward version, HEAD-vs-origin/main, decision/provenance facts.
+func (r *Runner) gatherReapDiagnostics(ctx context.Context, work string, reason reapReason, dec reapDecision, status, tokenAge string) reapDiagnostics {
+	version, source := wardVersionResolution()
+	main := shortSha(r.captureRev(ctx, work, "origin/main"))
+	return reapDiagnostics{
+		WardVersion:   version,
+		VersionSource: source,
+		Head:          shortSha(r.captureRev(ctx, work, "HEAD")),
+		OriginMain:    main,
+		HeadOnMain:    main != "" && isAncestor(ctx, r, work, "HEAD", "origin/main"),
+		Gate:          dec.Gate,
+		Reason:        reason,
+		ProvState:     dec.ProvState,
+		Landed:        dec.Landed,
+		Status:        status,
+		TokenAge:      tokenAge,
+	}
+}
+
+// wardVersionResolution reports the reaper's compiled ward version and how it
+// resolved (WARD_VERSION/--ward-version pin vs releases/latest) - the #504 key field.
+func wardVersionResolution() (version, source string) {
+	pin := strings.TrimSpace(os.Getenv("WARD_VERSION"))
+	if pin == "" || pin == "dev" {
+		return Version, "releases/latest (resolved in-container)"
+	}
+	return Version, fmt.Sprintf("pinned via WARD_VERSION/--ward-version (%s)", pin)
+}
+
+// captureRev resolves a ref to its full sha, or "" when git cannot (no such ref).
+func (r *Runner) captureRev(ctx context.Context, work, ref string) string {
+	out, err := r.Runner.Capture(ctx, "git", "-C", work, "rev-parse", ref)
+	if err != nil {
+		return ""
+	}
+	return strings.TrimSpace(string(out))
+}
+
+// shortSha truncates a full sha to a readable 12 chars for the block.
+func shortSha(sha string) string {
+	if len(sha) > 12 {
+		return sha[:12]
+	}
+	return sha
+}
+
+// isAncestor reports `git merge-base --is-ancestor a b` (a is contained in b).
+func isAncestor(ctx context.Context, r *Runner, work, a, b string) bool {
+	return r.Runner.Exec(ctx, "git", "-C", work, "merge-base", "--is-ancestor", a, b) == nil
 }
 
 // --- small git predicates ----------------------------------------------------
