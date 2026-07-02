@@ -54,3 +54,4 @@ actually holds.
 - [hook.md](hook.md) - the claude PreToolUse hook (fail-open by design).
 - [container-permissions.md](container-permissions.md) - why the container flow runs with the deny wall off.
 - [agent.md](agent.md) - the `ward agent` umbrella and `--driver` roster.
+- [agent-drivers.md](agent-drivers.md) - the four `--driver` harnesses compared (credentials, install, launch gates).

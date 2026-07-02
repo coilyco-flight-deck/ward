@@ -14,7 +14,7 @@ Contributor-facing cli-guard gate: repo dev verbs + audited host wrappers.
 - **`ward audit {path,tail}`** - read the audit log: `path` prints its path, `tail` streams rows (`--since`/`--follow`). See [audit.md](audit.md).
 - **`ward git <verb>`** - audited passthroughs, concurrency-safe `commit`, destination-gated `clone` (ward#285), ephemeral-clone `grep`/`grep-remote` (ward#369). See [git-verbs.md](git-verbs.md).
 - **`ward doctor`** - diagnostic checks against the config + host, including the allowlist drift guard. See [doctor.md](doctor.md).
-- **`ward hook pre-tool-use`** - Claude Code PreToolUse hook: binary-path check + bare-command deny with routing hints. Claude-only and fail-open; where the boundary sits for every harness is [enforcement-boundary.md](enforcement-boundary.md).
+- **`ward hook pre-tool-use`** - Claude Code PreToolUse hook: binary-path check + bare-command deny with routing hints.
 - **`ward install-hooks`** - register the PreToolUse hook in `.claude/settings.json`.
 - **`ward agent {engineer,director,advisor} [--driver <name>]`** (public face: **`warded <role> <ref>`**) - startup-role roster: `engineer` implements detached, `director` a heartbeat surfacing a read-only session + triage, `advisor` answers without code (a ref comments or fans cross-repo work into per-repo issues, trust-gated; ward#424). `warded` is a `ward` symlink; a bare ref runs `engineer`, `#N` infers `owner/repo`. `--driver` picks a harness; `--repo`/`--org` scope. Every role dispatches only for a compiled-in [trusted owner](agent-trust-gate.md). See [agent](agent.md).
 - **`ward container {reap,bootstrap}`** *(hidden, entrypoint-internal; ward#263)* - in-container plumbing: `reap` lands/salvages on teardown + verifies each `--repo` grant landed (ward#291); `bootstrap` is the PID-1 entrypoint port (ward#181). See [reap](container-reap.md).
@@ -27,9 +27,13 @@ Contributor-facing cli-guard gate: repo dev verbs + audited host wrappers.
 
 ## Spec-driven ops (`ward-kdl`)
 
-`ward-kdl` is the build-time authoring layer ([docs/ward-kdl.md](ward-kdl.md)). It carries permission surfaces and fleet configs: `ops` (forgejo/tailscale/signoz/aws/kubectl/...), `docker`, `agents`, `pkg` ([ward-kdl-surface.md](ward-kdl-surface.md)), plus `ward-kdl.fleet.kdl`. `ward ops forgejo` grafts an admin slice ([ops-forgejo-admin](ops-forgejo-admin.md)) and ships as `ward-kdl-{read,write,admin}` tiers (ward#240).
+`ward-kdl` is the build-time authoring layer ([docs/ward-kdl.md](ward-kdl.md)): permission surfaces + fleet configs for `ops` (forgejo/tailscale/signoz/aws/kubectl/...), `docker`, `agents`, `pkg` ([surface](ward-kdl-surface.md)), plus `ward-kdl.fleet.kdl`. It builds into `ward-kdl-{read,write,admin}` tiers (ward#240) - not public artifacts (ward#455), spec authors build from a clone ([authoring](ward-kdl-authoring.md)).
 
 The **exec-dialect** guardfiles auto-mount at their `wrap` path; `git` / `pkg brew` keep hand-written surfaces (ward#284). See [in-ward](ward-kdl-in-ward.md).
+
+## Release pipeline
+
+- **Release notes** *(ward#486)* - "does it affect you" verdict. [release-notes.md](release-notes.md).
 
 ## See also
 

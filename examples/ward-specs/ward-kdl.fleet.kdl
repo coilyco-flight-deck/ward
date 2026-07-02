@@ -1,0 +1,35 @@
+// Example fleet config (cli-guard fleetconfig, DIALECT 2) - a neutral,
+// deployment-agnostic spec bundle input for `ward-kdl` (ward#453). This names an
+// agent roster and per-agent launch shape, never a permission. The `attribution`
+// defaults here are placeholders: swap them for your own bot identity, then build
+// with your bundle (see ../../docs/ward-kdl-authoring.md, "Bring your own
+// specs"). A build made from this example carries no deployment-specific values.
+fleet {
+    schema-version 2
+    // Placeholder attribution. Point name/email at your own commit-authoring bot.
+    defaults {
+        agent claude
+        attribution name=example-bot email=bot@example.com
+    }
+    agent claude {
+        binary claude
+        context-level 2
+        stream stream-json
+        auth claude-keychain
+        argv {
+            preflight claude -p
+            headless claude -p --verbose --output-format stream-json
+            interactive claude
+        }
+    }
+    agent codex {
+        binary codex
+        context-level 1
+        stream none
+        auth codex-file
+        argv {
+            headless codex exec
+            interactive codex
+        }
+    }
+}
