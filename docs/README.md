@@ -95,10 +95,9 @@ New to ward? Read [architecture.md](architecture.md) first - it frames the whole
 - [ops-forgejo-view.md](ops-forgejo-view.md) - the lean `issue view` override.
 - [ops-forgejo-quiet.md](ops-forgejo-quiet.md) - the `issue create --quiet` machine-output mode.
 
-## Release & CI
+## Release
 
 - [release.md](release.md) - the Forgejo-canonical release pipeline.
-- [ci-watch.md](ci-watch.md) - `ward ci watch`, watch a Forgejo Actions run to terminal.
 
 ## See also
 
