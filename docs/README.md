@@ -60,6 +60,7 @@ New to ward? Read [architecture.md](architecture.md) first - it frames the whole
 
 ## Agent harnesses (drivers)
 
+- [agent-drivers.md](agent-drivers.md) - the four `--driver` harnesses compared (first-run facts side by side).
 - [agent-local-harnesses.md](agent-local-harnesses.md) - index of the local harness pages.
 - [agent-claude.md](agent-claude.md) - the `claude` full cloud harness.
 - [agent-codex.md](agent-codex.md) - the `codex` open-sandbox cloud harness.
