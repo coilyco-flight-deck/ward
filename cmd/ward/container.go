@@ -337,11 +337,25 @@ func (r *Runner) sweepStaleContainers(ctx context.Context) {
 	if len(stale) == 0 {
 		return
 	}
+	
+	// Log the containers that will be reclaimed for monitoring and debugging
+	var staleNames strings.Builder
+	for i, name := range stale {
+		if i > 0 {
+			staleNames.WriteString(", ")
+		}
+		staleNames.WriteString(name)
+	}
+	
 	fmt.Fprintf(os.Stderr, "ward container: reclaiming %d exited ward container(s) past the keep-%d window (ward#272)\n", len(stale), containerReapKeep)
+	fmt.Fprintf(os.Stderr, "ward container: containers being removed: %s\n", staleNames.String())
+	
 	// Drain each container's console+transcript+meta to the host archive BEFORE the
 	// rm takes them with it (ward#363); a raced/missed rm is logged, never fatal.
 	if rmErr := r.drainStaleContainers(ctx, stale); rmErr != nil {
 		fmt.Fprintf(os.Stderr, "ward container: stale-container sweep had a non-zero rm (%v); continuing\n", rmErr)
+	} else {
+		fmt.Fprintf(os.Stderr, "ward container: successfully drained and removed %d containers\n", len(stale))
 	}
 }
 
