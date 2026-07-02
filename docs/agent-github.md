@@ -45,9 +45,9 @@ A plain `owner/repo#N`, a Forgejo URL, or a bare `#N` still mean Forgejo. The
 
 GitHub auth is a host-side token, **operator-selectable** by `WARD_GITHUB_TOKEN_SOURCE`
 and defaulting to `env` ([ward#533](https://forgejo.coilysiren.me/coilyco-flight-deck/ward/issues/533)): `env` reads `WARD_GITHUB_TOKEN`/`GH_TOKEN`/`GITHUB_TOKEN`,
-`gh` mints a fresh one via `gh auth token`, and `app` (follow-up [ward#534](https://forgejo.coilysiren.me/coilyco-flight-deck/ward/issues/534)) is wired but
-not yet built. There is no compiled-in SSM path in any mode. Full detail, including scope
-and the env-file plumbing, is in [github-token.md](github-token.md).
+`gh` mints a fresh one via `gh auth token`, and `app` ([ward#534](https://forgejo.coilysiren.me/coilyco-flight-deck/ward/issues/534)) mints a short-lived,
+repo-scoped GitHub App installation token from an App key (SSM param name via operator
+config, no baked path). Full detail: [github-token.md](github-token.md).
 
 ## Worked example
 

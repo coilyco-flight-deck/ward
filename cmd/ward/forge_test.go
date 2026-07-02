@@ -184,7 +184,7 @@ func TestResolveGitHubTokenSourceSelects(t *testing.T) {
 		t.Setenv("WARD_GITHUB_TOKEN_SOURCE", "env")
 		t.Setenv("GITHUB_TOKEN", "env-tok")
 		r := &Runner{Runner: &shell.Runner{}}
-		if got, err := r.resolveGitHubToken(t.Context()); err != nil || got != "env-tok" {
+		if got, err := r.resolveGitHubToken(t.Context(), "coilyco", "ward"); err != nil || got != "env-tok" {
 			t.Fatalf("env source = %q,%v want env-tok,nil", got, err)
 		}
 	})
@@ -193,7 +193,7 @@ func TestResolveGitHubTokenSourceSelects(t *testing.T) {
 		t.Setenv("WARD_GITHUB_TOKEN_SOURCE", "gh")
 		stub := ghAuthTokenStub(t, "  gh-minted\n")
 		r := &Runner{Runner: &shell.Runner{Stderr: io.Discard, Resolve: func(string) (string, error) { return stub, nil }}}
-		if got, err := r.resolveGitHubToken(t.Context()); err != nil || got != "gh-minted" {
+		if got, err := r.resolveGitHubToken(t.Context(), "coilyco", "ward"); err != nil || got != "gh-minted" {
 			t.Fatalf("gh source = %q,%v want gh-minted,nil (trimmed)", got, err)
 		}
 	})
@@ -202,7 +202,7 @@ func TestResolveGitHubTokenSourceSelects(t *testing.T) {
 		t.Setenv("WARD_GITHUB_TOKEN_SOURCE", "gh")
 		stub := ghAuthTokenStub(t, "\n")
 		r := &Runner{Runner: &shell.Runner{Stderr: io.Discard, Resolve: func(string) (string, error) { return stub, nil }}}
-		if _, err := r.resolveGitHubToken(t.Context()); err == nil {
+		if _, err := r.resolveGitHubToken(t.Context(), "coilyco", "ward"); err == nil {
 			t.Fatal("gh source with an empty `gh auth token`: want error, got nil")
 		}
 	})
@@ -212,24 +212,26 @@ func TestResolveGitHubTokenSourceSelects(t *testing.T) {
 		r := &Runner{Runner: &shell.Runner{Stderr: io.Discard, Resolve: func(string) (string, error) {
 			return "", errors.New("gh: not found")
 		}}}
-		if _, err := r.resolveGitHubToken(t.Context()); err == nil {
+		if _, err := r.resolveGitHubToken(t.Context(), "coilyco", "ward"); err == nil {
 			t.Fatal("gh source with gh unresolvable: want error, got nil")
 		}
 	})
 
-	t.Run("app source is a wired-but-unimplemented error", func(t *testing.T) {
+	t.Run("app source without operator config names the missing env", func(t *testing.T) {
 		t.Setenv("WARD_GITHUB_TOKEN_SOURCE", "app")
+		t.Setenv(envGitHubAppID, "")
+		t.Setenv(envGitHubAppKeySSM, "")
 		r := &Runner{Runner: &shell.Runner{}}
-		_, err := r.resolveGitHubToken(t.Context())
-		if err == nil || !strings.Contains(err.Error(), "534") {
-			t.Fatalf("app source = %v, want a not-yet-implemented error naming the follow-up", err)
+		_, err := r.resolveGitHubToken(t.Context(), "coilyco", "ward")
+		if err == nil || !strings.Contains(err.Error(), envGitHubAppID) {
+			t.Fatalf("app source with no config = %v, want an error naming %s", err, envGitHubAppID)
 		}
 	})
 
 	t.Run("unknown source errors before any resolution", func(t *testing.T) {
 		t.Setenv("WARD_GITHUB_TOKEN_SOURCE", "vault")
 		r := &Runner{Runner: &shell.Runner{}}
-		if _, err := r.resolveGitHubToken(t.Context()); err == nil {
+		if _, err := r.resolveGitHubToken(t.Context(), "coilyco", "ward"); err == nil {
 			t.Fatal("unknown source: want error, got nil")
 		}
 	})

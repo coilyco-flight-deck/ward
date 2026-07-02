@@ -168,9 +168,9 @@ func parseGitHubTokenSource(s string) (githubTokenSource, error) {
 	}
 }
 
-// resolveGitHubToken provisions the GitHub token for clone/push + `gh` host-side,
-// dispatching on WARD_GITHUB_TOKEN_SOURCE - never a baked SSM/App path (ward#489/533).
-func (r *Runner) resolveGitHubToken(ctx context.Context) (string, error) {
+// resolveGitHubToken provisions the GitHub token for clone/push + `gh`, dispatching on
+// WARD_GITHUB_TOKEN_SOURCE; owner/repo scope the app arm (ward#489/533/534).
+func (r *Runner) resolveGitHubToken(ctx context.Context, owner, repo string) (string, error) {
 	src, err := parseGitHubTokenSource(os.Getenv("WARD_GITHUB_TOKEN_SOURCE"))
 	if err != nil {
 		return "", err
@@ -179,8 +179,7 @@ func (r *Runner) resolveGitHubToken(ctx context.Context) (string, error) {
 	case githubTokenGH:
 		return r.resolveGitHubTokenFromGH(ctx)
 	case githubTokenApp:
-		return "", fmt.Errorf(
-			"ward: WARD_GITHUB_TOKEN_SOURCE=app (mint a short-lived GitHub App installation token) is not yet implemented - it is gated on a registered GitHub App, tracked in ward#534. Use env (default) or gh for now. See docs/agent-github.md")
+		return r.resolveGitHubTokenFromApp(ctx, owner, repo)
 	case githubTokenEnv:
 		return resolveGitHubTokenFromEnv()
 	default:

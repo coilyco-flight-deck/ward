@@ -228,7 +228,7 @@ func (r *Runner) resolveOllamaHost(ctx context.Context) string {
 // operator-selected source (ward#533, no SSM); Forgejo via broker seed, env, then SSM.
 func (r *Runner) resolveForgejoToken(ctx context.Context, target broker.Target, f forge) (string, error) {
 	if f == forgeGitHub {
-		return r.resolveGitHubToken(ctx)
+		return r.resolveGitHubToken(ctx, target.Owner, target.Repo)
 	}
 	if tok, ok := r.brokerDispatchSeed(ctx, target); ok {
 		return tok, nil
