@@ -23,7 +23,7 @@ func TestDockerArgvTSSidecar(t *testing.T) {
 
 	p := sampleUpPlan()
 	p.TSSidecar = true
-	want := "--network=" + wardTailnetNetwork
+	want := "--network=" + tailnetNetwork()
 	joined := strings.Join(dockerCreateArgv(p, ""), " ")
 	if !strings.Contains(joined, want) {
 		t.Errorf("--ts-sidecar run must pass %q; got: %s", want, joined)
@@ -45,7 +45,7 @@ func TestDockerArgvTSSidecar(t *testing.T) {
 // ward-tailnet network; the inspect fails (non-zero) when the network is absent.
 func TestDockerTailnetInspectArgv(t *testing.T) {
 	joined := strings.Join(dockerTailnetInspectArgv(), " ")
-	for _, want := range []string{"network", "inspect", wardTailnetNetwork, "{{range .Containers}}{{.Name}} {{end}}"} {
+	for _, want := range []string{"network", "inspect", tailnetNetwork(), "{{range .Containers}}{{.Name}} {{end}}"} {
 		if !strings.Contains(joined, want) {
 			t.Errorf("tailnet inspect argv missing %q; got: %s", want, joined)
 		}
@@ -55,8 +55,8 @@ func TestDockerTailnetInspectArgv(t *testing.T) {
 // TestProxyBoxAttached: the standing box is detected among the network's attached
 // container names; an absent box (or empty output, the missing-network case) is not.
 func TestProxyBoxAttached(t *testing.T) {
-	if !proxyBoxAttached("some-carry " + proxyBoxName + " other-carry ") {
-		t.Errorf("proxyBoxAttached should find %q among attached names", proxyBoxName)
+	if !proxyBoxAttached("some-carry " + proxyBoxName() + " other-carry ") {
+		t.Errorf("proxyBoxAttached should find %q among attached names", proxyBoxName())
 	}
 	if proxyBoxAttached("some-carry other-carry ") {
 		t.Error("proxyBoxAttached must be false when the box is not attached")
@@ -85,22 +85,22 @@ func TestTSSidecarWardEnv(t *testing.T) {
 	env := p.wardEnv()
 	// socks5h://mac-proxy:1055 - the box dialed by name, socks5h so it resolves the
 	// tower's MagicDNS name tailnet-side (ward#349; the doc).
-	if got, want := env["WARD_TS_SOCKS5"], "socks5h://"+proxyBoxHost; got != want {
+	if got, want := env["WARD_TS_SOCKS5"], "socks5h://"+proxyBoxAddr(); got != want {
 		t.Errorf("WARD_TS_SOCKS5 = %q, want %q", got, want)
 	}
-	if !strings.Contains(env["WARD_TS_SOCKS5"], proxyBoxName) {
-		t.Errorf("WARD_TS_SOCKS5 must dial the box by name %q; got %q", proxyBoxName, env["WARD_TS_SOCKS5"])
+	if !strings.Contains(env["WARD_TS_SOCKS5"], proxyBoxName()) {
+		t.Errorf("WARD_TS_SOCKS5 must dial the box by name %q; got %q", proxyBoxName(), env["WARD_TS_SOCKS5"])
 	}
 	// The proxy is reached by name, never loopback (the box is not a netns peer now).
 	if strings.Contains(env["WARD_TS_SOCKS5"], "127.0.0.1") {
 		t.Errorf("WARD_TS_SOCKS5 must dial the box by name, not loopback; got %q", env["WARD_TS_SOCKS5"])
 	}
 	// The tower endpoint is the MagicDNS name (by name, no SSM IP), dialed :11434.
-	if got := env["WARD_TOWER_OLLAMA"]; got != towerOllamaURL {
-		t.Errorf("WARD_TOWER_OLLAMA = %q, want %q", got, towerOllamaURL)
+	if got := env["WARD_TOWER_OLLAMA"]; got != towerOllamaURL() {
+		t.Errorf("WARD_TOWER_OLLAMA = %q, want %q", got, towerOllamaURL())
 	}
-	if !strings.Contains(env["WARD_TOWER_OLLAMA"], towerMagicDNSName) {
-		t.Errorf("WARD_TOWER_OLLAMA must dial the tower by MagicDNS name %q; got %q", towerMagicDNSName, env["WARD_TOWER_OLLAMA"])
+	if !strings.Contains(env["WARD_TOWER_OLLAMA"], towerMagicDNS()) {
+		t.Errorf("WARD_TOWER_OLLAMA must dial the tower by MagicDNS name %q; got %q", towerMagicDNS(), env["WARD_TOWER_OLLAMA"])
 	}
 	// Per-connection only: never a blanket ALL_PROXY (the proxy reaches the tailnet,
 	// not the public internet, so routing everything through it would break egress).
@@ -155,7 +155,7 @@ func TestPreflightTailnetProxy(t *testing.T) {
 	ctx := context.Background()
 
 	// Network exists and the box is attached -> the preflight passes.
-	if err := fakeDockerRunner(t, "some-carry "+proxyBoxName+" ", 0).preflightTailnetProxy(ctx); err != nil {
+	if err := fakeDockerRunner(t, "some-carry "+proxyBoxName()+" ", 0).preflightTailnetProxy(ctx); err != nil {
 		t.Errorf("box attached: preflight should pass; got: %v", err)
 	}
 
@@ -175,6 +175,79 @@ func TestPreflightTailnetProxy(t *testing.T) {
 		t.Error("box unattached: preflight should error")
 	} else if !strings.Contains(err.Error(), "standing tailnet proxy not found") {
 		t.Errorf("box-unattached error %q must name the standing proxy", err)
+	}
+}
+
+// TestTailnetTowerEnvOverride pins ward#395: a WARD_* override wins over the baked
+// literal, an unset var falls back to it, both resolvers and env reflect the override.
+func TestTailnetTowerEnvOverride(t *testing.T) {
+	// Unset (empty) -> the baked defaults, the fail-safe last layer.
+	for k, v := range map[string]string{
+		envTailnetNetwork:  "",
+		envTailnetProxy:    "",
+		envTowerHost:       "",
+		envTowerOllamaPort: "",
+	} {
+		t.Setenv(k, v)
+	}
+	if got := tailnetNetwork(); got != defaultTailnetNetwork {
+		t.Errorf("unset WARD_TAILNET_NETWORK: tailnetNetwork() = %q, want default %q", got, defaultTailnetNetwork)
+	}
+	if got := proxyBoxAddr(); got != defaultTailnetProxy {
+		t.Errorf("unset WARD_TAILNET_PROXY: proxyBoxAddr() = %q, want default %q", got, defaultTailnetProxy)
+	}
+	if got, want := proxyBoxName(), "mac-proxy"; got != want {
+		t.Errorf("proxyBoxName() = %q, want the host half %q of the default proxy addr", got, want)
+	}
+	if got := towerMagicDNS(); got != defaultTowerHost {
+		t.Errorf("unset WARD_TOWER_HOST: towerMagicDNS() = %q, want default %q", got, defaultTowerHost)
+	}
+	if got := towerOllamaPort(); got != defaultTowerOllamaPort {
+		t.Errorf("unset WARD_TOWER_OLLAMA_PORT: towerOllamaPort() = %q, want default %q", got, defaultTowerOllamaPort)
+	}
+
+	// Override -> every resolver and the derived endpoints repoint, no literal survives.
+	t.Setenv(envTailnetNetwork, "other-net")
+	t.Setenv(envTailnetProxy, "edge-proxy:9050")
+	t.Setenv(envTowerHost, "tower-b")
+	t.Setenv(envTowerOllamaPort, "18080")
+
+	if got := tailnetNetwork(); got != "other-net" {
+		t.Errorf("tailnetNetwork() = %q, want the override other-net", got)
+	}
+	if got := proxyBoxName(); got != "edge-proxy" {
+		t.Errorf("proxyBoxName() = %q, want the override host half edge-proxy", got)
+	}
+	if got, want := towerOllamaURL(), "http://tower-b:18080"; got != want {
+		t.Errorf("towerOllamaURL() = %q, want %q", got, want)
+	}
+	if got, want := forwardListenAddr(), "127.0.0.1:18080"; got != want {
+		t.Errorf("forwardListenAddr() = %q, want %q (loopback shadows the override port)", got, want)
+	}
+	if got, want := towerOllamaLocalURL(), "http://localhost:18080"; got != want {
+		t.Errorf("towerOllamaLocalURL() = %q, want %q", got, want)
+	}
+
+	// The override flows through the exported --ts-sidecar env, including the tower
+	// topology propagated for the in-container forwarder's --target default.
+	p := sampleUpPlan()
+	p.TSSidecar = true
+	env := p.wardEnv()
+	if got, want := env["WARD_TS_SOCKS5"], "socks5h://edge-proxy:9050"; got != want {
+		t.Errorf("WARD_TS_SOCKS5 = %q, want %q", got, want)
+	}
+	if got, want := env["WARD_TOWER_OLLAMA"], "http://tower-b:18080"; got != want {
+		t.Errorf("WARD_TOWER_OLLAMA = %q, want %q", got, want)
+	}
+	if got, want := env[envTowerHost], "tower-b"; got != want {
+		t.Errorf("propagated %s = %q, want %q", envTowerHost, got, want)
+	}
+	if got, want := env[envTowerOllamaPort], "18080"; got != want {
+		t.Errorf("propagated %s = %q, want %q", envTowerOllamaPort, got, want)
+	}
+	// The --network the run attaches to must follow the override too.
+	if joined := strings.Join(dockerCreateArgv(p, ""), " "); !strings.Contains(joined, "--network=other-net") {
+		t.Errorf("--ts-sidecar run must attach the override network other-net; got: %s", joined)
 	}
 }
 

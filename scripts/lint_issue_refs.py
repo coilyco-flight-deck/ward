@@ -93,6 +93,7 @@ CONTRIBUTOR_DOCS = {
     "docs/agent-reservation.md",
     "docs/agent-subcommands.md",
     "docs/agent-surface.md",
+    "docs/agent-tailnet-topology.md",
     "docs/agent-ts-sidecar.md",
     "docs/agent.md",
     "docs/agentsapi.md",

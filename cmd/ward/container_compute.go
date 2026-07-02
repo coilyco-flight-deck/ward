@@ -5,6 +5,7 @@ package main
 
 import (
 	"fmt"
+	"net"
 	"os"
 	"regexp"
 	"sort"
@@ -92,34 +93,56 @@ const (
 	containerSubstrateTTL = "600"
 )
 
+// Tailnet + tower topology (ward#395): infra DATA, not baked identity. Each value takes
+// a WARD_* env override, the old literal kept as the fail-safe default. See the doc.
 const (
-	// wardTailnetNetwork is the shared user-defined docker network the standing
-	// mac-proxy box and every --ts-sidecar run attach to (ward#349; the doc).
-	wardTailnetNetwork = "ward-tailnet"
+	// envTailnetNetwork overrides the shared docker network runs attach to (ward#349).
+	envTailnetNetwork     = "WARD_TAILNET_NETWORK"
+	defaultTailnetNetwork = "ward-tailnet"
 
-	// proxyBoxName is the standing proxy box's container name + hostname on
-	// ward-tailnet; a run dials it by this name, never a per-run sidecar (ward#349).
-	proxyBoxName = "mac-proxy"
-
-	// proxyBoxHost is the by-name SOCKS5 endpoint a run dials on ward-tailnet:
-	// the standing box on :1055, replacing the old loopback sidecar (ward#349).
-	proxyBoxHost = proxyBoxName + ":1055"
+	// envTailnetProxy overrides the standing SOCKS5 box host:port; host half is also
+	// its container name for the attach preflight (ward#349).
+	envTailnetProxy     = "WARD_TAILNET_PROXY"
+	defaultTailnetProxy = "mac-proxy:1055"
 
 	// proxySocks5Scheme is socks5h (not socks5): the proxy resolves the tower's
 	// MagicDNS name tailnet-side, so the run dials by name (ward#337; the doc).
 	proxySocks5Scheme = "socks5h://"
 
-	// towerMagicDNSName is the tower's MagicDNS node name; a --ts-sidecar run dials
-	// it by name through the proxy (resolved tailnet-side), no SSM IP lookup (ward#337).
-	towerMagicDNSName = "kai-tower-3026"
+	// envTowerHost overrides the tower's MagicDNS node name, dialed by name through
+	// the proxy, no SSM IP lookup (ward#337).
+	envTowerHost     = "WARD_TOWER_HOST"
+	defaultTowerHost = "kai-tower-3026"
 
-	// towerOllamaPort is the port kai-tower-3026 serves ollama on over the tailnet.
-	towerOllamaPort = "11434"
-
-	// towerOllamaURL is the by-name endpoint a --ts-sidecar run dials through the
-	// proxy; a constant, no per-launch SSM IP lookup (ward#337; the doc).
-	towerOllamaURL = "http://" + towerMagicDNSName + ":" + towerOllamaPort
+	// envTowerOllamaPort overrides the port the tower serves ollama on.
+	envTowerOllamaPort     = "WARD_TOWER_OLLAMA_PORT"
+	defaultTowerOllamaPort = "11434"
 )
+
+// tailnetNetwork resolves the shared docker network name (env > baked default; ward#395).
+func tailnetNetwork() string { return envOr(envTailnetNetwork, defaultTailnetNetwork) }
+
+// proxyBoxAddr resolves the SOCKS5 box's host:port endpoint (env > default; ward#395).
+func proxyBoxAddr() string { return envOr(envTailnetProxy, defaultTailnetProxy) }
+
+// proxyBoxName is the proxy box's container name - the host half of proxyBoxAddr, used
+// by the attach preflight. A port-less override falls back to the whole value.
+func proxyBoxName() string {
+	if host, _, err := net.SplitHostPort(proxyBoxAddr()); err == nil {
+		return host
+	}
+	return proxyBoxAddr()
+}
+
+// towerMagicDNS resolves the tower's MagicDNS node name (env > baked default; ward#395).
+func towerMagicDNS() string { return envOr(envTowerHost, defaultTowerHost) }
+
+// towerOllamaPort resolves the port the tower serves ollama on (env > default; ward#395).
+func towerOllamaPort() string { return envOr(envTowerOllamaPort, defaultTowerOllamaPort) }
+
+// towerOllamaURL is the by-name tower endpoint a --ts-sidecar run dials through the
+// proxy; no per-launch SSM IP lookup (ward#337; the doc).
+func towerOllamaURL() string { return "http://" + towerMagicDNS() + ":" + towerOllamaPort() }
 
 // substrateRepo is one entry in the container substrate manifest: a
 // Forgejo-canonical owner/name plus its seed tier (image|cache).
@@ -549,12 +572,16 @@ func (p upPlan) wardEnv() map[string]string {
 	if p.TSSidecar {
 		// Per-connection proxy (never a host-wide ALL_PROXY), the box dialed by name;
 		// socks5h so it resolves the tower's MagicDNS name tailnet-side (ward#349).
-		env["WARD_TS_SOCKS5"] = proxySocks5Scheme + proxyBoxHost
+		env["WARD_TS_SOCKS5"] = proxySocks5Scheme + proxyBoxAddr()
 		// A MagicDNS name, not a secret IP, so it rides plain (no SSM lookup; ward#337).
-		env["WARD_TOWER_OLLAMA"] = towerOllamaURL
+		env["WARD_TOWER_OLLAMA"] = towerOllamaURL()
 		// The loopback forwarder's no-proxy endpoint: tools dial the tower at plain
-		// localhost:11434 with no --proxy once the run starts the forwarder (ward#359).
-		env["WARD_TOWER_OLLAMA_LOCAL"] = towerOllamaLocalURL
+		// localhost:<port> with no --proxy once the run starts the forwarder (ward#359).
+		env["WARD_TOWER_OLLAMA_LOCAL"] = towerOllamaLocalURL()
+		// Propagate the tower topology so the in-container `ward container forward`
+		// --target follows the same override the host resolved (ward#395).
+		env[envTowerHost] = towerMagicDNS()
+		env[envTowerOllamaPort] = towerOllamaPort()
 	}
 	if p.GoBootstrap {
 		env["WARD_USE_GO_BOOTSTRAP"] = "1"
@@ -605,7 +632,7 @@ func dockerArgvHead(verb string, p upPlan) []string {
 	// namespace (ward#330), --ts-sidecar joins the shared ward-tailnet net (ward#349).
 	switch {
 	case p.TSSidecar:
-		argv = append(argv, "--network="+wardTailnetNetwork)
+		argv = append(argv, "--network="+tailnetNetwork())
 	case p.HostNet:
 		argv = append(argv, "--network=host")
 	}
@@ -621,7 +648,7 @@ func dockerArgvHead(verb string, p upPlan) []string {
 // container names attached to ward-tailnet (the preflight read; ward#349).
 func proxyBoxAttached(names string) bool {
 	for _, n := range strings.Fields(names) {
-		if n == proxyBoxName {
+		if n == proxyBoxName() {
 			return true
 		}
 	}
@@ -631,7 +658,7 @@ func proxyBoxAttached(names string) bool {
 // dockerTailnetInspectArgv reads the names of the containers attached to the
 // ward-tailnet network; it fails (non-zero) when the network does not exist (ward#349).
 func dockerTailnetInspectArgv() []string {
-	return []string{"network", "inspect", wardTailnetNetwork,
+	return []string{"network", "inspect", tailnetNetwork(),
 		"--format", "{{range .Containers}}{{.Name}} {{end}}"}
 }
 

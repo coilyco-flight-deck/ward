@@ -62,6 +62,7 @@ New to ward? Read [architecture.md](architecture.md) first - it frames the whole
 - [agent-dispatch-contract.md](agent-dispatch-contract.md) - dispatch exit codes + `meta.json` outcome enum for supervising runs.
 - [agent-host-net.md](agent-host-net.md) - `--tailnet`, the opt-in network escalation.
 - [agent-ts-sidecar.md](agent-ts-sidecar.md) - the Docker Desktop tailnet-route sidecar.
+- [agent-tailnet-topology.md](agent-tailnet-topology.md) - repoint the network/proxy/tower via `WARD_*` env.
 - [agent-adapter-manifest.md](agent-adapter-manifest.md) - the per-agent divergence manifest.
 - [agentsapi.md](agentsapi.md) - `internal/agentsapi`, the agent-agnostic seam contract.
 - [agents-list.md](agents-list.md) - `ward agents list`, the fleet-roster read surface.

@@ -16,18 +16,16 @@ import (
 // forward.go wires the hidden `ward container forward` leaf: a no-capability SOCKS5
 // loopback exposing the tower at 127.0.0.1:11434, no --proxy (ward#359).
 
-const (
-	// forwardListenAddr is the loopback endpoint the forwarder listens on inside the
-	// run; it shadows the tower's Ollama port so localhost:11434 IS the tower.
-	forwardListenAddr = "127.0.0.1:" + towerOllamaPort
+// forwardDialTimeout bounds a single SOCKS5 proxy dial + CONNECT handshake.
+const forwardDialTimeout = 10 * time.Second
 
-	// towerOllamaLocalURL is the no-proxy endpoint a --ts-sidecar run dials once the
-	// forwarder is up; exported as WARD_TOWER_OLLAMA_LOCAL alongside the --proxy vars.
-	towerOllamaLocalURL = "http://localhost:" + towerOllamaPort
+// forwardListenAddr is the loopback endpoint the forwarder listens on inside the run;
+// it shadows the tower's ollama port so localhost:<port> IS the tower (ward#395).
+func forwardListenAddr() string { return "127.0.0.1:" + towerOllamaPort() }
 
-	// forwardDialTimeout bounds a single SOCKS5 proxy dial + CONNECT handshake.
-	forwardDialTimeout = 10 * time.Second
-)
+// towerOllamaLocalURL is the no-proxy endpoint a --ts-sidecar run dials once the
+// forwarder is up; exported as WARD_TOWER_OLLAMA_LOCAL alongside the --proxy vars.
+func towerOllamaLocalURL() string { return "http://localhost:" + towerOllamaPort() }
 
 // containerForwardCommand is the Hidden `ward container forward` leaf the
 // entrypoint backgrounds in a --ts-sidecar run; not a hand-run verb (ward#359).
@@ -37,8 +35,8 @@ func containerForwardCommand() *cli.Command {
 		Hidden: true, // entrypoint-internal, not a hand-run verb
 		Usage:  "Entrypoint-internal SOCKS5 loopback forwarder: expose the tailnet Ollama tower at 127.0.0.1:11434 inside a --ts-sidecar run so tools dial it with no --proxy.",
 		Description: `forward is the no-capability slice of the full-tunnel epic (ward#359). In a
---ts-sidecar run it listens on 127.0.0.1:11434 and bridges each TCP connection
-to ` + towerMagicDNSName + `:` + towerOllamaPort + ` through the standing mac-proxy
+--ts-sidecar run it listens on 127.0.0.1:<tower-port> and bridges each TCP connection
+to ` + towerMagicDNS() + `:` + towerOllamaPort() + ` through the standing proxy
 SOCKS5 box named by $` + "WARD_TS_SOCKS5" + ` (socks5h: the proxy resolves the tower's
 MagicDNS name tailnet-side). LLM clients then auto-route at localhost:11434 with no
 proxy awareness. The explicit --proxy "$WARD_TS_SOCKS5" path stays valid. It needs
@@ -47,7 +45,7 @@ no NET_ADMIN, no /dev/net/tun, no ALL_PROXY. See docs/agent-ts-sidecar.md.`,
 			&cli.StringFlag{
 				Name:  "listen",
 				Usage: "loopback address to listen on",
-				Value: forwardListenAddr,
+				Value: forwardListenAddr(),
 			},
 			&cli.StringFlag{
 				Name:    "socks5",
@@ -57,7 +55,7 @@ no NET_ADMIN, no /dev/net/tun, no ALL_PROXY. See docs/agent-ts-sidecar.md.`,
 			&cli.StringFlag{
 				Name:  "target",
 				Usage: "host:port to CONNECT to through the proxy (resolved proxy-side)",
-				Value: towerMagicDNSName + ":" + towerOllamaPort,
+				Value: towerMagicDNS() + ":" + towerOllamaPort(),
 			},
 		},
 		Action: func(ctx context.Context, c *cli.Command) error {

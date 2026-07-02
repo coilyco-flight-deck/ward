@@ -48,14 +48,14 @@ func TestParseSocks5ProxyAddr(t *testing.T) {
 // The forwarder's no-proxy endpoint constants must agree with the tower port the
 // proxy vars already use, so localhost:11434 truly shadows the tower (ward#359).
 func TestForwardEndpointConstants(t *testing.T) {
-	if !strings.HasSuffix(forwardListenAddr, ":"+towerOllamaPort) {
-		t.Errorf("forwardListenAddr %q must listen on the tower port %q", forwardListenAddr, towerOllamaPort)
+	if !strings.HasSuffix(forwardListenAddr(), ":"+towerOllamaPort()) {
+		t.Errorf("forwardListenAddr %q must listen on the tower port %q", forwardListenAddr(), towerOllamaPort())
 	}
-	if !strings.HasPrefix(forwardListenAddr, "127.0.0.1:") {
-		t.Errorf("forwardListenAddr %q must bind loopback only (no capability, no external exposure)", forwardListenAddr)
+	if !strings.HasPrefix(forwardListenAddr(), "127.0.0.1:") {
+		t.Errorf("forwardListenAddr %q must bind loopback only (no capability, no external exposure)", forwardListenAddr())
 	}
-	if towerOllamaLocalURL != "http://localhost:"+towerOllamaPort {
-		t.Errorf("towerOllamaLocalURL = %q, want http://localhost:%s", towerOllamaLocalURL, towerOllamaPort)
+	if towerOllamaLocalURL() != "http://localhost:"+towerOllamaPort() {
+		t.Errorf("towerOllamaLocalURL = %q, want http://localhost:%s", towerOllamaLocalURL(), towerOllamaPort())
 	}
 }
 
@@ -69,8 +69,8 @@ func TestWardEnvTowerOllamaLocal(t *testing.T) {
 
 	p.TSSidecar = true
 	env := p.wardEnv()
-	if got := env["WARD_TOWER_OLLAMA_LOCAL"]; got != towerOllamaLocalURL {
-		t.Errorf("WARD_TOWER_OLLAMA_LOCAL = %q, want %q", got, towerOllamaLocalURL)
+	if got := env["WARD_TOWER_OLLAMA_LOCAL"]; got != towerOllamaLocalURL() {
+		t.Errorf("WARD_TOWER_OLLAMA_LOCAL = %q, want %q", got, towerOllamaLocalURL())
 	}
 	// The explicit --proxy path stays valid: both old vars remain.
 	if env["WARD_TS_SOCKS5"] == "" || env["WARD_TOWER_OLLAMA"] == "" {
