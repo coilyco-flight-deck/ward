@@ -29,23 +29,6 @@ Each repo declares its verbs (and an optional `security:` policy) in [`.ward/war
 
 Each repo declares which Makefile targets are exposed in `.ward/ward.yaml`, and `ward doctor` verifies the two surfaces have not drifted. The contract is stricter than "the target name exists": each exposed Makefile target must carry a `## <description>` help comment (the self-documenting-Makefile convention, e.g. `build: ## Build all packages.`) whose text equals the command's `description:`, and `run:` must be exactly `make <name>`. A bare `target:` recipe with no `## ...` comment is not registered, so `ward doctor` reports it as unmatched even though `make <target>` runs by hand. See [`docs/doctor.md`](docs/doctor.md) (Allowlist contract).
 
-## The gate says no
-
-ward is a security boundary, so the interesting demo is not what it runs - it is what it **refuses**. The clean-tree gate declines a verb when the run could not be reconstructed from history, and the argv policy declines anything carrying shell metacharacters:
-
-```
-$ ward exec test                 # on a branch with no upstream set
-ward exec test: refused - repo verb gated on a clean, synced tree
-  reason: HEAD has no synced upstream (push or set upstream first)
-  the audit row must be reconstructable from committed history
-  override for a genuine emergency: ward --audit-override-dirty exec test
-
-$ ward exec test -- -run 'Foo; rm -rf /'
-ward exec test: refused - argument "Foo; rm -rf /" contains a shell metacharacter
-```
-
-The override exists, but it is loud: the audit row is stamped `audit_override=true` with the full working-tree status, so an emergency bypass is still reconstructable after the fact. Denial is the default posture, not an error path. See [`docs/exec-verb.md`](docs/exec-verb.md) and [`docs/agent-gate.md`](docs/agent-gate.md).
-
 ## Install
 
 Install from the centralized flight-deck tap:

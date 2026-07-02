@@ -24,6 +24,7 @@ New to ward? Read [architecture.md](architecture.md) first - it frames the whole
 ## Contributor dev-verb gate
 
 - [exec-verb.md](exec-verb.md) - `ward exec <verb>`: run a repo dev verb through the gate.
+- [gate-demo.md](gate-demo.md) - what the gate refuses: the clean-tree + argv-metacharacter denial demo.
 - [verb-fallback.md](verb-fallback.md) - unknown-verb rewrite to `ward exec` + the build/test/install triple.
 - [git-verbs.md](git-verbs.md) - `ward git`: audited, concurrency-safe git surface.
 - [git-clone.md](git-clone.md) - `ward git clone`, destination-gated.

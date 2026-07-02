@@ -19,6 +19,10 @@ shell-metacharacter policy. Every invocation runs through cli-guard's
 verb pipeline, so each `ward exec` run appends one JSONL audit row to
 `~/.ward/audit/<repo>.jsonl` (verb prefix `repo.<cmd>`).
 
+For a concrete demo of what the gate turns away - the clean-tree refusal and the
+argv-metacharacter refusal side by side, with the loud-override note - see
+[docs/gate-demo.md](gate-demo.md).
+
 ## Enforcement depth by platform
 
 The gate is a **verb-level** boundary - it bounds what call is expressible, not
