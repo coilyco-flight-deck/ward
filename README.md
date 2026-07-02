@@ -80,17 +80,11 @@ A `warded` run that failed or seemed to do nothing has a single symptom-indexed 
 
 See [`docs/architecture.md`](docs/architecture.md).
 
-## The Claude Code PreToolUse hook
-
-`ward hook pre-tool-use` is a stdin-driven [Claude Code hook](https://docs.claude.com/en/docs/claude-code/hooks). It refuses `ward`/`coily` unless `command -v` resolves to a canonical homebrew path (blocking PATH-hijack), and catches bare wrapped binaries (`make`, `gh`, `aws`, ...) to name the right wrapper. No network, no state - failures pass through silently, and hard denial stays the job of `permissions.deny`. Register it with `ward install-hooks`. See [`docs/hook.md`](docs/hook.md).
-
-This hook is **claude-only** - codex, goose, and opencode get no such host-side intercept, and for every harness the `ward agent` container-flow boundary is the container edge plus the cli-guard verb gate, not this hook. [`docs/enforcement-boundary.md`](docs/enforcement-boundary.md) states where the boundary sits per harness, so a demo names the gate that actually holds.
-
 ## Where to go next
 
 Over 60 pages under [`docs/`](docs/) cover each surface. The anchors:
 
-- **The verb gate** - [exec-verb.md](docs/exec-verb.md) (the gate), [verb-fallback.md](docs/verb-fallback.md), [git-verbs.md](docs/git-verbs.md), [audit.md](docs/audit.md), [doctor.md](docs/doctor.md), [install-hooks.md](docs/install-hooks.md).
+- **The verb gate** - [exec-verb.md](docs/exec-verb.md) (the gate), [verb-fallback.md](docs/verb-fallback.md), [git-verbs.md](docs/git-verbs.md), [audit.md](docs/audit.md), [doctor.md](docs/doctor.md), [install-hooks.md](docs/install-hooks.md). A claude-only, fail-open PreToolUse **hint** hook ([hook.md](docs/hook.md)) can route bare-binary calls back through the gate on the host - a convenience, not the boundary. The boundary is the verb gate itself, plus the container edge in the agent flow ([enforcement-boundary.md](docs/enforcement-boundary.md)).
 - **The agent driver** - [first-run.md](docs/first-run.md) (zero to a first `--print` dry run), [agent.md](docs/agent.md) (the reference), the roster [agent-engineer.md](docs/agent-engineer.md) / [agent-director.md](docs/agent-director.md) / [agent-advisor.md](docs/agent-advisor.md), the [agent-gate.md](docs/agent-gate.md), [agent-credentials.md](docs/agent-credentials.md), [agent-observability.md](docs/agent-observability.md).
 - **The container** - [container.md](docs/container.md), [container-reap.md](docs/container-reap.md) (land-or-salvage on teardown), [container-multi-repo.md](docs/container-multi-repo.md), [container-substrate.md](docs/container-substrate.md).
 - **Operator surface (ward-kdl / ops)** - [ward-kdl.md](docs/ward-kdl.md), [ward-kdl-tiers.md](docs/ward-kdl-tiers.md), [ops-forgejo.md](docs/ops-forgejo.md).
