@@ -15,7 +15,8 @@ attaches the six `ward-kdl-<tier>-linux-<arch>` tier assets.
 
 `actions/tag-bump` runs with no bump input, so every push-to-main release is a
 minor bump. For a major, cut the `vN.0.0` tag by hand; pushes resume minor from
-there.
+there. Release bodies are categorised
+([release-notes.md](release-notes.md), ward#486).
 
 ## Formula bump job
 
