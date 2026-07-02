@@ -49,11 +49,6 @@ var agentSubsystemPointers = []subsystemPointer{
 		paths:    []string{"docs/hook.md"},
 	},
 	{
-		label:    "CI watch",
-		keywords: []string{"ci watch", "ci-watch", "forgejo actions"},
-		paths:    []string{"docs/ci-watch.md"},
-	},
-	{
 		label:    "release + tap formula bump",
 		keywords: []string{"release.yml", "tag-bump", "bump-tap", "tap formula", "skip-ci"},
 		paths:    []string{"docs/release.md"},

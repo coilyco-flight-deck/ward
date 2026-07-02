@@ -71,8 +71,7 @@ The prior in-repo `bump-formula` fallback (which rewrote ward's own
 `Formula/ward.rb` via the Contents API on the `docker` runner) was removed: it
 duplicated the tap bump, was already marked deprecated, and failed every release
 because that runner has no `jq`. The in-repo `Formula/ward.rb` itself has since
-been deleted - the tap is the single source `brew` installs from. See
-[ci-watch.md](ci-watch.md) for `ward ci watch`, the verb that surfaced this.
+been deleted - the tap is the single source `brew` installs from.
 
 The bump carries the `[skip ci]` marker so the formula commit does not
 re-trigger the workflow. Shared composite actions live at

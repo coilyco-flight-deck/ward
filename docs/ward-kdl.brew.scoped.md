@@ -51,7 +51,7 @@ The dialect's only argv guards are `when`/`deny-when <selector> matches
 The only extension seam is the gate registry (`gateRegistry`), a closed map with
 one `aws-read` gate. `execverb.Config` exposes `Providers` but no
 gate-injection field, so ward can't register a `brew-scope` gate the way
-`specverb` names complex actions (`ci-watch`, `move-issue`). Needs an upstream
+`specverb` names complex actions (`issue list-all`, `move-issue`). Needs an upstream
 cli-guard change.
 
 ## What would unblock it

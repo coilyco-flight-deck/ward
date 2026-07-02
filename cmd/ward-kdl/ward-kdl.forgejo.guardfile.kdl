@@ -243,32 +243,8 @@ wrap ward-kdl ops forgejo {
     can add issue-label
     can set issue-label
     can remove issue-label
-    // actions tasks: the CI-run read surface, plus the ci-watch poll action.
+    // actions tasks: the read-only CI-run listing surface.
     can list tasks
-    // ci-watch: poll `list tasks` until every job of one run reaches a terminal
-    // state, then exit non-zero if any failed. JMESPath; `$run` binds from --run.
-    action ci-watch {
-        describe "Watch a CI run to completion, then surface failing-job status."
-        input repo {
-            positional
-            required
-            help "owner/name"
-        }
-        input run {
-            flag
-            help "run number"
-        }
-        poll list tasks {
-            args {
-                owner-repo $repo
-            }
-            until "length(workflow_runs[?run_number==$run && status!='success'\n        && status!='failure' && status!='cancelled'\n        && status!='skipped']) == `0`"
-            every "10s"
-            timeout "30m"
-            as run_tasks
-        }
-        fail-when "length($run_tasks.workflow_runs[?run_number==$run && status=='failure']) > `0`"
-    }
     // move-issue: copy title/body to a target repo, back-link, then CLOSE the
     // source (never delete). Carrying labels/milestone is deferred (array flow).
     action move-issue {

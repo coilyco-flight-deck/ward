@@ -19,7 +19,6 @@ Contributor-facing cli-guard gate: repo dev verbs + audited host wrappers.
 - **`ward agent {engineer,director,advisor} [--driver <name>]`** (public face: **`warded <role> <ref>`**) - startup-role roster: `engineer` implements detached, `director` a heartbeat surfacing a read-only session + triage, `advisor` answers without code (a ref comments or fans cross-repo work into per-repo issues, trust-gated; ward#424). `warded` is a `ward` symlink; a bare ref runs `engineer`, `#N` infers `owner/repo`. `--driver` picks a harness; `--repo`/`--org` scope. See [agent](agent.md).
 - **`ward container {reap,bootstrap}`** *(hidden, entrypoint-internal; ward#263)* - in-container plumbing: `reap` lands/salvages on teardown + verifies each `--repo` grant landed (ward#291); `bootstrap` is the PID-1 entrypoint port (ward#181). See [reap](container-reap.md).
 - **Agent-run observability** *(ward#363)* - the keep-10 sweep drains each exited run's logs + secret-free `meta.json` to `~/.ward/agent-logs/` before `docker rm`; opt-in `WARD_AGENT_TELEMETRY=1` (default-OFF) ships redacted per-tool-call OTLP logs to SigNoz. See [agent-observability.md](agent-observability.md).
-- **`ward ci watch [owner/repo]`** - watch a Forgejo Actions run to terminal, then print a per-job status table. Exit `0/1/2/3` = passed/failed/timed-out/no-run (ward#88). See [ci-watch.md](ci-watch.md).
 - **`ward agents list [--json]`** - dump the fleet roster from `fleetconfig.Fleet`; `--json` is the stable read surface aos reads (ward#417). See [agents-list](agents-list.md).
 
 ## Agent harness seam
