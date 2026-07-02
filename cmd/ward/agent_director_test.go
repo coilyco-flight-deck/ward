@@ -59,8 +59,8 @@ func TestDirectorDispatchDisposition(t *testing.T) {
 	if state != "failed" {
 		t.Errorf("decline state = %q, want failed", state)
 	}
-	if outcome == nil || outcome.Status != "dispatch-error" {
-		t.Errorf("decline outcome = %+v, want status=dispatch-error", outcome)
+	if outcome == nil || outcome.Status != "declined" {
+		t.Errorf("decline outcome = %+v, want status=declined", outcome)
 	}
 
 	// Wrong-repo and untrusted-owner are likewise terminal per-issue/owner verdicts.
@@ -442,12 +442,18 @@ func TestRefreshBacklogLedger(t *testing.T) {
 		"7": {Num: 7, Lane: "interactive", State: "surfaced"},
 		// a done issue that has since closed (absent from the live set) -> dropped
 		"9": {Num: 9, Lane: "headless", State: "done"},
+		// ward#527: a pre-#524 dispatch-error stranding -> re-queued, outcome cleared
+		"13": {Num: 13, Lane: "headless", State: "failed", LastOutcome: &backlogOutcome{Status: "dispatch-error", Text: "forgejo: get issue a/b#13: 502"}},
+		// a genuine per-issue decline (declined) must NOT be re-queued
+		"14": {Num: 14, Lane: "headless", State: "failed", LastOutcome: &backlogOutcome{Status: "declined", Text: "infeasible"}},
 	}}
 	ranked := rankBacklogIssues([]backlogIssue{
 		{Number: 5, Title: "five", Labels: []string{"P0", "headless"}},
 		{Number: 7, Title: "seven", Labels: []string{"P1", "headless"}}, // promoted to headless
 		{Number: 11, Title: "eleven", Labels: []string{"P2", "interactive"}},
 		{Number: 12, Title: "twelve", Labels: nil}, // untriaged
+		{Number: 13, Title: "thirteen", Labels: []string{"P0", "headless"}},
+		{Number: 14, Title: "fourteen", Labels: []string{"P0", "headless"}},
 	})
 	refreshBacklogLedger(led, ranked)
 
@@ -465,6 +471,12 @@ func TestRefreshBacklogLedger(t *testing.T) {
 	}
 	if e := led.Issues["12"]; e == nil || e.State != "skipped" {
 		t.Errorf("#12 new untriaged should be skipped, got %+v", e)
+	}
+	if e := led.Issues["13"]; e == nil || e.State != "queued" || e.LastOutcome != nil {
+		t.Errorf("#13 stranded dispatch-error should be re-queued with a cleared outcome, got %+v", e)
+	}
+	if e := led.Issues["14"]; e == nil || e.State != "failed" {
+		t.Errorf("#14 genuine decline must stay failed, got %+v", e)
 	}
 }
 

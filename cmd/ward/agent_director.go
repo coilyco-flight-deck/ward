@@ -624,6 +624,12 @@ func backlogNewEntryState(lane string) string {
 	}
 }
 
+// isStrandedDispatchError reports whether e is a pre-ward#524 launch/infra stranding:
+// parked `failed` with the "dispatch-error" status the old classifier stamped (ward#527).
+func isStrandedDispatchError(e *backlogEntry) bool {
+	return e != nil && e.State == "failed" && e.LastOutcome != nil && e.LastOutcome.Status == "dispatch-error"
+}
+
 // applyRankedBacklogEntry upserts one ranked issue into the ledger, seeding a new
 // entry's state by lane and re-queuing one a re-triage promoted into headless.
 func applyRankedBacklogEntry(led *backlogLedger, rk rankedBacklogIssue) {
@@ -636,6 +642,10 @@ func applyRankedBacklogEntry(led *backlogLedger, rk rankedBacklogIssue) {
 		// A re-triage promoted this into headless from a non-in-flight holding
 		// state: re-queue it rather than strand it.
 		entry.State = "queued"
+	case rk.Lane == "headless" && isStrandedDispatchError(entry):
+		// ward#527 self-heal: re-queue a legacy dispatch-error stranding.
+		entry.State = "queued"
+		entry.LastOutcome = nil
 	}
 	entry.Num = rk.Num
 	entry.Title = rk.Title
@@ -930,17 +940,17 @@ func (r *Runner) backlogDispatchOne(ctx context.Context, label string, dispatch 
 	return nil
 }
 
-// directorDispatchDisposition classifies a dispatch error: a coded per-issue decline
-// parks failed, everything else defers (ward#352, ward#524; docs/agent-director.md).
+// directorDispatchDisposition classifies a dispatch error for the ledger (ward#352,
+// ward#524, ward#527). See docs/agent-director-dispatch.md.
 func directorDispatchDisposition(err error) (state string, outcome *backlogOutcome, deferred bool) {
 	if isDispatchDecline(err) {
-		return "failed", &backlogOutcome{Status: "dispatch-error", Text: backlogTruncate(err.Error(), 300)}, false
+		return "failed", &backlogOutcome{Status: "declined", Text: backlogTruncate(err.Error(), 300)}, false
 	}
 	return "queued", &backlogOutcome{Status: "deferred", Text: backlogTruncate(err.Error(), 300)}, true
 }
 
-// isDispatchDecline reports whether err is a coded per-issue pre-flight decline (NO-GO,
-// wrong-repo, untrusted-owner) no retry changes; conflicts + infra retry (ward#524).
+// isDispatchDecline reports whether err is a coded per-issue pre-flight decline
+// (NO-GO / wrong-repo / untrusted-owner). See docs/agent-director-dispatch.md.
 func isDispatchDecline(err error) bool {
 	c := exitcode.From(err)
 	if c == nil {

@@ -61,12 +61,10 @@ via the same union/de-dup/trust path; an absent key falls back to the cwd origin
   `--aws`, `--tailnet`, `--no-pull`, `--with-repo`, `--print`, `--force` - the dispatch subset
   reaches each engineer, the full set the surface; `--branch`/`--no-preflight`/`--watch`/`--detach` absent.
 
-## Dispatch defers, only per-issue declines park (ward#352, ward#524)
+## Dispatch-error disposition (ward#352/#524/#527)
 
-A launch error parks `failed` only when it judged the **issue**: a coded **NO-GO**, **wrong-repo**,
-or **untrusted-owner** decline. A reservation conflict (`--force` reclaims a stale hold) or a
-launch-time infra failure (issue fetch, network, bring-up) **defers** - so a transient forge blip
-no longer wedges the backlog by parking issues into a false fail-streak.
+Only a coded per-issue decline parks `failed`; a conflict or launch/infra failure defers
+and retries: [agent-director-dispatch.md](agent-director-dispatch.md).
 
 ## See also
 

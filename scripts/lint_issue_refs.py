@@ -83,6 +83,7 @@ CONTRIBUTOR_DOCS = {
     "docs/agent-advisor.md",
     "docs/agent-attribution.md",
     "docs/agent-director.md",
+    "docs/agent-director-dispatch.md",
     "docs/agent-engineer.md",
     "docs/agent-flags.md",
     "docs/agent-host-net.md",
