@@ -1,8 +1,10 @@
 # Push Forgejo refs (main + tags) to the read-only GitHub mirror, sync the
 # repo description + topics from canonical Forgejo, and scrub the stranded
-# legacy release objects; every PAT-gated step no-ops without the PAT. The
-# mirror carries git refs plus that front-door metadata - canonical releases
-# live on Forgejo. See docs/github-mirror.md.
+# legacy release objects. Every PAT-gated step fails loudly if the PAT is
+# missing: a silent skip is what let the mirror freeze for ~200 versions
+# behind a green check (ward#477, the ward#237 lesson). The mirror carries
+# git refs plus that front-door metadata - canonical releases live on
+# Forgejo. See docs/github-mirror.md.
 
 name: mirror-to-github
 
@@ -26,8 +28,8 @@ jobs:
         run: |
           set -euo pipefail
           if [ -z "${PAT}" ]; then
-            echo "mirror-to-github: GITHUB_MIRROR_PAT secret not set; skipping." >&2
-            exit 0
+            echo "::error::mirror-to-github: GITHUB_MIRROR_PAT not set; cannot mirror to GitHub. A silent skip here is what froze the mirror (ward#477); rotate the secret in ward -> Settings -> Actions -> Secrets." >&2
+            exit 1
           fi
           git remote add github "https://x-access-token:${PAT}@github.com/coilyco-flight-deck/ward.git"
           git push --force github main
@@ -39,8 +41,8 @@ jobs:
         run: |
           set -euo pipefail
           if [ -z "${PAT}" ]; then
-            echo "sync-metadata: GITHUB_MIRROR_PAT secret not set; skipping." >&2
-            exit 0
+            echo "::error::sync-metadata: GITHUB_MIRROR_PAT not set; cannot sync description/topics to GitHub" >&2
+            exit 1
           fi
           # Descriptions and topics do not ride a git push (ward#438), so pull
           # them from canonical Forgejo (anonymous read, public repo) and apply
@@ -81,8 +83,8 @@ jobs:
         run: |
           set -euo pipefail
           if [ -z "${PAT}" ]; then
-            echo "scrub-releases: GITHUB_MIRROR_PAT secret not set; skipping." >&2
-            exit 0
+            echo "::error::scrub-releases: GITHUB_MIRROR_PAT not set; cannot scrub stranded GitHub releases" >&2
+            exit 1
           fi
           api="https://api.github.com/repos/coilyco-flight-deck/ward"
           hdr_auth="Authorization: token ${PAT}"
