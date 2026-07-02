@@ -13,6 +13,14 @@
 The config registers a local Ollama provider with the default model pinned to
 `ollama/$WARD_QWEN_MODEL` at `$WARD_OLLAMA_URL`.
 
+**Bring your own Ollama:** those two vars default to `qwen3-coder:30b` and
+`http://localhost:11434/v1`, are read only at in-container bootstrap, and are **not**
+threaded from the host - so setting them on your host does not repoint opencode
+today. If you run your own Ollama, read [agent-local-model.md](agent-local-model.md)
+first: on native Linux the host-net route makes the baked-in `localhost:11434` reach
+your local Ollama, but Docker Desktop and repointing the endpoint/model are not
+supported yet (#395).
+
 ## Install stance
 
 Best-effort self-install. An image that already contains `opencode` short-circuits it.
@@ -41,5 +49,6 @@ claude's probe reads).
 
 ## See also
 
+- [docs/agent-local-model.md](agent-local-model.md) - bring your own Ollama: defaults, the supported route, and the current limitation (#395).
 - [docs/agent-local-harnesses.md](agent-local-harnesses.md) - the local harness index.
 - [docs/agent.md](agent.md) - the roster and roles vs harnesses split.

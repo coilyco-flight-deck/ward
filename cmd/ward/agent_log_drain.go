@@ -55,6 +55,15 @@ const (
 	outcomeUnknown    = "unknown"
 )
 
+// reapOutcomeValues is the complete meta.json `outcome` enum, in classifyReapOutcome
+// order; the drift-test source of truth for docs/agent-dispatch-contract.md (ward#485).
+var reapOutcomeValues = []string{
+	outcomePushedMain, // clean integration + push to main
+	outcomeSalvage,    // conflict / scan finding / rejected or auth-failed push
+	outcomeNothing,    // the tree was already clean, nothing to reap
+	outcomeUnknown,    // no reaper marker matched (crash, external stop, abort)
+}
+
 // agentLogsDir resolves the host archive root: the .ward app dir under $HOME,
 // falling back to $TMPDIR when $HOME is unset (mirrors config.CacheDir).
 func agentLogsDir() string {

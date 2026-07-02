@@ -48,11 +48,22 @@ niche is the one ward fills, and OpenShell's heft leaves it open.
 
 ## The boundary is the product
 
-ward's claim is not "it can do X" - it is "it will refuse Y, and prove it." Every
-demo and one-liner shows a **denial**, not just a capability: the guardfile says
-`never delete "*"`, and the binary cannot express the delete at all. OpenShell
-makes the same bet from the kernel side. The shared thesis is that for an agent
-with real credentials, the part worth shipping is the part that says no.
+ward's claim is not "it can do X" - it is "it will refuse Y, and prove it." That
+claim names one mechanism: the **compiled cli-guard verb gate**. Every demo and
+one-liner shows a **denial**, not just a capability: the guardfile says `never
+delete "*"`, and the binary cannot express the delete at all. The verb is absent
+at compile time, so there is nothing to fail open - the refusal is a property of
+the generated CLI, and the audit row proves it happened. OpenShell makes the same
+bet from the kernel side. The shared thesis is that for an agent with real
+credentials, the part worth shipping is the part that says no.
+
+**Scope:** that claim covers the compiled verb gate, not the Claude Code
+PreToolUse hook ([docs/hook.md](hook.md)). The hook intercepts Bash calls
+host-side and emits a routing **hint**. It **fails open** - a bad config passes
+through silently - so hard denial stays Claude Code's own `permissions.deny`.
+The hook is also **claude-only**: for every harness the `ward agent` boundary is
+the container edge plus this verb gate. See
+[enforcement-boundary.md](enforcement-boundary.md).
 
 ## See also
 

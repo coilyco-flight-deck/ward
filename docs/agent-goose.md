@@ -14,13 +14,25 @@ Ward resolves the host Ollama endpoint and seeds it base64'd as
 `WARD_GOOSE_OLLAMA_HOST_B64`, then composes the goose config from that plus the
 provider and model overrides.
 
+**Bring your own Ollama:** the endpoint here is resolved **host-side from SSM** (the
+Coily tower) or falls back to goose's built-in `http://localhost:11434`, and it is
+**not** user-overridable from the host today. If you run your own Ollama, read
+[agent-local-model.md](agent-local-model.md) before launching: on native Linux the
+host-net route shares your local Ollama, but Docker Desktop and repointing the
+endpoint are not supported yet (#395).
+
 ## Install stance
 
 goose is image-baked from the launcher point of view. No self-install step.
 
 ## Launch dialect
 
-- Host preflight: none.
+- Host preflight: the detached GO/NO-GO gate, at parity with claude
+  ([agent-preflight.md](agent-preflight.md)). goose answers it via `goose run -t`
+  when the dispatch itself is interactive (a human at the TTY), even though the
+  run it gates is detached. It is skipped for a scripted/piped dispatch, on
+  `--print`, and with `--no-preflight` - the same skip rules claude follows, not
+  a goose carve-out.
 - Headless: `goose run -t <seed>`.
 - Interactive: `goose session` with the issue pasted in by hand.
 
@@ -33,5 +45,6 @@ Two gates sit at different points, and only one applies here:
 
 ## See also
 
+- [docs/agent-local-model.md](agent-local-model.md) - bring your own Ollama: defaults, the supported route, and the current limitation (#395).
 - [docs/agent-local-harnesses.md](agent-local-harnesses.md) - the local harness index.
 - [docs/agent.md](agent.md) - the roster and roles vs harnesses split.

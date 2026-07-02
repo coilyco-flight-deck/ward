@@ -4,12 +4,12 @@ Hello and thank you for your interest! :tada: :lock:
 
 ## Supported versions
 
-This package is at v0. Only the latest commit on `main` is supported for security fixes. No published releases yet to backport to.
+This package is at v0. Only the latest commit on `main` is supported for security fixes. Published releases are not backported.
 
 | Version             | Supported          |
 | ------------------- | ------------------ |
 | `main` (latest)     | :white_check_mark: |
-| any pinned commit   | :x: (upgrade)      |
+| release or commit   | :x: (upgrade)      |
 
 ## Reporting a vulnerability
 

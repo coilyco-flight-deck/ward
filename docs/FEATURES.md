@@ -28,9 +28,13 @@ Contributor-facing cli-guard gate: repo dev verbs + audited host wrappers.
 
 ## Spec-driven ops (`ward-kdl`)
 
-`ward-kdl` is the build-time authoring layer ([docs/ward-kdl.md](ward-kdl.md)). It carries permission surfaces and fleet configs: `ops` (forgejo/tailscale/signoz/aws/kubectl/...), `docker`, `agents`, `pkg` ([ward-kdl-surface.md](ward-kdl-surface.md)), plus `ward-kdl.fleet.kdl`. `ward ops forgejo` grafts an admin slice ([ops-forgejo-admin](ops-forgejo-admin.md)) and ships as `ward-kdl-{read,write,admin}` tiers (ward#240).
+`ward-kdl` is the build-time authoring layer ([docs/ward-kdl.md](ward-kdl.md)): permission surfaces + fleet configs for `ops` (forgejo/tailscale/signoz/aws/kubectl/...), `docker`, `agents`, `pkg` ([surface](ward-kdl-surface.md)), plus `ward-kdl.fleet.kdl`. It builds into `ward-kdl-{read,write,admin}` tiers (ward#240) - not public artifacts (ward#455), spec authors build from a clone ([authoring](ward-kdl-authoring.md)).
 
 The **exec-dialect** guardfiles auto-mount at their `wrap` path; `git` / `pkg brew` keep hand-written surfaces (ward#284). See [in-ward](ward-kdl-in-ward.md).
+
+## Release pipeline
+
+- **Release notes** *(ward#486)* - "does it affect you" verdict. [release-notes.md](release-notes.md).
 
 ## See also
 
