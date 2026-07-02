@@ -5,7 +5,7 @@
 ## Checks
 
 - **Allowlist.** Validates the resolved `.ward/ward.yaml` (or `.coily/coily.yaml`) against the repo's `Makefile`. Engine lives upstream in `cli-guard/allowlist`; ward only supplies the resolved paths and renders the returned `Problem` set. See [Allowlist contract](#allowlist-contract) for what makes a target "match" - it is stricter than target-name-exists.
-- **Security: summary.** Reports the parsed `security:` block — sudo posture, hook-policy A config with no `security:` block is optional: `ward doctor` exits 0 with `no security: declared`, so 0 means no policy declared, not protected; if CI needs policy, require `security:` and use `--strict-credentials`.
+- **Security: summary.** Reports the parsed `security:` block. A repo with **no** `security:` block **fails** doctor (`no security: declared`, non-zero exit), so exit 0 means a policy is declared and in force, not merely that nothing was misconfigured. Without the block the dev-verb gate (clean-tree, argv, audit) still runs, but no protected-binary / sudo / hook policy is enforced. `ward setup` reports the absence as a `NOTE`, not a failure. This makes `ward doctor` a safe CI policy gate.
 - **Security: host probes.** Three probes against the parsed block. `FAIL` rows drive the exit code; `WARN`, `INFO`, `PASS`, and `SKIP` only surface text.
   - **`path`.** Resolves each `protected_binaries[].name` via `exec.LookPath`. When `expected_real_paths` is non-empty, a mismatch is a `FAIL`. When the list is empty, the resolved location surfaces as `INFO`. A missing binary is a `WARN`.
   - **`sudo`.** Skipped unless `sudo.forbid_passwordless` is set. Runs `sudo -n true`. Clean exit is `FAIL`; non-zero with a "password required" sentinel is `PASS`; any other non-zero is `WARN`.
@@ -13,10 +13,10 @@
 
 ## Allowlist contract
 
-The allowlist check is a **drift guard**, not a target-name lookup. It exists so the verb surface a contributor sees (`.ward/ward.yaml`) and the make-target surface it maps onto (`Makefile`) cannot silently diverge. For each `commands.<name>` entry, all three must hold or the check reports a `Problem`:
+The allowlist check is a **drift guard**, not a target-name lookup: it keeps the verb surface (`.ward/ward.yaml`) and the make-target surface (`Makefile`) from silently diverging. For each `commands.<name>` entry, all three must hold or the check reports a `Problem`:
 
 - **`run:` is exactly `make <name>`.** `run: bash build.sh` under a `build:` key is a mismatch, even if the script works.
-- **The Makefile has a `<name>:` rule carrying a `## <description>` help comment.** This is the self-documenting-Makefile convention (`build: ## Build all packages.`). A bare `build:` rule with only a recipe and **no** `## ...` comment is **not registered as a target** - so the check reports `commands.build has no matching Makefile target` even though `make build` runs correctly by hand. The `## ` comment is what makes a rule a *declared, documented* target rather than an internal helper.
+- **The Makefile has a `<name>:` rule carrying a `## <description>` help comment.** This is the self-documenting-Makefile convention (`build: ## Build all packages.`). A bare `build:` rule with only a recipe and **no** `## ...` comment is **not registered as a target** - so the check reports `commands.build has no matching Makefile target` even though `make build` runs correctly by hand.
 - **That `## <description>` text equals the command's `description:`** in the yaml, trimmed. Any wording difference is reported as a description drift with both sides quoted.
 
 So the minimal Makefile that satisfies the check for a `build`/`test`/`install` triple is:
@@ -39,7 +39,7 @@ commands:
   install: {run: make install, description: Install.}
 ```
 
-When the check fails, ward appends a one-line hint naming this contract so a valid-looking bare target does not read as a spurious failure. Only targets you expose through `ward.yaml` need the `## ` comment; internal helper targets can stay bare and are simply ignored.
+When the check fails, ward appends a one-line hint naming this contract. Only targets you expose through `ward.yaml` need the `## ` comment - internal helper targets can stay bare and are simply ignored.
 
 ## Flags
 

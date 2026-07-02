@@ -31,7 +31,7 @@ not rely on the hook to tell you the config is wrong.
 ## Top-level keys
 
 - **`commands:`** - map of dev-verb name to its declaration. Read by ward. See [commands](#commands).
-- **`security:`** - the optional security policy block. Read by ward (doctor + hook). Omitting it entirely is a valid config and `ward doctor` reports `no security: declared`. See [security](#security).
+- **`security:`** - the security policy block. Read by ward (doctor + hook). The loader and the hook tolerate its absence, but as of [ward#450](https://forgejo.coilysiren.me/coilyco-flight-deck/ward/issues/450) `ward doctor` **fails** when it is missing (it prints `no security: declared` and exits non-zero), so a real repo declares one. See [security](#security).
 - **`catalog:`** - **not read by ward.** This is `coilyco-flight-deck/agentic-os` catalog tooling metadata (repo description + cross-repo `dependsOn`). ward's `repocfg` loader unmarshals only `commands` + `security` and drops everything else, so `catalog:` has zero effect on `ward exec`, `ward doctor`, or the hook. It is safe to include for the catalog tooling and safe to omit if you do not use it.
 
 ## commands
@@ -89,9 +89,11 @@ can declare any subset of verbs and still pass `ward doctor`. See
 
 ## security
 
-The optional policy block that `ward doctor` and `ward hook` read. A zero value
-(no `security:` key) means no policy declared, which is a valid config. Every
-sub-block below is optional on its own.
+The policy block that `ward doctor` and `ward hook` read. A zero value (no
+`security:` key) means no policy declared. The loader and the hook accept that,
+but as of [ward#450](https://forgejo.coilysiren.me/coilyco-flight-deck/ward/issues/450) `ward doctor` **fails** on a missing block (see
+[doctor.md](doctor.md)), so a real repo declares one. Every sub-block below is
+optional on its own.
 
 ### security.protected_binaries[]
 

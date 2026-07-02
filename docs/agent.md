@@ -5,6 +5,12 @@ subsystem: take a Forgejo issue and put an agent on it end to end. ward#263
 retired the hand-run `ward container up`/`exec`/`down`/`ls` verbs, so `ward agent`
 is the single launch surface.
 
+## Prerequisites
+
+A **live** run needs **Docker running** (each boots an ephemeral
+[container](container.md)) and a reachable **Forgejo** instance. `--print` needs
+neither. Full list: [first-run.md §1](first-run.md#1-prerequisites).
+
 ## The `warded` public face
 
 `warded` is the user-facing command: a thin `ward` symlink the multicall rewrite turns
@@ -25,14 +31,9 @@ or answers it.
 - **`advisor`** (was `reply`+`ask`) - answers, writes no code: a ref comments,
   freeform is interactive (ward#388). [agent-advisor.md](agent-advisor.md).
 
-ward#353 folded the standalone `architect`/`explore` role into the director's
-[surface session](agent-surface.md); `warded architect`/`explore`/`sandbox` now
-error.
-
-The startup roles are the **roles axis**. The `--driver` harness axis and its
-per-driver setup pages live under [Drivers](#drivers) below. `internal/agents/<name>`
-is the Go adapter for each driver - a maintainer implementation detail, not the
-page a user or agent reads to set a driver up.
+The standalone `architect`/`explore`/`sandbox` roles now error - ward#353 folded
+them into the director's [surface session](agent-surface.md). The `--driver`
+harness axis lives under [Drivers](#drivers) below.
 
 ## Usage
 

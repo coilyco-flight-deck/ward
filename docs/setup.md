@@ -19,7 +19,11 @@ author.
 3. Writes `.ward/ward.yaml` with a **commented-out `security:` scaffold** - an
    inert template of the protected-binary / sudo / hooks policy the
    [doctor](doctor.md) probes read. It stays commented so a fresh scaffold parses
-   to "no security declared" and doctor stays green until you tailor it.
+   to "no security declared". As of [ward#450](https://forgejo.coilysiren.me/coilyco-flight-deck/ward/issues/450) a standalone `ward doctor` **fails**
+   on that (a `security:` block is required for a green run), but `ward setup`'s
+   own doctor step reports it as a remediation `NOTE` rather than failing, so
+   onboarding is not walled - uncomment and tailor the block, then doctor goes
+   green.
 4. Runs `ward doctor` against the file it just wrote (skip with `--skip-doctor`).
 
 It **authors no guardfiles**. `.ward/ward.yaml` is the adoption contract
