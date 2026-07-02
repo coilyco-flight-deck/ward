@@ -123,6 +123,7 @@ Bug or feature request: [create a new issue][new-issue]. Conduct: [Code of Condu
 
 ## See also
 
+- [docs/README.md](docs/README.md) - the docs index: every doc grouped by subsystem.
 - [docs/architecture.md](docs/architecture.md) - ward in three layers (cli-guard, ward-kdl, ward).
 - [AGENTS.md](AGENTS.md) - agent-facing operating rules.
 - [docs/FEATURES.md](docs/FEATURES.md) - inventory of what ships today.

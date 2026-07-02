@@ -772,6 +772,39 @@ func TestEntrypointInstallsPreCommitHooks(t *testing.T) {
 	}
 }
 
+// TestEntrypointOllamaSmokeGate locks ward#487: the entrypoint carries a pre-launch
+// Ollama-reachability gate, run after the claude smoke test and before launch.
+func TestEntrypointOllamaSmokeGate(t *testing.T) {
+	data, err := containerAssets.ReadFile("containerassets/" + containerEntrypointRel)
+	if err != nil {
+		t.Fatalf("read entrypoint: %v", err)
+	}
+	script := string(data)
+	for _, want := range []string{
+		"smoke_test_ollama_reachable()",      // the function exists
+		"smoke_test_ollama_reachable",        // main() invokes it
+		"WARD_SMOKE_TEST_SKIP",               // shares claude's bypass switch
+		"WARD_OLLAMA_URL",                    // opencode endpoint source
+		"OLLAMA_HOST",                        // goose endpoint source (config.yaml)
+		"the local-harness analog of claude", // documents the symmetry (ward#487)
+	} {
+		if !strings.Contains(script, want) {
+			t.Errorf("entrypoint missing %q (ward#487 ollama smoke gate)", want)
+		}
+	}
+	// It must run after the claude smoke test and before the agent launches, so a
+	// dead local model aborts before the hang, in parity with the claude gate.
+	claude := strings.Index(script, "smoke_test_claude_auth\n")
+	ollama := strings.LastIndex(script, "smoke_test_ollama_reachable\n")
+	launch := strings.Index(script, "log \"launching $WARD_AGENT")
+	if claude < 0 || ollama < 0 || launch < 0 {
+		t.Fatalf("entrypoint markers not found: claude=%d ollama=%d launch=%d", claude, ollama, launch)
+	}
+	if claude >= ollama || ollama >= launch {
+		t.Errorf("ollama smoke test must run after the claude smoke test and before launch: claude=%d ollama=%d launch=%d", claude, ollama, launch)
+	}
+}
+
 // TestEntrypointInstallsReadOnlyPushGuard locks ward#299: a read-only session
 // lands the per-clone pre-push hook on the work clone and each --repo extra.
 func TestEntrypointInstallsReadOnlyPushGuard(t *testing.T) {

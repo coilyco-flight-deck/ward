@@ -29,12 +29,13 @@ Contributor-facing cli-guard gate: repo dev verbs + audited host wrappers.
 
 `ward-kdl` is the build-time authoring layer ([docs/ward-kdl.md](ward-kdl.md)). It carries permission surfaces and fleet configs: `ops` (forgejo/tailscale/signoz/aws/kubectl/...), `docker`, `agents`, `pkg` ([ward-kdl-surface.md](ward-kdl-surface.md)), plus `ward-kdl.fleet.kdl`. `ward ops forgejo` grafts an admin slice ([ops-forgejo-admin](ops-forgejo-admin.md)) and ships as `ward-kdl-{read,write,admin}` tiers (ward#240).
 
-The **exec-dialect** guardfiles auto-mount at their `wrap` path, no per-guardfile graft; `git` / `pkg brew` keep hand-written surfaces (ward#284). See [in-ward](ward-kdl-in-ward.md).
+The **exec-dialect** guardfiles auto-mount at their `wrap` path; `git` / `pkg brew` keep hand-written surfaces (ward#284). See [in-ward](ward-kdl-in-ward.md).
 
 ## See also
 
-- [README.md](../README.md) - human-facing intro.
-- [AGENTS.md](../AGENTS.md) - agent-facing operating rules.
+- [README.md](../README.md) - human intro.
+- [AGENTS.md](../AGENTS.md) - operating rules.
+- [docs index](README.md) - docs by subsystem.
 - [.ward/ward.yaml](../.ward/ward.yaml) - allowlisted commands.
 
 Cross-reference convention from [coilysiren/agentic-os#59](https://github.com/coilysiren/agentic-os/issues/59).

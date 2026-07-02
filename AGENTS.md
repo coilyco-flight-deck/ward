@@ -1,12 +1,12 @@
 # Agent instructions
 
-Workspace conventions load globally via `~/.claude/CLAUDE.md` -> `agentic-os-kai/AGENTS.md`. This file covers only what's specific to this repo.
+Workspace conventions load globally via `~/.claude/CLAUDE.md` -> `agentic-os-kai/AGENTS.md`. This file covers only what's specific here.
 
 ## Scope
 
-`ward` is a contributor-facing [cli-guard](https://forgejo.coilysiren.me/coilyco-flight-deck/cli-guard) consumer: the gate a contributor (human or agent) routes through to build, test, and lint project code.
+`ward` is a contributor-facing [cli-guard](https://forgejo.coilysiren.me/coilyco-flight-deck/cli-guard) consumer: the gate a contributor (human or agent) routes through to build, test, and lint code.
 
-ward also carries the operator surface from the retiring [coily](https://github.com/coilyco-bridge/coily). Three roles, by **when** they run: cli-guard the **engine**, [ward-kdl](docs/ward-kdl.md) the **build-time generator** (guardfile in, audited CLI out), `ward` the **run-time product** that embeds those surfaces. Two verb kinds now:
+ward also carries the operator surface from the retiring [coily](https://github.com/coilyco-bridge/coily). Three roles, by **when** they run: cli-guard the **engine**, [ward-kdl](docs/ward-kdl.md) the **build-time generator** (guardfile in, audited CLI out), `ward` the **run-time product** that embeds those surfaces. Two verb kinds:
 
 - **Contributor dev verbs** - `build`, `test`, `vet`, `lint`, `tidy`, `cover`, declared per-repo in `.ward/ward.yaml`.
 - **Operator verbs** - [ward-kdl](docs/ward-kdl.md) generates the `ward ops <api>` REST surfaces (`ops forgejo`, `ops aws`). Composite control flow stays hand-written Go in `cmd/ward` (e.g. `ward agent`, `ward container reap`).
@@ -17,7 +17,7 @@ Single Go module (path `github.com/coilyco-flight-deck/ward`). CLI at `cmd/ward/
 
 ## Repo boundaries
 
-- Upstream: `coilyco-flight-deck/cli-guard` provides the policy/routing engine. Thin consumer, not a fork.
+- Upstream: `coilyco-flight-deck/cli-guard` is the policy/routing engine. Thin consumer, not a fork.
 - Retiring sibling: `coilyco-bridge/coily` - ops verbs migrate into ward. New operator work lands here, not coily.
 - Downstream: consumers upgrade to the `ward` binary and `.ward` config on their own schedule.
 
@@ -45,7 +45,7 @@ Every invocation validates argv against shell-metacharacter rejection, writes on
 
 - Engine: `coilyco-flight-deck/cli-guard` (pinned via go.mod).
 - Pre-commit suite: `coilyco-flight-deck/agentic-os` (pinned via `rev:` in `.pre-commit-config.yaml`).
-- Downstream config schema: `.ward/ward.yaml`. Schema lives here.
+- Downstream config schema: `.ward/ward.yaml`, defined here.
 
 ## Release
 
@@ -58,13 +58,14 @@ Post-push at +120s, verify the release run on Forgejo Actions (not the GitHub mi
 ## Agent rules
 
 - One issue per discrete additive change. `closes #N` encouraged, not enforced.
-- v0.x. Minor API breaks ship in `main` with a note in the commit body. Consumers pin a commit until v1.0.0. Lock the API once the downstream consumers settle.
+- v0.x. Minor API breaks ship in `main` with a note in the commit body. Consumers pin a commit until v1.0.0. Lock the API once downstream consumers settle.
 - Never use `--no-verify`.
 
 ## See also
 
-- [README.md](README.md) - human-facing intro.
-- [docs/FEATURES.md](docs/FEATURES.md) - inventory of what ships today.
+- [README.md](README.md) - human intro.
+- [docs/README.md](docs/README.md) - docs, by subsystem.
+- [docs/FEATURES.md](docs/FEATURES.md) - what ships today.
 - [.ward/ward.yaml](.ward/ward.yaml) - allowlisted commands.
 
 Cross-reference convention from [coilysiren/agentic-os#59](https://github.com/coilysiren/agentic-os/issues/59).
