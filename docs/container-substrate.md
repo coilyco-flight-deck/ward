@@ -14,7 +14,7 @@ dev-base image stays shareable:
 
 - `image` - public (coilysiren + coilyco-flight-deck). A bare-mirror seed is also
   baked into the aos dev-base image at `/opt/substrate-seed`, so a cold host
-  warms these with no network. Built by aos, see its `docs/dev-base-image.md`.
+  warms these with no network. Built by aos, see its [`docs/dev-base-image.md`](https://forgejo.coilysiren.me/coilyco-flight-deck/agentic-os/src/branch/main/docs/dev-base-image.md).
 - `cache` - coilyco-bridge (leak-tolerant/private). Never baked into the image.
   Cloned over the network on first use.
 

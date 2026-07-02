@@ -261,7 +261,7 @@ func (r *Runner) runContainerBootstrap(ctx context.Context, c *cli.Command) erro
 	blog("ready: %s/%s on %s [mode=%s]", e.TargetOwner, e.TargetName, branch, e.Mode)
 
 	if !commandExists(e.Agent) {
-		blog("agent '%s' is not in this image yet (codex/qwen/goose install is a follow-up); dropping to a shell (reaper runs on exit)", e.Agent)
+		blog("agent '%s' binary is not present in this image (claude/codex/goose ship in dev-base, qwen self-installs opencode); dropping to a shell (reaper runs on exit)", e.Agent)
 		_ = r.Runner.Exec(ctx, "bash")
 		return nil
 	}

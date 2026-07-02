@@ -20,7 +20,12 @@ goose is image-baked from the launcher point of view. No self-install step.
 
 ## Launch dialect
 
-- Host preflight: none.
+- Host preflight: the detached GO/NO-GO gate, at parity with claude
+  ([agent-preflight.md](agent-preflight.md)). goose answers it via `goose run -t`
+  when the dispatch itself is interactive (a human at the TTY), even though the
+  run it gates is detached. It is skipped for a scripted/piped dispatch, on
+  `--print`, and with `--no-preflight` - the same skip rules claude follows, not
+  a goose carve-out.
 - Headless: `goose run -t <seed>`.
 - Interactive: `goose session` with the issue pasted in by hand.
 
