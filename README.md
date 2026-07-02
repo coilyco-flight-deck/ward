@@ -17,7 +17,7 @@ If you just want the audited verb gate, you need nothing but a repo and Homebrew
 
 - **macOS or Linux + Homebrew** to install the binary (see [Install](#install)).
 - **A Forgejo instance** for the agent driver (`warded` / `ward agent`) and the operator surface (`ward ops forgejo`). ward is **Forgejo-canonical**: it carries Forgejo issues and pushes to a Forgejo `main`. The GitHub mirror is read-only and PR-gated. A GitHub-only shop can still use the local verb gate, but the agent and ops surfaces target Forgejo.
-- **Docker** for the container agent flow - each `warded` run boots an ephemeral container, configures forge git auth inside it, runs the agent, and reaps it. See [`docs/container.md`](docs/container.md).
+- **Docker** for the container agent flow - each `warded` run boots an ephemeral container, configures forge git auth inside it, runs the agent, and reaps it. The first run pulls one image, `forgejo.coilysiren.me/coilyco-flight-deck/agentic-os:latest` (anonymous pull, no login). See [`docs/container.md`](docs/container.md) for the registry, tag policy, and how to pin off the moving tag.
 
 The plain verb gate (`ward exec`, `ward git`, `ward pkg`, `ward audit`) needs none of the above - just the repo and its `.ward/ward.yaml`.
 
