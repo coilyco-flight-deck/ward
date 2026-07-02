@@ -49,7 +49,7 @@ launched from a TTY that you still want to fire blind - it also re-dispatches a
 NO-GO issue you've decided is good to go). The gate runs for both full
 carry-to-merge harnesses, **claude and goose**, kept at parity (ward#148);
 goose answers via `goose run -t`, claude via `claude -p`. Modes with no host
-one-shot wired yet (`codex`/`qwen`), a host without the agent binary, or a read
+one-shot wired yet (`codex`/`opencode`), a host without the agent binary, or a read
 that doesn't complete all **proceed** rather than block, since none of those is
 the agent declining the work (and the reaper still backstops residual work).
 `task` runs this **same pre-flight** (ward#149); see

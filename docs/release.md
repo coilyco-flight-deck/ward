@@ -6,9 +6,9 @@ Forgejo-canonical release on push to `main`
 homebrew formula(e) so `brew upgrade ward` builds the new tag from source.
 
 ward's formula is build-from-source (a per-tag tarball `url` + `sha256` ->
-`go build`, since ward#116), so unlike o2r there are no prebuilt binaries to
-attach. The `publish-binaries` job still uploads the two `ward-linux-<arch>`
-binaries as release assets for convenience, but `brew` never consumes them.
+`go build`, since ward#116), so `brew` never consumes them - but the
+`publish-binaries` job still ships the full matrix + `SHA256SUMS` to **both** the
+Forgejo and GitHub release pages (ward#454, [release-binaries.md](release-binaries.md)).
 
 The release page carries **only** the `ward` binaries (+ checksums): `ward-kdl`
 and its `ward-kdl-{read,write,admin}` tiers are no longer public assets (ward#455)

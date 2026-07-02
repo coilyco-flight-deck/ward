@@ -14,7 +14,7 @@ Contributor-facing cli-guard gate: repo dev verbs + audited host wrappers.
 - **`ward audit {path,tail}`** - read the audit log: `path` prints its path, `tail` streams rows (`--since`/`--follow`). See [audit.md](audit.md).
 - **`ward git <verb>`** - audited passthroughs, concurrency-safe `commit`, destination-gated `clone` (ward#285), ephemeral-clone `grep`/`grep-remote` (ward#369). See [git-verbs.md](git-verbs.md).
 - **`ward setup`** (`warded setup`) - scaffold `.ward/ward.yaml` from the Makefile, run doctor. See [setup.md](setup.md).
-- **`ward doctor`** - diagnostic checks against the config + host, including the allowlist drift guard. See [doctor.md](doctor.md).
+- **`ward doctor`** - diagnostic checks against the config + host: the allowlist drift guard, the host security probes, and (ward#450) a fail-by-default gate when a repo declares no `security:` block. See [doctor.md](doctor.md).
 - **`ward hook pre-tool-use`** - Claude Code PreToolUse hook: binary-path check + bare-command deny with routing hints.
 - **`ward install-hooks`** - register the PreToolUse hook in `.claude/settings.json`.
 - **`ward agent {engineer,director,advisor} [--driver <name>]`** (public face: **`warded <role> <ref>`**) - startup-role roster: `engineer` implements detached, `director` a heartbeat surfacing a read-only session + triage, `advisor` answers without code (a ref comments or fans cross-repo work into per-repo issues, trust-gated; ward#424). Every role dispatches only for a compiled-in [trusted owner](agent-trust-gate.md). See [agent](agent.md).
@@ -35,6 +35,7 @@ The **exec-dialect** guardfiles auto-mount at their `wrap` path; `git` / `pkg br
 ## Release pipeline
 
 - **Release notes** *(ward#486)* - "does it affect you" verdict. [release-notes.md](release-notes.md).
+- **Dual-forge binary matrix** *(ward#454)* - `ward-{darwin,linux}-{amd64,arm64}` + `SHA256SUMS`, built once per tag and published byte-identical to both the Forgejo and GitHub release pages, so their checksums match. [release.md](release.md), [github-mirror.md](github-mirror.md).
 
 ## See also
 

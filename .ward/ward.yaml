@@ -1,4 +1,6 @@
 # Catalog schema: coilyco-flight-deck/agentic-os.
+# The security: block below is required per ward#450 (ward doctor fails without
+# one); ward dogfoods it. Field reference: docs/ward-yaml.md.
 catalog:
   description: "ward - a contributor-facing cli-guard consumer. Carries project dev verbs; it is also absorbing the operator surface from the retiring coily (spec REST rides ward-kdl)."
   dependsOn:
@@ -13,7 +15,7 @@ commands:
     description: Run the unit test suite.
   install:
     run: make install
-    description: Install the ward + ward-kdl binaries into GOBIN (build/test/install triple).
+    description: Install the ward + ward-kdl binaries into GOBIN (the Go-CLI install verb).
   vet:
     run: make vet
     description: go vet across the tree.
@@ -29,3 +31,21 @@ commands:
   build-ward-kdl:
     run: make build-ward-kdl
     description: build or rebuild the ward-kdl binary, one shot for ease of use in development.
+
+security:
+  protected_binaries:
+    - name: docker
+      mode: deny-direct
+      allowed_wrappers:
+        - ward-kdl docker
+    - name: kubectl
+      mode: deny-direct
+      allowed_wrappers:
+        - ward-kdl kubectl
+  hooks:
+    deny_bare_binaries:
+      - docker
+      - kubectl
+    route_hints:
+      docker: "route docker through `ward-kdl docker`, not the bare binary"
+      kubectl: "route kubectl through `ward-kdl kubectl`, not the bare binary"
