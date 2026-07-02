@@ -52,7 +52,7 @@ const (
 	containerAWSMount = "/root/.aws"
 
 	// containerAgentLogsMount is where the host agent-log drain binds read-only in a
-	// director surface session; surface-only opt-in (ward#525). See docs/agent-surface.md.
+	// director surface session; surface-only opt-in (ward#525, redacted source ward#526).
 	containerAgentLogsMount = "/opt/ward-agent-logs"
 
 	// containerDockerSock is the host docker socket bound into a read-only surface session
@@ -378,8 +378,8 @@ type mountOpts struct {
 	// WardSource, when non-empty, mounts a local ward checkout (--ward-source)
 	// so the container builds ward from source instead of downloading.
 	WardSource string
-	// AgentLogsDir, when non-empty, mounts the host agent-log drain read-only at
-	// containerAgentLogsMount (ward#525); set only on the director surface path.
+	// AgentLogsDir, when non-empty, mounts a host agent-log drain read-only at
+	// containerAgentLogsMount (ward#525); the surface passes the REDACTED tree (ward#526).
 	AgentLogsDir string
 }
 

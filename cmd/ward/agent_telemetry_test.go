@@ -126,6 +126,62 @@ func TestExtractEnvelopesFullKeepsBodies(t *testing.T) {
 	}
 }
 
+// TestRedactConsole scrubs secret shapes from a drained console while preserving
+// its line structure, the redacted-at-rest console view (ward#526).
+func TestRedactConsole(t *testing.T) {
+	console := []byte("starting run\nleaked ghp_1234567890abcdefghijklmnopqrstuvwxyz here\nand AKIAIOSFODNN7EXAMPLE too\ndone\n")
+	got := string(redactConsole(console))
+	if strings.Contains(got, "ghp_") || strings.Contains(got, "AKIA") {
+		t.Errorf("redactConsole left a secret shape in: %q", got)
+	}
+	if !strings.Contains(got, redactionPlaceholder) {
+		t.Errorf("redactConsole did not scrub anything: %q", got)
+	}
+	// Benign lines and the line structure survive untouched.
+	if !strings.Contains(got, "starting run") || !strings.Contains(got, "done") {
+		t.Errorf("redactConsole mangled benign lines: %q", got)
+	}
+	if lines := strings.Count(got, "\n"); lines != strings.Count(string(console), "\n") {
+		t.Errorf("redactConsole changed the line count: got %d newlines", lines)
+	}
+	if redactConsole(nil) != nil {
+		t.Error("redactConsole(nil) must return nil, not an empty scrub")
+	}
+}
+
+// TestRedactedTranscript renders a drained transcript as bodies-dropped, secret-scrubbed
+// envelope jsonl - one line per tool call, reusing the extractor (ward#526).
+func TestRedactedTranscript(t *testing.T) {
+	transcript := strings.Join([]string{
+		`{"type":"assistant","timestamp":"2026-06-26T02:00:00Z","cwd":"/workspace/ward","message":{"content":[{"type":"tool_use","id":"t1","name":"Write","input":{"file_path":"/workspace/ward/x.go","content":"secret ghp_1234567890abcdefghijklmnopqrstuvwxyz body"}}]}}`,
+		`{"type":"assistant","timestamp":"2026-06-26T02:00:01Z","cwd":"/workspace/ward","message":{"content":[{"type":"tool_use","id":"t2","name":"Bash","input":{"command":"git push origin HEAD:main # AKIAIOSFODNN7EXAMPLE"}}]}}`,
+	}, "\n")
+
+	got := redactedTranscript([]byte(transcript))
+	if strings.Contains(string(got), "ghp_") || strings.Contains(string(got), "AKIA") {
+		t.Errorf("redactedTranscript leaked a secret: %q", got)
+	}
+	// The Write body must be gone entirely (dropped, not scrubbed-and-kept).
+	if strings.Contains(string(got), "\"content\"") {
+		t.Errorf("redactedTranscript kept a body field: %q", got)
+	}
+	// One valid JSON envelope per line, both tool calls present.
+	lines := strings.Split(strings.TrimRight(string(got), "\n"), "\n")
+	if len(lines) != 2 {
+		t.Fatalf("got %d envelope lines, want 2: %q", len(lines), got)
+	}
+	for i, ln := range lines {
+		var env toolEnvelope
+		if err := json.Unmarshal([]byte(ln), &env); err != nil {
+			t.Errorf("line %d is not a valid envelope: %v (%q)", i, err, ln)
+		}
+	}
+	// A transcript with no tool calls yields nil (a goose run, an empty tree).
+	if redactedTranscript([]byte("")) != nil {
+		t.Error("redactedTranscript of an empty transcript must be nil")
+	}
+}
+
 func TestOtlpLogsPayloadShape(t *testing.T) {
 	envs := []toolEnvelope{{
 		Tool: "Bash", Outcome: "success", Lifecycle: lifecyclePush, DurationMs: 12,

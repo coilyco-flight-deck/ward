@@ -23,8 +23,7 @@ disk sink is on. Live tailing is separate.
 `meta.json` is small and **secret-free** regardless of sink: `container`, `repo`,
 `issue`, `driver`, `branch`, `outcome`. The dims come from the container's env
 through a **strict allowlist** - `Config.Env` also carries the `--env-file` secrets
-(`FORGEJO_TOKEN`, `WARD_CLAUDE_CREDS_B64`), never copied out; a test guards it. The
-`outcome` is inferred from the reaper's console markers.
+(`FORGEJO_TOKEN`, `WARD_CLAUDE_CREDS_B64`), never copied out; a test guards it.
 
 ## Sink modes (ward#532)
 
@@ -38,10 +37,10 @@ The default is **local-exclusive + full**: the whole run ships to the **local**
 SigNoz (infrastructure#435; `http://localhost:4318` default, override
 `WARD_AGENT_TELEMETRY_ENDPOINT`) and nothing is written to disk. `WARD_AGENT_SINK`
 is the operator-local knob; `resolveSinkMode` is the seam a future ward-kdl config
-field slots behind (env > config > default). An unrecognized value falls back.
+field slots behind. An unrecognized value falls back.
 
-**logdy is retired.** It read the on-disk `console.log`; the console now ships to
-SigNoz as log records, so reading a drained run is a SigNoz query.
+**logdy is retired.** The console now ships to SigNoz as log records, so reading a
+drained run is a SigNoz query.
 
 ### The disk sink
 
@@ -49,6 +48,9 @@ With `disk` (or `both`), each run lands under `~/.ward/agent-logs/<container>/` 
 `console.log`, `transcript.jsonl`, `meta.json` - mirroring the
 `~/.ward/audit/<slug>.jsonl` convention ([audit.md](audit.md)): local, raw, ages
 out on its own.
+
+It also writes a scrubbed sibling into a parallel `agent-logs-redacted/` tree that
+the [director surface](agent-surface-log-read.md) binds (ward#526).
 
 ### The SigNoz sink and the locality gate - the safety crux
 
@@ -67,8 +69,7 @@ go only to a local endpoint**:
 An envelope is otherwise call-metadata: tool, args, cwd, duration, pass/fail,
 lifecycle, files touched. Redaction, when it applies, drops body-shaped inputs
 (`content`, `new_string`, ...) and scrubs kept args through the regex list (AWS /
-GitHub / Anthropic / JWT / public IP). Bounded enums become indexed OTLP
-attributes; the rest stays in the log body.
+GitHub / Anthropic / JWT / public IP). Bounded enums become indexed OTLP attributes.
 
 ## See also
 
