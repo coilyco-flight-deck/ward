@@ -223,11 +223,11 @@ func (r *Runner) resolveOllamaHost(ctx context.Context) string {
 	return strings.TrimSpace(string(out))
 }
 
-// resolveForgejoToken resolves the child env-file's push/API token: GitHub from a
-// user env token only (ward#489); Forgejo via broker seed (ward#334), then env, then SSM.
+// resolveForgejoToken resolves the child env-file's push/API token: GitHub from the
+// operator-selected source (ward#533, no SSM); Forgejo via broker seed, env, then SSM.
 func (r *Runner) resolveForgejoToken(ctx context.Context, target broker.Target, f forge) (string, error) {
 	if f == forgeGitHub {
-		return resolveGitHubToken()
+		return r.resolveGitHubToken(ctx)
 	}
 	if tok, ok := r.brokerDispatchSeed(ctx, target); ok {
 		return tok, nil

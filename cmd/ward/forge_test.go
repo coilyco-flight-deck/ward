@@ -1,8 +1,14 @@
 package main
 
 import (
+	"errors"
+	"io"
+	"os"
+	"path/filepath"
 	"strings"
 	"testing"
+
+	"forgejo.coilysiren.me/coilyco-flight-deck/cli-guard/cli/shell"
 )
 
 // TestParseGitHubIssueRef covers the GitHub ref/URL forms ward#489 accepts and the
@@ -122,21 +128,120 @@ func TestForgeCarryClause(t *testing.T) {
 	}
 }
 
-// TestResolveGitHubToken checks the env precedence and the no-SSM error path.
-func TestResolveGitHubToken(t *testing.T) {
+// TestResolveGitHubTokenFromEnv checks the env precedence and the no-SSM error path
+// of the env source (the default, unchanged from before the ward#533 selector).
+func TestResolveGitHubTokenFromEnv(t *testing.T) {
 	t.Setenv("WARD_GITHUB_TOKEN", "")
 	t.Setenv("GH_TOKEN", "")
 	t.Setenv("GITHUB_TOKEN", "")
-	if _, err := resolveGitHubToken(); err == nil {
-		t.Fatal("resolveGitHubToken with no env token: want error, got nil")
+	if _, err := resolveGitHubTokenFromEnv(); err == nil {
+		t.Fatal("resolveGitHubTokenFromEnv with no env token: want error, got nil")
 	}
 	t.Setenv("GITHUB_TOKEN", "gh-env")
-	if got, err := resolveGitHubToken(); err != nil || got != "gh-env" {
-		t.Fatalf("resolveGitHubToken(GITHUB_TOKEN) = %q,%v want gh-env,nil", got, err)
+	if got, err := resolveGitHubTokenFromEnv(); err != nil || got != "gh-env" {
+		t.Fatalf("resolveGitHubTokenFromEnv(GITHUB_TOKEN) = %q,%v want gh-env,nil", got, err)
 	}
 	// WARD_GITHUB_TOKEN takes precedence over the others.
 	t.Setenv("WARD_GITHUB_TOKEN", "ward-gh")
-	if got, _ := resolveGitHubToken(); got != "ward-gh" {
+	if got, _ := resolveGitHubTokenFromEnv(); got != "ward-gh" {
 		t.Errorf("WARD_GITHUB_TOKEN should win, got %q", got)
 	}
+}
+
+// TestParseGitHubTokenSource maps the WARD_GITHUB_TOKEN_SOURCE token to a source,
+// defaulting empty to env and rejecting an unknown value with an actionable error.
+func TestParseGitHubTokenSource(t *testing.T) {
+	for _, tc := range []struct {
+		in   string
+		want githubTokenSource
+	}{
+		{"", githubTokenEnv},
+		{"env", githubTokenEnv},
+		{"ENV", githubTokenEnv},
+		{" gh ", githubTokenGH},
+		{"app", githubTokenApp},
+	} {
+		got, err := parseGitHubTokenSource(tc.in)
+		if err != nil || got != tc.want {
+			t.Errorf("parseGitHubTokenSource(%q) = %v,%v want %v,nil", tc.in, got, err, tc.want)
+		}
+		if got.String() != tc.want.String() {
+			t.Errorf("String() round-trip for %q: %q != %q", tc.in, got.String(), tc.want.String())
+		}
+	}
+	if _, err := parseGitHubTokenSource("vault"); err == nil {
+		t.Error("parseGitHubTokenSource(vault): want error for an unknown source, got nil")
+	}
+}
+
+// TestResolveGitHubTokenSourceSelects drives every selector arm through a stubbed
+// Runner (no real `gh`): env, gh (+ trim, empty, off-PATH), app, and an unknown source.
+func TestResolveGitHubTokenSourceSelects(t *testing.T) {
+	t.Setenv("WARD_GITHUB_TOKEN", "")
+	t.Setenv("GH_TOKEN", "")
+
+	t.Run("env source reads the static vars", func(t *testing.T) {
+		t.Setenv("WARD_GITHUB_TOKEN_SOURCE", "env")
+		t.Setenv("GITHUB_TOKEN", "env-tok")
+		r := &Runner{Runner: &shell.Runner{}}
+		if got, err := r.resolveGitHubToken(t.Context()); err != nil || got != "env-tok" {
+			t.Fatalf("env source = %q,%v want env-tok,nil", got, err)
+		}
+	})
+
+	t.Run("gh source invokes gh auth token and trims", func(t *testing.T) {
+		t.Setenv("WARD_GITHUB_TOKEN_SOURCE", "gh")
+		stub := ghAuthTokenStub(t, "  gh-minted\n")
+		r := &Runner{Runner: &shell.Runner{Stderr: io.Discard, Resolve: func(string) (string, error) { return stub, nil }}}
+		if got, err := r.resolveGitHubToken(t.Context()); err != nil || got != "gh-minted" {
+			t.Fatalf("gh source = %q,%v want gh-minted,nil (trimmed)", got, err)
+		}
+	})
+
+	t.Run("gh source with an empty token errors", func(t *testing.T) {
+		t.Setenv("WARD_GITHUB_TOKEN_SOURCE", "gh")
+		stub := ghAuthTokenStub(t, "\n")
+		r := &Runner{Runner: &shell.Runner{Stderr: io.Discard, Resolve: func(string) (string, error) { return stub, nil }}}
+		if _, err := r.resolveGitHubToken(t.Context()); err == nil {
+			t.Fatal("gh source with an empty `gh auth token`: want error, got nil")
+		}
+	})
+
+	t.Run("gh source with gh off PATH errors", func(t *testing.T) {
+		t.Setenv("WARD_GITHUB_TOKEN_SOURCE", "gh")
+		r := &Runner{Runner: &shell.Runner{Stderr: io.Discard, Resolve: func(string) (string, error) {
+			return "", errors.New("gh: not found")
+		}}}
+		if _, err := r.resolveGitHubToken(t.Context()); err == nil {
+			t.Fatal("gh source with gh unresolvable: want error, got nil")
+		}
+	})
+
+	t.Run("app source is a wired-but-unimplemented error", func(t *testing.T) {
+		t.Setenv("WARD_GITHUB_TOKEN_SOURCE", "app")
+		r := &Runner{Runner: &shell.Runner{}}
+		_, err := r.resolveGitHubToken(t.Context())
+		if err == nil || !strings.Contains(err.Error(), "534") {
+			t.Fatalf("app source = %v, want a not-yet-implemented error naming the follow-up", err)
+		}
+	})
+
+	t.Run("unknown source errors before any resolution", func(t *testing.T) {
+		t.Setenv("WARD_GITHUB_TOKEN_SOURCE", "vault")
+		r := &Runner{Runner: &shell.Runner{}}
+		if _, err := r.resolveGitHubToken(t.Context()); err == nil {
+			t.Fatal("unknown source: want error, got nil")
+		}
+	})
+}
+
+// ghAuthTokenStub writes a stand-in `gh` that echoes out verbatim (whitespace intact),
+// standing in for `gh auth token`.
+func ghAuthTokenStub(t *testing.T, out string) string {
+	t.Helper()
+	stub := filepath.Join(t.TempDir(), "gh")
+	if err := os.WriteFile(stub, []byte("#!/bin/sh\nprintf '%s' '"+out+"'\n"), 0o755); err != nil { //nolint:gosec
+		t.Fatal(err)
+	}
+	return stub
 }
