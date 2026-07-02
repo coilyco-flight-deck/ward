@@ -41,14 +41,13 @@ fleet {
         }
     }
     // codex: scoped context (level 1), no stream, codex-file auth, no pre-flight.
-    // Cheapest bootstrap settings: WARD_CODEX_MODEL/_REASONING_EFFORT/_VERBOSITY.
     agent codex {
         binary codex
         context-level 1
         stream none
         auth codex-file
-        model gpt-5.4-mini
-        reasoning-effort low
+        model gpt-5.4
+        reasoning-effort medium
         verbosity low
         argv {
             headless codex exec
@@ -56,7 +55,6 @@ fleet {
         }
     }
     // opencode: minimal context (level 0), no stream, no host auth, no pre-flight.
-    // WARD_QWEN_MODEL/WARD_OLLAMA_URL -> model/endpoint (canonical post-#412).
     agent opencode {
         binary opencode
         context-level 0
@@ -69,8 +67,7 @@ fleet {
             interactive opencode
         }
     }
-    // goose: full context (level 2) like claude, no stream, ollama auth. Carries a
-    // host pre-flight one-shot (`goose run -t`), same argv as its headless launch.
+    // goose: full context (level 2) like claude, no stream, ollama auth.
     agent goose {
         binary goose
         context-level 2

@@ -32,6 +32,7 @@ type reapReason string
 const (
 	reasonConflict reapReason = "merge conflict integrating onto main"
 	reasonScan     reapReason = "diff flagged by the junk scan"
+	reasonCloseRef reapReason = "missing same-repo closing reference"
 	reasonPushRace reapReason = "push to main was rejected (the remote advanced)"
 	reasonPushFail reapReason = "push to main failed"
 	reasonAuthFail reapReason = "push to main was rejected on auth (dead or rotated PAT)"

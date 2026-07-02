@@ -1,10 +1,14 @@
 package main
 
 import (
+	"os"
+	"os/exec"
+	"path/filepath"
 	"strings"
 	"testing"
 	"time"
 
+	"forgejo.coilysiren.me/coilyco-flight-deck/cli-guard/cli/shell"
 	"forgejo.coilysiren.me/coilyco-flight-deck/cli-guard/pkg/scan"
 )
 
@@ -233,6 +237,45 @@ func TestSalvageIssueBodyStampsAuthCauseAndAge(t *testing.T) {
 	}
 	if strings.Contains(cbody, "Container uptime at reap:") {
 		t.Errorf("conflict body should omit uptime when TokenAge is empty\n---\n%s", cbody)
+	}
+}
+
+func TestIssueClosingReferencePresent(t *testing.T) {
+	repo := t.TempDir()
+	runGit(t, repo, "init", "-b", "main")
+	runGit(t, repo, "config", "user.email", "test@example.com")
+	runGit(t, repo, "config", "user.name", "Test User")
+	if err := os.WriteFile(filepath.Join(repo, "base.txt"), []byte("base\n"), 0o644); err != nil {
+		t.Fatal(err)
+	}
+	runGit(t, repo, "add", "base.txt")
+	runGit(t, repo, "commit", "-m", "base")
+	runGit(t, repo, "branch", "-M", "main")
+	runGit(t, repo, "remote", "add", "origin", repo)
+	runGit(t, repo, "update-ref", "refs/remotes/origin/main", "HEAD")
+
+	r := &Runner{Runner: &shell.Runner{Resolve: shell.PathResolver}}
+	if r.issueClosingReferencePresent(t.Context(), repo, 511) {
+		t.Fatal("issueClosingReferencePresent should be false when no commit mentions closes #511")
+	}
+
+	if err := os.WriteFile(filepath.Join(repo, "feat.txt"), []byte("feat\n"), 0o644); err != nil {
+		t.Fatal(err)
+	}
+	runGit(t, repo, "add", "feat.txt")
+	runGit(t, repo, "commit", "-m", "ward work\n\ncloses #511")
+	if !r.issueClosingReferencePresent(t.Context(), repo, 511) {
+		t.Fatal("issueClosingReferencePresent should be true when a commit mentions closes #511")
+	}
+}
+
+func runGit(t *testing.T, dir string, argv ...string) {
+	t.Helper()
+	cmd := exec.Command("git", argv...)
+	cmd.Dir = dir
+	out, err := cmd.CombinedOutput()
+	if err != nil {
+		t.Fatalf("git %v failed: %v\n%s", argv, err, string(out))
 	}
 }
 

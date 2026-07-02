@@ -100,8 +100,7 @@ Over 60 pages under [`docs/`](docs/) cover each surface. The anchors:
 
 ## Status
 
-v0.x, and early on purpose. ward is a single-maintainer tool in active internal use across the flight-deck fleet, now opening up - so a small public audience (few stars, few forks) is expected for the stage, not a sign of decay. The release count is high for the same reason: releases are automated per-merge, cut by CI on every push to `main`, so the version number is a build counter, not a maturity signal or a tally of hand-picked milestone drops. Downstream consumers upgrade to the `ward` binary and `.ward` config on their own schedule. Minor API breaks ship in `main` with a note in the commit body, so pin a commit until v1.0.0.
-
+v0.x, and early on purpose. Releases are automated per-merge, cut by CI on every push to `main`, so the version number is a build counter, not a maturity signal. Downstream consumers upgrade to the `ward` binary and `.ward` config on their own schedule. Minor API breaks ship in `main` with a note in the commit body, so pin a commit until v1.0.0.
 ## Related
 
 - [cli-guard][cli-guard] - the underlying security-boundary framework.

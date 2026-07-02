@@ -145,6 +145,11 @@ func (r *Runner) reapTargetTree(ctx context.Context, work string, env reapEnv, r
 	}
 
 	residual := revCount(ctx, r, work, "origin/main..HEAD")
+	if env.Issue != 0 && !r.issueClosingReferencePresent(ctx, work, env.Issue) {
+		fmt.Fprintf(os.Stderr, "ward container reap: missing closes #%d in committed work; salvaging instead of landing on main\n", env.Issue)
+		return r.salvage(ctx, work, env, reasonCloseRef, false, nil, statusSnapshot)
+	}
+
 	if residual == 0 && strings.TrimSpace(statusSnapshot) == "" {
 		fmt.Fprintln(os.Stderr, "ward container reap: nothing to reap (tree clean, HEAD on origin/main)")
 		if releaseReservation {
@@ -371,6 +376,11 @@ func (r *Runner) checkExtraRepoLanded(ctx context.Context, env reapEnv, repo tar
 	status := r.captureAndCommitResidualRepo(ctx, work, env.Mode, repo.slug())
 	_ = r.Runner.Exec(ctx, "git", "-C", work, "fetch", "origin")
 	rep := extraRepoUnlanded{Repo: repo, Status: status}
+	if env.Issue != 0 && !r.issueClosingReferencePresent(ctx, work, env.Issue) {
+		rep.Ahead = 1
+		r.preserveExtraRepo(ctx, work, env, &rep)
+		return rep, false
+	}
 	if !refExists(ctx, r, work, "origin/main") {
 		// No remote main to compare against: we cannot prove the work landed, so
 		// treat it as un-landed and preserve whatever HEAD holds.
@@ -386,6 +396,20 @@ func (r *Runner) checkExtraRepoLanded(ctx context.Context, env reapEnv, repo tar
 	rep.Ahead = ahead
 	r.preserveExtraRepo(ctx, work, env, &rep)
 	return rep, false
+}
+
+// issueClosingReferencePresent reports whether the committed range mentions the
+// carried issue closing trailer the same repo needs before landing.
+func (r *Runner) issueClosingReferencePresent(ctx context.Context, work string, issue int) bool {
+	if issue == 0 {
+		return true
+	}
+	pattern := fmt.Sprintf("closes #%d", issue)
+	out, err := r.Runner.Capture(ctx, "git", "-C", work, "log", "--format=%B", "origin/main..HEAD")
+	if err != nil {
+		return false
+	}
+	return strings.Contains(strings.ToLower(string(out)), pattern)
 }
 
 // preserveExtraRepo pushes a granted repo's un-landed work to a salvage branch so

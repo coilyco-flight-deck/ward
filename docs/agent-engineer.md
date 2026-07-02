@@ -31,9 +31,9 @@ on non-ref text → freeform):
 
 ## Ref mode: the detached run
 
-It validates the ref (a bad ref or [untrusted owner](agent-trust-gate.md) fails first),
-branches `issue-<N>` (override `--branch`), and launches a fresh-clone `ward container`
-seeded to carry it.
+It validates the ref (a bad ref or [untrusted owner](agent-trust-gate.md) trips
+first), branches `issue-<N>` (override `--branch`), and launches a clone.
+Reaper enforces `closes #N` before landing.
 
 The engineer always **detaches** fire-and-forget (was `headless`): print mode
 (`claude -p`/`codex exec`/`goose run -t`). From a terminal it first runs a **pre-flight**

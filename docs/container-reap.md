@@ -17,21 +17,22 @@ does can defeat it. It is a hidden (ward#263) verb the entrypoint calls.
 
 1. Stages and commits anything the agent left loose (`git add -A` + a
    `--no-verify` residual commit - the goal is to preserve work, not re-gate it).
-2. Fetches origin and integrates onto the latest `main` (a `rebase`; a conflict
-   routes to salvage).
-3. Scans the residual diff for content that should never silently land on `main`:
+2. Verifies the carried issue has the same-repo `closes #N` reference. Missing
+   reference means salvage, not push.
+3. Fetches origin and integrates onto the latest `main` (`rebase`; conflicts
+   route to salvage).
+4. Scans the residual diff for content that should never silently land on `main`:
    vendored/generated trees (`node_modules`, `vendor`, ...), credential-shaped
    files (`.env`, `*.pem`/`*.key`, `id_rsa`, ...), and oversized binary blobs.
-4. Decides deterministically:
+5. Decides deterministically:
    - clean diff + clean integration -> **push straight to `main`**.
    - anything else (conflict, scan finding, rejected push) -> **salvage**: push
      the work to a `ward-salvage/<id>` branch (durable), then file or append to a
      `[ward-salvage]` forgejo issue with recovery commands + findings (notification).
-5. Verifies each `--repo` grant landed (ward#291): reads `WARD_EXTRA_REPOS` and,
-   per granted clone, checks its `HEAD` reached the freshly-fetched `origin/main`.
-   An un-pushed grant is preserved on a `ward-salvage/<id>` branch and the target
-   issue is **reopened** with a recovery comment (undoing any `closes #N`). The
-   reaper still never pushes a grant to `main` - it only verifies and surfaces.
+6. Verifies each `--repo` grant landed (ward#291): reads `WARD_EXTRA_REPOS` and
+   checks the closing-reference discipline plus whether `HEAD` reached
+   `origin/main`. Un-pushed grants are preserved on `ward-salvage/<id>` and the
+   target issue is reopened with a recovery comment (undoing any `closes #N`).
 
 ## Why this shape
 
