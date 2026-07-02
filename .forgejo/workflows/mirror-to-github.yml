@@ -1,6 +1,8 @@
-# Push Forgejo refs (main + tags) to the read-only GitHub mirror and scrub the
-# stranded legacy release objects; no-ops without the PAT. The mirror carries
-# refs only - canonical releases live on Forgejo. See docs/github-mirror.md.
+# Push Forgejo refs (main + tags) to the read-only GitHub mirror, sync the
+# repo description + topics from canonical Forgejo, and scrub the stranded
+# legacy release objects; every PAT-gated step no-ops without the PAT. The
+# mirror carries git refs plus that front-door metadata - canonical releases
+# live on Forgejo. See docs/github-mirror.md.
 
 name: mirror-to-github
 
@@ -30,6 +32,48 @@ jobs:
           git remote add github "https://x-access-token:${PAT}@github.com/coilyco-flight-deck/ward.git"
           git push --force github main
           git push --force --tags github
+
+      - name: Sync repo description and topics to GitHub
+        env:
+          PAT: ${{ secrets.GITHUB_MIRROR_PAT }}
+        run: |
+          set -euo pipefail
+          if [ -z "${PAT}" ]; then
+            echo "sync-metadata: GITHUB_MIRROR_PAT secret not set; skipping." >&2
+            exit 0
+          fi
+          # Descriptions and topics do not ride a git push (ward#438), so pull
+          # them from canonical Forgejo (anonymous read, public repo) and apply
+          # to the mirror via the GitHub API. Forgejo stays the single source of
+          # truth - no value is duplicated into this file. The docker runner has
+          # no jq, but node is present (the JS actions above need it), so parse
+          # with node: it handles the nested owner.description, quoting, and the
+          # trailing newline that a grep/sed pass would trip on.
+          fj="https://forgejo.coilysiren.me/api/v1/repos/coilyco-flight-deck/ward"
+          gh="https://api.github.com/repos/coilyco-flight-deck/ward"
+          hdr_auth="Authorization: token ${PAT}"
+          hdr_accept="Accept: application/vnd.github+json"
+          desc_file="$(mktemp)"
+          topics_file="$(mktemp)"
+
+          REPO_JSON="$(curl -fsSL "${fj}")" \
+          TOPICS_JSON="$(curl -fsSL "${fj}/topics")" \
+          DESC_FILE="$desc_file" TOPICS_FILE="$topics_file" \
+          node -e '
+            const fs = require("fs");
+            const repo = JSON.parse(process.env.REPO_JSON);
+            const topics = JSON.parse(process.env.TOPICS_JSON);
+            const desc = (repo.description || "").replace(/\s+$/, "");
+            fs.writeFileSync(process.env.DESC_FILE, JSON.stringify({ description: desc }));
+            fs.writeFileSync(process.env.TOPICS_FILE, JSON.stringify({ names: topics.topics || [] }));
+            console.log("sync-metadata: description = " + JSON.stringify(desc));
+            console.log("sync-metadata: topics = " + JSON.stringify(topics.topics || []));
+          '
+
+          curl -fsSL -X PATCH -H "$hdr_auth" -H "$hdr_accept" "${gh}" \
+            --data-binary "@${desc_file}" >/dev/null
+          curl -fsSL -X PUT -H "$hdr_auth" -H "$hdr_accept" "${gh}/topics" \
+            --data-binary "@${topics_file}" >/dev/null
 
       - name: Scrub stranded legacy GitHub release objects
         env:

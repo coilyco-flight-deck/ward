@@ -81,7 +81,7 @@ warded director --org coilyco-flight-deck   # a heartbeat that drains a backlog 
 warded advisor #98       # answer/triage a ref, writing no code
 ```
 
-See [`docs/FEATURES.md`](docs/FEATURES.md) for the full verb list.
+New to the agent driver? [`docs/first-run.md`](docs/first-run.md) is the ordered path from zero to a verifiable `warded ... --print` dry run - prerequisites, install/verify, and how to read the plan - and it says up front whether you can get to a first run today. See [`docs/FEATURES.md`](docs/FEATURES.md) for the full verb list.
 
 ## When a run breaks
 
@@ -106,7 +106,7 @@ See [`docs/architecture.md`](docs/architecture.md).
 Over 60 pages under [`docs/`](docs/) cover each surface. The anchors:
 
 - **The verb gate** - [exec-verb.md](docs/exec-verb.md) (the gate), [verb-fallback.md](docs/verb-fallback.md), [git-verbs.md](docs/git-verbs.md), [audit.md](docs/audit.md), [doctor.md](docs/doctor.md), [install-hooks.md](docs/install-hooks.md).
-- **The agent driver** - [agent.md](docs/agent.md) (start here), the roster [agent-engineer.md](docs/agent-engineer.md) / [agent-director.md](docs/agent-director.md) / [agent-advisor.md](docs/agent-advisor.md), the [agent-gate.md](docs/agent-gate.md), [agent-credentials.md](docs/agent-credentials.md), [agent-observability.md](docs/agent-observability.md).
+- **The agent driver** - [first-run.md](docs/first-run.md) (zero to a first `--print` dry run), [agent.md](docs/agent.md) (the reference), the roster [agent-engineer.md](docs/agent-engineer.md) / [agent-director.md](docs/agent-director.md) / [agent-advisor.md](docs/agent-advisor.md), the [agent-gate.md](docs/agent-gate.md), [agent-credentials.md](docs/agent-credentials.md), [agent-observability.md](docs/agent-observability.md).
 - **The container** - [container.md](docs/container.md), [container-reap.md](docs/container-reap.md) (land-or-salvage on teardown), [container-multi-repo.md](docs/container-multi-repo.md), [container-substrate.md](docs/container-substrate.md).
 - **Operator surface (ward-kdl / ops)** - [ward-kdl.md](docs/ward-kdl.md), [ward-kdl-tiers.md](docs/ward-kdl-tiers.md), [ops-forgejo.md](docs/ops-forgejo.md).
 - **Build & release** - [homebrew-build.md](docs/homebrew-build.md), [release.md](docs/release.md), [github-mirror.md](docs/github-mirror.md), [golangci.md](docs/golangci.md).

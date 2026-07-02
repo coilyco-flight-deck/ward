@@ -10,7 +10,7 @@ is the single launch surface.
 `warded` is the user-facing command: a thin `ward` symlink the multicall rewrite turns
 into `ward agent <args>` (ward#247, ward#282), so `warded #98` *is* `ward agent
 #98`. Read "warded" as the protective circle - the deny-list and allowlisted verbs
-bounding the agent's reach. Both spellings behave identically.
+bounding the agent's reach.
 
 ## The startup-role roster (ward#347, ward#353)
 
@@ -27,7 +27,7 @@ or answers it.
 
 ward#353 folded the standalone `architect`/`explore` role into the director's
 [surface session](agent-surface.md); `warded architect`/`explore`/`sandbox` now
-error as unknown commands.
+error.
 
 The startup roles are the **roles axis**. The `--driver` harness axis and its
 per-driver setup pages live under [Drivers](#drivers) below. `internal/agents/<name>`
@@ -53,14 +53,15 @@ The role comes first (`--driver` picks the harness, default claude; ward#185; se
 
 ## Drivers
 
-`--driver` picks the harness, one click to each public setup page (credential
-source, install stance, launch dialect, gate coverage), no `internal/` source:
+`--driver` picks the harness, one click to each public setup page (credentials,
+install stance, launch dialect, gates), no `internal/` source:
 [claude](agent-claude.md), [codex](agent-codex.md) (cloud), [goose](agent-goose.md),
 [opencode](agent-opencode.md) (local Ollama). Full comparison:
 [agent-drivers.md](agent-drivers.md).
 
 ## Topics
 
+- [first-run.md](first-run.md) - **start here if new**: zero to a first `--print` dry run.
 - [agent-roster.md](agent-roster.md) - flat list of every role (`ward agent roster`).
 - [agent-subcommands.md](agent-subcommands.md) - the three roles compared + the reaper.
 - [agent-drivers.md](agent-drivers.md) - the four `--driver` harnesses compared.
@@ -68,6 +69,6 @@ source, install stance, launch dialect, gate coverage), no `internal/` source:
 - [agent-preflight.md](agent-preflight.md) - the detached GO/NO-GO pre-flight.
 - [agent-trust-gate.md](agent-trust-gate.md) - the owner trust gate.
 - [agent-wrong-repo.md](agent-wrong-repo.md) - the WRONG-REPO blind-fire path.
-- [agent-reservation.md](agent-reservation.md) - reservation, TTL, `--force`, stale warn.
+- [agent-reservation.md](agent-reservation.md) - reservation, TTL, `--force`.
 - [agent-flags.md](agent-flags.md) - launch flags and `--details`.
-- [container.md](container.md) - the container model (ephemeral, fresh-clone).
+- [container.md](container.md) - the container model (ephemeral clone).
