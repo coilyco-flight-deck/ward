@@ -25,7 +25,7 @@ no prompt to answer:
      agent walking the working tree finds nothing to mistake for the clone -
      stopping a read from one repo's checkout false-flagging `WRONG-REPO` when its
      files look "missing" locally. Both levers are belt-and-suspenders; either
-     alone kills the false gate.
+     alone kills the false gate (the original **ward#153** cwd-NO-GO).
 2. On **GO** - or any read ward can't pin to an explicit NO-GO - the detached run
    launches. The bias is to proceed: only the agent itself saying "don't" blocks.
    An explicit **GO** also folds the read into the
