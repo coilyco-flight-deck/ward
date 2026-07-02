@@ -1147,7 +1147,17 @@ func (r *Runner) launchAgentContainer(ctx context.Context, c *cli.Command, mode 
 	}
 	fmt.Fprintf(os.Stderr, "%s: wrote launch env file for %s\n", label, ref)
 	defer cleanupEnv()
-	return r.createAgentContainer(ctx, plan, envFile)
+	if err := r.createAgentContainer(ctx, plan, envFile); err != nil {
+		return err
+	}
+	// Spawn the detached drain-on-exit waiter so the run drains the moment it exits,
+	// not only at keep-10 eviction (ward#510; docs/agent-observability.md).
+	if !inContainer() {
+		// In-container dispatch skips it - the waiter would die with its own reaped
+		// container - and leans on the next sweep's idempotent drain instead.
+		r.spawnDrainWaiter(plan.Name)
+	}
+	return nil
 }
 
 // pullHeartbeatDefault is how often a silenced detached pull beats a "still

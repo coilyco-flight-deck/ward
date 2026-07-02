@@ -35,6 +35,37 @@ const (
 	drainMetaFile       = "meta.json"
 )
 
+// drainedMarkerSubdir holds one zero-byte sentinel per drained container so a
+// second drain is a cheap no-op - the exit-waiter/sweep idempotency boundary (ward#510).
+const drainedMarkerSubdir = ".drained"
+
+// drainMarkerPath is the sentinel path for one container's drain. Pure.
+func drainMarkerPath(baseDir, name string) string {
+	return filepath.Join(baseDir, drainedMarkerSubdir, name)
+}
+
+// alreadyDrained reports whether name's drain sentinel exists under baseDir.
+func alreadyDrained(baseDir, name string) bool {
+	_, err := os.Stat(drainMarkerPath(baseDir, name))
+	return err == nil
+}
+
+// markDrained writes name's drain sentinel (best-effort; a write failure only
+// costs a redundant re-drain later, never correctness).
+func markDrained(baseDir, name string) {
+	p := drainMarkerPath(baseDir, name)
+	if err := os.MkdirAll(filepath.Dir(p), 0o755); err != nil {
+		return
+	}
+	_ = os.WriteFile(p, nil, 0o644)
+}
+
+// clearDrainMarker drops name's sentinel on removal, so a reused deterministic
+// name drains fresh rather than being skipped by the dead run's marker (ward#510).
+func clearDrainMarker(baseDir, name string) {
+	_ = os.Remove(drainMarkerPath(baseDir, name))
+}
+
 // sinkMode selects where a drained run lands (ward#532): signoz (local-exclusive,
 // full detail, no disk), disk (today's artifacts), or both. See docs.
 type sinkMode string
@@ -128,38 +159,55 @@ const (
 	sweepRemove = "remove"
 )
 
-// sweepActions is the pure plan: drain each stale container into baseDir/<name>,
-// THEN remove them all. A test asserts no remove precedes a drain (ward#363).
-func sweepActions(stale []string, baseDir string) []sweepAction {
-	if len(stale) == 0 {
+// sweepActions is the pure plan: drain EVERY exited container into baseDir/<name>,
+// THEN remove the stale (past keep-10) subset (ward#363 ordering, ward#510 full-set).
+func sweepActions(exited, stale []string, baseDir string) []sweepAction {
+	if len(exited) == 0 && len(stale) == 0 {
 		return nil
 	}
-	actions := make([]sweepAction, 0, len(stale)+1)
-	for _, name := range stale {
+	actions := make([]sweepAction, 0, len(exited)+1)
+	for _, name := range exited {
 		actions = append(actions, sweepAction{
 			Op:        sweepDrain,
 			Container: name,
 			Dir:       filepath.Join(baseDir, name),
 		})
 	}
-	return append(actions, sweepAction{Op: sweepRemove, Names: stale})
+	if len(stale) > 0 {
+		actions = append(actions, sweepAction{Op: sweepRemove, Names: stale})
+	}
+	return actions
 }
 
-// drainStaleContainers executes the sweep plan: drain each container (best-effort)
-// to the host archive, then `docker rm` the set, returning only the rm error.
-func (r *Runner) drainStaleContainers(ctx context.Context, stale []string) error {
+// drainStaleContainers runs the sweep plan: drain every exited container
+// idempotently, then `docker rm` the stale subset and clear its markers (ward#510).
+func (r *Runner) drainStaleContainers(ctx context.Context, exited, stale []string) error {
 	baseDir := agentLogsDir()
-	for _, a := range sweepActions(stale, baseDir) {
+	for _, a := range sweepActions(exited, stale, baseDir) {
 		switch a.Op {
 		case sweepDrain:
-			fmt.Fprintf(os.Stderr, "ward container: draining container %s to %s\n", a.Container, a.Dir)
-			r.drainAgentRun(ctx, a.Container, a.Dir)
+			r.drainAgentRunIdempotent(ctx, a.Container, baseDir)
 		case sweepRemove:
 			fmt.Fprintf(os.Stderr, "ward container: removing containers %v\n", a.Names)
-			return r.Runner.Exec(ctx, "docker", dockerRmArgv(a.Names)...)
+			rmErr := r.Runner.Exec(ctx, "docker", dockerRmArgv(a.Names)...)
+			for _, name := range a.Names {
+				clearDrainMarker(baseDir, name)
+			}
+			return rmErr
 		}
 	}
 	return nil
+}
+
+// drainAgentRunIdempotent drains name once: a drain sentinel makes a repeat a cheap
+// no-op, so the exit waiter and the later keep-10 sweep never double-pull (ward#510).
+func (r *Runner) drainAgentRunIdempotent(ctx context.Context, name, baseDir string) {
+	if alreadyDrained(baseDir, name) {
+		fmt.Fprintf(os.Stderr, "ward container: drain of %s skipped (already drained)\n", name)
+		return
+	}
+	r.drainAgentRun(ctx, name, filepath.Join(baseDir, name))
+	markDrained(baseDir, name)
 }
 
 // drainAgentRun pulls one exited container's console + transcript + meta into

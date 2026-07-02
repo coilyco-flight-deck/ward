@@ -767,15 +767,22 @@ func dockerExitedListArgv() []string {
 		"--format", "{{.Names}}"}
 }
 
-// staleContainersToReap returns the exited-container names past the keep window
-// (newest first, as `docker ps` lists them); blanks ignored, keep-or-fewer is nil.
-func staleContainersToReap(psOutput string, keep int) []string {
+// parseExitedContainerNames splits the `docker ps` output into non-blank names,
+// newest first as docker lists them - the full exited set the sweep drains (ward#510).
+func parseExitedContainerNames(psOutput string) []string {
 	var names []string
 	for _, line := range strings.Split(psOutput, "\n") {
 		if n := strings.TrimSpace(line); n != "" {
 			names = append(names, n)
 		}
 	}
+	return names
+}
+
+// staleContainersToReap returns the exited-container names past the keep window
+// (newest first, as `docker ps` lists them); blanks ignored, keep-or-fewer is nil.
+func staleContainersToReap(psOutput string, keep int) []string {
+	names := parseExitedContainerNames(psOutput)
 	if keep < 0 {
 		keep = 0
 	}

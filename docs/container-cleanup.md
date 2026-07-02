@@ -28,13 +28,14 @@ ward containers before adding one more:
 
 1. List exited containers carrying the `ward=true` label, newest first
    (`docker ps -a --filter label=... --filter status=exited`).
-2. Keep the most recent `containerReapKeep` (10) for `docker logs` post-mortem.
-3. **Drain** the older tail to `~/.ward/agent-logs/<container>/` (console log,
-   transcript, `meta.json`) **before** removing it - the `rm` takes the log and
-   the writable layer with it, so the drain is ordered first ([ward#363](https://forgejo.coilysiren.me/coilyco-flight-deck/ward/issues/363),
-   [agent-observability.md](agent-observability.md)).
-4. `docker rm` the older tail (no `-f`: only already-exited containers are ever
-   targeted, so a running run is never touched).
+2. **Drain** every exited container (the full set, not only the tail) to
+   `~/.ward/agent-logs/<container>/` **before** removing any - the `rm` takes the log
+   with it, so the drain is ordered first ([ward#363](https://forgejo.coilysiren.me/coilyco-flight-deck/ward/issues/363)).
+   Each drain is idempotent (a `.drained/` sentinel), so a run the exit waiter
+   already pulled is a skip ([drain-timing.md](drain-timing.md)).
+3. Keep the recent `containerReapKeep` (10); `docker rm` the older tail (no `-f`:
+   only exited containers are targeted). A removed container's sentinel is cleared
+   so a reused name drains fresh.
 
 Stopping a run is a different lifecycle. This sweep `docker rm`s an **exited**
 container to reclaim disk. To halt a still-**running** run (a mis-scoped one killed

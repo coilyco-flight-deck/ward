@@ -3,22 +3,22 @@
 A headless `ward agent` run used to be unqueryable after it finished: its console
 lived only in Docker's driver (gone with the keep-10 `docker rm`), and the claude
 **transcript** (`~/.claude/projects/**/*.jsonl`) died with the container. ward#363
-opened the drain; ward#532 reshaped where it lands.
+opened the drain; ward#532 reshaped where it lands; ward#510 made it fire shortly
+after exit, not only at eviction.
 
-## The drain - host-native, on reap
+## The drain - host-native, shortly after exit
 
 The [reaper](container-reap.md) runs **inside** the container with no docker
-socket, so the drain is **host-side**, folded into the keep-10 sweep
-([container-cleanup.md](container-cleanup.md)): right **before** the sweep
-`docker rm`s an exited container, ward drains it. Ordering is load-bearing - the
-`rm` takes the console and the transcript with it - so a pure `sweepActions`
-planner puts every drain before the remove, and a test asserts it.
+socket, so the drain is **host-side**, at two points sharing an idempotency marker
+([drain-timing.md](drain-timing.md)): a detached waiter draining the moment a
+container exits (ward#510), and the keep-10 [sweep](container-cleanup.md) draining
+every exited run **before** the `rm` takes its log (ward#363).
 
 Every drain pulls three things **into memory**: the console (`docker logs`,
 stdout+stderr merged), the transcript (`docker cp`'d out of the projects tree and
 concatenated), and a small `meta.json`. The transcript is `docker cp`'d out **even
 in the signoz-exclusive default** - it never touches `~/.ward/agent-logs/` unless a
-disk sink is on. This is drain-on-reap; live tailing is separate.
+disk sink is on. Live tailing is separate.
 
 `meta.json` is small and **secret-free** regardless of sink: `container`, `repo`,
 `issue`, `driver`, `branch`, `outcome`. The dims come from the container's env

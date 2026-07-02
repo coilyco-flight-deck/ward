@@ -3,16 +3,21 @@ package main
 import (
 	"archive/tar"
 	"bytes"
+	"context"
+	"os"
 	"path/filepath"
 	"strings"
 	"testing"
 )
 
-// TestSweepActionsDrainPrecedesRemove is the load-bearing ordering assertion:
-// every drain must come before the `docker rm` (ward#363).
+// TestSweepActionsDrainPrecedesRemove is the load-bearing ordering assertion: every
+// drain precedes the `docker rm` (ward#363), and the FULL exited set drains (ward#510).
 func TestSweepActionsDrainPrecedesRemove(t *testing.T) {
-	stale := []string{"ward-a", "ward-b", "ward-c"}
-	actions := sweepActions(stale, "/base")
+	// Five exited, the oldest two past keep: every exited run is drained, only the
+	// two stale ones are removed.
+	exited := []string{"ward-a", "ward-b", "ward-c", "ward-d", "ward-e"}
+	stale := []string{"ward-d", "ward-e"}
+	actions := sweepActions(exited, stale, "/base")
 
 	removeIdx := -1
 	var drained []string
@@ -23,8 +28,8 @@ func TestSweepActionsDrainPrecedesRemove(t *testing.T) {
 				t.Fatalf("expected exactly one remove action, got a second at %d", i)
 			}
 			removeIdx = i
-			if len(a.Names) != len(stale) {
-				t.Errorf("remove action names = %v, want all %v", a.Names, stale)
+			if strings.Join(a.Names, ",") != strings.Join(stale, ",") {
+				t.Errorf("remove action names = %v, want the stale subset %v", a.Names, stale)
 			}
 		case sweepDrain:
 			drained = append(drained, a.Container)
@@ -42,8 +47,23 @@ func TestSweepActionsDrainPrecedesRemove(t *testing.T) {
 	if removeIdx == -1 {
 		t.Fatal("no remove action emitted")
 	}
-	if strings.Join(drained, ",") != strings.Join(stale, ",") {
-		t.Errorf("drained %v, want every stale container %v", drained, stale)
+	if strings.Join(drained, ",") != strings.Join(exited, ",") {
+		t.Errorf("drained %v, want every EXITED container %v (ward#510)", drained, exited)
+	}
+}
+
+// TestSweepActionsDrainsWithoutEviction is the ward#510 core: exited runs still
+// inside the keep window (nothing stale) are drained, and no remove is planned.
+func TestSweepActionsDrainsWithoutEviction(t *testing.T) {
+	exited := []string{"ward-a", "ward-b"}
+	actions := sweepActions(exited, nil, "/base")
+	if len(actions) != len(exited) {
+		t.Fatalf("got %d actions, want %d drains and no remove", len(actions), len(exited))
+	}
+	for i, a := range actions {
+		if a.Op != sweepDrain {
+			t.Errorf("action %d op = %q, want a drain (no eviction when nothing is stale)", i, a.Op)
+		}
 	}
 }
 
@@ -84,8 +104,60 @@ func TestResolveSinkMode(t *testing.T) {
 }
 
 func TestSweepActionsEmpty(t *testing.T) {
-	if got := sweepActions(nil, "/base"); got != nil {
-		t.Errorf("sweepActions(nil) = %v, want nil", got)
+	if got := sweepActions(nil, nil, "/base"); got != nil {
+		t.Errorf("sweepActions(nil, nil) = %v, want nil", got)
+	}
+}
+
+// TestDrainMarkerIdempotency covers the ward#510 duplicate-drain guard: the marker
+// round-trips (write, observe, clear) so a removed name drains fresh on reuse.
+func TestDrainMarkerIdempotency(t *testing.T) {
+	base := t.TempDir()
+	const name = "engineer-claude-ward-510"
+
+	if alreadyDrained(base, name) {
+		t.Fatal("a never-drained container must not read as drained")
+	}
+	markDrained(base, name)
+	if !alreadyDrained(base, name) {
+		t.Fatal("after markDrained the container must read as drained (the sweep skips it)")
+	}
+	// The sentinel lives under the hidden .drained subdir, not as a run artifact.
+	if got := drainMarkerPath(base, name); got != filepath.Join(base, drainedMarkerSubdir, name) {
+		t.Errorf("drainMarkerPath = %q, want it under %s/", got, drainedMarkerSubdir)
+	}
+	// Removal clears the marker so a reused deterministic name drains fresh.
+	clearDrainMarker(base, name)
+	if alreadyDrained(base, name) {
+		t.Fatal("after clearDrainMarker the reused name must drain fresh, not be skipped")
+	}
+}
+
+// TestDrainAgentRunIdempotentSkipsMarked pins that a pre-marked run pulls NO docker:
+// a second drain is a pure sentinel check, never a re-pull to disk (ward#510).
+func TestDrainAgentRunIdempotentSkipsMarked(t *testing.T) {
+	base := t.TempDir()
+	const name = "ward-already-drained"
+	markDrained(base, name)
+
+	// A docker that errors on every call: if the skip path called docker at all, the
+	// disk sink would try to run it. Route to disk so a drain WOULD hit docker.
+	t.Setenv(envSinkMode, string(sinkDisk))
+	r := fakeDockerRunner(t, "", 1)
+	r.drainAgentRunIdempotent(context.Background(), name, base)
+
+	// The skip must not have created the per-run disk dir (no drain ran).
+	if _, err := os.Stat(filepath.Join(base, name)); err == nil {
+		t.Error("an already-drained run must not be re-drained to disk")
+	}
+}
+
+// TestDrainWaiterArgv pins the detached waiter re-enters ward at the hidden leaf.
+func TestDrainWaiterArgv(t *testing.T) {
+	got := drainWaiterArgv("engineer-claude-ward-510")
+	want := []string{"container", "drain-exit", "engineer-claude-ward-510"}
+	if strings.Join(got, " ") != strings.Join(want, " ") {
+		t.Errorf("drainWaiterArgv = %v, want %v", got, want)
 	}
 }
 
