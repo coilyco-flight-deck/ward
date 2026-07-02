@@ -3,6 +3,7 @@ package main
 import (
 	"context"
 	"encoding/json"
+	"io"
 	"net/http"
 	"net/http/httptest"
 	"strings"
@@ -62,7 +63,7 @@ func TestExtractEnvelopesDropsBodiesAndRedacts(t *testing.T) {
 		`{"type":"user","timestamp":"2026-06-26T02:00:03Z","message":{"content":[{"type":"tool_result","tool_use_id":"t2","is_error":true,"content":"fatal: leaked AKIAIOSFODNN7EXAMPLE in result body"}]}}`,
 	}, "\n")
 
-	envs := extractEnvelopes([]byte(transcript))
+	envs := extractEnvelopes([]byte(transcript), true)
 	if len(envs) != 2 {
 		t.Fatalf("got %d envelopes, want 2: %+v", len(envs), envs)
 	}
@@ -105,6 +106,26 @@ func TestExtractEnvelopesDropsBodiesAndRedacts(t *testing.T) {
 	}
 }
 
+// TestExtractEnvelopesFullKeepsBodies is the local full-detail counterpart: with
+// redact=false the body args ride verbatim, unredacted (ward#532).
+func TestExtractEnvelopesFullKeepsBodies(t *testing.T) {
+	transcript := []byte(`{"type":"assistant","timestamp":"2026-06-26T02:00:00Z","cwd":"/workspace/ward","message":{"content":[{"type":"tool_use","id":"t1","name":"Write","input":{"file_path":"/workspace/ward/x.go","content":"full body ghp_1234567890abcdefghijklmnopqrstuvwxyz kept"}}]}}`)
+	envs := extractEnvelopes(transcript, false)
+	if len(envs) != 1 {
+		t.Fatalf("got %d envelopes, want 1", len(envs))
+	}
+	body := envs[0].Args["content"]
+	if body == "" {
+		t.Fatal("full extraction dropped the content body; ward#532 requires bodies kept locally")
+	}
+	if !strings.Contains(body, "ghp_") {
+		t.Errorf("full extraction redacted a local body it should keep verbatim: %q", body)
+	}
+	if len(envs[0].Files) != 1 || envs[0].Files[0] != "/workspace/ward/x.go" {
+		t.Errorf("full extraction lost the touched file: %v", envs[0].Files)
+	}
+}
+
 func TestOtlpLogsPayloadShape(t *testing.T) {
 	envs := []toolEnvelope{{
 		Tool: "Bash", Outcome: "success", Lifecycle: lifecyclePush, DurationMs: 12,
@@ -128,31 +149,113 @@ func TestOtlpLogsPayloadShape(t *testing.T) {
 	}
 }
 
-// TestMaybeShipTelemetryDefaultOff asserts the export is OFF unless opted in -
-// the redaction-review gate (ward#363). Nothing reaches the collector by default.
-func TestMaybeShipTelemetryDefaultOff(t *testing.T) {
+func TestIsLocalEndpoint(t *testing.T) {
+	cases := []struct {
+		endpoint string
+		want     bool
+	}{
+		{"http://localhost:4318/v1/logs", true},
+		{"http://127.0.0.1:4318/v1/logs", true},
+		{"http://[::1]:4318/v1/logs", true},
+		{"https://localhost/v1/logs", true},
+		{"http://ser8:4318/v1/logs", false},
+		{"http://10.0.0.5:4318/v1/logs", false}, // private LAN is still off-box
+		{"http://signoz.internal:4318/v1/logs", false},
+		{"", false},
+		{"not a url", false},
+	}
+	for _, c := range cases {
+		if got := isLocalEndpoint(c.endpoint); got != c.want {
+			t.Errorf("isLocalEndpoint(%q) = %v, want %v", c.endpoint, got, c.want)
+		}
+	}
+}
+
+// TestSignozPayloadLocalityGate is the load-bearing safety assertion (ward#532):
+// full content reaches ONLY a local endpoint; a remote one gets redacted envelopes.
+func TestSignozPayloadLocalityGate(t *testing.T) {
+	// A Write whose body carries a token + a path, and console output with a secret.
+	transcript := []byte(`{"type":"assistant","timestamp":"2026-06-26T02:00:00Z","cwd":"/workspace/ward","message":{"content":[{"type":"tool_use","id":"t1","name":"Write","input":{"file_path":"/workspace/ward/x.go","content":"body-secret ghp_1234567890abcdefghijklmnopqrstuvwxyz here"}}]}}`)
+	console := []byte("agent booting\nleaked AKIAIOSFODNN7EXAMPLE in console line\nreap: landed on main\n")
+	meta := runMeta{Container: "ward-x", Repo: "coilyco-flight-deck/ward", Driver: "claude", Issue: "532"}
+
+	// Remote endpoint => redacted: no body, no raw console, no secret material.
+	remote, full, n, err := signozPayload("http://ser8:4318/v1/logs", console, transcript, meta)
+	if err != nil {
+		t.Fatal(err)
+	}
+	if full {
+		t.Fatal("remote endpoint classified as full; the locality gate leaked")
+	}
+	rs := string(remote)
+	for _, banned := range []string{"body-secret", "ghp_", "AKIA", "agent booting", "reap: landed on main"} {
+		if strings.Contains(rs, banned) {
+			t.Errorf("remote payload leaked %q off-box:\n%s", banned, rs)
+		}
+	}
+	if n == 0 {
+		t.Error("remote payload carried no records; the redacted envelope was dropped")
+	}
+
+	// Local endpoint => full allowed: the console lines and the kept body ride.
+	local, full, n, err := signozPayload("http://localhost:4318/v1/logs", console, transcript, meta)
+	if err != nil {
+		t.Fatal(err)
+	}
+	if !full {
+		t.Fatal("local endpoint not classified as full; full detail was suppressed")
+	}
+	ls := string(local)
+	for _, want := range []string{"body-secret", "agent booting", "reap: landed on main", "/workspace/ward/x.go"} {
+		if !strings.Contains(ls, want) {
+			t.Errorf("local full payload missing %q:\n%s", want, ls)
+		}
+	}
+	if n < 2 {
+		t.Errorf("local payload carried %d records; want console lines + the envelope", n)
+	}
+}
+
+// TestShipToSignozPostsToLocal asserts the drain actually POSTs to the resolved
+// endpoint and that the default endpoint is the local collector (full path).
+func TestShipToSignozPostsToLocal(t *testing.T) {
 	var hits int32
+	var gotBody []byte
 	srv := httptest.NewServer(http.HandlerFunc(func(w http.ResponseWriter, r *http.Request) {
+		atomic.AddInt32(&hits, 1)
+		gotBody, _ = io.ReadAll(r.Body)
+		w.WriteHeader(http.StatusOK)
+	}))
+	defer srv.Close()
+
+	// httptest binds loopback, so srv.URL is a local endpoint -> full path.
+	t.Setenv(envTelemetryEndpoint, srv.URL)
+	transcript := []byte(`{"type":"assistant","message":{"content":[{"type":"tool_use","id":"t1","name":"Bash","input":{"command":"ls"}}]}}`)
+	console := []byte("hello from the agent\n")
+	r := &Runner{}
+	r.shipToSignoz(context.Background(), console, transcript, runMeta{Container: "ward-x"})
+
+	if got := atomic.LoadInt32(&hits); got != 1 {
+		t.Fatalf("shipToSignoz POSTed %d time(s); want 1", got)
+	}
+	if !strings.Contains(string(gotBody), "hello from the agent") {
+		t.Errorf("local POST omitted the console line:\n%s", gotBody)
+	}
+}
+
+// TestShipToSignozSkipsEmpty asserts an empty drain ships nothing.
+func TestShipToSignozSkipsEmpty(t *testing.T) {
+	var hits int32
+	srv := httptest.NewServer(http.HandlerFunc(func(w http.ResponseWriter, _ *http.Request) {
 		atomic.AddInt32(&hits, 1)
 		w.WriteHeader(http.StatusOK)
 	}))
 	defer srv.Close()
 
-	transcript := []byte(`{"type":"assistant","message":{"content":[{"type":"tool_use","id":"t1","name":"Bash","input":{"command":"ls"}}]}}`)
-	meta := runMeta{Container: "ward-x"}
-	r := &Runner{}
-
-	// Default: env unset -> no export, even with a live endpoint configured.
 	t.Setenv(envTelemetryEndpoint, srv.URL)
-	r.maybeShipTelemetry(context.Background(), transcript, meta)
+	r := &Runner{}
+	r.shipToSignoz(context.Background(), nil, nil, runMeta{Container: "ward-x"})
 	if got := atomic.LoadInt32(&hits); got != 0 {
-		t.Fatalf("telemetry shipped %d time(s) with the gate OFF; want 0", got)
-	}
-
-	// Opt in -> exactly one export.
-	t.Setenv(envTelemetryEnabled, "1")
-	r.maybeShipTelemetry(context.Background(), transcript, meta)
-	if got := atomic.LoadInt32(&hits); got != 1 {
-		t.Fatalf("telemetry shipped %d time(s) with the gate ON; want 1", got)
+		t.Fatalf("shipToSignoz POSTed %d time(s) for an empty drain; want 0", got)
 	}
 }

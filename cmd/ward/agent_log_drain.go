@@ -14,11 +14,11 @@ import (
 	"forgejo.coilysiren.me/coilyco-flight-deck/cli-guard/pkg/config"
 )
 
-// agent_log_drain.go is slice 1 of agent-run observability (ward#363): a host-side
-// drain of an exited container's console + transcript + meta before the keep-10 rm.
+// agent_log_drain.go is the host-side drain of agent-run observability (ward#363,
+// ward#532): before the keep-10 rm, it pulls a container's console + transcript.
 
 // It runs host-side because the reaper runs INSIDE the container with no docker
-// socket. Always-on, best-effort. See docs/agent-observability.md.
+// socket. A selectable SINK routes the drain. See docs/agent-observability.md.
 
 // agentLogsSubdir is the per-host archive root under the .ward app dir, sibling
 // to audit/ (docs/audit.md) - one directory per drained container run.
@@ -34,6 +34,42 @@ const (
 	drainTranscriptFile = "transcript.jsonl"
 	drainMetaFile       = "meta.json"
 )
+
+// sinkMode selects where a drained run lands (ward#532): signoz (local-exclusive,
+// full detail, no disk), disk (today's artifacts), or both. See docs.
+type sinkMode string
+
+const (
+	sinkSignoz sinkMode = "signoz"
+	sinkDisk   sinkMode = "disk"
+	sinkBoth   sinkMode = "both"
+)
+
+// defaultSinkMode is the local-exclusive default: on Kai's machine the drain
+// ships full detail to the local SigNoz and persists nothing to disk (ward#532).
+const defaultSinkMode = sinkSignoz
+
+// envSinkMode overrides the sink mode - the operator-local knob today, and the
+// seam a future ward-kdl config field slots behind (env > config > default).
+const envSinkMode = "WARD_AGENT_SINK"
+
+// resolveSinkMode reads the env override, else the local-exclusive default. An
+// unrecognized value falls back rather than failing (the sweep must not abort).
+func resolveSinkMode() sinkMode {
+	switch sinkMode(strings.ToLower(strings.TrimSpace(os.Getenv(envSinkMode)))) {
+	case sinkDisk:
+		return sinkDisk
+	case sinkBoth:
+		return sinkBoth
+	case sinkSignoz:
+		return sinkSignoz
+	default:
+		return defaultSinkMode
+	}
+}
+
+func (m sinkMode) wantsDisk() bool   { return m == sinkDisk || m == sinkBoth }
+func (m sinkMode) wantsSignoz() bool { return m == sinkSignoz || m == sinkBoth }
 
 // metaEnvAllow is the strict allowlist of container env keys copied into meta.json.
 // Config.Env also carries --env-file secrets, so only these known-safe dims ride.
@@ -71,9 +107,7 @@ func agentLogsDir() string {
 	if err != nil || home == "" {
 		home = os.TempDir()
 	}
-	dir := filepath.Join(home, config.AppDir(), agentLogsSubdir)
-	fmt.Fprintf(os.Stderr, "ward container: agent logs directory: %s\n", dir)
-	return dir
+	return filepath.Join(home, config.AppDir(), agentLogsSubdir)
 }
 
 // sweepAction is one ordered host-side teardown step: drain a single container, or
@@ -128,43 +162,53 @@ func (r *Runner) drainStaleContainers(ctx context.Context, stale []string) error
 	return nil
 }
 
-// drainAgentRun copies one exited container's console + transcript + meta.json to
-// dir, best-effort, then ships the envelope stream if WARD_AGENT_TELEMETRY=1.
+// drainAgentRun pulls one exited container's console + transcript + meta into
+// memory and routes them to the resolved sink; disk is written only if asked.
 func (r *Runner) drainAgentRun(ctx context.Context, name, dir string) {
-	fmt.Fprintf(os.Stderr, "ward container: starting drain of container %s to %s\n", name, dir)
-	if err := os.MkdirAll(dir, 0o755); err != nil {
-		fmt.Fprintf(os.Stderr, "ward container: drain %s: could not create %s (%v); skipping\n", name, dir, err)
-		return
-	}
+	mode := resolveSinkMode()
+	fmt.Fprintf(os.Stderr, "ward container: starting drain of container %s (sink %s)\n", name, mode)
 
 	// Console: docker logs carries both the agent's stdout stream and the reaper's
-	// stderr markers; capture combined so the outcome is inferable from one file.
+	// stderr markers; capture combined so the outcome is inferable from one stream.
 	console := r.dockerLogsCombined(ctx, name)
+
+	// Transcript: docker cp streams the projects tree as a tar to stdout; pull the
+	// jsonl out and concatenate. Held in memory - hits disk only if the sink asks.
+	transcript := r.drainTranscript(ctx, name)
+
+	// Meta: safe dims from the inspected env allowlist + the inferred outcome.
+	meta := r.buildRunMeta(ctx, name, string(console))
+
+	if mode.wantsDisk() {
+		r.writeDiskArtifacts(name, dir, console, transcript, meta)
+	}
+	if mode.wantsSignoz() {
+		r.shipToSignoz(ctx, console, transcript, meta)
+	}
+	fmt.Fprintf(os.Stderr, "ward container: drained %s (sink %s, outcome %s)\n", name, mode, meta.Outcome)
+}
+
+// writeDiskArtifacts persists console.log + transcript.jsonl + meta.json under
+// dir - today's artifacts, now gated behind the disk / both modes. Best-effort.
+func (r *Runner) writeDiskArtifacts(name, dir string, console, transcript []byte, meta runMeta) {
+	if err := os.MkdirAll(dir, 0o755); err != nil {
+		fmt.Fprintf(os.Stderr, "ward container: drain %s: could not create %s (%v); skipping disk sink\n", name, dir, err)
+		return
+	}
 	if werr := os.WriteFile(filepath.Join(dir, drainConsoleFile), console, 0o644); werr != nil {
 		fmt.Fprintf(os.Stderr, "ward container: drain %s: write console.log: %v\n", name, werr)
 	}
-
-	// Transcript: docker cp streams the projects tree as a tar to stdout; pull the
-	// jsonl session files out of it and concatenate (each line is one event).
-	transcript := r.drainTranscript(ctx, name)
 	if len(transcript) > 0 {
 		if werr := os.WriteFile(filepath.Join(dir, drainTranscriptFile), transcript, 0o644); werr != nil {
 			fmt.Fprintf(os.Stderr, "ward container: drain %s: write transcript.jsonl: %v\n", name, werr)
 		}
 	}
-
-	// Meta: safe dims from the inspected env allowlist + the inferred outcome.
-	meta := r.buildRunMeta(ctx, name, string(console))
 	if data, merr := json.MarshalIndent(meta, "", "  "); merr == nil {
 		if werr := os.WriteFile(filepath.Join(dir, drainMetaFile), append(data, '\n'), 0o644); werr != nil {
 			fmt.Fprintf(os.Stderr, "ward container: drain %s: write meta.json: %v\n", name, werr)
 		}
 	}
-	fmt.Fprintf(os.Stderr, "ward container: drained %s -> %s (outcome %s)\n", name, dir, meta.Outcome)
-
-	// Slice 2 (ward#363): the external envelope export is opt-in and default-OFF;
-	// the host drain above is always-on. Only the OTLP push is gated.
-	r.maybeShipTelemetry(ctx, transcript, meta)
+	fmt.Fprintf(os.Stderr, "ward container: wrote disk artifacts for %s -> %s\n", name, dir)
 }
 
 // dockerLogsCombined captures `docker logs <name>` with stdout+stderr merged into

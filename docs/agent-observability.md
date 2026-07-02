@@ -1,74 +1,76 @@
 # agent-run observability
 
-A headless `ward agent` run used to be unqueryable after it finished. Its console
-stream lived only in Docker's `json-file` driver (gone with the keep-10
-`docker rm`), and the claude **transcript** (`~/.claude/projects/**/*.jsonl`)
-died with the container. ward#363 closes that, in two slices.
+A headless `ward agent` run used to be unqueryable after it finished: its console
+lived only in Docker's driver (gone with the keep-10 `docker rm`), and the claude
+**transcript** (`~/.claude/projects/**/*.jsonl`) died with the container. ward#363
+opened the drain; ward#532 reshaped where it lands.
 
-## Slice 1 - host-native drain on reap (always on)
+## The drain - host-native, on reap
 
-The container [reaper](container-reap.md) runs **inside** the container with no
-docker socket, so it can never reach `docker logs`. The drain is therefore
-**host-side**, folded into the keep-10 stale-container sweep
+The [reaper](container-reap.md) runs **inside** the container with no docker
+socket, so the drain is **host-side**, folded into the keep-10 sweep
 ([container-cleanup.md](container-cleanup.md)): right **before** the sweep
-`docker rm`s an exited container past the keep window, ward drains it. Ordering is
-the load-bearing contract - the `rm` takes the console log and the writable layer
-(the transcript) with it, so the drain must come first. A pure `sweepActions`
-planner makes that explicit, and a test asserts no remove precedes a drain.
+`docker rm`s an exited container, ward drains it. Ordering is load-bearing - the
+`rm` takes the console and the transcript with it - so a pure `sweepActions`
+planner puts every drain before the remove, and a test asserts it.
 
-Each drained run lands under `~/.ward/agent-logs/<container>/`:
+Every drain pulls three things **into memory**: the console (`docker logs`,
+stdout+stderr merged), the transcript (`docker cp`'d out of the projects tree and
+concatenated), and a small `meta.json`. The transcript is `docker cp`'d out **even
+in the signoz-exclusive default** - it never touches `~/.ward/agent-logs/` unless a
+disk sink is on. This is drain-on-reap; live tailing is separate.
 
-- `console.log` - `docker logs`, stdout+stderr merged (agent stream + reaper markers).
-- `transcript.jsonl` - the claude session jsonl, docker-cp'd out and concatenated.
-- `meta.json` - run dims + outcome.
+`meta.json` is small and **secret-free** regardless of sink: `container`, `repo`,
+`issue`, `driver`, `branch`, `outcome`. The dims come from the container's env
+through a **strict allowlist** - `Config.Env` also carries the `--env-file` secrets
+(`FORGEJO_TOKEN`, `WARD_CLAUDE_CREDS_B64`), never copied out; a test guards it. The
+`outcome` is inferred from the reaper's console markers.
 
-This mirrors the `~/.ward/audit/<slug>.jsonl` convention ([audit.md](audit.md)):
-local, raw, never leaves the host, ages out on its own. Point [Dozzle](https://dozzle.dev/) or `jq` at it.
+## Sink modes (ward#532)
 
-`meta.json` is small and **secret-free**: `container`, `repo`, `issue`, `driver`,
-`branch`, `outcome`. The `outcome` is inferred from the reaper's console markers;
-full enum + exit codes are the [dispatch contract](agent-dispatch-contract.md).
-The dims come from the container's inspected env, but **only
-through a strict allowlist**: `Config.Env` also carries the `--env-file` secrets
-(`FORGEJO_TOKEN`, `WARD_CLAUDE_CREDS_B64`), so the drain copies only the known-safe
-dims and never the whole env. A unit test guards that boundary.
+Where a drained run lands is a selectable sink, `WARD_AGENT_SINK`:
 
-a missing transcript, a `docker inspect` miss, or an unwritable dir are logged
-and stepped past.
-See [container lifecycle logs](container-lifecycle-logs.md).
+- **`signoz`** *(default)* - ship to SigNoz, persist **nothing** to disk.
+- **`disk`** - write the on-disk artifacts, ship nothing.
+- **`both`** - do both.
 
-## Slice 2 - redacted envelope stream to SigNoz (export defaults OFF)
+The default is **local-exclusive + full**: the whole run ships to the **local**
+SigNoz (infrastructure#435; `http://localhost:4318` default, override
+`WARD_AGENT_TELEMETRY_ENDPOINT`) and nothing is written to disk. `WARD_AGENT_SINK`
+is the operator-local knob; `resolveSinkMode` is the seam a future ward-kdl config
+field slots behind (env > config > default). An unrecognized value falls back.
 
-The extractor turns a drained transcript into one **envelope per tool call** and
-ships them to the fleet SigNoz OTLP endpoint (`http://<signoz-host>:4318/v1/logs`,
-override via `WARD_AGENT_TELEMETRY_ENDPOINT`) as structured logs, **default-OFF** behind
-`WARD_AGENT_TELEMETRY=1`. The host drain stays always-on.
+**logdy is retired.** It read the on-disk `console.log`; the console now ships to
+SigNoz as log records, so reading a drained run is a SigNoz query.
 
-An envelope is **call-metadata only**: tool name, redacted args, cwd, duration,
-pass/fail, lifecycle step (clone / implement / merge / push), files touched, plus
-run-level dims on the OTLP resource.
+### The disk sink
 
-### The crux - redaction at extraction, before export
+With `disk` (or `both`), each run lands under `~/.ward/agent-logs/<container>/` as
+`console.log`, `transcript.jsonl`, `meta.json` - mirroring the
+`~/.ward/audit/<slug>.jsonl` convention ([audit.md](audit.md)): local, raw, ages
+out on its own.
 
-The fleet's secret-redaction scrubs the **terminal**, not the transcript
-jsonl, and SigNoz has **no ingest redaction processor**. So redaction is enforced
-**here**, upstream of the sink, two ways:
+### The SigNoz sink and the locality gate - the safety crux
 
-1. **Bodies are dropped, not redacted.** Tool **results** carry the highest
-   credential risk (a Read of a `.env`) and never enter an envelope. Body-shaped
-   **inputs** (`content`, `new_string`, ...) drop the same way - only the file path
-   they touched is kept.
-2. **Args are redacted.** The args that do ride (a `Bash` command, a path) run
-   through the regex list (AWS / GitHub / Anthropic / Slack / JWT / public IP)
-   before they enter an envelope, and are length-capped.
+What ships to SigNoz is chosen by **endpoint locality**, the load-bearing safety
+boundary. The fleet's secret-redaction scrubs the **terminal**, not the transcript
+jsonl, and SigNoz has **no ingest redaction**. So **full, unredacted content may
+go only to a local endpoint**:
 
-Per the deploy `log-schema.md` contract, bounded enums become indexed OTLP
-attributes (`verb`, `outcome`, `lifecycle`, `duration_ms`, `repo`, `actor`,
-`issue`); unbounded ids stay in the log `body`. Default-OFF because this defines a
-first-of-pattern schema: nothing flows into the 90-day store until Kai has
-reviewed the redaction. Extractor and shipper are built and unit-tested.
+- **Local (loopback)** - `localhost` or a loopback IP - gets the **full run**: the
+  console as one log record per line (the logdy replacement) **plus** the
+  transcript as per-tool-call **envelopes with bodies kept**, unredacted.
+- **Remote (shared)** - ser8 or any non-loopback host - falls back to **redacted
+  envelopes**: bodies dropped, args scrubbed. Full content never leaves the box. A
+  test asserts remote => redacted / no bodies / no console, local => full allowed.
+
+An envelope is otherwise call-metadata: tool, args, cwd, duration, pass/fail,
+lifecycle, files touched. Redaction, when it applies, drops body-shaped inputs
+(`content`, `new_string`, ...) and scrubs kept args through the regex list (AWS /
+GitHub / Anthropic / JWT / public IP). Bounded enums become indexed OTLP
+attributes; the rest stays in the log body.
 
 ## See also
 
 - [container-cleanup.md](container-cleanup.md) - the keep-10 sweep this rides in.
-- [audit.md](audit.md) - the `~/.ward/` layout this mirrors.
+- [audit.md](audit.md) - the `~/.ward/` layout the disk sink mirrors.

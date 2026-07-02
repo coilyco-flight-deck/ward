@@ -5,7 +5,9 @@ import (
 	"context"
 	"encoding/json"
 	"fmt"
+	"net"
 	"net/http"
+	"net/url"
 	"os"
 	"regexp"
 	"sort"
@@ -14,21 +16,17 @@ import (
 	"time"
 )
 
-// agent_telemetry.go is slice 2 of agent-run observability (ward#363): a drained
-// transcript -> one redacted envelope per tool call -> SigNoz OTLP logs.
+// agent_telemetry.go is the SigNoz sink of agent-run observability (ward#363,
+// ward#532): a drained console + transcript -> OTLP logs. See the sink doc.
 
-// Redaction is enforced here, upstream of the sink: bodies dropped, args scrubbed
-// through the Warp regex list. Export defaults OFF. See docs/agent-observability.md.
+// The shape is chosen by ENDPOINT LOCALITY: a loopback endpoint gets the FULL run,
+// a remote one only REDACTED envelopes (ser8 has no ingest redaction).
 
-// envTelemetryEnabled is the opt-in gate. Unset or anything but "1" keeps the
-// OTLP export OFF (the always-on host drain is unaffected).
-const envTelemetryEnabled = "WARD_AGENT_TELEMETRY"
-
-// envTelemetryEndpoint overrides the OTLP/HTTP logs endpoint. The default is the
-// cross-cluster ser8 collector (the drain runs host-side, off-cluster); ward#363.
+// envTelemetryEndpoint overrides the OTLP/HTTP logs endpoint; the default is the
+// LOCAL SigNoz collector (infrastructure#435), a loopback endpoint (ward#532).
 const envTelemetryEndpoint = "WARD_AGENT_TELEMETRY_ENDPOINT"
 
-const defaultTelemetryEndpoint = "http://ser8:4318/v1/logs"
+const defaultTelemetryEndpoint = "http://localhost:4318/v1/logs"
 
 // telemetryArgCap bounds a redacted arg's length so a pathological command can't
 // blow up an indexed attribute (cardinality/size discipline, log-schema.md).
@@ -124,9 +122,9 @@ type transcriptLine struct {
 	} `json:"message"`
 }
 
-// extractEnvelopes parses a drained transcript into one envelope per tool call.
-// Pure (testable); a tool_result only sets the matched call's pass/fail+duration.
-func extractEnvelopes(transcript []byte) []toolEnvelope {
+// extractEnvelopes parses a drained transcript into one envelope per tool call;
+// redact drops bodies + scrubs args, else bodies are kept verbatim (ward#532).
+func extractEnvelopes(transcript []byte, redact bool) []toolEnvelope {
 	var envelopes []toolEnvelope
 	byID := map[string]int{} // tool_use id -> index in envelopes
 	for _, raw := range bytes.Split(transcript, []byte("\n")) {
@@ -147,7 +145,7 @@ func extractEnvelopes(transcript []byte) []toolEnvelope {
 					Outcome:      "success", // until a matching error result flips it
 					TimeUnixNano: ts,
 				}
-				env.Args, env.Files = sanitizeToolInput(c.Input)
+				env.Args, env.Files = sanitizeToolInput(c.Input, redact)
 				env.Lifecycle = classifyLifecycle(c.Name, env.Args)
 				byID[c.ID] = len(envelopes)
 				envelopes = append(envelopes, env)
@@ -168,9 +166,9 @@ func extractEnvelopes(transcript []byte) []toolEnvelope {
 	return envelopes
 }
 
-// sanitizeToolInput splits a tool's input into redacted scalar args (bodies dropped)
-// and the files it touched; every kept value is secret-redacted + length-capped.
-func sanitizeToolInput(input json.RawMessage) (map[string]string, []string) {
+// sanitizeToolInput splits a tool's input into scalar args and touched files;
+// redact drops bodies + scrubs+caps values, else they ride verbatim (ward#532).
+func sanitizeToolInput(input json.RawMessage, redact bool) (map[string]string, []string) {
 	args := map[string]string{}
 	var files []string
 	if len(input) == 0 {
@@ -189,16 +187,18 @@ func sanitizeToolInput(input json.RawMessage) (map[string]string, []string) {
 		}
 	}
 	for k, raw := range fields {
-		if bodyArgKeys[k] {
-			continue // rule 1: bodies never enter an envelope
+		if redact && bodyArgKeys[k] {
+			continue // rule 1: off-box, bodies never enter an envelope
 		}
 		var s string
 		if err := json.Unmarshal(raw, &s); err != nil {
 			continue // non-scalar (object/array) args are skipped, not flattened
 		}
-		s = redactSecrets(s)
-		if len(s) > telemetryArgCap {
-			s = s[:telemetryArgCap] + "…"
+		if redact {
+			s = redactSecrets(s)
+			if len(s) > telemetryArgCap {
+				s = s[:telemetryArgCap] + "…"
+			}
 		}
 		args[k] = s
 	}
@@ -234,37 +234,70 @@ func parseTranscriptTime(s string) int64 {
 	return t.UnixNano()
 }
 
-// maybeShipTelemetry ships the redacted envelopes to SigNoz only when
-// WARD_AGENT_TELEMETRY=1 (default-OFF); best-effort, a failure never aborts the sweep.
-func (r *Runner) maybeShipTelemetry(ctx context.Context, transcript []byte, meta runMeta) {
-	if os.Getenv(envTelemetryEnabled) != "1" {
-		return
+// signozEndpoint resolves the OTLP/HTTP logs endpoint: the env override, else
+// the local-SigNoz default (ward#532).
+func signozEndpoint() string {
+	if e := os.Getenv(envTelemetryEndpoint); e != "" {
+		return e
 	}
-	if len(transcript) == 0 {
-		return
-	}
-	envelopes := extractEnvelopes(transcript)
-	if len(envelopes) == 0 {
-		return
-	}
-	endpoint := os.Getenv(envTelemetryEndpoint)
-	if endpoint == "" {
-		endpoint = defaultTelemetryEndpoint
-	}
-	if err := shipEnvelopes(ctx, endpoint, envelopes, meta); err != nil {
-		fmt.Fprintf(os.Stderr, "ward container: telemetry export to %s failed (%v); host drain is unaffected\n", endpoint, err)
-		return
-	}
-	fmt.Fprintf(os.Stderr, "ward container: exported %d redacted tool envelope(s) for %s to %s\n", len(envelopes), meta.Container, endpoint)
+	return defaultTelemetryEndpoint
 }
 
-// shipEnvelopes POSTs the OTLP/HTTP logs payload to the collector. Bounded
-// timeout; a non-2xx is an error so the caller can log it.
-func shipEnvelopes(ctx context.Context, endpoint string, envelopes []toolEnvelope, meta runMeta) error {
-	payload, err := otlpLogsPayload(envelopes, meta)
-	if err != nil {
-		return err
+// isLocalEndpoint reports whether endpoint targets loopback. The safety gate:
+// full/unredacted content ships ONLY to a local endpoint (ward#532).
+func isLocalEndpoint(endpoint string) bool {
+	u, err := url.Parse(endpoint)
+	if err != nil || u.Host == "" {
+		return false
 	}
+	host := u.Hostname()
+	if strings.EqualFold(host, "localhost") {
+		return true
+	}
+	ip := net.ParseIP(host)
+	return ip != nil && ip.IsLoopback()
+}
+
+// signozPayload builds the OTLP body ward will POST for endpoint + its record
+// count: loopback => FULL run, remote => redacted envelopes. Pure (ward#532).
+func signozPayload(endpoint string, console, transcript []byte, meta runMeta) (body []byte, full bool, records int, err error) {
+	if isLocalEndpoint(endpoint) {
+		envs := extractEnvelopes(transcript, false) // bodies kept, unredacted
+		recs := consoleRecords(console)
+		b, e := otlpFullPayload(recs, envs, meta)
+		return b, true, len(recs) + len(envs), e
+	}
+	envs := extractEnvelopes(transcript, true) // redacted, bodies dropped
+	b, e := otlpLogsPayload(envs, meta)
+	return b, false, len(envs), e
+}
+
+// shipToSignoz builds and POSTs the drained run to SigNoz, full or redacted by
+// endpoint locality. Best-effort; the disk sink is governed separately.
+func (r *Runner) shipToSignoz(ctx context.Context, console, transcript []byte, meta runMeta) {
+	endpoint := signozEndpoint()
+	payload, full, records, err := signozPayload(endpoint, console, transcript, meta)
+	if err != nil {
+		fmt.Fprintf(os.Stderr, "ward container: build SigNoz payload for %s failed (%v); host drain is unaffected\n", meta.Container, err)
+		return
+	}
+	if records == 0 {
+		return // nothing drained worth shipping
+	}
+	if perr := postOTLP(ctx, endpoint, payload); perr != nil {
+		fmt.Fprintf(os.Stderr, "ward container: SigNoz export to %s failed (%v); host drain is unaffected\n", endpoint, perr)
+		return
+	}
+	detail := "redacted tool envelopes"
+	if full {
+		detail = "full console + transcript"
+	}
+	fmt.Fprintf(os.Stderr, "ward container: shipped %s (%d record(s)) for %s to %s\n", detail, records, meta.Container, endpoint)
+}
+
+// postOTLP POSTs an OTLP/HTTP logs payload to the collector. Bounded timeout; a
+// non-2xx is an error so the caller can log it.
+func postOTLP(ctx context.Context, endpoint string, payload []byte) error {
 	req, err := http.NewRequestWithContext(ctx, http.MethodPost, endpoint, bytes.NewReader(payload))
 	if err != nil {
 		return err
@@ -299,44 +332,66 @@ func otlpInt(k string, v int64) otlpAttr {
 	return otlpAttr{Key: k, Value: otlpAttrValue{IntValue: &v}}
 }
 
-// otlpLogsPayload renders the envelopes as an OTLP/HTTP logs request: bounded
-// names become attributes, unbounded ids stay in the body (log-schema.md). Pure.
-func otlpLogsPayload(envelopes []toolEnvelope, meta runMeta) ([]byte, error) {
-	resourceAttrs := []otlpAttr{otlpStr("service.name", "ward-agent")}
+// buildResourceAttrs renders the run-level dims carried once on the OTLP resource
+// (the same for the full and redacted shapes).
+func buildResourceAttrs(meta runMeta) []otlpAttr {
+	attrs := []otlpAttr{otlpStr("service.name", "ward-agent")}
 	if meta.Repo != "" {
-		resourceAttrs = append(resourceAttrs, otlpStr("repo", meta.Repo))
+		attrs = append(attrs, otlpStr("repo", meta.Repo))
 	}
 	if meta.Driver != "" {
-		resourceAttrs = append(resourceAttrs, otlpStr("actor", meta.Driver))
+		attrs = append(attrs, otlpStr("actor", meta.Driver))
 	}
 	if meta.Container != "" {
-		resourceAttrs = append(resourceAttrs, otlpStr("container", meta.Container))
+		attrs = append(attrs, otlpStr("container", meta.Container))
 	}
+	return attrs
+}
 
-	records := make([]map[string]any, 0, len(envelopes))
-	for _, e := range envelopes {
-		attrs := []otlpAttr{
-			otlpStr("verb", e.Tool),
-			otlpStr("outcome", e.Outcome),
-			otlpStr("lifecycle", e.Lifecycle),
+// envelopeRecord renders one tool-call envelope as an OTLP log record: bounded
+// names become indexed attributes, the body line stays in the log body.
+func envelopeRecord(e toolEnvelope, meta runMeta) map[string]any {
+	attrs := []otlpAttr{
+		otlpStr("verb", e.Tool),
+		otlpStr("outcome", e.Outcome),
+		otlpStr("lifecycle", e.Lifecycle),
+	}
+	if e.DurationMs > 0 {
+		attrs = append(attrs, otlpInt("duration_ms", e.DurationMs))
+	}
+	if meta.Issue != "" {
+		attrs = append(attrs, otlpStr("issue", meta.Issue))
+	}
+	rec := map[string]any{
+		"severityText": "info",
+		"body":         map[string]any{"stringValue": envelopeBody(e)},
+		"attributes":   attrs,
+	}
+	if e.TimeUnixNano > 0 {
+		rec["timeUnixNano"] = strconv.FormatInt(e.TimeUnixNano, 10)
+	}
+	return rec
+}
+
+// consoleRecords renders the raw console as one OTLP log record per non-empty
+// line (the logdy replacement) - full-detail, local-only; the caller gates it.
+func consoleRecords(console []byte) []map[string]any {
+	var recs []map[string]any
+	for _, ln := range bytes.Split(console, []byte("\n")) {
+		if len(bytes.TrimSpace(ln)) == 0 {
+			continue
 		}
-		if e.DurationMs > 0 {
-			attrs = append(attrs, otlpInt("duration_ms", e.DurationMs))
-		}
-		if meta.Issue != "" {
-			attrs = append(attrs, otlpStr("issue", meta.Issue))
-		}
-		rec := map[string]any{
+		recs = append(recs, map[string]any{
 			"severityText": "info",
-			"body":         map[string]any{"stringValue": envelopeBody(e)},
-			"attributes":   attrs,
-		}
-		if e.TimeUnixNano > 0 {
-			rec["timeUnixNano"] = strconv.FormatInt(e.TimeUnixNano, 10)
-		}
-		records = append(records, rec)
+			"body":         map[string]any{"stringValue": string(ln)},
+			"attributes":   []otlpAttr{otlpStr("stream", "console")},
+		})
 	}
+	return recs
+}
 
+// marshalOTLP wraps resource attrs + log records in the OTLP/HTTP logs envelope.
+func marshalOTLP(resourceAttrs []otlpAttr, records []map[string]any) ([]byte, error) {
 	doc := map[string]any{
 		"resourceLogs": []map[string]any{{
 			"resource":  map[string]any{"attributes": resourceAttrs},
@@ -344,6 +399,27 @@ func otlpLogsPayload(envelopes []toolEnvelope, meta runMeta) ([]byte, error) {
 		}},
 	}
 	return json.Marshal(doc)
+}
+
+// otlpLogsPayload renders envelopes as an OTLP/HTTP logs request (the redacted
+// off-box shape). Pure.
+func otlpLogsPayload(envelopes []toolEnvelope, meta runMeta) ([]byte, error) {
+	records := make([]map[string]any, 0, len(envelopes))
+	for _, e := range envelopes {
+		records = append(records, envelopeRecord(e, meta))
+	}
+	return marshalOTLP(buildResourceAttrs(meta), records)
+}
+
+// otlpFullPayload renders the full local shape: the console log records first,
+// then the transcript envelopes (bodies kept), in one request (ward#532). Pure.
+func otlpFullPayload(consoleRecs []map[string]any, envelopes []toolEnvelope, meta runMeta) ([]byte, error) {
+	records := make([]map[string]any, 0, len(consoleRecs)+len(envelopes))
+	records = append(records, consoleRecs...)
+	for _, e := range envelopes {
+		records = append(records, envelopeRecord(e, meta))
+	}
+	return marshalOTLP(buildResourceAttrs(meta), records)
 }
 
 // envelopeBody renders the unbounded, human-readable line kept in the log body

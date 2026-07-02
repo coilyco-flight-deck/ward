@@ -47,6 +47,42 @@ func TestSweepActionsDrainPrecedesRemove(t *testing.T) {
 	}
 }
 
+// TestResolveSinkMode covers the env override + the local-exclusive default.
+func TestResolveSinkMode(t *testing.T) {
+	cases := []struct {
+		set  string
+		want sinkMode
+	}{
+		{"", defaultSinkMode},
+		{"signoz", sinkSignoz},
+		{"disk", sinkDisk},
+		{"both", sinkBoth},
+		{"DISK", sinkDisk},           // case-insensitive
+		{"  both  ", sinkBoth},       // trimmed
+		{"garbage", defaultSinkMode}, // unrecognized falls back, never fails
+	}
+	for _, c := range cases {
+		t.Setenv(envSinkMode, c.set)
+		if got := resolveSinkMode(); got != c.want {
+			t.Errorf("resolveSinkMode with %q = %q, want %q", c.set, got, c.want)
+		}
+	}
+	// The default must be signoz-exclusive: no disk, yes signoz.
+	if defaultSinkMode.wantsDisk() {
+		t.Error("default sink writes to disk; ward#532 requires signoz-exclusive by default")
+	}
+	if !defaultSinkMode.wantsSignoz() {
+		t.Error("default sink does not ship to signoz")
+	}
+	// both is the only mode that does both.
+	if !sinkBoth.wantsDisk() || !sinkBoth.wantsSignoz() {
+		t.Error("both mode must do disk AND signoz")
+	}
+	if sinkDisk.wantsSignoz() || sinkSignoz.wantsDisk() {
+		t.Error("disk/signoz modes must be exclusive")
+	}
+}
+
 func TestSweepActionsEmpty(t *testing.T) {
 	if got := sweepActions(nil, "/base"); got != nil {
 		t.Errorf("sweepActions(nil) = %v, want nil", got)
