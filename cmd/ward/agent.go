@@ -439,8 +439,7 @@ func (r *Runner) resolveAgentWork(ctx context.Context, c *cli.Command, mode cont
 	// Trust gate: the in-container agent runs under bypassPermissions, so only
 	// spin one up for an owner in the primary-org set. Mirrors dispatch's check.
 	if !r.ownerAllowed(ref.Owner) {
-		return resolvedWork{}, fmt.Errorf("%s: refusing untrusted owner %q (allowed: %s)",
-			label, ref.Owner, strings.Join(r.primaryOrgs(), ", "))
+		return resolvedWork{}, r.untrustedOwnerErr(label, ref.Owner)
 	}
 	issue, err := r.fetchForgejoIssue(ctx, ref.Owner, ref.Repo, ref.Number)
 	if err != nil {
@@ -1264,8 +1263,7 @@ func (r *Runner) runAgentTaskDirect(ctx context.Context, c *cli.Command, mode co
 	// Same trust gate as the engineer: the container runs bypassPermissions, so
 	// only file + work against an owner in the primary-org set.
 	if !r.ownerAllowed(repo.Owner) {
-		return fmt.Errorf("%s: refusing untrusted owner %q (allowed: %s)",
-			label, repo.Owner, strings.Join(r.primaryOrgs(), ", "))
+		return r.untrustedOwnerErr(label, repo.Owner)
 	}
 	instructions, err := taskInstructions(c)
 	if err != nil {
@@ -1363,6 +1361,13 @@ func printAgentTaskPlan(c *cli.Command, mode containerMode, repo targetRepo, tit
 // cli-guard's pkg/ownertrust (ward supplies the accepted set).
 func (r *Runner) ownerAllowed(owner string) bool {
 	return ownertrust.List{Extra: r.primaryOrgs()}.Allowed(owner)
+}
+
+// untrustedOwnerErr is the trust-gate refusal shared by every dispatch surface:
+// it names the accepted set and points at docs/agent-trust-gate.md (ward#484).
+func (r *Runner) untrustedOwnerErr(label, owner string) error {
+	return fmt.Errorf("%s: refusing untrusted owner %q (allowed: %s). This build dispatches only for its compiled-in primary orgs - see docs/agent-trust-gate.md",
+		label, owner, strings.Join(r.primaryOrgs(), ", "))
 }
 
 // printAgentPlan renders the resolved issue, the seeded prompt, and the docker

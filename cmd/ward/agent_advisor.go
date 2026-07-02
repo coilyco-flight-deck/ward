@@ -100,8 +100,7 @@ func (r *Runner) runAgentAsk(ctx context.Context, c *cli.Command, mode container
 	// Trust gate: this spins a bypassPermissions container and clones the repo, so
 	// only act on an owner in the primary-org set - the same gate the other roles apply.
 	if !r.ownerAllowed(repo.Owner) {
-		return fmt.Errorf("%s: refusing untrusted owner %q (allowed: %s)",
-			label, repo.Owner, strings.Join(r.primaryOrgs(), ", "))
+		return r.untrustedOwnerErr(label, repo.Owner)
 	}
 
 	// Interactive by default under a TTY; one-shot streamed answer with no TTY
