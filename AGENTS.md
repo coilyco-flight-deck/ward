@@ -1,6 +1,6 @@
 # Agent instructions
 
-This file is the self-contained agent base for `ward`. Work from it alone - it points at nothing outside this repo. On the maintainer's own hosts, broader workspace conventions load globally underneath it, but ward depends on none of them.
+This file is the self-contained agent base for `ward`. Work from it alone - it points at nothing outside this repo. Ward does not depend on any broader workspace conventions.
 
 ## Scope
 

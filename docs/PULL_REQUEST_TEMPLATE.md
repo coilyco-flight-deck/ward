@@ -1,8 +1,9 @@
 <!--
 ward is Forgejo-canonical and mirrored read-only to GitHub. GitHub is the
-external front door: fork, push a branch, open your PR here. A maintainer
-replays an accepted PR onto Forgejo `main` and closes the matching Forgejo
-issue - you never touch Forgejo. See CONTRIBUTING.md.
+external front door for everyone except the maintainer: fork, push a branch,
+open your PR here. A maintainer replays an accepted PR onto Forgejo `main` and
+closes the matching Forgejo issue. If you are working directly in the canonical
+repo, use Forgejo instead. See CONTRIBUTING.md.
 -->
 
 ## Summary
@@ -11,9 +12,10 @@ issue - you never touch Forgejo. See CONTRIBUTING.md.
 
 ## Related issue
 
-<!-- Link the GitHub issue this addresses, e.g. Fixes #123. The internal Forgejo
-     `closes #N` link is added by whoever carries the change across - you don't
-     need it. -->
+<!-- Link the GitHub issue this addresses, e.g. Fixes #123. The internal
+     Forgejo `closes #N` link is added by whoever carries the change across -
+     you don't need it unless you're the maintainer working directly on
+     Forgejo. -->
 
 ## Checklist
 
