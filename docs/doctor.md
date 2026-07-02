@@ -4,12 +4,42 @@
 
 ## Checks
 
-- **Allowlist.** Validates the resolved `.ward/ward.yaml` (or `.coily/coily.yaml`) against the repo's `Makefile`. Engine lives upstream in `cli-guard/allowlist`; ward only supplies the resolved paths and renders the returned `Problem` set.
+- **Allowlist.** Validates the resolved `.ward/ward.yaml` (or `.coily/coily.yaml`) against the repo's `Makefile`. Engine lives upstream in `cli-guard/allowlist`; ward only supplies the resolved paths and renders the returned `Problem` set. See [Allowlist contract](#allowlist-contract) for what makes a target "match" - it is stricter than target-name-exists.
 - **Security: summary.** Reports the parsed `security:` block — protected-binary count, sudo posture, hook-policy presence. A config with no `security:` block is a pass and reports `no security: declared`.
 - **Security: host probes.** Three probes against the parsed block. `FAIL` rows drive the exit code; `WARN`, `INFO`, `PASS`, and `SKIP` only surface text.
   - **`path`.** Resolves each `protected_binaries[].name` via `exec.LookPath`. When `expected_real_paths` is non-empty, a mismatch is a `FAIL`. When the list is empty, the resolved location surfaces as `INFO`. A missing binary is a `WARN`.
   - **`sudo`.** Skipped unless `sudo.forbid_passwordless` is set. Runs `sudo -n true`. Clean exit is `FAIL`; non-zero with a "password required" sentinel is `PASS`; any other non-zero is `WARN`.
   - **`credentials`.** Walks every `protected_binaries[].credential_env` name and reports which are set in this session. Each hit is a `WARN` by default. `--strict-credentials` promotes hits to `FAIL`.
+
+## Allowlist contract
+
+The allowlist check is a **drift guard**, not a target-name lookup. It exists so the verb surface a contributor sees (`.ward/ward.yaml`) and the make-target surface it maps onto (`Makefile`) cannot silently diverge. For each `commands.<name>` entry, all three must hold or the check reports a `Problem`:
+
+- **`run:` is exactly `make <name>`.** `run: bash build.sh` under a `build:` key is a mismatch, even if the script works.
+- **The Makefile has a `<name>:` rule carrying a `## <description>` help comment.** This is the self-documenting-Makefile convention (`build: ## Build all packages.`). A bare `build:` rule with only a recipe and **no** `## ...` comment is **not registered as a target** - so the check reports `commands.build has no matching Makefile target` even though `make build` runs correctly by hand. The `## ` comment is what makes a rule a *declared, documented* target rather than an internal helper.
+- **That `## <description>` text equals the command's `description:`** in the yaml, trimmed. Any wording difference is reported as a description drift with both sides quoted.
+
+So the minimal Makefile that satisfies the check for a `build`/`test`/`install` triple is:
+
+```makefile
+build: ## Build all packages.
+	@echo building
+test: ## Run the unit test suite.
+	@echo testing
+install: ## Install.
+	@echo installing
+```
+
+paired with:
+
+```yaml
+commands:
+  build: {run: make build, description: Build all packages.}
+  test: {run: make test, description: Run the unit test suite.}
+  install: {run: make install, description: Install.}
+```
+
+When the check fails, ward appends a one-line hint naming this contract so a valid-looking bare target does not read as a spurious failure. Only targets you expose through `ward.yaml` need the `## ` comment; internal helper targets can stay bare and are simply ignored.
 
 ## Flags
 

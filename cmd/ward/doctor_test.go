@@ -4,8 +4,38 @@ import (
 	"strings"
 	"testing"
 
+	"forgejo.coilysiren.me/coilyco-flight-deck/cli-guard/cli/allowlist"
 	"forgejo.coilysiren.me/coilyco-flight-deck/cli-guard/cli/repocfg"
 )
+
+func TestRenderAllowlistFailure_AnchorsAndHint(t *testing.T) {
+	problems := []allowlist.Problem{
+		{File: ".ward/ward.yaml", Line: 2, Msg: "commands.build has no matching Makefile target"},
+		{File: ".ward/ward.yaml", Line: 3, Msg: "commands.test has no matching Makefile target"},
+	}
+	got := renderAllowlistFailure(problems)
+
+	// Every problem stays anchored to file:line: message.
+	for _, want := range []string{
+		".ward/ward.yaml:2: commands.build has no matching Makefile target",
+		".ward/ward.yaml:3: commands.test has no matching Makefile target",
+	} {
+		if !strings.Contains(got, want) {
+			t.Errorf("rendered failure missing %q\ngot:\n%s", want, got)
+		}
+	}
+	// The contract hint is appended once, after the problems, so an adopter
+	// staring at a valid-looking bare target learns why it reads as unmatched.
+	if !strings.Contains(got, "## <description>") || !strings.Contains(got, "docs/doctor.md") {
+		t.Errorf("rendered failure missing the contract hint\ngot:\n%s", got)
+	}
+	if n := strings.Count(got, "hint:"); n != 1 {
+		t.Errorf("want exactly one hint, got %d\n%s", n, got)
+	}
+	if lines := strings.Split(got, "\n"); lines[len(lines)-1] != allowlistContractHint {
+		t.Errorf("hint should be the last line, got last = %q", lines[len(lines)-1])
+	}
+}
 
 func TestSummarizeSecurity_Empty(t *testing.T) {
 	got := summarizeSecurity(repocfg.Security{})

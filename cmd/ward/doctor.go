@@ -89,14 +89,28 @@ func runAllowlist(out io.Writer) error {
 		return err
 	}
 	if len(problems) > 0 {
-		msgs := make([]string, 0, len(problems))
-		for _, p := range problems {
-			msgs = append(msgs, fmt.Sprintf("%s:%d: %s", p.File, p.Line, p.Msg))
-		}
-		return errors.New(strings.Join(msgs, "\n"))
+		return errors.New(renderAllowlistFailure(problems))
 	}
 	_, _ = fmt.Fprintf(out, "ward doctor allowlist: OK (%s)\n", yamlPath)
 	return nil
+}
+
+// allowlistContractHint spells out what a "matching Makefile target" requires,
+// appended to every allowlist failure. See docs/doctor.md (Allowlist contract).
+const allowlistContractHint = "hint: a Makefile target matches only when it carries a `## <description>` " +
+	"help comment whose text equals the command's `description:`, and `run:` is exactly `make <name>`. " +
+	"A bare `target:` recipe with no `## ...` comment is not registered - `make <target>` still runs, but " +
+	"doctor reports it as unmatched. See docs/doctor.md (Allowlist contract)."
+
+// renderAllowlistFailure formats the collected Problems, one per line, followed
+// by the contract hint. Pure so tests can drive it without touching disk.
+func renderAllowlistFailure(problems []allowlist.Problem) string {
+	msgs := make([]string, 0, len(problems)+1)
+	for _, p := range problems {
+		msgs = append(msgs, fmt.Sprintf("%s:%d: %s", p.File, p.Line, p.Msg))
+	}
+	msgs = append(msgs, allowlistContractHint)
+	return strings.Join(msgs, "\n")
 }
 
 // runSecurity loads the resolved config, runs the host probes, writes per-row

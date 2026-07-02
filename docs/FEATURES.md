@@ -13,10 +13,9 @@ Contributor-facing cli-guard gate: repo dev verbs + audited host wrappers.
 - **`ward upgrade`** - audited self-update via `brew upgrade coilyco-flight-deck/tap/ward` (`--dry`).
 - **`ward audit {path,tail}`** - read the audit log: `path` prints its path, `tail` streams rows (`--since`/`--follow`). See [audit.md](audit.md).
 - **`ward git <verb>`** - audited passthroughs, concurrency-safe `commit`, destination-gated `clone` (ward#285), ephemeral-clone `grep`/`grep-remote` (ward#369). See [git-verbs.md](git-verbs.md).
-- **`ward doctor`** - diagnostic checks against the config + host.
+- **`ward doctor`** - diagnostic checks against the config + host, including the allowlist drift guard. See [doctor.md](doctor.md).
 - **`ward hook pre-tool-use`** - Claude Code PreToolUse hook: binary-path check + bare-command deny with routing hints.
 - **`ward install-hooks`** - register the PreToolUse hook in `.claude/settings.json`.
-- **`ward lint`** - lint `.ward/ward.yaml` against the repo Makefile.
 - **`ward agent {engineer,director,advisor} [--driver <name>]`** (public face: **`warded <role> <ref>`**) - startup-role roster: `engineer` implements detached, `director` a heartbeat surfacing a read-only session + triage, `advisor` answers without code (a ref comments or fans cross-repo work into per-repo issues, trust-gated; ward#424). `warded` is a `ward` symlink; a bare ref runs `engineer`, `#N` infers `owner/repo`. `--driver` picks a harness; `--repo`/`--org` scope. See [agent](agent.md).
 - **`ward container {reap,bootstrap}`** *(hidden, entrypoint-internal; ward#263)* - in-container plumbing: `reap` lands/salvages on teardown + verifies each `--repo` grant landed (ward#291); `bootstrap` is the PID-1 entrypoint port (ward#181). See [reap](container-reap.md).
 - **Agent-run observability** *(ward#363)* - the keep-10 sweep drains each exited run's logs + secret-free `meta.json` to `~/.ward/agent-logs/` before `docker rm`; opt-in `WARD_AGENT_TELEMETRY=1` (default-OFF) ships redacted per-tool-call OTLP logs to SigNoz. See [agent-observability.md](agent-observability.md).
