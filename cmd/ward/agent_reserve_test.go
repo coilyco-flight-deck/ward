@@ -4,11 +4,32 @@ import (
 	"context"
 	"errors"
 	"fmt"
+	"io"
 	"os"
 	"strings"
 	"testing"
 	"time"
 )
+
+func captureTestStderr(t *testing.T, fn func()) string {
+	t.Helper()
+	old := os.Stderr
+	r, w, err := os.Pipe()
+	if err != nil {
+		t.Fatalf("os.Pipe: %v", err)
+	}
+	os.Stderr = w
+	done := make(chan string, 1)
+	go func() {
+		var b strings.Builder
+		_, _ = io.Copy(&b, r)
+		done <- b.String()
+	}()
+	fn()
+	_ = w.Close()
+	os.Stderr = old
+	return <-done
+}
 
 func TestAgentReservationFilename(t *testing.T) {
 	cases := []struct {
@@ -210,6 +231,24 @@ func TestPrecheckReservation(t *testing.T) {
 	if err := r.precheckReservation(context.Background(), "lbl", clean, false); err == nil ||
 		!strings.Contains(err.Error(), "reserved locally") {
 		t.Fatalf("precheckReservation: want a local-reservation refusal, got %v", err)
+	}
+}
+
+func TestPrecheckReservationLogs(t *testing.T) {
+	t.Setenv("HOME", t.TempDir())
+	r := &Runner{}
+	ref := agentIssueRef{Owner: "coilyco-flight-deck", Repo: "ward", Number: 184}
+	w := resolvedWork{Ref: ref}
+	got := captureTestStderr(t, func() {
+		_ = r.precheckReservation(context.Background(), "lbl", w, true)
+	})
+	for _, want := range []string{
+		"reservation precheck start",
+		"reservation precheck skipped",
+	} {
+		if !strings.Contains(got, want) {
+			t.Fatalf("log output missing %q:\n%s", want, got)
+		}
 	}
 }
 

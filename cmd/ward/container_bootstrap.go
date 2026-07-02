@@ -235,6 +235,8 @@ func (r *Runner) runContainerBootstrap(ctx context.Context, c *cli.Command) erro
 		return err
 	}
 	agentArgs := c.Args().Slice()
+	blog("bootstrap start: container=%s mode=%s agent=%s issue=%d readOnly=%t headless=%t extraRepos=%d",
+		e.Container, e.Mode, e.Agent, e.Issue, e.ReadOnly, e.Headless, len(e.ExtraRepos))
 
 	// The container is the isolation boundary; opt the reaper out of ward's jail
 	// (cli-guard#153). Stamp container start for the reaper's PAT-age report (ward#103).
@@ -250,30 +252,44 @@ func (r *Runner) runContainerBootstrap(ctx context.Context, c *cli.Command) erro
 		mode = modeClaude // match the switches' default-to-claude arm
 	}
 	agent := lookupAgent(mode)
+	blog("bootstrap mode selected: requested=%s resolved=%s driver=%s", e.Mode, mode, e.Agent)
 	rc := r.agentRunCtx(ctx, e, agentArgs)
 
 	r.configureGitAuth(ctx, e)
 	// Installer: opencode self-installs before the clone (absent from the image).
 	if inst, ok := agent.(agentsapi.Installer); ok {
+		blog("bootstrap installer start: %s", mode)
 		_ = inst.Install(rc)
+		blog("bootstrap installer done: %s", mode)
 	}
 	work, cerr := r.cloneTarget(ctx, e)
 	if cerr != nil {
 		return cerr
 	}
+	blog("bootstrap clone done: %s/%s -> %s", e.TargetOwner, e.TargetName, work)
 	if perr := r.writeRunProvenance(ctx, work, e); perr != nil {
 		blog("fatal: %v", perr)
 		return perr
 	}
+	blog("bootstrap provenance ready: %s", work)
+	blog("bootstrap hook install start: %s", work)
 	r.installPreCommitHooks(ctx, e, work)
 	r.installReadOnlyPushGuard(ctx, e, work)
+	blog("bootstrap hook install done: %s", work)
+	blog("bootstrap extra-repo clone start: %d grant(s)", len(e.ExtraRepos))
 	r.cloneExtraRepos(ctx, e)
+	blog("bootstrap extra-repo clone done")
+	blog("bootstrap substrate warm start")
 	r.warmSubstrate(ctx, e)
+	blog("bootstrap substrate warm done")
+	blog("bootstrap context compose start")
 	r.composeContext(e)
+	blog("bootstrap permissions compose start")
 	r.composePermissions(e)
 	// Creds write + onboarding seed + config compose, each feature-tested per mode
 	// (Phase 3, ward#418); composeAgentContainer holds the order.
 	composeAgentContainer(agent, rc)
+	blog("bootstrap agent container composition done")
 
 	_ = os.Setenv("WARD_REAP_WORK", work)
 	defer r.reap(ctx, work)
@@ -310,13 +326,17 @@ func (r *Runner) runContainerBootstrap(ctx context.Context, c *cli.Command) erro
 	// LaunchGate feature-test (only claude wires one, ward#418): fail loud before
 	// launch if claude can't authenticate (ward#222), as the agent user post-chown.
 	if lg, ok := agent.(agentsapi.LaunchGate); ok {
+		blog("bootstrap prelaunch check start: %s", e.Agent)
 		if serr := lg.PreLaunchCheck(rc); serr != nil {
+			blog("bootstrap prelaunch check failed: %v", serr)
 			blog("fatal: %v", serr)
 			return serr
 		}
+		blog("bootstrap prelaunch check passed: %s", e.Agent)
 	}
 
 	blog("launching %s as uid %s", e.Agent, e.AgentUID)
+	blog("bootstrap launch handoff: %s", e.Agent)
 	r.launchAgent(ctx, e, work, argv, stream)
 	return nil
 }
@@ -460,18 +480,19 @@ func (r *Runner) cloneTarget(ctx context.Context, e bootstrapEnv) (string, error
 	url := e.ForgejoBase + "/" + e.TargetOwner + "/" + e.TargetName + ".git"
 	_ = os.MkdirAll(e.GitCache, 0o755)
 	if isDir(mirror) {
-		blog("refreshing cached mirror %s", mirror)
+		blog("clone start: refreshing cached mirror %s", mirror)
 		if uerr := r.Runner.Exec(ctx, "git", "-C", mirror, "remote", "update", "--prune"); uerr != nil {
 			blog("mirror refresh failed, using cached state")
 		}
 	} else {
-		blog("cloning mirror (first time) %s", url)
+		blog("clone start: cloning mirror %s", url)
 		if cerr := r.Runner.Exec(ctx, "git", "clone", "--mirror", url, mirror); cerr != nil {
 			return "", fmt.Errorf("ward container bootstrap: mirror clone failed: %w", cerr)
 		}
 	}
 	work := "/workspace/" + e.TargetName
 	_ = os.RemoveAll(work)
+	blog("clone start: working clone %s -> %s", mirror, work)
 	if cerr := r.Runner.Exec(ctx, "git", "clone", mirror, work); cerr != nil {
 		return "", fmt.Errorf("ward container bootstrap: working clone failed: %w", cerr)
 	}
@@ -480,6 +501,7 @@ func (r *Runner) cloneTarget(ctx context.Context, e bootstrapEnv) (string, error
 	if e.Branch != "" {
 		_ = r.Runner.Exec(ctx, "git", "-C", work, "checkout", "-B", e.Branch)
 	}
+	blog("clone done: %s", work)
 	return work, nil
 }
 
@@ -487,6 +509,7 @@ func (r *Runner) cloneTarget(ctx context.Context, e bootstrapEnv) (string, error
 // the reaper can prove later success came from this run, not stale history.
 func (r *Runner) writeRunProvenance(ctx context.Context, work string, e bootstrapEnv) error {
 	if e.Issue == 0 {
+		blog("provenance skip: no issue for %s", work)
 		return nil
 	}
 	baseline := r.captureTrim(ctx, "git", "-C", work, "rev-parse", "origin/main")
@@ -509,7 +532,7 @@ func (r *Runner) writeRunProvenance(ctx context.Context, work string, e bootstra
 	if werr := os.WriteFile(path, data, 0o600); werr != nil {
 		return fmt.Errorf("ward container bootstrap: write provenance %s: %w", path, werr)
 	}
-	blog("recorded run provenance at %s", path)
+	blog("provenance recorded: %s baseline=%s", path, baseline)
 	return nil
 }
 
@@ -523,7 +546,9 @@ func (r *Runner) cloneExtraRepos(ctx context.Context, e bootstrapEnv) {
 	}
 	_ = os.MkdirAll(e.GitCache, 0o755)
 	for _, repo := range e.ExtraRepos {
+		blog("extra-repo clone start: %s/%s", repo.Owner, repo.Name)
 		r.cloneExtraRepo(ctx, e, repo)
+		blog("extra-repo clone done: %s/%s", repo.Owner, repo.Name)
 	}
 }
 
@@ -571,6 +596,7 @@ func (r *Runner) cloneExtraRepo(ctx context.Context, e bootstrapEnv, repo target
 // installPreCommitHooks ports install_precommit_hooks: register the repo's
 // pre-commit + commit-msg hooks so agent commits hit the same gate a human's do.
 func (r *Runner) installPreCommitHooks(ctx context.Context, _ bootstrapEnv, work string) {
+	blog("pre-commit hook install check: %s", work)
 	if !isFile(filepath.Join(work, ".pre-commit-config.yaml")) {
 		blog("no .pre-commit-config.yaml in %s; skipping pre-commit install", work)
 		return
@@ -618,8 +644,10 @@ func (r *Runner) revokeClonePushURL(ctx context.Context, work string) {
 // strips origin's push URL (ward#327) + lands a pre-push hook (ward#299, see docs).
 func (r *Runner) installReadOnlyPushGuard(ctx context.Context, e bootstrapEnv, work string) {
 	if !e.ReadOnly {
+		blog("read-only push guard skipped: writable session %s", work)
 		return
 	}
+	blog("read-only push guard install start: %s", work)
 	r.revokeClonePushURL(ctx, work)
 	hookDir := filepath.Join(work, ".git", "hooks")
 	if !isDir(hookDir) {
@@ -880,6 +908,7 @@ func (r *Runner) linkOrCopyContext(linkTarget, dest, src string) {
 // composePermissions ports compose_permissions: copy the container permission
 // policy into the agent's claude settings.json.
 func (r *Runner) composePermissions(e bootstrapEnv) {
+	blog("permissions compose start: %s", e.AgentHome)
 	out := filepath.Join(e.AgentHome, ".claude", "settings.json")
 	_ = os.MkdirAll(filepath.Dir(out), 0o755)
 	data, rerr := os.ReadFile("/opt/ward/settings.container.json") // #nosec G304 -- bind-mounted policy
@@ -931,6 +960,7 @@ func (r *Runner) reapWorkTree(ctx context.Context, work string, env reapEnv) err
 // run the agent (stream-json piped through streamProgress). Non-zero exit just logs.
 func (r *Runner) launchAgent(ctx context.Context, e bootstrapEnv, work string, argv []string, stream bool) {
 	launch := append(setprivPrefix(e), argv...)
+	blog("launch start: stream=%t oneshot=%t work=%s", stream, e.oneshot(), work)
 	switch {
 	case stream:
 		if rerr := r.runStreaming(ctx, work, launch); rerr != nil {

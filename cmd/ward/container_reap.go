@@ -112,6 +112,8 @@ func (r *Runner) runContainerReap(ctx context.Context, c *cli.Command) error {
 	if err != nil {
 		return err
 	}
+	fmt.Fprintf(os.Stderr, "ward container reap: start for %s/%s issue=%d readOnly=%t extraRepos=%d launched=%t\n",
+		env.Owner, env.Name, env.Issue, env.ReadOnly, len(env.ExtraRepos), env.Launched)
 	if env.ReadOnly {
 		// A read-only explore session never mutates the remote (ward#293): skip
 		// capture/commit/push outright, leaving the throwaway clone untouched.
@@ -122,6 +124,7 @@ func (r *Runner) runContainerReap(ctx context.Context, c *cli.Command) error {
 	if !isGitWorkTree(ctx, r, work) {
 		return fmt.Errorf("ward container reap: %q is not a git work tree", work)
 	}
+	fmt.Fprintf(os.Stderr, "ward container reap: work tree confirmed at %s\n", work)
 	terr := r.reapTargetTree(ctx, work, env, true)
 	r.verifyExtraReposLanded(ctx, env)
 	return terr
@@ -135,10 +138,13 @@ func (r *Runner) reapTargetTree(ctx context.Context, work string, env reapEnv, r
 		return nil
 	}
 	statusSnapshot := r.captureAndCommitResidual(ctx, work, env)
+	fmt.Fprintf(os.Stderr, "ward container reap: residual status snapshot for %s: %q\n", work, strings.TrimSpace(statusSnapshot))
 
 	// Refresh remote-tracking refs so we integrate against the latest main; a
 	// fetch failure leaves the clone-time origin/main as a usable base.
+	fmt.Fprintln(os.Stderr, "ward container reap: fetch origin start")
 	_ = r.Runner.Exec(ctx, "git", "-C", work, "fetch", "origin")
+	fmt.Fprintln(os.Stderr, "ward container reap: fetch origin done")
 	if !refExists(ctx, r, work, "origin/main") {
 		// Without a main to integrate against we cannot safely push; preserve
 		// whatever HEAD holds on a salvage branch.
@@ -147,6 +153,7 @@ func (r *Runner) reapTargetTree(ctx context.Context, work string, env reapEnv, r
 
 	prov, perr := r.readRunProvenance(work)
 	if perr != nil {
+		fmt.Fprintf(os.Stderr, "ward container reap: provenance missing or unreadable: %v\n", perr)
 		return r.salvage(ctx, work, env, reasonConflict, false, nil, statusSnapshot)
 	}
 	if env.Issue != 0 && !r.issueClosingReferencePresent(ctx, work, env.Issue) {
@@ -155,6 +162,7 @@ func (r *Runner) reapTargetTree(ctx context.Context, work string, env reapEnv, r
 	}
 
 	residual := revCount(ctx, r, work, "origin/main..HEAD")
+	fmt.Fprintf(os.Stderr, "ward container reap: residual commit count against origin/main = %d\n", residual)
 	findings := scan.Diff(r.diffEntries(ctx, work, "origin/main...HEAD"))
 	if !r.runProvenanceLanded(ctx, work, prov, env.Issue) {
 		fmt.Fprintln(os.Stderr, "ward container reap: no run-owned landed commit after dispatch; salvaging instead of claiming success")
@@ -173,6 +181,7 @@ func (r *Runner) reapTargetTree(ctx context.Context, work string, env reapEnv, r
 		IntegrationClean: r.integrate(ctx, work, residual),
 		Findings:         findings,
 	})
+	fmt.Fprintf(os.Stderr, "ward container reap: decision=%d for %s\n", action, work)
 	return r.executeReap(ctx, work, env, action, findings, statusSnapshot, prov)
 }
 
@@ -198,6 +207,7 @@ func (r *Runner) captureAndCommitResidual(ctx context.Context, work string, env 
 // loose work in any clone (the target or a --repo grant), tagged with mode + slug.
 func (r *Runner) captureAndCommitResidualRepo(ctx context.Context, work, mode, slug string) string {
 	status, _ := r.Runner.Capture(ctx, "git", "-C", work, "status", "--porcelain")
+	fmt.Fprintf(os.Stderr, "ward container reap: capture residual status for %s (%s)\n", work, slug)
 	_ = r.Runner.Exec(ctx, "git", "-C", work, "add", "-A")
 	if hasStagedChanges(ctx, r, work) {
 		// Tag the subject with the mode and carry the agent attribution as a
@@ -206,6 +216,8 @@ func (r *Runner) captureAndCommitResidualRepo(ctx context.Context, work, mode, s
 			mode, slug, containerMode(mode).commitTrailer())
 		if cerr := r.Runner.Exec(ctx, "git", "-C", work, "commit", "--no-verify", "-m", msg); cerr != nil {
 			fmt.Fprintf(os.Stderr, "ward container reap: residual commit failed: %v\n", cerr)
+		} else {
+			fmt.Fprintf(os.Stderr, "ward container reap: residual commit created for %s (%s)\n", work, slug)
 		}
 	}
 	return string(status)
@@ -217,10 +229,13 @@ func (r *Runner) integrate(ctx context.Context, work string, residual int) bool 
 	if residual == 0 {
 		return true
 	}
+	fmt.Fprintf(os.Stderr, "ward container reap: rebase start for %s onto origin/main\n", work)
 	if rerr := r.Runner.Exec(ctx, "git", "-C", work, "rebase", "origin/main"); rerr != nil {
 		_ = r.Runner.Exec(ctx, "git", "-C", work, "rebase", "--abort")
+		fmt.Fprintf(os.Stderr, "ward container reap: rebase failed for %s\n", work)
 		return false
 	}
+	fmt.Fprintf(os.Stderr, "ward container reap: rebase clean for %s\n", work)
 	return true
 }
 
@@ -236,6 +251,7 @@ func (r *Runner) executeReap(ctx context.Context, work string, env reapEnv, acti
 			fmt.Fprintln(os.Stderr, "ward container reap: remote main has no run-owned commit after dispatch; salvaging")
 			return r.salvage(ctx, work, env, reasonConflict, false, findings, status)
 		}
+		fmt.Fprintln(os.Stderr, "ward container reap: push to main start")
 		out, perr := r.pushCapture(ctx, work, "HEAD:main")
 		if perr == nil {
 			fmt.Fprintln(os.Stderr, "ward container reap: landed on main")
@@ -308,6 +324,7 @@ func (r *Runner) runProvenanceLanded(ctx context.Context, work string, prov runP
 func (r *Runner) salvage(ctx context.Context, work string, env reapEnv, reason reapReason, authCause bool, findings []scan.Finding, status string) error {
 	id := env.Name + "-" + randHex()
 	branch := salvageBranchName(id)
+	fmt.Fprintf(os.Stderr, "ward container reap: salvage start branch=%s reason=%s\n", branch, reason)
 	_ = r.Runner.Exec(ctx, "git", "-C", work, "branch", "-f", branch, "HEAD")
 	if out, perr := r.pushCapture(ctx, work, branch+":"+branch); perr != nil {
 		// The branch push reuses the same baked PAT, so a dead token fails here too;
@@ -379,6 +396,7 @@ func (r *Runner) fileSalvageIssue(ctx context.Context, env reapEnv, report salva
 // reap when the agent never launched (ward#264, docs/agent-reservation.md).
 func (r *Runner) releaseReservationIfUnstarted(ctx context.Context, env reapEnv) {
 	if !env.reservationReleasable() {
+		fmt.Fprintf(os.Stderr, "ward container reap: reservation keep for #%d (launched=%t issue=%d)\n", env.Issue, env.Launched, env.Issue)
 		return
 	}
 	if env.Token == "" {
@@ -407,6 +425,7 @@ func (r *Runner) verifyExtraReposLanded(ctx context.Context, env reapEnv) {
 	if env.ReadOnly || len(env.ExtraRepos) == 0 {
 		return
 	}
+	fmt.Fprintf(os.Stderr, "ward container reap: verifying %d granted repo(s)\n", len(env.ExtraRepos))
 	var unlanded []extraRepoUnlanded
 	for _, repo := range env.ExtraRepos {
 		work := extraRepoWorkDir(repo)
@@ -466,26 +485,23 @@ func (r *Runner) issueClosingReferencePresent(ctx context.Context, work string, 
 	if err != nil {
 		return false
 	}
-	
-	// Enforce machine-checkable closure references by ensuring that commit(s) created 
-	// during the current run (since reservation) contain the exact closes reference.
-	// This prevents an agent from creating a commit with incorrect issue number such as:
-	// "closes #425" when carrying issue #426, which would be rejected for landing.
+
+	// Enforce machine-checkable closure references on commits created after reservation.
+	// That rejects a wrong trailer like "closes #425" while carrying issue #426.
 	commits := strings.Split(strings.TrimSpace(string(out)), "\n\n")
 
-	// Handle edge case: git log returns nothing
+	// Handle the empty-log edge case.
 	if len(commits) == 0 || (len(commits) == 1 && strings.TrimSpace(commits[0]) == "") {
 		return false
 	}
 
 	for _, commit := range commits {
-		// Ensure we're really checking content, not just blank lines
 		trimmedCommit := strings.TrimSpace(commit)
 		if trimmedCommit != "" && strings.Contains(strings.ToLower(trimmedCommit), pattern) {
 			return true
 		}
 	}
-	
+
 	return false
 }
 

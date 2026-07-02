@@ -9,6 +9,7 @@ First stop for any failed headless run: **its logs.** Every exited run drains to
 output), `transcript.jsonl` (the session), `meta.json` (dims + `outcome`). Read
 `meta.json` first: the `outcome` field already classifies the run. See
 [agent-observability.md](agent-observability.md).
+For stable lifecycle markers, see [container lifecycle logs](container-lifecycle-logs.md).
 
 ## By symptom
 

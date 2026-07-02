@@ -167,32 +167,41 @@ func hostname() string {
 // local-sentinel release; a remote-side failure rolls the local hold back.
 func (r *Runner) reserveIssue(ctx context.Context, label string, mode containerMode, ref agentIssueRef, container, branch, justification string, force bool) (func(), error) {
 	now := time.Now().UTC()
+	fmt.Fprintf(os.Stderr, "%s: reservation start for %s (container=%s branch=%s force=%t)\n", label, ref, container, branch, force)
 	releaseLocal, err := r.acquireLocalReservation(ctx, label, mode, ref, container, branch, now, force)
 	if err != nil {
+		fmt.Fprintf(os.Stderr, "%s: reservation local acquire failed for %s: %v\n", label, ref, err)
 		return nil, err
 	}
 	if err := r.acquireRemoteReservation(ctx, label, mode, ref, container, justification, now, force); err != nil {
+		fmt.Fprintf(os.Stderr, "%s: reservation remote acquire failed for %s: %v\n", label, ref, err)
 		releaseLocal()
 		return nil, err
 	}
+	fmt.Fprintf(os.Stderr, "%s: reservation acquired for %s\n", label, ref)
 	return releaseLocal, nil
 }
 
 // precheckReservation runs reserveIssue's read-only refusal half ahead of the LLM
 // pre-flight (ward#184), reusing the fetched thread; --force bypasses it. See docs.
 func (r *Runner) precheckReservation(ctx context.Context, label string, w resolvedWork, force bool) error {
+	fmt.Fprintf(os.Stderr, "%s: reservation precheck start for %s (force=%t)\n", label, w.Ref, force)
 	if force {
+		fmt.Fprintf(os.Stderr, "%s: reservation precheck skipped for %s because force is set\n", label, w.Ref)
 		return nil
 	}
 	now := time.Now().UTC()
 	if err := r.precheckLocalReservation(ctx, label, w.Ref, now); err != nil {
+		fmt.Fprintf(os.Stderr, "%s: reservation precheck failed locally for %s: %v\n", label, w.Ref, err)
 		return err
 	}
 	if who, held := freshReservationComment(w.Comments, now, agentReservationTTL); held {
+		fmt.Fprintf(os.Stderr, "%s: reservation precheck failed remotely for %s: %s\n", label, w.Ref, who)
 		return newReservationConflict(
 			"%s: issue %s is already reserved remotely (%s); wait for it to finish or pass --force to override",
 			label, w.Ref, who)
 	}
+	fmt.Fprintf(os.Stderr, "%s: reservation precheck passed for %s\n", label, w.Ref)
 	return nil
 }
 
@@ -208,10 +217,12 @@ func (r *Runner) precheckLocalReservation(ctx context.Context, label string, ref
 		return fmt.Errorf("%s: read reservation %s: %w", label, path, rerr)
 	}
 	if ok && reservationFresh(existing.At, now, agentReservationTTL) && r.containerRunning(ctx, existing.Container) {
+		fmt.Fprintf(os.Stderr, "%s: reservation precheck saw live local holder for %s at %s\n", label, ref, path)
 		return newReservationConflict(
 			"%s: issue %s is already reserved locally by %s; wait for it to finish or pass --force to reclaim",
 			label, ref, existing.summary())
 	}
+	fmt.Fprintf(os.Stderr, "%s: reservation precheck found no live local holder for %s\n", label, ref)
 	return nil
 }
 
@@ -227,6 +238,7 @@ func (r *Runner) acquireLocalReservation(ctx context.Context, label string, mode
 			return nil, err
 		}
 	}
+	fmt.Fprintf(os.Stderr, "%s: reservation local acquire writing %s\n", label, path)
 	res := agentReservation{
 		Owner:     ref.Owner,
 		Repo:      ref.Repo,
@@ -241,6 +253,7 @@ func (r *Runner) acquireLocalReservation(ctx context.Context, label string, mode
 	if err := writeAgentReservation(path, res); err != nil {
 		return nil, fmt.Errorf("%s: write reservation %s: %w", label, path, err)
 	}
+	fmt.Fprintf(os.Stderr, "%s: reservation local acquire wrote %s\n", label, path)
 	return func() { _ = removeAgentReservation(path) }, nil
 }
 

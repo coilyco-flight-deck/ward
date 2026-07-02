@@ -88,6 +88,7 @@ func (r *Runner) resolveAgentIssueRef(ctx context.Context, arg string) (agentIss
 		return agentIssueRef{}, err
 	}
 	if ref.Owner != "" && ref.Repo != "" {
+		fmt.Fprintf(os.Stderr, "ward agent: resolved issue ref %s -> %s\n", arg, ref)
 		return ref, nil
 	}
 	repo, _, terr := r.resolveTarget(ctx, "")
@@ -97,6 +98,7 @@ func (r *Runner) resolveAgentIssueRef(ctx context.Context, arg string) (agentIss
 				"(use owner/repo#%d or run from inside the repo's checkout): %w", arg, ref.Number, terr)
 	}
 	ref.Owner, ref.Repo = repo.Owner, repo.Name
+	fmt.Fprintf(os.Stderr, "ward agent: inferred bare issue ref %s -> %s from cwd origin\n", arg, ref)
 	return ref, nil
 }
 
@@ -646,10 +648,18 @@ func (r *Runner) capturePreflight(ctx context.Context, argv []string) ([]byte, e
 	// to a plain cwd capture rather than strand a workable issue behind flakiness.
 	dir, err := os.MkdirTemp("", "ward-preflight-*")
 	if err != nil {
+		fmt.Fprintln(os.Stderr, "ward agent: preflight capture could not create a neutral temp dir; falling back to dispatch cwd")
 		return r.Runner.Capture(ctx, argv[0], argv[1:]...)
 	}
+	fmt.Fprintf(os.Stderr, "ward agent: preflight capture start in neutral dir %s\n", dir)
 	defer os.RemoveAll(dir)
-	return r.captureInDir(ctx, dir, argv[0], argv[1:]...)
+	out, cerr := r.captureInDir(ctx, dir, argv[0], argv[1:]...)
+	if cerr != nil {
+		fmt.Fprintf(os.Stderr, "ward agent: preflight capture failed in %s: %v\n", dir, cerr)
+		return out, cerr
+	}
+	fmt.Fprintf(os.Stderr, "ward agent: preflight capture done in %s\n", dir)
+	return out, nil
 }
 
 // captureInDir runs Capture with the process cwd temporarily set to dir, restored
@@ -678,6 +688,7 @@ func (r *Runner) runPreflight(ctx context.Context, mode containerMode, surface s
 		return true, "", nil
 	}
 
+	fmt.Fprintf(os.Stderr, "%s: preflight start for %s via %s\n", label, w.Ref, bin)
 	fmt.Fprintf(os.Stderr, "%s: pre-flight - asking %s whether it can carry %s before detaching...\n\n", label, bin, w.Ref)
 	pctx, cancel := context.WithTimeout(ctx, preflightTimeout)
 	defer cancel()
@@ -694,8 +705,10 @@ func (r *Runner) runPreflight(ctx context.Context, mode containerMode, surface s
 		fmt.Fprintf(os.Stderr, "%s: pre-flight read did not complete (%v); proceeding with the detached run.\n", label, err)
 		return true, "", nil
 	}
+	outcome := parsePreflightVerdict(read)
+	fmt.Fprintf(os.Stderr, "%s: preflight result for %s verdict=%v repo=%q reason=%q\n", label, w.Ref, outcome.Verdict, outcome.Repo, outcome.Reason)
 
-	switch outcome := parsePreflightVerdict(read); outcome.Verdict {
+	switch outcome.Verdict {
 	case verdictWrongRepo:
 		// WRONG-REPO always launches nothing here (it either blind-fires elsewhere
 		// or bounces to a human), so proceed is false regardless of the error.
@@ -711,9 +724,11 @@ func (r *Runner) runPreflight(ctx context.Context, mode containerMode, surface s
 	case verdictGo:
 		// An explicit GO: proceed and hand the read back so the reservation comment
 		// records the agent's own justification for carrying it (ward#383).
+		fmt.Fprintf(os.Stderr, "%s: preflight GO for %s\n", label, w.Ref)
 		return true, read, nil
 	case verdictUnknown:
 		// No clear verdict line: proceed, but there is no GO conclusion to justify.
+		fmt.Fprintf(os.Stderr, "%s: preflight verdict unclear for %s; proceeding open\n", label, w.Ref)
 		return true, "", nil
 	default:
 		return true, "", nil
@@ -1041,6 +1056,8 @@ func (r *Runner) launchAgentContainer(ctx context.Context, c *cli.Command, mode 
 	if err != nil {
 		return fmt.Errorf("%s: %w", label, err)
 	}
+	fmt.Fprintf(os.Stderr, "%s: launch plan ready for %s (container=%s branch=%s readOnly=%t tailnet=%t/%t)\n",
+		label, ref, plan.Name, plan.Branch, c.Bool("detach"), plan.HostNet, plan.TSSidecar)
 
 	if c.Bool("print") {
 		return printAgentPlan(c, plan, ref, title, seed, surface)
@@ -1069,12 +1086,16 @@ func (r *Runner) launchAgentContainer(ctx context.Context, c *cli.Command, mode 
 	// keep-N window would block the name; clear it for reuse (ward#364).
 	r.clearExitedContainer(ctx, plan.Name)
 	if !c.Bool("no-pull") {
+		fmt.Fprintf(os.Stderr, "%s: image pull enabled for %s\n", label, plan.Image)
 		r.pullAgentImage(ctx, plan, label)
+	} else {
+		fmt.Fprintf(os.Stderr, "%s: image pull skipped for %s (--no-pull)\n", label, plan.Image)
 	}
 	envFile, cleanupEnv, err := r.writeTokenEnvFile(ctx, planDispatchTarget(plan), r.resolveAgentCreds(ctx, mode))
 	if err != nil {
 		return err
 	}
+	fmt.Fprintf(os.Stderr, "%s: wrote launch env file for %s\n", label, ref)
 	defer cleanupEnv()
 	return r.createAgentContainer(ctx, plan, envFile)
 }

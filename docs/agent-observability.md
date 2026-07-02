@@ -33,8 +33,9 @@ through a strict allowlist**: `Config.Env` also carries the `--env-file` secrets
 (`FORGEJO_TOKEN`, `WARD_CLAUDE_CREDS_B64`), so the drain copies only the known-safe
 dims and never the whole env. A unit test guards that boundary.
 
-The drain is best-effort throughout: a missing transcript, a `docker inspect`
-miss, an unwritable dir - each is logged and stepped past, never a launch failure.
+a missing transcript, a `docker inspect` miss, or an unwritable dir are logged
+and stepped past.
+See [container lifecycle logs](container-lifecycle-logs.md).
 
 ## Slice 2 - redacted envelope stream to SigNoz (export defaults OFF)
 
