@@ -49,6 +49,7 @@ claude's probe reads).
 
 ## See also
 
+- [docs/agent-qwen.md](agent-qwen.md) - the deprecated `qwen` alias that resolves here.
 - [docs/agent-local-model.md](agent-local-model.md) - bring your own Ollama: defaults, the supported route, and the current limitation (#395).
 - [docs/agent-local-harnesses.md](agent-local-harnesses.md) - the local harness index.
 - [docs/agent.md](agent.md) - the roster and roles vs harnesses split.

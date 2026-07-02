@@ -73,6 +73,7 @@ New to ward? Read [architecture.md](architecture.md) first - it frames the whole
 - [agent-claude.md](agent-claude.md) - the `claude` full cloud harness.
 - [agent-codex.md](agent-codex.md) - the `codex` open-sandbox cloud harness.
 - [agent-opencode.md](agent-opencode.md) - the `opencode` local Ollama-backed harness.
+- [agent-qwen.md](agent-qwen.md) - the deprecated `qwen` alias, a one-line pointer to `opencode`.
 - [agent-goose.md](agent-goose.md) - the `goose` local harness.
 
 ## Container subsystem

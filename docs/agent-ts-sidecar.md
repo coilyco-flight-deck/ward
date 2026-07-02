@@ -45,7 +45,7 @@ curl "$WARD_TOWER_OLLAMA_LOCAL/api/tags"   # WARD_TOWER_OLLAMA_LOCAL=http://loca
 
 It needs **no container capability** (no `NET_ADMIN`, `/dev/net/tun`, or `ALL_PROXY`), the
 non-blocking slice of the full-tunnel epic (infrastructure#411). Bundled clients default to
-`localhost:11434` (qwen/opencode via `WARD_OLLAMA_URL`, goose's `OLLAMA_HOST`), so model
+`localhost:11434` (opencode via `WARD_OLLAMA_URL`, goose's `OLLAMA_HOST`), so model
 calls **auto-route** to the tower with no per-client config.
 
 The explicit per-request proxy path stays valid, `WARD_TS_SOCKS5` +
