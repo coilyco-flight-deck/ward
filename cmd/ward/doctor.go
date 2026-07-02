@@ -54,15 +54,29 @@ type doctorOptions struct {
 	strictCredentials bool
 }
 
-// runDoctor runs every check inline, writes per-group output to out, and
-// returns a joined error when any check failed.
+// runDoctor resolves the config path by the normal precedence, then runs every
+// check against it. See runDoctorAt for the pinned-path variant ward setup uses.
 func runDoctor(out io.Writer, opts doctorOptions) error {
+	cwd, err := os.Getwd()
+	if err != nil {
+		return err
+	}
+	yamlPath, err := resolveConfigPath(explicitConfigPath(), os.Getenv("WARD_CONFIG"), cwd)
+	if err != nil {
+		return err
+	}
+	return runDoctorAt(out, yamlPath, opts)
+}
+
+// runDoctorAt runs every check against an explicit config path, joining failures.
+// Pinning the path lets ward setup validate the file it wrote (docs/setup.md).
+func runDoctorAt(out io.Writer, yamlPath string, opts doctorOptions) error {
 	var failures []string
 
-	if err := runAllowlist(out); err != nil {
+	if err := runAllowlistAt(out, yamlPath); err != nil {
 		failures = append(failures, "allowlist: "+err.Error())
 	}
-	if err := runSecurity(out, opts); err != nil {
+	if err := runSecurityAt(out, yamlPath, opts); err != nil {
 		failures = append(failures, "security: "+err.Error())
 	}
 
@@ -72,17 +86,9 @@ func runDoctor(out io.Writer, opts doctorOptions) error {
 	return nil
 }
 
-// runAllowlist resolves the config path and delegates to cli-guard's
-// allowlist.Lint engine, rendering an OK summary or the collected Problems.
-func runAllowlist(out io.Writer) error {
-	cwd, err := os.Getwd()
-	if err != nil {
-		return err
-	}
-	yamlPath, err := resolveConfigPath(explicitConfigPath(), os.Getenv("WARD_CONFIG"), cwd)
-	if err != nil {
-		return err
-	}
+// runAllowlistAt delegates to cli-guard's allowlist.Lint engine for an explicit
+// config path, rendering an OK summary or the collected Problems.
+func runAllowlistAt(out io.Writer, yamlPath string) error {
 	makefilePath := filepath.Join(filepath.Dir(filepath.Dir(yamlPath)), "Makefile")
 	problems, err := allowlist.Lint(yamlPath, makefilePath)
 	if err != nil {
@@ -113,10 +119,10 @@ func renderAllowlistFailure(problems []allowlist.Problem) string {
 	return strings.Join(msgs, "\n")
 }
 
-// runSecurity loads the resolved config, runs the host probes, writes per-row
-// results to out, and returns a non-nil error when any FAIL row surfaced.
-func runSecurity(out io.Writer, opts doctorOptions) error {
-	cfg, err := loadDefault()
+// runSecurityAt loads the config at yamlPath, runs the host probes, writes
+// per-row results to out, and returns a non-nil error when any FAIL row surfaced.
+func runSecurityAt(out io.Writer, yamlPath string, opts doctorOptions) error {
+	cfg, err := repocfg.Load(yamlPath)
 	if err != nil {
 		return err
 	}

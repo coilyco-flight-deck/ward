@@ -80,6 +80,7 @@ func main() {
 			gitCommand(),
 			auditCommand(),
 			doctorCommand(),
+			setupCommand(),
 			hookCommand(),
 			installHooksCommand(),
 			containerCommand(),
@@ -182,11 +183,18 @@ func maybeRewriteToExec(args []string, topLevel map[string]bool) []string {
 // ward binary becomes the product's user-facing command (ward#247). See docs/agent.md.
 const wardedShimName = "warded"
 
-// maybeRewriteWardedShim rewrites `warded <args>` (the symlink basename) to
-// `ward agent <args>` (ward#282); any other basename is untouched. Pure for testing.
+// wardedSetupVerb is the one warded subcommand carved out of the agent rewrite:
+// `warded setup` routes to `ward setup` (contributor onboarding, not dispatch; ward#426).
+const wardedSetupVerb = "setup"
+
+// maybeRewriteWardedShim rewrites `warded <args>` to `ward agent <args>` (ward#282);
+// `warded setup` is carved out to `ward setup` (ward#426). Pure for testing.
 func maybeRewriteWardedShim(args []string) []string {
 	if len(args) == 0 || filepath.Base(args[0]) != wardedShimName {
 		return args
+	}
+	if len(args) > 1 && args[1] == wardedSetupVerb {
+		return append([]string{"ward"}, args[1:]...)
 	}
 	rewritten := make([]string, 0, len(args)+1)
 	rewritten = append(rewritten, "ward", "agent")
