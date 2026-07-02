@@ -21,7 +21,7 @@ The plain verb gate (`ward exec`, `ward git`, `ward pkg`, `ward audit`) needs no
 
 ## What it does
 
-Wraps a project's dev verbs (`build`, `test`, `vet`, `lint`, `tidy`, `cover`) behind cli-guard's policy gate. Every invocation validates argv against a shell-metacharacter policy, writes one append-only JSONL audit row to `~/.ward/audit/<repo>.jsonl`, and gates repo verbs on a clean-and-synced tree so the row can be reconstructed from git history. See [`docs/exec-verb.md`](docs/exec-verb.md).
+Wraps a project's dev verbs behind cli-guard's policy gate. Every ward-managed repo is expected to declare the `build` / `test` / `install` triple in `.ward/ward.yaml`; many also expose `vet`, `lint`, `tidy`, and `cover`. Every invocation validates argv against a shell-metacharacter policy, writes one append-only JSONL audit row to `~/.ward/audit/<repo>.jsonl`, and gates repo verbs on a clean-and-synced tree so the row can be reconstructed from git history. See [`docs/exec-verb.md`](docs/exec-verb.md).
 
 **Enforcement depth is platform-conditional.** On **Linux** sandboxed verbs run inside cli-guard's sandbox jail, so the gate holds at arbitrary process depth - a descendant that reaches for a wrapped tool re-enters the gate. On **macOS and Windows** - the platforms the brew-first install path predominantly serves - enforcement is **depth-0** (the harness allowlist only): a child process spawned by a gated verb can invoke a wrapped tool without re-entering the gate, a known limitation by design. See [`docs/exec-verb.md`](docs/exec-verb.md) (Enforcement depth by platform).
 
@@ -39,6 +39,8 @@ brew install coilyco-flight-deck/tap/ward
 ```
 
 The explicit-URL form is required because the tap lives on forgejo, not github.com. The formula installs `ward` (stamped with the release tag) plus the `warded` symlink, and nothing else. The `ward-kdl` authoring binary is **not** installed - its surfaces are already embedded in `ward`, so end users need neither it nor the tier CLIs (ward#455). Spec authors who need `ward-kdl` itself build it from a ward checkout - see [ward-kdl-authoring.md](docs/ward-kdl-authoring.md). Upgrade with `ward upgrade`.
+
+Release assets are Linux-only convenience binaries for the container path; humans install `ward` through Homebrew, so darwin release artifacts are intentionally absent.
 
 **Releases live on Forgejo.** This repo is canonical on [forgejo.coilysiren.me/coilyco-flight-deck/ward](https://forgejo.coilysiren.me/coilyco-flight-deck/ward); the github.com copy is a read-only mirror of `main` + tags only, so its Releases page is intentionally empty - see the [canonical releases](https://forgejo.coilysiren.me/coilyco-flight-deck/ward/releases) for the current version and changelog.
 
@@ -109,7 +111,7 @@ v0.x, and early on purpose. ward is a single-maintainer tool in active internal 
 
 ## Support
 
-**Canonical development happens on [Forgejo][ward-forgejo]** - `main`, the issues, and every commit live there. That instance's registration is closed, so the **GitHub mirror is the public front door**: file a [bug or feature request][new-issue] there with just a GitHub account and a maintainer carries an accepted change across to Forgejo. That is why the README routes new issues to GitHub even though the tracker warded engineers watch is on Forgejo. The full contributor flow is in [CONTRIBUTING.md](CONTRIBUTING.md). Conduct: [Code of Conduct](CODE_OF_CONDUCT.md). Security: [SECURITY.md](SECURITY.md). License: [`LICENSE`](./LICENSE).
+**Canonical development happens on [Forgejo][ward-forgejo]** - `main`, the issues, and every commit live there. That instance's registration is closed, so the **GitHub mirror is the public front door for everyone except the maintainer**: file a [bug or feature request][new-issue] there with just a GitHub account and a maintainer carries an accepted change across to Forgejo. If you are working directly in the canonical repo, use Forgejo issues and Forgejo `closes #N` links. The full contributor flow is in [CONTRIBUTING.md](CONTRIBUTING.md). Conduct: [Code of Conduct](CODE_OF_CONDUCT.md). Security: [SECURITY.md]. License: [`LICENSE`](./LICENSE).
 
 [cli-guard]: https://forgejo.coilysiren.me/coilyco-flight-deck/cli-guard
 [coily]: https://github.com/coilyco-bridge/coily

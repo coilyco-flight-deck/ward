@@ -5,7 +5,7 @@
 ## Checks
 
 - **Allowlist.** Validates the resolved `.ward/ward.yaml` (or `.coily/coily.yaml`) against the repo's `Makefile`. Engine lives upstream in `cli-guard/allowlist`; ward only supplies the resolved paths and renders the returned `Problem` set. See [Allowlist contract](#allowlist-contract) for what makes a target "match" - it is stricter than target-name-exists.
-- **Security: summary.** Reports the parsed `security:` block — protected-binary count, sudo posture, hook-policy presence. A config with no `security:` block is a pass and reports `no security: declared`.
+- **Security: summary.** Reports the parsed `security:` block — sudo posture, hook-policy A config with no `security:` block is optional: `ward doctor` exits 0 with `no security: declared`, so 0 means no policy declared, not protected; if CI needs policy, require `security:` and use `--strict-credentials`.
 - **Security: host probes.** Three probes against the parsed block. `FAIL` rows drive the exit code; `WARN`, `INFO`, `PASS`, and `SKIP` only surface text.
   - **`path`.** Resolves each `protected_binaries[].name` via `exec.LookPath`. When `expected_real_paths` is non-empty, a mismatch is a `FAIL`. When the list is empty, the resolved location surfaces as `INFO`. A missing binary is a `WARN`.
   - **`sudo`.** Skipped unless `sudo.forbid_passwordless` is set. Runs `sudo -n true`. Clean exit is `FAIL`; non-zero with a "password required" sentinel is `PASS`; any other non-zero is `WARN`.
