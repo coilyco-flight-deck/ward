@@ -114,7 +114,8 @@ New to ward? Read [architecture.md](architecture.md) first - it frames the whole
 
 - [release.md](release.md) - the Forgejo-canonical release pipeline.
 - [release-binaries.md](release-binaries.md) - the dual-forge binary matrix + `SHA256SUMS` published to both release pages (ward#454).
-- [github-mirror.md](github-mirror.md) - the read-only GitHub mirror: refs, front-door metadata, and the legacy release scrub.
+- [github-mirror.md](github-mirror.md) - the read-only GitHub mirror: what it syncs on every push to `main`.
+- [forge-linking.md](forge-linking.md) - which forge a doc link should point at (relative / GitHub / Forgejo).
 
 ## See also
 

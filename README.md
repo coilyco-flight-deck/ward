@@ -6,13 +6,13 @@ ward has a second half for running coding agents: `ward agent` drives a harness 
 
 ## Who it's for
 
-- **A contributor (human or agent)** who wants every `build` / `test` / `lint` run argv-validated, audited, and gated on a clean tree - one wrapper instead of bare `make` / `go` / `gh` / `aws`. This half is forge-agnostic: point it at any repo.
+- **A contributor (human or agent)** who wants every `build` / `test` / `lint` run argv-validated, audited, and gated on a clean tree - one wrapper instead of bare `make` / `go` / `gh` / `aws`. Forge-agnostic: point it at any repo.
 - **An operator** running an autonomous agent fleet who wants each run boxed in a throwaway container, its reach bounded by an allowlist, and its whole session recorded - not a trusted shell.
 
 ## What it requires
 
 - **macOS or Linux + Homebrew** to install the binary (see [Install](#install)).
-- **A Forgejo instance** for the agent driver (`warded` / `ward agent`) and the operator surface (`ward ops forgejo`). ward is **Forgejo-canonical**: it carries Forgejo issues and pushes to a Forgejo `main`, and the GitHub mirror is read-only and PR-gated. A GitHub-only shop can still use the local verb gate. Which Forgejo, exactly? See the note below the list.
+- **A Forgejo instance** for the agent driver (`warded` / `ward agent`) and the operator surface (`ward ops forgejo`). ward is **Forgejo-canonical**: it carries Forgejo issues and pushes to a Forgejo `main`, and the GitHub mirror is read-only and PR-gated. Which Forgejo, exactly? See the note below the list.
 - **Docker** for the container agent flow - each `warded` run boots an ephemeral container, configures forge git auth inside it, runs the agent, and reaps it. The first run pulls one image, `forgejo.coilysiren.me/coilyco-flight-deck/agentic-os:latest` (anonymous pull, no login). See [`docs/container.md`](docs/container.md) for the registry, tag policy, and how to pin off the moving tag.
 
 The plain verb gate (`ward exec`, `ward git`, `ward pkg`, `ward audit`) needs none of the above - just the repo and its `.ward/ward.yaml`.
@@ -98,7 +98,8 @@ Over 60 pages under [`docs/`](docs/) cover each surface. The anchors:
 
 ## Status
 
-v0.x, and early on purpose. Releases are automated per-merge, cut by CI on every push to `main`, so the version number is a build counter, not a maturity signal. Downstream consumers upgrade to the `ward` binary and `.ward` config on their own schedule. Minor API breaks ship in `main` with a note in the commit body, so pin a commit until v1.0.0.
+v0.x, and early on purpose. ward is a single-maintainer tool in active internal use across the coilyco-flight-deck fleet, now opening up - so a small public audience (few stars, few forks) is expected for the stage, not decay. The high release count is the same: releases are automated per-merge by CI on every push to `main`, so the version is a build counter, not a maturity signal. Downstream consumers upgrade to the `ward` binary and `.ward` config on their own schedule. Minor API breaks ship in `main` with a note in the commit body, so pin a commit until v1.0.0.
+
 ## Related
 
 - [cli-guard][cli-guard] - the underlying security-boundary framework.
@@ -108,7 +109,7 @@ v0.x, and early on purpose. Releases are automated per-merge, cut by CI on every
 
 ## Support
 
-**Canonical development happens on [Forgejo][ward-forgejo]** - `main`, the issues, and every commit live there. That instance's registration is closed, so the **GitHub mirror is the public front door for everyone except the maintainer**: file a [bug or feature request][new-issue] there with just a GitHub account and a maintainer carries an accepted change across to Forgejo. If you are working directly in the canonical repo, use Forgejo issues and Forgejo `closes #N` links. The full contributor flow is in [CONTRIBUTING.md](CONTRIBUTING.md). Conduct: [Code of Conduct](CODE_OF_CONDUCT.md). Security: [SECURITY.md]. License: [`LICENSE`](./LICENSE).
+**Canonical development happens on [Forgejo][ward-forgejo]** - `main`, the issues, and every commit live there. That instance's registration is closed, so the **GitHub mirror is the public front door for everyone except the maintainer**: file a [bug or feature request][new-issue] there with just a GitHub account and a maintainer carries an accepted change across. If you are working directly in the canonical repo, use Forgejo issues and Forgejo `closes #N` links. The full contributor flow is in [CONTRIBUTING.md](CONTRIBUTING.md). Conduct: [Code of Conduct](CODE_OF_CONDUCT.md). Security: [SECURITY.md](SECURITY.md). License: [`LICENSE`](./LICENSE).
 
 [cli-guard]: https://forgejo.coilysiren.me/coilyco-flight-deck/cli-guard
 [coily]: https://github.com/coilyco-bridge/coily

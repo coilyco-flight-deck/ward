@@ -7,8 +7,7 @@ ward resolves the allowlist path in this order:
 3. Walk up from cwd and use the first reachable allowlist.
 
 `--config` wins over `$WARD_CONFIG`, and either override skips the walk-up
-search. The eventual `repocfg.Load` call is the existence check and produces
-the user-facing error if the chosen path is missing.
+search entirely.
 
 ## Candidate filenames
 
@@ -18,9 +17,10 @@ the user-facing error if the chosen path is missing.
 
 Both use the cli-guard `repocfg` format.
 
-## Notes
+## Errors
 
-- `repocfg.Load` parses the chosen file and applies cli-guard's argv policy
-  checks while loading the allowlist.
-- If nothing is reachable during walk-up, ward reports that no config could be
-  found.
+- A path set by `--config` or `$WARD_CONFIG` that does not exist fails loudly
+  and names the missing file - an explicit override is never silently ignored
+  or downgraded to the walk-up.
+- When the walk-up reaches the filesystem root without finding either candidate
+  filename, ward reports that no config could be found.
