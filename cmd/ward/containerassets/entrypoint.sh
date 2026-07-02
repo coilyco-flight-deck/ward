@@ -120,7 +120,7 @@ WARD_BROKER_SOCK_PATH="${WARD_BROKER_SOCK:-/run/ward/broker.sock}"
 WARD_BROKER_LOG_PATH="${WARD_BROKER_LOG:-/run/ward/broker.log}"
 
 # install_ward_kdl_write fetches the write-tier binary the broker shells (release
-# path only; best-effort - a miss just leaves the broker unstarted). docs/broker.md.
+# path only; 404s since ward#455 dropped the tier assets, ward#501). docs/broker.md.
 install_ward_kdl_write() {
   command -v ward-kdl-write >/dev/null 2>&1 && return 0
   if [ -n "${WARD_FROM_SOURCE:-}" ]; then
