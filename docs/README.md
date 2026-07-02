@@ -17,6 +17,7 @@ New to ward? Read [architecture.md](architecture.md) first - it frames the whole
 - [troubleshooting.md](troubleshooting.md) - symptom-indexed entry point for a failed `warded` run.
 - [audit.md](audit.md) - the append-only JSONL audit row written per invocation.
 - [config-discovery.md](config-discovery.md) - how ward resolves the allowlist config path.
+- [ward-yaml.md](ward-yaml.md) - field-by-field `.ward/ward.yaml` schema reference (commands + the security: block).
 - [golangci.md](golangci.md) - the strict-ish golangci-lint configuration.
 - [homebrew-build.md](homebrew-build.md) - Homebrew build + cli-guard pinning notes.
 
@@ -52,6 +53,7 @@ New to ward? Read [architecture.md](architecture.md) first - it frames the whole
 - [agent-credentials.md](agent-credentials.md) - how each harness's host credential is seeded.
 - [agent-attribution.md](agent-attribution.md) - agent attribution on Forgejo write bodies.
 - [agent-observability.md](agent-observability.md) - agent-run log/telemetry drain + opt-in OTLP.
+- [agent-dispatch-contract.md](agent-dispatch-contract.md) - dispatch exit codes + `meta.json` outcome enum for supervising runs.
 - [agent-host-net.md](agent-host-net.md) - `--tailnet`, the opt-in network escalation.
 - [agent-ts-sidecar.md](agent-ts-sidecar.md) - the Docker Desktop tailnet-route sidecar.
 - [agent-adapter-manifest.md](agent-adapter-manifest.md) - the per-agent divergence manifest.
