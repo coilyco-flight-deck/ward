@@ -23,10 +23,11 @@ An opt-in (ward#350) asked **once at init**, never per tick; `--dry-run`/`--prin
 1. **Poll + reconcile** in-flight engineers: on exit read each `WARD-OUTCOME` (done/blocked/failed).
 2. **Refresh** each ledger from the live backlog, ranking issues into lanes by tier
    (`P0`-`P4`) and mode (`headless`/`interactive`/`consult`).
-3. **Decide** via a host one-shot over the ranked candidates; it answers `DISPATCH:
+3. **Probe** forge liveness (the top candidate's issue get) so a recovery reaches the decision (ward#528).
+4. **Decide** via a host one-shot over the candidates + forge-health; answers `DISPATCH:
    <numbers>`/`none`, can only **narrow or hold**, and **fails open to rank** (#346).
-4. **Dispatch** the chosen set via the engineer (`agent.<mode>.engineer`).
-5. **Sleep** `--poll-interval`, **no LLM held open**.
+5. **Dispatch** the chosen set via the engineer (`agent.<mode>.engineer`).
+6. **Sleep** `--poll-interval`, **no LLM held open**.
 
 Only the **headless** lane auto-dispatches; interactive/consult surface.
 
@@ -61,10 +62,11 @@ via the same union/de-dup/trust path; an absent key falls back to the cwd origin
   `--aws`, `--tailnet`, `--no-pull`, `--with-repo`, `--print`, `--force` - the dispatch subset
   reaches each engineer, the full set the surface; `--branch`/`--no-preflight`/`--watch`/`--detach` absent.
 
-## Dispatch-error disposition (ward#352/#524/#527)
+## Dispatch-error disposition (ward#352/#524/#527/#528)
 
-Only a coded per-issue decline parks `failed`; a conflict or launch/infra failure defers
-and retries: [agent-director-dispatch.md](agent-director-dispatch.md).
+Only a coded per-issue decline parks `failed`; a conflict or launch/infra failure defers and
+retries, and a **livelock guard** breaks a stale-infra hold on a live-ok forge (ward#528):
+[agent-director-dispatch.md](agent-director-dispatch.md).
 
 ## See also
 

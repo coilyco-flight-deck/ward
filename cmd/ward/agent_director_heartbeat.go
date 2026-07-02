@@ -18,6 +18,32 @@ import (
 // agent can't hold a tick hostage; on timeout the tick falls back to rank.
 const directorDecideTimeout = 3 * time.Minute
 
+// directorProbeTimeout caps the per-tick live forge-health probe (ward#528) so a sour
+// forge read path can't wedge a tick; a timed-out probe reads as degraded, never held.
+const directorProbeTimeout = 20 * time.Second
+
+// forgeHealth is a tick's live liveness verdict, feeding the hold decision (ward#528).
+// See docs/agent-director-dispatch.md.
+type forgeHealth int
+
+const (
+	forgeHealthUnknown forgeHealth = iota
+	forgeHealthOK
+	forgeHealthDegraded
+)
+
+func (h forgeHealth) String() string {
+	switch h {
+	case forgeHealthOK:
+		return "ok"
+	case forgeHealthDegraded:
+		return "degraded"
+	case forgeHealthUnknown:
+		return "unknown"
+	}
+	return "unknown"
+}
+
 // directorBackend is the heartbeat's seam onto the world: the #346 ledger layer, the
 // LLM decision, the dispatch path, and the interactive surface (tests inject a fake).
 type directorBackend interface {
@@ -30,9 +56,12 @@ type directorBackend interface {
 	refresh(ctx context.Context)
 	// entries returns every tracked ledger entry across the scope.
 	entries() []*backlogEntry
-	// decide is the LLM one-shot: from the ranked picks, budget, and ledger state it
-	// returns which entries to dispatch this tick (<= avail).
-	decide(ctx context.Context, picks []*backlogEntry, avail int, entries []*backlogEntry) []*backlogEntry
+	// probeForgeHealth runs one cheap live forge read (the top candidate's issue get) so a
+	// recovered outage is visible to the hold decision (ward#528); unknown if none ran.
+	probeForgeHealth(ctx context.Context, top *backlogEntry) forgeHealth
+	// decide is the LLM one-shot: from the ranked picks, budget, ledger state, and the live
+	// forge-health signal it returns which entries to dispatch this tick (<= avail).
+	decide(ctx context.Context, picks []*backlogEntry, avail int, entries []*backlogEntry, health forgeHealth) []*backlogEntry
 	// dispatch launches one chosen issue's engineer run and records the transition.
 	dispatch(ctx context.Context, p *backlogEntry) error
 	// surface hands control to an interactive session on drain; ran=false means none
@@ -157,12 +186,59 @@ func directorDispatchTick(ctx context.Context, cfg backlogConfig, be directorBac
 	if len(picks) == 0 {
 		return nil
 	}
-	for _, p := range be.decide(ctx, picks, avail, entries) {
+	// Probe the live forge before deciding so a recovered outage is visible this tick, then
+	// let the guard break a stale-infra hold if the decision held anyway (ward#528).
+	health := be.probeForgeHealth(ctx, picks[0])
+	chosen := be.decide(ctx, picks, avail, entries, health)
+	if len(chosen) == 0 {
+		chosen = directorLivelockGuard(picks, entries, health)
+	}
+	for _, p := range chosen {
 		if err := be.dispatch(ctx, p); err != nil {
 			return err
 		}
 	}
 	return nil
+}
+
+// directorLivelockGuard force-dispatches the top candidate when a held decision sits on a
+// live-ok forge with a pure-infra failing streak (ward#528). See the dispatch doc.
+func directorLivelockGuard(picks, entries []*backlogEntry, health forgeHealth) []*backlogEntry {
+	if health != forgeHealthOK || len(picks) == 0 {
+		return nil
+	}
+	infra, substantive := 0, 0
+	for _, e := range entries {
+		switch e.State {
+		case "blocked", "failed":
+			if isInfraFailureOutcome(e.LastOutcome) {
+				infra++
+			} else {
+				substantive++
+			}
+		}
+	}
+	if infra == 0 || substantive > 0 {
+		return nil
+	}
+	return []*backlogEntry{picks[0]}
+}
+
+// directorInfraOutcomeRE matches the text a transient forge/launch blip leaves in a
+// parked outcome (5xx, gateway, the failing issue fetch step). ward#528.
+var directorInfraOutcomeRE = regexp.MustCompile(`(?i)\b(50[0-9]|bad gateway|gateway time-?out|service unavailable|get issue|dispatch-error|connection refused|no such host|i/o timeout)\b`)
+
+// isInfraFailureOutcome reports whether a parked outcome is a transient infra failure
+// (a forge blip) rather than a substantive engineer verdict (ward#528).
+func isInfraFailureOutcome(o *backlogOutcome) bool {
+	if o == nil {
+		return false
+	}
+	switch o.Status {
+	case "deferred", "dispatch-error":
+		return true
+	}
+	return directorInfraOutcomeRE.MatchString(o.Text)
 }
 
 // --- live backend ----------------------------------------------------------
@@ -192,8 +268,12 @@ func (d *liveDirector) refresh(ctx context.Context) {
 
 func (d *liveDirector) entries() []*backlogEntry { return d.r.backlogScopeEntries(d.repos) }
 
-func (d *liveDirector) decide(ctx context.Context, picks []*backlogEntry, avail int, entries []*backlogEntry) []*backlogEntry {
-	return d.r.directorDecide(ctx, d.label, d.cfg.mode, picks, avail, entries)
+func (d *liveDirector) probeForgeHealth(ctx context.Context, top *backlogEntry) forgeHealth {
+	return d.r.directorProbeForgeHealth(ctx, d.label, top)
+}
+
+func (d *liveDirector) decide(ctx context.Context, picks []*backlogEntry, avail int, entries []*backlogEntry, health forgeHealth) []*backlogEntry {
+	return d.r.directorDecide(ctx, d.label, d.cfg.mode, picks, avail, entries, health)
 }
 
 func (d *liveDirector) dispatch(ctx context.Context, p *backlogEntry) error {
@@ -256,17 +336,37 @@ func (d *liveDirector) reportMaxCycles(queued, inflight int) {
 
 func (d *liveDirector) summary() error { return d.r.backlogPrintSummary(d.repos) }
 
+// directorProbeForgeHealth reads the top pick's issue so a recovery reaches the decision
+// (ward#528). Fails safe: no target unknown, a failed read degraded.
+func (r *Runner) directorProbeForgeHealth(ctx context.Context, label string, top *backlogEntry) forgeHealth {
+	if top == nil || strings.TrimSpace(top.repo) == "" {
+		return forgeHealthUnknown
+	}
+	cl, err := r.hostForgejoClient(ctx)
+	if err != nil {
+		fmt.Fprintf(os.Stderr, "%s: note: cannot probe forge health (%v); treating it as unknown this tick.\n", label, err)
+		return forgeHealthUnknown
+	}
+	pctx, cancel := context.WithTimeout(ctx, directorProbeTimeout)
+	defer cancel()
+	if _, err := cl.getIssue(pctx, ownerOf(top.repo), nameOf(top.repo), top.Num); err != nil {
+		fmt.Fprintf(os.Stderr, "%s: forge health probe failed on #%d (%v); treating the forge as degraded this tick.\n", label, top.Num, err)
+		return forgeHealthDegraded
+	}
+	return forgeHealthOK
+}
+
 // --- the LLM dispatch decision ---------------------------------------------
 
 // directorDecide asks the mode's host agent which queued issues to dispatch this tick,
 // bounded by avail; every fail-open path returns the deterministic rank floor (#346).
-func (r *Runner) directorDecide(ctx context.Context, label string, mode containerMode, picks []*backlogEntry, avail int, entries []*backlogEntry) []*backlogEntry {
+func (r *Runner) directorDecide(ctx context.Context, label string, mode containerMode, picks []*backlogEntry, avail int, entries []*backlogEntry, health forgeHealth) []*backlogEntry {
 	floor := picks
 	if len(floor) > avail {
 		floor = floor[:avail]
 	}
 	bin := lookupAgent(mode).Record().Binary
-	argv, ok := lookupAgent(mode).PreflightArgv(directorDecidePrompt(picks, avail, entries))
+	argv, ok := lookupAgent(mode).PreflightArgv(directorDecidePrompt(picks, avail, entries, health))
 	if !ok || !hostHasBinary(bin) {
 		fmt.Fprintf(os.Stderr, "%s: %s self-assessment unavailable; dispatching the top %d queued issue(s) by rank.\n", label, bin, len(floor))
 		return floor
@@ -295,9 +395,9 @@ func (r *Runner) directorDecide(ctx context.Context, label string, mode containe
 	return chosen
 }
 
-// directorDecidePrompt asks which queued issues to dispatch, given the ranked candidates,
-// the budget, and in-flight + recent-outcome state, ending on a DISPATCH line. Pure.
-func directorDecidePrompt(picks []*backlogEntry, avail int, entries []*backlogEntry) string {
+// directorDecidePrompt asks the dispatch question from candidates, budget, in-flight,
+// outcome state, plus the live forge-health signal. Ends on a DISPATCH line.
+func directorDecidePrompt(picks []*backlogEntry, avail int, entries []*backlogEntry, health forgeHealth) string {
 	var b strings.Builder
 	b.WriteString("You are the dispatch judgment in an autonomous backlog heartbeat. Each queued issue " +
 		"you choose is carried to a merged PR by a fresh autonomous engineer, so dispatching costs a full run.\n\n")
@@ -321,8 +421,13 @@ func directorDecidePrompt(picks []*backlogEntry, avail int, entries []*backlogEn
 		}
 	}
 
+	fmt.Fprintf(&b, "\nFORGE HEALTH: %s - a live probe this tick of the top candidate's issue fetch, "+
+		"the exact read a dispatch pre-flight runs.\n", health)
+
 	b.WriteString("\nDecide which queued issues to dispatch now. Prefer the highest-ranked, but you may hold " +
-		"a tick (e.g. if recent runs are failing in a way that suggests waiting). Answer in 1-2 sentences, then " +
+		"a tick (e.g. if recent runs are failing in a way that suggests waiting). If FORGE HEALTH is ok, do NOT " +
+		"hold solely on a past infrastructure-failure streak (502 / bad gateway / dispatch-error / a failing " +
+		"issue fetch) - that signal is stale and a retry is cheap and safe. Answer in 1-2 sentences, then " +
 		"a final line of exactly one of:\n" +
 		"  \"DISPATCH: <comma-separated issue numbers>\" - dispatch those queued issues (numbers MUST come from the QUEUED list);\n" +
 		"  \"DISPATCH: none\" - hold this tick and dispatch nothing.\n")
