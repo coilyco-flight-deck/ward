@@ -10,6 +10,7 @@ import (
 	"strings"
 	"time"
 
+	"forgejo.coilysiren.me/coilyco-flight-deck/cli-guard/pkg/exitcode"
 	"forgejo.coilysiren.me/coilyco-flight-deck/cli-guard/pkg/issueref"
 	"forgejo.coilysiren.me/coilyco-flight-deck/cli-guard/pkg/ownertrust"
 	"github.com/urfave/cli/v3"
@@ -498,10 +499,13 @@ func (r *Runner) runAgentWork(ctx context.Context, c *cli.Command, mode containe
 		}
 		proceed, read, perr := r.runPreflight(ctx, mode, surface, w)
 		if perr != nil {
-			return fmt.Errorf("%s: pre-flight: %w", agentCmdline(mode, surface), perr)
+			// A Coded decline (NO-GO / WRONG-REPO, already reported) or a plain
+			// execution error; both surface as-is for the right exit code (ward#485).
+			return perr
 		}
 		if !proceed {
-			// runPreflight already reported the NO-GO and posted the issue comment.
+			// Defensive: a non-proceed with no error shouldn't happen (declines carry
+			// perr now), but never launch when the pre-flight said not to.
 			return nil
 		}
 		// On a GO, carry the read into the reservation comment (ward#383).
@@ -685,7 +689,8 @@ func (r *Runner) runPreflight(ctx context.Context, mode containerMode, surface s
 			return false, "", fmt.Errorf("post NO-GO comment on %s: %w", w.Ref, cerr)
 		}
 		fmt.Fprintf(os.Stderr, "%s: commented NO-GO on %s - %s\n", label, w.Ref, w.Ref.url())
-		return false, "", nil
+		return false, "", dispatchDeclineErr(dispatchNoGo, "preflight_no_go",
+			"%s: pre-flight NO-GO for %s: %s", label, w.Ref, outcome.Reason)
 	case verdictGo:
 		// An explicit GO: proceed and hand the read back so the reservation comment
 		// records the agent's own justification for carrying it (ward#383).
@@ -740,7 +745,9 @@ func (r *Runner) handlePreflightWrongRepo(ctx context.Context, mode containerMod
 		if cerr := r.postPreflightNoGo(ctx, mode, surface, w.Ref, reason, read); cerr != nil {
 			return fmt.Errorf("post NO-GO comment on %s: %w", w.Ref, cerr)
 		}
-		return nil
+		// An unusable WRONG-REPO is a bounce-to-human, same ending as a NO-GO.
+		return dispatchDeclineErr(dispatchNoGo, "preflight_wrong_repo_bounced",
+			"%s: pre-flight WRONG-REPO for %s bounced to a human: %s", label, w.Ref, reason)
 	}
 
 	fmt.Fprintf(os.Stderr, "%s: pre-flight WRONG-REPO for %s -> %s; blind-firing an issue there, launching nothing.\n", label, w.Ref, target.slug())
@@ -762,7 +769,9 @@ func (r *Runner) handlePreflightWrongRepo(ctx context.Context, mode containerMod
 		return fmt.Errorf("comment WRONG-REPO routing on %s: %w", w.Ref, cerr)
 	}
 	fmt.Fprintf(os.Stderr, "%s: noted the routing on %s - %s\n", label, w.Ref, w.Ref.url())
-	return nil
+	return dispatchDeclineErr(dispatchWrongRepo, "preflight_wrong_repo_routed",
+		"%s: pre-flight WRONG-REPO for %s routed to %s (issue %s); launched nothing here",
+		label, w.Ref, target.slug(), filed)
 }
 
 // hostHasBinary reports whether bin resolves on the host PATH.
@@ -1366,8 +1375,9 @@ func (r *Runner) ownerAllowed(owner string) bool {
 // untrustedOwnerErr is the trust-gate refusal shared by every dispatch surface:
 // it names the accepted set and points at docs/agent-trust-gate.md (ward#484).
 func (r *Runner) untrustedOwnerErr(label, owner string) error {
-	return fmt.Errorf("%s: refusing untrusted owner %q (allowed: %s). This build dispatches only for its compiled-in primary orgs - see docs/agent-trust-gate.md",
-		label, owner, strings.Join(r.primaryOrgs(), ", "))
+	return exitcode.New(dispatchUntrustedOwner, "untrusted_owner",
+		fmt.Errorf("%s: refusing untrusted owner %q (allowed: %s). This build dispatches only for its compiled-in primary orgs - see docs/agent-trust-gate.md",
+			label, owner, strings.Join(r.primaryOrgs(), ", ")), "")
 }
 
 // printAgentPlan renders the resolved issue, the seeded prompt, and the docker

@@ -26,9 +26,9 @@ This mirrors the `~/.ward/audit/<slug>.jsonl` convention ([audit.md](audit.md)):
 local, raw, never leaves the host, ages out on its own. Point Dozzle / `jq` at it.
 
 `meta.json` is small and **secret-free**: `container`, `repo`, `issue`, `driver`,
-`branch`, `outcome`. The `outcome` is inferred from the reaper's own console
-markers (`landed on main` -> `pushed-to-main`, a `ward-salvage/` push ->
-`ward-salvage`). The dims come from the container's inspected env, but **only
+`branch`, `outcome`. The `outcome` is inferred from the reaper's console markers;
+full enum + exit codes are the [dispatch contract](agent-dispatch-contract.md).
+The dims come from the container's inspected env, but **only
 through a strict allowlist**: `Config.Env` also carries the `--env-file` secrets
 (`FORGEJO_TOKEN`, `WARD_CLAUDE_CREDS_B64`), so the drain copies only the known-safe
 dims and never the whole env. A unit test guards that boundary.
