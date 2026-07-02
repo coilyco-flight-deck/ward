@@ -52,8 +52,8 @@ the [director surface](agent-surface-log-read.md) binds.
 
 ### The SigNoz sink and the locality gate - the safety crux
 
-What ships to SigNoz is chosen by **endpoint locality**, the load-bearing safety
-boundary. The fleet's secret-redaction scrubs the **terminal**, not the transcript
+What ships to SigNoz is chosen by **endpoint locality**, the safety boundary. The
+fleet's secret-redaction scrubs the **terminal**, not the transcript
 jsonl, and SigNoz has **no ingest redaction**. So **full, unredacted content may
 go only to a local endpoint**:
 
@@ -71,5 +71,6 @@ GitHub / Anthropic / JWT / public IP). Bounded enums become indexed OTLP attribu
 
 ## See also
 
+- [container-lifecycle-logs.md](container-lifecycle-logs.md) - console marker conventions + debug flow.
 - [container-cleanup.md](container-cleanup.md) - the keep-10 sweep this rides in.
 - [audit.md](audit.md) - the `~/.ward/` layout the disk sink mirrors.

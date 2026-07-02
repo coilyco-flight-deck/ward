@@ -89,6 +89,8 @@ New to ward? Read [architecture.md](architecture.md) first - it frames the whole
 - [container-multi-repo.md](container-multi-repo.md) - multi-repo runs (`--repo`).
 - [container-precommit.md](container-precommit.md) - fresh-clone pre-commit parity.
 - [container-reap.md](container-reap.md) - `ward container reap`, the teardown backstop.
+- [container-lifecycle-logs.md](container-lifecycle-logs.md) - the stable lifecycle-log conventions (surfaces, line grammar, correlation ids).
+- [container-lifecycle-debug.md](container-lifecycle-debug.md) - the debug-a-headless-run-from-logs-only sequence built on those conventions.
 - [container-cleanup.md](container-cleanup.md) - cleaning up stopped containers.
 - [container-stop.md](container-stop.md) - halting a running container.
 
