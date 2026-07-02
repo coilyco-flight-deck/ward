@@ -79,6 +79,10 @@ warded advisor #98       # answer/triage a ref, writing no code
 
 See [`docs/FEATURES.md`](docs/FEATURES.md) for the full verb list.
 
+## When a run breaks
+
+A `warded` run that failed or seemed to do nothing has a single symptom-indexed entry point: [`docs/troubleshooting.md`](docs/troubleshooting.md). It is indexed by **what you saw**, not by which subsystem failed - "launched then nothing happened", "never launched", "`ward exec` refused", "nothing landed on `main`" - and each row routes to the one diagnostic surface (the `~/.ward/agent-logs/<container>/` drain, a NO-GO comment on the issue, or a host auth refresh) and the fix. Start there before opening any per-subsystem doc.
+
 ## Three layers, told apart by when they run
 
 `ward` absorbs the operator surface from the retiring [coily][coily]. The pieces are easiest to keep straight by **when** each runs:
