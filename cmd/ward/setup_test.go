@@ -122,9 +122,10 @@ func TestRenderWardYAML_ContractHoldsUnderDoctor(t *testing.T) {
 		t.Fatalf("install description did not round-trip: %+v", install)
 	}
 
-	// doctor's allowlist check passes against the generated file <-> Makefile.
+	// doctor passes against the generated file: allowlist matches the Makefile,
+	// and allowMissingSecurity downgrades the ward#450 no-security: FAIL to a NOTE.
 	var out bytes.Buffer
-	if err := runDoctorAt(&out, yamlPath, doctorOptions{}); err != nil {
+	if err := runDoctorAt(&out, yamlPath, doctorOptions{allowMissingSecurity: true}); err != nil {
 		t.Fatalf("runDoctorAt on generated scaffold: %v\noutput:\n%s", err, out.String())
 	}
 }
