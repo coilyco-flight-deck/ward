@@ -3,20 +3,21 @@
 # tree-walking hooks read here (they bypass pre-commit's own exclude:).
 
 [tool.agentic-os.documentation-layout]
+# The root README is the launch-grade front page a cold visitor reads to decide
+# whether ward is for them - it earns room to name who it's for and what it
+# requires, show a denial, and route into the 60+ docs/ files, past the trifecta
+# default (160 lines / 12500 chars). ward#500 advanced the managed-hook pin to
+# the aos release carrying the per-repo README opt-up (agentic-os v0.167.0,
+# driver ward#427), so the blanket README exclude has narrowed to this bounded
+# cap: the README is now enforced, just at a higher, explicit ceiling sized to
+# the landed launch README (146 lines / ~14.3k chars) with headroom. Supersedes
+# the #274 "split it back under cap" plan.
+readme_max_lines = 170
+readme_max_chars = 15500
 excludes = [
   # Pre-existing size debt: docs/hook.md is 92 lines, over the 80-line cap.
   # The split is tracked in coilyco-flight-deck/ward#50; drop this when it lands.
   "docs/hook.md",
-  # Intentional exemption, not size debt (ward#427, supersedes the #274 "split
-  # it back under cap" plan). The README is the launch-grade front page a cold
-  # visitor reads to decide whether ward is for them - it earns room to name who
-  # it's for and what it requires, show a denial, and route into the 60+ docs/
-  # files, past the flat cap this stale agentic-os pin (v0.65.0) enforces. The
-  # durable, bounded replacement is the per-repo readme_max_lines /
-  # readme_max_chars opt-up added upstream (agentic-os, driver ward#427); it
-  # binds once ward's managed-hook pin advances to a release carrying it, at
-  # which point this blanket exclude narrows to that cap. Tracked: ward#427.
-  "README.md",
   # Generated surface reference (specverb-gen). The driver emits one beside each
   # Guardfile; the reviewed copies are committed under docs/ward-kdl/ (ward#279)
   # and grow with the verb surface, so the layout size cap does not apply. One
@@ -46,6 +47,22 @@ excludes = [
   # the surface" carve-out as docs/README.md above. dead-cross-links still
   # validates every entry (its own exclude list, not this one).
   "docs/ward-yaml.md",
+]
+
+[tool.agentic-os.dead-cross-links]
+# Generated surface reference (specverb-gen), same carve-out as the
+# documentation-layout size exclude above. The guardfile refs reproduce the
+# upstream OpenAPI `description` prose verbatim, which for some APIs (Trello)
+# carries site-absolute doc links like `/cloud/trello/guides/...` - external
+# Atlassian URLs missing their `https://developer.atlassian.com` host. The
+# v0.167.0 dead-cross-links resolves those against the repo root and flags them
+# as repo-escaping. They are not ward-authored cross-links, so excluding the
+# generated surface (no hand-written repo links live here) unblocks the pin
+# advance; the durable fix is teaching the ward-kdl generator to absolutize
+# upstream relative links so this exclude can drop. Tracked: ward#501.
+excludes = [
+  "ward-kdl.*.guardfile.md",
+  "docs/ward-kdl/**",
 ]
 
 [tool.agentic-os.code-comments]
