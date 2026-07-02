@@ -1,6 +1,6 @@
 # ward
 
-**ward wraps a project's dev verbs - `build`, `test`, `vet`, `lint`, `tidy`, `cover` - behind a policy gate, so nothing reaches `make` or `go` unchecked.** Every run validates its own arguments, appends one line to an audit log, and is refused if it could not be reconstructed from git history. It is the single command a contributor (human or agent) routes build-and-test work through. All it needs is a repo with a `.ward/ward.yaml` and Homebrew.
+**ward wraps a project's dev verbs - `build`, `test`, `vet`, `lint`, `tidy`, `cover` - behind a policy gate, so nothing reaches `make` or `go` unchecked.** Every run validates its own arguments, appends one line to an audit log, and is refused if it could not be reconstructed from git history. It is the single command a contributor (human or agent) routes build-and-test work through. This half is **forge-agnostic**: point it at any git repo - GitHub included - with nothing but a `.ward/ward.yaml` and Homebrew, no forge account of any kind. Only ward's second half, the agent driver below, is tied to a specific forge.
 
 ward has a second half for running coding agents: `ward agent` drives a harness (claude, codex, goose, ...) into a throwaway container to carry a Forgejo issue from fresh clone to merged `main`, its reach bounded by that container. That surface is exposed as **`warded`**, a thin symlink onto `ward agent`. The name, the three-layer split it sits on, and the operator surface it absorbs are covered below and in [`docs/architecture.md`](docs/architecture.md).
 
@@ -15,7 +15,7 @@ If you just want the audited verb gate, you need nothing but a repo and Homebrew
 
 - **macOS or Linux + Homebrew** to install the binary (see [Install](#install)).
 - **A Forgejo instance** for the agent driver (`warded` / `ward agent`) and the operator surface (`ward ops forgejo`). ward is **Forgejo-canonical**: it carries Forgejo issues and pushes to a Forgejo `main`. The GitHub mirror is read-only and PR-gated. A GitHub-only shop can still use the local verb gate, but the agent and ops surfaces target Forgejo.
-- **Docker** for the container agent flow - each `warded` run boots an ephemeral container, configures forge git auth inside it, runs the agent, and reaps it. See [`docs/container.md`](docs/container.md).
+- **Docker** for the container agent flow - each `warded` run boots an ephemeral container, configures forge git auth inside it, runs the agent, and reaps it. The first run pulls one image, `forgejo.coilysiren.me/coilyco-flight-deck/agentic-os:latest` (anonymous pull, no login). See [`docs/container.md`](docs/container.md) for the registry, tag policy, and how to pin off the moving tag.
 
 The plain verb gate (`ward exec`, `ward git`, `ward pkg`, `ward audit`) needs none of the above - just the repo and its `.ward/ward.yaml`.
 
@@ -79,6 +79,10 @@ warded advisor #98       # answer/triage a ref, writing no code
 
 See [`docs/FEATURES.md`](docs/FEATURES.md) for the full verb list.
 
+## When a run breaks
+
+A `warded` run that failed or seemed to do nothing has a single symptom-indexed entry point: [`docs/troubleshooting.md`](docs/troubleshooting.md). It is indexed by **what you saw**, not by which subsystem failed - "launched then nothing happened", "never launched", "`ward exec` refused", "nothing landed on `main`" - and each row routes to the one diagnostic surface (the `~/.ward/agent-logs/<container>/` drain, a NO-GO comment on the issue, or a host auth refresh) and the fix. Start there before opening any per-subsystem doc.
+
 ## Three layers, told apart by when they run
 
 `ward` absorbs the operator surface from the retiring [coily][coily]. The pieces are easiest to keep straight by **when** each runs:
@@ -105,7 +109,7 @@ Over 60 pages under [`docs/`](docs/) cover each surface. The anchors:
 
 ## Status
 
-v0.x. Downstream consumers upgrade to the `ward` binary and `.ward` config on their own schedule. Minor API breaks ship in `main` with a note in the commit body; pin a commit until v1.0.0.
+v0.x, and early on purpose. ward is a single-maintainer tool in active internal use across the flight-deck fleet, now opening up - so a small public audience (few stars, few forks) is expected for the stage, not a sign of decay. The release count is high for the same reason: releases are automated per-merge, cut by CI on every push to `main`, so the version number is a build counter, not a maturity signal or a tally of hand-picked milestone drops. Downstream consumers upgrade to the `ward` binary and `.ward` config on their own schedule. Minor API breaks ship in `main` with a note in the commit body, so pin a commit until v1.0.0.
 
 ## Related
 
