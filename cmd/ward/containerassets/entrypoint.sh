@@ -865,7 +865,7 @@ main() {
   # Start the no-proxy loopback forwarder (ward#359); no-op unless --ts-sidecar.
   start_tower_forwarder
   if ! command -v "$WARD_AGENT" >/dev/null 2>&1; then
-    log "agent '$WARD_AGENT' is not in this image yet (codex/qwen/goose install is a follow-up); dropping to a shell (reaper runs on exit)"
+    log "agent '$WARD_AGENT' binary is not present in this image (claude/codex/goose ship in dev-base, qwen self-installs opencode); dropping to a shell (reaper runs on exit)"
     bash || true
     return
   fi

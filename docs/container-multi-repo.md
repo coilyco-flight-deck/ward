@@ -44,10 +44,9 @@ Each granted repo is cloned as a **full feature working copy** under
   commit suite), so commits hit the same gate a human's would,
 - the working tree chowned to the non-root agent user, like the target.
 
-The shared bare mirror in the `ward-gitcache` volume is reused and TTL-agnostic
-here: it is refreshed under an `flock` on every run (granted repos are expected
-to move with the feature), the same locking substrate warming uses so concurrent
-containers don't race a mirror.
+The shared `ward-gitcache` bare mirror is reused and refreshed under an `flock`
+on every run (granted repos move with the feature), the same locking substrate
+warming uses so concurrent containers don't race a mirror.
 
 ## The reaper boundary
 
@@ -75,5 +74,6 @@ grants are writable, so a cross-repo migration whose deliverable lands in a gran
 ## See also
 
 [docs/container.md](container.md) - the container model and lifecycle.
+[docs/container-permissions.md](container-permissions.md) - the permission posture and blast-radius scope.
 [docs/container-substrate.md](container-substrate.md) - read-only `/substrate`.
 [docs/container-reap.md](container-reap.md) - the teardown reaper.
