@@ -53,6 +53,8 @@ brew install coilyco-flight-deck/tap/ward
 
 The explicit-URL form is required because the tap lives on forgejo, not github.com. The formula installs `ward` and the spec-driven `ward-kdl` (both stamped with the release tag) plus the `warded` symlink. Upgrade with `ward upgrade`.
 
+**Releases live on Forgejo.** This repo is canonical on [forgejo.coilysiren.me/coilyco-flight-deck/ward](https://forgejo.coilysiren.me/coilyco-flight-deck/ward); the github.com copy is a read-only mirror of `main` + tags only, so its Releases page is intentionally empty - see the [canonical releases](https://forgejo.coilysiren.me/coilyco-flight-deck/ward/releases) for the current version and changelog.
+
 ## Usage
 
 The audited verb gate, on any repo:
@@ -99,7 +101,7 @@ Over 60 pages under [`docs/`](docs/) cover each surface. The anchors:
 - **The agent driver** - [agent.md](docs/agent.md) (start here), the roster [agent-engineer.md](docs/agent-engineer.md) / [agent-director.md](docs/agent-director.md) / [agent-advisor.md](docs/agent-advisor.md), the [agent-gate.md](docs/agent-gate.md), [agent-credentials.md](docs/agent-credentials.md), [agent-observability.md](docs/agent-observability.md).
 - **The container** - [container.md](docs/container.md), [container-reap.md](docs/container-reap.md) (land-or-salvage on teardown), [container-multi-repo.md](docs/container-multi-repo.md), [container-substrate.md](docs/container-substrate.md).
 - **Operator surface (ward-kdl / ops)** - [ward-kdl.md](docs/ward-kdl.md), [ward-kdl-tiers.md](docs/ward-kdl-tiers.md), [ops-forgejo.md](docs/ops-forgejo.md).
-- **Build & release** - [homebrew-build.md](docs/homebrew-build.md), [release.md](docs/release.md), [golangci.md](docs/golangci.md).
+- **Build & release** - [homebrew-build.md](docs/homebrew-build.md), [release.md](docs/release.md), [github-mirror.md](docs/github-mirror.md), [golangci.md](docs/golangci.md).
 
 ## Status
 

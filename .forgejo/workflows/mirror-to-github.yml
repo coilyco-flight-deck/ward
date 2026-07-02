@@ -1,4 +1,6 @@
-# Push Forgejo main+tags to the read-only GitHub mirror; no-ops without the PAT.
+# Push Forgejo refs (main + tags) to the read-only GitHub mirror and scrub the
+# stranded legacy release objects; no-ops without the PAT. The mirror carries
+# refs only - canonical releases live on Forgejo. See docs/github-mirror.md.
 
 name: mirror-to-github
 
@@ -14,8 +16,9 @@ jobs:
       - uses: actions/checkout@v6
         with:
           fetch-depth: 0
+          fetch-tags: true
 
-      - name: Mirror to GitHub
+      - name: Mirror refs (main + tags) to GitHub
         env:
           PAT: ${{ secrets.GITHUB_MIRROR_PAT }}
         run: |
@@ -27,3 +30,45 @@ jobs:
           git remote add github "https://x-access-token:${PAT}@github.com/coilyco-flight-deck/ward.git"
           git push --force github main
           git push --force --tags github
+
+      - name: Scrub stranded legacy GitHub release objects
+        env:
+          PAT: ${{ secrets.GITHUB_MIRROR_PAT }}
+        run: |
+          set -euo pipefail
+          if [ -z "${PAT}" ]; then
+            echo "scrub-releases: GITHUB_MIRROR_PAT secret not set; skipping." >&2
+            exit 0
+          fi
+          api="https://api.github.com/repos/coilyco-flight-deck/ward"
+          hdr_auth="Authorization: token ${PAT}"
+          hdr_accept="Accept: application/vnd.github+json"
+          tagfile="$(mktemp)"
+          page=1
+          while :; do
+            body=$(curl -fsSL -H "$hdr_auth" -H "$hdr_accept" "${api}/releases?per_page=100&page=${page}")
+            names=$(printf '%s' "$body" | grep -oE '"tag_name"[[:space:]]*:[[:space:]]*"[^"]*"' | sed -E 's/.*"([^"]*)"$/\1/' || true)
+            if [ -z "$names" ]; then break; fi
+            printf '%s\n' "$names" >> "$tagfile"
+            page=$((page + 1))
+          done
+          if [ ! -s "$tagfile" ]; then
+            echo "scrub-releases: no GitHub release objects present; nothing to do"
+            exit 0
+          fi
+          while IFS= read -r tag; do
+            if [ -z "$tag" ]; then continue; fi
+            rel=$(curl -fsSL -H "$hdr_auth" -H "$hdr_accept" "${api}/releases/tags/${tag}")
+            rel_id=$(printf '%s' "$rel" | grep -oE '"id"[[:space:]]*:[[:space:]]*[0-9]+' | head -1 | grep -oE '[0-9]+' || true)
+            login=$(printf '%s' "$rel" | grep -oE '"login"[[:space:]]*:[[:space:]]*"[^"]*"' | head -1 | sed -E 's/.*"([^"]*)"$/\1/' || true)
+            if [ -z "$rel_id" ]; then
+              echo "scrub-releases: no release id for tag ${tag}; skipping" >&2
+              continue
+            fi
+            if [ "$login" != "github-actions[bot]" ]; then
+              echo "scrub-releases: release ${tag} authored by '${login}', not the legacy bot; keeping"
+              continue
+            fi
+            curl -fsSL -X DELETE -H "$hdr_auth" -H "$hdr_accept" "${api}/releases/${rel_id}"
+            echo "scrub-releases: deleted stranded legacy release ${tag} (id ${rel_id})"
+          done < "$tagfile"
