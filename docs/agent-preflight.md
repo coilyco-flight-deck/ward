@@ -15,10 +15,9 @@ no prompt to answer:
      question clears the gate. ward's own automated
      comments (reservation pings and prior NO-GO verdicts, both carrying a hidden
      marker) are stripped from the thread, so only human words sway the read.
-   - **Execution mechanics** - run as a one-shot on the host (`claude -p`, or
-     `goose run -t` for goose mode); ward echoes the read to your terminal and
-     parses the final verdict line (markdown bold, bullets, and quote markers
-     tolerated; the last verdict line wins).
+   - **Execution mechanics** - run as a one-shot on the host (`claude -p`); ward
+     echoes the read to your terminal and parses the final verdict line (markdown
+     bold, bullets, and quote markers tolerated; the last verdict line wins).
    - **cwd isolation** - the read is **issue-text-only**: the real run happens in
      a fresh clone in the container, so the prompt tells the agent the host cwd
      is unrelated scratch and to judge from the issue alone. ward also runs the
@@ -46,12 +45,12 @@ no prompt to answer:
 The check is skipped when there is no terminal (scripted/piped), on
 `--print` (a dry run), and with `--no-preflight` (the escape hatch for a run
 launched from a TTY that you still want to fire blind - it also re-dispatches a
-NO-GO issue you've decided is good to go). The gate runs for both full
-carry-to-merge harnesses, **claude and goose**, kept at parity (ward#148);
-goose answers via `goose run -t`, claude via `claude -p`. Modes with no host
-one-shot wired yet (`codex`/`opencode`), a host without the agent binary, or a read
-that doesn't complete all **proceed** rather than block, since none of those is
-the agent declining the work (and the reaper still backstops residual work).
+NO-GO issue you've decided is good to go). Only a **trusted cloud harness**
+(claude) runs the host read; a **local-model harness** (goose/opencode) is barred
+(ward#162, [agent-preflight-trust.md](agent-preflight-trust.md)). A barred mode, a
+mode with no one-shot wired (`codex`), no agent binary, or an incomplete read all
+**proceed** rather than block, since none of those is the agent declining the work
+(and the reaper still backstops residual work).
 `task` runs this **same pre-flight** (ward#149); see
 [docs/agent-subcommands.md](agent-subcommands.md).
 

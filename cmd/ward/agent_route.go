@@ -163,7 +163,12 @@ func (r *Runner) routeSurveyPreconditions(mode containerMode, taskText, label st
 		return fmt.Errorf("%s: empty task", label)
 	}
 	bin := lookupAgent(mode).Record().Binary
-	if _, ok := lookupAgent(mode).PreflightArgv("probe"); !ok {
+	// The survey is an unsandboxed host one-shot, so a local-model harness (goose,
+	// opencode) is refused it (ward#162) as well as a harness with none wired.
+	if _, ok := hostOneShotArgv(mode, "probe"); !ok {
+		if !hostOneShotTrusted(mode) {
+			return fmt.Errorf("%s: route mode surveys repos with an unsandboxed host one-shot, which a local-model harness like %s is barred from (ward#162); use a cloud harness (--driver claude) or pass an explicit owner/repo with --instructions-file to file directly", label, bin)
+		}
 		return fmt.Errorf("%s: route mode surveys repos with a host self-assessment slot, which %s lacks (ward#148); pass an explicit owner/repo with --instructions-file to file directly", label, bin)
 	}
 	if !hostHasBinary(bin) {
@@ -214,7 +219,7 @@ func (r *Runner) surveyRoute(ctx context.Context, mode containerMode, taskText s
 	if len(catalog) == 0 {
 		return routeOutcome{}, "", fmt.Errorf("no candidate repos found across %s", strings.Join(r.primaryOrgs(), ", "))
 	}
-	argv, ok := lookupAgent(mode).PreflightArgv(routeSurveyPrompt(taskText, renderRepoCatalog(catalog)))
+	argv, ok := hostOneShotArgv(mode, routeSurveyPrompt(taskText, renderRepoCatalog(catalog)))
 	if !ok {
 		return routeOutcome{}, "", fmt.Errorf("no host self-assessment slot for %s", mode)
 	}

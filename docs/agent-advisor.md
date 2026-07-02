@@ -23,9 +23,9 @@ mode**. Either way advisor changes no code and carries nothing to merge.
 A ref plus a prompt: advisor does a one-shot research pass and either posts the answer
 **as a comment on that issue** or, when the work spans multiple repos, **fans it out into
 per-repo issues** plus one index comment (ward#424, [agent-advisor-fanout.md](agent-advisor-fanout.md)).
-It runs as a **host one-shot** on the same self-assessment slot the pre-flight and route
-survey use, so it is only wired for `claude` (`claude -p`) and `goose` (`goose run -t`);
-`codex`/`opencode` refuse with a pointer to a supported mode.
+It runs as a **host one-shot** on the same trusted slot the pre-flight and route survey
+use, so it is only wired for `claude`; a local-model (`goose`, `opencode`) or unwired
+(`codex`) harness refuses, pointing at a cloud mode (ward#162).
 
 It validates the ref + prompt + `--thoroughness`, trust-gates the owner (posts run under
 ward's bot identity), resolves the issue + thread, and researches in a neutral temp dir.

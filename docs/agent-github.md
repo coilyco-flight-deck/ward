@@ -38,24 +38,23 @@ A plain `owner/repo#N`, a Forgejo URL, or a bare `#N` still mean Forgejo. The
 
 ## Supplying the GitHub token
 
-GitHub auth is a **user-supplied token from the environment** - there is no compiled-in
-SSM path the way Forgejo has (aligning with [#441](https://forgejo.coilysiren.me/coilyco-flight-deck/ward/issues/441) / [#453](https://forgejo.coilysiren.me/coilyco-flight-deck/ward/issues/453)). ward reads the first of these
-it finds, on the host at dispatch and again inside the container:
-
-1. `WARD_GITHUB_TOKEN`
-2. `GH_TOKEN`
-3. `GITHUB_TOKEN`
-
-The token needs `repo` scope (clone, push, open a PR) plus issue read/write; a classic
-PAT, a fine-grained PAT, or a GitHub App installation token all work. It rides the
-container's private `0600` `--env-file` (never on argv, never in the audit log) as the
-git-credential channel plus `GH_TOKEN`/`GITHUB_TOKEN` for `gh`. With no token found, the
-run fails fast at dispatch naming the three env vars - it never falls through to SSM.
+GitHub auth is a host-side token, **operator-selectable** by `WARD_GITHUB_TOKEN_SOURCE`
+and defaulting to `env` ([ward#533](https://forgejo.coilysiren.me/coilyco-flight-deck/ward/issues/533)): `env` reads `WARD_GITHUB_TOKEN`/`GH_TOKEN`/`GITHUB_TOKEN`,
+`gh` mints a fresh one via `gh auth token`, and `app` (follow-up [ward#534](https://forgejo.coilysiren.me/coilyco-flight-deck/ward/issues/534)) is wired but
+not yet built. There is no compiled-in SSM path in any mode. Full detail, including scope
+and the env-file plumbing, is in [github-token.md](github-token.md).
 
 ## Worked example
 
+With `gh` mode ward runs the `gh auth token` call for you - the manual `export` below is
+only the `env`-mode equivalent:
+
 ```bash
-export GITHUB_TOKEN="$(gh auth token)"     # reuse a gh login, or paste a repo-scoped PAT
+# gh mode: ward mints from your gh login at dispatch, nothing to export
+WARD_GITHUB_TOKEN_SOURCE=gh warded https://github.com/coilysiren/agentic-os/issues/461
+
+# env mode (default): export a token yourself (a gh login, or a repo-scoped PAT)
+export GITHUB_TOKEN="$(gh auth token)"
 warded https://github.com/coilysiren/agentic-os/issues/461
 ```
 

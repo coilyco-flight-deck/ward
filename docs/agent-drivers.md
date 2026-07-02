@@ -27,7 +27,7 @@ bring-your-own-Ollama page: what works today and what does not ([#395](https://f
 - Page: [agent-goose.md](agent-goose.md).
 - Credential: none. ward seeds the resolved Ollama endpoint into `~/.config/goose/config.yaml` ([agent-local-harnesses.md](agent-local-harnesses.md)).
 - Install: image-baked, no self-install.
-- Gates: host GO/NO-GO [pre-flight](agent-preflight.md) at parity with claude, **plus** an in-container Ollama reachability probe.
+- Gates: **no** host [pre-flight](agent-preflight.md) - as a local-model harness goose is barred from the unsandboxed host read ([ward#162](https://forgejo.coilysiren.me/coilyco-flight-deck/ward/issues/162)); it detaches straight into its container, gated only by the in-container Ollama reachability probe.
 
 ## opencode (local Ollama)
 

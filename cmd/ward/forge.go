@@ -128,15 +128,92 @@ func (r *Runner) hostForgeClient(ctx context.Context, f forge, mode containerMod
 	return cl.withMode(mode), nil
 }
 
-// resolveGitHubToken finds the user-supplied GitHub token from the environment for
-// clone/push + `gh`. There is NO SSM fallback like Forgejo's (ward#489, #441/#453).
-func resolveGitHubToken() (string, error) {
+// githubTokenSource selects how the GitHub dispatch path provisions its token
+// (ward#533): env (the publishable default), gh, or app. See docs/agent-github.md.
+type githubTokenSource int
+
+const (
+	githubTokenEnv githubTokenSource = iota // WARD_GITHUB_TOKEN / GH_TOKEN / GITHUB_TOKEN (default)
+	githubTokenGH                           // shell `gh auth token` on the host at dispatch
+	githubTokenApp                          // mint from a GitHub App key (not yet built, ward#534)
+)
+
+// String renders the source as its lowercase WARD_GITHUB_TOKEN_SOURCE token.
+func (s githubTokenSource) String() string {
+	switch s {
+	case githubTokenGH:
+		return "gh"
+	case githubTokenApp:
+		return "app"
+	case githubTokenEnv:
+		return "env"
+	default:
+		return "env"
+	}
+}
+
+// parseGitHubTokenSource maps a WARD_GITHUB_TOKEN_SOURCE value to a source (empty is
+// the env default); an unrecognized value is a hard error, never a silent fall-through.
+func parseGitHubTokenSource(s string) (githubTokenSource, error) {
+	switch strings.ToLower(strings.TrimSpace(s)) {
+	case "", "env":
+		return githubTokenEnv, nil
+	case "gh":
+		return githubTokenGH, nil
+	case "app":
+		return githubTokenApp, nil
+	default:
+		return githubTokenEnv, fmt.Errorf(
+			"ward: unknown WARD_GITHUB_TOKEN_SOURCE %q - want env (default), gh, or app. See docs/agent-github.md", strings.TrimSpace(s))
+	}
+}
+
+// resolveGitHubToken provisions the GitHub token for clone/push + `gh` host-side,
+// dispatching on WARD_GITHUB_TOKEN_SOURCE - never a baked SSM/App path (ward#489/533).
+func (r *Runner) resolveGitHubToken(ctx context.Context) (string, error) {
+	src, err := parseGitHubTokenSource(os.Getenv("WARD_GITHUB_TOKEN_SOURCE"))
+	if err != nil {
+		return "", err
+	}
+	switch src {
+	case githubTokenGH:
+		return r.resolveGitHubTokenFromGH(ctx)
+	case githubTokenApp:
+		return "", fmt.Errorf(
+			"ward: WARD_GITHUB_TOKEN_SOURCE=app (mint a short-lived GitHub App installation token) is not yet implemented - it is gated on a registered GitHub App, tracked in ward#534. Use env (default) or gh for now. See docs/agent-github.md")
+	case githubTokenEnv:
+		return resolveGitHubTokenFromEnv()
+	default:
+		return resolveGitHubTokenFromEnv()
+	}
+}
+
+// resolveGitHubTokenFromEnv reads the first non-empty static env var - the zero-config
+// publishable default an external adopter needs nothing else for.
+func resolveGitHubTokenFromEnv() (string, error) {
 	for _, k := range []string{"WARD_GITHUB_TOKEN", "GH_TOKEN", "GITHUB_TOKEN"} {
 		if tok := strings.TrimSpace(os.Getenv(k)); tok != "" {
 			return tok, nil
 		}
 	}
 	return "", fmt.Errorf(
-		"ward: no GitHub token found - set GITHUB_TOKEN (or GH_TOKEN / WARD_GITHUB_TOKEN) to a token with repo scope; " +
+		"ward: no GitHub token found - set GITHUB_TOKEN (or GH_TOKEN / WARD_GITHUB_TOKEN) to a token with repo scope, " +
+			"or set WARD_GITHUB_TOKEN_SOURCE=gh to mint one from your `gh` login; " +
 			"ward reads GitHub tokens only from the environment, never SSM (ward#489). See docs/agent-github.md")
+}
+
+// resolveGitHubTokenFromGH shells `gh auth token` host-side for a fresh token from the
+// operator's `gh` login (ward#533), trimmed; a missing/logged-out `gh` is an error.
+func (r *Runner) resolveGitHubTokenFromGH(ctx context.Context) (string, error) {
+	out, err := r.Runner.Capture(ctx, "gh", "auth", "token")
+	if err != nil {
+		return "", fmt.Errorf(
+			"ward: WARD_GITHUB_TOKEN_SOURCE=gh but `gh auth token` failed - install the `gh` CLI and run `gh auth login` (or switch to WARD_GITHUB_TOKEN_SOURCE=env): %w", err)
+	}
+	tok := strings.TrimSpace(string(out))
+	if tok == "" {
+		return "", fmt.Errorf(
+			"ward: WARD_GITHUB_TOKEN_SOURCE=gh but `gh auth token` returned an empty token - run `gh auth login` (or switch to WARD_GITHUB_TOKEN_SOURCE=env). See docs/agent-github.md")
+	}
+	return tok, nil
 }

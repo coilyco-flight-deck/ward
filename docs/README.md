@@ -46,6 +46,7 @@ New to ward? Read [architecture.md](architecture.md) first - it frames the whole
 - [agent-flags.md](agent-flags.md) - launch flags for the `engineer` role.
 - [agent-frontload.md](agent-frontload.md) - front-loading subsystem context before detach.
 - [agent-preflight.md](agent-preflight.md) - the headless pre-flight before a fire-and-forget run.
+- [agent-preflight-trust.md](agent-preflight-trust.md) - the cloud-harness-only trust gate on the host read ([ward#162](https://forgejo.coilysiren.me/coilyco-flight-deck/ward/issues/162)).
 - [agent-wrong-repo.md](agent-wrong-repo.md) - the WRONG-REPO blind-fire pre-flight guard.
 - [agent-reservation.md](agent-reservation.md) - reservation + stale-host-binary checks.
 - [agent-reserved-immutable.md](agent-reserved-immutable.md) - a reserved seed is immutable.

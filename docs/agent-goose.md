@@ -31,20 +31,20 @@ shell. It is a first-class option at parity with claude, not an afterthought.
 
 ## Launch dialect
 
-- Host preflight: the detached GO/NO-GO gate, at parity with claude
-  ([agent-preflight.md](agent-preflight.md)). goose answers it via `goose run -t`
-  when the dispatch itself is interactive (a human at the TTY), even though the
-  run it gates is detached. It is skipped for a scripted/piped dispatch, on
-  `--print`, and with `--no-preflight` - the same skip rules claude follows, not
-  a goose carve-out.
-- Headless: `goose run -t <seed>`.
+- Host preflight: **none** - goose is a local-model harness, so it is **barred
+  from the unsandboxed host GO/NO-GO read** ([ward#162](https://forgejo.coilysiren.me/coilyco-flight-deck/ward/issues/162)) and detaches straight into
+  its isolated container run. The host read runs the agent with full host tool
+  access, and a weak local model that ignores the read-only framing would act on
+  the host's real checkouts before the container starts; only a trusted cloud
+  harness (claude) keeps it. See [agent-preflight.md](agent-preflight.md).
+- Headless: `goose run -t <seed>` (inside the container, against the fresh clone).
 - Interactive: `goose session` with the issue pasted in by hand.
 
 ## Smoke gate
 
 Two gates sit at different points, and only one applies here:
 
-- **Host GO/NO-GO pre-flight** (pre-dispatch, [agent-preflight.md](agent-preflight.md)): goose keeps parity with claude - it answers via `goose run -t` before a detached run launches.
+- **Host GO/NO-GO pre-flight** (pre-dispatch, [agent-preflight.md](agent-preflight.md)): **does not run for goose** - as a local-model harness it is barred from the unsandboxed host read ([ward#162](https://forgejo.coilysiren.me/coilyco-flight-deck/ward/issues/162)) and detaches straight into its container. The pre-flight is a claude-only (trusted-cloud) gate now.
 - **In-container Ollama reachability probe** (pre-launch, [ward#487](https://forgejo.coilysiren.me/coilyco-flight-deck/ward/issues/487)): the local-model analog of claude's auth smoke test. A headless goose whose Ollama endpoint is down would hang the dispatched container exactly like an undetected bad claude credential (the failure mode a smoke gate exists to prevent). So before launching, the entrypoint TCP-probes the endpoint goose will dial - the `OLLAMA_HOST` seeded into `config.yaml`, or goose's built-in `http://localhost:11434` when no tower host resolved - with a short retry window (absorbing the `--ts-sidecar` forwarder's startup). On an unreachable endpoint it **aborts the container with a clear error** naming the endpoint and how to recover (a live tower host, or `--ts-sidecar`), instead of letting it silently hang. The probe is headless-only (an interactive session has a human watching); set `WARD_SMOKE_TEST_SKIP=1` to bypass it (the same switch claude's probe reads).
 
 ## See also
