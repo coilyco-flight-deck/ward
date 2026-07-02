@@ -1138,7 +1138,7 @@ func TestBuildUpPlanWardVersion(t *testing.T) {
 				&cli.BoolFlag{Name: "detach"},
 			},
 			Action: func(_ context.Context, c *cli.Command) error {
-				p, err := buildUpPlan(c, targetRepo{Owner: "o", Name: "r"}, modeClaude, t.TempDir(), t.TempDir(), nil)
+				p, err := buildUpPlan(c, targetRepo{Owner: "o", Name: "r"}, modeClaude, t.TempDir(), t.TempDir(), nil, false)
 				if err != nil {
 					return err
 				}

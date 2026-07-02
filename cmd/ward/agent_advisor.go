@@ -119,7 +119,7 @@ func (r *Runner) runAgentAsk(ctx context.Context, c *cli.Command, mode container
 	// A freeform answer runs attached and ephemeral, so its assets clean up on return.
 	defer cleanupAssets()
 
-	plan, err := buildUpPlan(c, repo, mode, cwd, assetsDir, []string{seed})
+	plan, err := buildUpPlan(c, repo, mode, cwd, assetsDir, []string{seed}, false)
 	if err != nil {
 		return err
 	}

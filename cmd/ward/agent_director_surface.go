@@ -128,9 +128,9 @@ func (r *Runner) prepareScratchPlan(ctx context.Context, c *cli.Command, mode co
 	if err != nil {
 		return upPlan{}, func() {}, err
 	}
-	// No seed: empty AgentArgs is the bare interactive bring-up, so the entrypoint
-	// launches a plain agent REPL (claude / goose session / codex / opencode).
-	plan, err := buildUpPlan(c, repo, mode, cwd, assetsDir, nil)
+	// No seed: empty AgentArgs is the bare interactive bring-up (a plain agent REPL). The
+	// read-only surface opts into the host agent-log drain mount (ward#525).
+	plan, err := buildUpPlan(c, repo, mode, cwd, assetsDir, nil, readOnly)
 	if err != nil {
 		cleanupAssets()
 		return upPlan{}, func() {}, err

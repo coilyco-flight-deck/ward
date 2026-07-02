@@ -1,12 +1,14 @@
 package main
 
 import (
+	"context"
 	"os"
 	"path/filepath"
 	"strings"
 	"testing"
 
 	"forgejo.coilysiren.me/coilyco-flight-deck/cli-guard/pkg/broker"
+	"github.com/urfave/cli/v3"
 )
 
 // ward#353 collapsed `architect` into the director's surface phase: the roster is now
@@ -64,6 +66,78 @@ func TestDockerSockMount(t *testing.T) {
 		if def.Source == "/var/run/docker.sock" {
 			t.Error("the least-access default must not bind the docker socket; only explore opts in")
 		}
+	}
+}
+
+// The host agent-log drain binds read-only at containerAgentLogsMount when
+// mountOpts.AgentLogsDir is set, and is NEVER in the least-access default (ward#525).
+func TestAgentLogsMountOptIn(t *testing.T) {
+	// Default (no AgentLogsDir): the drain is never bound.
+	for _, def := range leastAccessMounts("/cwd", mountOpts{AssetsDir: "/a"}) {
+		if def.Target == containerAgentLogsMount || strings.HasSuffix(def.Source, "agent-logs") {
+			t.Errorf("least-access default must not bind the agent-log drain; got %s -> %s", def.Source, def.Target)
+		}
+	}
+	// Opt-in: the drain binds read-only at the fixed in-container path.
+	var found bool
+	for _, m := range leastAccessMounts("/cwd", mountOpts{AssetsDir: "/a", AgentLogsDir: "/host/agent-logs"}) {
+		if m.Target != containerAgentLogsMount {
+			continue
+		}
+		found = true
+		if m.Source != "/host/agent-logs" {
+			t.Errorf("agent-logs mount source = %q, want the host drain dir", m.Source)
+		}
+		if !m.ReadOnly {
+			t.Error("agent-logs mount must be read-only (:ro)")
+		}
+		if m.Volume {
+			t.Error("agent-logs mount must be a host bind, not a named volume")
+		}
+		if arg := m.arg(); !strings.HasSuffix(arg, ":ro") {
+			t.Errorf("agent-logs mount arg = %q, want a :ro-suffixed bind", arg)
+		}
+	}
+	if !found {
+		t.Errorf("mountOpts.AgentLogsDir set but no mount at %s", containerAgentLogsMount)
+	}
+}
+
+// buildUpPlan binds the agent-log drain only when its opt-in is passed (the surface
+// path passes readOnly), and leaves it unbound otherwise (ward#525).
+func TestBuildUpPlanAgentLogsThreading(t *testing.T) {
+	run := func(mountAgentLogs bool) upPlan {
+		var got upPlan
+		probe := &cli.Command{
+			Name:  "probe",
+			Flags: tailnetProbeFlags(),
+			Action: func(_ context.Context, c *cli.Command) error {
+				p, err := buildUpPlan(c, targetRepo{Owner: "o", Name: "r"}, modeClaude, t.TempDir(), t.TempDir(), nil, mountAgentLogs)
+				if err != nil {
+					return err
+				}
+				got = p
+				return nil
+			},
+		}
+		if rerr := probe.Run(context.Background(), []string{"probe"}); rerr != nil {
+			t.Fatalf("probe run: %v", rerr)
+		}
+		return got
+	}
+	has := func(p upPlan) bool {
+		for _, m := range p.Mounts {
+			if m.Target == containerAgentLogsMount {
+				return true
+			}
+		}
+		return false
+	}
+	if has(run(false)) {
+		t.Error("buildUpPlan(mountAgentLogs=false) must not bind the agent-log drain")
+	}
+	if !has(run(true)) {
+		t.Errorf("buildUpPlan(mountAgentLogs=true) must bind the agent-log drain at %s", containerAgentLogsMount)
 	}
 }
 

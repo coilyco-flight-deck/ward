@@ -25,14 +25,13 @@ The surface runs on the director's OWN `--driver` and inherits its container/har
 
 Nothing leaves *this clone* - it does **not** seal the session off. Dispatching commissioned
 work is the **point**, an **obligation, not a "may"** (ward#320): every surfaced item is filed
-and dispatched (`warded #N` spins its own sealed container), not left to die in the
+and dispatched (`warded #N` spins a sealed container), not left to die in the
 conversation.
 
 **Prefer a sibling dispatch over an in-session subagent (ward#374).** For delegable work
-reach for a sibling warded run (`warded advisor #N`, `warded engineer #N`) before a
-subagent: the sibling lands a durable artifact (issue thread, pushed commit) the next run
-can read, where a subagent's output dies in scrollback. Reserve a subagent for read-only
-fan-out feeding only **your** reasoning.
+reach for a sibling warded run (`warded advisor #N`, `warded engineer #N`): it lands a
+durable artifact the next run can read, where a subagent dies in scrollback. Reserve a
+subagent for read-only fan-out feeding only **your** reasoning.
 
 ## What read-only enforces
 
@@ -40,12 +39,11 @@ Layers scope the box to **push-to-this-clone**, not dispatch: the composed `CLAU
 carries a read-only block (ward#293); the entrypoint drops `/etc/ward-git-credentials` and
 the system `credential.helper` (keeping `FORGEJO_TOKEN` for dispatch); `origin`'s push URL is
 stripped to a dead `no-push://` target (ward#327); a per-clone `pre-push` hook prints a
-named wall (ward#299, bypassable); and the reaper short-circuits on `WARD_READONLY`, so
-teardown can't push. Local `git commit` still works; on exit the clone is swept by the
-[reaper](container-reap.md).
+named wall (ward#299); and the reaper short-circuits on `WARD_READONLY`, so teardown can't
+push. Local `git commit` still works; on exit the [reaper](container-reap.md) sweeps it.
 
-**The soft edge (ward#318).** The dispatch token is the same bot token, so the no-push rule
-is convention until a **dispatch-only credential** lands.
+**The soft edge (ward#318).** The dispatch token is the same bot token, so no-push stays
+convention until a **dispatch-only credential** lands.
 
 ## Dispatching from inside the surface session
 
@@ -73,3 +71,4 @@ with `docker container stop` ([container-stop.md](container-stop.md)). A reserve
 - [docs/agent-director.md](agent-director.md) - the supervisor loop that surfaces this session.
 - [docs/agent.md](agent.md) - the `ward agent` roster and the `warded` face.
 - [docs/container-reap.md](container-reap.md) - the reaper that sweeps the run.
+- [docs/agent-surface-log-read.md](agent-surface-log-read.md) - reading run logs read-only (ward#525).

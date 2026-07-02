@@ -50,6 +50,10 @@ const (
 	// off by default; the forgejo token is injected single-purpose instead).
 	containerAWSMount = "/root/.aws"
 
+	// containerAgentLogsMount is where the host agent-log drain binds read-only in a
+	// director surface session; surface-only opt-in (ward#525). See docs/agent-surface.md.
+	containerAgentLogsMount = "/opt/ward-agent-logs"
+
 	// containerDockerSock is the host docker socket bound into a read-only surface session
 	// so it can dispatch sibling runs; same path both sides (ward#315). See container.md.
 	containerDockerSock = "/var/run/docker.sock"
@@ -351,6 +355,9 @@ type mountOpts struct {
 	// WardSource, when non-empty, mounts a local ward checkout (--ward-source)
 	// so the container builds ward from source instead of downloading.
 	WardSource string
+	// AgentLogsDir, when non-empty, mounts the host agent-log drain read-only at
+	// containerAgentLogsMount (ward#525); set only on the director surface path.
+	AgentLogsDir string
 }
 
 // leastAccessMounts is the default set: cwd + assets read-only and the gitcache
@@ -368,6 +375,9 @@ func leastAccessMounts(hostCwd string, opts mountOpts) []mountSpec {
 	}
 	if opts.WardSource != "" {
 		mounts = append(mounts, mountSpec{Source: opts.WardSource, Target: containerWardSrcMount, ReadOnly: true, Volume: false})
+	}
+	if opts.AgentLogsDir != "" {
+		mounts = append(mounts, mountSpec{Source: opts.AgentLogsDir, Target: containerAgentLogsMount, ReadOnly: true, Volume: false})
 	}
 	return mounts
 }

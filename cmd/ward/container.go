@@ -90,7 +90,7 @@ func (r *Runner) resolveAgentCreds(ctx context.Context, mode containerMode) []ag
 
 // buildUpPlan assembles the pure plan from parsed flags and resolved inputs;
 // agentArgs seed the agent's argv. Errors only on a bad --repo grant (ward#230).
-func buildUpPlan(c *cli.Command, repo targetRepo, mode containerMode, cwd, assetsDir string, agentArgs []string) (upPlan, error) {
+func buildUpPlan(c *cli.Command, repo targetRepo, mode containerMode, cwd, assetsDir string, agentArgs []string, mountAgentLogs bool) (upPlan, error) {
 	wardSrc := c.String("ward-source")
 	// The container downloads this host's ward version by default; --ward-version
 	// (env WARD_AGENT_VERSION) overrides it to pin a known-good release (ward#312).
@@ -114,6 +114,12 @@ func buildUpPlan(c *cli.Command, repo targetRepo, mode containerMode, cwd, asset
 	if err != nil {
 		return upPlan{}, err
 	}
+	// The director surface opts into a read-only bind of the host agent-log drain so it
+	// reads past runs' logs without a docker socket (ward#525); other runs leave it off.
+	agentLogs := ""
+	if mountAgentLogs {
+		agentLogs = agentLogsDir()
+	}
 	// The per-container machine id: rides the ward.machine label, names issueless
 	// roles. A role-led run overrides Role+Name after this (ward#364).
 	machine := randHex()
@@ -127,7 +133,7 @@ func buildUpPlan(c *cli.Command, repo targetRepo, mode containerMode, cwd, asset
 		Branch:         c.String("branch"),
 		ForgejoBase:    forgejoBaseURL,
 		HostCwd:        cwd,
-		Mounts:         leastAccessMounts(cwd, mountOpts{AssetsDir: assetsDir, AWSHome: awsHome, WardSource: wardSrc}),
+		Mounts:         leastAccessMounts(cwd, mountOpts{AssetsDir: assetsDir, AWSHome: awsHome, WardSource: wardSrc, AgentLogsDir: agentLogs}),
 		Interactive:    !c.Bool("detach"),
 		TTY:            !c.Bool("detach") && terminalAttached(),
 		WardVersion:    wardVersion,
