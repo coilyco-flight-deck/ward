@@ -1,6 +1,6 @@
 # Agent instructions
 
-Workspace conventions load globally via `~/.claude/CLAUDE.md`. This file covers only what's specific here.
+This file is the self-contained agent base for `ward`. Work from it alone - it points at nothing outside this repo. On the maintainer's own hosts, broader workspace conventions load globally underneath it, but ward depends on none of them.
 
 ## Scope
 
