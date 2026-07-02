@@ -6,26 +6,27 @@ pre-flight *before* detaching. The gate is **fire-and-forget from your POV**
 (ward#147): you launch and walk away, and ward acts on the agent's verdict with
 no prompt to answer:
 
-1. The agent gets a short prompt with the issue title + body **and its comment
-   thread** and answers, in a sentence or two, whether it thinks it can carry the
-   issue to merge unattended, ending on a `GO` / `NO-GO: <reason>` line. The
-   thread is fed so a decision the author made in the comments overrides the
-   original framing (ward#154) - the prompt tells the agent to weigh the latest
-   word, not just the body, so re-dispatching after answering an open question in
-   a comment actually clears the gate. ward's own automated comments (reservation
-   pings and prior NO-GO verdicts, both carrying a hidden marker) are stripped
-   from that thread, so only human words sway the read. ward runs this as a
-   one-shot on the host (`claude -p`, or `goose run -t` for the goose mode),
-   echoes the read to your terminal, and parses that final verdict line
-   (markdown bold, bullets, and quote markers are tolerated; the last verdict line
-   wins). The read is **issue-text-only**: the real run happens in a fresh clone
-   of the issue's repo inside the container, so the prompt tells the agent the host
-   cwd is unrelated scratch and to judge feasibility from the issue alone. ward
-   also runs the read in a neutral empty temp dir, **not the dispatch cwd**
-   (ward#169), so an agent that walks the working tree finds nothing there to
-   mistake for the clone - stopping a read dispatched from one repo's checkout from
-   false-flagging `WRONG-REPO` because the issue's files look "missing" locally.
-   Both levers are belt-and-suspenders; either alone kills the false gate.
+1. The agent gets a short prompt and answers whether it can carry the issue to
+   merge unattended, ending on a `GO` / `NO-GO: <reason>` line. Four moving parts:
+   - **Prompt shape** - carries the issue title + body **and its comment thread**.
+   - **Thread filtering** - the thread is fed so a decision the author made in the
+     comments overrides the original framing (ward#154): the prompt weighs the
+     latest word, not just the body, so re-dispatching after a comment answers a
+     question clears the gate. ward's own automated
+     comments (reservation pings and prior NO-GO verdicts, both carrying a hidden
+     marker) are stripped from the thread, so only human words sway the read.
+   - **Execution mechanics** - run as a one-shot on the host (`claude -p`, or
+     `goose run -t` for goose mode); ward echoes the read to your terminal and
+     parses the final verdict line (markdown bold, bullets, and quote markers
+     tolerated; the last verdict line wins).
+   - **cwd isolation** - the read is **issue-text-only**: the real run happens in
+     a fresh clone in the container, so the prompt tells the agent the host cwd
+     is unrelated scratch and to judge from the issue alone. ward also runs the
+     read in a neutral empty temp dir, **not the dispatch cwd** (ward#169), so an
+     agent walking the working tree finds nothing to mistake for the clone -
+     stopping a read from one repo's checkout false-flagging `WRONG-REPO` when its
+     files look "missing" locally. Both levers are belt-and-suspenders; either
+     alone kills the false gate.
 2. On **GO** - or any read ward can't pin to an explicit NO-GO - the detached run
    launches. The bias is to proceed: only the agent itself saying "don't" blocks.
    An explicit **GO** also folds the read into the
