@@ -10,11 +10,10 @@ ward's formula is build-from-source (a per-tag tarball `url` + `sha256` ->
 attach. The `publish-binaries` job still uploads the two `ward-linux-<arch>`
 binaries as release assets for convenience, but `brew` never consumes them.
 
-The release page carries **only** the `ward` binaries (+ checksums): the
-`ward-kdl` authoring binary and its `ward-kdl-{read,write,admin}` tiers are no
-longer public assets (ward#455) - embedded in `ward`, spec authors build them
-from a checkout ([authoring](ward-kdl-authoring.md)). The broker's write-tier
-download (ward#441 coupling) now 404s; internal-channel follow-up ward#501.
+The release page carries **only** the `ward` binaries (+ checksums): `ward-kdl`
+and its `ward-kdl-{read,write,admin}` tiers are no longer public assets (ward#455)
+- embedded in `ward`, spec authors build from a clone ([authoring](ward-kdl-authoring.md)).
+The broker's write-tier download 404s (ward#441); follow-up ward#501.
 
 ## Version bump
 
