@@ -1,0 +1,46 @@
+name: Feature request
+description: Propose a change or addition to ward.
+labels: ["enhancement"]
+body:
+  - type: markdown
+    attributes:
+      value: |
+        ward is Forgejo-canonical and mirrored read-only to GitHub, but **GitHub
+        is the front door** - proposing here is correct. A maintainer carries
+        accepted work onto Forgejo `main`. See
+        [CONTRIBUTING.md](https://github.com/coilyco-flight-deck/ward/blob/main/CONTRIBUTING.md).
+
+        **ward is intentionally small.** It exposes a project's dev surface on top
+        of cli-guard. Operator and personal-infra verbs belong in the operator
+        CLI; repo-specific targets belong in a downstream `.ward/ward.yaml`.
+        Proposals that pull ward out of its lane will get pushed back.
+  - type: textarea
+    id: problem
+    attributes:
+      label: The problem
+      description: What are you trying to do that ward makes hard or impossible today?
+    validations:
+      required: true
+  - type: textarea
+    id: proposal
+    attributes:
+      label: Proposed change
+      description: What should ward do? Sketch the verb, flag, or behaviour.
+    validations:
+      required: true
+  - type: textarea
+    id: alternatives
+    attributes:
+      label: Alternatives considered
+      description: Workarounds you tried, or other designs you weighed.
+    validations:
+      required: false
+  - type: checkboxes
+    id: checks
+    attributes:
+      label: Before filing
+      options:
+        - label: I searched existing issues and this is not a duplicate.
+          required: true
+        - label: This stays within ward's scope (the dev-verb gate / agent driver), not a personal-infra or downstream-repo verb.
+          required: true

@@ -1,0 +1,26 @@
+// Example forgejo ops guardfile - a neutral, deployment-agnostic spec bundle
+// input for `ward-kdl` (ward#453). Every deployment-specific value here is a
+// placeholder: swap `base-url`, the `ssm` token path, and the `restrict owner`
+// gate for your own deployment, then build with your bundle (see
+// ../../docs/ward-kdl-authoring.md, "Bring your own specs"). A build made from
+// this example carries no deployment-specific endpoint/token/owner values, so
+// the ward#441 compiled-in-coupling finding does not reproduce against it.
+wrap ward-kdl ops forgejo {
+    spec forgejo.swagger.v1.json
+    // Placeholder endpoint. Point this at your own Forgejo instance's API base.
+    base-url "git.example.com/api/v1"
+    // Placeholder token source. Auth as your own bot, from your own secret store.
+    auth header-token {
+        header Authorization
+        prefix "token "
+        value ssm "/example/forgejo/api-token"
+    }
+    // Placeholder scope gate: restrict {owner}-path leaves to your own org prefix.
+    restrict owner matches example*
+    can get repo
+    can list repo
+    can get issue
+    can list issue
+    can create issue
+    can edit issue
+}
