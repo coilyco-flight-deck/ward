@@ -6,13 +6,13 @@ ward has a second half for running coding agents: `ward agent` drives a harness 
 
 ## Who it's for
 
-- **A contributor (human or agent)** who wants every `build` / `test` / `lint` run argv-validated, audited, and gated on a clean tree - one wrapper instead of bare `make` / `go` / `gh` / `aws`. This half is forge-agnostic: point it at any repo.
+- **A contributor (human or agent)** who wants every `build` / `test` / `lint` run argv-validated, audited, and gated on a clean tree - one wrapper instead of bare `make` / `go` / `gh` / `aws`. Forge-agnostic: point it at any repo.
 - **An operator** running an autonomous agent fleet who wants each run boxed in a throwaway container, its reach bounded by an allowlist, and its whole session recorded - not a trusted shell.
 
 ## What it requires
 
 - **macOS or Linux + Homebrew** to install the binary (see [Install](#install)).
-- **A Forgejo instance** for the agent driver (`warded` / `ward agent`) and the operator surface (`ward ops forgejo`). ward is **Forgejo-canonical**: it carries Forgejo issues and pushes to a Forgejo `main`, and the GitHub mirror is read-only and PR-gated. A GitHub-only shop can still use the local verb gate. Which Forgejo, exactly? See the note below the list.
+- **A Forgejo instance** for the agent driver (`warded` / `ward agent`) and the operator surface (`ward ops forgejo`). ward is **Forgejo-canonical**: it carries Forgejo issues and pushes to a Forgejo `main`, and the GitHub mirror is read-only and PR-gated. Which Forgejo, exactly? See the note below the list.
 - **Docker** for the container agent flow - each `warded` run boots an ephemeral container, configures forge git auth inside it, runs the agent, and reaps it. The first run pulls one image, `forgejo.coilysiren.me/coilyco-flight-deck/agentic-os:latest` (anonymous pull, no login). See [`docs/container.md`](docs/container.md) for the registry, tag policy, and how to pin off the moving tag.
 
 The plain verb gate (`ward exec`, `ward git`, `ward pkg`, `ward audit`) needs none of the above - just the repo and its `.ward/ward.yaml`.
@@ -40,7 +40,7 @@ The explicit-URL form is required because the tap lives on forgejo, not github.c
 
 Release assets are Linux-only convenience binaries for the container path. Humans install `ward` through Homebrew, so darwin release artifacts are intentionally absent.
 
-**Releases live on Forgejo.** This repo is canonical on [forgejo.coilysiren.me/coilyco-flight-deck/ward](https://forgejo.coilysiren.me/coilyco-flight-deck/ward); the github.com copy mirrors `main` + tags only, so its Releases page is empty - see the [canonical releases](https://forgejo.coilysiren.me/coilyco-flight-deck/ward/releases) for the version and changelog.
+**Releases live on Forgejo.** This repo is canonical on [forgejo.coilysiren.me/coilyco-flight-deck/ward](https://forgejo.coilysiren.me/coilyco-flight-deck/ward) - the github.com copy mirrors `main` + tags only, so its Releases page is empty. See the [canonical releases](https://forgejo.coilysiren.me/coilyco-flight-deck/ward/releases).
 
 ## Usage
 
@@ -98,7 +98,8 @@ Over 60 pages under [`docs/`](docs/) cover each surface. The anchors:
 
 ## Status
 
-v0.x, and early on purpose. Releases are automated per-merge, cut by CI on every push to `main`, so the version number is a build counter, not a maturity signal. Downstream consumers upgrade to the `ward` binary and `.ward` config on their own schedule. Minor API breaks ship in `main` with a note in the commit body, so pin a commit until v1.0.0.
+v0.x, and early on purpose. ward is a single-maintainer tool in active internal use across the coilyco-flight-deck fleet, now opening up - so a small public audience (few stars, few forks) is expected for the stage, not decay. The high release count is the same: releases are automated per-merge by CI on every push to `main`, so the version is a build counter, not a maturity signal. Downstream consumers upgrade to the `ward` binary and `.ward` config on their own schedule. Minor API breaks ship in `main` with a note in the commit body, so pin a commit until v1.0.0.
+
 ## Related
 
 - [cli-guard][cli-guard] - the underlying security-boundary framework.
