@@ -196,6 +196,19 @@ jobs:
           ' "$FORMULA_PATH" > "$FORMULA_PATH.new"
           mv "$FORMULA_PATH.new" "$FORMULA_PATH"
 
+          # Enforce the canonical `warded` shim comment. The tap formula long
+          # described the multicall as rewriting argv to `ward drive <args>` and
+          # cited `docs/drive.md`, but the shim resolves to `ward agent` and
+          # `docs/drive.md` never existed (a 404 in an install artifact a
+          # self-hoster reads before piping to brew). ward#247 / ward#282 renamed
+          # the surface; the source of truth is README + docs/agent.md. Normalise
+          # both lines on every bump so the tap cannot drift back, matching on the
+          # stable shim anchors so a no-op re-run stays idempotent (ward#442).
+          sed -i \
+            -e 's|`ward [a-z]* <args>`|`ward agent <args>`|' \
+            -e 's|See ward#.* / docs/[a-z-]*\.md\.|See ward#247, ward#282 / docs/agent.md.|' \
+            "$FORMULA_PATH"
+
           if git diff --quiet -- "$FORMULA_PATH"; then
             echo "formula already at ${TAG}, nothing to push"
             exit 0
