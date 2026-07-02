@@ -15,6 +15,16 @@ this doc is the one findable place for **how you author and swap a bundle**
 - **Dialect 3 - operator-local.** `~/.ward/fleet.local.kdl`, the same parser,
   sourced locally and never embedded. See [fleet-local.md](fleet-local.md).
 
+## Getting the `ward-kdl` binary
+
+`ward-kdl` is **not** a public install artifact: the brew formula installs only
+`ward`, whose embedded surfaces cover what an end user runs, so neither the
+authoring binary nor the tier CLIs ship on the release page (ward#455). A spec
+author builds it from a ward checkout with `make build-ward-kdl` (-> `bin/ward-kdl`
+plus the read/write/admin tiers), the same generator the formula used to run
+inline before ward#455. See **Bring your own specs** below to point that build at
+your own deployment bundle.
+
 ## The spec bundle is a swappable build input
 
 The KDL sources `ward-kdl` compiles are a **bundle** - the guardfiles, their spec

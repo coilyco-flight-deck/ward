@@ -7,9 +7,13 @@ homebrew formula(e) so `brew upgrade ward` builds the new tag from source.
 
 ward's formula is build-from-source (a per-tag tarball `url` + `sha256` ->
 `go build`, since ward#116), so unlike o2r there are no prebuilt binaries to
-attach. The `publish-binaries` job still uploads linux binaries as release
-assets for convenience, but `brew` never consumes them; `publish-kdl-tiers`
-attaches the six `ward-kdl-<tier>-linux-<arch>` tier assets.
+attach. The `publish-binaries` job still uploads the two `ward-linux-<arch>`
+binaries as release assets for convenience, but `brew` never consumes them.
+
+The release page carries **only** the `ward` binaries (+ checksums): `ward-kdl`
+and its `ward-kdl-{read,write,admin}` tiers are no longer public assets (ward#455)
+- embedded in `ward`, spec authors build from a clone ([authoring](ward-kdl-authoring.md)).
+The broker's write-tier download 404s (ward#441); follow-up ward#501.
 
 ## Version bump
 
@@ -63,18 +67,14 @@ without bumping the tap because the tap-write credential broke):
   new tag; a push that reports success but does not land fails the release.
 
 If a release goes red here, the fix is operational: set or rotate the
-`TAP_WRITE_TOKEN` Actions secret in ward -> Settings -> Actions -> Secrets. The
-bump is idempotent and backfilling - it rewrites `url`/`sha256` against whatever
-the live tap currently holds - so the next green release advances the tap to the
-latest tag regardless of how many bumps were missed.
+`TAP_WRITE_TOKEN` Actions secret. The bump is idempotent and backfilling, so the
+next green release advances the tap to the latest tag regardless of how many
+bumps were missed.
 
-The prior in-repo `bump-formula` fallback (which rewrote ward's own
-`Formula/ward.rb` via the Contents API on the `docker` runner) was removed: it
-duplicated the tap bump, was already marked deprecated, and failed every release
-because that runner has no `jq`. The in-repo `Formula/ward.rb` itself has since
-been deleted - the tap is the single source `brew` installs from.
+The prior in-repo `bump-formula` fallback was removed (it duplicated the tap bump
+and failed every release - the `docker` runner has no `jq`), and ward's own
+`Formula/ward.rb` deleted: the tap is the single source `brew` installs from.
 
-The bump carries the `[skip ci]` marker so the formula commit does not
-re-trigger the workflow. Shared composite actions live at
-`coilysiren/agentic-os/actions/*`. This replaced the prior `.github/workflows`
-release; building moved off GitHub Actions onto Forgejo.
+The bump carries the `[skip ci]` marker so the formula commit does not re-trigger
+the workflow. Shared composite actions live at `coilysiren/agentic-os/actions/*`;
+building moved off GitHub Actions onto Forgejo.

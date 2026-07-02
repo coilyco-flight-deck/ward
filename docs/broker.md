@@ -1,9 +1,9 @@
 # Root credential broker (ward side)
 
 The **root credential broker** hardens the [director's surface](agent-surface.md):
-the session would otherwise keep `FORGEJO_TOKEN` in the agent's env, the bot token a
-push rebuilds from (ward#318). The broker closes that gap - a **root daemon** holds
-it; the dropped agent reaches the forge through a socket.
+the session would otherwise keep `FORGEJO_TOKEN` in the agent's env (ward#318). The
+broker closes that gap - a **root daemon** holds it; the dropped agent reaches the
+forge through a socket.
 
 This is the **ward side** (ward#329 Unit B). The **policy core** - protocol,
 authorizer, executor interface, server - lives in `cli-guard/pkg/broker`
@@ -36,12 +36,12 @@ Started **as root, before the privilege-drop**, gated on `WARD_READONLY`:
 
 1. `install_ward_kdl_write` downloads `ward-kdl-write-linux-<arch>` from the same
    release `ward` came from (best-effort; a miss leaves the broker unstarted).
+   **Since ward#455 the tiers are no longer public release assets, so this 404s
+   and the broker stays down** - the container uses the `FORGEJO_TOKEN` path
+   ("Dual mode" below); internal-channel follow-up ward#501 (coupling ward#441).
 2. `start_broker` runs the daemon, waits for the socket, exports `WARD_BROKER_SOCK`,
    and sends fd 1+2 to `WARD_BROKER_LOG` (default `/run/ward/broker.log`), never the
    shared TTY - a raw per-op line would corrupt the director's Claude Code TUI (ward#389).
-
-The release publishes the tier binaries via the `publish-kdl-tiers` matrix job; the
-broker downloads `write`.
 
 ## Routing the clients (Unit C)
 
@@ -64,10 +64,8 @@ clients; Unit D drops the raw token. A dispatch-seed failure falls back to env->
 Two brokers share the name. **This credential broker** is an in-container **unix
 socket** (`/run/ward/broker.sock`). The **dispatch broker** (`agent_dispatch_broker.go`)
 launches runs over **TCP on the docker gateway** (`WARD_DISPATCH_BROKER_ADDR`, a
-per-launch token) - not a bind-mount, which lands as an **empty dir** under Docker
-Desktop / linuxkit (ward#382, ward#391; see [agent-surface.md](agent-surface.md)).
-Dialing this socket from a dispatch client answers `unsupported protocol version`,
-a `wrong broker` hint.
+per-launch token), not a bind-mount (ward#382, ward#391; see [agent-surface.md](agent-surface.md)).
+Dialing this socket from a dispatch client answers `unsupported protocol version`.
 
 ## See also
 
