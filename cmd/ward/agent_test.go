@@ -93,6 +93,7 @@ func TestParseAgentIssueRef(t *testing.T) {
 		{forgejoBaseURL + "/coilyco-flight-deck/ward/issues/151?thing=stuff", "coilyco-flight-deck", "ward", 151, false},
 		// Trailing slash plus query string, both ignored. (#158)
 		{forgejoBaseURL + "/coilyco-flight-deck/ward/issues/151/?thing=stuff", "coilyco-flight-deck", "ward", 151, false},
+		{"https://github.com/coilyco-flight-deck/ward/issues/98", "coilyco-flight-deck", "ward", 98, false},
 		// Short form also tolerates an appended query/fragment. (#158)
 		{"coilyco-flight-deck/ward#98?thing=stuff", "coilyco-flight-deck", "ward", 98, false},
 		// Bare #N / N: owner/repo left empty for resolveAgentIssueRef to fill (#282).
@@ -105,7 +106,6 @@ func TestParseAgentIssueRef(t *testing.T) {
 		{"coilyco-flight-deck/ward#0", "", "", 0, true},             // non-positive
 		{"coilyco-flight-deck/ward#-3", "", "", 0, true},            // negative
 		{"#0", "", "", 0, true},                                     // bare non-positive
-		{"https://github.com/owner/repo/issues/1", "", "", 0, true}, // GitHub URL rejected
 		{"not-a-ref", "", "", 0, true},
 	}
 	for _, c := range cases {
@@ -131,6 +131,11 @@ func TestAgentIssueRefURL(t *testing.T) {
 	want := forgejoBaseURL + "/coilyco-flight-deck/ward/issues/98"
 	if got := ref.url(); got != want {
 		t.Errorf("url() = %q, want %q", got, want)
+	}
+	ref.Base = githubBaseURL
+	want = githubBaseURL + "/coilyco-flight-deck/ward/issues/98"
+	if got := ref.url(); got != want {
+		t.Errorf("url() with github base = %q, want %q", got, want)
 	}
 	// A URL must round-trip back through the parser.
 	back, err := parseAgentIssueRef(ref.url())

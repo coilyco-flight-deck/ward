@@ -16,15 +16,17 @@ import (
 	"github.com/urfave/cli/v3"
 )
 
+const githubBaseURL = "https://github.com"
+
 // agent.go wires the `ward agent` umbrella + the shared dispatch internals the engineer
 // role uses (ward#263, ward#347), sharing the bring-up Go directly. See docs/agent.md.
 
-// agentIssueRef is a parsed issue reference for `ward agent ... work`. Only the
-// owner/repo#N short form and the Forgejo issue URL are accepted (no GitHub).
+// agentIssueRef is a parsed issue reference for `ward agent ... work`.
 type agentIssueRef struct {
 	Owner  string
 	Repo   string
 	Number int
+	Base   string
 }
 
 func (r agentIssueRef) String() string {
@@ -36,21 +38,29 @@ func (r agentIssueRef) repoSlug() string {
 	return r.Owner + "/" + r.Repo
 }
 
-// url renders the canonical Forgejo issue URL for the seeded prompt.
+// url renders the canonical issue URL for the seeded prompt.
 func (r agentIssueRef) url() string {
-	return fmt.Sprintf("%s/%s/%s/issues/%d", strings.TrimRight(forgejoBaseURL, "/"), r.Owner, r.Repo, r.Number)
+	base := r.Base
+	if base == "" {
+		base = forgejoBaseURL
+	}
+	return fmt.Sprintf("%s/%s/%s/issues/%d", strings.TrimRight(base, "/"), r.Owner, r.Repo, r.Number)
 }
 
-// parseAgentIssueRef resolves owner/repo#N, a Forgejo URL, or a bare #N / N via
-// cli-guard's pkg/issueref; ward keeps the task-verb steer (ward#234, ward#282).
+// parseAgentIssueRef resolves owner/repo#N, a Forgejo/GitHub issue URL, or a bare #N / N.
+// ward keeps the task-verb steer (ward#234, ward#282).
 func parseAgentIssueRef(s string) (agentIssueRef, error) {
 	s = strings.TrimSpace(s)
 	if s == "" {
 		return agentIssueRef{}, fmt.Errorf("empty issue reference")
 	}
-	ref, err := issueref.Parse(s, forgejoBaseURL)
-	if err == nil {
-		return agentIssueRef{Owner: ref.Owner, Repo: ref.Repo, Number: ref.Number}, nil
+	var err error
+	for _, base := range []string{forgejoBaseURL, githubBaseURL} {
+		ref, parseErr := issueref.Parse(s, base)
+		if parseErr == nil {
+			return agentIssueRef{Owner: ref.Owner, Repo: ref.Repo, Number: ref.Number, Base: base}, nil
+		}
+		err = parseErr
 	}
 	// A non-issue URL is a valid freeform pointer, just not an issue ref -
 	// steer to the task verb that carries arbitrary pointers (ward#234).
