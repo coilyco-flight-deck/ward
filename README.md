@@ -84,6 +84,8 @@ See [`docs/architecture.md`](docs/architecture.md).
 
 `ward hook pre-tool-use` is a stdin-driven [Claude Code hook](https://docs.claude.com/en/docs/claude-code/hooks). It refuses `ward`/`coily` unless `command -v` resolves to a canonical homebrew path (blocking PATH-hijack), and catches bare wrapped binaries (`make`, `gh`, `aws`, ...) to name the right wrapper. No network, no state - failures pass through silently, and hard denial stays the job of `permissions.deny`. Register it with `ward install-hooks`. See [`docs/hook.md`](docs/hook.md).
 
+This hook is **claude-only** - codex, goose, and opencode get no such host-side intercept, and for every harness the `ward agent` container-flow boundary is the container edge plus the cli-guard verb gate, not this hook. [`docs/enforcement-boundary.md`](docs/enforcement-boundary.md) states where the boundary sits per harness, so a demo names the gate that actually holds.
+
 ## Where to go next
 
 Over 60 pages under [`docs/`](docs/) cover each surface. The anchors:
