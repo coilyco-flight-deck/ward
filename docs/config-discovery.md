@@ -4,18 +4,11 @@ ward resolves the allowlist path in this order:
 
 1. `--config <path>` on the root command (e.g. `ward --config /abs/ward.yaml exec build`).
 2. `$WARD_CONFIG` in the environment.
-3. Walk-up from cwd looking for the first reachable allowlist (legacy behavior).
+3. Walk up from cwd and use the first reachable allowlist.
 
-`--config` and `$WARD_CONFIG` are returned verbatim (made absolute) without
-a stat. The eventual `repocfg.Load` call is the canonical existence check
-and produces a clearer error than a duplicate stat here. Walk-up is only
-attempted when neither override is set.
-
-The `--config` flag carries `WARD_CONFIG` as its env source so urfave-level
-help shows the association. Resolution for `exec` (whose subtree is built
-at init time, before urfave parses flags) is driven by `preParseConfigFlag`,
-which scans `os.Args` for `--config` / `--config=` and stops at `--` or the
-first positional.
+`--config` wins over `$WARD_CONFIG`, and either override skips the walk-up
+search. The eventual `repocfg.Load` call is the existence check and produces
+the user-facing error if the chosen path is missing.
 
 ## Candidate filenames
 
@@ -25,14 +18,9 @@ first positional.
 
 Both use the cli-guard `repocfg` format.
 
-## loadDefault
+## Notes
 
-Resolves the path via `resolveConfigPath(explicit, env, cwd)` then parses
-it through cli-guard's `repocfg` loader, which runs every argv token
-through the shell-metacharacter policy check.
-
-## discoverConfig
-
-Walks up from `start` looking for the first reachable allowlist.
-Returns the absolute path on success or `errNoConfig` if nothing is
-reachable.
+- `repocfg.Load` parses the chosen file and applies cli-guard's argv policy
+  checks while loading the allowlist.
+- If nothing is reachable during walk-up, ward reports that no config could be
+  found.
