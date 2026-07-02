@@ -15,6 +15,9 @@ import (
 // github_ops.go is ward's GitHub issue-thread client (ward#489): shells `gh` to
 // mirror forgejoClient's verbs behind issueForge (auth from env, no token on argv).
 
+// Reads and state flips route through `gh api /repos/...` (REST budget), never
+// GraphQL `gh issue view/close/reopen` (ward#466; see docs/agent-github.md).
+
 // githubClient drives GitHub through `gh`. r runs it audited; mode signs the
 // bodies it writes so GitHub comments carry the same attribution as Forgejo's.
 type githubClient struct {
@@ -39,20 +42,19 @@ func (c *githubClient) run(ctx context.Context, args ...string) ([]byte, error) 
 // slug renders the --repo argument gh expects.
 func ghSlug(owner, repo string) string { return owner + "/" + repo }
 
-// getIssue reads one issue via `gh issue view --json` and maps it to dispatch.Issue,
-// lowercasing GitHub's UPPERCASE state so the "open" check matches Forgejo's.
+// getIssue reads one issue via REST `gh api /repos/{o}/{r}/issues/{n}` (ward#466)
+// and maps it to dispatch.Issue; ToLower keeps state matching Forgejo's "open".
 func (c *githubClient) getIssue(ctx context.Context, owner, repo string, number int) (*dispatch.Issue, error) {
-	out, err := c.run(ctx, "issue", "view", strconv.Itoa(number),
-		"--repo", ghSlug(owner, repo), "--json", "number,title,body,state,url")
+	out, err := c.run(ctx, "api", ghIssuePath(owner, repo, number))
 	if err != nil {
 		return nil, fmt.Errorf("github: get issue %s/%s#%d: %w", owner, repo, number, err)
 	}
 	var raw struct {
-		Number int    `json:"number"`
-		Title  string `json:"title"`
-		Body   string `json:"body"`
-		State  string `json:"state"`
-		URL    string `json:"url"`
+		Number  int    `json:"number"`
+		Title   string `json:"title"`
+		Body    string `json:"body"`
+		State   string `json:"state"`
+		HTMLURL string `json:"html_url"`
 	}
 	if err := json.Unmarshal(out, &raw); err != nil {
 		return nil, fmt.Errorf("github: parse issue %s/%s#%d: %w", owner, repo, number, err)
@@ -62,43 +64,42 @@ func (c *githubClient) getIssue(ctx context.Context, owner, repo string, number 
 		Title:  raw.Title,
 		Body:   raw.Body,
 		State:  strings.ToLower(raw.State),
-		URL:    raw.URL,
+		URL:    raw.HTMLURL,
 	}, nil
 }
 
-// ghComment is one row of `gh issue view --json comments`.
+// ghComment is one row of the REST `.../issues/{n}/comments` array (ward#466):
+// REST names the fields created_at/user, not the GraphQL createdAt/author.
 type ghComment struct {
 	Body      string `json:"body"`
-	CreatedAt string `json:"createdAt"`
-	Author    struct {
+	CreatedAt string `json:"created_at"`
+	User      struct {
 		Login string `json:"login"`
-	} `json:"author"`
+	} `json:"user"`
 }
 
-// listIssueComments fetches the comment thread (oldest first) via `gh issue view
-// --json comments`, mapping it to the shared issueComment shape.
+// listIssueComments fetches the thread (oldest first) via REST `gh api .../comments`
+// (ward#466). --paginate + per_page=100 read a long thread whole, a short one in one hit.
 func (c *githubClient) listIssueComments(ctx context.Context, owner, repo string, number int) ([]issueComment, error) {
-	out, err := c.run(ctx, "issue", "view", strconv.Itoa(number),
-		"--repo", ghSlug(owner, repo), "--json", "comments")
+	out, err := c.run(ctx, "api", "--paginate", "-f", "per_page=100",
+		ghIssuePath(owner, repo, number)+"/comments")
 	if err != nil {
 		return nil, fmt.Errorf("github: list comments on %s/%s#%d: %w", owner, repo, number, err)
 	}
-	var wrap struct {
-		Comments []ghComment `json:"comments"`
-	}
-	if err := json.Unmarshal(out, &wrap); err != nil {
+	var comments []ghComment
+	if err := json.Unmarshal(out, &comments); err != nil {
 		return nil, fmt.Errorf("github: parse comments on %s/%s#%d: %w", owner, repo, number, err)
 	}
-	return ghCommentsToIssueComments(wrap.Comments), nil
+	return ghCommentsToIssueComments(comments), nil
 }
 
-// ghCommentsToIssueComments maps `gh` comment rows to issueComment, parsing the
+// ghCommentsToIssueComments maps REST comment rows to issueComment, parsing the
 // RFC3339 timestamp (a bad stamp degrades to the zero time, never an error). Pure.
 func ghCommentsToIssueComments(raw []ghComment) []issueComment {
 	out := make([]issueComment, 0, len(raw))
 	for _, rc := range raw {
 		ic := issueComment{Body: rc.Body}
-		ic.User.Login = rc.Author.Login
+		ic.User.Login = rc.User.Login
 		if t, err := time.Parse(time.RFC3339, rc.CreatedAt); err == nil {
 			ic.CreatedAt = t
 		}
@@ -141,20 +142,28 @@ func (c *githubClient) commentIssue(ctx context.Context, owner, repo string, num
 	return nil
 }
 
-// closeIssue flips an issue to closed.
+// closeIssue flips an issue to closed via REST PATCH (ward#466: `gh issue close`
+// would route through a GraphQL mutation; the REST state flip stays on the REST budget).
 func (c *githubClient) closeIssue(ctx context.Context, owner, repo string, number int) error {
-	if _, err := c.run(ctx, "issue", "close", strconv.Itoa(number), "--repo", ghSlug(owner, repo)); err != nil {
+	if _, err := c.run(ctx, "api", "-X", "PATCH", ghIssuePath(owner, repo, number), "-f", "state=closed"); err != nil {
 		return fmt.Errorf("github: close issue %s/%s#%d: %w", owner, repo, number, err)
 	}
 	return nil
 }
 
-// reopenIssue flips a closed issue back open (the reaper's undo of a `closes #N`).
+// reopenIssue flips a closed issue back open (the reaper's undo of a `closes #N`),
+// via REST PATCH for the same rate-limit reason as closeIssue (ward#466).
 func (c *githubClient) reopenIssue(ctx context.Context, owner, repo string, number int) error {
-	if _, err := c.run(ctx, "issue", "reopen", strconv.Itoa(number), "--repo", ghSlug(owner, repo)); err != nil {
+	if _, err := c.run(ctx, "api", "-X", "PATCH", ghIssuePath(owner, repo, number), "-f", "state=open"); err != nil {
 		return fmt.Errorf("github: reopen issue %s/%s#%d: %w", owner, repo, number, err)
 	}
 	return nil
+}
+
+// ghIssuePath renders the REST issue path `/repos/{owner}/{repo}/issues/{n}` shared
+// by every REST call in this client. Pure + testable.
+func ghIssuePath(owner, repo string, number int) string {
+	return "/repos/" + owner + "/" + repo + "/issues/" + strconv.Itoa(number)
 }
 
 // issueNumberFromURL pulls the trailing issue/PR number off a github.com URL like

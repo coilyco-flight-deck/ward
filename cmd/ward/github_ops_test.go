@@ -31,6 +31,14 @@ func TestIssueNumberFromURL(t *testing.T) {
 	}
 }
 
+// TestGHIssuePath pins the REST path every read/flip in the client shares, so the
+// GitHub surface stays on the REST budget rather than the GraphQL one (ward#466).
+func TestGHIssuePath(t *testing.T) {
+	if got := ghIssuePath("owner", "repo", 466); got != "/repos/owner/repo/issues/466" {
+		t.Errorf("ghIssuePath = %q, want /repos/owner/repo/issues/466", got)
+	}
+}
+
 // TestGHCommentsToIssueComments checks the gh comment mapping, including a bad
 // timestamp degrading to the zero time rather than dropping the row.
 func TestGHCommentsToIssueComments(t *testing.T) {
@@ -38,8 +46,8 @@ func TestGHCommentsToIssueComments(t *testing.T) {
 		{Body: "first", CreatedAt: "2026-07-01T10:00:00Z"},
 		{Body: "second", CreatedAt: "not-a-time"},
 	}
-	raw[0].Author.Login = "alice"
-	raw[1].Author.Login = "bob"
+	raw[0].User.Login = "alice"
+	raw[1].User.Login = "bob"
 	got := ghCommentsToIssueComments(raw)
 	if len(got) != 2 {
 		t.Fatalf("mapped %d comments, want 2", len(got))

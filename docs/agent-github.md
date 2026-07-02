@@ -21,6 +21,11 @@ comments on the **GitHub** issue, and the run lands as a **pull request** on Git
   Only the target repo moves to GitHub, via `WARD_CLONE_BASE` + `WARD_FORGE=github`,
   both set automatically from the ref's forge.
 
+## Rate-limit posture
+
+ward's GitHub client keeps reads and state flips on the REST budget, off the
+tighter GraphQL lane - see [github-rate-limits.md](github-rate-limits.md).
+
 ## Pointing a run at GitHub
 
 * **A github.com URL or short ref** - inferred automatically, no flag:
