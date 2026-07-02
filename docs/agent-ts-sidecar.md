@@ -2,7 +2,7 @@
 
 The **sidecar** is the Docker Desktop mechanism `--tailnet` auto-selects (ward#333,
 by-name reach ward#337, standing-box attach ward#349, consolidated under `--tailnet` in
-ward#362): it reaches a tailnet-only host like the Ollama tower (`kai-tower-3026:11434`)
+ward#362): it reaches a tailnet-only host like the Ollama tower (`<ollama-host>:11434`)
 from a run whose docker daemon runs in a LinuxKit VM that is **not** a tailnet node. The
 host-net sibling is in [agent-host-net.md](agent-host-net.md).
 
@@ -10,7 +10,8 @@ host-net sibling is in [agent-host-net.md](agent-host-net.md).
 
 A run **attaches to a standing, shared mac-proxy SOCKS5 box** over a known docker
 network instead of minting its own per-run tailscale sidecar (the ward half of
-agentic-os#291). The contract is two names: the `ward-tailnet` network and `mac-proxy`.
+agentic-os#291). The contract is two fixed, ansible-owned names (not
+personal): `ward-tailnet` and `mac-proxy`.
 
 - **The standing box** runs once (`restart: unless-stopped`), serving SOCKS5 on
   `0.0.0.0:1055`. It is its own tailnet node (`mac-proxy`, `tag:proxy`); **ward
@@ -22,7 +23,7 @@ agentic-os#291). The contract is two names: the `ward-tailnet` network and `mac-
   `TS_AUTHKEY`, fetches nothing from SSM for the sidecar. The mechanism needs no SSM, but
   `--tailnet` still mounts `~/.aws` on both routes (ward#362).
 - **Route (ward#337):** `WARD_TS_SOCKS5` is `socks5h://mac-proxy:1055` and
-  `WARD_TOWER_OLLAMA` is `http://kai-tower-3026:11434`, both plain. `socks5h` hands
+  `WARD_TOWER_OLLAMA` is `http://<ollama-host>:11434`, both plain. `socks5h` hands
   the hostname to the proxy to resolve **tailnet side**, so the run dials by name.
 
 ## Preflight (ward#349)
@@ -36,7 +37,7 @@ mac-proxy infra role (agentic-os#291)`. There is no per-run mint or teardown.
 
 A sidecar run backgrounds a **userspace loopback forwarder** (`ward container forward`,
 torn down with the run). It listens on `127.0.0.1:11434` and bridges each connection to
-`kai-tower-3026:11434` through the box over `$WARD_TS_SOCKS5` (`socks5h`, resolved
+`<ollama-host>:11434` through the box over `$WARD_TS_SOCKS5` (`socks5h`, resolved
 tailnet-side). The tower **is** localhost, dial it with **no `--proxy`**:
 
 ```bash
@@ -66,7 +67,7 @@ warded engineer coilyco-flight-deck/agent-proxy#1 --tailnet --tailnet-mode sidec
 
 ## Validation status
 
-The ACL hop `tag:proxy -> tag:kai-tower-3026:11434` (infrastructure#400) is merged, the
+The ACL hop `tag:proxy -> tag:<ollama-host>:11434` (infrastructure#400) is merged, the
 standing box converged by the infra sibling of agentic-os#291. The ward wiring (attach,
 preflight, by-name route, forwarder bridge) is **unit-tested**, a live end-to-end lands
 as a follow-up once the box is converged.

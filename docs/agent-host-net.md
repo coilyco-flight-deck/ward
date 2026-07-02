@@ -1,7 +1,7 @@
 # ward agent: tailnet route (--tailnet)
 
 `--tailnet` is the **opt-in network escalation** (ward#330, consolidated ward#362):
-one user flag that reaches tailnet-only hosts like `kai-tower-3026`. It **auto-selects
+one user flag that reaches tailnet-only hosts like `<ollama-host>`. It **auto-selects
 the mechanism by platform** - the host-network route on native Linux, the SOCKS5
 sidecar on Docker Desktop (where the host VM is not a tailnet node) - and implies
 `--aws` on both. The hidden `--tailnet-mode auto|host-net|sidecar` pins the mechanism.
@@ -13,7 +13,7 @@ namespace (`docker run --network=host`) so it inherits the host's `tailscale0` +
 ## Why it exists
 
 The least-access default ([container.md](container.md)) lands a run on docker's
-bridge: public internet, but **not** the host's tailnet-only hosts. `kai-tower-3026`
+bridge: public internet, but **not** the host's tailnet-only hosts. `<ollama-host>`
 serves ollama over the tailnet at an SSM-held FQDN, so a run can't live-test it.
 
 ## What it does, and where it works

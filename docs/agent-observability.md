@@ -3,7 +3,7 @@
 A headless `ward agent` run used to be unqueryable after it finished. Its console
 stream lived only in Docker's `json-file` driver (gone with the keep-10
 `docker rm`), and the claude **transcript** (`~/.claude/projects/**/*.jsonl`)
-died with the container, never exported. ward#363 closes that, in two slices.
+died with the container. ward#363 closes that, in two slices.
 
 ## Slice 1 - host-native drain on reap (always on)
 
@@ -23,7 +23,7 @@ Each drained run lands under `~/.ward/agent-logs/<container>/`:
 - `meta.json` - run dims + outcome.
 
 This mirrors the `~/.ward/audit/<slug>.jsonl` convention ([audit.md](audit.md)):
-local, raw, never leaves the host, ages out on its own. Point Dozzle / `jq` at it.
+local, raw, never leaves the host, ages out on its own. Point [Dozzle](https://dozzle.dev/) or `jq` at it.
 
 `meta.json` is small and **secret-free**: `container`, `repo`, `issue`, `driver`,
 `branch`, `outcome`. The `outcome` is inferred from the reaper's console markers;
@@ -40,8 +40,8 @@ See [container lifecycle logs](container-lifecycle-logs.md).
 ## Slice 2 - redacted envelope stream to SigNoz (export defaults OFF)
 
 The extractor turns a drained transcript into one **envelope per tool call** and
-ships them to the fleet SigNoz OTLP endpoint (`http://ser8:4318/v1/logs`, override
-via `WARD_AGENT_TELEMETRY_ENDPOINT`) as structured logs, **default-OFF** behind
+ships them to the fleet SigNoz OTLP endpoint (`http://<signoz-host>:4318/v1/logs`,
+override via `WARD_AGENT_TELEMETRY_ENDPOINT`) as structured logs, **default-OFF** behind
 `WARD_AGENT_TELEMETRY=1`. The host drain stays always-on.
 
 An envelope is **call-metadata only**: tool name, redacted args, cwd, duration,
@@ -50,7 +50,7 @@ run-level dims on the OTLP resource.
 
 ### The crux - redaction at extraction, before export
 
-The fleet's Warp secret-redaction scrubs the **terminal**, not the transcript
+The fleet's secret-redaction scrubs the **terminal**, not the transcript
 jsonl, and SigNoz has **no ingest redaction processor**. So redaction is enforced
 **here**, upstream of the sink, two ways:
 
@@ -59,7 +59,7 @@ jsonl, and SigNoz has **no ingest redaction processor**. So redaction is enforce
    **inputs** (`content`, `new_string`, ...) drop the same way - only the file path
    they touched is kept.
 2. **Args are redacted.** The args that do ride (a `Bash` command, a path) run
-   through the Warp regex list (AWS / GitHub / Anthropic / Slack / JWT / public IP)
+   through the regex list (AWS / GitHub / Anthropic / Slack / JWT / public IP)
    before they enter an envelope, and are length-capped.
 
 Per the deploy `log-schema.md` contract, bounded enums become indexed OTLP

@@ -11,7 +11,7 @@ The shared launch helpers show ~10 visible flags: the positional ref/task, `--dr
 applies to the engineer, director, and advisor surfaces at once.
 
 `--tailnet` (ward#362) joins the container to the tailnet to reach tailnet-only hosts like
-`kai-tower-3026`, **auto-selecting the mechanism by platform**: the native-Linux host route
+`<ollama-host>`, **auto-selecting the mechanism by platform**: the native-Linux host route
 (`--network=host`, ward#330, [agent-host-net.md](agent-host-net.md)) or the SOCKS5 sidecar
 on Docker Desktop (ward#349, [agent-ts-sidecar.md](agent-ts-sidecar.md)). It **implies
 `--aws`**. `--repo owner/name` (repeatable, ward#280) grants extra writable repos
