@@ -31,7 +31,7 @@ on non-ref text → freeform):
 
 ## Ref mode: the detached run
 
-It validates the ref (a bad ref or untrusted owner fails first),
+It validates the ref (a bad ref or [untrusted owner](agent-trust-gate.md) fails first),
 branches `issue-<N>` (override `--branch`), and launches a fresh-clone `ward container`
 seeded to carry it.
 

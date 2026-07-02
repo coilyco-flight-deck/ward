@@ -22,8 +22,9 @@ structured contract never hard-fails a reply.
 ## Per-repo trust gate
 
 Issue creation is deterministic and gated **per target repo**: every spec's owner must
-pass the same `ownerAllowed` / primary-org check as the source ref (the security-relevant
-part - fan-out files under ward's bot identity in repos the operator never named). A spec
+pass the same `ownerAllowed` / primary-org check as the source ref (the [owner trust
+gate](agent-trust-gate.md) - the security-relevant
+part is that fan-out files under ward's bot identity in repos the operator never named). A spec
 naming an untrusted owner or a malformed slug is **dropped, never created**, and the drop
 is surfaced in the index (or single) comment rather than silently swallowed. If the gate
 drops the plan below 2 distinct repos, ward falls back to a single comment and notes what
