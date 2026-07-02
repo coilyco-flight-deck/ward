@@ -77,7 +77,7 @@ func TestDirectorDecidePrompt(t *testing.T) {
 		{Num: 8, Tier: "P1", Title: "running", State: "dispatched"},
 		{Num: 9, Tier: "P2", Title: "broke", State: "failed", LastOutcome: &backlogOutcome{Status: "failed", Text: "build failed"}},
 	}
-	got := directorDecidePrompt(picks, 2, entries)
+	got := directorDecidePrompt(picks, 2, entries, forgeHealthOK)
 	for _, want := range []string{
 		"at most 2 issue(s)", // the free-slot budget
 		"#5",                 // the queued candidate
@@ -85,6 +85,7 @@ func TestDirectorDecidePrompt(t *testing.T) {
 		"#8",                 // the in-flight issue
 		"RECENT OUTCOMES",    // the outcome section
 		"build failed",       // the failure text the agent should weigh
+		"FORGE HEALTH: ok",   // the live liveness signal (ward#528)
 		"DISPATCH:",          // the verdict contract
 	} {
 		if !strings.Contains(got, want) {
@@ -113,6 +114,15 @@ type fakeDirector struct {
 	// every pre-existing test keeps its prior "drain immediately" behavior unchanged.
 	kickoffFn    func() (bool, error)
 	kickoffCalls int
+	// health is the forge-health verdict probeForgeHealth returns (ward#528); the zero value
+	// is forgeHealthUnknown, so the livelock guard never fires for tests that don't set it.
+	health     forgeHealth
+	probeCalls int
+}
+
+func (f *fakeDirector) probeForgeHealth(context.Context, *backlogEntry) forgeHealth {
+	f.probeCalls++
+	return f.health
 }
 
 func (f *fakeDirector) confirmKickoff(context.Context) (bool, error) {
@@ -136,7 +146,7 @@ func (f *fakeDirector) refresh(context.Context) {}
 
 func (f *fakeDirector) entries() []*backlogEntry { return f.list }
 
-func (f *fakeDirector) decide(_ context.Context, picks []*backlogEntry, avail int, _ []*backlogEntry) []*backlogEntry {
+func (f *fakeDirector) decide(_ context.Context, picks []*backlogEntry, avail int, _ []*backlogEntry, _ forgeHealth) []*backlogEntry {
 	if f.decideFn != nil {
 		return f.decideFn(picks, avail)
 	}
@@ -575,5 +585,109 @@ func TestRunDirectorLoopQuietWhenSlotsFree(t *testing.T) {
 	}
 	if f.offerCalls != 0 {
 		t.Errorf("free slots keep the quiet sleep path, offerCalls=%d want 0", f.offerCalls)
+	}
+}
+
+// TestIsInfraFailureOutcome covers the ward#528 classifier that lets the livelock guard
+// separate a stale forge blip from a real engineer verdict.
+func TestIsInfraFailureOutcome(t *testing.T) {
+	cases := []struct {
+		name string
+		o    *backlogOutcome
+		want bool
+	}{
+		{"nil outcome", nil, false},
+		{"dispatch-error status", &backlogOutcome{Status: "dispatch-error", Text: "launch blew up"}, true},
+		{"deferred status", &backlogOutcome{Status: "deferred", Text: "reservation conflict"}, true},
+		{"502 in text", &backlogOutcome{Status: "failed", Text: "forgejo: get issue a/b#9: 502 bad gateway"}, true},
+		{"bad gateway phrase", &backlogOutcome{Status: "failed", Text: "upstream returned Bad Gateway"}, true},
+		{"failing issue fetch", &backlogOutcome{Status: "failed", Text: "forgejo: get issue a/b#9: exit status 3"}, true},
+		{"connection refused", &backlogOutcome{Status: "failed", Text: "dial tcp: connection refused"}, true},
+		{"substantive build failure", &backlogOutcome{Status: "failed", Text: "build failed: undefined symbol"}, false},
+		{"substantive blocked", &backlogOutcome{Status: "blocked", Text: "needs a human decision on the schema"}, false},
+	}
+	for _, c := range cases {
+		t.Run(c.name, func(t *testing.T) {
+			if got := isInfraFailureOutcome(c.o); got != c.want {
+				t.Errorf("isInfraFailureOutcome(%+v) = %v, want %v", c.o, got, c.want)
+			}
+		})
+	}
+}
+
+// TestDirectorLivelockGuard drives the ward#528 guard directly: it fires only on a live
+// forge with a pure-infra streak, dispatching just the single top candidate.
+func TestDirectorLivelockGuard(t *testing.T) {
+	picks := []*backlogEntry{{Num: 10, Tier: "P0"}, {Num: 11, Tier: "P1"}}
+	infra := &backlogEntry{Num: 9, State: "failed", LastOutcome: &backlogOutcome{Status: "failed", Text: "forgejo: get issue a/b#9: 502 bad gateway"}}
+	substantive := &backlogEntry{Num: 8, State: "failed", LastOutcome: &backlogOutcome{Status: "failed", Text: "build failed"}}
+
+	cases := []struct {
+		name    string
+		picks   []*backlogEntry
+		entries []*backlogEntry
+		health  forgeHealth
+		want    []int
+	}{
+		{"healthy + infra-only streak dispatches the top", picks, []*backlogEntry{infra}, forgeHealthOK, []int{10}},
+		{"degraded forge holds", picks, []*backlogEntry{infra}, forgeHealthDegraded, nil},
+		{"unknown health holds", picks, []*backlogEntry{infra}, forgeHealthUnknown, nil},
+		{"a substantive failure vetoes the override", picks, []*backlogEntry{infra, substantive}, forgeHealthOK, nil},
+		{"no failing streak, nothing to break", picks, nil, forgeHealthOK, nil},
+		{"no queued picks", nil, []*backlogEntry{infra}, forgeHealthOK, nil},
+	}
+	for _, c := range cases {
+		t.Run(c.name, func(t *testing.T) {
+			got := directorLivelockGuard(c.picks, c.entries, c.health)
+			var nums []int
+			for _, e := range got {
+				nums = append(nums, e.Num)
+			}
+			if !reflect.DeepEqual(nums, c.want) {
+				t.Errorf("directorLivelockGuard = %v, want %v", nums, c.want)
+			}
+		})
+	}
+}
+
+// TestRunDirectorLoopBreaksInfraFailureLivelock is the acceptance scenario (ward#528): an
+// infra streak + a holding decision on a live-healthy forge dispatches the top candidate.
+func TestRunDirectorLoopBreaksInfraFailureLivelock(t *testing.T) {
+	queued := &backlogEntry{Num: 10, Title: "ready to go", Tier: "P0", Lane: "headless", State: "queued"}
+	stale := &backlogEntry{Num: 9, Title: "blipped on 502", Tier: "P1", Lane: "headless", State: "failed",
+		LastOutcome: &backlogOutcome{Status: "failed", Text: "forgejo: get issue a/b#9: 502 bad gateway"}}
+	f := &fakeDirector{list: []*backlogEntry{queued, stale}, health: forgeHealthOK}
+	f.decideFn = func([]*backlogEntry, int) []*backlogEntry { return nil } // the LLM holds on the stale streak
+	cfg := backlogConfig{maxParallel: 2, pollInterval: time.Millisecond, maxCycles: 3}
+
+	if err := runDirectorLoop(context.Background(), cfg, f); err != nil {
+		t.Fatalf("loop returned error: %v", err)
+	}
+	if !reflect.DeepEqual(f.dispatched, []int{10}) {
+		t.Errorf("the guard should force-dispatch the top candidate despite the hold, dispatched=%v want [10]", f.dispatched)
+	}
+	if f.probeCalls == 0 {
+		t.Errorf("each schedulable tick must probe forge health, probeCalls=%d", f.probeCalls)
+	}
+}
+
+// TestRunDirectorLoopHoldsWhenForgeDegraded confirms the guard does NOT override a hold
+// when the forge is still degraded - a real outage keeps the backlog held (ward#528).
+func TestRunDirectorLoopHoldsWhenForgeDegraded(t *testing.T) {
+	queued := &backlogEntry{Num: 10, Title: "ready", Tier: "P0", Lane: "headless", State: "queued"}
+	stale := &backlogEntry{Num: 9, Title: "blipped", Tier: "P1", Lane: "headless", State: "failed",
+		LastOutcome: &backlogOutcome{Status: "dispatch-error", Text: "502 bad gateway"}}
+	f := &fakeDirector{list: []*backlogEntry{queued, stale}, health: forgeHealthDegraded}
+	f.decideFn = func([]*backlogEntry, int) []*backlogEntry { return nil }
+	cfg := backlogConfig{maxParallel: 2, pollInterval: time.Millisecond, maxCycles: 3}
+
+	if err := runDirectorLoop(context.Background(), cfg, f); err != nil {
+		t.Fatalf("loop returned error: %v", err)
+	}
+	if f.dispatched != nil {
+		t.Errorf("a degraded forge must keep holding, got dispatched=%v", f.dispatched)
+	}
+	if f.maxCycleCalls != 1 {
+		t.Errorf("the held loop should bound on --max-cycles, maxCycle=%d", f.maxCycleCalls)
 	}
 }

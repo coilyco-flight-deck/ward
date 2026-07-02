@@ -27,6 +27,27 @@ signal the director LLM reads to "hold this tick", so a transient outage wedged 
 backlog permanently - nothing re-tested the recovered path. Deferring self-heals: the moment
 the fetch path is healthy again, the next tick dispatches.
 
+## Closing the LLM-layer livelock (ward#528)
+
+Deferring self-heals the **mechanical** layer, but only on the next *attempt*. The **LLM
+judgment** layer on top could still livelock: a pre-ward#524 infra-failure streak (or a run
+that parked `failed` with a 502 in its outcome text) stays the newest signal in RECENT
+OUTCOMES, the decision holds on it, holding dispatches nothing, and no fresh outcome ever
+displaces the stale one - a permanent `DISPATCH: none` hold with slots free and issues queued.
+
+Two levers break it, both in the heartbeat ([agent-director.md](agent-director.md)):
+
+- **Live forge-health probe** - each schedulable tick runs one cheap `issue get` on the top
+  candidate (the exact read the pre-flight fails on) and feeds `FORGE HEALTH: ok | degraded |
+  unknown` into the decision prompt, telling the LLM a recovered forge makes a past
+  infra-failure streak stale.
+- **Livelock guard** - a deterministic backstop: when the decision holds anyway but the probe
+  is `ok` AND the only failing signal in RECENT OUTCOMES is infrastructure (`isInfraFailureOutcome`
+  - the 5xx / bad-gateway / dispatch-error / failing-issue-fetch fingerprints), it force-dispatches
+  the single top candidate. The defer path above makes that probe-dispatch cheap and safe, so it
+  re-tests the recovered forge rather than trusting the LLM to. A substantive engineer
+  block/failure in the window vetoes the override, and a non-`ok` probe leaves the hold intact.
+
 ## The self-heal migration (ward#527)
 
 The ward#524 rule is forward-looking - it does not un-strand issues the **old** classifier
