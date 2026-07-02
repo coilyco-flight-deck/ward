@@ -24,6 +24,10 @@ import (
 // to audit/ (docs/audit.md) - one directory per drained container run.
 const agentLogsSubdir = "agent-logs"
 
+// agentLogsRedactedSubdir is the parallel archive root for the redacted-at-rest view
+// (ward#526): a SEPARATE tree the surface binds so raw logs never mount. See docs.
+const agentLogsRedactedSubdir = "agent-logs-redacted"
+
 // containerTranscriptDir is where claude writes session jsonl for the agent user;
 // the drain `docker cp`s the tree out as a tar and concatenates the jsonl.
 const containerTranscriptDir = "/home/ubuntu/.claude/projects"
@@ -33,6 +37,13 @@ const (
 	drainConsoleFile    = "console.log"
 	drainTranscriptFile = "transcript.jsonl"
 	drainMetaFile       = "meta.json"
+)
+
+// redacted-view artifact filenames inside ~/.ward/agent-logs-redacted/<slug>/ (ward#526).
+// meta.json is already secret-free, so it is copied over under drainMetaFile verbatim.
+const (
+	drainConsoleRedactedFile    = "console.redacted.log"
+	drainTranscriptRedactedFile = "transcript.redacted.jsonl"
 )
 
 // drainedMarkerSubdir holds one zero-byte sentinel per drained container so a
@@ -141,6 +152,16 @@ func agentLogsDir() string {
 	return filepath.Join(home, config.AppDir(), agentLogsSubdir)
 }
 
+// agentLogsRedactedDir resolves the parallel redacted archive root (ward#526),
+// resolved the same way as agentLogsDir so the two trees sit side by side.
+func agentLogsRedactedDir() string {
+	home, err := os.UserHomeDir()
+	if err != nil || home == "" {
+		home = os.TempDir()
+	}
+	return filepath.Join(home, config.AppDir(), agentLogsRedactedSubdir)
+}
+
 // sweepAction is one ordered host-side teardown step: drain a single container, or
 // remove the whole set. Every drain must precede the rm (ward#363).
 type sweepAction struct {
@@ -229,6 +250,9 @@ func (r *Runner) drainAgentRun(ctx context.Context, name, dir string) {
 
 	if mode.wantsDisk() {
 		r.writeDiskArtifacts(name, dir, console, transcript, meta)
+		// The redacted view rides the same disk gate: whenever the raw archive lands, its
+		// scrubbed sibling lands too, for the director surface mount (ward#526).
+		r.writeRedactedArtifacts(name, console, transcript, meta)
 	}
 	if mode.wantsSignoz() {
 		r.shipToSignoz(ctx, console, transcript, meta)
@@ -257,6 +281,30 @@ func (r *Runner) writeDiskArtifacts(name, dir string, console, transcript []byte
 		}
 	}
 	fmt.Fprintf(os.Stderr, "ward container: wrote disk artifacts for %s -> %s\n", name, dir)
+}
+
+// writeRedactedArtifacts persists the redacted-at-rest view (ward#526) under the
+// agent-logs-redacted tree; scrubbers shared with the SigNoz export. Best-effort.
+func (r *Runner) writeRedactedArtifacts(name string, console, transcript []byte, meta runMeta) {
+	dir := filepath.Join(agentLogsRedactedDir(), name)
+	if err := os.MkdirAll(dir, 0o755); err != nil {
+		fmt.Fprintf(os.Stderr, "ward container: drain %s: could not create %s (%v); skipping redacted view\n", name, dir, err)
+		return
+	}
+	if werr := os.WriteFile(filepath.Join(dir, drainConsoleRedactedFile), redactConsole(console), 0o644); werr != nil {
+		fmt.Fprintf(os.Stderr, "ward container: drain %s: write console.redacted.log: %v\n", name, werr)
+	}
+	if red := redactedTranscript(transcript); len(red) > 0 {
+		if werr := os.WriteFile(filepath.Join(dir, drainTranscriptRedactedFile), red, 0o644); werr != nil {
+			fmt.Fprintf(os.Stderr, "ward container: drain %s: write transcript.redacted.jsonl: %v\n", name, werr)
+		}
+	}
+	if data, merr := json.MarshalIndent(meta, "", "  "); merr == nil {
+		if werr := os.WriteFile(filepath.Join(dir, drainMetaFile), append(data, '\n'), 0o644); werr != nil {
+			fmt.Fprintf(os.Stderr, "ward container: drain %s: write redacted meta.json: %v\n", name, werr)
+		}
+	}
+	fmt.Fprintf(os.Stderr, "ward container: wrote redacted view for %s -> %s\n", name, dir)
 }
 
 // dockerLogsCombined captures `docker logs <name>` with stdout+stderr merged into

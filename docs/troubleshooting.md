@@ -2,14 +2,14 @@
 
 Your `warded` run failed or seemed to do nothing. Find your **symptom** below - not
 the subsystem that failed - and it points at the one diagnostic surface and the fix.
-Entries quote the verbatim error text so a search for the string you saw lands here.
+Entries quote the error text so a search for the string you saw lands here.
 
 First stop for any failed headless run: **its logs.** Every exited run drains to
 `~/.ward/agent-logs/<container>/` before cleanup - `console.log` (agent + reaper
 output), `transcript.jsonl` (the session), `meta.json` (dims + `outcome`). Read
 `meta.json` first: the `outcome` field already classifies the run. See
 [agent-observability.md](agent-observability.md).
-For stable lifecycle markers, see [container lifecycle logs](container-lifecycle-logs.md).
+For lifecycle markers, see [container lifecycle logs](container-lifecycle-logs.md).
 
 ## By symptom
 
@@ -54,10 +54,9 @@ For stable lifecycle markers, see [container lifecycle logs](container-lifecycle
   cleanly (conflict, scan finding, or dead PAT), so it **preserved your work on a
   `ward-salvage/<id>` branch** and posted a salvage notice with recovery commands:
   on the carried issue if the run had one (reopening it), else a standalone
-  `[ward-salvage]` issue (ward#518). **Fix:** follow it. See [reap](container-reap.md).
+  `[ward-salvage]` issue. **Fix:** follow it. See [reap](container-reap.md).
 
-A deeper fix - a symptom-aware `ward agent doctor` verb - is tracked in ward#195,
-not duplicated here.
+A symptom-aware `ward agent doctor` verb is tracked in [ward#195](https://forgejo.coilysiren.me/coilyco-flight-deck/ward/issues/195).
 
 ## See also
 

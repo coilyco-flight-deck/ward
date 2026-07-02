@@ -20,13 +20,13 @@ This one script is both halves the issue asks for:
 Refs inside fenced code blocks / inline code are illustrations (command examples),
 not clickable references, and are left untouched.
 
-Scope: README.md + docs/*.md, minus CONTRIBUTOR_DOCS. Those are the deep design
-docs hand-tuned to the documentation-layout 4000-char cap (many sit at 3997-3999);
-expanding their terse refs into ~76-char full-URL links would bust that cap, and
-they are contributor-facing anyway - the prose companion to the Go source, where
-terse Forgejo refs are allowed per ward#443. So the linter treats them like source.
-The durable fix - trim the provenance-ref noise so they fit the cap WITH linked
-refs, then drop them from CONTRIBUTOR_DOCS - is tracked as a ward#446 follow-up.
+Scope: README.md + docs/*.md, minus CONTRIBUTOR_DOCS. That set was the deep design
+docs hand-tuned to the documentation-layout 4000-char cap, once exempt because
+expanding their terse refs into ~76-char full-URL links would have busted the cap.
+ward#521 trimmed the provenance-ref noise from each (mostly trailing `(ward#NNN)`
+citations that read as internal-wiki clutter per ward#444) so they now fit the cap
+WITH their remaining refs linked, and CONTRIBUTOR_DOCS is empty. It stays defined so
+a future oversized design doc can be parked here again if it needs the same runway.
 """
 
 from __future__ import annotations
@@ -76,43 +76,9 @@ INCLUDE_GLOBS = ["README.md", "docs/**/*.md"]
 # template (its `Fixes #123` is a GitHub example that resolves in a real PR).
 EXCLUDE_SUBSTR = ["docs/ward-kdl/", "docs/agent-roster.md", "docs/PULL_REQUEST_TEMPLATE.md"]
 
-# Deep design docs hand-tuned to the 4000-char doc cap - linking their refs busts
-# it (contributor-facing per ward#443; see module docstring for the follow-up).
-CONTRIBUTOR_DOCS = {
-    "docs/agent-adapter-manifest.md",
-    "docs/agent-advisor.md",
-    "docs/agent-attribution.md",
-    "docs/agent-director.md",
-    "docs/agent-director-dispatch.md",
-    "docs/agent-engineer.md",
-    "docs/agent-flags.md",
-    "docs/agent-host-net.md",
-    "docs/agent-local-model.md",
-    "docs/agent-observability.md",
-    "docs/agent-preflight.md",
-    "docs/agent-reservation.md",
-    "docs/agent-subcommands.md",
-    "docs/agent-surface.md",
-    "docs/agent-tailnet-topology.md",
-    "docs/agent-ts-sidecar.md",
-    "docs/agent.md",
-    "docs/agentsapi.md",
-    "docs/architecture.md",
-    "docs/broker.md",
-    "docs/container-multi-repo.md",
-    "docs/container-permissions.md",
-    "docs/container-reap.md",
-    "docs/container.md",
-    "docs/github-mirror.md",
-    "docs/ops-forgejo-in-ward.md",
-    "docs/ops-forgejo.md",
-    "docs/release.md",
-    "docs/troubleshooting.md",
-    "docs/ward-kdl-authoring.md",
-    "docs/ward-kdl-in-ward.md",
-    "docs/ward-kdl-surface.md",
-    "docs/ward-kdl-tiers.md",
-}
+# Was the deep design docs hand-tuned to the 4000-char doc cap; ward#521 trimmed
+# each to fit WITH linked refs, so it is empty (kept defined for reuse; see docstring).
+CONTRIBUTOR_DOCS: set[str] = set()
 
 # A terse ref: an optional `owner/` then a repo-ish word, then `#digits`. The
 # leading boundary keeps us off URL paths (.../issues/12) and mid-word hits.

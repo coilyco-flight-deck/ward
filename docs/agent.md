@@ -1,8 +1,8 @@
 # ward agent
 
 `ward agent` is **the** entrypoint to the ephemeral [container](container.md)
-subsystem: take a Forgejo issue and put an agent on it end to end. ward#263
-retired the hand-run `ward container up`/`exec`/`down`/`ls` verbs, so `ward agent`
+subsystem: take a Forgejo issue and put an agent on it end to end. The hand-run
+`ward container up`/`exec`/`down`/`ls` verbs are retired, so `ward agent`
 is the single launch surface.
 
 ## Prerequisites
@@ -14,24 +14,24 @@ neither. Full list: [first-run.md §1](first-run.md#1-prerequisites).
 ## The `warded` public face
 
 `warded` is the user-facing command: a thin `ward` symlink the multicall rewrite turns
-into `ward agent <args>` (ward#247, ward#282), so `warded #98` *is* `ward agent
+into `ward agent <args>`, so `warded #98` *is* `ward agent
 #98`. Read "warded" as the protective circle - the deny-list and allowlisted verbs
 bounding the agent's reach.
 
-## The startup-role roster (ward#347, ward#353)
+## The startup-role roster
 
 The surface is a roster of **startup roles** - short nouns that read like a team.
 The **argument type** keys the mode: a ref acts on an issue, freeform text files
 or answers it.
 
 - **`engineer`** (was `headless`+`task`) - implements a ticket end to end,
-  **detached only** (ward#356). [agent-engineer.md](agent-engineer.md).
+  **detached only**. [agent-engineer.md](agent-engineer.md).
 - **`director`** (was `backlog`) - autonomous backlog supervisor: dispatches
   engineers, surfaces a read-only session on drain. [agent-director.md](agent-director.md).
 - **`advisor`** (was `reply`+`ask`) - answers, writes no code: a ref comments,
-  freeform is interactive (ward#388). [agent-advisor.md](agent-advisor.md).
+  freeform is interactive. [agent-advisor.md](agent-advisor.md).
 
-The standalone `architect`/`explore`/`sandbox` roles now error - ward#353 folded
+The standalone `architect`/`explore`/`sandbox` roles now error - folded
 them into the director's [surface session](agent-surface.md). The `--driver`
 harness axis lives under [Drivers](#drivers) below.
 
@@ -47,9 +47,9 @@ warded advisor #98 "what would it take to..."   # research the issue, post a com
 warded advisor "how is the audit log written?"  # freeform: interactive (--oneshot = one answer)
 ```
 
-The role comes first (`--driver` picks the harness, default claude; ward#185; see
-[Drivers](#drivers)). **A bare ref with no role word runs the `engineer` role**
-(ward#347). The ref is `owner/repo#N`, a full Forgejo URL, or a bare `#N` inferring
+The role comes first (`--driver` picks the harness, default claude; see
+[Drivers](#drivers)). **A bare ref with no role word runs the `engineer` role**.
+The ref is `owner/repo#N`, a full Forgejo URL, or a bare `#N` inferring
 `owner/repo` from the cwd's git origin; a query string or `#fragment` is ignored.
 
 ## Drivers

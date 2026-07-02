@@ -39,14 +39,13 @@ Rough edges:
 
 - **Model is pinned** to `qwen3-coder:30b` - `WARD_QWEN_MODEL`/`WARD_GOOSE_MODEL` are
   not threaded from the host (see below). Run `ollama pull qwen3-coder:30b` first.
-- **`--tailnet` implies `--aws`** (mounts `~/.aws` read-only; harmless if empty). A
-  coupling #395 removes.
+- **`--tailnet` implies `--aws`** (mounts `~/.aws` read-only; harmless if empty).
 - **A tailnet `WARNING:`** may print with no `tailscale0`, but the run still launches
   and the local dial still works - it warns about tailnet reach, not your Ollama.
 
 Verify: `--print` renders the `docker run` plan and exits (confirm `--network=host`).
-At launch ward TCP-probes the endpoint and aborts clean if down (ward#487,
-[agent-local-harnesses.md](agent-local-harnesses.md)); `WARD_SMOKE_TEST_SKIP=1` bypasses.
+At launch ward TCP-probes the endpoint and aborts clean if down
+([agent-local-harnesses.md](agent-local-harnesses.md)); `WARD_SMOKE_TEST_SKIP=1` bypasses.
 
 ## Docker Desktop: not your own Ollama yet
 
@@ -55,9 +54,9 @@ No BYO path today: the default is the container's own loopback (unrepointable),
 ([agent-host-net.md](agent-host-net.md)), and the sidecar
 ([agent-ts-sidecar.md](agent-ts-sidecar.md)) forwards to Coily's tower via the
 `mac-proxy` box (its preflight fails without it), not to your Ollama. So: use the
-tower with `--tailnet`, wait on #395, or run ward on native Linux.
+tower with `--tailnet`, wait on the fix, or run ward on native Linux.
 
-## Why there is no BYO knob yet (#395)
+## Why there is no BYO knob yet
 
 - `WARD_OLLAMA_URL`, `WARD_QWEN_MODEL`, `WARD_GOOSE_MODEL`, `WARD_GOOSE_PROVIDER` are
   read **only at in-container bootstrap** and are **not** threaded from the host, and
@@ -72,7 +71,7 @@ and model into env/config so a BYO endpoint is first-class.
 
 ## See also
 
-- [agent-local-harnesses.md](agent-local-harnesses.md) - local harness index + the ward#487 probe.
+- [agent-local-harnesses.md](agent-local-harnesses.md) - local harness index + the launch probe.
 - [agent-goose.md](agent-goose.md) / [agent-opencode.md](agent-opencode.md) - the driver pages.
 - [agent-host-net.md](agent-host-net.md) / [agent-ts-sidecar.md](agent-ts-sidecar.md) - the advanced Coily tower/tailnet routes.
 - [fleet-local.md](fleet-local.md) - the operator-local layer that can't repoint the endpoint yet.

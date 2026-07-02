@@ -34,7 +34,7 @@ The model only stays true if the boundary it claims is real: the only Go in **wa
 
 Release friction - keeping `cli-guard` and `ward` in step across a module
 boundary - has more than once prompted "why not merge cli-guard into ward and be
-done with the boundary?" It was considered and **rejected** (ward#325). The
+done with the boundary?" It was considered and **rejected** ([ward#325](https://forgejo.coilysiren.me/coilyco-flight-deck/ward/issues/325)). The
 boundary is load-bearing; collapsing it inverts the architecture.
 
 cli-guard is the engine *both* other layers stand on:
@@ -59,6 +59,4 @@ own.
 
 The release friction is real, but the fix is a **Go workspace** (`go.work`) that
 lets the inner dev loop resolve cli-guard locally without version churn - the
-boundary stays, only dev-time resolution gets easier. Collapsing the module
-boundary to save a few release steps trades a load-bearing wall for a
-convenience.
+boundary stays, only dev-time resolution gets easier.

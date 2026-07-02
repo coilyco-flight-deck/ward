@@ -120,11 +120,11 @@ func buildUpPlan(c *cli.Command, repo targetRepo, mode containerMode, cwd, asset
 	if err != nil {
 		return upPlan{}, err
 	}
-	// The director surface opts into a read-only bind of the host agent-log drain so it
-	// reads past runs' logs without a docker socket (ward#525); other runs leave it off.
+	// The director surface opts into a read-only bind of the redacted agent-log drain so it
+	// reads past runs' logs without a docker socket; other runs leave it off (ward#525/526).
 	agentLogs := ""
 	if mountAgentLogs {
-		agentLogs = agentLogsDir()
+		agentLogs = agentLogsRedactedDir()
 	}
 	// The per-container machine id: rides the ward.machine label, names issueless
 	// roles. A role-led run overrides Role+Name after this (ward#364).

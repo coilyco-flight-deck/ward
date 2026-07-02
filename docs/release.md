@@ -6,21 +6,21 @@ Forgejo-canonical release on push to `main`
 homebrew formula(e) so `brew upgrade ward` builds the new tag from source.
 
 ward's formula is build-from-source (a per-tag tarball `url` + `sha256` ->
-`go build`, since ward#116), so `brew` never consumes them - but the
+`go build`), so `brew` never consumes them - but the
 `publish-binaries` job still ships the full matrix + `SHA256SUMS` to **both** the
-Forgejo and GitHub release pages (ward#454, [release-binaries.md](release-binaries.md)).
+Forgejo and GitHub release pages ([release-binaries.md](release-binaries.md)).
 
 The release page carries **only** the `ward` binaries (+ checksums): `ward-kdl`
-and its `ward-kdl-{read,write,admin}` tiers are no longer public assets (ward#455)
+and its `ward-kdl-{read,write,admin}` tiers are no longer public assets
 - embedded in `ward`, spec authors build from a clone ([authoring](ward-kdl-authoring.md)).
-The broker's write-tier download 404s (ward#441); follow-up ward#501.
+The broker's write-tier download 404s - follow-up [ward#501](https://forgejo.coilysiren.me/coilyco-flight-deck/ward/issues/501).
 
 ## Version bump
 
 `actions/tag-bump` runs with no bump input, so every push-to-main release is a
 minor bump. For a major, cut the `vN.0.0` tag by hand; pushes resume minor from
 there. Release bodies are categorised
-([release-notes.md](release-notes.md), ward#486).
+([release-notes.md](release-notes.md)).
 
 ## Formula bump job
 
@@ -45,14 +45,14 @@ Set both in ward -> Settings -> Actions -> Secrets:
 
 The prior `tap-writer` runner credential helper
 (`infrastructure/deploy/forgejo-runner-tap-writer.yml`) is retired: it broke
-silently and froze the tap at v0.96.0 (the root cause behind ward#237). The
+silently and froze the tap at v0.96.0. The
 credential now lives in one rotatable, visible place instead of a hidden runner
 config.
 
 ### Failing loudly on write errors
 
 The bump step is `set -euo pipefail` and verifies its own work, so a stalled tap
-can never hide behind a green release (ward#237, where v0.97.0-v0.102.0 shipped
+can never hide behind a green release (where v0.97.0-v0.102.0 shipped
 without bumping the tap because the tap-write credential broke):
 
 - `pipefail` aborts if the tarball fetch behind the piped `sha256` fails, instead

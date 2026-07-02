@@ -10,14 +10,14 @@ agent.
 The entrypoint arms `reap` as a `trap ... EXIT` and does **not** `exec` the
 agent, so the reaper fires on every exit path - clean finish, crash, or Ctrl-C.
 By the time it runs, the agent's permissions are out of the loop, so nothing it
-does can defeat it. It is a hidden (ward#263) entrypoint-called verb.
+does can defeat it. It is a hidden entrypoint-called verb.
 
 ## What it does
 
 1. Stages and commits anything the agent left loose (`git add -A` + a
    `--no-verify` residual commit - the goal is to preserve work, not re-gate it).
 2. Records dispatch-time run provenance. See [run provenance](container-reap-provenance.md).
-3. Checks for **nothing to reap** *first* (ward#518): a clean tree with `HEAD`
+3. Checks for **nothing to reap** *first*: a clean tree with `HEAD`
    already in `origin/main` is done, before the salvage gates, which read the
    then-empty `origin/main..HEAD` and would else false-salvage a landed run.
 4. Verifies the carried issue has the same-repo `closes #N` reference. Missing
@@ -28,10 +28,10 @@ does can defeat it. It is a hidden (ward#263) entrypoint-called verb.
 7. Decides deterministically:
    - clean diff + clean integration -> **push straight to `main`**.
    - anything else (conflict, scan finding, rejected push) -> **salvage**: push to
-     a `ward-salvage/<id>` branch (durable), then notify (ward#518) - a **carried**
+     a `ward-salvage/<id>` branch (durable), then notify - a **carried**
      run comments the notice back on its issue and **reopens** it; a **freeform**
      run files exactly **one** standalone `[ward-salvage]` issue, never appended.
-8. Verifies each `--repo` grant landed (ward#291): reads `WARD_EXTRA_REPOS`,
+8. Verifies each `--repo` grant landed: reads `WARD_EXTRA_REPOS`,
    checks the closing-reference discipline, and reopens the issue if any grant
    did not reach `origin/main`.
 
@@ -58,7 +58,7 @@ salvage branch push fails on the same token, and the work falls through to the
 container-log recovery path (`docker logs <name>`). Work is preserved but recovery
 is manual. Before rotating, let in-flight runs finish.
 
-So an auth-cause salvage reads distinct from a conflict (ward#103), the reaper
+So an auth-cause salvage reads distinct from a conflict, the reaper
 classifies the push: credential-rejection markers (`Authentication failed`,
 `403`/`401`, ...) report `reasonAuthFail`, not the misleading race, and the issue
 gains a "Likely cause: dead/rotated PAT" section. A fully-dead token can't file

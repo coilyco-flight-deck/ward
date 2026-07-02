@@ -1,6 +1,6 @@
 # `ward ops forgejo` (in-binary mount)
 
-ward#92 cut the `ward` binary over to the ward-kdl forgejo guardfile: `ward ops
+The `ward` binary cut over to the ward-kdl forgejo guardfile: `ward ops
 forgejo <verb>` mounts the 42-leaf `specverb` surface directly in the
 shipped binary, alongside the out-of-band [`ward-kdl`](ops-forgejo.md). Every
 Forgejo call ward makes - `ward agent`, the container reaper - routes through
@@ -9,7 +9,7 @@ this mount (the old hand-rolled client is retired, below).
 The forgejo guardfile is pure `specverb` (HTTP/REST), so it carries no AWS SDK
 and folds into ward's normal `go build` cleanly. `cmd/ward/ops.go` parses the embedded
 guardfile + pruned spec lock and `specverb.Build`s the `forgejo` group under a
-new `ops` umbrella, re-rooted from `ward-kdl` to `ward` (ward#270) so its leaves
+new `ops` umbrella, re-rooted from `ward-kdl` to `ward` so its leaves
 audit as `ward.ops.forgejo.*`, wrapping each through ward's audit pipeline. The bot
 token (`value ssm`) resolves through ward's audited `aws ssm` runner, not the
 AWS SDK, and lazily - mount and `--dry-run` never touch SSM.
@@ -20,7 +20,7 @@ AWS SDK, and lazily - mount and `--dry-run` never touch SSM.
 truth (`make build-ward-kdl` re-runs `make sync-ops-assets`);
 `cmd/ward/opsassets_test.go` fails the build on drift.
 
-## The remote-exec slice grafted alongside (ward#81)
+## The remote-exec slice grafted alongside
 
 The four server-side `forgejo` maintenance subcommands with no REST equivalent
 (`admin user list/create`, `admin auth list`, `doctor check`) ride the
@@ -32,7 +32,7 @@ under one operator verb. That guardfile is ward-proper-only (no ward-kdl mirror,
 no spec lock, no SSM token), so it lives directly under `opsassets/` and is
 absent from the drift map. See [ops-forgejo-admin.md](ops-forgejo-admin.md).
 
-## `forgejo_issue.go` is retired (ward#92)
+## `forgejo_issue.go` is retired
 
 ward's hand-rolled Forgejo client is gone. Everything `ward agent` and the
 container reaper need - issue/comment reads, issue/comment writes, close, the
@@ -57,7 +57,7 @@ The survey's owner-repo listing grew the surface by two read leaves (now 42):
 (the coilyco-* orgs and the coilysiren user).
 
 The stale-ward release-tag scalar read had already moved onto this mount ahead of
-the rest (ward#172): `ops forgejo release list <owner> <repo> --query
+the rest: `ops forgejo release list <owner> <repo> --query
 "[0].tag_name" --output text` (see
 [agent-reservation.md](agent-reservation.md#host-stale-ward-reminder-ward143)).
 

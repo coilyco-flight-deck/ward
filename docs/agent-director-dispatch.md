@@ -4,7 +4,7 @@ How `ward agent director` classifies a **dispatch error** - the error the engine
 returns before a container detaches - decides whether the issue is retried or parked. See
 [agent-director.md](agent-director.md) for the heartbeat this feeds.
 
-## The rule (ward#352, ward#524)
+## The rule
 
 `directorDispatchDisposition` splits errors by whether they judged the **issue itself**:
 
@@ -27,10 +27,10 @@ signal the director LLM reads to "hold this tick", so a transient outage wedged 
 backlog permanently - nothing re-tested the recovered path. Deferring self-heals: the moment
 the fetch path is healthy again, the next tick dispatches.
 
-## Closing the LLM-layer livelock (ward#528)
+## Closing the LLM-layer livelock
 
 Deferring self-heals the **mechanical** layer, but only on the next *attempt*. The **LLM
-judgment** layer on top could still livelock: a pre-ward#524 infra-failure streak (or a run
+judgment** layer on top could still livelock: an infra-failure streak from before [ward#524](https://forgejo.coilysiren.me/coilyco-flight-deck/ward/issues/524) (or a run
 that parked `failed` with a 502 in its outcome text) stays the newest signal in RECENT
 OUTCOMES, the decision holds on it, holding dispatches nothing, and no fresh outcome ever
 displaces the stale one - a permanent `DISPATCH: none` hold with slots free and issues queued.
@@ -48,11 +48,11 @@ Two levers break it, both in the heartbeat ([agent-director.md](agent-director.m
   re-tests the recovered forge rather than trusting the LLM to. A substantive engineer
   block/failure in the window vetoes the override, and a non-`ok` probe leaves the hold intact.
 
-## The self-heal migration (ward#527)
+## The self-heal migration
 
-The ward#524 rule is forward-looking - it does not un-strand issues the **old** classifier
+The [ward#524](https://forgejo.coilysiren.me/coilyco-flight-deck/ward/issues/524) rule is forward-looking - it does not un-strand issues the **old** classifier
 already parked. On refresh, `applyRankedBacklogEntry` re-queues any headless-lane entry that
 is `failed` with the legacy `dispatch-error` status (`isStrandedDispatchError`), clearing its
-outcome. Because ward#524 gives genuine declines the distinct `declined` status, a
-`dispatch-error` entry can only be a pre-ward#524 launch/infra stranding, so this recovers
-exactly those without ever re-queuing a real per-issue decline.
+outcome. Because the rule gives genuine declines the distinct `declined` status, a
+`dispatch-error` entry can only be a launch/infra stranding from before [ward#524](https://forgejo.coilysiren.me/coilyco-flight-deck/ward/issues/524), so this
+recovers exactly those without ever re-queuing a real per-issue decline.

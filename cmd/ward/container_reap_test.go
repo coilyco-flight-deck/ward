@@ -13,6 +13,34 @@ import (
 	"forgejo.coilysiren.me/coilyco-flight-deck/cli-guard/pkg/scan"
 )
 
+// TestReapEnvContainerCorrelation asserts the reaper reads WARD_CONTAINER_NAME and
+// leads its start marker with container=<name> (ward#517), the run correlation id.
+func TestReapEnvContainerCorrelation(t *testing.T) {
+	t.Setenv("WARD_TARGET_OWNER", "coilyco-flight-deck")
+	t.Setenv("WARD_TARGET_NAME", "ward")
+	t.Setenv("WARD_FORGEJO_BASE", "https://forgejo.coilysiren.me")
+	t.Setenv("WARD_CONTAINER_NAME", "ward-agent-517-abc")
+	t.Setenv("WARD_TARGET_ISSUE", "517")
+
+	e, err := readReapEnv()
+	if err != nil {
+		t.Fatalf("readReapEnv: %v", err)
+	}
+	if e.Container != "ward-agent-517-abc" {
+		t.Fatalf("Container = %q, want the WARD_CONTAINER_NAME value", e.Container)
+	}
+	line := e.reapStartLine()
+	for _, want := range []string{
+		"container=ward-agent-517-abc",
+		"repo=coilyco-flight-deck/ward",
+		"issue=517",
+	} {
+		if !strings.Contains(line, want) {
+			t.Errorf("reap start line missing %q:\n%s", want, line)
+		}
+	}
+}
+
 // TestReadReapEnvIssueAndLaunched asserts the reaper reads the ward#264 signals
 // (WARD_TARGET_ISSUE, WARD_AGENT_LAUNCHED) and gates the release on them.
 func TestReadReapEnvIssueAndLaunched(t *testing.T) {

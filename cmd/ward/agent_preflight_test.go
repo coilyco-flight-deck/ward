@@ -11,6 +11,41 @@ import (
 	"forgejo.coilysiren.me/coilyco-flight-deck/cli-guard/cli/shell"
 )
 
+// TestRunPreflightGooseNeverRunsHostOneShot pins ward#153 closed: a goose dispatch,
+// barred from the host one-shot (ward#162), proceeds without a cwd-grounded read.
+func TestRunPreflightGooseNeverRunsHostOneShot(t *testing.T) {
+	// The barred branch returns before Capture, so io.Discard stderr is enough here;
+	// the ward#162 message is re-routed via captureTestStderr below.
+	r := &Runner{Runner: &shell.Runner{Stderr: io.Discard}}
+	w := resolvedWork{
+		Ref:   agentIssueRef{Owner: "coilyco-flight-deck", Repo: "ward", Number: 131},
+		Title: "some ward feature",
+		Body:  "implement cmd/ward-kdl wiring",
+	}
+
+	var proceed bool
+	var read string
+	var err error
+	stderr := captureTestStderr(t, func() {
+		proceed, read, err = r.runPreflight(context.Background(), modeGoose, "engineer", w)
+	})
+
+	if err != nil {
+		t.Fatalf("runPreflight(goose) errored: %v", err)
+	}
+	if !proceed {
+		t.Error("a goose dispatch must proceed to the isolated container run, never gate on a host read")
+	}
+	if read != "" {
+		t.Errorf("a barred goose pre-flight hands back no read; got %q", read)
+	}
+	// The stderr must name the local-model bar - proof the host one-shot was skipped
+	// rather than run in the dispatcher cwd (the ward#153 failure).
+	if !strings.Contains(stderr, "local-model harness") {
+		t.Errorf("expected the ward#162 local-model bar to fire (closing ward#153); stderr:\n%s", stderr)
+	}
+}
+
 // TestCapturePreflightRunsInNeutralDir pins the ward#169 lever: the read runs in a
 // fresh empty dir, never the dispatch cwd, and restores the cwd afterward.
 func TestCapturePreflightRunsInNeutralDir(t *testing.T) {

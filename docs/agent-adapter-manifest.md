@@ -7,7 +7,7 @@ headless stream format, and its auth. It lets ward be a *generic,
 manifest-backed driver* instead of hardcoding each agent in Go switches
 ([`container_compute.go`](../cmd/ward/container_compute.go): `agentBinary`,
 `contextLevel`, `hostPreflightArgv`) and bash cases
-([`entrypoint.sh`](../cmd/ward/containerassets/entrypoint.sh)). ward#152 removes
+([`entrypoint.sh`](../cmd/ward/containerassets/entrypoint.sh)). [ward#152](https://forgejo.coilysiren.me/coilyco-flight-deck/ward/issues/152) removes
 those switches for manifest lookups; a test pins it to today's behavior first.
 
 ## Where it lives, who publishes it
@@ -46,17 +46,17 @@ Field notes:
 - `stream: none` means the agent prints its own progress (goose/codex/opencode), so
   ward pipes nothing through its stream-json filter.
 - `argv.preflight: []` means no host one-shot (codex/opencode), so the GO/NO-GO
-  check bows out and dispatch proceeds (ward#147, ward#148).
+  check bows out and dispatch proceeds.
 - `argv.interactive` for goose is `[goose, session]`, opencode's `[opencode]`: no
   seed on argv, so the issue is pasted in by hand.
 - `argv.headless` for codex is `[codex, exec]`, opencode's `[opencode, run]` - each
-  its own dialect, not claude's stream-json flags (ward#178, ward#187).
-- `auth: ollama` (goose, ward#186): goose binds the tower Ollama, whose endpoint
+  its own dialect, not claude's stream-json flags.
+- `auth: ollama` (goose): goose binds the tower Ollama, whose endpoint
   ward resolves host-side from SSM and seeds into `~/.config/goose/config.yaml`.
 
-The `opencode` entry (roster key renamed from `qwen` by ward#401; `--mode qwen`
+The `opencode` entry (roster key renamed from `qwen`, `--mode qwen`
 still aliases) **self-installs at container start** (best-effort), so it needs no
-image baking (ward#187).
+image baking.
 
 ## The contract test
 
@@ -64,11 +64,11 @@ image baking (ward#187).
 fleet agrees, entry for entry, with the still-live Go switches. `TestAgentManifest*`
 pin the projection (binary, context level, argv dialect) to the switches;
 `TestFleetSwitchesTwoWayPin` pins `fleet.generated.kdl` against the `parseMode`
-roster. Once a three-way pin (fleet <-> YAML <-> switches, ward#415), it lost the
-YAML leg in ward#419. Change the fleet and the switch in lockstep, or it fails.
+roster. Formerly a three-way pin, it lost the YAML leg. Change the fleet
+and the switch in lockstep, or it fails.
 
 ## See also
 
-- ward#152 - the consumer: replace the switches/cases with manifest-backed lookup.
+- [ward#152](https://forgejo.coilysiren.me/coilyco-flight-deck/ward/issues/152) - the consumer: replace the switches/cases with manifest-backed lookup.
 - [container.md](container.md) - the container the manifest drives.
 - [agent.md](agent.md) - `ward agent <surface> --driver <name>`, which selects the mode.

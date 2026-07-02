@@ -28,6 +28,9 @@ type reapEnv struct {
 	Base  string
 	Mode  string
 	Token string
+	// Container is WARD_CONTAINER_NAME, the run correlation id stamped on the reap
+	// surface (ward#517). See docs/container-lifecycle-logs.md.
+	Container string
 	// UpAt is the container's RFC3339 start stamp (WARD_CONTAINER_UP), diffed
 	// against reap time to report the baked PAT's age on a salvage (ward#103).
 	UpAt string
@@ -51,14 +54,15 @@ const envAgentLaunched = "WARD_AGENT_LAUNCHED"
 
 func readReapEnv() (reapEnv, error) {
 	e := reapEnv{
-		Owner:    os.Getenv("WARD_TARGET_OWNER"),
-		Name:     os.Getenv("WARD_TARGET_NAME"),
-		Base:     os.Getenv("WARD_FORGEJO_BASE"),
-		Mode:     os.Getenv("WARD_MODE"),
-		Token:    os.Getenv("FORGEJO_TOKEN"),
-		UpAt:     os.Getenv("WARD_CONTAINER_UP"),
-		Launched: os.Getenv(envAgentLaunched) == "1",
-		ReadOnly: os.Getenv("WARD_READONLY") == "1",
+		Owner:     os.Getenv("WARD_TARGET_OWNER"),
+		Name:      os.Getenv("WARD_TARGET_NAME"),
+		Base:      os.Getenv("WARD_FORGEJO_BASE"),
+		Mode:      os.Getenv("WARD_MODE"),
+		Token:     os.Getenv("FORGEJO_TOKEN"),
+		UpAt:      os.Getenv("WARD_CONTAINER_UP"),
+		Container: os.Getenv("WARD_CONTAINER_NAME"),
+		Launched:  os.Getenv(envAgentLaunched) == "1",
+		ReadOnly:  os.Getenv("WARD_READONLY") == "1",
 	}
 	// A missing/garbage WARD_TARGET_ISSUE parses to 0: "no issue to release".
 	e.Issue, _ = strconv.Atoi(os.Getenv("WARD_TARGET_ISSUE"))
@@ -73,6 +77,13 @@ func readReapEnv() (reapEnv, error) {
 }
 
 func (e reapEnv) repo() targetRepo { return targetRepo{Owner: e.Owner, Name: e.Name} }
+
+// reapStartLine is the reaper's opening lifecycle marker (ward#517): the run
+// correlation id (container=) first, then key=value run-shape fields.
+func (e reapEnv) reapStartLine() string {
+	return fmt.Sprintf("ward container reap: start container=%s repo=%s/%s issue=%d readOnly=%t extraRepos=%d launched=%t",
+		e.Container, e.Owner, e.Name, e.Issue, e.ReadOnly, len(e.ExtraRepos), e.Launched)
+}
 
 // reservationReleasable reports whether a clean reap should retract this run's
 // hold: only a container that carried an issue and never launched the agent (ward#264).
@@ -112,8 +123,7 @@ func (r *Runner) runContainerReap(ctx context.Context, c *cli.Command) error {
 	if err != nil {
 		return err
 	}
-	fmt.Fprintf(os.Stderr, "ward container reap: start for %s/%s issue=%d readOnly=%t extraRepos=%d launched=%t\n",
-		env.Owner, env.Name, env.Issue, env.ReadOnly, len(env.ExtraRepos), env.Launched)
+	fmt.Fprintln(os.Stderr, env.reapStartLine())
 	if env.ReadOnly {
 		// A read-only explore session never mutates the remote (ward#293): skip
 		// capture/commit/push outright, leaving the throwaway clone untouched.
@@ -337,7 +347,7 @@ func (r *Runner) runProvenanceLanded(ctx context.Context, work string, prov runP
 func (r *Runner) salvage(ctx context.Context, work string, env reapEnv, reason reapReason, authCause bool, findings []scan.Finding, status string, dec reapDecision) error {
 	id := env.Name + "-" + randHex()
 	branch := salvageBranchName(id)
-	fmt.Fprintf(os.Stderr, "ward container reap: salvage start branch=%s reason=%s\n", branch, reason)
+	fmt.Fprintf(os.Stderr, "ward container reap: salvage start container=%s branch=%s reason=%s\n", env.Container, branch, reason)
 
 	// Dump the debugging block to stderr FIRST (ward#531): a dead-PAT salvage files
 	// no issue, so the container log is the only surface these facts reach.

@@ -67,6 +67,34 @@ func redactSecrets(s string) string {
 	return s
 }
 
+// redactConsole scrubs known secret shapes from a drained console (ward#526): the
+// redacted-at-rest console view, reusing the extractor's redactSecrets. No reflow.
+func redactConsole(console []byte) []byte {
+	if len(console) == 0 {
+		return nil
+	}
+	return []byte(redactSecrets(string(console)))
+}
+
+// redactedTranscript renders a drained transcript as one JSON envelope per line via
+// the SAME extractEnvelopes(_, true) the remote SigNoz export uses (ward#526).
+func redactedTranscript(transcript []byte) []byte {
+	envs := extractEnvelopes(transcript, true)
+	if len(envs) == 0 {
+		return nil
+	}
+	var out bytes.Buffer
+	for _, e := range envs {
+		data, err := json.Marshal(e)
+		if err != nil {
+			continue
+		}
+		out.Write(data)
+		out.WriteByte('\n')
+	}
+	return out.Bytes()
+}
+
 // bodyArgKeys are body-shaped tool inputs (file contents, edit payloads): dropped
 // from envelopes outright, never redacted-and-kept (docs/agent-observability.md).
 var bodyArgKeys = map[string]bool{

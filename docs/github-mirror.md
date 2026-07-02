@@ -10,10 +10,10 @@ on every push to `main` and carries git **refs plus front-door metadata**:
 - Scrubs stranded legacy GitHub Release objects (see below).
 
 This workflow does **not** create GitHub Release objects - the release pipeline
-does (ward#454): the same binary matrix + `SHA256SUMS` ships to a GitHub release
+does: the same binary matrix + `SHA256SUMS` ships to a GitHub release
 per tag ([release-binaries.md](release-binaries.md), [release.md](release.md)).
 
-## Front-door hygiene (ward#490)
+## Front-door hygiene
 
 GitHub is the external front door: it hosts the public issues and PRs an outside
 contributor files (canonical work stays on Forgejo, a maintainer carries an
@@ -34,7 +34,7 @@ Templates are tracked files, so the `main` force-push carries them for free:
 ### Description and topics: the sync step, not the push
 
 Description and topics are API-only metadata, not git objects, so they froze at
-whatever seeded the mirror (ward#438). The `Sync repo description and topics to
+whatever seeded the mirror. The `Sync repo description and topics to
 GitHub` step reads the **canonical** values from the Forgejo API (anonymous) and
 applies them via `GITHUB_MIRROR_PAT` - `PATCH /repos/{owner}/{repo}` and
 `PUT .../topics`. Forgejo stays the **single source of truth**: nothing is
@@ -42,7 +42,7 @@ hardcoded, so editing on Forgejo and pushing `main` is enough. It is PAT-gated
 and parses JSON with `node` (present for the JS actions), since the `docker`
 runner has no `jq`.
 
-## Why (ward#477)
+## Why
 
 A `github-only-dev` cold-read found the mirror frozen at **v0.5.8** (36 tags)
 while canonical raced past **v0.24x** - a current README over a Releases page
@@ -55,12 +55,12 @@ compounding defects:
 - **Stranded v0.5.x releases.** Release objects left by the retired
   `.github/workflows` semantic-release run (authored by `github-actions[bot]`)
   sat stale on top. An **author-guarded** scrub step deletes only bot-authored
-  releases via the API, so ward#454's PAT-authored release story survives. It
+  releases via the API, so [ward#454](https://forgejo.coilysiren.me/coilyco-flight-deck/ward/issues/454)'s PAT-authored release story survives. It
   is idempotent - once they are gone it no-ops.
 - **Silent freeze (the recurrence).** The whole workflow is
   `GITHUB_MIRROR_PAT`-gated; the first cut skipped with `exit 0` on a missing
   PAT, so an expired PAT froze the *entire* mirror behind a green check - the
-  ward#237 tap failure mode. Each step now **fails loud** (`::error` +
+  [ward#237](https://forgejo.coilysiren.me/coilyco-flight-deck/ward/issues/237) tap failure mode. Each step now **fails loud** (`::error` +
   `exit 1`), so a down PAT shows a red run within minutes. The fix is
   operational: rotate `GITHUB_MIRROR_PAT` in ward -> Settings -> Actions ->
   Secrets, then any push to `main` re-converges. (The release pipeline's own

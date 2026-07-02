@@ -1,4 +1,4 @@
-# Repointing the tailnet + tower topology (ward#395)
+# Repointing the tailnet + tower topology
 
 ward's tailnet routing ([agent-ts-sidecar.md](agent-ts-sidecar.md)) once baked its
 network name, proxy box, and tower host/port as Go literals. Those are **infra data**,
@@ -25,9 +25,9 @@ same tower the host resolved.
 
 ## Scope note
 
-This is the runtime-topology half of the agentic-os#308 Bucket C audit. The forge base,
-registry image, and SSM paths are deployment/spec-bundle data and move with ward#453 /
-ward#503, not here. Per-agent model + provider values are Bucket A (agentic-os#306).
+This is the runtime-topology half of the [agentic-os#308](https://github.com/coilysiren/agentic-os/issues/308) Bucket C audit. The forge base,
+registry image, and SSM paths are deployment/spec-bundle data and move with [ward#453](https://forgejo.coilysiren.me/coilyco-flight-deck/ward/issues/453) /
+[ward#503](https://forgejo.coilysiren.me/coilyco-flight-deck/ward/issues/503), not here. Per-agent model + provider values are Bucket A.
 
 ## See also
 
