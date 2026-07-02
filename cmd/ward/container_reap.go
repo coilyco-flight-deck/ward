@@ -472,8 +472,16 @@ func (r *Runner) issueClosingReferencePresent(ctx context.Context, work string, 
 	// This prevents an agent from creating a commit with incorrect issue number such as:
 	// "closes #425" when carrying issue #426, which would be rejected for landing.
 	commits := strings.Split(strings.TrimSpace(string(out)), "\n\n")
+
+	// Handle edge case: git log returns nothing
+	if len(commits) == 0 || (len(commits) == 1 && strings.TrimSpace(commits[0]) == "") {
+		return false
+	}
+
 	for _, commit := range commits {
-		if strings.Contains(strings.ToLower(commit), pattern) {
+		// Ensure we're really checking content, not just blank lines
+		trimmedCommit := strings.TrimSpace(commit)
+		if trimmedCommit != "" && strings.Contains(strings.ToLower(trimmedCommit), pattern) {
 			return true
 		}
 	}
