@@ -1,0 +1,37 @@
+# toy - ward's minimal example repo config. ward reads only `commands:` and
+# `security:`; `catalog:` is agentic-os tooling metadata it ignores. The
+# security: block is required per ward#450. Field reference: ../../docs/ward-yaml.md.
+catalog:
+  description: "toy - ward's minimal example repo, the demo (ward#250/#251) and spec-bundle (ward#453) anchor."
+  dependsOn: []
+
+commands:
+  build:
+    run: make build
+    description: Build the greet CLI.
+  test:
+    run: make test
+    description: Run the unit tests.
+  install:
+    run: make install
+    description: Install greet into ./build (toy stand-in for GOBIN).
+  vet:
+    run: make vet
+    description: Static-check the shell sources.
+
+security:
+  protected_binaries:
+    - name: docker
+      mode: deny-direct
+      allowed_wrappers:
+        - ward-kdl docker
+      expected_real_paths:
+        - /usr/local/bin/docker
+        - /opt/homebrew/bin/docker
+  sudo:
+    forbid_passwordless: true
+  hooks:
+    deny_bare_binaries:
+      - kubectl
+    route_hints:
+      kubectl: "route kubectl through a ward-kdl wrapper, not the bare binary"

@@ -97,6 +97,10 @@ New to ward? Read [architecture.md](architecture.md) first - it frames the whole
 - [ops-forgejo-view.md](ops-forgejo-view.md) - the lean `issue view` override.
 - [ops-forgejo-quiet.md](ops-forgejo-quiet.md) - the `issue create --quiet` machine-output mode.
 
+## Examples
+
+- [example-repo.md](example-repo.md) - the `examples/toy/` minimal ward-managed repo (Makefile + `.ward/ward.yaml` with a `security:` block + a ward-kdl guardfile), the demo and spec-bundle anchor.
+
 ## Release
 
 - [release.md](release.md) - the Forgejo-canonical release pipeline.

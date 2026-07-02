@@ -1,0 +1,17 @@
+// toy guardfile - a minimal ward-kdl permission surface (exec dialect) for the
+// example repo. Deny-by-default: only the read-only `status`/`list` verbs of a
+// fictional `widget` CLI mount; every mutating verb falls through to the host
+// deny, and the two `never` lines make that refusal explicit. This is the shape
+// a consumer authors before generating a gated CLI. See ../../docs/example-repo.md
+// and ../../docs/ward-kdl-authoring.md.
+wrap toy widget {
+    exec widget
+    can run status {
+        describe "show widget state (read-only)"
+    }
+    can run list {
+        describe "list widgets (read-only)"
+    }
+    never run delete
+    never run apply
+}
