@@ -1,9 +1,9 @@
-# ward-kdl permission tiers: layout + the ward#339 placeholders
+# ward-kdl permission tiers: layout + the [ward#339](https://forgejo.coilysiren.me/coilyco-flight-deck/ward/issues/339) placeholders
 
 The `ward-kdl-{read,write,admin}` binaries are the permission-tiered cut of the
-spec-dialect surface: read ⊂ write ⊂ admin, composed by `inherit` (cli-guard#160),
+spec-dialect surface: read ⊂ write ⊂ admin, composed by `inherit`,
 each its own binary so a withheld verb is **absent at compile time**, not denied at
-runtime. forgejo (ward#240/#278) and signoz (ward#338) are fully tiered; their
+runtime. forgejo and signoz are fully tiered; their
 guardfiles live beside this doc's siblings under
 `cmd/ward-kdl/ward-kdl-<tier>/ward-kdl.<area>.<tier>.guardfile.kdl`. The
 build that compiles them is `make build-ward-kdl-tiers` (folded into
@@ -12,7 +12,7 @@ and merges those sharing a `wrap ward-kdl-<tier>` binary name. See
 [ward-kdl.md](ward-kdl.md) for what ward-kdl is, and
 [ward-kdl-surface.md](ward-kdl-surface.md) for the forgejo tier surface.
 
-## The remaining areas are scaffolded as placeholders (ward#344)
+## The remaining areas are scaffolded as placeholders
 
 The five spec-dialect areas not yet tiered - **trello, tailscale, glitchtip,
 glama, skillsmp** - each have a read/write/admin **placeholder** in the tier dirs,
@@ -25,8 +25,8 @@ their sibling tier by relative path. Where the tiered verbs will go, each carrie
 // TODO(ward#339): tier verbs
 ```
 
-This is structural prep for the ward#339 migration only - **no `can`/`never`/
-`override` authoring, no keyword work** (that fan-out is gated on cli-guard#169).
+This is structural prep for the [ward#339](https://forgejo.coilysiren.me/coilyco-flight-deck/ward/issues/339) migration only - **no `can`/`never`/
+`override` authoring, no keyword work** (that fan-out is gated on [cli-guard#169](https://forgejo.coilysiren.me/coilyco-flight-deck/cli-guard/issues/169)).
 
 ### Why `.placeholder`, and how to wire an area in
 
@@ -39,7 +39,7 @@ placeholder carries a `.guardfile.kdl.placeholder` suffix that dodges the glob:
 **staged in the tier dir (discoverable), excluded from the build until its verbs
 land.** All five areas are staged-only; forgejo + signoz are untouched.
 
-To wire an area in (the ward#339 per-area run):
+To wire an area in (the [ward#339](https://forgejo.coilysiren.me/coilyco-flight-deck/ward/issues/339) per-area run):
 
 1. `git mv` all three tier files, dropping the `.placeholder` suffix. The
    `inherit` paths are already written to the final `.guardfile.kdl` names, so the
@@ -47,7 +47,7 @@ To wire an area in (the ward#339 per-area run):
 2. Replace the `TODO(ward#339): tier verbs` marker with the tier's `can`/`never`
    grants (read = get/list-shaped; write adds create/edit; admin adds delete).
 3. `make build-ward-kdl` - the tier loop now discovers the file, copies the base
-   `cmd/ward-kdl/<spec>` into each tier dir (gitignored, per ward#338), locks the
+   `cmd/ward-kdl/<spec>` into each tier dir (gitignored), locks the
    pruned `*.openapi.lock.json` (tracked), and builds the binary.
 
 The base monolith guardfiles (`cmd/ward-kdl/ward-kdl.<area>.guardfile.kdl`) and

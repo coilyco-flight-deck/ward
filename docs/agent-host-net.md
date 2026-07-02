@@ -1,6 +1,6 @@
 # ward agent: tailnet route (--tailnet)
 
-`--tailnet` is the **opt-in network escalation** (ward#330, consolidated ward#362):
+`--tailnet` is the **opt-in network escalation**:
 one user flag that reaches tailnet-only hosts like `<ollama-host>`. It **auto-selects
 the mechanism by platform** - the host-network route on native Linux, the SOCKS5
 sidecar on Docker Desktop (where the host VM is not a tailnet node) - and implies
@@ -23,7 +23,7 @@ That netns is a tailnet node - so the run inherits `tailscale0` + MagicDNS and
 reaches the tower directly, no in-container `tailscaled`/auth key/minting - **only
 on a native-Linux host that is itself on the tailnet**.
 
-## It does nothing for the tailnet on Docker Desktop (ward#332)
+## It does nothing for the tailnet on Docker Desktop
 
 On **Docker Desktop** (macOS/Windows) the daemon runs inside a **LinuxKit VM**, so
 `--network=host` joins the run to the **VM's** netns, which is **not** a tailnet node:
@@ -40,14 +40,14 @@ Even on native Linux a container often needs `100.100.100.100` added to its
 MagicDNS config ([tailscale/tailscale#14467](https://github.com/tailscale/tailscale/issues/14467)).
 
 The portable route, and the only one on Docker Desktop, is the **sidecar**: a SOCKS5
-proxy that **is** a tailnet node, which `--tailnet` auto-selects there (ward#349). See
+proxy that **is** a tailnet node, which `--tailnet` auto-selects there. See
 [agent-ts-sidecar.md](agent-ts-sidecar.md).
 
 ## Wiring
 
 A shared `tailnetFlags()` on the four container-spinning surfaces registers
 `--tailnet` + the hidden `--tailnet-mode`. `resolveTailnet` picks the mechanism by
-platform (ward#362), and the host-net choice threads `upPlan.HostNet` into
+platform, and the host-net choice threads `upPlan.HostNet` into
 `--network=host` from `dockerArgvHead` (shows in `--print`). The warning fires from
 `createAgentContainer`, the shared launch point.
 
@@ -56,7 +56,7 @@ platform (ward#362), and the host-net choice threads `upPlan.HostNet` into
 `--tailnet` **widens isolation** to the host's network view, so it is opt-in.
 The tower's FQDN is SSM-only (never hardcoded), and a route with no resolver is
 useless - so `--tailnet` **implies the `~/.aws` mount** `--aws` adds, on both
-mechanisms (ward#362). A tower run pinned to the host-net route:
+mechanisms. A tower run pinned to the host-net route:
 
 ```bash
 warded engineer coilyco-flight-deck/agent-proxy#1 --tailnet --tailnet-mode host-net

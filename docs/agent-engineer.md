@@ -1,13 +1,13 @@
 # ward agent engineer
 
 `ward agent engineer` (public face `warded engineer`) is the **implement-a-ticket**
-role of the startup roster (ward#347): it carries a Forgejo issue end to end -
+role of the startup roster: it carries a Forgejo issue end to end -
 implement, commit, merge to main, push, `closes #N`. It folds in the retired
 `headless`/`task` verbs, and **the argument type selects the mode**. Engineer is
-**detached / autonomous only** (ward#356): hands-on work goes to the
+**detached / autonomous only**: hands-on work goes to the
 [director](agent-director.md).
 
-A **bare ref with no role word also routes to engineer** (ward#282, ward#347), so
+A **bare ref with no role word also routes to engineer**, so
 `warded #98` *is* `warded engineer #98` - the fire-and-forget default.
 
 ## Usage
@@ -38,11 +38,11 @@ Reaper enforces `closes #N` before landing.
 The engineer always **detaches** fire-and-forget (was `headless`): print mode
 (`claude -p`/`codex exec`/`goose run -t`). From a terminal it first runs a **pre-flight**
 ([agent-preflight.md](agent-preflight.md)): a GO launches, a NO-GO comments and launches
-nothing. Its seed closes with a `WARD-OUTCOME`-led retro (ward#281, ward#310) the
-[director](agent-director.md) reads, and is shaped by the body (ward#157, ward#400):
+nothing. Its seed closes with a `WARD-OUTCOME`-led retro the
+[director](agent-director.md) reads, and is shaped by the body:
 empty bodies say so, **every** driver gets the body inlined **verbatim** as a **frozen
 snapshot** at dispatch (image markup intact, a no-vision line, URL live for
-comments - ward#405 dropped the strip), **logged** for `grep`.
+comments), **logged** for `grep`.
 
 Because that snapshot is never re-read, a **reserved issue is immutable** to the run in
 flight - a correction after dispatch goes to a new issue, not an edit or comment: see
@@ -59,11 +59,11 @@ Two sub-modes by repo omission:
 - **DIRECT** — an explicit `owner/repo` (or `--instructions-file` with cwd inference);
   filed there and carried, same detached run + pre-flight. Title is the first
   instruction line (≤72 runes); body is the instructions + a provenance footer.
-- **ROUTE** (ward#164) — a freeform task and no repo. ward files an intake record in
+- **ROUTE** — a freeform task and no repo. ward files an intake record in
   `coilysiren/inbox`, surveys the fleet to route it (`REPO`/`UNCLEAR`), files a scoped
   child, cross-links + closes intake, then carries the child. An UNCLEAR or untrusted
   target bounces to a human. The survey *is* the gate (ROUTE skips the pre-flight); it
-  needs a trusted cloud host slot (ward#162), else use DIRECT.
+  needs a trusted cloud host slot, else use DIRECT.
 
 ## Trust gate and dry-run
 

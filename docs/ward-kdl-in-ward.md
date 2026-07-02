@@ -1,11 +1,11 @@
 # Auto-mounting ward-kdl exec guardfiles into `ward`
 
-ward#284 wires the exec-dialect ward-kdl guardfiles into the `ward` binary as a
+[ward#284](https://forgejo.coilysiren.me/coilyco-flight-deck/ward/issues/284) wires the exec-dialect ward-kdl guardfiles into the `ward` binary as a
 **general delegation mechanism**, replacing the one-off graft pattern. Before
 this, the only exec surface reachable through `ward` was the hand-grafted
 `graftForgejoAdminExec` slice (cmd/ward/ops.go); every other guardfile -
 including `ward-kdl.git.guardfile.kdl` - compiled only into the standalone
-`ward-kdl` binary and was reachable nowhere through `ward`.
+`ward-kdl` binary.
 
 ## What mounts
 
@@ -35,9 +35,9 @@ the sibling `cmd/ward-kdl/` dir), parses each with `execverb.Parse`,
 intermediate groups (`ops`, `agents`) once. `main.go` calls `mountWardKdlExec`
 before the verb-fallback set is read, so the new top-level groups (`docker`,
 `agents`) count as real verbs. Every leaf wraps through ward's audit pipeline, so
-each call writes one JSONL audit row and the wrapped binary owns its own
-credentials. `env` values resolve lazily at exec time (e.g. ollama's
-`OLLAMA_HOST` from SSM), so mounting never touches a token source.
+each call writes one JSONL audit row and the wrapped binary owns its
+credentials. `env` values resolve lazily at exec time, so mounting never
+touches a token source.
 
 Adding a new exec guardfile + `make build-ward-kdl` is the only step to grow the
 surface - no per-guardfile Go graft.

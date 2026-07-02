@@ -6,7 +6,7 @@ per run** to carry a single feature start to merge - implement, commit, merge to
 [ward#98](https://forgejo.coilysiren.me/coilyco-flight-deck/ward/issues/98)).
 
 The user-facing entrypoint is **[`ward agent`](agent.md)**, not a `ward
-container` verb: ward#263 retired the hand-run `up`/`exec`/`down`/`ls` leaves,
+container` verb: the hand-run `up`/`exec`/`down`/`ls` leaves were retired,
 leaving `ward container` plumbing-only and hidden from `ward --help` (only the
 entrypoint-internal `reap`/`bootstrap` remain; debug uses raw `docker`).
 
@@ -32,7 +32,7 @@ ward agent engineer coilyco-gaming/eco-app#123 --print  # show the docker cmd on
 
 `ward agent engineer --help` lists the launch flags (`--driver`, `--aws`,
 `--print`, `--no-pull`, ...; see [agent-flags.md](agent-flags.md)). The
-**engineer always detaches** (ward#356): interactive work goes to the
+**engineer always detaches**: interactive work goes to the
 [director](agent-director.md), whose surface owns the attached auto-TTY shape
 ([agent-surface.md](agent-surface.md)).
 
@@ -41,7 +41,7 @@ ward agent engineer coilyco-gaming/eco-app#123 --print  # show the docker cmd on
 `ward agent`'s `--driver` picks the harness **and** its context level (mirroring
 agent-compose's slices): `claude`/`goose` at level 2 (doctrine + cwd
 `CLAUDE.md`/`AGENTS.md`), `codex` at level 1 (cwd `AGENTS.md` only), `opencode` at
-level 0 (doctrine only, self-installing; ward#187). The level exports as
+level 0 (doctrine only, self-installing). The level exports as
 `WARD_CONTEXT_LEVEL`; the in-tree `AGENTS.md` loads on top ([agent.md](agent.md)).
 
 ## The image
@@ -51,7 +51,7 @@ Every run pulls **one** image, run unmodified: the aos-published dev-base
 **Forgejo container registry** at `forgejo.coilysiren.me`. **Anonymous pull
 works** - a cold host `docker pull`s it with no login. `:latest` is a **moving
 tag** (each aos release also tags `vX.Y.Z`); pin off it with `--image` / `--tag`
-or `WARD_AGENT_IMAGE` / `WARD_AGENT_TAG` (ward#312). Full registry / tag-policy /
+or `WARD_AGENT_IMAGE` / `WARD_AGENT_TAG`. Full registry / tag-policy /
 provenance detail: [container-image.md](container-image.md).
 
 ## Inside the container

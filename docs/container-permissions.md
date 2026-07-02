@@ -61,7 +61,7 @@ On a default run the blast radius is one repo because only one repo is
 Whatever the scope, the teardown reaper ([container-reap.md](container-reap.md))
 pushes only the **target** to `main`. It never lands a `--repo` grant - it only
 **verifies** each reached `origin/main`, salvaging and reopening the issue on one
-that never did (ward#291). Grants are driven to their push by the agent.
+that never did. Grants are driven to their push by the agent.
 
 ## No deny wall
 

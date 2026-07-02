@@ -38,10 +38,9 @@ filing - that already know the mode rather than inheriting it from the env.
 Distinct from the body footer above: the **git author/committer** on
 warded-agent commits, the **tap-bump author** in `.forgejo/workflows/release.yml`,
 and the **git-over-HTTPS push user** all attribute to the `coilyco-ops` bot
-([ward#245](https://forgejo.coilysiren.me/coilyco-flight-deck/ward/issues/245),
-folding in agentic-os#252 and infra#384 step 2).
+([ward#245](https://forgejo.coilysiren.me/coilyco-flight-deck/ward/issues/245)).
 
-Per agentic-os#244 an aos bot uses its agent name as both git name and
+An aos bot uses its agent name as both git name and
 git-email prefix. The **email is load-bearing**: Forgejo links a commit to an
 account by matching the commit email against an address registered on that
 account, so the bot's registered email (`coilyco-ops@coilysiren.me`, set by
@@ -58,7 +57,7 @@ Three knobs carry this, all defaulting to the bot and overridable by env:
   `coilyco-ops`; the `FORGEJO_TOKEN` it pairs with is the bot's.
 - **Tap bump** - `release.yml`'s `bump-tap-formula` sets `user.email` to the bot
   (keeping the `forgejo-tap-writer` name); push auth rides
-  `secrets.TAP_WRITE_TOKEN` (ward#243), untouched here.
+  `secrets.TAP_WRITE_TOKEN`, untouched here.
 
 The bot account must have the chosen email registered for the link to resolve;
 that registration is an infrastructure step, not a ward code concern.

@@ -1,16 +1,16 @@
-# ward agent: headless pre-flight (ward#137, ward#147)
+# ward agent: headless pre-flight
 
 `headless` detaches into a fire-and-forget run nobody is watching, so when it is
 **dispatched interactively** (a human at the terminal) ward inserts a quick
-pre-flight *before* detaching. The gate is **fire-and-forget from your POV**
-(ward#147): you launch and walk away, and ward acts on the agent's verdict with
+pre-flight *before* detaching. The gate is **fire-and-forget from your POV**:
+you launch and walk away, and ward acts on the agent's verdict with
 no prompt to answer:
 
 1. The agent gets a short prompt and answers whether it can carry the issue to
    merge unattended, ending on a `GO` / `NO-GO: <reason>` line. Four moving parts:
    - **Prompt shape** - carries the issue title + body **and its comment thread**.
    - **Thread filtering** - the thread is fed so a decision the author made in the
-     comments overrides the original framing (ward#154): the prompt weighs the
+     comments overrides the original framing: the prompt weighs the
      latest word, not just the body, so re-dispatching after a comment answers a
      question clears the gate. ward's own automated
      comments (reservation pings and prior NO-GO verdicts, both carrying a hidden
@@ -21,7 +21,7 @@ no prompt to answer:
    - **cwd isolation** - the read is **issue-text-only**: the real run happens in
      a fresh clone in the container, so the prompt tells the agent the host cwd
      is unrelated scratch and to judge from the issue alone. ward also runs the
-     read in a neutral empty temp dir, **not the dispatch cwd** (ward#169), so an
+     read in a neutral empty temp dir, **not the dispatch cwd**, so an
      agent walking the working tree finds nothing to mistake for the clone -
      stopping a read from one repo's checkout false-flagging `WRONG-REPO` when its
      files look "missing" locally. Both levers are belt-and-suspenders; either
@@ -29,13 +29,13 @@ no prompt to answer:
 2. On **GO** - or any read ward can't pin to an explicit NO-GO - the detached run
    launches. The bias is to proceed: only the agent itself saying "don't" blocks.
    An explicit **GO** also folds the read into the
-   [reservation comment](agent-reservation.md) ward posts to claim the issue
-   (ward#383), so the thread records *why* it was judged carriable. A read with no
+   [reservation comment](agent-reservation.md) ward posts to claim the issue,
+   so the thread records *why* it was judged carriable. A read with no
    clear verdict line proceeds but folds in nothing.
 3. On **NO-GO** ward launches nothing and instead **posts a comment on the issue**
    with the reason, the full read (folded away), and how to re-dispatch - the work
    lands back in front of a human rather than failing silently.
-4. On **WRONG-REPO** (ward#159) - the agent judged, from the issue text alone,
+4. On **WRONG-REPO** - the agent judged, from the issue text alone,
    that the work plainly belongs in a *different* repo - ward **blind-fires** a
    fresh issue into that repo and launches nothing here. See
    [docs/agent-wrong-repo.md](agent-wrong-repo.md).
@@ -47,11 +47,11 @@ The check is skipped when there is no terminal (scripted/piped), on
 launched from a TTY that you still want to fire blind - it also re-dispatches a
 NO-GO issue you've decided is good to go). Only a **trusted cloud harness**
 (claude) runs the host read; a **local-model harness** (goose/opencode) is barred
-(ward#162, [agent-preflight-trust.md](agent-preflight-trust.md)). A barred mode, a
+([agent-preflight-trust.md](agent-preflight-trust.md)). A barred mode, a
 mode with no one-shot wired (`codex`), no agent binary, or an incomplete read all
 **proceed** rather than block, since none of those is the agent declining the work
 (and the reaper still backstops residual work).
-`task` runs this **same pre-flight** (ward#149); see
+`task` runs this **same pre-flight**; see
 [docs/agent-subcommands.md](agent-subcommands.md).
 
 ## See also

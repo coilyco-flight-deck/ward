@@ -6,7 +6,7 @@ A task sometimes spans repos, though - a contract change in one repo and its
 consumer in another. `--repo` grants a run **additional writable repos**,
 explicitly, so the agent can clone and operate against more than the target.
 Epic [ward#230](https://forgejo.coilysiren.me/coilyco-flight-deck/ward/issues/230).
-Shortened from `--with-repo` in [ward#280](https://forgejo.coilysiren.me/coilyco-flight-deck/ward/issues/280); that alias was dropped in ward#362, so the flag is now just `--repo`.
+Shortened from `--with-repo` in [ward#280](https://forgejo.coilysiren.me/coilyco-flight-deck/ward/issues/280); that alias was dropped, so the flag is now just `--repo`.
 
 This is deliberately opt-in. The container doctrine
 ([AGENTS.container.md](../cmd/ward/containerassets/AGENTS.container.md)) walls an
@@ -53,7 +53,7 @@ warming uses so concurrent containers don't race a mirror.
 The teardown reaper ([container-reap.md](container-reap.md)) **lands** only the
 target (`$WARD_REAP_WORK`) - it never pushes a granted repo to `main`, so the
 agent must drive each grant to its own clean push **before it exits**. It does
-**verify** them, though (ward#291): it reads `WARD_EXTRA_REPOS` and checks each
+**verify** them, though: it reads `WARD_EXTRA_REPOS` and checks each
 granted clone's `HEAD` reached the freshly-fetched `origin/main`. A grant that
 never landed (primary push fires `closes #N` while a non-fast-forward or dead PAT
 rejects the secondary) is preserved on a `ward-salvage/<id>` branch and the issue
@@ -64,12 +64,12 @@ rejects the secondary) is preserved on a `ward-salvage/<id>` branch and the issu
 `--repo` flows host-side -> container as
 the space-separated `owner/name` list `WARD_EXTRA_REPOS` (`upPlan.ExtraRepos`,
 validated by `parseExtraRepos`). Both bootstrap paths clone the set after the
-target: the bash `clone_extra_repos` and the Go `cloneExtraRepos` (ward#181).
+target: the bash `clone_extra_repos` and the Go `cloneExtraRepos`.
 
 ## Pre-flight knows the grant
 
 The pre-flight read ([docs/agent-preflight.md](agent-preflight.md)) is fed the `--repo` list and told the
-grants are writable, so a cross-repo migration whose deliverable lands in a granted repo is in scope, not a false `NO-GO` (ward#266).
+grants are writable, so a cross-repo migration whose deliverable lands in a granted repo is in scope, not a false `NO-GO`.
 
 ## See also
 

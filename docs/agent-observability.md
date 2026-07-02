@@ -2,17 +2,15 @@
 
 A headless `ward agent` run used to be unqueryable after it finished: its console
 lived only in Docker's driver (gone with the keep-10 `docker rm`), and the claude
-**transcript** (`~/.claude/projects/**/*.jsonl`) died with the container. ward#363
-opened the drain; ward#532 reshaped where it lands; ward#510 made it fire shortly
-after exit, not only at eviction.
+**transcript** (`~/.claude/projects/**/*.jsonl`) died with the container.
 
 ## The drain - host-native, shortly after exit
 
 The [reaper](container-reap.md) runs **inside** the container with no docker
 socket, so the drain is **host-side**, at two points sharing an idempotency marker
 ([drain-timing.md](drain-timing.md)): a detached waiter draining the moment a
-container exits (ward#510), and the keep-10 [sweep](container-cleanup.md) draining
-every exited run **before** the `rm` takes its log (ward#363).
+container exits, and the keep-10 [sweep](container-cleanup.md) draining
+every exited run **before** the `rm` takes its log.
 
 Every drain pulls three things **into memory**: the console (`docker logs`,
 stdout+stderr merged), the transcript (`docker cp`'d out of the projects tree and
@@ -26,7 +24,7 @@ through a **strict allowlist** - `Config.Env` also carries the `--env-file` secr
 (`FORGEJO_TOKEN`, `WARD_CLAUDE_CREDS_B64`), never copied out; a test guards it. The
 `outcome` is inferred from the reaper's console markers.
 
-## Sink modes (ward#532)
+## Sink modes
 
 Where a drained run lands is a selectable sink, `WARD_AGENT_SINK`:
 
@@ -35,7 +33,7 @@ Where a drained run lands is a selectable sink, `WARD_AGENT_SINK`:
 - **`both`** - do both.
 
 The default is **local-exclusive + full**: the whole run ships to the **local**
-SigNoz (infrastructure#435; `http://localhost:4318` default, override
+SigNoz (`http://localhost:4318` default, override
 `WARD_AGENT_TELEMETRY_ENDPOINT`) and nothing is written to disk. `WARD_AGENT_SINK`
 is the operator-local knob; `resolveSinkMode` is the seam a future ward-kdl config
 field slots behind (env > config > default). An unrecognized value falls back.

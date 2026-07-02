@@ -1,7 +1,7 @@
 # ward agent advisor
 
 `ward agent advisor` (public face `warded advisor`) is the **counsel** role of the
-startup roster (ward#347): it answers and **writes no code**. It merges the retired
+startup roster: it answers and **writes no code**. It merges the retired
 `reply` + `ask` verbs, and **the argument type selects the mode**. See
 [docs/agent.md](agent.md).
 
@@ -22,10 +22,10 @@ mode**. Either way advisor changes no code and carries nothing to merge.
 
 A ref plus a prompt: advisor does a one-shot research pass and either posts the answer
 **as a comment on that issue** or, when the work spans multiple repos, **fans it out into
-per-repo issues** plus one index comment (ward#424, [agent-advisor-fanout.md](agent-advisor-fanout.md)).
+per-repo issues** plus one index comment ([agent-advisor-fanout.md](agent-advisor-fanout.md)).
 It runs as a **host one-shot** on the same trusted slot the pre-flight and route survey
 use, so it is only wired for `claude`; a local-model (`goose`, `opencode`) or unwired
-(`codex`) harness refuses, pointing at a cloud mode (ward#162).
+(`codex`) harness refuses, pointing at a cloud mode.
 
 It validates the ref + prompt + `--thoroughness`, trust-gates the owner (posts run under
 ward's bot identity), resolves the issue + thread, and researches in a neutral temp dir.
@@ -52,7 +52,7 @@ repo clone and operating context. It resolves the context repo (`--repo`, else t
 git origin), trust-gates the owner, and spins an attached container seeded with the
 question; the [reaper](container-reap.md) sweeps it on exit. The agent stays **read-only**.
 
-**Interactive by default (ward#388).** With a terminal attached, the freeform advisor
+**Interactive by default.** With a terminal attached, the freeform advisor
 drops you into a **live seeded session** - the plain `claude <seed>` launch, seeded with
 `interactivePrompt` - so you can keep poking at the scratch clone after the first answer.
 
@@ -71,5 +71,5 @@ plan, stating which path runs. Neither researches, runs, nor posts anything.
 
 - [docs/agent.md](agent.md) - the roster and the `warded` face.
 - [docs/agent-engineer.md](agent-engineer.md) - the implement-a-ticket role.
-- [docs/agent-advisor-fanout.md](agent-advisor-fanout.md) - the structured emit and cross-repo fan-out (ward#424).
+- [docs/agent-advisor-fanout.md](agent-advisor-fanout.md) - the structured emit and cross-repo fan-out.
 - [docs/agent-attribution.md](agent-attribution.md) - how the comment is signed.

@@ -3,8 +3,7 @@
 `ward-kdl` is the build-time authoring layer: a source file in, a validated
 least-privilege or fleet manifest out, embedded into `ward` with nothing fetched
 at runtime. For what the layer **is**, see [ward-kdl.md](ward-kdl.md). This doc is
-the one findable place for **how you author and swap a bundle** (ward#437,
-ward#440).
+the one findable place for **how you author and swap a bundle**.
 
 **First, confirm you need one.** Most adopters do not - the dev-verb gate is
 `.ward/ward.yaml` alone. You author (or swap) a guardfile only to run your own
@@ -31,7 +30,7 @@ rest of this doc is how you get the compiler and swap the bundle.
 
 `ward-kdl` is **not** a public install artifact: the brew formula installs only
 `ward`, whose embedded surfaces cover what an end user runs, so neither the
-authoring binary nor the tier CLIs ship on the release page (ward#455). A spec
+authoring binary nor the tier CLIs ship on the release page. A spec
 author builds it from a ward checkout with `make build-ward-kdl` (-> `bin/ward-kdl`
 plus the read/write/admin tiers). See **Bring your own specs** below to point that
 build at your own deployment bundle.
@@ -40,8 +39,7 @@ build at your own deployment bundle.
 
 The KDL sources `ward-kdl` compiles are a bundle: the guardfiles, their spec
 locks, and `ward-kdl.fleet.kdl`. Those values are deployment config, not engine
-code (ward#441), and the build swaps them through a fixed assets-dir
-convention (ward#453).
+code, and the build swaps them through a fixed assets-dir convention.
 
 ## Bring your own specs
 
