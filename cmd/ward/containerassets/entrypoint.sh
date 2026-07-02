@@ -30,6 +30,10 @@ WARD_TOWER_OLLAMA_LOCAL="${WARD_TOWER_OLLAMA_LOCAL:-http://localhost:11434}"
 # load-bearing match Forgejo links on (ward#245, docs/agent-attribution.md).
 GIT_USER_NAME="${WARD_GIT_NAME:-coilyco-ops}"
 GIT_USER_EMAIL="${WARD_GIT_EMAIL:-coilyco-ops@coilysiren.me}"
+# Target repo forge + clone base (ward#489; docs/agent-github.md). CloneBase defaults
+# to WARD_FORGEJO_BASE, which stays Forgejo for ward's own release/broker download.
+WARD_FORGE="${WARD_FORGE:-forgejo}"
+WARD_CLONE_BASE="${WARD_CLONE_BASE:-$WARD_FORGEJO_BASE}"
 # Additional writable repos this run was explicitly granted (--repo, ward#230):
 # a space-separated owner/name list, each cloned full under /workspace.
 WARD_EXTRA_REPOS="${WARD_EXTRA_REPOS:-}"
@@ -48,9 +52,17 @@ export CLIGUARD_NO_SANDBOX=1
 # reports the baked Forgejo PAT's age on a salvage issue (ward#103).
 export WARD_CONTAINER_UP="${WARD_CONTAINER_UP:-$(date -u +%Y-%m-%dT%H:%M:%SZ)}"
 
-forgejo_host="$(printf '%s' "$WARD_FORGEJO_BASE" | sed -E 's#^https?://##; s#/.*$##')"
+# The git-credential host + push user follow the TARGET forge (ward#489): github.com
+# with the x-access-token user for GitHub, else the Forgejo host with the coilyco-ops bot.
+clone_host="$(printf '%s' "$WARD_CLONE_BASE" | sed -E 's#^https?://##; s#/.*$##')"
+forgejo_host="$clone_host"
+if [ "$WARD_FORGE" = "github" ]; then
+  git_push_user="x-access-token"
+else
+  git_push_user="coilyco-ops"
+fi
 
-# --- forgejo git auth (token rides --env-file, never argv) -------------------
+# --- git auth (token rides --env-file, never argv) ---------------------------
 # Written --system so the root reaper and the dropped non-root agent both read it.
 configure_git_auth() {
   git config --system user.name "$GIT_USER_NAME"
@@ -61,8 +73,9 @@ configure_git_auth() {
   git config --system --add safe.directory '*'
   if [ -n "${FORGEJO_TOKEN:-}" ]; then
     git config --system credential.helper 'store --file=/etc/ward-git-credentials'
-    # Push as the coilyco-ops bot: FORGEJO_TOKEN is the bot's (ward#245).
-    printf 'https://%s:%s@%s\n' coilyco-ops "$FORGEJO_TOKEN" "$forgejo_host" > /etc/ward-git-credentials
+    # Push as the forge's bot: FORGEJO_TOKEN carries the Forgejo bot's token, or the
+    # user-supplied GitHub token with the x-access-token user (ward#245, ward#489).
+    printf 'https://%s:%s@%s\n' "$git_push_user" "$FORGEJO_TOKEN" "$clone_host" > /etc/ward-git-credentials
     # Readable by root (reaper) and the dropped agent group, not world; git's store
     # helper clobbers this on clone, so it's re-asserted before the drop (ward#288).
     chown "root:$AGENT_GID" /etc/ward-git-credentials
@@ -249,7 +262,7 @@ install_opencode() {
 # --- cached fresh clone (mirror in the shared gitcache volume) ---------------
 clone_target() {
   local mirror="$WARD_GITCACHE/${WARD_MIRROR_NAME}"
-  local url="$WARD_FORGEJO_BASE/$WARD_TARGET_OWNER/$WARD_TARGET_NAME.git"
+  local url="$WARD_CLONE_BASE/$WARD_TARGET_OWNER/$WARD_TARGET_NAME.git"
   mkdir -p "$WARD_GITCACHE"
   if [ -d "$mirror" ]; then
     log "refreshing cached mirror $mirror"
@@ -320,7 +333,9 @@ HOOK
 clone_extra_repo() {
   local owner="$1" name="$2"
   local mirror="$WARD_GITCACHE/${owner}__${name}.git"
-  local url="$WARD_FORGEJO_BASE/$owner/$name.git"
+  # Granted repos share the target's forge (ward#489); substrate reference repos below
+  # stay Forgejo regardless.
+  local url="$WARD_CLONE_BASE/$owner/$name.git"
   # Refresh the shared bare mirror under an flock (many containers may share it),
   # mirroring warm_substrate_repo; then drop a fresh writable working copy.
   (

@@ -10,23 +10,23 @@ import (
 	"strings"
 	"time"
 
+	"forgejo.coilysiren.me/coilyco-flight-deck/cli-guard/cli/dispatch"
 	"forgejo.coilysiren.me/coilyco-flight-deck/cli-guard/pkg/exitcode"
 	"forgejo.coilysiren.me/coilyco-flight-deck/cli-guard/pkg/issueref"
 	"forgejo.coilysiren.me/coilyco-flight-deck/cli-guard/pkg/ownertrust"
 	"github.com/urfave/cli/v3"
 )
 
-const githubBaseURL = "https://github.com"
-
 // agent.go wires the `ward agent` umbrella + the shared dispatch internals the engineer
 // role uses (ward#263, ward#347), sharing the bring-up Go directly. See docs/agent.md.
 
-// agentIssueRef is a parsed issue reference for `ward agent ... work`.
+// agentIssueRef is a parsed issue reference for `ward agent`. Forge tags the host:
+// a github.com ref parses to forgeGitHub, everything else forgeForgejo (ward#489).
 type agentIssueRef struct {
 	Owner  string
 	Repo   string
 	Number int
-	Base   string
+	Forge  forge
 }
 
 func (r agentIssueRef) String() string {
@@ -38,13 +38,10 @@ func (r agentIssueRef) repoSlug() string {
 	return r.Owner + "/" + r.Repo
 }
 
-// url renders the canonical issue URL for the seeded prompt.
+// url renders the canonical issue URL for the seeded prompt, off the ref's forge
+// base (Forgejo or GitHub); both use the /owner/repo/issues/N path shape (ward#489).
 func (r agentIssueRef) url() string {
-	base := r.Base
-	if base == "" {
-		base = forgejoBaseURL
-	}
-	return fmt.Sprintf("%s/%s/%s/issues/%d", strings.TrimRight(base, "/"), r.Owner, r.Repo, r.Number)
+	return fmt.Sprintf("%s/%s/%s/issues/%d", strings.TrimRight(r.Forge.baseURL(), "/"), r.Owner, r.Repo, r.Number)
 }
 
 // carryIssueBanner renders the exact carried issue once, as a stable identity
@@ -60,13 +57,14 @@ func parseAgentIssueRef(s string) (agentIssueRef, error) {
 	if s == "" {
 		return agentIssueRef{}, fmt.Errorf("empty issue reference")
 	}
-	var err error
-	for _, base := range []string{forgejoBaseURL, githubBaseURL} {
-		ref, parseErr := issueref.Parse(s, base)
-		if parseErr == nil {
-			return agentIssueRef{Owner: ref.Owner, Repo: ref.Repo, Number: ref.Number, Base: base}, nil
-		}
-		err = parseErr
+	// A github.com URL or `github.com/owner/repo#N` short form is unambiguously a
+	// GitHub ref (ward#489); anything else falls through to the Forgejo parser.
+	if ghRef, ok := parseGitHubIssueRef(s); ok {
+		return ghRef, nil
+	}
+	ref, err := issueref.Parse(s, forgejoBaseURL)
+	if err == nil {
+		return agentIssueRef{Owner: ref.Owner, Repo: ref.Repo, Number: ref.Number}, nil
 	}
 	// A non-issue URL is a valid freeform pointer, just not an issue ref -
 	// steer to the task verb that carries arbitrary pointers (ward#234).
@@ -157,6 +155,30 @@ func grantedRepoDoneClause(extra []targetRepo) string {
 		joined)
 }
 
+// forgeDisplayName is the capitalized forge name the seed + prompts read with.
+func forgeDisplayName(f forge) string {
+	if f == forgeGitHub {
+		return "GitHub"
+	}
+	return "Forgejo"
+}
+
+// forgeCarryClause is the forge-specific tail of the seed's carry sentence (ward#489):
+// Forgejo merges to main + pushes; GitHub pushes a branch + opens a PR (the merge gate).
+func forgeCarryClause(ref agentIssueRef) string {
+	if ref.Forge == forgeGitHub {
+		return fmt.Sprintf(
+			"implement on a feature branch, commit, push the branch to origin, and open a pull request "+
+				"with `gh pr create` whose body carries `Closes #%d`. Do NOT push to the repository's `main` "+
+				"branch directly - on GitHub the pull request is the merge gate. `gh` is authenticated from "+
+				"the GITHUB_TOKEN in your environment.",
+			ref.Number)
+	}
+	return fmt.Sprintf(
+		"implement, commit, merge to main, push - and close the issue with a commit trailer: closes #%d.",
+		ref.Number)
+}
+
 // agentSeedPrompt seeds the agent, harness-agnostic (ward#405): the issue, a first
 // move (ward#157), --details (ward#167), a done-condition (ward#291), a retro (#281).
 func agentSeedPrompt(ref agentIssueRef, title, body, details string, headless bool, extra []targetRepo) string {
@@ -188,12 +210,10 @@ func agentSeedPrompt(ref agentIssueRef, title, body, details string, headless bo
 	}
 
 	seed := fmt.Sprintf(
-		"Work on Forgejo issue %s (%q).\n\n"+
+		"Work on %s issue %s (%q).\n\n"+
 			"URL: %s\n\n"+
-			"%s\n\n%s Then carry it end to end per your container doctrine - "+
-			"implement, commit, merge to main, push - and close the issue with a commit "+
-			"trailer: closes #%d.",
-		ref, title, ref.url(), carryIssueBanner(ref), action, ref.Number)
+			"%s\n\n%s Then carry it end to end per your container doctrine - %s",
+		forgeDisplayName(ref.Forge), ref, title, ref.url(), carryIssueBanner(ref), action, forgeCarryClause(ref))
 	if details = strings.TrimSpace(details); details != "" {
 		seed += fmt.Sprintf(
 			"\n\nOperator note (added at dispatch via --details; treat it as authoritative and "+
@@ -419,6 +439,7 @@ func agentSurfaceFlags() []cli.Flag {
 		&cli.StringFlag{Name: "branch", Hidden: true, Usage: "feature branch to create inside the clone (default: issue-<N>)"},
 		&cli.StringSliceFlag{Name: "repo", Usage: "grant the agent an additional writable repo to clone + operate against (owner/name; repeatable). Cloned as a full feature copy under /workspace alongside the issue's repo (ward#230, ward#280)."},
 		&cli.StringFlag{Name: "details", Usage: "extra operator instructions woven into the seeded prompt + pre-flight read (overrides the issue text on conflict)"},
+		&cli.BoolFlag{Name: "github", Usage: "treat a bare owner/repo#N ref as a GitHub issue (clone/push + comments + PR on GitHub via a user-supplied token; ward#489). A github.com URL infers this automatically."},
 	}
 	flags = append(flags, agentImageFlags()...)
 	flags = append(flags,
@@ -455,12 +476,17 @@ func (r *Runner) resolveAgentWork(ctx context.Context, c *cli.Command, mode cont
 	if err != nil {
 		return resolvedWork{}, fmt.Errorf("%s: %w", label, err)
 	}
+	// --github forces a bare owner/repo#N onto the GitHub forge (a github.com URL
+	// already parses there on its own; ward#489). See docs/agent-github.md.
+	if c.Bool("github") {
+		ref.Forge = forgeGitHub
+	}
 	// Trust gate: the in-container agent runs under bypassPermissions, so only
 	// spin one up for an owner in the primary-org set. Mirrors dispatch's check.
 	if !r.ownerAllowed(ref.Owner) {
 		return resolvedWork{}, r.untrustedOwnerErr(label, ref.Owner)
 	}
-	issue, err := r.fetchForgejoIssue(ctx, ref.Owner, ref.Repo, ref.Number)
+	issue, err := r.fetchIssue(ctx, ref)
 	if err != nil {
 		return resolvedWork{}, fmt.Errorf("%s: resolve issue %s: %w", label, ref, err)
 	}
@@ -486,10 +512,20 @@ func (r *Runner) resolveAgentWork(ctx context.Context, c *cli.Command, mode cont
 	return resolvedWork{Ref: ref, Title: title, Body: issue.Body, Comments: comments, Details: details, ExtraRepos: extra, Seed: agentSeedPrompt(ref, title, issue.Body, details, true, extra)}, nil
 }
 
+// fetchIssue reads the issue off the ref's forge (Forgejo via the ops mount, GitHub
+// via `gh`; ward#489), the pre-flight resolve seam that fails fast before a container.
+func (r *Runner) fetchIssue(ctx context.Context, ref agentIssueRef) (*dispatch.Issue, error) {
+	cl, err := r.hostForgeClient(ctx, ref.Forge, currentAgentMode())
+	if err != nil {
+		return nil, err
+	}
+	return cl.getIssue(ctx, ref.Owner, ref.Repo, ref.Number)
+}
+
 // fetchIssueComments returns the comment thread (oldest first) for the pre-flight
-// read via the host Forgejo client; caller degrades gracefully on error.
+// read via the ref's forge client; caller degrades gracefully on error.
 func (r *Runner) fetchIssueComments(ctx context.Context, ref agentIssueRef) ([]issueComment, error) {
-	cl, err := r.hostForgejoClient(ctx)
+	cl, err := r.hostForgeClient(ctx, ref.Forge, currentAgentMode())
 	if err != nil {
 		return nil, err
 	}
@@ -783,17 +819,17 @@ func (r *Runner) handlePreflightWrongRepo(ctx context.Context, mode containerMod
 	}
 
 	fmt.Fprintf(os.Stderr, "%s: pre-flight WRONG-REPO for %s -> %s; blind-firing an issue there, launching nothing.\n", label, w.Ref, target.slug())
-	cl, err := r.hostForgejoClient(ctx)
+	// The blind-fire target lives on the same forge as the source issue (ward#489).
+	signed, err := r.hostForgeClient(ctx, w.Ref.Forge, mode)
 	if err != nil {
 		return err
 	}
-	signed := cl.withMode(mode)
 	number, err := signed.createIssue(ctx, target.Owner, target.Name,
 		w.Title, blindfireIssueBody(mode, surface, w, outcome.Reason))
 	if err != nil {
 		return fmt.Errorf("blind-fire issue into %s: %w", target.slug(), err)
 	}
-	filed := agentIssueRef{Owner: target.Owner, Repo: target.Name, Number: number}
+	filed := agentIssueRef{Owner: target.Owner, Repo: target.Name, Number: number, Forge: w.Ref.Forge}
 	fmt.Fprintf(os.Stderr, "%s: blind-fired %s - %s\n", label, filed, filed.url())
 	// Point the original issue at the freshly-filed one so the trail is visible.
 	if cerr := signed.commentIssue(ctx, w.Ref.Owner, w.Ref.Repo, w.Ref.Number,
@@ -907,11 +943,11 @@ func parsePreflightVerdict(read string) preflightOutcome {
 // postPreflightNoGo comments the NO-GO verdict back on the issue (host Forgejo
 // client, SSM-backed token), bouncing it to a human instead of failing silently.
 func (r *Runner) postPreflightNoGo(ctx context.Context, mode containerMode, surface string, ref agentIssueRef, reason, read string) error {
-	cl, err := r.hostForgejoClient(ctx)
+	cl, err := r.hostForgeClient(ctx, ref.Forge, mode)
 	if err != nil {
 		return err
 	}
-	return cl.withMode(mode).commentIssue(ctx, ref.Owner, ref.Repo, ref.Number, preflightNoGoComment(mode, surface, reason, read))
+	return cl.commentIssue(ctx, ref.Owner, ref.Repo, ref.Number, preflightNoGoComment(mode, surface, reason, read))
 }
 
 // preflightNoGoMarker tags every NO-GO comment so a later pre-flight read can
@@ -1007,6 +1043,7 @@ func buildAgentPlan(c *cli.Command, mode containerMode, ref agentIssueRef, seed 
 	// repo+issue (ward#364). Issue also carries so the reaper can release it (ward#264).
 	plan.Role = roleEngineer
 	plan.Issue = ref.Number
+	plan.Forge = ref.Forge
 	plan.Name = containerRoleName(roleEngineer, mode, repo, ref.Number, plan.Machine)
 	plan.Headless = true
 	plan.Interactive = false
@@ -1091,7 +1128,7 @@ func (r *Runner) launchAgentContainer(ctx context.Context, c *cli.Command, mode 
 	} else {
 		fmt.Fprintf(os.Stderr, "%s: image pull skipped for %s (--no-pull)\n", label, plan.Image)
 	}
-	envFile, cleanupEnv, err := r.writeTokenEnvFile(ctx, planDispatchTarget(plan), r.resolveAgentCreds(ctx, mode))
+	envFile, cleanupEnv, err := r.writeTokenEnvFile(ctx, planDispatchTarget(plan), plan.Forge, r.resolveAgentCreds(ctx, mode))
 	if err != nil {
 		return err
 	}

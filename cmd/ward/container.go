@@ -212,9 +212,12 @@ func (r *Runner) resolveOllamaHost(ctx context.Context) string {
 	return strings.TrimSpace(string(out))
 }
 
-// resolveForgejoToken resolves the child env-file's forge token: the broker seed
-// first (broker-side, not a token the agent holds; ward#334), then env, then SSM.
-func (r *Runner) resolveForgejoToken(ctx context.Context, target broker.Target) (string, error) {
+// resolveForgejoToken resolves the child env-file's push/API token: GitHub from a
+// user env token only (ward#489); Forgejo via broker seed (ward#334), then env, then SSM.
+func (r *Runner) resolveForgejoToken(ctx context.Context, target broker.Target, f forge) (string, error) {
+	if f == forgeGitHub {
+		return resolveGitHubToken()
+	}
 	if tok, ok := r.brokerDispatchSeed(ctx, target); ok {
 		return tok, nil
 	}
@@ -232,8 +235,8 @@ func (r *Runner) resolveForgejoToken(ctx context.Context, target broker.Target) 
 
 // writeTokenEnvFile resolves the forgejo token (+ optional base64'd agent creds) into a
 // private 0600 --env-file (none enters argv/audit); target lets a brokered box seed it.
-func (r *Runner) writeTokenEnvFile(ctx context.Context, target broker.Target, creds []agentsapi.EnvLine) (path string, cleanup func(), err error) {
-	token, err := r.resolveForgejoToken(ctx, target)
+func (r *Runner) writeTokenEnvFile(ctx context.Context, target broker.Target, fg forge, creds []agentsapi.EnvLine) (path string, cleanup func(), err error) {
+	token, err := r.resolveForgejoToken(ctx, target, fg)
 	if err != nil {
 		return "", func() {}, err
 	}
@@ -248,10 +251,23 @@ func (r *Runner) writeTokenEnvFile(ctx context.Context, target broker.Target, cr
 		cleanup()
 		return "", func() {}, fmt.Errorf("ward container: secure env-file: %w", cherr)
 	}
+	// FORGEJO_TOKEN is the git-credential channel the entrypoint reads for BOTH
+	// forges (the credential username differs by forge, the env key does not).
 	if _, werr := fmt.Fprintf(f, "FORGEJO_TOKEN=%s\n", token); werr != nil {
 		_ = f.Close()
 		cleanup()
 		return "", func() {}, fmt.Errorf("ward container: write env-file: %w", werr)
+	}
+	// A GitHub run also needs `gh` authenticated inside the container - for the
+	// issue comments and `gh pr create` - so seed GH_TOKEN + GITHUB_TOKEN (ward#489).
+	if fg == forgeGitHub {
+		for _, key := range []string{"GH_TOKEN", "GITHUB_TOKEN"} {
+			if _, werr := fmt.Fprintf(f, "%s=%s\n", key, token); werr != nil {
+				_ = f.Close()
+				cleanup()
+				return "", func() {}, fmt.Errorf("ward container: write github token to env-file: %w", werr)
+			}
+		}
 	}
 	// Agent credentials (claude OAuth, codex auth.json) ride base64'd, one line
 	// each, after the token; the entrypoint decodes whichever its mode needs.

@@ -391,8 +391,11 @@ type upPlan struct {
 	Mode        containerMode
 	Branch      string
 	ForgejoBase string
-	HostCwd     string
-	Mounts      []mountSpec
+	// Forge is the TARGET repo's host (ward#489): forgeGitHub clones/comments on GitHub,
+	// else Forgejo. ForgejoBase stays Forgejo (ward's own release/broker), regardless.
+	Forge   forge
+	HostCwd string
+	Mounts  []mountSpec
 	// Interactive attaches the run (stdin kept open); false means --detach (-d).
 	Interactive bool
 	// TTY allocates a pseudo-terminal (-t), auto-detected: true only with a real
@@ -548,6 +551,12 @@ func (p upPlan) wardEnv() map[string]string {
 	}
 	if len(p.ExtraRepos) > 0 {
 		env["WARD_EXTRA_REPOS"] = extraReposEnv(p.ExtraRepos)
+	}
+	// A GitHub run clones off github.com + drives `gh` (ward#489); Forgejo runs emit
+	// neither key, so their env is unchanged (WARD_FORGEJO_BASE stays Forgejo).
+	if p.Forge == forgeGitHub {
+		env["WARD_FORGE"] = p.Forge.String()
+		env["WARD_CLONE_BASE"] = p.Forge.baseURL()
 	}
 	return env
 }

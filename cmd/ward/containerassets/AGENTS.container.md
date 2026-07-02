@@ -37,6 +37,20 @@ asks," "confirm before outward-facing actions," and "stop for merge conflicts"
 defaults. The operator opted into this autonomy by launching the container; the
 container's lifetime *is* the feature's lifetime.
 
+## GitHub-hosted runs land through a pull request (ward#489)
+
+Most runs target Forgejo and land by pushing `main`, as above. A run whose target
+lives on **GitHub** (the env carries `WARD_FORGE=github`, the clone came off
+`github.com`) lands **differently**: implement on your feature branch, commit,
+**push the branch**, and **open a pull request** with `gh pr create` whose body
+carries `Closes #<n>`. Do **not** push GitHub's `main` directly - on GitHub the
+pull request is the merge gate, and `main` is typically protected. `gh` is already
+authenticated from the `GITHUB_TOKEN` in your environment, and git push uses the
+same token. Your seed prompt says which forge this run targets, so follow it; when
+it says GitHub, the opened PR - not a `main` push - is your done-condition. The
+reaper will not open the PR for you (it only preserves a branch on GitHub), so
+opening it yourself before you exit is the job.
+
 ## Where the wall still is
 
 Autonomy covers **this feature on this repo** (and any repos this run was

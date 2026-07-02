@@ -58,6 +58,11 @@ type bootstrapEnv struct {
 	// the push credential, compose the restriction. See docs/agent-surface.md.
 	ReadOnly    bool
 	ForgejoHost string
+	// Forge is the TARGET repo's host (ward#489): GitHub clones off CloneBase as
+	// x-access-token, else Forgejo + coilyco-ops. CloneBase defaults to ForgejoBase.
+	Forge     forge
+	CloneBase string
+	CloneHost string
 	// ExtraRepos are the additional writable repos this run was granted via
 	// --repo (WARD_EXTRA_REPOS); each is cloned full under /workspace (ward#230).
 	ExtraRepos []targetRepo
@@ -159,6 +164,11 @@ func readBootstrapEnv() (bootstrapEnv, error) {
 		return e, fmt.Errorf("missing WARD_FORGEJO_BASE")
 	}
 	e.ForgejoHost = forgejoHostFromBase(e.ForgejoBase)
+	// The TARGET forge + clone base (ward#489); CloneBase defaults to the Forgejo base
+	// so a run that names neither behaves exactly as before.
+	e.Forge = parseForge(os.Getenv("WARD_FORGE"))
+	e.CloneBase = envOr("WARD_CLONE_BASE", e.ForgejoBase)
+	e.CloneHost = forgejoHostFromBase(e.CloneBase)
 	e.ExtraRepos = parseExtraReposEnv(os.Getenv("WARD_EXTRA_REPOS"), e.TargetOwner, e.TargetName)
 	e.Issue, _ = strconv.Atoi(os.Getenv("WARD_TARGET_ISSUE"))
 	return e, nil
@@ -357,8 +367,9 @@ func (r *Runner) configureGitAuth(ctx context.Context, e bootstrapEnv) {
 	}
 	_ = r.Runner.Exec(ctx, "git", "config", "--system", "credential.helper",
 		"store --file=/etc/ward-git-credentials")
-	// Push as the coilyco-ops bot: FORGEJO_TOKEN is the bot's (ward#245).
-	cred := fmt.Sprintf("https://%s:%s@%s\n", "coilyco-ops", token, e.ForgejoHost)
+	// Push as the forge's bot: FORGEJO_TOKEN carries the Forgejo bot token (coilyco-ops)
+	// or the user-supplied GitHub token with the x-access-token user (ward#245, ward#489).
+	cred := fmt.Sprintf("https://%s:%s@%s\n", e.Forge.gitPushUser(), token, e.CloneHost)
 	if werr := os.WriteFile("/etc/ward-git-credentials", []byte(cred), 0o640); werr != nil {
 		blog("could not write git credentials: %v", werr)
 		return
@@ -477,7 +488,7 @@ func (r *Runner) ensureGitCredReadable(e bootstrapEnv) error {
 // a working clone under /workspace and return its path.
 func (r *Runner) cloneTarget(ctx context.Context, e bootstrapEnv) (string, error) {
 	mirror := filepath.Join(e.GitCache, e.MirrorName)
-	url := e.ForgejoBase + "/" + e.TargetOwner + "/" + e.TargetName + ".git"
+	url := e.CloneBase + "/" + e.TargetOwner + "/" + e.TargetName + ".git"
 	_ = os.MkdirAll(e.GitCache, 0o755)
 	if isDir(mirror) {
 		blog("clone start: refreshing cached mirror %s", mirror)
@@ -556,7 +567,7 @@ func (r *Runner) cloneExtraRepos(ctx context.Context, e bootstrapEnv) {
 // with the target's push posture + pre-commit gate; flock-guarded, never fatal.
 func (r *Runner) cloneExtraRepo(ctx context.Context, e bootstrapEnv, repo targetRepo) {
 	mirror := filepath.Join(e.GitCache, repo.Owner+"__"+repo.Name+".git")
-	url := e.ForgejoBase + "/" + repo.Owner + "/" + repo.Name + ".git"
+	url := e.CloneBase + "/" + repo.Owner + "/" + repo.Name + ".git"
 	lock := filepath.Join(e.GitCache, "."+repo.Owner+"__"+repo.Name+".lock")
 	r.withFlock(lock, func() {
 		if isDir(mirror) {

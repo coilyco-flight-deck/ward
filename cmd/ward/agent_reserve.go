@@ -289,9 +289,9 @@ const reservationWarnToken = "remote reservation NOT posted"
 // acquireRemoteReservation refuses on a fresh reservation comment (unless force), else
 // posts one - best-effort but no longer silent: retried, then a WARN (ward#402, docs).
 func (r *Runner) acquireRemoteReservation(ctx context.Context, label string, mode containerMode, ref agentIssueRef, container, justification string, now time.Time, force bool) error {
-	cl, err := r.hostForgejoClient(ctx)
+	cl, err := r.hostForgeClient(ctx, ref.Forge, mode)
 	if err != nil {
-		warnRemoteReservationLost(label, ref, fmt.Sprintf("could not build the forgejo client: %v", err))
+		warnRemoteReservationLost(label, ref, fmt.Sprintf("could not build the %s client: %v", ref.Forge, err))
 		return nil
 	}
 	if !force {
@@ -306,7 +306,7 @@ func (r *Runner) acquireRemoteReservation(ctx context.Context, label string, mod
 	}
 	tries, perr := postReservationComment(ctx, remoteReservationPostAttempts, remoteReservationPostBackoff, reservationPostSleep,
 		func(ctx context.Context) error {
-			return cl.withMode(mode).commentIssue(ctx, ref.Owner, ref.Repo, ref.Number,
+			return cl.commentIssue(ctx, ref.Owner, ref.Repo, ref.Number,
 				reservationCommentBody(mode, container, hostname(), now, justification))
 		})
 	if perr != nil {

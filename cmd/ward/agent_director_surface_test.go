@@ -75,7 +75,7 @@ func TestResolveForgejoTokenPrefersEnv(t *testing.T) {
 
 	// No WARD_BROKER_SOCK here, so the broker seed is inert and the env/SSM path runs.
 	t.Setenv("FORGEJO_TOKEN", "env-token")
-	got, err := r.resolveForgejoToken(t.Context(), broker.Target{})
+	got, err := r.resolveForgejoToken(t.Context(), broker.Target{}, forgeForgejo)
 	if err != nil {
 		t.Fatalf("resolveForgejoToken (env set): %v", err)
 	}
@@ -84,7 +84,7 @@ func TestResolveForgejoTokenPrefersEnv(t *testing.T) {
 	}
 
 	t.Setenv("FORGEJO_TOKEN", "")
-	got, err = r.resolveForgejoToken(t.Context(), broker.Target{})
+	got, err = r.resolveForgejoToken(t.Context(), broker.Target{}, forgeForgejo)
 	if err != nil {
 		t.Fatalf("resolveForgejoToken (env empty): %v", err)
 	}
