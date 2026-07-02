@@ -113,7 +113,6 @@ type issueForge interface {
 	commentIssue(ctx context.Context, owner, repo string, number int, body string) error
 	closeIssue(ctx context.Context, owner, repo string, number int) error
 	reopenIssue(ctx context.Context, owner, repo string, number int) error
-	findOpenIssueByTitlePrefix(ctx context.Context, owner, repo, prefix string) (int, bool, error)
 }
 
 // hostForgeClient returns the issue-thread client for f, signing writes as mode.

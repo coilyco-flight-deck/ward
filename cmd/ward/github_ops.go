@@ -15,10 +15,6 @@ import (
 // github_ops.go is ward's GitHub issue-thread client (ward#489): shells `gh` to
 // mirror forgejoClient's verbs behind issueForge (auth from env, no token on argv).
 
-// githubListLimit caps `gh issue list` reads, matching forgejoListLimit's shallow
-// pagination posture (the salvage-issue lookup never needs a deep scan).
-const githubListLimit = "50"
-
 // githubClient drives GitHub through `gh`. r runs it audited; mode signs the
 // bodies it writes so GitHub comments carry the same attribution as Forgejo's.
 type githubClient struct {
@@ -159,29 +155,6 @@ func (c *githubClient) reopenIssue(ctx context.Context, owner, repo string, numb
 		return fmt.Errorf("github: reopen issue %s/%s#%d: %w", owner, repo, number, err)
 	}
 	return nil
-}
-
-// findOpenIssueByTitlePrefix returns the first open issue whose title starts with
-// prefix, so the reaper appends to a salvage issue instead of filing a duplicate.
-func (c *githubClient) findOpenIssueByTitlePrefix(ctx context.Context, owner, repo, prefix string) (int, bool, error) {
-	out, err := c.run(ctx, "issue", "list", "--repo", ghSlug(owner, repo),
-		"--state", "open", "--limit", githubListLimit, "--json", "number,title")
-	if err != nil {
-		return 0, false, fmt.Errorf("github: list issues in %s/%s: %w", owner, repo, err)
-	}
-	var issues []struct {
-		Number int    `json:"number"`
-		Title  string `json:"title"`
-	}
-	if err := json.Unmarshal(out, &issues); err != nil {
-		return 0, false, fmt.Errorf("github: parse issue list for %s/%s: %w", owner, repo, err)
-	}
-	for _, i := range issues {
-		if strings.HasPrefix(i.Title, prefix) {
-			return i.Number, true, nil
-		}
-	}
-	return 0, false, nil
 }
 
 // issueNumberFromURL pulls the trailing issue/PR number off a github.com URL like
