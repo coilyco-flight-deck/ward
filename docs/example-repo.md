@@ -43,8 +43,13 @@ ward doctor
 The guardfile and `.ward/ward.yaml` are complete enough to copy into a new repo
 as a starting point, then edit down to that repo's real verbs and policy.
 
+`examples/toy/` is the runnable *managed repo* an adopter's project looks like;
+its sibling `examples/ward-specs/` (ward#453) is the *spec bundle* you build a
+`ward` binary from. Different inputs, both deployment-agnostic anchors.
+
 ## See also
 
 - [../examples/toy/README.md](../examples/toy/README.md) - the repo's own README.
+- [../examples/ward-specs/README.md](../examples/ward-specs/README.md) - the sibling spec bundle (build input for `ward` itself).
 - [ward-yaml.md](ward-yaml.md) - the `.ward/ward.yaml` schema the config demonstrates.
 - [FEATURES.md](FEATURES.md) - inventory.
