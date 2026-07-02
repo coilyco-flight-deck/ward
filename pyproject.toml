@@ -7,9 +7,15 @@ excludes = [
   # Pre-existing size debt: docs/hook.md is 92 lines, over the 80-line cap.
   # The split is tracked in coilyco-flight-deck/ward#50; drop this when it lands.
   "docs/hook.md",
-  # Pre-existing size debt: README.md is over the 4000-char cap (tripped by
-  # See-also growth, not by any single feature). The split is tracked in
-  # coilyco-flight-deck/ward#274; drop this when it lands.
+  # Intentional exemption, not size debt (ward#427, supersedes the #274 "split
+  # it back under cap" plan). The README is the launch-grade front page a cold
+  # visitor reads to decide whether ward is for them - it earns room to name who
+  # it's for and what it requires, show a denial, and route into the 60+ docs/
+  # files, past the flat cap this stale agentic-os pin (v0.65.0) enforces. The
+  # durable, bounded replacement is the per-repo readme_max_lines /
+  # readme_max_chars opt-up added upstream (agentic-os, driver ward#427); it
+  # binds once ward's managed-hook pin advances to a release carrying it, at
+  # which point this blanket exclude narrows to that cap. Tracked: ward#427.
   "README.md",
   # Generated surface reference (specverb-gen). The driver emits one beside each
   # Guardfile; the reviewed copies are committed under docs/ward-kdl/ (ward#279)
