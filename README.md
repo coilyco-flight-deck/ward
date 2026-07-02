@@ -23,6 +23,8 @@ The plain verb gate (`ward exec`, `ward git`, `ward pkg`, `ward audit`) needs no
 
 Wraps a project's dev verbs (`build`, `test`, `vet`, `lint`, `tidy`, `cover`) behind cli-guard's policy gate. Every invocation validates argv against a shell-metacharacter policy, writes one append-only JSONL audit row to `~/.ward/audit/<repo>.jsonl`, and gates repo verbs on a clean-and-synced tree so the row can be reconstructed from git history. See [`docs/exec-verb.md`](docs/exec-verb.md).
 
+Each repo declares its verbs (and an optional `security:` policy) in [`.ward/ward.yaml`](.ward/ward.yaml). For the field-by-field schema - every key `commands:` and `security:` accept, required vs optional, and a complete annotated example with a `security:` block - see [`docs/ward-yaml.md`](docs/ward-yaml.md).
+
 Each repo declares which Makefile targets are exposed in `.ward/ward.yaml`, and `ward doctor` verifies the two surfaces have not drifted. The contract is stricter than "the target name exists": each exposed Makefile target must carry a `## <description>` help comment (the self-documenting-Makefile convention, e.g. `build: ## Build all packages.`) whose text equals the command's `description:`, and `run:` must be exactly `make <name>`. A bare `target:` recipe with no `## ...` comment is not registered, so `ward doctor` reports it as unmatched even though `make <target>` runs by hand. See [`docs/doctor.md`](docs/doctor.md) (Allowlist contract).
 
 ## The gate says no
@@ -134,5 +136,6 @@ Bug or feature request: [create a new issue][new-issue]. Conduct: [Code of Condu
 - [AGENTS.md](AGENTS.md) - agent-facing operating rules.
 - [docs/FEATURES.md](docs/FEATURES.md) - inventory of what ships today.
 - [.ward/ward.yaml](.ward/ward.yaml) - allowlisted commands.
+- [docs/ward-yaml.md](docs/ward-yaml.md) - field-by-field `.ward/ward.yaml` schema reference.
 
 Cross-reference convention from [coilysiren/agentic-os#59](https://github.com/coilysiren/agentic-os/issues/59).
