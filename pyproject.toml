@@ -37,6 +37,15 @@ excludes = [
   # above. dead-cross-links still validates every entry (its own exclude list,
   # not this one).
   "docs/README.md",
+  # Field-by-field .ward/ward.yaml schema reference (ward#436): a single-source
+  # render of cli-guard's repocfg struct - every commands/security key plus one
+  # complete annotated example (the example YAML alone is ~2KB). It must stay
+  # one self-contained doc so an agent can author a config from ward docs alone
+  # (the issue's done-condition), and a full config reference cannot fit the
+  # 80-line/4000-char flat cap by construction - same "reference that grows with
+  # the surface" carve-out as docs/README.md above. dead-cross-links still
+  # validates every entry (its own exclude list, not this one).
+  "docs/ward-yaml.md",
 ]
 
 [tool.agentic-os.code-comments]
