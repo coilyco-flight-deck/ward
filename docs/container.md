@@ -50,8 +50,8 @@ context is composed, mirroring agent-compose's slices:
 - `qwen` (level 0) - doctrine only.
 
 The repo's in-tree `AGENTS.md` loads on top; the level exports as
-`WARD_CONTEXT_LEVEL`. codex/goose drop to a shell (not yet imaged); qwen
-self-installs opencode (ward#187, [agent.md](agent.md)).
+`WARD_CONTEXT_LEVEL`. claude/codex/goose are image-baked and launch normally.
+qwen self-installs opencode (ward#187, [agent.md](agent.md)).
 
 ## Inside the container
 
