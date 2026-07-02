@@ -91,7 +91,8 @@ New to ward? Read [architecture.md](architecture.md) first - it frames the whole
 - [ward-kdl-surface.md](ward-kdl-surface.md) - the full generated verb surface, area by area.
 - [ward-kdl-in-ward.md](ward-kdl-in-ward.md) - exec guardfiles auto-mounted into `ward`.
 - [ward-kdl-tiers.md](ward-kdl-tiers.md) - the read/write/admin permission-tier layout.
-- [ward-kdl-authoring.md](ward-kdl-authoring.md) - authoring guardfiles.
+- [ward-kdl-authoring.md](ward-kdl-authoring.md) - authoring guardfiles: getting the compiler, swapping the bundle.
+- [guardfile-grammar.md](guardfile-grammar.md) - the dialect-1 KDL grammar, a minimal working guardfile, where auth config lives.
 - [ward-kdl.brew.scoped.md](ward-kdl.brew.scoped.md) - why `ward pkg brew` scoped verbs stay gated Go.
 - [fleet-local.md](fleet-local.md) - `~/.ward/fleet.local.kdl`, the operator-local config reader.
 - [ward-kdl/](ward-kdl/) - 24 generated per-area guardfile references (git, aws, docker, the agents/ops/pkg surfaces, ...), indexed area-by-area from [ward-kdl-surface.md](ward-kdl-surface.md).

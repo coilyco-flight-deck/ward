@@ -1,10 +1,15 @@
 # ward-kdl authoring
 
 `ward-kdl` is the build-time authoring layer: a source file in, a validated
-least-privilege or fleet manifest out, embedded into `ward` at build time with
-nothing fetched at runtime. For what the layer **is**, see [ward-kdl.md](ward-kdl.md);
-this doc is the one findable place for **how you author and swap a bundle**
-(ward#437, ward#440).
+least-privilege or fleet manifest out, embedded into `ward` with nothing fetched
+at runtime. For what the layer **is**, see [ward-kdl.md](ward-kdl.md). This doc is
+the one findable place for **how you author and swap a bundle** (ward#437,
+ward#440).
+
+**First, confirm you need one.** Most adopters do not - the dev-verb gate is
+`.ward/ward.yaml` alone. You author (or swap) a guardfile only to run your own
+`ward ops` operator surface
+([ward-kdl.md](ward-kdl.md#do-you-need-to-author-a-guardfile-start-here)).
 
 ## The dialects
 
@@ -15,28 +20,32 @@ this doc is the one findable place for **how you author and swap a bundle**
 - **Dialect 3 - operator-local.** `~/.ward/fleet.local.kdl`, the same parser,
   sourced locally and never embedded. See [fleet-local.md](fleet-local.md).
 
+## Guardfile grammar
+
+The dialect-1 KDL grammar (the `wrap` mount path, the spec vs exec sub-dialects
+and their nodes), a minimal working guardfile, and where auth config lives are all
+in [guardfile-grammar.md](guardfile-grammar.md). Start there for the syntax. The
+rest of this doc is how you get the compiler and swap the bundle.
+
 ## Getting the `ward-kdl` binary
 
 `ward-kdl` is **not** a public install artifact: the brew formula installs only
 `ward`, whose embedded surfaces cover what an end user runs, so neither the
 authoring binary nor the tier CLIs ship on the release page (ward#455). A spec
 author builds it from a ward checkout with `make build-ward-kdl` (-> `bin/ward-kdl`
-plus the read/write/admin tiers), the same generator the formula used to run
-inline before ward#455. See **Bring your own specs** below to point that build at
-your own deployment bundle.
+plus the read/write/admin tiers). See **Bring your own specs** below to point that
+build at your own deployment bundle.
 
 ## The spec bundle is a swappable build input
 
 The KDL sources `ward-kdl` compiles are a **bundle** - the guardfiles, their spec
-locks, and the fleet manifest that together decide which endpoints, tokens, and
-owners a build is coupled to. That coupling is deployment config, not engine code
-(ward#441): the `base-url`, the `ssm` token paths, the `restrict owner` gate, and
-the attribution defaults all belong to whoever runs the fleet, not to `ward`.
-
-So the bundle is a **declared, swappable build input**, addressed by an
-**assets-dir convention** (not a build-time variable, ward#453): the build reads
-its bundle from the `cmd/ward-kdl/` directory, and you swap it by overlaying that
-directory's files - no new hardcoded path one repo further from a cold reader.
+locks, and the fleet manifest that decide which endpoints, tokens, and owners a
+build couples to. That coupling is deployment config, not engine code (ward#441):
+the `base-url`, `ssm` token paths, `restrict owner` gate, and attribution
+defaults all belong to whoever runs the fleet, not to `ward`. So the bundle is a
+**declared, swappable build input** addressed by an **assets-dir convention**
+(not a build-time variable, ward#453): the build reads it from `cmd/ward-kdl/`,
+and you swap it by overlaying that directory's files.
 
 ## Bring your own specs
 
@@ -55,16 +64,14 @@ To build `ward` against your own deployment:
 
 ## Follow-ups
 
-The move of ward's own (coilyco) canonical bundle up into aos - so ward's tracked
-tree carries only the neutral example and the deployment bundle lives beside its
-siblings - is tracked as a follow-up, because it also re-points the
-brew-from-source and release build sites at the relocated bundle (ward#453).
+Moving ward's own (coilyco) canonical bundle up into aos - so the tracked tree
+carries only the neutral example - is tracked at ward#453 (it also re-points the
+brew-from-source and release build sites at the relocated bundle).
 
 ## See also
 
-- [cmd/ward-kdl/README.md](../cmd/ward-kdl/README.md) - the bundle directory this doc describes.
+- [guardfile-grammar.md](guardfile-grammar.md) - the dialect-1 KDL grammar and a minimal guardfile.
 - [ward-kdl.md](ward-kdl.md) - what the build-time authoring layer is.
 - [ward-kdl-surface.md](ward-kdl-surface.md) - the full generated verb surface.
-- [ward-kdl-tiers.md](ward-kdl-tiers.md) - the read/write/admin tier layout.
-- [architecture.md](architecture.md) - the three-layer model.
 - [examples/ward-specs/](../examples/ward-specs) - the neutral starter bundle.
+- [cmd/ward-kdl/README.md](../cmd/ward-kdl/README.md) - the bundle directory this doc describes.
