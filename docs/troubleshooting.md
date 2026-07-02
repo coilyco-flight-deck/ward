@@ -1,0 +1,67 @@
+# Troubleshooting a warded run
+
+Your `warded` run failed or seemed to do nothing. Find your **symptom** below - not
+the subsystem that failed - and it points at the one diagnostic surface and the fix.
+Entries quote the verbatim error text so a search for the string you saw lands here.
+
+First stop for any failed headless run: **its logs.** Every exited run drains to
+`~/.ward/agent-logs/<container>/` before cleanup - `console.log` (agent + reaper
+output), `transcript.jsonl` (the session), `meta.json` (dims + `outcome`). Read
+`meta.json` first: the `outcome` field already classifies the run. See
+[agent-observability.md](agent-observability.md).
+
+## By symptom
+
+- **Run launched, then nothing happened** - the container idled or exited with no
+  work. Almost always the seeded credential could not authenticate in-container.
+  The pre-launch smoke test aborts loudly with `auth smoke test: claude -p rejected
+  the credentials` or `... did not respond within 90s`. **Fix:** refresh the host
+  login - re-run `claude` on the host - and relaunch. Confirm in
+  `~/.ward/agent-logs/<container>/console.log`. See [agent-credentials.md](agent-credentials.md).
+
+- **Run never launched, no container appeared** - the interactive pre-flight
+  returned **NO-GO** and blocked dispatch. It does not fail silently: ward **posts a
+  comment on the issue** with the reason and how to re-dispatch. **Fix:** read that
+  comment, address it, then re-dispatch (a comment answering the concern clears the
+  gate; `--no-preflight` fires blind). See [agent-preflight.md](agent-preflight.md).
+
+- **`refusing untrusted owner "<x>"`** - the trust gate declined the ref. This build
+  dispatches only for its compiled-in primary orgs. **Fix:** dispatch against a
+  trusted owner. See [agent-trust-gate.md](agent-trust-gate.md).
+
+- **`already reserved remotely` / `already reserved locally`** - another container
+  holds this issue (2h TTL). **Fix:** wait for it to finish, or pass `--force` to
+  override/reclaim. See [agent-reservation.md](agent-reservation.md).
+
+- **`ward exec` refused - `repo verb gated on a clean, synced tree`** - the audit row
+  must be reconstructable from committed history, so the gate declines when the
+  declaring `ward.yaml` is dirty or HEAD has `no synced upstream`. **Fix:** commit and
+  push (or set upstream), then retry. Genuine emergency:
+  `ward --audit-override-dirty exec <verb>` (stamps `audit_override=true`). See
+  [exec-verb.md](exec-verb.md).
+
+- **`... contains a shell metacharacter`** - the argv policy declined a token. **Fix:**
+  drop the metacharacter (`;`, `|`, `&`, backticks, ...) from the argument. See
+  [exec-verb.md](exec-verb.md).
+
+- **Container ran for a long time and appears stuck** - a headless claude whose
+  credential silently blocks can look busy forever. The smoke test exists to abort
+  that case up front; if you deliberately bypassed it with `WARD_SMOKE_TEST_SKIP=1`,
+  re-enable it. Whatever the exit, the [reaper](container-reap.md) backstops the work.
+
+- **The run finished but nothing landed on `main`** - the reaper could not push
+  cleanly (merge conflict, a content scan finding, or a dead/rotated PAT), so it
+  **preserved your work on a `ward-salvage/<id>` branch** and filed or appended to a
+  `[ward-salvage]` forgejo issue with recovery commands. **Fix:** follow that issue.
+  See [container-reap.md](container-reap.md).
+
+A deeper fix - a symptom-aware `ward agent doctor` verb - is tracked in ward#195,
+not duplicated here.
+
+## See also
+
+- [../README.md](../README.md) - the intro that links here.
+- [agent-observability.md](agent-observability.md) - the `~/.ward/agent-logs/` drain.
+- [agent-preflight.md](agent-preflight.md) - the GO/NO-GO pre-flight.
+- [container-reap.md](container-reap.md) - land-or-salvage on teardown.
+- [doctor.md](doctor.md) - `ward doctor`, the allowlist + host-probe diagnostic.
