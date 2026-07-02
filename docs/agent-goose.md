@@ -26,7 +26,10 @@ goose is image-baked from the launcher point of view. No self-install step.
 
 ## Smoke gate
 
-None. The launch is local-model only, so the GO/NO-GO read bows out.
+Two gates sit at different points, and only one applies here:
+
+- **Host GO/NO-GO pre-flight** (pre-dispatch, [agent-preflight.md](agent-preflight.md)): goose keeps parity with claude - it answers via `goose run -t` before a detached run launches.
+- **In-container Ollama reachability probe** (pre-launch, ward#487): the local-model analog of claude's auth smoke test. A headless goose whose Ollama endpoint is down would hang the dispatched container exactly like an undetected bad claude credential (the failure mode a smoke gate exists to prevent). So before launching, the entrypoint TCP-probes the endpoint goose will dial - the `OLLAMA_HOST` seeded into `config.yaml`, or goose's built-in `http://localhost:11434` when no tower host resolved - with a short retry window (absorbing the `--ts-sidecar` forwarder's startup). On an unreachable endpoint it **aborts the container with a clear error** naming the endpoint and how to recover (a live tower host, or `--ts-sidecar`), instead of letting it silently hang. The probe is headless-only (an interactive session has a human watching); set `WARD_SMOKE_TEST_SKIP=1` to bypass it (the same switch claude's probe reads).
 
 ## See also
 

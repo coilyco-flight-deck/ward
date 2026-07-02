@@ -309,8 +309,7 @@ func (r *Runner) backlogTrustGate(label string, repos []string) error {
 			return fmt.Errorf("%s: invalid repo %q in scope (want owner/name)", label, slug)
 		}
 		if !r.ownerAllowed(owner) {
-			return fmt.Errorf("%s: refusing untrusted owner %q (allowed: %s)",
-				label, owner, strings.Join(r.primaryOrgs(), ", "))
+			return r.untrustedOwnerErr(label, owner)
 		}
 	}
 	return nil

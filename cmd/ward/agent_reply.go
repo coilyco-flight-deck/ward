@@ -196,8 +196,7 @@ func (r *Runner) validateReplyInputs(ctx context.Context, c *cli.Command, mode c
 	// Trust gate: reply writes a comment under ward's bot identity, so only act on
 	// an owner in the primary-org set - the same gate work/task apply.
 	if !r.ownerAllowed(ref.Owner) {
-		return agentIssueRef{}, "", replyThoroughness{}, fmt.Errorf("%s: refusing untrusted owner %q (allowed: %s)",
-			label, ref.Owner, strings.Join(r.primaryOrgs(), ", "))
+		return agentIssueRef{}, "", replyThoroughness{}, r.untrustedOwnerErr(label, ref.Owner)
 	}
 
 	// reply rides the host self-assessment slot (claude/goose), the same one the

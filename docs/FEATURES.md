@@ -16,7 +16,7 @@ Contributor-facing cli-guard gate: repo dev verbs + audited host wrappers.
 - **`ward doctor`** - diagnostic checks against the config + host, including the allowlist drift guard. See [doctor.md](doctor.md).
 - **`ward hook pre-tool-use`** - Claude Code PreToolUse hook: binary-path check + bare-command deny with routing hints.
 - **`ward install-hooks`** - register the PreToolUse hook in `.claude/settings.json`.
-- **`ward agent {engineer,director,advisor} [--driver <name>]`** (public face: **`warded <role> <ref>`**) - startup-role roster: `engineer` implements detached, `director` a heartbeat surfacing a read-only session + triage, `advisor` answers without code (a ref comments or fans cross-repo work into per-repo issues, trust-gated; ward#424). `warded` is a `ward` symlink; a bare ref runs `engineer`, `#N` infers `owner/repo`. `--driver` picks a harness; `--repo`/`--org` scope. See [agent](agent.md).
+- **`ward agent {engineer,director,advisor} [--driver <name>]`** (public face: **`warded <role> <ref>`**) - startup-role roster: `engineer` implements detached, `director` a heartbeat surfacing a read-only session + triage, `advisor` answers without code (a ref comments or fans cross-repo work into per-repo issues, trust-gated; ward#424). `warded` is a `ward` symlink; a bare ref runs `engineer`, `#N` infers `owner/repo`. `--driver` picks a harness; `--repo`/`--org` scope. Every role dispatches only for a compiled-in [trusted owner](agent-trust-gate.md). See [agent](agent.md).
 - **`ward container {reap,bootstrap}`** *(hidden, entrypoint-internal; ward#263)* - in-container plumbing: `reap` lands/salvages on teardown + verifies each `--repo` grant landed (ward#291); `bootstrap` is the PID-1 entrypoint port (ward#181). See [reap](container-reap.md).
 - **Agent-run observability** *(ward#363)* - the keep-10 sweep drains each exited run's logs + secret-free `meta.json` to `~/.ward/agent-logs/` before `docker rm`; opt-in `WARD_AGENT_TELEMETRY=1` (default-OFF) ships redacted per-tool-call OTLP logs to SigNoz. See [agent-observability.md](agent-observability.md).
 - **`ward agents list [--json]`** - dump the fleet roster from `fleetconfig.Fleet`; `--json` is the stable read surface aos reads (ward#417). See [agents-list](agents-list.md).
@@ -29,12 +29,13 @@ Contributor-facing cli-guard gate: repo dev verbs + audited host wrappers.
 
 `ward-kdl` is the build-time authoring layer ([docs/ward-kdl.md](ward-kdl.md)). It carries permission surfaces and fleet configs: `ops` (forgejo/tailscale/signoz/aws/kubectl/...), `docker`, `agents`, `pkg` ([ward-kdl-surface.md](ward-kdl-surface.md)), plus `ward-kdl.fleet.kdl`. `ward ops forgejo` grafts an admin slice ([ops-forgejo-admin](ops-forgejo-admin.md)) and ships as `ward-kdl-{read,write,admin}` tiers (ward#240).
 
-The **exec-dialect** guardfiles auto-mount at their `wrap` path, no per-guardfile graft; `git` / `pkg brew` keep hand-written surfaces (ward#284). See [in-ward](ward-kdl-in-ward.md).
+The **exec-dialect** guardfiles auto-mount at their `wrap` path; `git` / `pkg brew` keep hand-written surfaces (ward#284). See [in-ward](ward-kdl-in-ward.md).
 
 ## See also
 
-- [README.md](../README.md) - human-facing intro.
-- [AGENTS.md](../AGENTS.md) - agent-facing operating rules.
+- [README.md](../README.md) - human intro.
+- [AGENTS.md](../AGENTS.md) - operating rules.
+- [docs index](README.md) - docs by subsystem.
 - [.ward/ward.yaml](../.ward/ward.yaml) - allowlisted commands.
 
 Cross-reference convention from [coilysiren/agentic-os#59](https://github.com/coilysiren/agentic-os/issues/59).

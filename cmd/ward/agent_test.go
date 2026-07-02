@@ -139,6 +139,22 @@ func TestAgentIssueRefURL(t *testing.T) {
 	}
 }
 
+// TestUntrustedOwnerErr covers ward#484: the refusal names the owner, the
+// accepted set, and points at docs/agent-trust-gate.md so it is a signpost.
+func TestUntrustedOwnerErr(t *testing.T) {
+	r := &Runner{}
+	msg := r.untrustedOwnerErr("warded", "evilcorp").Error()
+	for _, want := range []string{
+		`refusing untrusted owner "evilcorp"`,
+		"coilyco-flight-deck",      // the accepted set is named
+		"docs/agent-trust-gate.md", // the signpost the issue asked for
+	} {
+		if !strings.Contains(msg, want) {
+			t.Errorf("untrustedOwnerErr missing %q\n---\n%s", want, msg)
+		}
+	}
+}
+
 func TestCarryingLine(t *testing.T) {
 	ref := agentIssueRef{Owner: "coilyco-flight-deck", Repo: "ward", Number: 307}
 	// A real title echoes the label, the ref, and the quoted title (ward#307).

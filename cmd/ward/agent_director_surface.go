@@ -122,8 +122,7 @@ func (r *Runner) prepareScratchPlan(ctx context.Context, c *cli.Command, mode co
 	// Trust gate: a bypassPermissions clone of private code, so only act on an owner
 	// in the primary-org set - the same gate the engineer + advisor roles apply.
 	if !r.ownerAllowed(repo.Owner) {
-		return upPlan{}, func() {}, fmt.Errorf("%s: refusing untrusted owner %q (allowed: %s)",
-			label, repo.Owner, strings.Join(r.primaryOrgs(), ", "))
+		return upPlan{}, func() {}, r.untrustedOwnerErr(label, repo.Owner)
 	}
 	assetsDir, cleanupAssets, err := writeContainerAssets()
 	if err != nil {

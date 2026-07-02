@@ -1,10 +1,8 @@
 # ward
 
-**ward is a harness driver with a policy gate.** It drives an agent harness (claude, goose, codex, qwen) into an ephemeral container to carry a Forgejo issue end to end, and it gates every dev verb - whether you or the agent runs it - behind [cli-guard][cli-guard]'s allowlist-and-deny policy.
+**ward wraps a project's dev verbs - `build`, `test`, `vet`, `lint`, `tidy`, `cover` - behind a policy gate, so nothing reaches `make` or `go` unchecked.** Every run validates its own arguments, appends one line to an audit log, and is refused if it could not be reconstructed from git history. It is the single command a contributor (human or agent) routes build-and-test work through. All it needs is a repo with a `.ward/ward.yaml` and Homebrew.
 
-The thing it produces is a **warded agent**: an agent ward drives into a container and bounds behind cli-guard policy. Read "warded" as a protective circle - the deny-list and allowlisted verbs bounding its reach, not "warded off".
-
-Its public face is **`warded`** - a thin symlink onto the `ward agent` dispatcher (ward#247, ward#282). `warded #98` carries a Forgejo issue end to end and reads like `sudo`/`firejail`: one token for "containment tool for agents". See [`docs/agent.md`](docs/agent.md).
+ward has a second half for running coding agents: `ward agent` drives a harness (claude, codex, goose, ...) into a throwaway container to carry a Forgejo issue from fresh clone to merged `main`, its reach bounded by that container. That surface is exposed as **`warded`**, a thin symlink onto `ward agent`. The name, the three-layer split it sits on, and the operator surface it absorbs are covered below and in [`docs/architecture.md`](docs/architecture.md).
 
 ## Who it's for
 
@@ -55,6 +53,8 @@ brew install coilyco-flight-deck/tap/ward
 
 The explicit-URL form is required because the tap lives on forgejo, not github.com. The formula installs `ward` and the spec-driven `ward-kdl` (both stamped with the release tag) plus the `warded` symlink. Upgrade with `ward upgrade`.
 
+**Releases live on Forgejo.** This repo is canonical on [forgejo.coilysiren.me/coilyco-flight-deck/ward](https://forgejo.coilysiren.me/coilyco-flight-deck/ward); the github.com copy is a read-only mirror of `main` + tags only, so its Releases page is intentionally empty - see the [canonical releases](https://forgejo.coilysiren.me/coilyco-flight-deck/ward/releases) for the current version and changelog.
+
 ## Usage
 
 The audited verb gate, on any repo:
@@ -68,11 +68,11 @@ ward pkg brew bundle     # audited brew wrapper
 ward audit tail --follow # stream the audit log
 ```
 
-The agent driver, against a Forgejo issue:
+The agent driver, against a Forgejo issue. `warded` is a thin symlink onto `ward agent` - read it as a protective circle, the container bounding the agent's reach, not "warded off":
 
 ```
 warded #98               # put an engineer on issue #98, fire-and-forget
-warded engineer #98 --watch      # ...and attach to watch
+warded engineer #98      # ...spelled out; the engineer role runs detached
 warded director --org coilyco-flight-deck   # a heartbeat that drains a backlog lane
 warded advisor #98       # answer/triage a ref, writing no code
 ```
@@ -101,7 +101,7 @@ Over 60 pages under [`docs/`](docs/) cover each surface. The anchors:
 - **The agent driver** - [agent.md](docs/agent.md) (start here), the roster [agent-engineer.md](docs/agent-engineer.md) / [agent-director.md](docs/agent-director.md) / [agent-advisor.md](docs/agent-advisor.md), the [agent-gate.md](docs/agent-gate.md), [agent-credentials.md](docs/agent-credentials.md), [agent-observability.md](docs/agent-observability.md).
 - **The container** - [container.md](docs/container.md), [container-reap.md](docs/container-reap.md) (land-or-salvage on teardown), [container-multi-repo.md](docs/container-multi-repo.md), [container-substrate.md](docs/container-substrate.md).
 - **Operator surface (ward-kdl / ops)** - [ward-kdl.md](docs/ward-kdl.md), [ward-kdl-tiers.md](docs/ward-kdl-tiers.md), [ops-forgejo.md](docs/ops-forgejo.md).
-- **Build & release** - [homebrew-build.md](docs/homebrew-build.md), [release.md](docs/release.md), [golangci.md](docs/golangci.md).
+- **Build & release** - [homebrew-build.md](docs/homebrew-build.md), [release.md](docs/release.md), [github-mirror.md](docs/github-mirror.md), [golangci.md](docs/golangci.md).
 
 ## Status
 
@@ -125,6 +125,7 @@ Bug or feature request: [create a new issue][new-issue]. Conduct: [Code of Condu
 
 ## See also
 
+- [docs/README.md](docs/README.md) - the docs index: every doc grouped by subsystem.
 - [docs/architecture.md](docs/architecture.md) - ward in three layers (cli-guard, ward-kdl, ward).
 - [AGENTS.md](AGENTS.md) - agent-facing operating rules.
 - [docs/FEATURES.md](docs/FEATURES.md) - inventory of what ships today.
