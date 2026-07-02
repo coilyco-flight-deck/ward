@@ -40,6 +40,7 @@ New to ward? Read [architecture.md](architecture.md) first - it frames the whole
 - [agent-roster.md](agent-roster.md) - the generated role roster.
 - [agent-engineer.md](agent-engineer.md) - the implement-a-ticket role.
 - [agent-director.md](agent-director.md) - the autonomous-backlog heartbeat role.
+- [agent-director-dispatch.md](agent-director-dispatch.md) - how the director parks vs. defers a dispatch error.
 - [agent-advisor.md](agent-advisor.md) - the counsel role that answers without writing code.
 - [agent-advisor-fanout.md](agent-advisor-fanout.md) - advisor ref mode: structured emit + cross-repo fan-out.
 - [agent-flags.md](agent-flags.md) - launch flags for the `engineer` role.

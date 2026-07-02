@@ -3,6 +3,7 @@ package main
 import (
 	"context"
 	"errors"
+	"fmt"
 	"reflect"
 	"strings"
 	"testing"
@@ -451,13 +452,13 @@ func TestRunDirectorLoopDefersReservationConflict(t *testing.T) {
 	}
 }
 
-// TestRunDirectorLoopParksRealFailure confirms the other half of ward#352: a real launch
-// failure still parks the issue failed (then the lane drains and surfaces).
-func TestRunDirectorLoopParksRealFailure(t *testing.T) {
-	issue := &backlogEntry{Num: 5, Title: "real failure", Tier: "P0", Lane: "headless", State: "queued"}
+// TestRunDirectorLoopParksDecline confirms ward#352 + ward#524: a coded per-issue decline
+// (a pre-flight NO-GO) parks the issue failed, then the lane drains and surfaces.
+func TestRunDirectorLoopParksDecline(t *testing.T) {
+	issue := &backlogEntry{Num: 5, Title: "infeasible issue", Tier: "P0", Lane: "headless", State: "queued"}
 	d := &dispoDirector{
 		fakeDirector: &fakeDirector{list: []*backlogEntry{issue}},
-		errs:         map[int]error{5: errors.New("image pull failed")},
+		errs:         map[int]error{5: dispatchDeclineErr(dispatchNoGo, "preflight_no_go", "issue a/b#5 is infeasible")},
 	}
 	d.surfaceFn = func() (bool, error) { return false, nil } // non-interactive: drain exits cleanly
 	cfg := backlogConfig{maxParallel: 2, pollInterval: time.Millisecond, maxCycles: 5}
@@ -466,7 +467,28 @@ func TestRunDirectorLoopParksRealFailure(t *testing.T) {
 		t.Fatalf("loop returned error: %v", err)
 	}
 	if issue.State != "failed" {
-		t.Errorf("a genuine launch failure must park failed, got %q", issue.State)
+		t.Errorf("a coded per-issue decline must park failed, got %q", issue.State)
+	}
+}
+
+// TestRunDirectorLoopDefersInfraFailure covers ward#524: an uncoded launch-time infra
+// failure leaves the issue queued/eligible, never parked failed nor dispatched.
+func TestRunDirectorLoopDefersInfraFailure(t *testing.T) {
+	issue := &backlogEntry{Num: 5, Title: "fetch blipped", Tier: "P0", Lane: "headless", State: "queued"}
+	d := &dispoDirector{
+		fakeDirector: &fakeDirector{list: []*backlogEntry{issue}},
+		errs:         map[int]error{5: fmt.Errorf("forgejo: get issue a/b#5: %w", errors.New("502 bad gateway"))},
+	}
+	cfg := backlogConfig{maxParallel: 2, pollInterval: time.Millisecond, maxCycles: 2}
+
+	if err := runDirectorLoop(context.Background(), cfg, d); err != nil {
+		t.Fatalf("loop returned error: %v", err)
+	}
+	if issue.State != "queued" {
+		t.Errorf("an infra failure must stay queued for retry, got %q", issue.State)
+	}
+	if d.dispatched != nil {
+		t.Errorf("a deferred dispatch did not launch, nothing should count as dispatched, got %v", d.dispatched)
 	}
 }
 
