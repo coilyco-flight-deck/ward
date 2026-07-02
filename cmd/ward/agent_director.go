@@ -16,6 +16,7 @@ import (
 
 	"forgejo.coilysiren.me/coilyco-flight-deck/cli-guard/cli/verb"
 	"forgejo.coilysiren.me/coilyco-flight-deck/cli-guard/pkg/config"
+	"forgejo.coilysiren.me/coilyco-flight-deck/cli-guard/pkg/exitcode"
 	"github.com/urfave/cli/v3"
 	"gopkg.in/yaml.v3"
 )
@@ -929,13 +930,27 @@ func (r *Runner) backlogDispatchOne(ctx context.Context, label string, dispatch 
 	return nil
 }
 
-// directorDispatchDisposition classifies a dispatch error for the ledger (ward#352): a
-// conflict defers (stays queued/eligible), any other error parks failed. Pure + testable.
+// directorDispatchDisposition classifies a dispatch error: a coded per-issue decline
+// parks failed, everything else defers (ward#352, ward#524; docs/agent-director.md).
 func directorDispatchDisposition(err error) (state string, outcome *backlogOutcome, deferred bool) {
-	if isReservationConflict(err) {
-		return "queued", &backlogOutcome{Status: "deferred", Text: backlogTruncate(err.Error(), 300)}, true
+	if isDispatchDecline(err) {
+		return "failed", &backlogOutcome{Status: "dispatch-error", Text: backlogTruncate(err.Error(), 300)}, false
 	}
-	return "failed", &backlogOutcome{Status: "dispatch-error", Text: backlogTruncate(err.Error(), 300)}, false
+	return "queued", &backlogOutcome{Status: "deferred", Text: backlogTruncate(err.Error(), 300)}, true
+}
+
+// isDispatchDecline reports whether err is a coded per-issue pre-flight decline (NO-GO,
+// wrong-repo, untrusted-owner) no retry changes; conflicts + infra retry (ward#524).
+func isDispatchDecline(err error) bool {
+	c := exitcode.From(err)
+	if c == nil {
+		return false
+	}
+	switch c.Code() {
+	case dispatchNoGo, dispatchWrongRepo, dispatchUntrustedOwner:
+		return true
+	}
+	return false
 }
 
 // backlogDispatch launches one issue's headless run in-process via the engineer command

@@ -2,6 +2,7 @@ package main
 
 import (
 	"errors"
+	"fmt"
 	"os"
 	"path/filepath"
 	"reflect"
@@ -9,12 +10,14 @@ import (
 	"testing"
 	"time"
 
+	"forgejo.coilysiren.me/coilyco-flight-deck/cli-guard/pkg/exitcode"
 	"github.com/urfave/cli/v3"
 )
 
-// TestDirectorDispatchDisposition covers ward#352: a reservation conflict defers (stays
-// `queued`, flagged "deferred"); any other dispatch error parks `failed`.
+// TestDirectorDispatchDisposition covers ward#352 + ward#524: a coded per-issue decline
+// parks `failed`; a reservation conflict or a launch-time infra failure stays `queued`.
 func TestDirectorDispatchDisposition(t *testing.T) {
+	// A reservation conflict defers (retryable once the holder finishes).
 	conflict := newReservationConflict("issue a/b#5 is already reserved remotely")
 	state, outcome, deferred := directorDispatchDisposition(conflict)
 	if !deferred {
@@ -27,15 +30,50 @@ func TestDirectorDispatchDisposition(t *testing.T) {
 		t.Errorf("deferred outcome = %+v, want status=deferred", outcome)
 	}
 
-	state, outcome, deferred = directorDispatchDisposition(errors.New("image pull failed"))
+	// A launch-time infrastructure failure (the forgejo issue-fetch breakage that wedged
+	// the director) must defer too - the issue was never judged and no run was spent.
+	fetchErr := fmt.Errorf("forgejo: get issue a/b#5: %w", errors.New("502 bad gateway"))
+	state, outcome, deferred = directorDispatchDisposition(fetchErr)
+	if !deferred {
+		t.Error("a launch-time infra failure must defer and retry, not park failed")
+	}
+	if state != "queued" {
+		t.Errorf("infra-failure state = %q, want queued (retried on a later tick)", state)
+	}
+	if outcome == nil || outcome.Status != "deferred" {
+		t.Errorf("infra-failure outcome = %+v, want status=deferred", outcome)
+	}
+
+	// An uncoded generic launch failure defers on the same reasoning.
+	state, _, deferred = directorDispatchDisposition(errors.New("image pull failed"))
+	if !deferred || state != "queued" {
+		t.Errorf("generic launch failure: state=%q deferred=%v, want queued+deferred", state, deferred)
+	}
+
+	// A coded per-issue decline is a real verdict on the issue: park it terminal.
+	noGo := dispatchDeclineErr(dispatchNoGo, "preflight_no_go", "issue a/b#5 is infeasible")
+	state, outcome, deferred = directorDispatchDisposition(noGo)
 	if deferred {
-		t.Error("a genuine launch failure must not defer")
+		t.Error("a coded NO-GO decline is a per-issue verdict, it must not defer")
 	}
 	if state != "failed" {
-		t.Errorf("launch-failure state = %q, want failed", state)
+		t.Errorf("decline state = %q, want failed", state)
 	}
 	if outcome == nil || outcome.Status != "dispatch-error" {
-		t.Errorf("failure outcome = %+v, want status=dispatch-error", outcome)
+		t.Errorf("decline outcome = %+v, want status=dispatch-error", outcome)
+	}
+
+	// Wrong-repo and untrusted-owner are likewise terminal per-issue/owner verdicts.
+	for _, tc := range []struct {
+		name string
+		err  error
+	}{
+		{"wrong-repo", dispatchDeclineErr(dispatchWrongRepo, "preflight_wrong_repo_routed", "routed to c/d")},
+		{"untrusted-owner", exitcode.New(dispatchUntrustedOwner, "untrusted_owner", errors.New("owner not trusted"), "")},
+	} {
+		if _, _, def := directorDispatchDisposition(tc.err); def {
+			t.Errorf("%s decline must park terminal, not defer", tc.name)
+		}
 	}
 }
 
