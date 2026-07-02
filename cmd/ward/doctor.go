@@ -26,7 +26,7 @@ func doctorCommand() *cli.Command {
 			"against the repo Makefile, then probes host security posture against the " +
 			"parsed security: block: PATH posture per protected binary, passwordless sudo " +
 			"(when forbid_passwordless is set), and credential-env scan. Exits non-zero " +
-			"on any FAIL row.",
+			"on any FAIL row, and (per ward#450) when no security: block is declared at all.",
 		Flags: []cli.Flag{
 			&cli.StringSliceFlag{
 				Name:  "skip",
@@ -47,11 +47,14 @@ func doctorCommand() *cli.Command {
 	}
 }
 
-// doctorOptions tunes ward doctor. Zero value means "run every check with
-// default (warn-not-fail) credential semantics".
+// doctorOptions tunes ward doctor. Zero value runs every check with default
+// (warn-not-fail) credential semantics and, per ward#450, fails on no security:.
 type doctorOptions struct {
 	skips             map[string]bool
 	strictCredentials bool
+	// allowMissingSecurity downgrades the ward#450 no-security: failure to a NOTE
+	// (ward setup sets it; standalone doctor leaves it false, so CI stays gated).
+	allowMissingSecurity bool
 }
 
 // runDoctor resolves the config path by the normal precedence, then runs every
@@ -119,8 +122,17 @@ func renderAllowlistFailure(problems []allowlist.Problem) string {
 	return strings.Join(msgs, "\n")
 }
 
-// runSecurityAt loads the config at yamlPath, runs the host probes, writes
-// per-row results to out, and returns a non-nil error when any FAIL row surfaced.
+// missingSecurityHint is the ward#450 remediation ward doctor reports as a FAIL
+// (or ward setup as a NOTE) when a repo declares no security: block. See doctor.md.
+const missingSecurityHint = "no `security:` block declared. As of ward#450 `ward doctor` fails by " +
+	"default without one, so a passing run means a host-tool policy is in force, not merely that " +
+	"nothing was misconfigured. The dev-verb gate (clean-tree, argv, and audit checks) still runs " +
+	"without it, but no protected-binary / sudo / hook policy is enforced. Add a `security:` block to " +
+	".ward/ward.yaml (`ward setup` scaffolds a commented template to uncomment and tailor). " +
+	"Field reference: docs/ward-yaml.md (the security: schema)"
+
+// runSecurityAt loads the config, runs the host probes to out, and errors on any
+// FAIL row (or, per ward#450, a missing security: block unless allowed by opts).
 func runSecurityAt(out io.Writer, yamlPath string, opts doctorOptions) error {
 	cfg, err := repocfg.Load(yamlPath)
 	if err != nil {
@@ -128,7 +140,11 @@ func runSecurityAt(out io.Writer, yamlPath string, opts doctorOptions) error {
 	}
 	_, _ = fmt.Fprintln(out, summarizeSecurity(cfg.Security))
 	if securityIsZero(cfg.Security) {
-		return nil
+		if opts.allowMissingSecurity {
+			_, _ = fmt.Fprintf(out, "  %-11s %-4s %s\n", "security", "NOTE", missingSecurityHint)
+			return nil
+		}
+		return errors.New(missingSecurityHint)
 	}
 
 	var results []probeResult

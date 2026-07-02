@@ -98,7 +98,9 @@ func runSetup(out io.Writer, opts setupOptions) error {
 		return nil
 	}
 	_, _ = fmt.Fprintln(out, "ward setup: running doctor against the generated config...")
-	return runDoctorAt(out, yamlPath, doctorOptions{})
+	// A fresh scaffold's security: block is commented (inert), so allow the
+	// ward#450 no-security: state here as a NOTE. Standalone doctor still fails.
+	return runDoctorAt(out, yamlPath, doctorOptions{allowMissingSecurity: true})
 }
 
 // writeScaffold writes content to yamlPath, refusing to clobber an existing
