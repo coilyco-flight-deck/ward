@@ -102,10 +102,10 @@ func TestParseAgentIssueRef(t *testing.T) {
 		{"  #98  ", "", "", 98, false},
 		{"#98?thing=stuff", "", "", 98, false},
 		{"", "", "", 0, true},
-		{"coilyco-flight-deck/ward", "", "", 0, true},               // no #N
-		{"coilyco-flight-deck/ward#0", "", "", 0, true},             // non-positive
-		{"coilyco-flight-deck/ward#-3", "", "", 0, true},            // negative
-		{"#0", "", "", 0, true},                                     // bare non-positive
+		{"coilyco-flight-deck/ward", "", "", 0, true},    // no #N
+		{"coilyco-flight-deck/ward#0", "", "", 0, true},  // non-positive
+		{"coilyco-flight-deck/ward#-3", "", "", 0, true}, // negative
+		{"#0", "", "", 0, true},                          // bare non-positive
 		{"not-a-ref", "", "", 0, true},
 	}
 	for _, c := range cases {
@@ -203,6 +203,38 @@ func TestAgentSeedPrompt(t *testing.T) {
 	// An empty title degrades gracefully, never blank-quotes.
 	if !strings.Contains(agentSeedPrompt(ref, "   ", "b", "", false, nil), "(untitled)") {
 		t.Error("empty title should render as (untitled)")
+	}
+}
+
+func TestCarryIssueBanner(t *testing.T) {
+	ref := agentIssueRef{Owner: "coilyco-flight-deck", Repo: "ward", Number: 426}
+	got := carryIssueBanner(ref)
+	for _, want := range []string{
+		"coilyco-flight-deck/ward#426",
+		"Carried issue number: 426.",
+	} {
+		if !strings.Contains(got, want) {
+			t.Fatalf("carryIssueBanner() missing %q: %s", want, got)
+		}
+	}
+	if strings.Contains(got, "#425") {
+		t.Fatalf("carryIssueBanner() leaked adjacent issue number: %s", got)
+	}
+}
+
+func TestAgentSeedPromptKeepsAdjacentIssuesDistinct(t *testing.T) {
+	before := agentIssueRef{Owner: "coilyco-flight-deck", Repo: "ward", Number: 425}
+	after := agentIssueRef{Owner: "coilyco-flight-deck", Repo: "ward", Number: 426}
+	beforeSeed := agentSeedPrompt(before, "fix carried issue state", "work one", "", true, nil)
+	afterSeed := agentSeedPrompt(after, "fix carried issue state", "work two", "", true, nil)
+	if !strings.Contains(beforeSeed, "closes #425") || strings.Contains(beforeSeed, "closes #426") {
+		t.Fatalf("seed for #425 drifted: %s", beforeSeed)
+	}
+	if !strings.Contains(afterSeed, "closes #426") || strings.Contains(afterSeed, "closes #425") {
+		t.Fatalf("seed for #426 drifted: %s", afterSeed)
+	}
+	if strings.Contains(beforeSeed, "Carried issue number: 426") || strings.Contains(afterSeed, "Carried issue number: 425") {
+		t.Fatalf("adjacent issue numbers bled across seeds\n425 seed: %s\n426 seed: %s", beforeSeed, afterSeed)
 	}
 }
 

@@ -47,6 +47,12 @@ func (r agentIssueRef) url() string {
 	return fmt.Sprintf("%s/%s/%s/issues/%d", strings.TrimRight(base, "/"), r.Owner, r.Repo, r.Number)
 }
 
+// carryIssueBanner renders the exact carried issue once, as a stable identity
+// anchor for prompts and logs. The number is the reserved one, never inferred.
+func carryIssueBanner(ref agentIssueRef) string {
+	return fmt.Sprintf("Carried issue identity: %s.\nCarried issue number: %d.", ref, ref.Number)
+}
+
 // parseAgentIssueRef resolves owner/repo#N, a Forgejo/GitHub issue URL, or a bare #N / N.
 // ward keeps the task-verb steer (ward#234, ward#282).
 func parseAgentIssueRef(s string) (agentIssueRef, error) {
@@ -182,10 +188,10 @@ func agentSeedPrompt(ref agentIssueRef, title, body, details string, headless bo
 	seed := fmt.Sprintf(
 		"Work on Forgejo issue %s (%q).\n\n"+
 			"URL: %s\n\n"+
-			"%s Then carry it end to end per your container doctrine - "+
+			"%s\n\n%s Then carry it end to end per your container doctrine - "+
 			"implement, commit, merge to main, push - and close the issue with a commit "+
 			"trailer: closes #%d.",
-		ref, title, ref.url(), action, ref.Number)
+		ref, title, ref.url(), carryIssueBanner(ref), action, ref.Number)
 	if details = strings.TrimSpace(details); details != "" {
 		seed += fmt.Sprintf(
 			"\n\nOperator note (added at dispatch via --details; treat it as authoritative and "+
@@ -590,6 +596,7 @@ func preflightPrompt(ref agentIssueRef, title, body, details string, comments []
 			"Important context: this pre-flight read happens in a temporary host scratch directory. "+
 			"The work itself will take place in %s. This is the repository you should explore for any needed "+
 			"conventions, schemas, file layouts, or wiring patterns required to complete this task.%s\n\n"+
+			"%s\n\n"+
 			"Before that detached run starts, give a quick PRE-FLIGHT read: based on the issue "+
 			"AND its comment thread below, do you think you can carry it to merge unattended? "+
 			"Later comments can supersede the original description - the author may have answered "+
@@ -611,7 +618,7 @@ func preflightPrompt(ref agentIssueRef, title, body, details string, comments []
 			"do not go digging to decide it, and never from files missing in the current directory. "+
 			"ward will blind-file a fresh issue in that repo and launch nothing here.\n"+
 			"This is a judgment call, not a commitment - be honest about ambiguity.",
-		cloneScope, extraNote, cloneScope, extraNote, ref, title, body, note, thread, gate, ref.Owner, ref.Repo)
+		cloneScope, extraNote, cloneScope, extraNote, carryIssueBanner(ref), ref, title, body, note, thread, gate, ref.Owner, ref.Repo)
 }
 
 // preflightComments renders the human comment thread (oldest first) for the

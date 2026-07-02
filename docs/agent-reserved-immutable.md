@@ -9,6 +9,10 @@ to the work in progress. Editing the body or adding an instruction-comment
 changes what a human sees and nothing else: it does not reach the running
 engineer.
 
+The carried issue identity is likewise frozen at dispatch. Ward now spells that
+identity out explicitly in the seeded prompt and pre-flight read so adjacent
+issue numbers cannot bleed into one another.
+
 ## The operator rule
 
 - **Corrections and scope changes discovered after dispatch go to a new issue,
