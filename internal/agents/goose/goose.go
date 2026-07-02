@@ -35,10 +35,12 @@ var record = agentsapi.Manifest{
 // home, so it carries no state.
 type Agent struct{}
 
-// Compile-time proof goose implements the core contract plus its one capability.
+// Compile-time proof goose implements the core contract plus its capabilities:
+// config compose + a pre-launch Ollama-reachability gate (ward#487).
 var (
 	_ agentsapi.Agent          = Agent{}
 	_ agentsapi.ConfigComposer = Agent{}
+	_ agentsapi.LaunchGate     = Agent{}
 )
 
 // New returns goose's Agent.

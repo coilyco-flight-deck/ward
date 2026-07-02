@@ -25,8 +25,19 @@ Best-effort self-install. An image that already contains `opencode` short-circui
 
 ## Smoke gate
 
-None. The model is local to the container, so dispatch proceeds without a host
-GO/NO-GO check.
+No **host GO/NO-GO pre-flight**: opencode has no host one-shot wired, so dispatch
+proceeds without a pre-dispatch check (see [agent-preflight.md](agent-preflight.md)).
+
+There **is** an **in-container Ollama reachability probe** (pre-launch, ward#487),
+the local-model analog of claude's auth smoke test. A headless opencode whose
+Ollama endpoint is down would hang the dispatched container exactly like an
+undetected bad claude credential (the failure mode a smoke gate exists to prevent).
+So before launching, the entrypoint TCP-probes `WARD_OLLAMA_URL` (the endpoint the
+opencode config binds) with a short retry window, and on an unreachable endpoint
+**aborts the container with a clear error** naming the endpoint and how to recover,
+instead of letting it silently hang. The probe is headless-only (an interactive TUI
+has a human watching); set `WARD_SMOKE_TEST_SKIP=1` to bypass it (the same switch
+claude's probe reads).
 
 ## See also
 

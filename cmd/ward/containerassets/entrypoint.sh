@@ -783,6 +783,50 @@ smoke_test_claude_auth() {
   log "auth smoke test: claude responded, auth OK"
 }
 
+# --- pre-launch ollama reachability smoke test (ward#487) --------------------
+
+# The local-harness analog of smoke_test_claude_auth: a down goose/opencode Ollama
+# endpoint aborts loud here instead of hanging. See docs/agent-local-harnesses.md.
+OLLAMA_SMOKE_WINDOW=15 # seconds, matches probeWindow in the Go port
+smoke_test_ollama_reachable() {
+  [ "${WARD_HEADLESS:-0}" = 1 ] || return 0
+  local harness="" endpoint=""
+  case "$WARD_MODE" in
+  goose)
+    harness=goose
+    endpoint="$(awk '/^OLLAMA_HOST:/{sub(/^OLLAMA_HOST:[[:space:]]*/, ""); print; exit}' "$AGENT_HOME/.config/goose/config.yaml" 2>/dev/null || true)"
+    [ -n "$endpoint" ] || endpoint="http://localhost:11434"
+    ;;
+  qwen | opencode) # WARD_MODE is canonical "opencode" now; qwen stays as the alias
+    harness=opencode
+    endpoint="${WARD_OLLAMA_URL:-http://localhost:11434/v1}"
+    ;;
+  *)
+    return 0
+    ;;
+  esac
+  [ "${WARD_SMOKE_TEST_SKIP:-0}" = 1 ] && { log "ollama smoke test skipped (WARD_SMOKE_TEST_SKIP=1)"; return 0; }
+  [ -n "$endpoint" ] || { log "ollama smoke test: no $harness ollama endpoint configured, skipping reachability probe (ward#487)"; return 0; }
+  # Normalise a bare host[:port] to a URL curl can dial.
+  case "$endpoint" in *://*) ;; *) endpoint="http://$endpoint" ;; esac
+  log "ollama smoke test: probing $harness ollama endpoint $endpoint before launch (ward#487)"
+  local waited=0
+  while :; do
+    # No --fail: any HTTP response (even 404 on /v1) proves the backend is reachable;
+    # only a connection-level failure (refused/timeout/DNS) retries then aborts.
+    if curl -s -o /dev/null --connect-timeout 3 --max-time 5 "$endpoint" 2>/dev/null; then
+      log "ollama smoke test: $harness ollama endpoint reachable, proceeding"
+      return 0
+    fi
+    waited=$((waited + 4))
+    if [ "$waited" -ge "$OLLAMA_SMOKE_WINDOW" ]; then
+      break
+    fi
+    sleep 1
+  done
+  die "ollama smoke test: $harness's ollama endpoint $endpoint was unreachable after ${OLLAMA_SMOKE_WINDOW}s - the dispatched container would hang or fail opaquely instead of a clean abort (ward#487, the local-harness analog of claude's auth smoke test). Is Ollama running and reachable from the container? Point $harness at a live endpoint (opencode: WARD_OLLAMA_URL; goose: the SSM tower host /coilysiren/ollama/host) or pass --ts-sidecar to route localhost:11434 to the tower. WARD_SMOKE_TEST_SKIP=1 bypasses."
+}
+
 # --- launch ------------------------------------------------------------------
 main() {
   configure_git_auth
@@ -892,6 +936,9 @@ main() {
   # Fail loud before launch if claude can't authenticate (ward#222): a clear
   # abort beats a silent multi-minute hang. Runs as the agent user, post-chown.
   smoke_test_claude_auth
+  # Same anti-hang guard for the local-model harnesses (ward#487): abort now if
+  # goose/opencode's Ollama endpoint is unreachable rather than hanging on launch.
+  smoke_test_ollama_reachable
   # Mark that we reached the real agent launch (post-smoke-test); the reaper reads
   # this on a clean teardown to release a pre-launch-death hold (ward#264, docs).
   export WARD_AGENT_LAUNCHED=1
