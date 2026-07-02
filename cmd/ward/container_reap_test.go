@@ -1,6 +1,7 @@
 package main
 
 import (
+	"context"
 	"os"
 	"os/exec"
 	"path/filepath"
@@ -315,6 +316,121 @@ func TestRunProvenanceLandedRequiresMatchingIssueAfterReservation(t *testing.T) 
 	prov.Issue = 514
 	if r.runProvenanceLanded(t.Context(), repo, prov, 514) {
 		t.Fatal("adjacent issue numbers must not cross-attribute landed history")
+	}
+}
+
+// TestReapTargetTreeLandedAndClosedDoesNotSalvage covers ward#518 deliverable 1:
+// a landed run (HEAD in origin/main, clean tree) reads as done, never salvage.
+func TestReapTargetTreeLandedAndClosedDoesNotSalvage(t *testing.T) {
+	repo := t.TempDir()
+	runGit(t, repo, "init", "-b", "main")
+	runGit(t, repo, "config", "user.email", "test@example.com")
+	runGit(t, repo, "config", "user.name", "Test User")
+	if err := os.WriteFile(filepath.Join(repo, "feat.txt"), []byte("feat\n"), 0o644); err != nil {
+		t.Fatal(err)
+	}
+	runGit(t, repo, "add", "feat.txt")
+	runGit(t, repo, "commit", "-m", "ward work\n\ncloses #518")
+	// The work already landed: origin/main IS this commit (residual 0, clean tree).
+	runGit(t, repo, "remote", "add", "origin", repo)
+	runGit(t, repo, "update-ref", "refs/remotes/origin/main", "HEAD")
+
+	r := &Runner{Runner: &shell.Runner{Resolve: shell.PathResolver}}
+	// Launched + carrying an issue: not reservation-releasable, so no Forgejo client.
+	env := reapEnv{Owner: "coilyco-flight-deck", Name: "ward", Base: "https://forgejo.coilysiren.me", Mode: "claude", Issue: 518, Launched: true}
+	if err := r.reapTargetTree(t.Context(), repo, env, false); err != nil {
+		t.Fatalf("reapTargetTree on a landed-and-closed run: %v", err)
+	}
+	out, _ := exec.Command("git", "-C", repo, "branch", "--list", salvageBranchPrefix+"*").CombinedOutput()
+	if strings.TrimSpace(string(out)) != "" {
+		t.Fatalf("landed-and-closed run must not create a salvage branch, got: %q", string(out))
+	}
+}
+
+// fakeSalvageNotifier records the Forgejo verbs notifySalvage drives so the
+// ward#518 routing (comment-on-carried-issue vs standalone-issue) is assertable.
+type fakeSalvageNotifier struct {
+	reopened     []int
+	commented    []int
+	commentBody  string
+	created      int
+	createdTitle string
+	createdBody  string
+}
+
+func (f *fakeSalvageNotifier) reopenIssue(_ context.Context, _, _ string, number int) error {
+	f.reopened = append(f.reopened, number)
+	return nil
+}
+
+func (f *fakeSalvageNotifier) commentIssue(_ context.Context, _, _ string, number int, body string) error {
+	f.commented = append(f.commented, number)
+	f.commentBody = body
+	return nil
+}
+
+func (f *fakeSalvageNotifier) createIssue(_ context.Context, _, _, title, body string) (int, error) {
+	f.created++
+	f.createdTitle = title
+	f.createdBody = body
+	return 900, nil
+}
+
+// TestNotifySalvageCarriedIssueRepoensAndComments covers ward#518 deliverable 2:
+// a carried salvage reopens + comments on its issue, filing no standalone issue.
+func TestNotifySalvageCarriedIssueRepoensAndComments(t *testing.T) {
+	f := &fakeSalvageNotifier{}
+	env := reapEnv{Owner: "coilyco-flight-deck", Name: "ward", Base: "https://forgejo.coilysiren.me", Mode: "claude", Issue: 518}
+	report := salvageReport{
+		Repo:   env.repo(),
+		Mode:   "claude",
+		Branch: "ward-salvage/ward-abc123",
+		Reason: reasonConflict,
+		Base:   env.Base,
+		Issue:  518,
+	}
+	if err := notifySalvage(t.Context(), f, env, report); err != nil {
+		t.Fatalf("notifySalvage: %v", err)
+	}
+	if len(f.reopened) != 1 || f.reopened[0] != 518 {
+		t.Errorf("carried salvage must reopen #518, got reopened=%v", f.reopened)
+	}
+	if len(f.commented) != 1 || f.commented[0] != 518 {
+		t.Errorf("carried salvage must comment on #518, got commented=%v", f.commented)
+	}
+	if f.created != 0 {
+		t.Errorf("carried salvage must NOT file a standalone issue, got created=%d", f.created)
+	}
+	for _, want := range []string{"Reopened", "ward-salvage/ward-abc123", string(reasonConflict), "git fetch"} {
+		if !strings.Contains(f.commentBody, want) {
+			t.Errorf("carried-issue comment missing %q\n---\n%s", want, f.commentBody)
+		}
+	}
+}
+
+// TestNotifySalvageNoIssueFilesOneStandalone covers ward#518 deliverable 3: a
+// freeform run files exactly one standalone issue, never reopen/append.
+func TestNotifySalvageNoIssueFilesOneStandalone(t *testing.T) {
+	f := &fakeSalvageNotifier{}
+	env := reapEnv{Owner: "coilyco-flight-deck", Name: "ward", Base: "https://forgejo.coilysiren.me", Mode: "claude", Issue: 0}
+	report := salvageReport{
+		Repo:   env.repo(),
+		Mode:   "claude",
+		Branch: "ward-salvage/ward-def456",
+		Reason: reasonConflict,
+		Base:   env.Base,
+	}
+	if err := notifySalvage(t.Context(), f, env, report); err != nil {
+		t.Fatalf("notifySalvage: %v", err)
+	}
+	if f.created != 1 {
+		t.Errorf("freeform salvage must file exactly one standalone issue, got created=%d", f.created)
+	}
+	if len(f.reopened) != 0 || len(f.commented) != 0 {
+		t.Errorf("freeform salvage must not reopen/comment a carried issue, got reopened=%v commented=%v", f.reopened, f.commented)
+	}
+	if !strings.HasPrefix(f.createdTitle, salvageIssueTitlePrefix) {
+		t.Errorf("standalone salvage issue title %q missing %q prefix", f.createdTitle, salvageIssueTitlePrefix)
 	}
 }
 

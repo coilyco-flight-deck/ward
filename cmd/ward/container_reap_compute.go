@@ -150,6 +150,9 @@ type salvageReport struct {
 	Branch   string
 	Reason   reapReason
 	Findings []scan.Finding
+	// Issue is the carried issue this run was dispatched for (0 for a freeform
+	// run); a carried salvage comments here instead of filing a new issue (ward#518).
+	Issue int
 	// AuthCause is set when the salvage was triggered by a credential-rejected
 	// push (a dead/rotated PAT), not a content conflict or race (ward#103).
 	AuthCause bool
@@ -168,11 +171,29 @@ func salvageIssueTitle(r salvageReport) string {
 		salvageIssueTitlePrefix, r.Repo.Name, r.Branch)
 }
 
-// salvageIssueBody renders the operator-facing issue: what happened, why it did
-// not auto-land, how to recover the branch, and the junk-scan findings.
+// salvageIssueBody renders the standalone operator-facing issue for a freeform
+// run (no carried issue): intro plus the shared detail body.
 func salvageIssueBody(r salvageReport) string {
 	var b strings.Builder
 	fmt.Fprintf(&b, "An ephemeral `ward container` (%s mode) finished but its work was **not merged to `main`**, so the reaper preserved it on a branch before the container was torn down.\n\n", r.Mode)
+	b.WriteString(salvageDetailBody(r))
+	return b.String()
+}
+
+// salvageCommentBody renders the salvage notice as a comment on the carried
+// issue (ward#518): a reopen banner plus the shared detail body.
+func salvageCommentBody(r salvageReport) string {
+	var b strings.Builder
+	b.WriteString("## ⚠️ Reopened: this run's work did not land on `main`\n\n")
+	fmt.Fprintf(&b, "An ephemeral `ward container` (%s mode) dispatched for this issue finished but its work was **not merged to `main`**, so the reaper preserved it on a branch before teardown and reopened the issue (its `closes #%d` never reached `main`). Recover from the salvage branch below.\n\n", r.Mode, r.Issue)
+	b.WriteString(salvageDetailBody(r))
+	return b.String()
+}
+
+// salvageDetailBody is the shared body of both the standalone issue and the
+// carried-issue comment: facts, likely-cause, recovery, findings, tree snapshot.
+func salvageDetailBody(r salvageReport) string {
+	var b strings.Builder
 	fmt.Fprintf(&b, "- **Repo:** `%s`\n", r.Repo.slug())
 	fmt.Fprintf(&b, "- **Salvage branch:** `%s`\n", r.Branch)
 	fmt.Fprintf(&b, "- **Reason:** %s\n", r.Reason)

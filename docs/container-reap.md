@@ -17,18 +17,21 @@ does can defeat it. It is a hidden (ward#263) verb the entrypoint calls.
 1. Stages and commits anything the agent left loose (`git add -A` + a
    `--no-verify` residual commit - the goal is to preserve work, not re-gate it).
 2. Records dispatch-time run provenance. See [run provenance](container-reap-provenance.md).
-3. Verifies the carried issue has the same-repo `closes #N` reference. Missing
+3. Checks for **nothing to reap** *first* (ward#518): a clean tree with `HEAD`
+   already in `origin/main` is done, before the salvage gates, which read the
+   then-empty `origin/main..HEAD` and would else false-salvage a landed run.
+4. Verifies the carried issue has the same-repo `closes #N` reference. Missing
    reference means salvage, not push.
-4. Integrates onto the latest `main` (`rebase`; conflicts route to salvage).
-5. Scans the residual diff for content that should never silently land on `main`:
-   vendored/generated trees (`node_modules`, `vendor`, ...), credential-shaped
-   files (`.env`, `*.pem`/`*.key`, `id_rsa`, ...), and oversized binary blobs.
-6. Decides deterministically:
+5. Integrates onto the latest `main` (`rebase`; conflicts route to salvage).
+6. Scans the residual diff for content that should never silently land on `main`:
+   vendored trees (`node_modules`, ...), credential files (`.env`, `*.pem`, ...), blobs.
+7. Decides deterministically:
    - clean diff + clean integration -> **push straight to `main`**.
-   - anything else (conflict, scan finding, rejected push) -> **salvage**: push
-     the work to a `ward-salvage/<id>` branch (durable), then file or append to a
-     `[ward-salvage]` forgejo issue with recovery commands + findings (notification).
-7. Verifies each `--repo` grant landed (ward#291): reads `WARD_EXTRA_REPOS`,
+   - anything else (conflict, scan finding, rejected push) -> **salvage**: push to
+     a `ward-salvage/<id>` branch (durable), then notify (ward#518) - a **carried**
+     run comments the notice back on its issue and **reopens** it; a **freeform**
+     run files exactly **one** standalone `[ward-salvage]` issue, never appended.
+8. Verifies each `--repo` grant landed (ward#291): reads `WARD_EXTRA_REPOS`,
    checks the closing-reference discipline, and reopens the issue if any grant
    did not reach `origin/main`.
 
@@ -41,9 +44,8 @@ notification, not lost work. If even the branch push fails (remote unreachable),
 the reaper dumps the patch to the container log, recoverable via `docker logs`
 while it survives the keep-10 sweep ([container-cleanup.md](container-cleanup.md)).
 
-The agent's job is to make the reaper's trivial: finish the feature, push to
-`main`, leave a clean tree. The reaper is the backstop that makes the guarantee
-real *without depending on the agent having done so*.
+The agent's job is to make the reaper's trivial: finish, push to `main`, leave a
+clean tree. The reaper is the backstop that holds *without depending on the agent*.
 
 ## Operator note: don't rotate the PAT mid-run
 
@@ -57,10 +59,9 @@ preserved but recovery is manual. Before rotating, let in-flight runs finish.
 
 So an auth-cause salvage reads distinct from a conflict (ward#103), the reaper
 classifies the push: credential-rejection markers (`Authentication failed`,
-`403`/`401`, ...) report `reasonAuthFail`, not the misleading "remote advanced"
-race, and the issue gains a "Likely cause: dead/rotated PAT" section. Each issue
-stamps container uptime at reap (the PAT snapshot's age, from `WARD_CONTAINER_UP`).
-When the token is fully dead the issue can't be filed, so the log names the cause.
+`403`/`401`, ...) report `reasonAuthFail`, not the misleading race, and the issue
+gains a "Likely cause: dead/rotated PAT" section stamped with container uptime at
+reap. When the token is fully dead the issue can't be filed, so the log names the cause.
 
 Host AWS/STS expiry is **not** a concern: AWS is touched only on the host at
 bring-up to read the PAT from SSM, never during reap.
