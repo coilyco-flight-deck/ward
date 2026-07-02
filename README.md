@@ -1,6 +1,6 @@
 # ward
 
-**ward wraps a project's dev verbs - `build`, `test`, `vet`, `lint`, `tidy`, `cover` - behind a policy gate, so nothing reaches `make` or `go` unchecked.** Every run validates its own arguments, appends one line to an audit log, and is refused if it could not be reconstructed from git history. It is the single command a contributor (human or agent) routes build-and-test work through. All it needs is a repo with a `.ward/ward.yaml` and Homebrew.
+**ward wraps a project's dev verbs - `build`, `test`, `vet`, `lint`, `tidy`, `cover` - behind a policy gate, so nothing reaches `make` or `go` unchecked.** Every run validates its own arguments, appends one line to an audit log, and is refused if it could not be reconstructed from git history. It is the single command a contributor (human or agent) routes build-and-test work through. This half is **forge-agnostic**: point it at any git repo - GitHub included - with nothing but a `.ward/ward.yaml` and Homebrew, no forge account of any kind. Only ward's second half, the agent driver below, is tied to a specific forge.
 
 ward has a second half for running coding agents: `ward agent` drives a harness (claude, codex, goose, ...) into a throwaway container to carry a Forgejo issue from fresh clone to merged `main`, its reach bounded by that container. That surface is exposed as **`warded`**, a thin symlink onto `ward agent`. The name, the three-layer split it sits on, and the operator surface it absorbs are covered below and in [`docs/architecture.md`](docs/architecture.md).
 
@@ -78,6 +78,10 @@ warded advisor #98       # answer/triage a ref, writing no code
 ```
 
 See [`docs/FEATURES.md`](docs/FEATURES.md) for the full verb list.
+
+## When a run breaks
+
+A `warded` run that failed or seemed to do nothing has a single symptom-indexed entry point: [`docs/troubleshooting.md`](docs/troubleshooting.md). It is indexed by **what you saw**, not by which subsystem failed - "launched then nothing happened", "never launched", "`ward exec` refused", "nothing landed on `main`" - and each row routes to the one diagnostic surface (the `~/.ward/agent-logs/<container>/` drain, a NO-GO comment on the issue, or a host auth refresh) and the fix. Start there before opening any per-subsystem doc.
 
 ## Three layers, told apart by when they run
 

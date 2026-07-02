@@ -14,6 +14,7 @@ New to ward? Read [architecture.md](architecture.md) first - it frames the whole
 - [FEATURES.md](FEATURES.md) - inventory of what ships today.
 - [comparison-openshell.md](comparison-openshell.md) - ward vs NVIDIA OpenShell: verb-level gate vs kernel sandbox.
 - [doctor.md](doctor.md) - `ward doctor`, the single diagnostic verb, incl. the allowlist drift guard.
+- [troubleshooting.md](troubleshooting.md) - symptom-indexed entry point for a failed `warded` run.
 - [audit.md](audit.md) - the append-only JSONL audit row written per invocation.
 - [config-discovery.md](config-discovery.md) - how ward resolves the allowlist config path.
 - [golangci.md](golangci.md) - the strict-ish golangci-lint configuration.
