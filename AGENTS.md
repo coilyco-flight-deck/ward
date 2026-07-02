@@ -9,7 +9,7 @@ Workspace conventions load globally via `~/.claude/CLAUDE.md` -> `agentic-os-kai
 ward also carries the operator surface from the retiring [coily](https://github.com/coilyco-bridge/coily). Three roles, by **when** they run: cli-guard the **engine**, [ward-kdl](docs/ward-kdl.md) the **build-time generator** (guardfile in, audited CLI out), `ward` the **run-time product** that embeds those surfaces. Two verb kinds now:
 
 - **Contributor dev verbs** - `build`, `test`, `vet`, `lint`, `tidy`, `cover`, declared per-repo in `.ward/ward.yaml`.
-- **Operator verbs** - [ward-kdl](docs/ward-kdl.md) generates the `ward ops <api>` REST surfaces (`ops forgejo`, `ops aws`). Composite control flow stays hand-written Go in `cmd/ward` - `ward ci watch` (ward#88, [docs/ci-watch.md](docs/ci-watch.md)).
+- **Operator verbs** - [ward-kdl](docs/ward-kdl.md) generates the `ward ops <api>` REST surfaces (`ops forgejo`, `ops aws`). Composite control flow stays hand-written Go in `cmd/ward` (e.g. `ward agent`, `ward container reap`).
 
 ## Project shape
 
@@ -53,7 +53,7 @@ Forgejo-canonical, on Forgejo Actions not GitHub. Push to `main` runs `.forgejo/
 
 Never write the literal skip-CI token in a commit body or it silently disables the workflow on that push. Describe it as "skip-CI marker".
 
-Post-push: verify CI at +120s (`coily ops gh run list --repo coilyco-flight-deck/ward --limit 1`). Once green: `brew upgrade coilyco-flight-deck/tap/ward`.
+Post-push at +120s, verify the release run on Forgejo Actions (not the GitHub mirror): `ward ops forgejo tasks list coilyco-flight-deck ward --limit 1`. Once green: `brew upgrade coilyco-flight-deck/tap/ward`.
 
 ## Agent rules
 

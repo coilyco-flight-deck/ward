@@ -27,8 +27,8 @@ Each leaf carries `--dry-run`, `--query`, and `--output`. Hardened per
 the `pr` leaves are **denied** (each teaches why on invocation); label CRUD
 targets org-labels; cross-repo `issue search`; `issue list-all`; and
 `move-issue` (copy, back-link, close). `restrict owner matches "coily*"` scopes
-every {owner} leaf. The complex actions are `ci-watch` (poll), `issue list-all`
-(collect), `move-issue` (call sequence), and `issue view` (issue + comments).
+every {owner} leaf. The complex actions are `issue list-all` (collect),
+`move-issue` (call sequence), and `issue view` (issue + comments).
 
 ## No hand-written Go
 

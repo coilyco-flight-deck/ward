@@ -86,7 +86,6 @@ func main() {
 			agentCommand(),
 			agentsCommand(),
 			opsCommand(),
-			ciCommand(),
 		},
 	}
 
@@ -102,8 +101,8 @@ func main() {
 
 	if err := app.Run(context.Background(), os.Args); err != nil {
 		fmt.Fprintln(os.Stderr, "ward:", err)
-		// A verb's declared exit code (exitcode.Coded, e.g. `ci watch`'s 0/1/2/3)
-		// wins, then a subprocess's own code, then 1.
+		// A verb's declared exit code (exitcode.Coded) wins, then a
+		// subprocess's own code, then 1.
 		var coded exitcode.Coded
 		if errors.As(err, &coded) {
 			os.Exit(coded.Code())
