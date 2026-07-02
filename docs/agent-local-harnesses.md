@@ -8,6 +8,13 @@ The local harness pages are:
 Both drive a local Ollama-backed model instead of a cloud API, so they need no host
 credential channel - but they do depend on a **reachable Ollama endpoint**.
 
+**Using your own Ollama?** Read [agent-local-model.md](agent-local-model.md) first:
+it is the bring-your-own-Ollama page - what the defaults are, which route reaches a
+local host Ollama today (native Linux, host-net), why Docker Desktop and endpoint
+repointing are not supported yet, and the #395 anchor for the missing knob. The
+Coily tower/tailnet routes below are the advanced path, not the only local-model
+story.
+
 ## Failure path: Ollama unreachable (ward#487)
 
 The sharpest failure mode for a local harness is an Ollama endpoint that is down or
@@ -39,5 +46,6 @@ still surfaces at run time, not here.
 
 ## See also
 
+- [docs/agent-local-model.md](agent-local-model.md) - bring your own Ollama: defaults, the supported native-Linux route, and the current limitation (#395).
 - [docs/agent-credentials.md](agent-credentials.md) - the shared cloud credential channel.
 - [docs/agent.md](agent.md) - the `ward agent` verb family and usage.

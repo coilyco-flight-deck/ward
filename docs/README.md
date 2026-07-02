@@ -61,6 +61,7 @@ New to ward? Read [architecture.md](architecture.md) first - it frames the whole
 ## Agent harnesses (drivers)
 
 - [agent-local-harnesses.md](agent-local-harnesses.md) - index of the local harness pages.
+- [agent-local-model.md](agent-local-model.md) - bring your own Ollama: defaults, the supported route, and the current limitation (#395).
 - [agent-claude.md](agent-claude.md) - the `claude` full cloud harness.
 - [agent-codex.md](agent-codex.md) - the `codex` open-sandbox cloud harness.
 - [agent-opencode.md](agent-opencode.md) - the `opencode` local Ollama-backed harness.
