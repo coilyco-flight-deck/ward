@@ -25,7 +25,7 @@ endpoint are not supported yet (#395).
 
 goose ships in the dev-base image and launches today - no self-install step. The
 launcher's one drop-to-shell fallback fires only when an agent binary is **absent**
-from the image (in practice just qwen, if its `opencode` self-install fails). goose
+from the image (in practice just `opencode`, if its self-install fails). goose
 is baked in, so `--driver goose` launches the harness rather than dropping to a
 shell. It is a first-class option at parity with claude, not an afterthought.
 
