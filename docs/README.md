@@ -24,6 +24,7 @@ New to ward? Read [architecture.md](architecture.md) first - it frames the whole
 ## Contributor dev-verb gate
 
 - [exec-verb.md](exec-verb.md) - `ward exec <verb>`: run a repo dev verb through the gate.
+- [gate-demo.md](gate-demo.md) - what the gate refuses: the clean-tree + argv-metacharacter denial demo.
 - [verb-fallback.md](verb-fallback.md) - unknown-verb rewrite to `ward exec` + the build/test/install triple.
 - [git-verbs.md](git-verbs.md) - `ward git`: audited, concurrency-safe git surface.
 - [git-clone.md](git-clone.md) - `ward git clone`, destination-gated.
@@ -32,6 +33,7 @@ New to ward? Read [architecture.md](architecture.md) first - it frames the whole
 
 ## `ward agent` (headless harness runner)
 
+- [first-run.md](first-run.md) - zero to a verifiable first `warded` dry run: prerequisites, install/verify, a safe `--print` first command.
 - [agent.md](agent.md) - the entrypoint to the ephemeral container that carries a feature.
 - [agent-subcommands.md](agent-subcommands.md) - how the roles differ (what they do, attachment, scope).
 - [agent-roster.md](agent-roster.md) - the generated role roster.
@@ -53,6 +55,7 @@ New to ward? Read [architecture.md](architecture.md) first - it frames the whole
 - [agent-credentials.md](agent-credentials.md) - how each harness's host credential is seeded.
 - [agent-attribution.md](agent-attribution.md) - agent attribution on Forgejo write bodies.
 - [agent-observability.md](agent-observability.md) - agent-run log/telemetry drain + opt-in OTLP.
+- [agent-dispatch-contract.md](agent-dispatch-contract.md) - dispatch exit codes + `meta.json` outcome enum for supervising runs.
 - [agent-host-net.md](agent-host-net.md) - `--tailnet`, the opt-in network escalation.
 - [agent-ts-sidecar.md](agent-ts-sidecar.md) - the Docker Desktop tailnet-route sidecar.
 - [agent-adapter-manifest.md](agent-adapter-manifest.md) - the per-agent divergence manifest.
@@ -61,7 +64,10 @@ New to ward? Read [architecture.md](architecture.md) first - it frames the whole
 
 ## Agent harnesses (drivers)
 
+- [agent-drivers.md](agent-drivers.md) - the four `--driver` harnesses compared (first-run facts side by side).
+- [enforcement-boundary.md](enforcement-boundary.md) - where the enforcement boundary sits per harness (claude hook vs container-edge verb gate).
 - [agent-local-harnesses.md](agent-local-harnesses.md) - index of the local harness pages.
+- [agent-local-model.md](agent-local-model.md) - bring your own Ollama: defaults, the supported route, and the current limitation (#395).
 - [agent-claude.md](agent-claude.md) - the `claude` full cloud harness.
 - [agent-codex.md](agent-codex.md) - the `codex` open-sandbox cloud harness.
 - [agent-opencode.md](agent-opencode.md) - the `opencode` local Ollama-backed harness.

@@ -29,23 +29,6 @@ Each repo declares its verbs (and an optional `security:` policy) in [`.ward/war
 
 Each repo declares which Makefile targets are exposed in `.ward/ward.yaml`, and `ward doctor` verifies the two surfaces have not drifted. The contract is stricter than "the target name exists": each exposed Makefile target must carry a `## <description>` help comment (the self-documenting-Makefile convention, e.g. `build: ## Build all packages.`) whose text equals the command's `description:`, and `run:` must be exactly `make <name>`. A bare `target:` recipe with no `## ...` comment is not registered, so `ward doctor` reports it as unmatched even though `make <target>` runs by hand. See [`docs/doctor.md`](docs/doctor.md) (Allowlist contract).
 
-## The gate says no
-
-ward is a security boundary, so the interesting demo is not what it runs - it is what it **refuses**. The clean-tree gate declines a verb when the run could not be reconstructed from history, and the argv policy declines anything carrying shell metacharacters:
-
-```
-$ ward exec test                 # on a branch with no upstream set
-ward exec test: refused - repo verb gated on a clean, synced tree
-  reason: HEAD has no synced upstream (push or set upstream first)
-  the audit row must be reconstructable from committed history
-  override for a genuine emergency: ward --audit-override-dirty exec test
-
-$ ward exec test -- -run 'Foo; rm -rf /'
-ward exec test: refused - argument "Foo; rm -rf /" contains a shell metacharacter
-```
-
-The override exists, but it is loud: the audit row is stamped `audit_override=true` with the full working-tree status, so an emergency bypass is still reconstructable after the fact. Denial is the default posture, not an error path. See [`docs/exec-verb.md`](docs/exec-verb.md) and [`docs/agent-gate.md`](docs/agent-gate.md).
-
 ## Install
 
 Install from the centralized flight-deck tap:
@@ -55,7 +38,7 @@ brew tap coilyco-flight-deck/tap https://forgejo.coilysiren.me/coilyco-flight-de
 brew install coilyco-flight-deck/tap/ward
 ```
 
-The explicit-URL form is required because the tap lives on forgejo, not github.com. The formula installs `ward` and the spec-driven `ward-kdl` (both stamped with the release tag) plus the `warded` symlink. Upgrade with `ward upgrade`.
+The explicit-URL form is required because the tap lives on forgejo, not github.com. The formula installs `ward` (stamped with the release tag) plus the `warded` symlink, and nothing else. The `ward-kdl` authoring binary is **not** installed - its surfaces are already embedded in `ward`, so end users need neither it nor the tier CLIs (ward#455). Spec authors who need `ward-kdl` itself build it from a ward checkout - see [ward-kdl-authoring.md](docs/ward-kdl-authoring.md). Upgrade with `ward upgrade`.
 
 **Releases live on Forgejo.** This repo is canonical on [forgejo.coilysiren.me/coilyco-flight-deck/ward](https://forgejo.coilysiren.me/coilyco-flight-deck/ward); the github.com copy is a read-only mirror of `main` + tags only, so its Releases page is intentionally empty - see the [canonical releases](https://forgejo.coilysiren.me/coilyco-flight-deck/ward/releases) for the current version and changelog.
 
@@ -81,7 +64,7 @@ warded director --org coilyco-flight-deck   # a heartbeat that drains a backlog 
 warded advisor #98       # answer/triage a ref, writing no code
 ```
 
-See [`docs/FEATURES.md`](docs/FEATURES.md) for the full verb list.
+New to the agent driver? [`docs/first-run.md`](docs/first-run.md) is the ordered path from zero to a verifiable `warded ... --print` dry run - prerequisites, install/verify, and how to read the plan - and it says up front whether you can get to a first run today. See [`docs/FEATURES.md`](docs/FEATURES.md) for the full verb list.
 
 ## When a run breaks
 
@@ -92,7 +75,7 @@ A `warded` run that failed or seemed to do nothing has a single symptom-indexed 
 `ward` absorbs the operator surface from the retiring [coily][coily]. The pieces are easiest to keep straight by **when** each runs:
 
 - **[cli-guard][cli-guard]** - the **engine**. The policy-and-routing framework ward consumes (pinned via go.mod). Thin consumer, not a fork.
-- **[`ward-kdl`](docs/ward-kdl.md)** - the **build-time generator**. Compiles a KDL guardfile into an audited CLI: the `ward ops <api>` REST surfaces (forgejo, aws, tailscale, ...) shipped as `ward-kdl-{read,write,admin}` tiers.
+- **[`ward-kdl`](docs/ward-kdl.md)** - the **build-time generator**. Compiles a KDL guardfile into an audited CLI: the `ward ops <api>` REST surfaces (forgejo, aws, tailscale, ...), buildable as `ward-kdl-{read,write,admin}` tiers. Not a public install artifact - its surfaces are embedded in `ward` (ward#455).
 - **`ward`** - the **run-time product**. Embeds those generated surfaces and adds the `agent` + `exec` layers. Composite control flow (the `agent` roster, `git`) stays hand-written Go.
 
 See [`docs/architecture.md`](docs/architecture.md).
@@ -101,12 +84,14 @@ See [`docs/architecture.md`](docs/architecture.md).
 
 `ward hook pre-tool-use` is a stdin-driven [Claude Code hook](https://docs.claude.com/en/docs/claude-code/hooks). It refuses `ward`/`coily` unless `command -v` resolves to a canonical homebrew path (blocking PATH-hijack), and catches bare wrapped binaries (`make`, `gh`, `aws`, ...) to name the right wrapper. No network, no state - failures pass through silently, and hard denial stays the job of `permissions.deny`. Register it with `ward install-hooks`. See [`docs/hook.md`](docs/hook.md).
 
+This hook is **claude-only** - codex, goose, and opencode get no such host-side intercept, and for every harness the `ward agent` container-flow boundary is the container edge plus the cli-guard verb gate, not this hook. [`docs/enforcement-boundary.md`](docs/enforcement-boundary.md) states where the boundary sits per harness, so a demo names the gate that actually holds.
+
 ## Where to go next
 
 Over 60 pages under [`docs/`](docs/) cover each surface. The anchors:
 
 - **The verb gate** - [exec-verb.md](docs/exec-verb.md) (the gate), [verb-fallback.md](docs/verb-fallback.md), [git-verbs.md](docs/git-verbs.md), [audit.md](docs/audit.md), [doctor.md](docs/doctor.md), [install-hooks.md](docs/install-hooks.md).
-- **The agent driver** - [agent.md](docs/agent.md) (start here), the roster [agent-engineer.md](docs/agent-engineer.md) / [agent-director.md](docs/agent-director.md) / [agent-advisor.md](docs/agent-advisor.md), the [agent-gate.md](docs/agent-gate.md), [agent-credentials.md](docs/agent-credentials.md), [agent-observability.md](docs/agent-observability.md).
+- **The agent driver** - [first-run.md](docs/first-run.md) (zero to a first `--print` dry run), [agent.md](docs/agent.md) (the reference), the roster [agent-engineer.md](docs/agent-engineer.md) / [agent-director.md](docs/agent-director.md) / [agent-advisor.md](docs/agent-advisor.md), the [agent-gate.md](docs/agent-gate.md), [agent-credentials.md](docs/agent-credentials.md), [agent-observability.md](docs/agent-observability.md).
 - **The container** - [container.md](docs/container.md), [container-reap.md](docs/container-reap.md) (land-or-salvage on teardown), [container-multi-repo.md](docs/container-multi-repo.md), [container-substrate.md](docs/container-substrate.md).
 - **Operator surface (ward-kdl / ops)** - [ward-kdl.md](docs/ward-kdl.md), [ward-kdl-tiers.md](docs/ward-kdl-tiers.md), [ops-forgejo.md](docs/ops-forgejo.md).
 - **Build & release** - [homebrew-build.md](docs/homebrew-build.md), [release.md](docs/release.md), [github-mirror.md](docs/github-mirror.md), [golangci.md](docs/golangci.md).
@@ -124,12 +109,13 @@ v0.x, and early on purpose. ward is a single-maintainer tool in active internal 
 
 ## Support
 
-Bug or feature request: [create a new issue][new-issue]. Conduct: [Code of Conduct](CODE_OF_CONDUCT.md). Security: [SECURITY.md](SECURITY.md). License: [`LICENSE`](./LICENSE).
+**Canonical development happens on [Forgejo][ward-forgejo]** - `main`, the issues, and every commit live there. That instance's registration is closed, so the **GitHub mirror is the public front door**: file a [bug or feature request][new-issue] there with just a GitHub account and a maintainer carries an accepted change across to Forgejo. That is why the README routes new issues to GitHub even though the tracker warded engineers watch is on Forgejo. The full contributor flow is in [CONTRIBUTING.md](CONTRIBUTING.md). Conduct: [Code of Conduct](CODE_OF_CONDUCT.md). Security: [SECURITY.md](SECURITY.md). License: [`LICENSE`](./LICENSE).
 
 [cli-guard]: https://forgejo.coilysiren.me/coilyco-flight-deck/cli-guard
 [coily]: https://github.com/coilyco-bridge/coily
 [cli-mcp]: https://github.com/coilysiren/cli-mcp
 [new-issue]: https://github.com/coilyco-flight-deck/ward/issues/new/choose
+[ward-forgejo]: https://forgejo.coilysiren.me/coilyco-flight-deck/ward
 
 ## See also
 

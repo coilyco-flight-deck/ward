@@ -58,11 +58,12 @@ bet from the kernel side. The shared thesis is that for an agent with real
 credentials, the part worth shipping is the part that says no.
 
 **Scope:** that claim covers the compiled verb gate, not the Claude Code
-PreToolUse hook ([docs/hook.md](hook.md)). The hook is a separate, softer layer
-that intercepts an agent's Bash calls host-side and emits a routing **hint**. It
-is best-effort by design and **fails open** - an unreachable config or malformed
-YAML pass through silently. It nudges toward the guarded surface, it does not
-gate. Hard denial there stays the job of Claude Code's own `permissions.deny`.
+PreToolUse hook ([docs/hook.md](hook.md)). The hook intercepts Bash calls
+host-side and emits a routing **hint**. It **fails open** - a bad config passes
+through silently - so hard denial stays Claude Code's own `permissions.deny`.
+The hook is also **claude-only**: for every harness the `ward agent` boundary is
+the container edge plus this verb gate. See
+[enforcement-boundary.md](enforcement-boundary.md).
 
 ## See also
 
