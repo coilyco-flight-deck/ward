@@ -22,6 +22,11 @@ type reservationConflictError struct{ msg string }
 
 func (e *reservationConflictError) Error() string { return e.msg }
 
+// Code and Kind make the conflict a cli-guard exitcode.Coded error so the CLI exits
+// dispatchReservationConflict; isReservationConflict still recovers it (ward#485).
+func (e *reservationConflictError) Code() int    { return dispatchReservationConflict }
+func (e *reservationConflictError) Kind() string { return "reservation_conflict" }
+
 // newReservationConflict builds a typed conflict refusal with a formatted message, so a
 // caller can recover the intent with isReservationConflict regardless of the prose.
 func newReservationConflict(format string, args ...any) error {
