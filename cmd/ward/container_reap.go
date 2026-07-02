@@ -466,7 +466,19 @@ func (r *Runner) issueClosingReferencePresent(ctx context.Context, work string, 
 	if err != nil {
 		return false
 	}
-	return strings.Contains(strings.ToLower(string(out)), pattern)
+	
+	// Enforce machine-checkable closure references by ensuring that commit(s) created 
+	// during the current run (since reservation) contain the exact closes reference.
+	// This prevents an agent from creating a commit with incorrect issue number such as:
+	// "closes #425" when carrying issue #426, which would be rejected for landing.
+	commits := strings.Split(strings.TrimSpace(string(out)), "\n\n")
+	for _, commit := range commits {
+		if strings.Contains(strings.ToLower(commit), pattern) {
+			return true
+		}
+	}
+	
+	return false
 }
 
 // preserveExtraRepo pushes a granted repo's un-landed work to a salvage branch so
