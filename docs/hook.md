@@ -95,3 +95,7 @@ the engine's `[]hook.Route`, attaching the GraphQL-rate-limit suffix to the
 
 `isGhGraphQLSubcommand` returns true for gh subcommands that route through
 GraphQL by default.
+
+## See also
+
+- [enforcement-boundary.md](enforcement-boundary.md) - this hook is claude-only and fail-open; where the boundary sits for every harness.
