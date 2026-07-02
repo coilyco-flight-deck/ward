@@ -48,7 +48,7 @@ With `disk` (or `both`), each run lands under `~/.ward/agent-logs/<container>/` 
 out on its own.
 
 It also writes a scrubbed sibling into a parallel `agent-logs-redacted/` tree that
-the [director surface](agent-surface-log-read.md) binds (ward#526).
+the [director surface](agent-surface-log-read.md) binds.
 
 ### The SigNoz sink and the locality gate - the safety crux
 
