@@ -1,6 +1,6 @@
 # Agent instructions
 
-Workspace conventions load globally via `~/.claude/CLAUDE.md` -> `agentic-os-kai/AGENTS.md`. This file covers only what's specific here.
+Workspace conventions load globally via `~/.claude/CLAUDE.md`. This file covers only what's specific here.
 
 ## Scope
 
@@ -13,7 +13,7 @@ ward also carries the operator surface from the retiring [coily](https://github.
 
 ## Project shape
 
-Single Go module (path `github.com/coilyco-flight-deck/ward`). CLI at `cmd/ward/`. Per-repo config lives downstream as `.ward/ward.yaml`.
+Single Go module (path `github.com/coilyco-flight-deck/ward`). CLI at `cmd/ward/`.
 
 ## Repo boundaries
 
@@ -35,7 +35,7 @@ Install via the flight-deck brew tap - see [README.md](README.md).
 
 ## Validation
 
-The `.ward/ward.yaml` <-> `Makefile` contract is checked by `ward lint`. The cross-repo pre-commit suite from `coilyco-flight-deck/agentic-os` runs every commit.
+The `.ward/ward.yaml` <-> `Makefile` contract is checked by `ward doctor` (no `ward lint` verb). The cross-repo pre-commit suite from `coilyco-flight-deck/agentic-os` runs every commit.
 
 ## Safety
 
@@ -45,7 +45,7 @@ Every invocation validates argv against shell-metacharacter rejection, writes on
 
 - Engine: `coilyco-flight-deck/cli-guard` (pinned via go.mod).
 - Pre-commit suite: `coilyco-flight-deck/agentic-os` (pinned via `rev:` in `.pre-commit-config.yaml`).
-- Downstream config schema: `.ward/ward.yaml`, defined here.
+- Downstream config schema: `.ward/ward.yaml` - cli-guard `repocfg` format, fields in [docs/ward-yaml.md](docs/ward-yaml.md).
 
 ## Release
 
