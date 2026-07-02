@@ -74,6 +74,7 @@ jobs:
       TAG: ${{ needs.release.outputs.tag }}
       GO_VERSION: "1.26.4"
       FORGEJO_API: https://forgejo.coilysiren.me/api/v1/repos/coilyco-flight-deck/ward
+      GITHUB_REPO: coilyco-flight-deck/ward
     steps:
       - uses: actions/checkout@v6
         with:
@@ -87,13 +88,18 @@ jobs:
           tar -xzf /tmp/go.tar.gz -C /usr/local
           echo "/usr/local/go/bin" >> "$GITHUB_PATH"
 
-      - name: Cross-compile ward (linux amd64 + arm64)
+      - name: Cross-compile the full ward matrix (darwin + linux, amd64 + arm64)
         timeout-minutes: 12
         run: |
           set -euo pipefail
           # GOPROXY=direct so fresh cli-guard pseudo-versions resolve, mirroring
-          # the brew formula's build. See docs/homebrew-build.md.
-          export GOPROXY=direct GOSUMDB=off
+          # the brew formula's build. See docs/homebrew-build.md. CGO stays off so
+          # every target cross-compiles from this linux/amd64 runner with no C
+          # toolchain - ward is pure Go (no `import "C"`). Building the whole
+          # matrix ONCE and uploading the same files to both forges is what
+          # guarantees the Forgejo and GitHub release pages carry identical
+          # SHA256SUMS for a tag (ward#454, ward#438).
+          export GOPROXY=direct GOSUMDB=off CGO_ENABLED=0
           mkdir -p dist
           # Pre-fetch modules in a bounded, retried block before building. A
           # GOPROXY=direct git fetch hung ~5min then failed in run 405 and shipped
@@ -112,14 +118,20 @@ jobs:
             echo "go mod download attempt ${attempt} failed/timed out; retrying in 5s" >&2
             sleep 5
           done
-          for arch in amd64 arm64; do
-            GOOS=linux GOARCH="$arch" go build -trimpath \
-              -ldflags "-s -w -X main.Version=${TAG}" \
-              -o "dist/ward-linux-${arch}" ./cmd/ward
+          for os in linux darwin; do
+            for arch in amd64 arm64; do
+              GOOS="$os" GOARCH="$arch" go build -trimpath \
+                -ldflags "-s -w -X main.Version=${TAG}" \
+                -o "dist/ward-${os}-${arch}" ./cmd/ward
+            done
           done
+          # SHA256SUMS over the bare basenames, so `sha256sum -c SHA256SUMS`
+          # verifies from whichever release page a downloader pulled the binary.
+          ( cd dist && sha256sum ward-* > SHA256SUMS )
           ls -l dist
+          cat dist/SHA256SUMS
 
-      - name: Upload binaries as release assets
+      - name: Upload assets to the Forgejo release
         env:
           TOKEN: ${{ secrets.CI_RELEASE_TOKEN }}
         run: |
@@ -135,13 +147,111 @@ jobs:
             echo "::error::no release found for tag ${TAG}" >&2
             exit 1
           fi
-          for arch in amd64 arm64; do
+          # Delete a same-named asset before re-uploading so a workflow re-run for
+          # an existing tag replaces the file instead of erroring on a duplicate.
+          existing=$(curl -fsSL -H "Authorization: token ${TOKEN}" \
+            "${FORGEJO_API}/releases/${rel_id}/assets" || echo '[]')
+          for name in $(cd dist && ls); do
+            old=$(printf '%s' "$existing" | ASSET="$name" node -e '
+              const a = JSON.parse(require("fs").readFileSync(0, "utf8") || "[]");
+              const m = (a || []).find(x => x.name === process.env.ASSET);
+              if (m) process.stdout.write(String(m.id));
+            ')
+            if [ -n "$old" ]; then
+              curl -fsSL -X DELETE -H "Authorization: token ${TOKEN}" \
+                "${FORGEJO_API}/releases/${rel_id}/assets/${old}" || true
+            fi
             curl -fsSL -X POST -H "Authorization: token ${TOKEN}" \
               -H "Content-Type: application/octet-stream" \
-              --data-binary @"dist/ward-linux-${arch}" \
-              "${FORGEJO_API}/releases/${rel_id}/assets?name=ward-linux-${arch}"
-            echo "uploaded ward-linux-${arch}"
+              --data-binary @"dist/${name}" \
+              "${FORGEJO_API}/releases/${rel_id}/assets?name=${name}"
+            echo "uploaded ${name} to Forgejo"
           done
+
+      - name: Publish the same assets to the GitHub mirror release
+        env:
+          PAT: ${{ secrets.GITHUB_MIRROR_PAT }}
+        run: |
+          set -euo pipefail
+          # Mirror-side, so this follows mirror-to-github.yml's convention: no PAT
+          # -> skip loudly, never fail the Forgejo release. When the secret IS set
+          # (the ward#454 precondition Kai provisions before dispatch) this
+          # publishes the byte-identical binaries + SHA256SUMS to the GitHub
+          # release for the SAME tag, so a GitHub arrival installs a checksummed
+          # binary without touching forgejo.coilysiren.me (ward#454 done-condition).
+          # The release is authored by the PAT user, not github-actions[bot], so
+          # the mirror's author-guarded scrub leaves it alone (docs/github-mirror.md).
+          if [ -z "${PAT:-}" ]; then
+            echo "::warning::GITHUB_MIRROR_PAT not set; skipping GitHub release publish (Forgejo release is unaffected)" >&2
+            exit 0
+          fi
+          gh_api="https://api.github.com/repos/${GITHUB_REPO}"
+          gh_uploads="https://uploads.github.com/repos/${GITHUB_REPO}"
+          auth="Authorization: token ${PAT}"
+          accept="Accept: application/vnd.github+json"
+
+          # 1. Ensure the tag object exists on GitHub before the release points at
+          #    it. mirror-to-github.yml also pushes tags on a separate trigger;
+          #    pushing here removes that cross-workflow race. The tag is immutable,
+          #    so a concurrent push of the same object is a harmless no-op.
+          git remote add github "https://x-access-token:${PAT}@github.com/${GITHUB_REPO}.git"
+          git push github "refs/tags/${TAG}:refs/tags/${TAG}"
+
+          # 2. Reuse the EXACT Forgejo release body so both pages read identically.
+          #    node parses the JSON (the docker runner has no jq, but the checkout
+          #    JS action leaves node on PATH - same as mirror-to-github.yml).
+          fj_rel=$(curl -fsSL "${FORGEJO_API}/releases/tags/${TAG}")
+          BODY=$(printf '%s' "$fj_rel" | node -e '
+            const r = JSON.parse(require("fs").readFileSync(0, "utf8"));
+            process.stdout.write(r.body || "");
+          ')
+
+          # 3. Create the GitHub release, or find it if a prior run already did.
+          payload=$(TAG="$TAG" BODY="$BODY" node -e '
+            process.stdout.write(JSON.stringify({
+              tag_name: process.env.TAG,
+              name: process.env.TAG,
+              body: process.env.BODY,
+            }));
+          ')
+          code=$(curl -sS -o /tmp/gh_rel.json -w '%{http_code}' \
+            -X POST -H "$auth" -H "$accept" "${gh_api}/releases" \
+            --data-binary "$payload")
+          if [ "$code" = "201" ]; then
+            rel_id=$(node -e 'process.stdout.write(String(JSON.parse(require("fs").readFileSync("/tmp/gh_rel.json","utf8")).id))')
+            echo "created GitHub release ${TAG} (id ${rel_id})"
+          else
+            echo "create returned HTTP ${code}; treating as existing release and looking it up" >&2
+            rel_id=$(curl -fsSL -H "$auth" -H "$accept" "${gh_api}/releases/tags/${TAG}" \
+              | node -e 'process.stdout.write(String(JSON.parse(require("fs").readFileSync(0,"utf8")).id || ""))')
+            if [ -z "${rel_id:-}" ]; then
+              echo "::error::could not create or find GitHub release for ${TAG} (create HTTP ${code})" >&2
+              cat /tmp/gh_rel.json >&2 || true
+              exit 1
+            fi
+            echo "using existing GitHub release ${TAG} (id ${rel_id})"
+          fi
+
+          # 4. Upload the identical assets. Delete a same-named asset first so a
+          #    re-run replaces the file rather than 422-ing on a duplicate name.
+          existing=$(curl -fsSL -H "$auth" -H "$accept" \
+            "${gh_api}/releases/${rel_id}/assets?per_page=100" || echo '[]')
+          for name in $(cd dist && ls); do
+            old=$(printf '%s' "$existing" | ASSET="$name" node -e '
+              const a = JSON.parse(require("fs").readFileSync(0, "utf8") || "[]");
+              const m = (a || []).find(x => x.name === process.env.ASSET);
+              if (m) process.stdout.write(String(m.id));
+            ')
+            if [ -n "$old" ]; then
+              curl -fsSL -X DELETE -H "$auth" -H "$accept" \
+                "${gh_api}/releases/assets/${old}" || true
+            fi
+            curl -fsSL -X POST -H "$auth" -H "Content-Type: application/octet-stream" \
+              --data-binary @"dist/${name}" \
+              "${gh_uploads}/releases/${rel_id}/assets?name=${name}"
+            echo "uploaded ${name} to GitHub"
+          done
+          echo "GitHub release ${TAG} published with the full matrix + SHA256SUMS"
 
   bump-tap-formula:
     needs: release

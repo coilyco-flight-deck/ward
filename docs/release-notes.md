@@ -27,6 +27,10 @@ history and infer intent to answer "does this upgrade matter to me".
 - **Features** and **Fixes** as their own sections, **Performance** when present.
 - Routine internal churn (refactors, docs, chores, tests) folded under a
   collapsed `<details>` so it stays present but out of the way.
+- A standing **Install** note on every body (any verdict), explaining that the
+  attached `ward-linux-{amd64,arm64}` assets exist for the container agent path
+  and that humans install via Homebrew - so the Linux-only, darwin-less asset
+  list next to the notes is no longer unexplained (ward#442).
 - A **Full changelog** compare link back to the raw range.
 
 ## Shape and testing

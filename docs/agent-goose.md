@@ -23,7 +23,11 @@ endpoint are not supported yet (#395).
 
 ## Install stance
 
-goose is image-baked from the launcher point of view. No self-install step.
+goose ships in the dev-base image and launches today - no self-install step. The
+launcher's one drop-to-shell fallback fires only when an agent binary is **absent**
+from the image (in practice just `opencode`, if its self-install fails). goose
+is baked in, so `--driver goose` launches the harness rather than dropping to a
+shell. It is a first-class option at parity with claude, not an afterthought.
 
 ## Launch dialect
 

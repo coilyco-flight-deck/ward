@@ -9,9 +9,9 @@ on every push to `main` and carries git **refs plus front-door metadata**:
 - Syncs the repo **description and topics** from canonical Forgejo (see below).
 - Scrubs stranded legacy GitHub Release objects (see below).
 
-It does **not** create GitHub Release objects. Canonical releases live on
-Forgejo; the mirror's `README.md` points a GitHub arrival at the
-[canonical releases page](https://forgejo.coilysiren.me/coilyco-flight-deck/ward/releases).
+This workflow does **not** create GitHub Release objects - the release pipeline
+does (ward#454): the same binary matrix + `SHA256SUMS` ships to a GitHub release
+per tag ([release-binaries.md](release-binaries.md), [release.md](release.md)).
 
 ## Front-door hygiene (ward#490)
 
@@ -67,9 +67,9 @@ Releases page.
 
 The scrub step deletes them via the GitHub API using `GITHUB_MIRROR_PAT`. It is
 **author-guarded**: only releases authored by `github-actions[bot]` are removed.
-If a future story (ward#454) publishes real releases to the mirror via the PAT,
-those carry a different author and the scrub leaves them untouched - so the two
-can coexist without ward#454 having to unwind this step first.
+ward#454 now publishes real releases to the mirror via that PAT (from the
+release pipeline, not this workflow); they carry the PAT user as author, so the
+scrub leaves them untouched - the two coexist without unwinding this step.
 
 It greps release tag names from the list endpoint, then resolves and deletes
 each by id. It is idempotent: once the legacy releases are gone it no-ops.

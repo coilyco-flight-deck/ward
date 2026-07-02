@@ -18,7 +18,11 @@ The bootstrap writes:
 
 ## Install stance
 
-codex is image-baked from the launcher point of view. No self-install step.
+codex ships in the dev-base image and launches today - no self-install step. The
+launcher's one drop-to-shell fallback fires only when an agent binary is **absent**
+from the image (in practice just `opencode`, if its self-install fails). codex
+is baked in, so `--driver codex` launches the harness rather than dropping to a
+shell.
 
 ## Launch dialect
 
