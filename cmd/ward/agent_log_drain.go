@@ -71,7 +71,9 @@ func agentLogsDir() string {
 	if err != nil || home == "" {
 		home = os.TempDir()
 	}
-	return filepath.Join(home, config.AppDir(), agentLogsSubdir)
+	dir := filepath.Join(home, config.AppDir(), agentLogsSubdir)
+	fmt.Fprintf(os.Stderr, "ward container: agent logs directory: %s\n", dir)
+	return dir
 }
 
 // sweepAction is one ordered host-side teardown step: drain a single container, or
@@ -116,8 +118,10 @@ func (r *Runner) drainStaleContainers(ctx context.Context, stale []string) error
 	for _, a := range sweepActions(stale, baseDir) {
 		switch a.Op {
 		case sweepDrain:
+			fmt.Fprintf(os.Stderr, "ward container: draining container %s to %s\n", a.Container, a.Dir)
 			r.drainAgentRun(ctx, a.Container, a.Dir)
 		case sweepRemove:
+			fmt.Fprintf(os.Stderr, "ward container: removing containers %v\n", a.Names)
 			return r.Runner.Exec(ctx, "docker", dockerRmArgv(a.Names)...)
 		}
 	}
@@ -127,6 +131,7 @@ func (r *Runner) drainStaleContainers(ctx context.Context, stale []string) error
 // drainAgentRun copies one exited container's console + transcript + meta.json to
 // dir, best-effort, then ships the envelope stream if WARD_AGENT_TELEMETRY=1.
 func (r *Runner) drainAgentRun(ctx context.Context, name, dir string) {
+	fmt.Fprintf(os.Stderr, "ward container: starting drain of container %s to %s\n", name, dir)
 	if err := os.MkdirAll(dir, 0o755); err != nil {
 		fmt.Fprintf(os.Stderr, "ward container: drain %s: could not create %s (%v); skipping\n", name, dir, err)
 		return
