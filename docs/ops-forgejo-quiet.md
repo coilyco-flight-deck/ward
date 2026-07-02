@@ -1,11 +1,11 @@
-# The `issue create --quiet` machine-output mode (ward#316)
+# The `issue create --quiet` machine-output mode ([ward#316](https://forgejo.coilysiren.me/coilyco-flight-deck/ward/issues/316))
 
 `ward ops forgejo issue create` renders the whole created-issue object through
 the `specverb` engine's default **YAML**. The one field a programmatic caller
 needs - `number:` - is buried in that block, bare and unquoted, with no terse,
-parse-stable alternative. Filing ward#313 a caller grepped the success output for
+parse-stable alternative. Filing [ward#313](https://forgejo.coilysiren.me/coilyco-flight-deck/ward/issues/313) a caller grepped the success output for
 `"number"|html_url|error`, the unquoted `number:` did not match, a successful
-create read as a failure, and a duplicate issue (ward#314) was filed.
+create read as a failure, and a duplicate issue ([ward#314](https://forgejo.coilysiren.me/coilyco-flight-deck/ward/issues/314)) was filed.
 
 The engine has no per-call output-shaping hook and cli-guard is a pinned
 upstream, so ward owns the success line for this one leaf. After

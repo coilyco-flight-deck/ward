@@ -4,7 +4,7 @@ The release body is not the raw `git log` dump `tag-bump` emits. The `notes`
 step in the `release` job (`.forgejo/workflows/release.yml`) pipes the same
 commit range (`previous_tag..HEAD`) through
 [`scripts/release-notes.sh`](../scripts/release-notes.sh), which categorises it
-into a template a downstream self-hoster can actually read (ward#486).
+into a template a downstream self-hoster can actually read ([ward#486](https://forgejo.coilysiren.me/coilyco-flight-deck/ward/issues/486)).
 
 ## Why
 

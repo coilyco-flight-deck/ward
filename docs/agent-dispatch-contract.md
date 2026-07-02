@@ -1,4 +1,4 @@
-# ward agent: the machine-readable dispatch contract (ward#485)
+# ward agent: the machine-readable dispatch contract ([ward#485](https://forgejo.coilysiren.me/coilyco-flight-deck/ward/issues/485))
 
 A `warded owner/repo#N` dispatch is fire-and-forget, so a supervising harness
 (ward's own [director](agent-director.md) is one) can't watch the run - it reads
@@ -25,7 +25,7 @@ its `meta.json` outcome below); every non-zero code is a distinct
 Codes `4` and `5` only ever arise from the **interactive** pre-flight, which is
 skipped without a TTY (scripted / piped, `--print`, `--no-preflight`) - so a
 headless supervisor dispatching into a pipe sees only `0`/`1`/`2`/`3`. That
-host pre-flight is slated for removal (ward#162); once it is gone the NO-GO /
+host pre-flight is slated for removal ([ward#162](https://forgejo.coilysiren.me/coilyco-flight-deck/ward/issues/162)); once it is gone the NO-GO /
 WRONG-REPO judgement moves in-container and is reported through the `meta.json`
 outcome below, not a dispatch code. `0`/`1`/`2` line up with the shared cli-guard
 exit-code contract (success / generic / policy-denied); `3`-`5` are `ward
@@ -40,7 +40,7 @@ both the success half and the failure half - is these four:
 * `pushed-to-main` - clean integration, the work landed on `main`.
 * `ward-salvage` - a conflict, secret/vendored-content scan finding, rejected push, or dead-PAT auth failure routed the work to a `ward-salvage/<id>` branch instead ([container-reap.md](container-reap.md)).
 * `nothing-to-reap` - the tree was already clean and pushed; the reaper found nothing to do.
-* `unknown` - no reaper marker matched: a crash, an externally-stopped run, or an auth smoke-test abort (ward#222) that never reached a teardown verdict.
+* `unknown` - no reaper marker matched: a crash, an externally-stopped run, or an auth smoke-test abort ([ward#222](https://forgejo.coilysiren.me/coilyco-flight-deck/ward/issues/222)) that never reached a teardown verdict.
 
 Source of truth: `reapOutcomeValues` in `cmd/ward/agent_log_drain.go`.
 `TestDispatchContractDocumented` fails if either enum drifts from this page.

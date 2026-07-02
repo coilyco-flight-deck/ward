@@ -23,7 +23,7 @@ author.
 4. Runs `ward doctor` against the file it just wrote (skip with `--skip-doctor`).
 
 It **authors no guardfiles**. `.ward/ward.yaml` is the adoption contract
-(ward#426, per #455/#437); the ward-kdl permission surfaces are a separate,
+([ward#426](https://forgejo.coilysiren.me/coilyco-flight-deck/ward/issues/426), per [#455](https://forgejo.coilysiren.me/coilyco-flight-deck/ward/issues/455)/[#437](https://forgejo.coilysiren.me/coilyco-flight-deck/ward/issues/437)); the ward-kdl permission surfaces are a separate,
 build-time layer ([ward-kdl.md](ward-kdl.md)).
 
 ## Usage

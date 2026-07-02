@@ -34,7 +34,7 @@ public substrate seed. The canonical inventory + build pipeline is aos's
 `:latest` is a **moving tag**. Each aos release also tags `vX.Y.Z` and re-points
 `:latest` at it, so a fresh run tracks the newest dev-base rather than a frozen
 one. A detached run names its pull up front and beats a `still pulling` heartbeat
-(ward#322), so a first-launch download is not invisible even when nobody watches.
+([ward#322](https://forgejo.coilysiren.me/coilyco-flight-deck/ward/issues/322)), so a first-launch download is not invisible even when nobody watches.
 
 A security-conscious adopter who does not want `latest` shifting under them -
 the agent runs `bypassPermissions` ([container-permissions.md](container-permissions.md))
@@ -42,7 +42,7 @@ inside this image - pins it:
 
 - **Per run** - `--image` / `--tag` ([agent-flags.md](agent-flags.md)); `--tag
   vX.Y.Z` freezes a run to one released image.
-- **Once for every dispatch** - `WARD_AGENT_IMAGE` / `WARD_AGENT_TAG` (ward#312).
+- **Once for every dispatch** - `WARD_AGENT_IMAGE` / `WARD_AGENT_TAG` ([ward#312](https://forgejo.coilysiren.me/coilyco-flight-deck/ward/issues/312)).
 - **`--no-pull`** reuses the already-cached image without re-pulling.
 
 ## See also

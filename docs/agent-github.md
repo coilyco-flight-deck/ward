@@ -1,4 +1,4 @@
-# ward agent: GitHub as a first-class forge (ward#489)
+# ward agent: GitHub as a first-class forge ([ward#489](https://forgejo.coilysiren.me/coilyco-flight-deck/ward/issues/489))
 
 ward is Forgejo-canonical, but GitHub is the public front door. `warded` carries a
 GitHub-hosted issue end to end the same way it carries a Forgejo one: it clones and
@@ -39,7 +39,7 @@ A plain `owner/repo#N`, a Forgejo URL, or a bare `#N` still mean Forgejo. The
 ## Supplying the GitHub token
 
 GitHub auth is a **user-supplied token from the environment** - there is no compiled-in
-SSM path the way Forgejo has (aligning with #441 / #453). ward reads the first of these
+SSM path the way Forgejo has (aligning with [#441](https://forgejo.coilysiren.me/coilyco-flight-deck/ward/issues/441) / [#453](https://forgejo.coilysiren.me/coilyco-flight-deck/ward/issues/453)). ward reads the first of these
 it finds, on the host at dispatch and again inside the container:
 
 1. `WARD_GITHUB_TOKEN`
@@ -62,7 +62,7 @@ warded https://github.com/coilysiren/agentic-os/issues/461
 ward then, exactly as for Forgejo: runs the pre-flight (a NO-GO comments on the GitHub
 issue), posts the reservation comment, spins the ephemeral container that fresh-clones
 the repo from GitHub, and detaches. The agent implements on `issue-461`, pushes the
-branch, opens a PR closing #461, and leaves its retrospective on the GitHub issue.
+branch, opens a PR closing [#461](https://forgejo.coilysiren.me/coilyco-flight-deck/ward/issues/461), and leaves its retrospective on the GitHub issue.
 
 ## See also
 

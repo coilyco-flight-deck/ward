@@ -6,7 +6,7 @@ hosted model with a host credential ward seeds in, and **local** harnesses drive
 an Ollama-backed model over a reachable endpoint with no credential channel. Read
 your driver's page before a first run - this page lays the first-run facts side by
 side. Running your own Ollama? [agent-local-model.md](agent-local-model.md) is the
-bring-your-own-Ollama page: what works today and what does not (#395).
+bring-your-own-Ollama page: what works today and what does not ([#395](https://forgejo.coilysiren.me/coilyco-flight-deck/ward/issues/395)).
 
 ## claude (cloud, default)
 
@@ -41,4 +41,4 @@ bring-your-own-Ollama page: what works today and what does not (#395).
 - [agent.md](agent.md) - the `ward agent` verb family and the Drivers pointer.
 - [agent-credentials.md](agent-credentials.md) - the shared cloud credential channel.
 - [agent-local-harnesses.md](agent-local-harnesses.md) - the local harness index and Ollama probe.
-- [agent-local-model.md](agent-local-model.md) - bring your own Ollama: defaults, the supported route, and the current limitation (#395).
+- [agent-local-model.md](agent-local-model.md) - bring your own Ollama: defaults, the supported route, and the current limitation ([#395](https://forgejo.coilysiren.me/coilyco-flight-deck/ward/issues/395)).

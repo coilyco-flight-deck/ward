@@ -2,7 +2,7 @@
 
 `ward git clone <url> [dir]` wraps `git clone` behind a destination gate
 so an agent cannot drop an unwanted **persistent** checkout into the
-tracked workspace (ward#285). It is registered alongside the other git
+tracked workspace ([ward#285](https://forgejo.coilysiren.me/coilyco-flight-deck/ward/issues/285)). It is registered alongside the other git
 verbs in `cmd/ward/git.go`; see [git-verbs.md](git-verbs.md).
 
 ## Why
@@ -34,7 +34,7 @@ Otherwise (off-allowlist repo into a non-ephemeral destination): refused.
 - **Hardcoded, tamper-resistant allowlist.** The allowlist is baked into
   the binary (`cmd/ward/git_clone.go`), curated to the fleet's on-disk
   intent (cf. `agentic-os-kai scripts/repos-on-disk.txt`), not the broader
-  substrate preclone set (ward#290). ward itself and cli-guard are
+  substrate preclone set ([ward#290](https://forgejo.coilysiren.me/coilyco-flight-deck/ward/issues/290)). ward itself and cli-guard are
   deliberately off it - agents that need either clone into `/tmp`
   (ephemeral), which the gate already allows. ward never reads the
   allowlist from an agent-writable file, so an agent cannot widen its own

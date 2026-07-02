@@ -8,4 +8,4 @@ though the upstream tarball is reachable. The Formula sets
 `GOPROXY=direct` and `GOSUMDB=off` in the brew sandbox to bypass the
 proxy for module fetches.
 
-See coilysiren/homebrew-tap#14.
+See [coilysiren/homebrew-tap#14](https://github.com/coilysiren/homebrew-tap/issues/14).

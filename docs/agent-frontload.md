@@ -1,4 +1,4 @@
-# ward agent: front-loading subsystem context (ward#236)
+# ward agent: front-loading subsystem context ([ward#236](https://forgejo.coilysiren.me/coilyco-flight-deck/ward/issues/236))
 
 `ward agent` has the issue title and body in hand before it detaches, so it does
 the dispatch-side half of the agentic-os doctrine "Front-load the context you
@@ -6,7 +6,7 @@ know you need": instead of trusting a fire-and-forget run to reach for the right
 docs on its own, ward hands them over up front. This is the complement to the
 soft doctrine - doctrine nudges, the dispatch path enforces.
 
-The ward#226 run is the motivating failure: the agent named its one real unknown
+The [ward#226](https://forgejo.coilysiren.me/coilyco-flight-deck/ward/issues/226) run is the motivating failure: the agent named its one real unknown
 (the ward-kdl guardfile convention) in its own pre-flight, marked it "fully
 discoverable in the fresh clone", and then carried on with lazy discovery instead
 of reading it. The context was not missing. The clone had it. "Discoverable"

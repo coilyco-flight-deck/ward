@@ -1,8 +1,8 @@
 # the toy example repo
 
-`examples/toy/` is ward's minimal, self-contained example project (ward#463,
-formerly sketched as "seed"). It is the concrete anchor the demo (ward#250 /
-#251) and the minimal example spec bundle (ward#453) point at: the smallest
+`examples/toy/` is ward's minimal, self-contained example project ([ward#463](https://forgejo.coilysiren.me/coilyco-flight-deck/ward/issues/463),
+formerly sketched as "seed"). It is the concrete anchor the demo ([ward#250](https://forgejo.coilysiren.me/coilyco-flight-deck/ward/issues/250) /
+[#251](https://forgejo.coilysiren.me/coilyco-flight-deck/ward/issues/251)) and the minimal example spec bundle ([ward#453](https://forgejo.coilysiren.me/coilyco-flight-deck/ward/issues/453)) point at: the smallest
 thing that is still a real ward-managed repo.
 
 ## What it is
@@ -13,7 +13,7 @@ point is not the program - it is the four ward-facing pieces around it:
 
 - **Makefile** - self-documenting targets, each with a `## <help>` comment.
 - **`.ward/ward.yaml`** - the allowlist: the build/test/install triple plus a
-  `security:` block (required per ward#450).
+  `security:` block (required per [ward#450](https://forgejo.coilysiren.me/coilyco-flight-deck/ward/issues/450)).
 - **`toy.guardfile.kdl`** - a minimal ward-kdl permission surface, deny-by-default.
 - **dev-base** - the container image a `ward agent` run pulls (referenced, not baked).
 
@@ -44,7 +44,7 @@ The guardfile and `.ward/ward.yaml` are complete enough to copy into a new repo
 as a starting point, then edit down to that repo's real verbs and policy.
 
 `examples/toy/` is the runnable *managed repo* an adopter's project looks like;
-its sibling `examples/ward-specs/` (ward#453) is the *spec bundle* you build a
+its sibling `examples/ward-specs/` ([ward#453](https://forgejo.coilysiren.me/coilyco-flight-deck/ward/issues/453)) is the *spec bundle* you build a
 `ward` binary from. Different inputs, both deployment-agnostic anchors.
 
 ## See also

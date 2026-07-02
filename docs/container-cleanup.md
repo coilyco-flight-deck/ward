@@ -9,7 +9,7 @@ which broke the **whole fleet** silently:
 
 - New `docker run` fails at layer creation: `no space left on device`.
 - Containers that do start hang: the agent can't write `~/.claude/` to a full
-  disk, so it wedges instead of erroring (misread as an auth failure, ward#222).
+  disk, so it wedges instead of erroring (misread as an auth failure, [ward#222](https://forgejo.coilysiren.me/coilyco-flight-deck/ward/issues/222)).
 
 ## Why not the reaper
 
@@ -31,7 +31,7 @@ ward containers before adding one more:
 2. Keep the most recent `containerReapKeep` (10) for `docker logs` post-mortem.
 3. **Drain** the older tail to `~/.ward/agent-logs/<container>/` (console log,
    transcript, `meta.json`) **before** removing it - the `rm` takes the log and
-   the writable layer with it, so the drain is ordered first (ward#363,
+   the writable layer with it, so the drain is ordered first ([ward#363](https://forgejo.coilysiren.me/coilyco-flight-deck/ward/issues/363),
    [agent-observability.md](agent-observability.md)).
 4. `docker rm` the older tail (no `-f`: only already-exited containers are ever
    targeted, so a running run is never touched).
@@ -42,7 +42,7 @@ mid-flight), the verb is `docker container stop <name>`, not `rm`/`-f` - see
 [container-stop.md](container-stop.md) for the deterministic name and what a stop reaps.
 
 An engineer additionally clears any **exited same-name** container before it
-launches: its name is deterministic (`engineer-<driver>-<repo>-<N>`, ward#364), so a
+launches: its name is deterministic (`engineer-<driver>-<repo>-<N>`, [ward#364](https://forgejo.coilysiren.me/coilyco-flight-deck/ward/issues/364)), so a
 prior attempt on the same issue still inside the keep-10 window would otherwise
 collide on the docker name. Only an exited corpse is force-removed (a live duplicate
 is already blocked by the reservation); the issueless roles carry a machine suffix

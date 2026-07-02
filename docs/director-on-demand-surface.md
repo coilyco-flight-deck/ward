@@ -1,4 +1,4 @@
-# director on-demand surface (ward#409)
+# director on-demand surface ([ward#409](https://forgejo.coilysiren.me/coilyco-flight-deck/ward/issues/409))
 
 Drain is not the only time a human watching the [director](agent-director.md) heartbeat wants
 the floor. When a tick **cannot schedule** - every engineer slot busy (`avail <= 0`) while work

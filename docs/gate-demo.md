@@ -20,9 +20,9 @@ The override exists, but it is loud: the audit row is stamped `audit_override=tr
 with the full working-tree status, so an emergency bypass is still reconstructable
 after the fact. Denial is the default posture, not an error path.
 
-This is the danger-class demo the launch doctrine (ward#255, "every demo must
-show a denial") and the ward#251 demo script want - it lives here, in the demo
-surface, rather than on the README front page (the 2026-07-01 triage on ward#444
+This is the danger-class demo the launch doctrine ([ward#255](https://forgejo.coilysiren.me/coilyco-flight-deck/ward/issues/255), "every demo must
+show a denial") and the [ward#251](https://forgejo.coilysiren.me/coilyco-flight-deck/ward/issues/251) demo script want - it lives here, in the demo
+surface, rather than on the README front page (the 2026-07-01 triage on [ward#444](https://forgejo.coilysiren.me/coilyco-flight-deck/ward/issues/444)
 declined a front-page denial demo).
 
 ## See also

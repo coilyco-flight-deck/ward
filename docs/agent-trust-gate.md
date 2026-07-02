@@ -1,4 +1,4 @@
-# ward agent: the owner trust gate (ward#484)
+# ward agent: the owner trust gate ([ward#484](https://forgejo.coilysiren.me/coilyco-flight-deck/ward/issues/484))
 
 Point `warded` at an issue in an owner ward does not trust and every dispatch
 surface refuses before it does anything:
@@ -51,9 +51,9 @@ So a self-hoster on a different org has one path today: **fork ward, add your
 owner to `defaultPrimaryOrgs()`, and rebuild.** That is a known sharp edge, not
 the intended long-term story:
 
-- ward#441 tracks **disclosing** the compiled-in gate before install, so the
+- [ward#441](https://forgejo.coilysiren.me/coilyco-flight-deck/ward/issues/441) tracks **disclosing** the compiled-in gate before install, so the
   limitation is visible up front rather than only at first refusal.
-- ward#395 tracks making the trusted set **configurable** rather than compiled in.
+- [ward#395](https://forgejo.coilysiren.me/coilyco-flight-deck/ward/issues/395) tracks making the trusted set **configurable** rather than compiled in.
 
 Until one of those lands, an untrusted owner is a hard stop with no supported
 runtime workaround.
@@ -63,7 +63,7 @@ runtime workaround.
 [`ward doctor`](doctor.md) validates the allowlist and the `security:` probes. It
 does **not** check "can this host dispatch an agent for owner X", so on a host
 where every `warded` call will be refused, the doctor still passes. Closing that
-day-2 gap is tracked in ward#195.
+day-2 gap is tracked in [ward#195](https://forgejo.coilysiren.me/coilyco-flight-deck/ward/issues/195).
 
 ## See also
 

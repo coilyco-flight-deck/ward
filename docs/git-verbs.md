@@ -3,7 +3,7 @@
 `ward git` fronts the contributor git surface behind cli-guard's audit +
 argv-validation pipeline. Every invocation validates argv and appends one
 audit row (`git.<verb>`) to the per-repo log. Ported from coily's `git`
-group (coily#7).
+group ([coily#7](https://github.com/coilyco-bridge/coily/issues/7)).
 
 ## Passthroughs
 

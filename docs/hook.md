@@ -38,7 +38,7 @@ hook payloads. Hard denial stays the job of `permissions.deny`. See
 `guardBinaryPaths` is the canonical install-path allow-list per known
 guard binary. The PreToolUse hook rejects any bare invocation of one
 of these binaries that does not resolve to a listed path. Required by
-default per the max-security posture (#14). #13 carries the future
+default per the max-security posture ([#14](https://forgejo.coilysiren.me/coilyco-flight-deck/ward/issues/14)). [#13](https://forgejo.coilysiren.me/coilyco-flight-deck/ward/issues/13) carries the future
 per-consumer override path.
 
 ward assembles its guards (the markers, route tables, and integrity rules

@@ -1,4 +1,4 @@
-# The lean `issue view` override (ward#225)
+# The lean `issue view` override ([ward#225](https://forgejo.coilysiren.me/coilyco-flight-deck/ward/issues/225))
 
 `ward ops forgejo issue view` combines the issue and its comment thread, but the
 `specverb` engine renders each call's response **verbatim** - and the Forgejo

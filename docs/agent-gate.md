@@ -1,7 +1,7 @@
-# ward agent: interactive pre-launch gate (ward#366)
+# ward agent: interactive pre-launch gate ([ward#366](https://forgejo.coilysiren.me/coilyco-flight-deck/ward/issues/366))
 
 The seedless interactive bring-up (`runScratchSession`, the director's read-only
-surface - both its drain-surface and its init-gate "scope now" path; ward#353)
+surface - both its drain-surface and its init-gate "scope now" path; [ward#353](https://forgejo.coilysiren.me/coilyco-flight-deck/ward/issues/353))
 resolved a visible
 chunk of state - repo, mode, access, image, ward version, `--repo` grants -
 then **immediately** `docker run` into the fullscreen agent TUI. That metadata
@@ -35,7 +35,7 @@ direction" comms area before the read-only session opens.
 ## Affordance B: u to upgrade ward, then re-launch
 
 When the host `ward` is behind latest (the `version.Behind` read that drives the
-dispatch heads-up, ward#143), the gate offers a second choice - type `u` then
+dispatch heads-up, [ward#143](https://forgejo.coilysiren.me/coilyco-flight-deck/ward/issues/143)), the gate offers a second choice - type `u` then
 Enter to run `ward upgrade` and **re-launch the same invocation**:
 
 ```
@@ -60,7 +60,7 @@ and tell the operator to re-run, launching nothing stale.
   is never blocked on an Enter that would never come. The gate consults
   `terminalAttached()`; when false it keeps the stale-ward heads-up and proceeds.
 
-Engineer is detached-only (ward#356), so it has no TUI and the gate never applies.
+Engineer is detached-only ([ward#356](https://forgejo.coilysiren.me/coilyco-flight-deck/ward/issues/356)), so it has no TUI and the gate never applies.
 
 ## Seams
 

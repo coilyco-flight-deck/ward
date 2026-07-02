@@ -12,11 +12,11 @@ the run can always reconstruct the name with nothing to look up, because it is
 name as `engineer-<driver>-<repo>-<issue>`:
 
 - `<driver>` is the `--driver` mode - `claude` (default), `codex`, `goose`, or `qwen`.
-- `<repo>` is `safeRepoName`, which **strips the owner** - so ward#398 is `...-ward-398`,
+- `<repo>` is `safeRepoName`, which **strips the owner** - so [ward#398](https://forgejo.coilysiren.me/coilyco-flight-deck/ward/issues/398) is `...-ward-398`,
   not `...-coilyco-flight-deck-ward-398`.
 - `<issue>` is the issue the run is on.
 
-So a claude run on ward#398 is **`engineer-claude-ward-398`**.
+So a claude run on [ward#398](https://forgejo.coilysiren.me/coilyco-flight-deck/ward/issues/398) is **`engineer-claude-ward-398`**.
 
 **Session/surface containers differ.** The issueless roles (a
 [director surface](agent-surface.md), an advisor session) take the other

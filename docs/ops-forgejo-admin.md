@@ -1,7 +1,7 @@
 # `ward ops forgejo {admin,doctor}` (remote-exec slice)
 
-ward#81 closes the last non-HTTP slice of the 40-leaf forgejo operator surface
-(ward#75). Forgejo's server-side maintenance lives in the `forgejo` binary
+[ward#81](https://forgejo.coilysiren.me/coilyco-flight-deck/ward/issues/81) closes the last non-HTTP slice of the 40-leaf forgejo operator surface
+([ward#75](https://forgejo.coilysiren.me/coilyco-flight-deck/ward/issues/75)). Forgejo's server-side maintenance lives in the `forgejo` binary
 *inside the cluster*, not in the REST API, so four subcommands have no `specverb`
 equivalent:
 

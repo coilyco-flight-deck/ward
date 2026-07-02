@@ -19,7 +19,7 @@ threaded from the host - so setting them on your host does not repoint opencode
 today. If you run your own Ollama, read [agent-local-model.md](agent-local-model.md)
 first: on native Linux the host-net route makes the baked-in `localhost:11434` reach
 your local Ollama, but Docker Desktop and repointing the endpoint/model are not
-supported yet (#395).
+supported yet ([#395](https://forgejo.coilysiren.me/coilyco-flight-deck/ward/issues/395)).
 
 ## Install stance
 
@@ -36,7 +36,7 @@ Best-effort self-install. An image that already contains `opencode` short-circui
 No **host GO/NO-GO pre-flight**: opencode has no host one-shot wired, so dispatch
 proceeds without a pre-dispatch check (see [agent-preflight.md](agent-preflight.md)).
 
-There **is** an **in-container Ollama reachability probe** (pre-launch, ward#487),
+There **is** an **in-container Ollama reachability probe** (pre-launch, [ward#487](https://forgejo.coilysiren.me/coilyco-flight-deck/ward/issues/487)),
 the local-model analog of claude's auth smoke test. A headless opencode whose
 Ollama endpoint is down would hang the dispatched container exactly like an
 undetected bad claude credential (the failure mode a smoke gate exists to prevent).
@@ -49,6 +49,6 @@ claude's probe reads).
 
 ## See also
 
-- [docs/agent-local-model.md](agent-local-model.md) - bring your own Ollama: defaults, the supported route, and the current limitation (#395).
+- [docs/agent-local-model.md](agent-local-model.md) - bring your own Ollama: defaults, the supported route, and the current limitation ([#395](https://forgejo.coilysiren.me/coilyco-flight-deck/ward/issues/395)).
 - [docs/agent-local-harnesses.md](agent-local-harnesses.md) - the local harness index.
 - [docs/agent.md](agent.md) - the roster and roles vs harnesses split.

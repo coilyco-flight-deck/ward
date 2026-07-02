@@ -4,7 +4,7 @@
 launch manifest - straight from `fleetconfig.Fleet`, the same parse
 `cmd/ward/fleet.go` embeds (`fleetassets/fleet.generated.kdl`). The roster the
 binary launches and the roster it reports are one source, so they cannot drift
-(aos#310 §6, ward#417).
+([aos#310](https://github.com/coilysiren/agentic-os/issues/310) §6, [ward#417](https://forgejo.coilysiren.me/coilyco-flight-deck/ward/issues/417)).
 
 ## Why it exists
 
@@ -12,7 +12,7 @@ aos's `scripts/agent-compat.py` checks its own agent-adapter list against ward's
 roster. Without a stable surface it would re-parse ward's KDL or shadow the
 roster - a drift vector, a fourth copy that silently goes stale. `--json` is the
 one blessed read surface, so aos consumes ward's own parse instead of guessing at
-it (this unblocks the aos agent-compat repoint, aos#310 issue 5).
+it (this unblocks the aos agent-compat repoint, [aos#310](https://github.com/coilysiren/agentic-os/issues/310) issue 5).
 
 ## Forms
 

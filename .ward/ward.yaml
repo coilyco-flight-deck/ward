@@ -26,6 +26,9 @@ commands:
   cover:
     run: make cover
     description: Unit tests with a coverage profile.
+  lint-refs:
+    run: make lint-refs
+    description: "Lint issue refs in public docs (ward#446): every ref must resolve for a GitHub reader. `make lint-refs ARGS=--fix` rewrites."
   build-ward-kdl:
     run: make build-ward-kdl
     description: build or rebuild the ward-kdl binary, one shot for ease of use in development.

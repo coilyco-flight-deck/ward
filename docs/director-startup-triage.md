@@ -1,4 +1,4 @@
-# director startup triage (ward#397)
+# director startup triage ([ward#397](https://forgejo.coilysiren.me/coilyco-flight-deck/ward/issues/397))
 
 The autonomous-drain half of [`ward agent director`](agent-director.md) was starving.
 Nothing assigned the `headless`/`interactive`/`consult` **mode** labels between sessions, so
@@ -47,7 +47,7 @@ fit the flow, not add a step - and applies the `tooling-issue-prioritization` me
 
 On by default. `--no-triage` skips it. `--dry-run` / `--print` skip it like every other
 launch step (they launch nothing). The dispatch gate + org-label rollout the mode axis feeds
-is tracked in agentic-os#246; until it lands the labels already serve as a selection filter
+is tracked in [agentic-os#246](https://github.com/coilysiren/agentic-os/issues/246); until it lands the labels already serve as a selection filter
 for what the drain dispatches.
 
 ## See also

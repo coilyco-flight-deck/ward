@@ -1,10 +1,10 @@
 # fleet-local: the operator-local config reader
 
 `~/.ward/fleet.local.kdl` is the **host-local** operator config: hand-edited,
-git-ignored, and **never embedded** in a binary. ward#413 wires the reader for
-it (aos#310 §5, issue 10). The reader is a **shared-parser hook**, not a bespoke
+git-ignored, and **never embedded** in a binary. [ward#413](https://forgejo.coilysiren.me/coilyco-flight-deck/ward/issues/413) wires the reader for
+it ([aos#310](https://github.com/coilysiren/agentic-os/issues/310) §5, issue 10). The reader is a **shared-parser hook**, not a bespoke
 `~/.ward` loader: it calls the one cli-guard `pkg/fleetconfig` validator under
-the `OperatorLocal` source (cli-guard#178), so ward never forks or re-implements
+the `OperatorLocal` source ([cli-guard#178](https://forgejo.coilysiren.me/coilyco-flight-deck/cli-guard/issues/178)), so ward never forks or re-implements
 the fleet-config grammar.
 
 ## What the reader is
@@ -31,13 +31,13 @@ The operator-local layer sits in the middle of the resolution chain:
 
 - **env > operator-local > embedded manifest defaults.**
 
-ward#413 wires the **operator-local** layer only. The **embedded** layer merges in
-with the dialect-2 embed chain (aos#310 issues 2-3), and **ward#396** files
+[ward#413](https://forgejo.coilysiren.me/coilyco-flight-deck/ward/issues/413) wires the **operator-local** layer only. The **embedded** layer merges in
+with the dialect-2 embed chain ([aos#310](https://github.com/coilysiren/agentic-os/issues/310) issues 2-3), and **[ward#396](https://forgejo.coilysiren.me/coilyco-flight-deck/ward/issues/396)** files
 `director.default-scope` as the first `OperatorLocal` field read against this
 reader. This issue deliberately stops at the hook: it builds the reader and the
 typed value, not the `director.default-scope` feature.
 
 ## See also
 
-- [agent-director.md](agent-director.md) - the director scope resolution ward#396 hangs on this reader.
+- [agent-director.md](agent-director.md) - the director scope resolution [ward#396](https://forgejo.coilysiren.me/coilyco-flight-deck/ward/issues/396) hangs on this reader.
 - [agentsapi.md](agentsapi.md) - the sibling internal contract carved for the agent seam.

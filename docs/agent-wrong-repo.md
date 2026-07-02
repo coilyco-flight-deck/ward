@@ -1,4 +1,4 @@
-# ward agent: WRONG-REPO blind-fire (ward#159)
+# ward agent: WRONG-REPO blind-fire ([ward#159](https://forgejo.coilysiren.me/coilyco-flight-deck/ward/issues/159))
 
 Part of the headless [pre-flight](agent-preflight.md). Sometimes the pre-flight
 read makes it obvious the issue was filed in the wrong place - an ops verb that

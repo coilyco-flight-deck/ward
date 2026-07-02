@@ -1,7 +1,7 @@
 # Guardfile grammar (dialect 1)
 
 This is the dialect-1 KDL grammar, a minimal working guardfile, and where auth
-config lives (ward#437). For **whether you need a guardfile at all**, read
+config lives ([ward#437](https://forgejo.coilysiren.me/coilyco-flight-deck/ward/issues/437)). For **whether you need a guardfile at all**, read
 [ward-kdl.md](ward-kdl.md) first - most adopters do not.
 
 A permission surface is one [KDL](https://kdl.dev) document (a node is a name,
@@ -16,7 +16,7 @@ block is one of two sub-dialects, picked by its first child.
 cli-guard `specverb` binds each verb to an OpenAPI/Swagger operation:
 
 - `spec <file>` - the spec lock in the bundle dir this surface compiles against.
-- `base-url "<host>/api/..."` - the endpoint. Deployment config (ward#441).
+- `base-url "<host>/api/..."` - the endpoint. Deployment config ([ward#441](https://forgejo.coilysiren.me/coilyco-flight-deck/ward/issues/441)).
 - `auth <scheme> { ... }` - authentication, see "Where auth config lives" below.
 - `restrict <field> matches <glob>` - scope gate: a leaf carrying `{field}` in its path is denied unless the value matches (`restrict owner matches example*`).
 - `can <verb> <resource>` - grant one operation (`can list issue`). Ungranted verbs are absent at compile time, not denied at runtime.
@@ -51,7 +51,7 @@ wrap ward-kdl ops kube {
 
 Drop it in `cmd/ward-kdl/`, run `make build-ward-kdl`, and `ward ops kube get
 pods` works while every other `kubectl` form stays absent. This is the shape
-ward#226 opened the `git` guardfile with. For a real start, copy the complete
+[ward#226](https://forgejo.coilysiren.me/coilyco-flight-deck/ward/issues/226) opened the `git` guardfile with. For a real start, copy the complete
 spec surface in [examples/ward-specs/](../examples/ward-specs).
 
 ## Where auth config lives
@@ -70,7 +70,7 @@ auth header-token {
 
 `value ssm "<path>"` names an AWS SSM path the deploying fleet owns, so the
 `base-url`, `ssm` path, and `restrict owner` gate are all deployment config you
-swap, not engine code (ward#441). An exec surface pulls a credential with `env
+swap, not engine code ([ward#441](https://forgejo.coilysiren.me/coilyco-flight-deck/ward/issues/441)). An exec surface pulls a credential with `env
 <NAME> { value ssm "<path>" }` the same way, resolved at exec time so mounting
 never reads a token.
 

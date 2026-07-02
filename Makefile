@@ -1,4 +1,4 @@
-.PHONY: help build test vet lint tidy cover install ward-kdl install-tmp lock skew sync-ops-assets sync-exec-assets sync-fleet-assets build-ward-kdl build-ward-kdl-tiers build-ward-kdl-forgejo-tiers workspace agent-roster
+.PHONY: help build test vet lint lint-refs tidy cover install ward-kdl install-tmp lock skew sync-ops-assets sync-exec-assets sync-fleet-assets build-ward-kdl build-ward-kdl-tiers build-ward-kdl-forgejo-tiers workspace agent-roster
 
 SPECVERB_GEN := forgejo.coilysiren.me/coilyco-flight-deck/cli-guard/cmd/specverb-gen
 
@@ -155,3 +155,6 @@ tidy: ## go mod tidy.
 
 cover: ## Unit tests with a coverage profile.
 	go test -coverprofile=coverage.out ./...
+
+lint-refs: ## Lint issue refs in public docs (ward#446): every ref must resolve for a GitHub reader. `make lint-refs ARGS=--fix` rewrites.
+	python3 scripts/lint_issue_refs.py $(ARGS)

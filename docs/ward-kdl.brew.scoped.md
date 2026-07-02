@@ -1,4 +1,4 @@
-# `ward pkg brew` scoped verbs - why they stay gated Go (ward#95)
+# `ward pkg brew` scoped verbs - why they stay gated Go ([ward#95](https://forgejo.coilysiren.me/coilyco-flight-deck/ward/issues/95))
 
 [ward#94](https://forgejo.coilysiren.me/coilyco-flight-deck/ward/issues/94)
 re-expressed the read/passthrough half of `ward pkg brew`
@@ -23,7 +23,7 @@ opt-out: **formula-scoped** (`install`/`uninstall`/`upgrade`/`reinstall`/`link`/
 **Fits neither the exec dialect's guards nor a complex action at cli-guard
 v0.43.0 - stays hand-written gated Go (`cmd/ward/pkg_brew.go`).** The guardfile
 keeps only the read/passthrough half and marks every scoped verb `never run`.
-Mirrors ward#92's "`forgejo_issue.go` stays load-bearing"
+Mirrors [ward#92](https://forgejo.coilysiren.me/coilyco-flight-deck/ward/issues/92)'s "`forgejo_issue.go` stays load-bearing"
 ([ops-forgejo-in-ward.md](ops-forgejo-in-ward.md)).
 
 ### Guards can't express it
@@ -63,5 +63,5 @@ flip to `can run … { gate brew-scope }`. Filing that upstream is the follow-up
 
 ## See also
 
-- [ops-forgejo-in-ward.md](ops-forgejo-in-ward.md) - the parallel ward#92 decision.
+- [ops-forgejo-in-ward.md](ops-forgejo-in-ward.md) - the parallel [ward#92](https://forgejo.coilysiren.me/coilyco-flight-deck/ward/issues/92) decision.
 - [exec-verb.md](exec-verb.md) - the exec dialect overview.
