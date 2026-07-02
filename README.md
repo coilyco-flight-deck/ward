@@ -1,33 +1,31 @@
 # ward
 
-**ward wraps a project's dev verbs - `build`, `test`, `vet`, `lint`, `tidy`, `cover` - behind a policy gate, so nothing reaches `make` or `go` unchecked.** Every run validates its own arguments, appends one line to an audit log, and is refused if it could not be reconstructed from git history. It is the single command a contributor (human or agent) routes build-and-test work through. This half is **forge-agnostic**: point it at any git repo - GitHub included - with nothing but a `.ward/ward.yaml` and Homebrew, no forge account of any kind. Only ward's second half, the agent driver below, is tied to a specific forge.
+**ward wraps a project's dev verbs - `build`, `test`, `vet`, `lint`, `tidy`, `cover` - behind a policy gate, so nothing reaches `make` or `go` unchecked.** Every run validates its own arguments, appends one line to an audit log, and is refused if it could not be reconstructed from git history. This half is **forge-agnostic**: point it at any git repo - GitHub included - with nothing but a `.ward/ward.yaml` and Homebrew, no forge account of any kind. Only ward's second half, the agent driver below, is tied to a specific forge.
 
-ward has a second half for running coding agents: `ward agent` drives a harness (claude, codex, goose, ...) into a throwaway container to carry a Forgejo issue from fresh clone to merged `main`, its reach bounded by that container. That surface is exposed as **`warded`**, a thin symlink onto `ward agent`. The name, the three-layer split it sits on, and the operator surface it absorbs are covered below and in [`docs/architecture.md`](docs/architecture.md).
+ward has a second half for running coding agents: `ward agent` drives a harness (claude, codex, goose, ...) into a throwaway container to carry a Forgejo issue from fresh clone to merged `main`, its reach bounded by that container. That surface is exposed as **`warded`**, a thin symlink onto `ward agent`, and sits on the three-layer split covered below and in [`docs/architecture.md`](docs/architecture.md).
 
 ## Who it's for
 
 - **A contributor (human or agent)** who wants every `build` / `test` / `lint` run argv-validated, audited, and gated on a clean tree - one wrapper instead of bare `make` / `go` / `gh` / `aws`. This half is forge-agnostic: point it at any repo.
 - **An operator** running an autonomous agent fleet who wants each run boxed in a throwaway container, its reach bounded by an allowlist, and its whole session recorded - not a trusted shell.
 
-If you just want the audited verb gate, you need nothing but a repo and Homebrew. The agent driver and operator surfaces assume the forge ward is built around.
-
 ## What it requires
 
 - **macOS or Linux + Homebrew** to install the binary (see [Install](#install)).
-- **A Forgejo instance** for the agent driver (`warded` / `ward agent`) and the operator surface (`ward ops forgejo`). ward is **Forgejo-canonical**: it carries Forgejo issues and pushes to a Forgejo `main`. The GitHub mirror is read-only and PR-gated. A GitHub-only shop can still use the local verb gate, but the agent and ops surfaces target Forgejo.
+- **A Forgejo instance** for the agent driver (`warded` / `ward agent`) and the operator surface (`ward ops forgejo`). ward is **Forgejo-canonical**: it carries Forgejo issues and pushes to a Forgejo `main`, and the GitHub mirror is read-only and PR-gated. A GitHub-only shop can still use the local verb gate. Which Forgejo, exactly? See the note below the list.
 - **Docker** for the container agent flow - each `warded` run boots an ephemeral container, configures forge git auth inside it, runs the agent, and reaps it. The first run pulls one image, `forgejo.coilysiren.me/coilyco-flight-deck/agentic-os:latest` (anonymous pull, no login). See [`docs/container.md`](docs/container.md) for the registry, tag policy, and how to pin off the moving tag.
 
 The plain verb gate (`ward exec`, `ward git`, `ward pkg`, `ward audit`) needs none of the above - just the repo and its `.ward/ward.yaml`.
+
+**Which Forgejo? As shipped, ward targets one - `forgejo.coilysiren.me` - and only `coily*`-owned orgs.** The API endpoint, the private coilyco-ops SSM token path, and an `owner matches coily*` gate on every owner-scoped verb are compiled into the Forgejo ops surface ([`ward-kdl.forgejo.guardfile.kdl`](cmd/ward-kdl/ward-kdl.forgejo.guardfile.kdl)), and the bot attribution defaults into the embedded fleet manifest ([`ward-kdl.fleet.kdl`](cmd/ward-kdl/ward-kdl.fleet.kdl)) - none of them runtime config. The forge-agnostic verb gate runs against any repo, but the agent driver and `ward ops forgejo` **cannot be repointed at your own instance after install**: retargeting means a **source build** with those two files edited and the binary rebuilt. Turning the endpoint, token, and owner gate into operator config is tracked in [ward#395](https://forgejo.coilysiren.me/coilyco-flight-deck/ward/issues/395) and [ward#396](https://forgejo.coilysiren.me/coilyco-flight-deck/ward/issues/396).
 
 ## What it does
 
 Wraps a project's dev verbs behind cli-guard's policy gate. Every ward-managed repo is expected to declare the `build` / `test` / `install` triple in `.ward/ward.yaml`; many also expose `vet`, `lint`, `tidy`, and `cover`. Every invocation validates argv against a shell-metacharacter policy, writes one append-only JSONL audit row to `~/.ward/audit/<repo>.jsonl`, and gates repo verbs on a clean-and-synced tree so the row can be reconstructed from git history. See [`docs/exec-verb.md`](docs/exec-verb.md).
 
-**Enforcement depth is platform-conditional.** On **Linux** sandboxed verbs run inside cli-guard's sandbox jail, so the gate holds at arbitrary process depth - a descendant that reaches for a wrapped tool re-enters the gate. On **macOS and Windows** - the platforms the brew-first install path predominantly serves - enforcement is **depth-0** (the harness allowlist only): a child process spawned by a gated verb can invoke a wrapped tool without re-entering the gate, a known limitation by design. See [`docs/exec-verb.md`](docs/exec-verb.md) (Enforcement depth by platform).
+**Enforcement depth is platform-conditional.** On **Linux** sandboxed verbs run inside cli-guard's sandbox jail, so the gate holds at arbitrary process depth. On **macOS and Windows** - what the brew-first path predominantly serves - enforcement is **depth-0** (the harness allowlist only): a child spawned by a gated verb can invoke a wrapped tool without re-entering the gate, a known limitation by design. See [`docs/exec-verb.md`](docs/exec-verb.md) (Enforcement depth by platform).
 
-Each repo declares its verbs (and an optional `security:` policy) in [`.ward/ward.yaml`](.ward/ward.yaml). For the field-by-field schema - every key `commands:` and `security:` accept, required vs optional, and a complete annotated example with a `security:` block - see [`docs/ward-yaml.md`](docs/ward-yaml.md).
-
-Each repo declares which Makefile targets are exposed in `.ward/ward.yaml`, and `ward doctor` verifies the two surfaces have not drifted. The contract is stricter than "the target name exists": each exposed Makefile target must carry a `## <description>` help comment (the self-documenting-Makefile convention, e.g. `build: ## Build all packages.`) whose text equals the command's `description:`, and `run:` must be exactly `make <name>`. A bare `target:` recipe with no `## ...` comment is not registered, so `ward doctor` reports it as unmatched even though `make <target>` runs by hand. See [`docs/doctor.md`](docs/doctor.md) (Allowlist contract).
+Each repo declares its verbs (and an optional `security:` policy) in [`.ward/ward.yaml`](.ward/ward.yaml). For the field-by-field schema see [`docs/ward-yaml.md`](docs/ward-yaml.md). `ward doctor` verifies `.ward/ward.yaml` and the Makefile have not drifted: each exposed target must carry a `## <description>` help comment whose text equals the command's `description:`, and `run:` must be exactly `make <name>`. See [`docs/doctor.md`](docs/doctor.md) (Allowlist contract).
 
 ## Install
 
@@ -38,11 +36,11 @@ brew tap coilyco-flight-deck/tap https://forgejo.coilysiren.me/coilyco-flight-de
 brew install coilyco-flight-deck/tap/ward
 ```
 
-The explicit-URL form is required because the tap lives on forgejo, not github.com. The formula installs `ward` (stamped with the release tag) plus the `warded` symlink, and nothing else. The `ward-kdl` authoring binary is **not** installed - its surfaces are already embedded in `ward`, so end users need neither it nor the tier CLIs (ward#455). Spec authors who need `ward-kdl` itself build it from a ward checkout - see [ward-kdl-authoring.md](docs/ward-kdl-authoring.md). Upgrade with `ward upgrade`.
+The explicit-URL form is required because the tap lives on forgejo, not github.com. The formula installs `ward` (stamped with the release tag) plus the `warded` symlink, and nothing else. The `ward-kdl` authoring binary is **not** installed - its surfaces are already embedded in `ward` (ward#455). Spec authors who need `ward-kdl` build it from a ward checkout - see [ward-kdl-authoring.md](docs/ward-kdl-authoring.md). Upgrade with `ward upgrade`.
 
-Release assets are Linux-only convenience binaries for the container path; humans install `ward` through Homebrew, so darwin release artifacts are intentionally absent.
+Release assets are Linux-only convenience binaries for the container path. Humans install `ward` through Homebrew, so darwin release artifacts are intentionally absent.
 
-**Releases live on Forgejo.** This repo is canonical on [forgejo.coilysiren.me/coilyco-flight-deck/ward](https://forgejo.coilysiren.me/coilyco-flight-deck/ward); the github.com copy is a read-only mirror of `main` + tags only, so its Releases page is intentionally empty - see the [canonical releases](https://forgejo.coilysiren.me/coilyco-flight-deck/ward/releases) for the current version and changelog.
+**Releases live on Forgejo.** This repo is canonical on [forgejo.coilysiren.me/coilyco-flight-deck/ward](https://forgejo.coilysiren.me/coilyco-flight-deck/ward); the github.com copy mirrors `main` + tags only, so its Releases page is empty - see the [canonical releases](https://forgejo.coilysiren.me/coilyco-flight-deck/ward/releases) for the version and changelog.
 
 ## Usage
 

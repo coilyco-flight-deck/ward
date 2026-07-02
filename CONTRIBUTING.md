@@ -15,7 +15,7 @@ The path for an outside contributor holding only a GitHub account:
 
 1. **File the issue on the GitHub mirror** via [New issue](https://github.com/coilyco-flight-deck/ward/issues/new/choose). That is your bug report or feature request and where discussion with you happens.
 2. **Open your PR against the GitHub mirror.** Fork, push a branch, open the PR there. You do not need - and cannot get - a Forgejo account for this.
-3. **A maintainer (or warded agent) carries an accepted change to Forgejo.** Because Forgejo is authoritative, an accepted GitHub PR is replayed onto Forgejo `main`, closing the matching Forgejo issue, and your GitHub PR is closed as merged. You never touch Forgejo.
+3. **A maintainer (or warded agent) carries an accepted change to Forgejo.** Because Forgejo is authoritative, an accepted GitHub PR is replayed onto Forgejo `main`, closing the matching Forgejo issue, and your GitHub PR is closed as merged.
 
 The `closes #N` convention below refers to **Forgejo** issue numbers. It is an internal mechanic the maintainer applies during that carry, not something an external PR must satisfy. Reference the GitHub issue your PR addresses and you have done your part.
 
@@ -23,8 +23,8 @@ Maintainers and warded agents on the canonical repo skip the mirror and follow t
 
 ## Before you open a PR
 
-1. **Open an issue first.** Every commit closes a same-repo (Forgejo) issue (`closes #N` in the commit body). Discussion happens in the issue, the PR is the change itself. This applies even to trivial fixes, the issue gives the change a stable URL. **External contributors:** file that issue on the GitHub mirror (see [above](#where-contributions-land-read-this-first)) - the Forgejo `closes #N` link is added by whoever carries it across.
-2. **Stay close to scope.** ward is intentionally small. It exposes a project's dev surface on top of [cli-guard](https://forgejo.coilysiren.me/coilyco-flight-deck/cli-guard). Features that pull this package out of its lane will get pushed back. Operator and personal-infra verbs belong in the operator CLI, repo-specific Makefile targets belong in the downstream repo's `.ward/ward.yaml`. The cli-guard/ward-kdl/ward boundary is load-bearing, not incidental - folding cli-guard into ward was [considered and rejected](docs/architecture.md#considered-and-rejected-folding-cli-guard-into-ward), so don't reopen it.
+1. **Open an issue first.** Every commit closes a same-repo (Forgejo) issue (`closes #N` in the commit body). Discussion happens in the issue, the PR is the change itself. This applies even to trivial fixes, the issue gives the change a stable URL. **External contributors:** file that issue on the GitHub mirror (see [above](#where-contributions-land-read-this-first)).
+2. **Stay close to scope.** ward is intentionally small. It exposes a project's dev surface on top of [cli-guard](https://forgejo.coilysiren.me/coilyco-flight-deck/cli-guard). Features that pull this package out of its lane will get pushed back. Operator and personal-infra verbs belong in the operator CLI, repo-specific Makefile targets belong in the downstream repo's `.ward/ward.yaml`. The cli-guard/ward-kdl/ward boundary is load-bearing - folding cli-guard into ward was [considered and rejected](docs/architecture.md#considered-and-rejected-folding-cli-guard-into-ward), so don't reopen it.
 3. **Run the dev verbs before pushing.** Install ward from the centralized flight-deck tap with `brew install coilyco-flight-deck/tap/ward` (tap it first, see [README](README.md#install)), then:
 
    ```
@@ -34,7 +34,7 @@ Maintainers and warded agents on the canonical repo skip the mirror and follow t
    ward exec lint
    ```
 
-   The `.ward/ward.yaml` ↔ Makefile contract is checked by `ward lint` and CI.
+   The `.ward/ward.yaml` ↔ Makefile contract is checked by `ward doctor` (its allowlist drift guard) and CI, not a `ward lint` verb - `lint` is only the `ward exec lint` dev verb.
 
 ## Working on cli-guard side by side
 
