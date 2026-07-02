@@ -125,6 +125,13 @@ awk -v prev_tag="$prev_tag" -v new_tag="$new_tag" \
       print ""
     }
 
+    # Standing install note: every release attaches Linux-only ward binaries,
+    # unexplained next to the notes until now. See docs/release-notes.md, ward#442.
+    print "## Install"
+    print ""
+    print "The attached `ward-linux-{amd64,arm64}` binaries exist for the container agent path - `ward agent` runs ward inside ephemeral Linux containers. Humans install ward on every OS via Homebrew (`brew install coilyco-flight-deck/tap/ward`), which is why there are no darwin assets here."
+    print ""
+
     # Compare footer, so the raw log is one click away for anyone who wants it.
     if (prev_tag != "" && new_tag != "") {
       if (compare_url != "")
