@@ -29,7 +29,7 @@ Contributor-facing cli-guard gate: repo dev verbs + audited host wrappers.
 
 ## Spec-driven ops (`ward-kdl`)
 
-`ward-kdl` is the build-time authoring layer ([docs/ward-kdl.md](ward-kdl.md)): permission surfaces + fleet configs for `ops` (forgejo/tailscale/signoz/aws/kubectl/...), `docker`, `agents`, `pkg` ([surface](ward-kdl-surface.md)), plus `ward-kdl.fleet.kdl`. It builds into `ward-kdl-{read,write,admin}` tiers ([ward#240](https://forgejo.coilysiren.me/coilyco-flight-deck/ward/issues/240)) - not public artifacts ([ward#455](https://forgejo.coilysiren.me/coilyco-flight-deck/ward/issues/455)), spec authors build from a clone ([authoring](ward-kdl-authoring.md)).
+`ward-kdl` is the build-time authoring layer ([docs/ward-kdl.md](ward-kdl.md)): permission surfaces + fleet configs for `ops` (forgejo/tailscale/signoz/aws/kubectl/...), `docker`, `agents`, `pkg` ([surface](ward-kdl-surface.md)), plus `ward-kdl.fleet.kdl`. It builds into `ward-kdl-{read,write,admin}` tiers ([ward#240](https://forgejo.coilysiren.me/coilyco-flight-deck/ward/issues/240)) - not public artifacts ([ward#455](https://forgejo.coilysiren.me/coilyco-flight-deck/ward/issues/455)), spec authors build from a clone ([authoring](ward-kdl-authoring.md)). The canonical deployment bundle now lives in sibling `agentic-os/ward-specs/`, which `make build-ward-kdl` copies into place before locking and embedding.
 
 The **exec-dialect** guardfiles auto-mount at their `wrap` path; `git` / `pkg brew` keep hand-written surfaces ([ward#284](https://forgejo.coilysiren.me/coilyco-flight-deck/ward/issues/284)). See [in-ward](ward-kdl-in-ward.md).
 

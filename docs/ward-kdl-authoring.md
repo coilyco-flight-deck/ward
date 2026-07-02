@@ -38,35 +38,23 @@ build at your own deployment bundle.
 
 ## The spec bundle is a swappable build input
 
-The KDL sources `ward-kdl` compiles are a **bundle** - the guardfiles, their spec
-locks, and the fleet manifest that decide which endpoints, tokens, and owners a
-build couples to. That coupling is deployment config, not engine code (ward#441):
-the `base-url`, `ssm` token paths, `restrict owner` gate, and attribution
-defaults all belong to whoever runs the fleet, not to `ward`. So the bundle is a
-**declared, swappable build input** addressed by an **assets-dir convention**
-(not a build-time variable, ward#453): the build reads it from `cmd/ward-kdl/`,
-and you swap it by overlaying that directory's files.
+The KDL sources `ward-kdl` compiles are a bundle: the guardfiles, their spec
+locks, and `ward-kdl.fleet.kdl`. Those values are deployment config, not engine
+code (ward#441), and the build swaps them through a fixed assets-dir
+convention (ward#453).
 
 ## Bring your own specs
 
-[examples/ward-specs/](../examples/ward-specs) is the neutral bundle a new
-adopter starts from - a forgejo guardfile and a fleet manifest whose every
-deployment-specific value is a placeholder. A build made from it carries no
-coilyco endpoint/token/owner values, so the ward#441 finding does not reproduce
-against it (proven by `TestExampleBundleHasNoCoilycoValues` in `cmd/ward`).
+The canonical deployment bundle now lives in the sibling `agentic-os/ward-specs/`
+checkout so `ward` can consume it as a sibling build input. [examples/ward-specs/](../examples/ward-specs)
+remains the neutral starter bundle, and a build made from it carries no coilyco
+endpoint/token/owner values.
 
 To build `ward` against your own deployment:
 
 1. Copy `examples/ward-specs/*` into `cmd/ward-kdl/`, overlaying the tracked bundle.
-2. Replace each placeholder (`git.example.com`, `/example/...`, `example*`,
-   `example-bot`) with your deployment's values.
-3. Run `make build-ward-kdl` to regenerate + re-embed the surfaces, then `make test`.
-
-## Follow-ups
-
-Moving ward's own (coilyco) canonical bundle up into aos - so the tracked tree
-carries only the neutral example - is tracked at ward#453 (it also re-points the
-brew-from-source and release build sites at the relocated bundle).
+2. Replace each placeholder (`git.example.com`, `/example/...`, `example*`, `example-bot`) with your deployment's values.
+3. Run `make build-ward-kdl`, then `make test`.
 
 ## See also
 
