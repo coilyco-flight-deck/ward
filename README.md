@@ -23,6 +23,8 @@ The plain verb gate (`ward exec`, `ward git`, `ward pkg`, `ward audit`) needs no
 
 Wraps a project's dev verbs (`build`, `test`, `vet`, `lint`, `tidy`, `cover`) behind cli-guard's policy gate. Every invocation validates argv against a shell-metacharacter policy, writes one append-only JSONL audit row to `~/.ward/audit/<repo>.jsonl`, and gates repo verbs on a clean-and-synced tree so the row can be reconstructed from git history. See [`docs/exec-verb.md`](docs/exec-verb.md).
 
+**Enforcement depth is platform-conditional.** On **Linux** sandboxed verbs run inside cli-guard's sandbox jail, so the gate holds at arbitrary process depth - a descendant that reaches for a wrapped tool re-enters the gate. On **macOS and Windows** - the platforms the brew-first install path predominantly serves - enforcement is **depth-0** (the harness allowlist only): a child process spawned by a gated verb can invoke a wrapped tool without re-entering the gate, a known limitation by design. See [`docs/exec-verb.md`](docs/exec-verb.md) (Enforcement depth by platform).
+
 Each repo declares its verbs (and an optional `security:` policy) in [`.ward/ward.yaml`](.ward/ward.yaml). For the field-by-field schema - every key `commands:` and `security:` accept, required vs optional, and a complete annotated example with a `security:` block - see [`docs/ward-yaml.md`](docs/ward-yaml.md).
 
 Each repo declares which Makefile targets are exposed in `.ward/ward.yaml`, and `ward doctor` verifies the two surfaces have not drifted. The contract is stricter than "the target name exists": each exposed Makefile target must carry a `## <description>` help comment (the self-documenting-Makefile convention, e.g. `build: ## Build all packages.`) whose text equals the command's `description:`, and `run:` must be exactly `make <name>`. A bare `target:` recipe with no `## ...` comment is not registered, so `ward doctor` reports it as unmatched even though `make <target>` runs by hand. See [`docs/doctor.md`](docs/doctor.md) (Allowlist contract).
@@ -111,7 +113,7 @@ Over 60 pages under [`docs/`](docs/) cover each surface. The anchors:
 
 ## Status
 
-v0.x. Downstream consumers upgrade to the `ward` binary and `.ward` config on their own schedule. Minor API breaks ship in `main` with a note in the commit body; pin a commit until v1.0.0.
+v0.x, and early on purpose. ward is a single-maintainer tool in active internal use across the flight-deck fleet, now opening up - so a small public audience (few stars, few forks) is expected for the stage, not a sign of decay. The release count is high for the same reason: releases are automated per-merge, cut by CI on every push to `main`, so the version number is a build counter, not a maturity signal or a tally of hand-picked milestone drops. Downstream consumers upgrade to the `ward` binary and `.ward` config on their own schedule. Minor API breaks ship in `main` with a note in the commit body, so pin a commit until v1.0.0.
 
 ## Related
 

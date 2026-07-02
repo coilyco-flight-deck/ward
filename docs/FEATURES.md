@@ -31,6 +31,10 @@ Contributor-facing cli-guard gate: repo dev verbs + audited host wrappers.
 
 The **exec-dialect** guardfiles auto-mount at their `wrap` path; `git` / `pkg brew` keep hand-written surfaces (ward#284). See [in-ward](ward-kdl-in-ward.md).
 
+## Release pipeline
+
+- **Release notes** *(ward#486)* - "does it affect you" verdict. [release-notes.md](release-notes.md).
+
 ## See also
 
 - [README.md](../README.md) - human intro.
