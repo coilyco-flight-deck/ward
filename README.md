@@ -124,12 +124,13 @@ v0.x, and early on purpose. ward is a single-maintainer tool in active internal 
 
 ## Support
 
-Bug or feature request: [create a new issue][new-issue]. Conduct: [Code of Conduct](CODE_OF_CONDUCT.md). Security: [SECURITY.md](SECURITY.md). License: [`LICENSE`](./LICENSE).
+**Canonical development happens on [Forgejo][ward-forgejo]** - `main`, the issues, and every commit live there. That instance's registration is closed, so the **GitHub mirror is the public front door**: file a [bug or feature request][new-issue] there with just a GitHub account and a maintainer carries an accepted change across to Forgejo. That is why the README routes new issues to GitHub even though the tracker warded engineers watch is on Forgejo. The full contributor flow is in [CONTRIBUTING.md](CONTRIBUTING.md). Conduct: [Code of Conduct](CODE_OF_CONDUCT.md). Security: [SECURITY.md](SECURITY.md). License: [`LICENSE`](./LICENSE).
 
 [cli-guard]: https://forgejo.coilysiren.me/coilyco-flight-deck/cli-guard
 [coily]: https://github.com/coilyco-bridge/coily
 [cli-mcp]: https://github.com/coilysiren/cli-mcp
 [new-issue]: https://github.com/coilyco-flight-deck/ward/issues/new/choose
+[ward-forgejo]: https://forgejo.coilysiren.me/coilyco-flight-deck/ward
 
 ## See also
 
