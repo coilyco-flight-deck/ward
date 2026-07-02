@@ -84,6 +84,7 @@ Post-push at +120s, verify the release run on Forgejo Actions (not the GitHub mi
 - One issue per discrete additive change. `closes #N` encouraged, not enforced.
 - v0.x. Minor API breaks ship in `main` with a note in the commit body. Consumers pin a commit until v1.0.0. Lock the API once downstream consumers settle.
 - Never use `--no-verify`.
+- **Linking convention.** ward is Forgejo-canonical with a read-only GitHub mirror as the public front door, so a forge link is easy to get backwards. When authoring docs: link **same-repo files with relative paths** (they resolve on both forges), send **external-contributor navigation** (file an issue, open a PR, the front door) to **GitHub**, and point **canonical or infrastructural references** (the brew tap, the container registry, releases, a `ward#N` cross-ref, `closes #N`) at **Forgejo**. Full rule in [docs/forge-linking.md](docs/forge-linking.md).
 
 ## See also
 

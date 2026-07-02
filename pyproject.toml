@@ -10,9 +10,12 @@
 # the aos release carrying the per-repo README opt-up (agentic-os v0.167.0,
 # driver ward#427), so the README is now enforced at a tighter explicit ceiling
 # sized to the landed launch README (129 lines / 13268 chars) with headroom.
-# Supersedes the #274 "split it back under cap" plan.
+# Supersedes the #274 "split it back under cap" plan. ward#445 raised the char
+# ceiling once more so the Status section can carry the release-cadence and
+# who-relies-on-it context a cold reader needs (after trimming duplicate
+# forge-agnostic prose to keep the bump small).
 readme_max_lines = 130
-readme_max_chars = 13300
+readme_max_chars = 13450
 excludes = [
   # Pre-existing size debt: docs/hook.md is 92 lines, over the 80-line cap.
   # The split is tracked in coilyco-flight-deck/ward#50; drop this when it lands.

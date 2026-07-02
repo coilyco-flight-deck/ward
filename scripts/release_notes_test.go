@@ -145,3 +145,27 @@ func TestEmptyInput(t *testing.T) {
 		t.Errorf("empty range should still render the header:\n%s", out)
 	}
 }
+
+// The standing install note must render on every body regardless of verdict -
+// including an empty range - explaining the Linux-only assets (ward#442).
+func TestInstallNoteAlwaysRenders(t *testing.T) {
+	cases := map[string]string{
+		"empty":         "",
+		"internal-only": record("aaa1111", "docs: split agent harness pages"),
+		"features":      record("a1b2c3d", "feat: x"),
+	}
+	for name, stdin := range cases {
+		t.Run(name, func(t *testing.T) {
+			out := run(t, stdin, "--prev", "v0.1.0", "--new", "v0.2.0")
+			if !strings.Contains(out, "## Install") {
+				t.Errorf("missing standing install note:\n%s", out)
+			}
+			if !strings.Contains(out, "ward-linux-{amd64,arm64}") {
+				t.Errorf("install note should name the Linux assets:\n%s", out)
+			}
+			if !strings.Contains(out, "brew install coilyco-flight-deck/tap/ward") {
+				t.Errorf("install note should point humans at Homebrew:\n%s", out)
+			}
+		})
+	}
+}

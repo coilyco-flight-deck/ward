@@ -36,6 +36,7 @@ The **exec-dialect** guardfiles auto-mount at their `wrap` path; `git` / `pkg br
 ## Release pipeline
 
 - **Release notes** *([ward#486](https://forgejo.coilysiren.me/coilyco-flight-deck/ward/issues/486))* - "does it affect you" verdict. [release-notes.md](release-notes.md).
+- **Dual-forge binary matrix** *([ward#454](https://forgejo.coilysiren.me/coilyco-flight-deck/ward/issues/454))* - `ward-{darwin,linux}-{amd64,arm64}` + `SHA256SUMS`, built once per tag and published byte-identical to both the Forgejo and GitHub release pages, so their checksums match. [release.md](release.md), [github-mirror.md](github-mirror.md).
 
 ## See also
 
