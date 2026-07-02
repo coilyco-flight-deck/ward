@@ -13,6 +13,7 @@ New to ward? Read [architecture.md](architecture.md) first - it frames the whole
 - [architecture.md](architecture.md) - ward in three layers (cli-guard the engine, ward-kdl the build-time generator, ward the run-time product).
 - [FEATURES.md](FEATURES.md) - inventory of what ships today.
 - [comparison-openshell.md](comparison-openshell.md) - ward vs NVIDIA OpenShell: verb-level gate vs kernel sandbox.
+- [setup.md](setup.md) - `ward setup` (`warded setup`), guided onboarding: scaffold `.ward/ward.yaml` from the Makefile, then run doctor.
 - [doctor.md](doctor.md) - `ward doctor`, the single diagnostic verb, incl. the allowlist drift guard.
 - [troubleshooting.md](troubleshooting.md) - symptom-indexed entry point for a failed `warded` run.
 - [audit.md](audit.md) - the append-only JSONL audit row written per invocation.

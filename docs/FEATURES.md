@@ -13,6 +13,7 @@ Contributor-facing cli-guard gate: repo dev verbs + audited host wrappers.
 - **`ward upgrade`** - audited self-update via `brew upgrade coilyco-flight-deck/tap/ward` (`--dry`).
 - **`ward audit {path,tail}`** - read the audit log: `path` prints its path, `tail` streams rows (`--since`/`--follow`). See [audit.md](audit.md).
 - **`ward git <verb>`** - audited passthroughs, concurrency-safe `commit`, destination-gated `clone` (ward#285), ephemeral-clone `grep`/`grep-remote` (ward#369). See [git-verbs.md](git-verbs.md).
+- **`ward setup`** (`warded setup`) - scaffold `.ward/ward.yaml` from the Makefile, run doctor. See [setup.md](setup.md).
 - **`ward doctor`** - diagnostic checks against the config + host, including the allowlist drift guard. See [doctor.md](doctor.md).
 - **`ward hook pre-tool-use`** - Claude Code PreToolUse hook: binary-path check + bare-command deny with routing hints.
 - **`ward install-hooks`** - register the PreToolUse hook in `.claude/settings.json`.
