@@ -1,6 +1,6 @@
 # Agent instructions
 
-Workspace conventions load globally via `~/.claude/CLAUDE.md` -> `agentic-os-kai/AGENTS.md`. This file covers only what's specific to this repo.
+Workspace conventions load globally via `~/.claude/CLAUDE.md` -> `agentic-os-kai/AGENTS.md`. This file covers only what's specific here.
 
 ## Scope
 
@@ -63,8 +63,9 @@ Post-push: verify CI at +120s (`coily ops gh run list --repo coilyco-flight-deck
 
 ## See also
 
-- [README.md](README.md) - human-facing intro.
-- [docs/FEATURES.md](docs/FEATURES.md) - inventory of what ships today.
+- [README.md](README.md) - human intro.
+- [docs/README.md](docs/README.md) - docs index, by subsystem.
+- [docs/FEATURES.md](docs/FEATURES.md) - what ships today.
 - [.ward/ward.yaml](.ward/ward.yaml) - allowlisted commands.
 
 Cross-reference convention from [coilysiren/agentic-os#59](https://github.com/coilysiren/agentic-os/issues/59).

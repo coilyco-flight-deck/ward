@@ -25,6 +25,12 @@ excludes = [
   # doc, and it must sit beside its package, so the markdown-location and size
   # caps do not apply. See docs/container.md.
   "cmd/ward/containerassets/AGENTS.container.md",
+  # The docs/ landing page (ward#488): an index of every docs/*.md, so it grows
+  # with the doc set and cannot fit the 80-line/4000-char cap by construction -
+  # same "grows with the surface" carve-out as the generated ward-kdl refs
+  # above. dead-cross-links still validates every entry (its own exclude list,
+  # not this one).
+  "docs/README.md",
 ]
 
 [tool.agentic-os.code-comments]

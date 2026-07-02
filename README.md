@@ -66,6 +66,7 @@ Bug or feature request: [create a new issue][new-issue]. Conduct: [Code of Condu
 
 ## See also
 
+- [docs/README.md](docs/README.md) - the docs index: every doc grouped by subsystem.
 - [docs/architecture.md](docs/architecture.md) - ward in three layers (cli-guard, ward-kdl, ward).
 - [docs/comparison-openshell.md](docs/comparison-openshell.md) - ward vs NVIDIA OpenShell: verb-level gate vs kernel sandbox.
 - [AGENTS.md](AGENTS.md) - agent-facing operating rules.
