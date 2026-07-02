@@ -112,6 +112,87 @@ func TestUnlandedExtraReposComment(t *testing.T) {
 	}
 }
 
+// TestRenderReapDiagnosticsFalseSalvage covers ward#531: the block renders the ward
+// version and, for a HEAD-on-main input, names the outcome a FALSE salvage.
+func TestRenderReapDiagnosticsFalseSalvage(t *testing.T) {
+	d := reapDiagnostics{
+		WardVersion:   "v0.297.0",
+		VersionSource: "releases/latest (resolved in-container)",
+		Head:          "abc123def456",
+		OriginMain:    "abc123def456",
+		HeadOnMain:    true, // HEAD already contained in origin/main -> false salvage
+		Gate:          "no run-owned landed commit after dispatch",
+		Reason:        reasonConflict,
+		ProvState:     "present",
+		Landed:        false,
+		Status:        "",
+		TokenAge:      "6h03m",
+	}
+	block := renderReapDiagnostics(d)
+	for _, want := range []string{
+		reapDiagHeader,               // greppable header
+		reapDiagFooter,               // greppable footer
+		"v0.297.0",                   // the reaper's ward version - the #504 key field
+		"releases/latest",            // how it resolved
+		"FALSE salvage",              // the ancestry verdict in plain words
+		"ward#504",                   // the false-salvage signature reference
+		"no run-owned landed commit", // the decision gate that fired
+		"run-owned landed:  no",      // the landed verdict
+		"6h03m",                      // container uptime / PAT-age proxy
+	} {
+		if !strings.Contains(block, want) {
+			t.Errorf("diagnostics block missing %q\n---\n%s", want, block)
+		}
+	}
+
+	// A HEAD-not-on-main input must NOT read as a false salvage.
+	d.HeadOnMain = false
+	d.OriginMain = "999fedcba000"
+	if strings.Contains(renderReapDiagnostics(d), "FALSE salvage") {
+		t.Error("a HEAD-not-on-main input must not render a FALSE salvage verdict")
+	}
+
+	// No origin/main at all: the block says so rather than implying an ancestry.
+	d.OriginMain = ""
+	if !strings.Contains(renderReapDiagnostics(d), "origin/main absent") {
+		t.Error("an absent origin/main should render the absent-ancestry verdict")
+	}
+}
+
+// TestSalvageIssueBodyFoldsDiagnostics covers ward#531 acceptance 2: the same
+// diagnostics facts appear in the durable salvage issue body, not only on stderr.
+func TestSalvageIssueBodyFoldsDiagnostics(t *testing.T) {
+	r := salvageReport{
+		Repo:   targetRepo{Owner: "coilyco-flight-deck", Name: "ward"},
+		Mode:   "claude",
+		Branch: "ward-salvage/ward-a1b2",
+		Reason: reasonConflict,
+		Base:   "https://forgejo.coilysiren.me",
+		Diagnostics: reapDiagnostics{
+			WardVersion:   "v0.297.0",
+			VersionSource: "releases/latest (resolved in-container)",
+			Head:          "abc123def456",
+			OriginMain:    "abc123def456",
+			HeadOnMain:    true,
+			Gate:          "no run-owned landed commit after dispatch",
+			Reason:        reasonConflict,
+			ProvState:     "present",
+		},
+	}
+	body := salvageIssueBody(r)
+	for _, want := range []string{"## Reap diagnostics", reapDiagHeader, "v0.297.0", "FALSE salvage"} {
+		if !strings.Contains(body, want) {
+			t.Errorf("salvage issue body missing folded diagnostic %q\n---\n%s", want, body)
+		}
+	}
+
+	// A report with no diagnostics gathered omits the section entirely (no empty block).
+	bare := salvageIssueBody(salvageReport{Repo: r.Repo, Mode: "claude", Branch: r.Branch, Reason: reasonConflict, Base: r.Base})
+	if strings.Contains(bare, "## Reap diagnostics") {
+		t.Error("a report with no diagnostics must omit the diagnostics section")
+	}
+}
+
 func TestDecideReap(t *testing.T) {
 	cases := []struct {
 		name string

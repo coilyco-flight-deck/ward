@@ -128,6 +128,113 @@ func humanDuration(d time.Duration) string {
 	}
 }
 
+// --- reap diagnostics block (ward#531) ---------------------------------------
+
+// reapDecision is the decision-branch context a salvage/fail site hands the
+// diagnostics gatherer: which gate fired plus the provenance/landed verdict (ward#531).
+type reapDecision struct {
+	// Gate names the decision branch that tripped (e.g. "merge conflict integrating
+	// onto main", "no run-owned landed commit after dispatch").
+	Gate string
+	// ProvState is the provenance file's state at the decision: "present",
+	// "missing or unreadable", or "not read (no origin/main)".
+	ProvState string
+	// Landed is the run-owned-landed verdict (runProvenanceLanded) the gate saw.
+	Landed bool
+}
+
+// reapDiagnostics is the debugging block the reaper dumps on salvage/failure
+// (ward#531): the facts a false-salvage post-mortem needs. See docs/container-reap.md.
+type reapDiagnostics struct {
+	// WardVersion is the ward release running the reaper (the compiled Version).
+	WardVersion string
+	// VersionSource is how that version resolved: a WARD_VERSION/--ward-version pin
+	// or releases/latest resolved in-container.
+	VersionSource string
+	// Head / OriginMain are the short shas at reap; OriginMain is "" when absent.
+	Head       string
+	OriginMain string
+	// HeadOnMain is `git merge-base --is-ancestor HEAD origin/main`: true means HEAD
+	// is already contained in origin/main, the exact false-salvage signature.
+	HeadOnMain bool
+	// Gate / Reason name the decision branch taken and its human reason.
+	Gate   string
+	Reason reapReason
+	// ProvState / Landed mirror reapDecision: provenance presence and the landed proof.
+	ProvState string
+	Landed    bool
+	// Status is the `git status --porcelain` snapshot; TokenAge is the container
+	// uptime at reap (a baked-PAT age proxy).
+	Status   string
+	TokenAge string
+}
+
+const (
+	reapDiagHeader = "--- reap diagnostics ---"
+	reapDiagFooter = "--- end reap diagnostics ---"
+)
+
+// renderReapDiagnostics renders the one clearly-delimited block (ward#531): a grep
+// anchor plus aligned facts, readable in a log and foldable into the issue body.
+func renderReapDiagnostics(d reapDiagnostics) string {
+	var b strings.Builder
+	b.WriteString(reapDiagHeader + "\n")
+	fmt.Fprintf(&b, "ward version:      %s\n", d.WardVersion)
+	fmt.Fprintf(&b, "version source:    %s\n", d.VersionSource)
+	fmt.Fprintf(&b, "HEAD:              %s\n", shaOrDash(d.Head))
+	fmt.Fprintf(&b, "origin/main:       %s\n", shaOrDash(d.OriginMain))
+	fmt.Fprintf(&b, "ancestry:          %s\n", ancestryVerdict(d))
+	fmt.Fprintf(&b, "decision gate:     %s\n", d.Gate)
+	fmt.Fprintf(&b, "reason:            %s\n", d.Reason)
+	fmt.Fprintf(&b, "provenance:        %s\n", d.ProvState)
+	fmt.Fprintf(&b, "run-owned landed:  %s\n", yesNo(d.Landed))
+	fmt.Fprintf(&b, "working tree:      %s\n", treeSummary(d.Status))
+	if d.TokenAge != "" {
+		fmt.Fprintf(&b, "container uptime:  %s (baked Forgejo PAT age proxy)\n", d.TokenAge)
+	}
+	b.WriteString(reapDiagFooter)
+	return b.String()
+}
+
+// ancestryVerdict renders the HEAD-vs-origin/main relationship in plain words, so
+// the false-salvage case (HEAD already on main) reads as an alarm, not a sha diff.
+func ancestryVerdict(d reapDiagnostics) string {
+	switch {
+	case d.OriginMain == "":
+		return "origin/main absent - cannot compute ancestry"
+	case d.HeadOnMain:
+		return "HEAD is ALREADY on origin/main - a salvage here is a FALSE salvage (ward#504 signature)"
+	default:
+		return "HEAD is NOT yet on origin/main - residual work remains to land"
+	}
+}
+
+// treeSummary collapses a porcelain status to a one-line count; the full snapshot
+// still ships in its own issue section.
+func treeSummary(status string) string {
+	s := strings.TrimSpace(status)
+	if s == "" {
+		return "clean"
+	}
+	return fmt.Sprintf("%d dirty path(s)", len(strings.Split(s, "\n")))
+}
+
+// shaOrDash renders a sha or a dash placeholder when git could not resolve it.
+func shaOrDash(sha string) string {
+	if strings.TrimSpace(sha) == "" {
+		return "-"
+	}
+	return sha
+}
+
+// yesNo renders a bool as a word for the aligned block.
+func yesNo(b bool) string {
+	if b {
+		return "yes"
+	}
+	return "no"
+}
+
 // --- salvage branch + issue rendering ----------------------------------------
 
 // salvageBranchPrefix namespaces every reaper-pushed branch so they are easy to
@@ -163,6 +270,9 @@ type salvageReport struct {
 	Status string
 	// Base is the forgejo base URL, used to render the fetch/recover commands.
 	Base string
+	// Diagnostics is the ward#531 block folded into the issue body so the same facts
+	// survive on the durable notification, not only on ephemeral stderr.
+	Diagnostics reapDiagnostics
 }
 
 // salvageIssueTitle is stable per repo+branch so duplicate detection works.
@@ -205,6 +315,14 @@ func salvageDetailBody(r salvageReport) string {
 	if r.AuthCause {
 		b.WriteString("## Likely cause: dead/rotated PAT, not a conflict\n\n")
 		b.WriteString("The push was rejected on **credentials**, not content. The Forgejo PAT baked into this container at `up` time was most likely rotated or revoked while it ran, so the final push to `main` (and any salvage-branch push) failed on auth. This is **not** a merge conflict - the work on the salvage branch should rebase and land cleanly once pushed with a live token. Don't rotate the PAT while containers are in flight; see docs/container-reap.md.\n\n")
+	}
+
+	// Fold the ward#531 diagnostics block in verbatim so a false-salvage
+	// self-diagnoses on the durable issue, not only on ephemeral stderr.
+	if strings.TrimSpace(r.Diagnostics.WardVersion) != "" {
+		b.WriteString("## Reap diagnostics\n\n```\n")
+		b.WriteString(renderReapDiagnostics(r.Diagnostics))
+		b.WriteString("\n```\n\n")
 	}
 
 	b.WriteString("## Recover\n\n```bash\n")
