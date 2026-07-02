@@ -6,7 +6,6 @@ import (
 	"fmt"
 	"os"
 	"strconv"
-	"strings"
 	"time"
 
 	"forgejo.coilysiren.me/coilyco-flight-deck/cli-guard/cli/dispatch"
@@ -164,28 +163,6 @@ func (c *forgejoClient) reopenIssue(ctx context.Context, owner, repo string, num
 		return fmt.Errorf("forgejo: reopen issue %s/%s#%d: %w", owner, repo, number, err)
 	}
 	return nil
-}
-
-// findOpenIssueByTitlePrefix returns the first open issue whose title starts with
-// prefix, so the reaper appends instead of filing a duplicate salvage issue.
-func (c *forgejoClient) findOpenIssueByTitlePrefix(ctx context.Context, owner, repo, prefix string) (number int, found bool, err error) {
-	out, err := c.run(ctx, "issue", "list", owner, repo, "--state", "open", "--type", "issues", "--limit", forgejoListLimit, "--output", "json")
-	if err != nil {
-		return 0, false, fmt.Errorf("forgejo: list issues in %s/%s: %w", owner, repo, err)
-	}
-	var issues []struct {
-		Number int    `json:"number"`
-		Title  string `json:"title"`
-	}
-	if err := json.Unmarshal(out, &issues); err != nil {
-		return 0, false, fmt.Errorf("forgejo: parse issue list for %s/%s: %w", owner, repo, err)
-	}
-	for _, i := range issues {
-		if strings.HasPrefix(i.Title, prefix) {
-			return i.Number, true, nil
-		}
-	}
-	return 0, false, nil
 }
 
 // listOpenIssues lists a repo's open issues (not pulls) with their labels, the

@@ -5,6 +5,7 @@ import (
 	"os"
 	"path/filepath"
 	"reflect"
+	"strings"
 	"testing"
 	"time"
 
@@ -43,9 +44,10 @@ func TestDirectorDispatchDisposition(t *testing.T) {
 func TestDispatchEngineerArgv(t *testing.T) {
 	ref := agentIssueRef{Owner: "coilyco-flight-deck", Repo: "ward", Number: 42}
 
-	// A bare dispatch: just the driver + the headless detach, no escalations.
+	// A bare dispatch: driver + headless detach + --quiet-seed (keeps the in-process
+	// engineer's seed dump off the shared director console; ward#519), no escalations.
 	bare := dispatchEngineer{driver: modeClaude}.engineerArgv(ref)
-	wantBare := []string{"engineer", "coilyco-flight-deck/ward#42", "--driver", "claude", "--no-preflight"}
+	wantBare := []string{"engineer", "coilyco-flight-deck/ward#42", "--driver", "claude", "--no-preflight", "--quiet-seed"}
 	if !reflect.DeepEqual(bare, wantBare) {
 		t.Errorf("bare argv = %v, want %v", bare, wantBare)
 	}
@@ -69,9 +71,37 @@ func TestDispatchEngineerArgv(t *testing.T) {
 			t.Errorf("argv missing %s %s: %v", want[0], want[1], full)
 		}
 	}
-	for _, want := range []string{"--aws", "--tailnet", "--force", "--no-preflight"} {
+	for _, want := range []string{"--aws", "--tailnet", "--force", "--no-preflight", "--quiet-seed"} {
 		if !containsArg(full, want) {
 			t.Errorf("argv missing %q: %v", want, full)
+		}
+	}
+}
+
+// TestDirectorDispatchQuietsSeedConsole covers ward#519: director forwards --quiet-seed
+// so the in-process engineer's seed dump stays off the shared console, direct keeps it.
+func TestDirectorDispatchQuietsSeedConsole(t *testing.T) {
+	ref := agentIssueRef{Owner: "coilyco-flight-deck", Repo: "ward", Number: 519}
+	seed := agentSeedPrompt(ref, "quiet the seed", "the frozen task text", "", true, nil)
+
+	// The director forwards --quiet-seed on every dispatch (ward#519).
+	if !containsArg(dispatchEngineer{driver: modeClaude}.engineerArgv(ref), "--quiet-seed") {
+		t.Fatal("director dispatch argv must carry --quiet-seed (ward#519)")
+	}
+
+	// Director auto-dispatch (quiet): nothing hits the shared console stream.
+	var quiet strings.Builder
+	maybeDumpSeed(&quiet, seed, true)
+	if quiet.Len() != 0 {
+		t.Errorf("quiet seed dump wrote to the shared console: %q", quiet.String())
+	}
+
+	// A direct `ward agent engineer <ref>` (not quiet): the ward#400 dump survives.
+	var direct strings.Builder
+	maybeDumpSeed(&direct, seed, false)
+	for _, want := range []string{"----- seeded prompt -----", "the frozen task text", "closes #519"} {
+		if !strings.Contains(direct.String(), want) {
+			t.Errorf("direct seed dump missing %q\n got: %s", want, direct.String())
 		}
 	}
 }

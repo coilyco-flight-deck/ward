@@ -108,7 +108,9 @@ type dispatchEngineer struct {
 // engineerArgv renders the `ward agent engineer` argv that carries one issue, forwarding
 // every set container/harness flag so the engineer matches director's intent (ward#355).
 func (c dispatchEngineer) engineerArgv(ref agentIssueRef) []string {
-	argv := []string{"engineer", ref.String(), "--driver", string(c.driver), "--no-preflight"}
+	// --quiet-seed keeps the in-process engineer's seed dump off director's shared
+	// console (ward#519); the seed still rides into the child container (ward#400).
+	argv := []string{"engineer", ref.String(), "--driver", string(c.driver), "--no-preflight", "--quiet-seed"}
 	if img := strings.TrimSpace(c.image); img != "" {
 		argv = append(argv, "--image", img)
 	}

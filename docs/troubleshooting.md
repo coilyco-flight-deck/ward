@@ -51,10 +51,10 @@ For stable lifecycle markers, see [container lifecycle logs](container-lifecycle
   re-enable it. Whatever the exit, the [reaper](container-reap.md) backstops the work.
 
 - **The run finished but nothing landed on `main`** - the reaper could not push
-  cleanly (merge conflict, a content scan finding, or a dead/rotated PAT), so it
-  **preserved your work on a `ward-salvage/<id>` branch** and filed or appended to a
-  `[ward-salvage]` forgejo issue with recovery commands. **Fix:** follow that issue.
-  See [container-reap.md](container-reap.md).
+  cleanly (conflict, scan finding, or dead PAT), so it **preserved your work on a
+  `ward-salvage/<id>` branch** and posted a salvage notice with recovery commands:
+  on the carried issue if the run had one (reopening it), else a standalone
+  `[ward-salvage]` issue (ward#518). **Fix:** follow it. See [reap](container-reap.md).
 
 A deeper fix - a symptom-aware `ward agent doctor` verb - is tracked in ward#195,
 not duplicated here.

@@ -451,6 +451,9 @@ func agentSurfaceFlags() []cli.Flag {
 	// The detached run gets an autonomous pre-flight before launching (ward#137,
 	// ward#147; see docs/agent.md); --no-preflight skips it and detaches immediately.
 	flags = append(flags, &cli.BoolFlag{Name: "no-preflight", Usage: "skip the pre-flight feasibility check and detach immediately"})
+	// --quiet-seed silences the seeded-prompt/issue-body stderr dump under director
+	// auto-dispatch, whose console the in-process engineer shares (ward#519).
+	flags = append(flags, &cli.BoolFlag{Name: "quiet-seed", Hidden: true, Usage: "suppress the seeded-prompt/issue-body dump to stderr (set by director auto-dispatch; the seed still rides into the container as its task text) - ward#519"})
 	return flags
 }
 
@@ -1057,6 +1060,15 @@ func seedLogBlock(seed string) string {
 	return fmt.Sprintf("----- seeded prompt -----\n%s\n----- end -----\n", seed)
 }
 
+// maybeDumpSeed writes the seed block to w for a killed run's audit record (ward#400),
+// unless quiet - director auto-dispatch sets it to keep the dump off the console (#519).
+func maybeDumpSeed(w io.Writer, seed string, quiet bool) {
+	if quiet {
+		return
+	}
+	_, _ = fmt.Fprintln(w, seedLogBlock(seed))
+}
+
 // carryingLine renders the one-line "what am I about to work on" echo (ward#307):
 // label, ref, title - returning "" for an empty title so a seedless run stays quiet.
 func carryingLine(label string, ref agentIssueRef, title string) string {
@@ -1105,9 +1117,9 @@ func (r *Runner) launchAgentContainer(ctx context.Context, c *cli.Command, mode 
 	if line := carryingLine(label, ref, title); line != "" {
 		fmt.Fprintln(os.Stderr, line)
 	}
-	// Dump the full seed (frozen issue body included) so a killed run leaves an
-	// auditable record of its task text, not just the title (ward#400).
-	fmt.Fprintln(os.Stderr, seedLogBlock(seed))
+	// Dump the seed for a killed run's auditable task record (ward#400), unless
+	// --quiet-seed (director auto-dispatch shares this console; ward#519).
+	maybeDumpSeed(os.Stderr, seed, c.Bool("quiet-seed"))
 
 	// Reserve the issue so another run won't redo it; a detached run holds the
 	// reservation for the container's life, so the release hook is discarded.

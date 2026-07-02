@@ -151,6 +151,18 @@ func (r *Runner) reapTargetTree(ctx context.Context, work string, env reapEnv, r
 		return r.salvage(ctx, work, env, reasonPushFail, false, nil, statusSnapshot)
 	}
 
+	// Nothing to reap comes FIRST, ahead of every salvage gate: a clean tree with
+	// HEAD already in origin/main is done, not salvage (ward#518, docs/container-reap.md).
+	residual := revCount(ctx, r, work, "origin/main..HEAD")
+	fmt.Fprintf(os.Stderr, "ward container reap: residual commit count against origin/main = %d\n", residual)
+	if residual == 0 && strings.TrimSpace(statusSnapshot) == "" {
+		fmt.Fprintln(os.Stderr, "ward container reap: nothing to reap (tree clean, HEAD on origin/main)")
+		if releaseReservation {
+			r.releaseReservationIfUnstarted(ctx, env)
+		}
+		return nil
+	}
+
 	prov, perr := r.readRunProvenance(work)
 	if perr != nil {
 		fmt.Fprintf(os.Stderr, "ward container reap: provenance missing or unreadable: %v\n", perr)
@@ -161,19 +173,10 @@ func (r *Runner) reapTargetTree(ctx context.Context, work string, env reapEnv, r
 		return r.salvage(ctx, work, env, reasonCloseRef, false, nil, statusSnapshot)
 	}
 
-	residual := revCount(ctx, r, work, "origin/main..HEAD")
-	fmt.Fprintf(os.Stderr, "ward container reap: residual commit count against origin/main = %d\n", residual)
 	findings := scan.Diff(r.diffEntries(ctx, work, "origin/main...HEAD"))
 	if !r.runProvenanceLanded(ctx, work, prov, env.Issue) {
 		fmt.Fprintln(os.Stderr, "ward container reap: no run-owned landed commit after dispatch; salvaging instead of claiming success")
 		return r.salvage(ctx, work, env, reasonConflict, false, findings, statusSnapshot)
-	}
-	if residual == 0 && strings.TrimSpace(statusSnapshot) == "" {
-		fmt.Fprintln(os.Stderr, "ward container reap: nothing to reap (tree clean, HEAD on origin/main)")
-		if releaseReservation {
-			r.releaseReservationIfUnstarted(ctx, env)
-		}
-		return nil
 	}
 
 	action := decideReap(reapInputs{
@@ -355,6 +358,7 @@ func (r *Runner) salvage(ctx context.Context, work string, env reapEnv, reason r
 		Findings:  findings,
 		Status:    status,
 		Base:      env.Base,
+		Issue:     env.Issue,
 	}
 	if ferr := r.fileSalvageIssue(ctx, env, report); ferr != nil {
 		// The branch already preserved the work; a failed issue is a missed
@@ -364,31 +368,50 @@ func (r *Runner) salvage(ctx context.Context, work string, env reapEnv, reason r
 	return nil
 }
 
-// fileSalvageIssue appends to an open salvage issue for the repo if one exists,
-// else opens one. Uses the container FORGEJO_TOKEN directly (no SSM/--aws).
+// fileSalvageIssue posts the salvage notice: a carried run comments on its own
+// issue, a freeform run files a standalone one (ward#518, docs/container-reap.md).
 func (r *Runner) fileSalvageIssue(ctx context.Context, env reapEnv, report salvageReport) error {
 	if env.Token == "" {
 		return fmt.Errorf("no FORGEJO_TOKEN to file a salvage issue")
 	}
-	// The ops mount authenticates from $FORGEJO_TOKEN inside a container (via
-	// forgejoTokenResolver), so the reaper drives the same client host flows do.
+	// The ops mount authenticates from $FORGEJO_TOKEN in-container (forgejoTokenResolver),
+	// so the reaper drives the same client host flows do.
 	fc, err := r.hostForgejoClient(ctx)
 	if err != nil {
 		return err
 	}
 	fc = fc.withMode(containerMode(env.Mode))
-	body := salvageIssueBody(report)
-	if n, found, err := fc.findOpenIssueByTitlePrefix(ctx, env.Owner, env.Name, salvageIssueTitlePrefix); err == nil && found {
-		fmt.Fprintf(os.Stderr, "ward container reap: appending to open salvage issue #%d\n", n)
-		return fc.commentIssue(ctx, env.Owner, env.Name, n, body)
-	} else if err != nil {
-		return err
+	return notifySalvage(ctx, fc, env, report)
+}
+
+// salvageNotifier is the Forgejo surface notifySalvage drives; *forgejoClient
+// satisfies it in production and a fake stands in for tests (ward#518).
+type salvageNotifier interface {
+	reopenIssue(ctx context.Context, owner, repo string, number int) error
+	commentIssue(ctx context.Context, owner, repo string, number int, body string) error
+	createIssue(ctx context.Context, owner, repo, title, body string) (int, error)
+}
+
+// notifySalvage routes the salvage notice (ward#518): a carried run reopens +
+// comments on its issue, a freeform run files one standalone issue (never append).
+func notifySalvage(ctx context.Context, fc salvageNotifier, env reapEnv, report salvageReport) error {
+	if env.Issue != 0 {
+		// Reopen first (best-effort, idempotent) so the issue never reads "done"
+		// over unmerged work, then post the notice.
+		if rerr := fc.reopenIssue(ctx, env.Owner, env.Name, env.Issue); rerr != nil {
+			fmt.Fprintf(os.Stderr, "ward container reap: could not reopen carried issue #%d: %v\n", env.Issue, rerr)
+		}
+		if cerr := fc.commentIssue(ctx, env.Owner, env.Name, env.Issue, salvageCommentBody(report)); cerr != nil {
+			return cerr
+		}
+		fmt.Fprintf(os.Stderr, "ward container reap: posted salvage notice to carried issue #%d\n", env.Issue)
+		return nil
 	}
-	n, err := fc.createIssue(ctx, env.Owner, env.Name, salvageIssueTitle(report), body)
+	n, err := fc.createIssue(ctx, env.Owner, env.Name, salvageIssueTitle(report), salvageIssueBody(report))
 	if err != nil {
 		return err
 	}
-	fmt.Fprintf(os.Stderr, "ward container reap: filed salvage issue #%d\n", n)
+	fmt.Fprintf(os.Stderr, "ward container reap: filed standalone salvage issue #%d\n", n)
 	return nil
 }
 
