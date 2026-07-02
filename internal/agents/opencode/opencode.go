@@ -39,11 +39,12 @@ var record = agentsapi.Manifest{
 type Agent struct{}
 
 // Compile-time proof opencode implements the core contract plus its capabilities
-// (config composer + self-installer). It is deliberately not a CredentialProvider.
+// (config composer + self-installer + an Ollama-reachability launch gate, ward#487).
 var (
 	_ agentsapi.Agent          = Agent{}
 	_ agentsapi.ConfigComposer = Agent{}
 	_ agentsapi.Installer      = Agent{}
+	_ agentsapi.LaunchGate     = Agent{}
 )
 
 // New returns opencode's Agent.

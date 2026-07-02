@@ -24,7 +24,7 @@ agent package can import it freely.
 * `ConfigComposer` - writes a provider/model config file in-container (codex, opencode, goose).
 * `Installer` - self-installs a binary absent from the image (opencode).
 * `OnboardingSeeder` - seeds first-run state to skip interactive gates (claude).
-* `LaunchGate` - a pre-launch check that can abort the run (claude's smoke test).
+* `LaunchGate` - a pre-launch check that aborts the run (claude auth; goose/opencode ollama reach, ward#487).
 
 An agent that does not do X omits the impl, so core feature-tests
 `if c, ok := agent.(agentsapi.Installer); ok { ... }` instead of a guard.
