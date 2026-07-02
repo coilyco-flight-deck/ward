@@ -44,35 +44,28 @@ runner has no `jq`.
 
 ## Why (ward#477)
 
-A `github-only-dev` cold-read found the mirror frozen at **v0.5.8** (36 tags,
-"latest release v0.5.8") while canonical had raced past **v0.24x**. `main`
-mirrored current, so the mirror showed a v0.24x-era README sitting on a release
-page ~200 versions stale - worse than empty, because it affirmatively misstated
-currency. Two defects, two fixes.
+A `github-only-dev` cold-read found the mirror frozen at **v0.5.8** (36 tags)
+while canonical raced past **v0.24x** - a current README over a Releases page
+~200 versions stale, worse than empty because it misstated currency. Three
+compounding defects:
 
-### Tags froze - `fetch-tags: true`
-
-`actions/checkout` carried no tag objects into the job, so `git push --tags`
-had nothing to push and the mirror's tags stayed at whatever the retired
-`.github/workflows` release had last left there (v0.5.8). Setting
-`fetch-tags: true` on the checkout fetches every tag, so the force-push
-backfills the full set and keeps it current thereafter.
-
-### Stranded release objects - the author-guarded scrub
-
-The v0.5.x Release objects were artifacts of the retired GitHub-Actions
-semantic-release run, authored by `github-actions[bot]`. Nothing in the Forgejo
-pipeline creates or updates them, so they sat stale at the top of the mirror's
-Releases page.
-
-The scrub step deletes them via the GitHub API using `GITHUB_MIRROR_PAT`. It is
-**author-guarded**: only releases authored by `github-actions[bot]` are removed.
-ward#454 now publishes real releases to the mirror via that PAT (from the
-release pipeline, not this workflow); they carry the PAT user as author, so the
-scrub leaves them untouched - the two coexist without unwinding this step.
-
-It greps release tag names from the list endpoint, then resolves and deletes
-each by id. It is idempotent: once the legacy releases are gone it no-ops.
+- **Tags never pushed.** `actions/checkout` fetched no tag objects, so
+  `git push --tags` pushed nothing. `fetch-tags: true` on the checkout
+  backfills every tag and keeps it current.
+- **Stranded v0.5.x releases.** Release objects left by the retired
+  `.github/workflows` semantic-release run (authored by `github-actions[bot]`)
+  sat stale on top. An **author-guarded** scrub step deletes only bot-authored
+  releases via the API, so ward#454's PAT-authored release story survives. It
+  is idempotent - once they are gone it no-ops.
+- **Silent freeze (the recurrence).** The whole workflow is
+  `GITHUB_MIRROR_PAT`-gated; the first cut skipped with `exit 0` on a missing
+  PAT, so an expired PAT froze the *entire* mirror behind a green check - the
+  ward#237 tap failure mode. Each step now **fails loud** (`::error` +
+  `exit 1`), so a down PAT shows a red run within minutes. The fix is
+  operational: rotate `GITHUB_MIRROR_PAT` in ward -> Settings -> Actions ->
+  Secrets, then any push to `main` re-converges. (The release pipeline's own
+  GitHub publish step stays a soft skip - it must never fail a Forgejo release;
+  see [release.md](release.md).)
 
 ## See also
 
