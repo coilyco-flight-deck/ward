@@ -64,7 +64,7 @@ warded director --org coilyco-flight-deck   # a heartbeat that drains a backlog 
 warded advisor #98       # answer/triage a ref, writing no code
 ```
 
-New to the agent driver? [`docs/first-run.md`](docs/first-run.md) is the ordered path from zero to a verifiable `warded ... --print` dry run - prerequisites, install/verify, and how to read the plan - and it says up front whether you can get to a first run today. See [`docs/FEATURES.md`](docs/FEATURES.md) for the full verb list.
+Engineer runs are **detached**: the attach-and-watch `--watch` retired in ward#356, so interactive work now lives on the [director](docs/agent-director.md) surface. New to the agent driver? [`docs/first-run.md`](docs/first-run.md) is the ordered path from zero to a verifiable `warded ... --print` dry run.
 
 ## When a run breaks
 
