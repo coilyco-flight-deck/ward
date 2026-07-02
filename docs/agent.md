@@ -34,8 +34,7 @@ phase, so the roster is now three; the read-only surface survives as [the direct
 surface session](agent-surface.md). `warded architect`/`explore`/`sandbox` now error as
 unknown commands.
 
-The startup roles are the **roles axis**. Per-agent docs live under
-`internal/agents/<name>`.
+Per-agent docs live under `internal/agents/<name>`.
 
 ## Usage
 
@@ -56,12 +55,13 @@ ward#347). The ref is `owner/repo#N`, a full Forgejo URL, or a bare `#N` / `N` i
 
 ## Topics
 
-- [agent-roster.md](agent-roster.md) - the generated flat list of every role (one row each; `ward agent roster`).
+- [first-run.md](first-run.md) - **start here if new**: zero to a first `--print` dry run.
+- [agent-roster.md](agent-roster.md) - the generated flat list of every role (`ward agent roster`).
 - [agent-subcommands.md](agent-subcommands.md) - the three roles compared + the reaper.
-- [agent-surface.md](agent-surface.md) - the director's read-only surface (was the architect role).
+- [agent-surface.md](agent-surface.md) - the director's read-only surface.
 - [agent-preflight.md](agent-preflight.md) - the detached GO/NO-GO pre-flight.
 - [agent-trust-gate.md](agent-trust-gate.md) - the owner trust gate.
 - [agent-wrong-repo.md](agent-wrong-repo.md) - the WRONG-REPO blind-fire path.
 - [agent-reservation.md](agent-reservation.md) - reservation, TTL, `--force`, stale warn.
 - [agent-flags.md](agent-flags.md) - launch flags and `--details`.
-- [container.md](container.md) - the container model (ephemeral, fresh-clone, reaper).
+- [container.md](container.md) - the container model (ephemeral clone).

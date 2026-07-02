@@ -31,6 +31,7 @@ New to ward? Read [architecture.md](architecture.md) first - it frames the whole
 
 ## `ward agent` (headless harness runner)
 
+- [first-run.md](first-run.md) - zero to a verifiable first `warded` dry run: prerequisites, install/verify, a safe `--print` first command.
 - [agent.md](agent.md) - the entrypoint to the ephemeral container that carries a feature.
 - [agent-subcommands.md](agent-subcommands.md) - how the roles differ (what they do, attachment, scope).
 - [agent-roster.md](agent-roster.md) - the generated role roster.
