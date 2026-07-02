@@ -17,6 +17,7 @@ New to ward? Read [architecture.md](architecture.md) first - it frames the whole
 - [troubleshooting.md](troubleshooting.md) - symptom-indexed entry point for a failed `warded` run.
 - [audit.md](audit.md) - the append-only JSONL audit row written per invocation.
 - [config-discovery.md](config-discovery.md) - how ward resolves the allowlist config path.
+- [ward-yaml.md](ward-yaml.md) - field-by-field `.ward/ward.yaml` schema reference (commands + the security: block).
 - [golangci.md](golangci.md) - the strict-ish golangci-lint configuration.
 - [homebrew-build.md](homebrew-build.md) - Homebrew build + cli-guard pinning notes.
 
