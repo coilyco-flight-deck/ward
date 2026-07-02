@@ -720,11 +720,15 @@ func (r *Runner) captureInDir(ctx context.Context, dir, bin string, argv ...stri
 func (r *Runner) runPreflight(ctx context.Context, mode containerMode, surface string, w resolvedWork) (bool, string, error) {
 	label := agentCmdline(mode, surface)
 	bin := lookupAgent(mode).Record().Binary
-	argv, ok := lookupAgent(mode).PreflightArgv(preflightPrompt(w.Ref, w.Title, w.Body, w.Details, w.Comments, w.ExtraRepos))
-	// No host self-assessment (claude+goose have one, codex/opencode don't) or no
-	// binary on PATH: can't fairly bounce the issue, so the dispatch proceeds.
+	argv, ok := hostOneShotArgv(mode, preflightPrompt(w.Ref, w.Title, w.Body, w.Details, w.Comments, w.ExtraRepos))
+	// No host one-shot (none wired, or a local-model harness barred from the
+	// unsandboxed host read; ward#162) or no binary: proceed to the isolated run.
 	if !ok || !hostHasBinary(bin) {
-		fmt.Fprintf(os.Stderr, "%s: %s self-assessment unavailable on this host; proceeding with the detached run.\n", label, bin)
+		if !hostOneShotTrusted(mode) {
+			fmt.Fprintf(os.Stderr, "%s: %s is a local-model harness - skipping the unsandboxed host pre-flight and going straight to the isolated container run (ward#162).\n", label, bin)
+		} else {
+			fmt.Fprintf(os.Stderr, "%s: %s self-assessment unavailable on this host; proceeding with the detached run.\n", label, bin)
+		}
 		return true, "", nil
 	}
 

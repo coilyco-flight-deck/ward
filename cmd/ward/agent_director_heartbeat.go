@@ -366,7 +366,9 @@ func (r *Runner) directorDecide(ctx context.Context, label string, mode containe
 		floor = floor[:avail]
 	}
 	bin := lookupAgent(mode).Record().Binary
-	argv, ok := lookupAgent(mode).PreflightArgv(directorDecidePrompt(picks, avail, entries, health))
+	// A local-model harness is barred from this unsandboxed host one-shot (ward#162),
+	// falling back to the deterministic rank floor like a harness with none wired.
+	argv, ok := hostOneShotArgv(mode, directorDecidePrompt(picks, avail, entries, health))
 	if !ok || !hostHasBinary(bin) {
 		fmt.Fprintf(os.Stderr, "%s: %s self-assessment unavailable; dispatching the top %d queued issue(s) by rank.\n", label, bin, len(floor))
 		return floor

@@ -236,7 +236,9 @@ func parseTriageVerdicts(read string) map[int]triageVerdict {
 // tier + mode across the scope. Best effort and fail-closed; no one-shot writes nothing.
 func (r *Runner) backlogTriage(ctx context.Context, label string, repos []string, mode containerMode, limit int) {
 	bin := lookupAgent(mode).Record().Binary
-	if _, ok := lookupAgent(mode).PreflightArgv("probe"); !ok || !hostHasBinary(bin) {
+	// A local-model harness is barred from this unsandboxed host one-shot (ward#162);
+	// triage is best-effort, so skip it rather than run a weak model on the host.
+	if _, ok := hostOneShotArgv(mode, "probe"); !ok || !hostHasBinary(bin) {
 		fmt.Fprintf(os.Stderr, "%s: note: %s self-assessment unavailable; skipping startup triage.\n", label, bin)
 		return
 	}
@@ -277,7 +279,7 @@ func (r *Runner) triageRepo(ctx context.Context, label, repo string, cl *forgejo
 // triageJudge runs the batched judgment one-shot and parses its verdicts; ok=false on an
 // incomplete read, so the caller writes nothing (fail-closed).
 func (r *Runner) triageJudge(ctx context.Context, label string, mode containerMode, cands []triageCandidate) (map[int]triageVerdict, bool) {
-	argv, ok := lookupAgent(mode).PreflightArgv(triagePrompt(cands))
+	argv, ok := hostOneShotArgv(mode, triagePrompt(cands))
 	if !ok {
 		return nil, false
 	}

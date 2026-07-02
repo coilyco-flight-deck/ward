@@ -38,8 +38,9 @@ fit the flow, not add a step - and applies the `tooling-issue-prioritization` me
 - **Only the missing axis is written.** A partially-labeled issue (a human set the tier but
   not the mode, say) has only its missing axis written, so an existing human label is never
   clobbered and the percentile cut ranks only the untiered pool.
-- **Best-effort, fail-closed.** No host one-shot on this host (codex/opencode have none), or a
-  read that doesn't complete, writes **nothing** - it never guesses a promotion. A per-issue
+- **Best-effort, fail-closed.** No host one-shot on this host (codex has none wired; a
+  local-model harness like goose/opencode is barred from the unsandboxed host read, [ward#162](https://forgejo.coilysiren.me/coilyco-flight-deck/ward/issues/162)),
+  or a read that doesn't complete, writes **nothing** - it never guesses a promotion. A per-issue
   write failure (e.g. an org label not yet defined) is noted and skipped, never fatal. A repo
   whose backlog read fails is skipped with a note.
 

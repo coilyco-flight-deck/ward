@@ -199,11 +199,14 @@ func (r *Runner) validateReplyInputs(ctx context.Context, c *cli.Command, mode c
 		return agentIssueRef{}, "", replyThoroughness{}, r.untrustedOwnerErr(label, ref.Owner)
 	}
 
-	// reply rides the host self-assessment slot (claude/goose), the same one the
-	// pre-flight and route survey use. Modes without one can't run it.
+	// reply rides the trusted host one-shot slot (pre-flight + route survey use it too);
+	// none-wired or local-model-barred harnesses can't run it (ward#162).
 	bin := lookupAgent(mode).Record().Binary
-	if _, ok := lookupAgent(mode).PreflightArgv("probe"); !ok {
-		return agentIssueRef{}, "", replyThoroughness{}, fmt.Errorf("%s: reply runs a host one-shot, which %s lacks (only claude|goose are wired); use one of those", label, bin)
+	if _, ok := hostOneShotArgv(mode, "probe"); !ok {
+		if !hostOneShotTrusted(mode) {
+			return agentIssueRef{}, "", replyThoroughness{}, fmt.Errorf("%s: reply researches with an unsandboxed host one-shot, which a local-model harness like %s is barred from (ward#162); use a cloud harness (--driver claude)", label, bin)
+		}
+		return agentIssueRef{}, "", replyThoroughness{}, fmt.Errorf("%s: reply runs a host one-shot, which %s lacks; use a cloud harness (--driver claude)", label, bin)
 	}
 	if !hostHasBinary(bin) {
 		return agentIssueRef{}, "", replyThoroughness{}, fmt.Errorf("%s: reply needs %s on PATH to research; install it or use a mode whose binary is present", label, bin)
@@ -214,10 +217,11 @@ func (r *Runner) validateReplyInputs(ctx context.Context, c *cli.Command, mode c
 // captureReplyResearch runs the host one-shot research argv in a neutral temp dir
 // (never the dispatch cwd; mirrors the pre-flight), bounded by the level timeout.
 func (r *Runner) captureReplyResearch(ctx context.Context, mode containerMode, ref agentIssueRef, level replyThoroughness, research string) (string, error) {
-	argv, ok := lookupAgent(mode).PreflightArgv(research)
+	argv, ok := hostOneShotArgv(mode, research)
 	if !ok {
-		// Guarded earlier, but stay honest rather than panic on a nil argv.
-		return "", fmt.Errorf("no host one-shot slot for %s", mode)
+		// Guarded earlier (precondition + ward#162 trust gate), but stay honest
+		// rather than panic on a nil argv.
+		return "", fmt.Errorf("no trusted host one-shot slot for %s", mode)
 	}
 	fmt.Fprintf(os.Stderr, "%s: researching %s at %s depth (up to %s)...\n\n", agentCmdline(mode, "advisor"), ref, level.Name, level.Timeout)
 	rctx, cancel := context.WithTimeout(ctx, level.Timeout)

@@ -63,7 +63,7 @@ Two sub-modes by repo omission:
   `coilysiren/inbox`, surveys the fleet to route it (`REPO`/`UNCLEAR`), files a scoped
   child, cross-links + closes intake, then carries the child. An UNCLEAR or untrusted
   target bounces to a human. The survey *is* the gate (ROUTE skips the pre-flight); it
-  needs a claude/goose host slot, else use DIRECT (ward#148).
+  needs a trusted cloud host slot (ward#162), else use DIRECT.
 
 ## Trust gate and dry-run
 
