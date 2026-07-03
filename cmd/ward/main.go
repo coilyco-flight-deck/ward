@@ -87,6 +87,7 @@ func main() {
 			agentCommand(),
 			agentsCommand(),
 			opsCommand(),
+			ecoCommand(),
 		},
 	}
 

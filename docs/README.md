@@ -120,6 +120,7 @@ New to ward? Read [architecture.md](architecture.md) first - it frames the whole
 - [ops-forgejo-admin.md](ops-forgejo-admin.md) - the `{admin,doctor}` remote-exec slice.
 - [ops-forgejo-view.md](ops-forgejo-view.md) - the lean `issue view` override.
 - [ops-forgejo-quiet.md](ops-forgejo-quiet.md) - the `issue create --quiet` machine-output mode.
+- [eco-test.md](eco-test.md) - `ward eco test`, the Eco content pipeline: a fail-closed local smoke gate + guarded auto-promote (snapshot + health + canary + auto-rollback) to kai-server.
 
 ## Examples
 
