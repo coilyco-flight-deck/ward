@@ -62,15 +62,16 @@ install stance, launch dialect, gates), no `internal/` source:
 
 ## Topics
 
-- [first-run.md](first-run.md) - **start here if new**: zero to a first `--print` dry run.
-- [agent-roster.md](agent-roster.md) - flat list of every role (`ward agent roster`).
+- [first-run.md](first-run.md) - **start here**: zero to a `--print` dry run.
+- [agent-roster.md](agent-roster.md) - flat list of every role.
 - [agent-subcommands.md](agent-subcommands.md) - the three roles compared + the reaper.
-- [agent-drivers.md](agent-drivers.md) - the four `--driver` harnesses compared.
+- [agent-drivers.md](agent-drivers.md) - the `--driver` harnesses compared.
 - [agent-surface.md](agent-surface.md) - the director's read-only surface.
-- [agent-workflow.md](agent-workflow.md) - `--workflow direct-main|pr|patch-only`, the run's landing policy.
+- [agent-workflow.md](agent-workflow.md) - `--workflow`, the run's landing policy.
 - [agent-preflight.md](agent-preflight.md) - the detached GO/NO-GO pre-flight.
+- [agent-reap.md](agent-reap.md) - the host-side idle-killer.
 - [agent-trust-gate.md](agent-trust-gate.md) - the owner trust gate.
-- [agent-wrong-repo.md](agent-wrong-repo.md) - the WRONG-REPO blind-fire path.
+- [agent-wrong-repo.md](agent-wrong-repo.md) - the WRONG-REPO blind-fire.
 - [agent-reservation.md](agent-reservation.md) - reservation, TTL, `--force`.
 - [agent-flags.md](agent-flags.md) - launch flags and `--details`.
 - [container.md](container.md) - the container model (ephemeral clone).

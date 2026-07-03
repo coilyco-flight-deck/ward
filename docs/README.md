@@ -39,6 +39,7 @@ New to ward? Read [architecture.md](architecture.md) first - it frames the whole
 - [agent.md](agent.md) - the entrypoint to the ephemeral container that carries a feature.
 - [agent-subcommands.md](agent-subcommands.md) - how the roles differ (what they do, attachment, scope).
 - [agent-roster.md](agent-roster.md) - the generated role roster.
+- [agent-reap.md](agent-reap.md) - `ward agent reap`, the host-side idle-killer for wedged engineer containers.
 - [agent-engineer.md](agent-engineer.md) - the implement-a-ticket role.
 - [agent-director.md](agent-director.md) - the autonomous-backlog heartbeat role.
 - [agent-director-dispatch.md](agent-director-dispatch.md) - how the director parks vs. defers a dispatch error.

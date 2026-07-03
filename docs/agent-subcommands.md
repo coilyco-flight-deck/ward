@@ -55,6 +55,10 @@ off in-container - the entrypoint exports `CLIGUARD_NO_SANDBOX=1`). The
 happy path doesn't rely on it: the agent commits/merges/pushes itself per its doctrine,
 finishing to a clean `main` push.
 
+That reaper handles a run that **exits**; a still-`Up` but wedged `engineer` is the
+job of the host-side idle-killer [`ward agent reap`](agent-reap.md), which stops one
+gone log-silent past the threshold.
+
 ## See also
 
 - [docs/agent-roster.md](agent-roster.md) - the generated flat list of every role.
