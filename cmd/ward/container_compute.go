@@ -464,9 +464,6 @@ type upPlan struct {
 	// ExtraRepos are additional writable repos this run was granted to clone +
 	// operate against (--repo, ward#230); see docs/container-multi-repo.md.
 	ExtraRepos []targetRepo
-	// ContextRepos are the target's catalog.dependsOn cloned READ-ONLY for reference,
-	// excluded from the reaper's push-verify (ward#573; docs/container-multi-repo.md).
-	ContextRepos []targetRepo
 	// Issue is the carried issue number (0 for a bare `container up`), exported as
 	// WARD_TARGET_ISSUE so the reaper can release a pre-launch hold (ward#264).
 	Issue int
@@ -610,11 +607,9 @@ func (p upPlan) wardEnv() map[string]string {
 	if len(p.ExtraRepos) > 0 {
 		env["WARD_EXTRA_REPOS"] = extraReposEnv(p.ExtraRepos)
 	}
-	// Read-only reference clones ride their own key so WARD_EXTRA_REPOS stays a
-	// purely writable, push-verified set (ward#573). The entrypoint word-splits it.
-	if len(p.ContextRepos) > 0 {
-		env["WARD_CONTEXT_REPOS"] = extraReposEnv(p.ContextRepos)
-	}
+	// No WARD_CONTEXT_REPOS is emitted: the read-only context set is resolved in-container
+	// from the fresh clone, since the host cwd may not be the target repo (ward#580).
+
 	// A GitHub run clones off github.com + drives `gh` (ward#489); Forgejo runs emit
 	// neither key, so their env is unchanged (WARD_FORGEJO_BASE stays Forgejo).
 	if p.Forge == forgeGitHub {

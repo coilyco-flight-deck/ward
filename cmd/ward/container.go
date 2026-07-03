@@ -62,6 +62,7 @@ not by hand. See docs/agent.md for the contributor surface.`,
 		Commands: []*cli.Command{
 			containerReapCommand(),
 			containerBootstrapCommand(),
+			containerResolveContextCommand(),
 			containerBrokerCommand(),
 			containerForwardCommand(),
 			containerDrainExitCommand(),
@@ -121,20 +122,9 @@ func buildUpPlan(c *cli.Command, repo targetRepo, mode containerMode, role, cwd,
 	if err != nil {
 		return upPlan{}, err
 	}
-	// Every warded role auto-mounts the target's catalog.dependsOn as read-only
-	// reference (ward#573; separate ContextRepos slice). docs/container-multi-repo.md.
-	var contextRepos []targetRepo
-	if cwd != "" {
-		var notes []extraRepoLogLine
-		contextRepos, notes = resolveContextRepos(catalogContextRepos(cwd), extra, repo, substrateContextSkipSet())
-		if len(notes) > 0 {
-			parts := make([]string, 0, len(notes))
-			for _, note := range notes {
-				parts = append(parts, fmt.Sprintf("%s (%s)", note.Slug, note.Reason))
-			}
-			fmt.Fprintf(os.Stderr, "ward container: read-only context repos resolved for %s: %s\n", repo.slug(), strings.Join(parts, ", "))
-		}
-	}
+	// The catalog.dependsOn read-only context set is NOT resolved here: the host cwd may
+	// not be the target repo, so the container resolves it from the fresh clone (ward#580).
+
 	// The director surface opts into a read-only bind of the redacted agent-log drain so it
 	// reads past runs' logs without a docker socket; other runs leave it off (ward#525/526).
 	agentLogs := ""
@@ -161,7 +151,6 @@ func buildUpPlan(c *cli.Command, repo targetRepo, mode containerMode, role, cwd,
 		WardFromSource: wardSrc != "",
 		AgentArgs:      agentArgs,
 		ExtraRepos:     extra,
-		ContextRepos:   contextRepos,
 		HostNet:        hostNet,
 		TSSidecar:      tsSidecar,
 	}, nil

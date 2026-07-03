@@ -84,31 +84,46 @@ func TestResolveContextReposDedupes(t *testing.T) {
 	}
 }
 
-// A read-only context repo also handed a writable --repo grant is cloned once, as
-// the writable copy: the container-side dropExtraRepos filters the overlap out.
-func TestDropExtraRepos(t *testing.T) {
-	in := []targetRepo{
-		{Owner: "coilyco-flight-deck", Name: "cli-guard"},
-		{Owner: "coilyco-flight-deck", Name: "eco-protos"},
+// resolveCatalogContextRepos resolves the read-only context set from the fresh
+// clone dir - not the host cwd (ward#580) - deduping the target and writable grants.
+func TestResolveCatalogContextReposFromClone(t *testing.T) {
+	work := t.TempDir()
+	wardDir := filepath.Join(work, ".ward")
+	if err := os.MkdirAll(wardDir, 0o755); err != nil {
+		t.Fatalf("mkdir ward: %v", err)
 	}
-	drop := []targetRepo{{Owner: "coilyco-flight-deck", Name: "eco-protos"}}
-	got := dropExtraRepos(in, drop)
-	if len(got) != 1 || got[0].slug() != "coilyco-flight-deck/cli-guard" {
-		t.Fatalf("dropExtraRepos = %+v, want only cli-guard", got)
+	// A full-host substrate ref (cli-guard, must drop), the target (must drop), a
+	// writable grant (must drop), and one kept upstream (eco-protos).
+	if err := os.WriteFile(filepath.Join(wardDir, "ward.yaml"), []byte(`catalog:
+  dependsOn:
+    - forgejo.coilysiren.me/coilyco-flight-deck/cli-guard
+    - coilyco-gaming/eco-ops
+    - StrangeLoopGames/Eco
+    - coilyco-flight-deck/eco-protos
+`), 0o644); err != nil { //nolint:gosec
+		t.Fatalf("write ward.yaml: %v", err)
+	}
+	target := targetRepo{Owner: "coilyco-gaming", Name: "eco-ops"}  // must drop (the target)
+	extra := []targetRepo{{Owner: "StrangeLoopGames", Name: "Eco"}} // must drop (writable grant)
+	repos, notes := resolveCatalogContextRepos(work, target, extra)
+	if len(repos) != 1 || repos[0].slug() != "coilyco-flight-deck/eco-protos" {
+		t.Fatalf("resolveCatalogContextRepos = %+v, want only eco-protos", repos)
+	}
+	if len(notes) != 1 || notes[0].Reason != "read-only catalog dependency" {
+		t.Fatalf("notes = %+v, want one read-only catalog dependency note", notes)
 	}
 }
 
-// The read-only context set rides its own WARD_CONTEXT_REPOS key, never the
-// writable WARD_EXTRA_REPOS, so the reaper's push-verify never sees it (ward#573).
-func TestWardEnvContextReposSeparateKey(t *testing.T) {
+// The host no longer resolves or passes the read-only context set: it is resolved
+// in-container from the fresh clone, so wardEnv emits no WARD_CONTEXT_REPOS (ward#580).
+func TestWardEnvEmitsNoContextRepos(t *testing.T) {
 	p := sampleUpPlan()
 	p.ExtraRepos = []targetRepo{{Owner: "coilyco-gaming", Name: "eco-protos"}}
-	p.ContextRepos = []targetRepo{{Owner: "coilyco-flight-deck", Name: "cli-guard"}}
 	env := p.wardEnv()
 	if got := env["WARD_EXTRA_REPOS"]; got != "coilyco-gaming/eco-protos" {
 		t.Fatalf("WARD_EXTRA_REPOS = %q, want the writable grant only", got)
 	}
-	if got := env["WARD_CONTEXT_REPOS"]; got != "coilyco-flight-deck/cli-guard" {
-		t.Fatalf("WARD_CONTEXT_REPOS = %q, want the read-only context repo", got)
+	if _, ok := env["WARD_CONTEXT_REPOS"]; ok {
+		t.Fatalf("WARD_CONTEXT_REPOS must not be emitted from the host (ward#580); got %q", env["WARD_CONTEXT_REPOS"])
 	}
 }
