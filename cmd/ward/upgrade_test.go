@@ -67,6 +67,44 @@ func TestStaleTabNotInstalled(t *testing.T) {
 	}
 }
 
+// TestScoopUpdateWardScript_WaitsForPidThenUpdates pins that the child waits for
+// the parent to exit before scoop runs, else scoop still self-blocks. ward#568.
+func TestScoopUpdateWardScript_WaitsForPidThenUpdates(t *testing.T) {
+	s := scoopUpdateWardScript(11812, "ward")
+	for _, want := range []string{
+		"Wait-Process -Id 11812",
+		"scoop update ward",
+		"ward-upgrade.log",
+	} {
+		if !strings.Contains(s, want) {
+			t.Errorf("scoop update script missing %q\n%s", want, s)
+		}
+	}
+	wait := strings.Index(s, "Wait-Process")
+	update := strings.Index(s, "scoop update ward")
+	if wait < 0 || update < 0 || wait > update {
+		t.Errorf("script must wait for the parent (%d) before scoop update (%d)", wait, update)
+	}
+}
+
+// TestScoopDetachArgv_HiddenProfileFreePowershell pins a hidden, profile-free
+// powershell with the script as its trailing -Command body. See ward#568.
+func TestScoopDetachArgv_HiddenProfileFreePowershell(t *testing.T) {
+	name, args := scoopDetachArgv("BODY")
+	if name != "powershell" {
+		t.Errorf("detach command = %q, want powershell", name)
+	}
+	joined := strings.Join(args, " ")
+	for _, want := range []string{"-NoProfile", "-WindowStyle Hidden", "-Command"} {
+		if !strings.Contains(joined, want) {
+			t.Errorf("detach args missing %q: %v", want, args)
+		}
+	}
+	if args[len(args)-1] != "BODY" {
+		t.Errorf("script body must be the final arg, got %q", args[len(args)-1])
+	}
+}
+
 // TestUpgradeCommand_HasDryFlag pins the --dry escape hatch.
 func TestUpgradeCommand_HasDryFlag(t *testing.T) {
 	cmd := upgradeCommand()

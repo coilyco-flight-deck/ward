@@ -33,7 +33,14 @@ the only tap CI keeps fresh.
 On Windows, where brew is absent, it runs the scoop sequence instead:
 
     scoop update
-    scoop update ward
+    scoop update ward  (detached; see below)
+
+scoop refuses to overwrite an app whose executable is running, and the
+` + "`ward upgrade`" + ` process is itself that ward.exe, so a direct
+` + "`scoop update ward`" + ` self-blocks. ward sidesteps this by detaching the
+app update to a background powershell that waits for this PID to exit, then
+runs scoop with the lock gone; ` + "`ward upgrade`" + ` returns immediately
+after dispatching (ward#568). The result lands in %TEMP%\ward-upgrade.log.
 
 ward's scoop manifest lives in coilysiren/scoop-bucket, fed by the windows
 ` + "`.exe`" + ` + ` + "`.sha256`" + ` assets release.yml publishes per tag (ward#561).
@@ -134,8 +141,8 @@ func (r *Runner) runUpgrade(ctx context.Context, dry bool, rows *[]audit.EgressR
 	return nil
 }
 
-// runUpgradeScoop is runUpgrade's Windows arm: `scoop update` then `scoop update
-// ward` (or `scoop status ward` under --dry). Brew's twin for scoop. See ward#561.
+// runUpgradeScoop is runUpgrade's Windows arm: `scoop update` stays audited on
+// the parent, `scoop update ward` detaches (ward#568). See the command Description.
 func (r *Runner) runUpgradeScoop(ctx context.Context, dry bool, rows *[]audit.EgressRow, tail *brewTail) error {
 	app := upgradeScoopApp
 	if dry {
@@ -150,13 +157,39 @@ func (r *Runner) runUpgradeScoop(ctx context.Context, dry bool, rows *[]audit.Eg
 	if err != nil {
 		return fmt.Errorf("upgrade: scoop update: %w", err)
 	}
-	fmt.Fprintln(os.Stderr, "==> scoop update", app)
-	captured, err = r.execScoopRaw(ctx, []string{"update", app}, tail)
-	*rows = append(*rows, captured...)
-	if err != nil {
-		return fmt.Errorf("upgrade: scoop update %s: %w", app, err)
+	// `scoop update ward` refuses to overwrite the running ward.exe (this very
+	// process), so detach it to a PID-waiter and return to free the exe. ward#568.
+	pid := os.Getpid()
+	name, args := scoopDetachArgv(scoopUpdateWardScript(pid, app))
+	fmt.Fprintf(os.Stderr, "==> scoop update %s (detached: runs after ward.exe pid %d exits)\n", app, pid)
+	if err := spawnDetachedScoop(name, args); err != nil {
+		return fmt.Errorf("upgrade: dispatch detached scoop update %s: %w", app, err)
 	}
+	fmt.Fprintln(os.Stderr, `ward upgrade dispatched; the update finishes in the background once this process exits. Log: ward-upgrade.log in your TEMP directory.`)
 	return nil
+}
+
+// scoopUpdateWardScript is the detached child's PowerShell: wait out the parent
+// pid (bounded timeout), then `scoop update <app>`, logging both. See ward#568.
+func scoopUpdateWardScript(pid int, app string) string {
+	return fmt.Sprintf(`$ErrorActionPreference = 'SilentlyContinue'
+$log = Join-Path $env:TEMP 'ward-upgrade.log'
+Add-Content -Path $log -Value "$(Get-Date -Format o) ward#568: waiting for ward.exe (pid %d) to exit"
+Wait-Process -Id %d -Timeout 120
+scoop update %s *>&1 | Add-Content -Path $log
+Add-Content -Path $log -Value "$(Get-Date -Format o) ward#568: scoop update %s finished (exit $LASTEXITCODE)"
+`, pid, pid, app, app)
+}
+
+// scoopDetachArgv wraps the update script in a hidden, profile-free powershell,
+// split from the platform spawn so the argv is unit-testable off Windows. ward#568.
+func scoopDetachArgv(script string) (string, []string) {
+	return "powershell", []string{
+		"-NoProfile",
+		"-NonInteractive",
+		"-WindowStyle", "Hidden",
+		"-Command", script,
+	}
 }
 
 // execScoopRaw forwards `scoop <argv...>` under the egress proxy, the scoop twin
