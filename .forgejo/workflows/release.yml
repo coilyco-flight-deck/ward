@@ -350,17 +350,33 @@ jobs:
           base="${FORGEJO_BASE_URL}/api/packages/${PKG_OWNER}/generic/ward-kdl-write/${TAG}"
           for arch in amd64 arm64; do
             file="ward-kdl-write-linux-${arch}"
-            curl -fsSL -X DELETE -H "Authorization: token ${TOKEN}" "${base}/${file}" || true
-            # Content-Type: application/octet-stream is REQUIRED, not decoration.
-            # Without it curl's --data-binary defaults to
-            # application/x-www-form-urlencoded, and Forgejo's generic-package
-            # uploader rejects that with HTTP 500 "request Content-Type isn't
-            # multipart/form-data" - the failure that reddened every release since
-            # this job landed (ward#567). The release-asset upload above already
-            # sets this header; the generic PUT must too.
-            curl -fsSL -X PUT -H "Authorization: token ${TOKEN}" \
+            # Quiet DELETE: a fresh tag has nothing to delete (404), so swallow it.
+            curl -sS -o /dev/null -X DELETE -H "Authorization: token ${TOKEN}" "${base}/${file}" || true
+            # Capture the status instead of -f so a rejection produces an
+            # ACTIONABLE message, not the bare `curl: (22) ... error: NNN` that
+            # made ward#567 hard to diagnose. Two things bit this job:
+            #  * HTTP 401 (`reqPackageAccess`) - CI_RELEASE_TOKEN authenticates
+            #    for the release API but lacks package (write:package) scope for
+            #    the ${PKG_OWNER} generic registry. This is operational: grant the
+            #    scope on the secret (docs/release.md). The built-in Actions token
+            #    is NOT a substitute - this instance denies it package access.
+            #  * HTTP 500 "request Content-Type isn't multipart/form-data" - the
+            #    generic uploader REQUIRES Content-Type: application/octet-stream;
+            #    without it curl's --data-binary defaults to
+            #    application/x-www-form-urlencoded and Forgejo 500s. The release
+            #    -asset upload above already sets this header; the generic PUT must too.
+            code=$(curl -sS -o /tmp/kdl_put.txt -w '%{http_code}' -X PUT \
+              -H "Authorization: token ${TOKEN}" \
               -H "Content-Type: application/octet-stream" \
-              --data-binary @"dist/${file}" "${base}/${file}"
+              --data-binary @"dist/${file}" "${base}/${file}")
+            if [ "$code" != "201" ] && [ "$code" != "200" ]; then
+              if [ "$code" = "401" ] || [ "$code" = "403" ]; then
+                echo "::error::ward-kdl-write PUT got HTTP ${code} from the generic package registry. CI_RELEASE_TOKEN is missing package (write:package) scope for ${PKG_OWNER}; grant it in ward -> Settings -> Actions -> Secrets, then re-release. See docs/release.md." >&2
+              else
+                echo "::error::ward-kdl-write PUT to ${base}/${file} failed with HTTP ${code}: $(cat /tmp/kdl_put.txt)" >&2
+              fi
+              exit 1
+            fi
             echo "published ${file} to the internal channel ${base}/${file}"
           done
 

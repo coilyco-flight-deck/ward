@@ -42,13 +42,28 @@ Set both in ward -> Settings -> Actions -> Secrets:
 
 - `CI_RELEASE_TOKEN` - `publish-binaries` uploads release assets with it, and
   `publish-kdl-write` pushes the write tier (so it needs **package write** scope too).
-  Note that `publish-kdl-write` PUTs to the generic-package registry, whose uploader
-  **requires** an explicit `Content-Type: application/octet-stream` header - without
-  it curl defaults to `application/x-www-form-urlencoded` and Forgejo answers HTTP
-  500 `request Content-Type isn't multipart/form-data`, unrelated to token scope
-  ([ward#567](https://forgejo.coilysiren.me/coilyco-flight-deck/ward/issues/567)).
 - `TAP_WRITE_TOKEN` - used by `bump-tap-formula` to push the formula bump.
   Scope: push to `coilyco-flight-deck/homebrew-tap`.
+
+##### `publish-kdl-write` red? Two distinct faults ([ward#567](https://forgejo.coilysiren.me/coilyco-flight-deck/ward/issues/567))
+
+The generic-package PUT has two independent ways to fail, and the job's diagnostic
+names which one it hit:
+
+- **HTTP 401 `reqPackageAccess` (operational)** - `CI_RELEASE_TOKEN` authenticates
+  for the release-asset API but lacks **package (`write:package`) scope** for the
+  `coilyco-flight-deck` registry. Release assets keep shipping, but the write tier
+  never lands. Fix: add package-write scope to the secret (or rotate it for one that
+  carries it), then re-release - the bump is not backfilling, so a later tag simply
+  publishes going forward. The built-in Forgejo Actions token is **not** a
+  substitute: this instance denies it package access (verified) even with
+  `permissions: packages: write` declared.
+- **HTTP 500 `request Content-Type isn't multipart/form-data` (code, fixed)** - the
+  generic uploader **requires** an explicit `Content-Type: application/octet-stream`
+  header. Without it curl's `--data-binary` defaults to
+  `application/x-www-form-urlencoded` and Forgejo 500s. The release-asset upload
+  always set this header; the generic PUT now does too. This is the latent second
+  wall behind the 401 - it surfaces only once the token scope is fixed.
 
 The prior `tap-writer` runner credential helper
 (`infrastructure/deploy/forgejo-runner-tap-writer.yml`) is retired: it broke
