@@ -312,7 +312,23 @@ func (r *Runner) acquireRemoteReservation(ctx context.Context, label string, mod
 	if perr != nil {
 		warnRemoteReservationLost(label, ref, fmt.Sprintf("post failed after %d attempt(s): %v", tries, perr))
 	}
+	// Seal the conversation against in-flight steering (ward#494); best-effort, so a
+	// forge with no lock API or a lock failure never fails the reservation.
+	r.lockReservedIssue(ctx, cl, label, ref)
 	return nil
+}
+
+// lockReservedIssue seals the reserved issue best-effort, logging the outcome (locked
+// / unsupported-forge / soft-failure) and never returning an error (ward#494, docs).
+func (r *Runner) lockReservedIssue(ctx context.Context, cl issueForge, label string, ref agentIssueRef) {
+	switch err := cl.lockIssue(ctx, ref.Owner, ref.Repo, ref.Number); {
+	case err == nil:
+		fmt.Fprintf(os.Stderr, "%s: locked issue %s conversation for the reservation window\n", label, ref)
+	case errors.Is(err, errForgeLockUnsupported):
+		fmt.Fprintf(os.Stderr, "%s: issue %s conversation left unlocked - the %s API has no lock leaf; the reservation comment is the road-block (ward#494)\n", label, ref, ref.Forge)
+	default:
+		fmt.Fprintf(os.Stderr, "%s: warning: could not lock issue %s conversation (%v); the reservation comment still stands as the road-block (ward#494)\n", label, ref, err)
+	}
 }
 
 // postReservationComment runs post up to attempts times, sleeping backoff between tries
@@ -388,7 +404,12 @@ func reservationCommentBody(mode containerMode, container, host string, now time
 	body := fmt.Sprintf(
 		"%s\n🔒 Reserved by `ward agent --driver %s` — container `%s` on host `%s` is carrying this issue (reserved %s). "+
 			"Concurrent `ward agent` runs are blocked until it finishes or the reservation goes stale (%s TTL); "+
-			"`--force` overrides.",
+			"`--force` overrides.\n\n"+
+			"**Do not comment on or edit this issue to steer the run while it is reserved.** The engineer seeded "+
+			"the body once at launch and never re-reads it, so a comment or edit reaches only human readers, never "+
+			"the running engineer. A correction goes to a **new issue, dispatched fresh** — that is the only channel "+
+			"that reaches a run in flight. Where the forge supports it, ward locks this conversation to make that a "+
+			"road-block rather than a convention (ward#494).",
 		agentReservationMarker, mode, container, host, now.Format(time.RFC3339), agentReservationTTL)
 	if justification = strings.TrimSpace(justification); justification != "" {
 		body += fmt.Sprintf(

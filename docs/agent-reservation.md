@@ -34,7 +34,8 @@ operator `grep` those logs, checking the host Forgejo token/SSM path first.
 
 While a reservation stands, the issue is **immutable** to the run carrying it - it
 seeds the body once and never re-reads. A correction found after dispatch goes to
-a **new issue**, not an edit or comment on the reserved one: see
+a **new issue**, not an edit or comment on the reserved one, which ward best-effort
+**locks** where the API allows: see
 [reserved means immutable](agent-reserved-immutable.md).
 
 ## Pre-launch death releases the hold

@@ -160,6 +160,23 @@ func (c *githubClient) reopenIssue(ctx context.Context, owner, repo string, numb
 	return nil
 }
 
+// lockIssue seals the conversation via REST `PUT .../issues/{n}/lock` (ward#494); no
+// lock_reason is sent since the API's fixed set has no "in progress" value. See docs.
+func (c *githubClient) lockIssue(ctx context.Context, owner, repo string, number int) error {
+	if _, err := c.run(ctx, "api", "-X", "PUT", ghIssuePath(owner, repo, number)+"/lock"); err != nil {
+		return fmt.Errorf("github: lock issue %s/%s#%d: %w", owner, repo, number, err)
+	}
+	return nil
+}
+
+// unlockIssue retracts the lock via REST `DELETE .../lock` when a reservation releases.
+func (c *githubClient) unlockIssue(ctx context.Context, owner, repo string, number int) error {
+	if _, err := c.run(ctx, "api", "-X", "DELETE", ghIssuePath(owner, repo, number)+"/lock"); err != nil {
+		return fmt.Errorf("github: unlock issue %s/%s#%d: %w", owner, repo, number, err)
+	}
+	return nil
+}
+
 // ghIssuePath renders the REST issue path `/repos/{owner}/{repo}/issues/{n}` shared
 // by every REST call in this client. Pure + testable.
 func ghIssuePath(owner, repo string, number int) string {
