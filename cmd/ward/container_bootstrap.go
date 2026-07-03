@@ -12,7 +12,6 @@ import (
 	"path/filepath"
 	"strconv"
 	"strings"
-	"syscall"
 	"time"
 
 	"forgejo.coilysiren.me/coilyco-flight-deck/cli-guard/cli/verb"
@@ -403,12 +402,11 @@ func (r *Runner) grantDockerSocketAccess(ctx context.Context, e bootstrapEnv) {
 		blog("explore: could not stat docker socket; dispatch may fail: %v (ward#315)", err)
 		return
 	}
-	st, ok := info.Sys().(*syscall.Stat_t)
+	sockgid, ok := fileGID(info)
 	if !ok {
 		blog("explore: could not read docker socket gid; dispatch may fail (ward#315)")
 		return
 	}
-	sockgid := int(st.Gid)
 	if sockgid == 0 {
 		r.bridgeDockerSocket(ctx, e, sock) // root:root: no group to join, bridge it (ward#319)
 		return
@@ -476,8 +474,8 @@ func (r *Runner) ensureGitCredReadable(e bootstrapEnv) error {
 	if info.Mode().Perm()&0o040 == 0 {
 		return fmt.Errorf("ward#288: %s is not group-readable after re-perm (mode %o); agent push would fall back to the human token and leak attribution", f, info.Mode().Perm())
 	}
-	if st, ok := info.Sys().(*syscall.Stat_t); ok && int(st.Gid) != gid {
-		return fmt.Errorf("ward#288: %s is group-owned by gid %d, not the agent gid %d; agent cannot read the bot credential", f, st.Gid, gid)
+	if fgid, ok := fileGID(info); ok && fgid != gid {
+		return fmt.Errorf("ward#288: %s is group-owned by gid %d, not the agent gid %d; agent cannot read the bot credential", f, fgid, gid)
 	}
 	return nil
 }
