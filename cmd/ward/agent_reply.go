@@ -217,7 +217,7 @@ func (r *Runner) validateReplyInputs(ctx context.Context, c *cli.Command, mode c
 // captureReplyResearch runs the host one-shot research argv in a neutral temp dir
 // (never the dispatch cwd; mirrors the pre-flight), bounded by the level timeout.
 func (r *Runner) captureReplyResearch(ctx context.Context, mode containerMode, ref agentIssueRef, level replyThoroughness, research string) (string, error) {
-	argv, ok := hostOneShotArgv(mode, research)
+	argv, stdin, ok := hostOneShot(mode, research)
 	if !ok {
 		// Guarded earlier (precondition + ward#162 trust gate), but stay honest
 		// rather than panic on a nil argv.
@@ -226,7 +226,7 @@ func (r *Runner) captureReplyResearch(ctx context.Context, mode containerMode, r
 	fmt.Fprintf(os.Stderr, "%s: researching %s at %s depth (up to %s)...\n\n", agentCmdline(mode, "advisor"), ref, level.Name, level.Timeout)
 	rctx, cancel := context.WithTimeout(ctx, level.Timeout)
 	defer cancel()
-	out, err := r.capturePreflight(rctx, argv)
+	out, err := r.capturePreflight(rctx, argv, stdin)
 	read := strings.TrimSpace(string(out))
 	if read != "" {
 		fmt.Fprintf(os.Stderr, "%s\n\n", read)

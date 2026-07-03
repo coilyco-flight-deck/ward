@@ -7,7 +7,11 @@ container credential writing, onboarding seeding, and a launch gate.
 
 - Host credential channel: `WARD_CLAUDE_CREDS_B64` in the private env-file.
 - Container cred file: `~/.claude/.credentials.json`.
-- Onboarding seed: `~/.claude.json`.
+- Onboarding seed: `~/.claude.json` - skips the first-run wizard and pre-trusts
+  every directory the agent may cd into (the target clone, the `/workspace` root,
+  each granted extra repo, and every warmed `/substrate` reference repo), so an
+  interactive or director session never re-hits the folder-trust dialog
+  ([ward#168](https://forgejo.coilysiren.me/coilyco-flight-deck/ward/issues/168)).
 - Smoke gate: the bounded `claude -p` auth probe before launch.
 
 ## Config shape

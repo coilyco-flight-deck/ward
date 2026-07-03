@@ -279,13 +279,13 @@ func (r *Runner) triageRepo(ctx context.Context, label, repo string, cl *forgejo
 // triageJudge runs the batched judgment one-shot and parses its verdicts; ok=false on an
 // incomplete read, so the caller writes nothing (fail-closed).
 func (r *Runner) triageJudge(ctx context.Context, label string, mode containerMode, cands []triageCandidate) (map[int]triageVerdict, bool) {
-	argv, ok := hostOneShotArgv(mode, triagePrompt(cands))
+	argv, stdin, ok := hostOneShot(mode, triagePrompt(cands))
 	if !ok {
 		return nil, false
 	}
 	tctx, cancel := context.WithTimeout(ctx, directorDecideTimeout)
 	defer cancel()
-	out, err := r.capturePreflight(tctx, argv)
+	out, err := r.capturePreflight(tctx, argv, stdin)
 	if err != nil {
 		fmt.Fprintf(os.Stderr, "%s: note: triage judgment read did not complete (%v); leaving labels unchanged.\n", label, err)
 		return nil, false

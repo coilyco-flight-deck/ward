@@ -61,7 +61,7 @@ func TestCapturePreflightRunsInNeutralDir(t *testing.T) {
 
 	// /bin/pwd computes the physical cwd of the child (its $PWD env is the stale
 	// dispatch dir, so it falls back to the real one) - i.e. where the read ran.
-	out, err := r.capturePreflight(context.Background(), []string{"/bin/pwd"})
+	out, err := r.capturePreflight(context.Background(), []string{"/bin/pwd"}, "")
 	if err != nil {
 		t.Fatalf("capturePreflight: %v", err)
 	}
@@ -82,5 +82,65 @@ func TestCapturePreflightRunsInNeutralDir(t *testing.T) {
 	// And the process cwd is restored for the launch that follows.
 	if after, _ := os.Getwd(); after != before {
 		t.Errorf("cwd not restored: before=%q after=%q", before, after)
+	}
+}
+
+// TestHostOneShotKeepsPromptOffCommandLine is the ward#548 regression: the host one-shot
+// prompt rides stdin, never argv, so Windows arg quoting can't truncate the read.
+func TestHostOneShotKeepsPromptOffCommandLine(t *testing.T) {
+	// A prompt whose ref + question sit BELOW the first newline - exactly the shape
+	// the Windows shim truncated to its preamble, dropping the ref/question (ward#548).
+	prompt := "You are doing one-shot research on a Forgejo issue.\n\n" +
+		"Issue: coilyco-gaming/eco-ops#26\n----- the question to answer -----\nverify the telemetry flows\n----- end -----"
+
+	argv, stdin, ok := hostOneShot(modeClaude, prompt)
+	if !ok {
+		t.Fatal("hostOneShot(claude) ok = false, want a wired host one-shot")
+	}
+	if stdin != prompt {
+		t.Errorf("stdin = %q, want the full prompt fed on stdin", stdin)
+	}
+	// The prompt must not leak onto the command line in whole or in part.
+	for _, a := range argv {
+		if strings.Contains(a, "eco-ops#26") || strings.Contains(a, "\n") || a == prompt {
+			t.Errorf("prompt leaked onto the command line via argv %q (ward#548)", a)
+		}
+	}
+	// What survives is exactly the base command claude reads its stdin prompt with.
+	want := lookupAgent(modeClaude).Record().Argv.Preflight
+	if len(argv) != len(want) {
+		t.Fatalf("base argv = %v, want the prompt-free base %v", argv, want)
+	}
+	for i := range want {
+		if argv[i] != want[i] {
+			t.Fatalf("base argv = %v, want the prompt-free base %v", argv, want)
+		}
+	}
+
+	// A local-model harness stays barred (ok=false), argv and stdin empty (ward#162).
+	if a, s, ok := hostOneShot(modeGoose, prompt); ok || a != nil || s != "" {
+		t.Errorf("hostOneShot(goose) = (%v, %q, %v), want (nil, \"\", false)", a, s, ok)
+	}
+}
+
+// TestCapturePreflightPipesStdinToChild proves the prompt reaches the child on stdin:
+// /bin/cat echoes stdin, so the piped prompt must round-trip back out (ward#548).
+func TestCapturePreflightPipesStdinToChild(t *testing.T) {
+	if _, err := os.Stat("/bin/cat"); err != nil {
+		t.Skip("/bin/cat not present")
+	}
+	r := &Runner{Runner: &shell.Runner{Stderr: io.Discard}}
+	prompt := "line one\nIssue: coilyco-gaming/eco-ops#26\nquestion below\n"
+
+	out, err := r.capturePreflight(context.Background(), []string{"/bin/cat"}, prompt)
+	if err != nil {
+		t.Fatalf("capturePreflight: %v", err)
+	}
+	if got := string(out); got != prompt {
+		t.Errorf("child stdin round-trip = %q, want the piped prompt %q", got, prompt)
+	}
+	// The swap is scoped to the one capture: the Runner's stdin is restored after.
+	if r.Runner.Stdin != nil {
+		t.Errorf("Runner.Stdin = %v, want restored to its prior nil after the capture", r.Runner.Stdin)
 	}
 }

@@ -295,6 +295,9 @@ func (r *Runner) runContainerBootstrap(ctx context.Context, c *cli.Command) erro
 	r.composeContext(e)
 	blog("bootstrap permissions compose start")
 	r.composePermissions(e)
+	// Set the trust set here, post-warm, not in agentRunCtx (which runs pre-warm)
+	// so the /substrate dirs already exist to enumerate (ward#168).
+	rc.TrustDirs = agentTrustDirs(e)
 	// Creds write + onboarding seed + config compose, each feature-tested per mode
 	// (Phase 3, ward#418); composeAgentContainer holds the order.
 	composeAgentContainer(agent, rc)
