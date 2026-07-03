@@ -2,10 +2,13 @@ package main
 
 import (
 	"context"
+	_ "embed"
+	"encoding/json"
 	"fmt"
 	"io"
 	"os"
 	"strings"
+	"sync"
 
 	"forgejo.coilysiren.me/coilyco-flight-deck/cli-guard/cli/verb"
 	"github.com/urfave/cli/v3"
@@ -13,6 +16,15 @@ import (
 
 // agent_advisor.go wires `ward agent advisor`, the counsel role (ward#347, merging
 // reply + ask by arg type; reply lives in agent_reply.go). See docs/agent-advisor.md.
+
+//go:embed atlas_catalog_graph.json
+var atlasCatalogGraphJSON []byte
+
+var (
+	atlasDepsOnce sync.Once
+	atlasDeps     map[string][]targetRepo
+	atlasDepsErr  error
+)
 
 // agentAdvisorFlags is the advisor role's flag set: the reply depth ladder (ref mode)
 // unioned with the scratch-container flags the inline answer (freeform mode) needs.
@@ -66,15 +78,53 @@ func agentAdvisorCommand() *cli.Command {
 	}
 }
 
-// advisorAutoGrantRepos returns repo-specific read-only context grants for the
-// advisor lane. The mapping lives in ward code, not on the operator host.
+// advisorAutoGrantRepos returns repo-specific read-only context grants.
+// It reads direct Atlas service-catalog dependsOn edges, not a ward-local list.
 func advisorAutoGrantRepos(repo targetRepo) []targetRepo {
-	switch {
-	case repo.Owner == "coilyco-gaming" && strings.HasPrefix(repo.Name, "eco-"):
-		return []targetRepo{{Owner: "StrangeLoopGames", Name: "Eco"}}
-	default:
+	atlasDepsOnce.Do(func() {
+		atlasDeps, atlasDepsErr = loadAtlasAutoGrantDeps(atlasCatalogGraphJSON)
+	})
+	if atlasDepsErr != nil {
 		return nil
 	}
+	return atlasDeps[repo.slug()]
+}
+
+func loadAtlasAutoGrantDeps(raw []byte) (map[string][]targetRepo, error) {
+	var graph struct {
+		Edges []struct {
+			From string `json:"from"`
+			To   string `json:"to"`
+			Type string `json:"type"`
+		} `json:"edges"`
+	}
+	if err := json.Unmarshal(raw, &graph); err != nil {
+		return nil, fmt.Errorf("atlas catalog graph: decode: %w", err)
+	}
+	out := map[string][]targetRepo{}
+	for _, e := range graph.Edges {
+		if e.Type != "dependsOn" {
+			continue
+		}
+		from, ok := parseGraphSlug(e.From)
+		if !ok {
+			continue
+		}
+		to, ok := parseGraphSlug(e.To)
+		if !ok {
+			continue
+		}
+		out[from.slug()] = append(out[from.slug()], to)
+	}
+	return out, nil
+}
+
+func parseGraphSlug(id string) (targetRepo, bool) {
+	parts := strings.Split(id, "/")
+	if len(parts) < 3 {
+		return targetRepo{}, false
+	}
+	return targetRepo{Owner: parts[len(parts)-2], Name: parts[len(parts)-1]}, true
 }
 
 // runAgentAdvisor dispatches by argument type (ward#347): a parseable ref researches

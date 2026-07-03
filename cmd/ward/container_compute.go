@@ -544,7 +544,7 @@ func mergeExtraRepos(explicit, auto []targetRepo, target targetRepo) ([]targetRe
 		add(repo, "explicit grant")
 	}
 	for _, repo := range auto {
-		add(repo, "advisor auto-grant")
+		add(repo, "Atlas dependency")
 	}
 	return out, notes
 }

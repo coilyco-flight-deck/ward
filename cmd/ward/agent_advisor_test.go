@@ -101,8 +101,11 @@ func TestAdvisorAutoGrantRepos(t *testing.T) {
 	if len(got) != 1 || got[0].slug() != "StrangeLoopGames/Eco" {
 		t.Fatalf("advisorAutoGrantRepos(eco-ops) = %+v, want StrangeLoopGames/Eco", got)
 	}
-	if got := advisorAutoGrantRepos(targetRepo{Owner: "coilyco-flight-deck", Name: "ward"}); len(got) != 0 {
-		t.Fatalf("advisorAutoGrantRepos(non-eco) = %+v, want none", got)
+	if got := advisorAutoGrantRepos(targetRepo{Owner: "coilyco-flight-deck", Name: "ward"}); len(got) != 1 || got[0].slug() != "coilyco-flight-deck/cli-guard" {
+		t.Fatalf("advisorAutoGrantRepos(ward) = %+v, want coilyco-flight-deck/cli-guard", got)
+	}
+	if got := advisorAutoGrantRepos(targetRepo{Owner: "coilyco-flight-deck", Name: "agentic-os"}); len(got) != 0 {
+		t.Fatalf("advisorAutoGrantRepos(non-catalog repo) = %+v, want none", got)
 	}
 }
 
@@ -118,6 +121,22 @@ func TestMergeExtraReposDedupes(t *testing.T) {
 	}
 	if len(notes) != 1 {
 		t.Fatalf("mergeExtraRepos notes = %+v, want one note", notes)
+	}
+	if notes[0].Reason != "explicit grant" {
+		t.Fatalf("mergeExtraRepos note reason = %q, want explicit grant", notes[0].Reason)
+	}
+}
+
+func TestLoadAtlasAutoGrantDeps(t *testing.T) {
+	deps, err := loadAtlasAutoGrantDeps(atlasCatalogGraphJSON)
+	if err != nil {
+		t.Fatalf("loadAtlasAutoGrantDeps errored: %v", err)
+	}
+	if got := deps["coilyco-flight-deck/ward"]; len(got) != 1 || got[0].slug() != "coilyco-flight-deck/cli-guard" {
+		t.Fatalf("ward deps = %+v, want cli-guard", got)
+	}
+	if got := deps["coilyco-gaming/eco-ops"]; len(got) != 1 || got[0].slug() != "StrangeLoopGames/Eco" {
+		t.Fatalf("eco-ops deps = %+v, want StrangeLoopGames/Eco", got)
 	}
 }
 

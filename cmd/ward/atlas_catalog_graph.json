@@ -1,0 +1,14 @@
+{
+  "edges": [
+    {
+      "from": "forgejo.coilysiren.me/coilyco-flight-deck/ward",
+      "to": "forgejo.coilysiren.me/coilyco-flight-deck/cli-guard",
+      "type": "dependsOn"
+    },
+    {
+      "from": "forgejo.coilysiren.me/coilyco-gaming/eco-ops",
+      "to": "forgejo.coilysiren.me/StrangeLoopGames/Eco",
+      "type": "dependsOn"
+    }
+  ]
+}

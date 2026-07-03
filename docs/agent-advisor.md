@@ -31,9 +31,10 @@ and freeform modes and no longer a native host one-shot. Because the container i
 sandbox, **any wired harness** runs it, local models included.
 
 For configured primary repos, the advisor lane can also auto-grant curated
-read-only context repos from ward-owned config. The current Eco-family mapping
-adds `StrangeLoopGames/Eco` for `coilyco-gaming/eco-ops`, and the merged set is
-de-duplicated and logged so the extra context is visible instead of implicit.
+read-only context repos from the Atlas service-catalog dependency graph. Ward
+reads direct `dependsOn` edges from an embedded Atlas snapshot, merges them
+with explicit `--repo` input, de-duplicates the final set, and logs whether
+each repo came from an Atlas dependency or an explicit grant.
 
 It trust-gates the owner and resolves the issue + thread **on the host**, then spins a
 read-only one-shot container (`WARD_ASK` + `WARD_READONLY`) seeded with the research prompt
