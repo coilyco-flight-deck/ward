@@ -34,6 +34,11 @@ Contributor-facing cli-guard gate: repo dev verbs + audited host wrappers.
 
 The **exec-dialect** guardfiles auto-mount at their `wrap` path; `git` / `pkg brew` keep hand-written surfaces ([ward#284](https://forgejo.coilysiren.me/coilyco-flight-deck/ward/issues/284)). See [in-ward](ward-kdl-in-ward.md).
 
+## Examples & demo
+
+- **`examples/toy/`** - ward's minimal, dependency-free managed repo (Makefile + `.ward/ward.yaml` with a `security:` block + a ward-kdl guardfile), the demo and spec-bundle anchor. See [example-repo.md](example-repo.md).
+- **`examples/demo.sh`** *([ward#251](https://forgejo.coilysiren.me/coilyco-flight-deck/ward/issues/251))* - the runnable launch demo: one happy path (`ward exec test` + audit row + clean-tree gate) plus two danger classes refused live - repo danger via the hard cli-guard argv gate, infra/cloud danger (`kubectl`/`aws`) via the protected-binary hook. Every denial is real ward output, honest about which mechanism holds ([enforcement-boundary.md](enforcement-boundary.md)). See [demo.md](demo.md).
+
 ## Release pipeline
 
 - **Release notes** *([ward#486](https://forgejo.coilysiren.me/coilyco-flight-deck/ward/issues/486))* - "does it affect you" verdict. [release-notes.md](release-notes.md).
