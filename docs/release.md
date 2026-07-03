@@ -52,7 +52,7 @@ OS, so every install channel is a **push** from the tag build rather than a poll
   guards up front and fails loudly if the secret is unset.
 - **bump-scoop-manifest** - the Windows sibling ([ward#571](https://forgejo.coilysiren.me/coilyco-flight-deck/ward/issues/571)). Writes the whole
   `bucket/ward.json` (version + the amd64/arm64 release URLs + the two windows
-  hashes) into the scoop bucket (`coilyco-bridge/scoop-bucket`) and pushes,
+  hashes) into the scoop bucket (`coilyco-flight-deck/scoop-bucket`) and pushes,
   authenticating with `SCOOP_WRITE_TOKEN` exactly as the tap job uses
   `TAP_WRITE_TOKEN`. Before this job the manifest refreshed only on a bucket-side
   daily autoupdate poll, so it lagged however many releases landed between runs
@@ -84,7 +84,7 @@ Set both in ward -> Settings -> Actions -> Secrets:
 - `TAP_WRITE_TOKEN` - used by `bump-tap-formula` to push the formula bump.
   Scope: push to `coilyco-flight-deck/homebrew-tap`.
 - `SCOOP_WRITE_TOKEN` - used by `bump-scoop-manifest` to push the scoop
-  manifest bump. Scope: push to `coilyco-bridge/scoop-bucket`. Unset, the bump
+  manifest bump. Scope: push to `coilyco-flight-deck/scoop-bucket`. Unset, the bump
   job fails loudly (a red job on an otherwise-green release, the same
   fail-not-freeze stance as the tap) so the manifest cannot silently lag again;
   provision it once, like `TAP_WRITE_TOKEN`.

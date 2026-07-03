@@ -18,7 +18,7 @@ place that builds and uploads them.
   forgejo.coilysiren.me ([ward#414](https://forgejo.coilysiren.me/coilyco-flight-deck/ward/issues/414), [ward#442](https://forgejo.coilysiren.me/coilyco-flight-deck/ward/issues/442)).
 - **`ward-windows-{amd64,arm64}.exe`** + a bare-digest **`.exe.sha256`** sidecar
   each. scoop autoupdate reads the hash from that per-asset sidecar (coily.json's
-  contract), so `coilysiren/scoop-bucket`'s `ward.json` installs off the release
+  contract), so `coilyco-flight-deck/scoop-bucket`'s `ward.json` installs off the release
   page ([ward#561](https://forgejo.coilysiren.me/coilyco-flight-deck/ward/issues/561)).
 - **`SHA256SUMS`** - one digest per binary (windows exes included), bare
   basenames, so `sha256sum -c SHA256SUMS` verifies from whichever page the file

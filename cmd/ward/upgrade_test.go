@@ -34,7 +34,7 @@ func TestUpgradeFormulaBare_IsRackName(t *testing.T) {
 }
 
 // TestUpgradeScoopApp_MatchesBucketManifest pins the Windows scoop app name to
-// the bare `ward`, matching ward.json in coilysiren/scoop-bucket. See ward#561.
+// the bare `ward`, matching ward.json in coilyco-flight-deck/scoop-bucket. See ward#561.
 func TestUpgradeScoopApp_MatchesBucketManifest(t *testing.T) {
 	if upgradeScoopApp != "ward" {
 		t.Errorf("upgradeScoopApp = %q, want %q", upgradeScoopApp, "ward")

@@ -99,7 +99,7 @@ jobs:
           # matrix ONCE and uploading the same files to both forges is what
           # guarantees the Forgejo and GitHub release pages carry identical
           # SHA256SUMS for a tag (ward#454, ward#438). Windows joins the matrix so
-          # the scoop channel (coilysiren/scoop-bucket ward.json) has a binary to
+          # the scoop channel (coilyco-flight-deck/scoop-bucket ward.json) has a binary to
           # install; its .exe assets also get per-asset .sha256 sidecars below,
           # the contract scoop autoupdate reads (ward#561).
           export GOPROXY=direct GOSUMDB=off CGO_ENABLED=0
@@ -611,7 +611,7 @@ jobs:
       TAG: ${{ needs.release.outputs.tag }}
       FORGEJO_BASE_URL: https://forgejo.coilysiren.me
       WARD_REPO: coilyco-flight-deck/ward
-      BUCKET_REPO: coilyco-bridge/scoop-bucket
+      BUCKET_REPO: coilyco-flight-deck/scoop-bucket
       MANIFEST_PATH: bucket/ward.json
     steps:
       - name: Write ward.json to the scoop bucket and push

@@ -42,7 +42,7 @@ app update to a background powershell that waits for this PID to exit, then
 runs scoop with the lock gone; ` + "`ward upgrade`" + ` returns immediately
 after dispatching (ward#568). The result lands in %TEMP%\ward-upgrade.log.
 
-ward's scoop manifest lives in coilysiren/scoop-bucket, fed by the windows
+ward's scoop manifest lives in coilyco-flight-deck/scoop-bucket, fed by the windows
 ` + "`.exe`" + ` + ` + "`.sha256`" + ` assets release.yml publishes per tag (ward#561).
 
 Pass --dry to see the resolved version diff without installing (brew
@@ -92,7 +92,7 @@ const upgradeFormula = "coilyco-flight-deck/tap/ward"
 const upgradeFormulaBare = "ward"
 
 // upgradeScoopApp is the Windows scoop app name, matching ward.json in
-// coilysiren/scoop-bucket. Bare, like the brew bare-keg fallback. See ward#561.
+// coilyco-flight-deck/scoop-bucket. Bare, like the brew bare-keg fallback. See ward#561.
 const upgradeScoopApp = "ward"
 
 // staleTabNotInstalled gates the unqualified retry to the specific "<formula>
