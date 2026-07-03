@@ -485,6 +485,9 @@ type upPlan struct {
 	// Workflow is the run's landing policy (--workflow, ward#508): non-direct-main
 	// runs export WARD_WORKFLOW + a ward.workflow label. See docs/agent-workflow.md.
 	Workflow workflowMode
+	// AWSHome is the host ~/.aws dir bound read-only when the aws capability is on;
+	// kept on the plan so the launch path can warn on a creds-less host (ward#579).
+	AWSHome string
 }
 
 // extraRepoLogLine describes one repo that ended up in the merged grant set.
@@ -714,6 +717,20 @@ func hostNetTailnetWarning(goos string, hasTailscale0 bool) (string, bool) {
 			"  sidecar. See docs/agent-host-net.md (ward#332).", true
 	}
 	return "", false
+}
+
+// awsMountMissingWarning returns a loud warning (and true) when the aws capability
+// bound ~/.aws but the host has no creds there (ward#579; docs/agent-capability.md).
+func awsMountMissingWarning(awsHome string, hasCreds bool) (string, bool) {
+	if awsHome == "" || hasCreds {
+		return "", false
+	}
+	return "WARNING: the aws capability is on but this host has no AWS credentials at " + awsHome + ".\n" +
+		"  ward binds that dir read-only, but docker mounts a missing source as an EMPTY\n" +
+		"  dir, so the run gets no ~/.aws config or credentials - `aws`/`ssm` calls inside\n" +
+		"  it fail NoCredentials. Give this host an AWS identity (an ~/.aws/config or\n" +
+		"  ~/.aws/credentials with SSM read/write) so --aws actually delivers creds.\n" +
+		"  See docs/agent-capability.md (ward#579).", true
 }
 
 // appendEnvAndImage appends the WARD_* env, the --env-file, the image, and the agent
