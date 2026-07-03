@@ -214,6 +214,9 @@ const (
 	roleEngineer = "engineer"
 	roleAdvisor  = "advisor"
 	roleSession  = "session"
+	// roleDirector keys the director's per-role capability lookup (ward#578); empty
+	// set by default - it forwards capability to children, holds none itself.
+	roleDirector = "director"
 )
 
 // agentBinary is the in-container command each mode launches.

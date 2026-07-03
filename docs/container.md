@@ -21,8 +21,11 @@ Three departures from a transparent, shared, bind-mounted container:
 - **Fresh clone inside, never on the host** - cached through a shared
   `ward-gitcache` bare mirror, so the host's repo tree stays untouched.
 - **Least access** - the only default host bind is the **cwd** (read-only) plus
-  ward's entrypoint/doctrine; `~/.aws` (`--aws`) and the tailnet route
-  (`--tailnet`, [agent-host-net.md](agent-host-net.md)) are opt-in.
+  ward's entrypoint/doctrine; `~/.aws` and the tailnet route
+  ([agent-host-net.md](agent-host-net.md)) are opt-in **per startup role** via
+  the role's guardfile set in [`ward-kdl.fleet.kdl`](../cmd/ward-kdl/ward-kdl.fleet.kdl)
+  ([ward#578](https://forgejo.coilysiren.me/coilyco-flight-deck/ward/issues/578)) - the advisor holds them, the engineer does not. See
+  [agent-flags.md](agent-flags.md).
 
 ## Usage
 
@@ -33,8 +36,8 @@ ward agent engineer coilyco-gaming/eco-app#123          # carry an issue end to 
 ward agent engineer coilyco-gaming/eco-app#123 --print  # show the docker cmd only (dry run)
 ```
 
-`ward agent engineer --help` lists the launch flags (`--driver`, `--aws`,
-`--print`, `--no-pull`, ...; see [agent-flags.md](agent-flags.md)). The
+`ward agent engineer --help` lists the launch flags (`--driver`,
+`--print`, `--repo`, ...; see [agent-flags.md](agent-flags.md)). The
 **engineer always detaches**: interactive work goes to the
 [director](agent-director.md), whose surface owns the attached auto-TTY shape
 ([agent-surface.md](agent-surface.md)).

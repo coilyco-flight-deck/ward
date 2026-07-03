@@ -91,7 +91,7 @@ func (r *Runner) resolveAgentCreds(ctx context.Context, mode containerMode) []ag
 
 // buildUpPlan assembles the pure plan from parsed flags and resolved inputs;
 // agentArgs seed the agent's argv. Errors only on a bad --repo grant (ward#230).
-func buildUpPlan(c *cli.Command, repo targetRepo, mode containerMode, cwd, assetsDir string, agentArgs []string, mountAgentLogs bool) (upPlan, error) {
+func buildUpPlan(c *cli.Command, repo targetRepo, mode containerMode, role, cwd, assetsDir string, agentArgs []string, mountAgentLogs bool) (upPlan, error) {
 	wardSrc := c.String("ward-source")
 	// The container downloads this host's ward version by default; --ward-version
 	// (env WARD_AGENT_VERSION) overrides it to pin a known-good release (ward#312).
@@ -104,14 +104,15 @@ func buildUpPlan(c *cli.Command, repo targetRepo, mode containerMode, cwd, asset
 	if err := wardDowngradeGuard(wardVersion, Version, c.Bool("allow-ward-downgrade")); err != nil {
 		return upPlan{}, err
 	}
-	// Consolidated tailnet route (ward#362): --tailnet auto-selects host-net vs the sidecar
-	// by platform (--tailnet-mode overrides); it implies --aws. docs/agent-flags.md.
-	hostNet, tsSidecar, err := resolveTailnet(c, runtime.GOOS)
+	// Host/cloud capability is the role's guardfile set (ward#578; docs/agent-flags.md),
+	// resolved to the mechanisms ward composes; a tailnet grant implies the ~/.aws mount.
+	capab := resolveCapability(c, role)
+	hostNet, tsSidecar, err := resolveTailnetMechanism(c, runtime.GOOS, capab.tailnet)
 	if err != nil {
 		return upPlan{}, err
 	}
 	awsHome := ""
-	if c.Bool("aws") || tailnetEnabled(c) {
+	if capab.aws {
 		awsHome = filepath.Join(homeDir(), ".aws")
 	}
 	// extraRepoGrant reads the --repo grant on the agent surfaces and --with-repo on

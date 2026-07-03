@@ -287,44 +287,30 @@ const (
 	tailnetModeSidecar = "sidecar"  // force the ward-tailnet SOCKS5 sidecar route (ward#349)
 )
 
-// tailnetFlags is the consolidated tailnet route (ward#362): a visible --tailnet plus
-// a hidden --tailnet-mode. See docs/agent-flags.md.
-func tailnetFlags(defaultOn bool) []cli.Flag {
+// tailnetFlags carries the deprecated --tailnet alias + the hidden --tailnet-mode
+// escape hatch (ward#362, ward#578; the role's guardfile set is the source now).
+func tailnetFlags() []cli.Flag {
 	return []cli.Flag{
 		&cli.BoolFlag{
-			Name: "tailnet",
-			Usage: "join the container to the tailnet so it reaches tailnet-only hosts like kai-tower-3026; " +
-				"auto-selects the mechanism by platform - the host-network route on native Linux (ward#330), " +
-				"the SOCKS5 sidecar on Docker Desktop where the host VM is not a tailnet node (ward#349). " +
-				"Implies --aws; default is on for advisor and off otherwise (ward#562, ward#362)",
-			Value: defaultOn,
+			Name:   "tailnet",
+			Hidden: true,
+			Usage: "deprecated (ward#578): tailnet reach is now a per-role guardfile set in ward-kdl.fleet.kdl; " +
+				"this hidden alias force-joins the tailnet for one release, auto-selecting the mechanism by platform - " +
+				"the host-network route on native Linux (ward#330), the SOCKS5 sidecar on Docker Desktop (ward#349)",
 		},
 		&cli.StringFlag{
 			Name:   "tailnet-mode",
 			Value:  tailnetModeAuto,
 			Hidden: true,
-			Usage:  "override the tailnet mechanism: auto|host-net|sidecar (default auto: pick by platform); implies --tailnet when set to a non-auto value (ward#362)",
+			Usage:  "override the tailnet mechanism: auto|host-net|sidecar (default auto: pick by platform); force-joins the tailnet when set to a non-auto value (ward#362)",
 		},
 	}
 }
 
-// tailnetEnabled reports whether a run wants the tailnet: --tailnet, or an explicit
-// non-auto --tailnet-mode (the escape hatch can stand on its own). See tailnetFlags.
-func tailnetEnabled(c *cli.Command) bool {
-	if c.Bool("no-tailnet") {
-		return false
-	}
-	if c.Bool("tailnet") {
-		return true
-	}
-	m := strings.TrimSpace(c.String("tailnet-mode"))
-	return c.IsSet("tailnet-mode") && m != "" && m != tailnetModeAuto
-}
-
-// resolveTailnet maps --tailnet / --tailnet-mode to the host-net vs sidecar mechanism
-// (ward#362): auto picks host-net on Linux, else sidecar; off returns both false.
-func resolveTailnet(c *cli.Command, goos string) (hostNet, tsSidecar bool, err error) {
-	if !tailnetEnabled(c) {
+// resolveTailnetMechanism maps a resolved tailnet want + --tailnet-mode to the
+// host-net vs sidecar mechanism (ward#362): auto picks host-net on Linux, else sidecar.
+func resolveTailnetMechanism(c *cli.Command, goos string, want bool) (hostNet, tsSidecar bool, err error) {
+	if !want {
 		return false, false, nil
 	}
 	switch mode := strings.TrimSpace(c.String("tailnet-mode")); mode {
@@ -432,18 +418,18 @@ func agentDefaultSurfaceAction() cli.ActionFunc {
 
 // agentImageFlags is the shared container image/ward-build/escalation flag block every
 // dispatching role layers its own flags on top of (ward#355); --print stays per-role.
-func agentImageFlags(tailnetDefault bool) []cli.Flag {
-	// The image/ward-build/pinning group stays functional but hidden (ward#362): env-backed
-	// or dev-only. --aws + the consolidated tailnet route stay visible.
+func agentImageFlags() []cli.Flag {
+	// The image/ward-build/pinning group stays functional but hidden (ward#362).
+	// --aws + the tailnet route are now hidden deprecated aliases (ward#578).
 	flags := []cli.Flag{
 		&cli.StringFlag{Name: "image", Value: containerImageDefault, Hidden: true, Sources: cli.EnvVars(envAgentImage), Usage: "dev-base image to run (env: WARD_AGENT_IMAGE)"},
 		&cli.StringFlag{Name: "tag", Value: containerImageTagDefault, Hidden: true, Sources: cli.EnvVars(envAgentTag), Usage: "image tag; per-run pinning (env: WARD_AGENT_TAG)"},
 		&cli.StringFlag{Name: "ward-source", Hidden: true, Usage: "development-only: mount a local ward checkout and build ward from it instead of downloading the release"},
 		&cli.StringFlag{Name: "ward-version", Hidden: true, Sources: cli.EnvVars(envAgentVersion), Usage: "ward release the container downloads (default: this host's ward; env: WARD_AGENT_VERSION)"},
 		&cli.BoolFlag{Name: "allow-ward-downgrade", Hidden: true, Usage: "permit a --ward-version pin older than this host's ward (ships an older in-container reaper; ward#529)"},
-		&cli.BoolFlag{Name: "aws", Usage: "mount ~/.aws read-only (broad SSM read surface; off by default)"},
+		&cli.BoolFlag{Name: "aws", Hidden: true, Usage: "deprecated (ward#578): the ~/.aws mount is now a per-role guardfile set (ward-kdl.aws.guardfile.kdl); this hidden alias force-mounts it read-only for one release"},
 	}
-	return append(flags, tailnetFlags(tailnetDefault)...)
+	return append(flags, tailnetFlags()...)
 }
 
 // agentSurfaceFlags builds the detached launch flag set shared by the engineer,
@@ -459,7 +445,7 @@ func agentSurfaceFlags() []cli.Flag {
 		&cli.StringFlag{Name: "details", Usage: "extra operator instructions woven into the seeded prompt + pre-flight read (overrides the issue text on conflict)"},
 		&cli.BoolFlag{Name: "github", Usage: "treat a bare owner/repo#N ref as a GitHub issue (clone/push + comments + PR on GitHub via a user-supplied token; ward#489). A github.com URL infers this automatically."},
 	}
-	flags = append(flags, agentImageFlags(false)...)
+	flags = append(flags, agentImageFlags()...)
 	flags = append(flags,
 		&cli.BoolFlag{Name: "print", Usage: "resolve the issue + seeded prompt + docker plan and exit; inject no push token, run nothing"},
 		// --no-pull is hidden (ward#362): a cached-image optimization, not everyday surface.
@@ -1075,7 +1061,7 @@ func buildAgentPlan(c *cli.Command, mode containerMode, ref agentIssueRef, seed 
 		return upPlan{}, fmt.Errorf("cannot resolve the current directory")
 	}
 	repo := targetRepo{Owner: ref.Owner, Name: ref.Repo}
-	plan, err := buildUpPlan(c, repo, mode, cwd, assetsDir, []string{seed}, false)
+	plan, err := buildUpPlan(c, repo, mode, roleEngineer, cwd, assetsDir, []string{seed}, false)
 	if err != nil {
 		return upPlan{}, err
 	}
@@ -1513,7 +1499,7 @@ func printAgentTaskPlan(c *cli.Command, mode containerMode, repo targetRepo, tit
 	// value simply previews as the default rather than erroring here (ward#508).
 	wf, _ := agentWorkflow(c)
 	seed := agentSeedPromptWorkflow(previewRef, title, body, "", true, nil, wf)
-	plan, err := buildUpPlan(c, repo, mode, "", "", []string{seed}, false)
+	plan, err := buildUpPlan(c, repo, mode, roleEngineer, "", "", []string{seed}, false)
 	if err != nil {
 		return err
 	}

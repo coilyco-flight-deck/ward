@@ -5,9 +5,11 @@ doc_goal: Let a reader pick and drive the advisor counsel role with confidence -
 
 `ward agent advisor` (public face `warded advisor`) is the **counsel** role of the
 startup roster: it answers and **writes no code**. It merges the retired
-`reply` + `ask` verbs, and **the argument type selects the mode**. `warded advisor`
-defaults to `--tailnet` so ref-mode research can reach live backends and on-host
-state, and `--no-tailnet` opts out when a run should stay isolated. See
+`reply` + `ask` verbs, and **the argument type selects the mode**. The advisor
+role holds the **live-observe guardfile set** (the tailnet + `~/.aws`) via its
+`roles` entry in [`ward-kdl.fleet.kdl`](../cmd/ward-kdl/ward-kdl.fleet.kdl)
+([ward#578](https://forgejo.coilysiren.me/coilyco-flight-deck/ward/issues/578)), so ref-mode research reaches live backends and on-host state with no
+flag, and `--no-tailnet` opts out when a run should stay fully isolated. See
 [docs/agent.md](agent.md).
 
 ## Usage
