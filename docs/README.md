@@ -84,6 +84,9 @@ New to ward? Read [architecture.md](architecture.md) first - it frames the whole
 ## Container subsystem
 
 - [container.md](container.md) - the ephemeral, least-access dev container.
+- [container-api.md](container-api.md) - the host<->entrypoint contract overview: bind mounts + the produced file layout.
+- [container-env.md](container-env.md) - the full `WARD_*` environment contract the entrypoint reads.
+- [container-capability-ladder.md](container-capability-ladder.md) - the progressive-capability ladder (`WARD_CONTEXT_LEVEL`, by driver).
 - [container-permissions.md](container-permissions.md) - what the container itself may do.
 - [container-substrate.md](container-substrate.md) - the read-only `/substrate` reference repos.
 - [context-probe.md](context-probe.md) - design: the role-aware three-tier context probe + per-driver context-management spec.
