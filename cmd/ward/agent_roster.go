@@ -46,8 +46,8 @@ var agentRoleInfos = map[string]agentRoleInfo{
 }
 
 // agentMetaCommands are agent subcommands that are NOT startup roles (the self-describe
-// verbs like `roster`); the roster enumeration skips them.
-var agentMetaCommands = map[string]bool{"roster": true}
+// `roster` and the maintenance `reap`); the roster enumeration skips them.
+var agentMetaCommands = map[string]bool{"roster": true, "reap": true}
 
 // agentRosterRow is one rendered roster entry: the role, its tagline, its modes, and
 // the per-role detail doc it links to.

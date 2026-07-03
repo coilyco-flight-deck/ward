@@ -96,6 +96,10 @@ func main() {
 		fmt.Fprintln(os.Stderr, "ward: warning: ward-kdl exec mount degraded:", err)
 	}
 
+	// Graft the one mutating docker leaf - `exec`, gated to ward=true containers
+	// (ward#220) - onto the read-only docker group the guardfile mount just built.
+	graftDockerExec(app, leanRunner())
+
 	// Unknown-verb fallback: `ward <leaf>` -> `ward exec <leaf>` for a declared
 	// leaf that isn't a top-level verb. See docs/verb-fallback.md, issue #87.
 	os.Args = maybeRewriteToExec(os.Args, topLevelVerbs(app))

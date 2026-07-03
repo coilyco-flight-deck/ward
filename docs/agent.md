@@ -79,15 +79,16 @@ Grouped by the surface you are reaching for.
 
 - [agent-roster.md](agent-roster.md) - flat list of every role (`ward agent roster`).
 - [agent-subcommands.md](agent-subcommands.md) - the three roles compared + the reaper.
-- [agent-drivers.md](agent-drivers.md) - the four `--driver` harnesses compared.
+- [agent-drivers.md](agent-drivers.md) - the `--driver` harnesses compared.
 - [agent-surface.md](agent-surface.md) - the director's read-only surface.
 
 **Landing and safety** (how a run is fenced and where it lands)
 
 - [agent-workflow.md](agent-workflow.md) - `--workflow direct-main|pr|patch-only`, the run's landing policy.
 - [agent-preflight.md](agent-preflight.md) - the detached GO/NO-GO pre-flight.
+- [agent-reap.md](agent-reap.md) - the host-side idle-killer.
 - [agent-trust-gate.md](agent-trust-gate.md) - the owner trust gate.
-- [agent-wrong-repo.md](agent-wrong-repo.md) - the WRONG-REPO blind-fire path.
+- [agent-wrong-repo.md](agent-wrong-repo.md) - the WRONG-REPO blind-fire.
 - [agent-reservation.md](agent-reservation.md) - reservation, TTL, `--force`.
 
 **Flags and the container model**
