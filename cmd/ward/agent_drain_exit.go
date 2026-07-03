@@ -5,7 +5,6 @@ import (
 	"fmt"
 	"os"
 	"os/exec"
-	"syscall"
 
 	"forgejo.coilysiren.me/coilyco-flight-deck/cli-guard/cli/verb"
 	"github.com/urfave/cli/v3"
@@ -78,9 +77,10 @@ func (r *Runner) spawnDrainWaiter(name string) {
 	cmd.Args[0] = "ward"
 	cmd.Env = os.Environ()
 	// Detach: no controlling terminal, no inherited stdio, its own session so it
-	// outlives this process and never writes to the operator's console.
+	// outlives this process and never writes to the operator's console. The session
+	// detach is OS-specific (setsid on Unix, no-op on Windows); see detachProcess.
 	cmd.Stdin, cmd.Stdout, cmd.Stderr = nil, nil, nil
-	cmd.SysProcAttr = &syscall.SysProcAttr{Setsid: true}
+	detachProcess(cmd)
 	if serr := cmd.Start(); serr != nil {
 		fmt.Fprintf(os.Stderr, "ward container: could not spawn a drain-on-exit waiter for %s (%v); the keep-10 sweep will drain it later\n", name, serr)
 		return
