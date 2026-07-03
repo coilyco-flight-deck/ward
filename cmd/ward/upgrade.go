@@ -28,7 +28,11 @@ On macOS/Linux it runs the audited brew sequence:
     brew upgrade coilyco-flight-deck/tap/ward
 
 The formula is the centralized flight-deck tap coilyco-flight-deck/tap/ward,
-the only tap CI keeps fresh.
+the only tap CI keeps fresh. If the installed keg's receipt lacks
+source.full_name (a legacy/stale tab brew cannot canonicalize the formula
+name to), the upgrade escalates to ` + "`brew reinstall`" + `, which matches
+by rack directory and rewrites the receipt so the next upgrade self-heals.
+See ward#581.
 
 On Windows, where brew is absent, it runs the scoop sequence instead:
 
@@ -87,16 +91,12 @@ func (r *Runner) upgradeAction(ctx context.Context, c *cli.Command) error {
 // bumps); the in-repo Formula/ward.rb is frozen, not an upgrade source.
 const upgradeFormula = "coilyco-flight-deck/tap/ward"
 
-// upgradeFormulaBare is the unqualified fallback: it matches a null-full_name
-// keg by rack dir where the tap-qualified name can't. See ward#551.
-const upgradeFormulaBare = "ward"
-
 // upgradeScoopApp is the Windows scoop app name, matching ward.json in
-// coilysiren/scoop-bucket. Bare, like the brew bare-keg fallback. See ward#561.
+// coilysiren/scoop-bucket. See ward#561.
 const upgradeScoopApp = "ward"
 
-// staleTabNotInstalled gates the unqualified retry to the specific "<formula>
-// not installed" signature a null-full_name receipt produces. See ward#551.
+// staleTabNotInstalled gates the reinstall escalation to the specific
+// "<formula> not installed" signature a null-full_name receipt produces (ward#581).
 func staleTabNotInstalled(tail, formula string) bool {
 	return strings.Contains(tail, formula+" not installed")
 }
@@ -126,17 +126,17 @@ func (r *Runner) runUpgrade(ctx context.Context, dry bool, rows *[]audit.EgressR
 	if err == nil {
 		return nil
 	}
-	// Stale-receipt recovery: retry unqualified when the tap-qualified name
-	// can't match a null-full_name keg; other failures surface. See ward#551.
+	// Stale-receipt recovery: a null-full_name tab can't be matched from any
+	// name (the ward#551 bare retry was inert), so reinstall by rack. See ward#581.
 	if !staleTabNotInstalled(tail.String(), formula) {
 		return fmt.Errorf("upgrade: brew upgrade %s: %w", formula, err)
 	}
-	fmt.Fprintln(os.Stderr, "==> brew upgrade", upgradeFormulaBare,
-		"(fallback: tap-qualified keg not matched, ward#551)")
-	captured, err = r.execBrewRaw(ctx, []string{"upgrade", upgradeFormulaBare}, tail)
+	fmt.Fprintln(os.Stderr, "==> brew reinstall", formula,
+		"(stale receipt: keg tab lacks source.full_name, ward#581)")
+	captured, err = r.execBrewRaw(ctx, []string{"reinstall", formula}, tail)
 	*rows = append(*rows, captured...)
 	if err != nil {
-		return fmt.Errorf("upgrade: brew upgrade %s (fallback %s): %w", formula, upgradeFormulaBare, err)
+		return fmt.Errorf("upgrade: brew reinstall %s (stale-receipt recovery): %w", formula, err)
 	}
 	return nil
 }
