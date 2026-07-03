@@ -1,5 +1,5 @@
 ---
-doc_goal: Make ward doctor readable as the loud validator that turns a .ward/ward.yaml into a trustworthy policy gate - the allowlist drift guard (stricter than target-name-exists), the fail-when-no-security-block behavior that makes exit 0 mean a policy is in force, and the three host probes - so a reader can wire it as a CI gate and read every row.
+doc_goal: Make ward doctor readable as the loud validator that turns a .ward/ward.yaml into a trustworthy policy gate - the allowlist drift guard (stricter than target-name-exists), the fail-when-no-security-block behavior that makes exit 0 mean a policy is in force, the three host security probes, and the host-side Ollama-reachability probe that mirrors the local-harness launch gate before dispatch - so a reader can wire it as a CI gate and read every row.
 ---
 # ward doctor
 
@@ -13,6 +13,7 @@ doc_goal: Make ward doctor readable as the loud validator that turns a .ward/war
   - **`path`.** Resolves each `protected_binaries[].name` via `exec.LookPath`. When `expected_real_paths` is non-empty, a mismatch is a `FAIL`. When the list is empty, the resolved location surfaces as `INFO`. A missing binary is a `WARN`.
   - **`sudo`.** Skipped unless `sudo.forbid_passwordless` is set. Runs `sudo -n true`. Clean exit is `FAIL`; non-zero with a "password required" sentinel is `PASS`; any other non-zero is `WARN`.
   - **`credentials`.** Walks every `protected_binaries[].credential_env` name and reports which are set in this session. Each hit is a `WARN` by default. `--strict-credentials` promotes hits to `FAIL`.
+- **Ollama reachability.** A host-side mirror of the local-harness launch gate ([ward#487](https://forgejo.coilysiren.me/coilyco-flight-deck/ward/issues/487)), so a down endpoint surfaces before a `ward agent` goose/opencode dispatch would hang on it ([ward#499](https://forgejo.coilysiren.me/coilyco-flight-deck/ward/issues/499)). It reads the same env the dispatch path binds - `WARD_OLLAMA_URL` (opencode) and `WARD_GOOSE_OLLAMA_HOST_B64` (goose, base64, resolved from the SSM tower host) - TCP-dials each once, and emits a row per endpoint: reachable is `PASS`, unreachable is `FAIL` (naming the endpoint and the `WARD_SMOKE_TEST_SKIP=1` bypass). With **neither** env set it emits a single `SKIP` - the baked fleet default is not operator intent, so a plain adopter run (no local harness in play) stays green and the in-container launch gate stays the fallback. It is a **reachability** check, not a model-serving one, exactly like the launch gate. `--skip ollama` stands it down; it is independent of the `security:` block. See [agent-local-harnesses.md](agent-local-harnesses.md).
 
 ## Allowlist contract
 

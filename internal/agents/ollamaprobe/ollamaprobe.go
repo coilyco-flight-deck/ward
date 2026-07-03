@@ -88,6 +88,31 @@ func dialAddr(endpoint string) (string, error) {
 	return net.JoinHostPort(host, port), nil
 }
 
+// ReachOnce normalises endpoint and TCP-dials it once, returning the host:port it
+// dialed: the host-side pre-dispatch mirror of the launch gate (ward#499).
+func ReachOnce(ctx context.Context, endpoint string) (string, error) {
+	addr, err := dialAddr(endpoint)
+	if err != nil {
+		return "", err
+	}
+	return addr, dialOnce(ctx, addr)
+}
+
+// dialOnce performs a single bounded TCP dial of addr, the shared reachability unit
+// under both probe (the windowed launch-gate loop) and ReachOnce (the host-side probe).
+func dialOnce(ctx context.Context, addr string) error {
+	if ctx == nil {
+		ctx = context.Background()
+	}
+	d := net.Dialer{Timeout: dialTimeout}
+	conn, err := d.DialContext(ctx, "tcp", addr)
+	if err != nil {
+		return err
+	}
+	_ = conn.Close()
+	return nil
+}
+
 // probe TCP-dials addr across probeWindow, returning nil on the first connect and
 // the last dial error otherwise; retries absorb the forwarder startup race (ward#359).
 func probe(ctx context.Context, addr string) error {
@@ -97,13 +122,10 @@ func probe(ctx context.Context, addr string) error {
 	deadline := time.Now().Add(probeWindow)
 	var lastErr error
 	for {
-		d := net.Dialer{Timeout: dialTimeout}
-		conn, err := d.DialContext(ctx, "tcp", addr)
-		if err == nil {
-			_ = conn.Close()
+		lastErr = dialOnce(ctx, addr)
+		if lastErr == nil {
 			return nil
 		}
-		lastErr = err
 		if ctx.Err() != nil {
 			return lastErr
 		}

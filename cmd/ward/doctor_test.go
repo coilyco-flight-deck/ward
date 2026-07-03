@@ -147,3 +147,30 @@ func TestSecurityIsZero(t *testing.T) {
 		t.Fatal("Security with a protected binary must not be zero")
 	}
 }
+
+// TestRunOllamaAt_UnconfiguredStaysGreen locks the adopter path: no endpoint env set
+// SKIPs (never fails), so a plain `ward doctor` run stays green.
+func TestRunOllamaAt_UnconfiguredStaysGreen(t *testing.T) {
+	t.Setenv("WARD_OLLAMA_URL", "")
+	t.Setenv(gooseOllamaHostEnvKey, "")
+	var out bytes.Buffer
+	if err := runOllamaAt(&out, doctorOptions{}); err != nil {
+		t.Fatalf("unconfigured ollama probe should not fail: %v", err)
+	}
+	if !strings.Contains(out.String(), "SKIP") {
+		t.Errorf("want a SKIP row when nothing is configured, got:\n%s", out.String())
+	}
+}
+
+// TestRunOllamaAt_Skipped confirms --skip ollama stands the probe down (renders a
+// SKIP, never dials) even with a would-be-unreachable endpoint configured.
+func TestRunOllamaAt_Skipped(t *testing.T) {
+	t.Setenv("WARD_OLLAMA_URL", "http://127.0.0.1:1/v1")
+	var out bytes.Buffer
+	if err := runOllamaAt(&out, doctorOptions{skips: map[string]bool{"ollama": true}}); err != nil {
+		t.Fatalf("--skip ollama should not fail: %v", err)
+	}
+	if !strings.Contains(out.String(), "skipped by --skip ollama") {
+		t.Errorf("want the skip row, got:\n%s", out.String())
+	}
+}

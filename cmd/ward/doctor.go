@@ -14,6 +14,8 @@ import (
 	"forgejo.coilysiren.me/coilyco-flight-deck/cli-guard/cli/allowlist"
 	"forgejo.coilysiren.me/coilyco-flight-deck/cli-guard/cli/repocfg"
 	"github.com/urfave/cli/v3"
+
+	"github.com/coilyco-flight-deck/ward/internal/agents/ollamaprobe"
 )
 
 // doctorCommand is ward's single diagnostic verb, running the allowlist and
@@ -25,12 +27,15 @@ func doctorCommand() *cli.Command {
 		Description: "Validates the .ward/ward.yaml (or .coily/coily.yaml) allowlist " +
 			"against the repo Makefile, then probes host security posture against the " +
 			"parsed security: block: PATH posture per protected binary, passwordless sudo " +
-			"(when forbid_passwordless is set), and credential-env scan. Exits non-zero " +
-			"on any FAIL row, and (per ward#450) when no security: block is declared at all.",
+			"(when forbid_passwordless is set), and credential-env scan. Also probes any " +
+			"operator-configured local-harness Ollama endpoint (WARD_OLLAMA_URL / " +
+			"WARD_GOOSE_OLLAMA_HOST_B64) so a down endpoint surfaces before a goose/opencode " +
+			"dispatch would hang (ward#499). Exits non-zero on any FAIL row, and (per ward#450) " +
+			"when no security: block is declared at all.",
 		Flags: []cli.Flag{
 			&cli.StringSliceFlag{
 				Name:  "skip",
-				Usage: "Skip a security probe (path | sudo | credentials). Repeatable.",
+				Usage: "Skip a probe (path | sudo | credentials | ollama). Repeatable.",
 			},
 			&cli.BoolFlag{
 				Name:  "strict-credentials",
@@ -81,6 +86,9 @@ func runDoctorAt(out io.Writer, yamlPath string, opts doctorOptions) error {
 	}
 	if err := runSecurityAt(out, yamlPath, opts); err != nil {
 		failures = append(failures, "security: "+err.Error())
+	}
+	if err := runOllamaAt(out, opts); err != nil {
+		failures = append(failures, "ollama: "+err.Error())
 	}
 
 	if len(failures) > 0 {
@@ -169,6 +177,26 @@ func runSecurityAt(out io.Writer, yamlPath string, opts doctorOptions) error {
 		_, _ = fmt.Fprintf(out, "  %-11s %-4s %s\n", r.probe, r.severity, r.detail)
 		if r.severity == sevFail {
 			fails = append(fails, fmt.Sprintf("%s: %s", r.probe, r.detail))
+		}
+	}
+	if len(fails) > 0 {
+		return errors.New(strings.Join(fails, "; "))
+	}
+	return nil
+}
+
+// runOllamaAt renders the host-side local-harness reachability probe, the pre-dispatch
+// mirror of the launch gate (ward#499). --skip ollama stands it down. See docs/doctor.md.
+func runOllamaAt(out io.Writer, opts doctorOptions) error {
+	if opts.skips[ollamaprobe.ProbeName] {
+		_, _ = fmt.Fprintf(out, "  %-11s %-4s %s\n", ollamaprobe.ProbeName, sevSkip, "skipped by --skip "+ollamaprobe.ProbeName)
+		return nil
+	}
+	var fails []string
+	for _, r := range ollamaprobe.DoctorProbe(context.Background(), os.Getenv) {
+		_, _ = fmt.Fprintf(out, "  %-11s %-4s %s\n", ollamaprobe.ProbeName, r.Severity, r.Detail)
+		if r.Severity == ollamaprobe.SevFail {
+			fails = append(fails, r.Detail)
 		}
 	}
 	if len(fails) > 0 {

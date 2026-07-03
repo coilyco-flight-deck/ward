@@ -47,6 +47,14 @@ and the `ollamaprobe` `LaunchGate` in the Go port. It is a **reachability** chec
 not a model-serving check: a reachable-but-misconfigured Ollama (wrong model tag)
 still surfaces at run time, not here.
 
+## Earlier signal: `ward doctor` ([ward#499](https://forgejo.coilysiren.me/coilyco-flight-deck/ward/issues/499))
+
+The launch gate catches a down endpoint at container launch. `ward doctor` catches it
+**before dispatch**: its Ollama-reachability check shares the same `ollamaprobe` dial,
+reads the same env the dispatch path binds (`WARD_OLLAMA_URL`, `WARD_GOOSE_OLLAMA_HOST_B64`),
+and `FAIL`s naming a down endpoint. Neither env set `SKIP`s, so an adopter run stays
+green. Same reachability check, one step earlier. See [doctor.md](doctor.md).
+
 ## See also
 
 - [docs/agent-local-model.md](agent-local-model.md) - bring your own Ollama: defaults, the supported native-Linux route, and the current limitation ([#395](https://forgejo.coilysiren.me/coilyco-flight-deck/ward/issues/395)).

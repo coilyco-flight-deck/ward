@@ -44,6 +44,44 @@ func TestDialAddr(t *testing.T) {
 	}
 }
 
+// TestReachOnce covers the host-side single-dial probe: a live listener returns its
+// addr, a closed port and a malformed endpoint each error.
+func TestReachOnce(t *testing.T) {
+	savedDial := dialTimeout
+	dialTimeout = 100 * time.Millisecond
+	defer func() { dialTimeout = savedDial }()
+
+	ln, err := net.Listen("tcp", "127.0.0.1:0")
+	if err != nil {
+		t.Fatalf("listen: %v", err)
+	}
+	live := ln.Addr().String()
+	addr, err := ReachOnce(context.Background(), "http://"+live+"/v1")
+	if err != nil {
+		t.Errorf("ReachOnce against a live listener should pass, got %v", err)
+	}
+	if addr != live {
+		t.Errorf("ReachOnce addr = %q, want %q", addr, live)
+	}
+
+	// A bound-then-closed port is guaranteed refused, not merely idle.
+	ln2, err := net.Listen("tcp", "127.0.0.1:0")
+	if err != nil {
+		t.Fatalf("listen: %v", err)
+	}
+	dead := ln2.Addr().String()
+	_ = ln2.Close()
+	if _, err := ReachOnce(context.Background(), "http://"+dead); err == nil {
+		t.Error("ReachOnce against a closed port should error")
+	}
+
+	// A malformed endpoint errors at parse, before any dial.
+	if _, err := ReachOnce(context.Background(), "   "); err == nil {
+		t.Error("ReachOnce with an empty endpoint should error at parse")
+	}
+	_ = ln.Close()
+}
+
 // TestPreLaunchNoOps confirms the gate stands aside when there is nothing to guard:
 // a non-headless run, the skip switch, or no endpoint - none is the backend down.
 func TestPreLaunchNoOps(t *testing.T) {
