@@ -155,11 +155,33 @@ install_ward_kdl_write() {
   fi
 }
 
+# install_ward_kdl_read fetches the read-tier helper surface used by read-only director
+# sessions to inspect kai-server without mutating it.
+install_ward_kdl_read() {
+  command -v ward-kdl-read >/dev/null 2>&1 && return 0
+  if [ -n "${WARD_FROM_SOURCE:-}" ]; then
+    log "director: ward-kdl-read is not built from the mounted source (RO mount); read-only observe surface skipped this run"
+    return 0
+  fi
+  local tag asset
+  tag="$(resolve_ward_tag)"
+  [ -n "$tag" ] && [ "$tag" != "null" ] || { log "director: no release tag resolved for ward-kdl-read; observe surface skipped"; return 0; }
+  asset="$WARD_FORGEJO_BASE/api/packages/coilyco-flight-deck/generic/ward-kdl-read/$tag/ward-kdl-read-linux-$(arch)"
+  log "director: downloading ward-kdl-read $tag for linux-$(arch) from the internal package channel"
+  if curl -fsSL -H "Authorization: token ${FORGEJO_TOKEN:-}" -o /usr/local/bin/ward-kdl-read "$asset"; then
+    chmod 0755 /usr/local/bin/ward-kdl-read
+  else
+    rm -f /usr/local/bin/ward-kdl-read
+    log "director: ward-kdl-read download failed ($asset); read-only observe surface skipped"
+  fi
+}
+
 # start_broker brings the broker up and exports WARD_BROKER_SOCK once the socket
 # exists. Best-effort: a miss leaves the agent on the dual-mode token path.
 start_broker() {
   [ "${WARD_READONLY:-0}" = 1 ] || return 0
   [ -n "${FORGEJO_TOKEN:-}" ] || { log "broker: no FORGEJO_TOKEN to hold; skipping broker"; return 0; }
+  install_ward_kdl_read
   install_ward_kdl_write
   command -v ward-kdl-write >/dev/null 2>&1 || return 0
   mkdir -p "$(dirname "$WARD_BROKER_SOCK_PATH")" "$(dirname "$WARD_BROKER_LOG_PATH")"

@@ -42,6 +42,7 @@ Opt-in mounts (off unless the flag is set):
 - **`~/.aws` -> `/root/.aws`** (ro) - `--aws`, the broad SSM read surface.
 - **ward checkout -> `/opt/ward-src`** (ro) - `--ward-source`; build ward from source. Sets `WARD_FROM_SOURCE`.
 - **agent-log drain -> `/opt/ward-agent-logs`** (ro) - the director's redacted log read ([agent-surface-log-read.md](agent-surface-log-read.md)).
+- **read-only ward-kdl helper -> `/usr/local/bin/ward-kdl-read`** (best-effort, read-only director sessions only) - the kai-server observe surface for non-mutating ssh-through-docker checks.
 - **`/var/run/docker.sock`** (rw) - the surface dispatch path ([agent-surface.md](agent-surface.md)).
 
 ## What the entrypoint produces
