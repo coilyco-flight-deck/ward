@@ -72,6 +72,15 @@ removed the moment `docker run` returns (the container has read it by then), and
 past-TTL orphan sweep reclaims any file a crashed launch left behind, since `$HOME`, unlike
 `/tmp`, is never OS-reaped.
 
+The per-run **assets bind-mount** (`-v <dir>:/opt/ward:ro`, the embedded entrypoint +
+doctrine) lands under `$HOME` for the **same reason, one layer down**. Its source path is
+resolved by the docker **daemon**, not the client, and a snap docker daemon's private
+`/tmp` hides a `/tmp` source just as the client's does - so a `/tmp` assets dir dies at
+`docker run` with `no such file` the moment the env-file fix clears the first wall
+([ward#574](https://forgejo.coilysiren.me/coilyco-flight-deck/ward/issues/574)). Both the
+env-file and the assets dir share one `launchStagingDir` (`$HOME`, else `$TMPDIR`) so a
+snap docker reaches every launch asset it must open.
+
 ## See also
 
 - [container-api.md](container-api.md) - the API overview (mounts + file layout).

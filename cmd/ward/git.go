@@ -7,23 +7,26 @@ import (
 	"github.com/urfave/cli/v3"
 )
 
-// gitPassthroughVerbs is the audited git set fronted by `ward git <verb>`.
-// commit/clone are dedicated verbs (git_commit.go, git_clone.go); see docs.
-var gitPassthroughVerbs = []struct{ name, usage string }{
-	{"status", "git status - show the working tree state."},
-	{"log", "git log - show commit history."},
-	{"diff", "git diff - show changes."},
-	{"show", "git show - show a commit or object."},
-	{"grep", "git grep - search tracked file contents (read-only)."},
-	{"add", "git add - stage changes."},
-	{"fetch", "git fetch - download objects and refs from a remote."},
-	{"pull", "git pull - fetch and integrate."},
-	{"push", "git push - update remote refs."},
-	{"branch", "git branch - list or manage branches."},
-	{"checkout", "git checkout - switch branches or restore files."},
-	{"stash", "git stash - shelve working-tree changes."},
-	{"restore", "git restore - restore working-tree files."},
-	{"remote", "git remote - list remotes or inspect a remote's URL (get-url)."},
+// gitPassthroughVerbs is the audited git set fronted by `ward git <verb>`; net
+// marks the remote verbs that get pre-configured Forgejo auth (ward#507, git_auth.go).
+var gitPassthroughVerbs = []struct {
+	name, usage string
+	net         bool
+}{
+	{name: "status", usage: "git status - show the working tree state."},
+	{name: "log", usage: "git log - show commit history."},
+	{name: "diff", usage: "git diff - show changes."},
+	{name: "show", usage: "git show - show a commit or object."},
+	{name: "grep", usage: "git grep - search tracked file contents (read-only)."},
+	{name: "add", usage: "git add - stage changes."},
+	{name: "fetch", usage: "git fetch - download objects and refs from a remote.", net: true},
+	{name: "pull", usage: "git pull - fetch and integrate.", net: true},
+	{name: "push", usage: "git push - update remote refs.", net: true},
+	{name: "branch", usage: "git branch - list or manage branches."},
+	{name: "checkout", usage: "git checkout - switch branches or restore files."},
+	{name: "stash", usage: "git stash - shelve working-tree changes."},
+	{name: "restore", usage: "git restore - restore working-tree files."},
+	{name: "remote", usage: "git remote - list remotes or inspect a remote's URL (get-url)."},
 }
 
 // gitCommand groups ward's audited git verbs: thin passthroughs plus the
@@ -31,7 +34,7 @@ var gitPassthroughVerbs = []struct{ name, usage string }{
 func gitCommand() *cli.Command {
 	subs := []*cli.Command{gitCommitCommand(), gitCloneCommand(), gitGrepRemoteCommand()}
 	for _, v := range gitPassthroughVerbs {
-		subs = append(subs, gitPassthroughLeaf(v.name, v.usage))
+		subs = append(subs, gitPassthroughLeaf(v.name, v.usage, v.net))
 	}
 	return &cli.Command{
 		Name:     "git",
@@ -43,19 +46,25 @@ is a dedicated concurrency-safe verb (see docs/git-verbs.md).`,
 	}
 }
 
-// gitPassthroughLeaf builds one `ward git <verb>` passthrough, wiring the
-// argv rewriter so `ward git <verb> ...` runs `git <verb> ...`.
-func gitPassthroughLeaf(name, usage string) *cli.Command {
+// gitPassthroughLeaf builds one `ward git <verb>` passthrough (argv rewriter
+// prepends the verb); a net verb also gets Forgejo auth injected (ward#507).
+func gitPassthroughLeaf(name, usage string, net bool) *cli.Command {
 	return &cli.Command{
 		Name:            name,
 		Usage:           usage,
 		SkipFlagParsing: true,
 		Action: func(ctx context.Context, c *cli.Command) error {
 			r := newRunner()
-			pc := passthrough.Command("git", r.Runner, r.Audit,
-				passthrough.WithVerbName("git."+name),
+			opts := []passthrough.Option{
+				passthrough.WithVerbName("git." + name),
 				passthrough.WithArgvRewriter(gitVerbRewriter(name)),
-			)
+			}
+			if net {
+				opts = append(opts, passthrough.WithEnvFunc(func() (map[string]string, error) {
+					return r.gitForgejoAuthEnv(ctx)
+				}))
+			}
+			pc := passthrough.Command("git", r.Runner, r.Audit, opts...)
 			return pc.Action(ctx, c)
 		},
 	}

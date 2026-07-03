@@ -163,8 +163,8 @@ func hostname() string {
 	return "unknown"
 }
 
-// reserveIssue acquires both reservation sides before a container fires, returning a
-// local-sentinel release; a remote-side failure rolls the local hold back.
+// reserveIssue acquires both reservation sides before a container fires (ward#570). It
+// returns a release retracting both halves; a remote failure rolls the local hold back.
 func (r *Runner) reserveIssue(ctx context.Context, label string, mode containerMode, ref agentIssueRef, container, branch, justification string, force bool) (func(), error) {
 	now := time.Now().UTC()
 	fmt.Fprintf(os.Stderr, "%s: reservation start for %s (container=%s branch=%s force=%t)\n", label, ref, container, branch, force)
@@ -173,13 +173,19 @@ func (r *Runner) reserveIssue(ctx context.Context, label string, mode containerM
 		fmt.Fprintf(os.Stderr, "%s: reservation local acquire failed for %s: %v\n", label, ref, err)
 		return nil, err
 	}
-	if err := r.acquireRemoteReservation(ctx, label, mode, ref, container, justification, now, force); err != nil {
+	releaseRemote, err := r.acquireRemoteReservation(ctx, label, mode, ref, container, justification, now, force)
+	if err != nil {
 		fmt.Fprintf(os.Stderr, "%s: reservation remote acquire failed for %s: %v\n", label, ref, err)
 		releaseLocal()
 		return nil, err
 	}
 	fmt.Fprintf(os.Stderr, "%s: reservation acquired for %s\n", label, ref)
-	return releaseLocal, nil
+	return func() {
+		if releaseRemote != nil {
+			releaseRemote()
+		}
+		releaseLocal()
+	}, nil
 }
 
 // precheckReservation runs reserveIssue's read-only refusal half ahead of the LLM
@@ -287,19 +293,19 @@ var reservationPostSleep = time.Sleep
 const reservationWarnToken = "remote reservation NOT posted"
 
 // acquireRemoteReservation refuses on a fresh reservation comment (unless force), else
-// posts one - best-effort but no longer silent: retried, then a WARN (ward#402, docs).
-func (r *Runner) acquireRemoteReservation(ctx context.Context, label string, mode containerMode, ref agentIssueRef, container, justification string, now time.Time, force bool) error {
+// posts one and returns a remote-release to roll it back (ward#402/#570, docs).
+func (r *Runner) acquireRemoteReservation(ctx context.Context, label string, mode containerMode, ref agentIssueRef, container, justification string, now time.Time, force bool) (func(), error) {
 	cl, err := r.hostForgeClient(ctx, ref.Forge, mode)
 	if err != nil {
 		warnRemoteReservationLost(label, ref, fmt.Sprintf("could not build the %s client: %v", ref.Forge, err))
-		return nil
+		return nil, nil
 	}
 	if !force {
 		comments, lerr := cl.listIssueComments(ctx, ref.Owner, ref.Repo, ref.Number)
 		if lerr != nil {
 			fmt.Fprintf(os.Stderr, "%s: warning: could not read issue comments to check for a remote reservation (%v); proceeding without the cross-host conflict check\n", label, lerr)
 		} else if who, held := freshReservationComment(comments, now, agentReservationTTL); held {
-			return newReservationConflict(
+			return nil, newReservationConflict(
 				"%s: issue %s is already reserved remotely (%s); wait for it to finish or pass --force to override",
 				label, ref, who)
 		}
@@ -315,7 +321,24 @@ func (r *Runner) acquireRemoteReservation(ctx context.Context, label string, mod
 	// Seal the conversation against in-flight steering (ward#494); best-effort, so a
 	// forge with no lock API or a lock failure never fails the reservation.
 	r.lockReservedIssue(ctx, cl, label, ref)
-	return nil
+	// The release reuses this same client to retract the comment + lock if the launch
+	// fails downstream (ward#570).
+	return func() { r.releaseRemoteReservation(ctx, cl, label, mode, ref, container) }, nil
+}
+
+// releaseRemoteReservation retracts this run's forge road-block on a launch that dies
+// before the container is up: a release-marker comment plus a best-effort unlock (#570).
+func (r *Runner) releaseRemoteReservation(ctx context.Context, cl issueForge, label string, mode containerMode, ref agentIssueRef, container string) {
+	if err := cl.commentIssue(ctx, ref.Owner, ref.Repo, ref.Number, reservationReleaseCommentBody(mode, container)); err != nil {
+		fmt.Fprintf(os.Stderr, "%s: warning: could not release the remote reservation on %s (%v); a re-run may need --force until the %s TTL lapses (ward#570)\n", label, ref, err, agentReservationTTL)
+		return
+	}
+	// Retract the reservation's conversation lock (ward#494) so a retry lands on an open
+	// thread; silent on the no-lock-leaf forge (Forgejo today).
+	if err := cl.unlockIssue(ctx, ref.Owner, ref.Repo, ref.Number); err != nil && !errors.Is(err, errForgeLockUnsupported) {
+		fmt.Fprintf(os.Stderr, "%s: warning: could not unlock %s after releasing the reservation (%v) (ward#570)\n", label, ref, err)
+	}
+	fmt.Fprintf(os.Stderr, "%s: released remote reservation on %s (launch failed before the container came up, ward#570)\n", label, ref)
 }
 
 // lockReservedIssue seals the reserved issue best-effort, logging the outcome (locked

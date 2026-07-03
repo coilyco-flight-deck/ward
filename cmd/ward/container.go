@@ -266,7 +266,7 @@ func (r *Runner) writeTokenEnvFile(ctx context.Context, target broker.Target, fg
 	}
 	// Land the env-file where the docker CLI can read it at `docker run`: a snap
 	// docker's private /tmp hides a /tmp path (ward#569; docs/container-env.md).
-	dir := launchEnvFileDir()
+	dir := launchStagingDir()
 	sweepStaleLaunchEnvFiles(dir)
 	f, err := os.CreateTemp(dir, launchEnvFilePrefix+"*")
 	if err != nil {
@@ -314,12 +314,12 @@ func (r *Runner) writeTokenEnvFile(ctx context.Context, target broker.Target, fg
 }
 
 // launchEnvFilePrefix is the temp-name prefix for the docker --env-file; a shared
-// const so the stale-orphan sweep can recognize leftovers written by launchEnvFileDir.
+// const so the stale-orphan sweep can recognize leftovers written by launchStagingDir.
 const launchEnvFilePrefix = "ward-forgejo-env-"
 
-// launchEnvFileDir picks the docker `--env-file` dir: $HOME top-level, which a snap
-// docker's `home`-interface CLI can read, else $TMPDIR (ward#569; the doc).
-func launchEnvFileDir() string {
+// launchStagingDir is the $HOME-else-$TMPDIR dir a snap docker can reach for both
+// the --env-file and the assets bind-mount (ward#569, ward#574; docs/container-env.md).
+func launchStagingDir() string {
 	home, err := os.UserHomeDir()
 	if err != nil || home == "" {
 		return os.TempDir()
@@ -382,10 +382,10 @@ const containerAssetsPrefix = "ward-container-assets-"
 
 const containerAssetsTTL = time.Hour
 
-// sweepStaleContainerAssets reclaims asset dirs past the TTL - left by detached
-// runs that cannot delete their own still-mounted dir on return. Best-effort.
-func sweepStaleContainerAssets() {
-	entries, err := os.ReadDir(os.TempDir())
+// sweepStaleContainerAssets best-effort reclaims past-TTL asset dirs in dir, left
+// by detached runs that cannot delete their own still-mounted dir on return.
+func sweepStaleContainerAssets(dir string) {
+	entries, err := os.ReadDir(dir)
 	if err != nil {
 		return
 	}
@@ -397,7 +397,7 @@ func sweepStaleContainerAssets() {
 		if ierr != nil || time.Since(info.ModTime()) < containerAssetsTTL {
 			continue
 		}
-		_ = os.RemoveAll(filepath.Join(os.TempDir(), e.Name()))
+		_ = os.RemoveAll(filepath.Join(dir, e.Name()))
 	}
 }
 
@@ -448,11 +448,12 @@ func (r *Runner) clearExitedContainer(ctx context.Context, name string) {
 	clearDrainMarker(agentLogsDir(), name)
 }
 
-// writeContainerAssets materializes the embedded entrypoint + doctrine into a
-// per-run tmp dir mounted read-only at /opt/ward, sweeping stale dirs first.
+// writeContainerAssets materializes the embedded entrypoint + doctrine into a per-run
+// dir under launchStagingDir (snap-visible $HOME; ward#574) mounted ro at /opt/ward.
 func writeContainerAssets() (dir string, cleanup func(), err error) {
-	sweepStaleContainerAssets()
-	dir, err = os.MkdirTemp("", containerAssetsPrefix+"*")
+	root := launchStagingDir()
+	sweepStaleContainerAssets(root)
+	dir, err = os.MkdirTemp(root, containerAssetsPrefix+"*")
 	if err != nil {
 		return "", func() {}, fmt.Errorf("ward container: create assets dir: %w", err)
 	}

@@ -38,9 +38,10 @@ minor bump. For a major, cut the `vN.0.0` tag by hand; pushes resume minor from
 there. Release bodies are categorised
 ([release-notes.md](release-notes.md)).
 
-## Formula bump job
+## Packaging-manifest bump jobs
 
-One job rewrites the formula `url` line after a release:
+Two sibling jobs write ward's package-manager manifests at release time, one per
+OS, so every install channel is a **push** from the tag build rather than a poll:
 
 - **bump-tap-formula** - rewrites `Formula/ward.rb` in the centralized
   flight-deck tap (`coilyco-flight-deck/homebrew-tap`), where
@@ -49,6 +50,29 @@ One job rewrites the formula `url` line after a release:
   secret carried in the push URL (never echoed; git masks credentials in any URL
   it prints), mirroring how `publish-binaries` uses `CI_RELEASE_TOKEN`. The job
   guards up front and fails loudly if the secret is unset.
+- **bump-scoop-manifest** - the Windows sibling ([ward#571](https://forgejo.coilysiren.me/coilyco-flight-deck/ward/issues/571)). Writes the whole
+  `bucket/ward.json` (version + the amd64/arm64 release URLs + the two windows
+  hashes) into the scoop bucket (`coilyco-bridge/scoop-bucket`) and pushes,
+  authenticating with `SCOOP_WRITE_TOKEN` exactly as the tap job uses
+  `TAP_WRITE_TOKEN`. Before this job the manifest refreshed only on a bucket-side
+  daily autoupdate poll, so it lagged however many releases landed between runs
+  (a minor bump every push to main leaves a busy day several versions behind).
+  Now the tag build writes it, matching every other artifact.
+  - **It targets the Forgejo bucket, not the GitHub mirror.** The bucket is
+    Forgejo-canonical: users add it with
+    `scoop bucket add ... https://forgejo.coilysiren.me/...` and its `checkver`
+    reads the Forgejo `releases.atom` feed, so `scoop update ward` only sees a
+    manifest that is current on **Forgejo**. Pushing to the mirror alone would
+    not clear the user-facing lag, so the job writes where scoop reads - the
+    homebrew-tap sibling is Forgejo for the same reason.
+  - The manifest hashes come from the per-asset `.exe.sha256` sidecars
+    `publish-binaries` uploads (the scoop autoupdate contract, [ward#561](https://forgejo.coilysiren.me/coilyco-flight-deck/ward/issues/561)), so the
+    job `needs: [release, publish-binaries]`.
+  - It writes the **full** manifest (not an in-place version patch), so it is
+    self-healing: the first release creates `ward.json` even though the bucket
+    has none today, and ward stays the single source of truth for its own
+    manifest. The retained `checkver`/`autoupdate` blocks keep a bucket-side poll
+    working as a safety net if a push is ever missed.
 
 #### Required Actions secrets
 
@@ -59,6 +83,11 @@ Set both in ward -> Settings -> Actions -> Secrets:
   needs **package write** scope too).
 - `TAP_WRITE_TOKEN` - used by `bump-tap-formula` to push the formula bump.
   Scope: push to `coilyco-flight-deck/homebrew-tap`.
+- `SCOOP_WRITE_TOKEN` - used by `bump-scoop-manifest` to push the scoop
+  manifest bump. Scope: push to `coilyco-bridge/scoop-bucket`. Unset, the bump
+  job fails loudly (a red job on an otherwise-green release, the same
+  fail-not-freeze stance as the tap) so the manifest cannot silently lag again;
+  provision it once, like `TAP_WRITE_TOKEN`.
 
 ##### `publish-kdl-write` / `publish-kdl-read` red? Two distinct faults ([ward#567](https://forgejo.coilysiren.me/coilyco-flight-deck/ward/issues/567))
 

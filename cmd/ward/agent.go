@@ -1164,11 +1164,19 @@ func (r *Runner) launchAgentContainer(ctx context.Context, c *cli.Command, mode 
 	// --quiet-seed (director auto-dispatch shares this console; ward#519).
 	maybeDumpSeed(os.Stderr, seed, c.Bool("quiet-seed"))
 
-	// Reserve the issue so another run won't redo it; a detached run holds the
-	// reservation for the container's life, so the release hook is discarded.
-	if _, err := r.reserveIssue(ctx, label, mode, ref, plan.Name, plan.Branch, justification, c.Bool("force")); err != nil {
+	// Reserve the issue so another run won't redo it.
+	release, err := r.reserveIssue(ctx, label, mode, ref, plan.Name, plan.Branch, justification, c.Bool("force"))
+	if err != nil {
 		return err
 	}
+	// Arm a rollback: a launch that fails before the container is confirmed up must retract
+	// BOTH reservation halves, not orphan the hold + forge road-block (ward#570, docs).
+	launched := false
+	defer func() {
+		if !launched {
+			release()
+		}
+	}()
 
 	// Reclaim dead containers' writable layers before adding one more, so the
 	// agent fleet can't exhaust the docker disk and wedge new launches (ward#272).
@@ -1192,6 +1200,9 @@ func (r *Runner) launchAgentContainer(ctx context.Context, c *cli.Command, mode 
 	if err := r.createAgentContainer(ctx, plan, envFile); err != nil {
 		return err
 	}
+	// The container is up: disarm the reservation rollback so it now lives for the
+	// container's lifetime (ward#570).
+	launched = true
 	// Spawn the detached drain-on-exit waiter so the run drains the moment it exits,
 	// not only at keep-10 eviction (ward#510; docs/agent-observability.md).
 	if !inContainer() {

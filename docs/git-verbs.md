@@ -27,6 +27,25 @@ get-url origin` (plain `ward git remote` lists remotes), mirroring bare
 A leading `-C <dir>` is hoisted ahead of the subcommand: `ward git status
 -C /path` runs `git -C /path status` (operate on a repo other than cwd).
 
+## Pre-configured Forgejo auth ([ward#507](https://forgejo.coilysiren.me/coilyco-flight-deck/ward/issues/507))
+
+The network verbs - `fetch`, `pull`, `push`, and `clone` - come with
+Forgejo credentials wired in, so `ward git push` against canonical Forgejo
+never drops to git's interactive username/password prompt. Ward resolves the
+Forgejo token exactly as `ward ops forgejo` does (`$FORGEJO_TOKEN`, else the
+SSM-held bot token) and injects it as a URL-scoped
+`http.https://forgejo.coilysiren.me/.extraheader` Basic-auth header through
+`GIT_CONFIG_*` env at exec time. Two properties follow from that shape:
+
+- **No leak.** The token rides the environment, never argv, so it stays out
+  of the `git.<verb>` audit row. The header is scoped to the Forgejo base
+  URL, so it never attaches to a github or third-party remote in the same
+  command.
+- **Best-effort.** With no resolvable token (no `$FORGEJO_TOKEN`, no aws
+  creds for SSM), nothing is injected and git behaves exactly as before -
+  its own credential helper, then the prompt. Auth is never made worse, only
+  supplied when available.
+
 ## clone (destination-gated)
 
 `clone` is not a passthrough. It wraps `git clone` behind a destination

@@ -602,3 +602,129 @@ jobs:
             exit 1
           fi
           echo "tap ${TAP_REPO} formula bumped to ${TAG}"
+
+  bump-scoop-manifest:
+    needs: [release, publish-binaries]
+    if: ${{ needs.release.outputs.tag != '' }}
+    runs-on: docker
+    env:
+      TAG: ${{ needs.release.outputs.tag }}
+      FORGEJO_BASE_URL: https://forgejo.coilysiren.me
+      WARD_REPO: coilyco-flight-deck/ward
+      BUCKET_REPO: coilyco-bridge/scoop-bucket
+      MANIFEST_PATH: bucket/ward.json
+    steps:
+      - name: Write ward.json to the scoop bucket and push
+        env:
+          SCOOP_WRITE_TOKEN: ${{ secrets.SCOOP_WRITE_TOKEN }}
+        run: |
+          set -euo pipefail
+          # Windows sibling of bump-tap-formula: push the scoop manifest at release
+          # time instead of leaving the bucket to a daily autoupdate poll (ward#571).
+          # scoop's ward.json used to refresh only on a bucket-side cron, so it lagged
+          # however many releases landed between runs (minor bump every push to main);
+          # writing it from the tag build is the push-not-poll fix the tap already has.
+          # The bucket is Forgejo-canonical (users add it from forgejo.coilysiren.me,
+          # checkver reads the Forgejo releases.atom), so the manifest is written where
+          # scoop reads it, not the GitHub mirror. See docs/release.md.
+          # Push auth is an explicit Actions secret, mirroring bump-tap-formula's
+          # TAP_WRITE_TOKEN: one rotatable, visible credential. Guard up front so a
+          # missing secret fails loudly HERE (a red bump job on an otherwise green
+          # release) rather than letting the manifest silently freeze - the exact
+          # silent-lag failure this issue fixes, and the ward#237 tap lesson. The
+          # release itself is already published by the jobs above; only this bump
+          # goes red, so Kai provisions the secret once and re-releases.
+          if [ -z "${SCOOP_WRITE_TOKEN:-}" ]; then
+            echo "::error::SCOOP_WRITE_TOKEN not set; cannot push scoop manifest. Set it in ward -> Settings -> Actions -> Secrets (scope: push to ${BUCKET_REPO}). See docs/release.md." >&2
+            exit 1
+          fi
+          VER="${TAG#v}"
+          # Read the two windows hashes from the .sha256 sidecars publish-binaries
+          # uploaded (bare digest per asset, the scoop autoupdate contract, ward#561).
+          # pipefail matters: a failed sidecar fetch must abort, not hash an empty body.
+          dl="$FORGEJO_BASE_URL/${WARD_REPO}/releases/download/${TAG}"
+          amd64_hash=$(curl -fsSL "${dl}/ward-windows-amd64.exe.sha256" | tr -d '[:space:]')
+          arm64_hash=$(curl -fsSL "${dl}/ward-windows-arm64.exe.sha256" | tr -d '[:space:]')
+          for h in "$amd64_hash" "$arm64_hash"; do
+            if ! printf '%s' "$h" | grep -Eq '^[0-9a-f]{64}$'; then
+              echo "::error::sidecar digest '${h}' is not a 64-hex sha256; refusing to write manifest" >&2
+              exit 1
+            fi
+          done
+
+          # Clone the bucket's live main and rewrite the whole manifest. Writing the
+          # FULL file (not an in-place version patch) is deliberate: it is self-healing
+          # - the first release creates ward.json even though the bucket has none yet,
+          # and ward stays the single source of truth for its own manifest. The
+          # checkver/autoupdate blocks are kept so a bucket-side poll still works as a
+          # safety net if a push is ever missed.
+          git clone --depth 1 "$FORGEJO_BASE_URL/$BUCKET_REPO.git" bucket
+          cd bucket
+          mkdir -p "$(dirname "$MANIFEST_PATH")"
+          # Generate with node (present on the docker runner, used elsewhere in this
+          # pipeline) so the JSON is always well-formed - no hand-quoting of hashes.
+          VER="$VER" AMD64_HASH="$amd64_hash" ARM64_HASH="$arm64_hash" \
+          WARD_REPO="$WARD_REPO" FORGEJO_BASE_URL="$FORGEJO_BASE_URL" \
+          MANIFEST_PATH="$MANIFEST_PATH" \
+          node -e '
+            const b = process.env.FORGEJO_BASE_URL + "/" + process.env.WARD_REPO;
+            const rel = b + "/releases/download";
+            const m = {
+              version: process.env.VER,
+              description: "Audited verb gate + operator surface: the CLI contributors and agents route build/test/lint and operator ops through.",
+              homepage: b,
+              license: "MIT",
+              architecture: {
+                "64bit": {
+                  url: rel + "/v" + process.env.VER + "/ward-windows-amd64.exe#/ward.exe",
+                  hash: process.env.AMD64_HASH,
+                },
+                arm64: {
+                  url: rel + "/v" + process.env.VER + "/ward-windows-arm64.exe#/ward.exe",
+                  hash: process.env.ARM64_HASH,
+                },
+              },
+              bin: "ward.exe",
+              checkver: { url: b + "/releases.atom", regex: "releases/tag/v([\\d.]+)" },
+              autoupdate: {
+                architecture: {
+                  "64bit": { url: rel + "/v$version/ward-windows-amd64.exe#/ward.exe", hash: { url: "$url.sha256" } },
+                  arm64: { url: rel + "/v$version/ward-windows-arm64.exe#/ward.exe", hash: { url: "$url.sha256" } },
+                },
+              },
+            };
+            require("fs").writeFileSync(process.env.MANIFEST_PATH, JSON.stringify(m, null, 4) + "\n");
+          '
+
+          # Stage and compare against HEAD. `git add` + `diff --cached` detects both
+          # a version change and a brand-new (untracked) ward.json, so a re-run of the
+          # same tag stays idempotent (empty diff -> skip) while the first release,
+          # which creates the file, is correctly seen as a change.
+          git add "$MANIFEST_PATH"
+          if git diff --cached --quiet -- "$MANIFEST_PATH"; then
+            echo "manifest already at ${TAG}, nothing to push"
+            exit 0
+          fi
+          # Attribute to the coilyco-ops bot via its Forgejo-registered email, the
+          # same identity bump-tap-formula uses (ward#245, docs/agent-attribution.md).
+          git config user.name "forgejo-scoop-writer"
+          git config user.email "coilyco-ops@coilysiren.me"
+          git commit -qm "chore(ward): bump scoop manifest to ${TAG} [skip ci]"
+          # Push auth in the URL; never echoed (no set -x, git masks URL credentials).
+          # A non-zero push (missing/rotated/under-scoped token) fails the job loudly
+          # rather than stalling the manifest behind a green release.
+          push_url="https://coilysiren:${SCOOP_WRITE_TOKEN}@forgejo.coilysiren.me/${BUCKET_REPO}.git"
+          if ! git push "$push_url" HEAD:main; then
+            echo "::error::push of ${MANIFEST_PATH} to ${BUCKET_REPO} failed; SCOOP_WRITE_TOKEN is likely missing, rotated, or lacks push scope (see docs/release.md)" >&2
+            exit 1
+          fi
+
+          # Read the bucket back and confirm main now serves ${VER}. Catches a push
+          # that reports success but does not land, so a stale manifest can never
+          # masquerade as a green release (the ward#237 acceptance, applied to scoop).
+          published=$(curl -fsSL "$FORGEJO_BASE_URL/$BUCKET_REPO/raw/branch/main/$MANIFEST_PATH" || true)
+          if ! printf '%s' "$published" | grep -q "\"version\": \"${VER}\""; then
+            echo "::error::bucket ${BUCKET_REPO} main does not serve ${VER} after push; scoop manifest bump did not land" >&2
+            exit 1
+          fi
+          echo "bucket ${BUCKET_REPO} scoop manifest bumped to ${TAG}"
