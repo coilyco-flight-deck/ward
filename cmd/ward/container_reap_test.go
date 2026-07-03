@@ -556,6 +556,129 @@ func TestGrantLandedFalseRetriesPropagationWindow(t *testing.T) {
 	}
 }
 
+// TestGrantLandedTrueOnDifferentHashPatch is the ward#587 core: a change that landed
+// under a DIFFERENT hash (HEAD not an ancestor) but is present by patch-id reads landed.
+func TestGrantLandedTrueOnDifferentHashPatch(t *testing.T) {
+	repo := t.TempDir()
+	runGit(t, repo, "init", "-b", "main")
+	runGit(t, repo, "config", "user.email", "test@example.com")
+	runGit(t, repo, "config", "user.name", "Test User")
+	if err := os.WriteFile(filepath.Join(repo, "base.txt"), []byte("base\n"), 0o644); err != nil {
+		t.Fatal(err)
+	}
+	runGit(t, repo, "add", "base.txt")
+	runGit(t, repo, "commit", "-m", "base")
+	base := mustGitRev(t, repo, "HEAD")
+
+	// The run's local work: add an identical catalog block on the feature branch.
+	runGit(t, repo, "checkout", "-b", "issue-587")
+	if err := os.WriteFile(filepath.Join(repo, "catalog.txt"), []byte("catalog block\n"), 0o644); err != nil {
+		t.Fatal(err)
+	}
+	runGit(t, repo, "add", "catalog.txt")
+	runGit(t, repo, "commit", "-m", "add catalog block")
+	feat := mustGitRev(t, repo, "HEAD")
+
+	// origin/main advanced independently but carries the SAME change under a new hash:
+	// cherry-pick the feature commit onto a busy main, then add unrelated work on top.
+	runGit(t, repo, "checkout", "main")
+	runGit(t, repo, "cherry-pick", feat)
+	if err := os.WriteFile(filepath.Join(repo, "other.txt"), []byte("other\n"), 0o644); err != nil {
+		t.Fatal(err)
+	}
+	runGit(t, repo, "add", "other.txt")
+	runGit(t, repo, "commit", "-m", "unrelated later work")
+	runGit(t, repo, "update-ref", "refs/remotes/origin/main", "HEAD")
+	// Leave HEAD on the local feature commit: it is neither origin/main nor an ancestor.
+	runGit(t, repo, "checkout", feat)
+
+	if base == feat {
+		t.Fatal("test setup: feature commit must differ from base")
+	}
+	r := &Runner{Runner: &shell.Runner{Resolve: shell.PathResolver}}
+	if landed, hasMain := r.grantLanded(t.Context(), repo); !landed || !hasMain {
+		t.Fatalf("a grant whose change is on origin/main by patch-id (different hash) must read landed; got landed=%t hasMain=%t", landed, hasMain)
+	}
+}
+
+// TestCheckExtraRepoLandedNoSalvageOnDifferentHash is the ward#587 end-to-end outcome:
+// a content-present-but-different-hash grant reads landed and leaves NO salvage branch.
+func TestCheckExtraRepoLandedNoSalvageOnDifferentHash(t *testing.T) {
+	repo := t.TempDir()
+	runGit(t, repo, "init", "-b", "main")
+	runGit(t, repo, "config", "user.email", "test@example.com")
+	runGit(t, repo, "config", "user.name", "Test User")
+	if err := os.WriteFile(filepath.Join(repo, "base.txt"), []byte("base\n"), 0o644); err != nil {
+		t.Fatal(err)
+	}
+	runGit(t, repo, "add", "base.txt")
+	runGit(t, repo, "commit", "-m", "base")
+	runGit(t, repo, "checkout", "-b", "issue-587")
+	if err := os.WriteFile(filepath.Join(repo, "catalog.txt"), []byte("catalog block\n"), 0o644); err != nil {
+		t.Fatal(err)
+	}
+	runGit(t, repo, "add", "catalog.txt")
+	runGit(t, repo, "commit", "-m", "add catalog block")
+	feat := mustGitRev(t, repo, "HEAD")
+	runGit(t, repo, "checkout", "main")
+	runGit(t, repo, "cherry-pick", feat)
+	runGit(t, repo, "update-ref", "refs/remotes/origin/main", "HEAD")
+	runGit(t, repo, "checkout", feat)
+	runGit(t, repo, "remote", "add", "origin", repo)
+
+	r := &Runner{Runner: &shell.Runner{Resolve: shell.PathResolver}}
+	env := reapEnv{Owner: "coilyco-flight-deck", Name: "ward", Base: "https://forgejo.coilysiren.me", Mode: "claude", Issue: 587, Launched: true}
+	rep, landed := r.checkExtraRepoLanded(t.Context(), env, targetRepo{Owner: "coilyco-gaming", Name: "eco-app"}, repo)
+	if !landed {
+		t.Fatalf("a grant present on origin/main by patch-id must read landed, got unlanded: %+v", rep)
+	}
+	out, _ := exec.Command("git", "-C", repo, "branch", "--list", salvageBranchPrefix+"*").CombinedOutput()
+	if strings.TrimSpace(string(out)) != "" {
+		t.Fatalf("a content-landed grant must not fabricate a salvage branch, got: %q", string(out))
+	}
+}
+
+// TestUnlandedPatchCount checks the git-cherry `+` accounting: a patch already upstream
+// counts 0 (landed), a genuinely-new commit counts 1 un-landed (ward#587).
+func TestUnlandedPatchCount(t *testing.T) {
+	repo := t.TempDir()
+	runGit(t, repo, "init", "-b", "main")
+	runGit(t, repo, "config", "user.email", "test@example.com")
+	runGit(t, repo, "config", "user.name", "Test User")
+	if err := os.WriteFile(filepath.Join(repo, "base.txt"), []byte("base\n"), 0o644); err != nil {
+		t.Fatal(err)
+	}
+	runGit(t, repo, "add", "base.txt")
+	runGit(t, repo, "commit", "-m", "base")
+	runGit(t, repo, "checkout", "-b", "feat")
+	if err := os.WriteFile(filepath.Join(repo, "x.txt"), []byte("x\n"), 0o644); err != nil {
+		t.Fatal(err)
+	}
+	runGit(t, repo, "add", "x.txt")
+	runGit(t, repo, "commit", "-m", "add x")
+	feat := mustGitRev(t, repo, "HEAD")
+	// origin/main carries the same patch under a different hash: 0 un-landed.
+	runGit(t, repo, "checkout", "main")
+	runGit(t, repo, "cherry-pick", feat)
+	runGit(t, repo, "update-ref", "refs/remotes/origin/main", "HEAD")
+	runGit(t, repo, "checkout", feat)
+
+	r := &Runner{Runner: &shell.Runner{Resolve: shell.PathResolver}}
+	if got := r.unlandedPatchCount(t.Context(), repo); got != 0 {
+		t.Fatalf("a patch already upstream must count 0 un-landed, got %d", got)
+	}
+
+	// Add a genuinely-new commit on the feature branch: now 1 un-landed.
+	if err := os.WriteFile(filepath.Join(repo, "y.txt"), []byte("y\n"), 0o644); err != nil {
+		t.Fatal(err)
+	}
+	runGit(t, repo, "add", "y.txt")
+	runGit(t, repo, "commit", "-m", "add y (never lands)")
+	if got := r.unlandedPatchCount(t.Context(), repo); got != 1 {
+		t.Fatalf("one genuinely-new commit must count 1 un-landed, got %d", got)
+	}
+}
+
 // fakeSalvageNotifier records the Forgejo verbs notifySalvage drives so the
 // ward#518 routing (comment-on-carried-issue vs standalone-issue) is assertable.
 type fakeSalvageNotifier struct {

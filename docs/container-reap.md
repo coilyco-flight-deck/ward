@@ -35,14 +35,21 @@ does can defeat it. It is a hidden entrypoint-called verb.
      run comments the notice back on its issue and **reopens** it; a **freeform**
      run files exactly **one** standalone `[ward-salvage]` issue, never appended.
 8. Verifies each `--repo` grant landed: reads `WARD_EXTRA_REPOS` and, for each
-   grant, checks whether its local `HEAD` is **reachable from** the
-   freshly-fetched `origin/main` - reachability, not `HEAD == origin/main`
-   equality. A push that lands via a merge commit, or while `main` advances,
-   leaves `HEAD` a proper ancestor of `origin/main`; an equality test would
-   false-flag that landed work. The reaper re-fetches across a short propagation
-   window before declaring a miss (a just-landed push can lag its
-   remote-tracking ref), and only reopens the issue when a grant genuinely did
-   not reach `origin/main` ([ward#583](https://forgejo.coilysiren.me/coilyco-flight-deck/ward/issues/583)).
+   grant, checks whether its work is present on the freshly-fetched
+   `origin/main` - **content**, not `HEAD == origin/main` equality. A grant lands
+   when either its local `HEAD` is **reachable from** `origin/main` (a plain or
+   merge-commit landing leaves `HEAD` a proper ancestor - reachability, not
+   equality, [ward#583](https://forgejo.coilysiren.me/coilyco-flight-deck/ward/issues/583))
+   **or** every local commit ahead of `origin/main` already exists there **by
+   patch-id** (`git cherry`). The patch check catches work that landed under a
+   **different commit hash** - a change rebased or re-committed onto a busy
+   `main`, or an identical block another run already pushed - which a
+   HEAD-ancestry test alone false-flags as a phantom "1 local commit never
+   reached origin/main", fabricating an empty salvage branch and a spurious
+   reopen ([ward#587](https://forgejo.coilysiren.me/coilyco-flight-deck/ward/issues/587)).
+   The reaper re-fetches across a short propagation window before declaring a
+   miss (a just-landed push can lag its remote-tracking ref), and only reopens
+   the issue when a grant's content genuinely did not reach `origin/main`.
 
 ## Why this shape
 

@@ -547,24 +547,34 @@ func (r *Runner) checkExtraRepoLanded(ctx context.Context, env reapEnv, repo tar
 		return extraRepoUnlanded{}, true
 	}
 
-	// Genuinely un-landed: local HEAD carries commit(s) origin/main does not.
-	ahead := revCount(ctx, r, work, "origin/main..HEAD")
-	if ahead == 0 {
-		ahead = 1 // defensive: not-an-ancestor with a zero count shouldn't happen.
+	// Genuinely un-landed: count the truly-missing commits (git cherry's `+` lines),
+	// not the raw ahead count that different-hash-but-landed commits inflate (ward#587).
+	missing := r.unlandedPatchCount(ctx, work)
+	if missing <= 0 {
+		missing = revCount(ctx, r, work, "origin/main..HEAD")
+		if missing == 0 {
+			missing = 1 // grantLanded already ruled this un-landed: at least one is missing.
+		}
 	}
-	rep.Ahead = ahead
+	rep.Ahead = missing
 	r.preserveExtraRepo(ctx, work, env, &rep)
 	return rep, false
 }
 
-// grantLanded fetches origin and reports whether local HEAD is reachable from
-// origin/main (landed) and whether origin/main exists, retrying the fetch window (#583).
+// grantLanded fetches origin and reports whether the grant's work is present on
+// origin/main - by reachability (ward#583) or by patch-id (ward#587); see docs.
 func (r *Runner) grantLanded(ctx context.Context, work string) (landed, hasMain bool) {
 	for attempt := 1; attempt <= grantLandingFetchAttempts; attempt++ {
 		_ = r.Runner.Exec(ctx, "git", "-C", work, "fetch", "origin")
 		if refExists(ctx, r, work, "origin/main") {
 			hasMain = true
+			// Reachability: HEAD contained in origin/main (plain or merge-commit landing).
 			if isAncestor(ctx, r, work, "HEAD", "origin/main") {
+				return true, true
+			}
+			// Content: HEAD diverged, but zero un-landed patches means the run's changes
+			// are all on main under a different hash - a landing, not a loss (ward#587).
+			if r.unlandedPatchCount(ctx, work) == 0 {
 				return true, true
 			}
 		}
@@ -573,6 +583,22 @@ func (r *Runner) grantLanded(ctx context.Context, work string) (landed, hasMain 
 		}
 	}
 	return false, hasMain
+}
+
+// unlandedPatchCount counts local commits ahead of origin/main with NO patch-equivalent
+// upstream (git cherry's `+` lines); zero means content-landed. -1 on error (ward#587).
+func (r *Runner) unlandedPatchCount(ctx context.Context, work string) int {
+	out, err := r.Runner.Capture(ctx, "git", "-C", work, "cherry", "origin/main", "HEAD")
+	if err != nil {
+		return -1
+	}
+	count := 0
+	for _, line := range strings.Split(string(out), "\n") {
+		if strings.HasPrefix(strings.TrimSpace(line), "+") {
+			count++
+		}
+	}
+	return count
 }
 
 // issueClosingReferencePresent reports whether the committed range mentions the
