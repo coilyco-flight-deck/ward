@@ -112,7 +112,7 @@ func TestBuildUpPlanAgentLogsThreading(t *testing.T) {
 			Name:  "probe",
 			Flags: tailnetProbeFlags(),
 			Action: func(_ context.Context, c *cli.Command) error {
-				p, err := buildUpPlan(c, targetRepo{Owner: "o", Name: "r"}, modeClaude, t.TempDir(), t.TempDir(), nil, mountAgentLogs)
+				p, err := buildUpPlan(c, targetRepo{Owner: "o", Name: "r"}, modeClaude, roleDirector, t.TempDir(), t.TempDir(), nil, mountAgentLogs)
 				if err != nil {
 					return err
 				}

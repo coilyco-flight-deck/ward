@@ -6,28 +6,31 @@ doc_goal: Give an operator the full trimmed launch-flag surface for the engineer
 Launch flags for the `engineer` role. See [docs/agent.md](agent.md)
 for the roster.
 
-## The flag surface (trimmed ~24 -> ~10)
+## The flag surface (trimmed ~24 -> ~8)
 
-The shared launch helpers show ~10 visible flags: the positional ref/task, `--driver`,
-`--repo`, `--details`, `--aws`, `--tailnet`, `--print`, `--force`, `--no-preflight`, and
-(engineer freeform) `--instructions-file`. The trim lands in the shared helpers, so it
-applies to the engineer, director, and advisor surfaces at once.
+The shared launch helpers show ~8 visible flags: the positional ref/task, `--driver`,
+`--repo`, `--details`, `--print`, `--force`, `--no-preflight`, and (engineer freeform)
+`--instructions-file`. The trim lands in the shared helpers, so it applies to the
+engineer, director, and advisor surfaces at once.
 
-`--tailnet` joins the container to the tailnet to reach tailnet-only hosts like
-`<ollama-host>`, auto-selecting host-net on Linux or the SOCKS5 sidecar on Docker
-Desktop. It **implies `--aws`**. Advisor defaults it on for live research,
-and `--no-tailnet` opts out. `--repo owner/name` (repeatable) grants extra writable repos
-([container-multi-repo.md](container-multi-repo.md)). Advisor runs can also auto-add
-read-only context repos for some primary repos. See [agent-advisor.md](agent-advisor.md).
-`--print` is a dry run. `--force` skips the reservation checks ([agent-reservation.md](agent-reservation.md))
+`--repo owner/name` (repeatable) grants extra writable repos
+([container-multi-repo.md](container-multi-repo.md)). `--print` is a dry run.
+`--force` skips the reservation checks ([agent-reservation.md](agent-reservation.md))
 and `--no-preflight` skips the pre-flight ([agent-preflight.md](agent-preflight.md)).
 The engineer **always detaches**.
 
+### Host/cloud capability is a per-role guardfile set, not a flag
+
+`~/.aws` and the tailnet are no longer first-class flags: a role's capability is
+guardfile membership in `ward-kdl.fleet.kdl`'s `roles` block (advisor holds the
+live-observe set, engineer/director hold none). See [agent-capability.md](agent-capability.md).
+
 ### Hidden but functional
 
-* `--tailnet-mode auto|host-net|sidecar` - pin the mechanism (a non-auto value implies `--tailnet`).
+* `--aws` / `--tailnet` - deprecated back-compat aliases, hidden for one release; they force the capability on. See [agent-capability.md](agent-capability.md).
+* `--tailnet-mode auto|host-net|sidecar` - pin the tailnet mechanism (non-auto force-joins).
 * `--tag` / `--image` / `--ward-version` - pin the image, env-backed via `WARD_AGENT_{TAG,IMAGE,VERSION}`.
-* `--allow-ward-downgrade` - permit a `--ward-version` pin **older** than this host's ward. Refused by default: the pin is what the container's in-process reaper runs, and an older reaper can reproduce already-fixed lost/false-salvage bugs. An equal-or-newer pin needs no flag.
+* `--allow-ward-downgrade` - permit a `--ward-version` pin **older** than this host's ward. Refused by default: the pin runs the container's in-process reaper, and an older one can reproduce fixed lost/false-salvage bugs.
 * `--ward-source` - build ward from a local checkout (development-only).
 * `--branch` - override the `issue-<N>` branch default. `--no-pull` - reuse the cached image.
 
@@ -41,9 +44,9 @@ The engineer **always detaches**.
 
 A detached launch (the engineer, always detached now) isn't watched, so docker's
 chatter is dropped: pull lines, the `docker scout` footer, the container-id hash
-(`DOCKER_CLI_HINTS=false` plus a swallowed stdout). The pull is the one exception: silencing it hid
-slow/mid-push-registry stalls, so a detached pull names itself up front and beats
-a periodic `still pulling` heartbeat, then falls back to the local image.
+(`DOCKER_CLI_HINTS=false` plus a swallowed stdout). The pull is the exception:
+silencing it hid slow-registry stalls, so a detached pull names itself and beats a
+`still pulling` heartbeat, then falls back to the local image.
 
 ## `--details`
 

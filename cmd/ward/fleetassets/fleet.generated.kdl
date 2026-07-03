@@ -79,4 +79,21 @@ fleet {
             interactive goose session
         }
     }
+    // Per-role capability roster (ward#578): a role's host/cloud reach is guardfile
+    // membership, not a ward flag - ward maps each name to a mechanism it ships.
+    roles {
+        // engineer implements in an isolated clone: no host/cloud reach by default.
+        role engineer {
+
+        }
+        // director dispatches + surfaces read-only; forwards capability, holds none.
+        role director {
+
+        }
+        // advisor does live-observe research: the aws SSM read + the tailnet route.
+        // `advisor --no-tailnet` opts a rare isolated run back out.
+        role advisor {
+            guardfiles ward-kdl.aws.guardfile.kdl ward-kdl.tailscale.guardfile.kdl
+        }
+    }
 }

@@ -7,7 +7,7 @@ require (
 	gopkg.in/yaml.v3 v3.0.1
 )
 
-require forgejo.coilysiren.me/coilyco-flight-deck/cli-guard v0.65.0
+require forgejo.coilysiren.me/coilyco-flight-deck/cli-guard v0.67.1-0.20260703191021-05d604201e60
 
 require (
 	github.com/calico32/kdl-go v0.14.1 // indirect

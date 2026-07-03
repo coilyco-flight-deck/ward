@@ -26,7 +26,7 @@ func agentScratchFlags() []cli.Flag {
 		&cli.StringFlag{Name: "repo", Usage: "owner/repo to clone for context (default: inferred from the cwd's git origin)"},
 		&cli.StringSliceFlag{Name: "with-repo", Usage: "clone an additional repo for context (owner/name; repeatable), landed under /workspace alongside the primary repo (ward#230)."},
 	}
-	flags = append(flags, agentImageFlags(false)...)
+	flags = append(flags, agentImageFlags()...)
 	return append(flags,
 		&cli.BoolFlag{Name: "print", Usage: "resolve the repo + docker plan and exit; clone nothing, run nothing"},
 		&cli.BoolFlag{Name: "no-pull", Usage: "skip the image pull"},
@@ -130,7 +130,7 @@ func (r *Runner) prepareScratchPlan(ctx context.Context, c *cli.Command, mode co
 	}
 	// No seed: empty AgentArgs is the bare interactive bring-up (a plain agent REPL). The
 	// read-only surface opts into the host agent-log drain mount (ward#525).
-	plan, err := buildUpPlan(c, repo, mode, cwd, assetsDir, nil, readOnly)
+	plan, err := buildUpPlan(c, repo, mode, roleDirector, cwd, assetsDir, nil, readOnly)
 	if err != nil {
 		cleanupAssets()
 		return upPlan{}, func() {}, err

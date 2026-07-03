@@ -240,7 +240,7 @@ func (r *Runner) captureReplyResearch(ctx context.Context, c *cli.Command, mode 
 
 	// The research prompt rides as the agent's one-shot seed (claude -p <research>),
 	// exactly as the freeform advisor seeds its question (agent_advisor.go).
-	plan, err := buildUpPlan(c, repo, mode, cwd, assetsDir, []string{research}, false)
+	plan, err := buildUpPlan(c, repo, mode, roleAdvisor, cwd, assetsDir, []string{research}, false)
 	if err != nil {
 		return "", fmt.Errorf("%s: %w", label, err)
 	}

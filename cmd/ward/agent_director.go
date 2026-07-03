@@ -190,7 +190,7 @@ func directorFlags() []cli.Flag {
 		&cli.IntFlag{Name: "max-cycles", Value: 0, Usage: "stop after N heartbeat ticks (0 = run until drained with no new direction)"},
 		&cli.BoolFlag{Name: "dry-run", Usage: "show the ranked lanes + planned dispatches, then exit without launching"},
 	}
-	flags = append(flags, agentImageFlags(false)...)
+	flags = append(flags, agentImageFlags()...)
 	return append(flags,
 		&cli.BoolFlag{Name: "print", Usage: "resolve director's container/harness plan + the planned dispatches and exit; launch nothing"},
 		&cli.BoolFlag{Name: "no-pull", Usage: "skip the image pull"},
@@ -270,7 +270,9 @@ func (r *Runner) runAgentBacklog(ctx context.Context, c *cli.Command, mode conta
 	if err != nil {
 		return fmt.Errorf("%s: %w", label, err)
 	}
-	hostNet, tsSidecar, err := resolveTailnet(c, runtime.GOOS)
+	// The director holds no capability by default (empty role set); it resolves the
+	// flag overrides and appendTailnetArgv relays them to children (ward#578).
+	hostNet, tsSidecar, err := resolveTailnetMechanism(c, runtime.GOOS, resolveCapability(c, roleDirector).tailnet)
 	if err != nil {
 		return fmt.Errorf("%s: %w", label, err)
 	}
