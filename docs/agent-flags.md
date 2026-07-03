@@ -15,7 +15,8 @@ applies to the engineer, director, and advisor surfaces at once.
 
 `--tailnet` joins the container to the tailnet to reach tailnet-only hosts like
 `<ollama-host>`, auto-selecting host-net on Linux or the SOCKS5 sidecar on Docker
-Desktop. It **implies `--aws`**. `--repo owner/name` (repeatable) grants extra writable repos
+Desktop. It **implies `--aws`**. Advisor defaults it on for live research,
+and `--no-tailnet` opts out. `--repo owner/name` (repeatable) grants extra writable repos
 ([container-multi-repo.md](container-multi-repo.md)). Advisor runs can also auto-add
 read-only context repos for some primary repos. See [agent-advisor.md](agent-advisor.md).
 `--print` is a dry run. `--force` skips the reservation checks ([agent-reservation.md](agent-reservation.md))

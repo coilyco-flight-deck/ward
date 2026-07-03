@@ -26,7 +26,7 @@ func agentScratchFlags() []cli.Flag {
 		&cli.StringFlag{Name: "repo", Usage: "owner/repo to clone for context (default: inferred from the cwd's git origin)"},
 		&cli.StringSliceFlag{Name: "with-repo", Usage: "clone an additional repo for context (owner/name; repeatable), landed under /workspace alongside the primary repo (ward#230)."},
 	}
-	flags = append(flags, agentImageFlags()...)
+	flags = append(flags, agentImageFlags(false)...)
 	return append(flags,
 		&cli.BoolFlag{Name: "print", Usage: "resolve the repo + docker plan and exit; clone nothing, run nothing"},
 		&cli.BoolFlag{Name: "no-pull", Usage: "skip the image pull"},

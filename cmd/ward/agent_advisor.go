@@ -35,8 +35,9 @@ func agentAdvisorFlags() []cli.Flag {
 		// forces the streamed one-shot answer even on a terminal (scripting escape hatch).
 		&cli.BoolFlag{Name: "oneshot", Aliases: []string{"answer"}, Usage: "freeform mode: force the one-shot streamed answer even under a TTY (default: interactive seeded session when a terminal is attached)"},
 	}
-	flags = append(flags, agentImageFlags()...)
+	flags = append(flags, agentImageFlags(true)...)
 	return append(flags,
+		&cli.BoolFlag{Name: "no-tailnet", Usage: "opt out of advisor's default live-observe tailnet route and stay isolated"},
 		&cli.BoolFlag{Name: "print", Usage: "resolve the inputs + render the prompt + plan and exit; research nothing, post nothing, run nothing"},
 		&cli.BoolFlag{Name: "no-pull", Usage: "skip the image pull"},
 	)
@@ -48,7 +49,7 @@ func agentAdvisorCommand() *cli.Command {
 	return &cli.Command{
 		Name: "advisor",
 		Usage: "Answer without writing code: a ref researches the issue and posts the answer as a comment; " +
-			"freeform text opens an interactive seeded session (one-shot streamed answer with no TTY or --oneshot). No code change.",
+			"freeform text opens an interactive seeded session (one-shot streamed answer with no TTY or --oneshot). Tailnet+AWS are on by default for live-observe; use --no-tailnet to stay isolated. No code change.",
 		ArgsUsage: "<owner/repo#N | forgejo-issue-url> <prompt> | '<question>'",
 		Flags:     agentAdvisorFlags(),
 		Action: func(ctx context.Context, c *cli.Command) error {

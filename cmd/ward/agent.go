@@ -289,14 +289,15 @@ const (
 
 // tailnetFlags is the consolidated tailnet route (ward#362): a visible --tailnet plus
 // a hidden --tailnet-mode. See docs/agent-flags.md.
-func tailnetFlags() []cli.Flag {
+func tailnetFlags(defaultOn bool) []cli.Flag {
 	return []cli.Flag{
 		&cli.BoolFlag{
 			Name: "tailnet",
 			Usage: "join the container to the tailnet so it reaches tailnet-only hosts like kai-tower-3026; " +
 				"auto-selects the mechanism by platform - the host-network route on native Linux (ward#330), " +
 				"the SOCKS5 sidecar on Docker Desktop where the host VM is not a tailnet node (ward#349). " +
-				"Implies --aws; off by default (ward#362)",
+				"Implies --aws; default is on for advisor and off otherwise (ward#562, ward#362)",
+			Value: defaultOn,
 		},
 		&cli.StringFlag{
 			Name:   "tailnet-mode",
@@ -310,6 +311,9 @@ func tailnetFlags() []cli.Flag {
 // tailnetEnabled reports whether a run wants the tailnet: --tailnet, or an explicit
 // non-auto --tailnet-mode (the escape hatch can stand on its own). See tailnetFlags.
 func tailnetEnabled(c *cli.Command) bool {
+	if c.Bool("no-tailnet") {
+		return false
+	}
 	if c.Bool("tailnet") {
 		return true
 	}
@@ -428,7 +432,7 @@ func agentDefaultSurfaceAction() cli.ActionFunc {
 
 // agentImageFlags is the shared container image/ward-build/escalation flag block every
 // dispatching role layers its own flags on top of (ward#355); --print stays per-role.
-func agentImageFlags() []cli.Flag {
+func agentImageFlags(tailnetDefault bool) []cli.Flag {
 	// The image/ward-build/pinning group stays functional but hidden (ward#362): env-backed
 	// or dev-only. --aws + the consolidated tailnet route stay visible.
 	flags := []cli.Flag{
@@ -439,7 +443,7 @@ func agentImageFlags() []cli.Flag {
 		&cli.BoolFlag{Name: "allow-ward-downgrade", Hidden: true, Usage: "permit a --ward-version pin older than this host's ward (ships an older in-container reaper; ward#529)"},
 		&cli.BoolFlag{Name: "aws", Usage: "mount ~/.aws read-only (broad SSM read surface; off by default)"},
 	}
-	return append(flags, tailnetFlags()...)
+	return append(flags, tailnetFlags(tailnetDefault)...)
 }
 
 // agentSurfaceFlags builds the detached launch flag set shared by the engineer,
@@ -455,7 +459,7 @@ func agentSurfaceFlags() []cli.Flag {
 		&cli.StringFlag{Name: "details", Usage: "extra operator instructions woven into the seeded prompt + pre-flight read (overrides the issue text on conflict)"},
 		&cli.BoolFlag{Name: "github", Usage: "treat a bare owner/repo#N ref as a GitHub issue (clone/push + comments + PR on GitHub via a user-supplied token; ward#489). A github.com URL infers this automatically."},
 	}
-	flags = append(flags, agentImageFlags()...)
+	flags = append(flags, agentImageFlags(false)...)
 	flags = append(flags,
 		&cli.BoolFlag{Name: "print", Usage: "resolve the issue + seeded prompt + docker plan and exit; inject no push token, run nothing"},
 		// --no-pull is hidden (ward#362): a cached-image optimization, not everyday surface.

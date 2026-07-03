@@ -190,7 +190,7 @@ func directorFlags() []cli.Flag {
 		&cli.IntFlag{Name: "max-cycles", Value: 0, Usage: "stop after N heartbeat ticks (0 = run until drained with no new direction)"},
 		&cli.BoolFlag{Name: "dry-run", Usage: "show the ranked lanes + planned dispatches, then exit without launching"},
 	}
-	flags = append(flags, agentImageFlags()...)
+	flags = append(flags, agentImageFlags(false)...)
 	return append(flags,
 		&cli.BoolFlag{Name: "print", Usage: "resolve director's container/harness plan + the planned dispatches and exit; launch nothing"},
 		&cli.BoolFlag{Name: "no-pull", Usage: "skip the image pull"},

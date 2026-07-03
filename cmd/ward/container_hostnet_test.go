@@ -71,7 +71,7 @@ func tailnetProbeFlags() []cli.Flag {
 		&cli.StringSliceFlag{Name: "repo"},
 		&cli.BoolFlag{Name: "aws"},
 	}
-	flags = append(flags, tailnetFlags()...)
+	flags = append(flags, tailnetFlags(false)...)
 	return append(flags, &cli.BoolFlag{Name: "detach"})
 }
 
@@ -81,7 +81,7 @@ func TestResolveTailnet(t *testing.T) {
 	run := func(args []string, goos string) (hostNet, tsSidecar bool, err error) {
 		probe := &cli.Command{
 			Name:  "probe",
-			Flags: tailnetFlags(),
+			Flags: tailnetFlags(false),
 			Action: func(_ context.Context, c *cli.Command) error {
 				hostNet, tsSidecar, err = resolveTailnet(c, goos)
 				return nil

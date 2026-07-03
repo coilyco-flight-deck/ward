@@ -5,7 +5,9 @@ doc_goal: Let a reader pick and drive the advisor counsel role with confidence -
 
 `ward agent advisor` (public face `warded advisor`) is the **counsel** role of the
 startup roster: it answers and **writes no code**. It merges the retired
-`reply` + `ask` verbs, and **the argument type selects the mode**. See
+`reply` + `ask` verbs, and **the argument type selects the mode**. `warded advisor`
+defaults to `--tailnet` so ref-mode research can reach live backends and on-host
+state, and `--no-tailnet` opts out when a run should stay isolated. See
 [docs/agent.md](agent.md).
 
 ## Usage

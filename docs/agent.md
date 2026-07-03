@@ -36,7 +36,9 @@ or answers it.
 - **`director`** (was `backlog`) - autonomous backlog supervisor: dispatches
   engineers, surfaces a read-only session on drain. [agent-director.md](agent-director.md).
 - **`advisor`** (was `reply`+`ask`) - answers, writes no code: a ref comments,
-  freeform is interactive. [agent-advisor.md](agent-advisor.md).
+  freeform is interactive. `warded advisor` defaults to `--tailnet` so live-observe
+  research can reach the backend, and `--no-tailnet` keeps a rare run isolated.
+  [agent-advisor.md](agent-advisor.md).
 
 The standalone `architect`/`explore`/`sandbox` roles now error - folded
 them into the director's [surface session](agent-surface.md). The `--driver`

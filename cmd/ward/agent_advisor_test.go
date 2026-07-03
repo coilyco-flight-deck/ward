@@ -98,6 +98,46 @@ func TestAdvisorHasOneshotFlag(t *testing.T) {
 	}
 }
 
+func TestAdvisorDefaultsTailnetOn(t *testing.T) {
+	cmd := parseCommandForTest(t, agentAdvisorFlags(), []string{"advisor", "coilyco-flight-deck/ward#1", "what changed?"})
+	if !cmd.Bool("tailnet") {
+		t.Fatal("advisor should default --tailnet on")
+	}
+	p, err := buildUpPlan(cmd, targetRepo{Owner: "coilyco-flight-deck", Name: "ward"}, modeClaude, t.TempDir(), t.TempDir(), nil, false, false)
+	if err != nil {
+		t.Fatalf("buildUpPlan: %v", err)
+	}
+	if got := p.Mounts; len(got) == 0 {
+		t.Fatal("advisor tailnet should imply the ~/.aws mount in the realized plan")
+	}
+	found := false
+	for _, m := range p.Mounts {
+		if m.Target == containerAWSMount {
+			found = true
+			break
+		}
+	}
+	if !found {
+		t.Fatalf("advisor tailnet plan mounts = %+v, want an ~/.aws bind", p.Mounts)
+	}
+}
+
+func TestAdvisorNoTailnetOptOut(t *testing.T) {
+	cmd := parseCommandForTest(t, agentAdvisorFlags(), []string{"advisor", "coilyco-flight-deck/ward#1", "what changed?", "--no-tailnet"})
+	if !cmd.Bool("no-tailnet") {
+		t.Fatal("advisor flags should expose explicit --no-tailnet opt-out")
+	}
+	p, err := buildUpPlan(cmd, targetRepo{Owner: "coilyco-flight-deck", Name: "ward"}, modeClaude, t.TempDir(), t.TempDir(), nil, false, false)
+	if err != nil {
+		t.Fatalf("buildUpPlan: %v", err)
+	}
+	for _, m := range p.Mounts {
+		if m.Target == containerAWSMount {
+			t.Fatalf("advisor --no-tailnet should keep the plan isolated, but got ~/.aws mount %+v", m)
+		}
+	}
+}
+
 func TestAdvisorAutoGrantRepos(t *testing.T) {
 	root := t.TempDir()
 	wardDir := filepath.Join(root, ".ward")
