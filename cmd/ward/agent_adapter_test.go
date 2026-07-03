@@ -2,8 +2,6 @@ package main
 
 import (
 	"fmt"
-	"os"
-	"path/filepath"
 	"reflect"
 	"testing"
 
@@ -179,31 +177,49 @@ func fleetAgent(f fleetconfig.Fleet, name string) (fleetconfig.Agent, bool) {
 	return fleetconfig.Agent{}, false
 }
 
-// TestFleetMatchesGoldenFixture is the Phase 4 contract: the embedded fleet must
-// match the committed golden fixture byte-for-byte after parsing.
-func TestFleetMatchesGoldenFixture(t *testing.T) {
+// TestFleetSwitchesTwoWayPin pins the embedded fleet against the parseMode roster
+// via structural invariants, not a duplicate fixture (agent-adapter-manifest.md).
+func TestFleetSwitchesTwoWayPin(t *testing.T) {
 	fleet, err := loadFleetConfig()
 	if err != nil {
 		t.Fatalf("loadFleetConfig: %v", err)
 	}
-	b, err := os.ReadFile(filepath.Join("testdata", "fleet.generated.golden.kdl"))
-	if err != nil {
-		t.Fatalf("read golden fleet: %v", err)
+
+	// Header invariants the dialect-2 loader depends on.
+	if fleet.SchemaVersion != 2 {
+		t.Errorf("fleet schema-version = %d, want 2", fleet.SchemaVersion)
 	}
-	want, err := fleetconfig.Parse(b)
-	if err != nil {
-		t.Fatalf("parse golden fleet: %v", err)
+	if fleet.Defaults.Agent != string(modeClaude) {
+		t.Errorf("fleet defaults.agent = %q, want %q", fleet.Defaults.Agent, modeClaude)
 	}
-	if !reflect.DeepEqual(fleet, want) {
-		t.Fatalf("embedded fleet does not match golden fixture")
+	if fleet.Defaults.Attribution.Name == "" || fleet.Defaults.Attribution.Email == "" {
+		t.Errorf("fleet defaults.attribution incomplete: name=%q email=%q",
+			fleet.Defaults.Attribution.Name, fleet.Defaults.Attribution.Email)
 	}
-	if _, ok := fleetAgent(fleet, modeQwenAlias); ok {
-		t.Errorf("fleet.generated.kdl carries a %q agent; %q is a back-compat alias, opencode is canonical", modeQwenAlias, modeQwenAlias)
-	}
-	if rt, err := parseMode(modeQwenAlias); err != nil || rt != modeOpencode {
-		t.Errorf("parseMode(%q) = %q, %v; want %q (opencode canonical)", modeQwenAlias, rt, err, modeOpencode)
-	}
+
+	// Roster: exactly the modes ward ships, no more, no fewer.
+	want := map[containerMode]bool{modeClaude: true, modeCodex: true, modeOpencode: true, modeGoose: true}
+	got := map[containerMode]bool{}
 	for _, a := range fleet.Agents {
+		got[containerMode(a.Name)] = true
+	}
+	if !reflect.DeepEqual(got, want) {
+		t.Errorf("fleet roster = %v, want %v", got, want)
+	}
+
+	// Each agent is well-formed and round-trips through parseMode (the two-way pin).
+	for _, a := range fleet.Agents {
+		if a.Binary == "" {
+			t.Errorf("agent %q has no binary", a.Name)
+		}
+		if a.ContextLevel < 0 || a.ContextLevel > 2 {
+			t.Errorf("agent %q context-level %d out of range 0..2", a.Name, a.ContextLevel)
+		}
+		if len(a.Argv.Headless) == 0 {
+			t.Errorf("agent %q has no headless argv", a.Name)
+		} else if a.Argv.Headless[0] != a.Binary {
+			t.Errorf("agent %q headless argv starts with %q, not its binary %q", a.Name, a.Argv.Headless[0], a.Binary)
+		}
 		rt, err := parseMode(a.Name)
 		if err != nil {
 			t.Errorf("parseMode(%q): %v", a.Name, err)
@@ -212,5 +228,13 @@ func TestFleetMatchesGoldenFixture(t *testing.T) {
 		if rt != containerMode(a.Name) {
 			t.Errorf("parseMode(%q) = %q, want %q", a.Name, rt, a.Name)
 		}
+	}
+
+	// qwen is a back-compat alias, not a roster member; opencode is canonical.
+	if _, ok := fleetAgent(fleet, modeQwenAlias); ok {
+		t.Errorf("fleet.generated.kdl carries a %q agent; %q is a back-compat alias, opencode is canonical", modeQwenAlias, modeQwenAlias)
+	}
+	if rt, err := parseMode(modeQwenAlias); err != nil || rt != modeOpencode {
+		t.Errorf("parseMode(%q) = %q, %v; want %q (opencode canonical)", modeQwenAlias, rt, err, modeOpencode)
 	}
 }
