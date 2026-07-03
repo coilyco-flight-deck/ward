@@ -351,7 +351,15 @@ jobs:
           for arch in amd64 arm64; do
             file="ward-kdl-write-linux-${arch}"
             curl -fsSL -X DELETE -H "Authorization: token ${TOKEN}" "${base}/${file}" || true
+            # Content-Type: application/octet-stream is REQUIRED, not decoration.
+            # Without it curl's --data-binary defaults to
+            # application/x-www-form-urlencoded, and Forgejo's generic-package
+            # uploader rejects that with HTTP 500 "request Content-Type isn't
+            # multipart/form-data" - the failure that reddened every release since
+            # this job landed (ward#567). The release-asset upload above already
+            # sets this header; the generic PUT must too.
             curl -fsSL -X PUT -H "Authorization: token ${TOKEN}" \
+              -H "Content-Type: application/octet-stream" \
               --data-binary @"dist/${file}" "${base}/${file}"
             echo "published ${file} to the internal channel ${base}/${file}"
           done

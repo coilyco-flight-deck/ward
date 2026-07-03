@@ -42,6 +42,11 @@ Set both in ward -> Settings -> Actions -> Secrets:
 
 - `CI_RELEASE_TOKEN` - `publish-binaries` uploads release assets with it, and
   `publish-kdl-write` pushes the write tier (so it needs **package write** scope too).
+  Note that `publish-kdl-write` PUTs to the generic-package registry, whose uploader
+  **requires** an explicit `Content-Type: application/octet-stream` header - without
+  it curl defaults to `application/x-www-form-urlencoded` and Forgejo answers HTTP
+  500 `request Content-Type isn't multipart/form-data`, unrelated to token scope
+  ([ward#567](https://forgejo.coilysiren.me/coilyco-flight-deck/ward/issues/567)).
 - `TAP_WRITE_TOKEN` - used by `bump-tap-formula` to push the formula bump.
   Scope: push to `coilyco-flight-deck/homebrew-tap`.
 
