@@ -58,6 +58,54 @@ func TestReplyThoroughnessTimeoutsClimb(t *testing.T) {
 	}
 }
 
+// Ref-mode research is containerized (ward#411): the recast plan must be a read-only,
+// attached, no-TTY one-shot so `docker run -i` yields a capturable stdout.
+func TestAdvisorResearchPlan(t *testing.T) {
+	ref := agentIssueRef{Owner: "coilyco-flight-deck", Repo: "ward", Number: 411}
+	base := sampleUpPlan()
+	base.Repo = targetRepo{Owner: ref.Owner, Name: ref.Repo}
+	p := advisorResearchPlan(base, ref)
+
+	if !p.Ask || !p.ReadOnly {
+		t.Errorf("research plan must set Ask+ReadOnly, got Ask=%v ReadOnly=%v", p.Ask, p.ReadOnly)
+	}
+	if !p.Interactive || p.TTY {
+		t.Errorf("research plan must be attached with no TTY (Interactive && !TTY), got Interactive=%v TTY=%v", p.Interactive, p.TTY)
+	}
+	if p.Role != roleAdvisor {
+		t.Errorf("research plan role = %q, want %q", p.Role, roleAdvisor)
+	}
+	if p.Issue != 0 {
+		t.Errorf("research plan must not carry an Issue (host posts; container never lands), got %d", p.Issue)
+	}
+	joined := strings.Join(dockerCreateArgv(p, ""), " ")
+	// Attached, no TTY: `-i` alone, never `-d` (detached, uncapturable) or `-it` (TTY).
+	if !strings.Contains(joined, " -i ") {
+		t.Errorf("research argv must attach with -i (capturable stdout)\n got: %s", joined)
+	}
+	if strings.Contains(joined, " -d ") || strings.Contains(joined, " -it ") {
+		t.Errorf("research argv must not detach (-d) or allocate a TTY (-it)\n got: %s", joined)
+	}
+	for _, want := range []string{"-e WARD_ASK=1", "-e WARD_READONLY=1"} {
+		if !strings.Contains(joined, want) {
+			t.Errorf("research argv missing %q\n got: %s", want, joined)
+		}
+	}
+}
+
+// The container research timeout must exceed the pure dig time so bring-up (clone,
+// install, context compose) doesn't guillotine a shallow depth (ward#411).
+func TestContainerResearchSetupBudget(t *testing.T) {
+	if containerResearchSetupBudget <= 0 {
+		t.Fatalf("setup budget must be positive, got %s", containerResearchSetupBudget)
+	}
+	for _, lvl := range replyThoroughnessLevels {
+		if lvl.Timeout+containerResearchSetupBudget <= lvl.Timeout {
+			t.Errorf("level %q: padded timeout must exceed the dig timeout", lvl.Name)
+		}
+	}
+}
+
 func TestReplyResearchPrompt(t *testing.T) {
 	ref := agentIssueRef{Owner: "coilyco-flight-deck", Repo: "ward", Number: 179}
 	level, _ := parseReplyThoroughness("deep")

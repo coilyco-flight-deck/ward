@@ -20,17 +20,17 @@ mode**. Either way advisor changes no code and carries nothing to merge.
 
 ## Ref mode: research + comment or cross-repo fan-out (was `reply`)
 
-A ref plus a prompt: advisor does a one-shot research pass and either posts the answer
-**as a comment on that issue** or, when the work spans multiple repos, **fans it out into
-per-repo issues** plus one index comment ([agent-advisor-fanout.md](agent-advisor-fanout.md)).
-It runs as a **host one-shot** on the same trusted slot the pre-flight and route survey
-use, so it is only wired for `claude`; a local-model (`goose`, `opencode`) or unwired
-(`codex`) harness refuses, pointing at a cloud mode.
+A ref plus a prompt: advisor runs a one-shot research pass and either posts the answer
+**as a comment on that issue** or, when work spans multiple repos, **fans it out into
+per-repo issues** plus an index comment ([agent-advisor-fanout.md](agent-advisor-fanout.md)).
+The research runs in a **fresh ephemeral container** ([ward#411](https://forgejo.coilysiren.me/coilyco-flight-deck/ward/issues/411)), like the engineer
+and freeform modes and no longer a native host one-shot. Because the container is the
+sandbox, **any wired harness** runs it, local models included.
 
-It validates the ref + prompt + `--thoroughness`, trust-gates the owner (posts run under
-ward's bot identity), resolves the issue + thread, and researches in a neutral temp dir.
-The research emits a structured plan ward parses, not raw comment text. Everything ward
-posts is wrapped in a ward header + footer, signed via [agent attribution](agent-attribution.md).
+It trust-gates the owner and resolves the issue + thread **on the host**, then spins a
+read-only one-shot container (`WARD_ASK` + `WARD_READONLY`) seeded with the research prompt
+and **captures its stdout**. ward parses the captured plan **host-side**, keeping the
+fan-out deterministic; every post is signed via [attribution](agent-attribution.md).
 
 ### Thoroughness (`--thoroughness`, alias `--depth`)
 
@@ -42,8 +42,8 @@ Scales the steer and the timeout; an unknown value is a hard error.
 | `standard` (default) | 8m | reason it through; investigate where it pays off |
 | `deep` | 15m | investigate thoroughly - clone, chase edge cases, cite |
 
-The read runs in a clean dir with no checkout, so the prompt supplies the clone URL and
-lets it investigate (clone, web) when the depth warrants.
+The container clones the repo to read (or other repos / the web when depth warrants). The
+per-level timeout bounds the dig, plus a bring-up budget.
 
 ## Freeform mode: seeded session (was `ask`)
 

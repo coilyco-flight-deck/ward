@@ -12,15 +12,15 @@ import (
 	"github.com/urfave/cli/v3"
 )
 
-// agent_reply.go is the advisor role's ref mode (ward#347, was reply; ward#179): a host
-// one-shot research pass posted as an issue comment. See docs/agent-advisor.md.
+// agent_reply.go is the advisor role's ref mode (ward#347, was reply): a research pass
+// run in a container (ward#411), posted as a comment/fan-out. See docs/agent-advisor.md.
 
-// replyThoroughness is one rung of the reply depth ladder: how hard the host
-// one-shot digs, the wall-clock it gets, and the steer woven into its prompt.
+// replyThoroughness is one rung of the reply depth ladder: how hard the research
+// digs, the wall-clock it gets, and the steer woven into its prompt.
 type replyThoroughness struct {
 	// Name is the canonical level token (quick|standard|deep).
 	Name string
-	// Timeout caps the host one-shot for this level - a deeper read gets longer.
+	// Timeout caps the research dig for this level - a deeper read gets longer.
 	Timeout time.Duration
 	// Guidance is the depth steer woven into the research prompt.
 	Guidance string
@@ -73,12 +73,12 @@ func parseReplyThoroughness(s string) (replyThoroughness, error) {
 	return replyThoroughness{}, fmt.Errorf("unknown --thoroughness %q: want %s", s, strings.Join(names, "|"))
 }
 
-// runAgentReply fetches the issue + thread, runs the host one-shot research at the chosen
-// depth, and posts the result as a comment (advisor ref mode; ward#347, was reply).
+// runAgentReply fetches the issue + thread, captures the containerized research at the
+// chosen depth, and posts the result as a comment (advisor ref mode; ward#347, ward#411).
 func (r *Runner) runAgentReply(ctx context.Context, c *cli.Command, mode containerMode) error {
 	label := agentCmdline(mode, "advisor")
 
-	ref, prompt, level, err := r.validateReplyInputs(ctx, c, mode, label)
+	ref, prompt, level, err := r.validateReplyInputs(ctx, c, label)
 	if err != nil {
 		return err
 	}
@@ -100,11 +100,10 @@ func (r *Runner) runAgentReply(ctx context.Context, c *cli.Command, mode contain
 		return printAgentReplyPlan(c, mode, ref, title, prompt, level, research)
 	}
 
-	// reply is a host one-shot, so this dispatch is the interactive moment - surface
-	// a stale-ward reminder before it researches + comments (ward#143).
+	// Surface a stale-ward reminder before the research container spins (ward#143).
 	r.maybeWarnWardOutdated(ctx)
 
-	read, err := r.captureReplyResearch(ctx, mode, ref, level, research)
+	read, err := r.captureReplyResearch(ctx, c, mode, ref, level, research)
 	if err != nil {
 		return fmt.Errorf("%s: research %s: %w", label, ref, err)
 	}
@@ -174,9 +173,9 @@ func (r *Runner) postReplyFanOut(ctx context.Context, cl *forgejoClient, mode co
 	return nil
 }
 
-// validateReplyInputs parses and gates the reply argv: a valid issue ref, a
-// non-empty prompt, a known thoroughness, a trusted owner, and a wired mode.
-func (r *Runner) validateReplyInputs(ctx context.Context, c *cli.Command, mode containerMode, label string) (agentIssueRef, string, replyThoroughness, error) {
+// validateReplyInputs parses and gates the reply argv: a valid issue ref, a non-empty
+// prompt, a known thoroughness, and a trusted owner (no mode gate now; docs ward#411).
+func (r *Runner) validateReplyInputs(ctx context.Context, c *cli.Command, label string) (agentIssueRef, string, replyThoroughness, error) {
 	ref, err := r.resolveAgentIssueRef(ctx, c.Args().First())
 	if err != nil {
 		return agentIssueRef{}, "", replyThoroughness{}, fmt.Errorf("%s: %w", label, err)
@@ -199,40 +198,80 @@ func (r *Runner) validateReplyInputs(ctx context.Context, c *cli.Command, mode c
 		return agentIssueRef{}, "", replyThoroughness{}, r.untrustedOwnerErr(label, ref.Owner)
 	}
 
-	// reply rides the trusted host one-shot slot (pre-flight + route survey use it too);
-	// none-wired or local-model-barred harnesses can't run it (ward#162).
-	bin := lookupAgent(mode).Record().Binary
-	if _, ok := hostOneShotArgv(mode, "probe"); !ok {
-		if !hostOneShotTrusted(mode) {
-			return agentIssueRef{}, "", replyThoroughness{}, fmt.Errorf("%s: reply researches with an unsandboxed host one-shot, which a local-model harness like %s is barred from (ward#162); use a cloud harness (--driver claude)", label, bin)
-		}
-		return agentIssueRef{}, "", replyThoroughness{}, fmt.Errorf("%s: reply runs a host one-shot, which %s lacks; use a cloud harness (--driver claude)", label, bin)
-	}
-	if !hostHasBinary(bin) {
-		return agentIssueRef{}, "", replyThoroughness{}, fmt.Errorf("%s: reply needs %s on PATH to research; install it or use a mode whose binary is present", label, bin)
-	}
+	// The container is the sandbox (ward#411), so the ward#162 host-one-shot bar and the
+	// host-PATH-binary check no longer gate here: any wired mode runs it. See the docs.
 	return ref, prompt, level, nil
 }
 
-// captureReplyResearch runs the host one-shot research argv in a neutral temp dir
-// (never the dispatch cwd; mirrors the pre-flight), bounded by the level timeout.
-func (r *Runner) captureReplyResearch(ctx context.Context, mode containerMode, ref agentIssueRef, level replyThoroughness, research string) (string, error) {
-	argv, stdin, ok := hostOneShot(mode, research)
-	if !ok {
-		// Guarded earlier (precondition + ward#162 trust gate), but stay honest
-		// rather than panic on a nil argv.
-		return "", fmt.Errorf("no trusted host one-shot slot for %s", mode)
+// containerResearchSetupBudget pads the per-level research timeout to cover container
+// bring-up (clone, install, compose) so a shallow depth isn't guillotined (ward#411).
+const containerResearchSetupBudget = 5 * time.Minute
+
+// advisorResearchPlan recasts a base plan into the read-only, attached, no-TTY one-shot
+// the ref-mode research capture needs (ward#411 in docs/agent-advisor.md). Pure.
+func advisorResearchPlan(plan upPlan, ref agentIssueRef) upPlan {
+	plan.Ask = true       // WARD_ASK: plain `claude -p`, so stdout is the answer alone
+	plan.ReadOnly = true  // WARD_READONLY: no push wiring, reaper no-op
+	plan.Interactive = true
+	plan.TTY = false // Interactive + !TTY -> `docker run -i`: host-capturable stdout
+	plan.Forge = ref.Forge
+	plan.Role = roleAdvisor
+	// Research only: the host posts, so the container carries no issue and no branch.
+	plan.Issue = 0
+	plan.Branch = ""
+	plan.Name = containerRoleName(roleAdvisor, plan.Mode, plan.Repo, 0, plan.Machine)
+	return plan
+}
+
+// captureReplyResearch runs the ref-mode research in a fresh ephemeral container and
+// captures its stdout (ward#411; docs/agent-advisor.md). Bounded by level + setup budget.
+func (r *Runner) captureReplyResearch(ctx context.Context, c *cli.Command, mode containerMode, ref agentIssueRef, level replyThoroughness, research string) (string, error) {
+	label := agentCmdline(mode, "advisor")
+	repo := targetRepo{Owner: ref.Owner, Name: ref.Repo}
+	cwd := resolveInvokeCWD()
+
+	assetsDir, cleanupAssets, err := writeContainerAssets()
+	if err != nil {
+		return "", fmt.Errorf("%s: %w", label, err)
 	}
-	fmt.Fprintf(os.Stderr, "%s: researching %s at %s depth (up to %s)...\n\n", agentCmdline(mode, "advisor"), ref, level.Name, level.Timeout)
-	rctx, cancel := context.WithTimeout(ctx, level.Timeout)
+	// The capture blocks until the container exits, so the assets mount is safe to
+	// remove on return (unlike a detached engineer run).
+	defer cleanupAssets()
+
+	// The research prompt rides as the agent's one-shot seed (claude -p <research>),
+	// exactly as the freeform advisor seeds its question (agent_advisor.go).
+	plan, err := buildUpPlan(c, repo, mode, cwd, assetsDir, []string{research}, false)
+	if err != nil {
+		return "", fmt.Errorf("%s: %w", label, err)
+	}
+	plan = advisorResearchPlan(plan, ref)
+
+	// Reclaim dead containers before adding one, then pull unless suppressed - the same
+	// pre-launch hygiene the freeform advisor and engineer runs do.
+	r.sweepStaleContainers(ctx)
+	if !c.Bool("no-pull") {
+		r.pullAgentImage(ctx, plan, label)
+	}
+
+	envFile, cleanupEnv, err := r.writeTokenEnvFile(ctx, planDispatchTarget(plan), plan.Forge, r.resolveAgentCreds(ctx, mode))
+	if err != nil {
+		return "", fmt.Errorf("%s: %w", label, err)
+	}
+	defer cleanupEnv()
+	// The run is not --rm, so remove the stopped container on the way out. Use the parent
+	// ctx (not the research-timeout child) so cleanup still fires after a timed-out read.
+	defer func() { _ = r.runDockerSilenced(ctx, true, "rm", "-f", plan.Name) }()
+
+	fmt.Fprintf(os.Stderr, "%s: researching %s at %s depth in a fresh container (dig up to %s)...\n\n", label, ref, level.Name, level.Timeout)
+	rctx, cancel := context.WithTimeout(ctx, level.Timeout+containerResearchSetupBudget)
 	defer cancel()
-	out, err := r.capturePreflight(rctx, argv, stdin)
-	read := strings.TrimSpace(string(out))
+	out, cerr := r.captureDockerSilenced(rctx, dockerCreateArgv(plan, envFile)...)
+	read := strings.TrimSpace(out)
 	if read != "" {
 		fmt.Fprintf(os.Stderr, "%s\n\n", read)
 	}
-	if err != nil {
-		return read, err
+	if cerr != nil {
+		return read, cerr
 	}
 	return read, nil
 }
@@ -276,10 +315,10 @@ func replyResearchPrompt(ref agentIssueRef, title, body string, comments []issue
 			"have each \"body\" state its upstream/downstream dependency in prose so an engineer picking up "+
 			"one issue knows what it waits on. Each \"repo\" must be a real \"owner/name\" slug; ward drops "+
 			"any spec naming an untrusted or malformed repo.\n\n"+
-			"You are running on a host in a fresh, empty scratch directory - it is NOT a checkout of the "+
-			"repo. Work from the issue text and thread below plus what you know. You may investigate "+
-			"further if it helps and the depth warrants it (the repo clones from %s, and you can search "+
-			"the web), but never assume a local checkout exists.\n\n"+
+			"You are running inside a fresh container with a clean clone of the repo checked out at your "+
+			"working directory - read it directly. Work from the issue text and thread below plus the "+
+			"clone and what you know. You may investigate further if it helps and the depth warrants it "+
+			"(this repo is %s, and you can clone other repos or search the web for cross-repo work).\n\n"+
 			"%s\n\n"+
 			"Issue: %s (%q)\n"+
 			"URL: %s\n\n"+
@@ -517,8 +556,8 @@ func printAgentReplyPlan(c *cli.Command, mode containerMode, ref agentIssueRef, 
 	fmt.Fprintf(&b, "title:        %s\n", title)
 	fmt.Fprintf(&b, "thoroughness: %s (timeout %s)\n", level.Name, level.Timeout)
 	fmt.Fprintf(&b, "----- reply prompt -----\n%s\n----- end -----\n", prompt)
-	fmt.Fprintf(&b, "----- research prompt (host one-shot; %s -p) -----\n%s\n----- end -----\n", lookupAgent(mode).Record().Binary, research)
-	fmt.Fprintf(&b, "# would research host-side, then post a comment on %s - or, if the plan spans 2+ trusted repos, fan out into per-repo issues + an index comment (ward#424)\n", ref)
+	fmt.Fprintf(&b, "----- research prompt (in-container one-shot; %s -p) -----\n%s\n----- end -----\n", lookupAgent(mode).Record().Binary, research)
+	fmt.Fprintf(&b, "# would research in a fresh ephemeral container, then post a comment on %s - or, if the plan spans 2+ trusted repos, fan out into per-repo issues + an index comment (ward#424)\n", ref)
 	_, err := io.WriteString(out, b.String())
 	return err
 }
