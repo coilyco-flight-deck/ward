@@ -365,15 +365,19 @@ jobs:
             #    without it curl's --data-binary defaults to
             #    application/x-www-form-urlencoded and Forgejo 500s. The release
             #    -asset upload above already sets this header; the generic PUT must too.
+            # `|| true` so a non-2xx response never trips set -e before the
+            # diagnostic runs. A 401 rejection truncates its own body, so curl
+            # exits non-zero (18) mid-read while still reporting %{http_code}; the
+            # guard would otherwise die on the bare `curl: (18)` and hide the cause.
             code=$(curl -sS -o /tmp/kdl_put.txt -w '%{http_code}' -X PUT \
               -H "Authorization: token ${TOKEN}" \
               -H "Content-Type: application/octet-stream" \
-              --data-binary @"dist/${file}" "${base}/${file}")
+              --data-binary @"dist/${file}" "${base}/${file}" 2>/tmp/kdl_err.txt) || true
             if [ "$code" != "201" ] && [ "$code" != "200" ]; then
-              if [ "$code" = "401" ] || [ "$code" = "403" ]; then
-                echo "::error::ward-kdl-write PUT got HTTP ${code} from the generic package registry. CI_RELEASE_TOKEN is missing package (write:package) scope for ${PKG_OWNER}; grant it in ward -> Settings -> Actions -> Secrets, then re-release. See docs/release.md." >&2
+              if [ "$code" = "401" ] || [ "$code" = "403" ] || [ -z "$code" ] || [ "$code" = "000" ]; then
+                echo "::error::ward-kdl-write PUT to the generic package registry failed (HTTP '${code}'; curl: $(cat /tmp/kdl_err.txt 2>/dev/null)). Almost always CI_RELEASE_TOKEN missing package (write:package) scope for ${PKG_OWNER} - a 401 rejection also truncates its body, surfacing as a transport error. Grant the scope in ward -> Settings -> Actions -> Secrets, then re-release. See docs/release.md." >&2
               else
-                echo "::error::ward-kdl-write PUT to ${base}/${file} failed with HTTP ${code}: $(cat /tmp/kdl_put.txt)" >&2
+                echo "::error::ward-kdl-write PUT to ${base}/${file} failed with HTTP ${code}: $(cat /tmp/kdl_put.txt 2>/dev/null)" >&2
               fi
               exit 1
             fi
