@@ -132,8 +132,8 @@ WARD_BROKER_SOCK_PATH="${WARD_BROKER_SOCK:-/run/ward/broker.sock}"
 # TUI owns (ward#389, docs/broker.md). Under the writable socket dir.
 WARD_BROKER_LOG_PATH="${WARD_BROKER_LOG:-/run/ward/broker.log}"
 
-# install_ward_kdl_write fetches the write-tier binary the broker shells (release
-# path only; 404s since ward#455 dropped the tier assets, ward#501). docs/broker.md.
+# install_ward_kdl_write fetches the write-tier binary the broker shells from an INTERNAL
+# channel (the generic package registry, not the release page; ward#501). docs/broker.md.
 install_ward_kdl_write() {
   command -v ward-kdl-write >/dev/null 2>&1 && return 0
   if [ -n "${WARD_FROM_SOURCE:-}" ]; then
@@ -143,13 +143,15 @@ install_ward_kdl_write() {
   local tag asset
   tag="$(resolve_ward_tag)"
   [ -n "$tag" ] && [ "$tag" != "null" ] || { log "broker: no release tag resolved for ward-kdl-write; broker skipped"; return 0; }
-  asset="$WARD_FORGEJO_BASE/coilyco-flight-deck/ward/releases/download/$tag/ward-kdl-write-linux-$(arch)"
-  log "broker: downloading ward-kdl-write $tag for linux-$(arch)"
+  # Internal channel (ward#501): the generic package registry keyed to the same
+  # release tag - deliberately not the release download page (ward#441).
+  asset="$WARD_FORGEJO_BASE/api/packages/coilyco-flight-deck/generic/ward-kdl-write/$tag/ward-kdl-write-linux-$(arch)"
+  log "broker: downloading ward-kdl-write $tag for linux-$(arch) from the internal package channel"
   if curl -fsSL -H "Authorization: token ${FORGEJO_TOKEN:-}" -o /usr/local/bin/ward-kdl-write "$asset"; then
     chmod 0755 /usr/local/bin/ward-kdl-write
   else
     rm -f /usr/local/bin/ward-kdl-write
-    log "broker: ward-kdl-write download failed ($asset); broker skipped (older release without the tier asset?)"
+    log "broker: ward-kdl-write download failed ($asset); broker skipped (a release cut before the internal-channel publish, or the registry is unreachable? ward#501)"
   fi
 }
 

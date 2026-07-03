@@ -34,11 +34,13 @@ SSM auth in its header; the compiled binary uses the env auth.
 
 Started **as root, before the privilege-drop**, gated on `WARD_READONLY`:
 
-1. `install_ward_kdl_write` downloads `ward-kdl-write-linux-<arch>` from the same
-   release `ward` came from (best-effort; a miss leaves the broker unstarted).
-   **The tiers are no longer public release assets, so this 404s
-   and the broker stays down** - the container uses the `FORGEJO_TOKEN` path
-   ("Dual mode" below).
+1. `install_ward_kdl_write` downloads `ward-kdl-write-linux-<arch>` from the
+   **internal package channel** - the Forgejo generic package registry
+   (`generic/ward-kdl-write/<tag>/...`), keyed to the release tag, **not** the
+   release page. The tier release assets were dropped; `publish-kdl-write`
+   publishes the write tier here instead
+   ([ward#501](https://forgejo.coilysiren.me/coilyco-flight-deck/ward/issues/501)).
+   A miss falls back to the `FORGEJO_TOKEN` path ("Dual mode" below).
 2. `start_broker` runs the daemon, waits for the socket, exports `WARD_BROKER_SOCK`,
    and sends fd 1+2 to `WARD_BROKER_LOG` (default `/run/ward/broker.log`), never the
    shared TTY - a raw per-op line would corrupt the director's Claude Code TUI.

@@ -1,19 +1,18 @@
 # Release pipeline
 
-Forgejo-canonical release on push to `main`
-(`forgejo.coilysiren.me/coilyco-flight-deck/ward`). The
+Forgejo-canonical release on push to `main`. The
 `.forgejo/workflows/release.yml` pipeline cuts the tag + release, then bumps the
 homebrew formula(e) so `brew upgrade ward` builds the new tag from source.
 
 ward's formula is build-from-source (a per-tag tarball `url` + `sha256` ->
-`go build`), so `brew` never consumes them - but the
-`publish-binaries` job still ships the full matrix + `SHA256SUMS` to **both** the
-Forgejo and GitHub release pages ([release-binaries.md](release-binaries.md)).
+`go build`), but `publish-binaries` still ships the full matrix + `SHA256SUMS`
+to **both** the Forgejo and GitHub release pages ([release-binaries.md](release-binaries.md)).
 
 The release page carries **only** the `ward` binaries (+ checksums): `ward-kdl`
-and its `ward-kdl-{read,write,admin}` tiers are no longer public assets
-- embedded in `ward`, spec authors build from a clone ([authoring](ward-kdl-authoring.md)).
-The broker's write-tier download 404s - follow-up [ward#501](https://forgejo.coilysiren.me/coilyco-flight-deck/ward/issues/501).
+and its `ward-kdl-{read,write,admin}` tiers are no longer public assets - embedded
+in `ward`, spec authors build from a clone ([authoring](ward-kdl-authoring.md)). The
+write tier is the exception: `publish-kdl-write` pushes it to an **internal** package
+registry for the broker ([ward#501](https://forgejo.coilysiren.me/coilyco-flight-deck/ward/issues/501), [broker.md](broker.md)).
 
 ## Version bump
 
@@ -38,8 +37,8 @@ One job rewrites the formula `url` line after a release:
 
 Set both in ward -> Settings -> Actions -> Secrets:
 
-- `CI_RELEASE_TOKEN` - used by `publish-binaries` to upload release assets to
-  ward's own releases.
+- `CI_RELEASE_TOKEN` - `publish-binaries` uploads release assets with it, and
+  `publish-kdl-write` pushes the write tier (so it needs **package write** scope too).
 - `TAP_WRITE_TOKEN` - used by `bump-tap-formula` to push the formula bump.
   Scope: push to `coilyco-flight-deck/homebrew-tap`.
 

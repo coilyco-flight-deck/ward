@@ -253,6 +253,97 @@ jobs:
           done
           echo "GitHub release ${TAG} published with the full matrix + SHA256SUMS"
 
+  publish-kdl-write:
+    needs: release
+    if: ${{ needs.release.outputs.tag != '' }}
+    runs-on: docker
+    env:
+      TAG: ${{ needs.release.outputs.tag }}
+      GO_VERSION: "1.26.4"
+      KDL_GEN_REF: v0.48.0
+      KDL_GUARDFILE: ./cmd/ward-kdl/ward-kdl-write/ward-kdl.forgejo.write.guardfile.kdl
+      GOPRIVATE: forgejo.coilysiren.me
+      FORGEJO_BASE_URL: https://forgejo.coilysiren.me
+      PKG_OWNER: coilyco-flight-deck
+    steps:
+      - uses: actions/checkout@v6
+        with:
+          ref: ${{ needs.release.outputs.tag }}
+          fetch-depth: 0
+
+      - name: Install Go
+        run: |
+          set -euo pipefail
+          curl -fsSL "https://go.dev/dl/go${GO_VERSION}.linux-amd64.tar.gz" -o /tmp/go.tar.gz
+          tar -xzf /tmp/go.tar.gz -C /usr/local
+          echo "/usr/local/go/bin" >> "$GITHUB_PATH"
+
+      - name: Build ward-kdl-write (linux amd64 + arm64)
+        timeout-minutes: 15
+        run: |
+          set -euo pipefail
+          # Generated, not a plain ./cmd build: the generator (KDL_GEN_REF, in
+          # lockstep with the Makefile's REF) renders + builds the tier binary,
+          # entered via the write tier's forgejo guardfile. The driver merges every
+          # ward-kdl.*.guardfile.kdl in the tier subdir that shares the
+          # `wrap ward-kdl-write` name (forgejo + signoz today), so the asset carries
+          # the FULL write-tier surface - matching `make build-ward-kdl-tiers`. This
+          # is the tier the in-container broker shells (ward#329). See docs/broker.md.
+          # GOPROXY=direct so fresh cli-guard pseudo-versions resolve, mirroring
+          # publish-binaries and the brew formula. See docs/homebrew-build.md.
+          export GOPROXY=direct GOSUMDB=off
+          mkdir -p dist
+          gen="forgejo.coilysiren.me/coilyco-flight-deck/cli-guard/cmd/specverb-gen@${KDL_GEN_REF}"
+          bound() { if command -v timeout >/dev/null 2>&1; then timeout 240 "$@"; else "$@"; fi; }
+          # amd64 (host): the generator renders + builds the tier binary directly.
+          for attempt in 1 2 3; do
+            if bound go run "$gen" build --guardfile "$KDL_GUARDFILE" \
+                 --out "dist/ward-kdl-write-linux-amd64" --set-version "$TAG"; then break; fi
+            if [ "$attempt" -eq 3 ]; then
+              echo "::error::ward-kdl-write amd64 build failed after 3 attempts" >&2
+              exit 1
+            fi
+            echo "ward-kdl-write build attempt ${attempt} failed/timed out; retrying in 5s" >&2
+            sleep 5
+          done
+          # arm64: specverb-gen build is host-arch only, so cross-build from the
+          # self-contained module it just materialized in the generator cache. The
+          # CI cache is fresh and this is a single build (not a loop), so exactly one
+          # cache dir exists - keeping this single-result `find` unambiguous.
+          cachedir="$(find "$HOME/.cli-guard/cache/specverb" -mindepth 1 -maxdepth 1 -type d | head -1)"
+          if [ -z "$cachedir" ] || [ ! -f "$cachedir/main.go" ]; then
+            echo "::error::could not locate the generator cache module for the arm64 cross-build" >&2
+            exit 1
+          fi
+          ( cd "$cachedir" && GOOS=linux GOARCH=arm64 go build -trimpath \
+              -ldflags "-s -w -X main.Version=${TAG}" \
+              -o "${GITHUB_WORKSPACE}/dist/ward-kdl-write-linux-arm64" . )
+          ls -l dist
+
+      - name: Publish ward-kdl-write to the internal package registry (not the release page)
+        env:
+          TOKEN: ${{ secrets.CI_RELEASE_TOKEN }}
+        run: |
+          set -euo pipefail
+          if [ -z "${TOKEN:-}" ]; then
+            echo "::error::CI_RELEASE_TOKEN not set; cannot publish ward-kdl-write to the package registry" >&2
+            exit 1
+          fi
+          # The Forgejo generic package registry is the broker's INTERNAL channel
+          # (ward#501): the write tier lands here keyed to the release tag, and
+          # nothing shows on the public release page. Package `ward-kdl-write`,
+          # version = the release tag, one file per arch. Delete-then-PUT so a
+          # workflow re-run for an existing tag replaces the file instead of 409-ing
+          # on a duplicate. CI_RELEASE_TOKEN must carry package write scope.
+          base="${FORGEJO_BASE_URL}/api/packages/${PKG_OWNER}/generic/ward-kdl-write/${TAG}"
+          for arch in amd64 arm64; do
+            file="ward-kdl-write-linux-${arch}"
+            curl -fsSL -X DELETE -H "Authorization: token ${TOKEN}" "${base}/${file}" || true
+            curl -fsSL -X PUT -H "Authorization: token ${TOKEN}" \
+              --data-binary @"dist/${file}" "${base}/${file}"
+            echo "published ${file} to the internal channel ${base}/${file}"
+          done
+
   bump-tap-formula:
     needs: release
     if: ${{ needs.release.outputs.tag != '' }}
