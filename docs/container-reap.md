@@ -1,3 +1,6 @@
+---
+doc_goal: Give an operator full confidence in the deterministic teardown reaper as the no-lost-work backstop - how EXIT-trap arming makes it fire on every exit path beyond the agent's reach, the ordered land-or-salvage decision (nothing-to-reap first, closing-ref, integrate, junk-scan, push-or-salvage, grant-verify), and the PAT-rotation and auth-classification caveats - so its land-or-salvage contract is trustable rather than opaque.
+---
 # ward container reap
 
 `ward container reap` is the deterministic teardown backstop for

@@ -1,3 +1,6 @@
+---
+doc_goal: Let an operator run and reason about the director as ward's autonomous backlog supervisor - the LLM-in-the-loop heartbeat that drains a repo's headless lane under trust and slot bounds - not mistake it for a one-shot command.
+---
 # ward agent director
 
 `ward agent director` (public face `warded director`) is the **autonomous backlog

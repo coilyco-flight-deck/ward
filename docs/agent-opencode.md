@@ -1,3 +1,6 @@
+---
+doc_goal: Let an operator run and reason about the local Ollama-backed opencode harness - its config, install stance, launch dialect, and the in-container reachability probe that keeps a dead endpoint from silently hanging a dispatched run - and know exactly what host repointing is not yet supported.
+---
 # ward agent opencode
 
 `opencode` is the local Ollama-backed harness behind the renamed `qwen` mode.

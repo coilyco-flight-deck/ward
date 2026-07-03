@@ -1,3 +1,6 @@
+---
+doc_goal: Explain the /substrate reference-repo layer as what lets a least-access boxed agent read a convention or contract without reaching outside its container - the public/private tier split that keeps the dev-base image shareable, TTL-gated mirror warming, and the read-from-either / act-only-on-workspace rule when a repo lands in both trees.
+---
 # container substrate reference repos
 
 Beyond the target repo, every `ward container` warms a fixed set of cross-cutting

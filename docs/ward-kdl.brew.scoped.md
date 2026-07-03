@@ -1,3 +1,6 @@
+---
+doc_goal: Record precisely why the scoped/mutating half of `ward pkg brew` cannot yet be expressed in the exec dialect or a complex action and stays hand-written gated Go, so a future author knows the five concrete guard gaps and the exact upstream cli-guard seam that would let the `never run` markers flip to a gated verb.
+---
 # `ward pkg brew` scoped verbs - why they stay gated Go ([ward#95](https://forgejo.coilysiren.me/coilyco-flight-deck/ward/issues/95))
 
 [ward#94](https://forgejo.coilysiren.me/coilyco-flight-deck/ward/issues/94)

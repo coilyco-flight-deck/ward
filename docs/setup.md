@@ -1,3 +1,6 @@
+---
+doc_goal: Make an adopter confident that `ward setup` is the one-command front door onto ward's forge-agnostic dev-verb gate - scaffolding a doctor-clean `.ward/ward.yaml` from the Makefile with an inert `security:` template - and clear that it authors no guardfiles and never touches the agent half.
+---
 # ward setup
 
 `ward setup` (public face `warded setup`) is the guided onboarding verb: it

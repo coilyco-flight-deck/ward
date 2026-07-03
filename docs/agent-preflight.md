@@ -1,3 +1,6 @@
+---
+doc_goal: Make a reader understand the GO/NO-GO pre-flight as a bias-to-proceed guard that only lets the agent itself veto an unattended run - covering prompt shape, thread filtering, cwd isolation, and every skip path - so they can predict exactly when a run launches, comments, or blind-fires.
+---
 # ward agent: headless pre-flight
 
 `headless` detaches into a fire-and-forget run nobody is watching, so when it is

@@ -1,3 +1,6 @@
+---
+doc_goal: Make a self-hoster understand the compiled-in owner allowlist as the deliberate wall around the container's bypassPermissions autonomy, why every dispatch surface enforces it, why it is compiled in rather than runtime config today, and the fork-and-rebuild path that is the only extension until runtime owner config lands.
+---
 # ward agent: the owner trust gate ([ward#484](https://forgejo.coilysiren.me/coilyco-flight-deck/ward/issues/484))
 
 Point `warded` at an issue in an owner ward does not trust and every dispatch

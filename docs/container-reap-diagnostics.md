@@ -1,3 +1,6 @@
+---
+doc_goal: Make a reaper's bad outcome self-diagnosing by explaining the `--- reap diagnostics ---` block - the ward version and how it resolved, HEAD-vs-`origin/main` ancestry with an outright FALSE-salvage call, the decision gate and provenance state - and why it prints before the push and stays secret-free so it survives a dead-PAT teardown and folds into a public issue.
+---
 # reap diagnostics block ([ward#531](https://forgejo.coilysiren.me/coilyco-flight-deck/ward/issues/531))
 
 Whenever [`ward container reap`](container-reap.md) **salvages or fails**, it dumps

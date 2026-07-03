@@ -1,3 +1,6 @@
+---
+doc_goal: Make a reader trust that a headless agent run is fully reconstructable after teardown, and grasp that the drain is a deliberate safety system - the endpoint-locality gate deciding full-vs-redacted content is load-bearing, not a config detail.
+---
 # agent-run observability
 
 A headless `ward agent` run used to be unqueryable after it finished: its console

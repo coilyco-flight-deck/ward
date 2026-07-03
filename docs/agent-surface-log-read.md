@@ -1,3 +1,6 @@
+---
+doc_goal: Explain how the director reads run logs without a docker socket - a read-only bind of the redacted drain tree - and why that indirection is a real security choice, since the socket is host-root-equivalent and the raw transcript carries unscrubbed secrets.
+---
 # Reading run logs from the director surface
 
 The [director read-only surface](agent-surface.md) reads a run's logs **read-only**,

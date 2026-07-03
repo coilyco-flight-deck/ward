@@ -1,3 +1,6 @@
+---
+doc_goal: Make an operator fluent in the engineer role as the detached, issue-to-merge worker of the guarded execution layer - how the argument type selects ref vs freeform mode, why the run is fire-and-forget with a frozen seed and an immutable reserved issue, and where the reaper gate lands it.
+---
 # ward agent engineer
 
 `ward agent engineer` (public face `warded engineer`) is the **implement-a-ticket**
@@ -8,7 +11,7 @@ implement, commit, merge to main, push, `closes #N`. It folds in the retired
 [director](agent-director.md).
 
 A **bare ref with no role word also routes to engineer**, so
-`warded #98` *is* `warded engineer #98` - the fire-and-forget default.
+`warded #98` **is** `warded engineer #98` - the fire-and-forget default.
 
 ## Usage
 
@@ -21,8 +24,8 @@ warded #98                                      # bare ref -> the engineer (defa
 
 ## Argument-type dispatch
 
-The first argument decides the mode (`parseAgentIssueRef` succeeds → ref; it errors
-on non-ref text → freeform):
+The first argument decides the mode (`parseAgentIssueRef` succeeds for a ref, and
+errors on non-ref text for freeform):
 
 - **A ref** (`owner/repo#N`, a bare `#N` / `N` inferring `owner/repo` from the cwd's
   git origin, or a Forgejo issue URL) carries that issue.
@@ -56,13 +59,13 @@ mis-scoped one - see [container-stop.md](container-stop.md) for the reaper inter
 When the argument is not a ref, engineer files an issue, carries it, closes it.
 Two sub-modes by repo omission:
 
-- **DIRECT** — an explicit `owner/repo` (or `--instructions-file` with cwd inference);
+- **DIRECT** - an explicit `owner/repo` (or `--instructions-file` with cwd inference),
   filed there and carried, same detached run + pre-flight. Title is the first
-  instruction line (≤72 runes); body is the instructions + a provenance footer.
-- **ROUTE** — a freeform task and no repo. ward files an intake record in
+  instruction line (≤72 runes), body is the instructions + a provenance footer.
+- **ROUTE** - a freeform task and no repo. ward files an intake record in
   `coilysiren/inbox`, surveys the fleet to route it (`REPO`/`UNCLEAR`), files a scoped
   child, cross-links + closes intake, then carries the child. An UNCLEAR or untrusted
-  target bounces to a human. The survey *is* the gate (ROUTE skips the pre-flight); it
+  target bounces to a human. The survey **is** the gate (ROUTE skips the pre-flight), it
   needs a trusted cloud host slot, else use DIRECT.
 
 ## Trust gate and dry-run

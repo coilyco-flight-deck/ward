@@ -1,3 +1,6 @@
+---
+doc_goal: Let an operator choose which coding CLI carries a run by laying the cloud-vs-local harnesses side by side on the facts that actually differ at first launch - credential channel, install stance, and which gates fire - and make clear this driver seam is how ward stays harness-agnostic while keeping each run bounded.
+---
 # ward agent drivers
 
 `--driver` picks which harness carries the issue inside the container

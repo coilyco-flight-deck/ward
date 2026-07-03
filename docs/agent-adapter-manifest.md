@@ -1,3 +1,6 @@
+---
+doc_goal: Show why the fleet manifest is the single source of per-agent divergence that lets ward be a generic manifest-backed harness driver rather than a pile of hardcoded Go switches, and give a spec author the projected schema to edit against.
+---
 # Agent-adapter manifest
 
 The single source of **per-agent divergence** ward needs to drive a harness is

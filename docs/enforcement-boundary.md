@@ -1,3 +1,6 @@
+---
+doc_goal: Pin down, per harness and per context, exactly where ward's real enforcement boundary sits - the container edge plus cli-guard verb gate that is identical for every harness in the agent flow, versus the claude-only fail-open host hint - so no demo or claim mistakes the soft hint for the hard wall that backs the boundary-is-the-product thesis.
+---
 # Where the enforcement boundary sits, per harness
 
 ward's claim is "it refuses Y, and proves it." The mechanism that does the

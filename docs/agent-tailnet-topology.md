@@ -1,3 +1,6 @@
+---
+doc_goal: Let an operator repoint ward's tailnet network, proxy box, and ollama tower at their own infra through host-side WARD_* env overrides without a rebuild, and understand why these runtime-topology values carry overrides while deployment/spec-bundle data does not.
+---
 # Repointing the tailnet + tower topology
 
 ward's tailnet routing ([agent-ts-sidecar.md](agent-ts-sidecar.md)) once baked its

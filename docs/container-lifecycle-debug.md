@@ -1,3 +1,6 @@
+---
+doc_goal: Give an operator a self-contained procedure to reconstruct any headless warded run's path from its logs alone - the three terminal reap states, how to tell a bootstrap death from a never-launched dispatch, and the durable-surfaces-outward sequence - so a run is debuggable with no prior private context.
+---
 # debug a headless run from logs alone
 
 The companion to [container-lifecycle-logs.md](container-lifecycle-logs.md) (the log

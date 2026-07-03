@@ -1,3 +1,6 @@
+---
+doc_goal: Show examples/toy/ as the smallest thing that is still a real ward-managed repo and the concrete anchor for demo and spec-bundle - the four ward-facing pieces (Makefile, .ward/ward.yaml with a required security block, guardfile, dev-base) and what each teaches - so a reader can copy it as a starting point and tell it apart from the sibling spec bundle.
+---
 # the toy example repo
 
 `examples/toy/` is ward's minimal, self-contained example project ([ward#463](https://forgejo.coilysiren.me/coilyco-flight-deck/ward/issues/463),

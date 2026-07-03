@@ -1,3 +1,6 @@
+---
+doc_goal: Show how ward-kdl exec-dialect guardfiles auto-graft onto the `ward` command tree at their `wrap` path through ward's audit pipeline - replacing per-surface Go grafts with one general delegation mechanism - and why hand-written surfaces win collisions and spec-dialect files stay out.
+---
 # Auto-mounting ward-kdl exec guardfiles into `ward`
 
 [ward#284](https://forgejo.coilysiren.me/coilyco-flight-deck/ward/issues/284) wires the exec-dialect ward-kdl guardfiles into the `ward` binary as a

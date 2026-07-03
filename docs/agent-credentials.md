@@ -1,3 +1,6 @@
+---
+doc_goal: Show how ward seeds each harness's host credential into the least-access container - subscription login not API key, never in argv or audit, scrubbed after decode - so a reader sees credential handling as the reach-bounding part of the guarded execution layer.
+---
 # ward agent: shared credentials
 
 How ward seeds each harness's host credential into the container. The

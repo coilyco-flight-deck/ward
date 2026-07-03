@@ -1,3 +1,6 @@
+---
+doc_goal: Let a maintainer or a GitHub-arriving installer understand how one build per tag publishes a byte-identical binary matrix plus SHA256SUMS to both the Forgejo and GitHub release pages, why the checksums cannot drift, and when to reach for a raw binary versus Homebrew.
+---
 # Release binaries: the dual-forge matrix
 
 Every tag publishes the **same binary matrix to both release pages** - the

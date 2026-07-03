@@ -1,3 +1,6 @@
+---
+doc_goal: Convey the codex harness as ward's open-sandbox cloud driver and give an operator its concrete config posture, install stance, and launch dialect so a codex-driven run is predictable.
+---
 # ward agent codex
 
 `codex` is the cloud harness with the open sandbox posture.
@@ -16,6 +19,14 @@ The bootstrap writes:
 - `sandbox_mode = "danger-full-access"`
 - default model / reasoning / verbosity knobs, overridable by `WARD_CODEX_*`
 
+Read `danger-full-access` and `never` as **deliberate containment, not a lax
+default**. codex's own sandbox and approval prompts would be redundant here
+because the **ephemeral least-access container is already the isolation
+boundary** - the run is fenced by repo-scoped credentials, cli-guard policy, and
+the audit trail regardless of what codex does inside it. Turning codex's inner
+sandbox off lets it work unprompted while ward's outer boundary, not codex's,
+holds the reach line.
+
 ## Install stance
 
 codex ships in the dev-base image and launches today - no self-install step. The
@@ -32,7 +43,13 @@ shell.
 
 ## Smoke gate
 
-None today. codex dispatch proceeds without the host GO/NO-GO preflight.
+None today. codex dispatch proceeds without the host GO/NO-GO preflight that
+[claude](agent-claude.md) runs. The operational consequence: a codex auth failure
+has **no preflight backstop**. Where a bad claude credential is caught by the
+`claude -p` probe before launch, a codex run seeded with a dead
+`~/.codex/auth.json` launches anyway and only fails once inside the container, so
+an operator debugging a stalled codex run should suspect credentials directly
+rather than expecting a launch-time GO/NO-GO to have flagged them.
 
 ## See also
 

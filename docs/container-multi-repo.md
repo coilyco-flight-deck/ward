@@ -1,3 +1,6 @@
+---
+doc_goal: Make an operator understand `--repo` as the single explicit way to widen the container doctrine wall to a named set of writable repos - what each grant clones, why the agent and not the reaper must land every grant, and how the reaper verifies but never lands them - so a cross-repo run neither under-reaches nor silently drops a grant.
+---
 # multi-repo container runs (`--repo`)
 
 By default a `ward container` run is single-repo: it clones one target into

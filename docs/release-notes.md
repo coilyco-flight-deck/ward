@@ -1,3 +1,6 @@
+---
+doc_goal: Explain how ward turns a raw git-log dump into a self-hoster-readable release body led by a "does this upgrade affect you" verdict, and why the categoriser stays dependency-free bash with a fixture-tested fallback so a release never ships an empty body.
+---
 # Release notes
 
 The release body is not the raw `git log` dump `tag-bump` emits. The `notes`

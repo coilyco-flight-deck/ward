@@ -1,3 +1,6 @@
+---
+doc_goal: Convey why host-side pre-flight is a capability boundary, not a prompt - only a trusted cloud harness may run unsandboxed on the host because a local model that ignores read-only can mutate and push real host checkouts - and show the single chokepoint plus fail-safe classifier that enforce it.
+---
 # pre-flight trust gate: cloud harnesses only ([ward#162](https://forgejo.coilysiren.me/coilyco-flight-deck/ward/issues/162))
 
 The host [pre-flight](agent-preflight.md) runs the agent **on the host** with full

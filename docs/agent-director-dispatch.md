@@ -1,3 +1,6 @@
+---
+doc_goal: Make a reader trust that the director retries transient launch/infra failures instead of parking issues terminally, and understand the forge-health probe and livelock guard that keep a recovered forge from wedging the backlog.
+---
 # Director dispatch-error disposition
 
 How `ward agent director` classifies a **dispatch error** - the error the engineer command

@@ -1,3 +1,6 @@
+---
+doc_goal: Explain why ward sweeps exited containers host-side and how - the disk-fill failure that forced it, why the reaper cannot self-clean, the drain-before-rm keep-10 sweep, and how it stays self-correcting and work-safe - so an operator trusts that dead containers prune themselves without losing work.
+---
 # ward container cleanup
 
 A ward [container](container.md) is throwaway by design, but a stopped container

@@ -1,3 +1,6 @@
+---
+doc_goal: Let an operator debug a headless warded run from its drained logs alone by making the three log surfaces, the fixed `<surface> <stage> <event> key=value` grammar, and the `container=`/`issue=` correlation ids legible - and land these markers as the load-bearing observability spine of a fully-auditable container session, not incidental print statements.
+---
 # container lifecycle logs
 
 [ward#516](https://forgejo.coilysiren.me/coilyco-flight-deck/ward/issues/516) made

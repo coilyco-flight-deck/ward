@@ -1,3 +1,6 @@
+---
+doc_goal: Give a doc author a decision rule that reliably picks the right forge for every link, grounded in ward's Forgejo-canonical plus read-only-GitHub-mirror reality, so canonical facts point at Forgejo, external navigation points at GitHub, and same-repo links stay relative and correct on both.
+---
 # Which forge a doc link points at ([ward#443](https://forgejo.coilysiren.me/coilyco-flight-deck/ward/issues/443))
 
 ward is **Forgejo-canonical** with a **read-only GitHub mirror** as the public

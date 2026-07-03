@@ -1,3 +1,6 @@
+---
+doc_goal: Give an operator a straight verdict on pointing ward's local harnesses at their own Ollama - supported on native Linux via host-net, not yet on Docker Desktop - with the localhost-inside-a-container trap made explicit and the exact reason the endpoint is unrepointable today tied to the embedded fleet manifest and the tracked config-override fix.
+---
 # ward agent: bring your own local model (Ollama)
 
 Answers what the driver pages skip: **can I point ward's local harnesses at the

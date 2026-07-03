@@ -1,3 +1,6 @@
+---
+doc_goal: Convince a reader that inside a warded container the isolation-plus-doctrine boundary is the real permission manager - why `bypassPermissions` is safe, how launch scope and not the host-wide token parameterizes the writable blast radius, and why there is deliberately no deny wall - so the container reads as a deliberate containment posture rather than a lax harness.
+---
 # ward container permissions
 
 Inside an ephemeral [`ward container`](container.md), the **container itself is

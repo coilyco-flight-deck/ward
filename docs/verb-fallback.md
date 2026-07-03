@@ -1,3 +1,6 @@
+---
+doc_goal: Explain how bare `ward <verb>` safely resolves to `ward exec <verb>` without shadowing real verbs or bypassing the gate, and why the build/test/install triple is a fleet-linted contract that lets a headless agent bootstrap any compliant repo blind.
+---
 # Unknown-verb fallback + the build/test/install triple
 
 ## Unknown-verb fallback
@@ -36,13 +39,13 @@ unfamiliar repo blind: compile it, prove it, and put the artifact where it
 runs. With the fallback above, `ward build` / `ward test` / `ward install`
 then work bare in any compliant repo with no per-repo wiring.
 
-The triple is a *contract*, not three hardcoded commands: dispatch is already
+The triple is a **contract**, not three hardcoded commands: dispatch is already
 handled by the fallback, so blessing it means enforcing the declarations (a
 fleet-rolled `ward-verb-triple` pre-commit linter in
 `coilyco-flight-deck/agentic-os`) rather than adding Go commands here.
 `install` is deliberately **not** standardized across repos - a Go CLI uses
 `go install`, Python uses `uv sync`, JavaScript uses `npm ci`, docs repos use
-a no-op - so only the *name* and the backing target are required, not the
+a no-op - so only the **name** and the backing target are required, not the
 implementation. This repo's own `install` runs `go install ./...`.
 
 Introduced in

@@ -1,3 +1,6 @@
+---
+doc_goal: Convey that ward's shipped binary mounts the generated specverb forgejo surface as its single audited Forgejo path - every agent and reaper call routing through it, the hand-rolled client retired - so a reader grasps this as the build-time-generator-to-runtime-product seam in action, not just an internal client swap.
+---
 # `ward ops forgejo` (in-binary mount)
 
 The `ward` binary cut over to the ward-kdl forgejo guardfile: `ward ops

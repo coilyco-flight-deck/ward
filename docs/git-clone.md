@@ -1,3 +1,6 @@
+---
+doc_goal: Show why cloning is gated on the resolved destination rather than the repo, as a containment control that stops an agent dropping an unwanted persistent checkout, and give an operator the exact allow rule, the tamper-resistant hardcoded allowlist, and how the lockdown forces every agent clone through the gate.
+---
 # ward git clone (destination-gated)
 
 `ward git clone <url> [dir]` wraps `git clone` behind a destination gate

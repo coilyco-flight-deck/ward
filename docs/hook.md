@@ -1,3 +1,6 @@
+---
+doc_goal: Make clear that the PreToolUse hook is a claude-only, fail-open routing hint that nudges bare-binary calls back through the gate - a convenience, never the enforcement boundary - while giving a contributor the internals (protected-binary deny, guard-path check, route tables) needed to change or debug it.
+---
 # ward hook
 
 `ward hook` groups Claude Code hook entry points. Subcommands

@@ -1,3 +1,6 @@
+---
+doc_goal: Let a maintainer trust and repair ward's Forgejo-canonical push-to-main release path - the minor-bump tag, the dual-forge binary matrix, and the loud fail-or-verify tap-formula bump - understanding why each guard exists and exactly which Actions secret to rotate when a release goes red.
+---
 # Release pipeline
 
 Forgejo-canonical release on push to `main`. The

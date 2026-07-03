@@ -1,3 +1,6 @@
+---
+doc_goal: Present the proposed role-aware three-tier context probe honestly as a design-first proposal (not shipped) - why a weak driver drowns on too-much context as readily as too-little, the proactive/immediate/peripheral tiers, the static-compose-plus-spin architecture, and the open forks left for Kai to settle.
+---
 # Role-aware three-tier context probe + per-driver spec (design)
 
 **Status: design-first ([ward#373](https://forgejo.coilysiren.me/coilyco-flight-deck/ward/issues/373)).** Proposes an

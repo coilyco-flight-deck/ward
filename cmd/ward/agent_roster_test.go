@@ -72,18 +72,18 @@ func TestAgentRosterRowsRejectsUndescribedRole(t *testing.T) {
 	}
 }
 
-// TestAgentRosterMarkdownShape sanity-checks the generated body: the generated-by
-// header, a table per role, and a per-role doc link.
+// TestAgentRosterMarkdownShape sanity-checks the generated body: the doc_goal
+// front-matter, the generated-by header, and a flat bullet per role linking its doc.
 func TestAgentRosterMarkdownShape(t *testing.T) {
 	md, err := agentRosterMarkdown()
 	if err != nil {
 		t.Fatalf("agentRosterMarkdown: %v", err)
 	}
 	for _, want := range []string{
+		"---\ndoc_goal: ",
 		"# ward agent: the role roster",
 		"ward agent roster --markdown",
-		"| Role | What this specialist does | Invocation modes |",
-		"[`warded engineer`](agent-engineer.md)",
+		"- [`warded engineer`](agent-engineer.md) - Implements a ticket end to end. Modes: ",
 	} {
 		if !strings.Contains(md, want) {
 			t.Errorf("generated roster body missing %q", want)

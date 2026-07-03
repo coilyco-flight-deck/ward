@@ -1,3 +1,6 @@
+---
+doc_goal: Explain why a fresh in-container clone would otherwise bypass the repo's pre-commit suite and how the entrypoint restores parity before the agent's first commit - and why re-gating the agent's own commits while leaving the reaper's `--no-verify` salvage untouched keeps the audited-gate promise intact inside the container.
+---
 # Container pre-commit parity
 
 A `ward container` run fresh-clones the target inside the container. A fresh

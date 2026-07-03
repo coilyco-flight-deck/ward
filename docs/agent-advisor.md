@@ -1,3 +1,6 @@
+---
+doc_goal: Let a reader pick and drive the advisor counsel role with confidence - the write-no-code member of the guarded roster - grasping how the argument type selects ref-research versus freeform-session mode and what each actually does.
+---
 # ward agent advisor
 
 `ward agent advisor` (public face `warded advisor`) is the **counsel** role of the
@@ -34,20 +37,18 @@ posts is wrapped in a ward header + footer, signed via [agent attribution](agent
 
 ### Thoroughness (`--thoroughness`, alias `--depth`)
 
-Scales the steer and the timeout; an unknown value is a hard error.
+Scales the steer and the timeout. An unknown value is a hard error.
 
-| level | timeout | steer |
-| --- | --- | --- |
-| `quick` | 3m | direct answer from issue + thread; no spelunking |
-| `standard` (default) | 8m | reason it through; investigate where it pays off |
-| `deep` | 15m | investigate thoroughly - clone, chase edge cases, cite |
+- **`quick`** - 3m - direct answer from the issue + thread, no spelunking.
+- **`standard`** (default) - 8m - reason it through, investigate where it pays off.
+- **`deep`** - 15m - investigate thoroughly (clone, chase edge cases, cite).
 
 The read runs in a clean dir with no checkout, so the prompt supplies the clone URL and
 lets it investigate (clone, web) when the depth warrants.
 
 ## Freeform mode: seeded session (was `ask`)
 
-Runs *inside* a fresh container (not a bare host one-shot) so the answer can lean on the
+Runs **inside** a fresh container (not a bare host one-shot) so the answer can lean on the
 repo clone and operating context. It resolves the context repo (`--repo`, else the cwd's
 git origin), trust-gates the owner, and spins an attached container seeded with the
 question; the [reaper](container-reap.md) sweeps it on exit. The agent stays **read-only**.

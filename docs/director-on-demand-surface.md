@@ -1,3 +1,6 @@
+---
+doc_goal: Explain the director on-demand surface as the fix for a slots-full tick reading like an idle stall - the exact condition that offers a keypress into an interactive session, how it shares the drain surface path for parity, and why headless and dry-run stay silent.
+---
 # director on-demand surface ([ward#409](https://forgejo.coilysiren.me/coilyco-flight-deck/ward/issues/409))
 
 Drain is not the only time a human watching the [director](agent-director.md) heartbeat wants

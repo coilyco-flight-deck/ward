@@ -1,3 +1,6 @@
+---
+doc_goal: Explain why ward overrides the generated issue view leaf to collapse Forgejo's repeated full-profile nesting down to bare logins, showing it preserves the guardfile's owner-scope gate and flags, and name it honestly as a stopgap for a missing cli-guard per-call projection hook.
+---
 # The lean `issue view` override ([ward#225](https://forgejo.coilysiren.me/coilyco-flight-deck/ward/issues/225))
 
 `ward ops forgejo issue view` combines the issue and its comment thread, but the
@@ -10,7 +13,7 @@ The engine has no per-call projection hook and cli-guard is a pinned upstream,
 so ward owns the rendering for this one leaf. After `specverb.Build`,
 `overrideForgejoViewIssue` (in `cmd/ward/ops.go`) swaps the built `issue view`
 leaf's action for `runForgejoViewIssue`, which fetches the issue + comments
-through `forgejo_issue.go`'s read seam (`viewIssue`) and prints a lean
+through `forgejo_ops.go`'s read seam (`viewIssue`) and prints a lean
 `{issue, comments}` shape with every user collapsed to its login literal.
 
 The override:

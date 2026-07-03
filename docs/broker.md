@@ -1,3 +1,6 @@
+---
+doc_goal: Explain ward's root credential broker as a real privilege-drop security boundary - a root daemon holding FORGEJO_TOKEN so the dropped agent reaches the forge only through a permissioned socket - and let a maintainer trace its pieces, lifecycle, and its separation from the dispatch broker.
+---
 # Root credential broker (ward side)
 
 The **root credential broker** hardens the [director's surface](agent-surface.md):
@@ -5,9 +8,31 @@ the session would otherwise keep `FORGEJO_TOKEN` in the agent's env. The
 broker closes that gap - a **root daemon** holds it; the dropped agent reaches the
 forge through a socket.
 
-This is the **ward side** (Unit B). The **policy core** - protocol,
-authorizer, executor interface, server - lives in `cli-guard/pkg/broker`:
-policy in cli-guard, glue + credential in ward.
+## The A/B/C/D build-out
+
+The broker landed in four staged units, and the rest of this doc leans on those
+labels, so pin them down first:
+
+- **Unit A** - the **policy core** in `cli-guard/pkg/broker`: protocol,
+  authorizer, executor interface, server. Policy lives in cli-guard.
+- **Unit B** - the **ward side** ([ward#329](https://forgejo.coilysiren.me/coilyco-flight-deck/ward/issues/329)): the root daemon `main`, the
+  socket lifecycle, and the executor that seeds the ward-held credential. Glue +
+  credential in ward. This doc is mostly Unit B.
+- **Unit C** - **routing the clients** ([ward#334](https://forgejo.coilysiren.me/coilyco-flight-deck/ward/issues/334)): rewiring the two
+  chokepoints (`ops forgejo` mutations and `warded #N` dispatch) to reach the
+  forge through the socket instead of a token in the agent's env.
+- **Unit D** - **dropping the raw token**: removing `FORGEJO_TOKEN` from the
+  dropped agent's env once C proves the clients no longer need it.
+
+This is the **ward side** (Unit B). Policy in cli-guard, glue + credential in ward.
+
+## How the pieces relate at runtime
+
+A **root daemon** holds the token and listens on the group-readable socket. When
+a dropped agent runs a forge write, its client (Unit C) sends an **op** over that
+socket. The daemon's **authorizer** decides whether the op is in-tier, and only
+then does the **executor** shell the write-tier CLI with the token seeded into
+its env. The agent never touches the token - it only ever holds a socket handle.
 
 ## The pieces
 

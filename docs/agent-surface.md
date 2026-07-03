@@ -1,3 +1,6 @@
+---
+doc_goal: Make an operator grasp the director's surface session as a deliberately least-access, push-blocked containment scope whose whole point is to scope-file-and-dispatch commissioned work into sealed sibling runs - not a passive read-only mode - and understand which layers enforce the no-push edge and where that edge is still soft.
+---
 # ward agent: the director's read-only surface
 
 The **director's surface session** is the read-only, interactive scope-and-dispatch phase

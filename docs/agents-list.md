@@ -1,3 +1,6 @@
+---
+doc_goal: Make a consumer understand ward agents list --json as the one blessed single-source read surface that lets aos consume ward's own fleet parse instead of shadowing it into a drift-prone fourth copy, and be able to act on the deterministic schema field by field.
+---
 # `ward agents list` - the fleet roster read surface
 
 `ward agents list` dumps ward's embedded fleet roster - the agent names and their

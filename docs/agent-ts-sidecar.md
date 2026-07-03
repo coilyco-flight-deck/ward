@@ -1,3 +1,6 @@
+---
+doc_goal: Let an operator route a Docker Desktop run to the tailnet-only ollama tower by attaching to the standing ansible-owned SOCKS5 box, and grasp why the by-name, capability-free, no-mint design is the safe non-blocking slice - including how to preflight it, dial the tower as localhost, and read its current validation status.
+---
 # ward agent: the sidecar mechanism (Docker Desktop tailnet route)
 
 The **sidecar** is the Docker Desktop mechanism `--tailnet` auto-selects: it reaches

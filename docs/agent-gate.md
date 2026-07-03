@@ -1,3 +1,6 @@
+---
+doc_goal: Make an operator understand the interactive pre-launch gate as the deliberate status-and-consent beat before an interactive container takes the terminal - the Enter-to-launch summary and the u-to-upgrade-then-re-exec path - and why it exists to stop metadata scrolling past into the alt-screen with a stale ward.
+---
 # ward agent: interactive pre-launch gate ([ward#366](https://forgejo.coilysiren.me/coilyco-flight-deck/ward/issues/366))
 
 The seedless interactive bring-up (`runScratchSession`, the director's read-only

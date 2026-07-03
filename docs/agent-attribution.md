@@ -1,23 +1,26 @@
+---
+doc_goal: Explain how every ward-emitted Forgejo write and agent commit is signed with the driving agent's identity, and why the load-bearing bot email turns a plain author string into account-linked provenance, as part of ward's who-did-what audit trail.
+---
 # Agent attribution on Forgejo write bodies
 
 Per [ward#155](https://forgejo.coilysiren.me/coilyco-flight-deck/ward/issues/155),
 every Forgejo write **ward itself emits** that carries a content body is signed
 with the driving agent's identity before it is sent, so a human or another agent
-reading the issue/comment/commit can tell who wrote it. The reaper's residual
-commit carries a matching `Co-Authored-By` trailer.
+reading the issue/comment/commit can tell who wrote it. Provenance on every
+ward-emitted write is a load-bearing part of the guarded execution layer's
+who-did-what audit trail, not a naming courtesy. The reaper's residual commit
+carries a matching `Co-Authored-By` trailer.
 
 ## Identity
 
 The identity is derived from the agent mode (`cmd/ward/agent_signature.go`):
 
-| mode   | attribution        |
-| ------ | ------------------ |
-| claude | `Claude (she/her)` |
-| codex  | `Codex`            |
-| qwen   | `Qwen`             |
-| goose  | `Goose`            |
+- **claude** - `Claude (she/her)`
+- **codex** - `Codex`
+- **qwen** - `Qwen`
+- **goose** - `Goose`
 
-Only claude carries pronouns today; the rest sign by name. An unrecognized mode
+Only claude carries pronouns today, the rest sign by name. An unrecognized mode
 resolves whole to the claude identity, mirroring the claude default elsewhere.
 
 ## How it is applied

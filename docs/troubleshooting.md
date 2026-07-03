@@ -1,3 +1,6 @@
+---
+doc_goal: Give an operator a symptom-indexed single entry point that turns any stalled, refused, or nothing-landed `warded` run into the one diagnostic surface and fix, keyed to the guarded-execution reality (in-container auth, NO-GO pre-flight, clean-tree gate, land-or-salvage reaper) rather than to which subsystem broke.
+---
 # Troubleshooting a warded run
 
 Your `warded` run failed or seemed to do nothing. Find your **symptom** below - not

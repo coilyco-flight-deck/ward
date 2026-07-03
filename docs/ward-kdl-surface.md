@@ -1,4 +1,21 @@
+---
+doc_goal: Give an operator the full map of audited `ward-kdl` verb surfaces - the spec-driven ops APIs, the permission-tiered forgejo binaries, and the exec-dialect passthroughs auto-mounted into `ward` - so they can find the right guarded verb and know which transport and tier backs it.
+---
 # ward-kdl verb surface
+
+Every surface below is a **least-privilege audited verb compiled from a
+guardfile** - the guardfile declares exactly which operations exist, cli-guard
+generates the CLI from it, and the compiled artifact is the boundary, not a
+hand-curated command list. Read this as ward's ops security surface, not a menu.
+
+Two verb kinds tag the whole catalog:
+
+- **`specverb`** - spec-driven REST. A pruned OpenAPI/Swagger lock plus a
+  guardfile generate typed API verbs (forgejo, glitchtip, signoz, ...). Only the
+  granted operations compile in.
+- **`execverb`** - local-CLI passthrough. A guardfile wraps an existing binary
+  (aws, kubectl, docker, ...), exposing only the allowed argv shapes and jailing
+  the rest.
 
 The spec-driven and passthrough verb surfaces carried by `ward-kdl`, split out of
 [FEATURES.md](FEATURES.md). For what `ward-kdl` **is** - the build-time

@@ -1,3 +1,6 @@
+---
+doc_goal: Give a supervising harness the two machine-readable signals a fire-and-forget guarded run emits - the dispatch exit code and the drained meta.json outcome - as a drift-tested contract it can branch on, and convey that this enum stability is what makes headless agent governance auditable rather than a black box.
+---
 # ward agent: the machine-readable dispatch contract ([ward#485](https://forgejo.coilysiren.me/coilyco-flight-deck/ward/issues/485))
 
 A `warded owner/repo#N` dispatch is fire-and-forget, so a supervising harness

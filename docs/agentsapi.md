@@ -1,3 +1,6 @@
+---
+doc_goal: Make a ward contributor grasp agentsapi as the deliberate types-only per-agent seam that lets each harness own its behaviour in its own folder while core dispatches by feature-test through a registry - retiring the switch-scatter - and be able to navigate the interfaces, value types, and phased rollout with the ratchet that guards it.
+---
 # agentsapi: the agent-agnostic contract
 
 `internal/agentsapi` is ward's per-agent seam contract (renamed from

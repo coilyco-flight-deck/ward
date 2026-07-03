@@ -1,3 +1,6 @@
+---
+doc_goal: Make an operator understand exactly what the GitHub mirror carries and what it does not, why Forgejo stays the single source of truth, and how each step now fails loud - so the v0.5.8 silent-freeze failure mode reads as a solved recurrence with a known PAT-rotation fix rather than a mystery.
+---
 # GitHub mirror scope
 
 `.forgejo/workflows/mirror-to-github.yml` keeps the read-only GitHub mirror

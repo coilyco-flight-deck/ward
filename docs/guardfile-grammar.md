@@ -1,3 +1,6 @@
+---
+doc_goal: Teach a spec author the dialect-1 KDL guardfile grammar that feeds ward-kdl's build-time generator - the deny-by-default spec and exec sub-dialects, a minimal working surface, and where auth lives as a lazily-resolved reference not a baked secret - so an audited ward ops verb can be authored from source.
+---
 # Guardfile grammar (dialect 1)
 
 This is the dialect-1 KDL grammar, a minimal working guardfile, and where auth

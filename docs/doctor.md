@@ -1,3 +1,6 @@
+---
+doc_goal: Make ward doctor readable as the loud validator that turns a .ward/ward.yaml into a trustworthy policy gate - the allowlist drift guard (stricter than target-name-exists), the fail-when-no-security-block behavior that makes exit 0 mean a policy is in force, and the three host probes - so a reader can wire it as a CI gate and read every row.
+---
 # ward doctor
 
 `ward doctor` is ward's single diagnostic verb. Runs every check inline and exits non-zero on any failure. Reads the resolved config path (`--config` > `$WARD_CONFIG` > walk-up from cwd, per [config-discovery](config-discovery.md)).
@@ -43,7 +46,7 @@ When the check fails, ward appends a one-line hint naming this contract. Only ta
 
 ## Flags
 
-- `--skip <name>` — repeatable. Suppresses a security probe (`path`, `sudo`, or `credentials`) and surfaces a `SKIP` row in its place.
-- `--strict-credentials` — promotes credential-env hits from `WARN` to `FAIL` for CI use.
+- `--skip <name>` - repeatable. Suppresses a security probe (`path`, `sudo`, or `credentials`) and surfaces a `SKIP` row in its place.
+- `--strict-credentials` - promotes credential-env hits from `WARN` to `FAIL` for CI use.
 
 ward parses but does not enforce the `security:` block beyond these probes. PreToolUse hook wiring for protected-binary denial lives in `ward hook pre-tool-use` (see [hook.md](hook.md)).

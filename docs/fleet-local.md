@@ -1,3 +1,6 @@
+---
+doc_goal: Make clear how a host operator overrides embedded fleet defaults without forking ward, by showing that the operator-local reader is a thin hook onto the one shared cli-guard fleetconfig validator, and pin down its precedence and fail-closed contract so a reader trusts what a present-but-wrong file does.
+---
 # fleet-local: the operator-local config reader
 
 `~/.ward/fleet.local.kdl` is the **host-local** operator config: hand-edited,
@@ -6,6 +9,28 @@ it ([aos#310](https://github.com/coilysiren/agentic-os/issues/310) §5, issue 10
 `~/.ward` loader: it calls the one cli-guard `pkg/fleetconfig` validator under
 the `OperatorLocal` source ([cli-guard#178](https://forgejo.coilysiren.me/coilyco-flight-deck/cli-guard/issues/178)), so ward never forks or re-implements
 the fleet-config grammar.
+
+## The file this reader reads
+
+A minimal `~/.ward/fleet.local.kdl` is one `director` block. The reader accepts
+only the narrow per-host node set, so this is close to the whole surface today:
+
+    director {
+        default-scope "coilyco-flight-deck"
+    }
+
+An operator hand-writes that file, git-ignores it, and ward reads it back as a
+typed layer. The three terms the precedence section leans on:
+
+- **OperatorLocal** - the cli-guard `fleetconfig` **source** the reader parses
+  under, scoping the grammar to the per-host node subset (the `director` block)
+  and rejecting the embed-only `fleet` block.
+- **dialect-2** - the embedded fleet-config manifest (`ward-kdl.fleet.kdl`:
+  identity, model, endpoint, attribution, roster defaults), compiled into the
+  binary rather than read from disk. See [ward-kdl.md](ward-kdl.md).
+- **the embed chain** - how those dialect-2 defaults get merged into the binary
+  at build time via `fleetassets/`, the bottom layer of the precedence stack
+  below.
 
 ## What the reader is
 

@@ -1,3 +1,6 @@
+---
+doc_goal: Let a contributor know exactly how ward finds its allowlist config - the override precedence, the two honored filenames, and the loud-failure rules - so config resolution is never a mystery and a coily-era repo adopts ward without renaming a file.
+---
 # Config discovery
 
 ward resolves the allowlist path in this order:

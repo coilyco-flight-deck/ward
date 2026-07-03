@@ -1,3 +1,6 @@
+---
+doc_goal: Make a reader grasp that a warded run's context scales with its driver's trust - the three WARD_CONTEXT_LEVEL rungs, why the rung follows the driver by design, and how the read-only overlay narrows what a run may do independently of what the ladder scales it to know.
+---
 # The progressive-capability ladder
 
 A warded run is not one-size-fits-all: **how much context a run gets scales with how much

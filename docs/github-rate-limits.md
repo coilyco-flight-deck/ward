@@ -1,3 +1,6 @@
+---
+doc_goal: Explain why ward's own GitHub client routes every call to REST and stays off the tighter GraphQL budget, dogfooding the same ghGraphQLTrap hint it presses on agents, and justify why no client-side backoff is wired given the small per-run call volume of a warded GitHub run.
+---
 # ward's GitHub client stays off the GraphQL budget ([ward#466](https://forgejo.coilysiren.me/coilyco-flight-deck/ward/issues/466))
 
 GitHub's REST and GraphQL APIs carry **separate** rate budgets, and the GraphQL one is

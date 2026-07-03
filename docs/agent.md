@@ -1,9 +1,16 @@
+---
+doc_goal: Serve as the reference entrypoint that makes a reader grasp ward agent as the single guarded launch surface for the coding-agent execution layer - the warded face, the startup-role roster, the driver axis, and where each deeper surface lives - not a thin container wrapper.
+---
 # ward agent
 
-`ward agent` is **the** entrypoint to the ephemeral [container](container.md)
-subsystem: take a Forgejo issue and put an agent on it end to end. The hand-run
-`ward container up`/`exec`/`down`/`ls` verbs are retired, so `ward agent`
-is the single launch surface.
+`ward agent` is **ward's whole second half: the guarded execution layer for
+coding agents**. Each invocation takes a Forgejo issue and drives a
+subscription-authenticated coding CLI (claude, codex, ...) through it from issue
+to merge inside a **fresh, least-access ephemeral [container](container.md)** -
+reach bounded by repo-scoped credentials, cli-guard policy, and a durable
+append-only audit trail, landing per-run via `--workflow`. This is the product
+end that the dev-verb gate secures the workbench for. It is **the** single launch
+surface: the hand-run `ward container up`/`exec`/`down`/`ls` verbs are retired.
 
 ## Prerequisites
 
@@ -62,15 +69,28 @@ install stance, launch dialect, gates), no `internal/` source:
 
 ## Topics
 
-- [first-run.md](first-run.md) - **start here if new**: zero to a first `--print` dry run.
+Grouped by the surface you are reaching for.
+
+**Start here**
+
+- [first-run.md](first-run.md) - zero to a first `--print` dry run.
+
+**Roles and drivers** (what runs, and which harness runs it)
+
 - [agent-roster.md](agent-roster.md) - flat list of every role (`ward agent roster`).
 - [agent-subcommands.md](agent-subcommands.md) - the three roles compared + the reaper.
 - [agent-drivers.md](agent-drivers.md) - the four `--driver` harnesses compared.
 - [agent-surface.md](agent-surface.md) - the director's read-only surface.
+
+**Landing and safety** (how a run is fenced and where it lands)
+
 - [agent-workflow.md](agent-workflow.md) - `--workflow direct-main|pr|patch-only`, the run's landing policy.
 - [agent-preflight.md](agent-preflight.md) - the detached GO/NO-GO pre-flight.
 - [agent-trust-gate.md](agent-trust-gate.md) - the owner trust gate.
 - [agent-wrong-repo.md](agent-wrong-repo.md) - the WRONG-REPO blind-fire path.
 - [agent-reservation.md](agent-reservation.md) - reservation, TTL, `--force`.
+
+**Flags and the container model**
+
 - [agent-flags.md](agent-flags.md) - launch flags and `--details`.
 - [container.md](container.md) - the container model (ephemeral clone).

@@ -1,3 +1,6 @@
+---
+doc_goal: Make clear how the advisor's structured emit deterministically fans a cross-repo design into one trust-gated issue per repo plus an index comment, so a reader trusts that ward - never the agent - files under its bot identity only in repos the operator's trust gate allows.
+---
 # advisor ref mode: structured emit and cross-repo fan-out
 
 The advisor [ref mode](agent-advisor.md) does not ask the research pass for verbatim

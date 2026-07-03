@@ -1,3 +1,6 @@
+---
+doc_goal: Explain the host-net mechanism of the --tailnet network escalation as a deliberate widening of the least-access container boundary - why it reaches tailnet-only hosts on native Linux, why it is a no-op on Docker Desktop's LinuxKit VM, and why ward warns rather than silently failing - so an operator picks the right route knowingly.
+---
 # ward agent: tailnet route (--tailnet)
 
 `--tailnet` is the **opt-in network escalation**:

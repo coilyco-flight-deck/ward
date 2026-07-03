@@ -1,3 +1,6 @@
+---
+doc_goal: Explain why director folds an issue-triage pass into startup before the init gate - the starving autonomous-drain lane it feeds - and detail the deterministic P0 net, batched fail-closed judgment, percentile banding, and the cheap-and-safe rules (skip-already-triaged, write-only-the-missing-axis) that keep it from clobbering human labels or guessing a promotion.
+---
 # director startup triage ([ward#397](https://forgejo.coilysiren.me/coilyco-flight-deck/ward/issues/397))
 
 The autonomous-drain half of [`ward agent director`](agent-director.md) was starving.

@@ -1,3 +1,6 @@
+---
+doc_goal: Explain the issue create --quiet mode as a deliberate, minimal ward-owned override of one generated leaf - terse parse-stable {owner}/{repo}#N out, failure signalled by exit code - and be honest that it exists because cli-guard lacks a per-call projection hook, a debt tracked for fold-back into the guardfile.
+---
 # The `issue create --quiet` machine-output mode ([ward#316](https://forgejo.coilysiren.me/coilyco-flight-deck/ward/issues/316))
 
 `ward ops forgejo issue create` renders the whole created-issue object through

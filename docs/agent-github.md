@@ -1,3 +1,6 @@
+---
+doc_goal: Show an operator how the guarded execution layer carries a GitHub-hosted issue end to end - clone/push by token, gh-CLI issue thread, PR-as-landing instead of a main push - and make clear this is a real second landing path with its own done-condition, not Forgejo with the labels swapped, while ward's own machinery stays on Forgejo.
+---
 # ward agent: GitHub as a first-class forge ([ward#489](https://forgejo.coilysiren.me/coilyco-flight-deck/ward/issues/489))
 
 ward is Forgejo-canonical, but GitHub is the public front door. `warded` carries a
@@ -66,7 +69,7 @@ warded https://github.com/coilysiren/agentic-os/issues/461
 ward then, exactly as for Forgejo: runs the pre-flight (a NO-GO comments on the GitHub
 issue), posts the reservation comment, spins the ephemeral container that fresh-clones
 the repo from GitHub, and detaches. The agent implements on `issue-461`, pushes the
-branch, opens a PR closing [#461](https://forgejo.coilysiren.me/coilyco-flight-deck/ward/issues/461), and leaves its retrospective on the GitHub issue.
+branch, opens a PR closing [#461](https://github.com/coilysiren/agentic-os/issues/461), and leaves its retrospective on the GitHub issue.
 
 ## See also
 

@@ -1,3 +1,6 @@
+---
+doc_goal: Show a ward contributor how `make workspace` collapses the cross-module release loop into a local `go.work` so cli-guard edits resolve from a sibling checkout instantly, and why that file stays gitignored to keep single-repo CI and the headless container building from the pinned version.
+---
 # Working on cli-guard side by side (Go workspace)
 
 ward consumes [cli-guard](https://forgejo.coilysiren.me/coilyco-flight-deck/cli-guard) as a separate Go module, pinned in `go.mod` (and via the Makefile `REF` for the `specverb-gen` driver). Without a workspace, every cli-guard change you want to use here costs a full cross-module release: tag + release cli-guard, `go get` the new version into ward's `go.mod`, bump the Makefile `REF`, then the change is usable.

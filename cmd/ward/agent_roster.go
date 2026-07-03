@@ -33,15 +33,15 @@ type agentRoleInfo struct {
 var agentRoleInfos = map[string]agentRoleInfo{
 	"engineer": {
 		Tagline: "Implements a ticket end to end.",
-		Modes:   "A ref carries that issue detached, fire-and-forget; freeform text files an issue first, then carries it. Detached-only - interactive work funnels to the director.",
+		Modes:   "A ref carries that issue detached, fire-and-forget. Freeform text files an issue first, then carries it. Detached-only - interactive work funnels to the director.",
 	},
 	"director": {
 		Tagline: "Autonomously drives a repo's headless lane to drain.",
-		Modes:   "Attached LLM-in-the-loop heartbeat over a repo's backlog (`--repo` scope); surfaces a read-only scope + dispatch session on drain; no ref.",
+		Modes:   "Attached LLM-in-the-loop heartbeat over a repo's backlog (`--repo` scope). Surfaces a read-only scope + dispatch session on drain, no ref.",
 	},
 	"advisor": {
 		Tagline: "Answers without writing code.",
-		Modes:   "A ref researches the issue and posts the answer as a comment; freeform text answers inline.",
+		Modes:   "A ref researches the issue and posts the answer as a comment. Freeform text answers inline.",
 	},
 }
 
@@ -87,26 +87,29 @@ func agentRosterRowsFrom(cmds []*cli.Command) ([]agentRosterRow, error) {
 	return rows, nil
 }
 
-// agentRosterMarkdown renders the committed docs/agent-roster.md body: a flat table,
-// one row per role, each linking to its per-role doc.
+// agentRosterDocGoal is the doc_goal front-matter the generated page carries so it
+// grades against an explicit target like every ward doc (ward#289).
+const agentRosterDocGoal = "Give a reader the canonical, code-generated list of every ward agent startup role with its tagline and invocation modes, so they can pick engineer, director, or advisor and know it can never drift from the binary."
+
+// agentRosterMarkdown renders the committed docs/agent-roster.md body: doc_goal
+// front-matter plus a flat bullet list (not a table, per the house Voice rules).
 func agentRosterMarkdown() (string, error) {
 	rows, err := agentRosterRows()
 	if err != nil {
 		return "", err
 	}
 	var b strings.Builder
+	fmt.Fprintf(&b, "---\ndoc_goal: %s\n---\n", agentRosterDocGoal)
 	fmt.Fprintf(&b, "# ward agent: the role roster\n\n")
 	fmt.Fprintf(&b, "<!-- Generated from the code roster by `ward agent roster --markdown` (ward#348); do not edit by hand. Regenerate with `%s`. -->\n\n", agentRosterRegenHint)
 	fmt.Fprintf(&b, "A flat list of every `ward agent` startup role - the roster `agentCommand()` registers in\n")
 	fmt.Fprintf(&b, "code, rendered by the binary describing itself so the page can never drift. Each role is one\n")
 	fmt.Fprintf(&b, "entry: what the specialist does and how you invoke it (a ref acts on an issue, freeform text\n")
 	fmt.Fprintf(&b, "files or answers it). Run `ward agent roster` (`warded roster`) for this list live at the\n")
-	fmt.Fprintf(&b, "terminal; the per-role docs each row links to carry the prose detail. See\n")
+	fmt.Fprintf(&b, "terminal, and the per-role docs each entry links to carry the prose detail. See\n")
 	fmt.Fprintf(&b, "[agent.md](agent.md) for the umbrella and the `warded` public face.\n\n")
-	fmt.Fprintf(&b, "| Role | What this specialist does | Invocation modes |\n")
-	fmt.Fprintf(&b, "| --- | --- | --- |\n")
 	for _, row := range rows {
-		fmt.Fprintf(&b, "| [`warded %s`](%s) | %s | %s |\n", row.Role, row.Doc, row.Tagline, row.Modes)
+		fmt.Fprintf(&b, "- [`warded %s`](%s) - %s Modes: %s\n", row.Role, row.Doc, row.Tagline, row.Modes)
 	}
 	fmt.Fprintf(&b, "\n## See also\n\n")
 	fmt.Fprintf(&b, "- [agent.md](agent.md) - the `ward agent` umbrella and the `warded` public face.\n")

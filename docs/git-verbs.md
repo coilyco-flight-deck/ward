@@ -1,3 +1,6 @@
+---
+doc_goal: Give a contributor the full ward git surface as an audited, argv-validated gate over git - the thin passthroughs plus the three verbs that are not passthroughs (destination-gated clone, ephemeral-clone grep-remote, concurrency-safe commit) - so a reader knows which git calls route through the gate and why the special-cased ones exist.
+---
 # git verbs
 
 `ward git` fronts the contributor git surface behind cli-guard's audit +

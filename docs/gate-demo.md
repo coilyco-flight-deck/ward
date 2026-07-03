@@ -1,3 +1,6 @@
+---
+doc_goal: Demonstrate that the boundary is the product by showing ward's refusals as the headline behavior, not an error path - the clean-tree gate and the argv metacharacter policy each declining a real run, with the loud audit-stamped override - so a reader feels denial is the default posture.
+---
 # The gate says no
 
 ward is a security boundary, so the interesting demo is not what it runs - it is

@@ -1,3 +1,6 @@
+---
+doc_goal: Let an operator halt a runaway detached engineer with confidence - reconstruct the deterministic `engineer-<driver>-<repo>-<issue>` name unaided, use graceful `docker container stop` and not `docker rm -f`, and understand exactly why a stop skips the reaper (a PID-1 EXIT trap never fires) so unpushed work is not auto-salvaged and must be recovered by hand.
+---
 # Stopping a running container
 
 A detached [engineer](agent-engineer.md) runs unattended, so halting a

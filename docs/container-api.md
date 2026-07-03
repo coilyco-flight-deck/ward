@@ -1,3 +1,6 @@
+---
+doc_goal: Frame the warded container's bring-up handoff as the stable, least-access-by-default contract between host ward and the entrypoint - mounts, env, and produced layout - so a reader sees why nothing is baked into the image and how a bare image becomes a bounded feature clone.
+---
 # The warded container API
 
 A [`ward agent`](agent.md) run pulls **one** dev-base image

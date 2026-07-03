@@ -1,3 +1,6 @@
+---
+doc_goal: Convey the container subsystem as the wall that makes ward's guarded-execution half real - an ephemeral, least-access, one-per-run box whose isolation (not a permission prompt) is the boundary carrying a feature start-to-merge, with the fresh-clone / least-bind / reaper-backstop model that bounds an autonomous agent's reach.
+---
 # ward container
 
 The **container subsystem** spins up an **ephemeral, least-access dev container

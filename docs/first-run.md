@@ -1,3 +1,6 @@
+---
+doc_goal: Walk a newcomer from zero to a verifiable warded --print dry run while making the agent driver's real nature land - a governed, forge-locked, owner-gated execution layer, not a generic runner - so the trust gate and endpoint lock read as the containment they are, not as friction.
+---
 # ward first-run guide
 
 Zero to a verifiable first `warded` dry run. Read [README.md](../README.md) first for what ward is.

@@ -1,3 +1,6 @@
+---
+doc_goal: Explain when a detached agent run's logs become observable - the exit-waiter that drains the moment a container exits versus the keep-10 sweep backstop - and why the design is safe (docker wait only observes) and idempotent (the shared sentinel), so an operator watching the log tree knows a just-closed run will not stay invisible.
+---
 # drain timing - shortly after exit
 
 A `ward agent` run's console + transcript + `meta.json` are pulled **host-side**

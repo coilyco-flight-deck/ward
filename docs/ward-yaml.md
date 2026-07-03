@@ -1,3 +1,6 @@
+---
+doc_goal: Let an author write and validate a `.ward/ward.yaml` from ward docs alone - every `commands:` and `security:` field rendered from the cli-guard repocfg struct - and, since this gates a security tool, be brutally honest about which fields ward actually enforces versus parses-but-no-ops so nothing reads as protected when it is not.
+---
 # .ward/ward.yaml field reference
 
 The per-repo allowlist ward reads. It lives at `.ward/ward.yaml` (or the

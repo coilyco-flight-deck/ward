@@ -1,3 +1,6 @@
+---
+doc_goal: Let an operator pick and provision the right GitHub token source for a warded GitHub-hosted run - env, gh, or short-lived repo-scoped App - understanding that resolution stays host-side and env-only with no baked SSM path, and how the minted App token bounds a leak to one repo for minutes.
+---
 # GitHub token path
 
 When `warded` is pointed at a GitHub issue URL, GitHub-side comments and pull

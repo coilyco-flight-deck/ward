@@ -1,3 +1,6 @@
+---
+doc_goal: Explain how dispatch-side context front-loading turns a soft doctrine into an enforced mechanism - the keyword map that hands a fire-and-forget run the right in-clone docs before it plans - and convey why closing the lazy-discovery gap is load-bearing for autonomous run quality, grounded in the real failure that motivated it.
+---
 # ward agent: front-loading subsystem context ([ward#236](https://forgejo.coilysiren.me/coilyco-flight-deck/ward/issues/236))
 
 `ward agent` has the issue title and body in hand before it detaches, so it does

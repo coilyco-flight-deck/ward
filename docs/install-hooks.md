@@ -1,3 +1,6 @@
+---
+doc_goal: Let an adopter register the ward PreToolUse hook in a repo's .claude/settings.json with confidence it is idempotent and non-clobbering, explaining target discovery, safe merge rules, and the cli-guard-owned mechanics behind the one-line install-hooks verb.
+---
 # install-hooks verb
 
 `ward install-hooks` idempotently registers the ward

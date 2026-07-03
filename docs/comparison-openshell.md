@@ -1,3 +1,6 @@
+---
+doc_goal: Position ward against NVIDIA OpenShell so a reader sees both as policy-first agent runtimes sharing the boundary-is-the-product thesis, and grasps ward's distinct verb-level, cloud-agnostic, single-binary niche without ceding the coding-agent-containment ground ward's own container half also holds.
+---
 # ward vs NVIDIA OpenShell
 
 Written before someone else frames it. NVIDIA OpenShell is the closest analog to
@@ -32,8 +35,18 @@ the boundary is made of** and **what it is for**.
   (pod security, network policy) at the cost of a heavyweight host.
 - **Target** - ward bounds **cloud-agnostic ops tasks**: an agent driving real
   infrastructure verbs (forgejo, aws, kubectl) through a typed least-privilege
-  surface. OpenShell bounds **long-running coding agents** inside a sandboxed dev
-  environment.
+  surface. It **also** bounds coding agents: `ward agent` (public face `warded`)
+  launches a subscription-authenticated coding CLI into an ephemeral, least-access
+  container and drives it issue-to-merge. OpenShell bounds **long-running coding
+  agents** inside a sandboxed dev environment - the same ground ward's container
+  half contends on, not ground ward cedes.
+- **Boundary layers** - ward is not only the verb gate. Its `ward agent` half
+  wraps the coding agent in an ephemeral least-access container whose reach is
+  bounded by repo-scoped credentials, cli-guard policy, and a durable audit
+  trail, a second boundary layer alongside the compiled verb gate. That layer is
+  younger and narrower than OpenShell's kernel stack - v0.x, single-maintainer,
+  no Landlock/Seccomp defense-in-depth - so the honest read is that ward competes
+  on coding-agent containment rather than out-hardens it there.
 - **Reach** - ward is cloud-agnostic and runs anywhere Go runs. OpenShell leans
   on a Linux host (kernel >=5.13 for Landlock) and an NVIDIA-flavored stack.
 

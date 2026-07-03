@@ -1,4 +1,15 @@
+---
+doc_goal: Give a contributor everything needed to find, stream, scope, and parse ward's per-repo audit log, and convey that the append-only JSONL row is ward's load-bearing proof surface - reconstructable from git history because verbs gate on a clean, synced tree - not an incidental log file.
+---
 # audit log
+
+The audit row is where ward's boundary-is-the-product thesis becomes
+checkable. Each row is the durable proof that an audited run - or a
+refusal - actually happened. Because every repo verb is gated on a clean,
+synced tree, the row is reconstructable from git history: the commit it
+ran against is known, so the record cannot drift from the code it
+describes. That gate is not incidental hygiene. It exists so the proof
+holds, which is the whole point of writing the row.
 
 ward writes one append-only JSONL row per audited invocation (every
 `ward exec` repo verb and `ward pkg brew` run) to a per-repo file:
@@ -46,6 +57,10 @@ ward audit tail --scope /path/to/repo
 ```
 
 ## Row schema
+
+A row records both the **decision** and the **outcome**, so a reader can
+tell an allowed run from a refusal and see the exact argv each was made
+against - that is what makes it usable as proof, not just a log line.
 
 Rows are cli-guard `audit.Record` values: `ts`, `verb` (`repo.<cmd>` for
 exec verbs), `argv`, `decision`, `exit_code`, `repo_root`, and - on

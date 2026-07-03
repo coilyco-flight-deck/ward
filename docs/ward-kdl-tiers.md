@@ -1,3 +1,6 @@
+---
+doc_goal: Explain why ward-kdl ships read/write/admin as three separate binaries so a withheld verb is absent at compile time not denied at runtime, and give a maintainer the exact layout, build, and per-area steps to promote a verbless `.placeholder` surface into a wired tier.
+---
 # ward-kdl permission tiers: layout + the [ward#339](https://forgejo.coilysiren.me/coilyco-flight-deck/ward/issues/339) placeholders
 
 The `ward-kdl-{read,write,admin}` binaries are the permission-tiered cut of the

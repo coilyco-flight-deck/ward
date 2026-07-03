@@ -1,3 +1,6 @@
+---
+doc_goal: Redirect anyone still reaching for qwen to the opencode harness, making clear qwen is a deprecated alias not a harness while explaining why the persona/model split keeps the Qwen signing identity, and route them to the real page.
+---
 # ward agent qwen (deprecated alias)
 
 `qwen` is a **deprecated alias** for the `opencode` harness, not a harness of its

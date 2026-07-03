@@ -1,3 +1,6 @@
+---
+doc_goal: Let an operator pick the right per-run landing policy - direct-main, pr, or patch-only - by trust level and understand exactly what each mode changes in the seed, container env/label, and reaper gate, including the honest first-slice limits like the still-push-capable token.
+---
 # ward agent: workflow modes
 
 `--workflow` picks a dispatched engineer's **landing policy** - how the run is

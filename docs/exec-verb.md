@@ -1,8 +1,23 @@
+---
+doc_goal: Establish ward exec as the audited dev-verb gate at the heart of ward's forge-agnostic half - argv-validated, one JSONL audit row, refused unless the tree reconstructs from git history - and make the platform-conditional enforcement depth (Linux depth-N sandbox jail versus the depth-0 macOS/Windows brew-path limit) explicit so no reader over-scopes the containment guarantee.
+---
 # exec verb
 
-The `ward exec` verb walks up from cwd looking for a
-ward or coily allowlist, then exposes each declared command
-as a leaf subcommand.
+`ward exec` is the audited gate at the heart of ward's forge-agnostic half - the
+one path a repo's `build`/`test`/`vet`/`lint`/`tidy`/`cover` runs through so
+nothing reaches `make` or `go` unchecked. Every run answers to three properties,
+its contract as a gate:
+
+- **argv validation** - every argv token is checked against cli-guard's
+  shell-metacharacter policy before the command runs.
+- **one audit row** - each run appends a single append-only JSONL row to
+  `~/.ward/audit/<repo>.jsonl` (verb prefix `repo.<cmd>`).
+- **clean-tree gate** - the run is refused unless the declaring `ward.yaml` is
+  committed and HEAD is synced, so the audit row reconstructs from git history.
+
+The sections below deepen each in turn. Mechanically, the verb walks up from cwd
+looking for a ward or coily allowlist, then exposes each declared command as a
+leaf subcommand.
 
 Unknown top-level verbs that match a declared leaf fall back to `exec`
 automatically (`ward test` -> `ward exec test`), and every ward-managed repo

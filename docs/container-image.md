@@ -1,3 +1,6 @@
+---
+doc_goal: Tell a reader exactly which dev-base image every warded run pulls, that ward runs it unmodified with no ward or repo baked in, how anonymous pull works, and how a security-conscious adopter pins off the moving latest tag - so the image is never an opaque download.
+---
 # the container dev-base image
 
 Every [`ward agent`](agent.md) run pulls **one** image: the aos-published

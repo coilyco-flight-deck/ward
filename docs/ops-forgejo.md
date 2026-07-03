@@ -1,10 +1,27 @@
-# ward-kdl (spec/exec verb proving ground)
+---
+doc_goal: Convey ward-kdl as the build-time generator that proves cli-guard's specverb/execverb engines - a guardfile plus a pruned committed spec lock compiled into an audited ops CLI with no hand-written Go - so a reader sees this as the load-bearing source-in-artifact-out layer feeding the shipped binary, not a throwaway scratch tool.
+---
+# ward-kdl (the ops-verb generator)
 
-`ward-kdl` is a **temporary** parallel CLI that proves cli-guard's `specverb`
-and `execverb` engines - one merged binary holding `ops forgejo` (spec REST) and
-`ops aws` (exec) - before the generated path folds into `ward` proper
+ward-kdl is one of ward's three load-bearing layers, told apart by **when** each
+runs. [cli-guard](https://forgejo.coilysiren.me/coilyco-flight-deck/cli-guard) is
+the **engine** (deny-by-structure routing, OpenAPI to audited verb). **ward-kdl**
+is the **build-time generator**: a KDL guardfile plus a pruned committed spec lock
+go in, an audited `ops <api>` CLI comes out, no hand-written Go. **ward** is the
+**run-time product** that embeds those generated surfaces. So ward-kdl feeds
+production, not a scratch bench: its forgejo output lands in the shipped binary as
+`ward ops forgejo`, mounted from the same guardfiles - see
+[ops-forgejo-in-ward.md](ops-forgejo-in-ward.md).
+
+The standalone `ward-kdl` binary proves cli-guard's `specverb` and `execverb`
+engines - one merged binary holding `ops forgejo` (spec REST) and `ops aws`
+(exec) - and is where the generated path is exercised before it folds into `ward`
+proper
 ([ward#62](https://forgejo.coilysiren.me/coilyco-flight-deck/ward/issues/62)).
-It is not shipped or installed; build and run it locally.
+That binary is not itself shipped or installed, so build and run it locally.
+Keeping the binary local does not make the layer temporary: the guardfiles, locks,
+and generated verbs it produces are the source of the ops surface every `ward`
+carries.
 
 `cmd/ward-kdl/` is **not** a Go module - it commits only policy and locks.
 `specverb-gen` materializes the generated `main.go`, `go.mod`/`go.sum`, and the

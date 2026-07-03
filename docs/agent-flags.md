@@ -1,3 +1,6 @@
+---
+doc_goal: Give an operator the full trimmed launch-flag surface for the engineer role - visible, hidden, and retired - so each flag's effect on the container boundary (network escalation, image pinning, reaper downgrade guard, dry run) is actionable, not just enumerated.
+---
 # ward agent: flags
 
 Launch flags for the `engineer` role. See [docs/agent.md](agent.md)

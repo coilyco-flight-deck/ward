@@ -1,7 +1,26 @@
+---
+doc_goal: Convey the claude harness as ward's primary full cloud driver and give an operator the concrete capabilities - credential seeding, onboarding pre-trust, and the launch smoke gate - needed to reason about a claude-driven run.
+---
 # ward agent claude
 
-`claude` is the full cloud harness. It implements host credential seeding,
-container credential writing, onboarding seeding, and a launch gate.
+`claude` is ward's **default `--driver` and its only fully-wired harness** - the
+whole guarded agent flow is built around it. Every role (engineer, director,
+advisor) runs on claude unless `--driver` overrides it, and claude alone gets the
+full host-side wiring the other harnesses lack: the one-shot `claude -p` launch
+preflight, the `stream-json` headless channel, and the advisor ref mode. It
+implements host credential seeding, container credential writing, onboarding
+seeding, and that launch gate.
+
+## Why non-root, subscription login
+
+claude is the harness that bounds its own reach. It runs **non-root** (uid 1000,
+the entrypoint sets up as root then drops via `setpriv`) because it refuses
+`--dangerously-skip-permissions` as root, and it authenticates with your
+**Max/subscription OAuth login**, not an `ANTHROPIC_API_KEY` (which stays unset so
+it cannot shadow the OAuth token). That posture is the point: a subscription
+credential seeded into a non-root least-access box is what keeps a claude run
+inside the container's blast radius instead of carrying a broad API key around.
+Full credential path: [agent-credentials.md](agent-credentials.md).
 
 ## Capabilities
 

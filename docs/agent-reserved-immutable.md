@@ -1,3 +1,6 @@
+---
+doc_goal: Land the operator rule that a reserved issue is frozen to the run carrying it - a correction goes to a new issue dispatched fresh, never a comment or edit - and explain the best-effort forge lock that makes the rule visible and, on GitHub, enforced.
+---
 # ward agent: reserved means immutable
 
 A dispatched [engineer](agent-engineer.md) seeds from the issue body **once at

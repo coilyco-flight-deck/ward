@@ -1,3 +1,6 @@
+---
+doc_goal: Be the one findable place a spec author learns to build the non-public `ward-kdl` compiler from a clone and swap the deployment bundle - while making the reader first confirm they even need a guardfile, since most adopters run the gate on `.ward/ward.yaml` alone and never touch this build-time layer.
+---
 # ward-kdl authoring
 
 `ward-kdl` is the build-time authoring layer: a source file in, a validated

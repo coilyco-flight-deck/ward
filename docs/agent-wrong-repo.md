@@ -1,3 +1,6 @@
+---
+doc_goal: Explain the pre-flight WRONG-REPO verdict as a cheap, no-search reroute that blind-fires a misfiled issue into its correct trusted repo and bounces to NO-GO when the target is untrusted or unusable, so a reader understands both the mechanism and its guardrails.
+---
 # ward agent: WRONG-REPO blind-fire ([ward#159](https://forgejo.coilysiren.me/coilyco-flight-deck/ward/issues/159))
 
 Part of the headless [pre-flight](agent-preflight.md). Sometimes the pre-flight

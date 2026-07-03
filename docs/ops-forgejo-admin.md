@@ -1,3 +1,6 @@
+---
+doc_goal: Show how the four server-side forgejo maintenance subcommands with no REST equivalent are governed through cli-guard's exec dialect - an unoverridable ssh/kubectl argv-prefix, deny-by-default grants, and per-leaf audit - so a reader sees this as the same audited-verb discipline reaching past HTTP into the cluster, not a raw shell escape.
+---
 # `ward ops forgejo {admin,doctor}` (remote-exec slice)
 
 [ward#81](https://forgejo.coilysiren.me/coilyco-flight-deck/ward/issues/81) closes the last non-HTTP slice of the 40-leaf forgejo operator surface

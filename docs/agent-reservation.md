@@ -1,3 +1,6 @@
+---
+doc_goal: Show how a run claims an issue so no two runs duplicate work across hosts - the local sentinel plus remote Forgejo marker, TTL reclaim, release-on-pre-launch-death, and the stale-host-binary nudge - so an operator can reason about why a run refused, retried, or freed a hold.
+---
 # ward agent: reservation and host checks
 
 How a `ward agent` run avoids double-work and nudges a stale host binary. See

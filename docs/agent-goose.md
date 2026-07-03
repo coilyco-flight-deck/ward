@@ -1,3 +1,6 @@
+---
+doc_goal: Make an operator confident running the goose local-Ollama harness at parity with claude - how ward seeds its provider config, why a local-model harness is barred from the host pre-flight and gated instead by the in-container Ollama reachability probe, and what the bring-your-own-Ollama limits are today.
+---
 # ward agent goose
 
 `goose` is the other local harness, with provider config seeded by ward.

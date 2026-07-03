@@ -1,3 +1,6 @@
+---
+doc_goal: Carry the behavioral detail behind the three ward agent roles - engineer detached, director attached heartbeat, advisor answer-only - map the old retired verbs onto them, and explain the shared pre-flight and reaper backstop so an operator knows what each role does and leaves behind.
+---
 # ward agent: the role roster
 
 The `ward agent` roles differ in what they do, how attached they are, and what they

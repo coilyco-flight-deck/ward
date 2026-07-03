@@ -1,3 +1,6 @@
+---
+doc_goal: Give a reader the current, scannable inventory of everything ward ships - both the forge-agnostic audited verb gate and the guarded coding-agent execution layer, plus the ward-kdl generator - so the breadth reads as a real two-halves product, not a flat command list.
+---
 # ward features
 
 Inventory of what `ward` ships.

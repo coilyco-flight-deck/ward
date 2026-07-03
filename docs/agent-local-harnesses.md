@@ -1,3 +1,6 @@
+---
+doc_goal: Orient an operator to the local-Ollama harness family as a credential-free but endpoint-dependent path, and make the sharpest failure - an unreachable Ollama silently hanging a headless run - a solved problem by walking the pre-launch reachability probe that is the local-model analog of claude's auth smoke test.
+---
 # ward agent: local harness index
 
 The local harness pages are:

@@ -1,3 +1,6 @@
+---
+doc_goal: Make the demo land ward's thesis that the boundary is the product - one beat on capability, two on denial - while being scrupulously honest about which mechanism refuses each danger class (the hard cli-guard argv gate versus the claude-only fail-open hint hook), so the denial shown is the one that actually holds.
+---
 # The demo: one happy path, two danger classes
 
 The launch thesis is **the boundary is the product** ([ward#229](https://forgejo.coilysiren.me/coilyco-flight-deck/ward/issues/229)): what matters

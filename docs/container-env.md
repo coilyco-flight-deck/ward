@@ -1,3 +1,6 @@
+---
+doc_goal: Give a reader the full non-secret WARD_* env contract the entrypoint reads - grouped by purpose, with the secrets-ride-a-private-env-file boundary made explicit - so the auditable config surface and what deliberately stays off it are both legible.
+---
 # The warded container `WARD_*` env contract
 
 `wardEnv` in [`container_compute.go`](../cmd/ward/container_compute.go) assembles the

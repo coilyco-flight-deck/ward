@@ -1,3 +1,6 @@
+---
+doc_goal: Explain why the dispatcher refuses a ward pin strictly older than the host so a stale in-container reaper can never ship a known false-salvage bug, grounding it in the false-salvage recurrence that motivated it, and name the equal-or-newer, dev-build, and --allow-ward-downgrade escape cases.
+---
 # ward downgrade guard at dispatch
 
 Guards against a stale in-container reaper ([ward#529](https://forgejo.coilysiren.me/coilyco-flight-deck/ward/issues/529)).
