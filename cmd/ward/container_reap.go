@@ -514,32 +514,65 @@ func (r *Runner) verifyExtraReposLanded(ctx context.Context, env reapEnv) {
 	r.reportUnlandedExtraRepos(ctx, env, unlanded)
 }
 
-// checkExtraRepoLanded reports whether a grant's local HEAD is contained in its
+// grantLandingFetchAttempts / grantLandingFetchBackoff bound the propagation window
+// the reaper waits for a granted-repo push to show on origin/main (ward#583, docs).
+const (
+	grantLandingFetchAttempts = 3
+	grantLandingFetchBackoff  = 2 * time.Second
+)
+
+// grantLandingSleep is the backoff wait between propagation-window re-fetches, a
+// package var so a test stubs the real sleep out.
+var grantLandingSleep = time.Sleep
+
+// checkExtraRepoLanded reports whether a grant's local work is reachable from its
 // freshly-fetched origin/main; un-landed work is committed + preserved first.
 func (r *Runner) checkExtraRepoLanded(ctx context.Context, env reapEnv, repo targetRepo, work string) (extraRepoUnlanded, bool) {
 	status := r.captureAndCommitResidualRepo(ctx, work, env.Mode, repo.slug())
-	_ = r.Runner.Exec(ctx, "git", "-C", work, "fetch", "origin")
 	rep := extraRepoUnlanded{Repo: repo, Status: status}
-	if env.Issue != 0 && !r.issueClosingReferencePresent(ctx, work, env.Issue) {
-		rep.Ahead = 1
-		r.preserveExtraRepo(ctx, work, env, &rep)
-		return rep, false
-	}
-	if !refExists(ctx, r, work, "origin/main") {
+
+	// A grant landed iff its local HEAD is REACHABLE from origin/main (ancestry), not
+	// iff HEAD equals it: a merge-commit/lagged push lands HEAD as a proper ancestor.
+	landed, hasMain := r.grantLanded(ctx, work)
+	if !hasMain {
 		// No remote main to compare against: we cannot prove the work landed, so
 		// treat it as un-landed and preserve whatever HEAD holds.
 		rep.NoMain = true
 		r.preserveExtraRepo(ctx, work, env, &rep)
 		return rep, false
 	}
+	if landed {
+		// HEAD is contained in origin/main: landed. The closing-ref discipline is the
+		// TARGET repo's gate, not the grant's (its empty range would false-flag it, #583).
+		return extraRepoUnlanded{}, true
+	}
+
+	// Genuinely un-landed: local HEAD carries commit(s) origin/main does not.
 	ahead := revCount(ctx, r, work, "origin/main..HEAD")
 	if ahead == 0 {
-		// HEAD is contained in the freshly-fetched remote main: the push landed.
-		return extraRepoUnlanded{}, true
+		ahead = 1 // defensive: not-an-ancestor with a zero count shouldn't happen.
 	}
 	rep.Ahead = ahead
 	r.preserveExtraRepo(ctx, work, env, &rep)
 	return rep, false
+}
+
+// grantLanded fetches origin and reports whether local HEAD is reachable from
+// origin/main (landed) and whether origin/main exists, retrying the fetch window (#583).
+func (r *Runner) grantLanded(ctx context.Context, work string) (landed, hasMain bool) {
+	for attempt := 1; attempt <= grantLandingFetchAttempts; attempt++ {
+		_ = r.Runner.Exec(ctx, "git", "-C", work, "fetch", "origin")
+		if refExists(ctx, r, work, "origin/main") {
+			hasMain = true
+			if isAncestor(ctx, r, work, "HEAD", "origin/main") {
+				return true, true
+			}
+		}
+		if attempt < grantLandingFetchAttempts {
+			grantLandingSleep(grantLandingFetchBackoff)
+		}
+	}
+	return false, hasMain
 }
 
 // issueClosingReferencePresent reports whether the committed range mentions the

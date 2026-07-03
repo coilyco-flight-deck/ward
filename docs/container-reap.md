@@ -34,9 +34,15 @@ does can defeat it. It is a hidden entrypoint-called verb.
      a `ward-salvage/<id>` branch (durable), then notify - a **carried**
      run comments the notice back on its issue and **reopens** it; a **freeform**
      run files exactly **one** standalone `[ward-salvage]` issue, never appended.
-8. Verifies each `--repo` grant landed: reads `WARD_EXTRA_REPOS`,
-   checks the closing-reference discipline, and reopens the issue if any grant
-   did not reach `origin/main`.
+8. Verifies each `--repo` grant landed: reads `WARD_EXTRA_REPOS` and, for each
+   grant, checks whether its local `HEAD` is **reachable from** the
+   freshly-fetched `origin/main` - reachability, not `HEAD == origin/main`
+   equality. A push that lands via a merge commit, or while `main` advances,
+   leaves `HEAD` a proper ancestor of `origin/main`; an equality test would
+   false-flag that landed work. The reaper re-fetches across a short propagation
+   window before declaring a miss (a just-landed push can lag its
+   remote-tracking ref), and only reopens the issue when a grant genuinely did
+   not reach `origin/main` ([ward#583](https://forgejo.coilysiren.me/coilyco-flight-deck/ward/issues/583)).
 
 ## Why this shape
 

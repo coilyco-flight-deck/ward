@@ -456,6 +456,106 @@ func TestReapTargetTreeLandedAndClosedDoesNotSalvage(t *testing.T) {
 	}
 }
 
+// TestCheckExtraRepoLandedTreatsLandedGrantAsLanded is the ward#583 regression: a
+// landed grant carrying NO target `closes #N` must read landed, never salvaged.
+func TestCheckExtraRepoLandedTreatsLandedGrantAsLanded(t *testing.T) {
+	repo := t.TempDir()
+	runGit(t, repo, "init", "-b", "main")
+	runGit(t, repo, "config", "user.email", "test@example.com")
+	runGit(t, repo, "config", "user.name", "Test User")
+	if err := os.WriteFile(filepath.Join(repo, "feat.txt"), []byte("feat\n"), 0o644); err != nil {
+		t.Fatal(err)
+	}
+	runGit(t, repo, "add", "feat.txt")
+	// A granted repo lands with its own subject, NOT the target's `closes #N`.
+	runGit(t, repo, "commit", "-m", "Merge issue-583: per-role capability roster")
+	runGit(t, repo, "remote", "add", "origin", repo)
+	runGit(t, repo, "update-ref", "refs/remotes/origin/main", "HEAD")
+
+	r := &Runner{Runner: &shell.Runner{Resolve: shell.PathResolver}}
+	env := reapEnv{Owner: "coilyco-flight-deck", Name: "ward", Base: "https://forgejo.coilysiren.me", Mode: "claude", Issue: 583, Launched: true}
+	rep, landed := r.checkExtraRepoLanded(t.Context(), env, targetRepo{Owner: "coilyco-flight-deck", Name: "cli-guard"}, repo)
+	if !landed {
+		t.Fatalf("a landed grant with no closes-ref must read as landed, got unlanded: %+v", rep)
+	}
+	out, _ := exec.Command("git", "-C", repo, "branch", "--list", salvageBranchPrefix+"*").CombinedOutput()
+	if strings.TrimSpace(string(out)) != "" {
+		t.Fatalf("a landed grant must not create a salvage branch, got: %q", string(out))
+	}
+}
+
+// TestGrantLandedTrueOnMergeCommitAncestor covers the ward#583 core: a merge-commit
+// landing leaves HEAD a proper ANCESTOR of origin/main; reachability is the signal.
+func TestGrantLandedTrueOnMergeCommitAncestor(t *testing.T) {
+	repo := t.TempDir()
+	runGit(t, repo, "init", "-b", "main")
+	runGit(t, repo, "config", "user.email", "test@example.com")
+	runGit(t, repo, "config", "user.name", "Test User")
+	if err := os.WriteFile(filepath.Join(repo, "base.txt"), []byte("base\n"), 0o644); err != nil {
+		t.Fatal(err)
+	}
+	runGit(t, repo, "add", "base.txt")
+	runGit(t, repo, "commit", "-m", "base")
+	// The work commit F on a side branch.
+	runGit(t, repo, "checkout", "-b", "issue-583")
+	if err := os.WriteFile(filepath.Join(repo, "feat.txt"), []byte("feat\n"), 0o644); err != nil {
+		t.Fatal(err)
+	}
+	runGit(t, repo, "add", "feat.txt")
+	runGit(t, repo, "commit", "-m", "cli-guard work")
+	feat := mustGitRev(t, repo, "HEAD")
+	// Land it on main via a merge commit M, then point origin/main at M.
+	runGit(t, repo, "checkout", "main")
+	runGit(t, repo, "merge", "--no-ff", "-m", "Merge issue-583", "issue-583")
+	runGit(t, repo, "update-ref", "refs/remotes/origin/main", "HEAD")
+	// Leave HEAD on the work commit F: F != origin/main (M) but F is an ancestor of M.
+	runGit(t, repo, "checkout", feat)
+
+	r := &Runner{Runner: &shell.Runner{Resolve: shell.PathResolver}}
+	if landed, hasMain := r.grantLanded(t.Context(), repo); !landed || !hasMain {
+		t.Fatalf("HEAD reachable from origin/main via a merge commit must read landed; got landed=%t hasMain=%t", landed, hasMain)
+	}
+}
+
+// TestGrantLandedFalseRetriesPropagationWindow covers ward#583's other half: a genuine
+// miss reads unlanded, and the reaper exhausts the propagation window before saying so.
+func TestGrantLandedFalseRetriesPropagationWindow(t *testing.T) {
+	// A separate bare origin that stays pinned at base, so `git fetch origin` cannot
+	// carry the un-landed local commit forward and mask the miss.
+	origin := t.TempDir()
+	runGit(t, origin, "init", "--bare", "-b", "main")
+	repo := t.TempDir()
+	runGit(t, repo, "init", "-b", "main")
+	runGit(t, repo, "config", "user.email", "test@example.com")
+	runGit(t, repo, "config", "user.name", "Test User")
+	if err := os.WriteFile(filepath.Join(repo, "base.txt"), []byte("base\n"), 0o644); err != nil {
+		t.Fatal(err)
+	}
+	runGit(t, repo, "add", "base.txt")
+	runGit(t, repo, "commit", "-m", "base")
+	runGit(t, repo, "remote", "add", "origin", origin)
+	runGit(t, repo, "push", "origin", "main")
+	// An un-landed commit on top of origin/main: HEAD is ahead, not reachable.
+	if err := os.WriteFile(filepath.Join(repo, "feat.txt"), []byte("feat\n"), 0o644); err != nil {
+		t.Fatal(err)
+	}
+	runGit(t, repo, "add", "feat.txt")
+	runGit(t, repo, "commit", "-m", "un-landed work")
+
+	sleeps := 0
+	prev := grantLandingSleep
+	grantLandingSleep = func(time.Duration) { sleeps++ }
+	t.Cleanup(func() { grantLandingSleep = prev })
+
+	r := &Runner{Runner: &shell.Runner{Resolve: shell.PathResolver}}
+	if landed, hasMain := r.grantLanded(t.Context(), repo); landed || !hasMain {
+		t.Fatalf("un-landed HEAD must read unlanded with a present main; got landed=%t hasMain=%t", landed, hasMain)
+	}
+	if want := grantLandingFetchAttempts - 1; sleeps != want {
+		t.Fatalf("propagation window should sleep %d time(s) between %d fetch attempts, slept %d", want, grantLandingFetchAttempts, sleeps)
+	}
+}
+
 // fakeSalvageNotifier records the Forgejo verbs notifySalvage drives so the
 // ward#518 routing (comment-on-carried-issue vs standalone-issue) is assertable.
 type fakeSalvageNotifier struct {
