@@ -86,6 +86,7 @@ New to ward? Read [architecture.md](architecture.md) first - it frames the whole
 - [container.md](container.md) - the ephemeral, least-access dev container.
 - [container-permissions.md](container-permissions.md) - what the container itself may do.
 - [container-substrate.md](container-substrate.md) - the read-only `/substrate` reference repos.
+- [context-probe.md](context-probe.md) - design: the role-aware three-tier context probe + per-driver context-management spec.
 - [container-multi-repo.md](container-multi-repo.md) - multi-repo runs (`--repo`).
 - [container-precommit.md](container-precommit.md) - fresh-clone pre-commit parity.
 - [container-reap.md](container-reap.md) - `ward container reap`, the teardown backstop.
