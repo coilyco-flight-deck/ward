@@ -65,8 +65,8 @@ type bootstrapEnv struct {
 	// ExtraRepos are the additional writable repos this run was granted via
 	// --repo (WARD_EXTRA_REPOS); each is cloned full under /workspace (ward#230).
 	ExtraRepos []targetRepo
-	// ContextRepos are catalog.dependsOn cloned READ-ONLY for reference: no push
-	// remote, no feature branch, not push-verified (WARD_CONTEXT_REPOS, ward#573).
+	// ContextRepos are catalog.dependsOn cloned READ-ONLY for reference: no push remote,
+	// no feature branch, not push-verified; resolved from the fresh clone (ward#580).
 	ContextRepos []targetRepo
 	// Substrate config (best-effort reference-repo warming).
 	SubstrateSeed     string
@@ -172,10 +172,8 @@ func readBootstrapEnv() (bootstrapEnv, error) {
 	e.CloneBase = envOr("WARD_CLONE_BASE", e.ForgejoBase)
 	e.CloneHost = forgejoHostFromBase(e.CloneBase)
 	e.ExtraRepos = parseExtraReposEnv(os.Getenv("WARD_EXTRA_REPOS"), e.TargetOwner, e.TargetName)
-	// Read-only reference clones ride their own key (ward#573); drop any that also
-	// landed as a writable grant so the writable clone wins and it is cloned once.
-	e.ContextRepos = dropExtraRepos(
-		parseExtraReposEnv(os.Getenv("WARD_CONTEXT_REPOS"), e.TargetOwner, e.TargetName), e.ExtraRepos)
+	// e.ContextRepos is NOT read from the env: the host cwd may not be the target repo,
+	// so it is resolved from the fresh clone after cloneTarget (ward#580).
 	e.Issue, _ = strconv.Atoi(os.Getenv("WARD_TARGET_ISSUE"))
 	return e, nil
 }
@@ -199,26 +197,6 @@ func parseExtraReposEnv(raw, targetOwner, targetName string) []targetRepo {
 		}
 		seen[slug] = true
 		out = append(out, targetRepo{Owner: owner, Name: name})
-	}
-	return out
-}
-
-// dropExtraRepos returns the entries of in not present in drop (matched by slug),
-// so a context repo also granted writable is cloned once, writable (ward#573).
-func dropExtraRepos(in, drop []targetRepo) []targetRepo {
-	if len(in) == 0 || len(drop) == 0 {
-		return in
-	}
-	skip := make(map[string]bool, len(drop))
-	for _, repo := range drop {
-		skip[repo.slug()] = true
-	}
-	var out []targetRepo
-	for _, repo := range in {
-		if skip[repo.slug()] {
-			continue
-		}
-		out = append(out, repo)
 	}
 	return out
 }
@@ -303,6 +281,9 @@ func (r *Runner) runContainerBootstrap(ctx context.Context, c *cli.Command) erro
 		return cerr
 	}
 	blog("bootstrap clone done: %s/%s -> %s", e.TargetOwner, e.TargetName, work)
+	// Resolve the read-only context set from the FRESH CLONE, not the host cwd, which
+	// may not be the target repo (ward#580). Only place e.ContextRepos is set here.
+	e.ContextRepos = r.resolveCatalogContext(work, e)
 	if perr := r.writeRunProvenance(ctx, work, e); perr != nil {
 		blog("fatal: %v", perr)
 		return perr
@@ -592,6 +573,17 @@ func (r *Runner) cloneExtraRepos(ctx context.Context, e bootstrapEnv) {
 		r.cloneExtraRepo(ctx, e, repo, false)
 		blog("extra-repo clone done: %s/%s", repo.Owner, repo.Name)
 	}
+}
+
+// resolveCatalogContext resolves the read-only context set from the fresh clone at
+// work (ward#580), not the host cwd, and logs each grant. Best-effort, never fatal.
+func (r *Runner) resolveCatalogContext(work string, e bootstrapEnv) []targetRepo {
+	target := targetRepo{Owner: e.TargetOwner, Name: e.TargetName}
+	repos, notes := resolveCatalogContextRepos(work, target, e.ExtraRepos)
+	for _, note := range notes {
+		blog("context-repo resolved from clone: %s (%s)", note.Slug, note.Reason)
+	}
+	return repos
 }
 
 // cloneContextRepos clones each read-only catalog-dependency context repo under

@@ -96,17 +96,24 @@ func TestAdvisorHasOneshotFlag(t *testing.T) {
 	}
 }
 
+// TestAdvisorDefaultsTailnetOn covers ward#578: the advisor's live-observe tailnet +
+// implied ~/.aws come from its role guardfile set, not a --tailnet flag default.
 func TestAdvisorDefaultsTailnetOn(t *testing.T) {
 	cmd := parseCommandForTest(t, agentAdvisorFlags(), []string{"advisor", "coilyco-flight-deck/ward#1", "what changed?"})
-	if !cmd.Bool("tailnet") {
-		t.Fatal("advisor should default --tailnet on")
+	// The role default is config, not a flag: --tailnet is now a hidden alias that
+	// defaults OFF; capability resolves off the advisor role's guardfile set.
+	if cmd.Bool("tailnet") {
+		t.Fatal("--tailnet is now a hidden deprecated alias defaulting off, not the advisor's source of tailnet (ward#578)")
 	}
-	p, err := buildUpPlan(cmd, targetRepo{Owner: "coilyco-flight-deck", Name: "ward"}, modeClaude, t.TempDir(), t.TempDir(), nil, false)
+	if cap := resolveCapability(cmd, roleAdvisor); !cap.tailnet || !cap.aws {
+		t.Fatalf("advisor role capability = %+v, want tailnet+aws from its guardfile set", cap)
+	}
+	p, err := buildUpPlan(cmd, targetRepo{Owner: "coilyco-flight-deck", Name: "ward"}, modeClaude, roleAdvisor, t.TempDir(), t.TempDir(), nil, false)
 	if err != nil {
 		t.Fatalf("buildUpPlan: %v", err)
 	}
-	if got := p.Mounts; len(got) == 0 {
-		t.Fatal("advisor tailnet should imply the ~/.aws mount in the realized plan")
+	if !p.HostNet && !p.TSSidecar {
+		t.Fatal("advisor role should realize a tailnet route (host-net or sidecar) in the plan")
 	}
 	found := false
 	for _, m := range p.Mounts {
@@ -125,7 +132,7 @@ func TestAdvisorNoTailnetOptOut(t *testing.T) {
 	if !cmd.Bool("no-tailnet") {
 		t.Fatal("advisor flags should expose explicit --no-tailnet opt-out")
 	}
-	p, err := buildUpPlan(cmd, targetRepo{Owner: "coilyco-flight-deck", Name: "ward"}, modeClaude, t.TempDir(), t.TempDir(), nil, false)
+	p, err := buildUpPlan(cmd, targetRepo{Owner: "coilyco-flight-deck", Name: "ward"}, modeClaude, roleAdvisor, t.TempDir(), t.TempDir(), nil, false)
 	if err != nil {
 		t.Fatalf("buildUpPlan: %v", err)
 	}

@@ -71,7 +71,7 @@ func tailnetProbeFlags() []cli.Flag {
 		&cli.StringSliceFlag{Name: "repo"},
 		&cli.BoolFlag{Name: "aws"},
 	}
-	flags = append(flags, tailnetFlags(false)...)
+	flags = append(flags, tailnetFlags()...)
 	return append(flags, &cli.BoolFlag{Name: "detach"})
 }
 
@@ -81,9 +81,9 @@ func TestResolveTailnet(t *testing.T) {
 	run := func(args []string, goos string) (hostNet, tsSidecar bool, err error) {
 		probe := &cli.Command{
 			Name:  "probe",
-			Flags: tailnetFlags(false),
+			Flags: tailnetFlags(),
 			Action: func(_ context.Context, c *cli.Command) error {
-				hostNet, tsSidecar, err = resolveTailnet(c, goos)
+				hostNet, tsSidecar, err = resolveTailnetMechanism(c, goos, tailnetFlagForcesOn(c))
 				return nil
 			},
 		}
@@ -125,7 +125,7 @@ func TestBuildUpPlanTailnet(t *testing.T) {
 			Name:  "probe",
 			Flags: tailnetProbeFlags(),
 			Action: func(_ context.Context, c *cli.Command) error {
-				p, err := buildUpPlan(c, targetRepo{Owner: "o", Name: "r"}, modeClaude, t.TempDir(), t.TempDir(), nil, false)
+				p, err := buildUpPlan(c, targetRepo{Owner: "o", Name: "r"}, modeClaude, roleSession, t.TempDir(), t.TempDir(), nil, false)
 				if err != nil {
 					return err
 				}

@@ -62,6 +62,7 @@ not by hand. See docs/agent.md for the contributor surface.`,
 		Commands: []*cli.Command{
 			containerReapCommand(),
 			containerBootstrapCommand(),
+			containerResolveContextCommand(),
 			containerBrokerCommand(),
 			containerForwardCommand(),
 			containerDrainExitCommand(),
@@ -91,7 +92,7 @@ func (r *Runner) resolveAgentCreds(ctx context.Context, mode containerMode) []ag
 
 // buildUpPlan assembles the pure plan from parsed flags and resolved inputs;
 // agentArgs seed the agent's argv. Errors only on a bad --repo grant (ward#230).
-func buildUpPlan(c *cli.Command, repo targetRepo, mode containerMode, cwd, assetsDir string, agentArgs []string, mountAgentLogs bool) (upPlan, error) {
+func buildUpPlan(c *cli.Command, repo targetRepo, mode containerMode, role, cwd, assetsDir string, agentArgs []string, mountAgentLogs bool) (upPlan, error) {
 	wardSrc := c.String("ward-source")
 	// The container downloads this host's ward version by default; --ward-version
 	// (env WARD_AGENT_VERSION) overrides it to pin a known-good release (ward#312).
@@ -104,14 +105,15 @@ func buildUpPlan(c *cli.Command, repo targetRepo, mode containerMode, cwd, asset
 	if err := wardDowngradeGuard(wardVersion, Version, c.Bool("allow-ward-downgrade")); err != nil {
 		return upPlan{}, err
 	}
-	// Consolidated tailnet route (ward#362): --tailnet auto-selects host-net vs the sidecar
-	// by platform (--tailnet-mode overrides); it implies --aws. docs/agent-flags.md.
-	hostNet, tsSidecar, err := resolveTailnet(c, runtime.GOOS)
+	// Host/cloud capability is the role's guardfile set (ward#578; docs/agent-flags.md),
+	// resolved to the mechanisms ward composes; a tailnet grant implies the ~/.aws mount.
+	capab := resolveCapability(c, role)
+	hostNet, tsSidecar, err := resolveTailnetMechanism(c, runtime.GOOS, capab.tailnet)
 	if err != nil {
 		return upPlan{}, err
 	}
 	awsHome := ""
-	if c.Bool("aws") || tailnetEnabled(c) {
+	if capab.aws {
 		awsHome = filepath.Join(homeDir(), ".aws")
 	}
 	// extraRepoGrant reads the --repo grant on the agent surfaces and --with-repo on
@@ -120,20 +122,9 @@ func buildUpPlan(c *cli.Command, repo targetRepo, mode containerMode, cwd, asset
 	if err != nil {
 		return upPlan{}, err
 	}
-	// Every warded role auto-mounts the target's catalog.dependsOn as read-only
-	// reference (ward#573; separate ContextRepos slice). docs/container-multi-repo.md.
-	var contextRepos []targetRepo
-	if cwd != "" {
-		var notes []extraRepoLogLine
-		contextRepos, notes = resolveContextRepos(catalogContextRepos(cwd), extra, repo, substrateContextSkipSet())
-		if len(notes) > 0 {
-			parts := make([]string, 0, len(notes))
-			for _, note := range notes {
-				parts = append(parts, fmt.Sprintf("%s (%s)", note.Slug, note.Reason))
-			}
-			fmt.Fprintf(os.Stderr, "ward container: read-only context repos resolved for %s: %s\n", repo.slug(), strings.Join(parts, ", "))
-		}
-	}
+	// The catalog.dependsOn read-only context set is NOT resolved here: the host cwd may
+	// not be the target repo, so the container resolves it from the fresh clone (ward#580).
+
 	// The director surface opts into a read-only bind of the redacted agent-log drain so it
 	// reads past runs' logs without a docker socket; other runs leave it off (ward#525/526).
 	agentLogs := ""
@@ -160,7 +151,6 @@ func buildUpPlan(c *cli.Command, repo targetRepo, mode containerMode, cwd, asset
 		WardFromSource: wardSrc != "",
 		AgentArgs:      agentArgs,
 		ExtraRepos:     extra,
-		ContextRepos:   contextRepos,
 		HostNet:        hostNet,
 		TSSidecar:      tsSidecar,
 	}, nil

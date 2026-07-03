@@ -36,9 +36,10 @@ or answers it.
 - **`director`** (was `backlog`) - autonomous backlog supervisor: dispatches
   engineers, surfaces a read-only session on drain. [agent-director.md](agent-director.md).
 - **`advisor`** (was `reply`+`ask`) - answers, writes no code: a ref comments,
-  freeform is interactive. `warded advisor` defaults to `--tailnet` so live-observe
-  research can reach the backend, and `--no-tailnet` keeps a rare run isolated.
-  [agent-advisor.md](agent-advisor.md).
+  freeform is interactive. The advisor role holds the **live-observe guardfile
+  set** (the tailnet + `~/.aws`, per its `roles` entry in `ward-kdl.fleet.kdl`,
+  [ward#578](https://forgejo.coilysiren.me/coilyco-flight-deck/ward/issues/578)), so research reaches the backend with no flag, and `--no-tailnet`
+  keeps a rare run isolated. [agent-advisor.md](agent-advisor.md).
 
 The standalone `architect`/`explore`/`sandbox` roles now error - folded
 them into the director's [surface session](agent-surface.md). The `--driver`

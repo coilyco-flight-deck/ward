@@ -37,9 +37,9 @@ WARD_CLONE_BASE="${WARD_CLONE_BASE:-$WARD_FORGEJO_BASE}"
 # Additional writable repos this run was explicitly granted (--repo, ward#230):
 # a space-separated owner/name list, each cloned full under /workspace.
 WARD_EXTRA_REPOS="${WARD_EXTRA_REPOS:-}"
-# Read-only reference repos from the target's catalog.dependsOn (ward#573): a
-# space-separated owner/name list, each cloned read-only under /workspace.
-WARD_CONTEXT_REPOS="${WARD_CONTEXT_REPOS:-}"
+# Read-only reference repos from the target's catalog.dependsOn (ward#573): resolved
+# in-container from the fresh clone, not passed from the host (ward#580).
+WARD_CONTEXT_REPOS=""
 
 # The agent process drops to this non-root user: claude refuses
 # --dangerously-skip-permissions as root (ward#127). Setup stays root.
@@ -939,6 +939,13 @@ main() {
   install_precommit_hooks "$work"
   install_readonly_push_guard "$work"
   clone_extra_repos
+  # Resolve the read-only context set from the FRESH CLONE, not the host cwd (ward#580);
+  # ward reuses the Go parse+dedup. Best-effort: a miss or absent ward leaves it empty.
+  if command -v ward >/dev/null 2>&1; then
+    WARD_CONTEXT_REPOS="$(ward container resolve-context "$work" 2>/dev/null || true)"
+    export WARD_CONTEXT_REPOS
+    [ -n "$WARD_CONTEXT_REPOS" ] && log "resolved read-only catalog context from clone: $WARD_CONTEXT_REPOS (ward#580)"
+  fi
   clone_context_repos
   warm_substrate
   compose_context

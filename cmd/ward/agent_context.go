@@ -1,15 +1,17 @@
 package main
 
 import (
+	"context"
 	"fmt"
 	"os"
 	"path/filepath"
 
+	"github.com/urfave/cli/v3"
 	"gopkg.in/yaml.v3"
 )
 
-// agent_context.go carries the role-neutral read-only auto-context grant (ward#573):
-// every warded role mounts the target's catalog.dependsOn read-only reference clones.
+// agent_context.go carries the role-neutral read-only catalog.dependsOn context grant
+// (ward#573), resolved in-container from the fresh clone, not the host cwd (ward#580).
 
 // catalogContextRepos returns the target's catalog.dependsOn as read-only context
 // grants from the config discovered at start; empty on any miss (best-effort).
@@ -19,6 +21,34 @@ func catalogContextRepos(start string) []targetRepo {
 		return nil
 	}
 	return deps
+}
+
+// containerResolveContextCommand is the hidden `ward container resolve-context <clone>`:
+// the bash entrypoint's hook to resolve the context set off the clone (ward#580).
+func containerResolveContextCommand() *cli.Command {
+	return &cli.Command{
+		Name:            "resolve-context",
+		Hidden:          true,
+		Usage:           "Resolve catalog.dependsOn read-only context repos from a fresh clone (image-internal; ward#580).",
+		SkipFlagParsing: true,
+		Action: func(_ context.Context, c *cli.Command) error {
+			work := c.Args().First()
+			if work == "" {
+				work = "."
+			}
+			target := targetRepo{Owner: os.Getenv("WARD_TARGET_OWNER"), Name: os.Getenv("WARD_TARGET_NAME")}
+			extra := parseExtraReposEnv(os.Getenv("WARD_EXTRA_REPOS"), target.Owner, target.Name)
+			repos, _ := resolveCatalogContextRepos(work, target, extra)
+			fmt.Println(extraReposEnv(repos))
+			return nil
+		},
+	}
+}
+
+// resolveCatalogContextRepos resolves catalog.dependsOn from the fresh clone at work,
+// deduped against the target, the writable grants, and /substrate (ward#580).
+func resolveCatalogContextRepos(work string, target targetRepo, extra []targetRepo) ([]targetRepo, []extraRepoLogLine) {
+	return resolveContextRepos(catalogContextRepos(work), extra, target, substrateContextSkipSet())
 }
 
 // loadRepoLocalCatalogDeps parses catalog.dependsOn out of the repo-local config
