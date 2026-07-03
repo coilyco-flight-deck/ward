@@ -23,10 +23,6 @@ import (
 // runs) while sparing fresh ones and unrelated dirs.
 func TestSweepStaleContainerAssets(t *testing.T) {
 	tmp := t.TempDir()
-	t.Setenv("TMPDIR", tmp)
-	if os.TempDir() != tmp {
-		t.Skipf("TMPDIR override not honored (os.TempDir()=%s)", os.TempDir())
-	}
 	stale := filepath.Join(tmp, containerAssetsPrefix+"stale")
 	fresh := filepath.Join(tmp, containerAssetsPrefix+"fresh")
 	other := filepath.Join(tmp, "unrelated-dir")
@@ -39,7 +35,7 @@ func TestSweepStaleContainerAssets(t *testing.T) {
 	if err := os.Chtimes(stale, past, past); err != nil {
 		t.Fatal(err)
 	}
-	sweepStaleContainerAssets()
+	sweepStaleContainerAssets(tmp)
 	if _, err := os.Stat(stale); !os.IsNotExist(err) {
 		t.Error("stale asset dir should have been swept")
 	}
@@ -470,24 +466,42 @@ func sampleUpPlan() upPlan {
 	}
 }
 
-func TestLaunchEnvFileDirIsSnapReadable(t *testing.T) {
-	// A snap-confined docker CLI only reads NON-hidden files under $HOME (ward#569),
-	// so the env-file dir must be $HOME itself, never the hidden ~/.ward app dir.
+func TestLaunchStagingDirIsSnapReadable(t *testing.T) {
+	// A snap-confined docker only reaches NON-hidden files under $HOME (ward#569,
+	// ward#574), so the staging dir must be $HOME itself, never the hidden ~/.ward.
 	home := t.TempDir()
 	t.Setenv("HOME", home)
-	if got := launchEnvFileDir(); got != home {
-		t.Fatalf("launchEnvFileDir() = %q, want the $HOME root %q (a hidden ~/.ward path is invisible to a snap docker CLI)", got, home)
+	if got := launchStagingDir(); got != home {
+		t.Fatalf("launchStagingDir() = %q, want the $HOME root %q (a hidden ~/.ward path is invisible to a snap docker)", got, home)
 	}
-	if strings.Contains(launchEnvFileDir(), "/.ward") {
-		t.Error("launchEnvFileDir() must not sit under a hidden dir a snap docker cannot read")
+	if strings.Contains(launchStagingDir(), "/.ward") {
+		t.Error("launchStagingDir() must not sit under a hidden dir a snap docker cannot read")
 	}
 }
 
-func TestLaunchEnvFileDirFallsBackToTmp(t *testing.T) {
+func TestLaunchStagingDirFallsBackToTmp(t *testing.T) {
 	// With no resolvable $HOME the launch dir degrades to $TMPDIR rather than "".
 	t.Setenv("HOME", "")
-	if got := launchEnvFileDir(); got == "" {
-		t.Error("launchEnvFileDir() with no $HOME must fall back to a real dir, got empty")
+	if got := launchStagingDir(); got == "" {
+		t.Error("launchStagingDir() with no $HOME must fall back to a real dir, got empty")
+	}
+}
+
+func TestWriteContainerAssetsStagesUnderHome(t *testing.T) {
+	// The assets bind-mount source is daemon-resolved, so it must land under $HOME
+	// (never /tmp) for a snap docker daemon to see it at `docker run` (ward#574).
+	home := t.TempDir()
+	t.Setenv("HOME", home)
+	dir, cleanup, err := writeContainerAssets()
+	if err != nil {
+		t.Fatalf("writeContainerAssets: %v", err)
+	}
+	defer cleanup()
+	if filepath.Dir(dir) != home {
+		t.Errorf("assets dir %q must sit directly under $HOME %q, not /tmp", dir, home)
+	}
+	if !strings.HasPrefix(filepath.Base(dir), containerAssetsPrefix) {
+		t.Errorf("assets dir %q must carry the sweep-recognizable prefix %q", dir, containerAssetsPrefix)
 	}
 }
 
