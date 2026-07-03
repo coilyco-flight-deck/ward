@@ -13,7 +13,7 @@ Contributor-facing cli-guard gate: repo dev verbs + audited host wrappers.
 
 - **`ward exec <verb>`** - run a repo dev verb (`.ward/ward.yaml`) through cli-guard: argv-validated, one JSONL audit row, clean+synced gate. See [exec-verb.md](exec-verb.md).
 - **`ward pkg brew <verb>`** - audited brew wrapper: formula/tap mutations default to primary-org taps (`--allow-untapped` else); reads pass through.
-- **`ward upgrade`** - audited self-update via `brew upgrade coilyco-flight-deck/tap/ward` (`--dry`).
+- **`ward upgrade`** - audited self-update, OS-branched: `brew upgrade coilyco-flight-deck/tap/ward` on macOS/Linux, `scoop update ward` on Windows (`--dry`). See [ward#561](https://forgejo.coilysiren.me/coilyco-flight-deck/ward/issues/561).
 - **`ward audit {path,tail}`** - read the audit log: `path` prints its path, `tail` streams rows (`--since`/`--follow`). See [audit.md](audit.md).
 - **`ward git <verb>`** - audited passthroughs, concurrency-safe `commit`, destination-gated `clone` ([ward#285](https://forgejo.coilysiren.me/coilyco-flight-deck/ward/issues/285)), ephemeral-clone `grep`/`grep-remote` ([ward#369](https://forgejo.coilysiren.me/coilyco-flight-deck/ward/issues/369)). See [git-verbs.md](git-verbs.md).
 - **`ward setup`** (`warded setup`) - scaffold `.ward/ward.yaml` from the Makefile, run doctor. See [setup.md](setup.md).
@@ -48,7 +48,7 @@ The **exec-dialect** guardfiles auto-mount at their `wrap` path; `git` / `pkg br
 ## Release pipeline
 
 - **Release notes** *([ward#486](https://forgejo.coilysiren.me/coilyco-flight-deck/ward/issues/486))* - "does it affect you" verdict. [release-notes.md](release-notes.md).
-- **Dual-forge binary matrix** *([ward#454](https://forgejo.coilysiren.me/coilyco-flight-deck/ward/issues/454))* - `ward-{darwin,linux}-{amd64,arm64}` + `SHA256SUMS`, built once per tag and published byte-identical to both the Forgejo and GitHub release pages, so their checksums match. [release.md](release.md), [github-mirror.md](github-mirror.md).
+- **Dual-forge binary matrix** *([ward#454](https://forgejo.coilysiren.me/coilyco-flight-deck/ward/issues/454))* - `ward-{darwin,linux,windows}-{amd64,arm64}` (windows as `.exe` + per-asset `.sha256` sidecar for scoop, [ward#561](https://forgejo.coilysiren.me/coilyco-flight-deck/ward/issues/561)) + `SHA256SUMS`, built once per tag and published byte-identical to both the Forgejo and GitHub release pages, so their checksums match. [release-binaries.md](release-binaries.md), [github-mirror.md](github-mirror.md).
 
 ## See also
 

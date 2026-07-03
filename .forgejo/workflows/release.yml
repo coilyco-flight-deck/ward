@@ -88,7 +88,7 @@ jobs:
           tar -xzf /tmp/go.tar.gz -C /usr/local
           echo "/usr/local/go/bin" >> "$GITHUB_PATH"
 
-      - name: Cross-compile the full ward matrix (darwin + linux, amd64 + arm64)
+      - name: Cross-compile the full ward matrix (darwin + linux + windows, amd64 + arm64)
         timeout-minutes: 12
         run: |
           set -euo pipefail
@@ -98,7 +98,10 @@ jobs:
           # toolchain - ward is pure Go (no `import "C"`). Building the whole
           # matrix ONCE and uploading the same files to both forges is what
           # guarantees the Forgejo and GitHub release pages carry identical
-          # SHA256SUMS for a tag (ward#454, ward#438).
+          # SHA256SUMS for a tag (ward#454, ward#438). Windows joins the matrix so
+          # the scoop channel (coilysiren/scoop-bucket ward.json) has a binary to
+          # install; its .exe assets also get per-asset .sha256 sidecars below,
+          # the contract scoop autoupdate reads (ward#561).
           export GOPROXY=direct GOSUMDB=off CGO_ENABLED=0
           mkdir -p dist
           # Pre-fetch modules in a bounded, retried block before building. A
@@ -118,16 +121,25 @@ jobs:
             echo "go mod download attempt ${attempt} failed/timed out; retrying in 5s" >&2
             sleep 5
           done
-          for os in linux darwin; do
+          for os in linux darwin windows; do
             for arch in amd64 arm64; do
+              # Windows PE binaries carry the .exe suffix scoop and the OS expect.
+              ext=""; [ "$os" = "windows" ] && ext=".exe"
               GOOS="$os" GOARCH="$arch" go build -trimpath \
                 -ldflags "-s -w -X main.Version=${TAG}" \
-                -o "dist/ward-${os}-${arch}" ./cmd/ward
+                -o "dist/ward-${os}-${arch}${ext}" ./cmd/ward
             done
           done
           # SHA256SUMS over the bare basenames, so `sha256sum -c SHA256SUMS`
           # verifies from whichever release page a downloader pulled the binary.
           ( cd dist && sha256sum ward-* > SHA256SUMS )
+          # Per-asset .sha256 sidecars for the windows exes: scoop autoupdate reads
+          # each app's hash from `<asset>.sha256` (bare digest), the fleet contract
+          # coily.json already relies on. Only windows needs them - brew/raw-binary
+          # installs verify against the combined SHA256SUMS above. See ward#561.
+          ( cd dist && for f in ward-windows-*.exe; do
+              sha256sum "$f" | awk '{print $1}' > "${f}.sha256"
+            done )
           ls -l dist
           cat dist/SHA256SUMS
 

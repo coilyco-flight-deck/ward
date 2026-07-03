@@ -16,12 +16,16 @@ place that builds and uploads them.
   platform. A GitHub arrival, or the container path, downloads the one for their
   machine, `chmod +x`es it, and runs it - no Go toolchain, no round-trip to
   forgejo.coilysiren.me ([ward#414](https://forgejo.coilysiren.me/coilyco-flight-deck/ward/issues/414), [ward#442](https://forgejo.coilysiren.me/coilyco-flight-deck/ward/issues/442)).
-- **`SHA256SUMS`** - one digest per binary, bare basenames, so
-  `sha256sum -c SHA256SUMS` verifies from whichever page the file came off.
-- **Most people should still install via Homebrew** (see the
-  [README](../README.md#install)): it stamps the version, adds the `warded`
-  symlink, and upgrades in place. The raw binaries are for everyone the tap does
-  not serve.
+- **`ward-windows-{amd64,arm64}.exe`** + a bare-digest **`.exe.sha256`** sidecar
+  each. scoop autoupdate reads the hash from that per-asset sidecar (coily.json's
+  contract), so `coilysiren/scoop-bucket`'s `ward.json` installs off the release
+  page ([ward#561](https://forgejo.coilysiren.me/coilyco-flight-deck/ward/issues/561)).
+- **`SHA256SUMS`** - one digest per binary (windows exes included), bare
+  basenames, so `sha256sum -c SHA256SUMS` verifies from whichever page the file
+  came off. brew and raw-binary installs use this; only scoop needs the sidecars.
+- **Most people should install via a package manager** (see the
+  [README](../README.md#install)): Homebrew on macOS/Linux, scoop on Windows,
+  `ward upgrade` driving the right one by OS. Raw binaries serve the rest.
 
 The formula itself stays build-from-source ([ward#116](https://forgejo.coilysiren.me/coilyco-flight-deck/ward/issues/116)), so `brew` never consumes
 these binaries - see [release.md](release.md).

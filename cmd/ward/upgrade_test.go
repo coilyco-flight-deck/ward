@@ -33,6 +33,17 @@ func TestUpgradeFormulaBare_IsRackName(t *testing.T) {
 	}
 }
 
+// TestUpgradeScoopApp_MatchesBucketManifest pins the Windows scoop app name to
+// the bare `ward`, matching ward.json in coilysiren/scoop-bucket. See ward#561.
+func TestUpgradeScoopApp_MatchesBucketManifest(t *testing.T) {
+	if upgradeScoopApp != "ward" {
+		t.Errorf("upgradeScoopApp = %q, want %q", upgradeScoopApp, "ward")
+	}
+	if strings.Contains(upgradeScoopApp, "/") {
+		t.Errorf("upgradeScoopApp = %q must be bare (no bucket prefix)", upgradeScoopApp)
+	}
+}
+
 // TestStaleTabNotInstalled gates the unqualified retry to the specific stale
 // receipt signature, not any brew failure. See ward#551.
 func TestStaleTabNotInstalled(t *testing.T) {
