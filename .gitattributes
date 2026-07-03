@@ -1,0 +1,28 @@
+# ward is built for and ships into Linux containers. Several assets under
+# cmd/ward/containerassets/ are embedded verbatim via //go:embed and written
+# straight into the image (entrypoint.sh, settings.container.json, ...).
+#
+# On a Windows checkout, git's core.autocrlf=true plus the absence of any
+# attributes smudged LF -> CRLF for the whole tree. That baked a
+# `#!/usr/bin/env bash\r` shebang into the container entrypoint, so
+# `ward agent director` / `ward agent surface` died at launch with:
+#     /usr/bin/env: 'bash\r': No such file or directory
+#
+# Normalize every text file to LF in the repo and on checkout, on every
+# platform, so a Windows working copy matches what the Linux container expects.
+* text=auto eol=lf
+
+# Belt-and-suspenders for the files that MUST be LF regardless of any future
+# override to the blanket rule above: shell scripts and everything embedded
+# into the container image.
+*.sh                          text eol=lf
+*.bash                        text eol=lf
+cmd/ward/containerassets/**   text eol=lf
+
+# Genuinely binary assets: never touch their bytes.
+*.png    binary
+*.jpg    binary
+*.jpeg   binary
+*.gif    binary
+*.ico    binary
+*.pdf    binary
