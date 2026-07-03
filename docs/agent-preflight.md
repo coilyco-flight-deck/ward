@@ -18,7 +18,14 @@ no prompt to answer:
      question clears the gate. ward's own automated
      comments (reservation pings and prior NO-GO verdicts, both carrying a hidden
      marker) are stripped from the thread, so only human words sway the read.
-   - **Execution mechanics** - run as a one-shot on the host (`claude -p`); ward
+   - **Execution mechanics** - run as a one-shot on the host (`claude -p`), with the
+     multi-line prompt fed on the child's **stdin**, never as a command-line
+     argument. That is a cross-platform safety fix ([ward#548](https://forgejo.coilysiren.me/coilyco-flight-deck/ward/issues/548), [ward#560](https://forgejo.coilysiren.me/coilyco-flight-deck/ward/issues/560)):
+     on Windows `claude` can resolve to an npm `.cmd` batch shim, and cmd.exe
+     truncates a command-line arg at its first newline - which silently blanked the
+     read to its preamble, dropping the `Issue: ...#N` ref and the GO/NO-GO
+     instruction that sit below it, so the gate no-opped and failed open. stdin
+     sidesteps arg quoting, length, and newline truncation on every platform. ward
      echoes the read to your terminal and parses the final verdict line (markdown
      bold, bullets, and quote markers tolerated; the last verdict line wins).
    - **cwd isolation** - the read is **issue-text-only**: the real run happens in

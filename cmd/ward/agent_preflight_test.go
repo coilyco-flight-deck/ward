@@ -123,6 +123,46 @@ func TestHostOneShotKeepsPromptOffCommandLine(t *testing.T) {
 	}
 }
 
+// TestPreflightPromptRefSurvivesOntoStdin pins ward#560 for the pre-flight's own prompt
+// (ward#548's tests use a hand-shaped stand-in): see docs/agent-preflight.md, mechanics.
+func TestPreflightPromptRefSurvivesOntoStdin(t *testing.T) {
+	ref := agentIssueRef{Owner: "coilyco-flight-deck", Repo: "ward", Number: 560}
+	prompt := preflightPrompt(ref, "Windows pre-flight silently no-ops",
+		"cmd.exe shim truncates the multi-line prompt at the first newline", "", nil, nil)
+	needle := ref.String() // coilyco-flight-deck/ward#560
+
+	// Preconditions: the test only models the truncation if the ref genuinely sits
+	// below the first newline (the shim kept only the preamble above it).
+	first := prompt
+	if i := strings.IndexByte(prompt, '\n'); i >= 0 {
+		first = prompt[:i]
+	}
+	if strings.Contains(first, needle) {
+		t.Fatalf("precondition: ref %q must sit below the first newline to model #560's truncation", needle)
+	}
+	if !strings.Contains(prompt, needle) || !strings.Contains(prompt, "NO-GO") {
+		t.Fatalf("preflightPrompt missing the ref or the GO/NO-GO line the shim used to drop")
+	}
+
+	argv, stdin, ok := hostOneShot(modeClaude, prompt)
+	if !ok {
+		t.Fatal("hostOneShot(claude) ok = false, want a wired host one-shot")
+	}
+	// The whole pre-flight prompt - ref and verdict instruction included - reaches stdin.
+	if stdin != prompt {
+		t.Error("the pre-flight prompt must be fed whole on the child's stdin (ward#560)")
+	}
+	if !strings.Contains(stdin, needle) || !strings.Contains(stdin, "NO-GO") {
+		t.Error("stdin lost the ref or the GO/NO-GO instruction below the first newline (ward#560)")
+	}
+	// Nothing multi-line or ref-bearing may leak onto the command line the shim mangles.
+	for _, a := range argv {
+		if strings.Contains(a, "\n") || strings.Contains(a, needle) {
+			t.Errorf("pre-flight prompt content leaked onto the command line via argv %q (ward#560)", a)
+		}
+	}
+}
+
 // TestCapturePreflightPipesStdinToChild proves the prompt reaches the child on stdin:
 // /bin/cat echoes stdin, so the piped prompt must round-trip back out (ward#548).
 func TestCapturePreflightPipesStdinToChild(t *testing.T) {
