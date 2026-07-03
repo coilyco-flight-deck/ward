@@ -332,13 +332,15 @@ func TestReservationCommentBodyIsRoadBlock(t *testing.T) {
 	}
 }
 
-// fakeLockForge is a no-op issueForge whose lock/unlock return a configurable error,
-// so lockReservedIssue's three branches can be exercised (ward#494).
+// fakeLockForge is a near-no-op issueForge recording lock/unlock and comment posts, so
+// lockReservedIssue (ward#494) and releaseRemoteReservation (ward#570) can be exercised.
 type fakeLockForge struct {
-	lockErr   error
-	locked    int
-	unlockErr error
-	unlocked  int
+	lockErr    error
+	locked     int
+	unlockErr  error
+	unlocked   int
+	commentErr error
+	comments   []string
 }
 
 func (f *fakeLockForge) getIssue(context.Context, string, string, int) (*dispatch.Issue, error) {
@@ -350,9 +352,15 @@ func (f *fakeLockForge) listIssueComments(context.Context, string, string, int) 
 func (f *fakeLockForge) createIssue(context.Context, string, string, string, string) (int, error) {
 	return 0, nil
 }
-func (f *fakeLockForge) commentIssue(context.Context, string, string, int, string) error { return nil }
-func (f *fakeLockForge) closeIssue(context.Context, string, string, int) error           { return nil }
-func (f *fakeLockForge) reopenIssue(context.Context, string, string, int) error          { return nil }
+func (f *fakeLockForge) commentIssue(_ context.Context, _, _ string, _ int, body string) error {
+	if f.commentErr != nil {
+		return f.commentErr
+	}
+	f.comments = append(f.comments, body)
+	return nil
+}
+func (f *fakeLockForge) closeIssue(context.Context, string, string, int) error  { return nil }
+func (f *fakeLockForge) reopenIssue(context.Context, string, string, int) error { return nil }
 func (f *fakeLockForge) lockIssue(context.Context, string, string, int) error {
 	f.locked++
 	return f.lockErr
@@ -390,6 +398,71 @@ func TestLockReservedIssue(t *testing.T) {
 			}
 		})
 	}
+}
+
+// TestReleaseRemoteReservation covers ward#570's rollback: a failed launch retracts the
+// forge road-block via a release comment + unlock, loud but non-blocking on failure.
+func TestReleaseRemoteReservation(t *testing.T) {
+	r := &Runner{}
+	ref := agentIssueRef{Owner: "coilyco-flight-deck", Repo: "ward", Number: 570}
+
+	// Happy path: one release-marker comment, then an unlock, with a confirming log.
+	t.Run("posts release and unlocks", func(t *testing.T) {
+		f := &fakeLockForge{}
+		out := captureTestStderr(t, func() {
+			r.releaseRemoteReservation(context.Background(), f, "lbl", modeClaude, ref, "engineer-claude-ward-570")
+		})
+		if len(f.comments) != 1 || !strings.Contains(f.comments[0], agentReservationReleaseMarker) {
+			t.Fatalf("want one release-marker comment, got %v", f.comments)
+		}
+		if f.unlocked != 1 {
+			t.Fatalf("unlockIssue called %d times, want 1", f.unlocked)
+		}
+		if !strings.Contains(out, "released remote reservation") {
+			t.Fatalf("missing release log:\n%s", out)
+		}
+	})
+
+	// A failed release post warns and skips the unlock - there is nothing to retract, and
+	// the rollback must not blow up on a best-effort forge call.
+	t.Run("comment failure warns and skips unlock", func(t *testing.T) {
+		f := &fakeLockForge{commentErr: errors.New("500 boom")}
+		out := captureTestStderr(t, func() {
+			r.releaseRemoteReservation(context.Background(), f, "lbl", modeClaude, ref, "c1")
+		})
+		if f.unlocked != 0 {
+			t.Fatalf("unlock ran after a failed release post; got %d", f.unlocked)
+		}
+		if !strings.Contains(out, "could not release the remote reservation") {
+			t.Fatalf("missing release-failure warn:\n%s", out)
+		}
+	})
+
+	// The no-lock-leaf forge (Forgejo) returns errForgeLockUnsupported on unlock; that is
+	// the expected steady state, so it must not warn.
+	t.Run("unsupported unlock stays quiet", func(t *testing.T) {
+		f := &fakeLockForge{unlockErr: errForgeLockUnsupported}
+		out := captureTestStderr(t, func() {
+			r.releaseRemoteReservation(context.Background(), f, "lbl", modeClaude, ref, "c1")
+		})
+		if strings.Contains(out, "could not unlock") {
+			t.Fatalf("unsupported unlock must stay silent:\n%s", out)
+		}
+		if !strings.Contains(out, "released remote reservation") {
+			t.Fatalf("missing release log:\n%s", out)
+		}
+	})
+
+	// A soft unlock failure (not the unsupported sentinel) warns but still logs the release.
+	t.Run("soft unlock failure warns", func(t *testing.T) {
+		f := &fakeLockForge{unlockErr: errors.New("403 forbidden")}
+		out := captureTestStderr(t, func() {
+			r.releaseRemoteReservation(context.Background(), f, "lbl", modeClaude, ref, "c1")
+		})
+		if !strings.Contains(out, "could not unlock") {
+			t.Fatalf("soft unlock failure should warn:\n%s", out)
+		}
+	})
 }
 
 // TestForgejoLockUnsupported asserts the Forgejo client reports no lock leaf, the

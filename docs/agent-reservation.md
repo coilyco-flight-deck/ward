@@ -49,6 +49,20 @@ agent never launched, the [reaper](container-reap.md) posts a **release marker
 comment**, and `freshReservationComment` frees a reservation once a release is
 posted at or after it (newest marker of each kind wins), so the retry needs no `--force`.
 
+## Launch failure rolls the reservation back
+
+Tracked in [ward#570](https://forgejo.coilysiren.me/coilyco-flight-deck/ward/issues/570).
+The reservation is taken **before** `docker run`. If the launch itself fails
+after that - a docker disk sweep, the env-file write, or `docker run` exiting 125
+(the [snap-docker env-file bug, ward#569](agent.md)) - then no container ever
+exists, so both halves of the hold are lies. The dispatch path arms a rollback
+the moment it acquires the reservation and disarms it only once the container is
+confirmed up; a failure in that window retracts **both** halves - it deletes the
+local sentinel and posts the same **release marker comment** the reaper uses,
+plus an unlock. A human reading the issue then sees the road-block retracted, and
+a re-run needs no `--force`. The rollback is best-effort and loud: a failed
+release post warns but never masks the original launch error.
+
 For an interactive dispatch the cheap reservation check runs **before the LLM
 pre-flight**, not after: an issue another run already holds
 short-circuits up front rather than wasting a full model read. The precheck reuses
