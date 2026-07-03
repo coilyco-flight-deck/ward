@@ -26,11 +26,29 @@ issue numbers cannot bleed into one another.
   expires - after which the issue is a normal editable ticket again and a
   re-dispatch picks up the current body.
 
-## No enforcement today
+## Best-effort enforcement ([ward#494](https://forgejo.coilysiren.me/coilyco-flight-deck/ward/issues/494))
 
-Nothing blocks an edit or a comment on a reserved issue. This is **convention,
-not a gate**: the immutability is a property of the fire-and-forget seed, not a
-lock ward imposes.
+The reservation now spells the rule out where a human will read it and, where the
+forge allows, backs it with a real lock:
+
+- **The reservation comment is the road-block.** Every `🔒 Reserved` marker
+  carries an explicit directive: *do not comment on or edit this issue to steer
+  the run while it is reserved; a correction goes to a new issue, dispatched
+  fresh.* On a forge whose API can't lock a conversation, this loud in-thread
+  directive is the whole gate - convention made visible.
+- **Where the API supports it, ward locks the conversation.** A GitHub-hosted run
+  seals the issue (`PUT /issues/{n}/lock`) when it reserves, so a non-collaborator
+  is blocked outright and a write-access architect meets a deliberate "unlock to
+  comment" road-block - the friction the issue asked for. **Forgejo (gitea-1.22
+  API compat) exposes no lock leaf** - `is_locked` is read-only over the API - so a
+  Forgejo run leaves the comment above as the road-block and logs that it did.
+- The lock is **best-effort**: it never fails the reservation, and a
+  [pre-launch death](agent-reservation.md) that releases the hold also unlocks
+  (where the forge can), so a clean retry lands on an open thread.
+
+Note the lock is friction, not an absolute denial: a repo owner can always unlock
+and comment. The point is the conscious pause, not an unbreakable wall - the run
+still never re-reads the issue either way, so the discipline stands.
 
 ## See also
 

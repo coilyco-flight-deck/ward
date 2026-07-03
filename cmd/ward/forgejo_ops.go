@@ -165,6 +165,17 @@ func (c *forgejoClient) reopenIssue(ctx context.Context, owner, repo string, num
 	return nil
 }
 
+// lockIssue is unsupported: Forgejo's API (gitea-1.22 compat) exposes no issue-lock
+// leaf, so the reservation road-block stays the marker comment (ward#494, docs).
+func (c *forgejoClient) lockIssue(_ context.Context, _, _ string, _ int) error {
+	return errForgeLockUnsupported
+}
+
+// unlockIssue mirrors lockIssue: no Forgejo API leaf, so the retract is a no-op.
+func (c *forgejoClient) unlockIssue(_ context.Context, _, _ string, _ int) error {
+	return errForgeLockUnsupported
+}
+
 // listOpenIssues lists a repo's open issues (not pulls) with their labels, the
 // backlog loop's ranking input (ward#346). Mirrors backlog-loop.py's fetch.
 func (c *forgejoClient) listOpenIssues(ctx context.Context, owner, repo string, limit int) ([]backlogIssue, error) {

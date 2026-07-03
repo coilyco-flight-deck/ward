@@ -2,6 +2,7 @@ package main
 
 import (
 	"context"
+	"errors"
 	"fmt"
 	"os"
 	"regexp"
@@ -104,6 +105,10 @@ func parsePositiveInt(s string) (int, error) {
 	return n, nil
 }
 
+// errForgeLockUnsupported is the sentinel lockIssue/unlockIssue return when the forge
+// API has no lock leaf (Forgejo); the caller falls back to the comment (ward#494).
+var errForgeLockUnsupported = errors.New("this forge's API cannot lock an issue conversation")
+
 // issueForge is the forge-independent issue-thread surface the host dispatch path
 // and reaper drive: Forgejo (forgejoClient) or GitHub via `gh` (githubClient).
 type issueForge interface {
@@ -113,6 +118,10 @@ type issueForge interface {
 	commentIssue(ctx context.Context, owner, repo string, number int, body string) error
 	closeIssue(ctx context.Context, owner, repo string, number int) error
 	reopenIssue(ctx context.Context, owner, repo string, number int) error
+	// lockIssue seals the conversation against in-flight steering (ward#494), returning
+	// errForgeLockUnsupported where the API has no lock leaf; unlockIssue retracts it.
+	lockIssue(ctx context.Context, owner, repo string, number int) error
+	unlockIssue(ctx context.Context, owner, repo string, number int) error
 }
 
 // hostForgeClient returns the issue-thread client for f, signing writes as mode.

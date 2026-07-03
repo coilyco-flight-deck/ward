@@ -26,6 +26,7 @@ New to ward? Read [architecture.md](architecture.md) first - it frames the whole
 
 - [exec-verb.md](exec-verb.md) - `ward exec <verb>`: run a repo dev verb through the gate.
 - [gate-demo.md](gate-demo.md) - what the gate refuses: the clean-tree + argv-metacharacter denial demo.
+- [demo.md](demo.md) - the launch demo: one happy path plus two danger classes, driven live against `examples/toy/` by [`../examples/demo.sh`](../examples/demo.sh).
 - [verb-fallback.md](verb-fallback.md) - unknown-verb rewrite to `ward exec` + the build/test/install triple.
 - [git-verbs.md](git-verbs.md) - `ward git`: audited, concurrency-safe git surface.
 - [git-clone.md](git-clone.md) - `ward git clone`, destination-gated.
@@ -84,6 +85,9 @@ New to ward? Read [architecture.md](architecture.md) first - it frames the whole
 ## Container subsystem
 
 - [container.md](container.md) - the ephemeral, least-access dev container.
+- [container-api.md](container-api.md) - the host<->entrypoint contract overview: bind mounts + the produced file layout.
+- [container-env.md](container-env.md) - the full `WARD_*` environment contract the entrypoint reads.
+- [container-capability-ladder.md](container-capability-ladder.md) - the progressive-capability ladder (`WARD_CONTEXT_LEVEL`, by driver).
 - [container-permissions.md](container-permissions.md) - what the container itself may do.
 - [container-substrate.md](container-substrate.md) - the read-only `/substrate` reference repos.
 - [context-probe.md](context-probe.md) - design: the role-aware three-tier context probe + per-driver context-management spec.
@@ -118,6 +122,7 @@ New to ward? Read [architecture.md](architecture.md) first - it frames the whole
 ## Examples
 
 - [example-repo.md](example-repo.md) - the `examples/toy/` minimal ward-managed repo (Makefile + `.ward/ward.yaml` with a `security:` block + a ward-kdl guardfile), the demo and spec-bundle anchor.
+- [demo.md](demo.md) - the runnable launch demo ([`../examples/demo.sh`](../examples/demo.sh)) driven against `examples/toy/`: one happy path, two danger classes.
 
 ## Release
 

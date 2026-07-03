@@ -38,11 +38,12 @@ ward agent engineer coilyco-gaming/eco-app#123 --print  # show the docker cmd on
 
 ## Modes: progressively-less-context ladder
 
-`ward agent`'s `--driver` picks the harness **and** its context level (mirroring
-agent-compose's slices): `claude`/`goose` at level 2 (doctrine + cwd
+`ward agent`'s `--driver` picks the harness **and** its context level:
+`claude`/`goose` at level 2 (doctrine + cwd
 `CLAUDE.md`/`AGENTS.md`), `codex` at level 1 (cwd `AGENTS.md` only), `opencode` at
 level 0 (doctrine only, self-installing). The level exports as
 `WARD_CONTEXT_LEVEL`; the in-tree `AGENTS.md` loads on top ([agent.md](agent.md)).
+Full ladder + the container env/mount API: [container-api.md](container-api.md).
 
 ## The image
 

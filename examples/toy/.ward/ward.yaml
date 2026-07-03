@@ -33,5 +33,7 @@ security:
   hooks:
     deny_bare_binaries:
       - kubectl
+      - aws
     route_hints:
       kubectl: "route kubectl through a ward-kdl wrapper, not the bare binary"
+      aws: "route aws through a ward-kdl wrapper, not the bare binary"

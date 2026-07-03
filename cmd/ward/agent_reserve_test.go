@@ -9,6 +9,8 @@ import (
 	"strings"
 	"testing"
 	"time"
+
+	"forgejo.coilysiren.me/coilyco-flight-deck/cli-guard/cli/dispatch"
 )
 
 func captureTestStderr(t *testing.T, fn func()) string {
@@ -311,6 +313,94 @@ func TestFreshReservationComment(t *testing.T) {
 		mk(reserved, 30*time.Minute, "coilyco-ops"),
 	}, now, ttl); !held {
 		t.Error("a reservation posted after the release must still block")
+	}
+}
+
+// TestReservationCommentBodyIsRoadBlock pins ward#494: the reservation comment carries
+// the explicit "do not comment/edit to steer the run" road-block directive.
+func TestReservationCommentBodyIsRoadBlock(t *testing.T) {
+	now := time.Date(2026, 7, 3, 12, 0, 0, 0, time.UTC)
+	body := reservationCommentBody(modeClaude, "engineer-claude-ward-494", "box", now, "")
+	for _, want := range []string{
+		"Do not comment on or edit this issue",
+		"new issue, dispatched fresh",
+		"ward#494",
+	} {
+		if !strings.Contains(body, want) {
+			t.Errorf("reservation comment missing road-block phrase %q\n got: %s", want, body)
+		}
+	}
+}
+
+// fakeLockForge is a no-op issueForge whose lock/unlock return a configurable error,
+// so lockReservedIssue's three branches can be exercised (ward#494).
+type fakeLockForge struct {
+	lockErr   error
+	locked    int
+	unlockErr error
+	unlocked  int
+}
+
+func (f *fakeLockForge) getIssue(context.Context, string, string, int) (*dispatch.Issue, error) {
+	return &dispatch.Issue{}, nil
+}
+func (f *fakeLockForge) listIssueComments(context.Context, string, string, int) ([]issueComment, error) {
+	return nil, nil
+}
+func (f *fakeLockForge) createIssue(context.Context, string, string, string, string) (int, error) {
+	return 0, nil
+}
+func (f *fakeLockForge) commentIssue(context.Context, string, string, int, string) error { return nil }
+func (f *fakeLockForge) closeIssue(context.Context, string, string, int) error           { return nil }
+func (f *fakeLockForge) reopenIssue(context.Context, string, string, int) error          { return nil }
+func (f *fakeLockForge) lockIssue(context.Context, string, string, int) error {
+	f.locked++
+	return f.lockErr
+}
+func (f *fakeLockForge) unlockIssue(context.Context, string, string, int) error {
+	f.unlocked++
+	return f.unlockErr
+}
+
+// TestLockReservedIssue covers ward#494's three outcomes - locked, unsupported-forge
+// road-block fallback, and soft-failure warning - none of which fails the reservation.
+func TestLockReservedIssue(t *testing.T) {
+	r := &Runner{}
+	ref := agentIssueRef{Owner: "coilyco-flight-deck", Repo: "ward", Number: 494}
+	cases := []struct {
+		name    string
+		lockErr error
+		want    string
+	}{
+		{"locked", nil, "locked issue"},
+		{"unsupported", errForgeLockUnsupported, "left unlocked"},
+		{"soft failure", errors.New("403 forbidden"), "could not lock"},
+	}
+	for _, c := range cases {
+		t.Run(c.name, func(t *testing.T) {
+			f := &fakeLockForge{lockErr: c.lockErr}
+			got := captureTestStderr(t, func() {
+				r.lockReservedIssue(context.Background(), f, "lbl", ref)
+			})
+			if f.locked != 1 {
+				t.Fatalf("lockIssue called %d times, want 1", f.locked)
+			}
+			if !strings.Contains(got, c.want) {
+				t.Fatalf("log missing %q:\n%s", c.want, got)
+			}
+		})
+	}
+}
+
+// TestForgejoLockUnsupported asserts the Forgejo client reports no lock leaf, the
+// signal lockReservedIssue downgrades to the comment road-block (ward#494).
+func TestForgejoLockUnsupported(t *testing.T) {
+	c := &forgejoClient{}
+	if err := c.lockIssue(context.Background(), "o", "r", 1); !errors.Is(err, errForgeLockUnsupported) {
+		t.Errorf("forgejo lockIssue = %v, want errForgeLockUnsupported", err)
+	}
+	if err := c.unlockIssue(context.Background(), "o", "r", 1); !errors.Is(err, errForgeLockUnsupported) {
+		t.Errorf("forgejo unlockIssue = %v, want errForgeLockUnsupported", err)
 	}
 }
 
