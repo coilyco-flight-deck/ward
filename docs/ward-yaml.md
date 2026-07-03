@@ -35,7 +35,7 @@ not rely on the hook to tell you the config is wrong.
 
 - **`commands:`** - map of dev-verb name to its declaration. Read by ward. See [commands](#commands).
 - **`security:`** - the security policy block. Read by ward (doctor + hook). The loader and the hook tolerate its absence, but as of [ward#450](https://forgejo.coilysiren.me/coilyco-flight-deck/ward/issues/450) `ward doctor` **fails** when it is missing (it prints `no security: declared` and exits non-zero), so a real repo declares one. See [security](#security).
-- **`catalog:`** - **not read by ward.** This is `coilyco-flight-deck/agentic-os` catalog tooling metadata (repo description + cross-repo `dependsOn`). ward's `repocfg` loader unmarshals only `commands` + `security` and drops everything else, so `catalog:` has zero effect on `ward exec`, `ward doctor`, or the hook. It is safe to include for the catalog tooling and safe to omit if you do not use it.
+- **`catalog:`** - **not read by ward for repo verbs.** This is `coilyco-flight-deck/agentic-os` catalog tooling metadata (repo description + cross-repo `dependsOn`). ward's `repocfg` loader still unmarshals only `commands` + `security` for `ward exec`, `ward doctor`, and the hook, but advisor launch now reads `catalog.dependsOn` directly for auto-granted read-only context repos. It is safe to include for the catalog tooling and safe to omit if you do not use it.
 
 ## commands
 
@@ -217,7 +217,7 @@ The honest map, so nothing reads as protected when it is not:
 
 - **Consumed by ward (has runtime effect)** - `commands.<name>.run`, `commands.<name>.description`, `commands.<name>.allow_metacharacters`, `security.protected_binaries[]` (`name` + `allowed_wrappers` in the hook, `expected_real_paths` + `credential_env` in doctor probes), `security.protected_binaries[].mode` (validated), `security.sudo.forbid_passwordless` (doctor probe), `security.hooks.deny_bare_binaries`, `security.hooks.route_hints`.
 - **Parsed and validated, but no runtime effect in ward yet** - `commands.<name>.audit.egress` (no egress proxy is wired around repo verbs), `security.forbidden_argv[]` (ward's hook never calls `ForbiddenFor`). Both fail `ward doctor` loudly if malformed, but neither gates anything at runtime today.
-- **Ignored by ward entirely** - `catalog:` and any other unrecognized top-level key. Read by external agentic-os tooling, never by ward.
+- **Ignored by ward entirely** - `catalog:` for repo verbs and any other unrecognized top-level key. Read by external agentic-os tooling, and by advisor launch for its repo-local `dependsOn` context list, never by ward's exec/doctor/hook surfaces.
 
 ## See also
 

@@ -31,10 +31,10 @@ and freeform modes and no longer a native host one-shot. Because the container i
 sandbox, **any wired harness** runs it, local models included.
 
 For configured primary repos, the advisor lane can also auto-grant curated
-read-only context repos from the Atlas service-catalog dependency graph. Ward
-reads direct `dependsOn` edges from an embedded Atlas snapshot, merges them
+read-only context repos from the repo's own `catalog.dependsOn` declaration.
+Ward reads that live config from the cloned repo at launch time, merges it
 with explicit `--repo` input, de-duplicates the final set, and logs whether
-each repo came from an Atlas dependency or an explicit grant.
+each repo came from repo-local catalog data or an explicit grant.
 
 It trust-gates the owner and resolves the issue + thread **on the host**, then spins a
 read-only one-shot container (`WARD_ASK` + `WARD_READONLY`) seeded with the research prompt
