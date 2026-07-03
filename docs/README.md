@@ -104,6 +104,7 @@ New to ward? Read [architecture.md](architecture.md) first - it frames the whole
 - [ward-kdl.md](ward-kdl.md) - what ward-kdl is: the build-time authoring layer.
 - [ward-kdl-surface.md](ward-kdl-surface.md) - the full generated verb surface, area by area.
 - [ward-kdl-in-ward.md](ward-kdl-in-ward.md) - exec guardfiles auto-mounted into `ward`.
+- [ward-docker-exec.md](ward-docker-exec.md) - `ward docker exec`, the ward=true-gated shell-into-a-run leaf, and what it bypasses.
 - [ward-kdl-tiers.md](ward-kdl-tiers.md) - the read/write/admin permission-tier layout.
 - [ward-kdl-authoring.md](ward-kdl-authoring.md) - authoring guardfiles: getting the compiler, swapping the bundle.
 - [guardfile-grammar.md](guardfile-grammar.md) - the dialect-1 KDL grammar, a minimal working guardfile, where auth config lives.

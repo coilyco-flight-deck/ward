@@ -8,9 +8,11 @@
 // build, push, pull, cp, commit, attach, save/load, prune) are intentionally
 // left unexposed - they fall to the host lockdown's bare-docker deny, mirroring
 // the no-deletion choice in the kubectl and ollama guardfiles. `exec` is the
-// privileged shell-into-a-container verb; it is denied here and gated
-// separately in ward#220 (read-only exec into warded containers), so it does
-// not belong on this read-only surface.
+// privileged shell-into-a-container verb; it is NOT a guardfile grant here
+// because "is this container ward-managed?" is a runtime label check no argv
+// shape can express. It ships instead as a hand-written leaf (ward#220,
+// cmd/ward/docker_exec.go, docs/ward-docker-exec.md) grafted onto this group,
+// gated to ward=true containers and audit-logged like every verb below.
 //
 // Note on streaming verbs: `logs -f`, `stats`, and `events` follow/stream by
 // default. For a one-shot snapshot pass `--no-stream` (stats) or omit `-f`
@@ -72,8 +74,8 @@ wrap ward-kdl docker {
     can run "system df" {
         describe "disk usage by images, containers, volumes, cache"
     }
-    // intentionally unexposed - mutating or shell-equivalent
-    never run exec
+    // intentionally unexposed - mutating or shell-equivalent. `exec` is the
+    // exception: a hand-written ward=true-gated leaf (ward#220), not a grant here.
     never run run
     never run rm
     never run kill
