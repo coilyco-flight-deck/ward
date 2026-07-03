@@ -264,7 +264,11 @@ func (r *Runner) writeTokenEnvFile(ctx context.Context, target broker.Target, fg
 	if err != nil {
 		return "", func() {}, err
 	}
-	f, err := os.CreateTemp("", "ward-forgejo-env-*")
+	// Land the env-file where the docker CLI can read it at `docker run`: a snap
+	// docker's private /tmp hides a /tmp path (ward#569; docs/container-env.md).
+	dir := launchEnvFileDir()
+	sweepStaleLaunchEnvFiles(dir)
+	f, err := os.CreateTemp(dir, launchEnvFilePrefix+"*")
 	if err != nil {
 		return "", func() {}, fmt.Errorf("ward container: create env-file: %w", err)
 	}
@@ -307,6 +311,39 @@ func (r *Runner) writeTokenEnvFile(ctx context.Context, target broker.Target, fg
 		return "", func() {}, fmt.Errorf("ward container: close env-file: %w", cerr)
 	}
 	return path, cleanup, nil
+}
+
+// launchEnvFilePrefix is the temp-name prefix for the docker --env-file; a shared
+// const so the stale-orphan sweep can recognize leftovers written by launchEnvFileDir.
+const launchEnvFilePrefix = "ward-forgejo-env-"
+
+// launchEnvFileDir picks the docker `--env-file` dir: $HOME top-level, which a snap
+// docker's `home`-interface CLI can read, else $TMPDIR (ward#569; the doc).
+func launchEnvFileDir() string {
+	home, err := os.UserHomeDir()
+	if err != nil || home == "" {
+		return os.TempDir()
+	}
+	return home
+}
+
+// sweepStaleLaunchEnvFiles best-effort removes past-TTL env-file orphans in dir;
+// $HOME is never OS-reaped and each orphan holds a live 0600 token (ward#569).
+func sweepStaleLaunchEnvFiles(dir string) {
+	entries, err := os.ReadDir(dir)
+	if err != nil {
+		return
+	}
+	for _, e := range entries {
+		if e.IsDir() || !strings.HasPrefix(e.Name(), launchEnvFilePrefix) {
+			continue
+		}
+		info, ierr := e.Info()
+		if ierr != nil || time.Since(info.ModTime()) < containerAssetsTTL {
+			continue
+		}
+		_ = os.Remove(filepath.Join(dir, e.Name()))
+	}
 }
 
 // preflightTailnetProxy verifies the standing mac-proxy box is attached to the

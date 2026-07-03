@@ -59,6 +59,19 @@ The token and credential channel is deliberately **not** in `wardEnv`. It rides 
 the base64 credential blobs the entrypoint decodes to disk then **scrubs from the env** -
 `WARD_CLAUDE_CREDS_B64`, `WARD_CODEX_AUTH_B64`, `WARD_GOOSE_OLLAMA_HOST_B64`.
 
+That `--env-file` is written **top-level in `$HOME`**, not `/tmp`. The docker CLI reads it
+client-side at `docker run`, and a snap-provided docker (companion to the brew-jail break
+in [ward#540](https://forgejo.coilysiren.me/coilyco-flight-deck/ward/issues/540)) runs the
+CLI under a **private `/tmp`**, so a `/tmp` env-file reads back as `no such file` and the
+launch dies at exit 125 with no container
+([ward#569](https://forgejo.coilysiren.me/coilyco-flight-deck/ward/issues/569)). Snap's
+default-connected `home` interface exposes only **non-hidden** `$HOME` files, so the file
+lands in the `$HOME` root - never the hidden `~/.ward` - and a native docker (Docker
+Desktop, apt/dnf) reads any path, making `$HOME` a superset-safe home for every host. It is
+removed the moment `docker run` returns (the container has read it by then), and a
+past-TTL orphan sweep reclaims any file a crashed launch left behind, since `$HOME`, unlike
+`/tmp`, is never OS-reaped.
+
 ## See also
 
 - [container-api.md](container-api.md) - the API overview (mounts + file layout).

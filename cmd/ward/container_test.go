@@ -470,6 +470,56 @@ func sampleUpPlan() upPlan {
 	}
 }
 
+func TestLaunchEnvFileDirIsSnapReadable(t *testing.T) {
+	// A snap-confined docker CLI only reads NON-hidden files under $HOME (ward#569),
+	// so the env-file dir must be $HOME itself, never the hidden ~/.ward app dir.
+	home := t.TempDir()
+	t.Setenv("HOME", home)
+	if got := launchEnvFileDir(); got != home {
+		t.Fatalf("launchEnvFileDir() = %q, want the $HOME root %q (a hidden ~/.ward path is invisible to a snap docker CLI)", got, home)
+	}
+	if strings.Contains(launchEnvFileDir(), "/.ward") {
+		t.Error("launchEnvFileDir() must not sit under a hidden dir a snap docker cannot read")
+	}
+}
+
+func TestLaunchEnvFileDirFallsBackToTmp(t *testing.T) {
+	// With no resolvable $HOME the launch dir degrades to $TMPDIR rather than "".
+	t.Setenv("HOME", "")
+	if got := launchEnvFileDir(); got == "" {
+		t.Error("launchEnvFileDir() with no $HOME must fall back to a real dir, got empty")
+	}
+}
+
+func TestSweepStaleLaunchEnvFiles(t *testing.T) {
+	dir := t.TempDir()
+	fresh := filepath.Join(dir, launchEnvFilePrefix+"fresh")
+	stale := filepath.Join(dir, launchEnvFilePrefix+"stale")
+	other := filepath.Join(dir, "unrelated-file")
+	for _, p := range []string{fresh, stale, other} {
+		if err := os.WriteFile(p, []byte("x"), 0o600); err != nil {
+			t.Fatalf("seed %s: %v", p, err)
+		}
+	}
+	// Age the stale orphan past the TTL; leave the others recent.
+	old := time.Now().Add(-2 * containerAssetsTTL)
+	if err := os.Chtimes(stale, old, old); err != nil {
+		t.Fatalf("age stale file: %v", err)
+	}
+
+	sweepStaleLaunchEnvFiles(dir)
+
+	if _, err := os.Stat(stale); !os.IsNotExist(err) {
+		t.Error("past-TTL env-file orphan should have been swept")
+	}
+	if _, err := os.Stat(fresh); err != nil {
+		t.Error("a within-TTL env-file (a concurrent launch's) must be left alone")
+	}
+	if _, err := os.Stat(other); err != nil {
+		t.Error("a non-env-file must never be swept")
+	}
+}
+
 func TestDockerCreateArgvShape(t *testing.T) {
 	argv := dockerCreateArgv(sampleUpPlan(), "/tmp/ward-env-xyz")
 	joined := strings.Join(argv, " ")
