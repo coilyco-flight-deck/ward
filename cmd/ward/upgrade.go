@@ -4,6 +4,7 @@ import (
 	"context"
 	"fmt"
 	"os"
+	"strings"
 
 	"forgejo.coilysiren.me/coilyco-flight-deck/cli-guard/cli/verb"
 	"forgejo.coilysiren.me/coilyco-flight-deck/cli-guard/pkg/audit"
@@ -65,6 +66,16 @@ func (r *Runner) upgradeAction(ctx context.Context, c *cli.Command) error {
 // bumps); the in-repo Formula/ward.rb is frozen, not an upgrade source.
 const upgradeFormula = "coilyco-flight-deck/tap/ward"
 
+// upgradeFormulaBare is the unqualified fallback: it matches a null-full_name
+// keg by rack dir where the tap-qualified name can't. See ward#551.
+const upgradeFormulaBare = "ward"
+
+// staleTabNotInstalled gates the unqualified retry to the specific "<formula>
+// not installed" signature a null-full_name receipt produces. See ward#551.
+func staleTabNotInstalled(tail, formula string) bool {
+	return strings.Contains(tail, formula+" not installed")
+}
+
 // runUpgrade runs brew update + brew upgrade <formula> (or brew outdated under
 // --dry), routing each brew call through ward's egress-proxied exec path.
 func (r *Runner) runUpgrade(ctx context.Context, dry bool, rows *[]audit.EgressRow, tail *brewTail) error {
@@ -84,8 +95,20 @@ func (r *Runner) runUpgrade(ctx context.Context, dry bool, rows *[]audit.EgressR
 	fmt.Fprintln(os.Stderr, "==> brew upgrade", formula)
 	captured, err = r.execBrewRaw(ctx, []string{"upgrade", formula}, tail)
 	*rows = append(*rows, captured...)
-	if err != nil {
+	if err == nil {
+		return nil
+	}
+	// Stale-receipt recovery: retry unqualified when the tap-qualified name
+	// can't match a null-full_name keg; other failures surface. See ward#551.
+	if !staleTabNotInstalled(tail.String(), formula) {
 		return fmt.Errorf("upgrade: brew upgrade %s: %w", formula, err)
+	}
+	fmt.Fprintln(os.Stderr, "==> brew upgrade", upgradeFormulaBare,
+		"(fallback: tap-qualified keg not matched, ward#551)")
+	captured, err = r.execBrewRaw(ctx, []string{"upgrade", upgradeFormulaBare}, tail)
+	*rows = append(*rows, captured...)
+	if err != nil {
+		return fmt.Errorf("upgrade: brew upgrade %s (fallback %s): %w", formula, upgradeFormulaBare, err)
 	}
 	return nil
 }
