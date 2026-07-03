@@ -104,7 +104,15 @@ func (r *Runner) runGitClone(ctx context.Context, argv []string) error {
 	}
 	cloneArgv = append(cloneArgv, "clone")
 	cloneArgv = append(cloneArgv, rest...)
-	if err := r.Runner.Exec(ctx, "git", cloneArgv...); err != nil {
+	// Inject pre-configured Forgejo auth so a clone off canonical Forgejo does not
+	// prompt for a username/password (ward#507); best-effort, empty on no token.
+	runner := r.Runner
+	if authEnv, _ := r.gitForgejoAuthEnv(ctx); len(authEnv) > 0 {
+		shadow := *r.Runner
+		shadow.Env = append(append([]string(nil), r.Runner.Env...), envSliceFrom(authEnv)...)
+		runner = &shadow
+	}
+	if err := runner.Exec(ctx, "git", cloneArgv...); err != nil {
 		return fmt.Errorf("ward git clone: %w", err)
 	}
 	return nil
