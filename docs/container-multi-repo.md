@@ -51,6 +51,11 @@ The shared `ward-gitcache` bare mirror is reused and refreshed under an `flock`
 on every run (granted repos move with the feature), the same locking substrate
 warming uses so concurrent containers don't race a mirror.
 
+Advisor runs can also auto-grant curated read-only context repos for specific
+primary repos. Those auto-grants merge with manual `--repo` input, de-duplicate
+before cloning, and use a longer mirror refresh window so stable upstreams do
+not churn the cache on every dispatch.
+
 ## The reaper boundary
 
 The teardown reaper ([container-reap.md](container-reap.md)) **lands** only the

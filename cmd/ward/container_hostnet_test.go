@@ -125,7 +125,7 @@ func TestBuildUpPlanTailnet(t *testing.T) {
 			Name:  "probe",
 			Flags: tailnetProbeFlags(),
 			Action: func(_ context.Context, c *cli.Command) error {
-				p, err := buildUpPlan(c, targetRepo{Owner: "o", Name: "r"}, modeClaude, t.TempDir(), t.TempDir(), nil, false)
+				p, err := buildUpPlan(c, targetRepo{Owner: "o", Name: "r"}, modeClaude, t.TempDir(), t.TempDir(), nil, false, false)
 				if err != nil {
 					return err
 				}

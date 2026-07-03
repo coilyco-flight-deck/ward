@@ -96,6 +96,31 @@ func TestAdvisorHasOneshotFlag(t *testing.T) {
 	}
 }
 
+func TestAdvisorAutoGrantRepos(t *testing.T) {
+	got := advisorAutoGrantRepos(targetRepo{Owner: "coilyco-gaming", Name: "eco-ops"})
+	if len(got) != 1 || got[0].slug() != "StrangeLoopGames/Eco" {
+		t.Fatalf("advisorAutoGrantRepos(eco-ops) = %+v, want StrangeLoopGames/Eco", got)
+	}
+	if got := advisorAutoGrantRepos(targetRepo{Owner: "coilyco-flight-deck", Name: "ward"}); len(got) != 0 {
+		t.Fatalf("advisorAutoGrantRepos(non-eco) = %+v, want none", got)
+	}
+}
+
+func TestMergeExtraReposDedupes(t *testing.T) {
+	target := targetRepo{Owner: "coilyco-gaming", Name: "eco-ops"}
+	got, notes := mergeExtraRepos(
+		[]targetRepo{{Owner: "StrangeLoopGames", Name: "Eco"}},
+		[]targetRepo{{Owner: "StrangeLoopGames", Name: "Eco"}},
+		target,
+	)
+	if len(got) != 1 || got[0].slug() != "StrangeLoopGames/Eco" {
+		t.Fatalf("mergeExtraRepos dedupe = %+v, want one StrangeLoopGames/Eco", got)
+	}
+	if len(notes) != 1 {
+		t.Fatalf("mergeExtraRepos notes = %+v, want one note", notes)
+	}
+}
+
 // An ask plan threads WARD_ASK=1 (and not WARD_HEADLESS) so the entrypoint picks
 // the plain one-shot branch; a non-ask plan must not set it.
 func TestWardEnvAsk(t *testing.T) {
