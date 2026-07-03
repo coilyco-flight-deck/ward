@@ -122,7 +122,7 @@ func buildUpPlan(c *cli.Command, repo targetRepo, mode containerMode, cwd, asset
 	}
 	autoExtras := []targetRepo(nil)
 	if advisorContext {
-		autoExtras = advisorAutoGrantRepos(repo)
+		autoExtras = advisorAutoGrantRepos(cwd)
 	}
 	extra, notes := mergeExtraRepos(extra, autoExtras, repo)
 	if len(notes) > 0 {

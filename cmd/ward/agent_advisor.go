@@ -2,29 +2,19 @@ package main
 
 import (
 	"context"
-	_ "embed"
-	"encoding/json"
 	"fmt"
 	"io"
 	"os"
+	"path/filepath"
 	"strings"
-	"sync"
 
 	"forgejo.coilysiren.me/coilyco-flight-deck/cli-guard/cli/verb"
 	"github.com/urfave/cli/v3"
+	"gopkg.in/yaml.v3"
 )
 
 // agent_advisor.go wires `ward agent advisor`, the counsel role (ward#347, merging
 // reply + ask by arg type; reply lives in agent_reply.go). See docs/agent-advisor.md.
-
-//go:embed atlas_catalog_graph.json
-var atlasCatalogGraphJSON []byte
-
-var (
-	atlasDepsOnce sync.Once
-	atlasDeps     map[string][]targetRepo
-	atlasDepsErr  error
-)
 
 // agentAdvisorFlags is the advisor role's flag set: the reply depth ladder (ref mode)
 // unioned with the scratch-container flags the inline answer (freeform mode) needs.
@@ -78,53 +68,47 @@ func agentAdvisorCommand() *cli.Command {
 	}
 }
 
-// advisorAutoGrantRepos returns repo-specific read-only context grants.
-// It reads direct Atlas service-catalog dependsOn edges, not a ward-local list.
-func advisorAutoGrantRepos(repo targetRepo) []targetRepo {
-	atlasDepsOnce.Do(func() {
-		atlasDeps, atlasDepsErr = loadAtlasAutoGrantDeps(atlasCatalogGraphJSON)
-	})
-	if atlasDepsErr != nil {
+// advisorAutoGrantRepos returns repo-specific read-only context grants from the
+// cloned repo's own catalog.dependsOn declaration.
+func advisorAutoGrantRepos(cwd string) []targetRepo {
+	deps, err := loadRepoLocalAutoGrantDeps(cwd)
+	if err != nil {
 		return nil
 	}
-	return atlasDeps[repo.slug()]
+	return deps
 }
 
-func loadAtlasAutoGrantDeps(raw []byte) (map[string][]targetRepo, error) {
-	var graph struct {
-		Edges []struct {
-			From string `json:"from"`
-			To   string `json:"to"`
-			Type string `json:"type"`
-		} `json:"edges"`
+func loadRepoLocalAutoGrantDeps(start string) ([]targetRepo, error) {
+	path, err := discoverConfig(start)
+	if err != nil {
+		return nil, nil
 	}
-	if err := json.Unmarshal(raw, &graph); err != nil {
-		return nil, fmt.Errorf("atlas catalog graph: decode: %w", err)
+	b, err := os.ReadFile(path)
+	if err != nil {
+		return nil, fmt.Errorf("advisor catalog: read %s: %w", filepath.Base(path), err)
 	}
-	out := map[string][]targetRepo{}
-	for _, e := range graph.Edges {
-		if e.Type != "dependsOn" {
+	var doc struct {
+		Catalog struct {
+			DependsOn []string `yaml:"dependsOn"`
+		} `yaml:"catalog"`
+	}
+	if err := yaml.Unmarshal(b, &doc); err != nil {
+		return nil, fmt.Errorf("advisor catalog: parse %s: %w", filepath.Base(path), err)
+	}
+	var out []targetRepo
+	seen := map[string]bool{}
+	for _, dep := range doc.Catalog.DependsOn {
+		repo, err := parseRepoRef(dep)
+		if err != nil {
 			continue
 		}
-		from, ok := parseGraphSlug(e.From)
-		if !ok {
+		if seen[repo.slug()] {
 			continue
 		}
-		to, ok := parseGraphSlug(e.To)
-		if !ok {
-			continue
-		}
-		out[from.slug()] = append(out[from.slug()], to)
+		seen[repo.slug()] = true
+		out = append(out, repo)
 	}
 	return out, nil
-}
-
-func parseGraphSlug(id string) (targetRepo, bool) {
-	parts := strings.Split(id, "/")
-	if len(parts) < 3 {
-		return targetRepo{}, false
-	}
-	return targetRepo{Owner: parts[len(parts)-2], Name: parts[len(parts)-1]}, true
 }
 
 // runAgentAdvisor dispatches by argument type (ward#347): a parseable ref researches

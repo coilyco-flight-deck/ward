@@ -1,6 +1,8 @@
 package main
 
 import (
+	"os"
+	"path/filepath"
 	"strings"
 	"testing"
 )
@@ -97,15 +99,27 @@ func TestAdvisorHasOneshotFlag(t *testing.T) {
 }
 
 func TestAdvisorAutoGrantRepos(t *testing.T) {
-	got := advisorAutoGrantRepos(targetRepo{Owner: "coilyco-gaming", Name: "eco-ops"})
-	if len(got) != 1 || got[0].slug() != "StrangeLoopGames/Eco" {
-		t.Fatalf("advisorAutoGrantRepos(eco-ops) = %+v, want StrangeLoopGames/Eco", got)
+	root := t.TempDir()
+	wardDir := filepath.Join(root, ".ward")
+	if err := os.MkdirAll(wardDir, 0o755); err != nil {
+		t.Fatalf("mkdir ward: %v", err)
 	}
-	if got := advisorAutoGrantRepos(targetRepo{Owner: "coilyco-flight-deck", Name: "ward"}); len(got) != 1 || got[0].slug() != "coilyco-flight-deck/cli-guard" {
-		t.Fatalf("advisorAutoGrantRepos(ward) = %+v, want coilyco-flight-deck/cli-guard", got)
+	if err := os.WriteFile(filepath.Join(wardDir, "ward.yaml"), []byte(`catalog:
+  dependsOn:
+    - coilyco-flight-deck/cli-guard
+    - StrangeLoopGames/Eco
+`), 0o644); err != nil { //nolint:gosec
+		t.Fatalf("write ward.yaml: %v", err)
 	}
-	if got := advisorAutoGrantRepos(targetRepo{Owner: "coilyco-flight-deck", Name: "agentic-os"}); len(got) != 0 {
-		t.Fatalf("advisorAutoGrantRepos(non-catalog repo) = %+v, want none", got)
+	deps, err := loadRepoLocalAutoGrantDeps(root)
+	if err != nil {
+		t.Fatalf("loadRepoLocalAutoGrantDeps: %v", err)
+	}
+	if len(deps) != 2 || deps[0].slug() != "coilyco-flight-deck/cli-guard" || deps[1].slug() != "StrangeLoopGames/Eco" {
+		t.Fatalf("ward deps = %+v, want cli-guard + Eco", deps)
+	}
+	if got := advisorAutoGrantRepos(root); len(got) != 2 || got[1].slug() != "StrangeLoopGames/Eco" {
+		t.Fatalf("advisorAutoGrantRepos(ward) = %+v, want catalog deps", got)
 	}
 }
 
@@ -127,16 +141,31 @@ func TestMergeExtraReposDedupes(t *testing.T) {
 	}
 }
 
-func TestLoadAtlasAutoGrantDeps(t *testing.T) {
-	deps, err := loadAtlasAutoGrantDeps(atlasCatalogGraphJSON)
+func TestLoadRepoLocalAutoGrantDepsPrefersWardOverCoily(t *testing.T) {
+	root := t.TempDir()
+	for _, rel := range []string{".ward", ".coily"} {
+		if err := os.MkdirAll(filepath.Join(root, rel), 0o755); err != nil {
+			t.Fatalf("mkdir %s: %v", rel, err)
+		}
+	}
+	if err := os.WriteFile(filepath.Join(root, ".ward", "ward.yaml"), []byte(`catalog:
+  dependsOn:
+    - coilyco-flight-deck/cli-guard
+`), 0o644); err != nil { //nolint:gosec
+		t.Fatalf("write ward.yaml: %v", err)
+	}
+	if err := os.WriteFile(filepath.Join(root, ".coily", "coily.yaml"), []byte(`catalog:
+  dependsOn:
+    - StrangeLoopGames/Eco
+`), 0o644); err != nil { //nolint:gosec
+		t.Fatalf("write coily.yaml: %v", err)
+	}
+	deps, err := loadRepoLocalAutoGrantDeps(filepath.Join(root, "nested"))
 	if err != nil {
-		t.Fatalf("loadAtlasAutoGrantDeps errored: %v", err)
+		t.Fatalf("loadRepoLocalAutoGrantDeps: %v", err)
 	}
-	if got := deps["coilyco-flight-deck/ward"]; len(got) != 1 || got[0].slug() != "coilyco-flight-deck/cli-guard" {
-		t.Fatalf("ward deps = %+v, want cli-guard", got)
-	}
-	if got := deps["coilyco-gaming/eco-ops"]; len(got) != 1 || got[0].slug() != "StrangeLoopGames/Eco" {
-		t.Fatalf("eco-ops deps = %+v, want StrangeLoopGames/Eco", got)
+	if len(deps) != 1 || deps[0].slug() != "coilyco-flight-deck/cli-guard" {
+		t.Fatalf("ward deps = %+v, want cli-guard", deps)
 	}
 }
 
