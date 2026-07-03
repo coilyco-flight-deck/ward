@@ -19,6 +19,20 @@ func TestUpgradeFormula_LockedToCentralTap(t *testing.T) {
 	}
 }
 
+// TestUpgradeFormulaBare_IsRackName pins the unqualified fallback to the bare
+// rack name so it matches a null-full_name keg by directory. See ward#551.
+func TestUpgradeFormulaBare_IsRackName(t *testing.T) {
+	if upgradeFormulaBare != "ward" {
+		t.Errorf("upgradeFormulaBare = %q, want %q", upgradeFormulaBare, "ward")
+	}
+	if strings.Contains(upgradeFormulaBare, "/") {
+		t.Errorf("upgradeFormulaBare = %q must be unqualified (no tap prefix)", upgradeFormulaBare)
+	}
+	if !strings.HasSuffix(upgradeFormula, "/"+upgradeFormulaBare) {
+		t.Errorf("upgradeFormulaBare = %q must be the rack tail of %q", upgradeFormulaBare, upgradeFormula)
+	}
+}
+
 // TestUpgradeScoopApp_MatchesBucketManifest pins the Windows scoop app name to
 // the bare `ward`, matching ward.json in coilysiren/scoop-bucket. See ward#561.
 func TestUpgradeScoopApp_MatchesBucketManifest(t *testing.T) {
@@ -30,8 +44,8 @@ func TestUpgradeScoopApp_MatchesBucketManifest(t *testing.T) {
 	}
 }
 
-// TestStaleTabNotInstalled gates the reinstall escalation to the specific
-// stale receipt signature, not any brew failure. See ward#581.
+// TestStaleTabNotInstalled gates the unqualified retry to the specific stale
+// receipt signature, not any brew failure. See ward#551.
 func TestStaleTabNotInstalled(t *testing.T) {
 	cases := []struct {
 		name string
