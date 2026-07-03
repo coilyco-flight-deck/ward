@@ -130,7 +130,7 @@ func (r *Runner) prepareScratchPlan(ctx context.Context, c *cli.Command, mode co
 	}
 	// No seed: empty AgentArgs is the bare interactive bring-up (a plain agent REPL). The
 	// read-only surface opts into the host agent-log drain mount (ward#525).
-	plan, err := buildUpPlan(c, repo, mode, cwd, assetsDir, nil, readOnly)
+	plan, err := buildUpPlan(c, repo, mode, cwd, assetsDir, nil, readOnly, false)
 	if err != nil {
 		cleanupAssets()
 		return upPlan{}, func() {}, err

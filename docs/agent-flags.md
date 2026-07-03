@@ -14,14 +14,13 @@ The shared launch helpers show ~10 visible flags: the positional ref/task, `--dr
 applies to the engineer, director, and advisor surfaces at once.
 
 `--tailnet` joins the container to the tailnet to reach tailnet-only hosts like
-`<ollama-host>`, **auto-selecting the mechanism by platform**: the native-Linux host route
-(`--network=host`, [agent-host-net.md](agent-host-net.md)) or the SOCKS5 sidecar
-on Docker Desktop ([agent-ts-sidecar.md](agent-ts-sidecar.md)). It **implies
-`--aws`**. `--repo owner/name` (repeatable) grants extra writable repos
-([container-multi-repo.md](container-multi-repo.md)). `--print` is a dry run. `--force`
-skips the reservation checks ([agent-reservation.md](agent-reservation.md)) and
-`--no-preflight` skips the pre-flight ([agent-preflight.md](agent-preflight.md)). The engineer
-**always detaches**.
+`<ollama-host>`, auto-selecting host-net on Linux or the SOCKS5 sidecar on Docker
+Desktop. It **implies `--aws`**. `--repo owner/name` (repeatable) grants extra writable repos
+([container-multi-repo.md](container-multi-repo.md)). Advisor runs can also auto-add
+read-only context repos for some primary repos. See [agent-advisor.md](agent-advisor.md).
+`--print` is a dry run. `--force` skips the reservation checks ([agent-reservation.md](agent-reservation.md))
+and `--no-preflight` skips the pre-flight ([agent-preflight.md](agent-preflight.md)).
+The engineer **always detaches**.
 
 ### Hidden but functional
 

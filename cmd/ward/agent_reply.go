@@ -210,8 +210,8 @@ const containerResearchSetupBudget = 5 * time.Minute
 // advisorResearchPlan recasts a base plan into the read-only, attached, no-TTY one-shot
 // the ref-mode research capture needs (ward#411 in docs/agent-advisor.md). Pure.
 func advisorResearchPlan(plan upPlan, ref agentIssueRef) upPlan {
-	plan.Ask = true       // WARD_ASK: plain `claude -p`, so stdout is the answer alone
-	plan.ReadOnly = true  // WARD_READONLY: no push wiring, reaper no-op
+	plan.Ask = true      // WARD_ASK: plain `claude -p`, so stdout is the answer alone
+	plan.ReadOnly = true // WARD_READONLY: no push wiring, reaper no-op
 	plan.Interactive = true
 	plan.TTY = false // Interactive + !TTY -> `docker run -i`: host-capturable stdout
 	plan.Forge = ref.Forge
@@ -240,7 +240,7 @@ func (r *Runner) captureReplyResearch(ctx context.Context, c *cli.Command, mode 
 
 	// The research prompt rides as the agent's one-shot seed (claude -p <research>),
 	// exactly as the freeform advisor seeds its question (agent_advisor.go).
-	plan, err := buildUpPlan(c, repo, mode, cwd, assetsDir, []string{research}, false)
+	plan, err := buildUpPlan(c, repo, mode, cwd, assetsDir, []string{research}, false, true)
 	if err != nil {
 		return "", fmt.Errorf("%s: %w", label, err)
 	}

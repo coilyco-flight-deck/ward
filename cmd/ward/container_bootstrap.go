@@ -570,11 +570,19 @@ func (r *Runner) cloneExtraRepo(ctx context.Context, e bootstrapEnv, repo target
 	mirror := filepath.Join(e.GitCache, repo.Owner+"__"+repo.Name+".git")
 	url := e.CloneBase + "/" + repo.Owner + "/" + repo.Name + ".git"
 	lock := filepath.Join(e.GitCache, "."+repo.Owner+"__"+repo.Name+".lock")
+	ttl := time.Duration(0)
+	if e.ReadOnly {
+		ttl = containerReadOnlyExtraRepoTTL
+	}
 	r.withFlock(lock, func() {
 		if isDir(mirror) {
-			blog("extra-repo: refreshing cached mirror %s/%s", repo.Owner, repo.Name)
-			if uerr := r.Runner.Exec(ctx, "git", "-C", mirror, "remote", "update", "--prune"); uerr != nil {
-				blog("extra-repo: mirror refresh failed %s/%s (using cached state)", repo.Owner, repo.Name)
+			if ttl > 0 && !substrateMirrorStale(mirror, int64(ttl.Seconds()), time.Now()) {
+				blog("extra-repo: cached mirror fresh %s/%s (advisor TTL %s)", repo.Owner, repo.Name, ttl)
+			} else {
+				blog("extra-repo: refreshing cached mirror %s/%s", repo.Owner, repo.Name)
+				if uerr := r.Runner.Exec(ctx, "git", "-C", mirror, "remote", "update", "--prune"); uerr != nil {
+					blog("extra-repo: mirror refresh failed %s/%s (using cached state)", repo.Owner, repo.Name)
+				}
 			}
 		} else {
 			blog("extra-repo: cloning mirror (first time) %s/%s", repo.Owner, repo.Name)

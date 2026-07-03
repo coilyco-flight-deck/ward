@@ -66,6 +66,17 @@ func agentAdvisorCommand() *cli.Command {
 	}
 }
 
+// advisorAutoGrantRepos returns repo-specific read-only context grants for the
+// advisor lane. The mapping lives in ward code, not on the operator host.
+func advisorAutoGrantRepos(repo targetRepo) []targetRepo {
+	switch {
+	case repo.Owner == "coilyco-gaming" && strings.HasPrefix(repo.Name, "eco-"):
+		return []targetRepo{{Owner: "StrangeLoopGames", Name: "Eco"}}
+	default:
+		return nil
+	}
+}
+
 // runAgentAdvisor dispatches by argument type (ward#347): a parseable ref researches
 // the issue and posts a comment (was reply); anything else answers inline (was ask).
 func (r *Runner) runAgentAdvisor(ctx context.Context, c *cli.Command, mode containerMode) error {
@@ -119,10 +130,11 @@ func (r *Runner) runAgentAsk(ctx context.Context, c *cli.Command, mode container
 	// A freeform answer runs attached and ephemeral, so its assets clean up on return.
 	defer cleanupAssets()
 
-	plan, err := buildUpPlan(c, repo, mode, cwd, assetsDir, []string{seed}, false)
+	plan, err := buildUpPlan(c, repo, mode, cwd, assetsDir, []string{seed}, false, true)
 	if err != nil {
 		return err
 	}
+	plan.ReadOnly = true
 	// Only the one-shot path exports WARD_ASK=1 (claude -p): the interactive default
 	// leaves it unset so the entrypoint takes the plain seeded `claude <seed>` branch.
 	plan.Ask = oneshot

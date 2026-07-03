@@ -10,6 +10,7 @@ import (
 	"regexp"
 	"sort"
 	"strings"
+	"time"
 )
 
 const (
@@ -92,6 +93,10 @@ const (
 	// containerSubstrateTTL is the gitcache refresh TTL (seconds): a burst of
 	// containers does one fetch per repo per window, the rest skip the gate.
 	containerSubstrateTTL = "600"
+
+	// containerReadOnlyExtraRepoTTL is the longer refresh TTL for advisor-only
+	// upstream/context repos. Their mirrors are stable enough to reuse for a day.
+	containerReadOnlyExtraRepoTTL = 24 * time.Hour
 )
 
 // Tailnet + tower topology (ward#395): infra DATA, not baked identity. Each value takes
@@ -479,6 +484,12 @@ type upPlan struct {
 	Workflow workflowMode
 }
 
+// extraRepoLogLine describes one repo that ended up in the merged grant set.
+type extraRepoLogLine struct {
+	Slug   string
+	Reason string
+}
+
 // parseExtraRepos resolves the --repo grant (bare owner/name or clone URL):
 // drops the target + dups, errors on a bad ref or workspace collision (ward#230).
 func parseExtraRepos(refs []string, target targetRepo) ([]targetRepo, error) {
@@ -509,6 +520,33 @@ func parseExtraRepos(refs []string, target targetRepo) ([]targetRepo, error) {
 		out = append(out, repo)
 	}
 	return out, nil
+}
+
+// mergeExtraRepos folds explicit and auto-granted repos into one de-duplicated
+// set, preserving first-seen order for stable logs and clone order.
+func mergeExtraRepos(explicit, auto []targetRepo, target targetRepo) ([]targetRepo, []extraRepoLogLine) {
+	var out []targetRepo
+	var notes []extraRepoLogLine
+	seen := map[string]bool{target.slug(): true}
+	add := func(repo targetRepo, reason string) {
+		if repo.Owner == "" || repo.Name == "" {
+			return
+		}
+		slug := repo.slug()
+		if seen[slug] {
+			return
+		}
+		seen[slug] = true
+		out = append(out, repo)
+		notes = append(notes, extraRepoLogLine{Slug: slug, Reason: reason})
+	}
+	for _, repo := range explicit {
+		add(repo, "explicit grant")
+	}
+	for _, repo := range auto {
+		add(repo, "advisor auto-grant")
+	}
+	return out, notes
 }
 
 // extraReposEnv renders the granted extra repos as a space-separated owner/name

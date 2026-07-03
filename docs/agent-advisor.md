@@ -30,6 +30,11 @@ The research runs in a **fresh ephemeral container** ([ward#411](https://forgejo
 and freeform modes and no longer a native host one-shot. Because the container is the
 sandbox, **any wired harness** runs it, local models included.
 
+For configured primary repos, the advisor lane can also auto-grant curated
+read-only context repos from ward-owned config. The current Eco-family mapping
+adds `StrangeLoopGames/Eco` for `coilyco-gaming/eco-ops`, and the merged set is
+de-duplicated and logged so the extra context is visible instead of implicit.
+
 It trust-gates the owner and resolves the issue + thread **on the host**, then spins a
 read-only one-shot container (`WARD_ASK` + `WARD_READONLY`) seeded with the research prompt
 and **captures its stdout**. ward parses the captured plan **host-side**, keeping the
@@ -51,7 +56,8 @@ per-level timeout bounds the dig, plus a bring-up budget.
 Runs **inside** a fresh container (not a bare host one-shot) so the answer can lean on the
 repo clone and operating context. It resolves the context repo (`--repo`, else the cwd's
 git origin), trust-gates the owner, and spins an attached container seeded with the
-question; the [reaper](container-reap.md) sweeps it on exit. The agent stays **read-only**.
+question; the [reaper](container-reap.md) sweeps it on exit. The advisor lane stays
+**read-only**, and any auto-granted context repos are cloned read-only too.
 
 **Interactive by default.** With a terminal attached, the freeform advisor
 drops you into a **live seeded session** - the plain `claude <seed>` launch, seeded with
