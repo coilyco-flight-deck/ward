@@ -33,6 +33,13 @@ func agentTrustDirs(e bootstrapEnv) []string {
 			dirs = append(dirs, "/workspace/"+repo.Name)
 		}
 	}
+	// Read-only context repos land under /workspace too (ward#573); trust them so
+	// the agent reads them without a per-dir folder-trust re-prompt.
+	for _, repo := range e.ContextRepos {
+		if repo.Name != "" {
+			dirs = append(dirs, "/workspace/"+repo.Name)
+		}
+	}
 	if e.SubstrateDest != "" {
 		dirs = append(dirs, e.SubstrateDest)
 		if entries, err := os.ReadDir(e.SubstrateDest); err == nil {

@@ -65,6 +65,9 @@ type bootstrapEnv struct {
 	// ExtraRepos are the additional writable repos this run was granted via
 	// --repo (WARD_EXTRA_REPOS); each is cloned full under /workspace (ward#230).
 	ExtraRepos []targetRepo
+	// ContextRepos are catalog.dependsOn cloned READ-ONLY for reference: no push
+	// remote, no feature branch, not push-verified (WARD_CONTEXT_REPOS, ward#573).
+	ContextRepos []targetRepo
 	// Substrate config (best-effort reference-repo warming).
 	SubstrateSeed     string
 	SubstrateDest     string
@@ -169,6 +172,10 @@ func readBootstrapEnv() (bootstrapEnv, error) {
 	e.CloneBase = envOr("WARD_CLONE_BASE", e.ForgejoBase)
 	e.CloneHost = forgejoHostFromBase(e.CloneBase)
 	e.ExtraRepos = parseExtraReposEnv(os.Getenv("WARD_EXTRA_REPOS"), e.TargetOwner, e.TargetName)
+	// Read-only reference clones ride their own key (ward#573); drop any that also
+	// landed as a writable grant so the writable clone wins and it is cloned once.
+	e.ContextRepos = dropExtraRepos(
+		parseExtraReposEnv(os.Getenv("WARD_CONTEXT_REPOS"), e.TargetOwner, e.TargetName), e.ExtraRepos)
 	e.Issue, _ = strconv.Atoi(os.Getenv("WARD_TARGET_ISSUE"))
 	return e, nil
 }
@@ -192,6 +199,26 @@ func parseExtraReposEnv(raw, targetOwner, targetName string) []targetRepo {
 		}
 		seen[slug] = true
 		out = append(out, targetRepo{Owner: owner, Name: name})
+	}
+	return out
+}
+
+// dropExtraRepos returns the entries of in not present in drop (matched by slug),
+// so a context repo also granted writable is cloned once, writable (ward#573).
+func dropExtraRepos(in, drop []targetRepo) []targetRepo {
+	if len(in) == 0 || len(drop) == 0 {
+		return in
+	}
+	skip := make(map[string]bool, len(drop))
+	for _, repo := range drop {
+		skip[repo.slug()] = true
+	}
+	var out []targetRepo
+	for _, repo := range in {
+		if skip[repo.slug()] {
+			continue
+		}
+		out = append(out, repo)
 	}
 	return out
 }
@@ -288,6 +315,9 @@ func (r *Runner) runContainerBootstrap(ctx context.Context, c *cli.Command) erro
 	blog("bootstrap extra-repo clone start: %d grant(s)", len(e.ExtraRepos))
 	r.cloneExtraRepos(ctx, e)
 	blog("bootstrap extra-repo clone done")
+	blog("bootstrap context-repo clone start: %d read-only grant(s)", len(e.ContextRepos))
+	r.cloneContextRepos(ctx, e)
+	blog("bootstrap context-repo clone done")
 	blog("bootstrap substrate warm start")
 	r.warmSubstrate(ctx, e)
 	blog("bootstrap substrate warm done")
@@ -559,19 +589,36 @@ func (r *Runner) cloneExtraRepos(ctx context.Context, e bootstrapEnv) {
 	_ = os.MkdirAll(e.GitCache, 0o755)
 	for _, repo := range e.ExtraRepos {
 		blog("extra-repo clone start: %s/%s", repo.Owner, repo.Name)
-		r.cloneExtraRepo(ctx, e, repo)
+		r.cloneExtraRepo(ctx, e, repo, false)
 		blog("extra-repo clone done: %s/%s", repo.Owner, repo.Name)
 	}
 }
 
-// cloneExtraRepo mirrors+working-clones one granted repo under /workspace/<name>
-// with the target's push posture + pre-commit gate; flock-guarded, never fatal.
-func (r *Runner) cloneExtraRepo(ctx context.Context, e bootstrapEnv, repo targetRepo) {
+// cloneContextRepos clones each read-only catalog-dependency context repo under
+// /workspace as reference (ward#573). Best-effort per repo; never fatal.
+func (r *Runner) cloneContextRepos(ctx context.Context, e bootstrapEnv) {
+	if len(e.ContextRepos) == 0 {
+		return
+	}
+	_ = os.MkdirAll(e.GitCache, 0o755)
+	for _, repo := range e.ContextRepos {
+		blog("context-repo clone start: %s/%s (read-only)", repo.Owner, repo.Name)
+		r.cloneExtraRepo(ctx, e, repo, true)
+		blog("context-repo clone done: %s/%s", repo.Owner, repo.Name)
+	}
+}
+
+// cloneExtraRepo mirrors+working-clones one granted repo under /workspace/<name>; a
+// readOnly clone skips the branch + pre-commit gate and forces the push guard (ward#573).
+func (r *Runner) cloneExtraRepo(ctx context.Context, e bootstrapEnv, repo targetRepo, readOnly bool) {
+	// A whole-run read-only surface makes every clone read-only; a context repo is
+	// read-only even on a writable engineer run (ward#573).
+	ro := readOnly || e.ReadOnly
 	mirror := filepath.Join(e.GitCache, repo.Owner+"__"+repo.Name+".git")
 	url := e.CloneBase + "/" + repo.Owner + "/" + repo.Name + ".git"
 	lock := filepath.Join(e.GitCache, "."+repo.Owner+"__"+repo.Name+".lock")
 	ttl := time.Duration(0)
-	if e.ReadOnly {
+	if ro {
 		ttl = containerReadOnlyExtraRepoTTL
 	}
 	r.withFlock(lock, func() {
@@ -603,6 +650,15 @@ func (r *Runner) cloneExtraRepo(ctx context.Context, e bootstrapEnv, repo target
 	}
 	_ = r.Runner.Exec(ctx, "git", "-C", work, "remote", "set-url", "origin", url)
 	_ = r.Runner.Exec(ctx, "git", "-C", work, "config", "push.default", "current")
+	if readOnly {
+		// A context repo is reference only: no feature branch, no pre-commit gate
+		// (nothing is committed here), push guard forced on even on a writable run.
+		r.applyReadOnlyPushGuard(ctx, work)
+		blog("context-repo: ready %s/%s at %s (read-only reference)", repo.Owner, repo.Name, work)
+		return
+	}
+	// A writable grant (incl. a whole-run read-only surface's --repo) keeps its
+	// feature branch + pre-commit gate; installReadOnlyPushGuard fires iff e.ReadOnly.
 	if e.Branch != "" {
 		_ = r.Runner.Exec(ctx, "git", "-C", work, "checkout", "-B", e.Branch)
 	}
@@ -667,6 +723,12 @@ func (r *Runner) installReadOnlyPushGuard(ctx context.Context, e bootstrapEnv, w
 		blog("read-only push guard skipped: writable session %s", work)
 		return
 	}
+	r.applyReadOnlyPushGuard(ctx, work)
+}
+
+// applyReadOnlyPushGuard installs the push guard unconditionally (strip push URL,
+// land the pre-push hook); the whole-run gate is installReadOnlyPushGuard (ward#573).
+func (r *Runner) applyReadOnlyPushGuard(ctx context.Context, work string) {
 	blog("read-only push guard install start: %s", work)
 	r.revokeClonePushURL(ctx, work)
 	hookDir := filepath.Join(work, ".git", "hooks")
@@ -1061,6 +1123,13 @@ func (r *Runner) chownAgentTree(ctx context.Context, e bootstrapEnv, work string
 	// Hand each granted extra-repo tree to the agent user too (ward#230); they
 	// were cloned as root, like the target. Skip any that failed to clone.
 	for _, repo := range e.ExtraRepos {
+		if dest := "/workspace/" + repo.Name; isDir(dest) {
+			paths = append(paths, dest)
+		}
+	}
+	// Read-only context repos are cloned as root too (ward#573); hand them over
+	// so the agent can read them, even though it may never write.
+	for _, repo := range e.ContextRepos {
 		if dest := "/workspace/" + repo.Name; isDir(dest) {
 			paths = append(paths, dest)
 		}

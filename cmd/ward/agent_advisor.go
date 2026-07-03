@@ -5,12 +5,10 @@ import (
 	"fmt"
 	"io"
 	"os"
-	"path/filepath"
 	"strings"
 
 	"forgejo.coilysiren.me/coilyco-flight-deck/cli-guard/cli/verb"
 	"github.com/urfave/cli/v3"
-	"gopkg.in/yaml.v3"
 )
 
 // agent_advisor.go wires `ward agent advisor`, the counsel role (ward#347, merging
@@ -69,49 +67,6 @@ func agentAdvisorCommand() *cli.Command {
 	}
 }
 
-// advisorAutoGrantRepos returns repo-specific read-only context grants from the
-// cloned repo's own catalog.dependsOn declaration.
-func advisorAutoGrantRepos(cwd string) []targetRepo {
-	deps, err := loadRepoLocalAutoGrantDeps(cwd)
-	if err != nil {
-		return nil
-	}
-	return deps
-}
-
-func loadRepoLocalAutoGrantDeps(start string) ([]targetRepo, error) {
-	path, err := discoverConfig(start)
-	if err != nil {
-		return nil, nil
-	}
-	b, err := os.ReadFile(path)
-	if err != nil {
-		return nil, fmt.Errorf("advisor catalog: read %s: %w", filepath.Base(path), err)
-	}
-	var doc struct {
-		Catalog struct {
-			DependsOn []string `yaml:"dependsOn"`
-		} `yaml:"catalog"`
-	}
-	if err := yaml.Unmarshal(b, &doc); err != nil {
-		return nil, fmt.Errorf("advisor catalog: parse %s: %w", filepath.Base(path), err)
-	}
-	var out []targetRepo
-	seen := map[string]bool{}
-	for _, dep := range doc.Catalog.DependsOn {
-		repo, err := parseRepoRef(dep)
-		if err != nil {
-			continue
-		}
-		if seen[repo.slug()] {
-			continue
-		}
-		seen[repo.slug()] = true
-		out = append(out, repo)
-	}
-	return out, nil
-}
-
 // runAgentAdvisor dispatches by argument type (ward#347): a parseable ref researches
 // the issue and posts a comment (was reply); anything else answers inline (was ask).
 func (r *Runner) runAgentAdvisor(ctx context.Context, c *cli.Command, mode containerMode) error {
@@ -165,7 +120,7 @@ func (r *Runner) runAgentAsk(ctx context.Context, c *cli.Command, mode container
 	// A freeform answer runs attached and ephemeral, so its assets clean up on return.
 	defer cleanupAssets()
 
-	plan, err := buildUpPlan(c, repo, mode, cwd, assetsDir, []string{seed}, false, true)
+	plan, err := buildUpPlan(c, repo, mode, cwd, assetsDir, []string{seed}, false)
 	if err != nil {
 		return err
 	}

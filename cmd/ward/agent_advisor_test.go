@@ -1,8 +1,6 @@
 package main
 
 import (
-	"os"
-	"path/filepath"
 	"strings"
 	"testing"
 )
@@ -103,7 +101,7 @@ func TestAdvisorDefaultsTailnetOn(t *testing.T) {
 	if !cmd.Bool("tailnet") {
 		t.Fatal("advisor should default --tailnet on")
 	}
-	p, err := buildUpPlan(cmd, targetRepo{Owner: "coilyco-flight-deck", Name: "ward"}, modeClaude, t.TempDir(), t.TempDir(), nil, false, false)
+	p, err := buildUpPlan(cmd, targetRepo{Owner: "coilyco-flight-deck", Name: "ward"}, modeClaude, t.TempDir(), t.TempDir(), nil, false)
 	if err != nil {
 		t.Fatalf("buildUpPlan: %v", err)
 	}
@@ -127,7 +125,7 @@ func TestAdvisorNoTailnetOptOut(t *testing.T) {
 	if !cmd.Bool("no-tailnet") {
 		t.Fatal("advisor flags should expose explicit --no-tailnet opt-out")
 	}
-	p, err := buildUpPlan(cmd, targetRepo{Owner: "coilyco-flight-deck", Name: "ward"}, modeClaude, t.TempDir(), t.TempDir(), nil, false, false)
+	p, err := buildUpPlan(cmd, targetRepo{Owner: "coilyco-flight-deck", Name: "ward"}, modeClaude, t.TempDir(), t.TempDir(), nil, false)
 	if err != nil {
 		t.Fatalf("buildUpPlan: %v", err)
 	}
@@ -135,77 +133,6 @@ func TestAdvisorNoTailnetOptOut(t *testing.T) {
 		if m.Target == containerAWSMount {
 			t.Fatalf("advisor --no-tailnet should keep the plan isolated, but got ~/.aws mount %+v", m)
 		}
-	}
-}
-
-func TestAdvisorAutoGrantRepos(t *testing.T) {
-	root := t.TempDir()
-	wardDir := filepath.Join(root, ".ward")
-	if err := os.MkdirAll(wardDir, 0o755); err != nil {
-		t.Fatalf("mkdir ward: %v", err)
-	}
-	if err := os.WriteFile(filepath.Join(wardDir, "ward.yaml"), []byte(`catalog:
-  dependsOn:
-    - coilyco-flight-deck/cli-guard
-    - StrangeLoopGames/Eco
-`), 0o644); err != nil { //nolint:gosec
-		t.Fatalf("write ward.yaml: %v", err)
-	}
-	deps, err := loadRepoLocalAutoGrantDeps(root)
-	if err != nil {
-		t.Fatalf("loadRepoLocalAutoGrantDeps: %v", err)
-	}
-	if len(deps) != 2 || deps[0].slug() != "coilyco-flight-deck/cli-guard" || deps[1].slug() != "StrangeLoopGames/Eco" {
-		t.Fatalf("ward deps = %+v, want cli-guard + Eco", deps)
-	}
-	if got := advisorAutoGrantRepos(root); len(got) != 2 || got[1].slug() != "StrangeLoopGames/Eco" {
-		t.Fatalf("advisorAutoGrantRepos(ward) = %+v, want catalog deps", got)
-	}
-}
-
-func TestMergeExtraReposDedupes(t *testing.T) {
-	target := targetRepo{Owner: "coilyco-gaming", Name: "eco-ops"}
-	got, notes := mergeExtraRepos(
-		[]targetRepo{{Owner: "StrangeLoopGames", Name: "Eco"}},
-		[]targetRepo{{Owner: "StrangeLoopGames", Name: "Eco"}},
-		target,
-	)
-	if len(got) != 1 || got[0].slug() != "StrangeLoopGames/Eco" {
-		t.Fatalf("mergeExtraRepos dedupe = %+v, want one StrangeLoopGames/Eco", got)
-	}
-	if len(notes) != 1 {
-		t.Fatalf("mergeExtraRepos notes = %+v, want one note", notes)
-	}
-	if notes[0].Reason != "explicit grant" {
-		t.Fatalf("mergeExtraRepos note reason = %q, want explicit grant", notes[0].Reason)
-	}
-}
-
-func TestLoadRepoLocalAutoGrantDepsPrefersWardOverCoily(t *testing.T) {
-	root := t.TempDir()
-	for _, rel := range []string{".ward", ".coily"} {
-		if err := os.MkdirAll(filepath.Join(root, rel), 0o755); err != nil {
-			t.Fatalf("mkdir %s: %v", rel, err)
-		}
-	}
-	if err := os.WriteFile(filepath.Join(root, ".ward", "ward.yaml"), []byte(`catalog:
-  dependsOn:
-    - coilyco-flight-deck/cli-guard
-`), 0o644); err != nil { //nolint:gosec
-		t.Fatalf("write ward.yaml: %v", err)
-	}
-	if err := os.WriteFile(filepath.Join(root, ".coily", "coily.yaml"), []byte(`catalog:
-  dependsOn:
-    - StrangeLoopGames/Eco
-`), 0o644); err != nil { //nolint:gosec
-		t.Fatalf("write coily.yaml: %v", err)
-	}
-	deps, err := loadRepoLocalAutoGrantDeps(filepath.Join(root, "nested"))
-	if err != nil {
-		t.Fatalf("loadRepoLocalAutoGrantDeps: %v", err)
-	}
-	if len(deps) != 1 || deps[0].slug() != "coilyco-flight-deck/cli-guard" {
-		t.Fatalf("ward deps = %+v, want cli-guard", deps)
 	}
 }
 

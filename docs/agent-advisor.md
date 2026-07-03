@@ -32,11 +32,14 @@ The research runs in a **fresh ephemeral container** ([ward#411](https://forgejo
 and freeform modes and no longer a native host one-shot. Because the container is the
 sandbox, **any wired harness** runs it, local models included.
 
-For configured primary repos, the advisor lane can also auto-grant curated
-read-only context repos from the repo's own `catalog.dependsOn` declaration.
-Ward reads that live config from the cloned repo at launch time, merges it
-with explicit `--repo` input, de-duplicates the final set, and logs whether
-each repo came from repo-local catalog data or an explicit grant.
+Like every warded role, the advisor lane auto-mounts the target's own
+`catalog.dependsOn` upstreams as **read-only** reference clones ([ward#573](https://forgejo.coilysiren.me/coilyco-flight-deck/ward/issues/573),
+widened from the advisor-only [ward#566](https://forgejo.coilysiren.me/coilyco-flight-deck/ward/issues/566)).
+Ward reads that live config at launch time and clones each declared dependency
+read-only under `/workspace`, deduped against the target, the explicit `--repo`
+grants, and the `/substrate` set. These ride a separate context slice from the
+writable grants, so a run is never asked to push a dependency it only read - the
+full model lives in [container-multi-repo.md](container-multi-repo.md).
 
 It trust-gates the owner and resolves the issue + thread **on the host**, then spins a
 read-only one-shot container (`WARD_ASK` + `WARD_READONLY`) seeded with the research prompt

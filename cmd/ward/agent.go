@@ -1075,7 +1075,7 @@ func buildAgentPlan(c *cli.Command, mode containerMode, ref agentIssueRef, seed 
 		return upPlan{}, fmt.Errorf("cannot resolve the current directory")
 	}
 	repo := targetRepo{Owner: ref.Owner, Name: ref.Repo}
-	plan, err := buildUpPlan(c, repo, mode, cwd, assetsDir, []string{seed}, false, false)
+	plan, err := buildUpPlan(c, repo, mode, cwd, assetsDir, []string{seed}, false)
 	if err != nil {
 		return upPlan{}, err
 	}
@@ -1513,7 +1513,7 @@ func printAgentTaskPlan(c *cli.Command, mode containerMode, repo targetRepo, tit
 	// value simply previews as the default rather than erroring here (ward#508).
 	wf, _ := agentWorkflow(c)
 	seed := agentSeedPromptWorkflow(previewRef, title, body, "", true, nil, wf)
-	plan, err := buildUpPlan(c, repo, mode, "", "", []string{seed}, false, false)
+	plan, err := buildUpPlan(c, repo, mode, "", "", []string{seed}, false)
 	if err != nil {
 		return err
 	}

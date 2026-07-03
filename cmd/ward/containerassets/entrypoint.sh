@@ -37,6 +37,9 @@ WARD_CLONE_BASE="${WARD_CLONE_BASE:-$WARD_FORGEJO_BASE}"
 # Additional writable repos this run was explicitly granted (--repo, ward#230):
 # a space-separated owner/name list, each cloned full under /workspace.
 WARD_EXTRA_REPOS="${WARD_EXTRA_REPOS:-}"
+# Read-only reference repos from the target's catalog.dependsOn (ward#573): a
+# space-separated owner/name list, each cloned read-only under /workspace.
+WARD_CONTEXT_REPOS="${WARD_CONTEXT_REPOS:-}"
 
 # The agent process drops to this non-root user: claude refuses
 # --dangerously-skip-permissions as root (ward#127). Setup stays root.
@@ -332,6 +335,13 @@ install_precommit_hooks() {
 install_readonly_push_guard() {
   local work="$1"
   [ "${WARD_READONLY:-0}" = 1 ] || return 0
+  apply_readonly_push_guard "$work"
+}
+
+# apply_readonly_push_guard installs the guard unconditionally; the whole-run gate
+# is install_readonly_push_guard, a read-only context repo calls this direct (ward#573).
+apply_readonly_push_guard() {
+  local work="$1"
   # ward#327: point origin's push URL at a dead no-push:// scheme (fetch stays
   # intact) so a push has no target. Synced with revokeClonePushURL; best-effort.
   if git -C "$work" remote set-url --push origin no-push://read-only-explore 2>/dev/null; then
@@ -353,9 +363,9 @@ HOOK
 }
 
 # --- additional granted repos (ward#230): clone+operate beyond the target -----
-# Clone each --repo grant full under /workspace. See docs/container-multi-repo.md.
+# Clone one repo full; a read-only clone (ro=1, ward#573) skips branch+gate, forces guard.
 clone_extra_repo() {
-  local owner="$1" name="$2"
+  local owner="$1" name="$2" ro="${3:-0}"
   local mirror="$WARD_GITCACHE/${owner}__${name}.git"
   # Granted repos share the target's forge (ward#489); substrate reference repos below
   # stay Forgejo regardless.
@@ -382,6 +392,13 @@ clone_extra_repo() {
   fi
   git -C "$dest" remote set-url origin "$url"
   git -C "$dest" config push.default current
+  if [ "$ro" = 1 ]; then
+    # Reference-only: no feature branch, no pre-commit gate (nothing is committed
+    # here), and the read-only push guard forced on even for a writable run.
+    apply_readonly_push_guard "$dest"
+    log "context-repo: ready $owner/$name at $dest (read-only reference)"
+    return 0
+  fi
   [ -n "${WARD_BRANCH:-}" ] && git -C "$dest" checkout -B "$WARD_BRANCH" >&2
   install_precommit_hooks "$dest"
   install_readonly_push_guard "$dest"
@@ -398,7 +415,23 @@ clone_extra_repos() {
     [ -n "$owner" ] && [ -n "$name" ] || continue
     # The target is cloned by clone_target; never re-clone it as an extra.
     if [ "$owner" = "$WARD_TARGET_OWNER" ] && [ "$name" = "$WARD_TARGET_NAME" ]; then continue; fi
-    clone_extra_repo "$owner" "$name"
+    clone_extra_repo "$owner" "$name" 0
+  done
+}
+
+# clone_context_repos clones each read-only catalog-dependency context repo (ward#573),
+# deduped against the writable extra grants so an overlap is cloned once, writable.
+clone_context_repos() {
+  [ -n "${WARD_CONTEXT_REPOS:-}" ] || return 0
+  mkdir -p "$WARD_GITCACHE"
+  local ref owner name eref
+  for ref in $WARD_CONTEXT_REPOS; do
+    owner="${ref%%/*}"; name="${ref##*/}"
+    [ -n "$owner" ] && [ -n "$name" ] || continue
+    if [ "$owner" = "$WARD_TARGET_OWNER" ] && [ "$name" = "$WARD_TARGET_NAME" ]; then continue; fi
+    # Writable grant wins: skip a context repo already cloned as an extra.
+    for eref in ${WARD_EXTRA_REPOS:-}; do [ "$eref" = "$ref" ] && continue 2; done
+    clone_extra_repo "$owner" "$name" 1
   done
 }
 
@@ -610,6 +643,12 @@ seed_claude_onboarding() {
   local -a trust_dirs=("$work" /workspace)
   local ref name d
   for ref in ${WARD_EXTRA_REPOS:-}; do
+    name="${ref##*/}"
+    [ -n "$name" ] && trust_dirs+=("/workspace/$name")
+  done
+  # Read-only context repos land under /workspace too (ward#573); trust them so the
+  # agent reads them without a per-dir folder-trust re-prompt.
+  for ref in ${WARD_CONTEXT_REPOS:-}; do
     name="${ref##*/}"
     [ -n "$name" ] && trust_dirs+=("/workspace/$name")
   done
@@ -900,6 +939,7 @@ main() {
   install_precommit_hooks "$work"
   install_readonly_push_guard "$work"
   clone_extra_repos
+  clone_context_repos
   warm_substrate
   compose_context
   compose_permissions
@@ -984,6 +1024,8 @@ main() {
   chown -R "$AGENT_UID:$AGENT_GID" "$work" "$AGENT_HOME/AGENTS.md" "$AGENT_HOME/.claude" "$AGENT_HOME/.claude.json" "$AGENT_HOME/.config" "$AGENT_HOME/.codex" 2>/dev/null || true
   # Hand each granted extra-repo tree to the agent user too (ward#230); cloned as root.
   for ref in ${WARD_EXTRA_REPOS:-}; do chown -R "$AGENT_UID:$AGENT_GID" "/workspace/${ref##*/}" 2>/dev/null || true; done
+  # Read-only context repos are cloned as root too (ward#573); hand them over to read.
+  for ref in ${WARD_CONTEXT_REPOS:-}; do chown -R "$AGENT_UID:$AGENT_GID" "/workspace/${ref##*/}" 2>/dev/null || true; done
   if [ "${WARD_READONLY:-0}" = 1 ]; then
     revoke_push_credential    # explore: drop this clone's push wiring, keep the dispatch token (ward#315)
     start_broker              # explore: root credential broker holds the token; agent reaches the forge via the socket (ward#329)

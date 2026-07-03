@@ -59,6 +59,7 @@ type scratchGateStatus struct {
 	image       string   // resolved docker image
 	wardVersion string   // the ward release the container will run
 	withRepos   []string // --with-repo grants landed alongside the primary repo
+	ctxRepos    []string // read-only catalog.dependsOn context repos (ward#573)
 	behind      bool     // the host ward binary is behind the latest release
 	current     string   // the host ward version
 	latest      string   // the latest ward release tag
@@ -81,6 +82,10 @@ func newScratchGateStatus(p upPlan, readOnly, behind bool, current, latest strin
 	for _, e := range p.ExtraRepos {
 		extras = append(extras, e.slug())
 	}
+	ctxRepos := make([]string, 0, len(p.ContextRepos))
+	for _, e := range p.ContextRepos {
+		ctxRepos = append(ctxRepos, e.slug())
+	}
 	return scratchGateStatus{
 		access:      access,
 		repo:        p.Repo.slug(),
@@ -89,6 +94,7 @@ func newScratchGateStatus(p upPlan, readOnly, behind bool, current, latest strin
 		image:       p.Image,
 		wardVersion: wv,
 		withRepos:   extras,
+		ctxRepos:    ctxRepos,
 		behind:      behind,
 		current:     current,
 		latest:      latest,
@@ -107,6 +113,9 @@ func renderScratchGate(w io.Writer, s scratchGateStatus) {
 	fmt.Fprintf(&b, "  ward:     %s\n", s.wardVersion)
 	if len(s.withRepos) > 0 {
 		fmt.Fprintf(&b, "  with:     %s\n", strings.Join(s.withRepos, ", "))
+	}
+	if len(s.ctxRepos) > 0 {
+		fmt.Fprintf(&b, "  context:  %s (read-only)\n", strings.Join(s.ctxRepos, ", "))
 	}
 	b.WriteString("────────────────────────────────────────────────────\n")
 	if s.behind {

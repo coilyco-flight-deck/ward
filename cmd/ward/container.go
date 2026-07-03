@@ -91,7 +91,7 @@ func (r *Runner) resolveAgentCreds(ctx context.Context, mode containerMode) []ag
 
 // buildUpPlan assembles the pure plan from parsed flags and resolved inputs;
 // agentArgs seed the agent's argv. Errors only on a bad --repo grant (ward#230).
-func buildUpPlan(c *cli.Command, repo targetRepo, mode containerMode, cwd, assetsDir string, agentArgs []string, mountAgentLogs bool, advisorContext bool) (upPlan, error) {
+func buildUpPlan(c *cli.Command, repo targetRepo, mode containerMode, cwd, assetsDir string, agentArgs []string, mountAgentLogs bool) (upPlan, error) {
 	wardSrc := c.String("ward-source")
 	// The container downloads this host's ward version by default; --ward-version
 	// (env WARD_AGENT_VERSION) overrides it to pin a known-good release (ward#312).
@@ -120,17 +120,19 @@ func buildUpPlan(c *cli.Command, repo targetRepo, mode containerMode, cwd, asset
 	if err != nil {
 		return upPlan{}, err
 	}
-	autoExtras := []targetRepo(nil)
-	if advisorContext {
-		autoExtras = advisorAutoGrantRepos(cwd)
-	}
-	extra, notes := mergeExtraRepos(extra, autoExtras, repo)
-	if len(notes) > 0 {
-		parts := make([]string, 0, len(notes))
-		for _, note := range notes {
-			parts = append(parts, fmt.Sprintf("%s (%s)", note.Slug, note.Reason))
+	// Every warded role auto-mounts the target's catalog.dependsOn as read-only
+	// reference (ward#573; separate ContextRepos slice). docs/container-multi-repo.md.
+	var contextRepos []targetRepo
+	if cwd != "" {
+		var notes []extraRepoLogLine
+		contextRepos, notes = resolveContextRepos(catalogContextRepos(cwd), extra, repo, substrateContextSkipSet())
+		if len(notes) > 0 {
+			parts := make([]string, 0, len(notes))
+			for _, note := range notes {
+				parts = append(parts, fmt.Sprintf("%s (%s)", note.Slug, note.Reason))
+			}
+			fmt.Fprintf(os.Stderr, "ward container: read-only context repos resolved for %s: %s\n", repo.slug(), strings.Join(parts, ", "))
 		}
-		fmt.Fprintf(os.Stderr, "ward container: extra repo context resolved for %s: %s\n", repo.slug(), strings.Join(parts, ", "))
 	}
 	// The director surface opts into a read-only bind of the redacted agent-log drain so it
 	// reads past runs' logs without a docker socket; other runs leave it off (ward#525/526).
@@ -158,6 +160,7 @@ func buildUpPlan(c *cli.Command, repo targetRepo, mode containerMode, cwd, asset
 		WardFromSource: wardSrc != "",
 		AgentArgs:      agentArgs,
 		ExtraRepos:     extra,
+		ContextRepos:   contextRepos,
 		HostNet:        hostNet,
 		TSSidecar:      tsSidecar,
 	}, nil

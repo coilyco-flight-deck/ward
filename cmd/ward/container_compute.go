@@ -461,6 +461,9 @@ type upPlan struct {
 	// ExtraRepos are additional writable repos this run was granted to clone +
 	// operate against (--repo, ward#230); see docs/container-multi-repo.md.
 	ExtraRepos []targetRepo
+	// ContextRepos are the target's catalog.dependsOn cloned READ-ONLY for reference,
+	// excluded from the reaper's push-verify (ward#573; docs/container-multi-repo.md).
+	ContextRepos []targetRepo
 	// Issue is the carried issue number (0 for a bare `container up`), exported as
 	// WARD_TARGET_ISSUE so the reaper can release a pre-launch hold (ward#264).
 	Issue int
@@ -520,33 +523,6 @@ func parseExtraRepos(refs []string, target targetRepo) ([]targetRepo, error) {
 		out = append(out, repo)
 	}
 	return out, nil
-}
-
-// mergeExtraRepos folds explicit and auto-granted repos into one de-duplicated
-// set, preserving first-seen order for stable logs and clone order.
-func mergeExtraRepos(explicit, auto []targetRepo, target targetRepo) ([]targetRepo, []extraRepoLogLine) {
-	var out []targetRepo
-	var notes []extraRepoLogLine
-	seen := map[string]bool{target.slug(): true}
-	add := func(repo targetRepo, reason string) {
-		if repo.Owner == "" || repo.Name == "" {
-			return
-		}
-		slug := repo.slug()
-		if seen[slug] {
-			return
-		}
-		seen[slug] = true
-		out = append(out, repo)
-		notes = append(notes, extraRepoLogLine{Slug: slug, Reason: reason})
-	}
-	for _, repo := range explicit {
-		add(repo, "explicit grant")
-	}
-	for _, repo := range auto {
-		add(repo, "repo-local catalog dependency")
-	}
-	return out, notes
 }
 
 // extraReposEnv renders the granted extra repos as a space-separated owner/name
@@ -630,6 +606,11 @@ func (p upPlan) wardEnv() map[string]string {
 	}
 	if len(p.ExtraRepos) > 0 {
 		env["WARD_EXTRA_REPOS"] = extraReposEnv(p.ExtraRepos)
+	}
+	// Read-only reference clones ride their own key so WARD_EXTRA_REPOS stays a
+	// purely writable, push-verified set (ward#573). The entrypoint word-splits it.
+	if len(p.ContextRepos) > 0 {
+		env["WARD_CONTEXT_REPOS"] = extraReposEnv(p.ContextRepos)
 	}
 	// A GitHub run clones off github.com + drives `gh` (ward#489); Forgejo runs emit
 	// neither key, so their env is unchanged (WARD_FORGEJO_BASE stays Forgejo).

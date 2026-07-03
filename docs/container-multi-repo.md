@@ -1,5 +1,5 @@
 ---
-doc_goal: Make an operator understand `--repo` as the single explicit way to widen the container doctrine wall to a named set of writable repos - what each grant clones, why the agent and not the reaper must land every grant, and how the reaper verifies but never lands them - so a cross-repo run neither under-reaches nor silently drops a grant.
+doc_goal: Make an operator understand `--repo` as the single explicit way to widen the container doctrine wall to a named set of writable repos - what each grant clones, why the agent and not the reaper must land every grant, and how the reaper verifies but never lands them - so a cross-repo run neither under-reaches nor silently drops a grant; and understand the parallel, automatic read-only `catalog.dependsOn` context set, cloned for every role, excluded from that push-verify.
 ---
 # multi-repo container runs (`--repo`)
 
@@ -51,10 +51,28 @@ The shared `ward-gitcache` bare mirror is reused and refreshed under an `flock`
 on every run (granted repos move with the feature), the same locking substrate
 warming uses so concurrent containers don't race a mirror.
 
-Advisor runs can also auto-grant curated read-only context repos for specific
-primary repos. Those auto-grants merge with manual `--repo` input, de-duplicate
-before cloning, and use a longer mirror refresh window so stable upstreams do
-not churn the cache on every dispatch.
+## Read-only context repos (`catalog.dependsOn`, [ward#573](https://forgejo.coilysiren.me/coilyco-flight-deck/ward/issues/573))
+
+Separate from the writable `--repo` grants, **every** warded role (engineer,
+director, advisor) auto-mounts the target repo's own declared dependencies as
+**read-only reference clones** - the "auto-mount the target's declared deps as
+`/substrate`-style reference" the substrate doctrine already blesses. At launch
+ward reads the target's `catalog.dependsOn` (from the repo-local `.ward/ward.yaml`,
+[docs/ward-yaml.md](ward-yaml.md)) and clones each declared dependency under
+`/workspace/<name>` with **no push remote**, **no feature branch**, and a forced
+read-only push guard - reference to read while working, never a work surface.
+This was advisor-only ([ward#566](https://forgejo.coilysiren.me/coilyco-flight-deck/ward/issues/566)); [ward#573](https://forgejo.coilysiren.me/coilyco-flight-deck/ward/issues/573) widened it to all roles.
+
+The context set is deduped against the target, the writable `--repo` grants (a
+repo granted both ways is cloned once, **writable** - the writable grant wins),
+and the `/substrate` reference set (a dep already warmed there is not re-cloned).
+It uses the longer read-only mirror refresh window so stable upstreams do not
+churn the cache on every dispatch.
+
+Crucially, read-only context repos ride their **own** `WARD_CONTEXT_REPOS` env
+key and `upPlan.ContextRepos` slice - never `WARD_EXTRA_REPOS`. So the reaper's
+push-verify (below) never sees them: a writable engineer run is **not** false-failed
+for a dependency it only read, and never gets a push remote it should not have.
 
 ## The reaper boundary
 
@@ -73,6 +91,12 @@ rejects the secondary) is preserved on a `ward-salvage/<id>` branch and the issu
 the space-separated `owner/name` list `WARD_EXTRA_REPOS` (`upPlan.ExtraRepos`,
 validated by `parseExtraRepos`). Both bootstrap paths clone the set after the
 target: the bash `clone_extra_repos` and the Go `cloneExtraRepos`.
+
+Read-only context repos flow the same way through a **separate** key
+`WARD_CONTEXT_REPOS` (`upPlan.ContextRepos`, resolved from `catalog.dependsOn` by
+`resolveContextRepos`), cloned read-only by the bash `clone_context_repos` and the
+Go `cloneContextRepos`. Keeping the two keys distinct is what lets the reaper
+push-verify the writable set without ever touching the read-only one.
 
 ## Pre-flight knows the grant
 
