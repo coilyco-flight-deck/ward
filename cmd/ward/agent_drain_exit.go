@@ -77,8 +77,7 @@ func (r *Runner) spawnDrainWaiter(name string) {
 	cmd.Args[0] = "ward"
 	cmd.Env = os.Environ()
 	// Detach: no controlling terminal, no inherited stdio, its own session so it
-	// outlives this process and never writes to the operator's console. The session
-	// detach is OS-specific (setsid on Unix, no-op on Windows); see detachProcess.
+	// outlives this process. The session detach is OS-specific; see detachProcess.
 	cmd.Stdin, cmd.Stdout, cmd.Stderr = nil, nil, nil
 	detachProcess(cmd)
 	if serr := cmd.Start(); serr != nil {

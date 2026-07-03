@@ -3,7 +3,10 @@ package main
 import (
 	"context"
 	"io"
+	"os"
+	"path/filepath"
 	"runtime"
+	"slices"
 	"testing"
 
 	"forgejo.coilysiren.me/coilyco-flight-deck/cli-guard/cli/shell"
@@ -62,6 +65,42 @@ func TestAgentRunCtxCarve(t *testing.T) {
 	}
 	if rc.Log == nil {
 		t.Error("Log seam not wired")
+	}
+}
+
+// TestAgentTrustDirs covers ward#168: the trust set spans the target clone,
+// /workspace, granted extra repos, and every warmed /substrate repo (dirs only).
+func TestAgentTrustDirs(t *testing.T) {
+	substrate := t.TempDir()
+	for _, name := range []string{"agentic-os", "cli-guard"} {
+		if err := os.Mkdir(filepath.Join(substrate, name), 0o755); err != nil {
+			t.Fatalf("mkdir substrate %s: %v", name, err)
+		}
+	}
+	// A stray file under /substrate must not be trusted as a project dir.
+	if err := os.WriteFile(filepath.Join(substrate, "README"), []byte("x"), 0o644); err != nil {
+		t.Fatalf("write stray file: %v", err)
+	}
+	e := bootstrapEnv{
+		TargetName:    "ward",
+		ExtraRepos:    []targetRepo{{Owner: "coilyco-flight-deck", Name: "cli-guard"}},
+		SubstrateDest: substrate,
+	}
+	got := agentTrustDirs(e)
+	for _, want := range []string{
+		"/workspace/ward",
+		"/workspace",
+		"/workspace/cli-guard",
+		substrate,
+		filepath.Join(substrate, "agentic-os"),
+		filepath.Join(substrate, "cli-guard"),
+	} {
+		if !slices.Contains(got, want) {
+			t.Errorf("trust dirs missing %q: %v", want, got)
+		}
+	}
+	if slices.Contains(got, filepath.Join(substrate, "README")) {
+		t.Errorf("trust dirs wrongly include the stray file: %v", got)
 	}
 }
 

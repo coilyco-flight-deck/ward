@@ -574,20 +574,39 @@ write_claude_creds() {
 # --- claude onboarding seed (ward#305, ward#313): skip the first-run gates -----
 # Theme picker (ward#305) + bypass-mode acceptance & folder trust (ward#313).
 
-# Trust is keyed under the launch cwd ($work=/workspace/<tgt>); without these an
-# interactive/headless explore hangs on the unanswered accept-risk/trust dialogs.
+# Pre-trust every dir the agent may cd into, not just the target clone: claude
+# re-prompts folder trust per un-seeded cwd, which felt like a reset (ward#168).
 seed_claude_onboarding() {
   [ "$WARD_MODE" = claude ] || return 0
   local work="$1"
   local out="$AGENT_HOME/.claude.json"
   mkdir -p "$AGENT_HOME"
-  jq -n --arg work "$work" '{
+  # Trust set: target clone, /workspace root, each granted extra repo, /substrate
+  # root + every warmed reference repo (runs post-warm, so the dirs exist to glob).
+  local -a trust_dirs=("$work" /workspace)
+  local ref name d
+  for ref in ${WARD_EXTRA_REPOS:-}; do
+    name="${ref##*/}"
+    [ -n "$name" ] && trust_dirs+=("/workspace/$name")
+  done
+  if [ -d "$WARD_SUBSTRATE_DEST" ]; then
+    trust_dirs+=("$WARD_SUBSTRATE_DEST")
+    for d in "$WARD_SUBSTRATE_DEST"/*/; do
+      [ -d "$d" ] && trust_dirs+=("${d%/}")
+    done
+  fi
+  # Build projects{ dir: {trust flags} } from the dir list; `unique` collapses any
+  # duplicate (e.g. /workspace listed twice) to one entry.
+  local projects
+  projects="$(printf '%s\n' "${trust_dirs[@]}" | jq -R . \
+    | jq -s 'unique | map({ (.): { hasTrustDialogAccepted: true, hasCompletedProjectOnboarding: true } }) | add')"
+  jq -n --argjson projects "$projects" '{
     hasCompletedOnboarding: true,
     theme: "dark",
     bypassPermissionsModeAccepted: true,
-    projects: { ($work): { hasTrustDialogAccepted: true, hasCompletedProjectOnboarding: true } }
+    projects: $projects
   }' > "$out"
-  log "seeded claude onboarding (skip first-run wizard + bypass/trust gates) at $out"
+  log "seeded claude onboarding (skip first-run wizard + bypass/trust gates; trusted ${#trust_dirs[@]} dir(s)) at $out"
 }
 
 # --- codex credentials (ward#178): host-resolved auth.json, ride --env-file ---
