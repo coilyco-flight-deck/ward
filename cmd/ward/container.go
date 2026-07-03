@@ -144,6 +144,7 @@ func buildUpPlan(c *cli.Command, repo targetRepo, mode containerMode, role, cwd,
 		Branch:         c.String("branch"),
 		ForgejoBase:    forgejoBaseURL,
 		HostCwd:        cwd,
+		AWSHome:        awsHome,
 		Mounts:         leastAccessMounts(cwd, mountOpts{AssetsDir: assetsDir, AWSHome: awsHome, WardSource: wardSrc, AgentLogsDir: agentLogs}),
 		Interactive:    !c.Bool("detach"),
 		TTY:            !c.Bool("detach") && terminalAttached(),
@@ -184,6 +185,35 @@ func (r *Runner) maybeWarnHostNet(plan upPlan) {
 		}
 		fmt.Fprintln(w, msg)
 	}
+}
+
+// maybeWarnAWSMount warns when the aws capability bound ~/.aws but the host has no
+// creds there, so an empty-dir mount doesn't read as working SSM (ward#579).
+func (r *Runner) maybeWarnAWSMount(plan upPlan) {
+	if plan.AWSHome == "" {
+		return
+	}
+	if msg, warn := awsMountMissingWarning(plan.AWSHome, awsHomeHasCreds(plan.AWSHome)); warn {
+		w := r.Runner.Stderr
+		if w == nil {
+			w = os.Stderr
+		}
+		fmt.Fprintln(w, msg)
+	}
+}
+
+// awsHomeHasCreds reports whether the host ~/.aws dir holds a config or credentials
+// file (the two the AWS SDK reads); a missing or empty dir reads false (ward#579).
+func awsHomeHasCreds(awsHome string) bool {
+	if awsHome == "" {
+		return false
+	}
+	for _, name := range []string{"credentials", "config"} {
+		if fi, err := os.Stat(filepath.Join(awsHome, name)); err == nil && !fi.IsDir() {
+			return true
+		}
+	}
+	return false
 }
 
 // terminalAttached reports whether stdin and stdout are both terminals - the

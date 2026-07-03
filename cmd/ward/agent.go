@@ -1258,6 +1258,9 @@ func (r *Runner) createAgentContainer(ctx context.Context, plan upPlan, envFile 
 	// --host-net only carries the tailnet on a host that is itself a tailnet node;
 	// warn loudly when it won't, so a no-op route doesn't read as success (ward#332).
 	r.maybeWarnHostNet(plan)
+	// The aws capability binds ~/.aws, but a host with no AWS identity mounts an empty
+	// dir - warn loudly so a NoCredentials hole doesn't read as delivered creds (ward#579).
+	r.maybeWarnAWSMount(plan)
 	// The standing mac-proxy box on ward-tailnet must exist before the run attaches
 	// to it - ward attaches and preflights, never converges the box (ward#349).
 	if plan.TSSidecar {

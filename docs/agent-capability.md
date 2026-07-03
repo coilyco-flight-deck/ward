@@ -39,6 +39,18 @@ A tailnet grant still **implies the `~/.aws` mount** (the tower FQDN is SSM-held
 `advisor --no-tailnet` opts a rare isolated run **fully** back out (no tailnet, and
 the role-granted `~/.aws` drops too).
 
+## The mount only forwards host creds ([ward#579](https://forgejo.coilysiren.me/coilyco-flight-deck/ward/issues/579))
+
+The `~/.aws` mount **forwards** the dispatch host's identity, it mints none, so the
+capability only delivers SSM access when the host running `docker run` has creds
+there. A credential-less host is the silent trap: docker mounts a **missing** source
+as an **empty** dir, so `aws` / `ssm` calls fail `NoCredentials` deep in a script.
+
+ward makes that gap **loud**: when the capability is on but `~/.aws` holds no
+`config` nor `credentials` file, ward warns to stderr (mirroring `--host-net`). It
+does **not** hard-fail. The fix is host-side: give each dispatch host an `~/.aws`
+with SSM read/write so `--aws` self-serves a rotation.
+
 ## The deprecated `--aws` / `--tailnet` aliases
 
 `--aws` and `--tailnet` survive one release as **hidden back-compat aliases** so
