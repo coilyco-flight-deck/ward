@@ -39,6 +39,18 @@ func hostOneShotArgv(mode containerMode, prompt string) ([]string, bool) {
 	return lookupAgent(mode).PreflightArgv(prompt)
 }
 
+// hostOneShot splits a trusted host one-shot into a prompt-free base argv plus the
+// prompt to feed on stdin, off the command line (ward#548); ok mirrors hostOneShotArgv.
+func hostOneShot(mode containerMode, prompt string) (argv []string, stdin string, ok bool) {
+	full, ok := hostOneShotArgv(mode, prompt)
+	if !ok {
+		return nil, "", false
+	}
+	// PreflightArgv appends the prompt last; lift it onto stdin so only the base
+	// command rides the command line (claude -p reads its stdin as the prompt).
+	return full[:len(full)-1], prompt, true
+}
+
 // composeAgentContainer runs the in-container setup capabilities feature-tested,
 // keeping the creds -> onboarding -> config order (ward#425).
 func composeAgentContainer(agent agentsapi.Agent, rc agentsapi.RunCtx) {

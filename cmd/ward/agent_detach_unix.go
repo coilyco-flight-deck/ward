@@ -7,8 +7,8 @@ import (
 	"syscall"
 )
 
-// detachProcess puts the detached drain-exit waiter in its own session (setsid) so
-// it outlives this process and holds no controlling terminal (Unix; ward#510).
+// detachProcess puts the drain-exit waiter in its own session (setsid) so it
+// outlives this process, holding no controlling terminal (ward#510). Windows: no-op.
 func detachProcess(cmd *exec.Cmd) {
 	cmd.SysProcAttr = &syscall.SysProcAttr{Setsid: true}
 }

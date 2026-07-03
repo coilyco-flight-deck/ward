@@ -368,7 +368,7 @@ func (r *Runner) directorDecide(ctx context.Context, label string, mode containe
 	bin := lookupAgent(mode).Record().Binary
 	// A local-model harness is barred from this unsandboxed host one-shot (ward#162),
 	// falling back to the deterministic rank floor like a harness with none wired.
-	argv, ok := hostOneShotArgv(mode, directorDecidePrompt(picks, avail, entries, health))
+	argv, stdin, ok := hostOneShot(mode, directorDecidePrompt(picks, avail, entries, health))
 	if !ok || !hostHasBinary(bin) {
 		fmt.Fprintf(os.Stderr, "%s: %s self-assessment unavailable; dispatching the top %d queued issue(s) by rank.\n", label, bin, len(floor))
 		return floor
@@ -376,7 +376,7 @@ func (r *Runner) directorDecide(ctx context.Context, label string, mode containe
 	fmt.Fprintf(os.Stderr, "%s: heartbeat - asking %s which of %d queued issue(s) to dispatch (up to %d free slot(s))...\n\n", label, bin, len(picks), avail)
 	dctx, cancel := context.WithTimeout(ctx, directorDecideTimeout)
 	defer cancel()
-	out, err := r.capturePreflight(dctx, argv)
+	out, err := r.capturePreflight(dctx, argv, stdin)
 	read := strings.TrimSpace(string(out))
 	if read != "" {
 		fmt.Fprintf(os.Stderr, "%s\n\n", read)

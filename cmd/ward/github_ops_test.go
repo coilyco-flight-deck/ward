@@ -1,8 +1,14 @@
 package main
 
 import (
+	"context"
+	"os"
+	"path/filepath"
+	"strings"
 	"testing"
 	"time"
+
+	"forgejo.coilysiren.me/coilyco-flight-deck/cli-guard/cli/shell"
 )
 
 // TestIssueNumberFromURL covers pulling the trailing number off a gh-printed URL.
@@ -63,6 +69,41 @@ func TestGHCommentsToIssueComments(t *testing.T) {
 	}
 	if got[1].User.Login != "bob" {
 		t.Errorf("comment 1 author = %q", got[1].User.Login)
+	}
+}
+
+// TestGithubLockUnlockIssue pins ward#494: GitHub's lock/unlock ride REST
+// `PUT`/`DELETE .../issues/{n}/lock` through `gh api`, asserted via a stub `gh`.
+func TestGithubLockUnlockIssue(t *testing.T) {
+	dir := t.TempDir()
+	argvFile := filepath.Join(dir, "argv")
+	ghStub := filepath.Join(dir, "gh")
+	// The stub appends its args (one per line) so both calls land in one file (ward#494).
+	script := "#!/bin/sh\nfor a in \"$@\"; do echo \"$a\" >> " + argvFile + "; done\necho '---' >> " + argvFile + "\n"
+	if err := os.WriteFile(ghStub, []byte(script), 0o755); err != nil { //nolint:gosec
+		t.Fatal(err)
+	}
+	r := &Runner{Runner: &shell.Runner{Resolve: func(string) (string, error) { return ghStub, nil }}}
+	c := &githubClient{r: r, mode: modeClaude}
+
+	if err := c.lockIssue(context.Background(), "coilyco-flight-deck", "ward", 494); err != nil {
+		t.Fatalf("lockIssue: %v", err)
+	}
+	if err := c.unlockIssue(context.Background(), "coilyco-flight-deck", "ward", 494); err != nil {
+		t.Fatalf("unlockIssue: %v", err)
+	}
+	out, err := os.ReadFile(argvFile)
+	if err != nil {
+		t.Fatalf("read argv: %v", err)
+	}
+	got := string(out)
+	for _, want := range []string{
+		"api\n-X\nPUT\n/repos/coilyco-flight-deck/ward/issues/494/lock\n",
+		"api\n-X\nDELETE\n/repos/coilyco-flight-deck/ward/issues/494/lock\n",
+	} {
+		if !strings.Contains(got, want) {
+			t.Errorf("gh argv missing %q\n got:\n%s", want, got)
+		}
 	}
 }
 

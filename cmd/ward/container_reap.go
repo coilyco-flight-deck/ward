@@ -4,6 +4,7 @@ import (
 	"bytes"
 	"context"
 	"encoding/json"
+	"errors"
 	"fmt"
 	"io"
 	"os"
@@ -475,6 +476,11 @@ func (r *Runner) releaseReservationIfUnstarted(ctx context.Context, env reapEnv)
 	if err := fc.commentIssue(ctx, env.Owner, env.Name, env.Issue, body); err != nil {
 		fmt.Fprintf(os.Stderr, "ward container reap: could not release issue reservation on #%d: %v\n", env.Issue, err)
 		return
+	}
+	// Retract the reservation's conversation lock (ward#494) so a retry lands on an
+	// open thread; best-effort, silent on the no-lock-leaf forge (Forgejo today).
+	if err := fc.unlockIssue(ctx, env.Owner, env.Name, env.Issue); err != nil && !errors.Is(err, errForgeLockUnsupported) {
+		fmt.Fprintf(os.Stderr, "ward container reap: could not unlock issue #%d after release: %v\n", env.Issue, err)
 	}
 	fmt.Fprintf(os.Stderr, "ward container reap: released issue reservation on #%d (container exited pre-launch, did no work)\n", env.Issue)
 }

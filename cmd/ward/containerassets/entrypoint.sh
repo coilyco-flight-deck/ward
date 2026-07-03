@@ -132,8 +132,8 @@ WARD_BROKER_SOCK_PATH="${WARD_BROKER_SOCK:-/run/ward/broker.sock}"
 # TUI owns (ward#389, docs/broker.md). Under the writable socket dir.
 WARD_BROKER_LOG_PATH="${WARD_BROKER_LOG:-/run/ward/broker.log}"
 
-# install_ward_kdl_write fetches the write-tier binary the broker shells (release
-# path only; 404s since ward#455 dropped the tier assets, ward#501). docs/broker.md.
+# install_ward_kdl_write fetches the write-tier binary the broker shells from an INTERNAL
+# channel (the generic package registry, not the release page; ward#501). docs/broker.md.
 install_ward_kdl_write() {
   command -v ward-kdl-write >/dev/null 2>&1 && return 0
   if [ -n "${WARD_FROM_SOURCE:-}" ]; then
@@ -143,13 +143,15 @@ install_ward_kdl_write() {
   local tag asset
   tag="$(resolve_ward_tag)"
   [ -n "$tag" ] && [ "$tag" != "null" ] || { log "broker: no release tag resolved for ward-kdl-write; broker skipped"; return 0; }
-  asset="$WARD_FORGEJO_BASE/coilyco-flight-deck/ward/releases/download/$tag/ward-kdl-write-linux-$(arch)"
-  log "broker: downloading ward-kdl-write $tag for linux-$(arch)"
+  # Internal channel (ward#501): the generic package registry keyed to the same
+  # release tag - deliberately not the release download page (ward#441).
+  asset="$WARD_FORGEJO_BASE/api/packages/coilyco-flight-deck/generic/ward-kdl-write/$tag/ward-kdl-write-linux-$(arch)"
+  log "broker: downloading ward-kdl-write $tag for linux-$(arch) from the internal package channel"
   if curl -fsSL -H "Authorization: token ${FORGEJO_TOKEN:-}" -o /usr/local/bin/ward-kdl-write "$asset"; then
     chmod 0755 /usr/local/bin/ward-kdl-write
   else
     rm -f /usr/local/bin/ward-kdl-write
-    log "broker: ward-kdl-write download failed ($asset); broker skipped (older release without the tier asset?)"
+    log "broker: ward-kdl-write download failed ($asset); broker skipped (a release cut before the internal-channel publish, or the registry is unreachable? ward#501)"
   fi
 }
 
@@ -574,20 +576,39 @@ write_claude_creds() {
 # --- claude onboarding seed (ward#305, ward#313): skip the first-run gates -----
 # Theme picker (ward#305) + bypass-mode acceptance & folder trust (ward#313).
 
-# Trust is keyed under the launch cwd ($work=/workspace/<tgt>); without these an
-# interactive/headless explore hangs on the unanswered accept-risk/trust dialogs.
+# Pre-trust every dir the agent may cd into, not just the target clone: claude
+# re-prompts folder trust per un-seeded cwd, which felt like a reset (ward#168).
 seed_claude_onboarding() {
   [ "$WARD_MODE" = claude ] || return 0
   local work="$1"
   local out="$AGENT_HOME/.claude.json"
   mkdir -p "$AGENT_HOME"
-  jq -n --arg work "$work" '{
+  # Trust set: target clone, /workspace root, each granted extra repo, /substrate
+  # root + every warmed reference repo (runs post-warm, so the dirs exist to glob).
+  local -a trust_dirs=("$work" /workspace)
+  local ref name d
+  for ref in ${WARD_EXTRA_REPOS:-}; do
+    name="${ref##*/}"
+    [ -n "$name" ] && trust_dirs+=("/workspace/$name")
+  done
+  if [ -d "$WARD_SUBSTRATE_DEST" ]; then
+    trust_dirs+=("$WARD_SUBSTRATE_DEST")
+    for d in "$WARD_SUBSTRATE_DEST"/*/; do
+      [ -d "$d" ] && trust_dirs+=("${d%/}")
+    done
+  fi
+  # Build projects{ dir: {trust flags} } from the dir list; `unique` collapses any
+  # duplicate (e.g. /workspace listed twice) to one entry.
+  local projects
+  projects="$(printf '%s\n' "${trust_dirs[@]}" | jq -R . \
+    | jq -s 'unique | map({ (.): { hasTrustDialogAccepted: true, hasCompletedProjectOnboarding: true } }) | add')"
+  jq -n --argjson projects "$projects" '{
     hasCompletedOnboarding: true,
     theme: "dark",
     bypassPermissionsModeAccepted: true,
-    projects: { ($work): { hasTrustDialogAccepted: true, hasCompletedProjectOnboarding: true } }
+    projects: $projects
   }' > "$out"
-  log "seeded claude onboarding (skip first-run wizard + bypass/trust gates) at $out"
+  log "seeded claude onboarding (skip first-run wizard + bypass/trust gates; trusted ${#trust_dirs[@]} dir(s)) at $out"
 }
 
 # --- codex credentials (ward#178): host-resolved auth.json, ride --env-file ---

@@ -700,19 +700,19 @@ func preflightComments(comments []issueComment) string {
 	return strings.TrimSpace(b.String())
 }
 
-// capturePreflight runs the feasibility-read argv in a fresh empty temp dir so the
-// read never inherits the dispatch cwd (ward#169; see docs/agent.md pre-flight).
-func (r *Runner) capturePreflight(ctx context.Context, argv []string) ([]byte, error) {
+// capturePreflight runs the feasibility-read argv in a fresh empty temp dir so it never
+// inherits the dispatch cwd (ward#169); the prompt rides the child's stdin (ward#548).
+func (r *Runner) capturePreflight(ctx context.Context, argv []string, stdin string) ([]byte, error) {
 	// No temp dir means no isolation, but the prompt lever still stands: fall back
 	// to a plain cwd capture rather than strand a workable issue behind flakiness.
 	dir, err := os.MkdirTemp("", "ward-preflight-*")
 	if err != nil {
 		fmt.Fprintln(os.Stderr, "ward agent: preflight capture could not create a neutral temp dir; falling back to dispatch cwd")
-		return r.Runner.Capture(ctx, argv[0], argv[1:]...)
+		return r.captureWithStdin(ctx, stdin, argv[0], argv[1:]...)
 	}
 	fmt.Fprintf(os.Stderr, "ward agent: preflight capture start in neutral dir %s\n", dir)
 	defer os.RemoveAll(dir)
-	out, cerr := r.captureInDir(ctx, dir, argv[0], argv[1:]...)
+	out, cerr := r.captureInDir(ctx, dir, stdin, argv[0], argv[1:]...)
 	if cerr != nil {
 		fmt.Fprintf(os.Stderr, "ward agent: preflight capture failed in %s: %v\n", dir, cerr)
 		return out, cerr
@@ -723,7 +723,7 @@ func (r *Runner) capturePreflight(ctx context.Context, argv []string) ([]byte, e
 
 // captureInDir runs Capture with the process cwd temporarily set to dir, restored
 // afterward (cli-guard's Capture has no Dir knob). A guarded chdir is safe here.
-func (r *Runner) captureInDir(ctx context.Context, dir, bin string, argv ...string) ([]byte, error) {
+func (r *Runner) captureInDir(ctx context.Context, dir, stdin, bin string, argv ...string) ([]byte, error) {
 	// The pre-flight is a sequential host one-shot, so no concurrent cwd user can
 	// race this; a failed Getwd/Chdir simply no-ops to a plain cwd capture.
 	if prev, err := os.Getwd(); err == nil {
@@ -731,6 +731,15 @@ func (r *Runner) captureInDir(ctx context.Context, dir, bin string, argv ...stri
 			defer os.Chdir(prev) //nolint:errcheck // best-effort restore
 		}
 	}
+	return r.captureWithStdin(ctx, stdin, bin, argv...)
+}
+
+// captureWithStdin feeds prompt on the child's stdin for one capture, then restores
+// the Runner's stdin (the host one-shot is sequential, so the field swap can't race).
+func (r *Runner) captureWithStdin(ctx context.Context, stdin, bin string, argv ...string) ([]byte, error) {
+	prev := r.Runner.Stdin
+	r.Runner.Stdin = strings.NewReader(stdin)
+	defer func() { r.Runner.Stdin = prev }()
 	return r.Runner.Capture(ctx, bin, argv...)
 }
 
@@ -739,7 +748,7 @@ func (r *Runner) captureInDir(ctx context.Context, dir, bin string, argv ...stri
 func (r *Runner) runPreflight(ctx context.Context, mode containerMode, surface string, w resolvedWork) (bool, string, error) {
 	label := agentCmdline(mode, surface)
 	bin := lookupAgent(mode).Record().Binary
-	argv, ok := hostOneShotArgv(mode, preflightPrompt(w.Ref, w.Title, w.Body, w.Details, w.Comments, w.ExtraRepos))
+	argv, stdin, ok := hostOneShot(mode, preflightPrompt(w.Ref, w.Title, w.Body, w.Details, w.Comments, w.ExtraRepos))
 	// No host one-shot (none wired, or a local-model harness barred from the
 	// unsandboxed host read; ward#162) or no binary: proceed to the isolated run.
 	if !ok || !hostHasBinary(bin) {
@@ -757,7 +766,7 @@ func (r *Runner) runPreflight(ctx context.Context, mode containerMode, surface s
 	defer cancel()
 	// Capture (not Exec) so ward can read the verdict; the read is echoed below.
 	// capturePreflight isolates it in a neutral dir, never the dispatch cwd (#169).
-	out, err := r.capturePreflight(pctx, argv)
+	out, err := r.capturePreflight(pctx, argv, stdin)
 	read := strings.TrimSpace(string(out))
 	if read != "" {
 		fmt.Fprintf(os.Stderr, "%s\n\n", read)

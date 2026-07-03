@@ -219,14 +219,14 @@ func (r *Runner) surveyRoute(ctx context.Context, mode containerMode, taskText s
 	if len(catalog) == 0 {
 		return routeOutcome{}, "", fmt.Errorf("no candidate repos found across %s", strings.Join(r.primaryOrgs(), ", "))
 	}
-	argv, ok := hostOneShotArgv(mode, routeSurveyPrompt(taskText, renderRepoCatalog(catalog)))
+	argv, stdin, ok := hostOneShot(mode, routeSurveyPrompt(taskText, renderRepoCatalog(catalog)))
 	if !ok {
 		return routeOutcome{}, "", fmt.Errorf("no host self-assessment slot for %s", mode)
 	}
 	fmt.Fprintf(os.Stderr, "%s: route survey - asking %s to route this task across %d repos...\n\n", agentCmdline(mode, "engineer"), lookupAgent(mode).Record().Binary, len(catalog))
 	sctx, cancel := context.WithTimeout(ctx, routeSurveyTimeout)
 	defer cancel()
-	out, err := r.capturePreflight(sctx, argv)
+	out, err := r.capturePreflight(sctx, argv, stdin)
 	read := strings.TrimSpace(string(out))
 	if read != "" {
 		fmt.Fprintf(os.Stderr, "%s\n\n", read)
