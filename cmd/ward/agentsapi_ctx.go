@@ -2,6 +2,8 @@ package main
 
 import (
 	"context"
+	"os"
+	"path/filepath"
 	"runtime"
 
 	"github.com/coilyco-flight-deck/ward/internal/agentsapi"
@@ -20,6 +22,28 @@ func (r *Runner) agentHostCtx(ctx context.Context) agentsapi.HostCtx {
 		Exec: r.Runner,
 		Log:  blog,
 	}
+}
+
+// agentTrustDirs mirrors seed_claude_onboarding's trust set: target clone,
+// /workspace root, each granted extra repo, /substrate root + warmed repos (ward#168).
+func agentTrustDirs(e bootstrapEnv) []string {
+	dirs := []string{"/workspace/" + e.TargetName, "/workspace"}
+	for _, repo := range e.ExtraRepos {
+		if repo.Name != "" {
+			dirs = append(dirs, "/workspace/"+repo.Name)
+		}
+	}
+	if e.SubstrateDest != "" {
+		dirs = append(dirs, e.SubstrateDest)
+		if entries, err := os.ReadDir(e.SubstrateDest); err == nil {
+			for _, ent := range entries {
+				if ent.IsDir() {
+					dirs = append(dirs, filepath.Join(e.SubstrateDest, ent.Name()))
+				}
+			}
+		}
+	}
+	return dirs
 }
 
 // agentRunCtx builds the in-container view the capabilities act against; seed is

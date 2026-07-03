@@ -8,20 +8,28 @@ import (
 	"github.com/coilyco-flight-deck/ward/internal/agentsapi"
 )
 
-// SeedOnboarding writes ~/.claude.json so interactive claude skips its first-run
-// gates: theme picker (ward#305) + bypass-mode/folder-trust (ward#313).
+// SeedOnboarding writes ~/.claude.json so claude skips its first-run gates (theme
+// ward#305, bypass/trust ward#313), trusting every rc.TrustDirs entry (ward#168).
 func (a Agent) SeedOnboarding(rc agentsapi.RunCtx) error {
-	work := "/workspace/" + rc.TargetName
+	dirs := rc.TrustDirs
+	if len(dirs) == 0 {
+		dirs = []string{"/workspace/" + rc.TargetName}
+	}
+	projects := make(map[string]any, len(dirs))
+	for _, dir := range dirs {
+		if dir == "" {
+			continue
+		}
+		projects[dir] = map[string]any{
+			"hasTrustDialogAccepted":        true,
+			"hasCompletedProjectOnboarding": true,
+		}
+	}
 	cfg := map[string]any{
 		"hasCompletedOnboarding":        true,
 		"theme":                         "dark",
 		"bypassPermissionsModeAccepted": true,
-		"projects": map[string]any{
-			work: map[string]any{
-				"hasTrustDialogAccepted":        true,
-				"hasCompletedProjectOnboarding": true,
-			},
-		},
+		"projects":                      projects,
 	}
 	data, merr := json.Marshal(cfg)
 	if merr != nil {
