@@ -48,8 +48,8 @@ const (
 	containerGitcacheVol = "ward-gitcache"
 	containerGitcacheMnt = "/gitcache"
 
-	// containerAWSMount is where ~/.aws lands under --aws (broad SSM read,
-	// off by default; the forgejo token is injected single-purpose instead).
+	// containerAWSMount is where ~/.aws lands as the aws capability's fallback bind, used
+	// only when host credential export fails (ward#586). Off by default.
 	containerAWSMount = "/root/.aws"
 
 	// containerAgentLogsMount is where the host agent-log drain binds read-only in a
@@ -381,8 +381,8 @@ type mountOpts struct {
 	// AssetsDir holds ward's embedded entrypoint + doctrine, written to a
 	// per-run tmp dir and mounted read-only. Always set in practice.
 	AssetsDir string
-	// AWSHome, when non-empty, mounts ~/.aws read-only (--aws): the broad SSM
-	// read surface, off by default.
+	// AWSHome, when non-empty, mounts ~/.aws read-only as the aws capability's fallback
+	// bind; the launch path drops it when host credential export succeeds (ward#586).
 	AWSHome string
 	// WardSource, when non-empty, mounts a local ward checkout (--ward-source)
 	// so the container builds ward from source instead of downloading.
@@ -485,8 +485,8 @@ type upPlan struct {
 	// Workflow is the run's landing policy (--workflow, ward#508): non-direct-main
 	// runs export WARD_WORKFLOW + a ward.workflow label. See docs/agent-workflow.md.
 	Workflow workflowMode
-	// AWSHome is the host ~/.aws dir bound read-only when the aws capability is on;
-	// kept on the plan so the launch path can warn on a creds-less host (ward#579).
+	// AWSHome is the aws capability's fallback ~/.aws bind source; a good host cred export
+	// drops the mount and clears this, else it arms the #579 creds-less warning (ward#586).
 	AWSHome string
 }
 
@@ -719,18 +719,20 @@ func hostNetTailnetWarning(goos string, hasTailscale0 bool) (string, bool) {
 	return "", false
 }
 
-// awsMountMissingWarning returns a loud warning (and true) when the aws capability
-// bound ~/.aws but the host has no creds there (ward#579; docs/agent-capability.md).
+// awsMountMissingWarning warns (true) when the aws capability is on but neither path
+// delivered creds: export returned nothing and the ~/.aws fallback is empty (ward#586).
 func awsMountMissingWarning(awsHome string, hasCreds bool) (string, bool) {
 	if awsHome == "" || hasCreds {
 		return "", false
 	}
-	return "WARNING: the aws capability is on but this host has no AWS credentials at " + awsHome + ".\n" +
-		"  ward binds that dir read-only, but docker mounts a missing source as an EMPTY\n" +
-		"  dir, so the run gets no ~/.aws config or credentials - `aws`/`ssm` calls inside\n" +
-		"  it fail NoCredentials. Give this host an AWS identity (an ~/.aws/config or\n" +
-		"  ~/.aws/credentials with SSM read/write) so --aws actually delivers creds.\n" +
-		"  See docs/agent-capability.md (ward#579).", true
+	return "WARNING: the aws capability is on but this host delivered no AWS credentials.\n" +
+		"  ward first ran `aws configure export-credentials` (which resolves SSO, env, profile,\n" +
+		"  assumed-role and IMDS creds) and it returned nothing, so ward fell back to binding\n" +
+		"  " + awsHome + " read-only - but that dir holds no config or credentials file either.\n" +
+		"  docker mounts the missing source as an EMPTY dir, so `aws`/`ssm` calls inside the run\n" +
+		"  fail NoCredentials. Give this host an AWS identity (log into SSO, export AWS_* env, or\n" +
+		"  add ~/.aws/config|credentials with SSM read/write) so --aws actually delivers creds.\n" +
+		"  See docs/agent-capability.md (ward#586, ward#579).", true
 }
 
 // appendEnvAndImage appends the WARD_* env, the --env-file, the image, and the agent

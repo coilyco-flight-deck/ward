@@ -1177,7 +1177,10 @@ func (r *Runner) launchAgentContainer(ctx context.Context, c *cli.Command, mode 
 	} else {
 		fmt.Fprintf(os.Stderr, "%s: image pull skipped for %s (--no-pull)\n", label, plan.Image)
 	}
-	envFile, cleanupEnv, err := r.writeTokenEnvFile(ctx, planDispatchTarget(plan), plan.Forge, r.resolveAgentCreds(ctx, mode))
+	// Resolve host creds (agent + aws export-inject) before the env-file; a good AWS export
+	// drops the ~/.aws mount for injected AWS_* env (ward#586).
+	launchCreds := r.resolveLaunchCreds(ctx, &plan, mode)
+	envFile, cleanupEnv, err := r.writeTokenEnvFile(ctx, planDispatchTarget(plan), plan.Forge, launchCreds)
 	if err != nil {
 		return err
 	}

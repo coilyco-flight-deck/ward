@@ -61,6 +61,7 @@ New to ward? Read [architecture.md](architecture.md) first - it frames the whole
 - [director-on-demand-surface.md](director-on-demand-surface.md) - the director's on-demand surface.
 - [broker.md](broker.md) - the root credential broker that hardens the director's surface.
 - [agent-credentials.md](agent-credentials.md) - how each harness's host credential is seeded.
+- [agent-aws-creds.md](agent-aws-creds.md) - how the aws capability delivers AWS creds (export-and-inject, mount fallback).
 - [agent-attribution.md](agent-attribution.md) - agent attribution on Forgejo write bodies.
 - [agent-observability.md](agent-observability.md) - agent-run log/telemetry drain + opt-in OTLP.
 - [agent-dispatch-contract.md](agent-dispatch-contract.md) - dispatch exit codes + `meta.json` outcome enum for supervising runs.

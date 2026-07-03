@@ -88,7 +88,8 @@ func (r *Runner) runScratchSession(ctx context.Context, c *cli.Command, mode con
 		return err
 	}
 	defer cleanupBroker()
-	envFile, cleanupEnv, err := r.writeTokenEnvFile(ctx, planDispatchTarget(plan), plan.Forge, r.resolveAgentCreds(ctx, mode))
+	launchCreds := r.resolveLaunchCreds(ctx, &plan, mode)
+	envFile, cleanupEnv, err := r.writeTokenEnvFile(ctx, planDispatchTarget(plan), plan.Forge, launchCreds)
 	if err != nil {
 		return err
 	}
