@@ -13,9 +13,23 @@ to **both** the Forgejo and GitHub release pages ([release-binaries.md](release-
 
 The release page carries **only** the `ward` binaries (+ checksums): `ward-kdl`
 and its `ward-kdl-{read,write,admin}` tiers are no longer public assets - embedded
-in `ward`, spec authors build from a clone ([authoring](ward-kdl-authoring.md)). The
-write tier is the exception: `publish-kdl-write` pushes it to an **internal** package
-registry for the broker ([ward#501](https://forgejo.coilysiren.me/coilyco-flight-deck/ward/issues/501), [broker.md](broker.md)).
+in `ward`, spec authors build from a clone ([authoring](ward-kdl-authoring.md)). Two
+tiers are the exception, each pushed to an **internal** generic package registry
+keyed to the release tag, never the public release page
+([ward#501](https://forgejo.coilysiren.me/coilyco-flight-deck/ward/issues/501)):
+
+- **`publish-kdl-write`** - the write tier the in-container broker shells
+  ([broker.md](broker.md)).
+- **`publish-kdl-read`** - the read tier a **sealed read-only director** session
+  pulls via the entrypoint's `install_ward_kdl_read`, the non-mutating
+  ssh-through-docker observe surface
+  ([ward#547](https://forgejo.coilysiren.me/coilyco-flight-deck/ward/issues/547),
+  [ward#572](https://forgejo.coilysiren.me/coilyco-flight-deck/ward/issues/572)).
+  Without this producer the entrypoint's best-effort fetch 404'd every run, so a
+  director session never got the helper.
+
+Both jobs mirror each other exactly and share the same `CI_RELEASE_TOKEN`
+package-write requirement below.
 
 ## Version bump
 
@@ -41,12 +55,14 @@ One job rewrites the formula `url` line after a release:
 Set both in ward -> Settings -> Actions -> Secrets:
 
 - `CI_RELEASE_TOKEN` - `publish-binaries` uploads release assets with it, and
-  `publish-kdl-write` pushes the write tier (so it needs **package write** scope too).
+  `publish-kdl-write` + `publish-kdl-read` push the write and read tiers (so it
+  needs **package write** scope too).
 - `TAP_WRITE_TOKEN` - used by `bump-tap-formula` to push the formula bump.
   Scope: push to `coilyco-flight-deck/homebrew-tap`.
 
-##### `publish-kdl-write` red? Two distinct faults ([ward#567](https://forgejo.coilysiren.me/coilyco-flight-deck/ward/issues/567))
+##### `publish-kdl-write` / `publish-kdl-read` red? Two distinct faults ([ward#567](https://forgejo.coilysiren.me/coilyco-flight-deck/ward/issues/567))
 
+Both tier producers PUT to the same generic registry and share this diagnostic.
 The generic-package PUT has two independent ways to fail, and the job's diagnostic
 names which one it hit:
 
