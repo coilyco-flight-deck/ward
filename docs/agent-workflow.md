@@ -1,0 +1,71 @@
+# ward agent: workflow modes
+
+`--workflow` picks a dispatched engineer's **landing policy** - how the run is
+allowed to turn finished work into a landed change ([ward#508](https://forgejo.coilysiren.me/coilyco-flight-deck/ward/issues/508)). One run, one
+container, one issue; the workflow decides only *how it lands*, not *what it
+builds*.
+
+```bash
+warded engineer #98 --workflow direct-main   # (default) merge to main, push, close
+warded engineer #98 --workflow pr            # branch + pull request; a human merges
+warded engineer #98 --workflow patch-only    # produce a patch, land nothing
+```
+
+The default is `direct-main`, so an unflagged run behaves exactly as it always
+has. The mode is visible in `--print` output, rides the container as the
+`WARD_WORKFLOW` env var and a `ward.workflow` label, and is read by the reaper.
+
+## The three modes
+
+- **`direct-main`** *(default)* - the fast path: implement, commit, merge to
+  `main`, push, and close the issue with a `closes #N` trailer. Intended for solo
+  repos, trusted automation, and low-review surfaces. On **GitHub** (whose `main`
+  is typically protected) `direct-main` already lands via a pull request - the
+  forge decides, so the two collapse there.
+- **`pr`** - carry the work to a **branch and a pull request** instead of landing
+  on `main` directly. The PR is the merge gate; a human or a follow-up loop lands
+  it. The seed tells the agent to push the branch and open the PR, and **not** to
+  push `main`.
+- **`patch-only`** - the run has **no landing authority**: it commits locally but
+  produces a **patch** (`git format-patch origin/main --stdout`) and posts it in a
+  comment for a human to review and apply. It neither pushes `main` nor opens a
+  PR, and writes no `closes #N` trailer. Intended for untrusted targets,
+  experiments, and high-risk work.
+
+## Which mode for which trust level
+
+- **High trust** (your own repo, an automation repo you own) - `direct-main`.
+- **Shared / reviewed** (a team repo where changes get looked at) - `pr`.
+- **Low trust / exploratory** (an external target, a risky change you want to eyeball
+  before it touches the tree) - `patch-only`.
+
+## What the mode actually changes
+
+- **Seed prompt / done-condition.** The carry clause and the closing
+  retrospective's "only after ..." landing phrase both shift with the mode, so a
+  `patch-only` run is never told to merge to `main`, and a `pr` run is never told
+  to push it. See [agent.md](agent.md) for the seed shape.
+- **Container env + label.** A non-default run exports `WARD_WORKFLOW=<mode>` and
+  wears a `ward.workflow=<mode>` label; `direct-main` omits both.
+- **The reaper.** `ward container reap` normally force-lands residual work on
+  `main` at teardown. For a `pr`/`patch-only` run it reads `WARD_WORKFLOW` and
+  **refuses to push `main`**, preserving any residual work on a `ward-salvage/<id>`
+  branch instead. See [container-reap.md](container-reap.md).
+
+## Rough edges (first slice)
+
+This first slice is deliberately minimal:
+
+- `patch-only` is enforced at the **prompt + reaper** layer, not the credential
+  layer: the container still carries a push-capable token. Hard credential scoping
+  (a read-only token) is the deferred "read-only credential hardening".
+- A `pr`/`patch-only` run's residual local commits are preserved on a salvage
+  branch by the reaper (safe, but noisier than a dedicated "held" outcome).
+- The autonomous [pre-flight](agent-preflight.md) still reads in merge-to-main
+  terms; it judges feasibility, not the landing contract, so it is left as-is.
+
+## See also
+
+- [agent.md](agent.md) - the `ward agent` verb family and the seed prompt.
+- [container-reap.md](container-reap.md) - the teardown reaper the workflow gates.
+- [agent-github.md](agent-github.md) - the GitHub lane, where `direct-main` already lands via a PR.

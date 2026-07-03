@@ -20,7 +20,7 @@ writeup of this layer.
 
 ## ward (public face: `warded`) - the product (run time)
 
-The CLI you actually run. It **embeds** the ward-kdl-generated surfaces (`ward ops <api>`) and adds the agent layer (`ward agent` - drive a headless harness inside a guarded container) and guarded dev commands (`ward exec`). This is the thing a user installs and the thing the launch is about.
+The CLI you actually run. It **embeds** the ward-kdl-generated surfaces (`ward ops <api>`) and adds the agent layer (`ward agent` - the **guarded execution layer for coding agents**, a harness driver in a guarded container) and guarded dev commands (`ward exec`). This is the thing a user installs and the thing the launch is about.
 
 ## In one line
 

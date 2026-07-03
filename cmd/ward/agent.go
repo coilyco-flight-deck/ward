@@ -113,20 +113,22 @@ const emptyBodySeedAction = "This issue has no body, so work from the title alon
 	"issue content, screenshots, or other artifacts that are not there (an empty body is not an " +
 	"invitation to invent one). The comment thread at that URL may hold later context worth a quick read."
 
-// headlessReflectionAction is the headless run's closing move (ward#281, ward#310):
-// a "how it felt" retro led by a WARD-OUTCOME line. See docs/agent-director.md.
-const headlessReflectionAction = "Finally, as your very last step - only after the work is committed, merged " +
-	"to main, and pushed - post a SHORT comment on this issue (a few sentences, in your own voice) on how the " +
-	"implementation \"felt\": how the work went, anything that surprised you or fought back, how confident you " +
-	"are in the result, and any rough edges or follow-ups worth filing. This is a candid retrospective, not a " +
-	"status report or a changelog - keep it brief and honest, and post it even if the work went smoothly.\n\n" +
-	"Begin that final comment with a single machine-readable status line - its very first line, exactly one of:\n" +
-	"  `" + wardOutcomeMarker + " done - <one line on what landed>`\n" +
-	"  `" + wardOutcomeMarker + " blocked - <the one specific decision or piece of information you need from a human>`\n" +
-	"  `" + wardOutcomeMarker + " failed - <why, briefly>`\n" +
-	"then your retrospective on the lines below it. A supervising director loop (ward agent director) reads only that " +
-	"first line to classify the run, so for a normal run that you merged and pushed it is `" + wardOutcomeMarker +
-	" done`; reserve blocked/failed for a run that genuinely could not land."
+// headlessReflection is the headless run's closing "how it felt" retro led by a
+// WARD-OUTCOME line; its landing phrase is workflow-aware (ward#281, ward#508).
+func headlessReflection(ref agentIssueRef, wf workflowMode) string {
+	return "Finally, as your very last step - only after " + workflowLandingPhrase(ref, wf) + " - post a SHORT " +
+		"comment on this issue (a few sentences, in your own voice) on how the " +
+		"implementation \"felt\": how the work went, anything that surprised you or fought back, how confident you " +
+		"are in the result, and any rough edges or follow-ups worth filing. This is a candid retrospective, not a " +
+		"status report or a changelog - keep it brief and honest, and post it even if the work went smoothly.\n\n" +
+		"Begin that final comment with a single machine-readable status line - its very first line, exactly one of:\n" +
+		"  `" + wardOutcomeMarker + " done - <one line on what landed>`\n" +
+		"  `" + wardOutcomeMarker + " blocked - <the one specific decision or piece of information you need from a human>`\n" +
+		"  `" + wardOutcomeMarker + " failed - <why, briefly>`\n" +
+		"then your retrospective on the lines below it. A supervising director loop (ward agent director) reads only that " +
+		"first line to classify the run, so for a normal run that completed its workflow it is `" + wardOutcomeMarker +
+		" done`; reserve blocked/failed for a run that genuinely could not land."
+}
 
 // grantedRepoDoneClause widens the done-condition for a --repo grant (ward#291):
 // every granted repo must be pushed AND verified landed, not just the issue's repo.
@@ -179,9 +181,15 @@ func forgeCarryClause(ref agentIssueRef) string {
 		ref.Number)
 }
 
-// agentSeedPrompt seeds the agent, harness-agnostic (ward#405): the issue, a first
-// move (ward#157), --details (ward#167), a done-condition (ward#291), a retro (#281).
+// agentSeedPrompt seeds a direct-main run (the default): a thin wrapper over
+// agentSeedPromptWorkflow so legacy callers stay byte-for-byte (ward#405, ward#508).
 func agentSeedPrompt(ref agentIssueRef, title, body, details string, headless bool, extra []targetRepo) string {
+	return agentSeedPromptWorkflow(ref, title, body, details, headless, extra, defaultWorkflow)
+}
+
+// agentSeedPromptWorkflow is agentSeedPrompt with an explicit workflow mode: the
+// carry clause + reflection landing phrase shift with it (ward#508).
+func agentSeedPromptWorkflow(ref agentIssueRef, title, body, details string, headless bool, extra []targetRepo, wf workflowMode) string {
 	title = strings.TrimSpace(title)
 	if title == "" {
 		title = "(untitled)"
@@ -213,7 +221,7 @@ func agentSeedPrompt(ref agentIssueRef, title, body, details string, headless bo
 		"Work on %s issue %s (%q).\n\n"+
 			"URL: %s\n\n"+
 			"%s\n\n%s Then carry it end to end per your container doctrine - %s",
-		forgeDisplayName(ref.Forge), ref, title, ref.url(), carryIssueBanner(ref), action, forgeCarryClause(ref))
+		forgeDisplayName(ref.Forge), ref, title, ref.url(), carryIssueBanner(ref), action, workflowCarryClause(ref, wf))
 	if details = strings.TrimSpace(details); details != "" {
 		seed += fmt.Sprintf(
 			"\n\nOperator note (added at dispatch via --details; treat it as authoritative and "+
@@ -227,10 +235,10 @@ func agentSeedPrompt(ref agentIssueRef, title, body, details string, headless bo
 	if block := subsystemSeedBlock(ref, title, body); block != "" {
 		seed += "\n\n" + block
 	}
-	// A headless run detaches with no human watching, so ask it to close with a
-	// short retrospective comment - the only voice it leaves behind (ward#281).
+	// A headless run detaches unwatched, so it closes with a retrospective comment -
+	// the only voice it leaves behind; the landing phrase tracks the workflow (#281, #508).
 	if headless {
-		seed += "\n\n" + headlessReflectionAction
+		seed += "\n\n" + headlessReflection(ref, wf)
 	}
 	return seed + inline
 }
@@ -436,6 +444,8 @@ func agentImageFlags() []cli.Flag {
 func agentSurfaceFlags() []cli.Flag {
 	flags := []cli.Flag{
 		agentDriverFlag(),
+		// --workflow picks the landing policy: direct-main|pr|patch-only (ward#508).
+		workflowFlag(),
 		// --branch is hidden (ward#362): the issue-<N> default is the intelligent choice.
 		&cli.StringFlag{Name: "branch", Hidden: true, Usage: "feature branch to create inside the clone (default: issue-<N>)"},
 		&cli.StringSliceFlag{Name: "repo", Usage: "grant the agent an additional writable repo to clone + operate against (owner/name; repeatable). Cloned as a full feature copy under /workspace alongside the issue's repo (ward#230, ward#280)."},
@@ -470,6 +480,9 @@ type resolvedWork struct {
 	// ExtraRepos are the --repo grants the run also clones writable (ward#230);
 	// the pre-flight must hear about them or it false-NO-GOs cross-repo work (ward#266).
 	ExtraRepos []targetRepo
+	// Workflow is the landing policy (--workflow, ward#508): direct-main|pr|patch-only.
+	// It shapes the seed's carry clause, rides the container, and gates the reaper.
+	Workflow workflowMode
 }
 
 // resolveAgentWork parses + trust-gates the ref, fetches the issue (failing fast
@@ -497,6 +510,12 @@ func (r *Runner) resolveAgentWork(ctx context.Context, c *cli.Command, mode cont
 	if st := strings.ToLower(strings.TrimSpace(issue.State)); st != "" && st != "open" {
 		fmt.Fprintf(os.Stderr, "%s: note: issue %s is %s, not open - working it anyway.\n", label, ref, st)
 	}
+	// Resolve the landing policy up front so a bad --workflow fails before any
+	// container spins, and the seed carries the right carry clause (ward#508).
+	wf, werr := agentWorkflow(c)
+	if werr != nil {
+		return resolvedWork{}, fmt.Errorf("%s: %w", label, werr)
+	}
 	title := strings.TrimSpace(issue.Title)
 	details := strings.TrimSpace(c.String("details"))
 	// Fetch comments so the pre-flight sees decisions made there, not just the
@@ -513,7 +532,7 @@ func (r *Runner) resolveAgentWork(ctx context.Context, c *cli.Command, mode cont
 	}
 	// The engineer detaches fire-and-forget (ward#356), so its seed always gets the
 	// closing reflection - the only voice it leaves behind (ward#281).
-	return resolvedWork{Ref: ref, Title: title, Body: issue.Body, Comments: comments, Details: details, ExtraRepos: extra, Seed: agentSeedPrompt(ref, title, issue.Body, details, true, extra)}, nil
+	return resolvedWork{Ref: ref, Title: title, Body: issue.Body, Comments: comments, Details: details, ExtraRepos: extra, Workflow: wf, Seed: agentSeedPromptWorkflow(ref, title, issue.Body, details, true, extra, wf)}, nil
 }
 
 // fetchIssue reads the issue off the ref's forge (Forgejo via the ops mount, GitHub
@@ -1052,6 +1071,9 @@ func buildAgentPlan(c *cli.Command, mode containerMode, ref agentIssueRef, seed 
 	plan.Role = roleEngineer
 	plan.Issue = ref.Number
 	plan.Forge = ref.Forge
+	// The landing policy rides the plan so it reaches the container env + label and
+	// the reaper (ward#508); already validated upstream, so a parse slip defaults.
+	plan.Workflow, _ = agentWorkflow(c)
 	plan.Name = containerRoleName(roleEngineer, mode, repo, ref.Number, plan.Machine)
 	plan.Headless = true
 	plan.Interactive = false
@@ -1400,6 +1422,12 @@ func (r *Runner) runAgentTaskDirect(ctx context.Context, c *cli.Command, mode co
 	if err != nil {
 		return fmt.Errorf("%s: %w", label, err)
 	}
+	// Validate --workflow before filing an issue so a typo doesn't leave a dangling
+	// ticket behind an unparseable flag (ward#508).
+	wf, werr := agentWorkflow(c)
+	if werr != nil {
+		return fmt.Errorf("%s: %w", label, werr)
+	}
 	title := taskTitle(instructions)
 	body := taskBody(mode, instructions)
 
@@ -1438,9 +1466,9 @@ func (r *Runner) runAgentTaskDirect(ctx context.Context, c *cli.Command, mode co
 		justification = read
 	}
 
-	// The freeform instructions are the filed body (no --details, ward#167); it runs
-	// the headless run, so the seed is headless: inlined body + reflection (#157/#281).
-	seed := agentSeedPrompt(ref, title, body, "", true, nil)
+	// The freeform instructions are the filed body (no --details); a headless seed
+	// (inlined body + reflection) carried under the resolved workflow (#167, #281, #508).
+	seed := agentSeedPromptWorkflow(ref, title, body, "", true, nil, wf)
 	return r.launchAgentContainer(ctx, c, mode, "engineer", ref, title, seed, justification)
 }
 
@@ -1454,7 +1482,10 @@ func printAgentTaskPlan(c *cli.Command, mode containerMode, repo targetRepo, tit
 	// A placeholder ref renders the seed shape; the real number is only known
 	// once the issue is filed (which --print deliberately skips).
 	previewRef := agentIssueRef{Owner: repo.Owner, Repo: repo.Name, Number: 0}
-	seed := agentSeedPrompt(previewRef, title, body, "", true, nil)
+	// --print skips the workflow validation gate above (it never files), so a bad
+	// value simply previews as the default rather than erroring here (ward#508).
+	wf, _ := agentWorkflow(c)
+	seed := agentSeedPromptWorkflow(previewRef, title, body, "", true, nil, wf)
 	plan, err := buildUpPlan(c, repo, mode, "", "", []string{seed}, false)
 	if err != nil {
 		return err
@@ -1463,6 +1494,7 @@ func printAgentTaskPlan(c *cli.Command, mode containerMode, repo targetRepo, tit
 	plan.Interactive = false
 	plan.TTY = false
 	plan.Role = roleEngineer
+	plan.Workflow = wf
 	if plan.Branch == "" {
 		plan.Branch = "issue-<N>"
 	}
@@ -1475,6 +1507,7 @@ func printAgentTaskPlan(c *cli.Command, mode containerMode, repo targetRepo, tit
 	fmt.Fprintf(&b, "headless: agent runs detached in print mode (-p)\n")
 	fmt.Fprintf(&b, "repo:    %s\n", repo.slug())
 	fmt.Fprintf(&b, "branch:  %s\n", plan.Branch)
+	fmt.Fprintf(&b, "workflow: %s\n", plan.Workflow.orDefault())
 	fmt.Fprintf(&b, "name:    %s\n", plan.Name)
 	fmt.Fprintf(&b, "----- issue to file -----\ntitle: %s\n\n%s\n----- end -----\n", title, body)
 	fmt.Fprintf(&b, "----- seeded prompt (#N filled once filed) -----\n%s\n----- end -----\n", seed)
@@ -1519,6 +1552,7 @@ func printAgentPlan(c *cli.Command, p upPlan, ref agentIssueRef, title, seed, su
 	fmt.Fprintf(&b, "title:   %s\n", title)
 	fmt.Fprintf(&b, "repo:    %s\n", p.Repo.slug())
 	fmt.Fprintf(&b, "branch:  %s\n", p.Branch)
+	fmt.Fprintf(&b, "workflow: %s\n", p.Workflow.orDefault())
 	fmt.Fprintf(&b, "name:    %s\n", p.Name)
 	fmt.Fprint(&b, seedLogBlock(seed))
 	if c.Bool("no-pull") {

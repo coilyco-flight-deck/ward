@@ -46,6 +46,9 @@ type reapEnv struct {
 	// ExtraRepos mirrors WARD_EXTRA_REPOS (ward#230): the --repo grants this run
 	// cloned writable. The reaper verifies each one landed before done (ward#291).
 	ExtraRepos []targetRepo
+	// Workflow mirrors WARD_WORKFLOW (ward#508): the run's landing policy (empty reads
+	// as direct-main). A pr/patch-only run is preserved on a branch, never pushed to main.
+	Workflow workflowMode
 }
 
 // envAgentLaunched is the entrypoint flag exported just before the agent launches,
@@ -63,6 +66,7 @@ func readReapEnv() (reapEnv, error) {
 		Container: os.Getenv("WARD_CONTAINER_NAME"),
 		Launched:  os.Getenv(envAgentLaunched) == "1",
 		ReadOnly:  os.Getenv("WARD_READONLY") == "1",
+		Workflow:  workflowMode(os.Getenv("WARD_WORKFLOW")),
 	}
 	// A missing/garbage WARD_TARGET_ISSUE parses to 0: "no issue to release".
 	e.Issue, _ = strconv.Atoi(os.Getenv("WARD_TARGET_ISSUE"))
@@ -172,6 +176,14 @@ func (r *Runner) reapTargetTree(ctx context.Context, work string, env reapEnv, r
 			r.releaseReservationIfUnstarted(ctx, env)
 		}
 		return nil
+	}
+
+	// A pr/patch-only run is never force-landed on main by the reaper (ward#508): its
+	// residual work is preserved on a salvage branch, stopping before the main-push gates.
+	if !env.Workflow.landsOnMain() {
+		fmt.Fprintf(os.Stderr, "ward container reap: --workflow %s does not land on main; preserving residual work on a salvage branch instead of pushing main\n", env.Workflow.orDefault())
+		return r.salvage(ctx, work, env, reasonWorkflowHold, false, nil, statusSnapshot,
+			reapDecision{Gate: "workflow does not land on main (--workflow pr/patch-only)", ProvState: "not read (workflow hold)"})
 	}
 
 	prov, perr := r.readRunProvenance(work)

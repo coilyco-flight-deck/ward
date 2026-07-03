@@ -69,11 +69,12 @@ const (
 
 	// The ward.* label keys carrying a run's identity for poll/reaper/sweep: role
 	// and driver always, repo always, issue on an engineer run, machine the id.
-	labelRole    = "ward.role"
-	labelDriver  = "ward.driver"
-	labelRepo    = "ward.repo"
-	labelIssue   = "ward.issue"
-	labelMachine = "ward.machine"
+	labelRole     = "ward.role"
+	labelDriver   = "ward.driver"
+	labelRepo     = "ward.repo"
+	labelIssue    = "ward.issue"
+	labelMachine  = "ward.machine"
+	labelWorkflow = "ward.workflow"
 
 	// containerSubstrateSeed is where the dev-base image bakes image-tier bare
 	// mirrors; the entrypoint hydrates the gitcache from here on a cold volume.
@@ -473,6 +474,9 @@ type upPlan struct {
 	// TSSidecar attaches the run to the shared ward-tailnet network so it reaches
 	// the standing mac-proxy box (--ts-sidecar, ward#349). docs/agent-ts-sidecar.md.
 	TSSidecar bool
+	// Workflow is the run's landing policy (--workflow, ward#508): non-direct-main
+	// runs export WARD_WORKFLOW + a ward.workflow label. See docs/agent-workflow.md.
+	Workflow workflowMode
 }
 
 // parseExtraRepos resolves the --repo grant (bare owner/name or clone URL):
@@ -595,6 +599,11 @@ func (p upPlan) wardEnv() map[string]string {
 		env["WARD_FORGE"] = p.Forge.String()
 		env["WARD_CLONE_BASE"] = p.Forge.baseURL()
 	}
+	// A non-default landing policy rides in so the in-container reaper can refuse to
+	// force-push main (ward#508); direct-main omits the key, keeping today's env intact.
+	if !p.Workflow.landsOnMain() {
+		env["WARD_WORKFLOW"] = string(p.Workflow.orDefault())
+	}
 	return env
 }
 
@@ -616,6 +625,11 @@ func (p upPlan) labels() []string {
 	}
 	if p.Issue > 0 {
 		out = append(out, fmt.Sprintf("%s=%d", labelIssue, p.Issue))
+	}
+	// A non-default landing policy is stamped so poll/reaper/sweep can see it
+	// without reading the container env (ward#508); direct-main stays unlabeled.
+	if !p.Workflow.landsOnMain() {
+		out = append(out, labelWorkflow+"="+string(p.Workflow.orDefault()))
 	}
 	return out
 }

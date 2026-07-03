@@ -67,6 +67,7 @@ install stance, launch dialect, gates), no `internal/` source:
 - [agent-subcommands.md](agent-subcommands.md) - the three roles compared + the reaper.
 - [agent-drivers.md](agent-drivers.md) - the four `--driver` harnesses compared.
 - [agent-surface.md](agent-surface.md) - the director's read-only surface.
+- [agent-workflow.md](agent-workflow.md) - `--workflow direct-main|pr|patch-only`, the run's landing policy.
 - [agent-preflight.md](agent-preflight.md) - the detached GO/NO-GO pre-flight.
 - [agent-trust-gate.md](agent-trust-gate.md) - the owner trust gate.
 - [agent-wrong-repo.md](agent-wrong-repo.md) - the WRONG-REPO blind-fire path.
