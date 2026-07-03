@@ -1039,7 +1039,7 @@ func (r *Runner) backlogContainerRunning(ctx context.Context, repo targetRepo, e
 // backlogRunningContainer returns the running engineer carrying repo#num, found by
 // its ward.role/ward.repo/ward.issue labels (AND-combined), "" when none (ward#364).
 func (r *Runner) backlogRunningContainer(ctx context.Context, repo targetRepo, num int) string {
-	out, err := r.Runner.Capture(ctx, "docker", "ps", "--format", "{{.Names}}",
+	out, err := r.dockerCapture(ctx, "ps", "--format", "{{.Names}}",
 		"--filter", "label="+labelRole+"="+roleEngineer,
 		"--filter", "label="+labelRepo+"="+repo.slug(),
 		"--filter", fmt.Sprintf("label=%s=%d", labelIssue, num))

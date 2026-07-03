@@ -210,7 +210,7 @@ func (r *Runner) drainStaleContainers(ctx context.Context, exited, stale []strin
 			r.drainAgentRunIdempotent(ctx, a.Container, baseDir)
 		case sweepRemove:
 			fmt.Fprintf(os.Stderr, "ward container: removing containers %v\n", a.Names)
-			rmErr := r.Runner.Exec(ctx, "docker", dockerRmArgv(a.Names)...)
+			rmErr := r.dockerExec(ctx, dockerRmArgv(a.Names)...)
 			for _, name := range a.Names {
 				clearDrainMarker(baseDir, name)
 			}
@@ -313,7 +313,7 @@ func (r *Runner) dockerLogsCombined(ctx context.Context, name string) []byte {
 	var buf bytes.Buffer
 	prevOut, prevErr := r.Runner.Stdout, r.Runner.Stderr
 	r.Runner.Stdout, r.Runner.Stderr = &buf, &buf
-	_ = r.Runner.Exec(ctx, "docker", "logs", name)
+	_ = r.dockerExec(ctx, "logs", name)
 	r.Runner.Stdout, r.Runner.Stderr = prevOut, prevErr
 	return buf.Bytes()
 }
@@ -325,7 +325,7 @@ func (r *Runner) drainTranscript(ctx context.Context, name string) []byte {
 	// stderr ("no such file") is discarded; an empty/garbage tar yields nil.
 	prevErr := r.Runner.Stderr
 	r.Runner.Stderr = io.Discard
-	out, err := r.Runner.Capture(ctx, "docker", "cp", name+":"+containerTranscriptDir, "-")
+	out, err := r.dockerCapture(ctx, "cp", name+":"+containerTranscriptDir, "-")
 	r.Runner.Stderr = prevErr
 	if err != nil || len(out) == 0 {
 		return nil
@@ -389,7 +389,7 @@ func (r *Runner) buildRunMeta(ctx context.Context, name, console string) runMeta
 func (r *Runner) inspectContainerEnv(ctx context.Context, name string) map[string]string {
 	prevErr := r.Runner.Stderr
 	r.Runner.Stderr = io.Discard
-	out, err := r.Runner.Capture(ctx, "docker", "inspect", "--format", "{{json .Config.Env}}", name)
+	out, err := r.dockerCapture(ctx, "inspect", "--format", "{{json .Config.Env}}", name)
 	r.Runner.Stderr = prevErr
 	if err != nil {
 		return map[string]string{}

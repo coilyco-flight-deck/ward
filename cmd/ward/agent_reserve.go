@@ -263,7 +263,7 @@ func (r *Runner) containerRunning(ctx context.Context, name string) bool {
 	if strings.TrimSpace(name) == "" {
 		return true
 	}
-	out, err := r.Runner.Capture(ctx, "docker", "ps",
+	out, err := r.dockerCapture(ctx, "ps",
 		"--filter", "name=^"+name+"$", "--format", "{{.Names}}")
 	if err != nil {
 		return true

@@ -1173,7 +1173,7 @@ const pullHeartbeatDefault = 30 * time.Second
 func (r *Runner) pullAgentImage(ctx context.Context, plan upPlan, label string) {
 	var perr error
 	if plan.Interactive {
-		perr = r.Runner.Exec(ctx, "docker", "pull", plan.Image)
+		perr = r.dockerExec(ctx, "pull", plan.Image)
 	} else {
 		// Capture the live stderr before runDockerSilenced swaps it for
 		// io.Discard; the named line and heartbeat must outlive the silencing.
@@ -1231,7 +1231,7 @@ func (r *Runner) createAgentContainer(ctx context.Context, plan upPlan, envFile 
 		}
 	}
 	if plan.Interactive {
-		return r.Runner.Exec(ctx, "docker", dockerCreateArgv(plan, envFile)...)
+		return r.dockerExec(ctx, dockerCreateArgv(plan, envFile)...)
 	}
 	if inContainer() {
 		// Dispatching from inside a container (e.g. `warded #N` from explore): the
@@ -1256,7 +1256,7 @@ func (r *Runner) createDetachedViaCopy(ctx context.Context, plan upPlan, envFile
 		if !pathExists(m.Source) {
 			continue // an unset optional bind (e.g. --aws) has no source to copy
 		}
-		if cerr := r.Runner.Exec(ctx, "docker", "cp", m.Source+"/.", id+":"+m.Target); cerr != nil {
+		if cerr := r.dockerExec(ctx, "cp", m.Source+"/.", id+":"+m.Target); cerr != nil {
 			return fmt.Errorf("ward container: docker cp %s -> %s: %w", m.Source, m.Target, cerr)
 		}
 	}
@@ -1269,7 +1269,7 @@ func (r *Runner) captureDockerSilenced(ctx context.Context, argv ...string) (str
 	saveEnv := r.Runner.Env
 	r.Runner.Env = append(append([]string(nil), saveEnv...), "DOCKER_CLI_HINTS=false")
 	defer func() { r.Runner.Env = saveEnv }()
-	out, err := r.Runner.Capture(ctx, "docker", argv...)
+	out, err := r.dockerCapture(ctx, argv...)
 	return string(out), err
 }
 
@@ -1298,7 +1298,27 @@ func (r *Runner) runDockerSilenced(ctx context.Context, silenceStderr bool, argv
 	defer func() {
 		r.Runner.Stdout, r.Runner.Stderr, r.Runner.Env = saveOut, saveErr, saveEnv
 	}()
+	return r.dockerExec(ctx, argv...)
+}
+
+// dockerExec / dockerCapture are the choke points for every docker call: they
+// suspend cli-guard's brew jail, which breaks a snap-provided docker (ward#540).
+func (r *Runner) dockerExec(ctx context.Context, argv ...string) error {
+	defer r.suspendSandbox()()
 	return r.Runner.Exec(ctx, "docker", argv...)
+}
+
+func (r *Runner) dockerCapture(ctx context.Context, argv ...string) ([]byte, error) {
+	defer r.suspendSandbox()()
+	return r.Runner.Capture(ctx, "docker", argv...)
+}
+
+// suspendSandbox nils the Runner's sandbox for one docker call, restoring it via
+// the returned func (safe under runDockerSilenced's sequential-launch invariant).
+func (r *Runner) suspendSandbox() func() {
+	saved := r.Runner.Sandbox
+	r.Runner.Sandbox = nil
+	return func() { r.Runner.Sandbox = saved }
 }
 
 // taskInstructions reads the DIRECT-mode task body from --instructions-file, the only

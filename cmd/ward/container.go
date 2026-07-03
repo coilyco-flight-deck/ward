@@ -300,7 +300,7 @@ func (r *Runner) writeTokenEnvFile(ctx context.Context, target broker.Target, fg
 // preflightTailnetProxy verifies the standing mac-proxy box is attached to the
 // ward-tailnet network before a --ts-sidecar run attaches (ward#349; the doc).
 func (r *Runner) preflightTailnetProxy(ctx context.Context) error {
-	out, err := r.Runner.Capture(ctx, "docker", dockerTailnetInspectArgv()...)
+	out, err := r.dockerCapture(ctx, dockerTailnetInspectArgv()...)
 	if err != nil || !proxyBoxAttached(string(out)) {
 		return fmt.Errorf("ward container: standing tailnet proxy not found - converge the mac-proxy infra role (agentic-os#291)")
 	}
@@ -355,7 +355,7 @@ func sweepStaleContainerAssets() {
 // sweepStaleContainers host-side-reclaims exited ward containers' writable layers
 // before a run, keeping the recent containerReapKeep (docs/container-cleanup.md).
 func (r *Runner) sweepStaleContainers(ctx context.Context) {
-	out, err := r.Runner.Capture(ctx, "docker", dockerExitedListArgv()...)
+	out, err := r.dockerCapture(ctx, dockerExitedListArgv()...)
 	if err != nil {
 		// No docker / daemon down / query failed: nothing to sweep, and the
 		// cleanup courtesy must never block a launch.
@@ -386,12 +386,12 @@ func (r *Runner) clearExitedContainer(ctx context.Context, name string) {
 	if strings.TrimSpace(name) == "" {
 		return
 	}
-	out, err := r.Runner.Capture(ctx, "docker", "ps", "-a",
+	out, err := r.dockerCapture(ctx, "ps", "-a",
 		"--filter", "name=^"+name+"$", "--filter", "status=exited", "--format", "{{.Names}}")
 	if err != nil || strings.TrimSpace(string(out)) == "" {
 		return
 	}
-	if rmErr := r.Runner.Exec(ctx, "docker", "rm", "-f", name); rmErr != nil {
+	if rmErr := r.dockerExec(ctx, "rm", "-f", name); rmErr != nil {
 		fmt.Fprintf(os.Stderr, "ward container: could not clear exited container %q for name reuse (%v); continuing\n", name, rmErr)
 	}
 	// The corpse is gone; drop its drain sentinel so the reused deterministic name

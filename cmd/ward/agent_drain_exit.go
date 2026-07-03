@@ -59,7 +59,7 @@ func (r *Runner) drainOnExit(ctx context.Context, name string) {
 	fmt.Fprintf(os.Stderr, "ward container: drain-on-exit waiter waiting for %s to exit\n", name)
 	// `docker wait` returns on exit OR removal; a wait error (already gone) still
 	// falls through to a best-effort drain attempt.
-	_ = r.Runner.Exec(ctx, "docker", "wait", name)
+	_ = r.dockerExec(ctx, "wait", name)
 	r.drainAgentRunIdempotent(ctx, name, agentLogsDir())
 }
 
