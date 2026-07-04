@@ -7,8 +7,8 @@ Beyond the target repo, every `ward container` warms a fixed set of cross-cuttin
 **reference repos** - doctrine, skills, the cross-repo contracts, the dev/ops
 CLIs - so an agent can read a convention without reaching outside its box. The
 canonical list is [`preclone-repos.txt`](../cmd/ward/containerassets/preclone-repos.txt),
-`owner/name  tier` per line, embedded in the binary and parsed by both Go (for
-validation) and the entrypoint (to warm). They land under `/substrate/<name>`.
+`owner/name  tier` per line, embedded in the binary and parsed by both Go and
+the entrypoint. They land under `/substrate/<name>`.
 
 ## Tiers
 
@@ -31,35 +31,35 @@ serialises concurrent inits against a given mirror. On a cold volume an
 image-tier repo hydrates from its baked seed (a local copy, no network) instead
 of cloning.
 
-Warming is **best-effort** - any failure logs and the container continues, since
-the target work is the job. `WARD_SUBSTRATE_SKIP=1` skips it entirely. The
-agent-facing note lives in [AGENTS.container.md](../cmd/ward/containerassets/AGENTS.container.md).
+Warming is **best-effort** - any failure logs and the container continues.
+`WARD_SUBSTRATE_SKIP=1` skips it entirely. The agent-facing note lives in
+[AGENTS.container.md](../cmd/ward/containerassets/AGENTS.container.md).
 
 ## Labeling the mounts ([ward#593](https://forgejo.coilysiren.me/coilyco-flight-deck/ward/issues/593))
 
 Warming the repos is not enough. A mount the agent is never told to read is a
-silent pile on disk, and a design/ops session that does not spelunk it falls back
-to interrogating the operator for facts already checked out (a public IP, a Caddy
+silent pile on disk, and a session that does not spelunk it falls back to
+interrogating the operator for facts already checked out (a public IP, a Caddy
 route, a `*.coilysiren.me` subdomain - all in `/substrate/infrastructure`): the
 "'discoverable in the clone' is a trap" failure the doctrine names.
 
-So the composed context ends with an explicit **read-these-first** block: one
-bullet per warmed `/substrate/<name>`, each with a self-sourced tagline from that
-repo's own `README.md` (then `AGENTS.md`, then `docs/FEATURES.md`, badge/HTML/fence
-noise skipped) so the label never drifts. The block is one-sourced across the bash
-and Go compose paths via the hidden `ward container substrate-inventory` command,
-a no-op when `/substrate` is empty, and fires for every session.
+So the composed context ends with a **read-these-first** block: one bullet per
+warmed `/substrate/<name>`, each with a self-sourced tagline from that repo's own
+`README.md` (then `AGENTS.md`, then `docs/FEATURES.md`) so the label never drifts.
+The block is one-sourced across the bash and Go compose paths via the hidden `ward
+container substrate-inventory` command. When the seed carries a
+[substrate catalog](substrate-catalog.md) the bullets are enriched with each repo's
+canonical `full_name`, description, and Forgejo topics ([ward#594](https://forgejo.coilysiren.me/coilyco-flight-deck/ward/issues/594)).
 
 ## When a repo lands in both trees
 
-Because both the substrate working copy and the target/granted clones hydrate
-from the same shared `ward-gitcache` mirror, a repo on the substrate manifest
-that is *also* the target (or a `--repo` grant) ends up under **both**
-`/substrate/<name>` and `/workspace/<name>`, starting at the same HEAD. That
-overlap is expected, not a bug: the split is by *role*, not by which repos exist
-where. `/workspace/<name>` is authoritative for work; `/substrate/<name>` stays
-read-only reference even for a repo being actively changed. The doctrine spells
-out the read-from-either / act-only-on-`/workspace` rule for agents in
+Because the substrate copy and the target/granted clones hydrate from the same
+`ward-gitcache` mirror, a manifest repo that is *also* the target (or a `--repo`
+grant) ends up under **both** `/substrate/<name>` and `/workspace/<name>` at the
+same HEAD. That overlap is expected: the split is by *role*, not by which repos
+exist where. `/workspace/<name>` is authoritative for work; `/substrate/<name>`
+stays read-only reference even for a repo being actively changed. The doctrine
+spells out the read-from-either / act-only-on-`/workspace` rule in
 [AGENTS.container.md](../cmd/ward/containerassets/AGENTS.container.md).
 
 ## See also

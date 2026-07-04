@@ -77,11 +77,10 @@ func (r *Runner) runScratchSession(ctx context.Context, c *cli.Command, mode con
 		return printScratchPlan(c, plan, readOnly)
 	}
 
-	// Interactive dispatch: reclaim dead containers' layers so a busy fleet can't
-	// wedge new launches (ward#272). The stale-ward heads-up (ward#143) rides the gate.
-	r.sweepStaleContainers(ctx)
-	if !c.Bool("no-pull") {
-		r.pullAgentImage(ctx, plan, label)
+	// Preflight the tailnet network, sweep dead containers, then pull - the shared
+	// pre-launch steps; a missing ward-tailnet network fails fast here (ward#597, #272).
+	if err := r.prelaunchDispatch(ctx, c, plan, label); err != nil {
+		return err
 	}
 	cleanupBroker, err := r.attachHostDispatchBroker(ctx, &plan, readOnly, label)
 	if err != nil {

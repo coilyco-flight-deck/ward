@@ -81,6 +81,25 @@ resolved by the docker **daemon**, not the client, and a snap docker daemon's pr
 env-file and the assets dir share one `launchStagingDir` (`$HOME`, else `$TMPDIR`) so a
 snap docker reaches every launch asset it must open.
 
+### Fail fast when docker is the snap package ([ward#557](https://forgejo.coilysiren.me/coilyco-flight-deck/ward/issues/557))
+
+Relocating the env-file and the assets dir clears the two touchpoints a snap docker hits
+**first**, but not the rest: the [`ward git clone`](../cmd/ward/git_clone.go) checkout still
+lands in `/tmp`/`$TMPDIR` before its bind, and the explore-surface broker bridge socket is a
+fixed `/tmp/docker-agent.sock` - neither of which snap docker can reach, because snap's
+`home` interface exposes no `/tmp` and no dot-dirs and there is no interface that would. So
+rather than chase every touchpoint, `createAgentContainer` (the single chokepoint every
+launch mode - engineer, task, advisor, director surface - funnels through) runs a
+**fail-fast preflight**: if the resolved `docker` on `PATH` is the snap package
+(`/snap/bin/docker`, or a `PATH` shim whose symlink chain terminates at the snap runtime
+wrapper), ward refuses the launch with a message that names the cause (snap's private
+`/tmp` + dot-dir-excluding `home` interface) and the fix - install **docker-ce** from
+Docker's apt repo and put `/usr/bin/docker` ahead of `/snap/bin` on `PATH`. That converts
+the cryptic mid-launch `exit 125` (`open /tmp/ward-forgejo-env-…: no such file`) into an
+actionable error, and protects any Linux host that happens to carry a snap docker. The
+host-side remediation for kai-server (swap snap docker -> docker-ce via ansible) is tracked
+in `coilyco-flight-deck/infrastructure`.
+
 ## See also
 
 - [container-api.md](container-api.md) - the API overview (mounts + file layout).

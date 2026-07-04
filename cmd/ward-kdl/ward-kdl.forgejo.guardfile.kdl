@@ -209,6 +209,10 @@ wrap ward-kdl ops forgejo {
         op issueGetComments
         describe "the comments sub-collection GET, pinned by op (the convention resolves `list issue-comment` against issueGetComments poorly). The `view issue` shadow action below chains this so a view returns the thread."
     }
+    can delete issue-comment {
+        op issueDeleteComment
+        describe "delete a single issue comment by its comment ID (DELETE /repos/{owner}/{repo}/issues/comments/{id}). op pinned for the same reason `list issue-comment` pins issueGetComments - the bare `delete issue-comment` convention does not reach issueDeleteComment. This is the cleanup path a stale reservation road-block needed (ward#570): a `ward agent` launch that dies before its container comes up posts a release-marker comment to retract the hold, but the orphaned `ward-agent-reservation` comment itself could only be removed by hand until this leaf. {owner}-scoped by the coily* gate above; irreversible, so it is a targeted-ID delete, never a bulk sweep."
+    }
     // repo refs: read-only list sub-collections (commits/branches/tags), each
     // {owner}-scoped by the coily* gate above; native GETs, no new behavior (ward#368).
     can list commit {
