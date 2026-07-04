@@ -23,7 +23,10 @@ capturing the run's identity and the remote baseline it started from:
 - **`reserved_at`** - the reservation timestamp (RFC3339), the wall-clock floor
   a real landing commit must be newer than.
 - **`baseline_main`** - the `origin/main` sha seen at dispatch, the git floor a
-  real landing commit must descend from.
+  real landing commit must descend from. An **empty repo** has no `origin/main`
+  at dispatch, so this is recorded empty (an establish-main dispatch); the
+  reaper's [establish-main](container-reap.md) path owns that landing and never
+  leans on this baseline ([ward#599](https://forgejo.coilysiren.me/coilyco-flight-deck/ward/issues/599)).
 
 ## How the reaper gates a run as done
 

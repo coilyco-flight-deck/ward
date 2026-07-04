@@ -456,6 +456,83 @@ func TestReapTargetTreeLandedAndClosedDoesNotSalvage(t *testing.T) {
 	}
 }
 
+// initEmptyRepoRun builds the empty-repo (no origin/main) establish-main fixture:
+// an empty bare remote plus a work clone with one commit and no origin/main (ward#599).
+func initEmptyRepoRun(t *testing.T, path, content, message string) (remote, work string) {
+	t.Helper()
+	remote = t.TempDir()
+	runGit(t, remote, "init", "--bare", "-b", "main")
+	work = t.TempDir()
+	runGit(t, work, "init", "-b", "main")
+	runGit(t, work, "config", "user.email", "test@example.com")
+	runGit(t, work, "config", "user.name", "Test User")
+	if err := os.WriteFile(filepath.Join(work, path), []byte(content), 0o644); err != nil {
+		t.Fatal(err)
+	}
+	runGit(t, work, "add", path)
+	runGit(t, work, "commit", "-m", message)
+	runGit(t, work, "remote", "add", "origin", remote)
+	return remote, work
+}
+
+// TestReapTargetTreeEstablishesMainOnEmptyRepo is the ward#599 acceptance: a clean,
+// run-owned empty-repo run creates main from its work instead of salvaging.
+func TestReapTargetTreeEstablishesMainOnEmptyRepo(t *testing.T) {
+	remote, work := initEmptyRepoRun(t, "server.py", "print('hi')\n", "build reddit-mcp\n\ncloses #599")
+
+	r := &Runner{Runner: &shell.Runner{Resolve: shell.PathResolver}}
+	env := reapEnv{Owner: "coilyco-flight-deck", Name: "reddit-mcp", Base: "https://forgejo.coilysiren.me", Mode: "claude", Issue: 599, Launched: true}
+	if err := r.reapTargetTree(t.Context(), work, env, true); err != nil {
+		t.Fatalf("reapTargetTree establishing main on an empty repo: %v", err)
+	}
+	if got, want := mustGitRev(t, remote, "main"), mustGitRev(t, work, "HEAD"); got != want {
+		t.Fatalf("establish-main must push HEAD as the new default branch: remote main=%s, work HEAD=%s", got, want)
+	}
+	out, _ := exec.Command("git", "-C", remote, "branch", "--list", salvageBranchPrefix+"*").CombinedOutput()
+	if strings.TrimSpace(string(out)) != "" {
+		t.Fatalf("a clean empty-repo run must not create a salvage branch, got: %q", string(out))
+	}
+}
+
+// TestReapTargetTreeEmptyRepoMissingCloseRefSalvages is the guard half of ward#599:
+// an empty-repo run whose committed work omits its closing reference still salvages.
+func TestReapTargetTreeEmptyRepoMissingCloseRefSalvages(t *testing.T) {
+	remote, work := initEmptyRepoRun(t, "server.py", "print('hi')\n", "build reddit-mcp (no closing ref)")
+
+	r := &Runner{Runner: &shell.Runner{Resolve: shell.PathResolver}}
+	// Token empty: salvage preserves the branch but files no issue (logged, not fatal).
+	env := reapEnv{Owner: "coilyco-flight-deck", Name: "reddit-mcp", Base: "https://forgejo.coilysiren.me", Mode: "claude", Issue: 599, Launched: true}
+	if err := r.reapTargetTree(t.Context(), work, env, true); err != nil {
+		t.Fatalf("reapTargetTree salvaging a close-refless empty-repo run: %v", err)
+	}
+	if refExists(t.Context(), r, work, "origin/main") {
+		t.Fatal("a salvaged run must NOT establish main on the empty repo")
+	}
+	out, _ := exec.Command("git", "-C", remote, "branch", "--list", salvageBranchPrefix+"*").CombinedOutput()
+	if strings.TrimSpace(string(out)) == "" {
+		t.Fatal("a close-refless empty-repo run must be preserved on a salvage branch")
+	}
+}
+
+// TestIssueClosingReferenceInRangeWholeHistory covers the empty-repo range: with no
+// origin/main baseline, the closing ref is checked across whole-HEAD history (ward#599).
+func TestIssueClosingReferenceInRangeWholeHistory(t *testing.T) {
+	_, work := initEmptyRepoRun(t, "server.py", "print('hi')\n", "build reddit-mcp\n\ncloses #599")
+
+	r := &Runner{Runner: &shell.Runner{Resolve: shell.PathResolver}}
+	// origin/main..HEAD is unresolvable (no origin/main), so the normal check reads false.
+	if r.issueClosingReferencePresent(t.Context(), work, 599) {
+		t.Fatal("origin/main-relative check must not resolve on an empty repo")
+	}
+	// The whole-HEAD range finds the closing reference the run committed.
+	if !r.issueClosingReferenceInRange(t.Context(), work, 599, "HEAD") {
+		t.Fatal("whole-history range must find closes #599 on an empty repo")
+	}
+	if r.issueClosingReferenceInRange(t.Context(), work, 600, "HEAD") {
+		t.Fatal("whole-history range must not cross-attribute an adjacent issue number")
+	}
+}
+
 // TestCheckExtraRepoLandedTreatsLandedGrantAsLanded is the ward#583 regression: a
 // landed grant carrying NO target `closes #N` must read landed, never salvaged.
 func TestCheckExtraRepoLandedTreatsLandedGrantAsLanded(t *testing.T) {

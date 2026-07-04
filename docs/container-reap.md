@@ -1,5 +1,5 @@
 ---
-doc_goal: Give an operator full confidence in the deterministic teardown reaper as the no-lost-work backstop - how EXIT-trap arming makes it fire on every exit path beyond the agent's reach, the ordered land-or-salvage decision (nothing-to-reap first, closing-ref, integrate, junk-scan, push-or-salvage, grant-verify), and the PAT-rotation and auth-classification caveats - so its land-or-salvage contract is trustable rather than opaque.
+doc_goal: Give an operator full confidence in the deterministic teardown reaper as the no-lost-work backstop - how EXIT-trap arming makes it fire on every exit path beyond the agent's reach, the ordered land-or-salvage decision (empty-repo establish-main, nothing-to-reap, closing-ref, integrate, junk-scan, push-or-salvage, grant-verify), and the PAT-rotation and auth-classification caveats - so its land-or-salvage contract is trustable rather than opaque.
 ---
 # ward container reap
 
@@ -20,21 +20,32 @@ does can defeat it. It is a hidden entrypoint-called verb.
 1. Stages and commits anything the agent left loose (`git add -A` + a
    `--no-verify` residual commit - the goal is to preserve work, not re-gate it).
 2. Records dispatch-time run provenance. See [run provenance](container-reap-provenance.md).
-3. Checks for **nothing to reap** *first*: a clean tree with `HEAD`
+3. Handles the **empty repo** (`origin/main` absent) as an **establish-main**
+   case, not a salvage: a brand-new repo has no base branch to integrate onto, so
+   a clean, run-owned commit is pushed **as** `main` - creating the default branch
+   from the run's work, landing the feature and firing CI in one step
+   ([ward#599](https://forgejo.coilysiren.me/coilyco-flight-deck/ward/issues/599)).
+   The run-owned proof here is the committed `closes #N` (an empty repo has no
+   stale history to mis-credit, so the `origin/main`-relative provenance proof does
+   not apply); the junk scan runs against git's empty tree. Salvage stays reserved
+   for a **real** failure - a workflow that does not land on main, junk in the tree,
+   a missing closing reference, or a rejected push - never the benign "the repo was
+   empty" condition.
+4. Checks for **nothing to reap** *next*: a clean tree with `HEAD`
    already in `origin/main` is done, before the salvage gates, which read the
    then-empty `origin/main..HEAD` and would else false-salvage a landed run.
-4. Verifies the carried issue has the same-repo `closes #N` reference. Missing
+5. Verifies the carried issue has the same-repo `closes #N` reference. Missing
    reference means salvage, not push.
-5. Integrates onto the latest `main` (`rebase`; conflicts route to salvage).
-6. Scans the residual diff for junk that should never land on `main`: vendored
+6. Integrates onto the latest `main` (`rebase`; conflicts route to salvage).
+7. Scans the residual diff for junk that should never land on `main`: vendored
    trees (`node_modules`, ...), credential files (`.env`, `*.pem`, ...), blobs.
-7. Decides deterministically:
+8. Decides deterministically:
    - clean diff + clean integration -> **push straight to `main`**.
    - anything else (conflict, scan finding, rejected push) -> **salvage**: push to
      a `ward-salvage/<id>` branch (durable), then notify - a **carried**
      run comments the notice back on its issue and **reopens** it; a **freeform**
      run files exactly **one** standalone `[ward-salvage]` issue, never appended.
-8. Verifies each `--repo` grant landed: reads `WARD_EXTRA_REPOS` and, for each
+9. Verifies each `--repo` grant landed: reads `WARD_EXTRA_REPOS` and, for each
    grant, checks whether its work is present on the freshly-fetched
    `origin/main` - **content**, not `HEAD == origin/main` equality. A grant lands
    when either its local `HEAD` is **reachable from** `origin/main` (a plain or
