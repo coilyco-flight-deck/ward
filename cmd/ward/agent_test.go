@@ -222,6 +222,29 @@ func TestCarryIssueBanner(t *testing.T) {
 	}
 }
 
+// TestCloneAnchorLine covers ward#384: the in-container seed anchors the agent IN
+// the fresh clone - files are its cwd, to read not assume, so it stops guessing.
+func TestCloneAnchorLine(t *testing.T) {
+	ref := agentIssueRef{Owner: "coilyco-flight-deck", Repo: "ward", Number: 384}
+	got := cloneAnchorLine(ref)
+	for _, want := range []string{
+		"coilyco-flight-deck/ward",  // names the actual repo the clone is of
+		"current working directory", // anchors the clone to the agent's cwd
+		"schemas",                   // echoes the failure it closes
+		"assumed conventions",       // and the wrong fallback it forbids
+	} {
+		if !strings.Contains(got, want) {
+			t.Errorf("cloneAnchorLine() missing %q: %s", want, got)
+		}
+	}
+	// The anchor rides the in-container seed, headless or not.
+	for _, headless := range []bool{true, false} {
+		if !strings.Contains(agentSeedPrompt(ref, "fix it", "do the thing", "", headless, nil), "current working directory") {
+			t.Errorf("seed (headless=%v) dropped the clone anchor", headless)
+		}
+	}
+}
+
 func TestAgentSeedPromptKeepsAdjacentIssuesDistinct(t *testing.T) {
 	before := agentIssueRef{Owner: "coilyco-flight-deck", Repo: "ward", Number: 425}
 	after := agentIssueRef{Owner: "coilyco-flight-deck", Repo: "ward", Number: 426}
