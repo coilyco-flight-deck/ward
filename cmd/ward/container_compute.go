@@ -443,6 +443,9 @@ type upPlan struct {
 	// TTY allocates a pseudo-terminal (-t), auto-detected: true only with a real
 	// terminal, since docker rejects -t against non-terminal stdin. See docs.
 	TTY bool
+	// Capture marks an attached foreground run ward reads stdout back from (the
+	// one-shot advisor research): streams stdout, attaches no stdin (ward#411, #606).
+	Capture bool
 	// WardVersion pins the ward release the entrypoint downloads (matches the
 	// launcher); "dev" or "" tells the entrypoint to resolve the latest release.
 	WardVersion string
@@ -755,6 +758,9 @@ func appendEnvAndImage(argv []string, p upPlan, envFilePath string) []string {
 func dockerCreateArgv(p upPlan, envFilePath string) []string {
 	argv := dockerArgvHead("run", p)
 	switch {
+	case p.Capture:
+		// Plain foreground `docker run`: no -d/-i/-t. Streams stdout (ward captures
+		// it) while attaching no stdin, so it can't 125 through the broker (ward#606).
 	case !p.Interactive:
 		argv = append(argv, "-d")
 	case p.TTY:

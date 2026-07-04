@@ -213,7 +213,10 @@ func advisorResearchPlan(plan upPlan, ref agentIssueRef) upPlan {
 	plan.Ask = true      // WARD_ASK: plain `claude -p`, so stdout is the answer alone
 	plan.ReadOnly = true // WARD_READONLY: no push wiring, reaper no-op
 	plan.Interactive = true
-	plan.TTY = false // Interactive + !TTY -> `docker run -i`: host-capturable stdout
+	plan.TTY = false // never a pty: the research is a captured one-shot, not a session
+	// Capture: a plain foreground `docker run` (no -i/-t) ward reads stdout from, no
+	// stdin attach - so a broker forward from a TTY surface can't 125 (ward#606, docs).
+	plan.Capture = true
 	plan.Forge = ref.Forge
 	plan.Role = roleAdvisor
 	// Research only: the host posts, so the container carries no issue and no branch.

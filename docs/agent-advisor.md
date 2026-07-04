@@ -48,6 +48,12 @@ read-only one-shot container (`WARD_ASK` + `WARD_READONLY`) seeded with the rese
 and **captures its stdout**. ward parses the captured plan **host-side**, keeping the
 fan-out deterministic; every post is signed via [attribution](agent-attribution.md).
 
+The capture is a plain foreground `docker run` that streams stdout but attaches **no
+stdin** (no `-i`/`-t`) - the one-shot `claude -p` reads none. That is what lets a
+[director surface](agent-surface.md) forward the run through the dispatch broker: a
+`-i` stdin attach fought the surface's own TTY and rejected the container pre-start with
+docker exit 125 ([ward#606](https://forgejo.coilysiren.me/coilyco-flight-deck/ward/issues/606)).
+
 ### Thoroughness (`--thoroughness`, alias `--depth`)
 
 Scales the steer and the timeout. An unknown value is a hard error.

@@ -58,8 +58,8 @@ func TestReplyThoroughnessTimeoutsClimb(t *testing.T) {
 	}
 }
 
-// Ref-mode research is containerized (ward#411): the recast plan must be a read-only,
-// attached, no-TTY one-shot so `docker run -i` yields a capturable stdout.
+// Ref-mode research (ward#411) recasts to a read-only captured one-shot: it streams
+// stdout with NO stdin attach (no -i/-t/-d), so a broker forward can't 125 (ward#606).
 func TestAdvisorResearchPlan(t *testing.T) {
 	ref := agentIssueRef{Owner: "coilyco-flight-deck", Repo: "ward", Number: 411}
 	base := sampleUpPlan()
@@ -69,8 +69,8 @@ func TestAdvisorResearchPlan(t *testing.T) {
 	if !p.Ask || !p.ReadOnly {
 		t.Errorf("research plan must set Ask+ReadOnly, got Ask=%v ReadOnly=%v", p.Ask, p.ReadOnly)
 	}
-	if !p.Interactive || p.TTY {
-		t.Errorf("research plan must be attached with no TTY (Interactive && !TTY), got Interactive=%v TTY=%v", p.Interactive, p.TTY)
+	if !p.Capture || p.TTY {
+		t.Errorf("research plan must capture stdout with no TTY (Capture && !TTY), got Capture=%v TTY=%v", p.Capture, p.TTY)
 	}
 	if p.Role != roleAdvisor {
 		t.Errorf("research plan role = %q, want %q", p.Role, roleAdvisor)
@@ -79,12 +79,12 @@ func TestAdvisorResearchPlan(t *testing.T) {
 		t.Errorf("research plan must not carry an Issue (host posts; container never lands), got %d", p.Issue)
 	}
 	joined := strings.Join(dockerCreateArgv(p, ""), " ")
-	// Attached, no TTY: `-i` alone, never `-d` (detached, uncapturable) or `-it` (TTY).
-	if !strings.Contains(joined, " -i ") {
-		t.Errorf("research argv must attach with -i (capturable stdout)\n got: %s", joined)
-	}
-	if strings.Contains(joined, " -d ") || strings.Contains(joined, " -it ") {
-		t.Errorf("research argv must not detach (-d) or allocate a TTY (-it)\n got: %s", joined)
+	// Captured foreground run: none of -i (stdin attach, the ward#606 125), -d
+	// (detached, uncapturable), or -it (TTY). Plain `docker run` streams stdout.
+	for _, forbidden := range []string{" -i ", " -it ", " -d "} {
+		if strings.Contains(joined, forbidden) {
+			t.Errorf("research argv must not contain %q (captured run attaches no stdin)\n got: %s", strings.TrimSpace(forbidden), joined)
+		}
 	}
 	for _, want := range []string{"-e WARD_ASK=1", "-e WARD_READONLY=1"} {
 		if !strings.Contains(joined, want) {
