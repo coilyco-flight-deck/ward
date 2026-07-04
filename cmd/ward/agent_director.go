@@ -952,16 +952,16 @@ func directorDispatchDisposition(err error) (state string, outcome *backlogOutco
 }
 
 // isDispatchDecline reports whether err is a coded per-issue decline (NO-GO / wrong-repo
-// / untrusted-owner / issue-closed). See docs/agent-director-dispatch.md.
+// / untrusted-owner / issue-closed / mode-ceiling). See docs/agent-director-dispatch.md.
 func isDispatchDecline(err error) bool {
 	c := exitcode.From(err)
 	if c == nil {
 		return false
 	}
 	switch c.Code() {
-	case dispatchNoGo, dispatchWrongRepo, dispatchUntrustedOwner, dispatchIssueClosed:
-		// A closed issue is a terminal decline, not a deferral: retrying it just
-		// rediscovers "already done", so the director marks it failed (ward#600).
+	case dispatchNoGo, dispatchWrongRepo, dispatchUntrustedOwner, dispatchIssueClosed, dispatchModeCeiling:
+		// A closed issue or below-ceiling mode label is terminal: retrying rediscovers
+		// the same refusal, so the director marks it failed (ward#600, ward#607).
 		return true
 	}
 	return false

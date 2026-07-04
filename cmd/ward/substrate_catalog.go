@@ -44,6 +44,24 @@ type ownerRepoLister interface {
 	listOwnerRepos(ctx context.Context, owner string) ([]repoBrief, error)
 }
 
+// filterSubstrateTier narrows the manifest to one seed tier (image|cache), or
+// passes it through when tier is "". Keeps the public seed image-tier only; see docs.
+func filterSubstrateTier(manifest []substrateRepo, tier string) ([]substrateRepo, error) {
+	if tier == "" {
+		return manifest, nil
+	}
+	if !substrateTiers[tier] {
+		return nil, fmt.Errorf("substrate catalog: tier %q must be image|cache", tier)
+	}
+	out := make([]substrateRepo, 0, len(manifest))
+	for _, repo := range manifest {
+		if repo.Tier == tier {
+			out = append(out, repo)
+		}
+	}
+	return out, nil
+}
+
 // buildSubstrateCatalog lists each unique manifest owner once and emits one entry
 // per manifest repo; a repo Forgejo omits falls back to its own owner/name.
 func buildSubstrateCatalog(ctx context.Context, cl ownerRepoLister, manifest []substrateRepo, dest string) (substrateCatalog, error) {
@@ -102,19 +120,24 @@ func containerSubstrateCatalogCommand() *cli.Command {
 		Flags: []cli.Flag{
 			&cli.StringFlag{Name: "out", Usage: "write the catalog JSON here (default: stdout)"},
 			&cli.StringFlag{Name: "dest", Value: containerSubstrateDest, Usage: "the /substrate mount root recorded as each repo's mount_path"},
+			&cli.StringFlag{Name: "tier", Usage: "restrict to one seed tier (image|cache); the public image seed passes image so private cache-tier repos never bake in"},
 		},
 		Action: func(ctx context.Context, c *cli.Command) error {
-			return newRunner().generateSubstrateCatalog(ctx, c.String("out"), c.String("dest"))
+			return newRunner().generateSubstrateCatalog(ctx, c.String("out"), c.String("dest"), c.String("tier"))
 		},
 	}
 }
 
-// generateSubstrateCatalog reads the embedded manifest, builds the catalog off the
-// host Forgejo client, and writes it to out (a file, else stdout).
-func (r *Runner) generateSubstrateCatalog(ctx context.Context, out, dest string) error {
+// generateSubstrateCatalog reads the embedded manifest, optionally narrows it to one
+// seed tier, builds the catalog off the host Forgejo client, and writes it to out.
+func (r *Runner) generateSubstrateCatalog(ctx context.Context, out, dest, tier string) error {
 	manifest, err := loadSubstrateManifest()
 	if err != nil {
 		return fmt.Errorf("substrate catalog: load manifest: %w", err)
+	}
+	manifest, err = filterSubstrateTier(manifest, tier)
+	if err != nil {
+		return err
 	}
 	cl, err := r.hostForgejoClient(ctx)
 	if err != nil {

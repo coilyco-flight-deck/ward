@@ -523,6 +523,18 @@ func (r *Runner) resolveAgentWork(ctx context.Context, c *cli.Command, mode cont
 		}
 		fmt.Fprintf(os.Stderr, "%s: note: issue %s is %s, not open - working it anyway (--force/--print).\n", label, ref, st)
 	}
+	// Automation-mode ceiling: only a headless-labeled issue clears an engineer
+	// dispatch (agentic-os#246, ward#607); --force/--print override. See docs.
+	if need, needName, gated := agentSurfaceCeiling(surface); gated {
+		if ceil, modeName := issueModeCeiling(issue.Labels); need > ceil {
+			if !c.Bool("force") && !c.Bool("print") {
+				return resolvedWork{}, dispatchDeclineErr(dispatchModeCeiling, "mode-ceiling",
+					"%s: refusing to dispatch the %s role on %s: it needs a %s-mode issue but the automation mode is %q - relabel the issue `%s` to raise the ceiling, or pass --force to override (rule: surface <= mode on headless > interactive > consult)",
+					label, surface, ref, needName, modeName, needName)
+			}
+			fmt.Fprintf(os.Stderr, "%s: note: issue %s automation mode is %q, below the %s role's %s ceiling - dispatching anyway (--force/--print).\n", label, ref, modeName, surface, needName)
+		}
+	}
 	// Resolve the landing policy up front so a bad --workflow fails before any
 	// container spins, and the seed carries the right carry clause (ward#508).
 	wf, werr := agentWorkflow(c)
@@ -566,6 +578,52 @@ func (r *Runner) fetchIssueComments(ctx context.Context, ref agentIssueRef) ([]i
 		return nil, err
 	}
 	return cl.listIssueComments(ctx, ref.Owner, ref.Repo, ref.Number)
+}
+
+// The automation-mode ceiling (agentic-os#246, ward#607): ward's own dispatch
+// path re-implements cli-guard's gate; see docs/agent-dispatch-contract.md.
+
+// modeCeilingLevels lists the automation-mode labels low-to-high by autonomy; the
+// index is the level, so the last entry (headless) is the most autonomous.
+var modeCeilingLevels = []string{"consult", "interactive", "headless"}
+
+// modeCeilingLevel returns the rank of a mode label and whether it is a known one.
+func modeCeilingLevel(label string) (int, bool) {
+	want := strings.ToLower(strings.TrimSpace(label))
+	for i, l := range modeCeilingLevels {
+		if l == want {
+			return i, true
+		}
+	}
+	return 0, false
+}
+
+// issueModeCeiling returns the ceiling an issue's labels grant (rank + name) like
+// cli-guard: unlabeled fails closed to consult, several take the lowest (#246).
+func issueModeCeiling(labels []string) (int, string) {
+	level, name, found := 0, "consult (unlabeled default)", false
+	for _, raw := range labels {
+		lv, ok := modeCeilingLevel(raw)
+		if !ok {
+			continue
+		}
+		if !found || lv < level {
+			level, name = lv, modeCeilingLevels[lv]
+		}
+		found = true
+	}
+	return level, name
+}
+
+// agentSurfaceCeiling maps a role to the mode ceiling it needs and whether it is
+// gated: only the engineer (code-landing) is gated; director/advisor are ungated.
+func agentSurfaceCeiling(surface string) (int, string, bool) {
+	switch surface {
+	case "engineer":
+		return len(modeCeilingLevels) - 1, "headless", true
+	default:
+		return 0, "", false
+	}
 }
 
 // runAgentWork resolves the issue, seeds the prompt, runs the autonomous
