@@ -27,6 +27,9 @@ const (
 	// dispatchIssueClosed: the target issue is already closed, so nothing launched -
 	// the re-dispatch guard against an already-landed issue (ward#600).
 	dispatchIssueClosed = 6
+	// dispatchModeCeiling: the issue's automation-mode label sits below the role's
+	// ceiling, so the code-landing dispatch is refused (agentic-os#246, ward#607).
+	dispatchModeCeiling = 7
 )
 
 // dispatchExitCode pairs a code with a stable kind token the drift test matches.
@@ -45,6 +48,7 @@ var dispatchExitCodes = []dispatchExitCode{
 	{dispatchNoGo, "no-go"},
 	{dispatchWrongRepo, "wrong-repo"},
 	{dispatchIssueClosed, "issue-closed"},
+	{dispatchModeCeiling, "mode-ceiling"},
 }
 
 // dispatchDeclineErr builds a Coded refusal so main.go exits with code: the
