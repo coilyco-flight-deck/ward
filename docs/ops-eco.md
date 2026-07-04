@@ -12,7 +12,7 @@ The design ([ward#585](https://forgejo.coilysiren.me/coilyco-flight-deck/ward/is
 
 ## The engine gap (the real deliverable, now closed)
 
-specverb's `action` engine did multi-step sequences and `$step.field` threading but had **no compensation** and was **HTTP-bound**; execverb owned the exec/ssh transports but had **zero sequencing**. The deliverable was a transport-agnostic step abstraction plus rollback/compensate and canary primitives, reusable by any guarded-rollback pipeline, eco the first consumer. It landed in cli-guard as `pkg/stepflow` + exec-dialect actions ([cli-guard#187](https://forgejo.coilysiren.me/coilyco-flight-deck/cli-guard/issues/187), cli-guard docs `specverb-rollback.md` / `execverb-actions.md`).
+specverb's `action` engine had **no compensation** and was **HTTP-bound**; execverb owned the exec/ssh transports but had **zero sequencing**. The deliverable was a transport-agnostic step abstraction plus rollback/compensate and canary primitives, reusable by any guarded-rollback pipeline. It landed in cli-guard as `pkg/stepflow` + exec-dialect actions ([cli-guard#187](https://forgejo.coilysiren.me/coilyco-flight-deck/cli-guard/issues/187)).
 
 ## Migration record (completed 2026-07-03, [coilysiren/inbox#158](https://forgejo.coilysiren.me/coilysiren/inbox/issues/158))
 
