@@ -43,6 +43,21 @@ costs the point of the issue.
   committing to read each before its first edit (see
   [agent-preflight.md](agent-preflight.md)).
 
+## The clone anchor ([ward#384](https://forgejo.coilysiren.me/coilyco-flight-deck/ward/issues/384))
+
+The keyword map assumes the agent knows it *has* a clone to read. The sibling
+failure: a goose engineer read the doctrine's abstract "fresh clone", never
+connected it to the tree in its own cwd, and reported it "cannot locate the
+actual schemas, file layouts, or wiring patterns" - guessing while the real ones
+sat one `ls` away.
+
+So every in-container seed now opens with a **clone anchor** (`cloneAnchorLine`):
+it names the clone (`owner/repo`), pins it to the agent's cwd, and forbids
+assumed conventions when the files are one command away. It rides the in-container seed **only** - the host
+pre-flight runs in neutral scratch and says the opposite
+([agent-preflight.md](agent-preflight.md)) - and is mirrored into
+[AGENTS.container.md](../cmd/ward/containerassets/AGENTS.container.md).
+
 ## Scope and follow-ups
 
 The map holds ward-specific paths, so enrichment fires only when the carried

@@ -50,6 +50,19 @@ func carryIssueBanner(ref agentIssueRef) string {
 	return fmt.Sprintf("Carried issue identity: %s.\nCarried issue number: %d.", ref, ref.Number)
 }
 
+// cloneAnchorLine tells the in-container agent it is standing IN the fresh clone
+// now - files are its cwd, to read not assume (ward#384; docs/agent-frontload.md).
+func cloneAnchorLine(ref agentIssueRef) string {
+	return fmt.Sprintf(
+		"You are reading this INSIDE that container, standing in a fresh clone of %s/%s at "+
+			"your current working directory: the repo's whole source tree - its real schemas, file "+
+			"layouts, and wiring - is on disk right here, not somewhere you have to go fetch. Explore "+
+			"it directly (start with `ls` and the repo's own docs) for any convention this task needs; "+
+			"never treat the codebase as absent or reason from assumed conventions while the actual "+
+			"files sit unread one command away.",
+		ref.Owner, ref.Repo)
+}
+
 // parseAgentIssueRef resolves owner/repo#N, a Forgejo/GitHub issue URL, or a bare #N / N.
 // ward keeps the task-verb steer (ward#234, ward#282).
 func parseAgentIssueRef(s string) (agentIssueRef, error) {
@@ -220,8 +233,8 @@ func agentSeedPromptWorkflow(ref agentIssueRef, title, body, details string, hea
 	seed := fmt.Sprintf(
 		"Work on %s issue %s (%q).\n\n"+
 			"URL: %s\n\n"+
-			"%s\n\n%s Then carry it end to end per your container doctrine - %s",
-		forgeDisplayName(ref.Forge), ref, title, ref.url(), carryIssueBanner(ref), action, workflowCarryClause(ref, wf))
+			"%s\n\n%s\n\n%s Then carry it end to end per your container doctrine - %s",
+		forgeDisplayName(ref.Forge), ref, title, ref.url(), carryIssueBanner(ref), cloneAnchorLine(ref), action, workflowCarryClause(ref, wf))
 	if details = strings.TrimSpace(details); details != "" {
 		seed += fmt.Sprintf(
 			"\n\nOperator note (added at dispatch via --details; treat it as authoritative and "+
