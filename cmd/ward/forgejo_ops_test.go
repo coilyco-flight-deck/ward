@@ -146,6 +146,33 @@ func TestFoldOpsStderr(t *testing.T) {
 	}
 }
 
+// TestForgejoGetIssueFlattensLabels pins that getIssue flattens the Forgejo
+// label objects to the name list the ceiling gate reads (agentic-os#246).
+func TestForgejoGetIssueFlattensLabels(t *testing.T) {
+	if runtime.GOOS == "windows" {
+		t.Skip("shell-script fake exe is POSIX-only")
+	}
+	dir := t.TempDir()
+	fake := filepath.Join(dir, "fake-ward")
+	script := "#!/bin/sh\ncat <<'JSON'\n" +
+		`{"number":246,"title":"t","body":"b","state":"open","html_url":"https://f/246","labels":[{"name":"interactive"},{"name":"P3"}]}` +
+		"\nJSON\n"
+	if err := os.WriteFile(fake, []byte(script), 0o755); err != nil { // #nosec G306 -- test-only executable
+		t.Fatalf("write fake ward: %v", err)
+	}
+	c := &forgejoClient{r: &Runner{Runner: &shell.Runner{}}, exe: fake}
+	issue, err := c.getIssue(context.Background(), "coilyco-flight-deck", "agentic-os", 246)
+	if err != nil {
+		t.Fatalf("getIssue: %v", err)
+	}
+	if got := strings.Join(issue.Labels, ","); got != "interactive,P3" {
+		t.Errorf("issue.Labels = %v, want [interactive P3]", issue.Labels)
+	}
+	if issue.State != "open" || issue.Number != 246 {
+		t.Errorf("issue core fields lost: %+v", issue)
+	}
+}
+
 // TestRunFoldsSubprocessStderr is the ward#596 end-to-end: a failing `ops forgejo`
 // subprocess's stderr cause rides the error, not a bare `exit status N`.
 func TestRunFoldsSubprocessStderr(t *testing.T) {
