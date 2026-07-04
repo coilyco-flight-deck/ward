@@ -12,9 +12,9 @@ conflicting default from a host harness base (`~/.claude/CLAUDE.md`, Codex
   start to merge**. Its working tree is a **fresh clone** of the target repo,
   pulled inside the container - not a host checkout, not a worktree. Nothing you
   do here touches the host's repo tree.
-- **That clone is your current working directory right now.** The repo's whole
-  source tree - its real schemas, file layouts, and wiring - is on disk in your
-  cwd, not something you have to go fetch or reconstruct. When you need a
+- **That clone is your current working directory right now** (`/workspace/<name>`).
+  The repo's whole source tree - its real schemas, file layouts, and wiring - is on
+  disk in your cwd, not something you have to go fetch or reconstruct. When you need a
   convention, `ls` and read the actual files. Never act as if you have "no
   repository to examine" or reason from assumed conventions while the real ones
   sit unread one command away: if the codebase feels absent, you are looking in

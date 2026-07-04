@@ -55,12 +55,12 @@ func carryIssueBanner(ref agentIssueRef) string {
 func cloneAnchorLine(ref agentIssueRef) string {
 	return fmt.Sprintf(
 		"You are reading this INSIDE that container, standing in a fresh clone of %s/%s at "+
-			"your current working directory: the repo's whole source tree - its real schemas, file "+
-			"layouts, and wiring - is on disk right here, not somewhere you have to go fetch. Explore "+
-			"it directly (start with `ls` and the repo's own docs) for any convention this task needs; "+
-			"never treat the codebase as absent or reason from assumed conventions while the actual "+
-			"files sit unread one command away.",
-		ref.Owner, ref.Repo)
+			"/workspace/%s - your current working directory right now: the repo's whole source tree - "+
+			"its real schemas, file layouts, and wiring - is on disk right here, not somewhere you have "+
+			"to go fetch. Explore it directly (start with `ls` and the repo's own docs) for any "+
+			"convention this task needs; never treat the codebase as absent or reason from assumed "+
+			"conventions while the actual files sit unread one command away.",
+		ref.Owner, ref.Repo, ref.Repo)
 }
 
 // parseAgentIssueRef resolves owner/repo#N, a Forgejo/GitHub issue URL, or a bare #N / N.

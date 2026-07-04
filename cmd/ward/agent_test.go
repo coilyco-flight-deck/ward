@@ -229,6 +229,7 @@ func TestCloneAnchorLine(t *testing.T) {
 	got := cloneAnchorLine(ref)
 	for _, want := range []string{
 		"coilyco-flight-deck/ward",  // names the actual repo the clone is of
+		"/workspace/ward",           // names the concrete clone path (issue #384 comment)
 		"current working directory", // anchors the clone to the agent's cwd
 		"schemas",                   // echoes the failure it closes
 		"assumed conventions",       // and the wrong fallback it forbids
