@@ -55,17 +55,26 @@ func (c *githubClient) getIssue(ctx context.Context, owner, repo string, number 
 		Body    string `json:"body"`
 		State   string `json:"state"`
 		HTMLURL string `json:"html_url"`
+		Labels  []struct {
+			Name string `json:"name"`
+		} `json:"labels"`
 	}
 	if err := json.Unmarshal(out, &raw); err != nil {
 		return nil, fmt.Errorf("github: parse issue %s/%s#%d: %w", owner, repo, number, err)
 	}
-	return &dispatch.Issue{
+	issue := &dispatch.Issue{
 		Number: raw.Number,
 		Title:  raw.Title,
 		Body:   raw.Body,
 		State:  strings.ToLower(raw.State),
 		URL:    raw.HTMLURL,
-	}, nil
+	}
+	// Populate the label names so the automation-mode ceiling gate can
+	// read them (agentic-os#246); GitHub labels are objects, not strings.
+	for _, l := range raw.Labels {
+		issue.Labels = append(issue.Labels, l.Name)
+	}
+	return issue, nil
 }
 
 // ghComment is one row of the REST `.../issues/{n}/comments` array (ward#466):

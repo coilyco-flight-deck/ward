@@ -137,15 +137,25 @@ func (r *Runner) fetchForgejoIssue(ctx context.Context, owner, repo string, numb
 	return cl.getIssue(ctx, owner, repo, number)
 }
 
-// getIssue reads one issue (GET issue) and decodes the rendered JSON body.
+// getIssue reads one issue and decodes the rendered JSON. Labels arrive as
+// objects, so they decode into a shadow field and flatten to the name list.
 func (c *forgejoClient) getIssue(ctx context.Context, owner, repo string, number int) (*dispatch.Issue, error) {
 	out, err := c.run(ctx, "issue", "get", owner, repo, strconv.Itoa(number), "--output", "json")
 	if err != nil {
 		return nil, fmt.Errorf("forgejo: get issue %s/%s#%d: %w", owner, repo, number, err)
 	}
-	var issue dispatch.Issue
-	if err := json.Unmarshal(out, &issue); err != nil {
+	var raw struct {
+		dispatch.Issue
+		Labels []struct {
+			Name string `json:"name"`
+		} `json:"labels"`
+	}
+	if err := json.Unmarshal(out, &raw); err != nil {
 		return nil, fmt.Errorf("forgejo: parse issue %s/%s#%d: %w", owner, repo, number, err)
+	}
+	issue := raw.Issue
+	for _, l := range raw.Labels {
+		issue.Labels = append(issue.Labels, l.Name)
 	}
 	return &issue, nil
 }
