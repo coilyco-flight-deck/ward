@@ -24,6 +24,9 @@ const (
 	dispatchNoGo = 4
 	// dispatchWrongRepo: interactive pre-flight blind-fired elsewhere (agent-wrong-repo.md).
 	dispatchWrongRepo = 5
+	// dispatchIssueClosed: the target issue is already closed, so nothing launched -
+	// the re-dispatch guard against an already-landed issue (ward#600).
+	dispatchIssueClosed = 6
 )
 
 // dispatchExitCode pairs a code with a stable kind token the drift test matches.
@@ -41,6 +44,7 @@ var dispatchExitCodes = []dispatchExitCode{
 	{dispatchReservationConflict, "reservation-conflict"},
 	{dispatchNoGo, "no-go"},
 	{dispatchWrongRepo, "wrong-repo"},
+	{dispatchIssueClosed, "issue-closed"},
 }
 
 // dispatchDeclineErr builds a Coded refusal so main.go exits with code: the

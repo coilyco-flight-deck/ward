@@ -56,6 +56,16 @@ type dispatchBrokerResponse struct {
 // a served run's deploy output off the shared read-only TUI (ward#389).
 var dispatchStdioMu sync.Mutex
 
+// dispatchRefLocks holds one mutex per issue ref so the broker serializes same-ref
+// dispatches before any container starts (ward#600, docs/agent-reservation.md).
+var dispatchRefLocks sync.Map // ref string -> *sync.Mutex
+
+// dispatchRefLock returns the shared mutex for ref, creating it on first use.
+func dispatchRefLock(ref string) *sync.Mutex {
+	m, _ := dispatchRefLocks.LoadOrStore(ref, &sync.Mutex{})
+	return m.(*sync.Mutex)
+}
+
 // dispatchLogsSubdir is the per-host dir under ~/.ward/agent-logs (agentLogsDir)
 // holding one file per forwarded run, sibling to the drained-container archives.
 const dispatchLogsSubdir = "dispatch"
@@ -138,6 +148,13 @@ func writeDispatchBrokerResponse(conn net.Conn, logPath string, err error) {
 func (r *Runner) runHostDispatchBrokerRequest(ctx context.Context, req dispatchBrokerRequest) (string, error) {
 	if err := validateDispatchBrokerRequest(req); err != nil {
 		return "", err
+	}
+	// Serialize on the ref so two same-N dispatches can't both reserve + spin: the
+	// second waits, then its reservation check sees the first's hold (ward#600).
+	if ref, err := parseAgentIssueRef(req.Argv[1]); err == nil {
+		lock := dispatchRefLock(ref.String())
+		lock.Lock()
+		defer lock.Unlock()
 	}
 	logf, logPath, err := openDispatchLog(req, time.Now())
 	if err != nil {

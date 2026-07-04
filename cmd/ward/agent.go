@@ -513,8 +513,14 @@ func (r *Runner) resolveAgentWork(ctx context.Context, c *cli.Command, mode cont
 	if err != nil {
 		return resolvedWork{}, fmt.Errorf("%s: resolve issue %s: %w", label, ref, err)
 	}
+	// Re-dispatch guard: a closed issue is already landed, so no-op instead of
+	// spinning to rediscover it; --force/--print work it anyway (ward#600, docs).
 	if st := strings.ToLower(strings.TrimSpace(issue.State)); st != "" && st != "open" {
-		fmt.Fprintf(os.Stderr, "%s: note: issue %s is %s, not open - working it anyway.\n", label, ref, st)
+		if !c.Bool("force") && !c.Bool("print") {
+			return resolvedWork{}, dispatchDeclineErr(dispatchIssueClosed, "issue-closed",
+				"%s: issue %s is %s, not open - nothing to do (pass --force to work it anyway)", label, ref, st)
+		}
+		fmt.Fprintf(os.Stderr, "%s: note: issue %s is %s, not open - working it anyway (--force/--print).\n", label, ref, st)
 	}
 	// Resolve the landing policy up front so a bad --workflow fails before any
 	// container spins, and the seed carries the right carry clause (ward#508).

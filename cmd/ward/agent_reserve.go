@@ -5,8 +5,10 @@ import (
 	"encoding/json"
 	"errors"
 	"fmt"
+	"math/rand/v2"
 	"os"
 	"path/filepath"
+	"regexp"
 	"strings"
 	"time"
 
@@ -47,6 +49,50 @@ const agentReservationsSubdir = "agent-reservations"
 // agentReservationTTL bounds how long a reservation blocks a fresh run. A run
 // that outlives it is assumed dead; the reservation goes stale and is reclaimed.
 const agentReservationTTL = 2 * time.Hour
+
+// reservationRecheckDefaultMax is the ceiling of the jittered re-check window: a run
+// waits a random [max/3,max] before re-reading (ward#600, docs/agent-reservation.md).
+const reservationRecheckDefaultMax = 15 * time.Second
+
+// reservationRecheckEnv overrides the ceiling (min derives as max/3); "0"/"off"/"none"
+// disables the re-check, leaning on the broker per-ref lock + pre-post check alone.
+const reservationRecheckEnv = "WARD_AGENT_RESERVE_RECHECK"
+
+// reservationRecheckSleep is the re-check backoff wait, a package var so a test
+// stubs out the real sleep.
+var reservationRecheckSleep = time.Sleep
+
+// reservationRecheckDelay picks this run's randomized wait in [max/3, max]; a var so a
+// test forces a deterministic value (or 0 to disable). math/rand/v2 is auto-seeded.
+var reservationRecheckDelay = func() time.Duration {
+	hi := reservationRecheckMax()
+	if hi <= 0 {
+		return 0
+	}
+	lo := hi / 3
+	if hi <= lo {
+		return hi
+	}
+	return lo + time.Duration(rand.Int64N(int64(hi-lo))) //nolint:gosec // symmetry-breaking jitter, not a security primitive - a predictable value is fine
+}
+
+// reservationRecheckMax resolves the re-check ceiling from the env override, else
+// the default; "0"/"off"/"none"/"false" (or an unparseable/negative value) disables it.
+func reservationRecheckMax() time.Duration {
+	v := strings.TrimSpace(os.Getenv(reservationRecheckEnv))
+	if v == "" {
+		return reservationRecheckDefaultMax
+	}
+	switch strings.ToLower(v) {
+	case "0", "off", "none", "false":
+		return 0
+	}
+	d, err := time.ParseDuration(v)
+	if err != nil || d < 0 {
+		return reservationRecheckDefaultMax
+	}
+	return d
+}
 
 // agentReservationMarker is the hidden token embedded in every reservation
 // comment so the remote check can recognize one regardless of its prose.
@@ -321,6 +367,17 @@ func (r *Runner) acquireRemoteReservation(ctx context.Context, label string, mod
 	// Seal the conversation against in-flight steering (ward#494); best-effort, so a
 	// forge with no lock API or a lock failure never fails the reservation.
 	r.lockReservedIssue(ctx, cl, label, ref)
+	// Jittered double-check backstop for any path the broker per-ref lock misses
+	// (two direct host runs, or cross-host); --force skips it (ward#600, docs).
+	if !force {
+		if lost, winner := r.reservationRecheckLost(ctx, cl, label, ref, container); lost {
+			// Leave our comment to lapse at the TTL (a release marker would free the
+			// winner too) and refuse so only the winner proceeds (ward#600).
+			return nil, newReservationConflict(
+				"%s: issue %s went to a concurrent run (%s) on a jittered re-check; this run yields (ward#600)",
+				label, ref, winner)
+		}
+	}
 	// The release reuses this same client to retract the comment + lock if the launch
 	// fails downstream (ward#570).
 	return func() { r.releaseRemoteReservation(ctx, cl, label, mode, ref, container) }, nil
@@ -419,6 +476,93 @@ func freshReservationComment(comments []issueComment, now time.Time, ttl time.Du
 		who = "another run"
 	}
 	return fmt.Sprintf("by @%s at %s", who, latest.CreatedAt.UTC().Format(time.RFC3339)), true
+}
+
+// reservationClaimRE pulls the "container `X` on host `Y`" identity out of a
+// reservation comment body for the re-check tiebreak (ward#600).
+var reservationClaimRE = regexp.MustCompile("container `([^`]+)` on host `([^`]+)`")
+
+// reservationClaim is one live reservation on the thread: when it was posted and
+// who posted it (container@host), the two keys the deterministic tiebreak sorts on.
+type reservationClaim struct {
+	at       time.Time
+	identity string
+}
+
+// reservationRecheckLost re-reads the thread after a jittered pause; a concurrent run
+// winning the tiebreak makes this run yield. A disabled window/read error fails open.
+func (r *Runner) reservationRecheckLost(ctx context.Context, cl issueForge, label string, ref agentIssueRef, container string) (bool, string) {
+	delay := reservationRecheckDelay()
+	if delay <= 0 {
+		return false, "" // disabled via WARD_AGENT_RESERVE_RECHECK
+	}
+	ours := container + "@" + hostname()
+	fmt.Fprintf(os.Stderr, "%s: reservation re-check waiting %s before confirming %s (ward#600)\n", label, delay.Round(time.Millisecond), ref)
+	reservationRecheckSleep(delay)
+	now := time.Now().UTC()
+	comments, err := cl.listIssueComments(ctx, ref.Owner, ref.Repo, ref.Number)
+	if err != nil {
+		fmt.Fprintf(os.Stderr, "%s: warning: reservation re-check could not re-read %s (%v); proceeding (ward#600)\n", label, ref, err)
+		return false, ""
+	}
+	winner, ok := winningReservationClaim(reservationClaims(comments, now, agentReservationTTL))
+	if !ok || winner.identity == ours {
+		fmt.Fprintf(os.Stderr, "%s: reservation re-check confirmed %s for this run (ward#600)\n", label, ref)
+		return false, ""
+	}
+	fmt.Fprintf(os.Stderr, "%s: reservation re-check yields %s to %s (ward#600)\n", label, ref, winner.identity)
+	return true, winner.identity
+}
+
+// reservationClaims extracts the live (fresh, un-released) reservation claims from the
+// thread, honoring freshReservationComment's release semantics (newest release wins).
+func reservationClaims(comments []issueComment, now time.Time, ttl time.Duration) []reservationClaim {
+	var released time.Time
+	for i := range comments {
+		if strings.Contains(comments[i].Body, agentReservationReleaseMarker) && comments[i].CreatedAt.After(released) {
+			released = comments[i].CreatedAt
+		}
+	}
+	var claims []reservationClaim
+	for i := range comments {
+		c := &comments[i]
+		if strings.Contains(c.Body, agentReservationReleaseMarker) || !strings.Contains(c.Body, agentReservationMarker) {
+			continue
+		}
+		if !reservationFresh(c.CreatedAt, now, ttl) {
+			continue
+		}
+		// A release stamped at or after this claim retracts it.
+		if !released.Before(c.CreatedAt) {
+			continue
+		}
+		claims = append(claims, reservationClaim{at: c.CreatedAt, identity: reservationClaimIdentity(*c)})
+	}
+	return claims
+}
+
+// reservationClaimIdentity is the tiebreak key: container@host parsed from the
+// marker body, falling back to the commenter login so the key is never empty.
+func reservationClaimIdentity(c issueComment) string {
+	if m := reservationClaimRE.FindStringSubmatch(c.Body); m != nil {
+		return m[1] + "@" + m[2]
+	}
+	return "@" + c.User.Login
+}
+
+// winningReservationClaim is the claim that proceeds: earliest timestamp, ties broken
+// by lexically-min identity - a total order, so exactly one racer wins (ward#600).
+func winningReservationClaim(claims []reservationClaim) (reservationClaim, bool) {
+	if len(claims) == 0 {
+		return reservationClaim{}, false
+	}
+	best := claims[0]
+	for _, c := range claims[1:] {
+		if c.at.Before(best.at) || (c.at.Equal(best.at) && c.identity < best.identity) {
+			best = c
+		}
+	}
+	return best, true
 }
 
 // reservationCommentBody is the marker comment a run posts to claim an issue. A

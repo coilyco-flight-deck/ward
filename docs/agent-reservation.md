@@ -27,6 +27,42 @@ reclaimed once its container stops running. A detached run leaves its sentinel
 for the container's lifetime. `--print` reserves nothing. `--force` skips both
 checks to reclaim a stale or foreign hold.
 
+## Two runs on the same tick: jittered re-check + broker lock ([ward#600](https://forgejo.coilysiren.me/coilyco-flight-deck/ward/issues/600))
+
+The reservation **check** and **post** are not one atomic step, so two dispatches
+firing on the same tick can each read "not reserved", each post, and each spin a
+container - `ward#507` collected **four** reservation comments in 17 seconds. Two
+guards close that race:
+
+- **Broker per-ref lock (primary).** A dispatch routed through the host dispatch
+  broker (a director surface asking host ward to launch a sibling) takes a
+  **per-issue-ref mutex** before it runs, so two `warded #N` for the same `N`
+  **serialize at the broker before any container starts**: the second waits, then
+  sees the first's reservation and yields with zero wasted spin. A distinct ref
+  never contends, so unrelated dispatches stay parallel.
+- **Jittered double-check (backstop).** For any path the broker lock does not
+  cover - two direct host runs, or two hosts - each run, after posting its
+  reservation, waits a **randomized** interval (default `[5s,15s]`, the jitter
+  breaks the same-tick symmetry so the waiters don't just re-collide) and
+  **re-reads** the thread. If a concurrent reservation now wins a deterministic
+  tiebreak - **earliest timestamp, else the lexically-min `container@host`
+  identity** - this run yields and tears down before any work, leaving its own
+  reservation comment to lapse at the TTL (a release marker would wrongly free the
+  winner). Exactly one run wins, because every racer computes the same total order
+  over the same thread. The wait is set by `WARD_AGENT_RESERVE_RECHECK` (a
+  duration ceiling, min derives as a third of it; `0`/`off` disables it). A
+  detached run has no human watching, so the wait costs no visible latency, and
+  `--force` skips the re-check like the pre-post check.
+
+## Skip an already-closed issue ([ward#600](https://forgejo.coilysiren.me/coilyco-flight-deck/ward/issues/600))
+
+Before any container spins, `ward agent` reads the issue state. A **closed** issue
+is already landed, so the run **no-ops and tears down** with the `issue-closed`
+dispatch exit code ([agent-dispatch-contract.md](agent-dispatch-contract.md))
+rather than spinning a container to rediscover "already done" - the `#507`
+restart-loop that burned ~3 spins. `--force` works a closed issue anyway (a
+deliberate re-open-and-carry), and `--print` still renders its dry run.
+
 The remote comment is the **only** cross-host dedup + thread signal, so a failed
 post is not silent: it retries, then warns with
 the greppable token `remote reservation NOT posted`. On the **broker-dispatched**

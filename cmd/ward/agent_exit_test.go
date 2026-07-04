@@ -69,4 +69,16 @@ func TestRefusalErrorsCarryDispatchCodes(t *testing.T) {
 	if !isReservationConflict(conflict) {
 		t.Error("Coded reservation conflict no longer matches isReservationConflict")
 	}
+
+	// The closed-issue re-dispatch guard (ward#600) must carry its own code and read
+	// as a terminal decline the director marks failed, not a deferral it retries.
+	closed := dispatchDeclineErr(dispatchIssueClosed, "issue-closed", "issue a/b#1 is closed")
+	if coded := exitcode.From(closed); coded == nil {
+		t.Error("issue-closed decline is not a Coded error; main.go would exit generic 1")
+	} else if coded.Code() != dispatchIssueClosed {
+		t.Errorf("issue-closed decline code = %d, want %d", coded.Code(), dispatchIssueClosed)
+	}
+	if !isDispatchDecline(closed) {
+		t.Error("issue-closed decline should classify as a director decline (failed, not deferred)")
+	}
 }

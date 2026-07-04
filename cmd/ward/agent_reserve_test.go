@@ -335,19 +335,21 @@ func TestReservationCommentBodyIsRoadBlock(t *testing.T) {
 // fakeLockForge is a near-no-op issueForge recording lock/unlock and comment posts, so
 // lockReservedIssue (ward#494) and releaseRemoteReservation (ward#570) can be exercised.
 type fakeLockForge struct {
-	lockErr    error
-	locked     int
-	unlockErr  error
-	unlocked   int
-	commentErr error
-	comments   []string
+	lockErr      error
+	locked       int
+	unlockErr    error
+	unlocked     int
+	commentErr   error
+	comments     []string
+	listComments []issueComment
+	listErr      error
 }
 
 func (f *fakeLockForge) getIssue(context.Context, string, string, int) (*dispatch.Issue, error) {
 	return &dispatch.Issue{}, nil
 }
 func (f *fakeLockForge) listIssueComments(context.Context, string, string, int) ([]issueComment, error) {
-	return nil, nil
+	return f.listComments, f.listErr
 }
 func (f *fakeLockForge) createIssue(context.Context, string, string, string, string) (int, error) {
 	return 0, nil
@@ -588,5 +590,134 @@ func TestReservationCommentBodyFoldsJustification(t *testing.T) {
 	// The marker still leads so freshReservationComment recognizes it as a hold.
 	if !strings.HasPrefix(body, agentReservationMarker) {
 		t.Errorf("reservation comment lost its leading marker\n got: %s", body)
+	}
+}
+
+// TestWinningReservationClaim covers the deterministic tiebreak (ward#600): earliest
+// timestamp wins, ties break on the lexically-min identity, and an empty set has none.
+func TestWinningReservationClaim(t *testing.T) {
+	t0 := time.Date(2026, 7, 4, 8, 28, 20, 0, time.UTC)
+	if _, ok := winningReservationClaim(nil); ok {
+		t.Errorf("winningReservationClaim(nil) reported a winner")
+	}
+	// Earliest timestamp wins regardless of input order.
+	claims := []reservationClaim{
+		{at: t0.Add(2 * time.Second), identity: "aaa@h"},
+		{at: t0, identity: "zzz@h"},
+		{at: t0.Add(time.Second), identity: "mmm@h"},
+	}
+	if w, _ := winningReservationClaim(claims); w.identity != "zzz@h" {
+		t.Errorf("earliest-timestamp winner = %q, want zzz@h", w.identity)
+	}
+	// Same timestamp -> lexically-min identity wins.
+	tie := []reservationClaim{
+		{at: t0, identity: "engineer@tower"},
+		{at: t0, identity: "engineer@desktop"},
+	}
+	if w, _ := winningReservationClaim(tie); w.identity != "engineer@desktop" {
+		t.Errorf("tie winner = %q, want engineer@desktop", w.identity)
+	}
+}
+
+// TestReservationClaims filters the thread down to live, un-released reservation claims
+// and parses each identity from the marker body (ward#600).
+func TestReservationClaims(t *testing.T) {
+	now := time.Now().UTC()
+	ttl := agentReservationTTL
+	a := issueComment{Body: reservationCommentBody(modeClaude, "engineer-claude-ward-600", "host-a", now.Add(-time.Minute), ""), CreatedAt: now.Add(-time.Minute)}
+	b := issueComment{Body: reservationCommentBody(modeClaude, "engineer-claude-ward-600", "host-b", now.Add(-30*time.Second), ""), CreatedAt: now.Add(-30 * time.Second)}
+	stale := issueComment{Body: reservationCommentBody(modeClaude, "engineer-claude-ward-600", "host-c", now.Add(-3*time.Hour), ""), CreatedAt: now.Add(-3 * time.Hour)}
+	chat := issueComment{Body: "just a human comment", CreatedAt: now}
+	claims := reservationClaims([]issueComment{a, b, stale, chat}, now, ttl)
+	if len(claims) != 2 {
+		t.Fatalf("reservationClaims returned %d, want 2 (fresh a+b, stale + chat dropped)", len(claims))
+	}
+	got := map[string]bool{claims[0].identity: true, claims[1].identity: true}
+	if !got["engineer-claude-ward-600@host-a"] || !got["engineer-claude-ward-600@host-b"] {
+		t.Errorf("reservationClaims identities = %v, want the host-a/host-b pair", got)
+	}
+	// A release stamped at/after the latest claim retracts every claim.
+	rel := issueComment{Body: reservationReleaseCommentBody(modeClaude, "engineer-claude-ward-600"), CreatedAt: now}
+	if c := reservationClaims([]issueComment{a, b, rel}, now, ttl); len(c) != 0 {
+		t.Errorf("a release at/after the claims left %d live, want 0", len(c))
+	}
+}
+
+// TestReservationRecheckLost drives the double-check: an earlier rival makes this run
+// yield; its own/sole claim, a disabled window, or a read error all proceed (ward#600).
+func TestReservationRecheckLost(t *testing.T) {
+	r := &Runner{}
+	ref := agentIssueRef{Owner: "coilyco-flight-deck", Repo: "ward", Number: 600}
+	now := time.Now().UTC()
+	const container = "engineer-claude-ward-600"
+
+	origDelay, origSleep := reservationRecheckDelay, reservationRecheckSleep
+	reservationRecheckSleep = func(time.Duration) {}
+	defer func() { reservationRecheckDelay, reservationRecheckSleep = origDelay, origSleep }()
+
+	ourComment := issueComment{Body: reservationCommentBody(modeClaude, container, hostname(), now, ""), CreatedAt: now}
+	rival := issueComment{Body: reservationCommentBody(modeClaude, container, "rival-host", now.Add(-2*time.Second), ""), CreatedAt: now.Add(-2 * time.Second)}
+
+	t.Run("earlier rival wins -> we yield", func(t *testing.T) {
+		reservationRecheckDelay = func() time.Duration { return time.Millisecond }
+		f := &fakeLockForge{listComments: []issueComment{ourComment, rival}}
+		lost, winner := r.reservationRecheckLost(context.Background(), f, "label", ref, container)
+		if !lost {
+			t.Fatalf("expected to yield to the earlier rival, got lost=false")
+		}
+		if winner != container+"@rival-host" {
+			t.Errorf("winner = %q, want %s@rival-host", winner, container)
+		}
+	})
+
+	t.Run("we are earliest -> proceed", func(t *testing.T) {
+		reservationRecheckDelay = func() time.Duration { return time.Millisecond }
+		later := issueComment{Body: reservationCommentBody(modeClaude, container, "rival-host", now.Add(2*time.Second), ""), CreatedAt: now.Add(2 * time.Second)}
+		f := &fakeLockForge{listComments: []issueComment{ourComment, later}}
+		if lost, _ := r.reservationRecheckLost(context.Background(), f, "label", ref, container); lost {
+			t.Errorf("earliest claim should proceed, got lost=true")
+		}
+	})
+
+	t.Run("disabled window -> proceed without reading", func(t *testing.T) {
+		reservationRecheckDelay = func() time.Duration { return 0 }
+		f := &fakeLockForge{listComments: []issueComment{rival}}
+		if lost, _ := r.reservationRecheckLost(context.Background(), f, "label", ref, container); lost {
+			t.Errorf("disabled re-check should never yield, got lost=true")
+		}
+	})
+
+	t.Run("read error -> fail open", func(t *testing.T) {
+		reservationRecheckDelay = func() time.Duration { return time.Millisecond }
+		f := &fakeLockForge{listErr: errors.New("forge down")}
+		if lost, _ := r.reservationRecheckLost(context.Background(), f, "label", ref, container); lost {
+			t.Errorf("a read failure must fail open, got lost=true")
+		}
+	})
+}
+
+// TestReservationRecheckMax covers the env override parse: default, explicit duration,
+// the disable tokens, and an unparseable value falling back to the default (ward#600).
+func TestReservationRecheckMax(t *testing.T) {
+	cases := []struct {
+		env  string
+		want time.Duration
+	}{
+		{"", reservationRecheckDefaultMax},
+		{"30s", 30 * time.Second},
+		{"0", 0},
+		{"off", 0},
+		{"none", 0},
+		{"garbage", reservationRecheckDefaultMax},
+		{"-5s", reservationRecheckDefaultMax},
+	}
+	for _, c := range cases {
+		t.Setenv(reservationRecheckEnv, c.env)
+		if c.env == "" {
+			os.Unsetenv(reservationRecheckEnv)
+		}
+		if got := reservationRecheckMax(); got != c.want {
+			t.Errorf("reservationRecheckMax(env=%q) = %s, want %s", c.env, got, c.want)
+		}
 	}
 }
