@@ -161,10 +161,9 @@ func (r *Runner) reapTargetTree(ctx context.Context, work string, env reapEnv, r
 	_ = r.Runner.Exec(ctx, "git", "-C", work, "fetch", "origin")
 	fmt.Fprintln(os.Stderr, "ward container reap: fetch origin done")
 	if !refExists(ctx, r, work, "origin/main") {
-		// Without a main to integrate against we cannot safely push; preserve
-		// whatever HEAD holds on a salvage branch.
-		return r.salvage(ctx, work, env, reasonPushFail, false, nil, statusSnapshot,
-			reapDecision{Gate: "no origin/main to integrate against", ProvState: "not read (no origin/main)"})
+		// Empty repo (no base branch): establish main from a clean run rather than
+		// salvage it just for starting empty (ward#599, docs/container-reap.md).
+		return r.reapEstablishMain(ctx, work, env, statusSnapshot, releaseReservation)
 	}
 
 	// Nothing to reap comes FIRST, ahead of every salvage gate: a clean tree with
@@ -216,6 +215,68 @@ func (r *Runner) reapTargetTree(ctx context.Context, work string, env reapEnv, r
 	})
 	fmt.Fprintf(os.Stderr, "ward container reap: decision=%d for %s\n", action, work)
 	return r.executeReap(ctx, work, env, action, findings, statusSnapshot, landed)
+}
+
+// gitEmptyTree is git's canonical empty-tree object (SHA-1); diffing against it
+// renders every path in a tree as an addition (the no-base junk scan, ward#599).
+const gitEmptyTree = "4b825dc642cb6eb9a060e54bf8d69288fbee4904"
+
+// reapEstablishMain lands the empty-repo case (origin/main absent): create main
+// from a clean, run-owned commit rather than salvage. See docs/container-reap.md.
+func (r *Runner) reapEstablishMain(ctx context.Context, work string, env reapEnv, statusSnapshot string, releaseReservation bool) error {
+	// No origin/main to diff against, so the whole HEAD history is residual work.
+	residual := revCount(ctx, r, work, "HEAD")
+	fmt.Fprintf(os.Stderr, "ward container reap: no origin/main; establish-main candidate with %d commit(s) on HEAD\n", residual)
+	if residual == 0 {
+		// The agent produced no landable commit (an unborn HEAD), so there is
+		// nothing to establish main from and nothing to salvage.
+		fmt.Fprintln(os.Stderr, "ward container reap: empty repo with no commits to establish main from; nothing to reap")
+		if releaseReservation {
+			r.releaseReservationIfUnstarted(ctx, env)
+		}
+		return nil
+	}
+
+	// A pr/patch-only run never lands on main, not even to establish it (ward#508).
+	if !env.Workflow.landsOnMain() {
+		fmt.Fprintf(os.Stderr, "ward container reap: --workflow %s does not land on main; preserving establish-main work on a salvage branch\n", env.Workflow.orDefault())
+		return r.salvage(ctx, work, env, reasonWorkflowHold, false, nil, statusSnapshot,
+			reapDecision{Gate: "workflow does not land on main (--workflow pr/patch-only)", ProvState: "not read (no origin/main)"})
+	}
+
+	// Run-owned proof: the closing ref must sit in the committed history (an empty
+	// repo has no stale history, so the origin/main provenance proof does not apply).
+	if !r.issueClosingReferenceInRange(ctx, work, env.Issue, "HEAD") {
+		fmt.Fprintf(os.Stderr, "ward container reap: missing closes #%d in committed work; salvaging instead of establishing main\n", env.Issue)
+		return r.salvage(ctx, work, env, reasonCloseRef, false, nil, statusSnapshot,
+			reapDecision{Gate: "missing same-repo closing reference", ProvState: "not read (no origin/main)"})
+	}
+
+	// Junk-scan the whole tree that would land: with no base ref, diff against
+	// git's empty tree so every path shows as an addition.
+	findings := scan.Diff(r.diffEntries(ctx, work, gitEmptyTree+"..HEAD"))
+	if len(findings) > 0 {
+		fmt.Fprintf(os.Stderr, "ward container reap: junk scan flagged %d path(s); salvaging instead of establishing main\n", len(findings))
+		return r.salvage(ctx, work, env, reasonScan, false, findings, statusSnapshot,
+			reapDecision{Gate: "junk scan flagged the diff", ProvState: "not read (no origin/main)"})
+	}
+
+	// Establish main: push HEAD as the new default branch.
+	fmt.Fprintln(os.Stderr, "ward container reap: establishing main from run work (empty repo) start")
+	out, perr := r.pushCapture(ctx, work, "HEAD:main")
+	if perr == nil {
+		fmt.Fprintln(os.Stderr, "ward container reap: established main from run work (empty repo)")
+		return nil
+	}
+	// A rejected establish push is a real failure (branch protection, a main that
+	// appeared mid-run, a dead/rotated PAT): classify and salvage.
+	reason, authCause := reasonPushFail, false
+	if isAuthFailure(out) {
+		reason, authCause = reasonAuthFail, true
+	}
+	fmt.Fprintf(os.Stderr, "ward container reap: establish-main push rejected (%s); salvaging\n", reason)
+	return r.salvage(ctx, work, env, reason, authCause, findings, statusSnapshot,
+		reapDecision{Gate: "establish-main push rejected", ProvState: "not read (no origin/main)"})
 }
 
 // resolveReapWork picks the clone work tree: --work, then $WARD_REAP_WORK (set
@@ -604,11 +665,17 @@ func (r *Runner) unlandedPatchCount(ctx context.Context, work string) int {
 // issueClosingReferencePresent reports whether the committed range mentions the
 // carried issue closing trailer the same repo needs before landing.
 func (r *Runner) issueClosingReferencePresent(ctx context.Context, work string, issue int) bool {
+	return r.issueClosingReferenceInRange(ctx, work, issue, "origin/main..HEAD")
+}
+
+// issueClosingReferenceInRange is the range-parameterized form: normal path checks
+// origin/main..HEAD, empty-repo establish-main checks whole-HEAD history (ward#599).
+func (r *Runner) issueClosingReferenceInRange(ctx context.Context, work string, issue int, rangeRef string) bool {
 	if issue == 0 {
 		return true
 	}
 	pattern := fmt.Sprintf("closes #%d", issue)
-	out, err := r.Runner.Capture(ctx, "git", "-C", work, "log", "--format=%B", "origin/main..HEAD")
+	out, err := r.Runner.Capture(ctx, "git", "-C", work, "log", "--format=%B", rangeRef)
 	if err != nil {
 		return false
 	}

@@ -535,9 +535,11 @@ func (r *Runner) writeRunProvenance(ctx context.Context, work string, e bootstra
 		blog("provenance skip: no issue for %s", work)
 		return nil
 	}
+	// An empty repo has no origin/main to baseline against: record an empty baseline
+	// (an establish-main dispatch) rather than abort bring-up (ward#599, see docs).
 	baseline := r.captureTrim(ctx, "git", "-C", work, "rev-parse", "origin/main")
 	if baseline == "" {
-		return fmt.Errorf("ward container bootstrap: capture origin/main baseline")
+		blog("provenance: no origin/main baseline (empty repo); recording establish-main dispatch for %s", work)
 	}
 	prov := runProvenance{
 		RunID:        e.Container,
