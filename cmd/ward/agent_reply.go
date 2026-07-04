@@ -380,18 +380,61 @@ func parseReplyPlan(read string) (*replyPlan, bool) {
 	return &p, true
 }
 
-// extractJSONBlock pulls the JSON out of a read: a ```json fence if present, else
-// the outermost brace span. A bad grab fails to decode, so the raw fallback holds.
+// extractJSONBlock pulls the JSON object from a read: it anchors on a ```json fence
+// (else the first brace), then brace-matches to the object's true end (ward#598).
 func extractJSONBlock(read string) (string, bool) {
+	start := 0
 	if i := strings.Index(read, "```json"); i >= 0 {
-		rest := read[i+len("```json"):]
-		if j := strings.Index(rest, "```"); j >= 0 {
-			return strings.TrimSpace(rest[:j]), true
-		}
+		start = i + len("```json")
 	}
+	if obj, ok := scanJSONObject(read[start:]); ok {
+		return obj, true
+	}
+	// No brace-balanced object after the fence: fall back to the outermost brace
+	// span so a bare, unfenced object is still recovered.
 	if i := strings.Index(read, "{"); i >= 0 {
 		if j := strings.LastIndex(read, "}"); j > i {
 			return strings.TrimSpace(read[i : j+1]), true
+		}
+	}
+	return "", false
+}
+
+// scanJSONObject returns the first brace-balanced JSON object in s, treating braces
+// and ``` fences inside string values as opaque so they never end the scan early.
+func scanJSONObject(s string) (string, bool) {
+	start := strings.IndexByte(s, '{')
+	if start < 0 {
+		return "", false
+	}
+	depth := 0
+	inStr := false
+	esc := false
+	for i := start; i < len(s); i++ {
+		c := s[i]
+		if inStr {
+			// Inside a string value, only an unescaped quote ends it; every other
+			// byte - braces, ``` fences and all - is opaque payload.
+			switch {
+			case esc:
+				esc = false
+			case c == '\\':
+				esc = true
+			case c == '"':
+				inStr = false
+			}
+			continue
+		}
+		switch c {
+		case '"':
+			inStr = true
+		case '{':
+			depth++
+		case '}':
+			depth--
+			if depth == 0 {
+				return strings.TrimSpace(s[start : i+1]), true
+			}
 		}
 	}
 	return "", false

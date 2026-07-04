@@ -231,6 +231,37 @@ func TestExtractJSONBlock(t *testing.T) {
 	}
 }
 
+// Regression (ward#598): a summary whose markdown carries nested ``` code fences
+// must decode, not truncate the object at the first inner fence and leak the raw block.
+func TestExtractJSONBlockNestedFences(t *testing.T) {
+	// The summary string itself contains fenced code blocks - the exact shape that
+	// broke extraction. Braces inside those strings must not close the object early.
+	read := "Preamble prose the agent should not have emitted.\n\n" +
+		"```json\n{\n" +
+		"  \"summary\": \"## Config\\n\\nApply this:\\n\\n```yaml\\nkey: {nested: value}\\n```\\n\\nThen this:\\n\\n```json\\n{\\\"a\\\": 1}\\n```\\ndone\",\n" +
+		"  \"issues\": []\n" +
+		"}\n```\n\ntrailing prose"
+	blk, ok := extractJSONBlock(read)
+	if !ok {
+		t.Fatalf("extractJSONBlock: nested-fence summary should still yield a block")
+	}
+	p, ok := parseReplyPlan(read)
+	if !ok {
+		t.Fatalf("parseReplyPlan: nested-fence summary should decode, got block:\n%s", blk)
+	}
+	if len(p.Issues) != 0 {
+		t.Errorf("expected no fan-out issues, got %d", len(p.Issues))
+	}
+	// The rendered single comment is the summary markdown, not the raw JSON envelope.
+	body := p.singleComment()
+	if !strings.HasPrefix(strings.TrimSpace(body), "## Config") {
+		t.Errorf("singleComment should render the summary markdown, got:\n%s", body)
+	}
+	if strings.Contains(body, "\"summary\"") {
+		t.Errorf("the JSON envelope leaked into the comment body:\n%s", body)
+	}
+}
+
 func TestSplitRepoSlug(t *testing.T) {
 	cases := []struct {
 		in          string
