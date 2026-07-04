@@ -3314,3 +3314,8 @@ match the behaviour of browsers. Encode the data with Base64 if line endings sho
 Every verb whose path carries one of these parameters must supply a value matching a glob below, or it fails closed.
 
 - `owner` must match: coily*
+
+## See also
+
+- [ward-kdl.md](../ward-kdl.md) - the build-time authoring layer behind this surface
+- [ward-kdl-surface.md](../ward-kdl-surface.md) - the full generated verb surface, area by area

@@ -266,3 +266,8 @@ Options (1):
 ### ward-kdl ops trello board delete (denied)
 
 board deletion is irreversible; delete it in the Trello UI
+
+## See also
+
+- [ward-kdl.md](../ward-kdl.md) - the build-time authoring layer behind this surface
+- [ward-kdl-surface.md](../ward-kdl-surface.md) - the full generated verb surface, area by area

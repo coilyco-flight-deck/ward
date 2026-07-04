@@ -1,22 +1,25 @@
 .PHONY: help build test vet lint lint-refs tidy cover install ward-kdl install-tmp lock skew sync-ops-assets sync-exec-assets sync-fleet-assets build-ward-kdl build-ward-kdl-tiers build-ward-kdl-forgejo-tiers workspace agent-roster
 
-SPECVERB_GEN := forgejo.coilysiren.me/coilyco-flight-deck/cli-guard/cmd/specverb-gen
+KDL_SPECS := forgejo.coilysiren.me/coilyco-flight-deck/cli-guard/cmd/kdl-specs
 WARD_SPEC_BUNDLE_DIR ?= ../agentic-os/ward-specs
 
-REF ?= v0.48.0
+REF ?= v0.72.0
 
-# DRIVER is the specverb-gen invocation `make build-ward-kdl` runs. By default it
-# pins the published cli-guard module version (`$(SPECVERB_GEN)@$(REF)`) - the
+# DRIVER is the kdl-specs invocation `make build-ward-kdl` runs. By default it
+# pins the published cli-guard module version (`$(KDL_SPECS)@$(REF)`) - the
 # cross-module release dance (ward#326): a cli-guard change is only usable here
-# after a tag + `go get` bump + REF bump. When a gitignored go.work exists (see
-# the `workspace` target) drop the `@$(REF)`, so `go run` resolves specverb-gen
-# from the sibling working tree through the workspace - no tag, no `go get`, no
-# REF bump. go.work is absent in CI and the warded engineer clone, so single-repo
-# builds always take the pinned-version branch and resolve from the module pin.
+# after a tag + `go get` bump + REF bump. REF tracks go.mod's cli-guard pin so the
+# build-time generator and the embedded engine stay in lockstep (the `doc-link`
+# footer + exec-dialect `action` nodes the current guardfiles use need v0.67.0+).
+# When a gitignored go.work exists (see the `workspace` target) drop the
+# `@$(REF)`, so `go run` resolves kdl-specs from the sibling working tree through
+# the workspace - no tag, no `go get`, no REF bump. go.work is absent in CI and
+# the warded engineer clone, so single-repo builds always take the pinned-version
+# branch and resolve from the module pin.
 ifeq ($(wildcard go.work),)
-DRIVER := $(SPECVERB_GEN)@$(REF)
+DRIVER := $(KDL_SPECS)@$(REF)
 else
-DRIVER := $(SPECVERB_GEN)
+DRIVER := $(KDL_SPECS)
 endif
 
 # Go directive for a generated go.work, kept in lockstep with go.mod's `go` line.
