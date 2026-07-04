@@ -232,3 +232,8 @@ org deletion is irreversible and human-only
 ### ward-kdl ops glitchtip event store (denied)
 
 event ingest is the SDK's job, not ward
+
+## See also
+
+- [ward-kdl.md](../ward-kdl.md) - the build-time authoring layer behind this surface
+- [ward-kdl-surface.md](../ward-kdl-surface.md) - the full generated verb surface, area by area

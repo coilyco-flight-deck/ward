@@ -578,6 +578,18 @@ Options (2):
 - `--since` (string, optional): if provided, only comments updated since the specified time are returned.
 - `--before` (string, optional): if provided, only comments updated before the provided time are returned.
 
+## ward-kdl ops forgejo issue-comment delete - delete a single issue comment by its comment ID (DELETE /repos/{owner}/{repo}/issues/comments/{id}). op pinned for the same reason `list issue-comment` pins issueGetComments - the bare `delete issue-comment` convention does not reach issueDeleteComment. This is the cleanup path a stale reservation road-block needed (ward#570): a `ward agent` launch that dies before its container comes up posts a release-marker comment to retract the hold, but the orphaned `ward-agent-reservation` comment itself could only be removed by hand until this leaf. {owner}-scoped by the coily* gate above; irreversible, so it is a targeted-ID delete, never a bulk sweep.
+
+`DELETE /repos/{owner}/{repo}/issues/comments/{id}`
+
+Authorized by grant: can delete issue-comment. Destructive - mutates irreversibly.
+
+Positional arguments (3):
+
+- `<owner>` (string)
+- `<repo>` (string)
+- `<id>` (string)
+
 ## ward-kdl ops forgejo commit list - commit list (GET /repos/{owner}/{repo}/commits). op pinned because the operationId is repoGetAllCommits - a `get`-shaped id the `list commit` convention does not reach.
 
 `GET /repos/{owner}/{repo}/commits`
@@ -907,3 +919,8 @@ pull requests are not exposed through ward; read them in the web UI
 ### ward-kdl ops forgejo pr list (denied)
 
 pull requests are not exposed through ward; read them in the web UI
+
+## See also
+
+- [ward-kdl.md](../ward-kdl.md) - the build-time authoring layer behind this surface
+- [ward-kdl-surface.md](../ward-kdl-surface.md) - the full generated verb surface, area by area

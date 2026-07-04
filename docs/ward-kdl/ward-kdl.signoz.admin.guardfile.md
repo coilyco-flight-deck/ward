@@ -143,3 +143,8 @@ dashboard deletion is irreversible (drops the dashboard and all its panels); do 
 ### ward-kdl-admin ops signoz rule delete (denied)
 
 alert-rule deletion is irreversible; do it in the SigNoz UI. ward exposes create/read/update only, and the enable/disable toggle is deliberately not surfaced (ward#241).
+
+## See also
+
+- [ward-kdl.md](../ward-kdl.md) - the build-time authoring layer behind this surface
+- [ward-kdl-surface.md](../ward-kdl-surface.md) - the full generated verb surface, area by area
