@@ -21,8 +21,11 @@ labels, so pin them down first:
 - **Unit C** - **routing the clients** ([ward#334](https://forgejo.coilysiren.me/coilyco-flight-deck/ward/issues/334)): rewiring the two
   chokepoints (`ops forgejo` mutations and `warded #N` dispatch) to reach the
   forge through the socket instead of a token in the agent's env.
-- **Unit D** - **dropping the raw token**: removing `FORGEJO_TOKEN` from the
-  dropped agent's env once C proves the clients no longer need it.
+- **Unit D** - **dropping the raw token** ([ward#608](https://forgejo.coilysiren.me/coilyco-flight-deck/ward/issues/608)):
+  removing `FORGEJO_TOKEN` from the dropped agent's env. **Still deferred, and not a
+  ward-only change** - it is blocked on a cli-guard **read op** first (see "Dual
+  mode" below). Do not scrub the token before reads route through the broker, or
+  explore sessions go blind.
 
 This is the **ward side** (Unit B). Policy in cli-guard, glue + credential in ward.
 
@@ -85,6 +88,16 @@ route through when `WARD_BROKER_SOCK` is set:
 
 `FORGEJO_TOKEN` is **still** present alongside the broker. Unit C rewires the
 clients; Unit D drops the raw token. A dispatch-seed failure falls back to env->SSM.
+
+**Why Unit D is not just a scrub** ([ward#608](https://forgejo.coilysiren.me/coilyco-flight-deck/ward/issues/608)):
+forge **reads** (`get` / `list` / `search` / `view`) still go **direct** - the
+client's `forgejoReadVerbs` sends them to `ward ops forgejo`, which resolves auth
+from env `FORGEJO_TOKEN`. `ward-kdl-read` can't cover them (its guardfile auths
+from SSM, and an explore box has no AWS), and the broker can't serve them
+(`cli-guard/pkg/broker` has no read op - only file/edit/comment/dispatch). So the
+raw-token scrub is blocked on a **cli-guard read op** landing first; only once
+reads round-trip through the broker can Unit D remove the token without blinding
+explore sessions.
 
 ## Not the dispatch broker
 
