@@ -35,6 +35,21 @@ Warming is **best-effort** - any failure logs and the container continues, since
 the target work is the job. `WARD_SUBSTRATE_SKIP=1` skips it entirely. The
 agent-facing note lives in [AGENTS.container.md](../cmd/ward/containerassets/AGENTS.container.md).
 
+## Labeling the mounts ([ward#593](https://forgejo.coilysiren.me/coilyco-flight-deck/ward/issues/593))
+
+Warming the repos is not enough. A mount the agent is never told to read is a
+silent pile on disk, and a design/ops session that does not spelunk it falls back
+to interrogating the operator for facts already checked out (a public IP, a Caddy
+route, a `*.coilysiren.me` subdomain - all in `/substrate/infrastructure`): the
+"'discoverable in the clone' is a trap" failure the doctrine names.
+
+So the composed context ends with an explicit **read-these-first** block: one
+bullet per warmed `/substrate/<name>`, each with a self-sourced tagline from that
+repo's own `README.md` (then `AGENTS.md`, then `docs/FEATURES.md`, badge/HTML/fence
+noise skipped) so the label never drifts. The block is one-sourced across the bash
+and Go compose paths via the hidden `ward container substrate-inventory` command,
+a no-op when `/substrate` is empty, and fires for every session.
+
 ## When a repo lands in both trees
 
 Because both the substrate working copy and the target/granted clones hydrate

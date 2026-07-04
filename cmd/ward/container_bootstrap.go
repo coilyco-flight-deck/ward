@@ -941,6 +941,11 @@ func (r *Runner) composeContext(e bootstrapEnv) {
 			buf = append(buf, extra...)
 		}
 	}
+	// Label the mounted substrate repos as read-first context (ward#593); empty (no
+	// section appended) when no substrate repo is warmed. See docs/container-substrate.md.
+	if block := substrateInventoryBlock(e.SubstrateDest); block != "" {
+		buf = append(buf, []byte(block)...)
+	}
 	// A read-only session has no seed to carry the "do not push" constraint, so it
 	// rides here as static entry context, overriding the autonomy doctrine (ward#293).
 	if e.ReadOnly {

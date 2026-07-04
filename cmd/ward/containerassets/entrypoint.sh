@@ -523,6 +523,11 @@ compose_context() {
   elif [ "$WARD_CONTEXT_LEVEL" -eq 1 ] && [ -f "$WARD_CONTEXT_SRC/AGENTS.md" ]; then
     printf '\n\n---\n\n' >> "$out"; cat "$WARD_CONTEXT_SRC/AGENTS.md" >> "$out"
   fi
+  # Label the mounted substrate repos as read-first context (ward#593); shares the block
+  # text with Go composeContext via the hidden command (no-op if empty/ward absent).
+  if command -v ward >/dev/null 2>&1; then
+    ward container substrate-inventory "$WARD_SUBSTRATE_DEST" >> "$out" 2>/dev/null || true
+  fi
   # Read-only static entry context (a seedless run has no seed to carry it; ward#293).
   # Kept in sync with readOnlyContextBlock in container_bootstrap.go.
   if [ "${WARD_READONLY:-0}" = 1 ]; then

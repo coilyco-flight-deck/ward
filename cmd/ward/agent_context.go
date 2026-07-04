@@ -1,10 +1,12 @@
 package main
 
 import (
+	"bufio"
 	"context"
 	"fmt"
 	"os"
 	"path/filepath"
+	"strings"
 
 	"github.com/urfave/cli/v3"
 	"gopkg.in/yaml.v3"
@@ -112,6 +114,137 @@ func resolveContextRepos(auto, explicit []targetRepo, target targetRepo, substra
 		notes = append(notes, extraRepoLogLine{Slug: slug, Reason: "read-only catalog dependency"})
 	}
 	return out, notes
+}
+
+// --- substrate inventory (ward#593): label the mounted reference repos ---------
+
+// substrateInventoryHeader turns the unlabeled /substrate mount into a "read these
+// first" pointer so a session reads it before interrogating the operator (ward#593).
+const substrateInventoryHeader = `
+
+---
+
+## Reference repos mounted read-only under /substrate (read these BEFORE asking)
+
+These cross-cutting reference repos are already checked out read-only in this
+container. They are your first-line context for any infra / deploy / hosting /
+config / DNS / domain question: the answer to "do I have a public IP", "my own
+domain", "a Caddy route", "a Funnel", "an existing subdomain" lives in these
+files, not in the operator's head. **Read or grep the relevant repo before you
+ask a human a factual question whose answer is in a mounted repo** - naming the
+gap is not closing it, and "discoverable in the clone" only helps if you look.
+
+`
+
+// containerSubstrateInventoryCommand is the hidden `ward container
+// substrate-inventory [dest]`: bash and Go compose share one block source (ward#593).
+func containerSubstrateInventoryCommand() *cli.Command {
+	return &cli.Command{
+		Name:            "substrate-inventory",
+		Hidden:          true,
+		Usage:           "Render the read-these-first pointer at the mounted /substrate repos (image-internal; ward#593).",
+		SkipFlagParsing: true,
+		Action: func(_ context.Context, c *cli.Command) error {
+			dest := c.Args().First()
+			if dest == "" {
+				dest = envOr("WARD_SUBSTRATE_DEST", "/substrate")
+			}
+			if block := substrateInventoryBlock(dest); block != "" {
+				fmt.Print(block)
+			}
+			return nil
+		},
+	}
+}
+
+// substrateInventoryBlock renders one bullet per repo warmed under dest with a
+// self-sourced tagline; "" when none, so a substrate-less run appends nothing.
+func substrateInventoryBlock(dest string) string {
+	entries, err := os.ReadDir(dest)
+	if err != nil {
+		return ""
+	}
+	var lines []string
+	for _, entry := range entries {
+		if !entry.IsDir() {
+			continue
+		}
+		repo := filepath.Join(dest, entry.Name())
+		line := "- **" + repo + "**"
+		if tag := substrateRepoTagline(repo); tag != "" {
+			line += " - " + tag
+		}
+		lines = append(lines, line)
+	}
+	if len(lines) == 0 {
+		return ""
+	}
+	return substrateInventoryHeader + strings.Join(lines, "\n") + "\n"
+}
+
+// substrateRepoTagline extracts a one-line summary from a repo's own
+// README/AGENTS/FEATURES, so each repo self-describes and the label never drifts.
+func substrateRepoTagline(repo string) string {
+	for _, name := range []string{"README.md", "AGENTS.md", "docs/FEATURES.md"} {
+		if tag := taglineFromFile(filepath.Join(repo, name)); tag != "" {
+			return tag
+		}
+	}
+	return ""
+}
+
+// taglineFromFile returns a markdown file's first prose line (headings, fences,
+// and badge/HTML noise skipped), else its first heading text; "" on a read miss.
+func taglineFromFile(path string) string {
+	f, err := os.Open(path) // #nosec G304 -- bind-mounted substrate reference repo
+	if err != nil {
+		return ""
+	}
+	defer func() { _ = f.Close() }()
+	sc := bufio.NewScanner(f)
+	sc.Buffer(make([]byte, 0, 64*1024), 1024*1024)
+	inFence := false
+	heading := ""
+	for scanned := 0; sc.Scan() && scanned < 60; scanned++ {
+		line := strings.TrimSpace(sc.Text())
+		if line == "" {
+			continue
+		}
+		if strings.HasPrefix(line, "```") || strings.HasPrefix(line, "~~~") {
+			inFence = !inFence
+			continue
+		}
+		if inFence {
+			continue
+		}
+		if strings.HasPrefix(line, "#") {
+			if heading == "" {
+				heading = strings.TrimSpace(strings.TrimLeft(line, "# "))
+			}
+			continue
+		}
+		if isMarkdownNoise(line) {
+			continue
+		}
+		return truncate(collapseSpaces(line), 200)
+	}
+	return truncate(collapseSpaces(heading), 200)
+}
+
+// isMarkdownNoise reports whether a line is non-prose chrome a tagline should
+// skip: images, badges/link-ref defs, HTML, blockquotes, and table rows.
+func isMarkdownNoise(line string) bool {
+	switch line[0] {
+	case '!', '[', '<', '>', '|':
+		return true
+	}
+	return false
+}
+
+// collapseSpaces folds any internal whitespace run to a single space so a wrapped
+// markdown line renders as one clean tagline.
+func collapseSpaces(s string) string {
+	return strings.Join(strings.Fields(s), " ")
 }
 
 // substrateContextSkipSet is the set of substrate-manifest slugs a catalog dep is
