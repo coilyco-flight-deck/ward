@@ -4,8 +4,6 @@ import (
 	"context"
 	"fmt"
 	"io"
-	"os/exec"
-	"path/filepath"
 	"strings"
 
 	"forgejo.coilysiren.me/coilyco-flight-deck/cli-guard/cli/verb"
@@ -351,43 +349,11 @@ func (r *Runner) execBrewRaw(ctx context.Context, argv []string, tail *brewTail)
 	} else {
 		shadow.Stderr = tail
 	}
-	// On linuxbrew the jail execs brew's realpath, from which brew self-derives a
-	// phantom empty prefix; run via the canonical symlink instead. See ward#543.
-	if brewJailMisdetectsPrefix() {
-		shadow.Sandbox = nil
-	}
+	// brew self-locates HOMEBREW_PREFIX from argv0's grandparent; cli-guard's jail
+	// execs a canonical-dir alias so it resolves right while staying jailed (ward#546).
 	execErr := shadow.Exec(ctx, "brew", argv...)
 	rows := p.Stop()
 	return rows, execErr
-}
-
-// brewLauncherPrefix mirrors bin/brew's `HOMEBREW_PREFIX="${HOMEBREW_BREW_FILE%/*/*}"`:
-// argv0's grandparent, recomputed per run and never read from the environment.
-func brewLauncherPrefix(brewPath string) string {
-	return filepath.Dir(filepath.Dir(brewPath))
-}
-
-// jailBreaksBrewPrefix reports whether execing brew via realPath (as the jail does)
-// changes its self-derived prefix versus the canonical PATH entry. See ward#543.
-func jailBreaksBrewPrefix(canonical, realPath string) bool {
-	if canonical == "" || realPath == "" || canonical == realPath {
-		return false
-	}
-	return brewLauncherPrefix(canonical) != brewLauncherPrefix(realPath)
-}
-
-// brewJailMisdetectsPrefix resolves brew on PATH and reports whether the jail's
-// realpath exec would misdetect its prefix. Resolution failure is a safe false.
-func brewJailMisdetectsPrefix() bool {
-	canonical, err := exec.LookPath("brew")
-	if err != nil {
-		return false
-	}
-	realPath, err := filepath.EvalSymlinks(canonical)
-	if err != nil {
-		return false
-	}
-	return jailBreaksBrewPrefix(canonical, realPath)
 }
 
 // brewTail is a fixed-size last-N-bytes ring for the stderr tail.

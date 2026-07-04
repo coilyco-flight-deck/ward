@@ -80,6 +80,7 @@ the container edge plus this verb gate. See
 
 ## See also
 
+- [comparison-container-use.md](comparison-container-use.md) - the other comparison: ward vs Dagger container-use, capability gate vs container isolation.
 - [README.md](../README.md) - what ward is.
 - [docs/architecture.md](architecture.md) - the cli-guard / ward-kdl / ward layers.
 - [docs/FEATURES.md](FEATURES.md) - the verb inventory.
