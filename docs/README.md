@@ -93,6 +93,7 @@ New to ward? Read [architecture.md](architecture.md) first - it frames the whole
 - [container-capability-ladder.md](container-capability-ladder.md) - the progressive-capability ladder (`WARD_CONTEXT_LEVEL`, by driver).
 - [container-permissions.md](container-permissions.md) - what the container itself may do.
 - [container-substrate.md](container-substrate.md) - the read-only `/substrate` reference repos.
+- [substrate-catalog.md](substrate-catalog.md) - the Forgejo-derived repo catalog baked into the seed as read-these-first backing data.
 - [context-probe.md](context-probe.md) - design: the role-aware three-tier context probe + per-driver context-management spec.
 - [container-multi-repo.md](container-multi-repo.md) - multi-repo runs (`--repo`).
 - [container-precommit.md](container-precommit.md) - fresh-clone pre-commit parity.

@@ -36,13 +36,15 @@ type issueComment struct {
 	} `json:"user"`
 }
 
-// repoBrief is one row of an owner's repo list - just the fields the task route
-// survey needs to build a catalog the agent picks from (ward#164).
+// repoBrief is one row of an owner's repo list - the fields the task-route survey
+// and the substrate catalog read: canonical full_name, description, topics.
 type repoBrief struct {
-	Name        string `json:"name"`
-	Description string `json:"description"`
-	Archived    bool   `json:"archived"`
-	Empty       bool   `json:"empty"`
+	Name        string   `json:"name"`
+	FullName    string   `json:"full_name"`
+	Description string   `json:"description"`
+	Topics      []string `json:"topics"`
+	Archived    bool     `json:"archived"`
+	Empty       bool     `json:"empty"`
 }
 
 // forgejoClient drives Forgejo through `ward ops forgejo`. exe is the resolved

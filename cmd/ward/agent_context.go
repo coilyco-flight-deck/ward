@@ -3,6 +3,7 @@ package main
 import (
 	"bufio"
 	"context"
+	"encoding/json"
 	"fmt"
 	"os"
 	"path/filepath"
@@ -157,9 +158,15 @@ func containerSubstrateInventoryCommand() *cli.Command {
 	}
 }
 
-// substrateInventoryBlock renders one bullet per repo warmed under dest with a
-// self-sourced tagline; "" when none, so a substrate-less run appends nothing.
+// substrateInventoryBlock renders one bullet per repo warmed under dest, enriched
+// from the baked substrate catalog when the seed carries one; "" when none.
 func substrateInventoryBlock(dest string) string {
+	return renderSubstrateInventory(dest, loadSeedCatalogIndex())
+}
+
+// renderSubstrateInventory is the pure block builder: one bullet per mounted repo,
+// each enriched from its catalog entry, else its README tagline. "" when none.
+func renderSubstrateInventory(dest string, catalog map[string]catalogEntry) string {
 	entries, err := os.ReadDir(dest)
 	if err != nil {
 		return ""
@@ -169,17 +176,66 @@ func substrateInventoryBlock(dest string) string {
 		if !entry.IsDir() {
 			continue
 		}
-		repo := filepath.Join(dest, entry.Name())
-		line := "- **" + repo + "**"
-		if tag := substrateRepoTagline(repo); tag != "" {
-			line += " - " + tag
-		}
-		lines = append(lines, line)
+		name := entry.Name()
+		ce, ok := catalog[name]
+		lines = append(lines, inventoryLine(filepath.Join(dest, name), ce, ok))
 	}
 	if len(lines) == 0 {
 		return ""
 	}
 	return substrateInventoryHeader + strings.Join(lines, "\n") + "\n"
+}
+
+// inventoryLine renders one read-these-first bullet: the canonical full_name,
+// description, and topics from the catalog entry, else the repo's README tagline.
+func inventoryLine(repo string, ce catalogEntry, ok bool) string {
+	line := "- **" + repo + "**"
+	if ok && ce.FullName != "" {
+		line += " (" + ce.FullName + ")"
+	}
+	desc := ""
+	if ok {
+		desc = ce.Description
+	}
+	if desc == "" {
+		desc = substrateRepoTagline(repo)
+	}
+	if desc != "" {
+		line += " - " + desc
+	}
+	if ok && len(ce.Topics) > 0 {
+		line += " [topics: " + strings.Join(ce.Topics, ", ") + "]"
+	}
+	return line
+}
+
+// loadSeedCatalogIndex reads the baked catalog from the substrate seed, indexed by
+// /substrate/<name> basename; nil on any miss so the block falls back to a tagline.
+func loadSeedCatalogIndex() map[string]catalogEntry {
+	seed := envOr("WARD_SUBSTRATE_SEED", containerSubstrateSeed)
+	return readCatalogIndex(filepath.Join(seed, substrateCatalogSeedFile))
+}
+
+// readCatalogIndex parses a catalog file into a name->entry index (keyed by the
+// full_name's last segment); nil on a read or parse miss (best-effort compose).
+func readCatalogIndex(path string) map[string]catalogEntry {
+	b, err := os.ReadFile(path) // #nosec G304 -- baked substrate seed path, no secrets
+	if err != nil {
+		return nil
+	}
+	var cat substrateCatalog
+	if err := json.Unmarshal(b, &cat); err != nil {
+		return nil
+	}
+	idx := make(map[string]catalogEntry, len(cat.Repos))
+	for _, e := range cat.Repos {
+		name := e.FullName
+		if i := strings.LastIndex(name, "/"); i >= 0 {
+			name = name[i+1:]
+		}
+		idx[name] = e
+	}
+	return idx
 }
 
 // substrateRepoTagline extracts a one-line summary from a repo's own
