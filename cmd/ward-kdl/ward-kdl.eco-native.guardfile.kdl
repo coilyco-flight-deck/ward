@@ -1,0 +1,64 @@
+// ward-kdl ops eco native - the Windows-local half of the Eco content pipeline
+// (cli-guard execverb, exec dialect + complex actions). Dissolves ward#582's
+// compiled Go EcoExecutor into a declarative guarded-rollback action (ward#585,
+// inbox#158): the orchestration is this spec composing the pinned infra
+// scripts, the engine is cli-guard's stepflow (docs/specverb-rollback.md).
+//
+// The `native` target is Kai's local Steam EcoServer install on the Windows
+// tower - her test server, the pre-promote gate host (eco-ops#30). The sibling
+// eco-server guardfile is the Linux prod half; the two mount as
+// `ward ops eco {native,server}`, the target selector as the subtree.
+//
+// Every step runs a pinned infrastructure script (argv fixed at parse; the
+// operator supplies only data args), each emitting the shared key=val contract
+// (service_active / journal_clean / server_ready) so one canary predicate
+// serves both targets. `promote` ships the exact working copy the gate tested
+// (ward#584): apply overlays $src, never a released asset.
+wrap ward-kdl ops eco native {
+    exec pwsh
+    can run test {
+        argv "-NoProfile" "-File" "X:/projects/coilyco-flight-deck/infrastructure/scripts/eco-native-smoke.ps1"
+        describe "smoke-gate the working copy: boot a throwaway world, fail-closed on ready/ModKit/compile/mods markers. Args: [src] [mods-csv]"
+    }
+    can run snapshot {
+        argv "-NoProfile" "-File" "X:/projects/coilyco-flight-deck/infrastructure/scripts/eco-native-snapshot.ps1"
+        describe "copy live Mods/+Configs/ aside; prints the snapshot id as the final line"
+    }
+    can run apply {
+        argv "-NoProfile" "-File" "X:/projects/coilyco-flight-deck/infrastructure/scripts/eco-native-apply.ps1"
+        describe "overlay a working-copy Mods/+Configs/ onto the install (the tested artifact, ward#584)"
+    }
+    can run restart {
+        argv "-NoProfile" "-File" "X:/projects/coilyco-flight-deck/infrastructure/scripts/eco-native-restart.ps1"
+        describe "stop the install's EcoServer process and relaunch headless, run logs truncated"
+    }
+    can run await {
+        argv "-NoProfile" "-File" "X:/projects/coilyco-flight-deck/infrastructure/scripts/eco-native-await.ps1"
+        describe "bounded wait for a healthy post-restart boot (Eco boots take minutes)"
+    }
+    can run health {
+        argv "-NoProfile" "-File" "X:/projects/coilyco-flight-deck/infrastructure/scripts/eco-native-health.ps1"
+        describe "one instant probe: service_active / journal_clean / server_ready key=val"
+    }
+    can run rollback {
+        argv "-NoProfile" "-File" "X:/projects/coilyco-flight-deck/infrastructure/scripts/eco-native-rollback.ps1"
+        describe "restore a snapshot, restart, and VERIFY recovery (non-zero when still unhealthy)"
+    }
+    action promote {
+        describe "guarded local promote: snapshot, apply the tested working copy, restart, await ready, canary-watch; any failure rolls back to the snapshot"
+        input src { positional; required; help "working-copy root holding Mods/ (the tree the smoke gate tested)" }
+        call run snapshot {
+            as snap
+            compensate run rollback { args "$snap.last_line" }
+        }
+        call run apply { args "$src" }
+        call run restart
+        call run await
+        canary run health {
+            every "20s"
+            window "60s"
+            degraded-when "exit_code != `0`"
+            as health
+        }
+    }
+}
