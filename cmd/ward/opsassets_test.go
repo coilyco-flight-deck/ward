@@ -64,6 +64,24 @@ func TestOpsForgejoIssueListAllMounts(t *testing.T) {
 	}
 }
 
+// TestOpsForgejoIssueCommentDeleteMounts pins ward#570's cleanup leaf: issue-comment
+// carries both `list` and the added `delete` (a dropped spec-lock op regresses here).
+func TestOpsForgejoIssueCommentDeleteMounts(t *testing.T) {
+	forgejo, err := buildForgejoOps()
+	if err != nil {
+		t.Fatalf("buildForgejoOps: %v", err)
+	}
+	ic := commandNamed(forgejo.Commands, "issue-comment")
+	if ic == nil {
+		t.Fatalf("forgejo group missing issue-comment command; got %v", commandNames(forgejo.Commands))
+	}
+	for _, want := range []string{"list", "delete"} {
+		if commandNamed(ic.Commands, want) == nil {
+			t.Fatalf("issue-comment missing %q leaf; got %v", want, commandNames(ic.Commands))
+		}
+	}
+}
+
 // TestOpsCommandShape asserts the umbrella mounts forgejo under `ops`, the shape
 // main.go registers.
 func TestOpsCommandShape(t *testing.T) {

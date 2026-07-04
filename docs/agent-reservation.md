@@ -63,6 +63,19 @@ plus an unlock. A human reading the issue then sees the road-block retracted, an
 a re-run needs no `--force`. The rollback is best-effort and loud: a failed
 release post warns but never masks the original launch error.
 
+Retracting the road-block by **appending** a release marker keeps the launched
+rollback consistent with the reaper, but it leaves the original
+`ward-agent-reservation` comment on the thread as visible-if-superseded noise.
+An operator who wants that stray comment **gone**, not merely retracted, can now
+delete it directly: `ward ops forgejo issue-comment delete <owner> <repo> <id>`
+resolves `issueDeleteComment` (DELETE /repos/{owner}/{repo}/issues/comments/{id},
+`--dry-run` prints the resolved request first). Before this leaf the surface
+exposed only `list`, so removing an orphaned reservation comment meant the web UI
+by hand ([ward#570](https://forgejo.coilysiren.me/coilyco-flight-deck/ward/issues/570)).
+The delete is a targeted-ID call, `coily*`-owner-scoped like
+every other `{owner}` leaf, and irreversible - it is a cleanup verb, not part of
+the automatic rollback, which stays on the release-marker path.
+
 For an interactive dispatch the cheap reservation check runs **before the LLM
 pre-flight**, not after: an issue another run already holds
 short-circuits up front rather than wasting a full model read. The precheck reuses

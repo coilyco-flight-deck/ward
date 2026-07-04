@@ -3546,6 +3546,50 @@
         ]
       }
     },
+    "/repos/{owner}/{repo}/issues/comments/{id}": {
+      "delete": {
+        "operationId": "issueDeleteComment",
+        "parameters": [
+          {
+            "description": "owner of the repo",
+            "in": "path",
+            "name": "owner",
+            "required": true,
+            "type": "string"
+          },
+          {
+            "description": "name of the repo",
+            "in": "path",
+            "name": "repo",
+            "required": true,
+            "type": "string"
+          },
+          {
+            "description": "id of comment to delete",
+            "format": "int64",
+            "in": "path",
+            "name": "id",
+            "required": true,
+            "type": "integer"
+          }
+        ],
+        "responses": {
+          "204": {
+            "$ref": "#/responses/empty"
+          },
+          "403": {
+            "$ref": "#/responses/forbidden"
+          },
+          "500": {
+            "$ref": "#/responses/internalServerError"
+          }
+        },
+        "summary": "Delete a comment",
+        "tags": [
+          "issue"
+        ]
+      }
+    },
     "/repos/{owner}/{repo}/issues/{index}": {
       "get": {
         "operationId": "issueGetIssue",
