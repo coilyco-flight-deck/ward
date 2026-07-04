@@ -100,6 +100,7 @@ v0.x, and early on purpose. ward is a single-maintainer tool in active internal 
 - [coily][coily] - the operator-facing cli-guard consumer whose surface ward absorbs.
 - [cli-mcp][cli-mcp] - a sibling cli-guard consumer that projects a urfave/cli tree as an MCP server.
 - [comparison-openshell.md](docs/comparison-openshell.md) - ward vs NVIDIA OpenShell: a verb-level gate, not a kernel sandbox.
+- [comparison-container-use.md](docs/comparison-container-use.md) - ward vs Dagger container-use: a capability gate and autonomous driver, not container isolation with a human at the merge.
 
 ## Support
 

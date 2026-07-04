@@ -67,6 +67,72 @@ func TestSubstrateInventoryBlock(t *testing.T) {
 	}
 }
 
+func TestRenderSubstrateInventoryWithCatalog(t *testing.T) {
+	dest := t.TempDir()
+	writeRepo(t, dest, "infrastructure", "# infra\n\nREADME tagline, should be overridden.\n")
+	writeRepo(t, dest, "ward", "# ward\n\nREADME tagline for ward.\n")
+	// A mounted repo with no catalog entry falls back to its README tagline.
+	writeRepo(t, dest, "orphan", "# orphan\n\nOnly a README here.\n")
+
+	catalog := map[string]catalogEntry{
+		"infrastructure": {
+			FullName:    "coilyco-flight-deck/infrastructure",
+			Description: "k3s cluster and systemd units",
+			Topics:      []string{"k3s", "homelab"},
+			MountPath:   "/substrate/infrastructure",
+		},
+		// ward has an entry but no description: falls back to README, keeps full_name.
+		"ward": {FullName: "coilyco-flight-deck/ward", Topics: []string{"agents"}},
+	}
+
+	block := renderSubstrateInventory(dest, catalog)
+	for _, want := range []string{
+		"- **" + filepath.Join(dest, "infrastructure") + "** (coilyco-flight-deck/infrastructure) - k3s cluster and systemd units [topics: k3s, homelab]",
+		"- **" + filepath.Join(dest, "ward") + "** (coilyco-flight-deck/ward) - README tagline for ward. [topics: agents]",
+		"- **" + filepath.Join(dest, "orphan") + "** - Only a README here.",
+	} {
+		if !strings.Contains(block, want) {
+			t.Errorf("block missing %q\n---\n%s", want, block)
+		}
+	}
+	// The overridden repo must show the catalog description, not the README tagline.
+	if strings.Contains(block, "should be overridden") {
+		t.Errorf("README tagline leaked past the catalog description:\n%s", block)
+	}
+}
+
+func TestReadCatalogIndex(t *testing.T) {
+	dir := t.TempDir()
+	// A missing file yields a nil index (best-effort), not a panic.
+	if idx := readCatalogIndex(filepath.Join(dir, "absent.json")); idx != nil {
+		t.Errorf("absent catalog: want nil index, got %v", idx)
+	}
+	// Malformed JSON also yields nil, never a failure.
+	bad := filepath.Join(dir, "bad.json")
+	if err := os.WriteFile(bad, []byte("{not json"), 0o644); err != nil {
+		t.Fatal(err)
+	}
+	if idx := readCatalogIndex(bad); idx != nil {
+		t.Errorf("malformed catalog: want nil index, got %v", idx)
+	}
+	// A well-formed catalog indexes by the full_name's last segment.
+	good := filepath.Join(dir, "substrate-catalog.json")
+	cat := substrateCatalog{Schema: 1, Repos: []catalogEntry{
+		{FullName: "coilyco-flight-deck/infrastructure", Description: "d"},
+	}}
+	data, err := renderSubstrateCatalog(cat)
+	if err != nil {
+		t.Fatal(err)
+	}
+	if err := os.WriteFile(good, data, 0o644); err != nil {
+		t.Fatal(err)
+	}
+	idx := readCatalogIndex(good)
+	if e, ok := idx["infrastructure"]; !ok || e.Description != "d" {
+		t.Errorf("index[infrastructure] = %+v, ok=%v", e, ok)
+	}
+}
+
 func TestSubstrateRepoTagline(t *testing.T) {
 	dir := t.TempDir()
 	cases := []struct {

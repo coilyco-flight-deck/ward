@@ -64,6 +64,7 @@ not by hand. See docs/agent.md for the contributor surface.`,
 			containerBootstrapCommand(),
 			containerResolveContextCommand(),
 			containerSubstrateInventoryCommand(),
+			containerSubstrateCatalogCommand(),
 			containerBrokerCommand(),
 			containerForwardCommand(),
 			containerDrainExitCommand(),
@@ -370,11 +371,22 @@ func sweepStaleLaunchEnvFiles(dir string) {
 	}
 }
 
-// preflightTailnetProxy verifies the standing mac-proxy box is attached to the
-// ward-tailnet network before a --ts-sidecar run attaches (ward#349; the doc).
-func (r *Runner) preflightTailnetProxy(ctx context.Context) error {
+// preflightTailnet gates a --ts-sidecar run on the ward-tailnet docker network before
+// the sweep + pull, failing fast on a missing net not a raw 125 (ward#597, #349).
+func (r *Runner) preflightTailnet(ctx context.Context, plan upPlan) error {
+	if !plan.TSSidecar {
+		return nil
+	}
 	out, err := r.dockerCapture(ctx, dockerTailnetInspectArgv()...)
-	if err != nil || !proxyBoxAttached(string(out)) {
+	if err != nil {
+		// Network absent: without this guard docker 125s the run mid-launch naming no
+		// cause. Name the missing net + the --no-tailnet fallback (ward#597; the doc).
+		return fmt.Errorf("ward agent: docker network %q not found - the %s role joins the tailnet through it; "+
+			"create the network on this host, or re-run with --no-tailnet to dispatch isolated (ward#597)",
+			tailnetNetwork(), plan.Role)
+	}
+	if !proxyBoxAttached(string(out)) {
+		// The network exists but the standing proxy box is not attached (ward#349).
 		return fmt.Errorf("ward container: standing tailnet proxy not found - converge the mac-proxy infra role (agentic-os#291)")
 	}
 	return nil

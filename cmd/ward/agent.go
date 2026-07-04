@@ -6,6 +6,7 @@ import (
 	"io"
 	"os"
 	"os/exec"
+	"path/filepath"
 	"regexp"
 	"strings"
 	"time"
@@ -48,6 +49,19 @@ func (r agentIssueRef) url() string {
 // anchor for prompts and logs. The number is the reserved one, never inferred.
 func carryIssueBanner(ref agentIssueRef) string {
 	return fmt.Sprintf("Carried issue identity: %s.\nCarried issue number: %d.", ref, ref.Number)
+}
+
+// cloneAnchorLine tells the in-container agent it is standing IN the fresh clone
+// now - files are its cwd, to read not assume (ward#384; docs/agent-frontload.md).
+func cloneAnchorLine(ref agentIssueRef) string {
+	return fmt.Sprintf(
+		"You are reading this INSIDE that container, standing in a fresh clone of %s/%s at "+
+			"/workspace/%s - your current working directory right now: the repo's whole source tree - "+
+			"its real schemas, file layouts, and wiring - is on disk right here, not somewhere you have "+
+			"to go fetch. Explore it directly (start with `ls` and the repo's own docs) for any "+
+			"convention this task needs; never treat the codebase as absent or reason from assumed "+
+			"conventions while the actual files sit unread one command away.",
+		ref.Owner, ref.Repo, ref.Repo)
 }
 
 // parseAgentIssueRef resolves owner/repo#N, a Forgejo/GitHub issue URL, or a bare #N / N.
@@ -220,8 +234,8 @@ func agentSeedPromptWorkflow(ref agentIssueRef, title, body, details string, hea
 	seed := fmt.Sprintf(
 		"Work on %s issue %s (%q).\n\n"+
 			"URL: %s\n\n"+
-			"%s\n\n%s Then carry it end to end per your container doctrine - %s",
-		forgeDisplayName(ref.Forge), ref, title, ref.url(), carryIssueBanner(ref), action, workflowCarryClause(ref, wf))
+			"%s\n\n%s\n\n%s Then carry it end to end per your container doctrine - %s",
+		forgeDisplayName(ref.Forge), ref, title, ref.url(), carryIssueBanner(ref), cloneAnchorLine(ref), action, workflowCarryClause(ref, wf))
 	if details = strings.TrimSpace(details); details != "" {
 		seed += fmt.Sprintf(
 			"\n\nOperator note (added at dispatch via --details; treat it as authoritative and "+
@@ -877,6 +891,53 @@ func hostHasBinary(bin string) bool {
 	return err == nil
 }
 
+// snapDockerBin returns the resolved docker path when the docker CLI on PATH is
+// the snap package (its private /tmp breaks ward's launch; ward#557), else "".
+func snapDockerBin(lookPath func(string) (string, error)) string {
+	path, err := lookPath("docker")
+	if err != nil {
+		return ""
+	}
+	if dockerPathIsSnap(path) {
+		return path
+	}
+	return ""
+}
+
+// dockerPathIsSnap reports whether a resolved docker path is the snap package -
+// /snap/bin/docker, or a PATH shim whose symlink chain ends at the snap wrapper.
+func dockerPathIsSnap(path string) bool {
+	if pathUnderSnap(path) {
+		return true
+	}
+	resolved, err := filepath.EvalSymlinks(path)
+	if err != nil {
+		return false
+	}
+	return pathUnderSnap(resolved) || filepath.Base(resolved) == "snap"
+}
+
+// pathUnderSnap reports whether p is the /snap tree itself or a path within it.
+func pathUnderSnap(p string) bool {
+	p = filepath.Clean(p)
+	return p == "/snap" || strings.HasPrefix(p, "/snap/")
+}
+
+// snapDockerRemediation names the cause (snap's private /tmp) and the fix (native
+// docker-ce), making the raw exit-125 ENOENT actionable. docs/container-env.md.
+func snapDockerRemediation(path string) string {
+	return fmt.Sprintf(
+		"ward container: docker on PATH is the snap package (%s), which runs the docker CLI under a "+
+			"private /tmp and connects only snap's `home` interface (non-hidden $HOME files). Ward must "+
+			"hand docker several host paths that snap docker cannot reach - the --env-file, the -v "+
+			"assets/context bind mounts, the clone bind, and the broker socket - so a container launch "+
+			"dies mid-run at `docker run` with exit 125 (\"open ...: no such file\"). Snap docker cannot "+
+			"expose /tmp or dot-dirs to close this, so the fix is a native docker: install docker-ce from "+
+			"Docker's apt repo (https://docs.docker.com/engine/install/) and put /usr/bin/docker ahead of "+
+			"/snap/bin on PATH, then re-run. (ward#557)",
+		path)
+}
+
 // dispatchDockerState captures the signals deciding whether an in-container sibling
 // dispatch can reach docker (ward#321); see docs/agent-surface.md.
 type dispatchDockerState struct {
@@ -1164,6 +1225,12 @@ func (r *Runner) launchAgentContainer(ctx context.Context, c *cli.Command, mode 
 		}
 	}()
 
+	// Gate a tailnet run on the ward-tailnet network before the sweep + pull burn, so
+	// a host missing it fails fast with an actionable error, not a raw 125 (ward#597).
+	if err := r.preflightTailnet(ctx, plan); err != nil {
+		return err
+	}
+
 	// Reclaim dead containers' writable layers before adding one more, so the
 	// agent fleet can't exhaust the docker disk and wedge new launches (ward#272).
 	r.sweepStaleContainers(ctx)
@@ -1198,6 +1265,19 @@ func (r *Runner) launchAgentContainer(ctx context.Context, c *cli.Command, mode 
 		// In-container dispatch skips it - the waiter would die with its own reaped
 		// container - and leans on the next sweep's idempotent drain instead.
 		r.spawnDrainWaiter(plan.Name)
+	}
+	return nil
+}
+
+// prelaunchDispatch runs the shared pre-`docker create` steps for the advisor/director
+// paths: the ward-tailnet preflight (ward#597), the stale sweep (ward#272), the pull.
+func (r *Runner) prelaunchDispatch(ctx context.Context, c *cli.Command, plan upPlan, label string) error {
+	if err := r.preflightTailnet(ctx, plan); err != nil {
+		return err
+	}
+	r.sweepStaleContainers(ctx)
+	if !c.Bool("no-pull") {
+		r.pullAgentImage(ctx, plan, label)
 	}
 	return nil
 }
@@ -1258,19 +1338,19 @@ func (r *Runner) beatPullHeartbeat(w io.Writer, label, image string) func() {
 // createAgentContainer fires `docker run`: interactive streams to the terminal;
 // detached swallows the lone container-id hash docker echoes (ward#306).
 func (r *Runner) createAgentContainer(ctx context.Context, plan upPlan, envFile string) error {
+	// Fail fast at this shared launch chokepoint when docker is snap-confined and
+	// cannot reach ward's staged host paths, not at a raw exit-125 (ward#557, doc).
+	if bin := snapDockerBin(exec.LookPath); bin != "" {
+		return fmt.Errorf("%s", snapDockerRemediation(bin))
+	}
 	// --host-net only carries the tailnet on a host that is itself a tailnet node;
 	// warn loudly when it won't, so a no-op route doesn't read as success (ward#332).
 	r.maybeWarnHostNet(plan)
 	// The aws capability binds ~/.aws, but a host with no AWS identity mounts an empty
 	// dir - warn loudly so a NoCredentials hole doesn't read as delivered creds (ward#579).
 	r.maybeWarnAWSMount(plan)
-	// The standing mac-proxy box on ward-tailnet must exist before the run attaches
-	// to it - ward attaches and preflights, never converges the box (ward#349).
-	if plan.TSSidecar {
-		if err := r.preflightTailnetProxy(ctx); err != nil {
-			return err
-		}
-	}
+	// The ward-tailnet network preflight (missing-network + standing mac-proxy box)
+	// now runs before the pull in each dispatch path, so nothing is checked here.
 	if plan.Interactive {
 		return r.dockerExec(ctx, dockerCreateArgv(plan, envFile)...)
 	}

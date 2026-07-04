@@ -246,11 +246,10 @@ func (r *Runner) captureReplyResearch(ctx context.Context, c *cli.Command, mode 
 	}
 	plan = advisorResearchPlan(plan, ref)
 
-	// Reclaim dead containers before adding one, then pull unless suppressed - the same
-	// pre-launch hygiene the freeform advisor and engineer runs do.
-	r.sweepStaleContainers(ctx)
-	if !c.Bool("no-pull") {
-		r.pullAgentImage(ctx, plan, label)
+	// Shared pre-launch steps; the preflight matters most here - research runs `docker
+	// create` directly, so a missing ward-tailnet would 125 mid-run (ward#597; the doc).
+	if err := r.prelaunchDispatch(ctx, c, plan, label); err != nil {
+		return "", fmt.Errorf("%s: %w", label, err)
 	}
 
 	launchCreds := r.resolveLaunchCreds(ctx, &plan, mode)

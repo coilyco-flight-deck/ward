@@ -141,11 +141,10 @@ func (r *Runner) runAgentAsk(ctx context.Context, c *cli.Command, mode container
 	// surface a stale-ward reminder before the container spins (ward#143).
 	r.maybeWarnWardOutdated(ctx)
 
-	// Reclaim dead containers' writable layers before adding one more, so a busy
-	// fleet can't exhaust the docker disk and wedge new launches (ward#272).
-	r.sweepStaleContainers(ctx)
-	if !c.Bool("no-pull") {
-		r.pullAgentImage(ctx, plan, label)
+	// Preflight the tailnet network, sweep dead containers, then pull - the shared
+	// pre-launch steps; a missing ward-tailnet network fails fast here (ward#597, #272).
+	if err := r.prelaunchDispatch(ctx, c, plan, label); err != nil {
+		return err
 	}
 	launchCreds := r.resolveLaunchCreds(ctx, &plan, mode)
 	envFile, cleanupEnv, err := r.writeTokenEnvFile(ctx, planDispatchTarget(plan), plan.Forge, launchCreds)
