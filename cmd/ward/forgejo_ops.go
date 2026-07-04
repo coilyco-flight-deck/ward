@@ -1,11 +1,15 @@
 package main
 
 import (
+	"bytes"
 	"context"
 	"encoding/json"
 	"fmt"
+	"io"
 	"os"
+	"os/exec"
 	"strconv"
+	"strings"
 	"time"
 
 	"forgejo.coilysiren.me/coilyco-flight-deck/cli-guard/cli/dispatch"
@@ -69,11 +73,56 @@ func (c *forgejoClient) withMode(m containerMode) *forgejoClient {
 	return c
 }
 
-// run shells the ward binary back to its own `ops forgejo` mount and returns the
-// captured stdout - the rendered body for reads, the confirmation for writes.
+// run shells the ward binary back to its `ops forgejo` mount, returning stdout. On a
+// non-zero exit it folds the subprocess stderr into the error (ward#596, docs/broker.md).
 func (c *forgejoClient) run(ctx context.Context, args ...string) ([]byte, error) {
 	full := append([]string{"ops", "forgejo"}, args...)
-	return c.r.Runner.Capture(ctx, c.exe, full...)
+	var stdout, stderr bytes.Buffer
+	// #nosec G204 -- c.exe is the resolved canonical ward binary, argv is fixed verbs.
+	cmd := exec.CommandContext(ctx, c.exe, full...)
+	cmd.Stdout = &stdout
+	// Tee stderr: keep it streaming live (interactive/host runs keep their output)
+	// while capturing a copy so a failure can name the envelope, not just the code.
+	if live := c.r.Runner.Stderr; live != nil {
+		cmd.Stderr = io.MultiWriter(live, &stderr)
+	} else {
+		cmd.Stderr = &stderr
+	}
+	cmd.Stdin = c.r.Runner.Stdin
+	if c.r.Runner.Env != nil {
+		cmd.Env = append(os.Environ(), c.r.Runner.Env...)
+	}
+	if err := cmd.Run(); err != nil {
+		return stdout.Bytes(), foldOpsStderr(err, stderr.Bytes())
+	}
+	return stdout.Bytes(), nil
+}
+
+// foldOpsStderr appends a subprocess's captured stderr to its exit error, so a caller
+// reads the cli-guard envelope, not a bare `exit status N`. Empty stderr: unchanged.
+func foldOpsStderr(err error, stderr []byte) error {
+	detail := condenseOpsStderr(stderr)
+	if detail == "" {
+		return err
+	}
+	return fmt.Errorf("%w: %s", err, detail)
+}
+
+// condenseOpsStderr trims captured stderr to one line: blank lines drop, the rest join
+// with "; ", capped so a long envelope can't flood the surface's error (ward#596).
+func condenseOpsStderr(stderr []byte) string {
+	const maxLen = 800
+	var kept []string
+	for _, ln := range strings.Split(string(stderr), "\n") {
+		if ln = strings.TrimSpace(ln); ln != "" {
+			kept = append(kept, ln)
+		}
+	}
+	joined := strings.Join(kept, "; ")
+	if len(joined) > maxLen {
+		joined = joined[:maxLen] + "..."
+	}
+	return joined
 }
 
 // fetchForgejoIssue GETs a Forgejo issue and decodes it into dispatch.Issue, the

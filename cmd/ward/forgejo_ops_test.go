@@ -1,10 +1,15 @@
 package main
 
 import (
+	"context"
 	"encoding/json"
 	"os"
+	"path/filepath"
+	"runtime"
 	"strings"
 	"testing"
+
+	"forgejo.coilysiren.me/coilyco-flight-deck/cli-guard/cli/shell"
 )
 
 // TestWriteForgejoBody verifies the --body-file seam: the temp file holds the exact
@@ -101,5 +106,73 @@ func TestForgejoClientInvocationsUseAcceptedFlags(t *testing.T) {
 				}
 			}
 		})
+	}
+}
+
+// TestCondenseOpsStderr checks the ward#596 stderr condenser: blank lines drop, the
+// rest join with "; ", and an over-long envelope is capped (docs/broker.md).
+func TestCondenseOpsStderr(t *testing.T) {
+	if got := condenseOpsStderr(nil); got != "" {
+		t.Errorf("empty stderr: got %q, want \"\"", got)
+	}
+	if got := condenseOpsStderr([]byte("  \n\n \n")); got != "" {
+		t.Errorf("whitespace-only stderr: got %q, want \"\"", got)
+	}
+	multi := "ward: internal\n\n  check the value provider address and credentials  \nfetch /forgejo/api-token: no aws creds\n"
+	want := "ward: internal; check the value provider address and credentials; fetch /forgejo/api-token: no aws creds"
+	if got := condenseOpsStderr([]byte(multi)); got != want {
+		t.Errorf("condense mismatch:\n got %q\nwant %q", got, want)
+	}
+	long := strings.Repeat("x", 1000)
+	got := condenseOpsStderr([]byte(long))
+	if len(got) != 803 || !strings.HasSuffix(got, "...") { // 800 + "..."
+		t.Errorf("cap failed: len=%d suffix=%q", len(got), got[len(got)-3:])
+	}
+}
+
+// TestFoldOpsStderr checks the fold seam: a non-empty stderr rides into the error, an
+// empty one leaves the bare exit error untouched (so a silent failure reads as before).
+func TestFoldOpsStderr(t *testing.T) {
+	base := context.DeadlineExceeded // any stand-in error
+	if got := foldOpsStderr(base, nil); got.Error() != base.Error() {
+		t.Errorf("empty stderr should return the error unchanged, got %v", got)
+	}
+	folded := foldOpsStderr(base, []byte("upstream_failed: 404 Not Found"))
+	if !strings.Contains(folded.Error(), "404 Not Found") {
+		t.Errorf("folded error dropped the stderr detail: %q", folded.Error())
+	}
+	if !strings.Contains(folded.Error(), base.Error()) {
+		t.Errorf("folded error dropped the underlying cause: %q", folded.Error())
+	}
+}
+
+// TestRunFoldsSubprocessStderr is the ward#596 end-to-end: a failing `ops forgejo`
+// subprocess's stderr cause rides the error, not a bare `exit status N`.
+func TestRunFoldsSubprocessStderr(t *testing.T) {
+	if runtime.GOOS == "windows" {
+		t.Skip("shell-script fake exe is POSIX-only")
+	}
+	dir := t.TempDir()
+	fake := filepath.Join(dir, "fake-ward")
+	script := "#!/bin/sh\n" +
+		"echo 'ward: internal fetch /forgejo/api-token: no aws creds on this host' 1>&2\n" +
+		"exit 4\n"
+	if err := os.WriteFile(fake, []byte(script), 0o755); err != nil { // #nosec G306 -- test-only executable
+		t.Fatalf("write fake ward: %v", err)
+	}
+	c := &forgejoClient{
+		r:   &Runner{Runner: &shell.Runner{}},
+		exe: fake,
+	}
+	_, err := c.getIssue(context.Background(), "coilyco-flight-deck", "ward", 596)
+	if err == nil {
+		t.Fatal("expected getIssue to fail against the exit-4 fake ward")
+	}
+	msg := err.Error()
+	if !strings.Contains(msg, "no aws creds on this host") {
+		t.Errorf("folded error lost the subprocess stderr cause: %q", msg)
+	}
+	if !strings.Contains(msg, "coilyco-flight-deck/ward#596") {
+		t.Errorf("folded error lost the issue-ref context: %q", msg)
 	}
 }

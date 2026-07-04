@@ -94,6 +94,15 @@ launches runs over **TCP on the docker gateway** (`WARD_DISPATCH_BROKER_ADDR`, a
 per-launch token), not a bind-mount (see [agent-surface.md](agent-surface.md)).
 Dialing this socket from a dispatch client answers `unsupported protocol version`.
 
+### Diagnosing a dispatch broker `get issue` failure ([ward#596](https://forgejo.coilysiren.me/coilyco-flight-deck/ward/issues/596))
+
+The dispatch broker resolves the issue by shelling to `ward ops forgejo issue get`,
+whose auth resolves through `forgejoTokenResolver` (env `FORGEJO_TOKEN`, else SSM).
+When neither is available on the **host** the leaf exits `4` (cli-guard `Internal`,
+the auth value-chain), distinct from an HTTP non-2xx (`3`). That subprocess stderr
+names the cause, so `forgejoClient.run` now folds it into the returned error rather
+than leaking a bare `exit status 4` - the surface reads the reason without the run log.
+
 ## See also
 
 - `cli-guard/pkg/broker` - the policy core.
