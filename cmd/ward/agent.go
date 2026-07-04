@@ -1164,6 +1164,12 @@ func (r *Runner) launchAgentContainer(ctx context.Context, c *cli.Command, mode 
 		}
 	}()
 
+	// Gate a tailnet run on the ward-tailnet network before the sweep + pull burn, so
+	// a host missing it fails fast with an actionable error, not a raw 125 (ward#597).
+	if err := r.preflightTailnet(ctx, plan); err != nil {
+		return err
+	}
+
 	// Reclaim dead containers' writable layers before adding one more, so the
 	// agent fleet can't exhaust the docker disk and wedge new launches (ward#272).
 	r.sweepStaleContainers(ctx)
@@ -1198,6 +1204,19 @@ func (r *Runner) launchAgentContainer(ctx context.Context, c *cli.Command, mode 
 		// In-container dispatch skips it - the waiter would die with its own reaped
 		// container - and leans on the next sweep's idempotent drain instead.
 		r.spawnDrainWaiter(plan.Name)
+	}
+	return nil
+}
+
+// prelaunchDispatch runs the shared pre-`docker create` steps for the advisor/director
+// paths: the ward-tailnet preflight (ward#597), the stale sweep (ward#272), the pull.
+func (r *Runner) prelaunchDispatch(ctx context.Context, c *cli.Command, plan upPlan, label string) error {
+	if err := r.preflightTailnet(ctx, plan); err != nil {
+		return err
+	}
+	r.sweepStaleContainers(ctx)
+	if !c.Bool("no-pull") {
+		r.pullAgentImage(ctx, plan, label)
 	}
 	return nil
 }
@@ -1264,13 +1283,8 @@ func (r *Runner) createAgentContainer(ctx context.Context, plan upPlan, envFile 
 	// The aws capability binds ~/.aws, but a host with no AWS identity mounts an empty
 	// dir - warn loudly so a NoCredentials hole doesn't read as delivered creds (ward#579).
 	r.maybeWarnAWSMount(plan)
-	// The standing mac-proxy box on ward-tailnet must exist before the run attaches
-	// to it - ward attaches and preflights, never converges the box (ward#349).
-	if plan.TSSidecar {
-		if err := r.preflightTailnetProxy(ctx); err != nil {
-			return err
-		}
-	}
+	// The ward-tailnet network preflight (missing-network + standing mac-proxy box)
+	// now runs before the pull in each dispatch path, so nothing is checked here.
 	if plan.Interactive {
 		return r.dockerExec(ctx, dockerCreateArgv(plan, envFile)...)
 	}

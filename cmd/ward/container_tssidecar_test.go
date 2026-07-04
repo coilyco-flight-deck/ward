@@ -149,29 +149,50 @@ func fakeDockerRunner(t *testing.T, stdout string, code int) *Runner {
 
 func shellQuote(s string) string { return "'" + strings.ReplaceAll(s, "'", `'\''`) + "'" }
 
-// TestPreflightTailnetProxy covers ward#349: the standing box must be attached to
-// ward-tailnet; a missing network (inspect fails) or an unattached box is a clear error.
-func TestPreflightTailnetProxy(t *testing.T) {
+// tailnetPlan is a --ts-sidecar plan carrying the given role, the input the
+// preflight gates on (ward#597).
+func tailnetPlan(role string) upPlan {
+	p := sampleUpPlan()
+	p.TSSidecar = true
+	p.Role = role
+	return p
+}
+
+// TestPreflightTailnet covers ward#597 + ward#349: a non-tailnet plan no-ops; a missing
+// network names the net + --no-tailnet fallback; an unattached box keeps the proxy error.
+func TestPreflightTailnet(t *testing.T) {
 	ctx := context.Background()
 
+	// A plan that does not join the tailnet never touches docker -> always passes,
+	// even with a runner that would fail the inspect.
+	if err := fakeDockerRunner(t, "", 1).preflightTailnet(ctx, sampleUpPlan()); err != nil {
+		t.Errorf("non-tailnet plan: preflight should no-op; got: %v", err)
+	}
+
 	// Network exists and the box is attached -> the preflight passes.
-	if err := fakeDockerRunner(t, "some-carry "+proxyBoxName()+" ", 0).preflightTailnetProxy(ctx); err != nil {
+	if err := fakeDockerRunner(t, "some-carry "+proxyBoxName()+" ", 0).preflightTailnet(ctx, tailnetPlan(roleAdvisor)); err != nil {
 		t.Errorf("box attached: preflight should pass; got: %v", err)
 	}
 
-	// Missing network: `docker network inspect` exits non-zero -> the clear error.
-	err := fakeDockerRunner(t, "Error: No such network: ward-tailnet\n", 1).preflightTailnetProxy(ctx)
+	// Missing network: `docker network inspect` exits non-zero -> the actionable error
+	// naming the missing network, the role, and the --no-tailnet fallback (ward#597).
+	err := fakeDockerRunner(t, "Error: No such network: ward-tailnet\n", 1).preflightTailnet(ctx, tailnetPlan(roleAdvisor))
 	if err == nil {
 		t.Fatal("missing network: preflight should error")
 	}
-	for _, want := range []string{"standing tailnet proxy not found", "agentic-os#291"} {
+	for _, want := range []string{tailnetNetwork(), roleAdvisor, "--no-tailnet", "ward#597"} {
 		if !strings.Contains(err.Error(), want) {
 			t.Errorf("missing-network error %q must contain %q", err, want)
 		}
 	}
+	// It must not misattribute the absent network to the standing proxy box (the old
+	// conflation that burned retries).
+	if strings.Contains(err.Error(), "standing tailnet proxy not found") {
+		t.Errorf("missing-network error %q must not blame the standing proxy box", err)
+	}
 
-	// Network exists but the box is not attached -> the same clear error.
-	if err := fakeDockerRunner(t, "some-other-carry ", 0).preflightTailnetProxy(ctx); err == nil {
+	// Network exists but the box is not attached -> the ward#349 proxy error stands.
+	if err := fakeDockerRunner(t, "some-other-carry ", 0).preflightTailnet(ctx, tailnetPlan(roleAdvisor)); err == nil {
 		t.Error("box unattached: preflight should error")
 	} else if !strings.Contains(err.Error(), "standing tailnet proxy not found") {
 		t.Errorf("box-unattached error %q must name the standing proxy", err)
