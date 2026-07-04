@@ -99,6 +99,43 @@ func TestBuildSubstrateCatalog(t *testing.T) {
 	}
 }
 
+func TestFilterSubstrateTier(t *testing.T) {
+	manifest := []substrateRepo{
+		{Owner: "coilyco-flight-deck", Name: "ward", Tier: "image"},
+		{Owner: "coilyco-bridge", Name: "deploy", Tier: "cache"},
+		{Owner: "coilyco-flight-deck", Name: "infrastructure", Tier: "image"},
+	}
+
+	// Empty tier is a no-op: the whole manifest passes through.
+	all, err := filterSubstrateTier(manifest, "")
+	if err != nil {
+		t.Fatalf("no-op filter: %v", err)
+	}
+	if len(all) != 3 {
+		t.Errorf("no-op filter kept %d, want 3", len(all))
+	}
+
+	// image-tier drops the private cache-tier repo, so a public seed bake never
+	// lists the coilyco-bridge owner.
+	img, err := filterSubstrateTier(manifest, "image")
+	if err != nil {
+		t.Fatalf("image filter: %v", err)
+	}
+	if len(img) != 2 {
+		t.Fatalf("image filter kept %d, want 2: %+v", len(img), img)
+	}
+	for _, repo := range img {
+		if repo.Owner == "coilyco-bridge" {
+			t.Errorf("cache-tier repo %s leaked past the image filter", repo.slug())
+		}
+	}
+
+	// An unknown tier is a hard error, matching the manifest parser's closed set.
+	if _, err := filterSubstrateTier(manifest, "bogus"); err == nil {
+		t.Error("filterSubstrateTier accepted an unknown tier")
+	}
+}
+
 func TestRenderSubstrateCatalogStable(t *testing.T) {
 	cat := substrateCatalog{Schema: 1, Repos: []catalogEntry{
 		{FullName: "o/a", Description: "a", Tier: "image", MountPath: "/substrate/a"},

@@ -41,16 +41,19 @@ sort by `full_name` for a byte-stable file; `schema` guards the shape.
 - **ward owns the generator.** `ward container substrate-catalog` (hidden) reads
   the embedded manifest, lists each unique owner once through `ward ops forgejo`,
   and emits the catalog. `--out` writes a file (default stdout), `--dest` sets the
-  `/substrate` root recorded as each `mount_path`. A repo Forgejo omits still gets
-  an entry off its own owner/name, so a transient miss never drops a warmed repo.
+  `/substrate` root recorded as each `mount_path`, `--tier` restricts to one seed
+  tier. A repo Forgejo omits still gets an entry off its own owner/name, so a
+  transient miss never drops a warmed repo.
 - **infra only triggers the regen.** The seed-refresh trigger (a push or the seed
   cron) runs the generator with `--out` pointed at the substrate seed:
 
   ```
-  ward container substrate-catalog --out "$WARD_SUBSTRATE_SEED/substrate-catalog.json"
+  ward container substrate-catalog --tier image --out "$WARD_SUBSTRATE_SEED/substrate-catalog.json"
   ```
 
   Same authoring-vs-rollout split as every other rollout: ward authors, infra rolls.
+  `--tier image` is required, not cosmetic: the public seed must not bake a private
+  cache-tier (`coilyco-bridge`) repo's `full_name` or topics, so it drops them first.
 
 ## Consumption
 
