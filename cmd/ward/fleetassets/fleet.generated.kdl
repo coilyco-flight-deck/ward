@@ -86,9 +86,10 @@ fleet {
         role engineer {
 
         }
-        // director dispatches + surfaces read-only; forwards capability, holds none.
+        // director now mirrors advisor's live-observe set (aws + tailnet) so it
+        // reaches kai-server for the read-only `ward ops eco observe` surface (ward#547).
         role director {
-
+            guardfiles ward-kdl.aws.guardfile.kdl ward-kdl.tailscale.guardfile.kdl
         }
         // advisor does live-observe research: the aws SSM read + the tailnet route.
         // `advisor --no-tailnet` opts a rare isolated run back out.

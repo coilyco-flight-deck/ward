@@ -47,7 +47,15 @@ reverted. An unobservable canary also rolls back (`canary_blind`).
 - The server-side restore + loud-unhealthy paths drilled over ssh against a
   throwaway; the full live-server promote is deliberately reserved for Kai.
 
+## The read-only observe sibling
+
+`ward ops eco observe` is the **read-only** third subtree ([ward#547](https://forgejo.coilysiren.me/coilyco-flight-deck/ward/issues/547)):
+a non-mutating window on the live kai-server (`status`, `logs`, `mods`, `configs`,
+`read-config`) for the warded director, split from this `server` promote surface so
+an observer never touches the write path. Full walkthrough: [eco-observe.md](eco-observe.md).
+
 ## See also
 
 - [ops-eco.md](ops-eco.md) - the dissolution design and migration record.
+- [eco-observe.md](eco-observe.md) - the read-only observe sibling.
 - [docs/FEATURES.md](FEATURES.md) - the shipping inventory.

@@ -270,9 +270,10 @@ func (r *Runner) runAgentBacklog(ctx context.Context, c *cli.Command, mode conta
 	if err != nil {
 		return fmt.Errorf("%s: %w", label, err)
 	}
-	// The director holds no capability by default (empty role set); it resolves the
-	// flag overrides and appendTailnetArgv relays them to children (ward#578).
-	hostNet, tsSidecar, err := resolveTailnetMechanism(c, runtime.GOOS, resolveCapability(c, roleDirector).tailnet)
+	// Engineer dispatch forwards only the operator's EXPLICIT --tailnet, never director's
+	// role-default observe tailnet (ward#547) - mirrors the `aws` field's `c.Bool("aws")`.
+	forwardTailnet := tailnetFlagForcesOn(c) && !c.Bool("no-tailnet")
+	hostNet, tsSidecar, err := resolveTailnetMechanism(c, runtime.GOOS, forwardTailnet)
 	if err != nil {
 		return fmt.Errorf("%s: %w", label, err)
 	}

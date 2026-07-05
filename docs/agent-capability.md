@@ -16,9 +16,10 @@ A startup role's capability is now a **guardfile set** declared in
 dialect-2 field, [ward-kdl.md](ward-kdl.md)). Each entry names a guardfile, as a
 flat list or a `prefix="..."`:
 
-- **advisor** holds the **live-observe set** - the aws + tailscale guardfiles - so
-  advisor runs get AWS creds and join the tailnet **with no flag**.
-- **engineer** and **director** hold the **empty set**, the least-access wall.
+- **advisor** and **director** hold the **live-observe set** - the aws + tailscale
+  guardfiles - so their runs get AWS creds and join the tailnet **with no flag**
+  (the director to observe kai-server, [eco-observe.md](eco-observe.md)).
+- **engineer** holds the **empty set**, the least-access wall.
 
 The references are **descriptive guardfile names, never inline grants**: a
 guardfile's dialect-1 body declares the mount / network it needs, and membership
