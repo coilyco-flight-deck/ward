@@ -3,6 +3,7 @@ package main
 import (
 	"os"
 	"path/filepath"
+	"strings"
 	"testing"
 )
 
@@ -75,12 +76,104 @@ func TestResolveContextReposDedupes(t *testing.T) {
 	explicit := []targetRepo{{Owner: "StrangeLoopGames", Name: "Eco"}}
 	substrate := map[string]bool{"coilyco-flight-deck/cli-guard": true}
 
-	got, notes := resolveContextRepos(auto, explicit, target, substrate)
+	got, notes := resolveContextRepos(depsOf(auto), explicit, target, substrate)
 	if len(got) != 1 || got[0].slug() != "coilyco-flight-deck/eco-protos" {
 		t.Fatalf("resolveContextRepos = %+v, want only eco-protos", got)
 	}
 	if len(notes) != 1 || notes[0].Reason != "read-only catalog dependency" {
 		t.Fatalf("resolveContextRepos notes = %+v, want one read-only catalog dependency note", notes)
+	}
+}
+
+// depsOf lifts a plain owner/name list into the internal catalog dependency type
+// (all Forgejo-internal) so the dedup test can exercise resolveContextRepos.
+func depsOf(repos []targetRepo) []catalogContextRepo {
+	out := make([]catalogContextRepo, len(repos))
+	for i, r := range repos {
+		out[i] = catalogContextRepo{targetRepo: r}
+	}
+	return out
+}
+
+// parseCatalogDep honors a full clone URL's host + transport, classifying a
+// non-Forgejo dep as external with its declared/synthesized clone URL (ward#612).
+func TestParseCatalogDep(t *testing.T) {
+	cases := []struct {
+		dep      string
+		slug     string
+		external bool
+		host     string
+		cloneURL string
+	}{
+		{"coilyco-flight-deck/cli-guard", "coilyco-flight-deck/cli-guard", false, "", ""},
+		{"forgejo.coilysiren.me/coilyco-flight-deck/eco-protos", "coilyco-flight-deck/eco-protos", false, "", ""},
+		{"ssh://git@github.com/StrangeLoopGames/Eco.git", "StrangeLoopGames/Eco", true, "github.com", "ssh://git@github.com/StrangeLoopGames/Eco.git"},
+		{"github.com/StrangeLoopGames/Eco", "StrangeLoopGames/Eco", true, "github.com", "ssh://git@github.com/StrangeLoopGames/Eco.git"},
+		{"git@github.com:StrangeLoopGames/Eco.git", "StrangeLoopGames/Eco", true, "github.com", "git@github.com:StrangeLoopGames/Eco.git"},
+		{"https://gitlab.com/group/proj.git", "group/proj", true, "gitlab.com", "https://gitlab.com/group/proj.git"},
+	}
+	for _, c := range cases {
+		got, err := parseCatalogDep(c.dep)
+		if err != nil {
+			t.Fatalf("parseCatalogDep(%q): %v", c.dep, err)
+		}
+		if got.slug() != c.slug {
+			t.Errorf("parseCatalogDep(%q).slug = %q, want %q", c.dep, got.slug(), c.slug)
+		}
+		if got.external() != c.external {
+			t.Errorf("parseCatalogDep(%q).external = %v, want %v", c.dep, got.external(), c.external)
+		}
+		if got.Host != c.host {
+			t.Errorf("parseCatalogDep(%q).Host = %q, want %q", c.dep, got.Host, c.host)
+		}
+		if got.CloneURL != c.cloneURL {
+			t.Errorf("parseCatalogDep(%q).CloneURL = %q, want %q", c.dep, got.CloneURL, c.cloneURL)
+		}
+	}
+}
+
+// An external dependsOn entry keeps its host + transport all the way from parse
+// through resolve, and the WARD_CONTEXT_REPOS encoding round-trips it (ward#612).
+func TestExternalCatalogDepEndToEnd(t *testing.T) {
+	work := t.TempDir()
+	wardDir := filepath.Join(work, ".ward")
+	if err := os.MkdirAll(wardDir, 0o755); err != nil {
+		t.Fatalf("mkdir ward: %v", err)
+	}
+	if err := os.WriteFile(filepath.Join(wardDir, "ward.yaml"), []byte(`catalog:
+  dependsOn:
+    - ssh://git@github.com/StrangeLoopGames/Eco.git
+    - coilyco-flight-deck/eco-protos
+`), 0o644); err != nil { //nolint:gosec
+		t.Fatalf("write ward.yaml: %v", err)
+	}
+	target := targetRepo{Owner: "coilyco-gaming", Name: "eco-ops"}
+	repos, notes := resolveCatalogContextRepos(work, target, nil)
+	if len(repos) != 2 {
+		t.Fatalf("resolveCatalogContextRepos = %+v, want Eco + eco-protos", repos)
+	}
+	eco := repos[0]
+	if !eco.external() || eco.Host != "github.com" || eco.CloneURL != "ssh://git@github.com/StrangeLoopGames/Eco.git" {
+		t.Fatalf("Eco dep = %+v, want external github.com over ssh", eco)
+	}
+	if eco.slug() != "StrangeLoopGames/Eco" {
+		t.Fatalf("Eco slug = %q, want StrangeLoopGames/Eco", eco.slug())
+	}
+	if !strings.Contains(notes[0].Reason, "external") || !strings.Contains(notes[0].Reason, "github.com") {
+		t.Fatalf("Eco note = %q, want an external github.com reason", notes[0].Reason)
+	}
+	// The env encoding must carry the honored URL, and re-parse back to the same dep.
+	env := contextReposEnv(repos)
+	want := "StrangeLoopGames/Eco=ssh://git@github.com/StrangeLoopGames/Eco.git coilyco-flight-deck/eco-protos"
+	if env != want {
+		t.Fatalf("contextReposEnv = %q, want %q", env, want)
+	}
+	back := parseContextReposEnv(env, target.Owner, target.Name)
+	if len(back) != 2 || !back[0].external() || back[0].CloneURL != eco.CloneURL || back[0].Host != "github.com" {
+		t.Fatalf("parseContextReposEnv round-trip = %+v, want Eco external preserved", back)
+	}
+	if back[1].external() || back[1].slug() != "coilyco-flight-deck/eco-protos" {
+		t.Fatalf("parseContextReposEnv[1] = %+v, want internal eco-protos", back[1])
 	}
 }
 

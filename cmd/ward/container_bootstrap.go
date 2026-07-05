@@ -65,9 +65,9 @@ type bootstrapEnv struct {
 	// ExtraRepos are the additional writable repos this run was granted via
 	// --repo (WARD_EXTRA_REPOS); each is cloned full under /workspace (ward#230).
 	ExtraRepos []targetRepo
-	// ContextRepos are catalog.dependsOn cloned READ-ONLY for reference: no push remote,
-	// no feature branch, not push-verified; resolved from the fresh clone (ward#580).
-	ContextRepos []targetRepo
+	// ContextRepos are catalog.dependsOn cloned READ-ONLY, resolved from the fresh clone
+	// (ward#580); an external (non-Forgejo) dep carries its honored clone URL (ward#612).
+	ContextRepos []catalogContextRepo
 	// Substrate config (best-effort reference-repo warming).
 	SubstrateSeed     string
 	SubstrateDest     string
@@ -620,14 +620,14 @@ func (r *Runner) cloneExtraRepos(ctx context.Context, e bootstrapEnv) {
 	_ = os.MkdirAll(e.GitCache, 0o755)
 	for _, repo := range e.ExtraRepos {
 		blog("extra-repo clone start: %s/%s", repo.Owner, repo.Name)
-		r.cloneExtraRepo(ctx, e, repo, false)
+		r.cloneExtraRepo(ctx, e, repo, false, "")
 		blog("extra-repo clone done: %s/%s", repo.Owner, repo.Name)
 	}
 }
 
 // resolveCatalogContext resolves the read-only context set from the fresh clone at
 // work (ward#580), not the host cwd, and logs each grant. Best-effort, never fatal.
-func (r *Runner) resolveCatalogContext(work string, e bootstrapEnv) []targetRepo {
+func (r *Runner) resolveCatalogContext(work string, e bootstrapEnv) []catalogContextRepo {
 	target := targetRepo{Owner: e.TargetOwner, Name: e.TargetName}
 	repos, notes := resolveCatalogContextRepos(work, target, e.ExtraRepos)
 	for _, note := range notes {
@@ -645,19 +645,23 @@ func (r *Runner) cloneContextRepos(ctx context.Context, e bootstrapEnv) {
 	_ = os.MkdirAll(e.GitCache, 0o755)
 	for _, repo := range e.ContextRepos {
 		blog("context-repo clone start: %s/%s (read-only)", repo.Owner, repo.Name)
-		r.cloneExtraRepo(ctx, e, repo, true)
+		r.cloneExtraRepo(ctx, e, repo.targetRepo, true, repo.CloneURL)
 		blog("context-repo clone done: %s/%s", repo.Owner, repo.Name)
 	}
 }
 
-// cloneExtraRepo mirrors+working-clones one granted repo under /workspace/<name>; a
-// readOnly clone skips the branch + pre-commit gate and forces the push guard (ward#573).
-func (r *Runner) cloneExtraRepo(ctx context.Context, e bootstrapEnv, repo targetRepo, readOnly bool) {
+// cloneExtraRepo mirrors+working-clones one granted repo under /workspace/<name> (#573).
+// A non-empty cloneURL means an external dep: host-side-seeded, a miss fails loud (#612).
+func (r *Runner) cloneExtraRepo(ctx context.Context, e bootstrapEnv, repo targetRepo, readOnly bool, cloneURL string) {
 	// A whole-run read-only surface makes every clone read-only; a context repo is
 	// read-only even on a writable engineer run (ward#573).
 	ro := readOnly || e.ReadOnly
+	external := cloneURL != ""
 	mirror := filepath.Join(e.GitCache, repo.Owner+"__"+repo.Name+".git")
 	url := e.CloneBase + "/" + repo.Owner + "/" + repo.Name + ".git"
+	if external {
+		url = cloneURL
+	}
 	lock := filepath.Join(e.GitCache, "."+repo.Owner+"__"+repo.Name+".lock")
 	ttl := time.Duration(0)
 	if ro {
@@ -673,6 +677,10 @@ func (r *Runner) cloneExtraRepo(ctx context.Context, e bootstrapEnv, repo target
 					blog("extra-repo: mirror refresh failed %s/%s (using cached state)", repo.Owner, repo.Name)
 				}
 			}
+		} else if external {
+			// An external dep is never cloned in-container (no egress/ssh key, Forgejo mirror
+			// rejected): it is host-side-seeded, so an absent mirror fails loud below (ward#612).
+			_ = os.RemoveAll(mirror)
 		} else {
 			blog("extra-repo: cloning mirror (first time) %s/%s", repo.Owner, repo.Name)
 			if cerr := r.Runner.Exec(ctx, "git", "clone", "--mirror", url, mirror); cerr != nil {
@@ -682,6 +690,16 @@ func (r *Runner) cloneExtraRepo(ctx context.Context, e bootstrapEnv, repo target
 		}
 	})
 	if !isDir(mirror) {
+		if external {
+			// Fail loud (ward#612): name the dep + why it did not arrive, and clear the
+			// stale lock so the gap never reads as "source available" (the ward#611 bug).
+			_ = os.Remove(lock)
+			blog("MISSING DEPENDENCY: external catalog dependency %s/%s (%s) did not hydrate: "+
+				"no host-side ssh seed reached the gitcache mirror, and the sealed container "+
+				"cannot clone %s itself. Seed it host-side over ssh (WARD_GITCACHE) or the "+
+				"sibling ../%s reference clone will be absent (ward#611, ward#612).",
+				repo.Owner, repo.Name, url, repo.Owner, repo.Name)
+		}
 		return
 	}
 	work := "/workspace/" + repo.Name

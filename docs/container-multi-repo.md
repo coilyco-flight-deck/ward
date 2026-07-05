@@ -71,6 +71,31 @@ and the `/substrate` reference set (a dep already warmed there is not re-cloned)
 It uses the longer read-only mirror refresh window so stable upstreams do not
 churn the cache on every dispatch.
 
+### External (non-Forgejo) dependencies ([ward#612](https://forgejo.coilysiren.me/coilyco-flight-deck/ward/issues/612))
+
+A `catalog.dependsOn` entry may be a **full git clone URL**, not only a bare
+`owner/name`. A bare `owner/name` (or a `forgejo.coilysiren.me/...` URL) stays on
+the existing Forgejo-HTTPS-token gitcache path. Any **other** host -
+`ssh://git@github.com/StrangeLoopGames/Eco.git`, `git@github.com:owner/name.git`,
+or a bare `github.com/owner/name` (synthesized to the sanctioned ssh form) - is
+**external**: its host and transport are honored verbatim instead of being thrown
+away and force-fed the Forgejo pipeline (the old silent 0-byte-lock failure).
+
+The sealed container has **no egress or ssh key** for an external host, and
+mirroring a third party's source onto Forgejo is a **rejected**
+redistribution risk, so an external dep is **never** cloned in-container. Its bare
+mirror is expected **seeded host-side over ssh** using the host's key, into the
+shared `ward-gitcache` volume; the container then does a purely local working
+clone off that mirror like every other one. The key stays on the host - the
+container never talks to the external forge.
+
+If that host-side seed did not run (the mirror is absent when the container looks),
+the dep **fails loud**: a `MISSING DEPENDENCY:` line naming the dep and why it did
+not arrive, and the stale lock is cleared so the gap never reads as "source
+available". This replaces the [ward#611](https://forgejo.coilysiren.me/coilyco-flight-deck/ward/issues/611) silent failure, where a declared
+`github.com/StrangeLoopGames/Eco` left only an empty `.StrangeLoopGames__Eco.lock`
+and the promised sibling `../Eco/` clone never appeared.
+
 Crucially, read-only context repos ride their **own** `WARD_CONTEXT_REPOS` env
 key - never `WARD_EXTRA_REPOS`. So the reaper's push-verify (below) never sees
 them: a writable engineer run is **not** false-failed for a dependency it only
@@ -108,6 +133,12 @@ resolves it in-process. Both then clone read-only via the bash `clone_context_re
 and Go `cloneContextRepos`. Keeping the `WARD_CONTEXT_REPOS` key distinct from
 `WARD_EXTRA_REPOS` is what lets the reaper push-verify the writable set without
 ever touching the read-only one.
+
+`WARD_CONTEXT_REPOS` encodes an **external** dep ([ward#612](https://forgejo.coilysiren.me/coilyco-flight-deck/ward/issues/612)) as
+`owner/name=<cloneURL>` (a bare `owner/name` for a Forgejo dep), so the honored host
+and transport survive the round-trip through the env; both the bash and Go clone
+paths split the `=<cloneURL>` back off the slug and honor it, and skip the
+in-container mirror clone an external dep can never do.
 
 ## Pre-flight knows the grant
 

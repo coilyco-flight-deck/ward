@@ -16,9 +16,24 @@ import (
 // agent_context.go carries the role-neutral read-only catalog.dependsOn context grant
 // (ward#573), resolved in-container from the fresh clone, not the host cwd (ward#580).
 
+// catalogContextRepo is one resolved read-only catalog dependency: the owner/name
+// dedup key plus, for an external (non-Forgejo) dep, its honored URL + host (ward#612).
+type catalogContextRepo struct {
+	targetRepo
+	// CloneURL is the dep's clone URL (host + transport) for an external dep; "" =>
+	// Forgejo, cloned via CloneBase over HTTPS like every other mirror.
+	CloneURL string
+	// Host is the external dep's git host (e.g. github.com); "" for a Forgejo dep.
+	Host string
+}
+
+// external reports whether this dep names a non-Forgejo host, so it must clone over
+// its own transport off a host-side ssh-seeded gitcache mirror, never CloneBase.
+func (c catalogContextRepo) external() bool { return c.CloneURL != "" }
+
 // catalogContextRepos returns the target's catalog.dependsOn as read-only context
 // grants from the config discovered at start; empty on any miss (best-effort).
-func catalogContextRepos(start string) []targetRepo {
+func catalogContextRepos(start string) []catalogContextRepo {
 	deps, err := loadRepoLocalCatalogDeps(start)
 	if err != nil {
 		return nil
@@ -42,7 +57,7 @@ func containerResolveContextCommand() *cli.Command {
 			target := targetRepo{Owner: os.Getenv("WARD_TARGET_OWNER"), Name: os.Getenv("WARD_TARGET_NAME")}
 			extra := parseExtraReposEnv(os.Getenv("WARD_EXTRA_REPOS"), target.Owner, target.Name)
 			repos, _ := resolveCatalogContextRepos(work, target, extra)
-			fmt.Println(extraReposEnv(repos))
+			fmt.Println(contextReposEnv(repos))
 			return nil
 		},
 	}
@@ -50,13 +65,13 @@ func containerResolveContextCommand() *cli.Command {
 
 // resolveCatalogContextRepos resolves catalog.dependsOn from the fresh clone at work,
 // deduped against the target, the writable grants, and /substrate (ward#580).
-func resolveCatalogContextRepos(work string, target targetRepo, extra []targetRepo) ([]targetRepo, []extraRepoLogLine) {
+func resolveCatalogContextRepos(work string, target targetRepo, extra []targetRepo) ([]catalogContextRepo, []extraRepoLogLine) {
 	return resolveContextRepos(catalogContextRepos(work), extra, target, substrateContextSkipSet())
 }
 
-// loadRepoLocalCatalogDeps parses catalog.dependsOn out of the repo-local config
-// discovered from start into a de-duplicated targetRepo list; unparseable refs skip.
-func loadRepoLocalCatalogDeps(start string) ([]targetRepo, error) {
+// loadRepoLocalCatalogDeps parses catalog.dependsOn (config discovered at start) into a
+// deduped dep list, honoring a full clone URL (ward#612); bad refs skip.
+func loadRepoLocalCatalogDeps(start string) ([]catalogContextRepo, error) {
 	path, err := discoverConfig(start)
 	if err != nil {
 		return nil, nil
@@ -73,10 +88,10 @@ func loadRepoLocalCatalogDeps(start string) ([]targetRepo, error) {
 	if err := yaml.Unmarshal(b, &doc); err != nil {
 		return nil, fmt.Errorf("catalog context: parse %s: %w", filepath.Base(path), err)
 	}
-	var out []targetRepo
+	var out []catalogContextRepo
 	seen := map[string]bool{}
 	for _, dep := range doc.Catalog.DependsOn {
-		repo, err := parseRepoRef(dep)
+		repo, err := parseCatalogDep(dep)
 		if err != nil {
 			continue
 		}
@@ -89,14 +104,14 @@ func loadRepoLocalCatalogDeps(start string) ([]targetRepo, error) {
 	return out, nil
 }
 
-// resolveContextRepos folds catalog deps into the read-only context set (first-seen
-// order), dropping the target, the writable grants, and /substrate repos (ward#573).
-func resolveContextRepos(auto, explicit []targetRepo, target targetRepo, substrate map[string]bool) ([]targetRepo, []extraRepoLogLine) {
+// resolveContextRepos folds catalog deps into the read-only set, dropping the target,
+// the writable grants, and /substrate (Forgejo-only) repos (ward#573).
+func resolveContextRepos(auto []catalogContextRepo, explicit []targetRepo, target targetRepo, substrate map[string]bool) ([]catalogContextRepo, []extraRepoLogLine) {
 	seen := map[string]bool{target.slug(): true}
 	for _, repo := range explicit {
 		seen[repo.slug()] = true
 	}
-	var out []targetRepo
+	var out []catalogContextRepo
 	var notes []extraRepoLogLine
 	for _, repo := range auto {
 		if repo.Owner == "" || repo.Name == "" {
@@ -107,14 +122,118 @@ func resolveContextRepos(auto, explicit []targetRepo, target targetRepo, substra
 			continue
 		}
 		seen[slug] = true
-		if substrate[slug] {
+		if !repo.external() && substrate[slug] {
 			// Already present read-only under /substrate; the agent reads it there.
 			continue
 		}
 		out = append(out, repo)
-		notes = append(notes, extraRepoLogLine{Slug: slug, Reason: "read-only catalog dependency"})
+		reason := "read-only catalog dependency"
+		if repo.external() {
+			reason = "read-only external catalog dependency (" + repo.Host + ", seeded host-side over ssh)"
+		}
+		notes = append(notes, extraRepoLogLine{Slug: slug, Reason: reason})
 	}
 	return out, notes
+}
+
+// parseCatalogDep resolves one catalog.dependsOn entry, honoring a full clone URL: bare
+// owner/name or a Forgejo-host URL is internal, any other host external (ward#612).
+func parseCatalogDep(dep string) (catalogContextRepo, error) {
+	dep = strings.TrimSpace(dep)
+	repo, err := parseRepoRef(dep)
+	if err != nil {
+		return catalogContextRepo{}, err
+	}
+	out := catalogContextRepo{targetRepo: repo}
+	host := cloneRefHost(dep)
+	if host != "" && !strings.EqualFold(host, forgejoCanonicalHost()) {
+		out.Host = host
+		out.CloneURL = normalizeExternalCloneURL(dep, host, repo)
+	}
+	return out, nil
+}
+
+// forgejoCanonicalHost is ward's home Forgejo host, the classification pivot: a dep on
+// this host (or a bare owner/name) is internal; any other host is external (ward#612).
+func forgejoCanonicalHost() string { return forgejoHostFromBase(forgejoBaseURL) }
+
+// cloneRefHost extracts the git host from a clone ref, "" for a bare owner/name: scheme
+// URLs (ssh/https), scp-style git@host:path, or a host/owner/name (dotted first segment).
+func cloneRefHost(ref string) string {
+	ref = strings.TrimSpace(ref)
+	if i := strings.Index(ref, "://"); i >= 0 {
+		rest := ref[i+3:]
+		if at := strings.IndexByte(rest, '@'); at >= 0 {
+			rest = rest[at+1:]
+		}
+		rest = rest[:strings.IndexFunc(rest+"/", func(r rune) bool { return r == '/' || r == ':' })]
+		return rest
+	}
+	// scp-style: [user@]host:path, the host before the first colon and no scheme.
+	if at := strings.IndexByte(ref, '@'); at >= 0 && strings.Contains(ref, ":") {
+		rest := ref[at+1:]
+		if c := strings.IndexByte(rest, ':'); c >= 0 {
+			return rest[:c]
+		}
+	}
+	// Bare path form: host/owner/name has a dotted (host-looking) first segment.
+	if parts := strings.Split(ref, "/"); len(parts) >= 3 && strings.Contains(parts[0], ".") {
+		return parts[0]
+	}
+	return ""
+}
+
+// normalizeExternalCloneURL honors an external dep's declared transport (scheme/scp),
+// else synthesizes the sanctioned ssh URL for a bare host/owner/name (ward#612).
+func normalizeExternalCloneURL(dep, host string, repo targetRepo) string {
+	if strings.Contains(dep, "://") {
+		return dep
+	}
+	if at := strings.IndexByte(dep, '@'); at >= 0 && strings.Contains(dep, ":") {
+		return dep // scp-style git@host:owner/name.git
+	}
+	return "ssh://git@" + host + "/" + repo.Owner + "/" + repo.Name + ".git"
+}
+
+// contextReposEnv renders WARD_CONTEXT_REPOS: a Forgejo dep as owner/name, external as
+// owner/name=<cloneURL> so its transport survives the env word-split (ward#612).
+func contextReposEnv(repos []catalogContextRepo) string {
+	toks := make([]string, len(repos))
+	for i, r := range repos {
+		toks[i] = r.slug()
+		if r.external() {
+			toks[i] += "=" + r.CloneURL
+		}
+	}
+	return strings.Join(toks, " ")
+}
+
+// parseContextReposEnv inverts contextReposEnv (dropping blanks, target, dups, bad refs);
+// owner/name=<cloneURL> restores an external dep's transport (ward#612).
+func parseContextReposEnv(raw, targetOwner, targetName string) []catalogContextRepo {
+	var out []catalogContextRepo
+	seen := map[string]bool{}
+	for _, tok := range strings.Fields(raw) {
+		slug, cloneURL, external := strings.Cut(tok, "=")
+		owner, name, ok := splitOwnerName(slug)
+		if !ok {
+			continue
+		}
+		if owner == targetOwner && name == targetName {
+			continue
+		}
+		if seen[owner+"/"+name] {
+			continue
+		}
+		seen[owner+"/"+name] = true
+		dep := catalogContextRepo{targetRepo: targetRepo{Owner: owner, Name: name}}
+		if external {
+			dep.CloneURL = cloneURL
+			dep.Host = cloneRefHost(cloneURL)
+		}
+		out = append(out, dep)
+	}
+	return out
 }
 
 // --- substrate inventory (ward#593): label the mounted reference repos ---------

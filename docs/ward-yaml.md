@@ -35,7 +35,7 @@ not rely on the hook to tell you the config is wrong.
 
 - **`commands:`** - map of dev-verb name to its declaration. Read by ward. See [commands](#commands).
 - **`security:`** - the security policy block. Read by ward (doctor + hook). The loader and the hook tolerate its absence, but as of [ward#450](https://forgejo.coilysiren.me/coilyco-flight-deck/ward/issues/450) `ward doctor` **fails** when it is missing (it prints `no security: declared` and exits non-zero), so a real repo declares one. See [security](#security).
-- **`catalog:`** - **not read by ward for repo verbs.** This is `coilyco-flight-deck/agentic-os` catalog tooling metadata (repo description + cross-repo `dependsOn`). ward's `repocfg` loader still unmarshals only `commands` + `security` for `ward exec`, `ward doctor`, and the hook, but **every warded agent role** (engineer, director, advisor) reads `catalog.dependsOn` at launch to auto-mount those upstreams as read-only reference clones ([ward#573](https://forgejo.coilysiren.me/coilyco-flight-deck/ward/issues/573); [container-multi-repo.md](container-multi-repo.md)). It is safe to include for the catalog tooling and safe to omit if you do not use it.
+- **`catalog:`** - **not read by ward for repo verbs.** This is `coilyco-flight-deck/agentic-os` catalog tooling metadata (repo description + cross-repo `dependsOn`). ward's `repocfg` loader still unmarshals only `commands` + `security` for `ward exec`, `ward doctor`, and the hook, but **every warded agent role** (engineer, director, advisor) reads `catalog.dependsOn` at launch to auto-mount those upstreams as read-only reference clones ([ward#573](https://forgejo.coilysiren.me/coilyco-flight-deck/ward/issues/573); [container-multi-repo.md](container-multi-repo.md)). A `dependsOn` entry may be a bare `owner/name` (resolved on canonical Forgejo over HTTPS) **or a full git clone URL** carrying a non-Forgejo host and transport - `ssh://git@github.com/StrangeLoopGames/Eco.git`, `git@github.com:owner/name.git`, or a bare `github.com/owner/name` (synthesized to the sanctioned ssh form). An external host is honored over its own transport off a **host-side ssh-seeded** gitcache mirror, never mirrored onto Forgejo, and a dep that does not hydrate **fails loud** at launch instead of silently reading as present ([ward#612](https://forgejo.coilysiren.me/coilyco-flight-deck/ward/issues/612)). It is safe to include for the catalog tooling and safe to omit if you do not use it.
 
 ## commands
 
@@ -156,7 +156,8 @@ Per entry:
 catalog:
   description: "sample-tool - a demo repo."
   dependsOn:
-    - forgejo.example.org/org/some-dependency
+    - forgejo.example.org/org/some-dependency        # Forgejo: HTTPS-token gitcache path
+    - ssh://git@github.com/StrangeLoopGames/Eco.git  # external: honored over ssh, seeded host-side (ward#612)
 
 commands:
   # Mapping form: `run` required, the rest optional.

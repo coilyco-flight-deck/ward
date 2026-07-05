@@ -378,13 +378,15 @@ HOOK
 }
 
 # --- additional granted repos (ward#230): clone+operate beyond the target -----
-# Clone one repo full; a read-only clone (ro=1, ward#573) skips branch+gate, forces guard.
+# ro=1 => read-only (ward#573); arg 4 => external dep, host-side-seeded (ward#612).
 clone_extra_repo() {
-  local owner="$1" name="$2" ro="${3:-0}"
+  local owner="$1" name="$2" ro="${3:-0}" clone_url="${4:-}"
   local mirror="$WARD_GITCACHE/${owner}__${name}.git"
+  local lock="$WARD_GITCACHE/.${owner}__${name}.lock"
   # Granted repos share the target's forge (ward#489); substrate reference repos below
-  # stay Forgejo regardless.
+  # stay Forgejo regardless. An external dep honors its own URL instead of CloneBase.
   local url="$WARD_CLONE_BASE/$owner/$name.git"
+  [ -n "$clone_url" ] && url="$clone_url"
   # Refresh the shared bare mirror under an flock (many containers may share it),
   # mirroring warm_substrate_repo; then drop a fresh writable working copy.
   (
@@ -392,13 +394,23 @@ clone_extra_repo() {
     if [ -d "$mirror" ]; then
       log "extra-repo: refreshing cached mirror $owner/$name"
       git -C "$mirror" remote update --prune >&2 || log "extra-repo: mirror refresh failed $owner/$name (using cached state)"
+    elif [ -n "$clone_url" ]; then
+      # External dep: never cloned in-container (no egress/ssh key, no Forgejo mirror).
+      # Host-side-seeded, so an absent mirror fails loud below - drop the lock (ward#612).
+      rm -f "$lock"
     else
       log "extra-repo: cloning mirror (first time) $owner/$name"
       git clone --mirror "$url" "$mirror" >&2 \
         || { log "extra-repo: mirror clone failed $owner/$name (skipping)"; rm -rf "$mirror"; exit 0; }
     fi
-  ) 9>"$WARD_GITCACHE/.${owner}__${name}.lock" || true
-  [ -d "$mirror" ] || return 0
+  ) 9>"$lock" || true
+  if [ ! -d "$mirror" ]; then
+    if [ -n "$clone_url" ]; then
+      rm -f "$lock"
+      log "MISSING DEPENDENCY: external catalog dependency $owner/$name ($url) did not hydrate: no host-side ssh seed reached the gitcache mirror, and the sealed container cannot clone it itself. Seed it host-side over ssh (WARD_GITCACHE) or the sibling ../$name reference clone will be absent (ward#611, ward#612)."
+    fi
+    return 0
+  fi
   local dest="/workspace/$name"
   rm -rf "$dest"
   if ! git clone "$mirror" "$dest" >&2; then
@@ -439,14 +451,18 @@ clone_extra_repos() {
 clone_context_repos() {
   [ -n "${WARD_CONTEXT_REPOS:-}" ] || return 0
   mkdir -p "$WARD_GITCACHE"
-  local ref owner name eref
+  local ref slug clone_url owner name eref
   for ref in $WARD_CONTEXT_REPOS; do
-    owner="${ref%%/*}"; name="${ref##*/}"
+    # An external dep rides as owner/name=<cloneURL> (ward#612); a Forgejo dep is a bare
+    # owner/name. Split the honored clone URL off the slug before deriving owner/name.
+    slug="${ref%%=*}"; clone_url=""
+    [ "$slug" != "$ref" ] && clone_url="${ref#*=}"
+    owner="${slug%%/*}"; name="${slug##*/}"
     [ -n "$owner" ] && [ -n "$name" ] || continue
     if [ "$owner" = "$WARD_TARGET_OWNER" ] && [ "$name" = "$WARD_TARGET_NAME" ]; then continue; fi
-    # Writable grant wins: skip a context repo already cloned as an extra.
-    for eref in ${WARD_EXTRA_REPOS:-}; do [ "$eref" = "$ref" ] && continue 2; done
-    clone_extra_repo "$owner" "$name" 1
+    # Writable grant wins: skip a context repo already cloned as an extra (match on slug).
+    for eref in ${WARD_EXTRA_REPOS:-}; do [ "$eref" = "$slug" ] && continue 2; done
+    clone_extra_repo "$owner" "$name" 1 "$clone_url"
   done
 }
 
@@ -666,10 +682,10 @@ seed_claude_onboarding() {
     name="${ref##*/}"
     [ -n "$name" ] && trust_dirs+=("/workspace/$name")
   done
-  # Read-only context repos land under /workspace too (ward#573); trust them so the
-  # agent reads them without a per-dir folder-trust re-prompt.
+  # Read-only context repos land under /workspace too (ward#573); trust them, stripping
+  # any =<cloneURL> off an external dep token before the workspace dir name (ward#612).
   for ref in ${WARD_CONTEXT_REPOS:-}; do
-    name="${ref##*/}"
+    name="${ref%%=*}"; name="${name##*/}"
     [ -n "$name" ] && trust_dirs+=("/workspace/$name")
   done
   if [ -d "$WARD_SUBSTRATE_DEST" ]; then
@@ -1082,7 +1098,8 @@ main() {
   # Hand each granted extra-repo tree to the agent user too (ward#230); cloned as root.
   for ref in ${WARD_EXTRA_REPOS:-}; do chown -R "$AGENT_UID:$AGENT_GID" "/workspace/${ref##*/}" 2>/dev/null || true; done
   # Read-only context repos are cloned as root too (ward#573); hand them over to read.
-  for ref in ${WARD_CONTEXT_REPOS:-}; do chown -R "$AGENT_UID:$AGENT_GID" "/workspace/${ref##*/}" 2>/dev/null || true; done
+  # Strip any =<cloneURL> off an external dep token before the workspace dir (ward#612).
+  for ref in ${WARD_CONTEXT_REPOS:-}; do slug="${ref%%=*}"; chown -R "$AGENT_UID:$AGENT_GID" "/workspace/${slug##*/}" 2>/dev/null || true; done
   if [ "${WARD_READONLY:-0}" = 1 ]; then
     revoke_push_credential    # explore: drop this clone's push wiring, keep the dispatch token (ward#315)
     start_broker              # explore: root credential broker holds the token; agent reaches the forge via the socket (ward#329)
