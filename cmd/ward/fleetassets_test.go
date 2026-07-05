@@ -6,9 +6,9 @@ import (
 	"testing"
 )
 
-// fleetSrcPath is the canonical dialect-2 fleet source; the embedded fleetassets
-// copy is mirrored from it by `make sync-fleet-assets` (go:embed can't reach it).
-const fleetSrcPath = "../ward-kdl/ward-kdl.fleet.kdl"
+// fleetSrcPath is the canonical dialect-2 fleet source, mirrored to fleetassets
+// by `make sync-fleet-assets`; it moved from cmd/ward-kdl to .ward/ (ward#435).
+const fleetSrcPath = "../../.ward/ward-kdl/ward-kdl.fleet.kdl"
 
 // TestFleetAssetsMirrorWardKDL fails when the embedded fleet.generated.kdl drifts
 // from the canonical source - re-sync with `make sync-fleet-assets`.

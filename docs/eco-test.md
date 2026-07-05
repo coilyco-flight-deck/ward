@@ -6,7 +6,7 @@ doc_goal: Make a reader operate `ward ops eco {native,server}` - the guardfile-d
 The Eco content pipeline is the exec-dialect guardfile area `ward ops eco`
 ([ward#585](https://forgejo.coilysiren.me/coilyco-flight-deck/ward/issues/585), [coilysiren/inbox#158](https://forgejo.coilysiren.me/coilysiren/inbox/issues/158)). The compiled `ward eco test` verb
 ([ward#582](https://forgejo.coilysiren.me/coilyco-flight-deck/ward/issues/582)) is dissolved: orchestration now lives in
-`cmd/ward-kdl/ward-kdl.eco-{native,server}.guardfile.kdl`, run by cli-guard's
+`.ward/ward-kdl/ward-kdl.eco-{native,server}.guardfile.kdl`, run by cli-guard's
 stepflow engine, driving the infrastructure-repo scripts. The target selector
 is the subtree: **native** is the local Windows test install, **server** is the
 prod Linux kai-server over the declared ssh hop.

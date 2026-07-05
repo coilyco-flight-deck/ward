@@ -12,7 +12,7 @@ belongs **down** in the meld layer.
 ## The model: capability is guardfile membership per role
 
 A startup role's capability is now a **guardfile set** declared in
-[`ward-kdl.fleet.kdl`](../cmd/ward-kdl/ward-kdl.fleet.kdl)'s `roles` block (a
+[`ward-kdl.fleet.kdl`](../.ward/ward-kdl/ward-kdl.fleet.kdl)'s `roles` block (a
 dialect-2 field, [ward-kdl.md](ward-kdl.md)). Each entry names a guardfile, as a
 flat list or a `prefix="..."`:
 

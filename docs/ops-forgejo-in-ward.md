@@ -18,7 +18,7 @@ token (`value ssm`) resolves through ward's audited `aws ssm` runner, not the
 AWS SDK, and lazily - mount and `--dry-run` never touch SSM.
 
 `go:embed` cannot reach a sibling directory, so `cmd/ward/opsassets/` holds
-`.generated.`-marked copies of `cmd/ward-kdl/`'s canonical guardfile + spec lock
+`.generated.`-marked copies of `.ward/ward-kdl/`'s canonical guardfile + spec lock
 (`opsassets/README.md`). The ward-kdl files stay the single source of
 truth (`make build-ward-kdl` re-runs `make sync-ops-assets`);
 `cmd/ward/opsassets_test.go` fails the build on drift.

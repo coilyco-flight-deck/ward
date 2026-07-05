@@ -11,9 +11,9 @@ import (
 	"forgejo.coilysiren.me/coilyco-flight-deck/cli-guard/cli/execverb"
 )
 
-// wardKdlSrcDir is the canonical ward-kdl guardfile directory the embedded
-// execassets mirror (go:embed can't reach this sibling dir, so the build copies).
-const wardKdlSrcDir = "../ward-kdl"
+// wardKdlSrcDir is the canonical ward-kdl guardfile dir the embedded execassets
+// mirror; it moved from cmd/ward-kdl to .ward/ward-kdl (ward#435).
+const wardKdlSrcDir = "../../.ward/ward-kdl"
 
 // TestExecAssetsMirrorWardKDL fails when execassets drifts from the canonical
 // exec-dialect ward-kdl guardfiles. See docs/ward-kdl-in-ward.md.

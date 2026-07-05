@@ -9,11 +9,11 @@ import (
 	"github.com/urfave/cli/v3"
 )
 
-// canonicalOpsAssets pairs each embedded copy with the ward-kdl source it must
-// mirror (the embed copies exist only because go:embed can't reach a sibling dir).
+// canonicalOpsAssets pairs each embedded copy with its ward-kdl source (moved to
+// .ward/ward-kdl in ward#435); the copies exist because go:embed can't reach it.
 var canonicalOpsAssets = map[string]string{
-	opsForgejoGuardfilePath: "../ward-kdl/ward-kdl.forgejo.guardfile.kdl",
-	opsForgejoSpecLockPath:  "../ward-kdl/forgejo.swagger.lock.json",
+	opsForgejoGuardfilePath: "../../.ward/ward-kdl/ward-kdl.forgejo.guardfile.kdl",
+	opsForgejoSpecLockPath:  "../../.ward/ward-kdl/forgejo.swagger.lock.json",
 }
 
 // TestOpsAssetsMatchWardKDL fails when an embedded ops asset drifts from its

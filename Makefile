@@ -55,17 +55,17 @@ build-ward-kdl: ## build or rebuild the ward-kdl binary, one shot for ease of us
 	# Pull the canonical deployment bundle from aos, then build from the local
 	# overlay. That keeps ward's tracked tree publishable while the bundle itself
 	# lives beside its sibling repos in agentic-os.
-	cp $(WARD_SPEC_BUNDLE_DIR)/* ./cmd/ward-kdl/
+	cp $(WARD_SPEC_BUNDLE_DIR)/* ./.ward/ward-kdl/
 	# The driver discovers every ward-kdl.*.guardfile.kdl beside this one that
 	# shares the `wrap ward-kdl` binary name and merges them into one binary,
 	# keeping each API's spec lock and reference doc separate. Adding a new
 	# ward-kdl.<api>.guardfile.kdl is the only step to grow the surface.
-	go run $(DRIVER) lock  --guardfile ./cmd/ward-kdl/ward-kdl.forgejo.guardfile.kdl
-	go run $(DRIVER) build --guardfile ./cmd/ward-kdl/ward-kdl.forgejo.guardfile.kdl --out bin --set-version $(KDL_VERSION)
+	go run $(DRIVER) lock  --guardfile ./.ward/ward-kdl/ward-kdl.forgejo.guardfile.kdl
+	go run $(DRIVER) build --guardfile ./.ward/ward-kdl/ward-kdl.forgejo.guardfile.kdl --out bin --set-version $(KDL_VERSION)
 	# The driver writes each reference doc beside its guardfile; the committed
 	# copies live under docs/ward-kdl/, so relocate them after every rebuild.
 	@mkdir -p docs/ward-kdl
-	mv ./cmd/ward-kdl/ward-kdl.*.guardfile.md ./docs/ward-kdl/
+	mv ./.ward/ward-kdl/ward-kdl.*.guardfile.md ./docs/ward-kdl/
 	$(MAKE) build-ward-kdl-tiers
 	$(MAKE) sync-ops-assets
 	$(MAKE) sync-exec-assets
@@ -73,11 +73,11 @@ build-ward-kdl: ## build or rebuild the ward-kdl binary, one shot for ease of us
 
 build-ward-kdl-tiers: ## build the read/write/admin tier binaries, discovering every area dropped into each tier subdir (ward#240, ward#338).
 	@mkdir -p bin docs/ward-kdl
-	cp $(WARD_SPEC_BUNDLE_DIR)/* ./cmd/ward-kdl/
+	cp $(WARD_SPEC_BUNDLE_DIR)/* ./.ward/ward-kdl/
 	# Permission tiers: read ⊂ write ⊂ admin, composed by `inherit` (cli-guard#160)
 	# over per-area grants (forgejo's wildcard `"*"`, cli-guard#159; signoz's
 	# explicit per-resource leaves). Each tier is its own standalone binary under
-	# cmd/ward-kdl/ward-kdl-<tier>/, so a withheld verb is absent at compile time,
+	# .ward/ward-kdl/ward-kdl-<tier>/, so a withheld verb is absent at compile time,
 	# not just denied at runtime: ward-kdl-read has no create/edit/delete leaf,
 	# ward-kdl-write no delete leaf. The driver merges EVERY ward-kdl.*.guardfile.kdl
 	# in a tier subdir that shares the `wrap ward-kdl-<tier>` binary name into one
@@ -94,13 +94,13 @@ build-ward-kdl-tiers: ## build the read/write/admin tier binaries, discovering e
 	# spec relative to their own dir. A remote-spec area (forgejo) names a spec with
 	# no base-dir file, so nothing is copied and `lock` fetches it upstream.
 	@set -e; \
-	for gf in cmd/ward-kdl/ward-kdl-read/ward-kdl.*.guardfile.kdl; do \
+	for gf in .ward/ward-kdl/ward-kdl-read/ward-kdl.*.guardfile.kdl; do \
 		spec=$$(awk '/^[[:space:]]*spec /{print $$2; exit}' "$$gf"); \
-		[ -n "$$spec" ] && [ -f "cmd/ward-kdl/$$spec" ] || continue; \
-		for tier in read write admin; do cp "cmd/ward-kdl/$$spec" "cmd/ward-kdl/ward-kdl-$$tier/$$spec"; done; \
+		[ -n "$$spec" ] && [ -f ".ward/ward-kdl/$$spec" ] || continue; \
+		for tier in read write admin; do cp ".ward/ward-kdl/$$spec" ".ward/ward-kdl/ward-kdl-$$tier/$$spec"; done; \
 	done; \
 	for tier in read write admin; do \
-		dir=cmd/ward-kdl/ward-kdl-$$tier; \
+		dir=.ward/ward-kdl/ward-kdl-$$tier; \
 		for gf in $$dir/ward-kdl.*.guardfile.kdl; do \
 			go run $(DRIVER) lock  --guardfile "$$gf"; \
 			go run $(DRIVER) build --guardfile "$$gf" --out bin --set-version $(KDL_VERSION); \
@@ -116,8 +116,8 @@ sync-ops-assets: ## Mirror the canonical forgejo guardfile + spec lock into cmd/
 	# the ward-kdl canonical files. The `.generated.` infix marks each copy as
 	# derived, not hand-edited (ward#270); see cmd/ward/opsassets/README.md.
 	# Re-sync after every lock; opsassets_test.go fails the build on drift.
-	cp ./cmd/ward-kdl/ward-kdl.forgejo.guardfile.kdl ./cmd/ward/opsassets/forgejo.guardfile.generated.kdl
-	cp ./cmd/ward-kdl/forgejo.swagger.lock.json      ./cmd/ward/opsassets/forgejo.swagger.lock.generated.json
+	cp ./.ward/ward-kdl/ward-kdl.forgejo.guardfile.kdl ./cmd/ward/opsassets/forgejo.guardfile.generated.kdl
+	cp ./.ward/ward-kdl/forgejo.swagger.lock.json      ./cmd/ward/opsassets/forgejo.swagger.lock.generated.json
 
 sync-exec-assets: ## Mirror the exec-dialect ward-kdl guardfiles into cmd/ward for embedding (ward#284).
 	# `ward` auto-mounts every exec-dialect ward-kdl.*.guardfile.kdl under its own
@@ -128,18 +128,18 @@ sync-exec-assets: ## Mirror the exec-dialect ward-kdl guardfiles into cmd/ward f
 	# execassets_test.go fails the build on drift, so re-sync after every change.
 	@mkdir -p ./cmd/ward/execassets
 	rm -f ./cmd/ward/execassets/*.guardfile.kdl
-	@for f in ./cmd/ward-kdl/ward-kdl.*.guardfile.kdl; do \
+	@for f in ./.ward/ward-kdl/ward-kdl.*.guardfile.kdl; do \
 		if grep -qE '^[[:space:]]+exec ' "$$f"; then cp "$$f" ./cmd/ward/execassets/; fi; \
 	done
 
 sync-fleet-assets: ## Mirror the dialect-2 ward-kdl.fleet.kdl into cmd/ward for embedding (ward#415).
 	# The fleet config is dialect 2 (fleetconfig, not a guardfile): it names the
 	# agent roster + launch shape, never a permission. go:embed can't reach the
-	# sibling cmd/ward-kdl/ dir, so mirror the one canonical source here as
+	# sibling .ward/ward-kdl/ dir, so mirror the one canonical source here as
 	# fleet.generated.kdl (the `.generated.` infix marks it derived, ward#270).
 	# fleetassets_test.go fails the build on drift, so re-sync after every change.
 	@mkdir -p ./cmd/ward/fleetassets
-	cp ./cmd/ward-kdl/ward-kdl.fleet.kdl ./cmd/ward/fleetassets/fleet.generated.kdl
+	cp ./.ward/ward-kdl/ward-kdl.fleet.kdl ./cmd/ward/fleetassets/fleet.generated.kdl
 
 agent-roster: ## Regenerate docs/agent-roster.md from the code roster - the binary describing its own roles (ward#348).
 	# The flat agent-role list is generated, never hand-edited: `ward agent roster`

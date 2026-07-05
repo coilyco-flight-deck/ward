@@ -273,7 +273,7 @@ jobs:
       TAG: ${{ needs.release.outputs.tag }}
       GO_VERSION: "1.26.4"
       KDL_GEN_REF: v0.72.0
-      KDL_GUARDFILE: ./cmd/ward-kdl/ward-kdl-write/ward-kdl.forgejo.write.guardfile.kdl
+      KDL_GUARDFILE: ./.ward/ward-kdl/ward-kdl-write/ward-kdl.forgejo.write.guardfile.kdl
       GOPRIVATE: forgejo.coilysiren.me
       FORGEJO_BASE_URL: https://forgejo.coilysiren.me
       PKG_OWNER: coilyco-flight-deck
@@ -392,7 +392,7 @@ jobs:
       TAG: ${{ needs.release.outputs.tag }}
       GO_VERSION: "1.26.4"
       KDL_GEN_REF: v0.72.0
-      KDL_GUARDFILE: ./cmd/ward-kdl/ward-kdl-read/ward-kdl.forgejo.read.guardfile.kdl
+      KDL_GUARDFILE: ./.ward/ward-kdl/ward-kdl-read/ward-kdl.forgejo.read.guardfile.kdl
       GOPRIVATE: forgejo.coilysiren.me
       FORGEJO_BASE_URL: https://forgejo.coilysiren.me
       PKG_OWNER: coilyco-flight-deck

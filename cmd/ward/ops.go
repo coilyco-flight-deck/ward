@@ -23,7 +23,7 @@ import (
 // as `ward ops forgejo` (ward#92, #270). See docs/ops-forgejo-in-ward.md.
 
 // opsAssets embeds the forgejo REST guardfile + spec lock (`.generated.` = cp
-// copies of cmd/ward-kdl/) plus the hand-written admin/doctor guardfile (ward#81).
+// copies of .ward/ward-kdl/) plus the hand-written admin/doctor guardfile (ward#81).
 
 //go:embed opsassets/*.generated.kdl opsassets/*.generated.json
 //go:embed opsassets/forgejo-admin.guardfile.kdl

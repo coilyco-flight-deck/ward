@@ -6,7 +6,7 @@ doc_goal: Record precisely why the scoped/mutating half of `ward pkg brew` canno
 [ward#94](https://forgejo.coilysiren.me/coilyco-flight-deck/ward/issues/94)
 re-expressed the read/passthrough half of `ward pkg brew`
 (`cmd/ward/pkg_brew.go`) as the exec-dialect
-[`ward-kdl.brew.guardfile.kdl`](../cmd/ward-kdl/ward-kdl.brew.guardfile.kdl).
+[`ward-kdl.brew.guardfile.kdl`](../.ward/ward-kdl/ward-kdl.brew.guardfile.kdl).
 [ward#95](https://forgejo.coilysiren.me/coilyco-flight-deck/ward/issues/95)
 asked whether the scoped/mutating half fits the exec dialect or needs a complex
 action. (`ward-kdl.brew.guardfile.md` is `specverb-gen` output, so the rationale

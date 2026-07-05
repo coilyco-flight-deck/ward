@@ -12,7 +12,7 @@ including `ward-kdl.git.guardfile.kdl` - compiled only into the standalone
 
 ## What mounts
 
-Every **exec-dialect** guardfile (`cmd/ward-kdl/ward-kdl.<area>.guardfile.kdl`
+Every **exec-dialect** guardfile (`.ward/ward-kdl/ward-kdl.<area>.guardfile.kdl`
 with an `exec <bin>` block) is grafted onto the `ward` command tree at the path
 its `wrap` block names. The leading `ward-kdl` token maps to the `ward` root and
 is dropped, so the rest of the `wrap` path becomes the mount path:
@@ -33,7 +33,7 @@ the `specverb` path (`ward ops forgejo`, cmd/ward/ops.go).
 
 `cmd/ward/wardkdl_exec.go` embeds the exec guardfiles (mirrored into
 `cmd/ward/execassets/` by `make sync-exec-assets`, since `go:embed` cannot reach
-the sibling `cmd/ward-kdl/` dir), parses each with `execverb.Parse`,
+the sibling `.ward/ward-kdl/` dir), parses each with `execverb.Parse`,
 `execverb.Build`s its group, and grafts it onto the root - creating shared
 intermediate groups (`ops`, `agents`) once. `main.go` calls `mountWardKdlExec`
 before the verb-fallback set is read, so the new top-level groups (`docker`,

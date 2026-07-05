@@ -56,7 +56,7 @@ only its policy guardfile - no spec lock, no SSM token (the wrapped `ssh`/`forge
 own their own credentials).
 
 The guardfile lives directly under `cmd/ward/opsassets/` (not mirrored from
-`cmd/ward-kdl/` like the REST guardfile) because it has no ward-kdl driver
+`.ward/ward-kdl/` like the REST guardfile) because it has no ward-kdl driver
 counterpart yet: it declares `wrap ward ops forgejo`, not `wrap ward-kdl ...`, so
 the driver does not discover it. Teaching the no-code `ward-kdl` driver to carry
 this remote-exec group is the follow-up; until then ward proper carries it

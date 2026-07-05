@@ -14,10 +14,10 @@ The bundle is the set of KDL source files `ward-kdl` compiles at build time:
 
 ## Bring your own specs
 
-The build reads its bundle from the `cmd/ward-kdl/` directory by convention (not
+The build reads its bundle from the `.ward/ward-kdl/` directory by convention (not
 a build-time variable). To build `ward` against your own deployment:
 
-1. Copy these files into `cmd/ward-kdl/`, overlaying the tracked bundle.
+1. Copy these files into `.ward/ward-kdl/`, overlaying the tracked bundle.
 2. Replace each placeholder (`git.example.com`, `/example/...`, `example*`,
    `example-bot`) with your own deployment's values.
 3. Run `make build-ward-kdl` to regenerate the embedded surfaces.

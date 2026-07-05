@@ -15,7 +15,7 @@ import (
 // wardkdl_exec.go auto-mounts the exec-dialect ward-kdl guardfiles into `ward`,
 // generalizing graftForgejoAdminExec (ward#284). See docs/ward-kdl-in-ward.md.
 
-// execAssets embeds the exec guardfiles mirrored from cmd/ward-kdl by `make
+// execAssets embeds the exec guardfiles mirrored from .ward/ward-kdl by `make
 // sync-exec-assets` (go:embed can't reach the sibling dir; the drift test guards it).
 
 //go:embed execassets/*.guardfile.kdl

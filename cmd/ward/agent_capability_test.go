@@ -13,7 +13,8 @@ import (
 // rename that outran a constant can't silently drop a role's capability (ward#578).
 func TestCapabilityGuardfilesExist(t *testing.T) {
 	for _, name := range []string{guardfileAWS, guardfileTailscale} {
-		path := filepath.Join("..", "ward-kdl", name)
+		// ward-kdl moved to the .ward/ config dir (ward#435).
+		path := filepath.Join("..", "..", ".ward", "ward-kdl", name)
 		if _, err := os.Stat(path); err != nil {
 			t.Errorf("capability guardfile %q does not exist at %s (%v); a rename must update the constant", name, path, err)
 		}

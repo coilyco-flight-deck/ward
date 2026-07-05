@@ -53,7 +53,7 @@ wrap ward-kdl ops kube {
 }
 ```
 
-Drop it in `cmd/ward-kdl/`, run `make build-ward-kdl`, and `ward ops kube get
+Drop it in `.ward/ward-kdl/`, run `make build-ward-kdl`, and `ward ops kube get
 pods` works while every other `kubectl` form stays absent. This is the shape
 [ward#226](https://forgejo.coilysiren.me/coilyco-flight-deck/ward/issues/226) opened the `git` guardfile with. For a real start, copy the complete
 spec surface in [examples/ward-specs/](../examples/ward-specs).

@@ -53,7 +53,7 @@ endpoint/token/owner values.
 
 To build `ward` against your own deployment:
 
-1. Copy `examples/ward-specs/*` into `cmd/ward-kdl/`, overlaying the tracked bundle.
+1. Copy `examples/ward-specs/*` into `.ward/ward-kdl/`, overlaying the tracked bundle.
 2. Replace each placeholder (`git.example.com`, `/example/...`, `example*`, `example-bot`) with your deployment's values.
 3. Run `make build-ward-kdl`, then `make test`.
 
@@ -63,4 +63,4 @@ To build `ward` against your own deployment:
 - [ward-kdl.md](ward-kdl.md) - what the build-time authoring layer is.
 - [ward-kdl-surface.md](ward-kdl-surface.md) - the full generated verb surface.
 - [examples/ward-specs/](../examples/ward-specs) - the neutral starter bundle.
-- [cmd/ward-kdl/README.md](../cmd/ward-kdl/README.md) - the bundle directory this doc describes.
+- [.ward/ward-kdl/README.md](../.ward/ward-kdl/README.md) - the bundle directory this doc describes.

@@ -23,7 +23,7 @@ Three departures from a transparent, shared, bind-mounted container:
 - **Least access** - the only default host bind is the **cwd** (read-only) plus
   ward's entrypoint/doctrine; `~/.aws` and the tailnet route
   ([agent-host-net.md](agent-host-net.md)) are opt-in **per startup role** via
-  the role's guardfile set in [`ward-kdl.fleet.kdl`](../cmd/ward-kdl/ward-kdl.fleet.kdl)
+  the role's guardfile set in [`ward-kdl.fleet.kdl`](../.ward/ward-kdl/ward-kdl.fleet.kdl)
   ([ward#578](https://forgejo.coilysiren.me/coilyco-flight-deck/ward/issues/578)) - the advisor holds them, the engineer does not. See
   [agent-flags.md](agent-flags.md).
 

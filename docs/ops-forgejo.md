@@ -23,7 +23,7 @@ Keeping the binary local does not make the layer temporary: the guardfiles, lock
 and generated verbs it produces are the source of the ops surface every `ward`
 carries.
 
-`cmd/ward-kdl/` is **not** a Go module - it commits only policy and locks.
+`.ward/ward-kdl/` is **not** a Go module - it commits only policy and locks.
 `specverb-gen` materializes the generated `main.go`, `go.mod`/`go.sum`, and the
 binary out-of-band in its cache (the uv-venv analog), so the AWS SDK never
 enters production ward's module and the parent `go build ./...` skips it.
@@ -49,7 +49,7 @@ every {owner} leaf. The complex actions are `issue list-all` (collect),
 
 ## No hand-written Go
 
-`cmd/ward-kdl/` commits one Guardfile per API: `ward-kdl.forgejo.guardfile.kdl`
+`.ward/ward-kdl/` commits one Guardfile per API: `ward-kdl.forgejo.guardfile.kdl`
 and the `trello`/`tailscale` spec guardfiles, plus `ward-kdl.aws.guardfile.kdl`
 (exec). Each spec API commits a pruned lock (`*.swagger.lock.json` for the
 Forgejo Swagger 2.0, `*.openapi.lock.json` for the Trello/Tailscale OpenAPI 3.x);

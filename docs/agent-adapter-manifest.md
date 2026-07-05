@@ -16,7 +16,7 @@ those switches for manifest lookups; a test pins it to today's behavior first.
 ## Where it lives, who publishes it
 
 The hand-edited source is the dialect-2 fleet config
-[`ward-kdl.fleet.kdl`](../cmd/ward-kdl/ward-kdl.fleet.kdl), embedded via
+[`ward-kdl.fleet.kdl`](../.ward/ward-kdl/ward-kdl.fleet.kdl), embedded via
 [`fleet.generated.kdl`](../cmd/ward/fleetassets/fleet.generated.kdl) (`make
 sync-fleet-assets` mirrors it; a drift test fails the build), so a container
 needs no network to know its agent's dialect. [`agent_adapter.go`](../cmd/ward/agent_adapter.go)

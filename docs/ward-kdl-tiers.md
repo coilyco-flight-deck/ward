@@ -8,7 +8,7 @@ spec-dialect surface: read ⊂ write ⊂ admin, composed by `inherit`,
 each its own binary so a withheld verb is **absent at compile time**, not denied at
 runtime. forgejo and signoz are fully tiered; their
 guardfiles live beside this doc's siblings under
-`cmd/ward-kdl/ward-kdl-<tier>/ward-kdl.<area>.<tier>.guardfile.kdl`. The
+`.ward/ward-kdl/ward-kdl-<tier>/ward-kdl.<area>.<tier>.guardfile.kdl`. The
 build that compiles them is `make build-ward-kdl-tiers` (folded into
 `make build-ward-kdl`), which discovers every `*.guardfile.kdl` in each tier dir
 and merges those sharing a `wrap ward-kdl-<tier>` binary name. See
@@ -50,10 +50,10 @@ To wire an area in (the [ward#339](https://forgejo.coilysiren.me/coilyco-flight-
 2. Replace the `TODO(ward#339): tier verbs` marker with the tier's `can`/`never`
    grants (read = get/list-shaped; write adds create/edit; admin adds delete).
 3. `make build-ward-kdl` - the tier loop now discovers the file, copies the base
-   `cmd/ward-kdl/<spec>` into each tier dir (gitignored), locks the
+   `.ward/ward-kdl/<spec>` into each tier dir (gitignored), locks the
    pruned `*.openapi.lock.json` (tracked), and builds the binary.
 
-The base monolith guardfiles (`cmd/ward-kdl/ward-kdl.<area>.guardfile.kdl`) and
+The base monolith guardfiles (`.ward/ward-kdl/ward-kdl.<area>.guardfile.kdl`) and
 their root specs stay canonical and untouched throughout - the tier files are
 additive scaffolding beside the base, never a migration of it.
 
