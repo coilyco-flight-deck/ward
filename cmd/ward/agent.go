@@ -659,7 +659,7 @@ func (r *Runner) runAgentWork(ctx context.Context, c *cli.Command, mode containe
 		// On a GO, carry the read into the reservation comment (ward#383).
 		justification = read
 	}
-	return r.launchAgentContainer(ctx, c, mode, surface, w.Ref, w.Title, w.Seed, justification)
+	return r.launchAgentContainer(ctx, c, mode, surface, w, justification)
 }
 
 // preflightTimeout caps the pre-flight read so a wedged agent can't hold the
@@ -753,15 +753,23 @@ func preflightPrompt(ref agentIssueRef, title, body, details string, comments []
 		cloneScope, extraNote, cloneScope, extraNote, carryIssueBanner(ref), ref, title, body, note, thread, gate, ref.Owner, ref.Repo)
 }
 
+// preflightStripsComment reports whether the pre-flight read drops this comment as
+// ward's own bookkeeping (reservation pings, NO-GO verdicts) or empty (ward#154).
+func preflightStripsComment(c issueComment) bool {
+	return strings.TrimSpace(c.Body) == "" ||
+		strings.Contains(c.Body, agentReservationMarker) ||
+		strings.Contains(c.Body, preflightNoGoMarker)
+}
+
 // preflightComments renders the human comment thread (oldest first) for the
 // pre-flight, dropping ward's own bookkeeping so only human words sway it (see docs).
 func preflightComments(comments []issueComment) string {
 	var b strings.Builder
 	for _, c := range comments {
-		body := strings.TrimSpace(c.Body)
-		if body == "" || strings.Contains(c.Body, agentReservationMarker) || strings.Contains(c.Body, preflightNoGoMarker) {
+		if preflightStripsComment(c) {
 			continue
 		}
+		body := strings.TrimSpace(c.Body)
 		who := strings.TrimSpace(c.User.Login)
 		if who == "" {
 			who = "(unknown author)"
@@ -1235,8 +1243,9 @@ func carryingLine(label string, ref agentIssueRef, title string) string {
 
 // launchAgentContainer turns a resolved (ref, title, seed) into the container plan and
 // fires it detached - the shared tail of engineer, freeform task, and route (ward#356).
-func (r *Runner) launchAgentContainer(ctx context.Context, c *cli.Command, mode containerMode, surface string, ref agentIssueRef, title, seed, justification string) error {
+func (r *Runner) launchAgentContainer(ctx context.Context, c *cli.Command, mode containerMode, surface string, w resolvedWork, justification string) error {
 	label := agentCmdline(mode, surface)
+	ref, title, seed := w.Ref, w.Title, w.Seed
 
 	// Fail a doomed in-container dispatch loudly at bring-up, not at the raw
 	// `exec: "docker"` lookup later (ward#321); --print warns but still renders.
@@ -1275,8 +1284,10 @@ func (r *Runner) launchAgentContainer(ctx context.Context, c *cli.Command, mode 
 	// --quiet-seed (director auto-dispatch shares this console; ward#519).
 	maybeDumpSeed(os.Stderr, seed, c.Bool("quiet-seed"))
 
-	// Reserve the issue so another run won't redo it.
-	release, err := r.reserveIssue(ctx, label, mode, ref, plan.Name, plan.Branch, justification, c.Bool("force"))
+	// Reserve the issue so another run won't redo it. Fold the dynamic seed context into
+	// the comment so a pre-launch-gate death self-documents on the thread (ward#609).
+	seedCtx := buildReservationSeedContext(w, plan, time.Now().UTC())
+	release, err := r.reserveIssue(ctx, label, mode, ref, plan.Name, plan.Branch, justification, seedCtx, c.Bool("force"))
 	if err != nil {
 		return err
 	}
@@ -1632,7 +1643,8 @@ func (r *Runner) runAgentTaskDirect(ctx context.Context, c *cli.Command, mode co
 	// The freeform instructions are the filed body (no --details); a headless seed
 	// (inlined body + reflection) carried under the resolved workflow (#167, #281, #508).
 	seed := agentSeedPromptWorkflow(ref, title, body, "", true, nil, wf)
-	return r.launchAgentContainer(ctx, c, mode, "engineer", ref, title, seed, justification)
+	return r.launchAgentContainer(ctx, c, mode, "engineer",
+		resolvedWork{Ref: ref, Title: title, Body: body, Workflow: wf, Seed: seed}, justification)
 }
 
 // printAgentTaskPlan renders the repo, the issue that *would* be filed, and the

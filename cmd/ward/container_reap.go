@@ -533,7 +533,10 @@ func (r *Runner) releaseReservationIfUnstarted(ctx context.Context, env reapEnv)
 		return
 	}
 	fc = fc.withMode(containerMode(env.Mode))
-	body := reservationReleaseCommentBody(containerMode(env.Mode), env.Name)
+	// Name the specific pre-launch gate that died (auth / ollama-probe / bootstrap),
+	// its error line, and the recovery step - not just "smoke-test death" (ward#609).
+	gate, _ := readGateFailure()
+	body := reservationReleaseCommentBody(containerMode(env.Mode), env.Name, gate)
 	if err := fc.commentIssue(ctx, env.Owner, env.Name, env.Issue, body); err != nil {
 		fmt.Fprintf(os.Stderr, "ward container reap: could not release issue reservation on #%d: %v\n", env.Issue, err)
 		return

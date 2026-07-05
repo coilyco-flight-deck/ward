@@ -221,6 +221,47 @@ func blog(format string, a ...any) {
 	fmt.Fprintf(os.Stderr, "ward-container: "+format+"\n", a...)
 }
 
+// echoRunContextGo echoes the dynamic per-run context to stderr at startup, before any
+// gate (ward#609), mirroring the bash echo_run_context; the seed rides in agentArgs.
+func echoRunContextGo(e bootstrapEnv, agentArgs []string) {
+	ref := e.TargetOwner + "/" + e.TargetName
+	if e.Issue != 0 {
+		ref = fmt.Sprintf("%s#%d", ref, e.Issue)
+	}
+	seed := "(no seed argv; interactive or seedless run)"
+	if len(agentArgs) > 0 {
+		seed = strings.Join(agentArgs, " ")
+	}
+	fmt.Fprintf(os.Stderr, "===== ward run context (ward#609) =====\n"+
+		"repo:     %s/%s\nref:      %s\nbranch:   %s\ndriver:   %s (agent %s)\nrun:      %s\n"+
+		"workflow: %s\nward:     %s\nup:       %s\n----- seed / task text -----\n%s\n"+
+		"===== end ward run context =====\n",
+		e.TargetOwner, e.TargetName, ref, orDefaultLabel(e.Branch, "(default)"),
+		e.Mode, e.Agent, orDefaultLabel(e.Container, "(unnamed)"),
+		orDefaultLabel(os.Getenv("WARD_WORKFLOW"), "direct-main"),
+		orDefaultLabel(os.Getenv("WARD_VERSION"), "(latest, resolved in-container)"),
+		orDefaultLabel(os.Getenv("WARD_CONTAINER_UP"), "(unset)"), seed)
+}
+
+// orDefaultLabel returns s, or def when s is blank.
+func orDefaultLabel(s, def string) string {
+	if strings.TrimSpace(s) == "" {
+		return def
+	}
+	return s
+}
+
+// bootstrapPrelaunchGate names the pre-launch gate the reaper reports for a mode:
+// claude's is the auth smoke test, the local-model harnesses' is the ollama probe.
+func bootstrapPrelaunchGate(mode containerMode) string {
+	switch mode {
+	case modeClaude:
+		return "auth"
+	default:
+		return "ollama-probe"
+	}
+}
+
 // containerBootstrapCommand is the hidden `ward container bootstrap`: the PID-1
 // entrypoint port (ward#181). Hidden because it is image-internal, not for hand use.
 func containerBootstrapCommand() *cli.Command {
@@ -251,6 +292,9 @@ func (r *Runner) runContainerBootstrap(ctx context.Context, c *cli.Command) erro
 	agentArgs := c.Args().Slice()
 	blog("bootstrap start: container=%s mode=%s agent=%s issue=%d readOnly=%t headless=%t extraRepos=%d",
 		e.Container, e.Mode, e.Agent, e.Issue, e.ReadOnly, e.Headless, len(e.ExtraRepos))
+	// Echo the run context first, before any gate, so every abort is greppable in the
+	// container log (ward#609, the docker-log backstop surface).
+	echoRunContextGo(e, agentArgs)
 
 	// The container is the isolation boundary; opt the reaper out of ward's jail
 	// (cli-guard#153). Stamp container start for the reaper's PAT-age report (ward#103).
@@ -341,6 +385,7 @@ func (r *Runner) runContainerBootstrap(ctx context.Context, c *cli.Command) erro
 		// Re-assert the credential perms git's `store` helper clobbered on the clones,
 		// else the dropped agent falls back to the human token (ward#288).
 		blog("fatal: %v", cerr)
+		writeGateFailure("bootstrap", cerr.Error()) // reaper release-comment context (ward#609)
 		return cerr
 	}
 	_ = os.Unsetenv("ANTHROPIC_API_KEY")
@@ -353,6 +398,9 @@ func (r *Runner) runContainerBootstrap(ctx context.Context, c *cli.Command) erro
 		if serr := lg.PreLaunchCheck(rc); serr != nil {
 			blog("bootstrap prelaunch check failed: %v", serr)
 			blog("fatal: %v", serr)
+			// Name the gate for the reaper's reservation-release comment (ward#609):
+			// claude's gate is auth, the local-model harnesses' is the ollama probe.
+			writeGateFailure(bootstrapPrelaunchGate(mode), serr.Error())
 			return serr
 		}
 		blog("bootstrap prelaunch check passed: %s", e.Agent)

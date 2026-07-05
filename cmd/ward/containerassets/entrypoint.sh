@@ -9,7 +9,22 @@
 set -euo pipefail
 
 log() { printf 'ward-container: %s\n' "$*" >&2; }
-die() { log "fatal: $*"; exit 1; }
+
+# ward#609: record which pre-launch gate died so the reaper's release comment names
+# the gate + error + recovery. Same default as the Go reader (readGateFailure).
+WARD_GATE_FAILURE_FILE="${WARD_GATE_FAILURE_FILE:-/run/ward/gate-failure}"
+export WARD_GATE_FAILURE_FILE
+# WARD_GATE_PHASE names the gate the entrypoint is currently in; die() stamps it into
+# the record. Empty once the agent launches, so a post-launch death is not misfiled.
+WARD_GATE_PHASE=""
+record_gate_failure() {
+  local gate="$1" detail="$2"
+  [ -n "$gate" ] || return 0
+  mkdir -p "$(dirname "$WARD_GATE_FAILURE_FILE")" 2>/dev/null || true
+  { printf 'gate=%s\n' "$gate"; printf '%s\n' "$detail"; } > "$WARD_GATE_FAILURE_FILE" 2>/dev/null || true
+}
+
+die() { log "fatal: $*"; record_gate_failure "$WARD_GATE_PHASE" "$*"; exit 1; }
 
 : "${WARD_TARGET_OWNER:?missing WARD_TARGET_OWNER}"
 : "${WARD_TARGET_NAME:?missing WARD_TARGET_NAME}"
@@ -865,6 +880,7 @@ smoke_test_claude_auth() {
   { [ "$WARD_AGENT" = claude ] && [ "${WARD_HEADLESS:-0}" = 1 ]; } || return 0
   [ "${WARD_SMOKE_TEST_SKIP:-0}" = 1 ] && { log "auth smoke test skipped (WARD_SMOKE_TEST_SKIP=1)"; return 0; }
   command -v claude >/dev/null 2>&1 || return 0
+  WARD_GATE_PHASE=auth # a die() below is classified 'auth' for the reaper (ward#609)
   low_disk_warn
   log "auth smoke test: probing claude before launch (ward#222)"
   local out rc=0 errf err
@@ -909,6 +925,7 @@ smoke_test_ollama_reachable() {
   esac
   [ "${WARD_SMOKE_TEST_SKIP:-0}" = 1 ] && { log "ollama smoke test skipped (WARD_SMOKE_TEST_SKIP=1)"; return 0; }
   [ -n "$endpoint" ] || { log "ollama smoke test: no $harness ollama endpoint configured, skipping reachability probe (ward#487)"; return 0; }
+  WARD_GATE_PHASE=ollama-probe # a die() below is classified 'ollama-probe' for the reaper (ward#609)
   # Normalise a bare host[:port] to a URL curl can dial.
   case "$endpoint" in *://*) ;; *) endpoint="http://$endpoint" ;; esac
   log "ollama smoke test: probing $harness ollama endpoint $endpoint before launch (ward#487)"
@@ -929,8 +946,36 @@ smoke_test_ollama_reachable() {
   die "ollama smoke test: $harness's ollama endpoint $endpoint was unreachable after ${OLLAMA_SMOKE_WINDOW}s - the dispatched container would hang or fail opaquely instead of a clean abort (ward#487, the local-harness analog of claude's auth smoke test). Is Ollama running and reachable from the container? Point $harness at a live endpoint (opencode: WARD_OLLAMA_URL; goose: the SSM tower host /coilysiren/ollama/host) or pass --ts-sidecar to route localhost:11434 to the tower. WARD_SMOKE_TEST_SKIP=1 bypasses."
 }
 
+# --- docker-log run-context echo (ward#609): the BACKSTOP surface -------------
+# Echo the dynamic per-run context + seed to stdout BEFORE any gate; greppable. See docs.
+echo_run_context() {
+  local issue="${WARD_TARGET_ISSUE:-0}" ref="$WARD_TARGET_OWNER/$WARD_TARGET_NAME"
+  [ "$issue" != 0 ] && ref="$ref#$issue"
+  {
+    echo "===== ward run context (ward#609) ====="
+    echo "repo:     $WARD_TARGET_OWNER/$WARD_TARGET_NAME"
+    echo "ref:      $ref"
+    echo "branch:   ${WARD_BRANCH:-(default)}"
+    echo "driver:   $WARD_MODE (agent $WARD_AGENT)"
+    echo "run:      ${WARD_CONTAINER_NAME:-(unnamed)}"
+    echo "workflow: ${WARD_WORKFLOW:-direct-main}"
+    echo "forge:    $WARD_FORGE"
+    echo "ward:     ${WARD_VERSION:-(latest, resolved in-container)}"
+    echo "up:       ${WARD_CONTAINER_UP:-(unset)}"
+    echo "----- seed / task text -----"
+    if [ "$#" -gt 0 ]; then printf '%s\n' "$*"; else echo "(no seed argv; interactive or seedless run)"; fi
+    echo "===== end ward run context ====="
+  } >&2
+}
+
 # --- launch ------------------------------------------------------------------
 main() {
+  # Echo the run context first, before any gate, so every abort is greppable in the
+  # container log (ward#609). The seed rides as "$@" (the agent's argv).
+  echo_run_context "$@"
+  # Bootstrap phase: a death in install/clone/credential setup is classified
+  # 'bootstrap' for the reaper's reservation-release comment (ward#609).
+  WARD_GATE_PHASE=bootstrap
   configure_git_auth
   install_ward
   # EXPERIMENTAL opt-in (ward#181): hand off to the Go bootstrap once ward installs.
@@ -1054,6 +1099,7 @@ main() {
   # Mark that we reached the real agent launch (post-smoke-test); the reaper reads
   # this on a clean teardown to release a pre-launch-death hold (ward#264, docs).
   export WARD_AGENT_LAUNCHED=1
+  WARD_GATE_PHASE="" # past every pre-launch gate; a later death is not a gate death (ward#609)
   log "launching $WARD_AGENT as uid $AGENT_UID"
   local launch=(setpriv --reuid="$AGENT_UID" --regid="$AGENT_GID" --init-groups
                 env HOME="$AGENT_HOME" "${agent_argv[@]}")

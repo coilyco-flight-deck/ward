@@ -94,6 +94,18 @@ the issue, so the log names the cause.
 Host AWS/STS expiry is **not** a concern: AWS is touched only on the host at
 bring-up to read the PAT from SSM, never during reap.
 
+## A pre-launch death names its gate ([ward#609](https://forgejo.coilysiren.me/coilyco-flight-deck/ward/issues/609))
+
+When a container exits **before** launching the agent (the [ward#222](https://forgejo.coilysiren.me/coilyco-flight-deck/ward/issues/222) smoke gate,
+an unreachable Ollama endpoint, or a bootstrap failure), the reaper retracts the
+reservation with a release comment - and that comment now names the **specific
+gate** that died, folds in the actual error line, and gives the recovery step,
+so an operator diagnoses on the issue thread rather than in docker logs. The
+entrypoint records the failing gate (`auth` / `ollama-probe` / `bootstrap`) to
+`WARD_GATE_FAILURE_FILE` (default `/run/ward/gate-failure`); the reaper reads it in
+`releaseReservationIfUnstarted`. A death with no recorded gate falls back to the
+generic release comment. See [agent-reservation.md](agent-reservation.md).
+
 ## See also
 
 [docs/container.md](container.md) - container subsystem.

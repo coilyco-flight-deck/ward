@@ -211,7 +211,7 @@ func hostname() string {
 
 // reserveIssue acquires both reservation sides before a container fires (ward#570). It
 // returns a release retracting both halves; a remote failure rolls the local hold back.
-func (r *Runner) reserveIssue(ctx context.Context, label string, mode containerMode, ref agentIssueRef, container, branch, justification string, force bool) (func(), error) {
+func (r *Runner) reserveIssue(ctx context.Context, label string, mode containerMode, ref agentIssueRef, container, branch, justification string, seedCtx *reservationSeedContext, force bool) (func(), error) {
 	now := time.Now().UTC()
 	fmt.Fprintf(os.Stderr, "%s: reservation start for %s (container=%s branch=%s force=%t)\n", label, ref, container, branch, force)
 	releaseLocal, err := r.acquireLocalReservation(ctx, label, mode, ref, container, branch, now, force)
@@ -219,7 +219,7 @@ func (r *Runner) reserveIssue(ctx context.Context, label string, mode containerM
 		fmt.Fprintf(os.Stderr, "%s: reservation local acquire failed for %s: %v\n", label, ref, err)
 		return nil, err
 	}
-	releaseRemote, err := r.acquireRemoteReservation(ctx, label, mode, ref, container, justification, now, force)
+	releaseRemote, err := r.acquireRemoteReservation(ctx, label, mode, ref, container, justification, seedCtx, now, force)
 	if err != nil {
 		fmt.Fprintf(os.Stderr, "%s: reservation remote acquire failed for %s: %v\n", label, ref, err)
 		releaseLocal()
@@ -340,7 +340,7 @@ const reservationWarnToken = "remote reservation NOT posted"
 
 // acquireRemoteReservation refuses on a fresh reservation comment (unless force), else
 // posts one and returns a remote-release to roll it back (ward#402/#570, docs).
-func (r *Runner) acquireRemoteReservation(ctx context.Context, label string, mode containerMode, ref agentIssueRef, container, justification string, now time.Time, force bool) (func(), error) {
+func (r *Runner) acquireRemoteReservation(ctx context.Context, label string, mode containerMode, ref agentIssueRef, container, justification string, seedCtx *reservationSeedContext, now time.Time, force bool) (func(), error) {
 	cl, err := r.hostForgeClient(ctx, ref.Forge, mode)
 	if err != nil {
 		warnRemoteReservationLost(label, ref, fmt.Sprintf("could not build the %s client: %v", ref.Forge, err))
@@ -359,7 +359,7 @@ func (r *Runner) acquireRemoteReservation(ctx context.Context, label string, mod
 	tries, perr := postReservationComment(ctx, remoteReservationPostAttempts, remoteReservationPostBackoff, reservationPostSleep,
 		func(ctx context.Context) error {
 			return cl.commentIssue(ctx, ref.Owner, ref.Repo, ref.Number,
-				reservationCommentBody(mode, container, hostname(), now, justification))
+				reservationCommentBody(mode, container, hostname(), now, justification, seedCtx))
 		})
 	if perr != nil {
 		warnRemoteReservationLost(label, ref, fmt.Sprintf("post failed after %d attempt(s): %v", tries, perr))
@@ -386,7 +386,7 @@ func (r *Runner) acquireRemoteReservation(ctx context.Context, label string, mod
 // releaseRemoteReservation retracts this run's forge road-block on a launch that dies
 // before the container is up: a release-marker comment plus a best-effort unlock (#570).
 func (r *Runner) releaseRemoteReservation(ctx context.Context, cl issueForge, label string, mode containerMode, ref agentIssueRef, container string) {
-	if err := cl.commentIssue(ctx, ref.Owner, ref.Repo, ref.Number, reservationReleaseCommentBody(mode, container)); err != nil {
+	if err := cl.commentIssue(ctx, ref.Owner, ref.Repo, ref.Number, reservationReleaseCommentBody(mode, container, nil)); err != nil {
 		fmt.Fprintf(os.Stderr, "%s: warning: could not release the remote reservation on %s (%v); a re-run may need --force until the %s TTL lapses (ward#570)\n", label, ref, err, agentReservationTTL)
 		return
 	}
@@ -565,9 +565,9 @@ func winningReservationClaim(claims []reservationClaim) (reservationClaim, bool)
 	return best, true
 }
 
-// reservationCommentBody is the marker comment a run posts to claim an issue. A
-// non-empty justification is folded in as the pre-flight's GO read (ward#383).
-func reservationCommentBody(mode containerMode, container, host string, now time.Time, justification string) string {
+// reservationCommentBody is the marker comment claiming an issue: a non-empty
+// justification folds in the GO read (ward#383), seedCtx the seed context (ward#609).
+func reservationCommentBody(mode containerMode, container, host string, now time.Time, justification string, seedCtx *reservationSeedContext) string {
 	body := fmt.Sprintf(
 		"%s\n🔒 Reserved by `ward agent --driver %s` — container `%s` on host `%s` is carrying this issue (reserved %s). "+
 			"Concurrent `ward agent` runs are blocked until it finishes or the reservation goes stale (%s TTL); "+
@@ -584,15 +584,269 @@ func reservationCommentBody(mode containerMode, container, host string, now time
 				"<details><summary>pre-flight read (GO)</summary>\n\n%s\n\n</details>\n",
 			justification)
 	}
+	body += seedCtx.render()
 	return body
 }
 
-// reservationReleaseCommentBody is the marker comment the reaper posts to retract
-// a reservation whose container exited having done nothing (ward#264).
-func reservationReleaseCommentBody(mode containerMode, container string) string {
-	return fmt.Sprintf(
-		"%s\n🔓 Reservation released by `ward container reap` — container `%s` (`--driver %s`) exited without "+
-			"launching the agent (smoke-test death, ward#222/#264), so the hold it took is retracted. "+
-			"A plain `ward agent` retry no longer needs `--force`.",
-		agentReservationReleaseMarker, container, mode)
+// reservationReleaseCommentBody is the reaper's retract comment for a do-nothing exit
+// (ward#264); a non-nil gate names the gate, error, and recovery (ward#609, see docs).
+func reservationReleaseCommentBody(mode containerMode, container string, gate *gateFailure) string {
+	if gate == nil {
+		return fmt.Sprintf(
+			"%s\n🔓 Reservation released by `ward container reap` — container `%s` (`--driver %s`) exited without "+
+				"launching the agent (smoke-test death, ward#222/#264), so the hold it took is retracted. "+
+				"A plain `ward agent` retry no longer needs `--force`.",
+			agentReservationReleaseMarker, container, mode)
+	}
+	label, recovery := gateRecovery(gate.Gate)
+	body := fmt.Sprintf(
+		"%s\n🔓 Reservation released by `ward container reap` — container `%s` (`--driver %s`) exited at the **%s** "+
+			"pre-launch gate without launching the agent (ward#222/#264/#609), so the hold it took is retracted. "+
+			"A plain `ward agent` retry no longer needs `--force`.\n\n"+
+			"**Gate:** %s\n\n**Recovery:** %s",
+		agentReservationReleaseMarker, container, mode, gate.Gate, label, recovery)
+	if d := reservationScrubDetail(gate.Detail); d != "" {
+		body += fmt.Sprintf("\n\n<details><summary>error from the gate</summary>\n\n```\n%s\n```\n\n</details>", d)
+	}
+	return body
+}
+
+// --- reservation seed context (ward#609): the WHAT surface --------------------
+
+// reservationSeedContext carries the DYNAMIC per-run bytes folded into the reservation
+// comment (ward#609): the seed shape. No comment bodies or secrets (see docs).
+type reservationSeedContext struct {
+	Ref          agentIssueRef
+	Branch       string
+	Driver       string // the --driver harness (claude/codex/...)
+	RunID        string // the container name, the run correlation id
+	WardVersion  string // the ward release the container pins/resolves
+	Workflow     workflowMode
+	Body         string                   // the issue body as actually seeded (frozen snapshot)
+	Included     []reservationThreadEntry // comments fed to the pre-flight read
+	Stripped     []reservationThreadEntry // comments ward stripped (its own automation)
+	DispatchedAt time.Time
+}
+
+// reservationThreadEntry is one comment's non-secret identity (author + timestamp)
+// for the included-vs-stripped tally; the body itself is never carried.
+type reservationThreadEntry struct {
+	Author string
+	At     time.Time
+}
+
+// buildReservationSeedContext partitions the thread into pre-flight-read vs stripped
+// (preflightStripsComment) and captures the resolved run shape from the plan (ward#609).
+func buildReservationSeedContext(w resolvedWork, plan upPlan, now time.Time) *reservationSeedContext {
+	sc := &reservationSeedContext{
+		Ref:          w.Ref,
+		Branch:       plan.Branch,
+		Driver:       string(plan.Mode),
+		RunID:        plan.Name,
+		WardVersion:  plan.WardVersion,
+		Workflow:     w.Workflow,
+		Body:         w.Body,
+		DispatchedAt: now,
+	}
+	for _, c := range w.Comments {
+		entry := reservationThreadEntry{Author: strings.TrimSpace(c.User.Login), At: c.CreatedAt}
+		if preflightStripsComment(c) {
+			sc.Stripped = append(sc.Stripped, entry)
+		} else {
+			sc.Included = append(sc.Included, entry)
+		}
+	}
+	return sc
+}
+
+// reservationSeededBodyCap bounds how much of the seeded body the durable comment
+// re-pastes; the full body is on the issue already, so a truncation loses nothing.
+const reservationSeededBodyCap = 2000
+
+// render folds the dynamic seed context into a collapsed <details> block; a nil
+// receiver renders nothing (a run with no captured context, e.g. --force paths).
+func (sc *reservationSeedContext) render() string {
+	if sc == nil {
+		return ""
+	}
+	ward := reservationWardVersionLabel(sc.WardVersion)
+	var b strings.Builder
+	b.WriteString("\n\n<details><summary>run seed context — what this run is carrying (ward#609)</summary>\n\n")
+	fmt.Fprintf(&b, "- **Resolved:** `%s` · branch `%s` · driver `%s` · workflow `%s`\n",
+		sc.Ref, orNoneLabel(sc.Branch), orNoneLabel(sc.Driver), sc.Workflow.orDefault())
+	fmt.Fprintf(&b, "- **Run:** `%s` · ward `%s` · dispatched `%s`\n",
+		orNoneLabel(sc.RunID), ward, sc.DispatchedAt.UTC().Format(time.RFC3339))
+	fmt.Fprintf(&b, "- **Comment thread:** %d included in the pre-flight read, %d stripped (ward's own automated comments).\n",
+		len(sc.Included), len(sc.Stripped))
+	if len(sc.Included) > 0 {
+		fmt.Fprintf(&b, "  - included: %s\n", renderThreadEntries(sc.Included))
+	}
+	if len(sc.Stripped) > 0 {
+		fmt.Fprintf(&b, "  - stripped: %s\n", renderThreadEntries(sc.Stripped))
+	}
+	fmt.Fprintf(&b, "\n**Issue body as seeded:**\n\n%s\n", reservationSeededBody(sc.Body))
+	fmt.Fprintf(&b, "\nStatic container doctrine and seed boilerplate are identical every run and omitted here (they ride ward %s).\n", ward)
+	b.WriteString("\n</details>\n")
+	return b.String()
+}
+
+// reservationSeededBody renders the frozen body inside a fenced block (literal, so
+// the body's own markdown can't reshape the comment), truncated to the cap.
+func reservationSeededBody(body string) string {
+	body = strings.TrimSpace(body)
+	if body == "" {
+		return "_(empty issue body)_"
+	}
+	trunc := ""
+	if len(body) > reservationSeededBodyCap {
+		body = body[:reservationSeededBodyCap]
+		trunc = fmt.Sprintf("\n… (truncated to %d chars; full body is on this issue)", reservationSeededBodyCap)
+	}
+	// Neutralize any fence in the body so it can't close the block early.
+	body = strings.ReplaceAll(body, "```", "` ` `")
+	return "```\n" + body + "\n```" + trunc
+}
+
+// renderThreadEntries joins comment identities as "@author (ts)"; a missing author
+// reads "(unknown author)" so the entry is never a bare timestamp.
+func renderThreadEntries(entries []reservationThreadEntry) string {
+	parts := make([]string, 0, len(entries))
+	for _, e := range entries {
+		who := e.Author
+		if who == "" {
+			who = "(unknown author)"
+		} else {
+			who = "@" + who
+		}
+		parts = append(parts, fmt.Sprintf("%s (%s)", who, e.At.UTC().Format(time.RFC3339)))
+	}
+	return strings.Join(parts, ", ")
+}
+
+// reservationWardVersionLabel renders the ward pin an operator can act on: "" or
+// "dev" means the entrypoint resolves the latest release in-container.
+func reservationWardVersionLabel(v string) string {
+	v = strings.TrimSpace(v)
+	if v == "" || v == "dev" {
+		return "latest (resolved in-container)"
+	}
+	return v
+}
+
+// orNoneLabel renders a field value, or "(none)" when it is empty.
+func orNoneLabel(s string) string {
+	if strings.TrimSpace(s) == "" {
+		return "(none)"
+	}
+	return s
+}
+
+// --- pre-launch gate failure (ward#609): the WHY + RECOVER surface -----------
+
+// gateFailure is the pre-launch gate the entrypoint died at, recorded to a file so
+// the reaper's release comment names the gate, error, and recovery (ward#609).
+type gateFailure struct {
+	Gate   string // "auth" | "ollama-probe" | "bootstrap" | ...
+	Detail string // the fatal message the entrypoint's die() emitted
+}
+
+// gateFailureEnv overrides where the entrypoint records / the reaper reads the
+// pre-launch gate failure; both default to gateFailureDefaultPath (ward#609).
+const gateFailureEnv = "WARD_GATE_FAILURE_FILE"
+
+// gateFailureDefaultPath is the in-container record the entrypoint writes and the
+// reaper reads; both derive it the same way so the contract stays one-sourced.
+const gateFailureDefaultPath = "/run/ward/gate-failure"
+
+// gateFailurePath resolves the gate-failure record location from the env override,
+// else the default.
+func gateFailurePath() string {
+	if p := strings.TrimSpace(os.Getenv(gateFailureEnv)); p != "" {
+		return p
+	}
+	return gateFailureDefaultPath
+}
+
+// readGateFailure parses the entrypoint's "gate=<name>\n<detail>" record; absent or
+// malformed returns (nil, false) so a normal pre-launch death gets the generic comment.
+func readGateFailure() (*gateFailure, bool) {
+	b, err := os.ReadFile(gateFailurePath()) // #nosec G304 -- ward-derived in-container path
+	if err != nil {
+		return nil, false
+	}
+	if gf := parseGateFailure(string(b)); gf != nil {
+		return gf, true
+	}
+	return nil, false
+}
+
+// writeGateFailure records a gate death for the reaper, mirroring the entrypoint's
+// record_gate_failure (ward#609); best-effort so it never masks the original fatal.
+func writeGateFailure(gate, detail string) {
+	if strings.TrimSpace(gate) == "" {
+		return
+	}
+	path := gateFailurePath()
+	if dir := filepath.Dir(path); dir != "" {
+		_ = os.MkdirAll(dir, 0o755)
+	}
+	_ = os.WriteFile(path, []byte(fmt.Sprintf("gate=%s\n%s\n", gate, detail)), 0o600)
+}
+
+// parseGateFailure reads the two-part record: the first line is "gate=<name>", the
+// remainder is the free-form detail. A missing gate line makes it (nil).
+func parseGateFailure(raw string) *gateFailure {
+	raw = strings.TrimSpace(raw)
+	if raw == "" {
+		return nil
+	}
+	lines := strings.SplitN(raw, "\n", 2)
+	first := strings.TrimSpace(lines[0])
+	if !strings.HasPrefix(first, "gate=") {
+		return nil
+	}
+	gate := strings.TrimSpace(strings.TrimPrefix(first, "gate="))
+	if gate == "" {
+		return nil
+	}
+	gf := &gateFailure{Gate: gate}
+	if len(lines) == 2 {
+		gf.Detail = strings.TrimSpace(lines[1])
+	}
+	return gf
+}
+
+// gateRecovery maps a gate name to a human label and the concrete recovery step the
+// release comment tells the operator to take before a re-dispatch (ward#609).
+func gateRecovery(gate string) (label, recovery string) {
+	switch gate {
+	case "auth":
+		return "auth smoke test (claude credentials)",
+			"Refresh the host claude login (re-run `claude` on the host to re-auth), then re-dispatch."
+	case "ollama-probe":
+		return "ollama reachability probe (local-model harness)",
+			"Bring the goose/opencode Ollama endpoint up and reachable from the container (or pass `--ts-sidecar`), then re-dispatch."
+	case "bootstrap":
+		return "container bootstrap (ward install / clone / credential setup)",
+			"Read the container log for the failing bootstrap step, resolve it, then re-dispatch."
+	default:
+		return gate, "Read the container log (`docker logs`) for the failing step, then re-dispatch."
+	}
+}
+
+// reservationScrubDetailCap bounds how much of the gate's error line the durable
+// release comment carries.
+const reservationScrubDetailCap = 800
+
+// reservationScrubDetail trims, caps, and neutralizes any fence in a gate error line
+// so it cannot close the code block early; ward's own die() text carries no secrets.
+func reservationScrubDetail(detail string) string {
+	detail = strings.TrimSpace(detail)
+	if detail == "" {
+		return ""
+	}
+	if len(detail) > reservationScrubDetailCap {
+		detail = detail[:reservationScrubDetailCap] + " …"
+	}
+	return strings.ReplaceAll(detail, "```", "` ` `")
 }

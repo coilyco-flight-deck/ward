@@ -21,6 +21,33 @@ works it at once, on this host or another:
   collapsed GO read, so the reservation records *why* the issue was judged
   carriable.
 
+## Self-documenting on the tracker ([ward#609](https://forgejo.coilysiren.me/coilyco-flight-deck/ward/issues/609))
+
+The reservation comment is posted **before** the in-container auth smoke gate
+([ward#222](https://forgejo.coilysiren.me/coilyco-flight-deck/ward/issues/222)), so a run that dies at that gate still left the issue thread a record of
+**what** it was carrying. That makes the tracker, not docker logs, the primary
+diagnostic surface. Three surfaces, each its own job:
+
+- **Reservation comment = WHAT.** The comment folds the **dynamic** per-run seed
+  context into a collapsed `<details>` block: the resolved ref, target branch,
+  driver, run id, dispatch timestamp, the landing workflow, the **issue body as
+  actually seeded** (a frozen snapshot, fenced so its own markdown can't reshape
+  the comment), and which thread comments were **included vs stripped** in the
+  pre-flight read (ward strips its own automation - reservation pings and NO-GO
+  verdicts). The static container doctrine and seed boilerplate are identical
+  every run, so they are **referenced by ward version, never pasted**. No
+  secret-bearing content is added: comment **bodies** are never included (only
+  author + timestamp), and the issue body is already visible on the same issue.
+- **Reservation-released comment = WHY + RECOVER.** When a container dies at a
+  pre-launch gate, the reaper's release comment names the **specific gate** that
+  failed (`auth`, `ollama-probe`, or `bootstrap`), folds in the actual error line,
+  and gives the recovery step (for `auth`: refresh the host claude login, then
+  re-dispatch). See [container-reap.md](container-reap.md).
+- **Docker-log echo = BACKSTOP.** The container entrypoint echoes the same dynamic
+  context (plus the seed/task text) to stdout at startup, **before any gate**, as a
+  delimited greppable `ward run context` banner - the last-resort surface for an
+  abort that never reaches a tracker comment.
+
 Both holds are **TTL-bounded** (2h): an older reservation is assumed dead and
 reclaimed, so a crashed run never wedges an issue. The local sentinel is also
 reclaimed once its container stops running. A detached run leaves its sentinel
@@ -84,6 +111,11 @@ hold blocks a plain retry for the full TTL. So on a clean teardown where the
 agent never launched, the [reaper](container-reap.md) posts a **release marker
 comment**, and `freshReservationComment` frees a reservation once a release is
 posted at or after it (newest marker of each kind wins), so the retry needs no `--force`.
+That release comment now names the **gate** that failed and the recovery step
+([ward#609](https://forgejo.coilysiren.me/coilyco-flight-deck/ward/issues/609), above), so it doubles as the diagnostic an operator otherwise went to
+docker logs for. The entrypoint records the failing gate to a small in-container
+file (`WARD_GATE_FAILURE_FILE`, default `/run/ward/gate-failure`) that the reaper
+reads; an unclassified pre-launch death still gets the generic release comment.
 
 ## Launch failure rolls the reservation back
 

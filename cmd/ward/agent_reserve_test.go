@@ -199,7 +199,7 @@ func TestPrecheckReservation(t *testing.T) {
 	}
 
 	// A fresh remote reservation comment refuses, naming the holder.
-	reserved := mk(reservationCommentBody(modeClaude, "ward-x", "box", now.Add(-time.Minute), ""), time.Minute, "coilyco-ops")
+	reserved := mk(reservationCommentBody(modeClaude, "ward-x", "box", now.Add(-time.Minute), "", nil), time.Minute, "coilyco-ops")
 	w := resolvedWork{Ref: ref, Comments: []issueComment{reserved}}
 	err := r.precheckReservation(context.Background(), "lbl", w, false)
 	if err == nil || !strings.Contains(err.Error(), "reserved remotely") || !strings.Contains(err.Error(), "coilyco-ops") {
@@ -262,7 +262,7 @@ func TestFreshReservationComment(t *testing.T) {
 		c.User.Login = login
 		return c
 	}
-	reserved := reservationCommentBody(modeClaude, "ward-x", "box", now.Add(-30*time.Minute), "")
+	reserved := reservationCommentBody(modeClaude, "ward-x", "box", now.Add(-30*time.Minute), "", nil)
 
 	// A fresh marker comment is a conflict and names its author.
 	who, held := freshReservationComment([]issueComment{
@@ -289,7 +289,7 @@ func TestFreshReservationComment(t *testing.T) {
 		t.Error("a non-reservation comment must not block")
 	}
 
-	release := reservationReleaseCommentBody(modeClaude, "ward-x")
+	release := reservationReleaseCommentBody(modeClaude, "ward-x", nil)
 
 	// A release stamped after the reservation retracts it (ward#264): a smoke-test
 	// death frees the hold instead of wedging the issue until the TTL lapses.
@@ -320,7 +320,7 @@ func TestFreshReservationComment(t *testing.T) {
 // the explicit "do not comment/edit to steer the run" road-block directive.
 func TestReservationCommentBodyIsRoadBlock(t *testing.T) {
 	now := time.Date(2026, 7, 3, 12, 0, 0, 0, time.UTC)
-	body := reservationCommentBody(modeClaude, "engineer-claude-ward-494", "box", now, "")
+	body := reservationCommentBody(modeClaude, "engineer-claude-ward-494", "box", now, "", nil)
 	for _, want := range []string{
 		"Do not comment on or edit this issue",
 		"new issue, dispatched fresh",
@@ -564,7 +564,7 @@ func TestPostReservationComment(t *testing.T) {
 
 func TestReservationCommentBodyHasMarker(t *testing.T) {
 	now := time.Date(2026, 6, 18, 12, 0, 0, 0, time.UTC)
-	body := reservationCommentBody(modeCodex, "engineer-codex-ward-142", "tower", now, "")
+	body := reservationCommentBody(modeCodex, "engineer-codex-ward-142", "tower", now, "", nil)
 	for _, want := range []string{agentReservationMarker, "ward agent --driver codex", "engineer-codex-ward-142", "tower"} {
 		if !strings.Contains(body, want) {
 			t.Errorf("reservation comment missing %q\n got: %s", want, body)
@@ -581,7 +581,7 @@ func TestReservationCommentBodyHasMarker(t *testing.T) {
 func TestReservationCommentBodyFoldsJustification(t *testing.T) {
 	now := time.Date(2026, 6, 18, 12, 0, 0, 0, time.UTC)
 	read := "Main risk is the schema migration.\n\nGO"
-	body := reservationCommentBody(modeClaude, "engineer-claude-ward-383", "box", now, "  "+read+"  ")
+	body := reservationCommentBody(modeClaude, "engineer-claude-ward-383", "box", now, "  "+read+"  ", nil)
 	for _, want := range []string{"pre-flight read (GO)", "<details>", read, "**GO**"} {
 		if !strings.Contains(body, want) {
 			t.Errorf("reservation comment missing %q\n got: %s", want, body)
@@ -624,9 +624,9 @@ func TestWinningReservationClaim(t *testing.T) {
 func TestReservationClaims(t *testing.T) {
 	now := time.Now().UTC()
 	ttl := agentReservationTTL
-	a := issueComment{Body: reservationCommentBody(modeClaude, "engineer-claude-ward-600", "host-a", now.Add(-time.Minute), ""), CreatedAt: now.Add(-time.Minute)}
-	b := issueComment{Body: reservationCommentBody(modeClaude, "engineer-claude-ward-600", "host-b", now.Add(-30*time.Second), ""), CreatedAt: now.Add(-30 * time.Second)}
-	stale := issueComment{Body: reservationCommentBody(modeClaude, "engineer-claude-ward-600", "host-c", now.Add(-3*time.Hour), ""), CreatedAt: now.Add(-3 * time.Hour)}
+	a := issueComment{Body: reservationCommentBody(modeClaude, "engineer-claude-ward-600", "host-a", now.Add(-time.Minute), "", nil), CreatedAt: now.Add(-time.Minute)}
+	b := issueComment{Body: reservationCommentBody(modeClaude, "engineer-claude-ward-600", "host-b", now.Add(-30*time.Second), "", nil), CreatedAt: now.Add(-30 * time.Second)}
+	stale := issueComment{Body: reservationCommentBody(modeClaude, "engineer-claude-ward-600", "host-c", now.Add(-3*time.Hour), "", nil), CreatedAt: now.Add(-3 * time.Hour)}
 	chat := issueComment{Body: "just a human comment", CreatedAt: now}
 	claims := reservationClaims([]issueComment{a, b, stale, chat}, now, ttl)
 	if len(claims) != 2 {
@@ -637,7 +637,7 @@ func TestReservationClaims(t *testing.T) {
 		t.Errorf("reservationClaims identities = %v, want the host-a/host-b pair", got)
 	}
 	// A release stamped at/after the latest claim retracts every claim.
-	rel := issueComment{Body: reservationReleaseCommentBody(modeClaude, "engineer-claude-ward-600"), CreatedAt: now}
+	rel := issueComment{Body: reservationReleaseCommentBody(modeClaude, "engineer-claude-ward-600", nil), CreatedAt: now}
 	if c := reservationClaims([]issueComment{a, b, rel}, now, ttl); len(c) != 0 {
 		t.Errorf("a release at/after the claims left %d live, want 0", len(c))
 	}
@@ -655,8 +655,8 @@ func TestReservationRecheckLost(t *testing.T) {
 	reservationRecheckSleep = func(time.Duration) {}
 	defer func() { reservationRecheckDelay, reservationRecheckSleep = origDelay, origSleep }()
 
-	ourComment := issueComment{Body: reservationCommentBody(modeClaude, container, hostname(), now, ""), CreatedAt: now}
-	rival := issueComment{Body: reservationCommentBody(modeClaude, container, "rival-host", now.Add(-2*time.Second), ""), CreatedAt: now.Add(-2 * time.Second)}
+	ourComment := issueComment{Body: reservationCommentBody(modeClaude, container, hostname(), now, "", nil), CreatedAt: now}
+	rival := issueComment{Body: reservationCommentBody(modeClaude, container, "rival-host", now.Add(-2*time.Second), "", nil), CreatedAt: now.Add(-2 * time.Second)}
 
 	t.Run("earlier rival wins -> we yield", func(t *testing.T) {
 		reservationRecheckDelay = func() time.Duration { return time.Millisecond }
@@ -672,7 +672,7 @@ func TestReservationRecheckLost(t *testing.T) {
 
 	t.Run("we are earliest -> proceed", func(t *testing.T) {
 		reservationRecheckDelay = func() time.Duration { return time.Millisecond }
-		later := issueComment{Body: reservationCommentBody(modeClaude, container, "rival-host", now.Add(2*time.Second), ""), CreatedAt: now.Add(2 * time.Second)}
+		later := issueComment{Body: reservationCommentBody(modeClaude, container, "rival-host", now.Add(2*time.Second), "", nil), CreatedAt: now.Add(2 * time.Second)}
 		f := &fakeLockForge{listComments: []issueComment{ourComment, later}}
 		if lost, _ := r.reservationRecheckLost(context.Background(), f, "label", ref, container); lost {
 			t.Errorf("earliest claim should proceed, got lost=true")
@@ -719,5 +719,180 @@ func TestReservationRecheckMax(t *testing.T) {
 		if got := reservationRecheckMax(); got != c.want {
 			t.Errorf("reservationRecheckMax(env=%q) = %s, want %s", c.env, got, c.want)
 		}
+	}
+}
+
+// --- ward#609: reservation seed context + gate-failure release enrichment -----
+
+// TestReservationSeedContextRender pins the folded seed context (ward#609): a collapsed
+// <details> of dynamic per-run bytes (refs, run shape, thread tally, seeded body).
+func TestReservationSeedContextRender(t *testing.T) {
+	now := time.Date(2026, 7, 5, 2, 13, 22, 0, time.UTC)
+	sc := &reservationSeedContext{
+		Ref:          agentIssueRef{Owner: "coilyco-flight-deck", Repo: "ward", Number: 609},
+		Branch:       "issue-609",
+		Driver:       "claude",
+		RunID:        "engineer-claude-ward-609",
+		WardVersion:  "v0.80.0",
+		Workflow:     workflowDirectMain,
+		Body:         "## Problem\n\nSomething broke.",
+		Included:     []reservationThreadEntry{{Author: "kai", At: now.Add(-time.Hour)}},
+		Stripped:     []reservationThreadEntry{{Author: "coilyco-ops", At: now.Add(-30 * time.Minute)}},
+		DispatchedAt: now,
+	}
+	got := sc.render()
+	for _, want := range []string{
+		"<details><summary>run seed context",
+		"coilyco-flight-deck/ward#609",
+		"branch `issue-609`",
+		"driver `claude`",
+		"engineer-claude-ward-609",
+		"v0.80.0",
+		"2026-07-05T02:13:22Z",
+		"1 included in the pre-flight read, 1 stripped",
+		"@kai",
+		"@coilyco-ops",
+		"Issue body as seeded:",
+		"Something broke.",
+		"Static container doctrine and seed boilerplate are identical every run and omitted",
+		"</details>",
+	} {
+		if !strings.Contains(got, want) {
+			t.Errorf("render missing %q\n got: %s", want, got)
+		}
+	}
+	// A nil context renders nothing (a --force path with no captured context).
+	if s := (*reservationSeedContext)(nil).render(); s != "" {
+		t.Errorf("nil render should be empty, got %q", s)
+	}
+}
+
+// TestReservationSeededBody covers the empty, plain, fenced, and truncated bodies.
+func TestReservationSeededBody(t *testing.T) {
+	if got := reservationSeededBody("  "); got != "_(empty issue body)_" {
+		t.Errorf("empty body: got %q", got)
+	}
+	if got := reservationSeededBody("hello"); !strings.Contains(got, "```\nhello\n```") {
+		t.Errorf("plain body should be fenced: got %q", got)
+	}
+	// A fence inside the body is neutralized so it can't close the block early: the
+	// only remaining literal fences are the two wrapping ones.
+	if got := reservationSeededBody("a\n```\nb"); !strings.Contains(got, "` ` `") || strings.Count(got, "```") != 2 {
+		t.Errorf("inner fence not neutralized: got %q", got)
+	}
+	big := strings.Repeat("x", reservationSeededBodyCap+500)
+	if got := reservationSeededBody(big); !strings.Contains(got, "truncated to") {
+		t.Errorf("oversize body should be truncated: got tail %q", got[len(got)-40:])
+	}
+}
+
+// TestBuildReservationSeedContextPartition pins the included-vs-stripped split: it
+// mirrors the pre-flight strip predicate exactly (ward#609).
+func TestBuildReservationSeedContextPartition(t *testing.T) {
+	now := time.Date(2026, 7, 5, 2, 13, 0, 0, time.UTC)
+	mk := func(body, login string) issueComment {
+		c := issueComment{Body: body, CreatedAt: now}
+		c.User.Login = login
+		return c
+	}
+	w := resolvedWork{
+		Ref:      agentIssueRef{Owner: "o", Repo: "r", Number: 1},
+		Body:     "body",
+		Workflow: workflowDirectMain,
+		Comments: []issueComment{
+			mk("a real human comment", "kai"),                                             // included
+			mk(reservationCommentBody(modeClaude, "c", "h", now, "", nil), "coilyco-ops"), // stripped (reservation marker)
+			mk("", "ghost"), // stripped (empty)
+			mk(preflightNoGoMarker+"\nNO-GO: nope", "coilyco-ops"), // stripped (nogo marker)
+		},
+	}
+	plan := upPlan{Name: "engineer-claude-o-1", Branch: "issue-1", Mode: modeClaude, WardVersion: "dev"}
+	sc := buildReservationSeedContext(w, plan, now)
+	if len(sc.Included) != 1 || sc.Included[0].Author != "kai" {
+		t.Fatalf("included: want [kai], got %+v", sc.Included)
+	}
+	if len(sc.Stripped) != 3 {
+		t.Fatalf("stripped: want 3, got %d (%+v)", len(sc.Stripped), sc.Stripped)
+	}
+	// A dev pin renders as the resolve-in-container label.
+	if got := reservationWardVersionLabel(sc.WardVersion); !strings.Contains(got, "latest") {
+		t.Errorf("dev ward version label: got %q", got)
+	}
+}
+
+// TestReservationReleaseCommentBodyGate pins the enriched release comment (ward#609):
+// a nil gate keeps the generic text; a gate names the gate, recovery, and error.
+func TestReservationReleaseCommentBodyGate(t *testing.T) {
+	// nil -> generic, unchanged behavior.
+	generic := reservationReleaseCommentBody(modeClaude, "engineer-claude-ward-609", nil)
+	if !strings.HasPrefix(generic, agentReservationReleaseMarker) || !strings.Contains(generic, "smoke-test death") {
+		t.Fatalf("generic release comment regressed: %s", generic)
+	}
+	if strings.Contains(generic, "**Gate:**") {
+		t.Errorf("generic release comment should carry no Gate section: %s", generic)
+	}
+	// auth gate -> names the gate, the recovery, and the folded error line.
+	gf := &gateFailure{Gate: "auth", Detail: "auth smoke test: claude -p rejected the credentials (exit 1)"}
+	enriched := reservationReleaseCommentBody(modeClaude, "engineer-claude-ward-609", gf)
+	for _, want := range []string{
+		agentReservationReleaseMarker,
+		"**auth** pre-launch gate",
+		"**Gate:** auth smoke test (claude credentials)",
+		"**Recovery:** Refresh the host claude login",
+		"error from the gate",
+		"rejected the credentials",
+	} {
+		if !strings.Contains(enriched, want) {
+			t.Errorf("enriched release comment missing %q\n got: %s", want, enriched)
+		}
+	}
+}
+
+// TestGateRecovery covers the known gates plus the unknown fallthrough.
+func TestGateRecovery(t *testing.T) {
+	for _, c := range []struct{ gate, wantLabel, wantRecov string }{
+		{"auth", "auth smoke test", "Refresh the host claude login"},
+		{"ollama-probe", "ollama reachability probe", "Ollama endpoint up"},
+		{"bootstrap", "container bootstrap", "failing bootstrap step"},
+		{"mystery", "mystery", "docker logs"},
+	} {
+		label, recovery := gateRecovery(c.gate)
+		if !strings.Contains(label, c.wantLabel) || !strings.Contains(recovery, c.wantRecov) {
+			t.Errorf("gateRecovery(%q) = (%q,%q), want labels ~%q/%q", c.gate, label, recovery, c.wantLabel, c.wantRecov)
+		}
+	}
+}
+
+// TestParseGateFailure covers the two-part record, the missing-gate reject, and blanks.
+func TestParseGateFailure(t *testing.T) {
+	if gf := parseGateFailure("gate=auth\nthe error line\nmore detail"); gf == nil ||
+		gf.Gate != "auth" || gf.Detail != "the error line\nmore detail" {
+		t.Fatalf("parse: got %+v", gf)
+	}
+	if gf := parseGateFailure("gate=ollama-probe\n"); gf == nil || gf.Gate != "ollama-probe" || gf.Detail != "" {
+		t.Fatalf("parse gate-only: got %+v", gf)
+	}
+	for _, bad := range []string{"", "   ", "no gate here", "gate=\ndetail"} {
+		if gf := parseGateFailure(bad); gf != nil {
+			t.Errorf("parseGateFailure(%q) should be nil, got %+v", bad, gf)
+		}
+	}
+}
+
+// TestReadGateFailure round-trips through the file the entrypoint writes.
+func TestReadGateFailure(t *testing.T) {
+	dir := t.TempDir()
+	path := dir + "/gate-failure"
+	t.Setenv(gateFailureEnv, path)
+	// Absent file -> (nil, false).
+	if gf, ok := readGateFailure(); ok || gf != nil {
+		t.Fatalf("absent file: want (nil,false), got (%+v,%v)", gf, ok)
+	}
+	if err := os.WriteFile(path, []byte("gate=bootstrap\nward did not install correctly\n"), 0o600); err != nil {
+		t.Fatal(err)
+	}
+	gf, ok := readGateFailure()
+	if !ok || gf == nil || gf.Gate != "bootstrap" || !strings.Contains(gf.Detail, "install correctly") {
+		t.Fatalf("read: got (%+v,%v)", gf, ok)
 	}
 }
