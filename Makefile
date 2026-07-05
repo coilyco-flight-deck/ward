@@ -1,7 +1,6 @@
 .PHONY: help build test vet lint lint-refs tidy cover install ward-kdl install-tmp lock skew sync-ops-assets sync-exec-assets sync-fleet-assets build-ward-kdl build-ward-kdl-tiers build-ward-kdl-forgejo-tiers workspace agent-roster
 
 KDL_SPECS := forgejo.coilysiren.me/coilyco-flight-deck/cli-guard/cmd/kdl-specs
-WARD_SPEC_BUNDLE_DIR ?= ../agentic-os/ward-specs
 
 REF ?= v0.72.0
 
@@ -52,10 +51,12 @@ workspace: ## Write a gitignored go.work resolving cli-guard from a sibling ../c
 build-ward-kdl: ## build or rebuild the ward-kdl binary, one shot for ease of use in development.
 	rm -rf bin
 	@mkdir -p bin
-	# Pull the canonical deployment bundle from aos, then build from the local
-	# overlay. That keeps ward's tracked tree publishable while the bundle itself
-	# lives beside its sibling repos in agentic-os.
-	cp $(WARD_SPEC_BUNDLE_DIR)/* ./.ward/ward-kdl/
+	# The build reads its spec bundle straight from the tracked .ward/ward-kdl/
+	# tree - the assets-dir convention (ward#453 decision, examples/ward-specs/README.md):
+	# swap a bundle by overlaying that dir, no make-var and no sibling checkout, so
+	# `make build-ward-kdl` works in a bare clone. Homing the coilyco values in aos
+	# and overlaying them at release time (so ward's tree can go neutral) is the
+	# cross-repo follow-up tracked in ward#503 / aos#315, not this local build.
 	# The driver discovers every ward-kdl.*.guardfile.kdl beside this one that
 	# shares the `wrap ward-kdl` binary name and merges them into one binary,
 	# keeping each API's spec lock and reference doc separate. Adding a new
@@ -73,7 +74,6 @@ build-ward-kdl: ## build or rebuild the ward-kdl binary, one shot for ease of us
 
 build-ward-kdl-tiers: ## build the read/write/admin tier binaries, discovering every area dropped into each tier subdir (ward#240, ward#338).
 	@mkdir -p bin docs/ward-kdl
-	cp $(WARD_SPEC_BUNDLE_DIR)/* ./.ward/ward-kdl/
 	# Permission tiers: read ⊂ write ⊂ admin, composed by `inherit` (cli-guard#160)
 	# over per-area grants (forgejo's wildcard `"*"`, cli-guard#159; signoz's
 	# explicit per-resource leaves). Each tier is its own standalone binary under

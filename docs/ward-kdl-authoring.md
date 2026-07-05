@@ -46,16 +46,21 @@ code, and the build swaps them through a fixed assets-dir convention.
 
 ## Bring your own specs
 
-The canonical deployment bundle now lives in the sibling `agentic-os/ward-specs/`
-checkout so `ward` can consume it as a sibling build input. [examples/ward-specs/](../examples/ward-specs)
-remains the neutral starter bundle, and a build made from it carries no coilyco
-endpoint/token/owner values.
+The bundle is read from the tracked `.ward/ward-kdl/` directory - the assets-dir
+convention ([ward#453](https://forgejo.coilysiren.me/coilyco-flight-deck/ward/issues/453)), no make-var and no sibling checkout, so `make build-ward-kdl`
+works in a bare clone. Swap a bundle by overlaying that directory.
+[examples/ward-specs/](../examples/ward-specs) is the neutral starter bundle; a
+build from it carries no coilyco values.
 
 To build `ward` against your own deployment:
 
 1. Copy `examples/ward-specs/*` into `.ward/ward-kdl/`, overlaying the tracked bundle.
 2. Replace each placeholder (`git.example.com`, `/example/...`, `example*`, `example-bot`) with your deployment's values.
 3. Run `make build-ward-kdl`, then `make test`.
+
+Ward's own tracked bundle still carries the coilyco values today ([ward#441](https://forgejo.coilysiren.me/coilyco-flight-deck/ward/issues/441)).
+Homing them in aos and overlaying at both build sites before `go build`, so ward's
+tree goes neutral, is the cross-repo follow-up ([ward#503](https://forgejo.coilysiren.me/coilyco-flight-deck/ward/issues/503)).
 
 ## See also
 
