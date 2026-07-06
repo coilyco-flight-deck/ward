@@ -249,8 +249,8 @@ func (r *Runner) captureReplyResearch(ctx context.Context, c *cli.Command, mode 
 	}
 	plan = advisorResearchPlan(plan, ref)
 
-	// Shared pre-launch steps; the preflight matters most here - research runs `docker
-	// create` directly, so a missing ward-tailnet would 125 mid-run (ward#597; the doc).
+	// Shared pre-launch steps; research runs `docker create` directly, so a missing
+	// ward-tailnet is created here before it, not a mid-run 125 (ward#597; the doc).
 	if err := r.prelaunchDispatch(ctx, c, plan, label); err != nil {
 		return "", fmt.Errorf("%s: %w", label, err)
 	}

@@ -1300,8 +1300,8 @@ func (r *Runner) launchAgentContainer(ctx context.Context, c *cli.Command, mode 
 		}
 	}()
 
-	// Gate a tailnet run on the ward-tailnet network before the sweep + pull burn, so
-	// a host missing it fails fast with an actionable error, not a raw 125 (ward#597).
+	// Ready the ward-tailnet network before the sweep + pull burn, so a host missing it
+	// gets it created here (idempotent), not a raw 125 mid-launch (ward#597).
 	if err := r.preflightTailnet(ctx, plan); err != nil {
 		return err
 	}
@@ -1345,7 +1345,7 @@ func (r *Runner) launchAgentContainer(ctx context.Context, c *cli.Command, mode 
 }
 
 // prelaunchDispatch runs the shared pre-`docker create` steps for the advisor/director
-// paths: the ward-tailnet preflight (ward#597), the stale sweep (ward#272), the pull.
+// paths: the ward-tailnet ready-up (create-if-absent; ward#597), the sweep, the pull.
 func (r *Runner) prelaunchDispatch(ctx context.Context, c *cli.Command, plan upPlan, label string) error {
 	if err := r.preflightTailnet(ctx, plan); err != nil {
 		return err
@@ -1424,8 +1424,8 @@ func (r *Runner) createAgentContainer(ctx context.Context, plan upPlan, envFile 
 	// The aws capability binds ~/.aws, but a host with no AWS identity mounts an empty
 	// dir - warn loudly so a NoCredentials hole doesn't read as delivered creds (ward#579).
 	r.maybeWarnAWSMount(plan)
-	// The ward-tailnet network preflight (missing-network + standing mac-proxy box)
-	// now runs before the pull in each dispatch path, so nothing is checked here.
+	// The ward-tailnet network ready-up (create-if-absent + standing mac-proxy box
+	// warning) already ran before the pull in each dispatch path, so nothing here.
 	if plan.Interactive {
 		return r.dockerExec(ctx, dockerCreateArgv(plan, envFile)...)
 	}

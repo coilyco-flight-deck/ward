@@ -30,20 +30,28 @@ fixed, ansible-owned names (not personal): `ward-tailnet` and `mac-proxy`.
 ## Preflight
 
 Before the image pull and stale-container sweep - not after them, so a doomed run
-burns nothing ([ward#597](https://forgejo.coilysiren.me/coilyco-flight-deck/ward/issues/597)) - a sidecar run verifies the box is reachable:
-`docker network inspect ward-tailnet` must succeed **and** `mac-proxy` must be
-attached. The two failures read differently so the operator is not left guessing:
+burns nothing ([ward#597](https://forgejo.coilysiren.me/coilyco-flight-deck/ward/issues/597)) - a sidecar run readies the tailnet:
+`docker network inspect ward-tailnet` reads which containers are attached, and the
+tailnet being the **default** now (Kai's [ward#597](https://forgejo.coilysiren.me/coilyco-flight-deck/ward/issues/597) steer), a missing network is a
+**provisioning step, not a launch failure**. The two conditions are handled distinctly
+so the operator is never left guessing:
 
 - **Network absent** (the inspect fails, e.g. a fresh Docker Desktop host that never
-  converged the network): ward launches nothing and errors `docker network
-  "ward-tailnet" not found - the <role> role joins the tailnet through it; create the
-  network on this host, or re-run with --no-tailnet to dispatch isolated`. Without this
-  guard docker itself fails the run mid-launch with a bare `exit 125` that names no
-  cause and no fallback ([ward#597](https://forgejo.coilysiren.me/coilyco-flight-deck/ward/issues/597)).
-- **Box unattached** (the network exists but `mac-proxy` is not on it): ward errors
-  `standing tailnet proxy not found - converge the mac-proxy infra role (agentic-os#291)`.
+  converged the network): ward **creates it** (`docker network create ward-tailnet`,
+  idempotent) and launches. Only if the create itself cannot land - the daemon is
+  unreachable or refuses it - does ward error `could not create the "ward-tailnet"
+  docker network ...; create it by hand (docker network create ward-tailnet) or re-run
+  with --no-tailnet to dispatch isolated`. This replaces the old hard `network
+  "ward-tailnet" not found` failure, and stops docker from 125ing the run mid-launch
+  with a bare `exit 125` that names no cause ([ward#597](https://forgejo.coilysiren.me/coilyco-flight-deck/ward/issues/597)).
+- **Box unattached** (the network exists - or ward just created it - but `mac-proxy` is
+  not on it): ward **warns and launches anyway**. The box is ansible-owned and ward
+  never converges it, so this is a live-observe gap, not a launch blocker: the container
+  runs, but the tailnet SOCKS5 route (the ollama tower, live-observe) will not resolve
+  until the mac-proxy infra role converges on this host ([ward#349](https://forgejo.coilysiren.me/coilyco-flight-deck/ward/issues/349), [agentic-os#291](https://github.com/coilysiren/agentic-os/issues/291)). A
+  freshly-created network always hits this warning until that role runs.
 
-There is no per-run mint or teardown. This gate runs on **every** sidecar dispatch
+There is no per-run mint or teardown. This ready-up runs on **every** sidecar dispatch
 path, including the advisor's `docker create`-direct research path that never touches
 the shared launch helper.
 

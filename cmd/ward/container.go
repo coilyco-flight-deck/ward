@@ -371,23 +371,39 @@ func sweepStaleLaunchEnvFiles(dir string) {
 	}
 }
 
-// preflightTailnet gates a --ts-sidecar run on the ward-tailnet docker network before
-// the sweep + pull, failing fast on a missing net not a raw 125 (ward#597, #349).
+// preflightTailnet readies the ward-tailnet network for a --ts-sidecar run: a missing
+// network is created (not a failure), an unattached box only warns (ward#597, #349).
 func (r *Runner) preflightTailnet(ctx context.Context, plan upPlan) error {
 	if !plan.TSSidecar {
 		return nil
 	}
 	out, err := r.dockerCapture(ctx, dockerTailnetInspectArgv()...)
 	if err != nil {
-		// Network absent: without this guard docker 125s the run mid-launch naming no
-		// cause. Name the missing net + the --no-tailnet fallback (ward#597; the doc).
-		return fmt.Errorf("ward agent: docker network %q not found - the %s role joins the tailnet through it; "+
-			"create the network on this host, or re-run with --no-tailnet to dispatch isolated (ward#597)",
-			tailnetNetwork(), plan.Role)
+		// Network absent: create it rather than fail (ward#597); a fresh net has no box
+		// yet, so `out` stays box-less and the warning below fires until mac-proxy converges.
+		if cerr := r.ensureTailnetNetwork(ctx); cerr != nil {
+			return cerr
+		}
 	}
-	if !proxyBoxAttached(string(out)) {
-		// The network exists but the standing proxy box is not attached (ward#349).
-		return fmt.Errorf("ward container: standing tailnet proxy not found - converge the mac-proxy infra role (agentic-os#291)")
+	if msg, warn := proxyBoxMissingWarning(string(out)); warn {
+		w := r.Runner.Stderr
+		if w == nil {
+			w = os.Stderr
+		}
+		fmt.Fprintln(w, msg)
+	}
+	return nil
+}
+
+// ensureTailnetNetwork idempotently creates the ward-tailnet network: a create that
+// loses the race to "already exists" is benign if a re-inspect now finds it (ward#597).
+func (r *Runner) ensureTailnetNetwork(ctx context.Context) error {
+	if _, err := r.dockerCapture(ctx, dockerTailnetCreateArgv()...); err != nil {
+		if _, ierr := r.dockerCapture(ctx, dockerTailnetInspectArgv()...); ierr != nil {
+			return fmt.Errorf("ward agent: could not create the %q docker network for the tailnet route: %w; "+
+				"create it by hand (docker network create %s) or re-run with --no-tailnet to dispatch isolated (ward#597)",
+				tailnetNetwork(), err, tailnetNetwork())
+		}
 	}
 	return nil
 }

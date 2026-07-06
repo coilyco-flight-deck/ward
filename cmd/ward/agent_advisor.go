@@ -141,8 +141,8 @@ func (r *Runner) runAgentAsk(ctx context.Context, c *cli.Command, mode container
 	// surface a stale-ward reminder before the container spins (ward#143).
 	r.maybeWarnWardOutdated(ctx)
 
-	// Preflight the tailnet network, sweep dead containers, then pull - the shared
-	// pre-launch steps; a missing ward-tailnet network fails fast here (ward#597, #272).
+	// Ready the tailnet network, sweep dead containers, then pull - the shared
+	// pre-launch steps; a missing ward-tailnet network is created here (ward#597, #272).
 	if err := r.prelaunchDispatch(ctx, c, plan, label); err != nil {
 		return err
 	}

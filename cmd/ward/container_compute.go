@@ -699,6 +699,24 @@ func dockerTailnetInspectArgv() []string {
 		"--format", "{{range .Containers}}{{.Name}} {{end}}"}
 }
 
+// dockerTailnetCreateArgv creates the ward-tailnet network - the idempotent provisioning
+// step (via ensureTailnetNetwork) that replaces the old hard failure (ward#597).
+func dockerTailnetCreateArgv() []string {
+	return []string{"network", "create", tailnetNetwork()}
+}
+
+// proxyBoxMissingWarning warns (true) when the mac-proxy box is not attached to
+// ward-tailnet, so the run launches but its tower route won't resolve (ward#349, #597).
+func proxyBoxMissingWarning(attachedNames string) (string, bool) {
+	if proxyBoxAttached(attachedNames) {
+		return "", false
+	}
+	return "WARNING: the standing tailnet proxy " + proxyBoxName() + " is not attached to " + tailnetNetwork() + ".\n" +
+		"  The container still launches on the network, but the tailnet SOCKS5 route\n" +
+		"  (the ollama tower, live-observe) will not resolve until the mac-proxy infra\n" +
+		"  role is converged on this host. See docs/agent-ts-sidecar.md (ward#349, ward#597).", true
+}
+
 // hostNetTailnetWarning returns a loud warning (and true) when a --host-net run
 // is unlikely to reach the tailnet on this host (ward#332; docs/agent-host-net.md).
 func hostNetTailnetWarning(goos string, hasTailscale0 bool) (string, bool) {
