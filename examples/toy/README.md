@@ -26,7 +26,7 @@ ward exec test      # runs `make test`
 ward doctor         # validates ward.yaml <-> Makefile + the security: block
 ```
 
-For the launch demo - one happy path plus two danger classes, driven against
+For the launch demo - one happy path plus three danger classes, driven against
 this repo - run `sh ../demo.sh` from here (or `sh examples/demo.sh` from the
 repo root). Walkthrough: [../../docs/demo.md](../../docs/demo.md).
 

@@ -1,11 +1,11 @@
 ---
-doc_goal: Make the demo land ward's thesis that the boundary is the product - one beat on capability, two on denial - while being scrupulously honest about which mechanism refuses each danger class (the hard cli-guard argv gate versus the claude-only fail-open hint hook), so the denial shown is the one that actually holds.
+doc_goal: Make the demo land ward's thesis that the boundary is the product - one beat on capability, three on denial - while being scrupulously honest about which mechanism refuses each danger class (the hard cli-guard argv gate and operator surface versus the claude-only fail-open hint hook), so the denial shown is the one that actually holds.
 ---
-# The demo: one happy path, two danger classes
+# The demo: one happy path, three danger classes
 
 The launch thesis is **the boundary is the product** ([ward#229](https://forgejo.coilysiren.me/coilyco-flight-deck/ward/issues/229)): what matters
 about ward is not what it runs, it is what it **refuses**. So the demo spends one
-beat on capability and two on denial. [`examples/demo.sh`](../examples/demo.sh)
+beat on capability and three on denial. [`examples/demo.sh`](../examples/demo.sh)
 is the runnable script ([ward#251](https://forgejo.coilysiren.me/coilyco-flight-deck/ward/issues/251)). This page is the walkthrough: what each
 beat proves and **which mechanism refuses**, so the denial you show is the one
 that holds.
@@ -18,9 +18,10 @@ sh examples/demo.sh          # or: cd examples/toy && sh ../demo.sh
 
 It drives [`examples/toy/`](../examples/toy/README.md), ward's minimal managed
 repo, so it needs no toolchain. It is safe: Beat 1 runs the toy's real test
-verb, Beat 2 is rejected before the command executes, and Beat 3 only feeds a
-string to `ward hook pre-tool-use` (inspect-and-refuse, nothing runs). Run it
-from a clean, pushed checkout for the green happy path.
+verb, Beat 2 is rejected before the command executes, Beat 3 only feeds a
+string to `ward hook pre-tool-use` (inspect-and-refuse, nothing runs), and Beat 4
+is refused by policy before any endpoint or token is touched. Run it from a
+clean, pushed checkout for the green happy path.
 
 ## Beat 1 - happy path: `ward exec test`
 
@@ -70,6 +71,34 @@ the denial.
 Swapping a danger verb is a one-line edit to the toy `security:` block
 ([ward-yaml.md](ward-yaml.md)) plus the matching script line - but keep it to a
 verb ward actually refuses, or the demo proves nothing.
+
+## Beat 4 - danger class three: ops danger (the operator surface)
+
+The class ward exists for ([ward#250](https://forgejo.coilysiren.me/coilyco-flight-deck/ward/issues/250)) - a headless devsecops agent that **holds
+live credentials** reaching for an operator verb that is out of policy:
+
+```
+$ ward ops forgejo pr list coilyco-flight-deck ward
+ward: pull requests are not exposed through ward; read them in the web UI
+[exit 2]
+```
+
+This is the **hard sibling of Beat 3**. Not a fail-open hint on a bare binary,
+but the compiled [ward-kdl](ward-kdl.md) operator surface refusing the verb
+itself. ward's policy withholds pull-request reads (they go through the web UI),
+so `ward ops forgejo pr` answers `denied by policy` **before any endpoint or
+token is touched** - the reason it runs credential-free in the demo. It is a real
+denial, not an absence: the verb is present on the surface and refuses.
+
+The truly destructive mutations are withheld one step further, absent at compile
+time rather than denied at runtime ([ward-kdl.md](ward-kdl.md)): `ward ops aws
+s3` exposes only `ls`/`cp`/`sync` (no `rm`), and `ward ops kubectl` has no
+`delete`, so an agent cannot reach them through the gate at all. The **allowed**
+ops verbs (`ward ops forgejo issue get`, `ward ops kubectl get`) run audited,
+exactly like Beat 1 - so the audit log carries **both** the allow and the deny.
+This is the boundary a filesystem-plus-git sandbox cannot draw, because the
+danger here is **ops-adjacent** ([ward#229](https://forgejo.coilysiren.me/coilyco-flight-deck/ward/issues/229) positioning), and it is the one
+denial in the demo that is both **hard** and a **real ops verb**.
 
 ## See also
 
