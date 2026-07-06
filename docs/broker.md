@@ -121,3 +121,4 @@ than leaking a bare `exit status 4` - the surface reads the reason without the r
 - `cli-guard/pkg/broker` - the policy core.
 - [docs/agent-surface.md](agent-surface.md) - the read-only surface this hardens.
 - [docs/ward-kdl.md](ward-kdl.md) - the tier binaries the executor shells.
+- [docs/forgejo-token-audit.md](forgejo-token-audit.md) - the audited raw-token read sites the resolver chokepoints funnel through.

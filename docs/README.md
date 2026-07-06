@@ -61,6 +61,7 @@ New to ward? Read [architecture.md](architecture.md) first - it frames the whole
 - [director-startup-triage.md](director-startup-triage.md) - director startup triage (autonomous drain).
 - [director-on-demand-surface.md](director-on-demand-surface.md) - the director's on-demand surface.
 - [broker.md](broker.md) - the root credential broker that hardens the director's surface.
+- [forgejo-token-audit.md](forgejo-token-audit.md) - the audited set of raw Forgejo-token read sites + the build-time guard that freezes it.
 - [agent-credentials.md](agent-credentials.md) - how each harness's host credential is seeded.
 - [agent-aws-creds.md](agent-aws-creds.md) - how the aws capability delivers AWS creds (export-and-inject, mount fallback).
 - [agent-attribution.md](agent-attribution.md) - agent attribution on Forgejo write bodies.
