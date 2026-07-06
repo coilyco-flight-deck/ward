@@ -9,6 +9,7 @@ import (
 
 	"forgejo.coilysiren.me/coilyco-flight-deck/cli-guard/pkg/broker"
 	"forgejo.coilysiren.me/coilyco-flight-deck/cli-guard/pkg/credseed"
+	"github.com/urfave/cli/v3"
 )
 
 // recordingRunner captures the one command's argv + env and returns canned
@@ -69,21 +70,26 @@ func TestExecutorEditIssueOmitsEmptyFields(t *testing.T) {
 }
 
 func TestExecutorCommentIssueArgvAndResultNumber(t *testing.T) {
-	// A comment payload carries html_url but no issue number; the result reuses
-	// the request's target number.
-	rr := &recordingRunner{out: []byte(`{"html_url": "https://forge/x/y/issues/7#issuecomment-1"}`)}
+	// The shadow renders {comment, issue} together (ward#613): the html_url rides a
+	// nested `comment` object, and the reused target number stands in for the absent one.
+	rr := &recordingRunner{out: []byte(`{"comment": {"html_url": "https://forge/x/y/issues/7#issuecomment-1"}, "issue": {"number": 7}}`)}
 	ex := &wardKdlWriteExecutor{token: "tok", run: rr.run}
 
 	res, err := ex.CommentIssue(context.Background(), broker.Target{Owner: "coilyco", Repo: "r", Number: 7}, "hello")
 	if err != nil {
 		t.Fatalf("CommentIssue: %v", err)
 	}
-	want := []string{"ops", "forgejo", "comment", "create", "coilyco", "r", "7", "--body", "hello", "--output", "json"}
+	// `issue comment`, NOT `comment create` - no `comment` resource exists (ward#613);
+	// TestExecutorWriteArgvHitsRealLeaves pins this against the generated tree.
+	want := []string{"ops", "forgejo", "issue", "comment", "coilyco", "r", "7", "--body", "hello", "--output", "json"}
 	if strings.Join(rr.args, "\x00") != strings.Join(want, "\x00") {
 		t.Errorf("argv =\n  %v\nwant\n  %v", rr.args, want)
 	}
 	if res.Number != 7 {
 		t.Errorf("result number = %d, want 7 (reused from target)", res.Number)
+	}
+	if res.URL != "https://forge/x/y/issues/7#issuecomment-1" {
+		t.Errorf("result URL = %q, want the nested comment html_url", res.URL)
 	}
 }
 
@@ -253,6 +259,89 @@ func containsEnv(env []string, key, value string) bool {
 	for _, e := range env {
 		if e == key+"="+value {
 			return true
+		}
+	}
+	return false
+}
+
+// TestExecutorWriteArgvHitsRealLeaves resolves each write executor's argv against
+// the real generated forgejo tree, catching ward#613's wrong `comment create` path.
+func TestExecutorWriteArgvHitsRealLeaves(t *testing.T) {
+	forgejo, err := buildForgejoOps()
+	if err != nil {
+		t.Fatalf("buildForgejoOps: %v", err)
+	}
+	tgt := broker.Target{Owner: "coilyco", Repo: "r", Number: 7}
+	cases := []struct {
+		name string
+		run  func(*wardKdlWriteExecutor) error
+	}{
+		{"FileIssue", func(e *wardKdlWriteExecutor) error {
+			_, err := e.FileIssue(context.Background(), tgt, "t", "b")
+			return err
+		}},
+		{"EditIssue", func(e *wardKdlWriteExecutor) error {
+			_, err := e.EditIssue(context.Background(), tgt, "t", "b", "closed")
+			return err
+		}},
+		{"CommentIssue", func(e *wardKdlWriteExecutor) error {
+			_, err := e.CommentIssue(context.Background(), tgt, "hello")
+			return err
+		}},
+	}
+	for _, tc := range cases {
+		t.Run(tc.name, func(t *testing.T) {
+			rr := &recordingRunner{out: []byte(`{}`)}
+			ex := &wardKdlWriteExecutor{token: "tok", run: rr.run}
+			if err := tc.run(ex); err != nil {
+				t.Fatalf("%s: %v", tc.name, err)
+			}
+			assertArgvResolves(t, forgejo, rr.args)
+		})
+	}
+}
+
+// assertArgvResolves fails when argv (an executor's `ops forgejo ...` shell-out)
+// does not resolve to a real leaf whose flags include every `--flag` in argv.
+func assertArgvResolves(t *testing.T, forgejo *cli.Command, argv []string) {
+	t.Helper()
+	if len(argv) < 2 || argv[0] != "ops" || argv[1] != "forgejo" {
+		t.Fatalf("argv %v is not an `ops forgejo ...` shell-out", argv)
+	}
+	cur := forgejo
+	i := 2
+	// Descend subcommands until a token stops matching (positionals/flags begin).
+	for ; i < len(argv); i++ {
+		next := commandNamed(cur.Commands, argv[i])
+		if next == nil {
+			break
+		}
+		cur = next
+	}
+	if cur == forgejo {
+		t.Fatalf("argv %v resolved no forgejo subcommand (verb path is wrong)", argv)
+	}
+	// Every remaining `--flag` must be defined on the resolved leaf.
+	for ; i < len(argv); i++ {
+		tok := argv[i]
+		if !strings.HasPrefix(tok, "--") {
+			continue
+		}
+		flag := strings.TrimPrefix(tok, "--")
+		if !flagDefined(cur, flag) {
+			t.Errorf("leaf %q does not define %q (argv %v); a shell-out to it fails with "+
+				"`flag provided but not defined: -%s`", cur.Name, tok, argv, flag)
+		}
+	}
+}
+
+// flagDefined reports whether cmd declares a flag with the given name.
+func flagDefined(cmd *cli.Command, name string) bool {
+	for _, f := range cmd.Flags {
+		for _, n := range f.Names() {
+			if n == name {
+				return true
+			}
 		}
 	}
 	return false

@@ -93,15 +93,15 @@ func (e *wardKdlWriteExecutor) EditIssue(ctx context.Context, target broker.Targ
 	return parseIssueResult(out), nil
 }
 
-// CommentIssue posts body as a comment on target's issue. The comment payload
-// carries no issue number, so the Result reuses the request's target number.
+// CommentIssue posts body via `issue comment` (the ward#380 shadow leaf), NOT
+// `comment create` - no `comment` resource exists, so it posted nothing (ward#613).
 func (e *wardKdlWriteExecutor) CommentIssue(ctx context.Context, target broker.Target, body string) (broker.Result, error) {
-	args := []string{"ops", "forgejo", "comment", "create", target.Owner, target.Repo, strconv.Itoa(target.Number), "--body", body, "--output", "json"}
+	args := []string{"ops", "forgejo", "issue", "comment", target.Owner, target.Repo, strconv.Itoa(target.Number), "--body", body, "--output", "json"}
 	out, err := e.exec(ctx, args)
 	if err != nil {
 		return broker.Result{}, err
 	}
-	res := parseIssueResult(out)
+	res := parseCommentResult(out)
 	if res.Number == 0 {
 		res.Number = target.Number
 	}
@@ -115,6 +115,26 @@ func (e *wardKdlWriteExecutor) Dispatch(_ context.Context, _ broker.Target) (bro
 		return broker.Result{}, fmt.Errorf("broker: dispatch seed unavailable: no %s held", credseed.EnvForgejoToken)
 	}
 	return broker.Result{Detail: e.token}, nil
+}
+
+// parseCommentResult lifts the html_url from the `issue comment` shadow's
+// {comment, issue} JSON (ward#613), falling back to parseIssueResult's flat shape.
+func parseCommentResult(out []byte) broker.Result {
+	var shadow struct {
+		Comment struct {
+			HTMLURL string `json:"html_url"`
+			URL     string `json:"url"`
+		} `json:"comment"`
+	}
+	if err := json.Unmarshal(bytes.TrimSpace(out), &shadow); err == nil {
+		if url := shadow.Comment.HTMLURL; url != "" {
+			return broker.Result{URL: url}
+		}
+		if url := shadow.Comment.URL; url != "" {
+			return broker.Result{URL: url}
+		}
+	}
+	return parseIssueResult(out)
 }
 
 // parseIssueResult best-effort projects a forgejo issue/comment JSON object into
