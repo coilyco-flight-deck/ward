@@ -241,7 +241,9 @@ func validateDispatchBrokerRequest(req dispatchBrokerRequest) error {
 }
 
 func validateDispatchBrokerArgv(role string, tail []string) error {
-	valueFlags := map[string]bool{"--driver": true}
+	// --config is a repeatable model-context override forwarded on both roles (ward#616);
+	// its value carries an `=`, handled by the value-flag "next token" rule below.
+	valueFlags := map[string]bool{"--driver": true, "--config": true}
 	boolFlags := map[string]bool{"--print": true}
 	if role == "engineer" {
 		for _, f := range []string{"--image", "--tag", "--ward-version", "--branch", "--repo", "--tailnet-mode"} {
@@ -364,10 +366,22 @@ func brokerAdvisorArgv(c *cli.Command, mode containerMode, ref agentIssueRef) []
 	if lvl := strings.TrimSpace(c.String("thoroughness")); lvl != "" {
 		argv = append(argv, "--thoroughness", lvl)
 	}
+	argv = appendBrokerConfigFlags(argv, c)
 	if c.Bool("print") {
 		argv = append(argv, "--print")
 	}
 	argv = append(argv, c.Args().Tail()...)
+	return argv
+}
+
+// appendBrokerConfigFlags forwards each repeatable --config override to the host-side
+// dispatch argv (ward#616); the host re-parses + validates it via parseConfigOverrides.
+func appendBrokerConfigFlags(argv []string, c *cli.Command) []string {
+	for _, cfg := range c.StringSlice("config") {
+		if cfg = strings.TrimSpace(cfg); cfg != "" {
+			argv = append(argv, "--config", cfg)
+		}
+	}
 	return argv
 }
 
@@ -382,6 +396,7 @@ func appendBrokerContainerFlags(argv []string, c *cli.Command) []string {
 			argv = append(argv, "--repo", repo)
 		}
 	}
+	argv = appendBrokerConfigFlags(argv, c)
 	for _, name := range []string{"aws", "tailnet", "no-pull"} {
 		if c.Bool(name) {
 			argv = append(argv, "--"+name)

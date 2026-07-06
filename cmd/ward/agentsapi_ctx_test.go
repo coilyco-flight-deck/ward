@@ -26,6 +26,8 @@ func TestAgentRunCtxCarve(t *testing.T) {
 		CodexModel:     "gpt-5.4-mini",
 		CodexEffort:    "low",
 		CodexVerbosity: "low",
+		ClaudeModel:    "sonnet",
+		ClaudeEffort:   "medium",
 		QwenModel:      "qwen3-coder:30b",
 		OllamaURL:      "http://localhost:11434/v1",
 	}
@@ -48,6 +50,10 @@ func TestAgentRunCtxCarve(t *testing.T) {
 	if rc.CodexModel != e.CodexModel || rc.CodexEffort != e.CodexEffort || rc.CodexVerbosity != e.CodexVerbosity {
 		t.Errorf("codex knobs = %q/%q/%q, want %q/%q/%q",
 			rc.CodexModel, rc.CodexEffort, rc.CodexVerbosity, e.CodexModel, e.CodexEffort, e.CodexVerbosity)
+	}
+	if rc.ClaudeModel != e.ClaudeModel || rc.ClaudeEffort != e.ClaudeEffort {
+		t.Errorf("claude knobs = %q/%q, want %q/%q (ward#616)",
+			rc.ClaudeModel, rc.ClaudeEffort, e.ClaudeModel, e.ClaudeEffort)
 	}
 	// The qwen->opencode roster untangle is Phase 2; the carve reads the
 	// bootstrapEnv.QwenModel field into the neutral OpencodeModel today.

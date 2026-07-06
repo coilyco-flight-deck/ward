@@ -8,10 +8,10 @@ import (
 	"github.com/coilyco-flight-deck/ward/internal/agentsapi"
 )
 
-// runCtxForPosture builds the narrow RunCtx the registry's LaunchArgv reads for a
-// given launch posture, so the contract test can compare it to buildAgentArgv.
-func runCtxForPosture(seed []string, headless, ask bool) agentsapi.RunCtx {
-	return agentsapi.RunCtx{Seed: seed, Headless: headless, Ask: ask}
+// runCtxForPosture builds the RunCtx the registry's LaunchArgv reads for a posture,
+// so the contract test compares it to buildAgentArgv (ClaudeModel pins ward#616).
+func runCtxForPosture(seed []string, headless, ask bool, claudeModel string) agentsapi.RunCtx {
+	return agentsapi.RunCtx{Seed: seed, Headless: headless, Ask: ask, ClaudeModel: claudeModel}
 }
 
 // agents_registry_contract_test.go is the ward#412 generalized contract: the
@@ -83,9 +83,12 @@ func TestRegistryMatchesHardcodedSwitches(t *testing.T) {
 			{"headless", true, false},
 			{"ask", false, true},
 		} {
-			e := bootstrapEnv{Mode: string(mode), Agent: mode.agentBinary(), Headless: posture.headless, Ask: posture.ask}
+			// A non-empty ClaudeModel pins the ward#616 --model arm; non-claude modes
+			// ignore it, so both copies still agree entry for entry.
+			const claudeModel = "sonnet"
+			e := bootstrapEnv{Mode: string(mode), Agent: mode.agentBinary(), Headless: posture.headless, Ask: posture.ask, ClaudeModel: claudeModel}
 			wantLaunch, wantStream := buildAgentArgv(e, seed)
-			rc := runCtxForPosture(seed, posture.headless, posture.ask)
+			rc := runCtxForPosture(seed, posture.headless, posture.ask, claudeModel)
 			gotLaunch, gotStream := a.LaunchArgv(rc)
 			if fmt.Sprint(gotLaunch) != fmt.Sprint(wantLaunch) {
 				t.Errorf("%s/%s: registry LaunchArgv %v != switch %v", mode, posture.name, gotLaunch, wantLaunch)

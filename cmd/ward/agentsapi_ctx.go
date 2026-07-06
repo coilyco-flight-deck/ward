@@ -67,6 +67,8 @@ func (r *Runner) agentRunCtx(ctx context.Context, e bootstrapEnv, seed []string)
 		CodexModel:     e.CodexModel,
 		CodexEffort:    e.CodexEffort,
 		CodexVerbosity: e.CodexVerbosity,
+		ClaudeModel:    e.ClaudeModel,
+		ClaudeEffort:   e.ClaudeEffort,
 		OpencodeModel:  e.QwenModel,
 		OllamaURL:      e.OllamaURL,
 		Seed:           seed,

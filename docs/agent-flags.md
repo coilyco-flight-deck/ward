@@ -8,16 +8,17 @@ for the roster.
 
 ## The flag surface (trimmed ~24 -> ~8)
 
-The shared launch helpers show ~8 visible flags: the positional ref/task, `--driver`,
-`--repo`, `--details`, `--print`, `--force`, `--no-preflight`, and (engineer freeform)
-`--instructions-file`. The trim lands in the shared helpers, so it applies to the
-engineer, director, and advisor surfaces at once.
+The shared launch helpers show ~9 visible flags: the positional ref/task, `--driver`,
+`--repo`, `--details`, `--config`, `--print`, `--force`, `--no-preflight`, and (engineer
+freeform) `--instructions-file`. The trim lands in the shared helpers, so it applies to
+all three surfaces at once.
 
 `--repo owner/name` (repeatable) grants extra writable repos
 ([container-multi-repo.md](container-multi-repo.md)). `--print` is a dry run.
 `--force` skips the reservation checks ([agent-reservation.md](agent-reservation.md))
 and `--no-preflight` skips the pre-flight ([agent-preflight.md](agent-preflight.md)).
-The engineer **always detaches**.
+`--config` (repeatable) overrides the agent's model-context config
+([agent-config-overrides.md](agent-config-overrides.md)). The engineer **always detaches**.
 
 ### Host/cloud capability is a per-role guardfile set, not a flag
 
@@ -42,19 +43,17 @@ live-observe set, engineer/director hold none). See [agent-capability.md](agent-
 
 ## Quiet launch for detached runs
 
-A detached launch (the engineer, always detached now) isn't watched, so docker's
-chatter is dropped: pull lines, the `docker scout` footer, the container-id hash
-(`DOCKER_CLI_HINTS=false` plus a swallowed stdout). The pull is the exception:
-silencing it hid slow-registry stalls, so a detached pull names itself and beats a
-`still pulling` heartbeat, then falls back to the local image.
+A detached launch (the engineer) isn't watched, so docker's chatter is dropped: pull
+lines, the `docker scout` footer, the container-id hash (`DOCKER_CLI_HINTS=false` plus
+swallowed stdout). The pull is the exception: silencing it hid slow-registry stalls, so
+it names itself and beats a `still pulling` heartbeat before falling back to local.
 
 ## `--details`
 
 The engineer's **ref mode** takes `--details "<note>"`: extra operator instructions
 woven in at dispatch as a final paragraph of the **seeded prompt**, flagged
-**authoritative over the issue text** where they conflict - so a single line steers the
-run without editing it. It is also folded into the **pre-flight read** and shows up in
-`--print`. The **freeform mode** has no `--details` - its positional text (or
+**authoritative over the issue text** where they conflict. It is also folded into the
+**pre-flight read** and shows up in `--print`. The **freeform mode** has no `--details` - its positional text (or
 `--instructions-file`) already **is** the full brief.
 
 ## Retired: `--watch` and `--new-tab`

@@ -44,7 +44,11 @@ type bootstrapEnv struct {
 	CodexModel     string
 	CodexEffort    string
 	CodexVerbosity string
-	GitUserName    string
+	// claude model + effort are override-only (ward#616): empty defaults keep today's
+	// bare launch; WARD_CLAUDE_MODEL / WARD_CLAUDE_REASONING_EFFORT fill them.
+	ClaudeModel  string
+	ClaudeEffort string
+	GitUserName  string
 	GitUserEmail   string
 	AgentUID       string
 	AgentGID       string
@@ -118,6 +122,7 @@ func readBootstrapEnv() (bootstrapEnv, error) {
 	}
 	opencode := fleetAgentByName(fleet, string(modeOpencode))
 	codex := fleetAgentByName(fleet, string(modeCodex))
+	claude := fleetAgentByName(fleet, string(modeClaude))
 	attribution := fleet.Defaults.Attribution
 	e := bootstrapEnv{
 		TargetOwner:  os.Getenv("WARD_TARGET_OWNER"),
@@ -137,6 +142,10 @@ func readBootstrapEnv() (bootstrapEnv, error) {
 		CodexModel:     envOr("WARD_CODEX_MODEL", codex.Model),
 		CodexEffort:    envOr("WARD_CODEX_REASONING_EFFORT", codex.ReasoningEffort),
 		CodexVerbosity: envOr("WARD_CODEX_VERBOSITY", codex.Verbosity),
+		// claude model + effort default empty from the fleet claude node (ward#616);
+		// --config agent.claude.* / WARD_CLAUDE_* override into the container env.
+		ClaudeModel:  envOr("WARD_CLAUDE_MODEL", claude.Model),
+		ClaudeEffort: envOr("WARD_CLAUDE_REASONING_EFFORT", claude.ReasoningEffort),
 		// Bot attribution: email is the load-bearing Forgejo match (ward#245); both
 		// default from the fleet manifest's defaults.attribution.
 		GitUserName:  envOr("WARD_GIT_NAME", attribution.Name),
@@ -243,6 +252,35 @@ func echoRunContextGo(e bootstrapEnv, agentArgs []string) {
 		orDefaultLabel(os.Getenv("WARD_CONTAINER_UP"), "(unset)"), seed)
 }
 
+// echoAgentConfigGo echoes the launched agent's resolved model-context config at
+// startup (ward#616), so its harness config is visible in the log, not silent.
+func echoAgentConfigGo(e bootstrapEnv, rc agentsapi.RunCtx, mode containerMode) {
+	model, effort, endpoint := resolvedAgentKnobs(rc, mode)
+	fmt.Fprintf(os.Stderr, "===== ward agent config (ward#616) =====\n"+
+		"agent:         %s\nmodel:         %s\neffort:        %s\nendpoint:      %s\ncontext-level: %s\n"+
+		"===== end ward agent config =====\n",
+		string(mode),
+		orDefaultLabel(model, "(harness default)"),
+		orDefaultLabel(effort, "(harness default)"),
+		orDefaultLabel(endpoint, "(harness default)"),
+		orDefaultLabel(e.ContextLevel, "(unset)"))
+}
+
+// resolvedAgentKnobs projects the per-mode model / effort / endpoint out of the
+// resolved RunCtx for the startup echo (ward#616); an unknown mode reports blanks.
+func resolvedAgentKnobs(rc agentsapi.RunCtx, mode containerMode) (model, effort, endpoint string) {
+	switch mode {
+	case modeCodex:
+		return rc.CodexModel, rc.CodexEffort, ""
+	case modeOpencode:
+		return rc.OpencodeModel, "", rc.OllamaURL
+	case modeClaude:
+		return rc.ClaudeModel, rc.ClaudeEffort, ""
+	default:
+		return "", "", ""
+	}
+}
+
 // orDefaultLabel returns s, or def when s is blank.
 func orDefaultLabel(s, def string) string {
 	if strings.TrimSpace(s) == "" {
@@ -312,6 +350,9 @@ func (r *Runner) runContainerBootstrap(ctx context.Context, c *cli.Command) erro
 	agent := lookupAgent(mode)
 	blog("bootstrap mode selected: requested=%s resolved=%s driver=%s", e.Mode, mode, e.Agent)
 	rc := r.agentRunCtx(ctx, e, agentArgs)
+	// Echo the resolved model-context config for the launched agent at startup (ward#616),
+	// so its model/effort/endpoint/context-level are visible in the log, not silent.
+	echoAgentConfigGo(e, rc, mode)
 
 	r.configureGitAuth(ctx, e)
 	// Installer: opencode self-installs before the clone (absent from the image).

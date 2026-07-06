@@ -127,6 +127,13 @@ func buildUpPlan(c *cli.Command, repo targetRepo, mode containerMode, role, cwd,
 	// The catalog.dependsOn read-only context set is NOT resolved here: the host cwd may
 	// not be the target repo, so the container resolves it from the fresh clone (ward#580).
 
+	// Repeatable `--config` overrides ride in as WARD_* env (ward#616); an unknown key
+	// fails loud here, before any container spins. c.StringSlice is nil-safe when unset.
+	configEnv, err := parseConfigOverrides(c.StringSlice("config"))
+	if err != nil {
+		return upPlan{}, err
+	}
+
 	// The director surface opts into a read-only bind of the redacted agent-log drain so it
 	// reads past runs' logs without a docker socket; other runs leave it off (ward#525/526).
 	agentLogs := ""
@@ -156,6 +163,7 @@ func buildUpPlan(c *cli.Command, repo targetRepo, mode containerMode, role, cwd,
 		ExtraRepos:     extra,
 		HostNet:        hostNet,
 		TSSidecar:      tsSidecar,
+		ConfigEnv:      configEnv,
 	}, nil
 }
 

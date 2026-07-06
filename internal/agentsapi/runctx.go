@@ -55,6 +55,10 @@ type RunCtx struct {
 	CodexModel     string
 	CodexEffort    string
 	CodexVerbosity string
+	// ClaudeModel, ClaudeEffort are claude's model + reasoning-effort knobs (ward#616).
+	// Empty ClaudeModel omits --model; claude has no effort flag, so it is echo-only.
+	ClaudeModel  string
+	ClaudeEffort string
 	// OpencodeModel is the ollama-backed model the opencode config points at
 	// (bootstrapEnv.QwenModel today; the qwen->opencode untangle is Phase 2).
 	OpencodeModel string

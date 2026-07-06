@@ -38,6 +38,14 @@ Full credential path: [agent-credentials.md](agent-credentials.md).
 claude writes no extra model config file. The container relies on the seeded
 credential plus the onboarding state file.
 
+**Model / effort ([ward#616](https://forgejo.coilysiren.me/coilyco-flight-deck/ward/issues/616)).**
+The `agent claude` fleet node carries empty `model` / `reasoning-effort` defaults, so a
+run launches bare `claude` (no `--model`) exactly as before. `WARD_CLAUDE_MODEL` (or
+`--config agent.claude.model=<v>`) appends `--model <v>` at launch; `WARD_CLAUDE_REASONING_EFFORT`
+(`--config agent.claude.effort=<v>`) is carried through to the startup config echo, but claude
+has **no native reasoning-effort flag** today, so it is not applied to the launch argv. Both
+resolve highest-first `--config` > `WARD_*` env > fleet default. See [agent-flags.md](agent-flags.md).
+
 ## Install stance
 
 claude is image-baked. No self-install step.
@@ -47,6 +55,7 @@ claude is image-baked. No self-install step.
 - Host preflight: `claude -p <prompt>`.
 - Headless: `claude -p --verbose --output-format stream-json <seed>`.
 - Interactive: `claude <seed>` plus the seedless TUI flow.
+- A resolved `WARD_CLAUDE_MODEL` appends `--model <v>` to any of the three ([ward#616](https://forgejo.coilysiren.me/coilyco-flight-deck/ward/issues/616)).
 
 ## Smoke gate
 
