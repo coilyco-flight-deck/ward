@@ -49,14 +49,17 @@ type bootstrapEnv struct {
 	ClaudeModel  string
 	ClaudeEffort string
 	GitUserName  string
-	GitUserEmail   string
-	AgentUID       string
-	AgentGID       string
-	AgentHome      string
-	MirrorName     string
-	Branch         string
-	Headless       bool
-	Ask            bool
+	GitUserEmail string
+	// Role is the run's config role (WARD_ROLE, ward#620): director/engineer/advisor,
+	// keying the per-role model/effort overlay resolved below. Empty means no overlay.
+	Role       string
+	AgentUID   string
+	AgentGID   string
+	AgentHome  string
+	MirrorName string
+	Branch     string
+	Headless   bool
+	Ask        bool
 	// ReadOnly is the read-only surface session (WARD_READONLY, ward#293): revoke
 	// the push credential, compose the restriction. See docs/agent-surface.md.
 	ReadOnly    bool
@@ -111,6 +114,29 @@ func fleetAgentByName(f fleetconfig.Fleet, name string) fleetconfig.Agent {
 	return fleetconfig.Agent{}
 }
 
+// firstNonEmpty returns the first non-empty string, or "" when both are empty. It
+// slots the per-role overlay ahead of the flat per-agent fleet default (ward#620).
+func firstNonEmpty(a, b string) string {
+	if a != "" {
+		return a
+	}
+	return b
+}
+
+// roleAgentOverride returns the role's sparse per-agent overlay from the fleet config
+// (cli-guard#192, ward#620), or a zero override when the role/agent carries none.
+func roleAgentOverride(f fleetconfig.Fleet, role, agent string) fleetconfig.RoleAgentOverride {
+	if role == "" {
+		return fleetconfig.RoleAgentOverride{}
+	}
+	for _, r := range f.Roles {
+		if r.Name == role {
+			return r.AgentConfig[agent]
+		}
+	}
+	return fleetconfig.RoleAgentOverride{}
+}
+
 // readBootstrapEnv reads + defaults the entrypoint env, erroring on a missing
 // required var (the bash `: "${X:?...}"` checks). Pure given the environment.
 func readBootstrapEnv() (bootstrapEnv, error) {
@@ -123,6 +149,12 @@ func readBootstrapEnv() (bootstrapEnv, error) {
 	opencode := fleetAgentByName(fleet, string(modeOpencode))
 	codex := fleetAgentByName(fleet, string(modeCodex))
 	claude := fleetAgentByName(fleet, string(modeClaude))
+	// Per-role model/effort overlay (ward#620): the resolved role's per-agent overlay
+	// slots into the precedence between WARD_* env and the flat per-agent fleet default.
+	role := os.Getenv("WARD_ROLE")
+	claudeOv := roleAgentOverride(fleet, role, string(modeClaude))
+	codexOv := roleAgentOverride(fleet, role, string(modeCodex))
+	opencodeOv := roleAgentOverride(fleet, role, string(modeOpencode))
 	attribution := fleet.Defaults.Attribution
 	e := bootstrapEnv{
 		TargetOwner:  os.Getenv("WARD_TARGET_OWNER"),
@@ -135,21 +167,24 @@ func readBootstrapEnv() (bootstrapEnv, error) {
 		ContextLevel: envOr("WARD_CONTEXT_LEVEL", "2"),
 		GitCache:     envOr("WARD_GITCACHE", "/gitcache"),
 		ContextSrc:   envOr("WARD_CONTEXT_SRC", "/opt/ward-context"),
-		QwenModel:    envOr("WARD_QWEN_MODEL", opencode.Model),
-		OllamaURL:    envOr("WARD_OLLAMA_URL", opencode.Endpoint),
-		// Cheapest codex settings (ward#379): mini model, low reasoning + verbosity,
-		// the defaults now sourced from the fleet manifest's codex node.
-		CodexModel:     envOr("WARD_CODEX_MODEL", codex.Model),
-		CodexEffort:    envOr("WARD_CODEX_REASONING_EFFORT", codex.ReasoningEffort),
-		CodexVerbosity: envOr("WARD_CODEX_VERBOSITY", codex.Verbosity),
-		// claude model + effort default empty from the fleet claude node (ward#616);
-		// --config agent.claude.* / WARD_CLAUDE_* override into the container env.
-		ClaudeModel:  envOr("WARD_CLAUDE_MODEL", claude.Model),
-		ClaudeEffort: envOr("WARD_CLAUDE_REASONING_EFFORT", claude.ReasoningEffort),
+		// Precedence WARD_* env > role overlay > flat per-agent default (ward#620): the
+		// role's opencode overlay (if any) leads the fleet manifest's opencode node.
+		QwenModel: envOr("WARD_QWEN_MODEL", firstNonEmpty(opencodeOv.Model, opencode.Model)),
+		OllamaURL: envOr("WARD_OLLAMA_URL", firstNonEmpty(opencodeOv.Endpoint, opencode.Endpoint)),
+		// Cheapest codex settings (ward#379): fleet manifest's codex node, role overlay
+		// ahead of it (ward#620).
+		CodexModel:     envOr("WARD_CODEX_MODEL", firstNonEmpty(codexOv.Model, codex.Model)),
+		CodexEffort:    envOr("WARD_CODEX_REASONING_EFFORT", firstNonEmpty(codexOv.ReasoningEffort, codex.ReasoningEffort)),
+		CodexVerbosity: envOr("WARD_CODEX_VERBOSITY", firstNonEmpty(codexOv.Verbosity, codex.Verbosity)),
+		// claude model + effort default empty from the fleet claude node (ward#616); the
+		// role overlay (ward#620) fills them per role, and --config / WARD_CLAUDE_* still win.
+		ClaudeModel:  envOr("WARD_CLAUDE_MODEL", firstNonEmpty(claudeOv.Model, claude.Model)),
+		ClaudeEffort: envOr("WARD_CLAUDE_REASONING_EFFORT", firstNonEmpty(claudeOv.ReasoningEffort, claude.ReasoningEffort)),
 		// Bot attribution: email is the load-bearing Forgejo match (ward#245); both
 		// default from the fleet manifest's defaults.attribution.
 		GitUserName:  envOr("WARD_GIT_NAME", attribution.Name),
 		GitUserEmail: envOr("WARD_GIT_EMAIL", attribution.Email),
+		Role:         role,
 		AgentUID:     envOr("WARD_AGENT_UID", "1000"),
 		AgentGID:     envOr("WARD_AGENT_GID", "1000"),
 		AgentHome:    envOr("WARD_AGENT_HOME", "/home/ubuntu"),
