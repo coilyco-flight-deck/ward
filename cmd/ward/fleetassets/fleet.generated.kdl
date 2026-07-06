@@ -82,17 +82,32 @@ fleet {
             interactive goose session
         }
     }
-    // Per-role capability roster (ward#578): a role's host/cloud reach is guardfile
-    // membership, not a ward flag - ward maps each name to a mechanism it ships.
+    // Per-role capability roster (ward#578) + per-agent model/effort overlay
+    // (cli-guard#192, ward#620); overlay precedence in docs/agent-config-overrides.md.
     roles {
-        // engineer implements in an isolated clone: no host/cloud reach by default.
+        // engineer: no host reach; a cheaper model for parallel fan-out (ward#620).
         role engineer {
-
+            agent claude {
+                model claude-fable-5
+                reasoning-effort medium
+            }
+            agent codex {
+                model gpt-5.4-mini
+                reasoning-effort medium
+            }
         }
-        // director now mirrors advisor's live-observe set (aws + tailnet) so it
-        // reaches kai-server for the read-only `ward ops eco observe` surface (ward#547).
+        // director mirrors advisor's live-observe set (aws + tailnet, ward#547); its
+        // heartbeat wants the strongest model at 1M context (ward#620).
         role director {
             guardfiles ward-kdl.aws.guardfile.kdl ward-kdl.tailscale.guardfile.kdl
+            agent claude {
+                model "claude-opus-4-8[1m]"
+                reasoning-effort high
+            }
+            agent codex {
+                model gpt-5.5
+                reasoning-effort medium
+            }
         }
         // advisor does live-observe research: the aws SSM read + the tailnet route.
         // `advisor --no-tailnet` opts a rare isolated run back out.
