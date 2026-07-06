@@ -30,11 +30,37 @@ set:
 
 ## Precedence
 
-Highest first: `--config` > `WARD_*` env > per-agent fleet default (the `agent <name>` node
-in [`ward-kdl.fleet.kdl`](ward-kdl.md)). With no `--config` and no env, today's behavior is
-unchanged - the claude launch omits `--model` entirely. `--config` is approved on both the
-engineer and advisor dispatch broker allowlists, so an in-container director surface can
-forward it host-side.
+Highest first: `--config` > `WARD_*` env > **per-role overlay** > flat per-agent fleet
+default (the `agent <name>` node in [`ward-kdl.fleet.kdl`](ward-kdl.md)). With no `--config`,
+no env, and no role overlay, today's behavior is unchanged - the claude launch omits
+`--model` entirely. `--config` is approved on both the engineer and advisor dispatch broker
+allowlists, so an in-container director surface can forward it host-side.
+
+## Per-role model/effort defaults ([ward#620](https://forgejo.coilysiren.me/coilyco-flight-deck/ward/issues/620))
+
+A role's launch config can diverge from the flat per-agent default with a per-agent
+overlay on the role, using the same grammar the top-level `agent` node uses ([cli-guard#192](https://forgejo.coilysiren.me/coilyco-flight-deck/cli-guard/issues/192),
+shipped in cli-guard v0.73.0):
+
+```
+role director {
+    agent claude { model "claude-opus-4-8[1m]" reasoning-effort "high" }
+}
+```
+
+The **director** claude resolves `claude-opus-4-8[1m]` (Opus 4.8, 1M context) at `high`
+effort for its heartbeat; the **engineer** claude resolves the cheaper `claude-fable-5` at
+`medium` for parallel fan-out (codex: director `gpt-5.5`, engineer `gpt-5.4-mini`).
+`advisor` sets no overlay and inherits the flat default.
+
+The overlay is authored in the fleet source, embedded via `make sync-fleet-assets`. The run's
+config role rides in as `WARD_ROLE` (the **capability** role, so the director's read-only
+surface resolves as `director` though it labels itself `session`), and the entrypoint's
+`envOr` resolves each knob `env > overlay > flat default` - so `--config` / `WARD_*` still
+wins a single steered run.
+
+The `claude-opus-4-8[1m]` bracket form is a valid `--model` token (how 1M-context Opus is
+selected), so no beta header is needed; claude effort stays echo-only.
 
 ## Startup config echo
 

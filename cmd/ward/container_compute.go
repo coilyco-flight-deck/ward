@@ -427,6 +427,9 @@ type upPlan struct {
 	Name  string
 	// Role leads the name + the ward.role label (engineer/advisor/session).
 	Role string
+	// ConfigRole resolves the per-role model/effort overlay in-container (WARD_ROLE,
+	// ward#620): the capability role, not the `session` label the director surface wears.
+	ConfigRole string
 	// Machine is the per-container disambiguator on the ward.machine label (ward#364).
 	Machine     string
 	Repo        targetRepo
@@ -628,6 +631,11 @@ func (p upPlan) wardEnv() map[string]string {
 	}
 	if p.Branch != "" {
 		env["WARD_BRANCH"] = p.Branch
+	}
+	// The config role carries the per-role model/effort overlay in-container (ward#620);
+	// empty (a bare `container up`) leaves today's env intact.
+	if p.ConfigRole != "" {
+		env["WARD_ROLE"] = p.ConfigRole
 	}
 	if p.Issue != 0 {
 		env["WARD_TARGET_ISSUE"] = fmt.Sprintf("%d", p.Issue)
