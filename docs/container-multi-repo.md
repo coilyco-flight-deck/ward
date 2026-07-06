@@ -84,15 +84,37 @@ away and force-fed the Forgejo pipeline (the old silent 0-byte-lock failure).
 The sealed container has **no egress or ssh key** for an external host, and
 mirroring a third party's source onto Forgejo is a **rejected**
 redistribution risk, so an external dep is **never** cloned in-container. Its bare
-mirror is expected **seeded host-side over ssh** using the host's key, into the
-shared `ward-gitcache` volume; the container then does a purely local working
-clone off that mirror like every other one. The key stays on the host - the
-container never talks to the external forge.
+mirror is **seeded host-side over ssh**, into the shared `ward-gitcache` volume,
+and the container then does a purely local working clone off that mirror like every
+other one. The key stays on the host - the container never talks to the external
+forge.
 
-If that host-side seed did not run (the mirror is absent when the container looks),
-the dep **fails loud**: a `MISSING DEPENDENCY:` line naming the dep and why it did
-not arrive, and the stale lock is cleared so the gap never reads as "source
-available". This replaces the [ward#611](https://forgejo.coilysiren.me/coilyco-flight-deck/ward/issues/611) silent failure, where a declared
+**ward performs that host-side seed itself at launch**, so an external dep needs no
+manual warm-up step. Just before the sealed container is created, `ward agent`
+resolves the target's external `catalog.dependsOn` entries and, for each mirror not
+already in the volume, clones it on the host with a plain `git clone --mirror` over
+the **host user's default ssh keychain** - the ambient ssh-agent, then the default
+`~/.ssh` identities / `~/.ssh/config`, exactly what the user's own `git clone`
+resolves. No ward-specific key is injected or required; whatever ssh access the host
+user has is the access ward inherits (Kai's default identity has `StrangeLoopGames/Eco`,
+so it just works; any other user gets their own). The clone lands in a host temp dir,
+and only the finished bare mirror is copied into the volume by a throwaway `cp`-only
+helper - so neither the ssh key nor any egress ever enters a container. The seed is
+gated to the real host: an in-container dispatch (which has no key) skips it and
+leans on the sealed child's fail-loud.
+
+The seed reads the target's external deps from the host config discovered at the
+dispatch cwd. That is a warm-cache hint, **not** the authoritative resolution (the
+container still resolves the mounted set from its fresh clone, [ward#580](https://forgejo.coilysiren.me/coilyco-flight-deck/ward/issues/580)):
+when the dispatch cwd is the target repo (the common case) its external deps get
+pre-seeded, and when it is not, nothing seeds and the container fails loud rather
+than mounting empty.
+
+If the host-side seed did not land (no ssh access, no key, or the dispatch cwd was
+not the target - so the mirror is absent when the container looks), the dep **fails
+loud**: a `MISSING DEPENDENCY:` line naming the dep and why it did not arrive, and
+the stale lock is cleared so the gap never reads as "source available". This
+replaces the [ward#611](https://forgejo.coilysiren.me/coilyco-flight-deck/ward/issues/611) silent failure, where a declared
 `github.com/StrangeLoopGames/Eco` left only an empty `.StrangeLoopGames__Eco.lock`
 and the promised sibling `../Eco/` clone never appeared.
 
@@ -139,6 +161,18 @@ ever touching the read-only one.
 and transport survive the round-trip through the env; both the bash and Go clone
 paths split the `=<cloneURL>` back off the slug and honor it, and skip the
 in-container mirror clone an external dep can never do.
+
+The **host-side external seed** ([ward#612](https://forgejo.coilysiren.me/coilyco-flight-deck/ward/issues/612))
+lives in `agent_context_seed.go` and fires from `createAgentContainer`, right before
+the `docker run`. `seedExternalContextMirrors` resolves the target's external deps
+(`externalContextDeps`, from the dispatch-cwd config) and, per dep under a host flock,
+`git clone --mirror`s over the host's default ssh keychain into a temp dir, then copies
+the finished bare mirror into the `ward-gitcache` volume via a `cp`-only helper
+(`gitcacheMirrorCopyArgv`). A prior run's mirror is reused (`gitcacheMirrorPresent`
+probes the volume with a throwaway `test -d`); a clone or copy failure warns loud so
+the container's own fail-loud is never a surprise. The seed is a no-op inside a
+container (no host key) - it is the one host-side write into the otherwise
+container-computed context path.
 
 ## Pre-flight knows the grant
 
