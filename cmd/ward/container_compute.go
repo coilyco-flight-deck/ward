@@ -491,6 +491,9 @@ type upPlan struct {
 	// AWSHome is the aws capability's fallback ~/.aws bind source; a good host cred export
 	// drops the mount and clears this, else it arms the #579 creds-less warning (ward#586).
 	AWSHome string
+	// ConfigEnv are the resolved `--config` overrides as WARD_* env keys (ward#616),
+	// merged into wardEnv so the in-container envOr resolves them over the fleet default.
+	ConfigEnv map[string]string
 }
 
 // extraRepoLogLine describes one repo that ended up in the merged grant set.
@@ -539,6 +542,58 @@ func extraReposEnv(repos []targetRepo) string {
 		slugs[i] = r.slug()
 	}
 	return strings.Join(slugs, " ")
+}
+
+// configEnvKeys maps a `--config agent.<name>.<key>` path to the WARD_* container env
+// the entrypoint reads (ward#616): the known-key allowlist, an unlisted path fails loud.
+var configEnvKeys = map[string]string{
+	"agent.claude.model":      "WARD_CLAUDE_MODEL",
+	"agent.claude.effort":     "WARD_CLAUDE_REASONING_EFFORT",
+	"agent.codex.model":       "WARD_CODEX_MODEL",
+	"agent.codex.effort":      "WARD_CODEX_REASONING_EFFORT",
+	"agent.codex.verbosity":   "WARD_CODEX_VERBOSITY",
+	"agent.opencode.model":    "WARD_QWEN_MODEL",
+	"agent.opencode.endpoint": "WARD_OLLAMA_URL",
+}
+
+// knownConfigKeys returns the sorted `--config` dotted paths, for a loud error.
+func knownConfigKeys() []string {
+	keys := make([]string, 0, len(configEnvKeys))
+	for k := range configEnvKeys {
+		keys = append(keys, k)
+	}
+	sort.Strings(keys)
+	return keys
+}
+
+// parseConfigOverrides translates repeatable `--config agent.<name>.<key>=<value>`
+// flags into WARD_* container env overrides (ward#616); unknown/malformed fails loud.
+func parseConfigOverrides(entries []string) (map[string]string, error) {
+	if len(entries) == 0 {
+		return nil, nil
+	}
+	out := map[string]string{}
+	for _, raw := range entries {
+		entry := strings.TrimSpace(raw)
+		if entry == "" {
+			continue
+		}
+		path, value, ok := strings.Cut(entry, "=")
+		if !ok {
+			return nil, fmt.Errorf("--config %q: want agent.<name>.<key>=<value>", raw)
+		}
+		path = strings.TrimSpace(path)
+		value = strings.TrimSpace(value)
+		if value == "" {
+			return nil, fmt.Errorf("--config %q: empty value (want agent.<name>.<key>=<value>)", raw)
+		}
+		env, known := configEnvKeys[path]
+		if !known {
+			return nil, fmt.Errorf("--config %q: unknown key %q (known: %s)", raw, path, strings.Join(knownConfigKeys(), ", "))
+		}
+		out[env] = value
+	}
+	return out, nil
 }
 
 // wardEnv is the non-secret WARD_* config the entrypoint reads. Everything
@@ -626,6 +681,10 @@ func (p upPlan) wardEnv() map[string]string {
 	// force-push main (ward#508); direct-main omits the key, keeping today's env intact.
 	if !p.Workflow.landsOnMain() {
 		env["WARD_WORKFLOW"] = string(p.Workflow.orDefault())
+	}
+	// --config overrides ride last so they win over any default emitted above (ward#616).
+	for k, v := range p.ConfigEnv {
+		env[k] = v
 	}
 	return env
 }
@@ -914,6 +973,11 @@ func buildAgentArgv(e bootstrapEnv, seed []string) (argv []string, stream bool) 
 		case e.Headless:
 			argv = append(argv, "-p", "--verbose", "--output-format", "stream-json")
 			stream = true
+		}
+		// --model rides only when resolved (ward#616); empty keeps today's bare launch.
+		// Mirrors claude.go LaunchArgv. Effort is echo-only (no native claude flag).
+		if e.ClaudeModel != "" {
+			argv = append(argv, "--model", e.ClaudeModel)
 		}
 		argv = append(argv, seed...)
 		return argv, stream

@@ -37,6 +37,11 @@ func TestDispatchBrokerValidatesNarrowAPI(t *testing.T) {
 	if err := validateDispatchBrokerRequest(advisor); err != nil {
 		t.Errorf("valid advisor dispatch refused: %v", err)
 	}
+	// --config is an approved repeatable value flag on both roles (ward#616).
+	cfg := dispatchBrokerRequest{Role: "engineer", Argv: []string{"engineer", "coilyco-flight-deck/ward#1", "--config", "agent.claude.model=sonnet"}}
+	if err := validateDispatchBrokerRequest(cfg); err != nil {
+		t.Errorf("valid engineer --config dispatch refused: %v", err)
+	}
 }
 
 func TestBrokerEngineerArgvForwardsApprovedFlags(t *testing.T) {
@@ -45,6 +50,7 @@ func TestBrokerEngineerArgvForwardsApprovedFlags(t *testing.T) {
 		"--driver", "claude",
 		"--image", "img", "--tag", "t1", "--ward-version", "v1",
 		"--repo", "coilyco-flight-deck/cli-guard",
+		"--config", "agent.claude.model=sonnet",
 		"--aws", "--tailnet", "--tailnet-mode", "sidecar", "--force", "--no-preflight",
 	})
 	got := brokerEngineerArgv(cmd, modeClaude, agentIssueRef{Owner: "coilyco-flight-deck", Repo: "ward", Number: 42})
@@ -54,6 +60,7 @@ func TestBrokerEngineerArgvForwardsApprovedFlags(t *testing.T) {
 		{"--tag", "t1"},
 		{"--ward-version", "v1"},
 		{"--repo", "coilyco-flight-deck/cli-guard"},
+		{"--config", "agent.claude.model=sonnet"},
 		{"--tailnet-mode", "sidecar"},
 	} {
 		if !argFollowedBy(got, want[0], want[1]) {

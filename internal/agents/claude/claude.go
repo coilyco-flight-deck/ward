@@ -84,6 +84,11 @@ func (a Agent) LaunchArgv(rc agentsapi.RunCtx) (argv []string, stream bool) {
 		argv = append(argv, "-p", "--verbose", "--output-format", "stream-json")
 		stream = true
 	}
+	// --model rides only when resolved (ward#616); empty keeps today's bare launch.
+	// Effort has no native claude flag, so rc.ClaudeEffort is echo-only, not argv.
+	if rc.ClaudeModel != "" {
+		argv = append(argv, "--model", rc.ClaudeModel)
+	}
 	argv = append(argv, rc.Seed...)
 	return argv, stream
 }

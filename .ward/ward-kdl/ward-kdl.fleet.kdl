@@ -28,12 +28,15 @@ fleet {
         agent claude
         attribution name=coilyco-ops email=coilyco-ops@coilysiren.me
     }
-    // claude: full context (level 2), stream-json headless, keychain auth.
+    // claude: full context (2), stream-json headless, keychain auth. model /
+    // reasoning-effort are override-only (ward#616): empty defaults keep bare launch.
     agent claude {
         binary claude
         context-level 2
         stream stream-json
         auth claude-keychain
+        model ""
+        reasoning-effort ""
         argv {
             preflight claude -p
             headless claude -p --verbose --output-format stream-json

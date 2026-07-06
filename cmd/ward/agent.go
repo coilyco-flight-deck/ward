@@ -293,6 +293,15 @@ func agentDriverFlag() cli.Flag {
 	}
 }
 
+// configFlag is the repeatable dotted-path model-context override (ward#616):
+// `--config agent.<name>.<key>=<value>` rides in as the matching WARD_* env.
+func configFlag() cli.Flag {
+	return &cli.StringSliceFlag{
+		Name:  "config",
+		Usage: "override a resolved model-context knob (repeatable), e.g. --config agent.claude.model=sonnet --config agent.claude.effort=medium. Rides in as the matching WARD_* env; unknown keys fail loud (ward#616).",
+	}
+}
+
 // Tailnet mechanism selectors for the hidden --tailnet-mode escape hatch (ward#362):
 // auto picks by platform, the other two pin a mechanism.
 const (
@@ -458,6 +467,7 @@ func agentSurfaceFlags() []cli.Flag {
 		&cli.StringSliceFlag{Name: "repo", Usage: "grant the agent an additional writable repo to clone + operate against (owner/name; repeatable). Cloned as a full feature copy under /workspace alongside the issue's repo (ward#230, ward#280)."},
 		&cli.StringFlag{Name: "details", Usage: "extra operator instructions woven into the seeded prompt + pre-flight read (overrides the issue text on conflict)"},
 		&cli.BoolFlag{Name: "github", Usage: "treat a bare owner/repo#N ref as a GitHub issue (clone/push + comments + PR on GitHub via a user-supplied token; ward#489). A github.com URL infers this automatically."},
+		configFlag(),
 	}
 	flags = append(flags, agentImageFlags()...)
 	flags = append(flags,

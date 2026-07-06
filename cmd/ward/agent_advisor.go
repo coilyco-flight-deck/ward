@@ -32,6 +32,7 @@ func agentAdvisorFlags() []cli.Flag {
 		// Freeform mode is interactive by default under a TTY (ward#388); --oneshot
 		// forces the streamed one-shot answer even on a terminal (scripting escape hatch).
 		&cli.BoolFlag{Name: "oneshot", Aliases: []string{"answer"}, Usage: "freeform mode: force the one-shot streamed answer even under a TTY (default: interactive seeded session when a terminal is attached)"},
+		configFlag(),
 	}
 	flags = append(flags, agentImageFlags()...)
 	return append(flags,
