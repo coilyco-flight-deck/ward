@@ -114,7 +114,18 @@ Cross-cutting repos every container gets regardless of target are checked out
 read-only-by-convention under `/substrate/<name>`: doctrine, skills, cross-repo
 contracts, the dev/ops CLIs. Read them when you need a convention or a
 contract. Your **work** happens in your target clone - plus any granted extra
-repos (above) - under `/workspace`. Do not commit or push anything in
+repos (above) - under `/workspace`.
+
+The skills here are **read as docs**, not a rebuilt host skill-symlink forest.
+The core language / `kai-*` / `coding-*` / `agents-*` skills live in the
+agentic-os + agentic-os-kai substrate, so read them straight off
+`/substrate/<name>/.agents/skills/`. A capability skill from a **non-substrate**
+repo is not warmed - it rides a `--repo owner/name` grant, which clones that repo
+full under `/workspace` with its skills. Fleet-wide management scripts (the ones
+that walk every org dir) are **host / control-node only** and fence on
+`WARD_CONTAINER`: do not run them in here expecting a whole-fleet answer, since
+you only hold the ~8-repo substrate slice. The full design:
+`docs/container-skill-surface.md` in the ward repo. Do not commit or push anything in
 `/substrate` - those checkouts
 are warm-cache reference copies, not feature branches, and pushing from one is
 out of bounds the same way touching another repo is.

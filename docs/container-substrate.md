@@ -18,8 +18,8 @@ dev-base image stays shareable:
 - `image` - public (coilysiren + coilyco-flight-deck). A bare-mirror seed is also
   baked into the aos dev-base image at `/opt/substrate-seed`, so a cold host
   warms these with no network. Built by aos, see its [`docs/dev-base-image.md`](https://forgejo.coilysiren.me/coilyco-flight-deck/agentic-os/src/branch/main/docs/dev-base-image.md).
-- `cache` - coilyco-bridge (leak-tolerant/private). Never baked into the image.
-  Cloned over the network on first use.
+- `cache` - coilyco-bridge (leak-tolerant/private). Never baked; cloned over the
+  network on first use.
 
 ## Warming
 
@@ -39,8 +39,7 @@ Warming is **best-effort** - any failure logs and the container continues.
 
 Warming the repos is not enough. A mount the agent is never told to read is a
 silent pile on disk, and a session that does not spelunk it falls back to
-interrogating the operator for facts already checked out (a public IP, a Caddy
-route, a `*.coilysiren.me` subdomain - all in `/substrate/infrastructure`): the
+interrogating the operator for facts already in `/substrate/infrastructure`: the
 "'discoverable in the clone' is a trap" failure the doctrine names.
 
 So the composed context ends with a **read-these-first** block: one bullet per
@@ -49,7 +48,9 @@ warmed `/substrate/<name>`, each with a self-sourced tagline from that repo's ow
 The block is one-sourced across the bash and Go compose paths via the hidden `ward
 container substrate-inventory` command. When the seed carries a
 [substrate catalog](substrate-catalog.md) the bullets are enriched with each repo's
-canonical `full_name`, description, and Forgejo topics ([ward#594](https://forgejo.coilysiren.me/coilyco-flight-deck/ward/issues/594)).
+canonical `full_name`, description, and Forgejo topics ([ward#594](https://forgejo.coilysiren.me/coilyco-flight-deck/ward/issues/594)). These
+skills are read **as docs**, never a rebuilt symlink forest
+([container-skill-surface.md](container-skill-surface.md)).
 
 ## When a repo lands in both trees
 
@@ -58,10 +59,10 @@ Because the substrate copy and the target/granted clones hydrate from the same
 grant) ends up under **both** `/substrate/<name>` and `/workspace/<name>` at the
 same HEAD. That overlap is expected: the split is by *role*, not by which repos
 exist where. `/workspace/<name>` is authoritative for work; `/substrate/<name>`
-stays read-only reference even for a repo being actively changed. The doctrine
-spells out the read-from-either / act-only-on-`/workspace` rule in
+stays read-only reference even for a repo being actively changed - the
+read-from-either / act-only-on-`/workspace` rule lives in
 [AGENTS.container.md](../cmd/ward/containerassets/AGENTS.container.md).
 
 ## See also
 
-[docs/container.md](container.md) - the container model and lifecycle.
+[container.md](container.md) - the container model and lifecycle.

@@ -10,6 +10,7 @@ ride a private `--env-file`, below). One surface of the [container API](containe
 
 ## Identity and target (always set)
 
+- `WARD_CONTAINER` - always `1`: the explicit "you are inside a ward container" marker. A host / control-node shell never has it, so host-only fleet-walk scripts fence on it to avoid reporting the ~8-repo substrate slice as the whole fleet ([container-skill-surface.md](container-skill-surface.md)).
 - `WARD_CONTAINER_NAME` - the friendly `docker --name`, for the in-container status line.
 - `WARD_TARGET_REPO` / `WARD_TARGET_OWNER` / `WARD_TARGET_NAME` - the `owner/name` slug and its split halves.
 - `WARD_MIRROR_NAME` - the bare-mirror directory name under `/gitcache`.

@@ -31,6 +31,9 @@ die() { log "fatal: $*"; record_gate_failure "$WARD_GATE_PHASE" "$*"; exit 1; }
 : "${WARD_FORGEJO_BASE:?missing WARD_FORGEJO_BASE}"
 WARD_MODE="${WARD_MODE:-claude}"
 WARD_AGENT="${WARD_AGENT:-claude}"
+# Explicit "inside a ward container" marker fleet-walk scripts fence on (ward#114);
+# wardEnv sets it, this fallback one-sources a bare run. docs/container-skill-surface.md.
+export WARD_CONTAINER="${WARD_CONTAINER:-1}"
 WARD_CONTEXT_LEVEL="${WARD_CONTEXT_LEVEL:-2}"
 WARD_GITCACHE="${WARD_GITCACHE:-/gitcache}"
 WARD_CONTEXT_SRC="${WARD_CONTEXT_SRC:-/opt/ward-context}"

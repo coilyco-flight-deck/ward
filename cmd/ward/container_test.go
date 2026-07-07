@@ -446,6 +446,15 @@ func TestWardEnvContainerName(t *testing.T) {
 	}
 }
 
+// TestWardEnvContainerMarker asserts every run exports the WARD_CONTAINER=1 fence
+// marker host-only fleet scripts key off (ward#114).
+func TestWardEnvContainerMarker(t *testing.T) {
+	p := sampleUpPlan()
+	if got := p.wardEnv()["WARD_CONTAINER"]; got != "1" {
+		t.Errorf("WARD_CONTAINER = %q, want %q", got, "1")
+	}
+}
+
 func sampleUpPlan() upPlan {
 	repo := targetRepo{Owner: "coilyco-gaming", Name: "eco-app"}
 	return upPlan{

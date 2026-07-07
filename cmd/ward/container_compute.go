@@ -607,6 +607,9 @@ func (p upPlan) wardEnv() map[string]string {
 		// The friendly docker --name (plan.Name) so in-container tooling (the status
 		// line) can show it; HOSTNAME carries only the container ID (ward#365).
 		"WARD_CONTAINER_NAME": p.Name,
+		// Explicit "inside a ward container" marker host-only fleet-walk scripts fence
+		// on (ward#114); a host shell never has it. See docs/container-skill-surface.md.
+		"WARD_CONTAINER": "1",
 		"WARD_TARGET_REPO":    p.Repo.slug(),
 		"WARD_TARGET_OWNER":   p.Repo.Owner,
 		"WARD_TARGET_NAME":    p.Repo.Name,
