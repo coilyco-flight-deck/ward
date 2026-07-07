@@ -271,14 +271,13 @@ jobs:
           PAT: ${{ secrets.GITHUB_MIRROR_PAT }}
         run: |
           set -euo pipefail
-          # Mirror-side, so this follows mirror-to-github.yml's convention: no PAT
-          # -> skip loudly, never fail the Forgejo release. When the secret IS set
-          # (the ward#454 precondition Kai provisions before dispatch) this
-          # publishes the byte-identical binaries + SHA256SUMS to the GitHub
-          # release for the SAME tag, so a GitHub arrival installs a checksummed
-          # binary without touching forgejo.coilysiren.me (ward#454 done-condition).
-          # The release is authored by the PAT user, not github-actions[bot], so
-          # the mirror's author-guarded scrub leaves it alone (docs/github-mirror.md).
+          # GitHub-mirror side: no PAT -> skip loudly, never fail the Forgejo
+          # release. When the secret IS set (the ward#454 precondition Kai
+          # provisions before dispatch) this publishes the byte-identical
+          # binaries + SHA256SUMS to the GitHub release for the SAME tag, so a
+          # GitHub arrival installs a checksummed binary without touching
+          # forgejo.coilysiren.me (ward#454 done-condition). The release is
+          # authored by the PAT user, not github-actions[bot].
           if [ -z "${PAT:-}" ]; then
             echo "::warning::GITHUB_MIRROR_PAT not set; skipping GitHub release publish (Forgejo release is unaffected)" >&2
             exit 0
@@ -288,16 +287,15 @@ jobs:
           auth="Authorization: token ${PAT}"
           accept="Accept: application/vnd.github+json"
 
-          # 1. Ensure the tag object exists on GitHub before the release points at
-          #    it. mirror-to-github.yml also pushes tags on a separate trigger;
-          #    pushing here removes that cross-workflow race. The tag is immutable,
-          #    so a concurrent push of the same object is a harmless no-op.
+          # 1. Ensure the tag object exists on GitHub before the release points
+          #    at it. The tag is immutable, so a concurrent push of the same
+          #    object is a harmless no-op.
           git remote add github "https://x-access-token:${PAT}@github.com/${GITHUB_REPO}.git"
           git push github "refs/tags/${TAG}:refs/tags/${TAG}"
 
           # 2. Reuse the EXACT Forgejo release body so both pages read identically.
           #    node parses the JSON (the docker runner has no jq, but the checkout
-          #    JS action leaves node on PATH - same as mirror-to-github.yml).
+          #    JS action leaves node on PATH).
           fj_rel=$(curl -fsSL "${FORGEJO_API}/releases/tags/${TAG}")
           BODY=$(printf '%s' "$fj_rel" | node -e '
             const r = JSON.parse(require("fs").readFileSync(0, "utf8"));
