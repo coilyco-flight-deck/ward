@@ -491,6 +491,9 @@ type upPlan struct {
 	// Workflow is the run's landing policy (--workflow, ward#508): non-direct-main
 	// runs export WARD_WORKFLOW + a ward.workflow label. See docs/agent-workflow.md.
 	Workflow workflowMode
+	// ReviewClass pins the pre-landing review panel's autonomy class into the
+	// container (WARD_REVIEW_CLASS, ward#134). See docs/dispatch-review.md.
+	ReviewClass string
 	// AWSHome is the aws capability's fallback ~/.aws bind source; a good host cred export
 	// drops the mount and clears this, else it arms the #579 creds-less warning (ward#586).
 	AWSHome string
@@ -692,6 +695,11 @@ func (p upPlan) wardEnv() map[string]string {
 	// force-push main (ward#508); direct-main omits the key, keeping today's env intact.
 	if !p.Workflow.landsOnMain() {
 		env["WARD_WORKFLOW"] = string(p.Workflow.orDefault())
+	}
+	// The review panel's autonomy class rides in so the in-container gate reads it
+	// deterministically, never from the (untrusted) worker (ward#134).
+	if p.ReviewClass != "" {
+		env[reviewClassEnv] = p.ReviewClass
 	}
 	// --config overrides ride last so they win over any default emitted above (ward#616).
 	for k, v := range p.ConfigEnv {

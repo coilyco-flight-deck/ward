@@ -15,6 +15,7 @@ import (
 	"forgejo.coilysiren.me/coilyco-flight-deck/cli-guard/pkg/exitcode"
 	"forgejo.coilysiren.me/coilyco-flight-deck/cli-guard/pkg/issueref"
 	"forgejo.coilysiren.me/coilyco-flight-deck/cli-guard/pkg/ownertrust"
+	"github.com/coilyco-flight-deck/ward/internal/reviewpanel"
 	"github.com/urfave/cli/v3"
 )
 
@@ -144,6 +145,30 @@ func headlessReflection(ref agentIssueRef, wf workflowMode) string {
 		" done`; reserve blocked/failed for a run that genuinely could not land."
 }
 
+// reviewGateClause wires the pre-landing adversarial review panel into a headless
+// seed (ward#134): run `ward agent review` before landing. docs/dispatch-review.md.
+func reviewGateClause(ref agentIssueRef, wf workflowMode) string {
+	landing := "open the pull request"
+	if wf.orDefault() == workflowDirectMain && ref.Forge != forgeGitHub {
+		landing = "merge to `main`"
+	}
+	return fmt.Sprintf(
+		"REVIEW GATE (ward#134): before you land this change (%s), and ONLY after CI is green, run the "+
+			"in-container adversarial review panel:\n\n    ward agent review --ci-log <path-to-your-green-ci-output>\n\n"+
+			"It hands your diff to a heterogeneous panel of model families OTHER than your own, each told to "+
+			"refute it, and prints a machine line on stdout:\n"+
+			"  - `WARD-REVIEW: pass ...`  -> you are cleared to land; proceed.\n"+
+			"  - `WARD-REVIEW: block ...` -> do NOT %s and do NOT merge. Post the panel's per-reviewer verdicts "+
+			"and reasons as a comment, and close with `WARD-OUTCOME: blocked`. The gate is fail-closed - a "+
+			"reviewer error or timeout is a block, not a pass.\n"+
+			"  - `WARD-REVIEW: advisory ...` -> only one model family was available, so the panel could not "+
+			"gate the diff. Proceed, but copy the `PR-BODY-NOTE:` line it printed verbatim into your PR body / a "+
+			"comment so the human knows the panel did not run.\n"+
+			"The gate's exit code mirrors the verdict (non-zero on block), so a shell `&&` also enforces it. Do "+
+			"not skip it, and do not land on a block.",
+		landing, landing)
+}
+
 // grantedRepoDoneClause widens the done-condition for a --repo grant (ward#291):
 // every granted repo must be pushed AND verified landed, not just the issue's repo.
 func grantedRepoDoneClause(extra []targetRepo) string {
@@ -198,12 +223,12 @@ func forgeCarryClause(ref agentIssueRef) string {
 // agentSeedPrompt seeds a direct-main run (the default): a thin wrapper over
 // agentSeedPromptWorkflow so legacy callers stay byte-for-byte (ward#405, ward#508).
 func agentSeedPrompt(ref agentIssueRef, title, body, details string, headless bool, extra []targetRepo) string {
-	return agentSeedPromptWorkflow(ref, title, body, details, headless, extra, defaultWorkflow)
+	return agentSeedPromptWorkflow(ref, title, body, details, headless, extra, defaultWorkflow, true)
 }
 
-// agentSeedPromptWorkflow is agentSeedPrompt with an explicit workflow mode: the
-// carry clause + reflection landing phrase shift with it (ward#508).
-func agentSeedPromptWorkflow(ref agentIssueRef, title, body, details string, headless bool, extra []targetRepo, wf workflowMode) string {
+// agentSeedPromptWorkflow is agentSeedPrompt with an explicit workflow mode (carry
+// clause + landing phrase shift with it, ward#508) + a reviewGate toggle (ward#134).
+func agentSeedPromptWorkflow(ref agentIssueRef, title, body, details string, headless bool, extra []targetRepo, wf workflowMode, reviewGate bool) string {
 	title = strings.TrimSpace(title)
 	if title == "" {
 		title = "(untitled)"
@@ -248,6 +273,11 @@ func agentSeedPromptWorkflow(ref agentIssueRef, title, body, details string, hea
 	// matching skill/doc paths over up front instead of trusting lazy discovery.
 	if block := subsystemSeedBlock(ref, title, body); block != "" {
 		seed += "\n\n" + block
+	}
+	// Before landing, a headless run must clear the adversarial review panel (ward#134);
+	// skipped for patch-only (lands nothing) and when --no-review-gate opted out.
+	if headless && reviewGate && wf.orDefault() != workflowPatchOnly {
+		seed += "\n\n" + reviewGateClause(ref, wf)
 	}
 	// A headless run detaches unwatched, so it closes with a retrospective comment -
 	// the only voice it leaves behind; the landing phrase tracks the workflow (#281, #508).
@@ -419,6 +449,9 @@ trusted owner.`,
 			// stop is a control verb, not a startup role: a director surface stops
 			// one running engineer through the dispatch broker (ward#627). docs/agent-stop.md.
 			agentStopCommand(),
+			// review is the pre-landing adversarial-review gate, not a startup role
+			// (ward#134): a diff must survive a multi-model panel. docs/dispatch-review.md.
+			agentReviewCommand(),
 		},
 	}
 }
@@ -469,6 +502,10 @@ func agentSurfaceFlags() []cli.Flag {
 		&cli.StringFlag{Name: "branch", Hidden: true, Usage: "feature branch to create inside the clone (default: issue-<N>)"},
 		&cli.StringSliceFlag{Name: "repo", Usage: "grant the agent an additional writable repo to clone + operate against (owner/name; repeatable). Cloned as a full feature copy under /workspace alongside the issue's repo (ward#230, ward#280)."},
 		&cli.StringFlag{Name: "details", Usage: "extra operator instructions woven into the seeded prompt + pre-flight read (overrides the issue text on conflict)"},
+		// --review-class tiers the pre-landing review panel and rides in as
+		// WARD_REVIEW_CLASS (ward#134). See docs/dispatch-review.md.
+		&cli.StringFlag{Name: "review-class", Usage: "autonomy class for the pre-landing review panel: lint-cleanup|default|refactor (default default; ward#134)"},
+		&cli.BoolFlag{Name: "no-review-gate", Usage: "skip wiring the in-container adversarial review panel into the seed (ward#134); the run lands without the panel"},
 		&cli.BoolFlag{Name: "github", Usage: "treat a bare owner/repo#N ref as a GitHub issue (clone/push + comments + PR on GitHub via a user-supplied token; ward#489). A github.com URL infers this automatically."},
 		configFlag(),
 	}
@@ -570,7 +607,7 @@ func (r *Runner) resolveAgentWork(ctx context.Context, c *cli.Command, mode cont
 	}
 	// The engineer detaches fire-and-forget (ward#356), so its seed always gets the
 	// closing reflection - the only voice it leaves behind (ward#281).
-	return resolvedWork{Ref: ref, Title: title, Body: issue.Body, Comments: comments, Details: details, ExtraRepos: extra, Workflow: wf, Seed: agentSeedPromptWorkflow(ref, title, issue.Body, details, true, extra, wf)}, nil
+	return resolvedWork{Ref: ref, Title: title, Body: issue.Body, Comments: comments, Details: details, ExtraRepos: extra, Workflow: wf, Seed: agentSeedPromptWorkflow(ref, title, issue.Body, details, true, extra, wf, !c.Bool("no-review-gate"))}, nil
 }
 
 // fetchIssue reads the issue off the ref's forge (Forgejo via the ops mount, GitHub
@@ -1272,6 +1309,14 @@ func buildAgentPlan(c *cli.Command, mode containerMode, ref agentIssueRef, seed 
 	// The landing policy rides the plan so it reaches the container env + label and
 	// the reaper (ward#508); already validated upstream, so a parse slip defaults.
 	plan.Workflow, _ = agentWorkflow(c)
+	// The review-panel class rides the plan into WARD_REVIEW_CLASS (ward#134);
+	// validated here so a typo fails the dispatch loudly, not silently in-container.
+	if rc := strings.TrimSpace(c.String("review-class")); rc != "" {
+		if _, err := reviewpanel.ParseClass(rc); err != nil {
+			return upPlan{}, err
+		}
+		plan.ReviewClass = rc
+	}
 	plan.Name = containerRoleName(roleEngineer, mode, repo, ref.Number, plan.Machine)
 	plan.Headless = true
 	plan.Interactive = false
@@ -1708,7 +1753,7 @@ func (r *Runner) runAgentTaskDirect(ctx context.Context, c *cli.Command, mode co
 
 	// The freeform instructions are the filed body (no --details); a headless seed
 	// (inlined body + reflection) carried under the resolved workflow (#167, #281, #508).
-	seed := agentSeedPromptWorkflow(ref, title, body, "", true, nil, wf)
+	seed := agentSeedPromptWorkflow(ref, title, body, "", true, nil, wf, !c.Bool("no-review-gate"))
 	return r.launchAgentContainer(ctx, c, mode, "engineer",
 		resolvedWork{Ref: ref, Title: title, Body: body, Workflow: wf, Seed: seed}, justification)
 }
@@ -1726,7 +1771,7 @@ func printAgentTaskPlan(c *cli.Command, mode containerMode, repo targetRepo, tit
 	// --print skips the workflow validation gate above (it never files), so a bad
 	// value simply previews as the default rather than erroring here (ward#508).
 	wf, _ := agentWorkflow(c)
-	seed := agentSeedPromptWorkflow(previewRef, title, body, "", true, nil, wf)
+	seed := agentSeedPromptWorkflow(previewRef, title, body, "", true, nil, wf, !c.Bool("no-review-gate"))
 	plan, err := buildUpPlan(c, repo, mode, roleEngineer, "", "", []string{seed}, false)
 	if err != nil {
 		return err

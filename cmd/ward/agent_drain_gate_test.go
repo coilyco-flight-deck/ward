@@ -25,6 +25,7 @@ var drainAgentLiterals = map[string]bool{
 var drainGateAllowlist = map[string]bool{
 	"container_compute.go": true, // mode consts + agentBinary/argv switch table
 	"agent_signature.go":   true, // roster identity/signer defaults
+	"agent_review.go":      true, // review-panel roster: which families review + their availability preconditions (ward#134)
 }
 
 // TestNoPerAgentLiteralsInCore walks every core cmd/ward non-test .go file and
