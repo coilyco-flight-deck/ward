@@ -15,7 +15,9 @@ edge plus the [cli-guard](architecture.md) verb gate at that edge.
 ## Two contexts, told apart
 
 - **Host-side / contributor** - a human or agent running the harness on the host
-  against a ward-managed repo. Only claude gets a ward-provided intercept.
+  against a ward-managed repo. Only claude gets a ward-provided intercept, and
+  the lockout path is now user-level on configured machines rather than a
+  committed per-repo lockdown file.
 - **Container agent flow** (`ward agent` / `warded`, any harness) - the boundary
   is the container edge plus cli-guard, identical for every harness. Inside the
   container claude's hook and `permissions.deny` are deliberately **off**

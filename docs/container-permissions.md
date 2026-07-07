@@ -24,6 +24,12 @@ boundary**, not the harness permission system:
 - the [container doctrine](../cmd/ward/containerassets/AGENTS.container.md) wall
   keeps the agent operating only on those repos.
 
+The container does **not** need a per-repo committed lockdown file to do that
+job. The accepted boundary is the container itself, and the remaining
+`permissions.deny` move is user-level on a configured machine. The tradeoff is
+explicit: a fresh clone before `ward setup` is out of scope until later
+container-side mitigation lands.
+
 ## Blast radius is parameterized by launch scope
 
 This is **not** a flat "one repo, always" guarantee. How many repos are writable
