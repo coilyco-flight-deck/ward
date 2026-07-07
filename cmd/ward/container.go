@@ -38,11 +38,11 @@ func loadSubstrateManifest() ([]substrateRepo, error) {
 	return parseSubstrateManifest(string(data))
 }
 
-// forgejoTokenSSMPath is the SSM parameter NAME for the git-over-HTTPS push
-// token (user coilysiren), resolved on the host and never entering the image.
+// forgejoTokenSSMPath is the host-resolved git-over-HTTPS push token: the
+// coilyco-ops bot, not a personal PAT (ward#161). See docs/agent-attribution.md.
 
 // #nosec G101 -- this is an SSM parameter path, not an embedded secret.
-const forgejoTokenSSMPath = "/forgejo/api-token"
+const forgejoTokenSSMPath = "/forgejo/coilyco-ops/api-token"
 
 // ollamaHostSSMPath is the SSM param for the tower Ollama endpoint goose binds;
 // ward resolves it host-side (the container has no aws creds). docs/agent.md (ward#186).

@@ -67,8 +67,10 @@ The entrypoint is embedded in the ward binary and bind-mounted into the
 unmodified image. It configures forgejo git auth, installs ward, clones the
 target into `/workspace/<repo>`, installs pre-commit hooks
 ([container-precommit.md](container-precommit.md)), composes context +
-permissions, launches the agent, then reaps. The push token resolves **on the
-host**, via a private 0600 `--env-file`, never in argv or audit.
+permissions, launches the agent, then reaps. The push token - the `coilyco-ops`
+bot's, from SSM `/forgejo/coilyco-ops/api-token`, not a personal PAT ([ward#161](https://forgejo.coilysiren.me/coilyco-flight-deck/ward/issues/161)) -
+resolves **on the host**, via a private 0600 `--env-file`, never in argv or
+audit, so the container's clones, commits, and pushes attribute to the bot.
 
 ## Feature-lifetime autonomy + the reaper backstop
 
