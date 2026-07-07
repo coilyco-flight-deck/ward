@@ -40,20 +40,13 @@ reuses the exact Forgejo release body, so the notes match too.
 
 ## How the GitHub half is wired
 
-- It is part of the **release pipeline**, not `mirror-to-github.yml` (which stays
-  refs + metadata + scrub only - see [github-mirror.md](github-mirror.md)).
-- It authenticates with **`GITHUB_MIRROR_PAT`**, the same PAT the mirror uses
-  (scope: `repo` / contents:write on the GitHub mirror). **Provision it before a
-  [ward#454](https://forgejo.coilysiren.me/coilyco-flight-deck/ward/issues/454) release run.** Unset, the GitHub half skips loudly and the Forgejo
-  release is unaffected - matching the mirror's no-PAT convention.
-- The release is authored by the PAT user, not `github-actions[bot]`, so the
-  mirror's author-guarded release scrub leaves it alone ([ward#454](https://forgejo.coilysiren.me/coilyco-flight-deck/ward/issues/454), by design in
-  [github-mirror.md](github-mirror.md)).
+- It is part of the **release pipeline**, not the ref mirror.
+- It authenticates with **`GITHUB_MIRROR_PAT`** (scope: `repo` / contents:write on the GitHub mirror). **Provision it before a [ward#454](https://forgejo.coilysiren.me/coilyco-flight-deck/ward/issues/454) release run.** Unset, the GitHub half skips loudly and the Forgejo release is unaffected.
+- The release is authored by the PAT user, not `github-actions[bot]`.
 - The step pushes the tag to GitHub first (idempotent), creates or reuses the
   release, then replaces same-named assets so a workflow re-run is safe.
 
 ## See also
 
 - [release.md](release.md) - the full release pipeline.
-- [github-mirror.md](github-mirror.md) - the refs + metadata mirror and the scrub.
 - [homebrew-build.md](homebrew-build.md) - the build-from-source formula.

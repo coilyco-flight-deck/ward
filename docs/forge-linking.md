@@ -4,7 +4,7 @@ doc_goal: Give a doc author a decision rule that reliably picks the right forge 
 # Which forge a doc link points at ([ward#443](https://forgejo.coilysiren.me/coilyco-flight-deck/ward/issues/443))
 
 ward is **Forgejo-canonical** with a **read-only GitHub mirror** as the public
-front door ([github-mirror.md](github-mirror.md)). The same repo is therefore
+front door. The same repo is therefore
 Forgejo for the maintainer and GitHub for everyone else, so a forge link is easy
 to get backwards. This is the rule to check any doc link against, in author
 priority order.
@@ -45,6 +45,5 @@ absolute forge URL when the target is not a tracked file in this repo.
 
 ## See also
 
-- [github-mirror.md](github-mirror.md) - what the GitHub mirror syncs, and why.
 - [../CONTRIBUTING.md](../CONTRIBUTING.md) - the two-forge contributor flow.
 - [../AGENTS.md](../AGENTS.md) - carries this rule as an agent authoring rule.

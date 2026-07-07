@@ -54,7 +54,7 @@ The **exec-dialect** guardfiles auto-mount at their `wrap` path; `git` / `pkg br
 ## Release pipeline
 
 - **Release notes** *([ward#486](https://forgejo.coilysiren.me/coilyco-flight-deck/ward/issues/486))* - "does it affect you" verdict. [release-notes.md](release-notes.md).
-- **Dual-forge binary matrix** *([ward#454](https://forgejo.coilysiren.me/coilyco-flight-deck/ward/issues/454))* - `ward-{darwin,linux,windows}-{amd64,arm64}` (windows as `.exe` + per-asset `.sha256` sidecar for scoop, [ward#561](https://forgejo.coilysiren.me/coilyco-flight-deck/ward/issues/561)) + `SHA256SUMS`, built once per tag and published byte-identical to both the Forgejo and GitHub release pages, so their checksums match. [release-binaries.md](release-binaries.md), [github-mirror.md](github-mirror.md).
+- **Dual-forge binary matrix** *([ward#454](https://forgejo.coilysiren.me/coilyco-flight-deck/ward/issues/454))* - `ward-{darwin,linux,windows}-{amd64,arm64}` (windows as `.exe` + per-asset `.sha256` sidecar for scoop, [ward#561](https://forgejo.coilysiren.me/coilyco-flight-deck/ward/issues/561)) + `SHA256SUMS`, built once per tag and published byte-identical to both the Forgejo and GitHub release pages, so their checksums match. [release-binaries.md](release-binaries.md).
 - **Push-not-poll package manifests** *([ward#571](https://forgejo.coilysiren.me/coilyco-flight-deck/ward/issues/571))* - the tag build writes every install channel: `bump-tap-formula` bumps the homebrew tap and `bump-scoop-manifest` writes `bucket/ward.json` into the Forgejo scoop bucket at release time, so `scoop update ward` no longer lags a daily autoupdate poll. [release.md](release.md).
 
 ## See also
