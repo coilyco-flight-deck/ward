@@ -128,8 +128,6 @@ New to ward? Read [architecture.md](architecture.md) first - it frames the whole
 - [ops-forgejo-view.md](ops-forgejo-view.md) - the lean `issue view` override.
 - [ops-forgejo-quiet.md](ops-forgejo-quiet.md) - the `issue create --quiet` machine-output mode.
 - [ops-forgejo-graft-removal.md](ops-forgejo-graft-removal.md) - the [ward#407](https://forgejo.coilysiren.me/coilyco-flight-deck/ward/issues/407) consult: per-graft design for removing the four Go grafts over the specverb tree.
-- [eco-test.md](eco-test.md) - `ward ops eco {native,server}`, the Eco content pipeline: a fail-closed smoke gate + guarded promote (snapshot + await + canary + verified auto-rollback) per target.
-- [ops-eco.md](ops-eco.md) - the design ([ward#585](https://forgejo.coilysiren.me/coilyco-flight-deck/ward/issues/585)) for dissolving that pipeline into a `ward ops eco` guardfile on a new transport-agnostic rollback/canary primitive in cli-guard.
 
 ## Examples
 
