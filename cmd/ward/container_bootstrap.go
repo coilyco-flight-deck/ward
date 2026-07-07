@@ -1258,6 +1258,7 @@ func (r *Runner) chownAgentTree(ctx context.Context, e bootstrapEnv, work string
 		filepath.Join(e.AgentHome, "AGENTS.md"),
 		filepath.Join(e.AgentHome, ".claude"),
 		filepath.Join(e.AgentHome, ".claude.json"), // onboarding seed, so claude can persist updates (ward#305)
+		filepath.Join(e.AgentHome, ".codex.json"),  // onboarding seed, so codex can persist updates
 		filepath.Join(e.AgentHome, ".config"),
 		filepath.Join(e.AgentHome, ".codex"),
 	}

@@ -667,15 +667,18 @@ write_claude_creds() {
   log "wrote claude credentials to $dir/.credentials.json (scrubbed WARD_CLAUDE_CREDS_B64 from env)"
 }
 
-# --- claude onboarding seed (ward#305, ward#313): skip the first-run gates -----
+# --- onboarding seed (ward#305, ward#313): skip the first-run gates ----------
 # Theme picker (ward#305) + bypass-mode acceptance & folder trust (ward#313).
 
-# Pre-trust every dir the agent may cd into, not just the target clone: claude
-# re-prompts folder trust per un-seeded cwd, which felt like a reset (ward#168).
-seed_claude_onboarding() {
-  [ "$WARD_MODE" = claude ] || return 0
+# Pre-trust every dir the agent may cd into, not just the target clone.
+# Claude and codex re-prompt folder trust per un-seeded cwd (ward#168).
+seed_onboarding() {
+  case "$WARD_MODE" in
+    claude) local out="$AGENT_HOME/.claude.json" ;;
+    codex) local out="$AGENT_HOME/.codex.json" ;;
+    *) return 0 ;;
+  esac
   local work="$1"
-  local out="$AGENT_HOME/.claude.json"
   mkdir -p "$AGENT_HOME"
   # Trust set: target clone, /workspace root, each granted extra repo, /substrate
   # root + every warmed reference repo (runs post-warm, so the dirs exist to glob).
@@ -708,7 +711,7 @@ seed_claude_onboarding() {
     bypassPermissionsModeAccepted: true,
     projects: $projects
   }' > "$out"
-  log "seeded claude onboarding (skip first-run wizard + bypass/trust gates; trusted ${#trust_dirs[@]} dir(s)) at $out"
+  log "seeded $WARD_MODE onboarding (skip first-run wizard + bypass/trust gates; trusted ${#trust_dirs[@]} dir(s)) at $out"
 }
 
 # --- codex credentials (ward#178): host-resolved auth.json, ride --env-file ---
@@ -1020,7 +1023,7 @@ main() {
   compose_context
   compose_permissions
   write_claude_creds
-  seed_claude_onboarding "$work"
+  seed_onboarding "$work"
   write_codex_creds
   compose_codex_config
   compose_opencode_config
@@ -1097,7 +1100,7 @@ main() {
   esac
   # Drop to the non-root agent user (claude refuses bypass-perms as root, ward#127);
   # setup ran as root. Keep ANTHROPIC_API_KEY from shadowing the OAuth creds.
-  chown -R "$AGENT_UID:$AGENT_GID" "$work" "$AGENT_HOME/AGENTS.md" "$AGENT_HOME/.claude" "$AGENT_HOME/.claude.json" "$AGENT_HOME/.config" "$AGENT_HOME/.codex" 2>/dev/null || true
+  chown -R "$AGENT_UID:$AGENT_GID" "$work" "$AGENT_HOME/AGENTS.md" "$AGENT_HOME/.claude" "$AGENT_HOME/.claude.json" "$AGENT_HOME/.codex.json" "$AGENT_HOME/.config" "$AGENT_HOME/.codex" 2>/dev/null || true
   # Hand each granted extra-repo tree to the agent user too (ward#230); cloned as root.
   for ref in ${WARD_EXTRA_REPOS:-}; do chown -R "$AGENT_UID:$AGENT_GID" "/workspace/${ref##*/}" 2>/dev/null || true; done
   # Read-only context repos are cloned as root too (ward#573); hand them over to read.

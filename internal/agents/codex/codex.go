@@ -40,6 +40,7 @@ type Agent struct{}
 var (
 	_ agentsapi.Agent              = Agent{}
 	_ agentsapi.CredentialProvider = Agent{}
+	_ agentsapi.OnboardingSeeder   = Agent{}
 	_ agentsapi.ConfigComposer     = Agent{}
 )
 

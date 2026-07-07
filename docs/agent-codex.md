@@ -41,6 +41,13 @@ shell.
 - Headless: `codex exec <seed>`.
 - Interactive: `codex <seed>`.
 
+## Startup trust
+
+codex now inherits the same workspace trust set as claude at bootstrap, seeded
+into `~/.codex.json` alongside its `~/.codex/AGENTS.md` context load point. A
+fresh codex launch in a new workspace starts with the target clone, `/workspace`,
+and any granted or warmed sibling repos already trusted.
+
 ## Smoke gate
 
 None today. codex dispatch proceeds without the host GO/NO-GO preflight that

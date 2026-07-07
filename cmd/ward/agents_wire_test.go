@@ -132,7 +132,7 @@ func TestComposeAgentContainerPerMode(t *testing.T) {
 		absent  string // a path a different mode would write, proving no bleed
 	}{
 		{modeClaude, ".claude.json", filepath.Join(".codex", "config.toml")},
-		{modeCodex, filepath.Join(".codex", "config.toml"), ".claude.json"},
+		{modeCodex, ".codex.json", ".claude.json"},
 		{modeOpencode, filepath.Join(".config", "opencode", "opencode.json"), filepath.Join(".codex", "config.toml")},
 		{modeGoose, filepath.Join(".config", "goose", "config.yaml"), filepath.Join(".codex", "config.toml")},
 	}

@@ -203,7 +203,7 @@ func TestReadBootstrapEnvDefaults(t *testing.T) {
 		"GitCache":       "/gitcache",
 		"QwenModel":      "qwen3-coder:30b",
 		"OllamaURL":      "http://localhost:11434/v1",
-		"CodexModel":     "gpt-5.4",
+		"CodexModel":     "gpt-5.4-mini",
 		"CodexEffort":    "medium",
 		"CodexVerbosity": "low",
 		"GitUserName":    "coilyco-ops",

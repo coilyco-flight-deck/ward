@@ -2,6 +2,7 @@ package codex
 
 import (
 	"encoding/base64"
+	"encoding/json"
 	"os"
 	"path/filepath"
 	"strings"
@@ -11,6 +12,15 @@ import (
 )
 
 func noopLog(string, ...any) {}
+
+type seededOnboarding struct {
+	HasCompletedOnboarding        bool `json:"hasCompletedOnboarding"`
+	BypassPermissionsModeAccepted bool `json:"bypassPermissionsModeAccepted"`
+	Projects                      map[string]struct {
+		HasTrustDialogAccepted        bool `json:"hasTrustDialogAccepted"`
+		HasCompletedProjectOnboarding bool `json:"hasCompletedProjectOnboarding"`
+	} `json:"projects"`
+}
 
 // TestWriteCredsScrubsEnv: WriteCreds writes ~/.codex/auth.json then scrubs the
 // bootstrap-only WARD_CODEX_AUTH_B64 env var (ward#357).
@@ -26,6 +36,36 @@ func TestWriteCredsScrubsEnv(t *testing.T) {
 	}
 	if v := os.Getenv(authEnvKey); v != "" {
 		t.Errorf("%s should be scrubbed after seeding, got %q", authEnvKey, v)
+	}
+}
+
+// TestSeedOnboardingTrustDirs covers the shared workspace trust seed for codex.
+func TestSeedOnboardingTrustDirs(t *testing.T) {
+	home := t.TempDir()
+	dirs := []string{"/workspace/ward", "/workspace", "/workspace/cli-guard"}
+	rc := agentsapi.RunCtx{AgentHome: home, TargetName: "ward", TrustDirs: dirs, Log: noopLog}
+	if err := (Agent{}).SeedOnboarding(rc); err != nil {
+		t.Fatalf("SeedOnboarding: %v", err)
+	}
+	data, err := os.ReadFile(filepath.Join(home, ".codex.json"))
+	if err != nil {
+		t.Fatalf("expected ~/.codex.json written: %v", err)
+	}
+	var got seededOnboarding
+	if err := json.Unmarshal(data, &got); err != nil {
+		t.Fatalf("codex.json is not valid JSON: %v\n%s", err, data)
+	}
+	for _, dir := range dirs {
+		proj, ok := got.Projects[dir]
+		if !ok {
+			t.Fatalf("codex.json missing projects[%s]: %+v", dir, got.Projects)
+		}
+		if !proj.HasTrustDialogAccepted || !proj.HasCompletedProjectOnboarding {
+			t.Errorf("codex.json missing folder-trust flags for %s: %+v", dir, proj)
+		}
+	}
+	if !got.HasCompletedOnboarding || !got.BypassPermissionsModeAccepted {
+		t.Errorf("codex.json missing onboarding flags: %+v", got)
 	}
 }
 
