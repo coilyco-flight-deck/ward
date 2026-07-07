@@ -45,8 +45,10 @@ credential. Correct end-state, not cutover debt:
 - **`broker.go`** - the root credential daemon (`ward container broker`): it *is*
   the thing that holds the token so the dropped agent does not.
 - **`container_bootstrap.go`** - the PID-1 entrypoint seeding
-  `/etc/ward-git-credentials` before the drop. The push-token site tracked by
-  [ward#161](https://forgejo.coilysiren.me/coilyco-flight-deck/ward/issues/161).
+  `/etc/ward-git-credentials` before the drop. The push-token site: as of
+  [ward#161](https://forgejo.coilysiren.me/coilyco-flight-deck/ward/issues/161)
+  the host seeds it from the `coilyco-ops` bot's SSM path. The raw read stays
+  (root-only plumbing); only its value moved off the personal PAT.
 - **`container_reap.go`** - the deterministic reaper filing salvage issues and
   releasing the reservation on teardown, after the agent is gone.
 
@@ -55,11 +57,10 @@ credential. Correct end-state, not cutover debt:
 - **Unit D** drops the token from the dropped agent's env entirely. Blocked: forge
   **reads** still go direct and the broker has no read op yet, so scrubbing first
   would blind explore sessions (see [broker.md](broker.md) "Dual mode").
-- **[ward#161](https://forgejo.coilysiren.me/coilyco-flight-deck/ward/issues/161)**
-  - the in-container git push-token site, folded into the same cutover.
 
-The audit makes no code change to those today - its job is to keep the surface
-from growing while they land.
+The push-token identity is now settled (see the entrypoint site above); Unit D
+is the one remaining item. The audit makes no code change to it today - its job
+is to keep the surface from growing while it lands.
 
 ## See also
 

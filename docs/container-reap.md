@@ -75,12 +75,14 @@ The agent's job is to make the reaper's trivial: finish, push to `main`, leave a
 clean tree. The reaper is the backstop that holds *without depending on the agent*.
 On salvage or failure it also dumps a [reap diagnostics](container-reap-diagnostics.md) block so a bad outcome self-diagnoses.
 
-## Operator note: don't rotate the PAT mid-run
+## Operator note: don't rotate the token mid-run
 
-The container's `FORGEJO_TOKEN` is baked in at `ward agent` bring-up and frozen
-for the container's life - the reaper reuses it, never re-resolving from SSM. So
-**rotating or revoking the Forgejo PAT while a container is in flight** leaves it
-carrying a dead token: the push to `main` fails on auth, routes to salvage, the
+The container's `FORGEJO_TOKEN` is a snapshot of the `coilyco-ops` bot token
+(SSM `/forgejo/coilyco-ops/api-token`, not a personal PAT - [ward#161](https://forgejo.coilysiren.me/coilyco-flight-deck/ward/issues/161)), baked in
+at `ward agent` bring-up and frozen for the container's life - the reaper reuses
+it, never re-resolving from SSM. So **rotating or revoking the bot's Forgejo
+token while a container is in flight** leaves it carrying a dead token: the push
+to `main` fails on auth, routes to salvage, the
 salvage branch push fails on the same token, and the work falls through to the
 container-log recovery path (`docker logs <name>`). Work is preserved but recovery
 is manual. Before rotating, let in-flight runs finish.
