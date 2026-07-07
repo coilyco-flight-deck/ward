@@ -100,7 +100,6 @@ excludes = [
   "docs/exec-verb.md",
   "docs/first-run.md",
   "docs/git-verbs.md",
-  "docs/github-mirror.md",
   "docs/github-token.md",
   "docs/guardfile-grammar.md",
   "docs/ops-forgejo-admin.md",

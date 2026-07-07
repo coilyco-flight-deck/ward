@@ -2,7 +2,7 @@
 # github.com/coilyco-flight-deck/ward/issues/new/choose - the "New issue" link
 # in README.md. ward is Forgejo-canonical; GitHub is the read-only mirror and
 # the external front door where public issues and PRs are filed (see #438/#481).
-# See CONTRIBUTING.md and docs/github-mirror.md.
+# See CONTRIBUTING.md.
 blank_issues_enabled: false
 contact_links:
   - name: Security vulnerability (do not file a public issue)
