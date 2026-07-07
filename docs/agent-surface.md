@@ -65,9 +65,10 @@ Transport is TCP, not a unix-socket bind-mount: under Docker Desktop a bind-moun
 socket lands as an empty dir, so dispatches dialed a dir.
 
 A surface session is where an operator notices a dispatched run is mis-scoped: stop it
-with `docker container stop` ([container-stop.md](container-stop.md)). A reserved issue is
-**immutable** to the run carrying it, so corrections filed here go to a new issue: see
-[reserved means immutable](agent-reserved-immutable.md).
+from the surface with [`warded agent stop #N`](agent-stop.md), which forwards a stop
+through the same broker (stop-only, engineer-only) - no host-side `docker container stop`
+needed. A reserved issue is **immutable** to the run carrying it, so corrections filed
+here go to a new issue: see [reserved means immutable](agent-reserved-immutable.md).
 
 ## See also
 

@@ -11,6 +11,7 @@ import (
 	"net"
 	"os"
 	"path/filepath"
+	"regexp"
 	"strings"
 	"sync"
 	"time"
@@ -35,13 +36,37 @@ const (
 
 var errDispatchBrokerUnavailable = errors.New("dispatch broker unavailable")
 
+const (
+	// dispatchActionLaunch is the default action: launch a sibling engineer/advisor
+	// run. An empty Action normalizes to it, keeping older launch requests byte-compatible.
+	dispatchActionLaunch = "launch"
+	// dispatchActionStop is the targeted control action (ward#627): docker-stop one
+	// running engineer named by Target - stop-only, engineer-only, no launch argv.
+	dispatchActionStop = "stop"
+)
+
 type dispatchBrokerRequest struct {
-	Role      string   `json:"role"`
-	Argv      []string `json:"argv"`
-	Requester string   `json:"requester,omitempty"`
+	// Action discriminates a launch (default/empty) from a stop control action
+	// (ward#627); an empty value is treated as launch for back-compat.
+	Action string   `json:"action,omitempty"`
+	Role   string   `json:"role"`
+	Argv   []string `json:"argv"`
+	// Target names the stop action's container: owner/repo#N (resolved by labels) or
+	// a container name. Empty on a launch request (ward#627).
+	Target    string `json:"target,omitempty"`
+	Requester string `json:"requester,omitempty"`
 	// Token is the per-launch shared secret the surface echoes back so the host
 	// broker authenticates the dial (the TCP port has no socket file perms).
 	Token string `json:"token,omitempty"`
+}
+
+// dispatchAction normalizes the request's action, defaulting an empty value to
+// launch so back-compat launch requests (no Action field) still route (ward#627).
+func dispatchAction(a string) string {
+	if strings.TrimSpace(a) == "" {
+		return dispatchActionLaunch
+	}
+	return a
 }
 
 type dispatchBrokerResponse struct {
@@ -149,6 +174,11 @@ func (r *Runner) runHostDispatchBrokerRequest(ctx context.Context, req dispatchB
 	if err := validateDispatchBrokerRequest(req); err != nil {
 		return "", err
 	}
+	// Stop is a targeted control action, not a launch: it resolves + docker-stops one
+	// engineer, so it takes no dispatch log, no stdio redirect, and no ref lock (ward#627).
+	if dispatchAction(req.Action) == dispatchActionStop {
+		return r.runDispatchBrokerStop(ctx, req)
+	}
 	// Serialize on the ref so two same-N dispatches can't both reserve + spin: the
 	// second waits, then its reservation check sees the first's hold (ward#600).
 	if ref, err := parseAgentIssueRef(req.Argv[1]); err == nil {
@@ -175,6 +205,109 @@ func (r *Runner) runHostDispatchBrokerRequest(ctx context.Context, req dispatchB
 		return logPath, agentAdvisorCommand().Run(ctx, req.Argv)
 	default:
 		return logPath, fmt.Errorf("role %q is not dispatchable", req.Role)
+	}
+}
+
+// runDispatchBrokerStop resolves the stop target to one running engineer and
+// docker-stops it (ward#627); returns the stopped name (see docs/agent-stop.md).
+func (r *Runner) runDispatchBrokerStop(ctx context.Context, req dispatchBrokerRequest) (string, error) {
+	name, err := r.resolveEngineerStopTarget(ctx, strings.TrimSpace(req.Target))
+	if err != nil {
+		return "", err
+	}
+	// Graceful stop, the exact verb reap uses (agent_reap.go): no rm, no kill, no exec.
+	if serr := r.dockerExec(ctx, "stop", name); serr != nil {
+		return "", fmt.Errorf("dispatch broker: docker stop %s: %w", name, serr)
+	}
+	return name, nil
+}
+
+// resolveEngineerStopTarget maps a stop target to one running engineer, fail-closed
+// on role (ward#627): owner/repo#N matches by label, else it is a container name.
+func (r *Runner) resolveEngineerStopTarget(ctx context.Context, target string) (string, error) {
+	// owner/repo#N: match by the engineer identity labels (ward#364). The role filter
+	// is engineer-only, and selectSingleStopTarget refuses zero / more-than-one.
+	if ref, err := parseAgentIssueRef(target); err == nil && ref.Owner != "" && ref.Repo != "" {
+		name, serr := selectSingleStopTarget(target, r.runningEngineersForIssue(ctx, ref))
+		if serr != nil {
+			return "", serr
+		}
+		return r.guardEngineerStop(ctx, name)
+	}
+	// Otherwise a container name: it must be a running container, and its role is
+	// re-checked fail-closed below (never an advisor/director/session).
+	if !r.containerRunning(ctx, target) {
+		return "", fmt.Errorf("dispatch broker: no running container named %q to stop", target)
+	}
+	return r.guardEngineerStop(ctx, target)
+}
+
+// guardEngineerStop reads a resolved container's ward.role and refuses unless it is
+// engineer (ward#627); an unreadable label fails closed rather than stopping blind.
+func (r *Runner) guardEngineerStop(ctx context.Context, name string) (string, error) {
+	role, err := r.containerRoleLabel(ctx, name)
+	if err != nil {
+		return "", fmt.Errorf("dispatch broker: refusing to stop %q: could not read its %s label (%w) - "+
+			"fail-closed, only %s containers are stoppable", name, labelRole, err, roleEngineer)
+	}
+	if gerr := stopTargetGuard(name, role); gerr != nil {
+		return "", gerr
+	}
+	return name, nil
+}
+
+// containerRoleLabel reads a container's ward.role label via docker inspect; an
+// empty result means the label is absent (a non-ward or unlabeled container).
+func (r *Runner) containerRoleLabel(ctx context.Context, name string) (string, error) {
+	out, err := r.dockerCapture(ctx, "inspect",
+		"--format", `{{index .Config.Labels "`+labelRole+`"}}`, name)
+	if err != nil {
+		return "", err
+	}
+	return strings.TrimSpace(string(out)), nil
+}
+
+// runningEngineersForIssue lists the running engineer containers carrying ref's
+// repo + issue, AND-combined with ward=true + ward.role=engineer (ward#364, #627).
+func (r *Runner) runningEngineersForIssue(ctx context.Context, ref agentIssueRef) []string {
+	out, err := r.dockerCapture(ctx, "ps", "--format", "{{.Names}}",
+		"--filter", "label="+containerLabel,
+		"--filter", "label="+labelRole+"="+roleEngineer,
+		"--filter", "label="+labelRepo+"="+ref.repoSlug(),
+		"--filter", fmt.Sprintf("label=%s=%d", labelIssue, ref.Number))
+	if err != nil {
+		return nil
+	}
+	// parseExitedContainerNames is a plain non-blank-line splitter (name is historical).
+	return parseExitedContainerNames(string(out))
+}
+
+// stopTargetGuard enforces the engineer-only stop rule (ward#627): only a
+// ward.role=engineer is stoppable; any other role, or an empty one, is refused.
+func stopTargetGuard(name, role string) error {
+	switch role = strings.TrimSpace(role); role {
+	case roleEngineer:
+		return nil
+	case "":
+		return fmt.Errorf("dispatch broker: refusing to stop %q: its %s label is empty or unreadable - "+
+			"fail-closed, only %s containers are stoppable", name, labelRole, roleEngineer)
+	default:
+		return fmt.Errorf("dispatch broker: refusing to stop %q: it is a %q container, not an engineer - "+
+			"stop only targets %s (advisor/director/session are never stopped)", name, role, roleEngineer)
+	}
+}
+
+// selectSingleStopTarget picks exactly one engineer from a match set, refusing on
+// zero or more than one (ambiguous) with the candidates listed, not a guess (ward#627).
+func selectSingleStopTarget(target string, names []string) (string, error) {
+	switch len(names) {
+	case 1:
+		return names[0], nil
+	case 0:
+		return "", fmt.Errorf("dispatch broker: no running engineer container matches %q - nothing to stop", target)
+	default:
+		return "", fmt.Errorf("dispatch broker: %q matches %d running engineer containers (%s) - "+
+			"refusing to guess; stop one by its container name", target, len(names), strings.Join(names, ", "))
 	}
 }
 
@@ -217,6 +350,50 @@ func redirectStdioToLog(logf *os.File) func() {
 }
 
 func validateDispatchBrokerRequest(req dispatchBrokerRequest) error {
+	switch dispatchAction(req.Action) {
+	case dispatchActionStop:
+		return validateDispatchBrokerStop(req)
+	case dispatchActionLaunch:
+		return validateDispatchBrokerLaunch(req)
+	default:
+		return fmt.Errorf("dispatch broker: action %q refused (allowed: launch, stop)", req.Action)
+	}
+}
+
+// dispatchStopTargetRe bounds a stop's container-name target to docker's own
+// name grammar, so a non-issue-ref target can only be a plausible container name.
+var dispatchStopTargetRe = regexp.MustCompile(`^[A-Za-z0-9][A-Za-z0-9_.-]*$`)
+
+// validateDispatchBrokerStop checks the stop shape (ward#627): a non-empty target,
+// no launch argv, no flags, target an issue ref or a bare container name.
+func validateDispatchBrokerStop(req dispatchBrokerRequest) error {
+	if len(req.Argv) != 0 {
+		return fmt.Errorf("dispatch broker: stop takes no launch argv, got %v", req.Argv)
+	}
+	target := strings.TrimSpace(req.Target)
+	if target == "" {
+		return fmt.Errorf("dispatch broker: stop requires a target (owner/repo#N or a container name)")
+	}
+	if strings.ContainsRune(target, '\x00') {
+		return fmt.Errorf("dispatch broker: stop target contains NUL")
+	}
+	if strings.HasPrefix(target, "-") {
+		return fmt.Errorf("dispatch broker: stop target %q must not be a flag", target)
+	}
+	// A target is either a parseable issue ref (resolved by labels host-side) or a
+	// bare container name; a URL/path or metacharacter-bearing string is neither.
+	if _, err := parseAgentIssueRef(target); err != nil && !dispatchStopTargetRe.MatchString(target) {
+		return fmt.Errorf("dispatch broker: stop target %q is neither an issue ref (owner/repo#N) nor a container name", target)
+	}
+	return nil
+}
+
+// validateDispatchBrokerLaunch is the launch-request shape (the original narrow API):
+// an engineer/advisor role, an argv led by that role, and an issue ref (ward#378).
+func validateDispatchBrokerLaunch(req dispatchBrokerRequest) error {
+	if req.Target != "" {
+		return fmt.Errorf("dispatch broker: launch takes no stop target, got %q", req.Target)
+	}
 	if req.Role != "engineer" && req.Role != "advisor" {
 		return fmt.Errorf("dispatch broker: role %q refused (allowed: engineer, advisor)", req.Role)
 	}

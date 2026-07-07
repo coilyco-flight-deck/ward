@@ -60,7 +60,9 @@ finishing to a clean `main` push.
 
 That reaper handles a run that **exits**; a still-`Up` but wedged `engineer` is the
 job of the host-side idle-killer [`ward agent reap`](agent-reap.md), which stops one
-gone log-silent past the threshold.
+gone log-silent past the threshold. A director that wants to halt a **specific**
+mis-scoped engineer on demand (not on idle) uses [`ward agent stop`](agent-stop.md),
+which forwards a stop through the dispatch broker - stop-only, engineer-only.
 
 ## See also
 
