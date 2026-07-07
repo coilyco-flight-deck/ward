@@ -465,6 +465,62 @@ func TestComposeContextRuntimeDoctrineLoadPoints(t *testing.T) {
 	}
 }
 
+func TestPrepareScratchSpace(t *testing.T) {
+	r := &Runner{}
+	scratch := t.TempDir()
+	t.Setenv("TMPDIR", "")
+	t.Setenv("TMP", "")
+	t.Setenv("TEMP", "")
+	r.prepareScratchSpace(scratch)
+	for _, key := range []string{"TMPDIR", "TMP", "TEMP"} {
+		if got := os.Getenv(key); got != scratch {
+			t.Errorf("%s = %q, want %s", key, got, scratch)
+		}
+	}
+	if info, err := os.Stat(scratch); err != nil || !info.IsDir() {
+		t.Fatalf("%s not provisioned: %v", scratch, err)
+	}
+}
+
+func TestMakeReadOnlyTree(t *testing.T) {
+	root := t.TempDir()
+	defer func() {
+		_ = filepath.Walk(root, func(path string, info os.FileInfo, err error) error {
+			if err != nil {
+				return nil
+			}
+			mode := info.Mode().Perm()
+			if info.IsDir() {
+				mode |= 0o755
+			} else {
+				mode |= 0o644
+			}
+			_ = os.Chmod(path, mode)
+			return nil
+		})
+	}()
+	subdir := filepath.Join(root, "dir")
+	if err := os.MkdirAll(subdir, 0o755); err != nil {
+		t.Fatal(err)
+	}
+	file := filepath.Join(subdir, "file.txt")
+	if err := os.WriteFile(file, []byte("x"), 0o644); err != nil {
+		t.Fatal(err)
+	}
+	r := &Runner{}
+	r.makeReadOnlyTree(root)
+
+	for _, path := range []string{root, subdir, file} {
+		info, err := os.Stat(path)
+		if err != nil {
+			t.Fatal(err)
+		}
+		if info.Mode().Perm()&0o222 != 0 {
+			t.Errorf("%s still writable after makeReadOnlyTree: mode %o", path, info.Mode().Perm())
+		}
+	}
+}
+
 // The goose ollama-host scrub test drained to internal/agents/goose (ward#425).
 
 // splitNonEmpty splits text into non-empty trimmed lines for assertions.

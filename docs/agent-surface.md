@@ -11,6 +11,9 @@ A surface session is a seedless interactive bring-up - fresh ephemeral container
 composed operating context, **no issue and no seed** - whose clone **cannot push to its own
 remote**. It reads the code, scopes the work, files it, and dispatches it.
 
+The current workspace clone is enforced read-only by the container, and `/scratch`
+is the writable escape hatch for temporary scripts and throwaway files.
+
 ## When the director surfaces
 
 The director surfaces a read-only session in two places (see [agent-director.md](agent-director.md)):
@@ -60,6 +63,9 @@ a host-side broker over TCP (guarded by a per-launch token). Host ward launches 
 sibling from the native host context, so Claude/Codex/Goose credentials resolve from the
 host home, not the director container. The broker accepts only that constrained
 dispatch API; unrelated ward verbs and arbitrary shell never cross it.
+
+The bootstrap also provisions `/scratch` and points temp vars there, so one-off
+scripts have a writable home that is not the workspace clone.
 
 Transport is TCP, not a unix-socket bind-mount: under Docker Desktop a bind-mounted host
 socket lands as an empty dir, so dispatches dialed a dir.

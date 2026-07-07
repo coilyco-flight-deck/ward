@@ -19,6 +19,9 @@ conflicting default from a host harness base (`~/.claude/CLAUDE.md`, Codex
   repository to examine" or reason from assumed conventions while the real ones
   sit unread one command away: if the codebase feels absent, you are looking in
   the wrong place, not at an empty clone.
+- For read-only surface sessions, the workspace clone is chmod'd read-only and
+  `/scratch` is the writable escape hatch for throwaway scripts, temp files, and
+  one-off command output.
 - **One of many.** Other containers may be running the same or other features at
   the same time. Do not assume you are alone, do not reach outside your own
   clone, and treat the canonical remote as shared.
