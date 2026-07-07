@@ -104,6 +104,13 @@ excludes = [
   "docs/github-token.md",
   "docs/guardfile-grammar.md",
   "docs/ops-forgejo-admin.md",
+  # ward#407 consult: a single self-contained design answer that must weigh all
+  # four `ops forgejo` grafts and their upstream cli-guard blockers together, so
+  # it cannot split per-graft the way the ops-forgejo-{view,quiet,admin} docs do.
+  # Its dense cross-repo issue refs are each full-URL by the ward#446 rule, which
+  # alone pushes a cap-sized doc over - same "self-contained reference vs the flat
+  # cap" carve-out as docs/ward-yaml.md. dead-cross-links still validates it.
+  "docs/ops-forgejo-graft-removal.md",
   "docs/ops-forgejo-in-ward.md",
   "docs/ops-forgejo.md",
   "docs/release.md",

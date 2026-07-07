@@ -109,6 +109,52 @@ func TestForgejoClientInvocationsUseAcceptedFlags(t *testing.T) {
 	}
 }
 
+// TestForgejoGraftInventory is the ward#407 removal guardrail: every behavior the
+// four buildForgejoOps grafts must re-home is asserted present on the built tree.
+func TestForgejoGraftInventory(t *testing.T) {
+	forgejo, err := buildForgejoOps()
+	if err != nil {
+		t.Fatalf("buildForgejoOps: %v", err)
+	}
+	issue := subCommandNamed(forgejo, "issue")
+	if issue == nil {
+		t.Fatal("forgejo group has no `issue` subtree")
+	}
+
+	// Graft 1 (overrideForgejoViewIssue): the lean `issue view` action.
+	if subCommandNamed(issue, "view") == nil {
+		t.Error("graft 1 gone: `issue view` leaf absent")
+	}
+	// Graft 2 (overrideForgejoCreateIssue): the --quiet machine-output flag.
+	if create := subCommandNamed(issue, "create"); create == nil {
+		t.Error("graft 2: `issue create` leaf absent")
+	} else if !hasFlagNamed(create, flagQuiet) {
+		t.Errorf("graft 2 gone: `issue create` no longer accepts --%s", flagQuiet)
+	}
+	// Graft 3 (overrideForgejoCommentIssue): --body-file re-added onto the shadow.
+	if comment := subCommandNamed(issue, "comment"); comment == nil {
+		t.Error("graft 3: `issue comment` leaf absent")
+	} else if !hasFlagNamed(comment, flagBodyFile) {
+		t.Errorf("graft 3 gone: `issue comment` no longer accepts --%s", flagBodyFile)
+	}
+	// Graft 4 (graftForgejoAdminExec): the admin/doctor remote-exec subtrees.
+	for parent, leaves := range map[string][]string{
+		"admin":  {"user", "auth"},
+		"doctor": {"check"},
+	} {
+		group := subCommandNamed(forgejo, parent)
+		if group == nil {
+			t.Errorf("graft 4 gone: `%s` subtree absent from the forgejo group", parent)
+			continue
+		}
+		for _, leaf := range leaves {
+			if subCommandNamed(group, leaf) == nil {
+				t.Errorf("graft 4 gone: `%s %s` leaf absent", parent, leaf)
+			}
+		}
+	}
+}
+
 // TestCondenseOpsStderr checks the ward#596 stderr condenser: blank lines drop, the
 // rest join with "; ", and an over-long envelope is capped (docs/broker.md).
 func TestCondenseOpsStderr(t *testing.T) {
