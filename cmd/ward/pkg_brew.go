@@ -268,7 +268,6 @@ func makeBrewHook(rows *[]audit.EgressRow, tail *brewTail) func(*audit.Record) {
 var scopedTapFormulae = map[string]bool{
 	"coily":         true,
 	"ward":          true,
-	"repo-recall":   true,
 	"arize-phoenix": true,
 }
 
