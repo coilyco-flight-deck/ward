@@ -32,7 +32,6 @@ New to ward? Read [architecture.md](architecture.md) first - it frames the whole
 - [git-verbs.md](git-verbs.md) - `ward git`: audited, concurrency-safe git surface.
 - [git-clone.md](git-clone.md) - `ward git clone`, destination-gated.
 - [hook.md](hook.md) - `ward hook`, the Claude Code hook entry points.
-- [install-hooks.md](install-hooks.md) - `ward install-hooks`, PreToolUse hook registration.
 
 ## `ward agent` (headless harness runner)
 

@@ -82,7 +82,6 @@ func main() {
 			doctorCommand(),
 			setupCommand(),
 			hookCommand(),
-			installHooksCommand(),
 			containerCommand(),
 			agentCommand(),
 			agentsCommand(),
