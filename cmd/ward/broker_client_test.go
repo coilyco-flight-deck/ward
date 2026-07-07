@@ -27,24 +27,29 @@ func TestVerbTail(t *testing.T) {
 	}
 }
 
-// mapForgejoWriteOp maps only the issue file/edit/comment/close/reopen tier; every
-// other verb (delete, repo/label mutations, foreign resources) is out of tier.
+// mapForgejoWriteOp maps the issue file/edit/comment/close/reopen tier plus the
+// issue-label add/set/remove ops; every other verb (delete, repo, list) is out of tier.
 func TestMapForgejoWriteOp(t *testing.T) {
 	cases := []struct {
 		resource, verb string
 		wantOp         broker.Op
 		wantState      string
+		wantMode       string
 		wantOK         bool
 	}{
-		{"issue", "create", broker.OpFileIssue, "", true},
-		{"issue", "edit", broker.OpEditIssue, "", true},
-		{"issue", "comment", broker.OpCommentIssue, "", true},
-		{"issue", "close", broker.OpEditIssue, "closed", true},
-		{"issue", "reopen", broker.OpEditIssue, "open", true},
-		{"issue", "delete", "", "", false},
-		{"repo", "create", "", "", false},
-		{"repo", "delete", "", "", false},
-		{"issue-label", "add", "", "", false},
+		{"issue", "create", broker.OpFileIssue, "", "", true},
+		{"issue", "edit", broker.OpEditIssue, "", "", true},
+		{"issue", "comment", broker.OpCommentIssue, "", "", true},
+		{"issue", "close", broker.OpEditIssue, "closed", "", true},
+		{"issue", "reopen", broker.OpEditIssue, "open", "", true},
+		{"issue", "delete", "", "", "", false},
+		{"repo", "create", "", "", "", false},
+		{"repo", "delete", "", "", "", false},
+		{"issue-label", "add", broker.OpLabelIssue, "", broker.LabelAdd, true},
+		{"issue-label", "set", broker.OpLabelIssue, "", broker.LabelSet, true},
+		{"issue-label", "remove", broker.OpLabelIssue, "", broker.LabelRemove, true},
+		// `issue-label list` is a read: routed direct before this maps, never here.
+		{"issue-label", "list", "", "", "", false},
 	}
 	for _, c := range cases {
 		got, ok := mapForgejoWriteOp(c.resource, c.verb)
@@ -52,8 +57,8 @@ func TestMapForgejoWriteOp(t *testing.T) {
 			t.Errorf("mapForgejoWriteOp(%q,%q) ok = %v, want %v", c.resource, c.verb, ok, c.wantOK)
 			continue
 		}
-		if ok && (got.op != c.wantOp || got.state != c.wantState) {
-			t.Errorf("mapForgejoWriteOp(%q,%q) = %+v, want op %q state %q", c.resource, c.verb, got, c.wantOp, c.wantState)
+		if ok && (got.op != c.wantOp || got.state != c.wantState || got.labelMode != c.wantMode) {
+			t.Errorf("mapForgejoWriteOp(%q,%q) = %+v, want op %q state %q mode %q", c.resource, c.verb, got, c.wantOp, c.wantState, c.wantMode)
 		}
 	}
 }
@@ -201,6 +206,39 @@ func TestBrokerForgejoActionRouting(t *testing.T) {
 		}
 	})
 
+	t.Run("brokered issue-label add routes to broker with mode + labels", func(t *testing.T) {
+		t.Setenv(envBrokerSocket, sock)
+		fake.labelCalled = false
+		called := false
+		act := r.brokerForgejoAction("ward.ops.forgejo.issue-label.add", markCalled(&called))
+		out := captureLeaf(t, act, []string{"coilyco", "ward", "42", "--labels", "headless", "--labels", "P1"})
+		if called {
+			t.Error("a brokered label write must NOT run the direct (token) action")
+		}
+		if !fake.labelCalled {
+			t.Error("a brokered issue-label add must reach the broker executor")
+		}
+		if fake.labelMode != broker.LabelAdd {
+			t.Errorf("label mode = %q, want %q", fake.labelMode, broker.LabelAdd)
+		}
+		if strings.Join(fake.labels, ",") != "headless,P1" {
+			t.Errorf("labels = %v, want [headless P1]", fake.labels)
+		}
+		if !strings.Contains(out, "coilyco/ward#99") || !strings.Contains(out, "via broker") {
+			t.Errorf("brokered label output = %q, want the issue ref via broker", out)
+		}
+	})
+
+	t.Run("brokered issue-label list still routes direct as a read", func(t *testing.T) {
+		t.Setenv(envBrokerSocket, sock)
+		called := false
+		act := r.brokerForgejoAction("ward.ops.forgejo.issue-label.list", markCalled(&called))
+		runLeaf(t, act, []string{"coilyco", "ward", "42"})
+		if !called {
+			t.Error("a brokered issue-label list must still run the direct read action")
+		}
+	})
+
 	t.Run("brokered out-of-tier delete is refused locally", func(t *testing.T) {
 		t.Setenv(envBrokerSocket, sock)
 		called := false
@@ -260,6 +298,7 @@ func writeFlagCommand(action cli.ActionFunc) *cli.Command {
 			&cli.StringFlag{Name: "body"},
 			&cli.StringFlag{Name: "state"},
 			&cli.StringFlag{Name: "body-file"},
+			&cli.StringSliceFlag{Name: flagLabels},
 			&cli.StringFlag{Name: flagOutput},
 			&cli.StringFlag{Name: flagQuery},
 			&cli.BoolFlag{Name: flagDryRun},

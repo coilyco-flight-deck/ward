@@ -108,6 +108,27 @@ func (e *wardKdlWriteExecutor) CommentIssue(ctx context.Context, target broker.T
 	return res, nil
 }
 
+// LabelIssue mutates target issue's label membership by mode, shelling the
+// `issue-label <mode>` leaf; cli-guard's labelInvariants already gated it fail-closed.
+func (e *wardKdlWriteExecutor) LabelIssue(ctx context.Context, target broker.Target, mode string, labels []string) (broker.Result, error) {
+	args := []string{"ops", "forgejo", "issue-label", mode, target.Owner, target.Repo, strconv.Itoa(target.Number)}
+	for _, l := range labels {
+		args = append(args, "--labels", l)
+	}
+	args = append(args, "--output", "json")
+	out, err := e.exec(ctx, args)
+	if err != nil {
+		return broker.Result{}, err
+	}
+	// The label leaf returns the issue's label array, not an {number} object, so
+	// parseIssueResult falls to Detail; reuse the target number for the rendered ref.
+	res := parseIssueResult(out)
+	if res.Number == 0 {
+		res.Number = target.Number
+	}
+	return res, nil
+}
+
 // Dispatch vends the seed for target - the root-held forge token on Result.Detail,
 // so a `warded #N` seeds its child env-file broker-side (ward#334; docs/broker.md).
 func (e *wardKdlWriteExecutor) Dispatch(_ context.Context, _ broker.Target) (broker.Result, error) {
@@ -155,12 +176,13 @@ func parseIssueResult(out []byte) broker.Result {
 	return broker.Result{Number: payload.Number, URL: url}
 }
 
-// writeTierOps is the op allowlist this daemon serves: file / edit / comment, plus
-// dispatch (the seed vend, ward#334). Delete/admin stay absent - refused out-of-tier.
+// writeTierOps is the op allowlist this daemon serves: file / edit / comment / label
+// + dispatch (ward#334, ward#625); delete/admin refuse out-of-tier before the executor.
 var writeTierOps = map[broker.Op]bool{
 	broker.OpFileIssue:    true,
 	broker.OpEditIssue:    true,
 	broker.OpCommentIssue: true,
+	broker.OpLabelIssue:   true,
 	broker.OpDispatch:     true,
 }
 

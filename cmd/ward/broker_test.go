@@ -93,6 +93,31 @@ func TestExecutorCommentIssueArgvAndResultNumber(t *testing.T) {
 	}
 }
 
+func TestExecutorLabelIssueArgv(t *testing.T) {
+	// The label leaf returns the issue's label array, not an {number} object, so
+	// the result number falls back to the target's (ward#625).
+	rr := &recordingRunner{out: []byte(`[{"name":"headless"}]`)}
+	ex := &wardKdlWriteExecutor{token: "tok", run: rr.run}
+
+	res, err := ex.LabelIssue(context.Background(), broker.Target{Owner: "coilyco", Repo: "r", Number: 7}, broker.LabelAdd, []string{"headless", "P1"})
+	if err != nil {
+		t.Fatalf("LabelIssue: %v", err)
+	}
+	want := []string{"ops", "forgejo", "issue-label", "add", "coilyco", "r", "7", "--labels", "headless", "--labels", "P1", "--output", "json"}
+	if strings.Join(rr.args, "\x00") != strings.Join(want, "\x00") {
+		t.Errorf("argv =\n  %v\nwant\n  %v", rr.args, want)
+	}
+	if res.Number != 7 {
+		t.Errorf("result number = %d, want 7 (reused from target)", res.Number)
+	}
+	// The mode rides the verb, never a flag; the token rides env, never argv.
+	for _, a := range rr.args {
+		if strings.Contains(a, "tok") {
+			t.Errorf("token leaked into argv: %v", rr.args)
+		}
+	}
+}
+
 // Unit C: Dispatch vends the root-held token as the child env-file seed; it
 // shells nothing (no recordingRunner call) - the seed rides Result.Detail.
 func TestExecutorDispatchVendsSeed(t *testing.T) {
@@ -139,6 +164,11 @@ func TestWriteTierAuthorizer(t *testing.T) {
 		{"file issue ok", broker.Request{Op: broker.OpFileIssue, Target: broker.Target{Owner: "coilyco-flight-deck", Repo: "ward"}, Title: "t"}, true},
 		{"edit issue ok", broker.Request{Op: broker.OpEditIssue, Target: broker.Target{Owner: "coilyco", Repo: "ward", Number: 3}}, true},
 		{"comment ok", broker.Request{Op: broker.OpCommentIssue, Target: broker.Target{Owner: "coilyco", Repo: "ward", Number: 3}}, true},
+		{"label add ok", broker.Request{Op: broker.OpLabelIssue, Target: broker.Target{Owner: "coilyco", Repo: "ward", Number: 3}, LabelMode: broker.LabelAdd, Labels: []string{"headless"}}, true},
+		{"label set ok", broker.Request{Op: broker.OpLabelIssue, Target: broker.Target{Owner: "coilyco", Repo: "ward", Number: 3}, LabelMode: broker.LabelSet, Labels: []string{"P1"}}, true},
+		{"label unknown mode rejected", broker.Request{Op: broker.OpLabelIssue, Target: broker.Target{Owner: "coilyco", Repo: "ward", Number: 3}, LabelMode: "toggle", Labels: []string{"headless"}}, false},
+		{"label empty set rejected", broker.Request{Op: broker.OpLabelIssue, Target: broker.Target{Owner: "coilyco", Repo: "ward", Number: 3}, LabelMode: broker.LabelAdd}, false},
+		{"label non-coily owner rejected", broker.Request{Op: broker.OpLabelIssue, Target: broker.Target{Owner: "evilcorp", Repo: "ward", Number: 3}, LabelMode: broker.LabelAdd, Labels: []string{"headless"}}, false},
 		{"dispatch ok (Unit C, served with a number)", broker.Request{Op: broker.OpDispatch, Target: broker.Target{Owner: "coilyco", Repo: "ward", Number: 3}}, true},
 		{"dispatch without number rejected", broker.Request{Op: broker.OpDispatch, Target: broker.Target{Owner: "coilyco", Repo: "ward"}}, false},
 		{"dispatch non-coily owner rejected", broker.Request{Op: broker.OpDispatch, Target: broker.Target{Owner: "evilcorp", Repo: "ward", Number: 3}}, false},
@@ -234,6 +264,9 @@ type fakeExecutor struct {
 	result         broker.Result
 	fileCalled     bool
 	dispatchCalled bool
+	labelCalled    bool
+	labelMode      string
+	labels         []string
 }
 
 func (f *fakeExecutor) FileIssue(_ context.Context, _ broker.Target, _, _ string) (broker.Result, error) {
@@ -246,6 +279,13 @@ func (f *fakeExecutor) EditIssue(_ context.Context, _ broker.Target, _, _, _ str
 }
 
 func (f *fakeExecutor) CommentIssue(_ context.Context, _ broker.Target, _ string) (broker.Result, error) {
+	return f.result, nil
+}
+
+func (f *fakeExecutor) LabelIssue(_ context.Context, _ broker.Target, mode string, labels []string) (broker.Result, error) {
+	f.labelCalled = true
+	f.labelMode = mode
+	f.labels = labels
 	return f.result, nil
 }
 
@@ -286,6 +326,10 @@ func TestExecutorWriteArgvHitsRealLeaves(t *testing.T) {
 		}},
 		{"CommentIssue", func(e *wardKdlWriteExecutor) error {
 			_, err := e.CommentIssue(context.Background(), tgt, "hello")
+			return err
+		}},
+		{"LabelIssue", func(e *wardKdlWriteExecutor) error {
+			_, err := e.LabelIssue(context.Background(), tgt, broker.LabelAdd, []string{"headless"})
 			return err
 		}},
 	}

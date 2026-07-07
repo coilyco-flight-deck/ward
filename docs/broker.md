@@ -44,10 +44,14 @@ its env. The agent never touches the token - it only ever holds a socket handle.
   `root:<agent-gid>` mode `0660` (group-readable, never world), then serves until a
   signal cancels it. `broker.Server` only listens on an already-permissioned socket.
 - **The executor** (`cmd/ward/broker_exec.go`) shells `ward-kdl-write ops forgejo
-  <verb>` for **file / edit / comment issue**, seeding the bot token into the env.
-- **The authorizer** is the write tier: the file/edit/comment/`dispatch` op
-  allowlist + `broker.Policy`'s invariants + a `coily*` owner gate. Delete/admin
-  and every other op refuse out-of-tier before the executor runs.
+  <verb>` for **file / edit / comment / label issue**, seeding the bot token into
+  the env. The label arm (`issue-label add/set/remove`) lets a director surface
+  apply its own triage labels through the broker
+  ([ward#625](https://forgejo.coilysiren.me/coilyco-flight-deck/ward/issues/625)).
+- **The authorizer** is the write tier: the file/edit/comment/label/`dispatch` op
+  allowlist + `broker.Policy`'s invariants (including cli-guard's fail-closed
+  `labelInvariants`: a known mode + a non-empty label set) + a `coily*` owner gate.
+  Delete/admin and every other op refuse out-of-tier before the executor runs.
 
 ## ward-kdl-write + auth
 

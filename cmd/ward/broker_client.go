@@ -68,6 +68,10 @@ func isOutOfTierRefusal(msg string) bool {
 	return false
 }
 
+// flagLabels is the repeatable label flag specverb generates on the issue-label
+// membership leaves (--labels a --labels b); the broker route reads it (ward#625).
+const flagLabels = "labels"
+
 // forgejoReadVerbs is the read tail of `ops forgejo`: these go direct even inside
 // a brokered box. Complete for the forgejo guardfile - every other verb mutates.
 var forgejoReadVerbs = map[string]bool{
@@ -78,19 +82,30 @@ var forgejoReadVerbs = map[string]bool{
 	"view":     true,
 }
 
-// forgejoBrokerOp is the broker op + forced state a write leaf maps to (close and
-// reopen are state edits; create/edit/comment map straight across).
+// forgejoBrokerOp is the broker op + forced state/label mode a write leaf maps to
+// (close/reopen force a state; issue-label add/set/remove carry a labelMode).
 type forgejoBrokerOp struct {
-	op    broker.Op
-	state string // forced state for close/reopen; "" leaves the request's state
+	op        broker.Op
+	state     string // forced state for close/reopen; "" leaves the request's state
+	labelMode string // membership mode for OpLabelIssue (add/set/remove); "" otherwise
 }
 
-// mapForgejoWriteOp maps an `issue` write verb to its broker op, or ok=false when
-// the verb is out of the broker's write tier (delete, repo/label mutations, ...).
+// mapForgejoWriteOp maps an `issue` / `issue-label` write verb to its broker op, or
+// ok=false when the verb is out of the broker's write tier (delete, repo mutations, ...).
 func mapForgejoWriteOp(resource, verbName string) (forgejoBrokerOp, bool) {
-	if resource != "issue" {
+	switch resource {
+	case "issue":
+		return mapForgejoIssueOp(verbName)
+	case "issue-label":
+		return mapForgejoLabelOp(verbName)
+	default:
 		return forgejoBrokerOp{}, false
 	}
+}
+
+// mapForgejoIssueOp maps an `issue` write verb; close/reopen are state edits, the
+// rest map straight across. Out-of-tier verbs (delete, ...) return ok=false.
+func mapForgejoIssueOp(verbName string) (forgejoBrokerOp, bool) {
 	switch verbName {
 	case "create":
 		return forgejoBrokerOp{op: broker.OpFileIssue}, true
@@ -102,6 +117,21 @@ func mapForgejoWriteOp(resource, verbName string) (forgejoBrokerOp, bool) {
 		return forgejoBrokerOp{op: broker.OpEditIssue, state: "closed"}, true
 	case "reopen":
 		return forgejoBrokerOp{op: broker.OpEditIssue, state: "open"}, true
+	default:
+		return forgejoBrokerOp{}, false
+	}
+}
+
+// mapForgejoLabelOp maps an `issue-label` membership verb to OpLabelIssue + its mode
+// (ward#625). `issue-label list` is a read, routed direct, so only add/set/remove reach.
+func mapForgejoLabelOp(verbName string) (forgejoBrokerOp, bool) {
+	switch verbName {
+	case "add":
+		return forgejoBrokerOp{op: broker.OpLabelIssue, labelMode: broker.LabelAdd}, true
+	case "set":
+		return forgejoBrokerOp{op: broker.OpLabelIssue, labelMode: broker.LabelSet}, true
+	case "remove":
+		return forgejoBrokerOp{op: broker.OpLabelIssue, labelMode: broker.LabelRemove}, true
 	default:
 		return forgejoBrokerOp{}, false
 	}
@@ -136,7 +166,7 @@ func (r *Runner) brokerForgejoAction(name string, direct cli.ActionFunc) cli.Act
 		mapped, ok := mapForgejoWriteOp(resource, verbName)
 		if !ok {
 			return fmt.Errorf("ward ops forgejo %s %s: refused - the broker serves the write tier only "+
-				"(create / edit / comment / close / reopen issue); %s %s is out of tier", resource, verbName, resource, verbName)
+				"(issue create / edit / comment / close / reopen, issue-label add / set / remove); %s %s is out of tier", resource, verbName, resource, verbName)
 		}
 		return r.runForgejoWriteViaBroker(ctx, cmd, session, mapped)
 	}
@@ -172,6 +202,12 @@ func (r *Runner) runForgejoWriteViaBroker(ctx context.Context, cmd *cli.Command,
 	}
 
 	req := broker.Request{Op: mapped.op, Target: target, Title: title, Body: body, State: state}
+	if mapped.op == broker.OpLabelIssue {
+		// The leaf declares --labels as a repeatable slice; the mode rides the verb,
+		// not a flag. cli-guard's labelInvariants rejects an empty set fail-closed.
+		req.LabelMode = mapped.labelMode
+		req.Labels = cmd.StringSlice(flagLabels)
+	}
 	res, err := session.do(ctx, req)
 	if err != nil {
 		return err
