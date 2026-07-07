@@ -128,13 +128,16 @@ func condenseOpsStderr(stderr []byte) string {
 }
 
 // fetchForgejoIssue GETs a Forgejo issue and decodes it into dispatch.Issue, the
-// pre-flight resolve seam for `ward agent`.
+// advisor-path resolve seam sharing the dispatch retry (ward#497).
 func (r *Runner) fetchForgejoIssue(ctx context.Context, owner, repo string, number int) (*dispatch.Issue, error) {
 	cl, err := r.hostForgejoClient(ctx)
 	if err != nil {
 		return nil, err
 	}
-	return cl.getIssue(ctx, owner, repo, number)
+	ref := fmt.Sprintf("%s/%s#%d", owner, repo, number)
+	return resolveIssueWithRetry("ward agent advisor", ref, resolveIssueSleep, func() (*dispatch.Issue, error) {
+		return cl.getIssue(ctx, owner, repo, number)
+	})
 }
 
 // getIssue reads one issue and decodes the rendered JSON. Labels arrive as

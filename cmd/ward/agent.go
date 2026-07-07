@@ -580,7 +580,57 @@ func (r *Runner) fetchIssue(ctx context.Context, ref agentIssueRef) (*dispatch.I
 	if err != nil {
 		return nil, err
 	}
-	return cl.getIssue(ctx, ref.Owner, ref.Repo, ref.Number)
+	return resolveIssueWithRetry("ward agent", ref.String(), resolveIssueSleep, func() (*dispatch.Issue, error) {
+		return cl.getIssue(ctx, ref.Owner, ref.Repo, ref.Number)
+	})
+}
+
+// resolveRetryAttempts / resolveRetryBackoff bound the dispatch-path resolve retry: a
+// transient forge blip rode a bare `exit status 3` to a failed dispatch (ward#497).
+const (
+	resolveRetryAttempts = 3
+	resolveRetryBackoff  = 2 * time.Second
+)
+
+// resolveIssueSleep is the backoff wait between resolve retries; a package var so a
+// test swaps the real sleep out.
+var resolveIssueSleep = time.Sleep
+
+// resolveHTTPStatusRE pulls the 3-digit HTTP status from a folded resolve envelope:
+// the Forgejo runtime writes "-> 404 ..." and `gh` writes "HTTP 404: ..." (ward#497).
+var resolveHTTPStatusRE = regexp.MustCompile(`(?i)(?:->|\bHTTP(?:/\d(?:\.\d)?)?)\s+([1-5]\d\d)\b`)
+
+// transientResolveErr reports whether a failed resolve is worth retrying: only a pinned
+// 4xx (403 unreadable, 404 gone) is permanent, everything else retries (ward#497, docs).
+func transientResolveErr(err error) bool {
+	if err == nil {
+		return false
+	}
+	if m := resolveHTTPStatusRE.FindStringSubmatch(err.Error()); m != nil && strings.HasPrefix(m[1], "4") {
+		return false
+	}
+	return true
+}
+
+// resolveIssueWithRetry runs get up to resolveRetryAttempts times, backing off between
+// transient failures (never after the last, never on a permanent 4xx). See ward#497.
+func resolveIssueWithRetry(label, ref string, sleep func(time.Duration), get func() (*dispatch.Issue, error)) (*dispatch.Issue, error) {
+	var issue *dispatch.Issue
+	var err error
+	for attempt := 1; attempt <= resolveRetryAttempts; attempt++ {
+		if issue, err = get(); err == nil {
+			return issue, nil
+		}
+		if !transientResolveErr(err) {
+			return nil, err
+		}
+		if attempt < resolveRetryAttempts {
+			fmt.Fprintf(os.Stderr, "%s: note: resolving issue %s hit a transient failure on attempt %d/%d (%v); retrying in %s\n",
+				label, ref, attempt, resolveRetryAttempts, err, resolveRetryBackoff)
+			sleep(resolveRetryBackoff)
+		}
+	}
+	return nil, fmt.Errorf("after %d transient attempt(s): %w", resolveRetryAttempts, err)
 }
 
 // fetchIssueComments returns the comment thread (oldest first) for the pre-flight

@@ -33,6 +33,18 @@ For lifecycle markers, see [container lifecycle logs](container-lifecycle-logs.m
   dispatches only for its compiled-in primary orgs. **Fix:** dispatch against a
   trusted owner. See [agent-trust-gate.md](agent-trust-gate.md).
 
+- **`resolve issue <ref>: ... get issue <ref>: exit status 3`** - the forge rejected
+  or could not answer the pre-container issue read. ward now **retries a transient
+  blip** (a 5xx, an unreachable API, a timeout) up to three times with a backoff,
+  logging a `retrying in ...` note between tries, so a passing forge hiccup no longer
+  fails a whole dispatch. A **permanent 4xx** skips the retry and surfaces its cause
+  at once: `-> 403 Forbidden` means the host forge token cannot see that repo (a
+  visibility/trust gap, not a bug), `-> 404 Not Found` means the issue is gone. **Fix:**
+  for a 403, grant the host forge token access to the repo (or dispatch a repo it can
+  read); for a 404, check the ref. The folded envelope after `exit status 3:` names
+  which ([ward#497](https://forgejo.coilysiren.me/coilyco-flight-deck/ward/issues/497),
+  [ward#596](https://forgejo.coilysiren.me/coilyco-flight-deck/ward/issues/596)).
+
 - **`already reserved remotely` / `already reserved locally`** - another container
   holds this issue (2h TTL). **Fix:** wait for it to finish, or pass `--force` to
   override/reclaim. See [agent-reservation.md](agent-reservation.md).
