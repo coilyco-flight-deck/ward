@@ -37,6 +37,11 @@ Use `docker container stop`, the graceful verb - **not** `docker rm`/`-f`. `rm` 
 **exited** containers (the keep-10 sweep, [container-cleanup.md](container-cleanup.md)),
 stop is for a **running** one.
 
+**From a director surface,** you do not reach for the host docker at all: use
+[`warded agent stop #N`](agent-stop.md), which forwards a stop through the dispatch
+broker to host ward (stop-only, engineer-only). It runs the same graceful `docker
+container stop`, so everything below about the reaper applies identically.
+
 ## What a stop does and does not reap
 
 The [reaper](container-reap.md) is armed as a bash `trap ... EXIT` on the entrypoint,
@@ -58,6 +63,7 @@ window.
 ## See also
 
 - [docs/agent-engineer.md](agent-engineer.md) - the detached engineer this stops.
+- [docs/agent-stop.md](agent-stop.md) - `warded agent stop`, the same stop reached from a director surface through the broker.
 - [docs/container-reap.md](container-reap.md) - the teardown reaper a stop skips.
 - [docs/container-cleanup.md](container-cleanup.md) - the `docker rm` sweep of exited containers.
 - [docs/FEATURES.md](FEATURES.md) - inventory.

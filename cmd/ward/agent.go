@@ -416,6 +416,9 @@ trusted owner.`,
 			// reap is a maintenance verb, not a startup role: the host-side
 			// idle-killer for wedged engineer containers (#376). docs/agent-reap.md.
 			agentReapCommand(),
+			// stop is a control verb, not a startup role: a director surface stops
+			// one running engineer through the dispatch broker (ward#627). docs/agent-stop.md.
+			agentStopCommand(),
 		},
 	}
 }

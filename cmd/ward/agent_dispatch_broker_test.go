@@ -44,6 +44,138 @@ func TestDispatchBrokerValidatesNarrowAPI(t *testing.T) {
 	}
 }
 
+// TestDispatchBrokerValidatesStopShape locks the ward#627 stop protocol: a valid
+// target with no argv passes; a bad target, argv on a stop, or a flag is refused.
+func TestDispatchBrokerValidatesStopShape(t *testing.T) {
+	for _, tc := range []struct {
+		name string
+		req  dispatchBrokerRequest
+	}{
+		{"no target", dispatchBrokerRequest{Action: "stop"}},
+		{"empty target", dispatchBrokerRequest{Action: "stop", Target: "  "}},
+		{"stop carries launch argv", dispatchBrokerRequest{Action: "stop", Target: "coilyco-flight-deck/ward#1", Argv: []string{"engineer", "x"}}},
+		{"flag target", dispatchBrokerRequest{Action: "stop", Target: "--force"}},
+		{"url target", dispatchBrokerRequest{Action: "stop", Target: "https://example.com/x"}},
+		{"metachar target", dispatchBrokerRequest{Action: "stop", Target: "name;rm -rf"}},
+		{"launch carries a stop target", dispatchBrokerRequest{Role: "engineer", Argv: []string{"engineer", "coilyco-flight-deck/ward#1"}, Target: "x"}},
+		{"unknown action", dispatchBrokerRequest{Action: "nuke", Target: "x"}},
+	} {
+		if err := validateDispatchBrokerRequest(tc.req); err == nil {
+			t.Errorf("%s: validateDispatchBrokerRequest(%+v) = nil, want refusal", tc.name, tc.req)
+		}
+	}
+	for _, tc := range []struct {
+		name string
+		req  dispatchBrokerRequest
+	}{
+		{"issue-ref target", dispatchBrokerRequest{Action: "stop", Target: "coilyco-flight-deck/ward#625"}},
+		{"container-name target", dispatchBrokerRequest{Action: "stop", Target: "engineer-claude-ward-625"}},
+	} {
+		if err := validateDispatchBrokerRequest(tc.req); err != nil {
+			t.Errorf("%s: valid stop refused: %v", tc.name, err)
+		}
+	}
+}
+
+// TestStopTargetGuardEngineerOnly is the ward#627 handler guard: only an engineer is
+// stoppable; advisor/director/session are refused by role, and an empty role closed.
+func TestStopTargetGuardEngineerOnly(t *testing.T) {
+	if err := stopTargetGuard("engineer-claude-ward-625", roleEngineer); err != nil {
+		t.Errorf("engineer target refused: %v", err)
+	}
+	for _, role := range []string{roleAdvisor, roleDirector, roleSession} {
+		err := stopTargetGuard("some-"+role+"-box", role)
+		if err == nil {
+			t.Errorf("role %q was not refused", role)
+		} else if !strings.Contains(err.Error(), role) {
+			t.Errorf("refusal for role %q did not name the role: %v", role, err)
+		}
+	}
+	if err := stopTargetGuard("mystery-box", ""); err == nil {
+		t.Error("empty role did not fail closed")
+	}
+}
+
+// TestSelectSingleStopTarget covers the ward#627 match-count rule: exactly one match
+// stops, zero and more-than-one refuse (the multi case lists the candidates).
+func TestSelectSingleStopTarget(t *testing.T) {
+	got, err := selectSingleStopTarget("coilyco-flight-deck/ward#1", []string{"engineer-claude-ward-1"})
+	if err != nil || got != "engineer-claude-ward-1" {
+		t.Errorf("single match = (%q, %v), want the one name", got, err)
+	}
+	if _, err := selectSingleStopTarget("coilyco-flight-deck/ward#1", nil); err == nil {
+		t.Error("zero matches did not refuse")
+	}
+	_, err = selectSingleStopTarget("coilyco-flight-deck/ward#1", []string{"engineer-claude-ward-1", "engineer-codex-ward-1"})
+	if err == nil {
+		t.Fatal("more-than-one match did not refuse")
+	}
+	for _, name := range []string{"engineer-claude-ward-1", "engineer-codex-ward-1"} {
+		if !strings.Contains(err.Error(), name) {
+			t.Errorf("ambiguous refusal did not list candidate %q: %v", name, err)
+		}
+	}
+}
+
+// TestForwardAgentStopOffSurfaceErrors locks the ward#627 surface gate: with no
+// dispatch broker addr set, stop errors rather than silently no-opping.
+func TestForwardAgentStopOffSurfaceErrors(t *testing.T) {
+	t.Setenv(envDispatchBrokerAddr, "")
+	t.Setenv("WARD_READONLY", "")
+	err := (&Runner{}).forwardAgentStopToHostBroker(context.Background(), "coilyco-flight-deck/ward#625")
+	if err == nil {
+		t.Fatal("off-surface stop did not error")
+	}
+	if !strings.Contains(err.Error(), "director read-only surface") {
+		t.Errorf("off-surface error did not name the surface requirement: %v", err)
+	}
+}
+
+// TestForwardAgentStopSendsStopRequest checks the ward#627 wire: a surface stop dials
+// the broker with Action=stop + the target, and prints the stopped name it returns.
+func TestForwardAgentStopSendsStopRequest(t *testing.T) {
+	ln, err := net.Listen("tcp", "127.0.0.1:0")
+	if err != nil {
+		t.Fatalf("listen broker: %v", err)
+	}
+	defer ln.Close()
+
+	gotReq := make(chan dispatchBrokerRequest, 1)
+	go func() {
+		conn, err := ln.Accept()
+		if err != nil {
+			return
+		}
+		defer conn.Close()
+		var req dispatchBrokerRequest
+		_ = json.NewDecoder(conn).Decode(&req)
+		gotReq <- req
+		// Echo the stopped container name back in the log-path slot.
+		_ = json.NewEncoder(conn).Encode(dispatchBrokerResponse{OK: true, LogPath: "engineer-claude-ward-625"})
+	}()
+
+	t.Setenv(envDispatchBrokerAddr, ln.Addr().String())
+	t.Setenv(envDispatchBrokerToken, "nonce-627")
+	t.Setenv("WARD_READONLY", "1")
+	t.Setenv("WARD_CONTAINER_NAME", "session-claude-host")
+	if err := (&Runner{}).forwardAgentStopToHostBroker(t.Context(), "coilyco-flight-deck/ward#625"); err != nil {
+		t.Fatalf("forward stop: %v", err)
+	}
+	req := <-gotReq
+	if req.Action != dispatchActionStop {
+		t.Errorf("action = %q, want stop", req.Action)
+	}
+	if req.Target != "coilyco-flight-deck/ward#625" {
+		t.Errorf("target = %q, want the ref", req.Target)
+	}
+	if req.Token != "nonce-627" {
+		t.Errorf("token = %q, want the per-launch nonce", req.Token)
+	}
+	if len(req.Argv) != 0 {
+		t.Errorf("stop request carried launch argv: %v", req.Argv)
+	}
+}
+
 func TestBrokerEngineerArgvForwardsApprovedFlags(t *testing.T) {
 	cmd := parseCommandForTest(t, agentEngineerFlags(), []string{
 		"engineer", "coilyco-flight-deck/ward#42",
