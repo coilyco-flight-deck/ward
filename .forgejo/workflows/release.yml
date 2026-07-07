@@ -75,6 +75,8 @@ jobs:
       GO_VERSION: "1.26.4"
       FORGEJO_API: https://forgejo.coilysiren.me/api/v1/repos/coilyco-flight-deck/ward
       GITHUB_REPO: coilyco-flight-deck/ward
+      AOS_SPECS_TAG: v0.201.0
+      AOS_RELEASE_BASE: https://forgejo.coilysiren.me/coilyco-flight-deck/agentic-os/releases/download
     steps:
       - uses: actions/checkout@v6
         with:
@@ -87,6 +89,90 @@ jobs:
           curl -fsSL "https://go.dev/dl/go${GO_VERSION}.linux-amd64.tar.gz" -o /tmp/go.tar.gz
           tar -xzf /tmp/go.tar.gz -C /usr/local
           echo "/usr/local/go/bin" >> "$GITHUB_PATH"
+
+      - name: Overlay the pinned aos ward-specs bundle and regenerate the shipped embeds
+        run: |
+          set -euo pipefail
+          # #503 step 3 (residual of the ward-kdl spec-bundle cutover, ward#644).
+          # aos publishes the coilyco deployment values as a pinned, checksummed
+          # `ward-specs-<tag>.tar.gz` release asset (aos#315). Here ward overlays that
+          # bundle onto .ward/ward-kdl/ (the assets-dir convention, ward#453) and
+          # re-derives the committed embeds BEFORE the cross-compile loop, so every
+          # target in the matrix embeds the bundle-derived surface. The point of the
+          # cutover: ward's OWN tree can later go neutral (step 4, NOT done here)
+          # without changing what a released binary ships. See docs/release.md and
+          # docs/ward-specs (aos) / docs/ward-kdl-authoring.md.
+          #
+          # Fail-closed on a blank/missing pin, mirroring the -z secret guards the
+          # other release jobs use: a released binary must never build from an
+          # unpinned or absent bundle.
+          if [ -z "${AOS_SPECS_TAG:-}" ]; then
+            echo "::error::AOS_SPECS_TAG is blank; refusing to build without a pinned aos ward-specs bundle" >&2
+            exit 1
+          fi
+          asset="ward-specs-${AOS_SPECS_TAG}.tar.gz"
+          url="${AOS_RELEASE_BASE}/${AOS_SPECS_TAG}/${asset}"
+          work="$(mktemp -d)"
+          # Fetch the bundle + its .sha256 sidecar and VERIFY before trusting a byte of
+          # it. A corrupt/truncated download, or a bundle whose published digest is not
+          # a 64-hex sha256, fails the release loudly instead of overlaying garbage.
+          curl -fsSL --max-time 120 "$url"          -o "$work/${asset}"
+          curl -fsSL --max-time 60  "${url}.sha256" -o "$work/${asset}.sha256"
+          want="$(tr -d '[:space:]' < "$work/${asset}.sha256")"
+          got="$(sha256sum "$work/${asset}" | awk '{print $1}')"
+          if ! printf '%s' "$want" | grep -Eq '^[0-9a-f]{64}$'; then
+            echo "::error::published sha256 '${want}' for ${asset} is not a 64-hex digest; refusing to overlay" >&2
+            exit 1
+          fi
+          if [ "$want" != "$got" ]; then
+            echo "::error::${asset} sha256 mismatch (want ${want}, got ${got}); refusing to overlay an unverified bundle" >&2
+            exit 1
+          fi
+          echo "verified ${asset} (sha256 ${got})"
+          # Overlay the bundle's flat entries onto .ward/ward-kdl/, then re-derive the
+          # SHIPPED embeds exactly the way `make sync-*-assets` does - a pure file copy,
+          # NO live spec re-fetch and NO generator (the decided mechanism, aos docs/ward-specs.md).
+          # Only these three embed dirs are compiled into `go build ./cmd/ward`:
+          #   opsassets   <- forgejo guardfile + swagger lock
+          #   fleetassets <- fleet manifest
+          #   execassets  <- every exec-dialect guardfile (this bundle carries only ollama)
+          mkdir -p "$work/extract"
+          tar -xzf "$work/${asset}" -C "$work/extract"
+          cp "$work"/extract/* .ward/ward-kdl/
+          cp .ward/ward-kdl/ward-kdl.forgejo.guardfile.kdl cmd/ward/opsassets/forgejo.guardfile.generated.kdl
+          cp .ward/ward-kdl/forgejo.swagger.lock.json      cmd/ward/opsassets/forgejo.swagger.lock.generated.json
+          cp .ward/ward-kdl/ward-kdl.fleet.kdl             cmd/ward/fleetassets/fleet.generated.kdl
+          rm -f cmd/ward/execassets/*.guardfile.kdl
+          for f in .ward/ward-kdl/ward-kdl.*.guardfile.kdl; do
+            if grep -qE '^[[:space:]]+exec ' "$f"; then cp "$f" cmd/ward/execassets/; fi
+          done
+          # No-op proof, part 1 (fail-closed): the deployment coupling #441/#503 homes in
+          # aos MUST still be the coilyco values after the overlay. A wrong / neutral /
+          # foreign bundle (missing the coily* owner or the forgejo.coilysiren.me base-url)
+          # can never ship as a released ward.
+          gen=cmd/ward/opsassets/forgejo.guardfile.generated.kdl
+          if ! grep -q 'base-url "forgejo.coilysiren.me/api/v1"' "$gen" \
+             || ! grep -q 'restrict owner matches coily\*' "$gen"; then
+            echo "::error::overlaid ops-forgejo guardfile lost the coilyco base-url/owner coupling; pinned bundle ${AOS_SPECS_TAG} is not the coilyco deployment. Refusing to ship." >&2
+            exit 1
+          fi
+          echo "ops-forgejo coupling unchanged: $(grep -E 'base-url|restrict owner' "$gen" | tr -s ' ' | paste -sd'; ' -)"
+          # No-op proof, part 2 (fail-safe). Steady state is a byte no-op: coilyco onto
+          # coilyco leaves the shipped embeds identical. DURING the staged cutover the aos
+          # bundle can lag ward's tree (values that landed in ward but are not yet homed in
+          # aos), and overlaying a lagging bundle would REGRESS the shipped binary. Rather
+          # than ship that regression, or fail every release red over a known transitional
+          # gap, fail SAFE: restore ward's committed embeds and warn loudly, so the release
+          # stays byte-identical to today's shipped coilyco surface until aos catches up.
+          # Step 4 (tree neutralization) REPLACES this revert - once ward's tree is neutral
+          # the overlay is SUPPOSED to change the embeds, so this guard must be removed then.
+          if ! git diff --quiet -- cmd/ward/opsassets cmd/ward/fleetassets cmd/ward/execassets; then
+            echo "::warning::aos ward-specs ${AOS_SPECS_TAG} diverges from ward's tree; the overlay is not yet a no-op. Preserving today's shipped coilyco surface (overlay reverted). Home ward's current fleet/lock values in aos, then re-pin. Diverging embeds:" >&2
+            git --no-pager diff --stat -- cmd/ward/opsassets cmd/ward/fleetassets cmd/ward/execassets >&2 || true
+            git checkout -- .ward/ward-kdl cmd/ward/opsassets cmd/ward/fleetassets cmd/ward/execassets
+          else
+            echo "overlay is a clean no-op: aos bundle ${AOS_SPECS_TAG} matches ward's shipped surface byte-for-byte"
+          fi
 
       - name: Cross-compile the full ward matrix (darwin + linux + windows, amd64 + arm64)
         timeout-minutes: 12

@@ -88,7 +88,7 @@ Over 60 pages under [`docs/`](docs/) cover each surface. The anchors:
 - **The agent driver** - [first-run.md](docs/first-run.md) (zero to a first `--print` dry run), [agent.md](docs/agent.md) (the reference), the roster [agent-engineer.md](docs/agent-engineer.md) / [agent-director.md](docs/agent-director.md) / [agent-advisor.md](docs/agent-advisor.md), the [agent-gate.md](docs/agent-gate.md), [agent-credentials.md](docs/agent-credentials.md), [agent-observability.md](docs/agent-observability.md).
 - **The container** - [container.md](docs/container.md), [container-reap.md](docs/container-reap.md) (land-or-salvage on teardown), [container-multi-repo.md](docs/container-multi-repo.md), [container-substrate.md](docs/container-substrate.md).
 - **Operator surface (ward-kdl / ops)** - [ward-kdl.md](docs/ward-kdl.md), [ward-kdl-tiers.md](docs/ward-kdl-tiers.md), [ops-forgejo.md](docs/ops-forgejo.md).
-- **Build & release** - [homebrew-build.md](docs/homebrew-build.md), [release.md](docs/release.md), [github-mirror.md](docs/github-mirror.md), [golangci.md](docs/golangci.md).
+- **Build & release** - [homebrew-build.md](docs/homebrew-build.md), [release.md](docs/release.md), [golangci.md](docs/golangci.md).
 
 ## Status
 

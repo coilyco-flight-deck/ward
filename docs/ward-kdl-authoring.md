@@ -47,25 +47,26 @@ code, and the build swaps them through a fixed assets-dir convention.
 ## Bring your own specs
 
 The bundle is read from the tracked `.ward/ward-kdl/` directory - the assets-dir
-convention ([ward#453](https://forgejo.coilysiren.me/coilyco-flight-deck/ward/issues/453)), no make-var and no sibling checkout, so `make build-ward-kdl`
-works in a bare clone. Swap a bundle by overlaying that directory.
-[examples/ward-specs/](../examples/ward-specs) is the neutral starter bundle; a
-build from it carries no coilyco values.
+convention ([ward#453](https://forgejo.coilysiren.me/coilyco-flight-deck/ward/issues/453)), so `make build-ward-kdl` works in a bare clone.
+Swap a bundle by overlaying that directory. [examples/ward-specs/](../examples/ward-specs)
+is the neutral starter bundle.
 
 To build `ward` against your own deployment:
 
-1. Copy `examples/ward-specs/*` into `.ward/ward-kdl/`, overlaying the tracked bundle.
+1. Copy `examples/ward-specs/*` into `.ward/ward-kdl/`, over the tracked bundle.
 2. Replace each placeholder (`git.example.com`, `/example/...`, `example*`, `example-bot`) with your deployment's values.
 3. Run `make build-ward-kdl`, then `make test`.
 
 Ward's own tracked bundle still carries the coilyco values today ([ward#441](https://forgejo.coilysiren.me/coilyco-flight-deck/ward/issues/441)).
-Homing them in aos and overlaying at both build sites before `go build`, so ward's
-tree goes neutral, is the cross-repo follow-up ([ward#503](https://forgejo.coilysiren.me/coilyco-flight-deck/ward/issues/503)).
+Sourcing them from aos so ward's tree can go neutral is the staged cutover
+([ward#503](https://forgejo.coilysiren.me/coilyco-flight-deck/ward/issues/503)): ward's release CI now overlays the pinned aos
+`ward-specs` bundle before `go build` ([release.md](release.md)); the tap overlay
+and neutralizing this tree remain.
 
 ## See also
 
 - [guardfile-grammar.md](guardfile-grammar.md) - the dialect-1 KDL grammar and a minimal guardfile.
 - [ward-kdl.md](ward-kdl.md) - what the build-time authoring layer is.
-- [ward-kdl-surface.md](ward-kdl-surface.md) - the full generated verb surface.
+- [ward-kdl-surface.md](ward-kdl-surface.md) - the full verb surface.
 - [examples/ward-specs/](../examples/ward-specs) - the neutral starter bundle.
-- [.ward/ward-kdl/README.md](../.ward/ward-kdl/README.md) - the bundle directory this doc describes.
+- [.ward/ward-kdl/README.md](../.ward/ward-kdl/README.md) - the bundle directory.

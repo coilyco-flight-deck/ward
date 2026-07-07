@@ -18,7 +18,7 @@ flat list or a `prefix="..."`:
 
 - **advisor** and **director** hold the **live-observe set** - the aws + tailscale
   guardfiles - so their runs get AWS creds and join the tailnet **with no flag**
-  (the director to observe kai-server, [eco-observe.md](eco-observe.md)).
+  (the director to observe kai-server).
 - **engineer** holds the **empty set**, the least-access wall.
 
 The references are **descriptive guardfile names, never inline grants**: a

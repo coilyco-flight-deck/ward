@@ -36,7 +36,7 @@ or answers it.
 - **`director`** (was `backlog`) - autonomous backlog supervisor: dispatches
   engineers, surfaces a read-only session on drain. Holds the **live-observe set**
   (aws + tailnet) so its container reaches the live kai-server for the read-only
-  [`ward ops eco observe`](eco-test.md) surface ([ward#547](https://forgejo.coilysiren.me/coilyco-flight-deck/ward/issues/547)). [agent-director.md](agent-director.md).
+  `ward ops eco observe` surface ([ward#547](https://forgejo.coilysiren.me/coilyco-flight-deck/ward/issues/547)). [agent-director.md](agent-director.md).
 - **`advisor`** (was `reply`+`ask`) - answers, writes no code: a ref comments,
   freeform is interactive. The advisor role holds the **live-observe guardfile
   set** (the tailnet + `~/.aws`, per its `roles` entry in `ward-kdl.fleet.kdl`,
