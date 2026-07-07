@@ -60,6 +60,7 @@ New to ward? Read [architecture.md](architecture.md) first - it frames the whole
 - [agent-github.md](agent-github.md) - GitHub as a first-class forge: token setup + the PR-landing loop.
 - [github-rate-limits.md](github-rate-limits.md) - ward's GitHub client stays on the REST budget, off GraphQL.
 - [director-startup-triage.md](director-startup-triage.md) - director startup triage (autonomous drain).
+- [director-consult.md](director-consult.md) - `warded director consult`, the interactive consult-to-headless conversion interview.
 - [director-on-demand-surface.md](director-on-demand-surface.md) - the director's on-demand surface.
 - [broker.md](broker.md) - the root credential broker that hardens the director's surface.
 - [forgejo-token-audit.md](forgejo-token-audit.md) - the audited set of raw Forgejo-token read sites + the build-time guard that freezes it.
