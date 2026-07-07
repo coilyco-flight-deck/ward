@@ -40,8 +40,18 @@ does can defeat it. It is a hidden entrypoint-called verb.
 7. Scans the residual diff for junk that should never land on `main`: vendored
    trees (`node_modules`, ...), credential files (`.env`, `*.pem`, ...), blobs.
 8. Decides deterministically:
-   - clean diff + clean integration -> **push straight to `main`**.
-   - anything else (conflict, scan finding, rejected push) -> **salvage**: push to
+   - clean diff + clean integration -> **re-checks the carried `closes #N` is in
+     the exact post-rebase history about to land, then push straight to `main`**.
+     This push-site re-check ([ward#515](https://forgejo.coilysiren.me/coilyco-flight-deck/ward/issues/515))
+     co-locates the closing-ref invariant with the irreversible push, so a
+     residual-only run whose sole landable commit is the reaper's own
+     `ward-container: residual ... work on <slug>` commit (subject + attribution
+     trailer, **no** `closes #N`) can never reach `main` even if a future
+     reordering of the step-5 gate regresses - the ordering churn of
+     [ward#513](https://forgejo.coilysiren.me/coilyco-flight-deck/ward/issues/513)/[ward#518](https://forgejo.coilysiren.me/coilyco-flight-deck/ward/issues/518)
+     already broke that gate once.
+   - anything else (conflict, scan finding, missing closing reference, rejected
+     push) -> **salvage**: push to
      a `ward-salvage/<id>` branch (durable), then notify - a **carried**
      run comments the notice back on its issue and **reopens** it; a **freeform**
      run files exactly **one** standalone `[ward-salvage]` issue, never appended.
@@ -74,6 +84,26 @@ the reaper dumps the patch to the container log, recoverable via `docker logs`
 The agent's job is to make the reaper's trivial: finish, push to `main`, leave a
 clean tree. The reaper is the backstop that holds *without depending on the agent*.
 On salvage or failure it also dumps a [reap diagnostics](container-reap-diagnostics.md) block so a bad outcome self-diagnoses.
+
+## The gate is only as strong as the reaper's ward version
+
+The closing-ref gate above (steps 5 and 8) runs **in-container**, from the ward
+binary the container downloaded at dispatch. So the enforcement is only as fixed
+as that binary: a container running a ward built **before** the closing-ref gate
+([ward#511](https://forgejo.coilysiren.me/coilyco-flight-deck/ward/issues/511))
+has no gate at all, and its reaper can push a residual commit to `main` without
+the carried `closes #N` - exactly the
+[infrastructure#427](https://forgejo.coilysiren.me/coilyco-flight-deck/infrastructure/issues/427)
+incident that motivated [ward#515](https://forgejo.coilysiren.me/coilyco-flight-deck/ward/issues/515),
+where the fix was already on `main` but a stale in-container reaper ran anyway.
+No re-check the current binary adds can fix a binary that already shipped, so the
+invariant is enforced one layer up, at **dispatch**: `buildUpPlan` refuses to
+launch a container pinned to a ward strictly **older** than the dispatching host
+([ward#529](https://forgejo.coilysiren.me/coilyco-flight-deck/ward/issues/529),
+[agent-ward-downgrade.md](agent-ward-downgrade.md)), so a known-buggy reaper never
+ships in the first place. Keep the dispatching host's ward current
+(`brew upgrade coilyco-flight-deck/tap/ward`) and do not pass an older
+`--ward-version` / `WARD_AGENT_VERSION` without `--allow-ward-downgrade`.
 
 ## Operator note: don't rotate the token mid-run
 

@@ -2,6 +2,7 @@ package main
 
 import (
 	"context"
+	"encoding/json"
 	"os"
 	"os/exec"
 	"path/filepath"
@@ -453,6 +454,62 @@ func TestReapTargetTreeLandedAndClosedDoesNotSalvage(t *testing.T) {
 	out, _ := exec.Command("git", "-C", repo, "branch", "--list", salvageBranchPrefix+"*").CombinedOutput()
 	if strings.TrimSpace(string(out)) != "" {
 		t.Fatalf("landed-and-closed run must not create a salvage branch, got: %q", string(out))
+	}
+}
+
+// TestReapTargetTreeResidualOnlyRunWithoutCloseRefSalvages is the ward#515 regression:
+// a residual-only carried run (reaper commit, subject + trailer, NO closes) salvages.
+func TestReapTargetTreeResidualOnlyRunWithoutCloseRefSalvages(t *testing.T) {
+	origin := t.TempDir()
+	runGit(t, origin, "init", "--bare", "-b", "main")
+	work := t.TempDir()
+	runGit(t, work, "init", "-b", "main")
+	runGit(t, work, "config", "user.email", "test@example.com")
+	runGit(t, work, "config", "user.name", "Test User")
+	runGitCommitAt(t, work, "2026-07-02T06:00:00Z", "base.txt", "base\n", "base")
+	runGit(t, work, "remote", "add", "origin", origin)
+	runGit(t, work, "push", "origin", "main")
+	runGit(t, work, "update-ref", "refs/remotes/origin/main", "HEAD")
+	baseline := mustGitRev(t, work, "origin/main")
+
+	// A real, readable provenance file so the run passes the provenance gate and
+	// reaches the closing-ref check, exactly as the incident run did.
+	prov := runProvenance{
+		RunID:        "engineer-goose-infrastructure-427",
+		Repo:         "coilyco-flight-deck/infrastructure",
+		Issue:        427,
+		ReservedAt:   "2026-07-02T06:23:49Z",
+		BaselineMain: baseline,
+	}
+	provData, err := json.Marshal(prov)
+	if err != nil {
+		t.Fatal(err)
+	}
+	if err := os.WriteFile(filepath.Join(work, runProvenanceFile), provData, 0o644); err != nil {
+		t.Fatal(err)
+	}
+
+	// The exact residual commit shape observed on infrastructure#427's main:
+	// reaper subject plus ONLY a Co-Authored-By trailer, no closes ref.
+	runGitCommitAt(t, work, "2026-07-02T07:10:00Z", "scratch.txt", "loose\n",
+		"ward-container: residual goose work on coilyco-flight-deck/infrastructure\n\nCo-Authored-By: Goose <goose@ward.agent>")
+
+	r := &Runner{Runner: &shell.Runner{Resolve: shell.PathResolver}}
+	// Token empty: salvage preserves the branch but files no issue (logged, not fatal).
+	env := reapEnv{Owner: "coilyco-flight-deck", Name: "infrastructure", Base: "https://forgejo.coilysiren.me", Mode: "goose", Issue: 427, Launched: true}
+	if err := r.reapTargetTree(t.Context(), work, env, false); err != nil {
+		t.Fatalf("reapTargetTree salvaging a close-refless residual-only run: %v", err)
+	}
+
+	// The carried issue was never closed, so the residual commit must NOT have
+	// advanced canonical main: origin/main still points at the baseline.
+	if got := mustGitRev(t, origin, "main"); got != baseline {
+		t.Fatalf("a residual-only run without closes #427 must not land on main: origin main=%s baseline=%s", got, baseline)
+	}
+	// The work is preserved on a salvage branch instead.
+	out, _ := exec.Command("git", "-C", origin, "branch", "--list", salvageBranchPrefix+"*").CombinedOutput()
+	if strings.TrimSpace(string(out)) == "" {
+		t.Fatal("a close-refless residual-only run must be preserved on a salvage branch")
 	}
 }
 
