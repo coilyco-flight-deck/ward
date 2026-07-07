@@ -346,6 +346,13 @@ func (r *Runner) executeReap(ctx context.Context, work string, env reapEnv, acti
 			return r.salvage(ctx, work, env, reasonConflict, false, findings, status,
 				reapDecision{Gate: "remote main has no run-owned commit (pre-push recheck)", ProvState: "present"})
 		}
+		// Final closing-ref gate LOCAL to the irreversible push (ward#515): re-check
+		// the post-rebase history so no upstream-gate reorder can land a close-refless run.
+		if env.Issue != 0 && !r.issueClosingReferencePresent(ctx, work, env.Issue) {
+			fmt.Fprintf(os.Stderr, "ward container reap: closing reference for #%d absent from the history about to land; salvaging instead of pushing main\n", env.Issue)
+			return r.salvage(ctx, work, env, reasonCloseRef, false, findings, status,
+				reapDecision{Gate: "missing same-repo closing reference (push-site recheck)", ProvState: "present", Landed: landed})
+		}
 		fmt.Fprintln(os.Stderr, "ward container reap: push to main start")
 		out, perr := r.pushCapture(ctx, work, "HEAD:main")
 		if perr == nil {
