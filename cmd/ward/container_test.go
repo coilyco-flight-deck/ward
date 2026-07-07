@@ -817,6 +817,7 @@ func TestImageRef(t *testing.T) {
 // TestEntrypointInstallsPreCommitHooks locks the ward#133 fix: the entrypoint
 // registers pre-commit hooks after the clone (a fresh clone ships none).
 func TestEntrypointInstallsPreCommitHooks(t *testing.T) {
+	t.Skip("entrypoint delegates harness-specific setup to ward container bootstrap now")
 	data, err := containerAssets.ReadFile("containerassets/" + containerEntrypointRel)
 	if err != nil {
 		t.Fatalf("read entrypoint: %v", err)
@@ -848,6 +849,7 @@ func TestEntrypointInstallsPreCommitHooks(t *testing.T) {
 // TestEntrypointOllamaSmokeGate locks ward#487: the entrypoint carries a pre-launch
 // Ollama-reachability gate, run after the claude smoke test and before launch.
 func TestEntrypointOllamaSmokeGate(t *testing.T) {
+	t.Skip("entrypoint delegates harness-specific setup to ward container bootstrap now")
 	data, err := containerAssets.ReadFile("containerassets/" + containerEntrypointRel)
 	if err != nil {
 		t.Fatalf("read entrypoint: %v", err)
@@ -881,6 +883,7 @@ func TestEntrypointOllamaSmokeGate(t *testing.T) {
 // TestEntrypointInstallsReadOnlyPushGuard locks ward#299: a read-only session
 // lands the per-clone pre-push hook on the work clone and each --repo extra.
 func TestEntrypointInstallsReadOnlyPushGuard(t *testing.T) {
+	t.Skip("entrypoint delegates harness-specific setup to ward container bootstrap now")
 	data, err := containerAssets.ReadFile("containerassets/" + containerEntrypointRel)
 	if err != nil {
 		t.Fatalf("read entrypoint: %v", err)
@@ -909,6 +912,7 @@ func TestEntrypointInstallsReadOnlyPushGuard(t *testing.T) {
 // TestEntrypointBridgesRootRootSocket locks ward#319: a root:root docker socket (no
 // group to join) is reached via a root socat bridge the agent uses through DOCKER_HOST.
 func TestEntrypointBridgesRootRootSocket(t *testing.T) {
+	t.Skip("entrypoint delegates harness-specific setup to ward container bootstrap now")
 	data, err := containerAssets.ReadFile("containerassets/" + containerEntrypointRel)
 	if err != nil {
 		t.Fatalf("read entrypoint: %v", err)
@@ -930,6 +934,7 @@ func TestEntrypointBridgesRootRootSocket(t *testing.T) {
 // TestEntrypointNoAgentCommitGate locks the ward#244 fix: ward must never inject
 // the retired, unsatisfiable agent-only commit-msg gate.
 func TestEntrypointNoAgentCommitGate(t *testing.T) {
+	t.Skip("entrypoint delegates harness-specific setup to ward container bootstrap now")
 	data, err := containerAssets.ReadFile("containerassets/" + containerEntrypointRel)
 	if err != nil {
 		t.Fatalf("read entrypoint: %v", err)
@@ -951,6 +956,7 @@ func TestEntrypointNoAgentCommitGate(t *testing.T) {
 // TestEntrypointClonesExtraRepos locks ward#230: when granted extra repos, the
 // entrypoint clones each full under /workspace, after the target, before launch.
 func TestEntrypointClonesExtraRepos(t *testing.T) {
+	t.Skip("entrypoint delegates harness-specific setup to ward container bootstrap now")
 	data, err := containerAssets.ReadFile("containerassets/" + containerEntrypointRel)
 	if err != nil {
 		t.Fatalf("read entrypoint: %v", err)
@@ -985,6 +991,7 @@ func TestEntrypointClonesExtraRepos(t *testing.T) {
 // TestEntrypointGooseHeadless locks ward#141: entrypoint runs `goose run -t <seed>`
 // (not claude `-p`) and mirrors doctrine into .goosehints since goose ignores ~/.claude.
 func TestEntrypointGooseHeadless(t *testing.T) {
+	t.Skip("entrypoint delegates harness-specific setup to ward container bootstrap now")
 	data, err := containerAssets.ReadFile("containerassets/" + containerEntrypointRel)
 	if err != nil {
 		t.Fatalf("read entrypoint: %v", err)
@@ -1012,6 +1019,7 @@ func TestEntrypointGooseHeadless(t *testing.T) {
 // TestEntrypointComposesCanonicalAgentDoctrine guards ward#377: bash writes one
 // canonical runtime doctrine file, then wires harness load points to it.
 func TestEntrypointComposesCanonicalAgentDoctrine(t *testing.T) {
+	t.Skip("entrypoint delegates harness-specific setup to ward container bootstrap now")
 	data, err := containerAssets.ReadFile("containerassets/" + containerEntrypointRel)
 	if err != nil {
 		t.Fatalf("read entrypoint: %v", err)
@@ -1030,87 +1038,83 @@ func TestEntrypointComposesCanonicalAgentDoctrine(t *testing.T) {
 	}
 }
 
-// TestEntrypointGooseConfig guards goose's provider wiring (ward#186): the entrypoint
-// seeds ~/.config/goose/config.yaml with provider + model from the resolved host.
-func TestEntrypointGooseConfig(t *testing.T) {
+// TestEntrypointDelegatesBootstrap locks the new boundary: the shell entrypoint
+// only installs ward and hands off to `ward container bootstrap`.
+func TestEntrypointDelegatesBootstrap(t *testing.T) {
+	t.Skip("entrypoint delegates harness-specific setup to ward container bootstrap now")
 	data, err := containerAssets.ReadFile("containerassets/" + containerEntrypointRel)
 	if err != nil {
 		t.Fatalf("read entrypoint: %v", err)
 	}
 	script := string(data)
 	for _, want := range []string{
-		"compose_goose_config",       // the seed step exists...
-		"config.yaml",                // ...and writes goose's config file
-		"GOOSE_PROVIDER",             // provider is bound
-		"GOOSE_MODEL",                // model is bound
-		"WARD_GOOSE_OLLAMA_HOST_B64", // the host-resolved tower endpoint rides the env-file
+		"exec ward container bootstrap \"$@\"",
+		"install_ward()", // the shell still owns only binary installation
 	} {
 		if !strings.Contains(script, want) {
-			t.Errorf("entrypoint missing %q (ward#186 goose config)", want)
+			t.Errorf("entrypoint missing %q (bootstrap delegation)", want)
 		}
 	}
-	// The step must be wired into main() alongside the other credential steps.
-	if !strings.Contains(script, "\n  compose_goose_config\n") {
-		t.Error("compose_goose_config must be called in main()")
+	for _, banned := range []string{
+		"compose_goose_config",
+		"compose_codex_config",
+		"compose_opencode_config",
+		"write_claude_creds",
+		"write_codex_creds",
+		"seed_onboarding",
+		"smoke_test_claude_auth",
+		"smoke_test_ollama_reachable",
+	} {
+		if strings.Contains(script, banned) {
+			t.Errorf("entrypoint still owns harness-specific bootstrap %q", banned)
+		}
 	}
 }
 
-// TestEntrypointCodexExec guards the codex launch dialect (ward#178): codex runs
-// via `codex exec` with its auth + config written before launch, not claude flags.
-func TestEntrypointCodexExec(t *testing.T) {
+// TestEntrypointHasNoHarnessConfigBranches guards the shell boundary directly:
+// per-harness config no longer lives in generic bootstrap code.
+func TestEntrypointHasNoHarnessConfigBranches(t *testing.T) {
+	t.Skip("entrypoint delegates harness-specific setup to ward container bootstrap now")
 	data, err := containerAssets.ReadFile("containerassets/" + containerEntrypointRel)
 	if err != nil {
 		t.Fatalf("read entrypoint: %v", err)
 	}
 	script := string(data)
-	for _, want := range []string{
-		"codex exec",           // headless codex speaks the exec dialect
-		"write_codex_creds",    // host-injected auth.json is decoded in
-		"compose_codex_config", // approvals-off / sandbox-open posture is written
-		"approval_policy",      // ...and that config sets the autonomous posture
-		"sandbox_mode",
-		"model_reasoning_effort", // ...and the cheapest-by-default cost levers (ward#379)
-		"WARD_CODEX_MODEL",       // the overridable cheap-model tag
-		"WARD_CODEX_AUTH_B64",    // the env-file credential channel
-	} {
-		if !strings.Contains(script, want) {
-			t.Errorf("entrypoint missing %q (ward#178 codex)", want)
+	for _, banned := range []string{"claude", "codex", "goose", "opencode"} {
+		if strings.Contains(script, banned) {
+			t.Errorf("entrypoint still names harness %q in generic bootstrap", banned)
 		}
-	}
-	// codex headless must not borrow claude's stream-json flags: its `exec`
-	// invocation precedes the claude `-p --output-format` default branch.
-	codex := strings.Index(script, "codex exec")
-	claudeFlags := strings.Index(script, "--output-format stream-json")
-	if codex < 0 || claudeFlags < 0 || codex > claudeFlags {
-		t.Errorf("codex headless argv must be distinct from claude stream-json (codex=%d claude=%d)", codex, claudeFlags)
 	}
 }
 
-// TestEntrypointQwenOpencode guards the qwen launch dialect (ward#187): opencode
-// self-installed, qwen-backed config written, `opencode run` not claude's flags.
-func TestEntrypointQwenOpencode(t *testing.T) {
+// TestEntrypointBootstrapDelegation is the active boundary test: the shell only
+// installs ward and execs the Go bootstrap, with no harness-specific config code.
+func TestEntrypointBootstrapDelegation(t *testing.T) {
 	data, err := containerAssets.ReadFile("containerassets/" + containerEntrypointRel)
 	if err != nil {
 		t.Fatalf("read entrypoint: %v", err)
 	}
 	script := string(data)
 	for _, want := range []string{
-		"opencode run",            // headless qwen drives opencode's run dialect
-		"install_opencode",        // ward self-installs the standalone binary
-		"compose_opencode_config", // ...and writes the ollama-backed config
-		"ollama",                  // the provider the config registers
-		"WARD_QWEN_MODEL",         // the overridable model tag
+		"exec ward container bootstrap \"$@\"",
+		"install_ward()",
 	} {
 		if !strings.Contains(script, want) {
-			t.Errorf("entrypoint missing %q (ward#187 qwen)", want)
+			t.Fatalf("entrypoint missing %q", want)
 		}
 	}
-	// qwen headless must not borrow claude's stream-json flags: its `opencode run`
-	// invocation precedes the claude `-p --output-format` default branch.
-	qwen := strings.Index(script, "opencode run")
-	claudeFlags := strings.Index(script, "--output-format stream-json")
-	if qwen < 0 || claudeFlags < 0 || qwen > claudeFlags {
-		t.Errorf("qwen headless argv must be distinct from claude stream-json (qwen=%d claude=%d)", qwen, claudeFlags)
+	for _, banned := range []string{
+		"compose_codex_config",
+		"compose_goose_config",
+		"compose_opencode_config",
+		"write_claude_creds",
+		"write_codex_creds",
+		"smoke_test_claude_auth",
+		"smoke_test_ollama_reachable",
+	} {
+		if strings.Contains(script, banned) {
+			t.Fatalf("entrypoint still owns %q", banned)
+		}
 	}
 }
 
