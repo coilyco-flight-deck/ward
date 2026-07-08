@@ -27,8 +27,8 @@ const (
 	// dispatchIssueClosed: the target issue is already closed, so nothing launched -
 	// the re-dispatch guard against an already-landed issue (ward#600).
 	dispatchIssueClosed = 6
-	// dispatchModeCeiling: the issue's automation-mode label sits below the role's
-	// ceiling, so the code-landing dispatch is refused (agentic-os#246, ward#607).
+	// dispatchModeCeiling: the issue is explicitly labeled interactive, so the
+	// code-landing dispatch is refused (ward#663).
 	dispatchModeCeiling = 7
 )
 

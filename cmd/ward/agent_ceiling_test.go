@@ -35,34 +35,41 @@ func TestIssueModeCeiling(t *testing.T) {
 	}
 }
 
-// TestAgentSurfaceCeiling pins the role -> ceiling product decision (ward#607):
-// only the engineer is gated (needs headless); director/advisor are ungated.
-func TestAgentSurfaceCeiling(t *testing.T) {
-	if need, name, gated := agentSurfaceCeiling("engineer"); !gated || name != "headless" || need != len(modeCeilingLevels)-1 {
-		t.Fatalf("engineer ceiling = (%d, %q, %v), want (%d, headless, true)", need, name, gated, len(modeCeilingLevels)-1)
+// TestIssueHasModeLabel proves the engineer gate keys off the explicit
+// interactive label, not the lowest resolved mode ceiling.
+func TestIssueHasModeLabel(t *testing.T) {
+	cases := []struct {
+		name   string
+		labels []string
+		want   bool
+	}{
+		{"missing", nil, false},
+		{"consult only", []string{"consult"}, false},
+		{"unlabeled fallback", []string{"P1", "bug"}, false},
+		{"interactive", []string{"interactive"}, true},
+		{"interactive with consult", []string{"consult", "interactive"}, true},
+		{"headless only", []string{"headless"}, false},
+		{"case and space tolerant", []string{" interactive "}, true},
 	}
-	for _, role := range []string{"director", "advisor", ""} {
-		if _, _, gated := agentSurfaceCeiling(role); gated {
-			t.Errorf("role %q should be ungated", role)
-		}
+	for _, tc := range cases {
+		t.Run(tc.name, func(t *testing.T) {
+			if got := issueHasModeLabel(tc.labels, "interactive"); got != tc.want {
+				t.Fatalf("issueHasModeLabel(%v, interactive) = %v, want %v", tc.labels, got, tc.want)
+			}
+		})
 	}
 }
 
-// TestModeCeilingGateRefusesBelowCeiling runs the exact comparison the dispatch
-// seam makes: engineer refuses any below-headless issue, clears a headless one.
-func TestModeCeilingGateRefusesBelowCeiling(t *testing.T) {
-	need, _, gated := agentSurfaceCeiling("engineer")
-	if !gated {
-		t.Fatal("engineer must be gated")
-	}
-	refused := [][]string{nil, {"consult"}, {"interactive"}, {"P0"}}
-	for _, labels := range refused {
-		if ceil, _ := issueModeCeiling(labels); !(need > ceil) {
-			t.Errorf("engineer should refuse labels %v (ceiling not below headless)", labels)
+// TestEngineerDispatchGateRefusesInteractiveOnly pins the dispatch seam: consult
+// and unlabeled/default issues clear, explicit interactive issues refuse.
+func TestEngineerDispatchGateRefusesInteractiveOnly(t *testing.T) {
+	for _, labels := range [][]string{nil, {"consult"}, {"headless"}, {"P0"}} {
+		if issueHasModeLabel(labels, "interactive") {
+			t.Errorf("labels %v should not trip the engineer gate", labels)
 		}
 	}
-	if ceil, _ := issueModeCeiling([]string{"headless"}); need > ceil {
-		t.Error("engineer should clear a headless-labeled issue")
+	if !issueHasModeLabel([]string{"interactive"}, "interactive") {
+		t.Fatal("interactive issue should trip the engineer gate")
 	}
 }
 
