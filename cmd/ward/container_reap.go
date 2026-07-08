@@ -301,7 +301,12 @@ func resolveReapWork(c *cli.Command) string {
 	if w := os.Getenv("WARD_REAP_WORK"); w != "" {
 		return w
 	}
-	return resolveInvokeCWD()
+	// If neither --work nor WARD_REAP_WORK is set, fall back to current working directory
+	wd, err := os.Getwd()
+	if err != nil {
+		return resolveInvokeCWD()
+	}
+	return wd
 }
 
 // captureAndCommitResidual snapshots the target tree, then stages and commits
