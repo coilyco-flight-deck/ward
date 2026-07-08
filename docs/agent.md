@@ -56,7 +56,8 @@ warded engineer #98                             # implement a ticket: detached f
 warded engineer #98 --harness codex             # pick another harness (--agent spells the same pick)
 warded engineer "fix the flaky exec_gate test"  # freeform -> file an issue first, then carry
 warded director --repo owner/name               # autonomous headless-lane loop; surfaces a read-only session on drain
-warded advisor #98 "what would it take to..."   # research the issue, post a comment
+warded advisor #98                              # research the issue with the default brief, post a comment
+warded advisor #98 "what would it take to..."   # same, with extra framing
 warded advisor "how is the audit log written?"  # freeform: interactive (--oneshot = one answer)
 ```
 

@@ -411,9 +411,6 @@ func validateDispatchBrokerLaunch(req dispatchBrokerRequest) error {
 	if _, err := parseAgentIssueRef(req.Argv[1]); err != nil {
 		return fmt.Errorf("dispatch broker: %s dispatch requires an issue ref, got %q", req.Role, req.Argv[1])
 	}
-	if req.Role == "advisor" && len(req.Argv) < 3 {
-		return fmt.Errorf("dispatch broker: advisor dispatch requires a prompt after the issue ref")
-	}
 	return validateDispatchBrokerArgv(req.Role, req.Argv[2:])
 }
 
@@ -457,9 +454,6 @@ func validateDispatchBrokerFlags(role string, tail []string, valueFlags, boolFla
 		}
 		return fmt.Errorf("dispatch broker: %s flag %s is not approved", role, arg)
 	}
-	if allowPrompt {
-		return fmt.Errorf("dispatch broker: advisor dispatch requires a prompt after the issue ref")
-	}
 	return nil
 }
 
@@ -487,7 +481,7 @@ func (r *Runner) maybeForwardAgentDispatchToHostBroker(ctx context.Context, c *c
 		argv = brokerEngineerArgv(c, mode, ref)
 	case "advisor":
 		ref, ok := r.brokerDispatchRef(ctx, c.Args().First())
-		if !ok || len(c.Args().Tail()) == 0 {
+		if !ok {
 			return false, nil
 		}
 		argv = brokerAdvisorArgv(c, mode, ref)
