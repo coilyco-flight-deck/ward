@@ -81,6 +81,13 @@ func parseAgentIssueRef(s string) (agentIssueRef, error) {
 	if err == nil {
 		return agentIssueRef{Owner: ref.Owner, Repo: ref.Repo, Number: ref.Number}, nil
 	}
+	// Accept scheme-less Forgejo issue URLs as a convenience for dictated refs and
+	// pasted URLs that dropped their protocol in transit.
+	if !strings.Contains(s, "://") {
+		if ref, err := issueref.Parse("https://"+s, forgejoBaseURL); err == nil {
+			return agentIssueRef{Owner: ref.Owner, Repo: ref.Repo, Number: ref.Number}, nil
+		}
+	}
 	// A non-issue URL is a valid freeform pointer, just not an issue ref -
 	// steer to the task verb that carries arbitrary pointers (ward#234).
 	if strings.Contains(s, "://") {
