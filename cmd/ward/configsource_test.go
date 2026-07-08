@@ -7,6 +7,10 @@ import (
 	"path/filepath"
 	"strings"
 	"testing"
+
+	"forgejo.coilysiren.me/coilyco-flight-deck/cli-guard/cli/verb"
+	"forgejo.coilysiren.me/coilyco-flight-deck/cli-guard/pkg/audit"
+	"github.com/urfave/cli/v3"
 )
 
 // configsource_test.go covers the ward#653 seam: the selection contract plus
@@ -64,6 +68,28 @@ func TestSelectConfigSourceFileRef(t *testing.T) {
 	}
 	if src.topologyKDL != bundleTopologyKDLPath {
 		t.Errorf("bundle topology path = %q, want %q", src.topologyKDL, bundleTopologyKDLPath)
+	}
+}
+
+// TestSelectConfigSourceFileRefCapturesRevision pins the audit-integrity seam:
+// when a local bundle is itself a git checkout, ward records its HEAD sha.
+func TestSelectConfigSourceFileRefCapturesRevision(t *testing.T) {
+	dir := t.TempDir()
+	gitFixture(t, dir, "init", "-b", "main", ".")
+	if err := os.WriteFile(filepath.Join(dir, bundleFleetKDLPath), []byte("fleet { schema-version 2 }"), 0o644); err != nil {
+		t.Fatal(err)
+	}
+	gitFixture(t, dir, "add", ".")
+	gitFixture(t, dir, "commit", "-m", "bundle")
+	sha := gitFixture(t, dir, "rev-parse", "HEAD")
+
+	t.Setenv(wardConfigRefEnv, "file://"+dir)
+	src, err := selectConfigSource()
+	if err != nil {
+		t.Fatalf("selectConfigSource(file://%s): %v", dir, err)
+	}
+	if src.auditVersion != sha {
+		t.Fatalf("auditVersion = %q, want bundle HEAD %q", src.auditVersion, sha)
 	}
 }
 
@@ -201,6 +227,43 @@ func TestOpsCommandDegradesOnBadRef(t *testing.T) {
 	}
 	if err == nil || !strings.Contains(err.Error(), wardConfigRefEnv) {
 		t.Errorf("degraded leaf error = %v, want it to name %s", err, wardConfigRefEnv)
+	}
+}
+
+// TestWrapVerbStampsConfigVersion pins the audit row's bundle attribution:
+// the config-bundle sha flows into the recorded version field.
+func TestWrapVerbStampsConfigVersion(t *testing.T) {
+	dir := t.TempDir()
+	gitFixture(t, dir, "init", "-b", "main", ".")
+	if err := os.WriteFile(filepath.Join(dir, bundleFleetKDLPath), []byte("fleet { schema-version 2 }"), 0o644); err != nil {
+		t.Fatal(err)
+	}
+	gitFixture(t, dir, "add", ".")
+	gitFixture(t, dir, "commit", "-m", "bundle")
+	sha := gitFixture(t, dir, "rev-parse", "HEAD")
+
+	path := filepath.Join(t.TempDir(), "audit.jsonl")
+	r := &Runner{Audit: audit.NewWriter(path), configAuditVersion: sha}
+	wrapped := r.WrapVerb(verb.Spec{
+		Name:   "test.version",
+		Action: func(context.Context, *cli.Command) error { return nil },
+	}, r.Audit)
+	if err := wrapped(context.Background(), &cli.Command{}); err != nil {
+		t.Fatalf("wrapped verb: %v", err)
+	}
+	b, err := os.ReadFile(path)
+	if err != nil {
+		t.Fatalf("read audit row: %v", err)
+	}
+	rows, err := audit.ReadAll(strings.NewReader(string(b)))
+	if err != nil {
+		t.Fatalf("decode audit row: %v", err)
+	}
+	if len(rows) != 1 {
+		t.Fatalf("audit rows = %d, want 1", len(rows))
+	}
+	if rows[0].Version != sha {
+		t.Fatalf("audit row version = %q, want %q", rows[0].Version, sha)
 	}
 }
 

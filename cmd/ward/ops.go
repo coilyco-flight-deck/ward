@@ -57,6 +57,7 @@ func buildForgejoOps() (*cli.Command, error) {
 // the `forgejo` group, audited through ward and SSM-resolved via the aws runner.
 func buildForgejoOpsFrom(src configSource) (*cli.Command, error) {
 	r := leanRunner()
+	r.configAuditVersion = src.auditVersion
 
 	gfBytes, err := fs.ReadFile(src.fsys, src.forgejoGuardfile)
 	if err != nil {

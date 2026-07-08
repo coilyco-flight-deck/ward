@@ -28,6 +28,8 @@ func mountWardKdlExec(root *cli.Command, r *Runner) error {
 // mountWardKdlExecFrom scans src.execDir and grafts each exec guardfile; a mixed
 // bundle dir is filtered to ward-kdl.*.guardfile.kdl files carrying an exec block.
 func mountWardKdlExecFrom(root *cli.Command, src configSource, r *Runner) error {
+	r.configAuditVersion = src.auditVersion
+
 	entries, err := fs.ReadDir(src.fsys, src.execDir)
 	if err != nil {
 		return fmt.Errorf("read exec guardfiles: %w", err)

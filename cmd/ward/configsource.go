@@ -9,6 +9,7 @@ import (
 	"fmt"
 	"io/fs"
 	"os"
+	"os/exec"
 	"regexp"
 	"strings"
 )
@@ -75,6 +76,9 @@ const (
 // plus the per-layout paths the three build sites read.
 type configSource struct {
 	fsys fs.FS
+
+	// auditVersion stamps the resolved bundle identity into the audit row.
+	auditVersion string
 
 	// forgejoGuardfile + forgejoSpecLock feed buildForgejoOps (specverb).
 	forgejoGuardfile string
@@ -153,7 +157,30 @@ func selectConfigSource() (configSource, error) {
 	if !st.IsDir() {
 		return configSource{}, fmt.Errorf("%s: bundle path %s is not a directory", wardConfigRefEnv, dir)
 	}
-	return bundleConfigSource(dir), nil
+	src := bundleConfigSource(dir)
+	rev, err := bundleRevision(dir)
+	if err != nil {
+		if isFile {
+			return src, nil
+		}
+		return configSource{}, fmt.Errorf("%s=%q: %w", wardConfigRefEnv, ref, err)
+	}
+	src.auditVersion = rev
+	return src, nil
+}
+
+// bundleRevision returns the git HEAD of dir when dir is a checkout; empty
+// string means the source is not a git repo or has no resolvable HEAD yet.
+func bundleRevision(dir string) (string, error) {
+	out, err := exec.Command("git", "-C", dir, "rev-parse", "HEAD").CombinedOutput()
+	if err != nil {
+		return "", fmt.Errorf("resolve bundle sha in %s: %w (%s)", dir, err, strings.TrimSpace(string(out)))
+	}
+	rev := strings.TrimSpace(string(out))
+	if rev == "" {
+		return "", fmt.Errorf("resolve bundle sha in %s: empty HEAD", dir)
+	}
+	return rev, nil
 }
 
 // execDialectMarker mirrors the `make sync-exec-assets` filter: exec-dialect
