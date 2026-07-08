@@ -31,6 +31,7 @@ Full credential path: [agent-credentials.md](agent-credentials.md).
   each granted extra repo, and every warmed `/substrate` reference repo), so an
   interactive or director session never re-hits the folder-trust dialog
   ([ward#168](https://forgejo.coilysiren.me/coilyco-flight-deck/ward/issues/168)).
+  Read-only director sessions still can dispatch sibling engineers.
 - Smoke gate: the bounded `claude -p` auth probe before launch.
 
 ## Config shape

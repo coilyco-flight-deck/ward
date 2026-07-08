@@ -1,5 +1,7 @@
 # Agent instructions
 
+Read-only surface instructions override the base doctrine below whenever a container or director session says it is read-only. In those sessions, `/workspace` is read-only by default and `/scratch` is the only writable place for throwaway scripts or scratch files.
+
 This file is the self-contained agent base for `ward`. Work from it alone - it points at nothing outside this repo. Ward does not depend on any broader workspace conventions, and needs no `~/.claude` chain, no `agentic-os-kai`, and no host-fleet context to follow.
 
 ## Audience: which agent are you?

@@ -23,9 +23,10 @@ Three interface surfaces, plus the capability ladder they key off:
 ## Bind mounts
 
 Ward mounts **least-access by default**: the target repo is **never** bind-mounted
-(it is fresh-cloned inside), and every mount beyond the core three is an explicit
-opt-in (`leastAccessMounts` / `dockerSockMount` in
-[`container_compute.go`](../cmd/ward/container_compute.go)).
+(it is fresh-cloned inside), `/workspace` is read-only to the agent by default, and
+every writable scratch file or throwaway script goes under `/scratch`. Every mount
+beyond the core three is an explicit opt-in (`leastAccessMounts` / `dockerSockMount`
+in [`container_compute.go`](../cmd/ward/container_compute.go)).
 
 Always mounted:
 
@@ -50,7 +51,7 @@ Opt-in mounts (off unless the flag is set):
 Given the mounts and env, [`entrypoint.sh`](../cmd/ward/containerassets/entrypoint.sh)
 runs as root and produces what the agent launches into:
 
- - **`/workspace/<repo>`** - the fresh target clone, warm through the `/gitcache` mirror.
+- **`/workspace/<repo>`** - the fresh target clone, warm through the `/gitcache` mirror.
   The authoritative work surface for writable runs. Director-style read-only
   sessions have this tree chmod'd read-only so the workspace mount is enforced
   by the container, not just by doctrine. `origin` is a real push remote only on
@@ -62,6 +63,7 @@ runs as root and produces what the agent launches into:
 - **pre-commit hooks installed** in each work clone ([container-precommit.md](container-precommit.md)).
 - **`~/AGENTS.md`** - the composed context (doctrine, then host context per the ladder,
   then a read-only overlay on a surface run); each harness's load point links to it.
+  Read-only surface instructions override the base doctrine block when both are present.
 - **`~/.claude/settings.json`** - the `bypassPermissions` policy ([container-permissions.md](container-permissions.md)).
 - **per-mode credentials + config** from a decoded secret ([agent-credentials.md](agent-credentials.md)).
 - **the reaper armed** on the `EXIT` trap ([container-reap.md](container-reap.md)).

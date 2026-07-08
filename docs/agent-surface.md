@@ -5,7 +5,9 @@ doc_goal: Make an operator grasp the director's surface session as a deliberatel
 
 The **director's surface session** is the read-only, interactive scope-and-dispatch phase
 of [`warded director`](agent-director.md). It is **not a top-level role**: the
-old standalone `architect` bring-up now lives only here.
+old standalone `architect` bring-up now lives only here. Read-only only narrows the
+session's push path. It does not remove the director's ability to dispatch sibling
+engineers when that is the right follow-through.
 
 A surface session is a seedless interactive bring-up - fresh ephemeral container, fresh clone,
 composed operating context, **no issue and no seed** - whose clone **cannot push to its own
