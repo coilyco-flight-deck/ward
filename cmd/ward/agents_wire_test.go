@@ -6,6 +6,7 @@ import (
 	"io"
 	"os"
 	"path/filepath"
+	"strings"
 	"testing"
 
 	"github.com/coilyco-flight-deck/ward/internal/agents"
@@ -123,6 +124,32 @@ func TestLookupAgentResolvesModes(t *testing.T) {
 	}
 }
 
+// TestComposeAgentContainerCodexSurfaceTrust is the ward#678 director regression: a
+// read-only codex surface, wired as runContainerBootstrap wires it, trusts its cwd.
+func TestComposeAgentContainerCodexSurfaceTrust(t *testing.T) {
+	home := t.TempDir()
+	r := testRunner()
+	e := bootstrapEnv{
+		Mode:       string(modeCodex),
+		AgentHome:  home,
+		TargetName: "agentic-os",
+		ReadOnly:   true, // the director surface session (WARD_READONLY=1)
+	}
+	rc := r.agentRunCtx(context.Background(), e, nil)
+	rc.TrustDirs = agentTrustDirs(e)
+	composeAgentContainer(lookupAgent(modeCodex), rc)
+	data, err := os.ReadFile(filepath.Join(home, ".codex", "config.toml"))
+	if err != nil {
+		t.Fatalf("surface compose did not write ~/.codex/config.toml: %v", err)
+	}
+	for _, dir := range []string{"/workspace/agentic-os", "/workspace"} {
+		want := "[projects.\"" + dir + "\"]\ntrust_level = \"trusted\"\n"
+		if !strings.Contains(string(data), want) {
+			t.Errorf("surface config.toml missing trust table for %s\n---\n%s", dir, data)
+		}
+	}
+}
+
 // TestComposeAgentContainerPerMode confirms the dispatch helper runs only each
 // mode's capabilities (claude onboarding, codex/opencode/goose config), no bleed.
 func TestComposeAgentContainerPerMode(t *testing.T) {
@@ -132,7 +159,7 @@ func TestComposeAgentContainerPerMode(t *testing.T) {
 		absent  string // a path a different mode would write, proving no bleed
 	}{
 		{modeClaude, ".claude.json", filepath.Join(".codex", "config.toml")},
-		{modeCodex, ".codex.json", ".claude.json"},
+		{modeCodex, filepath.Join(".codex", "config.toml"), ".claude.json"},
 		{modeOpencode, filepath.Join(".config", "opencode", "opencode.json"), filepath.Join(".codex", "config.toml")},
 		{modeGoose, filepath.Join(".config", "goose", "config.yaml"), filepath.Join(".codex", "config.toml")},
 	}
