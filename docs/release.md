@@ -5,11 +5,12 @@ doc_goal: Let a maintainer trust and repair ward's Forgejo-canonical push-to-mai
 
 Forgejo-canonical release on push to `main`. The
 `.forgejo/workflows/release.yml` pipeline cuts the tag + release, then bumps the
-homebrew formula(e) so `brew upgrade ward` builds the new tag from source.
+homebrew formula(e) so `brew upgrade ward` downloads and verifies the tagged
+release binary.
 
-ward's formula is build-from-source (a per-tag tarball `url` + `sha256` ->
-`go build`), but `publish-binaries` still ships the full matrix + `SHA256SUMS`
-to **both** the Forgejo and GitHub release pages ([release-binaries.md](release-binaries.md)).
+ward's formula downloads the per-platform release binaries (`url` + `sha256`),
+but `publish-binaries` still ships the full matrix + `SHA256SUMS` to **both**
+the Forgejo and GitHub release pages ([release-binaries.md](release-binaries.md)).
 
 ## No build-time config overlay (superseded by live resolve)
 
@@ -21,7 +22,8 @@ config-source seam ([config-source.md](config-source.md), [ward#653](https://for
 sha256-verified, and copied over the embeds before the cross-compile loop
 ([ward#644](https://forgejo.coilysiren.me/coilyco-flight-deck/ward/issues/644), [ward#503](https://forgejo.coilysiren.me/coilyco-flight-deck/ward/issues/503) step 3) - is removed along with the build-variant
 matrix it implied: one prebuilt binary per platform, byte-identical across
-forges, no per-deployment builds.
+forges, no per-deployment builds. The tap and the scoop manifest now download
+and verify those same per-platform release binaries.
 
 The release page carries **only** the `ward` binaries (+ checksums): `ward-kdl`
 and its `ward-kdl-{read,write,admin}` tiers are no longer public assets - embedded
@@ -61,7 +63,8 @@ OS, so every install channel is a **push** from the tag build rather than a poll
   runner and authenticates the push with the `TAP_WRITE_TOKEN` repo Actions
   secret carried in the push URL (never echoed; git masks credentials in any URL
   it prints), mirroring how `publish-binaries` uses `CI_RELEASE_TOKEN`. The job
-  guards up front and fails loudly if the secret is unset.
+  refreshes the per-platform release-asset URLs and checksums, and guards up
+  front so a missing secret fails loudly.
 - **bump-scoop-manifest** - the Windows sibling ([ward#571](https://forgejo.coilysiren.me/coilyco-flight-deck/ward/issues/571)). Writes the whole
   `bucket/ward.json` (version + the amd64/arm64 release URLs + the two windows
   hashes) into the scoop bucket (`coilyco-flight-deck/scoop-bucket`) and pushes,
@@ -134,9 +137,9 @@ The bump step is `set -euo pipefail` and verifies its own work, so a stalled tap
 can never hide behind a green release (where v0.97.0-v0.102.0 shipped
 without bumping the tap because the tap-write credential broke):
 
-- `pipefail` aborts if the tarball fetch behind the piped `sha256` fails, instead
-  of hashing an empty body into a bogus digest.
-- The computed `sha256` must be a 64-hex digest before any formula is written.
+- `pipefail` aborts if a release-asset fetch behind the piped `sha256` fails,
+  instead of hashing an empty body into a bogus digest.
+- Every computed `sha256` must be a 64-hex digest before any formula is written.
 - The step fails up front with an `::error::` annotation if `TAP_WRITE_TOKEN` is
   unset.
 - A non-zero `git push` (the symptom of a missing, rotated, or under-scoped

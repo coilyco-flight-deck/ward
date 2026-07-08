@@ -5,11 +5,14 @@ doc_goal: Let a maintainer touching the brew formula understand why it forces GO
 
 ## GOPROXY bypass
 
-cli-guard has no semver tags yet, so consumers pin via pseudo-version.
-`proxy.golang.org` 403s the fresh pseudo-version on first fetch even
-though the upstream tarball is reachable. The Formula sets
-`GOPROXY=direct` and `GOSUMDB=off` in the brew sandbox to bypass the
-proxy for module fetches.
+cli-guard has no semver tags yet, so source-built consumers pin via
+pseudo-version. `proxy.golang.org` 403s the fresh pseudo-version on
+first fetch even though the upstream tarball is reachable. The Formula
+sets `GOPROXY=direct` and `GOSUMDB=off` in the brew sandbox to bypass
+the proxy for module fetches.
+
+This note no longer applies to `ward` itself: the tap now downloads the
+tagged release binary instead of building `ward` from source.
 
 ## When this can be removed
 

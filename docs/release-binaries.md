@@ -22,13 +22,15 @@ place that builds and uploads them.
   page ([ward#561](https://forgejo.coilysiren.me/coilyco-flight-deck/ward/issues/561)).
 - **`SHA256SUMS`** - one digest per binary (windows exes included), bare
   basenames, so `sha256sum -c SHA256SUMS` verifies from whichever page the file
-  came off. brew and raw-binary installs use this; only scoop needs the sidecars.
+  came off. Raw-binary installs use this; Homebrew pins the per-platform asset
+  digests directly and scoop needs the `.exe.sha256` sidecars.
 - **Most people should install via a package manager** (see the
   [README](../README.md#install)): Homebrew on macOS/Linux, scoop on Windows,
   `ward upgrade` driving the right one by OS. Raw binaries serve the rest.
 
-The formula itself stays build-from-source ([ward#116](https://forgejo.coilysiren.me/coilyco-flight-deck/ward/issues/116)), so `brew` never consumes
-these binaries - see [release.md](release.md).
+The Homebrew tap now downloads the matching release binary for the current
+platform and verifies it, so `brew` consumes the same bytes the release page
+serves. See [release.md](release.md).
 
 ## Why the checksums cannot drift
 
@@ -49,4 +51,4 @@ reuses the exact Forgejo release body, so the notes match too.
 ## See also
 
 - [release.md](release.md) - the full release pipeline.
-- [homebrew-build.md](homebrew-build.md) - the build-from-source formula.
+- [homebrew-build.md](homebrew-build.md) - the build-from-source notes for other tap formulae.

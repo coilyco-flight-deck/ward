@@ -92,9 +92,9 @@ jobs:
         timeout-minutes: 12
         run: |
           set -euo pipefail
-          # GOPROXY=direct so fresh cli-guard pseudo-versions resolve, mirroring
-          # the brew formula's build. See docs/homebrew-build.md. CGO stays off so
-          # every target cross-compiles from this linux/amd64 runner with no C
+          # GOPROXY=direct so fresh cli-guard pseudo-versions resolve for the
+          # release build. See docs/release-binaries.md. CGO stays off so every
+          # target cross-compiles from this linux/amd64 runner with no C
           # toolchain - ward is pure Go (no `import "C"`). Building the whole
           # matrix ONCE and uploading the same files to both forges is what
           # guarantees the Forgejo and GitHub release pages carry identical
@@ -299,8 +299,8 @@ jobs:
           # `wrap ward-kdl-write` name (forgejo + signoz today), so the asset carries
           # the FULL write-tier surface - matching `make build-ward-kdl-tiers`. This
           # is the tier the in-container broker shells (ward#329). See docs/broker.md.
-          # GOPROXY=direct so fresh cli-guard pseudo-versions resolve, mirroring
-          # publish-binaries and the brew formula. See docs/homebrew-build.md.
+          # GOPROXY=direct so fresh cli-guard pseudo-versions resolve, matching
+          # the release build's source fetches. See docs/release-binaries.md.
           export GOPROXY=direct GOSUMDB=off
           mkdir -p dist
           gen="forgejo.coilysiren.me/coilyco-flight-deck/cli-guard/cmd/kdl-specs@${KDL_GEN_REF}"
@@ -422,8 +422,8 @@ jobs:
           # FULL read-tier surface - matching `make build-ward-kdl-tiers`. Read-only
           # by spec: the read guardfile has no create/edit/delete leaf (ward#240), so
           # the withheld verbs are absent at compile time, not just denied at runtime.
-          # GOPROXY=direct so fresh cli-guard pseudo-versions resolve, mirroring
-          # publish-binaries and the brew formula. See docs/homebrew-build.md.
+          # GOPROXY=direct so fresh cli-guard pseudo-versions resolve, matching
+          # the release build's source fetches. See docs/release-binaries.md.
           export GOPROXY=direct GOSUMDB=off
           mkdir -p dist
           gen="forgejo.coilysiren.me/coilyco-flight-deck/cli-guard/cmd/kdl-specs@${KDL_GEN_REF}"
@@ -518,9 +518,6 @@ jobs:
         env:
           TAP_WRITE_TOKEN: ${{ secrets.TAP_WRITE_TOKEN }}
         run: |
-          # pipefail matters: the sha256 below is computed through a pipe, and
-          # without it a failed tarball fetch would hash an empty/error body into
-          # a bogus digest and the release would ship a broken formula silently.
           set -euo pipefail
           # Push auth is an explicit Actions secret, mirroring publish-binaries'
           # CI_RELEASE_TOKEN: one rotatable, visible credential instead of the
@@ -531,72 +528,102 @@ jobs:
             echo "::error::TAP_WRITE_TOKEN not set; cannot push tap formula" >&2
             exit 1
           fi
-          # Source the release as a tarball, not a git tag+revision: Homebrew's
-          # git download strategy moves .git out during staging and then can't read
-          # the commit time, dying with `ArgumentError: no time information in ""`.
-          # Forgejo serves a stable archive per tag, so pin its sha256. See ward#116.
-          tarball_url="$FORGEJO_BASE_URL/${WARD_REPO}/archive/${TAG}.tar.gz"
-          if command -v sha256sum >/dev/null 2>&1; then sha_cmd="sha256sum"; else sha_cmd="shasum -a 256"; fi
-          sha256=$(curl -fsSL "$tarball_url" | $sha_cmd | awk '{print $1}')
-          if ! printf '%s' "$sha256" | grep -Eq '^[0-9a-f]{64}$'; then
-            echo "::error::computed sha256 '${sha256}' for ${tarball_url} is not a 64-hex digest; refusing to write formula" >&2
-            exit 1
-          fi
+          version="${TAG#v}"
+          artifact_root="$FORGEJO_BASE_URL/${WARD_REPO}/releases/download/${TAG}"
+          hash_asset() {
+            asset="$1"
+            if command -v sha256sum >/dev/null 2>&1; then
+              curl -fsSL "${artifact_root}/${asset}" | sha256sum | awk '{print $1}'
+            else
+              curl -fsSL "${artifact_root}/${asset}" | shasum -a 256 | awk '{print $1}'
+            fi
+          }
+          darwin_amd64=$(hash_asset ward-darwin-amd64)
+          darwin_arm64=$(hash_asset ward-darwin-arm64)
+          linux_amd64=$(hash_asset ward-linux-amd64)
+          linux_arm64=$(hash_asset ward-linux-arm64)
+          for sha in "$darwin_amd64" "$darwin_arm64" "$linux_amd64" "$linux_arm64"; do
+            if ! printf '%s' "$sha" | grep -Eq '^[0-9a-f]{64}$'; then
+              echo "::error::computed sha256 '${sha}' for ${artifact_root} is not a 64-hex digest; refusing to write formula" >&2
+              exit 1
+            fi
+          done
 
-          # Clone the tap's live main and patch on top, so any non-version
-          # edits (build flags, test logic) survive.
+          # Clone the tap's live main and rewrite the formula in place. The
+          # release-asset pins are the source of truth.
           git clone --depth 1 "$FORGEJO_BASE_URL/$TAP_REPO.git" tap
           cd tap
-          # Replace the url line with the tarball url + its sha256, dropping any
-          # existing sha256 line so re-runs stay idempotent.
-          awk -v url="  url \"$tarball_url\"" -v sha="  sha256 \"$sha256\"" '
-            /^  url "/ && !done { print url; print sha; done = 1; next }
-            /^  sha256 "/ { next }
-            { print }
-          ' "$FORMULA_PATH" > "$FORMULA_PATH.new"
-          mv "$FORMULA_PATH.new" "$FORMULA_PATH"
+          cat > "$FORMULA_PATH" <<EOF
+          class Ward < Formula
+            desc "A contributor-facing cli-guard consumer"
+            homepage "https://forgejo.coilysiren.me/coilyco-flight-deck/ward"
+            version "${version}"
+            license "MIT"
 
-          # Enforce the canonical `warded` shim comment. The tap formula long
-          # described the multicall as rewriting argv to `ward drive <args>` and
-          # cited `docs/drive.md`, but the shim resolves to `ward agent` and
-          # `docs/drive.md` never existed (a 404 in an install artifact a
-          # self-hoster reads before piping to brew). ward#247 / ward#282 renamed
-          # the surface; the source of truth is README + docs/agent.md. Normalise
-          # both lines on every bump so the tap cannot drift back, matching on the
-          # stable shim anchors so a no-op re-run stays idempotent (ward#442).
-          sed -i \
-            -e 's|`ward [a-z]* <args>`|`ward agent <args>`|' \
-            -e 's|See ward#.* / docs/[a-z-]*\.md\.|See ward#247, ward#282 / docs/agent.md.|' \
-            "$FORMULA_PATH"
+            on_macos do
+              if Hardware::CPU.arm?
+                url "${artifact_root}/ward-darwin-arm64"
+                sha256 "${darwin_arm64}"
+              else
+                url "${artifact_root}/ward-darwin-amd64"
+                sha256 "${darwin_amd64}"
+              end
+            end
+
+            on_linux do
+              if Hardware::CPU.arm?
+                url "${artifact_root}/ward-linux-arm64"
+                sha256 "${linux_arm64}"
+              else
+                url "${artifact_root}/ward-linux-amd64"
+                sha256 "${linux_amd64}"
+              end
+            end
+
+            def install
+              asset =
+                if OS.mac?
+                  Hardware::CPU.arm? ? "ward-darwin-arm64" : "ward-darwin-amd64"
+                else
+                  Hardware::CPU.arm? ? "ward-linux-arm64" : "ward-linux-amd64"
+                end
+
+              chmod 0555, asset
+              bin.install asset => "ward"
+
+              bin.install_symlink "ward" => "warded"
+
+            end
+
+            test do
+              assert_match "v#{version}", shell_output("#{bin}/ward version")
+              # The warded multicall shim must be on PATH and point at the ward binary.
+              assert_predicate bin/"warded", :symlink?
+              assert_equal (bin/"ward").realpath, (bin/"warded").realpath
+            end
+          end
+EOF
 
           if git diff --quiet -- "$FORMULA_PATH"; then
             echo "formula already at ${TAG}, nothing to push"
             exit 0
           fi
-          # Tap bump attributes to the coilyco-ops bot via its registered email,
-          # the match Forgejo links on (ward#245, docs/agent-attribution.md).
           git config user.name "forgejo-tap-writer"
           git config user.email "coilyco-ops@coilysiren.me"
           git commit -aqm "chore(formula): bump ward to ${TAG} [skip ci]"
-          # Authenticate the push with TAP_WRITE_TOKEN in the URL. The token is
-          # never echoed: it lives only in this variable (no `set -x`), and git
-          # masks credentials in the userinfo of any URL it prints on failure. A
-          # missing, rotated, or under-scoped token makes the push exit non-zero,
-          # which (set -e) fails the release loudly rather than stalling the tap
-          # behind a green build. This is the failure mode behind ward#237.
           push_url="https://coilysiren:${TAP_WRITE_TOKEN}@forgejo.coilysiren.me/${TAP_REPO}.git"
           if ! git push "$push_url" HEAD:main; then
             echo "::error::push of ${FORMULA_PATH} to ${TAP_REPO} failed; TAP_WRITE_TOKEN is likely missing, rotated, or lacks push scope (see docs/release.md)" >&2
             exit 1
           fi
 
-          # Read the tap back and confirm main now serves ${TAG}. This catches a
-          # push that reports success but does not land the bump, so a stale tap
-          # can never masquerade as a green release (ward#237 acceptance: the bump
-          # step fails the release loudly on write errors).
           published=$(curl -fsSL "$FORGEJO_BASE_URL/$TAP_REPO/raw/branch/main/$FORMULA_PATH" || true)
-          if ! printf '%s' "$published" | grep -q "/archive/${TAG}.tar.gz"; then
+          if ! printf '%s' "$published" | grep -q "version \"${version}\""; then
             echo "::error::tap ${TAP_REPO} main does not serve ${TAG} after push; formula bump did not land" >&2
+            exit 1
+          fi
+          if ! printf '%s' "$published" | grep -q "/releases/download/${TAG}/ward-darwin-amd64"; then
+            echo "::error::tap ${TAP_REPO} main does not serve the release-asset URL for ${TAG} after push" >&2
             exit 1
           fi
           echo "tap ${TAP_REPO} formula bumped to ${TAG}"
