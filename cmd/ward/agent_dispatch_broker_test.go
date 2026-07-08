@@ -193,7 +193,7 @@ func TestBrokerEngineerArgvForwardsApprovedFlags(t *testing.T) {
 		"--image", "img", "--tag", "t1", "--ward-version", "v1",
 		"--repo", "coilyco-flight-deck/cli-guard",
 		"--config", "agent.claude.model=sonnet",
-		"--aws", "--tailnet", "--tailnet-mode", "sidecar", "--force", "--no-preflight",
+		"--aws", "--tailnet", "--tailnet-mode", "sidecar", "--force", "--skip-preflight",
 	})
 	got := brokerEngineerArgv(cmd, modeClaude, agentIssueRef{Owner: "coilyco-flight-deck", Repo: "ward", Number: 42})
 	for _, want := range [][]string{
@@ -209,7 +209,7 @@ func TestBrokerEngineerArgvForwardsApprovedFlags(t *testing.T) {
 			t.Errorf("forwarded argv missing %s %s: %v", want[0], want[1], got)
 		}
 	}
-	for _, want := range []string{"engineer", "coilyco-flight-deck/ward#42", "--aws", "--tailnet", "--force", "--no-preflight"} {
+	for _, want := range []string{"engineer", "coilyco-flight-deck/ward#42", "--aws", "--tailnet", "--force", "--skip-preflight"} {
 		if !containsArg(got, want) {
 			t.Errorf("forwarded argv missing %q: %v", want, got)
 		}
@@ -243,7 +243,7 @@ func TestForwardAgentDispatchToHostBrokerSendsCanonicalRequest(t *testing.T) {
 	t.Setenv("WARD_READONLY", "1")
 	t.Setenv("WARD_CONTAINER_NAME", "session-codex-host")
 	cmd := parseCommandForTest(t, agentEngineerFlags(), []string{
-		"engineer", "coilyco-flight-deck/ward#378", "--harness", "claude", "--no-preflight",
+		"engineer", "coilyco-flight-deck/ward#378", "--harness", "claude", "--skip-preflight",
 	})
 	forwarded, err := (&Runner{}).maybeForwardAgentDispatchToHostBroker(t.Context(), cmd, "engineer", modeClaude)
 	if err != nil {
@@ -259,7 +259,7 @@ func TestForwardAgentDispatchToHostBrokerSendsCanonicalRequest(t *testing.T) {
 	if req.Token != "nonce-123" {
 		t.Errorf("forwarded token = %q, want the per-launch nonce", req.Token)
 	}
-	want := []string{"engineer", "coilyco-flight-deck/ward#378", "--harness", "claude", "--no-preflight"}
+	want := []string{"engineer", "coilyco-flight-deck/ward#378", "--harness", "claude", "--skip-preflight"}
 	if !reflect.DeepEqual(req.Argv, want) {
 		t.Errorf("forwarded argv = %v, want %v", req.Argv, want)
 	}
@@ -292,7 +292,7 @@ func TestForwardAgentDispatchToHostBrokerInheritsSurfaceHarness(t *testing.T) {
 	t.Setenv("WARD_READONLY", "1")
 	t.Setenv("WARD_CONTAINER_NAME", "session-codex-host")
 	cmd := parseCommandForTest(t, agentEngineerFlags(), []string{
-		"engineer", "coilyco-flight-deck/ward#378", "--harness", "codex", "--no-preflight",
+		"engineer", "coilyco-flight-deck/ward#378", "--harness", "codex", "--skip-preflight",
 	})
 	forwarded, err := (&Runner{}).maybeForwardAgentDispatchToHostBroker(t.Context(), cmd, "engineer", modeCodex)
 	if err != nil {
@@ -302,7 +302,7 @@ func TestForwardAgentDispatchToHostBrokerInheritsSurfaceHarness(t *testing.T) {
 		t.Fatal("codex surface dispatch did not forward despite broker env")
 	}
 	req := <-gotReq
-	want := []string{"engineer", "coilyco-flight-deck/ward#378", "--harness", "codex", "--no-preflight"}
+	want := []string{"engineer", "coilyco-flight-deck/ward#378", "--harness", "codex", "--skip-preflight"}
 	if !reflect.DeepEqual(req.Argv, want) {
 		t.Errorf("codex surface forwarded argv = %v, want %v", req.Argv, want)
 	}

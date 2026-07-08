@@ -32,8 +32,8 @@ type Deps struct {
 	Now   func() int64
 }
 
-// Config is one panel run's inputs; Execute filters the worker's own family out of
-// Candidates itself (the worker may never review its own diff: correlated blind spots).
+// Config is one panel run's inputs; Execute keeps the worker's family as the default
+// free tier and can still fall back to the other candidate families.
 type Config struct {
 	Worker     string
 	Class      Class
@@ -43,8 +43,8 @@ type Config struct {
 	Prompt     PromptInput
 }
 
-// Execute runs the panel + returns the persisted result, fail-closed: drop the worker
-// family + unavailable reviewers, run free then escalate to paid (docs/dispatch-review).
+// Execute runs the panel + returns the persisted result, fail-closed: drop only
+// unavailable reviewers, run free then escalate to paid (docs/dispatch-review).
 func (d Deps) Execute(cfg Config) PanelResult {
 	res := PanelResult{
 		Timestamp: d.now(),
@@ -78,14 +78,10 @@ func (d Deps) Execute(cfg Config) PanelResult {
 	return res
 }
 
-// partitionEligible drops the worker's own family and any unavailable reviewer,
-// returning the runnable set and a human list of what was dropped and why.
+// partitionEligible drops only unavailable reviewers, returning the runnable set and
+// a human list of what was dropped and why.
 func (d Deps) partitionEligible(cfg Config) (eligible []Reviewer, dropped []string) {
 	for _, rv := range cfg.Candidates {
-		if strings.EqualFold(rv.Family, cfg.Worker) {
-			dropped = append(dropped, rv.Family+" (worker's own family - never reviews its own diff)")
-			continue
-		}
 		if ok, reason := d.avail(rv); !ok {
 			dropped = append(dropped, rv.Family+" (unavailable: "+reason+")")
 			continue
@@ -140,13 +136,13 @@ func splitTier(rs []Reviewer) (free, paid []Reviewer) {
 	return free, paid
 }
 
-// advisoryNote is the loud, human-facing line the single-family fallback emits so
-// the operator knows the trust floor was NOT raised on this diff.
+// advisoryNote is the loud, human-facing line the no-reviewer fallback emits so the
+// operator knows the trust floor was NOT raised on this diff.
 func advisoryNote(worker string, dropped []string) string {
 	return fmt.Sprintf(
-		"ADVISORY-ONLY REVIEW: no heterogeneous reviewer family was available besides the worker (%s), "+
-			"so the adversarial panel could not run and did NOT gate this diff. Dropped: %s. "+
-			"A human should review this change with the extra scrutiny an unrun panel would have applied.",
+		"ADVISORY-ONLY REVIEW: no reviewer family was available for %s, so the adversarial "+
+			"panel could not run and did NOT gate this diff. Dropped: %s. A human should review "+
+			"this change with the extra scrutiny an unrun panel would have applied.",
 		worker, strings.Join(dropped, "; "))
 }
 

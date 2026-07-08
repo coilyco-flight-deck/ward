@@ -13,7 +13,7 @@ import (
 // role (ward#347; the attach was dropped in ward#356). See docs/agent-engineer.md.
 
 // agentEngineerFlags is the engineer flag set: the shared detached run flags
-// (+ --no-preflight) and freeform instructions. No --watch/--new-tab (ward#356).
+// (+ --skip-preflight) and freeform instructions. No --watch/--new-tab (ward#356).
 func agentEngineerFlags() []cli.Flag {
 	flags := agentSurfaceFlags()
 	// Freeform mode files an issue first (was `task`): the positional carries the task text

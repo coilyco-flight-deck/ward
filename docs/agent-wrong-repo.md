@@ -16,8 +16,8 @@ acts on it cheaply:
   second agent run. The new issue is flagged "filed blind ... confirm it fits
   before working it," since nobody looked at the target repo first.
 - It **comments on the original issue** pointing at the freshly-filed one, with
-  the full read folded away, and notes how to override (`--no-preflight`) if the
-  routing is wrong.
+  the full read folded away, and notes how to override (`--skip-preflight`, with
+  `--no-preflight` as the alias) if the routing is wrong.
 - Nothing launches on either side. A human (or a later `ward agent` run) picks up
   the routed issue.
 

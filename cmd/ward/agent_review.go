@@ -29,13 +29,23 @@ const reviewClassEnv = "WARD_REVIEW_CLASS"
 // reviewer must never read as a pass).
 const reviewerTimeout = 8 * time.Minute
 
+// reviewSkillPath resolves the hand-curated aos code-review skill that the prompt
+// embeds into the reviewer context.
+func reviewSkillPath() string {
+	dest := strings.TrimSpace(os.Getenv("WARD_SUBSTRATE_DEST"))
+	if dest == "" {
+		dest = containerSubstrateDest
+	}
+	return filepath.Join(dest, "agentic-os", ".agents", "skills", "tooling-code-review", "SKILL.md")
+}
+
 // reviewBlockedError is the sentinel the command returns on a block, so the verb
 // wrapper records a reject and exits non-zero - the seed keys off it to NOT land.
 type reviewBlockedError struct{ result reviewpanel.PanelResult }
 
 func (e reviewBlockedError) Error() string {
-	return fmt.Sprintf("review gate BLOCKED: %d/%d passing (class %s); landing refused",
-		e.result.Passes, e.result.Threshold, e.result.Class)
+	return fmt.Sprintf("review gate BLOCKED: %d/%d passing (class %s); %s; landing refused",
+		e.result.Passes, e.result.Threshold, e.result.Class, reviewSummary(e.result))
 }
 
 // agentReviewCommand builds `ward agent review`, the pre-landing panel gate plus
@@ -43,14 +53,15 @@ func (e reviewBlockedError) Error() string {
 func agentReviewCommand() *cli.Command {
 	return &cli.Command{
 		Name:  "review",
-		Usage: "Run the in-container adversarial multi-model review panel over this run's diff before it lands (ward#134).",
-		Description: `review is the pre-PR quorum gate. Run it INSIDE a dispatch container,
+		Usage: "Run the in-container code-review pass over this run's diff before it lands (ward#134).",
+		Description: `review is the pre-PR code-review gate. Run it INSIDE a dispatch container,
 after CI is green and before you open the pull request or merge: it builds the
-diff-vs-main, hands it to a heterogeneous panel of reviewer families OTHER than
-the worker's (each told to refute it), and blocks the landing unless a class-tiered
-quorum of them pass. It fails closed: a reviewer error, timeout, or an empty panel
-never reads as approval. Panel verdicts are persisted to a sidecar log beside the
-audit trail. See docs/dispatch-review.md.`,
+diff-vs-main, loads the hand-curated aos review skill, and hands the diff to the
+worker's own harness family first, with other families available as a later,
+higher-cost fallback. The reviewer runs against the live filesystem state and
+blocks the landing unless a class-tiered quorum passes. It fails closed: a reviewer
+error, timeout, or an empty panel never reads as approval. Panel verdicts are
+persisted to a sidecar log beside the audit trail. See docs/dispatch-review.md.`,
 		Flags: []cli.Flag{
 			&cli.StringFlag{Name: "class", Sources: cli.EnvVars(reviewClassEnv), Usage: "autonomy/risk class tiering the quorum threshold: lint-cleanup|default|refactor (default default; lint-cleanup=1 pass, default=majority, refactor=unanimous)"},
 			&cli.StringFlag{Name: "diff-base", Value: "origin/main", Usage: "git ref the diff-under-review is computed against"},
@@ -96,13 +107,14 @@ func (r *Runner) runAgentReview(ctx context.Context, c *cli.Command) error {
 		worker = string(modeClaude)
 	}
 
+	prompt := r.reviewPromptInput(ctx, c, class)
 	cfg := reviewpanel.Config{
 		Worker:     worker,
 		Class:      class,
 		Issue:      reviewIssueRef(),
 		SessionID:  reviewSessionID(),
-		Candidates: reviewerCandidates(),
-		Prompt:     r.reviewPromptInput(ctx, c, class),
+		Candidates: reviewerCandidates(worker),
+		Prompt:     prompt,
 	}
 
 	if c.Bool("print") {
@@ -116,12 +128,17 @@ func (r *Runner) runAgentReview(ctx context.Context, c *cli.Command) error {
 	}
 	result := deps.Execute(cfg)
 
+	if result.Gate == reviewpanel.GateAdvisory {
+		result.Gate = reviewpanel.GateBlock
+		if result.Note == "" {
+			result.Note = "review had no runnable reviewer; blocking fail-closed"
+		}
+	}
 	if perr := appendPanelRecord(result); perr != nil {
 		// Persistence is best-effort telemetry; a write failure must not turn a
 		// blocking gate into a pass, so log loud and keep the verdict.
 		writef(r.Runner.Stderr, "ward agent review: WARNING: could not persist panel result: %v\n", perr)
 	}
-
 	r.reportPanel(c, result)
 	if result.Blocks() {
 		return reviewBlockedError{result: result}
@@ -137,6 +154,23 @@ func (r *Runner) reviewPromptInput(ctx context.Context, c *cli.Command, class re
 		IssueRef: reviewIssueRef(),
 		IssueURL: reviewIssueURL(),
 		Diff:     r.reviewDiff(ctx, c.String("diff-base")),
+	}
+	if ref := strings.TrimSpace(in.IssueRef); ref != "" {
+		if parsed, err := parseAgentIssueRef(ref); err == nil {
+			if issue, ierr := r.fetchIssue(ctx, parsed); ierr == nil {
+				in.IssueTitle = issue.Title
+				in.IssueBody = issue.Body
+			} else {
+				writef(r.Runner.Stderr, "ward agent review: WARNING: could not fetch issue contract for %s: %v\n", ref, ierr)
+				in.IssueBody = "(could not fetch issue contract for " + ref + ": " + ierr.Error() + ")"
+			}
+		}
+	}
+	if skill, err := os.ReadFile(reviewSkillPath()); err == nil { //nolint:gosec // repo-owned skill path
+		in.Skill = string(skill)
+	} else {
+		writef(r.Runner.Stderr, "ward agent review: WARNING: could not read code-review skill at %s: %v\n", reviewSkillPath(), err)
+		in.Skill = "Code-review skill unavailable at " + reviewSkillPath() + ". Reviewers must still refute the diff against the issue contract and live tree."
 	}
 	if p := strings.TrimSpace(c.String("ci-log")); p != "" {
 		if b, err := os.ReadFile(p); err == nil { //nolint:gosec // operator-supplied CI log path
@@ -161,13 +195,22 @@ func (r *Runner) reviewDiff(ctx context.Context, base string) string {
 	return string(out)
 }
 
-// reviewerCandidates is the fixed reviewer pool (ward#134): opencode (qwen) free, codex
-// paid, claude never. Models come from the embedded fleet roster.
-func reviewerCandidates() []reviewpanel.Reviewer {
-	return []reviewpanel.Reviewer{
-		{Family: "opencode", Model: reviewerModel("opencode"), Paid: false},
-		{Family: "codex", Model: reviewerModel("codex"), Paid: true},
+// reviewerCandidates is the fixed reviewer pool (ward#134): the worker's own harness
+// is the free tier by default, with other harnesses available later as the paid tier.
+func reviewerCandidates(worker string) []reviewpanel.Reviewer {
+	add := func(out []reviewpanel.Reviewer, family string, paid bool) []reviewpanel.Reviewer {
+		return append(out, reviewpanel.Reviewer{Family: family, Model: reviewerModel(family), Paid: paid})
 	}
+	out := make([]reviewpanel.Reviewer, 0, len(agentModes))
+	out = add(out, worker, false)
+	for _, mode := range agentModes {
+		family := string(mode)
+		if strings.EqualFold(family, worker) {
+			continue
+		}
+		out = add(out, family, true)
+	}
+	return out
 }
 
 // reviewerModel reads a family's default model off the effective fleet roster,
@@ -276,7 +319,7 @@ func reviewSessionID() string {
 }
 
 // reportPanel prints the human summary + the machine WARD-REVIEW line the seed keys
-// off, plus the advisory PR-body note when degraded.
+// off, plus a concise review summary for the final WARD-OUTCOME comment.
 func (r *Runner) reportPanel(c *cli.Command, res reviewpanel.PanelResult) {
 	if c.Bool("json") {
 		if b, err := json.MarshalIndent(res, "", "  "); err == nil {
@@ -292,24 +335,59 @@ func (r *Runner) reportPanel(c *cli.Command, res reviewpanel.PanelResult) {
 		}
 		writef(w, "  %-10s %-6s (conf %.2f) %s\n", rv.Family, rv.Verdict, rv.Confidence, truncateLine(note, 100))
 	}
+	if res.Note != "" {
+		writef(w, "review note: %s\n", res.Note)
+	}
 	switch res.Gate {
-	case reviewpanel.GateAdvisory:
-		writef(w, "%s\n", res.Note)
-		writef(w, "PR-BODY-NOTE: %s\n", res.Note)
 	case reviewpanel.GateBlock:
 		writef(w, "panel BLOCKED: %d/%d passing - do NOT land this diff.\n", res.Passes, res.Threshold)
 	case reviewpanel.GatePass:
 		writef(w, "panel cleared: %d/%d passing.\n", res.Passes, res.Threshold)
+	case reviewpanel.GateAdvisory:
+		writef(w, "panel advisory: %d/%d passing - review did not gate this diff.\n", res.Passes, res.Threshold)
+	default:
+		writef(w, "panel status %q: %d/%d passing.\n", res.Gate, res.Passes, res.Threshold)
 	}
+	writef(w, "review summary: %s\n", reviewSummary(res))
 	// The machine line the seed greps: pass|block|advisory.
 	writef(r.Runner.Stdout, "WARD-REVIEW: %s - %d/%d passing (class %s)\n", res.Gate, res.Passes, res.Threshold, res.Class)
+}
+
+func reviewSummary(res reviewpanel.PanelResult) string {
+	switch res.Gate {
+	case reviewpanel.GatePass:
+		if len(res.Reviewers) == 0 {
+			return "passed"
+		}
+		last := res.Reviewers[len(res.Reviewers)-1]
+		return fmt.Sprintf("passed: %s", truncateLine(last.Reason, 120))
+	case reviewpanel.GateAdvisory:
+		if strings.TrimSpace(res.Note) != "" {
+			return "skipped: " + truncateLine(res.Note, 120)
+		}
+		return "skipped"
+	case reviewpanel.GateBlock:
+		if strings.TrimSpace(res.Note) != "" {
+			return "blocked: " + truncateLine(res.Note, 120)
+		}
+		if len(res.Reviewers) == 0 {
+			return "blocked"
+		}
+		last := res.Reviewers[len(res.Reviewers)-1]
+		if last.Error != "" {
+			return "blocked: " + truncateLine(last.Error, 120)
+		}
+		return "blocked: " + truncateLine(last.Reason, 120)
+	default:
+		return "unknown"
+	}
 }
 
 // printReviewPlan is the --print dry run: show the resolved panel + prompt, run nothing.
 func (r *Runner) printReviewPlan(cfg reviewpanel.Config) error {
 	w := r.Runner.Stdout
 	writef(w, "ward agent review --print\n")
-	writef(w, "  worker (excluded): %s\n", cfg.Worker)
+	writef(w, "  worker (preferred): %s\n", cfg.Worker)
 	writef(w, "  class:             %s\n", cfg.Class)
 	writef(w, "  issue:             %s\n", cfg.Issue)
 	writef(w, "  candidates:\n")
@@ -318,11 +396,11 @@ func (r *Runner) printReviewPlan(cfg reviewpanel.Config) error {
 		if rv.Paid {
 			tier = "paid"
 		}
-		excluded := ""
+		note := ""
 		if strings.EqualFold(rv.Family, cfg.Worker) {
-			excluded = " [EXCLUDED: worker's own family]"
+			note = " [PREFERRED]"
 		}
-		writef(w, "    - %s (%s, %s)%s\n", rv.Family, rv.Model, tier, excluded)
+		writef(w, "    - %s (%s, %s)%s\n", rv.Family, rv.Model, tier, note)
 	}
 	writef(w, "\n----- reviewer prompt -----\n%s\n", reviewpanel.RefutePrompt(cfg.Prompt))
 	return nil

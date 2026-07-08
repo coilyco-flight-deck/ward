@@ -630,7 +630,7 @@ func TestPreflightNoGoComment(t *testing.T) {
 		"NO-GO",                                // names the verdict
 		"needs human scoping",                  // carries the reason
 		"ward agent engineer --harness claude", // names the dispatching role
-		"--no-preflight",                       // tells the human how to re-dispatch
+		"--skip-preflight",                     // tells the human how to re-dispatch
 		"No container was launched",
 		"<details>",             // folds the full read away
 		"The scope is unclear.", // includes the read verbatim
@@ -642,7 +642,7 @@ func TestPreflightNoGoComment(t *testing.T) {
 	}
 	// The re-dispatch steers at the engineer since the issue is already filed,
 	// so a freeform engineer run would file a duplicate (ward#347).
-	if !strings.Contains(got, "ward agent engineer --harness claude <ref> --no-preflight") {
+	if !strings.Contains(got, "ward agent engineer --harness claude <ref> --skip-preflight") {
 		t.Errorf("re-dispatch should point at the engineer; got: %s", got)
 	}
 	// An empty reason degrades to a placeholder, never a dangling blockquote.
@@ -717,9 +717,9 @@ func TestPreflightWrongRepoComment(t *testing.T) {
 		filed.url(),            // links the freshly-filed issue
 		"ops verb",             // the reason
 		"No container was launched here",
-		"--no-preflight", // how to override if the routing is wrong
-		"<details>",      // folds the read away
-		"It's ops.",      // the read verbatim
+		"--skip-preflight", // how to override if the routing is wrong
+		"<details>",        // folds the read away
+		"It's ops.",        // the read verbatim
 	} {
 		if !strings.Contains(got, want) {
 			t.Errorf("preflightWrongRepoComment missing %q\n got: %s", want, got)

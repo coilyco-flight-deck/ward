@@ -2,6 +2,8 @@ package main
 
 import (
 	"bytes"
+	"os"
+	"path/filepath"
 	"strings"
 	"testing"
 
@@ -56,22 +58,30 @@ func TestReviewIssueRefFromEnv(t *testing.T) {
 	}
 }
 
-// TestReviewerCandidatesExcludeClaude proves claude (the worker) is never in the
-// reviewer pool and the pool carries a free + a paid tier.
-func TestReviewerCandidatesExcludeClaude(t *testing.T) {
-	var free, paid int
-	for _, rv := range reviewerCandidates() {
-		if rv.Family == "claude" {
-			t.Fatalf("claude must never be a reviewer candidate")
-		}
+// TestReviewerCandidatesDefaultToWorker proves the worker's own harness is the
+// preferred free tier and the rest of the roster remains available as paid fallbacks.
+func TestReviewerCandidatesDefaultToWorker(t *testing.T) {
+	got := reviewerCandidates("codex")
+	if len(got) == 0 {
+		t.Fatal("no reviewer candidates returned")
+	}
+	if got[0].Family != "codex" || got[0].Paid {
+		t.Fatalf("first candidate = %+v, want the worker as the free preferred reviewer", got[0])
+	}
+	var sawPaid, sawClaude bool
+	for _, rv := range got {
 		if rv.Paid {
-			paid++
-		} else {
-			free++
+			sawPaid = true
+		}
+		if rv.Family == "claude" {
+			sawClaude = true
 		}
 	}
-	if free == 0 || paid == 0 {
-		t.Errorf("want at least one free and one paid tier; got free=%d paid=%d", free, paid)
+	if !sawPaid {
+		t.Error("want at least one paid fallback candidate")
+	}
+	if !sawClaude {
+		t.Error("want the remaining roster families to stay available")
 	}
 }
 
@@ -95,12 +105,18 @@ func TestReviewGateClauseInSeed(t *testing.T) {
 
 	off := agentSeedPromptWorkflow(ref, "t", "b", "", true, nil, workflowDirectMain, false)
 	if strings.Contains(off, "REVIEW GATE") {
-		t.Errorf("--no-review-gate (reviewGate=false) must suppress the clause")
+		t.Errorf("--skip-review (reviewGate=false) must suppress the clause")
+	}
+	if !strings.Contains(direct, "review summary") {
+		t.Errorf("headless seed must tell the worker to include the review summary")
+	}
+	if !strings.Contains(off, "intentionally skipped") {
+		t.Errorf("skipped review must be explicit in the final comment instructions")
 	}
 }
 
 // TestReportPanelMachineLine proves the machine-readable WARD-REVIEW line and the
-// advisory PR-body note reach stdout/stderr for the worker's seed to grep.
+// human summary reach stdout/stderr for the worker's seed to grep.
 func TestReportPanelMachineLine(t *testing.T) {
 	for _, tc := range []struct {
 		gate     reviewpanel.Gate
@@ -121,8 +137,68 @@ func TestReportPanelMachineLine(t *testing.T) {
 		if !strings.Contains(out.String(), tc.wantLine) {
 			t.Errorf("gate %s: stdout missing %q\n got: %s", tc.gate, tc.wantLine, out.String())
 		}
-		if tc.gate == reviewpanel.GateAdvisory && !strings.Contains(errb.String(), "PR-BODY-NOTE:") {
-			t.Errorf("advisory must print PR-BODY-NOTE; got: %s", errb.String())
+		if tc.gate == reviewpanel.GateAdvisory {
+			if !strings.Contains(errb.String(), "review note:") {
+				t.Errorf("advisory must print the review note; got: %s", errb.String())
+			}
+			if !strings.Contains(errb.String(), "review summary:") {
+				t.Errorf("advisory must print the review summary; got: %s", errb.String())
+			}
 		}
+	}
+}
+
+func TestReviewGateWantedHonorsSkipsAndConfig(t *testing.T) {
+	ref := agentIssueRef{Owner: "coilyco-flight-deck", Repo: "ward", Number: 676}
+	t.Run("skip-review flag wins", func(t *testing.T) {
+		cmd := parseCommandForTest(t, agentSurfaceFlags(), []string{"engineer", ref.String(), "--skip-review"})
+		if reviewGateWanted(cmd, "engineer", modeCodex, ref) {
+			t.Fatal("skip-review flag did not disable the review gate")
+		}
+	})
+	t.Run("skip-preflight alias also disables review", func(t *testing.T) {
+		cmd := parseCommandForTest(t, agentSurfaceFlags(), []string{"engineer", ref.String(), "--skip-preflight"})
+		if reviewGateWanted(cmd, "engineer", modeCodex, ref) {
+			t.Fatal("skip-preflight did not disable the review gate")
+		}
+	})
+	t.Run("config disables review by role, worker, and repo", func(t *testing.T) {
+		home := t.TempDir()
+		t.Setenv("HOME", home)
+		if err := os.MkdirAll(filepath.Join(home, ".ward"), 0o750); err != nil {
+			t.Fatalf("mkdir: %v", err)
+		}
+		if err := os.WriteFile(filepath.Join(home, ".ward", "config.yaml"), []byte("agent:\n  review:\n    skip:\n      - role:engineer\n      - harness:codex\n      - repo:coilyco-flight-deck/ward\n"), 0o600); err != nil {
+			t.Fatalf("write config: %v", err)
+		}
+		cmd := parseCommandForTest(t, agentSurfaceFlags(), []string{"engineer", ref.String()})
+		if reviewGateWanted(cmd, "engineer", modeCodex, ref) {
+			t.Fatal("config skip rules did not disable the review gate")
+		}
+	})
+}
+
+func TestSkipAliasesRemainAccepted(t *testing.T) {
+	ref := agentIssueRef{Owner: "coilyco-flight-deck", Repo: "ward", Number: 676}
+	for _, args := range [][]string{
+		{"engineer", ref.String(), "--no-review-gate"},
+		{"engineer", ref.String(), "--no-preflight"},
+	} {
+		cmd := parseCommandForTest(t, agentSurfaceFlags(), args)
+		if reviewGateWanted(cmd, "engineer", modeCodex, ref) {
+			t.Fatalf("alias args %v did not disable the review gate", args)
+		}
+	}
+}
+
+func TestReviewSummaryIncludesNotes(t *testing.T) {
+	if got := reviewSummary(reviewpanel.PanelResult{Gate: reviewpanel.GatePass, Reviewers: []reviewpanel.ReviewerResult{{Reason: "tight"}}}); !strings.Contains(got, "passed: tight") {
+		t.Fatalf("pass summary = %q", got)
+	}
+	if got := reviewSummary(reviewpanel.PanelResult{Gate: reviewpanel.GateBlock, Note: "no runnable reviewer"}); !strings.Contains(got, "blocked: no runnable reviewer") {
+		t.Fatalf("block summary = %q", got)
+	}
+	if got := reviewSummary(reviewpanel.PanelResult{Gate: reviewpanel.GateAdvisory, Note: "intentionally skipped"}); !strings.Contains(got, "skipped: intentionally skipped") {
+		t.Fatalf("advisory summary = %q", got)
 	}
 }

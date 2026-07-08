@@ -114,7 +114,7 @@ type dispatchEngineer struct {
 func (c dispatchEngineer) engineerArgv(ref agentIssueRef) []string {
 	// --quiet-seed keeps the in-process engineer's seed dump off director's shared
 	// console (ward#519); the seed still rides into the child container (ward#400).
-	argv := []string{"engineer", ref.String(), "--harness", string(c.driver), "--no-preflight", "--quiet-seed"}
+	argv := []string{"engineer", ref.String(), "--harness", string(c.driver), "--quiet-seed"}
 	if img := strings.TrimSpace(c.image); img != "" {
 		argv = append(argv, "--image", img)
 	}
@@ -420,12 +420,17 @@ func (r *Runner) resolveDirectorDefaultScope(ctx context.Context, label string) 
 	return repos, nil
 }
 
-// wardGlobalConfig is the slice of ~/.ward/config.yaml ward reads today: only the
-// host-owned director.default-scope, the no-flag director fallback scope (ward#398).
+// wardGlobalConfig is the slice of ~/.ward/config.yaml ward reads today: the
+// host-owned director.default-scope and the review skip defaults.
 type wardGlobalConfig struct {
 	Director struct {
 		DefaultScope []string `yaml:"default-scope"`
 	} `yaml:"director"`
+	Agent struct {
+		Review struct {
+			Skip []string `yaml:"skip"`
+		} `yaml:"review"`
+	} `yaml:"agent"`
 }
 
 // loadDirectorDefaultScope reads director.default-scope from ~/.ward/config.yaml,
@@ -441,6 +446,20 @@ func loadDirectorDefaultScope() (orgs, repos []string, err error) {
 	}
 	orgs, repos = partitionScopeEntries(cfg.Director.DefaultScope)
 	return orgs, repos, nil
+}
+
+// loadReviewSkips reads agent.review.skip from ~/.ward/config.yaml.
+// It is a host-local default, so a missing file is not an error.
+func loadReviewSkips() ([]string, error) {
+	path, err := config.GlobalConfigPath()
+	if err != nil {
+		return nil, err
+	}
+	var cfg wardGlobalConfig
+	if oerr := config.OverlayFile(&cfg, path); oerr != nil {
+		return nil, oerr
+	}
+	return cfg.Agent.Review.Skip, nil
 }
 
 // partitionScopeEntries splits a de-duped scope list into org tokens (no slash) and

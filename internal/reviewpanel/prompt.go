@@ -16,6 +16,7 @@ type PromptInput struct {
 	IssueURL   string
 	IssueTitle string
 	IssueBody  string
+	Skill      string
 	Diff       string
 	CIOutput   string
 }
@@ -40,6 +41,11 @@ func RefutePrompt(in PromptInput) string {
 		"Default to BLOCK on any uncertainty. A pass with no attempted refutation is NOT a pass - if " +
 			"you did not genuinely try to break it, block. Only return `pass` when you actively tried " +
 			"to refute the diff and could not.\n\n")
+	if skill := strings.TrimSpace(in.Skill); skill != "" {
+		b.WriteString("----- REVIEW SKILL -----\n")
+		b.WriteString(truncate(skill) + "\n")
+		b.WriteString("----- END REVIEW SKILL -----\n\n")
+	}
 	b.WriteString("Risk class for this diff: " + string(in.Class.orDefault()) + ".\n\n")
 
 	b.WriteString("----- ISSUE CONTRACT -----\n")

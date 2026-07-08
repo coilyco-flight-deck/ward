@@ -812,7 +812,8 @@ func (r *Runner) cloneExtraRepo(ctx context.Context, e bootstrapEnv, repo target
 		ttl = containerReadOnlyExtraRepoTTL
 	}
 	r.withFlock(lock, func() {
-		if isDir(mirror) {
+		switch {
+		case isDir(mirror):
 			if ttl > 0 && !substrateMirrorStale(mirror, int64(ttl.Seconds()), time.Now()) {
 				blog("extra-repo: cached mirror fresh %s/%s (advisor TTL %s)", repo.Owner, repo.Name, ttl)
 			} else {
@@ -821,11 +822,11 @@ func (r *Runner) cloneExtraRepo(ctx context.Context, e bootstrapEnv, repo target
 					blog("extra-repo: mirror refresh failed %s/%s (using cached state)", repo.Owner, repo.Name)
 				}
 			}
-		} else if external {
+		case external:
 			// An external dep is never cloned in-container (no egress/ssh key, Forgejo mirror
 			// rejected): it is host-side-seeded, so an absent mirror fails loud below (ward#612).
 			_ = os.RemoveAll(mirror)
-		} else {
+		default:
 			blog("extra-repo: cloning mirror (first time) %s/%s", repo.Owner, repo.Name)
 			if cerr := r.Runner.Exec(ctx, "git", "clone", "--mirror", url, mirror); cerr != nil {
 				blog("extra-repo: mirror clone failed %s/%s (skipping)", repo.Owner, repo.Name)

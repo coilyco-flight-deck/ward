@@ -85,7 +85,7 @@ func TestDispatchEngineerArgv(t *testing.T) {
 	// A bare dispatch: driver + headless detach + --quiet-seed (keeps the in-process
 	// engineer's seed dump off the shared director console; ward#519), no escalations.
 	bare := dispatchEngineer{driver: modeClaude}.engineerArgv(ref)
-	wantBare := []string{"engineer", "coilyco-flight-deck/ward#42", "--harness", "claude", "--no-preflight", "--quiet-seed"}
+	wantBare := []string{"engineer", "coilyco-flight-deck/ward#42", "--harness", "claude", "--quiet-seed"}
 	if !reflect.DeepEqual(bare, wantBare) {
 		t.Errorf("bare argv = %v, want %v", bare, wantBare)
 	}
@@ -109,7 +109,7 @@ func TestDispatchEngineerArgv(t *testing.T) {
 			t.Errorf("argv missing %s %s: %v", want[0], want[1], full)
 		}
 	}
-	for _, want := range []string{"--aws", "--tailnet", "--force", "--no-preflight", "--quiet-seed"} {
+	for _, want := range []string{"--aws", "--tailnet", "--force", "--quiet-seed"} {
 		if !containsArg(full, want) {
 			t.Errorf("argv missing %q: %v", want, full)
 		}

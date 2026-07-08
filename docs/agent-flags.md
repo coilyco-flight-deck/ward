@@ -1,5 +1,5 @@
 ---
-doc_goal: Give an operator the full trimmed launch-flag surface for the engineer role - visible, hidden, and retired - so each flag's effect on the container boundary (network escalation, image pinning, reaper downgrade guard, dry run) is actionable, not just enumerated.
+doc_goal: Give an operator the trimmed engineer launch surface - visible, hidden, and retired - so each flag's effect on the container boundary is actionable.
 ---
 # ward agent: flags
 
@@ -8,18 +8,18 @@ for the roster.
 
 ## The flag surface (trimmed ~24 -> ~8)
 
-The shared launch helpers show ~10 flags: the positional ref/task,
-`--harness` (or `--agent`), `--repo`, `--details`,
-`--config`, `--print`, `--force`, `--no-preflight`, and (engineer
-freeform) `--instructions-file`. The trim lands in the shared helpers, so it applies to
-all three surfaces at once.
+The shared launch helpers show ~10 flags: the positional ref/task, `--harness`
+(or `--agent`), `--repo`, `--details`, `--config`, `--print`, `--force`,
+`--skip-preflight`, and (engineer freeform) `--instructions-file`.
 
 `--repo owner/name` (repeatable) grants extra writable repos
 ([container-multi-repo.md](container-multi-repo.md)). `--print` is a dry run.
-`--force` skips the reservation checks ([agent-reservation.md](agent-reservation.md))
-and `--no-preflight` skips the pre-flight ([agent-preflight.md](agent-preflight.md)).
+`--force` skips the reservation checks ([agent-reservation.md](agent-reservation.md)).
 `--config` (repeatable) overrides the agent's model-context config
 ([agent-config-overrides.md](agent-config-overrides.md)). The engineer **always detaches**.
+`--skip-review` disables the in-container review gate, and `--skip-preflight` skips both
+the host pre-flight and the review gate. `--no-review-gate` and `--no-preflight` stay
+accepted as aliases.
 
 ### Host/cloud capability is a per-role guardfile set, not a flag
 

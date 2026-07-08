@@ -48,8 +48,9 @@ The engineer runs the **same pre-flight** ([docs/agent-preflight.md](agent-prefl
 in both ref and freeform mode: freeform files the issue first, then gives the
 same GO / NO-GO read before detaching. A NO-GO comments on the just-filed issue and
 launches nothing, leaving a real issue a human can pick up or re-dispatch with
-`engineer ... --no-preflight`. It honors the same skips (`--print`, `--no-preflight`, no
-terminal). ROUTE's live survey *is* its feasibility gate, so ROUTE skips the pre-flight.
+`engineer ... --skip-preflight`. It honors the same skips (`--print`,
+`--skip-preflight` / `--no-preflight`, no terminal). ROUTE's live survey *is* its
+feasibility gate, so ROUTE skips the pre-flight.
 
 ## Reaper backstop
 

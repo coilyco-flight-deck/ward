@@ -43,7 +43,8 @@ The engineer always **detaches** fire-and-forget (was `headless`): print mode
 (`claude -p`/`codex exec`/`goose run -t`). From a terminal it first runs a **pre-flight**
 ([agent-preflight.md](agent-preflight.md)): a GO launches, a NO-GO comments and launches
 nothing. Its seed closes with a `WARD-OUTCOME`-led retro the
-[director](agent-director.md) reads, and is shaped by the body:
+[director](agent-director.md) reads, and now asks for the review summary or skip state
+in that same final comment. The seed is shaped by the body:
 empty bodies say so, **every** driver gets the body inlined **verbatim** as a **frozen
 snapshot** at dispatch (image markup intact, a no-vision line, URL live for
 comments), **logged** for `grep`.

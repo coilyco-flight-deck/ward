@@ -53,9 +53,10 @@ no prompt to answer:
 ## When the check is skipped
 
 The check is skipped when there is no terminal (scripted/piped), on
-`--print` (a dry run), and with `--no-preflight` (the escape hatch for a run
-launched from a TTY that you still want to fire blind - it also re-dispatches a
-NO-GO issue you've decided is good to go). Only a **trusted cloud harness**
+`--print` (a dry run), and with `--skip-preflight` (the escape hatch for a run
+launched from a TTY that you still want to fire blind - it also disables the
+in-container review gate and re-dispatches a NO-GO issue you've decided is good
+to go). `--no-preflight` stays accepted as the compatibility alias. Only a **trusted cloud harness**
 (claude) runs the host read; a **local-model harness** (goose/opencode) is barred
 ([agent-preflight-trust.md](agent-preflight-trust.md)). A barred mode, a
 mode with no one-shot wired (`codex`), no agent binary, or an incomplete read all

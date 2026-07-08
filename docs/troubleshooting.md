@@ -27,7 +27,8 @@ For lifecycle markers, see [container lifecycle logs](container-lifecycle-logs.m
   returned **NO-GO** and blocked dispatch. It does not fail silently: ward **posts a
   comment on the issue** with the reason and how to re-dispatch. **Fix:** read that
   comment, address it, then re-dispatch (a comment answering the concern clears the
-  gate; `--no-preflight` fires blind). See [agent-preflight.md](agent-preflight.md).
+  gate; `--skip-preflight` fires blind, and `--no-preflight` remains the alias).
+  See [agent-preflight.md](agent-preflight.md).
 
 - **`refusing untrusted owner "<x>"`** - the trust gate declined the ref. This build
   dispatches only for its compiled-in primary orgs. **Fix:** dispatch against a

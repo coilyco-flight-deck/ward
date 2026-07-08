@@ -426,7 +426,7 @@ func validateDispatchBrokerArgv(role string, tail []string) error {
 		for _, f := range []string{"--image", "--tag", "--ward-version", "--branch", "--repo", "--tailnet-mode"} {
 			valueFlags[f] = true
 		}
-		for _, f := range []string{"--aws", "--tailnet", "--no-pull", "--force", "--no-preflight"} {
+		for _, f := range []string{"--aws", "--tailnet", "--no-pull", "--force", "--skip-preflight", "--no-preflight", "--skip-review", "--no-review-gate"} {
 			boolFlags[f] = true
 		}
 		return validateDispatchBrokerFlags(role, tail, valueFlags, boolFlags, false)
@@ -529,8 +529,8 @@ func brokerEngineerArgv(c *cli.Command, mode containerMode, ref agentIssueRef) [
 	if c.Bool("force") {
 		argv = append(argv, "--force")
 	}
-	if c.Bool("no-preflight") {
-		argv = append(argv, "--no-preflight")
+	if c.Bool("skip-preflight") {
+		argv = append(argv, "--skip-preflight")
 	}
 	if c.Bool("print") {
 		argv = append(argv, "--print")

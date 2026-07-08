@@ -1,16 +1,16 @@
 ---
-doc_goal: Make an operator understand the in-container adversarial-review panel as the pre-PR quorum gate that raises a diff's trust floor before it lands - where it runs, why heterogeneity is the mechanism, the cost tiers, the per-class threshold, and how it fails closed - so unsupervised merge of a low-risk class is defensible.
+doc_goal: Explain the in-container code-review gate - where it runs, why the worker's own harness is the default reviewer, the tiers, the thresholds, the skips, and the fail-closed rule.
 ---
-# ward agent: the adversarial-review panel ([ward#134](https://forgejo.coilysiren.me/coilyco-flight-deck/ward/issues/134))
+# ward agent: the code-review gate ([ward#134](https://forgejo.coilysiren.me/coilyco-flight-deck/ward/issues/134))
 
 At N concurrent [engineers](agent-engineer.md) the operator is the merge bottleneck,
-because the PR is the only review gate. The review panel moves verification off the
-human's step: a worker's diff must survive a heterogeneous multi-model panel **in the
-container, after green CI and before the PR opens**, so the operator's queue only sees
-diffs the panel could not agree on.
+because the PR is the only review gate. The panel moves verification off the human's
+step: a worker's diff must survive a code-review pass **in the container, after green
+CI and before the PR opens**, so the operator only sees diffs the panel could not settle.
 
 The gate is `CI green AND quorum >= threshold`, and **fails closed**: a panel error,
-timeout, or empty vote blocks the landing.
+timeout, or empty vote blocks the landing. The summary of that review must also
+show up in the final `WARD-OUTCOME` comment, not just in the panel log.
 
 ## Where it runs
 
@@ -18,26 +18,29 @@ The panel is `ward agent review`, wired into the [engineer](agent-engineer.md) s
 for every headless landing run (not `patch-only`, which lands nothing). After CI is
 green and before it opens the PR or merges, the worker runs it and reads the machine
 line on stdout - `WARD-REVIEW: pass` (land), `block` (do not land; post the verdicts
-and close `WARD-OUTCOME: blocked`), or `advisory` (only one family available, see
-fallback). The exit code mirrors the verdict, so a shell `&&` enforces it too, and
-`--no-review-gate` at dispatch drops the clause from the seed.
+and close `WARD-OUTCOME: blocked`), or `advisory` (only if no reviewer can run at
+all, and the host converts that to a fail-closed block). `--skip-review` drops the
+clause from the seed, `--skip-preflight` does the same because the pre-flight and
+review are the same one-shot escape hatch, and `--no-review-gate` / `--no-preflight`
+stay accepted as aliases. Config defaults use `agent.review.skip` ([agent-flags.md]).
 
 Running **in-container** beats a separate cloud pass: the reviewers see the **live
 worktree**, so they run the exact failing test against the same filesystem state the
 worker produced, sharing one clone + CI artifacts across all three agents.
 
-## Heterogeneity is the mechanism
+## Worker-first default
 
-Reviewers must be **different model families from the worker** - it never reviews its
-own diff, since correlated blind spots mean its reviewer misses exactly its own
-mistakes. The panel excludes the worker's family (worker `claude` gets `opencode` +
-`codex`; `claude`, the expensive worker, is never a reviewer).
+Reviewers default to the **worker's own harness family first**. The worker runs the
+harness non-iteratively against the live filesystem state with the hand-curated
+code-review skill from `agentic-os`. Other families stay available as higher-cost
+fallbacks, but the gate no longer degrades to advisory-only just because the worker's
+own family is the only one available.
 
 ## Cost tiers and refute-by-default
 
-- **`opencode` (local qwen) is the free tier** - runs on every diff.
-- **`codex` (subscription) is the paid tier** - runs only as a tiebreaker (free tier
-  blocked) or on a high-risk class, never on a clean free-tier pass.
+- **The worker's own harness is the free tier** - runs on every diff.
+- **Other harnesses are the paid tier** - run as a tiebreaker (free tier blocked) or
+  on a high-risk class, never on a clean free-tier pass.
 
 Each reviewer is told to **assume the diff is wrong** and **default to BLOCK on
 uncertainty** - a pass with no attempted refutation is not a pass. It gets the issue
@@ -60,12 +63,10 @@ The class is pinned by the host into the container env, never read from the
 
 ## Single-family fallback
 
-If, after excluding the worker's family, **no heterogeneous reviewer is available**
-(binary missing, codex unauthenticated, ollama unreachable), the panel degrades to
-**advisory-only**: it does not gate the diff and says so loudly in the log and in a
-`PR-BODY-NOTE:` the worker copies into the PR body. Advisory never blocks. A reviewer
-harness must be provisioned in the container (binary, credential, endpoint) for a
-**binding** panel.
+If no reviewer can actually run (binary missing, auth missing, endpoint unreachable),
+the host treats the panel as a fail-closed block and writes the review summary into
+the conclusion comment. A skipped review is explicit in the conclusion comment too,
+so a human can tell a deliberate bypass from an unavailable reviewer.
 
 ## See also
 

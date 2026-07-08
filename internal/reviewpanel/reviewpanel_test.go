@@ -119,8 +119,26 @@ func TestEvaluate(t *testing.T) {
 	}
 }
 
-// TestPanelExcludesWorker proves the worker's own family never lands on its panel.
-func TestPanelExcludesWorker(t *testing.T) {
+func TestRefutePromptEmbedsSkill(t *testing.T) {
+	got := RefutePrompt(PromptInput{
+		Class: ClassDefault,
+		Skill: "skill line 1\nskill line 2",
+		Diff:  "diff body",
+	})
+	for _, want := range []string{
+		"----- REVIEW SKILL -----",
+		"skill line 1",
+		"skill line 2",
+		"----- END REVIEW SKILL -----",
+	} {
+		if !strings.Contains(got, want) {
+			t.Fatalf("prompt missing %q\n%s", want, got)
+		}
+	}
+}
+
+// TestPanelIncludesWorker proves the worker's own family is the default free tier.
+func TestPanelIncludesWorker(t *testing.T) {
 	deps := Deps{
 		Run:   func(Reviewer, string) (string, error) { return passStdout, nil },
 		Avail: func(Reviewer) (bool, string) { return true, "" },
@@ -130,14 +148,20 @@ func TestPanelExcludesWorker(t *testing.T) {
 		Worker: "claude",
 		Class:  ClassDefault,
 		Candidates: []Reviewer{
-			{Family: "claude"}, // must be dropped
+			{Family: "claude"},
 			{Family: "opencode"},
 			{Family: "codex", Paid: true},
 		},
 	})
+	if len(res.Reviewers) == 0 || res.Reviewers[0].Family != "claude" {
+		t.Fatalf("worker family should run first: %+v", res.Reviewers)
+	}
+	if res.Gate != GatePass {
+		t.Fatalf("gate = %q; want pass", res.Gate)
+	}
 	for _, r := range res.Reviewers {
-		if r.Family == "claude" {
-			t.Fatalf("worker family claude appeared on its own panel: %+v", res.Reviewers)
+		if r.Family == "claude" && r.Verdict != Pass {
+			t.Fatalf("worker family should pass with passStdout: %+v", res.Reviewers)
 		}
 	}
 	if res.Timestamp != 7 {
@@ -145,12 +169,11 @@ func TestPanelExcludesWorker(t *testing.T) {
 	}
 }
 
-// TestPanelSingleFamilyFallback proves the advisory degrade when the only
-// available family is the worker's own.
+// TestPanelSingleFamilyFallback proves the advisory degrade when no reviewer can run.
 func TestPanelSingleFamilyFallback(t *testing.T) {
 	deps := Deps{
 		Run:   func(Reviewer, string) (string, error) { return passStdout, nil },
-		Avail: func(rv Reviewer) (bool, string) { return rv.Family == "claude", "not installed" },
+		Avail: func(Reviewer) (bool, string) { return false, "not installed" },
 	}
 	res := deps.Execute(Config{
 		Worker:     "claude",

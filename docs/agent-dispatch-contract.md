@@ -28,7 +28,7 @@ its `meta.json` outcome below); every non-zero code is a distinct
 * `7` - **mode-ceiling** - the issue is explicitly labeled `interactive`, so the code-landing `engineer` dispatch is refused; consult/default unlabeled issues dispatch normally, and `--force` works the refusal anyway. `director` / `advisor` are ungated. Fires on **every** dispatch (unlike the TTY pre-flight), so the director's headless auto-burndown is covered too.
 
 Codes `4` and `5` only ever arise from the **interactive** pre-flight, which is
-skipped without a TTY (scripted / piped, `--print`, `--no-preflight`) - so a
+skipped without a TTY (scripted / piped, `--print`, `--skip-preflight` / `--no-preflight`) - so a
 headless supervisor dispatching into a pipe sees only `0`/`1`/`2`/`3`/`6`/`7`. That
 host pre-flight is slated for removal ([ward#162](https://forgejo.coilysiren.me/coilyco-flight-deck/ward/issues/162)); once it is gone the NO-GO /
 WRONG-REPO judgement moves in-container and is reported through the `meta.json`
