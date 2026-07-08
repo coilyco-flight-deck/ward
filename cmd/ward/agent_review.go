@@ -25,17 +25,14 @@ import (
 // it from the host, not the (untrusted) worker.
 const reviewClassEnv = "WARD_REVIEW_CLASS"
 
-// reviewerTimeout bounds one reviewer subprocess; an overrun fails closed (a hung
-// reviewer must never read as a pass).
-const reviewerTimeout = 8 * time.Minute
-
 // reviewSkillPath resolves the hand-curated aos code-review skill that the prompt
 // embeds into the reviewer context.
 func reviewSkillPath() string {
-	candidates := []string{"/workspace/agentic-os/.agents/skills/tooling-code-review/SKILL.md"}
+	candidates := []string{}
 	if dest := strings.TrimSpace(os.Getenv("WARD_WORKSPACE_DEST")); dest != "" {
 		candidates = append(candidates, filepath.Join(dest, "agentic-os", ".agents", "skills", "tooling-code-review", "SKILL.md"))
 	}
+	candidates = append(candidates, "/workspace/agentic-os/.agents/skills/tooling-code-review/SKILL.md")
 	if dest := strings.TrimSpace(os.Getenv("WARD_SUBSTRATE_DEST")); dest != "" {
 		candidates = append(candidates, filepath.Join(dest, "agentic-os", ".agents", "skills", "tooling-code-review", "SKILL.md"))
 	}
@@ -79,6 +76,8 @@ func reviewConclusionCommentBody(res reviewpanel.PanelResult) string {
 	case reviewpanel.GateBlock:
 		status = "blocked"
 	case reviewpanel.GateAdvisory:
+		status = "done"
+	case reviewpanel.GatePass:
 		status = "done"
 	}
 	fmt.Fprintf(&b, "%s %s - review summary: %s\n\n", wardOutcomeMarker, status, reviewSummary(res))
@@ -366,8 +365,7 @@ func (r *Runner) reviewerAvailable(ctx context.Context) reviewpanel.AvailFunc {
 		if _, err := exec.LookPath(bin); err != nil {
 			return false, bin + " not on PATH"
 		}
-		switch rv.Family {
-		case "opencode":
+		if rv.Family == "opencode" {
 			endpoint := strings.TrimSpace(os.Getenv(ollamaprobe.OpencodeEndpointEnv))
 			if endpoint == "" {
 				return false, "no " + ollamaprobe.OpencodeEndpointEnv + " (ollama endpoint) set"
@@ -450,39 +448,51 @@ func (r *Runner) reportPanel(c *cli.Command, res reviewpanel.PanelResult) {
 func reviewSummary(res reviewpanel.PanelResult) string {
 	switch res.Gate {
 	case reviewpanel.GatePass:
-		if len(res.Reviewers) == 0 {
-			return "passed"
-		}
-		last := res.Reviewers[len(res.Reviewers)-1]
-		return fmt.Sprintf("passed: %s", truncateLine(last.Reason, 120))
+		return reviewSummaryPassed(res)
 	case reviewpanel.GateAdvisory:
-		if strings.TrimSpace(res.Note) != "" {
-			return "skipped: " + truncateLine(res.Note, 120)
-		}
-		return "skipped"
+		return reviewSummarySkipped(res)
 	case reviewpanel.GateBlock:
-		if strings.TrimSpace(res.Note) != "" {
-			return "blocked: " + truncateLine(res.Note, 120)
-		}
-		for _, rv := range res.Reviewers {
-			if rv.Error != "" {
-				return "blocked: " + truncateLine(rv.Error, 120)
-			}
-			if rv.Verdict == reviewpanel.Block {
-				return "blocked: " + truncateLine(rv.Reason, 120)
-			}
-		}
-		if len(res.Reviewers) == 0 {
-			return "blocked"
-		}
-		last := res.Reviewers[len(res.Reviewers)-1]
-		if last.Error != "" {
-			return "blocked: " + truncateLine(last.Error, 120)
-		}
-		return "blocked: " + truncateLine(last.Reason, 120)
+		return reviewSummaryBlocked(res)
 	default:
 		return "unknown"
 	}
+}
+
+func reviewSummaryPassed(res reviewpanel.PanelResult) string {
+	if len(res.Reviewers) == 0 {
+		return "passed"
+	}
+	last := res.Reviewers[len(res.Reviewers)-1]
+	return fmt.Sprintf("passed: %s", truncateLine(last.Reason, 120))
+}
+
+func reviewSummarySkipped(res reviewpanel.PanelResult) string {
+	if note := strings.TrimSpace(res.Note); note != "" {
+		return "skipped: " + truncateLine(note, 120)
+	}
+	return "skipped"
+}
+
+func reviewSummaryBlocked(res reviewpanel.PanelResult) string {
+	if note := strings.TrimSpace(res.Note); note != "" {
+		return "blocked: " + truncateLine(note, 120)
+	}
+	for _, rv := range res.Reviewers {
+		if rv.Error != "" {
+			return "blocked: " + truncateLine(rv.Error, 120)
+		}
+		if rv.Verdict == reviewpanel.Block {
+			return "blocked: " + truncateLine(rv.Reason, 120)
+		}
+	}
+	if len(res.Reviewers) == 0 {
+		return "blocked"
+	}
+	last := res.Reviewers[len(res.Reviewers)-1]
+	if last.Error != "" {
+		return "blocked: " + truncateLine(last.Error, 120)
+	}
+	return "blocked: " + truncateLine(last.Reason, 120)
 }
 
 // printReviewPlan is the --print dry run: show the resolved panel + prompt, run nothing.

@@ -59,8 +59,27 @@ func TestReviewIssueRefFromEnv(t *testing.T) {
 }
 
 func TestReviewSkillPathPrefersWorkspaceCopy(t *testing.T) {
+	workspace := t.TempDir()
+	substrate := t.TempDir()
+	workspaceSkill := filepath.Join(workspace, "agentic-os", ".agents", "skills", "tooling-code-review", "SKILL.md")
+	substrateSkill := filepath.Join(substrate, "agentic-os", ".agents", "skills", "tooling-code-review", "SKILL.md")
+	if err := os.MkdirAll(filepath.Dir(workspaceSkill), 0o755); err != nil {
+		t.Fatal(err)
+	}
+	if err := os.MkdirAll(filepath.Dir(substrateSkill), 0o755); err != nil {
+		t.Fatal(err)
+	}
+	if err := os.WriteFile(workspaceSkill, []byte("workspace"), 0o600); err != nil {
+		t.Fatal(err)
+	}
+	if err := os.WriteFile(substrateSkill, []byte("substrate"), 0o600); err != nil {
+		t.Fatal(err)
+	}
+	t.Setenv("WARD_WORKSPACE_DEST", workspace)
+	t.Setenv("WARD_SUBSTRATE_DEST", substrate)
+
 	got := reviewSkillPath()
-	want := "/workspace/agentic-os/.agents/skills/tooling-code-review/SKILL.md"
+	want := workspaceSkill
 	if got != want {
 		t.Fatalf("reviewSkillPath() = %q, want %q", got, want)
 	}
@@ -163,13 +182,13 @@ func TestReviewGateWantedHonorsSkipsAndConfig(t *testing.T) {
 	ref := agentIssueRef{Owner: "coilyco-flight-deck", Repo: "ward", Number: 676}
 	t.Run("skip-review flag wins", func(t *testing.T) {
 		cmd := parseCommandForTest(t, agentSurfaceFlags(), []string{"engineer", ref.String(), "--skip-review"})
-		if reviewGateWanted(cmd, "engineer", modeCodex, ref) {
+		if reviewGateWanted(cmd, modeCodex, ref) {
 			t.Fatal("skip-review flag did not disable the review gate")
 		}
 	})
 	t.Run("skip-preflight alias also disables review", func(t *testing.T) {
 		cmd := parseCommandForTest(t, agentSurfaceFlags(), []string{"engineer", ref.String(), "--skip-preflight"})
-		if reviewGateWanted(cmd, "engineer", modeCodex, ref) {
+		if reviewGateWanted(cmd, modeCodex, ref) {
 			t.Fatal("skip-preflight did not disable the review gate")
 		}
 	})
@@ -183,7 +202,7 @@ func TestReviewGateWantedHonorsSkipsAndConfig(t *testing.T) {
 			t.Fatalf("write config: %v", err)
 		}
 		cmd := parseCommandForTest(t, agentSurfaceFlags(), []string{"engineer", ref.String()})
-		if reviewGateWanted(cmd, "engineer", modeCodex, ref) {
+		if reviewGateWanted(cmd, modeCodex, ref) {
 			t.Fatal("config skip rules did not disable the review gate")
 		}
 	})
@@ -196,7 +215,7 @@ func TestSkipAliasesRemainAccepted(t *testing.T) {
 		{"engineer", ref.String(), "--no-preflight"},
 	} {
 		cmd := parseCommandForTest(t, agentSurfaceFlags(), args)
-		if reviewGateWanted(cmd, "engineer", modeCodex, ref) {
+		if reviewGateWanted(cmd, modeCodex, ref) {
 			t.Fatalf("alias args %v did not disable the review gate", args)
 		}
 	}

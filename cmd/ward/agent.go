@@ -776,8 +776,8 @@ func issueHasModeLabel(labels []string, want string) bool { //nolint:unparam
 
 // reviewGateWanted decides whether the review gate wires into the seed.
 // CLI skips override config skips, and --no-preflight / --skip-preflight skip review too.
-func reviewGateWanted(c *cli.Command, role string, worker containerMode, ref agentIssueRef) bool {
-	wanted, _ := reviewGateDecision(c, role, worker, ref)
+func reviewGateWanted(c *cli.Command, worker containerMode, ref agentIssueRef) bool {
+	wanted, _ := reviewGateDecision(c, "engineer", worker, ref)
 	return wanted
 }
 
@@ -799,6 +799,18 @@ func reviewGateDecision(c *cli.Command, role string, worker containerMode, ref a
 		return false, "review gate skipped by ~/.ward/config.yaml default"
 	}
 	return true, ""
+}
+
+func (r *Runner) writeSkippedReviewSummaryHandoff(mode containerMode, skipReason string) {
+	if skipReason == "" {
+		return
+	}
+	skipRes := reviewpanel.PanelResult{Worker: string(mode), Gate: reviewpanel.GateAdvisory, Note: skipReason}
+	if werr := writeReviewSummaryHandoff(skipRes); werr != nil {
+		if path, perr := reviewSummaryPath(); perr == nil {
+			writef(r.Runner.Stderr, "ward agent: WARNING: could not write skipped-review summary handoff %s: %v\n", path, werr)
+		}
+	}
 }
 
 // reviewSkipMatches reports whether any configured skip rule matches the active
@@ -856,12 +868,7 @@ func (r *Runner) runAgentWork(ctx context.Context, c *cli.Command, mode containe
 	}
 	if !w.ReviewGate && !c.Bool("print") {
 		if _, skipReason := reviewGateDecision(c, surface, mode, w.Ref); skipReason != "" {
-			skipRes := reviewpanel.PanelResult{Worker: string(mode), Gate: reviewpanel.GateAdvisory, Note: skipReason}
-			if werr := writeReviewSummaryHandoff(skipRes); werr != nil {
-				if path, perr := reviewSummaryPath(); perr == nil {
-					writef(r.Runner.Stderr, "ward agent: WARNING: could not write skipped-review summary handoff %s: %v\n", path, werr)
-				}
-			}
+			r.writeSkippedReviewSummaryHandoff(mode, skipReason)
 		}
 	}
 	var justification string
@@ -1879,7 +1886,7 @@ func (r *Runner) runAgentTaskDirect(ctx context.Context, c *cli.Command, mode co
 
 	// The freeform instructions are the filed body (no --details); a headless seed
 	// (inlined body + reflection) carried under the resolved workflow (#167, #281, #508).
-	reviewGate := reviewGateWanted(c, "engineer", mode, ref)
+	reviewGate := reviewGateWanted(c, mode, ref)
 	seed := agentSeedPromptWorkflow(ref, title, body, "", true, nil, wf, reviewGate, "")
 	return r.launchAgentContainer(ctx, c, mode, "engineer",
 		resolvedWork{Ref: ref, Title: title, Body: body, Workflow: wf, ReviewGate: reviewGate, Seed: seed}, justification)
@@ -1898,7 +1905,7 @@ func printAgentTaskPlan(c *cli.Command, mode containerMode, repo targetRepo, tit
 	// --print skips the workflow validation gate above (it never files), so a bad
 	// value simply previews as the default rather than erroring here (ward#508).
 	wf, _ := agentWorkflow(c)
-	reviewGate := reviewGateWanted(c, "engineer", mode, previewRef)
+	reviewGate := reviewGateWanted(c, mode, previewRef)
 	seed := agentSeedPromptWorkflow(previewRef, title, body, "", true, nil, wf, reviewGate, "")
 	plan, err := buildUpPlan(c, repo, mode, roleEngineer, "", "", []string{seed}, false)
 	if err != nil {

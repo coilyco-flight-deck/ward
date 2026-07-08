@@ -104,10 +104,10 @@ func TestConfigBundleCacheRoot(t *testing.T) {
 	if err != nil || !strings.HasSuffix(got, filepath.Join("ward", "config-bundle")) {
 		t.Errorf("host root = %q (%v), want a .../ward/config-bundle", got, err)
 	}
-	// An unwritable container volume (root-owned gitcache, pre-ward#654
-	// bootstrap) degrades to the home cache rather than bricking the ref.
+	// A broken container volume path degrades to the home cache rather than
+	// bricking the ref.
 	ro := filepath.Join(t.TempDir(), "ro")
-	if err := os.MkdirAll(ro, 0o555); err != nil {
+	if err := os.WriteFile(ro, []byte("occupied"), 0o600); err != nil {
 		t.Fatal(err)
 	}
 	got, err = configBundleCacheRoot(env(map[string]string{"WARD_CONTAINER": "1", "WARD_GITCACHE": ro}))
