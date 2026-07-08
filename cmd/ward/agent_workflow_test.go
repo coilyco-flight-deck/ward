@@ -92,7 +92,7 @@ func TestWorkflowCarryClausePatchOnly(t *testing.T) {
 func TestAgentSeedPromptWorkflow(t *testing.T) {
 	ref := agentIssueRef{Owner: "coilyco-flight-deck", Repo: "ward", Number: 508}
 
-	direct := agentSeedPromptWorkflow(ref, "reframe ward", "do it", "", true, nil, workflowDirectMain, true)
+	direct := agentSeedPromptWorkflow(ref, "reframe ward", "do it", "", true, nil, workflowDirectMain, true, "")
 	if !strings.Contains(direct, "merge to main, push") {
 		t.Errorf("direct-main seed should carry the merge-to-main clause\n got: %s", direct)
 	}
@@ -100,7 +100,7 @@ func TestAgentSeedPromptWorkflow(t *testing.T) {
 		t.Errorf("direct-main reflection should name the merge-and-push landing\n got: %s", direct)
 	}
 
-	pr := agentSeedPromptWorkflow(ref, "reframe ward", "do it", "", true, nil, workflowPR, true)
+	pr := agentSeedPromptWorkflow(ref, "reframe ward", "do it", "", true, nil, workflowPR, true, "")
 	if !strings.Contains(pr, "pull request") || strings.Contains(pr, "merge to main, push - and close") {
 		t.Errorf("pr seed should carry a PR clause, not the merge-to-main fast path\n got: %s", pr)
 	}
@@ -108,7 +108,7 @@ func TestAgentSeedPromptWorkflow(t *testing.T) {
 		t.Errorf("pr reflection should name the branch+PR landing\n got: %s", pr)
 	}
 
-	patch := agentSeedPromptWorkflow(ref, "reframe ward", "do it", "", true, nil, workflowPatchOnly, true)
+	patch := agentSeedPromptWorkflow(ref, "reframe ward", "do it", "", true, nil, workflowPatchOnly, true, "")
 	if !strings.Contains(patch, "no landing authority") {
 		t.Errorf("patch-only seed should say it has no landing authority\n got: %s", patch)
 	}

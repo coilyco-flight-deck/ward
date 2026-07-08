@@ -82,10 +82,10 @@ func TestDirectorDispatchDisposition(t *testing.T) {
 func TestDispatchEngineerArgv(t *testing.T) {
 	ref := agentIssueRef{Owner: "coilyco-flight-deck", Repo: "ward", Number: 42}
 
-	// A bare dispatch: driver + headless detach + --quiet-seed (keeps the in-process
-	// engineer's seed dump off the shared director console; ward#519), no escalations.
+	// A bare dispatch: driver + headless detach + --quiet-seed (keeps the seed dump off
+	// the director console; ward#519) + --skip-host-preflight, with no escalations.
 	bare := dispatchEngineer{driver: modeClaude}.engineerArgv(ref)
-	wantBare := []string{"engineer", "coilyco-flight-deck/ward#42", "--harness", "claude", "--quiet-seed"}
+	wantBare := []string{"engineer", "coilyco-flight-deck/ward#42", "--harness", "claude", "--quiet-seed", "--skip-host-preflight"}
 	if !reflect.DeepEqual(bare, wantBare) {
 		t.Errorf("bare argv = %v, want %v", bare, wantBare)
 	}

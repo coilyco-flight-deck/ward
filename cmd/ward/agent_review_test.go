@@ -58,6 +58,17 @@ func TestReviewIssueRefFromEnv(t *testing.T) {
 	}
 }
 
+func TestReviewSkillPathPrefersWorkspaceCopy(t *testing.T) {
+	got := reviewSkillPath()
+	want := "/workspace/agentic-os/.agents/skills/tooling-code-review/SKILL.md"
+	if got != want {
+		t.Fatalf("reviewSkillPath() = %q, want %q", got, want)
+	}
+	if _, err := os.Stat(got); err != nil {
+		t.Fatalf("reviewSkillPath() pointed at missing skill file: %v", err)
+	}
+}
+
 // TestReviewerCandidatesDefaultToWorker proves the worker's own harness is the
 // preferred free tier and the rest of the roster remains available as paid fallbacks.
 func TestReviewerCandidatesDefaultToWorker(t *testing.T) {
@@ -90,7 +101,7 @@ func TestReviewerCandidatesDefaultToWorker(t *testing.T) {
 func TestReviewGateClauseInSeed(t *testing.T) {
 	ref := agentIssueRef{Owner: "coilyco-flight-deck", Repo: "ward", Number: 134}
 
-	direct := agentSeedPromptWorkflow(ref, "t", "b", "", true, nil, workflowDirectMain, true)
+	direct := agentSeedPromptWorkflow(ref, "t", "b", "", true, nil, workflowDirectMain, true, "")
 	if !strings.Contains(direct, "REVIEW GATE") || !strings.Contains(direct, "ward agent review") {
 		t.Errorf("direct-main headless seed missing the review gate clause")
 	}
@@ -98,12 +109,12 @@ func TestReviewGateClauseInSeed(t *testing.T) {
 		t.Errorf("direct-main Forgejo landing phrase missing from the gate clause")
 	}
 
-	patch := agentSeedPromptWorkflow(ref, "t", "b", "", true, nil, workflowPatchOnly, true)
+	patch := agentSeedPromptWorkflow(ref, "t", "b", "", true, nil, workflowPatchOnly, true, "")
 	if strings.Contains(patch, "REVIEW GATE") {
 		t.Errorf("patch-only lands nothing; it must not carry the review gate")
 	}
 
-	off := agentSeedPromptWorkflow(ref, "t", "b", "", true, nil, workflowDirectMain, false)
+	off := agentSeedPromptWorkflow(ref, "t", "b", "", true, nil, workflowDirectMain, false, "")
 	if strings.Contains(off, "REVIEW GATE") {
 		t.Errorf("--skip-review (reviewGate=false) must suppress the clause")
 	}
@@ -198,7 +209,80 @@ func TestReviewSummaryIncludesNotes(t *testing.T) {
 	if got := reviewSummary(reviewpanel.PanelResult{Gate: reviewpanel.GateBlock, Note: "no runnable reviewer"}); !strings.Contains(got, "blocked: no runnable reviewer") {
 		t.Fatalf("block summary = %q", got)
 	}
+	if got := reviewSummary(reviewpanel.PanelResult{Gate: reviewpanel.GateBlock, Reviewers: []reviewpanel.ReviewerResult{{Family: "codex", Verdict: reviewpanel.Block, Reason: "diff misses baseline"}, {Family: "claude", Verdict: reviewpanel.Pass, Reason: "looks fine"}}}); !strings.Contains(got, "blocked: diff misses baseline") {
+		t.Fatalf("mixed block summary = %q", got)
+	}
 	if got := reviewSummary(reviewpanel.PanelResult{Gate: reviewpanel.GateAdvisory, Note: "intentionally skipped"}); !strings.Contains(got, "skipped: intentionally skipped") {
 		t.Fatalf("advisory summary = %q", got)
+	}
+}
+
+func TestWriteReviewSummaryHandoff(t *testing.T) {
+	home := t.TempDir()
+	t.Setenv("HOME", home)
+	res := reviewpanel.PanelResult{Gate: reviewpanel.GateBlock, Note: "no runnable reviewer"}
+	if err := writeReviewSummaryHandoff(res); err != nil {
+		t.Fatalf("writeReviewSummaryHandoff: %v", err)
+	}
+	path, err := reviewSummaryPath()
+	if err != nil {
+		t.Fatalf("reviewSummaryPath: %v", err)
+	}
+	got, err := os.ReadFile(path)
+	if err != nil {
+		t.Fatalf("ReadFile(%s): %v", path, err)
+	}
+	if !strings.Contains(string(got), "blocked: no runnable reviewer") {
+		t.Fatalf("handoff file = %q", got)
+	}
+}
+
+func TestReviewConclusionCommentBodyIncludesSummary(t *testing.T) {
+	for _, tc := range []struct {
+		name string
+		res  reviewpanel.PanelResult
+		want []string
+	}{
+		{
+			name: "pass",
+			res: reviewpanel.PanelResult{
+				Gate:   reviewpanel.GatePass,
+				Worker: "codex",
+				Reviewers: []reviewpanel.ReviewerResult{{
+					Family: "codex", Verdict: reviewpanel.Pass, Reason: "looks good", Confidence: 0.91,
+				}},
+			},
+			want: []string{"WARD-OUTCOME: done", "review summary: passed: looks good"},
+		},
+		{
+			name: "block",
+			res: reviewpanel.PanelResult{
+				Gate:   reviewpanel.GateBlock,
+				Note:   "no runnable reviewer",
+				Worker: "codex",
+				Reviewers: []reviewpanel.ReviewerResult{{
+					Family: "codex", Verdict: reviewpanel.Block, Reason: "diff misses baseline", Confidence: 0.91,
+				}},
+			},
+			want: []string{"WARD-OUTCOME: blocked", "review summary: blocked: no runnable reviewer", "codex: diff misses baseline"},
+		},
+		{
+			name: "skipped",
+			res: reviewpanel.PanelResult{
+				Gate:   reviewpanel.GateAdvisory,
+				Note:   "review gate skipped by --skip-review / --no-review-gate",
+				Worker: "codex",
+			},
+			want: []string{"WARD-OUTCOME: done", "review summary: skipped: review gate skipped by --skip-review / --no-review-gate"},
+		},
+	} {
+		t.Run(tc.name, func(t *testing.T) {
+			got := reviewConclusionCommentBody(tc.res)
+			for _, want := range tc.want {
+				if !strings.Contains(got, want) {
+					t.Fatalf("reviewConclusionCommentBody missing %q\n%s", want, got)
+				}
+			}
+		})
 	}
 }

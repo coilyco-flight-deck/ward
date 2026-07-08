@@ -243,7 +243,7 @@ func TestForwardAgentDispatchToHostBrokerSendsCanonicalRequest(t *testing.T) {
 	t.Setenv("WARD_READONLY", "1")
 	t.Setenv("WARD_CONTAINER_NAME", "session-codex-host")
 	cmd := parseCommandForTest(t, agentEngineerFlags(), []string{
-		"engineer", "coilyco-flight-deck/ward#378", "--harness", "claude", "--skip-preflight",
+		"engineer", "coilyco-flight-deck/ward#378", "--harness", "claude", "--skip-preflight", "--skip-review",
 	})
 	forwarded, err := (&Runner{}).maybeForwardAgentDispatchToHostBroker(t.Context(), cmd, "engineer", modeClaude)
 	if err != nil {
@@ -259,7 +259,7 @@ func TestForwardAgentDispatchToHostBrokerSendsCanonicalRequest(t *testing.T) {
 	if req.Token != "nonce-123" {
 		t.Errorf("forwarded token = %q, want the per-launch nonce", req.Token)
 	}
-	want := []string{"engineer", "coilyco-flight-deck/ward#378", "--harness", "claude", "--skip-preflight"}
+	want := []string{"engineer", "coilyco-flight-deck/ward#378", "--harness", "claude", "--skip-preflight", "--skip-review"}
 	if !reflect.DeepEqual(req.Argv, want) {
 		t.Errorf("forwarded argv = %v, want %v", req.Argv, want)
 	}
@@ -292,7 +292,7 @@ func TestForwardAgentDispatchToHostBrokerInheritsSurfaceHarness(t *testing.T) {
 	t.Setenv("WARD_READONLY", "1")
 	t.Setenv("WARD_CONTAINER_NAME", "session-codex-host")
 	cmd := parseCommandForTest(t, agentEngineerFlags(), []string{
-		"engineer", "coilyco-flight-deck/ward#378", "--harness", "codex", "--skip-preflight",
+		"engineer", "coilyco-flight-deck/ward#378", "--harness", "codex", "--skip-preflight", "--skip-review",
 	})
 	forwarded, err := (&Runner{}).maybeForwardAgentDispatchToHostBroker(t.Context(), cmd, "engineer", modeCodex)
 	if err != nil {
@@ -302,7 +302,7 @@ func TestForwardAgentDispatchToHostBrokerInheritsSurfaceHarness(t *testing.T) {
 		t.Fatal("codex surface dispatch did not forward despite broker env")
 	}
 	req := <-gotReq
-	want := []string{"engineer", "coilyco-flight-deck/ward#378", "--harness", "codex", "--skip-preflight"}
+	want := []string{"engineer", "coilyco-flight-deck/ward#378", "--harness", "codex", "--skip-preflight", "--skip-review"}
 	if !reflect.DeepEqual(req.Argv, want) {
 		t.Errorf("codex surface forwarded argv = %v, want %v", req.Argv, want)
 	}

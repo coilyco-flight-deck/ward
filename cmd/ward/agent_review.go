@@ -32,12 +32,116 @@ const reviewerTimeout = 8 * time.Minute
 // reviewSkillPath resolves the hand-curated aos code-review skill that the prompt
 // embeds into the reviewer context.
 func reviewSkillPath() string {
-	dest := strings.TrimSpace(os.Getenv("WARD_SUBSTRATE_DEST"))
-	if dest == "" {
-		dest = containerSubstrateDest
+	candidates := []string{"/workspace/agentic-os/.agents/skills/tooling-code-review/SKILL.md"}
+	if dest := strings.TrimSpace(os.Getenv("WARD_WORKSPACE_DEST")); dest != "" {
+		candidates = append(candidates, filepath.Join(dest, "agentic-os", ".agents", "skills", "tooling-code-review", "SKILL.md"))
 	}
-	return filepath.Join(dest, "agentic-os", ".agents", "skills", "tooling-code-review", "SKILL.md")
+	if dest := strings.TrimSpace(os.Getenv("WARD_SUBSTRATE_DEST")); dest != "" {
+		candidates = append(candidates, filepath.Join(dest, "agentic-os", ".agents", "skills", "tooling-code-review", "SKILL.md"))
+	}
+	candidates = append(candidates, filepath.Join(containerSubstrateDest, "agentic-os", ".agents", "skills", "tooling-code-review", "SKILL.md"))
+	for _, path := range candidates {
+		if st, err := os.Stat(path); err == nil && !st.IsDir() {
+			return path
+		}
+	}
+	return candidates[len(candidates)-1]
 }
+
+// reviewSummaryPath is the handoff file the final conclusion comment reads.
+func reviewSummaryPath() (string, error) {
+	dir, err := config.GlobalDir()
+	if err != nil {
+		return "", err
+	}
+	return filepath.Join(dir, "review-summary.txt"), nil
+}
+
+// writeReviewSummaryHandoff records the final review summary where the seed asks
+// the worker to pick it up for the conclusion comment.
+func writeReviewSummaryHandoff(res reviewpanel.PanelResult) error {
+	path, err := reviewSummaryPath()
+	if err != nil {
+		return err
+	}
+	if err := os.MkdirAll(filepath.Dir(path), 0o750); err != nil {
+		return err
+	}
+	return os.WriteFile(path, []byte(reviewSummary(res)+"\n"), 0o600) //nolint:gosec // per-run handoff file in ~/.ward
+}
+
+// reviewConclusionCommentBody renders the issue comment body that records the
+// review conclusion for every gate outcome.
+func reviewConclusionCommentBody(res reviewpanel.PanelResult) string {
+	var b strings.Builder
+	status := "done"
+	switch res.Gate {
+	case reviewpanel.GateBlock:
+		status = "blocked"
+	case reviewpanel.GateAdvisory:
+		status = "done"
+	}
+	fmt.Fprintf(&b, "%s %s - review summary: %s\n\n", wardOutcomeMarker, status, reviewSummary(res))
+	writef(&b, "Review panel verdicts:\n")
+	for _, rv := range res.Reviewers {
+		note := rv.Reason
+		if rv.Error != "" {
+			note = "ERROR: " + rv.Error
+		}
+		writef(&b, "- %s: %s (conf %.2f)\n", rv.Family, truncateLine(note, 200), rv.Confidence)
+	}
+	if strings.TrimSpace(res.Note) != "" {
+		writef(&b, "\nPanel note: %s\n", truncateLine(res.Note, 200))
+	}
+	return b.String()
+}
+
+// postReviewConclusionComment writes the review conclusion back to the issue thread.
+func (r *Runner) postReviewConclusionComment(ctx context.Context, res reviewpanel.PanelResult) {
+	ref := strings.TrimSpace(reviewIssueRef())
+	if ref == "" {
+		return
+	}
+	parsed, err := parseAgentIssueRef(ref)
+	if err != nil {
+		writef(r.Runner.Stderr, "ward agent review: WARNING: could not parse issue ref %q for conclusion comment: %v\n", ref, err)
+		return
+	}
+	cl, err := r.hostForgejoClient(ctx)
+	if err != nil {
+		writef(r.Runner.Stderr, "ward agent review: WARNING: could not build Forgejo client for conclusion comment: %v\n", err)
+		return
+	}
+	cl = cl.withMode(containerMode(res.Worker))
+	if err := cl.commentIssue(ctx, parsed.Owner, parsed.Repo, parsed.Number, reviewConclusionCommentBody(res)); err != nil {
+		writef(r.Runner.Stderr, "ward agent review: WARNING: could not post review conclusion comment on %s: %v\n", parsed, err)
+	}
+}
+
+// reviewSkillFallback is the embedded aos code-review skill text, used when the
+// mounted skill file is unavailable.
+const reviewSkillFallback = `---
+name: tooling-code-review
+description: Run a one-shot adversarial code review over a diff. Read the issue contract, inspect the live tree, compare against the intended baseline implementation, and return one fenced JSON verdict. Triggers - code review, review a diff, refute by default, baseline implementation, one-shot review.
+---
+
+# Code Review
+
+Use this skill when you must judge a diff, not edit it.
+
+## Why
+
+A good review checks the change against the intended implementation, not just the patch text.
+
+## How to apply
+
+- Read the issue contract first.
+- Inspect the live filesystem state and the tests.
+- Compare the diff against the baseline implementation the issue expects.
+- Assume the diff is wrong until you can prove otherwise.
+- Do not edit files, negotiate, or iterate.
+- Return exactly one fenced JSON block with verdict, reason, and confidence.
+`
 
 // reviewBlockedError is the sentinel the command returns on a block, so the verb
 // wrapper records a reject and exits non-zero - the seed keys off it to NOT land.
@@ -134,12 +238,18 @@ func (r *Runner) runAgentReview(ctx context.Context, c *cli.Command) error {
 			result.Note = "review had no runnable reviewer; blocking fail-closed"
 		}
 	}
+	if werr := writeReviewSummaryHandoff(result); werr != nil {
+		if path, perr := reviewSummaryPath(); perr == nil {
+			writef(r.Runner.Stderr, "ward agent review: WARNING: could not write review summary handoff %s: %v\n", path, werr)
+		}
+	}
 	if perr := appendPanelRecord(result); perr != nil {
 		// Persistence is best-effort telemetry; a write failure must not turn a
 		// blocking gate into a pass, so log loud and keep the verdict.
 		writef(r.Runner.Stderr, "ward agent review: WARNING: could not persist panel result: %v\n", perr)
 	}
 	r.reportPanel(c, result)
+	r.postReviewConclusionComment(ctx, result)
 	if result.Blocks() {
 		return reviewBlockedError{result: result}
 	}
@@ -169,8 +279,7 @@ func (r *Runner) reviewPromptInput(ctx context.Context, c *cli.Command, class re
 	if skill, err := os.ReadFile(reviewSkillPath()); err == nil { //nolint:gosec // repo-owned skill path
 		in.Skill = string(skill)
 	} else {
-		writef(r.Runner.Stderr, "ward agent review: WARNING: could not read code-review skill at %s: %v\n", reviewSkillPath(), err)
-		in.Skill = "Code-review skill unavailable at " + reviewSkillPath() + ". Reviewers must still refute the diff against the issue contract and live tree."
+		in.Skill = reviewSkillFallback
 	}
 	if p := strings.TrimSpace(c.String("ci-log")); p != "" {
 		if b, err := os.ReadFile(p); err == nil { //nolint:gosec // operator-supplied CI log path
@@ -259,10 +368,6 @@ func (r *Runner) reviewerAvailable(ctx context.Context) reviewpanel.AvailFunc {
 			return false, bin + " not on PATH"
 		}
 		switch rv.Family {
-		case "codex":
-			if p := codexAuthPath(); p != "" && !fileExists(p) {
-				return false, "no codex auth at " + p
-			}
 		case "opencode":
 			endpoint := strings.TrimSpace(os.Getenv(ollamaprobe.OpencodeEndpointEnv))
 			if endpoint == "" {
@@ -276,16 +381,6 @@ func (r *Runner) reviewerAvailable(ctx context.Context) reviewpanel.AvailFunc {
 		}
 		return true, ""
 	}
-}
-
-// codexAuthPath is the codex credential file the reviewer needs, or "" when $HOME is
-// unresolvable (availability then skips the auth check rather than false-dropping).
-func codexAuthPath() string {
-	home, err := os.UserHomeDir()
-	if err != nil || home == "" {
-		return ""
-	}
-	return filepath.Join(home, ".codex", "auth.json")
 }
 
 // reviewIssueRef renders owner/repo#N from the container target env, or "".
@@ -369,6 +464,14 @@ func reviewSummary(res reviewpanel.PanelResult) string {
 	case reviewpanel.GateBlock:
 		if strings.TrimSpace(res.Note) != "" {
 			return "blocked: " + truncateLine(res.Note, 120)
+		}
+		for _, rv := range res.Reviewers {
+			if rv.Error != "" {
+				return "blocked: " + truncateLine(rv.Error, 120)
+			}
+			if rv.Verdict == reviewpanel.Block {
+				return "blocked: " + truncateLine(rv.Reason, 120)
+			}
 		}
 		if len(res.Reviewers) == 0 {
 			return "blocked"

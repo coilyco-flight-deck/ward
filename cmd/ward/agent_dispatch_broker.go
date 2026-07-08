@@ -532,6 +532,9 @@ func brokerEngineerArgv(c *cli.Command, mode containerMode, ref agentIssueRef) [
 	if c.Bool("skip-preflight") {
 		argv = append(argv, "--skip-preflight")
 	}
+	if c.Bool("skip-review") || c.Bool("no-review-gate") {
+		argv = append(argv, "--skip-review")
+	}
 	if c.Bool("print") {
 		argv = append(argv, "--print")
 	}

@@ -130,10 +130,14 @@ const emptyBodySeedAction = "This issue has no body, so work from the title alon
 
 // headlessReflection is the headless run's closing "how it felt" retro led by a
 // WARD-OUTCOME line; its landing phrase is workflow-aware (ward#281, ward#508).
-func headlessReflection(ref agentIssueRef, wf workflowMode, reviewGate bool) string {
-	reviewLine := "If a review ran, include its short verdict summary in the same final comment."
+func headlessReflection(ref agentIssueRef, wf workflowMode, reviewGate bool, reviewSkip string) string {
+	reviewLine := "If a review ran, read `~/.ward/review-summary.txt` and copy its exact one-line summary into the same final comment."
 	if !reviewGate {
-		reviewLine = "The in-container review gate was intentionally skipped, so the final comment must say that explicitly."
+		reviewLine = "The in-container review gate was intentionally skipped"
+		if reviewSkip = strings.TrimSpace(reviewSkip); reviewSkip != "" {
+			reviewLine += " because " + reviewSkip
+		}
+		reviewLine += ", so the final comment must say that explicitly."
 	}
 	return "Finally, as your very last step - only after " + workflowLandingPhrase(ref, wf) + " - post a SHORT " +
 		"comment on this issue (a few sentences, in your own voice) on how the " +
@@ -170,7 +174,7 @@ func reviewGateClause(ref agentIssueRef, wf workflowMode) string {
 			"reviewer error or timeout is a block, not a pass.\n"+
 			"  - `WARD-REVIEW: advisory ...` -> only if the gate had no runnable reviewer at all. Treat that as a "+
 			"block, not a pass, and write the skip/availability summary into the conclusion comment so the issue shows "+
-			"why the review could not run.\n"+
+			"why the review could not run. `ward agent review` writes the exact one-line review summary to `~/.ward/review-summary.txt`; copy that line verbatim into the same conclusion comment.\n"+
 			"The gate's exit code mirrors the verdict (non-zero on block), so a shell `&&` also enforces it. Do "+
 			"not skip it, and do not land on a block. If the review was intentionally skipped via `--skip-review`, "+
 			"`--skip-preflight`, or config, the final `WARD-OUTCOME` comment must say so explicitly.",
@@ -231,12 +235,12 @@ func forgeCarryClause(ref agentIssueRef) string {
 // agentSeedPrompt seeds a direct-main run (the default): a thin wrapper over
 // agentSeedPromptWorkflow so legacy callers stay byte-for-byte (ward#405, ward#508).
 func agentSeedPrompt(ref agentIssueRef, title, body, details string, headless bool, extra []targetRepo) string {
-	return agentSeedPromptWorkflow(ref, title, body, details, headless, extra, defaultWorkflow, true)
+	return agentSeedPromptWorkflow(ref, title, body, details, headless, extra, defaultWorkflow, true, "")
 }
 
 // agentSeedPromptWorkflow is agentSeedPrompt with an explicit workflow mode (carry
 // clause + landing phrase shift with it, ward#508) + a reviewGate toggle (ward#134).
-func agentSeedPromptWorkflow(ref agentIssueRef, title, body, details string, headless bool, extra []targetRepo, wf workflowMode, reviewGate bool) string {
+func agentSeedPromptWorkflow(ref agentIssueRef, title, body, details string, headless bool, extra []targetRepo, wf workflowMode, reviewGate bool, reviewSkip string) string {
 	title = strings.TrimSpace(title)
 	if title == "" {
 		title = "(untitled)"
@@ -270,7 +274,7 @@ func agentSeedPromptWorkflow(ref agentIssueRef, title, body, details string, hea
 	// A headless run detaches unwatched, so it closes with a retrospective comment -
 	// the only voice it leaves behind; the landing phrase tracks the workflow (#281, #508).
 	if headless {
-		seed += "\n\n" + headlessReflection(ref, wf, reviewGate && wf.orDefault() != workflowPatchOnly)
+		seed += "\n\n" + headlessReflection(ref, wf, reviewGate && wf.orDefault() != workflowPatchOnly, reviewSkip)
 	}
 	return seed + inline
 }
@@ -550,9 +554,12 @@ func agentSurfaceFlags() []cli.Flag {
 		&cli.BoolFlag{Name: "no-pull", Hidden: true, Usage: "skip the image pull (use the cached local image)"},
 		&cli.BoolFlag{Name: "force", Usage: "skip the local + remote concurrency reservation checks (reclaim a stale or foreign hold)"},
 	)
-	// The detached run gets an autonomous pre-flight before launching (ward#137,
-	// ward#147; see docs/agent.md); skip-preflight skips it and also skips review.
-	flags = append(flags, &cli.BoolFlag{Name: "skip-preflight", Aliases: []string{"no-preflight"}, Usage: "skip the pre-flight feasibility check and the in-container review gate, then detach immediately"})
+	// The detached run gets an autonomous pre-flight before launching (ward#137).
+	// skip-preflight skips that and the review gate; skip-host-preflight leaves review on.
+	flags = append(flags,
+		&cli.BoolFlag{Name: "skip-preflight", Aliases: []string{"no-preflight"}, Usage: "skip the pre-flight feasibility check and the in-container review gate, then detach immediately"},
+		&cli.BoolFlag{Name: "skip-host-preflight", Hidden: true, Usage: "internal: skip only the host pre-flight; director auto-dispatch uses this so the review gate still runs"},
+	)
 	// --quiet-seed silences the seeded-prompt/issue-body stderr dump under director
 	// auto-dispatch, whose console the in-process engineer shares (ward#519).
 	flags = append(flags, &cli.BoolFlag{Name: "quiet-seed", Hidden: true, Usage: "suppress the seeded-prompt/issue-body dump to stderr (set by director auto-dispatch; the seed still rides into the container as its task text) - ward#519"})
@@ -640,8 +647,8 @@ func (r *Runner) resolveAgentWork(ctx context.Context, c *cli.Command, mode cont
 	}
 	// The engineer detaches fire-and-forget (ward#356), so its seed always gets the
 	// closing reflection - the only voice it leaves behind (ward#281).
-	reviewGate := reviewGateWanted(c, surface, mode, ref)
-	return resolvedWork{Ref: ref, Title: title, Body: issue.Body, Comments: comments, Details: details, ExtraRepos: extra, Workflow: wf, ReviewGate: reviewGate, Seed: agentSeedPromptWorkflow(ref, title, issue.Body, details, true, extra, wf, reviewGate)}, nil
+	reviewGate, reviewSkip := reviewGateDecision(c, surface, mode, ref)
+	return resolvedWork{Ref: ref, Title: title, Body: issue.Body, Comments: comments, Details: details, ExtraRepos: extra, Workflow: wf, ReviewGate: reviewGate, Seed: agentSeedPromptWorkflow(ref, title, issue.Body, details, true, extra, wf, reviewGate, reviewSkip)}, nil
 }
 
 // fetchIssue reads the issue off the ref's forge (Forgejo via the ops mount, GitHub
@@ -762,21 +769,28 @@ func issueHasModeLabel(labels []string, want string) bool { //nolint:unparam
 // reviewGateWanted decides whether the review gate wires into the seed.
 // CLI skips override config skips, and --no-preflight / --skip-preflight skip review too.
 func reviewGateWanted(c *cli.Command, role string, worker containerMode, ref agentIssueRef) bool {
+	wanted, _ := reviewGateDecision(c, role, worker, ref)
+	return wanted
+}
+
+// reviewGateDecision resolves whether the in-container review gate should run and, if
+// not, why it was skipped.
+func reviewGateDecision(c *cli.Command, role string, worker containerMode, ref agentIssueRef) (bool, string) {
 	if c.Bool("skip-review") || c.Bool("no-review-gate") {
-		return false
+		return false, "review gate skipped by --skip-review / --no-review-gate"
 	}
 	if c.Bool("skip-preflight") || c.Bool("no-preflight") {
-		return false
+		return false, "review gate skipped because --skip-preflight / --no-preflight also skips review"
 	}
 	skips, err := loadReviewSkips()
 	if err != nil {
 		writef(os.Stderr, "ward agent: note: could not read review skip defaults: %v\n", err)
-		return true
+		return true, ""
 	}
 	if reviewSkipMatches(skips, role, string(worker), ref.repoSlug()) {
-		return false
+		return false, "review gate skipped by ~/.ward/config.yaml default"
 	}
-	return true
+	return true, ""
 }
 
 // reviewSkipMatches reports whether any configured skip rule matches the active
@@ -832,6 +846,16 @@ func (r *Runner) runAgentWork(ctx context.Context, c *cli.Command, mode containe
 	if !c.Bool("print") {
 		r.maybeWarnWardOutdated(ctx)
 	}
+	if !w.ReviewGate && !c.Bool("print") {
+		if _, skipReason := reviewGateDecision(c, surface, mode, w.Ref); skipReason != "" {
+			skipRes := reviewpanel.PanelResult{Worker: string(mode), Gate: reviewpanel.GateAdvisory, Note: skipReason}
+			if werr := writeReviewSummaryHandoff(skipRes); werr != nil {
+				if path, perr := reviewSummaryPath(); perr == nil {
+					writef(r.Runner.Stderr, "ward agent: WARNING: could not write skipped-review summary handoff %s: %v\n", path, werr)
+				}
+			}
+		}
+	}
 	var justification string
 	if preflightWanted(c) {
 		// ward#184: gate on the cheap, authoritative reservation before a full LLM
@@ -863,7 +887,7 @@ const preflightTimeout = 3 * time.Minute
 // preflightWanted gates the pre-flight to an interactive dispatch (a human at the
 // terminal who walked away), never --print, honoring --skip-preflight. See docs.
 func preflightWanted(c *cli.Command) bool {
-	return terminalAttached() && !c.Bool("print") && !c.Bool("skip-preflight")
+	return terminalAttached() && !c.Bool("print") && !c.Bool("skip-preflight") && !c.Bool("skip-host-preflight")
 }
 
 // preflightPrompt asks the about-to-detach agent for a feasibility read ending on a
@@ -1848,7 +1872,7 @@ func (r *Runner) runAgentTaskDirect(ctx context.Context, c *cli.Command, mode co
 	// The freeform instructions are the filed body (no --details); a headless seed
 	// (inlined body + reflection) carried under the resolved workflow (#167, #281, #508).
 	reviewGate := reviewGateWanted(c, "engineer", mode, ref)
-	seed := agentSeedPromptWorkflow(ref, title, body, "", true, nil, wf, reviewGate)
+	seed := agentSeedPromptWorkflow(ref, title, body, "", true, nil, wf, reviewGate, "")
 	return r.launchAgentContainer(ctx, c, mode, "engineer",
 		resolvedWork{Ref: ref, Title: title, Body: body, Workflow: wf, ReviewGate: reviewGate, Seed: seed}, justification)
 }
@@ -1867,7 +1891,7 @@ func printAgentTaskPlan(c *cli.Command, mode containerMode, repo targetRepo, tit
 	// value simply previews as the default rather than erroring here (ward#508).
 	wf, _ := agentWorkflow(c)
 	reviewGate := reviewGateWanted(c, "engineer", mode, previewRef)
-	seed := agentSeedPromptWorkflow(previewRef, title, body, "", true, nil, wf, reviewGate)
+	seed := agentSeedPromptWorkflow(previewRef, title, body, "", true, nil, wf, reviewGate, "")
 	plan, err := buildUpPlan(c, repo, mode, roleEngineer, "", "", []string{seed}, false)
 	if err != nil {
 		return err
