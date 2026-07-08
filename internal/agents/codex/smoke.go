@@ -42,17 +42,27 @@ func (a Agent) PreLaunchCheck(rc agentsapi.RunCtx) error {
 }
 
 func codexProbeArgv(rc agentsapi.RunCtx) []string {
-	argv := []string{
-		"codex", "exec",
+	argv := setprivPrefix(rc)
+	argv = append(argv, "codex", "exec",
 		"--skip-git-repo-check",
 		"--ephemeral",
 		"--ignore-user-config",
 		"--sandbox", "danger-full-access",
-	}
+	)
 	if rc.CodexModel != "" {
 		argv = append(argv, "--model", rc.CodexModel)
 	}
 	return append(argv, "Reply with exactly ok.")
+}
+
+// setprivPrefix builds the launch prefix that drops to the agent uid/gid with
+// init-groups and pins HOME/CODEX_HOME (`setpriv ... env HOME=<home> CODEX_HOME=<home>/.codex`), matching core's.
+func setprivPrefix(rc agentsapi.RunCtx) []string {
+	argv := []string{
+		"setpriv", "--reuid=" + rc.AgentUID, "--regid=" + rc.AgentGID, "--init-groups",
+		"env", "HOME=" + rc.AgentHome, "CODEX_HOME=" + rc.AgentHome + "/.codex",
+	}
+	return argv
 }
 
 func classifyCodexProbeFailure(model, out, stderr string, code int) error {
