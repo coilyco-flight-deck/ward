@@ -53,14 +53,15 @@ axis lives under [Drivers](#drivers) below.
 warded coilyco-flight-deck/ward#98              # bare ref -> engineer run (fire-and-forget)
 warded #98                                      # owner/repo inferred from the cwd's git origin
 warded engineer #98                             # implement a ticket: detached fire-and-forget
+warded engineer #98 --harness codex             # pick another harness (--agent spells the same pick)
 warded engineer "fix the flaky exec_gate test"  # freeform -> file an issue first, then carry
 warded director --repo owner/name               # autonomous headless-lane loop; surfaces a read-only session on drain
 warded advisor #98 "what would it take to..."   # research the issue, post a comment
 warded advisor "how is the audit log written?"  # freeform: interactive (--oneshot = one answer)
 ```
 
-The role comes first (`--harness` picks the harness, default claude; see
-[Drivers](#drivers)). **A bare ref with no role word runs the `engineer` role**.
+The role comes first (`--harness` picks the harness, default claude, and
+`--agent` is an equal accepted spelling; see [Drivers](#drivers)). **A bare ref with no role word runs the `engineer` role**.
 The ref is `owner/repo#N`, a full Forgejo URL, or a bare `#N` inferring
 `owner/repo` from the cwd's git origin; a query string or `#fragment` is ignored.
 
@@ -74,8 +75,10 @@ install stance, launch dialect, gates), no `internal/` source:
 
 The flag was born `--driver` and renamed to match what it always picked
 ([ward#660](https://forgejo.coilysiren.me/coilyco-flight-deck/ward/issues/660)):
+`--harness` and `--agent` are **equal first-class spellings** - use either,
+neither is preferred, and setting both to different harnesses is refused.
 `--driver` survives one release cycle as a hidden deprecated alias, and an
-explicit `--harness` wins when both are set.
+explicit first-class spelling wins when the alias is also set.
 
 ## Topics
 

@@ -781,8 +781,8 @@ func TestWardEnvHeadless(t *testing.T) {
 	}
 }
 
-// ward#141/#185: goose stays first-class (in agentModes + the --harness choices), and
-// each top-level surface carries --harness plus the deprecated --driver alias (#660).
+// ward#141/#185: goose stays first-class (in agentModes + the --harness choices); each
+// surface carries --harness, its equal --agent spelling, and the --driver alias (#660).
 func TestAgentModesIncludeGoose(t *testing.T) {
 	found := false
 	for _, m := range agentModes {
@@ -796,8 +796,8 @@ func TestAgentModesIncludeGoose(t *testing.T) {
 	if !strings.Contains(agentHarnessChoices(), "goose") {
 		t.Errorf("--harness choices missing goose; got %q", agentHarnessChoices())
 	}
-	// Each top-level role must exist and carry a --harness flag (so any harness,
-	// goose included, is selectable on it) plus the --driver alias (ward#660).
+	// Each top-level role must exist and carry --harness plus the equal --agent
+	// spelling and the deprecated --driver alias (ward#660).
 	surfaces := map[string]*cli.Command{}
 	for _, c := range agentCommand().Commands {
 		surfaces[c.Name] = c
@@ -811,14 +811,17 @@ func TestAgentModesIncludeGoose(t *testing.T) {
 		if !commandHasFlag(cmd, "harness") {
 			t.Errorf("ward agent %s missing the --harness flag", want)
 		}
+		if !commandHasFlag(cmd, "agent") {
+			t.Errorf("ward agent %s missing the --agent spelling", want)
+		}
 		if !commandHasFlag(cmd, "driver") {
 			t.Errorf("ward agent %s missing the deprecated --driver alias", want)
 		}
 	}
 }
 
-// ward#660: --harness is the canonical pick and --driver survives one release as a
-// hidden alias; an explicit --harness wins when both are set.
+// ward#660: --harness and --agent are equal first-class spellings of the harness pick;
+// the hidden one-release --driver alias loses to either explicit first-class spelling.
 func TestAgentHarnessAliasResolution(t *testing.T) {
 	for _, tc := range []struct {
 		name string
@@ -826,9 +829,12 @@ func TestAgentHarnessAliasResolution(t *testing.T) {
 		want containerMode
 	}{
 		{"default is claude", []string{"engineer", "#1"}, modeClaude},
-		{"canonical --harness", []string{"engineer", "#1", "--harness", "codex"}, modeCodex},
+		{"--harness spelling", []string{"engineer", "#1", "--harness", "codex"}, modeCodex},
+		{"--agent equal spelling", []string{"engineer", "#1", "--agent", "codex"}, modeCodex},
 		{"deprecated --driver alias", []string{"engineer", "#1", "--driver", "codex"}, modeCodex},
 		{"--harness wins over --driver", []string{"engineer", "#1", "--driver", "goose", "--harness", "codex"}, modeCodex},
+		{"--agent wins over --driver", []string{"engineer", "#1", "--driver", "goose", "--agent", "codex"}, modeCodex},
+		{"--harness and --agent agreeing is fine", []string{"engineer", "#1", "--harness", "codex", "--agent", "codex"}, modeCodex},
 	} {
 		cmd := parseCommandForTest(t, agentEngineerFlags(), tc.argv)
 		got, err := agentHarness(cmd)
@@ -840,16 +846,25 @@ func TestAgentHarnessAliasResolution(t *testing.T) {
 			t.Errorf("%s: agentHarness = %q, want %q", tc.name, got, tc.want)
 		}
 	}
+	// Setting both first-class spellings to different harnesses is refused.
+	conflicted := parseCommandForTest(t, agentEngineerFlags(), []string{"engineer", "#1", "--harness", "codex", "--agent", "goose"})
+	if _, err := agentHarness(conflicted); err == nil || !strings.Contains(err.Error(), "disagree") {
+		t.Errorf("conflicting --harness/--agent error = %v, want a disagree refusal", err)
+	}
 	// The invalid-value error names the spelling the caller actually used.
 	bad := parseCommandForTest(t, agentEngineerFlags(), []string{"engineer", "#1", "--driver", "warp"})
 	if _, err := agentHarness(bad); err == nil || !strings.Contains(err.Error(), "--driver") {
 		t.Errorf("invalid --driver error = %v, want it to name --driver", err)
 	}
+	badAgent := parseCommandForTest(t, agentEngineerFlags(), []string{"engineer", "#1", "--agent", "warp"})
+	if _, err := agentHarness(badAgent); err == nil || !strings.Contains(err.Error(), "--agent") {
+		t.Errorf("invalid --agent error = %v, want it to name --agent", err)
+	}
 	badCanonical := parseCommandForTest(t, agentEngineerFlags(), []string{"engineer", "#1", "--harness", "warp"})
 	if _, err := agentHarness(badCanonical); err == nil || !strings.Contains(err.Error(), "--harness") {
 		t.Errorf("invalid --harness error = %v, want it to name --harness", err)
 	}
-	// The alias stays hidden: only --harness shows on the surface help.
+	// Only the deprecated alias hides: --harness and --agent both show on the help.
 	for _, f := range agentHarnessFlags() {
 		sf, ok := f.(*cli.StringFlag)
 		if !ok {
@@ -860,6 +875,9 @@ func TestAgentHarnessAliasResolution(t *testing.T) {
 		}
 		if sf.Name == "harness" && sf.Hidden {
 			t.Error("--harness is hidden; want it visible")
+		}
+		if sf.Name == "agent" && sf.Hidden {
+			t.Error("--agent is hidden; want it visible as an equal spelling (ward#660)")
 		}
 	}
 }

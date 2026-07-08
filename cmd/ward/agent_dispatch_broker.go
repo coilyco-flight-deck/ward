@@ -418,9 +418,9 @@ func validateDispatchBrokerLaunch(req dispatchBrokerRequest) error {
 }
 
 func validateDispatchBrokerArgv(role string, tail []string) error {
-	// --config is repeatable on both roles (ward#616); --driver stays approved beside
-	// --harness so a pre-#660 container's request still validates (alias window).
-	valueFlags := map[string]bool{"--harness": true, "--driver": true, "--config": true}
+	// --config is repeatable on both roles (ward#616); --harness, its equal --agent
+	// spelling, and the pre-#660 --driver alias stay approved for skew-safety (ward#660).
+	valueFlags := map[string]bool{"--harness": true, "--agent": true, "--driver": true, "--config": true}
 	boolFlags := map[string]bool{"--print": true}
 	if role == "engineer" {
 		for _, f := range []string{"--image", "--tag", "--ward-version", "--branch", "--repo", "--tailnet-mode"} {
