@@ -8,8 +8,9 @@ for the roster.
 
 ## The flag surface (trimmed ~24 -> ~8)
 
-The shared launch helpers show ~9 visible flags: the positional ref/task, `--harness`,
-`--repo`, `--details`, `--config`, `--print`, `--force`, `--no-preflight`, and (engineer
+The shared launch helpers show ~10 flags: the positional ref/task,
+`--harness` (or `--agent`), `--repo`, `--details`,
+`--config`, `--print`, `--force`, `--no-preflight`, and (engineer
 freeform) `--instructions-file`. The trim lands in the shared helpers, so it applies to
 all three surfaces at once.
 

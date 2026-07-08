@@ -315,8 +315,8 @@ func agentHarnessChoices() string {
 	return strings.Join(names, "|")
 }
 
-// agentHarnessFlags picks the harness driving a surface: canonical --harness (default
-// claude, ward#185) + --driver as a one-release hidden deprecated alias (ward#660).
+// agentHarnessFlags picks the harness driving a surface: --harness and --agent are
+// equal first-class spellings (ward#660), --driver a one-release hidden deprecated alias.
 func agentHarnessFlags() []cli.Flag {
 	return []cli.Flag{
 		&cli.StringFlag{
@@ -325,10 +325,15 @@ func agentHarnessFlags() []cli.Flag {
 			Usage: "harness that drives the work: " + agentHarnessChoices() + " (default claude)",
 		},
 		&cli.StringFlag{
+			Name:  "agent",
+			Usage: "equal spelling for --harness (ward#660): picks the same harness, " +
+				"neither spelling is preferred",
+		},
+		&cli.StringFlag{
 			Name:   "driver",
 			Hidden: true,
-			Usage: "deprecated alias for --harness (ward#660): kept one release cycle for existing " +
-				"callers; an explicit --harness wins when both are set",
+			Usage: "deprecated alias for --harness/--agent (ward#660): kept one release cycle for " +
+				"existing callers; an explicit first-class spelling wins when both are set",
 		},
 	}
 }
@@ -397,11 +402,17 @@ func extraRepoGrant(c *cli.Command) []string {
 	return append(append([]string{}, c.StringSlice("repo")...), c.StringSlice("with-repo")...)
 }
 
-// agentHarness resolves the pick to a containerMode (default claude): an explicit
-// --harness wins, the deprecated --driver alias counts only when set alone (ward#660).
+// agentHarness resolves the pick to a containerMode (default claude): --harness and
+// --agent are equal spellings, --driver counts only when neither is set (ward#660).
 func agentHarness(c *cli.Command) (containerMode, error) {
 	raw, flag := c.String("harness"), "--harness"
-	if c.IsSet("driver") && !c.IsSet("harness") {
+	switch {
+	case c.IsSet("harness") && c.IsSet("agent") && c.String("harness") != c.String("agent"):
+		return "", fmt.Errorf("--harness %q and --agent %q disagree: they are equal spellings of the same pick (ward#660), set one",
+			c.String("harness"), c.String("agent"))
+	case !c.IsSet("harness") && c.IsSet("agent"):
+		raw, flag = c.String("agent"), "--agent"
+	case !c.IsSet("harness") && !c.IsSet("agent") && c.IsSet("driver"):
 		raw, flag = c.String("driver"), "--driver"
 	}
 	m, err := parseMode(raw)
@@ -426,8 +437,9 @@ func agentCommand() *cli.Command {
 		Description: `agent is the issue-carrying dispatcher (the spelling 'warded' fronts), a
 roster of startup roles (ward#347): you do not invoke a mode, you send in a
 role. Pick a role (engineer|director|advisor) and --harness picks the
-harness (claude|codex|opencode|goose, default claude; --driver is a deprecated
-alias for one release, ward#660). A BARE REF with no role word
+harness (claude|codex|opencode|goose, default claude; --agent is an equal
+accepted spelling, --driver a deprecated alias for one release, ward#660).
+A BARE REF with no role word
 runs the 'engineer' role - the fire-and-forget default. A bare #N (or N) infers
 the owner/repo from the cwd's git origin; owner/repo#N and a full Forgejo issue
 URL also work. One line replaces a full container bring-up stack plus a prompt.
@@ -437,6 +449,7 @@ URL also work. One line replaces a full container bring-up stack plus a prompt.
   warded engineer #98                         # implement a ticket: detached fire-and-forget
   warded engineer "fix the flaky exec_gate test" # freeform -> file an issue first, then carry
   warded engineer #98 --harness codex         # pick another harness
+  warded engineer #98 --agent codex           # --agent: the same pick, equal spelling
   warded director --repo coilyco-flight-deck/ward # autonomous backlog supervisor (surfaces a read-only scope + dispatch session on drain)
   warded advisor #98 "what would it take to..."   # research the issue, post the answer
   warded advisor "how is the audit log written?"  # answer a freeform question inline

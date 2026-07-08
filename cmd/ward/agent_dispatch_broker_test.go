@@ -37,6 +37,11 @@ func TestDispatchBrokerValidatesNarrowAPI(t *testing.T) {
 	if err := validateDispatchBrokerRequest(advisor); err != nil {
 		t.Errorf("valid advisor dispatch refused: %v", err)
 	}
+	// --agent is an equal first-class spelling of --harness (ward#660).
+	equal := dispatchBrokerRequest{Role: "engineer", Argv: []string{"engineer", "coilyco-flight-deck/ward#1", "--agent", "claude"}}
+	if err := validateDispatchBrokerRequest(equal); err != nil {
+		t.Errorf("--agent dispatch refused: %v", err)
+	}
 	// A pre-#660 container still writes --driver; the alias stays approved for one release.
 	alias := dispatchBrokerRequest{Role: "engineer", Argv: []string{"engineer", "coilyco-flight-deck/ward#1", "--driver", "claude"}}
 	if err := validateDispatchBrokerRequest(alias); err != nil {
