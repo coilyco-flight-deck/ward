@@ -365,6 +365,9 @@ func buildResourceAttrs(meta runMeta) []otlpAttr {
 	if meta.Repo != "" {
 		attrs = append(attrs, otlpStr("repo", meta.Repo))
 	}
+	if meta.Issue != "" {
+		attrs = append(attrs, otlpStr("issue", meta.Issue))
+	}
 	if meta.Driver != "" {
 		attrs = append(attrs, otlpStr("actor", meta.Driver))
 	}
@@ -379,6 +382,7 @@ func buildResourceAttrs(meta runMeta) []otlpAttr {
 func envelopeRecord(e toolEnvelope, meta runMeta) map[string]any {
 	attrs := []otlpAttr{
 		otlpStr("verb", e.Tool),
+		otlpStr("stream", "tool"),
 		otlpStr("outcome", e.Outcome),
 		otlpStr("lifecycle", e.Lifecycle),
 	}

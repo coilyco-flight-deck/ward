@@ -1,0 +1,264 @@
+{
+  "description": "Local ward-agent reaps: recent runs, console stream, tool-call envelopes, and failures.",
+  "layout": [
+    { "h": 6, "i": "recent-runs", "moved": false, "static": false, "w": 12, "x": 0, "y": 0 },
+    { "h": 8, "i": "console-stream", "moved": false, "static": false, "w": 12, "x": 0, "y": 6 },
+    { "h": 8, "i": "tool-envelopes", "moved": false, "static": false, "w": 12, "x": 0, "y": 14 },
+    { "h": 6, "i": "failures", "moved": false, "static": false, "w": 12, "x": 0, "y": 22 }
+  ],
+  "name": "ward-agent-reaps",
+  "panelMap": {},
+  "tags": ["ward", "agent", "signoz", "logs"],
+  "title": "Ward Agent Reaps",
+  "uploadedGrafana": false,
+  "variables": {
+    "repo-var": {
+      "allSelected": true,
+      "customValue": "",
+      "defaultValue": "",
+      "description": "Filter ward-agent runs by repo.",
+      "dynamicVariablesAttribute": "repo",
+      "dynamicVariablesSource": "All telemetry",
+      "id": "repo-var",
+      "key": "repo-var",
+      "modificationUUID": "b1a2a7f4-5d5a-4f01-8a83-1d2b7b0f7d1e",
+      "multiSelect": true,
+      "name": "repo",
+      "order": 0,
+      "queryValue": "",
+      "showALLOption": true,
+      "sort": "ASC",
+      "textboxValue": "",
+      "type": "DYNAMIC"
+    },
+    "issue-var": {
+      "allSelected": true,
+      "customValue": "",
+      "defaultValue": "",
+      "description": "Filter ward-agent runs by issue number.",
+      "dynamicVariablesAttribute": "issue",
+      "dynamicVariablesSource": "All telemetry",
+      "id": "issue-var",
+      "key": "issue-var",
+      "modificationUUID": "df12f36f-66d6-4c6e-9d03-bf4ad9edb0f5",
+      "multiSelect": true,
+      "name": "issue",
+      "order": 1,
+      "queryValue": "",
+      "showALLOption": true,
+      "sort": "ASC",
+      "textboxValue": "",
+      "type": "DYNAMIC"
+    },
+    "container-var": {
+      "allSelected": true,
+      "customValue": "",
+      "defaultValue": "",
+      "description": "Filter ward-agent runs by container name.",
+      "dynamicVariablesAttribute": "container",
+      "dynamicVariablesSource": "All telemetry",
+      "id": "container-var",
+      "key": "container-var",
+      "modificationUUID": "1d64d7eb-7ad7-4c7c-9d6d-7e07db793f31",
+      "multiSelect": true,
+      "name": "container",
+      "order": 2,
+      "queryValue": "",
+      "showALLOption": true,
+      "sort": "ASC",
+      "textboxValue": "",
+      "type": "DYNAMIC"
+    },
+    "actor-var": {
+      "allSelected": true,
+      "customValue": "",
+      "defaultValue": "",
+      "description": "Filter ward-agent runs by actor or harness.",
+      "dynamicVariablesAttribute": "actor",
+      "dynamicVariablesSource": "All telemetry",
+      "id": "actor-var",
+      "key": "actor-var",
+      "modificationUUID": "0f2c8c8d-58f5-4786-9645-76a0f0f57b80",
+      "multiSelect": true,
+      "name": "actor",
+      "order": 3,
+      "queryValue": "",
+      "showALLOption": true,
+      "sort": "ASC",
+      "textboxValue": "",
+      "type": "DYNAMIC"
+    }
+  },
+  "version": "v5",
+  "widgets": [
+    {
+      "description": "Recent runs grouped by container, repo, issue, and actor.",
+      "id": "recent-runs",
+      "isStacked": false,
+      "nullZeroValues": "zero",
+      "opacity": "1",
+      "panelTypes": "table",
+      "query": {
+        "builder": {
+          "queryData": [
+            {
+              "aggregations": [{ "expression": "count()" }],
+              "dataSource": "logs",
+              "disabled": false,
+              "expression": "A",
+              "filter": {
+                "expression": "service.name = 'ward-agent' AND stream = 'console' AND repo IN $repo AND issue IN $issue AND container IN $container AND actor IN $actor"
+              },
+              "groupBy": [
+                { "dataType": "string", "isColumn": false, "isJSON": false, "key": "container", "type": "tag" },
+                { "dataType": "string", "isColumn": false, "isJSON": false, "key": "repo", "type": "tag" },
+                { "dataType": "string", "isColumn": false, "isJSON": false, "key": "issue", "type": "tag" },
+                { "dataType": "string", "isColumn": false, "isJSON": false, "key": "actor", "type": "tag" }
+              ],
+              "having": { "expression": "" },
+              "legend": "Runs",
+              "limit": 25,
+              "orderBy": [{ "columnName": "count()", "order": "desc" }],
+              "queryName": "A",
+              "stepInterval": 60
+            }
+          ],
+          "queryFormulas": []
+        },
+        "queryType": "builder"
+      },
+      "timePreferance": "GLOBAL_TIME",
+      "title": "Recent Runs",
+      "yAxisUnit": "none"
+    },
+    {
+      "description": "Console lines in log order for the selected run.",
+      "id": "console-stream",
+      "isStacked": false,
+      "nullZeroValues": "zero",
+      "opacity": "1",
+      "panelTypes": "list",
+      "query": {
+        "builder": {
+          "queryData": [
+            {
+              "dataSource": "logs",
+              "disabled": false,
+              "expression": "A",
+              "filter": {
+                "expression": "service.name = 'ward-agent' AND stream = 'console' AND repo IN $repo AND issue IN $issue AND container IN $container AND actor IN $actor"
+              },
+              "having": { "expression": "" },
+              "limit": 200,
+              "orderBy": [{ "columnName": "timestamp", "order": "asc" }],
+              "pageSize": 200,
+              "queryName": "A",
+              "selectColumns": [
+                { "dataType": "string", "isColumn": true, "key": "timestamp", "type": "tag" },
+                { "dataType": "string", "isColumn": false, "key": "body", "type": "tag" },
+                { "dataType": "string", "isColumn": false, "key": "container", "type": "tag" },
+                { "dataType": "string", "isColumn": false, "key": "repo", "type": "tag" },
+                { "dataType": "string", "isColumn": false, "key": "issue", "type": "tag" },
+                { "dataType": "string", "isColumn": false, "key": "actor", "type": "tag" }
+              ],
+              "stepInterval": 60
+            }
+          ],
+          "queryFormulas": []
+        },
+        "queryType": "builder"
+      },
+      "timePreferance": "GLOBAL_TIME",
+      "title": "Console Stream",
+      "yAxisUnit": "none"
+    },
+    {
+      "description": "Tool-call envelopes with lifecycle, verb, outcome, duration, and body/file metadata.",
+      "id": "tool-envelopes",
+      "isStacked": false,
+      "nullZeroValues": "zero",
+      "opacity": "1",
+      "panelTypes": "list",
+      "query": {
+        "builder": {
+          "queryData": [
+            {
+              "dataSource": "logs",
+              "disabled": false,
+              "expression": "A",
+              "filter": {
+                "expression": "service.name = 'ward-agent' AND stream = 'tool' AND repo IN $repo AND issue IN $issue AND container IN $container AND actor IN $actor"
+              },
+              "having": { "expression": "" },
+              "limit": 200,
+              "orderBy": [{ "columnName": "timestamp", "order": "asc" }],
+              "pageSize": 200,
+              "queryName": "A",
+              "selectColumns": [
+                { "dataType": "string", "isColumn": true, "key": "timestamp", "type": "tag" },
+                { "dataType": "string", "isColumn": false, "key": "verb", "type": "tag" },
+                { "dataType": "string", "isColumn": false, "key": "outcome", "type": "tag" },
+                { "dataType": "string", "isColumn": false, "key": "lifecycle", "type": "tag" },
+                { "dataType": "string", "isColumn": false, "key": "duration_ms", "type": "tag" },
+                { "dataType": "string", "isColumn": false, "key": "body", "type": "tag" },
+                { "dataType": "string", "isColumn": false, "key": "container", "type": "tag" },
+                { "dataType": "string", "isColumn": false, "key": "repo", "type": "tag" },
+                { "dataType": "string", "isColumn": false, "key": "issue", "type": "tag" },
+                { "dataType": "string", "isColumn": false, "key": "actor", "type": "tag" }
+              ],
+              "stepInterval": 60
+            }
+          ],
+          "queryFormulas": []
+        },
+        "queryType": "builder"
+      },
+      "timePreferance": "GLOBAL_TIME",
+      "title": "Tool-call Envelopes",
+      "yAxisUnit": "none"
+    },
+    {
+      "description": "Failed tool calls and other non-success outcomes.",
+      "id": "failures",
+      "isStacked": false,
+      "nullZeroValues": "zero",
+      "opacity": "1",
+      "panelTypes": "table",
+      "query": {
+        "builder": {
+          "queryData": [
+            {
+              "aggregations": [{ "expression": "count()" }],
+              "dataSource": "logs",
+              "disabled": false,
+              "expression": "A",
+              "filter": {
+                "expression": "service.name = 'ward-agent' AND stream = 'tool' AND outcome != 'success' AND repo IN $repo AND issue IN $issue AND container IN $container AND actor IN $actor"
+              },
+              "groupBy": [
+                { "dataType": "string", "isColumn": false, "isJSON": false, "key": "container", "type": "tag" },
+                { "dataType": "string", "isColumn": false, "isJSON": false, "key": "repo", "type": "tag" },
+                { "dataType": "string", "isColumn": false, "isJSON": false, "key": "issue", "type": "tag" },
+                { "dataType": "string", "isColumn": false, "isJSON": false, "key": "actor", "type": "tag" },
+                { "dataType": "string", "isColumn": false, "isJSON": false, "key": "verb", "type": "tag" },
+                { "dataType": "string", "isColumn": false, "isJSON": false, "key": "outcome", "type": "tag" },
+                { "dataType": "string", "isColumn": false, "isJSON": false, "key": "lifecycle", "type": "tag" }
+              ],
+              "having": { "expression": "" },
+              "legend": "Failures",
+              "limit": 25,
+              "orderBy": [{ "columnName": "count()", "order": "desc" }],
+              "queryName": "A",
+              "stepInterval": 60
+            }
+          ],
+          "queryFormulas": []
+        },
+        "queryType": "builder"
+      },
+      "timePreferance": "GLOBAL_TIME",
+      "title": "Failures and Errors",
+      "yAxisUnit": "none"
+    }
+  ]
+}

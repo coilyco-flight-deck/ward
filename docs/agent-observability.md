@@ -77,3 +77,16 @@ GitHub / Anthropic / JWT / public IP). Bounded enums become indexed OTLP attribu
 - [container-lifecycle-logs.md](container-lifecycle-logs.md) - console marker conventions + debug flow.
 - [container-cleanup.md](container-cleanup.md) - the keep-10 sweep this rides in.
 - [audit.md](audit.md) - the `~/.ward/` layout the disk sink mirrors.
+
+## Local SigNoz dashboard
+
+Kai can open the local UI at `http://127.0.0.1:3301`, then go to **Dashboards** and use **Import JSON** with [`docs/ward-agent-reaps-dashboard.json`](ward-agent-reaps-dashboard.json).
+
+The template is built around the ward-agent OTLP fields:
+
+- `resource.repo`, `resource.issue`, `resource.container`, `resource.actor` as dynamic dashboard filters.
+- `stream=console` for the ordered console view.
+- `stream=tool` for tool-call envelopes.
+- `outcome != success` for the failures panel.
+
+If Kai wants to provision the same view through SigNoz instead of importing locally, the dashboard body in that JSON file is the source of truth for `ward-kdl ops signoz dashboard create`.

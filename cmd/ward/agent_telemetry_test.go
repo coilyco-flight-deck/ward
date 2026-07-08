@@ -205,6 +205,51 @@ func TestOtlpLogsPayloadShape(t *testing.T) {
 	}
 }
 
+func TestBuildResourceAttrsIncludesRunDims(t *testing.T) {
+	attrs := buildResourceAttrs(runMeta{
+		Container: "ward-x",
+		Repo:      "coilyco-flight-deck/ward",
+		Issue:     "684",
+		Driver:    "claude",
+	})
+	got := map[string]string{}
+	for _, attr := range attrs {
+		if attr.Value.StringValue != nil {
+			got[attr.Key] = *attr.Value.StringValue
+		}
+	}
+	for _, want := range []string{"service.name", "repo", "issue", "actor", "container"} {
+		if _, ok := got[want]; !ok {
+			t.Fatalf("buildResourceAttrs missing %q in %v", want, got)
+		}
+	}
+	if got["issue"] != "684" || got["container"] != "ward-x" {
+		t.Fatalf("buildResourceAttrs carried the wrong run dims: %v", got)
+	}
+}
+
+func TestEnvelopeRecordMarksToolStream(t *testing.T) {
+	rec := envelopeRecord(toolEnvelope{
+		Tool:       "Bash",
+		Outcome:    "failure",
+		Lifecycle:  lifecyclePush,
+		DurationMs: 9,
+		Args:       map[string]string{"command": "git push"},
+	}, runMeta{Issue: "684"})
+	attrs := map[string]string{}
+	for _, raw := range rec["attributes"].([]otlpAttr) {
+		if raw.Value.StringValue != nil {
+			attrs[raw.Key] = *raw.Value.StringValue
+		}
+	}
+	if attrs["stream"] != "tool" {
+		t.Fatalf("envelopeRecord stream = %q, want tool", attrs["stream"])
+	}
+	if attrs["issue"] != "684" {
+		t.Fatalf("envelopeRecord issue = %q, want 684", attrs["issue"])
+	}
+}
+
 func TestIsLocalEndpoint(t *testing.T) {
 	cases := []struct {
 		endpoint string
@@ -289,13 +334,16 @@ func TestShipToSignozPostsToLocal(t *testing.T) {
 	transcript := []byte(`{"type":"assistant","message":{"content":[{"type":"tool_use","id":"t1","name":"Bash","input":{"command":"ls"}}]}}`)
 	console := []byte("hello from the agent\n")
 	r := &Runner{}
-	r.shipToSignoz(context.Background(), console, transcript, runMeta{Container: "ward-x"})
+	r.shipToSignoz(context.Background(), console, transcript, runMeta{Container: "ward-x", Issue: "684", Driver: "claude"})
 
 	if got := atomic.LoadInt32(&hits); got != 1 {
 		t.Fatalf("shipToSignoz POSTed %d time(s); want 1", got)
 	}
 	if !strings.Contains(string(gotBody), "hello from the agent") {
 		t.Errorf("local POST omitted the console line:\n%s", gotBody)
+	}
+	if !strings.Contains(string(gotBody), `"stream"`) || !strings.Contains(string(gotBody), `"issue"`) {
+		t.Errorf("local POST missing dashboard-friendly attrs:\n%s", gotBody)
 	}
 }
 
