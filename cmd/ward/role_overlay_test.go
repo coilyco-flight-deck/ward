@@ -84,6 +84,70 @@ func TestRoleOverlayEnvWins(t *testing.T) {
 	}
 }
 
+// TestRoleOverlayBundleDefaultAndEnvWins pins the new precedence ladder against a
+// sparse bundle: bundle default -> role overlay -> WARD_* env.
+func TestRoleOverlayBundleDefaultAndEnvWins(t *testing.T) {
+	dir := t.TempDir()
+	writeFleetBundle(t, dir, `
+fleet {
+    schema-version 2
+    defaults {
+        agent claude
+        attribution name="coilyco-ops" email="coilyco-ops@coilysiren.me"
+    }
+    agent claude {
+        model "bundle-claude"
+        reasoning-effort "bundle-low"
+    }
+    agent codex {
+        model "bundle-codex"
+        reasoning-effort "bundle-low"
+    }
+    roles {
+        role director {
+            agent claude {
+                model "role-claude"
+                reasoning-effort "role-high"
+            }
+            agent codex {
+                model "role-codex"
+                reasoning-effort "role-medium"
+            }
+        }
+    }
+}
+`)
+	clearModelEnv(t)
+	t.Setenv(wardConfigRefEnv, "file://"+dir)
+	t.Setenv("WARD_ROLE", "director")
+	e, err := readBootstrapEnv()
+	if err != nil {
+		t.Fatalf("readBootstrapEnv: %v", err)
+	}
+	if e.ClaudeModel != "role-claude" || e.ClaudeEffort != "role-high" {
+		t.Fatalf("role overlay did not beat bundle default for claude: %+v", e)
+	}
+	if e.CodexModel != "role-codex" || e.CodexEffort != "role-medium" {
+		t.Fatalf("role overlay did not beat bundle default for codex: %+v", e)
+	}
+
+	clearModelEnv(t)
+	t.Setenv(wardConfigRefEnv, "file://"+dir)
+	t.Setenv("WARD_ROLE", "director")
+	t.Setenv("WARD_CLAUDE_MODEL", "env-claude")
+	t.Setenv("WARD_CODEX_REASONING_EFFORT", "env-low")
+	e, err = readBootstrapEnv()
+	if err != nil {
+		t.Fatalf("readBootstrapEnv: %v", err)
+	}
+	if e.ClaudeModel != "env-claude" {
+		t.Fatalf("env did not beat role overlay for claude: %+v", e)
+	}
+	if e.CodexEffort != "env-low" {
+		t.Fatalf("env did not beat role overlay for codex: %+v", e)
+	}
+}
+
 // TestRoleOverlayLaunchArgv pins launch-resolution end to end (ward#620): a director
 // claude headless run appends `--model claude-opus-4-8[1m]`, engineer `claude-fable-5`.
 func TestRoleOverlayLaunchArgv(t *testing.T) {

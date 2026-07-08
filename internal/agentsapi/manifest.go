@@ -27,6 +27,10 @@ type Manifest struct {
 	// Endpoint is the default provider endpoint (e.g. the ollama URL); empty when
 	// none applies.
 	Endpoint string
+	// ReasoningEffort is the default reasoning-effort knob; empty when none.
+	ReasoningEffort string
+	// Verbosity is the default verbosity knob; empty when none.
+	Verbosity string
 }
 
 // Argv holds the argv prefixes for the three ways ward invokes an agent; the

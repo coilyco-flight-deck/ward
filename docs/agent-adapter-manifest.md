@@ -4,10 +4,11 @@ doc_goal: Show why the fleet manifest is the single source of per-agent divergen
 # Agent-adapter manifest
 
 The single source of **per-agent divergence** ward needs to drive a harness is
-the fleet manifest (`fleetconfig.Fleet`) and its launcher projection. It covers
-the binary it launches, how much context it carries, its argv dialect, its
-headless stream format, and its auth. It lets ward be a *generic,
-manifest-backed driver* instead of hardcoding each agent in Go switches
+the effective fleet manifest (`fleetconfig.Fleet`) and its launcher projection.
+Ward resolves ward-owned frontier defaults first, then lets a sparse bundle
+override them. It covers the binary it launches, how much context it carries,
+its argv dialect, its headless stream format, and its auth. It lets ward be a
+*generic, manifest-backed driver* instead of hardcoding each agent in Go switches
 ([`container_compute.go`](../cmd/ward/container_compute.go): `agentBinary`,
 `contextLevel`, `hostPreflightArgv`) and bash cases
 ([`entrypoint.sh`](../cmd/ward/containerassets/entrypoint.sh)). [ward#152](https://forgejo.coilysiren.me/coilyco-flight-deck/ward/issues/152) removes
@@ -20,10 +21,10 @@ The hand-edited source is the dialect-2 fleet config
 [`fleet.generated.kdl`](../cmd/ward/fleetassets/fleet.generated.kdl) (`make
 sync-fleet-assets` mirrors it; a drift test fails the build), so a container
 needs no network to know its agent's dialect. [`agent_adapter.go`](../cmd/ward/agent_adapter.go)
-is the launcher-facing projection: `loadAgentManifest` parses the embedded fleet
-(via [`fleet.go`](../cmd/ward/fleet.go)) and `fleetToAgentManifest` flattens it,
-`validateAgentManifest` guarding the result. The docs page is the schema note for
-that projection.
+is the launcher-facing projection: `loadAgentManifest` parses the effective
+fleet (via [`fleet.go`](../cmd/ward/fleet.go)) and `fleetToAgentManifest`
+flattens it, `validateAgentManifest` guarding the result. The docs page is the
+schema note for that projection.
 
 ## Schema (schemaVersion 1)
 
@@ -59,16 +60,17 @@ Field notes:
 
 The `opencode` entry (roster key renamed from `qwen`, `--mode qwen`
 still aliases) **self-installs at container start** (best-effort), so it needs no
-image baking.
+image baking. A sparse top-level bundle may omit `agent codex { ... }` or `agent
+goose { ... }` and still get the ward built-ins back during resolution.
 
 ## The contract test
 
-[`agent_adapter_test.go`](../cmd/ward/agent_adapter_test.go) asserts the embedded
+[`agent_adapter_test.go`](../cmd/ward/agent_adapter_test.go) asserts the effective
 fleet agrees, entry for entry, with the still-live Go switches. `TestAgentManifest*`
 pin the projection (binary, context level, argv dialect) to the switches;
 `TestFleetSwitchesTwoWayPin` pins `fleet.generated.kdl` against the `parseMode`
-roster. Formerly a three-way pin, it lost the YAML leg. Change the fleet
-and the switch in lockstep, or it fails.
+roster. Formerly a three-way pin, it lost the YAML leg. Change the fleet and the
+switch in lockstep, or it fails.
 
 ## See also
 

@@ -10,8 +10,8 @@ import (
 	"forgejo.coilysiren.me/coilyco-flight-deck/cli-guard/pkg/fleetconfig"
 )
 
-// loadFleetConfig parses the fleet config off the launch-selected source. A
-// bundle failure errors loud at the call site, never a silent baked fallback.
+// loadFleetConfig resolves ward's built-in frontier defaults over the selected
+// fleet config, returning the effective roster and failing loud on bundle error.
 func loadFleetConfig() (fleetconfig.Fleet, error) {
 	src, err := selectConfigSource()
 	if err != nil {
@@ -20,13 +20,15 @@ func loadFleetConfig() (fleetconfig.Fleet, error) {
 	return loadFleetConfigFrom(src)
 }
 
-// loadBakedFleetConfig bypasses WARD_CONFIG_REF for the one init-time consumer
-// (the --driver choice list, agent.go): a bad ref must not panic the binary there.
-func loadBakedFleetConfig() (fleetconfig.Fleet, error) {
-	return loadFleetConfigFrom(bakedConfigSource())
+func loadFleetConfigFrom(src configSource) (fleetconfig.Fleet, error) {
+	raw, err := loadRawFleetConfigFrom(src)
+	if err != nil {
+		return fleetconfig.Fleet{}, err
+	}
+	return resolveEffectiveFleet(raw)
 }
 
-func loadFleetConfigFrom(src configSource) (fleetconfig.Fleet, error) {
+func loadRawFleetConfigFrom(src configSource) (fleetconfig.Fleet, error) {
 	b, err := fs.ReadFile(src.fsys, src.fleetKDL)
 	if err != nil {
 		return fleetconfig.Fleet{}, fmt.Errorf("read fleet config %s: %w", src.fleetKDL, err)

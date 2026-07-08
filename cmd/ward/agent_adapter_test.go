@@ -177,7 +177,7 @@ func fleetAgent(f fleetconfig.Fleet, name string) (fleetconfig.Agent, bool) {
 	return fleetconfig.Agent{}, false
 }
 
-// TestFleetSwitchesTwoWayPin pins the embedded fleet against the parseMode roster
+// TestFleetSwitchesTwoWayPin pins the effective fleet against the parseMode roster
 // via structural invariants, not a duplicate fixture (agent-adapter-manifest.md).
 func TestFleetSwitchesTwoWayPin(t *testing.T) {
 	fleet, err := loadFleetConfig()
