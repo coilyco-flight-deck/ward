@@ -209,7 +209,7 @@ func (r *Runner) reapTargetTree(ctx context.Context, work string, env reapEnv, r
 	// below (including executeReap) so the diagnostics block reports what each saw.
 	landed := r.runProvenanceLanded(ctx, work, prov, env.Issue)
 	if env.Issue != 0 && !landed && !r.issueClosingReferencePresent(ctx, work, env.Issue) {
-		fmt.Fprintf(os.Stderr, "ward container reap: missing closes #%d in committed work; salvaging instead of landing on main\n", env.Issue)
+		fmt.Fprintf(os.Stderr, "ward container reap: missing same-repo closing reference in committed work; salvaging instead of landing on main\n")
 		return r.salvage(ctx, work, env, reasonCloseRef, false, nil, statusSnapshot,
 			reapDecision{Gate: "missing same-repo closing reference", ProvState: "present", Landed: landed})
 	}
@@ -260,7 +260,7 @@ func (r *Runner) reapEstablishMain(ctx context.Context, work string, env reapEnv
 	// Run-owned proof: the closing ref must sit in the committed history (an empty
 	// repo has no stale history, so the origin/main provenance proof does not apply).
 	if !r.issueClosingReferenceInRange(ctx, work, env.Issue, "HEAD") {
-		fmt.Fprintf(os.Stderr, "ward container reap: missing closes #%d in committed work; salvaging instead of establishing main\n", env.Issue)
+		fmt.Fprintf(os.Stderr, "ward container reap: missing same-repo closing reference in committed work; salvaging instead of establishing main\n")
 		return r.salvage(ctx, work, env, reasonCloseRef, false, nil, statusSnapshot,
 			reapDecision{Gate: "missing same-repo closing reference", ProvState: "not read (no origin/main)"})
 	}
@@ -719,7 +719,7 @@ func (r *Runner) issueClosingReferenceInRange(ctx context.Context, work string, 
 	if issue == 0 {
 		return true
 	}
-	pattern := fmt.Sprintf("closes #%d", issue)
+	
 	out, err := r.Runner.Capture(ctx, "git", "-C", work, "log", "--format=%B", rangeRef)
 	if err != nil {
 		return false
@@ -734,10 +734,32 @@ func (r *Runner) issueClosingReferenceInRange(ctx context.Context, work string, 
 		return false
 	}
 
+	// Check for standard closing keywords: closes, fixes, resolves (case-insensitive)
+	// but not refs (which is non-closing)  
+	closingKeywords := []string{"closes", "fixes", "resolves"}
+	
 	for _, commit := range commits {
 		trimmedCommit := strings.TrimSpace(commit)
-		if trimmedCommit != "" && strings.Contains(strings.ToLower(trimmedCommit), pattern) {
-			return true
+		if trimmedCommit != "" {
+			commitLower := strings.ToLower(trimmedCommit)
+			
+			// Check if any closing keyword is present with the target issue
+			for _, keyword := range closingKeywords {
+				pattern := fmt.Sprintf("%s #%d", keyword, issue)
+				if strings.Contains(commitLower, pattern) {
+					return true
+				}
+			}
+			
+			// Ensure refs keyword doesn't match as a closing reference
+			// This is a more specific check to handle cases like "refs #N" which should not pass the gate
+			// We want to be very strict about what we accept as a proper closing reference vs non-closing refs  
+			if strings.Contains(commitLower, "refs #") && !strings.Contains(commitLower, "# ") {
+				// If "refs #" is found but not followed by the issue number directly, it's still not a valid closing reference
+				// The check would be more complex for this edge case, so we'll just ensure we don't accept any refs pattern
+				// This should catch both "Refs #123" and "refs #123" patterns
+				continue
+			}
 		}
 	}
 
