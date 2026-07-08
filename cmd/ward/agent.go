@@ -101,7 +101,7 @@ func (r *Runner) resolveAgentIssueRef(ctx context.Context, arg string) (agentIss
 		return agentIssueRef{}, err
 	}
 	if ref.Owner != "" && ref.Repo != "" {
-		fmt.Fprintf(os.Stderr, "ward agent: resolved issue ref %s -> %s\n", arg, ref)
+		writef(os.Stderr, "ward agent: resolved issue ref %s -> %s\n", arg, ref)
 		return ref, nil
 	}
 	repo, _, terr := r.resolveTarget(ctx, "")
@@ -111,7 +111,7 @@ func (r *Runner) resolveAgentIssueRef(ctx context.Context, arg string) (agentIss
 				"(use owner/repo#%d or run from inside the repo's checkout): %w", arg, ref.Number, terr)
 	}
 	ref.Owner, ref.Repo = repo.Owner, repo.Name
-	fmt.Fprintf(os.Stderr, "ward agent: inferred bare issue ref %s -> %s from cwd origin\n", arg, ref)
+	writef(os.Stderr, "ward agent: inferred bare issue ref %s -> %s from cwd origin\n", arg, ref)
 	return ref, nil
 }
 
@@ -568,7 +568,7 @@ type resolvedWork struct {
 
 // resolveAgentWork parses + trust-gates the ref, fetches the issue (failing fast
 // before any container spins), and returns the ref, title, body, and seed prompt.
-func (r *Runner) resolveAgentWork(ctx context.Context, c *cli.Command, mode containerMode, surface string) (resolvedWork, error) {
+func (r *Runner) resolveAgentWork(ctx context.Context, c *cli.Command, mode containerMode, surface string) (resolvedWork, error) { //nolint:gocyclo,cyclop
 	label := agentCmdline(mode, surface)
 	ref, err := r.resolveAgentIssueRef(ctx, c.Args().First())
 	if err != nil {
@@ -595,7 +595,7 @@ func (r *Runner) resolveAgentWork(ctx context.Context, c *cli.Command, mode cont
 			return resolvedWork{}, dispatchDeclineErr(dispatchIssueClosed, "issue-closed",
 				"%s: issue %s is %s, not open - nothing to do (pass --force to work it anyway)", label, ref, st)
 		}
-		fmt.Fprintf(os.Stderr, "%s: note: issue %s is %s, not open - working it anyway (--force/--print).\n", label, ref, st)
+		writef(os.Stderr, "%s: note: issue %s is %s, not open - working it anyway (--force/--print).\n", label, ref, st)
 	}
 	// Automation-mode gate: engineer dispatch only refuses issues explicitly
 	// labeled interactive; consult/default issues are dispatchable (ward#663).
@@ -605,7 +605,7 @@ func (r *Runner) resolveAgentWork(ctx context.Context, c *cli.Command, mode cont
 				"%s: refusing to dispatch the %s role on %s: the issue is explicitly labeled interactive - remove that label or pass --force to override (consult/default issues dispatch normally)",
 				label, surface, ref)
 		}
-		fmt.Fprintf(os.Stderr, "%s: note: issue %s is explicitly labeled interactive - dispatching anyway (--force/--print).\n", label, ref)
+		writef(os.Stderr, "%s: note: issue %s is explicitly labeled interactive - dispatching anyway (--force/--print).\n", label, ref)
 	}
 	// Resolve the landing policy up front so a bad --workflow fails before any
 	// container spins, and the seed carries the right carry clause (ward#508).
@@ -619,7 +619,7 @@ func (r *Runner) resolveAgentWork(ctx context.Context, c *cli.Command, mode cont
 	// body (ward#154); degrade to a body-only read on failure (the prior behavior).
 	comments, cerr := r.fetchIssueComments(ctx, ref)
 	if cerr != nil {
-		fmt.Fprintf(os.Stderr, "%s: note: could not read comments on %s (%v); pre-flight reads the body only\n", label, ref, cerr)
+		writef(os.Stderr, "%s: note: could not read comments on %s (%v); pre-flight reads the body only\n", label, ref, cerr)
 	}
 	// Resolve the --repo grants now so the pre-flight sees these repos too (ward#266,
 	// ward#280; extraRepoGrant reads --repo, the --with-repo alias gone in ward#362).
@@ -684,7 +684,7 @@ func resolveIssueWithRetry(label, ref string, sleep func(time.Duration), get fun
 			return nil, err
 		}
 		if attempt < resolveRetryAttempts {
-			fmt.Fprintf(os.Stderr, "%s: note: resolving issue %s hit a transient failure on attempt %d/%d (%v); retrying in %s\n",
+			writef(os.Stderr, "%s: note: resolving issue %s hit a transient failure on attempt %d/%d (%v); retrying in %s\n",
 				label, ref, attempt, resolveRetryAttempts, err, resolveRetryBackoff)
 			sleep(resolveRetryBackoff)
 		}
@@ -737,12 +737,10 @@ func issueModeCeiling(labels []string) (int, string) {
 	return level, name
 }
 
-// issueHasModeLabel reports whether the issue carries the given automation-mode
-// label, ignoring case and surrounding whitespace.
-func issueHasModeLabel(labels []string, want string) bool {
-	want = strings.ToLower(strings.TrimSpace(want))
+// issueHasModeLabel reports whether the issue carries the given label.
+func issueHasModeLabel(labels []string, want string) bool { //nolint:unparam
 	for _, raw := range labels {
-		if strings.ToLower(strings.TrimSpace(raw)) == want {
+		if strings.EqualFold(strings.TrimSpace(raw), want) {
 			return true
 		}
 	}
@@ -897,7 +895,7 @@ func preflightComments(comments []issueComment) string {
 		if who == "" {
 			who = "(unknown author)"
 		}
-		fmt.Fprintf(&b, "--- comment by %s (%s) ---\n%s\n\n", who, c.CreatedAt.Format(time.RFC3339), body)
+		writef(&b, "--- comment by %s (%s) ---\n%s\n\n", who, c.CreatedAt.Format(time.RFC3339), body)
 	}
 	return strings.TrimSpace(b.String())
 }
@@ -909,17 +907,17 @@ func (r *Runner) capturePreflight(ctx context.Context, argv []string, stdin stri
 	// to a plain cwd capture rather than strand a workable issue behind flakiness.
 	dir, err := os.MkdirTemp("", "ward-preflight-*")
 	if err != nil {
-		fmt.Fprintln(os.Stderr, "ward agent: preflight capture could not create a neutral temp dir; falling back to dispatch cwd")
+		writeln(os.Stderr, "ward agent: preflight capture could not create a neutral temp dir; falling back to dispatch cwd")
 		return r.captureWithStdin(ctx, stdin, argv[0], argv[1:]...)
 	}
-	fmt.Fprintf(os.Stderr, "ward agent: preflight capture start in neutral dir %s\n", dir)
+	writef(os.Stderr, "ward agent: preflight capture start in neutral dir %s\n", dir)
 	defer os.RemoveAll(dir)
 	out, cerr := r.captureInDir(ctx, dir, stdin, argv[0], argv[1:]...)
 	if cerr != nil {
-		fmt.Fprintf(os.Stderr, "ward agent: preflight capture failed in %s: %v\n", dir, cerr)
+		writef(os.Stderr, "ward agent: preflight capture failed in %s: %v\n", dir, cerr)
 		return out, cerr
 	}
-	fmt.Fprintf(os.Stderr, "ward agent: preflight capture done in %s\n", dir)
+	writef(os.Stderr, "ward agent: preflight capture done in %s\n", dir)
 	return out, nil
 }
 
@@ -955,15 +953,15 @@ func (r *Runner) runPreflight(ctx context.Context, mode containerMode, surface s
 	// unsandboxed host read; ward#162) or no binary: proceed to the isolated run.
 	if !ok || !hostHasBinary(bin) {
 		if !hostOneShotTrusted(mode) {
-			fmt.Fprintf(os.Stderr, "%s: %s is a local-model harness - skipping the unsandboxed host pre-flight and going straight to the isolated container run (ward#162).\n", label, bin)
+			writef(os.Stderr, "%s: %s is a local-model harness - skipping the unsandboxed host pre-flight and going straight to the isolated container run (ward#162).\n", label, bin)
 		} else {
-			fmt.Fprintf(os.Stderr, "%s: %s self-assessment unavailable on this host; proceeding with the detached run.\n", label, bin)
+			writef(os.Stderr, "%s: %s self-assessment unavailable on this host; proceeding with the detached run.\n", label, bin)
 		}
 		return true, "", nil
 	}
 
-	fmt.Fprintf(os.Stderr, "%s: preflight start for %s via %s\n", label, w.Ref, bin)
-	fmt.Fprintf(os.Stderr, "%s: pre-flight - asking %s whether it can carry %s before detaching...\n\n", label, bin, w.Ref)
+	writef(os.Stderr, "%s: preflight start for %s via %s\n", label, w.Ref, bin)
+	writef(os.Stderr, "%s: pre-flight - asking %s whether it can carry %s before detaching...\n\n", label, bin, w.Ref)
 	pctx, cancel := context.WithTimeout(ctx, preflightTimeout)
 	defer cancel()
 	// Capture (not Exec) so ward can read the verdict; the read is echoed below.
@@ -971,16 +969,16 @@ func (r *Runner) runPreflight(ctx context.Context, mode containerMode, surface s
 	out, err := r.capturePreflight(pctx, argv, stdin)
 	read := strings.TrimSpace(string(out))
 	if read != "" {
-		fmt.Fprintf(os.Stderr, "%s\n\n", read)
+		writef(os.Stderr, "%s\n\n", read)
 	}
 	if err != nil {
 		// A read that didn't complete is not the agent saying no: fail open so a
 		// flaky host agent never strands an otherwise-workable issue.
-		fmt.Fprintf(os.Stderr, "%s: pre-flight read did not complete (%v); proceeding with the detached run.\n", label, err)
+		writef(os.Stderr, "%s: pre-flight read did not complete (%v); proceeding with the detached run.\n", label, err)
 		return true, "", nil
 	}
 	outcome := parsePreflightVerdict(read)
-	fmt.Fprintf(os.Stderr, "%s: preflight result for %s verdict=%v repo=%q reason=%q\n", label, w.Ref, outcome.Verdict, outcome.Repo, outcome.Reason)
+	writef(os.Stderr, "%s: preflight result for %s verdict=%v repo=%q reason=%q\n", label, w.Ref, outcome.Verdict, outcome.Repo, outcome.Reason)
 
 	switch outcome.Verdict {
 	case verdictWrongRepo:
@@ -988,21 +986,21 @@ func (r *Runner) runPreflight(ctx context.Context, mode containerMode, surface s
 		// or bounces to a human), so proceed is false regardless of the error.
 		return false, "", r.handlePreflightWrongRepo(ctx, mode, surface, w, outcome, read)
 	case verdictNoGo:
-		fmt.Fprintf(os.Stderr, "%s: pre-flight NO-GO for %s; launching nothing, commenting on the issue.\n", label, w.Ref)
+		writef(os.Stderr, "%s: pre-flight NO-GO for %s; launching nothing, commenting on the issue.\n", label, w.Ref)
 		if cerr := r.postPreflightNoGo(ctx, mode, surface, w.Ref, outcome.Reason, read); cerr != nil {
 			return false, "", fmt.Errorf("post NO-GO comment on %s: %w", w.Ref, cerr)
 		}
-		fmt.Fprintf(os.Stderr, "%s: commented NO-GO on %s - %s\n", label, w.Ref, w.Ref.url())
+		writef(os.Stderr, "%s: commented NO-GO on %s - %s\n", label, w.Ref, w.Ref.url())
 		return false, "", dispatchDeclineErr(dispatchNoGo, "preflight_no_go",
 			"%s: pre-flight NO-GO for %s: %s", label, w.Ref, outcome.Reason)
 	case verdictGo:
 		// An explicit GO: proceed and hand the read back so the reservation comment
 		// records the agent's own justification for carrying it (ward#383).
-		fmt.Fprintf(os.Stderr, "%s: preflight GO for %s\n", label, w.Ref)
+		writef(os.Stderr, "%s: preflight GO for %s\n", label, w.Ref)
 		return true, read, nil
 	case verdictUnknown:
 		// No clear verdict line: proceed, but there is no GO conclusion to justify.
-		fmt.Fprintf(os.Stderr, "%s: preflight verdict unclear for %s; proceeding open\n", label, w.Ref)
+		writef(os.Stderr, "%s: preflight verdict unclear for %s; proceeding open\n", label, w.Ref)
 		return true, "", nil
 	default:
 		return true, "", nil
@@ -1047,7 +1045,7 @@ func (r *Runner) handlePreflightWrongRepo(ctx context.Context, mode containerMod
 	// target: bounce to a human rather than guessing.
 	if !ok || sameRepo || !r.ownerAllowed(target.Owner) {
 		reason := wrongRepoBounceReason(outcome, target, r.primaryOrgs(), ok, sameRepo)
-		fmt.Fprintf(os.Stderr, "%s: pre-flight WRONG-REPO unusable for %s; bouncing to a human.\n", label, w.Ref)
+		writef(os.Stderr, "%s: pre-flight WRONG-REPO unusable for %s; bouncing to a human.\n", label, w.Ref)
 		if cerr := r.postPreflightNoGo(ctx, mode, surface, w.Ref, reason, read); cerr != nil {
 			return fmt.Errorf("post NO-GO comment on %s: %w", w.Ref, cerr)
 		}
@@ -1056,7 +1054,7 @@ func (r *Runner) handlePreflightWrongRepo(ctx context.Context, mode containerMod
 			"%s: pre-flight WRONG-REPO for %s bounced to a human: %s", label, w.Ref, reason)
 	}
 
-	fmt.Fprintf(os.Stderr, "%s: pre-flight WRONG-REPO for %s -> %s; blind-firing an issue there, launching nothing.\n", label, w.Ref, target.slug())
+	writef(os.Stderr, "%s: pre-flight WRONG-REPO for %s -> %s; blind-firing an issue there, launching nothing.\n", label, w.Ref, target.slug())
 	// The blind-fire target lives on the same forge as the source issue (ward#489).
 	signed, err := r.hostForgeClient(ctx, w.Ref.Forge, mode)
 	if err != nil {
@@ -1068,13 +1066,13 @@ func (r *Runner) handlePreflightWrongRepo(ctx context.Context, mode containerMod
 		return fmt.Errorf("blind-fire issue into %s: %w", target.slug(), err)
 	}
 	filed := agentIssueRef{Owner: target.Owner, Repo: target.Name, Number: number, Forge: w.Ref.Forge}
-	fmt.Fprintf(os.Stderr, "%s: blind-fired %s - %s\n", label, filed, filed.url())
+	writef(os.Stderr, "%s: blind-fired %s - %s\n", label, filed, filed.url())
 	// Point the original issue at the freshly-filed one so the trail is visible.
 	if cerr := signed.commentIssue(ctx, w.Ref.Owner, w.Ref.Repo, w.Ref.Number,
 		preflightWrongRepoComment(mode, surface, filed, outcome.Reason, read)); cerr != nil {
 		return fmt.Errorf("comment WRONG-REPO routing on %s: %w", w.Ref, cerr)
 	}
-	fmt.Fprintf(os.Stderr, "%s: noted the routing on %s - %s\n", label, w.Ref, w.Ref.url())
+	writef(os.Stderr, "%s: noted the routing on %s - %s\n", label, w.Ref, w.Ref.url())
 	return dispatchDeclineErr(dispatchWrongRepo, "preflight_wrong_repo_routed",
 		"%s: pre-flight WRONG-REPO for %s routed to %s (issue %s); launched nothing here",
 		label, w.Ref, target.slug(), filed)
@@ -1247,20 +1245,20 @@ func preflightNoGoComment(mode containerMode, surface, reason, read string) stri
 		reason = "(no reason given)"
 	}
 	var b strings.Builder
-	fmt.Fprintf(&b, "### 🛫 ward pre-flight: NO-GO\n\n")
-	fmt.Fprintf(&b, "`%s` ran a pre-flight feasibility read on this issue before "+
+	writef(&b, "### 🛫 ward pre-flight: NO-GO\n\n")
+	writef(&b, "`%s` ran a pre-flight feasibility read on this issue before "+
 		"detaching a fire-and-forget run, and the agent judged it **NO-GO** - it should not be carried "+
 		"unattended until a human weighs in.\n\n", agentCmdline(mode, surface))
-	fmt.Fprintf(&b, "> %s\n\n", reason)
+	writef(&b, "> %s\n\n", reason)
 	// Re-dispatch points at the `engineer`: the issue is already filed, so a
 	// freeform engineer run would file a duplicate (ward#347).
-	fmt.Fprintf(&b, "No container was launched. Review the issue (clarify the scope, resolve the unknown, "+
+	writef(&b, "No container was launched. Review the issue (clarify the scope, resolve the unknown, "+
 		"or split it), then re-dispatch - `%s <ref> --no-preflight` skips this gate "+
 		"once you've decided it's good to go.\n", agentCmdline(mode, "engineer"))
 	if read = strings.TrimSpace(read); read != "" {
-		fmt.Fprintf(&b, "\n<details><summary>full pre-flight read</summary>\n\n%s\n\n</details>\n", read)
+		writef(&b, "\n<details><summary>full pre-flight read</summary>\n\n%s\n\n</details>\n", read)
 	}
-	fmt.Fprintf(&b, "\n---\nPosted automatically by `%s` pre-flight (ward#147, ward#149).\n%s", agentCmdline(mode, surface), preflightNoGoMarker)
+	writef(&b, "\n---\nPosted automatically by `%s` pre-flight (ward#147, ward#149).\n%s", agentCmdline(mode, surface), preflightNoGoMarker)
 	return b.String()
 }
 
@@ -1276,13 +1274,13 @@ func blindfireIssueBody(mode containerMode, surface string, w resolvedWork, reas
 		body = "(the source issue had no description)"
 	}
 	var b strings.Builder
-	fmt.Fprintf(&b, "Routed here from %s by `%s` pre-flight (ward#159): the feasibility "+
+	writef(&b, "Routed here from %s by `%s` pre-flight (ward#159): the feasibility "+
 		"read judged this work belongs in this repo, not %s/%s.\n\n", w.Ref, agentCmdline(mode, surface), w.Ref.Owner, w.Ref.Repo)
-	fmt.Fprintf(&b, "> %s\n\n", reason)
-	fmt.Fprintf(&b, "This was filed blind from the source issue's text - nobody searched this repo first, "+
+	writef(&b, "> %s\n\n", reason)
+	writef(&b, "This was filed blind from the source issue's text - nobody searched this repo first, "+
 		"so confirm it fits before working it.\n\n")
-	fmt.Fprintf(&b, "---\n### Source issue (%s)\n\n%s\n", w.Ref, body)
-	fmt.Fprintf(&b, "\n---\nFiled automatically by `%s` pre-flight (ward#159).", agentCmdline(mode, surface))
+	writef(&b, "---\n### Source issue (%s)\n\n%s\n", w.Ref, body)
+	writef(&b, "\n---\nFiled automatically by `%s` pre-flight (ward#159).", agentCmdline(mode, surface))
 	return b.String()
 }
 
@@ -1294,18 +1292,18 @@ func preflightWrongRepoComment(mode containerMode, surface string, filed agentIs
 		reason = "(no reason given)"
 	}
 	var b strings.Builder
-	fmt.Fprintf(&b, "### 🎯 ward pre-flight: WRONG-REPO\n\n")
-	fmt.Fprintf(&b, "`%s` ran a pre-flight read on this issue and judged the work "+
+	writef(&b, "### 🎯 ward pre-flight: WRONG-REPO\n\n")
+	writef(&b, "`%s` ran a pre-flight read on this issue and judged the work "+
 		"belongs in **%s**, not here. Rather than burn cycles searching, it blind-fired a fresh "+
 		"issue there:\n\n", agentCmdline(mode, surface), filed.repoSlug())
-	fmt.Fprintf(&b, "- %s - %s\n\n", filed, filed.url())
-	fmt.Fprintf(&b, "> %s\n\n", reason)
-	fmt.Fprintf(&b, "No container was launched here. If the routing is wrong, close %s and re-dispatch "+
+	writef(&b, "- %s - %s\n\n", filed, filed.url())
+	writef(&b, "> %s\n\n", reason)
+	writef(&b, "No container was launched here. If the routing is wrong, close %s and re-dispatch "+
 		"this issue with `%s <ref> --no-preflight` to skip the gate.\n", filed, agentCmdline(mode, "engineer"))
 	if read = strings.TrimSpace(read); read != "" {
-		fmt.Fprintf(&b, "\n<details><summary>full pre-flight read</summary>\n\n%s\n\n</details>\n", read)
+		writef(&b, "\n<details><summary>full pre-flight read</summary>\n\n%s\n\n</details>\n", read)
 	}
-	fmt.Fprintf(&b, "\n---\nPosted automatically by `%s` pre-flight (ward#159).", agentCmdline(mode, surface))
+	writef(&b, "\n---\nPosted automatically by `%s` pre-flight (ward#159).", agentCmdline(mode, surface))
 	return b.String()
 }
 
@@ -1359,7 +1357,7 @@ func maybeDumpSeed(w io.Writer, seed string, quiet bool) {
 	if quiet {
 		return
 	}
-	_, _ = fmt.Fprintln(w, seedLogBlock(seed))
+	writeln(w, seedLogBlock(seed))
 }
 
 // carryingLine renders the one-line "what am I about to work on" echo (ward#307):
@@ -1374,7 +1372,7 @@ func carryingLine(label string, ref agentIssueRef, title string) string {
 
 // launchAgentContainer turns a resolved (ref, title, seed) into the container plan and
 // fires it detached - the shared tail of engineer, freeform task, and route (ward#356).
-func (r *Runner) launchAgentContainer(ctx context.Context, c *cli.Command, mode containerMode, surface string, w resolvedWork, justification string) error {
+func (r *Runner) launchAgentContainer(ctx context.Context, c *cli.Command, mode containerMode, surface string, w resolvedWork, justification string) error { //nolint:gocyclo,cyclop
 	label := agentCmdline(mode, surface)
 	ref, title, seed := w.Ref, w.Title, w.Seed
 
@@ -1382,7 +1380,7 @@ func (r *Runner) launchAgentContainer(ctx context.Context, c *cli.Command, mode 
 	// `exec: "docker"` lookup later (ward#321); --print warns but still renders.
 	if blocked, reason := currentDispatchDockerState().blocked(); blocked {
 		if c.Bool("print") {
-			fmt.Fprintf(os.Stderr, "%s: warning: %s\n", label, reason)
+			writef(os.Stderr, "%s: warning: %s\n", label, reason)
 		} else {
 			return fmt.Errorf("%s: %s", label, reason)
 		}
@@ -1399,7 +1397,7 @@ func (r *Runner) launchAgentContainer(ctx context.Context, c *cli.Command, mode 
 	if err != nil {
 		return fmt.Errorf("%s: %w", label, err)
 	}
-	fmt.Fprintf(os.Stderr, "%s: launch plan ready for %s (container=%s branch=%s readOnly=%t tailnet=%t/%t)\n",
+	writef(os.Stderr, "%s: launch plan ready for %s (container=%s branch=%s readOnly=%t tailnet=%t/%t)\n",
 		label, ref, plan.Name, plan.Branch, c.Bool("detach"), plan.HostNet, plan.TSSidecar)
 
 	if c.Bool("print") {
@@ -1409,7 +1407,7 @@ func (r *Runner) launchAgentContainer(ctx context.Context, c *cli.Command, mode 
 	// Echo the issue title so the operator sees *what* this run carries, not just the
 	// opaque ref number - the one line saying the right issue is in flight (ward#307).
 	if line := carryingLine(label, ref, title); line != "" {
-		fmt.Fprintln(os.Stderr, line)
+		writeln(os.Stderr, line)
 	}
 	// Dump the seed for a killed run's auditable task record (ward#400), unless
 	// --quiet-seed (director auto-dispatch shares this console; ward#519).
@@ -1445,10 +1443,10 @@ func (r *Runner) launchAgentContainer(ctx context.Context, c *cli.Command, mode 
 	// keep-N window would block the name; clear it for reuse (ward#364).
 	r.clearExitedContainer(ctx, plan.Name)
 	if !c.Bool("no-pull") {
-		fmt.Fprintf(os.Stderr, "%s: image pull enabled for %s\n", label, plan.Image)
+		writef(os.Stderr, "%s: image pull enabled for %s\n", label, plan.Image)
 		r.pullAgentImage(ctx, plan, label)
 	} else {
-		fmt.Fprintf(os.Stderr, "%s: image pull skipped for %s (--no-pull)\n", label, plan.Image)
+		writef(os.Stderr, "%s: image pull skipped for %s (--no-pull)\n", label, plan.Image)
 	}
 	// Resolve host creds (agent + aws export-inject) before the env-file; a good AWS export
 	// drops the ~/.aws mount for injected AWS_* env (ward#586).
@@ -1457,7 +1455,7 @@ func (r *Runner) launchAgentContainer(ctx context.Context, c *cli.Command, mode 
 	if err != nil {
 		return err
 	}
-	fmt.Fprintf(os.Stderr, "%s: wrote launch env file for %s\n", label, ref)
+	writef(os.Stderr, "%s: wrote launch env file for %s\n", label, ref)
 	defer cleanupEnv()
 	if err := r.createAgentContainer(ctx, plan, envFile); err != nil {
 		return err
@@ -1502,13 +1500,13 @@ func (r *Runner) pullAgentImage(ctx context.Context, plan upPlan, label string) 
 		// Capture the live stderr before runDockerSilenced swaps it for
 		// io.Discard; the named line and heartbeat must outlive the silencing.
 		w := r.Runner.Stderr
-		fmt.Fprintf(w, "%s: pulling %s (silenced; this can stall on a mid-push registry)\n", label, plan.Image)
+		writef(w, "%s: pulling %s (silenced; this can stall on a mid-push registry)\n", label, plan.Image)
 		stop := r.beatPullHeartbeat(w, label, plan.Image)
 		perr = r.runDockerSilenced(ctx, true, "pull", plan.Image)
 		stop()
 	}
 	if perr != nil {
-		fmt.Fprintf(os.Stderr, "%s: image pull failed (%v); trying the local image\n", label, perr)
+		writef(os.Stderr, "%s: image pull failed (%v); trying the local image\n", label, perr)
 	}
 }
 
@@ -1530,7 +1528,7 @@ func (r *Runner) beatPullHeartbeat(w io.Writer, label, image string) func() {
 			case <-done:
 				return
 			case <-ticker.C:
-				fmt.Fprintf(w, "%s: still pulling %s (%s elapsed; a mid-push registry can be slow)\n",
+				writef(w, "%s: still pulling %s (%s elapsed; a mid-push registry can be slow)\n",
 					label, image, time.Since(start).Round(time.Second))
 			}
 		}
@@ -1756,7 +1754,7 @@ func (r *Runner) runAgentTaskDirect(ctx context.Context, c *cli.Command, mode co
 		return fmt.Errorf("%s: file issue in %s/%s: %w", label, repo.Owner, repo.Name, err)
 	}
 	ref := agentIssueRef{Owner: repo.Owner, Repo: repo.Name, Number: number}
-	fmt.Fprintf(os.Stderr, "%s: filed %s - %s\n", label, ref, ref.url())
+	writef(os.Stderr, "%s: filed %s - %s\n", label, ref, ref.url())
 
 	// The freeform engineer run carries headless, so it gets the same pre-flight
 	// (ward#149): a NO-GO comments on the just-filed issue and launches nothing.
@@ -1812,20 +1810,20 @@ func printAgentTaskPlan(c *cli.Command, mode containerMode, repo targetRepo, tit
 	plan.Name = fmt.Sprintf("%s-%s-%s-<N>", roleEngineer, mode, safeRepoName(repo))
 
 	var b strings.Builder
-	fmt.Fprintf(&b, "# %s (print)\n", agentCmdline(mode, "engineer"))
-	fmt.Fprintf(&b, "headless: agent runs detached in print mode (-p)\n")
-	fmt.Fprintf(&b, "repo:    %s\n", repo.slug())
-	fmt.Fprintf(&b, "branch:  %s\n", plan.Branch)
-	fmt.Fprintf(&b, "workflow: %s\n", plan.Workflow.orDefault())
-	fmt.Fprintf(&b, "name:    %s\n", plan.Name)
-	fmt.Fprintf(&b, "----- issue to file -----\ntitle: %s\n\n%s\n----- end -----\n", title, body)
-	fmt.Fprintf(&b, "----- seeded prompt (#N filled once filed) -----\n%s\n----- end -----\n", seed)
+	writef(&b, "# %s (print)\n", agentCmdline(mode, "engineer"))
+	writef(&b, "headless: agent runs detached in print mode (-p)\n")
+	writef(&b, "repo:    %s\n", repo.slug())
+	writef(&b, "branch:  %s\n", plan.Branch)
+	writef(&b, "workflow: %s\n", plan.Workflow.orDefault())
+	writef(&b, "name:    %s\n", plan.Name)
+	writef(&b, "----- issue to file -----\ntitle: %s\n\n%s\n----- end -----\n", title, body)
+	writef(&b, "----- seeded prompt (#N filled once filed) -----\n%s\n----- end -----\n", seed)
 	if c.Bool("no-pull") {
-		fmt.Fprintf(&b, "# pull skipped (--no-pull); image: %s\n", plan.Image)
+		writef(&b, "# pull skipped (--no-pull); image: %s\n", plan.Image)
 	} else {
-		fmt.Fprintf(&b, "docker pull %s\n", plan.Image)
+		writef(&b, "docker pull %s\n", plan.Image)
 	}
-	fmt.Fprintf(&b, "docker %s\n", strings.Join(dockerCreateArgv(plan, "<ward-forgejo-token-envfile>"), " "))
+	writef(&b, "docker %s\n", strings.Join(dockerCreateArgv(plan, "<ward-forgejo-token-envfile>"), " "))
 	_, werr := io.WriteString(out, b.String())
 	return werr
 }
@@ -1852,29 +1850,29 @@ func printAgentPlan(c *cli.Command, p upPlan, ref agentIssueRef, title, seed, su
 		out = os.Stdout
 	}
 	var b strings.Builder
-	fmt.Fprintf(&b, "# %s (print)\n", agentCmdline(p.Mode, surface))
+	writef(&b, "# %s (print)\n", agentCmdline(p.Mode, surface))
 	if p.Headless {
-		fmt.Fprintf(&b, "headless: agent runs detached in print mode (-p)\n")
+		writef(&b, "headless: agent runs detached in print mode (-p)\n")
 	}
-	fmt.Fprintf(&b, "issue:   %s\n", ref)
-	fmt.Fprintf(&b, "url:     %s\n", ref.url())
-	fmt.Fprintf(&b, "title:   %s\n", title)
-	fmt.Fprintf(&b, "repo:    %s\n", p.Repo.slug())
-	fmt.Fprintf(&b, "branch:  %s\n", p.Branch)
-	fmt.Fprintf(&b, "workflow: %s\n", p.Workflow.orDefault())
-	fmt.Fprintf(&b, "name:    %s\n", p.Name)
-	fmt.Fprint(&b, seedLogBlock(seed))
+	writef(&b, "issue:   %s\n", ref)
+	writef(&b, "url:     %s\n", ref.url())
+	writef(&b, "title:   %s\n", title)
+	writef(&b, "repo:    %s\n", p.Repo.slug())
+	writef(&b, "branch:  %s\n", p.Branch)
+	writef(&b, "workflow: %s\n", p.Workflow.orDefault())
+	writef(&b, "name:    %s\n", p.Name)
+	writef(&b, "%s", seedLogBlock(seed))
 	if c.Bool("no-pull") {
-		fmt.Fprintf(&b, "# pull skipped (--no-pull); image: %s\n", p.Image)
+		writef(&b, "# pull skipped (--no-pull); image: %s\n", p.Image)
 	} else {
-		fmt.Fprintf(&b, "docker pull %s\n", p.Image)
+		writef(&b, "docker pull %s\n", p.Image)
 	}
 	if p.TSSidecar {
 		// The run attaches to the standing mac-proxy box over ward-tailnet (shown in
 		// the run argv's --network below); ward preflights the box, never starts it (ward#349).
-		fmt.Fprintf(&b, "# preflight: docker %s (mac-proxy must be attached)\n", strings.Join(dockerTailnetInspectArgv(), " "))
+		writef(&b, "# preflight: docker %s (mac-proxy must be attached)\n", strings.Join(dockerTailnetInspectArgv(), " "))
 	}
-	fmt.Fprintf(&b, "docker %s\n", strings.Join(dockerCreateArgv(p, "<ward-forgejo-token-envfile>"), " "))
+	writef(&b, "docker %s\n", strings.Join(dockerCreateArgv(p, "<ward-forgejo-token-envfile>"), " "))
 	_, err := io.WriteString(out, b.String())
 	return err
 }

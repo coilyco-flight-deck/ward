@@ -263,7 +263,7 @@ func (e bootstrapEnv) oneshot() bool { return e.Headless || e.Ask }
 
 // blog logs to stderr in the entrypoint's `log()` format.
 func blog(format string, a ...any) {
-	fmt.Fprintf(os.Stderr, "ward-container: "+format+"\n", a...)
+	writef(os.Stderr, "ward-container: "+format+"\n", a...)
 }
 
 // echoRunContextGo echoes the dynamic per-run context to stderr at startup, before any
@@ -277,7 +277,7 @@ func echoRunContextGo(e bootstrapEnv, agentArgs []string) {
 	if len(agentArgs) > 0 {
 		seed = strings.Join(agentArgs, " ")
 	}
-	fmt.Fprintf(os.Stderr, "===== ward run context (ward#609) =====\n"+
+	writef(os.Stderr, "===== ward run context (ward#609) =====\n"+
 		"repo:     %s/%s\nref:      %s\nbranch:   %s\ndriver:   %s (agent %s)\nrun:      %s\n"+
 		"workflow: %s\nward:     %s\nup:       %s\n----- seed / task text -----\n%s\n"+
 		"===== end ward run context =====\n",
@@ -292,7 +292,7 @@ func echoRunContextGo(e bootstrapEnv, agentArgs []string) {
 // startup (ward#616), so its harness config is visible in the log, not silent.
 func echoAgentConfigGo(e bootstrapEnv, rc agentsapi.RunCtx, mode containerMode) {
 	model, effort, endpoint := resolvedAgentKnobs(rc, mode)
-	fmt.Fprintf(os.Stderr, "===== ward agent config (ward#616) =====\n"+
+	writef(os.Stderr, "===== ward agent config (ward#616) =====\n"+
 		"agent:         %s\nmodel:         %s\neffort:        %s\nendpoint:      %s\ncontext-level: %s\n"+
 		"===== end ward agent config =====\n",
 		string(mode),
@@ -310,6 +310,8 @@ func resolvedAgentKnobs(rc agentsapi.RunCtx, mode containerMode) (model, effort,
 		return rc.CodexModel, rc.CodexEffort, ""
 	case modeOpencode:
 		return rc.OpencodeModel, "", rc.OllamaURL
+	case modeGoose:
+		return "", "", ""
 	case modeClaude:
 		return rc.ClaudeModel, rc.ClaudeEffort, ""
 	default:
@@ -331,6 +333,8 @@ func bootstrapPrelaunchGate(mode containerMode) string {
 	switch mode {
 	case modeClaude:
 		return "auth"
+	case modeCodex, modeOpencode, modeGoose:
+		return "ollama-probe"
 	default:
 		return "ollama-probe"
 	}
@@ -366,9 +370,8 @@ func containerBootstrapCommand() *cli.Command {
 	}
 }
 
-// runContainerBootstrap is the port of the bash `main()`, in the same order.
-// agentArgs is the seed argv the entrypoint passes as `"$@"` to the agent.
-func (r *Runner) runContainerBootstrap(ctx context.Context, c *cli.Command) error {
+// runContainerBootstrap is the Go port of the bash entrypoint main loop.
+func (r *Runner) runContainerBootstrap(ctx context.Context, c *cli.Command) error { //nolint:funlen,gocyclo,cyclop
 	e, err := readBootstrapEnv()
 	if err != nil {
 		blog("fatal: %v", err)
@@ -546,7 +549,7 @@ func (r *Runner) makeReadOnlyTree(root string) {
 		} else {
 			mode &^= 0o222
 		}
-		if cherr := os.Chmod(path, mode); cherr != nil {
+		if cherr := os.Chmod(path, mode); cherr != nil { // #nosec G122 -- chmod stays inside the walked clone tree
 			blog("read-only tree chmod skipped %s: %v", path, cherr)
 		}
 		return nil
@@ -791,9 +794,9 @@ func (r *Runner) cloneContextRepos(ctx context.Context, e bootstrapEnv) {
 	}
 }
 
-// cloneExtraRepo mirrors+working-clones one granted repo under /workspace/<name> (#573).
-// A non-empty cloneURL means an external dep: host-side-seeded, a miss fails loud (#612).
-func (r *Runner) cloneExtraRepo(ctx context.Context, e bootstrapEnv, repo targetRepo, readOnly bool, cloneURL string) {
+// cloneExtraRepo mirrors or seeds one granted repo under /workspace.
+// External deps use the supplied clone URL.
+func (r *Runner) cloneExtraRepo(ctx context.Context, e bootstrapEnv, repo targetRepo, readOnly bool, cloneURL string) { //nolint:gocognit,gocritic,gocyclo,cyclop,nestif
 	// A whole-run read-only surface makes every clone read-only; a context repo is
 	// read-only even on a writable engineer run (ward#573).
 	ro := readOnly || e.ReadOnly
@@ -1353,7 +1356,7 @@ func streamProgress(in io.Reader, w io.Writer) {
 			continue
 		}
 		for _, out := range streamProgressLines(ev) {
-			_, _ = fmt.Fprintln(w, out)
+			writeln(w, out)
 		}
 	}
 }

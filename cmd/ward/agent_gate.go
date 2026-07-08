@@ -100,20 +100,20 @@ func newScratchGateStatus(p upPlan, readOnly, behind bool, current, latest strin
 func renderScratchGate(w io.Writer, s scratchGateStatus) {
 	var b strings.Builder
 	b.WriteString("\n── ward pre-launch ─────────────────────────────────\n")
-	fmt.Fprintf(&b, "  access:   %s\n", s.access)
-	fmt.Fprintf(&b, "  repo:     %s\n", s.repo)
-	fmt.Fprintf(&b, "  agent:    %s (%s)\n", s.agentBinary, s.mode)
-	fmt.Fprintf(&b, "  image:    %s\n", s.image)
-	fmt.Fprintf(&b, "  ward:     %s\n", s.wardVersion)
+	writef(&b, "  access:   %s\n", s.access)
+	writef(&b, "  repo:     %s\n", s.repo)
+	writef(&b, "  agent:    %s (%s)\n", s.agentBinary, s.mode)
+	writef(&b, "  image:    %s\n", s.image)
+	writef(&b, "  ward:     %s\n", s.wardVersion)
 	if len(s.withRepos) > 0 {
-		fmt.Fprintf(&b, "  with:     %s\n", strings.Join(s.withRepos, ", "))
+		writef(&b, "  with:     %s\n", strings.Join(s.withRepos, ", "))
 	}
 	// The read-only catalog.dependsOn context set is resolved in-container from the
 	// fresh clone (ward#580), so the host cannot name it here before launch.
 	b.WriteString("  context:  catalog.dependsOn resolved in-container (read-only)\n")
 	b.WriteString("────────────────────────────────────────────────────\n")
 	if s.behind {
-		fmt.Fprintf(&b, "host ward %s is behind the latest release %s.\n", s.current, s.latest)
+		writef(&b, "host ward %s is behind the latest release %s.\n", s.current, s.latest)
 		b.WriteString("Press Enter to launch, or type u then Enter to upgrade ward and re-launch.\n")
 	} else {
 		b.WriteString("Press Enter to launch.\n")
@@ -142,7 +142,7 @@ func (r *Runner) runScratchGate(ctx context.Context, c *cli.Command, plan upPlan
 		// Headless/piped: no terminal to gate to. Keep the stale-ward heads-up
 		// (ward#143) and fall straight through to the launch.
 		if behind {
-			_, _ = fmt.Fprint(r.gateErr(), wardOutdatedNotice(Version, latest))
+			writef(r.gateErr(), "%s", wardOutdatedNotice(Version, latest))
 		}
 		return true, nil
 	}
@@ -157,20 +157,20 @@ func (r *Runner) runScratchGate(ctx context.Context, c *cli.Command, plan upPlan
 // canonical ward with the current argv (ward#366); see docs/agent-gate.md.
 func (r *Runner) upgradeAndRelaunch(ctx context.Context, _ *cli.Command, label string) (proceed bool, err error) {
 	w := r.gateErr()
-	fmt.Fprintf(w, "%s: upgrading ward, then re-launching the same command...\n", label)
+	writef(w, "%s: upgrading ward, then re-launching the same command...\n", label)
 	if uerr := upgradeCommand().Run(ctx, []string{"upgrade"}); uerr != nil {
 		return false, fmt.Errorf("%s: ward upgrade: %w", label, uerr)
 	}
 	path := canonicalWardPath()
 	if path == "" {
 		// Dev/source build: no canonical binary to re-exec - the acceptable v1.
-		fmt.Fprintf(w, "%s: ward upgraded; re-run your command to launch on the new binary.\n", label)
+		writef(w, "%s: ward upgraded; re-run your command to launch on the new binary.\n", label)
 		return false, nil
 	}
-	fmt.Fprintf(w, "%s: re-launching on the upgraded ward (%s)...\n", label, path)
+	writef(w, "%s: re-launching on the upgraded ward (%s)...\n", label, path)
 	if xerr := reExec(path, os.Args, os.Environ()); xerr != nil {
 		// A successful exec never returns; reaching here means the hand-off failed.
-		fmt.Fprintf(w, "%s: re-exec failed (%v); ward is upgraded - re-run your command.\n", label, xerr)
+		writef(w, "%s: re-exec failed (%v); ward is upgraded - re-run your command.\n", label, xerr)
 		return false, nil
 	}
 	return false, nil // unreachable on a successful exec (the process is replaced)

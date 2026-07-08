@@ -53,9 +53,8 @@ func frontierDefaultsFromManifests(ms []agentsapi.Manifest) map[string]fleetconf
 	return out
 }
 
-// mergeAgentOverlay applies a sparse top-level agent override onto a base
-// frontier definition. Empty fields keep the base values.
-func mergeAgentOverlay(base, override fleetconfig.Agent) fleetconfig.Agent {
+// mergeAgentOverlay applies a sparse override onto a base frontier definition.
+func mergeAgentOverlay(base, override fleetconfig.Agent) fleetconfig.Agent { //nolint:gocyclo,cyclop
 	out := base
 	if override.Name != "" {
 		out.Name = override.Name

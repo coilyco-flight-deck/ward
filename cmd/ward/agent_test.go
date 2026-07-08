@@ -66,7 +66,7 @@ func TestResolveAgentIssueRef(t *testing.T) {
 		if err := os.WriteFile(failGit, []byte("#!/bin/sh\nexit 1\n"), 0o755); err != nil { //nolint:gosec
 			t.Fatal(err)
 		}
-		noOrigin := &Runner{Runner: &shell.Runner{Resolve: func(bin string) (string, error) {
+		noOrigin := &Runner{Runner: &shell.Runner{Resolve: func(_ string) (string, error) {
 			return failGit, nil
 		}}}
 		if _, err := noOrigin.resolveAgentIssueRef(t.Context(), "#98"); err == nil {

@@ -119,7 +119,7 @@ func (r *Runner) runAgentReview(ctx context.Context, c *cli.Command) error {
 	if perr := appendPanelRecord(result); perr != nil {
 		// Persistence is best-effort telemetry; a write failure must not turn a
 		// blocking gate into a pass, so log loud and keep the verdict.
-		fmt.Fprintf(r.Runner.Stderr, "ward agent review: WARNING: could not persist panel result: %v\n", perr)
+		writef(r.Runner.Stderr, "ward agent review: WARNING: could not persist panel result: %v\n", perr)
 	}
 
 	r.reportPanel(c, result)
@@ -142,7 +142,7 @@ func (r *Runner) reviewPromptInput(ctx context.Context, c *cli.Command, class re
 		if b, err := os.ReadFile(p); err == nil { //nolint:gosec // operator-supplied CI log path
 			in.CIOutput = string(b)
 		} else {
-			fmt.Fprintf(r.Runner.Stderr, "ward agent review: WARNING: could not read --ci-log %s: %v\n", p, err)
+			writef(r.Runner.Stderr, "ward agent review: WARNING: could not read --ci-log %s: %v\n", p, err)
 		}
 	}
 	return in
@@ -280,39 +280,39 @@ func reviewSessionID() string {
 func (r *Runner) reportPanel(c *cli.Command, res reviewpanel.PanelResult) {
 	if c.Bool("json") {
 		if b, err := json.MarshalIndent(res, "", "  "); err == nil {
-			fmt.Fprintln(r.Runner.Stdout, string(b))
+			writeln(r.Runner.Stdout, string(b))
 		}
 	}
 	w := r.Runner.Stderr
-	fmt.Fprintf(w, "\n── ward review panel (%s, class %s) ──\n", res.Worker, res.Class)
+	writef(w, "\n── ward review panel (%s, class %s) ──\n", res.Worker, res.Class)
 	for _, rv := range res.Reviewers {
 		note := rv.Reason
 		if rv.Error != "" {
 			note = "ERROR: " + rv.Error
 		}
-		fmt.Fprintf(w, "  %-10s %-6s (conf %.2f) %s\n", rv.Family, rv.Verdict, rv.Confidence, truncateLine(note, 100))
+		writef(w, "  %-10s %-6s (conf %.2f) %s\n", rv.Family, rv.Verdict, rv.Confidence, truncateLine(note, 100))
 	}
 	switch res.Gate {
 	case reviewpanel.GateAdvisory:
-		fmt.Fprintf(w, "%s\n", res.Note)
-		fmt.Fprintf(w, "PR-BODY-NOTE: %s\n", res.Note)
+		writef(w, "%s\n", res.Note)
+		writef(w, "PR-BODY-NOTE: %s\n", res.Note)
 	case reviewpanel.GateBlock:
-		fmt.Fprintf(w, "panel BLOCKED: %d/%d passing - do NOT land this diff.\n", res.Passes, res.Threshold)
+		writef(w, "panel BLOCKED: %d/%d passing - do NOT land this diff.\n", res.Passes, res.Threshold)
 	case reviewpanel.GatePass:
-		fmt.Fprintf(w, "panel cleared: %d/%d passing.\n", res.Passes, res.Threshold)
+		writef(w, "panel cleared: %d/%d passing.\n", res.Passes, res.Threshold)
 	}
 	// The machine line the seed greps: pass|block|advisory.
-	fmt.Fprintf(r.Runner.Stdout, "WARD-REVIEW: %s - %d/%d passing (class %s)\n", res.Gate, res.Passes, res.Threshold, res.Class)
+	writef(r.Runner.Stdout, "WARD-REVIEW: %s - %d/%d passing (class %s)\n", res.Gate, res.Passes, res.Threshold, res.Class)
 }
 
 // printReviewPlan is the --print dry run: show the resolved panel + prompt, run nothing.
 func (r *Runner) printReviewPlan(cfg reviewpanel.Config) error {
 	w := r.Runner.Stdout
-	fmt.Fprintf(w, "ward agent review --print\n")
-	fmt.Fprintf(w, "  worker (excluded): %s\n", cfg.Worker)
-	fmt.Fprintf(w, "  class:             %s\n", cfg.Class)
-	fmt.Fprintf(w, "  issue:             %s\n", cfg.Issue)
-	fmt.Fprintf(w, "  candidates:\n")
+	writef(w, "ward agent review --print\n")
+	writef(w, "  worker (excluded): %s\n", cfg.Worker)
+	writef(w, "  class:             %s\n", cfg.Class)
+	writef(w, "  issue:             %s\n", cfg.Issue)
+	writef(w, "  candidates:\n")
 	for _, rv := range cfg.Candidates {
 		tier := "free"
 		if rv.Paid {
@@ -322,9 +322,9 @@ func (r *Runner) printReviewPlan(cfg reviewpanel.Config) error {
 		if strings.EqualFold(rv.Family, cfg.Worker) {
 			excluded = " [EXCLUDED: worker's own family]"
 		}
-		fmt.Fprintf(w, "    - %s (%s, %s)%s\n", rv.Family, rv.Model, tier, excluded)
+		writef(w, "    - %s (%s, %s)%s\n", rv.Family, rv.Model, tier, excluded)
 	}
-	fmt.Fprintf(w, "\n----- reviewer prompt -----\n%s\n", reviewpanel.RefutePrompt(cfg.Prompt))
+	writef(w, "\n----- reviewer prompt -----\n%s\n", reviewpanel.RefutePrompt(cfg.Prompt))
 	return nil
 }
 

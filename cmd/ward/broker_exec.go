@@ -188,14 +188,14 @@ var writeTierOps = map[broker.Op]bool{
 
 // writeTierAuthorizer is the broker.Authorizer: the write-op allowlist + Policy's
 // invariants, plus an owner scope gate mirroring the write guardfile's restrict.
-func writeTierAuthorizer(ownerPrefix string) broker.Authorizer {
+func writeTierAuthorizer() broker.Authorizer {
 	policy := broker.Policy{Ops: writeTierOps}
 	return broker.AuthorizerFunc(func(ctx context.Context, req broker.Request) error {
 		if err := policy.Authorize(ctx, req); err != nil {
 			return err
 		}
-		if ownerPrefix != "" && !strings.HasPrefix(req.Target.Owner, ownerPrefix) {
-			return fmt.Errorf("broker: owner %q is out of scope (restricted to %s* owners)", req.Target.Owner, ownerPrefix)
+		if brokerOwnerPrefix != "" && !strings.HasPrefix(req.Target.Owner, brokerOwnerPrefix) {
+			return fmt.Errorf("broker: owner %q is out of scope (restricted to %s* owners)", req.Target.Owner, brokerOwnerPrefix)
 		}
 		return nil
 	})

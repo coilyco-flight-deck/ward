@@ -83,10 +83,10 @@ func (r *Runner) runAgentReap(ctx context.Context, c *cli.Command) error {
 		return r.agentReapSweep(ctx, threshold, maxCPU, dryRun, w)
 	}
 
-	fmt.Fprintf(w, "ward agent reap: standing daemon, sweeping every %s (idle >= %s)\n", interval, threshold)
+	writef(w, "ward agent reap: standing daemon, sweeping every %s (idle >= %s)\n", interval, threshold)
 	for {
 		if err := r.agentReapSweep(ctx, threshold, maxCPU, dryRun, w); err != nil {
-			fmt.Fprintf(w, "ward agent reap: sweep error (continuing): %v\n", err)
+			writef(w, "ward agent reap: sweep error (continuing): %v\n", err)
 		}
 		select {
 		case <-ctx.Done():
@@ -104,7 +104,7 @@ func (r *Runner) agentReapSweep(ctx context.Context, threshold time.Duration, ma
 		return fmt.Errorf("list running engineer containers: %w", err)
 	}
 	if len(names) == 0 {
-		fmt.Fprintln(w, "ward agent reap: no running engineer containers.")
+		writeln(w, "ward agent reap: no running engineer containers.")
 		return nil
 	}
 
@@ -114,18 +114,18 @@ func (r *Runner) agentReapSweep(ctx context.Context, threshold time.Duration, ma
 		st := r.engineerReapState(ctx, name, now)
 		stop, reason := reapVerdict(st, threshold, maxCPU)
 		if !stop {
-			fmt.Fprintf(w, "ward agent reap: keep %s - %s\n", name, reason)
+			writef(w, "ward agent reap: keep %s - %s\n", name, reason)
 			spared++
 			continue
 		}
 		if dryRun {
-			fmt.Fprintf(w, "ward agent reap: WOULD stop %s - %s\n", name, reason)
+			writef(w, "ward agent reap: WOULD stop %s - %s\n", name, reason)
 			stopped++
 			continue
 		}
-		fmt.Fprintf(w, "ward agent reap: stopping %s - %s\n", name, reason)
+		writef(w, "ward agent reap: stopping %s - %s\n", name, reason)
 		if serr := r.dockerExec(ctx, "stop", name); serr != nil {
-			fmt.Fprintf(w, "ward agent reap: stop %s failed (%v); continuing\n", name, serr)
+			writef(w, "ward agent reap: stop %s failed (%v); continuing\n", name, serr)
 			continue
 		}
 		stopped++
@@ -135,7 +135,7 @@ func (r *Runner) agentReapSweep(ctx context.Context, threshold time.Duration, ma
 	if dryRun {
 		action = "would stop"
 	}
-	fmt.Fprintf(w, "ward agent reap: swept %d engineer(s): %s %d, kept %d.\n", len(names), action, stopped, spared)
+	writef(w, "ward agent reap: swept %d engineer(s): %s %d, kept %d.\n", len(names), action, stopped, spared)
 	return nil
 }
 

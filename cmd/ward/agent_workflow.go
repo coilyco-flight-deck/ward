@@ -87,7 +87,11 @@ func agentWorkflow(c *cli.Command) (workflowMode, error) {
 // workflowCarryClause is the workflow-specific tail of the seed's carry sentence:
 // direct-main defers to the forge clause, pr forces a PR, patch-only lands nothing.
 func workflowCarryClause(ref agentIssueRef, wf workflowMode) string {
-	switch wf.orDefault() {
+	switch wf {
+	case "":
+		return forgeCarryClause(ref)
+	case workflowDirectMain:
+		return forgeCarryClause(ref)
 	case workflowPR:
 		return prWorkflowCarryClause(ref)
 	case workflowPatchOnly:
@@ -127,7 +131,17 @@ func patchOnlyCarryClause(ref agentIssueRef) string {
 // workflowLandingPhrase names "done" for the reflection's "only after ..." opener:
 // direct-main folds in the forge (GitHub lands via a PR too), pr/patch-only override.
 func workflowLandingPhrase(ref agentIssueRef, wf workflowMode) string {
-	switch wf.orDefault() {
+	switch wf {
+	case "":
+		if ref.Forge == forgeGitHub {
+			return "the branch is pushed and the pull request opened"
+		}
+		return "the work is committed, merged to main, and pushed"
+	case workflowDirectMain:
+		if ref.Forge == forgeGitHub {
+			return "the branch is pushed and the pull request opened"
+		}
+		return "the work is committed, merged to main, and pushed"
 	case workflowPR:
 		return "the branch is pushed and the pull request opened"
 	case workflowPatchOnly:

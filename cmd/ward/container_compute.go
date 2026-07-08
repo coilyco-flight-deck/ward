@@ -592,7 +592,7 @@ func knownConfigKeys() []string {
 // flags into WARD_* container env overrides (ward#616); unknown/malformed fails loud.
 func parseConfigOverrides(entries []string) (map[string]string, error) {
 	if len(entries) == 0 {
-		return nil, nil
+		return map[string]string{}, nil
 	}
 	out := map[string]string{}
 	for _, raw := range entries {
@@ -620,7 +620,7 @@ func parseConfigOverrides(entries []string) (map[string]string, error) {
 
 // wardEnv is the non-secret WARD_* config the entrypoint reads. Everything
 // here is safe to print and to record; the token never appears.
-func (p upPlan) wardEnv() map[string]string {
+func (p upPlan) wardEnv() map[string]string { //nolint:gocyclo,cyclop
 	topo := currentContainerTopology()
 	rec := lookupAgent(p.Mode).Record() // registry data reads (Phase 3, ward#418)
 	env := map[string]string{

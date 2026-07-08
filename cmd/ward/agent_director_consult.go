@@ -177,7 +177,7 @@ func (r *Runner) consultRepo(ctx context.Context, label, repo string, cl *forgej
 	owner, name, _ := strings.Cut(repo, "/")
 	issues, lerr := cl.listOpenIssues(ctx, owner, name, cfg.limit)
 	if lerr != nil {
-		fmt.Fprintf(os.Stderr, "%s: note: cannot read %s (%v); skipping it.\n", label, repo, lerr)
+		writef(os.Stderr, "%s: note: cannot read %s (%v); skipping it.\n", label, repo, lerr)
 		return false, nil
 	}
 	cands := collectConsultCandidates(issues)
@@ -185,21 +185,21 @@ func (r *Runner) consultRepo(ctx context.Context, label, repo string, cl *forgej
 		return false, r.consultPrintQueue(repo, cands)
 	}
 	if len(cands) == 0 {
-		fmt.Fprintf(os.Stderr, "%s: %s has no consult or untriaged tickets to interview.\n", label, repo)
+		writef(os.Stderr, "%s: %s has no consult or untriaged tickets to interview.\n", label, repo)
 		return false, nil
 	}
-	fmt.Fprintf(os.Stderr, "%s: interviewing %d consult/untriaged ticket(s) in %s...\n", label, len(cands), repo)
+	writef(os.Stderr, "%s: interviewing %d consult/untriaged ticket(s) in %s...\n", label, len(cands), repo)
 	questions := r.consultGenerate(ctx, label, cfg.mode, cands)
 	w := r.gateErr()
 	for _, cand := range cands {
 		disp, quit, cerr := r.consultOne(ctx, w, in, cl, repo, cand, questions[cand.Num])
 		if cerr != nil {
-			fmt.Fprintf(w, "%s: note: %s#%d: %v; leaving it untouched.\n", label, repo, cand.Num, cerr)
+			writef(w, "%s: note: %s#%d: %v; leaving it untouched.\n", label, repo, cand.Num, cerr)
 			disp = "skipped"
 		}
 		tally.record(disp)
 		if quit {
-			fmt.Fprintf(w, "%s: ending the interview (%s#%d was the last ticket reviewed).\n", label, repo, cand.Num)
+			writef(w, "%s: ending the interview (%s#%d was the last ticket reviewed).\n", label, repo, cand.Num)
 			return true, nil
 		}
 	}
@@ -253,15 +253,15 @@ func (r *Runner) consultGenerate(ctx context.Context, label string, mode contain
 	bin := lookupAgent(mode).Record().Binary
 	argv, stdin, ok := hostOneShot(mode, consultInterviewPrompt(cands))
 	if !ok || !hostHasBinary(bin) {
-		fmt.Fprintf(os.Stderr, "%s: note: %s option-generation unavailable; interviewing from the raw tickets.\n", label, bin)
+		writef(os.Stderr, "%s: note: %s option-generation unavailable; interviewing from the raw tickets.\n", label, bin)
 		return map[int]consultQuestion{}
 	}
-	fmt.Fprintf(os.Stderr, "%s: asking %s to frame the blocking decision for %d ticket(s)...\n", label, bin, len(cands))
+	writef(os.Stderr, "%s: asking %s to frame the blocking decision for %d ticket(s)...\n", label, bin, len(cands))
 	gctx, cancel := context.WithTimeout(ctx, consultInterviewTimeout)
 	defer cancel()
 	out, err := r.capturePreflight(gctx, argv, stdin)
 	if err != nil {
-		fmt.Fprintf(os.Stderr, "%s: note: option-generation read did not complete (%v); interviewing from the raw tickets.\n", label, err)
+		writef(os.Stderr, "%s: note: option-generation read did not complete (%v); interviewing from the raw tickets.\n", label, err)
 		return map[int]consultQuestion{}
 	}
 	return parseConsultQuestions(strings.TrimSpace(string(out)))
@@ -284,7 +284,7 @@ func consultInterviewPrompt(cands []consultCandidate) string {
 	b.WriteString("TICKETS:\n")
 	for _, c := range cands {
 		body := strings.TrimSpace(backlogTruncate(strings.ReplaceAll(c.Body, "\n", " "), consultBodyLimit))
-		fmt.Fprintf(&b, "- #%d %q :: %s\n", c.Num, backlogTruncate(c.Title, 120), body)
+		writef(&b, "- #%d %q :: %s\n", c.Num, backlogTruncate(c.Title, 120), body)
 	}
 	b.WriteString("\nFor EACH ticket output exactly one block, in this shape, and nothing else between blocks:\n" +
 		"=== #<num> ===\n" +
@@ -351,11 +351,11 @@ func parseConsultQuestions(read string) map[int]consultQuestion {
 
 // consultOne interviews one ticket: present it, loop the disposition menu, do the forge
 // write for the chosen action, and return which one landed. quit=true ends the run.
-func (r *Runner) consultOne(ctx context.Context, w io.Writer, in *bufio.Reader, cl *forgejoClient, repo string, cand consultCandidate, q consultQuestion) (disposition string, quit bool, err error) {
+func (r *Runner) consultOne(ctx context.Context, w io.Writer, in *bufio.Reader, cl *forgejoClient, repo string, cand consultCandidate, q consultQuestion) (disposition string, quit bool, err error) { //nolint:gocognit,gocyclo,cyclop
 	owner, name, _ := strings.Cut(repo, "/")
-	fmt.Fprint(w, renderConsultTicket(repo, cand, q))
+	writef(w, "%s", renderConsultTicket(repo, cand, q))
 	for {
-		fmt.Fprintf(w, "\n%s#%d action - [h]eadless / [k]eep consult / [c]lose / [m]erge / [s]kip / [q]uit: ", repo, cand.Num)
+		writef(w, "\n%s#%d action - [h]eadless / [k]eep consult / [c]lose / [m]erge / [s]kip / [q]uit: ", repo, cand.Num)
 		line, rerr := in.ReadString('\n')
 		if rerr != nil && strings.TrimSpace(line) == "" {
 			// EOF / closed input with nothing pending ends the interview cleanly.
@@ -371,7 +371,7 @@ func (r *Runner) consultOne(ctx context.Context, w io.Writer, in *bufio.Reader, 
 		case consultHeadless:
 			answer := r.consultFreeform(w, in, rest, "the decision / answer that unblocks it")
 			if answer == "" {
-				fmt.Fprintf(w, "  (no answer given; leaving #%d as consult for now)\n", cand.Num)
+				writef(w, "  (no answer given; leaving #%d as consult for now)\n", cand.Num)
 				continue
 			}
 			return "headless", false, r.consultFlipHeadless(ctx, cl, owner, name, cand, q, answer, when)
@@ -383,7 +383,7 @@ func (r *Runner) consultOne(ctx context.Context, w io.Writer, in *bufio.Reader, 
 			if cerr := cl.commentIssue(ctx, owner, name, cand.Num, consultKeepCommentBody(reason, when)); cerr != nil {
 				return "skipped", false, cerr
 			}
-			fmt.Fprintf(w, "  #%d kept consult with a recorded reason.\n", cand.Num)
+			writef(w, "  #%d kept consult with a recorded reason.\n", cand.Num)
 			return "kept", false, nil
 		case consultClose:
 			reason := r.consultFreeform(w, in, rest, "why it is moot")
@@ -394,12 +394,14 @@ func (r *Runner) consultOne(ctx context.Context, w io.Writer, in *bufio.Reader, 
 		case consultMerge:
 			target, note := r.consultMergeTarget(w, in, rest)
 			if target == 0 {
-				fmt.Fprintf(w, "  (no target issue given; leaving #%d untouched)\n", cand.Num)
+				writef(w, "  (no target issue given; leaving #%d untouched)\n", cand.Num)
 				continue
 			}
 			return "merged", false, r.consultMergeInto(ctx, cl, owner, name, cand.Num, target, note, when)
+		case consultUnknown:
+			writeln(w, "  (unrecognized - answer with one of h/k/c/m/s/q)")
 		default:
-			fmt.Fprintf(w, "  (unrecognized - answer with one of h/k/c/m/s/q)\n")
+			writeln(w, "  (unrecognized - answer with one of h/k/c/m/s/q)")
 		}
 	}
 }
@@ -412,27 +414,27 @@ func renderConsultTicket(repo string, cand consultCandidate, q consultQuestion) 
 	if cand.Mode == "consult" {
 		tag = "consult"
 	}
-	fmt.Fprintf(&b, "\n────────────────────────────────────────\n%s#%d [%s] %s\n", repo, cand.Num, tag, cand.Title)
+	writef(&b, "\n────────────────────────────────────────\n%s#%d [%s] %s\n", repo, cand.Num, tag, cand.Title)
 	if cand.URL != "" {
-		fmt.Fprintf(&b, "%s\n", cand.URL)
+		writef(&b, "%s\n", cand.URL)
 	}
 	if q.Decision != "" || len(q.Options) > 0 {
 		if q.Decision != "" {
-			fmt.Fprintf(&b, "\nBlocking decision: %s\n", q.Decision)
+			writef(&b, "\nBlocking decision: %s\n", q.Decision)
 		}
 		for i, o := range q.Options {
-			fmt.Fprintf(&b, "  %d) %s\n", i+1, o)
+			writef(&b, "  %d) %s\n", i+1, o)
 		}
 		if q.Recommend != "" {
-			fmt.Fprintf(&b, "Recommend: %s\n", q.Recommend)
+			writef(&b, "Recommend: %s\n", q.Recommend)
 		}
 		if q.Consequence != "" {
-			fmt.Fprintf(&b, "Consequence: %s\n", q.Consequence)
+			writef(&b, "Consequence: %s\n", q.Consequence)
 		}
 		return b.String()
 	}
 	if body := strings.TrimSpace(backlogTruncate(strings.ReplaceAll(cand.Body, "\n", " "), 400)); body != "" {
-		fmt.Fprintf(&b, "\n%s\n", body)
+		writef(&b, "\n%s\n", body)
 	}
 	return b.String()
 }
@@ -443,7 +445,7 @@ func (r *Runner) consultFreeform(w io.Writer, in *bufio.Reader, inline, prompt s
 	if s := strings.TrimSpace(inline); s != "" {
 		return s
 	}
-	fmt.Fprintf(w, "  %s (blank cancels): ", prompt)
+	writef(w, "  %s (blank cancels): ", prompt)
 	line, _ := in.ReadString('\n')
 	return strings.TrimSpace(line)
 }
@@ -453,7 +455,7 @@ func (r *Runner) consultFreeform(w io.Writer, in *bufio.Reader, inline, prompt s
 func (r *Runner) consultMergeTarget(w io.Writer, in *bufio.Reader, inline string) (int, string) {
 	text := strings.TrimSpace(inline)
 	if text == "" {
-		fmt.Fprintf(w, "  merge into which issue? (e.g. \"512 superseded by the rewrite\"; blank cancels): ")
+		writef(w, "  merge into which issue? (e.g. \"512 superseded by the rewrite\"; blank cancels): ")
 		line, _ := in.ReadString('\n')
 		text = strings.TrimSpace(line)
 	}
@@ -491,7 +493,7 @@ func (r *Runner) consultFlipHeadless(ctx context.Context, cl *forgejoClient, own
 	if err := cl.addIssueLabels(ctx, owner, name, cand.Num, []string{"headless"}); err != nil {
 		return fmt.Errorf("decision recorded, but adding the headless label failed: %w", err)
 	}
-	fmt.Fprintf(r.gateErr(), "  #%d flipped to headless with a DECISION comment - now dispatchable.\n", cand.Num)
+	writef(r.gateErr(), "  #%d flipped to headless with a DECISION comment - now dispatchable.\n", cand.Num)
 	return nil
 }
 
@@ -503,7 +505,7 @@ func (r *Runner) consultCloseMoot(ctx context.Context, cl *forgejoClient, owner,
 	if err := cl.closeIssue(ctx, owner, name, num); err != nil {
 		return fmt.Errorf("reason recorded, but closing failed: %w", err)
 	}
-	fmt.Fprintf(r.gateErr(), "  #%d closed as moot.\n", num)
+	writef(r.gateErr(), "  #%d closed as moot.\n", num)
 	return nil
 }
 
@@ -515,7 +517,7 @@ func (r *Runner) consultMergeInto(ctx context.Context, cl *forgejoClient, owner,
 	if err := cl.closeIssue(ctx, owner, name, num); err != nil {
 		return fmt.Errorf("merge note recorded, but closing failed: %w", err)
 	}
-	fmt.Fprintf(r.gateErr(), "  #%d merged into #%d and closed.\n", num, target)
+	writef(r.gateErr(), "  #%d merged into #%d and closed.\n", num, target)
 	return nil
 }
 
@@ -527,10 +529,10 @@ func consultDecisionCommentBody(q consultQuestion, answer, when string) string {
 	var b strings.Builder
 	b.WriteString("## DECISION\n\n")
 	if q.Decision != "" {
-		fmt.Fprintf(&b, "**Blocking decision:** %s\n\n", q.Decision)
+		writef(&b, "**Blocking decision:** %s\n\n", q.Decision)
 	}
-	fmt.Fprintf(&b, "**Resolved:** %s\n\n", answer)
-	fmt.Fprintf(&b, "Recorded via `warded director consult` on %s. This ticket is now headless-dispatchable "+
+	writef(&b, "**Resolved:** %s\n\n", answer)
+	writef(&b, "Recorded via `warded director consult` on %s. This ticket is now headless-dispatchable "+
 		"(`consult` → `headless`); a fresh agent can carry it from here.\n", when)
 	return b.String()
 }
@@ -549,11 +551,11 @@ func consultCloseCommentBody(reason, when string) string {
 // consultMergeCommentBody records a merge into another issue. Pure.
 func consultMergeCommentBody(target int, note, when string) string {
 	var b strings.Builder
-	fmt.Fprintf(&b, "## Merged into #%d\n\nSuperseded by #%d.", target, target)
+	writef(&b, "## Merged into #%d\n\nSuperseded by #%d.", target, target)
 	if note = strings.TrimSpace(note); note != "" {
-		fmt.Fprintf(&b, " %s", note)
+		writef(&b, " %s", note)
 	}
-	fmt.Fprintf(&b, "\n\nMerged and closed via `warded director consult` on %s.\n", when)
+	writef(&b, "\n\nMerged and closed via `warded director consult` on %s.\n", when)
 	return b.String()
 }
 
@@ -607,13 +609,13 @@ func consultNow() string { return time.Now().UTC().Format("2006-01-02") }
 // preview, writing nothing to the forge.
 func (r *Runner) consultPrintQueue(repo string, cands []consultCandidate) error {
 	var b strings.Builder
-	fmt.Fprintf(&b, "\nconsult queue: %s (%d ticket(s))\n", repo, len(cands))
+	writef(&b, "\nconsult queue: %s (%d ticket(s))\n", repo, len(cands))
 	for _, c := range cands {
 		tag := "untriaged"
 		if c.Mode == "consult" {
 			tag = "consult"
 		}
-		fmt.Fprintf(&b, "  %s#%-5d [%-9s] %s\n", repo, c.Num, tag, backlogTruncate(c.Title, 70))
+		writef(&b, "  %s#%-5d [%-9s] %s\n", repo, c.Num, tag, backlogTruncate(c.Title, 70))
 	}
 	if len(cands) == 0 {
 		b.WriteString("  (nothing to interview)\n")
@@ -624,11 +626,11 @@ func (r *Runner) consultPrintQueue(repo string, cands []consultCandidate) error 
 // consultPrintSummary prints the interview's terminal disposition tally.
 func (r *Runner) consultPrintSummary(repos []string, t consultTally) error {
 	var b strings.Builder
-	fmt.Fprintf(&b, "\nconsult interview summary (%s):\n", strings.Join(repos, ", "))
-	fmt.Fprintf(&b, "  headless  %d (flipped up, DECISION recorded)\n", t.Headless)
-	fmt.Fprintf(&b, "  merged    %d\n", t.Merged)
-	fmt.Fprintf(&b, "  closed    %d\n", t.Closed)
-	fmt.Fprintf(&b, "  kept      %d (consult, reason recorded)\n", t.Kept)
-	fmt.Fprintf(&b, "  skipped   %d\n", t.Skipped)
+	writef(&b, "\nconsult interview summary (%s):\n", strings.Join(repos, ", "))
+	writef(&b, "  headless  %d (flipped up, DECISION recorded)\n", t.Headless)
+	writef(&b, "  merged    %d\n", t.Merged)
+	writef(&b, "  closed    %d\n", t.Closed)
+	writef(&b, "  kept      %d (consult, reason recorded)\n", t.Kept)
+	writef(&b, "  skipped   %d\n", t.Skipped)
 	return r.emit(b.String())
 }

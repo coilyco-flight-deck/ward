@@ -150,9 +150,8 @@ type transcriptLine struct {
 	} `json:"message"`
 }
 
-// extractEnvelopes parses a drained transcript into one envelope per tool call;
-// redact drops bodies + scrubs args, else bodies are kept verbatim (ward#532).
-func extractEnvelopes(transcript []byte, redact bool) []toolEnvelope {
+// extractEnvelopes turns a drained transcript into one envelope per tool call.
+func extractEnvelopes(transcript []byte, redact bool) []toolEnvelope { //nolint:gocognit,gocyclo,cyclop
 	var envelopes []toolEnvelope
 	byID := map[string]int{} // tool_use id -> index in envelopes
 	for _, raw := range bytes.Split(transcript, []byte("\n")) {
@@ -194,9 +193,8 @@ func extractEnvelopes(transcript []byte, redact bool) []toolEnvelope {
 	return envelopes
 }
 
-// sanitizeToolInput splits a tool's input into scalar args and touched files;
-// redact drops bodies + scrubs+caps values, else they ride verbatim (ward#532).
-func sanitizeToolInput(input json.RawMessage, redact bool) (map[string]string, []string) {
+// sanitizeToolInput splits a tool's input into scalar args and touched files.
+func sanitizeToolInput(input json.RawMessage, redact bool) (map[string]string, []string) { //nolint:gocyclo,cyclop
 	args := map[string]string{}
 	var files []string
 	if len(input) == 0 {
@@ -235,7 +233,7 @@ func sanitizeToolInput(input json.RawMessage, redact bool) (map[string]string, [
 
 // classifyLifecycle maps a tool call to the run's coarse phase from its command
 // or args (git push -> push, merge/rebase -> merge, clone -> clone, else implement).
-func classifyLifecycle(tool string, args map[string]string) string {
+func classifyLifecycle(_ string, args map[string]string) string {
 	cmd := strings.ToLower(args["command"])
 	switch {
 	case strings.Contains(cmd, "git push"):

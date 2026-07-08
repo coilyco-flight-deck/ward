@@ -18,8 +18,8 @@ import (
 // profile, so the run gets working creds with zero chain replication (ward#586).
 const (
 	awsAccessKeyEnv     = "AWS_ACCESS_KEY_ID"
-	awsSecretKeyEnv     = "AWS_SECRET_ACCESS_KEY"
-	awsSessionTokenEnv  = "AWS_SESSION_TOKEN"
+	awsSecretKeyEnv     = "AWS_SECRET_ACCESS_KEY" // #nosec G101 -- env var name, not a secret
+	awsSessionTokenEnv  = "AWS_SESSION_TOKEN"     // #nosec G101 -- env var name, not a secret
 	awsDefaultRegionEnv = "AWS_DEFAULT_REGION"
 	awsRegionEnv        = "AWS_REGION"
 )
@@ -27,7 +27,7 @@ const (
 // awsExportedCreds is the flat JSON `aws configure export-credentials --format process`
 // returns (same shape on every OS); Expiration is empty for static IAM-user keys.
 type awsExportedCreds struct {
-	AccessKeyId     string `json:"AccessKeyId"`
+	AccessKeyID     string `json:"AccessKeyId"`
 	SecretAccessKey string `json:"SecretAccessKey"`
 	SessionToken    string `json:"SessionToken"`
 	Expiration      string `json:"Expiration"`
@@ -46,7 +46,7 @@ func parseAWSExportCreds(out []byte) (awsExportedCreds, error) {
 	if err := json.Unmarshal(out, &c); err != nil {
 		return awsExportedCreds{}, fmt.Errorf("parse export-credentials JSON: %w", err)
 	}
-	if c.AccessKeyId == "" || c.SecretAccessKey == "" {
+	if c.AccessKeyID == "" || c.SecretAccessKey == "" {
 		return awsExportedCreds{}, fmt.Errorf("export-credentials returned no access key")
 	}
 	return c, nil
@@ -56,7 +56,7 @@ func parseAWSExportCreds(out []byte) (awsExportedCreds, error) {
 // token and region ride only when present, so static keys ship no empty vars. Pure.
 func (c awsExportedCreds) envLines(region string) []agentsapi.EnvLine {
 	lines := []agentsapi.EnvLine{
-		{Key: awsAccessKeyEnv, Value: c.AccessKeyId},
+		{Key: awsAccessKeyEnv, Value: c.AccessKeyID},
 		{Key: awsSecretKeyEnv, Value: c.SecretAccessKey},
 	}
 	if c.SessionToken != "" {

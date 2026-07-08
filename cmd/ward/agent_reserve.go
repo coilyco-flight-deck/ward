@@ -348,7 +348,7 @@ func (r *Runner) acquireRemoteReservation(ctx context.Context, label string, mod
 	cl, err := r.hostForgeClient(ctx, ref.Forge, mode)
 	if err != nil {
 		warnRemoteReservationLost(label, ref, fmt.Sprintf("could not build the %s client: %v", ref.Forge, err))
-		return nil, nil
+		return func() {}, nil
 	}
 	if !force {
 		comments, lerr := cl.listIssueComments(ctx, ref.Owner, ref.Repo, ref.Number)

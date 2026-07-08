@@ -499,6 +499,7 @@ func TestMakeReadOnlyTree(t *testing.T) {
 	defer func() {
 		_ = filepath.Walk(root, func(path string, info os.FileInfo, err error) error {
 			if err != nil {
+				//nolint:nilerr // test cleanup skips transient walk errors
 				return nil
 			}
 			mode := info.Mode().Perm()

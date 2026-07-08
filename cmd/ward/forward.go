@@ -58,9 +58,7 @@ no NET_ADMIN, no /dev/net/tun, no ALL_PROXY. See docs/agent-ts-sidecar.md.`,
 				Value: towerMagicDNS() + ":" + towerOllamaPort(),
 			},
 		},
-		Action: func(ctx context.Context, c *cli.Command) error {
-			return runContainerForward(ctx, c)
-		},
+		Action: runContainerForward,
 	}
 }
 
@@ -85,7 +83,7 @@ func runContainerForward(ctx context.Context, c *cli.Command) error {
 		return fmt.Errorf("ward container forward: listen on %s: %w", c.String("listen"), err)
 	}
 	logf := func(format string, args ...any) {
-		fmt.Fprintf(os.Stderr, "ward-forward: "+format+"\n", args...)
+		writef(os.Stderr, "ward-forward: "+format+"\n", args...)
 	}
 	logf("up: %s -> %s via %s (no --proxy needed; ward#359)", ln.Addr(), target, proxyAddr)
 	return serveForward(ctx, ln, proxyAddr, target, logf)
@@ -125,6 +123,7 @@ func serveForward(ctx context.Context, ln net.Listener, proxyAddr, target string
 		conn, err := ln.Accept()
 		if err != nil {
 			if ctx.Err() != nil {
+				//nolint:nilerr // cancelled teardown is the clean path
 				return nil // cancelled: a clean teardown, not a failure
 			}
 			return fmt.Errorf("ward container forward: accept: %w", err)
@@ -136,13 +135,13 @@ func serveForward(ctx context.Context, ln net.Listener, proxyAddr, target string
 // handleForwardConn bridges one accepted loopback connection to target through
 // the SOCKS5 proxy, copying both directions until either side closes.
 func handleForwardConn(client net.Conn, proxyAddr, target string, logf func(string, ...any)) {
-	defer client.Close()
+	defer func() { _ = client.Close() }()
 	upstream, err := dialThroughSOCKS5(proxyAddr, target, forwardDialTimeout)
 	if err != nil {
 		logf("dial %s via %s: %v", target, proxyAddr, err)
 		return
 	}
-	defer upstream.Close()
+	defer func() { _ = upstream.Close() }()
 	done := make(chan struct{}, 2)
 	pipe := func(dst, src net.Conn) {
 		_, _ = io.Copy(dst, src)
@@ -192,9 +191,8 @@ func dialThroughSOCKS5(proxyAddr, target string, timeout time.Duration) (net.Con
 	return conn, nil
 }
 
-// socks5Connect runs the no-auth SOCKS5 greeting then a CONNECT request to
-// host:port encoded as a domain address, and verifies the proxy's success reply.
-func socks5Connect(conn net.Conn, host string, port int) error {
+// socks5Connect runs the SOCKS5 greeting, CONNECT request, and reply check.
+func socks5Connect(conn net.Conn, host string, port int) error { //nolint:gocyclo,cyclop
 	// Greeting: VER=5, NMETHODS=1, METHOD=0x00 (no auth).
 	if _, err := conn.Write([]byte{0x05, 0x01, 0x00}); err != nil {
 		return fmt.Errorf("socks5 greeting write: %w", err)
@@ -210,9 +208,9 @@ func socks5Connect(conn net.Conn, host string, port int) error {
 		return fmt.Errorf("socks5 proxy refused no-auth (chose method 0x%02x); only no-auth is offered", reply[1])
 	}
 	// Request: VER=5, CMD=1 (CONNECT), RSV=0, ATYP=3 (domain), LEN, host, PORT (BE).
-	req := []byte{0x05, 0x01, 0x00, 0x03, byte(len(host))}
+	req := []byte{0x05, 0x01, 0x00, 0x03, byte(len(host))} // #nosec G115
 	req = append(req, host...)
-	req = append(req, byte(port>>8), byte(port&0xff))
+	req = append(req, byte(port>>8), byte(port&0xff)) // #nosec G115
 	if _, err := conn.Write(req); err != nil {
 		return fmt.Errorf("socks5 connect write: %w", err)
 	}

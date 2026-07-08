@@ -100,7 +100,7 @@ func modelExists(ctx context.Context, endpoint, model string) error {
 	if err != nil {
 		return err
 	}
-	defer resp.Body.Close()
+	defer func() { _ = resp.Body.Close() }()
 	body, _ := io.ReadAll(io.LimitReader(resp.Body, 128<<10))
 	if resp.StatusCode/100 != 2 {
 		return fmt.Errorf("HTTP %s from %s: %s", resp.Status, tagsURL, strings.TrimSpace(string(body)))
@@ -138,9 +138,7 @@ func modelTagsURL(endpoint string) (string, error) {
 		return "", err
 	}
 	path := strings.TrimSuffix(u.Path, "/")
-	if strings.HasSuffix(path, "/v1") {
-		path = strings.TrimSuffix(path, "/v1")
-	}
+	path = strings.TrimSuffix(path, "/v1")
 	if path == "" {
 		u.Path = "/api/tags"
 	} else {

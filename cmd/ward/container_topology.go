@@ -95,7 +95,7 @@ func loadContainerTopologyFrom(src configSource) (containerTopology, error) {
 	return parsed, nil
 }
 
-func parseContainerTopology(src []byte) (containerTopology, error) {
+func parseContainerTopology(src []byte) (containerTopology, error) { //nolint:funlen,gocognit,gocyclo,cyclop
 	doc, err := kdl.ParseString(string(src))
 	if err != nil {
 		return containerTopology{}, fmt.Errorf("container topology: parse KDL: %w", err)

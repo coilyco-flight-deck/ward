@@ -17,7 +17,7 @@ import (
 func (r *Runner) gitForgejoAuthEnv(ctx context.Context) (map[string]string, error) {
 	token := r.resolveForgejoGitToken(ctx)
 	if token == "" {
-		return nil, nil
+		return map[string]string{}, nil
 	}
 	return forgejoExtraheaderEnv(os.Getenv("GIT_CONFIG_COUNT"), token), nil
 }

@@ -1,6 +1,7 @@
 package main
 
 import (
+	"errors"
 	"fmt"
 	"testing"
 
@@ -95,7 +96,7 @@ func TestCaptureLeafStdout(t *testing.T) {
 		fmt.Print("leaked")
 		return sentinel
 	})
-	if err != sentinel {
+	if !errors.Is(err, sentinel) {
 		t.Errorf("captureLeafStdout error = %v, want %v", err, sentinel)
 	}
 	if out != "" {

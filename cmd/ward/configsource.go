@@ -172,7 +172,7 @@ func selectConfigSource() (configSource, error) {
 // bundleRevision returns the git HEAD of dir when dir is a checkout; empty
 // string means the source is not a git repo or has no resolvable HEAD yet.
 func bundleRevision(dir string) (string, error) {
-	out, err := exec.Command("git", "-C", dir, "rev-parse", "HEAD").CombinedOutput()
+	out, err := exec.Command("git", "-C", dir, "rev-parse", "HEAD").CombinedOutput() // #nosec G702 -- fixed argv, repo-root dir is controlled
 	if err != nil {
 		return "", fmt.Errorf("resolve bundle sha in %s: %w (%s)", dir, err, strings.TrimSpace(string(out)))
 	}

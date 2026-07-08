@@ -65,25 +65,25 @@ func guardfileInSet(name string, g fleetconfig.Guardfiles) bool {
 // resolveCapability combines the role's config-driven capability with the deprecated
 // --aws/--tailnet overrides (ward#578). See docs/agent-capability.md.
 func resolveCapability(c *cli.Command, role string) roleCapability {
-	cap := capabilityForRole(role)
+	caps := capabilityForRole(role)
 	if c.Bool("aws") {
-		cap.aws = true
+		caps.aws = true
 	}
 	if tailnetFlagForcesOn(c) {
-		cap.tailnet = true
+		caps.tailnet = true
 	}
 	if c.Bool("no-tailnet") {
 		// Advisor's "stay isolated" opt-out wins over the role default + a stray
 		// --tailnet: drop the tailnet and the role-granted ~/.aws (explicit --aws stands).
-		cap.tailnet = false
+		caps.tailnet = false
 		if !c.Bool("aws") {
-			cap.aws = false
+			caps.aws = false
 		}
 	}
-	if cap.tailnet {
-		cap.aws = true
+	if caps.tailnet {
+		caps.aws = true
 	}
-	return cap
+	return caps
 }
 
 // tailnetFlagForcesOn reports whether the deprecated flags explicitly ask for the

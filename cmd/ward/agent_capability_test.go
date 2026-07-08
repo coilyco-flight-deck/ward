@@ -25,13 +25,13 @@ func TestCapabilityGuardfilesExist(t *testing.T) {
 // the live-observe set; engineer/session/unknown fall through to least-access.
 func TestCapabilityForRole(t *testing.T) {
 	for _, role := range []string{roleAdvisor, roleDirector} {
-		if cap := capabilityForRole(role); !cap.aws || !cap.tailnet {
-			t.Errorf("%s capability = %+v, want aws+tailnet from its guardfile set", role, cap)
+		if caps := capabilityForRole(role); !caps.aws || !caps.tailnet {
+			t.Errorf("%s capability = %+v, want aws+tailnet from its guardfile set", role, caps)
 		}
 	}
 	for _, role := range []string{roleEngineer, roleSession, "nonexistent"} {
-		if cap := capabilityForRole(role); cap.aws || cap.tailnet {
-			t.Errorf("%s capability = %+v, want least-access (none)", role, cap)
+		if caps := capabilityForRole(role); caps.aws || caps.tailnet {
+			t.Errorf("%s capability = %+v, want least-access (none)", role, caps)
 		}
 	}
 }
@@ -118,9 +118,9 @@ func TestResolveCapability(t *testing.T) {
 	for _, tc := range cases {
 		t.Run(tc.name, func(t *testing.T) {
 			cmd := parseCommandForTest(t, tc.flags, tc.argv)
-			cap := resolveCapability(cmd, tc.role)
-			if cap.aws != tc.wantAWS || cap.tailnet != tc.wantTailnet {
-				t.Errorf("resolveCapability(%s) = %+v, want aws=%v tailnet=%v", tc.role, cap, tc.wantAWS, tc.wantTailnet)
+			caps := resolveCapability(cmd, tc.role)
+			if caps.aws != tc.wantAWS || caps.tailnet != tc.wantTailnet {
+				t.Errorf("resolveCapability(%s) = %+v, want aws=%v tailnet=%v", tc.role, caps, tc.wantAWS, tc.wantTailnet)
 			}
 		})
 	}

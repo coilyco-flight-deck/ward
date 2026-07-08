@@ -67,7 +67,7 @@ func (r *Runner) runAgentStop(ctx context.Context, c *cli.Command) error {
 		return fmt.Errorf("ward agent stop: %w", err)
 	}
 	if c.Bool("print") {
-		fmt.Fprintf(os.Stderr, "ward agent stop: would stop the engineer for %q (forwarded to host ward, which resolves it by ward.role=engineer labels)\n", target)
+		writef(os.Stderr, "ward agent stop: would stop the engineer for %q (forwarded to host ward, which resolves it by ward.role=engineer labels)\n", target)
 		return nil
 	}
 	return r.forwardAgentStopToHostBroker(ctx, target)
@@ -78,6 +78,7 @@ func (r *Runner) runAgentStop(ctx context.Context, c *cli.Command) error {
 func (r *Runner) resolveAgentStopTarget(ctx context.Context, arg string) (string, error) {
 	if _, err := parseAgentIssueRef(arg); err != nil {
 		// Not an issue ref: forward as a container name for the host to match.
+		//nolint:nilerr // best-effort container-name passthrough
 		return arg, nil
 	}
 	ref, err := r.resolveAgentIssueRef(ctx, arg)
@@ -108,6 +109,6 @@ func (r *Runner) forwardAgentStopToHostBroker(ctx context.Context, target string
 		return err
 	}
 	// Captured as tool output by the surface agent, not written to the raw TTY.
-	fmt.Fprintf(os.Stderr, "ward agent stop: stopped engineer container %s on host ward\n", name)
+	writef(os.Stderr, "ward agent stop: stopped engineer container %s on host ward\n", name)
 	return nil
 }

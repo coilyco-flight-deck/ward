@@ -77,7 +77,7 @@ func (r *Runner) runAgentReviewStats(c *cli.Command) error {
 		if merr != nil {
 			return merr
 		}
-		fmt.Fprintln(r.Runner.Stdout, string(b))
+		writeln(r.Runner.Stdout, string(b))
 		return nil
 	}
 	renderReviewStats(r.Runner.Stdout, stats)
@@ -162,7 +162,7 @@ func computeReviewStats(rows []reviewpanel.PanelResult, reverted map[string]bool
 
 // renderReviewStats prints the human-readable aggregate.
 func renderReviewStats(w interface{ Write([]byte) (int, error) }, s reviewStats) {
-	fmt.Fprintf(w, "review-panel stats: %d panels - %d passed, %d blocked, %d advisory\n",
+	writef(w, "review-panel stats: %d panels - %d passed, %d blocked, %d advisory\n",
 		s.Total, s.Passed, s.Blocked, s.Advisory)
 	classes := make([]string, 0, len(s.ByClass))
 	for k := range s.ByClass {
@@ -171,13 +171,13 @@ func renderReviewStats(w interface{ Write([]byte) (int, error) }, s reviewStats)
 	sort.Strings(classes)
 	for _, k := range classes {
 		cc := s.ByClass[k]
-		fmt.Fprintf(w, "  %-14s pass %d / block %d / advisory %d\n", k, cc.Passed, cc.Blocked, cc.Advisory)
+		writef(w, "  %-14s pass %d / block %d / advisory %d\n", k, cc.Passed, cc.Blocked, cc.Advisory)
 	}
 	if s.FalseNegKnown {
-		fmt.Fprintf(w, "false-negative rate: %d/%d passed diffs were later reverted (%.1f%%) - the dangerous number\n",
+		writef(w, "false-negative rate: %d/%d passed diffs were later reverted (%.1f%%) - the dangerous number\n",
 			s.Reverted, s.Passed, s.FalseNegRate*100)
 	} else {
-		fmt.Fprintf(w, "false-negative rate: not measured (pass --reverted <issue,...> to compute)\n")
+		writef(w, "false-negative rate: not measured (pass --reverted <issue,...> to compute)\n")
 	}
-	fmt.Fprintf(w, "block precision: needs a human label per blocked diff (a block never merges) - see docs/dispatch-review.md\n")
+	writef(w, "block precision: needs a human label per blocked diff (a block never merges) - see docs/dispatch-review.md\n")
 }

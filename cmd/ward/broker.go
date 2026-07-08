@@ -58,9 +58,7 @@ the socket and asks; it never sees the credential. See docs/broker.md.`,
 				Value:   defaultAgentGID,
 			},
 		},
-		Action: func(ctx context.Context, c *cli.Command) error {
-			return runContainerBroker(ctx, c)
-		},
+		Action: runContainerBroker,
 	}
 }
 
@@ -75,13 +73,13 @@ func runContainerBroker(ctx context.Context, c *cli.Command) error {
 	socket := c.String("socket")
 	gid := c.Int("group")
 
-	ln, err := newBrokerListener(socket, int(gid))
+	ln, err := newBrokerListener(socket, gid)
 	if err != nil {
 		return err
 	}
 
 	exec := &wardKdlWriteExecutor{token: token}
-	srv, err := broker.NewServer(ln, exec, writeTierAuthorizer(brokerOwnerPrefix))
+	srv, err := broker.NewServer(ln, exec, writeTierAuthorizer())
 	if err != nil {
 		_ = ln.Close()
 		return fmt.Errorf("ward container broker: %w", err)

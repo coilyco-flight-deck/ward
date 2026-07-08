@@ -74,6 +74,7 @@ func resolveCatalogContextRepos(work string, target targetRepo, extra []targetRe
 func loadRepoLocalCatalogDeps(start string) ([]catalogContextRepo, error) {
 	path, err := discoverConfig(start)
 	if err != nil {
+		//nolint:nilerr // missing config is best-effort, not a hard failure
 		return nil, nil
 	}
 	b, err := os.ReadFile(path)

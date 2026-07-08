@@ -17,7 +17,7 @@ func TestParseAWSExportCreds(t *testing.T) {
 	if err != nil {
 		t.Fatalf("full creds: unexpected error %v", err)
 	}
-	if c.AccessKeyId != "AKIA" || c.SecretAccessKey != "secret" || c.SessionToken != "tok" || c.Expiration != "2026-07-03T20:00:00Z" {
+	if c.AccessKeyID != "AKIA" || c.SecretAccessKey != "secret" || c.SessionToken != "tok" || c.Expiration != "2026-07-03T20:00:00Z" {
 		t.Errorf("full creds parsed wrong: %+v", c)
 	}
 
@@ -49,7 +49,7 @@ func TestAWSExportedCredsEnvLines(t *testing.T) {
 	}
 
 	// Full session cred + region: all five keys.
-	full := awsExportedCreds{AccessKeyId: "AKIA", SecretAccessKey: "s", SessionToken: "tok"}
+	full := awsExportedCreds{AccessKeyID: "AKIA", SecretAccessKey: "s", SessionToken: "tok"}
 	m := toMap(full, "us-east-1")
 	for k, want := range map[string]string{
 		awsAccessKeyEnv:     "AKIA",
@@ -64,7 +64,7 @@ func TestAWSExportedCredsEnvLines(t *testing.T) {
 	}
 
 	// Static keys, no region: only the access-key pair, no empty token/region lines.
-	static := awsExportedCreds{AccessKeyId: "AKIA", SecretAccessKey: "s"}
+	static := awsExportedCreds{AccessKeyID: "AKIA", SecretAccessKey: "s"}
 	m = toMap(static, "")
 	if _, ok := m[awsSessionTokenEnv]; ok {
 		t.Error("static keys should inject no AWS_SESSION_TOKEN")

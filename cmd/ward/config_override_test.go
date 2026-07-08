@@ -15,7 +15,7 @@ func TestResolvedAgentKnobs(t *testing.T) {
 		OpencodeModel: "qwen", OllamaURL: "http://x:1/v1",
 	}
 	cases := []struct {
-		mode                     containerMode
+		mode                    containerMode
 		model, effort, endpoint string
 	}{
 		{modeClaude, "sonnet", "medium", ""},

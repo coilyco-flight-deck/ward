@@ -271,7 +271,7 @@ func serveTestBroker(t *testing.T, ex broker.Executor) string {
 	if err != nil {
 		t.Fatalf("newBrokerListener: %v", err)
 	}
-	srv, err := broker.NewServer(ln, ex, writeTierAuthorizer(brokerOwnerPrefix))
+	srv, err := broker.NewServer(ln, ex, writeTierAuthorizer())
 	if err != nil {
 		t.Fatalf("NewServer: %v", err)
 	}

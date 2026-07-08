@@ -200,7 +200,7 @@ func (r *Runner) maybeWarnHostNet(plan upPlan) {
 		if w == nil {
 			w = os.Stderr
 		}
-		fmt.Fprintln(w, msg)
+		writeln(w, msg)
 	}
 }
 
@@ -215,7 +215,7 @@ func (r *Runner) maybeWarnAWSMount(plan upPlan) {
 		if w == nil {
 			w = os.Stderr
 		}
-		fmt.Fprintln(w, msg)
+		writeln(w, msg)
 	}
 }
 
@@ -270,7 +270,7 @@ func (r *Runner) resolveOllamaHost(ctx context.Context) string {
 		"--name", ollamaHostSSMPath, "--with-decryption",
 		"--query", "Parameter.Value", "--output", "text")
 	if err != nil {
-		fmt.Fprintf(os.Stderr, "ward container: could not resolve %s from SSM (%v); goose will fall back to its config default ollama host\n", ollamaHostSSMPath, err)
+		writef(os.Stderr, "ward container: could not resolve %s from SSM (%v); goose will fall back to its config default ollama host\n", ollamaHostSSMPath, err)
 		return ""
 	}
 	return strings.TrimSpace(string(out))
@@ -405,7 +405,7 @@ func (r *Runner) preflightTailnet(ctx context.Context, plan upPlan) error {
 		if w == nil {
 			w = os.Stderr
 		}
-		fmt.Fprintln(w, msg)
+		writeln(w, msg)
 	}
 	return nil
 }
@@ -486,13 +486,13 @@ func (r *Runner) sweepStaleContainers(ctx context.Context) {
 	// Drain EVERY exited run idempotently (ward#510) then reclaim the past-keep tail,
 	// drained-first so the rm never takes an un-drained log (ward#363).
 	if len(stale) > 0 {
-		fmt.Fprintf(os.Stderr, "ward container: reclaiming %d exited ward container(s) past the keep-%d window (ward#272)\n", len(stale), containerReapKeep)
-		fmt.Fprintf(os.Stderr, "ward container: containers being removed: %s\n", strings.Join(stale, ", "))
+		writef(os.Stderr, "ward container: reclaiming %d exited ward container(s) past the keep-%d window (ward#272)\n", len(stale), containerReapKeep)
+		writef(os.Stderr, "ward container: containers being removed: %s\n", strings.Join(stale, ", "))
 	}
 	if rmErr := r.drainStaleContainers(ctx, exited, stale); rmErr != nil {
-		fmt.Fprintf(os.Stderr, "ward container: stale-container sweep had a non-zero rm (%v); continuing\n", rmErr)
+		writef(os.Stderr, "ward container: stale-container sweep had a non-zero rm (%v); continuing\n", rmErr)
 	} else if len(stale) > 0 {
-		fmt.Fprintf(os.Stderr, "ward container: successfully drained and removed %d containers\n", len(stale))
+		writef(os.Stderr, "ward container: successfully drained and removed %d containers\n", len(stale))
 	}
 }
 
@@ -508,7 +508,7 @@ func (r *Runner) clearExitedContainer(ctx context.Context, name string) {
 		return
 	}
 	if rmErr := r.dockerExec(ctx, "rm", "-f", name); rmErr != nil {
-		fmt.Fprintf(os.Stderr, "ward container: could not clear exited container %q for name reuse (%v); continuing\n", name, rmErr)
+		writef(os.Stderr, "ward container: could not clear exited container %q for name reuse (%v); continuing\n", name, rmErr)
 	}
 	// The corpse is gone; drop its drain sentinel so the reused deterministic name
 	// drains fresh rather than being skipped by the dead run's marker (ward#510).

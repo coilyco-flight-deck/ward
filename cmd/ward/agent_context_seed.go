@@ -2,7 +2,6 @@ package main
 
 import (
 	"context"
-	"fmt"
 	"os"
 	"path/filepath"
 )
@@ -48,15 +47,15 @@ func (r *Runner) seedExternalContextMirror(ctx context.Context, plan upPlan, dep
 		// The volume persists across dispatches, so a mirror a prior run already warmed is
 		// reused - an external upstream is stable and re-cloning it each launch is wasteful.
 		if r.gitcacheMirrorPresent(ctx, plan.Image, mirror) {
-			fmt.Fprintf(r.Runner.Stderr, "ward agent: external dep %s/%s already seeded in %s (ward#612)\n",
+			writef(r.Runner.Stderr, "ward agent: external dep %s/%s already seeded in %s (ward#612)\n",
 				dep.Owner, dep.Name, containerGitcacheVol)
 			return
 		}
-		fmt.Fprintf(r.Runner.Stderr, "ward agent: seeding external dep %s/%s host-side over ssh from %s (ward#612)\n",
+		writef(r.Runner.Stderr, "ward agent: seeding external dep %s/%s host-side over ssh from %s (ward#612)\n",
 			dep.Owner, dep.Name, dep.CloneURL)
 		tmp, err := os.MkdirTemp("", "ward-extseed-")
 		if err != nil {
-			fmt.Fprintf(r.Runner.Stderr, "ward agent: MISSING DEPENDENCY: could not stage a seed dir for %s/%s: %v; "+
+			writef(r.Runner.Stderr, "ward agent: MISSING DEPENDENCY: could not stage a seed dir for %s/%s: %v; "+
 				"the container will fail loud at bring-up (ward#612)\n", dep.Owner, dep.Name, err)
 			return
 		}
@@ -65,7 +64,7 @@ func (r *Runner) seedExternalContextMirror(ctx context.Context, plan upPlan, dep
 		// Clone on the HOST over the user's default ssh identity (agent, then ~/.ssh /
 		// ~/.ssh/config) - what a plain `git clone` resolves. The key stays on the host.
 		if cerr := r.Runner.Exec(ctx, "git", "clone", "--mirror", dep.CloneURL, dst); cerr != nil {
-			fmt.Fprintf(r.Runner.Stderr, "ward agent: MISSING DEPENDENCY: host-side ssh clone of %s failed: %v. "+
+			writef(r.Runner.Stderr, "ward agent: MISSING DEPENDENCY: host-side ssh clone of %s failed: %v. "+
 				"The host user's default ssh identity must have clone access to %s/%s; the sealed "+
 				"container will report the missing sibling ../%s at bring-up (ward#611, ward#612)\n",
 				dep.CloneURL, cerr, dep.Owner, dep.Name, dep.Name)
@@ -74,11 +73,11 @@ func (r *Runner) seedExternalContextMirror(ctx context.Context, plan upPlan, dep
 		// Copy the finished bare mirror into the volume via a cp-only helper - it touches
 		// no ssh and no external forge, so no key crosses into any container.
 		if cperr := r.copyMirrorIntoGitcache(ctx, plan.Image, tmp, mirror); cperr != nil {
-			fmt.Fprintf(r.Runner.Stderr, "ward agent: MISSING DEPENDENCY: staged %s/%s but could not copy it into %s: %v; "+
+			writef(r.Runner.Stderr, "ward agent: MISSING DEPENDENCY: staged %s/%s but could not copy it into %s: %v; "+
 				"the container will fail loud at bring-up (ward#612)\n", dep.Owner, dep.Name, containerGitcacheVol, cperr)
 			return
 		}
-		fmt.Fprintf(r.Runner.Stderr, "ward agent: seeded external dep %s/%s into %s host-side (ward#612)\n",
+		writef(r.Runner.Stderr, "ward agent: seeded external dep %s/%s into %s host-side (ward#612)\n",
 			dep.Owner, dep.Name, containerGitcacheVol)
 	})
 }

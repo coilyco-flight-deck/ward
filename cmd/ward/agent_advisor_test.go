@@ -105,8 +105,8 @@ func TestAdvisorDefaultsTailnetOn(t *testing.T) {
 	if cmd.Bool("tailnet") {
 		t.Fatal("--tailnet is now a hidden deprecated alias defaulting off, not the advisor's source of tailnet (ward#578)")
 	}
-	if cap := resolveCapability(cmd, roleAdvisor); !cap.tailnet || !cap.aws {
-		t.Fatalf("advisor role capability = %+v, want tailnet+aws from its guardfile set", cap)
+	if caps := resolveCapability(cmd, roleAdvisor); !caps.tailnet || !caps.aws {
+		t.Fatalf("advisor role capability = %+v, want tailnet+aws from its guardfile set", caps)
 	}
 	p, err := buildUpPlan(cmd, targetRepo{Owner: "coilyco-flight-deck", Name: "ward"}, modeClaude, roleAdvisor, t.TempDir(), t.TempDir(), nil, false)
 	if err != nil {

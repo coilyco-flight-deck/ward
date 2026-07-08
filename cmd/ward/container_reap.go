@@ -145,9 +145,8 @@ func (r *Runner) runContainerReap(ctx context.Context, c *cli.Command) error {
 	return terr
 }
 
-// reapTargetTree is the target half of a reap: capture -> integrate -> decide ->
-// land or salvage; a fully-clean reap optionally releases the reservation (ward#264).
-func (r *Runner) reapTargetTree(ctx context.Context, work string, env reapEnv, releaseReservation bool) error {
+// reapTargetTree is the target half of a reap, from capture through salvage.
+func (r *Runner) reapTargetTree(ctx context.Context, work string, env reapEnv, releaseReservation bool) error { //nolint:gocognit,gocyclo,cyclop,nestif
 	if env.ReadOnly {
 		fmt.Fprintln(os.Stderr, "ward container reap: read-only session, nothing to salvage (skipping)")
 		return nil
@@ -171,7 +170,7 @@ func (r *Runner) reapTargetTree(ctx context.Context, work string, env reapEnv, r
 	residual := revCount(ctx, r, work, "origin/main..HEAD")
 	fmt.Fprintf(os.Stderr, "ward container reap: residual commit count against origin/main = %d\n", residual)
 	cleanTree := strings.TrimSpace(statusSnapshot) == ""
-	if residual == 0 && cleanTree {
+	if residual == 0 && cleanTree { //nolint:nestif // clean-tree fast path carries the direct-main proof branch
 		if env.Launched && env.Workflow.landsOnMain() && env.Issue != 0 {
 			prov, perr := r.readRunProvenance(work)
 			if perr != nil {
@@ -329,7 +328,7 @@ func (r *Runner) captureAndCommitResidualRepo(ctx context.Context, work, mode, s
 			fmt.Fprintf(os.Stderr, "ward container reap: residual commit created for %s (%s)\n", work, slug)
 		}
 	}
-	return string(status)
+	return status
 }
 
 // filterReapResidualStatus strips the reaper's own provenance artifact from the
@@ -747,7 +746,7 @@ func (r *Runner) issueClosingReferenceInRange(ctx context.Context, work string, 
 
 // preserveExtraRepo pushes a granted repo's un-landed work to a salvage branch so
 // it survives teardown; a push failure falls back to dumping the patch to the log.
-func (r *Runner) preserveExtraRepo(ctx context.Context, work string, env reapEnv, rep *extraRepoUnlanded) {
+func (r *Runner) preserveExtraRepo(ctx context.Context, work string, _ reapEnv, rep *extraRepoUnlanded) {
 	branch := salvageBranchName(rep.Repo.Name + "-" + randHex())
 	_ = r.Runner.Exec(ctx, "git", "-C", work, "branch", "-f", branch, "HEAD")
 	if out, perr := r.pushCapture(ctx, work, branch+":"+branch); perr != nil {

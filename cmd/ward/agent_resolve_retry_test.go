@@ -41,7 +41,7 @@ func TestTransientResolveErr(t *testing.T) {
 		},
 		{
 			name:    "forgejo 503 envelope retries",
-			err:     errors.New("forgejo: get issue owner/repo#1: exit status 3: GET https://... -> 503 Service Unavailable:"),
+			err:     errors.New("forgejo: get issue owner/repo#1: exit status 3: get https://... -> 503 service unavailable"),
 			wantRet: true,
 		},
 		{
