@@ -76,7 +76,7 @@ func readReapEnv() (reapEnv, error) {
 		return e, fmt.Errorf("ward container reap: missing WARD_TARGET_OWNER/NAME/WARD_FORGEJO_BASE (run inside a ward container)")
 	}
 	if e.Mode == "" {
-		e.Mode = string(modeClaude)
+		e.Mode = string(defaultAgentMode())
 	}
 	return e, nil
 }

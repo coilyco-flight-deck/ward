@@ -5,8 +5,20 @@ package main
 
 import (
 	"fmt"
+	"path/filepath"
+	"sync"
 
 	"forgejo.coilysiren.me/coilyco-flight-deck/cli-guard/pkg/fleetconfig"
+)
+
+// The manifest reader owns the concrete harness names and the retired alias.
+// The rest of core treats containerMode as an opaque string validated here.
+const (
+	modeClaude    containerMode = "claude"
+	modeCodex     containerMode = "codex"
+	modeOpencode  containerMode = "opencode"
+	modeGoose     containerMode = "goose"
+	modeQwenAlias               = "qwen"
 )
 
 // agentAdapterSchemaVersion is the manifest schema this build understands.
@@ -28,7 +40,22 @@ type agentAdapter struct {
 	ContextLevel int
 	Stream       string
 	Auth         string
+	ContextFiles []string
 	Argv         agentArgv
+}
+
+// contextFiles returns the runtime doctrine load points this adapter needs.
+func (a agentAdapter) contextFiles() []string {
+	if len(a.ContextFiles) != 0 {
+		out := make([]string, len(a.ContextFiles))
+		copy(out, a.ContextFiles)
+		return out
+	}
+	out := []string{filepath.Join(".claude", "CLAUDE.md"), filepath.Join(".codex", "AGENTS.md")}
+	if a.Name == string(modeGoose) {
+		out = append(out, filepath.Join(".config", "goose", ".goosehints"))
+	}
+	return out
 }
 
 // preflightArgv returns the host one-shot argv with the prompt appended, plus
@@ -41,6 +68,37 @@ func (a agentAdapter) preflightArgv(prompt string) ([]string, bool) {
 	argv = append(argv, a.Argv.Preflight...)
 	argv = append(argv, prompt)
 	return argv, true
+}
+
+// launchArgv returns the in-container argv for the selected posture. The prompt
+// seed is appended by the caller.
+func (a agentAdapter) launchArgv(headless, ask bool, model string, seed []string) ([]string, bool) { //nolint:cyclop
+	switch {
+	case ask && len(a.Argv.Preflight) > 0:
+		argv := append([]string{}, a.Argv.Preflight...)
+		if model != "" && a.Binary == string(modeClaude) {
+			argv = append(argv, "--model", model)
+		}
+		argv = append(argv, seed...)
+		return argv, false
+	case headless || ask:
+		argv := append([]string{}, a.Argv.Headless...)
+		if model != "" && a.Binary == string(modeClaude) {
+			argv = append(argv, "--model", model)
+		}
+		argv = append(argv, seed...)
+		return argv, a.Stream == "stream-json"
+	default:
+		argv := append([]string{}, a.Argv.Interactive...)
+		if model != "" && a.Binary == string(modeClaude) {
+			argv = append(argv, "--model", model)
+		}
+		switch a.Name {
+		case string(modeClaude), string(modeCodex):
+			argv = append(argv, seed...)
+		}
+		return argv, false
+	}
 }
 
 // agentManifest is the parsed manifest: a schema version plus the agent records.
@@ -57,6 +115,50 @@ func (m agentManifest) adapter(name string) (agentAdapter, bool) {
 		}
 	}
 	return agentAdapter{}, false
+}
+
+var (
+	agentManifestOnce sync.Once
+	agentManifestVal  agentManifest
+	agentManifestErr  error
+)
+
+// cachedAgentManifest loads the effective adapter manifest once per process.
+func cachedAgentManifest() (agentManifest, error) {
+	agentManifestOnce.Do(func() {
+		agentManifestVal, agentManifestErr = loadAgentManifest()
+	})
+	return agentManifestVal, agentManifestErr
+}
+
+// mustAgentAdapter resolves a mode to its manifest adapter. parseMode validates
+// the mode first, so this is the runtime projection the launcher uses.
+func mustAgentAdapter(mode containerMode) agentAdapter {
+	m, err := cachedAgentManifest()
+	if err != nil {
+		panic(err)
+	}
+	a, ok := m.adapter(string(mode))
+	if !ok && mode == modeQwenAlias {
+		a, ok = m.adapter(string(modeOpencode))
+	}
+	if !ok {
+		panic(fmt.Errorf("agent-adapter manifest: no adapter for %q", mode))
+	}
+	return a
+}
+
+// defaultAgentMode returns the manifest's default mode, falling back to the
+// first roster entry when the bundle omits an explicit default.
+func defaultAgentMode() containerMode {
+	fleet, err := loadFleetConfig()
+	if err == nil && fleet.Defaults.Agent != "" {
+		return containerMode(fleet.Defaults.Agent)
+	}
+	if names := frontierAgentNames(); len(names) > 0 {
+		return containerMode(names[0])
+	}
+	return modeClaude
 }
 
 // loadAgentManifest builds the manifest from the effective dialect-2 fleet config
@@ -84,6 +186,7 @@ func fleetToAgentManifest(f fleetconfig.Fleet) agentManifest {
 			ContextLevel: a.ContextLevel,
 			Stream:       a.Stream,
 			Auth:         a.Auth,
+			ContextFiles: contextFilesForAdapter(a.Name),
 			Argv: agentArgv{
 				Preflight:   a.Argv.Preflight,
 				Headless:    a.Argv.Headless,
@@ -92,6 +195,15 @@ func fleetToAgentManifest(f fleetconfig.Fleet) agentManifest {
 		})
 	}
 	return m
+}
+
+// contextFilesForAdapter centralizes the per-agent doctrine load-point fanout.
+func contextFilesForAdapter(name string) []string {
+	files := []string{filepath.Join(".claude", "CLAUDE.md"), filepath.Join(".codex", "AGENTS.md")}
+	if name == string(modeGoose) {
+		files = append(files, filepath.Join(".config", "goose", ".goosehints"))
+	}
+	return files
 }
 
 // validateAgentManifest enforces the schema on the projected fleet roster, so a
