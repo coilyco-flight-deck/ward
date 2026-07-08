@@ -24,6 +24,52 @@ func TestCodexProbeArgvIncludesModel(t *testing.T) {
 	}
 }
 
+func TestCodexProbeArgvUsesAgentHome(t *testing.T) {
+	rc := agentsapi.RunCtx{
+		CodexModel: "gpt-5.4",
+		AgentHome:  "/home/testuser",
+		AgentUID:   "1000",
+		AgentGID:   "1000",
+	}
+	got := codexProbeArgv(rc)
+	
+	// Check that setpriv prefix with proper environment is included
+	// The first part of the command should be the setpriv prefix
+	if len(got) < 7 {
+		t.Fatalf("probe argv should include setpriv prefix, got: %v", got)
+	}
+	
+	// Check for setpriv args
+	privArgs := []string{"setpriv", "--reuid=1000", "--regid=1000", "--init-groups"}
+	for _, arg := range privArgs {
+		found := false
+		for _, g := range got {
+			if g == arg {
+				found = true
+				break
+			}
+		}
+		if !found {
+			t.Fatalf("probe argv missing setpriv argument %q: %v", arg, got)
+		}
+	}
+	
+	// Check for env HOME and CODEX_HOME
+	envArgs := []string{"env", "HOME=/home/testuser", "CODEX_HOME=/home/testuser/.codex"}
+	for _, arg := range envArgs {
+		found := false
+		for _, g := range got {
+			if g == arg {
+				found = true
+				break
+			}
+		}
+		if !found {
+			t.Fatalf("probe argv missing env argument %q: %v", arg, got)
+		}
+	}
+}
+
 func TestClassifyCodexProbeFailure(t *testing.T) {
 	err := classifyCodexProbeFailure("gpt-5.4", "", `warning: Model metadata for gpt-5.4 not found. Defaulting to fallback metadata; this can degrade performance and cause issues.
 ERROR: {"type":"error","status":400,"error":{"type":"invalid_request_error","message":"The 'gpt-5.4' model is not supported when using Codex with a ChatGPT account."}}`, 1)
