@@ -27,14 +27,14 @@ func TestSelectConfigSourceDefaultsBaked(t *testing.T) {
 	}
 }
 
-// TestSelectConfigSourceRejectsGitRef pins fail-loud: the not-yet-resolvable
-// git grammar errors naming ward#654, never a silent baked fallback.
-func TestSelectConfigSourceRejectsGitRef(t *testing.T) {
-	t.Setenv(wardConfigRefEnv, "forgejo.coilysiren.me/coilyco-flight-deck/agentic-os@main//.ward")
+// TestSelectConfigSourceRejectsMalformedGitRef pins fail-loud: a ref that is
+// neither file:// nor the git grammar errors, never a silent baked fallback.
+func TestSelectConfigSourceRejectsMalformedGitRef(t *testing.T) {
+	t.Setenv(wardConfigRefEnv, "not-a-resolvable-ref")
 	if _, err := selectConfigSource(); err == nil {
-		t.Fatal("git-form ref selected a source; want a loud error until ward#654")
-	} else if !strings.Contains(err.Error(), "ward#654") {
-		t.Errorf("error %q does not name ward#654", err)
+		t.Fatal("malformed ref selected a source; want a loud parse error")
+	} else if !strings.Contains(err.Error(), wardConfigRefEnv) {
+		t.Errorf("error %q does not name %s", err, wardConfigRefEnv)
 	}
 }
 

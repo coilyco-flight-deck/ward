@@ -119,6 +119,7 @@ New to ward? Read [architecture.md](architecture.md) first - it frames the whole
 - [kdl-legibility.md](kdl-legibility.md) - the [ward#287](https://forgejo.coilysiren.me/coilyco-flight-deck/ward/issues/287) proposal to rename the quirky KDL tokens (`argv`, `$var`) to human-readable spellings.
 - [ward-kdl.brew.scoped.md](ward-kdl.brew.scoped.md) - why `ward pkg brew` scoped verbs stay gated Go.
 - [config-source.md](config-source.md) - the `WARD_CONFIG_REF` fs.FS-at-launch seam: baked neutral default vs a live-resolved bundle.
+- [config-ref-resolver.md](config-ref-resolver.md) - the `WARD_CONFIG_REF` git-ref grammar and its TTL-cached `syncGitRef` resolver.
 - [fleet-local.md](fleet-local.md) - `~/.ward/fleet.local.kdl`, the operator-local config reader.
 - [ward-kdl/](ward-kdl/) - 24 generated per-area guardfile references (git, aws, docker, the agents/ops/pkg surfaces, ...), indexed area-by-area from [ward-kdl-surface.md](ward-kdl-surface.md).
 

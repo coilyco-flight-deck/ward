@@ -4,6 +4,7 @@ package main
 // embeds by default, a live bundle when WARD_CONFIG_REF is set: docs/config-source.md.
 
 import (
+	"context"
 	"embed"
 	"fmt"
 	"io/fs"
@@ -98,12 +99,19 @@ func selectConfigSource() (configSource, error) {
 		return bakedConfigSource(), nil
 	}
 	// A set-but-unresolvable ref fails loud, never a silent baked fallback
-	// (docs/config-source.md). The git-ref grammar resolves in ward#654.
-	dir, ok := strings.CutPrefix(ref, "file://")
-	if !ok {
-		return configSource{}, fmt.Errorf(
-			"%s=%q: only the file://<dir> form resolves today; the git-ref grammar (host/owner/repo@ref//subpath) lands with ward#654",
-			wardConfigRefEnv, ref)
+	// (docs/config-source.md).
+	dir, isFile := strings.CutPrefix(ref, "file://")
+	if !isFile {
+		// The git-ref grammar (ward#654): parse, then sync through the shared
+		// TTL-cached resolver into the config-bundle cache.
+		cr, err := parseConfigRef(ref)
+		if err != nil {
+			return configSource{}, fmt.Errorf("%s=%q: %w", wardConfigRefEnv, ref, err)
+		}
+		dir, err = leanRunner().resolveConfigBundle(context.Background(), cr, ref)
+		if err != nil {
+			return configSource{}, fmt.Errorf("%s=%q: %w", wardConfigRefEnv, ref, err)
+		}
 	}
 	st, err := os.Stat(dir)
 	if err != nil {

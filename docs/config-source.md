@@ -19,11 +19,12 @@ the source handle moves. `cmd/ward/configsource.go` picks it; three sites read i
   `.ward/ward-kdl/` (drift-tested). Byte-for-byte the pre-seam behavior. This
   is the whole precedence: set uses the ref, unset uses the baked default.
 - **`file://<dir>`** - `os.DirFS(<dir>)` over a local bundle directory in the
-  flat layout below. The escape hatch, and the only form resolving today.
-- **`<host>/<owner>/<repo>@<ref>//<subpath>`** - the self-describing git-ref
-  grammar. **Not yet resolvable**: the TTL-cached git resolver is [ward#654](https://forgejo.coilysiren.me/coilyco-flight-deck/ward/issues/654)
-  and will feed this same seam. Until then the form fails loud naming that
-  issue - an explicit override is never silently ignored or downgraded
+  flat layout below. The local escape hatch.
+- **`<host>/<owner>/<repo>[@<ref>]//<subpath>`** - the self-describing git-ref
+  grammar, synced through the TTL-cached resolver
+  ([config-ref-resolver.md](config-ref-resolver.md)) into a local checkout
+  whose `<subpath>` dir feeds this seam. A malformed or unsyncable ref fails
+  loud - an override is never silently ignored
   ([config-discovery.md](config-discovery.md) holds the same rule).
 
 ## Bundle layout
@@ -65,6 +66,7 @@ superseded), and no build-variant matrix exists ([release.md](release.md)).
 
 ## See also
 
+- [config-ref-resolver.md](config-ref-resolver.md) - the git-ref resolver.
 - [ward-kdl.md](ward-kdl.md) - the build-time authoring layer the bundle comes from.
 - [ward-kdl-in-ward.md](ward-kdl-in-ward.md) - how exec guardfiles auto-mount.
 - [config-discovery.md](config-discovery.md) - the same loud-override rule for the allowlist.

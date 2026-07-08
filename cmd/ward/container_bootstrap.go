@@ -422,6 +422,7 @@ func (r *Runner) runContainerBootstrap(ctx context.Context, c *cli.Command) erro
 	blog("bootstrap substrate warm start")
 	r.warmSubstrate(ctx, e)
 	blog("bootstrap substrate warm done")
+	prepareConfigBundleCache(e)
 	blog("bootstrap context compose start")
 	r.composeContext(e)
 	blog("bootstrap permissions compose start")
@@ -929,55 +930,43 @@ func (r *Runner) applyReadOnlyPushGuard(ctx context.Context, work string) {
 
 // --- warm the substrate reference repos (best-effort) ------------------------
 
-// substrateMirrorStale ports substrate_mirror_stale: stale when FETCH_HEAD is
-// older than the TTL. A missing FETCH_HEAD (just cloned/hydrated) is fresh.
-func substrateMirrorStale(mirror string, ttlSeconds int64, now time.Time) bool {
-	head := filepath.Join(mirror, "FETCH_HEAD")
-	fi, err := os.Stat(head)
-	if err != nil {
-		return false
+// warmSubstrateRepo ports warm_substrate_repo, never fatal; the mirror-ensure
+// core is the shared syncGitRef (gitsync.go, ward#654).
+func (r *Runner) warmSubstrateRepo(ctx context.Context, e bootstrapEnv, owner, name, tier string) {
+	seed := ""
+	if tier == "image" {
+		seed = filepath.Join(e.SubstrateSeed, owner+"__"+name+".git")
 	}
-	return int64(now.Sub(fi.ModTime()).Seconds()) >= ttlSeconds
+	work := filepath.Join(e.SubstrateDest, name)
+	// A substrate working copy is container-local and always re-dropped fresh.
+	_ = os.RemoveAll(work)
+	ttl, _ := strconv.ParseInt(e.SubstrateTTL, 10, 64)
+	_, err := r.syncGitRef(ctx, gitRefSpec{
+		url:    e.ForgejoBase + "/" + owner + "/" + name + ".git",
+		mirror: filepath.Join(e.GitCache, owner+"__"+name+".git"),
+		lock:   filepath.Join(e.GitCache, "."+owner+"__"+name+".lock"),
+		work:   work,
+		seed:   seed,
+		logf: func(format string, a ...any) {
+			blog("substrate: "+format, a...)
+		},
+	}, time.Duration(ttl)*time.Second)
+	if err != nil {
+		blog("substrate: sync failed %s/%s (skipping): %v", owner, name, err)
+	}
 }
 
-// warmSubstrateRepo ports warm_substrate_repo: ensure one repo's bare mirror
-// exists+fresh under a flock, drop a working copy, never fatal.
-func (r *Runner) warmSubstrateRepo(ctx context.Context, e bootstrapEnv, owner, name, tier string) {
-	mirror := filepath.Join(e.GitCache, owner+"__"+name+".git")
-	seed := filepath.Join(e.SubstrateSeed, owner+"__"+name+".git")
-	url := e.ForgejoBase + "/" + owner + "/" + name + ".git"
-	lock := filepath.Join(e.GitCache, "."+owner+"__"+name+".lock")
-	ttl, _ := strconv.ParseInt(e.SubstrateTTL, 10, 64)
-	r.withFlock(lock, func() {
-		if !isDir(mirror) {
-			if tier == "image" && isDir(seed) {
-				blog("substrate: hydrate %s/%s from baked seed", owner, name)
-				_ = r.Runner.Exec(ctx, "cp", "-a", seed, mirror)
-			} else {
-				blog("substrate: clone mirror (first time) %s/%s", owner, name)
-				if cerr := r.Runner.Exec(ctx, "git", "clone", "--mirror", url, mirror); cerr != nil {
-					blog("substrate: mirror clone failed %s/%s (skipping)", owner, name)
-					_ = os.RemoveAll(mirror)
-					return
-				}
-			}
-		}
-		if substrateMirrorStale(mirror, ttl, time.Now()) {
-			blog("substrate: refresh %s/%s (TTL %ss elapsed)", owner, name, e.SubstrateTTL)
-			if uerr := r.Runner.Exec(ctx, "git", "-C", mirror, "remote", "update", "--prune"); uerr != nil {
-				blog("substrate: refresh failed %s/%s (using cached state)", owner, name)
-			}
-		}
-	})
-	if isDir(mirror) {
-		work := filepath.Join(e.SubstrateDest, name)
-		_ = os.RemoveAll(work)
-		if cerr := r.Runner.Exec(ctx, "git", "clone", "--quiet", mirror, work); cerr != nil {
-			blog("substrate: working clone failed %s/%s", owner, name)
-		} else {
-			_ = r.Runner.Exec(ctx, "git", "-C", work, "remote", "set-url", "origin", url)
-		}
+// prepareConfigBundleCache pre-creates the gitcache's config-bundle dir while
+// the bootstrap runs as root, so the agent's WARD_CONFIG_REF caches there (ward#654).
+func prepareConfigBundleCache(e bootstrapEnv) {
+	dir := filepath.Join(e.GitCache, "config-bundle")
+	if err := os.MkdirAll(dir, 0o777); err != nil {
+		blog("config-bundle cache: %v (in-container refs fall back to the home cache)", err)
+		return
 	}
+	// Chmod past the umask: the agent user, not root, writes here.
+	_ = os.Chmod(dir, 0o777)
+	blog("config-bundle cache ready at %s", dir)
 }
 
 // warmSubstrate ports warm_substrate: walk the manifest and warm each repo,
