@@ -620,10 +620,31 @@ jobs:
           git config user.email "coilyco-ops@coilysiren.me"
           git commit -aqm "chore(formula): bump ward to ${TAG} [skip ci]"
           push_url="https://coilysiren:${TAP_WRITE_TOKEN}@forgejo.coilysiren.me/${TAP_REPO}.git"
-          if ! git push "$push_url" HEAD:main; then
-            echo "::error::push of ${FORMULA_PATH} to ${TAP_REPO} failed; TAP_WRITE_TOKEN is likely missing, rotated, or lacks push scope (see docs/release.md)" >&2
-            exit 1
-          fi
+          remote_formula_version() {
+            remote_formula=$(curl -fsSL "$FORGEJO_BASE_URL/$TAP_REPO/raw/branch/main/$FORMULA_PATH" || true)
+            printf '%s' "$remote_formula" | sed -n 's/^  version "\([^"]*\)"/\1/p' | head -1
+          }
+          for attempt in 1 2 3; do
+            remote_version=$(remote_formula_version || true)
+            if [ "$remote_version" = "$version" ]; then
+              echo "tap ${TAP_REPO} already serves ${TAG}, nothing to push"
+              exit 0
+            fi
+            if [ -n "$remote_version" ] && [ "$remote_version" != "$version" ] && \
+              [ "$(printf '%s\n%s\n' "$version" "$remote_version" | sort -V | tail -1)" = "$remote_version" ]; then
+              echo "tap ${TAP_REPO} already serves newer ${remote_version}; skipping stale bump ${TAG}"
+              exit 0
+            fi
+            if git push "$push_url" HEAD:main; then
+              break
+            fi
+            if [ "$attempt" -eq 3 ]; then
+              echo "::error::push of ${FORMULA_PATH} to ${TAP_REPO} failed after 3 attempts; TAP_WRITE_TOKEN is likely missing, rotated, or lacks push scope (see docs/release.md)" >&2
+              exit 1
+            fi
+            echo "tap push attempt ${attempt} failed; retrying in 5s" >&2
+            sleep 5
+          done
 
           published=$(curl -fsSL "$FORGEJO_BASE_URL/$TAP_REPO/raw/branch/main/$FORMULA_PATH" || true)
           if ! printf '%s' "$published" | grep -q "version \"${version}\""; then

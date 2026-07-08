@@ -142,9 +142,12 @@ without bumping the tap because the tap-write credential broke):
 - Every computed `sha256` must be a 64-hex digest before any formula is written.
 - The step fails up front with an `::error::` annotation if `TAP_WRITE_TOKEN` is
   unset.
-- A non-zero `git push` (the symptom of a missing, rotated, or under-scoped
-  `TAP_WRITE_TOKEN`) fails the job with an `::error::` annotation naming the
-  likely cause.
+- A non-zero `git push` is retried up to three times before the job fails with
+  an `::error::` annotation naming the likely cause. That covers short-lived
+  transport blips without hiding real secret-scope failures.
+- If the tap already serves the same tag, or has already moved past it to a
+  newer version, the job exits successfully instead of trying to downgrade the
+  tap with a stale release bump.
 - After pushing, the step re-reads the tap's `main` and asserts it now serves the
   new tag; a push that reports success but does not land fails the release.
 
