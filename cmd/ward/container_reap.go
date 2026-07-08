@@ -170,7 +170,21 @@ func (r *Runner) reapTargetTree(ctx context.Context, work string, env reapEnv, r
 	// HEAD already in origin/main is done, not salvage (ward#518, docs/container-reap.md).
 	residual := revCount(ctx, r, work, "origin/main..HEAD")
 	fmt.Fprintf(os.Stderr, "ward container reap: residual commit count against origin/main = %d\n", residual)
-	if residual == 0 && strings.TrimSpace(statusSnapshot) == "" {
+	cleanTree := strings.TrimSpace(statusSnapshot) == ""
+	if residual == 0 && cleanTree {
+		if env.Launched && env.Workflow.landsOnMain() && env.Issue != 0 {
+			prov, perr := r.readRunProvenance(work)
+			if perr != nil {
+				fmt.Fprintf(os.Stderr, "ward container reap: provenance missing or unreadable on already-landed direct-main run: %v\n", perr)
+				return r.salvage(ctx, work, env, reasonConflict, false, nil, statusSnapshot,
+					reapDecision{Gate: "provenance missing or unreadable on already-landed direct-main run", ProvState: "missing or unreadable"})
+			}
+			if !r.runProvenanceLanded(ctx, work, prov, env.Issue) {
+				fmt.Fprintf(os.Stderr, "ward container reap: already-landed direct-main run is missing closes #%d; salvaging instead of returning success\n", env.Issue)
+				return r.salvage(ctx, work, env, reasonCloseRef, false, nil, statusSnapshot,
+					reapDecision{Gate: "missing same-repo closing reference on already-landed direct-main run", ProvState: "present", Landed: false})
+			}
+		}
 		fmt.Fprintln(os.Stderr, "ward container reap: nothing to reap (tree clean, HEAD on origin/main)")
 		if releaseReservation {
 			r.releaseReservationIfUnstarted(ctx, env)

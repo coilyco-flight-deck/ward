@@ -436,13 +436,31 @@ func TestReapTargetTreeLandedAndClosedDoesNotSalvage(t *testing.T) {
 	runGit(t, repo, "init", "-b", "main")
 	runGit(t, repo, "config", "user.email", "test@example.com")
 	runGit(t, repo, "config", "user.name", "Test User")
+	runGitCommitAt(t, repo, "2026-07-02T06:50:00Z", "base.txt", "base\n", "base")
+	runGit(t, repo, "remote", "add", "origin", repo)
+	runGit(t, repo, "push", "origin", "main")
+	runGit(t, repo, "update-ref", "refs/remotes/origin/main", "HEAD")
+	baseline := mustGitRev(t, repo, "HEAD")
+	prov := runProvenance{
+		RunID:        "engineer-claude-ward-518",
+		Repo:         "coilyco-flight-deck/ward",
+		Issue:        518,
+		ReservedAt:   "2026-07-02T06:55:00Z",
+		BaselineMain: baseline,
+	}
+	provData, err := json.Marshal(prov)
+	if err != nil {
+		t.Fatal(err)
+	}
+	if err := os.WriteFile(filepath.Join(repo, runProvenanceFile), provData, 0o644); err != nil {
+		t.Fatal(err)
+	}
 	if err := os.WriteFile(filepath.Join(repo, "feat.txt"), []byte("feat\n"), 0o644); err != nil {
 		t.Fatal(err)
 	}
 	runGit(t, repo, "add", "feat.txt")
 	runGit(t, repo, "commit", "-m", "ward work\n\ncloses #518")
 	// The work already landed: origin/main IS this commit (residual 0, clean tree).
-	runGit(t, repo, "remote", "add", "origin", repo)
 	runGit(t, repo, "update-ref", "refs/remotes/origin/main", "HEAD")
 
 	r := &Runner{Runner: &shell.Runner{Resolve: shell.PathResolver}}
@@ -454,6 +472,55 @@ func TestReapTargetTreeLandedAndClosedDoesNotSalvage(t *testing.T) {
 	out, _ := exec.Command("git", "-C", repo, "branch", "--list", salvageBranchPrefix+"*").CombinedOutput()
 	if strings.TrimSpace(string(out)) != "" {
 		t.Fatalf("landed-and-closed run must not create a salvage branch, got: %q", string(out))
+	}
+}
+
+// TestReapTargetTreeLandedDirectMainWithoutCloseRefSalvages covers ward#674.
+// A direct-main run already on origin/main must still verify its carried closes ref.
+func TestReapTargetTreeLandedDirectMainWithoutCloseRefSalvages(t *testing.T) {
+	origin := t.TempDir()
+	runGit(t, origin, "init", "--bare", "-b", "main")
+	work := t.TempDir()
+	runGit(t, work, "init", "-b", "main")
+	runGit(t, work, "config", "user.email", "test@example.com")
+	runGit(t, work, "config", "user.name", "Test User")
+	runGitCommitAt(t, work, "2026-07-08T10:19:00Z", "base.txt", "base\n", "base")
+	runGit(t, work, "remote", "add", "origin", origin)
+	runGit(t, work, "push", "origin", "main")
+	runGit(t, work, "update-ref", "refs/remotes/origin/main", "HEAD")
+	baseline := mustGitRev(t, work, "HEAD")
+
+	prov := runProvenance{
+		RunID:        "engineer-codex-ward-674",
+		Repo:         "coilyco-flight-deck/ward",
+		Issue:        674,
+		ReservedAt:   "2026-07-08T10:19:28Z",
+		BaselineMain: baseline,
+	}
+	provData, err := json.Marshal(prov)
+	if err != nil {
+		t.Fatal(err)
+	}
+	if err := os.WriteFile(filepath.Join(work, runProvenanceFile), provData, 0o644); err != nil {
+		t.Fatal(err)
+	}
+
+	runGitCommitAt(t, work, "2026-07-08T10:20:00Z", "feat.txt", "feat\n", "Add reference-media deploy workflow")
+	runGit(t, work, "push", "origin", "main")
+	runGit(t, work, "update-ref", "refs/remotes/origin/main", "HEAD")
+
+	r := &Runner{Runner: &shell.Runner{Resolve: shell.PathResolver}}
+	env := reapEnv{Owner: "coilyco-flight-deck", Name: "ward", Base: "https://forgejo.coilysiren.me", Mode: "codex", Issue: 674, Launched: true, Workflow: workflowDirectMain}
+	if err := r.reapTargetTree(t.Context(), work, env, false); err != nil {
+		t.Fatalf("reapTargetTree on a landed direct-main run without closes #674: %v", err)
+	}
+
+	if got, want := mustGitRev(t, origin, "main"), mustGitRev(t, work, "HEAD"); got != want {
+		t.Fatalf("a landed direct-main run without closes #674 must not advance main again: origin main=%s work HEAD=%s", got, want)
+	}
+	out, _ := exec.Command("git", "-C", origin, "branch", "--list", salvageBranchPrefix+"*").CombinedOutput()
+	if strings.TrimSpace(string(out)) == "" {
+		t.Fatal("a landed direct-main run without closes #674 must be preserved on a salvage branch")
 	}
 }
 

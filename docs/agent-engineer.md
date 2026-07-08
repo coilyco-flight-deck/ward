@@ -36,7 +36,8 @@ errors on non-ref text for freeform):
 
 It validates the ref (a bad ref or [untrusted owner](agent-trust-gate.md) trips
 first), branches `issue-<N>` (override `--branch`), and launches a clone.
-Reaper enforces `closes #N` before landing.
+Reaper enforces `closes #N` before landing, including on the already-landed fast
+path.
 
 The engineer always **detaches** fire-and-forget (was `headless`): print mode
 (`claude -p`/`codex exec`/`goose run -t`). From a terminal it first runs a **pre-flight**

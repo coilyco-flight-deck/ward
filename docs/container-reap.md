@@ -32,10 +32,13 @@ does can defeat it. It is a hidden entrypoint-called verb.
    a missing closing reference, or a rejected push - never the benign "the repo was
    empty" condition.
 4. Checks for **nothing to reap** *next*: a clean tree with `HEAD`
-   already in `origin/main` is done, before the salvage gates, which read the
-   then-empty `origin/main..HEAD` and would else false-salvage a landed run.
-5. Verifies the carried issue has the same-repo `closes #N` reference. Missing
-   reference means salvage, not push.
+   already in `origin/main` is done, but a launched direct-main run still
+   re-reads its dispatch provenance here to confirm the landed history carries
+   the same-repo `closes #N` before reading as success. A landed run missing
+   that reference is a failed invariant, not a quiet success.
+5. Verifies the carried issue has the same-repo `closes #N` reference when
+   residual work remains or the run needs the post-rebase push-site re-check.
+   Missing reference means salvage, not push.
 6. Integrates onto the latest `main` (`rebase`; conflicts route to salvage).
 7. Scans the residual diff for junk that should never land on `main`: vendored
    trees (`node_modules`, ...), credential files (`.env`, `*.pem`, ...), blobs.
