@@ -138,6 +138,14 @@ entrypoint records the failing gate (`auth` / `ollama-probe` / `bootstrap`) to
 `releaseReservationIfUnstarted`. A death with no recorded gate falls back to the
 generic release comment. See [agent-reservation.md](agent-reservation.md).
 
+The release comment is also **loud and machine-detectable** ([ward#595](https://forgejo.coilysiren.me/coilyco-flight-deck/ward/issues/595)): it leads
+with a "⚠️ Run never started — this issue needs re-dispatch" headline and carries the
+`<!-- ward-needs-redispatch -->` marker (`agentNeedsRedispatchMarker`), so an orphaned run
+reads as a call to action, not a benign reservation-release that a human or a heartbeat
+mistakes for "was dispatched, in flight". A `ward agent director` re-queues such an issue
+deterministically (bounded by a re-dispatch cap, then parks it `blocked` as
+`orphaned-needs-redispatch`); see [agent-director-dispatch.md](agent-director-dispatch.md).
+
 ## See also
 
 [docs/container.md](container.md) - container subsystem.

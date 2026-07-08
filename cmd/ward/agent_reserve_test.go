@@ -831,11 +831,19 @@ func TestReservationReleaseCommentBodyGate(t *testing.T) {
 	if strings.Contains(generic, "**Gate:**") {
 		t.Errorf("generic release comment should carry no Gate section: %s", generic)
 	}
+	// ward#595: a pre-launch death is loud + machine-detectable, not a benign release.
+	for _, want := range []string{agentNeedsRedispatchMarker, "Run never started", "needs re-dispatch"} {
+		if !strings.Contains(generic, want) {
+			t.Errorf("generic release comment missing %q\n got: %s", want, generic)
+		}
+	}
 	// auth gate -> names the gate, the recovery, and the folded error line.
 	gf := &gateFailure{Gate: "auth", Detail: "auth smoke test: claude -p rejected the credentials (exit 1)"}
 	enriched := reservationReleaseCommentBody(modeClaude, "engineer-claude-ward-609", gf)
 	for _, want := range []string{
 		agentReservationReleaseMarker,
+		agentNeedsRedispatchMarker,
+		"Run never started",
 		"**auth** pre-launch gate",
 		"**Gate:** auth smoke test (claude credentials)",
 		"**Recovery:** Refresh the host claude login",

@@ -51,6 +51,30 @@ Two levers break it, both in the heartbeat ([agent-director.md](agent-director.m
   re-tests the recovered forge rather than trusting the LLM to. A substantive engineer
   block/failure in the window vetoes the override, and a non-`ok` probe leaves the hold intact.
 
+## A pre-launch death re-queues, it does not park ([ward#595](https://forgejo.coilysiren.me/coilyco-flight-deck/ward/issues/595))
+
+`directorDispatchDisposition` above governs an error the engineer command returns **before**
+the container detaches. A distinct death happens **after** detach: the container launches,
+passes the reservation post, then dies at the [ward#222](https://forgejo.coilysiren.me/coilyco-flight-deck/ward/issues/222) smoke gate before the agent
+ever runs - the reaper releases the reservation and the container is gone. The reconcile pass
+(`backlogReconcile`) sees a `dispatched` entry with no running container and **no
+WARD-OUTCOME**, and used to park it terminal `failed` ("exited-no-outcome"). That is the same
+mistake the defer rule warns against, one layer over: a run that **consumed no autonomous
+work** parked as if it had failed on the merits, and - worse - whether a retry happened was a
+coin-flip on an incidental second attempt landing on a healthy host. When none did, the issue
+was silently **orphaned** (open, reservation released, nothing running, nothing signalling).
+
+`reconcileNoOutcome` closes that. When the thread carries a **reservation-release marker
+stamped at/after the entry's dispatch** (`prelaunchDeathRelease` - the fingerprint of a
+pre-launch death, distinct from a run that launched and vanished, which leaves no release),
+the entry **re-queues** rather than parking `failed`: the next tick re-dispatches it
+deterministically. This is bounded by `redispatchAttemptCap` (3) tracked on the entry's
+`RedispatchAttempts`: a multi-host fleet lands a retry on a healthy host, while a
+persistently-sick host exhausts the cap and parks the entry `blocked` with the
+`orphaned-needs-redispatch` outcome (a loud, human-look terminal state), never a livelock.
+A genuine no-outcome exit - the agent launched, did work, and vanished without a WARD-OUTCOME
+- has no release marker and still parks `failed` as before.
+
 ## The self-heal migration
 
 The [ward#524](https://forgejo.coilysiren.me/coilyco-flight-deck/ward/issues/524) rule is forward-looking - it does not un-strand issues the **old** classifier

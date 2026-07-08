@@ -559,6 +559,69 @@ func TestBacklogOutcomeState(t *testing.T) {
 	}
 }
 
+// TestReconcileNoOutcome pins the ward#595 pre-launch-death classification: a released
+// reservation re-queues (bounded), a bare no-outcome exit stays terminal `failed`.
+func TestReconcileNoOutcome(t *testing.T) {
+	at := func(s string) time.Time {
+		ts, _ := time.Parse(time.RFC3339, s)
+		return ts
+	}
+	dispatched := at("2026-07-04T04:39:45Z")
+	release := issueComment{Body: agentReservationReleaseMarker + "\n" + agentNeedsRedispatchMarker + "\nrun never started", CreatedAt: at("2026-07-04T04:39:52Z")}
+	chatter := issueComment{Body: "just a comment", CreatedAt: at("2026-07-04T04:40:00Z")}
+
+	// No release marker: the agent launched and vanished - stays terminal failed.
+	state, oc, attempts := reconcileNoOutcome([]issueComment{chatter}, dispatched, 0)
+	if state != "failed" || oc.Status != "exited-no-outcome" || attempts != 0 {
+		t.Fatalf("no-release: got %s/%s attempts=%d, want failed/exited-no-outcome/0", state, oc.Status, attempts)
+	}
+
+	// A release stamped at/after dispatch is a pre-launch death: re-queue, count the try.
+	state, oc, attempts = reconcileNoOutcome([]issueComment{release}, dispatched, 0)
+	if state != "queued" || oc.Status != "prelaunch-death-requeued" || attempts != 1 {
+		t.Fatalf("first death: got %s/%s attempts=%d, want queued/prelaunch-death-requeued/1", state, oc.Status, attempts)
+	}
+
+	// A release stamped BEFORE this dispatch is a stale marker from a prior attempt, not
+	// this run's death: it must not re-queue a run that actually launched.
+	stale := issueComment{Body: agentReservationReleaseMarker, CreatedAt: at("2026-07-04T04:00:00Z")}
+	if state, _, _ := reconcileNoOutcome([]issueComment{stale}, dispatched, 0); state != "failed" {
+		t.Fatalf("stale release: got %s, want failed", state)
+	}
+
+	// The cap is bounded: the attempt that reaches redispatchAttemptCap parks blocked
+	// with the explicit orphaned marker instead of re-queuing forever.
+	state, oc, attempts = reconcileNoOutcome([]issueComment{release}, dispatched, redispatchAttemptCap-1)
+	if state != "blocked" || oc.Status != "orphaned-needs-redispatch" || attempts != redispatchAttemptCap {
+		t.Fatalf("cap: got %s/%s attempts=%d, want blocked/orphaned-needs-redispatch/%d", state, oc.Status, attempts, redispatchAttemptCap)
+	}
+}
+
+// TestPrelaunchDeathRelease covers the marker/timestamp fingerprint, including the
+// unknown-dispatch-time (zero) case where any release marker counts.
+func TestPrelaunchDeathRelease(t *testing.T) {
+	at := func(s string) time.Time {
+		ts, _ := time.Parse(time.RFC3339, s)
+		return ts
+	}
+	rel := func(ts string) issueComment {
+		return issueComment{Body: agentReservationReleaseMarker, CreatedAt: at(ts)}
+	}
+	if prelaunchDeathRelease([]issueComment{{Body: "no marker", CreatedAt: at("2026-07-04T05:00:00Z")}}, at("2026-07-04T04:00:00Z")) {
+		t.Error("a thread with no release marker is not a pre-launch death")
+	}
+	if !prelaunchDeathRelease([]issueComment{rel("2026-07-04T05:00:00Z")}, at("2026-07-04T04:00:00Z")) {
+		t.Error("a release after dispatch is a pre-launch death")
+	}
+	if prelaunchDeathRelease([]issueComment{rel("2026-07-04T03:00:00Z")}, at("2026-07-04T04:00:00Z")) {
+		t.Error("a release before dispatch is stale, not this run's death")
+	}
+	// Unknown dispatch time (zero): any release marker still counts as a pre-launch death.
+	if !prelaunchDeathRelease([]issueComment{rel("2026-07-04T05:00:00Z")}, time.Time{}) {
+		t.Error("with an unknown dispatch time, a release marker still counts")
+	}
+}
+
 func TestBacklogLaneCountsAndPicks(t *testing.T) {
 	entries := []*backlogEntry{
 		{Num: 1, State: "queued", Tier: "P1", repo: "a/b"},

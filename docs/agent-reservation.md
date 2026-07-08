@@ -117,6 +117,29 @@ docker logs for. The entrypoint records the failing gate to a small in-container
 file (`WARD_GATE_FAILURE_FILE`, default `/run/ward/gate-failure`) that the reaper
 reads; an unclassified pre-launch death still gets the generic release comment.
 
+### The release is loud, not benign ([ward#595](https://forgejo.coilysiren.me/coilyco-flight-deck/ward/issues/595))
+
+A bare reservation-release read as benign housekeeping ("hold retracted, retry needs
+no `--force`") even though it means **the run never started and no work happened**. When
+no incidental second attempt landed, the issue was silently **orphaned**: open,
+reservation released, nothing running, nothing signalling failure. So the release comment
+now leads with a loud **"⚠️ Run never started — this issue needs re-dispatch"** headline
+and carries a distinct machine-detectable marker (`<!-- ward-needs-redispatch -->`,
+`agentNeedsRedispatchMarker`) an operator can grep for. Two consumers close the gap:
+
+- **A `ward agent director` re-queues it automatically.** When the reconcile pass sees a
+  dispatched entry whose container is gone and the thread carries a release marker stamped
+  **at/after** its dispatch (a pre-launch death, not a run that launched and vanished), it
+  re-queues the entry rather than parking it terminal `failed` - deterministic re-dispatch,
+  the incidental [ward#593](https://forgejo.coilysiren.me/coilyco-flight-deck/ward/issues/593) failover made a guarantee. This is bounded by `redispatchAttemptCap`
+  (3): a persistently-sick host exhausts the cap and parks the entry `blocked` with the
+  `orphaned-needs-redispatch` outcome (a human must fix the host or re-dispatch by hand),
+  never a livelock. See [container-reap.md](container-reap.md) and
+  [agent-director-dispatch.md](agent-director-dispatch.md).
+- **A bare surface-session dispatch** (not tracked by any director ledger, the [ward#594](https://forgejo.coilysiren.me/coilyco-flight-deck/ward/issues/594) case)
+  leaves the loud marker on the thread as the machine-detectable "needs re-dispatch" signal
+  an operator or heartbeat greps, rather than a quiet release that reads as done.
+
 ## Launch failure rolls the reservation back
 
 Tracked in [ward#570](https://forgejo.coilysiren.me/coilyco-flight-deck/ward/issues/570).

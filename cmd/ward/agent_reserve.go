@@ -102,6 +102,10 @@ const agentReservationMarker = "<!-- ward-agent-reservation -->"
 // a reservation a pre-launch-death container took (ward#264, docs/agent-reservation.md).
 const agentReservationReleaseMarker = "<!-- ward-agent-reservation-released -->"
 
+// agentNeedsRedispatchMarker is the loud, greppable token a pre-launch-death release
+// carries so an orphaned run reads as "needs re-dispatch", not benign (ward#595).
+const agentNeedsRedispatchMarker = "<!-- ward-needs-redispatch -->"
+
 // agentReservation is the local sentinel payload: who holds an issue, in which
 // container, since when. Persisted as pretty JSON so a human can read it.
 type agentReservation struct {
@@ -593,18 +597,22 @@ func reservationCommentBody(mode containerMode, container, host string, now time
 func reservationReleaseCommentBody(mode containerMode, container string, gate *gateFailure) string {
 	if gate == nil {
 		return fmt.Sprintf(
-			"%s\n🔓 Reservation released by `ward container reap` — container `%s` (`--driver %s`) exited without "+
-				"launching the agent (smoke-test death, ward#222/#264), so the hold it took is retracted. "+
-				"A plain `ward agent` retry no longer needs `--force`.",
-			agentReservationReleaseMarker, container, mode)
+			"%s\n%s\n⚠️ **Run never started — this issue needs re-dispatch.** `ward container reap` released "+
+				"container `%s` (`--driver %s`): it exited without launching the agent (smoke-test death, "+
+				"ward#222/#264/#595), so it did no work and the hold it took is retracted. Nothing is running on this "+
+				"issue. A `ward agent director` re-queues it automatically; a manual `ward agent` retry no longer "+
+				"needs `--force`.",
+			agentReservationReleaseMarker, agentNeedsRedispatchMarker, container, mode)
 	}
 	label, recovery := gateRecovery(gate.Gate)
 	body := fmt.Sprintf(
-		"%s\n🔓 Reservation released by `ward container reap` — container `%s` (`--driver %s`) exited at the **%s** "+
-			"pre-launch gate without launching the agent (ward#222/#264/#609), so the hold it took is retracted. "+
-			"A plain `ward agent` retry no longer needs `--force`.\n\n"+
+		"%s\n%s\n⚠️ **Run never started — this issue needs re-dispatch.** `ward container reap` released "+
+			"container `%s` (`--driver %s`): it exited at the **%s** pre-launch gate without launching the agent "+
+			"(ward#222/#264/#595/#609), so it did no work and the hold it took is retracted. Nothing is running on "+
+			"this issue. A `ward agent director` re-queues it automatically; a manual `ward agent` retry no longer "+
+			"needs `--force`.\n\n"+
 			"**Gate:** %s\n\n**Recovery:** %s",
-		agentReservationReleaseMarker, container, mode, gate.Gate, label, recovery)
+		agentReservationReleaseMarker, agentNeedsRedispatchMarker, container, mode, gate.Gate, label, recovery)
 	if d := reservationScrubDetail(gate.Detail); d != "" {
 		body += fmt.Sprintf("\n\n<details><summary>error from the gate</summary>\n\n```\n%s\n```\n\n</details>", d)
 	}

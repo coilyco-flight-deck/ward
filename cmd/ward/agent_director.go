@@ -82,6 +82,9 @@ type backlogEntry struct {
 	Container    string          `yaml:"container,omitempty"`
 	DispatchedAt string          `yaml:"dispatched_at,omitempty"`
 	LastOutcome  *backlogOutcome `yaml:"last_outcome,omitempty"`
+	// RedispatchAttempts bounds the deterministic pre-launch-death retry before the
+	// entry parks as an orphaned/needs-redispatch block (ward#595).
+	RedispatchAttempts int `yaml:"redispatch_attempts,omitempty"`
 	// repo is the owning slug, set only when entries are aggregated across a scope.
 	repo string `yaml:"-"`
 }
@@ -1024,15 +1027,72 @@ func (r *Runner) backlogReconcile(ctx context.Context, cl *forgejoClient, repo s
 	}
 	outcome := parseBacklogOutcome(comments)
 	if outcome == nil {
-		e.State = "failed"
-		e.LastOutcome = &backlogOutcome{Status: "exited-no-outcome", Text: "container exited without a WARD-OUTCOME comment; read its log"}
-		fmt.Fprintf(os.Stderr, "  %s#%d -> failed: exited without a WARD-OUTCOME comment\n", repo, e.Num)
+		state, oc, attempts := reconcileNoOutcome(comments, parseBacklogDispatchedAt(e.DispatchedAt), e.RedispatchAttempts)
+		e.State = state
+		e.LastOutcome = oc
+		e.RedispatchAttempts = attempts
+		if state == "queued" {
+			// Re-queued for another attempt: drop the dead run's dispatch record so the
+			// next tick re-dispatches cleanly (ward#595).
+			e.Container = ""
+			e.DispatchedAt = ""
+		}
+		fmt.Fprintf(os.Stderr, "  %s#%d -> %s%s\n", repo, e.Num, e.State, suffixText(oc.Text))
 		return true
 	}
 	e.State = backlogOutcomeState(outcome.Status)
 	e.LastOutcome = outcome
 	fmt.Fprintf(os.Stderr, "  %s#%d -> %s%s\n", repo, e.Num, e.State, suffixText(outcome.Text))
 	return true
+}
+
+// redispatchAttemptCap bounds the deterministic pre-launch-death retry (ward#595):
+// a multi-host fleet retries on a healthy host, a sick host exhausts the cap.
+const redispatchAttemptCap = 3
+
+// parseBacklogDispatchedAt parses an entry's RFC3339 dispatch stamp, zero-time on
+// empty/malformed (so a release still counts as a pre-launch death when unknown).
+func parseBacklogDispatchedAt(s string) time.Time {
+	t, err := time.Parse(time.RFC3339, strings.TrimSpace(s))
+	if err != nil {
+		return time.Time{}
+	}
+	return t
+}
+
+// prelaunchDeathRelease reports whether the thread has a reservation-release marker
+// at/after dispatchedAt - a pre-launch death, not a run that ran (ward#595/#264).
+func prelaunchDeathRelease(comments []issueComment, dispatchedAt time.Time) bool {
+	for _, c := range comments {
+		if strings.Contains(c.Body, agentReservationReleaseMarker) && !c.CreatedAt.Before(dispatchedAt) {
+			return true
+		}
+	}
+	return false
+}
+
+// reconcileNoOutcome classifies a gone dispatched container with no WARD-OUTCOME:
+// a pre-launch death re-queues (bounded), else it parks failed (ward#595, docs).
+func reconcileNoOutcome(comments []issueComment, dispatchedAt time.Time, attempts int) (state string, outcome *backlogOutcome, nextAttempts int) {
+	if !prelaunchDeathRelease(comments, dispatchedAt) {
+		return "failed", &backlogOutcome{
+			Status: "exited-no-outcome",
+			Text:   "container exited without a WARD-OUTCOME comment; read its log",
+		}, attempts
+	}
+	attempts++
+	if attempts >= redispatchAttemptCap {
+		return "blocked", &backlogOutcome{
+			Status: "orphaned-needs-redispatch",
+			Text: fmt.Sprintf("container died pre-launch %d× (smoke-test death, ward#222/#264/#595); re-dispatch cap "+
+				"reached - fix the host or re-dispatch by hand", attempts),
+		}, attempts
+	}
+	return "queued", &backlogOutcome{
+		Status: "prelaunch-death-requeued",
+		Text: fmt.Sprintf("container died pre-launch (smoke-test death, ward#595); re-queued for re-dispatch "+
+			"(attempt %d/%d)", attempts, redispatchAttemptCap),
+	}, attempts
 }
 
 // backlogContainerRunning reports whether a dispatched entry's container is still
