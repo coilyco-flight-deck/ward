@@ -168,6 +168,7 @@ func TestReadBootstrapEnvDefaults(t *testing.T) {
 		"WARD_QWEN_MODEL", "WARD_OLLAMA_URL", "WARD_GIT_NAME", "WARD_GIT_EMAIL",
 		"WARD_CODEX_MODEL", "WARD_CODEX_REASONING_EFFORT", "WARD_CODEX_VERBOSITY",
 		"WARD_AGENT_UID", "WARD_AGENT_GID", "WARD_AGENT_HOME", "WARD_BRANCH",
+		"WARD_ROLE",
 		"WARD_HEADLESS", "WARD_ASK", "WARD_MIRROR_NAME", "WARD_SUBSTRATE_SKIP",
 	} {
 		t.Setenv(k, "")
@@ -203,7 +204,7 @@ func TestReadBootstrapEnvDefaults(t *testing.T) {
 		"GitCache":       "/gitcache",
 		"QwenModel":      "qwen3-coder:30b",
 		"OllamaURL":      "http://localhost:11434/v1",
-		"CodexModel":     "gpt-5.4-mini",
+		"CodexModel":     "gpt-5.4",
 		"CodexEffort":    "medium",
 		"CodexVerbosity": "low",
 		"GitUserName":    "coilyco-ops",
