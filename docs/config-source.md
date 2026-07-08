@@ -52,7 +52,7 @@ to parse both degrade **per site, loudly**:
 - the exec auto-mount degrades with a stderr warning at launch.
 - fleet consumers (`ward agents list`, `ward agent ...`) error at verb time.
 - the rest of the CLI (`version`, `exec`, `git`, ...) keeps working; the
-  `--driver` choice list is built at init from the baked roster so a bad ref
+  `--harness` choice list is built at init from the baked roster so a bad ref
   cannot panic the binary before a verb can answer.
 
 There is no fallback from a named-but-broken source to the baked default.
