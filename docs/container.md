@@ -27,6 +27,9 @@ Three departures from a transparent, shared, bind-mounted container:
   ([ward#578](https://forgejo.coilysiren.me/coilyco-flight-deck/ward/issues/578)) - the advisor holds them, the engineer does not. See
   [agent-flags.md](agent-flags.md).
 
+For director-style read-only sessions, the workspace clone itself is chmod'd
+read-only and `/scratch` is provisioned as the writable throwaway area.
+
 ## Usage
 
 Launch through [`ward agent`](agent.md):
@@ -71,6 +74,8 @@ permissions, launches the agent, then reaps. The push token - the `coilyco-ops`
 bot's, from SSM `/forgejo/coilyco-ops/api-token`, not a personal PAT ([ward#161](https://forgejo.coilysiren.me/coilyco-flight-deck/ward/issues/161)) -
 resolves **on the host**, via a private 0600 `--env-file`, never in argv or
 audit, so the container's clones, commits, and pushes attribute to the bot.
+The bootstrap also points `TMPDIR`, `TMP`, and `TEMP` at `/scratch` so
+throwaway scripts have a writable home outside the workspace clone.
 
 ## Feature-lifetime autonomy + the reaper backstop
 
