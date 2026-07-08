@@ -23,6 +23,7 @@ func TestClassifyTaskInvocation(t *testing.T) {
 		{"explicit repo no flag", "coilyco-flight-deck/ward", "", false, "coilyco-flight-deck/ward", false},
 		// An issue URL / owner/repo#N positional is DIRECT, normalized to its slug (ward#234).
 		{"issue url", forgejoBaseURL + "/coilyco-flight-deck/ward/issues/98", "task.md", false, "coilyco-flight-deck/ward", false},
+		{"issue url without protocol", "forgejo.coilysiren.me/coilyco-flight-deck/ward/issues/98", "task.md", false, "coilyco-flight-deck/ward", false},
 		{"owner/repo#N", "coilyco-flight-deck/ward#98", "task.md", false, "coilyco-flight-deck/ward", false},
 		// A non-issue URL is freeform content, no phantom owner (ward#234).
 		{"actions run url is freeform", forgejoBaseURL + "/coilyco-flight-deck/ward/actions/runs/301", "", true, "", false},
@@ -67,6 +68,7 @@ func TestTaskRepoRef(t *testing.T) {
 		{"bare ref dot-git", "coilyco-flight-deck/ward.git", "coilyco-flight-deck/ward", true},
 		{"owner/repo#N", "coilyco-flight-deck/ward#98", "coilyco-flight-deck/ward", true},
 		{"issue url", forgejoBaseURL + "/coilyco-flight-deck/ward/issues/98", "coilyco-flight-deck/ward", true},
+		{"issue url without protocol", "forgejo.coilysiren.me/coilyco-flight-deck/ward/issues/98", "coilyco-flight-deck/ward", true},
 		// Every other shape is left for ROUTE - no phantom owner lifted (ward#234).
 		{"actions run url", forgejoBaseURL + "/coilyco-flight-deck/ward/actions/runs/301", "", false},
 		{"jobs attempt url", forgejoBaseURL + "/coilyco-flight-deck/ward/actions/runs/301/jobs/0/attempt/1", "", false},
