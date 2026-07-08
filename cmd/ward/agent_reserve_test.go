@@ -725,7 +725,7 @@ func TestReservationRecheckMax(t *testing.T) {
 // --- ward#609: reservation seed context + gate-failure release enrichment -----
 
 // TestReservationSeedContextRender pins the folded seed context (ward#609): a collapsed
-// <details> of dynamic per-run bytes (refs, run shape, thread tally, seeded body).
+// <details> of dynamic per-run bytes (refs, run shape, thread tally, comment identities).
 func TestReservationSeedContextRender(t *testing.T) {
 	now := time.Date(2026, 7, 5, 2, 13, 22, 0, time.UTC)
 	sc := &reservationSeedContext{
@@ -735,7 +735,6 @@ func TestReservationSeedContextRender(t *testing.T) {
 		RunID:        "engineer-claude-ward-609",
 		WardVersion:  "v0.80.0",
 		Workflow:     workflowDirectMain,
-		Body:         "## Problem\n\nSomething broke.",
 		Included:     []reservationThreadEntry{{Author: "kai", At: now.Add(-time.Hour)}},
 		Stripped:     []reservationThreadEntry{{Author: "coilyco-ops", At: now.Add(-30 * time.Minute)}},
 		DispatchedAt: now,
@@ -752,8 +751,6 @@ func TestReservationSeedContextRender(t *testing.T) {
 		"1 included in the pre-flight read, 1 stripped",
 		"@kai",
 		"@coilyco-ops",
-		"Issue body as seeded:",
-		"Something broke.",
 		"Static container doctrine and seed boilerplate are identical every run and omitted",
 		"</details>",
 	} {
@@ -761,28 +758,14 @@ func TestReservationSeedContextRender(t *testing.T) {
 			t.Errorf("render missing %q\n got: %s", want, got)
 		}
 	}
+	for _, notWant := range []string{"Issue body as seeded:", "Something broke."} {
+		if strings.Contains(got, notWant) {
+			t.Errorf("render should omit %q\n got: %s", notWant, got)
+		}
+	}
 	// A nil context renders nothing (a --force path with no captured context).
 	if s := (*reservationSeedContext)(nil).render(); s != "" {
 		t.Errorf("nil render should be empty, got %q", s)
-	}
-}
-
-// TestReservationSeededBody covers the empty, plain, fenced, and truncated bodies.
-func TestReservationSeededBody(t *testing.T) {
-	if got := reservationSeededBody("  "); got != "_(empty issue body)_" {
-		t.Errorf("empty body: got %q", got)
-	}
-	if got := reservationSeededBody("hello"); !strings.Contains(got, "```\nhello\n```") {
-		t.Errorf("plain body should be fenced: got %q", got)
-	}
-	// A fence inside the body is neutralized so it can't close the block early: the
-	// only remaining literal fences are the two wrapping ones.
-	if got := reservationSeededBody("a\n```\nb"); !strings.Contains(got, "` ` `") || strings.Count(got, "```") != 2 {
-		t.Errorf("inner fence not neutralized: got %q", got)
-	}
-	big := strings.Repeat("x", reservationSeededBodyCap+500)
-	if got := reservationSeededBody(big); !strings.Contains(got, "truncated to") {
-		t.Errorf("oversize body should be truncated: got tail %q", got[len(got)-40:])
 	}
 }
 

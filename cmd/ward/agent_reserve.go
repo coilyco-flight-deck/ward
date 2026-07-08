@@ -625,7 +625,6 @@ type reservationSeedContext struct {
 	RunID        string // the container name, the run correlation id
 	WardVersion  string // the ward release the container pins/resolves
 	Workflow     workflowMode
-	Body         string                   // the issue body as actually seeded (frozen snapshot)
 	Included     []reservationThreadEntry // comments fed to the pre-flight read
 	Stripped     []reservationThreadEntry // comments ward stripped (its own automation)
 	DispatchedAt time.Time
@@ -648,7 +647,6 @@ func buildReservationSeedContext(w resolvedWork, plan upPlan, now time.Time) *re
 		RunID:        plan.Name,
 		WardVersion:  plan.WardVersion,
 		Workflow:     w.Workflow,
-		Body:         w.Body,
 		DispatchedAt: now,
 	}
 	for _, c := range w.Comments {
@@ -661,10 +659,6 @@ func buildReservationSeedContext(w resolvedWork, plan upPlan, now time.Time) *re
 	}
 	return sc
 }
-
-// reservationSeededBodyCap bounds how much of the seeded body the durable comment
-// re-pastes; the full body is on the issue already, so a truncation loses nothing.
-const reservationSeededBodyCap = 2000
 
 // render folds the dynamic seed context into a collapsed <details> block; a nil
 // receiver renders nothing (a run with no captured context, e.g. --force paths).
@@ -687,27 +681,9 @@ func (sc *reservationSeedContext) render() string {
 	if len(sc.Stripped) > 0 {
 		fmt.Fprintf(&b, "  - stripped: %s\n", renderThreadEntries(sc.Stripped))
 	}
-	fmt.Fprintf(&b, "\n**Issue body as seeded:**\n\n%s\n", reservationSeededBody(sc.Body))
 	fmt.Fprintf(&b, "\nStatic container doctrine and seed boilerplate are identical every run and omitted here (they ride ward %s).\n", ward)
 	b.WriteString("\n</details>\n")
 	return b.String()
-}
-
-// reservationSeededBody renders the frozen body inside a fenced block (literal, so
-// the body's own markdown can't reshape the comment), truncated to the cap.
-func reservationSeededBody(body string) string {
-	body = strings.TrimSpace(body)
-	if body == "" {
-		return "_(empty issue body)_"
-	}
-	trunc := ""
-	if len(body) > reservationSeededBodyCap {
-		body = body[:reservationSeededBodyCap]
-		trunc = fmt.Sprintf("\n… (truncated to %d chars; full body is on this issue)", reservationSeededBodyCap)
-	}
-	// Neutralize any fence in the body so it can't close the block early.
-	body = strings.ReplaceAll(body, "```", "` ` `")
-	return "```\n" + body + "\n```" + trunc
 }
 
 // renderThreadEntries joins comment identities as "@author (ts)"; a missing author

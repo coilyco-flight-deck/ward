@@ -30,14 +30,14 @@ diagnostic surface. Three surfaces, each its own job:
 
 - **Reservation comment = WHAT.** The comment folds the **dynamic** per-run seed
   context into a collapsed `<details>` block: the resolved ref, target branch,
-  driver, run id, dispatch timestamp, the landing workflow, the **issue body as
-  actually seeded** (a frozen snapshot, fenced so its own markdown can't reshape
-  the comment), and which thread comments were **included vs stripped** in the
-  pre-flight read (ward strips its own automation - reservation pings and NO-GO
-  verdicts). The static container doctrine and seed boilerplate are identical
-  every run, so they are **referenced by ward version, never pasted**. No
-  secret-bearing content is added: comment **bodies** are never included (only
-  author + timestamp), and the issue body is already visible on the same issue.
+  driver, run id, dispatch timestamp, the landing workflow, and which thread
+  comments were **included vs stripped** in the pre-flight read (ward strips its
+  own automation - reservation pings and NO-GO verdicts). The static container
+  doctrine and seed boilerplate are identical every run, so they are
+  **referenced by ward version, never pasted**. No secret-bearing content is
+  added: comment **bodies** are never included (only author + timestamp), and
+  the issue body stays on the issue page instead of being re-pasted into the
+  reservation comment.
 - **Reservation-released comment = WHY + RECOVER.** When a container dies at a
   pre-launch gate, the reaper's release comment names the **specific gate** that
   failed (`auth`, `ollama-probe`, or `bootstrap`), folds in the actual error line,
