@@ -553,56 +553,64 @@ jobs:
           # release-asset pins are the source of truth.
           git clone --depth 1 "$FORGEJO_BASE_URL/$TAP_REPO.git" tap
           cd tap
-          cat > "$FORMULA_PATH" <<EOF
-          class Ward < Formula
-            desc "A contributor-facing cli-guard consumer"
-            homepage "https://forgejo.coilysiren.me/coilyco-flight-deck/ward"
-            version "${version}"
-            license "MIT"
-
-            on_macos do
-              if Hardware::CPU.arm?
-                url "${artifact_root}/ward-darwin-arm64"
-                sha256 "${darwin_arm64}"
-              else
-                url "${artifact_root}/ward-darwin-amd64"
-                sha256 "${darwin_amd64}"
-              end
-            end
-
-            on_linux do
-              if Hardware::CPU.arm?
-                url "${artifact_root}/ward-linux-arm64"
-                sha256 "${linux_arm64}"
-              else
-                url "${artifact_root}/ward-linux-amd64"
-                sha256 "${linux_amd64}"
-              end
-            end
-
-            def install
-              asset =
-                if OS.mac?
-                  Hardware::CPU.arm? ? "ward-darwin-arm64" : "ward-darwin-amd64"
-                else
-                  Hardware::CPU.arm? ? "ward-linux-arm64" : "ward-linux-amd64"
-                end
-
-              chmod 0555, asset
-              bin.install asset => "ward"
-
-              bin.install_symlink "ward" => "warded"
-
-            end
-
-            test do
-              assert_match "v#{version}", shell_output("#{bin}/ward version")
-              # The warded multicall shim must be on PATH and point at the ward binary.
-              assert_predicate bin/"warded", :symlink?
-              assert_equal (bin/"ward").realpath, (bin/"warded").realpath
-            end
-          end
-EOF
+          VERSION="$version" ARTIFACT_ROOT="$artifact_root" \
+          DARWIN_AMD64="$darwin_amd64" DARWIN_ARM64="$darwin_arm64" \
+          LINUX_AMD64="$linux_amd64" LINUX_ARM64="$linux_arm64" \
+          FORMULA_PATH="$FORMULA_PATH" \
+          node -e '
+            const fs = require("fs");
+            const formula = [
+              "class Ward < Formula",
+              "  desc \"A contributor-facing cli-guard consumer\"",
+              "  homepage \"https://forgejo.coilysiren.me/coilyco-flight-deck/ward\"",
+              `  version \"${process.env.VERSION}\"`,
+              "  license \"MIT\"",
+              "",
+              "  on_macos do",
+              "    if Hardware::CPU.arm?",
+              `      url \"${process.env.ARTIFACT_ROOT}/ward-darwin-arm64\"`,
+              `      sha256 \"${process.env.DARWIN_ARM64}\"`,
+              "    else",
+              `      url \"${process.env.ARTIFACT_ROOT}/ward-darwin-amd64\"`,
+              `      sha256 \"${process.env.DARWIN_AMD64}\"`,
+              "    end",
+              "  end",
+              "",
+              "  on_linux do",
+              "    if Hardware::CPU.arm?",
+              `      url \"${process.env.ARTIFACT_ROOT}/ward-linux-arm64\"`,
+              `      sha256 \"${process.env.LINUX_ARM64}\"`,
+              "    else",
+              `      url \"${process.env.ARTIFACT_ROOT}/ward-linux-amd64\"`,
+              `      sha256 \"${process.env.LINUX_AMD64}\"`,
+              "    end",
+              "  end",
+              "",
+              "  def install",
+              "    asset =",
+              "      if OS.mac?",
+              "        Hardware::CPU.arm? ? \"ward-darwin-arm64\" : \"ward-darwin-amd64\"",
+              "      else",
+              "        Hardware::CPU.arm? ? \"ward-linux-arm64\" : \"ward-linux-amd64\"",
+              "      end",
+              "",
+              "    chmod 0555, asset",
+              "    bin.install asset => \"ward\"",
+              "",
+              "    bin.install_symlink \"ward\" => \"warded\"",
+              "",
+              "  end",
+              "",
+              "  test do",
+              "    assert_match \"v#{version}\", shell_output(\"#{bin}/ward version\")",
+              "    # The warded multicall shim must be on PATH and point at the ward binary.",
+              "    assert_predicate bin/\"warded\", :symlink?",
+              "    assert_equal (bin/\"ward\").realpath, (bin/\"warded\").realpath",
+              "  end",
+              "end",
+            ].join("\n") + "\n";
+            fs.writeFileSync(process.env.FORMULA_PATH, formula);
+          '
 
           if git diff --quiet -- "$FORMULA_PATH"; then
             echo "formula already at ${TAG}, nothing to push"
