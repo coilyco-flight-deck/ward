@@ -47,8 +47,8 @@ For lifecycle markers, see [container lifecycle logs](container-lifecycle-logs.m
   [ward#596](https://forgejo.coilysiren.me/coilyco-flight-deck/ward/issues/596)).
 
 - **`already reserved remotely` / `already reserved locally`** - another container
-  holds this issue (2h TTL). **Fix:** wait for it to finish, or pass `--force` to
-  override/reclaim. See [agent-reservation.md](agent-reservation.md).
+  holds this issue (1h TTL from the smart-defaults bundle). **Fix:** wait for it to
+  finish, or pass `--force` to override/reclaim. See [agent-reservation.md](agent-reservation.md).
 
 - **`ward exec` refused - `repo verb gated on a clean, synced tree`** - the audit row
   must be reconstructable from committed history, so the gate declines when the

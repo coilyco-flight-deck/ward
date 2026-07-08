@@ -99,7 +99,7 @@ type backlogLedger struct {
 // dispatchEngineer is the container/harness flag set the director forwards into each
 // engineer it dispatches, so the run inherits the operator's container intent (ward#355).
 type dispatchEngineer struct {
-	driver      containerMode // the engineer harness: --engineer-driver, else director's --harness
+	harness     containerMode // the engineer harness: --engineer-harness, else director's --harness
 	image       string
 	tag         string
 	wardVersion string
@@ -112,9 +112,9 @@ type dispatchEngineer struct {
 // engineerArgv renders the `ward agent engineer` argv that carries one issue, forwarding
 // every set container/harness flag so the engineer matches director's intent (ward#355).
 func (c dispatchEngineer) engineerArgv(ref agentIssueRef) []string {
-		// --quiet-seed keeps the in-process engineer's seed dump off the shared
-		// director console (ward#519); --skip-host-preflight leaves review on.
-	argv := []string{"engineer", ref.String(), "--harness", string(c.driver), "--quiet-seed", "--skip-host-preflight"}
+	// --quiet-seed keeps the in-process engineer's seed dump off the shared
+	// director console (ward#519); --skip-host-preflight leaves review on.
+	argv := []string{"engineer", ref.String(), "--harness", string(c.harness), "--quiet-seed", "--skip-host-preflight"}
 	if img := strings.TrimSpace(c.image); img != "" {
 		argv = append(argv, "--image", img)
 	}
@@ -181,15 +181,16 @@ type backlogConfig struct {
 func directorFlags() []cli.Flag {
 	flags := agentHarnessFlags()
 	flags = append(flags,
-		&cli.StringFlag{Name: "engineer-driver", Usage: "harness for the engineers the director dispatches: " + agentHarnessChoices() + " (default: inherit --harness)"},
+		&cli.StringFlag{Name: "engineer-harness", Usage: "harness for the engineers the director dispatches: " + agentHarnessChoices() + " (default: inherit --harness)"},
+		&cli.StringFlag{Name: "engineer-driver", Hidden: true, Usage: "deprecated alias for --engineer-harness: kept one release cycle for existing callers; an explicit first-class spelling wins when both are set"},
 		&cli.StringFlag{Name: "repo", Usage: "comma-separated scope 'a/b,c/d' (default: director.default-scope from ~/.ward/config.yaml, else the cwd git origin)"},
 		&cli.StringSliceFlag{Name: "org", Usage: "expand every repo an org owns into the scope (owner; repeatable), unioned with --repo and de-duped (ward#370)"},
 		&cli.StringSliceFlag{Name: "with-repo", Usage: "grant director's own session an additional writable repo to clone (owner/name; repeatable), landed under /workspace alongside the scope (ward#230)."},
-		&cli.IntFlag{Name: "max-parallel", Value: 10, Usage: "in-flight container cap"},
+		&cli.IntFlag{Name: "max-parallel", Value: directorMaxParallelDefault(), Usage: "in-flight container cap"},
 		&cli.BoolFlag{Name: "triage", Value: true, Usage: "run the startup triage pass before the init gate: label each untriaged open issue's tier (P0-P4) + automation mode (headless/interactive/consult) to warm the headless lane (ward#397). On by default; --no-triage skips it"},
 		&cli.BoolFlag{Name: "no-triage", Usage: "skip the startup triage pass and leave existing labels untouched (ward#397)"},
-		&cli.IntFlag{Name: "limit", Value: 50, Usage: "open issues read per repo per refresh"},
-		&cli.DurationFlag{Name: "poll-interval", Value: 30 * time.Second, Usage: "wait between dispatch/poll cycles"},
+		&cli.IntFlag{Name: "limit", Value: directorLimitDefault(), Usage: "open issues read per repo per refresh"},
+		&cli.DurationFlag{Name: "poll-interval", Value: directorPollIntervalDefault(), Usage: "wait between dispatch/poll cycles"},
 		&cli.IntFlag{Name: "max-cycles", Value: 0, Usage: "stop after N heartbeat ticks (0 = run until drained with no new direction)"},
 		&cli.BoolFlag{Name: "dry-run", Usage: "show the ranked lanes + planned dispatches, then exit without launching"},
 	)
@@ -201,16 +202,20 @@ func directorFlags() []cli.Flag {
 	)
 }
 
-// directorEngineerDriver resolves the dispatched-engineer harness: --engineer-driver
+// directorEngineerHarness resolves the dispatched-engineer harness: --engineer-harness
 // if set, else director's own --harness (the two-level precedence from ward#355).
-func directorEngineerDriver(c *cli.Command, directorMode containerMode) (containerMode, error) {
-	raw := strings.TrimSpace(c.String("engineer-driver"))
+func directorEngineerHarness(c *cli.Command, directorMode containerMode) (containerMode, error) {
+	raw := strings.TrimSpace(c.String("engineer-harness"))
+	flag := "--engineer-harness"
+	if raw == "" && c.IsSet("engineer-driver") {
+		raw, flag = c.String("engineer-driver"), "--engineer-driver"
+	}
 	if raw == "" {
 		return directorMode, nil
 	}
 	m, err := parseMode(raw)
 	if err != nil {
-		return "", fmt.Errorf("invalid --engineer-driver %q: want %s", raw, agentHarnessChoices())
+		return "", fmt.Errorf("invalid %s %q: want %s", flag, raw, agentHarnessChoices())
 	}
 	return m, nil
 }
@@ -220,7 +225,7 @@ func directorEngineerDriver(c *cli.Command, directorMode containerMode) (contain
 func agentDirectorCommand() *cli.Command {
 	return &cli.Command{
 		Name:      "director",
-		Usage:     "Run an attached LLM-in-the-loop heartbeat over a repo's headless lane: poll, decide, dispatch, and surface on drain (ward#351). Engineers inherit the director's own harness by default; --engineer-driver overrides that dispatch default.",
+		Usage:     "Run an attached LLM-in-the-loop heartbeat over a repo's headless lane: poll, decide, dispatch, and surface on drain (ward#351). Engineers inherit the director's own harness by default; --engineer-harness overrides that dispatch default.",
 		ArgsUsage: "(scope via --repo; default: the cwd git origin)",
 		Description: `director runs an attached, autonomous heartbeat over a repo's open backlog. Each
 tick it reconciles in-flight engineers (reading their WARD-OUTCOME comments),
@@ -228,7 +233,7 @@ refreshes the ledger from the live backlog (ranking issues into lanes by tier/mo
 labels), asks a host one-shot which queued headless issues to dispatch under
 --max-parallel, dispatches the chosen set via ward's native engineer, then
 sleeps cheaply with no LLM held open. Those engineer dispatches inherit the
-director's own harness by default, and --engineer-driver explicitly overrides that
+director's own harness by default, and --engineer-harness explicitly overrides that
 default. When the headless lane drains - nothing queued and nothing in flight - it
 surfaces an interactive session for new direction rather than exiting, and resumes
 the heartbeat if the queue refills (ward#351).
@@ -274,7 +279,7 @@ func (r *Runner) runAgentBacklog(ctx context.Context, c *cli.Command, mode conta
 	if err := r.backlogTrustGate(label, repos); err != nil {
 		return err
 	}
-	engDriver, err := directorEngineerDriver(c, mode)
+	engDriver, err := directorEngineerHarness(c, mode)
 	if err != nil {
 		return fmt.Errorf("%s: %w", label, err)
 	}
@@ -295,7 +300,7 @@ func (r *Runner) runAgentBacklog(ctx context.Context, c *cli.Command, mode conta
 		print:        c.Bool("print"),
 		triage:       c.Bool("triage") && !c.Bool("no-triage"),
 		dispatch: dispatchEngineer{
-			driver:      engDriver,
+			harness:     engDriver,
 			image:       c.String("image"),
 			tag:         c.String("tag"),
 			wardVersion: strings.TrimSpace(c.String("ward-version")),
@@ -343,7 +348,7 @@ func (r *Runner) driveBacklog(ctx context.Context, label string, repos []string,
 	if err := r.backlogPrintStatus(repos); err != nil {
 		return err
 	}
-	// --print additionally renders director's own container/harness plan (the driver split,
+	// --print additionally renders director's own container/harness plan (the harness split,
 	// the image pin, the forwarded flags) before the planned dispatches (ward#355).
 	if cfg.print {
 		if err := r.backlogPrintDirectorPlan(label, repos, cfg); err != nil {
@@ -1200,14 +1205,14 @@ func (r *Runner) backlogPrintPlanned(label string, repos []string, maxParallel i
 }
 
 // backlogPrintDirectorPlan renders director's OWN container/harness plan for --print
-// (ward#355): the driver split, the image pin, the dispatch argv. Launches nothing.
+// (ward#355): the harness split, the image pin, the dispatch argv. Launches nothing.
 func (r *Runner) backlogPrintDirectorPlan(label string, repos []string, cfg backlogConfig) error {
 	cy := cfg.dispatch
 	var b strings.Builder
 	fmt.Fprintf(&b, "\n# %s (print)\n", label)
 	fmt.Fprintf(&b, "scope:           %s\n", strings.Join(repos, ", "))
-	fmt.Fprintf(&b, "director driver: %s (its own heartbeat one-shot + drain surface)\n", cfg.mode)
-	fmt.Fprintf(&b, "engineer driver: %s (the engineers it dispatches)\n", cy.driver)
+	fmt.Fprintf(&b, "director harness: %s (its own heartbeat one-shot + drain surface)\n", cfg.mode)
+	fmt.Fprintf(&b, "engineer harness: %s (the engineers it dispatches)\n", cy.harness)
 	fmt.Fprintf(&b, "max-parallel:    %d\n", cfg.maxParallel)
 	fmt.Fprintf(&b, "image:           %s\n", imageRef(cy.image, cy.tag))
 	fmt.Fprintf(&b, "ward-version:    %s\n", directorWardVersion(cy.wardVersion))

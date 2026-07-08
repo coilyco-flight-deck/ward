@@ -38,11 +38,11 @@ var record = agentsapi.Manifest{
 // home, so it carries no state.
 type Agent struct{}
 
-// Compile-time proof codex implements the core contract plus its capabilities.
+// Compile-time proof codex implements the core contract plus its capabilities. No
+// OnboardingSeeder: ComposeConfig carries the [projects] trust seed (ward#678).
 var (
 	_ agentsapi.Agent              = Agent{}
 	_ agentsapi.CredentialProvider = Agent{}
-	_ agentsapi.OnboardingSeeder   = Agent{}
 	_ agentsapi.ConfigComposer     = Agent{}
 	_ agentsapi.LaunchGate         = Agent{}
 )

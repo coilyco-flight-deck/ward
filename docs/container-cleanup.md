@@ -36,9 +36,10 @@ ward containers before adding one more:
    with it, so the drain is ordered first ([ward#363](https://forgejo.coilysiren.me/coilyco-flight-deck/ward/issues/363)).
    Each drain is idempotent (a `.drained/` sentinel), so a run the exit waiter
    already pulled is a skip ([drain-timing.md](drain-timing.md)).
-3. Keep the recent `containerReapKeep` (10); `docker rm` the older tail (no `-f`:
-   only exited containers are targeted). A removed container's sentinel is cleared
-   so a reused name drains fresh.
+3. Keep the recent `containerReapKeep` (10 by default from the smart-defaults
+   bundle); `docker rm` the older tail (no `-f`: only exited containers are
+   targeted). A removed container's sentinel is cleared so a reused name drains
+   fresh.
 
 Stopping a run is a different lifecycle. This sweep `docker rm`s an **exited**
 container to reclaim disk. To halt a still-**running** run (a mis-scoped one killed

@@ -31,7 +31,7 @@ func TestSweepStaleContainerAssets(t *testing.T) {
 			t.Fatal(err)
 		}
 	}
-	past := time.Now().Add(-2 * containerAssetsTTL)
+	past := time.Now().Add(-2 * containerAssetsTTL())
 	if err := os.Chtimes(stale, past, past); err != nil {
 		t.Fatal(err)
 	}
@@ -525,7 +525,7 @@ func TestSweepStaleLaunchEnvFiles(t *testing.T) {
 		}
 	}
 	// Age the stale orphan past the TTL; leave the others recent.
-	old := time.Now().Add(-2 * containerAssetsTTL)
+	old := time.Now().Add(-2 * containerAssetsTTL())
 	if err := os.Chtimes(stale, old, old); err != nil {
 		t.Fatalf("age stale file: %v", err)
 	}

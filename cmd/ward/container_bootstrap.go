@@ -461,7 +461,7 @@ func (r *Runner) runContainerBootstrap(ctx context.Context, c *cli.Command) erro
 	blog("ready: %s/%s on %s [mode=%s]", e.TargetOwner, e.TargetName, branch, e.Mode)
 
 	if !commandExists(e.Agent) {
-		blog("agent '%s' binary is not present in this image (claude/codex/goose ship in dev-base, qwen self-installs opencode); dropping to a shell (reaper runs on exit)", e.Agent)
+		blog("selected agent binary %q is not present in this image; dropping to a shell (reaper runs on exit)", e.Agent)
 		_ = r.Runner.Exec(ctx, "bash")
 		return nil
 	}
@@ -809,7 +809,7 @@ func (r *Runner) cloneExtraRepo(ctx context.Context, e bootstrapEnv, repo target
 	lock := filepath.Join(e.GitCache, "."+repo.Owner+"__"+repo.Name+".lock")
 	ttl := time.Duration(0)
 	if ro {
-		ttl = containerReadOnlyExtraRepoTTL
+		ttl = containerReadOnlyExtraRepoTTL()
 	}
 	r.withFlock(lock, func() {
 		switch {
@@ -1125,7 +1125,7 @@ func readOnlyTag(readOnly bool) string {
 
 // composeContext ports compose_context: write canonical AGENTS.md, then wire
 // Claude/Codex load points and Goose hints to that composed doctrine.
-func (r *Runner) composeContext(e bootstrapEnv) {
+func (r *Runner) composeContext(e bootstrapEnv) { //nolint:cyclop
 	out := filepath.Join(e.AgentHome, "AGENTS.md")
 	_ = os.MkdirAll(filepath.Dir(out), 0o755)
 	base, _ := os.ReadFile("/opt/ward/AGENTS.container.md") // #nosec G304 -- bind-mounted doctrine
@@ -1157,15 +1157,18 @@ func (r *Runner) composeContext(e bootstrapEnv) {
 	}
 	_ = os.WriteFile(out, buf, 0o644) // #nosec G306 -- operating context, not a secret
 	blog("composed context (level %s%s) at %s", e.ContextLevel, readOnlyTag(e.ReadOnly), out)
-	r.linkOrCopyContext(filepath.Join("..", "AGENTS.md"), filepath.Join(e.AgentHome, ".claude", "CLAUDE.md"), out)
-	blog("linked Claude context load point to %s", out)
-	r.linkOrCopyContext(filepath.Join("..", "AGENTS.md"), filepath.Join(e.AgentHome, ".codex", "AGENTS.md"), out)
-	blog("linked Codex context load point to %s", out)
-	if e.Mode == string(modeGoose) {
-		ghints := filepath.Join(e.AgentHome, gooseHintsRel)
-		_ = os.MkdirAll(filepath.Dir(ghints), 0o755)
-		if werr := os.WriteFile(ghints, buf, 0o644); werr == nil { // #nosec G306 -- goose hints
-			blog("mirrored composed context into %s (goose hints)", ghints)
+	adapter := mustAgentAdapter(containerMode(e.Mode))
+	for _, rel := range adapter.contextFiles() {
+		dest := filepath.Join(e.AgentHome, rel)
+		switch rel {
+		case filepath.Join(".claude", "CLAUDE.md"), filepath.Join(".codex", "AGENTS.md"):
+			r.linkOrCopyContext(filepath.Join("..", "AGENTS.md"), dest, out)
+			blog("linked context load point to %s", dest)
+		default:
+			_ = os.MkdirAll(filepath.Dir(dest), 0o755)
+			if werr := os.WriteFile(dest, buf, 0o644); werr == nil { // #nosec G306 -- operating context
+				blog("mirrored composed context into %s", dest)
+			}
 		}
 	}
 }
@@ -1318,7 +1321,6 @@ func (r *Runner) chownAgentTree(ctx context.Context, e bootstrapEnv, work string
 		filepath.Join(e.AgentHome, "AGENTS.md"),
 		filepath.Join(e.AgentHome, ".claude"),
 		filepath.Join(e.AgentHome, ".claude.json"), // onboarding seed, so claude can persist updates (ward#305)
-		filepath.Join(e.AgentHome, ".codex.json"),  // onboarding seed, so codex can persist updates
 		filepath.Join(e.AgentHome, ".mcporter"),
 		filepath.Join(e.AgentHome, ".config"),
 		filepath.Join(e.AgentHome, ".codex"),

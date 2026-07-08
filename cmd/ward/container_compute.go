@@ -10,7 +10,6 @@ import (
 	"regexp"
 	"sort"
 	"strings"
-	"time"
 )
 
 const (
@@ -93,10 +92,6 @@ const (
 	// containerSubstrateTTL is the gitcache refresh TTL (seconds): a burst of
 	// containers does one fetch per repo per window, the rest skip the gate.
 	containerSubstrateTTL = "600"
-
-	// containerReadOnlyExtraRepoTTL is the longer refresh TTL for advisor-only
-	// upstream/context repos. Their mirrors are stable enough to reuse for a day.
-	containerReadOnlyExtraRepoTTL = 24 * time.Hour
 )
 
 // Tailnet + tower topology (ward#395): infra DATA, not baked identity. Each value takes
@@ -209,21 +204,6 @@ func parseSubstrateManifest(data string) ([]substrateRepo, error) {
 // container composes (progressively less, mirroring agent-compose slices).
 type containerMode string
 
-const (
-	modeClaude   containerMode = "claude"
-	modeCodex    containerMode = "codex"
-	modeOpencode containerMode = "opencode"
-	modeGoose    containerMode = "goose"
-)
-
-// modeQwenAlias is the retired roster key ward#401 renamed to modeOpencode;
-// parseMode still accepts it (deprecation warning) so --mode qwen keeps working.
-const modeQwenAlias = "qwen"
-
-// gooseHintsRel is goose's in-HOME hints path composeContext mirrors the doctrine
-// into; it lives with the mode table so core's context composer stays agent-neutral.
-const gooseHintsRel = ".config/goose/.goosehints"
-
 // container roles lead the name + the ward.role label (ward#364). director is a host
 // loop, not a container, but its surface session runs as roleSession (ward#353).
 const (
@@ -237,69 +217,38 @@ const (
 
 // agentBinary is the in-container command each mode launches.
 func (m containerMode) agentBinary() string {
-	switch m {
-	case modeCodex:
-		return "codex"
-	case modeOpencode:
-		return "opencode"
-	case modeGoose:
-		return "goose"
-	case modeClaude:
-		return "claude"
-	default:
-		return "claude"
-	}
+	return mustAgentAdapter(m).Binary
 }
 
 // hostPreflightArgv is the host one-shot argv asking this mode's agent prompt,
 // plus whether one exists (claude+goose yes, codex/qwen not yet). See docs/agent.md.
 func (m containerMode) hostPreflightArgv(prompt string) ([]string, bool) { //nolint:unparam // ward#418 flipped the varying-prompt callers to the registry; only the contract test's constant prompt remains until Phase 4 deletes this switch
-	switch m {
-	case modeClaude:
-		return []string{m.agentBinary(), "-p", prompt}, true
-	case modeGoose:
-		return []string{m.agentBinary(), "run", "-t", prompt}, true
-	case modeCodex, modeOpencode:
-		return nil, false
-	default:
-		return nil, false
-	}
+	return mustAgentAdapter(m).preflightArgv(prompt)
 }
 
 // contextLevel maps a mode onto the least-access ladder (2=full, 1=scoped, 0=minimal);
 // see docs/container.md. goose is full (level 2) like claude, mirrored to its hints file.
 func (m containerMode) contextLevel() int {
-	switch m {
-	case modeOpencode:
-		return 0
-	case modeCodex:
-		return 1
-	case modeGoose:
-		return 2
-	case modeClaude:
-		return 2
-	default:
-		return 2
-	}
+	return mustAgentAdapter(m).ContextLevel
 }
 
 // parseMode validates a --mode value against the embedded fleet roster.
 // qwen still aliases to opencode with a deprecation warning (ward#401).
 func parseMode(s string) (containerMode, error) {
 	if s == modeQwenAlias {
-		fmt.Fprintln(os.Stderr, "ward: --mode qwen is deprecated; use --mode opencode (qwen is the backing model, opencode the harness). Aliasing to opencode for now.")
+		fmt.Fprintf(os.Stderr, "ward: --mode %s is deprecated; use --mode %s. Aliasing to %s for now.\n", modeQwenAlias, modeOpencode, modeOpencode)
 		return modeOpencode, nil
 	}
-	fleet, err := loadFleetConfig()
+	m, err := cachedAgentManifest()
 	if err != nil {
 		return "", err
 	}
-	for _, a := range fleet.Agents {
+	for _, a := range m.Agents {
 		if a.Name == s {
 			return containerMode(a.Name), nil
 		}
 	}
-	return "", fmt.Errorf("unknown --mode %q: want a fleet agent name (qwen is a deprecated alias for opencode)", s)
+	return "", fmt.Errorf("unknown --mode %q: want a fleet agent name", s)
 }
 
 // targetRepo is a forgejo owner/name pair the container clones and works.
@@ -923,10 +872,6 @@ func sortedKeys(m map[string]string) []string {
 	return keys
 }
 
-// containerReapKeep is how many most-recently-exited ward containers the stale
-// sweep keeps for post-mortem; older ones are reclaimed (docs/container-cleanup.md).
-const containerReapKeep = 10
-
 // dockerExitedListArgv builds the `docker ps` query for exited ward-managed
 // containers, newest first, one name per line - the stale-sweep input (ward#272).
 func dockerExitedListArgv() []string {
@@ -985,67 +930,19 @@ func imageRef(image, tag string) string {
 // buildAgentArgv is the per-mode in-container argv builder (no setpriv prefix) +
 // whether to stream-wrap output. Pure; the mode/argv switch dies in Phase 4 (#401).
 func buildAgentArgv(e bootstrapEnv, seed []string) (argv []string, stream bool) {
-	switch e.Mode {
-	case "goose":
-		if e.oneshot() {
-			return append([]string{"goose", "run", "-t"}, seed...), false
-		}
-		return []string{"goose", "session"}, false
-	case "codex":
-		if e.oneshot() {
-			return append([]string{"codex", "exec"}, seed...), false
-		}
-		return append([]string{"codex"}, seed...), false
-	case "opencode", "qwen": // "qwen" is the retired alias (ward#401), still honoured
-		if e.oneshot() {
-			return append([]string{"opencode", "run"}, seed...), false
-		}
-		return []string{"opencode"}, false
-	default:
-		argv = []string{e.Agent}
-		switch {
-		case e.Ask:
-			argv = append(argv, "-p")
-		case e.Headless:
-			argv = append(argv, "-p", "--verbose", "--output-format", "stream-json")
-			stream = true
-		}
-		// --model rides only when resolved (ward#616); empty keeps today's bare launch.
-		// Mirrors claude.go LaunchArgv. Effort is echo-only (no native claude flag).
-		if e.ClaudeModel != "" {
-			argv = append(argv, "--model", e.ClaudeModel)
-		}
-		argv = append(argv, seed...)
-		return argv, stream
-	}
+	return mustAgentAdapter(containerMode(e.Mode)).launchArgv(e.Headless, e.Ask, e.ClaudeModel, seed)
 }
 
 // logAgentArgv emits the per-mode launch notes alongside buildAgentArgv (kept
 // separate so that stays pure); the same Phase 4 mode switch (#401).
 func logAgentArgv(e bootstrapEnv, seed []string) {
-	switch e.Mode {
-	case "goose":
-		if e.oneshot() {
-			blog("one-shot: goose run -t <prompt> (goose prints to this log)")
-		} else if len(seed) > 0 {
-			blog("interactive goose session: seed prompt is not auto-delivered (paste the issue)")
-		}
-	case "codex":
-		if e.oneshot() {
-			blog("one-shot: codex exec <prompt> (codex prints to this log)")
-		}
-	case "opencode", "qwen": // "qwen" is the retired alias (ward#401), still honoured
-		if e.oneshot() {
-			blog("one-shot: opencode run <prompt> (opencode prints to this log)")
-		} else if len(seed) > 0 {
-			blog("interactive opencode TUI: seed prompt is not auto-delivered (paste the issue)")
-		}
-	default:
-		switch {
-		case e.Ask:
-			blog("ask: %s -p <question> (one-shot answer to this terminal)", e.Agent)
-		case e.Headless:
-			blog("headless: streaming %s progress to this log", e.Agent)
-		}
+	adapter := mustAgentAdapter(containerMode(e.Mode))
+	switch {
+	case e.Ask && len(adapter.Argv.Preflight) > 0:
+		blog("one-shot: %s <prompt> (prompt on stdin; prints to this log)", strings.Join(adapter.Argv.Preflight, " "))
+	case e.oneshot():
+		blog("one-shot: %s <prompt> (prints to this log)", strings.Join(adapter.Argv.Headless, " "))
+	case len(seed) > 0:
+		blog("interactive %s session: seed prompt is not auto-delivered (paste the issue)", adapter.Binary)
 	}
 }

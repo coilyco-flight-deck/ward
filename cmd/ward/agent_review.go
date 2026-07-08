@@ -337,8 +337,7 @@ func reviewerModel(family string) string {
 	return ""
 }
 
-// reviewerRunner runs one reviewer harness one-shot with the prompt appended and
-// captures its stdout, bounded by reviewerTimeout so a hung reviewer fails closed.
+// reviewerRunner bounds one reviewer harness run by the selected reviewer timeout.
 func (r *Runner) reviewerRunner(ctx context.Context) reviewpanel.RunFunc {
 	return func(rv reviewpanel.Reviewer, prompt string) (string, error) {
 		rec := lookupAgent(containerMode(rv.Family)).Record()
@@ -346,7 +345,7 @@ func (r *Runner) reviewerRunner(ctx context.Context) reviewpanel.RunFunc {
 			return "", fmt.Errorf("reviewer %s has no headless argv", rv.Family)
 		}
 		argv := append(append([]string{}, rec.Argv.Headless...), prompt)
-		rctx, cancel := context.WithTimeout(ctx, reviewerTimeout)
+		rctx, cancel := context.WithTimeout(ctx, reviewerTimeoutDefault())
 		defer cancel()
 		out, err := r.Runner.Capture(rctx, argv[0], argv[1:]...)
 		if err != nil {

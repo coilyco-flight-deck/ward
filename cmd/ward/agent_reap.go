@@ -50,8 +50,8 @@ wired into ` + "`ward setup`" + `.
 
 See docs/agent-reap.md.`,
 		Flags: []cli.Flag{
-			&cli.DurationFlag{Name: "idle", Value: agentReapIdleDefault, Usage: "stop an engineer idle at least this long (default 1h)"},
-			&cli.FloatFlag{Name: "max-cpu", Value: agentReapMaxCPUDefault, Usage: "spare an idle engineer reading above this %CPU as a live build/test; pass a huge value to reap on idle alone"},
+			&cli.DurationFlag{Name: "idle", Value: agentReapIdleDefault(), Usage: "stop an engineer idle at least this long (default 1h)"},
+			&cli.FloatFlag{Name: "max-cpu", Value: agentReapMaxCPUDefault(), Usage: "spare an idle engineer reading above this %CPU as a live build/test; pass a huge value to reap on idle alone"},
 			&cli.DurationFlag{Name: "interval", Usage: "run as a standing daemon, sweeping every interval (default 0: sweep once and exit)"},
 			&cli.BoolFlag{Name: "dry-run", Usage: "report what would be stopped, stopping nothing"},
 		},

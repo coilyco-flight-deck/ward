@@ -81,6 +81,13 @@ func parseAgentIssueRef(s string) (agentIssueRef, error) {
 	if err == nil {
 		return agentIssueRef{Owner: ref.Owner, Repo: ref.Repo, Number: ref.Number}, nil
 	}
+	// Accept scheme-less Forgejo issue URLs as a convenience for dictated refs and
+	// pasted URLs that dropped their protocol in transit.
+	if !strings.Contains(s, "://") {
+		if ref, err := issueref.Parse("https://"+s, forgejoBaseURL); err == nil {
+			return agentIssueRef{Owner: ref.Owner, Repo: ref.Repo, Number: ref.Number}, nil
+		}
+	}
 	// A non-issue URL is a valid freeform pointer, just not an issue ref -
 	// steer to the task verb that carries arbitrary pointers (ward#234).
 	if strings.Contains(s, "://") {
@@ -331,8 +338,8 @@ func agentHarnessFlags() []cli.Flag {
 	return []cli.Flag{
 		&cli.StringFlag{
 			Name:  "harness",
-			Value: string(modeClaude),
-			Usage: "harness that drives the work: " + agentHarnessChoices() + " (default claude)",
+			Value: string(defaultAgentMode()),
+			Usage: "harness that drives the work: " + agentHarnessChoices() + " (default " + string(defaultAgentMode()) + ")",
 		},
 		&cli.StringFlag{
 			Name: "agent",
@@ -442,24 +449,25 @@ func agentCmdline(mode containerMode, surface string) string {
 // (ward#247, ward#282); a bare ref dispatches the default engineer (ward#347).
 func agentCommand() *cli.Command {
 	return &cli.Command{
-		Name:  "agent",
-		Usage: "Send an agent into a fresh ephemeral container to carry a Forgejo issue end to end (a bare ref runs the engineer).",
-		Description: `agent is the issue-carrying dispatcher (the spelling 'warded' fronts), a
+		Name:   "agent",
+		Usage:  "Send an agent into a fresh ephemeral container to carry a Forgejo issue end to end (a bare ref runs the engineer).",
+		Before: smartDefaultsGuard("ward agent"),
+		Description: fmt.Sprintf(`agent is the issue-carrying dispatcher (the spelling 'warded' fronts), a
 roster of startup roles (ward#347): you do not invoke a mode, you send in a
 role. Pick a role (engineer|director|advisor) and --harness picks the
-harness (claude|codex|opencode|goose, default claude; --agent is an equal
-accepted spelling, --driver a deprecated alias for one release, ward#660).
-A BARE REF with no role word
-runs the 'engineer' role - the fire-and-forget default. A bare #N (or N) infers
-the owner/repo from the cwd's git origin; owner/repo#N and a full Forgejo issue
-URL also work. One line replaces a full container bring-up stack plus a prompt.
+harness (%s, default %s; --agent is an equal accepted spelling, --driver a
+deprecated alias for one release, ward#660).
+A BARE REF with no role word runs the 'engineer' role - the fire-and-forget
+default. A bare #N (or N) infers the owner/repo from the cwd's git origin;
+owner/repo#N and a full Forgejo issue URL also work. One line replaces a full
+container bring-up stack plus a prompt.
 
   warded coilyco-flight-deck/ward#98          # bare ref -> engineer run (warded face)
   warded #98                                  # owner/repo inferred from the cwd
   warded engineer #98                         # implement a ticket: detached fire-and-forget
   warded engineer "fix the flaky exec_gate test" # freeform -> file an issue first, then carry
-  warded engineer #98 --harness codex         # pick another harness
-  warded engineer #98 --agent codex           # --agent: the same pick, equal spelling
+  warded <role> #98 --harness <harness>       # pick another harness
+  warded <role> #98 --agent <harness>        # --agent: the same pick, equal spelling
   warded director --repo coilyco-flight-deck/ward # autonomous backlog supervisor (surfaces a read-only scope + dispatch session on drain)
   warded advisor #98 "what would it take to..."   # research the issue, post the answer
   warded advisor "how is the audit log written?"  # answer a freeform question inline
@@ -469,7 +477,7 @@ URL also work. One line replaces a full container bring-up stack plus a prompt.
 See docs/agent.md for the warded face and docs/container.md for the container
 model (ephemeral, fresh-clone-inside, reaper-backed). The agent runs under the
 container's bypassPermissions policy, so a run is only accepted against a
-trusted owner.`,
+trusted owner.`, agentHarnessChoices(), defaultAgentMode()),
 		// The umbrella carries the engineer flag set + a default-role action so a
 		// bare ref (the warded face, ward#282) runs the engineer; empty shows help.
 		Flags:  agentEngineerFlags(),

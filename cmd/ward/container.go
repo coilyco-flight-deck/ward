@@ -55,6 +55,7 @@ func containerCommand() *cli.Command {
 		Name:   "container",
 		Hidden: true,
 		Usage:  "Entrypoint-internal container plumbing (reap/bootstrap plus startup helpers). Use `ward agent` to run a feature.",
+		Before: smartDefaultsGuard("ward container"),
 		Description: `container is plumbing-only as of ward#263: the user-facing lifecycle verbs
 (up/exec/down/ls) were retired in favour of ` + "`ward agent`" + `. The leaves that
 remain here - reap, bootstrap, and a few startup helpers - are invoked by the
@@ -379,7 +380,7 @@ func sweepStaleLaunchEnvFiles(dir string) {
 			continue
 		}
 		info, ierr := e.Info()
-		if ierr != nil || time.Since(info.ModTime()) < containerAssetsTTL {
+		if ierr != nil || time.Since(info.ModTime()) < containerAssetsTTL() {
 			continue
 		}
 		_ = os.Remove(filepath.Join(dir, e.Name()))
@@ -447,8 +448,6 @@ func homeDir() string {
 // find them; containerAssetsTTL is how long one may linger before reclaim.
 const containerAssetsPrefix = "ward-container-assets-"
 
-const containerAssetsTTL = time.Hour
-
 // sweepStaleContainerAssets best-effort reclaims past-TTL asset dirs in dir, left
 // by detached runs that cannot delete their own still-mounted dir on return.
 func sweepStaleContainerAssets(dir string) {
@@ -461,7 +460,7 @@ func sweepStaleContainerAssets(dir string) {
 			continue
 		}
 		info, ierr := e.Info()
-		if ierr != nil || time.Since(info.ModTime()) < containerAssetsTTL {
+		if ierr != nil || time.Since(info.ModTime()) < containerAssetsTTL() {
 			continue
 		}
 		_ = os.RemoveAll(filepath.Join(dir, e.Name()))
@@ -481,12 +480,12 @@ func (r *Runner) sweepStaleContainers(ctx context.Context) {
 	if len(exited) == 0 {
 		return
 	}
-	stale := staleContainersToReap(string(out), containerReapKeep)
+	stale := staleContainersToReap(string(out), containerReapKeep())
 
 	// Drain EVERY exited run idempotently (ward#510) then reclaim the past-keep tail,
 	// drained-first so the rm never takes an un-drained log (ward#363).
 	if len(stale) > 0 {
-		writef(os.Stderr, "ward container: reclaiming %d exited ward container(s) past the keep-%d window (ward#272)\n", len(stale), containerReapKeep)
+		writef(os.Stderr, "ward container: reclaiming %d exited ward container(s) past the keep-%d window (ward#272)\n", len(stale), containerReapKeep())
 		writef(os.Stderr, "ward container: containers being removed: %s\n", strings.Join(stale, ", "))
 	}
 	if rmErr := r.drainStaleContainers(ctx, exited, stale); rmErr != nil {

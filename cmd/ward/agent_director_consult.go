@@ -72,7 +72,7 @@ func consultFlags() []cli.Flag {
 	return append(agentHarnessFlags(),
 		&cli.StringFlag{Name: "repo", Usage: "comma-separated scope 'a/b,c/d' (default: director.default-scope from ~/.ward/config.yaml, else the cwd git origin)"},
 		&cli.StringSliceFlag{Name: "org", Usage: "expand every repo an org owns into the scope (owner; repeatable), unioned with --repo and de-duped"},
-		&cli.IntFlag{Name: "limit", Value: 50, Usage: "open issues read per repo"},
+		&cli.IntFlag{Name: "limit", Value: directorLimitDefault(), Usage: "open issues read per repo"},
 		&cli.BoolFlag{Name: "dry-run", Usage: "show the consult + untriaged queue that would be interviewed, then exit without asking or writing anything"},
 		&cli.BoolFlag{Name: "print", Usage: "alias of --dry-run: resolve the queue and exit; write nothing"},
 	)

@@ -16,7 +16,7 @@ returns before a container detaches - decides whether the issue is retried or pa
   real verdict that a retry cannot change, so the issue parks terminal `failed` with outcome
   status `declined`.
 - **Everything else defers** - left `queued`, retried on a later tick:
-  - a **reservation conflict** (another run holds the 2h-TTL reservation), retryable once the
+  - a **reservation conflict** (another run holds the 1h-TTL reservation from the smart-defaults bundle), retryable once the
     holder finishes (`--force` reclaims a stale/foreign hold);
   - a **launch-time infrastructure failure** - the pre-flight issue fetch, a network blip, a
     container bring-up error. These never judged the issue and consumed no autonomous run.

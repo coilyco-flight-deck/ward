@@ -15,7 +15,8 @@ flag, and `--no-tailnet` opts out when a run should stay fully isolated. See
 ## Usage
 
 ```bash
-warded advisor coilyco-flight-deck/ward#98 "what would it take?" --thoroughness deep   # ref (was reply)
+warded advisor coilyco-flight-deck/ward#98                                              # ref with the issue as the default brief
+warded advisor coilyco-flight-deck/ward#98 "what would it take?" --thoroughness deep   # ref with extra framing (was reply)
 warded advisor "how does the reaper back-stop residual work?"                          # freeform: interactive seeded session (ward#388)
 warded advisor "summarize the audit-log schema" --oneshot --repo coilyco-flight-deck/ward   # freeform: force the one-shot answer
 ```
@@ -27,9 +28,11 @@ mode**. Either way advisor changes no code and carries nothing to merge.
 
 ## Ref mode: research + comment or cross-repo fan-out (was `reply`)
 
-A ref plus a prompt: advisor runs a one-shot research pass and either posts the answer
+A ref by itself is enough: advisor synthesizes a default research prompt from the issue
+title, body, and thread, then runs a one-shot research pass and either posts the answer
 **as a comment on that issue** or, when work spans multiple repos, **fans it out into
 per-repo issues** plus an index comment ([agent-advisor-fanout.md](agent-advisor-fanout.md)).
+Any explicit prompt after the ref still works and is appended as extra framing.
 The research runs in a **fresh ephemeral container** ([ward#411](https://forgejo.coilysiren.me/coilyco-flight-deck/ward/issues/411)), like the engineer
 and freeform modes and no longer a native host one-shot. Because the container is the
 sandbox, **any wired harness** runs it, local models included.

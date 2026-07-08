@@ -48,11 +48,12 @@ diagnostic surface. Three surfaces, each its own job:
   delimited greppable `ward run context` banner - the last-resort surface for an
   abort that never reaches a tracker comment.
 
-Both holds are **TTL-bounded** (2h): an older reservation is assumed dead and
-reclaimed, so a crashed run never wedges an issue. The local sentinel is also
-reclaimed once its container stops running. A detached run leaves its sentinel
-for the container's lifetime. `--print` reserves nothing. `--force` skips both
-checks to reclaim a stale or foreign hold.
+Both holds are **TTL-bounded** (1h by the smart-defaults bundle): an older
+reservation is assumed dead and reclaimed, so a crashed run never wedges an
+issue. The local sentinel is also reclaimed once its container stops running. A
+detached run leaves its sentinel for the container's lifetime. `--print`
+reserves nothing. `--force` skips both checks to reclaim a stale or foreign
+hold.
 
 ## Two runs on the same tick: jittered re-check + broker lock ([ward#600](https://forgejo.coilysiren.me/coilyco-flight-deck/ward/issues/600))
 

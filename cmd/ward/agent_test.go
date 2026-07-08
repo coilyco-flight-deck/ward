@@ -86,6 +86,7 @@ func TestParseAgentIssueRef(t *testing.T) {
 		{"coilyco-flight-deck/ward#98", "coilyco-flight-deck", "ward", 98, false},
 		{"  coilyco-flight-deck/ward#98  ", "coilyco-flight-deck", "ward", 98, false},
 		{forgejoBaseURL + "/coilyco-flight-deck/ward/issues/98", "coilyco-flight-deck", "ward", 98, false},
+		{"forgejo.coilysiren.me/coilyco-flight-deck/ward/issues/98", "coilyco-flight-deck", "ward", 98, false},
 		{forgejoBaseURL + "/coilyco-flight-deck/ward/issues/98/", "coilyco-flight-deck", "ward", 98, false},
 		// Appended hash fragment (e.g. a comment anchor) is ignored. (#158)
 		{forgejoBaseURL + "/coilyco-flight-deck/ward/issues/151#issuecomment-14958", "coilyco-flight-deck", "ward", 151, false},

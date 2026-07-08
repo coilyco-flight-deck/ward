@@ -42,9 +42,10 @@ Because the container is the isolation boundary, the entrypoint writes
 pins the **cheapest codex posture by default** ([ward#379](https://forgejo.coilysiren.me/coilyco-flight-deck/ward/issues/379)): mini model, low
 reasoning effort, low verbosity - the least usage per run, each overridable via
 `WARD_CODEX_MODEL`, `WARD_CODEX_REASONING_EFFORT`,
-`WARD_CODEX_VERBOSITY`. The same bootstrap now seeds Codex's workspace trust set
-into `~/.codex.json`, matching Claude's pre-trusted dirs so a fresh Codex launch
-does not stop for folder-trust prompts.
+`WARD_CODEX_VERBOSITY`. The same config also carries Codex's workspace trust set
+as `[projects."<dir>"]` tables with `trust_level = "trusted"` ([ward#678](https://forgejo.coilysiren.me/coilyco-flight-deck/ward/issues/678)), matching
+Claude's pre-trusted dirs so a fresh Codex launch does not stop for folder-trust
+prompts.
 
 Headless runs `codex exec <seed>`; interactive `work` opens a seeded `codex` TUI.
 The GO/NO-GO pre-flight is not wired for codex yet, so dispatch proceeds.

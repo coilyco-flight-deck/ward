@@ -170,7 +170,7 @@ func TestAcquireLocalReservationStaleReclaim(t *testing.T) {
 	path, _ := agentReservationPath(ref)
 	if err := writeAgentReservation(path, agentReservation{
 		Owner: ref.Owner, Repo: ref.Repo, Number: ref.Number,
-		Container: "long-dead", At: now.Add(-3 * agentReservationTTL),
+		Container: "long-dead", At: now.Add(-3 * agentReservationTTL()),
 	}); err != nil {
 		t.Fatalf("seed stale hold: %v", err)
 	}
@@ -565,7 +565,7 @@ func TestPostReservationComment(t *testing.T) {
 func TestReservationCommentBodyHasMarker(t *testing.T) {
 	now := time.Date(2026, 6, 18, 12, 0, 0, 0, time.UTC)
 	body := reservationCommentBody(modeCodex, "engineer-codex-ward-142", "tower", now, "", nil)
-	for _, want := range []string{agentReservationMarker, "ward agent --harness codex", "engineer-codex-ward-142", "tower"} {
+	for _, want := range []string{agentReservationMarker, "ward agent --harness codex", "engineer-codex-ward-142", "tower", "1h TTL"} {
 		if !strings.Contains(body, want) {
 			t.Errorf("reservation comment missing %q\n got: %s", want, body)
 		}
@@ -623,7 +623,7 @@ func TestWinningReservationClaim(t *testing.T) {
 // and parses each identity from the marker body (ward#600).
 func TestReservationClaims(t *testing.T) {
 	now := time.Now().UTC()
-	ttl := agentReservationTTL
+	ttl := agentReservationTTL()
 	a := issueComment{Body: reservationCommentBody(modeClaude, "engineer-claude-ward-600", "host-a", now.Add(-time.Minute), "", nil), CreatedAt: now.Add(-time.Minute)}
 	b := issueComment{Body: reservationCommentBody(modeClaude, "engineer-claude-ward-600", "host-b", now.Add(-30*time.Second), "", nil), CreatedAt: now.Add(-30 * time.Second)}
 	stale := issueComment{Body: reservationCommentBody(modeClaude, "engineer-claude-ward-600", "host-c", now.Add(-3*time.Hour), "", nil), CreatedAt: now.Add(-3 * time.Hour)}
@@ -703,13 +703,13 @@ func TestReservationRecheckMax(t *testing.T) {
 		env  string
 		want time.Duration
 	}{
-		{"", reservationRecheckDefaultMax},
+		{"", reservationRecheckDefaultMax()},
 		{"30s", 30 * time.Second},
 		{"0", 0},
 		{"off", 0},
 		{"none", 0},
-		{"garbage", reservationRecheckDefaultMax},
-		{"-5s", reservationRecheckDefaultMax},
+		{"garbage", reservationRecheckDefaultMax()},
+		{"-5s", reservationRecheckDefaultMax()},
 	}
 	for _, c := range cases {
 		t.Setenv(reservationRecheckEnv, c.env)

@@ -14,21 +14,25 @@ import (
 	"strings"
 )
 
-// wardConfigRefEnv selects the config source (ward#650); unset means the baked
-// neutral default - that is the whole precedence.
+// wardConfigRefEnv selects the config source. Unset means the baked default.
 const wardConfigRefEnv = "WARD_CONFIG_REF"
 
-// bakedAssets is the baked neutral default: drift-tested mirrors of .ward/ward-kdl
-// plus the admin guardfile (ward#81).
+// bakedAssets is the baked neutral default: mirrors of .ward/ward-kdl plus the
+// admin guardfile and smart defaults.
 
 //go:embed opsassets/*.generated.kdl opsassets/*.generated.json execassets/*.guardfile.kdl
-//go:embed opsassets/forgejo-admin.guardfile.kdl fleetassets/fleet.generated.kdl
 var bakedMainAssets embed.FS
+
+//go:embed opsassets/forgejo-admin.guardfile.kdl fleetassets/fleet.generated.kdl
+var bakedWardAssets embed.FS
+
+//go:embed defaultsassets/defaults.generated.kdl
+var bakedDefaultsAssets embed.FS
 
 //go:embed topologyassets/topology.generated.kdl
 var bakedTopologyAssets embed.FS
 
-var bakedAssets = unionFS{primary: bakedMainAssets, fallback: bakedTopologyAssets}
+var bakedAssets = unionFS{primary: unionFS{primary: bakedMainAssets, fallback: bakedWardAssets}, fallback: unionFS{primary: bakedDefaultsAssets, fallback: bakedTopologyAssets}}
 
 type unionFS struct {
 	primary  fs.FS
@@ -59,6 +63,7 @@ const (
 	opsForgejoAdminGuardfilePath = "opsassets/forgejo-admin.guardfile.kdl"
 	execAssetsDir                = "execassets"
 	fleetGeneratedKDLPath        = "fleetassets/fleet.generated.kdl"
+	defaultsGeneratedKDLPath     = "defaultsassets/defaults.generated.kdl"
 	topologyGeneratedKDLPath     = "topologyassets/topology.generated.kdl"
 )
 
@@ -69,6 +74,7 @@ const (
 	bundleForgejoSpecLockPath       = "forgejo.swagger.lock.json"
 	bundleForgejoAdminGuardfilePath = "forgejo-admin.guardfile.kdl"
 	bundleFleetKDLPath              = "ward-kdl.fleet.kdl"
+	bundleDefaultsKDLPath           = "ward-kdl.defaults.kdl"
 	bundleTopologyKDLPath           = "ward-kdl.topology.kdl"
 )
 
@@ -91,6 +97,9 @@ type configSource struct {
 	// fleetKDL feeds loadFleetConfig (dialect-2 fleetconfig).
 	fleetKDL string
 
+	// defaultsKDL feeds the runtime smart-defaults parser.
+	defaultsKDL string
+
 	// topologyKDL feeds the container-topology resolver.
 	topologyKDL string
 
@@ -109,6 +118,7 @@ func bakedConfigSource() configSource {
 		forgejoSpecLock:  opsForgejoSpecLockPath,
 		adminGuardfile:   opsForgejoAdminGuardfilePath,
 		fleetKDL:         fleetGeneratedKDLPath,
+		defaultsKDL:      defaultsGeneratedKDLPath,
 		topologyKDL:      topologyGeneratedKDLPath,
 		execDir:          execAssetsDir,
 	}
@@ -122,6 +132,7 @@ func bundleConfigSource(dir string) configSource {
 		forgejoSpecLock:   bundleForgejoSpecLockPath,
 		adminGuardfile:    bundleForgejoAdminGuardfilePath,
 		fleetKDL:          bundleFleetKDLPath,
+		defaultsKDL:       bundleDefaultsKDLPath,
 		topologyKDL:       bundleTopologyKDLPath,
 		execDir:           ".",
 		execMixedDialects: true,

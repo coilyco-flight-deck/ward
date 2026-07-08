@@ -5,6 +5,7 @@ import (
 	"context"
 	"encoding/json"
 	"fmt"
+	"io"
 	"net"
 	"net/http"
 	"net/url"
@@ -336,6 +337,11 @@ func postOTLP(ctx context.Context, endpoint string, payload []byte) error {
 	}
 	defer func() { _ = resp.Body.Close() }()
 	if resp.StatusCode/100 != 2 {
+		payload, _ := io.ReadAll(io.LimitReader(resp.Body, 1<<16))
+		body := strings.TrimSpace(string(payload))
+		if body != "" {
+			return fmt.Errorf("collector returned %s: %s", resp.Status, body)
+		}
 		return fmt.Errorf("collector returned %s", resp.Status)
 	}
 	return nil
@@ -349,13 +355,20 @@ type otlpAttr struct {
 }
 
 type otlpAttrValue struct {
-	StringValue *string `json:"stringValue,omitempty"`
-	IntValue    *int64  `json:"intValue,omitempty"`
+	StringValue *string          `json:"stringValue,omitempty"`
+	IntValue    *otlpInt64String `json:"intValue,omitempty"`
 }
+
+type otlpInt64String int64
 
 func otlpStr(k, v string) otlpAttr { return otlpAttr{Key: k, Value: otlpAttrValue{StringValue: &v}} }
 func otlpInt(k string, v int64) otlpAttr {
-	return otlpAttr{Key: k, Value: otlpAttrValue{IntValue: &v}}
+	s := otlpInt64String(v)
+	return otlpAttr{Key: k, Value: otlpAttrValue{IntValue: &s}}
+}
+
+func (v otlpInt64String) MarshalJSON() ([]byte, error) {
+	return json.Marshal(strconv.FormatInt(int64(v), 10))
 }
 
 // buildResourceAttrs renders the run-level dims carried once on the OTLP resource
@@ -364,6 +377,9 @@ func buildResourceAttrs(meta runMeta) []otlpAttr {
 	attrs := []otlpAttr{otlpStr("service.name", "ward-agent")}
 	if meta.Repo != "" {
 		attrs = append(attrs, otlpStr("repo", meta.Repo))
+	}
+	if meta.Issue != "" {
+		attrs = append(attrs, otlpStr("issue", meta.Issue))
 	}
 	if meta.Driver != "" {
 		attrs = append(attrs, otlpStr("actor", meta.Driver))
@@ -379,6 +395,7 @@ func buildResourceAttrs(meta runMeta) []otlpAttr {
 func envelopeRecord(e toolEnvelope, meta runMeta) map[string]any {
 	attrs := []otlpAttr{
 		otlpStr("verb", e.Tool),
+		otlpStr("stream", "tool"),
 		otlpStr("outcome", e.Outcome),
 		otlpStr("lifecycle", e.Lifecycle),
 	}

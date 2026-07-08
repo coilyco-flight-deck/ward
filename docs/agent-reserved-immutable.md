@@ -7,8 +7,9 @@ A dispatched [engineer](agent-engineer.md) seeds from the issue body **once at
 launch** and detaches fire-and-forget. The body rides along as a **frozen
 snapshot** taken at dispatch, and the run **never re-reads the issue**. So for as
 long as the issue is [reserved](agent-reservation.md) - an engineer in flight, or
-the 2h `agentReservationTTL` still open - the issue is **effectively immutable**
-to the work in progress. Editing the body or adding an instruction-comment
+the 1h `agentReservationTTL` from the smart-defaults bundle still open - the
+issue is **effectively immutable** to the work in progress. Editing the body or
+adding an instruction-comment
 changes what a human sees and nothing else: it does not reach the running
 engineer.
 
