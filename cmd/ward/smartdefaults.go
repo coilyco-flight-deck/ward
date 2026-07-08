@@ -229,55 +229,83 @@ func applySmartDefaultWorkflow(defs *smartDefaults, n *kdl.Node) error {
 	if len(n.Arguments()) != 0 {
 		return fmt.Errorf("smart defaults: smart-defaults > agent-workflow takes no arguments (fail-closed)")
 	}
-	v, ok, err := smartDefaultsStringProp(n, "default", "smart-defaults > agent-workflow default")
-	if err != nil {
+	if err := applySmartDefaultWorkflowDefault(defs, n); err != nil {
 		return err
 	}
-	if ok {
-		wf, err := parseWorkflow(v)
-		if err != nil {
-			return fmt.Errorf("smart defaults: smart-defaults > agent-workflow default: %w (fail-closed)", err)
-		}
-		defs.agentWorkflowDefault = wf
-	}
-	for prop := range n.Properties() {
-		if prop != "default" {
-			return fmt.Errorf("smart defaults: smart-defaults > agent-workflow unknown property %q (want default; fail-closed)", prop)
-		}
+	if err := requireSmartDefaultWorkflowProperties(n); err != nil {
+		return err
 	}
 	if defs.agentWorkflowRepos == nil {
 		defs.agentWorkflowRepos = map[string]workflowMode{}
 	}
 	for _, c := range n.Children().Nodes {
-		if c.Name() != "repo" {
-			return unknownSmartDefaultsNode("smart-defaults > agent-workflow body", c.Name(), "repo")
-		}
-		repo, err := smartDefaultsStringArg(c, "smart-defaults > agent-workflow > repo")
+		repo, wf, err := parseSmartDefaultWorkflowRepo(c)
 		if err != nil {
 			return err
-		}
-		if !validWorkflowRepoSlug(repo) {
-			return fmt.Errorf("smart defaults: smart-defaults > agent-workflow > repo %q must be owner/name (fail-closed)", repo)
-		}
-		wfRaw, ok, err := smartDefaultsStringProp(c, "workflow", "smart-defaults > agent-workflow > repo workflow")
-		if err != nil {
-			return err
-		}
-		if !ok {
-			return fmt.Errorf("smart defaults: smart-defaults > agent-workflow > repo %q missing workflow property (fail-closed)", repo)
-		}
-		for prop := range c.Properties() {
-			if prop != "workflow" {
-				return fmt.Errorf("smart defaults: smart-defaults > agent-workflow > repo unknown property %q (want workflow; fail-closed)", prop)
-			}
-		}
-		wf, err := parseWorkflow(wfRaw)
-		if err != nil {
-			return fmt.Errorf("smart defaults: smart-defaults > agent-workflow > repo %q: %w (fail-closed)", repo, err)
 		}
 		defs.agentWorkflowRepos[repo] = wf
 	}
 	return nil
+}
+
+func applySmartDefaultWorkflowDefault(defs *smartDefaults, n *kdl.Node) error {
+	v, ok, err := smartDefaultsStringProp(n, "default", "smart-defaults > agent-workflow default")
+	if err != nil {
+		return err
+	}
+	if !ok {
+		return nil
+	}
+	wf, err := parseWorkflow(v)
+	if err != nil {
+		return fmt.Errorf("smart defaults: smart-defaults > agent-workflow default: %w (fail-closed)", err)
+	}
+	defs.agentWorkflowDefault = wf
+	return nil
+}
+
+func requireSmartDefaultWorkflowProperties(n *kdl.Node) error {
+	for prop := range n.Properties() {
+		if prop != "default" {
+			return fmt.Errorf("smart defaults: smart-defaults > agent-workflow unknown property %q (want default; fail-closed)", prop)
+		}
+	}
+	return nil
+}
+
+func parseSmartDefaultWorkflowRepo(c *kdl.Node) (string, workflowMode, error) {
+	if c.Name() != "repo" {
+		return "", workflowMode(""), unknownSmartDefaultsNode("smart-defaults > agent-workflow body", c.Name(), "repo")
+	}
+	repo, err := smartDefaultsStringArg(c, "smart-defaults > agent-workflow > repo")
+	if err != nil {
+		return "", workflowMode(""), err
+	}
+	if !validWorkflowRepoSlug(repo) {
+		return "", workflowMode(""), fmt.Errorf("smart defaults: smart-defaults > agent-workflow > repo %q must be owner/name (fail-closed)", repo)
+	}
+	wf, err := parseSmartDefaultRepoWorkflow(c, repo)
+	return repo, wf, err
+}
+
+func parseSmartDefaultRepoWorkflow(c *kdl.Node, repo string) (workflowMode, error) {
+	wfRaw, ok, err := smartDefaultsStringProp(c, "workflow", "smart-defaults > agent-workflow > repo workflow")
+	if err != nil {
+		return workflowMode(""), err
+	}
+	if !ok {
+		return workflowMode(""), fmt.Errorf("smart defaults: smart-defaults > agent-workflow > repo %q missing workflow property (fail-closed)", repo)
+	}
+	for prop := range c.Properties() {
+		if prop != "workflow" {
+			return workflowMode(""), fmt.Errorf("smart defaults: smart-defaults > agent-workflow > repo unknown property %q (want workflow; fail-closed)", prop)
+		}
+	}
+	wf, err := parseWorkflow(wfRaw)
+	if err != nil {
+		return workflowMode(""), fmt.Errorf("smart defaults: smart-defaults > agent-workflow > repo %q: %w (fail-closed)", repo, err)
+	}
+	return wf, nil
 }
 
 func smartDefaultsStringProp(n *kdl.Node, name, label string) (string, bool, error) {

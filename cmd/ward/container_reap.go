@@ -377,46 +377,7 @@ func (r *Runner) executeReap(ctx context.Context, work string, env reapEnv, acti
 		fmt.Fprintln(os.Stderr, "ward container reap: nothing to reap")
 		return nil
 	case reapPushMain:
-		if !landed {
-			fmt.Fprintln(os.Stderr, "ward container reap: remote main has no run-owned commit after dispatch; salvaging")
-			return r.salvage(ctx, work, env, reasonConflict, false, findings, status,
-				reapDecision{Gate: "remote main has no run-owned commit (pre-push recheck)", ProvState: "present"})
-		}
-		// Final closing-ref gate LOCAL to the irreversible push (ward#515): re-check
-		// the post-rebase history so no upstream-gate reorder can land a close-refless run.
-		if env.Issue != 0 && !r.issueClosingReferencePresent(ctx, work, env.Issue) {
-			if closingReferenceRepairSafe(prov, env) {
-				fmt.Fprintf(os.Stderr, "ward container reap: closing reference for #%d absent from the history about to land; repairing before push\n", env.Issue)
-				if err := r.repairClosingReference(ctx, work, env); err == nil && r.issueClosingReferencePresent(ctx, work, env.Issue) {
-					fmt.Fprintf(os.Stderr, "ward container reap: repaired closing reference for #%d\n", env.Issue)
-				} else {
-					if err != nil {
-						fmt.Fprintf(os.Stderr, "ward container reap: closing reference repair failed: %v\n", err)
-					}
-					return r.salvage(ctx, work, env, reasonCloseRef, false, findings, status,
-						reapDecision{Gate: "missing same-repo closing reference (push-site repair failed)", ProvState: "present", Landed: landed})
-				}
-			} else {
-				fmt.Fprintf(os.Stderr, "ward container reap: closing reference for #%d absent from the history about to land; salvaging instead of pushing main\n", env.Issue)
-				return r.salvage(ctx, work, env, reasonCloseRef, false, findings, status,
-					reapDecision{Gate: "missing same-repo closing reference (push-site recheck)", ProvState: "present", Landed: landed})
-			}
-		}
-		fmt.Fprintln(os.Stderr, "ward container reap: push to main start")
-		out, perr := r.pushCapture(ctx, work, "HEAD:main")
-		if perr == nil {
-			fmt.Fprintln(os.Stderr, "ward container reap: landed on main")
-			return nil
-		}
-		// Classify the rejection so the salvage issue distinguishes a dead/rotated
-		// PAT (auth) from the remote simply having advanced (race) - see ward#103.
-		reason, authCause := reasonPushRace, false
-		if isAuthFailure(out) {
-			reason, authCause = reasonAuthFail, true
-		}
-		fmt.Fprintf(os.Stderr, "ward container reap: push to main rejected (%s); salvaging\n", reason)
-		return r.salvage(ctx, work, env, reason, authCause, findings, status,
-			reapDecision{Gate: "push to main rejected", ProvState: "present", Landed: true})
+		return r.executePushMainReap(ctx, work, env, findings, status, landed, prov)
 	case reapSalvage:
 		reason, gate := reasonConflict, "merge conflict integrating onto main"
 		if len(findings) > 0 {
@@ -425,6 +386,57 @@ func (r *Runner) executeReap(ctx context.Context, work string, env reapEnv, acti
 		return r.salvage(ctx, work, env, reason, false, findings, status,
 			reapDecision{Gate: gate, ProvState: "present", Landed: true})
 	}
+	return nil
+}
+
+func (r *Runner) executePushMainReap(ctx context.Context, work string, env reapEnv, findings []scan.Finding, status string, landed bool, prov runProvenance) error {
+	if !landed {
+		fmt.Fprintln(os.Stderr, "ward container reap: remote main has no run-owned commit after dispatch; salvaging")
+		return r.salvage(ctx, work, env, reasonConflict, false, findings, status,
+			reapDecision{Gate: "remote main has no run-owned commit (pre-push recheck)", ProvState: "present"})
+	}
+	if err := r.ensureClosingReferenceBeforePush(ctx, work, env, findings, status, landed, prov); err != nil {
+		return err
+	}
+	fmt.Fprintln(os.Stderr, "ward container reap: push to main start")
+	out, perr := r.pushCapture(ctx, work, "HEAD:main")
+	if perr == nil {
+		fmt.Fprintln(os.Stderr, "ward container reap: landed on main")
+		return nil
+	}
+	// Classify the rejection so the salvage issue distinguishes a dead/rotated
+	// PAT (auth) from the remote simply having advanced (race) - see ward#103.
+	reason, authCause := reasonPushRace, false
+	if isAuthFailure(out) {
+		reason, authCause = reasonAuthFail, true
+	}
+	fmt.Fprintf(os.Stderr, "ward container reap: push to main rejected (%s); salvaging\n", reason)
+	return r.salvage(ctx, work, env, reason, authCause, findings, status,
+		reapDecision{Gate: "push to main rejected", ProvState: "present", Landed: true})
+}
+
+func (r *Runner) ensureClosingReferenceBeforePush(ctx context.Context, work string, env reapEnv, findings []scan.Finding, status string, landed bool, prov runProvenance) error {
+	if env.Issue == 0 || r.issueClosingReferencePresent(ctx, work, env.Issue) {
+		return nil
+	}
+	// Final closing-ref gate LOCAL to the irreversible push (ward#515): re-check
+	// the post-rebase history so no upstream-gate reorder can land a close-refless run.
+	if !closingReferenceRepairSafe(prov, env) {
+		fmt.Fprintf(os.Stderr, "ward container reap: closing reference for #%d absent from the history about to land; salvaging instead of pushing main\n", env.Issue)
+		return r.salvage(ctx, work, env, reasonCloseRef, false, findings, status,
+			reapDecision{Gate: "missing same-repo closing reference (push-site recheck)", ProvState: "present", Landed: landed})
+	}
+	fmt.Fprintf(os.Stderr, "ward container reap: closing reference for #%d absent from the history about to land; repairing before push\n", env.Issue)
+	if err := r.repairClosingReference(ctx, work, env); err != nil {
+		fmt.Fprintf(os.Stderr, "ward container reap: closing reference repair failed: %v\n", err)
+		return r.salvage(ctx, work, env, reasonCloseRef, false, findings, status,
+			reapDecision{Gate: "missing same-repo closing reference (push-site repair failed)", ProvState: "present", Landed: landed})
+	}
+	if !r.issueClosingReferencePresent(ctx, work, env.Issue) {
+		return r.salvage(ctx, work, env, reasonCloseRef, false, findings, status,
+			reapDecision{Gate: "missing same-repo closing reference (push-site repair failed)", ProvState: "present", Landed: landed})
+	}
+	fmt.Fprintf(os.Stderr, "ward container reap: repaired closing reference for #%d\n", env.Issue)
 	return nil
 }
 

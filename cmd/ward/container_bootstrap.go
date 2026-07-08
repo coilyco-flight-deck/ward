@@ -558,10 +558,13 @@ func (r *Runner) makeReadOnlyTree(root string) {
 
 // --- forgejo git auth (token rides --env-file, never argv) -------------------
 
+//nolint:gosec // Container-local credential-store path, not an embedded credential.
 const forgejoGitCredentialsPath = "/etc/ward-git-credentials"
 
+//nolint:gosec // Container-local helper path, not an embedded credential.
 const forgejoGitCredentialHelperPath = "/etc/ward-git-credential-helper"
 
+//nolint:gosec // Helper script reads a mounted credential file.
 const forgejoGitCredentialHelperScript = `#!/bin/sh
 cred_file=%q
 case "${1:-}" in

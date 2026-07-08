@@ -288,7 +288,7 @@ func (c *forgejoClient) createPullRequest(ctx context.Context, owner, repo, head
 	defer func() { _ = resp.Body.Close() }()
 	data, _ := io.ReadAll(io.LimitReader(resp.Body, 4096))
 	if resp.StatusCode < 200 || resp.StatusCode >= 300 {
-		return "", fmt.Errorf("Forgejo create PR returned %s: %s", resp.Status, firstLine(string(data)))
+		return "", fmt.Errorf("forgejo create PR returned %s: %s", resp.Status, firstLine(string(data)))
 	}
 	var created struct {
 		HTMLURL string `json:"html_url"`
@@ -307,7 +307,7 @@ func (c *forgejoClient) createPullRequest(ctx context.Context, owner, repo, head
 	if created.Number != 0 {
 		return fmt.Sprintf("%s/%s/%s/pulls/%d", baseURL, owner, repo, created.Number), nil
 	}
-	return "", fmt.Errorf("Forgejo create PR response omitted html_url")
+	return "", fmt.Errorf("forgejo create PR response omitted html_url")
 }
 
 // lockIssue is unsupported: Forgejo's API (gitea-1.22 compat) exposes no issue-lock
