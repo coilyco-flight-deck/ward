@@ -82,9 +82,9 @@ func TestDirectorDispatchDisposition(t *testing.T) {
 func TestDispatchEngineerArgv(t *testing.T) {
 	ref := agentIssueRef{Owner: "coilyco-flight-deck", Repo: "ward", Number: 42}
 
-	// A bare dispatch: driver + headless detach + --quiet-seed (keeps the in-process
+	// A bare dispatch: harness + headless detach + --quiet-seed (keeps the in-process
 	// engineer's seed dump off the shared director console; ward#519), no escalations.
-	bare := dispatchEngineer{driver: modeClaude}.engineerArgv(ref)
+	bare := dispatchEngineer{harness: modeClaude}.engineerArgv(ref)
 	wantBare := []string{"engineer", "coilyco-flight-deck/ward#42", "--harness", "claude", "--no-preflight", "--quiet-seed"}
 	if !reflect.DeepEqual(bare, wantBare) {
 		t.Errorf("bare argv = %v, want %v", bare, wantBare)
@@ -98,7 +98,7 @@ func TestDispatchEngineerArgv(t *testing.T) {
 	// A fully-loaded dispatch forwards the resolved container intent; a resolved host-net
 	// route forwards as the consolidated --tailnet + an explicit --tailnet-mode (ward#362).
 	full := dispatchEngineer{
-		driver: modeGoose, image: "ghcr.io/x/dev", tag: "v9", wardVersion: "v0.58.0",
+		harness: modeGoose, image: "ghcr.io/x/dev", tag: "v9", wardVersion: "v0.58.0",
 		aws: true, hostNet: true, tsSidecar: false, force: true,
 	}.engineerArgv(ref)
 	for _, want := range [][2]string{
@@ -123,7 +123,7 @@ func TestDirectorDispatchQuietsSeedConsole(t *testing.T) {
 	seed := agentSeedPrompt(ref, "quiet the seed", "the frozen task text", "", true, nil)
 
 	// The director forwards --quiet-seed on every dispatch (ward#519).
-	if !containsArg(dispatchEngineer{driver: modeClaude}.engineerArgv(ref), "--quiet-seed") {
+	if !containsArg(dispatchEngineer{harness: modeClaude}.engineerArgv(ref), "--quiet-seed") {
 		t.Fatal("director dispatch argv must carry --quiet-seed (ward#519)")
 	}
 
@@ -144,20 +144,28 @@ func TestDirectorDispatchQuietsSeedConsole(t *testing.T) {
 	}
 }
 
-// TestDirectorEngineerDriver covers the two-level driver precedence (ward#355): set
-// --engineer-driver wins; else the engineers inherit director's --harness.
-func TestDirectorEngineerDriver(t *testing.T) {
+// TestDirectorEngineerHarness covers the two-level precedence (ward#355): set
+// --engineer-harness wins; --engineer-driver remains a hidden fallback alias.
+func TestDirectorEngineerHarness(t *testing.T) {
 	inherit := directorFlagSet(t, map[string]string{})
-	if got, err := directorEngineerDriver(inherit, modeGoose); err != nil || got != modeGoose {
-		t.Errorf("unset --engineer-driver should inherit director's mode: got %q err %v", got, err)
+	if got, err := directorEngineerHarness(inherit, modeGoose); err != nil || got != modeGoose {
+		t.Errorf("unset --engineer-harness should inherit director's mode: got %q err %v", got, err)
 	}
-	override := directorFlagSet(t, map[string]string{"engineer-driver": "codex"})
-	if got, err := directorEngineerDriver(override, modeGoose); err != nil || got != modeCodex {
-		t.Errorf("--engineer-driver codex should override: got %q err %v", got, err)
+	override := directorFlagSet(t, map[string]string{"engineer-harness": "codex"})
+	if got, err := directorEngineerHarness(override, modeGoose); err != nil || got != modeCodex {
+		t.Errorf("--engineer-harness codex should override: got %q err %v", got, err)
 	}
-	bad := directorFlagSet(t, map[string]string{"engineer-driver": "nope"})
-	if _, err := directorEngineerDriver(bad, modeClaude); err == nil {
-		t.Error("an unknown --engineer-driver must error")
+	alias := directorFlagSet(t, map[string]string{"engineer-driver": "codex"})
+	if got, err := directorEngineerHarness(alias, modeGoose); err != nil || got != modeCodex {
+		t.Errorf("hidden --engineer-driver codex should still resolve: got %q err %v", got, err)
+	}
+	both := directorFlagSet(t, map[string]string{"engineer-harness": "codex", "engineer-driver": "goose"})
+	if got, err := directorEngineerHarness(both, modeGoose); err != nil || got != modeCodex {
+		t.Errorf("canonical --engineer-harness should win over alias: got %q err %v", got, err)
+	}
+	bad := directorFlagSet(t, map[string]string{"engineer-harness": "nope"})
+	if _, err := directorEngineerHarness(bad, modeClaude); err == nil {
+		t.Error("an unknown --engineer-harness must error")
 	}
 }
 
@@ -167,10 +175,26 @@ func TestDirectorFlagsParity(t *testing.T) {
 	cmd := agentDirectorCommand()
 	for _, want := range []string{
 		"image", "tag", "ward-source", "ward-version", "aws", "tailnet", "tailnet-mode",
-		"no-pull", "print", "with-repo", "force", "engineer-driver", "driver",
+		"no-pull", "print", "with-repo", "force", "engineer-harness", "engineer-driver",
 	} {
 		if !commandHasFlag(cmd, want) {
 			t.Errorf("ward agent director missing --%s at parity (ward#355)", want)
+		}
+	}
+	for _, f := range cmd.Flags {
+		sf, ok := f.(*cli.StringFlag)
+		if !ok {
+			continue
+		}
+		switch sf.Name {
+		case "engineer-harness":
+			if sf.Hidden {
+				t.Error("--engineer-harness is hidden; want it visible")
+			}
+		case "engineer-driver":
+			if !sf.Hidden {
+				t.Error("--engineer-driver alias is visible; want it hidden")
+			}
 		}
 	}
 	for _, unwanted := range []string{"branch", "no-preflight", "watch", "detach"} {
@@ -200,7 +224,7 @@ func argFollowedBy(argv []string, flag, val string) bool {
 	return false
 }
 
-// directorFlagSet parses director's flags with the given string flags set, so the driver
+// directorFlagSet parses director's flags with the given string flags set, so the harness
 // resolvers can be exercised without a full run.
 func directorFlagSet(t *testing.T, set map[string]string) *cli.Command {
 	t.Helper()
@@ -217,11 +241,11 @@ func directorFlagSet(t *testing.T, set map[string]string) *cli.Command {
 }
 
 // TestDirectorSurfaceArgv covers ward#355: director's drain surface inherits its
-// container/harness flags and runs on director's OWN driver, never the engineer driver.
+// container/harness flags and runs on director's OWN harness, never the engineer harness.
 func TestDirectorSurfaceArgv(t *testing.T) {
 	cfg := backlogConfig{
 		mode:       modeClaude,
-		dispatch:   dispatchEngineer{driver: modeGoose, image: "img", tag: "t1", wardVersion: "v1", aws: true, tsSidecar: true},
+		dispatch:   dispatchEngineer{harness: modeGoose, image: "img", tag: "t1", wardVersion: "v1", aws: true, tsSidecar: true},
 		wardSource: "/src/ward",
 		noPull:     true,
 		withRepo:   []string{"a/b", "c/d"},
@@ -231,7 +255,7 @@ func TestDirectorSurfaceArgv(t *testing.T) {
 		t.Errorf("surface argv[0] = %q, want %q", argv[0], directorSurfaceVerb)
 	}
 	if !argFollowedBy(argv, "--harness", "claude") {
-		t.Errorf("surface must run on director's own driver (claude), not the engineer driver: %v", argv)
+		t.Errorf("surface must run on director's own harness (claude), not the engineer harness: %v", argv)
 	}
 	for _, want := range [][2]string{
 		{"--repo", "coilyco-flight-deck/ward"}, {"--image", "img"}, {"--tag", "t1"},
@@ -251,7 +275,7 @@ func TestDirectorSurfaceArgv(t *testing.T) {
 		t.Errorf("surface argv must forward the resolved sidecar mechanism as --tailnet-mode sidecar: %v", argv)
 	}
 	if containsArg(argv, "goose") {
-		t.Errorf("surface argv must not carry the engineer driver: %v", argv)
+		t.Errorf("surface argv must not carry the engineer harness: %v", argv)
 	}
 }
 

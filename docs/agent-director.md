@@ -59,8 +59,8 @@ via the same union/de-dup/trust path; an absent key falls back to the cwd origin
 
 - `--repo`/`--org` scope; `--max-parallel N` (10); `--triage`/`--no-triage` (on by
   default); `--limit` (50); `--poll-interval` (30s); `--max-cycles` (0=drained);
-  `--dry-run`. `--harness` (claude) drives director's OWN session; `--engineer-driver` overrides
-  the engineer harness.
+  `--dry-run`. `--harness` (claude) drives director's session; `--engineer-harness` overrides it.
+  Hidden `--engineer-driver` stays an alias.
 - Container/harness parity: `--image`/`--tag`, `--ward-source`/`--ward-version`,
   `--aws`, `--tailnet`, `--no-pull`, `--with-repo`, `--print`, `--force` - the dispatch subset
   reaches each engineer, the full set the surface; `--branch`/`--no-preflight`/`--watch`/`--detach` absent.
