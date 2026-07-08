@@ -72,13 +72,20 @@ func agentAdvisorCommand() *cli.Command {
 // the issue and posts a comment (was reply); anything else answers inline (was ask).
 func (r *Runner) runAgentAdvisor(ctx context.Context, c *cli.Command, mode containerMode) error {
 	arg := strings.TrimSpace(c.Args().First())
+	
+	// We must check if this argument looks like a proper issue reference.
+	// A freeform question will not parse as a valid issue reference.
 	if _, err := parseAgentIssueRef(arg); err == nil {
+		// This is a valid issue reference - use reply mode
 		if forwarded, ferr := r.maybeForwardAgentDispatchToHostBroker(ctx, c, "advisor", mode); forwarded {
 			return ferr
 		}
 		return r.runAgentReply(ctx, c, mode)
+	} else {
+		// If we can't parse as an issue reference, treat it as freeform question - use ask mode
+		// This handles the case where someone provides e.g. "how does X work here?"
+		return r.runAgentAsk(ctx, c, mode)
 	}
-	return r.runAgentAsk(ctx, c, mode)
 }
 
 // runAgentAsk seeds the freeform question and spins a fresh attached container (was ask):
