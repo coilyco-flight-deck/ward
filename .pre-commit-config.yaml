@@ -43,3 +43,9 @@ repos:
         language: system
         files: '\.md$'
         pass_filenames: true
+      - id: workflow-mirror
+        name: Forgejo<->GitHub Actions mirror stays in sync (ward#214)
+        entry: python3 scripts/check_workflow_mirror.py
+        language: system
+        files: '^(\.github/workflows/|\.forgejo/workflows/|scripts/check_workflow_mirror\.py)'
+        pass_filenames: false
