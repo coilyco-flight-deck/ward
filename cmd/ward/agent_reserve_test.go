@@ -861,6 +861,8 @@ func TestGateRecovery(t *testing.T) {
 	for _, c := range []struct{ gate, wantLabel, wantRecov string }{
 		{"auth", "auth smoke test", "Refresh the host claude login"},
 		{"ollama-probe", "ollama reachability probe", "Ollama endpoint up"},
+		{"codex-probe", "codex launch probe", "codex config/auth"},
+		{"model-config", "model-config pre-launch gate", "Update the fleet model string"},
 		{"bootstrap", "container bootstrap", "failing bootstrap step"},
 		{"mystery", "mystery", "docker logs"},
 	} {

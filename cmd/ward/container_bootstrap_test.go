@@ -11,6 +11,7 @@ import (
 	"testing"
 
 	"forgejo.coilysiren.me/coilyco-flight-deck/cli-guard/cli/shell"
+	"github.com/coilyco-flight-deck/ward/internal/agentsapi"
 )
 
 // gitRunner builds a Runner whose shell.Runner resolves git on PATH (stdio
@@ -157,6 +158,16 @@ func TestBuildAgentArgv(t *testing.T) {
 				t.Errorf("stream = %v, want %v", stream, tc.wantStream)
 			}
 		})
+	}
+}
+
+func TestNamedGate(t *testing.T) {
+	err := agentsapi.NewGateError("model-config", context.Canceled)
+	if got, ok := namedGate(err); !ok || got != "model-config" {
+		t.Fatalf("namedGate(%v) = %q,%v; want model-config,true", err, got, ok)
+	}
+	if got, ok := namedGate(context.Canceled); ok || got != "" {
+		t.Fatalf("namedGate(non-gate) = %q,%v; want empty,false", got, ok)
 	}
 }
 

@@ -27,14 +27,15 @@ somewhere the container cannot dial. Left undetected, a headless run hangs the
 dispatched container - the same silent-hang failure that claude's auth smoke test
 ([agent-credentials.md](agent-credentials.md)) exists to prevent.
 
-So ward runs a **pre-launch Ollama-reachability probe**, the local-model analog of
-that auth smoke test. Before a headless goose or opencode launches, the entrypoint
+So ward runs a **pre-launch Ollama probe**, the local-model analog of that auth
+smoke test. Before a headless goose or opencode launches, the entrypoint
 TCP-probes the endpoint the harness will dial, with a short retry window that
 absorbs the `--ts-sidecar` loopback forwarder's startup:
 
 - **goose** probes the `OLLAMA_HOST` seeded into `~/.config/goose/config.yaml`, or
   goose's built-in `http://localhost:11434` when no tower host resolved.
-- **opencode** probes `WARD_OLLAMA_URL` (the endpoint its config binds).
+- **opencode** probes `WARD_OLLAMA_URL` (the endpoint its config binds), then
+  checks that the configured model exists there.
 
 On an unreachable endpoint the container **aborts with a clear error** naming the
 endpoint and how to recover - point the harness at a live endpoint
@@ -43,9 +44,9 @@ endpoint and how to recover - point the harness at a live endpoint
 probe is **headless-only** (an interactive session has a human watching) and
 **bypassable** with `WARD_SMOKE_TEST_SKIP=1`, the same switch claude's probe reads.
 It lives in both bootstrap paths: `smoke_test_ollama_reachable` in the entrypoint
-and the `ollamaprobe` `LaunchGate` in the Go port. It is a **reachability** check,
-not a model-serving check: a reachable-but-misconfigured Ollama (wrong model tag)
-still surfaces at run time, not here.
+and the `ollamaprobe` `LaunchGate` in the Go port. Reachability is first, and
+opencode now layers a model-existence check on top so a reachable-but-missing
+model surfaces as `model-config` instead of a silent fallback.
 
 ## Earlier signal: `ward doctor` ([ward#499](https://forgejo.coilysiren.me/coilyco-flight-deck/ward/issues/499))
 

@@ -4,6 +4,8 @@ import (
 	"context"
 	"strings"
 	"testing"
+
+	"github.com/coilyco-flight-deck/ward/internal/agentsapi"
 )
 
 func TestDiskBytes(t *testing.T) {
@@ -47,6 +49,40 @@ func TestLooksLikeAuthError(t *testing.T) {
 		if looksLikeAuthError(s) {
 			t.Errorf("looksLikeAuthError(%q) = true, want false", s)
 		}
+	}
+}
+
+func TestClaudeProbeArgvIncludesResolvedModel(t *testing.T) {
+	rc := agentsapi.RunCtx{AgentUID: "1000", AgentGID: "1000", AgentHome: "/home/agent"}
+	got := claudeProbeArgv(rc)
+	for _, want := range []string{"claude", "-p", "--output-format", "json", "Reply with the single word: ok"} {
+		found := false
+		for _, arg := range got {
+			if arg == want {
+				found = true
+				break
+			}
+		}
+		if !found {
+			t.Fatalf("probe argv missing %q: %v", want, got)
+		}
+	}
+	if got := claudeProbeArgv(agentsapi.RunCtx{AgentUID: "1000", AgentGID: "1000", AgentHome: "/home/agent", ClaudeModel: "opus"}); !strings.Contains(strings.Join(got, " "), "--model opus") {
+		t.Fatalf("probe argv missing resolved model: %v", got)
+	}
+}
+
+func TestClassifyClaudeModelConfigFailure(t *testing.T) {
+	if err := classifyClaudeModelConfigFailure("opus", "", "Model metadata for opus not found", 1); err == nil {
+		t.Fatal("expected model-config error")
+	} else if got := err.(interface{ GateName() string }).GateName(); got != "model-config" {
+		t.Fatalf("GateName = %q, want model-config", got)
+	}
+	if err := classifyClaudeModelConfigFailure("opus", "", "Not logged in. Please run /login", 1); err != nil {
+		t.Fatalf("auth failure should not classify as model-config: %v", err)
+	}
+	if err := classifyClaudeModelConfigFailure("", "", "Model opus is not available", 1); err != nil {
+		t.Fatalf("empty model should not classify: %v", err)
 	}
 }
 
