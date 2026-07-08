@@ -8,7 +8,7 @@ import (
 	"strings"
 	"testing"
 
-	"github.com/coilyco-flight-deck/ward/internal/agents/modelconfig"
+	"github.com/coilyco-flight-deck/ward/internal/launchgate/modelconfig"
 	"github.com/coilyco-flight-deck/ward/internal/agentsapi"
 )
 

@@ -15,7 +15,7 @@ import (
 	"forgejo.coilysiren.me/coilyco-flight-deck/cli-guard/cli/repocfg"
 	"github.com/urfave/cli/v3"
 
-	"github.com/coilyco-flight-deck/ward/internal/agents/ollamaprobe"
+	"github.com/coilyco-flight-deck/ward/internal/launchgate/ollamaprobe"
 )
 
 // doctorCommand is ward's single diagnostic verb, running the allowlist and

@@ -13,7 +13,7 @@ import (
 
 	"forgejo.coilysiren.me/coilyco-flight-deck/cli-guard/cli/verb"
 	"forgejo.coilysiren.me/coilyco-flight-deck/cli-guard/pkg/config"
-	"github.com/coilyco-flight-deck/ward/internal/agents/ollamaprobe"
+	"github.com/coilyco-flight-deck/ward/internal/launchgate/ollamaprobe"
 	"github.com/coilyco-flight-deck/ward/internal/reviewpanel"
 	"github.com/urfave/cli/v3"
 )

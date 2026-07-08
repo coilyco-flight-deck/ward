@@ -1,7 +1,7 @@
 package opencode
 
 import (
-	"github.com/coilyco-flight-deck/ward/internal/agents/ollamaprobe"
+	"github.com/coilyco-flight-deck/ward/internal/launchgate/ollamaprobe"
 	"github.com/coilyco-flight-deck/ward/internal/agentsapi"
 )
 
