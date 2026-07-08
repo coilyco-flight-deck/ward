@@ -46,14 +46,6 @@ func isReservationConflict(err error) bool {
 // file per reserved issue.
 const agentReservationsSubdir = "agent-reservations"
 
-// agentReservationTTL bounds how long a reservation blocks a fresh run. A run
-// that outlives it is assumed dead; the reservation goes stale and is reclaimed.
-const agentReservationTTL = 2 * time.Hour
-
-// reservationRecheckDefaultMax is the ceiling of the jittered re-check window: a run
-// waits a random [max/3,max] before re-reading (ward#600, docs/agent-reservation.md).
-const reservationRecheckDefaultMax = 15 * time.Second
-
 // reservationRecheckEnv overrides the ceiling (min derives as max/3); "0"/"off"/"none"
 // disables the re-check, leaning on the broker per-ref lock + pre-post check alone.
 const reservationRecheckEnv = "WARD_AGENT_RESERVE_RECHECK"
@@ -81,7 +73,7 @@ var reservationRecheckDelay = func() time.Duration {
 func reservationRecheckMax() time.Duration {
 	v := strings.TrimSpace(os.Getenv(reservationRecheckEnv))
 	if v == "" {
-		return reservationRecheckDefaultMax
+		return reservationRecheckDefaultMax()
 	}
 	switch strings.ToLower(v) {
 	case "0", "off", "none", "false":
@@ -89,7 +81,7 @@ func reservationRecheckMax() time.Duration {
 	}
 	d, err := time.ParseDuration(v)
 	if err != nil || d < 0 {
-		return reservationRecheckDefaultMax
+		return reservationRecheckDefaultMax()
 	}
 	return d
 }
@@ -247,11 +239,12 @@ func (r *Runner) precheckReservation(ctx context.Context, label string, w resolv
 		return nil
 	}
 	now := time.Now().UTC()
+	ttl := agentReservationTTL()
 	if err := r.precheckLocalReservation(ctx, label, w.Ref, now); err != nil {
 		fmt.Fprintf(os.Stderr, "%s: reservation precheck failed locally for %s: %v\n", label, w.Ref, err)
 		return err
 	}
-	if who, held := freshReservationComment(w.Comments, now, agentReservationTTL); held {
+	if who, held := freshReservationComment(w.Comments, now, ttl); held {
 		fmt.Fprintf(os.Stderr, "%s: reservation precheck failed remotely for %s: %s\n", label, w.Ref, who)
 		return newReservationConflict(
 			"%s: issue %s is already reserved remotely (%s); wait for it to finish or pass --force to override",
@@ -272,7 +265,7 @@ func (r *Runner) precheckLocalReservation(ctx context.Context, label string, ref
 	if rerr != nil {
 		return fmt.Errorf("%s: read reservation %s: %w", label, path, rerr)
 	}
-	if ok && reservationFresh(existing.At, now, agentReservationTTL) && r.containerRunning(ctx, existing.Container) {
+	if ok && reservationFresh(existing.At, now, agentReservationTTL()) && r.containerRunning(ctx, existing.Container) {
 		fmt.Fprintf(os.Stderr, "%s: reservation precheck saw live local holder for %s at %s\n", label, ref, path)
 		return newReservationConflict(
 			"%s: issue %s is already reserved locally by %s; wait for it to finish or pass --force to reclaim",
@@ -350,11 +343,12 @@ func (r *Runner) acquireRemoteReservation(ctx context.Context, label string, mod
 		warnRemoteReservationLost(label, ref, fmt.Sprintf("could not build the %s client: %v", ref.Forge, err))
 		return func() {}, nil
 	}
+	ttl := agentReservationTTL()
 	if !force {
 		comments, lerr := cl.listIssueComments(ctx, ref.Owner, ref.Repo, ref.Number)
 		if lerr != nil {
 			fmt.Fprintf(os.Stderr, "%s: warning: could not read issue comments to check for a remote reservation (%v); proceeding without the cross-host conflict check\n", label, lerr)
-		} else if who, held := freshReservationComment(comments, now, agentReservationTTL); held {
+		} else if who, held := freshReservationComment(comments, now, ttl); held {
 			return nil, newReservationConflict(
 				"%s: issue %s is already reserved remotely (%s); wait for it to finish or pass --force to override",
 				label, ref, who)
@@ -391,7 +385,7 @@ func (r *Runner) acquireRemoteReservation(ctx context.Context, label string, mod
 // before the container is up: a release-marker comment plus a best-effort unlock (#570).
 func (r *Runner) releaseRemoteReservation(ctx context.Context, cl issueForge, label string, mode containerMode, ref agentIssueRef, container string) {
 	if err := cl.commentIssue(ctx, ref.Owner, ref.Repo, ref.Number, reservationReleaseCommentBody(mode, container, nil)); err != nil {
-		fmt.Fprintf(os.Stderr, "%s: warning: could not release the remote reservation on %s (%v); a re-run may need --force until the %s TTL lapses (ward#570)\n", label, ref, err, agentReservationTTL)
+		fmt.Fprintf(os.Stderr, "%s: warning: could not release the remote reservation on %s (%v); a re-run may need --force until the %s TTL lapses (ward#570)\n", label, ref, err, conciseDuration(agentReservationTTL()))
 		return
 	}
 	// Retract the reservation's conversation lock (ward#494) so a retry lands on an open
@@ -509,7 +503,7 @@ func (r *Runner) reservationRecheckLost(ctx context.Context, cl issueForge, labe
 		fmt.Fprintf(os.Stderr, "%s: warning: reservation re-check could not re-read %s (%v); proceeding (ward#600)\n", label, ref, err)
 		return false, ""
 	}
-	winner, ok := winningReservationClaim(reservationClaims(comments, now, agentReservationTTL))
+	winner, ok := winningReservationClaim(reservationClaims(comments, now, agentReservationTTL()))
 	if !ok || winner.identity == ours {
 		fmt.Fprintf(os.Stderr, "%s: reservation re-check confirmed %s for this run (ward#600)\n", label, ref)
 		return false, ""
@@ -572,6 +566,7 @@ func winningReservationClaim(claims []reservationClaim) (reservationClaim, bool)
 // reservationCommentBody is the marker comment claiming an issue: a non-empty
 // justification folds in the GO read (ward#383), seedCtx the seed context (ward#609).
 func reservationCommentBody(mode containerMode, container, host string, now time.Time, justification string, seedCtx *reservationSeedContext) string {
+	ttl := agentReservationTTL()
 	body := fmt.Sprintf(
 		"%s\n🔒 Reserved by `ward agent --harness %s` — container `%s` on host `%s` is carrying this issue (reserved %s). "+
 			"Concurrent `ward agent` runs are blocked until it finishes or the reservation goes stale (%s TTL); "+
@@ -581,7 +576,7 @@ func reservationCommentBody(mode containerMode, container, host string, now time
 			"the running engineer. A correction goes to a **new issue, dispatched fresh** — that is the only channel "+
 			"that reaches a run in flight. Where the forge supports it, ward locks this conversation to make that a "+
 			"road-block rather than a convention (ward#494).",
-		agentReservationMarker, mode, container, host, now.Format(time.RFC3339), agentReservationTTL)
+		agentReservationMarker, mode, container, host, now.Format(time.RFC3339), conciseDuration(ttl))
 	if justification = strings.TrimSpace(justification); justification != "" {
 		body += fmt.Sprintf(
 			"\n\nThe pre-flight judged this issue **GO** for an unattended run. Its justification:\n\n"+

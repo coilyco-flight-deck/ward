@@ -428,8 +428,9 @@ func agentCmdline(mode containerMode, surface string) string {
 // (ward#247, ward#282); a bare ref dispatches the default engineer (ward#347).
 func agentCommand() *cli.Command {
 	return &cli.Command{
-		Name:  "agent",
-		Usage: "Send an agent into a fresh ephemeral container to carry a Forgejo issue end to end (a bare ref runs the engineer).",
+		Name:   "agent",
+		Usage:  "Send an agent into a fresh ephemeral container to carry a Forgejo issue end to end (a bare ref runs the engineer).",
+		Before: smartDefaultsGuard("ward agent"),
 		Description: `agent is the issue-carrying dispatcher (the spelling 'warded' fronts), a
 roster of startup roles (ward#347): you do not invoke a mode, you send in a
 role. Pick a role (engineer|director|advisor) and --harness picks the

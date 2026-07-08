@@ -809,7 +809,7 @@ func (r *Runner) cloneExtraRepo(ctx context.Context, e bootstrapEnv, repo target
 	lock := filepath.Join(e.GitCache, "."+repo.Owner+"__"+repo.Name+".lock")
 	ttl := time.Duration(0)
 	if ro {
-		ttl = containerReadOnlyExtraRepoTTL
+		ttl = containerReadOnlyExtraRepoTTL()
 	}
 	r.withFlock(lock, func() {
 		if isDir(mirror) {

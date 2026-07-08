@@ -10,16 +10,6 @@ import (
 // agent_reap_compute.go is the pure core of `ward agent reap` (issue #376): the
 // idle-signal parsing + stop/keep verdict, split from the docker I/O for testing.
 
-const (
-	// agentReapIdleDefault is the idle threshold: an engineer log silent this long is
-	// wedged, holding a slot, not "working quietly" (#376; docs/agent-reap.md).
-	agentReapIdleDefault = time.Hour
-
-	// agentReapMaxCPUDefault is the CPU guard: an idle engineer above this %CPU is
-	// spared as a possibly-live build/test. Pass a huge --max-cpu to reap on idle alone.
-	agentReapMaxCPUDefault = 5.0
-)
-
 // engineerReapState is one engineer's idle inputs: idle since last activity + its
 // CPU, each with a readable flag so an unreadable probe is not a hard zero.
 type engineerReapState struct {

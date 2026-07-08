@@ -10,7 +10,6 @@ import (
 	"regexp"
 	"sort"
 	"strings"
-	"time"
 )
 
 const (
@@ -93,10 +92,6 @@ const (
 	// containerSubstrateTTL is the gitcache refresh TTL (seconds): a burst of
 	// containers does one fetch per repo per window, the rest skip the gate.
 	containerSubstrateTTL = "600"
-
-	// containerReadOnlyExtraRepoTTL is the longer refresh TTL for advisor-only
-	// upstream/context repos. Their mirrors are stable enough to reuse for a day.
-	containerReadOnlyExtraRepoTTL = 24 * time.Hour
 )
 
 // Tailnet + tower topology (ward#395): infra DATA, not baked identity. Each value takes
@@ -922,10 +917,6 @@ func sortedKeys(m map[string]string) []string {
 	sort.Strings(keys)
 	return keys
 }
-
-// containerReapKeep is how many most-recently-exited ward containers the stale
-// sweep keeps for post-mortem; older ones are reclaimed (docs/container-cleanup.md).
-const containerReapKeep = 10
 
 // dockerExitedListArgv builds the `docker ps` query for exited ward-managed
 // containers, newest first, one name per line - the stale-sweep input (ward#272).

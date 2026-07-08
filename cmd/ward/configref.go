@@ -17,7 +17,7 @@ import (
 )
 
 // wardConfigTTLEnv overrides the config-bundle refresh TTL in seconds; the
-// default matches the substrate warmer's (containerSubstrateTTL).
+// default comes from the smart-defaults bundle.
 const wardConfigTTLEnv = "WARD_CONFIG_TTL"
 
 // configRef is the parsed git form of WARD_CONFIG_REF: self-describing, no
@@ -114,8 +114,7 @@ func configBundleTTL(getenv func(string) string) time.Duration {
 	if n, err := strconv.ParseInt(strings.TrimSpace(getenv(wardConfigTTLEnv)), 10, 64); err == nil && n >= 0 {
 		return time.Duration(n) * time.Second
 	}
-	def, _ := strconv.ParseInt(containerSubstrateTTL, 10, 64)
-	return time.Duration(def) * time.Second
+	return configBundleTTLDefault()
 }
 
 // hashConfigRef keys the cache dir on the whole raw ref (repo + ref + subpath),

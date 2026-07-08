@@ -1,4 +1,4 @@
-.PHONY: help build test vet lint lint-refs lint-workflows tidy cover install ward-kdl install-tmp lock skew sync-ops-assets sync-exec-assets sync-fleet-assets sync-topology-assets build-ward-kdl build-ward-kdl-tiers build-ward-kdl-forgejo-tiers workspace agent-roster
+.PHONY: help build test vet lint lint-refs lint-workflows tidy cover install ward-kdl install-tmp lock skew sync-ops-assets sync-exec-assets sync-fleet-assets sync-topology-assets sync-defaults-assets build-ward-kdl build-ward-kdl-tiers build-ward-kdl-forgejo-tiers workspace agent-roster
 
 KDL_SPECS := forgejo.coilysiren.me/coilyco-flight-deck/cli-guard/cmd/kdl-specs
 
@@ -71,6 +71,7 @@ build-ward-kdl: ## build or rebuild the ward-kdl binary, one shot for ease of us
 	$(MAKE) sync-ops-assets
 	$(MAKE) sync-exec-assets
 	$(MAKE) sync-fleet-assets
+	$(MAKE) sync-defaults-assets
 	$(MAKE) sync-topology-assets
 
 build-ward-kdl-tiers: ## build the read/write/admin tier binaries, discovering every area dropped into each tier subdir (ward#240, ward#338).
@@ -141,6 +142,13 @@ sync-fleet-assets: ## Mirror the dialect-2 ward-kdl.fleet.kdl into cmd/ward for 
 	# fleetassets_test.go fails the build on drift, so re-sync after every change.
 	@mkdir -p ./cmd/ward/fleetassets
 	cp ./.ward/ward-kdl/ward-kdl.fleet.kdl ./cmd/ward/fleetassets/fleet.generated.kdl
+
+sync-defaults-assets: ## Mirror the smart-defaults ward-kdl.defaults.kdl into cmd/ward for embedding (ward#679).
+	# The smart-defaults bundle carries launch-selected runtime policy knobs. go:embed
+	# can't reach the sibling .ward/ward-kdl/ dir, so mirror the canonical source here
+	# as defaults.generated.kdl. defaultsassets_test.go fails the build on drift.
+	@mkdir -p ./cmd/ward/defaultsassets
+	cp ./.ward/ward-kdl/ward-kdl.defaults.kdl ./cmd/ward/defaultsassets/defaults.generated.kdl
 
 sync-topology-assets: ## Mirror the container topology bundle into cmd/ward for embedding (ward#655).
 	# The container-topology overlay is bundle data, not code: go:embed can't

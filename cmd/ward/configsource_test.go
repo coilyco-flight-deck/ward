@@ -66,6 +66,9 @@ func TestSelectConfigSourceFileRef(t *testing.T) {
 	if src.fleetKDL != bundleFleetKDLPath {
 		t.Errorf("bundle fleet path = %q, want %q", src.fleetKDL, bundleFleetKDLPath)
 	}
+	if src.defaultsKDL != bundleDefaultsKDLPath {
+		t.Errorf("bundle defaults path = %q, want %q", src.defaultsKDL, bundleDefaultsKDLPath)
+	}
 	if src.topologyKDL != bundleTopologyKDLPath {
 		t.Errorf("bundle topology path = %q, want %q", src.topologyKDL, bundleTopologyKDLPath)
 	}
@@ -97,7 +100,7 @@ func TestSelectConfigSourceFileRefCapturesRevision(t *testing.T) {
 // patterns: a rename must not silently empty the neutral default.
 func TestBakedSourcePathsExist(t *testing.T) {
 	src := bakedConfigSource()
-	for _, p := range []string{src.forgejoGuardfile, src.forgejoSpecLock, src.adminGuardfile, src.fleetKDL, src.topologyKDL} {
+	for _, p := range []string{src.forgejoGuardfile, src.forgejoSpecLock, src.adminGuardfile, src.fleetKDL, src.defaultsKDL, src.topologyKDL} {
 		if _, err := fs.ReadFile(src.fsys, p); err != nil {
 			t.Errorf("baked path %s unreadable: %v", p, err)
 		}
