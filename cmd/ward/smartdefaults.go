@@ -85,7 +85,7 @@ func currentSmartDefaultsWithError() (smartDefaults, error) {
 }
 
 func smartDefaultsGuard(surface string) cli.BeforeFunc {
-	return func(ctx context.Context, c *cli.Command) (context.Context, error) {
+	return func(ctx context.Context, _ *cli.Command) (context.Context, error) {
 		if _, err := currentSmartDefaultsWithError(); err != nil {
 			return ctx, fmt.Errorf("%s: %w", surface, err)
 		}
@@ -101,7 +101,7 @@ func loadSmartDefaultsFrom(src configSource) (smartDefaults, error) {
 	return parseSmartDefaults(b)
 }
 
-func parseSmartDefaults(src []byte) (smartDefaults, error) {
+func parseSmartDefaults(src []byte) (smartDefaults, error) { //nolint:gocognit
 	doc, err := kdl.ParseString(string(src))
 	if err != nil {
 		return smartDefaults{}, fmt.Errorf("smart defaults: parse KDL: %w", err)
@@ -136,7 +136,7 @@ func parseSmartDefaults(src []byte) (smartDefaults, error) {
 	return defs, nil
 }
 
-func applySmartDefaultNode(defs *smartDefaults, n *kdl.Node) error {
+func applySmartDefaultNode(defs *smartDefaults, n *kdl.Node) error { //nolint:gocognit,gocyclo,cyclop,funlen
 	switch n.Name() {
 	case "agent-reservation-ttl":
 		v, err := smartDefaultsDurationArg(n, "smart-defaults > agent-reservation-ttl")

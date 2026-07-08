@@ -74,5 +74,5 @@ func currentAgentMode() containerMode {
 	if m, err := parseMode(v); err == nil {
 		return m
 	}
-	return modeClaude
+	return defaultAgentMode()
 }

@@ -21,11 +21,11 @@ var drainAgentLiterals = map[string]bool{
 }
 
 // drainGateAllowlist is the tiny set of core files that legitimately carry
-// per-agent literals until Phase 4 (#401): the switch tables. See docs/agentsapi.md.
+// per-agent literals: the manifest reader plus the signature/review exceptions.
 var drainGateAllowlist = map[string]bool{
-	"container_compute.go": true, // mode consts + agentBinary/argv switch table
-	"agent_signature.go":   true, // roster identity/signer defaults
-	"agent_review.go":      true, // review-panel roster: which families review + their availability preconditions (ward#134)
+	"agent_adapter.go":   true, // manifest reader + runtime adapter projection
+	"agent_signature.go": true, // roster identity/signer defaults
+	"agent_review.go":    true, // review-panel roster: which families review + their availability preconditions (ward#134)
 }
 
 // TestNoPerAgentLiteralsInCore walks every core cmd/ward non-test .go file and
