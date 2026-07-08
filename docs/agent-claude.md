@@ -32,7 +32,9 @@ Full credential path: [agent-credentials.md](agent-credentials.md).
   interactive or director session never re-hits the folder-trust dialog
   ([ward#168](https://forgejo.coilysiren.me/coilyco-flight-deck/ward/issues/168)).
   Read-only director sessions still can dispatch sibling engineers.
-- Smoke gate: the bounded `claude -p` auth probe before launch.
+- Smoke gate: the bounded `claude -p` auth probe before launch, with
+  `--model` when `WARD_CLAUDE_MODEL` is set so stale config fails as
+  `model-config`.
 
 ## Config shape
 
@@ -62,8 +64,9 @@ claude is image-baked. No self-install step.
 
 The auth probe runs as the agent user, times out if it hangs, and aborts the run
 on empty output or timeout. It also checks for the Docker-disk stall case before
-blaming auth, so a full disk does not look like a bad login. `WARD_SMOKE_TEST_SKIP=1`
-bypasses it.
+blaming auth, so a full disk does not look like a bad login. If `WARD_CLAUDE_MODEL`
+is set, the same probe includes `--model` and a bad model trips `model-config`.
+`WARD_SMOKE_TEST_SKIP=1` bypasses it.
 
 ## See also
 

@@ -8,13 +8,17 @@ package ollamaprobe
 
 import (
 	"context"
+	"encoding/json"
 	"fmt"
+	"io"
 	"net"
+	"net/http"
 	"net/url"
 	"os"
 	"strings"
 	"time"
 
+	"github.com/coilyco-flight-deck/ward/internal/agents/modelconfig"
 	"github.com/coilyco-flight-deck/ward/internal/agentsapi"
 )
 
@@ -38,6 +42,15 @@ var (
 // PreLaunch is the headless local-model reachability gate: it probes endpoint and
 // errors when unreachable so the container aborts clean instead of hanging (ward#487).
 func PreLaunch(rc agentsapi.RunCtx, harness, endpoint string) error {
+	return preLaunch(rc, harness, endpoint, "")
+}
+
+// PreLaunchModel extends PreLaunch with a configured-model existence check.
+func PreLaunchModel(rc agentsapi.RunCtx, harness, endpoint, model string) error {
+	return preLaunch(rc, harness, endpoint, model)
+}
+
+func preLaunch(rc agentsapi.RunCtx, harness, endpoint, model string) error {
 	if !rc.Headless {
 		return nil
 	}
@@ -59,8 +72,91 @@ func PreLaunch(rc agentsapi.RunCtx, harness, endpoint string) error {
 	if derr := probe(rc.Ctx, addr); derr != nil {
 		return fmt.Errorf("ollama smoke test: %s's ollama endpoint %s (%s) was unreachable after %s - the dispatched container would hang or fail opaquely instead of a clean abort (ward#487, the local-harness analog of claude's auth smoke test). Is Ollama running and reachable from the container? Point %s at a live endpoint (opencode: WARD_OLLAMA_URL; goose: the SSM tower host /coilysiren/ollama/host) or pass --ts-sidecar to route localhost:11434 to the tower. %s=1 bypasses. (last dial error: %w)", harness, endpoint, addr, probeWindow, harness, skipEnv, derr)
 	}
+	if model = strings.TrimSpace(model); model != "" {
+		if merr := modelExists(rc.Ctx, endpoint, model); merr != nil {
+			return agentsapi.NewGateError(modelconfig.GateName, fmt.Errorf("ollama smoke test: %s configured model %q is stale for %s (ward#670): %s. update the fleet model string or pin WARD_CONFIG_REF to a compatible ref", harness, model, endpoint, oneLineModelErr(merr)))
+		}
+	}
 	rc.Log("ollama smoke test: %s ollama endpoint reachable, proceeding", harness)
 	return nil
+}
+
+// modelExists probes the Ollama model list at endpoint and returns nil only when
+// the configured model is advertised by the backend.
+func modelExists(ctx context.Context, endpoint, model string) error {
+	if ctx == nil {
+		ctx = context.Background()
+	}
+	tagsURL, err := modelTagsURL(endpoint)
+	if err != nil {
+		return err
+	}
+	req, err := http.NewRequestWithContext(ctx, http.MethodGet, tagsURL, nil)
+	if err != nil {
+		return err
+	}
+	client := &http.Client{Timeout: 5 * time.Second}
+	resp, err := client.Do(req)
+	if err != nil {
+		return err
+	}
+	defer resp.Body.Close()
+	body, _ := io.ReadAll(io.LimitReader(resp.Body, 128<<10))
+	if resp.StatusCode/100 != 2 {
+		return fmt.Errorf("HTTP %s from %s: %s", resp.Status, tagsURL, strings.TrimSpace(string(body)))
+	}
+	var parsed struct {
+		Models []struct {
+			Name  string `json:"name"`
+			Model string `json:"model"`
+			ID    string `json:"id"`
+		} `json:"models"`
+	}
+	if err := json.Unmarshal(body, &parsed); err != nil {
+		return fmt.Errorf("decode %s: %w", tagsURL, err)
+	}
+	for _, m := range parsed.Models {
+		for _, cand := range []string{m.Name, m.Model, m.ID} {
+			if modelMatches(cand, model) {
+				return nil
+			}
+		}
+	}
+	return fmt.Errorf("model %q not listed by %s", model, tagsURL)
+}
+
+func modelTagsURL(endpoint string) (string, error) {
+	s := strings.TrimSpace(endpoint)
+	if s == "" {
+		return "", fmt.Errorf("empty endpoint")
+	}
+	if !strings.Contains(s, "://") {
+		s = "http://" + s
+	}
+	u, err := url.Parse(s)
+	if err != nil {
+		return "", err
+	}
+	path := strings.TrimSuffix(u.Path, "/")
+	if strings.HasSuffix(path, "/v1") {
+		path = strings.TrimSuffix(path, "/v1")
+	}
+	if path == "" {
+		u.Path = "/api/tags"
+	} else {
+		u.Path = path + "/api/tags"
+	}
+	return u.String(), nil
+}
+
+func modelMatches(candidate, want string) bool {
+	candidate = strings.TrimSpace(candidate)
+	want = strings.TrimSpace(want)
+	return candidate == want || candidate == "ollama/"+want || strings.TrimPrefix(candidate, "ollama/") == want
+}
+
+func oneLineModelErr(err error) string {
+	return strings.Join(strings.Fields(err.Error()), " ")
 }
 
 // dialAddr normalises an Ollama endpoint (a URL or a bare host[:port]) into the

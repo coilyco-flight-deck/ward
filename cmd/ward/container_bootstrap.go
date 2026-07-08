@@ -4,6 +4,7 @@ import (
 	"bufio"
 	"context"
 	"encoding/json"
+	"errors"
 	"fmt"
 	"io"
 	"os"
@@ -335,6 +336,17 @@ func bootstrapPrelaunchGate(mode containerMode) string {
 	}
 }
 
+// namedGate returns a pre-launch gate override if err carries one.
+func namedGate(err error) (string, bool) {
+	var gateName interface{ GateName() string }
+	if errors.As(err, &gateName) {
+		if name := strings.TrimSpace(gateName.GateName()); name != "" {
+			return name, true
+		}
+	}
+	return "", false
+}
+
 // containerBootstrapCommand is the hidden `ward container bootstrap`: the PID-1
 // entrypoint port (ward#181). Hidden because it is image-internal, not for hand use.
 func containerBootstrapCommand() *cli.Command {
@@ -477,9 +489,13 @@ func (r *Runner) runContainerBootstrap(ctx context.Context, c *cli.Command) erro
 		if serr := lg.PreLaunchCheck(rc); serr != nil {
 			blog("bootstrap prelaunch check failed: %v", serr)
 			blog("fatal: %v", serr)
-			// Name the gate for the reaper's reservation-release comment (ward#609):
-			// claude's gate is auth, the local-model harnesses' is the ollama probe.
-			writeGateFailure(bootstrapPrelaunchGate(mode), serr.Error())
+			// Name the gate for the reaper's reservation-release comment (ward#609).
+			// Typed launch-gate errors can override the default mode gate.
+			gate := bootstrapPrelaunchGate(mode)
+			if named, ok := namedGate(serr); ok {
+				gate = named
+			}
+			writeGateFailure(gate, serr.Error())
 			return serr
 		}
 		blog("bootstrap prelaunch check passed: %s", e.Agent)

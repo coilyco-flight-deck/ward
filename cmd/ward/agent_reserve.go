@@ -754,7 +754,7 @@ func orNoneLabel(s string) string {
 // gateFailure is the pre-launch gate the entrypoint died at, recorded to a file so
 // the reaper's release comment names the gate, error, and recovery (ward#609).
 type gateFailure struct {
-	Gate   string // "auth" | "ollama-probe" | "bootstrap" | ...
+	Gate   string // "auth" | "ollama-probe" | "codex-probe" | "model-config" | "bootstrap" | ...
 	Detail string // the fatal message the entrypoint's die() emitted
 }
 
@@ -834,6 +834,12 @@ func gateRecovery(gate string) (label, recovery string) {
 	case "ollama-probe":
 		return "ollama reachability probe (local-model harness)",
 			"Bring the goose/opencode Ollama endpoint up and reachable from the container (or pass `--ts-sidecar`), then re-dispatch."
+	case "codex-probe":
+		return "codex launch probe",
+			"Inspect the codex config/auth path in the container log, correct it, then re-dispatch."
+	case "model-config":
+		return "model-config pre-launch gate",
+			"Update the fleet model string or pin WARD_CONFIG_REF to a compatible ref, then re-dispatch."
 	case "bootstrap":
 		return "container bootstrap (ward install / clone / credential setup)",
 			"Read the container log for the failing bootstrap step, resolve it, then re-dispatch."

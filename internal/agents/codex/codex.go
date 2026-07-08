@@ -42,6 +42,7 @@ var (
 	_ agentsapi.CredentialProvider = Agent{}
 	_ agentsapi.OnboardingSeeder   = Agent{}
 	_ agentsapi.ConfigComposer     = Agent{}
+	_ agentsapi.LaunchGate         = Agent{}
 )
 
 // New returns codex's Agent.

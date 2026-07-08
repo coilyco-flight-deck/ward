@@ -50,13 +50,11 @@ and any granted or warmed sibling repos already trusted.
 
 ## Smoke gate
 
-None today. codex dispatch proceeds without the host GO/NO-GO preflight that
-[claude](agent-claude.md) runs. The operational consequence: a codex auth failure
-has **no preflight backstop**. Where a bad claude credential is caught by the
-`claude -p` probe before launch, a codex run seeded with a dead
-`~/.codex/auth.json` launches anyway and only fails once inside the container, so
-an operator debugging a stalled codex run should suspect credentials directly
-rather than expecting a launch-time GO/NO-GO to have flagged them.
+codex still has no host GO/NO-GO preflight, but headless launches now run a
+bounded in-container `codex exec` probe before the model starts. The probe uses
+the resolved model and the cheapest sandbox/approval posture, so a stale model
+string fails as `model-config` instead of silently falling back. Other codex
+launch failures still surface through the same probe as `codex-probe`.
 
 ## See also
 
