@@ -558,8 +558,30 @@ func (r *Runner) makeReadOnlyTree(root string) {
 
 // --- forgejo git auth (token rides --env-file, never argv) -------------------
 
+const forgejoGitCredentialsPath = "/etc/ward-git-credentials"
+
+const forgejoGitCredentialHelperPath = "/etc/ward-git-credential-helper"
+
+const forgejoGitCredentialHelperScript = `#!/bin/sh
+cred_file=%q
+case "${1:-}" in
+  get)
+    if [ -r "$cred_file" ]; then
+      exec git credential-store --file="$cred_file" "$@"
+    fi
+    exit 0
+    ;;
+  store|erase)
+    exit 0
+    ;;
+  *)
+    exit 0
+    ;;
+esac
+`
+
 // configureGitAuth ports configure_git_auth: --system git identity + a
-// credential store helper readable by root (reaper) and the dropped agent group.
+// read-only credential helper readable by root (reaper) and the dropped agent group.
 func (r *Runner) configureGitAuth(ctx context.Context, e bootstrapEnv) {
 	_ = r.Runner.Exec(ctx, "git", "config", "--system", "user.name", e.GitUserName)
 	_ = r.Runner.Exec(ctx, "git", "config", "--system", "user.email", e.GitUserEmail)
@@ -570,27 +592,31 @@ func (r *Runner) configureGitAuth(ctx context.Context, e bootstrapEnv) {
 		blog("no FORGEJO_TOKEN: clone/push will only work for anonymous repos")
 		return
 	}
+	if werr := writeForgejoGitCredentialHelper(forgejoGitCredentialHelperPath, forgejoGitCredentialsPath); werr != nil {
+		blog("could not write git credential helper: %v", werr)
+		return
+	}
 	_ = r.Runner.Exec(ctx, "git", "config", "--system", "credential.helper",
-		"store --file=/etc/ward-git-credentials")
+		"!"+forgejoGitCredentialHelperPath)
 	// Push as the forge's bot: FORGEJO_TOKEN carries the Forgejo bot token (coilyco-ops)
 	// or the user-supplied GitHub token with the x-access-token user (ward#245, ward#489).
 	cred := fmt.Sprintf("https://%s:%s@%s\n", e.Forge.gitPushUser(), token, e.CloneHost)
-	if werr := os.WriteFile("/etc/ward-git-credentials", []byte(cred), 0o640); werr != nil {
+	if werr := os.WriteFile(forgejoGitCredentialsPath, []byte(cred), 0o640); werr != nil {
 		blog("could not write git credentials: %v", werr)
 		return
 	}
 	// Readable by root (reaper) and the dropped agent group, not world; git's store
-	// helper clobbers this on clone, re-asserted before the drop (ward#288).
+	// helper stays read-only, but keep the perms explicit before the drop.
 	if gid, gerr := strconv.Atoi(e.AgentGID); gerr == nil {
-		_ = os.Chown("/etc/ward-git-credentials", 0, gid)
+		_ = os.Chown(forgejoGitCredentialsPath, 0, gid)
 	}
-	_ = os.Chmod("/etc/ward-git-credentials", 0o640)
+	_ = os.Chmod(forgejoGitCredentialsPath, 0o640)
 }
 
 // revokePushCredential scopes the revoke to push-to-this-clone: it drops the git push
 // wiring but keeps FORGEJO_TOKEN for dispatch (ward#315). See agent-surface.md.
 func (r *Runner) revokePushCredential(ctx context.Context) {
-	_ = os.Remove("/etc/ward-git-credentials")
+	_ = os.Remove(forgejoGitCredentialsPath)
 	_ = r.Runner.Exec(ctx, "git", "config", "--system", "--unset-all", "credential.helper")
 	blog("read-only session: dropped this clone's push wiring; FORGEJO_TOKEN kept for dispatch-only (file/launch, no push; ward#315)")
 }
@@ -654,10 +680,10 @@ func (r *Runner) bridgeDockerSocket(ctx context.Context, e bootstrapEnv, sock st
 	blog("explore: bridged root:root docker socket to %s for the agent (gid %s; ward#319)", bridge, e.AgentGID)
 }
 
-// ensureGitCredReadable re-asserts the credential perms git's `store` helper
-// clobbers on the root-phase clones; fails loud (ward#288, docs/agent-credentials.md).
+// ensureGitCredReadable re-asserts the credential perms stay readable by the
+// dropped agent and the root reaper; fails loud (ward#288, docs/agent-credentials.md).
 func (r *Runner) ensureGitCredReadable(e bootstrapEnv) error {
-	const f = "/etc/ward-git-credentials"
+	const f = forgejoGitCredentialsPath
 	if !fileExists(f) {
 		return nil
 	}
@@ -682,6 +708,19 @@ func (r *Runner) ensureGitCredReadable(e bootstrapEnv) error {
 	}
 	if fgid, ok := fileGID(info); ok && fgid != gid {
 		return fmt.Errorf("ward#288: %s is group-owned by gid %d, not the agent gid %d; agent cannot read the bot credential", f, fgid, gid)
+	}
+	return nil
+}
+
+// writeForgejoGitCredentialHelper writes the read-only helper that serves `get`
+// from the shared credential file while treating `store` / `erase` as no-op success.
+func writeForgejoGitCredentialHelper(path, credFile string) error {
+	script := fmt.Sprintf(forgejoGitCredentialHelperScript, credFile)
+	if err := os.WriteFile(path, []byte(script), 0o755); err != nil {
+		return fmt.Errorf("ward container bootstrap: write git credential helper %s: %w", path, err)
+	}
+	if err := os.Chmod(path, 0o755); err != nil {
+		return fmt.Errorf("ward container bootstrap: chmod git credential helper %s: %w", path, err)
 	}
 	return nil
 }

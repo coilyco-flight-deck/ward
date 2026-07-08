@@ -388,6 +388,69 @@ func TestReadBootstrapEnvRequired(t *testing.T) {
 	}
 }
 
+// TestWriteForgejoGitCredentialHelper covers the read-only helper contract.
+// `get` reads from the shared file, and `store` / `erase` never create a lock.
+func TestWriteForgejoGitCredentialHelper(t *testing.T) {
+	if _, err := exec.LookPath("git"); err != nil {
+		t.Skip("git not on PATH")
+	}
+	tmp := t.TempDir()
+	credFile := filepath.Join(tmp, "ward-git-credentials")
+	helper := filepath.Join(tmp, "ward-git-credential-helper")
+	if err := writeForgejoGitCredentialHelper(helper, credFile); err != nil {
+		t.Fatalf("write helper: %v", err)
+	}
+	if fi, err := os.Stat(helper); err != nil {
+		t.Fatalf("helper missing: %v", err)
+	} else if fi.Mode().Perm()&0o100 == 0 {
+		t.Fatalf("helper is not executable: %v", fi.Mode())
+	}
+	body, err := os.ReadFile(helper)
+	if err != nil {
+		t.Fatalf("read helper: %v", err)
+	}
+	for _, want := range []string{
+		"case \"${1:-}\" in",
+		"git credential-store --file=\"$cred_file\" \"$@\"",
+		"store|erase)",
+		"exit 0",
+	} {
+		if !strings.Contains(string(body), want) {
+			t.Errorf("helper missing %q:\n%s", want, body)
+		}
+	}
+	seed := "protocol=https\nhost=forgejo.example\nusername=coilyco-ops\npassword=plain-text\n\n"
+	store := exec.Command("git", "credential-store", "--file="+credFile, "store")
+	store.Stdin = strings.NewReader(seed)
+	if out, err := store.CombinedOutput(); err != nil {
+		t.Fatalf("seed credential file: %v\n%s", err, out)
+	}
+	get := exec.Command(helper, "get")
+	get.Stdin = strings.NewReader("protocol=https\nhost=forgejo.example\n\n")
+	out, err := get.CombinedOutput()
+	if err != nil {
+		t.Fatalf("helper get: %v\n%s", err, out)
+	}
+	got := string(out)
+	for _, want := range []string{"username=coilyco-ops", "password=plain-text"} {
+		if !strings.Contains(got, want) {
+			t.Errorf("helper get output missing %q:\n%s", want, got)
+		}
+	}
+	lock := credFile + ".lock"
+	for _, action := range []string{"store", "erase"} {
+		cmd := exec.Command(helper, action)
+		cmd.Stdin = strings.NewReader(seed)
+		out, err := cmd.CombinedOutput()
+		if err != nil {
+			t.Fatalf("helper %s: %v\n%s", action, err, out)
+		}
+		if _, err := os.Stat(lock); !os.IsNotExist(err) {
+			t.Fatalf("helper %s created lock file %s (err=%v)", action, lock, err)
+		}
+	}
+}
+
 // TestForgejoHostFromBase mirrors the bash sed host extraction.
 func TestForgejoHostFromBase(t *testing.T) {
 	cases := map[string]string{
