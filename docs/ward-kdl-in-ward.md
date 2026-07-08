@@ -31,9 +31,11 @@ the `specverb` path (`ward ops forgejo`, cmd/ward/ops.go).
 
 ## How it works
 
-`cmd/ward/wardkdl_exec.go` embeds the exec guardfiles (mirrored into
-`cmd/ward/execassets/` by `make sync-exec-assets`, since `go:embed` cannot reach
-the sibling `.ward/ward-kdl/` dir), parses each with `execverb.Parse`,
+`cmd/ward/wardkdl_exec.go` reads the exec guardfiles off the launch-selected
+config source ([config-source.md](config-source.md), [ward#653](https://forgejo.coilysiren.me/coilyco-flight-deck/ward/issues/653)) - by default the
+baked embeds (mirrored into `cmd/ward/execassets/` by `make sync-exec-assets`,
+since `go:embed` cannot reach the sibling `.ward/ward-kdl/` dir), or a live
+`WARD_CONFIG_REF` bundle - parses each with `execverb.Parse`,
 `execverb.Build`s its group, and grafts it onto the root - creating shared
 intermediate groups (`ops`, `agents`) once. `main.go` calls `mountWardKdlExec`
 before the verb-fallback set is read, so the new top-level groups (`docker`,

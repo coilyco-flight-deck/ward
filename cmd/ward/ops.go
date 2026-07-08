@@ -2,10 +2,11 @@ package main
 
 import (
 	"context"
-	"embed"
 	"encoding/json"
+	"errors"
 	"fmt"
 	"io"
+	"io/fs"
 	"os"
 	"strconv"
 	"strings"
@@ -19,26 +20,11 @@ import (
 	"github.com/urfave/cli/v3"
 )
 
-// ops.go is ward's OWN in-binary embed of the forgejo guardfile runtime, mounted
-// as `ward ops forgejo` (ward#92, #270). See docs/ops-forgejo-in-ward.md.
-
-// opsAssets embeds the forgejo REST guardfile + spec lock (`.generated.` = cp
-// copies of .ward/ward-kdl/) plus the hand-written admin/doctor guardfile (ward#81).
-
-//go:embed opsassets/*.generated.kdl opsassets/*.generated.json
-//go:embed opsassets/forgejo-admin.guardfile.kdl
-var opsAssets embed.FS
-
-// Embed paths named once so the runtime mount and the drift test agree; the
-// admin path is the exec-dialect remote-exec slice (ward#81).
-const (
-	opsForgejoGuardfilePath      = "opsassets/forgejo.guardfile.generated.kdl"
-	opsForgejoSpecLockPath       = "opsassets/forgejo.swagger.lock.generated.json"
-	opsForgejoAdminGuardfilePath = "opsassets/forgejo-admin.guardfile.kdl"
-)
+// ops.go is ward's in-binary forgejo guardfile runtime (`ward ops forgejo`,
+// ward#92/#270), compiled from the launch-selected config source (ward#653).
 
 // opsCommand is the `ops` umbrella: operator verbs run by cli-guard's specverb
-// runtime. A build error degrades to a leaf that surfaces it on invocation.
+// runtime. A build error (bad WARD_CONFIG_REF included) degrades to an error leaf.
 func opsCommand() *cli.Command {
 	forgejo, err := buildForgejoOps()
 	if err != nil {
@@ -57,14 +43,24 @@ func opsCommand() *cli.Command {
 	}
 }
 
-// buildForgejoOps parses the embedded guardfile + spec lock and specverb.Builds
-// the `forgejo` group, audited through ward and SSM-resolved via the aws runner.
+// buildForgejoOps builds the `forgejo` group from the launch-selected config
+// source (ward#653).
 func buildForgejoOps() (*cli.Command, error) {
+	src, err := selectConfigSource()
+	if err != nil {
+		return nil, err
+	}
+	return buildForgejoOpsFrom(src)
+}
+
+// buildForgejoOpsFrom parses src's guardfile + spec lock and specverb.Builds
+// the `forgejo` group, audited through ward and SSM-resolved via the aws runner.
+func buildForgejoOpsFrom(src configSource) (*cli.Command, error) {
 	r := leanRunner()
 
-	gfBytes, err := opsAssets.ReadFile(opsForgejoGuardfilePath)
+	gfBytes, err := fs.ReadFile(src.fsys, src.forgejoGuardfile)
 	if err != nil {
-		return nil, fmt.Errorf("read embedded guardfile: %w", err)
+		return nil, fmt.Errorf("read guardfile: %w", err)
 	}
 	gf, err := guardfile.Parse(gfBytes)
 	if err != nil {
@@ -73,9 +69,9 @@ func buildForgejoOps() (*cli.Command, error) {
 	// Re-root the group prefix to ward's brand so these in-process verbs audit as
 	// `ward.ops.forgejo.*`, not `ward-kdl.*` (ward#270, docs/ops-forgejo-in-ward.md).
 	rerootGroupToWard(gf.Group)
-	spec, err := opsAssets.ReadFile(opsForgejoSpecLockPath)
+	spec, err := fs.ReadFile(src.fsys, src.forgejoSpecLock)
 	if err != nil {
-		return nil, fmt.Errorf("read embedded spec lock: %w", err)
+		return nil, fmt.Errorf("read spec lock: %w", err)
 	}
 
 	forgejo, err := specverb.Build(specverb.Config{
@@ -101,7 +97,7 @@ func buildForgejoOps() (*cli.Command, error) {
 
 	// Graft the exec-dialect admin/doctor remote-exec slice onto the same
 	// forgejo group, so both transports share one operator verb (ward#81).
-	if err := graftForgejoAdminExec(forgejo, r); err != nil {
+	if err := graftForgejoAdminExec(forgejo, src, r); err != nil {
 		return nil, err
 	}
 	return forgejo, nil
@@ -116,12 +112,15 @@ func (r *Runner) forgejoTokenResolver(ctx context.Context, ssmPath string) (stri
 	return r.ssmValueResolver(ctx, ssmPath)
 }
 
-// graftForgejoAdminExec appends the exec-dialect guardfile's built admin/doctor
-// subtrees onto forgejo. See docs/ops-forgejo-admin.md.
-func graftForgejoAdminExec(forgejo *cli.Command, r *Runner) error {
-	gfBytes, err := opsAssets.ReadFile(opsForgejoAdminGuardfilePath)
+// graftForgejoAdminExec appends the admin/doctor subtrees onto forgejo; a source
+// with no admin guardfile withholds the surface. See docs/ops-forgejo-admin.md.
+func graftForgejoAdminExec(forgejo *cli.Command, src configSource, r *Runner) error {
+	gfBytes, err := fs.ReadFile(src.fsys, src.adminGuardfile)
+	if errors.Is(err, fs.ErrNotExist) {
+		return nil
+	}
 	if err != nil {
-		return fmt.Errorf("read embedded admin guardfile: %w", err)
+		return fmt.Errorf("read admin guardfile: %w", err)
 	}
 	gf, err := execverb.Parse(gfBytes)
 	if err != nil {

@@ -292,7 +292,9 @@ func agentSeedPromptWorkflow(ref agentIssueRef, title, body, details string, hea
 var agentModes = mustAgentModes()
 
 func mustAgentModes() []containerMode {
-	fleet, err := loadFleetConfig()
+	// Init-time, so this reads the baked roster: a bad WARD_CONFIG_REF must not
+	// panic here; verb-time fleet consumers fail loud instead (ward#653).
+	fleet, err := loadBakedFleetConfig()
 	if err != nil {
 		panic(fmt.Sprintf("load embedded fleet config for agent modes: %v", err))
 	}

@@ -24,7 +24,7 @@ func TestOpsAssetsMatchWardKDL(t *testing.T) {
 		if err != nil {
 			t.Fatalf("read canonical %s: %v", canonical, err)
 		}
-		got, err := opsAssets.ReadFile(embedPath)
+		got, err := bakedAssets.ReadFile(embedPath)
 		if err != nil {
 			t.Fatalf("read embedded %s: %v", embedPath, err)
 		}

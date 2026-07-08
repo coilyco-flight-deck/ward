@@ -58,10 +58,9 @@ To build `ward` against your own deployment:
 3. Run `make build-ward-kdl`, then `make test`.
 
 Ward's own tracked bundle still carries the coilyco values today ([ward#441](https://forgejo.coilysiren.me/coilyco-flight-deck/ward/issues/441)).
-Sourcing them from aos so ward's tree can go neutral is the staged cutover
-([ward#503](https://forgejo.coilysiren.me/coilyco-flight-deck/ward/issues/503)): ward's release CI now overlays the pinned aos
-`ward-specs` bundle before `go build` ([release.md](release.md)); the tap overlay
-and neutralizing this tree remain.
+Since [ward#653](https://forgejo.coilysiren.me/coilyco-flight-deck/ward/issues/653) a rebuild is optional: the shipped binary resolves a bundle
+live at launch via `WARD_CONFIG_REF` ([config-source.md](config-source.md));
+rebuilding only changes the **baked default**. The release-CI overlay is gone.
 
 ## See also
 

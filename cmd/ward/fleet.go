@@ -1,19 +1,35 @@
 package main
 
-// fleet.go embeds + parses ward's dialect-2 fleet config (cli-guard pkg/fleetconfig):
-// the agent roster + launch shape, mirrored by `make sync-fleet-assets` (drift-tested).
+// fleet.go parses ward's dialect-2 fleet config (cli-guard pkg/fleetconfig) off
+// the launch-selected config source (configsource.go, ward#653; drift-tested).
 
 import (
-	_ "embed"
+	"fmt"
+	"io/fs"
 
 	"forgejo.coilysiren.me/coilyco-flight-deck/cli-guard/pkg/fleetconfig"
 )
 
-//go:embed fleetassets/fleet.generated.kdl
-var fleetGeneratedKDL []byte
-
-// loadFleetConfig parses the embedded fleet config under the Embedded source,
-// failing closed so a broken embed is a build-time test failure, never a run.
+// loadFleetConfig parses the fleet config off the launch-selected source. A
+// bundle failure errors loud at the call site, never a silent baked fallback.
 func loadFleetConfig() (fleetconfig.Fleet, error) {
-	return fleetconfig.Parse(fleetGeneratedKDL)
+	src, err := selectConfigSource()
+	if err != nil {
+		return fleetconfig.Fleet{}, err
+	}
+	return loadFleetConfigFrom(src)
+}
+
+// loadBakedFleetConfig bypasses WARD_CONFIG_REF for the one init-time consumer
+// (the --driver choice list, agent.go): a bad ref must not panic the binary there.
+func loadBakedFleetConfig() (fleetconfig.Fleet, error) {
+	return loadFleetConfigFrom(bakedConfigSource())
+}
+
+func loadFleetConfigFrom(src configSource) (fleetconfig.Fleet, error) {
+	b, err := fs.ReadFile(src.fsys, src.fleetKDL)
+	if err != nil {
+		return fleetconfig.Fleet{}, fmt.Errorf("read fleet config %s: %w", src.fleetKDL, err)
+	}
+	return fleetconfig.Parse(b)
 }

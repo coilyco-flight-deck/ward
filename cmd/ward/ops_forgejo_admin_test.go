@@ -70,7 +70,7 @@ func (cp *execCapture) run(_ context.Context, bin string, argv, _ []string) erro
 // runner, returning the root command and the capture sink.
 func buildAdminCapture(t *testing.T) (*cli.Command, *execCapture) {
 	t.Helper()
-	gfBytes, err := opsAssets.ReadFile(opsForgejoAdminGuardfilePath)
+	gfBytes, err := bakedAssets.ReadFile(opsForgejoAdminGuardfilePath)
 	if err != nil {
 		t.Fatalf("read embedded admin guardfile: %v", err)
 	}

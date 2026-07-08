@@ -1,9 +1,9 @@
 package main
 
 import (
-	"embed"
 	"fmt"
 	"io/fs"
+	"path"
 	"sort"
 
 	"forgejo.coilysiren.me/coilyco-flight-deck/cli-guard/cli/execverb"
@@ -12,35 +12,49 @@ import (
 	"github.com/urfave/cli/v3"
 )
 
-// wardkdl_exec.go auto-mounts the exec-dialect ward-kdl guardfiles into `ward`,
-// generalizing graftForgejoAdminExec (ward#284). See docs/ward-kdl-in-ward.md.
+// wardkdl_exec.go auto-mounts the exec-dialect ward-kdl guardfiles into `ward`
+// (ward#284) off the launch-selected source (ward#653). See docs/ward-kdl-in-ward.md.
 
-// execAssets embeds the exec guardfiles mirrored from .ward/ward-kdl by `make
-// sync-exec-assets` (go:embed can't reach the sibling dir; the drift test guards it).
-
-//go:embed execassets/*.guardfile.kdl
-var execAssets embed.FS
-
-// execAssetsDir is the embed sub-path holding the mirrored guardfiles.
-const execAssetsDir = "execassets"
-
-// mountWardKdlExec grafts every embedded exec guardfile onto root at the path
-// its `wrap ward-kdl <area>...` block names. See docs/ward-kdl-in-ward.md.
+// mountWardKdlExec grafts every exec guardfile in the launch-selected config
+// source onto root at the path its `wrap ward-kdl <area>...` block names.
 func mountWardKdlExec(root *cli.Command, r *Runner) error {
-	entries, err := fs.ReadDir(execAssets, execAssetsDir)
+	src, err := selectConfigSource()
 	if err != nil {
-		return fmt.Errorf("read embedded exec guardfiles: %w", err)
+		return err
+	}
+	return mountWardKdlExecFrom(root, src, r)
+}
+
+// mountWardKdlExecFrom scans src.execDir and grafts each exec guardfile; a mixed
+// bundle dir is filtered to ward-kdl.*.guardfile.kdl files carrying an exec block.
+func mountWardKdlExecFrom(root *cli.Command, src configSource, r *Runner) error {
+	entries, err := fs.ReadDir(src.fsys, src.execDir)
+	if err != nil {
+		return fmt.Errorf("read exec guardfiles: %w", err)
 	}
 	// Sort so the mount order (and the --help listing) is deterministic.
 	names := make([]string, 0, len(entries))
 	for _, e := range entries {
-		if !e.IsDir() {
-			names = append(names, e.Name())
+		if e.IsDir() {
+			continue
 		}
+		if src.execMixedDialects {
+			if ok, _ := path.Match("ward-kdl.*.guardfile.kdl", e.Name()); !ok {
+				continue
+			}
+		}
+		names = append(names, e.Name())
 	}
 	sort.Strings(names)
 	for _, name := range names {
-		if err := mountOneWardKdlExec(root, execAssetsDir+"/"+name, r); err != nil {
+		gfBytes, err := fs.ReadFile(src.fsys, path.Join(src.execDir, name))
+		if err != nil {
+			return fmt.Errorf("mount %s: read: %w", name, err)
+		}
+		if src.execMixedDialects && !isExecDialectGuardfile(gfBytes) {
+			continue // spec-dialect sibling; it rides the specverb path (ops.go)
+		}
+		if err := mountOneWardKdlExec(root, gfBytes, r); err != nil {
 			return fmt.Errorf("mount %s: %w", name, err)
 		}
 	}
@@ -49,11 +63,7 @@ func mountWardKdlExec(root *cli.Command, r *Runner) error {
 
 // mountOneWardKdlExec parses, builds, and grafts a single exec guardfile, a
 // no-op when the leaf path is already taken (hand-written command wins).
-func mountOneWardKdlExec(root *cli.Command, embedPath string, r *Runner) error {
-	gfBytes, err := execAssets.ReadFile(embedPath)
-	if err != nil {
-		return fmt.Errorf("read: %w", err)
-	}
+func mountOneWardKdlExec(root *cli.Command, gfBytes []byte, r *Runner) error {
 	gf, err := execverb.Parse(gfBytes)
 	if err != nil {
 		return fmt.Errorf("parse: %w", err)
