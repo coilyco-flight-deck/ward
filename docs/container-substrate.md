@@ -59,7 +59,7 @@ Because the substrate copy and the target/granted clones hydrate from the same
 grant) ends up under **both** `/substrate/<name>` and `/workspace/<name>` at the
 same HEAD. That overlap is expected: the split is by *role*, not by which repos
 exist where. `/workspace/<name>` is authoritative for work; `/substrate/<name>`
-stays read-only reference even for a repo being actively changed - the
+stays read-only reference even for a repo being actively changed. The
 read-from-either / act-only-on-`/workspace` rule lives in
 [AGENTS.container.md](../cmd/ward/containerassets/AGENTS.container.md).
 

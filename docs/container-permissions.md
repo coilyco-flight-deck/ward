@@ -19,7 +19,9 @@ This is safe because the **container's isolation plus doctrine are the real
 boundary**, not the harness permission system:
 
 - a throwaway clone, torn down after the run;
-- the host tree mounted read-only (only the cwd, for context);
+- the host tree mounted read-only, with `/workspace` treated as read-only to the
+  agent on read-only surface sessions and `/scratch` reserved for throwaway
+  scripts;
 - only the repos this run cloned are present on disk - nothing else is fetched;
 - the [container doctrine](../cmd/ward/containerassets/AGENTS.container.md) wall
   keeps the agent operating only on those repos.
