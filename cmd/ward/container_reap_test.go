@@ -457,6 +457,55 @@ func TestReapTargetTreeLandedAndClosedDoesNotSalvage(t *testing.T) {
 	}
 }
 
+// TestReapTargetTreeLandedWithOnlyProvenanceArtifactDoesNotSalvage covers the
+// ward#662 regression: the reaper must ignore its own provenance file.
+func TestReapTargetTreeLandedWithOnlyProvenanceArtifactDoesNotSalvage(t *testing.T) {
+	origin := t.TempDir()
+	runGit(t, origin, "init", "--bare", "-b", "main")
+	work := t.TempDir()
+	runGit(t, work, "init", "-b", "main")
+	runGit(t, work, "config", "user.email", "test@example.com")
+	runGit(t, work, "config", "user.name", "Test User")
+	runGitCommitAt(t, work, "2026-07-02T06:00:00Z", "base.txt", "base\n", "base")
+	runGit(t, work, "remote", "add", "origin", origin)
+	runGit(t, work, "push", "origin", "main")
+	runGit(t, work, "update-ref", "refs/remotes/origin/main", "HEAD")
+	baseline := mustGitRev(t, work, "HEAD")
+
+	prov := runProvenance{
+		RunID:        "engineer-goose-ward-662",
+		Repo:         "coilyco-flight-deck/ward",
+		Issue:        662,
+		ReservedAt:   "2026-07-02T06:10:00Z",
+		BaselineMain: baseline,
+	}
+	provData, err := json.Marshal(prov)
+	if err != nil {
+		t.Fatal(err)
+	}
+	if err := os.WriteFile(filepath.Join(work, runProvenanceFile), provData, 0o644); err != nil {
+		t.Fatal(err)
+	}
+
+	runGitCommitAt(t, work, "2026-07-02T06:20:00Z", "feat.txt", "feat\n", "ward work\n\ncloses #662")
+	runGit(t, work, "push", "origin", "main")
+	runGit(t, work, "update-ref", "refs/remotes/origin/main", "HEAD")
+
+	r := &Runner{Runner: &shell.Runner{Resolve: shell.PathResolver}}
+	env := reapEnv{Owner: "coilyco-flight-deck", Name: "ward", Base: "https://forgejo.coilysiren.me", Mode: "goose", Issue: 662, Launched: true}
+	if err := r.reapTargetTree(t.Context(), work, env, false); err != nil {
+		t.Fatalf("reapTargetTree on a landed run with only provenance dirty: %v", err)
+	}
+
+	if got, want := mustGitRev(t, origin, "main"), mustGitRev(t, work, "HEAD"); got != want {
+		t.Fatalf("a landed run with only provenance dirty must stay on main: origin main=%s, work HEAD=%s", got, want)
+	}
+	out, _ := exec.Command("git", "-C", origin, "branch", "--list", salvageBranchPrefix+"*").CombinedOutput()
+	if strings.TrimSpace(string(out)) != "" {
+		t.Fatalf("a landed run with only provenance dirty must not create a salvage branch, got: %q", string(out))
+	}
+}
+
 // TestReapTargetTreeResidualOnlyRunWithoutCloseRefSalvages is the ward#515 regression:
 // a residual-only carried run (reaper commit, subject + trailer, NO closes) salvages.
 func TestReapTargetTreeResidualOnlyRunWithoutCloseRefSalvages(t *testing.T) {

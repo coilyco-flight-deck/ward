@@ -195,7 +195,7 @@ func (r *Runner) reapTargetTree(ctx context.Context, work string, env reapEnv, r
 	// The run-owned-landed verdict is computed once here and reused by every gate
 	// below (including executeReap) so the diagnostics block reports what each saw.
 	landed := r.runProvenanceLanded(ctx, work, prov, env.Issue)
-	if env.Issue != 0 && !r.issueClosingReferencePresent(ctx, work, env.Issue) {
+	if env.Issue != 0 && !landed && !r.issueClosingReferencePresent(ctx, work, env.Issue) {
 		fmt.Fprintf(os.Stderr, "ward container reap: missing closes #%d in committed work; salvaging instead of landing on main\n", env.Issue)
 		return r.salvage(ctx, work, env, reasonCloseRef, false, nil, statusSnapshot,
 			reapDecision{Gate: "missing same-repo closing reference", ProvState: "present", Landed: landed})
@@ -300,9 +300,10 @@ func (r *Runner) captureAndCommitResidual(ctx context.Context, work string, env 
 // captureAndCommitResidualRepo is the per-repo half: snapshot, stage, and commit
 // loose work in any clone (the target or a --repo grant), tagged with mode + slug.
 func (r *Runner) captureAndCommitResidualRepo(ctx context.Context, work, mode, slug string) string {
-	status, _ := r.Runner.Capture(ctx, "git", "-C", work, "status", "--porcelain")
+	statusBytes, _ := r.Runner.Capture(ctx, "git", "-C", work, "status", "--porcelain")
+	status := filterReapResidualStatus(string(statusBytes))
 	fmt.Fprintf(os.Stderr, "ward container reap: capture residual status for %s (%s)\n", work, slug)
-	_ = r.Runner.Exec(ctx, "git", "-C", work, "add", "-A")
+	_ = r.Runner.Exec(ctx, "git", "-C", work, "add", "-A", "--", ".", ":(exclude)"+runProvenanceFile)
 	if hasStagedChanges(ctx, r, work) {
 		// Tag the subject with the mode and carry the agent attribution as a
 		// Co-Authored-By trailer (ward#155), naming who produced the work.
@@ -315,6 +316,27 @@ func (r *Runner) captureAndCommitResidualRepo(ctx context.Context, work, mode, s
 		}
 	}
 	return string(status)
+}
+
+// filterReapResidualStatus strips the reaper's own provenance artifact from the
+// residual snapshot so a landed run can still hit the clean-tree fast path.
+func filterReapResidualStatus(status string) string {
+	if strings.TrimSpace(status) == "" {
+		return ""
+	}
+	lines := strings.Split(status, "\n")
+	kept := make([]string, 0, len(lines))
+	for _, line := range lines {
+		trimmed := strings.TrimSpace(line)
+		if trimmed == "" {
+			continue
+		}
+		if strings.HasSuffix(trimmed, runProvenanceFile) {
+			continue
+		}
+		kept = append(kept, line)
+	}
+	return strings.Join(kept, "\n")
 }
 
 // integrate rebases the residual work onto the latest main, reporting whether
