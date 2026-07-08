@@ -72,7 +72,7 @@ A `warded` run that failed or seemed to do nothing has a single symptom-indexed 
 
 ## Three layers, told apart by when they run
 
-`ward` absorbs the operator surface from the retiring [coily][coily]. The pieces are easiest to keep straight by **when** each runs:
+`ward` absorbs the operator surface from the retiring ops CLI. The pieces are easiest to keep straight by **when** each runs:
 
 - **[cli-guard][cli-guard]** - the **engine**. The policy-and-routing framework ward consumes (pinned via go.mod). Thin consumer, not a fork.
 - **[`ward-kdl`](docs/ward-kdl.md)** - the **build-time generator**. Compiles a KDL guardfile into an audited CLI: the `ward ops <api>` REST surfaces (forgejo, aws, tailscale, ...), buildable as `ward-kdl-{read,write,admin}` tiers. Not a public install artifact - its surfaces are embedded in `ward`.
@@ -97,8 +97,6 @@ v0.x, and early on purpose. ward is a single-maintainer tool in active internal 
 ## Related
 
 - [cli-guard][cli-guard] - the underlying security-boundary framework.
-- [coily][coily] - the operator-facing cli-guard consumer whose surface ward absorbs.
-- [cli-mcp][cli-mcp] - a sibling cli-guard consumer that projects a urfave/cli tree as an MCP server.
 - [comparison-openshell.md](docs/comparison-openshell.md) - ward vs NVIDIA OpenShell: a verb-level gate, not a kernel sandbox.
 - [comparison-container-use.md](docs/comparison-container-use.md) - ward vs Dagger container-use: a capability gate and autonomous driver, not container isolation with a human at the merge.
 
@@ -107,8 +105,6 @@ v0.x, and early on purpose. ward is a single-maintainer tool in active internal 
 **Canonical development happens on [Forgejo][ward-forgejo]** - `main`, the issues, and every commit live there. That instance's registration is closed, so the **GitHub mirror is the public front door for everyone except the maintainer**: file a [bug or feature request][new-issue] there with just a GitHub account and a maintainer carries an accepted change across. If you are working directly in the canonical repo, use Forgejo issues and Forgejo `closes #N` links. The full contributor flow is in [CONTRIBUTING.md](CONTRIBUTING.md). Conduct: [Code of Conduct](CODE_OF_CONDUCT.md). Security: [SECURITY.md](SECURITY.md). License: [`LICENSE`](./LICENSE).
 
 [cli-guard]: https://forgejo.coilysiren.me/coilyco-flight-deck/cli-guard
-[coily]: https://github.com/coilyco-bridge/coily
-[cli-mcp]: https://github.com/coilysiren/cli-mcp
 [new-issue]: https://github.com/coilyco-flight-deck/ward/issues/new/choose
 [ward-forgejo]: https://forgejo.coilysiren.me/coilyco-flight-deck/ward
 

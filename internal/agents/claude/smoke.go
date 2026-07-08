@@ -10,6 +10,7 @@ import (
 	"strings"
 	"time"
 
+	"github.com/coilyco-flight-deck/ward/internal/agents/modelconfig"
 	"github.com/coilyco-flight-deck/ward/internal/agentsapi"
 )
 
@@ -51,10 +52,17 @@ func (a Agent) PreLaunchCheck(rc agentsapi.RunCtx) error {
 		rc.Log("auth smoke test: WARNING low disk before probe - %s; a claude startup hang here is likely disk exhaustion, not credentials (ward#273)", diskReport(smokeTestDiskPaths))
 	}
 	rc.Log("auth smoke test: probing claude before launch (ward#222)")
-	probeCtx, cancel := context.WithTimeout(rc.Ctx, 90*time.Second)
+	probeCtx := rc.Ctx
+	if probeCtx == nil {
+		probeCtx = context.Background()
+	}
+	probeCtx, cancel := context.WithTimeout(probeCtx, 90*time.Second)
 	defer cancel()
-	argv := append(setprivPrefix(rc), "claude", "-p", "--output-format", "json", "Reply with the single word: ok")
+	argv := claudeProbeArgv(rc)
 	out, stderr, code := captureProbe(probeCtx, argv)
+	if serr := classifyClaudeModelConfigFailure(rc.ClaudeModel, out, stderr, code); serr != nil {
+		return serr
+	}
 	if probeCtx.Err() == context.DeadlineExceeded {
 		return fmt.Errorf("auth smoke test: claude -p did not respond within 90s - a startup hang, not necessarily an auth problem (ward#222, ward#273). Likely causes: a full disk (claude cannot write ~/.claude), network, or a slow cold start. Disk: %s. If disk is low, free space on the Docker host; otherwise refresh the host claude login (re-run 'claude' on the host) and relaunch. WARD_SMOKE_TEST_SKIP=1 bypasses", diskReport(smokeTestDiskPaths))
 	}
@@ -67,6 +75,32 @@ func (a Agent) PreLaunchCheck(rc agentsapi.RunCtx) error {
 	rc.Log("auth smoke test: claude responded, auth OK")
 	return nil
 }
+
+// claudeProbeArgv builds the bounded auth/model probe argv, including a resolved
+// --model when the fleet config carries one.
+func claudeProbeArgv(rc agentsapi.RunCtx) []string {
+	argv := append(setprivPrefix(rc), "claude", "-p", "--output-format", "json")
+	if rc.ClaudeModel != "" {
+		argv = append(argv, "--model", rc.ClaudeModel)
+	}
+	return append(argv, "Reply with the single word: ok")
+}
+
+// classifyClaudeModelConfigFailure turns a stale model rejection into the named
+// model-config gate. Non-model failures still follow the auth/disk split.
+func classifyClaudeModelConfigFailure(model, out, stderr string, code int) error {
+	model = strings.TrimSpace(model)
+	if model == "" || code == 0 {
+		return nil
+	}
+	combined := strings.TrimSpace(out + "\n" + stderr)
+	if combined == "" || !modelconfig.LooksLike(combined) {
+		return nil
+	}
+	return agentsapi.NewGateError(modelconfig.GateName, fmt.Errorf("claude model %q was rejected by the launch probe (ward#670): %s", model, oneLine(combined)))
+}
+
+func oneLine(s string) string { return strings.Join(strings.Fields(s), " ") }
 
 // setprivPrefix builds the launch prefix that drops to the agent uid/gid with
 // init-groups and pins HOME (`setpriv ... env HOME=<home>`), matching core's.

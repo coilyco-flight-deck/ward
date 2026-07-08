@@ -5,8 +5,8 @@ import (
 	"github.com/coilyco-flight-deck/ward/internal/agentsapi"
 )
 
-// PreLaunchCheck probes the local Ollama endpoint before a headless opencode run so
-// an unreachable model backend aborts clean instead of hanging (ward#487).
+// PreLaunchCheck probes the local Ollama endpoint before a headless opencode run
+// so an unreachable backend or stale configured model aborts cleanly.
 func (a Agent) PreLaunchCheck(rc agentsapi.RunCtx) error {
-	return ollamaprobe.PreLaunch(rc, "opencode", rc.OllamaURL)
+	return ollamaprobe.PreLaunchModel(rc, "opencode", rc.OllamaURL, rc.OpencodeModel)
 }

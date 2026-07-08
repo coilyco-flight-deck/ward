@@ -4,6 +4,7 @@ import (
 	"bufio"
 	"context"
 	"encoding/json"
+	"errors"
 	"fmt"
 	"io"
 	"os"
@@ -335,6 +336,17 @@ func bootstrapPrelaunchGate(mode containerMode) string {
 	}
 }
 
+// namedGate returns a pre-launch gate override if err carries one.
+func namedGate(err error) (string, bool) {
+	var gateName interface{ GateName() string }
+	if errors.As(err, &gateName) {
+		if name := strings.TrimSpace(gateName.GateName()); name != "" {
+			return name, true
+		}
+	}
+	return "", false
+}
+
 // containerBootstrapCommand is the hidden `ward container bootstrap`: the PID-1
 // entrypoint port (ward#181). Hidden because it is image-internal, not for hand use.
 func containerBootstrapCommand() *cli.Command {
@@ -433,6 +445,9 @@ func (r *Runner) runContainerBootstrap(ctx context.Context, c *cli.Command) erro
 	// Creds write + onboarding seed + config compose, each feature-tested per mode
 	// (Phase 3, ward#418); composeAgentContainer holds the order.
 	composeAgentContainer(agent, rc)
+	if herr := r.hydrateMcporter(ctx, e.AgentHome); herr != nil {
+		blog("mcporter hydration warning: %v", herr)
+	}
 	blog("bootstrap agent container composition done")
 
 	_ = os.Setenv("WARD_REAP_WORK", work)
@@ -477,9 +492,13 @@ func (r *Runner) runContainerBootstrap(ctx context.Context, c *cli.Command) erro
 		if serr := lg.PreLaunchCheck(rc); serr != nil {
 			blog("bootstrap prelaunch check failed: %v", serr)
 			blog("fatal: %v", serr)
-			// Name the gate for the reaper's reservation-release comment (ward#609):
-			// claude's gate is auth, the local-model harnesses' is the ollama probe.
-			writeGateFailure(bootstrapPrelaunchGate(mode), serr.Error())
+			// Name the gate for the reaper's reservation-release comment (ward#609).
+			// Typed launch-gate errors can override the default mode gate.
+			gate := bootstrapPrelaunchGate(mode)
+			if named, ok := namedGate(serr); ok {
+				gate = named
+			}
+			writeGateFailure(gate, serr.Error())
 			return serr
 		}
 		blog("bootstrap prelaunch check passed: %s", e.Agent)
@@ -1296,6 +1315,7 @@ func (r *Runner) chownAgentTree(ctx context.Context, e bootstrapEnv, work string
 		filepath.Join(e.AgentHome, ".claude"),
 		filepath.Join(e.AgentHome, ".claude.json"), // onboarding seed, so claude can persist updates (ward#305)
 		filepath.Join(e.AgentHome, ".codex.json"),  // onboarding seed, so codex can persist updates
+		filepath.Join(e.AgentHome, ".mcporter"),
 		filepath.Join(e.AgentHome, ".config"),
 		filepath.Join(e.AgentHome, ".codex"),
 	}

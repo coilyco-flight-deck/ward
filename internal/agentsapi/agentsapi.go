@@ -49,7 +49,31 @@ type OnboardingSeeder interface {
 }
 
 // LaunchGate is implemented by an agent with a pre-launch check that can abort
-// the run (claude's auth smoke test); a failing check returns an error.
+// the run (claude's auth smoke test); a failing check returns an error or GateError.
 type LaunchGate interface {
 	PreLaunchCheck(RunCtx) error
+}
+
+// GateError names a specific pre-launch recovery path, such as model-config,
+// while still carrying the underlying error detail.
+type GateError struct {
+	Gate string
+	Err  error
+}
+
+// Error returns the wrapped error text.
+func (e GateError) Error() string { return e.Err.Error() }
+
+// Unwrap exposes the underlying error for errors.Is/errors.As.
+func (e GateError) Unwrap() error { return e.Err }
+
+// GateName reports the named recovery path.
+func (e GateError) GateName() string { return e.Gate }
+
+// NewGateError wraps err with a named recovery gate.
+func NewGateError(gate string, err error) error {
+	if err == nil {
+		return nil
+	}
+	return GateError{Gate: gate, Err: err}
 }
