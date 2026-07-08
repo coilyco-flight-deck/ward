@@ -325,7 +325,7 @@ func agentHarnessFlags() []cli.Flag {
 			Usage: "harness that drives the work: " + agentHarnessChoices() + " (default claude)",
 		},
 		&cli.StringFlag{
-			Name:  "agent",
+			Name: "agent",
 			Usage: "equal spelling for --harness (ward#660): picks the same harness, " +
 				"neither spelling is preferred",
 		},
@@ -601,17 +601,15 @@ func (r *Runner) resolveAgentWork(ctx context.Context, c *cli.Command, mode cont
 		}
 		fmt.Fprintf(os.Stderr, "%s: note: issue %s is %s, not open - working it anyway (--force/--print).\n", label, ref, st)
 	}
-	// Automation-mode ceiling: only a headless-labeled issue clears an engineer
-	// dispatch (agentic-os#246, ward#607); --force/--print override. See docs.
-	if need, needName, gated := agentSurfaceCeiling(surface); gated {
-		if ceil, modeName := issueModeCeiling(issue.Labels); need > ceil {
-			if !c.Bool("force") && !c.Bool("print") {
-				return resolvedWork{}, dispatchDeclineErr(dispatchModeCeiling, "mode-ceiling",
-					"%s: refusing to dispatch the %s role on %s: it needs a %s-mode issue but the automation mode is %q - relabel the issue `%s` to raise the ceiling, or pass --force to override (rule: surface <= mode on headless > interactive > consult)",
-					label, surface, ref, needName, modeName, needName)
-			}
-			fmt.Fprintf(os.Stderr, "%s: note: issue %s automation mode is %q, below the %s role's %s ceiling - dispatching anyway (--force/--print).\n", label, ref, modeName, surface, needName)
+	// Automation-mode gate: engineer dispatch only refuses issues explicitly
+	// labeled interactive; consult/default issues are dispatchable (ward#663).
+	if surface == "engineer" && issueHasModeLabel(issue.Labels, "interactive") {
+		if !c.Bool("force") && !c.Bool("print") {
+			return resolvedWork{}, dispatchDeclineErr(dispatchModeCeiling, "mode-ceiling",
+				"%s: refusing to dispatch the %s role on %s: the issue is explicitly labeled interactive - remove that label or pass --force to override (consult/default issues dispatch normally)",
+				label, surface, ref)
 		}
+		fmt.Fprintf(os.Stderr, "%s: note: issue %s is explicitly labeled interactive - dispatching anyway (--force/--print).\n", label, ref)
 	}
 	// Resolve the landing policy up front so a bad --workflow fails before any
 	// container spins, and the seed carries the right carry clause (ward#508).
@@ -708,8 +706,8 @@ func (r *Runner) fetchIssueComments(ctx context.Context, ref agentIssueRef) ([]i
 	return cl.listIssueComments(ctx, ref.Owner, ref.Repo, ref.Number)
 }
 
-// The automation-mode ceiling (agentic-os#246, ward#607): ward's own dispatch
-// path re-implements cli-guard's gate; see docs/agent-dispatch-contract.md.
+// The automation-mode gate (ward#663): ward's own dispatch path only refuses an
+// engineer dispatch when the issue is explicitly labeled interactive.
 
 // modeCeilingLevels lists the automation-mode labels low-to-high by autonomy; the
 // index is the level, so the last entry (headless) is the most autonomous.
@@ -743,15 +741,16 @@ func issueModeCeiling(labels []string) (int, string) {
 	return level, name
 }
 
-// agentSurfaceCeiling maps a role to the mode ceiling it needs and whether it is
-// gated: only the engineer (code-landing) is gated; director/advisor are ungated.
-func agentSurfaceCeiling(surface string) (int, string, bool) {
-	switch surface {
-	case "engineer":
-		return len(modeCeilingLevels) - 1, "headless", true
-	default:
-		return 0, "", false
+// issueHasModeLabel reports whether the issue carries the given automation-mode
+// label, ignoring case and surrounding whitespace.
+func issueHasModeLabel(labels []string, want string) bool {
+	want = strings.ToLower(strings.TrimSpace(want))
+	for _, raw := range labels {
+		if strings.ToLower(strings.TrimSpace(raw)) == want {
+			return true
+		}
 	}
+	return false
 }
 
 // runAgentWork resolves the issue, seeds the prompt, runs the autonomous

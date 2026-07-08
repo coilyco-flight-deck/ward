@@ -25,7 +25,7 @@ its `meta.json` outcome below); every non-zero code is a distinct
 * `4` - **no-go** - the interactive pre-flight returned NO-GO (or an unusable WRONG-REPO bounced to a human); nothing launched, a comment was posted ([agent-preflight.md](agent-preflight.md)).
 * `5` - **wrong-repo** - the interactive pre-flight blind-fired the work into another trusted repo; nothing launched here ([agent-wrong-repo.md](agent-wrong-repo.md)).
 * `6` - **issue-closed** - the target issue is already closed, so the re-dispatch guard no-ops instead of spinning a container to rediscover "already done" ([agent-reservation.md](agent-reservation.md)); `--force` works it anyway.
-* `7` - **mode-ceiling** - the issue's automation-mode label sits below the role's ceiling, so the code-landing `engineer` dispatch is refused: an `engineer` run needs a `headless`-labeled issue ([agentic-os#246](https://github.com/coilysiren/agentic-os/issues/246)); relabel to raise the ceiling, or `--force` works it anyway. `director` / `advisor` are ungated. Fires on **every** dispatch (unlike the TTY pre-flight), so the director's headless auto-burndown is covered too.
+* `7` - **mode-ceiling** - the issue is explicitly labeled `interactive`, so the code-landing `engineer` dispatch is refused; consult/default unlabeled issues dispatch normally, and `--force` works the refusal anyway. `director` / `advisor` are ungated. Fires on **every** dispatch (unlike the TTY pre-flight), so the director's headless auto-burndown is covered too.
 
 Codes `4` and `5` only ever arise from the **interactive** pre-flight, which is
 skipped without a TTY (scripted / piped, `--print`, `--no-preflight`) - so a
