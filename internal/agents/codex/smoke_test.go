@@ -32,14 +32,11 @@ func TestCodexProbeArgvUsesAgentHome(t *testing.T) {
 		AgentGID:   "1000",
 	}
 	got := codexProbeArgv(rc)
-	
-	// Check that setpriv prefix with proper environment is included
-	// The first part of the command should be the setpriv prefix
+
 	if len(got) < 7 {
 		t.Fatalf("probe argv should include setpriv prefix, got: %v", got)
 	}
-	
-	// Check for setpriv args
+
 	privArgs := []string{"setpriv", "--reuid=1000", "--regid=1000", "--init-groups"}
 	for _, arg := range privArgs {
 		found := false
@@ -53,8 +50,7 @@ func TestCodexProbeArgvUsesAgentHome(t *testing.T) {
 			t.Fatalf("probe argv missing setpriv argument %q: %v", arg, got)
 		}
 	}
-	
-	// Check for env HOME and CODEX_HOME
+
 	envArgs := []string{"env", "HOME=/home/testuser", "CODEX_HOME=/home/testuser/.codex"}
 	for _, arg := range envArgs {
 		found := false
@@ -66,6 +62,31 @@ func TestCodexProbeArgvUsesAgentHome(t *testing.T) {
 		}
 		if !found {
 			t.Fatalf("probe argv missing env argument %q: %v", arg, got)
+		}
+	}
+}
+
+func TestCodexProbeArgvUsesAgentHomeWithoutSetprivWhenNoIdentity(t *testing.T) {
+	rc := agentsapi.RunCtx{CodexModel: "gpt-5.4", AgentHome: "/home/testuser"}
+	got := codexProbeArgv(rc)
+
+	for _, forbidden := range []string{"setpriv", "--init-groups"} {
+		for _, arg := range got {
+			if arg == forbidden {
+				t.Fatalf("probe argv should not include %q without uid/gid: %v", forbidden, got)
+			}
+		}
+	}
+	for _, want := range []string{"env", "HOME=/home/testuser", "CODEX_HOME=/home/testuser/.codex", "codex", "exec"} {
+		found := false
+		for _, arg := range got {
+			if arg == want {
+				found = true
+				break
+			}
+		}
+		if !found {
+			t.Fatalf("probe argv missing %q: %v", want, got)
 		}
 	}
 }

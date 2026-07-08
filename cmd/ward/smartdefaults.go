@@ -29,6 +29,8 @@ type smartDefaults struct {
 	containerAssetsTTL            time.Duration
 	containerReadOnlyExtraRepoTTL time.Duration
 	containerReapKeep             int
+	agentWorkflowDefault          workflowMode
+	agentWorkflowRepos            map[string]workflowMode
 }
 
 var smartDefaultsCache struct {
@@ -53,6 +55,8 @@ func bakedSmartDefaults() smartDefaults {
 		containerAssetsTTL:            time.Hour,
 		containerReadOnlyExtraRepoTTL: 24 * time.Hour,
 		containerReapKeep:             10,
+		agentWorkflowDefault:          defaultWorkflow,
+		agentWorkflowRepos:            map[string]workflowMode{},
 	}
 }
 
@@ -210,11 +214,90 @@ func applySmartDefaultNode(defs *smartDefaults, n *kdl.Node) error { //nolint:go
 			return err
 		}
 		defs.containerReapKeep = v
+	case "agent-workflow":
+		if err := applySmartDefaultWorkflow(defs, n); err != nil {
+			return err
+		}
 	default:
 		return unknownSmartDefaultsNode("smart-defaults body", n.Name(),
-			"agent-reservation-ttl | agent-reservation-recheck-max | agent-reap-idle | agent-reap-max-cpu | director-max-parallel | director-limit | director-poll-interval | reviewer-timeout | config-bundle-ttl | container-assets-ttl | container-read-only-extra-repo-ttl | container-reap-keep")
+			"agent-reservation-ttl | agent-reservation-recheck-max | agent-reap-idle | agent-reap-max-cpu | director-max-parallel | director-limit | director-poll-interval | reviewer-timeout | config-bundle-ttl | container-assets-ttl | container-read-only-extra-repo-ttl | container-reap-keep | agent-workflow")
 	}
 	return nil
+}
+
+func applySmartDefaultWorkflow(defs *smartDefaults, n *kdl.Node) error {
+	if len(n.Arguments()) != 0 {
+		return fmt.Errorf("smart defaults: smart-defaults > agent-workflow takes no arguments (fail-closed)")
+	}
+	v, ok, err := smartDefaultsStringProp(n, "default", "smart-defaults > agent-workflow default")
+	if err != nil {
+		return err
+	}
+	if ok {
+		wf, err := parseWorkflow(v)
+		if err != nil {
+			return fmt.Errorf("smart defaults: smart-defaults > agent-workflow default: %w (fail-closed)", err)
+		}
+		defs.agentWorkflowDefault = wf
+	}
+	for prop := range n.Properties() {
+		if prop != "default" {
+			return fmt.Errorf("smart defaults: smart-defaults > agent-workflow unknown property %q (want default; fail-closed)", prop)
+		}
+	}
+	if defs.agentWorkflowRepos == nil {
+		defs.agentWorkflowRepos = map[string]workflowMode{}
+	}
+	for _, c := range n.Children().Nodes {
+		if c.Name() != "repo" {
+			return unknownSmartDefaultsNode("smart-defaults > agent-workflow body", c.Name(), "repo")
+		}
+		repo, err := smartDefaultsStringArg(c, "smart-defaults > agent-workflow > repo")
+		if err != nil {
+			return err
+		}
+		if !validWorkflowRepoSlug(repo) {
+			return fmt.Errorf("smart defaults: smart-defaults > agent-workflow > repo %q must be owner/name (fail-closed)", repo)
+		}
+		wfRaw, ok, err := smartDefaultsStringProp(c, "workflow", "smart-defaults > agent-workflow > repo workflow")
+		if err != nil {
+			return err
+		}
+		if !ok {
+			return fmt.Errorf("smart defaults: smart-defaults > agent-workflow > repo %q missing workflow property (fail-closed)", repo)
+		}
+		for prop := range c.Properties() {
+			if prop != "workflow" {
+				return fmt.Errorf("smart defaults: smart-defaults > agent-workflow > repo unknown property %q (want workflow; fail-closed)", prop)
+			}
+		}
+		wf, err := parseWorkflow(wfRaw)
+		if err != nil {
+			return fmt.Errorf("smart defaults: smart-defaults > agent-workflow > repo %q: %w (fail-closed)", repo, err)
+		}
+		defs.agentWorkflowRepos[repo] = wf
+	}
+	return nil
+}
+
+func smartDefaultsStringProp(n *kdl.Node, name, label string) (string, bool, error) {
+	v, ok := n.Properties()[name]
+	if !ok {
+		return "", false, nil
+	}
+	if v.Kind() != kdl.String {
+		return "", true, fmt.Errorf("smart defaults: %s must be a string (fail-closed)", label)
+	}
+	out := strings.TrimSpace(v.String())
+	if out == "" {
+		return "", true, fmt.Errorf("smart defaults: %s must be non-empty (fail-closed)", label)
+	}
+	return out, true, nil
+}
+
+func validWorkflowRepoSlug(s string) bool {
+	owner, repo, ok := strings.Cut(strings.TrimSpace(s), "/")
+	return ok && owner != "" && repo != "" && !strings.Contains(repo, "/") && !strings.ContainsAny(s, " \t#")
 }
 
 func smartDefaultsStringArg(n *kdl.Node, label string) (string, error) {

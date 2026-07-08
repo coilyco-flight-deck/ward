@@ -3,7 +3,6 @@ package main
 import (
 	"context"
 	"os"
-	"path/filepath"
 	"strings"
 	"testing"
 
@@ -192,8 +191,7 @@ func TestWriteTierAuthorizer(t *testing.T) {
 // TestBrokerServerRoundTrip runs the full path over a real unix socket: a write op
 // reaches the executor, a numbered dispatch is served, a number-less one refused.
 func TestBrokerServerRoundTrip(t *testing.T) {
-	dir := t.TempDir()
-	sock := filepath.Join(dir, "broker.sock")
+	sock := shortBrokerSocket(t)
 	ln, err := newBrokerListener(sock, os.Getgid())
 	if err != nil {
 		t.Fatalf("newBrokerListener: %v", err)

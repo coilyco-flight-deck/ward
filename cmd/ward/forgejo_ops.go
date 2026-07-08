@@ -6,6 +6,8 @@ import (
 	"encoding/json"
 	"fmt"
 	"io"
+	"net/http"
+	"net/url"
 	"os"
 	"os/exec"
 	"strconv"
@@ -47,12 +49,18 @@ type repoBrief struct {
 	Empty       bool     `json:"empty"`
 }
 
+type forgejoRepoCapabilities struct {
+	HasPullRequests bool `json:"has_pull_requests"`
+}
+
 // forgejoClient drives Forgejo through `ward ops forgejo`. exe is the resolved
 // ward binary, r runs it audited, and mode signs the bodies it writes (ward#155).
 type forgejoClient struct {
-	r    *Runner
-	exe  string
-	mode containerMode
+	r       *Runner
+	exe     string
+	mode    containerMode
+	baseURL string
+	token   string
 }
 
 // hostForgejoClient builds a client over the in-binary ops mount; auth resolves in
@@ -65,13 +73,20 @@ func (r *Runner) hostForgejoClient(_ context.Context) (*forgejoClient, error) {
 	// Shell back to canonical ward, not the invoked `warded` shim, so the `ops`
 	// call skips the warded->`ward agent` rewrite that rejects --output (ward#304).
 	exe = canonicalWardExe(exe)
-	return &forgejoClient{r: r, exe: exe, mode: currentAgentMode()}, nil
+	return &forgejoClient{r: r, exe: exe, mode: currentAgentMode(), baseURL: forgejoBaseURL}, nil
 }
 
 // withMode pins the signing identity for callers that know the mode rather than
 // inheriting it from the container env. Returns the client.
 func (c *forgejoClient) withMode(m containerMode) *forgejoClient {
 	c.mode = m
+	return c
+}
+
+// withToken pins the already-resolved container Forgejo token for direct API
+// leaves that are not present in the generated ops surface.
+func (c *forgejoClient) withToken(token string) *forgejoClient {
+	c.token = token
 	return c
 }
 
@@ -227,6 +242,72 @@ func (c *forgejoClient) reopenIssue(ctx context.Context, owner, repo string, num
 		return fmt.Errorf("forgejo: reopen issue %s/%s#%d: %w", owner, repo, number, err)
 	}
 	return nil
+}
+
+func (c *forgejoClient) repoPullRequestsEnabled(ctx context.Context, owner, repo string) (bool, error) {
+	out, err := c.run(ctx, "repo", "get", owner, repo, "--output", "json")
+	if err != nil {
+		return false, fmt.Errorf("forgejo: get repo %s/%s: %w", owner, repo, err)
+	}
+	var caps forgejoRepoCapabilities
+	if err := json.Unmarshal(out, &caps); err != nil {
+		return false, fmt.Errorf("forgejo: parse repo %s/%s: %w", owner, repo, err)
+	}
+	return caps.HasPullRequests, nil
+}
+
+func (c *forgejoClient) createPullRequest(ctx context.Context, owner, repo, head, base, title, body string) (string, error) {
+	if strings.TrimSpace(c.token) == "" {
+		return "", fmt.Errorf("no Forgejo token available")
+	}
+	payload, err := json.Marshal(map[string]string{
+		"base":  base,
+		"head":  head,
+		"title": title,
+		"body":  c.mode.signBody(body),
+	})
+	if err != nil {
+		return "", err
+	}
+	baseURL := strings.TrimRight(c.baseURL, "/")
+	if baseURL == "" {
+		baseURL = forgejoBaseURL
+	}
+	endpoint := fmt.Sprintf("%s/api/v1/repos/%s/%s/pulls", baseURL, url.PathEscape(owner), url.PathEscape(repo))
+	req, err := http.NewRequestWithContext(ctx, http.MethodPost, endpoint, bytes.NewReader(payload))
+	if err != nil {
+		return "", err
+	}
+	req.Header.Set("Authorization", "token "+c.token)
+	req.Header.Set("Content-Type", "application/json")
+	req.Header.Set("Accept", "application/json")
+	resp, err := (&http.Client{Timeout: 30 * time.Second}).Do(req)
+	if err != nil {
+		return "", err
+	}
+	defer func() { _ = resp.Body.Close() }()
+	data, _ := io.ReadAll(io.LimitReader(resp.Body, 4096))
+	if resp.StatusCode < 200 || resp.StatusCode >= 300 {
+		return "", fmt.Errorf("Forgejo create PR returned %s: %s", resp.Status, firstLine(string(data)))
+	}
+	var created struct {
+		HTMLURL string `json:"html_url"`
+		URL     string `json:"url"`
+		Number  int    `json:"number"`
+	}
+	if err := json.Unmarshal(data, &created); err != nil {
+		return "", fmt.Errorf("forgejo: parse created pull request: %w", err)
+	}
+	if created.HTMLURL != "" {
+		return created.HTMLURL, nil
+	}
+	if created.URL != "" {
+		return created.URL, nil
+	}
+	if created.Number != 0 {
+		return fmt.Sprintf("%s/%s/%s/pulls/%d", baseURL, owner, repo, created.Number), nil
+	}
+	return "", fmt.Errorf("Forgejo create PR response omitted html_url")
 }
 
 // lockIssue is unsupported: Forgejo's API (gitea-1.22 compat) exposes no issue-lock

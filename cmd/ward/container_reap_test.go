@@ -380,6 +380,35 @@ func TestIssueClosingReferencePresent(t *testing.T) {
 	}
 }
 
+func TestIssueClosingReferencePresentAcceptsClosingKeywords(t *testing.T) {
+	for _, tc := range []struct {
+		msg   string
+		issue int
+		want  bool
+	}{
+		{"repair\n\nFixes #699", 699, true},
+		{"repair\n\nRESOLVES #699", 699, true},
+		{"repair\n\nrefs #699", 699, false},
+		{"repair\n\ncloses #6990", 699, false},
+	} {
+		t.Run(tc.msg, func(t *testing.T) {
+			repo := t.TempDir()
+			runGit(t, repo, "init", "-b", "main")
+			runGit(t, repo, "config", "user.email", "test@example.com")
+			runGit(t, repo, "config", "user.name", "Test User")
+			runGitCommitAt(t, repo, "2026-07-08T10:00:00Z", "base.txt", "base\n", "base")
+			runGit(t, repo, "remote", "add", "origin", repo)
+			runGit(t, repo, "update-ref", "refs/remotes/origin/main", "HEAD")
+			runGitCommitAt(t, repo, "2026-07-08T10:01:00Z", "feat.txt", "feat\n", tc.msg)
+
+			r := &Runner{Runner: &shell.Runner{Resolve: shell.PathResolver}}
+			if got := r.issueClosingReferencePresent(t.Context(), repo, tc.issue); got != tc.want {
+				t.Fatalf("issueClosingReferencePresent(%q, #%d) = %t, want %t", tc.msg, tc.issue, got, tc.want)
+			}
+		})
+	}
+}
+
 func TestRunProvenanceLandedRejectsPreexistingCommit(t *testing.T) {
 	repo := t.TempDir()
 	runGit(t, repo, "init", "-b", "main")
@@ -629,6 +658,87 @@ func TestReapTargetTreeResidualOnlyRunWithoutCloseRefSalvages(t *testing.T) {
 	}
 }
 
+func TestReapTargetTreeRepairsResidualCommitCloseRef(t *testing.T) {
+	origin := t.TempDir()
+	runGit(t, origin, "init", "--bare", "-b", "main")
+	work := t.TempDir()
+	runGit(t, work, "init", "-b", "main")
+	runGit(t, work, "config", "user.email", "test@example.com")
+	runGit(t, work, "config", "user.name", "Test User")
+	runGitCommitAt(t, work, "2026-07-08T09:00:00Z", "base.txt", "base\n", "base")
+	runGit(t, work, "remote", "add", "origin", origin)
+	runGit(t, work, "push", "origin", "main")
+	runGit(t, work, "update-ref", "refs/remotes/origin/main", "HEAD")
+	baseline := mustGitRev(t, work, "origin/main")
+
+	prov := runProvenance{
+		RunID:        "engineer-claude-ward-713",
+		Repo:         "coilyco-flight-deck/ward",
+		Issue:        713,
+		ReservedAt:   "2026-07-08T09:05:00Z",
+		BaselineMain: baseline,
+	}
+	provData, err := json.Marshal(prov)
+	if err != nil {
+		t.Fatal(err)
+	}
+	if err := os.WriteFile(filepath.Join(work, runProvenanceFile), provData, 0o644); err != nil {
+		t.Fatal(err)
+	}
+
+	runGitCommitAt(t, work, "2026-07-08T09:10:00Z", "landed.txt", "landed\n", "landed work\n\ncloses #713")
+	runGit(t, work, "push", "origin", "main")
+	runGit(t, work, "update-ref", "refs/remotes/origin/main", "HEAD")
+	if err := os.WriteFile(filepath.Join(work, "residual.txt"), []byte("residual\n"), 0o644); err != nil {
+		t.Fatal(err)
+	}
+
+	r := &Runner{Runner: &shell.Runner{Resolve: shell.PathResolver}}
+	env := reapEnv{Owner: "coilyco-flight-deck", Name: "ward", Base: "https://forgejo.coilysiren.me", Mode: "claude", Issue: 713, Launched: true, Workflow: workflowDirectMain}
+	if err := r.reapTargetTree(t.Context(), work, env, false); err != nil {
+		t.Fatalf("reapTargetTree repairing a residual closing reference: %v", err)
+	}
+	if got, want := mustGitRev(t, origin, "main"), mustGitRev(t, work, "HEAD"); got != want {
+		t.Fatalf("repair path must push repaired HEAD: origin main=%s work HEAD=%s", got, want)
+	}
+	out, err := exec.Command("git", "-C", work, "log", "-1", "--format=%B").CombinedOutput()
+	if err != nil {
+		t.Fatalf("read repaired commit: %v\n%s", err, string(out))
+	}
+	msg := string(out)
+	if !strings.Contains(msg, "ward-container: residual claude work on coilyco-flight-deck/ward") || !strings.Contains(strings.ToLower(msg), "closes #713") {
+		t.Fatalf("residual commit was not amended with closes #713:\n%s", msg)
+	}
+}
+
+func TestRepairClosingReferenceCreatesEmptyCommitForMultiCommitShape(t *testing.T) {
+	repo := t.TempDir()
+	runGit(t, repo, "init", "-b", "main")
+	runGit(t, repo, "config", "user.email", "test@example.com")
+	runGit(t, repo, "config", "user.name", "Test User")
+	runGitCommitAt(t, repo, "2026-07-08T10:00:00Z", "base.txt", "base\n", "base")
+	runGit(t, repo, "remote", "add", "origin", repo)
+	runGit(t, repo, "update-ref", "refs/remotes/origin/main", "HEAD")
+	runGitCommitAt(t, repo, "2026-07-08T10:01:00Z", "a.txt", "a\n", "agent commit a")
+	runGitCommitAt(t, repo, "2026-07-08T10:02:00Z", "b.txt", "b\n", "agent commit b")
+
+	r := &Runner{Runner: &shell.Runner{Resolve: shell.PathResolver}}
+	env := reapEnv{Owner: "coilyco-flight-deck", Name: "ward", Issue: 713}
+	if err := r.repairClosingReference(t.Context(), repo, env); err != nil {
+		t.Fatalf("repairClosingReference: %v", err)
+	}
+	if got := revCount(t.Context(), r, repo, "origin/main..HEAD"); got != 3 {
+		t.Fatalf("multi-commit repair should add one empty commit, got %d commits", got)
+	}
+	out, err := exec.Command("git", "-C", repo, "log", "-1", "--format=%B").CombinedOutput()
+	if err != nil {
+		t.Fatalf("read repair commit: %v\n%s", err, string(out))
+	}
+	if !strings.Contains(string(out), "ward-container: repair closing reference") || !strings.Contains(strings.ToLower(string(out)), "closes #713") {
+		t.Fatalf("empty repair commit missing closing reference:\n%s", string(out))
+	}
+}
+
 // initEmptyRepoRun builds the empty-repo (no origin/main) establish-main fixture:
 // an empty bare remote plus a work clone with one commit and no origin/main (ward#599).
 func initEmptyRepoRun(t *testing.T, path, content, message string) (remote, work string) {
@@ -654,7 +764,7 @@ func TestReapTargetTreeEstablishesMainOnEmptyRepo(t *testing.T) {
 	remote, work := initEmptyRepoRun(t, "server.py", "print('hi')\n", "build reddit-mcp\n\ncloses #599")
 
 	r := &Runner{Runner: &shell.Runner{Resolve: shell.PathResolver}}
-	env := reapEnv{Owner: "coilyco-flight-deck", Name: "reddit-mcp", Base: "https://forgejo.coilysiren.me", Mode: "claude", Issue: 599, Launched: true}
+	env := reapEnv{Owner: "coilyco-flight-deck", Name: "reddit-mcp", Base: "https://forgejo.coilysiren.me", Mode: "claude", Issue: 599, Launched: true, Workflow: workflowDirectMain}
 	if err := r.reapTargetTree(t.Context(), work, env, true); err != nil {
 		t.Fatalf("reapTargetTree establishing main on an empty repo: %v", err)
 	}
@@ -674,7 +784,7 @@ func TestReapTargetTreeEmptyRepoMissingCloseRefSalvages(t *testing.T) {
 
 	r := &Runner{Runner: &shell.Runner{Resolve: shell.PathResolver}}
 	// Token empty: salvage preserves the branch but files no issue (logged, not fatal).
-	env := reapEnv{Owner: "coilyco-flight-deck", Name: "reddit-mcp", Base: "https://forgejo.coilysiren.me", Mode: "claude", Issue: 599, Launched: true}
+	env := reapEnv{Owner: "coilyco-flight-deck", Name: "reddit-mcp", Base: "https://forgejo.coilysiren.me", Mode: "claude", Issue: 599, Launched: true, Workflow: workflowDirectMain}
 	if err := r.reapTargetTree(t.Context(), work, env, true); err != nil {
 		t.Fatalf("reapTargetTree salvaging a close-refless empty-repo run: %v", err)
 	}
@@ -938,6 +1048,10 @@ type fakeSalvageNotifier struct {
 	created      int
 	createdTitle string
 	createdBody  string
+	prEnabled    bool
+	prURL        string
+	prErr        error
+	prBody       string
 }
 
 func (f *fakeSalvageNotifier) reopenIssue(_ context.Context, _, _ string, number int) error {
@@ -958,10 +1072,25 @@ func (f *fakeSalvageNotifier) createIssue(_ context.Context, _, _, title, body s
 	return 900, nil
 }
 
+func (f *fakeSalvageNotifier) repoPullRequestsEnabled(_ context.Context, _, _ string) (bool, error) {
+	return f.prEnabled, nil
+}
+
+func (f *fakeSalvageNotifier) createPullRequest(_ context.Context, _, _, _, _, _, body string) (string, error) {
+	f.prBody = body
+	if f.prErr != nil {
+		return "", f.prErr
+	}
+	if f.prURL == "" {
+		return "https://forgejo.coilysiren.me/coilyco-flight-deck/ward/pulls/1", nil
+	}
+	return f.prURL, nil
+}
+
 // TestNotifySalvageCarriedIssueRepoensAndComments covers ward#518 deliverable 2:
 // a carried salvage reopens + comments on its issue, filing no standalone issue.
 func TestNotifySalvageCarriedIssueRepoensAndComments(t *testing.T) {
-	f := &fakeSalvageNotifier{}
+	f := &fakeSalvageNotifier{prEnabled: true, prURL: "https://forgejo.coilysiren.me/coilyco-flight-deck/ward/pulls/716"}
 	env := reapEnv{Owner: "coilyco-flight-deck", Name: "ward", Base: "https://forgejo.coilysiren.me", Mode: "claude", Issue: 518}
 	report := salvageReport{
 		Repo:   env.repo(),
@@ -983,17 +1112,20 @@ func TestNotifySalvageCarriedIssueRepoensAndComments(t *testing.T) {
 	if f.created != 0 {
 		t.Errorf("carried salvage must NOT file a standalone issue, got created=%d", f.created)
 	}
-	for _, want := range []string{"Reopened", "ward-salvage/ward-abc123", string(reasonConflict), "git fetch"} {
+	for _, want := range []string{"Reopened", "ward-salvage/ward-abc123", string(reasonConflict), "git fetch", "/pulls/716"} {
 		if !strings.Contains(f.commentBody, want) {
 			t.Errorf("carried-issue comment missing %q\n---\n%s", want, f.commentBody)
 		}
+	}
+	if !strings.Contains(f.prBody, "closes #518") {
+		t.Errorf("salvage PR body must carry the closing ref for the carried issue:\n%s", f.prBody)
 	}
 }
 
 // TestNotifySalvageNoIssueFilesOneStandalone covers ward#518 deliverable 3: a
 // freeform run files exactly one standalone issue, never reopen/append.
 func TestNotifySalvageNoIssueFilesOneStandalone(t *testing.T) {
-	f := &fakeSalvageNotifier{}
+	f := &fakeSalvageNotifier{prEnabled: false}
 	env := reapEnv{Owner: "coilyco-flight-deck", Name: "ward", Base: "https://forgejo.coilysiren.me", Mode: "claude", Issue: 0}
 	report := salvageReport{
 		Repo:   env.repo(),
@@ -1013,6 +1145,9 @@ func TestNotifySalvageNoIssueFilesOneStandalone(t *testing.T) {
 	}
 	if !strings.HasPrefix(f.createdTitle, salvageIssueTitlePrefix) {
 		t.Errorf("standalone salvage issue title %q missing %q prefix", f.createdTitle, salvageIssueTitlePrefix)
+	}
+	if !strings.Contains(f.createdBody, "Pull requests are disabled") && !strings.Contains(f.createdBody, "pull requests are disabled") {
+		t.Errorf("standalone salvage should document branch-only fallback:\n%s", f.createdBody)
 	}
 }
 

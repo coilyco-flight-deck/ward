@@ -11,7 +11,7 @@ import (
 )
 
 // workflowMode is the landing policy for a run. The zero value ("") reads as the
-// default (direct-main), so a plan built without the flag keeps today's behavior.
+// default (PR), so a plan built without the flag follows the configured safe gate.
 type workflowMode string
 
 const (
@@ -25,8 +25,9 @@ const (
 	// landing authority: it neither pushes main nor opens a PR (untrusted targets).
 	workflowPatchOnly workflowMode = "patch-only"
 
-	// defaultWorkflow is the mode a run takes when --workflow is unset.
-	defaultWorkflow = workflowDirectMain
+	// defaultWorkflow is the mode a run takes when --workflow and smart defaults
+	// leave it unset. PR is the safe product default (ward#707).
+	defaultWorkflow = workflowPR
 )
 
 // orDefault collapses the "" zero value onto the default so every helper can read
@@ -56,7 +57,9 @@ func workflowChoices() string {
 // the default and erroring on an unknown mode with a --workflow-shaped message.
 func parseWorkflow(s string) (workflowMode, error) {
 	switch strings.TrimSpace(s) {
-	case "", string(workflowDirectMain):
+	case "":
+		return defaultWorkflow, nil
+	case string(workflowDirectMain):
 		return workflowDirectMain, nil
 	case string(workflowPR):
 		return workflowPR, nil
@@ -68,28 +71,36 @@ func parseWorkflow(s string) (workflowMode, error) {
 }
 
 // workflowFlag is the visible --workflow selector shared by the detached engineer
-// surfaces (a bare ref, `engineer`, freeform). Defaults to direct-main (ward#508).
+// surfaces (a bare ref, `engineer`, freeform). Defaults to the safe PR gate.
 func workflowFlag() cli.Flag {
 	return &cli.StringFlag{
 		Name:  "workflow",
 		Value: string(defaultWorkflow),
-		Usage: "landing policy for the run: " + workflowChoices() + " (default direct-main). " +
+		Usage: "landing policy for the run: " + workflowChoices() + " (default pr unless smart defaults override). " +
 			"direct-main merges to main; pr opens a pull request; patch-only reports a patch and lands nothing.",
 	}
 }
 
 // agentWorkflow resolves the --workflow flag to a workflowMode, erroring on an
-// unknown value. The single seam every dispatch surface reads the mode through.
-func agentWorkflow(c *cli.Command) (workflowMode, error) {
-	return parseWorkflow(c.String("workflow"))
+// unknown value. CLI wins; otherwise smart defaults resolve by target repo.
+func agentWorkflow(c *cli.Command, repoSlug string) (workflowMode, error) {
+	if c.IsSet("workflow") {
+		return parseWorkflow(c.String("workflow"))
+	}
+	defs, err := currentSmartDefaultsWithError()
+	if err != nil {
+		return "", err
+	}
+	if wf, ok := defs.agentWorkflowRepos[strings.TrimSpace(repoSlug)]; ok {
+		return wf, nil
+	}
+	return defs.agentWorkflowDefault.orDefault(), nil
 }
 
 // workflowCarryClause is the workflow-specific tail of the seed's carry sentence:
 // direct-main defers to the forge clause, pr forces a PR, patch-only lands nothing.
 func workflowCarryClause(ref agentIssueRef, wf workflowMode) string {
-	switch wf {
-	case "":
-		return forgeCarryClause(ref)
+	switch wf.orDefault() {
 	case workflowDirectMain:
 		return forgeCarryClause(ref)
 	case workflowPR:
@@ -131,12 +142,7 @@ func patchOnlyCarryClause(ref agentIssueRef) string {
 // workflowLandingPhrase names "done" for the reflection's "only after ..." opener:
 // direct-main folds in the forge (GitHub lands via a PR too), pr/patch-only override.
 func workflowLandingPhrase(ref agentIssueRef, wf workflowMode) string {
-	switch wf {
-	case "":
-		if ref.Forge == forgeGitHub {
-			return "the branch is pushed and the pull request opened"
-		}
-		return "the work is committed, merged to main, and pushed"
+	switch wf.orDefault() {
 	case workflowDirectMain:
 		if ref.Forge == forgeGitHub {
 			return "the branch is pushed and the pull request opened"

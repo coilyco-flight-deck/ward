@@ -266,7 +266,7 @@ func TestBrokerForgejoActionRouting(t *testing.T) {
 // serveTestBroker stands up a real broker over a fresh socket and returns its path.
 func serveTestBroker(t *testing.T, ex broker.Executor) string {
 	t.Helper()
-	sock := filepath.Join(t.TempDir(), "broker.sock")
+	sock := shortBrokerSocket(t)
 	ln, err := newBrokerListener(sock, os.Getgid())
 	if err != nil {
 		t.Fatalf("newBrokerListener: %v", err)
@@ -279,6 +279,16 @@ func serveTestBroker(t *testing.T, ex broker.Executor) string {
 	t.Cleanup(cancel)
 	go func() { _ = srv.Serve(ctx) }()
 	return sock
+}
+
+func shortBrokerSocket(t *testing.T) string {
+	t.Helper()
+	dir, err := os.MkdirTemp("", "ward-broker-")
+	if err != nil {
+		t.Fatalf("broker temp dir: %v", err)
+	}
+	t.Cleanup(func() { _ = os.RemoveAll(dir) })
+	return filepath.Join(dir, "broker.sock")
 }
 
 // markCalled returns an action that records it ran, standing in for the direct leaf.

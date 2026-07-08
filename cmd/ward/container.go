@@ -171,6 +171,7 @@ func buildUpPlan(c *cli.Command, repo targetRepo, mode containerMode, role, cwd,
 		ExtraRepos:     extra,
 		HostNet:        hostNet,
 		TSSidecar:      tsSidecar,
+		SkipPreflight:  c.Bool("skip-preflight") || c.Bool("no-preflight"),
 		ConfigEnv:      configEnv,
 	}, nil
 }

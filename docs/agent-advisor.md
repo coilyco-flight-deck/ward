@@ -50,6 +50,9 @@ It trust-gates the owner and resolves the issue + thread **on the host**, then s
 read-only one-shot container (`WARD_ASK` + `WARD_READONLY`) seeded with the research prompt
 and **captures its stdout**. ward parses the captured plan **host-side**, keeping the
 fan-out deterministic; every post is signed via [attribution](agent-attribution.md).
+If a harness wraps the answer in a CLI transcript, ward extracts the final fenced JSON
+answer before parsing and posts a compact suppression note rather than dumping session
+history when no clean answer can be recovered.
 
 The capture is a plain foreground `docker run` that streams stdout but attaches **no
 stdin** (no `-i`/`-t`) - the one-shot `claude -p` reads none. That is what lets a

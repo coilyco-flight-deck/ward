@@ -635,7 +635,7 @@ func (r *Runner) resolveAgentWork(ctx context.Context, c *cli.Command, mode cont
 	}
 	// Resolve the landing policy up front so a bad --workflow fails before any
 	// container spins, and the seed carries the right carry clause (ward#508).
-	wf, werr := agentWorkflow(c)
+	wf, werr := agentWorkflow(c, ref.repoSlug())
 	if werr != nil {
 		return resolvedWork{}, fmt.Errorf("%s: %w", label, werr)
 	}
@@ -1441,7 +1441,7 @@ func buildAgentPlan(c *cli.Command, mode containerMode, ref agentIssueRef, seed 
 	plan.Forge = ref.Forge
 	// The landing policy rides the plan so it reaches the container env + label and
 	// the reaper (ward#508); already validated upstream, so a parse slip defaults.
-	plan.Workflow, _ = agentWorkflow(c)
+	plan.Workflow, _ = agentWorkflow(c, ref.repoSlug())
 	// The review-panel class rides the plan into WARD_REVIEW_CLASS (ward#134);
 	// validated here so a typo fails the dispatch loudly, not silently in-container.
 	if rc := strings.TrimSpace(c.String("review-class")); rc != "" {
@@ -1842,7 +1842,7 @@ func (r *Runner) runAgentTaskDirect(ctx context.Context, c *cli.Command, mode co
 	}
 	// Validate --workflow before filing an issue so a typo doesn't leave a dangling
 	// ticket behind an unparseable flag (ward#508).
-	wf, werr := agentWorkflow(c)
+	wf, werr := agentWorkflow(c, repo.slug())
 	if werr != nil {
 		return fmt.Errorf("%s: %w", label, werr)
 	}
@@ -1904,7 +1904,7 @@ func printAgentTaskPlan(c *cli.Command, mode containerMode, repo targetRepo, tit
 	previewRef := agentIssueRef{Owner: repo.Owner, Repo: repo.Name, Number: 0}
 	// --print skips the workflow validation gate above (it never files), so a bad
 	// value simply previews as the default rather than erroring here (ward#508).
-	wf, _ := agentWorkflow(c)
+	wf, _ := agentWorkflow(c, repo.slug())
 	reviewGate := reviewGateWanted(c, mode, previewRef)
 	seed := agentSeedPromptWorkflow(previewRef, title, body, "", true, nil, wf, reviewGate, "")
 	plan, err := buildUpPlan(c, repo, mode, roleEngineer, "", "", []string{seed}, false)

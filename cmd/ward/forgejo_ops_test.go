@@ -90,6 +90,7 @@ func TestForgejoClientInvocationsUseAcceptedFlags(t *testing.T) {
 		{name: "closeIssue", path: []string{"issue", "close"}, flags: nil},
 		{name: "reopenIssue", path: []string{"issue", "reopen"}, flags: nil},
 		{name: "listIssues", path: []string{"issue", "list"}, flags: []string{"state", "type", "limit", flagOutput}},
+		{name: "repoPullRequestsEnabled", path: []string{"repo", "get"}, flags: []string{flagOutput}},
 	}
 	for _, tc := range cases {
 		t.Run(tc.name, func(t *testing.T) {

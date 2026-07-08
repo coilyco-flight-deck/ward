@@ -1,18 +1,20 @@
 package main
 
 import (
+	"os"
+	"path/filepath"
 	"strings"
 	"testing"
 )
 
 // TestParseWorkflow covers the --workflow parse gate (ward#508): the three modes,
-// empty defaulting to direct-main, and an unknown value erroring with the choices.
+// empty defaulting to pr, and an unknown value erroring with the choices.
 func TestParseWorkflow(t *testing.T) {
 	for _, tc := range []struct {
 		in   string
 		want workflowMode
 	}{
-		{"", workflowDirectMain},
+		{"", workflowPR},
 		{"direct-main", workflowDirectMain},
 		{"pr", workflowPR},
 		{"patch-only", workflowPatchOnly},
@@ -33,14 +35,14 @@ func TestParseWorkflow(t *testing.T) {
 	}
 }
 
-// TestWorkflowLandsOnMain pins the reaper-facing predicate: only direct-main (and
-// the "" default) may push/merge main; pr and patch-only never do (ward#508).
+// TestWorkflowLandsOnMain pins the reaper-facing predicate: only direct-main may
+// push/merge main; the empty default now resolves to pr and never does (ward#707).
 func TestWorkflowLandsOnMain(t *testing.T) {
-	if !workflowMode("").landsOnMain() || !workflowDirectMain.landsOnMain() {
-		t.Error("direct-main (and the empty default) must land on main")
+	if !workflowDirectMain.landsOnMain() {
+		t.Error("direct-main must land on main")
 	}
-	if workflowPR.landsOnMain() || workflowPatchOnly.landsOnMain() {
-		t.Error("pr/patch-only must NOT land on main")
+	if workflowMode("").landsOnMain() || workflowPR.landsOnMain() || workflowPatchOnly.landsOnMain() {
+		t.Error("default/pr/patch-only must NOT land on main")
 	}
 }
 
@@ -53,10 +55,6 @@ func TestWorkflowCarryClauseDirectMain(t *testing.T) {
 	} {
 		if got, want := workflowCarryClause(ref, workflowDirectMain), forgeCarryClause(ref); got != want {
 			t.Errorf("direct-main carry clause diverged from the forge clause:\n got: %s\nwant: %s", got, want)
-		}
-		// The zero value must resolve to the same default.
-		if workflowCarryClause(ref, "") != forgeCarryClause(ref) {
-			t.Error("empty workflow should resolve to direct-main's forge clause")
 		}
 	}
 }
@@ -107,6 +105,9 @@ func TestAgentSeedPromptWorkflow(t *testing.T) {
 	if !strings.Contains(pr, "the branch is pushed and the pull request opened") {
 		t.Errorf("pr reflection should name the branch+PR landing\n got: %s", pr)
 	}
+	if workflowCarryClause(ref, "") != workflowCarryClause(ref, workflowPR) {
+		t.Error("empty workflow should resolve to the PR carry clause")
+	}
 
 	patch := agentSeedPromptWorkflow(ref, "reframe ward", "do it", "", true, nil, workflowPatchOnly, true, "")
 	if !strings.Contains(patch, "no landing authority") {
@@ -116,10 +117,9 @@ func TestAgentSeedPromptWorkflow(t *testing.T) {
 		t.Errorf("patch-only reflection should name the patch landing\n got: %s", patch)
 	}
 
-	// The plain agentSeedPrompt wrapper must equal the explicit direct-main call, so
-	// every legacy caller keeps today's exact seed (direct-main preserves behavior).
-	if agentSeedPrompt(ref, "reframe ward", "do it", "", true, nil) != direct {
-		t.Error("agentSeedPrompt should equal agentSeedPromptWorkflow(..., direct-main)")
+	// The plain agentSeedPrompt wrapper follows the safe PR default.
+	if agentSeedPrompt(ref, "reframe ward", "do it", "", true, nil) != pr {
+		t.Error("agentSeedPrompt should equal agentSeedPromptWorkflow(..., pr)")
 	}
 }
 
@@ -135,9 +135,9 @@ func TestWorkflowEnvAndLabels(t *testing.T) {
 	if strings.Contains(strings.Join(direct.labels(), " "), labelWorkflow) {
 		t.Error("direct-main plan must NOT carry a ward.workflow label")
 	}
-	// The zero value behaves like direct-main too.
-	if _, ok := (upPlan{Repo: repo}).wardEnv()["WARD_WORKFLOW"]; ok {
-		t.Error("a plan with no workflow set must NOT export WARD_WORKFLOW")
+	// The zero value behaves like the PR default.
+	if got := (upPlan{Repo: repo}).wardEnv()["WARD_WORKFLOW"]; got != "pr" {
+		t.Errorf("a plan with no workflow set WARD_WORKFLOW = %q, want pr", got)
 	}
 
 	patch := upPlan{Role: roleEngineer, Mode: modeClaude, Repo: repo, Issue: 508, Workflow: workflowPatchOnly}
@@ -146,6 +146,53 @@ func TestWorkflowEnvAndLabels(t *testing.T) {
 	}
 	if !strings.Contains(strings.Join(patch.labels(), " "), labelWorkflow+"=patch-only") {
 		t.Errorf("patch-only plan should carry %s=patch-only, got %v", labelWorkflow, patch.labels())
+	}
+}
+
+func TestAgentWorkflowSmartDefaults(t *testing.T) {
+	dir := t.TempDir()
+	body := `smart-defaults {
+    agent-workflow default="direct-main" {
+        repo "coilyco-flight-deck/ward" workflow="pr"
+    }
+}`
+	if err := os.WriteFile(filepath.Join(dir, bundleDefaultsKDLPath), []byte(body), 0o644); err != nil {
+		t.Fatalf("write defaults bundle: %v", err)
+	}
+	t.Setenv(wardConfigRefEnv, "file://"+dir)
+
+	cmd := parseCommandForTest(t, agentSurfaceFlags(), []string{"engineer", "coilyco-flight-deck/agentic-os#1"})
+	wf, err := agentWorkflow(cmd, "coilyco-flight-deck/agentic-os")
+	if err != nil {
+		t.Fatalf("agentWorkflow default: %v", err)
+	}
+	if wf != workflowDirectMain {
+		t.Errorf("default workflow = %q, want direct-main", wf)
+	}
+
+	wf, err = agentWorkflow(cmd, "coilyco-flight-deck/ward")
+	if err != nil {
+		t.Fatalf("agentWorkflow repo override: %v", err)
+	}
+	if wf != workflowPR {
+		t.Errorf("repo override workflow = %q, want pr", wf)
+	}
+
+	cli := parseCommandForTest(t, agentSurfaceFlags(), []string{"engineer", "coilyco-flight-deck/ward#1", "--workflow", "patch-only"})
+	wf, err = agentWorkflow(cli, "coilyco-flight-deck/ward")
+	if err != nil {
+		t.Fatalf("agentWorkflow CLI override: %v", err)
+	}
+	if wf != workflowPatchOnly {
+		t.Errorf("CLI workflow = %q, want patch-only", wf)
+	}
+}
+
+func TestSkipPreflightPropagatesSmokeGateSkip(t *testing.T) {
+	repo := targetRepo{Owner: "coilyco-flight-deck", Name: "ward"}
+	plan := upPlan{Role: roleEngineer, Mode: modeCodex, Repo: repo, Issue: 703, SkipPreflight: true}
+	if got := plan.wardEnv()["WARD_SMOKE_TEST_SKIP"]; got != "1" {
+		t.Errorf("skip-preflight plan WARD_SMOKE_TEST_SKIP = %q, want 1", got)
 	}
 }
 

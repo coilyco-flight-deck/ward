@@ -9,6 +9,7 @@ import (
 	"io"
 	"os"
 	"path/filepath"
+	"regexp"
 	"strconv"
 	"strings"
 	"time"
@@ -227,7 +228,7 @@ func (r *Runner) reapTargetTree(ctx context.Context, work string, env reapEnv, r
 		Findings:         findings,
 	})
 	fmt.Fprintf(os.Stderr, "ward container reap: decision=%d for %s\n", action, work)
-	return r.executeReap(ctx, work, env, action, findings, statusSnapshot, landed)
+	return r.executeReap(ctx, work, env, action, findings, statusSnapshot, landed, prov)
 }
 
 // gitEmptyTree is git's canonical empty-tree object (SHA-1); diffing against it
@@ -370,7 +371,7 @@ func (r *Runner) integrate(ctx context.Context, work string, residual int) bool 
 
 // executeReap carries out the decided action: do nothing, push to main (falling
 // to salvage if the push is rejected), or salvage.
-func (r *Runner) executeReap(ctx context.Context, work string, env reapEnv, action reapAction, findings []scan.Finding, status string, landed bool) error {
+func (r *Runner) executeReap(ctx context.Context, work string, env reapEnv, action reapAction, findings []scan.Finding, status string, landed bool, prov runProvenance) error {
 	switch action {
 	case reapNothing:
 		fmt.Fprintln(os.Stderr, "ward container reap: nothing to reap")
@@ -384,9 +385,22 @@ func (r *Runner) executeReap(ctx context.Context, work string, env reapEnv, acti
 		// Final closing-ref gate LOCAL to the irreversible push (ward#515): re-check
 		// the post-rebase history so no upstream-gate reorder can land a close-refless run.
 		if env.Issue != 0 && !r.issueClosingReferencePresent(ctx, work, env.Issue) {
-			fmt.Fprintf(os.Stderr, "ward container reap: closing reference for #%d absent from the history about to land; salvaging instead of pushing main\n", env.Issue)
-			return r.salvage(ctx, work, env, reasonCloseRef, false, findings, status,
-				reapDecision{Gate: "missing same-repo closing reference (push-site recheck)", ProvState: "present", Landed: landed})
+			if closingReferenceRepairSafe(prov, env) {
+				fmt.Fprintf(os.Stderr, "ward container reap: closing reference for #%d absent from the history about to land; repairing before push\n", env.Issue)
+				if err := r.repairClosingReference(ctx, work, env); err == nil && r.issueClosingReferencePresent(ctx, work, env.Issue) {
+					fmt.Fprintf(os.Stderr, "ward container reap: repaired closing reference for #%d\n", env.Issue)
+				} else {
+					if err != nil {
+						fmt.Fprintf(os.Stderr, "ward container reap: closing reference repair failed: %v\n", err)
+					}
+					return r.salvage(ctx, work, env, reasonCloseRef, false, findings, status,
+						reapDecision{Gate: "missing same-repo closing reference (push-site repair failed)", ProvState: "present", Landed: landed})
+				}
+			} else {
+				fmt.Fprintf(os.Stderr, "ward container reap: closing reference for #%d absent from the history about to land; salvaging instead of pushing main\n", env.Issue)
+				return r.salvage(ctx, work, env, reasonCloseRef, false, findings, status,
+					reapDecision{Gate: "missing same-repo closing reference (push-site recheck)", ProvState: "present", Landed: landed})
+			}
 		}
 		fmt.Fprintln(os.Stderr, "ward container reap: push to main start")
 		out, perr := r.pushCapture(ctx, work, "HEAD:main")
@@ -438,7 +452,6 @@ func (r *Runner) runProvenanceLanded(ctx context.Context, work string, prov runP
 	if rerr != nil {
 		return false
 	}
-	want := fmt.Sprintf("closes #%d", issue)
 	fields := strings.Split(string(out), "\x00")
 	for i := 0; i+2 < len(fields); i += 3 {
 		hash := strings.TrimSpace(fields[i])
@@ -451,11 +464,60 @@ func (r *Runner) runProvenanceLanded(ctx context.Context, work string, prov runP
 		if terr != nil || ts.Before(reservedAt) {
 			continue
 		}
-		if strings.Contains(strings.ToLower(body), want) {
+		if issueClosingReferenceTextPresent(body, issue) {
 			return true
 		}
 	}
 	return false
+}
+
+func closingReferenceRepairSafe(prov runProvenance, env reapEnv) bool {
+	return env.Issue != 0 && prov.Issue == env.Issue && prov.Repo == env.repo().slug()
+}
+
+func (r *Runner) repairClosingReference(ctx context.Context, work string, env reapEnv) error {
+	if env.Issue == 0 {
+		return fmt.Errorf("no carried issue")
+	}
+	if r.issueClosingReferencePresent(ctx, work, env.Issue) {
+		return nil
+	}
+	if revCount(ctx, r, work, "origin/main..HEAD") == 1 {
+		subj, _ := r.Runner.Capture(ctx, "git", "-C", work, "log", "-1", "--format=%s")
+		if strings.HasPrefix(strings.TrimSpace(string(subj)), "ward-container: residual ") {
+			msg, err := r.Runner.Capture(ctx, "git", "-C", work, "log", "-1", "--format=%B")
+			if err != nil {
+				return err
+			}
+			return r.amendClosingReference(ctx, work, string(msg), env.Issue)
+		}
+	}
+	subject := fmt.Sprintf("ward-container: repair closing reference for %s#%d", env.repo().slug(), env.Issue)
+	return r.Runner.Exec(ctx, "git", "-C", work, "commit", "--allow-empty", "-m", subject, "-m", fmt.Sprintf("closes #%d", env.Issue))
+}
+
+func (r *Runner) amendClosingReference(ctx context.Context, work, msg string, issue int) error {
+	repaired := appendClosingReferenceToMessage(msg, issue)
+	tmp, err := os.CreateTemp("", "ward-closing-reference-*.txt")
+	if err != nil {
+		return err
+	}
+	defer func() { _ = os.Remove(tmp.Name()) }()
+	if _, err := tmp.WriteString(repaired); err != nil {
+		_ = tmp.Close()
+		return err
+	}
+	if err := tmp.Close(); err != nil {
+		return err
+	}
+	return r.Runner.Exec(ctx, "git", "-C", work, "commit", "--amend", "-F", tmp.Name())
+}
+
+func appendClosingReferenceToMessage(msg string, issue int) string {
+	if issueClosingReferenceTextPresent(msg, issue) {
+		return strings.TrimRight(msg, "\n") + "\n"
+	}
+	return strings.TrimRight(msg, "\n") + fmt.Sprintf("\n\ncloses #%d\n", issue)
 }
 
 // salvage preserves residual work on a ward-salvage/<id> branch (durable) then
@@ -523,7 +585,7 @@ func (r *Runner) fileSalvageIssue(ctx context.Context, env reapEnv, report salva
 	if err != nil {
 		return err
 	}
-	fc = fc.withMode(containerMode(env.Mode))
+	fc = fc.withMode(containerMode(env.Mode)).withToken(env.Token)
 	return notifySalvage(ctx, fc, env, report)
 }
 
@@ -533,11 +595,14 @@ type salvageNotifier interface {
 	reopenIssue(ctx context.Context, owner, repo string, number int) error
 	commentIssue(ctx context.Context, owner, repo string, number int, body string) error
 	createIssue(ctx context.Context, owner, repo, title, body string) (int, error)
+	repoPullRequestsEnabled(ctx context.Context, owner, repo string) (bool, error)
+	createPullRequest(ctx context.Context, owner, repo, head, base, title, body string) (string, error)
 }
 
 // notifySalvage routes the salvage notice (ward#518): a carried run reopens +
 // comments on its issue, a freeform run files one standalone issue (never append).
 func notifySalvage(ctx context.Context, fc salvageNotifier, env reapEnv, report salvageReport) error {
+	report = openSalvagePullRequest(ctx, fc, env, report)
 	if env.Issue != 0 {
 		// Reopen first (best-effort, idempotent) so the issue never reads "done"
 		// over unmerged work, then post the notice.
@@ -556,6 +621,45 @@ func notifySalvage(ctx context.Context, fc salvageNotifier, env reapEnv, report 
 	}
 	fmt.Fprintf(os.Stderr, "ward container reap: filed standalone salvage issue #%d\n", n)
 	return nil
+}
+
+func openSalvagePullRequest(ctx context.Context, fc salvageNotifier, env reapEnv, report salvageReport) salvageReport {
+	if strings.TrimSpace(report.Branch) == "" {
+		report.PullRequestUnavailable = "salvage branch was not created"
+		return report
+	}
+	enabled, err := fc.repoPullRequestsEnabled(ctx, env.Owner, env.Name)
+	if err != nil {
+		report.PullRequestUnavailable = "could not check repo PR support: " + firstLine(err.Error())
+		return report
+	}
+	if !enabled {
+		report.PullRequestUnavailable = "pull requests are disabled for this repo"
+		return report
+	}
+	title := fmt.Sprintf("ward salvage: %s", report.Branch)
+	body := salvagePullRequestBody(report)
+	if report.Issue != 0 {
+		body = strings.TrimRight(body, "\n") + fmt.Sprintf("\n\ncloses #%d\n", report.Issue)
+	}
+	url, err := fc.createPullRequest(ctx, env.Owner, env.Name, report.Branch, "main", title, body)
+	if err != nil {
+		report.PullRequestUnavailable = "PR creation failed: " + firstLine(err.Error())
+		return report
+	}
+	report.PullRequestURL = url
+	return report
+}
+
+func salvagePullRequestBody(report salvageReport) string {
+	var b strings.Builder
+	fmt.Fprintf(&b, "ward preserved residual work from `%s` on `%s`.\n\n", report.Repo.slug(), report.Branch)
+	fmt.Fprintf(&b, "- **Reason:** %s\n", report.Reason)
+	if report.Issue != 0 {
+		fmt.Fprintf(&b, "- **Carried issue:** #%d\n", report.Issue)
+	}
+	b.WriteString("\nReview the branch before merging. The issue thread carries the full reaper diagnostics.\n")
+	return b.String()
 }
 
 // releaseReservationIfUnstarted retracts the remote issue reservation on a clean
@@ -719,7 +823,6 @@ func (r *Runner) issueClosingReferenceInRange(ctx context.Context, work string, 
 	if issue == 0 {
 		return true
 	}
-	pattern := fmt.Sprintf("closes #%d", issue)
 	out, err := r.Runner.Capture(ctx, "git", "-C", work, "log", "--format=%B", rangeRef)
 	if err != nil {
 		return false
@@ -736,12 +839,23 @@ func (r *Runner) issueClosingReferenceInRange(ctx context.Context, work string, 
 
 	for _, commit := range commits {
 		trimmedCommit := strings.TrimSpace(commit)
-		if trimmedCommit != "" && strings.Contains(strings.ToLower(trimmedCommit), pattern) {
+		if trimmedCommit != "" && issueClosingReferenceTextPresent(trimmedCommit, issue) {
 			return true
 		}
 	}
 
 	return false
+}
+
+func issueClosingReferenceTextPresent(text string, issue int) bool {
+	if issue == 0 {
+		return true
+	}
+	return issueClosingReferenceRE(issue).MatchString(text)
+}
+
+func issueClosingReferenceRE(issue int) *regexp.Regexp {
+	return regexp.MustCompile(`(?i)\b(?:closes|fixes|resolves)\s+#` + regexp.QuoteMeta(strconv.Itoa(issue)) + `\b`)
 }
 
 // preserveExtraRepo pushes a granted repo's un-landed work to a salvage branch so

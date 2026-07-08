@@ -243,6 +243,38 @@ func TestParseReplyPlan(t *testing.T) {
 	}
 }
 
+func TestSanitizeReplyReadExtractsGooseJSONAnswer(t *testing.T) {
+	read := "Goose session started\nworking directory: /workspace/ward\n" +
+		"────────────────────────────────────────\n" +
+		"```json\n{\"summary\":\"Final advisor answer\",\"issues\":[]}\n```\n" +
+		"session saved to /tmp/goose/session.json"
+	clean := sanitizeReplyRead(modeGoose, read)
+	if strings.Contains(clean, "working directory") || strings.Contains(clean, "session saved") {
+		t.Errorf("sanitizeReplyRead leaked Goose transcript wrapper:\n%s", clean)
+	}
+	plan, ok := parseReplyPlan(clean)
+	if !ok {
+		t.Fatalf("sanitized Goose read should still parse as a reply plan:\n%s", clean)
+	}
+	if got := plan.singleComment(); got != "Final advisor answer" {
+		t.Errorf("sanitized Goose summary = %q, want final answer", got)
+	}
+}
+
+func TestSanitizeReplyReadSuppressesGooseTranscriptFallback(t *testing.T) {
+	read := "Goose session started\nworking directory: /workspace/ward\n" +
+		"tool request: shell\nprovider: ollama\nsession saved to /tmp/goose/session.json"
+	clean := sanitizeReplyRead(modeGoose, read)
+	for _, leaked := range []string{"working directory", "tool request", "session saved"} {
+		if strings.Contains(clean, leaked) {
+			t.Errorf("sanitized fallback leaked %q:\n%s", leaked, clean)
+		}
+	}
+	if !strings.Contains(clean, "suppressed the raw `goose` advisor transcript") {
+		t.Errorf("sanitized fallback should post a compact suppression note, got:\n%s", clean)
+	}
+}
+
 // A bare {...} span (no fence) is still recovered; broken braces are rejected.
 func TestExtractJSONBlock(t *testing.T) {
 	if got, ok := extractJSONBlock("noise {\"a\":1} tail"); !ok || got != "{\"a\":1}" {

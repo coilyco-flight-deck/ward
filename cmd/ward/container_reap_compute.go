@@ -276,6 +276,10 @@ type salvageReport struct {
 	// Diagnostics is the ward#531 block folded into the issue body so the same facts
 	// survive on the durable notification, not only on ephemeral stderr.
 	Diagnostics reapDiagnostics
+	// PullRequestURL is the salvage PR opened for this branch when PRs are available.
+	PullRequestURL string
+	// PullRequestUnavailable names why ward fell back to branch-only salvage.
+	PullRequestUnavailable string
 }
 
 // salvageIssueTitle is stable per repo+branch so duplicate detection works.
@@ -298,7 +302,7 @@ func salvageIssueBody(r salvageReport) string {
 func salvageCommentBody(r salvageReport) string {
 	var b strings.Builder
 	b.WriteString("## ⚠️ Reopened: this run's work did not land on `main`\n\n")
-	fmt.Fprintf(&b, "An ephemeral `ward container` (%s mode) dispatched for this issue finished but its work was **not merged to `main`**, so the reaper preserved it on a branch before teardown and reopened the issue (its `closes #%d` never reached `main`). Recover from the salvage branch below.\n\n", r.Mode, r.Issue)
+	fmt.Fprintf(&b, "An ephemeral `ward container` (%s mode) dispatched for this issue finished but its work was **not merged to `main`**, so the reaper preserved it on a branch before teardown and reopened the issue (a closing reference for #%d never reached `main`). Recover from the salvage branch below.\n\n", r.Mode, r.Issue)
 	b.WriteString(salvageDetailBody(r))
 	return b.String()
 }
@@ -309,6 +313,11 @@ func salvageDetailBody(r salvageReport) string {
 	var b strings.Builder
 	fmt.Fprintf(&b, "- **Repo:** `%s`\n", r.Repo.slug())
 	fmt.Fprintf(&b, "- **Salvage branch:** `%s`\n", r.Branch)
+	if r.PullRequestURL != "" {
+		fmt.Fprintf(&b, "- **Pull request:** %s\n", r.PullRequestURL)
+	} else if r.PullRequestUnavailable != "" {
+		fmt.Fprintf(&b, "- **Pull request:** not opened - %s\n", r.PullRequestUnavailable)
+	}
 	fmt.Fprintf(&b, "- **Reason:** %s\n", r.Reason)
 	if r.TokenAge != "" {
 		fmt.Fprintf(&b, "- **Container uptime at reap:** %s (age of the baked Forgejo PAT snapshot; a long-lived container is likelier to carry a rotated token)\n", r.TokenAge)
@@ -332,6 +341,11 @@ func salvageDetailBody(r salvageReport) string {
 	fmt.Fprintf(&b, "git fetch %s %s\n", r.Repo.cloneURL(r.Base), r.Branch)
 	fmt.Fprintf(&b, "git checkout -b %s FETCH_HEAD\n", r.Branch)
 	b.WriteString("```\n\n")
+
+	if r.Reason == reasonCloseRef && r.Issue != 0 {
+		b.WriteString("This salvage was blocked by a missing closing reference. To recover, amend or cherry-pick the salvaged work so the landing commit message includes `closes #")
+		fmt.Fprintf(&b, "%d`, or add a small empty trailer commit with `closes #%d`, then land the branch.\n\n", r.Issue, r.Issue)
+	}
 
 	if len(r.Findings) > 0 {
 		b.WriteString("## Junk-scan findings\n\nThese paths kept the diff off `main`. Review before merging:\n\n")

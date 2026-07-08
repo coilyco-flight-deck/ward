@@ -55,13 +55,14 @@ func codexProbeArgv(rc agentsapi.RunCtx) []string {
 	return append(argv, "Reply with exactly ok.")
 }
 
-// setprivPrefix builds the launch prefix that drops to the agent uid/gid with
-// init-groups and pins HOME/CODEX_HOME (`setpriv ... env HOME=<home> CODEX_HOME=<home>/.codex`), matching core's.
+// setprivPrefix builds the launch prefix that pins HOME/CODEX_HOME and, when the
+// container resolved an agent uid/gid, drops to that identity like the launch path.
 func setprivPrefix(rc agentsapi.RunCtx) []string {
-	argv := []string{
-		"setpriv", "--reuid=" + rc.AgentUID, "--regid=" + rc.AgentGID, "--init-groups",
-		"env", "HOME=" + rc.AgentHome, "CODEX_HOME=" + rc.AgentHome + "/.codex",
+	argv := make([]string, 0, 7)
+	if rc.AgentUID != "" && rc.AgentGID != "" {
+		argv = append(argv, "setpriv", "--reuid="+rc.AgentUID, "--regid="+rc.AgentGID, "--init-groups")
 	}
+	argv = append(argv, "env", "HOME="+rc.AgentHome, "CODEX_HOME="+rc.AgentHome+"/.codex")
 	return argv
 }
 

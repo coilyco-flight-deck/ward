@@ -118,9 +118,10 @@ func (r *Runner) runAgentReply(ctx context.Context, c *cli.Command, mode contain
 	}
 	cl = cl.withMode(mode)
 
-	// The research emits a structured plan: parse + 2+ trusted repos fans out;
-	// single-repo or an unparseable read stays a comment (ward#424, agent-advisor.md).
-	plan, parsed := parseReplyPlan(read)
+	// The research emits a structured plan: parse + 2+ trusted repos fans out.
+	// Sanitize first so a harness transcript can never become the fallback comment.
+	postRead := sanitizeReplyRead(mode, read)
+	plan, parsed := parseReplyPlan(postRead)
 	if parsed {
 		allowed, dropped := r.partitionReplySpecs(plan.Issues)
 		if distinctRepoCount(allowed) >= 2 {
@@ -128,11 +129,11 @@ func (r *Runner) runAgentReply(ctx context.Context, c *cli.Command, mode contain
 		}
 		body := plan.singleComment()
 		if strings.TrimSpace(body) == "" {
-			body = read
+			body = replyExtractionFailureNote(mode)
 		}
 		return r.postReplySingle(ctx, cl, mode, ref, level, prompt, body, dropped, label)
 	}
-	return r.postReplySingle(ctx, cl, mode, ref, level, prompt, read, nil, label)
+	return r.postReplySingle(ctx, cl, mode, ref, level, prompt, postRead, nil, label)
 }
 
 // postReplySingle posts the common-case single comment on the source issue; any
@@ -391,6 +392,55 @@ func parseReplyPlan(read string) (*replyPlan, bool) {
 		return nil, false
 	}
 	return &p, true
+}
+
+// sanitizeReplyRead strips harness transcript wrappers before parse/fallback so
+// advisor ref mode posts the answer, not the Goose session history (ward#708).
+func sanitizeReplyRead(mode containerMode, read string) string {
+	trimmed := strings.TrimSpace(read)
+	if trimmed == "" {
+		return ""
+	}
+	if blk, ok := extractJSONBlock(trimmed); ok {
+		var p replyPlan
+		if err := json.Unmarshal([]byte(blk), &p); err == nil {
+			return "```json\n" + blk + "\n```"
+		}
+		if looksLikeHarnessTranscript(mode, trimmed) {
+			return replyExtractionFailureNote(mode)
+		}
+	}
+	if looksLikeHarnessTranscript(mode, trimmed) {
+		return replyExtractionFailureNote(mode)
+	}
+	return trimmed
+}
+
+func replyExtractionFailureNote(mode containerMode) string {
+	return fmt.Sprintf("ward suppressed the raw `%s` advisor transcript because it could not extract a clean final answer. Re-run the advisor or inspect the container logs if the missing transcript is needed.", mode)
+}
+
+func looksLikeHarnessTranscript(mode containerMode, read string) bool {
+	if mode != modeGoose {
+		return false
+	}
+	lower := strings.ToLower(read)
+	score := 0
+	for _, marker := range []string{
+		string(modeGoose),
+		"session",
+		"working directory",
+		"tool request",
+		"tool response",
+		"logging",
+		"provider",
+		"──",
+	} {
+		if strings.Contains(lower, marker) {
+			score++
+		}
+	}
+	return strings.Contains(lower, string(modeGoose)) && score >= 2
 }
 
 // extractJSONBlock pulls the JSON object from a read: it anchors on a ```json fence

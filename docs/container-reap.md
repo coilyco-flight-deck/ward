@@ -36,28 +36,34 @@ does can defeat it. It is a hidden entrypoint-called verb.
    re-reads its dispatch provenance here to confirm the landed history carries
    the same-repo `closes #N` before reading as success. A landed run missing
    that reference is a failed invariant, not a quiet success.
-5. Verifies the carried issue has the same-repo `closes #N` reference when
-   residual work remains or the run needs the post-rebase push-site re-check.
-   Missing reference means salvage, not push.
+5. Verifies the carried issue has a same-repo closing reference (`closes`,
+   `fixes`, or `resolves`) when residual work remains or the run needs the
+   post-rebase push-site re-check. Missing reference means salvage, not push,
+   unless provenance safely identifies the carried issue and the final push-site
+   repair can append `closes #N` before landing.
 6. Integrates onto the latest `main` (`rebase`; conflicts route to salvage).
 7. Scans the residual diff for junk that should never land on `main`: vendored
    trees (`node_modules`, ...), credential files (`.env`, `*.pem`, ...), blobs.
 8. Decides deterministically:
-   - clean diff + clean integration -> **re-checks the carried `closes #N` is in
-     the exact post-rebase history about to land, then push straight to `main`**.
+   - clean diff + clean integration -> **re-checks the carried closing reference
+     is in the exact post-rebase history about to land, repairs `closes #N` when
+     safe, then pushes straight to `main`**.
      This push-site re-check ([ward#515](https://forgejo.coilysiren.me/coilyco-flight-deck/ward/issues/515))
      co-locates the closing-ref invariant with the irreversible push, so a
      residual-only run whose sole landable commit is the reaper's own
      `ward-container: residual ... work on <slug>` commit (subject + attribution
-     trailer, **no** `closes #N`) can never reach `main` even if a future
+     trailer, **no** closing reference) can never reach `main` even if a future
      reordering of the step-5 gate regresses - the ordering churn of
      [ward#513](https://forgejo.coilysiren.me/coilyco-flight-deck/ward/issues/513)/[ward#518](https://forgejo.coilysiren.me/coilyco-flight-deck/ward/issues/518)
      already broke that gate once.
    - anything else (conflict, scan finding, missing closing reference, rejected
      push) -> **salvage**: push to
      a `ward-salvage/<id>` branch (durable), then notify - a **carried**
-     run comments the notice back on its issue and **reopens** it; a **freeform**
-     run files exactly **one** standalone `[ward-salvage]` issue, never appended.
+     run comments the notice back on its issue and **reopens** it; when PRs are
+     available ward opens a pull request for the salvage branch and links it in
+     the notice, otherwise it states the branch-only fallback reason. A
+     **freeform** run files exactly **one** standalone `[ward-salvage]` issue,
+     never appended.
 9. Verifies each `--repo` grant landed: reads `WARD_EXTRA_REPOS` and, for each
    grant, checks whether its work is present on the freshly-fetched
    `origin/main` - **content**, not `HEAD == origin/main` equality. A grant lands

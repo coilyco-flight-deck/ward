@@ -9,23 +9,26 @@ container, one issue; the workflow decides only *how it lands*, not *what it
 builds*.
 
 ```bash
-warded engineer #98 --workflow direct-main   # (default) merge to main, push, close
-warded engineer #98 --workflow pr            # branch + pull request; a human merges
+warded engineer #98                          # default: branch + pull request
+warded engineer #98 --workflow direct-main   # merge to main, push, close
+warded engineer #98 --workflow pr            # branch + pull request
 warded engineer #98 --workflow patch-only    # produce a patch, land nothing
 ```
 
-The default is `direct-main`, so an unflagged run behaves exactly as it always
-has. The mode is visible in `--print` output, rides the container as the
-`WARD_WORKFLOW` env var and a `ward.workflow` label, and is read by the reaper.
+The built-in default is `pr`. A selected `smart-defaults` bundle can set a fleet
+default and per-repo overrides under `agent-workflow`. CLI `--workflow` wins over
+both, and a repo override wins over the fleet default. The resolved mode is
+visible in `--print` output, rides the container as the `WARD_WORKFLOW` env var
+and a `ward.workflow` label, and is read by the reaper.
 
 ## The three modes
 
-- **`direct-main`** *(default)* - the fast path: implement, commit, merge to
+- **`direct-main`** - the fast path: implement, commit, merge to
   `main`, push, and close the issue with a `closes #N` trailer. Intended for solo
   repos, trusted automation, and low-review surfaces. On **GitHub** (whose `main`
   is typically protected) `direct-main` already lands via a pull request - the
   forge decides, so the two collapse there.
-- **`pr`** - carry the work to a **branch and a pull request** instead of landing
+- **`pr`** *(default)* - carry the work to a **branch and a pull request** instead of landing
   on `main` directly. The PR is the merge gate; a human or a follow-up loop lands
   it. The seed tells the agent to push the branch and open the PR, and **not** to
   push `main`.
@@ -37,10 +40,23 @@ has. The mode is visible in `--print` output, rides the container as the
 
 ## Which mode for which trust level
 
-- **High trust** (your own repo, an automation repo you own) - `direct-main`.
+- **High trust with no review need** (your own solo repo, an automation repo you own) - `direct-main`.
 - **Shared / reviewed** (a team repo where changes get looked at) - `pr`.
 - **Low trust / exploratory** (an external target, a risky change you want to eyeball
   before it touches the tree) - `patch-only`.
+
+## Smart-defaults shape
+
+```kdl
+smart-defaults {
+    agent-workflow default="pr" {
+        repo "coilyco-flight-deck/ward" workflow="pr"
+    }
+}
+```
+
+Invalid configured workflow values fail closed during dispatch, before a
+container launches.
 
 ## What the mode actually changes
 
@@ -48,8 +64,9 @@ has. The mode is visible in `--print` output, rides the container as the
   retrospective's "only after ..." landing phrase both shift with the mode, so a
   `patch-only` run is never told to merge to `main`, and a `pr` run is never told
   to push it. See [agent.md](agent.md) for the seed shape.
-- **Container env + label.** A non-default run exports `WARD_WORKFLOW=<mode>` and
-  wears a `ward.workflow=<mode>` label; `direct-main` omits both.
+- **Container env + label.** Any resolved non-`direct-main` run exports
+  `WARD_WORKFLOW=<mode>` and wears a `ward.workflow=<mode>` label; `direct-main`
+  omits both.
 - **The reaper.** `ward container reap` normally force-lands residual work on
   `main` at teardown. For a `pr`/`patch-only` run it reads `WARD_WORKFLOW` and
   **refuses to push `main`**, preserving any residual work on a `ward-salvage/<id>`
@@ -63,7 +80,8 @@ This first slice is deliberately minimal:
   layer: the container still carries a push-capable token. Hard credential scoping
   (a read-only token) is the deferred "read-only credential hardening".
 - A `pr`/`patch-only` run's residual local commits are preserved on a salvage
-  branch by the reaper (safe, but noisier than a dedicated "held" outcome).
+  branch by the reaper. When Forgejo PRs are available, the reaper also opens a
+  PR for the salvage branch and links it from the salvage comment.
 - The autonomous [pre-flight](agent-preflight.md) still reads in merge-to-main
   terms; it judges feasibility, not the landing contract, so it is left as-is.
 

@@ -456,6 +456,9 @@ type upPlan struct {
 	// Workflow is the run's landing policy (--workflow, ward#508): non-direct-main
 	// runs export WARD_WORKFLOW + a ward.workflow label. See docs/agent-workflow.md.
 	Workflow workflowMode
+	// SkipPreflight mirrors --skip-preflight into the container launch gate so host
+	// preflight/review and in-container smoke probes share the same escape hatch.
+	SkipPreflight bool
 	// ReviewClass pins the pre-landing review panel's autonomy class into the
 	// container (WARD_REVIEW_CLASS, ward#134). See docs/dispatch-review.md.
 	ReviewClass string
@@ -661,6 +664,9 @@ func (p upPlan) wardEnv() map[string]string { //nolint:gocyclo,cyclop
 	// force-push main (ward#508); direct-main omits the key, keeping today's env intact.
 	if !p.Workflow.landsOnMain() {
 		env["WARD_WORKFLOW"] = string(p.Workflow.orDefault())
+	}
+	if p.SkipPreflight {
+		env["WARD_SMOKE_TEST_SKIP"] = "1"
 	}
 	// The review panel's autonomy class rides in so the in-container gate reads it
 	// deterministically, never from the (untrusted) worker (ward#134).

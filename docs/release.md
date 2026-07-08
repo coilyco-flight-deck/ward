@@ -64,7 +64,9 @@ OS, so every install channel is a **push** from the tag build rather than a poll
   secret carried in the push URL (never echoed; git masks credentials in any URL
   it prints), mirroring how `publish-binaries` uses `CI_RELEASE_TOKEN`. The job
   refreshes the per-platform release-asset URLs and checksums, and guards up
-  front so a missing secret fails loudly.
+  front so a missing secret fails loudly. It depends on `publish-binaries`, so
+  the formula hashes are computed only after the binary assets are uploaded; a
+  missing asset is reported with the exact release URL that failed.
 - **bump-scoop-manifest** - the Windows sibling ([ward#571](https://forgejo.coilysiren.me/coilyco-flight-deck/ward/issues/571)). Writes the whole
   `bucket/ward.json` (version + the amd64/arm64 release URLs + the two windows
   hashes) into the scoop bucket (`coilyco-flight-deck/scoop-bucket`) and pushes,
