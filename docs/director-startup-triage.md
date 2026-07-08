@@ -21,7 +21,7 @@ fit the flow, not add a step - and applies the `tooling-issue-prioritization` me
    bypass, data loss, crashloop / pipeline-down, blocks-all-committed-work. A hit nominates a
    P0 **candidate**. The net over-matches on purpose (a topic mention trips it); precision
    comes from the confirm step, not tighter regexes.
-2. **Batched judgment one-shot.** One host one-shot per repo - director's **own** `--driver`,
+2. **Batched judgment one-shot.** One host one-shot per repo - director's **own** `--harness`,
    the same path the per-tick dispatch decision uses, not a new harness - judges every
    untriaged issue at once. Per issue it returns an urgency `SCORE` (0-3), an automation
    `MODE`, a confidence, and for a P0 candidate an active-incident confirm.

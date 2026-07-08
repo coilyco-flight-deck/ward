@@ -565,7 +565,7 @@ func TestPostReservationComment(t *testing.T) {
 func TestReservationCommentBodyHasMarker(t *testing.T) {
 	now := time.Date(2026, 6, 18, 12, 0, 0, 0, time.UTC)
 	body := reservationCommentBody(modeCodex, "engineer-codex-ward-142", "tower", now, "", nil)
-	for _, want := range []string{agentReservationMarker, "ward agent --driver codex", "engineer-codex-ward-142", "tower"} {
+	for _, want := range []string{agentReservationMarker, "ward agent --harness codex", "engineer-codex-ward-142", "tower"} {
 		if !strings.Contains(body, want) {
 			t.Errorf("reservation comment missing %q\n got: %s", want, body)
 		}
@@ -745,7 +745,7 @@ func TestReservationSeedContextRender(t *testing.T) {
 		"<details><summary>run seed context",
 		"coilyco-flight-deck/ward#609",
 		"branch `issue-609`",
-		"driver `claude`",
+		"harness `claude`",
 		"engineer-claude-ward-609",
 		"v0.80.0",
 		"2026-07-05T02:13:22Z",

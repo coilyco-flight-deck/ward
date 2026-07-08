@@ -66,17 +66,16 @@ type consultTally struct {
 	Skipped  int
 }
 
-// consultFlags is the interview's flag set: the heartbeat's scope/limit/driver knobs
+// consultFlags is the interview's flag set: the heartbeat's scope/limit/harness knobs
 // plus the launch-nothing previews. No container flags - it dispatches nothing itself.
 func consultFlags() []cli.Flag {
-	return []cli.Flag{
-		agentDriverFlag(),
+	return append(agentHarnessFlags(),
 		&cli.StringFlag{Name: "repo", Usage: "comma-separated scope 'a/b,c/d' (default: director.default-scope from ~/.ward/config.yaml, else the cwd git origin)"},
 		&cli.StringSliceFlag{Name: "org", Usage: "expand every repo an org owns into the scope (owner; repeatable), unioned with --repo and de-duped"},
 		&cli.IntFlag{Name: "limit", Value: 50, Usage: "open issues read per repo"},
 		&cli.BoolFlag{Name: "dry-run", Usage: "show the consult + untriaged queue that would be interviewed, then exit without asking or writing anything"},
 		&cli.BoolFlag{Name: "print", Usage: "alias of --dry-run: resolve the queue and exit; write nothing"},
-	}
+	)
 }
 
 // agentConsultCommand wires `ward agent director consult` (audited, trust-gated via the
@@ -107,7 +106,7 @@ queue and exit. See docs/director-consult.md.`,
 		Flags: consultFlags(),
 		Action: func(ctx context.Context, c *cli.Command) error {
 			r := newRunner()
-			mode, err := agentDriver(c)
+			mode, err := agentHarness(c)
 			if err != nil {
 				return fmt.Errorf("ward agent director consult: %w", err)
 			}

@@ -45,7 +45,7 @@ func (w workflowMode) landsOnMain() bool {
 }
 
 // workflowChoices renders the supported --workflow values as a pipe list for flag
-// usage and error text, mirroring agentDriverChoices.
+// usage and error text, mirroring agentHarnessChoices.
 func workflowChoices() string {
 	return strings.Join([]string{
 		string(workflowDirectMain), string(workflowPR), string(workflowPatchOnly),

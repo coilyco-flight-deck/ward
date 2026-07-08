@@ -85,7 +85,7 @@ func TestDispatchEngineerArgv(t *testing.T) {
 	// A bare dispatch: driver + headless detach + --quiet-seed (keeps the in-process
 	// engineer's seed dump off the shared director console; ward#519), no escalations.
 	bare := dispatchEngineer{driver: modeClaude}.engineerArgv(ref)
-	wantBare := []string{"engineer", "coilyco-flight-deck/ward#42", "--driver", "claude", "--no-preflight", "--quiet-seed"}
+	wantBare := []string{"engineer", "coilyco-flight-deck/ward#42", "--harness", "claude", "--no-preflight", "--quiet-seed"}
 	if !reflect.DeepEqual(bare, wantBare) {
 		t.Errorf("bare argv = %v, want %v", bare, wantBare)
 	}
@@ -102,7 +102,7 @@ func TestDispatchEngineerArgv(t *testing.T) {
 		aws: true, hostNet: true, tsSidecar: false, force: true,
 	}.engineerArgv(ref)
 	for _, want := range [][2]string{
-		{"--driver", "goose"}, {"--image", "ghcr.io/x/dev"}, {"--tag", "v9"},
+		{"--harness", "goose"}, {"--image", "ghcr.io/x/dev"}, {"--tag", "v9"},
 		{"--ward-version", "v0.58.0"}, {"--tailnet-mode", "host-net"},
 	} {
 		if !argFollowedBy(full, want[0], want[1]) {
@@ -145,7 +145,7 @@ func TestDirectorDispatchQuietsSeedConsole(t *testing.T) {
 }
 
 // TestDirectorEngineerDriver covers the two-level driver precedence (ward#355): set
-// --engineer-driver wins; else the engineers inherit director's --driver.
+// --engineer-driver wins; else the engineers inherit director's --harness.
 func TestDirectorEngineerDriver(t *testing.T) {
 	inherit := directorFlagSet(t, map[string]string{})
 	if got, err := directorEngineerDriver(inherit, modeGoose); err != nil || got != modeGoose {
@@ -230,7 +230,7 @@ func TestDirectorSurfaceArgv(t *testing.T) {
 	if argv[0] != directorSurfaceVerb {
 		t.Errorf("surface argv[0] = %q, want %q", argv[0], directorSurfaceVerb)
 	}
-	if !argFollowedBy(argv, "--driver", "claude") {
+	if !argFollowedBy(argv, "--harness", "claude") {
 		t.Errorf("surface must run on director's own driver (claude), not the engineer driver: %v", argv)
 	}
 	for _, want := range [][2]string{

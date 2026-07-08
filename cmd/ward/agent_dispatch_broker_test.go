@@ -29,13 +29,18 @@ func TestDispatchBrokerValidatesNarrowAPI(t *testing.T) {
 			t.Errorf("validateDispatchBrokerRequest(%+v) = nil, want refusal", req)
 		}
 	}
-	ok := dispatchBrokerRequest{Role: "engineer", Argv: []string{"engineer", "coilyco-flight-deck/ward#1", "--driver", "claude"}}
+	ok := dispatchBrokerRequest{Role: "engineer", Argv: []string{"engineer", "coilyco-flight-deck/ward#1", "--harness", "claude"}}
 	if err := validateDispatchBrokerRequest(ok); err != nil {
 		t.Errorf("valid engineer dispatch refused: %v", err)
 	}
-	advisor := dispatchBrokerRequest{Role: "advisor", Argv: []string{"advisor", "coilyco-flight-deck/ward#1", "--driver", "goose", "what changed?"}}
+	advisor := dispatchBrokerRequest{Role: "advisor", Argv: []string{"advisor", "coilyco-flight-deck/ward#1", "--harness", "goose", "what changed?"}}
 	if err := validateDispatchBrokerRequest(advisor); err != nil {
 		t.Errorf("valid advisor dispatch refused: %v", err)
+	}
+	// A pre-#660 container still writes --driver; the alias stays approved for one release.
+	alias := dispatchBrokerRequest{Role: "engineer", Argv: []string{"engineer", "coilyco-flight-deck/ward#1", "--driver", "claude"}}
+	if err := validateDispatchBrokerRequest(alias); err != nil {
+		t.Errorf("deprecated --driver dispatch refused: %v", err)
 	}
 	// --config is an approved repeatable value flag on both roles (ward#616).
 	cfg := dispatchBrokerRequest{Role: "engineer", Argv: []string{"engineer", "coilyco-flight-deck/ward#1", "--config", "agent.claude.model=sonnet"}}
@@ -179,7 +184,7 @@ func TestForwardAgentStopSendsStopRequest(t *testing.T) {
 func TestBrokerEngineerArgvForwardsApprovedFlags(t *testing.T) {
 	cmd := parseCommandForTest(t, agentEngineerFlags(), []string{
 		"engineer", "coilyco-flight-deck/ward#42",
-		"--driver", "claude",
+		"--harness", "claude",
 		"--image", "img", "--tag", "t1", "--ward-version", "v1",
 		"--repo", "coilyco-flight-deck/cli-guard",
 		"--config", "agent.claude.model=sonnet",
@@ -187,7 +192,7 @@ func TestBrokerEngineerArgvForwardsApprovedFlags(t *testing.T) {
 	})
 	got := brokerEngineerArgv(cmd, modeClaude, agentIssueRef{Owner: "coilyco-flight-deck", Repo: "ward", Number: 42})
 	for _, want := range [][]string{
-		{"--driver", "claude"},
+		{"--harness", "claude"},
 		{"--image", "img"},
 		{"--tag", "t1"},
 		{"--ward-version", "v1"},
@@ -233,7 +238,7 @@ func TestForwardAgentDispatchToHostBrokerSendsCanonicalRequest(t *testing.T) {
 	t.Setenv("WARD_READONLY", "1")
 	t.Setenv("WARD_CONTAINER_NAME", "session-codex-host")
 	cmd := parseCommandForTest(t, agentEngineerFlags(), []string{
-		"engineer", "coilyco-flight-deck/ward#378", "--driver", "claude", "--no-preflight",
+		"engineer", "coilyco-flight-deck/ward#378", "--harness", "claude", "--no-preflight",
 	})
 	forwarded, err := (&Runner{}).maybeForwardAgentDispatchToHostBroker(t.Context(), cmd, "engineer", modeClaude)
 	if err != nil {
@@ -249,7 +254,7 @@ func TestForwardAgentDispatchToHostBrokerSendsCanonicalRequest(t *testing.T) {
 	if req.Token != "nonce-123" {
 		t.Errorf("forwarded token = %q, want the per-launch nonce", req.Token)
 	}
-	want := []string{"engineer", "coilyco-flight-deck/ward#378", "--driver", "claude", "--no-preflight"}
+	want := []string{"engineer", "coilyco-flight-deck/ward#378", "--harness", "claude", "--no-preflight"}
 	if !reflect.DeepEqual(req.Argv, want) {
 		t.Errorf("forwarded argv = %v, want %v", req.Argv, want)
 	}

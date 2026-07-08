@@ -573,7 +573,7 @@ func winningReservationClaim(claims []reservationClaim) (reservationClaim, bool)
 // justification folds in the GO read (ward#383), seedCtx the seed context (ward#609).
 func reservationCommentBody(mode containerMode, container, host string, now time.Time, justification string, seedCtx *reservationSeedContext) string {
 	body := fmt.Sprintf(
-		"%s\n🔒 Reserved by `ward agent --driver %s` — container `%s` on host `%s` is carrying this issue (reserved %s). "+
+		"%s\n🔒 Reserved by `ward agent --harness %s` — container `%s` on host `%s` is carrying this issue (reserved %s). "+
 			"Concurrent `ward agent` runs are blocked until it finishes or the reservation goes stale (%s TTL); "+
 			"`--force` overrides.\n\n"+
 			"**Do not comment on or edit this issue to steer the run while it is reserved.** The engineer seeded "+
@@ -598,7 +598,7 @@ func reservationReleaseCommentBody(mode containerMode, container string, gate *g
 	if gate == nil {
 		return fmt.Sprintf(
 			"%s\n%s\n⚠️ **Run never started — this issue needs re-dispatch.** `ward container reap` released "+
-				"container `%s` (`--driver %s`): it exited without launching the agent (smoke-test death, "+
+				"container `%s` (`--harness %s`): it exited without launching the agent (smoke-test death, "+
 				"ward#222/#264/#595), so it did no work and the hold it took is retracted. Nothing is running on this "+
 				"issue. A `ward agent director` re-queues it automatically; a manual `ward agent` retry no longer "+
 				"needs `--force`.",
@@ -607,7 +607,7 @@ func reservationReleaseCommentBody(mode containerMode, container string, gate *g
 	label, recovery := gateRecovery(gate.Gate)
 	body := fmt.Sprintf(
 		"%s\n%s\n⚠️ **Run never started — this issue needs re-dispatch.** `ward container reap` released "+
-			"container `%s` (`--driver %s`): it exited at the **%s** pre-launch gate without launching the agent "+
+			"container `%s` (`--harness %s`): it exited at the **%s** pre-launch gate without launching the agent "+
 			"(ward#222/#264/#595/#609), so it did no work and the hold it took is retracted. Nothing is running on "+
 			"this issue. A `ward agent director` re-queues it automatically; a manual `ward agent` retry no longer "+
 			"needs `--force`.\n\n"+
@@ -626,7 +626,7 @@ func reservationReleaseCommentBody(mode containerMode, container string, gate *g
 type reservationSeedContext struct {
 	Ref          agentIssueRef
 	Branch       string
-	Driver       string // the --driver harness (claude/codex/...)
+	Driver       string // the --harness pick (claude/codex/...)
 	RunID        string // the container name, the run correlation id
 	WardVersion  string // the ward release the container pins/resolves
 	Workflow     workflowMode
@@ -680,7 +680,7 @@ func (sc *reservationSeedContext) render() string {
 	ward := reservationWardVersionLabel(sc.WardVersion)
 	var b strings.Builder
 	b.WriteString("\n\n<details><summary>run seed context — what this run is carrying (ward#609)</summary>\n\n")
-	fmt.Fprintf(&b, "- **Resolved:** `%s` · branch `%s` · driver `%s` · workflow `%s`\n",
+	fmt.Fprintf(&b, "- **Resolved:** `%s` · branch `%s` · harness `%s` · workflow `%s`\n",
 		sc.Ref, orNoneLabel(sc.Branch), orNoneLabel(sc.Driver), sc.Workflow.orDefault())
 	fmt.Fprintf(&b, "- **Run:** `%s` · ward `%s` · dispatched `%s`\n",
 		orNoneLabel(sc.RunID), ward, sc.DispatchedAt.UTC().Format(time.RFC3339))

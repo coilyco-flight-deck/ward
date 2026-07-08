@@ -31,7 +31,7 @@ when it makes `localhost:11434` (or a tower forwarder) land on a live Ollama.
 With Ollama on the host at `localhost:11434`, one flag makes the default reach it:
 
 ```bash
-warded --driver opencode #98 --tailnet --tailnet-mode host-net
+warded --harness opencode #98 --tailnet --tailnet-mode host-net
 ```
 
 `--tailnet-mode host-net` runs `--network=host` ([agent-host-net.md](agent-host-net.md)),

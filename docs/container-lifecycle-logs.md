@@ -19,7 +19,7 @@ operator's terminal.
 
 - **`ward agent`** - **dispatch (host)** - ref resolution, reservation, the GO/NO-GO
   pre-flight, launch handoff. Lines start `ward agent:` or `ward agent <role>
-  --driver <mode>:` (grep the stem `ward agent`, not the colon). These run before the
+  --harness <mode>:` (grep the stem `ward agent`, not the colon). These run before the
   container exists, so they are **not** in `console.log`.
 - **`ward-container:`** - **bootstrap (in container)** - the PID-1 entrypoint: clone,
   provenance, hook install, extra-repo clone, substrate warm, compose, pre-launch

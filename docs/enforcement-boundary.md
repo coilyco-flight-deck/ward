@@ -58,5 +58,5 @@ actually holds.
 - [comparison-openshell.md](comparison-openshell.md) - "The boundary is the product" and the verb-gate scope note.
 - [hook.md](hook.md) - the claude PreToolUse hook (fail-open by design).
 - [container-permissions.md](container-permissions.md) - why the container flow runs with the deny wall off.
-- [agent.md](agent.md) - the `ward agent` umbrella and `--driver` roster.
-- [agent-drivers.md](agent-drivers.md) - the four `--driver` harnesses compared (credentials, install, launch gates).
+- [agent.md](agent.md) - the `ward agent` umbrella and `--harness` roster.
+- [agent-drivers.md](agent-drivers.md) - the four harnesses (`--harness`) compared (credentials, install, launch gates).

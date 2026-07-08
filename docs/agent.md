@@ -44,8 +44,8 @@ or answers it.
   keeps a rare run isolated. [agent-advisor.md](agent-advisor.md).
 
 The standalone `architect`/`explore`/`sandbox` roles now error - folded
-them into the director's [surface session](agent-surface.md). The `--driver`
-harness axis lives under [Drivers](#drivers) below.
+them into the director's [surface session](agent-surface.md). The `--harness`
+axis lives under [Drivers](#drivers) below.
 
 ## Usage
 
@@ -59,18 +59,23 @@ warded advisor #98 "what would it take to..."   # research the issue, post a com
 warded advisor "how is the audit log written?"  # freeform: interactive (--oneshot = one answer)
 ```
 
-The role comes first (`--driver` picks the harness, default claude; see
+The role comes first (`--harness` picks the harness, default claude; see
 [Drivers](#drivers)). **A bare ref with no role word runs the `engineer` role**.
 The ref is `owner/repo#N`, a full Forgejo URL, or a bare `#N` inferring
 `owner/repo` from the cwd's git origin; a query string or `#fragment` is ignored.
 
 ## Drivers
 
-`--driver` picks the harness, one click to each public setup page (credentials,
+`--harness` picks the harness, one click to each public setup page (credentials,
 install stance, launch dialect, gates), no `internal/` source:
 [claude](agent-claude.md), [codex](agent-codex.md) (cloud), [goose](agent-goose.md),
 [opencode](agent-opencode.md) (local Ollama). Full comparison:
 [agent-drivers.md](agent-drivers.md).
+
+The flag was born `--driver` and renamed to match what it always picked
+([ward#660](https://forgejo.coilysiren.me/coilyco-flight-deck/ward/issues/660)):
+`--driver` survives one release cycle as a hidden deprecated alias, and an
+explicit `--harness` wins when both are set.
 
 ## Topics
 
@@ -84,7 +89,7 @@ Grouped by the surface you are reaching for.
 
 - [agent-roster.md](agent-roster.md) - flat list of every role (`ward agent roster`).
 - [agent-subcommands.md](agent-subcommands.md) - the three roles compared + the reaper.
-- [agent-drivers.md](agent-drivers.md) - the `--driver` harnesses compared.
+- [agent-drivers.md](agent-drivers.md) - the harnesses (`--harness`) compared.
 - [agent-surface.md](agent-surface.md) - the director's read-only surface.
 
 **Landing and safety** (how a run is fenced and where it lands)

@@ -54,7 +54,7 @@ func wardDowngradeGuard(resolved, host string, allow bool) error {
 type scratchGateStatus struct {
 	access      string   // read-only | writable
 	repo        string   // owner/repo slug
-	mode        string   // --driver value (claude/codex/opencode/goose)
+	mode        string   // --harness value (claude/codex/opencode/goose)
 	agentBinary string   // the in-container binary the mode launches
 	image       string   // resolved docker image
 	wardVersion string   // the ward release the container will run

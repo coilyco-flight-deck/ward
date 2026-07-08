@@ -3,12 +3,13 @@ doc_goal: Let an operator choose which coding CLI carries a run by laying the cl
 ---
 # ward agent drivers
 
-`--driver` picks which harness carries the issue inside the container
+`--harness` picks which harness carries the issue inside the container
 ([agent.md](agent.md)). Two families: **cloud** harnesses authenticate to a
 hosted model with a host credential ward seeds in, and **local** harnesses drive
 an Ollama-backed model over a reachable endpoint with no credential channel. Read
 your driver's page before a first run - this page lays the first-run facts side by
-side. Running your own Ollama? [agent-local-model.md](agent-local-model.md) is the
+side. The flag's pre-[ward#660](https://forgejo.coilysiren.me/coilyco-flight-deck/ward/issues/660)
+spelling `--driver` survives one release as a hidden deprecated alias. Running your own Ollama? [agent-local-model.md](agent-local-model.md) is the
 bring-your-own-Ollama page: what works today and what does not ([#395](https://forgejo.coilysiren.me/coilyco-flight-deck/ward/issues/395)).
 
 ## claude (cloud, default)

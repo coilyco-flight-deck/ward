@@ -418,9 +418,9 @@ func validateDispatchBrokerLaunch(req dispatchBrokerRequest) error {
 }
 
 func validateDispatchBrokerArgv(role string, tail []string) error {
-	// --config is a repeatable model-context override forwarded on both roles (ward#616);
-	// its value carries an `=`, handled by the value-flag "next token" rule below.
-	valueFlags := map[string]bool{"--driver": true, "--config": true}
+	// --config is repeatable on both roles (ward#616); --driver stays approved beside
+	// --harness so a pre-#660 container's request still validates (alias window).
+	valueFlags := map[string]bool{"--harness": true, "--driver": true, "--config": true}
 	boolFlags := map[string]bool{"--print": true}
 	if role == "engineer" {
 		for _, f := range []string{"--image", "--tag", "--ward-version", "--branch", "--repo", "--tailnet-mode"} {
@@ -524,7 +524,7 @@ func (r *Runner) brokerDispatchRef(ctx context.Context, arg string) (agentIssueR
 }
 
 func brokerEngineerArgv(c *cli.Command, mode containerMode, ref agentIssueRef) []string {
-	argv := []string{"engineer", ref.String(), "--driver", string(mode)}
+	argv := []string{"engineer", ref.String(), "--harness", string(mode)}
 	argv = appendBrokerContainerFlags(argv, c)
 	if c.Bool("force") {
 		argv = append(argv, "--force")
@@ -539,7 +539,7 @@ func brokerEngineerArgv(c *cli.Command, mode containerMode, ref agentIssueRef) [
 }
 
 func brokerAdvisorArgv(c *cli.Command, mode containerMode, ref agentIssueRef) []string {
-	argv := []string{"advisor", ref.String(), "--driver", string(mode)}
+	argv := []string{"advisor", ref.String(), "--harness", string(mode)}
 	if lvl := strings.TrimSpace(c.String("thoroughness")); lvl != "" {
 		argv = append(argv, "--thoroughness", lvl)
 	}

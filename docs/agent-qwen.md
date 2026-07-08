@@ -4,7 +4,7 @@ doc_goal: Redirect anyone still reaching for qwen to the opencode harness, makin
 # ward agent qwen (deprecated alias)
 
 `qwen` is a **deprecated alias** for the `opencode` harness, not a harness of its
-own. It is the pre-[ward#401](https://forgejo.coilysiren.me/coilyco-flight-deck/ward/issues/401) roster key: `--driver qwen` / `--mode qwen` still
+own. It is the pre-[ward#401](https://forgejo.coilysiren.me/coilyco-flight-deck/ward/issues/401) roster key: `--harness qwen` / `--mode qwen` still
 resolves, but emits a deprecation warning and aliases straight to `opencode`. Use
 `opencode` instead.
 

@@ -19,7 +19,7 @@ from each agent's `contextLevel` in the fleet manifest
 
 ## The rung follows the driver, by design
 
-The rung a run lands on is not a per-launch knob - it follows the `--driver`
+The rung a run lands on is not a per-launch knob - it follows the `--harness`
 ([agent-drivers.md](agent-drivers.md)), which is the point: a less-trusted harness gets
 less host doctrine by construction. The in-tree repo `AGENTS.md` still loads on top of
 whatever rung applies. The level is exported into the container as `WARD_CONTEXT_LEVEL` so
@@ -38,4 +38,4 @@ run may **do**, where the ladder scales what it **knows** - the two compose inde
 - [container-api.md](container-api.md) - the API overview (mounts + file layout).
 - [container-env.md](container-env.md) - the `WARD_*` env, including `WARD_CONTEXT_LEVEL`.
 - [agent-adapter-manifest.md](agent-adapter-manifest.md) - the per-driver `contextLevel` source.
-- [agent-drivers.md](agent-drivers.md) - the four `--driver` harnesses compared.
+- [agent-drivers.md](agent-drivers.md) - the four harnesses (`--harness`) compared.

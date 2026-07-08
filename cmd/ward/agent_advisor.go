@@ -17,8 +17,8 @@ import (
 // agentAdvisorFlags is the advisor role's flag set: the reply depth ladder (ref mode)
 // unioned with the scratch-container flags the inline answer (freeform mode) needs.
 func agentAdvisorFlags() []cli.Flag {
-	flags := []cli.Flag{
-		agentDriverFlag(),
+	flags := agentHarnessFlags()
+	flags = append(flags,
 		// Ref mode (was `reply`): how hard the host one-shot research digs.
 		&cli.StringFlag{
 			Name:    "thoroughness",
@@ -33,7 +33,7 @@ func agentAdvisorFlags() []cli.Flag {
 		// forces the streamed one-shot answer even on a terminal (scripting escape hatch).
 		&cli.BoolFlag{Name: "oneshot", Aliases: []string{"answer"}, Usage: "freeform mode: force the one-shot streamed answer even under a TTY (default: interactive seeded session when a terminal is attached)"},
 		configFlag(),
-	}
+	)
 	flags = append(flags, agentImageFlags()...)
 	return append(flags,
 		&cli.BoolFlag{Name: "no-tailnet", Usage: "opt out of advisor's default live-observe tailnet route and stay isolated"},
@@ -53,7 +53,7 @@ func agentAdvisorCommand() *cli.Command {
 		Flags:     agentAdvisorFlags(),
 		Action: func(ctx context.Context, c *cli.Command) error {
 			r := newRunner()
-			mode, err := agentDriver(c)
+			mode, err := agentHarness(c)
 			if err != nil {
 				return fmt.Errorf("ward agent advisor: %w", err)
 			}

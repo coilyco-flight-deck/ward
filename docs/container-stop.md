@@ -14,7 +14,7 @@ the run can always reconstruct the name with nothing to look up, because it is
 [`cmd/ward/container_compute.go`](../cmd/ward/container_compute.go)) builds a container's
 name as `engineer-<driver>-<repo>-<issue>`:
 
-- `<driver>` is the `--driver` mode - `claude` (default), `codex`, `goose`, or `opencode`
+- `<driver>` is the `--harness` mode - `claude` (default), `codex`, `goose`, or `opencode`
   (`qwen` is a deprecated alias that still resolves to `opencode`; see [agent-qwen.md](agent-qwen.md)).
 - `<repo>` is `safeRepoName`, which **strips the owner** - so [ward#398](https://forgejo.coilysiren.me/coilyco-flight-deck/ward/issues/398) is `...-ward-398`,
   not `...-coilyco-flight-deck-ward-398`.

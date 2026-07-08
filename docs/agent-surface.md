@@ -26,7 +26,7 @@ The director surfaces a read-only session in two places (see [agent-director.md]
   the director surfaces a session on the lead repo, then resumes the heartbeat if the queue
   refilled (else stops).
 
-The surface runs on the director's OWN `--driver` and inherits its container/harness flags.
+The surface runs on the director's OWN `--harness` and inherits its container/harness flags.
 There is no public `warded surface` command.
 
 ## What read-only means

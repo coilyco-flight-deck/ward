@@ -99,7 +99,7 @@ type backlogLedger struct {
 // dispatchEngineer is the container/harness flag set the director forwards into each
 // engineer it dispatches, so the run inherits the operator's container intent (ward#355).
 type dispatchEngineer struct {
-	driver      containerMode // the engineer driver: --engineer-driver, else director's --driver
+	driver      containerMode // the engineer harness: --engineer-driver, else director's --harness
 	image       string
 	tag         string
 	wardVersion string
@@ -114,7 +114,7 @@ type dispatchEngineer struct {
 func (c dispatchEngineer) engineerArgv(ref agentIssueRef) []string {
 	// --quiet-seed keeps the in-process engineer's seed dump off director's shared
 	// console (ward#519); the seed still rides into the child container (ward#400).
-	argv := []string{"engineer", ref.String(), "--driver", string(c.driver), "--no-preflight", "--quiet-seed"}
+	argv := []string{"engineer", ref.String(), "--harness", string(c.driver), "--no-preflight", "--quiet-seed"}
 	if img := strings.TrimSpace(c.image); img != "" {
 		argv = append(argv, "--image", img)
 	}
@@ -179,9 +179,9 @@ type backlogConfig struct {
 // directorFlags is director's flag set: backlog/heartbeat knobs plus container/harness
 // parity with the engineer + its surface (ward#355). See docs/agent-director.md.
 func directorFlags() []cli.Flag {
-	flags := []cli.Flag{
-		agentDriverFlag(),
-		&cli.StringFlag{Name: "engineer-driver", Usage: "harness for the engineers the director dispatches: " + agentDriverChoices() + " (default: inherit --driver)"},
+	flags := agentHarnessFlags()
+	flags = append(flags,
+		&cli.StringFlag{Name: "engineer-driver", Usage: "harness for the engineers the director dispatches: " + agentHarnessChoices() + " (default: inherit --harness)"},
 		&cli.StringFlag{Name: "repo", Usage: "comma-separated scope 'a/b,c/d' (default: director.default-scope from ~/.ward/config.yaml, else the cwd git origin)"},
 		&cli.StringSliceFlag{Name: "org", Usage: "expand every repo an org owns into the scope (owner; repeatable), unioned with --repo and de-duped (ward#370)"},
 		&cli.StringSliceFlag{Name: "with-repo", Usage: "grant director's own session an additional writable repo to clone (owner/name; repeatable), landed under /workspace alongside the scope (ward#230)."},
@@ -192,7 +192,7 @@ func directorFlags() []cli.Flag {
 		&cli.DurationFlag{Name: "poll-interval", Value: 30 * time.Second, Usage: "wait between dispatch/poll cycles"},
 		&cli.IntFlag{Name: "max-cycles", Value: 0, Usage: "stop after N heartbeat ticks (0 = run until drained with no new direction)"},
 		&cli.BoolFlag{Name: "dry-run", Usage: "show the ranked lanes + planned dispatches, then exit without launching"},
-	}
+	)
 	flags = append(flags, agentImageFlags()...)
 	return append(flags,
 		&cli.BoolFlag{Name: "print", Usage: "resolve director's container/harness plan + the planned dispatches and exit; launch nothing"},
@@ -201,8 +201,8 @@ func directorFlags() []cli.Flag {
 	)
 }
 
-// directorEngineerDriver resolves the dispatched-engineer harness: --engineer-driver if
-// set, else director's own --driver (the two-level precedence Kai asked for on ward#355).
+// directorEngineerDriver resolves the dispatched-engineer harness: --engineer-driver
+// if set, else director's own --harness (the two-level precedence from ward#355).
 func directorEngineerDriver(c *cli.Command, directorMode containerMode) (containerMode, error) {
 	raw := strings.TrimSpace(c.String("engineer-driver"))
 	if raw == "" {
@@ -210,7 +210,7 @@ func directorEngineerDriver(c *cli.Command, directorMode containerMode) (contain
 	}
 	m, err := parseMode(raw)
 	if err != nil {
-		return "", fmt.Errorf("invalid --engineer-driver %q: want %s", raw, agentDriverChoices())
+		return "", fmt.Errorf("invalid --engineer-driver %q: want %s", raw, agentHarnessChoices())
 	}
 	return m, nil
 }
@@ -246,7 +246,7 @@ interactive and consult issues are surfaced, not launched. See docs/agent-direct
 		Commands: []*cli.Command{agentConsultCommand()},
 		Action: func(ctx context.Context, c *cli.Command) error {
 			r := newRunner()
-			mode, err := agentDriver(c)
+			mode, err := agentHarness(c)
 			if err != nil {
 				return fmt.Errorf("ward agent director: %w", err)
 			}

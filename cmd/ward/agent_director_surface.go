@@ -21,11 +21,11 @@ const directorSurfaceVerb = "surface"
 // agentScratchFlags is the flag set the seedless surface bring-up uses; the director's
 // surface phase is its only caller now the standalone architect is gone (ward#353).
 func agentScratchFlags() []cli.Flag {
-	flags := []cli.Flag{
-		agentDriverFlag(),
+	flags := agentHarnessFlags()
+	flags = append(flags,
 		&cli.StringFlag{Name: "repo", Usage: "owner/repo to clone for context (default: inferred from the cwd's git origin)"},
 		&cli.StringSliceFlag{Name: "with-repo", Usage: "clone an additional repo for context (owner/name; repeatable), landed under /workspace alongside the primary repo (ward#230)."},
-	}
+	)
 	flags = append(flags, agentImageFlags()...)
 	return append(flags,
 		&cli.BoolFlag{Name: "print", Usage: "resolve the repo + docker plan and exit; clone nothing, run nothing"},
@@ -43,7 +43,7 @@ func directorSurfaceCommand() *cli.Command {
 		Flags: agentScratchFlags(),
 		Action: func(ctx context.Context, c *cli.Command) error {
 			r := newRunner()
-			mode, err := agentDriver(c)
+			mode, err := agentHarness(c)
 			if err != nil {
 				return fmt.Errorf("ward agent %s: %w", directorSurfaceVerb, err)
 			}

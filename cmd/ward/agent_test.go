@@ -163,8 +163,8 @@ func TestUntrustedOwnerErr(t *testing.T) {
 func TestCarryingLine(t *testing.T) {
 	ref := agentIssueRef{Owner: "coilyco-flight-deck", Repo: "ward", Number: 307}
 	// A real title echoes the label, the ref, and the quoted title (ward#307).
-	got := carryingLine("ward agent --driver claude", ref, "  echo the issue title  ")
-	want := `ward agent --driver claude: carrying coilyco-flight-deck/ward#307 - "echo the issue title"`
+	got := carryingLine("ward agent --harness claude", ref, "  echo the issue title  ")
+	want := `ward agent --harness claude: carrying coilyco-flight-deck/ward#307 - "echo the issue title"`
 	if got != want {
 		t.Errorf("carryingLine() = %q, want %q", got, want)
 	}
@@ -465,7 +465,7 @@ func TestTaskBody(t *testing.T) {
 	if !strings.Contains(got, "do the thing") {
 		t.Error("body must carry the instructions verbatim")
 	}
-	if !strings.Contains(got, "ward agent engineer --driver claude") {
+	if !strings.Contains(got, "ward agent engineer --harness claude") {
 		t.Errorf("body must mark provenance; got: %s", got)
 	}
 }
@@ -627,10 +627,10 @@ func TestParsePreflightVerdict(t *testing.T) {
 func TestPreflightNoGoComment(t *testing.T) {
 	got := preflightNoGoComment(modeClaude, "engineer", "needs human scoping", "The scope is unclear.\nNO-GO: needs human scoping")
 	for _, want := range []string{
-		"NO-GO",                               // names the verdict
-		"needs human scoping",                 // carries the reason
-		"ward agent engineer --driver claude", // names the dispatching role
-		"--no-preflight",                      // tells the human how to re-dispatch
+		"NO-GO",                                // names the verdict
+		"needs human scoping",                  // carries the reason
+		"ward agent engineer --harness claude", // names the dispatching role
+		"--no-preflight",                       // tells the human how to re-dispatch
 		"No container was launched",
 		"<details>",             // folds the full read away
 		"The scope is unclear.", // includes the read verbatim
@@ -642,7 +642,7 @@ func TestPreflightNoGoComment(t *testing.T) {
 	}
 	// The re-dispatch steers at the engineer since the issue is already filed,
 	// so a freeform engineer run would file a duplicate (ward#347).
-	if !strings.Contains(got, "ward agent engineer --driver claude <ref> --no-preflight") {
+	if !strings.Contains(got, "ward agent engineer --harness claude <ref> --no-preflight") {
 		t.Errorf("re-dispatch should point at the engineer; got: %s", got)
 	}
 	// An empty reason degrades to a placeholder, never a dangling blockquote.
@@ -781,8 +781,8 @@ func TestWardEnvHeadless(t *testing.T) {
 	}
 }
 
-// ward#141/#185: goose stays a first-class driver (in agentModes + the --driver
-// choices), and each top-level surface carries a --driver flag.
+// ward#141/#185: goose stays first-class (in agentModes + the --harness choices), and
+// each top-level surface carries --harness plus the deprecated --driver alias (#660).
 func TestAgentModesIncludeGoose(t *testing.T) {
 	found := false
 	for _, m := range agentModes {
@@ -793,11 +793,11 @@ func TestAgentModesIncludeGoose(t *testing.T) {
 	if !found {
 		t.Errorf("agentModes missing goose; got %v", agentModes)
 	}
-	if !strings.Contains(agentDriverChoices(), "goose") {
-		t.Errorf("--driver choices missing goose; got %q", agentDriverChoices())
+	if !strings.Contains(agentHarnessChoices(), "goose") {
+		t.Errorf("--harness choices missing goose; got %q", agentHarnessChoices())
 	}
-	// Each top-level role must exist and carry a --driver flag (so any harness,
-	// goose included, is selectable on it).
+	// Each top-level role must exist and carry a --harness flag (so any harness,
+	// goose included, is selectable on it) plus the --driver alias (ward#660).
 	surfaces := map[string]*cli.Command{}
 	for _, c := range agentCommand().Commands {
 		surfaces[c.Name] = c
@@ -808,8 +808,58 @@ func TestAgentModesIncludeGoose(t *testing.T) {
 			t.Errorf("ward agent missing %q role", want)
 			continue
 		}
+		if !commandHasFlag(cmd, "harness") {
+			t.Errorf("ward agent %s missing the --harness flag", want)
+		}
 		if !commandHasFlag(cmd, "driver") {
-			t.Errorf("ward agent %s missing the --driver flag", want)
+			t.Errorf("ward agent %s missing the deprecated --driver alias", want)
+		}
+	}
+}
+
+// ward#660: --harness is the canonical pick and --driver survives one release as a
+// hidden alias; an explicit --harness wins when both are set.
+func TestAgentHarnessAliasResolution(t *testing.T) {
+	for _, tc := range []struct {
+		name string
+		argv []string
+		want containerMode
+	}{
+		{"default is claude", []string{"engineer", "#1"}, modeClaude},
+		{"canonical --harness", []string{"engineer", "#1", "--harness", "codex"}, modeCodex},
+		{"deprecated --driver alias", []string{"engineer", "#1", "--driver", "codex"}, modeCodex},
+		{"--harness wins over --driver", []string{"engineer", "#1", "--driver", "goose", "--harness", "codex"}, modeCodex},
+	} {
+		cmd := parseCommandForTest(t, agentEngineerFlags(), tc.argv)
+		got, err := agentHarness(cmd)
+		if err != nil {
+			t.Errorf("%s: agentHarness: %v", tc.name, err)
+			continue
+		}
+		if got != tc.want {
+			t.Errorf("%s: agentHarness = %q, want %q", tc.name, got, tc.want)
+		}
+	}
+	// The invalid-value error names the spelling the caller actually used.
+	bad := parseCommandForTest(t, agentEngineerFlags(), []string{"engineer", "#1", "--driver", "warp"})
+	if _, err := agentHarness(bad); err == nil || !strings.Contains(err.Error(), "--driver") {
+		t.Errorf("invalid --driver error = %v, want it to name --driver", err)
+	}
+	badCanonical := parseCommandForTest(t, agentEngineerFlags(), []string{"engineer", "#1", "--harness", "warp"})
+	if _, err := agentHarness(badCanonical); err == nil || !strings.Contains(err.Error(), "--harness") {
+		t.Errorf("invalid --harness error = %v, want it to name --harness", err)
+	}
+	// The alias stays hidden: only --harness shows on the surface help.
+	for _, f := range agentHarnessFlags() {
+		sf, ok := f.(*cli.StringFlag)
+		if !ok {
+			t.Fatalf("agentHarnessFlags returned a non-string flag: %T", f)
+		}
+		if sf.Name == "driver" && !sf.Hidden {
+			t.Error("--driver alias is visible; want it hidden (ward#660)")
+		}
+		if sf.Name == "harness" && sf.Hidden {
+			t.Error("--harness is hidden; want it visible")
 		}
 	}
 }

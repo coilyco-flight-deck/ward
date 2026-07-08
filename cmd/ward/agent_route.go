@@ -168,7 +168,7 @@ func (r *Runner) routeSurveyPreconditions(mode containerMode, taskText, label st
 	// opencode) is refused it (ward#162) as well as a harness with none wired.
 	if _, ok := hostOneShotArgv(mode, "probe"); !ok {
 		if !hostOneShotTrusted(mode) {
-			return fmt.Errorf("%s: route mode surveys repos with an unsandboxed host one-shot, which a local-model harness like %s is barred from (ward#162); use a cloud harness (--driver claude) or pass an explicit owner/repo with --instructions-file to file directly", label, bin)
+			return fmt.Errorf("%s: route mode surveys repos with an unsandboxed host one-shot, which a local-model harness like %s is barred from (ward#162); use a cloud harness (--harness claude) or pass an explicit owner/repo with --instructions-file to file directly", label, bin)
 		}
 		return fmt.Errorf("%s: route mode surveys repos with a host self-assessment slot, which %s lacks (ward#148); pass an explicit owner/repo with --instructions-file to file directly", label, bin)
 	}

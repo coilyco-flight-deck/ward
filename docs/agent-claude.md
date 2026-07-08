@@ -3,9 +3,9 @@ doc_goal: Convey the claude harness as ward's primary full cloud driver and give
 ---
 # ward agent claude
 
-`claude` is ward's **default `--driver` and its only fully-wired harness** - the
+`claude` is ward's **default `--harness` and its only fully-wired harness** - the
 whole guarded agent flow is built around it. Every role (engineer, director,
-advisor) runs on claude unless `--driver` overrides it, and claude alone gets the
+advisor) runs on claude unless `--harness` overrides it, and claude alone gets the
 full host-side wiring the other harnesses lack: the one-shot `claude -p` launch
 preflight, the `stream-json` headless channel, and the advisor ref mode. It
 implements host credential seeding, container credential writing, onboarding

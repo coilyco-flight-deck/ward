@@ -31,7 +31,7 @@ The launcher reads this projected shape; the authoritative source is the KDL fle
 above. One agent's projection:
 
 ```yaml
-name: claude            # the --driver value and short agent name
+name: claude            # the --harness value and short agent name
 binary: claude          # in-container command this agent launches
 contextLevel: 2         # least-access ladder: 2=full, 1=scoped, 0=minimal
 stream: stream-json     # headless stream format: stream-json | none
@@ -74,4 +74,4 @@ and the switch in lockstep, or it fails.
 
 - [ward#152](https://forgejo.coilysiren.me/coilyco-flight-deck/ward/issues/152) - the consumer: replace the switches/cases with manifest-backed lookup.
 - [container.md](container.md) - the container the manifest drives.
-- [agent.md](agent.md) - `ward agent <surface> --driver <name>`, which selects the mode.
+- [agent.md](agent.md) - `ward agent <surface> --harness <name>`, which selects the mode.

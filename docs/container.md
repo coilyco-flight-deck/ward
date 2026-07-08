@@ -39,7 +39,7 @@ ward agent engineer coilyco-gaming/eco-app#123          # carry an issue end to 
 ward agent engineer coilyco-gaming/eco-app#123 --print  # show the docker cmd only (dry run)
 ```
 
-`ward agent engineer --help` lists the launch flags (`--driver`,
+`ward agent engineer --help` lists the launch flags (`--harness`,
 `--print`, `--repo`, ...; see [agent-flags.md](agent-flags.md)). The
 **engineer always detaches**: interactive work goes to the
 [director](agent-director.md), whose surface owns the attached auto-TTY shape
@@ -47,7 +47,7 @@ ward agent engineer coilyco-gaming/eco-app#123 --print  # show the docker cmd on
 
 ## Modes: progressively-less-context ladder
 
-`ward agent`'s `--driver` picks the harness **and** its context level:
+`ward agent`'s `--harness` picks the harness **and** its context level:
 `claude`/`goose` at level 2 (doctrine + cwd
 `CLAUDE.md`/`AGENTS.md`), `codex` at level 1 (cwd `AGENTS.md` only), `opencode` at
 level 0 (doctrine only, self-installing). The level exports as

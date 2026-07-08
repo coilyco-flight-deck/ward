@@ -303,9 +303,9 @@ func mustAgentModes() []containerMode {
 	return out
 }
 
-// agentDriverChoices renders the supported --driver values as a pipe list, e.g.
+// agentHarnessChoices renders the supported --harness values as a pipe list, e.g.
 // "claude|codex|opencode|goose", for flag usage and error text.
-func agentDriverChoices() string {
+func agentHarnessChoices() string {
 	names := make([]string, 0, len(agentModes))
 	for _, m := range agentModes {
 		names = append(names, string(m))
@@ -313,13 +313,21 @@ func agentDriverChoices() string {
 	return strings.Join(names, "|")
 }
 
-// agentDriverFlag selects the harness driving a surface, defaulting to claude so
-// the short path `ward agent engineer <ref>` still works (ward#185). See docs/agent.md.
-func agentDriverFlag() cli.Flag {
-	return &cli.StringFlag{
-		Name:  "driver",
-		Value: string(modeClaude),
-		Usage: "harness that drives the work: " + agentDriverChoices() + " (default claude)",
+// agentHarnessFlags picks the harness driving a surface: canonical --harness (default
+// claude, ward#185) + --driver as a one-release hidden deprecated alias (ward#660).
+func agentHarnessFlags() []cli.Flag {
+	return []cli.Flag{
+		&cli.StringFlag{
+			Name:  "harness",
+			Value: string(modeClaude),
+			Usage: "harness that drives the work: " + agentHarnessChoices() + " (default claude)",
+		},
+		&cli.StringFlag{
+			Name:   "driver",
+			Hidden: true,
+			Usage: "deprecated alias for --harness (ward#660): kept one release cycle for existing " +
+				"callers; an explicit --harness wins when both are set",
+		},
 	}
 }
 
@@ -387,20 +395,24 @@ func extraRepoGrant(c *cli.Command) []string {
 	return append(append([]string{}, c.StringSlice("repo")...), c.StringSlice("with-repo")...)
 }
 
-// agentDriver resolves the --driver flag to a containerMode (defaulting to
-// claude), erroring on an unknown harness with a --driver-shaped message.
-func agentDriver(c *cli.Command) (containerMode, error) {
-	m, err := parseMode(c.String("driver"))
+// agentHarness resolves the pick to a containerMode (default claude): an explicit
+// --harness wins, the deprecated --driver alias counts only when set alone (ward#660).
+func agentHarness(c *cli.Command) (containerMode, error) {
+	raw, flag := c.String("harness"), "--harness"
+	if c.IsSet("driver") && !c.IsSet("harness") {
+		raw, flag = c.String("driver"), "--driver"
+	}
+	m, err := parseMode(raw)
 	if err != nil {
-		return "", fmt.Errorf("invalid --driver %q: want %s", c.String("driver"), agentDriverChoices())
+		return "", fmt.Errorf("invalid %s %q: want %s", flag, raw, agentHarnessChoices())
 	}
 	return m, nil
 }
 
-// agentCmdline renders the canonical `ward agent <surface> --driver <mode>` form
+// agentCmdline renders the canonical `ward agent <surface> --harness <mode>` form
 // (ward#185) for labels, provenance lines, and the re-dispatch hints ward prints.
 func agentCmdline(mode containerMode, surface string) string {
-	return fmt.Sprintf("ward agent %s --driver %s", surface, mode)
+	return fmt.Sprintf("ward agent %s --harness %s", surface, mode)
 }
 
 // agentCommand is the `ward agent` umbrella the `warded` public face fronts
@@ -411,8 +423,9 @@ func agentCommand() *cli.Command {
 		Usage: "Send an agent into a fresh ephemeral container to carry a Forgejo issue end to end (a bare ref runs the engineer).",
 		Description: `agent is the issue-carrying dispatcher (the spelling 'warded' fronts), a
 roster of startup roles (ward#347): you do not invoke a mode, you send in a
-role. Pick a role (engineer|director|advisor) and --driver picks the
-harness (claude|codex|opencode|goose, default claude). A BARE REF with no role word
+role. Pick a role (engineer|director|advisor) and --harness picks the
+harness (claude|codex|opencode|goose, default claude; --driver is a deprecated
+alias for one release, ward#660). A BARE REF with no role word
 runs the 'engineer' role - the fire-and-forget default. A bare #N (or N) infers
 the owner/repo from the cwd's git origin; owner/repo#N and a full Forgejo issue
 URL also work. One line replaces a full container bring-up stack plus a prompt.
@@ -421,7 +434,7 @@ URL also work. One line replaces a full container bring-up stack plus a prompt.
   warded #98                                  # owner/repo inferred from the cwd
   warded engineer #98                         # implement a ticket: detached fire-and-forget
   warded engineer "fix the flaky exec_gate test" # freeform -> file an issue first, then carry
-  warded engineer #98 --driver codex          # pick another harness
+  warded engineer #98 --harness codex         # pick another harness
   warded director --repo coilyco-flight-deck/ward # autonomous backlog supervisor (surfaces a read-only scope + dispatch session on drain)
   warded advisor #98 "what would it take to..."   # research the issue, post the answer
   warded advisor "how is the audit log written?"  # answer a freeform question inline
@@ -494,8 +507,8 @@ func agentImageFlags() []cli.Flag {
 // agentSurfaceFlags builds the detached launch flag set shared by the engineer,
 // the bare-ref default, and the freeform task - no interactive surface here (ward#356).
 func agentSurfaceFlags() []cli.Flag {
-	flags := []cli.Flag{
-		agentDriverFlag(),
+	flags := agentHarnessFlags()
+	flags = append(flags,
 		// --workflow picks the landing policy: direct-main|pr|patch-only (ward#508).
 		workflowFlag(),
 		// --branch is hidden (ward#362): the issue-<N> default is the intelligent choice.
@@ -508,7 +521,7 @@ func agentSurfaceFlags() []cli.Flag {
 		&cli.BoolFlag{Name: "no-review-gate", Usage: "skip wiring the in-container adversarial review panel into the seed (ward#134); the run lands without the panel"},
 		&cli.BoolFlag{Name: "github", Usage: "treat a bare owner/repo#N ref as a GitHub issue (clone/push + comments + PR on GitHub via a user-supplied token; ward#489). A github.com URL infers this automatically."},
 		configFlag(),
-	}
+	)
 	flags = append(flags, agentImageFlags()...)
 	flags = append(flags,
 		&cli.BoolFlag{Name: "print", Usage: "resolve the issue + seeded prompt + docker plan and exit; inject no push token, run nothing"},

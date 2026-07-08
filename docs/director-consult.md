@@ -21,7 +21,7 @@ ticket labelled `consult`, plus every **untriaged** one with no automation-mode 
 
 ## The loop, per ticket
 
-1. **Frame the block.** One batched host one-shot (director's own `--driver`) extracts each
+1. **Frame the block.** One batched host one-shot (director's own `--harness`) extracts each
    ticket's **single** blocking item - a DECISION only a human holds (a design fork, the
    intent behind a vague ask), or a FACT a human might misremember - with a 2-4 option set, a
    recommendation, and its consequence.

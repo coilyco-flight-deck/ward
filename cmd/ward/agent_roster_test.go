@@ -115,7 +115,7 @@ func TestAgentRosterDefaultPrintsRoster(t *testing.T) {
 		}
 	}
 	// The whole point of ward#360: this is the roster, not the flag wall.
-	for _, unwanted := range []string{"GLOBAL OPTIONS", "--driver"} {
+	for _, unwanted := range []string{"GLOBAL OPTIONS", "--driver", "--harness"} {
 		if strings.Contains(out, unwanted) {
 			t.Errorf("bare-warded output leaked the CLI flag dump (%q); got:\n%s", unwanted, out)
 		}

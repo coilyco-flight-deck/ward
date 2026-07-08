@@ -564,10 +564,10 @@ func kickoffDrainNow(line string) bool {
 }
 
 // directorSurfaceArgv builds the surface-session argv from director's forwarded flags.
-// It runs on director's OWN --driver (cfg.mode), never the engineer driver (ward#355).
+// It runs on director's OWN --harness (cfg.mode), never the engineer harness (ward#355).
 func directorSurfaceArgv(contextRepo string, cfg backlogConfig) []string {
 	cy := cfg.dispatch
-	argv := []string{directorSurfaceVerb, "--repo", contextRepo, "--driver", string(cfg.mode)}
+	argv := []string{directorSurfaceVerb, "--repo", contextRepo, "--harness", string(cfg.mode)}
 	if v := strings.TrimSpace(cy.image); v != "" {
 		argv = append(argv, "--image", v)
 	}

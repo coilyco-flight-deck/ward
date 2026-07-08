@@ -28,7 +28,7 @@ forking. The plain verb gate (`ward exec`/`git`/`audit`) has none of these limit
 - **macOS or Linux + Homebrew** - the only install path ([README](../README.md#install)).
 - **Docker, running** - each run boots a container, the first live run pulls one
   image ([ward#464](https://forgejo.coilysiren.me/coilyco-flight-deck/ward/issues/464), [container.md](container.md)).
-- **Harness login on the host, per `--driver`** - ward seeds your host credential,
+- **Harness login on the host, per `--harness`** - ward seeds your host credential,
   holding none itself: run `claude` once (default) or `codex login`
   ([agent-credentials.md](agent-credentials.md)).
 - **The push token** - the bot `FORGEJO_TOKEN` resolves on the host into a private
@@ -50,7 +50,7 @@ ward doctor                                 # .ward/ward.yaml vs Makefile + host
 ## 3. First command: a `--print` dry run
 
 ```bash
-warded engineer coilyco-flight-deck/ward#467 --driver claude --print
+warded engineer coilyco-flight-deck/ward#467 --harness claude --print
 ```
 
 Files nothing, runs nothing, spins no container. Use a trusted-owner ref - an
