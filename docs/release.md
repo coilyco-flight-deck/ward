@@ -11,42 +11,17 @@ ward's formula is build-from-source (a per-tag tarball `url` + `sha256` ->
 `go build`), but `publish-binaries` still ships the full matrix + `SHA256SUMS`
 to **both** the Forgejo and GitHub release pages ([release-binaries.md](release-binaries.md)).
 
-## The aos ward-specs bundle overlay (the coilyco surface source)
+## No build-time config overlay (superseded by live resolve)
 
-Before the cross-compile loop, `publish-binaries` overlays the coilyco deployment
-surface from an aos-published release asset rather than compiling it straight from
-ward's own tree - [ward#503](https://forgejo.coilysiren.me/coilyco-flight-deck/ward/issues/503) step 3, the residual of the ward-kdl
-spec-bundle cutover. aos publishes the values (forgejo guardfile + swagger lock,
-the fleet manifest, the spec locks) as a pinned, checksummed
-`ward-specs-<tag>.tar.gz` release asset
-([aos#315](https://github.com/coilysiren/agentic-os/issues/315), the aos-side
-half). The **Overlay** step:
-
-- **Pins the aos tag explicitly** (`AOS_SPECS_TAG` in the `publish-binaries`
-  `env:`) and **fails closed on a blank pin**, mirroring the `-z` secret guards
-  the other jobs use - a released binary never builds from an unpinned bundle.
-- **Fetches + sha256-verifies** the asset against its `.sha256` sidecar (a bad
-  digest or a mismatch fails the release, never overlays garbage), extracts it
-  onto `.ward/ward-kdl/` (the assets-dir convention, [ward#453](https://forgejo.coilysiren.me/coilyco-flight-deck/ward/issues/453)), and
-  re-derives the three shipped embed dirs (`opsassets`, `fleetassets`,
-  `execassets`) by the same file-copy `make sync-*-assets` uses - no live spec
-  re-fetch, no generator.
-- **Proves the no-op two ways.** It asserts (fail-closed) that the overlaid
-  ops-forgejo guardfile still carries the coilyco `base-url` + `owner` coupling, so
-  a wrong / neutral / foreign bundle can never ship. Then, because the overlay is
-  a byte no-op only when aos and ward carry identical values, it **fails safe**:
-  if the aos bundle lags ward's tree (a value that landed in ward but is not yet
-  homed in aos), it restores ward's committed embeds and warns loudly rather than
-  ship a regression or fail every release red. So the release stays byte-identical
-  to today's shipped coilyco surface until aos catches up.
-
-This is **step 3** of the staged, no-op-then-flip cutover. Two steps remain and
-are **not** done here: **step 2** (the homebrew-tap `Formula/ward.rb` overlay,
-Kai's GitHub-side human gate) and **step 4** (neutralizing ward's own tracked
-`.ward/ward-kdl/` tree). Step 4 is safe only once **both** build sites overlay,
-and it must **remove the fail-safe revert** above - once the tree is neutral the
-overlay is supposed to change the embeds. See
-[ward-kdl-authoring.md](ward-kdl-authoring.md).
+`publish-binaries` compiles straight from ward's tree: the released binary
+embeds the tracked `.ward/ward-kdl/` mirrors as the **baked default**, and
+personal config is resolved **live at launch** through the `WARD_CONFIG_REF`
+config-source seam ([config-source.md](config-source.md), [ward#653](https://forgejo.coilysiren.me/coilyco-flight-deck/ward/issues/653), epic
+[ward#650](https://forgejo.coilysiren.me/coilyco-flight-deck/ward/issues/650)). The former aos `ward-specs` bundle overlay - fetched,
+sha256-verified, and copied over the embeds before the cross-compile loop
+([ward#644](https://forgejo.coilysiren.me/coilyco-flight-deck/ward/issues/644), [ward#503](https://forgejo.coilysiren.me/coilyco-flight-deck/ward/issues/503) step 3) - is removed along with the build-variant
+matrix it implied: one prebuilt binary per platform, byte-identical across
+forges, no per-deployment builds.
 
 The release page carries **only** the `ward` binaries (+ checksums): `ward-kdl`
 and its `ward-kdl-{read,write,admin}` tiers are no longer public assets - embedded

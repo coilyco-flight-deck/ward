@@ -17,7 +17,11 @@ func TestFleetAssetsMirrorWardKDL(t *testing.T) {
 	if err != nil {
 		t.Fatalf("read fleet source %s: %v", fleetSrcPath, err)
 	}
-	if !bytes.Equal(src, fleetGeneratedKDL) {
+	baked, err := bakedAssets.ReadFile(fleetGeneratedKDLPath)
+	if err != nil {
+		t.Fatalf("read baked %s: %v", fleetGeneratedKDLPath, err)
+	}
+	if !bytes.Equal(src, baked) {
 		t.Errorf("embedded fleetassets/fleet.generated.kdl has drifted from %s; re-sync with `make sync-fleet-assets`", fleetSrcPath)
 	}
 }

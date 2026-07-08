@@ -6,8 +6,7 @@ doc_goal: One authoritative answer to "what is ward-kdl, how does it differ from
 **ward-kdl is the build-time authoring layer. `ward` is the run-time product
 that embeds what it authors. [cli-guard](https://forgejo.coilysiren.me/coilyco-flight-deck/cli-guard)
 is the engine both stand on.** Three roles, told apart by **when** they run. The
-conceptual model lives in [architecture.md](architecture.md). This doc pins what
-`ward-kdl` itself is.
+conceptual model lives in [architecture.md](architecture.md).
 
 ## Do you need to author a guardfile? (start here)
 
@@ -46,11 +45,12 @@ regenerate when the source changes (`make build-ward-kdl`). Three dialects:
 
 `ward` (public face `warded`) is the product a user installs. It **embeds** the
 ward-kdl surfaces as `ward ops <api>`, `ward docker`, `ward agents <target>`,
-then adds the run-time-only layers ward-kdl never produces: `ward agent` (drive a
-headless harness in a guarded container) and `ward exec` (guarded dev verbs).
+then adds the run-time-only layers ward-kdl never produces: `ward agent` (the
+guarded container driver) and `ward exec` (guarded dev verbs). The embeds are
+the **baked default**: `WARD_CONFIG_REF` can select a live bundle at launch
+([config-source.md](config-source.md)).
 Exec guardfiles auto-mount at their `wrap` path
-([ward-kdl-in-ward.md](ward-kdl-in-ward.md)). The fleet manifest rides its own
-embed dir and `pkg/fleetconfig` parser.
+([ward-kdl-in-ward.md](ward-kdl-in-ward.md)).
 
 ## The per-area reference docs
 

@@ -37,7 +37,7 @@ func TestExecAssetsMirrorWardKDL(t *testing.T) {
 			continue // spec dialect: not mirrored
 		}
 		wantExec[name] = true
-		got, err := execAssets.ReadFile(execAssetsDir + "/" + name)
+		got, err := bakedAssets.ReadFile(execAssetsDir + "/" + name)
 		if err != nil {
 			t.Errorf("exec-dialect guardfile %s is not embedded under execassets; re-sync with `make sync-exec-assets`", name)
 			continue
@@ -47,7 +47,7 @@ func TestExecAssetsMirrorWardKDL(t *testing.T) {
 		}
 	}
 
-	embedded, err := fs.ReadDir(execAssets, execAssetsDir)
+	embedded, err := fs.ReadDir(bakedAssets, execAssetsDir)
 	if err != nil {
 		t.Fatalf("read embedded execassets: %v", err)
 	}

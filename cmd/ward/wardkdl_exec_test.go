@@ -93,7 +93,7 @@ func TestMountWardKdlExecSkipsCollisions(t *testing.T) {
 // TestForgejoKeySealed asserts the `ops forgejo-key read` guardfile (ward#386)
 // runs one frozen kubectl argv and refuses every caller pivot. See docs/ward-kdl/.
 func TestForgejoKeySealed(t *testing.T) {
-	gfBytes, err := execAssets.ReadFile(execAssetsDir + "/ward-kdl.forgejo-key.guardfile.kdl")
+	gfBytes, err := bakedAssets.ReadFile(execAssetsDir + "/ward-kdl.forgejo-key.guardfile.kdl")
 	if err != nil {
 		t.Fatalf("read embedded forgejo-key guardfile: %v", err)
 	}
