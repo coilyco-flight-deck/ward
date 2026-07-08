@@ -48,7 +48,6 @@ func codexProbeArgv(rc agentsapi.RunCtx) []string {
 		"--ephemeral",
 		"--ignore-user-config",
 		"--sandbox", "danger-full-access",
-		"--ask-for-approval", "never",
 	}
 	if rc.CodexModel != "" {
 		argv = append(argv, "--model", rc.CodexModel)

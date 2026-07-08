@@ -10,7 +10,7 @@ import (
 
 func TestCodexProbeArgvIncludesModel(t *testing.T) {
 	got := codexProbeArgv(agentsapi.RunCtx{CodexModel: "gpt-5.4"})
-	for _, want := range []string{"codex", "exec", "--skip-git-repo-check", "--ephemeral", "--ignore-user-config", "--sandbox", "danger-full-access", "--ask-for-approval", "never", "--model", "gpt-5.4", "Reply with exactly ok."} {
+	for _, want := range []string{"codex", "exec", "--skip-git-repo-check", "--ephemeral", "--ignore-user-config", "--sandbox", "danger-full-access", "--model", "gpt-5.4", "Reply with exactly ok."} {
 		found := false
 		for _, arg := range got {
 			if arg == want {
