@@ -435,6 +435,7 @@ func (r *Runner) runContainerBootstrap(ctx context.Context, c *cli.Command) erro
 	blog("bootstrap agent container composition done")
 
 	_ = os.Setenv("WARD_REAP_WORK", work)
+	r.prepareScratchSpace("/scratch")
 	defer r.reap(ctx, work)
 
 	branch := r.captureTrim(ctx, "git", "-C", work, "branch", "--show-current")
@@ -455,6 +456,7 @@ func (r *Runner) runContainerBootstrap(ctx context.Context, c *cli.Command) erro
 	if e.ReadOnly {
 		// Explore: scope push off this clone but keep the dispatch token + socket so
 		// it can commission sibling runs (ward#293, ward#315).
+		r.makeReadOnlyTree(work)
 		r.revokePushCredential(ctx)
 		r.grantDockerSocketAccess(ctx, e)
 	} else if cerr := r.ensureGitCredReadable(e); cerr != nil {
@@ -486,6 +488,49 @@ func (r *Runner) runContainerBootstrap(ctx context.Context, c *cli.Command) erro
 	blog("bootstrap launch handoff: %s", e.Agent)
 	r.launchAgent(ctx, e, work, argv, stream)
 	return nil
+}
+
+// prepareScratchSpace provisions the writable throwaway area used by read-only
+// sessions and points common temp env vars at it.
+func (r *Runner) prepareScratchSpace(scratchDir string) {
+	if err := os.MkdirAll(scratchDir, 0o1777); err != nil {
+		blog("could not create %s: %v", scratchDir, err)
+		return
+	}
+	_ = os.Chmod(scratchDir, 0o1777)
+	_ = os.Setenv("TMPDIR", scratchDir)
+	_ = os.Setenv("TMP", scratchDir)
+	_ = os.Setenv("TEMP", scratchDir)
+	blog("scratch area ready at %s", scratchDir)
+}
+
+// makeReadOnlyTree removes write bits from a cloned workspace so the surface
+// session's current tree is enforced by permissions, not only doctrine.
+func (r *Runner) makeReadOnlyTree(root string) {
+	_ = filepath.WalkDir(root, func(path string, d os.DirEntry, err error) error {
+		if err != nil {
+			blog("read-only tree walk skipped %s: %v", path, err)
+			return nil
+		}
+		info, ierr := d.Info()
+		if ierr != nil {
+			blog("read-only tree stat skipped %s: %v", path, ierr)
+			return nil
+		}
+		mode := info.Mode().Perm()
+		if d.IsDir() {
+			mode &^= 0o222
+			if path == root {
+				mode |= 0o555
+			}
+		} else {
+			mode &^= 0o222
+		}
+		if cherr := os.Chmod(path, mode); cherr != nil {
+			blog("read-only tree chmod skipped %s: %v", path, cherr)
+		}
+		return nil
+	})
 }
 
 // --- forgejo git auth (token rides --env-file, never argv) -------------------

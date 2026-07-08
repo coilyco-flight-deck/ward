@@ -52,10 +52,14 @@ Given the mounts and env, [`entrypoint.sh`](../cmd/ward/containerassets/entrypoi
 runs as root and produces what the agent launches into:
 
 - **`/workspace/<repo>`** - the fresh target clone, warm through the `/gitcache` mirror.
-  The authoritative work surface for repo edits, but the agent's read-only surface
-  sessions do not push from it.
+  The authoritative work surface for writable runs. Director-style read-only
+  sessions have this tree chmod'd read-only so the workspace mount is enforced
+  by the container, not just by doctrine. `origin` is a real push remote only on
+  writable runs.
 - **`/workspace/<name>`** - one full clone per `WARD_EXTRA_REPOS` grant ([container-multi-repo.md](container-multi-repo.md)).
 - **`/substrate/<name>`** - read-only-by-convention manifest-repo copies ([container-substrate.md](container-substrate.md)).
+- **`/scratch`** - writable throwaway space for read-only director sessions and
+  one-off temp files. The bootstrap points `TMPDIR`, `TMP`, and `TEMP` here.
 - **pre-commit hooks installed** in each work clone ([container-precommit.md](container-precommit.md)).
 - **`~/AGENTS.md`** - the composed context (doctrine, then host context per the ladder,
   then a read-only overlay on a surface run); each harness's load point links to it.
