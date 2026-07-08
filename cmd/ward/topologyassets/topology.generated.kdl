@@ -1,0 +1,10 @@
+topology {
+    tailnet-network ward-tailnet
+    tailnet-proxy mac-proxy:1055
+    tower-host kai-tower-3026
+    tower-ollama-port "11434"
+    substrate-seed "/opt/substrate-seed"
+    substrate-dest "/substrate"
+    substrate-manifest "/opt/ward/preclone-repos.txt"
+    substrate-ttl "600"
+}

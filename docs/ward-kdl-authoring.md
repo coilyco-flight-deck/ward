@@ -41,8 +41,9 @@ build at your own deployment bundle.
 ## The spec bundle is a swappable build input
 
 The KDL sources `ward-kdl` compiles are a bundle: the guardfiles, their spec
-locks, and `ward-kdl.fleet.kdl`. Those values are deployment config, not engine
-code, and the build swaps them through a fixed assets-dir convention.
+locks, `ward-kdl.fleet.kdl`, and `ward-kdl.topology.kdl`. Those values are
+deployment config, not engine code, and the build swaps them through the
+assets-dir convention.
 
 ## Bring your own specs
 

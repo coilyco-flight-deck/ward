@@ -9,6 +9,9 @@ not ward's own identity, so each now carries a `WARD_*` env override. The old li
 stays as the fail-safe default (env is the only source, so ward never removes it), and a
 run that sets none behaves exactly as before.
 
+The same values now also sit in the launch-selected bundle topology, so a live
+`WARD_CONFIG_REF` bundle can repoint them without changing the host env.
+
 ## The overrides
 
 Set these on the **host** that dispatches the run. ward resolves them host-side and hands

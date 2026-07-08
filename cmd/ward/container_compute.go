@@ -125,11 +125,19 @@ const (
 	defaultTowerOllamaPort = "11434"
 )
 
-// tailnetNetwork resolves the shared docker network name (env > baked default; ward#395).
-func tailnetNetwork() string { return envOr(envTailnetNetwork, defaultTailnetNetwork) }
+// tailnetNetwork resolves the shared docker network name (env > bundle > baked default;
+// ward#395). The bundle only fills the slot the baked literal fills now.
+func tailnetNetwork() string {
+	topo := currentContainerTopology()
+	return envOrBundleOr(envTailnetNetwork, topo.TailnetNetwork, defaultTailnetNetwork)
+}
 
-// proxyBoxAddr resolves the SOCKS5 box's host:port endpoint (env > default; ward#395).
-func proxyBoxAddr() string { return envOr(envTailnetProxy, defaultTailnetProxy) }
+// proxyBoxAddr resolves the SOCKS5 box's host:port endpoint (env > bundle > default;
+// ward#395).
+func proxyBoxAddr() string {
+	topo := currentContainerTopology()
+	return envOrBundleOr(envTailnetProxy, topo.TailnetProxy, defaultTailnetProxy)
+}
 
 // proxyBoxName is the proxy box's container name - the host half of proxyBoxAddr, used
 // by the attach preflight. A port-less override falls back to the whole value.
@@ -140,11 +148,19 @@ func proxyBoxName() string {
 	return proxyBoxAddr()
 }
 
-// towerMagicDNS resolves the tower's MagicDNS node name (env > baked default; ward#395).
-func towerMagicDNS() string { return envOr(envTowerHost, defaultTowerHost) }
+// towerMagicDNS resolves the tower's MagicDNS node name (env > bundle > baked default;
+// ward#395).
+func towerMagicDNS() string {
+	topo := currentContainerTopology()
+	return envOrBundleOr(envTowerHost, topo.TowerHost, defaultTowerHost)
+}
 
-// towerOllamaPort resolves the port the tower serves ollama on (env > default; ward#395).
-func towerOllamaPort() string { return envOr(envTowerOllamaPort, defaultTowerOllamaPort) }
+// towerOllamaPort resolves the port the tower serves ollama on (env > bundle > default;
+// ward#395).
+func towerOllamaPort() string {
+	topo := currentContainerTopology()
+	return envOrBundleOr(envTowerOllamaPort, topo.TowerOllamaPort, defaultTowerOllamaPort)
+}
 
 // towerOllamaURL is the by-name tower endpoint a --ts-sidecar run dials through the
 // proxy; no per-launch SSM IP lookup (ward#337; the doc).
@@ -605,6 +621,7 @@ func parseConfigOverrides(entries []string) (map[string]string, error) {
 // wardEnv is the non-secret WARD_* config the entrypoint reads. Everything
 // here is safe to print and to record; the token never appears.
 func (p upPlan) wardEnv() map[string]string {
+	topo := currentContainerTopology()
 	rec := lookupAgent(p.Mode).Record() // registry data reads (Phase 3, ward#418)
 	env := map[string]string{
 		// The friendly docker --name (plan.Name) so in-container tooling (the status
@@ -612,28 +629,28 @@ func (p upPlan) wardEnv() map[string]string {
 		"WARD_CONTAINER_NAME": p.Name,
 		// Explicit "inside a ward container" marker host-only fleet-walk scripts fence
 		// on (ward#114); a host shell never has it. See docs/container-skill-surface.md.
-		"WARD_CONTAINER": "1",
-		"WARD_TARGET_REPO":    p.Repo.slug(),
-		"WARD_TARGET_OWNER":   p.Repo.Owner,
-		"WARD_TARGET_NAME":    p.Repo.Name,
-		"WARD_FORGEJO_BASE":   p.ForgejoBase,
-		"WARD_MODE":           string(p.Mode),
-		"WARD_CONTEXT_LEVEL":  fmt.Sprintf("%d", rec.ContextLevel),
-		"WARD_AGENT":          rec.Binary,
-		"WARD_GITCACHE":       containerGitcacheMnt,
-		"WARD_CONTEXT_SRC":    containerContextMount,
-		"WARD_MIRROR_NAME":    p.Repo.mirrorName(),
-		"WARD_VERSION":        p.WardVersion,
+		"WARD_CONTAINER":     "1",
+		"WARD_TARGET_REPO":   p.Repo.slug(),
+		"WARD_TARGET_OWNER":  p.Repo.Owner,
+		"WARD_TARGET_NAME":   p.Repo.Name,
+		"WARD_FORGEJO_BASE":  p.ForgejoBase,
+		"WARD_MODE":          string(p.Mode),
+		"WARD_CONTEXT_LEVEL": fmt.Sprintf("%d", rec.ContextLevel),
+		"WARD_AGENT":         rec.Binary,
+		"WARD_GITCACHE":      containerGitcacheMnt,
+		"WARD_CONTEXT_SRC":   containerContextMount,
+		"WARD_MIRROR_NAME":   p.Repo.mirrorName(),
+		"WARD_VERSION":       p.WardVersion,
 		// Terminal color: a bare TERM with no COLORTERM makes the in-container agent
 		// downgrade its palette to ~mono; advertise 256-color + truecolor for color.
 		"TERM":      "xterm-256color",
 		"COLORTERM": "truecolor",
 		// Substrate (reference repos warmed regardless of target). The entrypoint
 		// has matching fallback defaults, so these keep the contract one-sourced.
-		"WARD_SUBSTRATE_SEED":     containerSubstrateSeed,
-		"WARD_SUBSTRATE_DEST":     containerSubstrateDest,
-		"WARD_SUBSTRATE_MANIFEST": containerSubstrateManifest,
-		"WARD_SUBSTRATE_TTL":      containerSubstrateTTL,
+		"WARD_SUBSTRATE_SEED":     envOrBundleOr("WARD_SUBSTRATE_SEED", topo.SubstrateSeed, containerSubstrateSeed),
+		"WARD_SUBSTRATE_DEST":     envOrBundleOr("WARD_SUBSTRATE_DEST", topo.SubstrateDest, containerSubstrateDest),
+		"WARD_SUBSTRATE_MANIFEST": envOrBundleOr("WARD_SUBSTRATE_MANIFEST", topo.SubstrateManifest, containerSubstrateManifest),
+		"WARD_SUBSTRATE_TTL":      envOrBundleOr("WARD_SUBSTRATE_TTL", topo.SubstrateTTL, containerSubstrateTTL),
 	}
 	if p.Branch != "" {
 		env["WARD_BRANCH"] = p.Branch

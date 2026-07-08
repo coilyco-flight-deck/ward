@@ -17,12 +17,38 @@ import (
 // neutral default - that is the whole precedence.
 const wardConfigRefEnv = "WARD_CONFIG_REF"
 
-// bakedAssets is the baked neutral default: drift-tested mirrors of
-// .ward/ward-kdl (`make sync-*-assets`) plus the admin guardfile (ward#81).
+// bakedAssets is the baked neutral default: drift-tested mirrors of .ward/ward-kdl
+// plus the admin guardfile (ward#81).
 
 //go:embed opsassets/*.generated.kdl opsassets/*.generated.json execassets/*.guardfile.kdl
 //go:embed opsassets/forgejo-admin.guardfile.kdl fleetassets/fleet.generated.kdl
-var bakedAssets embed.FS
+var bakedMainAssets embed.FS
+
+//go:embed topologyassets/topology.generated.kdl
+var bakedTopologyAssets embed.FS
+
+var bakedAssets = unionFS{primary: bakedMainAssets, fallback: bakedTopologyAssets}
+
+type unionFS struct {
+	primary  fs.FS
+	fallback fs.FS
+}
+
+func (u unionFS) Open(name string) (fs.File, error) {
+	f, err := u.primary.Open(name)
+	if err == nil || !os.IsNotExist(err) {
+		return f, err
+	}
+	return u.fallback.Open(name)
+}
+
+func (u unionFS) ReadFile(name string) ([]byte, error) {
+	b, err := fs.ReadFile(u.primary, name)
+	if err == nil || !os.IsNotExist(err) {
+		return b, err
+	}
+	return fs.ReadFile(u.fallback, name)
+}
 
 // Baked-layout paths, named once so the runtime mount and the drift tests
 // agree; the admin path is the exec-dialect remote-exec slice (ward#81).
@@ -32,6 +58,7 @@ const (
 	opsForgejoAdminGuardfilePath = "opsassets/forgejo-admin.guardfile.kdl"
 	execAssetsDir                = "execassets"
 	fleetGeneratedKDLPath        = "fleetassets/fleet.generated.kdl"
+	topologyGeneratedKDLPath     = "topologyassets/topology.generated.kdl"
 )
 
 // Bundle-layout paths: the flat .ward bundle a ref points at (aos#332's landed
@@ -41,6 +68,7 @@ const (
 	bundleForgejoSpecLockPath       = "forgejo.swagger.lock.json"
 	bundleForgejoAdminGuardfilePath = "forgejo-admin.guardfile.kdl"
 	bundleFleetKDLPath              = "ward-kdl.fleet.kdl"
+	bundleTopologyKDLPath           = "ward-kdl.topology.kdl"
 )
 
 // configSource is the launch-selected home of the KDL config bundle: one fs.FS
@@ -59,6 +87,9 @@ type configSource struct {
 	// fleetKDL feeds loadFleetConfig (dialect-2 fleetconfig).
 	fleetKDL string
 
+	// topologyKDL feeds the container-topology resolver.
+	topologyKDL string
+
 	// execDir is scanned by mountWardKdlExec; execMixedDialects marks a bundle
 	// dir where spec-dialect files sit beside exec ones and are filtered out.
 	execDir           string
@@ -74,6 +105,7 @@ func bakedConfigSource() configSource {
 		forgejoSpecLock:  opsForgejoSpecLockPath,
 		adminGuardfile:   opsForgejoAdminGuardfilePath,
 		fleetKDL:         fleetGeneratedKDLPath,
+		topologyKDL:      topologyGeneratedKDLPath,
 		execDir:          execAssetsDir,
 	}
 }
@@ -86,6 +118,7 @@ func bundleConfigSource(dir string) configSource {
 		forgejoSpecLock:   bundleForgejoSpecLockPath,
 		adminGuardfile:    bundleForgejoAdminGuardfilePath,
 		fleetKDL:          bundleFleetKDLPath,
+		topologyKDL:       bundleTopologyKDLPath,
 		execDir:           ".",
 		execMixedDialects: true,
 	}

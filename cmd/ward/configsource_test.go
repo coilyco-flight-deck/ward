@@ -3,6 +3,7 @@ package main
 import (
 	"context"
 	"io/fs"
+	"os"
 	"path/filepath"
 	"strings"
 	"testing"
@@ -61,13 +62,16 @@ func TestSelectConfigSourceFileRef(t *testing.T) {
 	if src.fleetKDL != bundleFleetKDLPath {
 		t.Errorf("bundle fleet path = %q, want %q", src.fleetKDL, bundleFleetKDLPath)
 	}
+	if src.topologyKDL != bundleTopologyKDLPath {
+		t.Errorf("bundle topology path = %q, want %q", src.topologyKDL, bundleTopologyKDLPath)
+	}
 }
 
 // TestBakedSourcePathsExist guards the path constants against the go:embed
 // patterns: a rename must not silently empty the neutral default.
 func TestBakedSourcePathsExist(t *testing.T) {
 	src := bakedConfigSource()
-	for _, p := range []string{src.forgejoGuardfile, src.forgejoSpecLock, src.adminGuardfile, src.fleetKDL} {
+	for _, p := range []string{src.forgejoGuardfile, src.forgejoSpecLock, src.adminGuardfile, src.fleetKDL, src.topologyKDL} {
 		if _, err := fs.ReadFile(src.fsys, p); err != nil {
 			t.Errorf("baked path %s unreadable: %v", p, err)
 		}
@@ -149,6 +153,36 @@ func TestLoadFleetConfigBundleMissingFleetFailsLoud(t *testing.T) {
 	t.Setenv(wardConfigRefEnv, "file://"+t.TempDir())
 	if _, err := loadFleetConfig(); err == nil {
 		t.Fatal("empty bundle parsed a fleet config; want a loud read error")
+	}
+}
+
+// TestLoadContainerTopologyFromBundleRef parses the staged topology bundle off a
+// file:// WARD_CONFIG_REF end to end.
+func TestLoadContainerTopologyFromBundleRef(t *testing.T) {
+	dir := t.TempDir()
+	src := `topology {
+    tailnet-network "net-x"
+    tailnet-proxy "proxy-x:9050"
+    tower-host "tower-x"
+    tower-ollama-port "19090"
+    substrate-seed "/seed-x"
+    substrate-dest "/dest-x"
+    substrate-manifest "/manifest-x"
+    substrate-ttl "42"
+}`
+	if err := os.WriteFile(filepath.Join(dir, bundleTopologyKDLPath), []byte(src), 0o644); err != nil {
+		t.Fatalf("write topology bundle: %v", err)
+	}
+	t.Setenv(wardConfigRefEnv, "file://"+dir)
+	topo, err := currentContainerTopologyWithError()
+	if err != nil {
+		t.Fatalf("currentContainerTopologyWithError from bundle ref: %v", err)
+	}
+	if topo.TailnetNetwork != "net-x" || topo.TailnetProxy != "proxy-x:9050" || topo.TowerHost != "tower-x" || topo.TowerOllamaPort != "19090" {
+		t.Errorf("bundle topology parsed unexpectedly: %+v", topo)
+	}
+	if topo.SubstrateSeed != "/seed-x" || topo.SubstrateDest != "/dest-x" || topo.SubstrateManifest != "/manifest-x" || topo.SubstrateTTL != "42" {
+		t.Errorf("bundle substrate topology parsed unexpectedly: %+v", topo)
 	}
 }
 

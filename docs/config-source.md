@@ -29,18 +29,17 @@ the source handle moves. `cmd/ward/configsource.go` picks it; three sites read i
 
 ## Bundle layout
 
-A ref points at a **flat** bundle directory - the layout [aos#332](https://github.com/coilysiren/agentic-os/issues/332) landed in
-aos's `.ward/`, identical to this repo's own `.ward/ward-kdl/`:
+A ref points at a **flat** bundle directory - the [aos#332](https://github.com/coilysiren/agentic-os/issues/332) layout, same as `.ward/ward-kdl/`:
 
 - `ward-kdl.forgejo.guardfile.kdl` + `forgejo.swagger.lock.json` - the spec
   surface for `ops forgejo`.
 - `ward-kdl.<area>.guardfile.kdl` (exec dialect) - auto-mounted at their `wrap`
-  path ([ward-kdl-in-ward.md](ward-kdl-in-ward.md)). Spec and exec files sit
-  side by side, so the exec scan mounts only files carrying an `exec` block -
-  the same filter `make sync-exec-assets` applies to the baked mirror.
+  path ([ward-kdl-in-ward.md](ward-kdl-in-ward.md)); the exec scan mounts only
+  files carrying an `exec` block.
 - `ward-kdl.fleet.kdl` - the dialect-2 fleet manifest.
-- `forgejo-admin.guardfile.kdl` - **optional**; omitting it withholds the
-  `ops forgejo admin/doctor` slice, guardfile-style (absent, not an error).
+- `ward-kdl.topology.kdl` - container topology overlay. Env wins.
+- `forgejo-admin.guardfile.kdl` - **optional**; omitting it withholds
+  `ops forgejo admin/doctor`.
 
 ## Failure behavior
 

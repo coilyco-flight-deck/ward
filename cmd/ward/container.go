@@ -133,6 +133,11 @@ func buildUpPlan(c *cli.Command, repo targetRepo, mode containerMode, role, cwd,
 	if err != nil {
 		return upPlan{}, err
 	}
+	// Validate the staged container-topology bundle once here so a malformed live
+	// bundle fails before launch, while a missing optional file still falls back.
+	if _, err := currentContainerTopologyWithError(); err != nil {
+		return upPlan{}, err
+	}
 
 	// The director surface opts into a read-only bind of the redacted agent-log drain so it
 	// reads past runs' logs without a docker socket; other runs leave it off (ward#525/526).
