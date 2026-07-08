@@ -6,6 +6,7 @@ import (
 	"io"
 	"net/http"
 	"net/http/httptest"
+	"os"
 	"strings"
 	"sync/atomic"
 	"testing"
@@ -184,7 +185,7 @@ func TestRedactedTranscript(t *testing.T) {
 
 func TestOtlpLogsPayloadShape(t *testing.T) {
 	envs := []toolEnvelope{{
-		Tool: "Bash", Outcome: "success", Lifecycle: lifecyclePush, DurationMs: 12,
+		Tool: "Bash", Outcome: "success", Lifecycle: lifecyclePush, DurationMs: 12, TimeUnixNano: 1710000000000000000,
 		Cwd: "/workspace/ward", Args: map[string]string{"command": "git push"},
 	}}
 	meta := runMeta{Container: "ward-x", Repo: "coilyco-flight-deck/ward", Driver: "claude", Issue: "363"}
@@ -197,11 +198,60 @@ func TestOtlpLogsPayloadShape(t *testing.T) {
 	if err := json.Unmarshal(payload, &doc); err != nil {
 		t.Fatalf("payload is not valid JSON: %v", err)
 	}
-	s := string(payload)
-	for _, want := range []string{"resourceLogs", "ward-agent", "scopeLogs", "logRecords", `"verb"`, `"outcome"`, `"duration_ms"`} {
-		if !strings.Contains(s, want) {
-			t.Errorf("OTLP payload missing %q:\n%s", want, s)
+	resourceLogs, ok := doc["resourceLogs"].([]any)
+	if !ok || len(resourceLogs) != 1 {
+		t.Fatalf("resourceLogs = %#v, want one resource", doc["resourceLogs"])
+	}
+	resource, ok := resourceLogs[0].(map[string]any)
+	if !ok {
+		t.Fatalf("resourceLogs[0] = %#v, want object", resourceLogs[0])
+	}
+	scopeLogs, ok := resource["scopeLogs"].([]any)
+	if !ok || len(scopeLogs) != 1 {
+		t.Fatalf("scopeLogs = %#v, want one scope", resource["scopeLogs"])
+	}
+	scope, ok := scopeLogs[0].(map[string]any)
+	if !ok {
+		t.Fatalf("scopeLogs[0] = %#v, want object", scopeLogs[0])
+	}
+	logRecords, ok := scope["logRecords"].([]any)
+	if !ok || len(logRecords) != 1 {
+		t.Fatalf("logRecords = %#v, want one record", scope["logRecords"])
+	}
+	record, ok := logRecords[0].(map[string]any)
+	if !ok {
+		t.Fatalf("logRecords[0] = %#v, want object", logRecords[0])
+	}
+	if got := record["timeUnixNano"]; got != nil {
+		if _, ok := got.(string); !ok {
+			t.Fatalf("timeUnixNano = %#v, want JSON string", got)
 		}
+	}
+	attrs, ok := record["attributes"].([]any)
+	if !ok {
+		t.Fatalf("attributes = %#v, want array", record["attributes"])
+	}
+	var duration any
+	for _, raw := range attrs {
+		attr, ok := raw.(map[string]any)
+		if !ok {
+			t.Fatalf("attribute = %#v, want object", raw)
+		}
+		if attr["key"] != "duration_ms" {
+			continue
+		}
+		value, ok := attr["value"].(map[string]any)
+		if !ok {
+			t.Fatalf("duration_ms value = %#v, want object", attr["value"])
+		}
+		duration = value["intValue"]
+		break
+	}
+	if duration == nil {
+		t.Fatal("duration_ms attribute missing from OTLP payload")
+	}
+	if _, ok := duration.(string); !ok {
+		t.Fatalf("duration_ms intValue = %#v, want JSON string", duration)
 	}
 }
 
@@ -347,6 +397,76 @@ func TestShipToSignozPostsToLocal(t *testing.T) {
 	}
 }
 
+func TestShipToSignozIncludesCollectorBodyOn400(t *testing.T) {
+	var hits int32
+	srv := httptest.NewServer(http.HandlerFunc(func(w http.ResponseWriter, _ *http.Request) {
+		atomic.AddInt32(&hits, 1)
+		w.WriteHeader(http.StatusBadRequest)
+		_, _ = io.WriteString(w, "collector says intValue must be a string")
+	}))
+	defer srv.Close()
+
+	t.Setenv(envTelemetryEndpoint, srv.URL)
+	r := &Runner{}
+	out := captureStderr(t, func() {
+		r.shipToSignoz(context.Background(), []byte("hello\n"), []byte(`{"type":"assistant","message":{"content":[{"type":"tool_use","id":"t1","name":"Bash","input":{"command":"git push"}}]}}`), runMeta{Container: "ward-x"})
+	})
+	if got := atomic.LoadInt32(&hits); got != 1 {
+		t.Fatalf("shipToSignoz POSTed %d time(s); want 1", got)
+	}
+	if !strings.Contains(out, "collector says intValue must be a string") {
+		t.Fatalf("stderr omitted collector body:\n%s", out)
+	}
+}
+
+func TestShipToSignozPostsDurationMsAsString(t *testing.T) {
+	var hits int32
+	var gotBody []byte
+	srv := httptest.NewServer(http.HandlerFunc(func(w http.ResponseWriter, r *http.Request) {
+		atomic.AddInt32(&hits, 1)
+		gotBody, _ = io.ReadAll(r.Body)
+		w.WriteHeader(http.StatusOK)
+	}))
+	defer srv.Close()
+
+	t.Setenv(envTelemetryEndpoint, srv.URL)
+	r := &Runner{}
+	r.shipToSignoz(context.Background(), []byte("hello\n"), []byte(strings.Join([]string{
+		`{"type":"assistant","timestamp":"2026-06-26T02:00:00Z","message":{"content":[{"type":"tool_use","id":"t1","name":"Bash","input":{"command":"git push"}}]}}`,
+		`{"type":"user","timestamp":"2026-06-26T02:00:02Z","message":{"content":[{"type":"tool_result","tool_use_id":"t1","is_error":false,"content":"ok"}]}}`,
+	}, "\n")), runMeta{Container: "ward-x"})
+
+	if got := atomic.LoadInt32(&hits); got != 1 {
+		t.Fatalf("shipToSignoz POSTed %d time(s); want 1", got)
+	}
+	var doc map[string]any
+	if err := json.Unmarshal(gotBody, &doc); err != nil {
+		t.Fatalf("posted body is not JSON: %v", err)
+	}
+	resourceLogs := doc["resourceLogs"].([]any)
+	scopeLogs := resourceLogs[0].(map[string]any)["scopeLogs"].([]any)
+	logRecords := scopeLogs[0].(map[string]any)["logRecords"].([]any)
+	foundDuration := false
+	for _, raw := range logRecords {
+		rec := raw.(map[string]any)
+		attrs := rec["attributes"].([]any)
+		for _, attrRaw := range attrs {
+			attr := attrRaw.(map[string]any)
+			if attr["key"] != "duration_ms" {
+				continue
+			}
+			value := attr["value"].(map[string]any)
+			if _, ok := value["intValue"].(string); !ok {
+				t.Fatalf("duration_ms intValue = %#v, want JSON string", value["intValue"])
+			}
+			foundDuration = true
+		}
+	}
+	if !foundDuration {
+		t.Fatal("shipToSignoz did not emit any duration_ms attribute")
+	}
+}
+
 // TestShipToSignozSkipsEmpty asserts an empty drain ships nothing.
 func TestShipToSignozSkipsEmpty(t *testing.T) {
 	var hits int32
@@ -362,4 +482,27 @@ func TestShipToSignozSkipsEmpty(t *testing.T) {
 	if got := atomic.LoadInt32(&hits); got != 0 {
 		t.Fatalf("shipToSignoz POSTed %d time(s) for an empty drain; want 0", got)
 	}
+}
+
+func captureStderr(t *testing.T, fn func()) string {
+	t.Helper()
+	old := os.Stderr
+	r, w, err := os.Pipe()
+	if err != nil {
+		t.Fatal(err)
+	}
+	os.Stderr = w
+	defer func() {
+		os.Stderr = old
+	}()
+
+	done := make(chan string, 1)
+	go func() {
+		data, _ := io.ReadAll(r)
+		done <- string(data)
+	}()
+
+	fn()
+	_ = w.Close()
+	return <-done
 }
