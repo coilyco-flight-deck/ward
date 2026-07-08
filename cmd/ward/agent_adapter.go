@@ -1,6 +1,6 @@
 package main
 
-// agent_adapter.go projects the embedded fleet roster onto the launcher's adapter
+// agent_adapter.go projects the effective fleet roster onto the launcher's adapter
 // shape. ward#419 dropped the YAML mirror; see docs/agent-adapter-manifest.md.
 
 import (
@@ -59,7 +59,7 @@ func (m agentManifest) adapter(name string) (agentAdapter, bool) {
 	return agentAdapter{}, false
 }
 
-// loadAgentManifest builds the manifest from the embedded dialect-2 fleet config
+// loadAgentManifest builds the manifest from the effective dialect-2 fleet config
 // (fleet.go) - the sole source since ward#419 deleted the agent-adapters.yaml mirror.
 func loadAgentManifest() (agentManifest, error) {
 	f, err := loadFleetConfig()

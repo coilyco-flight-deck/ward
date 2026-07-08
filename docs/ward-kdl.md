@@ -36,8 +36,8 @@ regenerate when the source changes (`make build-ward-kdl`). Three dialects:
   Least-privilege, audited. Parsed by `cli/execverb` + `http/specverb`. A
   withheld verb is absent at compile time, not denied at runtime.
 - **Dialect 2, fleet-config manifest** - `ward-kdl.fleet.kdl`: identity, model,
-  endpoint, attribution, roster defaults, `roles`. Parsed by cli-guard
-  `pkg/fleetconfig`, embedded via `fleetassets/`.
+  endpoint, attribution, roster defaults, sparse overrides, `roles`.
+  Parsed by cli-guard `pkg/fleetconfig`, embedded via `fleetassets/`.
 - **Dialect 3, operator-local** - the same `fleetconfig` parser, sourced from a
   local `~/.ward/fleet.local.kdl`, not embedded and tracked separately.
 
@@ -54,8 +54,8 @@ Exec guardfiles auto-mount at their `wrap` path
 
 ## The per-area reference docs
 
-Every guardfile gets a generated reference doc beside it, the reviewed copy
-committed under [docs/ward-kdl/](ward-kdl/). Emitted by ward-kdl's
+Every guardfile gets a generated reference doc beside it, committed under
+[docs/ward-kdl/](ward-kdl/). Emitted by ward-kdl's
 `surface.Markdown()`, they describe one area's verbs.
 [ward-kdl-surface.md](ward-kdl-surface.md) is the flat index across every area.
 

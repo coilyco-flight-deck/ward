@@ -19,11 +19,13 @@ const (
 // record mirrors the agent-adapter manifest + the cmd/ward switches: codex is a
 // scoped-context harness with no host pre-flight and a plain `codex exec` headless.
 var record = agentsapi.Manifest{
-	Name:         "codex",
-	Binary:       "codex",
-	ContextLevel: 1,
-	Stream:       "none",
-	Auth:         "codex-file",
+	Name:            "codex",
+	Binary:          "codex",
+	ContextLevel:    1,
+	Stream:          "none",
+	Auth:            "codex-file",
+	ReasoningEffort: "medium",
+	Verbosity:       "low",
 	Argv: agentsapi.Argv{
 		Preflight:   nil,
 		Headless:    []string{"codex", "exec"},

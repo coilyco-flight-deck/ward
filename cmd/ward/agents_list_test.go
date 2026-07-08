@@ -66,7 +66,7 @@ func runAgentsList(t *testing.T, args ...string) string {
 }
 
 // TestAgentsListJSONMatchesEmbeddedFleet asserts `--json` emits valid JSON that
-// equals the embedded fleet's projection - the read surface aos consumes.
+// equals the effective fleet's projection - the read surface aos consumes.
 func TestAgentsListJSONMatchesEmbeddedFleet(t *testing.T) {
 	fleet, err := loadFleetConfig()
 	if err != nil {

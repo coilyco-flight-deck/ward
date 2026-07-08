@@ -170,7 +170,7 @@ func reviewerCandidates() []reviewpanel.Reviewer {
 	}
 }
 
-// reviewerModel reads a family's default model off the embedded fleet roster,
+// reviewerModel reads a family's default model off the effective fleet roster,
 // best-effort (an unresolved model is cosmetic, so a load slip yields "").
 func reviewerModel(family string) string {
 	fleet, err := loadFleetConfig()

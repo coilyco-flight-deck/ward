@@ -12,7 +12,7 @@ import (
 )
 
 // agents_list.go is `ward agents list [--json]`: the stable read surface dumping
-// the embedded fleet roster from fleetconfig.Fleet. See docs/agents-list.md.
+// the effective fleet roster from fleetconfig.Fleet. See docs/agents-list.md.
 
 // agentsRosterJSON is the stable JSON shape `ward agents list --json` emits.
 // Keys are always present so a consumer sees one deterministic schema.
@@ -124,7 +124,7 @@ func agentsCommand() *cli.Command {
 }
 
 // agentsListCommand builds `ward agents list [--json]`: a read-only dump of the
-// embedded fleet roster (human table, or --json for the surface aos consumes).
+// effective fleet roster (human table, or --json for the surface aos consumes).
 func agentsListCommand() *cli.Command {
 	return &cli.Command{
 		Name:  "list",

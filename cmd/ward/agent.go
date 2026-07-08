@@ -292,15 +292,11 @@ func agentSeedPromptWorkflow(ref agentIssueRef, title, body, details string, hea
 var agentModes = mustAgentModes()
 
 func mustAgentModes() []containerMode {
-	// Init-time, so this reads the baked roster: a bad WARD_CONFIG_REF must not
-	// panic here; verb-time fleet consumers fail loud instead (ward#653).
-	fleet, err := loadBakedFleetConfig()
-	if err != nil {
-		panic(fmt.Sprintf("load embedded fleet config for agent modes: %v", err))
-	}
-	out := make([]containerMode, 0, len(fleet.Agents))
-	for _, a := range fleet.Agents {
-		out = append(out, containerMode(a.Name))
+	// Init-time, so this reads ward's built-in frontier roster directly; a bad
+	// WARD_CONFIG_REF must not affect the mode choice list (ward#653).
+	out := make([]containerMode, 0, len(frontierAgentOrder))
+	for _, name := range frontierAgentNames() {
+		out = append(out, containerMode(name))
 	}
 	return out
 }
