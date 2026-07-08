@@ -27,6 +27,10 @@ type Runner struct {
 	Runner *shell.Runner
 	Audit  *audit.Writer
 
+	// configAuditVersion stamps the resolved config bundle sha into audit rows
+	// for config-driven surfaces. Empty keeps the default audit shape.
+	configAuditVersion string
+
 	// pullHeartbeatInterval overrides the silenced-pull heartbeat cadence
 	// (ward#322); zero means pullHeartbeatDefault. A field so tests can shrink it.
 	pullHeartbeatInterval time.Duration
@@ -95,6 +99,15 @@ func sandboxSpec() *sandbox.Spec {
 func (r *Runner) WrapVerb(spec verb.Spec, writer *audit.Writer) cli.ActionFunc {
 	if spec.ResolveInvokeCWD == nil {
 		spec.ResolveInvokeCWD = resolveInvokeCWD
+	}
+	if version := strings.TrimSpace(r.configAuditVersion); version != "" {
+		user := spec.OnComplete
+		spec.OnComplete = func(rec *audit.Record) {
+			rec.Version = version
+			if user != nil {
+				user(rec)
+			}
+		}
 	}
 	return verb.Wrap(spec, writer)
 }
