@@ -43,10 +43,13 @@ shell.
 
 ## Startup trust
 
-codex now inherits the same workspace trust set as claude at bootstrap, seeded
-into `~/.codex.json` alongside its `~/.codex/AGENTS.md` context load point. A
-fresh codex launch in a new workspace starts with the target clone, `/workspace`,
-and any granted or warmed sibling repos already trusted.
+codex inherits the same workspace trust set as claude at bootstrap, seeded as
+`[projects."<dir>"]` tables with `trust_level = "trusted"` in `~/.codex/config.toml` -
+the location the rust codex CLI actually reads folder trust from ([ward#678](https://forgejo.coilysiren.me/coilyco-flight-deck/ward/issues/678); the
+former `~/.codex.json` seed carried claude's schema and codex never read it). A
+fresh codex launch in a new workspace - the director's read-only surface included -
+starts with the target clone, `/workspace`, and any granted or warmed sibling
+repos already trusted, no trust dialog on the first prompt.
 
 ## Smoke gate
 

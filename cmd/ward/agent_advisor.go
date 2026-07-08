@@ -49,7 +49,7 @@ func agentAdvisorCommand() *cli.Command {
 		Name: "advisor",
 		Usage: "Answer without writing code: a ref researches the issue and posts the answer as a comment; " +
 			"freeform text opens an interactive seeded session (one-shot streamed answer with no TTY or --oneshot). The advisor role holds the live-observe guardfile set (tailnet + ~/.aws) by default; use --no-tailnet to stay isolated. No code change.",
-		ArgsUsage: "<owner/repo#N | forgejo-issue-url> <prompt> | '<question>'",
+		ArgsUsage: "<owner/repo#N | forgejo-issue-url> [prompt] | '<question>'",
 		Flags:     agentAdvisorFlags(),
 		Action: func(ctx context.Context, c *cli.Command) error {
 			r := newRunner()

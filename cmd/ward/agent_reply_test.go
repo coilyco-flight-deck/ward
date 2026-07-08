@@ -143,6 +143,28 @@ func TestReplyResearchPrompt(t *testing.T) {
 	}
 }
 
+func TestAdvisorResearchPrompt(t *testing.T) {
+	got := advisorResearchPrompt("")
+	for _, want := range []string{
+		"Read the issue title, body, and comment thread below as the research brief.",
+		"Identify the decisions, options, open questions, and risks",
+		"posted back on the issue",
+	} {
+		if !strings.Contains(got, want) {
+			t.Errorf("advisorResearchPrompt default missing %q\n---\n%s", want, got)
+		}
+	}
+	withExtra := advisorResearchPrompt("focus on migration risk")
+	for _, want := range []string{
+		"Additional framing from the dispatcher:",
+		"focus on migration risk",
+	} {
+		if !strings.Contains(withExtra, want) {
+			t.Errorf("advisorResearchPrompt extra missing %q\n---\n%s", want, withExtra)
+		}
+	}
+}
+
 // An empty body and an empty thread degrade to readable placeholders, never blanks.
 func TestReplyResearchPromptEmpties(t *testing.T) {
 	ref := agentIssueRef{Owner: "coilyco-flight-deck", Repo: "ward", Number: 1}

@@ -94,6 +94,7 @@ func (r *Runner) runAgentReply(ctx context.Context, c *cli.Command, mode contain
 		fmt.Fprintf(os.Stderr, "%s: note: could not read comments on %s (%v); researching the body only\n", label, ref, cerr)
 	}
 
+	prompt = advisorResearchPrompt(prompt)
 	research := replyResearchPrompt(ref, title, issue.Body, comments, prompt, level)
 
 	if c.Bool("print") {
@@ -173,7 +174,7 @@ func (r *Runner) postReplyFanOut(ctx context.Context, cl *forgejoClient, mode co
 	return nil
 }
 
-// validateReplyInputs parses and gates the reply argv: a valid issue ref, a non-empty
+// validateReplyInputs parses and gates the reply argv: a valid issue ref, optional
 // prompt, a known thoroughness, and a trusted owner (no mode gate now; docs ward#411).
 func (r *Runner) validateReplyInputs(ctx context.Context, c *cli.Command, label string) (agentIssueRef, string, replyThoroughness, error) {
 	ref, err := r.resolveAgentIssueRef(ctx, c.Args().First())
@@ -183,9 +184,6 @@ func (r *Runner) validateReplyInputs(ctx context.Context, c *cli.Command, label 
 	// Everything after the ref is the reply prompt, joined so an unquoted
 	// multi-word prompt still works (the canonical form is one quoted arg).
 	prompt := strings.TrimSpace(strings.Join(c.Args().Tail(), " "))
-	if prompt == "" {
-		return agentIssueRef{}, "", replyThoroughness{}, fmt.Errorf("%s: no reply prompt: pass it after the issue ref, e.g. %s <ref> \"what would it take to...\"", label, label)
-	}
 
 	level, err := parseReplyThoroughness(c.String("thoroughness"))
 	if err != nil {
@@ -201,6 +199,19 @@ func (r *Runner) validateReplyInputs(ctx context.Context, c *cli.Command, label 
 	// The container is the sandbox (ward#411), so the ward#162 host-one-shot bar and the
 	// host-PATH-binary check no longer gate here: any wired mode runs it. See the docs.
 	return ref, prompt, level, nil
+}
+
+// advisorResearchPrompt gives ref-mode advisor runs a default brief from the issue
+// itself, while still letting a caller append extra framing when it needs it.
+func advisorResearchPrompt(prompt string) string {
+	prompt = strings.TrimSpace(prompt)
+	base := "Read the issue title, body, and comment thread below as the research brief. " +
+		"Identify the decisions, options, open questions, and risks, then give a clear advisory " +
+		"recommendation that can be posted back on the issue."
+	if prompt == "" {
+		return base
+	}
+	return base + "\n\nAdditional framing from the dispatcher:\n" + prompt
 }
 
 // containerResearchSetupBudget pads the per-level research timeout to cover container
