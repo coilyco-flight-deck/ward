@@ -237,6 +237,12 @@ func TestComposeContextReadOnlyBlock(t *testing.T) {
 	if !strings.Contains(readonly, "Dispatch a sibling headless run") {
 		t.Error("the read-only block should tell the agent to dispatch a sibling run (ward#315)")
 	}
+	if !strings.Contains(readonly, "inherits the surface's own harness by default") {
+		t.Error("the read-only block should make the default harness inheritance explicit")
+	}
+	if !strings.Contains(readonly, "Codex director") {
+		t.Error("the read-only block should name the Codex-director default explicitly")
+	}
 	// ward#320: capture-and-dispatch is an obligation, not a "may". The block must
 	// frame it imperatively.
 	if !strings.Contains(readonly, "obligation, not a") {

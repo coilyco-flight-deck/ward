@@ -66,6 +66,10 @@ sibling from the native host context, so Claude/Codex/Goose credentials resolve 
 host home, not the director container. The broker accepts only that constrained
 dispatch API; unrelated ward verbs and arbitrary shell never cross it.
 
+That broker inherits the surface's own harness by default. A surfaced Codex director
+therefore dispatches Codex engineers unless you explicitly override the engineer
+driver.
+
 The bootstrap also provisions `/scratch` and points temp vars there, so one-off
 scripts have a writable home that is not the workspace clone.
 

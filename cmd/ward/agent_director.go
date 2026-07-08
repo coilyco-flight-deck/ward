@@ -220,16 +220,18 @@ func directorEngineerDriver(c *cli.Command, directorMode containerMode) (contain
 func agentDirectorCommand() *cli.Command {
 	return &cli.Command{
 		Name:      "director",
-		Usage:     "Run an attached LLM-in-the-loop heartbeat over a repo's headless lane: poll, decide, dispatch, and surface on drain (ward#351).",
+		Usage:     "Run an attached LLM-in-the-loop heartbeat over a repo's headless lane: poll, decide, dispatch, and surface on drain (ward#351). Engineers inherit the director's own harness by default; --engineer-driver overrides that dispatch default.",
 		ArgsUsage: "(scope via --repo; default: the cwd git origin)",
 		Description: `director runs an attached, autonomous heartbeat over a repo's open backlog. Each
 tick it reconciles in-flight engineers (reading their WARD-OUTCOME comments),
 refreshes the ledger from the live backlog (ranking issues into lanes by tier/mode
 labels), asks a host one-shot which queued headless issues to dispatch under
 --max-parallel, dispatches the chosen set via ward's native engineer, then
-sleeps cheaply with no LLM held open. When the headless lane drains - nothing queued
-and nothing in flight - it surfaces an interactive session for new direction rather
-than exiting, and resumes the heartbeat if the queue refills (ward#351).
+sleeps cheaply with no LLM held open. Those engineer dispatches inherit the
+director's own harness by default, and --engineer-driver explicitly overrides that
+default. When the headless lane drains - nothing queued and nothing in flight - it
+surfaces an interactive session for new direction rather than exiting, and resumes
+the heartbeat if the queue refills (ward#351).
 
   warded director --repo coilyco-flight-deck/ward         # one repo
   warded director --repo a/b,c/d --max-parallel 3         # comma-separated scope

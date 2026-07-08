@@ -1049,6 +1049,8 @@ a bug, a missing test, a follow-up, anything worth doing - you **must**:
 - **Dispatch a sibling headless run** to do the actual fix - ` + "`warded <owner/repo>#N`" + `
   spins up its own sealed container with its own credential and lifecycle, does its
   own implement -> commit -> merge -> push there, and never touches this clone.
+  That dispatch inherits the surface's own harness by default, so a Codex director
+  sends Codex engineers unless you explicitly override the engineer driver.
 
 Do not let a work item die in the conversation. If you named it, capture it and
 dispatch it before you move on.

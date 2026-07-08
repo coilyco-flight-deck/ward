@@ -265,6 +265,49 @@ func TestForwardAgentDispatchToHostBrokerSendsCanonicalRequest(t *testing.T) {
 	}
 }
 
+func TestForwardAgentDispatchToHostBrokerInheritsSurfaceHarness(t *testing.T) {
+	// A Codex director surface should forward Codex engineers by default, not fall
+	// back to Claude just because `warded` itself defaults that way.
+	ln, err := net.Listen("tcp", "127.0.0.1:0")
+	if err != nil {
+		t.Fatalf("listen broker: %v", err)
+	}
+	defer ln.Close()
+
+	gotReq := make(chan dispatchBrokerRequest, 1)
+	go func() {
+		conn, err := ln.Accept()
+		if err != nil {
+			return
+		}
+		defer conn.Close()
+		var req dispatchBrokerRequest
+		_ = json.NewDecoder(conn).Decode(&req)
+		gotReq <- req
+		_ = json.NewEncoder(conn).Encode(dispatchBrokerResponse{OK: true})
+	}()
+
+	t.Setenv(envDispatchBrokerAddr, ln.Addr().String())
+	t.Setenv(envDispatchBrokerToken, "nonce-456")
+	t.Setenv("WARD_READONLY", "1")
+	t.Setenv("WARD_CONTAINER_NAME", "session-codex-host")
+	cmd := parseCommandForTest(t, agentEngineerFlags(), []string{
+		"engineer", "coilyco-flight-deck/ward#378", "--harness", "codex", "--no-preflight",
+	})
+	forwarded, err := (&Runner{}).maybeForwardAgentDispatchToHostBroker(t.Context(), cmd, "engineer", modeCodex)
+	if err != nil {
+		t.Fatalf("forward dispatch: %v", err)
+	}
+	if !forwarded {
+		t.Fatal("codex surface dispatch did not forward despite broker env")
+	}
+	req := <-gotReq
+	want := []string{"engineer", "coilyco-flight-deck/ward#378", "--harness", "codex", "--no-preflight"}
+	if !reflect.DeepEqual(req.Argv, want) {
+		t.Errorf("codex surface forwarded argv = %v, want %v", req.Argv, want)
+	}
+}
+
 func TestDispatchBrokerEnvIsPlanLocal(t *testing.T) {
 	p := sampleUpPlan()
 	if _, ok := p.wardEnv()[envDispatchBrokerAddr]; ok {
