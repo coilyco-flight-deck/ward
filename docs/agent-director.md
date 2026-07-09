@@ -8,7 +8,8 @@ supervisor** role: it drives a repo's headless lane to drain. It is an LLM loop.
 ## Startup triage
 
 Before the init gate, director folds in a **triage pass** (on by default, `--no-triage` skips)
-that writes the tier + mode labels the heartbeat reads. See
+that writes the tier + mode labels the heartbeat reads and leaves a compact reasoning comment.
+See
 [director-startup-triage.md](director-startup-triage.md).
 
 ## The init gate

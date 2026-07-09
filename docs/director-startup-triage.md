@@ -25,13 +25,15 @@ fit the flow, not add a step - and applies the `tooling-issue-prioritization` me
 2. **Batched judgment one-shot.** One host one-shot per repo - director's **own** `--harness`,
    the same path the per-tick dispatch decision uses, not a new harness - judges every
    untriaged issue at once. Per issue it returns an urgency `SCORE` (0-3), an automation
-   `MODE`, a confidence, and for a P0 candidate an active-incident confirm.
+   `MODE`, a confidence, a short `REASON`, and for a P0 candidate an active-incident confirm.
 3. **Assemble.** Confirmed candidates become **P0** and leave the pool. The scored remainder
    is **percentile-cut** into P1-P4 bands (top 20% P1, next 20% P2, next 20% P3, bottom 40%
    P4); a pool with no urgency signal all lands P3, the default tier. Mode is **fail-closed**:
    only a confident `headless`/`interactive` promotes out of human-gated, everything else
    (low confidence, an unread field, a garbled line) lands `consult`.
-4. **Write.** director adds the computed labels via `ward ops forgejo issue-label add`.
+4. **Write.** director adds the computed labels via `ward ops forgejo issue-label add` and
+   posts one collapsed reasoning comment per issue so the thread records the prioritization
+   method, verdict, labels, and why the model chose them.
 
 ## What keeps it cheap and safe
 
