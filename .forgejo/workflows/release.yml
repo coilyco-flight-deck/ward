@@ -12,6 +12,9 @@ permissions:
 jobs:
   release:
     runs-on: docker
+    container:
+      image: forgejo.coilysiren.me/coilyco-flight-deck/agentic-os:latest
+    timeout-minutes: 10
     outputs:
       tag: ${{ steps.tag.outputs.new_tag }}
       version: ${{ steps.tag.outputs.new_version }}
@@ -70,6 +73,8 @@ jobs:
     needs: release
     if: ${{ needs.release.outputs.tag != '' }}
     runs-on: docker
+    container:
+      image: forgejo.coilysiren.me/coilyco-flight-deck/agentic-os:latest
     env:
       TAG: ${{ needs.release.outputs.tag }}
       GO_VERSION: "1.26.4"
@@ -267,6 +272,8 @@ jobs:
     needs: release
     if: ${{ needs.release.outputs.tag != '' }}
     runs-on: docker
+    container:
+      image: forgejo.coilysiren.me/coilyco-flight-deck/agentic-os:latest
     env:
       TAG: ${{ needs.release.outputs.tag }}
       GO_VERSION: "1.26.4"
@@ -386,6 +393,8 @@ jobs:
     needs: release
     if: ${{ needs.release.outputs.tag != '' }}
     runs-on: docker
+    container:
+      image: forgejo.coilysiren.me/coilyco-flight-deck/agentic-os:latest
     env:
       TAG: ${{ needs.release.outputs.tag }}
       GO_VERSION: "1.26.4"
@@ -507,6 +516,8 @@ jobs:
     needs: [release, publish-binaries]
     if: ${{ needs.release.outputs.tag != '' }}
     runs-on: docker
+    container:
+      image: forgejo.coilysiren.me/coilyco-flight-deck/agentic-os:latest
     env:
       TAG: ${{ needs.release.outputs.tag }}
       FORGEJO_BASE_URL: https://forgejo.coilysiren.me
@@ -670,6 +681,8 @@ jobs:
     needs: [release, publish-binaries]
     if: ${{ needs.release.outputs.tag != '' }}
     runs-on: docker
+    container:
+      image: forgejo.coilysiren.me/coilyco-flight-deck/agentic-os:latest
     env:
       TAG: ${{ needs.release.outputs.tag }}
       FORGEJO_BASE_URL: https://forgejo.coilysiren.me
