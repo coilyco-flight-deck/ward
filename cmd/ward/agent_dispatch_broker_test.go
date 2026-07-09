@@ -820,6 +820,7 @@ func TestRunHostDispatchBrokerRequestClearsBrokerEnvWhileLaunchRuns(t *testing.T
 	started := make(chan struct{})
 	release := make(chan struct{})
 	done := make(chan struct{})
+	var logPath string
 	result := make(chan struct {
 		logPath string
 		err     error
@@ -872,6 +873,7 @@ func TestRunHostDispatchBrokerRequestClearsBrokerEnvWhileLaunchRuns(t *testing.T
 		if !strings.Contains(got.logPath, "dispatch") {
 			t.Fatalf("log path %q does not look like a dispatch log", got.logPath)
 		}
+		logPath = got.logPath
 	case <-time.After(2 * time.Second):
 		t.Fatal("runHostDispatchBrokerRequest never returned")
 	}
@@ -911,15 +913,22 @@ func TestRunHostDispatchBrokerRequestClearsBrokerEnvWhileLaunchRuns(t *testing.T
 func TestRunHostDispatchBrokerRequestReturnsStructuredLaunchFailure(t *testing.T) {
 	t.Setenv("HOME", t.TempDir())
 	origLaunch := dispatchBrokerLaunch
-	t.Cleanup(func() { dispatchBrokerLaunch = origLaunch })
+	origIssueClient := dispatchBrokerIssueClient
+	t.Cleanup(func() {
+		dispatchBrokerLaunch = origLaunch
+		dispatchBrokerIssueClient = origIssueClient
+	})
 	dispatchBrokerLaunch = func(context.Context, dispatchBrokerRequest) error {
 		return errors.New(`Conflict. The container name "/engineer-codex-ward-786" is already in use`)
+	}
+	dispatchBrokerIssueClient = func(r *Runner, _ context.Context, _ tracker, _ containerMode) (Tracker, error) {
+		return &fakeLockForge{}, nil
 	}
 	req := dispatchBrokerRequest{
 		Role: "engineer",
 		Argv: []string{"engineer", "coilyco-flight-deck/ward#786", "--harness", "codex"},
 	}
-	logPath, err := (&Runner{}).runHostDispatchBrokerRequest(t.Context(), req)
+	logPath, err := leanRunner().runHostDispatchBrokerRequest(t.Context(), req)
 	if err == nil {
 		t.Fatal("runHostDispatchBrokerRequest accepted a launch failure")
 	}

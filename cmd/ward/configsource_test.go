@@ -30,6 +30,9 @@ func TestSelectConfigSourceDefaultsBaked(t *testing.T) {
 	if src.execMixedDialects {
 		t.Error("baked source must not dialect-filter (execassets is pre-filtered)")
 	}
+	if src.bridgeFacts != opsBridgeFactsPath {
+		t.Errorf("baked bridge path = %q, want %q", src.bridgeFacts, opsBridgeFactsPath)
+	}
 }
 
 // TestSelectConfigSourceRejectsMalformedGitRef pins fail-loud: a ref that is
@@ -72,6 +75,9 @@ func TestSelectConfigSourceFileRef(t *testing.T) {
 	if src.topologyKDL != bundleTopologyKDLPath {
 		t.Errorf("bundle topology path = %q, want %q", src.topologyKDL, bundleTopologyKDLPath)
 	}
+	if src.bridgeFacts != bundleBridgeFactsPath {
+		t.Errorf("bundle bridge path = %q, want %q", src.bridgeFacts, bundleBridgeFactsPath)
+	}
 }
 
 // TestSelectConfigSourceFileRefCapturesRevision pins the audit-integrity seam:
@@ -100,7 +106,7 @@ func TestSelectConfigSourceFileRefCapturesRevision(t *testing.T) {
 // patterns: a rename must not silently empty the neutral default.
 func TestBakedSourcePathsExist(t *testing.T) {
 	src := bakedConfigSource()
-	for _, p := range []string{src.forgejoGuardfile, src.forgejoSpecLock, src.adminGuardfile, src.fleetKDL, src.defaultsKDL, src.topologyKDL} {
+	for _, p := range []string{src.forgejoGuardfile, src.forgejoSpecLock, src.bridgeFacts, src.adminGuardfile, src.fleetKDL, src.defaultsKDL, src.topologyKDL} {
 		if _, err := fs.ReadFile(src.fsys, p); err != nil {
 			t.Errorf("baked path %s unreadable: %v", p, err)
 		}
@@ -134,6 +140,47 @@ func TestBuildForgejoOpsFromRealBundle(t *testing.T) {
 	}
 	if commandNamed(baked.Commands, "admin") == nil {
 		t.Error("baked build lost the admin graft")
+	}
+}
+
+// TestBuildBridgeOpsFromRealBundle compiles the bridge surface from a bundle
+// dir with a published coordination snapshot.
+func TestBuildBridgeOpsFromRealBundle(t *testing.T) {
+	dir := t.TempDir()
+	bridgeJSON := `{
+  "schema": 1,
+  "repos": [
+    {
+      "full_name": "coilyco-flight-deck/ward",
+      "authoritative_side": "forgejo",
+      "mirror_targets": ["github"],
+      "tracker_authority": "forgejo",
+      "mirror_status": "stale",
+      "last_sync_age": "12m",
+      "divergent_refs": [{"ref": "refs/heads/main", "upstream": "github"}]
+    },
+    {
+      "full_name": "coilysiren/agentic-os-kai",
+      "authoritative_side": "github",
+      "mirror_targets": ["forgejo"],
+      "tracker_authority": "github",
+      "mirror_status": "in_sync",
+      "last_sync_age": "2m"
+    }
+  ]
+}`
+	if err := os.WriteFile(filepath.Join(dir, bundleBridgeFactsPath), []byte(bridgeJSON), 0o644); err != nil {
+		t.Fatal(err)
+	}
+	bridge, err := buildBridgeOpsFrom(bundleConfigSource(dir))
+	if err != nil {
+		t.Fatalf("buildBridgeOpsFrom(%s): %v", dir, err)
+	}
+	if bridge.Name != "bridge" {
+		t.Fatalf("bridge group name = %q, want %q", bridge.Name, "bridge")
+	}
+	if commandNamed(bridge.Commands, "map-issue") == nil {
+		t.Errorf("bridge bundle missing map-issue; got %v", commandNames(bridge.Commands))
 	}
 }
 

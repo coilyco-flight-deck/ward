@@ -50,6 +50,22 @@ func TestOpsForgejoMounts(t *testing.T) {
 	}
 }
 
+// TestOpsBridgeMounts asserts the read-only bridge surface exists under ops.
+func TestOpsBridgeMounts(t *testing.T) {
+	bridge, err := buildBridgeOps()
+	if err != nil {
+		t.Fatalf("buildBridgeOps: %v", err)
+	}
+	if bridge.Name != "bridge" {
+		t.Errorf("group name = %q, want %q", bridge.Name, "bridge")
+	}
+	for _, want := range []string{"authoritative-side", "mirror-status", "divergent-refs", "stale-syncs", "map-issue"} {
+		if commandNamed(bridge.Commands, want) == nil {
+			t.Fatalf("bridge group missing %q; got %v", want, commandNames(bridge.Commands))
+		}
+	}
+}
+
 func TestOpsForgejoIssueListAllMounts(t *testing.T) {
 	forgejo, err := buildForgejoOps()
 	if err != nil {
@@ -97,6 +113,9 @@ func TestOpsCommandShape(t *testing.T) {
 	}
 	if !found {
 		t.Error("ops umbrella is missing the forgejo group")
+	}
+	if commandNamed(cmd.Commands, "bridge") == nil {
+		t.Error("ops umbrella is missing the bridge group")
 	}
 }
 

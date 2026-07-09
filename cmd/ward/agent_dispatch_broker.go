@@ -57,6 +57,13 @@ var dispatchBrokerLaunch = func(ctx context.Context, req dispatchBrokerRequest) 
 	}
 }
 
+// dispatchBrokerIssueClient builds the tracker client used to post failure
+// comments after a forwarded launch fails. Tests override this hook to keep the
+// failure path hermetic.
+var dispatchBrokerIssueClient = func(r *Runner, ctx context.Context, t tracker, mode containerMode) (Tracker, error) {
+	return r.hostTrackerClient(ctx, t, mode)
+}
+
 const (
 	// dispatchActionLaunch is the default action: launch a sibling engineer/advisor
 	// run. An empty Action normalizes to it, keeping older launch requests byte-compatible.
@@ -183,12 +190,41 @@ func (r *Runner) handleHostDispatchBrokerConn(ctx context.Context, conn net.Conn
 	if req.Requester == "" {
 		req.Requester = requester
 	}
+	if err := validateDispatchBrokerRequest(req); err != nil {
+		writeDispatchBrokerResponse(conn, "", err)
+		return
+	}
 	if dispatchAction(req.Action) == dispatchActionLogs {
 		r.runDispatchBrokerLogs(ctx, conn, req)
 		return
 	}
-	logPath, err := r.runHostDispatchBrokerRequest(ctx, req)
-	writeDispatchBrokerResponse(conn, logPath, err)
+	logf, logPath, restore, err := r.prepareHostDispatchBrokerRequest(req, time.Now())
+	if err != nil {
+		writeDispatchBrokerResponse(conn, "", err)
+		return
+	}
+	go func() {
+		defer func() {
+			restore()
+			_ = logf.Close()
+		}()
+		if len(req.Argv) >= 2 {
+			if ref, err := parseAgentIssueRef(req.Argv[1]); err == nil {
+				lock := dispatchRefLock(ref.String())
+				lock.Lock()
+				defer lock.Unlock()
+			}
+		}
+		if err := withBrokerForwardingDisabled(func() error {
+			return dispatchBrokerLaunch(ctx, req)
+		}); err != nil {
+			fmt.Fprintf(os.Stderr, "ward dispatch broker: launch failed: %v\n", err)
+			r.commentFailedDispatchLaunch(ctx, req, logPath, err)
+			return
+		}
+		fmt.Fprintf(os.Stderr, "ward dispatch broker: launch completed\n")
+	}()
+	writeDispatchBrokerResponse(conn, logPath, nil)
 }
 
 func writeDispatchBrokerResponse(conn net.Conn, logPath string, err error) {
@@ -230,22 +266,12 @@ func (r *Runner) runHostDispatchBrokerRequest(ctx context.Context, req dispatchB
 		lock.Lock()
 		defer lock.Unlock()
 	}
-	logf, logPath, err := openDispatchLog(req, time.Now())
+	logf, logPath, restore, err := r.prepareHostDispatchBrokerRequest(req, time.Now())
 	if err != nil {
 		// Fail loud rather than fall back to the TTY: a broken log dir must not
 		// silently reroute the flood back onto the corrupted surface (ward#389).
 		return "", fmt.Errorf("dispatch broker: open run log: %w", err)
 	}
-
-	_, _ = fmt.Fprintf(logf, "ward dispatch broker: %s requested `ward agent %s`\n",
-		emptyDefault(req.Requester, "unknown-container"), redactDispatchBrokerArgv(req.Argv))
-	ref := ""
-	if len(req.Argv) >= 2 {
-		ref = req.Argv[1]
-	}
-	_, _ = fmt.Fprintf(logf, "ward dispatch broker: this log captures the host wrapper only; in-container engineer console/reap logs drain separately and are readable with `ward agent logs %s`\n",
-		ref)
-	restore := redirectStdioToLog(logf)
 	defer func() {
 		restore()
 		_ = logf.Close()
@@ -262,6 +288,24 @@ func (r *Runner) runHostDispatchBrokerRequest(ctx context.Context, req dispatchB
 	return logPath, nil
 }
 
+// prepareHostDispatchBrokerRequest opens the dispatch log and redirects the process
+// stdio into it, returning a restore hook the caller must run.
+func (r *Runner) prepareHostDispatchBrokerRequest(req dispatchBrokerRequest, now time.Time) (*os.File, string, func(), error) {
+	logf, logPath, err := openDispatchLog(req, now)
+	if err != nil {
+		return nil, "", func() {}, err
+	}
+	_, _ = fmt.Fprintf(logf, "ward dispatch broker: %s requested `ward agent %s`\n",
+		emptyDefault(req.Requester, "unknown-container"), redactDispatchBrokerArgv(req.Argv))
+	ref := ""
+	if len(req.Argv) >= 2 {
+		ref = req.Argv[1]
+	}
+	_, _ = fmt.Fprintf(logf, "ward dispatch broker: this log captures the host wrapper only; in-container engineer console/reap logs drain separately and are readable with `ward agent logs %s`\n",
+		ref)
+	return logf, logPath, redirectStdioToLog(logf), nil
+}
+
 // commentFailedDispatchLaunch posts the failure comment with a detached timeout.
 func (r *Runner) commentFailedDispatchLaunch(ctx context.Context, req dispatchBrokerRequest, logPath string, launchErr error) {
 	ref, err := parseAgentIssueRef(req.Argv[1])
@@ -271,7 +315,7 @@ func (r *Runner) commentFailedDispatchLaunch(ctx context.Context, req dispatchBr
 	mode := dispatchBrokerRequestMode(req)
 	commentCtx, cancel := context.WithTimeout(context.WithoutCancel(ctx), 30*time.Second)
 	defer cancel()
-	cl, cerr := r.hostTrackerClient(commentCtx, ref.trackerOrDefault(), mode)
+	cl, cerr := dispatchBrokerIssueClient(r, commentCtx, ref.trackerOrDefault(), mode)
 	if cerr != nil {
 		fmt.Fprintf(os.Stderr, "ward dispatch broker: could not build issue client to comment failed dispatch on %s: %v\n", ref, cerr)
 		return
@@ -713,7 +757,7 @@ func (r *Runner) maybeForwardAgentDispatchToHostBroker(ctx context.Context, c *c
 		Requester: strings.TrimSpace(os.Getenv("WARD_CONTAINER_NAME")),
 		Token:     strings.TrimSpace(os.Getenv(envDispatchBrokerToken)),
 	}
-	logPath, err := sendDispatchBrokerRequest(ctx, addr, req)
+	logPath, err := sendDispatchBrokerLaunchRequest(ctx, addr, req)
 	if err != nil {
 		if logPath != "" {
 			return true, fmt.Errorf("%w (dispatch log: %s)", err, logPath)
@@ -860,6 +904,41 @@ func sendDispatchBrokerRequest(ctx context.Context, addr string, req dispatchBro
 	if !resp.OK {
 		// Papercut #2 (ward#382): the credential broker answers a dispatch dial with a
 		// protocol-version refusal - surface it as a "wrong broker" hint, not a bare string.
+		if isCredentialBrokerReply(resp.Error) {
+			return "", fmt.Errorf("%w: %s answered as the credential broker, not the dispatch broker "+
+				"(WARD_DISPATCH_BROKER_ADDR points at the wrong broker - see ward#382)",
+				errDispatchBrokerUnavailable, addr)
+		}
+		return resp.LogPath, fmt.Errorf("dispatch broker: %s", resp.Error)
+	}
+	return resp.LogPath, nil
+}
+
+// sendDispatchBrokerLaunchRequest forwards a launch but only waits briefly for the
+// broker's immediate acknowledgement. Launch failures that are answered promptly
+// still surface, but a busy host launch is allowed to proceed without blocking the
+// caller on completion.
+func sendDispatchBrokerLaunchRequest(ctx context.Context, addr string, req dispatchBrokerRequest) (string, error) {
+	var d net.Dialer
+	conn, err := d.DialContext(ctx, "tcp", addr)
+	if err != nil {
+		return "", fmt.Errorf("%w: the host dispatch broker did not answer at %s "+
+			"(WARD_DISPATCH_BROKER_ADDR, TCP over the docker gateway - see ward#382): %w",
+			errDispatchBrokerUnavailable, addr, err)
+	}
+	defer func() { _ = conn.Close() }()
+	if err := json.NewEncoder(conn).Encode(req); err != nil {
+		return "", fmt.Errorf("dispatch broker: send request: %w", err)
+	}
+	_ = conn.SetReadDeadline(time.Now().Add(250 * time.Millisecond))
+	var resp dispatchBrokerResponse
+	if err := json.NewDecoder(conn).Decode(&resp); err != nil {
+		if ne, ok := err.(net.Error); ok && ne.Timeout() {
+			return "", nil
+		}
+		return "", fmt.Errorf("dispatch broker: read response from %s: %w", addr, err)
+	}
+	if !resp.OK {
 		if isCredentialBrokerReply(resp.Error) {
 			return "", fmt.Errorf("%w: %s answered as the credential broker, not the dispatch broker "+
 				"(WARD_DISPATCH_BROKER_ADDR points at the wrong broker - see ward#382)",

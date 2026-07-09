@@ -36,10 +36,20 @@ func opsCommand() *cli.Command {
 			},
 		}
 	}
+	bridge, err := buildBridgeOps()
+	if err != nil {
+		bridge = &cli.Command{
+			Name:  "bridge",
+			Usage: "read-only GitHub <=> Forgejo bridge facts (unavailable)",
+			Action: func(context.Context, *cli.Command) error {
+				return fmt.Errorf("ward ops bridge: bridge facts failed to mount: %w", err)
+			},
+		}
+	}
 	return &cli.Command{
 		Name:     "ops",
 		Usage:    "operator verbs routed through the ward-kdl guardfile runtime",
-		Commands: []*cli.Command{forgejo},
+		Commands: []*cli.Command{bridge, forgejo},
 	}
 }
 

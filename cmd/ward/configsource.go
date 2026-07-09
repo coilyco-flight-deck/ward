@@ -60,6 +60,7 @@ func (u unionFS) ReadFile(name string) ([]byte, error) {
 const (
 	opsForgejoGuardfilePath      = "opsassets/forgejo.guardfile.generated.kdl"
 	opsForgejoSpecLockPath       = "opsassets/forgejo.swagger.lock.generated.json"
+	opsBridgeFactsPath           = "opsassets/bridge.generated.json"
 	opsForgejoAdminGuardfilePath = "opsassets/forgejo-admin.guardfile.kdl"
 	execAssetsDir                = "execassets"
 	fleetGeneratedKDLPath        = "fleetassets/fleet.generated.kdl"
@@ -72,6 +73,7 @@ const (
 const (
 	bundleForgejoGuardfilePath      = "ward-kdl.forgejo.guardfile.kdl"
 	bundleForgejoSpecLockPath       = "forgejo.swagger.lock.json"
+	bundleBridgeFactsPath           = "bridge.generated.json"
 	bundleForgejoAdminGuardfilePath = "forgejo-admin.guardfile.kdl"
 	bundleFleetKDLPath              = "ward-kdl.fleet.kdl"
 	bundleDefaultsKDLPath           = "ward-kdl.defaults.kdl"
@@ -89,6 +91,9 @@ type configSource struct {
 	// forgejoGuardfile + forgejoSpecLock feed buildForgejoOps (specverb).
 	forgejoGuardfile string
 	forgejoSpecLock  string
+
+	// bridgeFacts feeds buildBridgeOps: infrastructure-owned read-only bridge facts.
+	bridgeFacts string
 
 	// adminGuardfile feeds graftForgejoAdminExec; a source that omits it
 	// withholds the admin surface - absent at compile time, guardfile-style.
@@ -116,6 +121,7 @@ func bakedConfigSource() configSource {
 		fsys:             bakedAssets,
 		forgejoGuardfile: opsForgejoGuardfilePath,
 		forgejoSpecLock:  opsForgejoSpecLockPath,
+		bridgeFacts:      opsBridgeFactsPath,
 		adminGuardfile:   opsForgejoAdminGuardfilePath,
 		fleetKDL:         fleetGeneratedKDLPath,
 		defaultsKDL:      defaultsGeneratedKDLPath,
@@ -130,6 +136,7 @@ func bundleConfigSource(dir string) configSource {
 		fsys:              os.DirFS(dir),
 		forgejoGuardfile:  bundleForgejoGuardfilePath,
 		forgejoSpecLock:   bundleForgejoSpecLockPath,
+		bridgeFacts:       bundleBridgeFactsPath,
 		adminGuardfile:    bundleForgejoAdminGuardfilePath,
 		fleetKDL:          bundleFleetKDLPath,
 		defaultsKDL:       bundleDefaultsKDLPath,

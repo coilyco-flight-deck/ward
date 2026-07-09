@@ -127,6 +127,7 @@ New to ward? Read [architecture.md](architecture.md) first - it frames the whole
 
 - [ops-forgejo.md](ops-forgejo.md) - the forgejo spec/exec-verb proving ground.
 - [ops-forgejo-in-ward.md](ops-forgejo-in-ward.md) - `ward ops forgejo`, the in-binary mount.
+- [ops-bridge.md](ops-bridge.md) - `ward ops bridge`, the read-only infrastructure-owned coordination hub surface.
 - [ops-forgejo-admin.md](ops-forgejo-admin.md) - the `{admin,doctor}` remote-exec slice.
 - [ops-forgejo-view.md](ops-forgejo-view.md) - the lean `issue view` override.
 - [ops-forgejo-quiet.md](ops-forgejo-quiet.md) - the `issue create --quiet` machine-output mode.
