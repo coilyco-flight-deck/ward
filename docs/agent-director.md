@@ -15,16 +15,16 @@ that writes the tier + mode labels the heartbeat reads. See
 
 ## The init gate
 
-At startup, director runs one poll/refresh/merge pass, then checks whether headless work is queued or in flight.
+At startup, director polls once, then checks whether headless work is queued or in flight.
 If empty, it skips the init gate and drains/surfaces.
-If work remains, it asks whether to drain now. **yes**/Enter begins the autonomous drain, **no** surfaces first.
+If work remains, it asks whether to drain now. **yes**/Enter drains, **no** surfaces first.
 
 ## The heartbeat
 
 `director` is **attached/interactive only** - no `--detach` (runaway-dispatch risk). Each tick:
 
 1. **Poll + reconcile** in-flight engineers: on exit read each `WARD-OUTCOME` (done/blocked/failed).
-2. **Refresh** each ledger from the backlog, by tier (`P0`-`P4`) and mode
+2. **Refresh** each ledger from the backlog by tier (`P0`-`P4`) and mode
    (`headless`/`interactive`/`consult`), folding PRs into a `pull-request` lane `issue #N` / `PR #N`.
 3. **Probe** forge liveness (the top candidate's issue get) so a recovery reaches the decision.
 4. **Sweep** ward-owned PRs that carry the `pull-request-and-merge` marker. See [agent-director-pr-merge.md](agent-director-pr-merge.md).

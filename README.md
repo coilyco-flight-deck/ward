@@ -15,7 +15,7 @@ ward's second half is a **guarded execution layer for coding agents**. `ward age
 - **A Forgejo instance** for the agent driver (`warded` / `ward agent`) and the operator surface (`ward ops forgejo`). ward is **Forgejo-canonical**: it carries Forgejo issues and pushes to a Forgejo `main`, and the GitHub mirror is read-only and PR-gated. Which Forgejo, exactly? See the note below the list.
 - **Docker** for the container agent flow - each `warded` run boots an ephemeral container, configures forge git auth inside it, runs the agent, and reaps it. The first run pulls one image, `forgejo.coilysiren.me/coilyco-flight-deck/agentic-os:latest` (anonymous pull, no login). See [`docs/container.md`](docs/container.md) for the registry, tag policy, and how to pin off the moving tag.
 
-The plain verb gate (`ward exec`, `ward git`, `ward pkg`, `ward audit`) needs none of the above - just the repo and its `.ward/ward.yaml`.
+The plain verb gate (`ward exec`, `ward git`, `ward audit`) needs none of the above - just the repo and its `.ward/ward.yaml`.
 
 **Which Forgejo? As shipped, ward targets one - `forgejo.coilysiren.me` - and only `coily*`-owned orgs.** The API endpoint, the private coilyco-ops SSM token path, and an `owner matches coily*` gate on every owner-scoped verb are compiled into the Forgejo ops surface ([`ward-kdl.forgejo.guardfile.kdl`](.ward/ward-kdl/ward-kdl.forgejo.guardfile.kdl)), and the bot attribution defaults into the embedded fleet manifest ([`ward-kdl.fleet.kdl`](.ward/ward-kdl/ward-kdl.fleet.kdl)) - none of them runtime config. The forge-agnostic verb gate runs against any repo, but the agent driver and `ward ops forgejo` **cannot be repointed at your own instance after install**: retargeting means a **source build** with those two files edited and the binary rebuilt. Turning the endpoint, token, and owner gate into operator config is tracked in [ward#395](https://forgejo.coilysiren.me/coilyco-flight-deck/ward/issues/395) and [ward#396](https://forgejo.coilysiren.me/coilyco-flight-deck/ward/issues/396).
 
@@ -36,7 +36,7 @@ brew tap coilyco-flight-deck/tap https://forgejo.coilysiren.me/coilyco-flight-de
 brew install coilyco-flight-deck/tap/ward
 ```
 
-The explicit-URL form is required because the tap lives on forgejo, not github.com. The formula installs `ward` (stamped with the release tag) plus the `warded` symlink, and nothing else. The `ward-kdl` authoring binary is **not** installed - its surfaces are already embedded in `ward`. Spec authors who need `ward-kdl` build it from a ward checkout - see [ward-kdl-authoring.md](docs/ward-kdl-authoring.md). Upgrade with `ward upgrade`.
+The explicit-URL form is required because the tap lives on forgejo, not github.com. The formula installs `ward` (stamped with the release tag) plus the `warded` symlink, and nothing else. The `ward-kdl` authoring binary is **not** installed - its surfaces are already embedded in `ward`. Spec authors who need `ward-kdl` build it from a ward checkout - see [ward-kdl-authoring.md](docs/ward-kdl-authoring.md).
 
 Each release ships the full `ward-{darwin,linux}-{amd64,arm64}` matrix + `SHA256SUMS`. Most install via Homebrew (above); a GitHub arrival grabs a checksummed binary ([release-binaries.md](docs/release-binaries.md)).
 
@@ -50,7 +50,6 @@ The audited verb gate, on any repo:
 ward exec build          # run a declared dev verb through the gate
 ward exec test
 ward git commit -m ...   # concurrency-safe, audited git
-ward pkg brew bundle     # audited brew wrapper
 ward audit tail --follow # stream the audit log
 ```
 
