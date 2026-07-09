@@ -33,13 +33,15 @@ func (a Agent) PreLaunchCheck(rc agentsapi.RunCtx) error {
 	}
 	probeCtx, cancel := context.WithTimeout(probeCtx, 30*time.Second)
 	defer cancel()
-	out, stderr, code := captureProbe(probeCtx, codexProbeArgv(rc))
+	out, stderr, code := captureProbeInput(probeCtx, codexProbeArgv(rc), codexProbePrompt)
 	if serr := classifyCodexProbeFailure(rc.CodexModel, out, stderr, code); serr != nil {
 		return serr
 	}
 	rc.Log("codex launch probe: model probe passed, proceeding")
 	return nil
 }
+
+const codexProbePrompt = "Reply with exactly ok."
 
 func codexProbeArgv(rc agentsapi.RunCtx) []string {
 	argv := setprivPrefix(rc)
@@ -52,7 +54,7 @@ func codexProbeArgv(rc agentsapi.RunCtx) []string {
 	if rc.CodexModel != "" {
 		argv = append(argv, "--model", rc.CodexModel)
 	}
-	return append(argv, "Reply with exactly ok.")
+	return append(argv, "-")
 }
 
 // setprivPrefix builds the launch prefix that pins HOME/CODEX_HOME and, when the
@@ -77,6 +79,9 @@ func classifyCodexProbeFailure(model, out, stderr string, code int) error {
 	if model != "" && modelconfig.LooksLike(combined) {
 		return agentsapi.NewGateError(modelconfig.GateName, fmt.Errorf("codex model %q was rejected by the launch probe (ward#670): %s", model, oneLine(combined)))
 	}
+	if strings.Contains(combined, "Reading additional input from stdin") {
+		return agentsapi.NewGateError(codexProbeGate, fmt.Errorf("codex launch probe stalled waiting for stdin (exit %d): %s. Ward now feeds the prompt on stdin with `codex exec -`, so this usually means a stale Codex CLI or a wrapper that still blocks on stdin", code, oneLine(combined)))
+	}
 	if code == 0 {
 		return nil
 	}
@@ -84,13 +89,21 @@ func classifyCodexProbeFailure(model, out, stderr string, code int) error {
 }
 
 func captureProbe(ctx context.Context, argv []string) (stdout, stderr string, code int) {
+	return captureProbeInput(ctx, argv, "")
+}
+
+func captureProbeInput(ctx context.Context, argv []string, stdin string) (stdout, stderr string, code int) {
 	devnull, _ := os.Open(os.DevNull)
 	if devnull != nil {
 		defer func() { _ = devnull.Close() }()
 	}
 	var outBuf, errBuf bytes.Buffer
 	cmd := exec.CommandContext(ctx, argv[0], argv[1:]...) // #nosec G204 -- fixed argv
-	cmd.Stdin = devnull
+	if stdin == "" {
+		cmd.Stdin = devnull
+	} else {
+		cmd.Stdin = strings.NewReader(stdin)
+	}
 	cmd.Stdout = &outBuf
 	cmd.Stderr = &errBuf
 	err := cmd.Run()
