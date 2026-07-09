@@ -85,10 +85,23 @@ type directorBackend interface {
 // runDirectorLoop is the heartbeat: poll + reconcile, refresh, then surface (on drain)
 // or LLM-decide + dispatch, then sleep. Loops until drained, --max-cycles, or cancel.
 func runDirectorLoop(ctx context.Context, cfg backlogConfig, be directorBackend) error {
-	// One-time init gate (ward#361): ask once whether to drain now or surface first.
-	// Never re-asked per tick or on a later resume. See docs/agent-director.md.
-	if stop, err := directorKickoff(ctx, be); err != nil || stop {
-		return err
+	// Startup triage pass: reconcile once before the init gate so an already-drained lane
+	// can skip the kickoff prompt and go straight to the surface path.
+	be.poll(ctx)
+	be.refresh(ctx)
+	be.mergeEligiblePullRequests(ctx)
+	queued, inflight := backlogLaneCounts(be.entries())
+	if queued == 0 && inflight == 0 {
+		stop, err := directorHandleDrain(ctx, be)
+		if err != nil || stop {
+			return err
+		}
+	} else {
+		// One-time init gate (ward#361): ask once whether to drain now or surface first.
+		// Never re-asked per tick or on a later resume. See docs/agent-director.md.
+		if stop, err := directorKickoff(ctx, be); err != nil || stop {
+			return err
+		}
 	}
 	for cycle := 1; ; cycle++ {
 		// Deterministic half: reconcile in-flight, then pick up issues closed/promoted/

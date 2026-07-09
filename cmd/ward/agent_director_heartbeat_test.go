@@ -259,6 +259,9 @@ func TestRunDirectorLoopExitsWhenNoSurface(t *testing.T) {
 	if f.drainedCalls != 1 || f.surfaceCalls != 1 {
 		t.Errorf("drained=%d surface=%d, want 1/1", f.drainedCalls, f.surfaceCalls)
 	}
+	if f.kickoffCalls != 0 {
+		t.Errorf("kickoff should be skipped when startup triage leaves the lane empty, got %d calls", f.kickoffCalls)
+	}
 	if f.dispatched != nil {
 		t.Errorf("nothing should dispatch, got %v", f.dispatched)
 	}
@@ -387,7 +390,8 @@ func TestRunDirectorLoopKickoffNoExitsWhenNoSurface(t *testing.T) {
 
 // TestRunDirectorLoopKickoffError confirms a gate error aborts the run.
 func TestRunDirectorLoopKickoffError(t *testing.T) {
-	f := &fakeDirector{}
+	issue := &backlogEntry{Num: 5, Title: "queued", Tier: "P0", Lane: "headless", State: "queued"}
+	f := &fakeDirector{list: []*backlogEntry{issue}}
 	f.kickoffFn = func() (bool, error) { return false, errors.New("boom") }
 	cfg := backlogConfig{maxParallel: 2, pollInterval: time.Millisecond}
 

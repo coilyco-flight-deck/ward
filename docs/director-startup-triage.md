@@ -8,7 +8,8 @@ Nothing assigned the `headless`/`interactive`/`consult` **mode** labels between 
 the [init gate](agent-director.md) always opened onto an **empty** headless lane and only the
 surface half ever ran. The heartbeat already **read** mode labels to rank lanes; nothing ever
 **wrote** them. director now folds a triage pass into **startup, before the init gate**, so
-the gate sees a warm lane.
+the gate sees a warm lane. If that pass leaves nothing queued or in flight, the init prompt
+is skipped and director goes straight to the drain/surface path.
 
 It rides the launch flow, not an out-of-band cron - the operator's requirement was that it
 fit the flow, not add a step - and applies the `tooling-issue-prioritization` method from
