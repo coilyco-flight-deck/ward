@@ -183,7 +183,7 @@ func TestForwardAgentStopSendsStopRequest(t *testing.T) {
 	t.Setenv(envDispatchBrokerAddr, ln.Addr().String())
 	t.Setenv(envDispatchBrokerToken, "nonce-627")
 	t.Setenv("WARD_READONLY", "1")
-	t.Setenv("WARD_CONTAINER_NAME", "session-claude-host")
+	t.Setenv("WARD_CONTAINER_NAME", "director-claude-host")
 	if err := (&Runner{}).forwardAgentStopToHostBroker(t.Context(), "coilyco-flight-deck/ward#625"); err != nil {
 		t.Fatalf("forward stop: %v", err)
 	}
@@ -260,7 +260,7 @@ func TestForwardAgentDispatchToHostBrokerSendsCanonicalRequest(t *testing.T) {
 	t.Setenv(envDispatchBrokerAddr, ln.Addr().String())
 	t.Setenv(envDispatchBrokerToken, "nonce-123")
 	t.Setenv("WARD_READONLY", "1")
-	t.Setenv("WARD_CONTAINER_NAME", "session-codex-host")
+	t.Setenv("WARD_CONTAINER_NAME", "director-codex-host")
 	cmd := parseCommandForTest(t, agentEngineerFlags(), []string{
 		"engineer", "coilyco-flight-deck/ward#378", "--harness", "claude", "--workflow", "direct-to-main",
 		"--details", "repair after PR #357", "--skip-preflight", "--skip-review",
@@ -273,7 +273,7 @@ func TestForwardAgentDispatchToHostBrokerSendsCanonicalRequest(t *testing.T) {
 		t.Fatal("dispatch did not forward despite broker env")
 	}
 	req := <-gotReq
-	if req.Role != "engineer" || req.Requester != "session-codex-host" {
+	if req.Role != "engineer" || req.Requester != "director-codex-host" {
 		t.Fatalf("request identity = role %q requester %q", req.Role, req.Requester)
 	}
 	if req.Token != "nonce-123" {
@@ -310,7 +310,7 @@ func TestForwardAgentDispatchToHostBrokerInheritsSurfaceHarness(t *testing.T) {
 	t.Setenv(envDispatchBrokerAddr, ln.Addr().String())
 	t.Setenv(envDispatchBrokerToken, "nonce-456")
 	t.Setenv("WARD_READONLY", "1")
-	t.Setenv("WARD_CONTAINER_NAME", "session-codex-host")
+	t.Setenv("WARD_CONTAINER_NAME", "director-codex-host")
 	cmd := parseCommandForTest(t, agentEngineerFlags(), []string{
 		"engineer", "coilyco-flight-deck/ward#378", "--harness", "codex", "--skip-preflight", "--skip-review",
 	})
@@ -353,7 +353,7 @@ func TestForwardAgentDispatchToHostBrokerInheritsRunningDirectorHarness(t *testi
 	t.Setenv(envDispatchBrokerAddr, ln.Addr().String())
 	t.Setenv(envDispatchBrokerToken, "nonce-789")
 	t.Setenv("WARD_READONLY", "1")
-	t.Setenv("WARD_CONTAINER_NAME", "session-codex-host")
+	t.Setenv("WARD_CONTAINER_NAME", "director-codex-host")
 	t.Setenv("WARD_AGENT", "codex")
 	t.Setenv("WARD_MODE", "codex")
 	cmd := parseCommandForTest(t, agentEngineerFlags(), []string{
@@ -396,7 +396,7 @@ func TestForwardAgentDispatchToHostBrokerAllowsRefWithoutPrompt(t *testing.T) {
 	t.Setenv(envDispatchBrokerAddr, ln.Addr().String())
 	t.Setenv(envDispatchBrokerToken, "nonce-789")
 	t.Setenv("WARD_READONLY", "1")
-	t.Setenv("WARD_CONTAINER_NAME", "session-codex-host")
+	t.Setenv("WARD_CONTAINER_NAME", "director-codex-host")
 	cmd := parseCommandForTest(t, agentAdvisorFlags(), []string{
 		"advisor", "coilyco-flight-deck/ward#378", "--harness", "codex",
 	})
@@ -437,7 +437,7 @@ func TestForwardAgentDispatchToHostBrokerSupportsQa(t *testing.T) {
 	t.Setenv(envDispatchBrokerAddr, ln.Addr().String())
 	t.Setenv(envDispatchBrokerToken, "nonce-qa")
 	t.Setenv("WARD_READONLY", "1")
-	t.Setenv("WARD_CONTAINER_NAME", "session-codex-host")
+	t.Setenv("WARD_CONTAINER_NAME", "director-codex-host")
 	cmd := parseCommandForTest(t, agentQAFlags(), []string{
 		"qa", "coilyco-flight-deck/ward#378", "--harness", "claude", "inspect the branch",
 	})
@@ -687,11 +687,11 @@ func TestRedactDispatchBrokerArgvKeepsWorkflowAndDetailsButScrubsSecrets(t *test
 func TestDispatchLogNameIsStampedAndAttributable(t *testing.T) {
 	at := time.Date(2026, 7, 1, 12, 0, 0, 0, time.UTC)
 	req := dispatchBrokerRequest{
-		Requester: "session-claude-ward-x",
+		Requester: "director-claude-ward-x",
 		Argv:      []string{"engineer", "coilyco-flight-deck/ward#389", "--driver", "claude"},
 	}
 	got := dispatchLogName(req, at)
-	want := "20260701T120000Z-session-claude-ward-x-coilyco-flight-deck-ward-389.log"
+	want := "20260701T120000Z-director-claude-ward-x-coilyco-flight-deck-ward-389.log"
 	if got != want {
 		t.Errorf("dispatchLogName() = %q, want %q", got, want)
 	}
@@ -707,7 +707,7 @@ func TestDispatchLogNameIsStampedAndAttributable(t *testing.T) {
 func TestServedRunStdioLandsInLogNotTTY(t *testing.T) {
 	t.Setenv("HOME", t.TempDir())
 	req := dispatchBrokerRequest{
-		Requester: "session-claude-ward-1",
+		Requester: "director-claude-ward-1",
 		Argv:      []string{"engineer", "coilyco-flight-deck/ward#1", "--driver", "claude"},
 	}
 	logf, logPath, err := openDispatchLog(req, time.Now())
@@ -726,7 +726,7 @@ func TestServedRunStdioLandsInLogNotTTY(t *testing.T) {
 		t.Fatal("redirect did not point os.Stdout/os.Stderr at the log file")
 	}
 	// A byte a served run would emit lands in the log, not on the terminal.
-	fmt.Fprint(os.Stderr, "session-claude-ward-1: pulling some-image\n")
+	fmt.Fprint(os.Stderr, "director-claude-ward-1: pulling some-image\n")
 	restore()
 	_ = logf.Close()
 
