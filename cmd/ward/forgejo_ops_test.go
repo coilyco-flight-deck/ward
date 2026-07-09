@@ -74,7 +74,7 @@ func TestCreateIssueBodyIsSigned(t *testing.T) {
 
 func TestGetPullRequestRetriesEmptyBodyThenSucceeds(t *testing.T) {
 	var calls int32
-	srv := httptest.NewServer(http.HandlerFunc(func(w http.ResponseWriter, r *http.Request) {
+	srv := httptest.NewServer(http.HandlerFunc(func(w http.ResponseWriter, _ *http.Request) {
 		if got := atomic.AddInt32(&calls, 1); got == 1 {
 			w.WriteHeader(http.StatusOK)
 			return
@@ -98,7 +98,7 @@ func TestGetPullRequestRetriesEmptyBodyThenSucceeds(t *testing.T) {
 
 func TestGetPullRequestPersistentEmptyBody(t *testing.T) {
 	var calls int32
-	srv := httptest.NewServer(http.HandlerFunc(func(w http.ResponseWriter, r *http.Request) {
+	srv := httptest.NewServer(http.HandlerFunc(func(w http.ResponseWriter, _ *http.Request) {
 		atomic.AddInt32(&calls, 1)
 		w.WriteHeader(http.StatusOK)
 	}))
@@ -121,7 +121,7 @@ func TestGetPullRequestPersistentEmptyBody(t *testing.T) {
 
 func TestGetPullRequestReadsBodyLargerThan4096(t *testing.T) {
 	body := `{"mergeable":true,"padding":"` + strings.Repeat("x", 5000) + `"}`
-	srv := httptest.NewServer(http.HandlerFunc(func(w http.ResponseWriter, r *http.Request) {
+	srv := httptest.NewServer(http.HandlerFunc(func(w http.ResponseWriter, _ *http.Request) {
 		_, _ = w.Write([]byte(body))
 	}))
 	defer srv.Close()
