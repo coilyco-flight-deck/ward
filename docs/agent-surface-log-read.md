@@ -36,7 +36,7 @@ sibling into the parallel tree:
   (`redactConsole`, reusing the extractor's `redactSecrets`).
 - **`transcript.redacted.jsonl`** - the transcript reduced to bodies-dropped, args-scrubbed
   tool **envelopes**, one per line (`redactedTranscript`, reusing
-  `extractEnvelopes(_, true)` - the shared redaction the local redacted tree uses).
+  `extractEnvelopes(_, true)` - the same redaction the local redacted archive uses).
 - **`meta.json`** - already secret-free, copied over verbatim.
 
 So the redaction is **shared with the envelope extractor**, not a second redactor: one
@@ -45,13 +45,14 @@ views with tool-result bodies dropped and secret shapes scrubbed, and the raw ar
 plus the `dispatch/` logs that also live under `agent-logs/` - never reach the mount.
 
 The raw `console.log` / `transcript.jsonl` stay on disk under `agent-logs/` for the
-host-native drain: this **adds** the redacted view, it does not replace the raw archive.
+host-native drain path: this **adds** the redacted view, it does not replace the
+raw archive.
 
-### Requires the disk sink
+### Requires the disk archive
 
-The redacted view rides the same disk gate as the raw artifacts
-([agent-observability.md](agent-observability.md)). If the archive is present, the
-surface mount has logs to read.
+The redacted view rides the same local archive as the raw artifacts
+([agent-observability.md](agent-observability.md)). If the raw drain is written,
+the surface mount has logs to read.
 
 ## See also
 

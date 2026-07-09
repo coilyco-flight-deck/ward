@@ -69,12 +69,12 @@ preserved branch back to its run.
 The markers carry only non-secret dims - container, issue, repo, branch,
 mode/driver, flags, counts, git shas, verdict and decision codes. Tokens and
 credentials (`FORGEJO_TOKEN`, `WARD_CLAUDE_CREDS_B64`) are never formatted into a
-line, so `console.log` stays local and the
+line, so `console.log` stays safe for the local archive and the
 [reap diagnostics block](container-reap-diagnostics.md) can fold into a public
 issue. Keep new lines to those `key=value` dims.
 
 ## See also
 
 - [container-lifecycle-debug.md](container-lifecycle-debug.md) - the debug-a-headless-run-from-logs-only sequence.
-- [agent-observability.md](agent-observability.md) - where these logs drain, the local archive, and the redacted sibling tree.
+- [agent-observability.md](agent-observability.md) - where these logs drain, the sink modes, the locality gate.
 - [container-reap-diagnostics.md](container-reap-diagnostics.md) - the salvage/failure self-diagnosis block.

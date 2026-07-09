@@ -2,6 +2,8 @@ package main
 
 import (
 	"encoding/json"
+	"os"
+	"path/filepath"
 	"strings"
 	"testing"
 )
@@ -174,5 +176,39 @@ func TestRedactedTranscript(t *testing.T) {
 	// A transcript with no tool calls yields nil (a goose run, an empty tree).
 	if redactedTranscript([]byte("")) != nil {
 		t.Error("redactedTranscript of an empty transcript must be nil")
+	}
+}
+
+func TestWriteRedactedArtifactsLandsLocalArtifacts(t *testing.T) {
+	t.Setenv("HOME", t.TempDir())
+	name := "ward-agent-redact-test"
+	console := []byte("boot\nleaked ghp_1234567890abcdefghijklmnopqrstuvwxyz here\ndone\n")
+	transcript := []byte(`{"type":"assistant","timestamp":"2026-06-26T02:00:00Z","cwd":"/workspace/ward","message":{"content":[{"type":"tool_use","id":"t1","name":"Write","input":{"file_path":"/workspace/ward/x.go","content":"secret ghp_1234567890abcdefghijklmnopqrstuvwxyz body"}}]}}`)
+	meta := runMeta{Container: name, Repo: "o/r", Issue: "526", Outcome: outcomePushedMain}
+
+	r := &Runner{}
+	r.writeRedactedArtifacts(name, console, transcript, meta)
+
+	dir := filepath.Join(agentLogsRedactedDir(), name)
+	con, err := os.ReadFile(filepath.Join(dir, drainConsoleRedactedFile))
+	if err != nil {
+		t.Fatalf("read console.redacted.log: %v", err)
+	}
+	if strings.Contains(string(con), "ghp_") {
+		t.Errorf("redacted console leaked a token: %q", con)
+	}
+	tr, err := os.ReadFile(filepath.Join(dir, drainTranscriptRedactedFile))
+	if err != nil {
+		t.Fatalf("read transcript.redacted.jsonl: %v", err)
+	}
+	if strings.Contains(string(tr), "ghp_") || strings.Contains(string(tr), "\"content\"") {
+		t.Errorf("redacted transcript leaked a body/token: %q", tr)
+	}
+	if _, err := os.ReadFile(filepath.Join(dir, drainMetaFile)); err != nil {
+		t.Errorf("meta.json not copied into the redacted view: %v", err)
+	}
+	// The raw tree must be untouched by the redacted write.
+	if _, err := os.Stat(filepath.Join(agentLogsDir(), name)); !os.IsNotExist(err) {
+		t.Errorf("redacted write must not create the raw agent-logs dir; stat err = %v", err)
 	}
 }

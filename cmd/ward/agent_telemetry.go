@@ -8,9 +8,6 @@ import (
 	"time"
 )
 
-// agent_telemetry.go keeps the redaction and transcript-envelope helpers used by
-// the local drain's redacted-at-rest view (ward#526, ward#532).
-
 // telemetryArgCap bounds a redacted arg's length so a pathological command can't
 // blow up an indexed attribute (cardinality/size discipline, log-schema.md).
 const telemetryArgCap = 512
@@ -60,7 +57,7 @@ func redactConsole(console []byte) []byte {
 }
 
 // redactedTranscript renders a drained transcript as one JSON envelope per line via
-// extractEnvelopes(_, true).
+// the SAME extractEnvelopes(_, true) the local redacted archive uses (ward#526).
 func redactedTranscript(transcript []byte) []byte {
 	envs := extractEnvelopes(transcript, true)
 	if len(envs) == 0 {
