@@ -139,10 +139,10 @@ func (r *Runner) prepareScratchPlan(ctx context.Context, c *cli.Command, mode co
 	// The broker's host:port + token are set later in attachHostDispatchBroker,
 	// once the TCP listener binds and its ephemeral port is known (ward#391).
 
-	// Name it session-<driver>-<machine> (issueless, so the machine id disambiguates
-	// concurrent surface sessions) and label ward.role=session (ward#364, ward#353).
+	// Name it session-<driver>-<agent-id> using the dictatable short-id suffix
+	// contract from aos, and label ward.role=session (ward#364, ward#353).
 	plan.Role = roleSession
-	plan.Name = containerRoleName(roleSession, mode, repo, 0, plan.Machine)
+	plan.Name = containerRoleName(roleSession, mode, repo, 0, directorSurfaceSessionSuffix())
 	return plan, cleanupAssets, nil
 }
 

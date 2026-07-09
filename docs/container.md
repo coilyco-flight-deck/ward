@@ -17,7 +17,8 @@ entrypoint-internal `reap`/`bootstrap` remain; debug uses raw `docker`).
 
 Three departures from a transparent, shared, bind-mounted container:
 - **One container per run, many at once** - named for its role
-  (`engineer-<driver>-<repo>-<N>`); `ward.*` labels carry identity.
+  (`engineer-<driver>-<repo>-<N>` for carried issues, `session-<driver>-<agent-id>`
+  for director surface sessions); `ward.*` labels carry identity.
 - **Fresh clone inside, never on the host** - cached through a shared
   `ward-gitcache` bare mirror, so the host's repo tree stays untouched.
 - **Least access** - the only default host bind is the **cwd** (read-only) plus

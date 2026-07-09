@@ -22,10 +22,10 @@ name as `engineer-<driver>-<repo>-<issue>`:
 
 So a claude run on [ward#398](https://forgejo.coilysiren.me/coilyco-flight-deck/ward/issues/398) is **`engineer-claude-ward-398`**.
 
-**Session/surface containers differ.** The issueless roles (a
-[director surface](agent-surface.md), an advisor session) take the other
-`containerRoleName` branch, `<role>-<driver>-<machine>` - a machine suffix and **no
-issue number**. Do not hunt for an issue number on those.
+**Session/surface containers differ.** A [director surface](agent-surface.md)
+uses `session-<driver>-<agent-id>` with the aos/o2r dictatable suffix. An
+advisor session still takes the other `containerRoleName` branch,
+`<role>-<driver>-<machine>`.
 
 ## The stop command
 
