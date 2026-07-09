@@ -79,7 +79,6 @@ func main() {
 			pkgCommand(),
 			gitCommand(),
 			auditCommand(),
-			hookCommand(),
 			containerCommand(),
 			agentCommand(),
 			agentsCommand(),

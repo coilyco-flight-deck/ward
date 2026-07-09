@@ -44,11 +44,6 @@ var agentSubsystemPointers = []subsystemPointer{
 		paths:    []string{"docs/container.md", "docs/container-reap.md"},
 	},
 	{
-		label:    "PreToolUse hook guard",
-		keywords: []string{"pretooluse", "hook guard", "path-hijack", "command -v"},
-		paths:    []string{"docs/hook.md"},
-	},
-	{
 		label:    "release + tap formula bump",
 		keywords: []string{"release.yml", "tag-bump", "bump-tap", "tap formula", "skip-ci"},
 		paths:    []string{"docs/release.md"},
