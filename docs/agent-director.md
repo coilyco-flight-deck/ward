@@ -15,8 +15,9 @@ that writes the tier + mode labels the heartbeat reads. See
 
 ## The init gate
 
-At startup, before the first drain tick, director asks once whether to drain now. **yes**/Enter begins the autonomous drain, **no** surfaces an interactive session first.
-An opt-in asked **once at init**, never per tick. `--dry-run`/`--print` skip it.
+At startup, director runs one poll/refresh/merge pass, then checks whether headless work is queued or in flight.
+If empty, it skips the init gate and drains/surfaces.
+If work remains, it asks whether to drain now. **yes**/Enter begins the autonomous drain, **no** surfaces first.
 
 ## The heartbeat
 
