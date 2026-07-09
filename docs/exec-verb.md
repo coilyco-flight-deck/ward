@@ -46,7 +46,7 @@ what a process can touch once running (see
 holds against **descendant** processes differs by platform, and the difference is
 material:
 
-- **Linux: depth-N.** Sandboxed verbs (e.g. `ward pkg brew`) run inside
+- **Linux: depth-N.** Sandboxed verbs (e.g. `ward exec` descendants) run inside
   cli-guard's `sandbox` jail, so the wrapper holds at arbitrary process depth,
   not just depth 0. A descendant of a gated verb that invokes a wrapped tool -
   by name or absolute path - re-enters the gate. A descendant escape here is a

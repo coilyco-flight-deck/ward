@@ -35,26 +35,18 @@ A readable pre-flight summary and a deliberate "go" instead of being teleported
 into the alt-screen. For `director`'s drain-surface this doubles as the "new
 direction" comms area before the read-only session opens.
 
-## Affordance B: u to upgrade ward, then re-launch
+## Affordance B: stale-host heads-up
 
 When the host `ward` is behind latest (the `version.Behind` read that drives the
-dispatch heads-up, [ward#143](https://forgejo.coilysiren.me/coilyco-flight-deck/ward/issues/143)), the gate offers a second choice - type `u` then
-Enter to run `ward upgrade` and **re-launch the same invocation**:
+dispatch heads-up, [ward#143](https://forgejo.coilysiren.me/coilyco-flight-deck/ward/issues/143)), the gate still shows the version delta, but it no longer offers a package-manager refresh path:
 
 ```
 host ward v0.16.0 is behind the latest release v0.17.0.
-Press Enter to launch, or type u then Enter to upgrade ward and re-launch.
+Press Enter to launch.
 ```
 
-This retires the operator's manual `watch "brew upgrade ..."` loop.
-
-After `ward upgrade` the on-disk binary is new but the running process is the old
-`ward`, so re-launch re-execs the freshly-installed binary with the current argv
-(`syscall.Exec`), not stale in-memory code. The exec target is canonicalized
-against the same homebrew allow-list the PreToolUse hook uses
-(`guardBinaryPaths["ward"]`), so it can't be PATH-hijacked. With no canonical path
-(a dev/source build) or a failed exec, it falls back to the v1: report the upgrade
-and tell the operator to re-run, launching nothing stale.
+This keeps the operator informed without making `ward` a package-manager control
+surface.
 
 ## When the gate is skipped
 

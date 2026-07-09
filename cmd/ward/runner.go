@@ -81,8 +81,7 @@ func leanRunner() *Runner {
 }
 
 // wardSandboxTools is the set of wrapped tools ward shims inside the jail.
-// brew is the first enforced surface; extend as other passthroughs land.
-var wardSandboxTools = []string{"brew"}
+var wardSandboxTools []string
 
 // sandboxSpec builds the jail spec for ward's audited verbs (inert off Linux /
 // inside a jail). Returns nil if the binary path is unresolvable.

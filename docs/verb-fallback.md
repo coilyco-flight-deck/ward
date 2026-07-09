@@ -6,7 +6,7 @@ doc_goal: Explain how bare `ward <verb>` safely resolves to `ward exec <verb>` w
 ## Unknown-verb fallback
 
 `ward <leaf>` is rewritten to `ward exec <leaf>` when `<leaf>` is **not** a
-registered top-level verb (`version, upgrade, exec, pkg, git, audit, doctor,
+registered top-level verb (`version, exec, git, audit, doctor,
 hook, container, agent`, plus `help`) and **does**
 match a command declared in the reachable `.ward/ward.yaml`. So `ward test`
 just works wherever `test` is declared, without each repo leaf being

@@ -5,8 +5,7 @@ doc_goal: Let a maintainer trust and repair ward's Forgejo-canonical push-to-mai
 
 Forgejo-canonical release on push to `main`. The
 `.forgejo/workflows/release.yml` pipeline cuts the tag + release, then bumps the
-homebrew formula(e) so `brew upgrade ward` downloads and verifies the tagged
-release binary.
+install channels so they download and verify the tagged release binary.
 
 ward's formula downloads the per-platform release binaries (`url` + `sha256`),
 but `publish-binaries` still ships the full matrix + `SHA256SUMS` to **both**
@@ -78,8 +77,8 @@ OS, so every install channel is a **push** from the tag build rather than a poll
   - **It targets the Forgejo bucket, not the GitHub mirror.** The bucket is
     Forgejo-canonical: users add it with
     `scoop bucket add ... https://forgejo.coilysiren.me/...` and its `checkver`
-    reads the Forgejo `releases.atom` feed, so `scoop update ward` only sees a
-    manifest that is current on **Forgejo**. Pushing to the mirror alone would
+    reads the Forgejo `releases.atom` feed, so the Windows manifest only sees a
+    version that is current on **Forgejo**. Pushing to the mirror alone would
     not clear the user-facing lag, so the job writes where scoop reads - the
     homebrew-tap sibling is Forgejo for the same reason.
   - The manifest hashes come from the per-asset `.exe.sha256` sidecars

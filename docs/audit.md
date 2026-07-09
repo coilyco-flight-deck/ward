@@ -12,7 +12,7 @@ describes. That gate is not incidental hygiene. It exists so the proof
 holds, which is the whole point of writing the row.
 
 ward writes one append-only JSONL row per audited invocation (every
-`ward exec` repo verb and `ward pkg brew` run) to a per-repo file:
+`ward exec` repo verb and the audited host-verb runs) to a per-repo file:
 
 ```
 ~/.ward/audit/<slug>.jsonl

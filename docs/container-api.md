@@ -12,7 +12,7 @@ ready-to-work clone. That handoff **is** the container API - the stable contract
 between host `ward` (`docker run` composed in
 [`container_compute.go`](../cmd/ward/container_compute.go)) and the entrypoint that
 reads it. None of it is baked into the image, so an image pin never changes this
-contract - only a ward upgrade does.
+contract - only a newer ward binary does.
 
 Three interface surfaces, plus the capability ladder they key off:
 

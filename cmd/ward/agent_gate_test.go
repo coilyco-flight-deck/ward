@@ -68,15 +68,15 @@ func TestNewScratchGateStatusVersionFallback(t *testing.T) {
 	}
 }
 
-// When ward is behind, the gate surfaces the version delta and offers the upgrade
-// affordance; when current, it offers only the launch.
-func TestRenderScratchGateOutdatedOffersUpgrade(t *testing.T) {
+// When ward is behind, the gate surfaces the version delta without offering an
+// upgrade affordance; when current, it offers only the launch.
+func TestRenderScratchGateOutdatedLaunchOnly(t *testing.T) {
 	var behindBuf, currentBuf bytes.Buffer
 	renderScratchGate(&behindBuf, newScratchGateStatus(sampleUpPlan(), false, true, "v0.16.0", "v0.17.0"))
 	renderScratchGate(&currentBuf, newScratchGateStatus(sampleUpPlan(), false, false, "v0.17.0", ""))
 
 	behind := behindBuf.String()
-	for _, want := range []string{"v0.16.0", "v0.17.0", "behind", "upgrade"} {
+	for _, want := range []string{"v0.16.0", "v0.17.0", "behind", "Press Enter to launch."} {
 		if !strings.Contains(behind, want) {
 			t.Errorf("outdated gate missing %q; got:\n%s", want, behind)
 		}
@@ -86,26 +86,21 @@ func TestRenderScratchGateOutdatedOffersUpgrade(t *testing.T) {
 	}
 }
 
-// Enter (empty line) launches; "u" upgrades only when the affordance is offered, and
-// otherwise falls through to launch so a stray keypress can't strand the operator.
+// Enter (empty line) launches, and any other input falls through to launch so a
+// stray keypress can't strand the operator.
 func TestReadScratchGateChoice(t *testing.T) {
 	cases := []struct {
-		in           string
-		offerUpgrade bool
-		want         gateChoice
+		in   string
+		want gateChoice
 	}{
-		{"\n", true, gateLaunch},
-		{"\n", false, gateLaunch},
-		{"", true, gateLaunch}, // EOF on closed stdin -> launch, never wedge
-		{"u\n", true, gateUpgrade},
-		{"U\n", true, gateUpgrade},
-		{"upgrade\n", true, gateUpgrade},
-		{"u\n", false, gateLaunch}, // not offered: u is inert
-		{"go\n", true, gateLaunch}, // anything else launches
+		{"\n", gateLaunch},
+		{"", gateLaunch},    // EOF on closed stdin -> launch, never wedge
+		{"u\n", gateLaunch}, // upgrade affordance removed
+		{"go\n", gateLaunch},
 	}
 	for _, tc := range cases {
-		if got := readScratchGateChoice(strings.NewReader(tc.in), tc.offerUpgrade); got != tc.want {
-			t.Errorf("readScratchGateChoice(%q, offer=%v) = %d, want %d", tc.in, tc.offerUpgrade, got, tc.want)
+		if got := readScratchGateChoice(strings.NewReader(tc.in)); got != tc.want {
+			t.Errorf("readScratchGateChoice(%q) = %d, want %d", tc.in, got, tc.want)
 		}
 	}
 }

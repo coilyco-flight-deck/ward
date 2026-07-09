@@ -73,6 +73,11 @@ func mountOneWardKdlExec(root *cli.Command, gfBytes []byte, r *Runner) error {
 	if len(gf.Group) < 2 {
 		return fmt.Errorf("wrap path %v needs a binary token plus a mount path", gf.Group)
 	}
+	// `ward pkg brew` stays out of the ward surface entirely now. The guardfile
+	// remains available to standalone `ward-kdl`, but ward does not mount it.
+	if len(gf.Group) >= 3 && gf.Group[1] == "pkg" && gf.Group[2] == "brew" {
+		return nil
+	}
 	group, err := execverb.Build(execverb.Config{
 		Guardfile: gf,
 		Wrap: func(s verb.Spec) cli.ActionFunc {
