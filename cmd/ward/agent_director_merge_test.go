@@ -68,7 +68,7 @@ func TestDirectorMergeDecision(t *testing.T) {
 			name: "needs-merge-workflow",
 			pr:   basePR,
 			meta: directorRunMeta{HasOutcome: true, Outcome: backlogOutcome{Status: "merge-ready"}, Workflow: string(workflowPullRequest), Review: "passed: ok"},
-			want: "workflow pull-request still needs human merge approval",
+			want: "workflow pull-requests still needs human merge approval",
 		},
 		{
 			name: "needs-internal-family",
@@ -150,7 +150,7 @@ func TestDirectorRunMetaParsesWorkflowAndReview(t *testing.T) {
 		"",
 		"<details><summary>details</summary>",
 		"",
-		"workflow: pull-request-and-merge; review summary: passed: all green",
+		"workflow: pull-requests-and-merge; review summary: passed: all green",
 		"",
 		"</details>",
 	}, "\n")
@@ -263,7 +263,7 @@ esac
 	if allowed {
 		t.Fatal("unmarked PR: want deny, got allow")
 	}
-	if reason != "PR body missing ward.workflow: pull-request-and-merge marker" {
+	if reason != "PR body missing ward.workflow: pull-requests-and-merge marker" {
 		t.Fatalf("unmarked PR reason = %q, want missing-marker denial", reason)
 	}
 }

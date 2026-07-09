@@ -417,14 +417,14 @@ func (c *forgejoClient) mergePullRequest(ctx context.Context, owner, repo string
 }
 
 type forgejoPullRequest struct {
-	Number  int    `json:"number"`
-	Title   string `json:"title"`
-	Body    string `json:"body"`
-	State   string `json:"state"`
-	Draft   bool   `json:"draft"`
-	Mergeable bool  `json:"mergeable"`
-	HTMLURL string `json:"html_url"`
-	Head    struct {
+	Number    int    `json:"number"`
+	Title     string `json:"title"`
+	Body      string `json:"body"`
+	State     string `json:"state"`
+	Draft     bool   `json:"draft"`
+	Mergeable bool   `json:"mergeable"`
+	HTMLURL   string `json:"html_url"`
+	Head      struct {
 		SHA string `json:"sha"`
 		Ref string `json:"ref"`
 	} `json:"head"`

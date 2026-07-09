@@ -64,7 +64,7 @@ func TestQAVerdictCommentSurfacesFailure(t *testing.T) {
 		"verdict: fail",
 		"reviewed_sha: abc123",
 		"reviewer_family: internal",
-		"workflow: pull-request-and-merge",
+		"workflow: pull-requests-and-merge",
 		"issue_ref: coilyco-flight-deck/ward#844",
 		"pr_ref: coilyco-flight-deck/ward#729",
 		"reason: checks are red",

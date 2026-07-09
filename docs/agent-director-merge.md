@@ -1,5 +1,5 @@
 ---
-doc_goal: Explain the director's narrow PR-merge lane, including the policy boundary, the eligible PR shape, and the reasons it stays distinct from the normal human-gated PR flow.
+doc_goal: Explain the director's narrow PR-merge lane, including the policy boundary, the eligible PR shape, and the reasons it stays distinct from the normal human-gated pull-requests flow.
 ---
 # ward agent director merge
 
@@ -11,16 +11,16 @@ the ones whose linked issue thread authorizes it.
 The merge lane is narrow by design. It accepts only ward-owned work whose carried
 issue thread says:
 
-- `workflow: pull-request-and-merge`
+- `workflow: pull-requests-and-merge`
 - `WARD-OUTCOME: merge-ready`
 - review summary starts with `passed:`
 - the PR title is not salvage or WIP noise
 - the PR is mergeable against the current base branch
 
-That keeps `pull-request` human-gated. The director does not gain a
-general PR-review or blanket repo-write surface here. A conflicting PR is not
-done, even if CI is green and the issue thread says merge-ready. After the merge
-lands, the director records the final `WARD-OUTCOME: done` on the issue.
+That keeps `pull-requests` human-gated. The director does not gain a general
+PR-review or blanket repo-write surface here. A conflicting PR is not done,
+even if CI is green and the issue thread says merge-ready. After the merge
+lands, the director records the final `WARD-OUTCOME: done ✅` on the issue.
 
 ## What it does
 

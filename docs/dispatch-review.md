@@ -19,9 +19,9 @@ The panel is `ward agent review`, wired into the [engineer](agent-engineer.md) s
 when explicitly enabled (not `remote-branch-only`, which lands nothing). After CI is
 green and before it opens the PR or merges, the worker reads `WARD-REVIEW: pass`
 (land), `block` (do not land; post the verdicts and close `WARD-OUTCOME: blocked
-🛑`), or `advisory` (only if no reviewer can run). For `pull-request` runs, the
+🛑`), or `advisory` (only if no reviewer can run). For `pull-requests` runs, the
 worker keeps watching the PR checks until they are green or genuinely blocked, then
-ends with `WARD-OUTCOME: submitted`. `pull-request-and-merge` ends with
+ends with `WARD-OUTCOME: submitted`. `pull-requests-and-merge` ends with
 `WARD-OUTCOME: merge-ready`, then the director records final `done` after merge.
 Engineer seeds skip it by default for brokered QA.
 `--skip-review` drops the clause from the seed, `--skip-preflight`
