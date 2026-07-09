@@ -286,6 +286,13 @@ func (r *Runner) acquireLocalReservation(ctx context.Context, label string, mode
 		if err := r.precheckLocalReservation(ctx, label, ref, now); err != nil {
 			return nil, err
 		}
+		if _, ok, err := readAgentReservation(path); err != nil {
+			return nil, fmt.Errorf("%s: read reservation %s: %w", label, path, err)
+		} else if !ok {
+			if err := r.precheckLiveIssueWorker(ctx, label, ref, container, false); err != nil {
+				return nil, err
+			}
+		}
 	}
 	fmt.Fprintf(os.Stderr, "%s: reservation local acquire writing %s\n", label, path)
 	res := agentReservation{
