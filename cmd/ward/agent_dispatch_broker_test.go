@@ -560,6 +560,126 @@ func TestForwardAgentDispatchToHostBrokerAllowsRefWithoutPrompt(t *testing.T) {
 	}
 }
 
+// TestRunAgentAdvisorRefDispatchReturnsPromptlyViaBroker is the director-surface
+// regression for fire-and-forget advisor ref dispatch through the broker.
+func TestRunAgentAdvisorRefDispatchReturnsPromptlyViaBroker(t *testing.T) {
+	t.Setenv("HOME", t.TempDir())
+	r := &Runner{}
+
+	ln, err := net.Listen("tcp", "127.0.0.1:0")
+	if err != nil {
+		t.Fatalf("listen broker: %v", err)
+	}
+	defer ln.Close()
+
+	started := make(chan struct{})
+	release := make(chan struct{})
+	done := make(chan struct{})
+	origLaunch := dispatchBrokerLaunch
+	t.Cleanup(func() { dispatchBrokerLaunch = origLaunch })
+	dispatchBrokerLaunch = func(_ context.Context, req dispatchBrokerRequest) error {
+		if req.Role != "advisor" {
+			t.Errorf("launch role = %q, want advisor", req.Role)
+		}
+		select {
+		case <-started:
+		default:
+			close(started)
+		}
+		<-release
+		close(done)
+		return nil
+	}
+
+	t.Setenv(envDispatchBrokerAddr, ln.Addr().String())
+	t.Setenv(envDispatchBrokerToken, "nonce-advisor")
+	t.Setenv("WARD_READONLY", "1")
+	t.Setenv("WARD_CONTAINER_NAME", "director-codex-host")
+
+	go func() {
+		conn, err := ln.Accept()
+		if err != nil {
+			return
+		}
+		defer conn.Close()
+		var req dispatchBrokerRequest
+		if err := json.NewDecoder(conn).Decode(&req); err != nil {
+			_ = json.NewEncoder(conn).Encode(dispatchBrokerResponse{OK: false, Error: err.Error()})
+			return
+		}
+		if req.Token != "nonce-advisor" {
+			_ = json.NewEncoder(conn).Encode(dispatchBrokerResponse{OK: false, Error: "dispatch broker: token rejected"})
+			return
+		}
+		logPath, err := r.runHostDispatchBrokerRequest(t.Context(), req)
+		if err != nil {
+			_ = json.NewEncoder(conn).Encode(dispatchBrokerResponse{OK: false, Error: err.Error()})
+			return
+		}
+		_ = json.NewEncoder(conn).Encode(dispatchBrokerResponse{OK: true, LogPath: logPath})
+	}()
+
+	cmd := parseCommandForTest(t, agentAdvisorFlags(), []string{
+		"advisor", "coilyco-flight-deck/ward#378", "--harness", "codex",
+	})
+	returned := make(chan error, 1)
+	go func() {
+		returned <- r.runAgentAdvisor(t.Context(), cmd, modeCodex)
+	}()
+
+	select {
+	case err := <-returned:
+		if err != nil {
+			t.Fatalf("runAgentAdvisor returned an error: %v", err)
+		}
+	case <-time.After(500 * time.Millisecond):
+		t.Fatal("runAgentAdvisor blocked instead of returning after broker launch")
+	}
+	select {
+	case <-started:
+	case <-time.After(2 * time.Second):
+		t.Fatal("broker launch never started")
+	}
+	select {
+	case <-done:
+		t.Fatal("broker launch finished before release; the test no longer proves fire-and-forget")
+	default:
+	}
+	close(release)
+	select {
+	case <-done:
+	case <-time.After(2 * time.Second):
+		t.Fatal("broker launch never finished after release")
+	}
+}
+
+// TestRunAgentAdvisorFreeformStaysLocal proves the broker env does not hijack the
+// intentionally synchronous freeform advisor path.
+func TestRunAgentAdvisorFreeformStaysLocal(t *testing.T) {
+	t.Setenv("HOME", t.TempDir())
+	t.Setenv(envDispatchBrokerAddr, "127.0.0.1:12345")
+	t.Setenv(envDispatchBrokerToken, "nonce-freeform")
+	t.Setenv("WARD_READONLY", "1")
+
+	origLaunch := dispatchBrokerLaunch
+	t.Cleanup(func() { dispatchBrokerLaunch = origLaunch })
+	called := false
+	dispatchBrokerLaunch = func(_ context.Context, _ dispatchBrokerRequest) error {
+		called = true
+		return nil
+	}
+
+	cmd := parseCommandForTest(t, agentAdvisorFlags(), []string{
+		"advisor", "how is the audit log written?", "--repo", "coilyco-flight-deck/ward", "--print",
+	})
+	if err := (&Runner{}).runAgentAdvisor(t.Context(), cmd, modeCodex); err != nil {
+		t.Fatalf("runAgentAdvisor freeform path: %v", err)
+	}
+	if called {
+		t.Fatal("freeform advisor unexpectedly forwarded through the dispatch broker")
+	}
+}
+
 func TestForwardAgentDispatchToHostBrokerSupportsQa(t *testing.T) {
 	ln, err := net.Listen("tcp", "127.0.0.1:0")
 	if err != nil {
