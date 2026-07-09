@@ -135,6 +135,14 @@ const emptyBodySeedAction = "This issue has no body, so work from the title alon
 	"issue content, screenshots, or other artifacts that are not there (an empty body is not an " +
 	"invitation to invent one). The comment thread at that URL may hold later context worth a quick read."
 
+// TODO(ward#792): remove this emergency default once brokered QA replaces the
+// in-container review gate.
+const temporaryReviewGateSkipReason = "the temporary ward default pending brokered QA"
+
+func reviewGateDisabledByTemporaryDefault(role string) bool {
+	return role == "engineer"
+}
+
 // headlessReflection is the headless run's closing "how it felt" retro led by a
 // WARD-OUTCOME line; its landing phrase is workflow-aware (ward#281, ward#508).
 func headlessReflection(ref agentIssueRef, wf workflowMode, reviewGate bool, reviewSkip string) string {
@@ -811,10 +819,13 @@ func reviewGateDecision(c *cli.Command, role string, worker containerMode, ref a
 	skips, err := loadReviewSkips()
 	if err != nil {
 		writef(os.Stderr, "ward agent: note: could not read review skip defaults: %v\n", err)
-		return true, ""
+		skips = nil
 	}
 	if reviewSkipMatches(skips, role, string(worker), ref.repoSlug()) {
 		return false, "review gate skipped by ~/.ward/config.yaml default"
+	}
+	if reviewGateDisabledByTemporaryDefault(role) {
+		return false, temporaryReviewGateSkipReason
 	}
 	return true, ""
 }
