@@ -36,8 +36,8 @@ type Runner struct {
 	pullHeartbeatInterval time.Duration
 }
 
-// newRunner builds the production Runner, lazily (only inside a pkg action)
-// so lean verbs like hook/version never touch the audit directory.
+// newRunner builds the production Runner lazily so lean verbs like hook/version
+// never touch the audit directory.
 func newRunner() *Runner {
 	path, err := config.DefaultAuditPath()
 	if err != nil {
@@ -80,10 +80,6 @@ func leanRunner() *Runner {
 	}
 }
 
-// wardSandboxTools is the set of wrapped tools ward shims inside the jail.
-// brew is the first enforced surface; extend as other passthroughs land.
-var wardSandboxTools = []string{"brew"}
-
 // sandboxSpec builds the jail spec for ward's audited verbs (inert off Linux /
 // inside a jail). Returns nil if the binary path is unresolvable.
 func sandboxSpec() *sandbox.Spec {
@@ -91,7 +87,7 @@ func sandboxSpec() *sandbox.Spec {
 	if err != nil {
 		return nil
 	}
-	return &sandbox.Spec{SelfExe: exe, Tools: wardSandboxTools}
+	return &sandbox.Spec{SelfExe: exe}
 }
 
 // WrapVerb wraps spec through cli-guard's verb pipeline, setting the
@@ -134,13 +130,12 @@ func resolveInvokeCWD() string {
 	return ""
 }
 
-// defaultPrimaryOrgs is the fleet's primary-org set - the brew tap/formula
-// scope allowlist. Mirrors coily's defaultPrimaryOrgs.
+// defaultPrimaryOrgs is the fleet's primary-org set.
 func defaultPrimaryOrgs() []string {
 	return []string{"coilysiren", "coilyco-bridge", "coilyco-flight-deck", "coilyco-gaming"}
 }
 
-// primaryOrgs returns the brew tap/formula scope allowlist.
+// primaryOrgs returns the fleet's primary-org allowlist.
 func (r *Runner) primaryOrgs() []string {
 	return defaultPrimaryOrgs()
 }

@@ -93,6 +93,26 @@ func (r *Runner) resolveAgentCreds(ctx context.Context, mode containerMode) []ag
 	return nil
 }
 
+var directorSurfaceSessionSuffix = dictatableID
+
+// dictatableID returns the aos/o2r short agent-id shape: two lowercase letters
+// from the dictatable alphabet, then two digits.
+func dictatableID() string {
+	const letters = "abcdefghjkmpqrstuvwxyz"
+	const digits = "456789"
+
+	var raw [4]byte
+	if _, err := rand.Read(raw[:]); err != nil {
+		return "zz00"
+	}
+	return string([]byte{
+		letters[int(raw[0])%len(letters)],
+		letters[int(raw[1])%len(letters)],
+		digits[int(raw[2])%len(digits)],
+		digits[int(raw[3])%len(digits)],
+	})
+}
+
 // buildUpPlan assembles the pure plan from parsed flags and resolved inputs;
 // agentArgs seed the agent's argv. Errors only on a bad --repo grant (ward#230).
 func buildUpPlan(c *cli.Command, repo targetRepo, mode containerMode, role, cwd, assetsDir string, agentArgs []string, mountAgentLogs bool) (upPlan, error) {
@@ -146,13 +166,13 @@ func buildUpPlan(c *cli.Command, repo targetRepo, mode containerMode, role, cwd,
 	if mountAgentLogs {
 		agentLogs = agentLogsRedactedDir()
 	}
-	// The per-container machine id: rides the ward.machine label, names issueless
-	// roles. A role-led run overrides Role+Name after this (ward#364).
+	// The per-container machine id rides the ward.machine label. Director surface
+	// containers use a short dictatable id suffix instead of the machine id.
 	machine := randHex()
 	return upPlan{
 		Image:          imageRef(c.String("image"), c.String("tag")),
-		Name:           containerRoleName(roleSession, mode, repo, 0, machine),
-		Role:           roleSession,
+		Name:           containerRoleName(role, mode, repo, 0, containerNameSuffix(role, machine)),
+		Role:           role,
 		ConfigRole:     role,
 		Machine:        machine,
 		Repo:           repo,
@@ -173,6 +193,13 @@ func buildUpPlan(c *cli.Command, repo targetRepo, mode containerMode, role, cwd,
 		SkipPreflight:  c.Bool("skip-preflight") || c.Bool("no-preflight"),
 		ConfigEnv:      configEnv,
 	}, nil
+}
+
+func containerNameSuffix(role string, machine string) string {
+	if role == roleSession || role == roleDirector {
+		return directorSurfaceSessionSuffix()
+	}
+	return machine
 }
 
 // localHasTailscale0 reports whether a tailscale0 interface exists on this host's

@@ -49,18 +49,17 @@ surface - no per-guardfile Go graft.
 
 ## Collisions: hand-written surfaces win
 
-Two exec guardfiles name a path a hand-written `ward` command already owns:
+One exec guardfile names a path a hand-written `ward` command already owns:
 
 - `wrap ward-kdl git` -> `ward git` (cmd/ward/git.go)
-- `wrap ward-kdl pkg brew` -> `ward pkg brew` (cmd/ward/pkg.go)
 
 The mount **skips** a guardfile whose leaf is already taken, leaving the
 hand-written command in place. This is deliberate: the hand-written `ward git`
 carries mutating, concurrency-safe verbs (`commit`, `add`, `push`) the read-only
-git guardfile does not, and `ward pkg brew` is jailed with scoped verbs. Both
-guardfiles stay reachable through the standalone `ward-kdl` binary. Reconciling
-them with their guardfiles (e.g. routing a future `git clone` repo-allowlist
-guard through `ward git`) is left to those surfaces' own follow-ups.
+git guardfile does not. The guardfile stays reachable through the standalone
+`ward-kdl` binary. Reconciling it with the hand-written surface (e.g. routing a
+future `git clone` repo-allowlist guard through `ward git`) is left to that
+surface's own follow-ups.
 
 The forgejo admin/doctor remote-exec slice is a separate special case: it
 declares `wrap ward ops forgejo` (not `ward-kdl ...`) and is grafted onto the

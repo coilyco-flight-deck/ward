@@ -1,5 +1,5 @@
 ---
-doc_goal: Give a reader the canonical, code-generated list of every ward agent startup role with its tagline and invocation modes, so they can pick engineer, director, or advisor and know it can never drift from the binary.
+doc_goal: Give a reader the canonical, code-generated list of every ward agent startup role with its tagline and invocation modes, so they can pick engineer, director, advisor, or qa and know it can never drift from the binary.
 ---
 # ward agent: the role roster
 
@@ -15,6 +15,7 @@ terminal, and the per-role docs each entry links to carry the prose detail. See
 - [`warded engineer`](agent-engineer.md) - Implements a ticket end to end. Modes: A ref carries that issue detached, fire-and-forget. Freeform text files an issue first, then carries it. Detached-only - interactive work funnels to the director.
 - [`warded director`](agent-director.md) - Autonomously drives a repo's headless lane to drain. Modes: Attached LLM-in-the-loop heartbeat over a repo's backlog (`--repo` scope). Surfaces a read-only scope + dispatch session on drain, no ref.
 - [`warded advisor`](agent-advisor.md) - Answers without writing code. Modes: A ref researches the issue and posts the answer as a comment. Freeform text answers inline.
+- [`warded qa`](agent-qa.md) - Inspects a candidate and posts a structured verdict comment. Modes: A ref inspects the issue, branch, pull request, and checks, then posts a structured QA verdict comment. Freeform mode is not exposed.
 
 ## See also
 

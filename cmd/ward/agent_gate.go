@@ -7,10 +7,8 @@ import (
 	"io"
 	"os"
 	"strings"
-	"syscall"
 
 	"forgejo.coilysiren.me/coilyco-flight-deck/cli-guard/pkg/version"
-	"github.com/urfave/cli/v3"
 )
 
 // agent_gate.go: the interactive pre-launch gate before the seedless TUI (ward#366).
@@ -20,16 +18,11 @@ import (
 // path without a real terminal. Production is the real terminalAttached.
 var gateTerminalAttached = terminalAttached
 
-// reExec is the process-replacing re-exec, behind a seam so tests intercept the
-// upgrade re-launch instead of replacing the test binary.
-var reExec = syscall.Exec
-
 // gateChoice is the operator's pick at the pre-launch gate.
 type gateChoice int
 
 const (
-	gateLaunch  gateChoice = iota // proceed straight into the TUI launch (Enter)
-	gateUpgrade                   // upgrade the host ward, then re-launch
+	gateLaunch gateChoice = iota // proceed straight into the TUI launch (Enter)
 )
 
 // wardDowngradeGuard refuses a container ward pin older than the dispatching host: it
@@ -112,80 +105,25 @@ func renderScratchGate(w io.Writer, s scratchGateStatus) {
 	// fresh clone (ward#580), so the host cannot name it here before launch.
 	b.WriteString("  context:  catalog.dependsOn resolved in-container (read-only)\n")
 	b.WriteString("────────────────────────────────────────────────────\n")
-	if s.behind {
-		writef(&b, "host ward %s is behind the latest release %s.\n", s.current, s.latest)
-		b.WriteString("Press Enter to launch, or type u then Enter to upgrade ward and re-launch.\n")
-	} else {
-		b.WriteString("Press Enter to launch.\n")
-	}
+	b.WriteString("Press Enter to launch.\n")
 	_, _ = io.WriteString(w, b.String())
 }
 
-// readScratchGateChoice blocks for one input line and maps it to a choice: Enter
-// launches; "u"/"upgrade" upgrades only when offered; EOF/other launch (never wedge).
-func readScratchGateChoice(r io.Reader, offerUpgrade bool) gateChoice {
-	line, _ := bufio.NewReader(r).ReadString('\n')
-	switch strings.ToLower(strings.TrimSpace(line)) {
-	case "u", "upgrade":
-		if offerUpgrade {
-			return gateUpgrade
-		}
-	}
+// readScratchGateChoice blocks for one input line and always launches. The gate
+// is informational now.
+func readScratchGateChoice(r io.Reader) gateChoice {
+	_, _ = bufio.NewReader(r).ReadString('\n')
 	return gateLaunch
 }
 
 // runScratchGate renders the status block and waits for the operator's go before
-// the launch (ward#366). proceed=false means an upgrade re-launch superseded it.
-func (r *Runner) runScratchGate(ctx context.Context, c *cli.Command, plan upPlan, readOnly bool, label string) (proceed bool, err error) {
-	latest, behind := r.wardOutdated(ctx)
+// the launch (ward#366).
+func (r *Runner) runScratchGate(_ context.Context, plan upPlan, readOnly bool) {
 	if !gateTerminalAttached() {
-		// Headless/piped: no terminal to gate to. Keep the stale-ward heads-up
-		// (ward#143) and fall straight through to the launch.
-		if behind {
-			writef(r.gateErr(), "%s", wardOutdatedNotice(Version, latest))
-		}
-		return true, nil
+		return
 	}
-	renderScratchGate(r.gateErr(), newScratchGateStatus(plan, readOnly, behind, Version, latest))
-	if readScratchGateChoice(r.gateIn(), behind) == gateUpgrade {
-		return r.upgradeAndRelaunch(ctx, c, label)
-	}
-	return true, nil
-}
-
-// upgradeAndRelaunch runs `ward upgrade` then re-execs the freshly-installed
-// canonical ward with the current argv (ward#366); see docs/agent-gate.md.
-func (r *Runner) upgradeAndRelaunch(ctx context.Context, _ *cli.Command, label string) (proceed bool, err error) {
-	w := r.gateErr()
-	writef(w, "%s: upgrading ward, then re-launching the same command...\n", label)
-	if uerr := upgradeCommand().Run(ctx, []string{"upgrade"}); uerr != nil {
-		return false, fmt.Errorf("%s: ward upgrade: %w", label, uerr)
-	}
-	path := canonicalWardPath()
-	if path == "" {
-		// Dev/source build: no canonical binary to re-exec - the acceptable v1.
-		writef(w, "%s: ward upgraded; re-run your command to launch on the new binary.\n", label)
-		return false, nil
-	}
-	writef(w, "%s: re-launching on the upgraded ward (%s)...\n", label, path)
-	if xerr := reExec(path, os.Args, os.Environ()); xerr != nil {
-		// A successful exec never returns; reaching here means the hand-off failed.
-		writef(w, "%s: re-exec failed (%v); ward is upgraded - re-run your command.\n", label, xerr)
-		return false, nil
-	}
-	return false, nil // unreachable on a successful exec (the process is replaced)
-}
-
-// canonicalWardPath returns the first present canonical homebrew ward install path
-// (guardBinaryPaths, the hook's allow-list), or "" on a dev/source build.
-func canonicalWardPath() string {
-	for _, p := range guardBinaryPaths["ward"] {
-		// #nosec G304 -- stat of a fixed allow-list path; no file open follows.
-		if fi, err := os.Stat(p); err == nil && !fi.IsDir() {
-			return p
-		}
-	}
-	return ""
+	renderScratchGate(r.gateErr(), newScratchGateStatus(plan, readOnly, false, Version, Version))
+	_ = readScratchGateChoice(r.gateIn())
 }
 
 // gateErr is the gate's status-comms writer (stderr), falling back to os.Stderr.

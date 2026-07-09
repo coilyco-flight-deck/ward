@@ -96,13 +96,7 @@ func (r *Runner) runScratchSession(ctx context.Context, c *cli.Command, mode con
 
 	// Pre-launch gate before the fullscreen TUI (ward#366); see docs/agent-gate.md.
 	// proceed=false means an upgrade re-launch superseded this process's launch.
-	proceed, err := r.runScratchGate(ctx, c, plan, readOnly, label)
-	if err != nil {
-		return err
-	}
-	if !proceed {
-		return nil
-	}
+	r.runScratchGate(ctx, plan, readOnly)
 
 	access := "writable"
 	if readOnly {
@@ -139,10 +133,6 @@ func (r *Runner) prepareScratchPlan(ctx context.Context, c *cli.Command, mode co
 	// The broker's host:port + token are set later in attachHostDispatchBroker,
 	// once the TCP listener binds and its ephemeral port is known (ward#391).
 
-	// Name it session-<driver>-<machine> (issueless, so the machine id disambiguates
-	// concurrent surface sessions) and label ward.role=session (ward#364, ward#353).
-	plan.Role = roleSession
-	plan.Name = containerRoleName(roleSession, mode, repo, 0, plan.Machine)
 	return plan, cleanupAssets, nil
 }
 

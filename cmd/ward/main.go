@@ -25,12 +25,6 @@ var configFlagOverride string
 
 func explicitConfigPath() string { return configFlagOverride }
 
-// sandboxShimSubcommand maps a wrapped-tool basename to the ward subcommand
-// that re-enters the gate for it. Keep in sync with wardSandboxTools.
-var sandboxShimSubcommand = map[string][]string{
-	"brew": {"pkg", "brew"},
-}
-
 func main() {
 	// Internal jail-helper re-exec, before normal CLI parsing; never returns on
 	// success (it execs the real tool).
@@ -40,13 +34,6 @@ func main() {
 			os.Exit(1)
 		}
 		return
-	}
-
-	// Multicall shim: invoked under a wrapped tool's name (the jail masked it),
-	// rewrite argv to re-enter the gate as `ward <subcommand> <args>`.
-	if sub, ok := sandboxShimSubcommand[filepath.Base(os.Args[0])]; ok {
-		rewritten := append([]string{"ward"}, sub...)
-		os.Args = append(rewritten, os.Args[1:]...)
 	}
 
 	// Public-face shim: invoked as `warded` (a symlink), rewrite argv to the
@@ -74,12 +61,9 @@ func main() {
 		},
 		Commands: []*cli.Command{
 			versionCommand(),
-			upgradeCommand(),
 			execCommand(),
-			pkgCommand(),
 			gitCommand(),
 			auditCommand(),
-			hookCommand(),
 			containerCommand(),
 			agentCommand(),
 			agentsCommand(),
@@ -210,9 +194,6 @@ func canonicalWardExe(exe string) string {
 		if st, err := os.Stat(ward); err == nil && !st.IsDir() {
 			return ward
 		}
-	}
-	if p := canonicalWardPath(); p != "" {
-		return p
 	}
 	if p, err := exec.LookPath("ward"); err == nil {
 		return p

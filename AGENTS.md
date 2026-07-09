@@ -77,7 +77,7 @@ Forgejo-canonical, on Forgejo Actions not GitHub. Push to `main` runs `.forgejo/
 
 Never write the literal skip-CI token in a commit body or it silently disables the workflow on that push. Describe it as "skip-CI marker".
 
-Post-push at +120s, verify the release run on Forgejo Actions (not the GitHub mirror): `ward ops forgejo tasks list coilyco-flight-deck ward --limit 1`. Once green: `brew upgrade coilyco-flight-deck/tap/ward`.
+Post-push at +120s, verify the release run on Forgejo Actions (not the GitHub mirror): `ward ops forgejo tasks list coilyco-flight-deck ward --limit 1`. Once green, refresh the installed ward binary.
 
 ## Agent rules
 

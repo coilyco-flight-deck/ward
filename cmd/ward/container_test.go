@@ -109,27 +109,79 @@ func TestTargetFromRemoteURL(t *testing.T) {
 	}
 }
 
-func TestSessionContainerNameUniqueAndSafe(t *testing.T) {
+func TestDirectorContainerNameUniqueAndSafe(t *testing.T) {
 	repo := targetRepo{Owner: "coilyco-gaming", Name: "eco-app"}
-	a := containerRoleName(roleSession, modeClaude, repo, 0, "a1b2c3d4")
-	b := containerRoleName(roleSession, modeClaude, repo, 0, "e5f6a7b8")
+	suffixRe := regexp.MustCompile(`^[a-hjkm-pqrstuvwxyz]{2}[456789]{2}$`)
+	a := containerRoleName(roleDirector, modeClaude, repo, 0, "ab85")
+	b := containerRoleName(roleDirector, modeClaude, repo, 0, "cd97")
 	if a == b {
-		t.Fatalf("two issueless runs must not collide on the machine suffix: %q == %q", a, b)
+		t.Fatalf("two issueless surface runs must not collide on the agent-id suffix: %q == %q", a, b)
 	}
-	// Role-led + prefixless: no ward- prefix any more (ward#364).
-	if !strings.HasPrefix(a, "session-claude-") {
-		t.Errorf("name %q missing the session-<driver>- lead", a)
+	if !strings.HasPrefix(a, "director-claude-") {
+		t.Errorf("name %q missing the director-<driver>- lead", a)
 	}
 	if strings.HasPrefix(a, "ward-") {
 		t.Errorf("name %q still carries the dropped ward- prefix", a)
 	}
-	// docker forbids these; sanitization must strip them.
+	if !suffixRe.MatchString(strings.TrimPrefix(a, "director-claude-")) {
+		t.Errorf("director name %q does not end in a dictatable agent-id suffix", a)
+	}
+	// docker forbids these; the director name must stay safe even though it no
+	// longer carries the repo name.
 	weird := targetRepo{Owner: "x", Name: "we/ird name!"}
-	got := containerRoleName(roleSession, modeClaude, weird, 0, "deadbeef")
+	got := containerRoleName(roleDirector, modeClaude, weird, 0, "ab85")
 	for _, bad := range []string{"/", " ", "!"} {
 		if strings.Contains(got, bad) {
-			t.Errorf("sanitized name %q still contains %q", got, bad)
+			t.Errorf("director name %q still contains %q", got, bad)
 		}
+	}
+}
+
+func TestDictatableIDShape(t *testing.T) {
+	re := regexp.MustCompile(`^[a-hjkm-pqrstuvwxyz]{2}[456789]{2}$`)
+	for i := 0; i < 32; i++ {
+		if got := dictatableID(); !re.MatchString(got) {
+			t.Fatalf("dictatableID() = %q, want %s", got, re)
+		}
+	}
+}
+
+func TestBuildUpPlanDirectorUsesDictatableSuffix(t *testing.T) {
+	prev := directorSurfaceSessionSuffix
+	directorSurfaceSessionSuffix = func() string { return "ab85" }
+	t.Cleanup(func() { directorSurfaceSessionSuffix = prev })
+
+	probe := &cli.Command{
+		Name:  "probe",
+		Flags: tailnetProbeFlags(),
+		Action: func(_ context.Context, c *cli.Command) error {
+			p, err := buildUpPlan(c, targetRepo{Owner: "o", Name: "r"}, modeClaude, roleDirector, t.TempDir(), t.TempDir(), nil, false)
+			if err != nil {
+				return err
+			}
+			if got, want := p.Name, "director-claude-ab85"; got != want {
+				t.Fatalf("director buildUpPlan name = %q, want %q", got, want)
+			}
+			if !regexp.MustCompile(`^director-[a-z]+-[a-hjkm-pqrstuvwxyz]{2}[456789]{2}$`).MatchString(p.Name) {
+				t.Fatalf("director buildUpPlan name = %q, want the dictatable agent-id shape", p.Name)
+			}
+			return nil
+		},
+	}
+	if err := probe.Run(context.Background(), []string{"probe"}); err != nil {
+		t.Fatalf("probe run: %v", err)
+	}
+}
+
+func TestAdvisorResearchPlanUsesIssueScope(t *testing.T) {
+	ref := agentIssueRef{Owner: "coilyco-flight-deck", Repo: "ward", Number: 818, Forge: forgeForgejo}
+	base := upPlan{Mode: modeClaude, Repo: targetRepo{Owner: ref.Owner, Name: ref.Repo}, Machine: "deadbeef"}
+	got := advisorResearchPlan(base, ref)
+	if want := "advisor-claude-ward-818"; got.Name != want {
+		t.Fatalf("advisor research name = %q, want %q", got.Name, want)
+	}
+	if other := advisorResearchPlan(upPlan{Mode: modeClaude, Repo: base.Repo, Machine: "beadfeed"}, ref); other.Name != got.Name {
+		t.Fatalf("advisor research name must be issue-scoped, got %q and %q", other.Name, got.Name)
 	}
 }
 
@@ -190,6 +242,14 @@ func TestUpPlanLabels(t *testing.T) {
 	}
 	if !strings.Contains(got, "ward.role=advisor") || !strings.Contains(got, "ward.driver=codex") {
 		t.Errorf("advisor labels %q missing role/driver", got)
+	}
+	qa := upPlan{Role: roleQA, Mode: modeGoose, Repo: repo, Machine: "cafefeed"}
+	got = strings.Join(qa.labels(), " ")
+	if strings.Contains(got, "ward.issue") {
+		t.Errorf("QA run must not carry a ward.issue label: %q", got)
+	}
+	if !strings.Contains(got, "ward.role=qa") || !strings.Contains(got, "ward.driver=goose") {
+		t.Errorf("qa labels %q missing role/driver", got)
 	}
 	// A plan with no Role set falls back to the session role so the label is never blank.
 	bare := upPlan{Mode: modeClaude, Repo: repo}

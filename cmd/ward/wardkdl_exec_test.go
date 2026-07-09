@@ -11,13 +11,12 @@ import (
 )
 
 // newWardKdlTestRoot mirrors the hand-written commands the real ward tree
-// carries before the exec mount: the git + pkg-brew collisions and the ops group.
+// carries before the exec mount: the git collision and the ops group.
 func newWardKdlTestRoot() *cli.Command {
 	return &cli.Command{
 		Name: "ward",
 		Commands: []*cli.Command{
 			{Name: "git"}, // hand-written, cmd/ward/git.go
-			{Name: "pkg", Commands: []*cli.Command{{Name: "brew"}}},
 			{Name: "ops", Commands: []*cli.Command{{Name: "forgejo"}}},
 		},
 	}
@@ -78,15 +77,6 @@ func TestMountWardKdlExecSkipsCollisions(t *testing.T) {
 	git := commandNamed(root.Commands, "git")
 	if git == nil || len(git.Commands) != 0 {
 		t.Errorf("hand-written git was overwritten by the guardfile mount; children = %v", commandNames(git.Commands))
-	}
-
-	// pkg brew: not duplicated.
-	pkg := commandNamed(root.Commands, "pkg")
-	if pkg == nil {
-		t.Fatal("pkg group vanished")
-	}
-	if n := countNamed(pkg.Commands, "brew"); n != 1 {
-		t.Errorf("expected exactly one pkg brew, got %d", n)
 	}
 }
 

@@ -199,7 +199,17 @@ func pullRequestCIWatchClause() string {
 	return "After the PR opens, keep watching its CI/checks and fetch the status/logs if anything " +
 		"fails. Patch the branch, push updates, and repeat until the checks are green or the failure is " +
 		"genuinely blocked. A failing check is not a done state, and the final `WARD-OUTCOME: done` " +
-		"comment is not allowed until the PR is green."
+		"comment is not allowed until the PR is green. " + workflowFailureCommentClause()
+}
+
+// workflowFailureCommentClause tells PR workflows to mirror failure comments onto
+// the PR itself, while keeping the issue comment unchanged.
+func workflowFailureCommentClause() string {
+	return "If this run has opened or found a pull request and then fails for any reason, post the same " +
+		"actionable failure comment to both the linked issue and the PR. Keep the issue comment unchanged, " +
+		"including any reservation-lock release/clear/hand-back wording that belongs there. The PR comment " +
+		"must omit reservation-lock release/clear/hand-back wording and should reuse the existing " +
+		"signature/idempotency marker if one is present. If no PR exists, skip the PR comment."
 }
 
 // remoteBranchOnlyCarryClause tells the agent it has no PR or merge authority:

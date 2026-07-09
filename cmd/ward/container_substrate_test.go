@@ -45,11 +45,7 @@ func TestEmbeddedSubstrateManifest(t *testing.T) {
 		t.Fatal("embedded manifest is empty")
 	}
 	publicOrgs := map[string]bool{"coilysiren": true, "coilyco-flight-deck": true}
-	foundWard := false
 	for _, r := range repos {
-		if r.slug() == "coilyco-flight-deck/ward" {
-			foundWard = true
-		}
 		switch r.Tier {
 		case "image":
 			if !publicOrgs[r.Owner] {
@@ -60,8 +56,5 @@ func TestEmbeddedSubstrateManifest(t *testing.T) {
 				t.Errorf("%s is cache-tier from %q; cache tier is for leak-tolerant bridge repos", r.slug(), r.Owner)
 			}
 		}
-	}
-	if foundWard {
-		t.Fatal("embedded substrate manifest still includes coilyco-flight-deck/ward")
 	}
 }

@@ -231,10 +231,10 @@ func advisorResearchPlan(plan upPlan, ref agentIssueRef) upPlan {
 	plan.Capture = true
 	plan.Forge = ref.Forge
 	plan.Role = roleAdvisor
-	// Research only: the host posts, so the container carries no issue and no branch.
+	// Research-only: the host posts, so the container carries no issue and no branch.
 	plan.Issue = 0
 	plan.Branch = ""
-	plan.Name = containerRoleName(roleAdvisor, plan.Mode, plan.Repo, 0, plan.Machine)
+	plan.Name = issueScopedContainerName(roleAdvisor, plan.Mode, plan.Repo, ref.Number)
 	return plan
 }
 

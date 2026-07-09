@@ -373,7 +373,7 @@ func (c *forgejoClient) listOpenIssues(ctx context.Context, owner, repo string, 
 	}
 	issues := make([]backlogIssue, 0, len(raw))
 	for _, ri := range raw {
-		bi := backlogIssue{Number: ri.Number, Title: ri.Title, Body: ri.Body, URL: ri.HTMLURL}
+		bi := backlogIssue{Number: ri.Number, Kind: backlogKindIssue, Title: ri.Title, Body: ri.Body, URL: ri.HTMLURL}
 		for _, l := range ri.Labels {
 			if l.Name != "" {
 				bi.Labels = append(bi.Labels, l.Name)
