@@ -6,6 +6,7 @@ import (
 	"fmt"
 	"io"
 	"os"
+	"reflect"
 	"strings"
 	"testing"
 	"time"
@@ -504,6 +505,100 @@ func TestIsReservationConflict(t *testing.T) {
 				t.Errorf("isReservationConflict(%v) = %v, want %v", c.err, got, c.want)
 			}
 		})
+	}
+}
+
+func dockerRunningStub(t *testing.T, name string) string {
+	t.Helper()
+	stub := t.TempDir() + "/docker"
+	script := "#!/bin/sh\n" +
+		"if [ \"$1\" = ps ] && [ \"$2\" = --filter ] && [ \"$3\" = " + shellQuote("name=^"+name+"$") + " ] && [ \"$4\" = --format ]; then\n" +
+		"  printf '%s\\n' " + shellQuote(name) + "\n" +
+		"  exit 0\n" +
+		"fi\n" +
+		"printf '%s\\n' \"unexpected docker args: $*\" >&2\n" +
+		"exit 1\n"
+	if err := os.WriteFile(stub, []byte(script), 0o755); err != nil { //nolint:gosec
+		t.Fatalf("write docker stub: %v", err)
+	}
+	return stub
+}
+
+func dockerAbsentStub(t *testing.T) string {
+	t.Helper()
+	stub := t.TempDir() + "/docker"
+	script := "#!/bin/sh\n" +
+		"if [ \"$1\" = ps ]; then\n" +
+		"  exit 0\n" +
+		"fi\n" +
+		"printf '%s\\n' \"unexpected docker args: $*\" >&2\n" +
+		"exit 1\n"
+	if err := os.WriteFile(stub, []byte(script), 0o755); err != nil { //nolint:gosec
+		t.Fatalf("write docker stub: %v", err)
+	}
+	return stub
+}
+
+func TestAcquireLocalReservationRefusesRunningWorkerWithoutSentinel(t *testing.T) {
+	t.Setenv("HOME", t.TempDir())
+	ref := agentIssueRef{Owner: "coilyco-flight-deck", Repo: "ward", Number: 788}
+	container := "engineer-claude-ward-788"
+	r, _, _ := bufRunner(dockerRunningStub(t, container))
+	path, err := agentReservationPath(ref)
+	if err != nil {
+		t.Fatalf("agentReservationPath: %v", err)
+	}
+	if _, err := os.Stat(path); !os.IsNotExist(err) {
+		t.Fatalf("sentinel unexpectedly existed before the acquire: %v", err)
+	}
+	if _, err := r.acquireLocalReservation(context.Background(), "lbl", modeClaude, ref, container, "issue-788", time.Now().UTC(), false); err == nil {
+		t.Fatal("acquireLocalReservation accepted a live worker with no sentinel")
+	} else if !strings.Contains(err.Error(), "already has a running worker container") {
+		t.Fatalf("acquireLocalReservation error = %v, want a live-worker refusal", err)
+	}
+	if _, err := os.Stat(path); !os.IsNotExist(err) {
+		t.Fatalf("refusal wrote a sentinel unexpectedly: %v", err)
+	}
+}
+
+func TestAcquireLocalReservationReleaseLeavesForeignSentinel(t *testing.T) {
+	t.Setenv("HOME", t.TempDir())
+	ref := agentIssueRef{Owner: "coilyco-flight-deck", Repo: "ward", Number: 789}
+	container := "engineer-claude-ward-789"
+	r, _, _ := bufRunner(dockerAbsentStub(t))
+	path, err := agentReservationPath(ref)
+	if err != nil {
+		t.Fatalf("agentReservationPath: %v", err)
+	}
+	now := time.Date(2026, 7, 9, 9, 0, 0, 0, time.UTC)
+	release, err := r.acquireLocalReservation(context.Background(), "lbl", modeClaude, ref, container, "issue-789", now, false)
+	if err != nil {
+		t.Fatalf("acquireLocalReservation: %v", err)
+	}
+	foreign := agentReservation{
+		Owner:     ref.Owner,
+		Repo:      ref.Repo,
+		Number:    ref.Number,
+		Mode:      string(modeClaude),
+		Container: "engineer-claude-ward-789-other",
+		Branch:    "issue-789-other",
+		Host:      "other-host",
+		PID:       4242,
+		At:        now.Add(time.Minute),
+	}
+	if err := writeAgentReservation(path, foreign); err != nil {
+		t.Fatalf("overwrite reservation with foreign owner: %v", err)
+	}
+	release()
+	got, ok, err := readAgentReservation(path)
+	if err != nil {
+		t.Fatalf("readAgentReservation after release: %v", err)
+	}
+	if !ok {
+		t.Fatal("release deleted a sentinel that no longer belonged to this launch")
+	}
+	if got == nil || !reflect.DeepEqual(*got, foreign) {
+		t.Fatalf("reservation after release = %+v, want %+v", got, foreign)
 	}
 }
 

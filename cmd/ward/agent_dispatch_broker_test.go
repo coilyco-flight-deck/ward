@@ -784,9 +784,8 @@ func TestDispatchBrokerTokenGate(t *testing.T) {
 	}
 }
 
-// TestRunHostDispatchBrokerRequestLaunchesAsyncWithoutBrokerEnv proves the broker
-// acks before the dispatched run finishes and does not re-enter broker env.
-func TestRunHostDispatchBrokerRequestLaunchesAsyncWithoutBrokerEnv(t *testing.T) {
+// Broker env stays clear until launch returns.
+func TestRunHostDispatchBrokerRequestClearsBrokerEnvWhileLaunchRuns(t *testing.T) {
 	t.Setenv("HOME", t.TempDir())
 	origReadOnly, hadReadOnly := os.LookupEnv("WARD_READONLY")
 	origAddr, hadAddr := os.LookupEnv(envDispatchBrokerAddr)
@@ -821,6 +820,10 @@ func TestRunHostDispatchBrokerRequestLaunchesAsyncWithoutBrokerEnv(t *testing.T)
 	started := make(chan struct{})
 	release := make(chan struct{})
 	done := make(chan struct{})
+	result := make(chan struct {
+		logPath string
+		err     error
+	}, 1)
 	origLaunch := dispatchBrokerLaunch
 	t.Cleanup(func() { dispatchBrokerLaunch = origLaunch })
 	dispatchBrokerLaunch = func(_ context.Context, _ dispatchBrokerRequest) error {
@@ -843,23 +846,35 @@ func TestRunHostDispatchBrokerRequestLaunchesAsyncWithoutBrokerEnv(t *testing.T)
 		Role: "advisor",
 		Argv: []string{"advisor", "coilyco-flight-deck/ward#795", "--harness", "codex"},
 	}
-	start := time.Now()
-	logPath, err := (&Runner{}).runHostDispatchBrokerRequest(t.Context(), req)
-	if err != nil {
-		t.Fatalf("runHostDispatchBrokerRequest: %v", err)
-	}
-	if elapsed := time.Since(start); elapsed > 200*time.Millisecond {
-		t.Fatalf("runHostDispatchBrokerRequest blocked for %s, want an immediate ack", elapsed)
-	}
-	if !strings.Contains(logPath, "dispatch") {
-		t.Fatalf("log path %q does not look like a dispatch log", logPath)
-	}
+	go func() {
+		logPath, err := (&Runner{}).runHostDispatchBrokerRequest(t.Context(), req)
+		result <- struct {
+			logPath string
+			err     error
+		}{logPath: logPath, err: err}
+	}()
 	select {
 	case <-started:
 	case <-time.After(2 * time.Second):
 		t.Fatal("host launch never started")
 	}
+	select {
+	case got := <-result:
+		t.Fatalf("runHostDispatchBrokerRequest returned early: %+v", got)
+	default:
+	}
 	close(release)
+	select {
+	case got := <-result:
+		if got.err != nil {
+			t.Fatalf("runHostDispatchBrokerRequest: %v", got.err)
+		}
+		if !strings.Contains(got.logPath, "dispatch") {
+			t.Fatalf("log path %q does not look like a dispatch log", got.logPath)
+		}
+	case <-time.After(2 * time.Second):
+		t.Fatal("runHostDispatchBrokerRequest never returned")
+	}
 	select {
 	case <-done:
 	case <-time.After(2 * time.Second):
@@ -874,6 +889,31 @@ func TestRunHostDispatchBrokerRequestLaunchesAsyncWithoutBrokerEnv(t *testing.T)
 		default:
 			time.Sleep(10 * time.Millisecond)
 		}
+	}
+}
+
+// TestRunHostDispatchBrokerRequestReturnsStructuredLaunchFailure locks the host side
+// response: a launch error should carry the dispatch log path back to the caller.
+func TestRunHostDispatchBrokerRequestReturnsStructuredLaunchFailure(t *testing.T) {
+	t.Setenv("HOME", t.TempDir())
+	origLaunch := dispatchBrokerLaunch
+	t.Cleanup(func() { dispatchBrokerLaunch = origLaunch })
+	dispatchBrokerLaunch = func(context.Context, dispatchBrokerRequest) error {
+		return errors.New(`Conflict. The container name "/engineer-codex-ward-786" is already in use`)
+	}
+	req := dispatchBrokerRequest{
+		Role: "engineer",
+		Argv: []string{"engineer", "coilyco-flight-deck/ward#786", "--harness", "codex"},
+	}
+	logPath, err := (&Runner{}).runHostDispatchBrokerRequest(t.Context(), req)
+	if err == nil {
+		t.Fatal("runHostDispatchBrokerRequest accepted a launch failure")
+	}
+	if !strings.Contains(err.Error(), "already in use") {
+		t.Fatalf("launch failure error = %v, want the Docker conflict", err)
+	}
+	if !strings.Contains(logPath, "dispatch") {
+		t.Fatalf("log path %q does not look like a dispatch log", logPath)
 	}
 }
 
@@ -972,6 +1012,51 @@ func TestDispatchBrokerWrongBrokerHint(t *testing.T) {
 	}
 	if !strings.Contains(err.Error(), "wrong broker") {
 		t.Errorf("error %q does not carry the wrong-broker hint", err)
+	}
+}
+
+// TestForwardAgentDispatchIncludesDispatchLogOnLaunchFailure keeps the director-surface
+// error structured when the broker rejects a launch.
+func TestForwardAgentDispatchIncludesDispatchLogOnLaunchFailure(t *testing.T) {
+	ln, err := net.Listen("tcp", "127.0.0.1:0")
+	if err != nil {
+		t.Fatalf("listen broker: %v", err)
+	}
+	defer ln.Close()
+	go func() {
+		conn, err := ln.Accept()
+		if err != nil {
+			return
+		}
+		defer conn.Close()
+		var req dispatchBrokerRequest
+		if err := json.NewDecoder(conn).Decode(&req); err != nil {
+			return
+		}
+		_ = json.NewEncoder(conn).Encode(dispatchBrokerResponse{
+			OK:      false,
+			Error:   `Conflict. The container name "/engineer-codex-ward-786" is already in use`,
+			LogPath: "/tmp/ward-agent-logs/dispatch/20260709T083000Z-director-codex-ward-786.log",
+		})
+	}()
+
+	t.Setenv(envDispatchBrokerAddr, ln.Addr().String())
+	t.Setenv(envDispatchBrokerToken, "nonce-786")
+	t.Setenv("WARD_READONLY", "1")
+	t.Setenv("WARD_CONTAINER_NAME", "director-codex-ward-786")
+	cmd := parseCommandForTest(t, agentEngineerFlags(), []string{"engineer", "coilyco-flight-deck/ward#786"})
+	forwarded, err := (&Runner{}).maybeForwardAgentDispatchToHostBroker(context.Background(), cmd, "engineer", modeCodex)
+	if !forwarded {
+		t.Fatal("dispatch was not forwarded through the broker")
+	}
+	if err == nil {
+		t.Fatal("broker launch failure unexpectedly succeeded")
+	}
+	if !strings.Contains(err.Error(), "already in use") {
+		t.Fatalf("error %q does not carry the Docker conflict", err)
+	}
+	if !strings.Contains(err.Error(), "/tmp/ward-agent-logs/dispatch/20260709T083000Z-director-codex-ward-786.log") {
+		t.Fatalf("error %q does not carry the dispatch log path", err)
 	}
 }
 

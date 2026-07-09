@@ -239,19 +239,19 @@ func (r *Runner) runHostDispatchBrokerRequest(ctx context.Context, req dispatchB
 
 	_, _ = fmt.Fprintf(logf, "ward dispatch broker: %s requested `ward agent %s`\n",
 		emptyDefault(req.Requester, "unknown-container"), redactDispatchBrokerArgv(req.Argv))
-	go func() {
-		restore := redirectStdioToLog(logf)
-		defer restore()
-		defer func() { _ = logf.Close() }()
-
-		if err := withBrokerForwardingDisabled(func() error {
-			return dispatchBrokerLaunch(ctx, req)
-		}); err != nil {
-			fmt.Fprintf(os.Stderr, "ward dispatch broker: launch failed: %v\n", err)
-		} else {
-			fmt.Fprintf(os.Stderr, "ward dispatch broker: launch completed\n")
-		}
+	restore := redirectStdioToLog(logf)
+	defer func() {
+		restore()
+		_ = logf.Close()
 	}()
+
+	if err := withBrokerForwardingDisabled(func() error {
+		return dispatchBrokerLaunch(ctx, req)
+	}); err != nil {
+		fmt.Fprintf(os.Stderr, "ward dispatch broker: launch failed: %v\n", err)
+		return logPath, err
+	}
+	fmt.Fprintf(os.Stderr, "ward dispatch broker: launch completed\n")
 	return logPath, nil
 }
 
@@ -638,6 +638,9 @@ func (r *Runner) maybeForwardAgentDispatchToHostBroker(ctx context.Context, c *c
 	}
 	logPath, err := sendDispatchBrokerRequest(ctx, addr, req)
 	if err != nil {
+		if logPath != "" {
+			return true, fmt.Errorf("%w (dispatch log: %s)", err, logPath)
+		}
 		return true, err
 	}
 	displayArgv := redactDispatchBrokerArgv(argv)

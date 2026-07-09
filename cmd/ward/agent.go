@@ -972,6 +972,10 @@ func (r *Runner) runAgentWork(ctx context.Context, c *cli.Command, mode containe
 			r.writeSkippedReviewSummaryHandoff(mode, skipReason)
 		}
 	}
+	workerName := issueScopedContainerName(roleEngineer, mode, targetRepo{Owner: w.Ref.Owner, Name: w.Ref.Repo}, w.Ref.Number)
+	if err := r.precheckLiveIssueWorker(ctx, label, w.Ref, workerName, c.Bool("force")); err != nil {
+		return err
+	}
 	var justification string
 	if preflightWanted(c) {
 		// ward#184: gate on the cheap, authoritative reservation before a full LLM

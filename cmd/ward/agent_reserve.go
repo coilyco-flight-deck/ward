@@ -303,7 +303,56 @@ func (r *Runner) acquireLocalReservation(ctx context.Context, label string, mode
 		return nil, fmt.Errorf("%s: write reservation %s: %w", label, path, err)
 	}
 	fmt.Fprintf(os.Stderr, "%s: reservation local acquire wrote %s\n", label, path)
-	return func() { _ = removeAgentReservation(path) }, nil
+	return func() {
+		released, err := removeAgentReservationIfOwned(path, res)
+		switch {
+		case err != nil:
+			fmt.Fprintf(os.Stderr, "%s: warning: could not release the local reservation on %s (%v)\n", label, ref, err)
+		case !released:
+			fmt.Fprintf(os.Stderr, "%s: warning: skipped local reservation release on %s because it no longer belongs to this launch\n", label, ref)
+		}
+	}, nil
+}
+
+// precheckLiveIssueWorker refuses when the deterministic engineer container already
+// exists and is running, even if the local sentinel is absent or stale.
+func (r *Runner) precheckLiveIssueWorker(ctx context.Context, label string, ref agentIssueRef, container string, force bool) error {
+	if force {
+		return nil
+	}
+	out, err := r.dockerCapture(ctx, "ps",
+		"--filter", "name=^"+container+"$", "--format", "{{.Names}}")
+	if err != nil {
+		return nil
+	}
+	if strings.TrimSpace(string(out)) != "" {
+		fmt.Fprintf(os.Stderr, "%s: reservation precheck saw live worker container %s for %s\n", label, container, ref)
+		return newReservationConflict(
+			"%s: issue %s already has a running worker container %s; wait for it to finish or pass --force to reclaim",
+			label, ref, container)
+	}
+	return nil
+}
+
+// removeAgentReservationIfOwned deletes the local sentinel only when it still
+// matches the launch that wrote it.
+func removeAgentReservationIfOwned(path string, want agentReservation) (bool, error) {
+	got, ok, err := readAgentReservation(path)
+	if err != nil || !ok || got == nil {
+		return false, err
+	}
+	if got.Owner != want.Owner ||
+		got.Repo != want.Repo ||
+		got.Number != want.Number ||
+		got.Mode != want.Mode ||
+		got.Container != want.Container ||
+		got.Branch != want.Branch ||
+		got.Host != want.Host ||
+		got.PID != want.PID ||
+		!got.At.Equal(want.At) {
+		return false, nil
+	}
+	return true, removeAgentReservation(path)
 }
 
 // containerRunning reports whether the named container is running; an empty name or
