@@ -580,9 +580,9 @@ func writeContainerAssets(ctx context.Context, goBootstrap bool, wardSource, war
 		}
 	}
 	if goBootstrap {
-		if berr := stageWardBootstrapBinary(ctx, dir, wardSource, wardVersion); berr != nil {
+		if err := stageWardBootstrapBinary(ctx, dir, wardSource, wardVersion); err != nil {
 			cleanup()
-			return "", func() {}, berr
+			return "", func() {}, err
 		}
 	}
 	return dir, cleanup, nil
@@ -591,15 +591,9 @@ func writeContainerAssets(ctx context.Context, goBootstrap bool, wardSource, war
 func realStageWardBootstrapBinary(ctx context.Context, dir, wardSource, wardVersion string) error {
 	path := filepath.Join(dir, "ward")
 	if strings.TrimSpace(wardSource) != "" {
-		if berr := buildWardBootstrapBinary(ctx, wardSource, path); berr != nil {
-			return berr
-		}
-		return nil
+		return buildWardBootstrapBinary(ctx, wardSource, path)
 	}
-	if derr := downloadWardBootstrapBinary(ctx, wardVersion, path); derr != nil {
-		return derr
-	}
-	return nil
+	return downloadWardBootstrapBinary(ctx, wardVersion, path)
 }
 
 func buildWardBootstrapBinary(ctx context.Context, wardSource, path string) error {
@@ -647,7 +641,7 @@ func downloadWardBootstrapBinary(ctx context.Context, wardVersion, path string) 
 	if err != nil {
 		return fmt.Errorf("ward container: download Go bootstrap binary %s: %w", asset, err)
 	}
-	defer resp.Body.Close()
+	defer func() { _ = resp.Body.Close() }()
 	if resp.StatusCode != http.StatusOK {
 		body, _ := io.ReadAll(io.LimitReader(resp.Body, 4096))
 		return fmt.Errorf("ward container: download Go bootstrap binary %s: unexpected status %s: %s", asset, resp.Status, strings.TrimSpace(string(body)))
@@ -682,7 +676,7 @@ func resolveWardBootstrapTag(ctx context.Context, wardVersion string) (string, e
 	if err != nil {
 		return "", fmt.Errorf("ward container: resolve bootstrap release tag: %w", err)
 	}
-	defer resp.Body.Close()
+	defer func() { _ = resp.Body.Close() }()
 	if resp.StatusCode != http.StatusOK {
 		body, _ := io.ReadAll(io.LimitReader(resp.Body, 4096))
 		return "", fmt.Errorf("ward container: resolve bootstrap release tag: unexpected status %s: %s", resp.Status, strings.TrimSpace(string(body)))

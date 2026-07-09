@@ -578,7 +578,7 @@ func TestWriteContainerAssetsStagesGoBootstrapBinary(t *testing.T) {
 	home := t.TempDir()
 	t.Setenv("HOME", home)
 	prev := stageWardBootstrapBinary
-	stageWardBootstrapBinary = func(ctx context.Context, dir, wardSource, wardVersion string) error {
+	stageWardBootstrapBinary = func(_ context.Context, dir, wardSource, wardVersion string) error {
 		if wardSource != "/src/ward" {
 			t.Fatalf("stage bootstrap source = %q, want /src/ward", wardSource)
 		}
