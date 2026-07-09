@@ -4,7 +4,6 @@ import (
 	"context"
 	"fmt"
 	"io/fs"
-	"os"
 	"strconv"
 	"strings"
 	"sync"
@@ -14,8 +13,8 @@ import (
 	"github.com/urfave/cli/v3"
 )
 
-// smartDefaults is the launch-selected runtime policy bundle. It starts from the
-// baked neutral default and can be overridden by WARD_CONFIG_REF bundles.
+// smartDefaults is ward-owned runtime policy data. It starts from the baked
+// neutral default and no longer depends on WARD_CONFIG_REF.
 type smartDefaults struct {
 	agentReservationTTL           time.Duration
 	reservationRecheckDefaultMax  time.Duration
@@ -35,7 +34,6 @@ type smartDefaults struct {
 
 var smartDefaultsCache struct {
 	sync.Mutex
-	ref         string
 	initialized bool
 	defaults    smartDefaults
 	err         error
@@ -60,28 +58,25 @@ func bakedSmartDefaults() smartDefaults {
 	}
 }
 
-// currentSmartDefaults returns the launch-selected runtime policy, caching it by
-// WARD_CONFIG_REF so the bundle is parsed once per selection.
+// currentSmartDefaults returns ward's runtime policy, caching the baked parse.
 func currentSmartDefaults() smartDefaults {
 	defs, _ := currentSmartDefaultsWithError()
 	return defs
 }
 
 func currentSmartDefaultsWithError() (smartDefaults, error) {
-	ref := strings.TrimSpace(os.Getenv(wardConfigRefEnv))
-
 	smartDefaultsCache.Lock()
 	defer smartDefaultsCache.Unlock()
-	if smartDefaultsCache.initialized && smartDefaultsCache.ref == ref {
+	if smartDefaultsCache.initialized {
 		return smartDefaultsCache.defaults, smartDefaultsCache.err
 	}
 
 	defs := bakedSmartDefaults()
-	src, err := selectConfigSource()
+	src := coreRuntimeConfigSource()
+	loaded, err := loadSmartDefaultsFrom(src)
 	if err == nil {
-		defs, err = loadSmartDefaultsFrom(src)
+		defs = loaded
 	}
-	smartDefaultsCache.ref = ref
 	smartDefaultsCache.initialized = true
 	smartDefaultsCache.defaults = defs
 	smartDefaultsCache.err = err

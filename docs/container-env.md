@@ -43,7 +43,7 @@ ride a private `--env-file`, below). One surface of the [container API](containe
 - `WARD_READONLY=1` - the director's read-only surface: push wiring stripped ([agent-surface.md](agent-surface.md)).
 - `WARD_EXTRA_REPOS` - a space-separated `owner/name` grant list ([container-multi-repo.md](container-multi-repo.md)).
 - `WARD_DISPATCH_BROKER_ADDR` / `WARD_DISPATCH_BROKER_TOKEN` - the host dispatch broker a surface dials.
-- `WARD_TS_SOCKS5` + the `WARD_TOWER_*` set - the `--ts-sidecar` tailnet route ([agent-tailnet-topology.md](agent-tailnet-topology.md)); the same proxy value also seeds the `/usr/local/bin/ward-ssh` helper when `socat` is present.
+- `WARD_TS_SOCKS5` + the `WARD_TOWER_*` set - the `--ts-sidecar` tailnet route ([agent-tailnet-topology.md](agent-tailnet-topology.md)); callers that know their own SSH or SOCKS policy can use the proxy value directly.
 - `WARD_FROM_SOURCE` - the `/opt/ward-src` mount; build ward from source not release.
 - `WARD_USE_GO_BOOTSTRAP=1` - experimental hand-off to the Go bootstrap. When
   the host stages a matching `/opt/ward/ward` binary into the assets mount, the

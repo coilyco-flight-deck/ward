@@ -3,10 +3,10 @@ doc_goal: Be the one findable place a spec author learns to build the non-public
 ---
 # ward-kdl authoring
 
-`ward-kdl` is the build-time authoring layer: a source file in, a validated
-least-privilege or fleet manifest out, embedded into `ward` with nothing fetched
-at runtime. For what the layer **is**, see [ward-kdl.md](ward-kdl.md). This doc is
-the one findable place for **how you author and swap a bundle**.
+`ward-kdl` is the build-time authoring layer: source in, validated manifest out,
+embedded into `ward` with nothing fetched at runtime. For what the layer **is**,
+see [ward-kdl.md](ward-kdl.md). This doc is the place for **how you author and
+swap a bundle**.
 
 **First, confirm you need one.** Most adopters do not - the dev-verb gate is
 `.ward/ward.yaml` alone. You author (or swap) a guardfile only to run your own
@@ -32,11 +32,10 @@ rest of this doc is how you get the compiler and swap the bundle.
 ## Getting the `ward-kdl` binary
 
 `ward-kdl` is **not** a public install artifact: the brew formula installs only
-`ward`, whose embedded surfaces cover what an end user runs, so neither the
-authoring binary nor the tier CLIs ship on the release page. A spec
-author builds it from a ward checkout with `make build-ward-kdl` (-> `bin/ward-kdl`
-plus the read/write/admin tiers). See **Bring your own specs** below to point that
-build at your own deployment bundle.
+`ward`, whose embedded surfaces cover what an end user runs. A spec author
+builds it from a ward checkout with `make build-ward-kdl` (-> `bin/ward-kdl`
+plus the read/write/admin tiers). See **Bring your own specs** below to point
+that build at your own deployment bundle.
 
 ## The spec bundle is a swappable build input
 
@@ -59,9 +58,7 @@ To build `ward` against your own deployment:
 3. Run `make build-ward-kdl`, then `make test`.
 
 Ward's own tracked bundle still carries the coilyco values today ([ward#441](https://forgejo.coilysiren.me/coilyco-flight-deck/ward/issues/441)).
-Since [ward#653](https://forgejo.coilysiren.me/coilyco-flight-deck/ward/issues/653) a rebuild is optional: the shipped binary resolves a bundle
-live at launch via `WARD_CONFIG_REF` ([config-source.md](config-source.md));
-rebuilding only changes the **baked default**. The release-CI overlay is gone.
+Since [ward#653](https://forgejo.coilysiren.me/coilyco-flight-deck/ward/issues/653) a rebuild is optional: the shipped binary can still resolve a bundle live at launch via `WARD_CONFIG_REF` for edge-mounted surfaces ([config-source.md](config-source.md)); rebuilding changes the **baked default** that core runtime and the edge fallback both use. The release-CI overlay is gone.
 
 ## See also
 
