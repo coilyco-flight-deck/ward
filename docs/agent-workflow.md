@@ -94,7 +94,7 @@ This first slice is deliberately minimal:
   on a salvage branch by the reaper. When Forgejo PRs are available, the reaper
   also opens a PR for the salvage branch and links it from the salvage comment.
 - `pull-request` runs keep watching PR CI/checks after the PR opens, so
-  `WARD-OUTCOME: submitted` follows green checks or a genuine block. `pull-request-and-merge`
+  `WARD-OUTCOME: submitted` marks the PR boundary instead of `done`. `pull-request-and-merge`
   reports `WARD-OUTCOME: merge-ready`, then waits for the director merge sweep to land the PR and
   record the final `done` outcome.
 - The autonomous [pre-flight](agent-preflight.md) still reads in merge-to-main

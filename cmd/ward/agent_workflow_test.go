@@ -143,6 +143,9 @@ func TestAgentSeedPromptWorkflow(t *testing.T) {
 	if !strings.Contains(pr, "WARD-OUTCOME: submitted") {
 		t.Errorf("pull-request reflection should end with submitted, not done\n got: %s", pr)
 	}
+	if strings.Contains(pr, "WARD-OUTCOME: done") {
+		t.Errorf("pull-request reflection must not ask the engineer to post done\n got: %s", pr)
+	}
 	if !strings.Contains(pr, "the branch is pushed, the pull request is open, and the required checks are green") {
 		t.Errorf("pull-request reflection should require green checks before done\n got: %s", pr)
 	}
@@ -174,6 +177,9 @@ func TestAgentSeedPromptWorkflow(t *testing.T) {
 	}
 	if !strings.Contains(prMerge, "WARD-OUTCOME: merge-ready") {
 		t.Errorf("pull-request-and-merge reflection should end with merge-ready, not done\n got: %s", prMerge)
+	}
+	if strings.Contains(prMerge, "WARD-OUTCOME: done") {
+		t.Errorf("pull-request-and-merge reflection must not ask the engineer to post done\n got: %s", prMerge)
 	}
 	if !strings.Contains(prMerge, "the pull request is reviewed and merge-ready") {
 		t.Errorf("pull-request-and-merge reflection should require merge-ready before done\n got: %s", prMerge)

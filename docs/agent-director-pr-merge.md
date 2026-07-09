@@ -34,11 +34,11 @@ If any check fails, the director reports the reason and leaves the PR alone.
 ## How this differs from engineer workflow
 
 The engineer's `pull-request` mode keeps watching CI after the PR opens and
-only reports `submitted` once the checks are green or the failure is genuinely
-blocked. `pull-request-and-merge` adds the director marker so the heartbeat can
-finish the merge later when the policy boundary is satisfied, and the engineer
-reports `merge-ready` while the director records the final `done` after the
-merge lands.
+reports `submitted` at the PR boundary, never `done`, once the checks are green
+or the failure is genuinely blocked. `pull-request-and-merge` adds the director
+marker so the heartbeat can finish the merge later when the policy boundary is
+satisfied, and the engineer reports `merge-ready` while the director records
+the final `done` after the merge lands.
 
 ## See also
 

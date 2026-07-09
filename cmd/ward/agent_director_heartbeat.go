@@ -630,7 +630,7 @@ func (r *Runner) backlogPrintDrained(label string, repos []string) error {
 	}
 	var b strings.Builder
 	fmt.Fprintf(&b, "\n%s: headless backlog drained - nothing queued or in flight (%s).\n", label, strings.Join(repos, ", "))
-	for _, st := range []string{"done", "blocked", "failed", "surfaced", "skipped"} {
+	for _, st := range []string{"done", "submitted", "merge-ready", "blocked", "failed", "surfaced", "skipped"} {
 		if counts[st] > 0 {
 			fmt.Fprintf(&b, "  %-10s %d\n", drainedStateLabel(st), counts[st])
 		}
@@ -646,6 +646,10 @@ func drainedStateLabel(state string) string {
 		return "parked-blocked"
 	case "failed":
 		return "parked-failed"
+	case "submitted":
+		return "pr-submitted"
+	case "merge-ready":
+		return "pr-merge-ready"
 	default:
 		return state
 	}

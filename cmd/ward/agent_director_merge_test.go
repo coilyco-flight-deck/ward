@@ -68,6 +68,12 @@ func TestDirectorMergeDecision(t *testing.T) {
 			meta: directorRunMeta{HasOutcome: true, Outcome: backlogOutcome{Status: "submitted"}, Workflow: string(workflowPullRequestAndMerge), Review: "passed: ok"},
 			want: "linked issue did not finish with WARD-OUTCOME: merge-ready",
 		},
+		{
+			name: "done-is-not-merge-ready",
+			pr:   basePR,
+			meta: directorRunMeta{HasOutcome: true, Outcome: backlogOutcome{Status: "done"}, Workflow: string(workflowPullRequestAndMerge), Review: "passed: ok"},
+			want: "linked issue did not finish with WARD-OUTCOME: merge-ready",
+		},
 	}
 	for _, tc := range cases {
 		allowed, reason, _, _ := directorMergeDecision(tc.pr, 729, tc.meta)
