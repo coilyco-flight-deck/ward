@@ -5,10 +5,14 @@ import (
 	"encoding/json"
 	"net/http"
 	"net/http/httptest"
+	"os"
+	"path/filepath"
+	"runtime"
 	"strings"
 	"testing"
 
 	"forgejo.coilysiren.me/coilyco-flight-deck/cli-guard/cli/dispatch"
+	"forgejo.coilysiren.me/coilyco-flight-deck/cli-guard/cli/shell"
 )
 
 func TestDirectorMergeDecision(t *testing.T) {
@@ -142,5 +146,53 @@ func TestDirectorRunMetaParsesWorkflowAndReview(t *testing.T) {
 	}
 	if _, ok := backlogOutcomeOfComment(body); !ok {
 		t.Fatal("comment body should parse as an outcome comment")
+	}
+}
+
+func TestDirectorMergeEligibilityRequiresWorkflowMarker(t *testing.T) {
+	if runtime.GOOS == "windows" {
+		t.Skip("shell-script fake exe is POSIX-only")
+	}
+	dir := t.TempDir()
+	fake := filepath.Join(dir, "fake-ward")
+	script := `#!/bin/sh
+case "$3 $4" in
+"issue get")
+cat <<'JSON'
+{"number":729,"title":"ship the fix","body":"closes #729","state":"open","html_url":"https://f/729","labels":[]}
+JSON
+;;
+"issue-comment list")
+cat <<'JSON'
+[{"body":"WARD-OUTCOME: done - merged and pushed\nworkflow: pull-request-and-merge; review summary: passed: all green","created_at":"2026-07-09T00:00:00Z","user":{"login":"coilyco-ops"}}]
+JSON
+;;
+*)
+echo "unexpected args: $@" >&2
+exit 1
+;;
+esac
+`
+	if err := os.WriteFile(fake, []byte(script), 0o755); err != nil { // #nosec G306 -- test-only executable
+		t.Fatalf("write fake ward: %v", err)
+	}
+	cl := &forgejoClient{r: &Runner{Runner: &shell.Runner{}}, exe: fake}
+
+	allowed, reason, linked, meta := directorMergeEligibility(context.Background(), "coilyco-flight-deck", "ward",
+		dispatch.Issue{Title: "ship the fix", Body: "closes #729\n" + directorMergeWorkflowMarker + "\n"}, cl)
+	if !allowed || reason != "" || linked != 729 {
+		t.Fatalf("eligible PR = %v %q %d, want true/\"\"/729", allowed, reason, linked)
+	}
+	if meta.Workflow != string(workflowPullRequestAndMerge) || meta.Review != "passed: all green" || !meta.HasOutcome {
+		t.Fatalf("eligible PR meta = %+v, want merge-lane metadata", meta)
+	}
+
+	allowed, reason, _, _ = directorMergeEligibility(context.Background(), "coilyco-flight-deck", "ward",
+		dispatch.Issue{Title: "ship the fix", Body: "closes #729\n"}, cl)
+	if allowed {
+		t.Fatal("unmarked PR: want deny, got allow")
+	}
+	if reason != "PR body missing ward.workflow: pull-request-and-merge marker" {
+		t.Fatalf("unmarked PR reason = %q, want missing-marker denial", reason)
 	}
 }

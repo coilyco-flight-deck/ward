@@ -82,10 +82,13 @@ func TestWorkflowCarryClausePullRequest(t *testing.T) {
 // the PR flow and says the run is not done until the merge lands.
 func TestWorkflowCarryClausePullRequestAndMerge(t *testing.T) {
 	got := workflowCarryClause(agentIssueRef{Owner: "o", Repo: "r", Number: 17}, workflowPullRequestAndMerge)
-	for _, want := range []string{"pull request", "closes #17", "director-merge authorized", "not done until the PR is merged"} {
+	for _, want := range []string{"pull request", "closes #17", directorMergeWorkflowMarker, "director-merge authorized", "the pull request is merged"} {
 		if !strings.Contains(got, want) {
 			t.Errorf("pull-request-and-merge carry clause missing %q\n got: %s", want, got)
 		}
+	}
+	if strings.Contains(got, "merge to main, push - and close") {
+		t.Fatalf("pull-request-and-merge carry clause regressed to the direct-to-main fast path:\n%s", got)
 	}
 }
 
@@ -123,6 +126,9 @@ func TestAgentSeedPromptWorkflow(t *testing.T) {
 	merge := agentSeedPromptWorkflow(ref, "reframe ward", "do it", "", true, nil, workflowPullRequestAndMerge, true, "")
 	if !strings.Contains(merge, "director-merge authorized") {
 		t.Errorf("pull-request-and-merge seed should mark the PR as director-merge authorized\n got: %s", merge)
+	}
+	if !strings.Contains(merge, directorMergeWorkflowMarker) {
+		t.Errorf("pull-request-and-merge seed should carry the PR-body marker\n got: %s", merge)
 	}
 	if !strings.Contains(merge, "workflow: <mode>; review summary: <summary or skip state>") {
 		t.Errorf("headless reflection should include the machine-readable workflow/review line\n got: %s", merge)

@@ -39,6 +39,10 @@ const (
 	workflowPullRequestsAndMerge workflowMode = workflowPullRequestAndMerge
 	workflowPRAndMerge           workflowMode = workflowPullRequestAndMerge
 	workflowPatchOnly            workflowMode = workflowRemoteBranchOnly
+
+	// directorMergeWorkflowMarker is the PR-body marker the director sweep reads
+	// when deciding whether a ward-owned PR may be merged automatically.
+	directorMergeWorkflowMarker = "ward.workflow: pull-request-and-merge"
 )
 
 // orDefault collapses the "" zero value onto the default and normalizes legacy
@@ -101,7 +105,7 @@ func workflowFlag() cli.Flag {
 		Value: string(defaultWorkflow),
 		Usage: "landing policy for the run: " + workflowChoices() + " (default pull-request unless smart defaults override). " +
 			"direct-to-main merges to main and closes; pull-request opens a pull request; pull-request-and-merge opens a pull request and marks it director-merge eligible; remote-branch-only pushes a remote branch and lands nothing else. " +
-			"The old direct-main/pull-requests/pull-requests-and-merge/patch-only spellings are transitional aliases, and `pr` is rejected.",
+			"The old direct-main/pull-requests/pull-requests-and-merge/patch-only spellings are transitional aliases. `pr` is rejected.",
 	}
 }
 
@@ -183,10 +187,10 @@ func pullRequestCarryClause(ref agentIssueRef) string {
 func pullRequestAndMergeCarryClause(ref agentIssueRef) string {
 	return fmt.Sprintf(
 		"implement on a feature branch, commit, push the branch to origin, and open a pull request "+
-			"against `main` whose body carries `closes #%d`. This run is director-merge authorized: "+
-			"the worker still opens the pull request, but the run is not done until the PR is merged. "+
+			"against `main` whose body carries `closes #%d` and `%s`. This run is director-merge authorized: "+
+			"the worker still opens the pull request, but the run is not done until the pull request is merged. "+
 			"%s Keep the branch ready for merge and do not claim success early.",
-		ref.Number, pullRequestCIWatchClause())
+		ref.Number, directorMergeWorkflowMarker, pullRequestCIWatchClause())
 }
 
 // pullRequestCIWatchClause tells pull-request workflows that opening the PR is not
