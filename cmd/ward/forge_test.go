@@ -71,6 +71,13 @@ func TestParseAgentIssueRefForge(t *testing.T) {
 	if fj.Forge != forgeForgejo {
 		t.Errorf("forgejo short ref parsed to forge %v, want forgejo", fj.Forge)
 	}
+	ghPolicy, err := parseAgentIssueRef("coilysiren/inbox#184")
+	if err != nil {
+		t.Fatalf("parseAgentIssueRef(github-policy short): %v", err)
+	}
+	if ghPolicy.Forge != forgeGitHub {
+		t.Errorf("github-policy short ref parsed to forge %v, want github", ghPolicy.Forge)
+	}
 }
 
 // TestForgeURLAndBase checks the forge-selected issue URL + clone base.

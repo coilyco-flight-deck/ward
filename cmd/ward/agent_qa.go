@@ -50,7 +50,7 @@ func agentQACommand() *cli.Command {
 	return &cli.Command{
 		Name:      "qa",
 		Usage:     "Inspect a ticket, branch, PR, and checks, then post a structured QA verdict comment; no implementation edits.",
-		ArgsUsage: "<owner/repo#N | #N | forgejo-issue-url> [extra framing]",
+		ArgsUsage: "<owner/repo#N | #N | issue-url> [extra framing]",
 		Flags:     agentQAFlags(),
 		Action: func(ctx context.Context, c *cli.Command) error {
 			r := newRunner()
@@ -79,7 +79,7 @@ func (r *Runner) runAgentQA(ctx context.Context, c *cli.Command, mode containerM
 		return err
 	}
 
-	issue, err := r.fetchForgejoIssue(ctx, ref.Owner, ref.Repo, ref.Number)
+	issue, err := r.fetchIssue(ctx, ref)
 	if err != nil {
 		return fmt.Errorf("%s: resolve issue %s: %w", label, ref, err)
 	}
@@ -106,11 +106,10 @@ func (r *Runner) runAgentQA(ctx context.Context, c *cli.Command, mode containerM
 		read = `{"verdict":"blocked","summary":"QA returned no output","evidence":["The container produced an empty read."],"risks":["The inspection did not complete."],"next_steps":["Re-run QA and inspect the container logs."]}`
 	}
 
-	cl, err := r.hostForgejoClient(ctx)
+	cl, err := r.hostForgeClient(ctx, ref.Forge, mode)
 	if err != nil {
 		return fmt.Errorf("%s: %w", label, err)
 	}
-	cl = cl.withMode(mode)
 	if err := cl.commentIssue(ctx, ref.Owner, ref.Repo, ref.Number, qaVerdictComment(mode, level, prompt, read)); err != nil {
 		return fmt.Errorf("%s: post QA verdict on %s: %w", label, ref, err)
 	}
@@ -233,7 +232,7 @@ func qaResearchPrompt(ref agentIssueRef, title, body string, comments []issueCom
 		prompt = "(no prompt given)"
 	}
 	return fmt.Sprintf(
-		"You are doing a one-shot QA inspection on a Forgejo issue. You are NOT implementing anything, "+
+		"You are doing a one-shot QA inspection on an issue. You are NOT implementing anything, "+
 			"NOT changing code, and NOT carrying this issue to merge. Your job is to inspect the candidate "+
 			"branch, any linked pull request, and the current checks, then report a structured verdict.\n\n"+
 			"Emit your answer as a SINGLE fenced ```json block and nothing else outside it, in this shape:\n\n"+

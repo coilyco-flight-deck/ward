@@ -99,14 +99,13 @@ func (r *Runner) runAgentTaskRoute(ctx context.Context, c *cli.Command, mode con
 	// interactive moment - surface a stale-ward reminder before it files (ward#143).
 	r.maybeWarnWardOutdated(ctx)
 
-	cl, err := r.hostForgejoClient(ctx)
+	cl, err := r.hostForgeClient(ctx, repoAuthority(inboxOwner, inboxRepo), mode)
 	if err != nil {
 		return fmt.Errorf("%s: %w", label, err)
 	}
-	signed := cl.withMode(mode)
 
 	// 1. File the intake record - the literal ask, captured before routing.
-	intakeNum, err := signed.createIssue(ctx, inboxOwner, inboxRepo, title, routeIntakeBody(mode, taskText))
+	intakeNum, err := cl.createIssue(ctx, inboxOwner, inboxRepo, title, routeIntakeBody(mode, taskText))
 	if err != nil {
 		return fmt.Errorf("%s: file intake issue in %s/%s: %w", label, inboxOwner, inboxRepo, err)
 	}
@@ -117,21 +116,25 @@ func (r *Runner) runAgentTaskRoute(ctx context.Context, c *cli.Command, mode con
 	outcome, read, serr := r.surveyRoute(ctx, mode, taskText)
 	if serr != nil {
 		reason := fmt.Sprintf("route survey did not complete: %v", serr)
-		return r.bounceRouteToHuman(ctx, signed, label, mode, intake, reason, read)
+		return r.bounceRouteToHuman(ctx, cl, label, mode, intake, reason, read)
 	}
 	if outcome.Verdict != routeRepo {
-		return r.bounceRouteToHuman(ctx, signed, label, mode, intake, routeBounceReason(outcome), read)
+		return r.bounceRouteToHuman(ctx, cl, label, mode, intake, routeBounceReason(outcome), read)
 	}
 
 	// Validate the routed target: a trusted owner, and never the inbox itself.
 	target, reason, ok := r.resolveRouteTarget(outcome)
 	if !ok {
-		return r.bounceRouteToHuman(ctx, signed, label, mode, intake, reason, read)
+		return r.bounceRouteToHuman(ctx, cl, label, mode, intake, reason, read)
+	}
+	childCl, err := r.hostForgeClient(ctx, repoAuthority(target.Owner, target.Name), mode)
+	if err != nil {
+		return fmt.Errorf("%s: build child issue client for %s: %w", label, target.slug(), err)
 	}
 
 	// 3. File the scoped child issue in the routed repo, cross-linked to intake.
 	childBody := routeChildBody(mode, taskText, outcome.Note, intake)
-	childNum, err := signed.createIssue(ctx, target.Owner, target.Name, title, childBody)
+	childNum, err := childCl.createIssue(ctx, target.Owner, target.Name, title, childBody)
 	if err != nil {
 		return fmt.Errorf("%s: file child issue in %s: %w", label, target.slug(), err)
 	}
@@ -139,10 +142,10 @@ func (r *Runner) runAgentTaskRoute(ctx context.Context, c *cli.Command, mode con
 	fmt.Fprintf(os.Stderr, "%s: routed %s -> child %s - %s\n", label, intake, child, child.url())
 
 	// 4. Cross-link the child onto the intake record, then close the intake.
-	if cerr := signed.commentIssue(ctx, intake.Owner, intake.Repo, intake.Number, routeRoutedComment(mode, child, outcome.Note, read)); cerr != nil {
+	if cerr := cl.commentIssue(ctx, intake.Owner, intake.Repo, intake.Number, routeRoutedComment(mode, child, outcome.Note, read)); cerr != nil {
 		return fmt.Errorf("%s: cross-link intake %s: %w", label, intake, cerr)
 	}
-	if cerr := signed.closeIssue(ctx, intake.Owner, intake.Repo, intake.Number); cerr != nil {
+	if cerr := cl.closeIssue(ctx, intake.Owner, intake.Repo, intake.Number); cerr != nil {
 		// The child is filed and cross-linked; a failed close is cosmetic, so warn
 		// rather than strand the run.
 		fmt.Fprintf(os.Stderr, "%s: note: could not close intake %s (%v); it's cross-linked, close it by hand\n", label, intake, cerr)
@@ -201,7 +204,7 @@ func (r *Runner) resolveRouteTarget(outcome routeOutcome) (targetRepo, string, b
 
 // bounceRouteToHuman comments the UNCLEAR verdict on the still-open intake record
 // and launches nothing - the consult exit when the survey can't route confidently.
-func (r *Runner) bounceRouteToHuman(ctx context.Context, signed *forgejoClient, label string, mode containerMode, intake agentIssueRef, reason, read string) error {
+func (r *Runner) bounceRouteToHuman(ctx context.Context, signed issueForge, label string, mode containerMode, intake agentIssueRef, reason, read string) error {
 	fmt.Fprintf(os.Stderr, "%s: route UNCLEAR for intake %s; launching nothing, leaving it open for a human.\n", label, intake)
 	if cerr := signed.commentIssue(ctx, intake.Owner, intake.Repo, intake.Number, routeUnclearComment(mode, reason, read)); cerr != nil {
 		return fmt.Errorf("%s: comment UNCLEAR on %s: %w", label, intake, cerr)
@@ -241,12 +244,13 @@ func (r *Runner) surveyRoute(ctx context.Context, mode containerMode, taskText s
 // surveyRepoCatalog lists routable repos across the primary orgs (dropping
 // archived/empty + the inbox); a per-owner list failure is skipped, not fatal.
 func (r *Runner) surveyRepoCatalog(ctx context.Context) ([]repoCatalogEntry, error) {
-	cl, err := r.hostForgejoClient(ctx)
-	if err != nil {
-		return nil, err
-	}
 	var entries []repoCatalogEntry
 	for _, owner := range r.primaryOrgs() {
+		cl, err := r.hostForgeClient(ctx, ownerAuthority(owner), currentAgentMode())
+		if err != nil {
+			fmt.Fprintf(os.Stderr, "ward agent engineer: note: could not build repo-list client for %s (%v); skipping it in the survey\n", owner, err)
+			continue
+		}
 		repos, err := cl.listOwnerRepos(ctx, owner)
 		if err != nil {
 			fmt.Fprintf(os.Stderr, "ward agent engineer: note: could not list repos for %s (%v); skipping it in the survey\n", owner, err)

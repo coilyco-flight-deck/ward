@@ -139,12 +139,11 @@ func (r *Runner) postReviewConclusionComment(ctx context.Context, res reviewpane
 		writef(r.Runner.Stderr, "ward agent review: WARNING: could not parse issue ref %q for conclusion comment: %v\n", ref, err)
 		return
 	}
-	cl, err := r.hostForgejoClient(ctx)
+	cl, err := r.hostForgeClient(ctx, parsed.Forge, containerMode(res.Worker))
 	if err != nil {
-		writef(r.Runner.Stderr, "ward agent review: WARNING: could not build Forgejo client for conclusion comment: %v\n", err)
+		writef(r.Runner.Stderr, "ward agent review: WARNING: could not build issue client for conclusion comment: %v\n", err)
 		return
 	}
-	cl = cl.withMode(containerMode(res.Worker))
 	if err := cl.commentIssue(ctx, parsed.Owner, parsed.Repo, parsed.Number, reviewConclusionCommentBody(res)); err != nil {
 		writef(r.Runner.Stderr, "ward agent review: WARNING: could not post review conclusion comment on %s: %v\n", parsed, err)
 	}

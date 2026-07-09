@@ -497,12 +497,12 @@ func (r *Runner) expandOrgScopes(ctx context.Context, label string, orgs []strin
 	if len(orgs) == 0 {
 		return nil, nil
 	}
-	cl, err := r.hostForgejoClient(ctx)
-	if err != nil {
-		return nil, fmt.Errorf("%s: %w", label, err)
-	}
 	var out []string
 	for _, org := range orgs {
+		cl, err := r.hostForgeClient(ctx, ownerAuthority(org), currentAgentMode())
+		if err != nil {
+			return nil, fmt.Errorf("%s: %w", label, err)
+		}
 		repos, lerr := cl.listOwnerRepos(ctx, org)
 		if lerr != nil {
 			return nil, fmt.Errorf("%s: cannot expand --org %q: %w", label, org, lerr)
@@ -1013,12 +1013,12 @@ func backlogTierIndex(tier string) int {
 
 // backlogRefresh rebuilds each repo's ledger from its live open backlog.
 func (r *Runner) backlogRefresh(ctx context.Context, label string, repos []string, limit int) error {
-	cl, err := r.hostForgejoClient(ctx)
-	if err != nil {
-		return fmt.Errorf("%s: %w", label, err)
-	}
 	for _, repo := range repos {
 		owner, name, _ := strings.Cut(repo, "/")
+		cl, err := r.hostForgeClient(ctx, repoAuthority(owner, name), currentAgentMode())
+		if err != nil {
+			return fmt.Errorf("%s: %w", label, err)
+		}
 		issues, lerr := cl.listOpenIssues(ctx, owner, name, limit)
 		if lerr != nil {
 			return fmt.Errorf("%s: %w", label, lerr)
@@ -1113,18 +1113,19 @@ func (r *Runner) backlogDispatch(ctx context.Context, dispatch dispatchEngineer,
 
 // backlogPoll reconciles each dispatched issue across the scope against reality.
 func (r *Runner) backlogPoll(ctx context.Context, label string, repos []string) {
-	cl, err := r.hostForgejoClient(ctx)
-	if err != nil {
-		fmt.Fprintf(os.Stderr, "%s: note: cannot poll (%v)\n", label, err)
-		return
-	}
 	for _, repo := range repos {
+		owner, name, _ := strings.Cut(repo, "/")
+		cl, err := r.hostForgeClient(ctx, repoAuthority(owner, name), currentAgentMode())
+		if err != nil {
+			fmt.Fprintf(os.Stderr, "%s: note: cannot poll %s (%v)\n", label, repo, err)
+			continue
+		}
 		r.backlogPollRepo(ctx, label, repo, cl)
 	}
 }
 
 // backlogPollRepo reconciles one repo's dispatched issues and saves on any change.
-func (r *Runner) backlogPollRepo(ctx context.Context, label, repo string, cl *forgejoClient) {
+func (r *Runner) backlogPollRepo(ctx context.Context, label, repo string, cl issueForge) {
 	led, err := loadBacklogLedger(repo)
 	if err != nil {
 		fmt.Fprintf(os.Stderr, "%s: note: cannot poll %s (%v)\n", label, repo, err)
@@ -1146,7 +1147,7 @@ func (r *Runner) backlogPollRepo(ctx context.Context, label, repo string, cl *fo
 
 // backlogReconcile moves one exited dispatched entry to its outcome state; a gone
 // container with no WARD-OUTCOME is parked failed. Returns whether it changed.
-func (r *Runner) backlogReconcile(ctx context.Context, cl *forgejoClient, repo string, tr targetRepo, e *backlogEntry) bool {
+func (r *Runner) backlogReconcile(ctx context.Context, cl issueForge, repo string, tr targetRepo, e *backlogEntry) bool {
 	if e.State != "dispatched" || r.backlogContainerRunning(ctx, tr, e) {
 		return false
 	}

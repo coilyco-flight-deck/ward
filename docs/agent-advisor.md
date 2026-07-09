@@ -94,7 +94,7 @@ answer**: `WARD_ASK=1`, the `claude -p` branch, seeded with `askPrompt`. `--ones
 ## `--print`
 
 A ref renders the ref, depth, prompt, and research prompt (it still fetches the issue, so
-it needs the Forgejo token); a freeform question renders the question, seed, and docker
+it needs the relevant forge token); a freeform question renders the question, seed, and docker
 plan, stating which path runs. Neither researches, runs, nor posts anything.
 
 ## See also

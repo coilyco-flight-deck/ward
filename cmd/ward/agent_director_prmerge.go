@@ -7,18 +7,18 @@ import (
 	"strings"
 )
 
-// agent_director_prmerge.go wires the heartbeat's narrow PR-merge sweep onto the
-// explicit director merge policy in agent_director_merge.go.
+// agent_director_prmerge.go wires the PR-merge sweep onto merge policy.
 
 // directorMergeEligiblePullRequests sweeps ward-owned PRs that already satisfy the
-// explicit director merge boundary and merges them through Forgejo.
+// merge boundary and merges them through the authoritative forge.
 func (r *Runner) directorMergeEligiblePullRequests(ctx context.Context, label string, repos []string) error {
-	cl, err := r.hostForgejoClient(ctx)
-	if err != nil {
-		return fmt.Errorf("%s: %w", label, err)
-	}
 	for _, repo := range repos {
 		owner, name, _ := strings.Cut(repo, "/")
+		cl, err := r.hostForgeClient(ctx, repoAuthority(owner, name), currentAgentMode())
+		if err != nil {
+			fmt.Fprintf(os.Stderr, "%s: note: could not build issue client for %s (%v); skipping this repo\n", label, repo, err)
+			continue
+		}
 		prs, lerr := cl.listOpenPullRequests(ctx, owner, name, 50)
 		if lerr != nil {
 			fmt.Fprintf(os.Stderr, "%s: note: cannot list pull requests in %s (%v); skipping this repo\n", label, repo, lerr)

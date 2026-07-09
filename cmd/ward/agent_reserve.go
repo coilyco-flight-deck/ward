@@ -335,6 +335,15 @@ var reservationPostSleep = time.Sleep
 // WARN carries, so an operator sweeps the dispatch logs by grep (ward#402).
 const reservationWarnToken = "remote reservation NOT posted"
 
+// reservationThreadForge is the narrow issue-thread surface the reservation flow
+// needs. It deliberately excludes PR helpers so tests can stub only the thread.
+type reservationThreadForge interface {
+	listIssueComments(ctx context.Context, owner, repo string, number int) ([]issueComment, error)
+	commentIssue(ctx context.Context, owner, repo string, number int, body string) error
+	lockIssue(ctx context.Context, owner, repo string, number int) error
+	unlockIssue(ctx context.Context, owner, repo string, number int) error
+}
+
 // acquireRemoteReservation refuses on a fresh reservation comment (unless force), else
 // posts one and returns a remote-release to roll it back (ward#402/#570, docs).
 func (r *Runner) acquireRemoteReservation(ctx context.Context, label string, mode containerMode, ref agentIssueRef, container, justification string, seedCtx *reservationSeedContext, now time.Time, force bool, skipPreflight bool) (func(), error) {
@@ -343,9 +352,10 @@ func (r *Runner) acquireRemoteReservation(ctx context.Context, label string, mod
 		warnRemoteReservationLost(label, ref, fmt.Sprintf("could not build the %s client: %v", ref.Forge, err))
 		return func() {}, nil
 	}
+	thread := reservationThreadForge(cl)
 	ttl := agentReservationTTL()
 	if !force {
-		comments, lerr := cl.listIssueComments(ctx, ref.Owner, ref.Repo, ref.Number)
+		comments, lerr := thread.listIssueComments(ctx, ref.Owner, ref.Repo, ref.Number)
 		if lerr != nil {
 			fmt.Fprintf(os.Stderr, "%s: warning: could not read issue comments to check for a remote reservation (%v); proceeding without the cross-host conflict check\n", label, lerr)
 		} else if who, held := freshReservationComment(comments, now, ttl); held {
@@ -356,7 +366,7 @@ func (r *Runner) acquireRemoteReservation(ctx context.Context, label string, mod
 	}
 	tries, perr := postReservationComment(ctx, remoteReservationPostAttempts, remoteReservationPostBackoff, reservationPostSleep,
 		func(ctx context.Context) error {
-			return cl.commentIssue(ctx, ref.Owner, ref.Repo, ref.Number,
+			return thread.commentIssue(ctx, ref.Owner, ref.Repo, ref.Number,
 				reservationCommentBody(mode, container, hostname(), now, justification, seedCtx))
 		})
 	if perr != nil {
@@ -364,11 +374,11 @@ func (r *Runner) acquireRemoteReservation(ctx context.Context, label string, mod
 	}
 	// Seal the conversation against in-flight steering (ward#494); best-effort, so a
 	// forge with no lock API or a lock failure never fails the reservation.
-	r.lockReservedIssue(ctx, cl, label, ref)
+	r.lockReservedIssue(ctx, thread, label, ref)
 	// Jittered double-check backstop for any path the broker per-ref lock misses
 	// (two direct host runs, or cross-host); --force skips it (ward#600, docs).
 	if !force {
-		if lost, winner := r.reservationRecheckLost(ctx, cl, label, ref, container, skipPreflight); lost {
+		if lost, winner := r.reservationRecheckLost(ctx, thread, label, ref, container, skipPreflight); lost {
 			// Leave our comment to lapse at the TTL (a release marker would free the
 			// winner too) and refuse so only the winner proceeds (ward#600).
 			return nil, newReservationConflict(
@@ -378,12 +388,12 @@ func (r *Runner) acquireRemoteReservation(ctx context.Context, label string, mod
 	}
 	// The release reuses this same client to retract the comment + lock if the launch
 	// fails downstream (ward#570).
-	return func() { r.releaseRemoteReservation(ctx, cl, label, mode, ref, container) }, nil
+	return func() { r.releaseRemoteReservation(ctx, thread, label, mode, ref, container) }, nil
 }
 
 // releaseRemoteReservation retracts this run's forge road-block on a launch that dies
 // before the container is up: a release-marker comment plus a best-effort unlock (#570).
-func (r *Runner) releaseRemoteReservation(ctx context.Context, cl issueForge, label string, mode containerMode, ref agentIssueRef, container string) {
+func (r *Runner) releaseRemoteReservation(ctx context.Context, cl reservationThreadForge, label string, mode containerMode, ref agentIssueRef, container string) {
 	if err := cl.commentIssue(ctx, ref.Owner, ref.Repo, ref.Number, reservationReleaseCommentBody(mode, container, nil)); err != nil {
 		fmt.Fprintf(os.Stderr, "%s: warning: could not release the remote reservation on %s (%v); a re-run may need --force until the %s TTL lapses (ward#570)\n", label, ref, err, conciseDuration(agentReservationTTL()))
 		return
@@ -398,7 +408,7 @@ func (r *Runner) releaseRemoteReservation(ctx context.Context, cl issueForge, la
 
 // lockReservedIssue seals the reserved issue best-effort, logging the outcome (locked
 // / unsupported-forge / soft-failure) and never returning an error (ward#494, docs).
-func (r *Runner) lockReservedIssue(ctx context.Context, cl issueForge, label string, ref agentIssueRef) {
+func (r *Runner) lockReservedIssue(ctx context.Context, cl reservationThreadForge, label string, ref agentIssueRef) {
 	switch err := cl.lockIssue(ctx, ref.Owner, ref.Repo, ref.Number); {
 	case err == nil:
 		fmt.Fprintf(os.Stderr, "%s: locked issue %s conversation for the reservation window\n", label, ref)
@@ -489,7 +499,7 @@ type reservationClaim struct {
 
 // reservationRecheckLost re-reads the thread after a jittered pause; a concurrent run
 // winning the tiebreak makes this run yield. A disabled window/read error fails open.
-func (r *Runner) reservationRecheckLost(ctx context.Context, cl issueForge, label string, ref agentIssueRef, container string, skipPreflight bool) (bool, string) {
+func (r *Runner) reservationRecheckLost(ctx context.Context, cl reservationThreadForge, label string, ref agentIssueRef, container string, skipPreflight bool) (bool, string) {
 	if skipPreflight {
 		fmt.Fprintf(os.Stderr, "%s: skipping reservation re-check (--skip-preflight)\n", label)
 		return false, ""

@@ -54,10 +54,6 @@ func (r *Runner) runDirectorMerge(ctx context.Context, c *cli.Command) error {
 	if err := r.backlogTrustGate(label, repos); err != nil {
 		return err
 	}
-	cl, err := r.hostForgejoClient(ctx)
-	if err != nil {
-		return fmt.Errorf("%s: %w", label, err)
-	}
 	preview := c.Bool("dry-run") || c.Bool("print")
 	limit := c.Int("limit")
 	if limit < 1 {
@@ -66,6 +62,10 @@ func (r *Runner) runDirectorMerge(ctx context.Context, c *cli.Command) error {
 	var merged, skipped int
 	for _, repo := range repos {
 		owner, name, _ := strings.Cut(repo, "/")
+		cl, err := r.hostForgeClient(ctx, repoAuthority(owner, name), currentAgentMode())
+		if err != nil {
+			return fmt.Errorf("%s: %w", label, err)
+		}
 		prs, perr := cl.listOpenPullRequests(ctx, owner, name, limit)
 		if perr != nil {
 			return fmt.Errorf("%s: %w", label, perr)
@@ -95,7 +95,7 @@ func (r *Runner) runDirectorMerge(ctx context.Context, c *cli.Command) error {
 
 // directorMergeEligibility returns whether pr is the narrow, ward-owned lane.
 // The policy closes over the issue thread, not just the PR title.
-func directorMergeEligibility(ctx context.Context, owner, repo string, pr dispatch.Issue, cl *forgejoClient) (ok bool, reason string, linked int, meta directorRunMeta) {
+func directorMergeEligibility(ctx context.Context, owner, repo string, pr dispatch.Issue, cl issueForge) (ok bool, reason string, linked int, meta directorRunMeta) {
 	linked, ok = directorLinkedIssueNumber(pr.Body)
 	if !ok {
 		return false, "no same-repo closing reference in the PR body", 0, directorRunMeta{}

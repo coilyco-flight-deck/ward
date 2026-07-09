@@ -242,20 +242,20 @@ func (r *Runner) backlogTriage(ctx context.Context, label string, repos []string
 		fmt.Fprintf(os.Stderr, "%s: note: %s self-assessment unavailable; skipping startup triage.\n", label, bin)
 		return
 	}
-	cl, err := r.hostForgejoClient(ctx)
-	if err != nil {
-		fmt.Fprintf(os.Stderr, "%s: note: cannot triage (%v); leaving labels unchanged.\n", label, err)
-		return
-	}
-	cl = cl.withMode(mode)
 	for _, repo := range repos {
+		owner, name, _ := strings.Cut(repo, "/")
+		cl, err := r.hostForgeClient(ctx, repoAuthority(owner, name), mode)
+		if err != nil {
+			fmt.Fprintf(os.Stderr, "%s: note: cannot triage %s (%v); leaving labels unchanged.\n", label, repo, err)
+			continue
+		}
 		r.triageRepo(ctx, label, repo, cl, mode, limit)
 	}
 }
 
 // triageRepo runs the pass over one repo: fetch, filter to the untriaged, judge in one
 // host one-shot, then write the missing tier/mode labels. Best effort.
-func (r *Runner) triageRepo(ctx context.Context, label, repo string, cl *forgejoClient, mode containerMode, limit int) {
+func (r *Runner) triageRepo(ctx context.Context, label, repo string, cl issueForge, mode containerMode, limit int) {
 	owner, name, _ := strings.Cut(repo, "/")
 	issues, err := cl.listOpenIssues(ctx, owner, name, limit)
 	if err != nil {
@@ -295,15 +295,23 @@ func (r *Runner) triageJudge(ctx context.Context, label string, mode containerMo
 
 // triageWriteLabels adds each candidate's missing tier/mode label; a write failure (an
 // org label not yet defined, say) is noted and skipped, never fatal.
-func (r *Runner) triageWriteLabels(ctx context.Context, label, repo string, cl *forgejoClient, cands []triageCandidate, verdicts map[int]triageVerdict, tiers map[int]string) {
+func (r *Runner) triageWriteLabels(ctx context.Context, label, repo string, cl issueForge, cands []triageCandidate, verdicts map[int]triageVerdict, tiers map[int]string) {
 	owner, name, _ := strings.Cut(repo, "/")
 	var promoted int
+	type labelAdder interface {
+		addIssueLabels(ctx context.Context, owner, repo string, number int, labels []string) error
+	}
 	for _, c := range cands {
 		add := triageLabelsFor(c, verdicts[c.Num], tiers[c.Num])
 		if len(add) == 0 {
 			continue
 		}
-		if err := cl.addIssueLabels(ctx, owner, name, c.Num, add); err != nil {
+		la, ok := cl.(labelAdder)
+		if !ok {
+			fmt.Fprintf(os.Stderr, "%s: note: cannot label %s#%d %v (label surface unavailable); skipping.\n", label, repo, c.Num, add)
+			continue
+		}
+		if err := la.addIssueLabels(ctx, owner, name, c.Num, add); err != nil {
 			fmt.Fprintf(os.Stderr, "%s: note: cannot label %s#%d %v (%v); skipping.\n", label, repo, c.Num, add, err)
 			continue
 		}

@@ -3,10 +3,12 @@ doc_goal: Show an operator how the guarded execution layer carries a GitHub-host
 ---
 # ward agent: GitHub as a first-class forge ([ward#489](https://forgejo.coilysiren.me/coilyco-flight-deck/ward/issues/489))
 
-ward is Forgejo-canonical, but GitHub is the public front door. `warded` carries a
-GitHub-hosted issue end to end the same way it carries a Forgejo one: it clones and
-pushes with a GitHub token, posts the preflight / NO-GO / reservation / outcome
-comments on the **GitHub** issue, and the run lands as a **pull request** on GitHub.
+ward is Forgejo-canonical, but GitHub is the public front door. For
+`coilysiren/*`, GitHub is the authoritative issue-tracker and git surface by
+namespace policy. `warded` carries those issues end to end the same way it
+carries a Forgejo one: it clones and pushes with a GitHub token, posts the
+preflight / NO-GO / reservation / outcome comments on the **GitHub** issue, and
+the run lands as a **pull request** on GitHub.
 
 ## What a GitHub run does differently
 
@@ -43,7 +45,8 @@ tighter GraphQL lane - see [github-rate-limits.md](github-rate-limits.md).
   warded coilysiren/agentic-os#461 --github
   ```
 
-A plain `owner/repo#N`, a Forgejo URL, or a bare `#N` still mean Forgejo. The
+A plain `owner/repo#N`, a Forgejo URL, or a bare `#N` still mean Forgejo unless
+the repo namespace policy says otherwise. The
 [trusted-owner](agent-trust-gate.md) allowlist is shared across both forges.
 
 ## Supplying the GitHub token

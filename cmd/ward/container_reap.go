@@ -29,6 +29,7 @@ type reapEnv struct {
 	Name  string
 	Base  string
 	Mode  string
+	Forge forge
 	Token string
 	// Container is WARD_CONTAINER_NAME, the run correlation id stamped on the reap
 	// surface (ward#517). See docs/container-lifecycle-logs.md.
@@ -63,6 +64,7 @@ func readReapEnv() (reapEnv, error) {
 		Name:      os.Getenv("WARD_TARGET_NAME"),
 		Base:      os.Getenv("WARD_FORGEJO_BASE"),
 		Mode:      os.Getenv("WARD_MODE"),
+		Forge:     parseForge(os.Getenv("WARD_FORGE")),
 		Token:     os.Getenv("FORGEJO_TOKEN"),
 		UpAt:      os.Getenv("WARD_CONTAINER_UP"),
 		Container: os.Getenv("WARD_CONTAINER_NAME"),
@@ -116,7 +118,7 @@ func containerReapCommand() *cli.Command {
 	return &cli.Command{
 		Name:   "reap",
 		Hidden: true, // ward#263: entrypoint-internal, not a hand-run verb
-		Usage:  "Clean up residual work before container teardown: land it on main if clean, else push a salvage branch and file a Forgejo issue.",
+		Usage:  "Clean up residual work before container teardown: land it on main if clean, else push a salvage branch and file an issue.",
 		Description: `reap runs once the agent exits, on every exit, as deterministic static
 code. It stages and commits anything the agent left uncommitted, integrates
 onto the latest main, and then: if the diff is clean and integrates, pushes
@@ -618,17 +620,27 @@ func (r *Runner) salvage(ctx context.Context, work string, env reapEnv, reason r
 // fileSalvageIssue posts the salvage notice: a carried run comments on its own
 // issue, a freeform run files a standalone one (ward#518, docs/container-reap.md).
 func (r *Runner) fileSalvageIssue(ctx context.Context, env reapEnv, report salvageReport) error {
-	if env.Token == "" {
-		return fmt.Errorf("no FORGEJO_TOKEN to file a salvage issue")
+	mode := containerMode(env.Mode)
+	switch env.Forge {
+	case forgeGitHub:
+		fc, err := r.hostGitHubClient(mode)
+		if err != nil {
+			return err
+		}
+		return notifySalvage(ctx, fc, env, report)
+	default:
+		if env.Token == "" {
+			return fmt.Errorf("no FORGEJO_TOKEN to file a salvage issue")
+		}
+		// The ops mount authenticates from $FORGEJO_TOKEN in-container
+		// (forgejoTokenResolver), so the reaper drives the same client host flows do.
+		fc, err := r.hostForgejoClient(ctx)
+		if err != nil {
+			return err
+		}
+		fc = fc.withMode(mode).withToken(env.Token)
+		return notifySalvage(ctx, fc, env, report)
 	}
-	// The ops mount authenticates from $FORGEJO_TOKEN in-container (forgejoTokenResolver),
-	// so the reaper drives the same client host flows do.
-	fc, err := r.hostForgejoClient(ctx)
-	if err != nil {
-		return err
-	}
-	fc = fc.withMode(containerMode(env.Mode)).withToken(env.Token)
-	return notifySalvage(ctx, fc, env, report)
 }
 
 // salvageNotifier is the Forgejo surface notifySalvage drives; *forgejoClient
@@ -711,20 +723,26 @@ func (r *Runner) releaseReservationIfUnstarted(ctx context.Context, env reapEnv)
 		fmt.Fprintf(os.Stderr, "ward container reap: reservation keep for #%d (launched=%t issue=%d)\n", env.Issue, env.Launched, env.Issue)
 		return
 	}
-	if env.Token == "" {
-		fmt.Fprintln(os.Stderr, "ward container reap: no FORGEJO_TOKEN to release the issue reservation")
-		return
+	mode := containerMode(env.Mode)
+	var fc issueForge
+	var err error
+	if env.Forge == forgeGitHub {
+		fc, err = r.hostGitHubClient(mode)
+	} else {
+		if env.Token == "" {
+			fmt.Fprintln(os.Stderr, "ward container reap: no FORGEJO_TOKEN to release the issue reservation")
+			return
+		}
+		fc, err = r.hostForgeClient(ctx, env.Forge, mode)
 	}
-	fc, err := r.hostForgejoClient(ctx)
 	if err != nil {
-		fmt.Fprintf(os.Stderr, "ward container reap: could not build forgejo client to release reservation: %v\n", err)
+		fmt.Fprintf(os.Stderr, "ward container reap: could not build issue client to release reservation: %v\n", err)
 		return
 	}
-	fc = fc.withMode(containerMode(env.Mode))
 	// Name the specific pre-launch gate that died (auth / ollama-probe / bootstrap),
 	// its error line, and the recovery step - not just "smoke-test death" (ward#609).
 	gate, _ := readGateFailure()
-	body := reservationReleaseCommentBody(containerMode(env.Mode), env.Name, gate)
+	body := reservationReleaseCommentBody(mode, env.Name, gate)
 	if err := fc.commentIssue(ctx, env.Owner, env.Name, env.Issue, body); err != nil {
 		fmt.Fprintf(os.Stderr, "ward container reap: could not release issue reservation on #%d: %v\n", env.Issue, err)
 		return
@@ -927,16 +945,15 @@ func (r *Runner) reportUnlandedExtraRepos(ctx context.Context, env reapEnv, repo
 		fmt.Fprintln(os.Stderr, "ward container reap: no target issue to flag the un-landed granted repos on")
 		return
 	}
-	if env.Token == "" {
+	if env.Forge != forgeGitHub && env.Token == "" {
 		fmt.Fprintln(os.Stderr, "ward container reap: no FORGEJO_TOKEN to flag the un-landed granted repos on the issue")
 		return
 	}
-	fc, err := r.hostForgejoClient(ctx)
+	fc, err := r.hostForgeClient(ctx, env.Forge, containerMode(env.Mode))
 	if err != nil {
-		fmt.Fprintf(os.Stderr, "ward container reap: could not build forgejo client to flag un-landed granted repos: %v\n", err)
+		fmt.Fprintf(os.Stderr, "ward container reap: could not build issue client to flag un-landed granted repos: %v\n", err)
 		return
 	}
-	fc = fc.withMode(containerMode(env.Mode))
 	// Reopen first (idempotent on an already-open issue), then comment: the issue
 	// must not read "done" while a granted repo's committed work is unreachable.
 	if rerr := fc.reopenIssue(ctx, env.Owner, env.Name, env.Issue); rerr != nil {

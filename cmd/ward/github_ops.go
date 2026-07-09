@@ -102,6 +102,76 @@ func (c *githubClient) listIssueComments(ctx context.Context, owner, repo string
 	return ghCommentsToIssueComments(comments), nil
 }
 
+// listOwnerRepos reads an owner's repos through gh api. Empty is left false because
+// GitHub's org repo payload does not surface Forgejo's exact empty-repo bit.
+func (c *githubClient) listOwnerRepos(ctx context.Context, owner string) ([]repoBrief, error) {
+	out, err := c.run(ctx, "api", "--paginate", "-f", "per_page=100",
+		"/orgs/"+owner+"/repos")
+	if err != nil {
+		return nil, fmt.Errorf("github: list repos for %s: %w", owner, err)
+	}
+	var raw []struct {
+		Name        string `json:"name"`
+		FullName    string `json:"full_name"`
+		Description string `json:"description"`
+		Archived    bool   `json:"archived"`
+	}
+	if err := json.Unmarshal(out, &raw); err != nil {
+		return nil, fmt.Errorf("github: parse repo list for %s: %w", owner, err)
+	}
+	outRepos := make([]repoBrief, 0, len(raw))
+	for _, rr := range raw {
+		outRepos = append(outRepos, repoBrief{
+			Name:        rr.Name,
+			FullName:    rr.FullName,
+			Description: rr.Description,
+			Archived:    rr.Archived,
+		})
+	}
+	return outRepos, nil
+}
+
+// listOpenIssues reads GitHub's open issue list through gh's JSON output.
+func (c *githubClient) listOpenIssues(ctx context.Context, owner, repo string, limit int) ([]backlogIssue, error) {
+	if limit <= 0 {
+		limit = 50
+	}
+	out, err := c.run(ctx, "issue", "list", "--repo", ghSlug(owner, repo), "--state", "open", "--limit", strconv.Itoa(limit), "--json", "number,title,body,state,url,labels")
+	if err != nil {
+		return nil, fmt.Errorf("github: list open issues in %s/%s: %w", owner, repo, err)
+	}
+	var raw []struct {
+		Number int    `json:"number"`
+		Title  string `json:"title"`
+		Body   string `json:"body"`
+		State  string `json:"state"`
+		URL    string `json:"url"`
+		Labels []struct {
+			Name string `json:"name"`
+		} `json:"labels"`
+	}
+	if err := json.Unmarshal(out, &raw); err != nil {
+		return nil, fmt.Errorf("github: parse issue list for %s/%s: %w", owner, repo, err)
+	}
+	issues := make([]backlogIssue, 0, len(raw))
+	for _, ri := range raw {
+		issue := backlogIssue{
+			Number: ri.Number,
+			Kind:   backlogKindIssue,
+			Title:  ri.Title,
+			Body:   ri.Body,
+			URL:    ri.URL,
+		}
+		for _, l := range ri.Labels {
+			if l.Name != "" {
+				issue.Labels = append(issue.Labels, l.Name)
+			}
+		}
+		issues = append(issues, issue)
+	}
+	return issues, nil
+}
+
 // ghCommentsToIssueComments maps REST comment rows to issueComment, parsing the
 // RFC3339 timestamp (a bad stamp degrades to the zero time, never an error). Pure.
 func ghCommentsToIssueComments(raw []ghComment) []issueComment {
@@ -165,6 +235,79 @@ func (c *githubClient) closeIssue(ctx context.Context, owner, repo string, numbe
 func (c *githubClient) reopenIssue(ctx context.Context, owner, repo string, number int) error {
 	if _, err := c.run(ctx, "api", "-X", "PATCH", ghIssuePath(owner, repo, number), "-f", "state=open"); err != nil {
 		return fmt.Errorf("github: reopen issue %s/%s#%d: %w", owner, repo, number, err)
+	}
+	return nil
+}
+
+// repoPullRequestsEnabled reports whether the repo supports pull requests.
+// GitHub repos do unless the repository itself is unavailable to the token.
+func (c *githubClient) repoPullRequestsEnabled(context.Context, string, string) (bool, error) {
+	return true, nil
+}
+
+// createPullRequest opens a PR on GitHub and returns the URL gh prints.
+func (c *githubClient) createPullRequest(ctx context.Context, owner, repo, head, base, title, body string) (string, error) {
+	path, cleanup, err := writeGitHubBody(c.mode.signBody(body))
+	if err != nil {
+		return "", err
+	}
+	defer cleanup()
+	out, err := c.run(ctx, "pr", "create", "--repo", ghSlug(owner, repo), "--head", head, "--base", base, "--title", title, "--body-file", path)
+	if err != nil {
+		return "", fmt.Errorf("github: create PR in %s/%s: %w", owner, repo, err)
+	}
+	url := strings.TrimSpace(string(out))
+	if url == "" {
+		return "", fmt.Errorf("github: create PR in %s/%s returned an empty URL", owner, repo)
+	}
+	return url, nil
+}
+
+// listOpenPullRequests reads GitHub's open PR list through gh's JSON output.
+func (c *githubClient) listOpenPullRequests(ctx context.Context, owner, repo string, limit int) ([]dispatch.Issue, error) {
+	if limit <= 0 {
+		limit = 50
+	}
+	out, err := c.run(ctx, "pr", "list", "--repo", ghSlug(owner, repo), "--state", "open", "--limit", strconv.Itoa(limit), "--json", "number,title,body,state,url,labels")
+	if err != nil {
+		return nil, fmt.Errorf("github: list open pull requests in %s/%s: %w", owner, repo, err)
+	}
+	var raw []struct {
+		Number int    `json:"number"`
+		Title  string `json:"title"`
+		Body   string `json:"body"`
+		State  string `json:"state"`
+		URL    string `json:"url"`
+		Labels []struct {
+			Name string `json:"name"`
+		} `json:"labels"`
+	}
+	if err := json.Unmarshal(out, &raw); err != nil {
+		return nil, fmt.Errorf("github: parse pull request list for %s/%s: %w", owner, repo, err)
+	}
+	prs := make([]dispatch.Issue, 0, len(raw))
+	for _, ri := range raw {
+		pr := dispatch.Issue{
+			Number: ri.Number,
+			Title:  ri.Title,
+			Body:   ri.Body,
+			State:  strings.ToLower(ri.State),
+			URL:    ri.URL,
+		}
+		for _, l := range ri.Labels {
+			if l.Name != "" {
+				pr.Labels = append(pr.Labels, l.Name)
+			}
+		}
+		prs = append(prs, pr)
+	}
+	return prs, nil
+}
+
+// mergePullRequest merges an open PR through GitHub's PR merge surface.
+func (c *githubClient) mergePullRequest(ctx context.Context, owner, repo string, index int) error {
+	if _, err := c.run(ctx, "pr", "merge", strconv.Itoa(index), "--repo", ghSlug(owner, repo), "--merge"); err != nil {
+		return fmt.Errorf("github: merge PR %s/%s#%d: %w", owner, repo, index, err)
 	}
 	return nil
 }

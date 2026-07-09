@@ -114,10 +114,16 @@ var errForgeLockUnsupported = errors.New("this forge's API cannot lock an issue 
 type issueForge interface {
 	getIssue(ctx context.Context, owner, repo string, number int) (*dispatch.Issue, error)
 	listIssueComments(ctx context.Context, owner, repo string, number int) ([]issueComment, error)
+	listOwnerRepos(ctx context.Context, owner string) ([]repoBrief, error)
+	listOpenIssues(ctx context.Context, owner, repo string, limit int) ([]backlogIssue, error)
 	createIssue(ctx context.Context, owner, repo, title, body string) (int, error)
 	commentIssue(ctx context.Context, owner, repo string, number int, body string) error
 	closeIssue(ctx context.Context, owner, repo string, number int) error
 	reopenIssue(ctx context.Context, owner, repo string, number int) error
+	repoPullRequestsEnabled(ctx context.Context, owner, repo string) (bool, error)
+	createPullRequest(ctx context.Context, owner, repo, head, base, title, body string) (string, error)
+	listOpenPullRequests(ctx context.Context, owner, repo string, limit int) ([]dispatch.Issue, error)
+	mergePullRequest(ctx context.Context, owner, repo string, index int) error
 	// lockIssue seals the conversation against in-flight steering (ward#494), returning
 	// errForgeLockUnsupported where the API has no lock leaf; unlockIssue retracts it.
 	lockIssue(ctx context.Context, owner, repo string, number int) error

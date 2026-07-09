@@ -5,7 +5,7 @@ description: Normalize a dictated ward agent phrase to owner/repo#N and dispatch
 
 # tooling-ward-agent
 
-`ward agent <role> <ref>` is a privileged op: it spins an ephemeral container that fresh-clones the repo and carries a Forgejo issue to merge under `bypassPermissions`. Mis-parsing a dictated ref silently sends an agent at the wrong issue. This skill normalizes a dictated reference into a canonical `owner/repo#N` and dispatches the engineer (successor to `ward dispatch`/`ward drive`; ward#174, ward#282; roster rename ward#347). Canonical in `coilyco-flight-deck/ward` (ward#286).
+`ward agent <role> <ref>` is a privileged op: it spins an ephemeral container that fresh-clones the repo and carries an issue to merge under `bypassPermissions`. Mis-parsing a dictated ref silently sends an agent at the wrong issue. This skill normalizes a dictated reference into a canonical `owner/repo#N` and dispatches the engineer (ward#174, ward#282, ward#347). Canonical in `coilyco-flight-deck/ward` (ward#286).
 
 ## Assumptions
 
@@ -15,7 +15,7 @@ Fan-out happens *before* this skill (`writing-to-issues`/`tooling-sidequest` sli
 
 Any user phrase containing "dispatch", "agent", or "spawn" plus a numeric tail. Also "fan out" and "run claude on" paired with an issue. **Interactive-intent phrasing** ("open one for me", "let me iterate on this", "HITL this") no longer maps to engineer - it is detached-only (ward#356); route that to the `director`, out of this skill's scope.
 
-Do NOT fire when the user already typed a clean `owner/repo#N` or a Forgejo issue URL - pass straight through to `ward agent`. A bare `#N` from inside a repo checkout also passes straight through: `ward agent` infers `owner/repo` from the cwd's git origin (ward#282).
+Do NOT fire when the user already typed a clean `owner/repo#N` or an issue URL - pass straight through to `ward agent`. A bare `#N` from inside a repo checkout also passes straight through: `ward agent` infers `owner/repo` from the cwd's git origin (ward#282).
 
 ## Step 1: refresh the registry
 
@@ -33,7 +33,7 @@ Lowercase the repo tokens, strip hyphens/spaces, fuzzy-match the registry's repo
 
 ## Step 3: confirm, or refuse and explain
 
-Confirm one line with the issue title from the Forgejo API (`ward ops forgejo issue view <owner> <repo> <N>`, or `gh issue view <ref>` for a mirrored GitHub ref):
+Confirm one line with the issue title from the authoritative issue surface for that repo (`ward ops forgejo issue view <owner> <repo> <N>` for Forgejo-owned repos, or `gh issue view <ref>` for GitHub-authoritative repos):
 
 > Resolved: `coilyco-bridge/coily#125` - "<title>". Send an agent?
 

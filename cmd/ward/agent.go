@@ -78,6 +78,9 @@ func parseAgentIssueRef(s string) (agentIssueRef, error) {
 		return ghRef, nil
 	}
 	if ref, err := parseDispatchIssueRef(s); err == nil {
+		if ref.Forge != forgeGitHub && !explicitForgejoIssueRef(s) {
+			ref.Forge = repoAuthority(ref.Owner, ref.Repo)
+		}
 		return ref, nil
 	}
 	ref, err := issueref.Parse(s, forgejoBaseURL)
@@ -141,6 +144,9 @@ func (r *Runner) resolveAgentIssueRef(ctx context.Context, arg string) (agentIss
 				"(use owner/repo#%d or run from inside the repo's checkout): %w", arg, ref.Number, terr)
 	}
 	ref.Owner, ref.Repo = repo.Owner, repo.Name
+	if ref.Forge != forgeGitHub && !explicitForgejoIssueRef(arg) {
+		ref.Forge = repoAuthority(ref.Owner, ref.Repo)
+	}
 	writef(os.Stderr, "ward agent: inferred bare issue ref %s -> %s from cwd origin\n", arg, ref)
 	return ref, nil
 }
@@ -507,7 +513,7 @@ func agentCmdline(mode containerMode, surface string) string {
 func agentCommand() *cli.Command {
 	return &cli.Command{
 		Name:   "agent",
-		Usage:  "Send an agent into a fresh ephemeral container to carry a Forgejo issue end to end (a bare ref runs the engineer).",
+		Usage:  "Send an agent into a fresh ephemeral container to carry an issue end to end (a bare ref runs the engineer).",
 		Before: smartDefaultsGuard("ward agent"),
 		Description: fmt.Sprintf(`agent is the issue-carrying dispatcher (the spelling 'warded' fronts), a
 roster of startup roles (ward#347): you do not invoke a mode, you send in a
@@ -516,7 +522,8 @@ harness (%s, default %s; --agent is an equal accepted spelling, --driver a
 deprecated alias for one release, ward#660).
 A BARE REF with no role word runs the 'engineer' role - the fire-and-forget
 default. A bare #N (or N) infers the owner/repo from the cwd's git origin;
-owner/repo#N and a full Forgejo issue URL also work. One line replaces a full
+owner/repo#N and a full issue URL also work. Namespace policy decides whether
+that bare ref resolves to GitHub or Forgejo. One line replaces a full
 container bring-up stack plus a prompt.
 
   warded coilyco-flight-deck/ward#98          # bare ref -> engineer run (warded face)
@@ -614,7 +621,7 @@ func agentSurfaceFlags() []cli.Flag {
 		// WARD_REVIEW_CLASS (ward#134). See docs/dispatch-review.md.
 		&cli.StringFlag{Name: "review-class", Usage: "autonomy class for the pre-landing review panel: lint-cleanup|default|refactor (default default; ward#134)"},
 		&cli.BoolFlag{Name: "skip-review", Aliases: []string{"no-review-gate"}, Usage: "skip wiring the in-container review gate into the seed (ward#134); the run lands without the panel"},
-		&cli.BoolFlag{Name: "github", Usage: "treat a bare owner/repo#N ref as a GitHub issue (clone/push + comments + PR on GitHub via a user-supplied token; ward#489). A github.com URL infers this automatically."},
+		&cli.BoolFlag{Name: "github", Usage: "force a bare owner/repo#N ref onto GitHub (clone/push + comments + PR on GitHub via a user-supplied token; ward#489). `coilysiren/*` already resolves this way by namespace policy, and a github.com URL infers it automatically."},
 		configFlag(),
 	)
 	flags = append(flags, agentImageFlags()...)
@@ -1071,7 +1078,7 @@ func preflightPrompt(ref agentIssueRef, title, body, details string, comments []
 	gate := subsystemPreflightBlock(ref, title, body)
 	return fmt.Sprintf(
 		"You are about to be sent, fire-and-forget, into an ephemeral container to carry "+
-			"this Forgejo issue end to end on your own - implement, commit, merge to main, "+
+			"this issue end to end on your own - implement, commit, merge to main, "+
 			"push - with no human watching once you detach.\n\n"+
 			"That detached run happens in %s pulled inside the container. "+
 			"The directory you are reading this in right now is unrelated host scratch - it may "+
@@ -1989,11 +1996,11 @@ func (r *Runner) runAgentTaskDirect(ctx context.Context, c *cli.Command, mode co
 		r.maybeWarnWardOutdated(ctx)
 	}
 
-	cl, err := r.hostForgejoClient(ctx)
+	cl, err := r.hostForgeClient(ctx, repoAuthority(repo.Owner, repo.Name), mode)
 	if err != nil {
 		return fmt.Errorf("%s: %w", label, err)
 	}
-	number, err := cl.withMode(mode).createIssue(ctx, repo.Owner, repo.Name, title, body)
+	number, err := cl.createIssue(ctx, repo.Owner, repo.Name, title, body)
 	if err != nil {
 		return fmt.Errorf("%s: file issue in %s/%s: %w", label, repo.Owner, repo.Name, err)
 	}

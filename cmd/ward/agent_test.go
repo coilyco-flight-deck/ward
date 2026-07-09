@@ -39,10 +39,40 @@ func TestResolveAgentIssueRef(t *testing.T) {
 		}
 	})
 
+	t.Run("bare #N on a GitHub-authoritative repo resolves to GitHub", func(t *testing.T) {
+		githubOrigin := filepath.Join(t.TempDir(), "git")
+		if err := os.WriteFile(githubOrigin, []byte("#!/bin/sh\necho https://github.com/coilysiren/inbox.git\n"), 0o755); err != nil { //nolint:gosec
+			t.Fatal(err)
+		}
+		withGitHub := &Runner{Runner: &shell.Runner{Resolve: func(bin string) (string, error) {
+			if bin == "git" {
+				return githubOrigin, nil
+			}
+			return "", fmt.Errorf("unexpected binary %q", bin)
+		}}}
+		ref, err := withGitHub.resolveAgentIssueRef(t.Context(), "#184")
+		if err != nil {
+			t.Fatalf("unexpected error: %v", err)
+		}
+		if ref.Owner != "coilysiren" || ref.Repo != "inbox" || ref.Number != 184 || ref.Forge != forgeGitHub {
+			t.Fatalf("resolveAgentIssueRef(#184) = %+v, want coilysiren/inbox#184 on GitHub", ref)
+		}
+	})
+
 	t.Run("bare N (no hash) also infers the repo", func(t *testing.T) {
 		ref, err := withGit.resolveAgentIssueRef(t.Context(), "98")
 		if err != nil || ref.repoSlug() != "coilyco-flight-deck/ward" || ref.Number != 98 {
 			t.Fatalf("resolveAgentIssueRef(98) = %+v, %v", ref, err)
+		}
+	})
+
+	t.Run("bare owner/repo#N on coilysiren resolves to GitHub", func(t *testing.T) {
+		got, err := parseAgentIssueRef("coilysiren/inbox#184")
+		if err != nil {
+			t.Fatalf("parseAgentIssueRef(coilysiren/inbox#184): %v", err)
+		}
+		if got.Forge != forgeGitHub {
+			t.Fatalf("parseAgentIssueRef(coilysiren/inbox#184).Forge = %v, want github", got.Forge)
 		}
 	})
 
@@ -86,6 +116,7 @@ func TestParseAgentIssueRef(t *testing.T) {
 		{"coilyco-flight-deck/ward#98", "coilyco-flight-deck", "ward", 98, false},
 		{"  coilyco-flight-deck/ward#98  ", "coilyco-flight-deck", "ward", 98, false},
 		{forgejoBaseURL + "/coilyco-flight-deck/ward/issues/98", "coilyco-flight-deck", "ward", 98, false},
+		{forgejoBaseURL + "/coilysiren/inbox/issues/184", "coilysiren", "inbox", 184, false},
 		{"forgejo.coilysiren.me/coilyco-flight-deck/ward/issues/98", "coilyco-flight-deck", "ward", 98, false},
 		{forgejoBaseURL + "/coilyco-flight-deck/ward/issues/98/", "coilyco-flight-deck", "ward", 98, false},
 		// Appended hash fragment (e.g. a comment anchor) is ignored. (#158)
