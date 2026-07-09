@@ -21,6 +21,7 @@ New to ward? Read [architecture.md](architecture.md) first - it frames the whole
 - [ward-yaml.md](ward-yaml.md) - field-by-field `.ward/ward.yaml` schema reference (commands + the security: block).
 - [golangci.md](golangci.md) - the strict-ish golangci-lint configuration.
 - [homebrew-build.md](homebrew-build.md) - Homebrew build + cli-guard pinning notes.
+- [error-reporting.md](error-reporting.md) - ward's own off-by-default GlitchTip crash reporting, for top-level Go panics only.
 
 ## Contributor dev-verb gate
 
