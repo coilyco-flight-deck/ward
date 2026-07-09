@@ -19,7 +19,7 @@ The merge sweep only acts when all of these are true:
 - the PR body carries the `ward.workflow: pull-requests-and-merge` marker;
 - the PR body names the carried issue with `closes #N` / `fixes #N` / `resolves #N`;
 - the branch name is the issue branch (`issue-N`);
-- the linked issue is already `done`;
+- the linked issue is already `merge-ready`;
 - the latest issue outcome says the review summary passed.
 
 If any check fails, the director reports the reason and leaves the PR alone.
@@ -34,10 +34,11 @@ If any check fails, the director reports the reason and leaves the PR alone.
 ## How this differs from engineer workflow
 
 The engineer's `pull-requests` mode keeps watching CI after the PR opens and
-only reports done once the checks are green or the failure is genuinely blocked.
-`pull-requests-and-merge` adds the director marker so the heartbeat can finish
-the merge later when the policy boundary is satisfied, and the run is not done
-until the merge lands.
+only reports `submitted` once the checks are green or the failure is genuinely
+blocked. `pull-requests-and-merge` adds the director marker so the heartbeat can
+finish the merge later when the policy boundary is satisfied, and the engineer
+reports `merge-ready` while the director records the final `done` after the
+merge lands.
 
 ## See also
 

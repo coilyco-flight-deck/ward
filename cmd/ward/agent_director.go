@@ -76,8 +76,8 @@ type backlogOutcome struct {
 	Text   string `yaml:"text"`
 }
 
-// backlogEntry is one tracked issue in a repo's ledger: its ranked metadata plus
-// the loop state it moves through (queued -> dispatched -> done/blocked/failed).
+// backlogEntry is one tracked issue in a repo's ledger.
+// It moves through queued -> dispatched -> done/submitted/merge-ready/blocked/failed.
 type backlogEntry struct {
 	Num          int             `yaml:"num"`
 	Kind         string          `yaml:"kind,omitempty"`
@@ -107,14 +107,15 @@ type backlogLedger struct {
 // dispatchEngineer is the container/harness flag set the director forwards into each
 // engineer it dispatches, so the run inherits the operator's container intent (ward#355).
 type dispatchEngineer struct {
-	harness     containerMode // the engineer harness: --engineer-harness, else director's --harness
-	image       string
-	tag         string
-	wardVersion string
-	aws         bool
-	hostNet     bool
-	tsSidecar   bool
-	force       bool
+	harness           containerMode // the engineer harness: --engineer-harness, else director's --harness
+	image             string
+	tag               string
+	wardVersion       string
+	wardVersionSource string
+	aws               bool
+	hostNet           bool
+	tsSidecar         bool
+	force             bool
 }
 
 // engineerArgv renders the `ward agent engineer` argv that carries one issue, forwarding
@@ -129,8 +130,10 @@ func (c dispatchEngineer) engineerArgv(ref agentIssueRef) []string {
 	if tag := strings.TrimSpace(c.tag); tag != "" {
 		argv = append(argv, "--tag", tag)
 	}
-	if v := strings.TrimSpace(c.wardVersion); v != "" {
-		argv = append(argv, "--ward-version", v)
+	if c.wardVersionSource == wardVersionSourceExplicit {
+		if v := strings.TrimSpace(c.wardVersion); v != "" {
+			argv = append(argv, "--ward-version", v)
+		}
 	}
 	if c.aws {
 		argv = append(argv, "--aws")
@@ -307,14 +310,15 @@ func (r *Runner) runAgentBacklog(ctx context.Context, c *cli.Command, mode conta
 		print:        c.Bool("print"),
 		triage:       c.Bool("triage") && !c.Bool("no-triage"),
 		dispatch: dispatchEngineer{
-			harness:     engDriver,
-			image:       c.String("image"),
-			tag:         c.String("tag"),
-			wardVersion: strings.TrimSpace(c.String("ward-version")),
-			aws:         c.Bool("aws"),
-			hostNet:     hostNet,
-			tsSidecar:   tsSidecar,
-			force:       c.Bool("force"),
+			harness:           engDriver,
+			image:             c.String("image"),
+			tag:               c.String("tag"),
+			wardVersion:       strings.TrimSpace(c.String("ward-version")),
+			wardVersionSource: resolveWardVersionSource(c, c.String("ward-version")),
+			aws:               c.Bool("aws"),
+			hostNet:           hostNet,
+			tsSidecar:         tsSidecar,
+			force:             c.Bool("force"),
 		},
 		wardSource: strings.TrimSpace(c.String("ward-source")),
 		noPull:     c.Bool("no-pull"),
@@ -737,7 +741,7 @@ func dropClosedBacklogEntries(led *backlogLedger, seen map[int]bool) {
 
 // backlogOutcomeRE parses the status + optional status emoji + reason that
 // follow the WARD-OUTCOME marker.
-var backlogOutcomeRE = regexp.MustCompile(`(?i)^(done|blocked|failed)\b(?:\s+[✅🛑❌])?[\s:.\-]*(.*)`)
+var backlogOutcomeRE = regexp.MustCompile(`(?i)^(done|submitted|merge-ready|pending|ready-for-merge|blocked|failed)\b(?:\s+[✅🛑❌])?[\s:.\-]*(.*)`)
 
 // parseBacklogOutcome classifies the latest comment leading with WARD-OUTCOME,
 // nil when none. Ports backlog-loop.py's parse_outcome.
@@ -835,23 +839,38 @@ func backlogOutcomeOfComment(body string) (backlogOutcome, bool) {
 	rest := strings.TrimSpace(line[len(wardOutcomeMarker):])
 	o := backlogOutcome{Status: "unknown", Text: rest}
 	if m := backlogOutcomeRE.FindStringSubmatch(rest); m != nil {
-		o.Status = strings.ToLower(m[1])
+		o.Status = normalizeBacklogOutcomeStatus(strings.ToLower(m[1]))
 		o.Text = strings.TrimSpace(m[2])
 	}
 	o.Text = backlogTruncate(o.Text, 500)
 	return o, true
 }
 
+func normalizeBacklogOutcomeStatus(status string) string {
+	switch strings.TrimSpace(strings.ToLower(status)) {
+	case "pending":
+		return "submitted"
+	case "ready-for-merge":
+		return "merge-ready"
+	default:
+		return strings.TrimSpace(strings.ToLower(status))
+	}
+}
+
 // backlogOutcomeState maps a parsed outcome status to the ledger state it lands in;
 // an unrecognized status parks as blocked (a human should look). Ports poll_repo.
 func backlogOutcomeState(status string) string {
-	switch status {
+	switch normalizeBacklogOutcomeStatus(status) {
 	case "done":
 		return "done"
 	case "failed":
 		return "failed"
 	case "blocked":
 		return "blocked"
+	case "submitted":
+		return "submitted"
+	case "merge-ready":
+		return "merge-ready"
 	default:
 		return "blocked"
 	}
@@ -1340,7 +1359,7 @@ func (r *Runner) backlogPrintDirectorPlan(label string, repos []string, cfg back
 	fmt.Fprintf(&b, "engineer harness: %s (the engineers it dispatches)\n", cy.harness)
 	fmt.Fprintf(&b, "max-parallel:    %d\n", cfg.maxParallel)
 	fmt.Fprintf(&b, "image:           %s\n", imageRef(cy.image, cy.tag))
-	fmt.Fprintf(&b, "ward-version:    %s\n", directorWardVersion(cy.wardVersion))
+	fmt.Fprintf(&b, "ward-version:    %s\n", wardVersionLaunchLabel(cy.wardVersion, cy.wardVersionSource))
 	if cfg.wardSource != "" {
 		fmt.Fprintf(&b, "ward-source:     %s (surface session builds ward from here)\n", cfg.wardSource)
 	}
@@ -1356,15 +1375,6 @@ func (r *Runner) backlogPrintDirectorPlan(label string, repos []string, cfg back
 	argv[1] = "<owner/repo#N>"
 	fmt.Fprintf(&b, "dispatch:        ward agent %s\n", strings.Join(argv, " "))
 	return r.emit(b.String())
-}
-
-// directorWardVersion renders the ward release the dispatches pin: the explicit
-// --ward-version, else this host's ward (the buildUpPlan default).
-func directorWardVersion(v string) string {
-	if strings.TrimSpace(v) == "" {
-		return Version + " (this host)"
-	}
-	return v
 }
 
 // backlogPrintSummary prints the terminal disposition of the run by state.

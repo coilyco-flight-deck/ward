@@ -63,6 +63,7 @@ warded advisor #98                              # research the issue with the de
 warded advisor #98 "what would it take to..."   # same, with extra framing
 warded advisor "how is the audit log written?"  # freeform: interactive (--oneshot = one answer)
 warded qa #98                                   # structured QA verdict comment, no code edits
+ward agent logs #98                             # read one engineer run's logs through the broker
 ```
 
 The role comes first (`--harness` picks the harness, default claude, and
@@ -107,6 +108,7 @@ Grouped by the surface you are reaching for.
 - [dispatch-review.md](dispatch-review.md) - the in-container code-review gate that runs before a diff lands.
 - [agent-preflight.md](agent-preflight.md) - the detached GO/NO-GO pre-flight.
 - [agent-reap.md](agent-reap.md) - the host-side idle-killer.
+- [agent-logs.md](agent-logs.md) - the brokered engineer log read.
 - [agent-trust-gate.md](agent-trust-gate.md) - the owner trust gate.
 - [agent-wrong-repo.md](agent-wrong-repo.md) - the WRONG-REPO blind-fire.
 - [agent-reservation.md](agent-reservation.md) - reservation, TTL, `--force`.

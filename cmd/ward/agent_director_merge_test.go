@@ -23,7 +23,7 @@ func TestDirectorMergeDecision(t *testing.T) {
 	baseMeta := directorRunMeta{
 		Workflow:   string(workflowPullRequestAndMerge),
 		Review:     "passed: two reviewers agreed",
-		Outcome:    backlogOutcome{Status: "done"},
+		Outcome:    backlogOutcome{Status: "merge-ready"},
 		HasOutcome: true,
 	}
 
@@ -32,7 +32,7 @@ func TestDirectorMergeDecision(t *testing.T) {
 		t.Fatalf("allowed decision = %v %q %d, want true/\"\"/729", allowed, reason, linked)
 	}
 
-	for _, tc := range []struct {
+	cases := []struct {
 		name string
 		pr   dispatch.Issue
 		meta directorRunMeta
@@ -51,24 +51,25 @@ func TestDirectorMergeDecision(t *testing.T) {
 			want: "draft PRs are not merge-authorized",
 		},
 		{
-			name: "needs-done",
-			pr:   basePR,
-			meta: directorRunMeta{Workflow: string(workflowPullRequestAndMerge), Review: "passed: ok"},
-			want: "linked issue did not finish with WARD-OUTCOME: done",
-		},
-		{
 			name: "needs-merge-workflow",
 			pr:   basePR,
-			meta: directorRunMeta{HasOutcome: true, Outcome: backlogOutcome{Status: "done"}, Workflow: string(workflowPullRequest), Review: "passed: ok"},
+			meta: directorRunMeta{HasOutcome: true, Outcome: backlogOutcome{Status: "merge-ready"}, Workflow: string(workflowPullRequest), Review: "passed: ok"},
 			want: "workflow pull-requests still needs human merge approval",
 		},
 		{
 			name: "needs-review",
 			pr:   basePR,
-			meta: directorRunMeta{HasOutcome: true, Outcome: backlogOutcome{Status: "done"}, Workflow: string(workflowPullRequestAndMerge), Review: "blocked: concern"},
+			meta: directorRunMeta{HasOutcome: true, Outcome: backlogOutcome{Status: "merge-ready"}, Workflow: string(workflowPullRequestAndMerge), Review: "blocked: concern"},
 			want: "review gate did not pass",
 		},
-	} {
+		{
+			name: "needs-ready-state",
+			pr:   basePR,
+			meta: directorRunMeta{HasOutcome: true, Outcome: backlogOutcome{Status: "submitted"}, Workflow: string(workflowPullRequestAndMerge), Review: "passed: ok"},
+			want: "linked issue did not finish with WARD-OUTCOME: merge-ready",
+		},
+	}
+	for _, tc := range cases {
 		allowed, reason, _, _ := directorMergeDecision(tc.pr, 729, tc.meta)
 		if allowed {
 			t.Fatalf("%s: want deny, got allow", tc.name)
@@ -131,7 +132,7 @@ func TestMergePullRequestRequestShape(t *testing.T) {
 
 func TestDirectorRunMetaParsesWorkflowAndReview(t *testing.T) {
 	body := strings.Join([]string{
-		"WARD-OUTCOME: done ✅",
+		"WARD-OUTCOME: merge-ready",
 		"",
 		"<details><summary>details</summary>",
 		"",
@@ -140,8 +141,8 @@ func TestDirectorRunMetaParsesWorkflowAndReview(t *testing.T) {
 		"</details>",
 	}, "\n")
 	meta := parseDirectorRunMeta(body)
-	if !meta.HasOutcome || meta.Outcome.Status != "done" {
-		t.Fatalf("meta outcome = %+v, want done", meta)
+	if !meta.HasOutcome || meta.Outcome.Status != "merge-ready" {
+		t.Fatalf("meta outcome = %+v, want merge-ready", meta)
 	}
 	if meta.Workflow != string(workflowPullRequestAndMerge) {
 		t.Fatalf("meta workflow = %q, want %q", meta.Workflow, workflowPullRequestAndMerge)
@@ -151,6 +152,17 @@ func TestDirectorRunMetaParsesWorkflowAndReview(t *testing.T) {
 	}
 	if _, ok := backlogOutcomeOfComment(body); !ok {
 		t.Fatal("comment body should parse as an outcome comment")
+	}
+	doneBody := directorMergeDoneComment(729, meta)
+	doneMeta := parseDirectorRunMeta(doneBody)
+	if !doneMeta.HasOutcome || doneMeta.Outcome.Status != "done" {
+		t.Fatalf("done meta outcome = %+v, want done", doneMeta)
+	}
+	if doneMeta.Workflow != string(workflowPullRequestAndMerge) {
+		t.Fatalf("done meta workflow = %q, want %q", doneMeta.Workflow, workflowPullRequestAndMerge)
+	}
+	if !strings.Contains(doneBody, "merged PR #729 to main") {
+		t.Fatalf("done comment body should name the merged PR, got: %s", doneBody)
 	}
 }
 
@@ -169,7 +181,7 @@ JSON
 ;;
 "issue-comment list")
 cat <<'JSON'
-[{"body":"WARD-OUTCOME: done ✅\n\n<details><summary>details</summary>\n\nworkflow: pull-requests-and-merge; review summary: passed: all green\n\n</details>","created_at":"2026-07-09T00:00:00Z","user":{"login":"coilyco-ops"}}]
+[{"body":"WARD-OUTCOME: merge-ready\n\n<details><summary>details</summary>\n\nworkflow: pull-requests-and-merge; review summary: passed: all green\n\n</details>","created_at":"2026-07-09T00:00:00Z","user":{"login":"coilyco-ops"}}]
 JSON
 ;;
 *)

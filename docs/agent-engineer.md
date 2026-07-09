@@ -46,8 +46,11 @@ nothing. Its seed closes with a `WARD-OUTCOME`-led retro the
 [director](agent-director.md) reads, and now asks for the review summary or skip state
 inside that same final comment's collapsed details. The only visible text is the
 one-line outcome. For `pull-requests` runs, the seed also tells the worker to keep
-watching the PR checks after opening the PR, fix failures, and only report done once
-the PR is green or genuinely blocked. The seed is shaped by the body:
+watching the PR checks after opening the PR, fix failures, and only report
+`WARD-OUTCOME: submitted` once the PR is green or genuinely blocked. For
+`pull-requests-and-merge` runs, the engineer reports `WARD-OUTCOME: merge-ready`
+and leaves the final `done` for the director after merge. The seed is shaped by
+the body:
 empty bodies say so, **every** driver gets the body inlined **verbatim** as a **frozen
 snapshot** at dispatch (image markup intact, a no-vision line, URL live for
 comments), **logged** for `grep`.

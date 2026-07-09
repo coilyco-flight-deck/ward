@@ -21,7 +21,7 @@ If work remains, it asks whether to drain now. **yes**/Enter drains, **no** surf
 
 `director` is **attached/interactive only** - no `--detach` (runaway-dispatch risk). Each tick:
 
-1. **Poll + reconcile** in-flight engineers: on exit read each `WARD-OUTCOME` (done/blocked/failed).
+1. **Poll + reconcile** in-flight engineers: on exit read each `WARD-OUTCOME` (done/submitted/merge-ready/blocked/failed).
 2. **Refresh** each ledger from the backlog by tier (`P0`-`P4`) and mode
    (`headless`/`interactive`/`consult`), folding PRs into a `pull-request` lane `issue #N` / `PR #N`.
 3. **Probe** forge liveness (the top candidate's issue get) so a recovery reaches the decision.

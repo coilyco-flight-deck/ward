@@ -94,7 +94,7 @@ func TestWorkflowCarryClausePullRequest(t *testing.T) {
 // the PR flow and says the run is not done until the merge lands.
 func TestWorkflowCarryClausePullRequestAndMerge(t *testing.T) {
 	got := workflowCarryClause(agentIssueRef{Owner: "o", Repo: "r", Number: 17}, workflowPullRequestAndMerge)
-	for _, want := range []string{"pull request", "closes #17", directorMergeWorkflowMarker, "director-merge authorized", "the pull request is merged"} {
+	for _, want := range []string{"pull request", "closes #17", directorMergeWorkflowMarker, "director-merge authorized", "WARD-OUTCOME: merge-ready"} {
 		if !strings.Contains(got, want) {
 			t.Errorf("pull-requests-and-merge carry clause missing %q\n got: %s", want, got)
 		}
@@ -142,6 +142,9 @@ func TestAgentSeedPromptWorkflow(t *testing.T) {
 	if !strings.Contains(pr, "pull request") || strings.Contains(pr, "merge to main, push - and close") {
 		t.Errorf("pull-requests seed should carry a PR clause, not the merge-to-main fast path\n got: %s", pr)
 	}
+	if !strings.Contains(pr, "WARD-OUTCOME: submitted") {
+		t.Errorf("pull-request reflection should end with submitted, not done\n got: %s", pr)
+	}
 	if !strings.Contains(pr, "the branch is pushed, the pull request is open, and the required checks are green") {
 		t.Errorf("pull-requests reflection should require green checks before done\n got: %s", pr)
 	}
@@ -171,8 +174,11 @@ func TestAgentSeedPromptWorkflow(t *testing.T) {
 	if !strings.Contains(prMerge, "director-merge authorized") {
 		t.Errorf("pull-requests-and-merge seed should carry the director merge lane\n got: %s", prMerge)
 	}
-	if !strings.Contains(prMerge, "the pull request is merged") {
-		t.Errorf("pull-requests-and-merge reflection should require merge before done\n got: %s", prMerge)
+	if !strings.Contains(prMerge, "WARD-OUTCOME: merge-ready") {
+		t.Errorf("pull-requests-and-merge reflection should end with merge-ready, not done\n got: %s", prMerge)
+	}
+	if !strings.Contains(prMerge, "the engineer's final visible outcome is `WARD-OUTCOME: merge-ready`") {
+		t.Errorf("pull-requests-and-merge reflection should announce merge-ready before done\n got: %s", prMerge)
 	}
 	if !strings.Contains(prMerge, "skip the PR comment") {
 		t.Errorf("pull-requests-and-merge reflection should tell the worker to skip PR comments when no PR exists\n got: %s", prMerge)

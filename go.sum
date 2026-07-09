@@ -2,6 +2,8 @@ forgejo.coilysiren.me/coilyco-flight-deck/cli-guard v0.75.0 h1:bzo/JqSbYZPU0dJFU
 forgejo.coilysiren.me/coilyco-flight-deck/cli-guard v0.75.0/go.mod h1:Pzz+QJWnzkoVdkqoq5vFLaVUVezqufl7ieIB9ZGL6kg=
 forgejo.coilysiren.me/coilyco-flight-deck/cli-guard v0.82.1-0.20260708101526-e771405d38bb h1:1TSv+PayloQPLNkrdfli+CF6qWFX6dOBhUbrZIln1WQ=
 forgejo.coilysiren.me/coilyco-flight-deck/cli-guard v0.82.1-0.20260708101526-e771405d38bb/go.mod h1:Pzz+QJWnzkoVdkqoq5vFLaVUVezqufl7ieIB9ZGL6kg=
+forgejo.coilysiren.me/coilyco-flight-deck/cli-guard v0.85.1-0.20260709002015-4744df17086f h1:yqQZvIOG7JXHGfu0rOYFnKF9BRVALf9AFTPq0UKxoIo=
+forgejo.coilysiren.me/coilyco-flight-deck/cli-guard v0.85.1-0.20260709002015-4744df17086f/go.mod h1:Pzz+QJWnzkoVdkqoq5vFLaVUVezqufl7ieIB9ZGL6kg=
 github.com/calico32/kdl-go v0.14.1 h1:aZWwk/tAG3psn2J992KJciUu+0S999L078YiQLa5R9E=
 github.com/calico32/kdl-go v0.14.1/go.mod h1:KXQM2fSZFMRDsjNrmCD/k3QVFhrREPMJhQCNcxEQZIo=
 github.com/cespare/xxhash/v2 v2.3.0 h1:UL815xU9SqsFlibzuggzjXhog7bL6oX9BbNZnL2UFvs=
