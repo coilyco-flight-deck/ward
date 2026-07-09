@@ -12,6 +12,7 @@ import (
 )
 
 // container_topology.go resolves the staged container-topology middle tier.
+// Edge bundle selection stays on the configsource seam; bring-up stays baked.
 
 type containerTopology struct {
 	TailnetNetwork    string
@@ -37,13 +38,13 @@ var containerTopologyDefaults = containerTopology{
 
 var containerTopologyCache struct {
 	sync.Mutex
-	ref  string
-	topo containerTopology
-	err  error
+	initialized bool
+	topo        containerTopology
+	err         error
 }
 
 // envOrBundleOr resolves a container-topology value with the staged precedence:
-// host env > selected bundle > baked neutral default.
+// host env > runtime value > baked neutral default.
 func envOrBundleOr(key, bundle, def string) string {
 	if v := os.Getenv(key); v != "" {
 		return v
@@ -60,20 +61,15 @@ func currentContainerTopology() containerTopology {
 }
 
 func currentContainerTopologyWithError() (containerTopology, error) {
-	ref := strings.TrimSpace(os.Getenv(wardConfigRefEnv))
-
 	containerTopologyCache.Lock()
 	defer containerTopologyCache.Unlock()
-	if containerTopologyCache.ref == ref {
+	if containerTopologyCache.initialized {
 		return containerTopologyCache.topo, containerTopologyCache.err
 	}
 
-	topo := containerTopologyDefaults
-	src, err := selectConfigSource()
-	if err == nil {
-		topo, err = loadContainerTopologyFrom(src)
-	}
-	containerTopologyCache.ref = ref
+	src := coreRuntimeConfigSource()
+	topo, err := loadContainerTopologyFrom(src)
+	containerTopologyCache.initialized = true
 	containerTopologyCache.topo = topo
 	containerTopologyCache.err = err
 	return topo, err

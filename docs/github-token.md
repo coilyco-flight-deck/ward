@@ -14,13 +14,14 @@ mirror behind it.
 ## Token source selector (`WARD_GITHUB_TOKEN_SOURCE`)
 
 How ward provisions that token is **operator-selectable** ([ward#533](https://forgejo.coilysiren.me/coilyco-flight-deck/ward/issues/533)), chosen by
-`WARD_GITHUB_TOKEN_SOURCE` and defaulting to `env`. In every mode resolution stays
-**host-side** and env-only in-tree - there is no compiled-in SSM path the way Forgejo
-has (aligning with [#441](https://forgejo.coilysiren.me/coilyco-flight-deck/ward/issues/441) / [#453](https://forgejo.coilysiren.me/coilyco-flight-deck/ward/issues/453)):
+`WARD_GITHUB_TOKEN_SOURCE`. When the App provisioning env is present, the default path
+is the bot-backed `app` token; otherwise the fallback remains `env`. In every mode
+resolution stays **host-side** and env-only in-tree - there is no compiled-in SSM path
+the way Forgejo has (aligning with [#441](https://forgejo.coilysiren.me/coilyco-flight-deck/ward/issues/441) / [#453](https://forgejo.coilysiren.me/coilyco-flight-deck/ward/issues/453)):
 
-* **`env`** (default, publishable) - read the first non-empty of `WARD_GITHUB_TOKEN`,
-  `GH_TOKEN`, `GITHUB_TOKEN`. Zero-config: an external adopter sets one and needs
-  nothing else. With none found, the run fails fast naming the three vars.
+* **`env`** - read the first non-empty of `WARD_GITHUB_TOKEN`, `GH_TOKEN`,
+  `GITHUB_TOKEN`. Zero-config: an external adopter sets one and needs nothing else.
+  With none found, the run fails fast naming the three vars.
 * **`gh`** - run `gh auth token` on the host at dispatch to mint a fresh token from the
   existing `gh` login, so nothing is pre-exported and a re-warmed session is picked up
   automatically. Fails fast with an actionable error if `gh` is off PATH or logged out.
@@ -33,13 +34,15 @@ has (aligning with [#441](https://forgejo.coilysiren.me/coilyco-flight-deck/ward
   operator config on an env var, never a baked Go literal or path, so ward stays env-only
   in-tree (aligning with [#441](https://forgejo.coilysiren.me/coilyco-flight-deck/ward/issues/441) / [#453](https://forgejo.coilysiren.me/coilyco-flight-deck/ward/issues/453)). The minted token is ephemeral and carries the
   App's bot identity, so it is leak-resilient by construction ([infra#441](https://github.com/coilysiren/infrastructure/issues/441)). Using `app`
-  needs a registered GitHub App installed on the target repos - with the env unset, the run
+  needs a registered GitHub App installed on the target repos. With the env unset, the run
   fails fast naming both vars.
 
 Whichever source resolves it, the token rides the container's private `0600`
 `--env-file` as the git-credential channel plus `GH_TOKEN`/`GITHUB_TOKEN` for the
 in-container `gh`, unchanged. A classic PAT, a fine-grained PAT, or a GitHub App
-installation token all work.
+installation token all work. Autonomous warded runs keep the bot author and bot
+committer policy, while attended or local launches can override `WARD_GIT_NAME` and
+`WARD_GIT_EMAIL` before the container starts.
 
 ## App mode: what the operator provisions
 

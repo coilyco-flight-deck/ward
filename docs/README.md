@@ -21,6 +21,7 @@ New to ward? Read [architecture.md](architecture.md) first - it frames the whole
 - [ward-yaml.md](ward-yaml.md) - field-by-field `.ward/ward.yaml` schema reference (commands + the security: block).
 - [golangci.md](golangci.md) - the strict-ish golangci-lint configuration.
 - [homebrew-build.md](homebrew-build.md) - Homebrew build + cli-guard pinning notes.
+- [error-reporting.md](error-reporting.md) - ward's own off-by-default GlitchTip crash reporting, for top-level Go panics only.
 
 ## Contributor dev-verb gate
 
@@ -117,7 +118,7 @@ New to ward? Read [architecture.md](architecture.md) first - it frames the whole
 - [ward-kdl-authoring.md](ward-kdl-authoring.md) - authoring guardfiles: getting the compiler, swapping the bundle.
 - [guardfile-grammar.md](guardfile-grammar.md) - the dialect-1 KDL grammar, a minimal working guardfile, where auth config lives.
 - [kdl-legibility.md](kdl-legibility.md) - the [ward#287](https://forgejo.coilysiren.me/coilyco-flight-deck/ward/issues/287) proposal to rename the quirky KDL tokens (`argv`, `$var`) to human-readable spellings.
-- [config-source.md](config-source.md) - the `WARD_CONFIG_REF` fs.FS-at-launch seam: baked neutral default vs a live-resolved bundle.
+- [config-source.md](config-source.md) - the `WARD_CONFIG_REF` edge-surface fs.FS-at-launch seam: baked neutral default vs a live-resolved bundle for guarded surfaces.
 - [config-ref-resolver.md](config-ref-resolver.md) - the `WARD_CONFIG_REF` git-ref grammar and its TTL-cached `syncGitRef` resolver.
 - [fleet-local.md](fleet-local.md) - `~/.ward/fleet.local.kdl`, the operator-local config reader.
 - [ward-kdl/](ward-kdl/) - 23 generated per-area guardfile references (git, aws, docker, the agents/ops/pkg surfaces, ...), indexed area-by-area from [ward-kdl-surface.md](ward-kdl-surface.md).

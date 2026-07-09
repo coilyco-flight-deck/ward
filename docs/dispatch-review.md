@@ -17,13 +17,13 @@ line and folds the review detail.
 
 The panel is `ward agent review`, wired into the [engineer](agent-engineer.md) seed
 when explicitly enabled (not `remote-branch-only`, which lands nothing). After CI is
-green and before it opens the PR or merges, the worker runs it and reads the machine
-line on stdout - `WARD-REVIEW: pass` (land), `block` (do not land; post the verdicts
-and close `WARD-OUTCOME: blocked 🛑`), or `advisory` (only if no reviewer can run at
-all, and the host converts that to a fail-closed block). For `pull-request` runs, opening the
-pull request is not the finish line. The worker keeps watching the PR checks and
-loops on failures until they are green or genuinely blocked. `ward agent review`
-stays callable for diagnostics. Engineer seeds skip it by default for brokered QA.
+green and before it opens the PR or merges, the worker reads `WARD-REVIEW: pass`
+(land), `block` (do not land; post the verdicts and close `WARD-OUTCOME: blocked
+🛑`), or `advisory` (only if no reviewer can run). For `pull-requests` runs, the
+worker keeps watching the PR checks until they are green or genuinely blocked, then
+ends with `WARD-OUTCOME: submitted`. `pull-requests-and-merge` ends with
+`WARD-OUTCOME: merge-ready`, then the director records final `done` after merge.
+Engineer seeds skip it by default for brokered QA.
 `--skip-review` drops the clause from the seed, `--skip-preflight`
 does the same because the pre-flight and review share one escape hatch, and
 `--no-review-gate` /

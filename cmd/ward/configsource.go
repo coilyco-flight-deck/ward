@@ -1,7 +1,7 @@
 package main
 
-// configsource.go is the fs.FS-at-launch config-resolve seam (ward#653): baked
-// embeds by default, a live bundle when WARD_CONFIG_REF is set: docs/config-source.md.
+// configsource.go is the edge-surface fs.FS-at-launch config-resolve seam.
+// Baked embeds default; WARD_CONFIG_REF only steers edge-mounted surfaces.
 
 import (
 	"context"
@@ -79,7 +79,7 @@ const (
 )
 
 // configSource is the launch-selected home of the KDL config bundle: one fs.FS
-// plus the per-layout paths the three build sites read.
+// plus the per-layout paths the edge build sites read.
 type configSource struct {
 	fsys fs.FS
 
@@ -94,13 +94,13 @@ type configSource struct {
 	// withholds the admin surface - absent at compile time, guardfile-style.
 	adminGuardfile string
 
-	// fleetKDL feeds loadFleetConfig (dialect-2 fleetconfig).
+	// fleetKDL feeds the edge fleetconfig parse path.
 	fleetKDL string
 
-	// defaultsKDL feeds the runtime smart-defaults parser.
+	// defaultsKDL feeds the edge smart-defaults parser.
 	defaultsKDL string
 
-	// topologyKDL feeds the container-topology resolver.
+	// topologyKDL feeds the edge container-topology resolver.
 	topologyKDL string
 
 	// execDir is scanned by mountWardKdlExec; execMixedDialects marks a bundle
@@ -139,8 +139,8 @@ func bundleConfigSource(dir string) configSource {
 	}
 }
 
-// selectConfigSource resolves WARD_CONFIG_REF into the launch config source,
-// rereading the env per call (cheap, testable; it cannot change mid-process).
+// selectConfigSource resolves WARD_CONFIG_REF for edge surfaces, rereading
+// the env per call (cheap, testable; it cannot change mid-process).
 func selectConfigSource() (configSource, error) {
 	ref := strings.TrimSpace(os.Getenv(wardConfigRefEnv))
 	if ref == "" {
@@ -178,6 +178,12 @@ func selectConfigSource() (configSource, error) {
 	}
 	src.auditVersion = rev
 	return src, nil
+}
+
+// coreRuntimeConfigSource is ward-owned runtime data: the baked neutral default
+// only. Core agent/container paths do not depend on WARD_CONFIG_REF parsing.
+func coreRuntimeConfigSource() configSource {
+	return bakedConfigSource()
 }
 
 // bundleRevision returns the git HEAD of dir when dir is a checkout; empty
