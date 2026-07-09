@@ -30,8 +30,12 @@ and a `ward.workflow` label, and is read by the reaper.
 - **`pull-request`** *(default)* - carry the work to a **branch and a pull request**
   instead of landing on `main` directly. The PR is the merge gate; a human or a
   follow-up loop lands it, and the worker keeps watching the PR checks after
-  opening it until they are green or the failure is genuinely blocked. The seed
-  tells the agent to push the branch and open the PR, and **not** to push `main`.
+  opening it until they are green or the failure is genuinely blocked. If a PR
+  already exists when the workflow fails, ward comments the same actionable
+  failure summary on both the linked issue and the PR, while keeping the issue
+  wording unchanged and trimming reservation-lock wording from the PR copy. The
+  seed tells the agent to push the branch and open the PR, and **not** to push
+  `main`.
 - **`pull-request-and-merge`** - branch + PR like `pull-request`, but the run is
   not done until the PR is actually merged. This is the narrow director-merge
   lane.

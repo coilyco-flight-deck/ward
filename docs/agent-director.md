@@ -1,11 +1,10 @@
 ---
-doc_goal: Let an operator run and reason about the director as ward's autonomous backlog supervisor - the LLM-in-the-loop heartbeat that drains a repo's headless lane under trust and slot bounds - not mistake it for a one-shot command.
+doc_goal: Let an operator run and reason about the director as ward's autonomous backlog supervisor - the LLM heartbeat that drains a repo's headless lane under trust and slot bounds - not mistake it for a one-shot command.
 ---
 # ward agent director
 
 `ward agent director` (public face `warded director`) is the **autonomous backlog
-supervisor** role: it drives a repo's headless lane to drain. It is an
-LLM-in-the-loop heartbeat.
+supervisor** role: it drives a repo's headless lane to drain. It is an LLM loop.
 
 ## Startup triage
 
@@ -16,7 +15,7 @@ that writes the tier + mode labels the heartbeat reads. See
 ## The init gate
 
 At startup, director runs one poll/refresh/merge pass, then checks whether headless work is queued or in flight.
-If empty, it skips the init gate and drains/surfaces.
+If empty, it skips the init gate and surfaces.
 If work remains, it asks whether to drain now. **yes**/Enter begins the autonomous drain, **no** surfaces first.
 
 ## The heartbeat
@@ -31,7 +30,7 @@ If work remains, it asks whether to drain now. **yes**/Enter begins the autonomo
 5. **Decide** via a host one-shot over the candidates + forge-health; answers `DISPATCH:
    <numbers>`/`none`, can only **narrow or hold**, and **fails open to rank**.
 6. **Dispatch** the chosen set via the engineer (`agent.<mode>.engineer`).
-7. **Sleep** `--poll-interval`, **no LLM held open**.
+7. **Sleep** `--poll-interval`, **no LLM open**.
 
 Only the **headless** lane auto-dispatches; interactive/consult surface. The merge sweep is narrow and policy-bound. See [agent-director-pr-merge.md](agent-director-pr-merge.md).
 
