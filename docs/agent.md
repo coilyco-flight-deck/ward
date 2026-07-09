@@ -46,6 +46,10 @@ or answers it.
   the candidate branch or PR, and the checks, then posts a structured verdict
   comment without editing implementation state. [agent-qa.md](agent-qa.md).
 
+The semantic posture for those roles is documented in
+[agent-role-capabilities.md](agent-role-capabilities.md). That layer is ward-owned
+and separate from the KDL edge surfaces.
+
 The standalone `architect`/`explore`/`sandbox` roles now error - folded
 them into the director's [surface session](agent-surface.md). The `--harness`
 axis lives under [Drivers](#drivers) below.
@@ -99,6 +103,7 @@ Grouped by the surface you are reaching for.
 - [agent-roster.md](agent-roster.md) - flat list of every role (`ward agent roster`).
 - [agent-subcommands.md](agent-subcommands.md) - the roles compared + the reaper.
 - [agent-qa.md](agent-qa.md) - the opt-in QA inspection role.
+- [agent-role-capabilities.md](agent-role-capabilities.md) - the semantic role capability vocabulary.
 - [agent-drivers.md](agent-drivers.md) - the harnesses (`--harness`) compared.
 - [agent-surface.md](agent-surface.md) - the director's read-only surface.
 

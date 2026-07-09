@@ -1,5 +1,5 @@
 ---
-doc_goal: Explain why a startup role's host/cloud capability (AWS creds, the tailnet route) is per-role guardfile-set membership in the meld layer rather than a first-class ward flag, so an operator knows where capability is configured, how the advisor gets live-observe by default, and what the deprecated --aws/--tailnet aliases still do. The aws creds mechanism itself is in agent-aws-creds.md.
+doc_goal: Explain why a startup role's host/cloud reach is per-role guardfile-set membership in the meld layer rather than a first-class ward flag, where that reach is configured, how the advisor gets live-observe by default, and what the deprecated --aws/--tailnet aliases still do. The aws creds mechanism itself is in agent-aws-creds.md.
 ---
 # ward agent: per-role capability ([ward#578](https://forgejo.coilysiren.me/coilyco-flight-deck/ward/issues/578))
 
