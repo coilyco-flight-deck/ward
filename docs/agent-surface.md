@@ -15,6 +15,9 @@ remote**. It reads the code, scopes the work, files it, and dispatches it.
 
 The current workspace clone is enforced read-only by the container, and `/scratch`
 is the writable escape hatch for temporary scripts and throwaway files.
+Raw `ward ops forgejo pr merge` is not a valid escape hatch here. The director's
+merge lane is the policy-checked path, and read-only surface use of the raw merge
+leaf is refused.
 
 ## When the director surfaces
 

@@ -38,9 +38,10 @@ and a `ward.workflow` label, and is read by the reaper.
   `main`.
 - **`pull-requests-and-merge`** - branch + PR like `pull-requests`, but the run
   is not done until the PR is actually merged. The director merge sweep also
-  checks the live PR detail for mergeability against the current base branch, so
-  a conflicting PR stays blocked even if CI is green and the issue thread
-  already says merge-ready. This is the narrow director-merge lane.
+  checks the live PR detail for mergeability against the current base branch and
+  the current PR head SHA's required status checks, so a conflicting or stale PR
+  stays blocked even if CI is green and the issue thread already says
+  merge-ready. This is the narrow director-merge lane.
 - **`patch-only`** - the run has **no PR or merge authority**: it pushes a
   remote branch and stops. It neither opens a PR nor merges, and writes no
   `closes #N` trailer. Intended for untrusted targets, experiments, and
@@ -98,7 +99,8 @@ This first slice is deliberately minimal:
 - `pull-requests` runs keep watching PR CI/checks after the PR opens, so
   `WARD-OUTCOME: submitted` follows green checks or a genuine block. `pull-requests-and-merge`
   reports `WARD-OUTCOME: merge-ready`, then waits for the director merge sweep to
-  verify the PR is still mergeable, land it, and record the final `done` outcome.
+  verify the PR is still mergeable, confirm the live required status checks on the
+  current head SHA, land it, and record the final `done` outcome.
 - The autonomous [pre-flight](agent-preflight.md) still reads in merge-to-main
   terms; it judges feasibility, not the landing contract, so it is left as-is.
 

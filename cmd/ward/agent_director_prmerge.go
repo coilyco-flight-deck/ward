@@ -36,9 +36,9 @@ func (r *Runner) directorMergeEligiblePullRequests(ctx context.Context, label st
 				}
 				continue
 			}
-			if err := prClient.mergePullRequest(ctx, owner, name, pr.Number); err != nil {
-				fmt.Fprintf(os.Stderr, "%s: merge failed for %s/%s#%d (issue #%d, workflow %s, review %q): %v\n",
-					label, owner, name, pr.Number, linked, meta.Workflow, meta.Review, err)
+			if err := prClient.mergePullRequestWithHead(ctx, owner, name, pr.Number, meta.PRHeadSHA); err != nil {
+				fmt.Fprintf(os.Stderr, "%s: merge failed for %s/%s#%d (issue #%d, workflow %s, review %q, head %s, status %s): %v\n",
+					label, owner, name, pr.Number, linked, meta.Workflow, meta.Review, meta.PRHeadSHA, meta.Status.summary(), err)
 				continue
 			}
 			if err := recordDirectorMergeDone(ctx, issueClient, owner, name, linked, pr.Number, meta); err != nil {
@@ -46,7 +46,7 @@ func (r *Runner) directorMergeEligiblePullRequests(ctx context.Context, label st
 					label, owner, name, pr.Number, linked, err)
 				continue
 			}
-			fmt.Fprintf(os.Stderr, "%s: merged eligible PR %s/%s#%d for issue #%d\n", label, owner, name, pr.Number, linked)
+			fmt.Fprintf(os.Stderr, "%s: merged eligible PR %s/%s#%d for issue #%d (head %s, status %s)\n", label, owner, name, pr.Number, linked, meta.PRHeadSHA, meta.Status.summary())
 		}
 	}
 	return nil

@@ -94,11 +94,11 @@ func (r *Runner) runDirectorMergeRepo(ctx context.Context, label string, prClien
 			continue
 		}
 		if preview {
-			_, _ = fmt.Fprintf(r.Runner.Stderr, "%s: would merge %s/%s#%d (issue #%d, workflow %s, review %q)\n",
-				label, owner, name, pr.Number, linked, meta.Workflow, meta.Review)
+			_, _ = fmt.Fprintf(r.Runner.Stderr, "%s: would merge %s/%s#%d (issue #%d, workflow %s, review %q, head %s, status %s)\n",
+				label, owner, name, pr.Number, linked, meta.Workflow, meta.Review, meta.PRHeadSHA, meta.Status.summary())
 			continue
 		}
-		if err := prClient.mergePullRequest(ctx, owner, name, pr.Number); err != nil {
+		if err := prClient.mergePullRequestWithHead(ctx, owner, name, pr.Number, meta.PRHeadSHA); err != nil {
 			return merged, skipped, fmt.Errorf("%s: merge %s/%s#%d: %w", label, owner, name, pr.Number, err)
 		}
 		if err := recordDirectorMergeDone(ctx, issueClient, owner, name, linked, pr.Number, meta); err != nil {
@@ -126,19 +126,8 @@ func directorMergeEligibility(ctx context.Context, owner, repo string, pr direct
 
 func directorMergeIssueMeta(ctx context.Context, owner, repo string, pr directorPullRequest, linked int, prClient *forgejoClient, issueClient Tracker) (directorRunMeta, string, bool) {
 	var meta directorRunMeta
-	if !pr.MergeableKnown {
-		if pr.MergeableError == "" {
-			return directorRunMeta{}, "could not read PR mergeability", false
-		}
-		return directorRunMeta{}, "could not read PR mergeability: " + pr.MergeableError, false
-	}
-	if !pr.Mergeable {
-		return directorRunMeta{}, "PR is not mergeable against the current base branch; rebase or merge base and resolve the conflict first", false
-	}
-	if wf, ok := directorPRWorkflowMarker(pr.Body); !ok {
-		return directorRunMeta{}, "PR body missing ward.workflow: pull-requests-and-merge marker", false
-	} else if wf != string(workflowPullRequestAndMerge) {
-		return directorRunMeta{}, "PR body carries ward.workflow: " + wf + "; need pull-requests-and-merge", false
+	if reason, ok := directorMergePullRequestGate(pr); !ok {
+		return directorRunMeta{}, reason, false
 	}
 	if _, err := issueClient.getIssue(ctx, owner, repo, linked); err != nil {
 		return directorRunMeta{}, "could not read linked issue: " + firstLine(err.Error()), false
@@ -157,6 +146,10 @@ func directorMergeIssueMeta(ctx context.Context, owner, repo string, pr director
 	if meta.PRHeadSHA == "" {
 		return meta, "linked PR did not expose a head SHA", false
 	}
+	status, reason, ok := directorMergeStatusGate(ctx, prClient, owner, repo, prInfo.Base.Ref, meta.PRHeadSHA)
+	if !ok {
+		return directorRunMeta{Status: status.Status}, reason, false
+	}
 	latest, ok := latestBacklogOutcomeComment(comments)
 	if !ok {
 		return directorRunMeta{}, "linked issue never reached a WARD-OUTCOME comment", false
@@ -167,12 +160,147 @@ func directorMergeIssueMeta(ctx context.Context, owner, repo string, pr director
 	meta.IssueRef = fmt.Sprintf("%s/%s#%d", owner, repo, linked)
 	meta.PRHeadSHA = strings.TrimSpace(prInfo.Head.SHA)
 	meta.PRRef = prInfo.ref(owner, repo)
+	meta.Status = status.Status
 	qa, ok := latestQAVerdictComment(comments, meta.IssueRef, meta.PRRef, meta.PRHeadSHA)
 	if !ok {
 		return meta, "linked issue does not have a passing WARD-QA verdict for the current PR head SHA", false
 	}
 	meta.QA = qa
 	return meta, "", true
+}
+
+func directorMergePullRequestGate(pr directorPullRequest) (string, bool) {
+	switch {
+	case !pr.MergeableKnown:
+		if pr.MergeableError == "" {
+			return "could not read PR mergeability", false
+		}
+		return "could not read PR mergeability: " + pr.MergeableError, false
+	case !pr.Mergeable:
+		return "PR is not mergeable against the current base branch; rebase or merge base and resolve the conflict first", false
+	}
+	wf, ok := directorPRWorkflowMarker(pr.Body)
+	if !ok {
+		return "PR body missing ward.workflow: pull-requests-and-merge marker", false
+	}
+	if wf != string(workflowPullRequestAndMerge) {
+		return "PR body carries ward.workflow: " + wf + "; need pull-requests-and-merge", false
+	}
+	return "", true
+}
+
+// directorMergeStatusGate checks the live branch-protection requirement set
+// against the PR head SHA immediately before merge.
+func directorMergeStatusGate(ctx context.Context, cl *forgejoClient, owner, repo, baseBranch, headSHA string) (directorMergeStatusCheck, string, bool) {
+	baseBranch = strings.TrimSpace(baseBranch)
+	headSHA = strings.TrimSpace(headSHA)
+	if baseBranch == "" {
+		return directorMergeStatusCheck{}, "linked PR did not expose a base branch", false
+	}
+	branch, err := cl.getBranch(ctx, owner, repo, baseBranch)
+	if err != nil {
+		return directorMergeStatusCheck{}, "could not read base branch status checks: " + firstLine(err.Error()), false
+	}
+	required := normalizeDirectorRequiredContexts(branch.StatusCheckContexts)
+	if len(required) == 0 {
+		return directorMergeStatusCheck{}, "base branch " + baseBranch + " does not declare required status check contexts", false
+	}
+	combined, err := cl.getCommitCombinedStatus(ctx, owner, repo, headSHA)
+	if err != nil {
+		return directorMergeStatusCheck{}, "could not read live commit status for current PR head SHA: " + firstLine(err.Error()), false
+	}
+	summary, reason, ok := buildDirectorMergeStatusSummary(headSHA, baseBranch, required, combined)
+	if !ok {
+		return directorMergeStatusCheck{Status: summary}, reason, false
+	}
+	return directorMergeStatusCheck{Status: summary}, "", true
+}
+
+type directorMergeStatusCheck struct {
+	Status directorMergeStatusSummary
+}
+
+type directorMergeStatusSummary struct {
+	Branch  string
+	HeadSHA string
+	State   string
+	Checks  []directorMergeStatusContext
+}
+
+type directorMergeStatusContext struct {
+	Context string
+	State   string
+}
+
+func (s directorMergeStatusSummary) summary() string {
+	if s.HeadSHA == "" && s.State == "" && len(s.Checks) == 0 {
+		return "<no status>"
+	}
+	parts := s.contextParts()
+	if len(parts) == 0 {
+		return fmt.Sprintf("%s on %s", s.State, s.HeadSHA)
+	}
+	return fmt.Sprintf("%s on %s (%s)", s.State, s.HeadSHA, strings.Join(parts, ", "))
+}
+
+func (s directorMergeStatusSummary) contextSummary() string {
+	parts := s.contextParts()
+	if len(parts) == 0 {
+		return "<status unavailable>"
+	}
+	return strings.Join(parts, ", ")
+}
+
+func (s directorMergeStatusSummary) contextParts() []string {
+	var parts []string
+	for _, check := range s.Checks {
+		parts = append(parts, fmt.Sprintf("%s=%s", check.Context, check.State))
+	}
+	return parts
+}
+
+func normalizeDirectorRequiredContexts(contexts []string) []string {
+	seen := map[string]bool{}
+	var out []string
+	for _, c := range contexts {
+		if c = strings.TrimSpace(c); c != "" && !seen[c] {
+			seen[c] = true
+			out = append(out, c)
+		}
+	}
+	return out
+}
+
+func buildDirectorMergeStatusSummary(headSHA, branch string, required []string, combined *forgejoCommitCombinedStatus) (directorMergeStatusSummary, string, bool) {
+	summary := directorMergeStatusSummary{Branch: branch, HeadSHA: headSHA, State: strings.ToLower(strings.TrimSpace(combined.State))}
+	if summary.State == "" {
+		summary.State = "unknown"
+	}
+	statusByContext := map[string]string{}
+	for _, st := range combined.Statuses {
+		ctx := strings.TrimSpace(st.Context)
+		if ctx == "" {
+			continue
+		}
+		statusByContext[ctx] = strings.ToLower(strings.TrimSpace(st.State))
+	}
+	if len(required) == 0 {
+		return summary, "base branch does not declare any required status contexts", false
+	}
+	for _, ctx := range required {
+		state, ok := statusByContext[ctx]
+		if !ok {
+			return summary, fmt.Sprintf("linked PR head SHA %s is missing required status context %s", headSHA, ctx), false
+		}
+		if state != "success" {
+			return summary, fmt.Sprintf("linked PR head SHA %s has required status context %s=%s", headSHA, ctx, state), false
+		}
+		summary.Checks = append(summary.Checks, directorMergeStatusContext{Context: ctx, State: state})
+	}
+	if summary.State != "success" {
+		return summary, fmt.Sprintf("linked PR head SHA %s did not report a successful combined status", headSHA), false
+	}
+	return summary, "", true
 }
 
 // directorPRWorkflowMarker extracts the workflow marker from a PR body.
@@ -258,13 +386,20 @@ func directorMergeDoneComment(prNumber int, meta directorRunMeta) string {
 	if review == "" {
 		review = "passed: director merged the pull request"
 	}
+	status := strings.TrimSpace(meta.Status.contextSummary())
+	if status == "" {
+		status = "<status unavailable>"
+	}
 	return fmt.Sprintf(
 		"WARD-OUTCOME: done ✅\n\n"+
 			"<details><summary>details</summary>\n\n"+
 			"workflow: %s; review summary: %s\n\n"+
+			"checked head sha: %s\n"+
+			"status context: %s\n"+
+			"status state: %s\n\n"+
 			"merged PR #%d to main after the merge gate passed.\n\n"+
 			"</details>",
-		workflow, review, prNumber)
+		workflow, review, strings.TrimSpace(meta.Status.HeadSHA), status, strings.TrimSpace(meta.Status.State), prNumber)
 }
 
 // directorLinkedIssueNumber extracts the first same-repo closing reference from a

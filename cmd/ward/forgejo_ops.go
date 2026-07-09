@@ -382,13 +382,24 @@ func (c *forgejoClient) createPullRequest(ctx context.Context, owner, repo, head
 // mergePullRequest merges an open PR through Forgejo's merge endpoint.
 // The director uses it for the narrow ward-owned merge lane.
 func (c *forgejoClient) mergePullRequest(ctx context.Context, owner, repo string, index int) error {
+	if os.Getenv("WARD_READONLY") == "1" {
+		return fmt.Errorf("forgejo: merge PR %s/%s#%d refused from read-only surface; use ward agent director merge", owner, repo, index)
+	}
+	return c.mergePullRequestWithHead(ctx, owner, repo, index, "")
+}
+
+// mergePullRequestWithHead merges an open PR through Forgejo's merge endpoint and
+// pins the head commit the director just checked, so a stale PR head cannot land.
+func (c *forgejoClient) mergePullRequestWithHead(ctx context.Context, owner, repo string, index int, headSHA string) error {
 	token, err := c.apiToken(ctx)
 	if err != nil {
 		return err
 	}
-	payload, err := json.Marshal(map[string]string{
-		"do": "merge",
-	})
+	payloadBody := map[string]string{"do": "merge"}
+	if headSHA = strings.TrimSpace(headSHA); headSHA != "" {
+		payloadBody["head_commit_id"] = headSHA
+	}
+	payload, err := json.Marshal(payloadBody)
 	if err != nil {
 		return err
 	}
@@ -414,6 +425,97 @@ func (c *forgejoClient) mergePullRequest(ctx context.Context, owner, repo string
 		return fmt.Errorf("forgejo merge PR returned %s: %s", resp.Status, firstLine(string(data)))
 	}
 	return nil
+}
+
+type forgejoBranch struct {
+	Name                string   `json:"name"`
+	Protected           bool     `json:"protected"`
+	EnableStatusCheck   bool     `json:"enable_status_check"`
+	StatusCheckContexts []string `json:"status_check_contexts"`
+}
+
+type forgejoCommitCombinedStatus struct {
+	State    string                `json:"state"`
+	SHA      string                `json:"sha"`
+	Total    int                   `json:"total_count"`
+	Statuses []forgejoCommitStatus `json:"statuses"`
+}
+
+type forgejoCommitStatus struct {
+	Context     string `json:"context"`
+	State       string `json:"state"`
+	Description string `json:"description"`
+	TargetURL   string `json:"target_url"`
+}
+
+func (c *forgejoClient) getBranch(ctx context.Context, owner, repo, name string) (*forgejoBranch, error) {
+	baseURL := strings.TrimRight(c.baseURL, "/")
+	if baseURL == "" {
+		baseURL = forgejoBaseURL
+	}
+	token, err := c.apiToken(ctx)
+	if err != nil {
+		return nil, err
+	}
+	endpoint := fmt.Sprintf("%s/api/v1/repos/%s/%s/branches/%s", baseURL, url.PathEscape(owner), url.PathEscape(repo), url.PathEscape(name))
+	req, err := http.NewRequestWithContext(ctx, http.MethodGet, endpoint, nil)
+	if err != nil {
+		return nil, err
+	}
+	req.Header.Set("Authorization", "token "+token)
+	req.Header.Set("Accept", "application/json")
+	resp, err := (&http.Client{Timeout: 30 * time.Second}).Do(req)
+	if err != nil {
+		return nil, err
+	}
+	defer func() { _ = resp.Body.Close() }()
+	data, readErr := io.ReadAll(resp.Body)
+	if readErr != nil {
+		return nil, fmt.Errorf("forgejo: read branch %s/%s@%s from %s: %w", owner, repo, name, resp.Status, readErr)
+	}
+	if resp.StatusCode < 200 || resp.StatusCode >= 300 {
+		return nil, fmt.Errorf("forgejo get branch returned %s after %d byte(s): %s", resp.Status, len(data), firstLine(string(data)))
+	}
+	var branch forgejoBranch
+	if err := json.Unmarshal(data, &branch); err != nil {
+		return nil, fmt.Errorf("forgejo: parse branch %s/%s@%s from %s after %d byte(s): %s: %w", owner, repo, name, resp.Status, len(data), responseSnippet(data), err)
+	}
+	return &branch, nil
+}
+
+func (c *forgejoClient) getCommitCombinedStatus(ctx context.Context, owner, repo, sha string) (*forgejoCommitCombinedStatus, error) {
+	baseURL := strings.TrimRight(c.baseURL, "/")
+	if baseURL == "" {
+		baseURL = forgejoBaseURL
+	}
+	token, err := c.apiToken(ctx)
+	if err != nil {
+		return nil, err
+	}
+	endpoint := fmt.Sprintf("%s/api/v1/repos/%s/%s/commits/%s/status", baseURL, url.PathEscape(owner), url.PathEscape(repo), url.PathEscape(sha))
+	req, err := http.NewRequestWithContext(ctx, http.MethodGet, endpoint, nil)
+	if err != nil {
+		return nil, err
+	}
+	req.Header.Set("Authorization", "token "+token)
+	req.Header.Set("Accept", "application/json")
+	resp, err := (&http.Client{Timeout: 30 * time.Second}).Do(req)
+	if err != nil {
+		return nil, err
+	}
+	defer func() { _ = resp.Body.Close() }()
+	data, readErr := io.ReadAll(resp.Body)
+	if readErr != nil {
+		return nil, fmt.Errorf("forgejo: read commit status %s/%s@%s from %s: %w", owner, repo, sha, resp.Status, readErr)
+	}
+	if resp.StatusCode < 200 || resp.StatusCode >= 300 {
+		return nil, fmt.Errorf("forgejo commit status returned %s after %d byte(s): %s", resp.Status, len(data), firstLine(string(data)))
+	}
+	var status forgejoCommitCombinedStatus
+	if err := json.Unmarshal(data, &status); err != nil {
+		return nil, fmt.Errorf("forgejo: parse commit status %s/%s@%s from %s after %d byte(s): %s: %w", owner, repo, sha, resp.Status, len(data), responseSnippet(data), err)
+	}
+	return &status, nil
 }
 
 type forgejoPullRequest struct {

@@ -16,6 +16,8 @@ issue thread says:
 - review summary starts with `passed:`
 - the PR title is not salvage or WIP noise
 - the PR is mergeable against the current base branch
+- the current PR head SHA still has the required branch status checks right
+  before the merge call
 
 That keeps `pull-requests` human-gated. The director does not gain a general
 PR-review or blanket repo-write surface here. A conflicting PR is not done,
@@ -26,8 +28,10 @@ lands, the director records the final `WARD-OUTCOME: done ✅` on the issue.
 
 The command looks up the open PRs in scope, joins each PR back to its linked issue
 via a same-repo closing reference, reads the latest `WARD-OUTCOME` comment, checks
-the PR detail for mergeability, and merges the PR only when the policy above
-holds.
+the PR detail for mergeability, reads the live required status contexts from the
+base branch, verifies the current PR head SHA satisfies them, and merges the PR
+only when the policy above holds. The done comment names the checked head SHA and
+status context so the issue thread keeps the evidence.
 
 ## See also
 

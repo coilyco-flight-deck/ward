@@ -789,6 +789,7 @@ type directorRunMeta struct {
 	QA          qaCommentMeta
 	PRHeadSHA   string
 	PRRef       string
+	Status      directorMergeStatusSummary
 	CommentedBy string
 	CommentedAt time.Time
 }
@@ -851,10 +852,38 @@ func parseDirectorRunMeta(body string) directorRunMeta {
 				meta.Workflow = string(canonicalWorkflow(workflowMode(strings.TrimSpace(field[len("workflow:"):]))))
 			case strings.HasPrefix(lower, "review summary:"):
 				meta.Review = strings.TrimSpace(field[len("review summary:"):])
+			case strings.HasPrefix(lower, "checked head sha:"):
+				meta.Status.HeadSHA = strings.TrimSpace(field[len("checked head sha:"):])
+			case strings.HasPrefix(lower, "status state:"):
+				meta.Status.State = strings.TrimSpace(field[len("status state:"):])
+			case strings.HasPrefix(lower, "status context:"):
+				meta.Status.Checks = parseDirectorStatusContexts(strings.TrimSpace(field[len("status context:"):]))
 			}
 		}
 	}
 	return meta
+}
+
+func parseDirectorStatusContexts(s string) []directorMergeStatusContext {
+	s = strings.TrimSpace(s)
+	if s == "" || s == "<status unavailable>" {
+		return nil
+	}
+	parts := strings.Split(s, ",")
+	out := make([]directorMergeStatusContext, 0, len(parts))
+	for _, part := range parts {
+		field := strings.TrimSpace(part)
+		if field == "" {
+			continue
+		}
+		ctx, state, ok := strings.Cut(field, "=")
+		if !ok {
+			out = append(out, directorMergeStatusContext{Context: field})
+			continue
+		}
+		out = append(out, directorMergeStatusContext{Context: strings.TrimSpace(ctx), State: strings.TrimSpace(state)})
+	}
+	return out
 }
 
 // backlogCommentLine normalizes the leading quote/list markers the same way the
