@@ -243,14 +243,11 @@ the heartbeat if the queue refills (ward#351).
   warded director --org coilyco-flight-deck                # every repo the org owns (ward#370)
   warded director --dry-run                                # ranked lanes + planned dispatches, launch nothing
 
-It is attached/interactive only - there is no --detach (a detached director poses
-runaway-dispatch risk). State lives in a durable per-repo ledger under ~/.ward/backlog,
-so a killed loop resumes from disk. Only the narrow headless lane is auto-dispatched;
-interactive and consult issues are surfaced, not launched. See docs/agent-director.md.`,
+		It is attached/interactive only - there is no --detach (a detached director poses
+	runaway-dispatch risk). State lives in a durable per-repo ledger under ~/.ward/backlog,
+	so a killed loop resumes from disk. Only the narrow headless lane is auto-dispatched;
+	interactive issues are surfaced, not launched. See docs/agent-director.md.`,
 		Flags: directorFlags(),
-		// consult is the director's interactive consult-to-headless conversion pass
-		// (ward#493): `warded director consult` walks the consult + untriaged queue.
-		Commands: []*cli.Command{agentConsultCommand()},
 		Action: func(ctx context.Context, c *cli.Command) error {
 			r := newRunner()
 			mode, err := agentHarness(c)

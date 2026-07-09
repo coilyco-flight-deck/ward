@@ -32,7 +32,7 @@ An opt-in asked **once at init**, never per tick. `--dry-run`/`--print` skip it.
 5. **Dispatch** the chosen set via the engineer (`agent.<mode>.engineer`).
 6. **Sleep** `--poll-interval`, **no LLM held open**.
 
-Only the **headless** lane auto-dispatches; interactive/consult surface.
+Only the **headless** lane auto-dispatches; interactive issues surface.
 
 ## Surface: drain + on-demand
 
