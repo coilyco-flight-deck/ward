@@ -103,7 +103,7 @@ func dictatableID() string {
 
 	var raw [4]byte
 	if _, err := rand.Read(raw[:]); err != nil {
-		return "aa44"
+		return "zz00"
 	}
 	return string([]byte{
 		letters[int(raw[0])%len(letters)],
