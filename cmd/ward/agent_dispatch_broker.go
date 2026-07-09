@@ -36,6 +36,23 @@ const (
 
 var errDispatchBrokerUnavailable = errors.New("dispatch broker unavailable")
 
+// dispatchBrokerLaunchMu serializes the process-global env override while the host
+// broker kicks off a forwarded run so one launch cannot leak into another.
+var dispatchBrokerLaunchMu sync.Mutex
+
+// dispatchBrokerLaunch runs the validated request's role-specific launch.
+// Tests override this hook to keep the broker path fast and observable.
+var dispatchBrokerLaunch = func(ctx context.Context, req dispatchBrokerRequest) error {
+	switch req.Role {
+	case "engineer":
+		return agentEngineerCommand().Run(ctx, req.Argv)
+	case "advisor":
+		return agentAdvisorCommand().Run(ctx, req.Argv)
+	default:
+		return fmt.Errorf("role %q is not dispatchable", req.Role)
+	}
+}
+
 const (
 	// dispatchActionLaunch is the default action: launch a sibling engineer/advisor
 	// run. An empty Action normalizes to it, keeping older launch requests byte-compatible.
@@ -192,20 +209,52 @@ func (r *Runner) runHostDispatchBrokerRequest(ctx context.Context, req dispatchB
 		// silently reroute the flood back onto the corrupted surface (ward#389).
 		return "", fmt.Errorf("dispatch broker: open run log: %w", err)
 	}
-	defer func() { _ = logf.Close() }()
-	restore := redirectStdioToLog(logf)
-	defer restore()
 
 	_, _ = fmt.Fprintf(logf, "ward dispatch broker: %s requested `ward agent %s`\n",
 		emptyDefault(req.Requester, "unknown-container"), redactDispatchBrokerArgv(req.Argv))
-	switch req.Role {
-	case "engineer":
-		return logPath, agentEngineerCommand().Run(ctx, req.Argv)
-	case "advisor":
-		return logPath, agentAdvisorCommand().Run(ctx, req.Argv)
-	default:
-		return logPath, fmt.Errorf("role %q is not dispatchable", req.Role)
+	go func() {
+		restore := redirectStdioToLog(logf)
+		defer restore()
+		defer func() { _ = logf.Close() }()
+
+		if err := withBrokerForwardingDisabled(func() error {
+			return dispatchBrokerLaunch(ctx, req)
+		}); err != nil {
+			fmt.Fprintf(os.Stderr, "ward dispatch broker: launch failed: %v\n", err)
+		} else {
+			fmt.Fprintf(os.Stderr, "ward dispatch broker: launch completed\n")
+		}
+	}()
+	return logPath, nil
+}
+
+// withBrokerForwardingDisabled temporarily clears the read-only surface markers so
+// the host-side launch does not re-enter the broker and deadlock on itself.
+func withBrokerForwardingDisabled(fn func() error) error {
+	dispatchBrokerLaunchMu.Lock()
+	defer dispatchBrokerLaunchMu.Unlock()
+
+	type savedEnv struct {
+		value string
+		set   bool
 	}
+	saved := map[string]savedEnv{}
+	for _, key := range []string{"WARD_READONLY", envDispatchBrokerAddr, envDispatchBrokerToken} {
+		if v, ok := os.LookupEnv(key); ok {
+			saved[key] = savedEnv{value: v, set: true}
+		}
+		_ = os.Unsetenv(key)
+	}
+	defer func() {
+		for _, key := range []string{"WARD_READONLY", envDispatchBrokerAddr, envDispatchBrokerToken} {
+			if v, ok := saved[key]; ok && v.set {
+				_ = os.Setenv(key, v.value)
+				continue
+			}
+			_ = os.Unsetenv(key)
+		}
+	}()
+	return fn()
 }
 
 // runDispatchBrokerStop resolves the stop target to one running engineer and
@@ -512,6 +561,15 @@ func (r *Runner) maybeForwardAgentDispatchToHostBroker(ctx context.Context, c *c
 	return true, nil
 }
 
+// brokerDispatchHarness returns the harness to forward into a sibling dispatch.
+// Explicit --harness/--agent/--driver wins; otherwise inherit WARD_AGENT/WARD_MODE.
+func brokerDispatchHarness(c *cli.Command, fallback containerMode) containerMode {
+	if c.IsSet("harness") || c.IsSet("agent") || c.IsSet("driver") {
+		return fallback
+	}
+	return currentAgentMode()
+}
+
 func (r *Runner) brokerDispatchRef(ctx context.Context, arg string) (agentIssueRef, bool) {
 	ref, err := r.resolveAgentIssueRef(ctx, arg)
 	if err != nil {
@@ -521,7 +579,7 @@ func (r *Runner) brokerDispatchRef(ctx context.Context, arg string) (agentIssueR
 }
 
 func brokerEngineerArgv(c *cli.Command, mode containerMode, ref agentIssueRef) []string {
-	argv := []string{"engineer", ref.String(), "--harness", string(mode)}
+	argv := []string{"engineer", ref.String(), "--harness", string(brokerDispatchHarness(c, mode))}
 	argv = appendBrokerContainerFlags(argv, c)
 	if c.IsSet("workflow") {
 		if wf := strings.TrimSpace(c.String("workflow")); wf != "" {
@@ -547,7 +605,7 @@ func brokerEngineerArgv(c *cli.Command, mode containerMode, ref agentIssueRef) [
 }
 
 func brokerAdvisorArgv(c *cli.Command, mode containerMode, ref agentIssueRef) []string {
-	argv := []string{"advisor", ref.String(), "--harness", string(mode)}
+	argv := []string{"advisor", ref.String(), "--harness", string(brokerDispatchHarness(c, mode))}
 	if lvl := strings.TrimSpace(c.String("thoroughness")); lvl != "" {
 		argv = append(argv, "--thoroughness", lvl)
 	}

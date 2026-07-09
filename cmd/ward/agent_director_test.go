@@ -528,6 +528,12 @@ func TestParseBacklogOutcome(t *testing.T) {
 			wantText:   "merged and pushed",
 		},
 		{
+			name:       "bare emoji line",
+			comments:   []issueComment{{Body: "WARD-OUTCOME: done ✅\n\n<details><summary>details</summary>\n\nmerged and pushed\n\n</details>", CreatedAt: at("2026-06-25T10:00:00Z")}},
+			wantStatus: "done",
+			wantText:   "",
+		},
+		{
 			name:       "blocked with reason after bullet/quote markers",
 			comments:   []issueComment{{Body: "> - WARD-OUTCOME: blocked - need the API key", CreatedAt: at("2026-06-25T10:00:00Z")}},
 			wantStatus: "blocked",

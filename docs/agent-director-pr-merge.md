@@ -5,14 +5,14 @@ doc_goal: Explain the director's narrow PR-merge authority boundary - which ward
 
 `ward agent director` can do one narrow write action beyond dispatch: merge a
 ward-owned pull request when the run was launched in
-`pull-requests-and-merge`.
+`pull-request-and-merge`.
 
 ## What qualifies
 
 The merge sweep only acts when all of these are true:
 
 - the PR is open, not draft, and not on a `ward-salvage/` branch;
-- the PR body carries the `ward.workflow: pull-requests-and-merge` marker;
+- the PR body carries the `ward.workflow: pull-request-and-merge` marker;
 - the PR body names the carried issue with `closes #N` / `fixes #N` / `resolves #N`;
 - the branch name is the issue branch (`issue-N`);
 - the linked issue is already `done`;
@@ -23,16 +23,17 @@ If any check fails, the director reports the reason and leaves the PR alone.
 ## What it does not do
 
 - It does not merge arbitrary human PRs by default.
-- It does not merge plain `pull-requests` runs unless a later policy explicitly
+- It does not merge plain `pull-request` runs unless a later policy explicitly
   says to.
 - It does not treat salvage PRs as eligible work PRs.
 
 ## How this differs from engineer workflow
 
-The engineer's `pull-requests` mode keeps watching CI after the PR opens and
+The engineer's `pull-request` mode keeps watching CI after the PR opens and
 only reports done once the checks are green or the failure is genuinely blocked.
-`pull-requests-and-merge` adds the director marker so the heartbeat can finish
-the merge later when the policy boundary is satisfied.
+`pull-request-and-merge` adds the director marker so the heartbeat can finish
+the merge later when the policy boundary is satisfied, and the run is not done
+until the merge lands.
 
 ## See also
 

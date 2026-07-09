@@ -42,9 +42,10 @@ no prompt to answer:
    [reservation comment](agent-reservation.md) ward posts to claim the issue,
    so the thread records *why* it was judged carriable. A read with no
    clear verdict line proceeds but folds in nothing.
-3. On **NO-GO** ward launches nothing and instead **posts a comment on the issue**
-   with the reason, the full read (folded away), and how to re-dispatch - the work
-   lands back in front of a human rather than failing silently.
+3. On **NO-GO** ward launches nothing and instead **posts a comment on the issue**.
+   Only one `WARD-STATUS: pre-flight NO-GO` line is visible. The reason, full read,
+   and re-dispatch instructions are folded away so the work lands back in front of
+   a human rather than failing silently.
 4. On **WRONG-REPO** - the agent judged, from the issue text alone,
    that the work plainly belongs in a *different* repo - ward **blind-fires** a
    fresh issue into that repo and launches nothing here. See

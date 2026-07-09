@@ -3,6 +3,7 @@ package main
 import (
 	"bytes"
 	"context"
+	"io"
 	"os"
 	"os/exec"
 	"path/filepath"
@@ -86,35 +87,35 @@ func TestReviewerCandidatesDefaultToWorker(t *testing.T) {
 	}
 }
 
-// TestReviewGateClauseInSeed proves the review gate is wired into a headless
-// landing seed, skipped for patch-only, and suppressed by reviewGate=false.
+// TestReviewGateClauseInSeed proves the review gate still renders when explicitly
+// enabled, is skipped for remote-branch-only, and is suppressed by reviewGate=false.
 func TestReviewGateClauseInSeed(t *testing.T) {
 	ref := agentIssueRef{Owner: "coilyco-flight-deck", Repo: "ward", Number: 134}
 
-	direct := agentSeedPromptWorkflow(ref, "t", "b", "", true, nil, workflowDirectMain, true, "")
+	direct := agentSeedPromptWorkflow(ref, "t", "b", "", true, nil, workflowDirectToMain, true, "")
 	if !strings.Contains(direct, "REVIEW GATE") || !strings.Contains(direct, "ward agent review") {
-		t.Errorf("direct-main headless seed missing the review gate clause")
+		t.Errorf("direct-to-main headless seed missing the review gate clause")
 	}
 	if !strings.Contains(direct, "merge to `main`") {
-		t.Errorf("direct-main Forgejo landing phrase missing from the gate clause")
+		t.Errorf("direct-to-main landing phrase missing from the gate clause")
 	}
-	pr := agentSeedPromptWorkflow(ref, "t", "b", "", true, nil, workflowPR, true, "")
+	pr := agentSeedPromptWorkflow(ref, "t", "b", "", true, nil, workflowPullRequest, true, "")
 	if !strings.Contains(pr, "watching its CI/checks") {
-		t.Errorf("pr seed should tell PR workflows to keep watching checks after opening the PR")
+		t.Errorf("pull-request seed should tell PR workflows to keep watching checks after opening the PR")
 	}
 
-	patch := agentSeedPromptWorkflow(ref, "t", "b", "", true, nil, workflowPatchOnly, true, "")
-	if strings.Contains(patch, "REVIEW GATE") {
-		t.Errorf("patch-only lands nothing; it must not carry the review gate")
+	branchOnly := agentSeedPromptWorkflow(ref, "t", "b", "", true, nil, workflowRemoteBranchOnly, true, "")
+	if strings.Contains(branchOnly, "REVIEW GATE") {
+		t.Errorf("remote-branch-only lands nothing else; it must not carry the review gate")
 	}
-	if !strings.Contains(direct, "For `pr` workflows, opening the pull request is not a stopping point") {
-		t.Errorf("review gate clause must tell pr runs to keep watching PR CI\n got: %s", direct)
+	if !strings.Contains(direct, "For `direct-to-main` workflows, landing means merging to `main`") {
+		t.Errorf("review gate clause must name the direct-to-main landing path\n got: %s", direct)
 	}
-	if !strings.Contains(direct, "A failing check is not done") {
-		t.Errorf("review gate clause must tell pr runs to loop on failed checks\n got: %s", direct)
+	if !strings.Contains(pr, "For `pull-request` workflows, opening the pull request is not a stopping point") {
+		t.Errorf("review gate clause must tell pull-request runs to keep watching PR CI\n got: %s", pr)
 	}
 
-	off := agentSeedPromptWorkflow(ref, "t", "b", "", true, nil, workflowDirectMain, false, "")
+	off := agentSeedPromptWorkflow(ref, "t", "b", "", true, nil, workflowDirectToMain, false, "")
 	if strings.Contains(off, "REVIEW GATE") {
 		t.Errorf("--skip-review (reviewGate=false) must suppress the clause")
 	}
@@ -126,6 +127,34 @@ func TestReviewGateClauseInSeed(t *testing.T) {
 	}
 	if !strings.Contains(off, "intentionally skipped") {
 		t.Errorf("skipped review must be explicit in the final comment instructions")
+	}
+}
+
+// TestEngineerSeedDefaultsSkipReviewGate proves engineer dispatches now omit the
+// in-container review clause by default, while the manual review verb remains.
+func TestEngineerSeedDefaultsSkipReviewGate(t *testing.T) {
+	ref := agentIssueRef{Owner: "coilyco-flight-deck", Repo: "ward", Number: 676}
+	cmd := parseCommandForTest(t, agentSurfaceFlags(), []string{"engineer", ref.String()})
+
+	if got := reviewGateWanted(cmd, modeCodex, ref); got {
+		t.Fatal("engineer dispatch default still wants the review gate")
+	}
+	reviewGate, reviewSkip := reviewGateDecision(cmd, "engineer", modeCodex, ref)
+	if reviewGate {
+		t.Fatal("engineer dispatch default should skip the review gate")
+	}
+	if !strings.Contains(reviewSkip, "temporary ward default") {
+		t.Fatalf("skip reason = %q, want the temporary ward default to be named", reviewSkip)
+	}
+	seed := agentSeedPromptWorkflow(ref, "t", "b", "", true, nil, workflowPullRequest, reviewGate, reviewSkip)
+	if strings.Contains(seed, "REVIEW GATE") {
+		t.Fatalf("default engineer seed still carries the review gate clause:\n%s", seed)
+	}
+	if !strings.Contains(seed, "temporary ward default") {
+		t.Fatalf("default engineer seed should explain the temporary skip:\n%s", seed)
+	}
+	if got := agentReviewCommand(); got == nil || got.Name != "review" {
+		t.Fatalf("agentReviewCommand() = %+v, want the manual review verb to remain available", got)
 	}
 }
 
@@ -164,6 +193,16 @@ func TestReportPanelMachineLine(t *testing.T) {
 
 func TestReviewGateWantedHonorsSkipsAndConfig(t *testing.T) {
 	ref := agentIssueRef{Owner: "coilyco-flight-deck", Repo: "ward", Number: 676}
+	t.Run("default engineer dispatch skips review temporarily", func(t *testing.T) {
+		cmd := parseCommandForTest(t, agentSurfaceFlags(), []string{"engineer", ref.String()})
+		wanted, reason := reviewGateDecision(cmd, "engineer", modeCodex, ref)
+		if wanted {
+			t.Fatal("temporary engineer default did not disable the review gate")
+		}
+		if !strings.Contains(reason, "temporary ward default") {
+			t.Fatalf("reason = %q, want the temporary ward default to be named", reason)
+		}
+	})
 	t.Run("skip-review flag wins", func(t *testing.T) {
 		cmd := parseCommandForTest(t, agentSurfaceFlags(), []string{"engineer", ref.String(), "--skip-review"})
 		if reviewGateWanted(cmd, modeCodex, ref) {
@@ -217,6 +256,65 @@ func TestReviewSummaryIncludesNotes(t *testing.T) {
 	}
 	if got := reviewSummary(reviewpanel.PanelResult{Gate: reviewpanel.GateAdvisory, Note: "intentionally skipped"}); !strings.Contains(got, "skipped: intentionally skipped") {
 		t.Fatalf("advisory summary = %q", got)
+	}
+}
+
+func TestFailClosedNoReviewerResultRewordsAdvisoryNote(t *testing.T) {
+	advisory := reviewpanel.PanelResult{
+		Gate:   reviewpanel.GateAdvisory,
+		Worker: "codex",
+		Note:   "ADVISORY-ONLY REVIEW: no reviewer family was available for codex, so the adversarial panel could not run and did NOT gate this diff. Dropped: claude (unavailable: no network). A human should review this change with the extra scrutiny an unrun panel would have applied.",
+	}
+	blocked := failClosedNoReviewerResult(advisory)
+	if blocked.Gate != reviewpanel.GateBlock {
+		t.Fatalf("gate = %q; want block", blocked.Gate)
+	}
+	for _, bad := range []string{"ADVISORY-ONLY REVIEW", "did NOT gate this diff"} {
+		if strings.Contains(blocked.Note, bad) {
+			t.Fatalf("blocked note still contains %q: %q", bad, blocked.Note)
+		}
+	}
+	if got := reviewSummary(blocked); !strings.Contains(got, "blocked: no reviewer family was available for codex, so the adversarial panel could not run and the gate blocked fail-closed.") {
+		t.Fatalf("blocked summary = %q", got)
+	}
+
+	home := t.TempDir()
+	t.Setenv("HOME", home)
+	if err := writeReviewSummaryHandoff(blocked); err != nil {
+		t.Fatalf("writeReviewSummaryHandoff: %v", err)
+	}
+	path, err := reviewSummaryPath()
+	if err != nil {
+		t.Fatalf("reviewSummaryPath: %v", err)
+	}
+	got, err := os.ReadFile(path)
+	if err != nil {
+		t.Fatalf("ReadFile(%s): %v", path, err)
+	}
+	for _, bad := range []string{"ADVISORY-ONLY REVIEW", "did NOT gate this diff"} {
+		if strings.Contains(string(got), bad) {
+			t.Fatalf("handoff still contains %q: %q", bad, got)
+		}
+	}
+
+	var out, errb bytes.Buffer
+	r := &Runner{Runner: &shell.Runner{Stdout: &out, Stderr: &errb}}
+	r.reportPanel(&cli.Command{}, blocked)
+	if !strings.Contains(out.String(), "WARD-REVIEW: block") {
+		t.Fatalf("stdout missing blocked machine line: %s", out.String())
+	}
+	for _, bad := range []string{"ADVISORY-ONLY REVIEW", "did NOT gate this diff"} {
+		if strings.Contains(errb.String(), bad) {
+			t.Fatalf("panel output still contains %q: %s", bad, errb.String())
+		}
+	}
+
+	if got := (reviewBlockedError{result: blocked}).Error(); strings.Contains(got, "ADVISORY-ONLY REVIEW") || strings.Contains(got, "did NOT gate this diff") {
+		t.Fatalf("blocked error still contains advisory wording: %q", got)
+	}
+
+	if got := reviewConclusionCommentBody(blocked); strings.Contains(got, "ADVISORY-ONLY REVIEW") || strings.Contains(got, "did NOT gate this diff") {
+		t.Fatalf("conclusion comment still contains advisory wording: %q", got)
 	}
 }
 
@@ -286,11 +384,56 @@ func main() {
 	}
 }
 
+func TestReviewerAvailableUsesLaunchGate(t *testing.T) {
+	binDir := t.TempDir()
+	src := filepath.Join(binDir, "claudemain.go")
+	binName := "claude"
+	if runtime.GOOS == "windows" {
+		binName += ".exe"
+	}
+	binPath := filepath.Join(binDir, binName)
+	program := `package main
+
+import (
+	"fmt"
+	"os"
+)
+
+func main() {
+	fmt.Fprintln(os.Stderr, "auth smoke test: claude -p rejected the credentials (exit 1) - they are unusable in-container (ward#222). Refresh the host claude login (re-run 'claude' on the host) and relaunch; WARD_SMOKE_TEST_SKIP=1 bypasses")
+	os.Exit(1)
+}
+`
+	if err := os.WriteFile(src, []byte(program), 0o600); err != nil {
+		t.Fatalf("write helper source: %v", err)
+	}
+	cmd := exec.Command("go", "build", "-o", binPath, src)
+	cmd.Dir = binDir
+	cmd.Env = os.Environ()
+	if out, err := cmd.CombinedOutput(); err != nil {
+		t.Fatalf("build helper binary: %v\n%s", err, out)
+	}
+	home := t.TempDir()
+	t.Setenv("HOME", home)
+	t.Setenv("PATH", binDir+string(os.PathListSeparator)+os.Getenv("PATH"))
+
+	var stderr bytes.Buffer
+	r := &Runner{Runner: &shell.Runner{Stderr: &stderr, Stdout: io.Discard}}
+	ok, reason := r.reviewerAvailable(context.Background())(reviewpanel.Reviewer{Family: "claude"})
+	if ok {
+		t.Fatal("reviewerAvailable should fail when the launch gate rejects the reviewer")
+	}
+	if !strings.Contains(reason, "auth smoke test") {
+		t.Fatalf("reason %q missing launch-gate detail", reason)
+	}
+}
+
 func TestReviewConclusionCommentBodyIncludesSummary(t *testing.T) {
 	for _, tc := range []struct {
-		name string
-		res  reviewpanel.PanelResult
-		want []string
+		name    string
+		res     reviewpanel.PanelResult
+		visible string
+		want    []string
 	}{
 		{
 			name: "pass",
@@ -301,7 +444,8 @@ func TestReviewConclusionCommentBodyIncludesSummary(t *testing.T) {
 					Family: "codex", Verdict: reviewpanel.Pass, Reason: "looks good", Confidence: 0.91,
 				}},
 			},
-			want: []string{"WARD-OUTCOME: done", "review summary: passed: looks good"},
+			visible: "WARD-OUTCOME: done ✅",
+			want:    []string{"WARD-OUTCOME: done", "review summary: passed: looks good"},
 		},
 		{
 			name: "block",
@@ -313,7 +457,8 @@ func TestReviewConclusionCommentBodyIncludesSummary(t *testing.T) {
 					Family: "codex", Verdict: reviewpanel.Block, Reason: "diff misses baseline", Confidence: 0.91,
 				}},
 			},
-			want: []string{"WARD-OUTCOME: blocked", "review summary: blocked: no runnable reviewer", "codex: diff misses baseline"},
+			visible: "WARD-OUTCOME: blocked 🛑",
+			want:    []string{"WARD-OUTCOME: blocked", "review summary: blocked: no runnable reviewer", "codex: diff misses baseline"},
 		},
 		{
 			name: "skipped",
@@ -322,15 +467,22 @@ func TestReviewConclusionCommentBodyIncludesSummary(t *testing.T) {
 				Note:   "review gate skipped by --skip-review / --no-review-gate",
 				Worker: "codex",
 			},
-			want: []string{"WARD-OUTCOME: done", "review summary: skipped: review gate skipped by --skip-review / --no-review-gate"},
+			visible: "WARD-OUTCOME: done ✅",
+			want:    []string{"WARD-OUTCOME: done", "review summary: skipped: review gate skipped by --skip-review / --no-review-gate"},
 		},
 	} {
 		t.Run(tc.name, func(t *testing.T) {
 			got := reviewConclusionCommentBody(tc.res)
+			if visible := visibleLinesBeforeDetails(got); visible != tc.visible {
+				t.Fatalf("reviewConclusionCommentBody visible line = %q\n%s", visible, got)
+			}
 			for _, want := range tc.want {
 				if !strings.Contains(got, want) {
 					t.Fatalf("reviewConclusionCommentBody missing %q\n%s", want, got)
 				}
+			}
+			if !strings.Contains(got, "<details><summary>review details</summary>") {
+				t.Fatalf("reviewConclusionCommentBody should collapse details\n%s", got)
 			}
 		})
 	}

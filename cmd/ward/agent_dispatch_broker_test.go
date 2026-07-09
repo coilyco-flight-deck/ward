@@ -60,7 +60,7 @@ func TestDispatchBrokerValidatesNarrowAPI(t *testing.T) {
 	if err := validateDispatchBrokerRequest(cfg); err != nil {
 		t.Errorf("valid engineer --config dispatch refused: %v", err)
 	}
-	wf := dispatchBrokerRequest{Role: "engineer", Argv: []string{"engineer", "coilyco-flight-deck/ward#1", "--workflow", "direct-main", "--details", "repair after PR #357"}}
+	wf := dispatchBrokerRequest{Role: "engineer", Argv: []string{"engineer", "coilyco-flight-deck/ward#1", "--workflow", "direct-to-main", "--details", "repair after PR #357"}}
 	if err := validateDispatchBrokerRequest(wf); err != nil {
 		t.Errorf("valid engineer --workflow/--details dispatch refused: %v", err)
 	}
@@ -205,7 +205,7 @@ func TestBrokerEngineerArgvForwardsApprovedFlags(t *testing.T) {
 		"--image", "img", "--tag", "t1", "--ward-version", "v1",
 		"--repo", "coilyco-flight-deck/cli-guard",
 		"--config", "agent.claude.model=sonnet",
-		"--workflow", "direct-main", "--details", "repair after PR #357",
+		"--workflow", "direct-to-main", "--details", "repair after PR #357",
 		"--aws", "--tailnet", "--tailnet-mode", "sidecar", "--force", "--skip-preflight",
 	})
 	got := brokerEngineerArgv(cmd, modeClaude, agentIssueRef{Owner: "coilyco-flight-deck", Repo: "ward", Number: 42})
@@ -216,7 +216,7 @@ func TestBrokerEngineerArgvForwardsApprovedFlags(t *testing.T) {
 		{"--ward-version", "v1"},
 		{"--repo", "coilyco-flight-deck/cli-guard"},
 		{"--config", "agent.claude.model=sonnet"},
-		{"--workflow", "direct-main"},
+		{"--workflow", "direct-to-main"},
 		{"--details", "repair after PR #357"},
 		{"--tailnet-mode", "sidecar"},
 	} {
@@ -258,7 +258,7 @@ func TestForwardAgentDispatchToHostBrokerSendsCanonicalRequest(t *testing.T) {
 	t.Setenv("WARD_READONLY", "1")
 	t.Setenv("WARD_CONTAINER_NAME", "session-codex-host")
 	cmd := parseCommandForTest(t, agentEngineerFlags(), []string{
-		"engineer", "coilyco-flight-deck/ward#378", "--harness", "claude", "--workflow", "direct-main",
+		"engineer", "coilyco-flight-deck/ward#378", "--harness", "claude", "--workflow", "direct-to-main",
 		"--details", "repair after PR #357", "--skip-preflight", "--skip-review",
 	})
 	forwarded, err := (&Runner{}).maybeForwardAgentDispatchToHostBroker(t.Context(), cmd, "engineer", modeClaude)
@@ -275,7 +275,7 @@ func TestForwardAgentDispatchToHostBrokerSendsCanonicalRequest(t *testing.T) {
 	if req.Token != "nonce-123" {
 		t.Errorf("forwarded token = %q, want the per-launch nonce", req.Token)
 	}
-	want := []string{"engineer", "coilyco-flight-deck/ward#378", "--harness", "claude", "--workflow", "direct-main", "--details", "repair after PR #357", "--skip-preflight", "--skip-review"}
+	want := []string{"engineer", "coilyco-flight-deck/ward#378", "--harness", "claude", "--workflow", "direct-to-main", "--details", "repair after PR #357", "--skip-preflight", "--skip-review"}
 	if !reflect.DeepEqual(req.Argv, want) {
 		t.Errorf("forwarded argv = %v, want %v", req.Argv, want)
 	}
@@ -321,6 +321,51 @@ func TestForwardAgentDispatchToHostBrokerInheritsSurfaceHarness(t *testing.T) {
 	want := []string{"engineer", "coilyco-flight-deck/ward#378", "--harness", "codex", "--skip-preflight", "--skip-review"}
 	if !reflect.DeepEqual(req.Argv, want) {
 		t.Errorf("codex surface forwarded argv = %v, want %v", req.Argv, want)
+	}
+}
+
+func TestForwardAgentDispatchToHostBrokerInheritsRunningDirectorHarness(t *testing.T) {
+	// The broker should inherit the director's current harness from WARD_AGENT/WARD_MODE
+	// when the surfaced command did not explicitly override it.
+	ln, err := net.Listen("tcp", "127.0.0.1:0")
+	if err != nil {
+		t.Fatalf("listen broker: %v", err)
+	}
+	defer ln.Close()
+
+	gotReq := make(chan dispatchBrokerRequest, 1)
+	go func() {
+		conn, err := ln.Accept()
+		if err != nil {
+			return
+		}
+		defer conn.Close()
+		var req dispatchBrokerRequest
+		_ = json.NewDecoder(conn).Decode(&req)
+		gotReq <- req
+		_ = json.NewEncoder(conn).Encode(dispatchBrokerResponse{OK: true})
+	}()
+
+	t.Setenv(envDispatchBrokerAddr, ln.Addr().String())
+	t.Setenv(envDispatchBrokerToken, "nonce-789")
+	t.Setenv("WARD_READONLY", "1")
+	t.Setenv("WARD_CONTAINER_NAME", "session-codex-host")
+	t.Setenv("WARD_AGENT", "codex")
+	t.Setenv("WARD_MODE", "codex")
+	cmd := parseCommandForTest(t, agentEngineerFlags(), []string{
+		"engineer", "coilyco-flight-deck/ward#378", "--skip-preflight", "--skip-review",
+	})
+	forwarded, err := (&Runner{}).maybeForwardAgentDispatchToHostBroker(t.Context(), cmd, "engineer", modeClaude)
+	if err != nil {
+		t.Fatalf("forward dispatch: %v", err)
+	}
+	if !forwarded {
+		t.Fatal("codex director dispatch did not forward despite broker env")
+	}
+	req := <-gotReq
+	want := []string{"engineer", "coilyco-flight-deck/ward#378", "--harness", "codex", "--skip-preflight", "--skip-review"}
+	if !reflect.DeepEqual(req.Argv, want) {
+		t.Errorf("inherited-harness forwarded argv = %v, want %v", req.Argv, want)
 	}
 }
 
@@ -427,6 +472,56 @@ func TestDispatchBrokerTokenGate(t *testing.T) {
 	}
 }
 
+// TestRunHostDispatchBrokerRequestLaunchesAsyncWithoutBrokerEnv proves the broker
+// acks before the dispatched run finishes and does not re-enter broker env.
+func TestRunHostDispatchBrokerRequestLaunchesAsyncWithoutBrokerEnv(t *testing.T) {
+	t.Setenv("HOME", t.TempDir())
+	t.Setenv("WARD_READONLY", "1")
+	t.Setenv(envDispatchBrokerAddr, "127.0.0.1:4321")
+	t.Setenv(envDispatchBrokerToken, "broker-token")
+
+	started := make(chan struct{})
+	release := make(chan struct{})
+	origLaunch := dispatchBrokerLaunch
+	t.Cleanup(func() { dispatchBrokerLaunch = origLaunch })
+	dispatchBrokerLaunch = func(_ context.Context, _ dispatchBrokerRequest) error {
+		if got := os.Getenv("WARD_READONLY"); got != "" {
+			t.Errorf("host launch inherited WARD_READONLY=%q; want it cleared", got)
+		}
+		if got := os.Getenv(envDispatchBrokerAddr); got != "" {
+			t.Errorf("host launch inherited %s=%q; want it cleared", envDispatchBrokerAddr, got)
+		}
+		if got := os.Getenv(envDispatchBrokerToken); got != "" {
+			t.Errorf("host launch inherited %s=%q; want it cleared", envDispatchBrokerToken, got)
+		}
+		close(started)
+		<-release
+		return nil
+	}
+
+	req := dispatchBrokerRequest{
+		Role: "advisor",
+		Argv: []string{"advisor", "coilyco-flight-deck/ward#795", "--harness", "codex"},
+	}
+	start := time.Now()
+	logPath, err := (&Runner{}).runHostDispatchBrokerRequest(t.Context(), req)
+	if err != nil {
+		t.Fatalf("runHostDispatchBrokerRequest: %v", err)
+	}
+	if elapsed := time.Since(start); elapsed > 200*time.Millisecond {
+		t.Fatalf("runHostDispatchBrokerRequest blocked for %s, want an immediate ack", elapsed)
+	}
+	if !strings.Contains(logPath, "dispatch") {
+		t.Fatalf("log path %q does not look like a dispatch log", logPath)
+	}
+	select {
+	case <-started:
+	case <-time.After(2 * time.Second):
+		t.Fatal("host launch never started")
+	}
+	close(release)
+}
+
 func TestNoBrokerKeepsDirectDispatchPath(t *testing.T) {
 	t.Setenv(envDispatchBrokerAddr, "")
 	t.Setenv("WARD_READONLY", "")
@@ -437,6 +532,36 @@ func TestNoBrokerKeepsDirectDispatchPath(t *testing.T) {
 	}
 	if forwarded {
 		t.Fatal("direct host dispatch should not forward without broker env")
+	}
+}
+
+func TestSurfaceDispatchModeInheritsRunningDirectorHarness(t *testing.T) {
+	t.Setenv(envDispatchBrokerAddr, "127.0.0.1:12345")
+	t.Setenv("WARD_READONLY", "1")
+	t.Setenv("WARD_AGENT", "codex")
+	t.Setenv("WARD_MODE", "codex")
+	cmd := parseCommandForTest(t, agentEngineerFlags(), []string{"engineer", "coilyco-flight-deck/ward#1"})
+	got, err := surfaceDispatchMode(cmd)
+	if err != nil {
+		t.Fatalf("surfaceDispatchMode: %v", err)
+	}
+	if got != modeCodex {
+		t.Errorf("surfaceDispatchMode() = %q, want codex", got)
+	}
+}
+
+func TestSurfaceDispatchModeExplicitOverrideWins(t *testing.T) {
+	t.Setenv(envDispatchBrokerAddr, "127.0.0.1:12345")
+	t.Setenv("WARD_READONLY", "1")
+	t.Setenv("WARD_AGENT", "codex")
+	t.Setenv("WARD_MODE", "codex")
+	cmd := parseCommandForTest(t, agentEngineerFlags(), []string{"engineer", "coilyco-flight-deck/ward#1", "--harness", "claude"})
+	got, err := surfaceDispatchMode(cmd)
+	if err != nil {
+		t.Fatalf("surfaceDispatchMode: %v", err)
+	}
+	if got != modeClaude {
+		t.Errorf("surfaceDispatchMode explicit override = %q, want claude", got)
 	}
 }
 
@@ -498,11 +623,11 @@ func TestDispatchBrokerWrongBrokerHint(t *testing.T) {
 func TestRedactDispatchBrokerArgvKeepsWorkflowAndDetailsButScrubsSecrets(t *testing.T) {
 	got := redactDispatchBrokerArgv([]string{
 		"engineer", "coilyco-flight-deck/ward#1",
-		"--workflow", "direct-main",
+		"--workflow", "direct-to-main",
 		"--details", "repair after PR #357",
 		"--config", "agent.claude.api-key=ghp_aaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaa",
 	})
-	for _, want := range []string{"--workflow direct-main", "--details repair after PR #357"} {
+	for _, want := range []string{"--workflow direct-to-main", "--details repair after PR #357"} {
 		if !strings.Contains(got, want) {
 			t.Errorf("redacted argv %q missing %q", got, want)
 		}

@@ -30,11 +30,11 @@ reservation conflict), not anything in `console.log`.
 From the durable surfaces outward:
 
 1. **Classify it from `meta.json`.** In `~/.ward/agent-logs/<container>/meta.json`
-   (disk sink) or the SigNoz record, the `outcome` field already names the end
-   state. The directory name is the `container` correlation id you carry onward.
+   the `outcome` field already names the end state. The directory name is the
+   `container` correlation id you carry onward.
    Sink selection: [agent-observability.md](agent-observability.md).
-2. **Pull the whole run.** `grep container=<name>` the `console.log` (or the SigNoz
-   log records) to gather every in-container line for that run in one view.
+2. **Pull the whole run.** `grep container=<name>` the `console.log` to gather
+   every in-container line for that run in one view.
 3. **Walk bootstrap.** Confirm the run reached `clone done`, `provenance recorded`,
    hook install, compose, and `bootstrap prelaunch check passed` to `bootstrap
    launch handoff`. The first stage logging `start` with no matching `done`/`passed`

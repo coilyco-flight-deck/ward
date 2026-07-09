@@ -26,13 +26,13 @@ An opt-in asked **once at init**, never per tick. `--dry-run`/`--print` skip it.
 2. **Refresh** each ledger from the live backlog, ranking issues into lanes by tier
    (`P0`-`P4`) and mode (`headless`/`interactive`/`consult`).
 3. **Probe** forge liveness (the top candidate's issue get) so a recovery reaches the decision.
-4. **Sweep** ward-owned PRs that carry the `pull-requests-and-merge` marker. See [agent-director-pr-merge.md](agent-director-pr-merge.md).
+4. **Sweep** ward-owned PRs that carry the `pull-request-and-merge` marker. See [agent-director-pr-merge.md](agent-director-pr-merge.md).
 5. **Decide** via a host one-shot over the candidates + forge-health; answers `DISPATCH:
    <numbers>`/`none`, can only **narrow or hold**, and **fails open to rank**.
 6. **Dispatch** the chosen set via the engineer (`agent.<mode>.engineer`).
 7. **Sleep** `--poll-interval`, **no LLM held open**.
 
-Only the **headless** lane auto-dispatches; interactive issues surface.
+Only the **headless** lane auto-dispatches; interactive issues surface. The merge sweep is narrow and policy-bound. See [agent-director-pr-merge.md](agent-director-pr-merge.md).
 
 ## The WARD-OUTCOME marker
 

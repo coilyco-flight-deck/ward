@@ -15,6 +15,7 @@ import (
 // lane the director uses for ward-owned PRs that are authorized to land.
 
 var directorClosingRefRE = regexp.MustCompile(`(?i)\b(?:closes|fixes|resolves)\s+#(\d+)\b`)
+var directorWorkflowMarkerRE = regexp.MustCompile(`(?i)\bward\.workflow:\s*([[:alnum:]-]+)\b`)
 
 // directorMergeFlags keeps the merge subcommand narrow: scope + preview only.
 func directorMergeFlags() []cli.Flag {
@@ -33,7 +34,7 @@ func agentDirectorMergeCommand() *cli.Command {
 		Name:        "merge",
 		Usage:       "Merge eligible ward-owned PRs whose issue thread authorizes director merge.",
 		ArgsUsage:   "(scope via --repo; default: the cwd git origin)",
-		Description: `merge scans open pull requests in scope and merges only the ones the ward issue thread marks as director-merge authorized: the linked issue ended with WARD-OUTCOME: done, the final comment says workflow: pull-requests-and-merge, the review summary is passed, and the PR is not salvage/draft noise. pr/pull-requests still need a human. See docs/agent-director.md and docs/agent-workflow.md.`,
+		Description: `merge scans open pull requests in scope and merges only the ones the ward issue thread marks as director-merge authorized: the linked issue ended with WARD-OUTCOME: done, the final comment says workflow: pull-request-and-merge, the review summary is passed, and the PR is not salvage/draft noise. pull-request still needs a human. See docs/agent-director.md and docs/agent-workflow.md.`,
 		Flags:       directorMergeFlags(),
 		Action: func(ctx context.Context, c *cli.Command) error {
 			r := newRunner()
@@ -99,6 +100,11 @@ func directorMergeEligibility(ctx context.Context, owner, repo string, pr dispat
 	if !ok {
 		return false, "no same-repo closing reference in the PR body", 0, directorRunMeta{}
 	}
+	if wf, ok := directorPRWorkflowMarker(pr.Body); !ok {
+		return false, "PR body missing ward.workflow: pull-request-and-merge marker", linked, directorRunMeta{}
+	} else if wf != string(workflowPullRequestAndMerge) {
+		return false, "PR body carries ward.workflow: " + wf + "; need pull-request-and-merge", linked, directorRunMeta{}
+	}
 	if _, err := cl.getIssue(ctx, owner, repo, linked); err != nil {
 		return false, "could not read linked issue: " + firstLine(err.Error()), linked, directorRunMeta{}
 	}
@@ -116,6 +122,20 @@ func directorMergeEligibility(ctx context.Context, owner, repo string, pr dispat
 	return directorMergeDecision(pr, linked, meta)
 }
 
+// directorPRWorkflowMarker extracts the workflow marker from a PR body.
+func directorPRWorkflowMarker(body string) (string, bool) {
+	for _, ln := range strings.Split(body, "\n") {
+		s := backlogCommentLine(ln)
+		if s == "" {
+			continue
+		}
+		if m := directorWorkflowMarkerRE.FindStringSubmatch(s); m != nil {
+			return strings.ToLower(strings.TrimSpace(m[1])), true
+		}
+	}
+	return "", false
+}
+
 // directorMergeDecision is the pure policy boundary for the director merge lane.
 func directorMergeDecision(pr dispatch.Issue, linked int, meta directorRunMeta) (ok bool, reason string, _ int, _ directorRunMeta) {
 	title := strings.ToLower(strings.TrimSpace(pr.Title))
@@ -128,7 +148,7 @@ func directorMergeDecision(pr dispatch.Issue, linked int, meta directorRunMeta) 
 	if !meta.HasOutcome || strings.ToLower(strings.TrimSpace(meta.Outcome.Status)) != "done" {
 		return false, "linked issue did not finish with WARD-OUTCOME: done", linked, meta
 	}
-	if strings.TrimSpace(meta.Workflow) != string(workflowPullRequestsAndMerge) {
+	if strings.TrimSpace(meta.Workflow) != string(workflowPullRequestAndMerge) {
 		if strings.TrimSpace(meta.Workflow) == "" {
 			return false, "linked issue comment did not record the merge workflow", linked, meta
 		}

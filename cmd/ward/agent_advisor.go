@@ -53,7 +53,7 @@ func agentAdvisorCommand() *cli.Command {
 		Flags:     agentAdvisorFlags(),
 		Action: func(ctx context.Context, c *cli.Command) error {
 			r := newRunner()
-			mode, err := agentHarness(c)
+			mode, err := surfaceDispatchMode(c)
 			if err != nil {
 				return fmt.Errorf("ward agent advisor: %w", err)
 			}

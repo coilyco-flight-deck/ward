@@ -108,22 +108,21 @@ func TestParseForge(t *testing.T) {
 	}
 }
 
-// TestForgeCarryClause verifies the seed's carry sentence is forge-specific: GitHub
-// opens a PR (never pushes main), Forgejo merges to main + closes the issue.
-func TestForgeCarryClause(t *testing.T) {
-	gh := forgeCarryClause(agentIssueRef{Owner: "o", Repo: "r", Number: 7, Forge: forgeGitHub})
-	for _, want := range []string{"gh pr create", "Closes #7", "pull request", "GITHUB_TOKEN"} {
-		if !strings.Contains(gh, want) {
-			t.Errorf("github carry clause missing %q: %s", want, gh)
+// TestDirectToMainCarryClause verifies the fast path is generic across forges and
+// tells the agent to land the issue on main.
+func TestDirectToMainCarryClause(t *testing.T) {
+	for _, ref := range []agentIssueRef{
+		{Owner: "o", Repo: "r", Number: 7},
+		{Owner: "o", Repo: "r", Number: 7, Forge: forgeGitHub},
+	} {
+		got := directToMainCarryClause(ref)
+		for _, want := range []string{"merge to main", "closes #7"} {
+			if !strings.Contains(got, want) {
+				t.Errorf("direct-to-main carry clause missing %q: %s", want, got)
+			}
 		}
-	}
-	if strings.Contains(gh, "merge to main") {
-		t.Errorf("github carry clause should not tell the agent to merge to main: %s", gh)
-	}
-	fj := forgeCarryClause(agentIssueRef{Owner: "o", Repo: "r", Number: 8})
-	for _, want := range []string{"merge to main", "closes #8"} {
-		if !strings.Contains(fj, want) {
-			t.Errorf("forgejo carry clause missing %q: %s", want, fj)
+		if strings.Contains(got, "gh pr create") || strings.Contains(got, "pull request") {
+			t.Errorf("direct-to-main carry clause should not mention a PR boundary: %s", got)
 		}
 	}
 }
