@@ -3,10 +3,13 @@ package main
 import (
 	"context"
 	"encoding/json"
+	"net/http"
+	"net/http/httptest"
 	"os"
 	"path/filepath"
 	"runtime"
 	"strings"
+	"sync/atomic"
 	"testing"
 
 	"forgejo.coilysiren.me/coilyco-flight-deck/cli-guard/cli/shell"
@@ -66,6 +69,70 @@ func TestCreateIssueBodyIsSigned(t *testing.T) {
 	}
 	if !strings.Contains(got["body"], agentSignatureMarker) {
 		t.Fatalf("body lost the signature marker after round-trip: %q", got["body"])
+	}
+}
+
+func TestGetPullRequestRetriesEmptyBodyThenSucceeds(t *testing.T) {
+	var calls int32
+	srv := httptest.NewServer(http.HandlerFunc(func(w http.ResponseWriter, r *http.Request) {
+		if got := atomic.AddInt32(&calls, 1); got == 1 {
+			w.WriteHeader(http.StatusOK)
+			return
+		}
+		_, _ = w.Write([]byte(`{"mergeable":true}`))
+	}))
+	defer srv.Close()
+
+	cl := &forgejoClient{baseURL: srv.URL, token: "secret"}
+	pr, err := cl.getPullRequest(context.Background(), "coilyco-flight-deck", "ward", 862)
+	if err != nil {
+		t.Fatalf("getPullRequest: %v", err)
+	}
+	if !pr.Mergeable {
+		t.Fatalf("mergeable = %v, want true", pr.Mergeable)
+	}
+	if got := atomic.LoadInt32(&calls); got != 2 {
+		t.Fatalf("request count = %d, want 2", got)
+	}
+}
+
+func TestGetPullRequestPersistentEmptyBody(t *testing.T) {
+	var calls int32
+	srv := httptest.NewServer(http.HandlerFunc(func(w http.ResponseWriter, r *http.Request) {
+		atomic.AddInt32(&calls, 1)
+		w.WriteHeader(http.StatusOK)
+	}))
+	defer srv.Close()
+
+	cl := &forgejoClient{baseURL: srv.URL, token: "secret"}
+	_, err := cl.getPullRequest(context.Background(), "coilyco-flight-deck", "ward", 863)
+	if err == nil {
+		t.Fatal("getPullRequest: want error, got nil")
+	}
+	if got := atomic.LoadInt32(&calls); got != 3 {
+		t.Fatalf("request count = %d, want 3", got)
+	}
+	for _, want := range []string{"200 OK", "0 byte(s)", "<empty>"} {
+		if !strings.Contains(err.Error(), want) {
+			t.Fatalf("error %q does not contain %q", err, want)
+		}
+	}
+}
+
+func TestGetPullRequestReadsBodyLargerThan4096(t *testing.T) {
+	body := `{"mergeable":true,"padding":"` + strings.Repeat("x", 5000) + `"}`
+	srv := httptest.NewServer(http.HandlerFunc(func(w http.ResponseWriter, r *http.Request) {
+		_, _ = w.Write([]byte(body))
+	}))
+	defer srv.Close()
+
+	cl := &forgejoClient{baseURL: srv.URL, token: "secret"}
+	pr, err := cl.getPullRequest(context.Background(), "coilyco-flight-deck", "ward", 864)
+	if err != nil {
+		t.Fatalf("getPullRequest: %v", err)
+	}
+	if !pr.Mergeable {
+		t.Fatalf("mergeable = %v, want true", pr.Mergeable)
 	}
 }
 

@@ -308,3 +308,17 @@ esac
 		t.Fatalf("mergeability projection = [%v %v], want [true false]", prs[0].Mergeable, prs[1].Mergeable)
 	}
 }
+
+func TestDirectorMergeEligibilitySkipsUnknownMergeability(t *testing.T) {
+	ok, reason, linked, _ := directorMergeEligibility(context.Background(), "coilyco-flight-deck", "ward",
+		directorPullRequest{Issue: dispatch.Issue{Title: "ship the fix", Body: "closes #729\n" + directorMergeWorkflowMarker + "\n"}}, &forgejoClient{})
+	if ok {
+		t.Fatal("unknown mergeability: want skip, got allow")
+	}
+	if linked != 729 {
+		t.Fatalf("linked issue = %d, want 729", linked)
+	}
+	if reason != "could not read PR mergeability" {
+		t.Fatalf("reason = %q, want unknown-mergeability skip", reason)
+	}
+}

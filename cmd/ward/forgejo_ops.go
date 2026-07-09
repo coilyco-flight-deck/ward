@@ -186,26 +186,46 @@ func (c *forgejoClient) getPullRequest(ctx context.Context, owner, repo string, 
 		baseURL = forgejoBaseURL
 	}
 	endpoint := fmt.Sprintf("%s/api/v1/repos/%s/%s/pulls/%d", baseURL, url.PathEscape(owner), url.PathEscape(repo), number)
+	client := &http.Client{Timeout: 30 * time.Second}
+	var lastErr error
+	for attempt := 1; attempt <= 3; attempt++ {
+		raw, retryable, err := c.getPullRequestOnce(ctx, client, endpoint, owner, repo, number)
+		if err == nil {
+			return raw, nil
+		}
+		lastErr = err
+		if !retryable || attempt == 3 {
+			return nil, err
+		}
+		time.Sleep(time.Duration(attempt) * 50 * time.Millisecond)
+	}
+	return nil, lastErr
+}
+
+func (c *forgejoClient) getPullRequestOnce(ctx context.Context, client *http.Client, endpoint, owner, repo string, number int) (*forgejoPullRequestRaw, bool, error) {
 	req, err := http.NewRequestWithContext(ctx, http.MethodGet, endpoint, nil)
 	if err != nil {
-		return nil, err
+		return nil, false, err
 	}
 	req.Header.Set("Authorization", "token "+c.token)
 	req.Header.Set("Accept", "application/json")
-	resp, err := (&http.Client{Timeout: 30 * time.Second}).Do(req)
+	resp, err := client.Do(req)
 	if err != nil {
-		return nil, err
+		return nil, false, err
 	}
 	defer func() { _ = resp.Body.Close() }()
-	data, _ := io.ReadAll(io.LimitReader(resp.Body, 4096))
+	data, readErr := io.ReadAll(resp.Body)
+	if readErr != nil {
+		return nil, false, fmt.Errorf("forgejo: read pull request %s/%s#%d from %s: %w", owner, repo, number, resp.Status, readErr)
+	}
 	if resp.StatusCode < 200 || resp.StatusCode >= 300 {
-		return nil, fmt.Errorf("forgejo pull request GET returned %s: %s", resp.Status, firstLine(string(data)))
+		return nil, false, fmt.Errorf("forgejo pull request GET returned %s after %d byte(s): %s", resp.Status, len(data), responseSnippet(data))
 	}
 	var raw forgejoPullRequestRaw
 	if err := json.Unmarshal(data, &raw); err != nil {
-		return nil, fmt.Errorf("forgejo: parse pull request %s/%s#%d: %w", owner, repo, number, err)
+		return nil, true, fmt.Errorf("forgejo: parse pull request %s/%s#%d from %s after %d byte(s): %s: %w", owner, repo, number, resp.Status, len(data), responseSnippet(data), err)
 	}
-	return &raw, nil
+	return &raw, false, nil
 }
 
 // listIssueComments fetches an issue's comment thread, oldest first.
@@ -631,4 +651,19 @@ func writeForgejoBody(obj map[string]string) (path string, cleanup func(), err e
 		return "", noop, fmt.Errorf("forgejo: close body file: %w", err)
 	}
 	return f.Name(), remove, nil
+}
+
+func responseSnippet(data []byte) string {
+	if len(data) == 0 {
+		return "<empty>"
+	}
+	line := firstLine(string(data))
+	if line == "" {
+		return "<empty>"
+	}
+	const maxSnippet = 160
+	if len(line) > maxSnippet {
+		line = line[:maxSnippet] + "..."
+	}
+	return strconv.Quote(line)
 }
