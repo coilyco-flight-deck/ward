@@ -63,7 +63,6 @@ in-container entrypoint, not by hand. See docs/agent.md for the contributor surf
 		Commands: []*cli.Command{
 			containerReapCommand(),
 			containerBootstrapCommand(),
-			containerMcporterHydrateCommand(),
 			containerResolveContextCommand(),
 			containerSubstrateInventoryCommand(),
 			containerSubstrateCatalogCommand(),
