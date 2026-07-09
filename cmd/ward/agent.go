@@ -599,15 +599,21 @@ func agentSurfaceFlags() []cli.Flag {
 		&cli.BoolFlag{Name: "force", Usage: "skip the local + remote concurrency reservation checks (reclaim a stale or foreign hold)"},
 	)
 	// The detached run gets an autonomous pre-flight before launching (ward#137).
-	// skip-preflight skips that and the review gate; skip-host-preflight leaves review on.
+	// skip-preflight skips that, the launch-adjacent probes, and the review gate.
 	flags = append(flags,
-		&cli.BoolFlag{Name: "skip-preflight", Aliases: []string{"no-preflight"}, Usage: "skip the pre-flight feasibility check and the in-container review gate, then detach immediately"},
+		&cli.BoolFlag{Name: "skip-preflight", Aliases: []string{"no-preflight"}, Usage: "skip the host pre-flight, reservation re-check wait, launch-adjacent network/image/update probes, and the in-container review gate, then detach immediately"},
 		&cli.BoolFlag{Name: "skip-host-preflight", Hidden: true, Usage: "internal: skip only the host pre-flight; director auto-dispatch uses this so the review gate still runs"},
 	)
 	// --quiet-seed silences the seeded-prompt/issue-body stderr dump under director
 	// auto-dispatch, whose console the in-process engineer shares (ward#519).
 	flags = append(flags, &cli.BoolFlag{Name: "quiet-seed", Hidden: true, Usage: "suppress the seeded-prompt/issue-body dump to stderr (set by director auto-dispatch; the seed still rides into the container as its task text) - ward#519"})
 	return flags
+}
+
+// preflightSkipped reports whether the operator asked to bypass the launch-adjacent
+// preflight bucket (`--skip-preflight` or its alias).
+func preflightSkipped(c *cli.Command) bool {
+	return c.Bool("skip-preflight") || c.Bool("no-preflight")
 }
 
 // resolvedWork bundles resolveAgentWork's output: ref, title, body, comment thread
@@ -823,7 +829,7 @@ func reviewGateDecision(c *cli.Command, role string, worker containerMode, ref a
 	if c.Bool("skip-review") || c.Bool("no-review-gate") {
 		return false, "review gate skipped by --skip-review / --no-review-gate"
 	}
-	if c.Bool("skip-preflight") || c.Bool("no-preflight") {
+	if preflightSkipped(c) {
 		return false, "review gate skipped because --skip-preflight / --no-preflight also skips review"
 	}
 	skips, err := loadReviewSkips()
@@ -896,6 +902,7 @@ func reviewSkipMatch(raw, role, worker, repo string) bool {
 // runAgentWork resolves the issue, seeds the prompt, runs the autonomous
 // pre-flight (runPreflight), and launches the detached run (ward#356).
 func (r *Runner) runAgentWork(ctx context.Context, c *cli.Command, mode containerMode, surface string) error {
+	label := agentCmdline(mode, surface)
 	w, err := r.resolveAgentWork(ctx, c, mode, surface)
 	if err != nil {
 		return err
@@ -903,7 +910,11 @@ func (r *Runner) runAgentWork(ctx context.Context, c *cli.Command, mode containe
 	// Warn at host dispatch if ward is stale; a detached run buries the only
 	// `ward version` signal in a container log (ward#143). --print stays offline.
 	if !c.Bool("print") {
-		r.maybeWarnWardOutdated(ctx)
+		if preflightSkipped(c) {
+			writef(os.Stderr, "%s: skipping ward update reminder (--skip-preflight)\n", label)
+		} else {
+			r.maybeWarnWardOutdated(ctx)
+		}
 	}
 	if !w.ReviewGate && !c.Bool("print") {
 		if _, skipReason := reviewGateDecision(c, surface, mode, w.Ref); skipReason != "" {
@@ -941,7 +952,23 @@ const preflightTimeout = 3 * time.Minute
 // preflightWanted gates the pre-flight to an interactive dispatch (a human at the
 // terminal who walked away), never --print, honoring --skip-preflight. See docs.
 func preflightWanted(c *cli.Command) bool {
-	return terminalAttached() && !c.Bool("print") && !c.Bool("skip-preflight") && !c.Bool("skip-host-preflight")
+	return terminalAttached() && !c.Bool("print") && !preflightSkipped(c) && !c.Bool("skip-host-preflight")
+}
+
+// launchPreflightSkipReasons lists the launch-adjacent probes skipped by
+// --skip-preflight for the current plan.
+func launchPreflightSkipReasons(plan upPlan, noPull bool) []string {
+	if !plan.SkipPreflight {
+		return nil
+	}
+	reasons := []string{}
+	if plan.TSSidecar {
+		reasons = append(reasons, "ward-tailnet readiness check")
+	}
+	if !noPull {
+		reasons = append(reasons, "image pull")
+	}
+	return reasons
 }
 
 // preflightPrompt asks the about-to-detach agent for a feasibility read ending on a
@@ -1567,7 +1594,7 @@ func (r *Runner) launchAgentContainer(ctx context.Context, c *cli.Command, mode 
 	// Reserve the issue so another run won't redo it. Fold the dynamic seed context into
 	// the comment so a pre-launch-gate death self-documents on the thread (ward#609).
 	seedCtx := buildReservationSeedContext(w, plan, time.Now().UTC())
-	release, err := r.reserveIssue(ctx, label, mode, ref, plan.Name, plan.Branch, justification, seedCtx, c.Bool("force"))
+	release, err := r.reserveIssue(ctx, label, mode, ref, plan.Name, plan.Branch, justification, seedCtx, c.Bool("force"), plan.SkipPreflight)
 	if err != nil {
 		return err
 	}
@@ -1582,8 +1609,14 @@ func (r *Runner) launchAgentContainer(ctx context.Context, c *cli.Command, mode 
 
 	// Ready the ward-tailnet network before the sweep + pull burn, so a host missing it
 	// gets it created here (idempotent), not a raw 125 mid-launch (ward#597).
-	if err := r.preflightTailnet(ctx, plan); err != nil {
-		return err
+	if plan.SkipPreflight {
+		for _, reason := range launchPreflightSkipReasons(plan, c.Bool("no-pull")) {
+			writef(os.Stderr, "%s: skipping %s (--skip-preflight)\n", label, reason)
+		}
+	} else {
+		if err := r.preflightTailnet(ctx, plan); err != nil {
+			return err
+		}
 	}
 
 	// Reclaim dead containers' writable layers before adding one more, so the
@@ -1593,7 +1626,11 @@ func (r *Runner) launchAgentContainer(ctx context.Context, c *cli.Command, mode 
 	// The engineer name is deterministic, so an exited same-issue corpse in the
 	// keep-N window would block the name; clear it for reuse (ward#364).
 	r.clearExitedContainer(ctx, plan.Name)
-	if !c.Bool("no-pull") {
+	if plan.SkipPreflight {
+		if !c.Bool("no-pull") {
+			writef(os.Stderr, "%s: skipping image pull (--skip-preflight)\n", label)
+		}
+	} else if !c.Bool("no-pull") {
 		writef(os.Stderr, "%s: image pull enabled for %s\n", label, plan.Image)
 		r.pullAgentImage(ctx, plan, label)
 	} else {
@@ -1894,7 +1931,11 @@ func (r *Runner) runAgentTaskDirect(ctx context.Context, c *cli.Command, mode co
 
 	// task always detaches, so host dispatch is the last interactive moment - surface
 	// a stale-ward reminder before it files+launches (ward#143).
-	r.maybeWarnWardOutdated(ctx)
+	if preflightSkipped(c) {
+		writef(os.Stderr, "%s: skipping ward update reminder (--skip-preflight)\n", label)
+	} else {
+		r.maybeWarnWardOutdated(ctx)
+	}
 
 	cl, err := r.hostForgejoClient(ctx)
 	if err != nil {
@@ -1971,7 +2012,15 @@ func printAgentTaskPlan(c *cli.Command, mode containerMode, repo targetRepo, tit
 	writef(&b, "name:    %s\n", plan.Name)
 	writef(&b, "----- issue to file -----\ntitle: %s\n\n%s\n----- end -----\n", title, body)
 	writef(&b, "----- seeded prompt (#N filled once filed) -----\n%s\n----- end -----\n", seed)
-	if c.Bool("no-pull") {
+	if plan.SkipPreflight {
+		writef(&b, "# skip-preflight: launch-adjacent probes are bypassed before the container starts; trust and closed-issue checks still run\n")
+		for _, reason := range launchPreflightSkipReasons(plan, c.Bool("no-pull")) {
+			writef(&b, "# skip-preflight: skipping %s\n", reason)
+		}
+	}
+	if plan.SkipPreflight {
+		writef(&b, "# pull skipped (--skip-preflight); image: %s\n", plan.Image)
+	} else if c.Bool("no-pull") {
 		writef(&b, "# pull skipped (--no-pull); image: %s\n", plan.Image)
 	} else {
 		writef(&b, "docker pull %s\n", plan.Image)
@@ -2015,7 +2064,15 @@ func printAgentPlan(c *cli.Command, p upPlan, ref agentIssueRef, title, seed, su
 	writef(&b, "workflow: %s\n", p.Workflow.orDefault())
 	writef(&b, "name:    %s\n", p.Name)
 	writef(&b, "%s", seedLogBlock(seed))
-	if c.Bool("no-pull") {
+	if p.SkipPreflight {
+		writef(&b, "# skip-preflight: launch-adjacent probes are bypassed before the container starts; trust and closed-issue checks still run\n")
+		for _, reason := range launchPreflightSkipReasons(p, c.Bool("no-pull")) {
+			writef(&b, "# skip-preflight: skipping %s\n", reason)
+		}
+	}
+	if p.SkipPreflight {
+		writef(&b, "# pull skipped (--skip-preflight); image: %s\n", p.Image)
+	} else if c.Bool("no-pull") {
 		writef(&b, "# pull skipped (--no-pull); image: %s\n", p.Image)
 	} else {
 		writef(&b, "docker pull %s\n", p.Image)
