@@ -85,57 +85,61 @@ type directorBackend interface {
 // runDirectorLoop is the heartbeat: poll + reconcile, refresh, then surface (on drain)
 // or LLM-decide + dispatch, then sleep. Loops until drained, --max-cycles, or cancel.
 func runDirectorLoop(ctx context.Context, cfg backlogConfig, be directorBackend) error {
-	// Startup triage pass: reconcile once before the init gate so an already-drained lane
-	// can skip the kickoff prompt and go straight to the surface path.
+	if stop, err := directorStartupPhase(ctx, be); err != nil || stop {
+		return err
+	}
+	for cycle := 1; ; cycle++ {
+		if stop, err := directorHeartbeatTick(ctx, cfg, be, cycle); err != nil || stop {
+			return err
+		}
+	}
+}
+
+// directorStartupPhase does one deterministic reconcile before the init gate, then either
+// skips kickoff for an already-drained lane or asks once whether to drain now.
+func directorStartupPhase(ctx context.Context, be directorBackend) (bool, error) {
 	be.poll(ctx)
 	be.refresh(ctx)
 	be.mergeEligiblePullRequests(ctx)
 	queued, inflight := backlogLaneCounts(be.entries())
 	if queued == 0 && inflight == 0 {
-		stop, err := directorHandleDrain(ctx, be)
-		if err != nil || stop {
-			return err
-		}
-	} else {
-		// One-time init gate (ward#361): ask once whether to drain now or surface first.
-		// Never re-asked per tick or on a later resume. See docs/agent-director.md.
-		if stop, err := directorKickoff(ctx, be); err != nil || stop {
-			return err
-		}
+		return directorHandleDrain(ctx, be)
 	}
-	for cycle := 1; ; cycle++ {
-		// Deterministic half: reconcile in-flight, then pick up issues closed/promoted/
-		// filed since the last pass. Both reuse #346's ledger layer.
-		be.poll(ctx)
-		be.refresh(ctx)
-		be.mergeEligiblePullRequests(ctx)
+	// One-time init gate (ward#361): ask once whether to drain now or surface first.
+	// Never re-asked per tick or on a later resume. See docs/agent-director.md.
+	return directorKickoff(ctx, be)
+}
 
-		entries := be.entries()
-		queued, inflight := backlogLaneCounts(entries)
+// directorHeartbeatTick runs one drain/dispatch/sleep heartbeat cycle.
+func directorHeartbeatTick(ctx context.Context, cfg backlogConfig, be directorBackend, cycle int) (bool, error) {
+	// Deterministic half: reconcile in-flight, then pick up issues closed/promoted/
+	// filed since the last pass. Both reuse #346's ledger layer.
+	be.poll(ctx)
+	be.refresh(ctx)
+	be.mergeEligiblePullRequests(ctx)
 
-		// Drain -> surface, rather than exit (ward#351).
-		if queued == 0 && inflight == 0 {
-			stop, err := directorHandleDrain(ctx, be)
-			if err != nil || stop {
-				return err
-			}
-			continue
-		}
+	entries := be.entries()
+	queued, inflight := backlogLaneCounts(entries)
 
-		if cfg.maxCycles > 0 && cycle >= cfg.maxCycles {
-			be.reportMaxCycles(queued, inflight)
-			return be.summary()
-		}
-
-		// LLM half: one host one-shot decides which queued issues to dispatch, bounded
-		// by the free-slot budget; dispatch the chosen set, then sleep cheaply.
-		if err := directorDispatchTick(ctx, cfg, be, entries, inflight); err != nil {
-			return err
-		}
-		if err := directorWait(ctx, cfg, be, inflight); err != nil {
-			return err
-		}
+	// Drain -> surface, rather than exit (ward#351).
+	if queued == 0 && inflight == 0 {
+		return directorHandleDrain(ctx, be)
 	}
+
+	if cfg.maxCycles > 0 && cycle >= cfg.maxCycles {
+		be.reportMaxCycles(queued, inflight)
+		return true, be.summary()
+	}
+
+	// LLM half: one host one-shot decides which queued issues to dispatch, bounded
+	// by the free-slot budget; dispatch the chosen set, then sleep cheaply.
+	if err := directorDispatchTick(ctx, cfg, be, entries, inflight); err != nil {
+		return true, err
+	}
+	if err := directorWait(ctx, cfg, be, inflight); err != nil {
+		return true, err
+	}
+	return false, nil
 }
 
 // directorWait ends a tick's sleep window: slots-full offers an on-demand surface
