@@ -20,7 +20,7 @@ func TestFetchLatestWardTagQuietWithoutRunner(t *testing.T) {
 
 func TestWardOutdatedNotice(t *testing.T) {
 	got := wardOutdatedNotice("v0.5.1", "v0.5.2")
-	for _, want := range []string{"v0.5.1", "v0.5.2", "ward upgrade", "behind"} {
+	for _, want := range []string{"v0.5.1", "v0.5.2", "refresh it", "behind"} {
 		if !strings.Contains(got, want) {
 			t.Errorf("wardOutdatedNotice missing %q; got:\n%s", want, got)
 		}

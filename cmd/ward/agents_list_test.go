@@ -106,7 +106,6 @@ func TestAgentsListSurvivesExecMount(t *testing.T) {
 		Name: "ward",
 		Commands: []*cli.Command{
 			{Name: "git"},
-			{Name: "pkg", Commands: []*cli.Command{{Name: "brew"}}},
 			{Name: "ops", Commands: []*cli.Command{{Name: "forgejo"}}},
 			agentsCommand(),
 		},

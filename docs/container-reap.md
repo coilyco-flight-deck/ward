@@ -113,9 +113,9 @@ invariant is enforced one layer up, at **dispatch**: `buildUpPlan` refuses to
 launch a container pinned to a ward strictly **older** than the dispatching host
 ([ward#529](https://forgejo.coilysiren.me/coilyco-flight-deck/ward/issues/529),
 [agent-ward-downgrade.md](agent-ward-downgrade.md)), so a known-buggy reaper never
-ships in the first place. Keep the dispatching host's ward current
-(`brew upgrade coilyco-flight-deck/tap/ward`) and do not pass an older
-`--ward-version` / `WARD_AGENT_VERSION` without `--allow-ward-downgrade`.
+ships in the first place. Keep the dispatching host's ward current and do not
+pass an older `--ward-version` / `WARD_AGENT_VERSION` without
+`--allow-ward-downgrade`.
 
 ## Operator note: don't rotate the token mid-run
 

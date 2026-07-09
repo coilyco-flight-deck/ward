@@ -38,8 +38,8 @@ func (r *Runner) maybeWarnWardOutdated(ctx context.Context) {
 // wardOutdated reports the latest ward release tag and whether the host binary is
 // behind it. Best-effort and quiet on every failure mode (the gate + heads-up share it).
 func (r *Runner) wardOutdated(ctx context.Context) (latest string, behind bool) {
-	// A dev/source build has no meaningful "latest release" to chase, and the
-	// brew-upgrade path doesn't apply to it - skip before touching the network.
+	// A dev/source build has no meaningful "latest release" to chase - skip
+	// before touching the network.
 	if !version.LooksReleased(Version) {
 		return "", false
 	}
@@ -55,7 +55,7 @@ func (r *Runner) wardOutdated(ctx context.Context) (latest string, behind bool) 
 func wardOutdatedNotice(current, latest string) string {
 	return fmt.Sprintf(
 		"ward agent: heads up - your ward %s is behind the latest release %s.\n"+
-			"ward agent: this host binary is what dispatches agents; run `ward upgrade` to refresh it.\n",
+			"ward agent: this host binary is what dispatches agents; refresh it before launching a long-lived run.\n",
 		current, latest)
 }
 

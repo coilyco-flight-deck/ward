@@ -96,7 +96,7 @@ func (r *Runner) runScratchSession(ctx context.Context, c *cli.Command, mode con
 
 	// Pre-launch gate before the fullscreen TUI (ward#366); see docs/agent-gate.md.
 	// proceed=false means an upgrade re-launch superseded this process's launch.
-	proceed, err := r.runScratchGate(ctx, c, plan, readOnly, label)
+	proceed, err := r.runScratchGate(ctx, plan, readOnly)
 	if err != nil {
 		return err
 	}
