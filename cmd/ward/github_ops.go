@@ -13,7 +13,7 @@ import (
 )
 
 // github_ops.go is ward's GitHub issue-thread client (ward#489): shells `gh` to
-// mirror forgejoClient's verbs behind issueForge (auth from env, no token on argv).
+// mirror forgejoClient's verbs behind Tracker (auth from env, no token on argv).
 
 // Reads and state flips route through `gh api /repos/...` (REST budget), never
 // GraphQL `gh issue view/close/reopen` (ward#466; see docs/agent-github.md).

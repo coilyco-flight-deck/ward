@@ -335,7 +335,7 @@ func TestReservationCommentBodyIsRoadBlock(t *testing.T) {
 	}
 }
 
-// fakeLockForge is a near-no-op issueForge recording lock/unlock and comment posts, so
+// fakeLockForge is a near-no-op Tracker recording lock/unlock and comment posts, so
 // lockReservedIssue (ward#494) and releaseRemoteReservation (ward#570) can be exercised.
 type fakeLockForge struct {
 	lockErr      error
