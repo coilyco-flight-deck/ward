@@ -25,7 +25,7 @@ docs/skills to read first:
 - `ward exec` / `ward.yaml` - the exec-verb doc.
 - `ward agent` / `headless` / `pre-flight` - the agent docs + skill.
 - `reaper` / `container reap` - the container + reap docs.
-- plus the hook guard, CI watch, and release docs.
+- plus the CI watch and release docs.
 
 A case-insensitive scan of the title + body picks the matching pointers, each
 firing once. Keep keywords specific: a false pointer costs a read, a missing one

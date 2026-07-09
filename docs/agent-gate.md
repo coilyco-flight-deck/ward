@@ -51,8 +51,8 @@ This retires the operator's manual `watch "brew upgrade ..."` loop.
 After `ward upgrade` the on-disk binary is new but the running process is the old
 `ward`, so re-launch re-execs the freshly-installed binary with the current argv
 (`syscall.Exec`), not stale in-memory code. The exec target is canonicalized
-against the same homebrew allow-list the PreToolUse hook uses
-(`guardBinaryPaths["ward"]`), so it can't be PATH-hijacked. With no canonical path
+against the same homebrew allow-list the upgrade re-exec uses
+(`wardInstallPaths`), so it can't be PATH-hijacked. With no canonical path
 (a dev/source build) or a failed exec, it falls back to the v1: report the upgrade
 and tell the operator to re-run, launching nothing stale.
 
@@ -76,4 +76,3 @@ See `cmd/ward/agent_gate.go`.
 
 - [docs/agent-surface.md](agent-surface.md) - the read-only surface the gate fronts.
 - [docs/agent-preflight.md](agent-preflight.md) - the detached GO/NO-GO pre-flight.
-- [docs/hook.md](hook.md) - the path-canonicalization the re-exec mirrors.

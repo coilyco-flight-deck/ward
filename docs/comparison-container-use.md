@@ -57,8 +57,7 @@ guardfile says `never delete "*"` and the binary cannot express the delete at al
 so nothing fails open and the audit row proves the crossing. container-use bets
 from another layer - *isolation plus a reviewable diff*. Both are real; ward's
 distinct bet is that the agent can't even name the dangerous call. That claim
-covers the verb gate and container edge, not the claude-only PreToolUse hook
-([hook.md](hook.md)), which fails open - see
+covers the verb gate and container edge - see
 [enforcement-boundary.md](enforcement-boundary.md).
 
 ## See also

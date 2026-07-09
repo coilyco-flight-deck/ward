@@ -1,24 +1,25 @@
 #!/bin/sh
-# ward demo - one happy path plus three danger classes (ward#251, ward#250).
+# ward demo - one happy path, two denials, one posture check (ward#251, ward#250).
 #
 # The launch thesis is "the boundary is the product": the interesting thing ward
 # does is not what it runs, it is what it refuses. So this demo spends one beat
-# on capability and three on denial. Every refusal you see below is real ward
-# output, reproduced live against examples/toy - no canned strings.
+# on capability, two on denial, and one on host posture. Every refusal you see
+# below is real ward output, reproduced live against examples/toy - no canned
+# strings.
 #
 # Safe to run. The happy path runs the toy repo's real test verb. None of the
 # danger beats executes anything destructive: the argv-injection is rejected by
-# the gate before the command runs, the protected-binary beat only feeds a string
-# to `ward hook pre-tool-use` (inspect-and-refuse, nothing runs), and the ops-verb
-# beat is refused by policy before any endpoint is touched (no token needed).
+# the gate before the command runs, the host-security beat only reads the
+# policy with `ward doctor`, and the ops-verb beat is refused by policy before
+# any endpoint is touched (no token needed).
 #
 # Honest about mechanism (see ../docs/enforcement-boundary.md). Beat 2 and Beat 4
 # are hard gates: the compiled cli-guard pipeline every `ward exec` and `ward ops`
-# verb runs through. Beat 3 is the Claude PreToolUse hook, a host-side, claude-only,
-# fail-open hint - inside a `ward agent` container the hard edge is the container
-# plus cli-guard. The ops-verb denial (Beat 4) is the one issue ward is really
-# built for: an agent holding live credentials reaching for an out-of-policy
-# operator verb, refused by the operator surface itself (ward#250).
+# verb runs through. Beat 3 is a host-security read, not a deny wall - it shows
+# the policy before anything can reach a dangerous binary. The ops-verb denial
+# (Beat 4) is the one issue ward is really built for: an agent holding live
+# credentials reaching for an out-of-policy operator verb, refused by the
+# operator surface itself (ward#250).
 #
 # Usage: sh examples/demo.sh   (run from a clean, pushed checkout for the green
 # happy path - on an unsynced branch the clean-tree gate refuses, which the demo
@@ -55,21 +56,11 @@ show() {
 	printf '  [exit %s]\n' "$?"
 }
 
-# Feed one bash command to the PreToolUse hook as the toy repo's cwd and show
-# the block hint. The hook only inspects the string, it never runs it.
-hook_deny() {
-	_cmd=$1
-	printf '\n  $ echo <%s> | ward hook pre-tool-use\n' "$_cmd"
-	printf '{"tool_name":"Bash","tool_input":{"command":"%s"},"cwd":"%s"}' "$_cmd" "$TOY" \
-		| ward hook pre-tool-use
-	printf '  [exit %s]\n' "$?"
-}
-
 cd "$TOY" || exit 1
 
 banner "ward demo - the boundary is the product"
 say "Target: examples/toy, ward's minimal managed repo (a POSIX-sh greet CLI)."
-say "One capability beat, then three denials. Every line below is live output."
+say "One capability beat, then two denials and one posture check. Every line below is live output."
 
 # ----------------------------------------------------------------------------
 banner "BEAT 1 - happy path: ward exec test"
@@ -111,20 +102,16 @@ say "history). Both bypass loudly: ward --audit-override-dirty stamps the row"
 say "audit_override=true so even an emergency stays reconstructable."
 
 # ----------------------------------------------------------------------------
-banner "BEAT 3 - danger class two: infra danger (protected binary)"
+banner "BEAT 3 - host posture check"
 # ----------------------------------------------------------------------------
-say "The bounded-autonomy money shot: an agent reaching for infra it should"
-say "never touch bare. The toy repo's security block names kubectl and aws as"
-say "protected, so the PreToolUse hook refuses the direct call and routes it"
-say "back through an audited wrapper."
-hook_deny "kubectl delete deployment checkout-api"
-hook_deny "aws s3 rm s3://prod-uploads --recursive"
+say "The toy repo's security block names kubectl and aws as protected. ward"
+say "doctor surfaces that policy and the sudo posture before an operator or"
+say "agent reaches for the bare binary. This beat is diagnosis, not denial."
+show "ward doctor --skip ollama"
 say ""
-say "Honest scope: this beat is the Claude PreToolUse hook, a host-side,"
-say "claude-only, fail-open hint (see ../docs/enforcement-boundary.md). It is"
-say "the friendly nudge, not the wall. Inside a ward agent container the hard"
-say "edge is the container plus cli-guard, and permissions.deny is the hard"
-say "host-side denial. Name the mechanism when you show the denial."
+say "The hard denials backing the thesis are Beat 2's verb gate and Beat 4's"
+say "operator surface. Beat 3 tells you what the policy says, it does not stop"
+say "a command by itself."
 
 # ----------------------------------------------------------------------------
 banner "BEAT 4 - danger class three: ops danger (the operator surface)"
@@ -149,10 +136,10 @@ say "filesystem-plus-git sandbox cannot draw, because the danger is ops-adjacent
 # ----------------------------------------------------------------------------
 banner "The boundary is the product"
 # ----------------------------------------------------------------------------
-say "One verb ran, audited. Three danger classes refused, each by the mechanism"
-say "that actually holds - repo danger and ops danger by the hard cli-guard"
-say "surface, infra danger by the claude-only hint. That asymmetry - capability"
-say "is cheap, denial is the point - is the whole pitch."
+say "One verb ran, audited. Two danger classes refused, plus one host posture"
+say "check, each by the mechanism that actually holds - repo danger and ops"
+say "danger by the hard cli-guard surface. That asymmetry - capability is cheap,"
+say "denial is the point - is the whole pitch."
 say ""
 say "Deeper: ../docs/gate-demo.md, ../docs/exec-verb.md, ../docs/example-repo.md."
 printf '\n'

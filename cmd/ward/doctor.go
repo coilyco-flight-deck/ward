@@ -135,7 +135,7 @@ func renderAllowlistFailure(problems []allowlist.Problem) string {
 const missingSecurityHint = "no `security:` block declared. As of ward#450 `ward doctor` fails by " +
 	"default without one, so a passing run means a host-tool policy is in force, not merely that " +
 	"nothing was misconfigured. The dev-verb gate (clean-tree, argv, and audit checks) still runs " +
-	"without it, but no protected-binary / sudo / hook policy is enforced. Add a `security:` block to " +
+	"without it, but no protected-binary / sudo policy is enforced. Add a `security:` block to " +
 	".ward/ward.yaml (`ward setup` scaffolds a commented template to uncomment and tailor). " +
 	"Field reference: docs/ward-yaml.md (the security: schema)"
 

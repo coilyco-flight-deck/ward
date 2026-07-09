@@ -32,7 +32,6 @@ New to ward? Read [architecture.md](architecture.md) first - it frames the whole
 - [verb-fallback.md](verb-fallback.md) - unknown-verb rewrite to `ward exec` + the build/test/install triple.
 - [git-verbs.md](git-verbs.md) - `ward git`: audited, concurrency-safe git surface.
 - [git-clone.md](git-clone.md) - `ward git clone`, destination-gated.
-- [hook.md](hook.md) - `ward hook`, the Claude Code hook entry points.
 
 ## `ward agent` (headless harness runner)
 
@@ -80,7 +79,7 @@ New to ward? Read [architecture.md](architecture.md) first - it frames the whole
 ## Agent harnesses (drivers)
 
 - [agent-drivers.md](agent-drivers.md) - the four harnesses (`--harness`) compared (first-run facts side by side).
-- [enforcement-boundary.md](enforcement-boundary.md) - where the enforcement boundary sits per harness (claude hook vs container-edge verb gate).
+- [enforcement-boundary.md](enforcement-boundary.md) - where the enforcement boundary sits per harness (container-edge verb gate).
 - [agent-local-harnesses.md](agent-local-harnesses.md) - index of the local harness pages.
 - [agent-local-model.md](agent-local-model.md) - bring your own Ollama: defaults, the supported route, and the current limitation ([#395](https://forgejo.coilysiren.me/coilyco-flight-deck/ward/issues/395)).
 - [agent-claude.md](agent-claude.md) - the `claude` full cloud harness.

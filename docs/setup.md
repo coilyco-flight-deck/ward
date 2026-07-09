@@ -20,7 +20,7 @@ author.
    Targets whose names are not legal verbs (uppercase, dots, underscores) are
    skipped with a note.
 3. Writes `.ward/ward.yaml` with a **commented-out `security:` scaffold** - an
-   inert template of the protected-binary / sudo / hooks policy the
+   inert template of the protected-binary / sudo policy the
    [doctor](doctor.md) probes read. It stays commented so a fresh scaffold parses
    to "no security declared". As of [ward#450](https://forgejo.coilysiren.me/coilyco-flight-deck/ward/issues/450) a standalone `ward doctor` **fails**
    on that (a `security:` block is required for a green run), but `ward setup`'s

@@ -20,18 +20,14 @@ edge plus the [cli-guard](architecture.md) verb gate at that edge.
   committed per-repo lockdown file.
 - **Container agent flow** (`ward agent` / `warded`, any harness) - the boundary
   is the container edge plus cli-guard, identical for every harness. Inside the
-  container claude's hook and `permissions.deny` are deliberately **off**
-  (`bypassPermissions`, no deny wall - see
-  [container-permissions.md](container-permissions.md)), because the container's
-  isolation plus doctrine are the real boundary. So even for claude the
-  container-flow boundary is the container, not the hook.
+  container `permissions.deny` is deliberately **off** (`bypassPermissions`, no
+  deny wall - see [container-permissions.md](container-permissions.md)), because
+  the container's isolation plus doctrine are the real boundary.
 
 ## Per harness
 
-- **claude** - host-side: the `ward hook pre-tool-use` PreToolUse hook (a
-  best-effort routing **hint** that **fails open** - see [hook.md](hook.md)) plus
-  claude's own `permissions.deny` for hard denial. Container flow: container edge
-  + cli-guard, hook and deny off.
+- **claude** - host-side: claude's own `permissions.deny` for hard denial.
+  Container flow: container edge + cli-guard.
 - **codex** - host-side: none ward-provided (in-container it runs
   `sandbox_mode = danger-full-access`, `approval_policy = never`). Container
   flow: container edge + cli-guard.
@@ -40,23 +36,16 @@ edge plus the [cli-guard](architecture.md) verb gate at that edge.
 - **opencode** - host-side: none ward-provided. Container flow: container edge +
   cli-guard.
 
-The PreToolUse hook is **claude-only**. It does not exist for codex, goose, or
-opencode, and even for claude it is a soft host-side hint that is off inside the
-container. Do not let a demo imply it guards the others.
-
 ## What this means for a demo
 
-The launch thesis is "the boundary is the product." A clip of the PreToolUse
-hook declining a command is a claude-only, fail-open **hint**, not the hard gate.
-The hard denial the thesis rests on is the compiled cli-guard verb gate (the
-[README](../README.md) "The gate says no" demo) and the container edge. Name the
-harness when you show a denial, so the boundary on screen is the one that
-actually holds.
+The launch thesis is "the boundary is the product." The hard denial the thesis
+rests on is the compiled cli-guard verb gate (the [README](../README.md) "The
+gate says no" demo) and the container edge. Name the harness when you show a
+denial, so the boundary on screen is the one that actually holds.
 
 ## See also
 
 - [comparison-openshell.md](comparison-openshell.md) - "The boundary is the product" and the verb-gate scope note.
-- [hook.md](hook.md) - the claude PreToolUse hook (fail-open by design).
 - [container-permissions.md](container-permissions.md) - why the container flow runs with the deny wall off.
 - [agent.md](agent.md) - the `ward agent` umbrella and `--harness` roster.
 - [agent-drivers.md](agent-drivers.md) - the four harnesses (`--harness`) compared (credentials, install, launch gates).

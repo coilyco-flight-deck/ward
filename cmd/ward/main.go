@@ -81,7 +81,6 @@ func main() {
 			auditCommand(),
 			doctorCommand(),
 			setupCommand(),
-			hookCommand(),
 			containerCommand(),
 			agentCommand(),
 			agentsCommand(),

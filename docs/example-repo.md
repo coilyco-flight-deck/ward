@@ -27,8 +27,8 @@ point is not the program - it is the four ward-facing pieces around it:
 - **`ward doctor`** - cross-checks each `commands.<name>` against the Makefile
   (`run:` is `make <name>`, the `## help` text equals `description:`) and
   summarizes the `security:` block. See [doctor.md](doctor.md).
-- **The security block** - `protected_binaries` (docker, deny-direct), `sudo`,
-  and `hooks.deny_bare_binaries`. Field-by-field: [ward-yaml.md](ward-yaml.md).
+- **The security block** - `protected_binaries` (docker, deny-direct) and `sudo`.
+  Field-by-field: [ward-yaml.md](ward-yaml.md).
 - **The guardfile** - the exec-dialect shape a consumer authors before
   generating a gated CLI. See [ward-kdl-authoring.md](ward-kdl-authoring.md).
 - **The dev-base image** - what `ward agent` clones the repo into. See

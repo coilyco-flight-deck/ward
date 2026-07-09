@@ -21,7 +21,6 @@ body:
         - The dev-verb gate (ward exec / doctor / git / pkg / audit)
         - The agent driver (ward agent / warded)
         - The operator surface (ward ops ...)
-        - The Claude Code hook (ward hook / install-hooks)
         - Install / release / homebrew tap
         - Other / not sure
     validations:

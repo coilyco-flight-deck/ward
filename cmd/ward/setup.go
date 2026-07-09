@@ -208,7 +208,7 @@ func validVerbName(name string) bool {
 // is inert until uncommented, so a fresh scaffold parses to "no security declared".
 const setupSecurityScaffold = `
 # security: (optional) declares host-tool policy that ` + "`ward doctor`" + ` and the
-# PreToolUse hook enforce. It is commented out so the scaffold is inert; uncomment
+# host posture probes read. It is commented out so the scaffold is inert; uncomment
 # and tailor it to your fleet. See docs/doctor.md and the cli-guard repocfg schema.
 #
 # security:
@@ -219,10 +219,6 @@ const setupSecurityScaffold = `
 #       credential_env: [GOOGLE_APPLICATION_CREDENTIALS]
 #   sudo:
 #     forbid_passwordless: true
-#   hooks:
-#     deny_bare_binaries: [gcloud]
-#     route_hints:
-#       gcloud: Use kap for cloud operations.
 `
 
 // renderWardYAML renders the scaffold: header, one verb per documented target

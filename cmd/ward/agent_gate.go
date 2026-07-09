@@ -176,10 +176,16 @@ func (r *Runner) upgradeAndRelaunch(ctx context.Context, _ *cli.Command, label s
 	return false, nil // unreachable on a successful exec (the process is replaced)
 }
 
-// canonicalWardPath returns the first present canonical homebrew ward install path
-// (guardBinaryPaths, the hook's allow-list), or "" on a dev/source build.
+var wardInstallPaths = []string{
+	"/opt/homebrew/bin/ward",
+	"/usr/local/bin/ward",
+	"/home/linuxbrew/.linuxbrew/bin/ward",
+}
+
+// canonicalWardPath returns the first present canonical homebrew ward install path,
+// or "" on a dev/source build.
 func canonicalWardPath() string {
-	for _, p := range guardBinaryPaths["ward"] {
+	for _, p := range wardInstallPaths {
 		// #nosec G304 -- stat of a fixed allow-list path; no file open follows.
 		if fi, err := os.Stat(p); err == nil && !fi.IsDir() {
 			return p

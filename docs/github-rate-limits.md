@@ -4,11 +4,9 @@ doc_goal: Explain why ward's own GitHub client routes every call to REST and sta
 # ward's GitHub client stays off the GraphQL budget ([ward#466](https://forgejo.coilysiren.me/coilyco-flight-deck/ward/issues/466))
 
 GitHub's REST and GraphQL APIs carry **separate** rate budgets, and the GraphQL one is
-the tighter, point-metered lane. ward's PreToolUse [hook](hook.md) already presses agents
-to prefer `gh api /repos/OWNER/REPO/...` (REST) over `gh issue view` / `gh pr view` /
-`gh search` (GraphQL) via its `ghGraphQLTrap` hint. ward's own GitHub client
-(`cmd/ward/github_ops.go`) eats that same dog food so a [warded GitHub run](agent-github.md)
-stays conservative on GitHub's limits.
+the tighter, point-metered lane. ward's own GitHub client (`cmd/ward/github_ops.go`)
+stays conservative by preferring REST routes so a [warded GitHub run](agent-github.md)
+does not burn the tighter budget needlessly.
 
 ## What routes where
 
@@ -32,4 +30,3 @@ budget entirely, not throttling a load that was never heavy.
 ## See also
 
 - [agent-github.md](agent-github.md) - the GitHub-hosted run end to end.
-- [hook.md](hook.md) - the `ghGraphQLTrap` hint ward presses on agents.
