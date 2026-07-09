@@ -430,9 +430,10 @@ func main() {
 
 func TestReviewConclusionCommentBodyIncludesSummary(t *testing.T) {
 	for _, tc := range []struct {
-		name string
-		res  reviewpanel.PanelResult
-		want []string
+		name    string
+		res     reviewpanel.PanelResult
+		visible string
+		want    []string
 	}{
 		{
 			name: "pass",
@@ -443,7 +444,8 @@ func TestReviewConclusionCommentBodyIncludesSummary(t *testing.T) {
 					Family: "codex", Verdict: reviewpanel.Pass, Reason: "looks good", Confidence: 0.91,
 				}},
 			},
-			want: []string{"WARD-OUTCOME: done", "review summary: passed: looks good"},
+			visible: "WARD-OUTCOME: done ✅",
+			want:    []string{"WARD-OUTCOME: done", "review summary: passed: looks good"},
 		},
 		{
 			name: "block",
@@ -455,7 +457,8 @@ func TestReviewConclusionCommentBodyIncludesSummary(t *testing.T) {
 					Family: "codex", Verdict: reviewpanel.Block, Reason: "diff misses baseline", Confidence: 0.91,
 				}},
 			},
-			want: []string{"WARD-OUTCOME: blocked", "review summary: blocked: no runnable reviewer", "codex: diff misses baseline"},
+			visible: "WARD-OUTCOME: blocked 🛑",
+			want:    []string{"WARD-OUTCOME: blocked", "review summary: blocked: no runnable reviewer", "codex: diff misses baseline"},
 		},
 		{
 			name: "skipped",
@@ -464,15 +467,22 @@ func TestReviewConclusionCommentBodyIncludesSummary(t *testing.T) {
 				Note:   "review gate skipped by --skip-review / --no-review-gate",
 				Worker: "codex",
 			},
-			want: []string{"WARD-OUTCOME: done", "review summary: skipped: review gate skipped by --skip-review / --no-review-gate"},
+			visible: "WARD-OUTCOME: done ✅",
+			want:    []string{"WARD-OUTCOME: done", "review summary: skipped: review gate skipped by --skip-review / --no-review-gate"},
 		},
 	} {
 		t.Run(tc.name, func(t *testing.T) {
 			got := reviewConclusionCommentBody(tc.res)
+			if visible := visibleLinesBeforeDetails(got); visible != tc.visible {
+				t.Fatalf("reviewConclusionCommentBody visible line = %q\n%s", visible, got)
+			}
 			for _, want := range tc.want {
 				if !strings.Contains(got, want) {
 					t.Fatalf("reviewConclusionCommentBody missing %q\n%s", want, got)
 				}
+			}
+			if !strings.Contains(got, "<details><summary>review details</summary>") {
+				t.Fatalf("reviewConclusionCommentBody should collapse details\n%s", got)
 			}
 		})
 	}

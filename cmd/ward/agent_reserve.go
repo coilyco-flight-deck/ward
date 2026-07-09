@@ -567,16 +567,18 @@ func winningReservationClaim(claims []reservationClaim) (reservationClaim, bool)
 // justification folds in the GO read (ward#383), seedCtx the seed context (ward#609).
 func reservationCommentBody(mode containerMode, container, host string, now time.Time, justification string, seedCtx *reservationSeedContext) string {
 	ttl := agentReservationTTL()
+	visible := "WARD-RESERVATION: held 🔒"
 	body := fmt.Sprintf(
-		"%s\n🔒 Reserved by `ward agent --harness %s` — container `%s` on host `%s` is carrying this issue (reserved %s). "+
-			"Concurrent `ward agent` runs are blocked until it finishes or the reservation goes stale (%s TTL); "+
+		"Holder: container `%s` on host `%s`.\n\n"+
+			"Reserved by `ward agent --harness %s` (reserved %s). "+
+			"Concurrent `ward agent` runs are blocked until it finishes or the reservation goes stale (%s TTL). "+
 			"`--force` overrides.\n\n"+
 			"**Do not comment on or edit this issue to steer the run while it is reserved.** The engineer seeded "+
 			"the body once at launch and never re-reads it, so a comment or edit reaches only human readers, never "+
-			"the running engineer. A correction goes to a **new issue, dispatched fresh** — that is the only channel "+
+			"the running engineer. A correction goes to a **new issue, dispatched fresh**. That is the only channel "+
 			"that reaches a run in flight. Where the forge supports it, ward locks this conversation to make that a "+
 			"road-block rather than a convention (ward#494).",
-		agentReservationMarker, mode, container, host, now.Format(time.RFC3339), conciseDuration(ttl))
+		container, host, mode, now.Format(time.RFC3339), conciseDuration(ttl))
 	if justification = strings.TrimSpace(justification); justification != "" {
 		body += fmt.Sprintf(
 			"\n\nThe pre-flight judged this issue **GO** for an unattended run. Its justification:\n\n"+
@@ -584,34 +586,37 @@ func reservationCommentBody(mode containerMode, container, host string, now time
 			justification)
 	}
 	body += seedCtx.render()
-	return body
+	return agentReservationMarker + "\n" + collapsedIssueComment(visible, "reservation details", body)
 }
 
 // reservationReleaseCommentBody is the reaper's retract comment for a do-nothing exit
-// (ward#264); a non-nil gate names the gate, error, and recovery (ward#609, see docs).
+// (ward#264). A non-nil gate names the gate, error, and recovery (ward#609, see docs).
 func reservationReleaseCommentBody(mode containerMode, container string, gate *gateFailure) string {
 	if gate == nil {
-		return fmt.Sprintf(
-			"%s\n%s\n⚠️ **Run never started — this issue needs re-dispatch.** `ward container reap` released "+
-				"container `%s` (`--harness %s`): it exited without launching the agent (smoke-test death, "+
-				"ward#222/#264/#595), so it did no work and the hold it took is retracted. Nothing is running on this "+
-				"issue. A `ward agent director` re-queues it automatically; a manual `ward agent` retry no longer "+
-				"needs `--force`.",
-			agentReservationReleaseMarker, agentNeedsRedispatchMarker, container, mode)
+		visible := "WARD-RESERVATION: released 🛑"
+		detail := fmt.Sprintf(
+			"Run never started. `ward container reap` released container `%s` (`--harness %s`): it exited "+
+				"without launching the agent (smoke-test death, ward#222/#264/#595), so it did no work and the "+
+				"hold it took is retracted. Nothing is running on this issue. It needs re-dispatch. A `ward agent director` re-queues "+
+				"it automatically. A manual `ward agent` retry no longer needs `--force`.",
+			container, mode)
+		return agentReservationReleaseMarker + "\n" + agentNeedsRedispatchMarker + "\n" +
+			collapsedIssueComment(visible, "release details", detail)
 	}
 	label, recovery := gateRecovery(gate.Gate)
+	visible := "WARD-RESERVATION: released 🛑"
 	body := fmt.Sprintf(
-		"%s\n%s\n⚠️ **Run never started — this issue needs re-dispatch.** `ward container reap` released "+
-			"container `%s` (`--harness %s`): it exited at the **%s** pre-launch gate without launching the agent "+
-			"(ward#222/#264/#595/#609), so it did no work and the hold it took is retracted. Nothing is running on "+
-			"this issue. A `ward agent director` re-queues it automatically; a manual `ward agent` retry no longer "+
-			"needs `--force`.\n\n"+
+		"Run never started. `ward container reap` released container `%s` (`--harness %s`): it exited at the "+
+			"**%s** pre-launch gate without launching the agent (ward#222/#264/#595/#609), so it did no work and "+
+			"the hold it took is retracted. Nothing is running on this issue. It needs re-dispatch. A `ward agent director` re-queues "+
+			"it automatically. A manual `ward agent` retry no longer needs `--force`.\n\n"+
 			"**Gate:** %s\n\n**Recovery:** %s",
-		agentReservationReleaseMarker, agentNeedsRedispatchMarker, container, mode, gate.Gate, label, recovery)
+		container, mode, gate.Gate, label, recovery)
 	if d := reservationScrubDetail(gate.Detail); d != "" {
-		body += fmt.Sprintf("\n\n<details><summary>error from the gate</summary>\n\n```\n%s\n```\n\n</details>", d)
+		body += fmt.Sprintf("\n\n## Error from the gate\n\n```\n%s\n```", d)
 	}
-	return body
+	return agentReservationReleaseMarker + "\n" + agentNeedsRedispatchMarker + "\n" +
+		collapsedIssueComment(visible, "release details", body)
 }
 
 // --- reservation seed context (ward#609): the WHAT surface --------------------

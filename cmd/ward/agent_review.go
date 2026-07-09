@@ -89,7 +89,6 @@ func failClosedNoReviewerResult(res reviewpanel.PanelResult) reviewpanel.PanelRe
 // reviewConclusionCommentBody renders the issue comment body that records the
 // review conclusion for every gate outcome.
 func reviewConclusionCommentBody(res reviewpanel.PanelResult) string {
-	var b strings.Builder
 	status := "done"
 	switch res.Gate {
 	case reviewpanel.GateBlock:
@@ -99,7 +98,9 @@ func reviewConclusionCommentBody(res reviewpanel.PanelResult) string {
 	case reviewpanel.GatePass:
 		status = "done"
 	}
-	fmt.Fprintf(&b, "%s %s - review summary: %s\n\n", wardOutcomeMarker, status, reviewSummary(res))
+	var b strings.Builder
+	visible := fmt.Sprintf("%s %s %s", wardOutcomeMarker, status, outcomeStatusEmoji(status))
+	writef(&b, "review summary: %s\n\n", reviewSummary(res))
 	writef(&b, "Review panel verdicts:\n")
 	for _, rv := range res.Reviewers {
 		note := rv.Reason
@@ -111,7 +112,20 @@ func reviewConclusionCommentBody(res reviewpanel.PanelResult) string {
 	if strings.TrimSpace(res.Note) != "" {
 		writef(&b, "\nPanel note: %s\n", truncateLine(res.Note, 200))
 	}
-	return b.String()
+	return collapsedIssueComment(visible, "review details", b.String())
+}
+
+func outcomeStatusEmoji(status string) string {
+	switch status {
+	case "done":
+		return "✅"
+	case "blocked":
+		return "🛑"
+	case "failed":
+		return "❌"
+	default:
+		return ""
+	}
 }
 
 // postReviewConclusionComment writes the review conclusion back to the issue thread.

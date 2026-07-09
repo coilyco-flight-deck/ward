@@ -61,8 +61,9 @@ does can defeat it. It is a hidden entrypoint-called verb.
    - anything else (conflict, scan finding, missing closing reference, rejected
      push) -> **salvage**: push to
      a `ward-salvage/<id>` branch (durable), then notify - a **carried**
-     run comments the notice back on its issue and **reopens** it; when PRs are
-     available ward opens a pull request for the salvage branch and links it in
+     run comments a one-line `WARD-REAP: reopened` notice back on its issue,
+     folds the recovery detail, and **reopens** it. When PRs are available ward
+     opens a pull request for the salvage branch and links it in
      the notice, otherwise it states the branch-only fallback reason. A
      **freeform** run files exactly **one** standalone `[ward-salvage]` issue,
      never appended.
@@ -141,8 +142,9 @@ bring-up to read the PAT from SSM, never during reap.
 
 When a container exits **before** launching the agent (the [ward#222](https://forgejo.coilysiren.me/coilyco-flight-deck/ward/issues/222) smoke gate,
 an unreachable Ollama endpoint, or a bootstrap failure), the reaper retracts the
-reservation with a release comment - and that comment now names the **specific
-gate** that died, folds in the actual error line, and gives the recovery step,
+reservation with a release comment. Only one `WARD-RESERVATION: released` line is
+visible, while the collapsed details name the **specific gate** that died, fold in
+the actual error line, and give the recovery step,
 so an operator diagnoses on the issue thread rather than in docker logs. The
 entrypoint records the failing gate (`auth` / `ollama-probe` / `bootstrap`) to
 `WARD_GATE_FAILURE_FILE` (default `/run/ward/gate-failure`); the reaper reads it in
@@ -150,7 +152,7 @@ entrypoint records the failing gate (`auth` / `ollama-probe` / `bootstrap`) to
 generic release comment. See [agent-reservation.md](agent-reservation.md).
 
 The release comment is also **loud and machine-detectable** ([ward#595](https://forgejo.coilysiren.me/coilyco-flight-deck/ward/issues/595)): it leads
-with a "⚠️ Run never started — this issue needs re-dispatch" headline and carries the
+with a `WARD-RESERVATION: released` status line and carries the
 `<!-- ward-needs-redispatch -->` marker (`agentNeedsRedispatchMarker`), so an orphaned run
 reads as a call to action, not a benign reservation-release that a human or a heartbeat
 mistakes for "was dispatched, in flight". A `ward agent director` re-queues such an issue

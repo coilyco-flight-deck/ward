@@ -708,8 +708,9 @@ func dropClosedBacklogEntries(led *backlogLedger, seen map[int]bool) {
 
 // --- outcome parsing -------------------------------------------------------
 
-// backlogOutcomeRE parses the status + reason that follow the WARD-OUTCOME marker.
-var backlogOutcomeRE = regexp.MustCompile(`(?i)^(done|blocked|failed)\b[\s:.\-]*(.*)`)
+// backlogOutcomeRE parses the status + optional status emoji + reason that
+// follow the WARD-OUTCOME marker.
+var backlogOutcomeRE = regexp.MustCompile(`(?i)^(done|blocked|failed)\b(?:\s+[✅🛑❌])?[\s:.\-]*(.*)`)
 
 // parseBacklogOutcome classifies the latest comment leading with WARD-OUTCOME,
 // nil when none. Ports backlog-loop.py's parse_outcome.
