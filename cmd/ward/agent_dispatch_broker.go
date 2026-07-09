@@ -290,8 +290,11 @@ func (r *Runner) startHostDispatchBrokerRequest(ctx context.Context, req dispatc
 	restore := redirectStdioToLog(logf)
 	started := make(chan struct{})
 	go func() {
+		restored := false
 		defer func() {
-			restore()
+			if !restored {
+				restore()
+			}
 			_ = logf.Close()
 		}()
 		if lock != nil {
@@ -303,6 +306,8 @@ func (r *Runner) startHostDispatchBrokerRequest(ctx context.Context, req dispatc
 			return dispatchBrokerLaunch(ctx, req)
 		}); err != nil {
 			fmt.Fprintf(os.Stderr, "ward dispatch broker: launch failed: %v\n", err)
+			restore()
+			restored = true
 			r.commentFailedDispatchLaunch(ctx, req, logPath, err)
 			return
 		}
