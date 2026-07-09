@@ -22,14 +22,14 @@ func TestCapabilityGuardfilesExist(t *testing.T) {
 }
 
 // TestCapabilityForRole covers ward#578 + ward#547: advisor and director both hold
-// the live-observe set; engineer/session/unknown fall through to least-access.
+// the live-observe set; engineer/qa/session/unknown fall through to least-access.
 func TestCapabilityForRole(t *testing.T) {
 	for _, role := range []string{roleAdvisor, roleDirector} {
 		if caps := capabilityForRole(role); !caps.aws || !caps.tailnet {
 			t.Errorf("%s capability = %+v, want aws+tailnet from its guardfile set", role, caps)
 		}
 	}
-	for _, role := range []string{roleEngineer, roleSession, "nonexistent"} {
+	for _, role := range []string{roleEngineer, roleQA, roleSession, "nonexistent"} {
 		if caps := capabilityForRole(role); caps.aws || caps.tailnet {
 			t.Errorf("%s capability = %+v, want least-access (none)", role, caps)
 		}

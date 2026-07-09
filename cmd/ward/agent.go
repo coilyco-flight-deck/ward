@@ -488,7 +488,7 @@ func agentCommand() *cli.Command {
 		Before: smartDefaultsGuard("ward agent"),
 		Description: fmt.Sprintf(`agent is the issue-carrying dispatcher (the spelling 'warded' fronts), a
 roster of startup roles (ward#347): you do not invoke a mode, you send in a
-role. Pick a role (engineer|director|advisor) and --harness picks the
+role. Pick a role (engineer|director|advisor|qa) and --harness picks the
 harness (%s, default %s; --agent is an equal accepted spelling, --driver a
 deprecated alias for one release, ward#660).
 A BARE REF with no role word runs the 'engineer' role - the fire-and-forget
@@ -499,6 +499,7 @@ container bring-up stack plus a prompt.
   warded coilyco-flight-deck/ward#98          # bare ref -> engineer run (warded face)
   warded #98                                  # owner/repo inferred from the cwd
   warded engineer #98                         # implement a ticket: detached fire-and-forget
+  warded qa #98                               # structured QA verdict comment, no implementation edits
   warded engineer "fix the flaky exec_gate test" # freeform -> file an issue first, then carry
   warded <role> #98 --harness <harness>       # pick another harness
   warded <role> #98 --agent <harness>        # --agent: the same pick, equal spelling
@@ -520,6 +521,7 @@ trusted owner.`, agentHarnessChoices(), defaultAgentMode()),
 			agentEngineerCommand(),
 			agentDirectorCommand(),
 			agentAdvisorCommand(),
+			agentQACommand(),
 			// roster is a self-describe verb, not a startup role: it prints the
 			// flat list of the roles above (ward#348). See docs/agent-roster.md.
 			agentRosterCommand(),
@@ -547,7 +549,7 @@ func agentDefaultSurfaceAction() cli.ActionFunc {
 		}
 		arg := strings.TrimSpace(c.Args().First())
 		if _, err := parseAgentIssueRef(arg); err != nil {
-			return fmt.Errorf("unknown command %q for 'ward agent' (roles: engineer, director, advisor); "+
+			return fmt.Errorf("unknown command %q for 'ward agent' (roles: engineer, director, advisor, qa); "+
 				"a bare ref like #98 or owner/repo#N runs the engineer, and freeform work goes to "+
 				"`ward agent engineer \"<instructions>\"`", arg)
 		}

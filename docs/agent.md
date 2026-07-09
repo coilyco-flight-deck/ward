@@ -42,6 +42,9 @@ or answers it.
   set** (the tailnet + `~/.aws`, per its `roles` entry in `ward-kdl.fleet.kdl`,
   [ward#578](https://forgejo.coilysiren.me/coilyco-flight-deck/ward/issues/578)), so research reaches the backend with no flag, and `--no-tailnet`
   keeps a rare run isolated. [agent-advisor.md](agent-advisor.md).
+- **`qa`** - opt-in QA inspection and verdict comments: a ref inspects the issue,
+  the candidate branch or PR, and the checks, then posts a structured verdict
+  comment without editing implementation state. [agent-qa.md](agent-qa.md).
 
 The standalone `architect`/`explore`/`sandbox` roles now error - folded
 them into the director's [surface session](agent-surface.md). The `--harness`
@@ -59,6 +62,7 @@ warded director --repo owner/name               # autonomous headless-lane loop;
 warded advisor #98                              # research the issue with the default brief, post a comment
 warded advisor #98 "what would it take to..."   # same, with extra framing
 warded advisor "how is the audit log written?"  # freeform: interactive (--oneshot = one answer)
+warded qa #98                                   # structured QA verdict comment, no code edits
 ```
 
 The role comes first (`--harness` picks the harness, default claude, and
@@ -92,7 +96,8 @@ Grouped by the surface you are reaching for.
 **Roles and drivers** (what runs, and which harness runs it)
 
 - [agent-roster.md](agent-roster.md) - flat list of every role (`ward agent roster`).
-- [agent-subcommands.md](agent-subcommands.md) - the three roles compared + the reaper.
+- [agent-subcommands.md](agent-subcommands.md) - the roles compared + the reaper.
+- [agent-qa.md](agent-qa.md) - the opt-in QA inspection role.
 - [agent-drivers.md](agent-drivers.md) - the harnesses (`--harness`) compared.
 - [agent-surface.md](agent-surface.md) - the director's read-only surface.
 
