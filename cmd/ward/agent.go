@@ -66,7 +66,7 @@ func cloneAnchorLine(ref agentIssueRef) string {
 }
 
 // parseAgentIssueRef resolves owner/repo#N, a Forgejo/GitHub issue URL, or a bare #N / N.
-// ward keeps the task-verb steer (ward#234, ward#282).
+// ward keeps the task-verb steer (ward#234, ward#282) while reusing the shared parser.
 func parseAgentIssueRef(s string) (agentIssueRef, error) {
 	s = strings.TrimSpace(s)
 	if s == "" {
@@ -76,6 +76,9 @@ func parseAgentIssueRef(s string) (agentIssueRef, error) {
 	// GitHub ref (ward#489); anything else falls through to the Forgejo parser.
 	if ghRef, ok := parseGitHubIssueRef(s); ok {
 		return ghRef, nil
+	}
+	if ref, err := parseDispatchIssueRef(s); err == nil {
+		return ref, nil
 	}
 	ref, err := issueref.Parse(s, forgejoBaseURL)
 	if err == nil {
@@ -97,7 +100,27 @@ func parseAgentIssueRef(s string) (agentIssueRef, error) {
 				"role's freeform mode instead: ward agent engineer '<url>'",
 			s, strings.TrimRight(forgejoBaseURL, "/"))
 	}
-	return agentIssueRef{}, err
+	return agentIssueRef{}, fmt.Errorf("cannot parse issue ref %q: want owner/repo#N, a bare #N, or %s/owner/repo/issues/N", s, strings.TrimRight(forgejoBaseURL, "/"))
+}
+
+func parseDispatchIssueRef(s string) (agentIssueRef, error) {
+	ref, err := dispatch.ParseIssueRef(forgejoBaseURL, s)
+	if err != nil {
+		return agentIssueRef{}, err
+	}
+	return agentIssueRef{
+		Owner:  ref.Owner,
+		Repo:   ref.Repo,
+		Number: ref.Number,
+		Forge:  dispatchPlatformToForge(ref.Platform),
+	}, nil
+}
+
+func dispatchPlatformToForge(p dispatch.Platform) forge {
+	if p == dispatch.PlatformGitHub {
+		return forgeGitHub
+	}
+	return forgeForgejo
 }
 
 // resolveAgentIssueRef parses the ref and, for a bare #N / N, fills owner/repo from
