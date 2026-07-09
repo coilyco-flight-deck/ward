@@ -15,7 +15,7 @@ func (a Agent) Install(rc agentsapi.RunCtx) error {
 		rc.Log("opencode already present in image; skipping install")
 		return nil
 	}
-	rc.Log("installing opencode (qwen-backed harness; not baked into the dev-base image yet)")
+	rc.Log("installing opencode (local Ollama-backed harness; not baked into the dev-base image yet)")
 	// The bash pipes `curl ... | bash`; reproduce via `bash -c` so the installer's
 	// own redirects to stderr are preserved (its stdout is the script, not output).
 	_ = rc.Exec.Exec(rc.Ctx, "bash", "-c", "curl -fsSL https://opencode.ai/install | bash >&2")
@@ -24,7 +24,7 @@ func (a Agent) Install(rc agentsapi.RunCtx) error {
 		_ = rc.Exec.Exec(rc.Ctx, "install", "-m", "0755", src, "/usr/local/bin/opencode")
 	}
 	if !commandExists("opencode") {
-		rc.Log("opencode install failed; qwen mode will drop to a shell (use --image with opencode baked in, or fix network)")
+		rc.Log("opencode install failed; opencode mode will drop to a shell (use --image with opencode baked in, or fix network)")
 	}
 	return nil
 }

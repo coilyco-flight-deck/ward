@@ -239,6 +239,12 @@ func (r *Runner) runHostDispatchBrokerRequest(ctx context.Context, req dispatchB
 
 	_, _ = fmt.Fprintf(logf, "ward dispatch broker: %s requested `ward agent %s`\n",
 		emptyDefault(req.Requester, "unknown-container"), redactDispatchBrokerArgv(req.Argv))
+	ref := ""
+	if len(req.Argv) >= 2 {
+		ref = req.Argv[1]
+	}
+	_, _ = fmt.Fprintf(logf, "ward dispatch broker: this log captures the host wrapper only; in-container engineer console/reap logs drain separately and are readable with `ward agent logs %s`\n",
+		ref)
 	restore := redirectStdioToLog(logf)
 	defer func() {
 		restore()
@@ -249,10 +255,81 @@ func (r *Runner) runHostDispatchBrokerRequest(ctx context.Context, req dispatchB
 		return dispatchBrokerLaunch(ctx, req)
 	}); err != nil {
 		fmt.Fprintf(os.Stderr, "ward dispatch broker: launch failed: %v\n", err)
+		r.commentFailedDispatchLaunch(ctx, req, logPath, err)
 		return logPath, err
 	}
 	fmt.Fprintf(os.Stderr, "ward dispatch broker: launch completed\n")
 	return logPath, nil
+}
+
+// commentFailedDispatchLaunch posts the failure comment with a detached timeout.
+func (r *Runner) commentFailedDispatchLaunch(ctx context.Context, req dispatchBrokerRequest, logPath string, launchErr error) {
+	ref, err := parseAgentIssueRef(req.Argv[1])
+	if err != nil {
+		return
+	}
+	mode := dispatchBrokerRequestMode(req)
+	commentCtx, cancel := context.WithTimeout(context.WithoutCancel(ctx), 30*time.Second)
+	defer cancel()
+	cl, cerr := r.hostTrackerClient(commentCtx, ref.trackerOrDefault(), mode)
+	if cerr != nil {
+		fmt.Fprintf(os.Stderr, "ward dispatch broker: could not build issue client to comment failed dispatch on %s: %v\n", ref, cerr)
+		return
+	}
+	r.commentFailedDispatch(commentCtx, cl, mode, ref, req, logPath, launchErr)
+}
+
+// dispatchBrokerRequestMode resolves the requested harness for a forwarded dispatch.
+func dispatchBrokerRequestMode(req dispatchBrokerRequest) containerMode {
+	for i := 0; i+1 < len(req.Argv); i++ {
+		switch req.Argv[i] {
+		case "--harness", "--agent", "--driver":
+			if mode, err := parseMode(req.Argv[i+1]); err == nil {
+				return mode
+			}
+		}
+	}
+	return currentAgentMode()
+}
+
+// commentFailedDispatch writes the visible failure comment and clears the stale
+// reservation signal after a forwarded launch never became a running engineer.
+func (r *Runner) commentFailedDispatch(ctx context.Context, cl Tracker, mode containerMode, ref agentIssueRef, req dispatchBrokerRequest, logPath string, launchErr error) {
+	container := emptyDefault(req.Requester, "unknown-container")
+	if req.Role == roleEngineer {
+		container = issueScopedContainerName(req.Role, mode, targetRepo{Owner: ref.Owner, Name: ref.Repo}, ref.Number)
+	}
+	body := dispatchLaunchFailureCommentBody(mode, container, req, logPath, launchErr)
+	if err := cl.commentIssue(ctx, ref.Owner, ref.Repo, ref.Number, body); err != nil {
+		fmt.Fprintf(os.Stderr, "ward dispatch broker: could not comment failed dispatch on %s: %v\n", ref, err)
+		return
+	}
+	if err := cl.unlockIssue(ctx, ref.Owner, ref.Repo, ref.Number); err != nil && !errors.Is(err, errForgeLockUnsupported) {
+		fmt.Fprintf(os.Stderr, "ward dispatch broker: could not unlock issue %s after failed dispatch: %v\n", ref, err)
+	}
+	fmt.Fprintf(os.Stderr, "ward dispatch broker: released failed dispatch reservation on %s\n", ref)
+}
+
+// dispatchLaunchFailureCommentBody supersedes the stale reservation with a visible
+// failure comment and the retry shape an operator needs.
+func dispatchLaunchFailureCommentBody(mode containerMode, container string, req dispatchBrokerRequest, logPath string, launchErr error) string {
+	attempted := redactDispatchBrokerArgv(req.Argv)
+	logDetail := "unavailable"
+	if strings.TrimSpace(logPath) != "" {
+		logDetail = logPath
+	}
+	detail := fmt.Sprintf(
+		"This forwarded dispatch failed after the issue was already reserved.\n\n"+
+			"Attempted harness: `%s`\n"+
+			"Attempted run: `ward agent %s`\n"+
+			"Container: `%s`\n"+
+			"Container created: no running engineer was observed.\n"+
+			"Host log: `%s`\n"+
+			"Failure: `%s`\n\n"+
+			"Retry: choose another harness if the first one is down, or rerun with `--force` if the reservation is stale.",
+		mode, attempted, container, logDetail, firstLine(launchErr.Error()))
+	return agentReservationReleaseMarker + "\n" + agentNeedsRedispatchMarker + "\n" +
+		collapsedIssueComment("WARD-DISPATCH: failed ❌", "failure details", detail)
 }
 
 // withBrokerForwardingDisabled temporarily clears the read-only surface markers so

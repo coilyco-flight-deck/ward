@@ -140,13 +140,6 @@ func TestBuildAgentArgv(t *testing.T) {
 			seed:     seed,
 			wantArgv: []string{"opencode"},
 		},
-		{
-			// The retired "qwen" alias (ward#401) still drives the opencode dialect.
-			name:     "qwen alias oneshot",
-			env:      bootstrapEnv{Mode: "qwen", Agent: "opencode", Headless: true},
-			seed:     seed,
-			wantArgv: []string{"opencode", "run", "work issue #5"},
-		},
 	}
 	for _, tc := range cases {
 		t.Run(tc.name, func(t *testing.T) {
