@@ -36,9 +36,7 @@ keyed to the release tag, never the public release page
   ([broker.md](broker.md)).
 - **`publish-kdl-read`** - the read tier a **sealed read-only director** session
   pulls via the entrypoint's `install_ward_kdl_read`, the non-mutating
-  ssh-through-docker observe surface
-  ([ward#547](https://forgejo.coilysiren.me/coilyco-flight-deck/ward/issues/547),
-  [ward#572](https://forgejo.coilysiren.me/coilyco-flight-deck/ward/issues/572)).
+  ssh-through-docker helper ([ward#572](https://forgejo.coilysiren.me/coilyco-flight-deck/ward/issues/572)).
   Without this producer the entrypoint's best-effort fetch 404'd every run, so a
   director session never got the helper.
 
