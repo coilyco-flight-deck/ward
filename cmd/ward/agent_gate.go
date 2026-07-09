@@ -24,6 +24,14 @@ var gateTerminalAttached = terminalAttached
 // upgrade re-launch instead of replacing the test binary.
 var reExec = syscall.Exec
 
+// wardInstallPaths is the canonical Homebrew allow-list for the ward binary.
+// The upgrade gate uses it when it needs to re-exec a fresh install.
+var wardInstallPaths = []string{
+	"/opt/homebrew/bin/ward",
+	"/usr/local/bin/ward",
+	"/home/linuxbrew/.linuxbrew/bin/ward",
+}
+
 // gateChoice is the operator's pick at the pre-launch gate.
 type gateChoice int
 
@@ -176,10 +184,10 @@ func (r *Runner) upgradeAndRelaunch(ctx context.Context, _ *cli.Command, label s
 	return false, nil // unreachable on a successful exec (the process is replaced)
 }
 
-// canonicalWardPath returns the first present canonical homebrew ward install path
-// (guardBinaryPaths, the hook's allow-list), or "" on a dev/source build.
+// canonicalWardPath returns the first present canonical homebrew ward install path,
+// or "" on a dev/source build.
 func canonicalWardPath() string {
-	for _, p := range guardBinaryPaths["ward"] {
+	for _, p := range wardInstallPaths {
 		// #nosec G304 -- stat of a fixed allow-list path; no file open follows.
 		if fi, err := os.Stat(p); err == nil && !fi.IsDir() {
 			return p
