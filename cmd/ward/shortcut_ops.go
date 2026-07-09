@@ -271,29 +271,32 @@ func (c *shortcutClient) shortcutStateIDForStory(ctx context.Context, storyID in
 		return 0, err
 	}
 	for _, wf := range workflows {
-		if wf.ID != story.WorkflowID {
-			continue
+		if wf.ID == story.WorkflowID {
+			return shortcutStateIDForWorkflow(wf, want)
 		}
-		switch want {
-		case "done":
-			for _, st := range wf.States {
-				if strings.EqualFold(st.Type, "done") {
-					return st.ID, nil
-				}
-			}
-		default:
-			if wf.DefaultStateID != 0 {
-				return wf.DefaultStateID, nil
-			}
-			for _, st := range wf.States {
-				if strings.EqualFold(st.Type, "unstarted") || strings.EqualFold(st.Type, "backlog") {
-					return st.ID, nil
-				}
-			}
-		}
-		return 0, fmt.Errorf("shortcut: workflow %d has no %s state", wf.ID, want)
 	}
 	return 0, fmt.Errorf("shortcut: story %d references unknown workflow %d", storyID, story.WorkflowID)
+}
+
+func shortcutStateIDForWorkflow(wf shortcutWorkflowRaw, want string) (int, error) {
+	switch want {
+	case "done":
+		for _, st := range wf.States {
+			if strings.EqualFold(st.Type, "done") {
+				return st.ID, nil
+			}
+		}
+	default:
+		if wf.DefaultStateID != 0 {
+			return wf.DefaultStateID, nil
+		}
+		for _, st := range wf.States {
+			if strings.EqualFold(st.Type, "unstarted") || strings.EqualFold(st.Type, "backlog") {
+				return st.ID, nil
+			}
+		}
+	}
+	return 0, fmt.Errorf("shortcut: workflow %d has no %s state", wf.ID, want)
 }
 
 func (c *shortcutClient) shortcutStory(ctx context.Context, storyID int) (*shortcutStoryRaw, error) {

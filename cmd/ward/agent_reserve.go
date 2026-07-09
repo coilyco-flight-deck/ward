@@ -323,7 +323,7 @@ func (r *Runner) precheckLiveIssueWorker(ctx context.Context, label string, ref 
 	out, err := r.dockerCapture(ctx, "ps",
 		"--filter", "name=^"+container+"$", "--format", "{{.Names}}")
 	if err != nil {
-		return nil
+		return err
 	}
 	if strings.TrimSpace(string(out)) != "" {
 		fmt.Fprintf(os.Stderr, "%s: reservation precheck saw live worker container %s for %s\n", label, container, ref)
@@ -338,9 +338,16 @@ func (r *Runner) precheckLiveIssueWorker(ctx context.Context, label string, ref 
 // matches the launch that wrote it.
 func removeAgentReservationIfOwned(path string, want agentReservation) (bool, error) {
 	got, ok, err := readAgentReservation(path)
-	if err != nil || !ok || got == nil {
+	if err != nil {
 		return false, err
 	}
+	if !ok || got == nil || !agentReservationMatches(got, want) {
+		return false, nil
+	}
+	return true, removeAgentReservation(path)
+}
+
+func agentReservationMatches(got *agentReservation, want agentReservation) bool {
 	if got.Owner != want.Owner ||
 		got.Repo != want.Repo ||
 		got.Number != want.Number ||
@@ -350,9 +357,9 @@ func removeAgentReservationIfOwned(path string, want agentReservation) (bool, er
 		got.Host != want.Host ||
 		got.PID != want.PID ||
 		!got.At.Equal(want.At) {
-		return false, nil
+		return false
 	}
-	return true, removeAgentReservation(path)
+	return true
 }
 
 // containerRunning reports whether the named container is running; an empty name or

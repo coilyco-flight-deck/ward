@@ -677,6 +677,23 @@ func emptyDefault(s, fallback string) string {
 	return s
 }
 
+func brokerDispatchArgvForRole(ctx context.Context, r *Runner, c *cli.Command, role string, mode containerMode) ([]string, bool) {
+	ref, ok := r.brokerDispatchRef(ctx, c.Args().First())
+	if !ok {
+		return nil, false
+	}
+	switch role {
+	case "engineer":
+		return brokerEngineerArgv(c, mode, ref), true
+	case "advisor":
+		return brokerAdvisorArgv(c, mode, ref), true
+	case "qa":
+		return brokerQaArgv(c, mode, ref), true
+	default:
+		return nil, false
+	}
+}
+
 // maybeForwardAgentDispatchToHostBroker is the in-container ref-mode gate.
 // It only runs inside a read-only director surface with a broker socket.
 func (r *Runner) maybeForwardAgentDispatchToHostBroker(ctx context.Context, c *cli.Command, role string, mode containerMode) (bool, error) {
@@ -684,27 +701,8 @@ func (r *Runner) maybeForwardAgentDispatchToHostBroker(ctx context.Context, c *c
 	if addr == "" || os.Getenv("WARD_READONLY") != "1" {
 		return false, nil
 	}
-	var argv []string
-	switch role {
-	case "engineer":
-		ref, ok := r.brokerDispatchRef(ctx, c.Args().First())
-		if !ok {
-			return false, nil
-		}
-		argv = brokerEngineerArgv(c, mode, ref)
-	case "advisor":
-		ref, ok := r.brokerDispatchRef(ctx, c.Args().First())
-		if !ok {
-			return false, nil
-		}
-		argv = brokerAdvisorArgv(c, mode, ref)
-	case "qa":
-		ref, ok := r.brokerDispatchRef(ctx, c.Args().First())
-		if !ok {
-			return false, nil
-		}
-		argv = brokerQaArgv(c, mode, ref)
-	default:
+	argv, ok := brokerDispatchArgvForRole(ctx, r, c, role, mode)
+	if !ok {
 		return false, nil
 	}
 	req := dispatchBrokerRequest{
