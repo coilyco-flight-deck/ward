@@ -425,6 +425,26 @@ func TestAgentSeedPromptHeadlessReflection(t *testing.T) {
 	}
 }
 
+func TestAgentSeedPromptPullRequestFailureCommenting(t *testing.T) {
+	ref := agentIssueRef{Owner: "coilyco-flight-deck", Repo: "ward", Number: 813}
+	pr := agentSeedPromptWorkflow(ref, "fail on PR", "do the thing", "", true, nil, workflowPullRequest, true, "")
+	for _, want := range []string{
+		"post the same actionable failure comment to both the linked issue and the PR",
+		"reservation-lock release/clear/hand-back wording",
+		"signature/idempotency marker",
+		"skip the PR comment",
+	} {
+		if !strings.Contains(pr, want) {
+			t.Fatalf("pull-request seed missing %q\n%s", want, pr)
+		}
+	}
+
+	direct := agentSeedPromptWorkflow(ref, "fail on PR", "do the thing", "", true, nil, workflowDirectToMain, true, "")
+	if strings.Contains(direct, "post the same actionable failure comment to both the linked issue and the PR") {
+		t.Fatalf("direct-to-main seed must not ask for PR comments when no PR exists\n%s", direct)
+	}
+}
+
 func TestOwnerAllowed(t *testing.T) {
 	r := &Runner{}
 	for _, ok := range []string{"coilysiren", "coilyco-bridge", "coilyco-flight-deck", "coilyco-gaming"} {

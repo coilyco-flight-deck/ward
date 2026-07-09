@@ -73,6 +73,16 @@ func TestWorkflowCarryClausePullRequest(t *testing.T) {
 			t.Errorf("pull-request carry clause missing %q\n got: %s", want, got)
 		}
 	}
+	for _, want := range []string{
+		"post the same actionable failure comment to both the linked issue and the PR",
+		"reservation-lock release/clear/hand-back wording",
+		"signature/idempotency marker",
+		"skip the PR comment",
+	} {
+		if !strings.Contains(got, want) {
+			t.Errorf("pull-request carry clause missing PR-failure steer %q\n got: %s", want, got)
+		}
+	}
 	if strings.Contains(got, "merge to main, push - and close") {
 		t.Fatalf("pull-request carry clause regressed to the direct-to-main fast path:\n%s", got)
 	}
@@ -85,6 +95,16 @@ func TestWorkflowCarryClausePullRequestAndMerge(t *testing.T) {
 	for _, want := range []string{"pull request", "closes #17", directorMergeWorkflowMarker, "director-merge authorized", "the pull request is merged"} {
 		if !strings.Contains(got, want) {
 			t.Errorf("pull-request-and-merge carry clause missing %q\n got: %s", want, got)
+		}
+	}
+	for _, want := range []string{
+		"post the same actionable failure comment to both the linked issue and the PR",
+		"reservation-lock release/clear/hand-back wording",
+		"signature/idempotency marker",
+		"skip the PR comment",
+	} {
+		if !strings.Contains(got, want) {
+			t.Errorf("pull-request-and-merge carry clause missing PR-failure steer %q\n got: %s", want, got)
 		}
 	}
 	if strings.Contains(got, "merge to main, push - and close") {
@@ -123,6 +143,15 @@ func TestAgentSeedPromptWorkflow(t *testing.T) {
 	if !strings.Contains(pr, "the branch is pushed, the pull request is open, and the required checks are green") {
 		t.Errorf("pull-request reflection should require green checks before done\n got: %s", pr)
 	}
+	for _, want := range []string{
+		"post the same actionable failure comment to both the linked issue and the PR",
+		"reservation-lock release/clear/hand-back wording",
+		"signature/idempotency marker",
+	} {
+		if !strings.Contains(pr, want) {
+			t.Errorf("pull-request reflection should steer PR-failure comments with %q\n got: %s", want, pr)
+		}
+	}
 	merge := agentSeedPromptWorkflow(ref, "reframe ward", "do it", "", true, nil, workflowPullRequestAndMerge, true, "")
 	if !strings.Contains(merge, "director-merge authorized") {
 		t.Errorf("pull-request-and-merge seed should mark the PR as director-merge authorized\n got: %s", merge)
@@ -143,6 +172,9 @@ func TestAgentSeedPromptWorkflow(t *testing.T) {
 	if !strings.Contains(prMerge, "the pull request is merged") {
 		t.Errorf("pull-request-and-merge reflection should require merge before done\n got: %s", prMerge)
 	}
+	if !strings.Contains(prMerge, "skip the PR comment") {
+		t.Errorf("pull-request-and-merge reflection should tell the worker to skip PR comments when no PR exists\n got: %s", prMerge)
+	}
 
 	branchOnly := agentSeedPromptWorkflow(ref, "reframe ward", "do it", "", true, nil, workflowRemoteBranchOnly, true, "")
 	if !strings.Contains(branchOnly, "remote-branch-only") {
@@ -150,6 +182,9 @@ func TestAgentSeedPromptWorkflow(t *testing.T) {
 	}
 	if !strings.Contains(branchOnly, "the remote branch is pushed") {
 		t.Errorf("remote-branch-only reflection should name the branch landing\n got: %s", branchOnly)
+	}
+	if strings.Contains(branchOnly, "post the same actionable failure comment to both the linked issue and the PR") {
+		t.Errorf("remote-branch-only reflection must not ask for PR comments when no PR exists\n got: %s", branchOnly)
 	}
 
 	// The plain agentSeedPrompt wrapper follows the safe pull-request default.

@@ -163,9 +163,17 @@ func headlessReflection(ref agentIssueRef, wf workflowMode, reviewGate bool, rev
 		"Put every other word inside one collapsed `<details><summary>details</summary>` block: the review " +
 		"summary or skip state, the workflow line (`workflow: <mode>; review summary: <summary or skip state>`), " +
 		"the short candid retrospective on how the implementation \"felt\", confidence, surprises, and follow-ups. Do not leave " +
-		"any visible prose outside that first status line. " + reviewLine + " A supervising director loop " +
+		"any visible prose outside that first status line. " + reviewLine + " " + headlessWorkflowFailureCommentClause(wf) + " A supervising director loop " +
 		"(ward agent director) reads only that first line to classify the run, so for a normal run that completed " +
 		"its workflow it is `" + wardOutcomeMarker + " done`. Reserve blocked/failed for a run that genuinely could not land."
+}
+
+func headlessWorkflowFailureCommentClause(wf workflowMode) string {
+	mode := canonicalWorkflow(wf.orDefault())
+	if mode == workflowPullRequest || mode == workflowPullRequestAndMerge {
+		return workflowFailureCommentClause()
+	}
+	return ""
 }
 
 // reviewGateClause wires the pre-landing adversarial review panel into a headless
