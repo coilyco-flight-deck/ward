@@ -298,10 +298,10 @@ func salvageIssueBody(r salvageReport) string {
 // issue (ward#518): a reopen banner plus the shared detail body.
 func salvageCommentBody(r salvageReport) string {
 	var b strings.Builder
-	b.WriteString("WARD-REAP: this run's work did not land on `main`\n\n")
+	visible := "WARD-REAP: reopened 🛑"
 	fmt.Fprintf(&b, "An ephemeral `ward container` (%s mode) dispatched for this issue finished but its work was **not merged to `main`**, so cleanup preserved it on a branch before teardown and reopened the issue (a closing reference for #%d never reached `main`). Recover from the salvage branch below.\n\n", r.Mode, r.Issue)
 	b.WriteString(salvageDetailBody(r))
-	return b.String()
+	return collapsedIssueComment(visible, "salvage details", b.String())
 }
 
 // salvageDetailBody is the shared body of both the standalone issue and the
@@ -394,7 +394,7 @@ type extraRepoUnlanded struct {
 // which grants did not land, where each was preserved, and how to recover (ward#291).
 func unlandedExtraReposComment(env reapEnv, reports []extraRepoUnlanded) string {
 	var b strings.Builder
-	b.WriteString("WARD-REAP: a granted `--repo` push did not land\n\n")
+	visible := "WARD-REAP: reopened 🛑"
 	fmt.Fprintf(&b, "This run held `--repo` grants and closed against `%s`, but cleanup could not confirm "+
 		"every granted repo's work reached its `main`. A secondary push can be silently rejected (a "+
 		"non-fast-forward on a busy `main`, a dead/rotated PAT) while the primary push succeeds, so the "+
@@ -425,7 +425,7 @@ func unlandedExtraReposComment(env reapEnv, reports []extraRepoUnlanded) string 
 	}
 	b.WriteString("Re-run the cross-repo half, or - per ward#291 - file it as a native issue in the granted " +
 		"repo so it becomes a single-repo run that sidesteps this failure mode.\n")
-	return b.String()
+	return collapsedIssueComment(visible, "grant details", b.String())
 }
 
 // sortedUnlanded orders un-landed grants by slug for deterministic rendering.

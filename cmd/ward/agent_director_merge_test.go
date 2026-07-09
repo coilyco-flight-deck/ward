@@ -131,8 +131,13 @@ func TestMergePullRequestRequestShape(t *testing.T) {
 
 func TestDirectorRunMetaParsesWorkflowAndReview(t *testing.T) {
 	body := strings.Join([]string{
-		"WARD-OUTCOME: done - merged and pushed",
+		"WARD-OUTCOME: done ✅",
+		"",
+		"<details><summary>details</summary>",
+		"",
 		"workflow: pull-request-and-merge; review summary: passed: all green",
+		"",
+		"</details>",
 	}, "\n")
 	meta := parseDirectorRunMeta(body)
 	if !meta.HasOutcome || meta.Outcome.Status != "done" {
@@ -164,7 +169,7 @@ JSON
 ;;
 "issue-comment list")
 cat <<'JSON'
-[{"body":"WARD-OUTCOME: done - merged and pushed\nworkflow: pull-request-and-merge; review summary: passed: all green","created_at":"2026-07-09T00:00:00Z","user":{"login":"coilyco-ops"}}]
+[{"body":"WARD-OUTCOME: done ✅\n\n<details><summary>details</summary>\n\nworkflow: pull-request-and-merge; review summary: passed: all green\n\n</details>","created_at":"2026-07-09T00:00:00Z","user":{"login":"coilyco-ops"}}]
 JSON
 ;;
 *)

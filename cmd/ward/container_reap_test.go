@@ -120,8 +120,11 @@ func TestUnlandedExtraReposComment(t *testing.T) {
 		{Repo: targetRepo{Owner: "coilyco-flight-deck", Name: "cli-guard"}, NoMain: true, PushErr: "remote: forbidden\nfatal: unable to access"},
 	}
 	got := unlandedExtraReposComment(env, reports)
+	if visible := visibleLinesBeforeDetails(got); visible != "WARD-REAP: reopened 🛑" {
+		t.Fatalf("unlanded grant visible line = %q\n%s", visible, got)
+	}
 	for _, want := range []string{
-		"WARD-REAP:",                              // the headline undoing the close
+		"WARD-REAP: reopened",                     // the headline undoing the close
 		"coilyco-flight-deck/ward",                // the issue's own repo, named
 		"coilyco-bridge/agentic-os-kai",           // the un-landed grant
 		"2 local commit(s) never reached",         // the ahead count
@@ -131,6 +134,7 @@ func TestUnlandedExtraReposComment(t *testing.T) {
 		"salvage-branch push also failed",         // the degraded preservation
 		"remote: forbidden",                       // the push error's first line
 		"native issue in the granted",             // the ward#291 guidance
+		"<details><summary>grant details</summary>",
 	} {
 		if !strings.Contains(got, want) {
 			t.Errorf("comment missing %q\n got: %s", want, got)
@@ -1155,7 +1159,10 @@ func TestNotifySalvageCarriedIssueRepoensAndComments(t *testing.T) {
 	if f.created != 0 {
 		t.Errorf("carried salvage must NOT file a standalone issue, got created=%d", f.created)
 	}
-	for _, want := range []string{"WARD-REAP:", "ward-salvage/ward-abc123", string(reasonConflict), "git fetch", "/pulls/716"} {
+	if visible := visibleLinesBeforeDetails(f.commentBody); visible != "WARD-REAP: reopened 🛑" {
+		t.Fatalf("salvage visible line = %q\n%s", visible, f.commentBody)
+	}
+	for _, want := range []string{"WARD-REAP: reopened", "ward-salvage/ward-abc123", string(reasonConflict), "git fetch", "/pulls/716", "<details><summary>salvage details</summary>"} {
 		if !strings.Contains(f.commentBody, want) {
 			t.Errorf("carried-issue comment missing %q\n---\n%s", want, f.commentBody)
 		}

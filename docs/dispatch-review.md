@@ -9,8 +9,8 @@ code-review pass **in the container, after green CI and before the PR opens**, s
 only unsolved diffs reach them.
 
 The gate is `CI green AND quorum >= threshold`, and **fails closed**: a panel error,
-timeout, or empty vote blocks landing. The review summary must also show up in the
-final `WARD-OUTCOME` comment, not just the panel log.
+timeout, or empty vote blocks landing. The final `WARD-OUTCOME` shows one visible
+line and folds the review detail.
 
 ## Where it runs
 
@@ -18,7 +18,7 @@ The panel is `ward agent review`, wired into the [engineer](agent-engineer.md) s
 for every headless landing run (not `remote-branch-only`, which lands nothing). After CI is
 green and before it opens the PR or merges, the worker runs it and reads the machine
 line on stdout - `WARD-REVIEW: pass` (land), `block` (do not land; post the verdicts
-and close `WARD-OUTCOME: blocked`), or `advisory` (only if no reviewer can run at
+and close `WARD-OUTCOME: blocked 🛑`), or `advisory` (only if no reviewer can run at
 all, and the host converts that to a fail-closed block). For `pull-request` runs, opening the
 pull request is not the finish line. The worker keeps watching the PR checks and
 loops on failures until they are green or genuinely blocked. `--skip-review` drops
@@ -65,10 +65,10 @@ The class is pinned by the host into the container env, never read from the
 
 ## Single-family fallback
 
-If no reviewer can actually run (binary missing, auth missing, endpoint unreachable),
-the host treats the panel as a fail-closed block and writes the review summary into
-the conclusion comment. A skipped review is explicit in the conclusion comment too,
-so a human can tell a deliberate bypass from an unavailable reviewer.
+If no reviewer can run (binary missing, auth missing, endpoint unreachable), the host
+treats the panel as a fail-closed block and writes the review summary into collapsed
+details. A skipped review is explicit there too, so a human can tell a deliberate
+bypass from an unavailable reviewer.
 
 ## See also
 

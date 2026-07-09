@@ -203,12 +203,16 @@ func TestRouteChildBody(t *testing.T) {
 func TestRouteRoutedComment(t *testing.T) {
 	child := agentIssueRef{Owner: "coilyco-flight-deck", Repo: "ward", Number: 200}
 	got := routeRoutedComment(modeClaude, child, "add the flag", "It's a CLI change.\nREPO: coilyco-flight-deck/ward - add the flag")
+	if visible := visibleLinesBeforeDetails(got); visible != "WARD-STATUS: routed 🧭" {
+		t.Fatalf("routeRoutedComment visible line = %q\n%s", visible, got)
+	}
 	for _, want := range []string{
 		"coilyco-flight-deck/ward#200", // names the child
 		child.url(),                    // links it
 		"add the flag",                 // the scoping note
 		"Closing this intake record",   // explains the close
 		"<details>",                    // folds the read away
+		"route details",                // names the folded block
 		"It's a CLI change.",           // the read verbatim
 		"ward#164",
 	} {
@@ -216,14 +220,17 @@ func TestRouteRoutedComment(t *testing.T) {
 			t.Errorf("routeRoutedComment missing %q\n got: %s", want, got)
 		}
 	}
-	// An empty read omits the details block.
-	if strings.Contains(routeRoutedComment(modeClaude, child, "", ""), "<details>") {
-		t.Error("an empty read should omit the details block")
+	// Even without a survey read, the status body stays folded.
+	if !strings.Contains(routeRoutedComment(modeClaude, child, "", ""), "<details>") {
+		t.Error("status comments should keep the body collapsed")
 	}
 }
 
 func TestRouteUnclearComment(t *testing.T) {
 	got := routeUnclearComment(modeClaude, "ward and cli-guard both fit", "Could be two repos.\nUNCLEAR: ward and cli-guard both fit")
+	if visible := visibleLinesBeforeDetails(got); visible != "WARD-STATUS: route unclear 🛑" {
+		t.Fatalf("routeUnclearComment visible line = %q\n%s", visible, got)
+	}
 	for _, want := range []string{
 		"UNCLEAR",                     // names the verdict
 		"ward and cli-guard both fit", // carries the reason
@@ -232,19 +239,20 @@ func TestRouteUnclearComment(t *testing.T) {
 		"ward agent engineer --harness claude <owner/repo>", // how to re-dispatch DIRECT
 		"ward agent engineer --harness claude",              // the by-hand alternative
 		"<details>",                                         // folds the read away
-		"Could be two repos.",                               // the read verbatim
+		"route details",
+		"Could be two repos.", // the read verbatim
 		"ward#164",
 	} {
 		if !strings.Contains(got, want) {
 			t.Errorf("routeUnclearComment missing %q\n got: %s", want, got)
 		}
 	}
-	// An empty reason degrades to a placeholder; an empty read omits the details.
+	// An empty reason degrades to a placeholder, and the status body stays folded.
 	empty := routeUnclearComment(modeClaude, "  ", "")
 	if !strings.Contains(empty, "(no reason given)") {
 		t.Errorf("empty reason should render a placeholder; got: %s", empty)
 	}
-	if strings.Contains(empty, "<details>") {
-		t.Error("an empty read should omit the details block")
+	if !strings.Contains(empty, "<details>") {
+		t.Error("status comments should keep the body collapsed")
 	}
 }

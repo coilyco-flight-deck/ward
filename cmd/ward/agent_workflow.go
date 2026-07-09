@@ -204,7 +204,7 @@ func remoteBranchOnlyCarryClause(ref agentIssueRef) string {
 }
 
 // workflowLandingPhrase names "done" for the reflection's "only after ..." opener.
-func workflowLandingPhrase(_ agentIssueRef, wf workflowMode) string {
+func workflowLandingPhrase(wf workflowMode) string {
 	switch wf.orDefault() {
 	case workflowDirectToMain:
 		return "the work is committed, merged to main, and pushed"
@@ -215,6 +215,6 @@ func workflowLandingPhrase(_ agentIssueRef, wf workflowMode) string {
 	case workflowRemoteBranchOnly:
 		return "the remote branch is pushed"
 	default:
-		return workflowLandingPhrase(agentIssueRef{}, workflowDirectToMain)
+		return workflowLandingPhrase(workflowDirectToMain)
 	}
 }

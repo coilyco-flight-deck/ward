@@ -321,6 +321,9 @@ func TestFreshReservationComment(t *testing.T) {
 func TestReservationCommentBodyIsRoadBlock(t *testing.T) {
 	now := time.Date(2026, 7, 3, 12, 0, 0, 0, time.UTC)
 	body := reservationCommentBody(modeClaude, "engineer-claude-ward-494", "box", now, "", nil)
+	if visible := visibleLinesBeforeDetails(body); visible != "WARD-RESERVATION: held 🔒" {
+		t.Fatalf("reservation visible line = %q\n%s", visible, body)
+	}
 	for _, want := range []string{
 		"Do not comment on or edit this issue",
 		"new issue, dispatched fresh",
@@ -565,7 +568,7 @@ func TestPostReservationComment(t *testing.T) {
 func TestReservationCommentBodyHasMarker(t *testing.T) {
 	now := time.Date(2026, 6, 18, 12, 0, 0, 0, time.UTC)
 	body := reservationCommentBody(modeCodex, "engineer-codex-ward-142", "tower", now, "", nil)
-	for _, want := range []string{agentReservationMarker, "ward agent --harness codex", "engineer-codex-ward-142", "tower", "1h TTL"} {
+	for _, want := range []string{agentReservationMarker, "WARD-RESERVATION: held", "ward agent --harness codex", "engineer-codex-ward-142", "tower", "1h TTL"} {
 		if !strings.Contains(body, want) {
 			t.Errorf("reservation comment missing %q\n got: %s", want, body)
 		}
@@ -582,7 +585,7 @@ func TestReservationCommentBodyFoldsJustification(t *testing.T) {
 	now := time.Date(2026, 6, 18, 12, 0, 0, 0, time.UTC)
 	read := "Main risk is the schema migration.\n\nGO"
 	body := reservationCommentBody(modeClaude, "engineer-claude-ward-383", "box", now, "  "+read+"  ", nil)
-	for _, want := range []string{"pre-flight read (GO)", "<details>", read, "**GO**"} {
+	for _, want := range []string{"reservation details", "pre-flight read (GO)", "<details>", read, "**GO**"} {
 		if !strings.Contains(body, want) {
 			t.Errorf("reservation comment missing %q\n got: %s", want, body)
 		}
@@ -806,10 +809,12 @@ func TestBuildReservationSeedContextPartition(t *testing.T) {
 // TestReservationReleaseCommentBodyGate pins the enriched release comment (ward#609):
 // a nil gate keeps the generic text; a gate names the gate, recovery, and error.
 func TestReservationReleaseCommentBodyGate(t *testing.T) {
-	// nil -> generic, unchanged behavior.
 	generic := reservationReleaseCommentBody(modeClaude, "engineer-claude-ward-609", nil)
 	if !strings.HasPrefix(generic, agentReservationReleaseMarker) || !strings.Contains(generic, "smoke-test death") {
 		t.Fatalf("generic release comment regressed: %s", generic)
+	}
+	if visible := visibleLinesBeforeDetails(generic); visible != "WARD-RESERVATION: released 🛑" {
+		t.Fatalf("generic release visible line = %q\n%s", visible, generic)
 	}
 	if strings.Contains(generic, "**Gate:**") {
 		t.Errorf("generic release comment should carry no Gate section: %s", generic)
@@ -823,14 +828,18 @@ func TestReservationReleaseCommentBodyGate(t *testing.T) {
 	// auth gate -> names the gate, the recovery, and the folded error line.
 	gf := &gateFailure{Gate: "auth", Detail: "auth smoke test: claude -p rejected the credentials (exit 1)"}
 	enriched := reservationReleaseCommentBody(modeClaude, "engineer-claude-ward-609", gf)
+	if visible := visibleLinesBeforeDetails(enriched); visible != "WARD-RESERVATION: released 🛑" {
+		t.Fatalf("enriched release visible line = %q\n%s", visible, enriched)
+	}
 	for _, want := range []string{
 		agentReservationReleaseMarker,
 		agentNeedsRedispatchMarker,
 		"Run never started",
+		"release details",
 		"**auth** pre-launch gate",
 		"**Gate:** auth smoke test (claude credentials)",
 		"**Recovery:** Refresh the host claude login",
-		"error from the gate",
+		"Error from the gate",
 		"rejected the credentials",
 	} {
 		if !strings.Contains(enriched, want) {
