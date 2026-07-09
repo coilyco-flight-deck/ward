@@ -31,7 +31,7 @@ func agentEngineerCommand() *cli.Command {
 		Name: "engineer",
 		Usage: "Implement a ticket end to end: a ref carries it detached, " +
 			"freeform text files an issue first then carries it.",
-		ArgsUsage: "<owner/repo#N | #N | forgejo-issue-url | '<freeform instructions>'>",
+		ArgsUsage: "<owner/repo#N | #N | issue-url | '<freeform instructions>'>",
 		Flags:     agentEngineerFlags(),
 		Action:    agentEngineerAction(),
 	}

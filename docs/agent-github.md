@@ -49,6 +49,16 @@ otherwise it stays Forgejo. A Forgejo URL still means Forgejo, and a bare `#N`
 inherits the current checkout's authority. The [trusted-owner](agent-trust-gate.md)
 allowlist is shared across both forges.
 
+## Migration posture
+
+For existing `coilysiren/*` Forgejo issues, the cutover plan is manual and
+deliberate:
+
+* inventory the open Forgejo issues in each repo
+* migrate each one to GitHub, or close it on Forgejo if it is obsolete
+* comment back on the Forgejo issue with the GitHub replacement URL
+* close and, where possible, lock the Forgejo issue so the discussion does not split
+
 ## Supplying the GitHub token
 
 GitHub auth is a host-side token, **operator-selectable** by `WARD_GITHUB_TOKEN_SOURCE`

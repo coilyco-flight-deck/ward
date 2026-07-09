@@ -88,13 +88,17 @@ func parseAgentIssueRef(s string) (agentIssueRef, error) {
 		return ghRef, nil
 	}
 	if ref, err := parseDispatchIssueRef(s); err == nil {
+		if !looksLikeExplicitForgejoIssueRef(s) {
+			ref.Forge = currentSmartDefaults().forgeForRepo(ref.Owner, ref.Repo)
+			ref.Tracker = trackerFromForge(ref.Forge)
+		}
 		return ref, nil
 	}
 	ref, err := issueref.Parse(s, forgejoBaseURL)
 	if err == nil {
 		return agentIssueRef{Owner: ref.Owner, Repo: ref.Repo, Number: ref.Number}, nil
 	}
-	// Accept scheme-less Forgejo issue URLs as a convenience for dictated refs and
+	// Accept scheme-less issue URLs as a convenience for dictated refs and
 	// pasted URLs that dropped their protocol in transit.
 	if !strings.Contains(s, "://") {
 		if ref, err := issueref.Parse("https://"+s, forgejoBaseURL); err == nil {
@@ -111,6 +115,52 @@ func parseAgentIssueRef(s string) (agentIssueRef, error) {
 			s, strings.TrimRight(forgejoBaseURL, "/"))
 	}
 	return agentIssueRef{}, fmt.Errorf("cannot parse issue ref %q: want owner/repo#N, a bare #N, or %s/owner/repo/issues/N", s, strings.TrimRight(forgejoBaseURL, "/"))
+}
+
+// parseAgentIssueRefWithoutAuthority parses the same ref shapes as parseAgentIssueRef
+// but leaves repo authority resolution to the caller.
+func parseAgentIssueRefWithoutAuthority(s string) (agentIssueRef, error) {
+	s = strings.TrimSpace(s)
+	if s == "" {
+		return agentIssueRef{}, fmt.Errorf("empty issue reference")
+	}
+	if ghRef, ok := parseGitHubIssueRef(s); ok {
+		return ghRef, nil
+	}
+	if ref, err := parseDispatchIssueRef(s); err == nil {
+		return ref, nil
+	}
+	ref, err := issueref.Parse(s, forgejoBaseURL)
+	if err == nil {
+		return agentIssueRef{Owner: ref.Owner, Repo: ref.Repo, Number: ref.Number}, nil
+	}
+	if !strings.Contains(s, "://") {
+		if ref, err := issueref.Parse("https://"+s, forgejoBaseURL); err == nil {
+			return agentIssueRef{Owner: ref.Owner, Repo: ref.Repo, Number: ref.Number}, nil
+		}
+	}
+	if strings.Contains(s, "://") {
+		return agentIssueRef{}, fmt.Errorf(
+			"cannot parse issue ref %q: want owner/repo#N, a bare #N, or %s/owner/repo/issues/N; "+
+				"for a non-issue pointer (a CI run, job, or commit URL), hand it to the engineer "+
+				"role's freeform mode instead: ward agent engineer '<url>'",
+			s, strings.TrimRight(forgejoBaseURL, "/"))
+	}
+	return agentIssueRef{}, fmt.Errorf("cannot parse issue ref %q: want owner/repo#N, a bare #N, or %s/owner/repo/issues/N", s, strings.TrimRight(forgejoBaseURL, "/"))
+}
+
+// looksLikeExplicitForgejoIssueRef reports whether s names Forgejo directly rather
+// than relying on compact owner/repo syntax.
+func looksLikeExplicitForgejoIssueRef(s string) bool {
+	s = strings.ToLower(strings.TrimSpace(s))
+	if s == "" {
+		return false
+	}
+	if strings.Contains(s, "://") {
+		return true
+	}
+	base := strings.ToLower(strings.TrimRight(forgejoBaseURL, "/"))
+	return strings.HasPrefix(s, base+"/") || strings.HasPrefix(s, "www."+base+"/")
 }
 
 func parseDispatchIssueRef(s string) (agentIssueRef, error) {
@@ -532,7 +582,7 @@ func agentCmdline(mode containerMode, surface string) string {
 func agentCommand() *cli.Command {
 	return &cli.Command{
 		Name:   "agent",
-		Usage:  "Send an agent into a fresh ephemeral container to carry a Forgejo issue end to end (a bare ref runs the engineer).",
+		Usage:  "Send an agent into a fresh ephemeral container to carry the authoritative issue end to end (a bare ref runs the engineer).",
 		Before: smartDefaultsGuard("ward agent"),
 		Description: fmt.Sprintf(`agent is the issue-carrying dispatcher (the spelling 'warded' fronts), a
 roster of startup roles (ward#347): you do not invoke a mode, you send in a
@@ -541,7 +591,8 @@ harness (%s, default %s; --agent is an equal accepted spelling, --driver a
 deprecated alias for one release, ward#660).
 A BARE REF with no role word runs the 'engineer' role - the fire-and-forget
 default. A bare #N (or N) infers the owner/repo from the cwd's git origin;
-owner/repo#N and a full Forgejo issue URL also work. One line replaces a full
+owner/repo#N resolves through the selected repo-authority policy, and a full
+issue URL also works. One line replaces a full
 container bring-up stack plus a prompt.
 
   warded coilyco-flight-deck/ward#98          # bare ref -> engineer run (warded face)
@@ -1100,7 +1151,7 @@ func preflightPrompt(ref agentIssueRef, title, body, details string, comments []
 	gate := subsystemPreflightBlock(ref, title, body)
 	return fmt.Sprintf(
 		"You are about to be sent, fire-and-forget, into an ephemeral container to carry "+
-			"this Forgejo issue end to end on your own - implement, commit, merge to main, "+
+			"this issue end to end on your own - implement, commit, merge to main, "+
 			"push - with no human watching once you detach.\n\n"+
 			"That detached run happens in %s pulled inside the container. "+
 			"The directory you are reading this in right now is unrelated host scratch - it may "+

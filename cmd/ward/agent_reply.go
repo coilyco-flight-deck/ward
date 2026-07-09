@@ -310,7 +310,7 @@ func replyResearchPrompt(ref agentIssueRef, title, body string, comments []issue
 		prompt = "(no prompt given)"
 	}
 	return fmt.Sprintf(
-		"You are doing one-shot research on a Forgejo issue. You are NOT implementing anything, NOT "+
+		"You are doing one-shot research on the authoritative issue thread for this repo. You are NOT implementing anything, NOT "+
 			"changing code, and NOT carrying this issue to merge - your entire job is to research the "+
 			"question below and answer it well.\n\n"+
 			"Emit your answer as a SINGLE fenced ```json block and nothing else outside it, in this shape:\n\n"+

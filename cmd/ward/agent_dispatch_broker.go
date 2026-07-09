@@ -187,7 +187,7 @@ func (r *Runner) handleHostDispatchBrokerConn(ctx context.Context, conn net.Conn
 		r.runDispatchBrokerLogs(ctx, conn, req)
 		return
 	}
-	logPath, err := r.runHostDispatchBrokerRequest(ctx, req)
+	logPath, err := r.startHostDispatchBrokerRequest(ctx, req)
 	writeDispatchBrokerResponse(conn, logPath, err)
 }
 
@@ -260,6 +260,60 @@ func (r *Runner) runHostDispatchBrokerRequest(ctx context.Context, req dispatchB
 	}
 	fmt.Fprintf(os.Stderr, "ward dispatch broker: launch completed\n")
 	return logPath, nil
+}
+
+// startHostDispatchBrokerRequest launches the validated request in the background
+// and returns once the launch has started so the broker can ack the surface promptly.
+func (r *Runner) startHostDispatchBrokerRequest(ctx context.Context, req dispatchBrokerRequest) (string, error) {
+	if err := validateDispatchBrokerRequest(req); err != nil {
+		return "", err
+	}
+	if dispatchAction(req.Action) == dispatchActionStop {
+		return r.runDispatchBrokerStop(ctx, req)
+	}
+	var lock *sync.Mutex
+	if ref, err := parseAgentIssueRef(req.Argv[1]); err == nil {
+		lock = dispatchRefLock(ref.String())
+	}
+	logf, logPath, err := openDispatchLog(req, time.Now())
+	if err != nil {
+		return "", fmt.Errorf("dispatch broker: open run log: %w", err)
+	}
+	_, _ = fmt.Fprintf(logf, "ward dispatch broker: %s requested `ward agent %s`\n",
+		emptyDefault(req.Requester, "unknown-container"), redactDispatchBrokerArgv(req.Argv))
+	ref := ""
+	if len(req.Argv) >= 2 {
+		ref = req.Argv[1]
+	}
+	_, _ = fmt.Fprintf(logf, "ward dispatch broker: this log captures the host wrapper only; in-container engineer console/reap logs drain separately and are readable with `ward agent logs %s`\n",
+		ref)
+	restore := redirectStdioToLog(logf)
+	started := make(chan struct{})
+	go func() {
+		defer func() {
+			restore()
+			_ = logf.Close()
+		}()
+		if lock != nil {
+			lock.Lock()
+			defer lock.Unlock()
+		}
+		if err := withBrokerForwardingDisabled(func() error {
+			close(started)
+			return dispatchBrokerLaunch(ctx, req)
+		}); err != nil {
+			fmt.Fprintf(os.Stderr, "ward dispatch broker: launch failed: %v\n", err)
+			r.commentFailedDispatchLaunch(ctx, req, logPath, err)
+			return
+		}
+		fmt.Fprintf(os.Stderr, "ward dispatch broker: launch completed\n")
+	}()
+	select {
+	case <-started:
+		return logPath, nil
+	case <-ctx.Done():
+		return "", ctx.Err()
+	}
 }
 
 // commentFailedDispatchLaunch posts the failure comment with a detached timeout.
@@ -742,9 +796,12 @@ func brokerDispatchHarness(c *cli.Command, fallback containerMode) containerMode
 }
 
 func (r *Runner) brokerDispatchRef(ctx context.Context, arg string) (agentIssueRef, bool) {
-	ref, err := r.resolveAgentIssueRef(ctx, arg)
+	ref, err := parseAgentIssueRefWithoutAuthority(arg)
 	if err != nil {
-		return agentIssueRef{}, false
+		ref, err = r.resolveAgentIssueRef(ctx, arg)
+		if err != nil {
+			return agentIssueRef{}, false
+		}
 	}
 	return ref, true
 }

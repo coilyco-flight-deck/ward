@@ -127,6 +127,48 @@ func TestParseAgentIssueRef(t *testing.T) {
 	}
 }
 
+func TestParseAgentIssueRefUsesRepoAuthorityPolicy(t *testing.T) {
+	dir := t.TempDir()
+	body := `smart-defaults {
+    agent-reservation-ttl "1h"
+}
+
+repo-authority default=forgejo {
+    trusted-owner "coilysiren"
+    trusted-owner "coilyco-flight-deck"
+    repo "coilysiren/*" forge=github
+    repo "coilyco-flight-deck/*" forge=forgejo
+}`
+	if err := os.WriteFile(filepath.Join(dir, bundleDefaultsKDLPath), []byte(body), 0o644); err != nil {
+		t.Fatalf("write defaults bundle: %v", err)
+	}
+	t.Setenv(wardConfigRefEnv, "file://"+dir)
+
+	gh, err := parseAgentIssueRef("coilysiren/agentic-os#461")
+	if err != nil {
+		t.Fatalf("parseAgentIssueRef(github-authoritative): %v", err)
+	}
+	if gh.Forge != forgeGitHub || gh.Tracker != trackerGitHub {
+		t.Fatalf("parseAgentIssueRef(github-authoritative) = %+v, want github forge/tracker", gh)
+	}
+
+	fj, err := parseAgentIssueRef("coilyco-flight-deck/ward#98")
+	if err != nil {
+		t.Fatalf("parseAgentIssueRef(forgejo-authoritative): %v", err)
+	}
+	if fj.Forge != forgeForgejo || fj.Tracker != trackerForgejo {
+		t.Fatalf("parseAgentIssueRef(forgejo-authoritative) = %+v, want forgejo forge/tracker", fj)
+	}
+
+	explicit, err := parseAgentIssueRef(forgejoBaseURL + "/coilyco-flight-deck/ward/issues/98")
+	if err != nil {
+		t.Fatalf("parseAgentIssueRef(explicit forgejo url): %v", err)
+	}
+	if explicit.Forge != forgeForgejo || explicit.Tracker != trackerForgejo {
+		t.Fatalf("parseAgentIssueRef(explicit forgejo url) = %+v, want explicit forgejo", explicit)
+	}
+}
+
 func TestAgentIssueRefURL(t *testing.T) {
 	ref := agentIssueRef{Owner: "coilyco-flight-deck", Repo: "ward", Number: 98}
 	want := forgejoBaseURL + "/coilyco-flight-deck/ward/issues/98"
@@ -804,7 +846,7 @@ func TestPreflightWrongRepoComment(t *testing.T) {
 // in-container agent's argv: after the image, never as a -e env, never leaked.
 func TestDockerCreateArgvSeedsAgentArgs(t *testing.T) {
 	p := sampleUpPlan()
-	seed := "Work on Forgejo issue coilyco-flight-deck/ward#98."
+	seed := "Work on issue coilyco-flight-deck/ward#98."
 	p.AgentArgs = []string{seed}
 	argv := dockerCreateArgv(p, "/tmp/ward-env-xyz")
 

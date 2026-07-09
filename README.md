@@ -12,7 +12,7 @@ ward's second half is a **guarded execution layer for coding agents**. `ward age
 ## What it requires
 
 - **macOS or Linux + Homebrew** to install the binary (see [Install](#install)).
-- **A Forgejo instance** for the agent driver (`warded` / `ward agent`) and the operator surface (`ward ops forgejo`). ward is **Forgejo-canonical**: it carries Forgejo issues and pushes to a Forgejo `main`, and the GitHub mirror is read-only and PR-gated. Which Forgejo, exactly? See the note below the list.
+- **A Forgejo instance** for ward's own operator surface (`ward ops forgejo`). ward is **Forgejo-canonical** for ward itself: it carries Forgejo issues and pushes to a Forgejo `main`, and the GitHub mirror is read-only and PR-gated. The agent driver follows the target repo's authority policy, so `coilysiren/*` can be GitHub-authoritative. Which Forgejo, exactly? See the note below the list.
 - **Docker** for the container agent flow - each `warded` run boots an ephemeral container, configures forge git auth inside it, runs the agent, and reaps it. The first run pulls one image, `forgejo.coilysiren.me/coilyco-flight-deck/agentic-os:latest` (anonymous pull, no login). See [`docs/container.md`](docs/container.md) for the registry, tag policy, and how to pin off the moving tag.
 
 The plain verb gate (`ward exec`, `ward git`, `ward audit`) needs none of the above - just the repo and its `.ward/ward.yaml`.
@@ -55,7 +55,7 @@ ward git commit -m ...   # concurrency-safe, audited git
 ward audit tail --follow # stream the audit log
 ```
 
-The agent driver, against a Forgejo issue. `warded` is a thin symlink onto `ward agent` - read it as a protective circle, the container bounding the agent's reach, not "warded off":
+The agent driver, against the repo's authoritative issue thread. `warded` is a thin symlink onto `ward agent` - read it as a protective circle, the container bounding the agent's reach, not "warded off":
 
 ```
 warded #98               # put an engineer on issue #98, fire-and-forget
@@ -102,7 +102,7 @@ v0.x, and early on purpose. ward is a single-maintainer tool in active internal 
 
 ## Support
 
-**Canonical development happens on [Forgejo][ward-forgejo]** - `main`, the issues, and every commit live there. That instance's registration is closed, so the **GitHub mirror is the public front door for everyone except the maintainer**: file a [bug or feature request][new-issue] there with just a GitHub account and a maintainer carries an accepted change across. If you are working directly in the canonical repo, use Forgejo issues and Forgejo `closes #N` links. The full contributor flow is in [CONTRIBUTING.md](CONTRIBUTING.md). Conduct: [Code of Conduct](CODE_OF_CONDUCT.md). Security: [SECURITY.md](SECURITY.md). License: [`LICENSE`](./LICENSE).
+**Canonical development happens on [Forgejo][ward-forgejo]** - `main`, the issues, and every commit live there. That instance's registration is closed, so the **GitHub mirror is the public front door for everyone except the maintainer**: file a [bug or feature request][new-issue] there with just a GitHub account and a maintainer carries an accepted change across. If you are working directly in the canonical repo, use Forgejo issues and Forgejo `closes #N` links. For `coilysiren/*`, the agent driver resolves the authoritative tracker from the repo-authority policy instead of assuming Forgejo. Conduct: [Code of Conduct](CODE_OF_CONDUCT.md). Security: [SECURITY.md]. License: [`LICENSE`](./LICENSE).
 
 [cli-guard]: https://forgejo.coilysiren.me/coilyco-flight-deck/cli-guard
 [new-issue]: https://github.com/coilyco-flight-deck/ward/issues/new/choose
