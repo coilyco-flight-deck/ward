@@ -443,6 +443,20 @@ func agentHarness(c *cli.Command) (containerMode, error) {
 	return m, nil
 }
 
+// surfaceDispatchMode resolves the harness for a director-surface sibling dispatch.
+// Explicit flags win; otherwise inherit WARD_AGENT/WARD_MODE on brokered surfaces.
+func surfaceDispatchMode(c *cli.Command) (containerMode, error) {
+	mode, err := agentHarness(c)
+	if err != nil {
+		return "", err
+	}
+	if os.Getenv(envDispatchBrokerAddr) != "" && os.Getenv("WARD_READONLY") == "1" &&
+		!c.IsSet("harness") && !c.IsSet("agent") && !c.IsSet("driver") {
+		return currentAgentMode(), nil
+	}
+	return mode, nil
+}
+
 // agentCmdline renders the canonical `ward agent <surface> --harness <mode>` form
 // (ward#185) for labels, provenance lines, and the re-dispatch hints ward prints.
 func agentCmdline(mode containerMode, surface string) string {

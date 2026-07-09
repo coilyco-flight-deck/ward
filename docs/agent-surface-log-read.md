@@ -36,7 +36,7 @@ sibling into the parallel tree:
   (`redactConsole`, reusing the extractor's `redactSecrets`).
 - **`transcript.redacted.jsonl`** - the transcript reduced to bodies-dropped, args-scrubbed
   tool **envelopes**, one per line (`redactedTranscript`, reusing
-  `extractEnvelopes(_, true)` - the exact redaction the remote SigNoz export runs).
+  `extractEnvelopes(_, true)` - the shared redaction path for the local archive).
 - **`meta.json`** - already secret-free, copied over verbatim.
 
 So the redaction is **shared with the envelope extractor**, not a second redactor: one
@@ -45,15 +45,14 @@ views with tool-result bodies dropped and secret shapes scrubbed, and the raw ar
 plus the `dispatch/` logs that also live under `agent-logs/` - never reach the mount.
 
 The raw `console.log` / `transcript.jsonl` stay on disk under `agent-logs/` for the
-host-native drain + SigNoz path: this **adds** the redacted view, it does not replace the
-raw archive.
+host-native drain path: this **adds** the redacted view, it does not replace the raw
+archive.
 
 ### Requires the disk sink
 
-The redacted view rides the same disk gate as the raw artifacts (`WARD_AGENT_SINK` =
-`disk` or `both`; [agent-observability.md](agent-observability.md)). Under the
-`signoz`-only default nothing is written to either tree, so the surface mount is empty -
-turn on the disk sink for a director to have logs to read.
+The redacted view rides the same disk gate as the raw artifacts
+([agent-observability.md](agent-observability.md)). The local archive is the
+default, so the surface mount has logs to read unless the host write itself fails.
 
 ## See also
 
