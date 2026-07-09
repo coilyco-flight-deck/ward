@@ -1,4 +1,4 @@
-# Issue-template chooser config for the GitHub mirror. Templates render at
+# GitHub issue-form chooser config for the mirror. Templates render at
 # github.com/coilyco-flight-deck/ward/issues/new/choose - the "New issue" link
 # in README.md. ward is Forgejo-canonical; GitHub is the read-only mirror and
 # the external front door where public issues and PRs are filed (see #438/#481).
