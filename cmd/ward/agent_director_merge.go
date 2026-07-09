@@ -34,7 +34,7 @@ func agentDirectorMergeCommand() *cli.Command {
 		Name:        "merge",
 		Usage:       "Merge eligible ward-owned PRs whose issue thread authorizes director merge.",
 		ArgsUsage:   "(scope via --repo; default: the cwd git origin)",
-		Description: `merge scans open pull requests in scope and merges only the ones the ward issue thread marks as director-merge authorized: the linked issue ended with WARD-OUTCOME: done, the final comment says workflow: pull-request-and-merge, the review summary is passed, and the PR is not salvage/draft noise. pull-request still needs a human. See docs/agent-director.md and docs/agent-workflow.md.`,
+		Description: `merge scans open pull requests in scope and merges only the ones the ward issue thread marks as director-merge authorized: the linked issue ended with WARD-OUTCOME: merge-ready, the final comment says workflow: pull-request-and-merge, the review summary is passed, and the PR is not salvage/draft noise. The director records the final done outcome only after the merge lands. pull-request still needs a human. See docs/agent-director.md and docs/agent-workflow.md.`,
 		Flags:       directorMergeFlags(),
 		Action: func(ctx context.Context, c *cli.Command) error {
 			r := newRunner()
@@ -84,6 +84,9 @@ func (r *Runner) runDirectorMerge(ctx context.Context, c *cli.Command) error {
 			}
 			if err := cl.mergePullRequest(ctx, owner, name, pr.Number); err != nil {
 				return fmt.Errorf("%s: merge %s/%s#%d: %w", label, owner, name, pr.Number, err)
+			}
+			if err := recordDirectorMergeDone(ctx, cl, owner, name, linked, pr.Number, meta); err != nil {
+				return fmt.Errorf("%s: record done for %s/%s#%d after merge: %w", label, owner, name, pr.Number, err)
 			}
 			merged++
 			_, _ = fmt.Fprintf(r.Runner.Stderr, "%s: merged %s/%s#%d (issue #%d)\n", label, owner, name, pr.Number, linked)
@@ -145,8 +148,14 @@ func directorMergeDecision(pr dispatch.Issue, linked int, meta directorRunMeta) 
 	case strings.HasPrefix(title, "wip:") || strings.HasPrefix(title, "[wip]"):
 		return false, "draft PRs are not merge-authorized", linked, meta
 	}
-	if !meta.HasOutcome || strings.ToLower(strings.TrimSpace(meta.Outcome.Status)) != "done" {
-		return false, "linked issue did not finish with WARD-OUTCOME: done", linked, meta
+	status := strings.ToLower(strings.TrimSpace(meta.Outcome.Status))
+	switch status {
+	case "merge-ready", "done":
+	default:
+		if !meta.HasOutcome {
+			return false, "linked issue did not finish with a WARD-OUTCOME comment", linked, meta
+		}
+		return false, "linked issue did not finish with WARD-OUTCOME: merge-ready", linked, meta
 	}
 	if strings.TrimSpace(meta.Workflow) != string(workflowPullRequestAndMerge) {
 		if strings.TrimSpace(meta.Workflow) == "" {
@@ -158,6 +167,34 @@ func directorMergeDecision(pr dispatch.Issue, linked int, meta directorRunMeta) 
 		return false, "review gate did not pass", linked, meta
 	}
 	return true, "", linked, meta
+}
+
+// recordDirectorMergeDone posts the director's final done outcome only after the
+// PR has actually merged to main.
+func recordDirectorMergeDone(ctx context.Context, cl *forgejoClient, owner, repo string, linked, prNumber int, meta directorRunMeta) error {
+	body := directorMergeDoneComment(prNumber, meta)
+	if err := cl.commentIssue(ctx, owner, repo, linked, body); err != nil {
+		return err
+	}
+	return nil
+}
+
+func directorMergeDoneComment(prNumber int, meta directorRunMeta) string {
+	workflow := strings.TrimSpace(meta.Workflow)
+	if workflow == "" {
+		workflow = string(workflowPullRequestAndMerge)
+	}
+	review := strings.TrimSpace(meta.Review)
+	if review == "" {
+		review = "passed: director merged the pull request"
+	}
+	return fmt.Sprintf(
+		"WARD-OUTCOME: done ✅\n\n"+
+			"<details><summary>details</summary>\n\n"+
+			"workflow: %s; review summary: %s\n\n"+
+			"merged PR #%d to main after the merge gate passed.\n\n"+
+			"</details>",
+		workflow, review, prNumber)
 }
 
 // directorLinkedIssueNumber extracts the first same-repo closing reference from a

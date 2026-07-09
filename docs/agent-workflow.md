@@ -48,7 +48,7 @@ and a `ward.workflow` label, and is read by the reaper.
 
 - **High trust with no review need** (your own solo repo, an automation repo you own) - `direct-to-main`.
 - **Shared / reviewed** (a team repo where changes get looked at) - `pull-request`.
-- **Director-merge lane** (ward-owned PRs that meet the review gate and end `WARD-OUTCOME: done`) - `pull-request-and-merge`.
+- **Director-merge lane** (ward-owned PRs that meet the review gate and end `WARD-OUTCOME: merge-ready`) - `pull-request-and-merge`.
 - **Low trust / exploratory** (an external target, a risky change you want to eyeball
   before it touches the tree) - `remote-branch-only`.
 
@@ -94,8 +94,9 @@ This first slice is deliberately minimal:
   on a salvage branch by the reaper. When Forgejo PRs are available, the reaper
   also opens a PR for the salvage branch and links it from the salvage comment.
 - `pull-request` runs keep watching PR CI/checks after the PR opens, so
-  `WARD-OUTCOME: done` only follows green checks or a genuine block. `pull-request-and-merge`
-  waits for the merge itself before it reports success.
+  `WARD-OUTCOME: submitted` follows green checks or a genuine block. `pull-request-and-merge`
+  reports `WARD-OUTCOME: merge-ready`, then waits for the director merge sweep to land the PR and
+  record the final `done` outcome.
 - The autonomous [pre-flight](agent-preflight.md) still reads in merge-to-main
   terms; it judges feasibility, not the landing contract, so it is left as-is.
 

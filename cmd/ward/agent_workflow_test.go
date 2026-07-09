@@ -140,6 +140,9 @@ func TestAgentSeedPromptWorkflow(t *testing.T) {
 	if !strings.Contains(pr, "pull request") || strings.Contains(pr, "merge to main, push - and close") {
 		t.Errorf("pull-request seed should carry a PR clause, not the merge-to-main fast path\n got: %s", pr)
 	}
+	if !strings.Contains(pr, "WARD-OUTCOME: submitted") {
+		t.Errorf("pull-request reflection should end with submitted, not done\n got: %s", pr)
+	}
 	if !strings.Contains(pr, "the branch is pushed, the pull request is open, and the required checks are green") {
 		t.Errorf("pull-request reflection should require green checks before done\n got: %s", pr)
 	}
@@ -169,8 +172,11 @@ func TestAgentSeedPromptWorkflow(t *testing.T) {
 	if !strings.Contains(prMerge, "director-merge authorized") {
 		t.Errorf("pull-request-and-merge seed should carry the director merge lane\n got: %s", prMerge)
 	}
-	if !strings.Contains(prMerge, "the pull request is merged") {
-		t.Errorf("pull-request-and-merge reflection should require merge before done\n got: %s", prMerge)
+	if !strings.Contains(prMerge, "WARD-OUTCOME: merge-ready") {
+		t.Errorf("pull-request-and-merge reflection should end with merge-ready, not done\n got: %s", prMerge)
+	}
+	if !strings.Contains(prMerge, "the pull request is reviewed and merge-ready") {
+		t.Errorf("pull-request-and-merge reflection should require merge-ready before done\n got: %s", prMerge)
 	}
 	if !strings.Contains(prMerge, "skip the PR comment") {
 		t.Errorf("pull-request-and-merge reflection should tell the worker to skip PR comments when no PR exists\n got: %s", prMerge)

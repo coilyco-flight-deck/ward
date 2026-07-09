@@ -103,6 +103,9 @@ func TestReviewGateClauseInSeed(t *testing.T) {
 	if !strings.Contains(pr, "watching its CI/checks") {
 		t.Errorf("pull-request seed should tell PR workflows to keep watching checks after opening the PR")
 	}
+	if !strings.Contains(pr, "WARD-OUTCOME: submitted") {
+		t.Errorf("pull-request seed should end with submitted, not done\n got: %s", pr)
+	}
 
 	branchOnly := agentSeedPromptWorkflow(ref, "t", "b", "", true, nil, workflowRemoteBranchOnly, true, "")
 	if strings.Contains(branchOnly, "REVIEW GATE") {
@@ -113,6 +116,13 @@ func TestReviewGateClauseInSeed(t *testing.T) {
 	}
 	if !strings.Contains(pr, "For `pull-request` workflows, opening the pull request is not a stopping point") {
 		t.Errorf("review gate clause must tell pull-request runs to keep watching PR CI\n got: %s", pr)
+	}
+	merge := agentSeedPromptWorkflow(ref, "t", "b", "", true, nil, workflowPullRequestAndMerge, true, "")
+	if !strings.Contains(merge, "WARD-OUTCOME: merge-ready") {
+		t.Errorf("pull-request-and-merge seed should end with merge-ready, not done\n got: %s", merge)
+	}
+	if !strings.Contains(merge, "merge-ready") {
+		t.Errorf("pull-request-and-merge seed should name merge-ready in the landing phrase\n got: %s", merge)
 	}
 
 	off := agentSeedPromptWorkflow(ref, "t", "b", "", true, nil, workflowDirectToMain, false, "")

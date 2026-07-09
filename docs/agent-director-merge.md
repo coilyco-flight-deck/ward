@@ -12,12 +12,13 @@ The merge lane is narrow by design. It accepts only ward-owned work whose carrie
 issue thread says:
 
 - `workflow: pull-request-and-merge`
-- `WARD-OUTCOME: done`
+- `WARD-OUTCOME: merge-ready`
 - review summary starts with `passed:`
 - the PR title is not salvage or WIP noise
 
 That keeps `pull-request` human-gated. The director does not gain a
-general PR-review or blanket repo-write surface here.
+general PR-review or blanket repo-write surface here. After the merge lands,
+the director records the final `WARD-OUTCOME: done` on the issue.
 
 ## What it does
 
