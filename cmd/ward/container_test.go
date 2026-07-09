@@ -561,7 +561,7 @@ func TestWriteContainerAssetsStagesUnderHome(t *testing.T) {
 	// (never /tmp) for a snap docker daemon to see it at `docker run` (ward#574).
 	home := t.TempDir()
 	t.Setenv("HOME", home)
-	dir, cleanup, err := writeContainerAssets()
+	dir, cleanup, err := writeContainerAssets(context.Background(), false, "", "")
 	if err != nil {
 		t.Fatalf("writeContainerAssets: %v", err)
 	}
@@ -571,6 +571,35 @@ func TestWriteContainerAssetsStagesUnderHome(t *testing.T) {
 	}
 	if !strings.HasPrefix(filepath.Base(dir), containerAssetsPrefix) {
 		t.Errorf("assets dir %q must carry the sweep-recognizable prefix %q", dir, containerAssetsPrefix)
+	}
+}
+
+func TestWriteContainerAssetsStagesGoBootstrapBinary(t *testing.T) {
+	home := t.TempDir()
+	t.Setenv("HOME", home)
+	prev := stageWardBootstrapBinary
+	stageWardBootstrapBinary = func(_ context.Context, dir, wardSource, wardVersion string) error {
+		if wardSource != "/src/ward" {
+			t.Fatalf("stage bootstrap source = %q, want /src/ward", wardSource)
+		}
+		if wardVersion != "v0.1.2" {
+			t.Fatalf("stage bootstrap version = %q, want v0.1.2", wardVersion)
+		}
+		return os.WriteFile(filepath.Join(dir, "ward"), []byte("#!/bin/sh\nexit 0\n"), 0o755)
+	}
+	t.Cleanup(func() { stageWardBootstrapBinary = prev })
+
+	dir, cleanup, err := writeContainerAssets(context.Background(), true, "/src/ward", "v0.1.2")
+	if err != nil {
+		t.Fatalf("writeContainerAssets(go-bootstrap): %v", err)
+	}
+	defer cleanup()
+	info, err := os.Stat(filepath.Join(dir, "ward"))
+	if err != nil {
+		t.Fatalf("bootstrap ward binary missing: %v", err)
+	}
+	if info.Mode()&0o111 == 0 {
+		t.Fatalf("bootstrap ward binary must be executable, mode %o", info.Mode())
 	}
 }
 
@@ -1110,6 +1139,8 @@ func TestEntrypointDelegatesBootstrap(t *testing.T) {
 	for _, want := range []string{
 		"exec ward container bootstrap \"$@\"",
 		"install_ward()", // the shell still owns only binary installation
+		"[ -n \"${WARD_USE_GO_BOOTSTRAP:-}\" ] && [ -x /opt/ward/ward ]",
+		"ln -sf /opt/ward/ward /usr/local/bin/ward",
 	} {
 		if !strings.Contains(script, want) {
 			t.Errorf("entrypoint missing %q (bootstrap delegation)", want)

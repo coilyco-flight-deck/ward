@@ -15,18 +15,18 @@ ward stays small by pushing stack-specific behavior behind a few seams.
 
 ## Forge
 
-- **What** - the git-hosting service ward reads and writes.
-- **Port** - `issueForge` in `cmd/ward/forge.go`.
+- **What** - the git host ward clones from, pushes to, and opens PRs against.
+- **Port** - `forge` in `cmd/ward/forge.go`.
 - **Reference adapters** - `cmd/ward/forgejo_ops.go` and `cmd/ward/github_ops.go`.
-- **Must satisfy** - issue read/write, comments, state flips, and lock/unlock.
+- **Must satisfy** - clone base URL, push username, ref parsing, and PR/MR creation.
 - **Friction** - medium.
 
-## Tracker gap
+## Tracker
 
-- **What** - the issue-tracker seam, still folded into the forge client.
-- **Port** - none yet. Tracker behavior rides `issueForge`.
+- **What** - the issue-tracker seam, split off from the git host.
+- **Port** - `Tracker` in `cmd/ward/forge.go`.
 - **Reference adapters** - the Forgejo and GitHub issue-thread clients.
-- **Must satisfy** - create, comment, and update work items without forcing unrelated forge behavior to change.
+- **Must satisfy** - create, comment, close/reopen, lock/unlock, and read issue threads without dragging in git-host behavior.
 - **Friction** - high for Jira, Linear, Trello, or Shortcut.
 
 ## Container runtime

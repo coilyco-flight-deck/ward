@@ -250,7 +250,7 @@ esac
 	cl := &forgejoClient{r: &Runner{Runner: &shell.Runner{}}, exe: fake, baseURL: prsrv.URL, token: "secret"}
 
 	allowed, reason, linked, meta := directorMergeEligibility(context.Background(), "coilyco-flight-deck", "ward",
-		directorPullRequest{Issue: dispatch.Issue{Number: 729, Title: "ship the fix", Body: "closes #729\n" + directorMergeWorkflowMarker + "\n"}, Mergeable: true, MergeableKnown: true}, cl)
+		directorPullRequest{Issue: dispatch.Issue{Number: 729, Title: "ship the fix", Body: "closes #729\n" + directorMergeWorkflowMarker + "\n"}, Mergeable: true, MergeableKnown: true}, cl, cl)
 	if !allowed || reason != "" || linked != 729 {
 		t.Fatalf("eligible PR = %v %q %d, want true/\"\"/729", allowed, reason, linked)
 	}
@@ -259,7 +259,7 @@ esac
 	}
 
 	allowed, reason, _, _ = directorMergeEligibility(context.Background(), "coilyco-flight-deck", "ward",
-		directorPullRequest{Issue: dispatch.Issue{Number: 729, Title: "ship the fix", Body: "closes #729\n"}, Mergeable: true, MergeableKnown: true}, cl)
+		directorPullRequest{Issue: dispatch.Issue{Number: 729, Title: "ship the fix", Body: "closes #729\n"}, Mergeable: true, MergeableKnown: true}, cl, cl)
 	if allowed {
 		t.Fatal("unmarked PR: want deny, got allow")
 	}
@@ -298,7 +298,7 @@ esac
 	cl := &forgejoClient{r: &Runner{Runner: &shell.Runner{}}, exe: fake}
 
 	allowed, reason, linked, meta := directorMergeEligibility(context.Background(), "coilyco-flight-deck", "ward",
-		directorPullRequest{Issue: dispatch.Issue{Number: 729, Title: "ship the fix", Body: "closes #729\n" + directorMergeWorkflowMarker + "\n"}, Mergeable: false, MergeableKnown: true}, cl)
+		directorPullRequest{Issue: dispatch.Issue{Number: 729, Title: "ship the fix", Body: "closes #729\n" + directorMergeWorkflowMarker + "\n"}, Mergeable: false, MergeableKnown: true}, cl, cl)
 	if allowed {
 		t.Fatal("conflicting PR: want deny, got allow")
 	}
@@ -365,7 +365,7 @@ esac
 
 func TestDirectorMergeEligibilitySkipsUnknownMergeability(t *testing.T) {
 	ok, reason, linked, _ := directorMergeEligibility(context.Background(), "coilyco-flight-deck", "ward",
-		directorPullRequest{Issue: dispatch.Issue{Title: "ship the fix", Body: "closes #729\n" + directorMergeWorkflowMarker + "\n"}}, &forgejoClient{})
+		directorPullRequest{Issue: dispatch.Issue{Title: "ship the fix", Body: "closes #729\n" + directorMergeWorkflowMarker + "\n"}}, &forgejoClient{}, &forgejoClient{})
 	if ok {
 		t.Fatal("unknown mergeability: want skip, got allow")
 	}

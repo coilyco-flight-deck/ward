@@ -13,31 +13,35 @@ import (
 // directorMergeEligiblePullRequests sweeps ward-owned PRs that already satisfy the
 // explicit director merge boundary and merges them through Forgejo.
 func (r *Runner) directorMergeEligiblePullRequests(ctx context.Context, label string, repos []string) error {
-	cl, err := r.hostForgejoClient(ctx)
+	prClient, err := r.hostForgejoClient(ctx)
+	if err != nil {
+		return fmt.Errorf("%s: %w", label, err)
+	}
+	issueClient, err := r.hostTrackerClient(ctx, trackerForgejo, currentAgentMode())
 	if err != nil {
 		return fmt.Errorf("%s: %w", label, err)
 	}
 	for _, repo := range repos {
 		owner, name, _ := strings.Cut(repo, "/")
-		prs, lerr := cl.listOpenPullRequests(ctx, owner, name, 50)
+		prs, lerr := prClient.listOpenPullRequests(ctx, owner, name, 50)
 		if lerr != nil {
 			fmt.Fprintf(os.Stderr, "%s: note: cannot list pull requests in %s (%v); skipping this repo\n", label, repo, lerr)
 			continue
 		}
 		for _, pr := range prs {
-			ok, reason, linked, meta := directorMergeEligibility(ctx, owner, name, pr, cl)
+			ok, reason, linked, meta := directorMergeEligibility(ctx, owner, name, pr, prClient, issueClient)
 			if !ok {
 				if reason != "" {
 					fmt.Fprintf(os.Stderr, "%s: not merging %s/%s#%d - %s\n", label, owner, name, pr.Number, reason)
 				}
 				continue
 			}
-			if err := cl.mergePullRequest(ctx, owner, name, pr.Number); err != nil {
+			if err := prClient.mergePullRequest(ctx, owner, name, pr.Number); err != nil {
 				fmt.Fprintf(os.Stderr, "%s: merge failed for %s/%s#%d (issue #%d, workflow %s, review %q): %v\n",
 					label, owner, name, pr.Number, linked, meta.Workflow, meta.Review, err)
 				continue
 			}
-			if err := recordDirectorMergeDone(ctx, cl, owner, name, linked, pr.Number, meta); err != nil {
+			if err := recordDirectorMergeDone(ctx, issueClient, owner, name, linked, pr.Number, meta); err != nil {
 				fmt.Fprintf(os.Stderr, "%s: merged %s/%s#%d for issue #%d but could not record done: %v\n",
 					label, owner, name, pr.Number, linked, err)
 				continue

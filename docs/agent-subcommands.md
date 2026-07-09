@@ -11,6 +11,10 @@ hard rename of the old verbs: `work`/`headless`/`task` → `engineer`, `backlog`
 `sandbox` was removed, and `explore`/`architect` were folded into the **director's
 surface phase**. The old spellings error as unknown commands.
 
+The semantic posture for those roles is separate from the KDL guardfile tiers.
+[agent-role-capabilities.md](agent-role-capabilities.md) names the ward-owned
+`read` / `project-management` / `engineering` / `ops` / `admin` vocabulary.
+
 A **bare ref with no role word runs `engineer`**: `warded #98`
 dispatches the fire-and-forget engineer, and a bare `#N`/`N` infers `owner/repo` from the cwd
 origin. The role words below override that default.
@@ -33,17 +37,20 @@ The notes below are the behavioral detail the flat roster does not capture:
   for claude it **streams live progress** to the container log. From a terminal it first runs
   a **pre-flight check** ([agent-preflight.md](agent-preflight.md)): a GO launches, a NO-GO
   comments and launches nothing. Its seed **closes with a "how it felt" comment**
-  led by a `WARD-OUTCOME` line. No attach surface (`work`/`--watch` retired);
+  led by a `WARD-OUTCOME` line. Semantic preset: `read + engineering`. No attach surface (`work`/`--watch` retired);
   interactive work funnels to `director`. Freeform text files an issue first, then carries it:
   DIRECT for an explicit `owner/repo`, ROUTE for a freeform task with no repo.
 - **`director`** (was `backlog`) - an attached heartbeat: polls `WARD-OUTCOME`, an LLM
   one-shot picks which queued issues to dispatch under `--max-parallel`, and on drain surfaces
   a **read-only scope + dispatch session** (push credential revoked, reaper skips salvage;
+  semantic preset: `read + project-management`;
   [agent-surface.md](agent-surface.md)).
 - **`advisor`** (was `reply` + `ask`) - the ref mode researches one-shot and posts the
   answer as a comment; freeform answers *inside* a fresh container and streams it inline.
+  Semantic preset: `read`.
 - **`qa`** - opt-in structured inspection: a ref reads the issue, candidate branch/PR,
   and checks, then posts a verdict comment. No code edits, no default gating.
+  Semantic preset: `read`.
 
 ## Pre-flight parity
 
