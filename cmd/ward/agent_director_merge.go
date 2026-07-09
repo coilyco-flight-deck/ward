@@ -163,34 +163,49 @@ func directorMergeDecision(pr dispatch.Issue, linked int, meta directorRunMeta) 
 	case strings.HasPrefix(title, "wip:") || strings.HasPrefix(title, "[wip]"):
 		return false, "draft PRs are not merge-authorized", linked, meta
 	}
-	if !meta.HasOutcome || strings.ToLower(strings.TrimSpace(meta.Outcome.Status)) != "done" {
-		return false, "linked issue did not finish with WARD-OUTCOME: done", linked, meta
+	if reason, ok := directorMergeOutcomeGate(meta); !ok {
+		return false, reason, linked, meta
 	}
-	if strings.TrimSpace(meta.Workflow) != string(workflowPullRequestAndMerge) {
-		if strings.TrimSpace(meta.Workflow) == "" {
-			return false, "linked issue comment did not record the merge workflow", linked, meta
-		}
-		return false, "workflow " + meta.Workflow + " still needs human merge approval", linked, meta
-	}
-	if strings.TrimSpace(meta.QA.ReviewerFamily) != qaFamilyInternal {
-		return false, "linked issue QA verdict was not from the internal reviewer family", linked, meta
-	}
-	if strings.ToLower(strings.TrimSpace(meta.QA.Verdict)) != "pass" {
-		return false, "linked issue QA verdict did not pass", linked, meta
-	}
-	if strings.TrimSpace(meta.QA.ReviewedSHA) != strings.TrimSpace(meta.PRHeadSHA) {
-		return false, "linked issue QA verdict does not match the current PR head SHA", linked, meta
-	}
-	if strings.TrimSpace(meta.QA.IssueRef) != strings.TrimSpace(meta.IssueRef) {
-		return false, "linked issue QA verdict does not name the current issue", linked, meta
-	}
-	if strings.TrimSpace(meta.QA.PRRef) != strings.TrimSpace(meta.PRRef) {
-		return false, "linked issue QA verdict does not name the current PR", linked, meta
-	}
-	if strings.TrimSpace(meta.QA.RunIdentity) == "" {
-		return false, "linked issue QA verdict is missing run identity", linked, meta
+	if reason, ok := directorMergeQAGate(meta); !ok {
+		return false, reason, linked, meta
 	}
 	return true, "", linked, meta
+}
+
+func directorMergeOutcomeGate(meta directorRunMeta) (reason string, ok bool) {
+	if !meta.HasOutcome || strings.ToLower(strings.TrimSpace(meta.Outcome.Status)) != "done" {
+		return "linked issue did not finish with WARD-OUTCOME: done", false
+	}
+	wf := strings.TrimSpace(meta.Workflow)
+	if wf != string(workflowPullRequestAndMerge) {
+		if wf == "" {
+			return "linked issue comment did not record the merge workflow", false
+		}
+		return "workflow " + meta.Workflow + " still needs human merge approval", false
+	}
+	return "", true
+}
+
+func directorMergeQAGate(meta directorRunMeta) (reason string, ok bool) {
+	if strings.TrimSpace(meta.QA.ReviewerFamily) != qaFamilyInternal {
+		return "linked issue QA verdict was not from the internal reviewer family", false
+	}
+	if strings.ToLower(strings.TrimSpace(meta.QA.Verdict)) != "pass" {
+		return "linked issue QA verdict did not pass", false
+	}
+	if strings.TrimSpace(meta.QA.ReviewedSHA) != strings.TrimSpace(meta.PRHeadSHA) {
+		return "linked issue QA verdict does not match the current PR head SHA", false
+	}
+	if strings.TrimSpace(meta.QA.IssueRef) != strings.TrimSpace(meta.IssueRef) {
+		return "linked issue QA verdict does not name the current issue", false
+	}
+	if strings.TrimSpace(meta.QA.PRRef) != strings.TrimSpace(meta.PRRef) {
+		return "linked issue QA verdict does not name the current PR", false
+	}
+	if strings.TrimSpace(meta.QA.RunIdentity) == "" {
+		return "linked issue QA verdict is missing run identity", false
+	}
+	return "", true
 }
 
 // directorLinkedIssueNumber extracts the first same-repo closing reference from a

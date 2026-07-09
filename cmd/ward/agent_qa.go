@@ -26,18 +26,6 @@ type qaVerdict struct {
 
 const qaFamilyInternal = "internal"
 
-// qaVerdictRecord is the structured comment body the director can read back.
-type qaVerdictRecord struct {
-	Verdict        string
-	ReviewedSHA    string
-	ReviewerFamily string
-	Workflow       string
-	IssueRef       string
-	PRRef          string
-	Reason         string
-	RunIdentity    string
-}
-
 // agentQAFlags is the QA flag set: the ref-mode depth ladder plus the shared
 // container launch controls and print/no-pull preview.
 func agentQAFlags() []cli.Flag {
@@ -104,7 +92,7 @@ func (r *Runner) runAgentQA(ctx context.Context, c *cli.Command, mode containerM
 		fmt.Fprintf(os.Stderr, "%s: note: could not read comments on %s (%v); QA will inspect the issue body only\n", label, ref, cerr)
 	}
 
-	pr, prErr := r.findLinkedPullRequest(ctx, ref, issue, comments)
+	pr, foundPR, prErr := r.findLinkedPullRequest(ctx, ref, issue, comments)
 	qaCtx := qaLaunchContext{
 		IssueRef:       ref.String(),
 		ReviewerFamily: family,
@@ -113,7 +101,7 @@ func (r *Runner) runAgentQA(ctx context.Context, c *cli.Command, mode containerM
 	}
 	if prErr != nil {
 		fmt.Fprintf(os.Stderr, "%s: note: could not resolve linked PR for %s (%v); QA will comment without a reviewed SHA\n", label, ref, prErr)
-	} else if pr != nil {
+	} else if foundPR && pr != nil {
 		qaCtx.PRRef = pr.ref(ref.Owner, ref.Repo)
 		qaCtx.ReviewedSHA = pr.headSHA()
 	}
@@ -421,24 +409,8 @@ func parseQAVerdictComment(body string) (qaCommentMeta, bool) {
 			found = true
 			continue
 		}
-		lower := strings.ToLower(s)
-		switch {
-		case strings.HasPrefix(lower, "verdict:"):
-			meta.Verdict = strings.TrimSpace(s[len("verdict:"):])
-		case strings.HasPrefix(lower, "reviewed_sha:"):
-			meta.ReviewedSHA = strings.TrimSpace(s[len("reviewed_sha:"):])
-		case strings.HasPrefix(lower, "reviewer_family:"):
-			meta.ReviewerFamily = strings.TrimSpace(s[len("reviewer_family:"):])
-		case strings.HasPrefix(lower, "workflow:"):
-			meta.Workflow = strings.TrimSpace(s[len("workflow:"):])
-		case strings.HasPrefix(lower, "issue_ref:"):
-			meta.IssueRef = strings.TrimSpace(s[len("issue_ref:"):])
-		case strings.HasPrefix(lower, "pr_ref:"):
-			meta.PRRef = strings.TrimSpace(s[len("pr_ref:"):])
-		case strings.HasPrefix(lower, "reason:"):
-			meta.Reason = strings.TrimSpace(s[len("reason:"):])
-		case strings.HasPrefix(lower, "run_identity:"):
-			meta.RunIdentity = strings.TrimSpace(s[len("run_identity:"):])
+		if qaParseCommentField(&meta, s) {
+			continue
 		}
 	}
 	if !found {
@@ -447,16 +419,41 @@ func parseQAVerdictComment(body string) (qaCommentMeta, bool) {
 	return meta, true
 }
 
+func qaParseCommentField(meta *qaCommentMeta, s string) bool {
+	lower := strings.ToLower(s)
+	switch {
+	case strings.HasPrefix(lower, "verdict:"):
+		meta.Verdict = strings.TrimSpace(s[len("verdict:"):])
+	case strings.HasPrefix(lower, "reviewed_sha:"):
+		meta.ReviewedSHA = strings.TrimSpace(s[len("reviewed_sha:"):])
+	case strings.HasPrefix(lower, "reviewer_family:"):
+		meta.ReviewerFamily = strings.TrimSpace(s[len("reviewer_family:"):])
+	case strings.HasPrefix(lower, "workflow:"):
+		meta.Workflow = strings.TrimSpace(s[len("workflow:"):])
+	case strings.HasPrefix(lower, "issue_ref:"):
+		meta.IssueRef = strings.TrimSpace(s[len("issue_ref:"):])
+	case strings.HasPrefix(lower, "pr_ref:"):
+		meta.PRRef = strings.TrimSpace(s[len("pr_ref:"):])
+	case strings.HasPrefix(lower, "reason:"):
+		meta.Reason = strings.TrimSpace(s[len("reason:"):])
+	case strings.HasPrefix(lower, "run_identity:"):
+		meta.RunIdentity = strings.TrimSpace(s[len("run_identity:"):])
+	default:
+		return false
+	}
+	return true
+}
+
 // findLinkedPullRequest resolves the merge-lane PR for the issue, if any, and
 // returns its current Forgejo head SHA for commit-bound QA commentary.
-func (r *Runner) findLinkedPullRequest(ctx context.Context, ref agentIssueRef, _ any, _ []issueComment) (*forgejoPullRequest, error) {
+func (r *Runner) findLinkedPullRequest(ctx context.Context, ref agentIssueRef, _ any, _ []issueComment) (*forgejoPullRequest, bool, error) {
 	cl, err := r.hostForgejoClient(ctx)
 	if err != nil {
-		return nil, err
+		return nil, false, err
 	}
 	prs, err := cl.listOpenPullRequests(ctx, ref.Owner, ref.Repo, 50)
 	if err != nil {
-		return nil, err
+		return nil, false, err
 	}
 	for _, pr := range prs {
 		linked, ok := directorLinkedIssueNumber(pr.Body)
@@ -469,14 +466,14 @@ func (r *Runner) findLinkedPullRequest(ctx context.Context, ref agentIssueRef, _
 		}
 		full, err := cl.getPullRequest(ctx, ref.Owner, ref.Repo, pr.Number)
 		if err != nil {
-			return nil, err
+			return nil, false, err
 		}
 		if strings.TrimSpace(full.Head.SHA) == "" {
-			return nil, fmt.Errorf("forgejo: pull request %s/%s#%d omitted head sha", ref.Owner, ref.Repo, pr.Number)
+			return nil, false, fmt.Errorf("forgejo: pull request %s/%s#%d omitted head sha", ref.Owner, ref.Repo, pr.Number)
 		}
-		return full, nil
+		return full, true, nil
 	}
-	return nil, nil
+	return nil, false, nil
 }
 
 // parseQAVerdict recovers the structured verdict from the read, if present.
