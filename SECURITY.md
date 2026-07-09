@@ -37,7 +37,7 @@ The gate is **verb-level** - it bounds what call is expressible, not what a proc
 - credential leakage: a seeded secret (the claude OAuth blob, codex auth, `FORGEJO_TOKEN`, `~/.aws`) reaching argv, the audit log, or an `env` dump - anywhere outside its mode-600 `--env-file` / git-credential file ([docs/agent-credentials.md](docs/agent-credentials.md))
 - container escape: a run reaching the host filesystem past the read-only cwd bind, the docker socket, or another concurrent container. Isolation is the only boundary, so an escape past the one throwaway clone is a vulnerability, not a known limitation
 - cross-repo credential bleed: in a multi-repo run (`--repo` grants), one repo's push token or credential being usable against a repo outside the granted set, or a run reaching a repo it was never granted
-- telemetry or audit gaps in a `ward agent` run (parallel to the exec audit-log bullet): a drained `meta.json` or SigNoz envelope leaking a secret the redaction should have dropped, or a run leaving no reconstructable record ([docs/agent-observability.md](docs/agent-observability.md))
+- telemetry or audit gaps in a `ward agent` run (parallel to the exec audit-log bullet): a drained `meta.json` or local transcript leaking a secret the redaction should have dropped, or a run leaving no reconstructable record ([docs/agent-observability.md](docs/agent-observability.md))
 
 Out of scope (file as regular issues, not vulnerabilities):
 

@@ -68,7 +68,7 @@ New to ward? Read [architecture.md](architecture.md) first - it frames the whole
 - [agent-credentials.md](agent-credentials.md) - how each harness's host credential is seeded.
 - [agent-aws-creds.md](agent-aws-creds.md) - how the aws capability delivers AWS creds (export-and-inject, mount fallback).
 - [agent-attribution.md](agent-attribution.md) - agent attribution on Forgejo write bodies.
-- [agent-observability.md](agent-observability.md) - agent-run log/telemetry drain + opt-in OTLP.
+- [agent-observability.md](agent-observability.md) - agent-run log drain, redacted sibling tree, deferred OTLP.
 - [agent-dispatch-contract.md](agent-dispatch-contract.md) - dispatch exit codes + `meta.json` outcome enum for supervising runs.
 - [agent-host-net.md](agent-host-net.md) - `--tailnet`, the opt-in network escalation.
 - [agent-ts-sidecar.md](agent-ts-sidecar.md) - the Docker Desktop tailnet-route sidecar.

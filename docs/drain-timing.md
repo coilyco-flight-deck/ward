@@ -23,7 +23,6 @@ that blocks on `docker wait` and drains the run **the moment it exits**.
   "no destructive interaction with live containers" safety property holds).
 - The waiter is detached (its own session, released, no inherited stdio), so it
   outlives the launching `ward agent` process and never writes to the console.
-- It inherits the launch env, so it resolves the same `WARD_AGENT_SINK`.
 - It is **best-effort**: a spawn failure only logs, then leaves the sweep to drain
   the run later - it never fails the launch.
 - **In-container** dispatch skips the waiter: a grandchild spawned inside a

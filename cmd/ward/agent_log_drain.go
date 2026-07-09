@@ -18,7 +18,7 @@ import (
 // ward#532): before the keep-10 rm, it pulls a container's console + transcript.
 
 // It runs host-side because the reaper runs INSIDE the container with no docker
-// socket. A selectable SINK routes the drain. See docs/agent-observability.md.
+// socket. The release surface keeps only local artifacts and the redacted view.
 
 // agentLogsSubdir is the per-host archive root under the .ward app dir, sibling
 // to audit/ (docs/audit.md) - one directory per drained container run.
@@ -76,42 +76,6 @@ func markDrained(baseDir, name string) {
 func clearDrainMarker(baseDir, name string) {
 	_ = os.Remove(drainMarkerPath(baseDir, name))
 }
-
-// sinkMode selects where a drained run lands (ward#532): signoz (local-exclusive,
-// full detail, no disk), disk (today's artifacts), or both. See docs.
-type sinkMode string
-
-const (
-	sinkSignoz sinkMode = "signoz"
-	sinkDisk   sinkMode = "disk"
-	sinkBoth   sinkMode = "both"
-)
-
-// defaultSinkMode is the local-exclusive default: on Kai's machine the drain
-// ships full detail to the local SigNoz and persists nothing to disk (ward#532).
-const defaultSinkMode = sinkSignoz
-
-// envSinkMode overrides the sink mode - the operator-local knob today, and the
-// seam a future ward-kdl config field slots behind (env > config > default).
-const envSinkMode = "WARD_AGENT_SINK"
-
-// resolveSinkMode reads the env override, else the local-exclusive default. An
-// unrecognized value falls back rather than failing (the sweep must not abort).
-func resolveSinkMode() sinkMode {
-	switch sinkMode(strings.ToLower(strings.TrimSpace(os.Getenv(envSinkMode)))) {
-	case sinkDisk:
-		return sinkDisk
-	case sinkBoth:
-		return sinkBoth
-	case sinkSignoz:
-		return sinkSignoz
-	default:
-		return defaultSinkMode
-	}
-}
-
-func (m sinkMode) wantsDisk() bool   { return m == sinkDisk || m == sinkBoth }
-func (m sinkMode) wantsSignoz() bool { return m == sinkSignoz || m == sinkBoth }
 
 // metaEnvAllow is the strict allowlist of container env keys copied into meta.json.
 // Config.Env also carries --env-file secrets, so only these known-safe dims ride.
@@ -232,36 +196,29 @@ func (r *Runner) drainAgentRunIdempotent(ctx context.Context, name, baseDir stri
 }
 
 // drainAgentRun pulls one exited container's console + transcript + meta into
-// memory and routes them to the resolved sink; disk is written only if asked.
+// memory and writes the local artifacts plus the redacted sibling tree.
 func (r *Runner) drainAgentRun(ctx context.Context, name, dir string) {
-	mode := resolveSinkMode()
-	fmt.Fprintf(os.Stderr, "ward container: starting drain of container %s (sink %s)\n", name, mode)
+	fmt.Fprintf(os.Stderr, "ward container: starting drain of container %s\n", name)
 
 	// Console: docker logs carries both the agent's stdout stream and the reaper's
 	// stderr markers; capture combined so the outcome is inferable from one stream.
 	console := r.dockerLogsCombined(ctx, name)
 
 	// Transcript: docker cp streams the projects tree as a tar to stdout; pull the
-	// jsonl out and concatenate. Held in memory - hits disk only if the sink asks.
+	// jsonl out and concatenate. Held in memory until the local artifacts are written.
 	transcript := r.drainTranscript(ctx, name)
 
 	// Meta: safe dims from the inspected env allowlist + the inferred outcome.
 	meta := r.buildRunMeta(ctx, name, string(console))
 
-	if mode.wantsDisk() {
-		r.writeDiskArtifacts(name, dir, console, transcript, meta)
-		// The redacted view rides the same disk gate: whenever the raw archive lands, its
-		// scrubbed sibling lands too, for the director surface mount (ward#526).
-		r.writeRedactedArtifacts(name, console, transcript, meta)
-	}
-	if mode.wantsSignoz() {
-		r.shipToSignoz(ctx, console, transcript, meta)
-	}
-	fmt.Fprintf(os.Stderr, "ward container: drained %s (sink %s, outcome %s)\n", name, mode, meta.Outcome)
+	r.writeDiskArtifacts(name, dir, console, transcript, meta)
+	// The redacted view rides the same disk gate: whenever the raw archive lands,
+	// its scrubbed sibling lands too, for the director surface mount (ward#526).
+	r.writeRedactedArtifacts(name, console, transcript, meta)
+	fmt.Fprintf(os.Stderr, "ward container: drained %s (outcome %s)\n", name, meta.Outcome)
 }
 
-// writeDiskArtifacts persists console.log + transcript.jsonl + meta.json under
-// dir - today's artifacts, now gated behind the disk / both modes. Best-effort.
+// writeDiskArtifacts persists console.log + transcript.jsonl + meta.json under dir.
 func (r *Runner) writeDiskArtifacts(name, dir string, console, transcript []byte, meta runMeta) {
 	if err := os.MkdirAll(dir, 0o755); err != nil {
 		fmt.Fprintf(os.Stderr, "ward container: drain %s: could not create %s (%v); skipping disk sink\n", name, dir, err)
@@ -284,7 +241,7 @@ func (r *Runner) writeDiskArtifacts(name, dir string, console, transcript []byte
 }
 
 // writeRedactedArtifacts persists the redacted-at-rest view (ward#526) under the
-// agent-logs-redacted tree; scrubbers shared with the SigNoz export. Best-effort.
+// agent-logs-redacted tree; scrubbers shared with the local redaction path. Best-effort.
 func (r *Runner) writeRedactedArtifacts(name string, console, transcript []byte, meta runMeta) {
 	dir := filepath.Join(agentLogsRedactedDir(), name)
 	if err := os.MkdirAll(dir, 0o755); err != nil {

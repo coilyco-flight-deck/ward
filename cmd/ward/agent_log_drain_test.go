@@ -8,6 +8,8 @@ import (
 	"path/filepath"
 	"strings"
 	"testing"
+
+	"forgejo.coilysiren.me/coilyco-flight-deck/cli-guard/cli/shell"
 )
 
 // TestSweepActionsDrainPrecedesRemove is the load-bearing ordering assertion: every
@@ -67,42 +69,6 @@ func TestSweepActionsDrainsWithoutEviction(t *testing.T) {
 	}
 }
 
-// TestResolveSinkMode covers the env override + the local-exclusive default.
-func TestResolveSinkMode(t *testing.T) {
-	cases := []struct {
-		set  string
-		want sinkMode
-	}{
-		{"", defaultSinkMode},
-		{"signoz", sinkSignoz},
-		{"disk", sinkDisk},
-		{"both", sinkBoth},
-		{"DISK", sinkDisk},           // case-insensitive
-		{"  both  ", sinkBoth},       // trimmed
-		{"garbage", defaultSinkMode}, // unrecognized falls back, never fails
-	}
-	for _, c := range cases {
-		t.Setenv(envSinkMode, c.set)
-		if got := resolveSinkMode(); got != c.want {
-			t.Errorf("resolveSinkMode with %q = %q, want %q", c.set, got, c.want)
-		}
-	}
-	// The default must be signoz-exclusive: no disk, yes signoz.
-	if defaultSinkMode.wantsDisk() {
-		t.Error("default sink writes to disk; ward#532 requires signoz-exclusive by default")
-	}
-	if !defaultSinkMode.wantsSignoz() {
-		t.Error("default sink does not ship to signoz")
-	}
-	// both is the only mode that does both.
-	if !sinkBoth.wantsDisk() || !sinkBoth.wantsSignoz() {
-		t.Error("both mode must do disk AND signoz")
-	}
-	if sinkDisk.wantsSignoz() || sinkSignoz.wantsDisk() {
-		t.Error("disk/signoz modes must be exclusive")
-	}
-}
-
 func TestSweepActionsEmpty(t *testing.T) {
 	if got := sweepActions(nil, nil, "/base"); got != nil {
 		t.Errorf("sweepActions(nil, nil) = %v, want nil", got)
@@ -141,8 +107,7 @@ func TestDrainAgentRunIdempotentSkipsMarked(t *testing.T) {
 	markDrained(base, name)
 
 	// A docker that errors on every call: if the skip path called docker at all, the
-	// disk sink would try to run it. Route to disk so a drain WOULD hit docker.
-	t.Setenv(envSinkMode, string(sinkDisk))
+	// drain would try to run it.
 	r := fakeDockerRunner(t, "", 1)
 	r.drainAgentRunIdempotent(context.Background(), name, base)
 
@@ -185,6 +150,84 @@ func TestWriteRedactedArtifacts(t *testing.T) {
 	// The raw tree must be untouched by the redacted write.
 	if _, err := os.Stat(filepath.Join(agentLogsDir(), name)); !os.IsNotExist(err) {
 		t.Errorf("redacted write must not create the raw agent-logs dir; stat err = %v", err)
+	}
+}
+
+func TestDrainAgentRunWritesLocalArtifacts(t *testing.T) {
+	home := t.TempDir()
+	t.Setenv("HOME", home)
+
+	scriptDir := t.TempDir()
+	script := filepath.Join(scriptDir, "docker")
+	body := `#!/bin/sh
+set -eu
+case "$1" in
+  logs)
+    printf '%s\n' \
+      'ward container reap: landed on main' \
+      'console secret ghp_1234567890abcdefghijklmnopqrstuvwxyz' \
+      'done'
+    ;;
+  cp)
+    tmp=$(mktemp -d)
+    mkdir -p "$tmp/projects"
+    cat > "$tmp/projects/session.jsonl" <<'EOF'
+{"type":"assistant","timestamp":"2026-06-26T02:00:00Z","cwd":"/workspace/ward","message":{"content":[{"type":"tool_use","id":"t1","name":"Write","input":{"file_path":"/workspace/ward/x.go","content":"transcript secret ghp_1234567890abcdefghijklmnopqrstuvwxyz body"}}]}}
+EOF
+    tar -cf - -C "$tmp/projects" session.jsonl
+    rm -rf "$tmp"
+    ;;
+  inspect)
+    printf '%s' '["WARD_TARGET_REPO=coilyco-flight-deck/ward","WARD_TARGET_ISSUE=737","WARD_MODE=claude","WARD_BRANCH=issue-737","FORGEJO_TOKEN=secret"]'
+    ;;
+  *)
+    exit 1
+    ;;
+esac
+`
+	if err := os.WriteFile(script, []byte(body), 0o700); err != nil { // #nosec G306 -- test fixture
+		t.Fatal(err)
+	}
+	r := &Runner{Runner: &shell.Runner{Resolve: func(string) (string, error) { return script, nil }}}
+
+	r.drainAgentRun(context.Background(), "ward-drain-test", filepath.Join(agentLogsDir(), "ward-drain-test"))
+
+	rawDir := filepath.Join(agentLogsDir(), "ward-drain-test")
+	rawConsole, err := os.ReadFile(filepath.Join(rawDir, drainConsoleFile))
+	if err != nil {
+		t.Fatalf("read console.log: %v", err)
+	}
+	if !strings.Contains(string(rawConsole), "console secret") {
+		t.Fatalf("raw console missing the local capture:\n%s", rawConsole)
+	}
+	rawTranscript, err := os.ReadFile(filepath.Join(rawDir, drainTranscriptFile))
+	if err != nil {
+		t.Fatalf("read transcript.jsonl: %v", err)
+	}
+	if !strings.Contains(string(rawTranscript), "transcript secret") {
+		t.Fatalf("raw transcript missing the local capture:\n%s", rawTranscript)
+	}
+	meta, err := os.ReadFile(filepath.Join(rawDir, drainMetaFile))
+	if err != nil {
+		t.Fatalf("read meta.json: %v", err)
+	}
+	if !strings.Contains(string(meta), `"issue": "737"`) {
+		t.Fatalf("meta.json missing the allowlisted dims:\n%s", meta)
+	}
+	redDir := filepath.Join(agentLogsRedactedDir(), "ward-drain-test")
+	redConsole, err := os.ReadFile(filepath.Join(redDir, drainConsoleRedactedFile))
+	if err != nil {
+		t.Fatalf("read console.redacted.log: %v", err)
+	}
+	if strings.Contains(string(redConsole), "ghp_") {
+		t.Fatalf("redacted console leaked a token:\n%s", redConsole)
+	}
+	redTranscript, err := os.ReadFile(filepath.Join(redDir, drainTranscriptRedactedFile))
+	if err != nil {
+		t.Fatalf("read transcript.redacted.jsonl: %v", err)
+	}
+	if strings.Contains(string(redTranscript), "ghp_") || strings.Contains(string(redTranscript), `"content"`) {
+		t.Fatalf("redacted transcript leaked a body/token:\n%s", redTranscript)
 	}
 }
 

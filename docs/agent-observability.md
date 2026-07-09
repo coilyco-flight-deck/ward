@@ -1,5 +1,5 @@
 ---
-doc_goal: Make a reader trust that a headless agent run is fully reconstructable after teardown, and grasp that the drain is a deliberate safety system - the endpoint-locality gate deciding full-vs-redacted content is load-bearing, not a config detail.
+doc_goal: Make a reader trust that a headless agent run is fully reconstructable after teardown, and grasp that the drain keeps local archive artifacts plus a redacted sibling tree while the optional OTLP/SigNoz export stays deferred.
 ---
 # agent-run observability
 
@@ -17,76 +17,38 @@ every exited run **before** the `rm` takes its log.
 
 Every drain pulls three things **into memory**: the console (`docker logs`,
 stdout+stderr merged), the transcript (`docker cp`'d out of the projects tree and
-concatenated), and a small `meta.json`. The transcript is `docker cp`'d out **even
-in the signoz-exclusive default** - it never touches `~/.ward/agent-logs/` unless a
-disk sink is on. Live tailing is separate.
+concatenated), and a small `meta.json`. The local archive writes those artifacts
+to disk. Live tailing is separate.
 
 `meta.json` is small and **secret-free** regardless of sink: `container`, `repo`,
 `issue`, `driver`, `branch`, `outcome`. The dims come from the container's env
 through a **strict allowlist** - `Config.Env` also carries the `--env-file` secrets
 (`FORGEJO_TOKEN`, `WARD_CLAUDE_CREDS_B64`), never copied out; a test guards it.
 
-## Sink modes
+## Local archive
 
-Where a drained run lands is a selectable sink, `WARD_AGENT_SINK`:
-
-- **`signoz`** *(default)* - ship to SigNoz, persist **nothing** to disk.
-- **`disk`** - write the on-disk artifacts, ship nothing.
-- **`both`** - do both.
-
-The default is **local-exclusive + full**: the whole run ships to the **local**
-SigNoz (`http://localhost:4318` default, override
-`WARD_AGENT_TELEMETRY_ENDPOINT`) and nothing is written to disk. `WARD_AGENT_SINK`
-is the operator-local knob; `resolveSinkMode` is the seam a future ward-kdl config
-field slots behind. An unrecognized value falls back.
-
-**logdy is retired.** The console now ships to SigNoz as log records, so reading a
-drained run is a SigNoz query.
-
-### The disk sink
-
-With `disk` (or `both`), each run lands under `~/.ward/agent-logs/<container>/` as
-`console.log`, `transcript.jsonl`, `meta.json` - mirroring the
-`~/.ward/audit/<slug>.jsonl` convention ([audit.md](audit.md)): local, raw, ages
-out on its own.
+Each run lands under `~/.ward/agent-logs/<container>/` as `console.log`,
+`transcript.jsonl`, `meta.json` - mirroring the `~/.ward/audit/<slug>.jsonl`
+convention ([audit.md](audit.md)): local, raw, ages out on its own.
 
 It also writes a scrubbed sibling into a parallel `agent-logs-redacted/` tree that
 the [director surface](agent-surface-log-read.md) binds.
 
-### The SigNoz sink and the locality gate - the safety crux
+### The redacted sibling
 
-What ships to SigNoz is chosen by **endpoint locality**, the safety boundary. The
-fleet's secret-redaction scrubs the **terminal**, not the transcript
-jsonl, and SigNoz has **no ingest redaction**. So **full, unredacted content may
-go only to a local endpoint**:
+The redacted tree keeps the same safety boundary as the local archive: the console
+is scrubbed line-for-line, and the transcript is reduced to tool-call envelopes
+with body-shaped inputs dropped and args scrubbed through the shared regex list
+(AWS / GitHub / Anthropic / JWT / public IP).
 
-- **Local (loopback)** - `localhost` or a loopback IP - gets the **full run**: the
-  console as one log record per line (the logdy replacement) **plus** the
-  transcript as per-tool-call **envelopes with bodies kept**, unredacted.
-- **Remote (shared)** - ser8 or any non-loopback host - falls back to **redacted
-  envelopes**: bodies dropped, args scrubbed. Full content never leaves the box. A
-  test asserts remote => redacted / no bodies / no console, local => full allowed.
+### Deferred OTLP
 
-An envelope is otherwise call-metadata: tool, args, cwd, duration, pass/fail,
-lifecycle, files touched. Redaction, when it applies, drops body-shaped inputs
-(`content`, `new_string`, ...) and scrubs kept args through the regex list (AWS /
-GitHub / Anthropic / JWT / public IP). Bounded enums become indexed OTLP attributes.
+The SigNoz/OTLP export and dashboard template are deferred. The redaction helpers
+stay because they feed the redacted on-disk view and keep the future export shape
+available without shipping the network sink today.
 
 ## See also
 
 - [container-lifecycle-logs.md](container-lifecycle-logs.md) - console marker conventions + debug flow.
 - [container-cleanup.md](container-cleanup.md) - the keep-10 sweep this rides in.
-- [audit.md](audit.md) - the `~/.ward/` layout the disk sink mirrors.
-
-## Local SigNoz dashboard
-
-Kai can open the local UI at `http://127.0.0.1:3301`, then go to **Dashboards** and use **Import JSON** with [`docs/ward-agent-reaps-dashboard.json`](ward-agent-reaps-dashboard.json).
-
-The template is built around the ward-agent OTLP fields:
-
-- `resource.repo`, `resource.issue`, `resource.container`, `resource.actor` as dynamic dashboard filters.
-- `stream=console` for the ordered console view.
-- `stream=tool` for tool-call envelopes.
-- `outcome != success` for the failures panel.
-
-If Kai wants to provision the same view through SigNoz instead of importing locally, the dashboard body in that JSON file is the source of truth for `ward-kdl ops signoz dashboard create`.
+- [audit.md](audit.md) - the `~/.ward/` layout the local archive mirrors.
