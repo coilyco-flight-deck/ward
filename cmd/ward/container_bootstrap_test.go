@@ -275,6 +275,184 @@ func gitURL(t *testing.T, work, flag string) string {
 	return strings.TrimSpace(string(out))
 }
 
+func gitText(t *testing.T, dir string, argv ...string) string {
+	t.Helper()
+	out, err := exec.Command("git", append([]string{"-C", dir}, argv...)...).CombinedOutput()
+	if err != nil {
+		t.Fatalf("git %v failed: %v\n%s", argv, err, out)
+	}
+	return strings.TrimSpace(string(out))
+}
+
+func seedBranchResumeRepo(t *testing.T, cloneBase, owner, name, branch string) (string, string) {
+	t.Helper()
+	seed := t.TempDir()
+	runGit(t, seed, "init", "-b", "main", "-q")
+	runGit(t, seed, "config", "user.name", "Ward Test")
+	runGit(t, seed, "config", "user.email", "ward@example.com")
+	runGitCommitAt(t, seed, "2026-07-09T00:00:00Z", "main.txt", "main\n", "main commit")
+	mainRev := mustGitRev(t, seed, "HEAD")
+	branchRev := mainRev
+	if branch != "" {
+		runGit(t, seed, "checkout", "-b", branch)
+		runGitCommitAt(t, seed, "2026-07-09T00:01:00Z", "branch.txt", branch+"\n", "branch commit")
+		branchRev = mustGitRev(t, seed, "HEAD")
+		runGit(t, seed, "checkout", "main")
+	}
+	remote := filepath.Join(cloneBase, owner, name+".git")
+	if err := os.MkdirAll(filepath.Dir(remote), 0o755); err != nil {
+		t.Fatal(err)
+	}
+	runGit(t, t.TempDir(), "clone", "--bare", seed, remote)
+	return mainRev, branchRev
+}
+
+func useTestWorkspaceRoot(t *testing.T) string {
+	t.Helper()
+	old := workspaceRoot
+	root := t.TempDir()
+	workspaceRoot = root
+	t.Cleanup(func() { workspaceRoot = old })
+	return root
+}
+
+func TestCloneTargetResumesExistingOriginBranch(t *testing.T) {
+	if _, err := exec.LookPath("git"); err != nil {
+		t.Skip("git not on PATH")
+	}
+	r := gitRunner()
+	workspace := useTestWorkspaceRoot(t)
+	cloneBase := t.TempDir()
+	gitCache := t.TempDir()
+	owner := "owner"
+	name := "target-branch-resume"
+	branch := "issue-735"
+	mainRev, branchRev := seedBranchResumeRepo(t, cloneBase, owner, name, branch)
+
+	work, err := r.cloneTarget(context.Background(), bootstrapEnv{
+		TargetOwner: owner,
+		TargetName:  name,
+		ForgejoBase: "https://forgejo.example",
+		CloneBase:   cloneBase,
+		GitCache:    gitCache,
+		MirrorName:  "mirror.git",
+		Branch:      branch,
+	})
+	if err != nil {
+		t.Fatalf("cloneTarget: %v", err)
+	}
+	if got := mustGitRev(t, work, "HEAD"); got != branchRev {
+		t.Fatalf("HEAD = %s, want resumed branch rev %s", got, branchRev)
+	}
+	if got := gitText(t, work, "rev-parse", "--abbrev-ref", "HEAD"); got != branch {
+		t.Fatalf("current branch = %q, want %q", got, branch)
+	}
+	if got := mustGitRev(t, work, "origin/"+branch); got != branchRev {
+		t.Fatalf("origin/%s = %s, want %s", branch, got, branchRev)
+	}
+	if got := mustGitRev(t, work, "origin/main"); got != mainRev {
+		t.Fatalf("origin/main = %s, want %s", got, mainRev)
+	}
+	if got := work; got != filepath.Join(workspace, name) {
+		t.Fatalf("work dir = %q, want %q", got, filepath.Join(workspace, name))
+	}
+}
+
+func TestCloneTargetStartsFromBaseWhenOriginBranchMissing(t *testing.T) {
+	if _, err := exec.LookPath("git"); err != nil {
+		t.Skip("git not on PATH")
+	}
+	r := gitRunner()
+	useTestWorkspaceRoot(t)
+	cloneBase := t.TempDir()
+	gitCache := t.TempDir()
+	owner := "owner"
+	name := "target-branch-base"
+	mainRev, _ := seedBranchResumeRepo(t, cloneBase, owner, name, "issue-735")
+
+	work, err := r.cloneTarget(context.Background(), bootstrapEnv{
+		TargetOwner: owner,
+		TargetName:  name,
+		ForgejoBase: "https://forgejo.example",
+		CloneBase:   cloneBase,
+		GitCache:    gitCache,
+		MirrorName:  "mirror.git",
+		Branch:      "issue-999",
+	})
+	if err != nil {
+		t.Fatalf("cloneTarget: %v", err)
+	}
+	if got := mustGitRev(t, work, "HEAD"); got != mainRev {
+		t.Fatalf("HEAD = %s, want base rev %s", got, mainRev)
+	}
+	if got := gitText(t, work, "rev-parse", "--abbrev-ref", "HEAD"); got != "issue-999" {
+		t.Fatalf("current branch = %q, want %q", got, "issue-999")
+	}
+}
+
+func TestCloneExtraRepoResumesExistingOriginBranch(t *testing.T) {
+	if _, err := exec.LookPath("git"); err != nil {
+		t.Skip("git not on PATH")
+	}
+	r := gitRunner()
+	useTestWorkspaceRoot(t)
+	cloneBase := t.TempDir()
+	gitCache := t.TempDir()
+	owner := "owner"
+	name := "extra-branch-resume"
+	branch := "issue-735"
+	mainRev, branchRev := seedBranchResumeRepo(t, cloneBase, owner, name, branch)
+
+	r.cloneExtraRepo(context.Background(), bootstrapEnv{
+		ForgejoBase: "https://forgejo.example",
+		CloneBase:   cloneBase,
+		GitCache:    gitCache,
+		Branch:      branch,
+	}, targetRepo{Owner: owner, Name: name}, false, "")
+
+	work := filepath.Join(workspaceRoot, name)
+	if got := mustGitRev(t, work, "HEAD"); got != branchRev {
+		t.Fatalf("HEAD = %s, want resumed branch rev %s", got, branchRev)
+	}
+	if got := gitText(t, work, "rev-parse", "--abbrev-ref", "HEAD"); got != branch {
+		t.Fatalf("current branch = %q, want %q", got, branch)
+	}
+	if got := mustGitRev(t, work, "origin/"+branch); got != branchRev {
+		t.Fatalf("origin/%s = %s, want %s", branch, got, branchRev)
+	}
+	if got := mustGitRev(t, work, "origin/main"); got != mainRev {
+		t.Fatalf("origin/main = %s, want %s", got, mainRev)
+	}
+}
+
+func TestCloneExtraRepoStartsFromBaseWhenOriginBranchMissing(t *testing.T) {
+	if _, err := exec.LookPath("git"); err != nil {
+		t.Skip("git not on PATH")
+	}
+	r := gitRunner()
+	useTestWorkspaceRoot(t)
+	cloneBase := t.TempDir()
+	gitCache := t.TempDir()
+	owner := "owner"
+	name := "extra-branch-base"
+	mainRev, _ := seedBranchResumeRepo(t, cloneBase, owner, name, "issue-735")
+
+	r.cloneExtraRepo(context.Background(), bootstrapEnv{
+		ForgejoBase: "https://forgejo.example",
+		CloneBase:   cloneBase,
+		GitCache:    gitCache,
+		Branch:      "issue-999",
+	}, targetRepo{Owner: owner, Name: name}, false, "")
+
+	work := filepath.Join(workspaceRoot, name)
+	if got := mustGitRev(t, work, "HEAD"); got != mainRev {
+		t.Fatalf("HEAD = %s, want base rev %s", got, mainRev)
+	}
+	if got := gitText(t, work, "rev-parse", "--abbrev-ref", "HEAD"); got != "issue-999" {
+		t.Fatalf("current branch = %q, want %q", got, "issue-999")
+	}
+}
+
 // TestInstallReadOnlyPushGuard covers ward#299: a read-only session lands the
 // per-clone pre-push hook; a writable session and a missing .git/hooks do not.
 func TestInstallReadOnlyPushGuard(t *testing.T) {
