@@ -70,5 +70,4 @@ so a human can tell a deliberate bypass from an unavailable reviewer.
 
 ## See also
 
-- [dispatch-review-measurement.md](dispatch-review-measurement.md) - verdicts, stats, non-goals.
 - [agent-engineer.md](agent-engineer.md) - the detached worker the gate fronts.
