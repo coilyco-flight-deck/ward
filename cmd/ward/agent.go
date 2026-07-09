@@ -25,11 +25,13 @@ import (
 // agentIssueRef is a parsed issue reference for `ward agent`. Forge tags the git
 // host, tracker tags the issue thread. The default pairing stays zero-config.
 type agentIssueRef struct {
-	Owner   string
-	Repo    string
-	Number  int
-	Forge   forge
-	Tracker tracker
+	Owner             string
+	Repo              string
+	Number            int
+	Forge             forge
+	Tracker           tracker
+	URL               string
+	ShortcutWorkspace string
 }
 
 func (r agentIssueRef) String() string {
@@ -41,9 +43,22 @@ func (r agentIssueRef) repoSlug() string {
 	return r.Owner + "/" + r.Repo
 }
 
-// url renders the canonical issue URL for the seeded prompt, off the ref's forge
-// base (Forgejo or GitHub); both use the /owner/repo/issues/N path shape (ward#489).
+// url renders the canonical issue URL for the seeded prompt.
+// Shortcut preserves the story URL it was parsed from.
 func (r agentIssueRef) url() string {
+	if strings.TrimSpace(r.URL) != "" {
+		return strings.TrimSpace(r.URL)
+	}
+	if r.trackerOrDefault() == trackerShortcut {
+		workspace := strings.TrimSpace(r.ShortcutWorkspace)
+		if workspace == "" {
+			workspace = strings.TrimSpace(os.Getenv(shortcutWorkspaceEnv))
+		}
+		if workspace != "" {
+			return fmt.Sprintf("%s/%s/story/%d", shortcutAppBaseURL, workspace, r.Number)
+		}
+		return fmt.Sprintf("%s/story/%d", shortcutAppBaseURL, r.Number)
+	}
 	return fmt.Sprintf("%s/%s/%s/issues/%d", strings.TrimRight(r.Forge.baseURL(), "/"), r.Owner, r.Repo, r.Number)
 }
 
@@ -83,9 +98,12 @@ func parseAgentIssueRef(s string) (agentIssueRef, error) {
 		return agentIssueRef{}, fmt.Errorf("empty issue reference")
 	}
 	// A github.com URL or `github.com/owner/repo#N` short form is unambiguously a
-	// GitHub ref (ward#489); anything else falls through to the Forgejo parser.
+	// GitHub ref (ward#489). Shortcut story URLs are recognized first as well.
 	if ghRef, ok := parseGitHubIssueRef(s); ok {
 		return ghRef, nil
+	}
+	if shortcutRef, ok := parseShortcutIssueRef(s); ok {
+		return shortcutRef, nil
 	}
 	if ref, err := parseDispatchIssueRef(s); err == nil {
 		return ref, nil
@@ -105,12 +123,12 @@ func parseAgentIssueRef(s string) (agentIssueRef, error) {
 	// steer to the task verb that carries arbitrary pointers (ward#234).
 	if strings.Contains(s, "://") {
 		return agentIssueRef{}, fmt.Errorf(
-			"cannot parse issue ref %q: want owner/repo#N, a bare #N, or %s/owner/repo/issues/N; "+
+			"cannot parse issue ref %q: want owner/repo#N, a bare #N, %s/owner/repo/issues/N, or %s/<workspace>/story/N; "+
 				"for a non-issue pointer (a CI run, job, or commit URL), hand it to the engineer "+
 				"role's freeform mode instead: ward agent engineer '<url>'",
-			s, strings.TrimRight(forgejoBaseURL, "/"))
+			s, strings.TrimRight(forgejoBaseURL, "/"), shortcutAppBaseURL)
 	}
-	return agentIssueRef{}, fmt.Errorf("cannot parse issue ref %q: want owner/repo#N, a bare #N, or %s/owner/repo/issues/N", s, strings.TrimRight(forgejoBaseURL, "/"))
+	return agentIssueRef{}, fmt.Errorf("cannot parse issue ref %q: want owner/repo#N, a bare #N, %s/owner/repo/issues/N, or %s/<workspace>/story/N", s, strings.TrimRight(forgejoBaseURL, "/"), shortcutAppBaseURL)
 }
 
 func parseDispatchIssueRef(s string) (agentIssueRef, error) {
