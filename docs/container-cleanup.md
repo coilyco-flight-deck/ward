@@ -50,8 +50,9 @@ An engineer additionally clears any **exited same-name** container before it
 launches: its name is deterministic (`engineer-<driver>-<repo>-<N>`, [ward#364](https://forgejo.coilysiren.me/coilyco-flight-deck/ward/issues/364)), so a
 prior attempt on the same issue still inside the keep-10 window would otherwise
 collide on the docker name. Only an exited corpse is force-removed (a live duplicate
-is already blocked by the reservation); the issueless roles carry a machine suffix
-and never collide.
+is already blocked by the reservation); a director surface session carries a
+short dictatable agent-id suffix, while an advisor session keeps the machine
+suffix.
 
 This is **self-correcting**: the same fleet activity that creates dead containers
 is what prunes them, exactly when disk pressure would otherwise build. It is
