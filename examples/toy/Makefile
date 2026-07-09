@@ -1,6 +1,6 @@
 # The toy project's Makefile. Every target ward.yaml exposes carries a
-# `## <help>` comment; `ward doctor` cross-checks that text against the matching
-# command's description: (the allowlist-drift guard). See ../../docs/doctor.md.
+# `## <help>` comment. The former `ward doctor` allowlist cross-check is
+# captured in the release-planning inventory.
 
 BIN := build/greet
 

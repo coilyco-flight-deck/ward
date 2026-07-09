@@ -1,6 +1,6 @@
 # Catalog schema: coilyco-flight-deck/agentic-os.
-# The security: block below is required per ward#450 (ward doctor fails without
-# one); ward dogfoods it. Field reference: docs/ward-yaml.md.
+# The security: block below is required per the retired ward doctor surface
+# inventory; ward dogfoods it. Field reference: docs/ward-yaml.md.
 catalog:
   description: "ward - a contributor-facing cli-guard consumer. Carries project dev verbs; it is also absorbing the operator surface from the retiring coily (spec REST rides ward-kdl)."
   dependsOn:

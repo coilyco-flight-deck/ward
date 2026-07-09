@@ -48,13 +48,13 @@ and the `ollamaprobe` `LaunchGate` in the Go port. Reachability is first, and
 opencode now layers a model-existence check on top so a reachable-but-missing
 model surfaces as `model-config` instead of a silent fallback.
 
-## Earlier signal: `ward doctor` ([ward#499](https://forgejo.coilysiren.me/coilyco-flight-deck/ward/issues/499))
+## Earlier signal: the release-planning inventory ([ward#499](https://forgejo.coilysiren.me/coilyco-flight-deck/ward/issues/499))
 
-The launch gate catches a down endpoint at container launch. `ward doctor` catches it
-**before dispatch**: its Ollama-reachability check shares the same `ollamaprobe` dial,
-reads the same env the dispatch path binds (`WARD_OLLAMA_URL`, `WARD_GOOSE_OLLAMA_HOST_B64`),
-and `FAIL`s naming a down endpoint. Neither env set `SKIP`s, so an adopter run stays
-green. Same reachability check, one step earlier. See [doctor.md](doctor.md).
+The launch gate still catches a down endpoint at container launch. The
+release-planning inventory records the former `ward doctor` Ollama-reachability
+check shape so the rebirth pass can restore a smaller version without losing the
+probe contract. It uses the same `ollamaprobe` dial and the same env the
+dispatch path binds (`WARD_OLLAMA_URL`, `WARD_GOOSE_OLLAMA_HOST_B64`).
 
 ## See also
 

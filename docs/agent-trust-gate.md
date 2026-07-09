@@ -61,12 +61,12 @@ the intended long-term story:
 Until one of those lands, an untrusted owner is a hard stop with no supported
 runtime workaround.
 
-## Why `ward doctor` does not catch this
+## Why the plain verb gate does not catch this
 
-[`ward doctor`](doctor.md) validates the allowlist and the `security:` probes. It
-does **not** check "can this host dispatch an agent for owner X", so on a host
-where every `warded` call will be refused, the doctor still passes. Closing that
-day-2 gap is tracked in [ward#195](https://forgejo.coilysiren.me/coilyco-flight-deck/ward/issues/195).
+The repo verb gate does not check "can this host dispatch an agent for owner X",
+so on a host where every `warded` call will be refused, `ward exec` can still
+work. Closing that day-2 gap is tracked in
+[ward#195](https://forgejo.coilysiren.me/coilyco-flight-deck/ward/issues/195).
 
 ## See also
 
