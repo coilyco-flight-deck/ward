@@ -433,22 +433,6 @@ func (c *forgejoClient) addIssueLabels(ctx context.Context, owner, repo string, 
 	return nil
 }
 
-// removeIssueLabels removes the labels (by name) from an open issue - the take-off side
-// of the consult interview's mode flip (ward#493), mirroring addIssueLabels.
-func (c *forgejoClient) removeIssueLabels(ctx context.Context, owner, repo string, number int, labels []string) error {
-	if len(labels) == 0 {
-		return nil
-	}
-	args := []string{"issue-label", "remove", owner, repo, strconv.Itoa(number)}
-	for _, l := range labels {
-		args = append(args, "--labels", l)
-	}
-	if _, err := c.run(ctx, args...); err != nil {
-		return fmt.Errorf("forgejo: remove labels %v from %s/%s#%d: %w", labels, owner, repo, number, err)
-	}
-	return nil
-}
-
 // listOwnerRepos lists an owner's repos, trying the org leaf then the user leaf
 // (the survey's primary owners are both - coilyco-* orgs and the coilysiren user).
 func (c *forgejoClient) listOwnerRepos(ctx context.Context, owner string) ([]repoBrief, error) {

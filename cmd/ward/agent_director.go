@@ -254,11 +254,10 @@ the heartbeat if the queue refills (ward#351).
 It is attached/interactive only - there is no --detach (a detached director poses
 runaway-dispatch risk). State lives in a durable per-repo ledger under ~/.ward/backlog,
 so a killed loop resumes from disk. Only the narrow headless lane is auto-dispatched;
-interactive and consult issues are surfaced, not launched. See docs/agent-director.md.`,
+interactive issues are surfaced, not launched. See docs/agent-director.md.`,
 		Flags: directorFlags(),
-		// consult is the director's interactive consult-to-headless conversion pass
-		// (ward#493). merge is the explicit PR-land authority boundary for ward-owned work.
-		Commands: []*cli.Command{agentConsultCommand(), agentDirectorMergeCommand()},
+		// merge is the explicit PR-land authority boundary for ward-owned work.
+		Commands: []*cli.Command{agentDirectorMergeCommand()},
 		Action: func(ctx context.Context, c *cli.Command) error {
 			r := newRunner()
 			mode, err := agentHarness(c)

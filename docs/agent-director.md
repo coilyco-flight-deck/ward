@@ -31,7 +31,7 @@ If work remains, it asks whether to drain now. **yes**/Enter drains, **no** surf
 6. **Dispatch** the chosen set via the engineer (`agent.<mode>.engineer`).
 7. **Sleep** `--poll-interval`, **no LLM open**.
 
-Only the **headless** lane auto-dispatches; interactive/consult surface. The merge sweep is narrow and policy-bound. See [agent-director-pr-merge.md](agent-director-pr-merge.md).
+Only the **headless** lane auto-dispatches; interactive issues surface. The merge sweep is narrow and policy-bound. See [agent-director-pr-merge.md](agent-director-pr-merge.md).
 
 ## The WARD-OUTCOME marker
 
