@@ -55,14 +55,16 @@ no prompt to answer:
 
 The check is skipped when there is no terminal (scripted/piped), on
 `--print` (a dry run), and with `--skip-preflight` (the escape hatch for a run
-launched from a TTY that you still want to fire blind - it also disables the
-in-container review gate and re-dispatches a NO-GO issue you've decided is good
-to go). `--no-preflight` stays accepted as the compatibility alias. Only a **trusted cloud harness**
-(claude) runs the host read; a **local-model harness** (goose/opencode) is barred
-([agent-preflight-trust.md](agent-preflight-trust.md)). A barred mode, a
-mode with no one-shot wired (`codex`), no agent binary, or an incomplete read all
-**proceed** rather than block, since none of those is the agent declining the work
-(and the reaper still backstops residual work).
+launched from a TTY that you still want to fire blind). That flag skips the host
+GO/NO-GO read, the reservation re-check wait, the update reminder, the
+network/image pre-start probes, and the in-container review gate. It does **not**
+skip trust/credential checks, closed-issue handling, or other mandatory safety
+boundaries. `--no-preflight` stays accepted as the compatibility alias. Only a
+**trusted cloud harness** (claude) runs the host read; a **local-model harness**
+(goose/opencode) is barred ([agent-preflight-trust.md](agent-preflight-trust.md)).
+A barred mode, a mode with no one-shot wired (`codex`), no agent binary, or an
+incomplete read all **proceed** rather than block, since none of those is the agent
+declining the work (and the reaper still backstops residual work).
 `task` runs this **same pre-flight**; see
 [docs/agent-subcommands.md](agent-subcommands.md).
 

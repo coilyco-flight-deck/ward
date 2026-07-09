@@ -21,6 +21,10 @@ Instead ward binds a host [agent-log drain](agent-observability.md) **read-only*
 `meta.json` there, with none of the socket's escalation surface, and cannot write to the
 mount (`:ro`).
 
+For an on-demand read of one engineer run, the same surface can also call
+[`ward agent logs`](agent-logs.md), which routes the read back through the host
+dispatch broker and prints the source it used.
+
 The mount is a `mountOpts.AgentLogsDir` opt-in on `leastAccessMounts`, set **only** on the
 surface bring-up path. The shared least-access default never carries it, so the
 engineer/advisor roles do not get it (a cross-run log read with far less justification).

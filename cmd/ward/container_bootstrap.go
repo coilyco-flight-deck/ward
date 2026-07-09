@@ -63,8 +63,9 @@ type bootstrapEnv struct {
 	Ask        bool
 	// ReadOnly is the read-only surface session (WARD_READONLY, ward#293): revoke
 	// the push credential, compose the restriction. See docs/agent-surface.md.
-	ReadOnly    bool
-	ForgejoHost string
+	ReadOnly          bool
+	WardVersionSource string
+	ForgejoHost       string
 	// Forge is the TARGET repo's host (ward#489): GitHub clones off CloneBase as
 	// x-access-token, else Forgejo + coilyco-ops. CloneBase defaults to ForgejoBase.
 	Forge     forge
@@ -82,6 +83,7 @@ type bootstrapEnv struct {
 	SubstrateManifest string
 	SubstrateTTL      string
 	SubstrateSkip     bool
+	TailnetSocks5     string
 }
 
 const runProvenanceFile = ".ward-run-provenance.json"
@@ -185,23 +187,25 @@ func readBootstrapEnv() (bootstrapEnv, error) {
 		ClaudeEffort: envOr("WARD_CLAUDE_REASONING_EFFORT", firstNonEmpty(claudeOv.ReasoningEffort, claude.ReasoningEffort)),
 		// Bot attribution: email is the load-bearing Forgejo match (ward#245); both
 		// default from the fleet manifest's defaults.attribution.
-		GitUserName:  envOr("WARD_GIT_NAME", attribution.Name),
-		GitUserEmail: envOr("WARD_GIT_EMAIL", attribution.Email),
-		Role:         role,
-		AgentUID:     envOr("WARD_AGENT_UID", "1000"),
-		AgentGID:     envOr("WARD_AGENT_GID", "1000"),
-		AgentHome:    envOr("WARD_AGENT_HOME", "/home/ubuntu"),
-		MirrorName:   os.Getenv("WARD_MIRROR_NAME"),
-		Branch:       os.Getenv("WARD_BRANCH"),
-		Headless:     os.Getenv("WARD_HEADLESS") == "1",
-		Ask:          os.Getenv("WARD_ASK") == "1",
-		ReadOnly:     os.Getenv("WARD_READONLY") == "1",
+		GitUserName:       envOr("WARD_GIT_NAME", attribution.Name),
+		GitUserEmail:      envOr("WARD_GIT_EMAIL", attribution.Email),
+		Role:              role,
+		AgentUID:          envOr("WARD_AGENT_UID", "1000"),
+		AgentGID:          envOr("WARD_AGENT_GID", "1000"),
+		AgentHome:         envOr("WARD_AGENT_HOME", "/home/ubuntu"),
+		MirrorName:        os.Getenv("WARD_MIRROR_NAME"),
+		Branch:            os.Getenv("WARD_BRANCH"),
+		Headless:          os.Getenv("WARD_HEADLESS") == "1",
+		Ask:               os.Getenv("WARD_ASK") == "1",
+		ReadOnly:          os.Getenv("WARD_READONLY") == "1",
+		WardVersionSource: envOr(envAgentVersionSource, ""),
 
 		SubstrateSeed:     envOr("WARD_SUBSTRATE_SEED", "/opt/substrate-seed"),
 		SubstrateDest:     envOr("WARD_SUBSTRATE_DEST", "/substrate"),
 		SubstrateManifest: envOr("WARD_SUBSTRATE_MANIFEST", "/opt/ward/preclone-repos.txt"),
 		SubstrateTTL:      envOr("WARD_SUBSTRATE_TTL", "600"),
 		SubstrateSkip:     os.Getenv("WARD_SUBSTRATE_SKIP") == "1",
+		TailnetSocks5:     os.Getenv("WARD_TS_SOCKS5"),
 	}
 	if e.TargetOwner == "" {
 		return e, fmt.Errorf("missing WARD_TARGET_OWNER")
@@ -286,7 +290,7 @@ func echoRunContextGo(e bootstrapEnv, agentArgs []string) {
 		e.TargetOwner, e.TargetName, ref, orDefaultLabel(e.Branch, "(default)"),
 		e.Mode, e.Agent, orDefaultLabel(e.Container, "(unnamed)"),
 		orDefaultLabel(os.Getenv("WARD_WORKFLOW"), "direct-to-main"),
-		orDefaultLabel(os.Getenv("WARD_VERSION"), "(latest, resolved in-container)"),
+		orDefaultLabel(e.WardVersionSource, wardVersionLaunchLabel(os.Getenv("WARD_VERSION"), "")),
 		orDefaultLabel(os.Getenv("WARD_CONTAINER_UP"), "(unset)"), seed)
 }
 
@@ -407,6 +411,7 @@ func (r *Runner) runContainerBootstrap(ctx context.Context, c *cli.Command) erro
 	echoAgentConfigGo(e, rc, mode)
 
 	r.configureGitAuth(ctx, e)
+	r.installTailnetSSHHelper(e)
 	// Installer: opencode self-installs before the clone (absent from the image).
 	if inst, ok := agent.(agentsapi.Installer); ok {
 		blog("bootstrap installer start: %s", mode)
@@ -723,6 +728,67 @@ func writeForgejoGitCredentialHelper(path, credFile string) error {
 	}
 	if err := os.Chmod(path, 0o755); err != nil {
 		return fmt.Errorf("ward container bootstrap: chmod git credential helper %s: %w", path, err)
+	}
+	return nil
+}
+
+//nolint:gosec // Container-local helper path, not an embedded credential.
+const tailnetSSHHelperPath = "/usr/local/bin/ward-ssh"
+
+//nolint:gosec // Helper script is generated from a validated proxy address.
+const tailnetSSHHelperScript = `#!/bin/sh
+set -eu
+
+proxy_addr=%q
+dest=${1:?usage: ward-ssh <host> [command...]}
+shift
+
+case "$dest" in
+  *@*)
+    ;;
+  kai-*)
+    dest="kai@$dest"
+    ;;
+esac
+
+command -v socat >/dev/null 2>&1 || {
+  printf 'ward-ssh: socat is required for the WARD_TS_SOCKS5 proxy path\n' >&2
+  exit 127
+}
+
+exec ssh -o "ProxyCommand=socat --experimental - SOCKS5-CONNECT:$proxy_addr:%%h:%%p" "$dest" "$@"
+`
+
+// installTailnetSSHHelper writes a small helper that hides the SOCKS5 proxy
+// plumbing behind a stable ward-ssh command when a tailnet route is present.
+func (r *Runner) installTailnetSSHHelper(e bootstrapEnv) {
+	if strings.TrimSpace(e.TailnetSocks5) == "" {
+		return
+	}
+	if !commandExists("socat") {
+		blog("ward-ssh helper skipped: socat is absent from the image")
+		return
+	}
+	proxyAddr, err := parseSocks5ProxyAddr(e.TailnetSocks5)
+	if err != nil {
+		blog("ward-ssh helper skipped: invalid WARD_TS_SOCKS5 %q: %v", e.TailnetSocks5, err)
+		return
+	}
+	if werr := writeTailnetSSHHelper(tailnetSSHHelperPath, proxyAddr); werr != nil {
+		blog("could not write ward-ssh helper: %v", werr)
+		return
+	}
+	blog("ward-ssh helper ready at %s via %s", tailnetSSHHelperPath, proxyAddr)
+}
+
+// writeTailnetSSHHelper writes the proxy-aware SSH helper used by tailnet runs.
+func writeTailnetSSHHelper(path, proxyAddr string) error {
+	script := fmt.Sprintf(tailnetSSHHelperScript, proxyAddr)
+	if err := os.WriteFile(path, []byte(script), 0o755); err != nil {
+		return fmt.Errorf("ward container bootstrap: write tailnet ssh helper %s: %w", path, err)
+	}
+	if err := os.Chmod(path, 0o755); err != nil {
+		return fmt.Errorf("ward container bootstrap: chmod tailnet ssh helper %s: %w", path, err)
 	}
 	return nil
 }

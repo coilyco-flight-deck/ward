@@ -600,8 +600,10 @@ func directorSurfaceArgv(contextRepo string, cfg backlogConfig) []string {
 	if v := strings.TrimSpace(cy.tag); v != "" {
 		argv = append(argv, "--tag", v)
 	}
-	if v := strings.TrimSpace(cy.wardVersion); v != "" {
-		argv = append(argv, "--ward-version", v)
+	if cy.wardVersionSource == wardVersionSourceExplicit {
+		if v := strings.TrimSpace(cy.wardVersion); v != "" {
+			argv = append(argv, "--ward-version", v)
+		}
 	}
 	if v := strings.TrimSpace(cfg.wardSource); v != "" {
 		argv = append(argv, "--ward-source", v)

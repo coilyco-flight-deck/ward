@@ -96,11 +96,15 @@ func TestDispatchEngineerArgv(t *testing.T) {
 			t.Errorf("bare argv should not carry %q: %v", unwanted, bare)
 		}
 	}
+	hostDefault := dispatchEngineer{harness: modeClaude, wardVersion: "v0.463.0", wardVersionSource: wardVersionSourceHost}.engineerArgv(ref)
+	if containsArg(hostDefault, "--ward-version") {
+		t.Errorf("inherited host ward-version must not be forwarded: %v", hostDefault)
+	}
 
 	// A fully-loaded dispatch forwards the resolved container intent; a resolved host-net
 	// route forwards as the consolidated --tailnet + an explicit --tailnet-mode (ward#362).
 	full := dispatchEngineer{
-		harness: modeGoose, image: "ghcr.io/x/dev", tag: "v9", wardVersion: "v0.58.0",
+		harness: modeGoose, image: "ghcr.io/x/dev", tag: "v9", wardVersion: "v0.58.0", wardVersionSource: wardVersionSourceExplicit,
 		aws: true, hostNet: true, tsSidecar: false, force: true,
 	}.engineerArgv(ref)
 	for _, want := range [][2]string{
@@ -245,40 +249,68 @@ func directorFlagSet(t *testing.T, set map[string]string) *cli.Command {
 // TestDirectorSurfaceArgv covers ward#355: director's drain surface inherits its
 // container/harness flags and runs on director's OWN harness, never the engineer harness.
 func TestDirectorSurfaceArgv(t *testing.T) {
-	cfg := backlogConfig{
-		mode:       modeClaude,
-		dispatch:   dispatchEngineer{harness: modeGoose, image: "img", tag: "t1", wardVersion: "v1", aws: true, tsSidecar: true},
-		wardSource: "/src/ward",
-		noPull:     true,
-		withRepo:   []string{"a/b", "c/d"},
-	}
-	argv := directorSurfaceArgv("coilyco-flight-deck/ward", cfg)
-	if argv[0] != directorSurfaceVerb {
-		t.Errorf("surface argv[0] = %q, want %q", argv[0], directorSurfaceVerb)
-	}
-	if !argFollowedBy(argv, "--harness", "claude") {
-		t.Errorf("surface must run on director's own harness (claude), not the engineer harness: %v", argv)
-	}
-	for _, want := range [][2]string{
-		{"--repo", "coilyco-flight-deck/ward"}, {"--image", "img"}, {"--tag", "t1"},
-		{"--ward-version", "v1"}, {"--ward-source", "/src/ward"},
-		{"--with-repo", "a/b"}, {"--with-repo", "c/d"},
-	} {
-		if !argFollowedBy(argv, want[0], want[1]) {
-			t.Errorf("surface argv missing %s %s: %v", want[0], want[1], argv)
+	t.Run("inherited host version is not forwarded", func(t *testing.T) {
+		cfg := backlogConfig{
+			mode: modeClaude,
+			dispatch: dispatchEngineer{
+				harness:           modeGoose,
+				image:             "img",
+				tag:               "t1",
+				wardVersion:       "v1",
+				wardVersionSource: wardVersionSourceHost,
+				aws:               true,
+				tsSidecar:         true,
+			},
+			wardSource: "/src/ward",
+			noPull:     true,
+			withRepo:   []string{"a/b", "c/d"},
 		}
-	}
-	for _, want := range []string{"--aws", "--tailnet", "--no-pull"} {
-		if !containsArg(argv, want) {
-			t.Errorf("surface argv missing %q: %v", want, argv)
+		argv := directorSurfaceArgv("coilyco-flight-deck/ward", cfg)
+		if argv[0] != directorSurfaceVerb {
+			t.Errorf("surface argv[0] = %q, want %q", argv[0], directorSurfaceVerb)
 		}
-	}
-	if !argFollowedBy(argv, "--tailnet-mode", "sidecar") {
-		t.Errorf("surface argv must forward the resolved sidecar mechanism as --tailnet-mode sidecar: %v", argv)
-	}
-	if containsArg(argv, "goose") {
-		t.Errorf("surface argv must not carry the engineer harness: %v", argv)
-	}
+		if !argFollowedBy(argv, "--harness", "claude") {
+			t.Errorf("surface must run on director's own harness (claude), not the engineer harness: %v", argv)
+		}
+		for _, want := range [][2]string{
+			{"--repo", "coilyco-flight-deck/ward"}, {"--image", "img"}, {"--tag", "t1"},
+			{"--ward-source", "/src/ward"},
+			{"--with-repo", "a/b"}, {"--with-repo", "c/d"},
+		} {
+			if !argFollowedBy(argv, want[0], want[1]) {
+				t.Errorf("surface argv missing %s %s: %v", want[0], want[1], argv)
+			}
+		}
+		for _, want := range []string{"--aws", "--tailnet", "--no-pull"} {
+			if !containsArg(argv, want) {
+				t.Errorf("surface argv missing %q: %v", want, argv)
+			}
+		}
+		if containsArg(argv, "--ward-version") {
+			t.Errorf("surface argv must not forward an inherited host ward-version pin: %v", argv)
+		}
+		if !argFollowedBy(argv, "--tailnet-mode", "sidecar") {
+			t.Errorf("surface argv must forward the resolved sidecar mechanism as --tailnet-mode sidecar: %v", argv)
+		}
+		if containsArg(argv, "goose") {
+			t.Errorf("surface argv must not carry the engineer harness: %v", argv)
+		}
+	})
+
+	t.Run("explicit pin is forwarded", func(t *testing.T) {
+		cfg := backlogConfig{
+			mode: modeClaude,
+			dispatch: dispatchEngineer{
+				harness:           modeGoose,
+				wardVersion:       "v1",
+				wardVersionSource: wardVersionSourceExplicit,
+			},
+		}
+		argv := directorSurfaceArgv("coilyco-flight-deck/ward", cfg)
+		if !argFollowedBy(argv, "--ward-version", "v1") {
+			t.Fatalf("surface argv must forward an explicit ward-version pin: %v", argv)
+		}
+	})
 }
 
 func TestParseScopeRepos(t *testing.T) {
