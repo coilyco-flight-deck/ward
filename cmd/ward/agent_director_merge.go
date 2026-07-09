@@ -15,6 +15,7 @@ import (
 // lane the director uses for ward-owned PRs that are authorized to land.
 
 var directorClosingRefRE = regexp.MustCompile(`(?i)\b(?:closes|fixes|resolves)\s+#(\d+)\b`)
+var directorWorkflowMarkerRE = regexp.MustCompile(`(?i)\bward\.workflow:\s*([[:alnum:]-]+)\b`)
 
 // directorMergeFlags keeps the merge subcommand narrow: scope + preview only.
 func directorMergeFlags() []cli.Flag {
@@ -99,6 +100,11 @@ func directorMergeEligibility(ctx context.Context, owner, repo string, pr dispat
 	if !ok {
 		return false, "no same-repo closing reference in the PR body", 0, directorRunMeta{}
 	}
+	if wf, ok := directorPRWorkflowMarker(pr.Body); !ok {
+		return false, "PR body missing ward.workflow: pull-requests-and-merge marker", linked, directorRunMeta{}
+	} else if wf != string(workflowPullRequestsAndMerge) {
+		return false, "PR body carries ward.workflow: " + wf + "; need pull-requests-and-merge", linked, directorRunMeta{}
+	}
 	if _, err := cl.getIssue(ctx, owner, repo, linked); err != nil {
 		return false, "could not read linked issue: " + firstLine(err.Error()), linked, directorRunMeta{}
 	}
@@ -114,6 +120,20 @@ func directorMergeEligibility(ctx context.Context, owner, repo string, pr dispat
 		return false, "linked issue never reached a WARD-OUTCOME comment", linked, directorRunMeta{}
 	}
 	return directorMergeDecision(pr, linked, meta)
+}
+
+// directorPRWorkflowMarker extracts the workflow marker from a PR body.
+func directorPRWorkflowMarker(body string) (string, bool) {
+	for _, ln := range strings.Split(body, "\n") {
+		s := backlogCommentLine(ln)
+		if s == "" {
+			continue
+		}
+		if m := directorWorkflowMarkerRE.FindStringSubmatch(s); m != nil {
+			return strings.ToLower(strings.TrimSpace(m[1])), true
+		}
+	}
+	return "", false
 }
 
 // directorMergeDecision is the pure policy boundary for the director merge lane.

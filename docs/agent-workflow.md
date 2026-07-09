@@ -39,9 +39,10 @@ and a `ward.workflow` label, and is read by the reaper.
   PR contract, including the CI-watch loop, and still needs a human or a follow-up
   loop to land it.
 - **`pull-requests-and-merge`** - branch + PR like `pr`, but the issue thread
-  records that a director may merge the PR later once the review gate passed,
-  the PR checks are green, and the run ended `WARD-OUTCOME: done`. Human approval
-  still gates `pr`; this mode is the narrow director-authorized lane.
+  records the `ward.workflow: pull-requests-and-merge` PR-body marker so the
+  director sweep can find it later, once the review gate passed, the PR checks
+  are green, and the run ended `WARD-OUTCOME: done`. Human approval still gates
+  `pr`; this mode is the narrow director-authorized lane.
 - **`patch-only`** - the run has **no landing authority**: it commits locally but
   produces a **patch** (`git format-patch origin/main --stdout`) and posts it in a
   comment for a human to review and apply. It neither pushes `main` nor opens a
