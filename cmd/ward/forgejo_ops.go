@@ -310,6 +310,42 @@ func (c *forgejoClient) createPullRequest(ctx context.Context, owner, repo, head
 	return "", fmt.Errorf("forgejo create PR response omitted html_url")
 }
 
+// mergePullRequest merges an open PR through Forgejo's merge endpoint.
+// The director uses it for the narrow ward-owned merge lane.
+func (c *forgejoClient) mergePullRequest(ctx context.Context, owner, repo string, index int) error {
+	if strings.TrimSpace(c.token) == "" {
+		return fmt.Errorf("no Forgejo token available")
+	}
+	payload, err := json.Marshal(map[string]string{
+		"do": "merge",
+	})
+	if err != nil {
+		return err
+	}
+	baseURL := strings.TrimRight(c.baseURL, "/")
+	if baseURL == "" {
+		baseURL = forgejoBaseURL
+	}
+	endpoint := fmt.Sprintf("%s/api/v1/repos/%s/%s/pulls/%d/merge", baseURL, url.PathEscape(owner), url.PathEscape(repo), index)
+	req, err := http.NewRequestWithContext(ctx, http.MethodPost, endpoint, bytes.NewReader(payload))
+	if err != nil {
+		return err
+	}
+	req.Header.Set("Authorization", "token "+c.token)
+	req.Header.Set("Content-Type", "application/json")
+	req.Header.Set("Accept", "application/json")
+	resp, err := (&http.Client{Timeout: 30 * time.Second}).Do(req)
+	if err != nil {
+		return err
+	}
+	defer func() { _ = resp.Body.Close() }()
+	data, _ := io.ReadAll(io.LimitReader(resp.Body, 4096))
+	if resp.StatusCode < 200 || resp.StatusCode >= 300 {
+		return fmt.Errorf("forgejo merge PR returned %s: %s", resp.Status, firstLine(string(data)))
+	}
+	return nil
+}
+
 // lockIssue is unsupported: Forgejo's API (gitea-1.22 compat) exposes no issue-lock
 // leaf, so the reservation road-block stays the marker comment (ward#494, docs).
 func (c *forgejoClient) lockIssue(_ context.Context, _, _ string, _ int) error {
@@ -346,6 +382,39 @@ func (c *forgejoClient) listOpenIssues(ctx context.Context, owner, repo string, 
 		issues = append(issues, bi)
 	}
 	return issues, nil
+}
+
+// listOpenPullRequests lists a repo's open pull requests with the same lean
+// shape as issues, but filtered to type=pulls for the director merge lane.
+func (c *forgejoClient) listOpenPullRequests(ctx context.Context, owner, repo string, limit int) ([]dispatch.Issue, error) {
+	if limit <= 0 {
+		limit = 50
+	}
+	out, err := c.run(ctx, "issue", "list", owner, repo, "--state", "open", "--type", "pulls", "--limit", strconv.Itoa(limit), "--output", "json")
+	if err != nil {
+		return nil, fmt.Errorf("forgejo: list open pull requests in %s/%s: %w", owner, repo, err)
+	}
+	var raw []forgejoIssueRaw
+	if err := json.Unmarshal(out, &raw); err != nil {
+		return nil, fmt.Errorf("forgejo: parse pull request list for %s/%s: %w", owner, repo, err)
+	}
+	prs := make([]dispatch.Issue, 0, len(raw))
+	for _, ri := range raw {
+		pr := dispatch.Issue{
+			Number: ri.Number,
+			Title:  ri.Title,
+			Body:   ri.Body,
+			State:  ri.State,
+			URL:    ri.HTMLURL,
+		}
+		for _, l := range ri.Labels {
+			if l.Name != "" {
+				pr.Labels = append(pr.Labels, l.Name)
+			}
+		}
+		prs = append(prs, pr)
+	}
+	return prs, nil
 }
 
 // addIssueLabels adds the labels (by name) to an open issue - the write side of startup

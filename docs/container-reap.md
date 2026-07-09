@@ -36,7 +36,8 @@ does can defeat it. It is a hidden entrypoint-called verb.
    re-reads its dispatch provenance here to confirm the landed history carries
    the same-repo `closes #N` before reading as success. A landed run missing
    that reference is a failed invariant, not a quiet success. A clean
-   `pr`/`patch-only` boundary is also done, even though `main` stayed untouched.
+   `pr`/`pull-requests`/`pull-requests-and-merge`/`patch-only` boundary is also done,
+   even though `main` stayed untouched.
 5. Verifies the carried issue has a same-repo closing reference (`closes`,
    `fixes`, or `resolves`) when residual work remains or the run needs the
    post-rebase push-site re-check. Missing reference means salvage, not push,
