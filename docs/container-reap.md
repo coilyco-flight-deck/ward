@@ -32,11 +32,11 @@ does can defeat it. It is a hidden entrypoint-called verb.
    a missing closing reference, or a rejected push - never the benign "the repo was
    empty" condition.
 4. Checks for **nothing to reap** *next*: a clean tree with `HEAD`
-   already in `origin/main` is done, but a launched direct-to-main run still
+   already in `origin/main` is done, but a launched direct-main run still
    re-reads its dispatch provenance here to confirm the landed history carries
    the same-repo `closes #N` before reading as success. A landed run missing
    that reference is a failed invariant, not a quiet success. A clean
-   `pull-request`/`pull-request-and-merge`/`remote-branch-only` boundary is also done,
+   `pull-requests`/`pull-requests-and-merge`/`patch-only` boundary is also done,
    even though `main` stayed untouched.
 5. Verifies the carried issue has a same-repo closing reference (`closes`,
    `fixes`, or `resolves`) when residual work remains or the run needs the

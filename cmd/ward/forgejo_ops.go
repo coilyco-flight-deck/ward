@@ -178,6 +178,56 @@ func (c *forgejoClient) getIssue(ctx context.Context, owner, repo string, number
 	return &issue, nil
 }
 
+// getPullRequest reads one pull request directly from Forgejo's REST API so the
+// merge gate can see whether the current base branch still accepts it cleanly.
+func (c *forgejoClient) getPullRequest(ctx context.Context, owner, repo string, number int) (*forgejoPullRequestRaw, error) {
+	baseURL := strings.TrimRight(c.baseURL, "/")
+	if baseURL == "" {
+		baseURL = forgejoBaseURL
+	}
+	endpoint := fmt.Sprintf("%s/api/v1/repos/%s/%s/pulls/%d", baseURL, url.PathEscape(owner), url.PathEscape(repo), number)
+	client := &http.Client{Timeout: 30 * time.Second}
+	var lastErr error
+	for attempt := 1; attempt <= 3; attempt++ {
+		raw, retryable, err := c.getPullRequestOnce(ctx, client, endpoint, owner, repo, number)
+		if err == nil {
+			return raw, nil
+		}
+		lastErr = err
+		if !retryable || attempt == 3 {
+			return nil, err
+		}
+		time.Sleep(time.Duration(attempt) * 50 * time.Millisecond)
+	}
+	return nil, lastErr
+}
+
+func (c *forgejoClient) getPullRequestOnce(ctx context.Context, client *http.Client, endpoint, owner, repo string, number int) (*forgejoPullRequestRaw, bool, error) {
+	req, err := http.NewRequestWithContext(ctx, http.MethodGet, endpoint, nil)
+	if err != nil {
+		return nil, false, err
+	}
+	req.Header.Set("Authorization", "token "+c.token)
+	req.Header.Set("Accept", "application/json")
+	resp, err := client.Do(req)
+	if err != nil {
+		return nil, false, err
+	}
+	defer func() { _ = resp.Body.Close() }()
+	data, readErr := io.ReadAll(resp.Body)
+	if readErr != nil {
+		return nil, false, fmt.Errorf("forgejo: read pull request %s/%s#%d from %s: %w", owner, repo, number, resp.Status, readErr)
+	}
+	if resp.StatusCode < 200 || resp.StatusCode >= 300 {
+		return nil, false, fmt.Errorf("forgejo pull request GET returned %s after %d byte(s): %s", resp.Status, len(data), responseSnippet(data))
+	}
+	var raw forgejoPullRequestRaw
+	if err := json.Unmarshal(data, &raw); err != nil {
+		return nil, true, fmt.Errorf("forgejo: parse pull request %s/%s#%d from %s after %d byte(s): %s: %w", owner, repo, number, resp.Status, len(data), responseSnippet(data), err)
+	}
+	return &raw, false, nil
+}
+
 // listIssueComments fetches an issue's comment thread, oldest first.
 func (c *forgejoClient) listIssueComments(ctx context.Context, owner, repo string, number int) ([]issueComment, error) {
 	out, err := c.run(ctx, "issue-comment", "list", owner, repo, strconv.Itoa(number), "--output", "json")
@@ -386,7 +436,7 @@ func (c *forgejoClient) listOpenIssues(ctx context.Context, owner, repo string, 
 
 // listOpenPullRequests lists a repo's open pull requests with the same lean
 // shape as issues, but filtered to type=pulls for the director merge lane.
-func (c *forgejoClient) listOpenPullRequests(ctx context.Context, owner, repo string, limit int) ([]dispatch.Issue, error) {
+func (c *forgejoClient) listOpenPullRequests(ctx context.Context, owner, repo string, limit int) ([]directorPullRequest, error) {
 	if limit <= 0 {
 		limit = 50
 	}
@@ -398,20 +448,30 @@ func (c *forgejoClient) listOpenPullRequests(ctx context.Context, owner, repo st
 	if err := json.Unmarshal(out, &raw); err != nil {
 		return nil, fmt.Errorf("forgejo: parse pull request list for %s/%s: %w", owner, repo, err)
 	}
-	prs := make([]dispatch.Issue, 0, len(raw))
+	prs := make([]directorPullRequest, 0, len(raw))
 	for _, ri := range raw {
-		pr := dispatch.Issue{
-			Number: ri.Number,
-			Title:  ri.Title,
-			Body:   ri.Body,
-			State:  ri.State,
-			URL:    ri.HTMLURL,
+		pr := directorPullRequest{
+			Issue: dispatch.Issue{
+				Number: ri.Number,
+				Title:  ri.Title,
+				Body:   ri.Body,
+				State:  ri.State,
+				URL:    ri.HTMLURL,
+			},
 		}
 		for _, l := range ri.Labels {
 			if l.Name != "" {
 				pr.Labels = append(pr.Labels, l.Name)
 			}
 		}
+		detail, err := c.getPullRequest(ctx, owner, repo, ri.Number)
+		if err != nil {
+			pr.MergeableError = firstLine(err.Error())
+			prs = append(prs, pr)
+			continue
+		}
+		pr.Mergeable = detail.Mergeable
+		pr.MergeableKnown = true
 		prs = append(prs, pr)
 	}
 	return prs, nil
@@ -504,6 +564,20 @@ type forgejoIssueRaw struct {
 	} `json:"assignees"`
 }
 
+// forgejoPullRequestRaw is the focused PR detail shape used for mergeability.
+type forgejoPullRequestRaw struct {
+	Mergeable bool `json:"mergeable"`
+}
+
+// directorPullRequest is the open PR list projection used by the director merge
+// lane. It keeps the issue surface plus the focused mergeability bit.
+type directorPullRequest struct {
+	dispatch.Issue
+	Mergeable      bool
+	MergeableKnown bool
+	MergeableError string
+}
+
 // lean projects the raw issue down to the reader-facing leanIssue.
 func (raw forgejoIssueRaw) lean() leanIssue {
 	li := leanIssue{
@@ -577,4 +651,19 @@ func writeForgejoBody(obj map[string]string) (path string, cleanup func(), err e
 		return "", noop, fmt.Errorf("forgejo: close body file: %w", err)
 	}
 	return f.Name(), remove, nil
+}
+
+func responseSnippet(data []byte) string {
+	if len(data) == 0 {
+		return "<empty>"
+	}
+	line := firstLine(string(data))
+	if line == "" {
+		return "<empty>"
+	}
+	const maxSnippet = 160
+	if len(line) > maxSnippet {
+		line = line[:maxSnippet] + "..."
+	}
+	return strconv.Quote(line)
 }

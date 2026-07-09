@@ -15,8 +15,8 @@ import (
 	"github.com/urfave/cli/v3"
 )
 
-// smartDefaults is the launch-selected runtime policy bundle. It starts from the
-// baked neutral default and can be overridden by WARD_CONFIG_REF bundles.
+// smartDefaults is ward-owned runtime policy data. It starts from the baked
+// neutral default and can be overridden by the selected config bundle.
 type smartDefaults struct {
 	agentReservationTTL           time.Duration
 	reservationRecheckDefaultMax  time.Duration
@@ -71,8 +71,7 @@ func bakedSmartDefaults() smartDefaults {
 	}
 }
 
-// currentSmartDefaults returns the launch-selected runtime policy, caching it by
-// WARD_CONFIG_REF so the bundle is parsed once per selection.
+// currentSmartDefaults returns ward's runtime policy, caching the baked parse.
 func currentSmartDefaults() smartDefaults {
 	defs, _ := currentSmartDefaultsWithError()
 	return defs

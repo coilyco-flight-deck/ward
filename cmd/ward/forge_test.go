@@ -3,6 +3,8 @@ package main
 import (
 	"errors"
 	"io"
+	"net/http"
+	"net/http/httptest"
 	"os"
 	"path/filepath"
 	"strings"
@@ -118,11 +120,11 @@ func TestDirectToMainCarryClause(t *testing.T) {
 		got := directToMainCarryClause(ref)
 		for _, want := range []string{"merge to main", "closes #7"} {
 			if !strings.Contains(got, want) {
-				t.Errorf("direct-to-main carry clause missing %q: %s", want, got)
+				t.Errorf("direct-main carry clause missing %q: %s", want, got)
 			}
 		}
 		if strings.Contains(got, "gh pr create") || strings.Contains(got, "pull request") {
-			t.Errorf("direct-to-main carry clause should not mention a PR boundary: %s", got)
+			t.Errorf("direct-main carry clause should not mention a PR boundary: %s", got)
 		}
 	}
 }
@@ -224,6 +226,33 @@ func TestResolveGitHubTokenSourceSelects(t *testing.T) {
 		_, err := r.resolveGitHubToken(t.Context(), "coilyco", "ward")
 		if err == nil || !strings.Contains(err.Error(), envGitHubAppID) {
 			t.Fatalf("app source with no config = %v, want an error naming %s", err, envGitHubAppID)
+		}
+	})
+
+	t.Run("unset source defaults to app when provisioned", func(t *testing.T) {
+		_, keyPEM := genTestKeyPEM(t)
+		srv := httptest.NewServer(http.HandlerFunc(func(w http.ResponseWriter, r *http.Request) {
+			switch {
+			case r.Method == http.MethodGet && r.URL.Path == "/repos/coilyco/ward/installation":
+				_, _ = w.Write([]byte(`{"id": 42}`))
+			case r.Method == http.MethodPost && r.URL.Path == "/app/installations/42/access_tokens":
+				_, _ = w.Write([]byte(`{"token":"ghs_default_app"}`))
+			default:
+				w.WriteHeader(http.StatusNotFound)
+			}
+		}))
+		defer srv.Close()
+
+		orig := githubAPIBase
+		githubAPIBase = srv.URL
+		defer func() { githubAPIBase = orig }()
+
+		r := awsPEMStubRunner(t, keyPEM)
+		t.Setenv("WARD_GITHUB_TOKEN_SOURCE", "")
+		t.Setenv(envGitHubAppID, "999")
+		t.Setenv(envGitHubAppKeySSM, "/ward/github-app/key")
+		if got, err := r.resolveGitHubToken(t.Context(), "coilyco", "ward"); err != nil || got != "ghs_default_app" {
+			t.Fatalf("default source = %q,%v want ghs_default_app,nil", got, err)
 		}
 	})
 

@@ -26,14 +26,18 @@ var configFlagOverride string
 func explicitConfigPath() string { return configFlagOverride }
 
 func main() {
+	os.Exit(run())
+}
+
+func run() int {
 	// Internal jail-helper re-exec, before normal CLI parsing; never returns on
 	// success (it execs the real tool).
 	if sandbox.IsJailInvocation(os.Args) {
 		if err := sandbox.RunJail(os.Args[2:]); err != nil {
 			fmt.Fprintln(os.Stderr, "ward:", err)
-			os.Exit(1)
+			return 1
 		}
-		return
+		return 0
 	}
 
 	// Public-face shim: invoked as `warded` (a symlink), rewrite argv to the
@@ -41,6 +45,9 @@ func main() {
 	os.Args = maybeRewriteWardedShim(os.Args)
 
 	configFlagOverride = preParseConfigFlag(os.Args)
+	if initErrorReporting() {
+		defer reportPanic()
+	}
 	app := &cli.Command{
 		Name:    "ward",
 		Usage:   "a contributor-facing cli-guard consumer",
@@ -84,6 +91,7 @@ func main() {
 	// Unknown-verb fallback: `ward <leaf>` -> `ward exec <leaf>` for a declared
 	// leaf that isn't a top-level verb. See docs/verb-fallback.md, issue #87.
 	os.Args = maybeRewriteToExec(os.Args, topLevelVerbs(app))
+	configureCrashReportingScope(os.Args)
 
 	if err := app.Run(context.Background(), os.Args); err != nil {
 		fmt.Fprintln(os.Stderr, "ward:", err)
@@ -91,14 +99,15 @@ func main() {
 		// subprocess's own code, then 1.
 		var coded exitcode.Coded
 		if errors.As(err, &coded) {
-			os.Exit(coded.Code())
+			return coded.Code()
 		}
 		var ee *exec.ExitError
 		if errors.As(err, &ee) {
-			os.Exit(ee.ExitCode())
+			return ee.ExitCode()
 		}
-		os.Exit(1)
+		return 1
 	}
+	return 0
 }
 
 // rootValueFlags are root-level flags whose space-form value is the next token

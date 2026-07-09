@@ -65,6 +65,10 @@ Three knobs carry this, all defaulting to the bot and overridable by env:
 The bot account must have the chosen email registered for the link to resolve;
 that registration is an infrastructure step, not a ward code concern.
 
+For autonomous warded runs, bot author plus bot committer is the policy on both
+Forgejo and GitHub. Attended or local runs may override `WARD_GIT_NAME` and
+`WARD_GIT_EMAIL` before launch when a human wants different attribution.
+
 ## Out of scope: the ward-kdl specverb path
 
 `ward-kdl ops forgejo` (the spec-driven REST path) assembles its bodies in

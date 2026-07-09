@@ -1,14 +1,12 @@
 ---
-doc_goal: Pin the WARD_CONFIG_REF config-source seam - the fs.FS the KDL build sites compile from, the unset-means-baked selection contract, the flat bundle layout, and the per-site degrade behavior.
+doc_goal: Pin the WARD_CONFIG_REF edge-surface config-source seam - the fs.FS the guarded KDL build sites compile from, the unset-means-baked selection contract, the flat bundle layout, and the per-site degrade behavior.
 ---
-# The config source: `WARD_CONFIG_REF` and the fs.FS-at-launch seam
+# The edge config source: `WARD_CONFIG_REF` and the fs.FS-at-launch seam
 
-Since [ward#653](https://forgejo.coilysiren.me/coilyco-flight-deck/ward/issues/653) (epic [ward#650](https://forgejo.coilysiren.me/coilyco-flight-deck/ward/issues/650)), ward's KDL surfaces compile at launch from a selected `fs.FS`, not a hard-wired embed. `cmd/ward/configsource.go` picks it. Four sites read it:
+Since [ward#653](https://forgejo.coilysiren.me/coilyco-flight-deck/ward/issues/653) (epic [ward#650](https://forgejo.coilysiren.me/coilyco-flight-deck/ward/issues/650)), ward's edge-mounted KDL surfaces compile at launch from a selected `fs.FS`, not a hard-wired embed. `cmd/ward/configsource.go` picks it. The baked agent/container defaults stay ward-owned, and the launch-selected smart-defaults bundle reads the same selection path for runtime policy. Three sites read it:
 
 - `ward ops forgejo` - spec guardfile + swagger lock, plus the optional admin guardfile.
 - the exec-dialect auto-mount - `ward docker`, `ward agents <tool>`, `ward ops {aws,kubectl,...}`.
-- the fleet roster - dialect-2 `fleetconfig.Parse`.
-- the smart-defaults bundle - runtime policy defaults in `cmd/ward/smartdefaults.go`.
 
 ## Selection contract
 
@@ -40,13 +38,13 @@ A set-but-unresolvable ref and a bundle that fails to parse both degrade **per s
   invocation (`guardfile runtime failed to mount: ...`), so a bad bundle can
   never silently drop a verb surface.
 - the exec auto-mount degrades with a stderr warning at launch.
-- fleet consumers (`ward agents list`, `ward agent ...`) error at verb time.
-- smart-defaults consumers (`ward agent reap`, `ward agent director`, `ward
-  agent review`, reservation/comment code paths, container cleanup) error at
-  verb time.
+- the edge ops bundle consumers (`ward ops forgejo`, `ward docker`, `ward ops
+  aws`, `ward ops kubectl`, `ward agents <tool>`) error at verb time.
+- core runtime consumers (`ward agent`, container bring-up, reservation
+  defaults, review timing) keep their ward-owned defaults and ignore this seam.
 - the rest of the CLI (`version`, `exec`, `git`, ...) keeps working.
 
-There is no fallback from a named-but-broken source to the baked default.
+There is no fallback from a named-but-broken edge source to the baked default.
 
 ## See also
 

@@ -468,7 +468,7 @@ type upPlan struct {
 	// TSSidecar attaches the run to the shared ward-tailnet network so it reaches
 	// the standing mac-proxy box (--ts-sidecar, ward#349). docs/agent-ts-sidecar.md.
 	TSSidecar bool
-	// Workflow is the run's landing policy (--workflow, ward#508): non-direct-to-main
+	// Workflow is the run's landing policy (--workflow, ward#508): non-direct-main
 	// runs export WARD_WORKFLOW + a ward.workflow label. See docs/agent-workflow.md.
 	Workflow workflowMode
 	// SkipPreflight mirrors --skip-preflight into the container launch gate so host
@@ -715,7 +715,7 @@ func (p upPlan) wardEnv() map[string]string { //nolint:gocyclo,cyclop
 		env["WARD_CLONE_BASE"] = p.Forge.baseURL()
 	}
 	// A non-default landing policy rides in so the in-container reaper can refuse to
-	// force-push main (ward#508); direct-to-main omits the key, keeping today's env intact.
+	// force-push main (ward#508); direct-main omits the key, keeping today's env intact.
 	if !p.Workflow.landsOnMain() {
 		env["WARD_WORKFLOW"] = string(p.Workflow.orDefault())
 	}
@@ -754,7 +754,7 @@ func (p upPlan) labels() []string {
 		out = append(out, fmt.Sprintf("%s=%d", labelIssue, p.Issue))
 	}
 	// A non-default landing policy is stamped so poll/reaper/sweep can see it
-	// without reading the container env (ward#508); direct-to-main stays unlabeled.
+	// without reading the container env (ward#508); direct-main stays unlabeled.
 	if !p.Workflow.landsOnMain() {
 		out = append(out, labelWorkflow+"="+string(p.Workflow.orDefault()))
 	}
