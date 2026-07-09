@@ -65,35 +65,46 @@ func (r *Runner) runDirectorMerge(ctx context.Context, c *cli.Command) error {
 	}
 	var merged, skipped int
 	for _, repo := range repos {
-		owner, name, _ := strings.Cut(repo, "/")
-		prs, perr := cl.listOpenPullRequests(ctx, owner, name, limit)
-		if perr != nil {
-			return fmt.Errorf("%s: %w", label, perr)
+		repoMerged, repoSkipped, err := r.runDirectorMergeRepo(ctx, label, cl, repo, limit, preview)
+		if err != nil {
+			return err
 		}
-		for _, pr := range prs {
-			ok, reason, linked, meta := directorMergeEligibility(ctx, owner, name, pr, cl)
-			if !ok {
-				skipped++
-				_, _ = fmt.Fprintf(r.Runner.Stderr, "%s: skipping %s/%s#%d: %s\n", label, owner, name, pr.Number, reason)
-				continue
-			}
-			if preview {
-				_, _ = fmt.Fprintf(r.Runner.Stderr, "%s: would merge %s/%s#%d (issue #%d, workflow %s, review %q)\n",
-					label, owner, name, pr.Number, linked, meta.Workflow, meta.Review)
-				continue
-			}
-			if err := cl.mergePullRequest(ctx, owner, name, pr.Number); err != nil {
-				return fmt.Errorf("%s: merge %s/%s#%d: %w", label, owner, name, pr.Number, err)
-			}
-			if err := recordDirectorMergeDone(ctx, cl, owner, name, linked, pr.Number, meta); err != nil {
-				return fmt.Errorf("%s: record done for %s/%s#%d after merge: %w", label, owner, name, pr.Number, err)
-			}
-			merged++
-			_, _ = fmt.Fprintf(r.Runner.Stderr, "%s: merged %s/%s#%d (issue #%d)\n", label, owner, name, pr.Number, linked)
-		}
+		merged += repoMerged
+		skipped += repoSkipped
 	}
 	_, _ = fmt.Fprintf(r.Runner.Stdout, "%s: merged %d PR(s), skipped %d\n", label, merged, skipped)
 	return nil
+}
+
+func (r *Runner) runDirectorMergeRepo(ctx context.Context, label string, cl *forgejoClient, repo string, limit int, preview bool) (int, int, error) {
+	owner, name, _ := strings.Cut(repo, "/")
+	prs, err := cl.listOpenPullRequests(ctx, owner, name, limit)
+	if err != nil {
+		return 0, 0, fmt.Errorf("%s: %w", label, err)
+	}
+	var merged, skipped int
+	for _, pr := range prs {
+		ok, reason, linked, meta := directorMergeEligibility(ctx, owner, name, pr, cl)
+		if !ok {
+			skipped++
+			_, _ = fmt.Fprintf(r.Runner.Stderr, "%s: skipping %s/%s#%d: %s\n", label, owner, name, pr.Number, reason)
+			continue
+		}
+		if preview {
+			_, _ = fmt.Fprintf(r.Runner.Stderr, "%s: would merge %s/%s#%d (issue #%d, workflow %s, review %q)\n",
+				label, owner, name, pr.Number, linked, meta.Workflow, meta.Review)
+			continue
+		}
+		if err := cl.mergePullRequest(ctx, owner, name, pr.Number); err != nil {
+			return 0, 0, fmt.Errorf("%s: merge %s/%s#%d: %w", label, owner, name, pr.Number, err)
+		}
+		if err := recordDirectorMergeDone(ctx, cl, owner, name, linked, pr.Number, meta); err != nil {
+			return 0, 0, fmt.Errorf("%s: record done for %s/%s#%d after merge: %w", label, owner, name, pr.Number, err)
+		}
+		merged++
+		_, _ = fmt.Fprintf(r.Runner.Stderr, "%s: merged %s/%s#%d (issue #%d)\n", label, owner, name, pr.Number, linked)
+	}
+	return merged, skipped, nil
 }
 
 // directorMergeEligibility returns whether pr is the narrow, ward-owned lane.
@@ -173,10 +184,7 @@ func directorMergeDecision(pr dispatch.Issue, linked int, meta directorRunMeta) 
 // PR has actually merged to main.
 func recordDirectorMergeDone(ctx context.Context, cl *forgejoClient, owner, repo string, linked, prNumber int, meta directorRunMeta) error {
 	body := directorMergeDoneComment(prNumber, meta)
-	if err := cl.commentIssue(ctx, owner, repo, linked, body); err != nil {
-		return err
-	}
-	return nil
+	return cl.commentIssue(ctx, owner, repo, linked, body)
 }
 
 func directorMergeDoneComment(prNumber int, meta directorRunMeta) string {

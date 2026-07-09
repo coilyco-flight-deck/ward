@@ -243,11 +243,15 @@ func workflowLandingPhrase(_ agentIssueRef, wf workflowMode) string {
 // workflowOutcomeStatus names the nonterminal completion state a worker should
 // report at its boundary for the selected workflow.
 func workflowOutcomeStatus(wf workflowMode) string {
-	switch wf.orDefault() {
-	case workflowPullRequest:
+	switch mode := string(canonicalWorkflow(wf.orDefault())); mode {
+	case string(workflowPullRequest):
 		return "submitted"
-	case workflowPullRequestAndMerge:
+	case string(workflowPullRequestAndMerge):
 		return "merge-ready"
+	case string(workflowDirectToMain):
+		return "done"
+	case string(workflowRemoteBranchOnly):
+		return "done"
 	default:
 		return "done"
 	}
