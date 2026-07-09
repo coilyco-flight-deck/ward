@@ -221,6 +221,65 @@ func TestReviewSummaryIncludesNotes(t *testing.T) {
 	}
 }
 
+func TestFailClosedNoReviewerResultRewordsAdvisoryNote(t *testing.T) {
+	advisory := reviewpanel.PanelResult{
+		Gate:   reviewpanel.GateAdvisory,
+		Worker: "codex",
+		Note:   "ADVISORY-ONLY REVIEW: no reviewer family was available for codex, so the adversarial panel could not run and did NOT gate this diff. Dropped: claude (unavailable: no network). A human should review this change with the extra scrutiny an unrun panel would have applied.",
+	}
+	blocked := failClosedNoReviewerResult(advisory)
+	if blocked.Gate != reviewpanel.GateBlock {
+		t.Fatalf("gate = %q; want block", blocked.Gate)
+	}
+	for _, bad := range []string{"ADVISORY-ONLY REVIEW", "did NOT gate this diff"} {
+		if strings.Contains(blocked.Note, bad) {
+			t.Fatalf("blocked note still contains %q: %q", bad, blocked.Note)
+		}
+	}
+	if got := reviewSummary(blocked); !strings.Contains(got, "blocked: no reviewer family was available for codex, so the adversarial panel could not run and the gate blocked fail-closed.") {
+		t.Fatalf("blocked summary = %q", got)
+	}
+
+	home := t.TempDir()
+	t.Setenv("HOME", home)
+	if err := writeReviewSummaryHandoff(blocked); err != nil {
+		t.Fatalf("writeReviewSummaryHandoff: %v", err)
+	}
+	path, err := reviewSummaryPath()
+	if err != nil {
+		t.Fatalf("reviewSummaryPath: %v", err)
+	}
+	got, err := os.ReadFile(path)
+	if err != nil {
+		t.Fatalf("ReadFile(%s): %v", path, err)
+	}
+	for _, bad := range []string{"ADVISORY-ONLY REVIEW", "did NOT gate this diff"} {
+		if strings.Contains(string(got), bad) {
+			t.Fatalf("handoff still contains %q: %q", bad, got)
+		}
+	}
+
+	var out, errb bytes.Buffer
+	r := &Runner{Runner: &shell.Runner{Stdout: &out, Stderr: &errb}}
+	r.reportPanel(&cli.Command{}, blocked)
+	if !strings.Contains(out.String(), "WARD-REVIEW: block") {
+		t.Fatalf("stdout missing blocked machine line: %s", out.String())
+	}
+	for _, bad := range []string{"ADVISORY-ONLY REVIEW", "did NOT gate this diff"} {
+		if strings.Contains(errb.String(), bad) {
+			t.Fatalf("panel output still contains %q: %s", bad, errb.String())
+		}
+	}
+
+	if got := (reviewBlockedError{result: blocked}).Error(); strings.Contains(got, "ADVISORY-ONLY REVIEW") || strings.Contains(got, "did NOT gate this diff") {
+		t.Fatalf("blocked error still contains advisory wording: %q", got)
+	}
+
+	if got := reviewConclusionCommentBody(blocked); strings.Contains(got, "ADVISORY-ONLY REVIEW") || strings.Contains(got, "did NOT gate this diff") {
+		t.Fatalf("conclusion comment still contains advisory wording: %q", got)
+	}
+}
+
 func TestWriteReviewSummaryHandoff(t *testing.T) {
 	home := t.TempDir()
 	t.Setenv("HOME", home)
