@@ -40,13 +40,19 @@ var (
 	// backlogModeLane maps a mode label to the loop lane it feeds.
 	backlogModeLane = map[string]string{"headless": "headless", "interactive": "interactive", "consult": "consult"}
 	// backlogLanes is the print/iteration order of the lanes the loop tracks.
-	backlogLanes = []string{"headless", "interactive", "consult", "untriaged"}
+	backlogLanes = []string{"headless", "pull-request", "interactive", "consult", "untriaged"}
+)
+
+const (
+	backlogKindIssue       = "issue"
+	backlogKindPullRequest = "pull-request"
 )
 
 // backlogIssue is one open issue read from the live backlog, the ranking input.
 // Body is populated for the startup triage pass (ward#397); ranking ignores it.
 type backlogIssue struct {
 	Number int
+	Kind   string
 	Title  string
 	Body   string
 	Labels []string
@@ -56,6 +62,7 @@ type backlogIssue struct {
 // rankedBacklogIssue annotates an issue with its tier/mode/lane after ranking.
 type rankedBacklogIssue struct {
 	Num   int
+	Kind  string
 	Title string
 	Tier  string
 	Mode  string
@@ -73,6 +80,7 @@ type backlogOutcome struct {
 // the loop state it moves through (queued -> dispatched -> done/blocked/failed).
 type backlogEntry struct {
 	Num          int             `yaml:"num"`
+	Kind         string          `yaml:"kind,omitempty"`
 	Title        string          `yaml:"title"`
 	Tier         string          `yaml:"tier,omitempty"`
 	Mode         string          `yaml:"mode,omitempty"`
@@ -600,17 +608,19 @@ func backlogLaneForLabels(tier, mode string) string {
 // rankBacklogIssues tags each issue with tier/mode/lane and sorts by lane, then
 // tier, then number. Ports backlog-loop.py's rank (no triage-score tie-break yet).
 func rankBacklogIssues(issues []backlogIssue) []rankedBacklogIssue {
-	laneRank := map[string]int{"headless": 0, "interactive": 1, "consult": 2, "untriaged": 3}
+	laneRank := map[string]int{"headless": 0, "pull-request": 1, "interactive": 2, "consult": 3, "untriaged": 4}
 	out := make([]rankedBacklogIssue, 0, len(issues))
 	for _, it := range issues {
+		kind := backlogKindOf(it.Kind)
 		tier := backlogTierOf(it.Labels)
 		mode := backlogModeOf(it.Labels)
 		out = append(out, rankedBacklogIssue{
 			Num:   it.Number,
+			Kind:  kind,
 			Title: it.Title,
 			Tier:  tier,
 			Mode:  mode,
-			Lane:  backlogLaneForLabels(tier, mode),
+			Lane:  backlogLaneForKind(kind, tier, mode),
 			URL:   it.URL,
 		})
 	}
@@ -633,6 +643,23 @@ func rankBacklogIssues(issues []backlogIssue) []rankedBacklogIssue {
 	return out
 }
 
+func backlogKindOf(kind string) string {
+	switch strings.ToLower(strings.TrimSpace(kind)) {
+	case backlogKindPullRequest:
+		return backlogKindPullRequest
+	default:
+		return backlogKindIssue
+	}
+}
+
+// backlogLaneForKind maps a backlog item's kind and labels to a lane.
+func backlogLaneForKind(kind, tier, mode string) string {
+	if backlogKindOf(kind) == backlogKindPullRequest {
+		return backlogKindPullRequest
+	}
+	return backlogLaneForLabels(tier, mode)
+}
+
 // refreshBacklogLedger folds a fresh ranked backlog into the ledger, preserving
 // in-flight state and dropping closed non-mid-flight issues. Ports refresh_ledger.
 func refreshBacklogLedger(led *backlogLedger, ranked []rankedBacklogIssue) {
@@ -652,7 +679,7 @@ func backlogNewEntryState(lane string) string {
 	switch lane {
 	case "headless":
 		return "queued"
-	case "interactive":
+	case "pull-request", "interactive":
 		return "surfaced"
 	default:
 		return "skipped"
@@ -683,6 +710,7 @@ func applyRankedBacklogEntry(led *backlogLedger, rk rankedBacklogIssue) {
 		entry.LastOutcome = nil
 	}
 	entry.Num = rk.Num
+	entry.Kind = backlogKindOf(rk.Kind)
 	entry.Title = rk.Title
 	entry.Tier = rk.Tier
 	entry.Mode = rk.Mode
@@ -992,11 +1020,26 @@ func (r *Runner) backlogRefresh(ctx context.Context, label string, repos []strin
 		if lerr != nil {
 			return fmt.Errorf("%s: %w", label, lerr)
 		}
+		prs, perr := cl.listOpenPullRequests(ctx, owner, name, limit)
+		if perr != nil {
+			return fmt.Errorf("%s: %w", label, perr)
+		}
 		led, lerr := loadBacklogLedger(repo)
 		if lerr != nil {
 			return fmt.Errorf("%s: %w", label, lerr)
 		}
-		refreshBacklogLedger(led, rankBacklogIssues(issues))
+		prBacklog := make([]backlogIssue, 0, len(prs))
+		for _, pr := range prs {
+			prBacklog = append(prBacklog, backlogIssue{
+				Number: pr.Number,
+				Kind:   backlogKindPullRequest,
+				Title:  pr.Title,
+				Body:   pr.Body,
+				URL:    pr.URL,
+				Labels: append([]string(nil), pr.Labels...),
+			})
+		}
+		refreshBacklogLedger(led, rankBacklogIssues(combineOpenBacklogIssues(issues, prBacklog)))
 		if serr := saveBacklogLedger(led); serr != nil {
 			return fmt.Errorf("%s: %w", label, serr)
 		}
@@ -1230,7 +1273,7 @@ func (r *Runner) backlogPrintStatus(repos []string) error {
 		fmt.Fprintf(&b, "\n  %s lane (%d):\n", lane, len(items))
 		for _, e := range items {
 			fmt.Fprintf(&b, "    %-30s [%-2s] %-10s %s\n",
-				e.repo+"#"+strconv.Itoa(e.Num), tierOrDash(e.Tier), stateOrDash(e.State), backlogTruncate(e.Title, 60))
+				backlogEntryDisplayRef(e), tierOrDash(e.Tier), stateOrDash(e.State), backlogTruncate(e.Title, 60))
 		}
 	}
 	return r.emit(b.String())
@@ -1260,6 +1303,31 @@ func (r *Runner) backlogPrintPlanned(label string, repos []string, maxParallel i
 			p.repo+"#"+strconv.Itoa(p.Num), tierOrDash(p.Tier), backlogTruncate(p.Title, 50), marker)
 	}
 	return r.emit(b.String())
+}
+
+func backlogEntryDisplayRef(e *backlogEntry) string {
+	return backlogEntryKindPrefix(e.Kind) + " " + e.repo + "#" + strconv.Itoa(e.Num)
+}
+
+func backlogEntryKindPrefix(kind string) string {
+	switch backlogKindOf(kind) {
+	case backlogKindPullRequest:
+		return "PR"
+	default:
+		return "issue"
+	}
+}
+
+// combineOpenBacklogIssues folds the live open issue and PR feeds into one ranking
+// input while preserving every issue row and tagging PR rows explicitly.
+func combineOpenBacklogIssues(issues, prs []backlogIssue) []backlogIssue {
+	out := make([]backlogIssue, 0, len(issues)+len(prs))
+	out = append(out, issues...)
+	for _, pr := range prs {
+		pr.Kind = backlogKindPullRequest
+		out = append(out, pr)
+	}
+	return out
 }
 
 // backlogPrintDirectorPlan renders director's OWN container/harness plan for --print

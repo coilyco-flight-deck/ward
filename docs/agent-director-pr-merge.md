@@ -7,6 +7,10 @@ doc_goal: Explain the director's narrow PR-merge authority boundary - which ward
 ward-owned pull request when the run was launched in
 `pull-request-and-merge`.
 
+Ordinary open PRs still show up in the director ledger as `pull-request` lane
+items. The heartbeat tracks them and surfaces them with `PR #N` identity, but
+only the merge sweep below may land them.
+
 ## What qualifies
 
 The merge sweep only acts when all of these are true:

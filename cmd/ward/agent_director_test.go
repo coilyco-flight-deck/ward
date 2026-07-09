@@ -1,6 +1,7 @@
 package main
 
 import (
+	"bytes"
 	"errors"
 	"fmt"
 	"os"
@@ -10,6 +11,7 @@ import (
 	"testing"
 	"time"
 
+	"forgejo.coilysiren.me/coilyco-flight-deck/cli-guard/cli/shell"
 	"forgejo.coilysiren.me/coilyco-flight-deck/cli-guard/pkg/exitcode"
 	"github.com/urfave/cli/v3"
 )
@@ -412,26 +414,28 @@ func TestOrgReposToSlugs(t *testing.T) {
 
 func TestBacklogLaneForLabels(t *testing.T) {
 	cases := []struct {
+		kind   string
 		labels []string
 		tier   string
 		mode   string
 		lane   string
 	}{
-		{[]string{"P0", "headless"}, "P0", "headless", "headless"},
-		{[]string{"P2", "interactive"}, "P2", "interactive", "interactive"},
-		{[]string{"P1", "consult"}, "P1", "consult", "consult"},
-		{[]string{"headless"}, "", "headless", "untriaged"},              // no tier -> untriaged
-		{[]string{"P3"}, "P3", "", "untriaged"},                          // no mode -> untriaged
-		{[]string{"unrelated", "label"}, "", "", "untriaged"},            // neither
-		{[]string{"P4", "P0", "headless"}, "P0", "headless", "headless"}, // highest tier wins
+		{backlogKindIssue, []string{"P0", "headless"}, "P0", "headless", "headless"},
+		{backlogKindIssue, []string{"P2", "interactive"}, "P2", "interactive", "interactive"},
+		{backlogKindIssue, []string{"P1", "consult"}, "P1", "consult", "consult"},
+		{backlogKindIssue, []string{"headless"}, "", "headless", "untriaged"},              // no tier -> untriaged
+		{backlogKindIssue, []string{"P3"}, "P3", "", "untriaged"},                          // no mode -> untriaged
+		{backlogKindIssue, []string{"unrelated", "label"}, "", "", "untriaged"},            // neither
+		{backlogKindIssue, []string{"P4", "P0", "headless"}, "P0", "headless", "headless"}, // highest tier wins
+		{backlogKindPullRequest, []string{"P0", "headless"}, "P0", "headless", backlogKindPullRequest},
 	}
 	for _, c := range cases {
 		tier := backlogTierOf(c.labels)
 		mode := backlogModeOf(c.labels)
-		lane := backlogLaneForLabels(tier, mode)
+		lane := backlogLaneForKind(c.kind, tier, mode)
 		if tier != c.tier || mode != c.mode || lane != c.lane {
-			t.Errorf("labels %v => tier=%q mode=%q lane=%q, want tier=%q mode=%q lane=%q",
-				c.labels, tier, mode, lane, c.tier, c.mode, c.lane)
+			t.Errorf("kind=%q labels %v => tier=%q mode=%q lane=%q, want tier=%q mode=%q lane=%q",
+				c.kind, c.labels, tier, mode, lane, c.tier, c.mode, c.lane)
 		}
 	}
 }
@@ -443,9 +447,10 @@ func TestRankBacklogIssues(t *testing.T) {
 		{Number: 5, Title: "P0 headless", Labels: []string{"P0", "headless"}},
 		{Number: 30, Title: "P0 interactive", Labels: []string{"P0", "interactive"}},
 		{Number: 7, Title: "P1 headless", Labels: []string{"P1", "headless"}},
+		{Number: 40, Kind: backlogKindPullRequest, Title: "P0 PR", Labels: []string{"P0", "headless"}},
 	}
 	got := rankBacklogIssues(issues)
-	wantOrder := []int{5, 7, 20, 30, 10} // headless by tier, then interactive, then untriaged
+	wantOrder := []int{5, 7, 20, 40, 30, 10} // headless by tier, then PRs, then interactive, then untriaged
 	var gotOrder []int
 	for _, r := range got {
 		gotOrder = append(gotOrder, r.Num)
@@ -453,7 +458,7 @@ func TestRankBacklogIssues(t *testing.T) {
 	if !reflect.DeepEqual(gotOrder, wantOrder) {
 		t.Errorf("rank order = %v, want %v", gotOrder, wantOrder)
 	}
-	if got[0].Lane != "headless" || got[3].Lane != "interactive" || got[4].Lane != "untriaged" {
+	if got[0].Lane != "headless" || got[3].Lane != backlogKindPullRequest || got[4].Lane != "interactive" || got[5].Lane != "untriaged" {
 		t.Errorf("lane assignment wrong: %+v", got)
 	}
 }
@@ -464,6 +469,8 @@ func TestRefreshBacklogLedger(t *testing.T) {
 		"5": {Num: 5, Lane: "headless", State: "dispatched", Container: "engineer-claude-b-5"},
 		// previously surfaced (interactive), now re-triaged into headless -> promote to queued
 		"7": {Num: 7, Lane: "interactive", State: "surfaced"},
+		// PRs should stay visible as surfaced follow-up work.
+		"8": {Num: 8, Kind: backlogKindPullRequest, Lane: backlogKindPullRequest, State: "surfaced"},
 		// a done issue that has since closed (absent from the live set) -> dropped
 		"9": {Num: 9, Lane: "headless", State: "done"},
 		// ward#527: a pre-#524 dispatch-error stranding -> re-queued, outcome cleared
@@ -474,6 +481,7 @@ func TestRefreshBacklogLedger(t *testing.T) {
 	ranked := rankBacklogIssues([]backlogIssue{
 		{Number: 5, Title: "five", Labels: []string{"P0", "headless"}},
 		{Number: 7, Title: "seven", Labels: []string{"P1", "headless"}}, // promoted to headless
+		{Number: 8, Kind: backlogKindPullRequest, Title: "eight", Labels: []string{"P0", "headless"}},
 		{Number: 11, Title: "eleven", Labels: []string{"P2", "interactive"}},
 		{Number: 12, Title: "twelve", Labels: nil}, // untriaged
 		{Number: 13, Title: "thirteen", Labels: []string{"P0", "headless"}},
@@ -486,6 +494,9 @@ func TestRefreshBacklogLedger(t *testing.T) {
 	}
 	if e := led.Issues["7"]; e == nil || e.State != "queued" || e.Lane != "headless" {
 		t.Errorf("#7 should be promoted to queued/headless, got %+v", e)
+	}
+	if e := led.Issues["8"]; e == nil || e.State != "surfaced" || e.Lane != backlogKindPullRequest || e.Kind != backlogKindPullRequest {
+		t.Errorf("#8 PR should stay surfaced/pull-request, got %+v", e)
 	}
 	if _, ok := led.Issues["9"]; ok {
 		t.Errorf("#9 closed+done should be dropped, still present")
@@ -501,6 +512,45 @@ func TestRefreshBacklogLedger(t *testing.T) {
 	}
 	if e := led.Issues["14"]; e == nil || e.State != "failed" {
 		t.Errorf("#14 genuine decline must stay failed, got %+v", e)
+	}
+}
+
+func TestCombineOpenBacklogIssues(t *testing.T) {
+	issues := []backlogIssue{{Number: 5, Kind: backlogKindIssue, Title: "issue"}}
+	prs := []backlogIssue{{Number: 8, Title: "pr"}}
+
+	got := combineOpenBacklogIssues(issues, prs)
+	if len(got) != 2 {
+		t.Fatalf("combined length = %d, want 2", len(got))
+	}
+	if got[0].Kind != backlogKindIssue || got[0].Number != 5 {
+		t.Fatalf("issue row was not preserved: %+v", got[0])
+	}
+	if got[1].Kind != backlogKindPullRequest || got[1].Number != 8 {
+		t.Fatalf("PR row was not tagged/folded in: %+v", got[1])
+	}
+}
+
+func TestBacklogPrintStatusDistinguishesPRs(t *testing.T) {
+	t.Setenv("HOME", t.TempDir())
+	repo := "a/b"
+	led := &backlogLedger{Repo: repo, Issues: map[string]*backlogEntry{
+		"5": {Num: 5, Kind: backlogKindIssue, Lane: "headless", State: "queued", Title: "issue work"},
+		"8": {Num: 8, Kind: backlogKindPullRequest, Lane: backlogKindPullRequest, State: "surfaced", Title: "PR follow-up"},
+	}}
+	if err := saveBacklogLedger(led); err != nil {
+		t.Fatalf("save ledger: %v", err)
+	}
+	out := &bytes.Buffer{}
+	r := &Runner{Runner: &shell.Runner{Stdout: out}}
+	if err := r.backlogPrintStatus([]string{repo}); err != nil {
+		t.Fatalf("backlogPrintStatus: %v", err)
+	}
+	got := out.String()
+	for _, want := range []string{"issue a/b#5", "PR a/b#8", "pull-request lane"} {
+		if !strings.Contains(got, want) {
+			t.Fatalf("status output missing %q\n%s", want, got)
+		}
 	}
 }
 
