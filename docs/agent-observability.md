@@ -29,14 +29,16 @@ through a **strict allowlist** - `Config.Env` also carries the `--env-file` secr
 ## Sink modes
 
 Where a drained run lands is controlled by `WARD_AGENT_SINK`, but the release
-surface now normalizes every accepted value to the local disk archive:
+surface now uses it only as a label. The drain always writes the local disk
+archive:
 
 - **`disk`** *(default)* - write the on-disk artifacts and the redacted sibling.
-- **`signoz`** - legacy compatibility spelling, treated as `disk`.
-- **`both`** - legacy compatibility spelling, treated as `disk`.
+- **`signoz`** - legacy compatibility label, ignored by routing.
+- **`both`** - legacy compatibility label, ignored by routing.
 
 `WARD_AGENT_SINK` stays as the operator-local seam for a later observability
-relaunch. An unrecognized value falls back to `disk`.
+relaunch. Any other value is accepted as a label and still lands in the local
+archive.
 
 **logdy is retired.** The console is archived locally and the director reads the
 redacted sibling tree.

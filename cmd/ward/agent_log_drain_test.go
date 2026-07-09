@@ -67,7 +67,7 @@ func TestSweepActionsDrainsWithoutEviction(t *testing.T) {
 	}
 }
 
-// TestResolveSinkMode covers the env override + the local disk default.
+// TestResolveSinkMode covers the env label + the local disk default.
 func TestResolveSinkMode(t *testing.T) {
 	cases := []struct {
 		set  string
@@ -75,11 +75,11 @@ func TestResolveSinkMode(t *testing.T) {
 	}{
 		{"", defaultSinkMode},
 		{"disk", sinkDisk},
-		{"signoz", sinkDisk},
-		{"both", sinkDisk},
-		{"DISK", sinkDisk},           // case-insensitive
-		{"  both  ", sinkDisk},       // trimmed
-		{"garbage", defaultSinkMode}, // unrecognized falls back, never fails
+		{"signoz", sinkMode("signoz")},
+		{"both", sinkMode("both")},
+		{"DISK", sinkDisk},               // case-insensitive
+		{"  both  ", sinkMode("both")},   // trimmed
+		{"garbage", sinkMode("garbage")}, // labels are still surfaced, not routed
 	}
 	for _, c := range cases {
 		t.Setenv(envSinkMode, c.set)

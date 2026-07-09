@@ -77,8 +77,8 @@ func clearDrainMarker(baseDir, name string) {
 	_ = os.Remove(drainMarkerPath(baseDir, name))
 }
 
-// sinkMode selects where a drained run lands. The release surface currently keeps
-// the local disk archive only; the legacy env knob still resolves to disk.
+// sinkMode labels the requested sink. The release surface always writes the local
+// disk archive, but the legacy env knob is still read for compatibility.
 type sinkMode string
 
 const (
@@ -92,15 +92,14 @@ const defaultSinkMode = sinkDisk
 // seam a future ward-kdl config field slots behind (env > config > default).
 const envSinkMode = "WARD_AGENT_SINK"
 
-// resolveSinkMode reads the env override and normalizes every accepted value to
-// the local disk archive. Unknown values still fall back rather than failing.
+// resolveSinkMode reads the env override. The return value is now informational,
+// because the drain itself always writes the local disk archive.
 func resolveSinkMode() sinkMode {
-	switch sinkMode(strings.ToLower(strings.TrimSpace(os.Getenv(envSinkMode)))) {
-	case sinkDisk:
-		return sinkDisk
-	default:
+	raw := sinkMode(strings.ToLower(strings.TrimSpace(os.Getenv(envSinkMode))))
+	if raw == "" {
 		return defaultSinkMode
 	}
+	return raw
 }
 
 // metaEnvAllow is the strict allowlist of container env keys copied into meta.json.
