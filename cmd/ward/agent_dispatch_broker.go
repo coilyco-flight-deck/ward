@@ -197,7 +197,7 @@ func (r *Runner) runHostDispatchBrokerRequest(ctx context.Context, req dispatchB
 	defer restore()
 
 	_, _ = fmt.Fprintf(logf, "ward dispatch broker: %s requested `ward agent %s`\n",
-		emptyDefault(req.Requester, "unknown-container"), strings.Join(req.Argv, " "))
+		emptyDefault(req.Requester, "unknown-container"), redactDispatchBrokerArgv(req.Argv))
 	switch req.Role {
 	case "engineer":
 		return logPath, agentEngineerCommand().Run(ctx, req.Argv)
@@ -420,6 +420,8 @@ func validateDispatchBrokerArgv(role string, tail []string) error {
 	valueFlags := map[string]bool{"--harness": true, "--agent": true, "--driver": true, "--config": true}
 	boolFlags := map[string]bool{"--print": true}
 	if role == "engineer" {
+		valueFlags["--workflow"] = true
+		valueFlags["--details"] = true
 		for _, f := range []string{"--image", "--tag", "--ward-version", "--branch", "--repo", "--tailnet-mode"} {
 			valueFlags[f] = true
 		}
@@ -498,13 +500,14 @@ func (r *Runner) maybeForwardAgentDispatchToHostBroker(ctx context.Context, c *c
 	if err != nil {
 		return true, err
 	}
+	displayArgv := redactDispatchBrokerArgv(argv)
 	// This line is captured as tool output by the surface agent, not written to the
 	// raw TTY, so naming the host-side run log here is safe and aids discovery.
 	if logPath != "" {
 		fmt.Fprintf(os.Stderr, "ward dispatch broker: forwarded `ward agent %s` to host ward (run output on the host at %s)\n",
-			strings.Join(argv, " "), logPath)
+			displayArgv, logPath)
 	} else {
-		fmt.Fprintf(os.Stderr, "ward dispatch broker: forwarded `ward agent %s` to host ward\n", strings.Join(argv, " "))
+		fmt.Fprintf(os.Stderr, "ward dispatch broker: forwarded `ward agent %s` to host ward\n", displayArgv)
 	}
 	return true, nil
 }
@@ -520,6 +523,14 @@ func (r *Runner) brokerDispatchRef(ctx context.Context, arg string) (agentIssueR
 func brokerEngineerArgv(c *cli.Command, mode containerMode, ref agentIssueRef) []string {
 	argv := []string{"engineer", ref.String(), "--harness", string(mode)}
 	argv = appendBrokerContainerFlags(argv, c)
+	if c.IsSet("workflow") {
+		if wf := strings.TrimSpace(c.String("workflow")); wf != "" {
+			argv = append(argv, "--workflow", wf)
+		}
+	}
+	if details := strings.TrimSpace(c.String("details")); details != "" {
+		argv = append(argv, "--details", details)
+	}
 	if c.Bool("force") {
 		argv = append(argv, "--force")
 	}
@@ -577,6 +588,10 @@ func appendBrokerContainerFlags(argv []string, c *cli.Command) []string {
 		}
 	}
 	return argv
+}
+
+func redactDispatchBrokerArgv(argv []string) string {
+	return redactSecrets(strings.Join(argv, " "))
 }
 
 func sendDispatchBrokerRequest(ctx context.Context, addr string, req dispatchBrokerRequest) (string, error) {
