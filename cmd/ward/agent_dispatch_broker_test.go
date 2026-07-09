@@ -864,6 +864,7 @@ func TestRunHostDispatchBrokerRequestClearsBrokerEnvWhileLaunchRuns(t *testing.T
 	default:
 	}
 	close(release)
+	var dispatchLogPath string
 	select {
 	case got := <-result:
 		if got.err != nil {
@@ -872,6 +873,7 @@ func TestRunHostDispatchBrokerRequestClearsBrokerEnvWhileLaunchRuns(t *testing.T
 		if !strings.Contains(got.logPath, "dispatch") {
 			t.Fatalf("log path %q does not look like a dispatch log", got.logPath)
 		}
+		dispatchLogPath = got.logPath
 	case <-time.After(2 * time.Second):
 		t.Fatal("runHostDispatchBrokerRequest never returned")
 	}
@@ -880,7 +882,7 @@ func TestRunHostDispatchBrokerRequestClearsBrokerEnvWhileLaunchRuns(t *testing.T
 	case <-time.After(2 * time.Second):
 		t.Fatal("host launch never finished")
 	}
-	body, err := os.ReadFile(logPath) // #nosec G304 -- test-controlled temp path
+	body, err := os.ReadFile(dispatchLogPath) // #nosec G304 -- test-controlled temp path
 	if err != nil {
 		t.Fatalf("read dispatch log: %v", err)
 	}

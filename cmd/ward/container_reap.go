@@ -167,7 +167,10 @@ func (r *Runner) runContainerReap(ctx context.Context, c *cli.Command) error {
 	}
 	fmt.Fprintf(os.Stderr, "ward container reap: work tree confirmed at %s\n", work)
 	terr := r.reapTargetTree(ctx, work, env, true)
-	r.verifyExtraReposLanded(ctx, env)
+	unlanded := r.verifyExtraReposLanded(ctx, env)
+	if terr == nil && !unlanded {
+		r.commentLaunchedNoOutcomeIfNeeded(ctx, env)
+	}
 	return terr
 }
 
@@ -747,13 +750,86 @@ func (r *Runner) releaseReservationIfUnstarted(ctx context.Context, env reapEnv)
 	fmt.Fprintf(os.Stderr, "ward container reap: released issue reservation on #%d (container exited pre-launch, did no work)\n", env.Issue)
 }
 
+// commentLaunchedNoOutcomeIfNeeded marks a launched run failed when it exits with
+// no WARD-OUTCOME comment after it started and nothing residual to salvage.
+func (r *Runner) commentLaunchedNoOutcomeIfNeeded(ctx context.Context, env reapEnv) {
+	if !env.Launched || env.Issue == 0 {
+		return
+	}
+	upAt, err := time.Parse(time.RFC3339, strings.TrimSpace(env.UpAt))
+	if err != nil {
+		fmt.Fprintf(os.Stderr, "ward container reap: cannot parse WARD_CONTAINER_UP for no-outcome check: %v\n", err)
+		return
+	}
+	fc, err := r.hostForgejoClient(ctx)
+	if err != nil {
+		fmt.Fprintf(os.Stderr, "ward container reap: could not build forgejo client for no-outcome check: %v\n", err)
+		return
+	}
+	if err := postLaunchedNoOutcomeComment(ctx, fc.withMode(containerMode(env.Mode)), env, upAt); err != nil {
+		fmt.Fprintf(os.Stderr, "ward container reap: %v\n", err)
+	}
+}
+
+// postLaunchedNoOutcomeComment marks a launched run failed when it exits with no
+// WARD-OUTCOME comment after it started and nothing residual to salvage.
+func postLaunchedNoOutcomeComment(ctx context.Context, fc Tracker, env reapEnv, afterAt time.Time) error {
+	comments, err := fc.listIssueComments(ctx, env.Owner, env.Name, env.Issue)
+	if err != nil {
+		return fmt.Errorf("could not read issue comments for no-outcome check on #%d: %w", env.Issue, err)
+	}
+	if _, ok := latestBacklogOutcomeCommentAfter(comments, afterAt); ok {
+		return nil
+	}
+	body := launchedNoOutcomeCommentBody(env)
+	if err := fc.commentIssue(ctx, env.Owner, env.Name, env.Issue, body); err != nil {
+		return fmt.Errorf("could not comment launched no-outcome failure on #%d: %w", env.Issue, err)
+	}
+	if err := fc.unlockIssue(ctx, env.Owner, env.Name, env.Issue); err != nil && !errors.Is(err, errForgeLockUnsupported) {
+		return fmt.Errorf("could not unlock issue #%d after no-outcome failure: %w", env.Issue, err)
+	}
+	return nil
+}
+
+// latestBacklogOutcomeCommentAfter returns the most recent WARD-OUTCOME comment at
+// or after afterAt, if any.
+func latestBacklogOutcomeCommentAfter(comments []issueComment, afterAt time.Time) (issueComment, bool) {
+	var latest issueComment
+	ok := false
+	for _, c := range comments {
+		if c.CreatedAt.Before(afterAt) {
+			continue
+		}
+		if _, found := backlogOutcomeOfComment(c.Body); !found {
+			continue
+		}
+		if !ok || c.CreatedAt.After(latest.CreatedAt) {
+			latest = c
+			ok = true
+		}
+	}
+	return latest, ok
+}
+
+// launchedNoOutcomeCommentBody renders the failure comment for a launched run that
+// exited without any WARD-OUTCOME and without residual work to reap.
+func launchedNoOutcomeCommentBody(env reapEnv) string {
+	var b strings.Builder
+	visible := "WARD-OUTCOME: failed ❌"
+	fmt.Fprintf(&b, "`ward container reap` found no residual work to salvage, but this launched run exited without a `WARD-OUTCOME` comment.\n\n")
+	fmt.Fprintf(&b, "- **Container:** `%s`\n", env.Container)
+	fmt.Fprintf(&b, "- **Workflow:** `%s`\n", env.Workflow.orDefault())
+	fmt.Fprintf(&b, "- **Recovery:** inspect the container log, fix the engineer seed or launch mode, and redispatch.\n")
+	return collapsedIssueComment(visible, "reap details", b.String())
+}
+
 // --- granted-repo (--repo) push verification (ward#291) ----------------------
 
 // verifyExtraReposLanded checks each --repo grant landed on its remote main before
 // the run reads as done (ward#291); an un-pushed grant is preserved + surfaced.
-func (r *Runner) verifyExtraReposLanded(ctx context.Context, env reapEnv) {
+func (r *Runner) verifyExtraReposLanded(ctx context.Context, env reapEnv) bool {
 	if env.ReadOnly || len(env.ExtraRepos) == 0 {
-		return
+		return false
 	}
 	fmt.Fprintf(os.Stderr, "ward container reap: verifying %d granted repo(s)\n", len(env.ExtraRepos))
 	var unlanded []extraRepoUnlanded
@@ -771,9 +847,10 @@ func (r *Runner) verifyExtraReposLanded(ctx context.Context, env reapEnv) {
 	}
 	if len(unlanded) == 0 {
 		fmt.Fprintln(os.Stderr, "ward container reap: all granted repos verified landed on main")
-		return
+		return false
 	}
 	r.reportUnlandedExtraRepos(ctx, env, unlanded)
+	return true
 }
 
 // grantLandingFetchAttempts / grantLandingFetchBackoff bound the propagation window

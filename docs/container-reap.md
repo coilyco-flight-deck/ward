@@ -38,6 +38,9 @@ does can defeat it. It is a hidden entrypoint-called verb.
    that reference is a failed invariant, not a quiet success. A clean
    `pull-requests`/`pull-requests-and-merge`/`patch-only` boundary is also done,
    even though `main` stayed untouched.
+   A launched run that exits cleanly with no WARD-OUTCOME comment is not
+   treated as a silent no-op - the reaper posts `WARD-OUTCOME: failed ❌` so
+   the thread stops looking reserved/in-flight.
 5. Verifies the carried issue has a same-repo closing reference (`closes`,
    `fixes`, or `resolves`) when residual work remains or the run needs the
    post-rebase push-site re-check. Missing reference means salvage, not push,

@@ -187,8 +187,17 @@ func (r *Runner) handleHostDispatchBrokerConn(ctx context.Context, conn net.Conn
 		r.runDispatchBrokerLogs(ctx, conn, req)
 		return
 	}
-	logPath, err := r.runHostDispatchBrokerRequest(ctx, req)
-	writeDispatchBrokerResponse(conn, logPath, err)
+	if err := validateDispatchBrokerRequest(req); err != nil {
+		writeDispatchBrokerResponse(conn, "", err)
+		return
+	}
+	go func() {
+		logPath, err := r.runHostDispatchBrokerRequest(ctx, req)
+		if err != nil {
+			fmt.Fprintf(os.Stderr, "ward dispatch broker: async launch failed for %s (dispatch log: %s): %v\n", redactDispatchBrokerArgv(req.Argv), logPath, err)
+		}
+	}()
+	writeDispatchBrokerResponse(conn, "", nil)
 }
 
 func writeDispatchBrokerResponse(conn net.Conn, logPath string, err error) {
@@ -713,6 +722,14 @@ func (r *Runner) maybeForwardAgentDispatchToHostBroker(ctx context.Context, c *c
 		Requester: strings.TrimSpace(os.Getenv("WARD_CONTAINER_NAME")),
 		Token:     strings.TrimSpace(os.Getenv(envDispatchBrokerToken)),
 	}
+	if role == "advisor" {
+		if err := fireAndForgetDispatchBrokerRequest(ctx, addr, req); err != nil {
+			return true, err
+		}
+		displayArgv := redactDispatchBrokerArgv(argv)
+		fmt.Fprintf(os.Stderr, "ward dispatch broker: forwarded `ward agent %s` to host ward\n", displayArgv)
+		return true, nil
+	}
 	logPath, err := sendDispatchBrokerRequest(ctx, addr, req)
 	if err != nil {
 		if logPath != "" {
@@ -730,6 +747,22 @@ func (r *Runner) maybeForwardAgentDispatchToHostBroker(ctx context.Context, c *c
 		fmt.Fprintf(os.Stderr, "ward dispatch broker: forwarded `ward agent %s` to host ward\n", displayArgv)
 	}
 	return true, nil
+}
+
+// fireAndForgetDispatchBrokerRequest sends one dispatch request.
+func fireAndForgetDispatchBrokerRequest(ctx context.Context, addr string, req dispatchBrokerRequest) error {
+	var d net.Dialer
+	conn, err := d.DialContext(ctx, "tcp", addr)
+	if err != nil {
+		return fmt.Errorf("%w: the host dispatch broker did not answer at %s "+
+			"(WARD_DISPATCH_BROKER_ADDR, TCP over the docker gateway - see ward#382): %w",
+			errDispatchBrokerUnavailable, addr, err)
+	}
+	defer func() { _ = conn.Close() }()
+	if err := json.NewEncoder(conn).Encode(req); err != nil {
+		return fmt.Errorf("dispatch broker: send request: %w", err)
+	}
+	return nil
 }
 
 // brokerDispatchHarness returns the harness to forward into a sibling dispatch.

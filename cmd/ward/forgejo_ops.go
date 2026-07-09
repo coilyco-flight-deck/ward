@@ -111,6 +111,9 @@ func (c *forgejoClient) apiToken(ctx context.Context) (string, error) {
 // run shells the ward binary back to its `ops forgejo` mount, returning stdout. On a
 // non-zero exit it folds the subprocess stderr into the error (ward#596, docs/broker.md).
 func (c *forgejoClient) run(ctx context.Context, args ...string) ([]byte, error) {
+	if c.r == nil || c.r.Runner == nil {
+		return nil, fmt.Errorf("forgejo: no runner available for `ward ops forgejo %s`", strings.Join(args, " "))
+	}
 	full := append([]string{"ops", "forgejo"}, args...)
 	var stdout, stderr bytes.Buffer
 	// #nosec G204 -- c.exe is the resolved canonical ward binary, argv is fixed verbs.
@@ -118,13 +121,16 @@ func (c *forgejoClient) run(ctx context.Context, args ...string) ([]byte, error)
 	cmd.Stdout = &stdout
 	// Tee stderr: keep it streaming live (interactive/host runs keep their output)
 	// while capturing a copy so a failure can name the envelope, not just the code.
-	if live := c.r.Runner.Stderr; live != nil {
+	if c.r != nil && c.r.Runner != nil && c.r.Runner.Stderr != nil {
+		live := c.r.Runner.Stderr
 		cmd.Stderr = io.MultiWriter(live, &stderr)
 	} else {
 		cmd.Stderr = &stderr
 	}
-	cmd.Stdin = c.r.Runner.Stdin
-	if c.r.Runner.Env != nil {
+	if c.r != nil && c.r.Runner != nil {
+		cmd.Stdin = c.r.Runner.Stdin
+	}
+	if c.r != nil && c.r.Runner != nil && c.r.Runner.Env != nil {
 		cmd.Env = append(os.Environ(), c.r.Runner.Env...)
 	}
 	if err := cmd.Run(); err != nil {

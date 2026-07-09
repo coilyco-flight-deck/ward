@@ -286,6 +286,9 @@ func (r *Runner) acquireLocalReservation(ctx context.Context, label string, mode
 		if err := r.precheckLocalReservation(ctx, label, ref, now); err != nil {
 			return nil, err
 		}
+		if err := r.precheckLiveIssueWorker(ctx, label, ref, container, force); err != nil {
+			return nil, err
+		}
 	}
 	fmt.Fprintf(os.Stderr, "%s: reservation local acquire writing %s\n", label, path)
 	res := agentReservation{
@@ -317,6 +320,9 @@ func (r *Runner) acquireLocalReservation(ctx context.Context, label string, mode
 // precheckLiveIssueWorker refuses when the deterministic engineer container already
 // exists and is running, even if the local sentinel is absent or stale.
 func (r *Runner) precheckLiveIssueWorker(ctx context.Context, label string, ref agentIssueRef, container string, force bool) error {
+	if r == nil || r.Runner == nil {
+		return nil
+	}
 	if force {
 		return nil
 	}

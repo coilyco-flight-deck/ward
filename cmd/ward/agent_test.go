@@ -233,6 +233,8 @@ func TestCloneAnchorLine(t *testing.T) {
 		"coilyco-flight-deck/ward",  // names the actual repo the clone is of
 		"/workspace/ward",           // names the concrete clone path (issue #384 comment)
 		"current working directory", // anchors the clone to the agent's cwd
+		"writable",                  // engineer mode is a writable implementation surface
+		"edit files",                // tells the worker to act, not just narrate
 		"schemas",                   // echoes the failure it closes
 		"assumed conventions",       // and the wrong fallback it forbids
 	} {
