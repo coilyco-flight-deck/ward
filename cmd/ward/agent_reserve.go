@@ -338,9 +338,9 @@ const reservationWarnToken = "remote reservation NOT posted"
 // acquireRemoteReservation refuses on a fresh reservation comment (unless force), else
 // posts one and returns a remote-release to roll it back (ward#402/#570, docs).
 func (r *Runner) acquireRemoteReservation(ctx context.Context, label string, mode containerMode, ref agentIssueRef, container, justification string, seedCtx *reservationSeedContext, now time.Time, force bool, skipPreflight bool) (func(), error) {
-	cl, err := r.hostForgeClient(ctx, ref.Forge, mode)
+	cl, err := r.hostTrackerClient(ctx, ref.trackerOrDefault(), mode)
 	if err != nil {
-		warnRemoteReservationLost(label, ref, fmt.Sprintf("could not build the %s client: %v", ref.Forge, err))
+		warnRemoteReservationLost(label, ref, fmt.Sprintf("could not build the %s client: %v", ref.trackerOrDefault(), err))
 		return func() {}, nil
 	}
 	ttl := agentReservationTTL()
@@ -383,7 +383,7 @@ func (r *Runner) acquireRemoteReservation(ctx context.Context, label string, mod
 
 // releaseRemoteReservation retracts this run's forge road-block on a launch that dies
 // before the container is up: a release-marker comment plus a best-effort unlock (#570).
-func (r *Runner) releaseRemoteReservation(ctx context.Context, cl issueForge, label string, mode containerMode, ref agentIssueRef, container string) {
+func (r *Runner) releaseRemoteReservation(ctx context.Context, cl Tracker, label string, mode containerMode, ref agentIssueRef, container string) {
 	if err := cl.commentIssue(ctx, ref.Owner, ref.Repo, ref.Number, reservationReleaseCommentBody(mode, container, nil)); err != nil {
 		fmt.Fprintf(os.Stderr, "%s: warning: could not release the remote reservation on %s (%v); a re-run may need --force until the %s TTL lapses (ward#570)\n", label, ref, err, conciseDuration(agentReservationTTL()))
 		return
@@ -398,12 +398,12 @@ func (r *Runner) releaseRemoteReservation(ctx context.Context, cl issueForge, la
 
 // lockReservedIssue seals the reserved issue best-effort, logging the outcome (locked
 // / unsupported-forge / soft-failure) and never returning an error (ward#494, docs).
-func (r *Runner) lockReservedIssue(ctx context.Context, cl issueForge, label string, ref agentIssueRef) {
+func (r *Runner) lockReservedIssue(ctx context.Context, cl Tracker, label string, ref agentIssueRef) {
 	switch err := cl.lockIssue(ctx, ref.Owner, ref.Repo, ref.Number); {
 	case err == nil:
 		fmt.Fprintf(os.Stderr, "%s: locked issue %s conversation for the reservation window\n", label, ref)
 	case errors.Is(err, errForgeLockUnsupported):
-		fmt.Fprintf(os.Stderr, "%s: issue %s conversation left unlocked - the %s API has no lock leaf; the reservation comment is the road-block (ward#494)\n", label, ref, ref.Forge)
+		fmt.Fprintf(os.Stderr, "%s: issue %s conversation left unlocked - the %s API has no lock leaf; the reservation comment is the road-block (ward#494)\n", label, ref, ref.trackerOrDefault())
 	default:
 		fmt.Fprintf(os.Stderr, "%s: warning: could not lock issue %s conversation (%v); the reservation comment still stands as the road-block (ward#494)\n", label, ref, err)
 	}
@@ -489,7 +489,7 @@ type reservationClaim struct {
 
 // reservationRecheckLost re-reads the thread after a jittered pause; a concurrent run
 // winning the tiebreak makes this run yield. A disabled window/read error fails open.
-func (r *Runner) reservationRecheckLost(ctx context.Context, cl issueForge, label string, ref agentIssueRef, container string, skipPreflight bool) (bool, string) {
+func (r *Runner) reservationRecheckLost(ctx context.Context, cl Tracker, label string, ref agentIssueRef, container string, skipPreflight bool) (bool, string) {
 	if skipPreflight {
 		fmt.Fprintf(os.Stderr, "%s: skipping reservation re-check (--skip-preflight)\n", label)
 		return false, ""

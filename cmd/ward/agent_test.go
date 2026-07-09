@@ -134,6 +134,7 @@ func TestAgentIssueRefURL(t *testing.T) {
 		t.Errorf("url() = %q, want %q", got, want)
 	}
 	ref.Forge = forgeGitHub
+	ref.Tracker = trackerGitHub
 	want = githubBaseURL + "/coilyco-flight-deck/ward/issues/98"
 	if got := ref.url(); got != want {
 		t.Errorf("url() with github base = %q, want %q", got, want)

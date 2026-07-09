@@ -22,13 +22,14 @@ import (
 // agent.go wires the `ward agent` umbrella + the shared dispatch internals the engineer
 // role uses (ward#263, ward#347), sharing the bring-up Go directly. See docs/agent.md.
 
-// agentIssueRef is a parsed issue reference for `ward agent`. Forge tags the host:
-// a github.com ref parses to forgeGitHub, everything else forgeForgejo (ward#489).
+// agentIssueRef is a parsed issue reference for `ward agent`. Forge tags the git
+// host, tracker tags the issue thread. The default pairing stays zero-config.
 type agentIssueRef struct {
-	Owner  string
-	Repo   string
-	Number int
-	Forge  forge
+	Owner   string
+	Repo    string
+	Number  int
+	Forge   forge
+	Tracker tracker
 }
 
 func (r agentIssueRef) String() string {
@@ -44,6 +45,15 @@ func (r agentIssueRef) repoSlug() string {
 // base (Forgejo or GitHub); both use the /owner/repo/issues/N path shape (ward#489).
 func (r agentIssueRef) url() string {
 	return fmt.Sprintf("%s/%s/%s/issues/%d", strings.TrimRight(r.Forge.baseURL(), "/"), r.Owner, r.Repo, r.Number)
+}
+
+// trackerOrDefault resolves the issue-thread port, defaulting to the host's
+// paired tracker when the field is left zero.
+func (r agentIssueRef) trackerOrDefault() tracker {
+	if r.Tracker == trackerGitHub || r.Tracker == trackerForgejo {
+		return r.Tracker
+	}
+	return trackerFromForge(r.Forge)
 }
 
 // carryIssueBanner renders the exact carried issue once, as a stable identity
@@ -109,10 +119,11 @@ func parseDispatchIssueRef(s string) (agentIssueRef, error) {
 		return agentIssueRef{}, err
 	}
 	return agentIssueRef{
-		Owner:  ref.Owner,
-		Repo:   ref.Repo,
-		Number: ref.Number,
-		Forge:  dispatchPlatformToForge(ref.Platform),
+		Owner:   ref.Owner,
+		Repo:    ref.Repo,
+		Number:  ref.Number,
+		Forge:   dispatchPlatformToForge(ref.Platform),
+		Tracker: dispatchPlatformToTracker(ref.Platform),
 	}, nil
 }
 
@@ -121,6 +132,13 @@ func dispatchPlatformToForge(p dispatch.Platform) forge {
 		return forgeGitHub
 	}
 	return forgeForgejo
+}
+
+func dispatchPlatformToTracker(p dispatch.Platform) tracker {
+	if p == dispatch.PlatformGitHub {
+		return trackerGitHub
+	}
+	return trackerForgejo
 }
 
 // resolveAgentIssueRef parses the ref and, for a bare #N / N, fills owner/repo from
@@ -727,10 +745,10 @@ func (r *Runner) resolveAgentWork(ctx context.Context, c *cli.Command, mode cont
 	return resolvedWork{Ref: ref, Title: title, Body: issue.Body, Comments: comments, Details: details, ExtraRepos: extra, Workflow: wf, ReviewGate: reviewGate, Seed: agentSeedPromptWorkflow(ref, title, issue.Body, details, true, extra, wf, reviewGate, reviewSkip)}, nil
 }
 
-// fetchIssue reads the issue off the ref's forge (Forgejo via the ops mount, GitHub
-// via `gh`; ward#489), the pre-flight resolve seam that fails fast before a container.
+// fetchIssue reads the issue off the ref's tracker.
+// It fails fast before a container launches.
 func (r *Runner) fetchIssue(ctx context.Context, ref agentIssueRef) (*dispatch.Issue, error) {
-	cl, err := r.hostForgeClient(ctx, ref.Forge, currentAgentMode())
+	cl, err := r.hostTrackerClient(ctx, ref.trackerOrDefault(), currentAgentMode())
 	if err != nil {
 		return nil, err
 	}
@@ -788,9 +806,9 @@ func resolveIssueWithRetry(label, ref string, sleep func(time.Duration), get fun
 }
 
 // fetchIssueComments returns the comment thread (oldest first) for the pre-flight
-// read via the ref's forge client; caller degrades gracefully on error.
+// read via the ref's tracker client; caller degrades gracefully on error.
 func (r *Runner) fetchIssueComments(ctx context.Context, ref agentIssueRef) ([]issueComment, error) {
-	cl, err := r.hostForgeClient(ctx, ref.Forge, currentAgentMode())
+	cl, err := r.hostTrackerClient(ctx, ref.trackerOrDefault(), currentAgentMode())
 	if err != nil {
 		return nil, err
 	}
@@ -1288,8 +1306,8 @@ func (r *Runner) handlePreflightWrongRepo(ctx context.Context, mode containerMod
 	}
 
 	writef(os.Stderr, "%s: pre-flight WRONG-REPO for %s -> %s; blind-firing an issue there, launching nothing.\n", label, w.Ref, target.slug())
-	// The blind-fire target lives on the same forge as the source issue (ward#489).
-	signed, err := r.hostForgeClient(ctx, w.Ref.Forge, mode)
+	// The blind-fire target lives on the same tracker as the source issue (ward#489).
+	signed, err := r.hostTrackerClient(ctx, w.Ref.trackerOrDefault(), mode)
 	if err != nil {
 		return err
 	}
@@ -1298,7 +1316,7 @@ func (r *Runner) handlePreflightWrongRepo(ctx context.Context, mode containerMod
 	if err != nil {
 		return fmt.Errorf("blind-fire issue into %s: %w", target.slug(), err)
 	}
-	filed := agentIssueRef{Owner: target.Owner, Repo: target.Name, Number: number, Forge: w.Ref.Forge}
+	filed := agentIssueRef{Owner: target.Owner, Repo: target.Name, Number: number, Forge: w.Ref.Forge, Tracker: w.Ref.trackerOrDefault()}
 	writef(os.Stderr, "%s: blind-fired %s - %s\n", label, filed, filed.url())
 	// Point the original issue at the freshly-filed one so the trail is visible.
 	if cerr := signed.commentIssue(ctx, w.Ref.Owner, w.Ref.Repo, w.Ref.Number,
@@ -1456,10 +1474,10 @@ func parsePreflightVerdict(read string) preflightOutcome {
 	return out
 }
 
-// postPreflightNoGo comments the NO-GO verdict back on the issue (host Forgejo
+// postPreflightNoGo comments the NO-GO verdict back on the issue (host tracker
 // client, SSM-backed token), bouncing it to a human instead of failing silently.
 func (r *Runner) postPreflightNoGo(ctx context.Context, mode containerMode, surface string, ref agentIssueRef, reason, read string) error {
-	cl, err := r.hostForgeClient(ctx, ref.Forge, mode)
+	cl, err := r.hostTrackerClient(ctx, ref.trackerOrDefault(), mode)
 	if err != nil {
 		return err
 	}
@@ -1989,15 +2007,15 @@ func (r *Runner) runAgentTaskDirect(ctx context.Context, c *cli.Command, mode co
 		r.maybeWarnWardOutdated(ctx)
 	}
 
-	cl, err := r.hostForgejoClient(ctx)
+	cl, err := r.hostTrackerClient(ctx, trackerForgejo, mode)
 	if err != nil {
 		return fmt.Errorf("%s: %w", label, err)
 	}
-	number, err := cl.withMode(mode).createIssue(ctx, repo.Owner, repo.Name, title, body)
+	number, err := cl.createIssue(ctx, repo.Owner, repo.Name, title, body)
 	if err != nil {
 		return fmt.Errorf("%s: file issue in %s/%s: %w", label, repo.Owner, repo.Name, err)
 	}
-	ref := agentIssueRef{Owner: repo.Owner, Repo: repo.Name, Number: number}
+	ref := agentIssueRef{Owner: repo.Owner, Repo: repo.Name, Number: number, Tracker: trackerForgejo}
 	writef(os.Stderr, "%s: filed %s - %s\n", label, ref, ref.url())
 
 	// The freeform engineer run carries headless, so it gets the same pre-flight

@@ -54,7 +54,11 @@ func (r *Runner) runDirectorMerge(ctx context.Context, c *cli.Command) error {
 	if err := r.backlogTrustGate(label, repos); err != nil {
 		return err
 	}
-	cl, err := r.hostForgejoClient(ctx)
+	prClient, err := r.hostForgejoClient(ctx)
+	if err != nil {
+		return fmt.Errorf("%s: %w", label, err)
+	}
+	issueClient, err := r.hostTrackerClient(ctx, trackerForgejo, currentAgentMode())
 	if err != nil {
 		return fmt.Errorf("%s: %w", label, err)
 	}
@@ -66,12 +70,12 @@ func (r *Runner) runDirectorMerge(ctx context.Context, c *cli.Command) error {
 	var merged, skipped int
 	for _, repo := range repos {
 		owner, name, _ := strings.Cut(repo, "/")
-		prs, perr := cl.listOpenPullRequests(ctx, owner, name, limit)
+		prs, perr := prClient.listOpenPullRequests(ctx, owner, name, limit)
 		if perr != nil {
 			return fmt.Errorf("%s: %w", label, perr)
 		}
 		for _, pr := range prs {
-			ok, reason, linked, meta := directorMergeEligibility(ctx, owner, name, pr, cl)
+			ok, reason, linked, meta := directorMergeEligibility(ctx, owner, name, pr, issueClient)
 			if !ok {
 				skipped++
 				_, _ = fmt.Fprintf(r.Runner.Stderr, "%s: skipping %s/%s#%d: %s\n", label, owner, name, pr.Number, reason)
@@ -82,7 +86,7 @@ func (r *Runner) runDirectorMerge(ctx context.Context, c *cli.Command) error {
 					label, owner, name, pr.Number, linked, meta.Workflow, meta.Review)
 				continue
 			}
-			if err := cl.mergePullRequest(ctx, owner, name, pr.Number); err != nil {
+			if err := prClient.mergePullRequest(ctx, owner, name, pr.Number); err != nil {
 				return fmt.Errorf("%s: merge %s/%s#%d: %w", label, owner, name, pr.Number, err)
 			}
 			merged++
@@ -95,7 +99,7 @@ func (r *Runner) runDirectorMerge(ctx context.Context, c *cli.Command) error {
 
 // directorMergeEligibility returns whether pr is the narrow, ward-owned lane.
 // The policy closes over the issue thread, not just the PR title.
-func directorMergeEligibility(ctx context.Context, owner, repo string, pr dispatch.Issue, cl *forgejoClient) (ok bool, reason string, linked int, meta directorRunMeta) {
+func directorMergeEligibility(ctx context.Context, owner, repo string, pr dispatch.Issue, tr Tracker) (ok bool, reason string, linked int, meta directorRunMeta) {
 	linked, ok = directorLinkedIssueNumber(pr.Body)
 	if !ok {
 		return false, "no same-repo closing reference in the PR body", 0, directorRunMeta{}
@@ -105,10 +109,10 @@ func directorMergeEligibility(ctx context.Context, owner, repo string, pr dispat
 	} else if wf != string(workflowPullRequestAndMerge) {
 		return false, "PR body carries ward.workflow: " + wf + "; need pull-request-and-merge", linked, directorRunMeta{}
 	}
-	if _, err := cl.getIssue(ctx, owner, repo, linked); err != nil {
+	if _, err := tr.getIssue(ctx, owner, repo, linked); err != nil {
 		return false, "could not read linked issue: " + firstLine(err.Error()), linked, directorRunMeta{}
 	}
-	comments, err := cl.listIssueComments(ctx, owner, repo, linked)
+	comments, err := tr.listIssueComments(ctx, owner, repo, linked)
 	if err != nil {
 		return false, "could not read linked issue comments: " + firstLine(err.Error()), linked, directorRunMeta{}
 	}

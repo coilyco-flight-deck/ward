@@ -107,11 +107,10 @@ func TestGithubLockUnlockIssue(t *testing.T) {
 	}
 }
 
-// Compile-time assertion that both concrete clients implement the shared interface
-// hostForgeClient returns (ward#489).
+// Compile-time assertion that both concrete clients implement the shared Tracker.
 var (
-	_ issueForge = (*forgejoClient)(nil)
-	_ issueForge = (*githubClient)(nil)
+	_ Tracker = (*forgejoClient)(nil)
+	_ Tracker = (*githubClient)(nil)
 )
 
 // TestGitHubEnvEmitted checks a GitHub-forge plan exports WARD_FORGE + WARD_CLONE_BASE
