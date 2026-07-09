@@ -1,8 +1,6 @@
 package main
 
 import (
-	"os"
-	"path/filepath"
 	"strings"
 	"testing"
 )
@@ -226,17 +224,8 @@ func TestWorkflowEnvAndLabels(t *testing.T) {
 	}
 }
 
-func TestAgentWorkflowSmartDefaults(t *testing.T) {
-	dir := t.TempDir()
-	body := `smart-defaults {
-    agent-workflow default="direct-to-main" {
-        repo "coilyco-flight-deck/ward" workflow="pull-request"
-    }
-}`
-	if err := os.WriteFile(filepath.Join(dir, bundleDefaultsKDLPath), []byte(body), 0o644); err != nil {
-		t.Fatalf("write defaults bundle: %v", err)
-	}
-	t.Setenv(wardConfigRefEnv, "file://"+dir)
+func TestAgentWorkflowIgnoresBadConfigRef(t *testing.T) {
+	t.Setenv(wardConfigRefEnv, "not-a-resolvable-ref")
 
 	cmd := parseCommandForTest(t, agentSurfaceFlags(), []string{"engineer", "coilyco-flight-deck/agentic-os#1"})
 	wf, err := agentWorkflow(cmd, "coilyco-flight-deck/agentic-os")
