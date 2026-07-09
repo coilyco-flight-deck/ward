@@ -49,10 +49,16 @@ A plain `owner/repo#N`, a Forgejo URL, or a bare `#N` still mean Forgejo. The
 ## Supplying the GitHub token
 
 GitHub auth is a host-side token, **operator-selectable** by `WARD_GITHUB_TOKEN_SOURCE`
-and defaulting to `env` ([ward#533](https://forgejo.coilysiren.me/coilyco-flight-deck/ward/issues/533)): `env` reads `WARD_GITHUB_TOKEN`/`GH_TOKEN`/`GITHUB_TOKEN`,
-`gh` mints a fresh one via `gh auth token`, and `app` ([ward#534](https://forgejo.coilysiren.me/coilyco-flight-deck/ward/issues/534)) mints a short-lived,
-repo-scoped GitHub App installation token from an App key (SSM param name via operator
-config, no baked path). Full detail: [github-token.md](github-token.md).
+and defaulting to the bot-backed `app` path once the App provisioning env is present
+([ward#533](https://forgejo.coilysiren.me/coilyco-flight-deck/ward/issues/533)): `env` reads
+`WARD_GITHUB_TOKEN`/`GH_TOKEN`/`GITHUB_TOKEN`, `gh` mints a fresh one via `gh auth token`, and
+`app` ([ward#534](https://forgejo.coilysiren.me/coilyco-flight-deck/ward/issues/534)) mints a
+short-lived, repo-scoped GitHub App installation token from an App key (SSM param name via
+operator config, no baked path). Full detail: [github-token.md](github-token.md).
+
+Autonomous GitHub runs use the same bot author and bot committer policy as Forgejo runs. Attended
+or local runs can still override `WARD_GIT_NAME` and `WARD_GIT_EMAIL` before launch when a human
+needs different attribution.
 
 ## Worked example
 
@@ -63,7 +69,7 @@ only the `env`-mode equivalent:
 # gh mode: ward mints from your gh login at dispatch, nothing to export
 WARD_GITHUB_TOKEN_SOURCE=gh warded https://github.com/coilysiren/agentic-os/issues/461
 
-# env mode (default): export a token yourself (a gh login, or a repo-scoped PAT)
+# env mode: export a token yourself (a gh login, or a repo-scoped PAT)
 export GITHUB_TOKEN="$(gh auth token)"
 warded https://github.com/coilysiren/agentic-os/issues/461
 ```
