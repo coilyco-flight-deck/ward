@@ -80,4 +80,4 @@ A symptom-aware `ward agent doctor` verb is tracked in [ward#195](https://forgej
 - [agent-observability.md](agent-observability.md) - the `~/.ward/agent-logs/` drain.
 - [agent-preflight.md](agent-preflight.md) - the GO/NO-GO pre-flight.
 - [container-reap.md](container-reap.md) - land-or-salvage on teardown.
-- [doctor.md](doctor.md) - `ward doctor`, the allowlist + host-probe diagnostic.
+- [ward-setup-doctor-inventory.md](ward-setup-doctor-inventory.md) - the former setup/doctor behavior inventory.

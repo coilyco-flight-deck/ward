@@ -385,7 +385,7 @@ func routeChildBody(mode containerMode, taskText, scoped string, intake agentIss
 // is filed: where the work was routed, the scoping note, and the survey read. Pure.
 func routeRoutedComment(mode containerMode, child agentIssueRef, scoped, read string) string {
 	var b strings.Builder
-	fmt.Fprintf(&b, "### 🧭 ward task route\n\n")
+	visible := "WARD-STATUS: routed 🧭"
 	fmt.Fprintf(&b, "`%s` surveyed the fleet and routed this task to **%s**:\n\n", agentCmdline(mode, "engineer"), child.repoSlug())
 	fmt.Fprintf(&b, "- %s - %s\n\n", child, child.url())
 	if scoped = strings.TrimSpace(scoped); scoped != "" {
@@ -393,10 +393,10 @@ func routeRoutedComment(mode containerMode, child agentIssueRef, scoped, read st
 	}
 	fmt.Fprintf(&b, "Closing this intake record; follow the child issue for the carry-to-merge.\n")
 	if read = strings.TrimSpace(read); read != "" {
-		fmt.Fprintf(&b, "\n<details><summary>full route survey</summary>\n\n%s\n\n</details>\n", read)
+		fmt.Fprintf(&b, "\n## Full route survey\n\n%s\n", read)
 	}
-	fmt.Fprintf(&b, "\n---\nPosted automatically by `%s` route (ward#164).", agentCmdline(mode, "engineer"))
-	return b.String()
+	fmt.Fprintf(&b, "\nPosted automatically by `%s` route (ward#164).", agentCmdline(mode, "engineer"))
+	return collapsedIssueComment(visible, "route details", b.String())
 }
 
 // routeUnclearComment renders the intake comment when the survey can't route:
@@ -407,7 +407,7 @@ func routeUnclearComment(mode containerMode, reason, read string) string {
 		reason = "(no reason given)"
 	}
 	var b strings.Builder
-	fmt.Fprintf(&b, "### 🧭 ward task route: UNCLEAR\n\n")
+	visible := "WARD-STATUS: route unclear 🛑"
 	fmt.Fprintf(&b, "`%s` surveyed the fleet but could not confidently route this task, so it "+
 		"filed nothing downstream and launched no container. This intake record stays open for a human to "+
 		"route.\n\n", agentCmdline(mode, "engineer"))
@@ -415,10 +415,10 @@ func routeUnclearComment(mode containerMode, reason, read string) string {
 	fmt.Fprintf(&b, "Once you know the target repo, re-dispatch in DIRECT mode - `%s <owner/repo> "+
 		"--instructions-file <path>` - or file the issue by hand and run `%s <ref>`.\n", agentCmdline(mode, "engineer"), agentCmdline(mode, "engineer"))
 	if read = strings.TrimSpace(read); read != "" {
-		fmt.Fprintf(&b, "\n<details><summary>full route survey</summary>\n\n%s\n\n</details>\n", read)
+		fmt.Fprintf(&b, "\n## Full route survey\n\n%s\n", read)
 	}
-	fmt.Fprintf(&b, "\n---\nPosted automatically by `%s` route (ward#164).", agentCmdline(mode, "engineer"))
-	return b.String()
+	fmt.Fprintf(&b, "\nPosted automatically by `%s` route (ward#164).", agentCmdline(mode, "engineer"))
+	return collapsedIssueComment(visible, "route details", b.String())
 }
 
 // printAgentTaskRoutePlan renders the intake record that *would* be filed and the

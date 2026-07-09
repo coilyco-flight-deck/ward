@@ -36,8 +36,8 @@ func TestSmartDefaultsBundleRef(t *testing.T) {
     container-assets-ttl "3h"
     container-read-only-extra-repo-ttl "48h"
     container-reap-keep "12"
-    agent-workflow default="direct-main" {
-        repo "coilyco-flight-deck/ward" workflow="pr"
+    agent-workflow default="direct-to-main" {
+        repo "coilyco-flight-deck/ward" workflow="pull-request"
     }
 }`
 	if err := os.WriteFile(filepath.Join(dir, bundleDefaultsKDLPath), []byte(body), 0o644); err != nil {
@@ -63,11 +63,11 @@ func TestSmartDefaultsBundleRef(t *testing.T) {
 	if defs.containerAssetsTTL != 3*time.Hour || defs.containerReadOnlyExtraRepoTTL != 48*time.Hour || defs.containerReapKeep != 12 {
 		t.Errorf("bundle container defaults = %+v", defs)
 	}
-	if defs.agentWorkflowDefault != workflowDirectMain {
-		t.Errorf("bundle workflow default = %q, want direct-main", defs.agentWorkflowDefault)
+	if defs.agentWorkflowDefault != workflowDirectToMain {
+		t.Errorf("bundle workflow default = %q, want direct-to-main", defs.agentWorkflowDefault)
 	}
-	if defs.agentWorkflowRepos["coilyco-flight-deck/ward"] != workflowPR {
-		t.Errorf("bundle ward workflow = %q, want pr", defs.agentWorkflowRepos["coilyco-flight-deck/ward"])
+	if defs.agentWorkflowRepos["coilyco-flight-deck/ward"] != workflowPullRequest {
+		t.Errorf("bundle ward workflow = %q, want pull-request", defs.agentWorkflowRepos["coilyco-flight-deck/ward"])
 	}
 }
 

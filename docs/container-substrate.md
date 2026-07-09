@@ -57,9 +57,9 @@ skills are read **as docs**, never a rebuilt symlink forest
 Because the substrate copy and the target/granted clones hydrate from the same
 `ward-gitcache` mirror, a manifest repo that is *also* the target (or a `--repo`
 grant) ends up under **both** `/substrate/<name>` and `/workspace/<name>` at the
-same HEAD. That overlap is expected: the split is by *role*, not by which repos
-exist where. `/workspace/<name>` is authoritative for work; `/substrate/<name>`
-stays read-only reference even for a repo being actively changed. The
+same HEAD. That overlap is expected. `/workspace/<name>` is authoritative for
+work; `/substrate/<name>` stays read-only reference even for active repos. Ward
+itself is excluded; ward-targeted runs read from `/workspace/ward`. The
 read-from-either / act-only-on-`/workspace` rule lives in
 [AGENTS.container.md](../cmd/ward/containerassets/AGENTS.container.md).
 

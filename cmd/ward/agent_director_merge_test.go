@@ -5,10 +5,14 @@ import (
 	"encoding/json"
 	"net/http"
 	"net/http/httptest"
+	"os"
+	"path/filepath"
+	"runtime"
 	"strings"
 	"testing"
 
 	"forgejo.coilysiren.me/coilyco-flight-deck/cli-guard/cli/dispatch"
+	"forgejo.coilysiren.me/coilyco-flight-deck/cli-guard/cli/shell"
 )
 
 func TestDirectorMergeDecision(t *testing.T) {
@@ -17,7 +21,7 @@ func TestDirectorMergeDecision(t *testing.T) {
 		Body:  "closes #729\n",
 	}
 	baseMeta := directorRunMeta{
-		Workflow:   string(workflowPullRequestsAndMerge),
+		Workflow:   string(workflowPullRequestAndMerge),
 		Review:     "passed: two reviewers agreed",
 		Outcome:    backlogOutcome{Status: "done"},
 		HasOutcome: true,
@@ -49,19 +53,19 @@ func TestDirectorMergeDecision(t *testing.T) {
 		{
 			name: "needs-done",
 			pr:   basePR,
-			meta: directorRunMeta{Workflow: string(workflowPullRequestsAndMerge), Review: "passed: ok"},
+			meta: directorRunMeta{Workflow: string(workflowPullRequestAndMerge), Review: "passed: ok"},
 			want: "linked issue did not finish with WARD-OUTCOME: done",
 		},
 		{
 			name: "needs-merge-workflow",
 			pr:   basePR,
-			meta: directorRunMeta{HasOutcome: true, Outcome: backlogOutcome{Status: "done"}, Workflow: string(workflowPR), Review: "passed: ok"},
-			want: "workflow pr still needs human merge approval",
+			meta: directorRunMeta{HasOutcome: true, Outcome: backlogOutcome{Status: "done"}, Workflow: string(workflowPullRequest), Review: "passed: ok"},
+			want: "workflow pull-request still needs human merge approval",
 		},
 		{
 			name: "needs-review",
 			pr:   basePR,
-			meta: directorRunMeta{HasOutcome: true, Outcome: backlogOutcome{Status: "done"}, Workflow: string(workflowPullRequestsAndMerge), Review: "blocked: concern"},
+			meta: directorRunMeta{HasOutcome: true, Outcome: backlogOutcome{Status: "done"}, Workflow: string(workflowPullRequestAndMerge), Review: "blocked: concern"},
 			want: "review gate did not pass",
 		},
 	} {
@@ -127,20 +131,73 @@ func TestMergePullRequestRequestShape(t *testing.T) {
 
 func TestDirectorRunMetaParsesWorkflowAndReview(t *testing.T) {
 	body := strings.Join([]string{
-		"WARD-OUTCOME: done - merged and pushed",
-		"workflow: pull-requests-and-merge; review summary: passed: all green",
+		"WARD-OUTCOME: done ✅",
+		"",
+		"<details><summary>details</summary>",
+		"",
+		"workflow: pull-request-and-merge; review summary: passed: all green",
+		"",
+		"</details>",
 	}, "\n")
 	meta := parseDirectorRunMeta(body)
 	if !meta.HasOutcome || meta.Outcome.Status != "done" {
 		t.Fatalf("meta outcome = %+v, want done", meta)
 	}
-	if meta.Workflow != string(workflowPullRequestsAndMerge) {
-		t.Fatalf("meta workflow = %q, want %q", meta.Workflow, workflowPullRequestsAndMerge)
+	if meta.Workflow != string(workflowPullRequestAndMerge) {
+		t.Fatalf("meta workflow = %q, want %q", meta.Workflow, workflowPullRequestAndMerge)
 	}
 	if meta.Review != "passed: all green" {
 		t.Fatalf("meta review = %q, want passed: all green", meta.Review)
 	}
 	if _, ok := backlogOutcomeOfComment(body); !ok {
 		t.Fatal("comment body should parse as an outcome comment")
+	}
+}
+
+func TestDirectorMergeEligibilityRequiresWorkflowMarker(t *testing.T) {
+	if runtime.GOOS == "windows" {
+		t.Skip("shell-script fake exe is POSIX-only")
+	}
+	dir := t.TempDir()
+	fake := filepath.Join(dir, "fake-ward")
+	script := `#!/bin/sh
+case "$3 $4" in
+"issue get")
+cat <<'JSON'
+{"number":729,"title":"ship the fix","body":"closes #729","state":"open","html_url":"https://f/729","labels":[]}
+JSON
+;;
+"issue-comment list")
+cat <<'JSON'
+[{"body":"WARD-OUTCOME: done ✅\n\n<details><summary>details</summary>\n\nworkflow: pull-request-and-merge; review summary: passed: all green\n\n</details>","created_at":"2026-07-09T00:00:00Z","user":{"login":"coilyco-ops"}}]
+JSON
+;;
+*)
+echo "unexpected args: $@" >&2
+exit 1
+;;
+esac
+`
+	if err := os.WriteFile(fake, []byte(script), 0o755); err != nil { // #nosec G306 -- test-only executable
+		t.Fatalf("write fake ward: %v", err)
+	}
+	cl := &forgejoClient{r: &Runner{Runner: &shell.Runner{}}, exe: fake}
+
+	allowed, reason, linked, meta := directorMergeEligibility(context.Background(), "coilyco-flight-deck", "ward",
+		dispatch.Issue{Title: "ship the fix", Body: "closes #729\n" + directorMergeWorkflowMarker + "\n"}, cl)
+	if !allowed || reason != "" || linked != 729 {
+		t.Fatalf("eligible PR = %v %q %d, want true/\"\"/729", allowed, reason, linked)
+	}
+	if meta.Workflow != string(workflowPullRequestAndMerge) || meta.Review != "passed: all green" || !meta.HasOutcome {
+		t.Fatalf("eligible PR meta = %+v, want merge-lane metadata", meta)
+	}
+
+	allowed, reason, _, _ = directorMergeEligibility(context.Background(), "coilyco-flight-deck", "ward",
+		dispatch.Issue{Title: "ship the fix", Body: "closes #729\n"}, cl)
+	if allowed {
+		t.Fatal("unmarked PR: want deny, got allow")
+	}
+	if reason != "PR body missing ward.workflow: pull-request-and-merge marker" {
+		t.Fatalf("unmarked PR reason = %q, want missing-marker denial", reason)
 	}
 }

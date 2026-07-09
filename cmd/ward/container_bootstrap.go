@@ -283,7 +283,7 @@ func echoRunContextGo(e bootstrapEnv, agentArgs []string) {
 		"===== end ward run context =====\n",
 		e.TargetOwner, e.TargetName, ref, orDefaultLabel(e.Branch, "(default)"),
 		e.Mode, e.Agent, orDefaultLabel(e.Container, "(unnamed)"),
-		orDefaultLabel(os.Getenv("WARD_WORKFLOW"), "direct-main"),
+		orDefaultLabel(os.Getenv("WARD_WORKFLOW"), "direct-to-main"),
 		orDefaultLabel(os.Getenv("WARD_VERSION"), "(latest, resolved in-container)"),
 		orDefaultLabel(os.Getenv("WARD_CONTAINER_UP"), "(unset)"), seed)
 }
@@ -448,9 +448,6 @@ func (r *Runner) runContainerBootstrap(ctx context.Context, c *cli.Command) erro
 	// Creds write + onboarding seed + config compose, each feature-tested per mode
 	// (Phase 3, ward#418); composeAgentContainer holds the order.
 	composeAgentContainer(agent, rc)
-	if herr := r.hydrateMcporter(ctx, e.AgentHome); herr != nil {
-		blog("mcporter hydration warning: %v", herr)
-	}
 	blog("bootstrap agent container composition done")
 
 	_ = os.Setenv("WARD_REAP_WORK", work)

@@ -14,8 +14,7 @@ New to ward? Read [architecture.md](architecture.md) first - it frames the whole
 - [FEATURES.md](FEATURES.md) - inventory of what ships today.
 - [comparison-openshell.md](comparison-openshell.md) - ward vs NVIDIA OpenShell: verb-level gate vs kernel sandbox.
 - [comparison-container-use.md](comparison-container-use.md) - ward vs Dagger container-use: capability gate + autonomous driver vs container isolation + human-at-the-merge.
-- [setup.md](setup.md) - `ward setup` (`warded setup`), guided onboarding: scaffold `.ward/ward.yaml` from the Makefile, then run doctor.
-- [doctor.md](doctor.md) - `ward doctor`, the single diagnostic verb, incl. the allowlist drift guard.
+- [ward-setup-doctor-inventory.md](ward-setup-doctor-inventory.md) - the paused `setup` and `doctor` behavior inventory, with the rebirth note.
 - [troubleshooting.md](troubleshooting.md) - symptom-indexed entry point for a failed `warded` run.
 - [audit.md](audit.md) - the append-only JSONL audit row written per invocation.
 - [config-discovery.md](config-discovery.md) - how ward resolves the allowlist config path.
@@ -67,7 +66,7 @@ New to ward? Read [architecture.md](architecture.md) first - it frames the whole
 - [agent-credentials.md](agent-credentials.md) - how each harness's host credential is seeded.
 - [agent-aws-creds.md](agent-aws-creds.md) - how the aws capability delivers AWS creds (export-and-inject, mount fallback).
 - [agent-attribution.md](agent-attribution.md) - agent attribution on Forgejo write bodies.
-- [agent-observability.md](agent-observability.md) - agent-run log/telemetry drain + opt-in OTLP.
+- [agent-observability.md](agent-observability.md) - agent-run log drain + redacted local archive, with SigNoz deferred.
 - [agent-dispatch-contract.md](agent-dispatch-contract.md) - dispatch exit codes + `meta.json` outcome enum for supervising runs.
 - [agent-host-net.md](agent-host-net.md) - `--tailnet`, the opt-in network escalation.
 - [agent-ts-sidecar.md](agent-ts-sidecar.md) - the Docker Desktop tailnet-route sidecar.

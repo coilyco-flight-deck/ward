@@ -627,6 +627,9 @@ func TestParsePreflightVerdict(t *testing.T) {
 
 func TestPreflightNoGoComment(t *testing.T) {
 	got := preflightNoGoComment(modeClaude, "engineer", "needs human scoping", "The scope is unclear.\nNO-GO: needs human scoping")
+	if visible := visibleLinesBeforeDetails(got); visible != "WARD-STATUS: pre-flight NO-GO 🛑" {
+		t.Fatalf("preflightNoGoComment visible line = %q\n%s", visible, got)
+	}
 	for _, want := range []string{
 		"NO-GO",                                // names the verdict
 		"needs human scoping",                  // carries the reason
@@ -634,6 +637,7 @@ func TestPreflightNoGoComment(t *testing.T) {
 		"--skip-preflight",                     // tells the human how to re-dispatch
 		"No container was launched",
 		"<details>",             // folds the full read away
+		"pre-flight details",    // names the folded block
 		"The scope is unclear.", // includes the read verbatim
 		preflightNoGoMarker,     // hidden token so later reads can drop this comment
 	} {
@@ -651,8 +655,8 @@ func TestPreflightNoGoComment(t *testing.T) {
 	if !strings.Contains(empty, "(no reason given)") {
 		t.Errorf("empty reason should render a placeholder; got: %s", empty)
 	}
-	if strings.Contains(empty, "<details>") {
-		t.Errorf("an empty read should omit the details block; got: %s", empty)
+	if !strings.Contains(empty, "<details>") {
+		t.Errorf("status comments should keep details collapsed even without a read; got: %s", empty)
 	}
 }
 
@@ -712,6 +716,9 @@ func TestBlindfireIssueBody(t *testing.T) {
 func TestPreflightWrongRepoComment(t *testing.T) {
 	filed := agentIssueRef{Owner: "coilyco-bridge", Repo: "coily", Number: 42}
 	got := preflightWrongRepoComment(modeClaude, "engineer", filed, "ops verb", "It's ops.\nWRONG-REPO: coilyco-bridge/coily - ops verb")
+	if visible := visibleLinesBeforeDetails(got); visible != "WARD-STATUS: pre-flight WRONG-REPO 🎯" {
+		t.Fatalf("preflightWrongRepoComment visible line = %q\n%s", visible, got)
+	}
 	for _, want := range []string{
 		"WRONG-REPO",           // names the verdict
 		"coilyco-bridge/coily", // the target repo slug
@@ -720,7 +727,8 @@ func TestPreflightWrongRepoComment(t *testing.T) {
 		"No container was launched here",
 		"--skip-preflight", // how to override if the routing is wrong
 		"<details>",        // folds the read away
-		"It's ops.",        // the read verbatim
+		"pre-flight details",
+		"It's ops.", // the read verbatim
 	} {
 		if !strings.Contains(got, want) {
 			t.Errorf("preflightWrongRepoComment missing %q\n got: %s", want, got)
@@ -731,8 +739,8 @@ func TestPreflightWrongRepoComment(t *testing.T) {
 	if !strings.Contains(empty, "(no reason given)") {
 		t.Errorf("empty reason should render a placeholder; got: %s", empty)
 	}
-	if strings.Contains(empty, "<details>") {
-		t.Errorf("an empty read should omit the details block; got: %s", empty)
+	if !strings.Contains(empty, "<details>") {
+		t.Errorf("status comments should keep details collapsed even without a read; got: %s", empty)
 	}
 }
 

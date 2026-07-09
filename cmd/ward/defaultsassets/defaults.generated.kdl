@@ -7,12 +7,12 @@ smart-defaults {
     director-limit "50"
     director-poll-interval "30s"
     reviewer-timeout "8m"
-    config-bundle-ttl "600"
+    config-bundle-ttl "600s"
     container-assets-ttl "1h"
     container-read-only-extra-repo-ttl "24h"
     container-reap-keep "10"
-    agent-workflow default=pr {
-        repo "coilyco-flight-deck/ward" workflow=pr
+    agent-workflow default=direct-to-main {
+        repo "coilyco-flight-deck/ward" workflow=pull-request
     }
  // TODO: move advisor depth budgets and container-research setup budget.
 }

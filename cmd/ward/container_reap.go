@@ -45,11 +45,11 @@ type reapEnv struct {
 	// ReadOnly mirrors WARD_READONLY (ward#293): a read-only explore session, so the
 	// reaper skips salvage (it would otherwise push whatever the agent left behind).
 	ReadOnly bool
-	// ExtraRepos mirrors WARD_EXTRA_REPOS (ward#230): the --repo grants this run
-	// cloned writable. The reaper verifies each one landed before done (ward#291).
+	// ExtraRepos mirrors WARD_EXTRA_REPOS (ward#230): the --repo grants this run.
+	// The reaper verifies each one landed before done (ward#291).
 	ExtraRepos []targetRepo
-	// Workflow mirrors WARD_WORKFLOW (ward#508): the run's landing policy (empty reads
-	// as direct-main). A pr/patch-only run is preserved on a branch, never pushed to main.
+	// Workflow mirrors WARD_WORKFLOW (ward#508): the run's landing policy. Empty reads as
+	// direct-to-main. Pull-request and remote-branch-only runs stay on a branch, never main.
 	Workflow workflowMode
 }
 
@@ -68,7 +68,7 @@ func readReapEnv() (reapEnv, error) {
 		Container: os.Getenv("WARD_CONTAINER_NAME"),
 		Launched:  os.Getenv(envAgentLaunched) == "1",
 		ReadOnly:  os.Getenv("WARD_READONLY") == "1",
-		Workflow:  workflowMode(os.Getenv("WARD_WORKFLOW")),
+		Workflow:  canonicalWorkflow(workflowMode(os.Getenv("WARD_WORKFLOW"))),
 	}
 	// A missing/garbage WARD_TARGET_ISSUE parses to 0: "no issue to release".
 	e.Issue, _ = strconv.Atoi(os.Getenv("WARD_TARGET_ISSUE"))
@@ -99,16 +99,14 @@ func (e reapEnv) reservationReleasable() bool {
 
 func reapBoundaryReason(w workflowMode) string {
 	switch w.orDefault() {
-	case workflowDirectMain:
+	case workflowDirectToMain:
 		return "tree clean, HEAD on origin/main"
-	case workflowPR:
-		return "workflow pr boundary reached: branch pushed, pull request open, and required CI checks are green"
-	case workflowPullRequests:
-		return "workflow pr boundary reached: branch pushed, pull request open, and required CI checks are green"
-	case workflowPRAndMerge:
-		return "workflow pull-requests-and-merge boundary reached: branch pushed, pull request open, and required CI checks are green"
-	case workflowPatchOnly:
-		return "workflow patch-only boundary reached: patch produced and posted as a comment"
+	case workflowPullRequest:
+		return "workflow pull-request boundary reached: branch pushed, pull request open, and required CI checks are green"
+	case workflowPullRequestAndMerge:
+		return "workflow pull-request-and-merge boundary reached: branch pushed, pull request open, and required CI checks are green"
+	case workflowRemoteBranchOnly:
+		return "workflow remote-branch-only boundary reached: remote branch pushed"
 	default:
 		return "tree clean, workflow boundary reached"
 	}
@@ -202,18 +200,18 @@ func (r *Runner) reapTargetTree(ctx context.Context, work string, env reapEnv, r
 	residual := revCount(ctx, r, work, "origin/main..HEAD")
 	fmt.Fprintf(os.Stderr, "ward container reap: residual commit count against origin/main = %d\n", residual)
 	cleanTree := strings.TrimSpace(statusSnapshot) == ""
-	if residual == 0 && cleanTree { //nolint:nestif // clean-tree fast path carries the direct-main proof branch
+	if residual == 0 && cleanTree { //nolint:nestif // clean-tree fast path carries the direct-to-main proof branch
 		if env.Launched && env.Workflow.landsOnMain() && env.Issue != 0 {
 			prov, perr := r.readRunProvenance(work)
 			if perr != nil {
-				fmt.Fprintf(os.Stderr, "ward container reap: provenance missing or unreadable on already-landed direct-main run: %v\n", perr)
+				fmt.Fprintf(os.Stderr, "ward container reap: provenance missing or unreadable on already-landed direct-to-main run: %v\n", perr)
 				return r.salvage(ctx, work, env, reasonConflict, false, nil, statusSnapshot,
-					reapDecision{Gate: "provenance missing or unreadable on already-landed direct-main run", ProvState: "missing or unreadable"})
+					reapDecision{Gate: "provenance missing or unreadable on already-landed direct-to-main run", ProvState: "missing or unreadable"})
 			}
 			if !r.runProvenanceLanded(ctx, work, prov, env.Issue) {
-				fmt.Fprintf(os.Stderr, "ward container reap: already-landed direct-main run is missing closes #%d; salvaging instead of returning success\n", env.Issue)
+				fmt.Fprintf(os.Stderr, "ward container reap: already-landed direct-to-main run is missing closes #%d; salvaging instead of returning success\n", env.Issue)
 				return r.salvage(ctx, work, env, reasonCloseRef, false, nil, statusSnapshot,
-					reapDecision{Gate: "missing same-repo closing reference on already-landed direct-main run", ProvState: "present", Landed: false})
+					reapDecision{Gate: "missing same-repo closing reference on already-landed direct-to-main run", ProvState: "present", Landed: false})
 			}
 		}
 		fmt.Fprintf(os.Stderr, "WARD-REAP: nothing to reap (%s)\n", reapBoundaryReason(env.Workflow))
@@ -274,7 +272,8 @@ func (r *Runner) reapEstablishMain(ctx context.Context, work string, env reapEnv
 		return nil
 	}
 
-	// A pr/patch-only run never lands on main, not even to establish it (ward#508).
+	// A pull-request or remote-branch-only run never lands on main.
+	// That includes the establish-main case (ward#508).
 	if !env.Workflow.landsOnMain() {
 		findings := scan.Diff(r.diffEntries(ctx, work, gitEmptyTree+"..HEAD"))
 		if len(findings) > 0 {

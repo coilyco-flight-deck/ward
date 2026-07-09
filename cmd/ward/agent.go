@@ -135,6 +135,14 @@ const emptyBodySeedAction = "This issue has no body, so work from the title alon
 	"issue content, screenshots, or other artifacts that are not there (an empty body is not an " +
 	"invitation to invent one). The comment thread at that URL may hold later context worth a quick read."
 
+// TODO(ward#792): remove this emergency default once brokered QA replaces the
+// in-container review gate.
+const temporaryReviewGateSkipReason = "the temporary ward default pending brokered QA"
+
+func reviewGateDisabledByTemporaryDefault(role string) bool {
+	return role == "engineer"
+}
+
 // headlessReflection is the headless run's closing "how it felt" retro led by a
 // WARD-OUTCOME line; its landing phrase is workflow-aware (ward#281, ward#508).
 func headlessReflection(ref agentIssueRef, wf workflowMode, reviewGate bool, reviewSkip string) string {
@@ -146,28 +154,46 @@ func headlessReflection(ref agentIssueRef, wf workflowMode, reviewGate bool, rev
 		}
 		reviewLine += ", so the final comment must say that explicitly."
 	}
-	return "Finally, as your very last step - only after " + workflowLandingPhrase(ref, wf) + " - post a SHORT " +
-		"comment on this issue (a few sentences, in your own voice) on how the " +
-		"implementation \"felt\": how the work went, anything that surprised you or fought back, how confident you " +
-		"are in the result, and any rough edges or follow-ups worth filing. This is a candid retrospective, not a " +
-		"status report or a changelog - keep it brief and honest, and post it even if the work went smoothly.\n\n" +
-		"Begin that final comment with a single machine-readable status line - its very first line, exactly one of:\n" +
-		"  `" + wardOutcomeMarker + " done - <one line on what landed>`\n" +
-		"  `" + wardOutcomeMarker + " blocked - <the one specific decision or piece of information you need from a human>`\n" +
-		"  `" + wardOutcomeMarker + " failed - <why, briefly>`\n" +
-		"then your retrospective on the lines below it. Include a second line in the form `workflow: <mode>; " +
-		"review summary: <summary or skip state>` so the conclusion comment carries both the landing policy and the " +
-		"review result. " + reviewLine + " A supervising director loop (ward agent director) reads only that first " +
-		"line to classify the run, so for a normal run that completed its workflow it is `" + wardOutcomeMarker +
-		" done`; reserve blocked/failed for a run that genuinely could not land."
+	return "Finally, as your very last step - only after " + workflowLandingPhrase(ref, wf) + " - post one hypercurt " +
+		"comment on this issue. The only visible text before the collapsed block is a single machine-readable " +
+		"status line - its very first visible line, exactly one of:\n" +
+		"  `" + wardOutcomeMarker + " done ✅`\n" +
+		"  `" + wardOutcomeMarker + " blocked 🛑`\n" +
+		"  `" + wardOutcomeMarker + " failed ❌`\n" +
+		"Put every other word inside one collapsed `<details><summary>details</summary>` block: the review " +
+		"summary or skip state, the workflow line (`workflow: <mode>; review summary: <summary or skip state>`), " +
+		"the short candid retrospective on how the implementation \"felt\", confidence, surprises, and follow-ups. Do not leave " +
+		"any visible prose outside that first status line. " + reviewLine + " A supervising director loop " +
+		"(ward agent director) reads only that first line to classify the run, so for a normal run that completed " +
+		"its workflow it is `" + wardOutcomeMarker + " done`. Reserve blocked/failed for a run that genuinely could not land."
 }
 
 // reviewGateClause wires the pre-landing adversarial review panel into a headless
 // seed (ward#134): run `ward agent review` before landing. docs/dispatch-review.md.
-func reviewGateClause(ref agentIssueRef, wf workflowMode) string {
+func reviewGateClause(wf workflowMode) string {
 	landing := "open the pull request"
-	if wf.orDefault() == workflowDirectMain && ref.Forge != forgeGitHub {
+	switch mode := string(canonicalWorkflow(wf.orDefault())); mode {
+	case string(workflowDirectToMain):
 		landing = "merge to `main`"
+	case string(workflowPullRequest):
+		landing = "open the pull request"
+	case string(workflowPullRequestAndMerge):
+		landing = "merge the pull request"
+	case string(workflowRemoteBranchOnly):
+		landing = "push the remote branch"
+	}
+	var workflowTail string
+	switch mode := string(canonicalWorkflow(wf.orDefault())); mode {
+	case string(workflowDirectToMain):
+		workflowTail = "For `direct-to-main` workflows, landing means merging to `main`. Do not stop before the merge lands."
+	case string(workflowPullRequest):
+		workflowTail = "For `pull-request` workflows, opening the pull request is not a stopping point. Keep watching the PR checks after it opens. A failing check is not done: fetch the logs/status, patch the branch, push the update, and repeat until the PR is green or the failure is genuinely blocked."
+	case string(workflowPullRequestAndMerge):
+		workflowTail = "For `pull-request-and-merge` workflows, opening the pull request is not a stopping point. Keep watching the PR checks and merge status after it opens. A failing check is not done: fetch the logs/status, patch the branch, push the update, and repeat until the PR is green and merged or the failure is genuinely blocked."
+	case string(workflowRemoteBranchOnly):
+		workflowTail = "For `remote-branch-only` workflows, the remote branch push is the finish line. Do not open a pull request and do not merge."
+	default:
+		workflowTail = "For `pull-request` workflows, opening the pull request is not a stopping point. Keep watching the PR checks after it opens. A failing check is not done: fetch the logs/status, patch the branch, push the update, and repeat until the PR is green or the failure is genuinely blocked."
 	}
 	return fmt.Sprintf(
 		"REVIEW GATE (ward#134): before you land this change (%s), and ONLY after CI is green, run the "+
@@ -176,20 +202,18 @@ func reviewGateClause(ref agentIssueRef, wf workflowMode) string {
 			"harness family by default, and can escalate to other families only as a later, higher-cost fallback. "+
 			"The reviewer works inside the worker container against the live filesystem state and prints a machine "+
 			"line on stdout:\n"+
-			"  - `WARD-REVIEW: pass ...`  -> you are cleared to land; proceed.\n"+
-			"  - `WARD-REVIEW: block ...` -> do NOT %s and do NOT merge. Post the reviewer verdicts and reasons "+
-			"as a comment, include the review summary in the same conclusion comment, and close with `WARD-OUTCOME: blocked`. The gate is fail-closed - a "+
+			"  - `WARD-REVIEW: pass ...`  -> you are cleared to land. Proceed.\n"+
+			"  - `WARD-REVIEW: block ...` -> do NOT %s and do NOT merge. Post one hypercurt conclusion comment "+
+			"starting with `WARD-OUTCOME: blocked 🛑` and put the reviewer verdicts, reasons, and review summary inside its collapsed details block. The gate is fail-closed - a "+
 			"reviewer error or timeout is a block, not a pass.\n"+
 			"  - `WARD-REVIEW: advisory ...` -> only if the gate had no runnable reviewer at all. Treat that as a "+
 			"block, not a pass, and write the skip/availability summary into the conclusion comment so the issue shows "+
 			"why the review could not run. `ward agent review` writes the exact one-line review summary to `~/.ward/review-summary.txt`; copy that line verbatim into the same conclusion comment.\n"+
-			"For `pr` workflows, opening the pull request is not a stopping point. Keep watching the PR checks after "+
-			"it opens. A failing check is not done: fetch the logs/status, patch the branch, push the update, and "+
-			"repeat until the PR is green or the failure is genuinely blocked.\n"+
+			"%s\n"+
 			"The gate's exit code mirrors the verdict (non-zero on block), so a shell `&&` also enforces it. Do "+
 			"not skip it, and do not land on a block. If the review was intentionally skipped via `--skip-review`, "+
 			"`--skip-preflight`, or config, the final `WARD-OUTCOME` comment must say so explicitly.",
-		landing, landing)
+		landing, landing, workflowTail)
 }
 
 // grantedRepoDoneClause widens the done-condition for a --repo grant (ward#291):
@@ -227,23 +251,7 @@ func forgeDisplayName(f forge) string {
 	return "Forgejo"
 }
 
-// forgeCarryClause is the forge-specific tail of the seed's carry sentence (ward#489):
-// Forgejo merges to main + pushes; GitHub pushes a branch + opens a PR (the merge gate).
-func forgeCarryClause(ref agentIssueRef) string {
-	if ref.Forge == forgeGitHub {
-		return fmt.Sprintf(
-			"implement on a feature branch, commit, push the branch to origin, and open a pull request "+
-				"with `gh pr create` whose body carries `Closes #%d`. Do NOT push to the repository's `main` "+
-				"branch directly - on GitHub the pull request is the merge gate. `gh` is authenticated from "+
-				"the GITHUB_TOKEN in your environment.",
-			ref.Number)
-	}
-	return fmt.Sprintf(
-		"implement, commit, merge to main, push - and close the issue with a commit trailer: closes #%d.",
-		ref.Number)
-}
-
-// agentSeedPrompt seeds a direct-main run (the default): a thin wrapper over
+// agentSeedPrompt seeds a direct-to-main run (the default): a thin wrapper over
 // agentSeedPromptWorkflow so legacy callers stay byte-for-byte (ward#405, ward#508).
 func agentSeedPrompt(ref agentIssueRef, title, body, details string, headless bool, extra []targetRepo) string {
 	return agentSeedPromptWorkflow(ref, title, body, details, headless, extra, defaultWorkflow, true, "")
@@ -277,15 +285,15 @@ func agentSeedPromptWorkflow(ref agentIssueRef, title, body, details string, hea
 	if block := subsystemSeedBlock(ref, title, body); block != "" {
 		seed += "\n\n" + block
 	}
-	// Before landing, a headless run must clear the review gate (ward#134);
-	// skipped for patch-only (lands nothing) and when review is intentionally disabled.
-	if headless && reviewGate && wf.orDefault() != workflowPatchOnly {
-		seed += "\n\n" + reviewGateClause(ref, wf)
+	// Before landing, a headless run must clear the review gate (ward#134).
+	// Remote-branch-only skips it because that workflow lands nothing else.
+	if headless && reviewGate && wf.orDefault() != workflowRemoteBranchOnly {
+		seed += "\n\n" + reviewGateClause(wf)
 	}
 	// A headless run detaches unwatched, so it closes with a retrospective comment -
 	// the only voice it leaves behind; the landing phrase tracks the workflow (#281, #508).
 	if headless {
-		seed += "\n\n" + headlessReflection(ref, wf, reviewGate && wf.orDefault() != workflowPatchOnly, reviewSkip)
+		seed += "\n\n" + headlessReflection(ref, wf, reviewGate && wf.orDefault() != workflowRemoteBranchOnly, reviewSkip)
 	}
 	return seed + inline
 }
@@ -441,6 +449,20 @@ func agentHarness(c *cli.Command) (containerMode, error) {
 		return "", fmt.Errorf("invalid %s %q: want %s", flag, raw, agentHarnessChoices())
 	}
 	return m, nil
+}
+
+// surfaceDispatchMode resolves the harness for a director-surface sibling dispatch.
+// Explicit flags win; otherwise inherit WARD_AGENT/WARD_MODE on brokered surfaces.
+func surfaceDispatchMode(c *cli.Command) (containerMode, error) {
+	mode, err := agentHarness(c)
+	if err != nil {
+		return "", err
+	}
+	if os.Getenv(envDispatchBrokerAddr) != "" && os.Getenv("WARD_READONLY") == "1" &&
+		!c.IsSet("harness") && !c.IsSet("agent") && !c.IsSet("driver") {
+		return currentAgentMode(), nil
+	}
+	return mode, nil
 }
 
 // agentCmdline renders the canonical `ward agent <surface> --harness <mode>` form
@@ -797,10 +819,13 @@ func reviewGateDecision(c *cli.Command, role string, worker containerMode, ref a
 	skips, err := loadReviewSkips()
 	if err != nil {
 		writef(os.Stderr, "ward agent: note: could not read review skip defaults: %v\n", err)
-		return true, ""
+		skips = nil
 	}
 	if reviewSkipMatches(skips, role, string(worker), ref.repoSlug()) {
 		return false, "review gate skipped by ~/.ward/config.yaml default"
+	}
+	if reviewGateDisabledByTemporaryDefault(role) {
+		return false, temporaryReviewGateSkipReason
 	}
 	return true, ""
 }
@@ -1361,7 +1386,7 @@ func preflightNoGoComment(mode containerMode, surface, reason, read string) stri
 		reason = "(no reason given)"
 	}
 	var b strings.Builder
-	writef(&b, "### 🛫 ward pre-flight: NO-GO\n\n")
+	visible := "WARD-STATUS: pre-flight NO-GO 🛑"
 	writef(&b, "`%s` ran a pre-flight feasibility read on this issue before "+
 		"detaching a fire-and-forget run, and the agent judged it **NO-GO** - it should not be carried "+
 		"unattended until a human weighs in.\n\n", agentCmdline(mode, surface))
@@ -1372,10 +1397,10 @@ func preflightNoGoComment(mode containerMode, surface, reason, read string) stri
 		"or split it), then re-dispatch - `%s <ref> --skip-preflight` skips this gate "+
 		"once you've decided it's good to go.\n", agentCmdline(mode, "engineer"))
 	if read = strings.TrimSpace(read); read != "" {
-		writef(&b, "\n<details><summary>full pre-flight read</summary>\n\n%s\n\n</details>\n", read)
+		writef(&b, "\n## Full pre-flight read\n\n%s\n", read)
 	}
-	writef(&b, "\n---\nPosted automatically by `%s` pre-flight (ward#147, ward#149).\n%s", agentCmdline(mode, surface), preflightNoGoMarker)
-	return b.String()
+	writef(&b, "\nPosted automatically by `%s` pre-flight (ward#147, ward#149).", agentCmdline(mode, surface))
+	return preflightNoGoMarker + "\n" + collapsedIssueComment(visible, "pre-flight details", b.String())
 }
 
 // blindfireIssueBody renders the WRONG-REPO blind-fire body (ward#159): source
@@ -1408,7 +1433,7 @@ func preflightWrongRepoComment(mode containerMode, surface string, filed agentIs
 		reason = "(no reason given)"
 	}
 	var b strings.Builder
-	writef(&b, "### 🎯 ward pre-flight: WRONG-REPO\n\n")
+	visible := "WARD-STATUS: pre-flight WRONG-REPO 🎯"
 	writef(&b, "`%s` ran a pre-flight read on this issue and judged the work "+
 		"belongs in **%s**, not here. Rather than burn cycles searching, it blind-fired a fresh "+
 		"issue there:\n\n", agentCmdline(mode, surface), filed.repoSlug())
@@ -1417,10 +1442,10 @@ func preflightWrongRepoComment(mode containerMode, surface string, filed agentIs
 	writef(&b, "No container was launched here. If the routing is wrong, close %s and re-dispatch "+
 		"this issue with `%s <ref> --skip-preflight` to skip the gate.\n", filed, agentCmdline(mode, "engineer"))
 	if read = strings.TrimSpace(read); read != "" {
-		writef(&b, "\n<details><summary>full pre-flight read</summary>\n\n%s\n\n</details>\n", read)
+		writef(&b, "\n## Full pre-flight read\n\n%s\n", read)
 	}
-	writef(&b, "\n---\nPosted automatically by `%s` pre-flight (ward#159).", agentCmdline(mode, surface))
-	return b.String()
+	writef(&b, "\nPosted automatically by `%s` pre-flight (ward#159).", agentCmdline(mode, surface))
+	return collapsedIssueComment(visible, "pre-flight details", b.String())
 }
 
 // buildAgentPlan composes the detached container plan (seeded argv, issue-<N> branch,
