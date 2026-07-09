@@ -95,7 +95,8 @@ This first slice is deliberately minimal:
   (a read-only token) is the deferred "read-only credential hardening".
 - A `pr`/`patch-only` run's residual local commits are preserved on a salvage
   branch by the reaper. When Forgejo PRs are available, the reaper also opens a
-  PR for the salvage branch and links it from the salvage comment.
+  recovery PR for the salvage branch and links it from the salvage comment. That
+  recovery PR is separate from the worker's own `pr`/`pull-requests` PR.
 - `pr` and `pull-requests-and-merge` runs keep watching PR CI/checks after the PR
   opens, so `WARD-OUTCOME: done` only follows green checks or a genuine block.
 - The autonomous [pre-flight](agent-preflight.md) still reads in merge-to-main
