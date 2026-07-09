@@ -197,7 +197,6 @@ func buildUpPlan(c *cli.Command, repo targetRepo, mode containerMode, role, cwd,
 		ExtraRepos:        extra,
 		HostNet:           hostNet,
 		TSSidecar:         tsSidecar,
-		GoBootstrap:       c.Bool("go-bootstrap"),
 		SkipPreflight:     c.Bool("skip-preflight") || c.Bool("no-preflight"),
 		ConfigEnv:         configEnv,
 	}, nil
@@ -549,9 +548,9 @@ func (r *Runner) clearExitedContainer(ctx context.Context, name string) {
 	clearDrainMarker(agentLogsDir(), name)
 }
 
-// writeContainerAssets materializes the embedded entrypoint + doctrine into a per-run
-// dir under launchStagingDir (snap-visible $HOME; ward#574) mounted ro at /opt/ward.
-func writeContainerAssets(ctx context.Context, goBootstrap bool, wardSource, wardVersion string) (dir string, cleanup func(), err error) {
+// writeContainerAssets materializes the embedded entrypoint + doctrine and stages
+// the matching ward binary into a per-run dir under launchStagingDir.
+func writeContainerAssets(ctx context.Context, wardSource, wardVersion string) (dir string, cleanup func(), err error) {
 	root := launchStagingDir()
 	sweepStaleContainerAssets(root)
 	dir, err = os.MkdirTemp(root, containerAssetsPrefix+"*")
@@ -579,11 +578,9 @@ func writeContainerAssets(ctx context.Context, goBootstrap bool, wardSource, war
 			return "", func() {}, fmt.Errorf("ward container: write %s: %w", f.name, werr)
 		}
 	}
-	if goBootstrap {
-		if err := stageWardBootstrapBinary(ctx, dir, wardSource, wardVersion); err != nil {
-			cleanup()
-			return "", func() {}, err
-		}
+	if err := stageWardBootstrapBinary(ctx, dir, wardSource, wardVersion); err != nil {
+		cleanup()
+		return "", func() {}, err
 	}
 	return dir, cleanup, nil
 }

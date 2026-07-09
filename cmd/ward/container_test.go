@@ -561,7 +561,7 @@ func TestWriteContainerAssetsStagesUnderHome(t *testing.T) {
 	// (never /tmp) for a snap docker daemon to see it at `docker run` (ward#574).
 	home := t.TempDir()
 	t.Setenv("HOME", home)
-	dir, cleanup, err := writeContainerAssets(context.Background(), false, "", "")
+	dir, cleanup, err := writeContainerAssets(context.Background(), "", "")
 	if err != nil {
 		t.Fatalf("writeContainerAssets: %v", err)
 	}
@@ -574,7 +574,7 @@ func TestWriteContainerAssetsStagesUnderHome(t *testing.T) {
 	}
 }
 
-func TestWriteContainerAssetsStagesGoBootstrapBinary(t *testing.T) {
+func TestWriteContainerAssetsStagesWardBinary(t *testing.T) {
 	home := t.TempDir()
 	t.Setenv("HOME", home)
 	prev := stageWardBootstrapBinary
@@ -589,17 +589,17 @@ func TestWriteContainerAssetsStagesGoBootstrapBinary(t *testing.T) {
 	}
 	t.Cleanup(func() { stageWardBootstrapBinary = prev })
 
-	dir, cleanup, err := writeContainerAssets(context.Background(), true, "/src/ward", "v0.1.2")
+	dir, cleanup, err := writeContainerAssets(context.Background(), "/src/ward", "v0.1.2")
 	if err != nil {
-		t.Fatalf("writeContainerAssets(go-bootstrap): %v", err)
+		t.Fatalf("writeContainerAssets: %v", err)
 	}
 	defer cleanup()
 	info, err := os.Stat(filepath.Join(dir, "ward"))
 	if err != nil {
-		t.Fatalf("bootstrap ward binary missing: %v", err)
+		t.Fatalf("staged ward binary missing: %v", err)
 	}
 	if info.Mode()&0o111 == 0 {
-		t.Fatalf("bootstrap ward binary must be executable, mode %o", info.Mode())
+		t.Fatalf("staged ward binary must be executable, mode %o", info.Mode())
 	}
 }
 
@@ -1128,7 +1128,7 @@ func TestEntrypointComposesCanonicalAgentDoctrine(t *testing.T) {
 }
 
 // TestEntrypointDelegatesBootstrap locks the new boundary: the shell entrypoint
-// only installs ward and hands off to `ward container bootstrap`.
+// only links the staged ward binary and hands off to `ward container bootstrap`.
 func TestEntrypointDelegatesBootstrap(t *testing.T) {
 	t.Skip("entrypoint delegates harness-specific setup to ward container bootstrap now")
 	data, err := containerAssets.ReadFile("containerassets/" + containerEntrypointRel)
@@ -1137,10 +1137,8 @@ func TestEntrypointDelegatesBootstrap(t *testing.T) {
 	}
 	script := string(data)
 	for _, want := range []string{
-		"exec ward container bootstrap \"$@\"",
-		"install_ward()", // the shell still owns only binary installation
-		"[ -n \"${WARD_USE_GO_BOOTSTRAP:-}\" ] && [ -x /opt/ward/ward ]",
 		"ln -sf /opt/ward/ward /usr/local/bin/ward",
+		"exec /opt/ward/ward container bootstrap \"$@\"",
 	} {
 		if !strings.Contains(script, want) {
 			t.Errorf("entrypoint missing %q (bootstrap delegation)", want)
@@ -1178,8 +1176,7 @@ func TestEntrypointHasNoHarnessConfigBranches(t *testing.T) {
 	}
 }
 
-// TestEntrypointBootstrapDelegation is the active boundary test: the shell only
-// installs ward and execs the Go bootstrap, with no harness-specific config code.
+// TestEntrypointBootstrapDelegation checks the thin shell shim and staged ward handoff.
 func TestEntrypointBootstrapDelegation(t *testing.T) {
 	data, err := containerAssets.ReadFile("containerassets/" + containerEntrypointRel)
 	if err != nil {
@@ -1187,14 +1184,17 @@ func TestEntrypointBootstrapDelegation(t *testing.T) {
 	}
 	script := string(data)
 	for _, want := range []string{
-		"exec ward container bootstrap \"$@\"",
-		"install_ward()",
+		"ln -sf /opt/ward/ward /usr/local/bin/ward",
+		"exec /opt/ward/ward container bootstrap \"$@\"",
 	} {
 		if !strings.Contains(script, want) {
 			t.Fatalf("entrypoint missing %q", want)
 		}
 	}
 	for _, banned := range []string{
+		"install_ward_from_source",
+		"install_ward_from_release",
+		"resolve_ward_tag",
 		"compose_codex_config",
 		"compose_goose_config",
 		"compose_opencode_config",
