@@ -193,15 +193,15 @@ func reviewGateClause(wf workflowMode) string {
 	var workflowTail string
 	switch mode := string(canonicalWorkflow(wf.orDefault())); mode {
 	case string(workflowDirectToMain):
-		workflowTail = "For `direct-to-main` workflows, landing means merging to `main`. Do not stop before the merge lands."
+		workflowTail = "For `direct-main` workflows, landing means merging to `main`. Do not stop before the merge lands."
 	case string(workflowPullRequest):
-		workflowTail = "For `pull-request` workflows, opening the pull request is not a stopping point. Keep watching the PR checks after it opens. A failing check is not done: fetch the logs/status, patch the branch, push the update, and repeat until the PR is green or the failure is genuinely blocked."
+		workflowTail = "For `pull-requests` workflows, opening the pull request is not a stopping point. Keep watching the PR checks after it opens. A failing check is not done: fetch the logs/status, patch the branch, push the update, and repeat until the PR is green or the failure is genuinely blocked."
 	case string(workflowPullRequestAndMerge):
-		workflowTail = "For `pull-request-and-merge` workflows, opening the pull request is not a stopping point. Keep watching the PR checks and merge status after it opens. A failing check is not done: fetch the logs/status, patch the branch, push the update, and repeat until the PR is green and merged or the failure is genuinely blocked."
+		workflowTail = "For `pull-requests-and-merge` workflows, opening the pull request is not a stopping point. Keep watching the PR checks and merge status after it opens. A failing check is not done: fetch the logs/status, patch the branch, push the update, and repeat until the PR is green and merged or the failure is genuinely blocked."
 	case string(workflowRemoteBranchOnly):
-		workflowTail = "For `remote-branch-only` workflows, the remote branch push is the finish line. Do not open a pull request and do not merge."
+		workflowTail = "For `patch-only` workflows, the remote branch push is the finish line. Do not open a pull request and do not merge."
 	default:
-		workflowTail = "For `pull-request` workflows, opening the pull request is not a stopping point. Keep watching the PR checks after it opens. A failing check is not done: fetch the logs/status, patch the branch, push the update, and repeat until the PR is green or the failure is genuinely blocked."
+		workflowTail = "For `pull-requests` workflows, opening the pull request is not a stopping point. Keep watching the PR checks after it opens. A failing check is not done: fetch the logs/status, patch the branch, push the update, and repeat until the PR is green or the failure is genuinely blocked."
 	}
 	return fmt.Sprintf(
 		"REVIEW GATE (ward#134): before you land this change (%s), and ONLY after CI is green, run the "+
@@ -259,7 +259,7 @@ func forgeDisplayName(f forge) string {
 	return "Forgejo"
 }
 
-// agentSeedPrompt seeds a direct-to-main run (the default): a thin wrapper over
+// agentSeedPrompt seeds a direct-main run (the default): a thin wrapper over
 // agentSeedPromptWorkflow so legacy callers stay byte-for-byte (ward#405, ward#508).
 func agentSeedPrompt(ref agentIssueRef, title, body, details string, headless bool, extra []targetRepo) string {
 	return agentSeedPromptWorkflow(ref, title, body, details, headless, extra, defaultWorkflow, true, "")

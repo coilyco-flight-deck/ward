@@ -94,25 +94,25 @@ func TestReviewGateClauseInSeed(t *testing.T) {
 
 	direct := agentSeedPromptWorkflow(ref, "t", "b", "", true, nil, workflowDirectToMain, true, "")
 	if !strings.Contains(direct, "REVIEW GATE") || !strings.Contains(direct, "ward agent review") {
-		t.Errorf("direct-to-main headless seed missing the review gate clause")
+		t.Errorf("direct-main headless seed missing the review gate clause")
 	}
 	if !strings.Contains(direct, "merge to `main`") {
-		t.Errorf("direct-to-main landing phrase missing from the gate clause")
+		t.Errorf("direct-main landing phrase missing from the gate clause")
 	}
 	pr := agentSeedPromptWorkflow(ref, "t", "b", "", true, nil, workflowPullRequest, true, "")
 	if !strings.Contains(pr, "watching its CI/checks") {
-		t.Errorf("pull-request seed should tell PR workflows to keep watching checks after opening the PR")
+		t.Errorf("pull-requests seed should tell PR workflows to keep watching checks after opening the PR")
 	}
 
 	branchOnly := agentSeedPromptWorkflow(ref, "t", "b", "", true, nil, workflowRemoteBranchOnly, true, "")
 	if strings.Contains(branchOnly, "REVIEW GATE") {
 		t.Errorf("remote-branch-only lands nothing else; it must not carry the review gate")
 	}
-	if !strings.Contains(direct, "For `direct-to-main` workflows, landing means merging to `main`") {
-		t.Errorf("review gate clause must name the direct-to-main landing path\n got: %s", direct)
+	if !strings.Contains(direct, "For `direct-main` workflows, landing means merging to `main`") {
+		t.Errorf("review gate clause must name the direct-main landing path\n got: %s", direct)
 	}
-	if !strings.Contains(pr, "For `pull-request` workflows, opening the pull request is not a stopping point") {
-		t.Errorf("review gate clause must tell pull-request runs to keep watching PR CI\n got: %s", pr)
+	if !strings.Contains(pr, "For `pull-requests` workflows, opening the pull request is not a stopping point") {
+		t.Errorf("review gate clause must tell pull-requests runs to keep watching PR CI\n got: %s", pr)
 	}
 
 	off := agentSeedPromptWorkflow(ref, "t", "b", "", true, nil, workflowDirectToMain, false, "")

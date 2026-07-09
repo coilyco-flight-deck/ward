@@ -118,11 +118,11 @@ func TestDirectToMainCarryClause(t *testing.T) {
 		got := directToMainCarryClause(ref)
 		for _, want := range []string{"merge to main", "closes #7"} {
 			if !strings.Contains(got, want) {
-				t.Errorf("direct-to-main carry clause missing %q: %s", want, got)
+				t.Errorf("direct-main carry clause missing %q: %s", want, got)
 			}
 		}
 		if strings.Contains(got, "gh pr create") || strings.Contains(got, "pull request") {
-			t.Errorf("direct-to-main carry clause should not mention a PR boundary: %s", got)
+			t.Errorf("direct-main carry clause should not mention a PR boundary: %s", got)
 		}
 	}
 }

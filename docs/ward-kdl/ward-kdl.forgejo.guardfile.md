@@ -748,7 +748,7 @@ Options (3):
 - `--attachment` (file, optional): attachment to upload (this parameter is incompatible with `external_url`)
 - `--external_url` (string, optional): url to external asset (this parameter is incompatible with `attachment`)
 
-## ward-kdl ops forgejo pr merge - merge a pull request (POST /repos/{owner}/{repo}/pulls/{index}/merge). Controlled director authority: ward-owned runs may land only when the issue thread says workflow: pull-request-and-merge, the final WARD-OUTCOME is done, and the review summary passed.
+## ward-kdl ops forgejo pr merge - merge a pull request (POST /repos/{owner}/{repo}/pulls/{index}/merge). Controlled director authority: ward-owned runs may land only when the issue thread says workflow: pull-requests-and-merge, the final WARD-OUTCOME is done, and the review summary passed.
 
 `POST /repos/{owner}/{repo}/pulls/{index}/merge`
 

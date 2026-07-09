@@ -20,7 +20,7 @@ when explicitly enabled (not `remote-branch-only`, which lands nothing). After C
 green and before it opens the PR or merges, the worker runs it and reads the machine
 line on stdout - `WARD-REVIEW: pass` (land), `block` (do not land; post the verdicts
 and close `WARD-OUTCOME: blocked 🛑`), or `advisory` (only if no reviewer can run at
-all, and the host converts that to a fail-closed block). For `pull-request` runs, opening the
+all, and the host converts that to a fail-closed block). For `pull-requests` runs, opening the
 pull request is not the finish line. The worker keeps watching the PR checks and
 loops on failures until they are green or genuinely blocked. `ward agent review`
 stays callable for diagnostics. Engineer seeds skip it by default for brokered QA.

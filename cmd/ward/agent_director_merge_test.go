@@ -60,7 +60,7 @@ func TestDirectorMergeDecision(t *testing.T) {
 			name: "needs-merge-workflow",
 			pr:   basePR,
 			meta: directorRunMeta{HasOutcome: true, Outcome: backlogOutcome{Status: "done"}, Workflow: string(workflowPullRequest), Review: "passed: ok"},
-			want: "workflow pull-request still needs human merge approval",
+			want: "workflow pull-requests still needs human merge approval",
 		},
 		{
 			name: "needs-review",
@@ -135,7 +135,7 @@ func TestDirectorRunMetaParsesWorkflowAndReview(t *testing.T) {
 		"",
 		"<details><summary>details</summary>",
 		"",
-		"workflow: pull-request-and-merge; review summary: passed: all green",
+		"workflow: pull-requests-and-merge; review summary: passed: all green",
 		"",
 		"</details>",
 	}, "\n")
@@ -169,7 +169,7 @@ JSON
 ;;
 "issue-comment list")
 cat <<'JSON'
-[{"body":"WARD-OUTCOME: done ✅\n\n<details><summary>details</summary>\n\nworkflow: pull-request-and-merge; review summary: passed: all green\n\n</details>","created_at":"2026-07-09T00:00:00Z","user":{"login":"coilyco-ops"}}]
+[{"body":"WARD-OUTCOME: done ✅\n\n<details><summary>details</summary>\n\nworkflow: pull-requests-and-merge; review summary: passed: all green\n\n</details>","created_at":"2026-07-09T00:00:00Z","user":{"login":"coilyco-ops"}}]
 JSON
 ;;
 *)
@@ -197,7 +197,7 @@ esac
 	if allowed {
 		t.Fatal("unmarked PR: want deny, got allow")
 	}
-	if reason != "PR body missing ward.workflow: pull-request-and-merge marker" {
+	if reason != "PR body missing ward.workflow: pull-requests-and-merge marker" {
 		t.Fatalf("unmarked PR reason = %q, want missing-marker denial", reason)
 	}
 }
