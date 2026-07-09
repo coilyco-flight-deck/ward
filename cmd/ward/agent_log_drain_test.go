@@ -238,7 +238,7 @@ func TestClassifyReapOutcome(t *testing.T) {
 		{"landed", "ward container reap: landed on main\n", outcomePushedMain},
 		{"salvage-branch", "ward container reap: preserved work on ward-salvage/ward-abc (merge conflict)\n", outcomeSalvage},
 		{"salvage-prefix", "preserved un-landed granted-repo work on ward-salvage/x\n", outcomeSalvage},
-		{"nothing", "ward container reap: nothing to reap (tree clean, HEAD on origin/main)\n", outcomeNothing},
+		{"nothing", "WARD-REAP: nothing to reap (tree clean, HEAD on origin/main)\n", outcomeNothing},
 		{"empty", "", outcomeUnknown},
 		{"noise", "some unrelated docker output\n", outcomeUnknown},
 	}

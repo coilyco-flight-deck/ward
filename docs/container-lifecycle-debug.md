@@ -12,11 +12,11 @@ private context
 
 A run ends in exactly one of three terminal states, each a distinct reap line:
 
-- **landed** - `ward container reap: landed on main`. Clean success.
+- **landed** - `WARD-REAP: nothing to reap ...` or `ward container reap: landed on main`. Clean success.
 - **salvaged** - `ward container reap: salvage start ...` then `preserved work on
   ward-salvage/<id>`. The [reap diagnostics block](container-reap-diagnostics.md)
   (`--- reap diagnostics ---`) prints alongside and self-explains which gate fired.
-- **reopened** - `posted salvage notice to carried issue #N` / `reopened #N`. A
+- **reopened** - `WARD-REAP: ...` plus `posted salvage notice to carried issue #N` / `reopened #N`. A
   salvage that had a carried issue reopens it, undoing any premature `closes #N`.
 
 A container that never reached reap died in bootstrap: look for `ward-container: ...

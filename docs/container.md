@@ -87,8 +87,8 @@ atop the agent's context and **overrides** the host harness's hold-backs, so it
 finishes the whole feature autonomously with the container's isolation as the
 wall. It is its own
 **permission manager** (`bypassPermissions`;
-[container-permissions.md](container-permissions.md)); on exit the reaper lands
-clean work on `main` or salvages it ([reap](container-reap.md)).
+[container-permissions.md](container-permissions.md)); on exit the cleanup path
+lands clean work on `main` or salvages it ([reap](container-reap.md)).
 
 ## See also
 

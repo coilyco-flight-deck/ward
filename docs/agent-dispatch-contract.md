@@ -44,7 +44,7 @@ both the success half and the failure half - is these four:
 
 * `pushed-to-main` - clean integration, the work landed on `main`.
 * `ward-salvage` - a conflict, secret/vendored-content scan finding, rejected push, or dead-PAT auth failure routed the work to a `ward-salvage/<id>` branch instead ([container-reap.md](container-reap.md)).
-* `nothing-to-reap` - the tree was already clean and pushed; the reaper found nothing to do.
+* `nothing-to-reap` - the tree was already clean, or the run reached its workflow boundary cleanly, so the reaper found nothing to do.
 * `unknown` - no reaper marker matched: a crash, an externally-stopped run, or an auth smoke-test abort ([ward#222](https://forgejo.coilysiren.me/coilyco-flight-deck/ward/issues/222)) that never reached a teardown verdict.
 
 Source of truth: `reapOutcomeValues` in `cmd/ward/agent_log_drain.go`.
