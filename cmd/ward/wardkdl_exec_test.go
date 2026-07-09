@@ -78,7 +78,6 @@ func TestMountWardKdlExecSkipsCollisions(t *testing.T) {
 	if git == nil || len(git.Commands) != 0 {
 		t.Errorf("hand-written git was overwritten by the guardfile mount; children = %v", commandNames(git.Commands))
 	}
-
 }
 
 // TestForgejoKeySealed asserts the `ops forgejo-key read` guardfile (ward#386)

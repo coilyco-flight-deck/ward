@@ -114,13 +114,7 @@ func TestReadScratchGateChoice(t *testing.T) {
 func TestRunScratchGateTTYEnterLaunches(t *testing.T) {
 	defer stubGateTTY(t, true)()
 	r, errb := gateRunner("\n")
-	proceed, err := r.runScratchGate(t.Context(), sampleUpPlan(), false)
-	if err != nil {
-		t.Fatalf("runScratchGate: %v", err)
-	}
-	if !proceed {
-		t.Error("a bare Enter at the gate must proceed to launch")
-	}
+	r.runScratchGate(t.Context(), sampleUpPlan(), false)
 	if !strings.Contains(errb.String(), "pre-launch") {
 		t.Errorf("the gate must render its status block to stderr; got:\n%s", errb.String())
 	}
@@ -132,13 +126,7 @@ func TestRunScratchGateNoTTYFallsThrough(t *testing.T) {
 	defer stubGateTTY(t, false)()
 	// A stdin that would BLOCK if read, proving the non-TTY path never reads it.
 	r, errb := gateRunner("u\n")
-	proceed, err := r.runScratchGate(t.Context(), sampleUpPlan(), false)
-	if err != nil {
-		t.Fatalf("runScratchGate: %v", err)
-	}
-	if !proceed {
-		t.Error("a non-TTY launch must fall straight through to launch")
-	}
+	r.runScratchGate(t.Context(), sampleUpPlan(), false)
 	if strings.Contains(errb.String(), "pre-launch") {
 		t.Errorf("a non-TTY launch must not render the gate block; got:\n%s", errb.String())
 	}

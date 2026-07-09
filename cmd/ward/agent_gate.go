@@ -107,8 +107,6 @@ func renderScratchGate(w io.Writer, s scratchGateStatus) {
 	b.WriteString("────────────────────────────────────────────────────\n")
 	if s.behind {
 		writef(&b, "host ward %s is behind the latest release %s.\n", s.current, s.latest)
-	} else {
-		// no-op, kept for readability: the prompt is the same in both cases now.
 	}
 	b.WriteString("Press Enter to launch.\n")
 	_, _ = io.WriteString(w, b.String())
@@ -123,7 +121,7 @@ func readScratchGateChoice(r io.Reader) gateChoice {
 
 // runScratchGate renders the status block and waits for the operator's go before
 // the launch (ward#366).
-func (r *Runner) runScratchGate(ctx context.Context, plan upPlan, readOnly bool) (proceed bool, err error) {
+func (r *Runner) runScratchGate(ctx context.Context, plan upPlan, readOnly bool) {
 	latest, behind := r.wardOutdated(ctx)
 	if !gateTerminalAttached() {
 		// Headless/piped: no terminal to gate to. Keep the stale-ward heads-up
@@ -131,11 +129,10 @@ func (r *Runner) runScratchGate(ctx context.Context, plan upPlan, readOnly bool)
 		if behind {
 			writef(r.gateErr(), "%s", wardOutdatedNotice(Version, latest))
 		}
-		return true, nil
+		return
 	}
 	renderScratchGate(r.gateErr(), newScratchGateStatus(plan, readOnly, behind, Version, latest))
 	_ = readScratchGateChoice(r.gateIn())
-	return true, nil
 }
 
 // gateErr is the gate's status-comms writer (stderr), falling back to os.Stderr.
