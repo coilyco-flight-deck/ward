@@ -87,8 +87,8 @@ func TestReviewerCandidatesDefaultToWorker(t *testing.T) {
 	}
 }
 
-// TestReviewGateClauseInSeed proves the review gate is wired into a headless
-// landing seed, skipped for remote-branch-only, and suppressed by reviewGate=false.
+// TestReviewGateClauseInSeed proves the review gate still renders when explicitly
+// enabled, is skipped for remote-branch-only, and is suppressed by reviewGate=false.
 func TestReviewGateClauseInSeed(t *testing.T) {
 	ref := agentIssueRef{Owner: "coilyco-flight-deck", Repo: "ward", Number: 134}
 
@@ -130,6 +130,34 @@ func TestReviewGateClauseInSeed(t *testing.T) {
 	}
 }
 
+// TestEngineerSeedDefaultsSkipReviewGate proves engineer dispatches now omit the
+// in-container review clause by default, while the manual review verb remains.
+func TestEngineerSeedDefaultsSkipReviewGate(t *testing.T) {
+	ref := agentIssueRef{Owner: "coilyco-flight-deck", Repo: "ward", Number: 676}
+	cmd := parseCommandForTest(t, agentSurfaceFlags(), []string{"engineer", ref.String()})
+
+	if got := reviewGateWanted(cmd, modeCodex, ref); got {
+		t.Fatal("engineer dispatch default still wants the review gate")
+	}
+	reviewGate, reviewSkip := reviewGateDecision(cmd, "engineer", modeCodex, ref)
+	if reviewGate {
+		t.Fatal("engineer dispatch default should skip the review gate")
+	}
+	if !strings.Contains(reviewSkip, "temporary ward default") {
+		t.Fatalf("skip reason = %q, want the temporary ward default to be named", reviewSkip)
+	}
+	seed := agentSeedPromptWorkflow(ref, "t", "b", "", true, nil, workflowPullRequest, reviewGate, reviewSkip)
+	if strings.Contains(seed, "REVIEW GATE") {
+		t.Fatalf("default engineer seed still carries the review gate clause:\n%s", seed)
+	}
+	if !strings.Contains(seed, "temporary ward default") {
+		t.Fatalf("default engineer seed should explain the temporary skip:\n%s", seed)
+	}
+	if got := agentReviewCommand(); got == nil || got.Name != "review" {
+		t.Fatalf("agentReviewCommand() = %+v, want the manual review verb to remain available", got)
+	}
+}
+
 // TestReportPanelMachineLine proves the machine-readable WARD-REVIEW line and the
 // human summary reach stdout/stderr for the worker's seed to grep.
 func TestReportPanelMachineLine(t *testing.T) {
@@ -165,6 +193,16 @@ func TestReportPanelMachineLine(t *testing.T) {
 
 func TestReviewGateWantedHonorsSkipsAndConfig(t *testing.T) {
 	ref := agentIssueRef{Owner: "coilyco-flight-deck", Repo: "ward", Number: 676}
+	t.Run("default engineer dispatch skips review temporarily", func(t *testing.T) {
+		cmd := parseCommandForTest(t, agentSurfaceFlags(), []string{"engineer", ref.String()})
+		wanted, reason := reviewGateDecision(cmd, "engineer", modeCodex, ref)
+		if wanted {
+			t.Fatal("temporary engineer default did not disable the review gate")
+		}
+		if !strings.Contains(reason, "temporary ward default") {
+			t.Fatalf("reason = %q, want the temporary ward default to be named", reason)
+		}
+	})
 	t.Run("skip-review flag wins", func(t *testing.T) {
 		cmd := parseCommandForTest(t, agentSurfaceFlags(), []string{"engineer", ref.String(), "--skip-review"})
 		if reviewGateWanted(cmd, modeCodex, ref) {

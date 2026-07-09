@@ -135,9 +135,17 @@ const emptyBodySeedAction = "This issue has no body, so work from the title alon
 	"issue content, screenshots, or other artifacts that are not there (an empty body is not an " +
 	"invitation to invent one). The comment thread at that URL may hold later context worth a quick read."
 
+// TODO(ward#792): remove this emergency default once brokered QA replaces the
+// in-container review gate.
+const temporaryReviewGateSkipReason = "the temporary ward default pending brokered QA"
+
+func reviewGateDisabledByTemporaryDefault(role string) bool {
+	return role == "engineer"
+}
+
 // headlessReflection is the headless run's closing "how it felt" retro led by a
 // WARD-OUTCOME line; its landing phrase is workflow-aware (ward#281, ward#508).
-func headlessReflection(wf workflowMode, reviewGate bool, reviewSkip string) string {
+func headlessReflection(ref agentIssueRef, wf workflowMode, reviewGate bool, reviewSkip string) string {
 	reviewLine := "If a review ran, read `~/.ward/review-summary.txt` and copy its exact one-line summary into the same final comment."
 	if !reviewGate {
 		reviewLine = "The in-container review gate was intentionally skipped"
@@ -146,7 +154,7 @@ func headlessReflection(wf workflowMode, reviewGate bool, reviewSkip string) str
 		}
 		reviewLine += ", so the final comment must say that explicitly."
 	}
-	return "Finally, as your very last step - only after " + workflowLandingPhrase(wf) + " - post one hypercurt " +
+	return "Finally, as your very last step - only after " + workflowLandingPhrase(ref, wf) + " - post one hypercurt " +
 		"comment on this issue. The only visible text before the collapsed block is a single machine-readable " +
 		"status line - its very first visible line, exactly one of:\n" +
 		"  `" + wardOutcomeMarker + " done ✅`\n" +
@@ -164,7 +172,7 @@ func headlessReflection(wf workflowMode, reviewGate bool, reviewSkip string) str
 // seed (ward#134): run `ward agent review` before landing. docs/dispatch-review.md.
 func reviewGateClause(wf workflowMode) string {
 	landing := "open the pull request"
-	switch string(canonicalWorkflow(wf.orDefault())) {
+	switch mode := string(canonicalWorkflow(wf.orDefault())); mode {
 	case string(workflowDirectToMain):
 		landing = "merge to `main`"
 	case string(workflowPullRequest):
@@ -175,7 +183,7 @@ func reviewGateClause(wf workflowMode) string {
 		landing = "push the remote branch"
 	}
 	var workflowTail string
-	switch string(canonicalWorkflow(wf.orDefault())) {
+	switch mode := string(canonicalWorkflow(wf.orDefault())); mode {
 	case string(workflowDirectToMain):
 		workflowTail = "For `direct-to-main` workflows, landing means merging to `main`. Do not stop before the merge lands."
 	case string(workflowPullRequest):
@@ -285,7 +293,7 @@ func agentSeedPromptWorkflow(ref agentIssueRef, title, body, details string, hea
 	// A headless run detaches unwatched, so it closes with a retrospective comment -
 	// the only voice it leaves behind; the landing phrase tracks the workflow (#281, #508).
 	if headless {
-		seed += "\n\n" + headlessReflection(wf, reviewGate && wf.orDefault() != workflowRemoteBranchOnly, reviewSkip)
+		seed += "\n\n" + headlessReflection(ref, wf, reviewGate && wf.orDefault() != workflowRemoteBranchOnly, reviewSkip)
 	}
 	return seed + inline
 }
@@ -811,10 +819,13 @@ func reviewGateDecision(c *cli.Command, role string, worker containerMode, ref a
 	skips, err := loadReviewSkips()
 	if err != nil {
 		writef(os.Stderr, "ward agent: note: could not read review skip defaults: %v\n", err)
-		return true, ""
+		skips = nil
 	}
 	if reviewSkipMatches(skips, role, string(worker), ref.repoSlug()) {
 		return false, "review gate skipped by ~/.ward/config.yaml default"
+	}
+	if reviewGateDisabledByTemporaryDefault(role) {
+		return false, temporaryReviewGateSkipReason
 	}
 	return true, ""
 }
