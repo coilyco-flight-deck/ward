@@ -196,7 +196,7 @@ esac
 	cl := &forgejoClient{r: &Runner{Runner: &shell.Runner{}}, exe: fake}
 
 	allowed, reason, linked, meta := directorMergeEligibility(context.Background(), "coilyco-flight-deck", "ward",
-		dispatch.Issue{Title: "ship the fix", Body: "closes #729\n" + directorMergeWorkflowMarker + "\n"}, cl)
+		directorPullRequest{Issue: dispatch.Issue{Title: "ship the fix", Body: "closes #729\n" + directorMergeWorkflowMarker + "\n"}, Mergeable: true, MergeableKnown: true}, cl)
 	if !allowed || reason != "" || linked != 729 {
 		t.Fatalf("eligible PR = %v %q %d, want true/\"\"/729", allowed, reason, linked)
 	}
@@ -205,11 +205,106 @@ esac
 	}
 
 	allowed, reason, _, _ = directorMergeEligibility(context.Background(), "coilyco-flight-deck", "ward",
-		dispatch.Issue{Title: "ship the fix", Body: "closes #729\n"}, cl)
+		directorPullRequest{Issue: dispatch.Issue{Title: "ship the fix", Body: "closes #729\n"}, Mergeable: true, MergeableKnown: true}, cl)
 	if allowed {
 		t.Fatal("unmarked PR: want deny, got allow")
 	}
 	if reason != "PR body missing ward.workflow: pull-request-and-merge marker" {
 		t.Fatalf("unmarked PR reason = %q, want missing-marker denial", reason)
+	}
+}
+
+func TestDirectorMergeEligibilityRejectsMergeConflict(t *testing.T) {
+	if runtime.GOOS == "windows" {
+		t.Skip("shell-script fake exe is POSIX-only")
+	}
+	dir := t.TempDir()
+	fake := filepath.Join(dir, "fake-ward")
+	script := `#!/bin/sh
+case "$3 $4" in
+"issue get")
+cat <<'JSON'
+{"number":729,"title":"ship the fix","body":"closes #729","state":"open","html_url":"https://f/729","labels":[]}
+JSON
+;;
+"issue-comment list")
+cat <<'JSON'
+[{"body":"WARD-OUTCOME: merge-ready\n\n<details><summary>details</summary>\n\nworkflow: pull-request-and-merge; review summary: passed: all green\n\n</details>","created_at":"2026-07-09T00:00:00Z","user":{"login":"coilyco-ops"}}]
+JSON
+;;
+*)
+echo "unexpected args: $@" >&2
+exit 1
+;;
+esac
+`
+	if err := os.WriteFile(fake, []byte(script), 0o755); err != nil { // #nosec G306 -- test-only executable
+		t.Fatalf("write fake ward: %v", err)
+	}
+	cl := &forgejoClient{r: &Runner{Runner: &shell.Runner{}}, exe: fake}
+
+	allowed, reason, linked, meta := directorMergeEligibility(context.Background(), "coilyco-flight-deck", "ward",
+		directorPullRequest{Issue: dispatch.Issue{Title: "ship the fix", Body: "closes #729\n" + directorMergeWorkflowMarker + "\n"}, Mergeable: false, MergeableKnown: true}, cl)
+	if allowed {
+		t.Fatal("conflicting PR: want deny, got allow")
+	}
+	if linked != 729 {
+		t.Fatalf("conflicting PR linked issue = %d, want 729", linked)
+	}
+	if reason != "PR is not mergeable against the current base branch; rebase or merge base and resolve the conflict first" {
+		t.Fatalf("conflicting PR reason = %q, want merge-conflict denial", reason)
+	}
+	if meta.HasOutcome {
+		t.Fatalf("conflicting PR should not need issue metadata, got %+v", meta)
+	}
+}
+
+func TestListOpenPullRequestsReadsMergeability(t *testing.T) {
+	if runtime.GOOS == "windows" {
+		t.Skip("shell-script fake exe is POSIX-only")
+	}
+	dir := t.TempDir()
+	fake := filepath.Join(dir, "fake-ward")
+	script := `#!/bin/sh
+case "$3 $4" in
+"issue list")
+cat <<'JSON'
+[{"number":701,"title":"mergeable","body":"closes #701","state":"open","html_url":"https://f/701","labels":[]},{"number":702,"title":"conflicted","body":"closes #702","state":"open","html_url":"https://f/702","labels":[]}]
+JSON
+;;
+*)
+echo "unexpected args: $@" >&2
+exit 1
+;;
+esac
+`
+	if err := os.WriteFile(fake, []byte(script), 0o755); err != nil { // #nosec G306 -- test-only executable
+		t.Fatalf("write fake ward: %v", err)
+	}
+	srv := httptest.NewServer(http.HandlerFunc(func(w http.ResponseWriter, r *http.Request) {
+		switch r.URL.Path {
+		case "/api/v1/repos/coilyco-flight-deck/ward/pulls/701":
+			if got := r.Header.Get("Authorization"); got != "token secret" {
+				t.Fatalf("auth header = %q, want token secret", got)
+			}
+			_, _ = w.Write([]byte(`{"mergeable":true}`))
+		case "/api/v1/repos/coilyco-flight-deck/ward/pulls/702":
+			_, _ = w.Write([]byte(`{"mergeable":false}`))
+		default:
+			t.Fatalf("unexpected path: %s", r.URL.Path)
+		}
+	}))
+	defer srv.Close()
+
+	cl := &forgejoClient{r: &Runner{Runner: &shell.Runner{}}, exe: fake, baseURL: srv.URL, token: "secret"}
+	prs, err := cl.listOpenPullRequests(context.Background(), "coilyco-flight-deck", "ward", 50)
+	if err != nil {
+		t.Fatalf("listOpenPullRequests: %v", err)
+	}
+	if len(prs) != 2 {
+		t.Fatalf("listOpenPullRequests len = %d, want 2", len(prs))
+	}
+	if !prs[0].Mergeable || prs[1].Mergeable {
+		t.Fatalf("mergeability projection = [%v %v], want [true false]", prs[0].Mergeable, prs[1].Mergeable)
 	}
 }
