@@ -28,8 +28,8 @@ var semanticCapabilityOrder = []semanticCapability{
 
 var semanticCapabilityByName = func() map[string]semanticCapability {
 	out := map[string]semanticCapability{}
-	for _, cap := range semanticCapabilityOrder {
-		out[string(cap)] = cap
+	for _, capability := range semanticCapabilityOrder {
+		out[string(capability)] = capability
 	}
 	return out
 }()
@@ -50,8 +50,8 @@ func (s semanticCapabilitySet) clone() semanticCapabilitySet {
 		return semanticCapabilitySet{}
 	}
 	out := semanticCapabilitySet{}
-	for cap := range s {
-		out[cap] = true
+	for capability := range s {
+		out[capability] = true
 	}
 	return out
 }
@@ -62,15 +62,15 @@ func (s semanticCapabilitySet) With(caps ...semanticCapability) semanticCapabili
 	if out == nil {
 		out = semanticCapabilitySet{}
 	}
-	for _, cap := range caps {
-		out[cap] = true
+	for _, capability := range caps {
+		out[capability] = true
 	}
 	return out
 }
 
 // Has reports whether the set holds one semantic capability.
-func (s semanticCapabilitySet) Has(cap semanticCapability) bool {
-	return s[cap]
+func (s semanticCapabilitySet) Has(capability semanticCapability) bool {
+	return s[capability]
 }
 
 // Names renders the set in ward's stable semantic order.
@@ -79,9 +79,9 @@ func (s semanticCapabilitySet) Names() []string {
 		return nil
 	}
 	out := make([]string, 0, len(s))
-	for _, cap := range semanticCapabilityOrder {
-		if s.Has(cap) {
-			out = append(out, string(cap))
+	for _, capability := range semanticCapabilityOrder {
+		if s.Has(capability) {
+			out = append(out, string(capability))
 		}
 	}
 	return out
@@ -126,11 +126,11 @@ func semanticCapabilitiesCompose(base semanticCapabilitySet, extras ...semanticC
 func semanticCapabilitiesFromNames(names ...string) (semanticCapabilitySet, error) {
 	out := semanticCapabilitySet{}
 	for _, name := range names {
-		cap, ok := semanticCapabilityByName[strings.TrimSpace(name)]
+		capability, ok := semanticCapabilityByName[strings.TrimSpace(name)]
 		if !ok {
 			return semanticCapabilitySet{}, fmt.Errorf("unknown semantic capability %q", name)
 		}
-		out[cap] = true
+		out[capability] = true
 	}
 	return out, nil
 }
