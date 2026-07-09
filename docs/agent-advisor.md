@@ -33,6 +33,9 @@ title, body, and thread, then runs a one-shot research pass and either posts the
 **as a comment on that issue** or, when work spans multiple repos, **fans it out into
 per-repo issues** plus an index comment ([agent-advisor-fanout.md](agent-advisor-fanout.md)).
 Any explicit prompt after the ref still works and is appended as extra framing.
+From a director surface, that ref-mode dispatch is brokered and fire-and-forget, so the
+surface returns once the launch or refusal is acknowledged. The synchronous path below is
+the freeform question flow.
 The research runs in a **fresh ephemeral container** ([ward#411](https://forgejo.coilysiren.me/coilyco-flight-deck/ward/issues/411)), like the engineer
 and freeform modes and no longer a native host one-shot. Because the container is the
 sandbox, **any wired harness** runs it, local models included.
