@@ -12,7 +12,7 @@ ward-owned pull request when the run was launched in
 The merge sweep only acts when all of these are true:
 
 - the PR is open, not draft, and not on a `ward-salvage/` branch;
-- the PR body carries the `ward.workflow: pull-requests-and-merge` marker;
+- the PR body carries the exact `ward.workflow: pull-requests-and-merge` marker;
 - the PR body names the carried issue with `closes #N` / `fixes #N` / `resolves #N`;
 - the branch name is the issue branch (`issue-N`);
 - the linked issue is already `done`;

@@ -35,6 +35,10 @@ const (
 	// defaultWorkflow is the mode a run takes when --workflow and smart defaults
 	// leave it unset. PR is the safe product default (ward#707).
 	defaultWorkflow = workflowPR
+
+	// directorMergeWorkflowMarker is the PR-body marker the director sweep reads
+	// when deciding whether a ward-owned PR may be merged automatically.
+	directorMergeWorkflowMarker = "ward.workflow: pull-requests-and-merge"
 )
 
 // orDefault collapses the "" zero value onto the default so every helper can read
@@ -145,16 +149,22 @@ func prWorkflowCarryClause(ref agentIssueRef) string {
 // prWorkflowAndMergeCarryClause tells the agent to open a PR that a director may
 // merge later once the issue thread says the work is done and reviewed.
 func prWorkflowAndMergeCarryClause(ref agentIssueRef) string {
+	bodyMarker := fmt.Sprintf("whose body carries `closes #%d` and `%s`", ref.Number, directorMergeWorkflowMarker)
 	if ref.Forge == forgeGitHub {
-		return forgeCarryClause(ref) + " " + prWorkflowCIWatchClause()
+		return fmt.Sprintf(
+			"implement on a feature branch, commit, push the branch to origin, and open a pull request "+
+				"with `gh pr create` %s. Do NOT push to the repository's `main` branch directly - on GitHub "+
+				"the pull request is the merge gate. `gh` is authenticated from the GITHUB_TOKEN in your "+
+				"environment. %s",
+			bodyMarker, prWorkflowCIWatchClause())
 	}
 	return fmt.Sprintf(
 		"implement on a feature branch, commit, push the branch to origin, and open a pull request "+
-			"against `main` whose body carries `closes #%d`. This run is director-merge authorized: "+
+			"against `main` %s. This run is director-merge authorized: "+
 			"the worker still opens the pull request, but a director may merge it once the issue thread "+
 			"says the work is done, the review gate passed, and no salvage or draft state remains. "+
 			"%s",
-		ref.Number, prWorkflowCIWatchClause())
+		bodyMarker, prWorkflowCIWatchClause())
 }
 
 // prWorkflowCIWatchClause tells PR workflows that opening the PR is not the end:
