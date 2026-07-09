@@ -971,6 +971,35 @@ func launchPreflightSkipReasons(plan upPlan, noPull bool) []string {
 	return reasons
 }
 
+func logLaunchPreflightSkips(label string, plan upPlan, noPull bool) {
+	if !plan.SkipPreflight {
+		return
+	}
+	for _, reason := range launchPreflightSkipReasons(plan, noPull) {
+		writef(os.Stderr, "%s: skipping %s (--skip-preflight)\n", label, reason)
+	}
+}
+
+func logLaunchImageDecision(label string, plan upPlan, noPull bool) {
+	switch {
+	case plan.SkipPreflight && !noPull:
+		writef(os.Stderr, "%s: skipping image pull (--skip-preflight)\n", label)
+	case !plan.SkipPreflight && !noPull:
+		writef(os.Stderr, "%s: image pull enabled for %s\n", label, plan.Image)
+	}
+}
+
+func appendLaunchPreflightNotes(b *strings.Builder, plan upPlan, noPull bool) {
+	if !plan.SkipPreflight {
+		return
+	}
+	writef(b, "# skip-preflight: launch-adjacent probes are bypassed before the container starts; trust and closed-issue checks still run\n")
+	for _, reason := range launchPreflightSkipReasons(plan, noPull) {
+		writef(b, "# skip-preflight: skipping %s\n", reason)
+	}
+	writef(b, "# pull skipped (--skip-preflight); image: %s\n", plan.Image)
+}
+
 // preflightPrompt asks the about-to-detach agent for a feasibility read ending on a
 // GO / NO-GO line, feeding --details, comments, and --repo grants (ward#266).
 func preflightPrompt(ref agentIssueRef, title, body, details string, comments []issueComment, extra []targetRepo) string {
@@ -1610,9 +1639,7 @@ func (r *Runner) launchAgentContainer(ctx context.Context, c *cli.Command, mode 
 	// Ready the ward-tailnet network before the sweep + pull burn, so a host missing it
 	// gets it created here (idempotent), not a raw 125 mid-launch (ward#597).
 	if plan.SkipPreflight {
-		for _, reason := range launchPreflightSkipReasons(plan, c.Bool("no-pull")) {
-			writef(os.Stderr, "%s: skipping %s (--skip-preflight)\n", label, reason)
-		}
+		logLaunchPreflightSkips(label, plan, c.Bool("no-pull"))
 	} else {
 		if err := r.preflightTailnet(ctx, plan); err != nil {
 			return err
@@ -1626,14 +1653,13 @@ func (r *Runner) launchAgentContainer(ctx context.Context, c *cli.Command, mode 
 	// The engineer name is deterministic, so an exited same-issue corpse in the
 	// keep-N window would block the name; clear it for reuse (ward#364).
 	r.clearExitedContainer(ctx, plan.Name)
-	if plan.SkipPreflight {
-		if !c.Bool("no-pull") {
-			writef(os.Stderr, "%s: skipping image pull (--skip-preflight)\n", label)
-		}
-	} else if !c.Bool("no-pull") {
-		writef(os.Stderr, "%s: image pull enabled for %s\n", label, plan.Image)
+	switch {
+	case plan.SkipPreflight && !c.Bool("no-pull"):
+		logLaunchImageDecision(label, plan, c.Bool("no-pull"))
+	case !plan.SkipPreflight && !c.Bool("no-pull"):
+		logLaunchImageDecision(label, plan, c.Bool("no-pull"))
 		r.pullAgentImage(ctx, plan, label)
-	} else {
+	default:
 		writef(os.Stderr, "%s: image pull skipped for %s (--no-pull)\n", label, plan.Image)
 	}
 	// Resolve host creds (agent + aws export-inject) before the env-file; a good AWS export
@@ -2012,17 +2038,12 @@ func printAgentTaskPlan(c *cli.Command, mode containerMode, repo targetRepo, tit
 	writef(&b, "name:    %s\n", plan.Name)
 	writef(&b, "----- issue to file -----\ntitle: %s\n\n%s\n----- end -----\n", title, body)
 	writef(&b, "----- seeded prompt (#N filled once filed) -----\n%s\n----- end -----\n", seed)
-	if plan.SkipPreflight {
-		writef(&b, "# skip-preflight: launch-adjacent probes are bypassed before the container starts; trust and closed-issue checks still run\n")
-		for _, reason := range launchPreflightSkipReasons(plan, c.Bool("no-pull")) {
-			writef(&b, "# skip-preflight: skipping %s\n", reason)
-		}
-	}
-	if plan.SkipPreflight {
-		writef(&b, "# pull skipped (--skip-preflight); image: %s\n", plan.Image)
-	} else if c.Bool("no-pull") {
+	appendLaunchPreflightNotes(&b, plan, c.Bool("no-pull"))
+	switch {
+	case plan.SkipPreflight:
+	case c.Bool("no-pull"):
 		writef(&b, "# pull skipped (--no-pull); image: %s\n", plan.Image)
-	} else {
+	default:
 		writef(&b, "docker pull %s\n", plan.Image)
 	}
 	writef(&b, "docker %s\n", strings.Join(dockerCreateArgv(plan, "<ward-forgejo-token-envfile>"), " "))
@@ -2064,17 +2085,12 @@ func printAgentPlan(c *cli.Command, p upPlan, ref agentIssueRef, title, seed, su
 	writef(&b, "workflow: %s\n", p.Workflow.orDefault())
 	writef(&b, "name:    %s\n", p.Name)
 	writef(&b, "%s", seedLogBlock(seed))
-	if p.SkipPreflight {
-		writef(&b, "# skip-preflight: launch-adjacent probes are bypassed before the container starts; trust and closed-issue checks still run\n")
-		for _, reason := range launchPreflightSkipReasons(p, c.Bool("no-pull")) {
-			writef(&b, "# skip-preflight: skipping %s\n", reason)
-		}
-	}
-	if p.SkipPreflight {
-		writef(&b, "# pull skipped (--skip-preflight); image: %s\n", p.Image)
-	} else if c.Bool("no-pull") {
+	appendLaunchPreflightNotes(&b, p, c.Bool("no-pull"))
+	switch {
+	case p.SkipPreflight:
+	case c.Bool("no-pull"):
 		writef(&b, "# pull skipped (--no-pull); image: %s\n", p.Image)
-	} else {
+	default:
 		writef(&b, "docker pull %s\n", p.Image)
 	}
 	if p.TSSidecar {
