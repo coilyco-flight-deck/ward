@@ -178,7 +178,8 @@ func pullRequestCarryClause(ref agentIssueRef) string {
 		"implement on a feature branch, commit, push the branch to origin, and open a pull request "+
 			"against `main` whose body carries `closes #%d`. "+
 			"%s Do NOT push to `main` directly or merge it yourself - in the `pull-request` workflow the pull request "+
-			"IS the merge gate, and the director is encouraged to merge it later if policy allows.",
+			"IS the merge gate, and the director is encouraged to merge it later if policy allows. When the PR is green, "+
+			"the engineer's final visible outcome is `WARD-OUTCOME: submitted`.",
 		ref.Number, pullRequestCIWatchClause())
 }
 
@@ -188,7 +189,8 @@ func pullRequestAndMergeCarryClause(ref agentIssueRef) string {
 	return fmt.Sprintf(
 		"implement on a feature branch, commit, push the branch to origin, and open a pull request "+
 			"against `main` whose body carries `closes #%d` and `%s`. This run is director-merge authorized: "+
-			"the worker still opens the pull request, but the run is not done until the pull request is merged. "+
+			"the worker still opens the pull request, but the engineer's final visible outcome is `WARD-OUTCOME: merge-ready`; "+
+			"the run is not done until the pull request is merged and the director records the final done outcome. "+
 			"%s Keep the branch ready for merge and do not claim success early.",
 		ref.Number, directorMergeWorkflowMarker, pullRequestCIWatchClause())
 }
@@ -198,8 +200,8 @@ func pullRequestAndMergeCarryClause(ref agentIssueRef) string {
 func pullRequestCIWatchClause() string {
 	return "After the PR opens, keep watching its CI/checks and fetch the status/logs if anything " +
 		"fails. Patch the branch, push updates, and repeat until the checks are green or the failure is " +
-		"genuinely blocked. A failing check is not a done state, and the final `WARD-OUTCOME: done` " +
-		"comment is not allowed until the PR is green. " + workflowFailureCommentClause()
+		"genuinely blocked. A failing check is not a done state, and the final `WARD-OUTCOME` comment " +
+		"is not allowed until the PR is green. " + workflowFailureCommentClause()
 }
 
 // workflowFailureCommentClause tells PR workflows to mirror failure comments onto
@@ -230,10 +232,27 @@ func workflowLandingPhrase(_ agentIssueRef, wf workflowMode) string {
 	case workflowPullRequest:
 		return "the branch is pushed, the pull request is open, and the required checks are green"
 	case workflowPullRequestAndMerge:
-		return "the pull request is merged"
+		return "the pull request is reviewed and merge-ready"
 	case workflowRemoteBranchOnly:
 		return "the remote branch is pushed"
 	default:
 		return "the work is committed, merged to main, and pushed"
+	}
+}
+
+// workflowOutcomeStatus names the nonterminal completion state a worker should
+// report at its boundary for the selected workflow.
+func workflowOutcomeStatus(wf workflowMode) string {
+	switch mode := string(canonicalWorkflow(wf.orDefault())); mode {
+	case string(workflowPullRequest):
+		return "submitted"
+	case string(workflowPullRequestAndMerge):
+		return "merge-ready"
+	case string(workflowDirectToMain):
+		return "done"
+	case string(workflowRemoteBranchOnly):
+		return "done"
+	default:
+		return "done"
 	}
 }

@@ -18,11 +18,10 @@ The merge sweep only acts when all of these are true:
 - the PR is open, not draft, and not on a `ward-salvage/` branch;
 - the PR body carries the `ward.workflow: pull-request-and-merge` marker;
 - the PR body names the carried issue with `closes #N` / `fixes #N` / `resolves #N`;
-- the linked issue is already `done`;
-- the latest issue thread has a passing `WARD-QA` verdict for the PR's current head SHA.
-
-The review-summary prose is still recorded, but it is informational only. Merge
-eligibility follows the commit-bound QA verdict, not the freeform summary.
+- the branch name is the issue branch (`issue-N`);
+- the linked issue is already `merge-ready`;
+- the latest issue outcome says the review summary passed.
+- the live PR detail says the PR is mergeable against the current base branch.
 
 If any check fails, the director reports the reason and leaves the PR alone.
 
@@ -37,10 +36,12 @@ If any check fails, the director reports the reason and leaves the PR alone.
 ## How this differs from engineer workflow
 
 The engineer's `pull-request` mode keeps watching CI after the PR opens and
-only reports done once the checks are green or the failure is genuinely blocked.
-`pull-request-and-merge` adds the director marker so the heartbeat can finish
-the merge later when the policy boundary is satisfied, and the run is not done
-until the merge lands.
+only reports `submitted` once the checks are green or the failure is genuinely
+blocked. `pull-request-and-merge` adds the director marker so the heartbeat can
+finish the merge later when the policy boundary is satisfied, and the engineer
+reports `merge-ready` while the director records the final `done` after the
+merge lands. A conflicting PR is blocked before merge even if CI is green and
+the issue thread already says `merge-ready`.
 
 ## See also
 

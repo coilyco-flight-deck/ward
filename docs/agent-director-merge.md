@@ -12,18 +12,22 @@ The merge lane is narrow by design. It accepts only ward-owned work whose carrie
 issue thread says:
 
 - `workflow: pull-request-and-merge`
-- `WARD-OUTCOME: done`
+- `WARD-OUTCOME: merge-ready`
 - review summary starts with `passed:`
 - the PR title is not salvage or WIP noise
+- the PR is mergeable against the current base branch
 
 That keeps `pull-request` human-gated. The director does not gain a
-general PR-review or blanket repo-write surface here.
+general PR-review or blanket repo-write surface here. A conflicting PR is not
+done, even if CI is green and the issue thread says merge-ready. After the merge
+lands, the director records the final `WARD-OUTCOME: done` on the issue.
 
 ## What it does
 
 The command looks up the open PRs in scope, joins each PR back to its linked issue
-via a same-repo closing reference, reads the latest `WARD-OUTCOME` comment, and
-merges the PR only when the policy above holds.
+via a same-repo closing reference, reads the latest `WARD-OUTCOME` comment, checks
+the PR detail for mergeability, and merges the PR only when the policy above
+holds.
 
 ## See also
 

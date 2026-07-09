@@ -37,9 +37,10 @@ and a `ward.workflow` label, and is read by the reaper.
   seed tells the agent to push the branch and open the PR, and **not** to push
   `main`.
 - **`pull-request-and-merge`** - branch + PR like `pull-request`, but the run is
-  not done until the PR is actually merged. This is the narrow director-merge
-  lane, and its merge boundary is commit-bound QA: the linked issue needs a
-  passing `WARD-QA` verdict for the PR's current head SHA.
+  not done until the PR is actually merged. The director merge sweep also checks
+  the live PR detail for mergeability against the current base branch, so a
+  conflicting PR stays blocked even if CI is green and the issue thread already
+  says merge-ready. This is the narrow director-merge lane.
 - **`remote-branch-only`** - the run has **no PR or merge authority**: it pushes a
   remote branch and stops. It neither opens a PR nor merges, and writes no
   `closes #N` trailer. Intended for untrusted targets, experiments, and
@@ -49,7 +50,7 @@ and a `ward.workflow` label, and is read by the reaper.
 
 - **High trust with no review need** (your own solo repo, an automation repo you own) - `direct-to-main`.
 - **Shared / reviewed** (a team repo where changes get looked at) - `pull-request`.
-- **Director-merge lane** (ward-owned PRs that meet the review gate, end `WARD-OUTCOME: done`, and have a matching `WARD-QA` verdict for the current PR head SHA) - `pull-request-and-merge`.
+- **Director-merge lane** (ward-owned PRs that meet the review gate and end `WARD-OUTCOME: merge-ready`) - `pull-request-and-merge`.
 - **Low trust / exploratory** (an external target, a risky change you want to eyeball
   before it touches the tree) - `remote-branch-only`.
 
@@ -95,9 +96,9 @@ This first slice is deliberately minimal:
   on a salvage branch by the reaper. When Forgejo PRs are available, the reaper
   also opens a PR for the salvage branch and links it from the salvage comment.
 - `pull-request` runs keep watching PR CI/checks after the PR opens, so
-  `WARD-OUTCOME: done` only follows green checks or a genuine block. `pull-request-and-merge`
-  waits for the merge itself before it reports success, and director merge
-  refuses to act without the exact current `WARD-QA` verdict.
+  `WARD-OUTCOME: submitted` follows green checks or a genuine block. `pull-request-and-merge`
+  reports `WARD-OUTCOME: merge-ready`, then waits for the director merge sweep to
+  verify the PR is still mergeable, land it, and record the final `done` outcome.
 - The autonomous [pre-flight](agent-preflight.md) still reads in merge-to-main
   terms; it judges feasibility, not the landing contract, so it is left as-is.
 

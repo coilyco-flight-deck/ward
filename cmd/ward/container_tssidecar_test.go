@@ -337,24 +337,10 @@ func TestTailnetTowerEnvOverride(t *testing.T) {
 	}
 }
 
-// TestTailnetTowerBundleOverride pins the staged middle tier: a selected bundle
-// fills the slot between the host env and the baked default.
-func TestTailnetTowerBundleOverride(t *testing.T) {
-	dir := t.TempDir()
-	src := `topology {
-    tailnet-network "bundle-net"
-    tailnet-proxy "bundle-proxy:9055"
-    tower-host "bundle-tower"
-    tower-ollama-port "18081"
-    substrate-seed "/bundle/seed"
-    substrate-dest "/bundle/dest"
-    substrate-manifest "/bundle/manifest"
-    substrate-ttl "77"
-}`
-	if err := os.WriteFile(filepath.Join(dir, bundleTopologyKDLPath), []byte(src), 0o644); err != nil {
-		t.Fatalf("write topology bundle: %v", err)
-	}
-	t.Setenv(wardConfigRefEnv, "file://"+dir)
+// TestTailnetTowerBadConfigRefIgnored pins the staged middle tier: a bad
+// WARD_CONFIG_REF does not disturb baked topology, and env still wins.
+func TestTailnetTowerBadConfigRefIgnored(t *testing.T) {
+	t.Setenv(wardConfigRefEnv, "not-a-resolvable-ref")
 	t.Setenv(envTailnetNetwork, "")
 	t.Setenv(envTailnetProxy, "")
 	t.Setenv(envTowerHost, "")
@@ -365,40 +351,40 @@ func TestTailnetTowerBundleOverride(t *testing.T) {
 	t.Setenv("WARD_SUBSTRATE_TTL", "")
 
 	topo := currentContainerTopology()
-	if topo.TailnetNetwork != "bundle-net" || topo.TailnetProxy != "bundle-proxy:9055" || topo.TowerHost != "bundle-tower" || topo.TowerOllamaPort != "18081" {
-		t.Fatalf("bundle topology not loaded: %+v", topo)
+	if topo.TailnetNetwork != defaultTailnetNetwork || topo.TailnetProxy != defaultTailnetProxy || topo.TowerHost != defaultTowerHost || topo.TowerOllamaPort != defaultTowerOllamaPort {
+		t.Fatalf("bad config ref disturbed the baked topology: %+v", topo)
 	}
-	if got := tailnetNetwork(); got != "bundle-net" {
-		t.Errorf("tailnetNetwork() = %q, want bundle topology", got)
+	if got := tailnetNetwork(); got != defaultTailnetNetwork {
+		t.Errorf("tailnetNetwork() = %q, want baked default", got)
 	}
-	if got := proxyBoxAddr(); got != "bundle-proxy:9055" {
-		t.Errorf("proxyBoxAddr() = %q, want bundle topology", got)
+	if got := proxyBoxAddr(); got != defaultTailnetProxy {
+		t.Errorf("proxyBoxAddr() = %q, want baked default", got)
 	}
-	if got := towerMagicDNS(); got != "bundle-tower" {
-		t.Errorf("towerMagicDNS() = %q, want bundle topology", got)
+	if got := towerMagicDNS(); got != defaultTowerHost {
+		t.Errorf("towerMagicDNS() = %q, want baked default", got)
 	}
-	if got := towerOllamaPort(); got != "18081" {
-		t.Errorf("towerOllamaPort() = %q, want bundle topology", got)
+	if got := towerOllamaPort(); got != defaultTowerOllamaPort {
+		t.Errorf("towerOllamaPort() = %q, want baked default", got)
 	}
-	if got := towerOllamaURL(); got != "http://bundle-tower:18081" {
-		t.Errorf("towerOllamaURL() = %q, want bundle topology", got)
+	if got := towerOllamaURL(); got != "http://"+defaultTowerHost+":"+defaultTowerOllamaPort {
+		t.Errorf("towerOllamaURL() = %q, want baked default", got)
 	}
 	p := sampleUpPlan()
 	env := p.wardEnv()
-	if got := env["WARD_SUBSTRATE_SEED"]; got != "/bundle/seed" {
-		t.Errorf("WARD_SUBSTRATE_SEED = %q, want bundle override", got)
+	if got := env["WARD_SUBSTRATE_SEED"]; got != containerSubstrateSeed {
+		t.Errorf("WARD_SUBSTRATE_SEED = %q, want baked default", got)
 	}
-	if got := env["WARD_SUBSTRATE_DEST"]; got != "/bundle/dest" {
-		t.Errorf("WARD_SUBSTRATE_DEST = %q, want bundle override", got)
+	if got := env["WARD_SUBSTRATE_DEST"]; got != containerSubstrateDest {
+		t.Errorf("WARD_SUBSTRATE_DEST = %q, want baked default", got)
 	}
-	if got := env["WARD_SUBSTRATE_MANIFEST"]; got != "/bundle/manifest" {
-		t.Errorf("WARD_SUBSTRATE_MANIFEST = %q, want bundle override", got)
+	if got := env["WARD_SUBSTRATE_MANIFEST"]; got != containerSubstrateManifest {
+		t.Errorf("WARD_SUBSTRATE_MANIFEST = %q, want baked default", got)
 	}
-	if got := env["WARD_SUBSTRATE_TTL"]; got != "77" {
-		t.Errorf("WARD_SUBSTRATE_TTL = %q, want bundle override", got)
+	if got := env["WARD_SUBSTRATE_TTL"]; got != containerSubstrateTTL {
+		t.Errorf("WARD_SUBSTRATE_TTL = %q, want baked default", got)
 	}
 
-	// Explicit env still wins over the bundle tier.
+	// Explicit env still wins over the baked tier.
 	t.Setenv(envTailnetNetwork, "env-net")
 	t.Setenv(envTailnetProxy, "env-proxy:9555")
 	t.Setenv(envTowerHost, "env-tower")

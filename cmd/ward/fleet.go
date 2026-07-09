@@ -1,7 +1,7 @@
 package main
 
-// fleet.go parses ward's dialect-2 fleet config (cli-guard pkg/fleetconfig) off
-// the launch-selected config source (configsource.go, ward#653; drift-tested).
+// fleet.go parses ward's dialect-2 fleet config from ward-owned runtime data.
+// Edge bundle selection stays on the configsource seam, core agents stay baked.
 
 import (
 	"fmt"
@@ -10,14 +10,10 @@ import (
 	"forgejo.coilysiren.me/coilyco-flight-deck/cli-guard/pkg/fleetconfig"
 )
 
-// loadFleetConfig resolves ward's built-in frontier defaults over the selected
-// fleet config, returning the effective roster and failing loud on bundle error.
+// loadFleetConfig resolves ward's built-in frontier defaults over the baked
+// fleet config and fails loud only on baked drift or parse failure.
 func loadFleetConfig() (fleetconfig.Fleet, error) {
-	src, err := selectConfigSource()
-	if err != nil {
-		return fleetconfig.Fleet{}, err
-	}
-	return loadFleetConfigFrom(src)
+	return loadFleetConfigFrom(coreRuntimeConfigSource())
 }
 
 func loadFleetConfigFrom(src configSource) (fleetconfig.Fleet, error) {

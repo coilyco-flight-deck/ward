@@ -42,7 +42,7 @@ func (r *Runner) resolveGitHubTokenFromApp(ctx context.Context, owner, repo stri
 	if appID == "" || keySSM == "" {
 		return "", fmt.Errorf(
 			"ward: WARD_GITHUB_TOKEN_SOURCE=app needs %s (the App ID) and %s (the SSM param holding the App private key) - "+
-				"set both from operator config, or switch to WARD_GITHUB_TOKEN_SOURCE=env (default) or gh. "+
+				"set both from operator config, or switch to WARD_GITHUB_TOKEN_SOURCE=env or gh. "+
 				"app mode is gated on a registered GitHub App (ward#534). See docs/github-token.md",
 			envGitHubAppID, envGitHubAppKeySSM)
 	}
