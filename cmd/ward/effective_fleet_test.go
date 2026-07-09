@@ -38,11 +38,13 @@ fleet {
     }
 }
 `)
-	t.Setenv(wardConfigRefEnv, "file://"+dir)
-
-	f, err := loadFleetConfig()
+	raw, err := loadRawFleetConfigFrom(bundleConfigSource(dir))
 	if err != nil {
-		t.Fatalf("loadFleetConfig: %v", err)
+		t.Fatalf("loadRawFleetConfigFrom: %v", err)
+	}
+	f, err := resolveEffectiveFleet(raw)
+	if err != nil {
+		t.Fatalf("resolveEffectiveFleet: %v", err)
 	}
 
 	if got := len(f.Agents); got < len(frontierAgentOrder) {
@@ -73,11 +75,13 @@ fleet {
     }
 }
 `)
-	t.Setenv(wardConfigRefEnv, "file://"+dir)
-
-	f, err := loadFleetConfig()
+	raw, err := loadRawFleetConfigFrom(bundleConfigSource(dir))
 	if err != nil {
-		t.Fatalf("loadFleetConfig: %v", err)
+		t.Fatalf("loadRawFleetConfigFrom: %v", err)
+	}
+	f, err := resolveEffectiveFleet(raw)
+	if err != nil {
+		t.Fatalf("resolveEffectiveFleet: %v", err)
 	}
 
 	claude, ok := fleetAgent(f, string(modeClaude))
@@ -106,13 +110,15 @@ fleet {
     }
 }
 `)
-	t.Setenv(wardConfigRefEnv, "file://"+dir)
-
-	_, err := loadFleetConfig()
+	raw, err := loadRawFleetConfigFrom(bundleConfigSource(dir))
+	if err != nil {
+		t.Fatalf("loadRawFleetConfigFrom: %v", err)
+	}
+	_, err = resolveEffectiveFleet(raw)
 	if err == nil {
-		t.Fatal("loadFleetConfig accepted an incomplete custom agent; want a loud failure")
+		t.Fatal("resolveEffectiveFleet accepted an incomplete custom agent; want a loud failure")
 	}
 	if !strings.Contains(err.Error(), "has no binary") {
-		t.Fatalf("loadFleetConfig error = %v, want missing-binary failure", err)
+		t.Fatalf("resolveEffectiveFleet error = %v, want missing-binary failure", err)
 	}
 }

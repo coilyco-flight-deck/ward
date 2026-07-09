@@ -1,14 +1,12 @@
 ---
-doc_goal: Pin the WARD_CONFIG_REF config-source seam - the fs.FS the KDL build sites compile from, the unset-means-baked selection contract, the flat bundle layout, and the per-site degrade behavior.
+doc_goal: Pin the WARD_CONFIG_REF edge-surface config-source seam - the fs.FS the guarded KDL build sites compile from, the unset-means-baked selection contract, the flat bundle layout, and the per-site degrade behavior.
 ---
-# The config source: `WARD_CONFIG_REF` and the fs.FS-at-launch seam
+# The edge config source: `WARD_CONFIG_REF` and the fs.FS-at-launch seam
 
-Since [ward#653](https://forgejo.coilysiren.me/coilyco-flight-deck/ward/issues/653) (epic [ward#650](https://forgejo.coilysiren.me/coilyco-flight-deck/ward/issues/650)), ward's KDL surfaces compile at launch from a selected `fs.FS`, not a hard-wired embed. `cmd/ward/configsource.go` picks it. Four sites read it:
+Since [ward#653](https://forgejo.coilysiren.me/coilyco-flight-deck/ward/issues/653) (epic [ward#650](https://forgejo.coilysiren.me/coilyco-flight-deck/ward/issues/650)), ward's edge-mounted KDL surfaces compile at launch from a selected `fs.FS`, not a hard-wired embed. `cmd/ward/configsource.go` picks it. Core agent/container runtime data now comes from ward-owned baked helpers, not this seam. Two edge sites read it:
 
 - `ward ops forgejo` - spec guardfile + swagger lock, plus the optional admin guardfile.
 - the exec-dialect auto-mount - `ward docker`, `ward agents <tool>`, `ward ops {aws,kubectl,...}`.
-- the fleet roster - dialect-2 `fleetconfig.Parse`.
-- the smart-defaults bundle - runtime policy defaults in `cmd/ward/smartdefaults.go`.
 
 ## Selection contract
 
@@ -26,9 +24,9 @@ A ref points at a **flat** bundle directory - the [aos#332](https://github.com/c
 - `ward-kdl.<area>.guardfile.kdl` (exec dialect) - auto-mounted at their `wrap`
   path ([ward-kdl-in-ward.md](ward-kdl-in-ward.md)); the exec scan mounts only
   files carrying an `exec` block.
-- `ward-kdl.fleet.kdl` - the dialect-2 fleet manifest.
-- `ward-kdl.defaults.kdl` - the launch-selected smart defaults for runtime policy knobs like reservation TTL, director cadence, and container retention.
-- `ward-kdl.topology.kdl` - container topology overlay. Env wins.
+- `ward-kdl.fleet.kdl` - the dialect-2 fleet manifest for edge-surface builds.
+- `ward-kdl.defaults.kdl` - launch-selected smart defaults for edge-surface bundle builds.
+- `ward-kdl.topology.kdl` - container topology overlay for edge-surface bundle builds. Env wins.
 - `forgejo-admin.guardfile.kdl` - **optional**; omitting it withholds
   `ops forgejo admin/doctor`.
 
@@ -40,13 +38,13 @@ A set-but-unresolvable ref and a bundle that fails to parse both degrade **per s
   invocation (`guardfile runtime failed to mount: ...`), so a bad bundle can
   never silently drop a verb surface.
 - the exec auto-mount degrades with a stderr warning at launch.
-- fleet consumers (`ward agents list`, `ward agent ...`) error at verb time.
-- smart-defaults consumers (`ward agent reap`, `ward agent director`, `ward
-  agent review`, reservation/comment code paths, container cleanup) error at
-  verb time.
+- the edge ops bundle consumers (`ward ops forgejo`, `ward docker`, `ward ops
+  aws`, `ward ops kubectl`, `ward agents <tool>`) error at verb time.
+- core runtime consumers (`ward agent`, container bring-up, reservation
+  defaults, review timing) keep their ward-owned defaults and ignore this seam.
 - the rest of the CLI (`version`, `exec`, `git`, ...) keeps working.
 
-There is no fallback from a named-but-broken source to the baked default.
+There is no fallback from a named-but-broken edge source to the baked default.
 
 ## See also
 

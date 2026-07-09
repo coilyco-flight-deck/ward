@@ -143,7 +143,7 @@ func TestAgentSeedPromptWorkflow(t *testing.T) {
 		t.Errorf("pull-requests seed should carry a PR clause, not the merge-to-main fast path\n got: %s", pr)
 	}
 	if !strings.Contains(pr, "WARD-OUTCOME: submitted") {
-		t.Errorf("pull-request reflection should end with submitted, not done\n got: %s", pr)
+		t.Errorf("pull-requests reflection should end with submitted, not done\n got: %s", pr)
 	}
 	if !strings.Contains(pr, "the branch is pushed, the pull request is open, and the required checks are green") {
 		t.Errorf("pull-requests reflection should require green checks before done\n got: %s", pr)
@@ -270,6 +270,19 @@ func TestAgentWorkflowSmartDefaults(t *testing.T) {
 	}
 	if wf != workflowRemoteBranchOnly {
 		t.Errorf("CLI workflow = %q, want patch-only", wf)
+	}
+}
+
+func TestAgentWorkflowIgnoresBadConfigRef(t *testing.T) {
+	t.Setenv(wardConfigRefEnv, "not-a-resolvable-ref")
+
+	cmd := parseCommandForTest(t, agentSurfaceFlags(), []string{"engineer", "coilyco-flight-deck/agentic-os#1"})
+	wf, err := agentWorkflow(cmd, "coilyco-flight-deck/agentic-os")
+	if err != nil {
+		t.Fatalf("agentWorkflow default: %v", err)
+	}
+	if wf != workflowDirectToMain {
+		t.Errorf("default workflow = %q, want direct-main", wf)
 	}
 }
 
