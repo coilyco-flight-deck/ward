@@ -20,8 +20,8 @@ import (
 	"github.com/urfave/cli/v3"
 )
 
-// agent_review.go wires `ward agent review` (ward#134): the fleet roster, reviewer
-// subprocesses, probes, and sidecar log onto internal/reviewpanel.
+// agent_review.go wires `ward agent review` (ward#134): the fleet roster,
+// reviewer subprocesses, probes, and sidecar log onto internal/reviewpanel.
 
 // reviewClassEnv pins the panel's autonomy class into the container, so the gate reads
 // it from the host, not the (untrusted) worker.
@@ -153,8 +153,8 @@ func (e reviewBlockedError) Error() string {
 		e.result.Passes, e.result.Threshold, e.result.Class, reviewSummary(e.result))
 }
 
-// agentReviewCommand builds `ward agent review`, the pre-landing panel gate plus
-// its stats reader. It is a maintenance/gate verb, not a startup role.
+// agentReviewCommand builds `ward agent review`, the pre-landing panel gate. It
+// is a maintenance/gate verb, not a startup role.
 func agentReviewCommand() *cli.Command {
 	return &cli.Command{
 		Name:  "review",
@@ -175,8 +175,7 @@ persisted to a sidecar log beside the audit trail. See docs/dispatch-review.md.`
 			&cli.BoolFlag{Name: "print", Usage: "resolve the panel plan + built prompt and exit; run no reviewer"},
 			&cli.BoolFlag{Name: "json", Usage: "emit the panel result as JSON on stdout"},
 		},
-		Action:   agentReviewAction(),
-		Commands: []*cli.Command{agentReviewStatsCommand()},
+		Action: agentReviewAction(),
 	}
 }
 

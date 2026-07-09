@@ -15,38 +15,6 @@ import (
 	"github.com/urfave/cli/v3"
 )
 
-// TestPanelLogRoundTrip proves a persisted panel row reads back and aggregates.
-func TestPanelLogRoundTrip(t *testing.T) {
-	t.Setenv("HOME", t.TempDir())
-
-	rows := []reviewpanel.PanelResult{
-		{Timestamp: 1, Issue: "o/r#1", Class: reviewpanel.ClassDefault, Gate: reviewpanel.GatePass, Passes: 2, Threshold: 2},
-		{Timestamp: 2, Issue: "o/r#2", Class: reviewpanel.ClassRefactor, Gate: reviewpanel.GateBlock, Passes: 1, Threshold: 2},
-		{Timestamp: 3, Issue: "o/r#3", Class: reviewpanel.ClassLintCleanup, Gate: reviewpanel.GateAdvisory},
-	}
-	for _, r := range rows {
-		if err := appendPanelRecord(r); err != nil {
-			t.Fatalf("appendPanelRecord: %v", err)
-		}
-	}
-	got, err := readPanelLog()
-	if err != nil {
-		t.Fatalf("readPanelLog: %v", err)
-	}
-	if len(got) != 3 {
-		t.Fatalf("read %d rows; want 3", len(got))
-	}
-
-	stats := computeReviewStats(got, parseRevertedSet("o/r#1"))
-	if stats.Total != 3 || stats.Passed != 1 || stats.Blocked != 1 || stats.Advisory != 1 {
-		t.Errorf("stats = %+v; want 3/1/1/1", stats)
-	}
-	// o/r#1 passed and is in the reverted set => a false negative (1/1 = 100%).
-	if !stats.FalseNegKnown || stats.Reverted != 1 || stats.FalseNegRate != 1.0 {
-		t.Errorf("false-negative not computed: %+v", stats)
-	}
-}
-
 // TestReviewIssueRefFromEnv proves the ref/URL come off the container target env.
 func TestReviewIssueRefFromEnv(t *testing.T) {
 	t.Setenv("WARD_TARGET_OWNER", "coilyco-flight-deck")
