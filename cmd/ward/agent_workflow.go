@@ -33,12 +33,12 @@ const (
 
 	// Compatibility aliases keep in-flight work readable without advertising the old
 	// names in the supported surface. `pr` is intentionally not accepted.
-	workflowDirectMain           workflowMode = workflowDirectToMain
-	workflowPullRequests         workflowMode = workflowPullRequest
-	workflowPR                   workflowMode = workflowPullRequest
-	workflowPullRequestsAndMerge workflowMode = workflowPullRequestAndMerge
-	workflowPRAndMerge           workflowMode = workflowPullRequestAndMerge
-	workflowPatchOnly            workflowMode = workflowRemoteBranchOnly
+	workflowDirectMain           workflowMode = workflowDirectToMain        //nolint:unused // transitional spellings stay available for canonicalization and docs
+	workflowPullRequests         workflowMode = workflowPullRequest         //nolint:unused // transitional spellings stay available for canonicalization and docs
+	workflowPR                   workflowMode = workflowPullRequest         //nolint:unused // transitional spellings stay available for canonicalization and docs
+	workflowPullRequestsAndMerge workflowMode = workflowPullRequestAndMerge //nolint:unused // transitional spellings stay available for canonicalization and docs
+	workflowPRAndMerge           workflowMode = workflowPullRequestAndMerge //nolint:unused // transitional spellings stay available for canonicalization and docs
+	workflowPatchOnly            workflowMode = workflowRemoteBranchOnly    //nolint:unused // transitional spellings stay available for canonicalization and docs
 
 	// directorMergeWorkflowMarker is the PR-body marker the director sweep reads
 	// when deciding whether a ward-owned PR may be merged automatically.
@@ -213,7 +213,7 @@ func remoteBranchOnlyCarryClause(ref agentIssueRef) string {
 }
 
 // workflowLandingPhrase names "done" for the reflection's "only after ..." opener.
-func workflowLandingPhrase(ref agentIssueRef, wf workflowMode) string {
+func workflowLandingPhrase(_ agentIssueRef, wf workflowMode) string {
 	switch wf.orDefault() {
 	case workflowDirectToMain:
 		return "the work is committed, merged to main, and pushed"
@@ -224,6 +224,6 @@ func workflowLandingPhrase(ref agentIssueRef, wf workflowMode) string {
 	case workflowRemoteBranchOnly:
 		return "the remote branch is pushed"
 	default:
-		return workflowLandingPhrase(ref, workflowDirectToMain)
+		return "the work is committed, merged to main, and pushed"
 	}
 }
