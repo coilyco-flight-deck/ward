@@ -13,7 +13,7 @@ ward lives on two forges, and which you use depends on who you are.
 
 The path for an outside contributor holding only a GitHub account:
 
-1. **File the issue on the GitHub mirror** via [New issue](https://github.com/coilyco-flight-deck/ward/issues/new/choose). That is your bug report or feature request and where discussion with you happens.
+1. **File the issue on the GitHub mirror** via the [GitHub issue-form chooser](https://github.com/coilyco-flight-deck/ward/issues/new/choose). That's your bug report or feature request and where discussion happens.
 2. **Open your PR against the GitHub mirror.** Fork, push a branch, open the PR there. You do not need - and cannot get - a Forgejo account for this.
 3. **A maintainer (or warded agent) carries an accepted change to Forgejo.** Because Forgejo is authoritative, an accepted GitHub PR is replayed onto Forgejo `main`, closing the matching Forgejo issue, and your GitHub PR is closed as merged.
 
