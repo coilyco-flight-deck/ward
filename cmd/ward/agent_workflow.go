@@ -1,7 +1,7 @@
 package main
 
 // agent_workflow.go carries the workflow-mode axis (ward#508): a run's landing
-// policy - direct-main, pull-requests, pull-requests-and-merge, or patch-only.
+// policy - direct-main, pull-request, pull-request-and-merge, or patch-only.
 
 import (
 	"fmt"
@@ -21,9 +21,9 @@ const (
 	workflowDirectToMain workflowMode = "direct-main"
 	// workflowPullRequest carries the work to a branch + pull request instead of
 	// landing on main directly; a human-gated PR is the merge gate.
-	workflowPullRequest workflowMode = "pull-requests"
+	workflowPullRequest workflowMode = "pull-request"
 	// workflowPullRequestAndMerge is the explicit director-merge lane.
-	workflowPullRequestAndMerge workflowMode = "pull-requests-and-merge"
+	workflowPullRequestAndMerge workflowMode = "pull-request-and-merge"
 	// workflowRemoteBranchOnly pushes a remote branch and stops there: no PR, no merge.
 	workflowRemoteBranchOnly workflowMode = "patch-only"
 
@@ -33,7 +33,7 @@ const (
 
 	// directorMergeWorkflowMarker is the PR-body marker the director sweep reads
 	// when deciding whether a ward-owned PR may be merged automatically.
-	directorMergeWorkflowMarker = "ward.workflow: pull-requests-and-merge"
+	directorMergeWorkflowMarker = "ward.workflow: pull-request-and-merge"
 )
 
 // orDefault collapses the "" zero value onto the default and normalizes legacy
@@ -69,15 +69,11 @@ func parseWorkflow(s string) (workflowMode, error) {
 		return workflowDirectToMain, nil
 	case "direct-to-main":
 		return warnWorkflowAlias(raw, workflowDirectToMain)
-	case string(workflowPullRequest):
+	case string(workflowPullRequest), "pull-requests":
 		return workflowPullRequest, nil
-	case "pull-request":
-		return warnWorkflowAlias(raw, workflowPullRequest)
 	case "pr":
 		return warnWorkflowAlias(raw, workflowPullRequest)
-	case string(workflowPullRequestAndMerge):
-		return workflowPullRequestAndMerge, nil
-	case "pull-request-and-merge":
+	case string(workflowPullRequestAndMerge), "pull-requests-and-merge":
 		return warnWorkflowAlias(raw, workflowPullRequestAndMerge)
 	case string(workflowRemoteBranchOnly):
 		return workflowRemoteBranchOnly, nil
@@ -95,8 +91,8 @@ func workflowFlag() cli.Flag {
 		Name:  "workflow",
 		Value: string(defaultWorkflow),
 		Usage: "landing policy for the run: " + workflowChoices() + " (default direct-main unless smart defaults override). " +
-			"direct-main merges to main and closes; pull-requests opens a pull request and stops there; pull-requests-and-merge opens a pull request and marks it director-merge eligible; patch-only pushes a remote branch and lands nothing else. " +
-			"Deprecated aliases direct-to-main/pull-request/pull-request-and-merge/remote-branch-only/pr are still accepted with warnings.",
+			"direct-main merges to main and closes; pull-request opens a pull request and stops there; pull-request-and-merge opens a pull request and marks it director-merge eligible; patch-only pushes a remote branch and lands nothing else. " +
+			"Deprecated aliases direct-to-main/pull-requests/pull-requests-and-merge/remote-branch-only/pr are still accepted with warnings.",
 	}
 }
 
@@ -113,9 +109,9 @@ func canonicalWorkflow(w workflowMode) workflowMode {
 		return defaultWorkflow
 	case string(workflowDirectToMain), "direct-to-main":
 		return workflowDirectToMain
-	case string(workflowPullRequest), "pull-request", "pr":
+	case string(workflowPullRequest), "pull-requests", "pr":
 		return workflowPullRequest
-	case string(workflowPullRequestAndMerge), "pull-request-and-merge":
+	case string(workflowPullRequestAndMerge), "pull-requests-and-merge":
 		return workflowPullRequestAndMerge
 	case string(workflowRemoteBranchOnly), "remote-branch-only":
 		return workflowRemoteBranchOnly
@@ -168,7 +164,7 @@ func pullRequestCarryClause(ref agentIssueRef) string {
 	return fmt.Sprintf(
 		"implement on a feature branch, commit, push the branch to origin, and open a pull request "+
 			"against `main` whose body carries `closes #%d`. "+
-			"%s Do NOT push to `main` directly or merge it yourself - in the `pull-requests` workflow the pull request "+
+			"%s Do NOT push to `main` directly or merge it yourself - in the `pull-request` workflow the pull request "+
 			"IS the merge gate, and the director is encouraged to merge it later if policy allows. When the PR is green, "+
 			"the engineer's final visible outcome is `WARD-OUTCOME: submitted`.",
 		ref.Number, pullRequestCIWatchClause())
@@ -186,7 +182,7 @@ func pullRequestAndMergeCarryClause(ref agentIssueRef) string {
 		ref.Number, directorMergeWorkflowMarker, pullRequestCIWatchClause())
 }
 
-// pullRequestCIWatchClause tells pull-requests workflows that opening the PR is not
+// pullRequestCIWatchClause tells pull-request workflows that opening the PR is not
 // the end. They must keep watching CI/checks and only report done once the PR is green.
 func pullRequestCIWatchClause() string {
 	return "After the PR opens, keep watching its CI/checks and fetch the status/logs if anything " +
@@ -210,7 +206,7 @@ func workflowFailureCommentClause() string {
 func remoteBranchOnlyCarryClause(ref agentIssueRef) string {
 	return fmt.Sprintf(
 		"implement on a feature branch, commit, and push the branch to origin. This `patch-only` "+
-			"workflow has no pull-requests or merge authority. do not open a pull request, do not merge to `main`, "+
+			"workflow has no pull-request or merge authority. do not open a pull request, do not merge to `main`, "+
 			"and do not write a `closes #%d` trailer - the remote branch is the only landing surface here.",
 		ref.Number)
 }

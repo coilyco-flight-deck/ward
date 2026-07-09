@@ -39,7 +39,7 @@ func TestParseWorkflow(t *testing.T) {
 	}
 	if _, err := parseWorkflow("merge-everything"); err == nil {
 		t.Fatal("parseWorkflow accepted an unknown mode")
-	} else if !strings.Contains(err.Error(), "direct-main|pull-requests|pull-requests-and-merge|patch-only") {
+	} else if !strings.Contains(err.Error(), "direct-main|pull-request|pull-request-and-merge|patch-only") {
 		t.Errorf("unknown-mode error should list the choices, got %v", err)
 	}
 }
@@ -159,10 +159,10 @@ func TestAgentSeedPromptWorkflow(t *testing.T) {
 	}
 	merge := agentSeedPromptWorkflow(ref, "reframe ward", "do it", "", true, nil, workflowPullRequestAndMerge, true, "")
 	if !strings.Contains(merge, "director-merge authorized") {
-		t.Errorf("pull-requests-and-merge seed should mark the PR as director-merge authorized\n got: %s", merge)
+		t.Errorf("pull-request-and-merge seed should mark the PR as director-merge authorized\n got: %s", merge)
 	}
 	if !strings.Contains(merge, directorMergeWorkflowMarker) {
-		t.Errorf("pull-requests-and-merge seed should carry the PR-body marker\n got: %s", merge)
+		t.Errorf("pull-request-and-merge seed should carry the PR-body marker\n got: %s", merge)
 	}
 	if !strings.Contains(merge, "workflow: <mode>; review summary: <summary or skip state>") {
 		t.Errorf("headless reflection should include the machine-readable workflow/review line\n got: %s", merge)
@@ -175,13 +175,13 @@ func TestAgentSeedPromptWorkflow(t *testing.T) {
 		t.Errorf("pull-requests-and-merge seed should carry the director merge lane\n got: %s", prMerge)
 	}
 	if !strings.Contains(prMerge, "WARD-OUTCOME: merge-ready") {
-		t.Errorf("pull-requests-and-merge reflection should end with merge-ready, not done\n got: %s", prMerge)
+		t.Errorf("pull-request-and-merge reflection should end with merge-ready, not done\n got: %s", prMerge)
 	}
 	if !strings.Contains(prMerge, "the engineer's final visible outcome is `WARD-OUTCOME: merge-ready`") {
-		t.Errorf("pull-requests-and-merge reflection should announce merge-ready before done\n got: %s", prMerge)
+		t.Errorf("pull-request-and-merge reflection should announce merge-ready before done\n got: %s", prMerge)
 	}
 	if !strings.Contains(prMerge, "skip the PR comment") {
-		t.Errorf("pull-requests-and-merge reflection should tell the worker to skip PR comments when no PR exists\n got: %s", prMerge)
+		t.Errorf("pull-request-and-merge reflection should tell the worker to skip PR comments when no PR exists\n got: %s", prMerge)
 	}
 
 	branchOnly := agentSeedPromptWorkflow(ref, "reframe ward", "do it", "", true, nil, workflowRemoteBranchOnly, true, "")
@@ -226,11 +226,11 @@ func TestWorkflowEnvAndLabels(t *testing.T) {
 		t.Errorf("patch-only plan should carry %s=patch-only, got %v", labelWorkflow, branchOnly.labels())
 	}
 	prMerge := upPlan{Role: roleEngineer, Mode: modeClaude, Repo: repo, Issue: 508, Workflow: workflowPullRequestAndMerge}
-	if got := prMerge.wardEnv()["WARD_WORKFLOW"]; got != "pull-requests-and-merge" {
-		t.Errorf("pull-requests-and-merge plan WARD_WORKFLOW = %q, want pull-requests-and-merge", got)
+	if got := prMerge.wardEnv()["WARD_WORKFLOW"]; got != "pull-request-and-merge" {
+		t.Errorf("pull-request-and-merge plan WARD_WORKFLOW = %q, want pull-request-and-merge", got)
 	}
-	if !strings.Contains(strings.Join(prMerge.labels(), " "), labelWorkflow+"=pull-requests-and-merge") {
-		t.Errorf("pull-requests-and-merge plan should carry %s=pull-requests-and-merge, got %v", labelWorkflow, prMerge.labels())
+	if !strings.Contains(strings.Join(prMerge.labels(), " "), labelWorkflow+"=pull-request-and-merge") {
+		t.Errorf("pull-request-and-merge plan should carry %s=pull-request-and-merge, got %v", labelWorkflow, prMerge.labels())
 	}
 }
 
@@ -260,7 +260,7 @@ func TestAgentWorkflowSmartDefaults(t *testing.T) {
 		t.Fatalf("agentWorkflow repo override: %v", err)
 	}
 	if wf != workflowPullRequestAndMerge {
-		t.Errorf("repo override workflow = %q, want pull-requests-and-merge", wf)
+		t.Errorf("repo override workflow = %q, want pull-request-and-merge", wf)
 	}
 
 	cli := parseCommandForTest(t, agentSurfaceFlags(), []string{"engineer", "coilyco-flight-deck/ward#1", "--workflow", "patch-only"})
