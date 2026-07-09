@@ -87,7 +87,7 @@ func (e reapEnv) repo() targetRepo { return targetRepo{Owner: e.Owner, Name: e.N
 // reapStartLine is the reaper's opening lifecycle marker (ward#517): the run
 // correlation id (container=) first, then key=value run-shape fields.
 func (e reapEnv) reapStartLine() string {
-	return fmt.Sprintf("ward container reap: start container=%s repo=%s/%s issue=%d readOnly=%t extraRepos=%d launched=%t",
+	return fmt.Sprintf("WARD-REAP: start container=%s repo=%s/%s issue=%d readOnly=%t extraRepos=%d launched=%t",
 		e.Container, e.Owner, e.Name, e.Issue, e.ReadOnly, len(e.ExtraRepos), e.Launched)
 }
 
@@ -97,11 +97,24 @@ func (e reapEnv) reservationReleasable() bool {
 	return !e.Launched && e.Issue != 0
 }
 
+func reapBoundaryReason(w workflowMode) string {
+	switch w.orDefault() {
+	case workflowDirectMain:
+		return "tree clean, HEAD on origin/main"
+	case workflowPR:
+		return "workflow pr boundary reached: branch pushed and pull request opened"
+	case workflowPatchOnly:
+		return "workflow patch-only boundary reached: patch produced and posted as a comment"
+	default:
+		return "tree clean, workflow boundary reached"
+	}
+}
+
 func containerReapCommand() *cli.Command {
 	return &cli.Command{
 		Name:   "reap",
 		Hidden: true, // ward#263: entrypoint-internal, not a hand-run verb
-		Usage:  "Salvage residual work before container teardown: land it on main if clean, else push a salvage branch and file a forgejo issue.",
+		Usage:  "Clean up residual work before container teardown: land it on main if clean, else push a salvage branch and file a Forgejo issue.",
 		Description: `reap runs once the agent exits, on every exit, as deterministic static
 code. It stages and commits anything the agent left uncommitted, integrates
 onto the latest main, and then: if the diff is clean and integrates, pushes
@@ -166,6 +179,20 @@ func (r *Runner) reapTargetTree(ctx context.Context, work string, env reapEnv, r
 		return r.reapEstablishMain(ctx, work, env, statusSnapshot, releaseReservation)
 	}
 
+	if !env.Workflow.landsOnMain() {
+		findings := scan.Diff(r.diffEntries(ctx, work, "origin/main...HEAD"))
+		if len(findings) > 0 {
+			fmt.Fprintf(os.Stderr, "ward container cleanup: --workflow %s produced a diff the junk scan rejected; preserving on a salvage branch instead of treating the workflow boundary as success\n", env.Workflow.orDefault())
+			return r.salvage(ctx, work, env, reasonScan, false, findings, statusSnapshot,
+				reapDecision{Gate: "junk scan flagged the workflow-boundary diff", ProvState: "not read (workflow hold)"})
+		}
+		fmt.Fprintf(os.Stderr, "WARD-REAP: nothing to reap (%s)\n", reapBoundaryReason(env.Workflow))
+		if releaseReservation {
+			r.releaseReservationIfUnstarted(ctx, env)
+		}
+		return nil
+	}
+
 	// Nothing to reap comes FIRST, ahead of every salvage gate: a clean tree with
 	// HEAD already in origin/main is done, not salvage (ward#518, docs/container-reap.md).
 	residual := revCount(ctx, r, work, "origin/main..HEAD")
@@ -185,19 +212,11 @@ func (r *Runner) reapTargetTree(ctx context.Context, work string, env reapEnv, r
 					reapDecision{Gate: "missing same-repo closing reference on already-landed direct-main run", ProvState: "present", Landed: false})
 			}
 		}
-		fmt.Fprintln(os.Stderr, "ward container reap: nothing to reap (tree clean, HEAD on origin/main)")
+		fmt.Fprintf(os.Stderr, "WARD-REAP: nothing to reap (%s)\n", reapBoundaryReason(env.Workflow))
 		if releaseReservation {
 			r.releaseReservationIfUnstarted(ctx, env)
 		}
 		return nil
-	}
-
-	// A pr/patch-only run is never force-landed on main by the reaper (ward#508): its
-	// residual work is preserved on a salvage branch, stopping before the main-push gates.
-	if !env.Workflow.landsOnMain() {
-		fmt.Fprintf(os.Stderr, "ward container reap: --workflow %s does not land on main; preserving residual work on a salvage branch instead of pushing main\n", env.Workflow.orDefault())
-		return r.salvage(ctx, work, env, reasonWorkflowHold, false, nil, statusSnapshot,
-			reapDecision{Gate: "workflow does not land on main (--workflow pr/patch-only)", ProvState: "not read (workflow hold)"})
 	}
 
 	prov, perr := r.readRunProvenance(work)
@@ -240,11 +259,11 @@ const gitEmptyTree = "4b825dc642cb6eb9a060e54bf8d69288fbee4904"
 func (r *Runner) reapEstablishMain(ctx context.Context, work string, env reapEnv, statusSnapshot string, releaseReservation bool) error {
 	// No origin/main to diff against, so the whole HEAD history is residual work.
 	residual := revCount(ctx, r, work, "HEAD")
-	fmt.Fprintf(os.Stderr, "ward container reap: no origin/main; establish-main candidate with %d commit(s) on HEAD\n", residual)
+	fmt.Fprintf(os.Stderr, "ward container cleanup: no origin/main; establish-main candidate with %d commit(s) on HEAD\n", residual)
 	if residual == 0 {
 		// The agent produced no landable commit (an unborn HEAD), so there is
 		// nothing to establish main from and nothing to salvage.
-		fmt.Fprintln(os.Stderr, "ward container reap: empty repo with no commits to establish main from; nothing to reap")
+		fmt.Fprintln(os.Stderr, "WARD-REAP: nothing to reap (empty repo with no commits to establish main from)")
 		if releaseReservation {
 			r.releaseReservationIfUnstarted(ctx, env)
 		}
@@ -253,9 +272,17 @@ func (r *Runner) reapEstablishMain(ctx context.Context, work string, env reapEnv
 
 	// A pr/patch-only run never lands on main, not even to establish it (ward#508).
 	if !env.Workflow.landsOnMain() {
-		fmt.Fprintf(os.Stderr, "ward container reap: --workflow %s does not land on main; preserving establish-main work on a salvage branch\n", env.Workflow.orDefault())
-		return r.salvage(ctx, work, env, reasonWorkflowHold, false, nil, statusSnapshot,
-			reapDecision{Gate: "workflow does not land on main (--workflow pr/patch-only)", ProvState: "not read (no origin/main)"})
+		findings := scan.Diff(r.diffEntries(ctx, work, gitEmptyTree+"..HEAD"))
+		if len(findings) > 0 {
+			fmt.Fprintf(os.Stderr, "ward container cleanup: --workflow %s produced a diff the junk scan rejected; preserving on a salvage branch instead of treating the workflow boundary as success\n", env.Workflow.orDefault())
+			return r.salvage(ctx, work, env, reasonScan, false, findings, statusSnapshot,
+				reapDecision{Gate: "junk scan flagged the workflow-boundary diff", ProvState: "not read (no origin/main)"})
+		}
+		fmt.Fprintf(os.Stderr, "WARD-REAP: nothing to reap (%s)\n", reapBoundaryReason(env.Workflow))
+		if releaseReservation {
+			r.releaseReservationIfUnstarted(ctx, env)
+		}
+		return nil
 	}
 
 	// Run-owned proof: the closing ref must sit in the committed history (an empty

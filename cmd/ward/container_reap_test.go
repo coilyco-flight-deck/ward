@@ -32,6 +32,7 @@ func TestReapEnvContainerCorrelation(t *testing.T) {
 	}
 	line := e.reapStartLine()
 	for _, want := range []string{
+		"WARD-REAP:",
 		"container=ward-agent-517-abc",
 		"repo=coilyco-flight-deck/ward",
 		"issue=517",
@@ -120,7 +121,7 @@ func TestUnlandedExtraReposComment(t *testing.T) {
 	}
 	got := unlandedExtraReposComment(env, reports)
 	for _, want := range []string{
-		"Reopened",                                // the headline undoing the close
+		"WARD-REAP:",                              // the headline undoing the close
 		"coilyco-flight-deck/ward",                // the issue's own repo, named
 		"coilyco-bridge/agentic-os-kai",           // the un-landed grant
 		"2 local commit(s) never reached",         // the ahead count
@@ -209,7 +210,7 @@ func TestSalvageIssueBodyFoldsDiagnostics(t *testing.T) {
 		},
 	}
 	body := salvageIssueBody(r)
-	for _, want := range []string{"## Reap diagnostics", reapDiagHeader, "v0.297.0", "FALSE salvage"} {
+	for _, want := range []string{"## Cleanup diagnostics", reapDiagHeader, "v0.297.0", "FALSE salvage"} {
 		if !strings.Contains(body, want) {
 			t.Errorf("salvage issue body missing folded diagnostic %q\n---\n%s", want, body)
 		}
@@ -217,7 +218,7 @@ func TestSalvageIssueBodyFoldsDiagnostics(t *testing.T) {
 
 	// A report with no diagnostics gathered omits the section entirely (no empty block).
 	bare := salvageIssueBody(salvageReport{Repo: r.Repo, Mode: "claude", Branch: r.Branch, Reason: reasonConflict, Base: r.Base})
-	if strings.Contains(bare, "## Reap diagnostics") {
+	if strings.Contains(bare, "## Cleanup diagnostics") {
 		t.Error("a report with no diagnostics must omit the diagnostics section")
 	}
 }
@@ -553,6 +554,47 @@ func TestReapTargetTreeLandedDirectMainWithoutCloseRefSalvages(t *testing.T) {
 	}
 }
 
+// TestReapTargetTreeWorkflowBoundaryDoesNotSalvage covers the workflow-aware clean
+// success path: pr and patch-only runs are done once they hit their own boundary.
+func TestReapTargetTreeWorkflowBoundaryDoesNotSalvage(t *testing.T) {
+	for _, tc := range []struct {
+		name     string
+		workflow workflowMode
+	}{
+		{name: "pr", workflow: workflowPR},
+		{name: "patch-only", workflow: workflowPatchOnly},
+	} {
+		t.Run(tc.name, func(t *testing.T) {
+			origin := t.TempDir()
+			runGit(t, origin, "init", "--bare", "-b", "main")
+			work := t.TempDir()
+			runGit(t, work, "init", "-b", "main")
+			runGit(t, work, "config", "user.email", "test@example.com")
+			runGit(t, work, "config", "user.name", "Test User")
+			runGitCommitAt(t, work, "2026-07-08T11:00:00Z", "base.txt", "base\n", "base")
+			runGit(t, work, "remote", "add", "origin", origin)
+			runGit(t, work, "push", "origin", "main")
+			runGit(t, work, "update-ref", "refs/remotes/origin/main", "HEAD")
+			base := mustGitRev(t, origin, "main")
+
+			runGitCommitAt(t, work, "2026-07-08T11:05:00Z", "feat.txt", "feat\n", "workflow boundary work")
+
+			r := &Runner{Runner: &shell.Runner{Resolve: shell.PathResolver}}
+			env := reapEnv{Owner: "coilyco-flight-deck", Name: "ward", Base: "https://forgejo.coilysiren.me", Mode: "codex", Issue: 724, Launched: true, Workflow: tc.workflow}
+			if err := r.reapTargetTree(t.Context(), work, env, false); err != nil {
+				t.Fatalf("reapTargetTree on a %s workflow that stopped at its boundary: %v", tc.name, err)
+			}
+			if got := mustGitRev(t, origin, "main"); got != base {
+				t.Fatalf("%s workflow boundary run must not advance main again: origin main=%s base=%s", tc.name, got, base)
+			}
+			out, _ := exec.Command("git", "-C", origin, "branch", "--list", salvageBranchPrefix+"*").CombinedOutput()
+			if strings.TrimSpace(string(out)) != "" {
+				t.Fatalf("%s workflow boundary run must not create a salvage branch, got: %q", tc.name, string(out))
+			}
+		})
+	}
+}
+
 // TestReapTargetTreeLandedWithOnlyProvenanceArtifactDoesNotSalvage covers the
 // ward#662 regression: the reaper must ignore its own provenance file.
 func TestReapTargetTreeLandedWithOnlyProvenanceArtifactDoesNotSalvage(t *testing.T) {
@@ -641,7 +683,7 @@ func TestReapTargetTreeResidualOnlyRunWithoutCloseRefSalvages(t *testing.T) {
 
 	r := &Runner{Runner: &shell.Runner{Resolve: shell.PathResolver}}
 	// Token empty: salvage preserves the branch but files no issue (logged, not fatal).
-	env := reapEnv{Owner: "coilyco-flight-deck", Name: "infrastructure", Base: "https://forgejo.coilysiren.me", Mode: "goose", Issue: 427, Launched: true}
+	env := reapEnv{Owner: "coilyco-flight-deck", Name: "infrastructure", Base: "https://forgejo.coilysiren.me", Mode: "goose", Issue: 427, Launched: true, Workflow: workflowDirectMain}
 	if err := r.reapTargetTree(t.Context(), work, env, false); err != nil {
 		t.Fatalf("reapTargetTree salvaging a close-refless residual-only run: %v", err)
 	}
@@ -1112,7 +1154,7 @@ func TestNotifySalvageCarriedIssueRepoensAndComments(t *testing.T) {
 	if f.created != 0 {
 		t.Errorf("carried salvage must NOT file a standalone issue, got created=%d", f.created)
 	}
-	for _, want := range []string{"Reopened", "ward-salvage/ward-abc123", string(reasonConflict), "git fetch", "/pulls/716"} {
+	for _, want := range []string{"WARD-REAP:", "ward-salvage/ward-abc123", string(reasonConflict), "git fetch", "/pulls/716"} {
 		if !strings.Contains(f.commentBody, want) {
 			t.Errorf("carried-issue comment missing %q\n---\n%s", want, f.commentBody)
 		}

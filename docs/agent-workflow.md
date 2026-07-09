@@ -67,10 +67,11 @@ container launches.
 - **Container env + label.** Any resolved non-`direct-main` run exports
   `WARD_WORKFLOW=<mode>` and wears a `ward.workflow=<mode>` label; `direct-main`
   omits both.
-- **The reaper.** `ward container reap` normally force-lands residual work on
-  `main` at teardown. For a `pr`/`patch-only` run it reads `WARD_WORKFLOW` and
-  **refuses to push `main`**, preserving any residual work on a `ward-salvage/<id>`
-  branch instead. See [container-reap.md](container-reap.md).
+- **The cleanup path.** `ward container reap` normally force-lands residual work
+  on `main` at teardown. For a `pr`/`patch-only` run it reads `WARD_WORKFLOW`
+  and **refuses to push `main`**, preserving any residual work on a
+  `ward-salvage/<id>` branch instead. A clean non-`direct-main` run is treated
+  as done at its own boundary. See [container-reap.md](container-reap.md).
 
 ## Rough edges (first slice)
 

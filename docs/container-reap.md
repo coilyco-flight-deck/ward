@@ -1,17 +1,17 @@
 ---
 doc_goal: Give an operator full confidence in the deterministic teardown reaper as the no-lost-work backstop - how EXIT-trap arming makes it fire on every exit path beyond the agent's reach, the ordered land-or-salvage decision (empty-repo establish-main, nothing-to-reap, closing-ref, integrate, junk-scan, push-or-salvage, grant-verify), and the PAT-rotation and auth-classification caveats - so its land-or-salvage contract is trustable rather than opaque.
 ---
-# ward container reap
+# ward container cleanup
 
 `ward container reap` is the deterministic teardown backstop for
 [`ward container`](container.md). A container is throwaway: once it goes down,
 anything not pushed is gone. The no-lost-work guarantee lives here, not in the
-agent.
+agent. User-facing logs and issue comments call this path **cleanup**.
 
 ## How it runs
 
 The entrypoint arms `reap` as a `trap ... EXIT` and does **not** `exec` the
-agent, so the reaper fires on every exit path - clean finish, crash, or Ctrl-C.
+agent, so cleanup fires on every exit path - clean finish, crash, or Ctrl-C.
 By the time it runs, the agent's permissions are out of the loop, so nothing it
 does can defeat it. It is a hidden entrypoint-called verb.
 
@@ -35,7 +35,8 @@ does can defeat it. It is a hidden entrypoint-called verb.
    already in `origin/main` is done, but a launched direct-main run still
    re-reads its dispatch provenance here to confirm the landed history carries
    the same-repo `closes #N` before reading as success. A landed run missing
-   that reference is a failed invariant, not a quiet success.
+   that reference is a failed invariant, not a quiet success. A clean
+   `pr`/`patch-only` boundary is also done, even though `main` stayed untouched.
 5. Verifies the carried issue has a same-repo closing reference (`closes`,
    `fixes`, or `resolves`) when residual work remains or the run needs the
    post-rebase push-site re-check. Missing reference means salvage, not push,

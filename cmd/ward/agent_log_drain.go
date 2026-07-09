@@ -138,7 +138,7 @@ const (
 var reapOutcomeValues = []string{
 	outcomePushedMain, // clean integration + push to main
 	outcomeSalvage,    // conflict / scan finding / rejected or auth-failed push
-	outcomeNothing,    // the tree was already clean, nothing to reap
+	outcomeNothing,    // the tree was already clean or the workflow boundary was reached
 	outcomeUnknown,    // no reaper marker matched (crash, external stop, abort)
 }
 
