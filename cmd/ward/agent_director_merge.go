@@ -70,31 +70,41 @@ func (r *Runner) runDirectorMerge(ctx context.Context, c *cli.Command) error {
 	var merged, skipped int
 	for _, repo := range repos {
 		owner, name, _ := strings.Cut(repo, "/")
-		prs, perr := prClient.listOpenPullRequests(ctx, owner, name, limit)
-		if perr != nil {
-			return fmt.Errorf("%s: %w", label, perr)
+		m, s, err := r.runDirectorMergeRepo(ctx, label, owner, name, limit, preview, prClient, issueClient)
+		if err != nil {
+			return err
 		}
-		for _, pr := range prs {
-			ok, reason, linked, meta := directorMergeEligibility(ctx, owner, name, pr, issueClient)
-			if !ok {
-				skipped++
-				_, _ = fmt.Fprintf(r.Runner.Stderr, "%s: skipping %s/%s#%d: %s\n", label, owner, name, pr.Number, reason)
-				continue
-			}
-			if preview {
-				_, _ = fmt.Fprintf(r.Runner.Stderr, "%s: would merge %s/%s#%d (issue #%d, workflow %s, review %q)\n",
-					label, owner, name, pr.Number, linked, meta.Workflow, meta.Review)
-				continue
-			}
-			if err := prClient.mergePullRequest(ctx, owner, name, pr.Number); err != nil {
-				return fmt.Errorf("%s: merge %s/%s#%d: %w", label, owner, name, pr.Number, err)
-			}
-			merged++
-			_, _ = fmt.Fprintf(r.Runner.Stderr, "%s: merged %s/%s#%d (issue #%d)\n", label, owner, name, pr.Number, linked)
-		}
+		merged += m
+		skipped += s
 	}
 	_, _ = fmt.Fprintf(r.Runner.Stdout, "%s: merged %d PR(s), skipped %d\n", label, merged, skipped)
 	return nil
+}
+
+func (r *Runner) runDirectorMergeRepo(ctx context.Context, label, owner, name string, limit int, preview bool, prClient *forgejoClient, issueClient Tracker) (merged, skipped int, err error) {
+	prs, perr := prClient.listOpenPullRequests(ctx, owner, name, limit)
+	if perr != nil {
+		return 0, 0, fmt.Errorf("%s: %w", label, perr)
+	}
+	for _, pr := range prs {
+		ok, reason, linked, meta := directorMergeEligibility(ctx, owner, name, pr, issueClient)
+		if !ok {
+			skipped++
+			_, _ = fmt.Fprintf(r.Runner.Stderr, "%s: skipping %s/%s#%d: %s\n", label, owner, name, pr.Number, reason)
+			continue
+		}
+		if preview {
+			_, _ = fmt.Fprintf(r.Runner.Stderr, "%s: would merge %s/%s#%d (issue #%d, workflow %s, review %q)\n",
+				label, owner, name, pr.Number, linked, meta.Workflow, meta.Review)
+			continue
+		}
+		if err := prClient.mergePullRequest(ctx, owner, name, pr.Number); err != nil {
+			return merged, skipped, fmt.Errorf("%s: merge %s/%s#%d: %w", label, owner, name, pr.Number, err)
+		}
+		merged++
+		_, _ = fmt.Fprintf(r.Runner.Stderr, "%s: merged %s/%s#%d (issue #%d)\n", label, owner, name, pr.Number, linked)
+	}
+	return merged, skipped, nil
 }
 
 // directorMergeEligibility returns whether pr is the narrow, ward-owned lane.

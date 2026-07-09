@@ -157,6 +157,12 @@ func (r *Runner) hostTrackerClient(ctx context.Context, t tracker, mode containe
 	switch t {
 	case trackerGitHub:
 		return r.hostGitHubClient(mode)
+	case trackerForgejo:
+		cl, err := r.hostForgejoClient(ctx)
+		if err != nil {
+			return nil, err
+		}
+		return cl.withMode(mode), nil
 	default:
 		cl, err := r.hostForgejoClient(ctx)
 		if err != nil {
@@ -164,19 +170,6 @@ func (r *Runner) hostTrackerClient(ctx context.Context, t tracker, mode containe
 		}
 		return cl.withMode(mode), nil
 	}
-}
-
-// hostForgeClient is the legacy issue-thread helper kept while callers migrate to
-// hostTrackerClient. It behaves like hostTrackerClient.
-func (r *Runner) hostForgeClient(ctx context.Context, f forge, mode containerMode) (Tracker, error) {
-	if f == forgeGitHub {
-		return r.hostGitHubClient(mode)
-	}
-	cl, err := r.hostForgejoClient(ctx)
-	if err != nil {
-		return nil, err
-	}
-	return cl.withMode(mode), nil
 }
 
 // githubTokenSource selects how the GitHub dispatch path provisions its token
