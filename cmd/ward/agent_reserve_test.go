@@ -346,12 +346,14 @@ type fakeLockForge struct {
 	comments     []string
 	listComments []issueComment
 	listErr      error
+	listCalls    int
 }
 
 func (f *fakeLockForge) getIssue(context.Context, string, string, int) (*dispatch.Issue, error) {
 	return &dispatch.Issue{}, nil
 }
 func (f *fakeLockForge) listIssueComments(context.Context, string, string, int) ([]issueComment, error) {
+	f.listCalls++
 	return f.listComments, f.listErr
 }
 func (f *fakeLockForge) createIssue(context.Context, string, string, string, string) (int, error) {
@@ -664,7 +666,7 @@ func TestReservationRecheckLost(t *testing.T) {
 	t.Run("earlier rival wins -> we yield", func(t *testing.T) {
 		reservationRecheckDelay = func() time.Duration { return time.Millisecond }
 		f := &fakeLockForge{listComments: []issueComment{ourComment, rival}}
-		lost, winner := r.reservationRecheckLost(context.Background(), f, "label", ref, container)
+		lost, winner := r.reservationRecheckLost(context.Background(), f, "label", ref, container, false)
 		if !lost {
 			t.Fatalf("expected to yield to the earlier rival, got lost=false")
 		}
@@ -677,7 +679,7 @@ func TestReservationRecheckLost(t *testing.T) {
 		reservationRecheckDelay = func() time.Duration { return time.Millisecond }
 		later := issueComment{Body: reservationCommentBody(modeClaude, container, "rival-host", now.Add(2*time.Second), "", nil), CreatedAt: now.Add(2 * time.Second)}
 		f := &fakeLockForge{listComments: []issueComment{ourComment, later}}
-		if lost, _ := r.reservationRecheckLost(context.Background(), f, "label", ref, container); lost {
+		if lost, _ := r.reservationRecheckLost(context.Background(), f, "label", ref, container, false); lost {
 			t.Errorf("earliest claim should proceed, got lost=true")
 		}
 	})
@@ -685,7 +687,7 @@ func TestReservationRecheckLost(t *testing.T) {
 	t.Run("disabled window -> proceed without reading", func(t *testing.T) {
 		reservationRecheckDelay = func() time.Duration { return 0 }
 		f := &fakeLockForge{listComments: []issueComment{rival}}
-		if lost, _ := r.reservationRecheckLost(context.Background(), f, "label", ref, container); lost {
+		if lost, _ := r.reservationRecheckLost(context.Background(), f, "label", ref, container, false); lost {
 			t.Errorf("disabled re-check should never yield, got lost=true")
 		}
 	})
@@ -693,8 +695,28 @@ func TestReservationRecheckLost(t *testing.T) {
 	t.Run("read error -> fail open", func(t *testing.T) {
 		reservationRecheckDelay = func() time.Duration { return time.Millisecond }
 		f := &fakeLockForge{listErr: errors.New("forge down")}
-		if lost, _ := r.reservationRecheckLost(context.Background(), f, "label", ref, container); lost {
+		if lost, _ := r.reservationRecheckLost(context.Background(), f, "label", ref, container, false); lost {
 			t.Errorf("a read failure must fail open, got lost=true")
+		}
+	})
+
+	t.Run("skip-preflight -> skip wait and reread", func(t *testing.T) {
+		reservationRecheckDelay = func() time.Duration {
+			t.Fatal("reservationRecheckDelay must not run when --skip-preflight is set")
+			return 0
+		}
+		f := &fakeLockForge{listComments: []issueComment{rival}}
+		got := captureTestStderr(t, func() {
+			lost, winner := r.reservationRecheckLost(context.Background(), f, "label", ref, container, true)
+			if lost || winner != "" {
+				t.Fatalf("skip-preflight recheck = lost=%v winner=%q, want false/empty", lost, winner)
+			}
+		})
+		if f.listCalls != 0 {
+			t.Fatalf("skip-preflight recheck reread thread %d times, want 0", f.listCalls)
+		}
+		if !strings.Contains(got, "skipping reservation re-check (--skip-preflight)") {
+			t.Fatalf("skip-preflight recheck log missing skip line:\n%s", got)
 		}
 	})
 }

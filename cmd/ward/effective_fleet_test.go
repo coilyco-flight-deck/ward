@@ -7,6 +7,21 @@ import (
 	"testing"
 )
 
+func TestFrontierAgentDefaultsAreKeyedAndComplete(t *testing.T) {
+	for _, name := range frontierAgentNames() {
+		a, ok := frontierAgentDefaults[name]
+		if !ok {
+			t.Fatalf("frontier defaults missing %q", name)
+		}
+		if a.Name != name {
+			t.Errorf("frontier defaults[%q].Name = %q", name, a.Name)
+		}
+		if a.Binary == "" || len(a.Argv.Headless) == 0 || a.Argv.Headless[0] != a.Binary {
+			t.Errorf("frontier defaults[%q] is not a complete launch shape: %+v", name, a)
+		}
+	}
+}
+
 func writeFleetBundle(t *testing.T, dir, body string) {
 	t.Helper()
 	if err := os.WriteFile(filepath.Join(dir, bundleFleetKDLPath), []byte(body), 0o644); err != nil {

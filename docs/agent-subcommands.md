@@ -52,7 +52,9 @@ in both ref and freeform mode: freeform files the issue first, then gives the
 same GO / NO-GO read before detaching. A NO-GO comments on the just-filed issue and
 launches nothing, leaving a real issue a human can pick up or re-dispatch with
 `engineer ... --skip-preflight`. It honors the same skips (`--print`,
-`--skip-preflight` / `--no-preflight`, no terminal). ROUTE's live survey *is* its
+`--skip-preflight` / `--no-preflight`, no terminal), and `--skip-preflight` also
+cuts the launch-adjacent reservation re-check, update reminder, and network/image
+pre-start probes before the container starts. ROUTE's live survey *is* its
 feasibility gate, so ROUTE skips the pre-flight.
 
 ## Reaper backstop
