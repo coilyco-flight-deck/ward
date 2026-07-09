@@ -38,6 +38,8 @@ brew install coilyco-flight-deck/tap/ward
 
 The explicit-URL form is required because the tap lives on forgejo, not github.com. The formula installs `ward` (stamped with the release tag) plus the `warded` symlink, and nothing else. The `ward-kdl` authoring binary is **not** installed - its surfaces are already embedded in `ward`. Spec authors who need `ward-kdl` build it from a ward checkout - see [ward-kdl-authoring.md](docs/ward-kdl-authoring.md).
 
+**Building from source.** ward's `go.mod` pins [cli-guard][cli-guard] from `forgejo.coilysiren.me/coilyco-flight-deck/cli-guard`, so a plain `go build` needs that Forgejo host reachable and the repo public. For local development, `make workspace` resolves cli-guard from a sibling checkout through a gitignored `go.work`; see [docs/workspace.md](docs/workspace.md).
+
 Each release ships the full `ward-{darwin,linux}-{amd64,arm64}` matrix + `SHA256SUMS`. Most install via Homebrew (above); a GitHub arrival grabs a checksummed binary ([release-binaries.md](docs/release-binaries.md)).
 
 **Releases live on Forgejo.** This repo is canonical on [forgejo.coilysiren.me/coilyco-flight-deck/ward](https://forgejo.coilysiren.me/coilyco-flight-deck/ward); the github.com [Releases page](https://github.com/coilyco-flight-deck/ward/releases) mirrors the same tags and checksums; changelog on Forgejo.
