@@ -2,8 +2,11 @@ package main
 
 import (
 	"bytes"
+	"context"
 	"os"
+	"os/exec"
 	"path/filepath"
+	"runtime"
 	"strings"
 	"testing"
 
@@ -256,6 +259,52 @@ func TestWriteReviewSummaryHandoff(t *testing.T) {
 	}
 	if !strings.Contains(string(got), "blocked: no runnable reviewer") {
 		t.Fatalf("handoff file = %q", got)
+	}
+}
+
+func TestReviewerRunnerIncludesStderrDetail(t *testing.T) {
+	binDir := t.TempDir()
+	src := filepath.Join(binDir, "codexmain.go")
+	binName := "codex"
+	if runtime.GOOS == "windows" {
+		binName += ".exe"
+	}
+	binPath := filepath.Join(binDir, binName)
+	program := `package main
+
+import (
+	"fmt"
+	"os"
+)
+
+func main() {
+	fmt.Fprintln(os.Stderr, "auth smoke test: codex credentials missing")
+	os.Exit(1)
+}
+`
+	if err := os.WriteFile(src, []byte(program), 0o600); err != nil {
+		t.Fatalf("write helper source: %v", err)
+	}
+	cmd := exec.Command("go", "build", "-o", binPath, src)
+	cmd.Dir = binDir
+	cmd.Env = os.Environ()
+	if out, err := cmd.CombinedOutput(); err != nil {
+		t.Fatalf("build helper binary: %v\n%s", err, out)
+	}
+	t.Setenv("PATH", binDir+string(os.PathListSeparator)+os.Getenv("PATH"))
+
+	var stderr bytes.Buffer
+	r := &Runner{Runner: &shell.Runner{Stderr: &stderr}}
+	run := r.reviewerRunner(context.Background())
+	_, err := run(reviewpanel.Reviewer{Family: "codex"}, "prompt body")
+	if err == nil {
+		t.Fatal("reviewerRunner should fail for the helper binary")
+	}
+	if !strings.Contains(err.Error(), "auth smoke test: codex credentials missing") {
+		t.Fatalf("error %q missing captured stderr detail", err)
+	}
+	if !strings.Contains(stderr.String(), "auth smoke test: codex credentials missing") {
+		t.Fatalf("stderr sink %q missing helper stderr", stderr.String())
 	}
 }
 

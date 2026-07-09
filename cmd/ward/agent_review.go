@@ -1,9 +1,11 @@
 package main
 
 import (
+	"bytes"
 	"context"
 	"encoding/json"
 	"fmt"
+	"io"
 	"os"
 	"os/exec"
 	"path/filepath"
@@ -346,8 +348,22 @@ func (r *Runner) reviewerRunner(ctx context.Context) reviewpanel.RunFunc {
 		argv := append(append([]string{}, rec.Argv.Headless...), prompt)
 		rctx, cancel := context.WithTimeout(ctx, reviewerTimeoutDefault())
 		defer cancel()
+		var stderr bytes.Buffer
+		prevStderr := r.Runner.Stderr
+		if prevStderr == nil {
+			prevStderr = io.Discard
+		}
+		r.Runner.Stderr = io.MultiWriter(prevStderr, &stderr)
+		defer func() { r.Runner.Stderr = prevStderr }()
 		out, err := r.Runner.Capture(rctx, argv[0], argv[1:]...)
 		if err != nil {
+			detail := strings.TrimSpace(stderr.String())
+			if detail == "" {
+				detail = strings.TrimSpace(string(out))
+			}
+			if detail != "" {
+				return string(out), fmt.Errorf("%s: %w: %s", rv.Family, err, truncateLine(detail, 400))
+			}
 			return string(out), fmt.Errorf("%s: %w", rv.Family, err)
 		}
 		return string(out), nil
