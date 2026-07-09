@@ -310,24 +310,15 @@ func (r *Runner) runAgentBacklog(ctx context.Context, c *cli.Command, mode conta
 		print:        c.Bool("print"),
 		triage:       c.Bool("triage") && !c.Bool("no-triage"),
 		dispatch: dispatchEngineer{
-			harness:     engDriver,
-			image:       c.String("image"),
-			tag:         c.String("tag"),
-			wardVersion: strings.TrimSpace(c.String("ward-version")),
-			wardVersionSource: func() string {
-				v := strings.TrimSpace(c.String("ward-version"))
-				if v == "" || v == "dev" {
-					return wardVersionSourceLatest
-				}
-				if c.IsSet("ward-version") {
-					return wardVersionSourceExplicit
-				}
-				return wardVersionSourceHost
-			}(),
-			aws:       c.Bool("aws"),
-			hostNet:   hostNet,
-			tsSidecar: tsSidecar,
-			force:     c.Bool("force"),
+			harness:           engDriver,
+			image:             c.String("image"),
+			tag:               c.String("tag"),
+			wardVersion:       strings.TrimSpace(c.String("ward-version")),
+			wardVersionSource: resolveWardVersionSource(c, c.String("ward-version")),
+			aws:               c.Bool("aws"),
+			hostNet:           hostNet,
+			tsSidecar:         tsSidecar,
+			force:             c.Bool("force"),
 		},
 		wardSource: strings.TrimSpace(c.String("ward-source")),
 		noPull:     c.Bool("no-pull"),

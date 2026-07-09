@@ -10,6 +10,8 @@ import (
 	"regexp"
 	"sort"
 	"strings"
+
+	"github.com/urfave/cli/v3"
 )
 
 const (
@@ -506,6 +508,19 @@ func wardVersionLaunchLabel(version, source string) string {
 		return wardVersionSourceLatest
 	}
 	return wardVersionSourceHost + " " + version
+}
+
+// resolveWardVersionSource classifies the resolved version for startup logs and
+// child-engineer forwarding.
+func resolveWardVersionSource(c *cli.Command, version string) string {
+	version = strings.TrimSpace(version)
+	if version == "" || version == "dev" {
+		return wardVersionSourceLatest
+	}
+	if c.IsSet("ward-version") {
+		return wardVersionSourceExplicit
+	}
+	return wardVersionSourceHost
 }
 
 // extraRepoLogLine describes one repo that ended up in the merged grant set.
