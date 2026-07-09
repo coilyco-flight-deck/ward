@@ -102,11 +102,11 @@ func reapBoundaryReason(w workflowMode) string {
 	case workflowDirectMain:
 		return "tree clean, HEAD on origin/main"
 	case workflowPR:
-		return "workflow pr boundary reached: branch pushed and pull request opened"
+		return "workflow pr boundary reached: branch pushed, pull request open, and required CI checks are green"
 	case workflowPullRequests:
-		return "workflow pr boundary reached: branch pushed and pull request opened"
+		return "workflow pr boundary reached: branch pushed, pull request open, and required CI checks are green"
 	case workflowPRAndMerge:
-		return "workflow pull-requests-and-merge boundary reached: branch pushed and pull request opened"
+		return "workflow pull-requests-and-merge boundary reached: branch pushed, pull request open, and required CI checks are green"
 	case workflowPatchOnly:
 		return "workflow patch-only boundary reached: patch produced and posted as a comment"
 	default:
