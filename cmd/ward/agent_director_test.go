@@ -610,6 +610,30 @@ func TestParseBacklogOutcome(t *testing.T) {
 			wantText:   "merged and pushed",
 		},
 		{
+			name:       "submitted leading line",
+			comments:   []issueComment{{Body: "WARD-OUTCOME: submitted - PR opened, waiting for human merge\n\nfelt calm", CreatedAt: at("2026-06-25T10:00:00Z")}},
+			wantStatus: "submitted",
+			wantText:   "PR opened, waiting for human merge",
+		},
+		{
+			name:       "merge-ready leading line",
+			comments:   []issueComment{{Body: "WARD-OUTCOME: merge-ready - review passed, handoff to director\n\nfelt calm", CreatedAt: at("2026-06-25T10:00:00Z")}},
+			wantStatus: "merge-ready",
+			wantText:   "review passed, handoff to director",
+		},
+		{
+			name:       "pending aliases to submitted",
+			comments:   []issueComment{{Body: "WARD-OUTCOME: pending - PR opened, waiting for human merge\n\nfelt calm", CreatedAt: at("2026-06-25T10:00:00Z")}},
+			wantStatus: "submitted",
+			wantText:   "PR opened, waiting for human merge",
+		},
+		{
+			name:       "ready-for-merge aliases to merge-ready",
+			comments:   []issueComment{{Body: "WARD-OUTCOME: ready-for-merge - review passed, handoff to director\n\nfelt calm", CreatedAt: at("2026-06-25T10:00:00Z")}},
+			wantStatus: "merge-ready",
+			wantText:   "review passed, handoff to director",
+		},
+		{
 			name:       "bare emoji line",
 			comments:   []issueComment{{Body: "WARD-OUTCOME: done ✅\n\n<details><summary>details</summary>\n\nmerged and pushed\n\n</details>", CreatedAt: at("2026-06-25T10:00:00Z")}},
 			wantStatus: "done",
@@ -658,11 +682,15 @@ func TestParseBacklogOutcome(t *testing.T) {
 
 func TestBacklogOutcomeState(t *testing.T) {
 	cases := map[string]string{
-		"done":    "done",
-		"failed":  "failed",
-		"blocked": "blocked",
-		"unknown": "blocked", // unrecognized parks as blocked
-		"weird":   "blocked",
+		"done":            "done",
+		"failed":          "failed",
+		"blocked":         "blocked",
+		"submitted":       "submitted",
+		"merge-ready":     "merge-ready",
+		"pending":         "submitted",
+		"ready-for-merge": "merge-ready",
+		"unknown":         "blocked", // unrecognized parks as blocked
+		"weird":           "blocked",
 	}
 	for in, want := range cases {
 		if got := backlogOutcomeState(in); got != want {

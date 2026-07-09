@@ -41,6 +41,11 @@ func (r *Runner) directorMergeEligiblePullRequests(ctx context.Context, label st
 					label, owner, name, pr.Number, linked, meta.Workflow, meta.Review, err)
 				continue
 			}
+			if err := recordDirectorMergeDone(ctx, issueClient, owner, name, linked, pr.Number, meta); err != nil {
+				fmt.Fprintf(os.Stderr, "%s: merged %s/%s#%d for issue #%d but could not record done: %v\n",
+					label, owner, name, pr.Number, linked, err)
+				continue
+			}
 			fmt.Fprintf(os.Stderr, "%s: merged eligible PR %s/%s#%d for issue #%d\n", label, owner, name, pr.Number, linked)
 		}
 	}

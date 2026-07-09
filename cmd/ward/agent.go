@@ -187,6 +187,7 @@ func reviewGateDisabledByTemporaryDefault(role string) bool {
 // headlessReflection is the headless run's closing "how it felt" retro led by a
 // WARD-OUTCOME line; its landing phrase is workflow-aware (ward#281, ward#508).
 func headlessReflection(ref agentIssueRef, wf workflowMode, reviewGate bool, reviewSkip string) string {
+	outcomeStatus := workflowOutcomeStatus(wf)
 	reviewLine := "If a review ran, read `~/.ward/review-summary.txt` and copy its exact one-line summary into the same final comment."
 	if !reviewGate {
 		reviewLine = "The in-container review gate was intentionally skipped"
@@ -198,7 +199,7 @@ func headlessReflection(ref agentIssueRef, wf workflowMode, reviewGate bool, rev
 	return "Finally, as your very last step - only after " + workflowLandingPhrase(ref, wf) + " - post one hypercurt " +
 		"comment on this issue. The only visible text before the collapsed block is a single machine-readable " +
 		"status line - its very first visible line, exactly one of:\n" +
-		"  `" + wardOutcomeMarker + " done ✅`\n" +
+		"  `" + wardOutcomeMarker + " " + outcomeStatus + "`\n" +
 		"  `" + wardOutcomeMarker + " blocked 🛑`\n" +
 		"  `" + wardOutcomeMarker + " failed ❌`\n" +
 		"Put every other word inside one collapsed `<details><summary>details</summary>` block: the review " +
@@ -206,7 +207,7 @@ func headlessReflection(ref agentIssueRef, wf workflowMode, reviewGate bool, rev
 		"the short candid retrospective on how the implementation \"felt\", confidence, surprises, and follow-ups. Do not leave " +
 		"any visible prose outside that first status line. " + reviewLine + " " + headlessWorkflowFailureCommentClause(wf) + " A supervising director loop " +
 		"(ward agent director) reads only that first line to classify the run, so for a normal run that completed " +
-		"its workflow it is `" + wardOutcomeMarker + " done`. Reserve blocked/failed for a run that genuinely could not land."
+		"its workflow it is `" + wardOutcomeMarker + " " + outcomeStatus + "`. Reserve blocked/failed for a run that genuinely could not land."
 }
 
 func headlessWorkflowFailureCommentClause(wf workflowMode) string {
@@ -234,15 +235,15 @@ func reviewGateClause(wf workflowMode) string {
 	var workflowTail string
 	switch mode := string(canonicalWorkflow(wf.orDefault())); mode {
 	case string(workflowDirectToMain):
-		workflowTail = "For `direct-to-main` workflows, landing means merging to `main`. Do not stop before the merge lands."
+		workflowTail = "For `direct-main` workflows, landing means merging to `main`. Do not stop before the merge lands."
 	case string(workflowPullRequest):
-		workflowTail = "For `pull-request` workflows, opening the pull request is not a stopping point. Keep watching the PR checks after it opens. A failing check is not done: fetch the logs/status, patch the branch, push the update, and repeat until the PR is green or the failure is genuinely blocked."
+		workflowTail = "For `pull-requests` workflows, opening the pull request is not a stopping point. Keep watching the PR checks after it opens. A failing check is not done: fetch the logs/status, patch the branch, push the update, and repeat until the PR is green or the failure is genuinely blocked."
 	case string(workflowPullRequestAndMerge):
-		workflowTail = "For `pull-request-and-merge` workflows, opening the pull request is not a stopping point. Keep watching the PR checks and merge status after it opens. A failing check is not done: fetch the logs/status, patch the branch, push the update, and repeat until the PR is green and merged or the failure is genuinely blocked."
+		workflowTail = "For `pull-requests-and-merge` workflows, opening the pull request is not a stopping point. Keep watching the PR checks and merge status after it opens. A failing check is not done: fetch the logs/status, patch the branch, push the update, and repeat until the PR is green and merged or the failure is genuinely blocked."
 	case string(workflowRemoteBranchOnly):
-		workflowTail = "For `remote-branch-only` workflows, the remote branch push is the finish line. Do not open a pull request and do not merge."
+		workflowTail = "For `patch-only` workflows, the remote branch push is the finish line. Do not open a pull request and do not merge."
 	default:
-		workflowTail = "For `pull-request` workflows, opening the pull request is not a stopping point. Keep watching the PR checks after it opens. A failing check is not done: fetch the logs/status, patch the branch, push the update, and repeat until the PR is green or the failure is genuinely blocked."
+		workflowTail = "For `pull-requests` workflows, opening the pull request is not a stopping point. Keep watching the PR checks after it opens. A failing check is not done: fetch the logs/status, patch the branch, push the update, and repeat until the PR is green or the failure is genuinely blocked."
 	}
 	return fmt.Sprintf(
 		"REVIEW GATE (ward#134): before you land this change (%s), and ONLY after CI is green, run the "+
@@ -300,7 +301,7 @@ func forgeDisplayName(f forge) string {
 	return "Forgejo"
 }
 
-// agentSeedPrompt seeds a direct-to-main run (the default): a thin wrapper over
+// agentSeedPrompt seeds a direct-main run (the default): a thin wrapper over
 // agentSeedPromptWorkflow so legacy callers stay byte-for-byte (ward#405, ward#508).
 func agentSeedPrompt(ref agentIssueRef, title, body, details string, headless bool, extra []targetRepo) string {
 	return agentSeedPromptWorkflow(ref, title, body, details, headless, extra, defaultWorkflow, true, "")

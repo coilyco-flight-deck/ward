@@ -173,7 +173,7 @@ func (r *Runner) hostTrackerClient(ctx context.Context, t tracker, mode containe
 }
 
 // githubTokenSource selects how the GitHub dispatch path provisions its token
-// (ward#533): env (the publishable default), gh, or app. See docs/agent-github.md.
+// (ward#533): env, gh, or app. See docs/agent-github.md.
 type githubTokenSource int
 
 const (
@@ -196,8 +196,8 @@ func (s githubTokenSource) String() string {
 	}
 }
 
-// parseGitHubTokenSource maps a WARD_GITHUB_TOKEN_SOURCE value to a source (empty is
-// the env default); an unrecognized value is a hard error, never a silent fall-through.
+// parseGitHubTokenSource maps a WARD_GITHUB_TOKEN_SOURCE value to a source;
+// an unrecognized value is a hard error, never a silent fall-through.
 func parseGitHubTokenSource(s string) (githubTokenSource, error) {
 	switch strings.ToLower(strings.TrimSpace(s)) {
 	case "", "env":
@@ -212,12 +212,25 @@ func parseGitHubTokenSource(s string) (githubTokenSource, error) {
 	}
 }
 
+// defaultGitHubTokenSource picks the fleet default when WARD_GITHUB_TOKEN_SOURCE is
+// unset: prefer the bot-backed App path once its provisioning env is present, else env.
+func defaultGitHubTokenSource() githubTokenSource {
+	if strings.TrimSpace(os.Getenv(envGitHubAppID)) != "" && strings.TrimSpace(os.Getenv(envGitHubAppKeySSM)) != "" {
+		return githubTokenApp
+	}
+	return githubTokenEnv
+}
+
 // resolveGitHubToken provisions the GitHub token for clone/push + `gh`, dispatching on
 // WARD_GITHUB_TOKEN_SOURCE; owner/repo scope the app arm (ward#489/533/534).
 func (r *Runner) resolveGitHubToken(ctx context.Context, owner, repo string) (string, error) {
-	src, err := parseGitHubTokenSource(os.Getenv("WARD_GITHUB_TOKEN_SOURCE"))
+	raw := os.Getenv("WARD_GITHUB_TOKEN_SOURCE")
+	src, err := parseGitHubTokenSource(raw)
 	if err != nil {
 		return "", err
+	}
+	if strings.TrimSpace(raw) == "" {
+		src = defaultGitHubTokenSource()
 	}
 	switch src {
 	case githubTokenGH:

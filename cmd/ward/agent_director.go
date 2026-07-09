@@ -76,8 +76,8 @@ type backlogOutcome struct {
 	Text   string `yaml:"text"`
 }
 
-// backlogEntry is one tracked issue in a repo's ledger: its ranked metadata plus
-// the loop state it moves through (queued -> dispatched -> done/blocked/failed).
+// backlogEntry is one tracked issue in a repo's ledger.
+// It moves through queued -> dispatched -> done/submitted/merge-ready/blocked/failed.
 type backlogEntry struct {
 	Num          int             `yaml:"num"`
 	Kind         string          `yaml:"kind,omitempty"`
@@ -741,7 +741,7 @@ func dropClosedBacklogEntries(led *backlogLedger, seen map[int]bool) {
 
 // backlogOutcomeRE parses the status + optional status emoji + reason that
 // follow the WARD-OUTCOME marker.
-var backlogOutcomeRE = regexp.MustCompile(`(?i)^(done|blocked|failed)\b(?:\s+[✅🛑❌])?[\s:.\-]*(.*)`)
+var backlogOutcomeRE = regexp.MustCompile(`(?i)^(done|submitted|merge-ready|pending|ready-for-merge|blocked|failed)\b(?:\s+[✅🛑❌])?[\s:.\-]*(.*)`)
 
 // parseBacklogOutcome classifies the latest comment leading with WARD-OUTCOME,
 // nil when none. Ports backlog-loop.py's parse_outcome.
@@ -839,23 +839,38 @@ func backlogOutcomeOfComment(body string) (backlogOutcome, bool) {
 	rest := strings.TrimSpace(line[len(wardOutcomeMarker):])
 	o := backlogOutcome{Status: "unknown", Text: rest}
 	if m := backlogOutcomeRE.FindStringSubmatch(rest); m != nil {
-		o.Status = strings.ToLower(m[1])
+		o.Status = normalizeBacklogOutcomeStatus(strings.ToLower(m[1]))
 		o.Text = strings.TrimSpace(m[2])
 	}
 	o.Text = backlogTruncate(o.Text, 500)
 	return o, true
 }
 
+func normalizeBacklogOutcomeStatus(status string) string {
+	switch strings.TrimSpace(strings.ToLower(status)) {
+	case "pending":
+		return "submitted"
+	case "ready-for-merge":
+		return "merge-ready"
+	default:
+		return strings.TrimSpace(strings.ToLower(status))
+	}
+}
+
 // backlogOutcomeState maps a parsed outcome status to the ledger state it lands in;
 // an unrecognized status parks as blocked (a human should look). Ports poll_repo.
 func backlogOutcomeState(status string) string {
-	switch status {
+	switch normalizeBacklogOutcomeStatus(status) {
 	case "done":
 		return "done"
 	case "failed":
 		return "failed"
 	case "blocked":
 		return "blocked"
+	case "submitted":
+		return "submitted"
+	case "merge-ready":
+		return "merge-ready"
 	default:
 		return "blocked"
 	}
