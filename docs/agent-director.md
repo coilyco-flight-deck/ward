@@ -32,7 +32,7 @@ An opt-in asked **once at init**, never per tick. `--dry-run`/`--print` skip it.
 6. **Dispatch** the chosen set via the engineer (`agent.<mode>.engineer`).
 7. **Sleep** `--poll-interval`, **no LLM held open**.
 
-Only the **headless** lane auto-dispatches; interactive issues are surfaced. The merge sweep is narrow and policy-bound. See [agent-director-pr-merge.md](agent-director-pr-merge.md).
+Only the **headless** lane auto-dispatches; interactive issues surface.
 
 ## The WARD-OUTCOME marker
 
