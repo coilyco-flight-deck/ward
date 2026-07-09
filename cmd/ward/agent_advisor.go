@@ -73,8 +73,13 @@ func agentAdvisorCommand() *cli.Command {
 func (r *Runner) runAgentAdvisor(ctx context.Context, c *cli.Command, mode containerMode) error {
 	arg := strings.TrimSpace(c.Args().First())
 	if _, err := parseAgentIssueRef(arg); err == nil {
-		if forwarded, ferr := r.maybeForwardAgentDispatchToHostBroker(ctx, c, "advisor", mode); forwarded {
-			return ferr
+		if addr := strings.TrimSpace(os.Getenv(envDispatchBrokerAddr)); addr != "" && os.Getenv("WARD_READONLY") == "1" {
+			go func() {
+				if forwarded, ferr := r.maybeForwardAgentDispatchToHostBroker(context.WithoutCancel(ctx), c, "advisor", mode); forwarded && ferr != nil {
+					fmt.Fprintf(os.Stderr, "ward agent advisor: dispatch broker forward failed: %v\n", ferr)
+				}
+			}()
+			return nil
 		}
 		return r.runAgentReply(ctx, c, mode)
 	}
