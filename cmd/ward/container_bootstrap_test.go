@@ -179,7 +179,7 @@ func TestReadBootstrapEnvDefaults(t *testing.T) {
 		"WARD_QWEN_MODEL", "WARD_OLLAMA_URL", "WARD_GIT_NAME", "WARD_GIT_EMAIL",
 		"WARD_CODEX_MODEL", "WARD_CODEX_REASONING_EFFORT", "WARD_CODEX_VERBOSITY",
 		"WARD_AGENT_UID", "WARD_AGENT_GID", "WARD_AGENT_HOME", "WARD_BRANCH",
-		"WARD_ROLE",
+		"WARD_ROLE", "WARD_TS_SOCKS5",
 		"WARD_HEADLESS", "WARD_ASK", "WARD_MIRROR_NAME", "WARD_SUBSTRATE_SKIP",
 	} {
 		t.Setenv(k, "")
@@ -234,6 +234,36 @@ func TestReadBootstrapEnvDefaults(t *testing.T) {
 	}
 }
 
+// echoRunContextGo should name whether the ward version came from a host ward
+// default, an explicit pin, or latest resolution so startup logs are actionable.
+func TestEchoRunContextGoVersionSource(t *testing.T) {
+	prev := os.Stderr
+	r, w, _ := os.Pipe()
+	os.Stderr = w
+	t.Cleanup(func() { os.Stderr = prev })
+
+	done := make(chan string, 1)
+	go func() {
+		var out strings.Builder
+		_, _ = io.Copy(&out, r)
+		done <- out.String()
+	}()
+
+	echoRunContextGo(bootstrapEnv{
+		TargetOwner:       "coilyco-flight-deck",
+		TargetName:        "ward",
+		Container:         "ward-container",
+		Mode:              "claude",
+		Agent:             "claude",
+		WardVersionSource: wardVersionLaunchLabel("v0.16.0", wardVersionSourceExplicit),
+	}, []string{"task"})
+	_ = w.Close()
+	got := <-done
+	if !strings.Contains(got, "ward:     explicit pin v0.16.0") {
+		t.Fatalf("explicit pin should be visible in run context; got:\n%s", got)
+	}
+}
+
 // Claude onboarding + creds and codex creds/config drained to their agent
 // folders in ward#425 Phase 3; their tests live there now (internal/agents/*).
 
@@ -273,6 +303,182 @@ func gitURL(t *testing.T, work, flag string) string {
 		t.Fatalf("git remote get-url %s: %v\n%s", flag, err, out)
 	}
 	return strings.TrimSpace(string(out))
+}
+
+func gitText(t *testing.T, dir string, argv ...string) string {
+	t.Helper()
+	out, err := exec.Command("git", append([]string{"-C", dir}, argv...)...).CombinedOutput()
+	if err != nil {
+		t.Fatalf("git %v failed: %v\n%s", argv, err, out)
+	}
+	return strings.TrimSpace(string(out))
+}
+
+func seedBranchResumeRepo(t *testing.T, cloneBase, name string) (string, string) {
+	t.Helper()
+	const owner = "owner"
+	const branch = "issue-735"
+	seed := t.TempDir()
+	runGit(t, seed, "init", "-b", "main", "-q")
+	runGit(t, seed, "config", "user.name", "Ward Test")
+	runGit(t, seed, "config", "user.email", "ward@example.com")
+	runGitCommitAt(t, seed, "2026-07-09T00:00:00Z", "main.txt", "main\n", "main commit")
+	mainRev := mustGitRev(t, seed, "HEAD")
+	branchRev := mainRev
+	if branch != "" {
+		runGit(t, seed, "checkout", "-b", branch)
+		runGitCommitAt(t, seed, "2026-07-09T00:01:00Z", "branch.txt", branch+"\n", "branch commit")
+		branchRev = mustGitRev(t, seed, "HEAD")
+		runGit(t, seed, "checkout", "main")
+	}
+	remote := filepath.Join(cloneBase, owner, name+".git")
+	if err := os.MkdirAll(filepath.Dir(remote), 0o755); err != nil {
+		t.Fatal(err)
+	}
+	runGit(t, t.TempDir(), "clone", "--bare", seed, remote)
+	return mainRev, branchRev
+}
+
+func useTestWorkspaceRoot(t *testing.T) string {
+	t.Helper()
+	old := workspaceRoot
+	root := t.TempDir()
+	workspaceRoot = root
+	t.Cleanup(func() { workspaceRoot = old })
+	return root
+}
+
+func TestCloneTargetResumesExistingOriginBranch(t *testing.T) {
+	if _, err := exec.LookPath("git"); err != nil {
+		t.Skip("git not on PATH")
+	}
+	r := gitRunner()
+	workspace := useTestWorkspaceRoot(t)
+	cloneBase := t.TempDir()
+	gitCache := t.TempDir()
+	name := "target-branch-resume"
+	branch := "issue-735"
+	mainRev, branchRev := seedBranchResumeRepo(t, cloneBase, name)
+
+	work, err := r.cloneTarget(context.Background(), bootstrapEnv{
+		TargetOwner: "owner",
+		TargetName:  name,
+		ForgejoBase: "https://forgejo.example",
+		CloneBase:   cloneBase,
+		GitCache:    gitCache,
+		MirrorName:  "mirror.git",
+		Branch:      branch,
+	})
+	if err != nil {
+		t.Fatalf("cloneTarget: %v", err)
+	}
+	if got := mustGitRev(t, work, "HEAD"); got != branchRev {
+		t.Fatalf("HEAD = %s, want resumed branch rev %s", got, branchRev)
+	}
+	if got := gitText(t, work, "rev-parse", "--abbrev-ref", "HEAD"); got != branch {
+		t.Fatalf("current branch = %q, want %q", got, branch)
+	}
+	if got := mustGitRev(t, work, "origin/"+branch); got != branchRev {
+		t.Fatalf("origin/%s = %s, want %s", branch, got, branchRev)
+	}
+	if got := mustGitRev(t, work, "origin/main"); got != mainRev {
+		t.Fatalf("origin/main = %s, want %s", got, mainRev)
+	}
+	if got := work; got != filepath.Join(workspace, name) {
+		t.Fatalf("work dir = %q, want %q", got, filepath.Join(workspace, name))
+	}
+}
+
+func TestCloneTargetStartsFromBaseWhenOriginBranchMissing(t *testing.T) {
+	if _, err := exec.LookPath("git"); err != nil {
+		t.Skip("git not on PATH")
+	}
+	r := gitRunner()
+	useTestWorkspaceRoot(t)
+	cloneBase := t.TempDir()
+	gitCache := t.TempDir()
+	name := "target-branch-base"
+	mainRev, _ := seedBranchResumeRepo(t, cloneBase, name)
+
+	work, err := r.cloneTarget(context.Background(), bootstrapEnv{
+		TargetOwner: "owner",
+		TargetName:  name,
+		ForgejoBase: "https://forgejo.example",
+		CloneBase:   cloneBase,
+		GitCache:    gitCache,
+		MirrorName:  "mirror.git",
+		Branch:      "issue-999",
+	})
+	if err != nil {
+		t.Fatalf("cloneTarget: %v", err)
+	}
+	if got := mustGitRev(t, work, "HEAD"); got != mainRev {
+		t.Fatalf("HEAD = %s, want base rev %s", got, mainRev)
+	}
+	if got := gitText(t, work, "rev-parse", "--abbrev-ref", "HEAD"); got != "issue-999" {
+		t.Fatalf("current branch = %q, want %q", got, "issue-999")
+	}
+}
+
+func TestCloneExtraRepoResumesExistingOriginBranch(t *testing.T) {
+	if _, err := exec.LookPath("git"); err != nil {
+		t.Skip("git not on PATH")
+	}
+	r := gitRunner()
+	useTestWorkspaceRoot(t)
+	cloneBase := t.TempDir()
+	gitCache := t.TempDir()
+	name := "extra-branch-resume"
+	branch := "issue-735"
+	mainRev, branchRev := seedBranchResumeRepo(t, cloneBase, name)
+
+	r.cloneExtraRepo(context.Background(), bootstrapEnv{
+		ForgejoBase: "https://forgejo.example",
+		CloneBase:   cloneBase,
+		GitCache:    gitCache,
+		Branch:      branch,
+	}, targetRepo{Owner: "owner", Name: name}, false, "")
+
+	work := filepath.Join(workspaceRoot, name)
+	if got := mustGitRev(t, work, "HEAD"); got != branchRev {
+		t.Fatalf("HEAD = %s, want resumed branch rev %s", got, branchRev)
+	}
+	if got := gitText(t, work, "rev-parse", "--abbrev-ref", "HEAD"); got != branch {
+		t.Fatalf("current branch = %q, want %q", got, branch)
+	}
+	if got := mustGitRev(t, work, "origin/"+branch); got != branchRev {
+		t.Fatalf("origin/%s = %s, want %s", branch, got, branchRev)
+	}
+	if got := mustGitRev(t, work, "origin/main"); got != mainRev {
+		t.Fatalf("origin/main = %s, want %s", got, mainRev)
+	}
+}
+
+func TestCloneExtraRepoStartsFromBaseWhenOriginBranchMissing(t *testing.T) {
+	if _, err := exec.LookPath("git"); err != nil {
+		t.Skip("git not on PATH")
+	}
+	r := gitRunner()
+	useTestWorkspaceRoot(t)
+	cloneBase := t.TempDir()
+	gitCache := t.TempDir()
+	name := "extra-branch-base"
+	mainRev, _ := seedBranchResumeRepo(t, cloneBase, name)
+
+	r.cloneExtraRepo(context.Background(), bootstrapEnv{
+		ForgejoBase: "https://forgejo.example",
+		CloneBase:   cloneBase,
+		GitCache:    gitCache,
+		Branch:      "issue-999",
+	}, targetRepo{Owner: "owner", Name: name}, false, "")
+
+	work := filepath.Join(workspaceRoot, name)
+	if got := mustGitRev(t, work, "HEAD"); got != mainRev {
+		t.Fatalf("HEAD = %s, want base rev %s", got, mainRev)
+	}
+	if got := gitText(t, work, "rev-parse", "--abbrev-ref", "HEAD"); got != "issue-999" {
+		t.Fatalf("current branch = %q, want %q", got, "issue-999")
+	}
 }
 
 // TestInstallReadOnlyPushGuard covers ward#299: a read-only session lands the
@@ -448,6 +654,83 @@ func TestWriteForgejoGitCredentialHelper(t *testing.T) {
 		if _, err := os.Stat(lock); !os.IsNotExist(err) {
 			t.Fatalf("helper %s created lock file %s (err=%v)", action, lock, err)
 		}
+	}
+}
+
+// TestWriteTailnetSSHHelper covers the proxy-aware ssh helper contract.
+func TestWriteTailnetSSHHelper(t *testing.T) {
+	tmp := t.TempDir()
+	helper := filepath.Join(tmp, "ward-ssh")
+	if err := writeTailnetSSHHelper(helper, "mac-proxy:1055"); err != nil {
+		t.Fatalf("write helper: %v", err)
+	}
+	if fi, err := os.Stat(helper); err != nil {
+		t.Fatalf("helper missing: %v", err)
+	} else if fi.Mode()&0o111 == 0 {
+		t.Fatalf("helper is not executable: %v", fi.Mode())
+	}
+	body, err := os.ReadFile(helper)
+	if err != nil {
+		t.Fatalf("read helper: %v", err)
+	}
+	for _, want := range []string{
+		"dest=${1:?usage: ward-ssh <host> [command...]}",
+		"dest=\"kai@$dest\"",
+		"command -v socat >/dev/null 2>&1",
+		"ProxyCommand=socat --experimental - SOCKS5-CONNECT:$proxy_addr:%h:%p",
+	} {
+		if !strings.Contains(string(body), want) {
+			t.Fatalf("helper missing %q:\n%s", want, body)
+		}
+	}
+}
+
+// TestTailnetSSHHelperSmoke exercises the helper end to end with fake ssh and socat.
+func TestTailnetSSHHelperSmoke(t *testing.T) {
+	tmp := t.TempDir()
+	binDir := filepath.Join(tmp, "bin")
+	if err := os.MkdirAll(binDir, 0o755); err != nil {
+		t.Fatalf("mkdir bin: %v", err)
+	}
+	helper := filepath.Join(tmp, "ward-ssh")
+	if err := writeTailnetSSHHelper(helper, "mac-proxy:1055"); err != nil {
+		t.Fatalf("write helper: %v", err)
+	}
+	fakeSSH := filepath.Join(binDir, "ssh")
+	if err := os.WriteFile(fakeSSH, []byte("#!/bin/sh\nprintf '%s\n' \"$@\" > \"$SSH_ARGV_LOG\"\n"), 0o755); err != nil {
+		t.Fatalf("write fake ssh: %v", err)
+	}
+	fakeSocat := filepath.Join(binDir, "socat")
+	if err := os.WriteFile(fakeSocat, []byte("#!/bin/sh\nexit 0\n"), 0o755); err != nil {
+		t.Fatalf("write fake socat: %v", err)
+	}
+	t.Setenv("PATH", binDir+string(os.PathListSeparator)+os.Getenv("PATH"))
+
+	run := func(dest string) []string {
+		sshLog := filepath.Join(tmp, "ssh-"+strings.ReplaceAll(dest, "@", "-at-")+".txt")
+		t.Setenv("SSH_ARGV_LOG", sshLog)
+		cmd := exec.Command(helper, dest, "hostname")
+		out, err := cmd.CombinedOutput()
+		if err != nil {
+			t.Fatalf("helper run %q: %v\n%s", dest, err, out)
+		}
+		got, err := os.ReadFile(sshLog)
+		if err != nil {
+			t.Fatalf("read ssh argv %q: %v", dest, err)
+		}
+		return splitNonEmpty(string(got))
+	}
+	want := []string{
+		"-o",
+		"ProxyCommand=socat --experimental - SOCKS5-CONNECT:mac-proxy:1055:%h:%p",
+		"kai@kai-server",
+		"hostname",
+	}
+	if got := run("kai-server"); !slices.Equal(got, want) {
+		t.Fatalf("ssh argv for bare host = %#v, want %#v", got, want)
+	}
+	if got := run("kai@kai-server"); !slices.Equal(got, want) {
+		t.Fatalf("ssh argv for explicit user = %#v, want %#v", got, want)
 	}
 }
 

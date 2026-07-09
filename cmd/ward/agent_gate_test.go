@@ -23,6 +23,7 @@ func gateRunner(stdin string) (*Runner, *bytes.Buffer) {
 func TestRenderScratchGateContents(t *testing.T) {
 	p := sampleUpPlan()
 	p.ReadOnly = true
+	p.WardVersionSource = wardVersionSourceExplicit
 	p.ExtraRepos = []targetRepo{{Owner: "coilyco-flight-deck", Name: "cli-guard"}}
 	var b bytes.Buffer
 	renderScratchGate(&b, newScratchGateStatus(p, true, false, "v0.16.0", ""))
@@ -32,7 +33,7 @@ func TestRenderScratchGateContents(t *testing.T) {
 		"coilyco-gaming/eco-app",        // repo slug
 		"claude (claude)",               // agent binary (mode)
 		p.Image,                         // resolved image
-		"v0.16.0",                       // ward version pin
+		"explicit pin v0.16.0",          // ward version pin
 		"coilyco-flight-deck/cli-guard", // --with-repo grant
 		"Press Enter to launch",         // action prompt
 	} {
@@ -65,6 +66,26 @@ func TestNewScratchGateStatusVersionFallback(t *testing.T) {
 		if !strings.Contains(s.wardVersion, "latest") {
 			t.Errorf("ward version %q should fall back to a latest note; got %q", pin, s.wardVersion)
 		}
+	}
+}
+
+// A host-default ward version prints as host ward, while an explicit pin prints as
+// an explicit pin so the startup log is unambiguous.
+func TestRenderScratchGateVersionSources(t *testing.T) {
+	var hostBuf, pinBuf bytes.Buffer
+	hostPlan := sampleUpPlan()
+	hostPlan.WardVersionSource = wardVersionSourceHost
+	renderScratchGate(&hostBuf, newScratchGateStatus(hostPlan, false, false, "v0.16.0", ""))
+
+	pinPlan := sampleUpPlan()
+	pinPlan.WardVersionSource = wardVersionSourceExplicit
+	renderScratchGate(&pinBuf, newScratchGateStatus(pinPlan, false, false, "v0.16.0", ""))
+
+	if !strings.Contains(hostBuf.String(), "host ward v0.16.0") {
+		t.Fatalf("host-default ward version should say host ward; got:\n%s", hostBuf.String())
+	}
+	if !strings.Contains(pinBuf.String(), "explicit pin v0.16.0") {
+		t.Fatalf("explicit pin should say explicit pin; got:\n%s", pinBuf.String())
 	}
 }
 

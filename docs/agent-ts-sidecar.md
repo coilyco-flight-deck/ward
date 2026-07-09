@@ -74,6 +74,22 @@ calls **auto-route** to the tower with no per-client config.
 The explicit per-request proxy path stays valid, `WARD_TS_SOCKS5` +
 `WARD_TOWER_OLLAMA` are plain: `curl --proxy "$WARD_TS_SOCKS5" "$WARD_TOWER_OLLAMA/api/tags"`.
 
+## SSH a Kai host through the proxy
+
+When `WARD_TS_SOCKS5` is present and `socat` is installed, ward drops a
+`ward-ssh` helper into `/usr/local/bin`. It keeps the proxy plumbing out of the
+command line and bakes the required `socat --experimental - SOCKS5-CONNECT`
+shape in for you:
+
+```bash
+ward-ssh kai-server hostname
+ward-ssh kai@kai-server hostname
+```
+
+`kai-*` hosts default to `kai` when the user is omitted. The helper just standardizes
+the transport, so a tower host can still reject port 22 if its ACL or service
+path is not open yet.
+
 ## Use it
 
 The sidecar is no longer a separate flag: it is one value of `--tailnet-mode`,

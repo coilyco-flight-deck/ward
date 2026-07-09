@@ -45,16 +45,17 @@ func wardDowngradeGuard(resolved, host string, allow bool) error {
 // scratchGateStatus is the compact pre-flight summary the gate renders before the
 // alt-screen TUI takes the terminal - the facts printScratchPlan already knows.
 type scratchGateStatus struct {
-	access      string   // read-only | writable
-	repo        string   // owner/repo slug
-	mode        string   // --harness value (claude/codex/opencode/goose)
-	agentBinary string   // the in-container binary the mode launches
-	image       string   // resolved docker image
-	wardVersion string   // the ward release the container will run
-	withRepos   []string // --with-repo grants landed alongside the primary repo
-	behind      bool     // the host ward binary is behind the latest release
-	current     string   // the host ward version
-	latest      string   // the latest ward release tag
+	access            string   // read-only | writable
+	repo              string   // owner/repo slug
+	mode              string   // --harness value (claude/codex/opencode/goose)
+	agentBinary       string   // the in-container binary the mode launches
+	image             string   // resolved docker image
+	wardVersion       string   // the ward release the container will run
+	wardVersionSource string   // how the ward version resolved (explicit pin, host ward, latest)
+	withRepos         []string // --with-repo grants landed alongside the primary repo
+	behind            bool     // the host ward binary is behind the latest release
+	current           string   // the host ward version
+	latest            string   // the latest ward release tag
 }
 
 // newScratchGateStatus distills a resolved plan into the gate's status facts;
@@ -75,16 +76,17 @@ func newScratchGateStatus(p upPlan, readOnly, behind bool, current, latest strin
 		extras = append(extras, e.slug())
 	}
 	return scratchGateStatus{
-		access:      access,
-		repo:        p.Repo.slug(),
-		mode:        string(p.Mode),
-		agentBinary: lookupAgent(p.Mode).Record().Binary,
-		image:       p.Image,
-		wardVersion: wv,
-		withRepos:   extras,
-		behind:      behind,
-		current:     current,
-		latest:      latest,
+		access:            access,
+		repo:              p.Repo.slug(),
+		mode:              string(p.Mode),
+		agentBinary:       lookupAgent(p.Mode).Record().Binary,
+		image:             p.Image,
+		wardVersion:       wv,
+		wardVersionSource: p.WardVersionSource,
+		withRepos:         extras,
+		behind:            behind,
+		current:           current,
+		latest:            latest,
 	}
 }
 
@@ -97,7 +99,7 @@ func renderScratchGate(w io.Writer, s scratchGateStatus) {
 	writef(&b, "  repo:     %s\n", s.repo)
 	writef(&b, "  agent:    %s (%s)\n", s.agentBinary, s.mode)
 	writef(&b, "  image:    %s\n", s.image)
-	writef(&b, "  ward:     %s\n", s.wardVersion)
+	writef(&b, "  ward:     %s\n", wardVersionLaunchLabel(s.wardVersion, s.wardVersionSource))
 	if len(s.withRepos) > 0 {
 		writef(&b, "  with:     %s\n", strings.Join(s.withRepos, ", "))
 	}

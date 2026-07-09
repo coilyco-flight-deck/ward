@@ -44,6 +44,7 @@ Opt-in mounts (off unless the flag is set):
 - **ward checkout -> `/opt/ward-src`** (ro) - `--ward-source`; build ward from source. Sets `WARD_FROM_SOURCE`.
 - **agent-log drain -> `/opt/ward-agent-logs`** (ro) - the director's redacted log read ([agent-surface-log-read.md](agent-surface-log-read.md)).
 - **read-only ward-kdl helper -> `/usr/local/bin/ward-kdl-read`** (best-effort, read-only director sessions only) - the non-mutating ssh-through-docker check helper.
+- **tailnet SSH helper -> `/usr/local/bin/ward-ssh`** (best-effort, only when `WARD_TS_SOCKS5` and `socat` are present) - the proxy-aware SSH helper that bakes `socat --experimental - SOCKS5-CONNECT:<proxy>:<port>:%h:%p` into a short `ward-ssh <host> [command...]` wrapper.
 - **`/var/run/docker.sock`** (rw) - the surface dispatch path ([agent-surface.md](agent-surface.md)).
 
 ## What the entrypoint produces
