@@ -3,10 +3,10 @@ doc_goal: Explain the in-container code-review gate - where it runs, why the wor
 ---
 # ward agent: the code-review gate ([ward#134](https://forgejo.coilysiren.me/coilyco-flight-deck/ward/issues/134))
 
-At N concurrent [engineers](agent-engineer.md) the operator is the merge bottleneck,
-because the PR is the only review gate. The panel moves verification off the human's
-step: a worker's diff must survive a code-review pass **in the container, after green
-CI and before the PR opens**, so the operator only sees diffs the panel could not settle.
+At N concurrent [engineers](agent-engineer.md) the operator is the merge bottleneck.
+The panel moves verification off the human's step: a worker's diff must survive a
+code-review pass **in the container, after green CI and before the PR opens**, so
+only unsolved diffs reach them.
 
 The gate is `CI green AND quorum >= threshold`, and **fails closed**: a panel error,
 timeout, or empty vote blocks the landing. The summary of that review must also
@@ -19,14 +19,16 @@ for every headless landing run (not `patch-only`, which lands nothing). After CI
 green and before it opens the PR or merges, the worker runs it and reads the machine
 line on stdout - `WARD-REVIEW: pass` (land), `block` (do not land; post the verdicts
 and close `WARD-OUTCOME: blocked`), or `advisory` (only if no reviewer can run at
-all, and the host converts that to a fail-closed block). `--skip-review` drops the
-clause from the seed, `--skip-preflight` does the same because the pre-flight and
-review are the same one-shot escape hatch, and `--no-review-gate` / `--no-preflight`
-stay accepted as aliases. Config defaults use `agent.review.skip` ([agent-flags.md]).
+all, and the host converts that to a fail-closed block). For `pr` runs, opening the
+pull request is not the finish line. The worker keeps watching the PR checks and
+loops on failures until they are green or genuinely blocked. `--skip-review` drops
+the clause from the seed, `--skip-preflight` does the same because the pre-flight
+and review are the same one-shot escape hatch, and `--no-review-gate` /
+`--no-preflight` stay accepted as aliases. Config defaults use `agent.review.skip`
+([agent-flags.md]).
 
-Running **in-container** beats a separate cloud pass: the reviewers see the **live
-worktree**, so they run the exact failing test against the same filesystem state the
-worker produced, sharing one clone + CI artifacts across all three agents.
+Running **in-container** keeps the reviewers on the **live worktree**, against the
+same filesystem state and CI artifacts the worker produced.
 
 ## Worker-first default
 

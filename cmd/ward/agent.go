@@ -182,6 +182,9 @@ func reviewGateClause(ref agentIssueRef, wf workflowMode) string {
 			"  - `WARD-REVIEW: advisory ...` -> only if the gate had no runnable reviewer at all. Treat that as a "+
 			"block, not a pass, and write the skip/availability summary into the conclusion comment so the issue shows "+
 			"why the review could not run. `ward agent review` writes the exact one-line review summary to `~/.ward/review-summary.txt`; copy that line verbatim into the same conclusion comment.\n"+
+			"For `pr` workflows, opening the pull request is not a stopping point. Keep watching the PR checks after "+
+			"it opens. A failing check is not done: fetch the logs/status, patch the branch, push the update, and "+
+			"repeat until the PR is green or the failure is genuinely blocked.\n"+
 			"The gate's exit code mirrors the verdict (non-zero on block), so a shell `&&` also enforces it. Do "+
 			"not skip it, and do not land on a block. If the review was intentionally skipped via `--skip-review`, "+
 			"`--skip-preflight`, or config, the final `WARD-OUTCOME` comment must say so explicitly.",

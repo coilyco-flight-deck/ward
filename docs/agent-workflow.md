@@ -30,8 +30,8 @@ and a `ward.workflow` label, and is read by the reaper.
   forge decides, so the two collapse there.
 - **`pr`** *(default)* - carry the work to a **branch and a pull request** instead of landing
   on `main` directly. The PR is the merge gate; a human or a follow-up loop lands
-  it. The seed tells the agent to push the branch and open the PR, and **not** to
-  push `main`.
+  it. The seed tells the agent to push the branch and open the PR, **keep watching
+  the PR checks until they are green**, and **not** to push `main`.
 - **`patch-only`** - the run has **no landing authority**: it commits locally but
   produces a **patch** (`git format-patch origin/main --stdout`) and posts it in a
   comment for a human to review and apply. It neither pushes `main` nor opens a
@@ -63,7 +63,8 @@ container launches.
 - **Seed prompt / done-condition.** The carry clause and the closing
   retrospective's "only after ..." landing phrase both shift with the mode, so a
   `patch-only` run is never told to merge to `main`, and a `pr` run is never told
-  to push it. See [agent.md](agent.md) for the seed shape.
+  to push it without also keeping the PR checks green. See [agent.md](agent.md)
+  for the seed shape.
 - **Container env + label.** Any resolved non-`direct-main` run exports
   `WARD_WORKFLOW=<mode>` and wears a `ward.workflow=<mode>` label; `direct-main`
   omits both.

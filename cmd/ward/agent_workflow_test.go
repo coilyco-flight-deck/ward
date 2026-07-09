@@ -63,7 +63,7 @@ func TestWorkflowCarryClauseDirectMain(t *testing.T) {
 // merge-to-main fast path) and keeps GitHub's native branch+PR flow (ward#508).
 func TestWorkflowCarryClausePR(t *testing.T) {
 	fj := workflowCarryClause(agentIssueRef{Owner: "o", Repo: "r", Number: 12}, workflowPR)
-	for _, want := range []string{"pull request", "closes #12", "Do NOT push to `main` directly"} {
+	for _, want := range []string{"pull request", "closes #12", "keep watching its CI/checks", "failing check is not done", "Do NOT push to `main` directly"} {
 		if !strings.Contains(fj, want) {
 			t.Errorf("pr Forgejo carry clause missing %q\n got: %s", want, fj)
 		}
@@ -102,8 +102,14 @@ func TestAgentSeedPromptWorkflow(t *testing.T) {
 	if !strings.Contains(pr, "pull request") || strings.Contains(pr, "merge to main, push - and close") {
 		t.Errorf("pr seed should carry a PR clause, not the merge-to-main fast path\n got: %s", pr)
 	}
-	if !strings.Contains(pr, "the branch is pushed and the pull request opened") {
-		t.Errorf("pr reflection should name the branch+PR landing\n got: %s", pr)
+	for _, want := range []string{
+		"the branch is pushed, the pull request opened, and the required CI checks are green",
+		"Keep watching the PR checks after it opens",
+		"A failing check is not done",
+	} {
+		if !strings.Contains(pr, want) {
+			t.Errorf("pr seed missing %q\n got: %s", want, pr)
+		}
 	}
 	if workflowCarryClause(ref, "") != workflowCarryClause(ref, workflowPR) {
 		t.Error("empty workflow should resolve to the PR carry clause")

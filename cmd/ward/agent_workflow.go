@@ -121,8 +121,10 @@ func prWorkflowCarryClause(ref agentIssueRef) string {
 	}
 	return fmt.Sprintf(
 		"implement on a feature branch, commit, push the branch to origin, and open a pull request "+
-			"against `main` whose body carries `closes #%d`. Do NOT push to `main` directly or merge it "+
-			"yourself - in the `pr` workflow the pull request IS the merge gate, landed by a human or a "+
+			"against `main` whose body carries `closes #%d`. After the PR opens, keep watching its CI/checks. "+
+			"A failing check is not done: fetch the logs/status, patch the branch, push the update, and repeat "+
+			"until the PR is green or the failure is genuinely blocked. Do NOT push to `main` directly or merge "+
+			"it yourself - in the `pr` workflow the pull request IS the merge gate, landed by a human or a "+
 			"follow-up loop, not by you.",
 		ref.Number)
 }
@@ -145,16 +147,16 @@ func workflowLandingPhrase(ref agentIssueRef, wf workflowMode) string {
 	switch wf.orDefault() {
 	case workflowDirectMain:
 		if ref.Forge == forgeGitHub {
-			return "the branch is pushed and the pull request opened"
+			return "the branch is pushed, the pull request opened, and the required CI checks are green"
 		}
 		return "the work is committed, merged to main, and pushed"
 	case workflowPR:
-		return "the branch is pushed and the pull request opened"
+		return "the branch is pushed, the pull request opened, and the required CI checks are green"
 	case workflowPatchOnly:
 		return "the patch is produced and posted as a comment"
 	default:
 		if ref.Forge == forgeGitHub {
-			return "the branch is pushed and the pull request opened"
+			return "the branch is pushed, the pull request opened, and the required CI checks are green"
 		}
 		return "the work is committed, merged to main, and pushed"
 	}

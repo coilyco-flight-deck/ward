@@ -132,6 +132,12 @@ func TestReviewGateClauseInSeed(t *testing.T) {
 	if strings.Contains(patch, "REVIEW GATE") {
 		t.Errorf("patch-only lands nothing; it must not carry the review gate")
 	}
+	if !strings.Contains(direct, "For `pr` workflows, opening the pull request is not a stopping point") {
+		t.Errorf("review gate clause must tell pr runs to keep watching PR CI\n got: %s", direct)
+	}
+	if !strings.Contains(direct, "A failing check is not done") {
+		t.Errorf("review gate clause must tell pr runs to loop on failed checks\n got: %s", direct)
+	}
 
 	off := agentSeedPromptWorkflow(ref, "t", "b", "", true, nil, workflowDirectMain, false, "")
 	if strings.Contains(off, "REVIEW GATE") {
