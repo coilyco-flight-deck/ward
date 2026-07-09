@@ -234,6 +234,36 @@ func TestReadBootstrapEnvDefaults(t *testing.T) {
 	}
 }
 
+// echoRunContextGo should name whether the ward version came from a host ward
+// default, an explicit pin, or latest resolution so startup logs are actionable.
+func TestEchoRunContextGoVersionSource(t *testing.T) {
+	prev := os.Stderr
+	r, w, _ := os.Pipe()
+	os.Stderr = w
+	t.Cleanup(func() { os.Stderr = prev })
+
+	done := make(chan string, 1)
+	go func() {
+		var out strings.Builder
+		_, _ = io.Copy(&out, r)
+		done <- out.String()
+	}()
+
+	echoRunContextGo(bootstrapEnv{
+		TargetOwner:       "coilyco-flight-deck",
+		TargetName:        "ward",
+		Container:         "ward-container",
+		Mode:              "claude",
+		Agent:             "claude",
+		WardVersionSource: wardVersionLaunchLabel("v0.16.0", wardVersionSourceExplicit),
+	}, []string{"task"})
+	_ = w.Close()
+	got := <-done
+	if !strings.Contains(got, "ward:     explicit pin v0.16.0") {
+		t.Fatalf("explicit pin should be visible in run context; got:\n%s", got)
+	}
+}
+
 // Claude onboarding + creds and codex creds/config drained to their agent
 // folders in ward#425 Phase 3; their tests live there now (internal/agents/*).
 

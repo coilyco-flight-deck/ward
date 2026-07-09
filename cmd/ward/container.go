@@ -120,8 +120,15 @@ func buildUpPlan(c *cli.Command, repo targetRepo, mode containerMode, role, cwd,
 	// The container downloads this host's ward version by default; --ward-version
 	// (env WARD_AGENT_VERSION) overrides it to pin a known-good release (ward#312).
 	wardVersion := Version
+	wardVersionSource := wardVersionSourceHost
 	if v := strings.TrimSpace(c.String("ward-version")); v != "" {
 		wardVersion = v
+		if c.IsSet("ward-version") {
+			wardVersionSource = wardVersionSourceExplicit
+		}
+	}
+	if wardVersion == "" || wardVersion == "dev" {
+		wardVersionSource = wardVersionSourceLatest
 	}
 	// A pin behind this host ships an older in-container reaper - the last line against
 	// lost/false-salvaged work - so refuse the downgrade unless opted in (ward#529).
@@ -170,28 +177,29 @@ func buildUpPlan(c *cli.Command, repo targetRepo, mode containerMode, role, cwd,
 	// containers use a short dictatable id suffix instead of the machine id.
 	machine := randHex()
 	return upPlan{
-		Image:          imageRef(c.String("image"), c.String("tag")),
-		Name:           containerRoleName(role, mode, repo, 0, containerNameSuffix(role, machine)),
-		Role:           role,
-		ConfigRole:     role,
-		Machine:        machine,
-		Repo:           repo,
-		Mode:           mode,
-		Branch:         c.String("branch"),
-		ForgejoBase:    forgejoBaseURL,
-		HostCwd:        cwd,
-		AWSHome:        awsHome,
-		Mounts:         leastAccessMounts(cwd, mountOpts{AssetsDir: assetsDir, AWSHome: awsHome, WardSource: wardSrc, AgentLogsDir: agentLogs}),
-		Interactive:    !c.Bool("detach"),
-		TTY:            !c.Bool("detach") && terminalAttached(),
-		WardVersion:    wardVersion,
-		WardFromSource: wardSrc != "",
-		AgentArgs:      agentArgs,
-		ExtraRepos:     extra,
-		HostNet:        hostNet,
-		TSSidecar:      tsSidecar,
-		SkipPreflight:  c.Bool("skip-preflight") || c.Bool("no-preflight"),
-		ConfigEnv:      configEnv,
+		Image:             imageRef(c.String("image"), c.String("tag")),
+		Name:              containerRoleName(role, mode, repo, 0, containerNameSuffix(role, machine)),
+		Role:              role,
+		ConfigRole:        role,
+		Machine:           machine,
+		Repo:              repo,
+		Mode:              mode,
+		Branch:            c.String("branch"),
+		ForgejoBase:       forgejoBaseURL,
+		HostCwd:           cwd,
+		AWSHome:           awsHome,
+		Mounts:            leastAccessMounts(cwd, mountOpts{AssetsDir: assetsDir, AWSHome: awsHome, WardSource: wardSrc, AgentLogsDir: agentLogs}),
+		Interactive:       !c.Bool("detach"),
+		TTY:               !c.Bool("detach") && terminalAttached(),
+		WardVersion:       wardVersion,
+		WardVersionSource: wardVersionSource,
+		WardFromSource:    wardSrc != "",
+		AgentArgs:         agentArgs,
+		ExtraRepos:        extra,
+		HostNet:           hostNet,
+		TSSidecar:         tsSidecar,
+		SkipPreflight:     c.Bool("skip-preflight") || c.Bool("no-preflight"),
+		ConfigEnv:         configEnv,
 	}, nil
 }
 

@@ -63,8 +63,9 @@ type bootstrapEnv struct {
 	Ask        bool
 	// ReadOnly is the read-only surface session (WARD_READONLY, ward#293): revoke
 	// the push credential, compose the restriction. See docs/agent-surface.md.
-	ReadOnly    bool
-	ForgejoHost string
+	ReadOnly          bool
+	WardVersionSource string
+	ForgejoHost       string
 	// Forge is the TARGET repo's host (ward#489): GitHub clones off CloneBase as
 	// x-access-token, else Forgejo + coilyco-ops. CloneBase defaults to ForgejoBase.
 	Forge     forge
@@ -183,17 +184,18 @@ func readBootstrapEnv() (bootstrapEnv, error) {
 		ClaudeEffort: envOr("WARD_CLAUDE_REASONING_EFFORT", firstNonEmpty(claudeOv.ReasoningEffort, claude.ReasoningEffort)),
 		// Bot attribution: email is the load-bearing Forgejo match (ward#245); both
 		// default from the fleet manifest's defaults.attribution.
-		GitUserName:  envOr("WARD_GIT_NAME", attribution.Name),
-		GitUserEmail: envOr("WARD_GIT_EMAIL", attribution.Email),
-		Role:         role,
-		AgentUID:     envOr("WARD_AGENT_UID", "1000"),
-		AgentGID:     envOr("WARD_AGENT_GID", "1000"),
-		AgentHome:    envOr("WARD_AGENT_HOME", "/home/ubuntu"),
-		MirrorName:   os.Getenv("WARD_MIRROR_NAME"),
-		Branch:       os.Getenv("WARD_BRANCH"),
-		Headless:     os.Getenv("WARD_HEADLESS") == "1",
-		Ask:          os.Getenv("WARD_ASK") == "1",
-		ReadOnly:     os.Getenv("WARD_READONLY") == "1",
+		GitUserName:       envOr("WARD_GIT_NAME", attribution.Name),
+		GitUserEmail:      envOr("WARD_GIT_EMAIL", attribution.Email),
+		Role:              role,
+		AgentUID:          envOr("WARD_AGENT_UID", "1000"),
+		AgentGID:          envOr("WARD_AGENT_GID", "1000"),
+		AgentHome:         envOr("WARD_AGENT_HOME", "/home/ubuntu"),
+		MirrorName:        os.Getenv("WARD_MIRROR_NAME"),
+		Branch:            os.Getenv("WARD_BRANCH"),
+		Headless:          os.Getenv("WARD_HEADLESS") == "1",
+		Ask:               os.Getenv("WARD_ASK") == "1",
+		ReadOnly:          os.Getenv("WARD_READONLY") == "1",
+		WardVersionSource: envOr(envAgentVersionSource, ""),
 
 		SubstrateSeed:     envOr("WARD_SUBSTRATE_SEED", "/opt/substrate-seed"),
 		SubstrateDest:     envOr("WARD_SUBSTRATE_DEST", "/substrate"),
@@ -284,7 +286,7 @@ func echoRunContextGo(e bootstrapEnv, agentArgs []string) {
 		e.TargetOwner, e.TargetName, ref, orDefaultLabel(e.Branch, "(default)"),
 		e.Mode, e.Agent, orDefaultLabel(e.Container, "(unnamed)"),
 		orDefaultLabel(os.Getenv("WARD_WORKFLOW"), "direct-to-main"),
-		orDefaultLabel(os.Getenv("WARD_VERSION"), "(latest, resolved in-container)"),
+		orDefaultLabel(e.WardVersionSource, wardVersionLaunchLabel(os.Getenv("WARD_VERSION"), "")),
 		orDefaultLabel(os.Getenv("WARD_CONTAINER_UP"), "(unset)"), seed)
 }
 
