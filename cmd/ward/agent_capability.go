@@ -7,7 +7,7 @@ import (
 	"github.com/urfave/cli/v3"
 )
 
-// agent_capability.go resolves a startup role's host/cloud capability from the
+// agent_capability.go resolves a startup role's host/cloud reach from the
 // embedded fleet config's per-role guardfile sets (ward#578). See docs/agent-flags.md.
 
 // Well-known capability guardfile names a role's set can hold; ward binds each to

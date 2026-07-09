@@ -37,6 +37,7 @@ New to ward? Read [architecture.md](architecture.md) first - it frames the whole
 - [first-run.md](first-run.md) - zero to a verifiable first `warded` dry run: prerequisites, install/verify, a safe `--print` first command.
 - [agent.md](agent.md) - the entrypoint to the ephemeral container that carries a feature.
 - [agent-subcommands.md](agent-subcommands.md) - how the roles differ (what they do, attachment, scope).
+- [agent-role-capabilities.md](agent-role-capabilities.md) - the semantic role vocabulary and default presets.
 - [agent-roster.md](agent-roster.md) - the generated role roster.
 - [agent-reap.md](agent-reap.md) - `ward agent reap`, the host-side idle-killer for wedged engineer containers.
 - [agent-stop.md](agent-stop.md) - `ward agent stop`, the director-surface on-demand engineer stop through the dispatch broker.
