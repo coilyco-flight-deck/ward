@@ -93,11 +93,11 @@ This first slice is deliberately minimal:
 - `patch-only` is enforced at the **prompt + reaper** layer, not the credential
   layer: the container still carries a push-capable token. Hard credential scoping
   (a read-only token) is the deferred "read-only credential hardening".
-- A `pull-requests`/`patch-only` run's residual local commits are preserved
+- A `pull-request`/`remote-branch-only` run's residual local commits are preserved
   on a salvage branch by the reaper. When Forgejo PRs are available, the reaper
   also opens a PR for the salvage branch and links it from the salvage comment.
 - `pull-requests` runs keep watching PR CI/checks after the PR opens, so
-  `WARD-OUTCOME: submitted` follows green checks or a genuine block. `pull-requests-and-merge`
+  `WARD-OUTCOME: submitted` marks the PR boundary instead of `done`. `pull-requests-and-merge`
   reports `WARD-OUTCOME: merge-ready`, then waits for the director merge sweep to
   verify the PR is still mergeable, confirm the live required status checks on the
   current head SHA, land it, and record the final `done` outcome.

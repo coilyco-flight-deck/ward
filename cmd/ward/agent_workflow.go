@@ -170,7 +170,7 @@ func pullRequestCarryClause(ref agentIssueRef) string {
 			"against `main` whose body carries `closes #%d`. "+
 			"%s Do NOT push to `main` directly or merge it yourself - in the `pull-requests` workflow the pull request "+
 			"IS the merge gate, and the director is encouraged to merge it later if policy allows. When the PR is green, "+
-			"the engineer's final visible outcome is `WARD-OUTCOME: submitted`.",
+			"the engineer's final visible outcome is `WARD-OUTCOME: submitted`, not `done`.",
 		ref.Number, pullRequestCIWatchClause())
 }
 

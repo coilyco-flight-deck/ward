@@ -699,6 +699,31 @@ func TestBacklogOutcomeState(t *testing.T) {
 	}
 }
 
+func TestBacklogSummarySurfacesPRStates(t *testing.T) {
+	repo := "a/b"
+	led := &backlogLedger{
+		Repo: repo,
+		Issues: map[string]*backlogEntry{
+			"1": {Num: 1, Lane: "headless", State: "submitted", Title: "submitted issue", repo: repo},
+			"2": {Num: 2, Lane: "headless", State: "merge-ready", Title: "merge-ready issue", repo: repo},
+		},
+	}
+	if err := saveBacklogLedger(led); err != nil {
+		t.Fatalf("save ledger: %v", err)
+	}
+	var out bytes.Buffer
+	r := &Runner{Runner: &shell.Runner{Stdout: &out}}
+	if err := r.backlogPrintSummary([]string{repo}); err != nil {
+		t.Fatalf("backlogPrintSummary: %v", err)
+	}
+	got := out.String()
+	for _, want := range []string{"submitted", "merge-ready"} {
+		if !strings.Contains(got, want) {
+			t.Fatalf("summary missing %q\n%s", want, got)
+		}
+	}
+}
+
 // TestReconcileNoOutcome pins the ward#595 pre-launch-death classification: a released
 // reservation re-queues (bounded), a bare no-outcome exit stays terminal `failed`.
 func TestReconcileNoOutcome(t *testing.T) {
