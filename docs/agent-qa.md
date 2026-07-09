@@ -24,11 +24,15 @@ does not expose an interactive attach surface.
 
 The QA run fetches the issue and comment thread, seeds a read-only inspection
 container, and asks for a single structured verdict. The output is posted back on
-the issue as a durable comment.
+the issue as a durable `WARD-QA` comment.
 
-The verdict is advisory in this slice. A failing QA verdict is recorded and surfaced,
-but it does not gate landing or change implementation state. That makes the role
-opt-in only until the later brokered gating design lands deliberately.
+The durable verdict carries the merge gate's machine fields: `verdict`,
+`reviewed_sha`, `reviewer_family`, `workflow`, `issue_ref`, `pr_ref`, `reason`,
+and `run_identity`. The first slice uses the `internal` reviewer family.
+
+The verdict is advisory for implementation state, but director merge now treats a
+passing `WARD-QA` comment for the exact PR head SHA as the merge proof. Missing
+or stale QA blocks merge.
 
 ## See also
 

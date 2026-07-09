@@ -15,6 +15,7 @@ import (
 	"time"
 
 	"forgejo.coilysiren.me/coilyco-flight-deck/cli-guard/cli/dispatch"
+	"forgejo.coilysiren.me/coilyco-flight-deck/cli-guard/pkg/broker"
 )
 
 // forgejo_ops.go is ward's Forgejo client, routed through the in-binary `ward ops
@@ -88,6 +89,23 @@ func (c *forgejoClient) withMode(m containerMode) *forgejoClient {
 func (c *forgejoClient) withToken(token string) *forgejoClient {
 	c.token = token
 	return c
+}
+
+// apiToken resolves the Forgejo API token for direct HTTP calls, preferring an
+// already-pinned token and falling back to the regular Forgejo token resolver.
+func (c *forgejoClient) apiToken(ctx context.Context) (string, error) {
+	if tok := strings.TrimSpace(c.token); tok != "" {
+		return tok, nil
+	}
+	if c.r == nil {
+		return "", fmt.Errorf("no Forgejo token available")
+	}
+	tok, err := c.r.resolveForgejoToken(ctx, broker.Target{}, forgeForgejo)
+	if err != nil {
+		return "", err
+	}
+	c.token = tok
+	return tok, nil
 }
 
 // run shells the ward binary back to its `ops forgejo` mount, returning stdout. On a
@@ -257,8 +275,9 @@ func (c *forgejoClient) repoPullRequestsEnabled(ctx context.Context, owner, repo
 }
 
 func (c *forgejoClient) createPullRequest(ctx context.Context, owner, repo, head, base, title, body string) (string, error) {
-	if strings.TrimSpace(c.token) == "" {
-		return "", fmt.Errorf("no Forgejo token available")
+	token, err := c.apiToken(ctx)
+	if err != nil {
+		return "", err
 	}
 	payload, err := json.Marshal(map[string]string{
 		"base":  base,
@@ -278,7 +297,7 @@ func (c *forgejoClient) createPullRequest(ctx context.Context, owner, repo, head
 	if err != nil {
 		return "", err
 	}
-	req.Header.Set("Authorization", "token "+c.token)
+	req.Header.Set("Authorization", "token "+token)
 	req.Header.Set("Content-Type", "application/json")
 	req.Header.Set("Accept", "application/json")
 	resp, err := (&http.Client{Timeout: 30 * time.Second}).Do(req)
@@ -313,8 +332,9 @@ func (c *forgejoClient) createPullRequest(ctx context.Context, owner, repo, head
 // mergePullRequest merges an open PR through Forgejo's merge endpoint.
 // The director uses it for the narrow ward-owned merge lane.
 func (c *forgejoClient) mergePullRequest(ctx context.Context, owner, repo string, index int) error {
-	if strings.TrimSpace(c.token) == "" {
-		return fmt.Errorf("no Forgejo token available")
+	token, err := c.apiToken(ctx)
+	if err != nil {
+		return err
 	}
 	payload, err := json.Marshal(map[string]string{
 		"do": "merge",
@@ -331,7 +351,7 @@ func (c *forgejoClient) mergePullRequest(ctx context.Context, owner, repo string
 	if err != nil {
 		return err
 	}
-	req.Header.Set("Authorization", "token "+c.token)
+	req.Header.Set("Authorization", "token "+token)
 	req.Header.Set("Content-Type", "application/json")
 	req.Header.Set("Accept", "application/json")
 	resp, err := (&http.Client{Timeout: 30 * time.Second}).Do(req)
@@ -344,6 +364,63 @@ func (c *forgejoClient) mergePullRequest(ctx context.Context, owner, repo string
 		return fmt.Errorf("forgejo merge PR returned %s: %s", resp.Status, firstLine(string(data)))
 	}
 	return nil
+}
+
+type forgejoPullRequest struct {
+	Number  int    `json:"number"`
+	Title   string `json:"title"`
+	Body    string `json:"body"`
+	State   string `json:"state"`
+	Draft   bool   `json:"draft"`
+	HTMLURL string `json:"html_url"`
+	Head    struct {
+		SHA string `json:"sha"`
+		Ref string `json:"ref"`
+	} `json:"head"`
+	Base struct {
+		Ref string `json:"ref"`
+	} `json:"base"`
+}
+
+func (pr forgejoPullRequest) ref(owner, repo string) string {
+	if pr.Number <= 0 {
+		return ""
+	}
+	return fmt.Sprintf("%s/%s#%d", owner, repo, pr.Number)
+}
+
+func (pr forgejoPullRequest) headSHA() string { return strings.TrimSpace(pr.Head.SHA) }
+
+func (c *forgejoClient) getPullRequest(ctx context.Context, owner, repo string, index int) (*forgejoPullRequest, error) {
+	baseURL := strings.TrimRight(c.baseURL, "/")
+	if baseURL == "" {
+		baseURL = forgejoBaseURL
+	}
+	token, err := c.apiToken(ctx)
+	if err != nil {
+		return nil, err
+	}
+	endpoint := fmt.Sprintf("%s/api/v1/repos/%s/%s/pulls/%d", baseURL, url.PathEscape(owner), url.PathEscape(repo), index)
+	req, err := http.NewRequestWithContext(ctx, http.MethodGet, endpoint, nil)
+	if err != nil {
+		return nil, err
+	}
+	req.Header.Set("Authorization", "token "+token)
+	req.Header.Set("Accept", "application/json")
+	resp, err := (&http.Client{Timeout: 30 * time.Second}).Do(req)
+	if err != nil {
+		return nil, err
+	}
+	defer func() { _ = resp.Body.Close() }()
+	data, _ := io.ReadAll(io.LimitReader(resp.Body, 4096))
+	if resp.StatusCode < 200 || resp.StatusCode >= 300 {
+		return nil, fmt.Errorf("forgejo get PR returned %s: %s", resp.Status, firstLine(string(data)))
+	}
+	var pr forgejoPullRequest
+	if err := json.Unmarshal(data, &pr); err != nil {
+		return nil, fmt.Errorf("forgejo: parse pull request %s/%s#%d: %w", owner, repo, index, err)
+	}
+	return &pr, nil
 }
 
 // lockIssue is unsupported: Forgejo's API (gitea-1.22 compat) exposes no issue-lock

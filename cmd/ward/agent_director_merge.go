@@ -78,15 +78,15 @@ func (r *Runner) runDirectorMerge(ctx context.Context, c *cli.Command) error {
 				continue
 			}
 			if preview {
-				_, _ = fmt.Fprintf(r.Runner.Stderr, "%s: would merge %s/%s#%d (issue #%d, workflow %s, review %q)\n",
-					label, owner, name, pr.Number, linked, meta.Workflow, meta.Review)
+				_, _ = fmt.Fprintf(r.Runner.Stderr, "%s: would merge %s/%s#%d (issue #%d, workflow %s, review %q, qa %s@%s)\n",
+					label, owner, name, pr.Number, linked, meta.Workflow, meta.Review, meta.QA.Verdict, meta.QA.ReviewedSHA)
 				continue
 			}
 			if err := cl.mergePullRequest(ctx, owner, name, pr.Number); err != nil {
-				return fmt.Errorf("%s: merge %s/%s#%d: %w", label, owner, name, pr.Number, err)
+				return fmt.Errorf("%s: merge %s/%s#%d (qa %s@%s): %w", label, owner, name, pr.Number, meta.QA.Verdict, meta.QA.ReviewedSHA, err)
 			}
 			merged++
-			_, _ = fmt.Fprintf(r.Runner.Stderr, "%s: merged %s/%s#%d (issue #%d)\n", label, owner, name, pr.Number, linked)
+			_, _ = fmt.Fprintf(r.Runner.Stderr, "%s: merged %s/%s#%d (issue #%d, qa %s@%s)\n", label, owner, name, pr.Number, linked, meta.QA.Verdict, meta.QA.ReviewedSHA)
 		}
 	}
 	_, _ = fmt.Fprintf(r.Runner.Stdout, "%s: merged %d PR(s), skipped %d\n", label, merged, skipped)
@@ -112,13 +112,31 @@ func directorMergeEligibility(ctx context.Context, owner, repo string, pr dispat
 	if err != nil {
 		return false, "could not read linked issue comments: " + firstLine(err.Error()), linked, directorRunMeta{}
 	}
+	prInfo, err := cl.getPullRequest(ctx, owner, repo, pr.Number)
+	if err != nil {
+		return false, "could not read linked PR details: " + firstLine(err.Error()), linked, directorRunMeta{}
+	}
+	meta.IssueRef = fmt.Sprintf("%s/%s#%d", owner, repo, linked)
+	meta.PRHeadSHA = strings.TrimSpace(prInfo.Head.SHA)
+	meta.PRRef = prInfo.ref(owner, repo)
+	if meta.PRHeadSHA == "" {
+		return false, "linked PR did not expose a head SHA", linked, meta
+	}
 	if latest, ok := latestBacklogOutcomeComment(comments); ok {
 		meta = parseDirectorRunMeta(latest.Body)
 		meta.CommentedBy = latest.User.Login
 		meta.CommentedAt = latest.CreatedAt
+		meta.IssueRef = fmt.Sprintf("%s/%s#%d", owner, repo, linked)
+		meta.PRHeadSHA = strings.TrimSpace(prInfo.Head.SHA)
+		meta.PRRef = prInfo.ref(owner, repo)
 	} else {
 		return false, "linked issue never reached a WARD-OUTCOME comment", linked, directorRunMeta{}
 	}
+	qa, ok := latestQAVerdictComment(comments, fmt.Sprintf("%s/%s#%d", owner, repo, linked), meta.PRRef, meta.PRHeadSHA)
+	if !ok {
+		return false, "linked issue does not have a passing WARD-QA verdict for the current PR head SHA", linked, meta
+	}
+	meta.QA = qa
 	return directorMergeDecision(pr, linked, meta)
 }
 
@@ -154,8 +172,23 @@ func directorMergeDecision(pr dispatch.Issue, linked int, meta directorRunMeta) 
 		}
 		return false, "workflow " + meta.Workflow + " still needs human merge approval", linked, meta
 	}
-	if !strings.HasPrefix(strings.ToLower(strings.TrimSpace(meta.Review)), "passed:") {
-		return false, "review gate did not pass", linked, meta
+	if strings.TrimSpace(meta.QA.ReviewerFamily) != qaFamilyInternal {
+		return false, "linked issue QA verdict was not from the internal reviewer family", linked, meta
+	}
+	if strings.ToLower(strings.TrimSpace(meta.QA.Verdict)) != "pass" {
+		return false, "linked issue QA verdict did not pass", linked, meta
+	}
+	if strings.TrimSpace(meta.QA.ReviewedSHA) != strings.TrimSpace(meta.PRHeadSHA) {
+		return false, "linked issue QA verdict does not match the current PR head SHA", linked, meta
+	}
+	if strings.TrimSpace(meta.QA.IssueRef) != strings.TrimSpace(meta.IssueRef) {
+		return false, "linked issue QA verdict does not name the current issue", linked, meta
+	}
+	if strings.TrimSpace(meta.QA.PRRef) != strings.TrimSpace(meta.PRRef) {
+		return false, "linked issue QA verdict does not name the current PR", linked, meta
+	}
+	if strings.TrimSpace(meta.QA.RunIdentity) == "" {
+		return false, "linked issue QA verdict is missing run identity", linked, meta
 	}
 	return true, "", linked, meta
 }

@@ -561,6 +561,9 @@ func validateDispatchBrokerArgv(role string, tail []string) error {
 		}
 		return validateDispatchBrokerFlags(role, tail, valueFlags, boolFlags, false)
 	}
+	if role == "qa" {
+		valueFlags["--family"] = true
+	}
 	valueFlags["--thoroughness"] = true
 	valueFlags["--depth"] = true
 	return validateDispatchBrokerFlags(role, tail, valueFlags, boolFlags, true)
@@ -707,6 +710,9 @@ func brokerAdvisorArgv(c *cli.Command, mode containerMode, ref agentIssueRef) []
 
 func brokerQaArgv(c *cli.Command, mode containerMode, ref agentIssueRef) []string {
 	argv := []string{"qa", ref.String(), "--harness", string(brokerDispatchHarness(c, mode))}
+	if family := strings.TrimSpace(c.String("family")); family != "" {
+		argv = append(argv, "--family", family)
+	}
 	if lvl := strings.TrimSpace(c.String("thoroughness")); lvl != "" {
 		argv = append(argv, "--thoroughness", lvl)
 	}

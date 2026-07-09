@@ -715,7 +715,7 @@ func TestForwardAgentDispatchToHostBrokerSupportsQa(t *testing.T) {
 		t.Fatal("qa dispatch did not forward despite broker env")
 	}
 	req := <-gotReq
-	want := []string{"qa", "coilyco-flight-deck/ward#378", "--harness", "claude", "--thoroughness", "standard", "inspect the branch"}
+	want := []string{"qa", "coilyco-flight-deck/ward#378", "--harness", "claude", "--family", "internal", "--thoroughness", "standard", "inspect the branch"}
 	if !reflect.DeepEqual(req.Argv, want) {
 		t.Errorf("qa forwarded argv = %v, want %v", req.Argv, want)
 	}

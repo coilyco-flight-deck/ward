@@ -18,9 +18,11 @@ The merge sweep only acts when all of these are true:
 - the PR is open, not draft, and not on a `ward-salvage/` branch;
 - the PR body carries the `ward.workflow: pull-request-and-merge` marker;
 - the PR body names the carried issue with `closes #N` / `fixes #N` / `resolves #N`;
-- the branch name is the issue branch (`issue-N`);
 - the linked issue is already `done`;
-- the latest issue outcome says the review summary passed.
+- the latest issue thread has a passing `WARD-QA` verdict for the PR's current head SHA.
+
+The review-summary prose is still recorded, but it is informational only. Merge
+eligibility follows the commit-bound QA verdict, not the freeform summary.
 
 If any check fails, the director reports the reason and leaves the PR alone.
 
@@ -30,6 +32,7 @@ If any check fails, the director reports the reason and leaves the PR alone.
 - It does not merge plain `pull-request` runs unless a later policy explicitly
   says to.
 - It does not treat salvage PRs as eligible work PRs.
+- It does not accept stale QA comments for an older PR head SHA.
 
 ## How this differs from engineer workflow
 

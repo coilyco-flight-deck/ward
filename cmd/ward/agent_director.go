@@ -785,8 +785,49 @@ type directorRunMeta struct {
 	Review      string
 	Outcome     backlogOutcome
 	HasOutcome  bool
+	IssueRef    string
+	QA          qaCommentMeta
+	PRHeadSHA   string
+	PRRef       string
 	CommentedBy string
 	CommentedAt time.Time
+}
+
+// latestQAVerdictComment returns the newest QA verdict comment that matches the
+// requested issue/PR/head SHA tuple. Older or stale SHAs do not override.
+func latestQAVerdictComment(comments []issueComment, issueRef, prRef, headSHA string) (qaCommentMeta, bool) {
+	type hit struct {
+		at time.Time
+		m  qaCommentMeta
+	}
+	var hits []hit
+	issueRef = strings.TrimSpace(issueRef)
+	prRef = strings.TrimSpace(prRef)
+	headSHA = strings.TrimSpace(headSHA)
+	if issueRef == "" || prRef == "" || headSHA == "" {
+		return qaCommentMeta{}, false
+	}
+	for _, c := range comments {
+		meta, ok := parseQAVerdictComment(c.Body)
+		if !ok {
+			continue
+		}
+		if strings.TrimSpace(meta.IssueRef) != issueRef {
+			continue
+		}
+		if strings.TrimSpace(meta.PRRef) != prRef {
+			continue
+		}
+		if strings.TrimSpace(meta.ReviewedSHA) != headSHA {
+			continue
+		}
+		hits = append(hits, hit{at: c.CreatedAt, m: meta})
+	}
+	if len(hits) == 0 {
+		return qaCommentMeta{}, false
+	}
+	sort.SliceStable(hits, func(i, j int) bool { return hits[i].at.Before(hits[j].at) })
+	return hits[len(hits)-1].m, true
 }
 
 // parseDirectorRunMeta parses a final worker comment for the director merge gate.
