@@ -23,9 +23,9 @@ If work remains, it asks whether to drain now. **yes**/Enter drains, **no** surf
 
 1. **Poll + reconcile** in-flight engineers: on exit read each `WARD-OUTCOME` (done/submitted/merge-ready/blocked/failed).
 2. **Refresh** each ledger from the backlog by tier (`P0`-`P4`) and mode
-   (`headless`/`interactive`/`consult`), folding PRs into a `pull-request` lane `issue #N` / `PR #N`.
+   (`headless`/`interactive`/`consult`), folding PRs into a `pull-requests` lane `issue #N` / `PR #N`.
 3. **Probe** forge liveness (the top candidate's issue get) so a recovery reaches the decision.
-4. **Sweep** ward-owned PRs that carry the `pull-request-and-merge` marker. See [agent-director-pr-merge.md](agent-director-pr-merge.md).
+4. **Sweep** ward-owned PRs that carry the `pull-requests-and-merge` marker. See [agent-director-pr-merge.md](agent-director-pr-merge.md).
 5. **Decide** via a host one-shot over the candidates + forge-health; answers `DISPATCH:
    <numbers>`/`none`, can only **narrow or hold**, and **fails open to rank**.
 6. **Dispatch** the chosen set via the engineer (`agent.<mode>.engineer`).

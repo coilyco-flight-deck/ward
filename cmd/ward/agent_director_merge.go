@@ -34,7 +34,7 @@ func agentDirectorMergeCommand() *cli.Command {
 		Name:        "merge",
 		Usage:       "Merge eligible ward-owned PRs whose issue thread authorizes director merge.",
 		ArgsUsage:   "(scope via --repo; default: the cwd git origin)",
-		Description: `merge scans open pull requests in scope and merges only the ones the ward issue thread marks as director-merge authorized: the linked issue ended with WARD-OUTCOME: merge-ready, the final comment says workflow: pull-request-and-merge, the review summary is passed, the PR is mergeable against its current base branch, and it is not salvage/draft noise. The director records the final done outcome only after the merge lands. pull-request still needs a human. See docs/agent-director.md and docs/agent-workflow.md.`,
+		Description: `merge scans open pull requests in scope and merges only the ones the ward issue thread marks as director-merge authorized: the linked issue ended with WARD-OUTCOME: merge-ready, the final comment says workflow: pull-requests-and-merge, the review summary is passed, the PR is mergeable against the current base branch, and it is not salvage/draft noise. The director records the final done outcome only after the merge lands. pull-requests still needs a human. See docs/agent-director.md and docs/agent-workflow.md.`,
 		Flags:       directorMergeFlags(),
 		Action: func(ctx context.Context, c *cli.Command) error {
 			r := newRunner()
@@ -124,9 +124,9 @@ func directorMergeEligibility(ctx context.Context, owner, repo string, pr direct
 		return false, "PR is not mergeable against the current base branch; rebase or merge base and resolve the conflict first", linked, directorRunMeta{}
 	}
 	if wf, ok := directorPRWorkflowMarker(pr.Body); !ok {
-		return false, "PR body missing ward.workflow: pull-request-and-merge marker", linked, directorRunMeta{}
+		return false, "PR body missing ward.workflow: pull-requests-and-merge marker", linked, directorRunMeta{}
 	} else if wf != string(workflowPullRequestAndMerge) {
-		return false, "PR body carries ward.workflow: " + wf + "; need pull-request-and-merge", linked, directorRunMeta{}
+		return false, "PR body carries ward.workflow: " + wf + "; need pull-requests-and-merge", linked, directorRunMeta{}
 	}
 	if _, err := cl.getIssue(ctx, owner, repo, linked); err != nil {
 		return false, "could not read linked issue: " + firstLine(err.Error()), linked, directorRunMeta{}
