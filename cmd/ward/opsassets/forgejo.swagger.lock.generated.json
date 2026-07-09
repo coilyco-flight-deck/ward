@@ -1305,6 +1305,53 @@
       "type": "object",
       "x-go-package": "forgejo.org/modules/structs"
     },
+    "MergePullRequestOption": {
+      "description": "MergePullRequestForm form for merging Pull Request",
+      "properties": {
+        "Do": {
+          "enum": [
+            "merge",
+            "rebase",
+            "rebase-merge",
+            "squash",
+            "fast-forward-only",
+            "manually-merged"
+          ],
+          "type": "string"
+        },
+        "MergeCommitID": {
+          "type": "string"
+        },
+        "MergeMessageField": {
+          "type": "string"
+        },
+        "MergeTitleField": {
+          "type": "string"
+        },
+        "delete_branch_after_merge": {
+          "type": "boolean",
+          "x-go-name": "DeleteBranchAfterMerge"
+        },
+        "force_merge": {
+          "type": "boolean",
+          "x-go-name": "ForceMerge"
+        },
+        "head_commit_id": {
+          "type": "string",
+          "x-go-name": "HeadCommitID"
+        },
+        "merge_when_checks_succeed": {
+          "type": "boolean",
+          "x-go-name": "MergeWhenChecksSucceed"
+        }
+      },
+      "required": [
+        "Do"
+      ],
+      "type": "object",
+      "x-go-name": "MergePullRequestForm",
+      "x-go-package": "forgejo.org/services/forms"
+    },
     "Milestone": {
       "description": "Milestone milestone is a collection of issues on one repository",
       "properties": {
@@ -4271,6 +4318,69 @@
         "summary": "Update a milestone",
         "tags": [
           "issue"
+        ]
+      }
+    },
+    "/repos/{owner}/{repo}/pulls/{index}/merge": {
+      "post": {
+        "operationId": "repoMergePullRequest",
+        "parameters": [
+          {
+            "description": "owner of the repo",
+            "in": "path",
+            "name": "owner",
+            "required": true,
+            "type": "string"
+          },
+          {
+            "description": "name of the repo",
+            "in": "path",
+            "name": "repo",
+            "required": true,
+            "type": "string"
+          },
+          {
+            "description": "index of the pull request to merge",
+            "format": "int64",
+            "in": "path",
+            "name": "index",
+            "required": true,
+            "type": "integer"
+          },
+          {
+            "in": "body",
+            "name": "body",
+            "schema": {
+              "$ref": "#/definitions/MergePullRequestOption"
+            }
+          }
+        ],
+        "produces": [
+          "application/json"
+        ],
+        "responses": {
+          "200": {
+            "$ref": "#/responses/empty"
+          },
+          "404": {
+            "$ref": "#/responses/notFound"
+          },
+          "405": {
+            "$ref": "#/responses/empty"
+          },
+          "409": {
+            "$ref": "#/responses/error"
+          },
+          "413": {
+            "$ref": "#/responses/quotaExceeded"
+          },
+          "423": {
+            "$ref": "#/responses/repoArchivedError"
+          }
+        },
+        "summary": "Merge a pull request",
+        "tags": [
+          "repository"
         ]
       }
     },

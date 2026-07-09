@@ -155,10 +155,11 @@ func headlessReflection(ref agentIssueRef, wf workflowMode, reviewGate bool, rev
 		"  `" + wardOutcomeMarker + " done - <one line on what landed>`\n" +
 		"  `" + wardOutcomeMarker + " blocked - <the one specific decision or piece of information you need from a human>`\n" +
 		"  `" + wardOutcomeMarker + " failed - <why, briefly>`\n" +
-		"then your retrospective on the lines below it. Include a second line that summarizes the review outcome " +
-		"or skip state so the conclusion comment carries it too. " + reviewLine + " A supervising director loop " +
-		"(ward agent director) reads only that first line to classify the run, so for a normal run that completed " +
-		"its workflow it is `" + wardOutcomeMarker + " done`; reserve blocked/failed for a run that genuinely could not land."
+		"then your retrospective on the lines below it. Include a second line in the form `workflow: <mode>; " +
+		"review summary: <summary or skip state>` so the conclusion comment carries both the landing policy and the " +
+		"review result. " + reviewLine + " A supervising director loop (ward agent director) reads only that first " +
+		"line to classify the run, so for a normal run that completed its workflow it is `" + wardOutcomeMarker +
+		" done`; reserve blocked/failed for a run that genuinely could not land."
 }
 
 // reviewGateClause wires the pre-landing adversarial review panel into a headless

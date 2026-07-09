@@ -249,8 +249,8 @@ so a killed loop resumes from disk. Only the narrow headless lane is auto-dispat
 interactive and consult issues are surfaced, not launched. See docs/agent-director.md.`,
 		Flags: directorFlags(),
 		// consult is the director's interactive consult-to-headless conversion pass
-		// (ward#493): `warded director consult` walks the consult + untriaged queue.
-		Commands: []*cli.Command{agentConsultCommand()},
+		// (ward#493). merge is the explicit PR-land authority boundary for ward-owned work.
+		Commands: []*cli.Command{agentConsultCommand(), agentDirectorMergeCommand()},
 		Action: func(ctx context.Context, c *cli.Command) error {
 			r := newRunner()
 			mode, err := agentHarness(c)
@@ -714,23 +714,80 @@ var backlogOutcomeRE = regexp.MustCompile(`(?i)^(done|blocked|failed)\b[\s:.\-]*
 // parseBacklogOutcome classifies the latest comment leading with WARD-OUTCOME,
 // nil when none. Ports backlog-loop.py's parse_outcome.
 func parseBacklogOutcome(comments []issueComment) *backlogOutcome {
+	latest, ok := latestBacklogOutcomeComment(comments)
+	if !ok {
+		return nil
+	}
+	o, ok := backlogOutcomeOfComment(latest.Body)
+	if !ok {
+		return nil
+	}
+	return &o
+}
+
+// latestBacklogOutcomeComment returns the most recent comment body carrying a
+// WARD-OUTCOME marker.
+func latestBacklogOutcomeComment(comments []issueComment) (issueComment, bool) {
 	type hit struct {
 		at time.Time
-		o  backlogOutcome
+		c  issueComment
 	}
 	var hits []hit
 	for _, c := range comments {
-		o, ok := backlogOutcomeOfComment(c.Body)
-		if !ok {
+		if _, ok := backlogOutcomeOfComment(c.Body); !ok {
 			continue
 		}
-		hits = append(hits, hit{at: c.CreatedAt, o: o})
+		hits = append(hits, hit{at: c.CreatedAt, c: c})
 	}
 	if len(hits) == 0 {
-		return nil
+		return issueComment{}, false
 	}
 	sort.SliceStable(hits, func(i, j int) bool { return hits[i].at.Before(hits[j].at) })
-	return &hits[len(hits)-1].o
+	return hits[len(hits)-1].c, true
+}
+
+// directorRunMeta is the small policy payload the director merge command reads
+// from a worker's final comment: workflow marker + review summary.
+type directorRunMeta struct {
+	Workflow    string
+	Review      string
+	Outcome     backlogOutcome
+	HasOutcome  bool
+	CommentedBy string
+	CommentedAt time.Time
+}
+
+// parseDirectorRunMeta parses a final worker comment for the director merge gate.
+// It accepts the machine line shape documented in headlessReflection.
+func parseDirectorRunMeta(body string) directorRunMeta {
+	meta := directorRunMeta{}
+	if o, ok := backlogOutcomeOfComment(body); ok {
+		meta.Outcome = o
+		meta.HasOutcome = true
+	}
+	for _, ln := range strings.Split(body, "\n") {
+		s := backlogCommentLine(ln)
+		if s == "" {
+			continue
+		}
+		for _, part := range strings.Split(s, ";") {
+			field := strings.TrimSpace(part)
+			lower := strings.ToLower(field)
+			switch {
+			case strings.HasPrefix(lower, "workflow:"):
+				meta.Workflow = strings.TrimSpace(field[len("workflow:"):])
+			case strings.HasPrefix(lower, "review summary:"):
+				meta.Review = strings.TrimSpace(field[len("review summary:"):])
+			}
+		}
+	}
+	return meta
+}
+
+// backlogCommentLine normalizes the leading quote/list markers the same way the
+// WARD-OUTCOME parser does, so the policy parser can read wrapped comments too.
+func backlogCommentLine(ln string) string {
+	return strings.TrimSpace(strings.TrimLeft(strings.TrimSpace(ln), ">*-•# "))
 }
 
 // backlogOutcomeOfComment parses the WARD-OUTCOME status from one comment body,

@@ -98,7 +98,7 @@ Grouped by the surface you are reaching for.
 
 **Landing and safety** (how a run is fenced and where it lands)
 
-- [agent-workflow.md](agent-workflow.md) - `--workflow direct-main|pr|patch-only`, the run's landing policy.
+- [agent-workflow.md](agent-workflow.md) - `--workflow direct-main|pr|pull-requests|pull-requests-and-merge|patch-only`, the run's landing policy.
 - [dispatch-review.md](dispatch-review.md) - the in-container code-review gate that runs before a diff lands.
 - [agent-preflight.md](agent-preflight.md) - the detached GO/NO-GO pre-flight.
 - [agent-reap.md](agent-reap.md) - the host-side idle-killer.

@@ -1,7 +1,7 @@
 package main
 
 // agent_workflow.go carries the workflow-mode axis (ward#508): a run's landing
-// policy - direct-main, pr, or patch-only. See docs/agent-workflow.md.
+// policy - direct-main, pr/pull-requests, pull-requests-and-merge, or patch-only.
 
 import (
 	"fmt"
@@ -21,6 +21,10 @@ const (
 	// workflowPR carries the work to a branch + pull request instead of landing on
 	// main directly; a human (or a follow-up loop) is the merge gate.
 	workflowPR workflowMode = "pr"
+	// workflowPullRequests is the long-form alias of workflowPR.
+	workflowPullRequests workflowMode = "pull-requests"
+	// workflowPullRequestsAndMerge is the explicit director-authorized PR lane.
+	workflowPullRequestsAndMerge workflowMode = "pull-requests-and-merge"
 	// workflowPatchOnly produces a patch/diff and reports it in a comment with NO
 	// landing authority: it neither pushes main nor opens a PR (untrusted targets).
 	workflowPatchOnly workflowMode = "patch-only"
@@ -49,7 +53,8 @@ func (w workflowMode) landsOnMain() bool {
 // usage and error text, mirroring agentHarnessChoices.
 func workflowChoices() string {
 	return strings.Join([]string{
-		string(workflowDirectMain), string(workflowPR), string(workflowPatchOnly),
+		string(workflowDirectMain), string(workflowPR), string(workflowPullRequests),
+		string(workflowPullRequestsAndMerge), string(workflowPatchOnly),
 	}, "|")
 }
 
@@ -63,6 +68,10 @@ func parseWorkflow(s string) (workflowMode, error) {
 		return workflowDirectMain, nil
 	case string(workflowPR):
 		return workflowPR, nil
+	case string(workflowPullRequests):
+		return workflowPullRequests, nil
+	case string(workflowPullRequestsAndMerge):
+		return workflowPullRequestsAndMerge, nil
 	case string(workflowPatchOnly):
 		return workflowPatchOnly, nil
 	default:
@@ -77,7 +86,7 @@ func workflowFlag() cli.Flag {
 		Name:  "workflow",
 		Value: string(defaultWorkflow),
 		Usage: "landing policy for the run: " + workflowChoices() + " (default pr unless smart defaults override). " +
-			"direct-main merges to main; pr opens a pull request; patch-only reports a patch and lands nothing.",
+			"direct-main merges to main; pr/pull-requests open a pull request; pull-requests-and-merge opens a pull request and marks it director-merge eligible; patch-only reports a patch and lands nothing.",
 	}
 }
 
@@ -105,6 +114,10 @@ func workflowCarryClause(ref agentIssueRef, wf workflowMode) string {
 		return forgeCarryClause(ref)
 	case workflowPR:
 		return prWorkflowCarryClause(ref)
+	case workflowPullRequests:
+		return prWorkflowCarryClause(ref)
+	case workflowPullRequestsAndMerge:
+		return prWorkflowAndMergeCarryClause(ref)
 	case workflowPatchOnly:
 		return patchOnlyCarryClause(ref)
 	default:
@@ -124,6 +137,20 @@ func prWorkflowCarryClause(ref agentIssueRef) string {
 			"against `main` whose body carries `closes #%d`. Do NOT push to `main` directly or merge it "+
 			"yourself - in the `pr` workflow the pull request IS the merge gate, landed by a human or a "+
 			"follow-up loop, not by you.",
+		ref.Number)
+}
+
+// prWorkflowAndMergeCarryClause tells the agent to open a PR that a director may
+// merge later once the issue thread says the work is done and reviewed.
+func prWorkflowAndMergeCarryClause(ref agentIssueRef) string {
+	if ref.Forge == forgeGitHub {
+		return forgeCarryClause(ref)
+	}
+	return fmt.Sprintf(
+		"implement on a feature branch, commit, push the branch to origin, and open a pull request "+
+			"against `main` whose body carries `closes #%d`. This run is director-merge authorized: "+
+			"the worker still opens the pull request, but a director may merge it once the issue thread "+
+			"says the work is done, the review gate passed, and no salvage or draft state remains.",
 		ref.Number)
 }
 
@@ -149,6 +176,10 @@ func workflowLandingPhrase(ref agentIssueRef, wf workflowMode) string {
 		}
 		return "the work is committed, merged to main, and pushed"
 	case workflowPR:
+		return "the branch is pushed and the pull request opened"
+	case workflowPullRequests:
+		return "the branch is pushed and the pull request opened"
+	case workflowPullRequestsAndMerge:
 		return "the branch is pushed and the pull request opened"
 	case workflowPatchOnly:
 		return "the patch is produced and posted as a comment"

@@ -7,7 +7,7 @@ import (
 	"testing"
 )
 
-// TestParseWorkflow covers the --workflow parse gate (ward#508): the three modes,
+// TestParseWorkflow covers the --workflow parse gate (ward#508): the known modes,
 // empty defaulting to pr, and an unknown value erroring with the choices.
 func TestParseWorkflow(t *testing.T) {
 	for _, tc := range []struct {
@@ -17,6 +17,8 @@ func TestParseWorkflow(t *testing.T) {
 		{"", workflowPR},
 		{"direct-main", workflowDirectMain},
 		{"pr", workflowPR},
+		{"pull-requests", workflowPullRequests},
+		{"pull-requests-and-merge", workflowPullRequestsAndMerge},
 		{"patch-only", workflowPatchOnly},
 		{"  pr  ", workflowPR},
 	} {
@@ -30,7 +32,7 @@ func TestParseWorkflow(t *testing.T) {
 	}
 	if _, err := parseWorkflow("merge-everything"); err == nil {
 		t.Fatal("parseWorkflow accepted an unknown mode")
-	} else if !strings.Contains(err.Error(), "direct-main|pr|patch-only") {
+	} else if !strings.Contains(err.Error(), "direct-main|pr|pull-requests|pull-requests-and-merge|patch-only") {
 		t.Errorf("unknown-mode error should list the choices, got %v", err)
 	}
 }
@@ -43,6 +45,9 @@ func TestWorkflowLandsOnMain(t *testing.T) {
 	}
 	if workflowMode("").landsOnMain() || workflowPR.landsOnMain() || workflowPatchOnly.landsOnMain() {
 		t.Error("default/pr/patch-only must NOT land on main")
+	}
+	if workflowPullRequests.landsOnMain() || workflowPullRequestsAndMerge.landsOnMain() {
+		t.Error("pull-requests modes must NOT land on main directly")
 	}
 }
 
@@ -71,6 +76,17 @@ func TestWorkflowCarryClausePR(t *testing.T) {
 	gh := workflowCarryClause(agentIssueRef{Owner: "o", Repo: "r", Number: 12, Forge: forgeGitHub}, workflowPR)
 	if !strings.Contains(gh, "gh pr create") {
 		t.Errorf("pr GitHub carry clause should keep the native gh pr flow\n got: %s", gh)
+	}
+}
+
+// TestWorkflowCarryClausePullRequestsAndMerge proves the long-form merge-authorized
+// lane keeps the PR flow and names the director merge policy in the prompt.
+func TestWorkflowCarryClausePullRequestsAndMerge(t *testing.T) {
+	got := workflowCarryClause(agentIssueRef{Owner: "o", Repo: "r", Number: 17}, workflowPullRequestsAndMerge)
+	for _, want := range []string{"pull request", "closes #17", "director-merge authorized"} {
+		if !strings.Contains(got, want) {
+			t.Errorf("pull-requests-and-merge carry clause missing %q\n got: %s", want, got)
+		}
 	}
 }
 
@@ -104,6 +120,13 @@ func TestAgentSeedPromptWorkflow(t *testing.T) {
 	}
 	if !strings.Contains(pr, "the branch is pushed and the pull request opened") {
 		t.Errorf("pr reflection should name the branch+PR landing\n got: %s", pr)
+	}
+	merge := agentSeedPromptWorkflow(ref, "reframe ward", "do it", "", true, nil, workflowPullRequestsAndMerge, true, "")
+	if !strings.Contains(merge, "director-merge authorized") {
+		t.Errorf("pull-requests-and-merge seed should mark the PR as director-merge authorized\n got: %s", merge)
+	}
+	if !strings.Contains(merge, "workflow: <mode>; review summary: <summary or skip state>") {
+		t.Errorf("headless reflection should include the machine-readable workflow/review line\n got: %s", merge)
 	}
 	if workflowCarryClause(ref, "") != workflowCarryClause(ref, workflowPR) {
 		t.Error("empty workflow should resolve to the PR carry clause")
