@@ -852,24 +852,33 @@ type separatorSkippingReader struct {
 func (s *separatorSkippingReader) Read(p []byte) (int, error) {
 	if !s.skipped {
 		s.skipped = true
-		for {
-			b, err := s.r.Peek(1)
-			if err != nil {
-				break
-			}
-			if b[0] == '\n' {
-				_, _ = s.r.ReadByte()
-				continue
-			}
-			if b[0] == '\r' {
-				_, _ = s.r.ReadByte()
-				if next, err := s.r.Peek(1); err == nil && next[0] == '\n' {
-					_, _ = s.r.ReadByte()
-				}
-				continue
-			}
-			break
-		}
+		s.skipLeadingSeparator()
 	}
 	return s.r.Read(p)
+}
+
+func (s *separatorSkippingReader) skipLeadingSeparator() {
+	for {
+		b, err := s.r.Peek(1)
+		if err != nil {
+			return
+		}
+		if b[0] == '\n' {
+			_, _ = s.r.ReadByte()
+			continue
+		}
+		if b[0] == '\r' {
+			_, _ = s.r.ReadByte()
+			s.skipOptionalLineFeed()
+			continue
+		}
+		return
+	}
+}
+
+func (s *separatorSkippingReader) skipOptionalLineFeed() {
+	next, err := s.r.Peek(1)
+	if err == nil && next[0] == '\n' {
+		_, _ = s.r.ReadByte()
+	}
 }

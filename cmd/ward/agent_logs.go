@@ -126,7 +126,9 @@ func (r *Runner) forwardAgentLogsToHostBroker(ctx context.Context, addr, target 
 	if err != nil {
 		return err
 	}
-	defer body.Close()
+	defer func() {
+		_ = body.Close()
+	}()
 	writef(r.Runner.Stderr, "ward agent logs: using %s\n", source)
 	if _, err := io.Copy(r.Runner.Stdout, body); err != nil {
 		return fmt.Errorf("ward agent logs: relay host output: %w", err)
@@ -281,23 +283,6 @@ func (r *Runner) containerPresent(ctx context.Context, name string) bool {
 // findArchivedAgentLogSourceByIssue scans the archive tree for a drained engineer
 // run whose meta.json matches the given issue.
 func findArchivedAgentLogSourceByIssue(ref agentIssueRef, tail int, follow bool, baseDir, consoleName string) (agentLogSource, error) {
-	match := func(meta runMeta, container string) bool {
-		return meta.Repo == ref.repoSlug() && meta.Issue == strconv.Itoa(ref.Number) && strings.HasPrefix(container, roleEngineer+"-")
-	}
-	return findArchivedAgentLogSource(ref.String(), baseDir, consoleName, tail, follow, match)
-}
-
-// findArchivedAgentLogSourceByName looks up one exact drained container archive.
-func findArchivedAgentLogSourceByName(name string, tail int, follow bool, baseDir, consoleName string) (agentLogSource, error) {
-	match := func(meta runMeta, container string) bool {
-		return container == name
-	}
-	return findArchivedAgentLogSource(name, baseDir, consoleName, tail, follow, match)
-}
-
-// findArchivedAgentLogSource scans one archive tree and returns the single matching
-// source, preferring the raw console.log naming for the source line.
-func findArchivedAgentLogSource(target, baseDir, consoleName string, tail int, follow bool, match func(runMeta, string) bool) (agentLogSource, error) {
 	entries, err := os.ReadDir(baseDir)
 	if err != nil {
 		if os.IsNotExist(err) {
@@ -313,7 +298,49 @@ func findArchivedAgentLogSource(target, baseDir, consoleName string, tail int, f
 		name := entry.Name()
 		metaPath := filepath.Join(baseDir, name, drainMetaFile)
 		meta, ok := readRunMeta(metaPath)
-		if !ok || !match(meta, name) {
+		if !ok || meta.Repo != ref.repoSlug() || meta.Issue != strconv.Itoa(ref.Number) || !strings.HasPrefix(name, roleEngineer+"-") {
+			continue
+		}
+		candidates = append(candidates, filepath.Join(baseDir, name))
+	}
+	switch len(candidates) {
+	case 0:
+		return agentLogSource{}, nil
+	case 1:
+		return agentLogSource{Kind: agentLogSourceFile, Path: filepath.Join(candidates[0], consoleName), Tail: tail, Follow: follow}, nil
+	default:
+		sort.Strings(candidates)
+		return agentLogSource{}, fmt.Errorf("dispatch broker: %q matches %d drained engineer log directories (%s) - refusing to guess; read one by its container name",
+			ref.String(), len(candidates), strings.Join(candidates, ", "))
+	}
+}
+
+// findArchivedAgentLogSourceByName looks up one exact drained container archive.
+func findArchivedAgentLogSourceByName(name string, tail int, follow bool, baseDir, consoleName string) (agentLogSource, error) {
+	match := func(container string) bool {
+		return container == name
+	}
+	return findArchivedAgentLogSource(name, baseDir, consoleName, tail, follow, match)
+}
+
+// findArchivedAgentLogSource scans one archive tree and returns the single matching
+// source, preferring the raw console.log naming for the source line.
+func findArchivedAgentLogSource(target, baseDir, consoleName string, tail int, follow bool, match func(string) bool) (agentLogSource, error) {
+	entries, err := os.ReadDir(baseDir)
+	if err != nil {
+		if os.IsNotExist(err) {
+			return agentLogSource{}, nil
+		}
+		return agentLogSource{}, err
+	}
+	var candidates []string
+	for _, entry := range entries {
+		if !entry.IsDir() {
+			continue
+		}
+		name := entry.Name()
+		metaPath := filepath.Join(baseDir, name, drainMetaFile)
+		if _, ok := readRunMeta(metaPath); !ok || !match(name) {
 			continue
 		}
 		candidates = append(candidates, filepath.Join(baseDir, name))
