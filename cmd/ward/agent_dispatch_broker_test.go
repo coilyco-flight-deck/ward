@@ -485,6 +485,36 @@ func TestNoBrokerKeepsDirectDispatchPath(t *testing.T) {
 	}
 }
 
+func TestSurfaceDispatchModeInheritsRunningDirectorHarness(t *testing.T) {
+	t.Setenv(envDispatchBrokerAddr, "127.0.0.1:12345")
+	t.Setenv("WARD_READONLY", "1")
+	t.Setenv("WARD_AGENT", "codex")
+	t.Setenv("WARD_MODE", "codex")
+	cmd := parseCommandForTest(t, agentEngineerFlags(), []string{"engineer", "coilyco-flight-deck/ward#1"})
+	got, err := surfaceDispatchMode(cmd)
+	if err != nil {
+		t.Fatalf("surfaceDispatchMode: %v", err)
+	}
+	if got != modeCodex {
+		t.Errorf("surfaceDispatchMode() = %q, want codex", got)
+	}
+}
+
+func TestSurfaceDispatchModeExplicitOverrideWins(t *testing.T) {
+	t.Setenv(envDispatchBrokerAddr, "127.0.0.1:12345")
+	t.Setenv("WARD_READONLY", "1")
+	t.Setenv("WARD_AGENT", "codex")
+	t.Setenv("WARD_MODE", "codex")
+	cmd := parseCommandForTest(t, agentEngineerFlags(), []string{"engineer", "coilyco-flight-deck/ward#1", "--harness", "claude"})
+	got, err := surfaceDispatchMode(cmd)
+	if err != nil {
+		t.Fatalf("surfaceDispatchMode: %v", err)
+	}
+	if got != modeClaude {
+		t.Errorf("surfaceDispatchMode explicit override = %q, want claude", got)
+	}
+}
+
 // TestDispatchBrokerUnreachableFailsLoud locks papercut #1 (ward#382): an addr with
 // nothing listening errors with errDispatchBrokerUnavailable and names the addr.
 func TestDispatchBrokerUnreachableFailsLoud(t *testing.T) {

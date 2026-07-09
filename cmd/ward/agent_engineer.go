@@ -42,7 +42,7 @@ func agentEngineerCommand() *cli.Command {
 func agentEngineerAction() cli.ActionFunc {
 	return func(ctx context.Context, c *cli.Command) error {
 		r := newRunner()
-		mode, err := agentHarness(c)
+		mode, err := surfaceDispatchMode(c)
 		if err != nil {
 			return fmt.Errorf("ward agent engineer: %w", err)
 		}
