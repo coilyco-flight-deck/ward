@@ -13,7 +13,6 @@ import (
 
 	"forgejo.coilysiren.me/coilyco-flight-deck/cli-guard/cli/dispatch"
 	"forgejo.coilysiren.me/coilyco-flight-deck/cli-guard/pkg/exitcode"
-	"forgejo.coilysiren.me/coilyco-flight-deck/cli-guard/pkg/issueref"
 	"forgejo.coilysiren.me/coilyco-flight-deck/cli-guard/pkg/ownertrust"
 	"github.com/coilyco-flight-deck/ward/internal/reviewpanel"
 	"github.com/urfave/cli/v3"
@@ -68,36 +67,22 @@ func cloneAnchorLine(ref agentIssueRef) string {
 // parseAgentIssueRef resolves owner/repo#N, a Forgejo/GitHub issue URL, or a bare #N / N.
 // ward keeps the task-verb steer (ward#234, ward#282).
 func parseAgentIssueRef(s string) (agentIssueRef, error) {
-	s = strings.TrimSpace(s)
-	if s == "" {
-		return agentIssueRef{}, fmt.Errorf("empty issue reference")
-	}
-	// A github.com URL or `github.com/owner/repo#N` short form is unambiguously a
-	// GitHub ref (ward#489); anything else falls through to the Forgejo parser.
-	if ghRef, ok := parseGitHubIssueRef(s); ok {
-		return ghRef, nil
-	}
-	ref, err := issueref.Parse(s, forgejoBaseURL)
-	if err == nil {
-		return agentIssueRef{Owner: ref.Owner, Repo: ref.Repo, Number: ref.Number}, nil
-	}
-	// Accept scheme-less Forgejo issue URLs as a convenience for dictated refs and
-	// pasted URLs that dropped their protocol in transit.
-	if !strings.Contains(s, "://") {
-		if ref, err := issueref.Parse("https://"+s, forgejoBaseURL); err == nil {
-			return agentIssueRef{Owner: ref.Owner, Repo: ref.Repo, Number: ref.Number}, nil
+	ref, err := dispatch.ParseIssueRef(forgejoBaseURL, s)
+	if err != nil {
+		if strings.Contains(s, "://") {
+			return agentIssueRef{}, fmt.Errorf(
+				"cannot parse issue ref %q: want owner/repo#N, a bare #N, or %s/owner/repo/issues/N; "+
+					"for a non-issue pointer (a CI run, job, or commit URL), hand it to the engineer "+
+					"role's freeform mode instead: ward agent engineer '<url>'",
+				s, strings.TrimRight(forgejoBaseURL, "/"))
 		}
+		return agentIssueRef{}, err
 	}
-	// A non-issue URL is a valid freeform pointer, just not an issue ref -
-	// steer to the task verb that carries arbitrary pointers (ward#234).
-	if strings.Contains(s, "://") {
-		return agentIssueRef{}, fmt.Errorf(
-			"cannot parse issue ref %q: want owner/repo#N, a bare #N, or %s/owner/repo/issues/N; "+
-				"for a non-issue pointer (a CI run, job, or commit URL), hand it to the engineer "+
-				"role's freeform mode instead: ward agent engineer '<url>'",
-			s, strings.TrimRight(forgejoBaseURL, "/"))
+	mode := forgeForgejo
+	if ref.Platform == dispatch.PlatformGitHub {
+		mode = forgeGitHub
 	}
-	return agentIssueRef{}, err
+	return agentIssueRef{Owner: ref.Owner, Repo: ref.Repo, Number: ref.Number, Forge: mode}, nil
 }
 
 // resolveAgentIssueRef parses the ref and, for a bare #N / N, fills owner/repo from

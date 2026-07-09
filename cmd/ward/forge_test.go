@@ -11,51 +11,8 @@ import (
 	"forgejo.coilysiren.me/coilyco-flight-deck/cli-guard/cli/shell"
 )
 
-// TestParseGitHubIssueRef covers the GitHub ref/URL forms ward#489 accepts and the
-// non-GitHub inputs it must leave for the Forgejo parser (ok=false).
-func TestParseGitHubIssueRef(t *testing.T) {
-	cases := []struct {
-		in        string
-		wantOwner string
-		wantRepo  string
-		wantNum   int
-		wantOK    bool
-	}{
-		{"https://github.com/owner/repo/issues/12", "owner", "repo", 12, true},
-		{"http://github.com/owner/repo/issues/3", "owner", "repo", 3, true},
-		{"github.com/owner/repo/issues/7", "owner", "repo", 7, true},
-		{"github.com/owner/repo#42", "owner", "repo", 42, true},
-		{"https://github.com/coilysiren/agentic-os/issues/461?foo=bar", "coilysiren", "agentic-os", 461, true},
-		{"https://github.com/owner/repo.git/issues/9", "owner", "repo", 9, true},
-		{"https://www.github.com/owner/repo/issues/5", "owner", "repo", 5, true},
-		// Not GitHub / not an issue ref: fall through to the Forgejo parser.
-		{"coilyco-flight-deck/ward#98", "", "", 0, false},
-		{"https://forgejo.coilysiren.me/coilyco-flight-deck/ward/issues/1", "", "", 0, false},
-		{"github.com/owner/repo", "", "", 0, false}, // no issue number
-		{"https://github.com/owner/repo/pulls/3", "", "", 0, false},
-		{"#98", "", "", 0, false},
-		{"github.com/owner/repo/issues/0", "", "", 0, false}, // non-positive
-	}
-	for _, c := range cases {
-		got, ok := parseGitHubIssueRef(c.in)
-		if ok != c.wantOK {
-			t.Errorf("parseGitHubIssueRef(%q): ok=%v want %v", c.in, ok, c.wantOK)
-			continue
-		}
-		if !ok {
-			continue
-		}
-		if got.Owner != c.wantOwner || got.Repo != c.wantRepo || got.Number != c.wantNum {
-			t.Errorf("parseGitHubIssueRef(%q) = %s/%s#%d, want %s/%s#%d", c.in, got.Owner, got.Repo, got.Number, c.wantOwner, c.wantRepo, c.wantNum)
-		}
-		if got.Forge != forgeGitHub {
-			t.Errorf("parseGitHubIssueRef(%q): forge=%v want github", c.in, got.Forge)
-		}
-	}
-}
-
-// TestParseAgentIssueRefForge confirms the top-level parser tags the forge: a
-// github.com ref parses to forgeGitHub, everything else stays forgeForgejo.
+// TestParseAgentIssueRefForge confirms the ward adapter preserves the forge tag:
+// github.com refs stay GitHub, Forgejo refs stay Forgejo.
 func TestParseAgentIssueRefForge(t *testing.T) {
 	gh, err := parseAgentIssueRef("https://github.com/owner/repo/issues/1")
 	if err != nil {

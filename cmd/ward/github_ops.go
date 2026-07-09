@@ -200,7 +200,11 @@ func issueNumberFromURL(u string) (int, error) {
 		return 0, fmt.Errorf("empty URL")
 	}
 	last := u[strings.LastIndexByte(u, '/')+1:]
-	return parsePositiveInt(last)
+	n, err := strconv.Atoi(last)
+	if err != nil || n <= 0 {
+		return 0, fmt.Errorf("not a positive issue number: %q", last)
+	}
+	return n, nil
 }
 
 // writeGitHubBody writes a signed markdown body to a temp file for gh's --body-file,

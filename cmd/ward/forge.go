@@ -5,7 +5,6 @@ import (
 	"errors"
 	"fmt"
 	"os"
-	"regexp"
 	"strings"
 
 	"forgejo.coilysiren.me/coilyco-flight-deck/cli-guard/cli/dispatch"
@@ -64,45 +63,6 @@ func parseForge(s string) forge {
 		return forgeGitHub
 	}
 	return forgeForgejo
-}
-
-// githubRefRE matches a github.com issue URL (`.../owner/repo/issues/N`) or the
-// compact `github.com/owner/repo#N`, tolerating scheme/www/.git/query/fragment.
-var githubRefRE = regexp.MustCompile(`(?i)^(?:https?://)?(?:www\.)?github\.com/([\w.-]+)/([\w.-]+?)(?:\.git)?(?:/issues/(\d+)|#(\d+))(?:[/?#].*)?$`)
-
-// parseGitHubIssueRef tags a github.com ref forgeGitHub; ok is false for anything
-// else, so the caller falls through to the Forgejo parser. See docs/agent-github.md.
-func parseGitHubIssueRef(s string) (agentIssueRef, bool) {
-	m := githubRefRE.FindStringSubmatch(strings.TrimSpace(s))
-	if m == nil {
-		return agentIssueRef{}, false
-	}
-	num := m[3]
-	if num == "" {
-		num = m[4]
-	}
-	n, err := parsePositiveInt(num)
-	if err != nil || n <= 0 {
-		return agentIssueRef{}, false
-	}
-	return agentIssueRef{Owner: m[1], Repo: strings.TrimSuffix(m[2], ".git"), Number: n, Forge: forgeGitHub}, true
-}
-
-// parsePositiveInt parses a base-10 issue number, rejecting a leading sign or
-// non-digit so a malformed capture cannot masquerade as a valid ref.
-func parsePositiveInt(s string) (int, error) {
-	s = strings.TrimSpace(s)
-	if s == "" {
-		return 0, fmt.Errorf("empty number")
-	}
-	n := 0
-	for _, r := range s {
-		if r < '0' || r > '9' {
-			return 0, fmt.Errorf("not a number: %q", s)
-		}
-		n = n*10 + int(r-'0')
-	}
-	return n, nil
 }
 
 // errForgeLockUnsupported is the sentinel lockIssue/unlockIssue return when the forge

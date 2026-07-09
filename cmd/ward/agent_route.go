@@ -59,8 +59,8 @@ func classifyTaskInvocation(arg, file string) (route bool, repoArg string, err e
 	return false, "", fmt.Errorf("no task given: pass a freeform task ('ward agent engineer \"do the thing\"') to auto-route it, or an explicit owner/repo with --instructions-file")
 }
 
-// taskRepoRef coerces a `task` positional to an owner/repo slug ONLY for a bare
-// `owner/repo[#N]` or a Forgejo issue URL; else false for ROUTE (ward#234; docs).
+// taskRepoRef coerces a `task` positional to an owner/repo slug for a
+// parseable issue ref or bare `owner/repo` slug; else false for ROUTE (ward#234).
 func taskRepoRef(arg string) (string, bool) {
 	arg = strings.TrimSpace(arg)
 	if arg == "" {
