@@ -327,9 +327,7 @@ func directorMergeDecision(pr dispatch.Issue, linked int, meta directorRunMeta) 
 		return false, "draft PRs are not merge-authorized", linked, meta
 	}
 	status := strings.ToLower(strings.TrimSpace(meta.Outcome.Status))
-	switch status {
-	case "merge-ready", "done":
-	default:
+	if status != "merge-ready" {
 		if !meta.HasOutcome {
 			return false, "linked issue did not finish with a WARD-OUTCOME comment", linked, meta
 		}

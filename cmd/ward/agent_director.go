@@ -71,6 +71,7 @@ type rankedBacklogIssue struct {
 }
 
 // backlogOutcome is the parsed WARD-OUTCOME status of a finished run.
+// The ledger stores explicit nonterminal PR outcomes as well as terminal ones.
 type backlogOutcome struct {
 	Status string `yaml:"status"`
 	Text   string `yaml:"text"`
@@ -927,8 +928,8 @@ func normalizeBacklogOutcomeStatus(status string) string {
 	}
 }
 
-// backlogOutcomeState maps a parsed outcome status to the ledger state it lands in;
-// an unrecognized status parks as blocked (a human should look). Ports poll_repo.
+// backlogOutcomeState maps a parsed outcome status to the ledger state it lands in.
+// Submitted and merge-ready stay explicit nonterminal states. Unknowns park blocked.
 func backlogOutcomeState(status string) string {
 	switch normalizeBacklogOutcomeStatus(status) {
 	case "done":
@@ -944,6 +945,10 @@ func backlogOutcomeState(status string) string {
 	default:
 		return "blocked"
 	}
+}
+
+func backlogStateSummaryOrder() []string {
+	return []string{"done", "submitted", "merge-ready", "blocked", "failed", "queued", "dispatched", "surfaced", "skipped"}
 }
 
 // --- ledger persistence ----------------------------------------------------
@@ -1455,7 +1460,7 @@ func (r *Runner) backlogPrintSummary(repos []string) error {
 	}
 	var b strings.Builder
 	fmt.Fprintf(&b, "\nbacklog summary (%s):\n", strings.Join(repos, ", "))
-	for _, st := range []string{"done", "blocked", "failed", "queued", "dispatched", "surfaced", "skipped"} {
+	for _, st := range backlogStateSummaryOrder() {
 		if counts[st] > 0 {
 			fmt.Fprintf(&b, "  %-10s %d\n", st, counts[st])
 		}
