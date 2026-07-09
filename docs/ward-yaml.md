@@ -26,16 +26,18 @@ enforces nothing is the worst failure shape for a security tool.
 file **best-effort**: any parse or validation failure passes through silently
 (same posture as a malformed hook payload, see [hook.md](hook.md)). So a
 `security:` block with a typo does not error at hook time - it silently enforces
-nothing, and the repo owner believes they are protected. **`ward doctor` is the
-loud validator**: it surfaces a load failure as a hard error and summarizes the
-parsed `security:` block. Run `ward doctor` after every edit to this file. Do
+nothing, and the repo owner believes they are protected. The retired
+`ward setup` / `ward doctor` surface was the loud validator: it surfaced a load
+failure as a hard error and summarized the parsed `security:` block. Its
+behavior inventory lives in
+[`release-planning-setup-doctor.md`](release-planning-setup-doctor.md). Do
 not rely on the hook to tell you the config is wrong.
 
 ## Top-level keys
 
 - **`commands:`** - map of dev-verb name to its declaration. Read by ward. See [commands](#commands).
-- **`security:`** - the security policy block. Read by ward (doctor + hook). The loader and the hook tolerate its absence, but as of [ward#450](https://forgejo.coilysiren.me/coilyco-flight-deck/ward/issues/450) `ward doctor` **fails** when it is missing (it prints `no security: declared` and exits non-zero), so a real repo declares one. See [security](#security).
-- **`catalog:`** - **not read by ward for repo verbs.** This is `coilyco-flight-deck/agentic-os` catalog tooling metadata (repo description + cross-repo `dependsOn`). ward's `repocfg` loader still unmarshals only `commands` + `security` for `ward exec`, `ward doctor`, and the hook, but **every warded agent role** (engineer, director, advisor) reads `catalog.dependsOn` at launch to auto-mount those upstreams as read-only reference clones ([ward#573](https://forgejo.coilysiren.me/coilyco-flight-deck/ward/issues/573); [container-multi-repo.md](container-multi-repo.md)). A `dependsOn` entry may be a bare `owner/name` (resolved on canonical Forgejo over HTTPS) **or a full git clone URL** carrying a non-Forgejo host and transport - `ssh://git@github.com/StrangeLoopGames/Eco.git`, `git@github.com:owner/name.git`, or a bare `github.com/owner/name` (synthesized to the sanctioned ssh form). An external host is honored over its own transport off a **host-side ssh-seeded** gitcache mirror, never mirrored onto Forgejo, and a dep that does not hydrate **fails loud** at launch instead of silently reading as present ([ward#612](https://forgejo.coilysiren.me/coilyco-flight-deck/ward/issues/612)). It is safe to include for the catalog tooling and safe to omit if you do not use it.
+- **`security:`** - the security policy block. Read by ward's hook surface. The loader and the hook tolerate its absence, but the retired `ward doctor` surface used to fail when it was missing (it printed `no security: declared` and exited non-zero), so a real repo declares one. See [security](#security).
+- **`catalog:`** - **not read by ward for repo verbs.** This is `coilyco-flight-deck/agentic-os` catalog tooling metadata (repo description + cross-repo `dependsOn`). ward's `repocfg` loader still unmarshals only `commands` + `security` for `ward exec` and the hook, but **every warded agent role** (engineer, director, advisor) reads `catalog.dependsOn` at launch to auto-mount those upstreams as read-only reference clones ([ward#573](https://forgejo.coilysiren.me/coilyco-flight-deck/ward/issues/573); [container-multi-repo.md](container-multi-repo.md)). A `dependsOn` entry may be a bare `owner/name` (resolved on canonical Forgejo over HTTPS) **or a full git clone URL** carrying a non-Forgejo host and transport - `ssh://git@github.com/StrangeLoopGames/Eco.git`, `git@github.com:owner/name.git`, or a bare `github.com/owner/name` (synthesized to the sanctioned ssh form). An external host is honored over its own transport off a **host-side ssh-seeded** gitcache mirror, never mirrored onto Forgejo, and a dep that does not hydrate **fails loud** at launch instead of silently reading as present ([ward#612](https://forgejo.coilysiren.me/coilyco-flight-deck/ward/issues/612)). It is safe to include for the catalog tooling and safe to omit if you do not use it.
 
 ## commands
 

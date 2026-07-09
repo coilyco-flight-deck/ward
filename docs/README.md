@@ -14,8 +14,7 @@ New to ward? Read [architecture.md](architecture.md) first - it frames the whole
 - [FEATURES.md](FEATURES.md) - inventory of what ships today.
 - [comparison-openshell.md](comparison-openshell.md) - ward vs NVIDIA OpenShell: verb-level gate vs kernel sandbox.
 - [comparison-container-use.md](comparison-container-use.md) - ward vs Dagger container-use: capability gate + autonomous driver vs container isolation + human-at-the-merge.
-- [setup.md](setup.md) - `ward setup` (`warded setup`), guided onboarding: scaffold `.ward/ward.yaml` from the Makefile, then run doctor.
-- [doctor.md](doctor.md) - `ward doctor`, the single diagnostic verb, incl. the allowlist drift guard.
+- [release-planning-setup-doctor.md](release-planning-setup-doctor.md) - pre-release inventory for the retired `ward setup` / `ward doctor` surfaces and their rebirth note.
 - [troubleshooting.md](troubleshooting.md) - symptom-indexed entry point for a failed `warded` run.
 - [audit.md](audit.md) - the append-only JSONL audit row written per invocation.
 - [config-discovery.md](config-discovery.md) - how ward resolves the allowlist config path.

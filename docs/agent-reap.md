@@ -63,7 +63,7 @@ logged and the loop continues.
 The verb is **authored here**. The **fleet rollout** - a launchd timer firing
 `ward agent reap`, or a converged `--interval` daemon - is an **ansible role in
 infrastructure**, per the authoring-vs-rollout split. reap is **not** wired into
-`ward setup`.
+the retired `ward setup` surface.
 
 ## See also
 

@@ -61,12 +61,13 @@ the intended long-term story:
 Until one of those lands, an untrusted owner is a hard stop with no supported
 runtime workaround.
 
-## Why `ward doctor` does not catch this
+## Why the retired onboarding diagnostics did not catch this
 
-[`ward doctor`](doctor.md) validates the allowlist and the `security:` probes. It
-does **not** check "can this host dispatch an agent for owner X", so on a host
-where every `warded` call will be refused, the doctor still passes. Closing that
-day-2 gap is tracked in [ward#195](https://forgejo.coilysiren.me/coilyco-flight-deck/ward/issues/195).
+The retired `ward setup` / `ward doctor` surface validated the allowlist and
+`security:` probes. It did **not** check "can this host dispatch an agent for
+owner X", so on a host where every `warded` call would be refused, the
+diagnostic still passed. Closing that day-2 gap is tracked in
+[ward#195](https://forgejo.coilysiren.me/coilyco-flight-deck/ward/issues/195).
 
 ## See also
 

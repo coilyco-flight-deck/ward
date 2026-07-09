@@ -169,11 +169,6 @@ func TestMaybeRewriteWardedShim(t *testing.T) {
 			want: []string{"ward", "agent", "engineer", "#98", "--harness", "codex"},
 		},
 		{
-			name: "warded setup carves out to ward setup, not ward agent",
-			args: []string{"warded", "setup", "--force"},
-			want: []string{"ward", "setup", "--force"},
-		},
-		{
 			name: "ward itself is untouched",
 			args: []string{"ward", "agent", "engineer", "#98"},
 			want: []string{"ward", "agent", "engineer", "#98"},

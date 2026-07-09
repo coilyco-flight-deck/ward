@@ -41,7 +41,7 @@ left untouched.
 
 Authored here; the fleet rollout (a launchd timer or a converged daemon) is an
 ansible role in infrastructure, per the authoring-vs-rollout split - reap is not
-wired into ` + "`ward setup`" + `.
+wired into the retired onboarding surface.
 
   ward agent reap                 # sweep once, stop engineers idle > 1h
   ward agent reap --dry-run       # report what would be stopped, stopping nothing

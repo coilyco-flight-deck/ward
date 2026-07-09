@@ -39,13 +39,11 @@ forking. The plain verb gate (`ward exec`/`git`/`audit`) has none of these limit
 ```bash
 brew install coilyco-flight-deck/tap/ward   # full tap steps in the README
 ward version                                # installed release tag
-ward doctor                                 # .ward/ward.yaml vs Makefile + host probes
 ```
 
 - **`warded` is the agent driver only, not a `ward` alias.** `warded version`
   errors - use `ward version`. `warded` understands only roles and refs.
-- **`ward doctor` does not check the trust gate** ([doctor.md](doctor.md)), so it
-  passes even where every `warded` call is refused ([ward#195](https://forgejo.coilysiren.me/coilyco-flight-deck/ward/issues/195)).
+- **The retired `ward setup` / `ward doctor` surface is documented separately** in [release-planning-setup-doctor.md](release-planning-setup-doctor.md).
 
 ## 3. First command: a `--print` dry run
 

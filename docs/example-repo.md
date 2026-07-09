@@ -24,9 +24,9 @@ point is not the program - it is the four ward-facing pieces around it:
 
 - **The verb gate** - `ward exec build` runs `make build` through cli-guard:
   argv validated, one audit row, clean+synced gate. See [exec-verb.md](exec-verb.md).
-- **`ward doctor`** - cross-checks each `commands.<name>` against the Makefile
-  (`run:` is `make <name>`, the `## help` text equals `description:`) and
-  summarizes the `security:` block. See [doctor.md](doctor.md).
+- **Retired setup/doctor inventory** - the removed onboarding/diagnostic pair
+  used to cross-check `commands.<name>` and summarize `security:`. See
+  [release-planning-setup-doctor.md](release-planning-setup-doctor.md).
 - **The security block** - `protected_binaries` (docker, deny-direct), `sudo`,
   and `hooks.deny_bare_binaries`. Field-by-field: [ward-yaml.md](ward-yaml.md).
 - **The guardfile** - the exec-dialect shape a consumer authors before
@@ -40,7 +40,7 @@ point is not the program - it is the four ward-facing pieces around it:
 cd examples/toy
 ward exec build
 ward exec test
-ward doctor
+ward version
 ```
 
 The guardfile and `.ward/ward.yaml` are complete enough to copy into a new repo
