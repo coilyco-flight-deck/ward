@@ -63,8 +63,10 @@ warded coilyco-flight-deck/ward#NNN  # dispatch a sealed engineer
 The surface forwards `warded engineer ...` and `warded advisor ...` ref-mode dispatches to
 a host-side broker over TCP (guarded by a per-launch token). Host ward launches the
 sibling from the native host context, so Claude/Codex/Goose credentials resolve from the
-host home, not the director container. The broker accepts only that constrained
-dispatch API; unrelated ward verbs and arbitrary shell never cross it.
+host home, not the director container. Engineer dispatch already fires and forgets, and
+advisor ref dispatch now returns as soon as the host launch is underway, with the issue
+comment as the durable result. The broker accepts only that constrained dispatch API;
+unrelated ward verbs and arbitrary shell never cross it.
 
 That broker inherits the surface's own harness by default. A surfaced Codex director
 therefore dispatches Codex engineers unless you explicitly override the engineer

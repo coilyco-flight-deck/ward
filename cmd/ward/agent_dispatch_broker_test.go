@@ -357,6 +357,73 @@ func TestForwardAgentDispatchToHostBrokerAllowsRefWithoutPrompt(t *testing.T) {
 	}
 }
 
+func TestAdvisorDispatchBrokerReturnsPromptly(t *testing.T) {
+	t.Setenv("HOME", t.TempDir())
+
+	orig := advisorDispatchRunner
+	t.Cleanup(func() { advisorDispatchRunner = orig })
+
+	started := make(chan struct{})
+	release := make(chan struct{})
+	finished := make(chan struct{})
+	advisorDispatchRunner = func(context.Context, []string) error {
+		close(started)
+		<-release
+		close(finished)
+		return nil
+	}
+
+	req := dispatchBrokerRequest{
+		Role:      "advisor",
+		Argv:      []string{"advisor", "coilyco-flight-deck/ward#378", "--harness", "claude"},
+		Requester: "session-claude-host",
+		Token:     "nonce-1",
+	}
+
+	done := make(chan struct{})
+	var (
+		logPath string
+		err     error
+	)
+	go func() {
+		logPath, err = (&Runner{}).runHostDispatchBrokerAdvisor(context.Background(), req)
+		close(done)
+	}()
+
+	select {
+	case <-done:
+	case <-time.After(500 * time.Millisecond):
+		t.Fatal("advisor dispatch broker did not return promptly")
+	}
+	if err != nil {
+		t.Fatalf("advisor dispatch broker returned error: %v", err)
+	}
+	if logPath == "" {
+		t.Fatal("advisor dispatch broker returned an empty log path")
+	}
+
+	select {
+	case <-started:
+	case <-time.After(500 * time.Millisecond):
+		t.Fatal("advisor dispatch runner never started")
+	}
+
+	close(release)
+	select {
+	case <-finished:
+	case <-time.After(500 * time.Millisecond):
+		t.Fatal("advisor dispatch runner did not finish after release")
+	}
+
+	body, rerr := os.ReadFile(logPath) // #nosec G304 -- test-controlled temp path
+	if rerr != nil {
+		t.Fatalf("read advisor dispatch log: %v", rerr)
+	}
+	if !strings.Contains(string(body), "requested `ward agent advisor coilyco-flight-deck/ward#378 --harness claude`") {
+		t.Errorf("advisor dispatch log missing launch line:\n%s", body)
+	}
+}
+
 func TestDispatchBrokerEnvIsPlanLocal(t *testing.T) {
 	p := sampleUpPlan()
 	if _, ok := p.wardEnv()[envDispatchBrokerAddr]; ok {

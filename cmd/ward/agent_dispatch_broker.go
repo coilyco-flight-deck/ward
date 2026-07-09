@@ -77,6 +77,12 @@ type dispatchBrokerResponse struct {
 	LogPath string `json:"log_path,omitempty"`
 }
 
+// advisorDispatchRunner runs the advisor ref-mode work. Tests replace it so the broker
+// can prove it returns before the long research/comment pass finishes.
+var advisorDispatchRunner = func(ctx context.Context, argv []string) error {
+	return agentAdvisorCommand().Run(ctx, argv)
+}
+
 // dispatchStdioMu serializes the process-global os.Stdout/os.Stderr swap that keeps
 // a served run's deploy output off the shared read-only TUI (ward#389).
 var dispatchStdioMu sync.Mutex
@@ -179,33 +185,70 @@ func (r *Runner) runHostDispatchBrokerRequest(ctx context.Context, req dispatchB
 	if dispatchAction(req.Action) == dispatchActionStop {
 		return r.runDispatchBrokerStop(ctx, req)
 	}
-	// Serialize on the ref so two same-N dispatches can't both reserve + spin: the
-	// second waits, then its reservation check sees the first's hold (ward#600).
-	if ref, err := parseAgentIssueRef(req.Argv[1]); err == nil {
-		lock := dispatchRefLock(ref.String())
-		lock.Lock()
-		defer lock.Unlock()
-	}
-	logf, logPath, err := openDispatchLog(req, time.Now())
-	if err != nil {
-		// Fail loud rather than fall back to the TTY: a broken log dir must not
-		// silently reroute the flood back onto the corrupted surface (ward#389).
-		return "", fmt.Errorf("dispatch broker: open run log: %w", err)
-	}
-	defer func() { _ = logf.Close() }()
-	restore := redirectStdioToLog(logf)
-	defer restore()
-
-	_, _ = fmt.Fprintf(logf, "ward dispatch broker: %s requested `ward agent %s`\n",
-		emptyDefault(req.Requester, "unknown-container"), strings.Join(req.Argv, " "))
 	switch req.Role {
 	case "engineer":
+		// Serialize on the ref so two same-N dispatches can't both reserve + spin:
+		// the second waits, then its reservation check sees the first's hold (ward#600).
+		if ref, err := parseAgentIssueRef(req.Argv[1]); err == nil {
+			lock := dispatchRefLock(ref.String())
+			lock.Lock()
+			defer lock.Unlock()
+		}
+		logf, logPath, err := openDispatchLog(req, time.Now())
+		if err != nil {
+			// Fail loud rather than fall back to the TTY: a broken log dir must not
+			// silently reroute the flood back onto the corrupted surface (ward#389).
+			return "", fmt.Errorf("dispatch broker: open run log: %w", err)
+		}
+		defer func() { _ = logf.Close() }()
+		restore := redirectStdioToLog(logf)
+		defer restore()
+
+		_, _ = fmt.Fprintf(logf, "ward dispatch broker: %s requested `ward agent %s`\n",
+			emptyDefault(req.Requester, "unknown-container"), strings.Join(req.Argv, " "))
 		return logPath, agentEngineerCommand().Run(ctx, req.Argv)
 	case "advisor":
-		return logPath, agentAdvisorCommand().Run(ctx, req.Argv)
+		return r.runHostDispatchBrokerAdvisor(ctx, req)
 	default:
-		return logPath, fmt.Errorf("role %q is not dispatchable", req.Role)
+		return "", fmt.Errorf("role %q is not dispatchable", req.Role)
 	}
+}
+
+// runHostDispatchBrokerAdvisor launches advisor ref-mode in the background.
+// That returns a prompt dispatch result instead of watching the full pass inline.
+func (r *Runner) runHostDispatchBrokerAdvisor(ctx context.Context, req dispatchBrokerRequest) (string, error) {
+	ref, err := parseAgentIssueRef(req.Argv[1])
+	if err != nil {
+		return "", err
+	}
+	lock := dispatchRefLock(ref.String())
+	lock.Lock()
+
+	logf, logPath, err := openDispatchLog(req, time.Now())
+	if err != nil {
+		lock.Unlock()
+		// Fail loud rather than fall back to the TTY: a broken log dir must not
+		// silently reroute the launch back onto the corrupted surface (ward#389).
+		return "", fmt.Errorf("dispatch broker: open run log: %w", err)
+	}
+	go func() {
+		defer func() {
+			if rec := recover(); rec != nil {
+				_, _ = fmt.Fprintf(logf, "ward dispatch broker: advisor dispatch panicked: %v\n", rec)
+			}
+		}()
+		defer lock.Unlock()
+		defer func() { _ = logf.Close() }()
+		restore := redirectStdioToLog(logf)
+		defer restore()
+
+		_, _ = fmt.Fprintf(logf, "ward dispatch broker: %s requested `ward agent %s`\n",
+			emptyDefault(req.Requester, "unknown-container"), strings.Join(req.Argv, " "))
+		if err := advisorDispatchRunner(ctx, req.Argv); err != nil {
+			_, _ = fmt.Fprintf(logf, "ward dispatch broker: advisor dispatch finished with error: %v\n", err)
+		}
+	}()
+	return logPath, nil
 }
 
 // runDispatchBrokerStop resolves the stop target to one running engineer and
