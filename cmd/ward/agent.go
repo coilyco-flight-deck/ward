@@ -166,8 +166,26 @@ func headlessReflection(ref agentIssueRef, wf workflowMode, reviewGate bool, rev
 // seed (ward#134): run `ward agent review` before landing. docs/dispatch-review.md.
 func reviewGateClause(ref agentIssueRef, wf workflowMode) string {
 	landing := "open the pull request"
-	if wf.orDefault() == workflowDirectMain && ref.Forge != forgeGitHub {
+	switch wf.orDefault() {
+	case workflowDirectToMain:
 		landing = "merge to `main`"
+	case workflowPullRequestAndMerge:
+		landing = "merge the pull request"
+	case workflowRemoteBranchOnly:
+		landing = "push the remote branch"
+	}
+	var workflowTail string
+	switch wf.orDefault() {
+	case workflowDirectToMain:
+		workflowTail = "For `direct-to-main` workflows, landing means merging to `main`. Do not stop before the merge lands."
+	case workflowPullRequest:
+		workflowTail = "For `pull-request` workflows, opening the pull request is not a stopping point. Keep watching the PR checks after it opens. A failing check is not done: fetch the logs/status, patch the branch, push the update, and repeat until the PR is green or the failure is genuinely blocked."
+	case workflowPullRequestAndMerge:
+		workflowTail = "For `pull-request-and-merge` workflows, opening the pull request is not a stopping point. Keep watching the PR checks and merge status after it opens. A failing check is not done: fetch the logs/status, patch the branch, push the update, and repeat until the PR is green and merged or the failure is genuinely blocked."
+	case workflowRemoteBranchOnly:
+		workflowTail = "For `remote-branch-only` workflows, the remote branch push is the finish line. Do not open a pull request and do not merge."
+	default:
+		workflowTail = "For `pull-request` workflows, opening the pull request is not a stopping point. Keep watching the PR checks after it opens. A failing check is not done: fetch the logs/status, patch the branch, push the update, and repeat until the PR is green or the failure is genuinely blocked."
 	}
 	return fmt.Sprintf(
 		"REVIEW GATE (ward#134): before you land this change (%s), and ONLY after CI is green, run the "+
@@ -183,13 +201,11 @@ func reviewGateClause(ref agentIssueRef, wf workflowMode) string {
 			"  - `WARD-REVIEW: advisory ...` -> only if the gate had no runnable reviewer at all. Treat that as a "+
 			"block, not a pass, and write the skip/availability summary into the conclusion comment so the issue shows "+
 			"why the review could not run. `ward agent review` writes the exact one-line review summary to `~/.ward/review-summary.txt`; copy that line verbatim into the same conclusion comment.\n"+
-			"For `pr` workflows, opening the pull request is not a stopping point. Keep watching the PR checks after "+
-			"it opens. A failing check is not done: fetch the logs/status, patch the branch, push the update, and "+
-			"repeat until the PR is green or the failure is genuinely blocked.\n"+
+			"%s\n"+
 			"The gate's exit code mirrors the verdict (non-zero on block), so a shell `&&` also enforces it. Do "+
 			"not skip it, and do not land on a block. If the review was intentionally skipped via `--skip-review`, "+
 			"`--skip-preflight`, or config, the final `WARD-OUTCOME` comment must say so explicitly.",
-		landing, landing)
+		landing, landing, workflowTail)
 }
 
 // grantedRepoDoneClause widens the done-condition for a --repo grant (ward#291):
@@ -227,23 +243,7 @@ func forgeDisplayName(f forge) string {
 	return "Forgejo"
 }
 
-// forgeCarryClause is the forge-specific tail of the seed's carry sentence (ward#489):
-// Forgejo merges to main + pushes; GitHub pushes a branch + opens a PR (the merge gate).
-func forgeCarryClause(ref agentIssueRef) string {
-	if ref.Forge == forgeGitHub {
-		return fmt.Sprintf(
-			"implement on a feature branch, commit, push the branch to origin, and open a pull request "+
-				"with `gh pr create` whose body carries `Closes #%d`. Do NOT push to the repository's `main` "+
-				"branch directly - on GitHub the pull request is the merge gate. `gh` is authenticated from "+
-				"the GITHUB_TOKEN in your environment.",
-			ref.Number)
-	}
-	return fmt.Sprintf(
-		"implement, commit, merge to main, push - and close the issue with a commit trailer: closes #%d.",
-		ref.Number)
-}
-
-// agentSeedPrompt seeds a direct-main run (the default): a thin wrapper over
+// agentSeedPrompt seeds a direct-to-main run (the default): a thin wrapper over
 // agentSeedPromptWorkflow so legacy callers stay byte-for-byte (ward#405, ward#508).
 func agentSeedPrompt(ref agentIssueRef, title, body, details string, headless bool, extra []targetRepo) string {
 	return agentSeedPromptWorkflow(ref, title, body, details, headless, extra, defaultWorkflow, true, "")
@@ -277,15 +277,15 @@ func agentSeedPromptWorkflow(ref agentIssueRef, title, body, details string, hea
 	if block := subsystemSeedBlock(ref, title, body); block != "" {
 		seed += "\n\n" + block
 	}
-	// Before landing, a headless run must clear the review gate (ward#134);
-	// skipped for patch-only (lands nothing) and when review is intentionally disabled.
-	if headless && reviewGate && wf.orDefault() != workflowPatchOnly {
+	// Before landing, a headless run must clear the review gate (ward#134).
+	// Remote-branch-only skips it because that workflow lands nothing else.
+	if headless && reviewGate && wf.orDefault() != workflowRemoteBranchOnly {
 		seed += "\n\n" + reviewGateClause(ref, wf)
 	}
 	// A headless run detaches unwatched, so it closes with a retrospective comment -
 	// the only voice it leaves behind; the landing phrase tracks the workflow (#281, #508).
 	if headless {
-		seed += "\n\n" + headlessReflection(ref, wf, reviewGate && wf.orDefault() != workflowPatchOnly, reviewSkip)
+		seed += "\n\n" + headlessReflection(ref, wf, reviewGate && wf.orDefault() != workflowRemoteBranchOnly, reviewSkip)
 	}
 	return seed + inline
 }

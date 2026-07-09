@@ -505,9 +505,9 @@ func TestReapTargetTreeLandedAndClosedDoesNotSalvage(t *testing.T) {
 	}
 }
 
-// TestReapTargetTreeLandedDirectMainWithoutCloseRefSalvages covers ward#674.
-// A direct-main run already on origin/main must still verify its carried closes ref.
-func TestReapTargetTreeLandedDirectMainWithoutCloseRefSalvages(t *testing.T) {
+// TestReapTargetTreeLandedDirectToMainWithoutCloseRefSalvages covers ward#674.
+// A direct-to-main run already on origin/main must still verify its carried closes ref.
+func TestReapTargetTreeLandedDirectToMainWithoutCloseRefSalvages(t *testing.T) {
 	origin := t.TempDir()
 	runGit(t, origin, "init", "--bare", "-b", "main")
 	work := t.TempDir()
@@ -540,30 +540,30 @@ func TestReapTargetTreeLandedDirectMainWithoutCloseRefSalvages(t *testing.T) {
 	runGit(t, work, "update-ref", "refs/remotes/origin/main", "HEAD")
 
 	r := &Runner{Runner: &shell.Runner{Resolve: shell.PathResolver}}
-	env := reapEnv{Owner: "coilyco-flight-deck", Name: "ward", Base: "https://forgejo.coilysiren.me", Mode: "codex", Issue: 674, Launched: true, Workflow: workflowDirectMain}
+	env := reapEnv{Owner: "coilyco-flight-deck", Name: "ward", Base: "https://forgejo.coilysiren.me", Mode: "codex", Issue: 674, Launched: true, Workflow: workflowDirectToMain}
 	if err := r.reapTargetTree(t.Context(), work, env, false); err != nil {
-		t.Fatalf("reapTargetTree on a landed direct-main run without closes #674: %v", err)
+		t.Fatalf("reapTargetTree on a landed direct-to-main run without closes #674: %v", err)
 	}
 
 	if got, want := mustGitRev(t, origin, "main"), mustGitRev(t, work, "HEAD"); got != want {
-		t.Fatalf("a landed direct-main run without closes #674 must not advance main again: origin main=%s work HEAD=%s", got, want)
+		t.Fatalf("a landed direct-to-main run without closes #674 must not advance main again: origin main=%s work HEAD=%s", got, want)
 	}
 	out, _ := exec.Command("git", "-C", origin, "branch", "--list", salvageBranchPrefix+"*").CombinedOutput()
 	if strings.TrimSpace(string(out)) == "" {
-		t.Fatal("a landed direct-main run without closes #674 must be preserved on a salvage branch")
+		t.Fatal("a landed direct-to-main run without closes #674 must be preserved on a salvage branch")
 	}
 }
 
 // TestReapTargetTreeWorkflowBoundaryDoesNotSalvage covers the clean workflow boundary.
-// pull-requests, pull-requests-and-merge, and patch-only runs land at that boundary.
+// Pull-request, pull-request-and-merge, and remote-branch-only runs land there.
 func TestReapTargetTreeWorkflowBoundaryDoesNotSalvage(t *testing.T) {
 	for _, tc := range []struct {
 		name     string
 		workflow workflowMode
 	}{
-		{name: "pull-requests", workflow: workflowPR},
-		{name: "pull-requests-and-merge", workflow: workflowPRAndMerge},
-		{name: "patch-only", workflow: workflowPatchOnly},
+		{name: "pull-request", workflow: workflowPullRequest},
+		{name: "pull-request-and-merge", workflow: workflowPullRequestAndMerge},
+		{name: "remote-branch-only", workflow: workflowRemoteBranchOnly},
 	} {
 		t.Run(tc.name, func(t *testing.T) {
 			origin := t.TempDir()
@@ -684,7 +684,7 @@ func TestReapTargetTreeResidualOnlyRunWithoutCloseRefSalvages(t *testing.T) {
 
 	r := &Runner{Runner: &shell.Runner{Resolve: shell.PathResolver}}
 	// Token empty: salvage preserves the branch but files no issue (logged, not fatal).
-	env := reapEnv{Owner: "coilyco-flight-deck", Name: "infrastructure", Base: "https://forgejo.coilysiren.me", Mode: "goose", Issue: 427, Launched: true, Workflow: workflowDirectMain}
+	env := reapEnv{Owner: "coilyco-flight-deck", Name: "infrastructure", Base: "https://forgejo.coilysiren.me", Mode: "goose", Issue: 427, Launched: true, Workflow: workflowDirectToMain}
 	if err := r.reapTargetTree(t.Context(), work, env, false); err != nil {
 		t.Fatalf("reapTargetTree salvaging a close-refless residual-only run: %v", err)
 	}
@@ -737,7 +737,7 @@ func TestReapTargetTreeRepairsResidualCommitCloseRef(t *testing.T) {
 	}
 
 	r := &Runner{Runner: &shell.Runner{Resolve: shell.PathResolver}}
-	env := reapEnv{Owner: "coilyco-flight-deck", Name: "ward", Base: "https://forgejo.coilysiren.me", Mode: "claude", Issue: 713, Launched: true, Workflow: workflowDirectMain}
+	env := reapEnv{Owner: "coilyco-flight-deck", Name: "ward", Base: "https://forgejo.coilysiren.me", Mode: "claude", Issue: 713, Launched: true, Workflow: workflowDirectToMain}
 	if err := r.reapTargetTree(t.Context(), work, env, false); err != nil {
 		t.Fatalf("reapTargetTree repairing a residual closing reference: %v", err)
 	}
@@ -807,7 +807,7 @@ func TestReapTargetTreeEstablishesMainOnEmptyRepo(t *testing.T) {
 	remote, work := initEmptyRepoRun(t, "server.py", "print('hi')\n", "build reddit-mcp\n\ncloses #599")
 
 	r := &Runner{Runner: &shell.Runner{Resolve: shell.PathResolver}}
-	env := reapEnv{Owner: "coilyco-flight-deck", Name: "reddit-mcp", Base: "https://forgejo.coilysiren.me", Mode: "claude", Issue: 599, Launched: true, Workflow: workflowDirectMain}
+	env := reapEnv{Owner: "coilyco-flight-deck", Name: "reddit-mcp", Base: "https://forgejo.coilysiren.me", Mode: "claude", Issue: 599, Launched: true, Workflow: workflowDirectToMain}
 	if err := r.reapTargetTree(t.Context(), work, env, true); err != nil {
 		t.Fatalf("reapTargetTree establishing main on an empty repo: %v", err)
 	}
@@ -827,7 +827,7 @@ func TestReapTargetTreeEmptyRepoMissingCloseRefSalvages(t *testing.T) {
 
 	r := &Runner{Runner: &shell.Runner{Resolve: shell.PathResolver}}
 	// Token empty: salvage preserves the branch but files no issue (logged, not fatal).
-	env := reapEnv{Owner: "coilyco-flight-deck", Name: "reddit-mcp", Base: "https://forgejo.coilysiren.me", Mode: "claude", Issue: 599, Launched: true, Workflow: workflowDirectMain}
+	env := reapEnv{Owner: "coilyco-flight-deck", Name: "reddit-mcp", Base: "https://forgejo.coilysiren.me", Mode: "claude", Issue: 599, Launched: true, Workflow: workflowDirectToMain}
 	if err := r.reapTargetTree(t.Context(), work, env, true); err != nil {
 		t.Fatalf("reapTargetTree salvaging a close-refless empty-repo run: %v", err)
 	}

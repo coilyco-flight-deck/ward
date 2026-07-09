@@ -17,7 +17,7 @@ func TestDirectorMergeDecision(t *testing.T) {
 		Body:  "closes #729\n",
 	}
 	baseMeta := directorRunMeta{
-		Workflow:   string(workflowPullRequestsAndMerge),
+		Workflow:   string(workflowPullRequestAndMerge),
 		Review:     "passed: two reviewers agreed",
 		Outcome:    backlogOutcome{Status: "done"},
 		HasOutcome: true,
@@ -49,19 +49,19 @@ func TestDirectorMergeDecision(t *testing.T) {
 		{
 			name: "needs-done",
 			pr:   basePR,
-			meta: directorRunMeta{Workflow: string(workflowPullRequestsAndMerge), Review: "passed: ok"},
+			meta: directorRunMeta{Workflow: string(workflowPullRequestAndMerge), Review: "passed: ok"},
 			want: "linked issue did not finish with WARD-OUTCOME: done",
 		},
 		{
 			name: "needs-merge-workflow",
 			pr:   basePR,
-			meta: directorRunMeta{HasOutcome: true, Outcome: backlogOutcome{Status: "done"}, Workflow: string(workflowPR), Review: "passed: ok"},
-			want: "workflow pr still needs human merge approval",
+			meta: directorRunMeta{HasOutcome: true, Outcome: backlogOutcome{Status: "done"}, Workflow: string(workflowPullRequest), Review: "passed: ok"},
+			want: "workflow pull-request still needs human merge approval",
 		},
 		{
 			name: "needs-review",
 			pr:   basePR,
-			meta: directorRunMeta{HasOutcome: true, Outcome: backlogOutcome{Status: "done"}, Workflow: string(workflowPullRequestsAndMerge), Review: "blocked: concern"},
+			meta: directorRunMeta{HasOutcome: true, Outcome: backlogOutcome{Status: "done"}, Workflow: string(workflowPullRequestAndMerge), Review: "blocked: concern"},
 			want: "review gate did not pass",
 		},
 	} {
@@ -128,14 +128,14 @@ func TestMergePullRequestRequestShape(t *testing.T) {
 func TestDirectorRunMetaParsesWorkflowAndReview(t *testing.T) {
 	body := strings.Join([]string{
 		"WARD-OUTCOME: done - merged and pushed",
-		"workflow: pull-requests-and-merge; review summary: passed: all green",
+		"workflow: pull-request-and-merge; review summary: passed: all green",
 	}, "\n")
 	meta := parseDirectorRunMeta(body)
 	if !meta.HasOutcome || meta.Outcome.Status != "done" {
 		t.Fatalf("meta outcome = %+v, want done", meta)
 	}
-	if meta.Workflow != string(workflowPullRequestsAndMerge) {
-		t.Fatalf("meta workflow = %q, want %q", meta.Workflow, workflowPullRequestsAndMerge)
+	if meta.Workflow != string(workflowPullRequestAndMerge) {
+		t.Fatalf("meta workflow = %q, want %q", meta.Workflow, workflowPullRequestAndMerge)
 	}
 	if meta.Review != "passed: all green" {
 		t.Fatalf("meta review = %q, want passed: all green", meta.Review)

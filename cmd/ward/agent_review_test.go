@@ -88,34 +88,34 @@ func TestReviewerCandidatesDefaultToWorker(t *testing.T) {
 }
 
 // TestReviewGateClauseInSeed proves the review gate is wired into a headless
-// landing seed, skipped for patch-only, and suppressed by reviewGate=false.
+// landing seed, skipped for remote-branch-only, and suppressed by reviewGate=false.
 func TestReviewGateClauseInSeed(t *testing.T) {
 	ref := agentIssueRef{Owner: "coilyco-flight-deck", Repo: "ward", Number: 134}
 
-	direct := agentSeedPromptWorkflow(ref, "t", "b", "", true, nil, workflowDirectMain, true, "")
+	direct := agentSeedPromptWorkflow(ref, "t", "b", "", true, nil, workflowDirectToMain, true, "")
 	if !strings.Contains(direct, "REVIEW GATE") || !strings.Contains(direct, "ward agent review") {
-		t.Errorf("direct-main headless seed missing the review gate clause")
+		t.Errorf("direct-to-main headless seed missing the review gate clause")
 	}
 	if !strings.Contains(direct, "merge to `main`") {
-		t.Errorf("direct-main Forgejo landing phrase missing from the gate clause")
+		t.Errorf("direct-to-main landing phrase missing from the gate clause")
 	}
-	pr := agentSeedPromptWorkflow(ref, "t", "b", "", true, nil, workflowPR, true, "")
+	pr := agentSeedPromptWorkflow(ref, "t", "b", "", true, nil, workflowPullRequest, true, "")
 	if !strings.Contains(pr, "watching its CI/checks") {
-		t.Errorf("pr seed should tell PR workflows to keep watching checks after opening the PR")
+		t.Errorf("pull-request seed should tell PR workflows to keep watching checks after opening the PR")
 	}
 
-	patch := agentSeedPromptWorkflow(ref, "t", "b", "", true, nil, workflowPatchOnly, true, "")
-	if strings.Contains(patch, "REVIEW GATE") {
-		t.Errorf("patch-only lands nothing; it must not carry the review gate")
+	branchOnly := agentSeedPromptWorkflow(ref, "t", "b", "", true, nil, workflowRemoteBranchOnly, true, "")
+	if strings.Contains(branchOnly, "REVIEW GATE") {
+		t.Errorf("remote-branch-only lands nothing else; it must not carry the review gate")
 	}
-	if !strings.Contains(direct, "For `pr` workflows, opening the pull request is not a stopping point") {
-		t.Errorf("review gate clause must tell pr runs to keep watching PR CI\n got: %s", direct)
+	if !strings.Contains(direct, "For `direct-to-main` workflows, landing means merging to `main`") {
+		t.Errorf("review gate clause must name the direct-to-main landing path\n got: %s", direct)
 	}
-	if !strings.Contains(direct, "A failing check is not done") {
-		t.Errorf("review gate clause must tell pr runs to loop on failed checks\n got: %s", direct)
+	if !strings.Contains(pr, "For `pull-request` workflows, opening the pull request is not a stopping point") {
+		t.Errorf("review gate clause must tell pull-request runs to keep watching PR CI\n got: %s", pr)
 	}
 
-	off := agentSeedPromptWorkflow(ref, "t", "b", "", true, nil, workflowDirectMain, false, "")
+	off := agentSeedPromptWorkflow(ref, "t", "b", "", true, nil, workflowDirectToMain, false, "")
 	if strings.Contains(off, "REVIEW GATE") {
 		t.Errorf("--skip-review (reviewGate=false) must suppress the clause")
 	}

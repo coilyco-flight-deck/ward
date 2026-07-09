@@ -775,7 +775,7 @@ func parseDirectorRunMeta(body string) directorRunMeta {
 			lower := strings.ToLower(field)
 			switch {
 			case strings.HasPrefix(lower, "workflow:"):
-				meta.Workflow = strings.TrimSpace(field[len("workflow:"):])
+				meta.Workflow = string(canonicalWorkflow(workflowMode(strings.TrimSpace(field[len("workflow:"):]))))
 			case strings.HasPrefix(lower, "review summary:"):
 				meta.Review = strings.TrimSpace(field[len("review summary:"):])
 			}

@@ -8,19 +8,21 @@ import (
 )
 
 // TestParseWorkflow covers the --workflow parse gate (ward#508).
-// It checks the known modes, the default, and the aliases.
+// It checks the known modes, the default, and the transitional aliases.
 func TestParseWorkflow(t *testing.T) {
 	for _, tc := range []struct {
 		in   string
 		want workflowMode
 	}{
-		{"", workflowPR},
-		{"direct-main", workflowDirectMain},
-		{"pr", workflowPR},
-		{"pull-requests", workflowPullRequests},
-		{"pull-requests-and-merge", workflowPullRequestsAndMerge},
-		{"patch-only", workflowPatchOnly},
-		{"  pr  ", workflowPR},
+		{"", workflowPullRequest},
+		{"direct-to-main", workflowDirectToMain},
+		{"direct-main", workflowDirectToMain},
+		{"pull-request", workflowPullRequest},
+		{"pull-requests", workflowPullRequest},
+		{"pull-request-and-merge", workflowPullRequestAndMerge},
+		{"pull-requests-and-merge", workflowPullRequestAndMerge},
+		{"remote-branch-only", workflowRemoteBranchOnly},
+		{"patch-only", workflowRemoteBranchOnly},
 	} {
 		got, err := parseWorkflow(tc.in)
 		if err != nil {
@@ -30,84 +32,70 @@ func TestParseWorkflow(t *testing.T) {
 			t.Errorf("parseWorkflow(%q) = %q, want %q", tc.in, got, tc.want)
 		}
 	}
+	if _, err := parseWorkflow("pr"); err == nil {
+		t.Fatal("parseWorkflow accepted the removed pr short form")
+	}
 	if _, err := parseWorkflow("merge-everything"); err == nil {
 		t.Fatal("parseWorkflow accepted an unknown mode")
-	} else if !strings.Contains(err.Error(), "direct-main|pr|pull-requests|pull-requests-and-merge|patch-only") {
+	} else if !strings.Contains(err.Error(), "direct-to-main|pull-request|pull-request-and-merge|remote-branch-only") {
 		t.Errorf("unknown-mode error should list the choices, got %v", err)
 	}
 }
 
-// TestWorkflowLandsOnMain pins the reaper-facing predicate: only direct-main may
-// push/merge main. The empty default now resolves to pr.
+// TestWorkflowLandsOnMain pins the reaper-facing predicate: only direct-to-main may
+// push/merge main. The empty default now resolves to pull-request.
 func TestWorkflowLandsOnMain(t *testing.T) {
-	if !workflowDirectMain.landsOnMain() {
-		t.Error("direct-main must land on main")
+	if !workflowDirectToMain.landsOnMain() {
+		t.Error("direct-to-main must land on main")
 	}
-	if workflowMode("").landsOnMain() || workflowPR.landsOnMain() || workflowPullRequests.landsOnMain() || workflowPullRequestsAndMerge.landsOnMain() || workflowPatchOnly.landsOnMain() {
-		t.Error("default/pr/pull-requests/pull-requests-and-merge/patch-only must NOT land on main")
+	if workflowMode("").landsOnMain() || workflowPullRequest.landsOnMain() || workflowPullRequestAndMerge.landsOnMain() || workflowRemoteBranchOnly.landsOnMain() {
+		t.Error("default/pull-request/pull-request-and-merge/remote-branch-only must NOT land on main")
 	}
 }
 
-// TestWorkflowCarryClauseDirectMain: the default is byte-for-byte the forge clause,
-// so direct-main preserves existing behavior on both forges (ward#508 acceptance).
-func TestWorkflowCarryClauseDirectMain(t *testing.T) {
+// TestWorkflowCarryClauseDirectToMain keeps the fast path generic across forges.
+func TestWorkflowCarryClauseDirectToMain(t *testing.T) {
 	for _, ref := range []agentIssueRef{
 		{Owner: "o", Repo: "r", Number: 7},                     // Forgejo
 		{Owner: "o", Repo: "r", Number: 7, Forge: forgeGitHub}, // GitHub
 	} {
-		if got, want := workflowCarryClause(ref, workflowDirectMain), forgeCarryClause(ref); got != want {
-			t.Errorf("direct-main carry clause diverged from the forge clause:\n got: %s\nwant: %s", got, want)
+		if got, want := workflowCarryClause(ref, workflowDirectToMain), directToMainCarryClause(ref); got != want {
+			t.Errorf("direct-to-main carry clause diverged from the direct fast path:\n got: %s\nwant: %s", got, want)
 		}
 	}
 }
 
-// TestWorkflowCarryClausePR checks the PR carry clause on Forgejo and GitHub.
-// It also covers the director merge marker.
-func TestWorkflowCarryClausePR(t *testing.T) {
-	fj := workflowCarryClause(agentIssueRef{Owner: "o", Repo: "r", Number: 12}, workflowPR)
-	for _, want := range []string{"pull request", "closes #12", "watching its CI/checks", "failing check is not a done state"} {
-		if !strings.Contains(fj, want) {
-			t.Errorf("pr Forgejo carry clause missing %q\n got: %s", want, fj)
-		}
-	}
-	gh := workflowCarryClause(agentIssueRef{Owner: "o", Repo: "r", Number: 12, Forge: forgeGitHub}, workflowPR)
-	for _, want := range []string{"gh pr create", "watching its CI/checks", "final `WARD-OUTCOME: done` comment is not allowed until the PR is green"} {
-		if !strings.Contains(gh, want) {
-			t.Errorf("pr GitHub carry clause missing %q\n got: %s", want, gh)
-		}
-	}
-	if !strings.Contains(gh, "gh pr create") {
-		t.Errorf("pr GitHub carry clause should keep the native gh pr flow\n got: %s", gh)
-	}
-	merge := workflowCarryClause(agentIssueRef{Owner: "o", Repo: "r", Number: 12}, workflowPRAndMerge)
-	for _, want := range []string{"director-merge authorized", "watching its CI/checks", "failing check is not a done state"} {
-		if !strings.Contains(merge, want) {
-			t.Errorf("pull-requests-and-merge carry clause missing %q\n got: %s", want, merge)
-		}
-	}
-	if !strings.Contains(merge, "director-merge authorized") {
-		t.Errorf("pull-requests-and-merge carry clause must name the director merge lane\n got: %s", merge)
-	}
-}
-
-// TestWorkflowCarryClausePullRequestsAndMerge proves the long-form merge-authorized
-// lane keeps the PR flow and names the director merge policy in the prompt.
-func TestWorkflowCarryClausePullRequestsAndMerge(t *testing.T) {
-	got := workflowCarryClause(agentIssueRef{Owner: "o", Repo: "r", Number: 17}, workflowPullRequestsAndMerge)
-	for _, want := range []string{"pull request", "closes #17", "director-merge authorized"} {
+// TestWorkflowCarryClausePullRequest checks the PR carry clause.
+func TestWorkflowCarryClausePullRequest(t *testing.T) {
+	got := workflowCarryClause(agentIssueRef{Owner: "o", Repo: "r", Number: 12}, workflowPullRequest)
+	for _, want := range []string{"pull request", "closes #12", "watching its CI/checks", "director is encouraged to merge it later"} {
 		if !strings.Contains(got, want) {
-			t.Errorf("pull-requests-and-merge carry clause missing %q\n got: %s", want, got)
+			t.Errorf("pull-request carry clause missing %q\n got: %s", want, got)
+		}
+	}
+	if strings.Contains(got, "merge to main, push - and close") {
+		t.Fatalf("pull-request carry clause regressed to the direct-to-main fast path:\n%s", got)
+	}
+}
+
+// TestWorkflowCarryClausePullRequestAndMerge proves the merge-authorized lane keeps
+// the PR flow and says the run is not done until the merge lands.
+func TestWorkflowCarryClausePullRequestAndMerge(t *testing.T) {
+	got := workflowCarryClause(agentIssueRef{Owner: "o", Repo: "r", Number: 17}, workflowPullRequestAndMerge)
+	for _, want := range []string{"pull request", "closes #17", "director-merge authorized", "not done until the PR is merged"} {
+		if !strings.Contains(got, want) {
+			t.Errorf("pull-request-and-merge carry clause missing %q\n got: %s", want, got)
 		}
 	}
 }
 
-// TestWorkflowCarryClausePatchOnly: patch-only produces a patch and lands nothing -
-// no push, no merge, no closing trailer (ward#508).
-func TestWorkflowCarryClausePatchOnly(t *testing.T) {
-	got := workflowCarryClause(agentIssueRef{Owner: "o", Repo: "r", Number: 99}, workflowPatchOnly)
-	for _, want := range []string{"no landing authority", "git format-patch", "do NOT push", "Do not write a `closes #99`"} {
+// TestWorkflowCarryClauseRemoteBranchOnly: remote-branch-only pushes a branch and
+// lands nothing else.
+func TestWorkflowCarryClauseRemoteBranchOnly(t *testing.T) {
+	got := workflowCarryClause(agentIssueRef{Owner: "o", Repo: "r", Number: 99}, workflowRemoteBranchOnly)
+	for _, want := range []string{"remote-branch-only", "push the branch to origin", "do not open a pull request", "do not write a `closes #99`"} {
 		if !strings.Contains(got, want) {
-			t.Errorf("patch-only carry clause missing %q\n got: %s", want, got)
+			t.Errorf("remote-branch-only carry clause missing %q\n got: %s", want, got)
 		}
 	}
 }
@@ -117,91 +105,91 @@ func TestWorkflowCarryClausePatchOnly(t *testing.T) {
 func TestAgentSeedPromptWorkflow(t *testing.T) {
 	ref := agentIssueRef{Owner: "coilyco-flight-deck", Repo: "ward", Number: 508}
 
-	direct := agentSeedPromptWorkflow(ref, "reframe ward", "do it", "", true, nil, workflowDirectMain, true, "")
+	direct := agentSeedPromptWorkflow(ref, "reframe ward", "do it", "", true, nil, workflowDirectToMain, true, "")
 	if !strings.Contains(direct, "merge to main, push") {
-		t.Errorf("direct-main seed should carry the merge-to-main clause\n got: %s", direct)
+		t.Errorf("direct-to-main seed should carry the merge-to-main clause\n got: %s", direct)
 	}
 	if !strings.Contains(direct, "the work is committed, merged to main, and pushed") {
-		t.Errorf("direct-main reflection should name the merge-and-push landing\n got: %s", direct)
+		t.Errorf("direct-to-main reflection should name the merge-and-push landing\n got: %s", direct)
 	}
 
-	pr := agentSeedPromptWorkflow(ref, "reframe ward", "do it", "", true, nil, workflowPR, true, "")
+	pr := agentSeedPromptWorkflow(ref, "reframe ward", "do it", "", true, nil, workflowPullRequest, true, "")
 	if !strings.Contains(pr, "pull request") || strings.Contains(pr, "merge to main, push - and close") {
-		t.Errorf("pr seed should carry a PR clause, not the merge-to-main fast path\n got: %s", pr)
+		t.Errorf("pull-request seed should carry a PR clause, not the merge-to-main fast path\n got: %s", pr)
 	}
 	if !strings.Contains(pr, "the branch is pushed, the pull request is open, and the required checks are green") {
-		t.Errorf("pr reflection should require green checks before done\n got: %s", pr)
+		t.Errorf("pull-request reflection should require green checks before done\n got: %s", pr)
 	}
-	merge := agentSeedPromptWorkflow(ref, "reframe ward", "do it", "", true, nil, workflowPullRequestsAndMerge, true, "")
+	merge := agentSeedPromptWorkflow(ref, "reframe ward", "do it", "", true, nil, workflowPullRequestAndMerge, true, "")
 	if !strings.Contains(merge, "director-merge authorized") {
-		t.Errorf("pull-requests-and-merge seed should mark the PR as director-merge authorized\n got: %s", merge)
+		t.Errorf("pull-request-and-merge seed should mark the PR as director-merge authorized\n got: %s", merge)
 	}
 	if !strings.Contains(merge, "workflow: <mode>; review summary: <summary or skip state>") {
 		t.Errorf("headless reflection should include the machine-readable workflow/review line\n got: %s", merge)
 	}
-	if workflowCarryClause(ref, "") != workflowCarryClause(ref, workflowPR) {
-		t.Error("empty workflow should resolve to the pr carry clause")
+	if workflowCarryClause(ref, "") != workflowCarryClause(ref, workflowPullRequest) {
+		t.Error("empty workflow should resolve to the pull-request carry clause")
 	}
-	prMerge := agentSeedPromptWorkflow(ref, "reframe ward", "do it", "", true, nil, workflowPRAndMerge, true, "")
+	prMerge := agentSeedPromptWorkflow(ref, "reframe ward", "do it", "", true, nil, workflowPullRequestAndMerge, true, "")
 	if !strings.Contains(prMerge, "director-merge authorized") {
-		t.Errorf("pull-requests-and-merge seed should carry the director merge lane\n got: %s", prMerge)
+		t.Errorf("pull-request-and-merge seed should carry the director merge lane\n got: %s", prMerge)
 	}
-	if !strings.Contains(prMerge, "the branch is pushed, the pull request is open, and the required checks are green") {
-		t.Errorf("pull-requests-and-merge reflection should require green checks before done\n got: %s", prMerge)
-	}
-
-	patch := agentSeedPromptWorkflow(ref, "reframe ward", "do it", "", true, nil, workflowPatchOnly, true, "")
-	if !strings.Contains(patch, "no landing authority") {
-		t.Errorf("patch-only seed should say it has no landing authority\n got: %s", patch)
-	}
-	if !strings.Contains(patch, "the patch is produced and posted as a comment") {
-		t.Errorf("patch-only reflection should name the patch landing\n got: %s", patch)
+	if !strings.Contains(prMerge, "the pull request is merged") {
+		t.Errorf("pull-request-and-merge reflection should require merge before done\n got: %s", prMerge)
 	}
 
-	// The plain agentSeedPrompt wrapper follows the safe pr default.
+	branchOnly := agentSeedPromptWorkflow(ref, "reframe ward", "do it", "", true, nil, workflowRemoteBranchOnly, true, "")
+	if !strings.Contains(branchOnly, "remote-branch-only") {
+		t.Errorf("remote-branch-only seed should say it has no PR or merge authority\n got: %s", branchOnly)
+	}
+	if !strings.Contains(branchOnly, "the remote branch is pushed") {
+		t.Errorf("remote-branch-only reflection should name the branch landing\n got: %s", branchOnly)
+	}
+
+	// The plain agentSeedPrompt wrapper follows the safe pull-request default.
 	if agentSeedPrompt(ref, "reframe ward", "do it", "", true, nil) != pr {
-		t.Error("agentSeedPrompt should equal agentSeedPromptWorkflow(..., pr)")
+		t.Error("agentSeedPrompt should equal agentSeedPromptWorkflow(..., pull-request)")
 	}
 }
 
 // TestWorkflowEnvAndLabels pins the container plumbing: a non-default workflow rides
-// WARD_WORKFLOW + a ward.workflow label; direct-main leaves both untouched (ward#508).
+// WARD_WORKFLOW + a ward.workflow label; direct-to-main leaves both untouched (ward#508).
 func TestWorkflowEnvAndLabels(t *testing.T) {
 	repo := targetRepo{Owner: "coilyco-flight-deck", Name: "ward"}
 
-	direct := upPlan{Role: roleEngineer, Mode: modeClaude, Repo: repo, Issue: 508, Workflow: workflowDirectMain}
+	direct := upPlan{Role: roleEngineer, Mode: modeClaude, Repo: repo, Issue: 508, Workflow: workflowDirectToMain}
 	if _, ok := direct.wardEnv()["WARD_WORKFLOW"]; ok {
-		t.Error("direct-main plan must NOT export WARD_WORKFLOW")
+		t.Error("direct-to-main plan must NOT export WARD_WORKFLOW")
 	}
 	if strings.Contains(strings.Join(direct.labels(), " "), labelWorkflow) {
-		t.Error("direct-main plan must NOT carry a ward.workflow label")
+		t.Error("direct-to-main plan must NOT carry a ward.workflow label")
 	}
-	// The zero value behaves like the pr default.
-	if got := (upPlan{Repo: repo}).wardEnv()["WARD_WORKFLOW"]; got != "pr" {
-		t.Errorf("a plan with no workflow set WARD_WORKFLOW = %q, want pr", got)
+	// The zero value behaves like the pull-request default.
+	if got := (upPlan{Repo: repo}).wardEnv()["WARD_WORKFLOW"]; got != "pull-request" {
+		t.Errorf("a plan with no workflow set WARD_WORKFLOW = %q, want pull-request", got)
 	}
 
-	patch := upPlan{Role: roleEngineer, Mode: modeClaude, Repo: repo, Issue: 508, Workflow: workflowPatchOnly}
-	if got := patch.wardEnv()["WARD_WORKFLOW"]; got != "patch-only" {
-		t.Errorf("patch-only plan WARD_WORKFLOW = %q, want patch-only", got)
+	branchOnly := upPlan{Role: roleEngineer, Mode: modeClaude, Repo: repo, Issue: 508, Workflow: workflowRemoteBranchOnly}
+	if got := branchOnly.wardEnv()["WARD_WORKFLOW"]; got != "remote-branch-only" {
+		t.Errorf("remote-branch-only plan WARD_WORKFLOW = %q, want remote-branch-only", got)
 	}
-	if !strings.Contains(strings.Join(patch.labels(), " "), labelWorkflow+"=patch-only") {
-		t.Errorf("patch-only plan should carry %s=patch-only, got %v", labelWorkflow, patch.labels())
+	if !strings.Contains(strings.Join(branchOnly.labels(), " "), labelWorkflow+"=remote-branch-only") {
+		t.Errorf("remote-branch-only plan should carry %s=remote-branch-only, got %v", labelWorkflow, branchOnly.labels())
 	}
-	prMerge := upPlan{Role: roleEngineer, Mode: modeClaude, Repo: repo, Issue: 508, Workflow: workflowPRAndMerge}
-	if got := prMerge.wardEnv()["WARD_WORKFLOW"]; got != "pull-requests-and-merge" {
-		t.Errorf("pull-requests-and-merge plan WARD_WORKFLOW = %q, want pull-requests-and-merge", got)
+	prMerge := upPlan{Role: roleEngineer, Mode: modeClaude, Repo: repo, Issue: 508, Workflow: workflowPullRequestAndMerge}
+	if got := prMerge.wardEnv()["WARD_WORKFLOW"]; got != "pull-request-and-merge" {
+		t.Errorf("pull-request-and-merge plan WARD_WORKFLOW = %q, want pull-request-and-merge", got)
 	}
-	if !strings.Contains(strings.Join(prMerge.labels(), " "), labelWorkflow+"=pull-requests-and-merge") {
-		t.Errorf("pull-requests-and-merge plan should carry %s=pull-requests-and-merge, got %v", labelWorkflow, prMerge.labels())
+	if !strings.Contains(strings.Join(prMerge.labels(), " "), labelWorkflow+"=pull-request-and-merge") {
+		t.Errorf("pull-request-and-merge plan should carry %s=pull-request-and-merge, got %v", labelWorkflow, prMerge.labels())
 	}
 }
 
 func TestAgentWorkflowSmartDefaults(t *testing.T) {
 	dir := t.TempDir()
 	body := `smart-defaults {
-    agent-workflow default="direct-main" {
-        repo "coilyco-flight-deck/ward" workflow="pull-requests"
+    agent-workflow default="direct-to-main" {
+        repo "coilyco-flight-deck/ward" workflow="pull-request"
     }
 }`
 	if err := os.WriteFile(filepath.Join(dir, bundleDefaultsKDLPath), []byte(body), 0o644); err != nil {
@@ -214,25 +202,25 @@ func TestAgentWorkflowSmartDefaults(t *testing.T) {
 	if err != nil {
 		t.Fatalf("agentWorkflow default: %v", err)
 	}
-	if wf != workflowDirectMain {
-		t.Errorf("default workflow = %q, want direct-main", wf)
+	if wf != workflowDirectToMain {
+		t.Errorf("default workflow = %q, want direct-to-main", wf)
 	}
 
 	wf, err = agentWorkflow(cmd, "coilyco-flight-deck/ward")
 	if err != nil {
 		t.Fatalf("agentWorkflow repo override: %v", err)
 	}
-	if wf != workflowPullRequests {
-		t.Errorf("repo override workflow = %q, want pr", wf)
+	if wf != workflowPullRequest {
+		t.Errorf("repo override workflow = %q, want pull-request", wf)
 	}
 
-	cli := parseCommandForTest(t, agentSurfaceFlags(), []string{"engineer", "coilyco-flight-deck/ward#1", "--workflow", "patch-only"})
+	cli := parseCommandForTest(t, agentSurfaceFlags(), []string{"engineer", "coilyco-flight-deck/ward#1", "--workflow", "remote-branch-only"})
 	wf, err = agentWorkflow(cli, "coilyco-flight-deck/ward")
 	if err != nil {
 		t.Fatalf("agentWorkflow CLI override: %v", err)
 	}
-	if wf != workflowPatchOnly {
-		t.Errorf("CLI workflow = %q, want patch-only", wf)
+	if wf != workflowRemoteBranchOnly {
+		t.Errorf("CLI workflow = %q, want remote-branch-only", wf)
 	}
 }
 
@@ -250,15 +238,15 @@ func TestReapEnvReadsWorkflow(t *testing.T) {
 	t.Setenv("WARD_TARGET_OWNER", "coilyco-flight-deck")
 	t.Setenv("WARD_TARGET_NAME", "ward")
 	t.Setenv("WARD_FORGEJO_BASE", "https://forgejo.example")
-	t.Setenv("WARD_WORKFLOW", "patch-only")
+	t.Setenv("WARD_WORKFLOW", "remote-branch-only")
 	env, err := readReapEnv()
 	if err != nil {
 		t.Fatalf("readReapEnv: %v", err)
 	}
-	if env.Workflow != workflowPatchOnly {
-		t.Errorf("reapEnv.Workflow = %q, want patch-only", env.Workflow)
+	if env.Workflow != workflowRemoteBranchOnly {
+		t.Errorf("reapEnv.Workflow = %q, want remote-branch-only", env.Workflow)
 	}
 	if env.Workflow.landsOnMain() {
-		t.Error("a patch-only reap must not be allowed to land on main")
+		t.Error("a remote-branch-only reap must not be allowed to land on main")
 	}
 }

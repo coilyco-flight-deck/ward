@@ -734,7 +734,7 @@ func TestReservationSeedContextRender(t *testing.T) {
 		Driver:       "claude",
 		RunID:        "engineer-claude-ward-609",
 		WardVersion:  "v0.80.0",
-		Workflow:     workflowDirectMain,
+		Workflow:     workflowDirectToMain,
 		Included:     []reservationThreadEntry{{Author: "kai", At: now.Add(-time.Hour)}},
 		Stripped:     []reservationThreadEntry{{Author: "coilyco-ops", At: now.Add(-30 * time.Minute)}},
 		DispatchedAt: now,
@@ -781,7 +781,7 @@ func TestBuildReservationSeedContextPartition(t *testing.T) {
 	w := resolvedWork{
 		Ref:      agentIssueRef{Owner: "o", Repo: "r", Number: 1},
 		Body:     "body",
-		Workflow: workflowDirectMain,
+		Workflow: workflowDirectToMain,
 		Comments: []issueComment{
 			mk("a real human comment", "kai"),                                             // included
 			mk(reservationCommentBody(modeClaude, "c", "h", now, "", nil), "coilyco-ops"), // stripped (reservation marker)

@@ -11,12 +11,12 @@ the ones whose linked issue thread authorizes it.
 The merge lane is narrow by design. It accepts only ward-owned work whose carried
 issue thread says:
 
-- `workflow: pull-requests-and-merge`
+- `workflow: pull-request-and-merge`
 - `WARD-OUTCOME: done`
 - review summary starts with `passed:`
 - the PR title is not salvage or WIP noise
 
-That keeps `pr` and `pull-requests` human-gated. The director does not gain a
+That keeps `pull-request` human-gated. The director does not gain a
 general PR-review or blanket repo-write surface here.
 
 ## What it does
