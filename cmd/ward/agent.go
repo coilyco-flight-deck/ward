@@ -169,12 +169,11 @@ func headlessReflection(ref agentIssueRef, wf workflowMode, reviewGate bool, rev
 }
 
 func headlessWorkflowFailureCommentClause(wf workflowMode) string {
-	switch wf.orDefault() {
-	case workflowPullRequest, workflowPullRequestAndMerge:
+	mode := canonicalWorkflow(wf.orDefault())
+	if mode == workflowPullRequest || mode == workflowPullRequestAndMerge {
 		return workflowFailureCommentClause()
-	default:
-		return ""
 	}
+	return ""
 }
 
 // reviewGateClause wires the pre-landing adversarial review panel into a headless
