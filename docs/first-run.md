@@ -39,13 +39,14 @@ forking. The plain verb gate (`ward exec`/`git`/`audit`) has none of these limit
 ```bash
 brew install coilyco-flight-deck/tap/ward   # full tap steps in the README
 ward version                                # installed release tag
-ward doctor                                 # .ward/ward.yaml vs Makefile + host probes
+ward exec test                              # any repo with a Makefile can verify the gate
 ```
 
 - **`warded` is the agent driver only, not a `ward` alias.** `warded version`
   errors - use `ward version`. `warded` understands only roles and refs.
-- **`ward doctor` does not check the trust gate** ([doctor.md](doctor.md)), so it
-  passes even where every `warded` call is refused ([ward#195](https://forgejo.coilysiren.me/coilyco-flight-deck/ward/issues/195)).
+- **The trust gate lives in `warded`, not the plain verb gate.** A repo can
+  still be refused even when `ward exec` works, because the dispatch owner
+  allowlist is separate from repo verbs ([ward#195](https://forgejo.coilysiren.me/coilyco-flight-deck/ward/issues/195)).
 
 ## 3. First command: a `--print` dry run
 

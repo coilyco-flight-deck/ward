@@ -40,8 +40,8 @@ session) are idle by design - sitting at a prompt is normal, not wedged - and ar
 left untouched.
 
 Authored here; the fleet rollout (a launchd timer or a converged daemon) is an
-ansible role in infrastructure, per the authoring-vs-rollout split - reap is not
-wired into ` + "`ward setup`" + `.
+ansible role in infrastructure, per the authoring-vs-rollout split. The setup
+and doctor surfaces are now release-planning inventory, not live wiring.
 
   ward agent reap                 # sweep once, stop engineers idle > 1h
   ward agent reap --dry-run       # report what would be stopped, stopping nothing
