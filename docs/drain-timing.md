@@ -49,9 +49,10 @@ The sentinel is **cleared when the container is removed** - by the sweep's `dock
 rm`, or by an engineer clearing an exited same-name corpse before relaunch. Engineer
 container names are deterministic (`engineer-<driver>-<repo>-<N>`), so a re-run
 reuses the name; clearing the dead run's marker on removal lets the re-run drain
-fresh rather than being skipped by a stale sentinel. A director surface session
-uses `session-<driver>-<agent-id>`, while an advisor session still carries a
-machine suffix.
+fresh rather than being skipped by a stale sentinel. A director surface container
+uses `director-<driver>-<agent-id>`, while an issue-scoped advisor run uses
+`advisor-<driver>-<repo>-<issue>` and a freeform advisor still carries a machine
+suffix.
 
 ## See also
 

@@ -22,9 +22,10 @@ name as `engineer-<driver>-<repo>-<issue>`:
 
 So a claude run on [ward#398](https://forgejo.coilysiren.me/coilyco-flight-deck/ward/issues/398) is **`engineer-claude-ward-398`**.
 
-**Session/surface containers differ.** A [director surface](agent-surface.md)
-uses `session-<driver>-<agent-id>` with the aos/o2r dictatable suffix. An
-advisor session still takes the other `containerRoleName` branch,
+**Director/advisor containers differ.** A [director surface](agent-surface.md)
+uses `director-<driver>-<agent-id>` with the aos/o2r dictatable suffix. An
+issue-scoped advisor run uses `advisor-<driver>-<repo>-<issue>`, while a
+freeform advisor still takes the other `containerRoleName` branch,
 `<role>-<driver>-<machine>`.
 
 ## The stop command
@@ -54,11 +55,10 @@ is uncatchable. Either way **the `EXIT` trap never fires, so the reaper does not
 An externally stopped run is therefore **not** salvaged: nothing is committed to a
 `ward-salvage/<id>` branch, no salvage issue is filed, and any `closes #N` stays as the
 run last pushed it (the issue is **not** reopened). That is usually what you want when
-killing a mis-scoped run - you do not want it landing half-done work - but know that
-in-progress, unpushed work in the stopped run is not auto-preserved. The container is
-left `exited` (the container is `-d`, not `--rm`), so its writable layer survives until the
-keep-10 sweep, and work can be recovered by hand (`docker cp`, `docker logs`) in that
-window.
+killing a mis-scoped run - you do not want it landing half-done work - but unpushed
+work is not auto-preserved. The container is left `exited` (the container is `-d`, not
+`--rm`), so its writable layer survives until the keep-10 sweep, and work can be
+recovered by hand (`docker cp`, `docker logs`) in that window.
 
 ## See also
 

@@ -1317,7 +1317,7 @@ func (s dispatchDockerState) blocked() (bool, string) {
 	default:
 		detail = "no host dispatch broker is attached (WARD_DISPATCH_BROKER_ADDR unset) and the image carries no docker client, so neither dispatch path is available"
 	}
-	return true, fmt.Sprintf("%s - %s. A director surface session dispatches over the host broker; a plain container needs a docker client in the image. See docs/agent-surface.md", base, detail)
+	return true, fmt.Sprintf("%s - %s. A director surface container dispatches over the host broker; a plain container needs a docker client in the image. See docs/agent-surface.md", base, detail)
 }
 
 // preflightVerdict is ward's read of the agent's pre-flight self-assessment.

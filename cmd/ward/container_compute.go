@@ -52,7 +52,7 @@ const (
 	containerAWSMount = "/root/.aws"
 
 	// containerAgentLogsMount is where the host agent-log drain binds read-only in a
-	// director surface session; surface-only opt-in (ward#525, redacted source ward#526).
+	// director surface container; surface-only opt-in (ward#525, redacted source ward#526).
 	containerAgentLogsMount = "/opt/ward-agent-logs"
 
 	// containerDockerSock is the host docker socket bound into a read-only surface session
@@ -205,7 +205,7 @@ func parseSubstrateManifest(data string) ([]substrateRepo, error) {
 type containerMode string
 
 // container roles lead the name + the ward.role label (ward#364). director is a host
-// loop, not a container, but its surface session runs as roleSession (ward#353).
+// loop, not a container, but its surface container runs as roleDirector (ward#353).
 const (
 	roleEngineer = "engineer"
 	roleAdvisor  = "advisor"
@@ -315,11 +315,17 @@ func safeRepoName(repo targetRepo) string {
 	return safe
 }
 
-// containerRoleName builds the role-led, prefixless container name (ward#364):
-// engineer-<driver>-<repo>-<N> for an engineer, else <role>-<driver>-<suffix>.
+// issueScopedContainerName builds the issue-scoped container name shape:
+// <role>-<driver>-<repo>-<N>. Engineer and issue-scoped advisor runs use it.
+func issueScopedContainerName(role string, mode containerMode, repo targetRepo, issue int) string {
+	return fmt.Sprintf("%s-%s-%s-%d", role, mode, safeRepoName(repo), issue)
+}
+
+// containerRoleName builds the role-led container name: engineer uses the
+// issue-scoped shape, and other roles use <role>-<driver>-<suffix>.
 func containerRoleName(role string, mode containerMode, repo targetRepo, issue int, suffix string) string {
 	if role == roleEngineer {
-		return fmt.Sprintf("%s-%s-%s-%d", role, mode, safeRepoName(repo), issue)
+		return issueScopedContainerName(role, mode, repo, issue)
 	}
 	return fmt.Sprintf("%s-%s-%s", role, mode, suffix)
 }

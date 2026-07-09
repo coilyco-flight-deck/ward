@@ -167,16 +167,16 @@ func buildUpPlan(c *cli.Command, repo targetRepo, mode containerMode, role, cwd,
 		agentLogs = agentLogsRedactedDir()
 	}
 	// The per-container machine id rides the ward.machine label. Director surface
-	// sessions use a short dictatable id suffix instead of the machine id.
+	// containers use a short dictatable id suffix instead of the machine id.
 	machine := randHex()
 	nameSuffix := machine
-	if role == roleSession {
+	if role == roleSession || role == roleDirector {
 		nameSuffix = directorSurfaceSessionSuffix()
 	}
 	return upPlan{
 		Image:          imageRef(c.String("image"), c.String("tag")),
-		Name:           containerRoleName(roleSession, mode, repo, 0, nameSuffix),
-		Role:           roleSession,
+		Name:           containerRoleName(role, mode, repo, 0, nameSuffix),
+		Role:           role,
 		ConfigRole:     role,
 		Machine:        machine,
 		Repo:           repo,
