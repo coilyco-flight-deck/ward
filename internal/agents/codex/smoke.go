@@ -88,10 +88,6 @@ func classifyCodexProbeFailure(model, out, stderr string, code int) error {
 	return agentsapi.NewGateError(codexProbeGate, fmt.Errorf("codex launch probe failed (exit %d): %s", code, oneLine(combined)))
 }
 
-func captureProbe(ctx context.Context, argv []string) (stdout, stderr string, code int) {
-	return captureProbeInput(ctx, argv, "")
-}
-
 func captureProbeInput(ctx context.Context, argv []string, stdin string) (stdout, stderr string, code int) {
 	devnull, _ := os.Open(os.DevNull)
 	if devnull != nil {
