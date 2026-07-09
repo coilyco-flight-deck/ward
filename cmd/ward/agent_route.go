@@ -193,7 +193,7 @@ func (r *Runner) resolveRouteTarget(outcome routeOutcome) (targetRepo, string, b
 	target, ok := wrongRepoTarget(outcome.Repo)
 	if !ok || !r.ownerAllowed(target.Owner) || (target.Owner == inboxOwner && target.Name == inboxRepo) {
 		reason := fmt.Sprintf("survey routed to an unusable target %q (it must be a trusted owner - %s - and not the inbox itself)",
-			outcome.Repo, strings.Join(r.primaryOrgs(), ", "))
+			outcome.Repo, strings.Join(r.trustedOwners(), ", "))
 		return targetRepo{}, reason, false
 	}
 	return target, "", true
@@ -218,7 +218,7 @@ func (r *Runner) surveyRoute(ctx context.Context, mode containerMode, taskText s
 		return routeOutcome{}, "", err
 	}
 	if len(catalog) == 0 {
-		return routeOutcome{}, "", fmt.Errorf("no candidate repos found across %s", strings.Join(r.primaryOrgs(), ", "))
+		return routeOutcome{}, "", fmt.Errorf("no candidate repos found across %s", strings.Join(r.trustedOwners(), ", "))
 	}
 	argv, stdin, ok := hostOneShot(mode, routeSurveyPrompt(taskText, renderRepoCatalog(catalog)))
 	if !ok {
@@ -246,7 +246,7 @@ func (r *Runner) surveyRepoCatalog(ctx context.Context) ([]repoCatalogEntry, err
 		return nil, err
 	}
 	var entries []repoCatalogEntry
-	for _, owner := range r.primaryOrgs() {
+	for _, owner := range r.trustedOwners() {
 		repos, err := cl.listOwnerRepos(ctx, owner)
 		if err != nil {
 			fmt.Fprintf(os.Stderr, "ward agent engineer: note: could not list repos for %s (%v); skipping it in the survey\n", owner, err)
@@ -434,7 +434,7 @@ func printAgentTaskRoutePlan(c *cli.Command, mode containerMode, taskText, title
 	fmt.Fprintf(&b, "intake:  %s/%s (the literal task is filed here first, then routed live)\n", inboxOwner, inboxRepo)
 	fmt.Fprintf(&b, "title:   %s\n", title)
 	fmt.Fprintf(&b, "----- intake issue to file -----\ntitle: %s\n\n%s\n----- end -----\n", title, routeIntakeBody(mode, taskText))
-	fmt.Fprintf(&b, "# then, live: survey repos across %s, file a scoped child issue in the routed repo,\n", strings.Join(defaultPrimaryOrgs(), ", "))
+	fmt.Fprintf(&b, "# then, live: survey repos across %s, file a scoped child issue in the routed repo,\n", strings.Join(currentSmartDefaults().trustedOwnerList(), ", "))
 	fmt.Fprintf(&b, "# cross-link + close the intake record, and carry the child to merge headless.\n")
 	fmt.Fprintf(&b, "# an UNCLEAR survey files no child and launches nothing, leaving the intake record for a human.\n")
 	_, err := io.WriteString(out, b.String())

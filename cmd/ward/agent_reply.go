@@ -84,7 +84,7 @@ func (r *Runner) runAgentReply(ctx context.Context, c *cli.Command, mode contain
 	}
 
 	// Fetch the issue (fail fast before any research) and its thread for context.
-	issue, err := r.fetchForgejoIssue(ctx, ref.Owner, ref.Repo, ref.Number)
+	issue, err := r.fetchIssueByForge(ctx, label, ref.Forge, mode, ref.Owner, ref.Repo, ref.Number)
 	if err != nil {
 		return fmt.Errorf("%s: resolve issue %s: %w", label, ref, err)
 	}
@@ -112,11 +112,10 @@ func (r *Runner) runAgentReply(ctx context.Context, c *cli.Command, mode contain
 		return fmt.Errorf("%s: research on %s produced no output; nothing to post", label, ref)
 	}
 
-	cl, err := r.hostForgejoClient(ctx)
+	cl, err := r.hostForgeClient(ctx, ref.Forge, mode)
 	if err != nil {
 		return fmt.Errorf("%s: %w", label, err)
 	}
-	cl = cl.withMode(mode)
 
 	// The research emits a structured plan: parse + 2+ trusted repos fans out.
 	// Sanitize first so a harness transcript can never become the fallback comment.
@@ -138,7 +137,7 @@ func (r *Runner) runAgentReply(ctx context.Context, c *cli.Command, mode contain
 
 // postReplySingle posts the common-case single comment on the source issue; any
 // dropped fan-out targets are noted so the omission is never silent (ward#424).
-func (r *Runner) postReplySingle(ctx context.Context, cl *forgejoClient, mode containerMode, ref agentIssueRef, level replyThoroughness, prompt, body string, dropped []droppedReplySpec, label string) error {
+func (r *Runner) postReplySingle(ctx context.Context, cl issueForge, mode containerMode, ref agentIssueRef, level replyThoroughness, prompt, body string, dropped []droppedReplySpec, label string) error {
 	if len(dropped) > 0 {
 		body = strings.TrimRight(body, "\n") + "\n\n---\n**Note:** ward dropped these fan-out targets before filing:\n\n" + renderDroppedReplySpecs(dropped)
 	}
@@ -151,7 +150,7 @@ func (r *Runner) postReplySingle(ctx context.Context, cl *forgejoClient, mode co
 
 // postReplyFanOut files one issue per trusted repo (dependency order, each
 // cross-linked upstream), then posts one index comment on the source (ward#424).
-func (r *Runner) postReplyFanOut(ctx context.Context, cl *forgejoClient, mode containerMode, ref agentIssueRef, level replyThoroughness, prompt, summary string, allowed []resolvedReplySpec, dropped []droppedReplySpec, label string) error {
+func (r *Runner) postReplyFanOut(ctx context.Context, cl issueForge, mode containerMode, ref agentIssueRef, level replyThoroughness, prompt, summary string, allowed []resolvedReplySpec, dropped []droppedReplySpec, label string) error {
 	var created []createdReplyChild
 	var upstream string
 	for i, s := range allowed {
@@ -192,7 +191,7 @@ func (r *Runner) validateReplyInputs(ctx context.Context, c *cli.Command, label 
 	}
 
 	// Trust gate: reply writes a comment under ward's bot identity, so only act on
-	// an owner in the primary-org set - the same gate work/task apply.
+	// an owner in the trusted-owner set - the same gate work/task apply.
 	if !r.ownerAllowed(ref.Owner) {
 		return agentIssueRef{}, "", replyThoroughness{}, r.untrustedOwnerErr(label, ref.Owner)
 	}
@@ -513,7 +512,7 @@ func (r *Runner) partitionReplySpecs(specs []replyIssueSpec) (allowed []resolved
 			continue
 		}
 		if !r.ownerAllowed(owner) {
-			dropped = append(dropped, droppedReplySpec{Repo: owner + "/" + name, Reason: fmt.Sprintf("untrusted owner %q (allowed: %s)", owner, strings.Join(r.primaryOrgs(), ", "))})
+			dropped = append(dropped, droppedReplySpec{Repo: owner + "/" + name, Reason: fmt.Sprintf("untrusted owner %q (allowed: %s)", owner, strings.Join(r.trustedOwners(), ", "))})
 			continue
 		}
 		if strings.TrimSpace(s.Title) == "" {

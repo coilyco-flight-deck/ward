@@ -1,5 +1,5 @@
 ---
-doc_goal: Make a self-hoster understand the compiled-in owner allowlist as the deliberate wall around the container's bypassPermissions autonomy, why every dispatch surface enforces it, why it is compiled in rather than runtime config today, and the fork-and-rebuild path that is the only extension until runtime owner config lands.
+doc_goal: Make a self-hoster understand the owner allowlist as the deliberate wall around the container's bypassPermissions autonomy, why every dispatch surface enforces it, and how the selected config bundle's repo-authority block now supplies the trusted-owner set instead of compiled-in namespace policy.
 ---
 # ward agent: the owner trust gate ([ward#484](https://forgejo.coilysiren.me/coilyco-flight-deck/ward/issues/484))
 
@@ -19,11 +19,10 @@ An **allowlist of repository owners** a dispatch will act on. Before ward fetche
 the issue or spins a container, it checks the ref's owner (`owner/repo#N`) against
 its trusted set. An owner outside the set is refused, fast, with the message above.
 
-The set is ward's **primary orgs**: `coilysiren`, `coilyco-bridge`,
-`coilyco-flight-deck`, `coilyco-gaming` (`defaultPrimaryOrgs` in
-[`cmd/ward/runner.go`](../cmd/ward/runner.go)). The yes/no check and the
-refusal label come from cli-guard's `pkg/ownertrust`, which ward feeds that set
-into (`ownerAllowed`, `cmd/ward/agent.go`).
+The trusted set now comes from the selected config bundle's `repo-authority`
+block in [`docs/config-source.md`](config-source.md). The yes/no check and the
+refusal label come from cli-guard's `pkg/ownertrust`, which ward feeds that
+bundle data into (`ownerAllowed`, `cmd/ward/agent.go`).
 
 ## Why it exists
 
@@ -45,21 +44,10 @@ Every dispatch surface enforces the same check, not just the engineer:
 
 ## The extension story
 
-**The set is compiled in and not runtime-extensible today.** There is no env var,
-no `.ward/ward.yaml` key, and no `ward` flag that adds an owner to the trusted
-set. `primaryOrgs()` returns the hard-coded `defaultPrimaryOrgs()` list and
-nothing overrides it.
-
-So a self-hoster on a different org has one path today: **fork ward, add your
-owner to `defaultPrimaryOrgs()`, and rebuild.** That is a known sharp edge, not
-the intended long-term story:
-
-- [ward#441](https://forgejo.coilysiren.me/coilyco-flight-deck/ward/issues/441) tracks **disclosing** the compiled-in gate before install, so the
-  limitation is visible up front rather than only at first refusal.
-- [ward#395](https://forgejo.coilysiren.me/coilyco-flight-deck/ward/issues/395) tracks making the trusted set **configurable** rather than compiled in.
-
-Until one of those lands, an untrusted owner is a hard stop with no supported
-runtime workaround.
+The set is runtime-extensible through the config bundle, not a binary rebuild.
+Edit the selected bundle's `repo-authority` block to add or remove trusted
+owners, then point `WARD_CONFIG_REF` at that bundle. The shipped bundle keeps
+the current fleet policy, but the binary only reads the config.
 
 ## Why the plain verb gate does not catch this
 

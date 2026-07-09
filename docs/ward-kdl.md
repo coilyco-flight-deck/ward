@@ -24,7 +24,7 @@ regenerate when the source changes (`make build-ward-kdl`). Three dialects:
 - **Dialect 1, permission surfaces** - `*.guardfile.kdl` spec + exec files. Least-privilege, audited. Parsed by `cli/execverb` + `http/specverb`.
 - **Dialect 2, fleet-config manifest** - `ward-kdl.fleet.kdl`: identity, model, endpoint, attribution, roster defaults, sparse overrides, `roles`.
 - **Dialect 3, operator-local** - the same `fleetconfig` parser, sourced from a local `~/.ward/fleet.local.kdl`, not embedded and tracked separately.
-- **Smart defaults bundle** - `ward-kdl.defaults.kdl`: launch-selected runtime policy defaults for reservation TTL, recheck cadence, reap thresholds, director cadence, and container retention. Parsed by ward at launch, embedded via `defaultsassets/`.
+- **Smart defaults bundle** - `ward-kdl.defaults.kdl`: launch-selected runtime policy defaults plus the repo-authority block for trusted-owner checks and bare-ref forge resolution. Parsed at launch via `defaultsassets/`.
 
 ## Run time: `ward` embeds the emitted surfaces
 

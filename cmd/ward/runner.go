@@ -130,12 +130,7 @@ func resolveInvokeCWD() string {
 	return ""
 }
 
-// defaultPrimaryOrgs is the fleet's primary-org set.
-func defaultPrimaryOrgs() []string {
-	return []string{"coilysiren", "coilyco-bridge", "coilyco-flight-deck", "coilyco-gaming"}
-}
-
-// primaryOrgs returns the fleet's primary-org allowlist.
-func (r *Runner) primaryOrgs() []string {
-	return defaultPrimaryOrgs()
+// trustedOwners returns the configured owner allow-list.
+func (r *Runner) trustedOwners() []string {
+	return currentSmartDefaults().trustedOwnerList()
 }

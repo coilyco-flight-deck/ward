@@ -131,6 +131,9 @@ func (r *Runner) resolveAgentIssueRef(ctx context.Context, arg string) (agentIss
 		return agentIssueRef{}, err
 	}
 	if ref.Owner != "" && ref.Repo != "" {
+		if ref.Forge == 0 {
+			ref.Forge = currentSmartDefaults().forgeForRepo(ref.Owner, ref.Repo)
+		}
 		writef(os.Stderr, "ward agent: resolved issue ref %s -> %s\n", arg, ref)
 		return ref, nil
 	}
@@ -141,6 +144,9 @@ func (r *Runner) resolveAgentIssueRef(ctx context.Context, arg string) (agentIss
 				"(use owner/repo#%d or run from inside the repo's checkout): %w", arg, ref.Number, terr)
 	}
 	ref.Owner, ref.Repo = repo.Owner, repo.Name
+	if ref.Forge == 0 {
+		ref.Forge = currentSmartDefaults().forgeForRepo(ref.Owner, ref.Repo)
+	}
 	writef(os.Stderr, "ward agent: inferred bare issue ref %s -> %s from cwd origin\n", arg, ref)
 	return ref, nil
 }
@@ -675,7 +681,7 @@ func (r *Runner) resolveAgentWork(ctx context.Context, c *cli.Command, mode cont
 		ref.Forge = forgeGitHub
 	}
 	// Trust gate: the in-container agent runs under bypassPermissions, so only
-	// spin one up for an owner in the primary-org set. Mirrors dispatch's check.
+	// spin one up for an owner in the trusted-owner set. Mirrors dispatch's check.
 	if !r.ownerAllowed(ref.Owner) {
 		return resolvedWork{}, r.untrustedOwnerErr(label, ref.Owner)
 	}
@@ -1278,7 +1284,7 @@ func (r *Runner) handlePreflightWrongRepo(ctx context.Context, mode containerMod
 	// An untrusted repo, the issue's own repo, or a half target is no blind-fire
 	// target: bounce to a human rather than guessing.
 	if !ok || sameRepo || !r.ownerAllowed(target.Owner) {
-		reason := wrongRepoBounceReason(outcome, target, r.primaryOrgs(), ok, sameRepo)
+		reason := wrongRepoBounceReason(outcome, target, r.trustedOwners(), ok, sameRepo)
 		writef(os.Stderr, "%s: pre-flight WRONG-REPO unusable for %s; bouncing to a human.\n", label, w.Ref)
 		if cerr := r.postPreflightNoGo(ctx, mode, surface, w.Ref, reason, read); cerr != nil {
 			return fmt.Errorf("post NO-GO comment on %s: %w", w.Ref, cerr)
@@ -1961,7 +1967,7 @@ func (r *Runner) runAgentTaskDirect(ctx context.Context, c *cli.Command, mode co
 		return fmt.Errorf("%s: %w", label, err)
 	}
 	// Same trust gate as the engineer: the container runs bypassPermissions, so
-	// only file + work against an owner in the primary-org set.
+	// only file + work against an owner in the trusted-owner set.
 	if !r.ownerAllowed(repo.Owner) {
 		return r.untrustedOwnerErr(label, repo.Owner)
 	}
@@ -2078,18 +2084,19 @@ func printAgentTaskPlan(c *cli.Command, mode containerMode, repo targetRepo, tit
 	return werr
 }
 
-// ownerAllowed reports whether owner is in ward's primary-org trust set, via
+// ownerAllowed reports whether owner is in ward's trusted-owner set, via
 // cli-guard's pkg/ownertrust (ward supplies the accepted set).
 func (r *Runner) ownerAllowed(owner string) bool {
-	return ownertrust.List{Extra: r.primaryOrgs()}.Allowed(owner)
+	owners := r.trustedOwners()
+	return ownertrust.List{Primary: firstTrustedOwner(owners), Extra: trustedOwnerExtras(owners)}.Allowed(owner)
 }
 
 // untrustedOwnerErr is the trust-gate refusal shared by every dispatch surface:
 // it names the accepted set and points at docs/agent-trust-gate.md (ward#484).
 func (r *Runner) untrustedOwnerErr(label, owner string) error {
 	return exitcode.New(dispatchUntrustedOwner, "untrusted_owner",
-		fmt.Errorf("%s: refusing untrusted owner %q (allowed: %s). This build dispatches only for its compiled-in primary orgs - see docs/agent-trust-gate.md",
-			label, owner, strings.Join(r.primaryOrgs(), ", ")), "")
+		fmt.Errorf("%s: refusing untrusted owner %q (allowed: %s). This build dispatches only for its configured trusted owners - see docs/agent-trust-gate.md",
+			label, owner, strings.Join(r.trustedOwners(), ", ")), "")
 }
 
 // printAgentPlan renders the resolved issue, the seeded prompt, and the docker

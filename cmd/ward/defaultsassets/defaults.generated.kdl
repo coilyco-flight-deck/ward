@@ -14,5 +14,14 @@ smart-defaults {
     agent-workflow default=direct-to-main {
         repo "coilyco-flight-deck/ward" workflow=pull-request
     }
- // TODO: move advisor depth budgets and container-research setup budget.
+}
+repo-authority default=forgejo {
+    trusted-owner coilysiren
+    trusted-owner coilyco-bridge
+    trusted-owner coilyco-flight-deck
+    trusted-owner coilyco-gaming
+    repo "coilysiren/*" forge=github
+    repo "coilyco-bridge/*" forge=forgejo
+    repo "coilyco-flight-deck/*" forge=forgejo
+    repo "coilyco-gaming/*" forge=forgejo
 }

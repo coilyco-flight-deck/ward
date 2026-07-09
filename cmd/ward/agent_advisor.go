@@ -100,7 +100,7 @@ func (r *Runner) runAgentAsk(ctx context.Context, c *cli.Command, mode container
 		return fmt.Errorf("%s: %w", label, err)
 	}
 	// Trust gate: this spins a bypassPermissions container and clones the repo, so
-	// only act on an owner in the primary-org set - the same gate the other roles apply.
+	// only act on an owner in the trusted-owner set - the same gate the other roles apply.
 	if !r.ownerAllowed(repo.Owner) {
 		return r.untrustedOwnerErr(label, repo.Owner)
 	}

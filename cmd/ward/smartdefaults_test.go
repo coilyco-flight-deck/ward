@@ -39,6 +39,18 @@ func TestSmartDefaultsBundleRef(t *testing.T) {
     agent-workflow default="direct-to-main" {
         repo "coilyco-flight-deck/ward" workflow="pull-request"
     }
+}
+
+repo-authority default=forgejo {
+    trusted-owner "coilysiren"
+    trusted-owner "coilyco-bridge"
+    trusted-owner "coilyco-flight-deck"
+    trusted-owner "coilyco-gaming"
+
+    repo "coilysiren/*" forge=github
+    repo "coilyco-bridge/*" forge=forgejo
+    repo "coilyco-flight-deck/*" forge=forgejo
+    repo "coilyco-gaming/*" forge=forgejo
 }`
 	if err := os.WriteFile(filepath.Join(dir, bundleDefaultsKDLPath), []byte(body), 0o644); err != nil {
 		t.Fatalf("write defaults bundle: %v", err)
@@ -68,6 +80,18 @@ func TestSmartDefaultsBundleRef(t *testing.T) {
 	}
 	if defs.agentWorkflowRepos["coilyco-flight-deck/ward"] != workflowPullRequest {
 		t.Errorf("bundle ward workflow = %q, want pull-request", defs.agentWorkflowRepos["coilyco-flight-deck/ward"])
+	}
+	if got := defs.trustedOwnerList(); len(got) != 4 || got[0] != "coilysiren" || got[1] != "coilyco-bridge" {
+		t.Errorf("bundle trusted owners = %v, want the configured owner set", got)
+	}
+	if defs.repoAuthorityDefault != forgeForgejo {
+		t.Errorf("bundle repo default forge = %v, want forgejo", defs.repoAuthorityDefault)
+	}
+	if defs.forgeForRepo("coilysiren", "agentic-os") != forgeGitHub {
+		t.Errorf("bundle coilysiren repo forge = %v, want github", defs.forgeForRepo("coilysiren", "agentic-os"))
+	}
+	if defs.forgeForRepo("coilyco-flight-deck", "ward") != forgeForgejo {
+		t.Errorf("bundle coilyco repo forge = %v, want forgejo", defs.forgeForRepo("coilyco-flight-deck", "ward"))
 	}
 }
 
@@ -103,5 +127,19 @@ func TestSmartDefaultsRejectsInvalidWorkflow(t *testing.T) {
 	t.Setenv(wardConfigRefEnv, "file://"+dir)
 	if _, err := currentSmartDefaultsWithError(); err == nil {
 		t.Fatal("invalid workflow default selected a bundle; want a loud parse error")
+	}
+}
+
+func TestSmartDefaultsRejectsMissingRepoAuthority(t *testing.T) {
+	dir := t.TempDir()
+	body := `smart-defaults {
+    agent-reservation-ttl "2h"
+}`
+	if err := os.WriteFile(filepath.Join(dir, bundleDefaultsKDLPath), []byte(body), 0o644); err != nil {
+		t.Fatalf("write defaults bundle: %v", err)
+	}
+	t.Setenv(wardConfigRefEnv, "file://"+dir)
+	if _, err := currentSmartDefaultsWithError(); err == nil {
+		t.Fatal("bundle without repo-authority selected a source; want a loud parse error")
 	}
 }

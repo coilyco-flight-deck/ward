@@ -43,8 +43,11 @@ tighter GraphQL lane - see [github-rate-limits.md](github-rate-limits.md).
   warded coilysiren/agentic-os#461 --github
   ```
 
-A plain `owner/repo#N`, a Forgejo URL, or a bare `#N` still mean Forgejo. The
-[trusted-owner](agent-trust-gate.md) allowlist is shared across both forges.
+A plain `owner/repo#N` resolves through the selected config bundle's authority
+policy. If that bundle maps the repo to GitHub, the compact ref is GitHub too;
+otherwise it stays Forgejo. A Forgejo URL still means Forgejo, and a bare `#N`
+inherits the current checkout's authority. The [trusted-owner](agent-trust-gate.md)
+allowlist is shared across both forges.
 
 ## Supplying the GitHub token
 

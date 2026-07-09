@@ -5,11 +5,13 @@ import (
 	"fmt"
 	"io/fs"
 	"os"
+	"path"
 	"strconv"
 	"strings"
 	"sync"
 	"time"
 
+	"forgejo.coilysiren.me/coilyco-flight-deck/cli-guard/pkg/ownertrust"
 	kdl "github.com/calico32/kdl-go"
 	"github.com/urfave/cli/v3"
 )
@@ -31,6 +33,14 @@ type smartDefaults struct {
 	containerReapKeep             int
 	agentWorkflowDefault          workflowMode
 	agentWorkflowRepos            map[string]workflowMode
+	trustedOwners                 []string
+	repoAuthorityDefault          forge
+	repoAuthorityRules            []repoAuthorityRule
+}
+
+type repoAuthorityRule struct {
+	Pattern string
+	Forge   forge
 }
 
 var smartDefaultsCache struct {
@@ -57,6 +67,8 @@ func bakedSmartDefaults() smartDefaults {
 		containerReapKeep:             10,
 		agentWorkflowDefault:          defaultWorkflow,
 		agentWorkflowRepos:            map[string]workflowMode{},
+		repoAuthorityDefault:          forgeForgejo,
+		trustedOwners:                 []string{},
 	}
 }
 
@@ -111,14 +123,15 @@ func parseSmartDefaults(src []byte) (smartDefaults, error) { //nolint:gocognit
 		return smartDefaults{}, fmt.Errorf("smart defaults: parse KDL: %w", err)
 	}
 	defs := bakedSmartDefaults()
-	seen := false
+	seenDefaults := false
+	seenAuthority := false
 	for _, n := range doc.Nodes {
 		switch n.Name() {
 		case "smart-defaults":
-			if seen {
+			if seenDefaults {
 				return smartDefaults{}, fmt.Errorf("smart defaults: duplicate top-level `smart-defaults` block (fail-closed)")
 			}
-			seen = true
+			seenDefaults = true
 			if len(n.Arguments()) != 0 {
 				return smartDefaults{}, fmt.Errorf("smart defaults: `smart-defaults` takes no arguments (fail-closed)")
 			}
@@ -130,12 +143,23 @@ func parseSmartDefaults(src []byte) (smartDefaults, error) { //nolint:gocognit
 					return smartDefaults{}, err
 				}
 			}
+		case "repo-authority":
+			if seenAuthority {
+				return smartDefaults{}, fmt.Errorf("smart defaults: duplicate top-level `repo-authority` block (fail-closed)")
+			}
+			seenAuthority = true
+			if err := applyRepoAuthority(&defs, n); err != nil {
+				return smartDefaults{}, err
+			}
 		default:
-			return smartDefaults{}, unknownSmartDefaultsNode("top-level", n.Name(), "smart-defaults")
+			return smartDefaults{}, unknownSmartDefaultsNode("top-level", n.Name(), "smart-defaults | repo-authority")
 		}
 	}
-	if !seen {
+	if !seenDefaults {
 		return smartDefaults{}, fmt.Errorf("smart defaults: missing top-level `smart-defaults` block (fail-closed)")
+	}
+	if !seenAuthority {
+		return smartDefaults{}, fmt.Errorf("smart defaults: missing top-level `repo-authority` block (fail-closed)")
 	}
 	return defs, nil
 }
@@ -225,6 +249,107 @@ func applySmartDefaultNode(defs *smartDefaults, n *kdl.Node) error { //nolint:go
 	return nil
 }
 
+func applyRepoAuthority(defs *smartDefaults, n *kdl.Node) error {
+	if len(n.Arguments()) != 0 {
+		return fmt.Errorf("smart defaults: repo-authority takes no arguments (fail-closed)")
+	}
+	if err := applyRepoAuthorityDefault(defs, n); err != nil {
+		return err
+	}
+	if err := requireRepoAuthorityProperties(n); err != nil {
+		return err
+	}
+	if defs.trustedOwners == nil {
+		defs.trustedOwners = []string{}
+	}
+	if defs.repoAuthorityRules == nil {
+		defs.repoAuthorityRules = []repoAuthorityRule{}
+	}
+	seenOwners := map[string]bool{}
+	seenPatterns := map[string]bool{}
+	for _, c := range n.Children().Nodes {
+		switch c.Name() {
+		case "trusted-owner":
+			owner, err := smartDefaultsStringArg(c, "repo-authority > trusted-owner")
+			if err != nil {
+				return err
+			}
+			if strings.Contains(owner, "/") {
+				return fmt.Errorf("smart defaults: repo-authority > trusted-owner %q must be an owner only (fail-closed)", owner)
+			}
+			if seenOwners[owner] {
+				return fmt.Errorf("smart defaults: repo-authority > trusted-owner %q repeated (fail-closed)", owner)
+			}
+			seenOwners[owner] = true
+			defs.trustedOwners = append(defs.trustedOwners, owner)
+		case "repo":
+			pattern, err := smartDefaultsStringArg(c, "repo-authority > repo")
+			if err != nil {
+				return err
+			}
+			if !validRepoAuthorityPattern(pattern) {
+				return fmt.Errorf("smart defaults: repo-authority > repo %q must be owner/repo or owner/* (fail-closed)", pattern)
+			}
+			if seenPatterns[pattern] {
+				return fmt.Errorf("smart defaults: repo-authority > repo %q repeated (fail-closed)", pattern)
+			}
+			forge, err := smartDefaultsForgeProp(c, "forge", "repo-authority > repo forge")
+			if err != nil {
+				return err
+			}
+			seenPatterns[pattern] = true
+			defs.repoAuthorityRules = append(defs.repoAuthorityRules, repoAuthorityRule{Pattern: pattern, Forge: forge})
+		default:
+			return unknownSmartDefaultsNode("repo-authority body", c.Name(), "trusted-owner | repo")
+		}
+	}
+	return nil
+}
+
+func applyRepoAuthorityDefault(defs *smartDefaults, n *kdl.Node) error {
+	v, ok, err := smartDefaultsStringProp(n, "default", "repo-authority default")
+	if err != nil {
+		return err
+	}
+	if !ok {
+		return fmt.Errorf("smart defaults: repo-authority missing `default` property (fail-closed)")
+	}
+	if v != "forgejo" && v != "github" {
+		return fmt.Errorf("smart defaults: repo-authority default must be forgejo or github (fail-closed)")
+	}
+	defs.repoAuthorityDefault = parseForge(v)
+	return nil
+}
+
+func requireRepoAuthorityProperties(n *kdl.Node) error {
+	for prop := range n.Properties() {
+		if prop != "default" {
+			return fmt.Errorf("smart defaults: repo-authority unknown property %q (want default; fail-closed)", prop)
+		}
+	}
+	return nil
+}
+
+func smartDefaultsForgeProp(n *kdl.Node, name, label string) (forge, error) {
+	raw, ok, err := smartDefaultsStringProp(n, name, label)
+	if err != nil {
+		return forgeForgejo, err
+	}
+	if !ok {
+		return forgeForgejo, fmt.Errorf("smart defaults: %s missing (fail-closed)", label)
+	}
+	if raw != "forgejo" && raw != "github" {
+		return forgeForgejo, fmt.Errorf("smart defaults: %s must be forgejo or github (fail-closed)", label)
+	}
+	return parseForge(raw), nil
+}
+
+func validRepoAuthorityPattern(s string) bool {
+	s = strings.TrimSpace(s)
+	owner, repo, ok := strings.Cut(s, "/")
+	return ok && owner != "" && repo != "" && !strings.Contains(owner, "/") && !strings.Contains(repo, "/") && !strings.ContainsAny(s, " \t#")
+}
+
 func applySmartDefaultWorkflow(defs *smartDefaults, n *kdl.Node) error {
 	if len(n.Arguments()) != 0 {
 		return fmt.Errorf("smart defaults: smart-defaults > agent-workflow takes no arguments (fail-closed)")
@@ -306,6 +431,51 @@ func parseSmartDefaultRepoWorkflow(c *kdl.Node, repo string) (workflowMode, erro
 		return workflowMode(""), fmt.Errorf("smart defaults: smart-defaults > agent-workflow > repo %q: %w (fail-closed)", repo, err)
 	}
 	return wf, nil
+}
+
+func (d smartDefaults) ownerAllowed(owner string) bool {
+	if owner == "" {
+		return false
+	}
+	return ownertrust.List{Primary: firstTrustedOwner(d.trustedOwners), Extra: trustedOwnerExtras(d.trustedOwners)}.Allowed(owner)
+}
+
+func (d smartDefaults) trustedOwnerList() []string {
+	out := make([]string, 0, len(d.trustedOwners))
+	out = append(out, d.trustedOwners...)
+	return out
+}
+
+func (d smartDefaults) forgeForRepo(owner, repo string) forge {
+	slug := owner + "/" + repo
+	for _, rule := range d.repoAuthorityRules {
+		if ok, _ := path.Match(rule.Pattern, slug); ok {
+			return rule.Forge
+		}
+	}
+	return d.repoAuthorityDefault
+}
+
+func firstTrustedOwner(owners []string) string {
+	for _, owner := range owners {
+		if strings.TrimSpace(owner) != "" {
+			return owner
+		}
+	}
+	return ""
+}
+
+func trustedOwnerExtras(owners []string) []string {
+	if len(owners) <= 1 {
+		return nil
+	}
+	extra := make([]string, 0, len(owners)-1)
+	for _, owner := range owners[1:] {
+		if strings.TrimSpace(owner) != "" {
+			extra = append(extra, owner)
+		}
+	}
+	return extra
 }
 
 func smartDefaultsStringProp(n *kdl.Node, name, label string) (string, bool, error) {

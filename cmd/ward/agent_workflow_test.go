@@ -238,6 +238,13 @@ func TestAgentWorkflowSmartDefaults(t *testing.T) {
     agent-workflow default="direct-to-main" {
         repo "coilyco-flight-deck/ward" workflow="pull-request"
     }
+}
+
+repo-authority default=forgejo {
+    trusted-owner "coilysiren"
+    trusted-owner "coilyco-flight-deck"
+    repo "coilysiren/*" forge=github
+    repo "coilyco-flight-deck/*" forge=forgejo
 }`
 	if err := os.WriteFile(filepath.Join(dir, bundleDefaultsKDLPath), []byte(body), 0o644); err != nil {
 		t.Fatalf("write defaults bundle: %v", err)

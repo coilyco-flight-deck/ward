@@ -459,6 +459,41 @@ func TestOwnerAllowed(t *testing.T) {
 	}
 }
 
+func TestResolveAgentIssueRefUsesRepoAuthorityPolicy(t *testing.T) {
+	dir := t.TempDir()
+	body := `smart-defaults {
+    agent-reservation-ttl "1h"
+}
+
+repo-authority default=forgejo {
+    trusted-owner "coilysiren"
+    trusted-owner "coilyco-flight-deck"
+    repo "coilysiren/*" forge=github
+    repo "coilyco-flight-deck/*" forge=forgejo
+}`
+	if err := os.WriteFile(filepath.Join(dir, bundleDefaultsKDLPath), []byte(body), 0o644); err != nil {
+		t.Fatalf("write defaults bundle: %v", err)
+	}
+	t.Setenv(wardConfigRefEnv, "file://"+dir)
+
+	r := &Runner{}
+	ghRef, err := r.resolveAgentIssueRef(t.Context(), "coilysiren/agentic-os#461")
+	if err != nil {
+		t.Fatalf("resolveAgentIssueRef(github-authoritative): %v", err)
+	}
+	if ghRef.Forge != forgeGitHub {
+		t.Fatalf("resolveAgentIssueRef(github-authoritative) forge = %v, want github", ghRef.Forge)
+	}
+
+	fjRef, err := r.resolveAgentIssueRef(t.Context(), "coilyco-flight-deck/ward#98")
+	if err != nil {
+		t.Fatalf("resolveAgentIssueRef(forgejo-authoritative): %v", err)
+	}
+	if fjRef.Forge != forgeForgejo {
+		t.Fatalf("resolveAgentIssueRef(forgejo-authoritative) forge = %v, want forgejo", fjRef.Forge)
+	}
+}
+
 func TestTaskTitle(t *testing.T) {
 	cases := []struct {
 		in   string

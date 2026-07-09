@@ -1,5 +1,5 @@
 ---
-doc_goal: Walk a newcomer from zero to a verifiable warded --print dry run while making the agent driver's real nature land - a governed, forge-locked, owner-gated execution layer, not a generic runner - so the trust gate and endpoint lock read as the containment they are, not as friction.
+doc_goal: Walk a newcomer from zero to a verifiable warded --print dry run while making the agent driver's real nature land - a governed, config-backed, owner-gated execution layer, not a generic runner - so the trust gate and endpoint lock read as the containment they are, not as friction.
 ---
 # ward first-run guide
 
@@ -8,13 +8,13 @@ Zero to a verifiable first `warded` dry run. Read [README.md](../README.md) firs
 ## Can you get to a first run today?
 
 The `warded` agent driver is not forge-agnostic - it targets `forgejo.coilysiren.me`
-and a fixed owner set, both compiled in and not repointable after install.
+and a config-bundle-backed owner / repo authority policy.
 
-- **Owner trust gate** - dispatch refuses owners outside `coilysiren`,
-  `coilyco-bridge`, `coilyco-flight-deck`, `coilyco-gaming`, **before** it reads
-  `--print` ([agent-trust-gate.md](agent-trust-gate.md)).
-- **Endpoint lock** - your own Forgejo needs a source build with edited manifests
-  ([ward#441](https://forgejo.coilysiren.me/coilyco-flight-deck/ward/issues/441), configurable path [ward#395](https://forgejo.coilysiren.me/coilyco-flight-deck/ward/issues/395)).
+- **Owner trust gate** - dispatch refuses owners outside the trusted-owner set
+  selected by the active `repo-authority` block, **before** it reads `--print`
+  ([agent-trust-gate.md](agent-trust-gate.md)).
+- **Endpoint lock** - your own Forgejo or GitHub policy needs a source bundle
+  with the right authority mappings ([ward#441](https://forgejo.coilysiren.me/coilyco-flight-deck/ward/issues/441), configurable path [ward#395](https://forgejo.coilysiren.me/coilyco-flight-deck/ward/issues/395)).
 
 Self-host nothing? You **can** render a `--print` plan today against a trusted
 public repo (`coilyco-flight-deck/ward#N`, anonymous read, no token) to confirm

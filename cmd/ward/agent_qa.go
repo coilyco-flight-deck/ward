@@ -79,7 +79,7 @@ func (r *Runner) runAgentQA(ctx context.Context, c *cli.Command, mode containerM
 		return err
 	}
 
-	issue, err := r.fetchForgejoIssue(ctx, ref.Owner, ref.Repo, ref.Number)
+	issue, err := r.fetchIssueByForge(ctx, label, ref.Forge, mode, ref.Owner, ref.Repo, ref.Number)
 	if err != nil {
 		return fmt.Errorf("%s: resolve issue %s: %w", label, ref, err)
 	}
@@ -106,11 +106,10 @@ func (r *Runner) runAgentQA(ctx context.Context, c *cli.Command, mode containerM
 		read = `{"verdict":"blocked","summary":"QA returned no output","evidence":["The container produced an empty read."],"risks":["The inspection did not complete."],"next_steps":["Re-run QA and inspect the container logs."]}`
 	}
 
-	cl, err := r.hostForgejoClient(ctx)
+	cl, err := r.hostForgeClient(ctx, ref.Forge, mode)
 	if err != nil {
 		return fmt.Errorf("%s: %w", label, err)
 	}
-	cl = cl.withMode(mode)
 	if err := cl.commentIssue(ctx, ref.Owner, ref.Repo, ref.Number, qaVerdictComment(mode, level, prompt, read)); err != nil {
 		return fmt.Errorf("%s: post QA verdict on %s: %w", label, ref, err)
 	}

@@ -142,17 +142,23 @@ func condenseOpsStderr(stderr []byte) string {
 	return joined
 }
 
-// fetchForgejoIssue GETs a Forgejo issue and decodes it into dispatch.Issue, the
-// advisor-path resolve seam sharing the dispatch retry (ward#497).
-func (r *Runner) fetchForgejoIssue(ctx context.Context, owner, repo string, number int) (*dispatch.Issue, error) {
-	cl, err := r.hostForgejoClient(ctx)
+// fetchIssueByForge GETs an issue from the selected forge and decodes it into
+// dispatch.Issue, the advisor-path resolve seam sharing the dispatch retry (ward#497).
+func (r *Runner) fetchIssueByForge(ctx context.Context, label string, f forge, mode containerMode, owner, repo string, number int) (*dispatch.Issue, error) {
+	cl, err := r.hostForgeClient(ctx, f, mode)
 	if err != nil {
 		return nil, err
 	}
 	ref := fmt.Sprintf("%s/%s#%d", owner, repo, number)
-	return resolveIssueWithRetry("ward agent advisor", ref, resolveIssueSleep, func() (*dispatch.Issue, error) {
+	return resolveIssueWithRetry(label, ref, resolveIssueSleep, func() (*dispatch.Issue, error) {
 		return cl.getIssue(ctx, owner, repo, number)
 	})
+}
+
+// fetchForgejoIssue preserves the Forgejo-only call site spelling used by the
+// remaining Forgejo-specific code paths.
+func (r *Runner) fetchForgejoIssue(ctx context.Context, owner, repo string, number int) (*dispatch.Issue, error) {
+	return r.fetchIssueByForge(ctx, "ward agent advisor", forgeForgejo, currentAgentMode(), owner, repo, number)
 }
 
 // getIssue reads one issue and decodes the rendered JSON. Labels arrive as

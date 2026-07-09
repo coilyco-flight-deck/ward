@@ -27,7 +27,7 @@ A ref points at a **flat** bundle directory - the [aos#332](https://github.com/c
   path ([ward-kdl-in-ward.md](ward-kdl-in-ward.md)); the exec scan mounts only
   files carrying an `exec` block.
 - `ward-kdl.fleet.kdl` - the dialect-2 fleet manifest.
-- `ward-kdl.defaults.kdl` - the launch-selected smart defaults for runtime policy knobs like reservation TTL, director cadence, and container retention.
+- `ward-kdl.defaults.kdl` - the launch-selected smart defaults for runtime policy knobs like reservation TTL, director cadence, container retention, and the repo-authority policy block that drives trusted-owner checks and GitHub-vs-Forgejo resolution.
 - `ward-kdl.topology.kdl` - container topology overlay. Env wins.
 - `forgejo-admin.guardfile.kdl` - **optional**; omitting it withholds
   `ops forgejo admin/doctor`.
