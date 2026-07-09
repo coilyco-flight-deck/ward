@@ -15,6 +15,7 @@ import (
 	"time"
 
 	"forgejo.coilysiren.me/coilyco-flight-deck/cli-guard/cli/dispatch"
+	"forgejo.coilysiren.me/coilyco-flight-deck/cli-guard/pkg/broker"
 )
 
 // forgejo_ops.go is ward's Forgejo client, routed through the in-binary `ward ops
@@ -88,6 +89,23 @@ func (c *forgejoClient) withMode(m containerMode) *forgejoClient {
 func (c *forgejoClient) withToken(token string) *forgejoClient {
 	c.token = token
 	return c
+}
+
+// apiToken resolves the Forgejo API token for direct HTTP calls, preferring an
+// already-pinned token and falling back to the regular Forgejo token resolver.
+func (c *forgejoClient) apiToken(ctx context.Context) (string, error) {
+	if tok := strings.TrimSpace(c.token); tok != "" {
+		return tok, nil
+	}
+	if c.r == nil {
+		return "", fmt.Errorf("no Forgejo token available")
+	}
+	tok, err := c.r.resolveForgejoToken(ctx, broker.Target{}, forgeForgejo)
+	if err != nil {
+		return "", err
+	}
+	c.token = tok
+	return tok, nil
 }
 
 // run shells the ward binary back to its `ops forgejo` mount, returning stdout. On a
@@ -178,9 +196,9 @@ func (c *forgejoClient) getIssue(ctx context.Context, owner, repo string, number
 	return &issue, nil
 }
 
-// getPullRequest reads one pull request directly from Forgejo's REST API so the
-// merge gate can see whether the current base branch still accepts it cleanly.
-func (c *forgejoClient) getPullRequest(ctx context.Context, owner, repo string, number int) (*forgejoPullRequestRaw, error) {
+// getPullRequestMergeability reads one pull request's mergeability bit directly.
+// Forgejo REST data lets the merge gate see whether the base branch still accepts it.
+func (c *forgejoClient) getPullRequestMergeability(ctx context.Context, owner, repo string, number int) (*forgejoPullRequestRaw, error) {
 	baseURL := strings.TrimRight(c.baseURL, "/")
 	if baseURL == "" {
 		baseURL = forgejoBaseURL
@@ -189,7 +207,7 @@ func (c *forgejoClient) getPullRequest(ctx context.Context, owner, repo string, 
 	client := &http.Client{Timeout: 30 * time.Second}
 	var lastErr error
 	for attempt := 1; attempt <= 3; attempt++ {
-		raw, retryable, err := c.getPullRequestOnce(ctx, client, endpoint, owner, repo, number)
+		raw, retryable, err := c.getPullRequestMergeabilityOnce(ctx, client, endpoint, owner, repo, number)
 		if err == nil {
 			return raw, nil
 		}
@@ -202,7 +220,7 @@ func (c *forgejoClient) getPullRequest(ctx context.Context, owner, repo string, 
 	return nil, lastErr
 }
 
-func (c *forgejoClient) getPullRequestOnce(ctx context.Context, client *http.Client, endpoint, owner, repo string, number int) (*forgejoPullRequestRaw, bool, error) {
+func (c *forgejoClient) getPullRequestMergeabilityOnce(ctx context.Context, client *http.Client, endpoint, owner, repo string, number int) (*forgejoPullRequestRaw, bool, error) {
 	req, err := http.NewRequestWithContext(ctx, http.MethodGet, endpoint, nil)
 	if err != nil {
 		return nil, false, err
@@ -307,8 +325,9 @@ func (c *forgejoClient) repoPullRequestsEnabled(ctx context.Context, owner, repo
 }
 
 func (c *forgejoClient) createPullRequest(ctx context.Context, owner, repo, head, base, title, body string) (string, error) {
-	if strings.TrimSpace(c.token) == "" {
-		return "", fmt.Errorf("no Forgejo token available")
+	token, err := c.apiToken(ctx)
+	if err != nil {
+		return "", err
 	}
 	payload, err := json.Marshal(map[string]string{
 		"base":  base,
@@ -328,7 +347,7 @@ func (c *forgejoClient) createPullRequest(ctx context.Context, owner, repo, head
 	if err != nil {
 		return "", err
 	}
-	req.Header.Set("Authorization", "token "+c.token)
+	req.Header.Set("Authorization", "token "+token)
 	req.Header.Set("Content-Type", "application/json")
 	req.Header.Set("Accept", "application/json")
 	resp, err := (&http.Client{Timeout: 30 * time.Second}).Do(req)
@@ -363,8 +382,9 @@ func (c *forgejoClient) createPullRequest(ctx context.Context, owner, repo, head
 // mergePullRequest merges an open PR through Forgejo's merge endpoint.
 // The director uses it for the narrow ward-owned merge lane.
 func (c *forgejoClient) mergePullRequest(ctx context.Context, owner, repo string, index int) error {
-	if strings.TrimSpace(c.token) == "" {
-		return fmt.Errorf("no Forgejo token available")
+	token, err := c.apiToken(ctx)
+	if err != nil {
+		return err
 	}
 	payload, err := json.Marshal(map[string]string{
 		"do": "merge",
@@ -381,7 +401,7 @@ func (c *forgejoClient) mergePullRequest(ctx context.Context, owner, repo string
 	if err != nil {
 		return err
 	}
-	req.Header.Set("Authorization", "token "+c.token)
+	req.Header.Set("Authorization", "token "+token)
 	req.Header.Set("Content-Type", "application/json")
 	req.Header.Set("Accept", "application/json")
 	resp, err := (&http.Client{Timeout: 30 * time.Second}).Do(req)
@@ -394,6 +414,84 @@ func (c *forgejoClient) mergePullRequest(ctx context.Context, owner, repo string
 		return fmt.Errorf("forgejo merge PR returned %s: %s", resp.Status, firstLine(string(data)))
 	}
 	return nil
+}
+
+type forgejoPullRequest struct {
+	Number    int    `json:"number"`
+	Title     string `json:"title"`
+	Body      string `json:"body"`
+	State     string `json:"state"`
+	Draft     bool   `json:"draft"`
+	Mergeable bool   `json:"mergeable"`
+	HTMLURL   string `json:"html_url"`
+	Head      struct {
+		SHA string `json:"sha"`
+		Ref string `json:"ref"`
+	} `json:"head"`
+	Base struct {
+		Ref string `json:"ref"`
+	} `json:"base"`
+}
+
+func (pr forgejoPullRequest) ref(owner, repo string) string {
+	if pr.Number <= 0 {
+		return ""
+	}
+	return fmt.Sprintf("%s/%s#%d", owner, repo, pr.Number)
+}
+
+func (pr forgejoPullRequest) headSHA() string { return strings.TrimSpace(pr.Head.SHA) }
+
+func (c *forgejoClient) getPullRequest(ctx context.Context, owner, repo string, index int) (*forgejoPullRequest, error) {
+	baseURL := strings.TrimRight(c.baseURL, "/")
+	if baseURL == "" {
+		baseURL = forgejoBaseURL
+	}
+	token, err := c.apiToken(ctx)
+	if err != nil {
+		return nil, err
+	}
+	endpoint := fmt.Sprintf("%s/api/v1/repos/%s/%s/pulls/%d", baseURL, url.PathEscape(owner), url.PathEscape(repo), index)
+	client := &http.Client{Timeout: 30 * time.Second}
+	var lastErr error
+	for attempt := 1; attempt <= 3; attempt++ {
+		pr, retryable, err := c.getPullRequestOnce(ctx, client, endpoint, owner, repo, index, token)
+		if err == nil {
+			return pr, nil
+		}
+		lastErr = err
+		if !retryable || attempt == 3 {
+			return nil, err
+		}
+		time.Sleep(time.Duration(attempt) * 50 * time.Millisecond)
+	}
+	return nil, lastErr
+}
+
+func (c *forgejoClient) getPullRequestOnce(ctx context.Context, client *http.Client, endpoint, owner, repo string, index int, token string) (*forgejoPullRequest, bool, error) {
+	req, err := http.NewRequestWithContext(ctx, http.MethodGet, endpoint, nil)
+	if err != nil {
+		return nil, false, err
+	}
+	req.Header.Set("Authorization", "token "+token)
+	req.Header.Set("Accept", "application/json")
+	resp, err := client.Do(req)
+	if err != nil {
+		return nil, false, err
+	}
+	defer func() { _ = resp.Body.Close() }()
+	data, readErr := io.ReadAll(resp.Body)
+	if readErr != nil {
+		return nil, false, fmt.Errorf("forgejo: read pull request %s/%s#%d from %s: %w", owner, repo, index, resp.Status, readErr)
+	}
+	if resp.StatusCode < 200 || resp.StatusCode >= 300 {
+		return nil, false, fmt.Errorf("forgejo get PR returned %s after %d byte(s): %s", resp.Status, len(data), firstLine(string(data)))
+	}
+	var pr forgejoPullRequest
+	if err := json.Unmarshal(data, &pr); err != nil {
+		return nil, true, fmt.Errorf("forgejo: parse pull request %s/%s#%d from %s after %d byte(s): %s: %w", owner, repo, index, resp.Status, len(data), responseSnippet(data), err)
+	}
+	return &pr, false, nil
 }
 
 // lockIssue is unsupported: Forgejo's API (gitea-1.22 compat) exposes no issue-lock
@@ -464,7 +562,7 @@ func (c *forgejoClient) listOpenPullRequests(ctx context.Context, owner, repo st
 				pr.Labels = append(pr.Labels, l.Name)
 			}
 		}
-		detail, err := c.getPullRequest(ctx, owner, repo, ri.Number)
+		detail, err := c.getPullRequestMergeability(ctx, owner, repo, ri.Number)
 		if err != nil {
 			pr.MergeableError = firstLine(err.Error())
 			prs = append(prs, pr)

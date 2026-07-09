@@ -24,6 +24,8 @@ type qaVerdict struct {
 	NextSteps []string `json:"next_steps,omitempty"`
 }
 
+const qaFamilyInternal = "internal"
+
 // agentQAFlags is the QA flag set: the ref-mode depth ladder plus the shared
 // container launch controls and print/no-pull preview.
 func agentQAFlags() []cli.Flag {
@@ -36,6 +38,7 @@ func agentQAFlags() []cli.Flag {
 			Usage:   "ref mode: how hard to inspect: quick|standard|deep (deeper gets a longer timeout)",
 		},
 		configFlag(),
+		&cli.StringFlag{Name: "family", Value: qaFamilyInternal, Usage: "QA reviewer family to launch: internal"},
 	)
 	flags = append(flags, agentImageFlags()...)
 	return append(flags,
@@ -74,7 +77,7 @@ func agentQACommand() *cli.Command {
 func (r *Runner) runAgentQA(ctx context.Context, c *cli.Command, mode containerMode) error {
 	label := agentCmdline(mode, "qa")
 
-	ref, prompt, level, err := r.validateQAInputs(ctx, c, label)
+	ref, prompt, level, family, err := r.validateQAInputs(ctx, c, label)
 	if err != nil {
 		return err
 	}
@@ -89,8 +92,21 @@ func (r *Runner) runAgentQA(ctx context.Context, c *cli.Command, mode containerM
 		fmt.Fprintf(os.Stderr, "%s: note: could not read comments on %s (%v); QA will inspect the issue body only\n", label, ref, cerr)
 	}
 
+	pr, foundPR, prErr := r.findLinkedPullRequest(ctx, ref, issue, comments)
+	qaCtx := qaLaunchContext{
+		IssueRef:       ref.String(),
+		ReviewerFamily: family,
+		Workflow:       string(workflowPullRequestAndMerge),
+		RunIdentity:    reviewSessionID(),
+	}
+	if prErr != nil {
+		fmt.Fprintf(os.Stderr, "%s: note: could not resolve linked PR for %s (%v); QA will comment without a reviewed SHA\n", label, ref, prErr)
+	} else if foundPR && pr != nil {
+		qaCtx.PRRef = pr.ref(ref.Owner, ref.Repo)
+		qaCtx.ReviewedSHA = pr.headSHA()
+	}
 	prompt = qaInspectionPrompt(prompt)
-	research := qaResearchPrompt(ref, title, issue.Body, comments, prompt, level)
+	research := qaResearchPrompt(ref, title, issue.Body, comments, prompt, level, qaCtx)
 
 	if c.Bool("print") {
 		return printAgentQAPlan(c, mode, ref, title, prompt, level, research)
@@ -110,7 +126,7 @@ func (r *Runner) runAgentQA(ctx context.Context, c *cli.Command, mode containerM
 	if err != nil {
 		return fmt.Errorf("%s: %w", label, err)
 	}
-	if err := cl.commentIssue(ctx, ref.Owner, ref.Repo, ref.Number, qaVerdictComment(mode, level, prompt, read)); err != nil {
+	if err := cl.commentIssue(ctx, ref.Owner, ref.Repo, ref.Number, qaVerdictComment(mode, level, family, prompt, qaCtx, read)); err != nil {
 		return fmt.Errorf("%s: post QA verdict on %s: %w", label, ref, err)
 	}
 	fmt.Fprintf(os.Stderr, "%s: posted a QA verdict on %s - %s\n", label, ref, ref.url())
@@ -119,21 +135,28 @@ func (r *Runner) runAgentQA(ctx context.Context, c *cli.Command, mode containerM
 
 // validateQAInputs parses the QA argv: a valid issue ref, optional framing, a
 // known thoroughness, and a trusted owner.
-func (r *Runner) validateQAInputs(ctx context.Context, c *cli.Command, label string) (agentIssueRef, string, qaThoroughness, error) {
+func (r *Runner) validateQAInputs(ctx context.Context, c *cli.Command, label string) (agentIssueRef, string, qaThoroughness, string, error) {
 	ref, err := r.resolveAgentIssueRef(ctx, c.Args().First())
 	if err != nil {
-		return agentIssueRef{}, "", qaThoroughness{}, fmt.Errorf("%s: %w", label, err)
+		return agentIssueRef{}, "", qaThoroughness{}, "", fmt.Errorf("%s: %w", label, err)
 	}
 	prompt := strings.TrimSpace(strings.Join(c.Args().Tail(), " "))
 
 	level, err := parseReplyThoroughness(c.String("thoroughness"))
 	if err != nil {
-		return agentIssueRef{}, "", qaThoroughness{}, fmt.Errorf("%s: %w", label, err)
+		return agentIssueRef{}, "", qaThoroughness{}, "", fmt.Errorf("%s: %w", label, err)
 	}
 	if !r.ownerAllowed(ref.Owner) {
-		return agentIssueRef{}, "", qaThoroughness{}, r.untrustedOwnerErr(label, ref.Owner)
+		return agentIssueRef{}, "", qaThoroughness{}, "", r.untrustedOwnerErr(label, ref.Owner)
 	}
-	return ref, prompt, level, nil
+	family := strings.TrimSpace(c.String("family"))
+	if family == "" {
+		family = qaFamilyInternal
+	}
+	if family != qaFamilyInternal {
+		return agentIssueRef{}, "", qaThoroughness{}, "", fmt.Errorf("%s: invalid QA family %q: want %s", label, family, qaFamilyInternal)
+	}
+	return ref, prompt, level, family, nil
 }
 
 type qaThoroughness = replyThoroughness
@@ -214,7 +237,7 @@ func (r *Runner) captureQAResearch(ctx context.Context, c *cli.Command, mode con
 }
 
 // qaResearchPrompt builds the host one-shot prompt (issue, thread, verdict schema).
-func qaResearchPrompt(ref agentIssueRef, title, body string, comments []issueComment, prompt string, level qaThoroughness) string {
+func qaResearchPrompt(ref agentIssueRef, title, body string, comments []issueComment, prompt string, level qaThoroughness, ctx qaLaunchContext) string {
 	title = strings.TrimSpace(title)
 	if title == "" {
 		title = "(untitled)"
@@ -249,13 +272,17 @@ func qaResearchPrompt(ref agentIssueRef, title, body string, comments []issueCom
 			"Use the issue text, the comment thread, and the live repository state. Inspect the current branch, "+
 			"any linked pull request, and the available checks. The repo is a fresh clone in your working "+
 			"directory. The issue thread already carries the operator framing and the current release state.\n\n"+
+			"Current PR ref: %s\n"+
+			"Current reviewed SHA: %s\n"+
+			"Reviewer family: %s\n"+
+			"Run identity: %s\n\n"+
 			"QA depth: %s\n\n"+
 			"Issue: %s (%q)\n"+
 			"URL: %s\n\n"+
 			"----- issue body -----\n%s\n----- end issue body -----\n\n"+
 			"Comment thread (oldest first):\n\n%s\n\n"+
 			"----- the QA request -----\n%s\n----- end request -----",
-		level.Guidance, ref, title, ref.url(), body, thread, prompt)
+		ctx.PRRef, ctx.ReviewedSHA, ctx.ReviewerFamily, ctx.RunIdentity, level.Guidance, ref, title, ref.url(), body, thread, prompt)
 }
 
 // printAgentQAPlan renders the repo, the QA request, and the docker plan without
@@ -291,21 +318,34 @@ func printAgentQAPlan(c *cli.Command, mode containerMode, ref agentIssueRef, tit
 
 // qaVerdictComment renders the durable tracker comment. A failure verdict is still
 // recorded and surfaced, but it never blocks the run.
-func qaVerdictComment(mode containerMode, level qaThoroughness, prompt, read string) string {
+func qaVerdictComment(mode containerMode, level qaThoroughness, family, prompt string, ctx qaLaunchContext, read string) string {
 	if verdict, ok := parseQAVerdict(read); ok {
-		return qaVerdictCommentFrom(mode, level, prompt, verdict)
+		return qaVerdictCommentFrom(mode, level, family, prompt, ctx, verdict)
 	}
 	visible := "WARD-QA: failed ❌"
 	return collapsedIssueComment(visible, "qa details", "Could not parse a structured QA verdict.\n\n"+strings.TrimSpace(read))
 }
 
-func qaVerdictCommentFrom(_ containerMode, _ qaThoroughness, prompt string, verdict qaVerdict) string {
+type qaLaunchContext struct {
+	IssueRef       string
+	PRRef          string
+	ReviewedSHA    string
+	ReviewerFamily string
+	Workflow       string
+	RunIdentity    string
+}
+
+func qaVerdictCommentFrom(_ containerMode, _ qaThoroughness, family, prompt string, ctx qaLaunchContext, verdict qaVerdict) string {
 	status, emoji := qaOutcomeStatus(verdict.Verdict)
 	visible := fmt.Sprintf("WARD-QA: %s %s", status, emoji)
 	var b strings.Builder
-	if s := strings.TrimSpace(verdict.Summary); s != "" {
-		fmt.Fprintf(&b, "summary: %s\n\n", s)
-	}
+	writef(&b, "verdict: %s\n", strings.ToLower(strings.TrimSpace(verdict.Verdict)))
+	writef(&b, "reviewed_sha: %s\n", strings.TrimSpace(ctx.ReviewedSHA))
+	writef(&b, "reviewer_family: %s\n", strings.TrimSpace(family))
+	writef(&b, "workflow: %s\n", strings.TrimSpace(ctx.Workflow))
+	writef(&b, "issue_ref: %s\n", strings.TrimSpace(ctx.IssueRef))
+	writef(&b, "pr_ref: %s\n", strings.TrimSpace(ctx.PRRef))
+	writef(&b, "reason: %s\n", strings.TrimSpace(verdict.Summary))
 	if len(verdict.Evidence) > 0 {
 		fmt.Fprintf(&b, "evidence:\n")
 		for _, e := range verdict.Evidence {
@@ -333,10 +373,106 @@ func qaVerdictCommentFrom(_ containerMode, _ qaThoroughness, prompt string, verd
 		}
 		fmt.Fprintln(&b)
 	}
+	writef(&b, "run_identity: %s\n\n", strings.TrimSpace(ctx.RunIdentity))
 	if p := strings.TrimSpace(prompt); p != "" {
 		fmt.Fprintf(&b, "dispatcher framing:\n%s\n", p)
 	}
 	return collapsedIssueComment(visible, "qa details", strings.TrimSpace(b.String()))
+}
+
+// qaCommentMeta is the machine-readable verdict recovered from an issue comment.
+type qaCommentMeta struct {
+	Verdict        string
+	ReviewedSHA    string
+	ReviewerFamily string
+	Workflow       string
+	IssueRef       string
+	PRRef          string
+	Reason         string
+	RunIdentity    string
+}
+
+func qaCommentLine(ln string) string {
+	return strings.TrimSpace(strings.TrimLeft(strings.TrimSpace(ln), ">*-•# "))
+}
+
+func parseQAVerdictComment(body string) (qaCommentMeta, bool) {
+	meta := qaCommentMeta{}
+	found := false
+	for _, ln := range strings.Split(body, "\n") {
+		s := qaCommentLine(ln)
+		if s == "" {
+			continue
+		}
+		if strings.HasPrefix(strings.ToUpper(s), "WARD-QA:") {
+			found = true
+			continue
+		}
+		if qaParseCommentField(&meta, s) {
+			continue
+		}
+	}
+	if !found {
+		return qaCommentMeta{}, false
+	}
+	return meta, true
+}
+
+func qaParseCommentField(meta *qaCommentMeta, s string) bool {
+	lower := strings.ToLower(s)
+	switch {
+	case strings.HasPrefix(lower, "verdict:"):
+		meta.Verdict = strings.TrimSpace(s[len("verdict:"):])
+	case strings.HasPrefix(lower, "reviewed_sha:"):
+		meta.ReviewedSHA = strings.TrimSpace(s[len("reviewed_sha:"):])
+	case strings.HasPrefix(lower, "reviewer_family:"):
+		meta.ReviewerFamily = strings.TrimSpace(s[len("reviewer_family:"):])
+	case strings.HasPrefix(lower, "workflow:"):
+		meta.Workflow = strings.TrimSpace(s[len("workflow:"):])
+	case strings.HasPrefix(lower, "issue_ref:"):
+		meta.IssueRef = strings.TrimSpace(s[len("issue_ref:"):])
+	case strings.HasPrefix(lower, "pr_ref:"):
+		meta.PRRef = strings.TrimSpace(s[len("pr_ref:"):])
+	case strings.HasPrefix(lower, "reason:"):
+		meta.Reason = strings.TrimSpace(s[len("reason:"):])
+	case strings.HasPrefix(lower, "run_identity:"):
+		meta.RunIdentity = strings.TrimSpace(s[len("run_identity:"):])
+	default:
+		return false
+	}
+	return true
+}
+
+// findLinkedPullRequest resolves the merge-lane PR for the issue, if any, and
+// returns its current Forgejo head SHA for commit-bound QA commentary.
+func (r *Runner) findLinkedPullRequest(ctx context.Context, ref agentIssueRef, _ any, _ []issueComment) (*forgejoPullRequest, bool, error) {
+	cl, err := r.hostForgejoClient(ctx)
+	if err != nil {
+		return nil, false, err
+	}
+	prs, err := cl.listOpenPullRequests(ctx, ref.Owner, ref.Repo, 50)
+	if err != nil {
+		return nil, false, err
+	}
+	for _, pr := range prs {
+		linked, ok := directorLinkedIssueNumber(pr.Body)
+		if !ok || linked != ref.Number {
+			continue
+		}
+		wf, ok := directorPRWorkflowMarker(pr.Body)
+		if !ok || wf != string(workflowPullRequestAndMerge) {
+			continue
+		}
+		full, err := cl.getPullRequest(ctx, ref.Owner, ref.Repo, pr.Number)
+		if err != nil {
+			return nil, false, err
+		}
+		if strings.TrimSpace(full.Head.SHA) == "" {
+			return nil, false, fmt.Errorf("forgejo: pull request %s/%s#%d omitted head sha", ref.Owner, ref.Repo, pr.Number)
+		}
+		return full, true, nil
+	}
+	return nil, false, nil
 }
 
 // parseQAVerdict recovers the structured verdict from the read, if present.

@@ -87,7 +87,7 @@ func (r *Runner) runDirectorMergeRepo(ctx context.Context, label string, prClien
 		return 0, 0, fmt.Errorf("%s: %w", label, err)
 	}
 	for _, pr := range prs {
-		ok, reason, linked, meta := directorMergeEligibility(ctx, owner, name, pr, issueClient)
+		ok, reason, linked, meta := directorMergeEligibility(ctx, owner, name, pr, prClient, issueClient)
 		if !ok {
 			skipped++
 			_, _ = fmt.Fprintf(r.Runner.Stderr, "%s: skipping %s/%s#%d: %s\n", label, owner, name, pr.Number, reason)
@@ -112,40 +112,67 @@ func (r *Runner) runDirectorMergeRepo(ctx context.Context, label string, prClien
 
 // directorMergeEligibility returns whether pr is the narrow, ward-owned lane.
 // The policy closes over the issue thread, not just the PR title.
-func directorMergeEligibility(ctx context.Context, owner, repo string, pr directorPullRequest, tr Tracker) (ok bool, reason string, linked int, meta directorRunMeta) {
+func directorMergeEligibility(ctx context.Context, owner, repo string, pr directorPullRequest, prClient *forgejoClient, issueClient Tracker) (ok bool, reason string, linked int, meta directorRunMeta) {
 	linked, ok = directorLinkedIssueNumber(pr.Body)
 	if !ok {
 		return false, "no same-repo closing reference in the PR body", 0, directorRunMeta{}
 	}
-	if !pr.MergeableKnown {
-		if pr.MergeableError == "" {
-			return false, "could not read PR mergeability", linked, directorRunMeta{}
-		}
-		return false, "could not read PR mergeability: " + pr.MergeableError, linked, directorRunMeta{}
-	}
-	if !pr.Mergeable {
-		return false, "PR is not mergeable against the current base branch; rebase or merge base and resolve the conflict first", linked, directorRunMeta{}
-	}
-	if wf, ok := directorPRWorkflowMarker(pr.Body); !ok {
-		return false, "PR body missing ward.workflow: pull-requests-and-merge marker", linked, directorRunMeta{}
-	} else if wf != string(workflowPullRequestAndMerge) {
-		return false, "PR body carries ward.workflow: " + wf + "; need pull-requests-and-merge", linked, directorRunMeta{}
-	}
-	if _, err := tr.getIssue(ctx, owner, repo, linked); err != nil {
-		return false, "could not read linked issue: " + firstLine(err.Error()), linked, directorRunMeta{}
-	}
-	comments, err := tr.listIssueComments(ctx, owner, repo, linked)
-	if err != nil {
-		return false, "could not read linked issue comments: " + firstLine(err.Error()), linked, directorRunMeta{}
-	}
-	if latest, ok := latestBacklogOutcomeComment(comments); ok {
-		meta = parseDirectorRunMeta(latest.Body)
-		meta.CommentedBy = latest.User.Login
-		meta.CommentedAt = latest.CreatedAt
-	} else {
-		return false, "linked issue never reached a WARD-OUTCOME comment", linked, directorRunMeta{}
+	meta, reason, allowed := directorMergeIssueMeta(ctx, owner, repo, pr, linked, prClient, issueClient)
+	if !allowed {
+		return false, reason, linked, meta
 	}
 	return directorMergeDecision(pr.Issue, linked, meta)
+}
+
+func directorMergeIssueMeta(ctx context.Context, owner, repo string, pr directorPullRequest, linked int, prClient *forgejoClient, issueClient Tracker) (directorRunMeta, string, bool) {
+	var meta directorRunMeta
+	if !pr.MergeableKnown {
+		if pr.MergeableError == "" {
+			return directorRunMeta{}, "could not read PR mergeability", false
+		}
+		return directorRunMeta{}, "could not read PR mergeability: " + pr.MergeableError, false
+	}
+	if !pr.Mergeable {
+		return directorRunMeta{}, "PR is not mergeable against the current base branch; rebase or merge base and resolve the conflict first", false
+	}
+	if wf, ok := directorPRWorkflowMarker(pr.Body); !ok {
+		return directorRunMeta{}, "PR body missing ward.workflow: pull-requests-and-merge marker", false
+	} else if wf != string(workflowPullRequestAndMerge) {
+		return directorRunMeta{}, "PR body carries ward.workflow: " + wf + "; need pull-requests-and-merge", false
+	}
+	if _, err := issueClient.getIssue(ctx, owner, repo, linked); err != nil {
+		return directorRunMeta{}, "could not read linked issue: " + firstLine(err.Error()), false
+	}
+	comments, err := issueClient.listIssueComments(ctx, owner, repo, linked)
+	if err != nil {
+		return directorRunMeta{}, "could not read linked issue comments: " + firstLine(err.Error()), false
+	}
+	prInfo, err := prClient.getPullRequest(ctx, owner, repo, pr.Number)
+	if err != nil {
+		return directorRunMeta{}, "could not read linked PR details: " + firstLine(err.Error()), false
+	}
+	meta.IssueRef = fmt.Sprintf("%s/%s#%d", owner, repo, linked)
+	meta.PRHeadSHA = strings.TrimSpace(prInfo.Head.SHA)
+	meta.PRRef = prInfo.ref(owner, repo)
+	if meta.PRHeadSHA == "" {
+		return meta, "linked PR did not expose a head SHA", false
+	}
+	latest, ok := latestBacklogOutcomeComment(comments)
+	if !ok {
+		return directorRunMeta{}, "linked issue never reached a WARD-OUTCOME comment", false
+	}
+	meta = parseDirectorRunMeta(latest.Body)
+	meta.CommentedBy = latest.User.Login
+	meta.CommentedAt = latest.CreatedAt
+	meta.IssueRef = fmt.Sprintf("%s/%s#%d", owner, repo, linked)
+	meta.PRHeadSHA = strings.TrimSpace(prInfo.Head.SHA)
+	meta.PRRef = prInfo.ref(owner, repo)
+	qa, ok := latestQAVerdictComment(comments, meta.IssueRef, meta.PRRef, meta.PRHeadSHA)
+	if !ok {
+		return meta, "linked issue does not have a passing WARD-QA verdict for the current PR head SHA", false
+	}
+	meta.QA = qa
+	return meta, "", true
 }
 
 // directorPRWorkflowMarker extracts the workflow marker from a PR body.
@@ -180,16 +207,39 @@ func directorMergeDecision(pr dispatch.Issue, linked int, meta directorRunMeta) 
 		}
 		return false, "linked issue did not finish with WARD-OUTCOME: merge-ready", linked, meta
 	}
-	if strings.TrimSpace(meta.Workflow) != string(workflowPullRequestAndMerge) {
-		if strings.TrimSpace(meta.Workflow) == "" {
+	wf := strings.TrimSpace(meta.Workflow)
+	if wf != string(workflowPullRequestAndMerge) {
+		if wf == "" {
 			return false, "linked issue comment did not record the merge workflow", linked, meta
 		}
 		return false, "workflow " + meta.Workflow + " still needs human merge approval", linked, meta
 	}
-	if !strings.HasPrefix(strings.ToLower(strings.TrimSpace(meta.Review)), "passed:") {
-		return false, "review gate did not pass", linked, meta
+	if reason, ok := directorMergeQAGate(meta); !ok {
+		return false, reason, linked, meta
 	}
 	return true, "", linked, meta
+}
+
+func directorMergeQAGate(meta directorRunMeta) (reason string, ok bool) {
+	if strings.TrimSpace(meta.QA.ReviewerFamily) != qaFamilyInternal {
+		return "linked issue QA verdict was not from the internal reviewer family", false
+	}
+	if strings.ToLower(strings.TrimSpace(meta.QA.Verdict)) != "pass" {
+		return "linked issue QA verdict did not pass", false
+	}
+	if strings.TrimSpace(meta.QA.ReviewedSHA) != strings.TrimSpace(meta.PRHeadSHA) {
+		return "linked issue QA verdict does not match the current PR head SHA", false
+	}
+	if strings.TrimSpace(meta.QA.IssueRef) != strings.TrimSpace(meta.IssueRef) {
+		return "linked issue QA verdict does not name the current issue", false
+	}
+	if strings.TrimSpace(meta.QA.PRRef) != strings.TrimSpace(meta.PRRef) {
+		return "linked issue QA verdict does not name the current PR", false
+	}
+	if strings.TrimSpace(meta.QA.RunIdentity) == "" {
+		return "linked issue QA verdict is missing run identity", false
+	}
+	return "", true
 }
 
 // recordDirectorMergeDone posts the director's final done outcome only after the

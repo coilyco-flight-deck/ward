@@ -29,7 +29,7 @@ func (r *Runner) directorMergeEligiblePullRequests(ctx context.Context, label st
 			continue
 		}
 		for _, pr := range prs {
-			ok, reason, linked, meta := directorMergeEligibility(ctx, owner, name, pr, issueClient)
+			ok, reason, linked, meta := directorMergeEligibility(ctx, owner, name, pr, prClient, issueClient)
 			if !ok {
 				if reason != "" {
 					fmt.Fprintf(os.Stderr, "%s: not merging %s/%s#%d - %s\n", label, owner, name, pr.Number, reason)

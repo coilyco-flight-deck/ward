@@ -31,6 +31,7 @@ If any check fails, the director reports the reason and leaves the PR alone.
 - It does not merge plain `pull-requests` runs unless a later policy explicitly
   says to.
 - It does not treat salvage PRs as eligible work PRs.
+- It does not accept stale QA comments for an older PR head SHA.
 
 ## How this differs from engineer workflow
 
