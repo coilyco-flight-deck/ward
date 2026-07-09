@@ -11,7 +11,7 @@ import (
 
 // directorMergeEligiblePullRequests sweeps ward-owned PRs that already satisfy the
 // merge boundary and merges them through the authoritative forge.
-func (r *Runner) directorMergeEligiblePullRequests(ctx context.Context, label string, repos []string) error {
+func (r *Runner) directorMergeEligiblePullRequests(ctx context.Context, label string, repos []string) {
 	for _, repo := range repos {
 		owner, name, _ := strings.Cut(repo, "/")
 		cl, err := r.hostForgeClient(ctx, repoAuthority(owner, name), currentAgentMode())
@@ -40,5 +40,4 @@ func (r *Runner) directorMergeEligiblePullRequests(ctx context.Context, label st
 			fmt.Fprintf(os.Stderr, "%s: merged eligible PR %s/%s#%d for issue #%d\n", label, owner, name, pr.Number, linked)
 		}
 	}
-	return nil
 }

@@ -9,8 +9,6 @@ import (
 	"strings"
 	"testing"
 	"time"
-
-	"forgejo.coilysiren.me/coilyco-flight-deck/cli-guard/cli/dispatch"
 )
 
 func captureTestStderr(t *testing.T, fn func()) string {
@@ -349,15 +347,9 @@ type fakeLockForge struct {
 	listCalls    int
 }
 
-func (f *fakeLockForge) getIssue(context.Context, string, string, int) (*dispatch.Issue, error) {
-	return &dispatch.Issue{}, nil
-}
 func (f *fakeLockForge) listIssueComments(context.Context, string, string, int) ([]issueComment, error) {
 	f.listCalls++
 	return f.listComments, f.listErr
-}
-func (f *fakeLockForge) createIssue(context.Context, string, string, string, string) (int, error) {
-	return 0, nil
 }
 func (f *fakeLockForge) commentIssue(_ context.Context, _, _ string, _ int, body string) error {
 	if f.commentErr != nil {
@@ -366,8 +358,6 @@ func (f *fakeLockForge) commentIssue(_ context.Context, _, _ string, _ int, body
 	f.comments = append(f.comments, body)
 	return nil
 }
-func (f *fakeLockForge) closeIssue(context.Context, string, string, int) error  { return nil }
-func (f *fakeLockForge) reopenIssue(context.Context, string, string, int) error { return nil }
 func (f *fakeLockForge) lockIssue(context.Context, string, string, int) error {
 	f.locked++
 	return f.lockErr

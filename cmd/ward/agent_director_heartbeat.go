@@ -287,9 +287,7 @@ func (d *liveDirector) refresh(ctx context.Context) {
 }
 
 func (d *liveDirector) mergeEligiblePullRequests(ctx context.Context) {
-	if err := d.r.directorMergeEligiblePullRequests(ctx, d.label, d.repos); err != nil {
-		fmt.Fprintf(os.Stderr, "%s: note: PR merge sweep failed (%v); continuing\n", d.label, err)
-	}
+	d.r.directorMergeEligiblePullRequests(ctx, d.label, d.repos)
 }
 
 func (d *liveDirector) entries() []*backlogEntry { return d.r.backlogScopeEntries(d.repos) }

@@ -628,7 +628,7 @@ func (r *Runner) fileSalvageIssue(ctx context.Context, env reapEnv, report salva
 			return err
 		}
 		return notifySalvage(ctx, fc, env, report)
-	default:
+	case forgeForgejo:
 		if env.Token == "" {
 			return fmt.Errorf("no FORGEJO_TOKEN to file a salvage issue")
 		}
@@ -641,6 +641,7 @@ func (r *Runner) fileSalvageIssue(ctx context.Context, env reapEnv, report salva
 		fc = fc.withMode(mode).withToken(env.Token)
 		return notifySalvage(ctx, fc, env, report)
 	}
+	return fmt.Errorf("unknown forge %q", env.Forge)
 }
 
 // salvageNotifier is the Forgejo surface notifySalvage drives; *forgejoClient
