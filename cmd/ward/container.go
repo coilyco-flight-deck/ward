@@ -169,13 +169,9 @@ func buildUpPlan(c *cli.Command, repo targetRepo, mode containerMode, role, cwd,
 	// The per-container machine id rides the ward.machine label. Director surface
 	// containers use a short dictatable id suffix instead of the machine id.
 	machine := randHex()
-	nameSuffix := machine
-	if role == roleSession || role == roleDirector {
-		nameSuffix = directorSurfaceSessionSuffix()
-	}
 	return upPlan{
 		Image:          imageRef(c.String("image"), c.String("tag")),
-		Name:           containerRoleName(role, mode, repo, 0, nameSuffix),
+		Name:           containerRoleName(role, mode, repo, 0, containerNameSuffix(role, machine)),
 		Role:           role,
 		ConfigRole:     role,
 		Machine:        machine,
@@ -197,6 +193,13 @@ func buildUpPlan(c *cli.Command, repo targetRepo, mode containerMode, role, cwd,
 		SkipPreflight:  c.Bool("skip-preflight") || c.Bool("no-preflight"),
 		ConfigEnv:      configEnv,
 	}, nil
+}
+
+func containerNameSuffix(role string, machine string) string {
+	if role == roleSession || role == roleDirector {
+		return directorSurfaceSessionSuffix()
+	}
+	return machine
 }
 
 // localHasTailscale0 reports whether a tailscale0 interface exists on this host's
