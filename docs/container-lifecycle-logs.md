@@ -69,7 +69,7 @@ preserved branch back to its run.
 The markers carry only non-secret dims - container, issue, repo, branch,
 mode/driver, flags, counts, git shas, verdict and decision codes. Tokens and
 credentials (`FORGEJO_TOKEN`, `WARD_CLAUDE_CREDS_B64`) are never formatted into a
-line, so `console.log` can ship to a SigNoz sink and the
+line, so `console.log` can stay in the local archive and the
 [reap diagnostics block](container-reap-diagnostics.md) can fold into a public
 issue. Keep new lines to those `key=value` dims.
 
