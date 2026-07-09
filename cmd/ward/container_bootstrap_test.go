@@ -284,8 +284,10 @@ func gitText(t *testing.T, dir string, argv ...string) string {
 	return strings.TrimSpace(string(out))
 }
 
-func seedBranchResumeRepo(t *testing.T, cloneBase, owner, name, branch string) (string, string) {
+func seedBranchResumeRepo(t *testing.T, cloneBase, name string) (string, string) {
 	t.Helper()
+	const owner = "owner"
+	const branch = "issue-735"
 	seed := t.TempDir()
 	runGit(t, seed, "init", "-b", "main", "-q")
 	runGit(t, seed, "config", "user.name", "Ward Test")
@@ -324,13 +326,12 @@ func TestCloneTargetResumesExistingOriginBranch(t *testing.T) {
 	workspace := useTestWorkspaceRoot(t)
 	cloneBase := t.TempDir()
 	gitCache := t.TempDir()
-	owner := "owner"
 	name := "target-branch-resume"
 	branch := "issue-735"
-	mainRev, branchRev := seedBranchResumeRepo(t, cloneBase, owner, name, branch)
+	mainRev, branchRev := seedBranchResumeRepo(t, cloneBase, name)
 
 	work, err := r.cloneTarget(context.Background(), bootstrapEnv{
-		TargetOwner: owner,
+		TargetOwner: "owner",
 		TargetName:  name,
 		ForgejoBase: "https://forgejo.example",
 		CloneBase:   cloneBase,
@@ -366,12 +367,11 @@ func TestCloneTargetStartsFromBaseWhenOriginBranchMissing(t *testing.T) {
 	useTestWorkspaceRoot(t)
 	cloneBase := t.TempDir()
 	gitCache := t.TempDir()
-	owner := "owner"
 	name := "target-branch-base"
-	mainRev, _ := seedBranchResumeRepo(t, cloneBase, owner, name, "issue-735")
+	mainRev, _ := seedBranchResumeRepo(t, cloneBase, name)
 
 	work, err := r.cloneTarget(context.Background(), bootstrapEnv{
-		TargetOwner: owner,
+		TargetOwner: "owner",
 		TargetName:  name,
 		ForgejoBase: "https://forgejo.example",
 		CloneBase:   cloneBase,
@@ -398,17 +398,16 @@ func TestCloneExtraRepoResumesExistingOriginBranch(t *testing.T) {
 	useTestWorkspaceRoot(t)
 	cloneBase := t.TempDir()
 	gitCache := t.TempDir()
-	owner := "owner"
 	name := "extra-branch-resume"
 	branch := "issue-735"
-	mainRev, branchRev := seedBranchResumeRepo(t, cloneBase, owner, name, branch)
+	mainRev, branchRev := seedBranchResumeRepo(t, cloneBase, name)
 
 	r.cloneExtraRepo(context.Background(), bootstrapEnv{
 		ForgejoBase: "https://forgejo.example",
 		CloneBase:   cloneBase,
 		GitCache:    gitCache,
 		Branch:      branch,
-	}, targetRepo{Owner: owner, Name: name}, false, "")
+	}, targetRepo{Owner: "owner", Name: name}, false, "")
 
 	work := filepath.Join(workspaceRoot, name)
 	if got := mustGitRev(t, work, "HEAD"); got != branchRev {
@@ -433,16 +432,15 @@ func TestCloneExtraRepoStartsFromBaseWhenOriginBranchMissing(t *testing.T) {
 	useTestWorkspaceRoot(t)
 	cloneBase := t.TempDir()
 	gitCache := t.TempDir()
-	owner := "owner"
 	name := "extra-branch-base"
-	mainRev, _ := seedBranchResumeRepo(t, cloneBase, owner, name, "issue-735")
+	mainRev, _ := seedBranchResumeRepo(t, cloneBase, name)
 
 	r.cloneExtraRepo(context.Background(), bootstrapEnv{
 		ForgejoBase: "https://forgejo.example",
 		CloneBase:   cloneBase,
 		GitCache:    gitCache,
 		Branch:      "issue-999",
-	}, targetRepo{Owner: owner, Name: name}, false, "")
+	}, targetRepo{Owner: "owner", Name: name}, false, "")
 
 	work := filepath.Join(workspaceRoot, name)
 	if got := mustGitRev(t, work, "HEAD"); got != mainRev {
