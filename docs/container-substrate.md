@@ -15,9 +15,10 @@ the entrypoint. They land under `/substrate/<name>`.
 Each entry carries a tier, split on a public/private boundary so the published
 dev-base image stays shareable:
 
-- `image` - public (coilysiren + coilyco-flight-deck). A bare-mirror seed is also
-  baked into the aos dev-base image at `/opt/substrate-seed`, so a cold host
-  warms these with no network. Built by aos, see its [`docs/dev-base-image.md`](https://forgejo.coilysiren.me/coilyco-flight-deck/agentic-os/src/branch/main/docs/dev-base-image.md).
+- `image` - public (coilysiren + coilyco-flight-deck). The image-tier seed list
+  is canonical in aos and baked into the dev-base image at `/opt/substrate-seed`,
+  so a cold host warms these with no network. See its
+  [`docs/dev-base-image.md`](https://forgejo.coilysiren.me/coilyco-flight-deck/agentic-os/src/branch/main/docs/dev-base-image.md).
 - `cache` - coilyco-bridge (leak-tolerant/private). Never baked; cloned over the
   network on first use.
 
@@ -58,8 +59,7 @@ Because the substrate copy and the target/granted clones hydrate from the same
 `ward-gitcache` mirror, a manifest repo that is *also* the target (or a `--repo`
 grant) ends up under **both** `/substrate/<name>` and `/workspace/<name>` at the
 same HEAD. That overlap is expected. `/workspace/<name>` is authoritative for
-work; `/substrate/<name>` stays read-only reference even for active repos. Ward
-itself is excluded; ward-targeted runs read from `/workspace/ward`. The
+work; `/substrate/<name>` stays read-only reference even for active repos. The
 read-from-either / act-only-on-`/workspace` rule lives in
 [AGENTS.container.md](../cmd/ward/containerassets/AGENTS.container.md).
 
