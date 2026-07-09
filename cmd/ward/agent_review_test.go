@@ -3,6 +3,7 @@ package main
 import (
 	"bytes"
 	"context"
+	"io"
 	"os"
 	"os/exec"
 	"path/filepath"
@@ -283,6 +284,50 @@ func main() {
 	}
 	if !strings.Contains(stderr.String(), "auth smoke test: codex credentials missing") {
 		t.Fatalf("stderr sink %q missing helper stderr", stderr.String())
+	}
+}
+
+func TestReviewerAvailableUsesLaunchGate(t *testing.T) {
+	binDir := t.TempDir()
+	src := filepath.Join(binDir, "claudemain.go")
+	binName := "claude"
+	if runtime.GOOS == "windows" {
+		binName += ".exe"
+	}
+	binPath := filepath.Join(binDir, binName)
+	program := `package main
+
+import (
+	"fmt"
+	"os"
+)
+
+func main() {
+	fmt.Fprintln(os.Stderr, "auth smoke test: claude -p rejected the credentials (exit 1) - they are unusable in-container (ward#222). Refresh the host claude login (re-run 'claude' on the host) and relaunch; WARD_SMOKE_TEST_SKIP=1 bypasses")
+	os.Exit(1)
+}
+`
+	if err := os.WriteFile(src, []byte(program), 0o600); err != nil {
+		t.Fatalf("write helper source: %v", err)
+	}
+	cmd := exec.Command("go", "build", "-o", binPath, src)
+	cmd.Dir = binDir
+	cmd.Env = os.Environ()
+	if out, err := cmd.CombinedOutput(); err != nil {
+		t.Fatalf("build helper binary: %v\n%s", err, out)
+	}
+	home := t.TempDir()
+	t.Setenv("HOME", home)
+	t.Setenv("PATH", binDir+string(os.PathListSeparator)+os.Getenv("PATH"))
+
+	var stderr bytes.Buffer
+	r := &Runner{Runner: &shell.Runner{Stderr: &stderr, Stdout: io.Discard}}
+	ok, reason := r.reviewerAvailable(context.Background())(reviewpanel.Reviewer{Family: "claude"})
+	if ok {
+		t.Fatal("reviewerAvailable should fail when the launch gate rejects the reviewer")
+	}
+	if !strings.Contains(reason, "auth smoke test") {
+		t.Fatalf("reason %q missing launch-gate detail", reason)
 	}
 }
 

@@ -15,7 +15,7 @@ import (
 
 	"forgejo.coilysiren.me/coilyco-flight-deck/cli-guard/cli/verb"
 	"forgejo.coilysiren.me/coilyco-flight-deck/cli-guard/pkg/config"
-	"github.com/coilyco-flight-deck/ward/internal/agents/ollamaprobe"
+	"github.com/coilyco-flight-deck/ward/internal/agentsapi"
 	"github.com/coilyco-flight-deck/ward/internal/reviewpanel"
 	"github.com/urfave/cli/v3"
 )
@@ -373,26 +373,50 @@ func (r *Runner) reviewerRunner(ctx context.Context) reviewpanel.RunFunc {
 // its credential/endpoint be reachable. An unavailable reviewer is dropped.
 func (r *Runner) reviewerAvailable(ctx context.Context) reviewpanel.AvailFunc {
 	return func(rv reviewpanel.Reviewer) (bool, string) {
-		bin := lookupAgent(containerMode(rv.Family)).Record().Binary
+		agent := lookupAgent(containerMode(rv.Family))
+		bin := agent.Record().Binary
 		if bin == "" {
 			bin = rv.Family
 		}
 		if _, err := exec.LookPath(bin); err != nil {
 			return false, bin + " not on PATH"
 		}
-		if rv.Family == "opencode" {
-			endpoint := strings.TrimSpace(os.Getenv(ollamaprobe.OpencodeEndpointEnv))
-			if endpoint == "" {
-				return false, "no " + ollamaprobe.OpencodeEndpointEnv + " (ollama endpoint) set"
-			}
+		if lg, ok := agent.(agentsapi.LaunchGate); ok {
 			pctx, cancel := context.WithTimeout(ctx, 5*time.Second)
 			defer cancel()
-			if _, err := ollamaprobe.ReachOnce(pctx, endpoint); err != nil {
-				return false, "ollama unreachable at " + endpoint + ": " + err.Error()
+			if err := lg.PreLaunchCheck(reviewerRunCtx(pctx, rv)); err != nil {
+				return false, firstLine(err.Error())
 			}
 		}
 		return true, ""
 	}
+}
+
+// reviewerRunCtx builds the light-weight in-container context the reviewer launch
+// gates expect when deciding whether a family can actually run here.
+func reviewerRunCtx(ctx context.Context, rv reviewpanel.Reviewer) agentsapi.RunCtx {
+	rc := agentsapi.RunCtx{
+		Ctx:           ctx,
+		Headless:      true,
+		AgentHome:     homeDir(),
+		AgentUID:      envOr("WARD_AGENT_UID", ""),
+		AgentGID:      envOr("WARD_AGENT_GID", ""),
+		CodexEffort:   envOr("WARD_CODEX_REASONING_EFFORT", ""),
+		ClaudeEffort:  envOr("WARD_CLAUDE_REASONING_EFFORT", ""),
+		OpencodeModel: envOr("WARD_QWEN_MODEL", ""),
+		OllamaURL:     envOr("WARD_OLLAMA_URL", ""),
+		Log:           func(string, ...any) {},
+	}
+	switch rv.Family {
+	case string(modeCodex):
+		rc.CodexModel = firstNonEmpty(rv.Model, envOr("WARD_CODEX_MODEL", ""))
+		rc.CodexVerbosity = envOr("WARD_CODEX_VERBOSITY", "")
+	case string(modeClaude):
+		rc.ClaudeModel = firstNonEmpty(rv.Model, envOr("WARD_CLAUDE_MODEL", ""))
+	case string(modeOpencode):
+		rc.OpencodeModel = firstNonEmpty(rv.Model, envOr("WARD_QWEN_MODEL", ""))
+	}
+	return rc
 }
 
 // reviewIssueRef renders owner/repo#N from the container target env, or "".
