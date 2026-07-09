@@ -45,14 +45,15 @@ ride a private `--env-file`, below). One surface of the [container API](containe
 - `WARD_DISPATCH_BROKER_ADDR` / `WARD_DISPATCH_BROKER_TOKEN` - the host dispatch broker a surface dials.
 - `WARD_TS_SOCKS5` + the `WARD_TOWER_*` set - the `--ts-sidecar` tailnet route ([agent-tailnet-topology.md](agent-tailnet-topology.md)); callers that know their own SSH or SOCKS policy can use the proxy value directly.
 - `WARD_FROM_SOURCE` - the `/opt/ward-src` mount; build ward from source not release.
-- `WARD_USE_GO_BOOTSTRAP=1` - experimental hand-off to the Go bootstrap. When
-  the host stages a matching `/opt/ward/ward` binary into the assets mount, the
-  entrypoint prefers that Go-built bootstrap and skips the release/source install path.
 
 Entrypoint-tunable fallbacks (set to override): the commit-identity (`WARD_GIT_NAME` /
 `WARD_GIT_EMAIL`, [agent-attribution.md](agent-attribution.md)), the agent user
 (`WARD_AGENT_UID` / `_GID` / `_HOME`), the local-harness model bindings, and
 `WARD_SMOKE_TEST_SKIP` / `WARD_SUBSTRATE_SKIP`.
+
+The assets mount always carries a staged `/opt/ward/ward` binary. The entrypoint
+links that binary into `/usr/local/bin/ward`, verifies it, and then hands off to
+`ward container bootstrap`.
 
 ## Secrets ride the `--env-file`, never argv
 

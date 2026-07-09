@@ -40,7 +40,6 @@ live-observe set, engineer/director hold none). See [agent-capability.md](agent-
 
 * `--instructions` / `-i` - use the freeform positional, or `--instructions-file` in DIRECT mode.
 * `--with-repo` - the alias of `--repo` is gone (advisor and director keep their own separate `--with-repo`).
-* `--go-bootstrap` - the experimental toggle left the surface.
 
 ## Quiet launch for detached runs
 

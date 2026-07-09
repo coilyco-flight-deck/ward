@@ -16,7 +16,7 @@ import (
 
 const (
 	// containerImageDefault is the aos-published dev-base image, run unmodified;
-	// ward bind-mounts its embedded entrypoint+doctrine and downloads ward.
+	// ward bind-mounts its embedded entrypoint+doctrine and stages ward.
 	containerImageDefault = "forgejo.coilysiren.me/coilyco-flight-deck/agentic-os"
 
 	// containerImageTagDefault tracks the image's :latest moving tag.
@@ -27,8 +27,8 @@ const (
 	envAgentImage = "WARD_AGENT_IMAGE"
 	envAgentTag   = "WARD_AGENT_TAG"
 
-	// envAgentVersion pins the ward release the container downloads, independent of
-	// the dev-base image tag; --ward-version overrides it per run (ward#312).
+	// envAgentVersion pins the ward release the host stages for the container,
+	// independent of the dev-base image tag; --ward-version overrides it per run (ward#312).
 	envAgentVersion = "WARD_AGENT_VERSION"
 
 	// envAgentVersionSource records whether the container's ward version came from an
@@ -41,7 +41,7 @@ const (
 	containerEntrypointRel = "entrypoint.sh"
 
 	// containerWardSrcMount is where --ward-source mounts a ward checkout, so
-	// the entrypoint builds ward from it instead of downloading the release.
+	// the host stages the ward binary from it instead of downloading the release.
 	containerWardSrcMount = "/opt/ward-src"
 
 	// containerContextMount holds the read-only host cwd (operating context):
@@ -435,7 +435,7 @@ type upPlan struct {
 	// WardVersionSource records explicit pin, host ward, or latest resolution.
 	WardVersionSource string
 	// WardFromSource is set when --ward-source mounted a checkout: the
-	// entrypoint builds ward from it instead of downloading.
+	// host staging builds ward from it instead of downloading.
 	WardFromSource bool
 	// AgentArgs ride after the image as the in-container agent's argv (the
 	// entrypoint's `"$WARD_AGENT" "$@"`); empty for a bare interactive bring-up.
@@ -446,9 +446,6 @@ type upPlan struct {
 	// Ask runs the in-container agent one-shot, attached (claude -p plain, no
 	// stream-json); exports WARD_ASK=1, set by `ward agent advisor`'s freeform mode.
 	Ask bool
-	// GoBootstrap (EXPERIMENTAL, ward#181) exports WARD_USE_GO_BOOTSTRAP=1 so the
-	// entrypoint delegates to `ward container bootstrap` instead of its bash logic.
-	GoBootstrap bool
 	// ExtraRepos are additional writable repos this run was granted to clone +
 	// operate against (--repo, ward#230); see docs/container-multi-repo.md.
 	ExtraRepos []targetRepo
@@ -700,9 +697,6 @@ func (p upPlan) wardEnv() map[string]string { //nolint:gocyclo,cyclop
 		// --target follows the same override the host resolved (ward#395).
 		env[envTowerHost] = towerMagicDNS()
 		env[envTowerOllamaPort] = towerOllamaPort()
-	}
-	if p.GoBootstrap {
-		env["WARD_USE_GO_BOOTSTRAP"] = "1"
 	}
 	if len(p.ExtraRepos) > 0 {
 		env["WARD_EXTRA_REPOS"] = extraReposEnv(p.ExtraRepos)
