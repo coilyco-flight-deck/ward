@@ -599,10 +599,7 @@ func TestRunHostDispatchBrokerRequestLaunchesAsyncWithoutBrokerEnv(t *testing.T)
 		t.Fatal("host launch never finished")
 	}
 	deadline := time.After(2 * time.Second)
-	for {
-		if os.Getenv("WARD_READONLY") == "1" && os.Getenv(envDispatchBrokerAddr) == "127.0.0.1:4321" && os.Getenv(envDispatchBrokerToken) == "broker-token" {
-			break
-		}
+	for os.Getenv("WARD_READONLY") != "1" || os.Getenv(envDispatchBrokerAddr) != "127.0.0.1:4321" || os.Getenv(envDispatchBrokerToken) != "broker-token" {
 		select {
 		case <-deadline:
 			t.Fatalf("expected broker env to be restored after launch, got WARD_READONLY=%q %s=%q %s=%q",
