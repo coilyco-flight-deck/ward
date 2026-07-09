@@ -48,6 +48,8 @@ var dispatchBrokerLaunch = func(ctx context.Context, req dispatchBrokerRequest) 
 		return agentEngineerCommand().Run(ctx, req.Argv)
 	case "advisor":
 		return agentAdvisorCommand().Run(ctx, req.Argv)
+	case "qa":
+		return agentQACommand().Run(ctx, req.Argv)
 	default:
 		return fmt.Errorf("role %q is not dispatchable", req.Role)
 	}
@@ -443,8 +445,8 @@ func validateDispatchBrokerLaunch(req dispatchBrokerRequest) error {
 	if req.Target != "" {
 		return fmt.Errorf("dispatch broker: launch takes no stop target, got %q", req.Target)
 	}
-	if req.Role != "engineer" && req.Role != "advisor" {
-		return fmt.Errorf("dispatch broker: role %q refused (allowed: engineer, advisor)", req.Role)
+	if req.Role != "engineer" && req.Role != "advisor" && req.Role != "qa" {
+		return fmt.Errorf("dispatch broker: role %q refused (allowed: engineer, advisor, qa)", req.Role)
 	}
 	if len(req.Argv) == 0 || req.Argv[0] != req.Role {
 		return fmt.Errorf("dispatch broker: argv must begin with role %q", req.Role)
@@ -536,6 +538,12 @@ func (r *Runner) maybeForwardAgentDispatchToHostBroker(ctx context.Context, c *c
 			return false, nil
 		}
 		argv = brokerAdvisorArgv(c, mode, ref)
+	case "qa":
+		ref, ok := r.brokerDispatchRef(ctx, c.Args().First())
+		if !ok {
+			return false, nil
+		}
+		argv = brokerQaArgv(c, mode, ref)
 	default:
 		return false, nil
 	}
@@ -606,6 +614,19 @@ func brokerEngineerArgv(c *cli.Command, mode containerMode, ref agentIssueRef) [
 
 func brokerAdvisorArgv(c *cli.Command, mode containerMode, ref agentIssueRef) []string {
 	argv := []string{"advisor", ref.String(), "--harness", string(brokerDispatchHarness(c, mode))}
+	if lvl := strings.TrimSpace(c.String("thoroughness")); lvl != "" {
+		argv = append(argv, "--thoroughness", lvl)
+	}
+	argv = appendBrokerConfigFlags(argv, c)
+	if c.Bool("print") {
+		argv = append(argv, "--print")
+	}
+	argv = append(argv, c.Args().Tail()...)
+	return argv
+}
+
+func brokerQaArgv(c *cli.Command, mode containerMode, ref agentIssueRef) []string {
+	argv := []string{"qa", ref.String(), "--harness", string(brokerDispatchHarness(c, mode))}
 	if lvl := strings.TrimSpace(c.String("thoroughness")); lvl != "" {
 		argv = append(argv, "--thoroughness", lvl)
 	}

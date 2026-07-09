@@ -43,6 +43,10 @@ var agentRoleInfos = map[string]agentRoleInfo{
 		Tagline: "Answers without writing code.",
 		Modes:   "A ref researches the issue and posts the answer as a comment. Freeform text answers inline.",
 	},
+	"qa": {
+		Tagline: "Inspects a candidate and posts a structured verdict comment.",
+		Modes:   "A ref inspects the issue, branch, pull request, and checks, then posts a structured QA verdict comment. Freeform mode is not exposed.",
+	},
 }
 
 // agentMetaCommands are agent subcommands that are NOT startup roles (self-describe
@@ -89,7 +93,7 @@ func agentRosterRowsFrom(cmds []*cli.Command) ([]agentRosterRow, error) {
 
 // agentRosterDocGoal is the doc_goal front-matter the generated page carries so it
 // grades against an explicit target like every ward doc (ward#289).
-const agentRosterDocGoal = "Give a reader the canonical, code-generated list of every ward agent startup role with its tagline and invocation modes, so they can pick engineer, director, or advisor and know it can never drift from the binary."
+const agentRosterDocGoal = "Give a reader the canonical, code-generated list of every ward agent startup role with its tagline and invocation modes, so they can pick engineer, director, advisor, or qa and know it can never drift from the binary."
 
 // agentRosterMarkdown renders the committed docs/agent-roster.md body: doc_goal
 // front-matter plus a flat bullet list (not a table, per the house Voice rules).

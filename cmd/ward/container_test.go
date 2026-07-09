@@ -191,6 +191,14 @@ func TestUpPlanLabels(t *testing.T) {
 	if !strings.Contains(got, "ward.role=advisor") || !strings.Contains(got, "ward.driver=codex") {
 		t.Errorf("advisor labels %q missing role/driver", got)
 	}
+	qa := upPlan{Role: roleQA, Mode: modeGoose, Repo: repo, Machine: "cafefeed"}
+	got = strings.Join(qa.labels(), " ")
+	if strings.Contains(got, "ward.issue") {
+		t.Errorf("QA run must not carry a ward.issue label: %q", got)
+	}
+	if !strings.Contains(got, "ward.role=qa") || !strings.Contains(got, "ward.driver=goose") {
+		t.Errorf("qa labels %q missing role/driver", got)
+	}
 	// A plan with no Role set falls back to the session role so the label is never blank.
 	bare := upPlan{Mode: modeClaude, Repo: repo}
 	if !strings.Contains(strings.Join(bare.labels(), " "), "ward.role=session") {

@@ -209,6 +209,7 @@ type containerMode string
 const (
 	roleEngineer = "engineer"
 	roleAdvisor  = "advisor"
+	roleQA       = "qa"
 	roleSession  = "session"
 	// roleDirector keys the director's per-role capability lookup (ward#578); empty
 	// set by default - it forwards capability to children, holds none itself.

@@ -37,6 +37,10 @@ func TestDispatchBrokerValidatesNarrowAPI(t *testing.T) {
 	if err := validateDispatchBrokerRequest(advisor); err != nil {
 		t.Errorf("valid advisor dispatch refused: %v", err)
 	}
+	qa := dispatchBrokerRequest{Role: "qa", Argv: []string{"qa", "coilyco-flight-deck/ward#1", "--harness", "claude", "inspect the branch"}}
+	if err := validateDispatchBrokerRequest(qa); err != nil {
+		t.Errorf("valid qa dispatch refused: %v", err)
+	}
 	noPromptAdvisor := dispatchBrokerRequest{Role: "advisor", Argv: []string{"advisor", "coilyco-flight-deck/ward#1", "--thoroughness", "deep"}}
 	if err := validateDispatchBrokerRequest(noPromptAdvisor); err != nil {
 		t.Errorf("advisor dispatch without an explicit prompt refused: %v", err)
@@ -407,6 +411,47 @@ func TestForwardAgentDispatchToHostBrokerAllowsRefWithoutPrompt(t *testing.T) {
 	want := []string{"advisor", "coilyco-flight-deck/ward#378", "--harness", "codex", "--thoroughness", "standard"}
 	if !reflect.DeepEqual(req.Argv, want) {
 		t.Errorf("advisor forwarded argv = %v, want %v", req.Argv, want)
+	}
+}
+
+func TestForwardAgentDispatchToHostBrokerSupportsQa(t *testing.T) {
+	ln, err := net.Listen("tcp", "127.0.0.1:0")
+	if err != nil {
+		t.Fatalf("listen broker: %v", err)
+	}
+	defer ln.Close()
+
+	gotReq := make(chan dispatchBrokerRequest, 1)
+	go func() {
+		conn, err := ln.Accept()
+		if err != nil {
+			return
+		}
+		defer conn.Close()
+		var req dispatchBrokerRequest
+		_ = json.NewDecoder(conn).Decode(&req)
+		gotReq <- req
+		_ = json.NewEncoder(conn).Encode(dispatchBrokerResponse{OK: true})
+	}()
+
+	t.Setenv(envDispatchBrokerAddr, ln.Addr().String())
+	t.Setenv(envDispatchBrokerToken, "nonce-qa")
+	t.Setenv("WARD_READONLY", "1")
+	t.Setenv("WARD_CONTAINER_NAME", "session-codex-host")
+	cmd := parseCommandForTest(t, agentQAFlags(), []string{
+		"qa", "coilyco-flight-deck/ward#378", "--harness", "claude", "inspect the branch",
+	})
+	forwarded, err := (&Runner{}).maybeForwardAgentDispatchToHostBroker(t.Context(), cmd, "qa", modeClaude)
+	if err != nil {
+		t.Fatalf("forward QA dispatch: %v", err)
+	}
+	if !forwarded {
+		t.Fatal("qa dispatch did not forward despite broker env")
+	}
+	req := <-gotReq
+	want := []string{"qa", "coilyco-flight-deck/ward#378", "--harness", "claude", "--thoroughness", "standard", "inspect the branch"}
+	if !reflect.DeepEqual(req.Argv, want) {
+		t.Errorf("qa forwarded argv = %v, want %v", req.Argv, want)
 	}
 }
 
