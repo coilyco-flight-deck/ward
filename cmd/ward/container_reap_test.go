@@ -12,6 +12,7 @@ import (
 
 	"forgejo.coilysiren.me/coilyco-flight-deck/cli-guard/cli/shell"
 	"forgejo.coilysiren.me/coilyco-flight-deck/cli-guard/pkg/scan"
+	"github.com/urfave/cli/v3"
 )
 
 // TestReapEnvContainerCorrelation asserts the reaper reads WARD_CONTAINER_NAME and
@@ -40,6 +41,48 @@ func TestReapEnvContainerCorrelation(t *testing.T) {
 		if !strings.Contains(line, want) {
 			t.Errorf("reap start line missing %q:\n%s", want, line)
 		}
+	}
+}
+
+// TestReapEnvLogFlushLine covers the container-visible teardown contract: the
+// reaper names the durable log archive path, or says none is configured.
+func TestReapEnvLogFlushLine(t *testing.T) {
+	if got, want := (reapEnv{Container: "engineer-codex-ward-693"}).reapLogFlushLine(), "ward container reap: logs flushed to ~/.ward/agent-logs/engineer-codex-ward-693"; got != want {
+		t.Fatalf("reapLogFlushLine() = %q, want %q", got, want)
+	}
+	if got, want := (reapEnv{}).reapLogFlushLine(), "ward container reap: no durable log flush configured"; got != want {
+		t.Fatalf("reapLogFlushLine() without a container = %q, want %q", got, want)
+	}
+}
+
+// TestRunContainerReapAnnouncesLogArchive covers the end-to-end stderr contract:
+// the reap stream includes the archive destination before the run exits.
+func TestRunContainerReapAnnouncesLogArchive(t *testing.T) {
+	repo := t.TempDir()
+	runGit(t, repo, "init", "-b", "main")
+	runGit(t, repo, "config", "user.email", "test@example.com")
+	runGit(t, repo, "config", "user.name", "Test User")
+	runGitCommitAt(t, repo, "2026-07-09T10:00:00Z", "base.txt", "base\n", "base")
+	runGit(t, repo, "remote", "add", "origin", repo)
+	runGit(t, repo, "update-ref", "refs/remotes/origin/main", "HEAD")
+
+	t.Setenv("WARD_TARGET_OWNER", "coilyco-flight-deck")
+	t.Setenv("WARD_TARGET_NAME", "ward")
+	t.Setenv("WARD_FORGEJO_BASE", "https://forgejo.coilysiren.me")
+	t.Setenv("WARD_CONTAINER_NAME", "engineer-codex-ward-693")
+	t.Setenv("WARD_REAP_WORK", repo)
+
+	r := &Runner{Runner: &shell.Runner{Resolve: shell.PathResolver}}
+	stderr := captureTestStderr(t, func() {
+		if err := r.runContainerReap(t.Context(), &cli.Command{}); err != nil {
+			t.Fatalf("runContainerReap: %v", err)
+		}
+	})
+	if !strings.Contains(stderr, "ward container reap: logs flushed to ~/.ward/agent-logs/engineer-codex-ward-693") {
+		t.Fatalf("stderr missing archive destination:\n%s", stderr)
+	}
+	if !strings.Contains(stderr, "WARD-REAP: nothing to reap") {
+		t.Fatalf("stderr missing the clean reap outcome:\n%s", stderr)
 	}
 }
 
