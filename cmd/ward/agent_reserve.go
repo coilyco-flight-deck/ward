@@ -286,6 +286,9 @@ func (r *Runner) acquireLocalReservation(ctx context.Context, label string, mode
 		if err := r.precheckLocalReservation(ctx, label, ref, now); err != nil {
 			return nil, err
 		}
+		if err := r.precheckLiveIssueWorker(ctx, label, ref, container, force); err != nil {
+			return nil, err
+		}
 	}
 	fmt.Fprintf(os.Stderr, "%s: reservation local acquire writing %s\n", label, path)
 	res := agentReservation{

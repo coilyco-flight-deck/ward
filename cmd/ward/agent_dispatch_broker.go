@@ -275,6 +275,10 @@ func (r *Runner) commentFailedDispatchLaunch(ctx context.Context, req dispatchBr
 	if err != nil {
 		return
 	}
+	if r == nil || r.Runner == nil {
+		fmt.Fprintf(os.Stderr, "ward dispatch broker: skipping failure comment for %s: no shell runner available\n", ref)
+		return
+	}
 	mode := dispatchBrokerRequestMode(req)
 	commentCtx, cancel := context.WithTimeout(context.WithoutCancel(ctx), 30*time.Second)
 	defer cancel()
@@ -750,7 +754,7 @@ func (r *Runner) maybeForwardAgentDispatchToHostBroker(ctx context.Context, c *c
 		Requester: strings.TrimSpace(os.Getenv("WARD_CONTAINER_NAME")),
 		Token:     strings.TrimSpace(os.Getenv(envDispatchBrokerToken)),
 	}
-	logPath, err := sendDispatchBrokerRequest(ctx, addr, req)
+	logPath, err := sendDispatchBrokerLaunchRequest(ctx, addr, req)
 	if err != nil {
 		if logPath != "" {
 			return true, fmt.Errorf("%w (dispatch log: %s)", err, logPath)
@@ -767,6 +771,43 @@ func (r *Runner) maybeForwardAgentDispatchToHostBroker(ctx context.Context, c *c
 		fmt.Fprintf(os.Stderr, "ward dispatch broker: forwarded `ward agent %s` to host ward\n", displayArgv)
 	}
 	return true, nil
+}
+
+// sendDispatchBrokerLaunchRequest forwards a launch request without waiting.
+func sendDispatchBrokerLaunchRequest(ctx context.Context, addr string, req dispatchBrokerRequest) (string, error) {
+	var d net.Dialer
+	conn, err := d.DialContext(ctx, "tcp", addr)
+	if err != nil {
+		return "", fmt.Errorf("%w: the host dispatch broker did not answer at %s "+
+			"(WARD_DISPATCH_BROKER_ADDR, TCP over the docker gateway - see ward#382): %w",
+			errDispatchBrokerUnavailable, addr, err)
+	}
+	if err := json.NewEncoder(conn).Encode(req); err != nil {
+		_ = conn.Close()
+		return "", fmt.Errorf("dispatch broker: send request: %w", err)
+	}
+	// Give an immediate broker refusal a brief chance to surface before detaching.
+	_ = conn.SetReadDeadline(time.Now().Add(150 * time.Millisecond))
+	var resp dispatchBrokerResponse
+	err = json.NewDecoder(conn).Decode(&resp)
+	if err != nil {
+		if ne, ok := err.(interface{ Timeout() bool }); ok && ne.Timeout() {
+			_ = conn.Close()
+			return "", nil
+		}
+		_ = conn.Close()
+		return "", fmt.Errorf("dispatch broker: read response from %s: %w", addr, err)
+	}
+	_ = conn.Close()
+	if !resp.OK {
+		if isCredentialBrokerReply(resp.Error) {
+			return "", fmt.Errorf("%w: %s answered as the credential broker, not the dispatch broker "+
+				"(WARD_DISPATCH_BROKER_ADDR points at the wrong broker - see ward#382)",
+				errDispatchBrokerUnavailable, addr)
+		}
+		return resp.LogPath, fmt.Errorf("dispatch broker: %s", resp.Error)
+	}
+	return resp.LogPath, nil
 }
 
 // brokerDispatchHarness returns the harness to forward into a sibling dispatch.

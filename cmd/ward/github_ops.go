@@ -10,6 +10,7 @@ import (
 	"time"
 
 	"forgejo.coilysiren.me/coilyco-flight-deck/cli-guard/cli/dispatch"
+	"forgejo.coilysiren.me/coilyco-flight-deck/cli-guard/cli/shell"
 )
 
 // github_ops.go is ward's GitHub issue-thread client (ward#489): shells `gh` to
@@ -36,7 +37,10 @@ func (r *Runner) hostGitHubClient(mode containerMode) (*githubClient, error) {
 
 // run shells `gh` and returns captured stdout.
 func (c *githubClient) run(ctx context.Context, args ...string) ([]byte, error) {
-	return c.r.Runner.Capture(ctx, "gh", args...)
+	if c != nil && c.r != nil && c.r.Runner != nil {
+		return c.r.Runner.Capture(ctx, "gh", args...)
+	}
+	return (&shell.Runner{Stdout: os.Stdout, Stderr: os.Stderr, Stdin: os.Stdin}).Capture(ctx, "gh", args...)
 }
 
 // slug renders the --repo argument gh expects.

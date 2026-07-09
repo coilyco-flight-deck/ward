@@ -15,6 +15,7 @@ import (
 	"time"
 
 	"forgejo.coilysiren.me/coilyco-flight-deck/cli-guard/cli/dispatch"
+	"forgejo.coilysiren.me/coilyco-flight-deck/cli-guard/cli/shell"
 	"forgejo.coilysiren.me/coilyco-flight-deck/cli-guard/pkg/broker"
 )
 
@@ -118,19 +119,31 @@ func (c *forgejoClient) run(ctx context.Context, args ...string) ([]byte, error)
 	cmd.Stdout = &stdout
 	// Tee stderr: keep it streaming live (interactive/host runs keep their output)
 	// while capturing a copy so a failure can name the envelope, not just the code.
-	if live := c.r.Runner.Stderr; live != nil {
+	if live := c.stdioRunner().Stderr; live != nil {
 		cmd.Stderr = io.MultiWriter(live, &stderr)
 	} else {
 		cmd.Stderr = &stderr
 	}
-	cmd.Stdin = c.r.Runner.Stdin
-	if c.r.Runner.Env != nil {
-		cmd.Env = append(os.Environ(), c.r.Runner.Env...)
+	cmd.Stdin = c.stdioRunner().Stdin
+	if env := c.stdioRunner().Env; env != nil {
+		cmd.Env = append(os.Environ(), env...)
 	}
 	if err := cmd.Run(); err != nil {
 		return stdout.Bytes(), foldOpsStderr(err, stderr.Bytes())
 	}
 	return stdout.Bytes(), nil
+}
+
+func (c *forgejoClient) stdioRunner() *shell.Runner {
+	if c != nil && c.r != nil && c.r.Runner != nil {
+		return c.r.Runner
+	}
+	return &shell.Runner{
+		Stdout: os.Stdout,
+		Stderr: os.Stderr,
+		Stdin:  os.Stdin,
+		Env:    os.Environ(),
+	}
 }
 
 // foldOpsStderr appends a subprocess's captured stderr to its exit error, so a caller
