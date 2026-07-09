@@ -106,7 +106,7 @@ func (r *Runner) runAgentQA(ctx context.Context, c *cli.Command, mode containerM
 		read = `{"verdict":"blocked","summary":"QA returned no output","evidence":["The container produced an empty read."],"risks":["The inspection did not complete."],"next_steps":["Re-run QA and inspect the container logs."]}`
 	}
 
-	cl, err := r.hostForgeClient(ctx, ref.Forge, mode)
+	cl, err := r.hostTrackerClient(ctx, ref.trackerOrDefault(), mode)
 	if err != nil {
 		return fmt.Errorf("%s: %w", label, err)
 	}
@@ -175,7 +175,7 @@ func (r *Runner) captureQAResearch(ctx context.Context, c *cli.Command, mode con
 	repo := targetRepo{Owner: ref.Owner, Name: ref.Repo}
 	cwd := resolveInvokeCWD()
 
-	assetsDir, cleanupAssets, err := writeContainerAssets()
+	assetsDir, cleanupAssets, err := writeContainerAssets(ctx, c.Bool("go-bootstrap"), c.String("ward-source"), strings.TrimSpace(c.String("ward-version")))
 	if err != nil {
 		return "", fmt.Errorf("%s: %w", label, err)
 	}

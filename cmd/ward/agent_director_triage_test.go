@@ -1,6 +1,7 @@
 package main
 
 import (
+	"fmt"
 	"reflect"
 	"strings"
 	"testing"
@@ -162,24 +163,24 @@ func TestAssignTriageTiers(t *testing.T) {
 func TestParseTriageVerdicts(t *testing.T) {
 	read := strings.Join([]string{
 		"here is my triage:",
-		"#10 SCORE=3 MODE=headless CONF=high",
-		"- #11 SCORE=2 MODE=interactive CONF=low",
-		"#12 score: 0 mode: consult conf: high",
-		"#13 [P0-CANDIDATE] SCORE=3 MODE=headless CONF=high P0=yes",
+		"#10 SCORE=3 MODE=headless CONF=high REASON=clear headless work with no blockers",
+		"- #11 SCORE=2 MODE=interactive CONF=low REASON=needs a human checkpoint",
+		"#12 score: 0 mode: consult conf: high reason: parked for later",
+		"#13 [P0-CANDIDATE] SCORE=3 MODE=headless CONF=high P0=yes REASON=active incident, not just a topic mention",
 		"#14 garbled with no fields",
 	}, "\n")
 	got := parseTriageVerdicts(read)
 
-	if v := got[10]; v.Score != 3 || v.Mode != "headless" || !v.Confident {
+	if v := got[10]; v.Score != 3 || v.Mode != "headless" || !v.Confident || v.Reason != "clear headless work with no blockers" {
 		t.Errorf("#10 = %+v, want score3/headless/confident", v)
 	}
-	if v := got[11]; v.Score != 2 || v.Mode != "interactive" || v.Confident {
+	if v := got[11]; v.Score != 2 || v.Mode != "interactive" || v.Confident || v.Reason != "needs a human checkpoint" {
 		t.Errorf("#11 = %+v, want score2/interactive/low-conf", v)
 	}
-	if v := got[12]; v.Score != 0 || v.Mode != "consult" || !v.Confident {
+	if v := got[12]; v.Score != 0 || v.Mode != "consult" || !v.Confident || v.Reason != "parked for later" {
 		t.Errorf("#12 (decorated) = %+v, want score0/consult/confident", v)
 	}
-	if v := got[13]; !v.P0Confirmed || v.Mode != "headless" {
+	if v := got[13]; !v.P0Confirmed || v.Mode != "headless" || v.Reason != "active incident, not just a topic mention" {
 		t.Errorf("#13 = %+v, want P0 confirmed + headless", v)
 	}
 	// A fieldless line yields a zero verdict, which fails closed to consult.
@@ -216,6 +217,46 @@ func TestTriageLabelsFor(t *testing.T) {
 	}
 }
 
+// TestTriageCommentBody covers the startup triage comment: it names the method, keeps
+// one visible line, and collapses the reasoning plus any label-write note.
+func TestTriageCommentBody(t *testing.T) {
+	body := triageCommentBody(
+		triageCandidate{Num: 7, P0Candidate: true},
+		triageVerdict{Score: 3, Mode: "headless", Confident: true, Reason: "active incident"},
+		"P0",
+		[]string{"P0", "headless"},
+		nil,
+	)
+	for _, want := range []string{
+		"WARD-TRIAGE: #7 P0 headless (headless)",
+		"<details><summary>triage details</summary>",
+		"method: tooling-issue-prioritization",
+		"P0 candidate: yes",
+		"P0 confirm: no",
+		"score: 3",
+		"mode: headless",
+		"confidence: yes",
+		"tier: P0",
+		"labels: P0 headless",
+		"reason: active incident",
+	} {
+		if !strings.Contains(body, want) {
+			t.Fatalf("triageCommentBody missing %q\n%s", want, body)
+		}
+	}
+
+	errored := triageCommentBody(
+		triageCandidate{Num: 8},
+		triageVerdict{},
+		"",
+		[]string{"consult"},
+		fmt.Errorf("missing label"),
+	)
+	if !strings.Contains(errored, "label write: missing label") {
+		t.Fatalf("triageCommentBody should mention label write failure:\n%s", errored)
+	}
+}
+
 // TestTriagePromptShape covers the prompt: it flags P0 candidates, includes each issue,
 // and asks for the machine-readable per-issue line the parser reads.
 func TestTriagePromptShape(t *testing.T) {
@@ -224,7 +265,7 @@ func TestTriagePromptShape(t *testing.T) {
 		{Num: 8, Title: "token leaked", Body: "secret in commit", P0Candidate: true},
 	}
 	p := triagePrompt(cands)
-	for _, want := range []string{"#7", "#8", "[P0-CANDIDATE]", "SCORE=", "MODE=", "CONF="} {
+	for _, want := range []string{"#7", "#8", "[P0-CANDIDATE]", "SCORE=", "MODE=", "CONF=", "REASON="} {
 		if !strings.Contains(p, want) {
 			t.Errorf("prompt missing %q:\n%s", want, p)
 		}

@@ -7,7 +7,7 @@ Point `warded` at an issue in an owner ward does not trust and every dispatch
 surface refuses before it does anything:
 
 ```
-warded: refusing untrusted owner "your-org" (allowed: coilysiren, coilyco-bridge, coilyco-flight-deck, coilyco-gaming). This build dispatches only for its compiled-in primary orgs - see docs/agent-trust-gate.md
+warded: refusing untrusted owner "your-org" (allowed: example-owner-a, example-owner-b). This build dispatches only for its configured trusted owners - see docs/agent-trust-gate.md
 ```
 
 This page is where that refusal points. It defines the gate, why it exists, and
@@ -31,8 +31,8 @@ approval prompts inside its fresh clone (see
 [container-permissions.md](container-permissions.md)). An agent that fanned out
 into an untrusted owner's repos under that posture would be committing and pushing
 to a stranger's repo with the operator's bot identity and no human in the loop.
-The gate is the wall: elevated autonomy is granted **only** for owners this build
-was compiled to trust.
+The gate is the wall: elevated autonomy is granted **only** for owners the
+selected config bundle marks trusted.
 
 Every dispatch surface enforces the same check, not just the engineer:
 

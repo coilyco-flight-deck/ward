@@ -145,7 +145,7 @@ func condenseOpsStderr(stderr []byte) string {
 // fetchIssueByForge GETs an issue from the selected forge and decodes it into
 // dispatch.Issue, the advisor-path resolve seam sharing the dispatch retry (ward#497).
 func (r *Runner) fetchIssueByForge(ctx context.Context, label string, f forge, mode containerMode, owner, repo string, number int) (*dispatch.Issue, error) {
-	cl, err := r.hostForgeClient(ctx, f, mode)
+	cl, err := r.hostTrackerClient(ctx, trackerFromForge(f), mode)
 	if err != nil {
 		return nil, err
 	}

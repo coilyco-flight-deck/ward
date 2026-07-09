@@ -40,7 +40,10 @@ install_ward_from_release() {
 }
 
 install_ward() {
-  if [ -n "${WARD_FROM_SOURCE:-}" ]; then install_ward_from_source; else install_ward_from_release; fi
+  if [ -n "${WARD_USE_GO_BOOTSTRAP:-}" ] && [ -x /opt/ward/ward ]; then
+    log "using Go bootstrap binary staged at /opt/ward/ward"
+    ln -sf /opt/ward/ward /usr/local/bin/ward
+  elif [ -n "${WARD_FROM_SOURCE:-}" ]; then install_ward_from_source; else install_ward_from_release; fi
   ln -sf ward /usr/local/bin/warded
   ward version >&2 || die "ward did not install correctly"
 }

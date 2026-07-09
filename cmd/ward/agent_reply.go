@@ -112,7 +112,7 @@ func (r *Runner) runAgentReply(ctx context.Context, c *cli.Command, mode contain
 		return fmt.Errorf("%s: research on %s produced no output; nothing to post", label, ref)
 	}
 
-	cl, err := r.hostForgeClient(ctx, ref.Forge, mode)
+	cl, err := r.hostTrackerClient(ctx, ref.trackerOrDefault(), mode)
 	if err != nil {
 		return fmt.Errorf("%s: %w", label, err)
 	}
@@ -137,7 +137,7 @@ func (r *Runner) runAgentReply(ctx context.Context, c *cli.Command, mode contain
 
 // postReplySingle posts the common-case single comment on the source issue; any
 // dropped fan-out targets are noted so the omission is never silent (ward#424).
-func (r *Runner) postReplySingle(ctx context.Context, cl issueForge, mode containerMode, ref agentIssueRef, level replyThoroughness, prompt, body string, dropped []droppedReplySpec, label string) error {
+func (r *Runner) postReplySingle(ctx context.Context, cl Tracker, mode containerMode, ref agentIssueRef, level replyThoroughness, prompt, body string, dropped []droppedReplySpec, label string) error {
 	if len(dropped) > 0 {
 		body = strings.TrimRight(body, "\n") + "\n\n---\n**Note:** ward dropped these fan-out targets before filing:\n\n" + renderDroppedReplySpecs(dropped)
 	}
@@ -150,7 +150,7 @@ func (r *Runner) postReplySingle(ctx context.Context, cl issueForge, mode contai
 
 // postReplyFanOut files one issue per trusted repo (dependency order, each
 // cross-linked upstream), then posts one index comment on the source (ward#424).
-func (r *Runner) postReplyFanOut(ctx context.Context, cl issueForge, mode containerMode, ref agentIssueRef, level replyThoroughness, prompt, summary string, allowed []resolvedReplySpec, dropped []droppedReplySpec, label string) error {
+func (r *Runner) postReplyFanOut(ctx context.Context, cl Tracker, mode containerMode, ref agentIssueRef, level replyThoroughness, prompt, summary string, allowed []resolvedReplySpec, dropped []droppedReplySpec, label string) error {
 	var created []createdReplyChild
 	var upstream string
 	for i, s := range allowed {
@@ -244,7 +244,7 @@ func (r *Runner) captureReplyResearch(ctx context.Context, c *cli.Command, mode 
 	repo := targetRepo{Owner: ref.Owner, Name: ref.Repo}
 	cwd := resolveInvokeCWD()
 
-	assetsDir, cleanupAssets, err := writeContainerAssets()
+	assetsDir, cleanupAssets, err := writeContainerAssets(ctx, c.Bool("go-bootstrap"), c.String("ward-source"), strings.TrimSpace(c.String("ward-version")))
 	if err != nil {
 		return "", fmt.Errorf("%s: %w", label, err)
 	}

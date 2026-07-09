@@ -53,6 +53,9 @@ func TestParseGitHubIssueRef(t *testing.T) {
 		if got.Forge != forgeGitHub {
 			t.Errorf("parseGitHubIssueRef(%q): forge=%v want github", c.in, got.Forge)
 		}
+		if got.Tracker != trackerGitHub {
+			t.Errorf("parseGitHubIssueRef(%q): tracker=%v want github", c.in, got.Tracker)
+		}
 	}
 }
 
@@ -66,6 +69,9 @@ func TestParseAgentIssueRefForge(t *testing.T) {
 	if gh.Forge != forgeGitHub {
 		t.Errorf("github URL parsed to forge %v, want github", gh.Forge)
 	}
+	if gh.Tracker != trackerGitHub {
+		t.Errorf("github URL parsed to tracker %v, want github", gh.Tracker)
+	}
 	fj, err := parseAgentIssueRef("coilyco-flight-deck/ward#98")
 	if err != nil {
 		t.Fatalf("parseAgentIssueRef(forgejo short): %v", err)
@@ -73,17 +79,26 @@ func TestParseAgentIssueRefForge(t *testing.T) {
 	if fj.Forge != forgeForgejo {
 		t.Errorf("forgejo short ref parsed to forge %v, want forgejo", fj.Forge)
 	}
+	if fj.Tracker != trackerForgejo {
+		t.Errorf("forgejo short ref parsed to tracker %v, want forgejo", fj.Tracker)
+	}
 }
 
 // TestForgeURLAndBase checks the forge-selected issue URL + clone base.
 func TestForgeURLAndBase(t *testing.T) {
-	gh := agentIssueRef{Owner: "owner", Repo: "repo", Number: 5, Forge: forgeGitHub}
+	gh := agentIssueRef{Owner: "owner", Repo: "repo", Number: 5, Forge: forgeGitHub, Tracker: trackerGitHub}
 	if got, want := gh.url(), "https://github.com/owner/repo/issues/5"; got != want {
 		t.Errorf("github url = %q, want %q", got, want)
+	}
+	if got, want := gh.trackerOrDefault(), trackerGitHub; got != want {
+		t.Errorf("github tracker = %v, want %v", got, want)
 	}
 	fj := agentIssueRef{Owner: "coilyco-flight-deck", Repo: "ward", Number: 5}
 	if got, want := fj.url(), forgejoBaseURL+"/coilyco-flight-deck/ward/issues/5"; got != want {
 		t.Errorf("forgejo url = %q, want %q", got, want)
+	}
+	if got, want := fj.trackerOrDefault(), trackerForgejo; got != want {
+		t.Errorf("forgejo tracker = %v, want %v", got, want)
 	}
 	if forgeGitHub.baseURL() != githubBaseURL || forgeGitHub.host() != "github.com" {
 		t.Errorf("github base/host = %q/%q", forgeGitHub.baseURL(), forgeGitHub.host())
@@ -107,6 +122,21 @@ func TestParseForge(t *testing.T) {
 	}
 	if forgeGitHub.String() != "github" || forgeForgejo.String() != "forgejo" {
 		t.Errorf("String() = %q/%q", forgeGitHub.String(), forgeForgejo.String())
+	}
+}
+
+// TestForgeAndTrackerPairIndependence proves the git host and issue tracker can be
+// set separately on the same issue ref.
+func TestForgeAndTrackerPairIndependence(t *testing.T) {
+	ref := agentIssueRef{Owner: "owner", Repo: "repo", Number: 9, Forge: forgeGitHub, Tracker: trackerForgejo}
+	if got, want := ref.url(), "https://github.com/owner/repo/issues/9"; got != want {
+		t.Fatalf("paired ref url = %q, want %q", got, want)
+	}
+	if got, want := ref.trackerOrDefault(), trackerForgejo; got != want {
+		t.Fatalf("paired ref tracker = %v, want %v", got, want)
+	}
+	if got, want := trackerFromForge(ref.Forge), trackerGitHub; got != want {
+		t.Fatalf("paired ref host tracker default = %v, want %v", got, want)
 	}
 }
 

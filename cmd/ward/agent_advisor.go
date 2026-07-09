@@ -114,7 +114,7 @@ func (r *Runner) runAgentAsk(ctx context.Context, c *cli.Command, mode container
 		seed = askPrompt(question)
 	}
 
-	assetsDir, cleanupAssets, err := writeContainerAssets()
+	assetsDir, cleanupAssets, err := writeContainerAssets(ctx, c.Bool("go-bootstrap"), c.String("ward-source"), strings.TrimSpace(c.String("ward-version")))
 	if err != nil {
 		return err
 	}
