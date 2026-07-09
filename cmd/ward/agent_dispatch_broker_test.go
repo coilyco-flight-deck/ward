@@ -858,14 +858,18 @@ func TestRunHostDispatchBrokerRequestClearsBrokerEnvWhileLaunchRuns(t *testing.T
 	case <-time.After(2 * time.Second):
 		t.Fatal("host launch never started")
 	}
+	var got struct {
+		logPath string
+		err     error
+	}
 	select {
-	case got := <-result:
+	case got = <-result:
 		t.Fatalf("runHostDispatchBrokerRequest returned early: %+v", got)
 	default:
 	}
 	close(release)
 	select {
-	case got := <-result:
+	case got = <-result:
 		if got.err != nil {
 			t.Fatalf("runHostDispatchBrokerRequest: %v", got.err)
 		}
@@ -880,7 +884,7 @@ func TestRunHostDispatchBrokerRequestClearsBrokerEnvWhileLaunchRuns(t *testing.T
 	case <-time.After(2 * time.Second):
 		t.Fatal("host launch never finished")
 	}
-	body, err := os.ReadFile(logPath) // #nosec G304 -- test-controlled temp path
+	body, err := os.ReadFile(got.logPath) // #nosec G304 -- test-controlled temp path
 	if err != nil {
 		t.Fatalf("read dispatch log: %v", err)
 	}
@@ -910,6 +914,7 @@ func TestRunHostDispatchBrokerRequestClearsBrokerEnvWhileLaunchRuns(t *testing.T
 // response: a launch error should carry the dispatch log path back to the caller.
 func TestRunHostDispatchBrokerRequestReturnsStructuredLaunchFailure(t *testing.T) {
 	t.Setenv("HOME", t.TempDir())
+	r := &Runner{Runner: &shell.Runner{Stderr: io.Discard}}
 	origLaunch := dispatchBrokerLaunch
 	t.Cleanup(func() { dispatchBrokerLaunch = origLaunch })
 	dispatchBrokerLaunch = func(context.Context, dispatchBrokerRequest) error {
@@ -919,7 +924,7 @@ func TestRunHostDispatchBrokerRequestReturnsStructuredLaunchFailure(t *testing.T
 		Role: "engineer",
 		Argv: []string{"engineer", "coilyco-flight-deck/ward#786", "--harness", "codex"},
 	}
-	logPath, err := (&Runner{}).runHostDispatchBrokerRequest(t.Context(), req)
+	logPath, err := r.runHostDispatchBrokerRequest(t.Context(), req)
 	if err == nil {
 		t.Fatal("runHostDispatchBrokerRequest accepted a launch failure")
 	}

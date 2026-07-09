@@ -44,6 +44,7 @@ ride a private `--env-file`, below). One surface of the [container API](containe
 - `WARD_EXTRA_REPOS` - a space-separated `owner/name` grant list ([container-multi-repo.md](container-multi-repo.md)).
 - `WARD_DISPATCH_BROKER_ADDR` / `WARD_DISPATCH_BROKER_TOKEN` - the host dispatch broker a surface dials.
 - `WARD_TS_SOCKS5` + the `WARD_TOWER_*` set - the `--ts-sidecar` tailnet route ([agent-tailnet-topology.md](agent-tailnet-topology.md)); callers that know their own SSH or SOCKS policy can use the proxy value directly.
+- `WARD_SSH_DEFAULT_USER` - optional launcher/context-owned SSH user prefix for `ward-ssh` when a destination omits `user@`; ward itself never bakes a Kai default.
 - `WARD_FROM_SOURCE` - the `/opt/ward-src` mount; build ward from source not release.
 
 Entrypoint-tunable fallbacks (set to override): the commit-identity (`WARD_GIT_NAME` /

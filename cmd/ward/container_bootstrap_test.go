@@ -227,6 +227,104 @@ func TestReadBootstrapEnvDefaults(t *testing.T) {
 	}
 }
 
+// TestWriteTailnetSSHHelper covers the proxy-aware ssh helper contract.
+func TestWriteTailnetSSHHelper(t *testing.T) {
+	tmp := t.TempDir()
+	helper := filepath.Join(tmp, "ward-ssh")
+	if err := writeTailnetSSHHelper(helper, "mac-proxy:1055"); err != nil {
+		t.Fatalf("write helper: %v", err)
+	}
+	if fi, err := os.Stat(helper); err != nil {
+		t.Fatalf("helper missing: %v", err)
+	} else if fi.Mode()&0o111 == 0 {
+		t.Fatalf("helper is not executable: %v", fi.Mode())
+	}
+	body, err := os.ReadFile(helper)
+	if err != nil {
+		t.Fatalf("read helper: %v", err)
+	}
+	for _, want := range []string{
+		"dest=${1:?usage: ward-ssh <host> [command...]}",
+		"default_user=${WARD_SSH_DEFAULT_USER:-}",
+		"if [ -n \"$default_user\" ]; then",
+		"dest=\"$default_user@$dest\"",
+		"command -v socat >/dev/null 2>&1",
+		"ProxyCommand=socat --experimental - SOCKS5-CONNECT:$proxy_addr:%h:%p",
+	} {
+		if !strings.Contains(string(body), want) {
+			t.Fatalf("helper missing %q:\n%s", want, body)
+		}
+	}
+	if strings.Contains(string(body), "kai@") {
+		t.Fatalf("helper body must not hardcode Kai-specific defaults:\n%s", body)
+	}
+}
+
+// TestTailnetSSHHelperSmoke exercises the helper end to end with fake ssh and socat.
+func TestTailnetSSHHelperSmoke(t *testing.T) {
+	tmp := t.TempDir()
+	binDir := filepath.Join(tmp, "bin")
+	if err := os.MkdirAll(binDir, 0o755); err != nil {
+		t.Fatalf("mkdir bin: %v", err)
+	}
+	helper := filepath.Join(tmp, "ward-ssh")
+	if err := writeTailnetSSHHelper(helper, "mac-proxy:1055"); err != nil {
+		t.Fatalf("write helper: %v", err)
+	}
+	fakeSSH := filepath.Join(binDir, "ssh")
+	if err := os.WriteFile(fakeSSH, []byte("#!/bin/sh\nprintf '%s\n' \"$@\" > \"$SSH_ARGV_LOG\"\n"), 0o755); err != nil {
+		t.Fatalf("write fake ssh: %v", err)
+	}
+	fakeSocat := filepath.Join(binDir, "socat")
+	if err := os.WriteFile(fakeSocat, []byte("#!/bin/sh\nexit 0\n"), 0o755); err != nil {
+		t.Fatalf("write fake socat: %v", err)
+	}
+	t.Setenv("PATH", binDir+string(os.PathListSeparator)+os.Getenv("PATH"))
+
+	run := func(defaultUser, dest string) []string {
+		sshLog := filepath.Join(tmp, "ssh-"+strings.ReplaceAll(dest, "@", "-at-")+".txt")
+		t.Setenv("SSH_ARGV_LOG", sshLog)
+		t.Setenv("WARD_SSH_DEFAULT_USER", defaultUser)
+		cmd := exec.Command(helper, dest, "hostname")
+		out, err := cmd.CombinedOutput()
+		if err != nil {
+			t.Fatalf("helper run %q: %v\n%s", dest, err, out)
+		}
+		got, err := os.ReadFile(sshLog)
+		if err != nil {
+			t.Fatalf("read ssh argv %q: %v", dest, err)
+		}
+		return splitNonEmpty(string(got))
+	}
+	wantBare := []string{
+		"-o",
+		"ProxyCommand=socat --experimental - SOCKS5-CONNECT:mac-proxy:1055:%h:%p",
+		"kai-server",
+		"hostname",
+	}
+	if got := run("", "kai-server"); !slices.Equal(got, wantBare) {
+		t.Fatalf("ssh argv for bare host without default user = %#v, want %#v", got, wantBare)
+	}
+	wantDefault := []string{
+		"-o",
+		"ProxyCommand=socat --experimental - SOCKS5-CONNECT:mac-proxy:1055:%h:%p",
+		"operator@kai-server",
+		"hostname",
+	}
+	if got := run("operator", "kai-server"); !slices.Equal(got, wantDefault) {
+		t.Fatalf("ssh argv for bare host with default user = %#v, want %#v", got, wantDefault)
+	}
+	wantExplicit := []string{
+		"-o",
+		"ProxyCommand=socat --experimental - SOCKS5-CONNECT:mac-proxy:1055:%h:%p",
+		"kai@kai-server",
+		"hostname",
+	}
+	if got := run("operator", "kai@kai-server"); !slices.Equal(got, wantExplicit) {
+		t.Fatalf("ssh argv for explicit user = %#v, want %#v", got, wantExplicit)
+	}
+}
+
 // echoRunContextGo should name whether the ward version came from a host ward
 // default, an explicit pin, or latest resolution so startup logs are actionable.
 func TestEchoRunContextGoVersionSource(t *testing.T) {
