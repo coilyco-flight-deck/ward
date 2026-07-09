@@ -21,7 +21,7 @@ func TestSmartDefaultsBaked(t *testing.T) {
 	}
 }
 
-func TestSmartDefaultsBundleRef(t *testing.T) {
+func TestSmartDefaultsFromBundleSource(t *testing.T) {
 	dir := t.TempDir()
 	body := `smart-defaults {
     agent-reservation-ttl "2h"
@@ -43,10 +43,9 @@ func TestSmartDefaultsBundleRef(t *testing.T) {
 	if err := os.WriteFile(filepath.Join(dir, bundleDefaultsKDLPath), []byte(body), 0o644); err != nil {
 		t.Fatalf("write defaults bundle: %v", err)
 	}
-	t.Setenv(wardConfigRefEnv, "file://"+dir)
-	defs, err := currentSmartDefaultsWithError()
+	defs, err := loadSmartDefaultsFrom(bundleConfigSource(dir))
 	if err != nil {
-		t.Fatalf("currentSmartDefaultsWithError(bundle): %v", err)
+		t.Fatalf("loadSmartDefaultsFrom(bundle source): %v", err)
 	}
 	if defs.agentReservationTTL != 2*time.Hour || defs.reservationRecheckDefaultMax != 9*time.Second {
 		t.Errorf("bundle reservation defaults = %+v", defs)
@@ -71,6 +70,23 @@ func TestSmartDefaultsBundleRef(t *testing.T) {
 	}
 }
 
+func TestSmartDefaultsIgnoreBadConfigRef(t *testing.T) {
+	t.Setenv(wardConfigRefEnv, "not-a-resolvable-ref")
+	defs, err := currentSmartDefaultsWithError()
+	if err != nil {
+		t.Fatalf("currentSmartDefaultsWithError with bad ref: %v", err)
+	}
+	if defs.agentReservationTTL != time.Hour {
+		t.Errorf("core reservation ttl = %s, want 1h", defs.agentReservationTTL)
+	}
+	if defs.directorMaxParallel != 10 || defs.directorLimit != 50 || defs.containerReapKeep != 10 {
+		t.Errorf("core defaults = %+v, want the neutral policy bundle", defs)
+	}
+	if defs.agentWorkflowDefault != workflowDirectToMain {
+		t.Errorf("core workflow default = %q, want %q", defs.agentWorkflowDefault, workflowDirectToMain)
+	}
+}
+
 func TestSmartDefaultsRejectsMalformedValue(t *testing.T) {
 	dir := t.TempDir()
 	body := `smart-defaults {
@@ -79,15 +95,13 @@ func TestSmartDefaultsRejectsMalformedValue(t *testing.T) {
 	if err := os.WriteFile(filepath.Join(dir, bundleDefaultsKDLPath), []byte(body), 0o644); err != nil {
 		t.Fatalf("write malformed defaults bundle: %v", err)
 	}
-	t.Setenv(wardConfigRefEnv, "file://"+dir)
-	if _, err := currentSmartDefaultsWithError(); err == nil {
+	if _, err := loadSmartDefaultsFrom(bundleConfigSource(dir)); err == nil {
 		t.Fatal("malformed smart defaults selected a bundle; want a loud parse error")
 	}
 }
 
 func TestSmartDefaultsBundleMissingFileFailsLoud(t *testing.T) {
-	t.Setenv(wardConfigRefEnv, "file://"+t.TempDir())
-	if _, err := currentSmartDefaultsWithError(); err == nil {
+	if _, err := loadSmartDefaultsFrom(bundleConfigSource(t.TempDir())); err == nil {
 		t.Fatal("bundle without smart defaults selected a source; want a loud read error")
 	}
 }
@@ -100,8 +114,7 @@ func TestSmartDefaultsRejectsInvalidWorkflow(t *testing.T) {
 	if err := os.WriteFile(filepath.Join(dir, bundleDefaultsKDLPath), []byte(body), 0o644); err != nil {
 		t.Fatalf("write malformed defaults bundle: %v", err)
 	}
-	t.Setenv(wardConfigRefEnv, "file://"+dir)
-	if _, err := currentSmartDefaultsWithError(); err == nil {
+	if _, err := loadSmartDefaultsFrom(bundleConfigSource(dir)); err == nil {
 		t.Fatal("invalid workflow default selected a bundle; want a loud parse error")
 	}
 }
