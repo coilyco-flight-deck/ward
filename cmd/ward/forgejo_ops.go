@@ -155,12 +155,6 @@ func (r *Runner) fetchIssueByForge(ctx context.Context, label string, f forge, m
 	})
 }
 
-// fetchForgejoIssue preserves the Forgejo-only call site spelling used by the
-// remaining Forgejo-specific code paths.
-func (r *Runner) fetchForgejoIssue(ctx context.Context, owner, repo string, number int) (*dispatch.Issue, error) {
-	return r.fetchIssueByForge(ctx, "ward agent advisor", forgeForgejo, currentAgentMode(), owner, repo, number)
-}
-
 // getIssue reads one issue and decodes the rendered JSON. Labels arrive as
 // objects, so they decode into a shadow field and flatten to the name list.
 func (c *forgejoClient) getIssue(ctx context.Context, owner, repo string, number int) (*dispatch.Issue, error) {
