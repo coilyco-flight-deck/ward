@@ -542,7 +542,7 @@ func agentImageFlags() []cli.Flag {
 func agentSurfaceFlags() []cli.Flag {
 	flags := agentHarnessFlags()
 	flags = append(flags,
-		// --workflow picks the landing policy: direct-main|pr|patch-only (ward#508).
+		// --workflow picks the landing policy (ward#508).
 		workflowFlag(),
 		// --branch is hidden (ward#362): the issue-<N> default is the intelligent choice.
 		&cli.StringFlag{Name: "branch", Hidden: true, Usage: "feature branch to create inside the clone (default: issue-<N>)"},
@@ -587,8 +587,8 @@ type resolvedWork struct {
 	// ExtraRepos are the --repo grants the run also clones writable (ward#230);
 	// the pre-flight must hear about them or it false-NO-GOs cross-repo work (ward#266).
 	ExtraRepos []targetRepo
-	// Workflow is the landing policy (--workflow, ward#508): direct-main|pr|patch-only.
-	// It shapes the seed's carry clause, rides the container, and gates the reaper.
+	// Workflow is the landing policy (--workflow, ward#508).
+	// It shapes the seed, container env, and reaper gate.
 	Workflow workflowMode
 }
 

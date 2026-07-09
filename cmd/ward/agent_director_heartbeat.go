@@ -54,6 +54,8 @@ type directorBackend interface {
 	poll(ctx context.Context)
 	// refresh rebuilds the ledger from the live backlog; errors are non-fatal here.
 	refresh(ctx context.Context)
+	// mergeEligiblePullRequests sweeps ward-owned PRs that satisfy the policy boundary.
+	mergeEligiblePullRequests(ctx context.Context)
 	// entries returns every tracked ledger entry across the scope.
 	entries() []*backlogEntry
 	// probeForgeHealth runs one cheap live forge read (the top candidate's issue get) so a
@@ -93,6 +95,7 @@ func runDirectorLoop(ctx context.Context, cfg backlogConfig, be directorBackend)
 		// filed since the last pass. Both reuse #346's ledger layer.
 		be.poll(ctx)
 		be.refresh(ctx)
+		be.mergeEligiblePullRequests(ctx)
 
 		entries := be.entries()
 		queued, inflight := backlogLaneCounts(entries)
@@ -263,6 +266,12 @@ func (d *liveDirector) poll(ctx context.Context) { d.r.backlogPoll(ctx, d.label,
 func (d *liveDirector) refresh(ctx context.Context) {
 	if err := d.r.backlogRefresh(ctx, d.label, d.repos, d.cfg.limit); err != nil {
 		fmt.Fprintf(os.Stderr, "%s: note: refresh failed (%v); continuing with the prior ledger\n", d.label, err)
+	}
+}
+
+func (d *liveDirector) mergeEligiblePullRequests(ctx context.Context) {
+	if err := d.r.directorMergeEligiblePullRequests(ctx, d.label, d.repos); err != nil {
+		fmt.Fprintf(os.Stderr, "%s: note: PR merge sweep failed (%v); continuing\n", d.label, err)
 	}
 }
 

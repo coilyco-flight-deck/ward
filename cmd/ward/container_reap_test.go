@@ -554,14 +554,15 @@ func TestReapTargetTreeLandedDirectMainWithoutCloseRefSalvages(t *testing.T) {
 	}
 }
 
-// TestReapTargetTreeWorkflowBoundaryDoesNotSalvage covers the workflow-aware clean
-// success path: pr and patch-only runs are done once they hit their own boundary.
+// TestReapTargetTreeWorkflowBoundaryDoesNotSalvage covers the clean workflow boundary.
+// pull-requests, pull-requests-and-merge, and patch-only runs land at that boundary.
 func TestReapTargetTreeWorkflowBoundaryDoesNotSalvage(t *testing.T) {
 	for _, tc := range []struct {
 		name     string
 		workflow workflowMode
 	}{
-		{name: "pr", workflow: workflowPR},
+		{name: "pull-requests", workflow: workflowPR},
+		{name: "pull-requests-and-merge", workflow: workflowPRAndMerge},
 		{name: "patch-only", workflow: workflowPatchOnly},
 	} {
 		t.Run(tc.name, func(t *testing.T) {

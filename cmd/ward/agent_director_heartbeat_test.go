@@ -106,6 +106,7 @@ type fakeDirector struct {
 	maxCycleCalls int
 	summaryCalls  int
 	sleeps        int
+	mergeCalls    int
 	// offerFn drives the ward#409 slots-full on-demand surface offer; nil defaults to the
 	// window elapsing with no keypress (false), the loop then re-polls without surfacing.
 	offerFn    func() (bool, error)
@@ -143,6 +144,8 @@ func (f *fakeDirector) poll(context.Context) {
 }
 
 func (f *fakeDirector) refresh(context.Context) {}
+
+func (f *fakeDirector) mergeEligiblePullRequests(context.Context) { f.mergeCalls++ }
 
 func (f *fakeDirector) entries() []*backlogEntry { return f.list }
 
@@ -197,6 +200,9 @@ func TestRunDirectorLoopSmoke(t *testing.T) {
 	if !reflect.DeepEqual(f.dispatched, []int{5}) {
 		t.Errorf("dispatched = %v, want [5]", f.dispatched)
 	}
+	if f.mergeCalls == 0 {
+		t.Error("merge sweep should run each heartbeat tick")
+	}
 	if issue.State != "done" {
 		t.Errorf("issue should reconcile to done, got %q", issue.State)
 	}
@@ -231,6 +237,9 @@ func TestRunDirectorLoopResumesOnRefill(t *testing.T) {
 	}
 	if !reflect.DeepEqual(f.dispatched, []int{5, 6}) {
 		t.Errorf("dispatched = %v, want [5 6] (resumed after refill)", f.dispatched)
+	}
+	if f.mergeCalls < 2 {
+		t.Errorf("merge sweep count = %d, want at least 2 across the resumed ticks", f.mergeCalls)
 	}
 	if f.surfaceCalls != 2 {
 		t.Errorf("surface count = %d, want 2 (drain, refill+resume, drain again)", f.surfaceCalls)
