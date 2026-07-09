@@ -68,24 +68,22 @@ func TestNewScratchGateStatusVersionFallback(t *testing.T) {
 	}
 }
 
-// When ward is behind, the gate still surfaces the version delta, but the prompt
-// is launch-only.
+// When ward is behind, the gate still launches, but it no longer advertises an
+// upgrade path.
 func TestRenderScratchGateOutdatedLaunchOnly(t *testing.T) {
 	var behindBuf, currentBuf bytes.Buffer
 	renderScratchGate(&behindBuf, newScratchGateStatus(sampleUpPlan(), false, true, "v0.16.0", "v0.17.0"))
 	renderScratchGate(&currentBuf, newScratchGateStatus(sampleUpPlan(), false, false, "v0.17.0", ""))
 
 	behind := behindBuf.String()
-	for _, want := range []string{"v0.16.0", "v0.17.0", "behind", "Press Enter to launch"} {
-		if !strings.Contains(behind, want) {
-			t.Errorf("outdated gate missing %q; got:\n%s", want, behind)
-		}
+	if behind != currentBuf.String() {
+		t.Fatalf("a behind ward should render the same launch-only gate; got:\n%s\n---\n%s", behind, currentBuf.String())
+	}
+	if !strings.Contains(behind, "Press Enter to launch") {
+		t.Fatalf("gate missing launch prompt; got:\n%s", behind)
 	}
 	if strings.Contains(behind, "upgrade") {
 		t.Errorf("the gate must not advertise upgrade anymore; got:\n%s", behind)
-	}
-	if cur := currentBuf.String(); strings.Contains(cur, "upgrade") || strings.Contains(cur, "behind") {
-		t.Errorf("a current ward must not mention upgrade/behind; got:\n%s", cur)
 	}
 }
 
