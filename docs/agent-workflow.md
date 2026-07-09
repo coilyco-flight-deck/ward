@@ -32,14 +32,16 @@ and a `ward.workflow` label, and is read by the reaper.
   forge decides, so the two collapse there.
 - **`pr`** *(default)* - carry the work to a **branch and a pull request** instead of landing
   on `main` directly. The PR is the merge gate; a human or a follow-up loop lands
-  it. The seed tells the agent to push the branch and open the PR, and **not** to
-  push `main`.
+  it, and the worker keeps watching the PR checks after opening it until they are
+  green or the failure is genuinely blocked. The seed tells the agent to push the
+  branch and open the PR, and **not** to push `main`.
 - **`pull-requests`** - the long-form alias of `pr`. It carries the same branch +
-  PR contract and still needs a human or a follow-up loop to land it.
+  PR contract, including the CI-watch loop, and still needs a human or a follow-up
+  loop to land it.
 - **`pull-requests-and-merge`** - branch + PR like `pr`, but the issue thread
-  records that a director may merge the PR later once the review gate passed and
-  the run ended `WARD-OUTCOME: done`. Human approval still gates `pr`; this mode is
-  the narrow director-authorized lane.
+  records that a director may merge the PR later once the review gate passed,
+  the PR checks are green, and the run ended `WARD-OUTCOME: done`. Human approval
+  still gates `pr`; this mode is the narrow director-authorized lane.
 - **`patch-only`** - the run has **no landing authority**: it commits locally but
   produces a **patch** (`git format-patch origin/main --stdout`) and posts it in a
   comment for a human to review and apply. It neither pushes `main` nor opens a
@@ -94,6 +96,8 @@ This first slice is deliberately minimal:
 - A `pr`/`patch-only` run's residual local commits are preserved on a salvage
   branch by the reaper. When Forgejo PRs are available, the reaper also opens a
   PR for the salvage branch and links it from the salvage comment.
+- `pr` and `pull-requests-and-merge` runs keep watching PR CI/checks after the PR
+  opens, so `WARD-OUTCOME: done` only follows green checks or a genuine block.
 - The autonomous [pre-flight](agent-preflight.md) still reads in merge-to-main
   terms; it judges feasibility, not the landing contract, so it is left as-is.
 

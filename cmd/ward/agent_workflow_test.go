@@ -65,16 +65,26 @@ func TestWorkflowCarryClauseDirectMain(t *testing.T) {
 // It also covers the director merge marker.
 func TestWorkflowCarryClausePR(t *testing.T) {
 	fj := workflowCarryClause(agentIssueRef{Owner: "o", Repo: "r", Number: 12}, workflowPR)
-	for _, want := range []string{"pull request", "closes #12", "Do NOT push to `main` directly"} {
+	for _, want := range []string{"pull request", "closes #12", "watching its CI/checks", "failing check is not a done state"} {
 		if !strings.Contains(fj, want) {
 			t.Errorf("pr Forgejo carry clause missing %q\n got: %s", want, fj)
 		}
 	}
 	gh := workflowCarryClause(agentIssueRef{Owner: "o", Repo: "r", Number: 12, Forge: forgeGitHub}, workflowPR)
+	for _, want := range []string{"gh pr create", "watching its CI/checks", "final `WARD-OUTCOME: done` comment is not allowed until the PR is green"} {
+		if !strings.Contains(gh, want) {
+			t.Errorf("pr GitHub carry clause missing %q\n got: %s", want, gh)
+		}
+	}
 	if !strings.Contains(gh, "gh pr create") {
 		t.Errorf("pr GitHub carry clause should keep the native gh pr flow\n got: %s", gh)
 	}
 	merge := workflowCarryClause(agentIssueRef{Owner: "o", Repo: "r", Number: 12}, workflowPRAndMerge)
+	for _, want := range []string{"director-merge authorized", "watching its CI/checks", "failing check is not a done state"} {
+		if !strings.Contains(merge, want) {
+			t.Errorf("pull-requests-and-merge carry clause missing %q\n got: %s", want, merge)
+		}
+	}
 	if !strings.Contains(merge, "director-merge authorized") {
 		t.Errorf("pull-requests-and-merge carry clause must name the director merge lane\n got: %s", merge)
 	}
@@ -119,8 +129,8 @@ func TestAgentSeedPromptWorkflow(t *testing.T) {
 	if !strings.Contains(pr, "pull request") || strings.Contains(pr, "merge to main, push - and close") {
 		t.Errorf("pr seed should carry a PR clause, not the merge-to-main fast path\n got: %s", pr)
 	}
-	if !strings.Contains(pr, "the branch is pushed and the pull request opened") {
-		t.Errorf("pr reflection should name the branch+PR landing\n got: %s", pr)
+	if !strings.Contains(pr, "the branch is pushed, the pull request is open, and the required checks are green") {
+		t.Errorf("pr reflection should require green checks before done\n got: %s", pr)
 	}
 	merge := agentSeedPromptWorkflow(ref, "reframe ward", "do it", "", true, nil, workflowPullRequestsAndMerge, true, "")
 	if !strings.Contains(merge, "director-merge authorized") {
@@ -135,6 +145,9 @@ func TestAgentSeedPromptWorkflow(t *testing.T) {
 	prMerge := agentSeedPromptWorkflow(ref, "reframe ward", "do it", "", true, nil, workflowPRAndMerge, true, "")
 	if !strings.Contains(prMerge, "director-merge authorized") {
 		t.Errorf("pull-requests-and-merge seed should carry the director merge lane\n got: %s", prMerge)
+	}
+	if !strings.Contains(prMerge, "the branch is pushed, the pull request is open, and the required checks are green") {
+		t.Errorf("pull-requests-and-merge reflection should require green checks before done\n got: %s", prMerge)
 	}
 
 	patch := agentSeedPromptWorkflow(ref, "reframe ward", "do it", "", true, nil, workflowPatchOnly, true, "")
