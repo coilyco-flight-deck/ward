@@ -7,6 +7,9 @@ doc_goal: Explain `ward agent logs` as the brokered read path for one engineer r
 before the body streams. It is the direct counterpart to `ward agent stop`: the
 same target shapes, the same director-surface broker path, but read-only.
 
+The brokered dispatch log now points at this read path when a launch fails, so the
+host wrapper log and the engineer stream stay distinct while still being linked.
+
 ## How it resolves
 
 The command accepts an issue ref or a container name.

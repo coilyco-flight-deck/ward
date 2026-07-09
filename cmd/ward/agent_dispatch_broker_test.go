@@ -865,6 +865,20 @@ func TestRunHostDispatchBrokerRequestLaunchesAsyncWithoutBrokerEnv(t *testing.T)
 	case <-time.After(2 * time.Second):
 		t.Fatal("host launch never finished")
 	}
+	body, err := os.ReadFile(logPath) // #nosec G304 -- test-controlled temp path
+	if err != nil {
+		t.Fatalf("read dispatch log: %v", err)
+	}
+	logText := string(body)
+	for _, want := range []string{
+		"ward dispatch broker: this log captures the host wrapper only",
+		"ward agent logs coilyco-flight-deck/ward#795",
+		"ward dispatch broker: launch completed",
+	} {
+		if !strings.Contains(logText, want) {
+			t.Errorf("dispatch log missing %q\n%s", want, logText)
+		}
+	}
 	deadline := time.After(2 * time.Second)
 	for os.Getenv("WARD_READONLY") != "1" || os.Getenv(envDispatchBrokerAddr) != "127.0.0.1:4321" || os.Getenv(envDispatchBrokerToken) != "broker-token" {
 		select {
@@ -873,6 +887,43 @@ func TestRunHostDispatchBrokerRequestLaunchesAsyncWithoutBrokerEnv(t *testing.T)
 				os.Getenv("WARD_READONLY"), envDispatchBrokerAddr, os.Getenv(envDispatchBrokerAddr), envDispatchBrokerToken, os.Getenv(envDispatchBrokerToken))
 		default:
 			time.Sleep(10 * time.Millisecond)
+		}
+	}
+}
+
+// TestCommentFailedDispatch writes the failure comment that supersedes a stale
+// reservation when the forwarded launch never becomes a running engineer.
+func TestCommentFailedDispatch(t *testing.T) {
+	r := &Runner{}
+	ref := agentIssueRef{Owner: "coilyco-flight-deck", Repo: "ward", Number: 689}
+	f := &fakeLockForge{}
+	req := dispatchBrokerRequest{
+		Role: "engineer",
+		Argv: []string{"engineer", ref.String(), "--harness", "codex", "--skip-preflight"},
+	}
+
+	r.commentFailedDispatch(context.Background(), f, modeCodex, ref, req, "/tmp/ward/dispatch.log", errors.New("exit status 1"))
+
+	if f.unlocked != 1 {
+		t.Fatalf("unlockIssue called %d times, want 1", f.unlocked)
+	}
+	if len(f.comments) != 1 {
+		t.Fatalf("commentIssue called %d times, want 1", len(f.comments))
+	}
+	body := f.comments[0]
+	for _, want := range []string{
+		agentReservationReleaseMarker,
+		agentNeedsRedispatchMarker,
+		"WARD-DISPATCH: failed ❌",
+		"Attempted harness: `codex`",
+		"Attempted run: `ward agent engineer coilyco-flight-deck/ward#689 --harness codex --skip-preflight`",
+		"Container: `engineer-codex-ward-689`",
+		"Container created: no running engineer was observed.",
+		"Host log: `/tmp/ward/dispatch.log`",
+		"Retry: choose another harness if the first one is down, or rerun with `--force` if the reservation is stale.",
+	} {
+		if !strings.Contains(body, want) {
+			t.Errorf("failure comment missing %q\n%s", want, body)
 		}
 	}
 }

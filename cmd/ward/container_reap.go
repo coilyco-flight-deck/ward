@@ -91,6 +91,15 @@ func (e reapEnv) reapStartLine() string {
 		e.Container, e.Owner, e.Name, e.Issue, e.ReadOnly, len(e.ExtraRepos), e.Launched)
 }
 
+// reapLogFlushLine is the container-visible archive contract: tell the operator
+// where the durable console/log archive is expected to land, or say none is set.
+func (e reapEnv) reapLogFlushLine() string {
+	if strings.TrimSpace(e.Container) == "" {
+		return "ward container reap: no durable log flush configured"
+	}
+	return fmt.Sprintf("ward container reap: logs flushed to %s", agentLogsDisplayDir(e.Container))
+}
+
 // reservationReleasable reports whether a clean reap should retract this run's
 // hold: only a container that carried an issue and never launched the agent (ward#264).
 func (e reapEnv) reservationReleasable() bool {
@@ -145,6 +154,7 @@ func (r *Runner) runContainerReap(ctx context.Context, c *cli.Command) error {
 		return err
 	}
 	fmt.Fprintln(os.Stderr, env.reapStartLine())
+	fmt.Fprintln(os.Stderr, env.reapLogFlushLine())
 	if env.ReadOnly {
 		// A read-only explore session never mutates the remote (ward#293): skip
 		// capture/commit/push outright, leaving the throwaway clone untouched.
