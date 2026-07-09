@@ -60,6 +60,7 @@ New to ward? Read [architecture.md](architecture.md) first - it frames the whole
 - [agent-surface.md](agent-surface.md) - the director's read-only scope-and-dispatch surface.
 - [agent-surface-log-read.md](agent-surface-log-read.md) - the surface's read-only agent-log drain mount.
 - [agent-github.md](agent-github.md) - GitHub as a first-class forge: token setup + the PR-landing loop.
+- [agent-gitlab.md](agent-gitlab.md) - GitLab as a first-class forge: token setup + the MR-landing loop.
 - [github-rate-limits.md](github-rate-limits.md) - ward's GitHub client stays on the REST budget, off GraphQL.
 - [director-startup-triage.md](director-startup-triage.md) - director startup triage (autonomous drain).
 - [director-on-demand-surface.md](director-on-demand-surface.md) - the director's on-demand surface.

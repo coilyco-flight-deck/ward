@@ -858,14 +858,18 @@ func TestRunHostDispatchBrokerRequestClearsBrokerEnvWhileLaunchRuns(t *testing.T
 	case <-time.After(2 * time.Second):
 		t.Fatal("host launch never started")
 	}
+	var got struct {
+		logPath string
+		err     error
+	}
 	select {
-	case got := <-result:
+	case got = <-result:
 		t.Fatalf("runHostDispatchBrokerRequest returned early: %+v", got)
 	default:
 	}
 	close(release)
 	select {
-	case got := <-result:
+	case got = <-result:
 		if got.err != nil {
 			t.Fatalf("runHostDispatchBrokerRequest: %v", got.err)
 		}
@@ -880,7 +884,7 @@ func TestRunHostDispatchBrokerRequestClearsBrokerEnvWhileLaunchRuns(t *testing.T
 	case <-time.After(2 * time.Second):
 		t.Fatal("host launch never finished")
 	}
-	body, err := os.ReadFile(logPath) // #nosec G304 -- test-controlled temp path
+	body, err := os.ReadFile(got.logPath) // #nosec G304 -- test-controlled temp path
 	if err != nil {
 		t.Fatalf("read dispatch log: %v", err)
 	}

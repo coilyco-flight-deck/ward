@@ -135,3 +135,17 @@ func TestGitHubEnvEmitted(t *testing.T) {
 		t.Errorf("a Forgejo plan must not emit WARD_CLONE_BASE, got %q", fjEnv["WARD_CLONE_BASE"])
 	}
 }
+
+// TestGitLabEnvEmitted checks a GitLab-forge plan exports the forge and clone base.
+func TestGitLabEnvEmitted(t *testing.T) {
+	t.Setenv("WARD_GITLAB_BASE", "https://gitlab.example.com")
+	plan := sampleUpPlan()
+	plan.Forge = forgeGitLab
+	env := plan.wardEnv()
+	if env["WARD_FORGE"] != "gitlab" {
+		t.Errorf("WARD_FORGE = %q, want gitlab", env["WARD_FORGE"])
+	}
+	if env["WARD_CLONE_BASE"] != "https://gitlab.example.com" {
+		t.Errorf("WARD_CLONE_BASE = %q, want https://gitlab.example.com", env["WARD_CLONE_BASE"])
+	}
+}

@@ -59,6 +59,56 @@ func TestParseGitHubIssueRef(t *testing.T) {
 	}
 }
 
+// TestParseGitLabIssueRef covers the GitLab issue and merge-request URL forms
+// ward#635 accepts and the non-GitLab inputs it must leave for the Forgejo parser.
+func TestParseGitLabIssueRef(t *testing.T) {
+	t.Setenv("WARD_GITLAB_BASE", "https://gitlab.example.com")
+	cases := []struct {
+		in        string
+		wantOwner string
+		wantRepo  string
+		wantNum   int
+		wantMR    bool
+		wantOK    bool
+		wantURL   string
+	}{
+		{"https://gitlab.example.com/group/proj/-/issues/12", "group", "proj", 12, false, true, "https://gitlab.example.com/group/proj/-/issues/12"},
+		{"http://gitlab.example.com/group/proj/-/issues/3", "group", "proj", 3, false, true, "https://gitlab.example.com/group/proj/-/issues/3"},
+		{"gitlab.example.com/group/proj/-/merge_requests/7", "group", "proj", 7, true, true, "https://gitlab.example.com/group/proj/-/merge_requests/7"},
+		{"https://gitlab.example.com/group/proj.git/-/merge_requests/42?foo=bar", "group", "proj", 42, true, true, "https://gitlab.example.com/group/proj/-/merge_requests/42"},
+		// Not GitLab / not a supported ref: fall through to the Forgejo parser.
+		{"https://github.com/owner/repo/issues/1", "", "", 0, false, false, ""},
+		{"https://gitlab.example.com/group/proj", "", "", 0, false, false, ""},
+		{"gitlab.example.com/group/proj/-/pipelines/1", "", "", 0, false, false, ""},
+		{"https://gitlab.example.com/group/proj/-/issues/0", "", "", 0, false, false, ""},
+	}
+	for _, c := range cases {
+		got, ok := parseGitLabIssueRef(c.in)
+		if ok != c.wantOK {
+			t.Errorf("parseGitLabIssueRef(%q): ok=%v want %v", c.in, ok, c.wantOK)
+			continue
+		}
+		if !ok {
+			continue
+		}
+		if got.Owner != c.wantOwner || got.Repo != c.wantRepo || got.Number != c.wantNum {
+			t.Errorf("parseGitLabIssueRef(%q) = %s/%s#%d, want %s/%s#%d", c.in, got.Owner, got.Repo, got.Number, c.wantOwner, c.wantRepo, c.wantNum)
+		}
+		if got.Forge != forgeGitLab {
+			t.Errorf("parseGitLabIssueRef(%q): forge=%v want gitlab", c.in, got.Forge)
+		}
+		if got.Tracker != trackerGitLab {
+			t.Errorf("parseGitLabIssueRef(%q): tracker=%v want gitlab", c.in, got.Tracker)
+		}
+		if got.MergeRequest != c.wantMR {
+			t.Errorf("parseGitLabIssueRef(%q): MergeRequest=%t want %t", c.in, got.MergeRequest, c.wantMR)
+		}
+		if got.url() != c.wantURL {
+			t.Errorf("parseGitLabIssueRef(%q) url = %q, want %q", c.in, got.url(), c.wantURL)
+		}
+	}
+}
+
 // TestParseAgentIssueRefForge confirms the top-level parser tags the forge: a
 // github.com ref parses to forgeGitHub, everything else stays forgeForgejo.
 func TestParseAgentIssueRefForge(t *testing.T) {
@@ -71,6 +121,17 @@ func TestParseAgentIssueRefForge(t *testing.T) {
 	}
 	if gh.Tracker != trackerGitHub {
 		t.Errorf("github URL parsed to tracker %v, want github", gh.Tracker)
+	}
+	t.Setenv("WARD_GITLAB_BASE", "https://gitlab.example.com")
+	gl, err := parseAgentIssueRef("https://gitlab.example.com/group/proj/-/issues/1")
+	if err != nil {
+		t.Fatalf("parseAgentIssueRef(gitlab URL): %v", err)
+	}
+	if gl.Forge != forgeGitLab {
+		t.Errorf("gitlab URL parsed to forge %v, want gitlab", gl.Forge)
+	}
+	if gl.Tracker != trackerGitLab {
+		t.Errorf("gitlab URL parsed to tracker %v, want gitlab", gl.Tracker)
 	}
 	fj, err := parseAgentIssueRef("coilyco-flight-deck/ward#98")
 	if err != nil {
@@ -100,11 +161,32 @@ func TestForgeURLAndBase(t *testing.T) {
 	if got, want := fj.trackerOrDefault(), trackerForgejo; got != want {
 		t.Errorf("forgejo tracker = %v, want %v", got, want)
 	}
+	gl := agentIssueRef{Owner: "group", Repo: "proj", Number: 9, Forge: forgeGitLab, Tracker: trackerGitLab}
+	if got, want := gl.url(), "https://gitlab.com/group/proj/-/issues/9"; got != want {
+		t.Errorf("gitlab issue url = %q, want %q", got, want)
+	}
+	glMR := agentIssueRef{Owner: "group", Repo: "proj", Number: 9, Forge: forgeGitLab, Tracker: trackerGitLab, MergeRequest: true}
+	if got, want := glMR.url(), "https://gitlab.com/group/proj/-/merge_requests/9"; got != want {
+		t.Errorf("gitlab mr url = %q, want %q", got, want)
+	}
+	if got, want := gl.trackerOrDefault(), trackerGitLab; got != want {
+		t.Errorf("gitlab tracker = %v, want %v", got, want)
+	}
 	if forgeGitHub.baseURL() != githubBaseURL || forgeGitHub.host() != "github.com" {
 		t.Errorf("github base/host = %q/%q", forgeGitHub.baseURL(), forgeGitHub.host())
 	}
 	if forgeGitHub.gitPushUser() != "x-access-token" || forgeForgejo.gitPushUser() != "coilyco-ops" {
 		t.Errorf("git push users = %q/%q", forgeGitHub.gitPushUser(), forgeForgejo.gitPushUser())
+	}
+	t.Setenv("WARD_GITLAB_BASE", "https://gitlab.example.com/base")
+	if got, want := forgeGitLab.baseURL(), "https://gitlab.example.com/base"; got != want {
+		t.Errorf("gitlab base = %q, want %q", got, want)
+	}
+	if got, want := forgeGitLab.host(), "gitlab.example.com"; got != want {
+		t.Errorf("gitlab host = %q, want %q", got, want)
+	}
+	if got, want := forgeGitLab.gitPushUser(), "oauth2"; got != want {
+		t.Errorf("gitlab push user = %q, want %q", got, want)
 	}
 }
 
@@ -115,13 +197,18 @@ func TestParseForge(t *testing.T) {
 			t.Errorf("parseForge(%q) != github", s)
 		}
 	}
+	for _, s := range []string{"gitlab", "GitLab", "  gitlab  "} {
+		if parseForge(s) != forgeGitLab {
+			t.Errorf("parseForge(%q) != gitlab", s)
+		}
+	}
 	for _, s := range []string{"", "forgejo", "bogus"} {
 		if parseForge(s) != forgeForgejo {
 			t.Errorf("parseForge(%q) != forgejo", s)
 		}
 	}
-	if forgeGitHub.String() != "github" || forgeForgejo.String() != "forgejo" {
-		t.Errorf("String() = %q/%q", forgeGitHub.String(), forgeForgejo.String())
+	if forgeGitHub.String() != "github" || forgeGitLab.String() != "gitlab" || forgeForgejo.String() != "forgejo" {
+		t.Errorf("String() = %q/%q/%q", forgeGitHub.String(), forgeGitLab.String(), forgeForgejo.String())
 	}
 }
 
@@ -138,6 +225,37 @@ func TestForgeAndTrackerPairIndependence(t *testing.T) {
 	if got, want := trackerFromForge(ref.Forge), trackerGitHub; got != want {
 		t.Fatalf("paired ref host tracker default = %v, want %v", got, want)
 	}
+}
+
+// TestResolveGitLabToken checks the env precedence and glab fallback.
+func TestResolveGitLabToken(t *testing.T) {
+	t.Setenv("WARD_GITLAB_TOKEN", "")
+	t.Setenv("GITLAB_TOKEN", "")
+	t.Setenv("GITLAB_ACCESS_TOKEN", "")
+	t.Setenv("OAUTH_TOKEN", "")
+
+	if got := resolveGitLabTokenFromEnv(); got != "" {
+		t.Fatalf("resolveGitLabTokenFromEnv empty = %q, want empty", got)
+	}
+	t.Setenv("GITLAB_TOKEN", "gl-env")
+	if got := resolveGitLabTokenFromEnv(); got != "gl-env" {
+		t.Fatalf("resolveGitLabTokenFromEnv(GITLAB_TOKEN) = %q, want gl-env", got)
+	}
+	t.Setenv("WARD_GITLAB_TOKEN", "ward-gl")
+	if got := resolveGitLabTokenFromEnv(); got != "ward-gl" {
+		t.Fatalf("resolveGitLabTokenFromEnv(WARD_GITLAB_TOKEN) = %q, want ward-gl", got)
+	}
+
+	t.Run("glab fallback", func(t *testing.T) {
+		t.Setenv("WARD_GITLAB_TOKEN_SOURCE", "glab")
+		stub := gitlabGlabTokenStub(t, "  glab-minted\n")
+		t.Setenv("PATH", filepath.Dir(stub)+string(os.PathListSeparator)+os.Getenv("PATH"))
+		r := &Runner{Runner: &shell.Runner{Stderr: io.Discard, Resolve: func(string) (string, error) { return stub, nil }}}
+		got, err := r.resolveGitLabToken(t.Context(), "group", "proj")
+		if err != nil || got != "glab-minted" {
+			t.Fatalf("glab source = %q,%v want glab-minted,nil", got, err)
+		}
+	})
 }
 
 // TestDirectToMainCarryClause verifies the fast path is generic across forges and
@@ -300,6 +418,15 @@ func TestResolveGitHubTokenSourceSelects(t *testing.T) {
 func ghAuthTokenStub(t *testing.T, out string) string {
 	t.Helper()
 	stub := filepath.Join(t.TempDir(), "gh")
+	if err := os.WriteFile(stub, []byte("#!/bin/sh\nprintf '%s' '"+out+"'\n"), 0o755); err != nil { //nolint:gosec
+		t.Fatal(err)
+	}
+	return stub
+}
+
+func gitlabGlabTokenStub(t *testing.T, out string) string {
+	t.Helper()
+	stub := filepath.Join(t.TempDir(), "glab")
 	if err := os.WriteFile(stub, []byte("#!/bin/sh\nprintf '%s' '"+out+"'\n"), 0o755); err != nil { //nolint:gosec
 		t.Fatal(err)
 	}

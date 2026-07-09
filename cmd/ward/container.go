@@ -311,11 +311,14 @@ func (r *Runner) resolveOllamaHost(ctx context.Context) string {
 	return strings.TrimSpace(string(out))
 }
 
-// resolveForgejoToken resolves the child env-file's push/API token: GitHub from the
-// operator-selected source (ward#533, no SSM); Forgejo via broker seed, env, then SSM.
+// resolveForgejoToken resolves the child env-file's push/API token: GitHub and GitLab
+// from host-side env or CLI fallbacks; Forgejo via broker seed, env, then SSM.
 func (r *Runner) resolveForgejoToken(ctx context.Context, target broker.Target, f forge) (string, error) {
 	if f == forgeGitHub {
 		return r.resolveGitHubToken(ctx, target.Owner, target.Repo)
+	}
+	if f == forgeGitLab {
+		return r.resolveGitLabToken(ctx, target.Owner, target.Repo)
 	}
 	if tok, ok := r.brokerDispatchSeed(ctx, target); ok {
 		return tok, nil
@@ -354,21 +357,30 @@ func (r *Runner) writeTokenEnvFile(ctx context.Context, target broker.Target, fg
 		cleanup()
 		return "", func() {}, fmt.Errorf("ward container: secure env-file: %w", cherr)
 	}
-	// FORGEJO_TOKEN is the git-credential channel the entrypoint reads for BOTH
+	// FORGEJO_TOKEN is the git-credential channel the entrypoint reads for all
 	// forges (the credential username differs by forge, the env key does not).
 	if _, werr := fmt.Fprintf(f, "FORGEJO_TOKEN=%s\n", token); werr != nil {
 		_ = f.Close()
 		cleanup()
 		return "", func() {}, fmt.Errorf("ward container: write env-file: %w", werr)
 	}
-	// A GitHub run also needs `gh` authenticated inside the container - for the
-	// issue comments and `gh pr create` - so seed GH_TOKEN + GITHUB_TOKEN (ward#489).
-	if fg == forgeGitHub {
+	// GitHub and GitLab runs also need their forge-specific CLI tokens inside the
+	// container for issue comments and PR/MR creation.
+	switch fg {
+	case forgeGitHub:
 		for _, key := range []string{"GH_TOKEN", "GITHUB_TOKEN"} {
 			if _, werr := fmt.Fprintf(f, "%s=%s\n", key, token); werr != nil {
 				_ = f.Close()
 				cleanup()
 				return "", func() {}, fmt.Errorf("ward container: write github token to env-file: %w", werr)
+			}
+		}
+	case forgeGitLab:
+		for _, key := range []string{"GITLAB_TOKEN"} {
+			if _, werr := fmt.Fprintf(f, "%s=%s\n", key, token); werr != nil {
+				_ = f.Close()
+				cleanup()
+				return "", func() {}, fmt.Errorf("ward container: write gitlab token to env-file: %w", werr)
 			}
 		}
 	}

@@ -20,7 +20,7 @@ ride a private `--env-file`, below). One surface of the [container API](containe
 ## Forge and clone base
 
 - `WARD_FORGEJO_BASE` - the Forgejo base URL. Always set; ward's release source and the **default** clone base.
-- `WARD_FORGE` / `WARD_CLONE_BASE` - set **only** on a GitHub run ([agent-github.md](agent-github.md)): `WARD_FORGE=github` clones off `github.com` with the `x-access-token` push user. Forgejo runs emit neither.
+- `WARD_FORGE` / `WARD_CLONE_BASE` - set **only** on a GitHub or GitLab run ([agent-github.md](agent-github.md), [agent-gitlab.md](agent-gitlab.md)): `WARD_FORGE=github` clones off `github.com` with the `x-access-token` push user, and `WARD_FORGE=gitlab` clones off the configured GitLab base with the `oauth2` push user. Forgejo runs emit neither.
 
 ## Driver, agent, and context
 
@@ -59,9 +59,10 @@ links that binary into `/usr/local/bin/ward`, verifies it, and then hands off to
 
 The token and credential channel is deliberately **not** in `wardEnv`. It rides a private
 `0600` `--env-file` so it never lands in argv or the audit row
-([agent-credentials.md](agent-credentials.md)): `FORGEJO_TOKEN` (or `GITHUB_TOKEN`), and
-the base64 credential blobs the entrypoint decodes to disk then **scrubs from the env** -
-`WARD_CLAUDE_CREDS_B64`, `WARD_CODEX_AUTH_B64`, `WARD_GOOSE_OLLAMA_HOST_B64`.
+([agent-credentials.md](agent-credentials.md)): `FORGEJO_TOKEN` (or `GITHUB_TOKEN` or
+`GITLAB_TOKEN`), and the base64 credential blobs the entrypoint decodes to disk then
+**scrubs from the env** - `WARD_CLAUDE_CREDS_B64`, `WARD_CODEX_AUTH_B64`,
+`WARD_GOOSE_OLLAMA_HOST_B64`.
 
 That `--env-file` is written **top-level in `$HOME`**, not `/tmp`. The docker CLI reads it
 client-side at `docker run`, and a snap-provided docker (companion to the brew-jail break

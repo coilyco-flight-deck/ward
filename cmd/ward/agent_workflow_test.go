@@ -90,6 +90,23 @@ func TestWorkflowCarryClausePullRequest(t *testing.T) {
 	}
 }
 
+// TestWorkflowCarryClauseGitLabMR checks the same lane speaks in merge-request
+// terms when the target forge is GitLab.
+func TestWorkflowCarryClauseGitLabMR(t *testing.T) {
+	got := workflowCarryClause(agentIssueRef{Owner: "o", Repo: "r", Number: 12, Forge: forgeGitLab}, workflowPullRequest)
+	for _, want := range []string{"merge request", "closes #12", "watching its CI/checks", "director is encouraged to merge it later"} {
+		if !strings.Contains(got, want) {
+			t.Errorf("gitlab pull-request carry clause missing %q\n got: %s", want, got)
+		}
+	}
+	if strings.Contains(got, "pull request") {
+		t.Errorf("gitlab carry clause should not use pull request wording\n got: %s", got)
+	}
+	if !strings.Contains(got, "skip the merge request comment") {
+		t.Errorf("gitlab carry clause should steer failure comments to merge requests\n got: %s", got)
+	}
+}
+
 // TestWorkflowCarryClausePullRequestAndMerge proves the merge-authorized lane keeps
 // the PR flow and says the run is not done until the merge lands.
 func TestWorkflowCarryClausePullRequestAndMerge(t *testing.T) {
@@ -159,6 +176,10 @@ func TestAgentSeedPromptWorkflow(t *testing.T) {
 		if !strings.Contains(pr, want) {
 			t.Errorf("pull-requests reflection should steer PR-failure comments with %q\n got: %s", want, pr)
 		}
+	}
+	gl := agentSeedPromptWorkflow(agentIssueRef{Owner: "group", Repo: "proj", Number: 12, Forge: forgeGitLab, MergeRequest: true}, "reframe ward", "do it", "", true, nil, workflowPullRequest, true, "")
+	if !strings.Contains(gl, "merge request") || strings.Contains(gl, "pull request") {
+		t.Errorf("gitlab seed should use merge request wording\n got: %s", gl)
 	}
 	merge := agentSeedPromptWorkflow(ref, "reframe ward", "do it", "", true, nil, workflowPullRequestAndMerge, true, "")
 	if !strings.Contains(merge, "director-merge authorized") {

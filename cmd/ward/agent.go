@@ -25,11 +25,12 @@ import (
 // agentIssueRef is a parsed issue reference for `ward agent`. Forge tags the git
 // host, tracker tags the issue thread. The default pairing stays zero-config.
 type agentIssueRef struct {
-	Owner   string
-	Repo    string
-	Number  int
-	Forge   forge
-	Tracker tracker
+	Owner        string
+	Repo         string
+	Number       int
+	Forge        forge
+	Tracker      tracker
+	MergeRequest bool
 }
 
 func (r agentIssueRef) String() string {
@@ -44,6 +45,13 @@ func (r agentIssueRef) repoSlug() string {
 // url renders the canonical issue URL for the seeded prompt, off the ref's forge
 // base (Forgejo or GitHub); both use the /owner/repo/issues/N path shape (ward#489).
 func (r agentIssueRef) url() string {
+	if r.Forge == forgeGitLab {
+		path := "issues"
+		if r.MergeRequest {
+			path = "merge_requests"
+		}
+		return fmt.Sprintf("%s/%s/%s/-/%s/%d", strings.TrimRight(r.Forge.baseURL(), "/"), r.Owner, r.Repo, path, r.Number)
+	}
 	return fmt.Sprintf("%s/%s/%s/issues/%d", strings.TrimRight(r.Forge.baseURL(), "/"), r.Owner, r.Repo, r.Number)
 }
 
@@ -86,6 +94,9 @@ func parseAgentIssueRef(s string) (agentIssueRef, error) {
 	// GitHub ref (ward#489); anything else falls through to the Forgejo parser.
 	if ghRef, ok := parseGitHubIssueRef(s); ok {
 		return ghRef, nil
+	}
+	if glRef, ok := parseGitLabIssueRef(s); ok {
+		return glRef, nil
 	}
 	if ref, err := parseDispatchIssueRef(s); err == nil {
 		return ref, nil
@@ -226,15 +237,16 @@ func headlessWorkflowFailureCommentClause(wf workflowMode) string {
 
 // reviewGateClause wires the pre-landing adversarial review panel into a headless
 // seed (ward#134): run `ward agent review` before landing. docs/dispatch-review.md.
-func reviewGateClause(wf workflowMode) string {
-	landing := "open the pull request"
+func reviewGateClause(ref agentIssueRef, wf workflowMode) string {
+	noun := workflowReviewNoun(ref.Forge)
+	landing := "open the " + noun
 	switch mode := string(canonicalWorkflow(wf.orDefault())); mode {
 	case string(workflowDirectToMain):
 		landing = "merge to `main`"
 	case string(workflowPullRequest):
-		landing = "open the pull request"
+		landing = "open the " + noun
 	case string(workflowPullRequestAndMerge):
-		landing = "merge the pull request"
+		landing = "merge the " + noun
 	case string(workflowRemoteBranchOnly):
 		landing = "push the remote branch"
 	}
@@ -243,9 +255,9 @@ func reviewGateClause(wf workflowMode) string {
 	case string(workflowDirectToMain):
 		workflowTail = "For `direct-main` workflows, landing means merging to `main`. Do not stop before the merge lands."
 	case string(workflowPullRequest):
-		workflowTail = "For `pull-requests` workflows, opening the pull request is not a stopping point. Keep watching the PR checks after it opens. A failing check is not done: fetch the logs/status, patch the branch, push the update, and repeat until the PR is green or the failure is genuinely blocked."
+		workflowTail = "For `pull-requests` workflows, opening the " + noun + " is not a stopping point. Keep watching the " + noun + " checks after it opens. A failing check is not done: fetch the logs/status, patch the branch, push the update, and repeat until the " + noun + " is green or the failure is genuinely blocked."
 	case string(workflowPullRequestAndMerge):
-		workflowTail = "For `pull-requests-and-merge` workflows, opening the pull request is not a stopping point. Keep watching the PR checks and merge status after it opens. A failing check is not done: fetch the logs/status, patch the branch, push the update, and repeat until the PR is green and merged or the failure is genuinely blocked."
+		workflowTail = "For `pull-requests-and-merge` workflows, opening the " + noun + " is not a stopping point. Keep watching the " + noun + " checks and merge status after it opens. A failing check is not done: fetch the logs/status, patch the branch, push the update, and repeat until the " + noun + " is green and merged or the failure is genuinely blocked."
 	case string(workflowRemoteBranchOnly):
 		workflowTail = "For `patch-only` workflows, the remote branch push is the finish line. Do not open a pull request and do not merge."
 	default:
@@ -301,10 +313,14 @@ func grantedRepoDoneClause(extra []targetRepo) string {
 
 // forgeDisplayName is the capitalized forge name the seed + prompts read with.
 func forgeDisplayName(f forge) string {
-	if f == forgeGitHub {
+	switch f {
+	case forgeGitHub:
 		return "GitHub"
+	case forgeGitLab:
+		return "GitLab"
+	default:
+		return "Forgejo"
 	}
-	return "Forgejo"
 }
 
 // agentSeedPrompt seeds a direct-main run (the default): a thin wrapper over
@@ -323,11 +339,15 @@ func agentSeedPromptWorkflow(ref agentIssueRef, title, body, details string, hea
 	body = strings.TrimSpace(body)
 
 	action, inline := seedIssueBodyParts(body)
+	kind := "issue"
+	if ref.Forge == forgeGitLab && ref.MergeRequest {
+		kind = "merge request"
+	}
 	seed := fmt.Sprintf(
-		"Work on %s issue %s (%q).\n\n"+
+		"Work on %s %s %s (%q).\n\n"+
 			"URL: %s\n\n"+
 			"%s\n\n%s\n\n%s Then carry it end to end per your container doctrine - %s",
-		forgeDisplayName(ref.Forge), ref, title, ref.url(), carryIssueBanner(ref), cloneAnchorLine(ref), action, workflowCarryClause(ref, wf))
+		forgeDisplayName(ref.Forge), kind, ref, title, ref.url(), carryIssueBanner(ref), cloneAnchorLine(ref), action, workflowCarryClause(ref, wf))
 	if details = strings.TrimSpace(details); details != "" {
 		seed += fmt.Sprintf(
 			"\n\nOperator note (added at dispatch via --details; treat it as authoritative and "+
@@ -344,7 +364,7 @@ func agentSeedPromptWorkflow(ref agentIssueRef, title, body, details string, hea
 	// Before landing, a headless run must clear the review gate (ward#134).
 	// Remote-branch-only skips it because that workflow lands nothing else.
 	if headless && reviewGate && wf.orDefault() != workflowRemoteBranchOnly {
-		seed += "\n\n" + reviewGateClause(wf)
+		seed += "\n\n" + reviewGateClause(ref, wf)
 	}
 	// A headless run detaches unwatched, so it closes with a retrospective comment -
 	// the only voice it leaves behind; the landing phrase tracks the workflow (#281, #508).
