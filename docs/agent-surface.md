@@ -86,8 +86,11 @@ socket lands as an empty dir, so dispatches dialed a dir.
 A surface session is where an operator notices a dispatched run is mis-scoped: stop it
 from the surface with [`warded agent stop #N`](agent-stop.md), which forwards a stop
 through the same broker (stop-only, engineer-only) - no host-side `docker container stop`
-needed. A reserved issue is **immutable** to the run carrying it, so corrections filed
-here go to a new issue: see [reserved means immutable](agent-reserved-immutable.md).
+needed. The same brokered read path also lists the live engineer set with
+[`ward agent list`](agent-list.md) or [`ward agent ps`](agent-list.md), so a director
+surface can answer "which run is carrying this issue?" without raw Docker access. A
+reserved issue is **immutable** to the run carrying it, so corrections filed here go to
+a new issue: see [reserved means immutable](agent-reserved-immutable.md).
 
 ## See also
 
