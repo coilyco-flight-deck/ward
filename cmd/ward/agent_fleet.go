@@ -4,52 +4,71 @@ import (
 	"fmt"
 
 	"forgejo.coilysiren.me/coilyco-flight-deck/cli-guard/pkg/fleetconfig"
-	"github.com/coilyco-flight-deck/ward/internal/agents"
-	"github.com/coilyco-flight-deck/ward/internal/agentsapi"
 )
 
 // frontierAgentOrder keeps the built-in frontier roster stable and explicit.
-var frontierAgentOrder = frontierNamesFromManifests(agents.FrontierManifests())
+var frontierAgentOrder = []string{"claude", "codex", "opencode", "goose"}
 
 // frontierAgentDefaults are ward-local built-ins: the frontier launch shapes the
 // bundle may sparsely override, but never define the product defaults for.
-var frontierAgentDefaults = frontierDefaultsFromManifests(agents.FrontierManifests())
+var frontierAgentDefaults = map[string]fleetconfig.Agent{
+	"claude": {
+		Name:         "claude",
+		Binary:       "claude",
+		ContextLevel: 2,
+		Stream:       "stream-json",
+		Auth:         "claude-keychain",
+		Argv: fleetconfig.Argv{
+			Preflight:   []string{"claude", "-p"},
+			Headless:    []string{"claude", "-p", "--verbose", "--output-format", "stream-json"},
+			Interactive: []string{"claude"},
+		},
+	},
+	"codex": {
+		Name:            "codex",
+		Binary:          "codex",
+		ContextLevel:    1,
+		Stream:          "none",
+		Auth:            "codex-file",
+		Model:           "gpt-5.4",
+		ReasoningEffort: "medium",
+		Verbosity:       "low",
+		Argv: fleetconfig.Argv{
+			Headless:    []string{"codex", "exec"},
+			Interactive: []string{"codex"},
+		},
+	},
+	"opencode": {
+		Name:         "opencode",
+		Binary:       "opencode",
+		ContextLevel: 0,
+		Stream:       "none",
+		Auth:         "none",
+		Model:        "qwen3-coder:30b",
+		Endpoint:     "http://localhost:11434/v1",
+		Argv: fleetconfig.Argv{
+			Headless:    []string{"opencode", "run"},
+			Interactive: []string{"opencode"},
+		},
+	},
+	"goose": {
+		Name:         "goose",
+		Binary:       "goose",
+		ContextLevel: 2,
+		Stream:       "none",
+		Auth:         "ollama",
+		Argv: fleetconfig.Argv{
+			Preflight:   []string{"goose", "run", "-t"},
+			Headless:    []string{"goose", "run", "-t"},
+			Interactive: []string{"goose", "session"},
+		},
+	},
+}
 
 // frontierAgentNames returns the built-in frontier roster in launch order.
 func frontierAgentNames() []string {
 	out := make([]string, len(frontierAgentOrder))
 	copy(out, frontierAgentOrder)
-	return out
-}
-
-func frontierNamesFromManifests(ms []agentsapi.Manifest) []string {
-	out := make([]string, 0, len(ms))
-	for _, m := range ms {
-		out = append(out, m.Name)
-	}
-	return out
-}
-
-func frontierDefaultsFromManifests(ms []agentsapi.Manifest) map[string]fleetconfig.Agent {
-	out := make(map[string]fleetconfig.Agent, len(ms))
-	for _, m := range ms {
-		out[m.Name] = fleetconfig.Agent{
-			Name:            m.Name,
-			Binary:          m.Binary,
-			ContextLevel:    m.ContextLevel,
-			Stream:          m.Stream,
-			Auth:            m.Auth,
-			Model:           m.Model,
-			Endpoint:        m.Endpoint,
-			ReasoningEffort: m.ReasoningEffort,
-			Verbosity:       m.Verbosity,
-			Argv: fleetconfig.Argv{
-				Preflight:   append([]string{}, m.Argv.Preflight...),
-				Headless:    append([]string{}, m.Argv.Headless...),
-				Interactive: append([]string{}, m.Argv.Interactive...),
-			},
-		}
-	}
 	return out
 }
 
