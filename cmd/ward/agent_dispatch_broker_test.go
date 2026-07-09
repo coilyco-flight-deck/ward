@@ -660,6 +660,7 @@ func TestRunAgentAdvisorFreeformStaysLocal(t *testing.T) {
 	t.Setenv(envDispatchBrokerAddr, "127.0.0.1:12345")
 	t.Setenv(envDispatchBrokerToken, "nonce-freeform")
 	t.Setenv("WARD_READONLY", "1")
+	stubContainerBootstrapStage(t)
 
 	origLaunch := dispatchBrokerLaunch
 	t.Cleanup(func() { dispatchBrokerLaunch = origLaunch })

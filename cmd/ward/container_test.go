@@ -19,6 +19,21 @@ import (
 	"github.com/urfave/cli/v3"
 )
 
+func stubContainerBootstrapStage(t *testing.T) {
+	t.Helper()
+	prev := stageWardBootstrapBinary
+	stageWardBootstrapBinary = func(_ context.Context, dir, wardSource, wardVersion string) error {
+		if wardSource != "" {
+			t.Fatalf("test bootstrap stage unexpectedly asked to build from source %q", wardSource)
+		}
+		if wardVersion != "" {
+			t.Fatalf("test bootstrap stage unexpectedly asked to resolve release %q", wardVersion)
+		}
+		return os.WriteFile(filepath.Join(dir, "ward"), []byte("#!/bin/sh\nexit 0\n"), 0o755)
+	}
+	t.Cleanup(func() { stageWardBootstrapBinary = prev })
+}
+
 // TestSweepStaleContainerAssets reclaims dirs past the TTL (left by detached
 // runs) while sparing fresh ones and unrelated dirs.
 func TestSweepStaleContainerAssets(t *testing.T) {
@@ -561,6 +576,7 @@ func TestWriteContainerAssetsStagesUnderHome(t *testing.T) {
 	// (never /tmp) for a snap docker daemon to see it at `docker run` (ward#574).
 	home := t.TempDir()
 	t.Setenv("HOME", home)
+	stubContainerBootstrapStage(t)
 	dir, cleanup, err := writeContainerAssets(context.Background(), "", "")
 	if err != nil {
 		t.Fatalf("writeContainerAssets: %v", err)
