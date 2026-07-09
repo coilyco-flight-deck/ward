@@ -472,6 +472,56 @@ func TestDispatchBrokerTokenGate(t *testing.T) {
 	}
 }
 
+// TestRunHostDispatchBrokerRequestLaunchesAsyncWithoutBrokerEnv proves the broker
+// acks before the dispatched run finishes and does not re-enter broker env.
+func TestRunHostDispatchBrokerRequestLaunchesAsyncWithoutBrokerEnv(t *testing.T) {
+	t.Setenv("HOME", t.TempDir())
+	t.Setenv("WARD_READONLY", "1")
+	t.Setenv(envDispatchBrokerAddr, "127.0.0.1:4321")
+	t.Setenv(envDispatchBrokerToken, "broker-token")
+
+	started := make(chan struct{})
+	release := make(chan struct{})
+	origLaunch := dispatchBrokerLaunch
+	t.Cleanup(func() { dispatchBrokerLaunch = origLaunch })
+	dispatchBrokerLaunch = func(_ context.Context, _ dispatchBrokerRequest) error {
+		if got := os.Getenv("WARD_READONLY"); got != "" {
+			t.Errorf("host launch inherited WARD_READONLY=%q; want it cleared", got)
+		}
+		if got := os.Getenv(envDispatchBrokerAddr); got != "" {
+			t.Errorf("host launch inherited %s=%q; want it cleared", envDispatchBrokerAddr, got)
+		}
+		if got := os.Getenv(envDispatchBrokerToken); got != "" {
+			t.Errorf("host launch inherited %s=%q; want it cleared", envDispatchBrokerToken, got)
+		}
+		close(started)
+		<-release
+		return nil
+	}
+
+	req := dispatchBrokerRequest{
+		Role: "advisor",
+		Argv: []string{"advisor", "coilyco-flight-deck/ward#795", "--harness", "codex"},
+	}
+	start := time.Now()
+	logPath, err := (&Runner{}).runHostDispatchBrokerRequest(t.Context(), req)
+	if err != nil {
+		t.Fatalf("runHostDispatchBrokerRequest: %v", err)
+	}
+	if elapsed := time.Since(start); elapsed > 200*time.Millisecond {
+		t.Fatalf("runHostDispatchBrokerRequest blocked for %s, want an immediate ack", elapsed)
+	}
+	if !strings.Contains(logPath, "dispatch") {
+		t.Fatalf("log path %q does not look like a dispatch log", logPath)
+	}
+	select {
+	case <-started:
+	case <-time.After(2 * time.Second):
+		t.Fatal("host launch never started")
+	}
+	close(release)
+}
+
 func TestNoBrokerKeepsDirectDispatchPath(t *testing.T) {
 	t.Setenv(envDispatchBrokerAddr, "")
 	t.Setenv("WARD_READONLY", "")
