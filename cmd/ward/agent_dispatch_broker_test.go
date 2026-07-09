@@ -521,15 +521,43 @@ func TestDispatchBrokerTokenGate(t *testing.T) {
 // acks before the dispatched run finishes and does not re-enter broker env.
 func TestRunHostDispatchBrokerRequestLaunchesAsyncWithoutBrokerEnv(t *testing.T) {
 	t.Setenv("HOME", t.TempDir())
-	t.Setenv("WARD_READONLY", "1")
-	t.Setenv(envDispatchBrokerAddr, "127.0.0.1:4321")
-	t.Setenv(envDispatchBrokerToken, "broker-token")
+	origReadOnly, hadReadOnly := os.LookupEnv("WARD_READONLY")
+	origAddr, hadAddr := os.LookupEnv(envDispatchBrokerAddr)
+	origToken, hadToken := os.LookupEnv(envDispatchBrokerToken)
+	if err := os.Setenv("WARD_READONLY", "1"); err != nil {
+		t.Fatalf("set WARD_READONLY: %v", err)
+	}
+	if err := os.Setenv(envDispatchBrokerAddr, "127.0.0.1:4321"); err != nil {
+		t.Fatalf("set %s: %v", envDispatchBrokerAddr, err)
+	}
+	if err := os.Setenv(envDispatchBrokerToken, "broker-token"); err != nil {
+		t.Fatalf("set %s: %v", envDispatchBrokerToken, err)
+	}
+	t.Cleanup(func() {
+		if hadReadOnly {
+			_ = os.Setenv("WARD_READONLY", origReadOnly)
+		} else {
+			_ = os.Unsetenv("WARD_READONLY")
+		}
+		if hadAddr {
+			_ = os.Setenv(envDispatchBrokerAddr, origAddr)
+		} else {
+			_ = os.Unsetenv(envDispatchBrokerAddr)
+		}
+		if hadToken {
+			_ = os.Setenv(envDispatchBrokerToken, origToken)
+		} else {
+			_ = os.Unsetenv(envDispatchBrokerToken)
+		}
+	})
 
 	started := make(chan struct{})
 	release := make(chan struct{})
+	done := make(chan struct{})
 	origLaunch := dispatchBrokerLaunch
 	t.Cleanup(func() { dispatchBrokerLaunch = origLaunch })
 	dispatchBrokerLaunch = func(_ context.Context, _ dispatchBrokerRequest) error {
+		defer close(done)
 		if got := os.Getenv("WARD_READONLY"); got != "" {
 			t.Errorf("host launch inherited WARD_READONLY=%q; want it cleared", got)
 		}
@@ -565,6 +593,24 @@ func TestRunHostDispatchBrokerRequestLaunchesAsyncWithoutBrokerEnv(t *testing.T)
 		t.Fatal("host launch never started")
 	}
 	close(release)
+	select {
+	case <-done:
+	case <-time.After(2 * time.Second):
+		t.Fatal("host launch never finished")
+	}
+	deadline := time.After(2 * time.Second)
+	for {
+		if os.Getenv("WARD_READONLY") == "1" && os.Getenv(envDispatchBrokerAddr) == "127.0.0.1:4321" && os.Getenv(envDispatchBrokerToken) == "broker-token" {
+			break
+		}
+		select {
+		case <-deadline:
+			t.Fatalf("expected broker env to be restored after launch, got WARD_READONLY=%q %s=%q %s=%q",
+				os.Getenv("WARD_READONLY"), envDispatchBrokerAddr, os.Getenv(envDispatchBrokerAddr), envDispatchBrokerToken, os.Getenv(envDispatchBrokerToken))
+		default:
+			time.Sleep(10 * time.Millisecond)
+		}
+	}
 }
 
 func TestNoBrokerKeepsDirectDispatchPath(t *testing.T) {
