@@ -64,8 +64,13 @@ func (r *Runner) runAgentEngineer(ctx context.Context, c *cli.Command, mode cont
 		// Not an issue ref: freeform instructions (or a bare owner/repo + --instructions-file).
 		return r.runAgentTask(ctx, c, mode)
 	}
-	if forwarded, err := r.maybeForwardAgentDispatchToHostBroker(ctx, c, "engineer", mode); forwarded {
-		return err
+	if addr := strings.TrimSpace(os.Getenv(envDispatchBrokerAddr)); addr != "" && os.Getenv("WARD_READONLY") == "1" {
+		go func() {
+			if forwarded, err := r.maybeForwardAgentDispatchToHostBroker(context.WithoutCancel(ctx), c, "engineer", mode); forwarded && err != nil {
+				fmt.Fprintf(os.Stderr, "ward agent engineer: dispatch broker forward failed: %v\n", err)
+			}
+		}()
+		return nil
 	}
 	// A ref always carries detached, fire-and-forget (ward#356).
 	return r.runAgentWork(ctx, c, mode, "engineer")
