@@ -146,7 +146,7 @@ func roleAgentOverride(f fleetconfig.Fleet, role, agent string) fleetconfig.Role
 // required var (the bash `: "${X:?...}"` checks). Pure given the environment.
 func readBootstrapEnv() (bootstrapEnv, error) {
 	// Defaults now source from the embedded fleet config (env > manifest, ward#416);
-	// opencode is canonical (qwen is the alias), so it feeds the qwen/ollama defaults.
+	// opencode is canonical, with qwen retained only as a parser alias for compatibility.
 	fleet, ferr := loadFleetConfig()
 	if ferr != nil {
 		return bootstrapEnv{}, fmt.Errorf("load embedded fleet config for bootstrap defaults: %w", ferr)
