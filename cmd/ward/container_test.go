@@ -1261,7 +1261,7 @@ func TestRepoCloneURLAndMirror(t *testing.T) {
 // overrides the host ward version the container downloads; unset keeps Version.
 func TestBuildUpPlanWardVersion(t *testing.T) {
 	run := func(args []string) string {
-		var got string
+		var got upPlan
 		probe := &cli.Command{
 			Name: "probe",
 			Flags: []cli.Flag{
@@ -1279,7 +1279,46 @@ func TestBuildUpPlanWardVersion(t *testing.T) {
 				if err != nil {
 					return err
 				}
-				got = p.WardVersion
+				got = p
+				return nil
+			},
+		}
+		if err := probe.Run(context.Background(), append([]string{"probe"}, args...)); err != nil {
+			t.Fatalf("probe run: %v", err)
+		}
+		return got.WardVersion
+	}
+	if got := run([]string{"--ward-version", "v0.148.0"}); got != "v0.148.0" {
+		t.Errorf("--ward-version override: WardVersion = %q, want v0.148.0", got)
+	}
+	if got := run(nil); got != Version {
+		t.Errorf("unset: WardVersion = %q, want host Version %q", got, Version)
+	}
+}
+
+// TestBuildUpPlanWardVersionSource covers the source label that keeps inherited host
+// versions from turning into implicit child pins.
+func TestBuildUpPlanWardVersionSource(t *testing.T) {
+	run := func(args []string) upPlan {
+		var got upPlan
+		probe := &cli.Command{
+			Name: "probe",
+			Flags: []cli.Flag{
+				&cli.StringFlag{Name: "ward-version", Sources: cli.EnvVars(envAgentVersion)},
+				&cli.StringFlag{Name: "ward-source"},
+				&cli.StringFlag{Name: "image", Value: containerImageDefault},
+				&cli.StringFlag{Name: "tag", Value: containerImageTagDefault},
+				&cli.StringFlag{Name: "branch"},
+				&cli.StringSliceFlag{Name: "repo"},
+				&cli.BoolFlag{Name: "aws"},
+				&cli.BoolFlag{Name: "detach"},
+			},
+			Action: func(_ context.Context, c *cli.Command) error {
+				p, err := buildUpPlan(c, targetRepo{Owner: "o", Name: "r"}, modeClaude, roleSession, t.TempDir(), t.TempDir(), nil, false)
+				if err != nil {
+					return err
+				}
+				got = p
 				return nil
 			},
 		}
@@ -1288,11 +1327,17 @@ func TestBuildUpPlanWardVersion(t *testing.T) {
 		}
 		return got
 	}
-	if got := run([]string{"--ward-version", "v0.148.0"}); got != "v0.148.0" {
-		t.Errorf("--ward-version override: WardVersion = %q, want v0.148.0", got)
+
+	if got := run([]string{"--ward-version", "v0.148.0"}); got.WardVersionSource != wardVersionSourceExplicit {
+		t.Errorf("explicit --ward-version should record explicit source, got %q", got.WardVersionSource)
 	}
-	if got := run(nil); got != Version {
-		t.Errorf("unset: WardVersion = %q, want host Version %q", got, Version)
+	if got := run(nil); got.WardVersionSource != func() string {
+		if Version == "dev" {
+			return wardVersionSourceLatest
+		}
+		return wardVersionSourceHost
+	}() {
+		t.Errorf("unset --ward-version should record the default source, got %q", got.WardVersionSource)
 	}
 }
 

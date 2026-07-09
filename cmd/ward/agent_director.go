@@ -107,14 +107,15 @@ type backlogLedger struct {
 // dispatchEngineer is the container/harness flag set the director forwards into each
 // engineer it dispatches, so the run inherits the operator's container intent (ward#355).
 type dispatchEngineer struct {
-	harness     containerMode // the engineer harness: --engineer-harness, else director's --harness
-	image       string
-	tag         string
-	wardVersion string
-	aws         bool
-	hostNet     bool
-	tsSidecar   bool
-	force       bool
+	harness           containerMode // the engineer harness: --engineer-harness, else director's --harness
+	image             string
+	tag               string
+	wardVersion       string
+	wardVersionSource string
+	aws               bool
+	hostNet           bool
+	tsSidecar         bool
+	force             bool
 }
 
 // engineerArgv renders the `ward agent engineer` argv that carries one issue, forwarding
@@ -129,8 +130,10 @@ func (c dispatchEngineer) engineerArgv(ref agentIssueRef) []string {
 	if tag := strings.TrimSpace(c.tag); tag != "" {
 		argv = append(argv, "--tag", tag)
 	}
-	if v := strings.TrimSpace(c.wardVersion); v != "" {
-		argv = append(argv, "--ward-version", v)
+	if c.wardVersionSource == wardVersionSourceExplicit {
+		if v := strings.TrimSpace(c.wardVersion); v != "" {
+			argv = append(argv, "--ward-version", v)
+		}
 	}
 	if c.aws {
 		argv = append(argv, "--aws")
@@ -307,14 +310,15 @@ func (r *Runner) runAgentBacklog(ctx context.Context, c *cli.Command, mode conta
 		print:        c.Bool("print"),
 		triage:       c.Bool("triage") && !c.Bool("no-triage"),
 		dispatch: dispatchEngineer{
-			harness:     engDriver,
-			image:       c.String("image"),
-			tag:         c.String("tag"),
-			wardVersion: strings.TrimSpace(c.String("ward-version")),
-			aws:         c.Bool("aws"),
-			hostNet:     hostNet,
-			tsSidecar:   tsSidecar,
-			force:       c.Bool("force"),
+			harness:           engDriver,
+			image:             c.String("image"),
+			tag:               c.String("tag"),
+			wardVersion:       strings.TrimSpace(c.String("ward-version")),
+			wardVersionSource: resolveWardVersionSource(c, c.String("ward-version")),
+			aws:               c.Bool("aws"),
+			hostNet:           hostNet,
+			tsSidecar:         tsSidecar,
+			force:             c.Bool("force"),
 		},
 		wardSource: strings.TrimSpace(c.String("ward-source")),
 		noPull:     c.Bool("no-pull"),
@@ -1340,7 +1344,7 @@ func (r *Runner) backlogPrintDirectorPlan(label string, repos []string, cfg back
 	fmt.Fprintf(&b, "engineer harness: %s (the engineers it dispatches)\n", cy.harness)
 	fmt.Fprintf(&b, "max-parallel:    %d\n", cfg.maxParallel)
 	fmt.Fprintf(&b, "image:           %s\n", imageRef(cy.image, cy.tag))
-	fmt.Fprintf(&b, "ward-version:    %s\n", directorWardVersion(cy.wardVersion))
+	fmt.Fprintf(&b, "ward-version:    %s\n", wardVersionLaunchLabel(cy.wardVersion, cy.wardVersionSource))
 	if cfg.wardSource != "" {
 		fmt.Fprintf(&b, "ward-source:     %s (surface session builds ward from here)\n", cfg.wardSource)
 	}
@@ -1356,15 +1360,6 @@ func (r *Runner) backlogPrintDirectorPlan(label string, repos []string, cfg back
 	argv[1] = "<owner/repo#N>"
 	fmt.Fprintf(&b, "dispatch:        ward agent %s\n", strings.Join(argv, " "))
 	return r.emit(b.String())
-}
-
-// directorWardVersion renders the ward release the dispatches pin: the explicit
-// --ward-version, else this host's ward (the buildUpPlan default).
-func directorWardVersion(v string) string {
-	if strings.TrimSpace(v) == "" {
-		return Version + " (this host)"
-	}
-	return v
 }
 
 // backlogPrintSummary prints the terminal disposition of the run by state.
