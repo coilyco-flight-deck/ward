@@ -531,6 +531,9 @@ trusted owner.`, agentHarnessChoices(), defaultAgentMode()),
 			// stop is a control verb, not a startup role: a director surface stops
 			// one running engineer through the dispatch broker (ward#627). docs/agent-stop.md.
 			agentStopCommand(),
+			// logs is a read verb, not a startup role: a director surface reads one
+			// engineer's logs through the dispatch broker. docs/agent-logs.md.
+			agentLogsCommand(),
 			// review is the pre-landing adversarial-review gate, not a startup role
 			// (ward#134): a diff must survive a multi-model panel. docs/dispatch-review.md.
 			agentReviewCommand(),

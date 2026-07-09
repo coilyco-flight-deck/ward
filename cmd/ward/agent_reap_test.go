@@ -151,3 +151,23 @@ func TestAgentReapCommandRegistered(t *testing.T) {
 		}
 	}
 }
+
+// TestAgentLogsCommandRegistered asserts `logs` mounts under the agent umbrella and
+// is treated as a meta verb the roster skips (not a startup role).
+func TestAgentLogsCommandRegistered(t *testing.T) {
+	if commandNamed(agentCommand().Commands, "logs") == nil {
+		t.Fatalf("agent umbrella missing the logs command; got %v", commandNames(agentCommand().Commands))
+	}
+	if !agentMetaCommands["logs"] {
+		t.Error("logs must be an agent meta command so the roster skips it")
+	}
+	rows, err := agentRosterRows()
+	if err != nil {
+		t.Fatalf("agentRosterRows: %v", err)
+	}
+	for _, r := range rows {
+		if r.Role == "logs" {
+			t.Error("logs leaked into the role roster; it is a maintenance verb")
+		}
+	}
+}
