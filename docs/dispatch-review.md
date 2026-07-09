@@ -9,8 +9,8 @@ step: a worker's diff must survive a code-review pass **in the container, after 
 CI and before the PR opens**, so the operator only sees diffs the panel could not settle.
 
 The gate is `CI green AND quorum >= threshold`, and **fails closed**: a panel error,
-timeout, or empty vote blocks the landing. The summary of that review must also
-show up in the final `WARD-OUTCOME` comment, not just in the panel log.
+timeout, or empty vote blocks landing. The review summary must also show up in the
+final `WARD-OUTCOME` comment, not just the panel log.
 
 ## Where it runs
 

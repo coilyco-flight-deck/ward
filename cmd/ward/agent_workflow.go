@@ -132,28 +132,38 @@ func workflowCarryClause(ref agentIssueRef, wf workflowMode) string {
 func prWorkflowCarryClause(ref agentIssueRef) string {
 	if ref.Forge == forgeGitHub {
 		// GitHub's forge clause is already branch + PR (main is protected), so reuse it.
-		return forgeCarryClause(ref)
+		return forgeCarryClause(ref) + " " + prWorkflowCIWatchClause()
 	}
 	return fmt.Sprintf(
 		"implement on a feature branch, commit, push the branch to origin, and open a pull request "+
-			"against `main` whose body carries `closes #%d`. Do NOT push to `main` directly or merge it "+
-			"yourself - in the `pr` workflow the pull request IS the merge gate, landed by a human or a "+
-			"follow-up loop, not by you.",
-		ref.Number)
+			"against `main` whose body carries `closes #%d`. "+
+			"%s Do NOT push to `main` directly or merge it yourself - in the `pr` workflow the pull request "+
+			"IS the merge gate, landed by a human or a follow-up loop, not by you.",
+		ref.Number, prWorkflowCIWatchClause())
 }
 
 // prWorkflowAndMergeCarryClause tells the agent to open a PR that a director may
 // merge later once the issue thread says the work is done and reviewed.
 func prWorkflowAndMergeCarryClause(ref agentIssueRef) string {
 	if ref.Forge == forgeGitHub {
-		return forgeCarryClause(ref)
+		return forgeCarryClause(ref) + " " + prWorkflowCIWatchClause()
 	}
 	return fmt.Sprintf(
 		"implement on a feature branch, commit, push the branch to origin, and open a pull request "+
 			"against `main` whose body carries `closes #%d`. This run is director-merge authorized: "+
 			"the worker still opens the pull request, but a director may merge it once the issue thread "+
-			"says the work is done, the review gate passed, and no salvage or draft state remains.",
-		ref.Number)
+			"says the work is done, the review gate passed, and no salvage or draft state remains. "+
+			"%s",
+		ref.Number, prWorkflowCIWatchClause())
+}
+
+// prWorkflowCIWatchClause tells PR workflows that opening the PR is not the end:
+// they must keep watching CI/checks and only report done once the PR is green.
+func prWorkflowCIWatchClause() string {
+	return "After the PR opens, keep watching its CI/checks and fetch the status/logs if anything " +
+		"fails. Patch the branch, push updates, and repeat until the checks are green or the failure is " +
+		"genuinely blocked. A failing check is not a done state, and the final `WARD-OUTCOME: done` " +
+		"comment is not allowed until the PR is green."
 }
 
 // patchOnlyCarryClause tells the agent it has no landing authority: commit locally,
@@ -174,20 +184,20 @@ func workflowLandingPhrase(ref agentIssueRef, wf workflowMode) string {
 	switch wf.orDefault() {
 	case workflowDirectMain:
 		if ref.Forge == forgeGitHub {
-			return "the branch is pushed and the pull request opened"
+			return "the branch is pushed, the pull request is open, and the required checks are green"
 		}
 		return "the work is committed, merged to main, and pushed"
 	case workflowPR:
-		return "the branch is pushed and the pull request opened"
+		return "the branch is pushed, the pull request is open, and the required checks are green"
 	case workflowPullRequests:
-		return "the branch is pushed and the pull request opened"
+		return "the branch is pushed, the pull request is open, and the required checks are green"
 	case workflowPullRequestsAndMerge:
-		return "the branch is pushed and the pull request opened"
+		return "the branch is pushed, the pull request is open, and the required checks are green"
 	case workflowPatchOnly:
 		return "the patch is produced and posted as a comment"
 	default:
 		if ref.Forge == forgeGitHub {
-			return "the branch is pushed and the pull request opened"
+			return "the branch is pushed, the pull request is open, and the required checks are green"
 		}
 		return "the work is committed, merged to main, and pushed"
 	}

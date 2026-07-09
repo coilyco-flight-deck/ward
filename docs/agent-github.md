@@ -16,9 +16,11 @@ comments on the **GitHub** issue, and the run lands as a **pull request** on Git
   retrospective) go through the [`gh` CLI](https://cli.github.com), mirroring how a
   Forgejo run drives `ward ops forgejo`.
 - **Landing** is a **pull request**, not a push to `main`. The in-container agent runs
-  `gh pr create` whose body carries `Closes #<n>`. The [reaper](container-reap.md) does
-  not open the PR on GitHub - it only preserves a salvage branch + files a GitHub issue
-  - so the agent opening the PR before it exits is the done-condition.
+  `gh pr create` whose body carries `Closes #<n>`. After the PR opens, the agent keeps
+  watching its checks and only reports done once they are green or the run is genuinely
+  blocked. The [reaper](container-reap.md) does not open the PR on GitHub - it only
+  preserves a salvage branch + files a GitHub issue - so the agent opening the PR
+  before it exits is still the merge gate.
 - **ward's own machinery stays on Forgejo.** The container still downloads the ward
   release + broker binary and warms `/substrate` from Forgejo (`WARD_FORGEJO_BASE`).
   Only the target repo moves to GitHub, via `WARD_CLONE_BASE` + `WARD_FORGE=github`,

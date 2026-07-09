@@ -44,7 +44,9 @@ The engineer always **detaches** fire-and-forget (was `headless`): print mode
 ([agent-preflight.md](agent-preflight.md)): a GO launches, a NO-GO comments and launches
 nothing. Its seed closes with a `WARD-OUTCOME`-led retro the
 [director](agent-director.md) reads, and now asks for the review summary or skip state
-in that same final comment. The seed is shaped by the body:
+in that same final comment. For `pr` / `pull-requests` runs, the seed also tells the
+worker to keep watching the PR checks after opening the PR, fix failures, and only
+report done once the PR is green or genuinely blocked. The seed is shaped by the body:
 empty bodies say so, **every** driver gets the body inlined **verbatim** as a **frozen
 snapshot** at dispatch (image markup intact, a no-vision line, URL live for
 comments), **logged** for `grep`.

@@ -130,6 +130,10 @@ func TestReviewGateClauseInSeed(t *testing.T) {
 	if !strings.Contains(direct, "merge to `main`") {
 		t.Errorf("direct-main Forgejo landing phrase missing from the gate clause")
 	}
+	pr := agentSeedPromptWorkflow(ref, "t", "b", "", true, nil, workflowPR, true, "")
+	if !strings.Contains(pr, "watching its CI/checks") {
+		t.Errorf("pr seed should tell PR workflows to keep watching checks after opening the PR")
+	}
 
 	patch := agentSeedPromptWorkflow(ref, "t", "b", "", true, nil, workflowPatchOnly, true, "")
 	if strings.Contains(patch, "REVIEW GATE") {
