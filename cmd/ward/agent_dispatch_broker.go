@@ -239,6 +239,12 @@ func (r *Runner) runHostDispatchBrokerRequest(ctx context.Context, req dispatchB
 
 	_, _ = fmt.Fprintf(logf, "ward dispatch broker: %s requested `ward agent %s`\n",
 		emptyDefault(req.Requester, "unknown-container"), redactDispatchBrokerArgv(req.Argv))
+	ref := ""
+	if len(req.Argv) >= 2 {
+		ref = req.Argv[1]
+	}
+	_, _ = fmt.Fprintf(logf, "ward dispatch broker: this log captures the host wrapper only; in-container engineer console/reap logs drain separately and are readable with `ward agent logs %s`\n",
+		ref)
 	go func() {
 		restore := redirectStdioToLog(logf)
 		defer restore()

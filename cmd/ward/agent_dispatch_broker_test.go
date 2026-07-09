@@ -865,6 +865,20 @@ func TestRunHostDispatchBrokerRequestLaunchesAsyncWithoutBrokerEnv(t *testing.T)
 	case <-time.After(2 * time.Second):
 		t.Fatal("host launch never finished")
 	}
+	body, err := os.ReadFile(logPath) // #nosec G304 -- test-controlled temp path
+	if err != nil {
+		t.Fatalf("read dispatch log: %v", err)
+	}
+	logText := string(body)
+	for _, want := range []string{
+		"ward dispatch broker: this log captures the host wrapper only",
+		"ward agent logs coilyco-flight-deck/ward#795",
+		"ward dispatch broker: launch completed",
+	} {
+		if !strings.Contains(logText, want) {
+			t.Errorf("dispatch log missing %q\n%s", want, logText)
+		}
+	}
 	deadline := time.After(2 * time.Second)
 	for os.Getenv("WARD_READONLY") != "1" || os.Getenv(envDispatchBrokerAddr) != "127.0.0.1:4321" || os.Getenv(envDispatchBrokerToken) != "broker-token" {
 		select {

@@ -8,7 +8,7 @@ import (
 	"github.com/coilyco-flight-deck/ward/internal/agentsapi"
 )
 
-// ComposeConfig writes the opencode config pointing at the local ollama-backed
+// ComposeConfig writes the opencode config pointing at the local Ollama-backed
 // model (RunCtx carries the model + endpoint from the entrypoint env).
 func (a Agent) ComposeConfig(rc agentsapi.RunCtx) error {
 	dir := filepath.Join(rc.AgentHome, ".config", "opencode")
@@ -19,11 +19,11 @@ func (a Agent) ComposeConfig(rc agentsapi.RunCtx) error {
 		rc.Log("could not write opencode config: %v", werr)
 		return nil
 	}
-	rc.Log("wrote qwen-backed opencode config (model ollama/%s via %s) to %s", rc.OpencodeModel, rc.OllamaURL, out)
+	rc.Log("wrote opencode config (model ollama/%s via %s) to %s", rc.OpencodeModel, rc.OllamaURL, out)
 	return nil
 }
 
-// configJSON renders the qwen-backed opencode config; the $schema key is a
+// configJSON renders the opencode config; the $schema key is a
 // literal, not interpolated.
 func configJSON(model, ollamaURL string) string {
 	return fmt.Sprintf(`{

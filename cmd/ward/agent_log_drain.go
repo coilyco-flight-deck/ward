@@ -141,6 +141,12 @@ func agentLogsDir() string {
 	return filepath.Join(home, config.AppDir(), agentLogsSubdir)
 }
 
+// agentLogsDisplayDir renders the host archive root in the container log stream
+// using the stable tilde path the operator can apply on the host.
+func agentLogsDisplayDir(name string) string {
+	return filepath.Join("~", config.AppDir(), agentLogsSubdir, name)
+}
+
 // agentLogsRedactedDir resolves the parallel redacted archive root (ward#526),
 // resolved the same way as agentLogsDir so the two trees sit side by side.
 func agentLogsRedactedDir() string {
