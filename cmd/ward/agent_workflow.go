@@ -31,15 +31,6 @@ const (
 	// leave it unset. Pull-request is the safe product default (ward#707).
 	defaultWorkflow = workflowPullRequest
 
-	// Compatibility aliases keep in-flight work readable without advertising the old
-	// names in the supported surface. `pr` is intentionally not accepted.
-	workflowDirectMain           workflowMode = workflowDirectToMain
-	workflowPullRequests         workflowMode = workflowPullRequest
-	workflowPR                   workflowMode = workflowPullRequest
-	workflowPullRequestsAndMerge workflowMode = workflowPullRequestAndMerge
-	workflowPRAndMerge           workflowMode = workflowPullRequestAndMerge
-	workflowPatchOnly            workflowMode = workflowRemoteBranchOnly
-
 	// directorMergeWorkflowMarker is the PR-body marker the director sweep reads
 	// when deciding whether a ward-owned PR may be merged automatically.
 	directorMergeWorkflowMarker = "ward.workflow: pull-request-and-merge"
@@ -213,7 +204,7 @@ func remoteBranchOnlyCarryClause(ref agentIssueRef) string {
 }
 
 // workflowLandingPhrase names "done" for the reflection's "only after ..." opener.
-func workflowLandingPhrase(ref agentIssueRef, wf workflowMode) string {
+func workflowLandingPhrase(_ agentIssueRef, wf workflowMode) string {
 	switch wf.orDefault() {
 	case workflowDirectToMain:
 		return "the work is committed, merged to main, and pushed"
@@ -224,6 +215,6 @@ func workflowLandingPhrase(ref agentIssueRef, wf workflowMode) string {
 	case workflowRemoteBranchOnly:
 		return "the remote branch is pushed"
 	default:
-		return workflowLandingPhrase(ref, workflowDirectToMain)
+		return workflowLandingPhrase(agentIssueRef{}, workflowDirectToMain)
 	}
 }

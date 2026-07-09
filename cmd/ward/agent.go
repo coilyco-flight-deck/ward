@@ -164,25 +164,25 @@ func headlessReflection(ref agentIssueRef, wf workflowMode, reviewGate bool, rev
 
 // reviewGateClause wires the pre-landing adversarial review panel into a headless
 // seed (ward#134): run `ward agent review` before landing. docs/dispatch-review.md.
-func reviewGateClause(ref agentIssueRef, wf workflowMode) string {
+func reviewGateClause(_ agentIssueRef, wf workflowMode) string {
 	landing := "open the pull request"
-	switch wf.orDefault() {
-	case workflowDirectToMain:
+	switch string(canonicalWorkflow(wf.orDefault())) {
+	case string(workflowDirectToMain):
 		landing = "merge to `main`"
-	case workflowPullRequestAndMerge:
+	case string(workflowPullRequestAndMerge):
 		landing = "merge the pull request"
-	case workflowRemoteBranchOnly:
+	case string(workflowRemoteBranchOnly):
 		landing = "push the remote branch"
 	}
 	var workflowTail string
-	switch wf.orDefault() {
-	case workflowDirectToMain:
+	switch string(canonicalWorkflow(wf.orDefault())) {
+	case string(workflowDirectToMain):
 		workflowTail = "For `direct-to-main` workflows, landing means merging to `main`. Do not stop before the merge lands."
-	case workflowPullRequest:
+	case string(workflowPullRequest):
 		workflowTail = "For `pull-request` workflows, opening the pull request is not a stopping point. Keep watching the PR checks after it opens. A failing check is not done: fetch the logs/status, patch the branch, push the update, and repeat until the PR is green or the failure is genuinely blocked."
-	case workflowPullRequestAndMerge:
+	case string(workflowPullRequestAndMerge):
 		workflowTail = "For `pull-request-and-merge` workflows, opening the pull request is not a stopping point. Keep watching the PR checks and merge status after it opens. A failing check is not done: fetch the logs/status, patch the branch, push the update, and repeat until the PR is green and merged or the failure is genuinely blocked."
-	case workflowRemoteBranchOnly:
+	case string(workflowRemoteBranchOnly):
 		workflowTail = "For `remote-branch-only` workflows, the remote branch push is the finish line. Do not open a pull request and do not merge."
 	default:
 		workflowTail = "For `pull-request` workflows, opening the pull request is not a stopping point. Keep watching the PR checks after it opens. A failing check is not done: fetch the logs/status, patch the branch, push the update, and repeat until the PR is green or the failure is genuinely blocked."
