@@ -93,10 +93,11 @@ This first slice is deliberately minimal:
 - `patch-only` is enforced at the **prompt + reaper** layer, not the credential
   layer: the container still carries a push-capable token. Hard credential scoping
   (a read-only token) is the deferred "read-only credential hardening".
-- A `pr`/`patch-only` run's residual local commits are preserved on a salvage
-  branch by the reaper. When Forgejo PRs are available, the reaper also opens a
-  recovery PR for the salvage branch and links it from the salvage comment. That
-  recovery PR is separate from the worker's own `pr`/`pull-requests` PR.
+- A `pr` run's residual local commits are preserved on a salvage branch by the
+  reaper. When Forgejo PRs are available, the reaper also opens a recovery PR
+  for the salvage branch and links it from the salvage comment. That recovery
+  PR is separate from the worker's own `pr`/`pull-requests` PR. `patch-only`
+  follows the same salvage path, but it has no worker PR of its own.
 - `pr` and `pull-requests-and-merge` runs keep watching PR CI/checks after the PR
   opens, so `WARD-OUTCOME: done` only follows green checks or a genuine block.
 - The autonomous [pre-flight](agent-preflight.md) still reads in merge-to-main
