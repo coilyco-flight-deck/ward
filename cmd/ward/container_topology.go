@@ -67,7 +67,6 @@ func currentContainerTopologyWithError() (containerTopology, error) {
 		return containerTopologyCache.topo, containerTopologyCache.err
 	}
 
-	topo := containerTopologyDefaults
 	src := coreRuntimeConfigSource()
 	topo, err := loadContainerTopologyFrom(src)
 	containerTopologyCache.initialized = true
