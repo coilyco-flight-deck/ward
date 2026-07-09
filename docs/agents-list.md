@@ -3,10 +3,10 @@ doc_goal: Make a consumer understand ward agents list --json as the one blessed 
 ---
 # `ward agents list` - the fleet roster read surface
 
-`ward agents list` dumps ward's embedded fleet roster - the agent names and their
-launch manifest - straight from `fleetconfig.Fleet`, the same parse
-`cmd/ward/fleet.go` embeds (`fleetassets/fleet.generated.kdl`). The roster the
-binary launches and the roster it reports are one source, so they cannot drift
+`ward agents list` dumps ward's effective fleet roster - the built-in frontier
+launch shapes plus the sparse bundle overrides - straight from `fleetconfig.Fleet`,
+the same parse `cmd/ward/fleet.go` embeds (`fleetassets/fleet.generated.kdl`).
+The roster the binary launches and the roster it reports are one source, so they cannot drift
 ([aos#310](https://github.com/coilysiren/agentic-os/issues/310) §6, [ward#417](https://forgejo.coilysiren.me/coilyco-flight-deck/ward/issues/417)).
 
 ## Why it exists
