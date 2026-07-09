@@ -5,8 +5,8 @@ import (
 	"path/filepath"
 	"strings"
 
-	"github.com/coilyco-flight-deck/ward/internal/agents/ollamaprobe"
 	"github.com/coilyco-flight-deck/ward/internal/agentsapi"
+	"github.com/coilyco-flight-deck/ward/internal/launchgate/ollamaprobe"
 )
 
 // defaultGooseOllamaHost is goose's built-in Ollama endpoint, used when no tower

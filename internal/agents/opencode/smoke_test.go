@@ -8,8 +8,8 @@ import (
 	"strings"
 	"testing"
 
-	"github.com/coilyco-flight-deck/ward/internal/agents/modelconfig"
 	"github.com/coilyco-flight-deck/ward/internal/agentsapi"
+	"github.com/coilyco-flight-deck/ward/internal/launchgate/modelconfig"
 )
 
 // TestPreLaunchCheckReachable proves opencode gates on rc.OllamaURL: a headless

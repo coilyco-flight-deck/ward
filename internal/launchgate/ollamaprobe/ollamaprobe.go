@@ -18,8 +18,8 @@ import (
 	"strings"
 	"time"
 
-	"github.com/coilyco-flight-deck/ward/internal/agents/modelconfig"
 	"github.com/coilyco-flight-deck/ward/internal/agentsapi"
+	"github.com/coilyco-flight-deck/ward/internal/launchgate/modelconfig"
 )
 
 const (
