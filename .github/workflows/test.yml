@@ -14,7 +14,8 @@ on:
 jobs:
   test:
     runs-on: ubuntu-latest
-    container: forgejo.coilysiren.me/coilyco-flight-deck/agentic-os:v0.195.0
+    container:
+      image: forgejo.coilysiren.me/coilyco-flight-deck/agentic-os:latest
     steps:
       - uses: actions/checkout@v6
 
