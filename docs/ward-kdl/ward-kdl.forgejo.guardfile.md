@@ -748,6 +748,29 @@ Options (3):
 - `--attachment` (file, optional): attachment to upload (this parameter is incompatible with `external_url`)
 - `--external_url` (string, optional): url to external asset (this parameter is incompatible with `attachment`)
 
+## ward-kdl ops forgejo pr merge - merge a pull request (POST /repos/{owner}/{repo}/pulls/{index}/merge). Controlled director authority: ward-owned runs may land only when the issue thread says workflow: pull-requests-and-merge, the final WARD-OUTCOME is done, and the review summary passed.
+
+`POST /repos/{owner}/{repo}/pulls/{index}/merge`
+
+Authorized by grant: can merge pr. Not destructive.
+
+Positional arguments (3):
+
+- `<owner>` (string)
+- `<repo>` (string)
+- `<index>` (string)
+
+Options (8):
+
+- `--Do` (string, required)
+- `--MergeCommitID` (string, optional)
+- `--MergeMessageField` (string, optional)
+- `--MergeTitleField` (string, optional)
+- `--delete_branch_after_merge` (boolean, optional)
+- `--force_merge` (boolean, optional)
+- `--head_commit_id` (string, optional)
+- `--merge_when_checks_succeed` (boolean, optional)
+
 ## ward-kdl ops forgejo issue-label list
 
 `GET /repos/{owner}/{repo}/issues/{index}/labels`

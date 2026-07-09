@@ -67,7 +67,7 @@ func TestSmartDefaultsBundleRef(t *testing.T) {
 		t.Errorf("bundle workflow default = %q, want direct-main", defs.agentWorkflowDefault)
 	}
 	if defs.agentWorkflowRepos["coilyco-flight-deck/ward"] != workflowPR {
-		t.Errorf("bundle ward workflow = %q, want pull-requests", defs.agentWorkflowRepos["coilyco-flight-deck/ward"])
+		t.Errorf("bundle ward workflow = %q, want pr", defs.agentWorkflowRepos["coilyco-flight-deck/ward"])
 	}
 }
 

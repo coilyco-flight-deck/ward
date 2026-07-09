@@ -1,7 +1,7 @@
 package main
 
-// agent_workflow.go carries the workflow-mode axis (ward#508): direct-main,
-// pull-requests, pull-requests-and-merge, or patch-only.
+// agent_workflow.go carries the workflow-mode axis (ward#508): a run's landing
+// policy - direct-main, pr/pull-requests, pull-requests-and-merge, or patch-only.
 
 import (
 	"fmt"
@@ -10,8 +10,8 @@ import (
 	"github.com/urfave/cli/v3"
 )
 
-// workflowMode is the landing policy for a run. The zero value reads as
-// pull-requests, so plans built without --workflow follow the safe gate.
+// workflowMode is the landing policy for a run. The zero value reads as the
+// default (`pr`), so plans built without --workflow follow the safe gate.
 type workflowMode string
 
 const (
@@ -20,10 +20,14 @@ const (
 	workflowDirectMain workflowMode = "direct-main"
 	// workflowPR carries the work to a branch + pull request instead of landing on
 	// main directly; a human (or a follow-up loop) is the merge gate.
-	workflowPR workflowMode = "pull-requests"
-	// workflowPRAndMerge carries the work to a branch + pull request, then lets the
-	// director merge that PR later when policy says it is eligible.
-	workflowPRAndMerge workflowMode = "pull-requests-and-merge"
+	workflowPR workflowMode = "pr"
+	// workflowPullRequests is the long-form alias of workflowPR.
+	workflowPullRequests workflowMode = "pull-requests"
+	// workflowPullRequestsAndMerge is the explicit director-authorized PR lane.
+	workflowPullRequestsAndMerge workflowMode = "pull-requests-and-merge"
+	// workflowPRAndMerge is the compatibility alias used by the narrow director
+	// sweep and older call sites.
+	workflowPRAndMerge workflowMode = workflowPullRequestsAndMerge
 	// workflowPatchOnly produces a patch/diff and reports it in a comment with NO
 	// landing authority: it neither pushes main nor opens a PR (untrusted targets).
 	workflowPatchOnly workflowMode = "patch-only"
@@ -52,7 +56,8 @@ func (w workflowMode) landsOnMain() bool {
 // usage and error text, mirroring agentHarnessChoices.
 func workflowChoices() string {
 	return strings.Join([]string{
-		string(workflowDirectMain), string(workflowPR), string(workflowPRAndMerge), string(workflowPatchOnly),
+		string(workflowDirectMain), string(workflowPR), string(workflowPullRequests),
+		string(workflowPullRequestsAndMerge), string(workflowPatchOnly),
 	}, "|")
 }
 
@@ -66,25 +71,25 @@ func parseWorkflow(s string) (workflowMode, error) {
 		return workflowDirectMain, nil
 	case string(workflowPR):
 		return workflowPR, nil
-	case string(workflowPRAndMerge):
-		return workflowPRAndMerge, nil
+	case string(workflowPullRequests):
+		return workflowPullRequests, nil
+	case string(workflowPullRequestsAndMerge):
+		return workflowPullRequestsAndMerge, nil
 	case string(workflowPatchOnly):
 		return workflowPatchOnly, nil
-	case "pr":
-		return workflowPR, nil
 	default:
 		return "", fmt.Errorf("invalid --workflow %q: want %s", s, workflowChoices())
 	}
 }
 
 // workflowFlag is the visible --workflow selector shared by the detached engineer
-// surfaces (a bare ref, `engineer`, freeform). Defaults to the safe pull-requests gate.
+// surfaces (a bare ref, `engineer`, freeform). Defaults to the safe pr gate.
 func workflowFlag() cli.Flag {
 	return &cli.StringFlag{
 		Name:  "workflow",
 		Value: string(defaultWorkflow),
-		Usage: "landing policy for the run: " + workflowChoices() + " (default pull-requests unless smart defaults override). " +
-			"direct-main merges to main; pull-requests opens a pull request; pull-requests-and-merge opens a pull request the director may later merge; patch-only reports a patch and lands nothing. `pr` remains a compatibility alias for pull-requests.",
+		Usage: "landing policy for the run: " + workflowChoices() + " (default pr unless smart defaults override). " +
+			"direct-main merges to main; pr/pull-requests open a pull request; pull-requests-and-merge opens a pull request and marks it director-merge eligible; patch-only reports a patch and lands nothing.",
 	}
 }
 
@@ -110,9 +115,11 @@ func workflowCarryClause(ref agentIssueRef, wf workflowMode) string {
 	case workflowDirectMain:
 		return forgeCarryClause(ref)
 	case workflowPR:
-		return prWorkflowCarryClause(ref, false)
-	case workflowPRAndMerge:
-		return prWorkflowCarryClause(ref, true)
+		return prWorkflowCarryClause(ref)
+	case workflowPullRequests:
+		return prWorkflowCarryClause(ref)
+	case workflowPullRequestsAndMerge:
+		return prWorkflowAndMergeCarryClause(ref)
 	case workflowPatchOnly:
 		return patchOnlyCarryClause(ref)
 	default:
@@ -122,24 +129,31 @@ func workflowCarryClause(ref agentIssueRef, wf workflowMode) string {
 
 // prWorkflowCarryClause tells the agent to land via a pull request, never a direct
 // main push - already the GitHub default, an override of Forgejo's merge fast path.
-func prWorkflowCarryClause(ref agentIssueRef, directorMerge bool) string {
-	extra := ""
-	if directorMerge {
-		extra = fmt.Sprintf(
-			" Include a `ward.workflow: %s` marker in the pull request body so the director "+
-				"can later merge it once the policy boundary is satisfied.",
-			workflowPRAndMerge)
-	}
+func prWorkflowCarryClause(ref agentIssueRef) string {
 	if ref.Forge == forgeGitHub {
 		// GitHub's forge clause is already branch + PR (main is protected), so reuse it.
-		return forgeCarryClause(ref) + extra
+		return forgeCarryClause(ref)
 	}
 	return fmt.Sprintf(
 		"implement on a feature branch, commit, push the branch to origin, and open a pull request "+
 			"against `main` whose body carries `closes #%d`. Do NOT push to `main` directly or merge it "+
-			"yourself - in the `pull-requests` workflow the pull request IS the merge gate, landed by a human or a "+
-			"follow-up loop, not by you.%s",
-		ref.Number, extra)
+			"yourself - in the `pr` workflow the pull request IS the merge gate, landed by a human or a "+
+			"follow-up loop, not by you.",
+		ref.Number)
+}
+
+// prWorkflowAndMergeCarryClause tells the agent to open a PR that a director may
+// merge later once the issue thread says the work is done and reviewed.
+func prWorkflowAndMergeCarryClause(ref agentIssueRef) string {
+	if ref.Forge == forgeGitHub {
+		return forgeCarryClause(ref)
+	}
+	return fmt.Sprintf(
+		"implement on a feature branch, commit, push the branch to origin, and open a pull request "+
+			"against `main` whose body carries `closes #%d`. This run is director-merge authorized: "+
+			"the worker still opens the pull request, but a director may merge it once the issue thread "+
+			"says the work is done, the review gate passed, and no salvage or draft state remains.",
+		ref.Number)
 }
 
 // patchOnlyCarryClause tells the agent it has no landing authority: commit locally,
@@ -165,7 +179,9 @@ func workflowLandingPhrase(ref agentIssueRef, wf workflowMode) string {
 		return "the work is committed, merged to main, and pushed"
 	case workflowPR:
 		return "the branch is pushed and the pull request opened"
-	case workflowPRAndMerge:
+	case workflowPullRequests:
+		return "the branch is pushed and the pull request opened"
+	case workflowPullRequestsAndMerge:
 		return "the branch is pushed and the pull request opened"
 	case workflowPatchOnly:
 		return "the patch is produced and posted as a comment"

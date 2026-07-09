@@ -140,6 +140,9 @@ func TestReviewGateClauseInSeed(t *testing.T) {
 	if !strings.Contains(direct, "review summary") {
 		t.Errorf("headless seed must tell the worker to include the review summary")
 	}
+	if !strings.Contains(direct, "workflow: <mode>; review summary: <summary or skip state>") {
+		t.Errorf("headless seed must tell the worker to include the workflow marker")
+	}
 	if !strings.Contains(off, "intentionally skipped") {
 		t.Errorf("skipped review must be explicit in the final comment instructions")
 	}

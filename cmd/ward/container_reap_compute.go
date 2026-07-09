@@ -38,7 +38,7 @@ const (
 	reasonAuthFail reapReason = "push to main was rejected on auth (dead or rotated PAT)"
 	// reasonWorkflowHold: non-direct-main workflows do not land on main.
 	// The reaper preserves the work on a branch instead (ward#508).
-	reasonWorkflowHold reapReason = "run workflow does not land on main (--workflow pull-requests/pull-requests-and-merge/patch-only)"
+	reasonWorkflowHold reapReason = "run workflow does not land on main (--workflow pr/pull-requests/pull-requests-and-merge/patch-only)"
 )
 
 // authFailureMarkers are substrings git/forgejo emit when a push is rejected on

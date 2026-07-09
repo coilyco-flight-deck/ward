@@ -36,8 +36,9 @@ Only the **headless** lane auto-dispatches; interactive/consult surface. The mer
 
 ## The WARD-OUTCOME marker
 
-A detached engineer leads its retrospective with a `WARD-OUTCOME:` line; the loop reads only
-that line, and a no-marker exit is parked `failed`.
+Engineer retrospectives lead with `WARD-OUTCOME:`; a no-marker exit is parked `failed`.
+
+See [agent-director-merge.md](agent-director-merge.md).
 
 ## Scope, ledger, trust
 
