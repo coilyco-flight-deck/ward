@@ -137,10 +137,9 @@ out of bounds the same way touching another repo is.
 repo) is also on the substrate manifest, you'll find it under **both**
 `/workspace/<name>` and `/substrate/<name>` - two working copies hydrated from
 the one shared gitcache mirror, so they start at the **same HEAD**. This is not a
-conflict to resolve; it is the expected overlap. For ward-targeted runs, the
-target repo itself is the work surface and source of truth for ward docs, so the
-default substrate set does not need a separate `/substrate/ward`. The rule that
-picks between trees is simple:
+conflict to resolve; it is the expected overlap. The image-tier substrate seed
+is owned in aos, and ward-targeted runs read ward itself from `/workspace/ward`
+when it is the target. The rule that picks between trees is simple:
 
 - `/workspace/<name>` is **authoritative for work** - edits, commits, the feature
   branch, the push all happen here.

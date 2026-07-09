@@ -26,12 +26,11 @@ New to ward? Read [architecture.md](architecture.md) first - it frames the whole
 
 - [exec-verb.md](exec-verb.md) - `ward exec <verb>`: run a repo dev verb through the gate.
 - [gate-demo.md](gate-demo.md) - what the gate refuses: the clean-tree + argv-metacharacter denial demo.
-- [demo.md](demo.md) - the launch demo: one happy path plus three danger classes, driven live against `examples/toy/` by [`../examples/demo.sh`](../examples/demo.sh).
+- [demo.md](demo.md) - the launch demo: one happy path plus two danger classes, driven live against `examples/toy/` by [`../examples/demo.sh`](../examples/demo.sh).
 - [workflow-mirror.md](workflow-mirror.md) - the Forgejo/GitHub `test` workflow mirror and drift checker.
 - [verb-fallback.md](verb-fallback.md) - unknown-verb rewrite to `ward exec` + the build/test/install triple.
 - [git-verbs.md](git-verbs.md) - `ward git`: audited, concurrency-safe git surface.
 - [git-clone.md](git-clone.md) - `ward git clone`, destination-gated.
-- [hook.md](hook.md) - `ward hook`, the Claude Code hook entry points.
 
 ## `ward agent` (headless harness runner)
 
@@ -79,7 +78,7 @@ New to ward? Read [architecture.md](architecture.md) first - it frames the whole
 ## Agent harnesses (drivers)
 
 - [agent-drivers.md](agent-drivers.md) - the four harnesses (`--harness`) compared (first-run facts side by side).
-- [enforcement-boundary.md](enforcement-boundary.md) - where the enforcement boundary sits per harness (claude hook vs container-edge verb gate).
+- [enforcement-boundary.md](enforcement-boundary.md) - where the enforcement boundary sits per harness (container-edge verb gate).
 - [agent-local-harnesses.md](agent-local-harnesses.md) - index of the local harness pages.
 - [agent-local-model.md](agent-local-model.md) - bring your own Ollama: defaults, the supported route, and the current limitation ([#395](https://forgejo.coilysiren.me/coilyco-flight-deck/ward/issues/395)).
 - [agent-claude.md](agent-claude.md) - the `claude` full cloud harness.
@@ -134,7 +133,7 @@ New to ward? Read [architecture.md](architecture.md) first - it frames the whole
 ## Examples
 
 - [example-repo.md](example-repo.md) - the `examples/toy/` minimal ward-managed repo (Makefile + `.ward/ward.yaml` with a `security:` block + a ward-kdl guardfile), the demo and spec-bundle anchor.
-- [demo.md](demo.md) - the runnable launch demo ([`../examples/demo.sh`](../examples/demo.sh)) driven against `examples/toy/`: one happy path, three danger classes.
+- [demo.md](demo.md) - the runnable launch demo ([`../examples/demo.sh`](../examples/demo.sh)) driven against `examples/toy/`: one happy path, two danger classes.
 
 ## Release
 

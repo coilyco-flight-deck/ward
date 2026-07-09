@@ -55,4 +55,3 @@ See `cmd/ward/agent_gate.go`.
 
 - [docs/agent-surface.md](agent-surface.md) - the read-only surface the gate fronts.
 - [docs/agent-preflight.md](agent-preflight.md) - the detached GO/NO-GO pre-flight.
-- [docs/hook.md](hook.md) - the path-canonicalization used by the binary-path hook.

@@ -105,9 +105,6 @@ func renderScratchGate(w io.Writer, s scratchGateStatus) {
 	// fresh clone (ward#580), so the host cannot name it here before launch.
 	b.WriteString("  context:  catalog.dependsOn resolved in-container (read-only)\n")
 	b.WriteString("────────────────────────────────────────────────────\n")
-	if s.behind {
-		writef(&b, "host ward %s is behind the latest release %s.\n", s.current, s.latest)
-	}
 	b.WriteString("Press Enter to launch.\n")
 	_, _ = io.WriteString(w, b.String())
 }
@@ -121,17 +118,11 @@ func readScratchGateChoice(r io.Reader) gateChoice {
 
 // runScratchGate renders the status block and waits for the operator's go before
 // the launch (ward#366).
-func (r *Runner) runScratchGate(ctx context.Context, plan upPlan, readOnly bool) {
-	latest, behind := r.wardOutdated(ctx)
+func (r *Runner) runScratchGate(_ context.Context, plan upPlan, readOnly bool) {
 	if !gateTerminalAttached() {
-		// Headless/piped: no terminal to gate to. Keep the stale-ward heads-up
-		// (ward#143) and fall straight through to the launch.
-		if behind {
-			writef(r.gateErr(), "%s", wardOutdatedNotice(Version, latest))
-		}
 		return
 	}
-	renderScratchGate(r.gateErr(), newScratchGateStatus(plan, readOnly, behind, Version, latest))
+	renderScratchGate(r.gateErr(), newScratchGateStatus(plan, readOnly, false, Version, Version))
 	_ = readScratchGateChoice(r.gateIn())
 }
 

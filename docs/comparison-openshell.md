@@ -70,12 +70,8 @@ the generated CLI, and the audit row proves it happened. OpenShell makes the sam
 bet from the kernel side. The shared thesis is that for an agent with real
 credentials, the part worth shipping is the part that says no.
 
-**Scope:** that claim covers the compiled verb gate, not the Claude Code
-PreToolUse hook ([docs/hook.md](hook.md)). The hook intercepts Bash calls
-host-side and emits a routing **hint**. It **fails open** - a bad config passes
-through silently - so hard denial stays Claude Code's own `permissions.deny`.
-The hook is also **claude-only**: for every harness the `ward agent` boundary is
-the container edge plus this verb gate. See
+**Scope:** that claim covers the compiled verb gate. The `ward agent` boundary
+is the container edge plus this verb gate. See
 [enforcement-boundary.md](enforcement-boundary.md).
 
 ## See also

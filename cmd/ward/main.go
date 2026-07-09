@@ -64,7 +64,6 @@ func main() {
 			execCommand(),
 			gitCommand(),
 			auditCommand(),
-			hookCommand(),
 			containerCommand(),
 			agentCommand(),
 			agentsCommand(),
