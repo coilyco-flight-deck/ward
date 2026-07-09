@@ -155,6 +155,11 @@ func directorMergeEligibility(ctx context.Context, owner, repo string, pr direct
 	} else {
 		return false, "linked issue never reached a WARD-OUTCOME comment", linked, directorRunMeta{}
 	}
+	qa, ok := latestQAVerdictComment(comments, meta.IssueRef, meta.PRRef, meta.PRHeadSHA)
+	if !ok {
+		return false, "linked issue does not have a passing WARD-QA verdict for the current PR head SHA", linked, meta
+	}
+	meta.QA = qa
 	return directorMergeDecision(pr.Issue, linked, meta)
 }
 
@@ -190,10 +195,39 @@ func directorMergeDecision(pr dispatch.Issue, linked int, meta directorRunMeta) 
 		}
 		return false, "linked issue did not finish with WARD-OUTCOME: merge-ready", linked, meta
 	}
+	wf := strings.TrimSpace(meta.Workflow)
+	if wf != string(workflowPullRequestAndMerge) {
+		if wf == "" {
+			return false, "linked issue comment did not record the merge workflow", linked, meta
+		}
+		return false, "workflow " + meta.Workflow + " still needs human merge approval", linked, meta
+	}
 	if reason, ok := directorMergeQAGate(meta); !ok {
 		return false, reason, linked, meta
 	}
 	return true, "", linked, meta
+}
+
+func directorMergeQAGate(meta directorRunMeta) (reason string, ok bool) {
+	if strings.TrimSpace(meta.QA.ReviewerFamily) != qaFamilyInternal {
+		return "linked issue QA verdict was not from the internal reviewer family", false
+	}
+	if strings.ToLower(strings.TrimSpace(meta.QA.Verdict)) != "pass" {
+		return "linked issue QA verdict did not pass", false
+	}
+	if strings.TrimSpace(meta.QA.ReviewedSHA) != strings.TrimSpace(meta.PRHeadSHA) {
+		return "linked issue QA verdict does not match the current PR head SHA", false
+	}
+	if strings.TrimSpace(meta.QA.IssueRef) != strings.TrimSpace(meta.IssueRef) {
+		return "linked issue QA verdict does not name the current issue", false
+	}
+	if strings.TrimSpace(meta.QA.PRRef) != strings.TrimSpace(meta.PRRef) {
+		return "linked issue QA verdict does not name the current PR", false
+	}
+	if strings.TrimSpace(meta.QA.RunIdentity) == "" {
+		return "linked issue QA verdict is missing run identity", false
+	}
+	return "", true
 }
 
 // recordDirectorMergeDone posts the director's final done outcome only after the

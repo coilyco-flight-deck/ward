@@ -74,7 +74,7 @@ func TestDirectorMergeDecision(t *testing.T) {
 			name: "needs-internal-family",
 			pr:   basePR,
 			meta: directorRunMeta{HasOutcome: true, Outcome: backlogOutcome{Status: "merge-ready"}, Workflow: string(workflowPullRequestAndMerge), Review: "blocked: concern"},
-			want: "review gate did not pass",
+			want: "linked issue QA verdict was not from the internal reviewer family",
 		},
 		{
 			name: "needs-ready-state",
@@ -211,7 +211,7 @@ JSON
 ;;
 "issue-comment list")
 cat <<'JSON'
-[{"body":"WARD-OUTCOME: merge-ready\n\n<details><summary>details</summary>\n\nworkflow: pull-request-and-merge; review summary: passed: all green\n\n</details>","created_at":"2026-07-09T00:00:00Z","user":{"login":"coilyco-ops"}}]
+[{"body":"WARD-OUTCOME: merge-ready\n\n<details><summary>details</summary>\n\nworkflow: pull-request-and-merge; review summary: passed: all green\n\n</details>","created_at":"2026-07-09T00:00:00Z","user":{"login":"coilyco-ops"}},{"body":` + strconv.Quote(currentQA) + `,"created_at":"2026-07-09T00:05:00Z","user":{"login":"coilyco-ops"}},{"body":` + strconv.Quote(staleQA) + `,"created_at":"2026-07-09T00:10:00Z","user":{"login":"coilyco-ops"}}]
 JSON
 ;;
 *)
@@ -250,7 +250,7 @@ esac
 	cl := &forgejoClient{r: &Runner{Runner: &shell.Runner{}}, exe: fake, baseURL: prsrv.URL, token: "secret"}
 
 	allowed, reason, linked, meta := directorMergeEligibility(context.Background(), "coilyco-flight-deck", "ward",
-		directorPullRequest{Issue: dispatch.Issue{Title: "ship the fix", Body: "closes #729\n" + directorMergeWorkflowMarker + "\n"}, Mergeable: true, MergeableKnown: true}, cl)
+		directorPullRequest{Issue: dispatch.Issue{Number: 729, Title: "ship the fix", Body: "closes #729\n" + directorMergeWorkflowMarker + "\n"}, Mergeable: true, MergeableKnown: true}, cl)
 	if !allowed || reason != "" || linked != 729 {
 		t.Fatalf("eligible PR = %v %q %d, want true/\"\"/729", allowed, reason, linked)
 	}
@@ -259,7 +259,7 @@ esac
 	}
 
 	allowed, reason, _, _ = directorMergeEligibility(context.Background(), "coilyco-flight-deck", "ward",
-		directorPullRequest{Issue: dispatch.Issue{Title: "ship the fix", Body: "closes #729\n"}, Mergeable: true, MergeableKnown: true}, cl)
+		directorPullRequest{Issue: dispatch.Issue{Number: 729, Title: "ship the fix", Body: "closes #729\n"}, Mergeable: true, MergeableKnown: true}, cl)
 	if allowed {
 		t.Fatal("unmarked PR: want deny, got allow")
 	}
@@ -298,7 +298,7 @@ esac
 	cl := &forgejoClient{r: &Runner{Runner: &shell.Runner{}}, exe: fake}
 
 	allowed, reason, linked, meta := directorMergeEligibility(context.Background(), "coilyco-flight-deck", "ward",
-		directorPullRequest{Issue: dispatch.Issue{Title: "ship the fix", Body: "closes #729\n" + directorMergeWorkflowMarker + "\n"}, Mergeable: false, MergeableKnown: true}, cl)
+		directorPullRequest{Issue: dispatch.Issue{Number: 729, Title: "ship the fix", Body: "closes #729\n" + directorMergeWorkflowMarker + "\n"}, Mergeable: false, MergeableKnown: true}, cl)
 	if allowed {
 		t.Fatal("conflicting PR: want deny, got allow")
 	}

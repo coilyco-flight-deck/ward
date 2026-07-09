@@ -196,9 +196,9 @@ func (c *forgejoClient) getIssue(ctx context.Context, owner, repo string, number
 	return &issue, nil
 }
 
-// getPullRequest reads one pull request directly from Forgejo's REST API so the
-// merge gate can see whether the current base branch still accepts it cleanly.
-func (c *forgejoClient) getPullRequest(ctx context.Context, owner, repo string, number int) (*forgejoPullRequestRaw, error) {
+// getPullRequestMergeability reads one pull request's mergeability bit directly.
+// Forgejo REST data lets the merge gate see whether the base branch still accepts it.
+func (c *forgejoClient) getPullRequestMergeability(ctx context.Context, owner, repo string, number int) (*forgejoPullRequestRaw, error) {
 	baseURL := strings.TrimRight(c.baseURL, "/")
 	if baseURL == "" {
 		baseURL = forgejoBaseURL
@@ -207,7 +207,7 @@ func (c *forgejoClient) getPullRequest(ctx context.Context, owner, repo string, 
 	client := &http.Client{Timeout: 30 * time.Second}
 	var lastErr error
 	for attempt := 1; attempt <= 3; attempt++ {
-		raw, retryable, err := c.getPullRequestOnce(ctx, client, endpoint, owner, repo, number)
+		raw, retryable, err := c.getPullRequestMergeabilityOnce(ctx, client, endpoint, owner, repo, number)
 		if err == nil {
 			return raw, nil
 		}
@@ -220,7 +220,7 @@ func (c *forgejoClient) getPullRequest(ctx context.Context, owner, repo string, 
 	return nil, lastErr
 }
 
-func (c *forgejoClient) getPullRequestOnce(ctx context.Context, client *http.Client, endpoint, owner, repo string, number int) (*forgejoPullRequestRaw, bool, error) {
+func (c *forgejoClient) getPullRequestMergeabilityOnce(ctx context.Context, client *http.Client, endpoint, owner, repo string, number int) (*forgejoPullRequestRaw, bool, error) {
 	req, err := http.NewRequestWithContext(ctx, http.MethodGet, endpoint, nil)
 	if err != nil {
 		return nil, false, err
@@ -422,6 +422,7 @@ type forgejoPullRequest struct {
 	Body    string `json:"body"`
 	State   string `json:"state"`
 	Draft   bool   `json:"draft"`
+	Mergeable bool  `json:"mergeable"`
 	HTMLURL string `json:"html_url"`
 	Head    struct {
 		SHA string `json:"sha"`
@@ -451,26 +452,46 @@ func (c *forgejoClient) getPullRequest(ctx context.Context, owner, repo string, 
 		return nil, err
 	}
 	endpoint := fmt.Sprintf("%s/api/v1/repos/%s/%s/pulls/%d", baseURL, url.PathEscape(owner), url.PathEscape(repo), index)
+	client := &http.Client{Timeout: 30 * time.Second}
+	var lastErr error
+	for attempt := 1; attempt <= 3; attempt++ {
+		pr, retryable, err := c.getPullRequestOnce(ctx, client, endpoint, owner, repo, index, token)
+		if err == nil {
+			return pr, nil
+		}
+		lastErr = err
+		if !retryable || attempt == 3 {
+			return nil, err
+		}
+		time.Sleep(time.Duration(attempt) * 50 * time.Millisecond)
+	}
+	return nil, lastErr
+}
+
+func (c *forgejoClient) getPullRequestOnce(ctx context.Context, client *http.Client, endpoint, owner, repo string, index int, token string) (*forgejoPullRequest, bool, error) {
 	req, err := http.NewRequestWithContext(ctx, http.MethodGet, endpoint, nil)
 	if err != nil {
-		return nil, err
+		return nil, false, err
 	}
 	req.Header.Set("Authorization", "token "+token)
 	req.Header.Set("Accept", "application/json")
-	resp, err := (&http.Client{Timeout: 30 * time.Second}).Do(req)
+	resp, err := client.Do(req)
 	if err != nil {
-		return nil, err
+		return nil, false, err
 	}
 	defer func() { _ = resp.Body.Close() }()
-	data, _ := io.ReadAll(io.LimitReader(resp.Body, 4096))
+	data, readErr := io.ReadAll(resp.Body)
+	if readErr != nil {
+		return nil, false, fmt.Errorf("forgejo: read pull request %s/%s#%d from %s: %w", owner, repo, index, resp.Status, readErr)
+	}
 	if resp.StatusCode < 200 || resp.StatusCode >= 300 {
-		return nil, fmt.Errorf("forgejo get PR returned %s: %s", resp.Status, firstLine(string(data)))
+		return nil, false, fmt.Errorf("forgejo get PR returned %s after %d byte(s): %s", resp.Status, len(data), firstLine(string(data)))
 	}
 	var pr forgejoPullRequest
 	if err := json.Unmarshal(data, &pr); err != nil {
-		return nil, fmt.Errorf("forgejo: parse pull request %s/%s#%d: %w", owner, repo, index, err)
+		return nil, true, fmt.Errorf("forgejo: parse pull request %s/%s#%d from %s after %d byte(s): %s: %w", owner, repo, index, resp.Status, len(data), responseSnippet(data), err)
 	}
-	return &pr, nil
+	return &pr, false, nil
 }
 
 // lockIssue is unsupported: Forgejo's API (gitea-1.22 compat) exposes no issue-lock
@@ -541,7 +562,7 @@ func (c *forgejoClient) listOpenPullRequests(ctx context.Context, owner, repo st
 				pr.Labels = append(pr.Labels, l.Name)
 			}
 		}
-		detail, err := c.getPullRequest(ctx, owner, repo, ri.Number)
+		detail, err := c.getPullRequestMergeability(ctx, owner, repo, ri.Number)
 		if err != nil {
 			pr.MergeableError = firstLine(err.Error())
 			prs = append(prs, pr)
