@@ -14,12 +14,11 @@ on:
 jobs:
   test:
     runs-on: docker
+    timeout-minutes: 10
+    container:
+      image: forgejo.coilysiren.me/coilyco-flight-deck/agentic-os:latest
     steps:
       - uses: actions/checkout@v6
-      - uses: actions/setup-go@v6
-        with:
-          go-version: stable
-          cache: true
 
       - name: go vet
         run: go vet ./...
@@ -28,6 +27,5 @@ jobs:
         run: go test ./...
 
       - name: golangci-lint
-        uses: golangci/golangci-lint-action@v9
-        with:
-          version: v2.12.2
+        timeout-minutes: 5
+        run: golangci-lint run ./...
