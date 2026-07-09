@@ -315,12 +315,12 @@ func safeRepoName(repo targetRepo) string {
 }
 
 // containerRoleName builds the role-led, prefixless container name (ward#364):
-// engineer-<driver>-<repo>-<N> for an engineer, else <role>-<driver>-<machine>.
-func containerRoleName(role string, mode containerMode, repo targetRepo, issue int, machine string) string {
+// engineer-<driver>-<repo>-<N> for an engineer, else <role>-<driver>-<suffix>.
+func containerRoleName(role string, mode containerMode, repo targetRepo, issue int, suffix string) string {
 	if role == roleEngineer {
 		return fmt.Sprintf("%s-%s-%s-%d", role, mode, safeRepoName(repo), issue)
 	}
-	return fmt.Sprintf("%s-%s-%s", role, mode, machine)
+	return fmt.Sprintf("%s-%s-%s", role, mode, suffix)
 }
 
 // mountSpec is one docker -v binding: a host path or named volume, the

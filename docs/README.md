@@ -116,7 +116,6 @@ New to ward? Read [architecture.md](architecture.md) first - it frames the whole
 - [ward-kdl-authoring.md](ward-kdl-authoring.md) - authoring guardfiles: getting the compiler, swapping the bundle.
 - [guardfile-grammar.md](guardfile-grammar.md) - the dialect-1 KDL grammar, a minimal working guardfile, where auth config lives.
 - [kdl-legibility.md](kdl-legibility.md) - the [ward#287](https://forgejo.coilysiren.me/coilyco-flight-deck/ward/issues/287) proposal to rename the quirky KDL tokens (`argv`, `$var`) to human-readable spellings.
-- [ward-kdl.brew.scoped.md](ward-kdl.brew.scoped.md) - why `ward pkg brew` scoped verbs stay gated Go.
 - [config-source.md](config-source.md) - the `WARD_CONFIG_REF` fs.FS-at-launch seam: baked neutral default vs a live-resolved bundle.
 - [config-ref-resolver.md](config-ref-resolver.md) - the `WARD_CONFIG_REF` git-ref grammar and its TTL-cached `syncGitRef` resolver.
 - [fleet-local.md](fleet-local.md) - `~/.ward/fleet.local.kdl`, the operator-local config reader.

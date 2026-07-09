@@ -26,7 +26,7 @@ ward wraps [cli-guard](https://forgejo.coilysiren.me/coilyco-flight-deck/cli-gua
 - ward verbs that bypass the cli-guard policy gate they claim to install
 - audit log entries written by ward that are unparseable, truncatable, or omittable
 - `.ward/ward.yaml` parse paths that execute shell or import host state in ways the README does not describe
-- on Linux, a descendant of a sandboxed ward verb (e.g. `ward pkg brew`) invoking a wrapped tool — by name or absolute path — without re-entering the gate. ward runs sandboxed verbs inside cli-guard's `sandbox` jail so the wrapper holds at arbitrary process depth, not just depth 0; an escape is a vulnerability. The jail is Linux-only — on macOS/Windows enforcement is depth-0 (the harness allowlist) and descendant bypass is a known limitation, not a vulnerability
+- on Linux, a descendant of a sandboxed ward verb (e.g. `ward docker exec`) invoking a wrapped tool — by name or absolute path — without re-entering the gate. ward runs sandboxed verbs inside cli-guard's `sandbox` jail so the wrapper holds at arbitrary process depth, not just depth 0; an escape is a vulnerability. The jail is Linux-only — on macOS/Windows enforcement is depth-0 (the harness allowlist) and descendant bypass is a known limitation, not a vulnerability
 
 The gate is **verb-level** - it bounds what call is expressible, not what a process can touch once running. [docs/comparison-openshell.md](docs/comparison-openshell.md) is the threat-model reference for what it does and does not defend, and why an escaped process is the container's job, not the gate's.
 

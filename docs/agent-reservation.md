@@ -182,8 +182,8 @@ version` there. When the run is detached, no human watches that log, so the cue
 that the **host** ward binary is itself behind a release is lost. To keep that
 awareness, ward does a best-effort check at the host dispatch moment: it resolves
 the latest `coilyco-flight-deck/ward` release tag and, if the host binary is
-behind it, prints a two-line stderr reminder pointing at
-[`ward upgrade`](../README.md).
+behind it, prints a two-line stderr reminder telling the operator to refresh
+the host binary before launching.
 
 The lookup routes through the in-binary [`ward ops forgejo`](ops-forgejo-in-ward.md)
 `release list` specverb, whose `--query "[0].tag_name"` projection returns
