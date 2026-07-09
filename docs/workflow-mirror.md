@@ -10,6 +10,9 @@ GitHub mirror run the same checks. The two files are kept identical except for
 - `.github/workflows/test.yml` uses `ubuntu-latest`.
 - `.forgejo/workflows/test.yml` uses `docker`.
 
+Both jobs run inside the pinned aos dev-base container and call `go vet`,
+`go test`, and `golangci-lint run ./...` directly from that image.
+
 The GitHub file is the source of truth. The Forgejo file is its mirror.
 
 ## Linting

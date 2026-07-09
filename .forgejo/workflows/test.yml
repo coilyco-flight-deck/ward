@@ -14,20 +14,18 @@ on:
 jobs:
   test:
     runs-on: docker
+    container: forgejo.coilysiren.me/coilyco-flight-deck/agentic-os:v0.195.0
     steps:
       - uses: actions/checkout@v6
-      - uses: actions/setup-go@v6
-        with:
-          go-version: stable
-          cache: true
 
       - name: go vet
+        shell: bash
         run: go vet ./...
 
       - name: go test
+        shell: bash
         run: go test ./...
 
       - name: golangci-lint
-        uses: golangci/golangci-lint-action@v9
-        with:
-          version: v2.12.2
+        shell: bash
+        run: golangci-lint run ./...
