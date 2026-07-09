@@ -512,6 +512,15 @@ func (r *Runner) maybeForwardAgentDispatchToHostBroker(ctx context.Context, c *c
 	return true, nil
 }
 
+// brokerDispatchHarness returns the harness to forward into a sibling dispatch.
+// Explicit --harness/--agent/--driver wins; otherwise inherit WARD_AGENT/WARD_MODE.
+func brokerDispatchHarness(c *cli.Command, fallback containerMode) containerMode {
+	if c.IsSet("harness") || c.IsSet("agent") || c.IsSet("driver") {
+		return fallback
+	}
+	return currentAgentMode()
+}
+
 func (r *Runner) brokerDispatchRef(ctx context.Context, arg string) (agentIssueRef, bool) {
 	ref, err := r.resolveAgentIssueRef(ctx, arg)
 	if err != nil {
@@ -521,7 +530,7 @@ func (r *Runner) brokerDispatchRef(ctx context.Context, arg string) (agentIssueR
 }
 
 func brokerEngineerArgv(c *cli.Command, mode containerMode, ref agentIssueRef) []string {
-	argv := []string{"engineer", ref.String(), "--harness", string(mode)}
+	argv := []string{"engineer", ref.String(), "--harness", string(brokerDispatchHarness(c, mode))}
 	argv = appendBrokerContainerFlags(argv, c)
 	if c.IsSet("workflow") {
 		if wf := strings.TrimSpace(c.String("workflow")); wf != "" {
@@ -547,7 +556,7 @@ func brokerEngineerArgv(c *cli.Command, mode containerMode, ref agentIssueRef) [
 }
 
 func brokerAdvisorArgv(c *cli.Command, mode containerMode, ref agentIssueRef) []string {
-	argv := []string{"advisor", ref.String(), "--harness", string(mode)}
+	argv := []string{"advisor", ref.String(), "--harness", string(brokerDispatchHarness(c, mode))}
 	if lvl := strings.TrimSpace(c.String("thoroughness")); lvl != "" {
 		argv = append(argv, "--thoroughness", lvl)
 	}

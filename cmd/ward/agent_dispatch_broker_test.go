@@ -324,6 +324,51 @@ func TestForwardAgentDispatchToHostBrokerInheritsSurfaceHarness(t *testing.T) {
 	}
 }
 
+func TestForwardAgentDispatchToHostBrokerInheritsRunningDirectorHarness(t *testing.T) {
+	// The broker should inherit the director's current harness from WARD_AGENT/WARD_MODE
+	// when the surfaced command did not explicitly override it.
+	ln, err := net.Listen("tcp", "127.0.0.1:0")
+	if err != nil {
+		t.Fatalf("listen broker: %v", err)
+	}
+	defer ln.Close()
+
+	gotReq := make(chan dispatchBrokerRequest, 1)
+	go func() {
+		conn, err := ln.Accept()
+		if err != nil {
+			return
+		}
+		defer conn.Close()
+		var req dispatchBrokerRequest
+		_ = json.NewDecoder(conn).Decode(&req)
+		gotReq <- req
+		_ = json.NewEncoder(conn).Encode(dispatchBrokerResponse{OK: true})
+	}()
+
+	t.Setenv(envDispatchBrokerAddr, ln.Addr().String())
+	t.Setenv(envDispatchBrokerToken, "nonce-789")
+	t.Setenv("WARD_READONLY", "1")
+	t.Setenv("WARD_CONTAINER_NAME", "session-codex-host")
+	t.Setenv("WARD_AGENT", "codex")
+	t.Setenv("WARD_MODE", "codex")
+	cmd := parseCommandForTest(t, agentEngineerFlags(), []string{
+		"engineer", "coilyco-flight-deck/ward#378", "--skip-preflight", "--skip-review",
+	})
+	forwarded, err := (&Runner{}).maybeForwardAgentDispatchToHostBroker(t.Context(), cmd, "engineer", modeClaude)
+	if err != nil {
+		t.Fatalf("forward dispatch: %v", err)
+	}
+	if !forwarded {
+		t.Fatal("codex director dispatch did not forward despite broker env")
+	}
+	req := <-gotReq
+	want := []string{"engineer", "coilyco-flight-deck/ward#378", "--harness", "codex", "--skip-preflight", "--skip-review"}
+	if !reflect.DeepEqual(req.Argv, want) {
+		t.Errorf("inherited-harness forwarded argv = %v, want %v", req.Argv, want)
+	}
+}
+
 func TestForwardAgentDispatchToHostBrokerAllowsRefWithoutPrompt(t *testing.T) {
 	ln, err := net.Listen("tcp", "127.0.0.1:0")
 	if err != nil {
@@ -437,6 +482,36 @@ func TestNoBrokerKeepsDirectDispatchPath(t *testing.T) {
 	}
 	if forwarded {
 		t.Fatal("direct host dispatch should not forward without broker env")
+	}
+}
+
+func TestSurfaceDispatchModeInheritsRunningDirectorHarness(t *testing.T) {
+	t.Setenv(envDispatchBrokerAddr, "127.0.0.1:12345")
+	t.Setenv("WARD_READONLY", "1")
+	t.Setenv("WARD_AGENT", "codex")
+	t.Setenv("WARD_MODE", "codex")
+	cmd := parseCommandForTest(t, agentEngineerFlags(), []string{"engineer", "coilyco-flight-deck/ward#1"})
+	got, err := surfaceDispatchMode(cmd)
+	if err != nil {
+		t.Fatalf("surfaceDispatchMode: %v", err)
+	}
+	if got != modeCodex {
+		t.Errorf("surfaceDispatchMode() = %q, want codex", got)
+	}
+}
+
+func TestSurfaceDispatchModeExplicitOverrideWins(t *testing.T) {
+	t.Setenv(envDispatchBrokerAddr, "127.0.0.1:12345")
+	t.Setenv("WARD_READONLY", "1")
+	t.Setenv("WARD_AGENT", "codex")
+	t.Setenv("WARD_MODE", "codex")
+	cmd := parseCommandForTest(t, agentEngineerFlags(), []string{"engineer", "coilyco-flight-deck/ward#1", "--harness", "claude"})
+	got, err := surfaceDispatchMode(cmd)
+	if err != nil {
+		t.Fatalf("surfaceDispatchMode: %v", err)
+	}
+	if got != modeClaude {
+		t.Errorf("surfaceDispatchMode explicit override = %q, want claude", got)
 	}
 }
 
