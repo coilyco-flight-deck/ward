@@ -594,6 +594,7 @@ func agentImageFlags() []cli.Flag {
 		&cli.StringFlag{Name: "ward-source", Hidden: true, Usage: "development-only: mount a local ward checkout and build ward from it instead of downloading the release"},
 		&cli.StringFlag{Name: "ward-version", Hidden: true, Sources: cli.EnvVars(envAgentVersion), Usage: "ward release the container downloads (default: this host's ward; env: WARD_AGENT_VERSION)"},
 		&cli.BoolFlag{Name: "allow-ward-downgrade", Hidden: true, Usage: "permit a --ward-version pin older than this host's ward (ships an older in-container reaper; ward#529)"},
+		&cli.BoolFlag{Name: "go-bootstrap", Hidden: true, Usage: "experimental: stage a Go-built ward bootstrap binary into the container assets so the entrypoint can skip its release/source install path"},
 		&cli.BoolFlag{Name: "aws", Hidden: true, Usage: "deprecated (ward#578): the ~/.aws mount is now a per-role guardfile set (ward-kdl.aws.guardfile.kdl); this hidden alias force-mounts it read-only for one release"},
 	}
 	return append(flags, tailnetFlags()...)
@@ -1621,7 +1622,7 @@ func (r *Runner) launchAgentContainer(ctx context.Context, c *cli.Command, mode 
 
 	// A detached run leaves its assets for the next sweep (it cannot delete the
 	// still-mounted dir on return), so the cleanup hook is discarded.
-	assetsDir, _, err := writeContainerAssets()
+	assetsDir, _, err := writeContainerAssets(ctx, c.Bool("go-bootstrap"), c.String("ward-source"), strings.TrimSpace(c.String("ward-version")))
 	if err != nil {
 		return err
 	}
