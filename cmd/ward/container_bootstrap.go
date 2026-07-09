@@ -448,9 +448,6 @@ func (r *Runner) runContainerBootstrap(ctx context.Context, c *cli.Command) erro
 	// Creds write + onboarding seed + config compose, each feature-tested per mode
 	// (Phase 3, ward#418); composeAgentContainer holds the order.
 	composeAgentContainer(agent, rc)
-	if herr := r.hydrateMcporter(ctx, e.AgentHome); herr != nil {
-		blog("mcporter hydration warning: %v", herr)
-	}
 	blog("bootstrap agent container composition done")
 
 	_ = os.Setenv("WARD_REAP_WORK", work)
