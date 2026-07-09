@@ -73,11 +73,11 @@ func (r *Runner) runDirectorMerge(ctx context.Context, c *cli.Command) error {
 			ok, reason, linked, meta := directorMergeEligibility(ctx, owner, name, pr, cl)
 			if !ok {
 				skipped++
-				fmt.Fprintf(r.Runner.Stderr, "%s: skipping %s/%s#%d: %s\n", label, owner, name, pr.Number, reason)
+				_, _ = fmt.Fprintf(r.Runner.Stderr, "%s: skipping %s/%s#%d: %s\n", label, owner, name, pr.Number, reason)
 				continue
 			}
 			if preview {
-				fmt.Fprintf(r.Runner.Stderr, "%s: would merge %s/%s#%d (issue #%d, workflow %s, review %q)\n",
+				_, _ = fmt.Fprintf(r.Runner.Stderr, "%s: would merge %s/%s#%d (issue #%d, workflow %s, review %q)\n",
 					label, owner, name, pr.Number, linked, meta.Workflow, meta.Review)
 				continue
 			}
@@ -85,10 +85,10 @@ func (r *Runner) runDirectorMerge(ctx context.Context, c *cli.Command) error {
 				return fmt.Errorf("%s: merge %s/%s#%d: %w", label, owner, name, pr.Number, err)
 			}
 			merged++
-			fmt.Fprintf(r.Runner.Stderr, "%s: merged %s/%s#%d (issue #%d)\n", label, owner, name, pr.Number, linked)
+			_, _ = fmt.Fprintf(r.Runner.Stderr, "%s: merged %s/%s#%d (issue #%d)\n", label, owner, name, pr.Number, linked)
 		}
 	}
-	fmt.Fprintf(r.Runner.Stdout, "%s: merged %d PR(s), skipped %d\n", label, merged, skipped)
+	_, _ = fmt.Fprintf(r.Runner.Stdout, "%s: merged %d PR(s), skipped %d\n", label, merged, skipped)
 	return nil
 }
 
