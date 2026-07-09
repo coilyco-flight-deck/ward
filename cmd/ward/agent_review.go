@@ -69,6 +69,23 @@ func writeReviewSummaryHandoff(res reviewpanel.PanelResult) error {
 	return os.WriteFile(path, []byte(reviewSummary(res)+"\n"), 0o600) //nolint:gosec // per-run handoff file in ~/.ward
 }
 
+// failClosedNoReviewerResult converts the no-runnable-reviewer advisory fallback
+// into the blocked wording every downstream surface should inherit.
+func failClosedNoReviewerResult(res reviewpanel.PanelResult) reviewpanel.PanelResult {
+	if res.Gate != reviewpanel.GateAdvisory {
+		return res
+	}
+	res.Gate = reviewpanel.GateBlock
+	if note := strings.TrimSpace(res.Note); note != "" {
+		note = strings.TrimPrefix(note, "ADVISORY-ONLY REVIEW: ")
+		note = strings.ReplaceAll(note, " and did NOT gate this diff.", " and the gate blocked fail-closed.")
+		res.Note = strings.TrimSpace(note)
+		return res
+	}
+	res.Note = "no reviewer family was available; the gate blocked fail-closed"
+	return res
+}
+
 // reviewConclusionCommentBody renders the issue comment body that records the
 // review conclusion for every gate outcome.
 func reviewConclusionCommentBody(res reviewpanel.PanelResult) string {
@@ -232,12 +249,7 @@ func (r *Runner) runAgentReview(ctx context.Context, c *cli.Command) error {
 	}
 	result := deps.Execute(cfg)
 
-	if result.Gate == reviewpanel.GateAdvisory {
-		result.Gate = reviewpanel.GateBlock
-		if result.Note == "" {
-			result.Note = "review had no runnable reviewer; blocking fail-closed"
-		}
-	}
+	result = failClosedNoReviewerResult(result)
 	if werr := writeReviewSummaryHandoff(result); werr != nil {
 		if path, perr := reviewSummaryPath(); perr == nil {
 			writef(r.Runner.Stderr, "ward agent review: WARNING: could not write review summary handoff %s: %v\n", path, werr)
