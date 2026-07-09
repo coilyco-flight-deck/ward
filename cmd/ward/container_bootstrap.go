@@ -88,6 +88,8 @@ type bootstrapEnv struct {
 
 const runProvenanceFile = ".ward-run-provenance.json"
 
+var workspaceRoot = "/workspace"
+
 // runProvenance records the dispatch-time identity and remote baseline so the
 // reaper can prove later success came from this run, not stale history.
 type runProvenance struct {
@@ -810,7 +812,7 @@ func (r *Runner) cloneTarget(ctx context.Context, e bootstrapEnv) (string, error
 			return "", fmt.Errorf("ward container bootstrap: mirror clone failed: %w", cerr)
 		}
 	}
-	work := "/workspace/" + e.TargetName
+	work := filepath.Join(workspaceRoot, e.TargetName)
 	_ = os.RemoveAll(work)
 	blog("clone start: working clone %s -> %s", mirror, work)
 	if cerr := r.Runner.Exec(ctx, "git", "clone", mirror, work); cerr != nil {
@@ -818,9 +820,7 @@ func (r *Runner) cloneTarget(ctx context.Context, e bootstrapEnv) (string, error
 	}
 	_ = r.Runner.Exec(ctx, "git", "-C", work, "remote", "set-url", "origin", url)
 	_ = r.Runner.Exec(ctx, "git", "-C", work, "config", "push.default", "current")
-	if e.Branch != "" {
-		_ = r.Runner.Exec(ctx, "git", "-C", work, "checkout", "-B", e.Branch)
-	}
+	r.checkoutRunBranch(ctx, work, e.Branch, "target repo "+e.TargetOwner+"/"+e.TargetName)
 	blog("clone done: %s", work)
 	return work, nil
 }
@@ -952,7 +952,7 @@ func (r *Runner) cloneExtraRepo(ctx context.Context, e bootstrapEnv, repo target
 		}
 		return
 	}
-	work := "/workspace/" + repo.Name
+	work := filepath.Join(workspaceRoot, repo.Name)
 	_ = os.RemoveAll(work)
 	if cerr := r.Runner.Exec(ctx, "git", "clone", mirror, work); cerr != nil {
 		blog("extra-repo: working clone failed %s/%s", repo.Owner, repo.Name)
@@ -969,12 +969,26 @@ func (r *Runner) cloneExtraRepo(ctx context.Context, e bootstrapEnv, repo target
 	}
 	// A writable grant (incl. a whole-run read-only surface's --repo) keeps its
 	// feature branch + pre-commit gate; installReadOnlyPushGuard fires iff e.ReadOnly.
-	if e.Branch != "" {
-		_ = r.Runner.Exec(ctx, "git", "-C", work, "checkout", "-B", e.Branch)
-	}
+	r.checkoutRunBranch(ctx, work, e.Branch, "extra repo "+repo.Owner+"/"+repo.Name)
 	r.installPreCommitHooks(ctx, e, work)
 	r.installReadOnlyPushGuard(ctx, e, work)
 	blog("extra-repo: ready %s/%s at %s", repo.Owner, repo.Name, work)
+}
+
+// checkoutRunBranch resumes the run branch from origin/<branch> when the refreshed
+// clone already has it, otherwise it preserves the existing create-from-base behavior.
+func (r *Runner) checkoutRunBranch(ctx context.Context, work, branch, scope string) {
+	if branch == "" {
+		return
+	}
+	remoteRef := "refs/remotes/origin/" + branch
+	if r.execIn(ctx, work, "git", "show-ref", "--verify", "--quiet", remoteRef) == nil {
+		_ = r.execIn(ctx, work, "git", "checkout", "-B", branch, "origin/"+branch)
+		blog("%s: branch resume from origin/%s in %s", scope, branch, work)
+		return
+	}
+	_ = r.execIn(ctx, work, "git", "checkout", "-B", branch)
+	blog("%s: branch start from cloned base in %s (no origin/%s)", scope, work, branch)
 }
 
 // --- pre-commit parity (ward#133) --------------------------------------------
@@ -1433,14 +1447,14 @@ func (r *Runner) chownAgentTree(ctx context.Context, e bootstrapEnv, work string
 	// Hand each granted extra-repo tree to the agent user too (ward#230); they
 	// were cloned as root, like the target. Skip any that failed to clone.
 	for _, repo := range e.ExtraRepos {
-		if dest := "/workspace/" + repo.Name; isDir(dest) {
+		if dest := filepath.Join(workspaceRoot, repo.Name); isDir(dest) {
 			paths = append(paths, dest)
 		}
 	}
 	// Read-only context repos are cloned as root too (ward#573); hand them over
 	// so the agent can read them, even though it may never write.
 	for _, repo := range e.ContextRepos {
-		if dest := "/workspace/" + repo.Name; isDir(dest) {
+		if dest := filepath.Join(workspaceRoot, repo.Name); isDir(dest) {
 			paths = append(paths, dest)
 		}
 	}
