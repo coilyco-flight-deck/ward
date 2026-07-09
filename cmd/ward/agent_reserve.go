@@ -207,7 +207,7 @@ func hostname() string {
 
 // reserveIssue acquires both reservation sides before a container fires (ward#570). It
 // returns a release retracting both halves; a remote failure rolls the local hold back.
-func (r *Runner) reserveIssue(ctx context.Context, label string, mode containerMode, ref agentIssueRef, container, branch, justification string, seedCtx *reservationSeedContext, force bool) (func(), error) {
+func (r *Runner) reserveIssue(ctx context.Context, label string, mode containerMode, ref agentIssueRef, container, branch, justification string, seedCtx *reservationSeedContext, force bool, skipPreflight bool) (func(), error) {
 	now := time.Now().UTC()
 	fmt.Fprintf(os.Stderr, "%s: reservation start for %s (container=%s branch=%s force=%t)\n", label, ref, container, branch, force)
 	releaseLocal, err := r.acquireLocalReservation(ctx, label, mode, ref, container, branch, now, force)
@@ -215,7 +215,7 @@ func (r *Runner) reserveIssue(ctx context.Context, label string, mode containerM
 		fmt.Fprintf(os.Stderr, "%s: reservation local acquire failed for %s: %v\n", label, ref, err)
 		return nil, err
 	}
-	releaseRemote, err := r.acquireRemoteReservation(ctx, label, mode, ref, container, justification, seedCtx, now, force)
+	releaseRemote, err := r.acquireRemoteReservation(ctx, label, mode, ref, container, justification, seedCtx, now, force, skipPreflight)
 	if err != nil {
 		fmt.Fprintf(os.Stderr, "%s: reservation remote acquire failed for %s: %v\n", label, ref, err)
 		releaseLocal()
@@ -337,7 +337,7 @@ const reservationWarnToken = "remote reservation NOT posted"
 
 // acquireRemoteReservation refuses on a fresh reservation comment (unless force), else
 // posts one and returns a remote-release to roll it back (ward#402/#570, docs).
-func (r *Runner) acquireRemoteReservation(ctx context.Context, label string, mode containerMode, ref agentIssueRef, container, justification string, seedCtx *reservationSeedContext, now time.Time, force bool) (func(), error) {
+func (r *Runner) acquireRemoteReservation(ctx context.Context, label string, mode containerMode, ref agentIssueRef, container, justification string, seedCtx *reservationSeedContext, now time.Time, force bool, skipPreflight bool) (func(), error) {
 	cl, err := r.hostForgeClient(ctx, ref.Forge, mode)
 	if err != nil {
 		warnRemoteReservationLost(label, ref, fmt.Sprintf("could not build the %s client: %v", ref.Forge, err))
@@ -368,7 +368,7 @@ func (r *Runner) acquireRemoteReservation(ctx context.Context, label string, mod
 	// Jittered double-check backstop for any path the broker per-ref lock misses
 	// (two direct host runs, or cross-host); --force skips it (ward#600, docs).
 	if !force {
-		if lost, winner := r.reservationRecheckLost(ctx, cl, label, ref, container); lost {
+		if lost, winner := r.reservationRecheckLost(ctx, cl, label, ref, container, skipPreflight); lost {
 			// Leave our comment to lapse at the TTL (a release marker would free the
 			// winner too) and refuse so only the winner proceeds (ward#600).
 			return nil, newReservationConflict(
@@ -489,7 +489,11 @@ type reservationClaim struct {
 
 // reservationRecheckLost re-reads the thread after a jittered pause; a concurrent run
 // winning the tiebreak makes this run yield. A disabled window/read error fails open.
-func (r *Runner) reservationRecheckLost(ctx context.Context, cl issueForge, label string, ref agentIssueRef, container string) (bool, string) {
+func (r *Runner) reservationRecheckLost(ctx context.Context, cl issueForge, label string, ref agentIssueRef, container string, skipPreflight bool) (bool, string) {
+	if skipPreflight {
+		fmt.Fprintf(os.Stderr, "%s: skipping reservation re-check (--skip-preflight)\n", label)
+		return false, ""
+	}
 	delay := reservationRecheckDelay()
 	if delay <= 0 {
 		return false, "" // disabled via WARD_AGENT_RESERVE_RECHECK
