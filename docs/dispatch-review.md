@@ -4,25 +4,28 @@ doc_goal: Explain the in-container code-review gate - where it runs, why the wor
 # ward agent: the code-review gate ([ward#134](https://forgejo.coilysiren.me/coilyco-flight-deck/ward/issues/134))
 
 At N concurrent [engineers](agent-engineer.md) the operator is the merge bottleneck,
-because the PR is the only review gate. The panel moves verification off the human's
-step: a worker's diff must survive a code-review pass **in the container, after green
-CI and before the PR opens**, so the operator only sees diffs the panel could not settle.
+because the PR lane needs a review gate. The panel moves verification off the
+human's step: a worker's diff must survive a review pass **in the container,
+after CI and before the PR opens or merges**, so the operator sees unresolved
+diffs.
 
-The gate is `CI green AND quorum >= threshold`, and **fails closed**: a panel error,
-timeout, or empty vote blocks the landing. The summary of that review must also
-show up in the final `WARD-OUTCOME` comment, not just in the panel log.
+The gate is `CI green AND quorum >= threshold`, and **fails closed**. A panel
+error, timeout, or empty vote blocks landing. The review summary must also show
+up in the final `WARD-OUTCOME` comment.
 
 ## Where it runs
 
-The panel is `ward agent review`, wired into the [engineer](agent-engineer.md) seed
-for every headless landing run (not `patch-only`, which lands nothing). After CI is
-green and before it opens the PR or merges, the worker runs it and reads the machine
-line on stdout - `WARD-REVIEW: pass` (land), `block` (do not land; post the verdicts
-and close `WARD-OUTCOME: blocked`), or `advisory` (only if no reviewer can run at
-all, and the host converts that to a fail-closed block). `--skip-review` drops the
-clause from the seed, `--skip-preflight` does the same because the pre-flight and
-review are the same one-shot escape hatch, and `--no-review-gate` / `--no-preflight`
-stay accepted as aliases. Config defaults use `agent.review.skip` ([agent-flags.md]).
+The panel is `ward agent review`, wired into the [engineer](agent-engineer.md)
+seed for every headless landing run that actually merges (`direct-main` and
+`pull-requests-and-merge`, not `pull-requests` or `patch-only`). After CI is green
+and before it opens the PR or merges, the worker runs it and reads the machine
+line on stdout - `WARD-REVIEW: pass` (land), `block` (do not land; post the
+verdicts and close `WARD-OUTCOME: blocked`), or `advisory` (only if no reviewer
+can run at all, and the host converts that to a fail-closed block). `--skip-review`
+drops the clause from the seed, `--skip-preflight` does the same because the
+pre-flight and review are the same one-shot escape hatch, and `--no-review-gate`
+/ `--no-preflight` stay accepted as aliases. Config defaults use
+`agent.review.skip` ([agent-flags.md]).
 
 Running **in-container** beats a separate cloud pass: the reviewers see the **live
 worktree**, so they run the exact failing test against the same filesystem state the

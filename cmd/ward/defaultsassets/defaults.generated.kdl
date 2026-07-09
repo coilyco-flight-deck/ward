@@ -11,8 +11,8 @@ smart-defaults {
     container-assets-ttl "1h"
     container-read-only-extra-repo-ttl "24h"
     container-reap-keep "10"
-    agent-workflow default=pr {
-        repo "coilyco-flight-deck/ward" workflow=pr
+    agent-workflow default=direct-main {
+        repo "coilyco-flight-deck/ward" workflow=pull-requests-and-merge
     }
  // TODO: move advisor depth budgets and container-research setup budget.
 }

@@ -115,8 +115,8 @@ func TestReviewerCandidatesDefaultToWorker(t *testing.T) {
 	}
 }
 
-// TestReviewGateClauseInSeed proves the review gate is wired into a headless
-// landing seed, skipped for patch-only, and suppressed by reviewGate=false.
+// TestReviewGateClauseInSeed proves the review gate wiring.
+// It is present for the merge lanes, skipped for pull-requests and patch-only.
 func TestReviewGateClauseInSeed(t *testing.T) {
 	ref := agentIssueRef{Owner: "coilyco-flight-deck", Repo: "ward", Number: 134}
 
@@ -126,6 +126,16 @@ func TestReviewGateClauseInSeed(t *testing.T) {
 	}
 	if !strings.Contains(direct, "merge to `main`") {
 		t.Errorf("direct-main Forgejo landing phrase missing from the gate clause")
+	}
+
+	merge := agentSeedPromptWorkflow(ref, "t", "b", "", true, nil, workflowPullRequestsAndMerge, true, "")
+	if !strings.Contains(merge, "REVIEW GATE") || !strings.Contains(merge, "merge the pull request with a merge commit") {
+		t.Errorf("pull-requests-and-merge headless seed missing the review gate clause")
+	}
+
+	pr := agentSeedPromptWorkflow(ref, "t", "b", "", true, nil, workflowPullRequests, true, "")
+	if strings.Contains(pr, "REVIEW GATE") {
+		t.Errorf("pull-requests lands at PR open; it must not carry the review gate")
 	}
 
 	patch := agentSeedPromptWorkflow(ref, "t", "b", "", true, nil, workflowPatchOnly, true, "")

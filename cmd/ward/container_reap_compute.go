@@ -36,9 +36,9 @@ const (
 	reasonPushRace reapReason = "push to main was rejected (the remote advanced)"
 	reasonPushFail reapReason = "push to main failed"
 	reasonAuthFail reapReason = "push to main was rejected on auth (dead or rotated PAT)"
-	// reasonWorkflowHold: the run's --workflow (pr/patch-only) does not land on main,
+	// reasonWorkflowHold: the run's --workflow does not take the direct-main fast path,
 	// so the reaper preserves work on a branch rather than force-pushing main (ward#508).
-	reasonWorkflowHold reapReason = "run workflow does not land on main (--workflow pr/patch-only)"
+	reasonWorkflowHold reapReason = "run workflow does not take the direct-main fast path (--workflow pull-requests|pull-requests-and-merge|patch-only)"
 )
 
 // authFailureMarkers are substrings git/forgejo emit when a push is rejected on

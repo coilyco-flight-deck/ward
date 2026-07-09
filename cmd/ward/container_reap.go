@@ -48,8 +48,8 @@ type reapEnv struct {
 	// ExtraRepos mirrors WARD_EXTRA_REPOS (ward#230): the --repo grants this run
 	// cloned writable. The reaper verifies each one landed before done (ward#291).
 	ExtraRepos []targetRepo
-	// Workflow mirrors WARD_WORKFLOW (ward#508): the run's landing policy (empty reads
-	// as direct-main). A pr/patch-only run is preserved on a branch, never pushed to main.
+	// Workflow mirrors WARD_WORKFLOW (ward#508): empty reads as direct-main.
+	// pull-requests, pull-requests-and-merge, and patch-only stay off the main-push path.
 	Workflow workflowMode
 }
 
@@ -192,12 +192,12 @@ func (r *Runner) reapTargetTree(ctx context.Context, work string, env reapEnv, r
 		return nil
 	}
 
-	// A pr/patch-only run is never force-landed on main by the reaper (ward#508): its
+	// A non-direct-main run is never force-landed on main by the reaper (ward#508): its
 	// residual work is preserved on a salvage branch, stopping before the main-push gates.
 	if !env.Workflow.landsOnMain() {
 		fmt.Fprintf(os.Stderr, "ward container reap: --workflow %s does not land on main; preserving residual work on a salvage branch instead of pushing main\n", env.Workflow.orDefault())
 		return r.salvage(ctx, work, env, reasonWorkflowHold, false, nil, statusSnapshot,
-			reapDecision{Gate: "workflow does not land on main (--workflow pr/patch-only)", ProvState: "not read (workflow hold)"})
+			reapDecision{Gate: "workflow does not take the direct-main fast path (--workflow pull-requests|pull-requests-and-merge|patch-only)", ProvState: "not read (workflow hold)"})
 	}
 
 	prov, perr := r.readRunProvenance(work)
@@ -251,11 +251,11 @@ func (r *Runner) reapEstablishMain(ctx context.Context, work string, env reapEnv
 		return nil
 	}
 
-	// A pr/patch-only run never lands on main, not even to establish it (ward#508).
+	// A non-direct-main run never lands on main, not even to establish it (ward#508).
 	if !env.Workflow.landsOnMain() {
 		fmt.Fprintf(os.Stderr, "ward container reap: --workflow %s does not land on main; preserving establish-main work on a salvage branch\n", env.Workflow.orDefault())
 		return r.salvage(ctx, work, env, reasonWorkflowHold, false, nil, statusSnapshot,
-			reapDecision{Gate: "workflow does not land on main (--workflow pr/patch-only)", ProvState: "not read (no origin/main)"})
+			reapDecision{Gate: "workflow does not take the direct-main fast path (--workflow pull-requests|pull-requests-and-merge|patch-only)", ProvState: "not read (no origin/main)"})
 	}
 
 	// Run-owned proof: the closing ref must sit in the committed history (an empty

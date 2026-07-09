@@ -157,7 +157,7 @@ func agentReviewCommand() *cli.Command {
 	return &cli.Command{
 		Name:  "review",
 		Usage: "Run the in-container code-review pass over this run's diff before it lands (ward#134).",
-		Description: `review is the pre-PR code-review gate. Run it INSIDE a dispatch container,
+		Description: `review is the pre-landing code-review gate. Run it INSIDE a dispatch container,
 after CI is green and before you open the pull request or merge: it builds the
 diff-vs-main, loads the hand-curated aos review skill, and hands the diff to the
 worker's own harness family first, with other families available as a later,
