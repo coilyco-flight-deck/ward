@@ -106,11 +106,10 @@ func (r *Runner) runAgentQA(ctx context.Context, c *cli.Command, mode containerM
 		read = `{"verdict":"blocked","summary":"QA returned no output","evidence":["The container produced an empty read."],"risks":["The inspection did not complete."],"next_steps":["Re-run QA and inspect the container logs."]}`
 	}
 
-	cl, err := r.hostForgejoClient(ctx)
+	cl, err := r.hostTrackerClient(ctx, ref.trackerOrDefault(), mode)
 	if err != nil {
 		return fmt.Errorf("%s: %w", label, err)
 	}
-	cl = cl.withMode(mode)
 	if err := cl.commentIssue(ctx, ref.Owner, ref.Repo, ref.Number, qaVerdictComment(mode, level, prompt, read)); err != nil {
 		return fmt.Errorf("%s: post QA verdict on %s: %w", label, ref, err)
 	}
@@ -176,7 +175,7 @@ func (r *Runner) captureQAResearch(ctx context.Context, c *cli.Command, mode con
 	repo := targetRepo{Owner: ref.Owner, Name: ref.Repo}
 	cwd := resolveInvokeCWD()
 
-	assetsDir, cleanupAssets, err := writeContainerAssets()
+	assetsDir, cleanupAssets, err := writeContainerAssets(ctx, c.Bool("go-bootstrap"), c.String("ward-source"), strings.TrimSpace(c.String("ward-version")))
 	if err != nil {
 		return "", fmt.Errorf("%s: %w", label, err)
 	}

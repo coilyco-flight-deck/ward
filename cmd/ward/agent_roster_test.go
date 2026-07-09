@@ -45,8 +45,8 @@ func TestAgentRosterEnumeratesEveryRole(t *testing.T) {
 	got := map[string]bool{}
 	for _, r := range rows {
 		got[r.Role] = true
-		if strings.TrimSpace(r.Tagline) == "" || strings.TrimSpace(r.Modes) == "" {
-			t.Errorf("role %q has an empty tagline or modes column", r.Role)
+		if strings.TrimSpace(r.Tagline) == "" || strings.TrimSpace(r.Capabilities) == "" || strings.TrimSpace(r.Modes) == "" {
+			t.Errorf("role %q has an empty tagline, capabilities, or modes column", r.Role)
 		}
 	}
 	for _, role := range []string{"engineer", "director", "advisor", "qa"} {
@@ -83,7 +83,7 @@ func TestAgentRosterMarkdownShape(t *testing.T) {
 		"---\ndoc_goal: ",
 		"# ward agent: the role roster",
 		"ward agent roster --markdown",
-		"- [`warded engineer`](agent-engineer.md) - Implements a ticket end to end. Modes: ",
+		"- [`warded engineer`](agent-engineer.md) - Implements a ticket end to end. Capabilities: read + engineering. Modes: ",
 	} {
 		if !strings.Contains(md, want) {
 			t.Errorf("generated roster body missing %q", want)
@@ -107,6 +107,7 @@ func TestAgentRosterDefaultPrintsRoster(t *testing.T) {
 	for _, want := range []string{
 		"the startup-role roster",
 		"warded engineer - Implements a ticket end to end.",
+		"capabilities: read + engineering",
 		"warded advisor - Answers without writing code.",
 		"warded qa - Inspects a candidate and posts a structured verdict comment.",
 		"ward agent roster", // the launch-hint footer
