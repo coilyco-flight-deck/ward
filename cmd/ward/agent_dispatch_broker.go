@@ -224,56 +224,6 @@ func writeDispatchBrokerLogsResponse(conn net.Conn, source string, err error) {
 	}
 }
 
-// runHostDispatchBrokerRequest serves one validated run in-process, redirecting its
-// deploy output to a per-dispatch log so it can't corrupt the surface TUI (ward#389).
-func (r *Runner) runHostDispatchBrokerRequest(ctx context.Context, req dispatchBrokerRequest) (string, error) {
-	if err := validateDispatchBrokerRequest(req); err != nil {
-		return "", err
-	}
-	// Stop is a targeted control action, not a launch: it resolves + docker-stops one
-	// engineer, so it takes no dispatch log, no stdio redirect, and no ref lock (ward#627).
-	if dispatchAction(req.Action) == dispatchActionStop {
-		return r.runDispatchBrokerStop(ctx, req)
-	}
-	// Serialize on the ref so two same-N dispatches can't both reserve + spin: the
-	// second waits, then its reservation check sees the first's hold (ward#600).
-	if ref, err := parseAgentIssueRef(req.Argv[1]); err == nil {
-		lock := dispatchRefLock(ref.String())
-		lock.Lock()
-		defer lock.Unlock()
-	}
-	logf, logPath, err := openDispatchLog(req, time.Now())
-	if err != nil {
-		// Fail loud rather than fall back to the TTY: a broken log dir must not
-		// silently reroute the flood back onto the corrupted surface (ward#389).
-		return "", fmt.Errorf("dispatch broker: open run log: %w", err)
-	}
-
-	_, _ = fmt.Fprintf(logf, "ward dispatch broker: %s requested `ward agent %s`\n",
-		emptyDefault(req.Requester, "unknown-container"), redactDispatchBrokerArgv(req.Argv))
-	ref := ""
-	if len(req.Argv) >= 2 {
-		ref = req.Argv[1]
-	}
-	_, _ = fmt.Fprintf(logf, "ward dispatch broker: this log captures the host wrapper only; in-container engineer console/reap logs drain separately and are readable with `ward agent logs %s`\n",
-		ref)
-	restore := redirectStdioToLog(logf)
-	defer func() {
-		restore()
-		_ = logf.Close()
-	}()
-
-	if err := withBrokerForwardingDisabled(func() error {
-		return dispatchBrokerLaunch(ctx, req)
-	}); err != nil {
-		fmt.Fprintf(os.Stderr, "ward dispatch broker: launch failed: %v\n", err)
-		r.commentFailedDispatchLaunch(ctx, req, logPath, err)
-		return logPath, err
-	}
-	fmt.Fprintf(os.Stderr, "ward dispatch broker: launch completed\n")
-	return logPath, nil
-}
-
 // startHostDispatchBrokerRequest launches the validated request in the background
 // and returns once the launch has started so the broker can ack the surface promptly.
 func (r *Runner) startHostDispatchBrokerRequest(ctx context.Context, req dispatchBrokerRequest) (string, error) {
@@ -760,27 +710,8 @@ func (r *Runner) maybeForwardAgentDispatchToHostBroker(ctx context.Context, c *c
 	if addr == "" || os.Getenv("WARD_READONLY") != "1" {
 		return false, nil
 	}
-	var argv []string
-	switch role {
-	case "engineer":
-		ref, ok := r.brokerDispatchRef(ctx, c.Args().First())
-		if !ok {
-			return false, nil
-		}
-		argv = brokerEngineerArgv(c, mode, ref)
-	case "advisor":
-		ref, ok := r.brokerDispatchRef(ctx, c.Args().First())
-		if !ok {
-			return false, nil
-		}
-		argv = brokerAdvisorArgv(c, mode, ref)
-	case "qa":
-		ref, ok := r.brokerDispatchRef(ctx, c.Args().First())
-		if !ok {
-			return false, nil
-		}
-		argv = brokerQaArgv(c, mode, ref)
-	default:
+	argv, ok := r.brokerDispatchArgvForRole(ctx, c, role, mode)
+	if !ok {
 		return false, nil
 	}
 	req := dispatchBrokerRequest{
@@ -806,6 +737,23 @@ func (r *Runner) maybeForwardAgentDispatchToHostBroker(ctx context.Context, c *c
 		fmt.Fprintf(os.Stderr, "ward dispatch broker: forwarded `ward agent %s` to host ward\n", displayArgv)
 	}
 	return true, nil
+}
+
+func (r *Runner) brokerDispatchArgvForRole(ctx context.Context, c *cli.Command, role string, mode containerMode) ([]string, bool) {
+	ref, ok := r.brokerDispatchRef(ctx, c.Args().First())
+	if !ok {
+		return nil, false
+	}
+	switch role {
+	case "engineer":
+		return brokerEngineerArgv(c, mode, ref), true
+	case "advisor":
+		return brokerAdvisorArgv(c, mode, ref), true
+	case "qa":
+		return brokerQaArgv(c, mode, ref), true
+	default:
+		return nil, false
+	}
 }
 
 // brokerDispatchHarness returns the harness to forward into a sibling dispatch.

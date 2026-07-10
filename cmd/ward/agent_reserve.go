@@ -326,12 +326,7 @@ func (r *Runner) precheckLiveIssueWorker(ctx context.Context, label string, ref 
 	if r == nil || r.Runner == nil {
 		return nil
 	}
-	out, err := r.dockerCapture(ctx, "ps",
-		"--filter", "name=^"+container+"$", "--format", "{{.Names}}")
-	if err != nil {
-		return nil
-	}
-	if strings.TrimSpace(string(out)) != "" {
+	if r.containerRunning(ctx, container) {
 		fmt.Fprintf(os.Stderr, "%s: reservation precheck saw live worker container %s for %s\n", label, container, ref)
 		return newReservationConflict(
 			"%s: issue %s already has a running worker container %s; wait for it to finish or pass --force to reclaim",
@@ -347,18 +342,38 @@ func removeAgentReservationIfOwned(path string, want agentReservation) (bool, er
 	if err != nil || !ok || got == nil {
 		return false, err
 	}
-	if got.Owner != want.Owner ||
-		got.Repo != want.Repo ||
-		got.Number != want.Number ||
-		got.Mode != want.Mode ||
-		got.Container != want.Container ||
-		got.Branch != want.Branch ||
-		got.Host != want.Host ||
-		got.PID != want.PID ||
-		!got.At.Equal(want.At) {
+	if !agentReservationMatches(got, want) {
 		return false, nil
 	}
 	return true, removeAgentReservation(path)
+}
+
+type agentReservationIdentity struct {
+	Owner     string
+	Repo      string
+	Number    int
+	Mode      string
+	Container string
+	Branch    string
+	Host      string
+	PID       int
+}
+
+func agentReservationIdentityOf(res agentReservation) agentReservationIdentity {
+	return agentReservationIdentity{
+		Owner:     res.Owner,
+		Repo:      res.Repo,
+		Number:    res.Number,
+		Mode:      res.Mode,
+		Container: res.Container,
+		Branch:    res.Branch,
+		Host:      res.Host,
+		PID:       res.PID,
+	}
+}
+
+func agentReservationMatches(got *agentReservation, want agentReservation) bool {
+	return agentReservationIdentityOf(*got) == agentReservationIdentityOf(want) && got.At.Equal(want.At)
 }
 
 // containerRunning reports whether the named container is running; an empty name or
