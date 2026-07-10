@@ -124,6 +124,9 @@ func TestReviewGateClauseInSeed(t *testing.T) {
 	if !strings.Contains(merge, "merge-ready") {
 		t.Errorf("pull-request-and-merge seed should name merge-ready in the landing phrase\n got: %s", merge)
 	}
+	if !strings.Contains(merge, "workflow: pull-request-and-merge; review summary: <summary or skip state>") {
+		t.Errorf("pull-request-and-merge seed should use the canonical workflow token in the machine-readable line\n got: %s", merge)
+	}
 
 	off := agentSeedPromptWorkflow(ref, "t", "b", "", true, nil, workflowDirectToMain, false, "")
 	if strings.Contains(off, "REVIEW GATE") {
