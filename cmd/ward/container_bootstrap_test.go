@@ -832,14 +832,34 @@ func TestPrepareScratchSpace(t *testing.T) {
 	t.Setenv("TMPDIR", "")
 	t.Setenv("TMP", "")
 	t.Setenv("TEMP", "")
-	r.prepareScratchSpace(scratch)
+	t.Setenv("GOCACHE", "")
+	t.Setenv("GOMODCACHE", "")
+	t.Setenv("GOTMPDIR", "")
+	t.Setenv("XDG_CACHE_HOME", "")
+	if err := r.prepareScratchSpace(scratch); err != nil {
+		t.Fatalf("prepareScratchSpace: %v", err)
+	}
 	for _, key := range []string{"TMPDIR", "TMP", "TEMP"} {
 		if got := os.Getenv(key); got != scratch {
 			t.Errorf("%s = %q, want %s", key, got, scratch)
 		}
 	}
+	for _, key := range []string{"GOCACHE", "GOMODCACHE", "GOTMPDIR", "XDG_CACHE_HOME"} {
+		if got := os.Getenv(key); !strings.HasPrefix(got, scratch+string(os.PathSeparator)) {
+			t.Errorf("%s = %q, want a subdir under %s", key, got, scratch)
+		}
+	}
 	if info, err := os.Stat(scratch); err != nil || !info.IsDir() {
 		t.Fatalf("%s not provisioned: %v", scratch, err)
+	}
+}
+
+func TestSurfaceScratchDir(t *testing.T) {
+	if got := surfaceScratchDir(bootstrapEnv{GitCache: "/gitcache"}); got != "/scratch" {
+		t.Fatalf("surfaceScratchDir(writable) = %q, want /scratch", got)
+	}
+	if got := surfaceScratchDir(bootstrapEnv{GitCache: "/gitcache", ReadOnly: true}); got != filepath.Join("/gitcache", "surface-scratch") {
+		t.Fatalf("surfaceScratchDir(read-only) = %q, want %q", got, filepath.Join("/gitcache", "surface-scratch"))
 	}
 }
 

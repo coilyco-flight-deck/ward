@@ -9,6 +9,7 @@ This page is the durable anchor for the read-only agent surface.
 - It names the `WARD_READONLY` restriction and brokered read-only access.
 - It separates the supervisory lane from the detached engineer path.
 - It keeps the director surface's Docker-backed reap path visible when that socket is mounted.
+- It gives the read-only director surface a gitcache-backed scratch and Go cache root so focused verification has writable space.
 
 ## See also
 

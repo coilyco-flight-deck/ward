@@ -458,7 +458,11 @@ func (r *Runner) runContainerBootstrap(ctx context.Context, c *cli.Command) erro
 	blog("bootstrap agent container composition done")
 
 	_ = os.Setenv("WARD_REAP_WORK", work)
-	r.prepareScratchSpace("/scratch")
+	if err := r.prepareScratchSpace(surfaceScratchDir(e)); err != nil {
+		blog("fatal: %v", err)
+		writeGateFailure("bootstrap", err.Error()) // reaper release-comment context (ward#609)
+		return err
+	}
 	defer r.reap(ctx, work)
 
 	branch := r.captureTrim(ctx, "git", "-C", work, "branch", "--show-current")
@@ -511,18 +515,43 @@ func (r *Runner) runContainerBootstrap(ctx context.Context, c *cli.Command) erro
 	return nil
 }
 
-// prepareScratchSpace provisions the writable throwaway area used by read-only
-// sessions and points common temp env vars at it.
-func (r *Runner) prepareScratchSpace(scratchDir string) {
+// surfaceScratchDir returns the writable cache/temp root for this surface. Read-only
+// director sessions use the gitcache volume so Go verification has real space.
+func surfaceScratchDir(e bootstrapEnv) string {
+	if e.ReadOnly {
+		return filepath.Join(e.GitCache, "surface-scratch")
+	}
+	return "/scratch"
+}
+
+// prepareScratchSpace provisions the writable throwaway area and points common temp
+// and Go cache env vars at it.
+func (r *Runner) prepareScratchSpace(scratchDir string) error {
 	if err := os.MkdirAll(scratchDir, 0o1777); err != nil {
-		blog("could not create %s: %v", scratchDir, err)
-		return
+		return fmt.Errorf("prepare scratch/cache root %s: %w", scratchDir, err)
+	}
+	subdirs := []string{
+		filepath.Join(scratchDir, "go-build"),
+		filepath.Join(scratchDir, "go-mod"),
+		filepath.Join(scratchDir, "go-tmp"),
+		filepath.Join(scratchDir, "xdg-cache"),
+	}
+	for _, dir := range subdirs {
+		if err := os.MkdirAll(dir, 0o1777); err != nil {
+			return fmt.Errorf("prepare scratch/cache dir %s: %w", dir, err)
+		}
+		_ = os.Chmod(dir, 0o1777)
 	}
 	_ = os.Chmod(scratchDir, 0o1777)
 	_ = os.Setenv("TMPDIR", scratchDir)
 	_ = os.Setenv("TMP", scratchDir)
 	_ = os.Setenv("TEMP", scratchDir)
-	blog("scratch area ready at %s", scratchDir)
+	_ = os.Setenv("GOCACHE", filepath.Join(scratchDir, "go-build"))
+	_ = os.Setenv("GOMODCACHE", filepath.Join(scratchDir, "go-mod"))
+	_ = os.Setenv("GOTMPDIR", filepath.Join(scratchDir, "go-tmp"))
+	_ = os.Setenv("XDG_CACHE_HOME", filepath.Join(scratchDir, "xdg-cache"))
+	blog("scratch/cache area ready at %s (Go caches under %s)", scratchDir, filepath.Join(scratchDir, "go-build"))
+	return nil
 }
 
 // makeReadOnlyTree removes write bits from a cloned workspace so the surface
