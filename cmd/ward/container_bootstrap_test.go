@@ -1,14 +1,17 @@
 package main
 
 import (
+	"bytes"
 	"context"
 	"io"
+	"io/fs"
 	"os"
 	"os/exec"
 	"path/filepath"
 	"slices"
 	"strings"
 	"testing"
+	"time"
 
 	"forgejo.coilysiren.me/coilyco-flight-deck/cli-guard/cli/shell"
 	"github.com/coilyco-flight-deck/ward/internal/agentsapi"
@@ -108,7 +111,7 @@ func TestBuildAgentArgv(t *testing.T) {
 			name:     "goose oneshot",
 			env:      bootstrapEnv{Mode: "goose", Agent: "goose", Headless: true},
 			seed:     seed,
-			wantArgv: []string{"goose", "run", "-t", "work issue #5"},
+			wantArgv: []string{"goose", "run", "--no-session", "-t", "work issue #5"},
 		},
 		{
 			name:     "goose interactive",
@@ -182,6 +185,116 @@ func TestLaunchAgentReportsOOMKilled(t *testing.T) {
 	if !strings.Contains(stderr, "OOMKilled=true") {
 		t.Fatalf("launchAgent stderr missing OOM breadcrumb:\n%s", stderr)
 	}
+}
+
+func TestRunContainerBootstrapGooseNoSessionExitsAndReaps(t *testing.T) {
+	prevWorkspaceRoot := workspaceRoot
+	workspaceRoot = t.TempDir()
+	t.Cleanup(func() { workspaceRoot = prevWorkspaceRoot })
+	t.Cleanup(func() { restoreWritableTree(t, workspaceRoot) })
+
+	base := t.TempDir()
+	seed := t.TempDir()
+	repo := filepath.Join(base, "coilyco-flight-deck", "goose-test.git")
+	if err := os.MkdirAll(filepath.Dir(repo), 0o755); err != nil {
+		t.Fatal(err)
+	}
+	runGit(t, base, "init", "--bare", repo)
+	runGit(t, seed, "init", "-b", "main")
+	runGit(t, seed, "config", "user.email", "test@example.com")
+	runGit(t, seed, "config", "user.name", "Test User")
+	runGitCommitAt(t, seed, "2026-07-10T09:00:00Z", "README.md", "seed\n", "seed")
+	runGit(t, seed, "remote", "add", "origin", repo)
+	runGit(t, seed, "push", "-u", "origin", "main")
+
+	binDir := t.TempDir()
+	goose := filepath.Join(binDir, "goose")
+	setpriv := filepath.Join(binDir, "setpriv")
+	chown := filepath.Join(binDir, "chown")
+	aws := filepath.Join(binDir, "aws")
+	gooseBody := "#!/bin/sh\n" +
+		"case \" $* \" in\n" +
+		"  *\" --no-session \"*)\n" +
+		"    printf '%s\\n' 'Issue #0 IMPLEMENTATION COMPLETE'\n" +
+		"    printf '%s\\n' 'All requirements satisfied and implementation complete'\n" +
+		"    exit 0\n" +
+		"    ;;\n" +
+		"esac\n" +
+		"printf '%s\\n' 'Issue #0 IMPLEMENTATION COMPLETE'\n" +
+		"sleep 20\n" +
+		"exit 0\n"
+	setprivBody := "#!/bin/sh\nshift 4\nexec env \"$@\"\n"
+	chownBody := "#!/bin/sh\nexit 0\n"
+	awsBody := "#!/bin/sh\nprintf '%s\\n' http://127.0.0.1:11434\n"
+	for path, body := range map[string]string{
+		goose:   gooseBody,
+		setpriv: setprivBody,
+		chown:   chownBody,
+		aws:     awsBody,
+	} {
+		if err := os.WriteFile(path, []byte(body), 0o700); err != nil { // #nosec G306 -- test fixture
+			t.Fatalf("write %s: %v", filepath.Base(path), err)
+		}
+	}
+	t.Setenv("PATH", binDir+string(os.PathListSeparator)+os.Getenv("PATH"))
+	t.Setenv("FORGEJO_TOKEN", "")
+	t.Setenv("WARD_TARGET_OWNER", "coilyco-flight-deck")
+	t.Setenv("WARD_TARGET_NAME", "goose-test")
+	t.Setenv("WARD_FORGEJO_BASE", base)
+	t.Setenv("WARD_CLONE_BASE", base)
+	t.Setenv("WARD_GITCACHE", t.TempDir())
+	t.Setenv("WARD_MIRROR_NAME", "goose-test-mirror")
+	t.Setenv("WARD_AGENT_HOME", t.TempDir())
+	t.Setenv("WARD_TARGET_ISSUE", "0")
+	t.Setenv("WARD_CONTAINER_NAME", "engineer-goose-goose-test-990")
+	t.Setenv("WARD_MODE", "goose")
+	t.Setenv("WARD_AGENT", "goose")
+	t.Setenv("WARD_HEADLESS", "1")
+	t.Setenv("WARD_READONLY", "1")
+	t.Setenv("WARD_SMOKE_TEST_SKIP", "1")
+	t.Setenv("WARD_SUBSTRATE_SKIP", "1")
+	t.Setenv("WARD_REAP_WORK", "1")
+
+	var stdout bytes.Buffer
+	var runStderr bytes.Buffer
+	r := &Runner{Runner: &shell.Runner{Stdout: &stdout, Stderr: &runStderr, Resolve: shell.PathResolver}}
+	ctx, cancel := context.WithTimeout(t.Context(), 15*time.Second)
+	defer cancel()
+	cmd := parseCommandForTest(t, nil, []string{"bootstrap"})
+	var runErr error
+
+	stderr := captureTestStderr(t, func() {
+		runErr = r.runContainerBootstrap(ctx, cmd)
+	})
+	if runErr != nil {
+		t.Fatalf("runContainerBootstrap: %v\nshell stderr:\n%s\nward stderr:\n%s", runErr, runStderr.String(), stderr)
+	}
+	if got := stdout.String(); !strings.Contains(got, "Issue #0 IMPLEMENTATION COMPLETE") {
+		t.Fatalf("stdout missing final Goose completion output:\n%s", got)
+	}
+	for _, want := range []string{
+		"bootstrap launch returned: agent process exited, deferred reaper runs next",
+		"reaping: salvage residual work before teardown",
+	} {
+		if !strings.Contains(stderr, want) {
+			t.Fatalf("stderr missing %q:\n%s", want, stderr)
+		}
+	}
+}
+
+func restoreWritableTree(t *testing.T, root string) {
+	t.Helper()
+	_ = filepath.WalkDir(root, func(path string, d fs.DirEntry, err error) error {
+		if err != nil {
+			return err
+		}
+		if d.IsDir() {
+			_ = os.Chmod(path, 0o755)
+			return nil
+		}
+		_ = os.Chmod(path, 0o644)
+		return nil
+	})
 }
 
 func TestEnsureLaunchBinaryAvailable(t *testing.T) {
