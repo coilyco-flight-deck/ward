@@ -10,6 +10,7 @@ import (
 	"io/fs"
 	"os"
 	"os/exec"
+	"path/filepath"
 	"regexp"
 	"strings"
 )
@@ -140,13 +141,12 @@ func bundleConfigSource(dir string) configSource {
 // selectConfigSource resolves WARD_CONFIG_REF for edge surfaces, rereading
 // the env per call (cheap, testable; it cannot change mid-process).
 func selectConfigSource() (configSource, error) {
-	ref := strings.TrimSpace(os.Getenv(wardConfigRefEnv))
+	ref, err := selectedConfigRef()
+	if err != nil {
+		return configSource{}, err
+	}
 	if ref == "" {
-		src := bakedConfigSource()
-		if target, ok := coilycoTargetSlug(); ok {
-			return configSource{}, fmt.Errorf("%s: active config source is %s; expected WARD_CONFIG_REF to point at the coilyco bundle for target %s", wardConfigRefEnv, configSourceSummary(ref, src), target)
-		}
-		return src, nil
+		return bakedConfigSource(), nil
 	}
 	// A set-but-unresolvable ref fails loud, never a silent baked fallback
 	// (docs/config-source.md).
@@ -182,6 +182,26 @@ func selectConfigSource() (configSource, error) {
 	return src, nil
 }
 
+func selectedConfigRef() (string, error) {
+	ref := strings.TrimSpace(os.Getenv(wardConfigRefEnv))
+	if ref != "" {
+		return ref, nil
+	}
+	src := bakedConfigSource()
+	target, ok := coilycoTargetRepo()
+	if !ok {
+		return "", nil
+	}
+	if os.Getenv("WARD_READONLY") == "1" {
+		reconstructed, err := coilycoConfigRefFromTargetRepo(target, resolveInvokeCWD())
+		if err != nil {
+			return "", fmt.Errorf("%s: active config source is %s; expected WARD_CONFIG_REF to point at the coilyco bundle for target %s (and could not reconstruct it from target metadata: %w)", wardConfigRefEnv, configSourceSummary(ref, src), target.slug(), err)
+		}
+		return reconstructed, nil
+	}
+	return "", fmt.Errorf("%s: active config source is %s; expected WARD_CONFIG_REF to point at the coilyco bundle for target %s", wardConfigRefEnv, configSourceSummary(ref, src), target.slug())
+}
+
 func configSourceSummary(rawRef string, src configSource) string {
 	if strings.TrimSpace(rawRef) == "" {
 		return "baked neutral default (no external config source active)"
@@ -192,16 +212,40 @@ func configSourceSummary(rawRef string, src configSource) string {
 	return wardConfigRefEnv + "=" + rawRef
 }
 
-func coilycoTargetSlug() (string, bool) {
+func coilycoTargetRepo() (targetRepo, bool) {
 	owner := strings.TrimSpace(os.Getenv("WARD_TARGET_OWNER"))
 	repo := strings.TrimSpace(os.Getenv("WARD_TARGET_REPO"))
 	if strings.HasPrefix(owner, "coilyco") || strings.HasPrefix(repo, "coilyco") {
-		if repo != "" {
-			return repo, true
+		if owner != "" && repo != "" {
+			if o, n, ok := splitOwnerName(repo); ok {
+				return targetRepo{Owner: o, Name: n}, true
+			}
+			return targetRepo{Owner: owner, Name: repo}, true
 		}
-		return owner, true
 	}
-	return "", false
+	return targetRepo{}, false
+}
+
+func isCoilycoRepo(repo targetRepo) bool {
+	return strings.HasPrefix(repo.Owner, "coilyco") || strings.HasPrefix(repo.Name, "coilyco")
+}
+
+func coilycoConfigRefFromTargetRepo(repo targetRepo, cwd string) (string, error) {
+	if !isCoilycoRepo(repo) {
+		return "", nil
+	}
+	if cwd == "" {
+		return "", fmt.Errorf("cannot resolve the current working directory")
+	}
+	out, err := exec.Command("git", "-C", filepath.Clean(cwd), "rev-parse", "HEAD").CombinedOutput() // #nosec G204 -- fixed argv, repo-root cwd is controlled
+	if err != nil {
+		return "", fmt.Errorf("resolve config ref for %s from %s: %w (%s)", repo.slug(), cwd, err, strings.TrimSpace(string(out)))
+	}
+	sha := strings.TrimSpace(string(out))
+	if sha == "" {
+		return "", fmt.Errorf("resolve config ref for %s from %s: empty HEAD", repo.slug(), cwd)
+	}
+	return fmt.Sprintf("%s/%s/%s@%s//.ward", forgejoCanonicalHost(), repo.Owner, repo.Name, sha), nil
 }
 
 // coreRuntimeConfigSource is ward-owned runtime data: the baked neutral default

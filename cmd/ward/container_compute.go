@@ -455,6 +455,9 @@ type upPlan struct {
 	// ReadOnly marks a read-only surface session (the director's drain surface, ward#293,
 	// ward#353): exports WARD_READONLY=1. See docs/agent-surface.md.
 	ReadOnly bool
+	// ConfigRef carries the resolved config bundle ref into surface sessions so the
+	// in-container `warded` path sees the same bundle the host already selected.
+	ConfigRef string
 	// DispatchBrokerAddr, when set, exports WARD_DISPATCH_BROKER_ADDR (host.docker
 	// .internal:<port>) and flips on the --add-host wiring (ward#391).
 	DispatchBrokerAddr string
@@ -679,6 +682,9 @@ func (p upPlan) wardEnv() map[string]string { //nolint:gocyclo,cyclop
 	}
 	if p.ReadOnly {
 		env["WARD_READONLY"] = "1"
+	}
+	if p.ConfigRef != "" {
+		env[wardConfigRefEnv] = p.ConfigRef
 	}
 	if p.DispatchBrokerAddr != "" {
 		env[envDispatchBrokerAddr] = p.DispatchBrokerAddr
