@@ -18,7 +18,7 @@ Inventory of what `ward` ships today.
 - `ward agent` - the guarded execution layer.
 - `warded` - the symlinked public face.
 - `ward agent` roles and workflows - see [agent.md](agent.md),
-  [agent-roles.md](agent-roles.md), [agent-harnesses.md](agent-harnesses.md),
+  [agent-roster.md](agent-roster.md), [agent-roles.md](agent-roles.md), [agent-harnesses.md](agent-harnesses.md),
   [agent-lifecycle.md](agent-lifecycle.md), [agent-director.md](agent-director.md),
   [agent-ops.md](agent-ops.md), [dispatch-review.md](dispatch-review.md), and
   [agent-workflow.md](agent-workflow.md).

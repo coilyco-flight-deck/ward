@@ -38,6 +38,7 @@ guides, not issue slices.
 
 - [first-run.md](first-run.md) - first dry run.
 - [agent.md](agent.md) - the entrypoint.
+- [agent-roster.md](agent-roster.md) - the generated role roster.
 - [agent-roles.md](agent-roles.md) - engineer, director, advisor, qa.
 - [agent-harnesses.md](agent-harnesses.md) - claude, codex, goose, opencode.
 - [agent-lifecycle.md](agent-lifecycle.md) - launch, preflight, reservation.
