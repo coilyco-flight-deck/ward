@@ -608,7 +608,7 @@ func directorPollIntervalDefault() time.Duration { return currentSmartDefaults()
 
 func reviewerTimeoutDefault() time.Duration { return currentSmartDefaults().reviewerTimeout }
 
-func configBundleTTLDefault() time.Duration { return currentSmartDefaults().configBundleTTL }
+func configBundleTTLDefault() time.Duration { return bakedSmartDefaults().configBundleTTL }
 
 func containerAssetsTTL() time.Duration { return currentSmartDefaults().containerAssetsTTL }
 

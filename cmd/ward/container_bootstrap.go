@@ -417,6 +417,11 @@ func (r *Runner) runContainerBootstrap(ctx context.Context, c *cli.Command) erro
 		_ = inst.Install(rc)
 		blog("bootstrap installer done: %s", mode)
 	}
+	if err := ensureLaunchBinaryAvailable(e.Agent); err != nil {
+		blog("fatal: %v", err)
+		writeGateFailure("bootstrap", err.Error())
+		return err
+	}
 	work, cerr := r.cloneTarget(ctx, e)
 	if cerr != nil {
 		return cerr
@@ -1565,6 +1570,15 @@ func (r *Runner) withFlock(lockPath string, fn func()) {
 func commandExists(bin string) bool {
 	_, err := exec.LookPath(bin)
 	return err == nil
+}
+
+// ensureLaunchBinaryAvailable reports a missing selected agent binary as a hard
+// bootstrap failure so the run aborts instead of falling back to a shell.
+func ensureLaunchBinaryAvailable(agent string) error {
+	if commandExists(agent) {
+		return nil
+	}
+	return fmt.Errorf("selected agent binary %q is not present in this image", agent)
 }
 
 func isDir(path string) bool {

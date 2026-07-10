@@ -638,13 +638,10 @@ func (r *Runner) fileSalvageIssue(ctx context.Context, env reapEnv, report salva
 	var fc salvageNotifier
 	switch env.Forge {
 	case forgeGitLab:
-		cl, err := r.hostGitLabClient(ctx, containerMode(env.Mode))
-		if err != nil {
-			return err
-		}
+		cl := r.hostGitLabClient(ctx, containerMode(env.Mode))
 		cl.token = env.Token
 		fc = cl
-	default:
+	case forgeForgejo, forgeGitHub:
 		cl, err := r.hostForgejoClient(ctx)
 		if err != nil {
 			return err
@@ -741,14 +738,10 @@ func (r *Runner) releaseReservationIfUnstarted(ctx context.Context, env reapEnv)
 	var fc Tracker
 	switch env.Forge {
 	case forgeGitLab:
-		cl, err := r.hostGitLabClient(ctx, containerMode(env.Mode))
-		if err != nil {
-			fmt.Fprintf(os.Stderr, "ward container reap: could not build gitlab client to release reservation: %v\n", err)
-			return
-		}
+		cl := r.hostGitLabClient(ctx, containerMode(env.Mode))
 		cl.token = env.Token
 		fc = cl
-	default:
+	case forgeForgejo, forgeGitHub:
 		cl, err := r.hostForgejoClient(ctx)
 		if err != nil {
 			fmt.Fprintf(os.Stderr, "ward container reap: could not build forgejo client to release reservation: %v\n", err)
@@ -969,14 +962,10 @@ func (r *Runner) reportUnlandedExtraRepos(ctx context.Context, env reapEnv, repo
 	var fc Tracker
 	switch env.Forge {
 	case forgeGitLab:
-		cl, err := r.hostGitLabClient(ctx, containerMode(env.Mode))
-		if err != nil {
-			fmt.Fprintf(os.Stderr, "ward container reap: could not build gitlab client to flag un-landed granted repos: %v\n", err)
-			return
-		}
+		cl := r.hostGitLabClient(ctx, containerMode(env.Mode))
 		cl.token = env.Token
 		fc = cl
-	default:
+	case forgeForgejo, forgeGitHub:
 		cl, err := r.hostForgejoClient(ctx)
 		if err != nil {
 			fmt.Fprintf(os.Stderr, "ward container reap: could not build forgejo client to flag un-landed granted repos: %v\n", err)

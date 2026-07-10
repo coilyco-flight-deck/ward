@@ -140,6 +140,36 @@ func TestDispatchBrokerValidatesLogsShape(t *testing.T) {
 	}
 }
 
+// TestDispatchBrokerValidatesListShape locks the ward#874 list protocol: no argv,
+// no target, and a known format.
+func TestDispatchBrokerValidatesListShape(t *testing.T) {
+	for _, tc := range []struct {
+		name string
+		req  dispatchBrokerRequest
+	}{
+		{"with argv", dispatchBrokerRequest{Action: dispatchActionList, Argv: []string{"list"}}},
+		{"with target", dispatchBrokerRequest{Action: dispatchActionList, Target: "x"}},
+		{"bad format", dispatchBrokerRequest{Action: dispatchActionList, Format: "yaml"}},
+		{"launch carries list action", dispatchBrokerRequest{Role: "engineer", Argv: []string{"engineer", "coilyco-flight-deck/ward#1"}, Action: dispatchActionList}},
+	} {
+		if err := validateDispatchBrokerRequest(tc.req); err == nil {
+			t.Errorf("%s: validateDispatchBrokerRequest(%+v) = nil, want refusal", tc.name, tc.req)
+		}
+	}
+	for _, tc := range []struct {
+		name string
+		req  dispatchBrokerRequest
+	}{
+		{"text format", dispatchBrokerRequest{Action: dispatchActionList, Format: "text"}},
+		{"json format", dispatchBrokerRequest{Action: dispatchActionList, Format: "json"}},
+		{"default format", dispatchBrokerRequest{Action: dispatchActionList}},
+	} {
+		if err := validateDispatchBrokerRequest(tc.req); err != nil {
+			t.Errorf("%s: valid list request refused: %v", tc.name, err)
+		}
+	}
+}
+
 // TestStopTargetGuardEngineerOnly is the ward#627 handler guard: only an engineer is
 // stoppable; advisor/director/session are refused by role, and an empty role closed.
 func TestStopTargetGuardEngineerOnly(t *testing.T) {
@@ -292,6 +322,53 @@ func TestForwardAgentLogsSendsLogsRequestAndRelaysBody(t *testing.T) {
 	}
 	if !strings.Contains(r.Runner.Stderr.(*bytes.Buffer).String(), "docker logs engineer-claude-ward-625 --tail 2") {
 		t.Errorf("stderr did not name the source: %q", r.Runner.Stderr.(*bytes.Buffer).String())
+	}
+}
+
+func TestForwardAgentListSendsListRequestAndRelaysBody(t *testing.T) {
+	ln, err := net.Listen("tcp", "127.0.0.1:0")
+	if err != nil {
+		t.Fatalf("listen broker: %v", err)
+	}
+	defer ln.Close()
+
+	gotReq := make(chan dispatchBrokerRequest, 1)
+	go func() {
+		conn, err := ln.Accept()
+		if err != nil {
+			return
+		}
+		defer conn.Close()
+		var req dispatchBrokerRequest
+		_ = json.NewDecoder(conn).Decode(&req)
+		gotReq <- req
+		_ = json.NewEncoder(conn).Encode(dispatchBrokerResponse{OK: true})
+		_, _ = io.WriteString(conn, "ward agent: running engineer containers (1)\n")
+	}()
+
+	r := &Runner{Runner: &shell.Runner{Stdout: &bytes.Buffer{}, Stderr: &bytes.Buffer{}}}
+	t.Setenv(envDispatchBrokerAddr, ln.Addr().String())
+	t.Setenv(envDispatchBrokerToken, "nonce-874")
+	t.Setenv("WARD_READONLY", "1")
+	t.Setenv("WARD_CONTAINER_NAME", "director-claude-host")
+	if err := r.forwardAgentListToHostBroker(t.Context(), ln.Addr().String(), false); err != nil {
+		t.Fatalf("forward list: %v", err)
+	}
+	req := <-gotReq
+	if req.Action != dispatchActionList {
+		t.Errorf("action = %q, want list", req.Action)
+	}
+	if req.Format != "text" {
+		t.Errorf("format = %q, want text", req.Format)
+	}
+	if req.Token != "nonce-874" {
+		t.Errorf("token = %q, want the per-launch nonce", req.Token)
+	}
+	if len(req.Argv) != 0 {
+		t.Errorf("list request carried launch argv: %v", req.Argv)
+	}
+	if out := r.Runner.Stdout.(*bytes.Buffer).String(); out != "ward agent: running engineer containers (1)\n" {
+		t.Fatalf("stdout = %q", out)
 	}
 }
 
@@ -841,6 +918,7 @@ func TestRunHostDispatchBrokerRequestClearsBrokerEnvWhileLaunchRuns(t *testing.T
 		logPath string
 		err     error
 	}, 1)
+	var logPath string
 	origLaunch := dispatchBrokerLaunch
 	t.Cleanup(func() { dispatchBrokerLaunch = origLaunch })
 	dispatchBrokerLaunch = func(_ context.Context, _ dispatchBrokerRequest) error {
@@ -863,7 +941,6 @@ func TestRunHostDispatchBrokerRequestClearsBrokerEnvWhileLaunchRuns(t *testing.T
 		Role: "advisor",
 		Argv: []string{"advisor", "coilyco-flight-deck/ward#795", "--harness", "codex"},
 	}
-	var logPath string
 	go func() {
 		gotLogPath, err := (&Runner{}).startHostDispatchBrokerRequest(t.Context(), req)
 		result <- struct {
@@ -895,20 +972,6 @@ func TestRunHostDispatchBrokerRequestClearsBrokerEnvWhileLaunchRuns(t *testing.T
 		if !strings.Contains(got.logPath, "dispatch") {
 			t.Fatalf("log path %q does not look like a dispatch log", got.logPath)
 		}
-		body, err := os.ReadFile(logPath) // #nosec G304 -- test-controlled temp path
-		if err != nil {
-			t.Fatalf("read dispatch log: %v", err)
-		}
-		logText := string(body)
-		for _, want := range []string{
-			"ward dispatch broker: this log captures the host wrapper only",
-			"ward agent logs coilyco-flight-deck/ward#795",
-			"ward dispatch broker: launch completed",
-		} {
-			if !strings.Contains(logText, want) {
-				t.Errorf("dispatch log missing %q\n%s", want, logText)
-			}
-		}
 	case <-time.After(2 * time.Second):
 		t.Fatal("runHostDispatchBrokerRequest never returned")
 	}
@@ -917,7 +980,7 @@ func TestRunHostDispatchBrokerRequestClearsBrokerEnvWhileLaunchRuns(t *testing.T
 	case <-time.After(2 * time.Second):
 		t.Fatal("host launch never finished")
 	}
-	body, err := os.ReadFile(got.logPath) // #nosec G304 -- test-controlled temp path
+	body, err := os.ReadFile(logPath) // #nosec G304 -- test-controlled temp path
 	if err != nil {
 		t.Fatalf("read dispatch log: %v", err)
 	}

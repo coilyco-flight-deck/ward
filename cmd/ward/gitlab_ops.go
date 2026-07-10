@@ -25,8 +25,8 @@ type gitlabClient struct {
 	token   string
 }
 
-func (r *Runner) hostGitLabClient(_ context.Context, mode containerMode) (*gitlabClient, error) {
-	return &gitlabClient{r: r, mode: mode, baseURL: gitlabBaseURL()}, nil
+func (r *Runner) hostGitLabClient(_ context.Context, mode containerMode) *gitlabClient {
+	return &gitlabClient{r: r, mode: mode, baseURL: gitlabBaseURL()}
 }
 
 func (c *gitlabClient) apiToken(ctx context.Context, owner, repo string) (string, error) {
@@ -83,7 +83,7 @@ func (c *gitlabClient) do(ctx context.Context, owner, repo, method, path string,
 }
 
 func (c *gitlabClient) getIssue(ctx context.Context, owner, repo string, number int) (*dispatch.Issue, error) {
-	resp, data, err := c.do(ctx, owner, repo, http.MethodGet, gitlabProjectPath(owner, repo)+"/issues/"+strconv.Itoa(number), nil)
+	resp, data, err := c.do(ctx, owner, repo, http.MethodGet, gitlabProjectPath(owner, repo)+"/issues/"+strconv.Itoa(number), nil) //nolint:bodyclose
 	if err != nil {
 		return nil, fmt.Errorf("gitlab: get issue %s/%s#%d: %w", owner, repo, number, err)
 	}
@@ -114,7 +114,7 @@ func (c *gitlabClient) getIssue(ctx context.Context, owner, repo string, number 
 
 func (c *gitlabClient) listIssueComments(ctx context.Context, owner, repo string, number int) ([]issueComment, error) {
 	path := gitlabProjectPath(owner, repo) + "/issues/" + strconv.Itoa(number) + "/notes?sort=asc&order_by=created_at"
-	resp, data, err := c.do(ctx, owner, repo, http.MethodGet, path, nil)
+	resp, data, err := c.do(ctx, owner, repo, http.MethodGet, path, nil) //nolint:bodyclose
 	if err != nil {
 		return nil, fmt.Errorf("gitlab: list comments on %s/%s#%d: %w", owner, repo, number, err)
 	}
@@ -153,7 +153,7 @@ func (c *gitlabClient) createIssue(ctx context.Context, owner, repo, title, body
 	if err != nil {
 		return 0, err
 	}
-	resp, data, err := c.do(ctx, owner, repo, http.MethodPost, gitlabProjectPath(owner, repo)+"/issues", payload)
+	resp, data, err := c.do(ctx, owner, repo, http.MethodPost, gitlabProjectPath(owner, repo)+"/issues", payload) //nolint:bodyclose
 	if err != nil {
 		return 0, fmt.Errorf("gitlab: create issue in %s/%s: %w", owner, repo, err)
 	}
@@ -174,7 +174,7 @@ func (c *gitlabClient) commentIssue(ctx context.Context, owner, repo string, num
 	if err != nil {
 		return err
 	}
-	resp, data, err := c.do(ctx, owner, repo, http.MethodPost, gitlabProjectPath(owner, repo)+"/issues/"+strconv.Itoa(number)+"/notes", payload)
+	resp, data, err := c.do(ctx, owner, repo, http.MethodPost, gitlabProjectPath(owner, repo)+"/issues/"+strconv.Itoa(number)+"/notes", payload) //nolint:bodyclose
 	if err != nil {
 		return fmt.Errorf("gitlab: comment issue %s/%s#%d: %w", owner, repo, number, err)
 	}
@@ -185,7 +185,7 @@ func (c *gitlabClient) commentIssue(ctx context.Context, owner, repo string, num
 }
 
 func (c *gitlabClient) closeIssue(ctx context.Context, owner, repo string, number int) error {
-	resp, data, err := c.do(ctx, owner, repo, http.MethodPut, gitlabProjectPath(owner, repo)+"/issues/"+strconv.Itoa(number)+"?state_event=close", nil)
+	resp, data, err := c.do(ctx, owner, repo, http.MethodPut, gitlabProjectPath(owner, repo)+"/issues/"+strconv.Itoa(number)+"?state_event=close", nil) //nolint:bodyclose
 	if err != nil {
 		return fmt.Errorf("gitlab: close issue %s/%s#%d: %w", owner, repo, number, err)
 	}
@@ -196,7 +196,7 @@ func (c *gitlabClient) closeIssue(ctx context.Context, owner, repo string, numbe
 }
 
 func (c *gitlabClient) reopenIssue(ctx context.Context, owner, repo string, number int) error {
-	resp, data, err := c.do(ctx, owner, repo, http.MethodPut, gitlabProjectPath(owner, repo)+"/issues/"+strconv.Itoa(number)+"?state_event=reopen", nil)
+	resp, data, err := c.do(ctx, owner, repo, http.MethodPut, gitlabProjectPath(owner, repo)+"/issues/"+strconv.Itoa(number)+"?state_event=reopen", nil) //nolint:bodyclose
 	if err != nil {
 		return fmt.Errorf("gitlab: reopen issue %s/%s#%d: %w", owner, repo, number, err)
 	}
@@ -228,7 +228,7 @@ func (c *gitlabClient) createPullRequest(ctx context.Context, owner, repo, head,
 	if err != nil {
 		return "", err
 	}
-	resp, data, err := c.do(ctx, owner, repo, http.MethodPost, gitlabProjectPath(owner, repo)+"/merge_requests", payload)
+	resp, data, err := c.do(ctx, owner, repo, http.MethodPost, gitlabProjectPath(owner, repo)+"/merge_requests", payload) //nolint:bodyclose
 	if err != nil {
 		return "", fmt.Errorf("gitlab: create merge request in %s/%s: %w", owner, repo, err)
 	}

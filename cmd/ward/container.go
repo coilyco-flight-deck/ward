@@ -335,8 +335,6 @@ func (r *Runner) resolveForgejoToken(ctx context.Context, target broker.Target, 
 	return strings.TrimSpace(string(out)), nil
 }
 
-// writeTokenEnvFile resolves the forgejo token (+ optional base64'd agent creds) into a
-// private 0600 --env-file (none enters argv/audit); target lets a brokered box seed it.
 func (r *Runner) writeTokenEnvFile(ctx context.Context, target broker.Target, fg forge, creds []agentsapi.EnvLine) (path string, cleanup func(), err error) {
 	token, err := r.resolveForgejoToken(ctx, target, fg)
 	if err != nil {
@@ -357,47 +355,58 @@ func (r *Runner) writeTokenEnvFile(ctx context.Context, target broker.Target, fg
 		cleanup()
 		return "", func() {}, fmt.Errorf("ward container: secure env-file: %w", cherr)
 	}
-	// FORGEJO_TOKEN is the git-credential channel the entrypoint reads for all
-	// forges (the credential username differs by forge, the env key does not).
-	if _, werr := fmt.Fprintf(f, "FORGEJO_TOKEN=%s\n", token); werr != nil {
-		_ = f.Close()
-		cleanup()
-		return "", func() {}, fmt.Errorf("ward container: write env-file: %w", werr)
+	if err := writeEnvLine(f, cleanup, "FORGEJO_TOKEN", token, "env-file"); err != nil {
+		return "", func() {}, err
 	}
-	// GitHub and GitLab runs also need their forge-specific CLI tokens inside the
-	// container for issue comments and PR/MR creation.
-	switch fg {
-	case forgeGitHub:
-		for _, key := range []string{"GH_TOKEN", "GITHUB_TOKEN"} {
-			if _, werr := fmt.Fprintf(f, "%s=%s\n", key, token); werr != nil {
-				_ = f.Close()
-				cleanup()
-				return "", func() {}, fmt.Errorf("ward container: write github token to env-file: %w", werr)
-			}
-		}
-	case forgeGitLab:
-		for _, key := range []string{"GITLAB_TOKEN"} {
-			if _, werr := fmt.Fprintf(f, "%s=%s\n", key, token); werr != nil {
-				_ = f.Close()
-				cleanup()
-				return "", func() {}, fmt.Errorf("ward container: write gitlab token to env-file: %w", werr)
-			}
-		}
+	if err := writeForgeTokenEnvLines(f, cleanup, fg, token); err != nil {
+		return "", func() {}, err
 	}
-	// Agent credentials (claude OAuth, codex auth.json) ride base64'd, one line
-	// each, after the token; the entrypoint decodes whichever its mode needs.
-	for _, line := range creds {
-		if _, werr := fmt.Fprintf(f, "%s=%s\n", line.Key, line.Value); werr != nil {
-			_ = f.Close()
-			cleanup()
-			return "", func() {}, fmt.Errorf("ward container: write agent creds to env-file: %w", werr)
-		}
+	if err := writeAgentCredEnvLines(f, cleanup, creds); err != nil {
+		return "", func() {}, err
 	}
 	if cerr := f.Close(); cerr != nil {
 		cleanup()
 		return "", func() {}, fmt.Errorf("ward container: close env-file: %w", cerr)
 	}
 	return path, cleanup, nil
+}
+
+func writeEnvLine(f *os.File, cleanup func(), key, value, kind string) error {
+	if _, err := fmt.Fprintf(f, "%s=%s\n", key, value); err != nil {
+		_ = f.Close()
+		cleanup()
+		return fmt.Errorf("ward container: write %s to env-file: %w", kind, err)
+	}
+	return nil
+}
+
+func writeForgeTokenEnvLines(f *os.File, cleanup func(), fg forge, token string) error {
+	switch fg {
+	case forgeForgejo:
+		return nil
+	case forgeGitHub:
+		for _, key := range []string{"GH_TOKEN", "GITHUB_TOKEN"} {
+			if err := writeEnvLine(f, cleanup, key, token, "github token"); err != nil {
+				return err
+			}
+		}
+	case forgeGitLab:
+		for _, key := range []string{"GITLAB_TOKEN"} {
+			if err := writeEnvLine(f, cleanup, key, token, "gitlab token"); err != nil {
+				return err
+			}
+		}
+	}
+	return nil
+}
+
+func writeAgentCredEnvLines(f *os.File, cleanup func(), creds []agentsapi.EnvLine) error {
+	for _, line := range creds {
+		if err := writeEnvLine(f, cleanup, line.Key, line.Value, "agent creds"); err != nil {
+			return err
+		}
+	}
+	return nil
 }
 
 // launchEnvFilePrefix is the temp-name prefix for the docker --env-file; a shared

@@ -32,26 +32,28 @@ const (
 // in log lines; it round-trips through parseForge.
 func (f forge) String() string {
 	switch f {
+	case forgeForgejo:
+		return "forgejo"
 	case forgeGitHub:
 		return "github"
 	case forgeGitLab:
 		return "gitlab"
-	default:
-		return "forgejo"
 	}
+	return "forgejo"
 }
 
 // baseURL is the TARGET repo's clone + issue-URL origin, distinct from the always
 // -Forgejo base ward downloads its own release/broker from (WARD_FORGEJO_BASE).
 func (f forge) baseURL() string {
 	switch f {
+	case forgeForgejo:
+		return forgejoBaseURL
 	case forgeGitHub:
 		return githubBaseURL
 	case forgeGitLab:
 		return gitlabBaseURL()
-	default:
-		return forgejoBaseURL
 	}
+	return forgejoBaseURL
 }
 
 // host is the bare hostname the git credential-store line keys on.
@@ -61,13 +63,14 @@ func (f forge) host() string { return forgejoHostFromBase(f.baseURL()) }
 // for Forgejo (ward#245), or x-access-token for GitHub (PAT or App token; ward#489).
 func (f forge) gitPushUser() string {
 	switch f {
+	case forgeForgejo:
+		return "coilyco-ops"
 	case forgeGitHub:
 		return "x-access-token"
 	case forgeGitLab:
 		return "oauth2"
-	default:
-		return "coilyco-ops"
 	}
+	return "coilyco-ops"
 }
 
 // tracker identifies which issue-thread system a ref points at. It defaults to
@@ -85,28 +88,30 @@ const (
 // strings.
 func (t tracker) String() string {
 	switch t {
+	case trackerForgejo:
+		return "forgejo"
 	case trackerGitHub:
 		return "github"
 	case trackerGitLab:
 		return "gitlab"
 	case trackerShortcut:
 		return "shortcut"
-	default:
-		return "forgejo"
 	}
+	return "forgejo"
 }
 
 // trackerFromForge keeps the current zero-config pairing: Forgejo host -> Forgejo
 // tracker, GitHub host -> GitHub tracker, GitLab host -> GitLab tracker.
 func trackerFromForge(f forge) tracker {
 	switch f {
+	case forgeForgejo:
+		return trackerForgejo
 	case forgeGitHub:
 		return trackerGitHub
 	case forgeGitLab:
 		return trackerGitLab
-	default:
-		return trackerForgejo
 	}
+	return trackerForgejo
 }
 
 const (
@@ -243,7 +248,7 @@ func (r *Runner) hostTrackerClient(ctx context.Context, t tracker, mode containe
 	case trackerGitHub:
 		return r.hostGitHubClient(mode)
 	case trackerGitLab:
-		return r.hostGitLabClient(ctx, mode)
+		return r.hostGitLabClient(ctx, mode), nil
 	case trackerShortcut:
 		return r.hostShortcutClient(mode)
 	case trackerForgejo:
@@ -353,11 +358,12 @@ const (
 
 func (s gitlabTokenSource) String() string {
 	switch s {
+	case gitlabTokenEnv:
+		return "env"
 	case gitlabTokenGlab:
 		return "glab"
-	default:
-		return "env"
 	}
+	return "env"
 }
 
 func parseGitLabTokenSource(s string) (gitlabTokenSource, error) {
@@ -387,15 +393,20 @@ func (r *Runner) resolveGitLabToken(ctx context.Context, owner, repo string) (st
 		}
 	}
 	switch src {
-	case gitlabTokenGlab:
-		return r.resolveGitLabTokenFromGlab(ctx, owner, repo)
-	default:
+	case gitlabTokenEnv:
 		tok := resolveGitLabTokenFromEnv()
 		if tok == "" {
 			return "", fmt.Errorf("ward: set one of WARD_GITLAB_TOKEN, GITLAB_TOKEN, GITLAB_ACCESS_TOKEN, or OAUTH_TOKEN, or install `glab` for a host-side token fallback. See docs/agent-gitlab.md")
 		}
 		return tok, nil
+	case gitlabTokenGlab:
+		return r.resolveGitLabTokenFromGlab(ctx, owner, repo)
 	}
+	tok := resolveGitLabTokenFromEnv()
+	if tok == "" {
+		return "", fmt.Errorf("ward: set one of WARD_GITLAB_TOKEN, GITLAB_TOKEN, GITLAB_ACCESS_TOKEN, or OAUTH_TOKEN, or install `glab` for a host-side token fallback. See docs/agent-gitlab.md")
+	}
+	return tok, nil
 }
 
 func resolveGitLabTokenFromEnv() string {

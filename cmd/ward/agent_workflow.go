@@ -223,10 +223,6 @@ func workflowFailureCommentClauseFor(f forge) string {
 		"if one is present. If no PR exists, skip the PR comment."
 }
 
-// workflowFailureCommentClause keeps the legacy Forgejo/GitHub wording for call
-// sites that do not carry a forge-specific noun.
-func workflowFailureCommentClause() string { return workflowFailureCommentClauseFor(forgeForgejo) }
-
 // remoteBranchOnlyCarryClause tells the agent it has no PR or merge authority:
 // push the branch and stop there.
 func remoteBranchOnlyCarryClause(ref agentIssueRef) string {
