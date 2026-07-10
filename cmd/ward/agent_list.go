@@ -7,18 +7,29 @@ import (
 	"io"
 	"net"
 	"os"
+	"path/filepath"
+	"sort"
 	"strconv"
 	"strings"
 	"time"
 
 	"forgejo.coilysiren.me/coilyco-flight-deck/cli-guard/cli/verb"
+	"forgejo.coilysiren.me/coilyco-flight-deck/cli-guard/pkg/config"
 	"github.com/urfave/cli/v3"
 )
 
 // agent_list.go wires `ward agent list` (alias `ps`): the director-surface read
-// path for running engineer containers.
+// path for active engineer launches, including reservation-backed launches.
 
-const agentListSchemaVersion = 1
+const agentListSchemaVersion = 2
+
+const (
+	agentLaunchPhaseQueued    = "broker accepted / queued"
+	agentLaunchPhasePreflight = "pre-flight running"
+	agentLaunchPhaseStarting  = "container starting"
+	agentLaunchPhaseRunning   = "container running"
+	agentLaunchPhaseFailed    = "failed before container start"
+)
 
 type agentListCapacity struct {
 	Count       int
@@ -39,7 +50,7 @@ type agentListJSON struct {
 	Engineers     []agentListJSONEntry `json:"engineers"`
 }
 
-// agentListJSONEntry is one running engineer container.
+// agentListJSONEntry is one active engineer launch row.
 type agentListJSONEntry struct {
 	Container  string `json:"container"`
 	Harness    string `json:"harness"`
@@ -51,6 +62,7 @@ type agentListJSONEntry struct {
 	ReservedAt string `json:"reserved_at"`
 	StartedAt  string `json:"started_at"`
 	Age        string `json:"age"`
+	Phase      string `json:"phase"`
 	Status     string `json:"status"`
 }
 
@@ -71,8 +83,8 @@ func agentListCommand() *cli.Command {
 	return &cli.Command{
 		Name:    "list",
 		Aliases: []string{"ps"},
-		Usage:   "List running engineer containers through the dispatch broker - director-surface, read-only, issue-aware.",
-		Description: "list prints the running engineer containers that carry ward labels.\n" +
+		Usage:   "List active engineer launches through the dispatch broker - director-surface, read-only, issue-aware.",
+		Description: "list prints the active engineer launches that carry ward labels, including reserved launches before their container appears.\n" +
 			"The host side uses the same label-backed broker path as `ward agent stop --print` " +
 			"to resolve a single engineer, but here it reports the whole active set instead of " +
 			"one target. `--json` emits a stable machine-readable schema. The `ps` alias " +
@@ -169,7 +181,7 @@ func sendDispatchBrokerListRequest(ctx context.Context, addr string, req dispatc
 
 // renderAgentList renders the active engineer runs in either human or JSON form.
 func (r *Runner) renderAgentList(ctx context.Context, jsonOut bool) (string, error) {
-	rows, err := r.runningEngineerRows(ctx)
+	rows, err := r.agentListRows(ctx)
 	if err != nil {
 		return "", err
 	}
@@ -185,24 +197,33 @@ func (r *Runner) renderAgentList(ctx context.Context, jsonOut bool) (string, err
 	return renderAgentListHuman(rows), nil
 }
 
-// runningEngineerRows gathers the live engineer list from docker + reservation data.
-func (r *Runner) runningEngineerRows(ctx context.Context) ([]agentRunningEngineer, error) {
+// agentListRows gathers the live engineer list from docker plus reservation-backed
+// launches that have not yet reached the running container state.
+func (r *Runner) agentListRows(ctx context.Context) ([]agentRunningEngineer, error) {
 	names, err := r.runningEngineerContainers(ctx)
 	if err != nil {
 		return nil, fmt.Errorf("list running engineer containers: %w", err)
 	}
-	if len(names) == 0 {
-		return nil, nil
-	}
 	now := time.Now().UTC()
 	rows := make([]agentRunningEngineer, 0, len(names))
+	seen := map[string]bool{}
 	for _, name := range names {
 		row, err := r.runningEngineerRow(ctx, now, name)
 		if err != nil {
 			continue
 		}
+		row.Phase = agentLaunchPhaseRunning
+		row.Status = emptyDefault(row.Status, "running")
+		if row.Ref != "" {
+			seen[row.Ref] = true
+		}
 		rows = append(rows, row)
 	}
+	pending, err := r.reservedEngineerRows(ctx, now, seen)
+	if err != nil {
+		return nil, err
+	}
+	rows = append(rows, pending...)
 	return rows, nil
 }
 
@@ -217,6 +238,7 @@ type agentRunningEngineer struct {
 	ReservedAt time.Time
 	StartedAt  time.Time
 	Age        time.Duration
+	Phase      string
 	Status     string
 }
 
@@ -248,6 +270,7 @@ func (r agentRunningEngineer) toJSON() agentListJSONEntry {
 		ReservedAt: formatJSONTime(r.ReservedAt),
 		StartedAt:  formatJSONTime(r.StartedAt),
 		Age:        formatDuration(r.Age),
+		Phase:      emptyDefault(r.Phase, "-"),
 		Status:     r.Status,
 	}
 }
@@ -271,6 +294,213 @@ func agentListCapacityForCount(count int) agentListCapacity {
 	atCapacity := count >= limit
 	capacity.AtCapacity = &atCapacity
 	return capacity
+}
+
+func (r *Runner) reservedEngineerRows(ctx context.Context, now time.Time, seen map[string]bool) ([]agentRunningEngineer, error) {
+	_ = ctx
+	globalDir, err := config.GlobalDir()
+	if err != nil {
+		return nil, err
+	}
+	dir := filepath.Join(globalDir, agentReservationsSubdir)
+	entries, err := os.ReadDir(dir)
+	if err != nil {
+		if os.IsNotExist(err) {
+			return nil, nil
+		}
+		return nil, fmt.Errorf("list reserved engineer launches: %w", err)
+	}
+	rows := make([]agentRunningEngineer, 0, len(entries))
+	for _, entry := range entries {
+		if entry.IsDir() || !strings.HasSuffix(entry.Name(), ".json") {
+			continue
+		}
+		path := filepath.Join(dir, entry.Name())
+		if row, ok := activeReservedEngineerRow(path, now, seen); ok {
+			rows = append(rows, row)
+			seen[row.Ref] = true
+		}
+	}
+	sort.SliceStable(rows, func(i, j int) bool {
+		switch {
+		case rows[i].ReservedAt.Equal(rows[j].ReservedAt):
+			return rows[i].Ref < rows[j].Ref
+		case rows[i].ReservedAt.IsZero():
+			return false
+		case rows[j].ReservedAt.IsZero():
+			return true
+		default:
+			return rows[i].ReservedAt.After(rows[j].ReservedAt)
+		}
+	})
+	return rows, nil
+}
+
+func activeReservedEngineerRow(path string, now time.Time, seen map[string]bool) (agentRunningEngineer, bool) {
+	res, ok, err := readAgentReservation(path)
+	if err != nil || !ok || res == nil {
+		return agentRunningEngineer{}, false
+	}
+	ref := agentIssueRef{Owner: res.Owner, Repo: res.Repo, Number: res.Number}
+	if ref.Owner == "" || ref.Repo == "" || ref.Number <= 0 {
+		return agentRunningEngineer{}, false
+	}
+	if !reservationFresh(res.At, now, agentReservationTTL()) {
+		return agentRunningEngineer{}, false
+	}
+	if seen[ref.String()] || seen[strings.TrimSpace(res.Container)] {
+		return agentRunningEngineer{}, false
+	}
+	row := agentRunningEngineer{
+		Container:  emptyDefault(strings.TrimSpace(res.Container), "(reserved)"),
+		Harness:    emptyDefault(strings.TrimSpace(res.Mode), "-"),
+		Repo:       ref.repoSlug(),
+		Issue:      strconv.Itoa(ref.Number),
+		Ref:        ref.String(),
+		Branch:     strings.TrimSpace(res.Branch),
+		Host:       strings.TrimSpace(res.Host),
+		ReservedAt: res.At,
+		Age:        now.Sub(res.At),
+		Phase:      agentLaunchPhaseQueued,
+		Status:     "reserved",
+	}
+	if phase, status, ok := dispatchLaunchPhaseForReservation(ref); ok {
+		row.Phase = phase
+		row.Status = status
+	}
+	return row, true
+}
+
+func dispatchLaunchPhaseForReservation(ref agentIssueRef) (phase, status string, ok bool) {
+	body, found, err := latestDispatchLogBodyForRef(ref)
+	if err != nil || !found {
+		return "", "", false
+	}
+	return dispatchLaunchPhaseFromLog(body)
+}
+
+func dispatchLaunchFailedBody(lower string) bool {
+	return strings.Contains(lower, "launch failed") ||
+		strings.Contains(lower, "ward-dispatch: failed") ||
+		strings.Contains(lower, "pre-flight no-go") ||
+		strings.Contains(lower, "wrong-repo") ||
+		strings.Contains(lower, "released failed dispatch reservation") ||
+		strings.Contains(lower, "released deferred dispatch reservation") ||
+		strings.Contains(lower, "released deferred release-assets-not-ready reservation")
+}
+
+func dispatchLaunchStartingBody(lower string) bool {
+	return strings.Contains(lower, "wrote launch env file") || strings.Contains(lower, "launch start:")
+}
+
+func dispatchLaunchPreflightBody(lower string) bool {
+	return strings.Contains(lower, "preflight start for") ||
+		strings.Contains(lower, "pre-flight - asking") ||
+		strings.Contains(lower, "launch plan ready") ||
+		strings.Contains(lower, "pulling ")
+}
+
+func dispatchLaunchQueuedBody(lower string) bool {
+	return strings.Contains(lower, "reservation acquired for")
+}
+
+func dispatchLaunchPhaseFromLog(body string) (phase, status string, ok bool) {
+	lower := strings.ToLower(body)
+	switch {
+	case dispatchLaunchFailedBody(lower):
+		return agentLaunchPhaseFailed, "failed", true
+	case dispatchLaunchStartingBody(lower):
+		return agentLaunchPhaseStarting, "starting", true
+	case dispatchLaunchPreflightBody(lower):
+		return agentLaunchPhasePreflight, "reserved", true
+	case dispatchLaunchQueuedBody(lower):
+		return agentLaunchPhaseQueued, "reserved", true
+	default:
+		return agentLaunchPhaseQueued, "reserved", true
+	}
+}
+
+func latestDispatchLogBodyForRef(ref agentIssueRef) (string, bool, error) {
+	path, found, err := latestDispatchLogPathForRef(ref)
+	if err != nil || !found {
+		return "", false, err
+	}
+	b, err := os.ReadFile(path) // #nosec G304 -- ward-derived log path under ~/.ward
+	if err != nil {
+		return "", false, err
+	}
+	return string(b), true, nil
+}
+
+func latestDispatchLogPathForRef(ref agentIssueRef) (string, bool, error) {
+	dir := filepath.Join(agentLogsDir(), dispatchLogsSubdir)
+	entries, err := os.ReadDir(dir)
+	if err != nil {
+		if os.IsNotExist(err) {
+			return "", false, nil
+		}
+		return "", false, err
+	}
+	type candidate struct {
+		path string
+		mod  time.Time
+	}
+	var best candidate
+	for _, entry := range entries {
+		if entry.IsDir() || !strings.HasSuffix(entry.Name(), ".log") {
+			continue
+		}
+		path := filepath.Join(dir, entry.Name())
+		if !dispatchLogMatchesRef(path, ref) {
+			continue
+		}
+		info, err := entry.Info()
+		if err != nil {
+			continue
+		}
+		if best.path == "" || info.ModTime().After(best.mod) {
+			best = candidate{path: path, mod: info.ModTime()}
+		}
+	}
+	if best.path == "" {
+		return "", false, nil
+	}
+	return best.path, true, nil
+}
+
+func dispatchLogMatchesRef(path string, ref agentIssueRef) bool {
+	b, err := os.ReadFile(path) // #nosec G304 -- ward-derived log path under ~/.ward
+	if err != nil {
+		return false
+	}
+	return dispatchLogRef(string(b)) == ref.String()
+}
+
+func dispatchLogRef(body string) string {
+	lines := strings.Split(body, "\n")
+	for _, line := range lines {
+		line = strings.TrimSpace(line)
+		if !strings.Contains(line, "requested `ward agent ") {
+			continue
+		}
+		start := strings.Index(line, "requested `ward agent ")
+		if start < 0 {
+			continue
+		}
+		rest := line[start+len("requested `ward agent "):]
+		end := strings.Index(rest, "`")
+		if end < 0 {
+			continue
+		}
+		argv := strings.Fields(rest[:end])
+		if len(argv) < 2 {
+			continue
+		}
+		if ref, err := parseAgentIssueRef(argv[1]); err == nil {
+			return ref.String()
+		}
+	}
+	return ""
 }
 
 func (r *Runner) runningEngineerRow(ctx context.Context, now time.Time, name string) (agentRunningEngineer, error) {
@@ -315,6 +545,7 @@ func agentRunningEngineerFromInspect(now time.Time, snap agentDockerInspectConta
 		Host:       host,
 		ReservedAt: reservedAt,
 		StartedAt:  startedAt,
+		Phase:      agentLaunchPhaseRunning,
 		Status:     status,
 	}
 	if issueNum > 0 {
@@ -406,9 +637,9 @@ func formatDuration(d time.Duration) string {
 func renderAgentListHuman(rows []agentRunningEngineer) string {
 	capacity := agentListCapacityForCount(len(rows))
 	var b strings.Builder
-	fmt.Fprintf(&b, "ward agent: running engineer containers %s\n", formatAgentListCapacity(capacity))
+	fmt.Fprintf(&b, "ward agent: active engineer launches (running + reserved) %s\n", formatAgentListCapacity(capacity))
 	if len(rows) == 0 {
-		b.WriteString("\n  no running engineer containers.\n")
+		b.WriteString("\n  no active engineer launches.\n")
 		return b.String()
 	}
 	for _, row := range rows {
@@ -422,6 +653,7 @@ func renderAgentListHuman(rows []agentRunningEngineer) string {
 		fmt.Fprintf(&b, "    reserved:  %s\n", emptyDefault(formatJSONTime(row.ReservedAt), "-"))
 		fmt.Fprintf(&b, "    started:   %s\n", emptyDefault(formatJSONTime(row.StartedAt), "-"))
 		fmt.Fprintf(&b, "    age:       %s\n", emptyDefault(formatDuration(row.Age), "-"))
+		fmt.Fprintf(&b, "    phase:     %s\n", emptyDefault(row.Phase, "-"))
 		fmt.Fprintf(&b, "    status:    %s\n", emptyDefault(row.Status, "-"))
 	}
 	return b.String()
