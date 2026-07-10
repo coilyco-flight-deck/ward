@@ -17,7 +17,7 @@ import (
 )
 
 // agent_reserve.go gives every `ward agent` run a two-sided reservation (local
-// sentinel + Forgejo marker comment), TTL-bounded, --force overrides. See docs/agent.md.
+// sentinel + Forgejo marker comment), TTL-bounded; --override-reservation reclaims.
 
 // reservationConflictError marks a refusal because another run already holds the issue's
 // reservation - not a launch failure, so the director defers it (ward#352).
@@ -240,15 +240,15 @@ func hostname() string {
 
 // reserveIssue acquires both reservation sides before a container fires (ward#570). It
 // returns a release retracting both halves; a remote failure rolls the local hold back.
-func (r *Runner) reserveIssue(ctx context.Context, label string, mode containerMode, ref agentIssueRef, container, branch, justification string, seedCtx *reservationSeedContext, force bool, skipPreflight bool) (func(), error) {
+func (r *Runner) reserveIssue(ctx context.Context, label string, mode containerMode, ref agentIssueRef, container, branch, justification string, seedCtx *reservationSeedContext, override bool, skipPreflight bool) (func(), error) {
 	now := time.Now().UTC()
-	fmt.Fprintf(os.Stderr, "%s: reservation start for %s (container=%s branch=%s force=%t)\n", label, ref, container, branch, force)
-	releaseLocal, err := r.acquireLocalReservation(ctx, label, mode, ref, container, branch, now, force)
+	fmt.Fprintf(os.Stderr, "%s: reservation start for %s (container=%s branch=%s override-reservation=%t)\n", label, ref, container, branch, override)
+	releaseLocal, err := r.acquireLocalReservation(ctx, label, mode, ref, container, branch, now, override)
 	if err != nil {
 		fmt.Fprintf(os.Stderr, "%s: reservation local acquire failed for %s: %v\n", label, ref, err)
 		return nil, err
 	}
-	releaseRemote, err := r.acquireRemoteReservation(ctx, label, mode, ref, container, justification, seedCtx, now, force, skipPreflight)
+	releaseRemote, err := r.acquireRemoteReservation(ctx, label, mode, ref, container, justification, seedCtx, now, override, skipPreflight)
 	if err != nil {
 		fmt.Fprintf(os.Stderr, "%s: reservation remote acquire failed for %s: %v\n", label, ref, err)
 		releaseLocal()
@@ -264,11 +264,11 @@ func (r *Runner) reserveIssue(ctx context.Context, label string, mode containerM
 }
 
 // precheckReservation runs reserveIssue's read-only refusal half ahead of the LLM
-// pre-flight (ward#184), reusing the fetched thread; --force bypasses it. See docs.
-func (r *Runner) precheckReservation(ctx context.Context, label string, w resolvedWork, force bool) error {
-	fmt.Fprintf(os.Stderr, "%s: reservation precheck start for %s (force=%t)\n", label, w.Ref, force)
-	if force {
-		fmt.Fprintf(os.Stderr, "%s: reservation precheck skipped for %s because force is set\n", label, w.Ref)
+// pre-flight (ward#184, docs), reusing the thread; --override-reservation bypasses.
+func (r *Runner) precheckReservation(ctx context.Context, label string, w resolvedWork, override bool) error {
+	fmt.Fprintf(os.Stderr, "%s: reservation precheck start for %s (override-reservation=%t)\n", label, w.Ref, override)
+	if override {
+		fmt.Fprintf(os.Stderr, "%s: reservation precheck skipped for %s because --override-reservation is set\n", label, w.Ref)
 		return nil
 	}
 	now := time.Now().UTC()
@@ -280,7 +280,7 @@ func (r *Runner) precheckReservation(ctx context.Context, label string, w resolv
 	if who, held := freshReservationComment(w.Comments, now, ttl); held {
 		fmt.Fprintf(os.Stderr, "%s: reservation precheck failed remotely for %s: %s\n", label, w.Ref, who)
 		return newReservationConflict(
-			"%s: issue %s is already reserved remotely (%s); wait for it to finish or pass --force to override",
+			"%s: issue %s is already reserved remotely (%s); wait for it to finish or pass --override-reservation to override",
 			label, w.Ref, who)
 	}
 	fmt.Fprintf(os.Stderr, "%s: reservation precheck passed for %s\n", label, w.Ref)
@@ -301,25 +301,25 @@ func (r *Runner) precheckLocalReservation(ctx context.Context, label string, ref
 	if ok && reservationFresh(existing.At, now, agentReservationTTL()) && r.containerRunning(ctx, existing.Container) {
 		fmt.Fprintf(os.Stderr, "%s: reservation precheck saw live local holder for %s at %s\n", label, ref, path)
 		return newReservationConflict(
-			"%s: issue %s is already reserved locally by %s; wait for it to finish or pass --force to reclaim",
+			"%s: issue %s is already reserved locally by %s; wait for it to finish or pass --override-reservation to reclaim",
 			label, ref, existing.summary())
 	}
 	fmt.Fprintf(os.Stderr, "%s: reservation precheck found no live local holder for %s\n", label, ref)
 	return nil
 }
 
-// acquireLocalReservation writes this run's sentinel (refusing a fresh one held by a
-// still-running container unless force) and returns a release that deletes it.
-func (r *Runner) acquireLocalReservation(ctx context.Context, label string, mode containerMode, ref agentIssueRef, container, branch string, now time.Time, force bool) (func(), error) {
+// acquireLocalReservation writes this run's sentinel (refusing a fresh one held by
+// a live container unless --override-reservation), returning a deleting release.
+func (r *Runner) acquireLocalReservation(ctx context.Context, label string, mode containerMode, ref agentIssueRef, container, branch string, now time.Time, override bool) (func(), error) {
 	path, err := agentReservationPath(ref)
 	if err != nil {
 		return nil, fmt.Errorf("%s: resolve reservation path: %w", label, err)
 	}
-	if !force {
+	if !override {
 		if err := r.precheckLocalReservation(ctx, label, ref, now); err != nil {
 			return nil, err
 		}
-		if err := r.precheckLiveIssueWorker(ctx, label, ref, container, force); err != nil {
+		if err := r.precheckLiveIssueWorker(ctx, label, ref, container, override); err != nil {
 			return nil, err
 		}
 	}
@@ -352,8 +352,8 @@ func (r *Runner) acquireLocalReservation(ctx context.Context, label string, mode
 
 // precheckLiveIssueWorker refuses when the deterministic engineer container already
 // exists and is running, even if the local sentinel is absent or stale.
-func (r *Runner) precheckLiveIssueWorker(ctx context.Context, label string, ref agentIssueRef, container string, force bool) error {
-	if force || r == nil || r.Runner == nil {
+func (r *Runner) precheckLiveIssueWorker(ctx context.Context, label string, ref agentIssueRef, container string, override bool) error {
+	if override || r == nil || r.Runner == nil {
 		return nil
 	}
 	out, err := r.dockerCapture(ctx, "ps",
@@ -364,7 +364,7 @@ func (r *Runner) precheckLiveIssueWorker(ctx context.Context, label string, ref 
 	if strings.TrimSpace(string(out)) != "" {
 		fmt.Fprintf(os.Stderr, "%s: reservation precheck saw live worker container %s for %s\n", label, container, ref)
 		return newReservationConflict(
-			"%s: issue %s already has a running worker container %s; wait for it to finish or pass --force to reclaim",
+			"%s: issue %s already has a running worker container %s; wait for it to finish or pass --override-reservation to reclaim",
 			label, ref, container)
 	}
 	return nil
@@ -440,22 +440,22 @@ var reservationPostSleep = time.Sleep
 // WARN carries, so an operator sweeps the dispatch logs by grep (ward#402).
 const reservationWarnToken = "remote reservation NOT posted"
 
-// acquireRemoteReservation refuses on a fresh reservation comment (unless force), else
-// posts one and returns a remote-release to roll it back (ward#402/#570, docs).
-func (r *Runner) acquireRemoteReservation(ctx context.Context, label string, mode containerMode, ref agentIssueRef, container, justification string, seedCtx *reservationSeedContext, now time.Time, force bool, skipPreflight bool) (func(), error) {
+// acquireRemoteReservation refuses on a fresh reservation comment (unless overridden),
+// else posts one and returns a remote-release to roll it back (ward#402/#570, docs).
+func (r *Runner) acquireRemoteReservation(ctx context.Context, label string, mode containerMode, ref agentIssueRef, container, justification string, seedCtx *reservationSeedContext, now time.Time, override bool, skipPreflight bool) (func(), error) {
 	cl, err := r.hostTrackerClient(ctx, ref.trackerOrDefault(), mode)
 	if err != nil {
 		warnRemoteReservationLost(label, ref, fmt.Sprintf("could not build the %s client: %v", ref.trackerOrDefault(), err))
 		return func() {}, nil
 	}
 	ttl := agentReservationTTL()
-	if !force {
+	if !override {
 		comments, lerr := cl.listIssueComments(ctx, ref.Owner, ref.Repo, ref.Number)
 		if lerr != nil {
 			fmt.Fprintf(os.Stderr, "%s: warning: could not read issue comments to check for a remote reservation (%v); proceeding without the cross-host conflict check\n", label, lerr)
 		} else if who, held := freshReservationComment(comments, now, ttl); held {
 			return nil, newReservationConflict(
-				"%s: issue %s is already reserved remotely (%s); wait for it to finish or pass --force to override",
+				"%s: issue %s is already reserved remotely (%s); wait for it to finish or pass --override-reservation to override",
 				label, ref, who)
 		}
 	}
@@ -471,8 +471,8 @@ func (r *Runner) acquireRemoteReservation(ctx context.Context, label string, mod
 	// forge with no lock API or a lock failure never fails the reservation.
 	r.lockReservedIssue(ctx, cl, label, ref)
 	// Jittered double-check backstop for any path the broker per-ref lock misses
-	// (two direct host runs, or cross-host); --force skips it (ward#600, docs).
-	if !force {
+	// (direct host runs, or cross-host); --override-reservation skips it (ward#600).
+	if !override {
 		if lost, winner := r.reservationRecheckLost(ctx, cl, label, ref, container, skipPreflight); lost {
 			// Leave our comment to lapse at the TTL (a release marker would free the
 			// winner too) and refuse so only the winner proceeds (ward#600).
@@ -490,7 +490,7 @@ func (r *Runner) acquireRemoteReservation(ctx context.Context, label string, mod
 // before the container is up: a release-marker comment plus a best-effort unlock (#570).
 func (r *Runner) releaseRemoteReservation(ctx context.Context, cl Tracker, label string, mode containerMode, ref agentIssueRef, container string) {
 	if err := cl.commentIssue(ctx, ref.Owner, ref.Repo, ref.Number, reservationReleaseCommentBody(mode, container, nil)); err != nil {
-		fmt.Fprintf(os.Stderr, "%s: warning: could not release the remote reservation on %s (%v); a re-run may need --force until the %s TTL lapses (ward#570)\n", label, ref, err, conciseDuration(agentReservationTTL()))
+		fmt.Fprintf(os.Stderr, "%s: warning: could not release the remote reservation on %s (%v); a re-run may need --override-reservation until the %s TTL lapses (ward#570)\n", label, ref, err, conciseDuration(agentReservationTTL()))
 		return
 	}
 	// Retract the reservation's conversation lock (ward#494) so a retry lands on an open
@@ -681,7 +681,7 @@ func reservationCommentBody(mode containerMode, container, host string, now time
 		"Holder: container `%s` on host `%s`.\n\n"+
 			"Reserved by `ward agent --harness %s` (reserved %s). "+
 			"Concurrent `ward agent` runs are blocked until it finishes or the reservation goes stale (%s TTL). "+
-			"`--force` overrides.\n\n"+
+			"`--override-reservation` overrides.\n\n"+
 			"**Do not comment on or edit this issue to steer the run while it is reserved.** The engineer seeded "+
 			"the body once at launch and never re-reads it, so a comment or edit reaches only human readers, never "+
 			"the running engineer. A correction goes to a **new issue, dispatched fresh**. That is the only channel "+
@@ -707,7 +707,7 @@ func reservationReleaseCommentBody(mode containerMode, container string, gate *g
 			"Run never started. `ward container reap` released container `%s` (`--harness %s`): it exited "+
 				"without launching the agent (smoke-test death, ward#222/#264/#595), so it did no work and the "+
 				"hold it took is retracted. Nothing is running on this issue. It needs re-dispatch. A `ward agent director` re-queues "+
-				"it automatically. A manual `ward agent` retry no longer needs `--force`.",
+				"it automatically. A manual `ward agent` retry no longer needs `--override-reservation`.",
 			container, mode)
 		return agentReservationReleaseMarker + "\n" + agentNeedsRedispatchMarker + "\n" +
 			collapsedIssueComment(visible, "release details", detail)
@@ -718,7 +718,7 @@ func reservationReleaseCommentBody(mode containerMode, container string, gate *g
 		"Run never started. `ward container reap` released container `%s` (`--harness %s`): it exited at the "+
 			"**%s** pre-launch gate without launching the agent (ward#222/#264/#595/#609), so it did no work and "+
 			"the hold it took is retracted. Nothing is running on this issue. It needs re-dispatch. A `ward agent director` re-queues "+
-			"it automatically. A manual `ward agent` retry no longer needs `--force`.\n\n"+
+			"it automatically. A manual `ward agent` retry no longer needs `--override-reservation`.\n\n"+
 			"**Gate:** %s\n\n**Recovery:** %s",
 		container, mode, gate.Gate, label, recovery)
 	if d := reservationScrubDetail(gate.Detail); d != "" {
@@ -775,7 +775,7 @@ func buildReservationSeedContext(w resolvedWork, plan upPlan, now time.Time) *re
 }
 
 // render folds the dynamic seed context into a collapsed <details> block; a nil
-// receiver renders nothing (a run with no captured context, e.g. --force paths).
+// receiver renders nothing (no captured context, e.g. --override-reservation paths).
 func (sc *reservationSeedContext) render() string {
 	if sc == nil {
 		return ""

@@ -98,7 +98,7 @@ func TestDirectorDispatchDisposition(t *testing.T) {
 }
 
 // TestDispatchEngineerArgv covers ward#355: each set flag is forwarded into the
-// engineer argv, booleans only when true, --force only when the operator opted in.
+// engineer argv; --override-reservation only when the operator opted in (ward#1045).
 func TestDispatchEngineerArgv(t *testing.T) {
 	ref := agentIssueRef{Owner: "coilyco-flight-deck", Repo: "ward", Number: 42}
 
@@ -109,7 +109,7 @@ func TestDispatchEngineerArgv(t *testing.T) {
 	if !reflect.DeepEqual(bare, wantBare) {
 		t.Errorf("bare argv = %v, want %v", bare, wantBare)
 	}
-	for _, unwanted := range []string{"--aws", "--tailnet", "--tailnet-mode", "--force", "--ward-version"} {
+	for _, unwanted := range []string{"--aws", "--tailnet", "--tailnet-mode", "--force", "--override-reservation", "--override-capacity", "--ward-version"} {
 		if containsArg(bare, unwanted) {
 			t.Errorf("bare argv should not carry %q: %v", unwanted, bare)
 		}
@@ -123,7 +123,7 @@ func TestDispatchEngineerArgv(t *testing.T) {
 	// route forwards as the consolidated --tailnet + an explicit --tailnet-mode (ward#362).
 	full := dispatchEngineer{
 		harness: modeGoose, image: "ghcr.io/x/dev", tag: "v9", wardVersion: "v0.58.0", wardVersionSource: wardVersionSourceExplicit,
-		aws: true, hostNet: true, tsSidecar: false, force: true,
+		aws: true, hostNet: true, tsSidecar: false, overrideReservation: true,
 	}.engineerArgv(ref)
 	for _, want := range [][2]string{
 		{"--harness", "goose"}, {"--image", "ghcr.io/x/dev"}, {"--tag", "v9"},
@@ -133,9 +133,16 @@ func TestDispatchEngineerArgv(t *testing.T) {
 			t.Errorf("argv missing %s %s: %v", want[0], want[1], full)
 		}
 	}
-	for _, want := range []string{"--aws", "--tailnet", "--force", "--quiet-seed"} {
+	for _, want := range []string{"--aws", "--tailnet", "--override-reservation", "--quiet-seed"} {
 		if !containsArg(full, want) {
 			t.Errorf("argv missing %q: %v", want, full)
+		}
+	}
+	// The dispatched engineer never inherits the deprecated spelling or a
+	// capacity override (ward#1045): capacity is per-launch, not a director knob.
+	for _, unwanted := range []string{"--force", "--override-capacity"} {
+		if containsArg(full, unwanted) {
+			t.Errorf("argv must not carry %q: %v", unwanted, full)
 		}
 	}
 }
@@ -199,7 +206,7 @@ func TestDirectorFlagsParity(t *testing.T) {
 	cmd := agentDirectorCommand()
 	for _, want := range []string{
 		"image", "tag", "ward-source", "ward-version", "aws", "tailnet", "tailnet-mode",
-		"no-pull", "print", "with-repo", "force", "engineer-harness", "engineer-driver",
+		"no-pull", "print", "with-repo", "override-reservation", "force", "engineer-harness", "engineer-driver",
 	} {
 		if !commandHasFlag(cmd, want) {
 			t.Errorf("ward agent director missing --%s at parity (ward#355)", want)
@@ -221,9 +228,27 @@ func TestDirectorFlagsParity(t *testing.T) {
 			}
 		}
 	}
-	for _, unwanted := range []string{"branch", "no-preflight", "watch", "detach"} {
+	for _, unwanted := range []string{"branch", "no-preflight", "watch", "detach", "override-capacity"} {
 		if commandHasFlag(cmd, unwanted) {
-			t.Errorf("ward agent director must NOT add --%s (ward#355)", unwanted)
+			t.Errorf("ward agent director must NOT add --%s (ward#355, ward#1045)", unwanted)
+		}
+	}
+	// The deprecated --force alias stays parseable but hidden; the first-class
+	// --override-reservation spelling is the visible one (ward#1045).
+	for _, f := range cmd.Flags {
+		bf, ok := f.(*cli.BoolFlag)
+		if !ok {
+			continue
+		}
+		switch bf.Name {
+		case "force":
+			if !bf.Hidden {
+				t.Error("--force alias is visible; want it hidden (ward#1045)")
+			}
+		case "override-reservation":
+			if bf.Hidden {
+				t.Error("--override-reservation is hidden; want it visible (ward#1045)")
+			}
 		}
 	}
 }

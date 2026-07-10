@@ -118,7 +118,9 @@ type dispatchEngineer struct {
 	aws               bool
 	hostNet           bool
 	tsSidecar         bool
-	force             bool
+	// overrideReservation forwards --override-reservation (ward#352, ward#1045);
+	// --override-capacity is per-launch only and never propagated by the loop.
+	overrideReservation bool
 }
 
 // engineerArgv renders the `ward agent engineer` argv that carries one issue, forwarding
@@ -142,8 +144,8 @@ func (c dispatchEngineer) engineerArgv(ref agentIssueRef) []string {
 		argv = append(argv, "--aws")
 	}
 	argv = appendTailnetArgv(argv, c.hostNet, c.tsSidecar)
-	if c.force {
-		argv = append(argv, "--force")
+	if c.overrideReservation {
+		argv = append(argv, "--override-reservation")
 	}
 	return argv
 }
@@ -213,7 +215,8 @@ func directorFlags() []cli.Flag {
 	return append(flags,
 		&cli.BoolFlag{Name: "print", Usage: "resolve director's container/harness plan + the planned dispatches and exit; launch nothing"},
 		&cli.BoolFlag{Name: "no-pull", Usage: "skip the image pull"},
-		&cli.BoolFlag{Name: "force", Usage: "propagate --force to dispatched engineers so they reclaim a stale or foreign reservation instead of deferring (ward#352); off by default"},
+		&cli.BoolFlag{Name: "override-reservation", Usage: "propagate --override-reservation to dispatched engineers so they reclaim a stale or foreign reservation instead of deferring (ward#352, ward#1045); off by default. Never touches the pool ceiling - --override-capacity is per-launch only, not a director knob"},
+		&cli.BoolFlag{Name: "force", Hidden: true, Usage: "deprecated alias for --override-reservation (ward#1045)"},
 	)
 }
 
@@ -331,15 +334,15 @@ func (r *Runner) runAgentBacklog(ctx context.Context, c *cli.Command, mode conta
 		triage:       c.Bool("triage") && !c.Bool("no-triage"),
 		issueRef:     issueRef,
 		dispatch: dispatchEngineer{
-			harness:           engDriver,
-			image:             c.String("image"),
-			tag:               c.String("tag"),
-			wardVersion:       strings.TrimSpace(c.String("ward-version")),
-			wardVersionSource: resolveWardVersionSource(c, c.String("ward-version")),
-			aws:               c.Bool("aws"),
-			hostNet:           hostNet,
-			tsSidecar:         tsSidecar,
-			force:             c.Bool("force"),
+			harness:             engDriver,
+			image:               c.String("image"),
+			tag:                 c.String("tag"),
+			wardVersion:         strings.TrimSpace(c.String("ward-version")),
+			wardVersionSource:   resolveWardVersionSource(c, c.String("ward-version")),
+			aws:                 c.Bool("aws"),
+			hostNet:             hostNet,
+			tsSidecar:           tsSidecar,
+			overrideReservation: overrideReservation(c),
 		},
 		wardSource: strings.TrimSpace(c.String("ward-source")),
 		noPull:     c.Bool("no-pull"),
@@ -1677,7 +1680,7 @@ func (r *Runner) backlogPrintDirectorPlan(label string, repos []string, cfg back
 	fmt.Fprintf(&b, "aws:             %t\n", cy.aws)
 	fmt.Fprintf(&b, "tailnet:         %s\n", tailnetPlanLabel(cy.hostNet, cy.tsSidecar))
 	fmt.Fprintf(&b, "no-pull:         %t\n", cfg.noPull)
-	fmt.Fprintf(&b, "force:           %t (propagated to engineers; default defers on a reservation conflict)\n", cy.force)
+	fmt.Fprintf(&b, "override-reservation: %t (propagated to engineers; default defers on a reservation conflict)\n", cy.overrideReservation)
 	if len(cfg.withRepo) > 0 {
 		fmt.Fprintf(&b, "with-repo:       %s (cloned into the surface session)\n", strings.Join(cfg.withRepo, ", "))
 	}
