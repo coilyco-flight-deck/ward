@@ -11,6 +11,7 @@ Inventory of what `ward` ships today.
 - `ward audit` - the append-only audit trail.
 - `ward git` - audited git.
 - `ward setup` - the live config/cache warmer.
+- `ward doctor` - strict runtime config validation.
 - `.ward/ward.yaml` - the repo config schema in [ward-yaml.md](ward-yaml.md).
 
 ## Agent surface
