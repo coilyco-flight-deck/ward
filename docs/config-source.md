@@ -41,7 +41,8 @@ A set-but-unresolvable ref and a bundle that fails to parse both degrade **per s
 - the edge ops bundle consumers (`ward ops forgejo`, `ward docker`, `ward ops
   aws`, `ward ops kubectl`, `ward agents <tool>`) error at verb time.
 - core runtime consumers (`ward agent`, container bring-up, reservation
-  defaults, review timing) keep their ward-owned defaults and ignore this seam.
+  defaults, review timing, and the director surface bootstrap) keep their
+  ward-owned defaults and ignore this seam.
 - the rest of the CLI (`version`, `exec`, `git`, ...) keeps working.
 
 There is no fallback from a named-but-broken edge source to the baked default.

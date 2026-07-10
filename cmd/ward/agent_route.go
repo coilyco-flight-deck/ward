@@ -60,7 +60,7 @@ func classifyTaskInvocation(arg, file string) (route bool, repoArg string, err e
 }
 
 // taskRepoRef coerces a `task` positional to an owner/repo slug ONLY for a bare
-// `owner/repo[#N]` or a Forgejo issue URL; else false for ROUTE (ward#234; docs).
+// `owner/repo[#N]` or an issue URL; else false for ROUTE (ward#234; docs).
 func taskRepoRef(arg string) (string, bool) {
 	arg = strings.TrimSpace(arg)
 	if arg == "" {

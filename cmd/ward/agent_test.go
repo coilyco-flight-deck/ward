@@ -102,6 +102,8 @@ func TestParseAgentIssueRef(t *testing.T) {
 		{"98", "", "", 98, false},
 		{"  #98  ", "", "", 98, false},
 		{"#98?thing=stuff", "", "", 98, false},
+		{"https://app.shortcut.com/acme/story/1234/fix-thing", "", "", 1234, false},
+		{"sc-77", "", "", 77, false},
 		{"", "", "", 0, true},
 		{"coilyco-flight-deck/ward", "", "", 0, true},    // no #N
 		{"coilyco-flight-deck/ward#0", "", "", 0, true},  // non-positive
@@ -127,6 +129,48 @@ func TestParseAgentIssueRef(t *testing.T) {
 	}
 }
 
+func TestParseAgentIssueRefUsesRepoAuthorityPolicy(t *testing.T) {
+	dir := t.TempDir()
+	body := `smart-defaults {
+    agent-reservation-ttl "1h"
+}
+
+repo-authority default=forgejo {
+    trusted-owner "coilysiren"
+    trusted-owner "coilyco-flight-deck"
+    repo "coilysiren/*" forge=github
+    repo "coilyco-flight-deck/*" forge=forgejo
+}`
+	if err := os.WriteFile(filepath.Join(dir, bundleDefaultsKDLPath), []byte(body), 0o644); err != nil {
+		t.Fatalf("write defaults bundle: %v", err)
+	}
+	t.Setenv(wardConfigRefEnv, "file://"+dir)
+
+	gh, err := parseAgentIssueRef("coilysiren/agentic-os#461")
+	if err != nil {
+		t.Fatalf("parseAgentIssueRef(github-authoritative): %v", err)
+	}
+	if gh.Forge != forgeGitHub || gh.Tracker != trackerGitHub {
+		t.Fatalf("parseAgentIssueRef(github-authoritative) = %+v, want github forge/tracker", gh)
+	}
+
+	fj, err := parseAgentIssueRef("coilyco-flight-deck/ward#98")
+	if err != nil {
+		t.Fatalf("parseAgentIssueRef(forgejo-authoritative): %v", err)
+	}
+	if fj.Forge != forgeForgejo || fj.Tracker != trackerForgejo {
+		t.Fatalf("parseAgentIssueRef(forgejo-authoritative) = %+v, want forgejo forge/tracker", fj)
+	}
+
+	explicit, err := parseAgentIssueRef(forgejoBaseURL + "/coilyco-flight-deck/ward/issues/98")
+	if err != nil {
+		t.Fatalf("parseAgentIssueRef(explicit forgejo url): %v", err)
+	}
+	if explicit.Forge != forgeForgejo || explicit.Tracker != trackerForgejo {
+		t.Fatalf("parseAgentIssueRef(explicit forgejo url) = %+v, want explicit forgejo", explicit)
+	}
+}
+
 func TestAgentIssueRefURL(t *testing.T) {
 	ref := agentIssueRef{Owner: "coilyco-flight-deck", Repo: "ward", Number: 98}
 	want := forgejoBaseURL + "/coilyco-flight-deck/ward/issues/98"
@@ -143,6 +187,25 @@ func TestAgentIssueRefURL(t *testing.T) {
 	back, err := parseAgentIssueRef(ref.url())
 	if err != nil || back != ref {
 		t.Errorf("url round-trip = %+v, %v; want %+v", back, err, ref)
+	}
+}
+
+func TestAgentIssueRefShortcutURL(t *testing.T) {
+	ref := agentIssueRef{
+		Number:            77,
+		Tracker:           trackerShortcut,
+		URL:               "https://app.shortcut.com/acme/story/77/fix-it",
+		ShortcutWorkspace: "acme",
+	}
+	if got, want := ref.url(), ref.URL; got != want {
+		t.Fatalf("shortcut url() = %q, want %q", got, want)
+	}
+	back, err := parseAgentIssueRef(ref.url())
+	if err != nil {
+		t.Fatalf("parseAgentIssueRef(shortcut): %v", err)
+	}
+	if back.Number != ref.Number || back.Tracker != trackerShortcut || back.URL != ref.URL || back.ShortcutWorkspace != ref.ShortcutWorkspace {
+		t.Fatalf("shortcut round-trip = %+v, want %+v", back, ref)
 	}
 }
 
@@ -806,7 +869,7 @@ func TestPreflightWrongRepoComment(t *testing.T) {
 // in-container agent's argv: after the image, never as a -e env, never leaked.
 func TestDockerCreateArgvSeedsAgentArgs(t *testing.T) {
 	p := sampleUpPlan()
-	seed := "Work on Forgejo issue coilyco-flight-deck/ward#98."
+	seed := "Work on issue coilyco-flight-deck/ward#98."
 	p.AgentArgs = []string{seed}
 	argv := dockerCreateArgv(p, "/tmp/ward-env-xyz")
 

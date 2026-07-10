@@ -50,8 +50,8 @@ role director {
 
 The **director** claude resolves `claude-opus-4-8[1m]` (Opus 4.8, 1M context) at `high`
 effort for its heartbeat; the **engineer** claude resolves the cheaper `claude-fable-5` at
-`medium` for parallel fan-out (codex: director `gpt-5.5`, engineer `gpt-5.4-mini`).
-`advisor` sets no overlay and inherits the flat default.
+`medium` for parallel fan-out. Codex mirrors that split: director/advisor `gpt-5.5` at `high`,
+engineer `gpt-5.4-mini` at `medium`.
 
 The overlay is authored in the fleet source, embedded via `make sync-fleet-assets`. The run's
 config role rides in as `WARD_ROLE` (the **capability** role, so the director's read-only

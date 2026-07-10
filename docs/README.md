@@ -130,6 +130,7 @@ New to ward? Read [architecture.md](architecture.md) first - it frames the whole
 - [ops-forgejo-admin.md](ops-forgejo-admin.md) - the `{admin,doctor}` remote-exec slice.
 - [ops-forgejo-view.md](ops-forgejo-view.md) - the lean `issue view` override.
 - [ops-forgejo-quiet.md](ops-forgejo-quiet.md) - the `issue create --quiet` machine-output mode.
+- [shortcut-tracker.md](shortcut-tracker.md) - ward's Shortcut Story tracker adapter: auth, URL round-trip, and workflow-state mapping.
 - [ops-forgejo-graft-removal.md](ops-forgejo-graft-removal.md) - the [ward#407](https://forgejo.coilysiren.me/coilyco-flight-deck/ward/issues/407) consult: per-graft design for removing the four Go grafts over the specverb tree.
 
 ## Examples

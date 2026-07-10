@@ -125,7 +125,7 @@ func containerReapCommand() *cli.Command {
 	return &cli.Command{
 		Name:   "reap",
 		Hidden: true, // ward#263: entrypoint-internal, not a hand-run verb
-		Usage:  "Clean up residual work before container teardown: land it on main if clean, else push a salvage branch and file a Forgejo issue.",
+		Usage:  "Clean up residual work before container teardown: land it on main if clean, else push a salvage branch and file an issue.",
 		Description: `reap runs once the agent exits, on every exit, as deterministic static
 code. It stages and commits anything the agent left uncommitted, integrates
 onto the latest main, and then: if the diff is clean and integrates, pushes
