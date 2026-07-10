@@ -7,6 +7,8 @@ The director surface is the read-only control plane for runs.
 
 - It can inspect the fleet, read logs, and stop a run.
 - It can keep a backlog moving without writing implementation code.
+- It can also run against one exact issue ref or Forgejo issue URL without
+  widening into the repo backlog.
 - It is the surface that hosts the merge-ready workflow for PR landings.
 - It distinguishes a fresh reservation hold from a stale one so dead runs do
   not block burndown forever.
@@ -23,6 +25,8 @@ The director surface is the read-only control plane for runs.
 - read the last logs before deciding whether to re-dispatch.
 - inspect the queue/status view for stale reservations, redispatch candidates, submitted PRs, and stale-open done issues.
 - stop a run that is definitely on the wrong ref.
+- target one issue by `owner/repo#N` or full Forgejo issue URL when the run
+  should stay scoped to a single decision payload.
 - sweep the merge-ready branch once CI is green.
 
 The director surface is intentionally narrower than the engineer path. It is
@@ -37,5 +41,6 @@ for supervision and landing, not for implementation.
 ## See also
 
 - [agent-ops.md](agent-ops.md) - list, logs, stop, reap.
+- [agent-pr-workflow.md](agent-pr-workflow.md) - native merge, CI status, and rerun tools.
 - [agent-workflow.md](agent-workflow.md) - PR and merge policy.
 - [agent-roles.md](agent-roles.md) - role semantics.

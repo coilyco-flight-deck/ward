@@ -145,6 +145,93 @@ func (c *gitlabClient) listIssueComments(ctx context.Context, owner, repo string
 	return out, nil
 }
 
+func (c *gitlabClient) listPullRequestComments(ctx context.Context, owner, repo string, number int) ([]issueComment, error) {
+	path := gitlabProjectPath(owner, repo) + "/merge_requests/" + strconv.Itoa(number) + "/notes?sort=asc&order_by=created_at"
+	resp, data, err := c.do(ctx, owner, repo, http.MethodGet, path, nil) //nolint:bodyclose
+	if err != nil {
+		return nil, fmt.Errorf("gitlab: list comments on %s/%s!%d: %w", owner, repo, number, err)
+	}
+	if resp.StatusCode < 200 || resp.StatusCode >= 300 {
+		return nil, fmt.Errorf("gitlab: list comments on %s/%s!%d returned %s: %s", owner, repo, number, resp.Status, firstLine(string(data)))
+	}
+	var raw []struct {
+		Body      string `json:"body"`
+		CreatedAt string `json:"created_at"`
+		Author    struct {
+			Username string `json:"username"`
+		} `json:"author"`
+	}
+	if err := json.Unmarshal(data, &raw); err != nil {
+		return nil, fmt.Errorf("gitlab: parse comments on %s/%s!%d: %w", owner, repo, number, err)
+	}
+	out := make([]issueComment, 0, len(raw))
+	for _, rc := range raw {
+		ic := issueComment{Body: rc.Body}
+		ic.User.Login = rc.Author.Username
+		if t, err := time.Parse(time.RFC3339Nano, rc.CreatedAt); err == nil {
+			ic.CreatedAt = t
+		} else if t, err := time.Parse(time.RFC3339, rc.CreatedAt); err == nil {
+			ic.CreatedAt = t
+		}
+		out = append(out, ic)
+	}
+	return out, nil
+}
+
+func (c *gitlabClient) getPullRequestContext(ctx context.Context, owner, repo string, number int) (*agentPullRequestContext, error) {
+	resp, data, err := c.do(ctx, owner, repo, http.MethodGet, gitlabProjectPath(owner, repo)+"/merge_requests/"+strconv.Itoa(number), nil) //nolint:bodyclose
+	if err != nil {
+		return nil, fmt.Errorf("gitlab: get merge request %s/%s!%d: %w", owner, repo, number, err)
+	}
+	if resp.StatusCode < 200 || resp.StatusCode >= 300 {
+		return nil, fmt.Errorf("gitlab: get merge request %s/%s!%d returned %s: %s", owner, repo, number, resp.Status, firstLine(string(data)))
+	}
+	var raw struct {
+		IID                 int    `json:"iid"`
+		Title               string `json:"title"`
+		Description         string `json:"description"`
+		State               string `json:"state"`
+		WebURL              string `json:"web_url"`
+		SourceBranch        string `json:"source_branch"`
+		TargetBranch        string `json:"target_branch"`
+		MergeStatus         string `json:"merge_status"`
+		DetailedMergeStatus string `json:"detailed_merge_status"`
+		WorkInProgress      bool   `json:"work_in_progress"`
+		Draft               bool   `json:"draft"`
+	}
+	if err := json.Unmarshal(data, &raw); err != nil {
+		return nil, fmt.Errorf("gitlab: parse merge request %s/%s!%d: %w", owner, repo, number, err)
+	}
+	mergeability := strings.TrimSpace(raw.DetailedMergeStatus)
+	if mergeability == "" {
+		mergeability = strings.TrimSpace(raw.MergeStatus)
+	}
+	if mergeability == "" {
+		mergeability = "unknown"
+	}
+	if raw.WorkInProgress || raw.Draft {
+		mergeability += ", draft=true"
+	}
+	return &agentPullRequestContext{
+		State:        normalizeOpenState(raw.State),
+		Title:        strings.TrimSpace(raw.Title),
+		Body:         strings.TrimSpace(raw.Description),
+		URL:          strings.TrimSpace(raw.WebURL),
+		HeadRef:      strings.TrimSpace(raw.SourceBranch),
+		BaseRef:      strings.TrimSpace(raw.TargetBranch),
+		Mergeability: mergeability,
+	}, nil
+}
+
+func normalizeOpenState(s string) string {
+	switch strings.ToLower(strings.TrimSpace(s)) {
+	case "opened":
+		return "open"
+	default:
+		return strings.TrimSpace(s)
+	}
+}
+
 func (c *gitlabClient) createIssue(ctx context.Context, owner, repo, title, body string) (int, error) {
 	payload, err := json.Marshal(map[string]string{
 		"title":       title,
