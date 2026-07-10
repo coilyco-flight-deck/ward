@@ -124,7 +124,7 @@ func setupCachePath(rawRef string) string {
 }
 
 func printSetupReport(report setupReport) {
-	fmt.Fprintf(os.Stdout, "ward setup: phases: %s\n", report.phasePlan)
-	fmt.Fprintf(os.Stdout, "ward setup: source=%s; sha=%s; cache=%s; validated=%s\n",
+	_, _ = fmt.Fprintf(os.Stdout, "ward setup: phases: %s\n", report.phasePlan)
+	_, _ = fmt.Fprintf(os.Stdout, "ward setup: source=%s; sha=%s; cache=%s; validated=%s\n",
 		report.sourceSummary, report.resolvedSHA, report.cachePath, strings.Join(report.validatedSurfaces, ", "))
 }
