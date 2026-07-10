@@ -158,7 +158,7 @@ func (r *Runner) resolveAgentLogsSourceForIssue(ctx context.Context, ref agentIs
 		if err != nil {
 			return agentLogSource{}, err
 		}
-		return agentLogSource{Kind: agentLogSourceDocker, Container: name, TranscriptTree: containerTranscriptDir, Tail: tail, Follow: follow}, nil
+		return agentLogSource{Kind: agentLogSourceDocker, Container: name, TranscriptTree: containerTranscriptDir(containerModeFromContainerName(name)), Tail: tail, Follow: follow}, nil
 	}
 	if src, err := findArchivedAgentLogSourceByIssue(ref, tail, follow, agentLogsDir(), drainConsoleFile); err != nil {
 		return agentLogSource{}, err
@@ -194,7 +194,7 @@ func (r *Runner) resolveAgentLogsSourceForName(ctx context.Context, name string,
 		if err := stopTargetGuard(name, role); err != nil {
 			return agentLogSource{}, err
 		}
-		return agentLogSource{Kind: agentLogSourceDocker, Container: name, TranscriptTree: containerTranscriptDir, Tail: tail, Follow: follow}, nil
+		return agentLogSource{Kind: agentLogSourceDocker, Container: name, TranscriptTree: containerTranscriptDir(containerModeFromContainerName(name)), Tail: tail, Follow: follow}, nil
 	}
 	if src, err := findArchivedAgentLogSourceByName(name, tail, follow, agentLogsDir(), drainConsoleFile); err != nil {
 		return agentLogSource{}, err
@@ -249,20 +249,29 @@ func (r *Runner) streamDockerAgentLogsSource(ctx context.Context, source agentLo
 	if err != nil {
 		return err
 	}
-	if len(bytes.TrimSpace(out)) == 0 && strings.TrimSpace(source.TranscriptTree) != "" {
-		transcript := r.liveTranscriptSource(ctx, source.Container, source.TranscriptTree)
-		if len(transcript) > 0 {
-			if source.Tail > 0 {
-				transcript = tailBytes(transcript, source.Tail)
-			}
-			_, _ = fmt.Fprintf(w, "ward agent logs: docker logs empty; using live transcript tree from %s\n", source.TranscriptTree)
-			_, err = w.Write(transcript)
-			return err
-		}
-		_, _ = fmt.Fprintf(w, "ward agent logs: docker logs empty; live transcript tree at %s is empty\n", source.TranscriptTree)
-		return nil
+	if len(bytes.TrimSpace(out)) == 0 {
+		return r.streamEmptyDockerAgentLogsSource(ctx, source, w)
 	}
 	_, err = w.Write(out)
+	return err
+}
+
+func (r *Runner) streamEmptyDockerAgentLogsSource(ctx context.Context, source agentLogSource, w io.Writer) error {
+	tree := strings.TrimSpace(source.TranscriptTree)
+	if tree == "" {
+		_, _ = fmt.Fprintf(w, "ward agent logs: docker logs empty; no readable live transcript tree for %s\n", source.Container)
+		return nil
+	}
+	transcript := r.liveTranscriptSource(ctx, source.Container, tree)
+	if len(transcript) == 0 {
+		_, _ = fmt.Fprintf(w, "ward agent logs: docker logs empty; live transcript tree at %s is empty\n", tree)
+		return nil
+	}
+	if source.Tail > 0 {
+		transcript = tailBytes(transcript, source.Tail)
+	}
+	_, _ = fmt.Fprintf(w, "ward agent logs: docker logs empty; using live transcript tree from %s\n", tree)
+	_, err := w.Write(transcript)
 	return err
 }
 
