@@ -14,54 +14,38 @@ States mean:
 
 ## Git platforms / forges
 
-- Forgejo - shipped. `cmd/ward/forgejo_ops.go`, `docs/ops-forgejo-in-ward.md`, `docs/forgejo-token-audit.md`.
-- GitHub - shipped. `cmd/ward/github_ops.go`, `docs/agent-github.md`, `docs/github-token.md`.
+- Forgejo - shipped. `cmd/ward/forgejo_ops.go`, `docs/ops-forgejo.md`.
+- GitHub - shipped. `cmd/ward/github_ops.go`.
 - GitLab - not a ward provider. `CONTRIBUTING.md`.
 
 ## Issue trackers
 
-- Forgejo issues - shipped. `cmd/ward/forgejo_ops.go`, `docs/ops-forgejo-in-ward.md`.
-- GitHub issues - shipped. `docs/agent-github.md`.
-- Shortcut Stories - shipped. `docs/shortcut-tracker.md`.
-- Trello - not a ward tracker provider. It is a ward-kdl ops surface, not the `Tracker` port. `docs/ward-kdl-surface.md`, `docs/ward-kdl/ward-kdl.trello.guardfile.md`.
-- Jira - not a ward provider.
-- Linear - not a ward provider.
+- Forgejo, GitHub, Shortcut - shipped. `cmd/ward/forgejo_ops.go`, `cmd/ward/github_ops.go`, `cmd/ward/shortcut_ops.go`.
+- Trello - not a ward tracker provider. `docs/ward-kdl-surface.md`.
+- Jira, Linear - not a ward provider.
 
 ## Container runtimes
 
-- Docker - shipped. `cmd/ward/container.go`, `docs/container.md`, `docs/container-image.md`, `docs/ward-kdl/ward-kdl.docker.guardfile.md`.
+- Docker - shipped. `cmd/ward/container.go`, `docs/container.md`.
 - Podman - not a ward provider. `CONTRIBUTING.md`.
 
 ## Agent harnesses
 
-- Claude - shipped. `docs/agent-claude.md`, `docs/agent-drivers.md`.
-- Codex - shipped. `docs/agent-codex.md`, `docs/agent-drivers.md`.
-- Goose - shipped. `docs/agent-goose.md`, `docs/agent-drivers.md`.
-- Opencode - shipped. `docs/agent-opencode.md`, `docs/agent-drivers.md`.
-- Aider - shipped as a ward-kdl launcher, not a first-class container harness. `docs/ward-kdl/ward-kdl.aider.guardfile.md`, `docs/ward-kdl-surface.md`.
-- Ollama - partial. It is the backend provider for goose/opencode, not a coding harness. `docs/agent-local-model.md`, `docs/agent-local-harnesses.md`.
+- Claude, Codex, Goose, Opencode - shipped. `docs/agent-harnesses.md`, `docs/agent-claude.md`, `docs/agent-codex.md`, `docs/agent-goose.md`, `docs/agent-opencode.md`.
+- Aider - shipped as a ward-kdl launcher. `docs/ward-kdl-surface.md`.
+- Ollama - partial backend, not a harness. `docs/agent-harnesses.md`, `docs/agent-goose.md`, `docs/agent-opencode.md`.
 
 ## Guarded ops providers authored through ward-kdl
 
-- Forgejo - shipped specverb. `docs/ops-forgejo-in-ward.md`, `docs/ward-kdl-surface.md`.
-- Tailscale - shipped specverb. `docs/ward-kdl/ward-kdl.tailscale.guardfile.md`, `docs/ward-kdl-surface.md`.
-- Trello - shipped specverb. `docs/ward-kdl/ward-kdl.trello.guardfile.md`, `docs/ward-kdl-surface.md`.
-- GlitchTip - shipped specverb. `docs/ward-kdl/ward-kdl.glitchtip.guardfile.md`, `docs/ward-kdl-surface.md`.
-- SigNoz - shipped specverb. `docs/ward-kdl/ward-kdl.signoz.guardfile.md`, `docs/ward-kdl-surface.md`.
-- AWS - shipped execverb. `docs/ward-kdl/ward-kdl.aws.guardfile.md`, `docs/ward-kdl-surface.md`.
-- kubectl - shipped execverb. `docs/ward-kdl/ward-kdl.kubectl.guardfile.md`, `docs/ward-kdl-surface.md`.
-- Docker - shipped execverb. `docs/ward-kdl/ward-kdl.docker.guardfile.md`, `docs/ward-kdl-surface.md`.
-- agents - shipped execverb. `docs/ward-kdl-surface.md`, `docs/ward-kdl-in-ward.md`.
-- pkg - shipped specverb. `docs/ward-kdl/ward-kdl.{skillsmp,glama}.guardfile.md`, `docs/ward-kdl-surface.md`.
+- Forgejo, Tailscale, Trello, GlitchTip, SigNoz - shipped spec-driven ops. `docs/ward-kdl.md`, `docs/ward-kdl-surface.md`, `docs/ops-forgejo.md`.
+- AWS, kubectl, Docker, agents, pkg - shipped exec-dialect ops. `docs/ward-kdl-surface.md`, `docs/ward-kdl-in-ward.md`, `docs/ward-docker-exec.md`.
 
 ## Config and auth sources
 
-- `WARD_CONFIG_REF` - shipped. `docs/config-source.md`, `docs/config-ref-resolver.md`.
-- `~/.ward/fleet.local.kdl` - shipped operator-local overlay. `docs/fleet-local.md`.
-- `WARD_GITHUB_TOKEN_SOURCE` - shipped selector for GitHub token provisioning. `docs/github-token.md`, `docs/agent-github.md`.
-- `env` (`WARD_*`, `GH_TOKEN`, `GITHUB_TOKEN`, `SHORTCUT_API_TOKEN`) - shipped operator-local input, not a ward provider. `docs/agent-credentials.md`, `docs/github-token.md`, `docs/shortcut-tracker.md`.
-- `SSM` - shipped backing store for Forgejo token, GitHub App key, GlitchTip base URL, SigNoz base URL, Trello creds, and Ollama host. `docs/forgejo-token-audit.md`, `docs/github-token.md`, `docs/ward-kdl/ward-kdl.{glitchtip,signoz,trello,ollama}.guardfile.md`.
-- GitHub token sources - shipped. `env`, `gh`, and `app` are the supported sources. `docs/github-token.md`.
+- `WARD_CONFIG_REF` - shipped. `docs/config-source.md`, `cmd/ward/configsource.go`, `cmd/ward/configref.go`.
+- `~/.ward/fleet.local.kdl` - shipped operator-local overlay. `cmd/ward/fleetlocal.go`.
+- `WARD_GITHUB_TOKEN_SOURCE`, `env`, `gh`, `app` - shipped GitHub token path. `cmd/ward/forge.go`, `cmd/ward/github_app.go`.
+- `SHORTCUT_API_TOKEN`, `SSM` - shipped operator input and backing store. `cmd/ward/shortcut_ops.go`, `cmd/ward/container.go`, `cmd/ward/forgejo_ops.go`.
 
 ## Adding your stack
 
@@ -79,6 +63,4 @@ ward embeds its own launch assets with `go:embed` in `cmd/ward/container.go` and
 
 - [CONTRIBUTING.md](../CONTRIBUTING.md)
 - [agentsapi.md](agentsapi.md)
-- [agent-github.md](agent-github.md)
 - [container.md](container.md)
-- [container-image.md](container-image.md)
