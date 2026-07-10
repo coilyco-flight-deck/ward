@@ -1265,8 +1265,8 @@ func TestEntrypointClonesExtraRepos(t *testing.T) {
 	}
 }
 
-// TestEntrypointGooseHeadless locks ward#141: entrypoint runs `goose run -t <seed>`
-// (not claude `-p`) and mirrors doctrine into .goosehints since goose ignores ~/.claude.
+// TestEntrypointGooseHeadless locks ward#141.
+// Entrypoint runs goose run --no-session -t <seed> and mirrors doctrine into .goosehints.
 func TestEntrypointGooseHeadless(t *testing.T) {
 	t.Skip("entrypoint delegates harness-specific setup to ward container bootstrap now")
 	data, err := containerAssets.ReadFile("containerassets/" + containerEntrypointRel)
@@ -1275,18 +1275,18 @@ func TestEntrypointGooseHeadless(t *testing.T) {
 	}
 	script := string(data)
 	for _, want := range []string{
-		`case "$WARD_MODE" in`, // launch argv is mode-aware
-		"goose run -t",         // headless goose runs the seed to completion
-		"goose session",        // interactive goose
-		".goosehints",          // doctrine mirrored to goose's hints file
+		`case "$WARD_MODE" in`,      // launch argv is mode-aware
+		"goose run --no-session -t", // headless goose runs the seed to completion
+		"goose session",             // interactive goose
+		".goosehints",               // doctrine mirrored to goose's hints file
 	} {
 		if !strings.Contains(script, want) {
 			t.Errorf("entrypoint missing %q (ward#141 goose headless)", want)
 		}
 	}
-	// goose headless must not borrow claude's stream-json flags: the goose `run -t`
-	// invocation precedes the claude `-p --output-format` block in the mode switch.
-	goose := strings.Index(script, "goose run -t")
+	// goose headless must not borrow claude's stream-json flags.
+	// The goose run --no-session -t invocation precedes the claude -p --output-format block.
+	goose := strings.Index(script, "goose run --no-session -t")
 	claudeFlags := strings.Index(script, "--output-format stream-json")
 	if goose < 0 || claudeFlags < 0 || goose > claudeFlags {
 		t.Errorf("goose headless argv must be distinct from claude stream-json (goose=%d claude=%d)", goose, claudeFlags)

@@ -508,6 +508,7 @@ func (r *Runner) runContainerBootstrap(ctx context.Context, c *cli.Command) erro
 	blog("launching %s as uid %s", e.Agent, e.AgentUID)
 	blog("bootstrap launch handoff: %s", e.Agent)
 	r.launchAgent(ctx, e, work, argv, stream)
+	blog("bootstrap launch returned: agent process exited, deferred reaper runs next")
 	return nil
 }
 
@@ -1306,6 +1307,10 @@ func (r *Runner) launchAgent(ctx context.Context, e bootstrapEnv, work string, a
 		if rerr := r.runStreaming(ctx, work, launch); rerr != nil {
 			blog(r.agentDeathLogLine(ctx, e.Container, rerr))
 		}
+	case e.oneshot() && containerMode(e.Mode) == modeGoose:
+		if rerr := r.runGooseCompletionWatch(ctx, work, launch); rerr != nil {
+			blog(r.agentDeathLogLine(ctx, e.Container, rerr))
+		}
 	case e.oneshot():
 		if rerr := r.runWithStdin(ctx, work, launch, os.DevNull); rerr != nil {
 			blog(r.agentDeathLogLine(ctx, e.Container, rerr))
@@ -1315,6 +1320,20 @@ func (r *Runner) launchAgent(ctx context.Context, e bootstrapEnv, work string, a
 			blog(r.agentDeathLogLine(ctx, e.Container, rerr))
 		}
 	}
+}
+
+func (r *Runner) launchStdout() io.Writer {
+	if r != nil && r.Runner != nil && r.Runner.Stdout != nil {
+		return r.Runner.Stdout
+	}
+	return os.Stdout
+}
+
+func (r *Runner) launchStderr() io.Writer {
+	if r != nil && r.Runner != nil && r.Runner.Stderr != nil {
+		return r.Runner.Stderr
+	}
+	return os.Stderr
 }
 
 // agentDeathLogLine names an OOM kill explicitly when Docker state still knows it.
@@ -1330,8 +1349,8 @@ func (r *Runner) agentDeathLogLine(ctx context.Context, container string, runErr
 func (r *Runner) runWithStdin(ctx context.Context, work string, launch []string, stdinPath string) error {
 	cmd := exec.CommandContext(ctx, launch[0], launch[1:]...) // #nosec G204 -- fixed setpriv/agent argv
 	cmd.Dir = work
-	cmd.Stdout = os.Stdout
-	cmd.Stderr = os.Stderr
+	cmd.Stdout = r.launchStdout()
+	cmd.Stderr = r.launchStderr()
 	if stdinPath == "" {
 		cmd.Stdin = os.Stdin
 	} else {
@@ -1349,7 +1368,7 @@ func (r *Runner) runWithStdin(ctx context.Context, work string, launch []string,
 func (r *Runner) runStreaming(ctx context.Context, work string, launch []string) error {
 	cmd := exec.CommandContext(ctx, launch[0], launch[1:]...) // #nosec G204 -- fixed setpriv/agent argv
 	cmd.Dir = work
-	cmd.Stderr = os.Stderr
+	cmd.Stderr = r.launchStderr()
 	devnull, _ := os.Open(os.DevNull)
 	if devnull != nil {
 		defer func() { _ = devnull.Close() }()
@@ -1362,8 +1381,113 @@ func (r *Runner) runStreaming(ctx context.Context, work string, launch []string)
 	if serr := cmd.Start(); serr != nil {
 		return serr
 	}
-	streamProgress(pipe, os.Stdout)
+	streamProgress(pipe, r.launchStdout())
 	return cmd.Wait()
+}
+
+// gooseCompletionGrace is the short post-final-output window the watchdog gives Goose.
+// Ward force-stops a process that keeps running after the terminal answer.
+const gooseCompletionGrace = 5 * time.Second
+
+// gooseCompletionOutput reports whether a line looks like Goose's terminal answer.
+// The watchdog uses it as the success boundary before requesting exit.
+func gooseCompletionOutput(line string) bool {
+	lower := strings.ToLower(line)
+	return strings.Contains(lower, "implementation complete") ||
+		strings.Contains(lower, "requirements satisfied")
+}
+
+type gooseCompletionWatch struct {
+	sawCompletion <-chan struct{}
+	stdoutDone    <-chan error
+	waitDone      <-chan error
+}
+
+// startGooseCompletionWatch starts the stdout copier and process waiter for the
+// Goose completion watchdog.
+func startGooseCompletionWatch(cmd *exec.Cmd, stdout io.ReadCloser, w io.Writer) gooseCompletionWatch {
+	sawCompletion := make(chan struct{}, 1)
+	stdoutDone := make(chan error, 1)
+	go func() {
+		defer close(stdoutDone)
+		sc := bufio.NewScanner(stdout)
+		sc.Buffer(make([]byte, 0, 64*1024), 16*1024*1024)
+		for sc.Scan() {
+			line := sc.Text()
+			writeln(w, line)
+			if gooseCompletionOutput(line) {
+				select {
+				case sawCompletion <- struct{}{}:
+				default:
+				}
+			}
+		}
+		stdoutDone <- sc.Err()
+	}()
+	waitDone := make(chan error, 1)
+	go func() {
+		waitDone <- cmd.Wait()
+	}()
+	return gooseCompletionWatch{sawCompletion: sawCompletion, stdoutDone: stdoutDone, waitDone: waitDone}
+}
+
+// finishGooseCompletionWatch waits for the watchdog to observe completion and
+// then lets the process exit, forcing a kill only if it stays alive.
+func finishGooseCompletionWatch(cmd *exec.Cmd, watch gooseCompletionWatch) error {
+	select {
+	case <-watch.sawCompletion:
+		blog("goose terminal completion output observed; requesting exit")
+		_ = cmd.Process.Signal(os.Interrupt)
+		select {
+		case <-watch.waitDone:
+		case <-time.After(gooseCompletionGrace):
+			blog("goose process still running after terminal completion output; forcing termination")
+			_ = cmd.Process.Kill()
+			<-watch.waitDone
+		}
+		scanErr := <-watch.stdoutDone
+		if scanErr != nil {
+			return scanErr
+		}
+		blog("goose process exited after terminal completion output")
+		return nil
+	case scanErr := <-watch.stdoutDone:
+		waitErr := <-watch.waitDone
+		if scanErr != nil {
+			return scanErr
+		}
+		select {
+		case <-watch.sawCompletion:
+			blog("goose process exited after terminal completion output")
+			return nil
+		default:
+		}
+		if waitErr != nil {
+			return waitErr
+		}
+		return fmt.Errorf("goose exited without terminal completion output")
+	}
+}
+
+// runGooseCompletionWatch runs a headless Goose under a completion watchdog.
+// Once stdout shows the terminal answer, Ward exits the process if needed.
+func (r *Runner) runGooseCompletionWatch(ctx context.Context, work string, launch []string) error {
+	cmd := exec.CommandContext(ctx, launch[0], launch[1:]...) // #nosec G204 -- fixed setpriv/agent argv
+	cmd.Dir = work
+	cmd.Stderr = r.launchStderr()
+	devnull, _ := os.Open(os.DevNull)
+	if devnull != nil {
+		defer func() { _ = devnull.Close() }()
+	}
+	cmd.Stdin = devnull
+	stdout, err := cmd.StdoutPipe()
+	if err != nil {
+		return err
+	}
+	if err := cmd.Start(); err != nil {
+		return err
+	}
+	return finishGooseCompletionWatch(cmd, startGooseCompletionWatch(cmd, stdout, r.launchStdout()))
 }
 
 // setprivPrefix builds the bash launch prefix: drop to the agent uid/gid with
