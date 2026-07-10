@@ -15,6 +15,8 @@ func TestSetupCommandRegistered(t *testing.T) {
 
 func TestRunSetupWithUnsetRef(t *testing.T) {
 	t.Setenv(wardConfigRefEnv, "")
+	t.Setenv("WARD_TARGET_OWNER", "example-owner")
+	t.Setenv("WARD_TARGET_REPO", "example-owner/example-repo")
 	report, err := runSetup(context.Background())
 	if err != nil {
 		t.Fatalf("runSetup with unset ref: %v", err)
@@ -43,9 +45,13 @@ func TestRunSetupRejectsMalformedRef(t *testing.T) {
 }
 
 func TestRunSetupWithFixtureRef(t *testing.T) {
-	abs, err := filepath.Abs(wardKdlSrcDir)
+	dir := writeBundleFixture(t)
+	gitFixture(t, dir, "init", "-b", "main", ".")
+	gitFixture(t, dir, "add", ".")
+	gitFixture(t, dir, "commit", "-m", "bundle")
+	abs, err := filepath.Abs(dir)
 	if err != nil {
-		t.Fatalf("abs(%s): %v", wardKdlSrcDir, err)
+		t.Fatalf("abs(%s): %v", dir, err)
 	}
 	t.Setenv(wardConfigRefEnv, "file://"+abs)
 	report, err := runSetup(context.Background())

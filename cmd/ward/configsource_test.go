@@ -2,7 +2,6 @@ package main
 
 import (
 	"context"
-	"fmt"
 	"io/fs"
 	"os"
 	"path/filepath"
@@ -22,6 +21,8 @@ import (
 // WARD_CONFIG_REF means the baked embed, never an error.
 func TestSelectConfigSourceDefaultsBaked(t *testing.T) {
 	t.Setenv(wardConfigRefEnv, "")
+	t.Setenv("WARD_TARGET_OWNER", "example-owner")
+	t.Setenv("WARD_TARGET_REPO", "example-owner/example-repo")
 	src, err := selectConfigSource()
 	if err != nil {
 		t.Fatalf("selectConfigSource with unset ref: %v", err)
@@ -112,25 +113,31 @@ func TestSelectConfigSourceFileRef(t *testing.T) {
 	if !src.execMixedDialects {
 		t.Error("bundle source must dialect-filter its exec scan")
 	}
-	if src.fleetKDL != bundleFleetKDLPath {
-		t.Errorf("bundle fleet path = %q, want %q", src.fleetKDL, bundleFleetKDLPath)
+	if src.agentsKDL != bundleAgentsKDLPath {
+		t.Errorf("bundle agents path = %q, want %q", src.agentsKDL, bundleAgentsKDLPath)
+	}
+	if src.rolesKDL != bundleRolesKDLPath {
+		t.Errorf("bundle roles path = %q, want %q", src.rolesKDL, bundleRolesKDLPath)
 	}
 	if src.defaultsKDL != bundleDefaultsKDLPath {
 		t.Errorf("bundle defaults path = %q, want %q", src.defaultsKDL, bundleDefaultsKDLPath)
 	}
+	if src.reposKDL != bundleReposKDLPath {
+		t.Errorf("bundle repos path = %q, want %q", src.reposKDL, bundleReposKDLPath)
+	}
 	if src.topologyKDL != bundleTopologyKDLPath {
 		t.Errorf("bundle topology path = %q, want %q", src.topologyKDL, bundleTopologyKDLPath)
+	}
+	if src.execGuardfileGlob != bundleExecGuardfileGlob {
+		t.Errorf("bundle exec glob = %q, want %q", src.execGuardfileGlob, bundleExecGuardfileGlob)
 	}
 }
 
 // TestSelectConfigSourceFileRefCapturesRevision pins the audit-integrity seam:
 // when a local bundle is itself a git checkout, ward records its HEAD sha.
 func TestSelectConfigSourceFileRefCapturesRevision(t *testing.T) {
-	dir := t.TempDir()
+	dir := writeBundleFixture(t)
 	gitFixture(t, dir, "init", "-b", "main", ".")
-	if err := os.WriteFile(filepath.Join(dir, bundleFleetKDLPath), []byte("fleet { schema-version 2 }"), 0o644); err != nil {
-		t.Fatal(err)
-	}
 	gitFixture(t, dir, "add", ".")
 	gitFixture(t, dir, "commit", "-m", "bundle")
 	sha := gitFixture(t, dir, "rev-parse", "HEAD")
@@ -163,9 +170,10 @@ func TestBakedSourcePathsExist(t *testing.T) {
 // TestBuildForgejoOpsFromRealBundle compiles `ops forgejo` from the neutral bundle.
 // The bundled admin guardfile is absent, so baked grafts it.
 func TestBuildForgejoOpsFromRealBundle(t *testing.T) {
-	forgejo, err := buildForgejoOpsFrom(bundleConfigSource(wardKdlSrcDir))
+	dir := writeBundleFixture(t)
+	forgejo, err := buildForgejoOpsFrom(bundleConfigSource(dir))
 	if err != nil {
-		t.Fatalf("buildForgejoOpsFrom(%s): %v", wardKdlSrcDir, err)
+		t.Fatalf("buildForgejoOpsFrom(bundle): %v", err)
 	}
 	if commandNamed(forgejo.Commands, "issue") == nil {
 		t.Errorf("bundle-built forgejo has no issue command; got %v", commandNames(forgejo.Commands))
@@ -190,8 +198,9 @@ func TestBuildForgejoOpsFromRealBundle(t *testing.T) {
 // bundle: exec guardfiles graft, spec-dialect siblings filter out, no mount error.
 func TestMountWardKdlExecFromRealBundle(t *testing.T) {
 	root := newWardKdlTestRoot()
-	if err := mountWardKdlExecFrom(root, bundleConfigSource(wardKdlSrcDir), leanRunner()); err != nil {
-		t.Fatalf("mountWardKdlExecFrom(%s): %v", wardKdlSrcDir, err)
+	dir := writeBundleFixture(t)
+	if err := mountWardKdlExecFrom(root, bundleConfigSource(dir), leanRunner()); err != nil {
+		t.Fatalf("mountWardKdlExecFrom(bundle): %v", err)
 	}
 	agents := commandNamed(root.Commands, "agents")
 	if agents == nil || commandNamed(agents.Commands, "ollama") == nil {
@@ -211,9 +220,10 @@ func TestMountWardKdlExecFromRealBundle(t *testing.T) {
 // TestLoadFleetConfigFromBundleSource parses the dialect-2 fleet config from an
 // explicit bundle source, independent of WARD_CONFIG_REF.
 func TestLoadFleetConfigFromBundleSource(t *testing.T) {
-	abs, err := filepath.Abs(wardKdlSrcDir)
+	dir := writeBundleFixture(t)
+	abs, err := filepath.Abs(dir)
 	if err != nil {
-		t.Fatalf("abs(%s): %v", wardKdlSrcDir, err)
+		t.Fatalf("abs(%s): %v", dir, err)
 	}
 	raw, err := loadRawFleetConfigFrom(bundleConfigSource(abs))
 	if err != nil {
@@ -305,19 +315,21 @@ func TestOpsCommandDegradesOnBadRef(t *testing.T) {
 }
 
 // TestBuildForgejoOpsWithRealLookingConfigRef exercises the live ops startup path
-// against a believable git-ref WARD_CONFIG_REF and confirms it returns.
+// against a believable bundle checkout and confirms it returns.
 func TestBuildForgejoOpsWithRealLookingConfigRef(t *testing.T) {
-	bareRepo := makeTestConfigBundleRepo(t)
+	dir := writeBundleFixture(t)
+	gitFixture(t, dir, "init", "-b", "main", ".")
+	gitFixture(t, dir, "add", ".")
+	gitFixture(t, dir, "commit", "-m", "bundle")
+	abs, err := filepath.Abs(dir)
+	if err != nil {
+		t.Fatalf("abs(%s): %v", dir, err)
+	}
 
 	home := t.TempDir()
 	t.Setenv("HOME", home)
 	t.Setenv("XDG_CONFIG_HOME", filepath.Join(home, ".config"))
-	t.Setenv(wardConfigRefEnv, "forgejo.coilysiren.me/coilyco-flight-deck/agentic-os@main//.ward")
-	if err := os.WriteFile(filepath.Join(home, ".gitconfig"), []byte(fmt.Sprintf(`[url "%s"]
-	insteadOf = https://forgejo.coilysiren.me/coilyco-flight-deck/agentic-os.git
-`, bareRepo)), 0o644); err != nil {
-		t.Fatalf("write gitconfig: %v", err)
-	}
+	t.Setenv(wardConfigRefEnv, "file://"+abs)
 
 	type result struct {
 		cmd *cli.Command
@@ -345,45 +357,17 @@ func TestBuildForgejoOpsWithRealLookingConfigRef(t *testing.T) {
 	}
 }
 
-func makeTestConfigBundleRepo(t *testing.T) string {
-	t.Helper()
-	work := t.TempDir()
-	bundleDir := filepath.Join(work, ".ward")
-	if err := os.MkdirAll(bundleDir, 0o755); err != nil {
-		t.Fatal(err)
-	}
-	for _, name := range []string{"ward-kdl.forgejo.guardfile.kdl", "forgejo.swagger.lock.json"} {
-		src := filepath.Join(wardKdlSrcDir, name)
-		dst := filepath.Join(bundleDir, name)
-		b, err := os.ReadFile(src)
-		if err != nil {
-			t.Fatalf("read %s: %v", src, err)
-		}
-		if err := os.WriteFile(dst, b, 0o644); err != nil {
-			t.Fatalf("write %s: %v", dst, err)
-		}
-	}
-	gitFixture(t, work, "init", "-b", "main", ".")
-	gitFixture(t, work, "add", ".")
-	gitFixture(t, work, "commit", "-m", "bundle")
-
-	bareRepo := t.TempDir()
-	gitFixture(t, bareRepo, "init", "--bare", ".")
-	gitFixture(t, work, "remote", "add", "origin", bareRepo)
-	gitFixture(t, work, "push", "-u", "origin", "main")
-	return bareRepo
-}
-
 // TestBuildForgejoOpsAnnotatesSelectedConfigSource keeps the active config source
 // visible in the mounted Forgejo surface, so describe/help can surface it.
 func TestBuildForgejoOpsAnnotatesSelectedConfigSource(t *testing.T) {
-	abs, err := filepath.Abs(wardKdlSrcDir)
+	dir := writeBundleFixture(t)
+	abs, err := filepath.Abs(dir)
 	if err != nil {
-		t.Fatalf("abs(%s): %v", wardKdlSrcDir, err)
+		t.Fatalf("abs(%s): %v", dir, err)
 	}
 	t.Setenv(wardConfigRefEnv, "file://"+abs)
-	t.Setenv("WARD_TARGET_OWNER", "")
-	t.Setenv("WARD_TARGET_REPO", "")
+	t.Setenv("WARD_TARGET_OWNER", "example-owner")
+	t.Setenv("WARD_TARGET_REPO", "example-owner/example-repo")
 	forgejo, err := buildForgejoOps()
 	if err != nil {
 		t.Fatalf("buildForgejoOps with fixture ref: %v", err)
@@ -396,11 +380,8 @@ func TestBuildForgejoOpsAnnotatesSelectedConfigSource(t *testing.T) {
 // TestWrapVerbStampsConfigVersion pins the audit row's bundle attribution:
 // the config-bundle sha flows into the recorded version field.
 func TestWrapVerbStampsConfigVersion(t *testing.T) {
-	dir := t.TempDir()
+	dir := writeBundleFixture(t)
 	gitFixture(t, dir, "init", "-b", "main", ".")
-	if err := os.WriteFile(filepath.Join(dir, bundleFleetKDLPath), []byte("fleet { schema-version 2 }"), 0o644); err != nil {
-		t.Fatal(err)
-	}
 	gitFixture(t, dir, "add", ".")
 	gitFixture(t, dir, "commit", "-m", "bundle")
 	sha := gitFixture(t, dir, "rev-parse", "HEAD")

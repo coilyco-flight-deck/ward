@@ -261,7 +261,7 @@ func execGuardfileNameSelected(name string, mixedDialects bool) bool {
 	if !mixedDialects {
 		return true
 	}
-	ok, _ := path.Match("ward-kdl.*.guardfile.kdl", name)
+	ok, _ := path.Match(bundleExecGuardfileGlob, name)
 	return ok
 }
 

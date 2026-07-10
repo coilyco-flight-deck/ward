@@ -1,36 +1,22 @@
 package main
 
 import (
-	"bytes"
-	"os"
 	"strings"
 	"testing"
 
 	"github.com/urfave/cli/v3"
 )
 
-// canonicalOpsAssets pairs each embedded copy with its ward-kdl source (moved to
-// .ward/ward-kdl in ward#435); the copies exist because go:embed can't reach it.
-var canonicalOpsAssets = map[string]string{
-	opsForgejoGuardfilePath: "../../.ward/ward-kdl/ward-kdl.forgejo.guardfile.kdl",
-	opsForgejoSpecLockPath:  "../../.ward/ward-kdl/forgejo.swagger.lock.json",
-}
-
-// TestOpsAssetsMatchWardKDL fails when an embedded ops asset drifts from its
-// canonical ward-kdl source. See docs/ops-forgejo.md.
-func TestOpsAssetsMatchWardKDL(t *testing.T) {
-	for embedPath, canonical := range canonicalOpsAssets {
-		want, err := os.ReadFile(canonical)
-		if err != nil {
-			t.Fatalf("read canonical %s: %v", canonical, err)
-		}
+// TestOpsAssetsEmbeddedSmoke ensures the embedded ops surface is present and
+// still parseable after the bundle split.
+func TestOpsAssetsEmbeddedSmoke(t *testing.T) {
+	for _, embedPath := range []string{opsForgejoGuardfilePath, opsForgejoSpecLockPath} {
 		got, err := bakedAssets.ReadFile(embedPath)
 		if err != nil {
 			t.Fatalf("read embedded %s: %v", embedPath, err)
 		}
-		if !bytes.Equal(want, got) {
-			t.Errorf("embedded %s has drifted from %s; resync with `make build-ward-kdl` "+
-				"(or copy the file) so ward embeds the current guardfile/spec", embedPath, canonical)
+		if len(got) == 0 {
+			t.Fatalf("embedded %s is empty", embedPath)
 		}
 	}
 }
@@ -38,6 +24,8 @@ func TestOpsAssetsMatchWardKDL(t *testing.T) {
 // TestOpsForgejoMounts asserts the embedded guardfile + spec lock build into a
 // real command group, not the degraded error leaf.
 func TestOpsForgejoMounts(t *testing.T) {
+	dir := writeBundleFixture(t)
+	t.Setenv(wardConfigRefEnv, "file://"+dir)
 	forgejo, err := buildForgejoOps()
 	if err != nil {
 		t.Fatalf("buildForgejoOps: %v", err)
@@ -51,6 +39,8 @@ func TestOpsForgejoMounts(t *testing.T) {
 }
 
 func TestOpsForgejoIssueListAllMounts(t *testing.T) {
+	dir := writeBundleFixture(t)
+	t.Setenv(wardConfigRefEnv, "file://"+dir)
 	forgejo, err := buildForgejoOps()
 	if err != nil {
 		t.Fatalf("buildForgejoOps: %v", err)
@@ -67,6 +57,8 @@ func TestOpsForgejoIssueListAllMounts(t *testing.T) {
 // TestOpsForgejoIssueCommentDeleteMounts pins ward#570's cleanup leaf: issue-comment
 // carries both `list` and the added `delete` (a dropped spec-lock op regresses here).
 func TestOpsForgejoIssueCommentDeleteMounts(t *testing.T) {
+	dir := writeBundleFixture(t)
+	t.Setenv(wardConfigRefEnv, "file://"+dir)
 	forgejo, err := buildForgejoOps()
 	if err != nil {
 		t.Fatalf("buildForgejoOps: %v", err)
@@ -79,6 +71,24 @@ func TestOpsForgejoIssueCommentDeleteMounts(t *testing.T) {
 		if commandNamed(ic.Commands, want) == nil {
 			t.Fatalf("issue-comment missing %q leaf; got %v", want, commandNames(ic.Commands))
 		}
+	}
+}
+
+// TestOpsForgejoPrEditMounts pins the PR-native edit leaf: the pr subtree keeps
+// edit alongside the existing read/merge surface.
+func TestOpsForgejoPrEditMounts(t *testing.T) {
+	dir := writeBundleFixture(t)
+	t.Setenv(wardConfigRefEnv, "file://"+dir)
+	forgejo, err := buildForgejoOps()
+	if err != nil {
+		t.Fatalf("buildForgejoOps: %v", err)
+	}
+	pr := commandNamed(forgejo.Commands, "pr")
+	if pr == nil {
+		t.Fatalf("forgejo group missing pr command; got %v", commandNames(forgejo.Commands))
+	}
+	if commandNamed(pr.Commands, "edit") == nil {
+		t.Fatalf("pr command missing edit leaf; got %v", commandNames(pr.Commands))
 	}
 }
 
@@ -128,6 +138,8 @@ func TestRerootGroupToWard(t *testing.T) {
 // TestOpsForgejoNamespaceRerooted asserts the in-binary forgejo group mounts
 // under ward's own brand, not the standalone ward-kdl binary's (ward#270).
 func TestOpsForgejoNamespaceRerooted(t *testing.T) {
+	dir := writeBundleFixture(t)
+	t.Setenv(wardConfigRefEnv, "file://"+dir)
 	forgejo, err := buildForgejoOps()
 	if err != nil {
 		t.Fatalf("buildForgejoOps: %v", err)

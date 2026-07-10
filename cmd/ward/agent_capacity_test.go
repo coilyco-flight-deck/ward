@@ -68,7 +68,7 @@ func TestEngineerContainerLimitBelowAndAtLimit(t *testing.T) {
 
 func TestEngineerContainerLimitFromBundleOverride(t *testing.T) {
 	dir := t.TempDir()
-	body := `smart-defaults {
+	defaultsBody := `defaults {
     agent-reservation-ttl "1h"
     agent-reservation-recheck-max "15s"
     agent-reap-idle "1h"
@@ -86,12 +86,18 @@ func TestEngineerContainerLimitFromBundleOverride(t *testing.T) {
         repo "coilyco-flight-deck/ward" workflow=pull-requests-and-merge
     }
 }
-repo-authority default=forgejo {
-    trusted-owner coilysiren
-    repo "coilyco-flight-deck/*" forge=forgejo
+`
+	reposBody := `repos {
+    repo-authority default=forgejo {
+        trusted-owner coilysiren
+        repo "coilyco-flight-deck/*" forge=forgejo
+    }
 }`
-	if err := os.WriteFile(filepath.Join(dir, bundleDefaultsKDLPath), []byte(body), 0o644); err != nil {
+	if err := os.WriteFile(filepath.Join(dir, bundleDefaultsKDLPath), []byte(defaultsBody), 0o644); err != nil {
 		t.Fatalf("write defaults bundle: %v", err)
+	}
+	if err := os.WriteFile(filepath.Join(dir, bundleReposKDLPath), []byte(reposBody), 0o644); err != nil {
+		t.Fatalf("write repos bundle: %v", err)
 	}
 	t.Setenv(wardConfigRefEnv, "file://"+dir)
 	if got := engineerContainerLimitDefault(); got != 15 {

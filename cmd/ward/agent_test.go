@@ -131,18 +131,23 @@ func TestParseAgentIssueRef(t *testing.T) {
 
 func TestParseAgentIssueRefUsesRepoAuthorityPolicy(t *testing.T) {
 	dir := t.TempDir()
-	body := `smart-defaults {
+	defaultsBody := `defaults {
     agent-reservation-ttl "1h"
 }
-
-repo-authority default=forgejo {
-    trusted-owner "coilysiren"
-    trusted-owner "coilyco-flight-deck"
-    repo "coilysiren/*" forge=github
-    repo "coilyco-flight-deck/*" forge=forgejo
+`
+	reposBody := `repos {
+    repo-authority default=forgejo {
+        trusted-owner "coilysiren"
+        trusted-owner "coilyco-flight-deck"
+        repo "coilysiren/*" forge=github
+        repo "coilyco-flight-deck/*" forge=forgejo
+    }
 }`
-	if err := os.WriteFile(filepath.Join(dir, bundleDefaultsKDLPath), []byte(body), 0o644); err != nil {
+	if err := os.WriteFile(filepath.Join(dir, bundleDefaultsKDLPath), []byte(defaultsBody), 0o644); err != nil {
 		t.Fatalf("write defaults bundle: %v", err)
+	}
+	if err := os.WriteFile(filepath.Join(dir, bundleReposKDLPath), []byte(reposBody), 0o644); err != nil {
+		t.Fatalf("write repos bundle: %v", err)
 	}
 	t.Setenv(wardConfigRefEnv, "file://"+dir)
 
@@ -212,6 +217,7 @@ func TestAgentIssueRefShortcutURL(t *testing.T) {
 // TestUntrustedOwnerErr covers ward#484: the refusal names the owner, the
 // accepted set, and points at docs/agent-trust-gate.md so it is a signpost.
 func TestUntrustedOwnerErr(t *testing.T) {
+	t.Setenv(wardConfigRefEnv, "file://"+writeBundleFixture(t))
 	r := &Runner{}
 	msg := r.untrustedOwnerErr("warded", "evilcorp").Error()
 	for _, want := range []string{
@@ -512,6 +518,7 @@ func TestAgentSeedPromptPullRequestFailureCommenting(t *testing.T) {
 }
 
 func TestOwnerAllowed(t *testing.T) {
+	t.Setenv(wardConfigRefEnv, "file://"+writeBundleFixture(t))
 	r := &Runner{}
 	for _, ok := range []string{"example-owner"} {
 		if !r.ownerAllowed(ok) {
@@ -527,18 +534,23 @@ func TestOwnerAllowed(t *testing.T) {
 
 func TestResolveAgentIssueRefUsesRepoAuthorityPolicy(t *testing.T) {
 	dir := t.TempDir()
-	body := `smart-defaults {
+	defaultsBody := `defaults {
     agent-reservation-ttl "1h"
 }
-
-repo-authority default=forgejo {
-    trusted-owner "coilysiren"
-    trusted-owner "coilyco-flight-deck"
-    repo "coilysiren/*" forge=github
-    repo "coilyco-flight-deck/*" forge=forgejo
+`
+	reposBody := `repos {
+    repo-authority default=forgejo {
+        trusted-owner "coilysiren"
+        trusted-owner "coilyco-flight-deck"
+        repo "coilysiren/*" forge=github
+        repo "coilyco-flight-deck/*" forge=forgejo
+    }
 }`
-	if err := os.WriteFile(filepath.Join(dir, bundleDefaultsKDLPath), []byte(body), 0o644); err != nil {
+	if err := os.WriteFile(filepath.Join(dir, bundleDefaultsKDLPath), []byte(defaultsBody), 0o644); err != nil {
 		t.Fatalf("write defaults bundle: %v", err)
+	}
+	if err := os.WriteFile(filepath.Join(dir, bundleReposKDLPath), []byte(reposBody), 0o644); err != nil {
+		t.Fatalf("write repos bundle: %v", err)
 	}
 	t.Setenv(wardConfigRefEnv, "file://"+dir)
 
@@ -1015,6 +1027,8 @@ func TestAgentHarnessAliasResolution(t *testing.T) {
 // TestRetiredVerbsErrorAsUnknown covers ward#347's hard rename: a bare `ward agent
 // <old-verb>` (not a ref) errors as an unknown command, not filed as freeform work.
 func TestRetiredVerbsErrorAsUnknown(t *testing.T) {
+	t.Setenv("WARD_TARGET_OWNER", "example-owner")
+	t.Setenv("WARD_TARGET_REPO", "example-owner/example-repo")
 	for _, verb := range []string{"explore", "sandbox", "headless", "work", "reply", "ask", "backlog"} {
 		err := agentCommand().Run(t.Context(), []string{"agent", verb})
 		if err == nil {
@@ -1040,7 +1054,7 @@ func commandHasFlag(cmd *cli.Command, name string) bool {
 }
 
 // A goose headless plan threads both WARD_MODE=goose and WARD_HEADLESS=1 so the
-// entrypoint picks the `goose run -t` branch.
+// entrypoint picks the `goose run --no-session -t` branch.
 func TestGooseHeadlessPlanEnv(t *testing.T) {
 	p := sampleUpPlan()
 	p.Mode = modeGoose

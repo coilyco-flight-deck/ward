@@ -706,6 +706,8 @@ func (c *forgejoClient) listOpenPullRequests(ctx context.Context, owner, repo st
 				State:  ri.State,
 				URL:    ri.HTMLURL,
 			},
+			CreatedAt: ri.CreatedAt,
+			UpdatedAt: ri.UpdatedAt,
 		}
 		for _, l := range ri.Labels {
 			if l.Name != "" {
@@ -735,6 +737,43 @@ func (c *forgejoClient) listOpenIssueFeed(ctx context.Context, owner, repo strin
 		return nil, fmt.Errorf("forgejo: list open issues in %s/%s: %w", owner, repo, err)
 	}
 	return raw, nil
+}
+
+// listOpenIssueFeedByType reads Forgejo's open issue feed.
+// The director backlog uses it to keep issue and PR scans separate.
+func (c *forgejoClient) listOpenIssueFeedByType(ctx context.Context, owner, repo string, limit int, kind string) ([]forgejoIssueRaw, error) {
+	if limit <= 0 {
+		limit = 50
+	}
+	q := url.Values{"state": {"open"}, "limit": {strconv.Itoa(limit)}}
+	if kind = strings.TrimSpace(kind); kind != "" {
+		q.Set("type", kind)
+	}
+	var raw []forgejoIssueRaw
+	if _, err := c.doJSON(ctx, http.MethodGet, []string{"repos", owner, repo, "issues"}, q, nil, false, &raw); err != nil {
+		return nil, fmt.Errorf("forgejo: list open %s in %s/%s: %w", kind, owner, repo, err)
+	}
+	return filterOpenIssueFeedByType(raw, kind), nil
+}
+
+func filterOpenIssueFeedByType(raw []forgejoIssueRaw, kind string) []forgejoIssueRaw {
+	kind = strings.TrimSpace(kind)
+	if kind == "" {
+		return raw
+	}
+	out := make([]forgejoIssueRaw, 0, len(raw))
+	for _, ri := range raw {
+		if kind == "pulls" {
+			if ri.isPullRequest() {
+				out = append(out, ri)
+			}
+			continue
+		}
+		if kind == "issues" && !ri.isPullRequest() {
+			out = append(out, ri)
+		}
+	}
+	return out
 }
 
 // addIssueLabels adds the labels (by name) to an open issue - the write side of startup
@@ -840,6 +879,8 @@ type directorPullRequest struct {
 	Mergeable      bool
 	MergeableKnown bool
 	MergeableError string
+	CreatedAt      time.Time
+	UpdatedAt      time.Time
 }
 
 // lean projects the raw issue down to the reader-facing leanIssue.

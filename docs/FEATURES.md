@@ -16,6 +16,7 @@ Inventory of what `ward` ships today.
 
 - **`ward agent`** - the guarded execution layer.
 - **`warded`** - the symlinked public face.
+- **`ward agent director queue` / `status`** - the read-only queue view for stale reservations, redispatch candidates, PR handoffs, and stale-open done issues.
 - **Harness install hooks** - bootstrap now requires a harness install step
   before launch, with self-contained declarations for claude/codex/goose and a
   required opencode install path.
@@ -57,6 +58,9 @@ Inventory of what `ward` ships today.
 - It accepts `first input` as exec-guard sugar for `arg0`, and ward injects the
   raw Forgejo Actions log fetch leaf directly into the shipped `ward ops
   forgejo` surface.
+- The embedded Forgejo surface now includes a PR-native edit leaf, so merge-gate
+  body/title updates can target `/pulls/{index}` without falling back to issue
+  edit.
 - Runtime `WARD_CONFIG_REF` bundles affect edge/operator surfaces, not the core
   agent control plane.
 - Coilyco-targeted operator surfaces fail fast when they would otherwise fall
