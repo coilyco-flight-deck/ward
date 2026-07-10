@@ -513,10 +513,8 @@ func directorMergeEligibilityFixtureWithBranchProtection(t *testing.T, headSHA s
 }
 
 func TestDirectorMergeEligibilityRejectsMergeConflict(t *testing.T) {
-	cl := &forgejoClient{}
-
 	allowed, reason, linked, meta := directorMergeEligibility(context.Background(), "coilyco-flight-deck", "ward",
-		directorPullRequest{Issue: dispatch.Issue{Number: 729, Title: "ship the fix", Body: "closes #729\n" + directorMergeWorkflowMarker + "\n"}, Mergeable: false, MergeableKnown: true}, cl, cl)
+		directorPullRequest{Issue: dispatch.Issue{Number: 729, Title: "ship the fix", Body: "closes #729\n" + directorMergeWorkflowMarker + "\n"}, Mergeable: false, MergeableKnown: true}, &forgejoClient{}, mergeConflictTracker{})
 	if allowed {
 		t.Fatal("conflicting PR: want deny, got allow")
 	}
@@ -530,6 +528,28 @@ func TestDirectorMergeEligibilityRejectsMergeConflict(t *testing.T) {
 		t.Fatalf("conflicting PR should not need issue metadata, got %+v", meta)
 	}
 }
+
+type mergeConflictTracker struct{}
+
+func (mergeConflictTracker) getIssue(context.Context, string, string, int) (*dispatch.Issue, error) {
+	return &dispatch.Issue{}, nil
+}
+
+func (mergeConflictTracker) listIssueComments(context.Context, string, string, int) ([]issueComment, error) {
+	return nil, context.Canceled
+}
+
+func (mergeConflictTracker) createIssue(context.Context, string, string, string, string) (int, error) {
+	return 0, nil
+}
+
+func (mergeConflictTracker) commentIssue(context.Context, string, string, int, string) error {
+	return nil
+}
+func (mergeConflictTracker) closeIssue(context.Context, string, string, int) error  { return nil }
+func (mergeConflictTracker) reopenIssue(context.Context, string, string, int) error { return nil }
+func (mergeConflictTracker) lockIssue(context.Context, string, string, int) error   { return nil }
+func (mergeConflictTracker) unlockIssue(context.Context, string, string, int) error { return nil }
 
 func TestDirectorMergeConflictReasonFromComments(t *testing.T) {
 	now := time.Date(2026, 7, 10, 18, 0, 0, 0, time.UTC)
