@@ -1,0 +1,4 @@
+// Tailscale guardfile placeholder for the tracked ward-kdl bundle.
+wrap ward-kdl ops tailscale {
+    spec tailscale.openapi.yaml
+}

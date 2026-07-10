@@ -187,6 +187,23 @@ func TestLaunchAgentReportsOOMKilled(t *testing.T) {
 	}
 }
 
+func TestGooseCompletionOutput(t *testing.T) {
+	cases := []struct {
+		line string
+		want bool
+	}{
+		{"Issue #0 IMPLEMENTATION COMPLETE", true},
+		{"All requirements satisfied and implementation complete", true},
+		{"still working", false},
+		{"issue closed", false},
+	}
+	for _, tc := range cases {
+		if got := gooseCompletionOutput(tc.line); got != tc.want {
+			t.Errorf("gooseCompletionOutput(%q) = %v, want %v", tc.line, got, tc.want)
+		}
+	}
+}
+
 func TestRunContainerBootstrapGooseNoSessionExitsAndReaps(t *testing.T) {
 	prevWorkspaceRoot := workspaceRoot
 	workspaceRoot = t.TempDir()
@@ -213,16 +230,10 @@ func TestRunContainerBootstrapGooseNoSessionExitsAndReaps(t *testing.T) {
 	chown := filepath.Join(binDir, "chown")
 	aws := filepath.Join(binDir, "aws")
 	gooseBody := "#!/bin/sh\n" +
-		"case \" $* \" in\n" +
-		"  *\" --no-session \"*)\n" +
-		"    printf '%s\\n' 'Issue #0 IMPLEMENTATION COMPLETE'\n" +
-		"    printf '%s\\n' 'All requirements satisfied and implementation complete'\n" +
-		"    exit 0\n" +
-		"    ;;\n" +
-		"esac\n" +
+		"trap '' INT TERM HUP\n" +
 		"printf '%s\\n' 'Issue #0 IMPLEMENTATION COMPLETE'\n" +
-		"sleep 20\n" +
-		"exit 0\n"
+		"printf '%s\\n' 'All requirements satisfied and implementation complete'\n" +
+		"while :; do :; done\n"
 	setprivBody := "#!/bin/sh\nshift 4\nexec env \"$@\"\n"
 	chownBody := "#!/bin/sh\nexit 0\n"
 	awsBody := "#!/bin/sh\nprintf '%s\\n' http://127.0.0.1:11434\n"
@@ -273,7 +284,8 @@ func TestRunContainerBootstrapGooseNoSessionExitsAndReaps(t *testing.T) {
 		t.Fatalf("stdout missing final Goose completion output:\n%s", got)
 	}
 	for _, want := range []string{
-		"bootstrap launch returned: agent process exited, deferred reaper runs next",
+		"goose terminal completion output observed; requesting exit",
+		"goose process exited after terminal completion output",
 		"reaping: salvage residual work before teardown",
 	} {
 		if !strings.Contains(stderr, want) {

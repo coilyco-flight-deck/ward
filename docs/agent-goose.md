@@ -4,7 +4,8 @@ The `goose` role is the local Ollama-backed harness.
 
 - It composes its Ollama endpoint into config.
 - It runs a host one-shot preflight before launch.
-- It launches headless work with `goose run --no-session -t` so the process exits cleanly after the final turn.
+- It launches headless work with `goose run --no-session -t` so the process
+  exits cleanly after the final turn.
 
 ## See also
 

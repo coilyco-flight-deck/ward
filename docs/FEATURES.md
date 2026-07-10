@@ -57,6 +57,9 @@ Inventory of what `ward` ships today.
 - It accepts `first input` as exec-guard sugar for `arg0`, and ward injects the
   raw Forgejo Actions log fetch leaf directly into the shipped `ward ops
   forgejo` surface.
+- The embedded Forgejo surface now includes a PR-native edit leaf, so merge-gate
+  body/title updates can target `/pulls/{index}` without falling back to issue
+  edit.
 - Runtime `WARD_CONFIG_REF` bundles affect edge/operator surfaces, not the core
   agent control plane.
 - Coilyco-targeted operator surfaces fail fast when they would otherwise fall
