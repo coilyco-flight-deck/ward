@@ -1,0 +1,10 @@
+// Glama ADMIN tier - PLACEHOLDER (ward#344). Verbless skeleton for the ward#339
+// migration; staged-only via the `.guardfile.kdl.placeholder` suffix (see the
+// read sibling). `inherit` (cli-guard#160) composes the whole write tier (which
+// composes read). Glama exposes no destructive verb today, so admin may equal
+// write (the signoz pattern); whatever it adds lands here when ward#339 wires the
+// area.
+wrap ward-kdl-admin pkg glama {
+    inherit "../ward-kdl-write/ward-kdl.glama.write.guardfile.kdl"
+    // TODO(ward#339): tier verbs
+}

@@ -1,8 +1,8 @@
 # ward
 
-Ward is an operations layer for unattended coding agents. It sheilds them from the vagaries of turbulent execution context and scaffolds them into the workflows they already know how to use.
+Ward is a harness driving operations layer for unattended coding agents. It sheilds them from the vagaries of turbulent execution context and scaffolds them into the workflows they already know how to use.
 
-ward's it works via running as a guarded execution layer. `ward agent` launches a your authenticated coding CLI (claude, codex, goose, ...) into an ephemeral, least-access container and drives it through an issue-to-merge workflow, or an issue to PR workflow, while bounded by credentials scoping and a durable audit trail. Fuinctionally it is a manifest-backed harness driver** - it knows how to launch each agent through its own CLI dialect - but the external product is the governed execution layer around it, not the driver. That surface is exposed as **`warded`**, a thin symlink onto `ward agent`, and sits on the three-layer split covered below and in [`docs/architecture.md`](docs/architecture.md).
+ward's it works via running as a guarded execution layer and workflow system. `ward agent` launches a your authenticated coding CLI (claude, codex, goose, ...) into an ephemeral, least-access container and drives it through an issue-to-merge workflow, or an issue to PR workflow, while bounded by credentials scoping and a durable audit trail. Fuinctionally it is a manifest-backed harness driver** - it knows how to launch each agent through its own CLI dialect - but the external product is the governed execution layer around it, not the driver. That surface is exposed as **`warded`**, a thin symlink onto `ward agent`, and sits on the three-layer split covered below and in [`docs/architecture.md`](docs/architecture.md).
 
 ## Who it's for
 
@@ -13,7 +13,7 @@ ward's it works via running as a guarded execution layer. `ward agent` launches 
 
 - **macOS or Linux + Homebrew** to install the binary (see [Install](#install)).
 - **A Forgejo instance** for ward's own operator surface (`ward ops forgejo`). ward is **Forgejo-canonical** for ward itself: it carries Forgejo issues and pushes to a Forgejo `main`, and the GitHub mirror is read-only and PR-gated. The agent driver follows the target repo's authority policy, so `coilysiren/*` can be GitHub-authoritative. Which Forgejo, exactly? See the note below the list.
-- **Docker** for the container agent flow - each `warded` run boots an ephemeral container, configures forge git auth inside it, runs the agent, and reaps it. The first run pulls one image, `forgejo.coilysiren.me/coilyco-flight-deck/agentic-os:latest` (anonymous pull, no login). See [`docs/container.md`](docs/container.md) for the registry, tag policy, and how to pin off the moving tag.
+- **Docker** for the container agent flow - each `warded` run boots an ephemeral container, configures forge git auth inside it, runs the agent, and reaps it. The first run pulls one image, `forgejo.coilysiren.me/coilyco-flight-deck/agentic-os-full:latest` (anonymous pull, no login). See [`docs/container.md`](docs/container.md) for the registry, tag policy, and how to pin off the moving tag.
 
 The plain verb gate (`ward exec`, `ward git`, `ward audit`) needs none of the above - just the repo and its `.ward/ward.yaml`.
 

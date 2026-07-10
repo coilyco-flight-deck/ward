@@ -462,6 +462,46 @@ func (f *fakeNoOutcomeTracker) unlockIssue(_ context.Context, _, _ string, _ int
 	return nil
 }
 
+type fakeTerminalOutcomeTracker struct {
+	comments  []issueComment
+	commented []string
+	unlocked  int
+	postAt    time.Time
+}
+
+func (f *fakeTerminalOutcomeTracker) getIssue(context.Context, string, string, int) (*dispatch.Issue, error) {
+	return nil, errors.New("fakeTerminalOutcomeTracker: issue lookup not implemented")
+}
+
+func (f *fakeTerminalOutcomeTracker) listIssueComments(context.Context, string, string, int) ([]issueComment, error) {
+	return append([]issueComment(nil), f.comments...), nil
+}
+
+func (f *fakeTerminalOutcomeTracker) createIssue(context.Context, string, string, string, string) (int, error) {
+	return 0, nil
+}
+
+func (f *fakeTerminalOutcomeTracker) commentIssue(_ context.Context, _, _ string, _ int, body string) error {
+	f.commented = append(f.commented, body)
+	f.comments = append(f.comments, issueComment{Body: body, CreatedAt: f.postAt})
+	return nil
+}
+
+func (f *fakeTerminalOutcomeTracker) closeIssue(context.Context, string, string, int) error {
+	return nil
+}
+func (f *fakeTerminalOutcomeTracker) reopenIssue(context.Context, string, string, int) error {
+	return nil
+}
+func (f *fakeTerminalOutcomeTracker) lockIssue(context.Context, string, string, int) error {
+	return nil
+}
+
+func (f *fakeTerminalOutcomeTracker) unlockIssue(_ context.Context, _, _ string, _ int) error {
+	f.unlocked++
+	return nil
+}
+
 func TestPostLaunchedNoOutcomeComment(t *testing.T) {
 	upAt := time.Date(2026, 7, 9, 12, 0, 0, 0, time.UTC)
 	fc := &fakeNoOutcomeTracker{
@@ -487,6 +527,78 @@ func TestPostLaunchedNoOutcomeComment(t *testing.T) {
 		if !strings.Contains(fc.commented[0], want) {
 			t.Errorf("failure comment missing %q\n%s", want, fc.commented[0])
 		}
+	}
+}
+
+func TestReleaseReservationIfTerminalOutcomeComment(t *testing.T) {
+	upAt := time.Date(2026, 7, 9, 12, 0, 0, 0, time.UTC)
+	for _, tc := range []struct {
+		name   string
+		status string
+	}{
+		{name: "blocked", status: "blocked"},
+		{name: "merge-ready", status: "merge-ready"},
+		{name: "failed", status: "failed"},
+	} {
+		t.Run(tc.name, func(t *testing.T) {
+			fc := &fakeTerminalOutcomeTracker{
+				comments: []issueComment{
+					{Body: "WARD-OUTCOME: " + tc.status + " 🛑\n\n<details><summary>details</summary>\n\nfinished\n\n</details>", CreatedAt: upAt.Add(time.Minute)},
+				},
+				postAt: upAt.Add(2 * time.Minute),
+			}
+			env := reapEnv{
+				Owner:     "coilyco-flight-deck",
+				Name:      "ward",
+				Issue:     1042,
+				Launched:  true,
+				Mode:      "goose",
+				Container: "engineer-goose-ward-1042",
+				UpAt:      upAt.Add(-time.Minute).Format(time.RFC3339),
+			}
+			if err := releaseReservationIfTerminalOutcomeComment(t.Context(), fc, env, upAt); err != nil {
+				t.Fatalf("releaseReservationIfTerminalOutcomeComment: %v", err)
+			}
+			if len(fc.commented) != 1 {
+				t.Fatalf("commented %d times, want 1", len(fc.commented))
+			}
+			if fc.unlocked != 1 {
+				t.Fatalf("unlockIssue called %d times, want 1", fc.unlocked)
+			}
+			if visible := visibleLinesBeforeDetails(fc.commented[0]); visible != "WARD-RESERVATION: released 🛑" {
+				t.Fatalf("visible line = %q\n%s", visible, fc.commented[0])
+			}
+			for _, want := range []string{agentReservationReleaseMarker, "terminal outcome supersedes the reservation", "WARD-OUTCOME: " + tc.status} {
+				if !strings.Contains(fc.commented[0], want) {
+					t.Errorf("terminal release comment missing %q\n%s", want, fc.commented[0])
+				}
+			}
+		})
+	}
+}
+
+func TestBlockedOutcomeReleaseClearsRedispatchHold(t *testing.T) {
+	now := time.Date(2026, 7, 9, 12, 0, 0, 0, time.UTC)
+	w := resolvedWork{
+		Ref: agentIssueRef{Owner: "coilyco-flight-deck", Repo: "ward", Number: 1042},
+		Comments: []issueComment{
+			{
+				Body:      reservationCommentBody(modeGoose, "engineer-goose-ward-1042", "box", now.Add(-2*time.Minute), "", nil),
+				CreatedAt: now.Add(-2 * time.Minute),
+			},
+			{
+				Body:      "WARD-OUTCOME: blocked 🛑\n\n<details><summary>details</summary>\n\nreview gate blocked fail-closed\n\n</details>",
+				CreatedAt: now.Add(-time.Minute),
+			},
+			{
+				Body:      terminalReservationReleaseCommentBody(modeGoose, "engineer-goose-ward-1042", backlogOutcome{Status: "blocked", Text: "review gate blocked fail-closed"}),
+				CreatedAt: now,
+			},
+		},
+	}
+	r := &Runner{Runner: &shell.Runner{Resolve: shell.PathResolver}}
+	if err := r.precheckReservation(context.Background(), "lbl", w, false); err != nil {
+		t.Fatalf("precheckReservation after blocked release should pass: %v", err)
 	}
 }
 
@@ -1435,16 +1547,43 @@ func TestNotifySalvageCarriedIssueRepoensAndComments(t *testing.T) {
 	if f.created != 0 {
 		t.Errorf("carried salvage must NOT file a standalone issue, got created=%d", f.created)
 	}
-	if visible := visibleLinesBeforeDetails(f.commentBody); visible != "WARD-REAP: reopened 🛑" {
+	if visible := visibleLinesBeforeDetails(f.commentBody); visible != "WARD-OUTCOME: submitted" {
 		t.Fatalf("salvage visible line = %q\n%s", visible, f.commentBody)
 	}
-	for _, want := range []string{"WARD-REAP: reopened", "ward-salvage/ward-abc123", string(reasonConflict), "git fetch", "/pulls/716", "<details><summary>salvage details</summary>"} {
+	for _, want := range []string{"WARD-OUTCOME: submitted", "ward-salvage/ward-abc123", string(reasonConflict), "git fetch", "/pulls/716", "<details><summary>salvage details</summary>"} {
 		if !strings.Contains(f.commentBody, want) {
 			t.Errorf("carried-issue comment missing %q\n---\n%s", want, f.commentBody)
 		}
 	}
 	if !strings.Contains(f.prBody, "closes #518") {
 		t.Errorf("salvage PR body must carry the closing ref for the carried issue:\n%s", f.prBody)
+	}
+}
+
+// TestNotifySalvageCarriedIssueWithoutPullRequestBlocks covers the no-PR residual
+// case: the carried issue still gets a machine-readable outcome and the branch path.
+func TestNotifySalvageCarriedIssueWithoutPullRequestBlocks(t *testing.T) {
+	f := &fakeSalvageNotifier{prEnabled: false}
+	env := reapEnv{Owner: "coilyco-flight-deck", Name: "ward", Base: "https://forgejo.coilysiren.me", Mode: "codex", Issue: 1039}
+	report := salvageReport{
+		Repo:                   env.repo(),
+		Mode:                   "codex",
+		Branch:                 "ward-salvage/ward-abc123",
+		Reason:                 reasonConflict,
+		Base:                   env.Base,
+		Issue:                  1039,
+		PullRequestUnavailable: "pull requests are disabled for this repo",
+	}
+	if err := notifySalvage(t.Context(), f, env, report); err != nil {
+		t.Fatalf("notifySalvage: %v", err)
+	}
+	if visible := visibleLinesBeforeDetails(f.commentBody); visible != "WARD-OUTCOME: blocked 🛑" {
+		t.Fatalf("salvage visible line = %q\n%s", visible, f.commentBody)
+	}
+	for _, want := range []string{"pull requests are disabled for this repo", "ward-salvage/ward-abc123", string(reasonConflict)} {
+		if !strings.Contains(f.commentBody, want) {
+			t.Errorf("blocked salvage comment missing %q\n---\n%s", want, f.commentBody)
+		}
 	}
 }
 

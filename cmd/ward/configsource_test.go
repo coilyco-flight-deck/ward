@@ -2,7 +2,6 @@ package main
 
 import (
 	"context"
-	"fmt"
 	"io/fs"
 	"os"
 	"path/filepath"
@@ -83,6 +82,29 @@ func TestOpsCommandReportsBakedConfigForCoilycoTarget(t *testing.T) {
 	}
 }
 
+// TestOpsForgejoUnavailableNestedHelpReportsMountFailure pins the nested-help path.
+// It must keep the mount-failure context instead of degrading to "No help topic".
+func TestOpsForgejoUnavailableNestedHelpReportsMountFailure(t *testing.T) {
+	dir := t.TempDir()
+	t.Setenv(wardConfigRefEnv, "file://"+dir)
+
+	cmd := rootCommand()
+	err := cmd.Run(context.Background(), []string{"ward", "ops", "forgejo", "issue", "list", "--help"})
+	if err == nil {
+		t.Fatal("nested help on an unavailable surface returned nil")
+	}
+	for _, want := range []string{
+		"ward ops forgejo: unavailable",
+		"guardfile runtime failed to mount",
+		"missing top-level `wrap ward-kdl ops forgejo` block",
+		"Try `ward ops forgejo --help` or `ward ops forgejo describe` once the bundle is mounted",
+	} {
+		if !strings.Contains(err.Error(), want) {
+			t.Fatalf("error %q does not contain %q", err, want)
+		}
+	}
+}
+
 // TestSelectConfigSourceRejectsMalformedGitRef pins fail-loud: a ref that is
 // neither file:// nor the git grammar errors, never a silent baked fallback.
 func TestSelectConfigSourceRejectsMalformedGitRef(t *testing.T) {
@@ -114,23 +136,8 @@ func TestSelectConfigSourceFileRef(t *testing.T) {
 	if !src.execMixedDialects {
 		t.Error("bundle source must dialect-filter its exec scan")
 	}
-	if src.agentsKDL != bundleAgentsKDLPath {
-		t.Errorf("bundle agents path = %q, want %q", src.agentsKDL, bundleAgentsKDLPath)
-	}
-	if src.rolesKDL != bundleRolesKDLPath {
-		t.Errorf("bundle roles path = %q, want %q", src.rolesKDL, bundleRolesKDLPath)
-	}
-	if src.defaultsKDL != bundleDefaultsKDLPath {
-		t.Errorf("bundle defaults path = %q, want %q", src.defaultsKDL, bundleDefaultsKDLPath)
-	}
-	if src.reposKDL != bundleReposKDLPath {
-		t.Errorf("bundle repos path = %q, want %q", src.reposKDL, bundleReposKDLPath)
-	}
-	if src.topologyKDL != bundleTopologyKDLPath {
-		t.Errorf("bundle topology path = %q, want %q", src.topologyKDL, bundleTopologyKDLPath)
-	}
-	if src.execGuardfileGlob != bundleExecGuardfileGlob {
-		t.Errorf("bundle exec glob = %q, want %q", src.execGuardfileGlob, bundleExecGuardfileGlob)
+	if src.execDir != "." {
+		t.Errorf("bundle exec dir = %q, want dot-root scan", src.execDir)
 	}
 }
 
@@ -168,9 +175,9 @@ func TestBakedSourcePathsExist(t *testing.T) {
 	}
 }
 
-// TestBuildForgejoOpsFromRealBundle compiles `ops forgejo` from the neutral bundle.
-// The bundled admin guardfile is absent, so baked grafts it.
-func TestBuildForgejoOpsFromRealBundle(t *testing.T) {
+// TestBuildForgejoOpsFromNeutralBundle compiles `ops forgejo` from the neutral
+// bundle metadata, not from a coilyco filename constant.
+func TestBuildForgejoOpsFromNeutralBundle(t *testing.T) {
 	dir := writeBundleFixture(t)
 	forgejo, err := buildForgejoOpsFrom(bundleConfigSource(dir))
 	if err != nil {
@@ -192,6 +199,48 @@ func TestBuildForgejoOpsFromRealBundle(t *testing.T) {
 	}
 	if commandNamed(baked.Commands, "admin") != nil {
 		t.Error("baked build still mounted the removed admin surface")
+	}
+}
+
+func TestBundleLoadersAcceptAggregateBundle(t *testing.T) {
+	dir := writeAggregateBundleFixture(t)
+	if _, err := loadRawFleetConfigFrom(bundleConfigSource(dir)); err != nil {
+		t.Fatalf("loadRawFleetConfigFrom(aggregate): %v", err)
+	}
+	if _, err := loadSmartDefaultsFrom(bundleConfigSource(dir)); err != nil {
+		t.Fatalf("loadSmartDefaultsFrom(aggregate): %v", err)
+	}
+	if _, err := loadContainerTopologyFrom(bundleConfigSource(dir)); err != nil {
+		t.Fatalf("loadContainerTopologyFrom(aggregate): %v", err)
+	}
+	if _, err := buildForgejoOpsFrom(bundleConfigSource(dir)); err != nil {
+		t.Fatalf("buildForgejoOpsFrom(aggregate): %v", err)
+	}
+}
+
+func TestBundleLoadersFailClosedOnDuplicateSemanticNodes(t *testing.T) {
+	dir := t.TempDir()
+	writeBundleFixtureFile(t, dir, "one.kdl", `topology {
+    tailnet-network "net-1"
+}`)
+	writeBundleFixtureFile(t, dir, "two.kdl", `topology {
+    tower-host "tower-2"
+}`)
+	if _, err := loadContainerTopologyFrom(bundleConfigSource(dir)); err == nil || !strings.Contains(err.Error(), "duplicate top-level `topology` block") {
+		t.Fatalf("duplicate topology did not fail closed: %v", err)
+	}
+
+	dir = t.TempDir()
+	writeBundleFixtureFile(t, dir, "one.kdl", `agents {
+    schema-version 2
+    agent claude {}
+}`)
+	writeBundleFixtureFile(t, dir, "two.kdl", `fleet {
+    schema-version 2
+    agent claude {}
+}`)
+	if _, err := loadRawFleetConfigFrom(bundleConfigSource(dir)); err == nil || !strings.Contains(err.Error(), "conflicting fleet layouts") {
+		t.Fatalf("conflicting fleet layouts did not fail closed: %v", err)
 	}
 }
 
@@ -269,7 +318,7 @@ func TestLoadContainerTopologyFromBundleSource(t *testing.T) {
     substrate-manifest "/manifest-x"
     substrate-ttl "42"
 }`
-	if err := os.WriteFile(filepath.Join(dir, bundleTopologyKDLPath), []byte(src), 0o644); err != nil {
+	if err := os.WriteFile(filepath.Join(dir, bundleFixtureTopologyPath), []byte(src), 0o644); err != nil {
 		t.Fatalf("write topology bundle: %v", err)
 	}
 	topo, err := loadContainerTopologyFrom(bundleConfigSource(dir))
@@ -316,19 +365,21 @@ func TestOpsCommandDegradesOnBadRef(t *testing.T) {
 }
 
 // TestBuildForgejoOpsWithRealLookingConfigRef exercises the live ops startup path
-// against a believable git-ref WARD_CONFIG_REF and confirms it returns.
+// against a believable bundle checkout and confirms it returns.
 func TestBuildForgejoOpsWithRealLookingConfigRef(t *testing.T) {
-	bareRepo := makeTestConfigBundleRepo(t)
+	dir := writeBundleFixture(t)
+	gitFixture(t, dir, "init", "-b", "main", ".")
+	gitFixture(t, dir, "add", ".")
+	gitFixture(t, dir, "commit", "-m", "bundle")
+	abs, err := filepath.Abs(dir)
+	if err != nil {
+		t.Fatalf("abs(%s): %v", dir, err)
+	}
 
 	home := t.TempDir()
 	t.Setenv("HOME", home)
 	t.Setenv("XDG_CONFIG_HOME", filepath.Join(home, ".config"))
-	t.Setenv(wardConfigRefEnv, "forgejo.coilysiren.me/coilyco-flight-deck/agentic-os@main//.ward")
-	if err := os.WriteFile(filepath.Join(home, ".gitconfig"), []byte(fmt.Sprintf(`[url "%s"]
-	insteadOf = https://forgejo.coilysiren.me/coilyco-flight-deck/agentic-os.git
-`, bareRepo)), 0o644); err != nil {
-		t.Fatalf("write gitconfig: %v", err)
-	}
+	t.Setenv(wardConfigRefEnv, "file://"+abs)
 
 	type result struct {
 		cmd *cli.Command
@@ -354,36 +405,6 @@ func TestBuildForgejoOpsWithRealLookingConfigRef(t *testing.T) {
 	case <-time.After(10 * time.Second):
 		t.Fatal("buildForgejoOps deadlocked while resolving a real-looking WARD_CONFIG_REF")
 	}
-}
-
-func makeTestConfigBundleRepo(t *testing.T) string {
-	t.Helper()
-	work := t.TempDir()
-	bundleDir := filepath.Join(work, ".ward")
-	if err := os.MkdirAll(bundleDir, 0o755); err != nil {
-		t.Fatal(err)
-	}
-	fixture := writeBundleFixture(t)
-	for _, name := range []string{bundleForgejoGuardfilePath, bundleForgejoSpecLockPath} {
-		src := filepath.Join(fixture, name)
-		dst := filepath.Join(bundleDir, name)
-		b, err := os.ReadFile(src)
-		if err != nil {
-			t.Fatalf("read %s: %v", src, err)
-		}
-		if err := os.WriteFile(dst, b, 0o644); err != nil {
-			t.Fatalf("write %s: %v", dst, err)
-		}
-	}
-	gitFixture(t, work, "init", "-b", "main", ".")
-	gitFixture(t, work, "add", ".")
-	gitFixture(t, work, "commit", "-m", "bundle")
-
-	bareRepo := t.TempDir()
-	gitFixture(t, bareRepo, "init", "--bare", ".")
-	gitFixture(t, work, "remote", "add", "origin", bareRepo)
-	gitFixture(t, work, "push", "-u", "origin", "main")
-	return bareRepo
 }
 
 // TestBuildForgejoOpsAnnotatesSelectedConfigSource keeps the active config source

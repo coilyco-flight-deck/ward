@@ -311,10 +311,21 @@ func salvageIssueBody(r salvageReport) string {
 // issue (ward#518): a reopen banner plus the shared detail body.
 func salvageCommentBody(r salvageReport) string {
 	var b strings.Builder
-	visible := "WARD-REAP: reopened 🛑"
+	visible := salvageOutcomeVisible(r)
 	fmt.Fprintf(&b, "An ephemeral `ward container` (%s mode) dispatched for this issue finished but its work was **not merged to `main`**, so cleanup preserved it on a branch before teardown and reopened the issue (a closing reference for #%d never reached `main`). Recover from the salvage branch below.\n\n", r.Mode, r.Issue)
 	b.WriteString(salvageDetailBody(r))
 	return collapsedIssueComment(visible, "salvage details", b.String())
+}
+
+func salvageOutcomeVisible(r salvageReport) string {
+	switch {
+	case strings.TrimSpace(r.PullRequestURL) != "":
+		return "WARD-OUTCOME: submitted"
+	case strings.TrimSpace(r.PullRequestUnavailable) != "":
+		return "WARD-OUTCOME: blocked 🛑"
+	default:
+		return "WARD-OUTCOME: failed ❌"
+	}
 }
 
 // salvageDetailBody is the shared body of both the standalone issue and the

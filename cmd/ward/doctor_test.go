@@ -112,8 +112,8 @@ smart-defaults {
     }
 }
 repo-authority default=forgejo {
-    trusted-owner example-owner
-    repo "example-owner/*" forge=github
+    trusted-owner example-placeholder-owner
+    repo "example-placeholder-owner/*" forge=github
 }`))
 		if err != nil {
 			t.Fatalf("parseSmartDefaults: %v", err)

@@ -73,19 +73,6 @@ const (
 	topologyGeneratedKDLPath = "topologyassets/topology.generated.kdl"
 )
 
-// Bundle-layout paths are the flat .ward bundle a ref points at.
-// See docs/config-source.md for the layout split.
-const (
-	bundleForgejoGuardfilePath = "guardfile.forgejo.kdl"
-	bundleForgejoSpecLockPath  = "forgejo.swagger.lock.json"
-	bundleAgentsKDLPath        = "agents.kdl"
-	bundleRolesKDLPath         = "roles.kdl"
-	bundleDefaultsKDLPath      = "defaults.kdl"
-	bundleReposKDLPath         = "repos.kdl"
-	bundleTopologyKDLPath      = "ward-kdl.topology.kdl"
-	bundleExecGuardfileGlob    = "guardfile.*.kdl"
-)
-
 // configSource is the launch-selected home of the KDL config bundle: one fs.FS
 // plus the per-layout paths the edge build sites read.
 type configSource struct {
@@ -101,15 +88,8 @@ type configSource struct {
 	// fleetKDL feeds the legacy embedded fleetconfig parse path.
 	fleetKDL string
 
-	// agentsKDL + rolesKDL feed the split bundle fleetconfig parse path.
-	agentsKDL string
-	rolesKDL  string
-
 	// defaultsKDL feeds the edge smart-defaults parser.
 	defaultsKDL string
-
-	// reposKDL feeds the split bundle smart-defaults repo-authority parser.
-	reposKDL string
 
 	// topologyKDL feeds the edge container-topology resolver.
 	topologyKDL string
@@ -117,7 +97,6 @@ type configSource struct {
 	// execDir is scanned by mountWardKdlExec; execMixedDialects marks a bundle
 	// dir where spec-dialect files sit beside exec ones and are filtered out.
 	execDir           string
-	execGuardfileGlob string
 	execMixedDialects bool
 }
 
@@ -125,30 +104,21 @@ type configSource struct {
 // today's behavior. The pre-filtered execassets mirror scans unfiltered.
 func bakedConfigSource() configSource {
 	return configSource{
-		fsys:              bakedAssets,
-		forgejoGuardfile:  opsForgejoGuardfilePath,
-		forgejoSpecLock:   opsForgejoSpecLockPath,
-		fleetKDL:          fleetGeneratedKDLPath,
-		defaultsKDL:       defaultsGeneratedKDLPath,
-		topologyKDL:       topologyGeneratedKDLPath,
-		execDir:           execAssetsDir,
-		execGuardfileGlob: "ward-kdl.*.guardfile.kdl",
+		fsys:             bakedAssets,
+		forgejoGuardfile: opsForgejoGuardfilePath,
+		forgejoSpecLock:  opsForgejoSpecLockPath,
+		fleetKDL:         fleetGeneratedKDLPath,
+		defaultsKDL:      defaultsGeneratedKDLPath,
+		topologyKDL:      topologyGeneratedKDLPath,
+		execDir:          execAssetsDir,
 	}
 }
 
-// bundleConfigSource reads the flat .ward bundle layout out of dir.
+// bundleConfigSource reads the launch-selected .ward bundle layout out of dir.
 func bundleConfigSource(dir string) configSource {
 	return configSource{
 		fsys:              os.DirFS(dir),
-		forgejoGuardfile:  bundleForgejoGuardfilePath,
-		forgejoSpecLock:   bundleForgejoSpecLockPath,
-		agentsKDL:         bundleAgentsKDLPath,
-		rolesKDL:          bundleRolesKDLPath,
-		defaultsKDL:       bundleDefaultsKDLPath,
-		reposKDL:          bundleReposKDLPath,
-		topologyKDL:       bundleTopologyKDLPath,
 		execDir:           ".",
-		execGuardfileGlob: bundleExecGuardfileGlob,
 		execMixedDialects: true,
 	}
 }

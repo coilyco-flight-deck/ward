@@ -170,6 +170,7 @@ func (r *Runner) runContainerReap(ctx context.Context, c *cli.Command) error {
 	fmt.Fprintf(os.Stderr, "ward container reap: work tree confirmed at %s\n", work)
 	terr := r.reapTargetTree(ctx, work, env, true)
 	unlanded := r.verifyExtraReposLanded(ctx, env)
+	r.releaseReservationIfTerminalOutcome(ctx, env)
 	if terr == nil && !unlanded {
 		r.commentLaunchedNoOutcomeIfNeeded(ctx, env)
 	}
@@ -784,6 +785,67 @@ func (r *Runner) releaseReservationIfUnstarted(ctx context.Context, env reapEnv)
 		fmt.Fprintf(os.Stderr, "ward container reap: could not unlock issue #%d after release: %v\n", env.Issue, err)
 	}
 	fmt.Fprintf(os.Stderr, "ward container reap: released issue reservation on #%d (container exited pre-launch, did no work)\n", env.Issue)
+}
+
+// releaseReservationIfTerminalOutcome retracts the remote reservation when the run
+// ends: the terminal WARD-OUTCOME supersedes the hold, so redispatch needs no override.
+func (r *Runner) releaseReservationIfTerminalOutcome(ctx context.Context, env reapEnv) {
+	if !env.Launched || env.Issue == 0 {
+		return
+	}
+	upAt, err := time.Parse(time.RFC3339, strings.TrimSpace(env.UpAt))
+	if err != nil {
+		fmt.Fprintf(os.Stderr, "ward container reap: cannot parse WARD_CONTAINER_UP for terminal-outcome release: %v\n", err)
+		return
+	}
+	fc := r.hostForgejoClient(ctx)
+	if err := releaseReservationIfTerminalOutcomeComment(ctx, fc.withMode(containerMode(env.Mode)), env, upAt); err != nil {
+		fmt.Fprintf(os.Stderr, "ward container reap: %v\n", err)
+	}
+}
+
+func releaseReservationIfTerminalOutcomeComment(ctx context.Context, fc Tracker, env reapEnv, afterAt time.Time) error {
+	comments, err := fc.listIssueComments(ctx, env.Owner, env.Name, env.Issue)
+	if err != nil {
+		return fmt.Errorf("could not read issue comments for terminal-outcome release on #%d: %w", env.Issue, err)
+	}
+	outcome, ok := latestBacklogOutcomeCommentAfter(comments, afterAt)
+	if !ok {
+		return nil
+	}
+	o, ok := backlogOutcomeOfComment(outcome.Body)
+	if !ok || !terminalReservationOutcome(o.Status) {
+		return nil
+	}
+	body := terminalReservationReleaseCommentBody(containerMode(env.Mode), env.Container, o)
+	if err := fc.commentIssue(ctx, env.Owner, env.Name, env.Issue, body); err != nil {
+		return fmt.Errorf("could not release terminal reservation on #%d: %w", env.Issue, err)
+	}
+	if err := fc.unlockIssue(ctx, env.Owner, env.Name, env.Issue); err != nil && !errors.Is(err, errForgeLockUnsupported) {
+		return fmt.Errorf("could not unlock issue #%d after terminal outcome release: %w", env.Issue, err)
+	}
+	fmt.Fprintf(os.Stderr, "ward container reap: released issue reservation on #%d after terminal outcome %s\n", env.Issue, o.Status)
+	return nil
+}
+
+func terminalReservationOutcome(status string) bool {
+	switch strings.ToLower(strings.TrimSpace(status)) {
+	case "done", "blocked", "failed", "merge-ready":
+		return true
+	default:
+		return false
+	}
+}
+
+func terminalReservationReleaseCommentBody(mode containerMode, container string, outcome backlogOutcome) string {
+	visible := "WARD-RESERVATION: released 🛑"
+	var b strings.Builder
+	fmt.Fprintf(&b, "Run finished with `%s %s`.\n\n", wardOutcomeMarker, outcome.Status)
+	fmt.Fprintf(&b, "`ward container reap` released container `%s` (`--harness %s`): the terminal outcome supersedes the reservation, so a later redispatch no longer needs `--override-reservation`.\n", container, mode)
+	if summary := strings.TrimSpace(outcome.Text); summary != "" {
+		fmt.Fprintf(&b, "\n**Outcome summary:** %s\n", summary)
+	}
+	return agentReservationReleaseMarker + "\n" + collapsedIssueComment(visible, "release details", b.String())
 }
 
 // commentLaunchedNoOutcomeIfNeeded marks a launched run failed when it exits with

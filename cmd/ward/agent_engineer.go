@@ -20,6 +20,7 @@ func agentEngineerFlags() []cli.Flag {
 	// (inline --instructions retired in ward#362); --instructions-file handles a long body.
 	flags = append(flags,
 		&cli.StringFlag{Name: "instructions-file", Usage: "freeform mode: read the task body from a file (escape hatch for long bodies, or a bare owner/repo + a filed brief)"},
+		&cli.BoolFlag{Name: "pr", Hidden: true, Usage: "PR input mode: treat a bare issue ref as a pull request and start from its source branch"},
 	)
 	return flags
 }
@@ -31,7 +32,7 @@ func agentEngineerCommand() *cli.Command {
 		Name: "engineer",
 		Usage: "Implement a ticket end to end: a ref carries it detached, " +
 			"freeform text files an issue first then carries it.",
-		ArgsUsage: "<owner/repo#N | #N | issue-url | '<freeform instructions>'>",
+		ArgsUsage: "<owner/repo#N | owner/repo!N | #N | issue-or-PR-url | '<freeform instructions>'>",
 		Flags:     agentEngineerFlags(),
 		Action:    agentEngineerAction(),
 	}
