@@ -262,8 +262,8 @@ runaway-dispatch risk). State lives in a durable per-repo ledger under ~/.ward/b
 so a killed loop resumes from disk. Only the narrow headless lane is auto-dispatched;
 interactive issues are surfaced, not launched. See docs/agent-director.md.`,
 		Flags: directorFlags(),
-		// merge is the explicit PR-land authority boundary for ward-owned work.
-		Commands: []*cli.Command{agentDirectorMergeCommand()},
+		// queue and merge are the read-only boundaries for ward-owned work.
+		Commands: []*cli.Command{agentDirectorQueueCommand(), agentDirectorMergeCommand()},
 		Action: func(ctx context.Context, c *cli.Command) error {
 			r := newRunner()
 			mode, err := agentHarness(c)

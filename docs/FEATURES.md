@@ -16,6 +16,7 @@ Inventory of what `ward` ships today.
 
 - **`ward agent`** - the guarded execution layer.
 - **`warded`** - the symlinked public face.
+- **`ward agent director queue` / `status`** - the read-only queue view for stale reservations, redispatch candidates, PR handoffs, and stale-open done issues.
 - **Harness install hooks** - bootstrap now requires a harness install step
   before launch, with self-contained declarations for claude/codex/goose and a
   required opencode install path.
