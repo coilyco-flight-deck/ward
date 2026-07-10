@@ -388,6 +388,9 @@ func applySmartDefaultWorkflow(defs *smartDefaults, n *kdl.Node) error {
 		if err != nil {
 			return err
 		}
+		if _, dup := defs.agentWorkflowRepos[repo]; dup {
+			return fmt.Errorf("smart defaults: smart-defaults > agent-workflow > repo %q repeated (fail-closed)", repo)
+		}
 		defs.agentWorkflowRepos[repo] = wf
 	}
 	return nil

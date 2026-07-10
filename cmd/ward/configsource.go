@@ -29,10 +29,13 @@ var bakedWardAssets embed.FS
 //go:embed defaultsassets/defaults.generated.kdl
 var bakedDefaultsAssets embed.FS
 
+//go:embed roleassets/roles.generated.kdl
+var bakedRoleAssets embed.FS
+
 //go:embed topologyassets/topology.generated.kdl
 var bakedTopologyAssets embed.FS
 
-var bakedAssets = unionFS{primary: unionFS{primary: bakedMainAssets, fallback: bakedWardAssets}, fallback: unionFS{primary: bakedDefaultsAssets, fallback: bakedTopologyAssets}}
+var bakedAssets = unionFS{primary: unionFS{primary: bakedMainAssets, fallback: bakedWardAssets}, fallback: unionFS{primary: bakedDefaultsAssets, fallback: unionFS{primary: bakedRoleAssets, fallback: bakedTopologyAssets}}}
 
 type unionFS struct {
 	primary  fs.FS
@@ -64,6 +67,7 @@ const (
 	execAssetsDir                = "execassets"
 	fleetGeneratedKDLPath        = "fleetassets/fleet.generated.kdl"
 	defaultsGeneratedKDLPath     = "defaultsassets/defaults.generated.kdl"
+	rolesGeneratedKDLPath        = "roleassets/roles.generated.kdl"
 	topologyGeneratedKDLPath     = "topologyassets/topology.generated.kdl"
 )
 

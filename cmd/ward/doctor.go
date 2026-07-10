@@ -1,259 +1,413 @@
 package main
 
 import (
-	"bytes"
 	"context"
-	"errors"
 	"fmt"
-	"io"
+	"io/fs"
 	"os"
-	"os/exec"
-	"path/filepath"
+	"path"
 	"strings"
 
-	"forgejo.coilysiren.me/coilyco-flight-deck/cli-guard/cli/allowlist"
-	"forgejo.coilysiren.me/coilyco-flight-deck/cli-guard/cli/repocfg"
-	"github.com/coilyco-flight-deck/ward/internal/launchgate/ollamaprobe"
+	"forgejo.coilysiren.me/coilyco-flight-deck/cli-guard/cli/execverb"
+	"forgejo.coilysiren.me/coilyco-flight-deck/cli-guard/http/guardfile"
+	"forgejo.coilysiren.me/coilyco-flight-deck/cli-guard/pkg/fleetconfig"
 	"github.com/urfave/cli/v3"
 )
 
-// doctorCommand is ward's single diagnostic verb, running the allowlist and
-// security check groups inline. See docs/doctor.md.
+type doctorCheck struct {
+	name string
+	err  error
+}
+
+type doctorReport struct {
+	sourceSummary string
+	checks        []doctorCheck
+}
+
+func (r *doctorReport) add(name string, err error) {
+	r.checks = append(r.checks, doctorCheck{name: name, err: err})
+}
+
+func (r doctorReport) failed() bool {
+	for _, c := range r.checks {
+		if c.err != nil {
+			return true
+		}
+	}
+	return false
+}
+
+func (r doctorReport) failureCount() int {
+	n := 0
+	for _, c := range r.checks {
+		if c.err != nil {
+			n++
+		}
+	}
+	return n
+}
+
 func doctorCommand() *cli.Command {
 	return &cli.Command{
 		Name:  "doctor",
-		Usage: "Run ward's diagnostic checks against the resolved config and host.",
-		Description: "Validates the .ward/ward.yaml (or .coily/coily.yaml) allowlist " +
-			"against the repo Makefile, then probes host security posture against the " +
-			"parsed security: block: PATH posture per protected binary, passwordless sudo " +
-			"(when forbid_passwordless is set), and credential-env scan. Also probes any " +
-			"operator-configured local-harness Ollama endpoint (WARD_OLLAMA_URL / " +
-			"WARD_GOOSE_OLLAMA_HOST_B64) so a down endpoint surfaces before a goose/opencode " +
-			"dispatch would hang (ward#499). Exits non-zero on any FAIL row, and (per ward#450) " +
-			"when no security: block is declared at all.",
-		Flags: []cli.Flag{
-			&cli.StringSliceFlag{
-				Name:  "skip",
-				Usage: "Skip a probe (path | sudo | credentials | ollama). Repeatable.",
-			},
-			&cli.BoolFlag{
-				Name:  "strict-credentials",
-				Usage: "Fail (not warn) when a credential_env var is set in this session.",
-			},
-		},
-		Action: func(_ context.Context, cmd *cli.Command) error {
-			opts := doctorOptions{
-				skips:             skipSet(cmd.StringSlice("skip")),
-				strictCredentials: cmd.Bool("strict-credentials"),
-			}
-			return runDoctor(os.Stdout, opts)
+		Usage: "Validate the resolved runtime config and exit.",
+		Description: `doctor validates the selected runtime config source, the resolved smart-defaults
+policy, the fleet/roles data, and the guarded ops/executable surfaces that the launch
+selected config controls. It is strict and exits non-zero on any failure.`,
+		Action: func(ctx context.Context, _ *cli.Command) error {
+			report, err := runDoctor(ctx)
+			printDoctorReport(report)
+			return err
 		},
 	}
 }
 
-// doctorOptions tunes ward doctor. Zero value runs every check with default
-// (warn-not-fail) credential semantics and, per ward#450, fails on no security:.
-type doctorOptions struct {
-	skips             map[string]bool
-	strictCredentials bool
-	// allowMissingSecurity downgrades the ward#450 no-security: failure to a NOTE
-	// (ward setup sets it; standalone doctor leaves it false, so CI stays gated).
-	allowMissingSecurity bool
-}
+func runDoctor(ctx context.Context) (doctorReport, error) {
+	_ = ctx
+	report := doctorReport{}
 
-// runDoctor resolves the config path by the normal precedence, then runs every
-// check against it. See runDoctorAt for the pinned-path variant ward setup uses.
-func runDoctor(out io.Writer, opts doctorOptions) error {
-	cwd, err := os.Getwd()
+	rawRef := strings.TrimSpace(os.Getenv(wardConfigRefEnv))
+	src, err := selectConfigSource()
 	if err != nil {
-		return err
+		report.add("config source", err)
+		return report, err
 	}
-	yamlPath, err := resolveConfigPath(explicitConfigPath(), os.Getenv("WARD_CONFIG"), cwd)
-	if err != nil {
-		return err
-	}
-	return runDoctorAt(out, yamlPath, opts)
-}
-
-// runDoctorAt runs every check against an explicit config path, joining failures.
-// Pinning the path lets ward setup validate the file it wrote (docs/setup.md).
-func runDoctorAt(out io.Writer, yamlPath string, opts doctorOptions) error {
-	var failures []string
-
-	if err := runAllowlistAt(out, yamlPath); err != nil {
-		failures = append(failures, "allowlist: "+err.Error())
-	}
-	if err := runSecurityAt(out, yamlPath, opts); err != nil {
-		failures = append(failures, "security: "+err.Error())
-	}
-	if err := runOllamaAt(out, opts); err != nil {
-		failures = append(failures, "ollama: "+err.Error())
-	}
-
-	if len(failures) > 0 {
-		return errors.New(strings.Join(failures, "\n"))
-	}
-	return nil
-}
-
-// runAllowlistAt delegates to cli-guard's allowlist.Lint engine for an explicit
-// config path, rendering an OK summary or the collected Problems.
-func runAllowlistAt(out io.Writer, yamlPath string) error {
-	makefilePath := filepath.Join(filepath.Dir(filepath.Dir(yamlPath)), "Makefile")
-	problems, err := allowlist.Lint(yamlPath, makefilePath)
-	if err != nil {
-		return err
-	}
-	if len(problems) > 0 {
-		return errors.New(renderAllowlistFailure(problems))
-	}
-	_, _ = fmt.Fprintf(out, "ward doctor allowlist: OK (%s)\n", yamlPath)
-	return nil
-}
-
-// allowlistContractHint spells out what a "matching Makefile target" requires,
-// appended to every allowlist failure. See docs/doctor.md (Allowlist contract).
-const allowlistContractHint = "hint: a Makefile target matches only when it carries a `## <description>` " +
-	"help comment whose text equals the command's `description:`, and `run:` is exactly `make <name>`. " +
-	"A bare `target:` recipe with no `## ...` comment is not registered - `make <target>` still runs, but " +
-	"doctor reports it as unmatched. See docs/doctor.md (Allowlist contract)."
-
-// renderAllowlistFailure formats the collected Problems, one per line, followed
-// by the contract hint. Pure so tests can drive it without touching disk.
-func renderAllowlistFailure(problems []allowlist.Problem) string {
-	msgs := make([]string, 0, len(problems)+1)
-	for _, p := range problems {
-		msgs = append(msgs, fmt.Sprintf("%s:%d: %s", p.File, p.Line, p.Msg))
-	}
-	msgs = append(msgs, allowlistContractHint)
-	return strings.Join(msgs, "\n")
-}
-
-// missingSecurityHint is the ward#450 remediation ward doctor reports as a FAIL
-// (or ward setup as a NOTE) when a repo declares no security: block. See doctor.md.
-const missingSecurityHint = "no `security:` block declared. As of ward#450 `ward doctor` fails by " +
-	"default without one, so a passing run means a host-tool policy is in force, not merely that " +
-	"nothing was misconfigured. The dev-verb gate (clean-tree, argv, and audit checks) still runs " +
-	"without it, but no protected-binary / sudo / hook policy is enforced. Add a `security:` block to " +
-	".ward/ward.yaml (`ward setup` scaffolds a commented template to uncomment and tailor). " +
-	"Field reference: docs/ward-yaml.md (the security: schema)"
-
-// runSecurityAt loads the config, runs the host probes to out, and errors on any
-// FAIL row (or, per ward#450, a missing security: block unless allowed by opts).
-func runSecurityAt(out io.Writer, yamlPath string, opts doctorOptions) error {
-	cfg, err := repocfg.Load(yamlPath)
-	if err != nil {
-		return err
-	}
-	_, _ = fmt.Fprintln(out, summarizeSecurity(cfg.Security))
-	if securityIsZero(cfg.Security) {
-		if opts.allowMissingSecurity {
-			_, _ = fmt.Fprintf(out, "  %-11s %-4s %s\n", "security", "NOTE", missingSecurityHint)
-			return nil
-		}
-		return errors.New(missingSecurityHint)
-	}
-
-	var results []probeResult
-	if !opts.skips["path"] {
-		results = append(results, runPathPosture(cfg.Security.ProtectedBinaries, exec.LookPath)...)
+	if rawRef == "" {
+		report.sourceSummary = "baked neutral default (no external config source active)"
 	} else {
-		results = append(results, probeResult{probe: "path", severity: sevSkip, detail: "skipped by --skip path"})
-	}
-	if !opts.skips["sudo"] {
-		results = append(results, runSudoProbe(cfg.Security.Sudo.ForbidPasswordless, defaultSudoRunner))
-	} else {
-		results = append(results, probeResult{probe: "sudo", severity: sevSkip, detail: "skipped by --skip sudo"})
-	}
-	if !opts.skips["credentials"] {
-		results = append(results, runCredEnvProbe(cfg.Security.ProtectedBinaries, os.Getenv, opts.strictCredentials)...)
-	} else {
-		results = append(results, probeResult{probe: "credentials", severity: sevSkip, detail: "skipped by --skip credentials"})
+		report.sourceSummary = "WARD_CONFIG_REF=" + rawRef
 	}
 
-	var fails []string
-	for _, r := range results {
-		_, _ = fmt.Fprintf(out, "  %-11s %-4s %s\n", r.probe, r.severity, r.detail)
-		if r.severity == sevFail {
-			fails = append(fails, fmt.Sprintf("%s: %s", r.probe, r.detail))
+	defs, err := loadSmartDefaultsFrom(src)
+	if err != nil {
+		report.add("smart defaults", err)
+	} else if err := validateSmartDefaultsOperational(defs); err != nil {
+		report.add("smart defaults", err)
+	} else {
+		report.add("smart defaults", nil)
+		if err := validateRepoAuthorityOperational(defs); err != nil {
+			report.add("repo authority", err)
+		} else {
+			report.add("repo authority", nil)
 		}
 	}
-	if len(fails) > 0 {
-		return errors.New(strings.Join(fails, "; "))
+
+	fleet, ferr := loadFleetConfigFrom(src)
+	if ferr != nil {
+		report.add("fleet", ferr)
+	} else if err := validateFleetOperational(fleet); err != nil {
+		report.add("fleet", err)
+	} else {
+		report.add("fleet", nil)
+	}
+
+	if err := validateForgejoOpsOperational(src); err != nil {
+		report.add("ops bundle", err)
+	} else {
+		report.add("ops bundle", nil)
+	}
+
+	if err := validateExecAssetsOperational(src); err != nil {
+		report.add("exec bundle", err)
+	} else {
+		report.add("exec bundle", nil)
+	}
+
+	if report.failed() {
+		return report, fmt.Errorf("ward doctor: %d check(s) failed", report.failureCount())
+	}
+	return report, nil
+}
+
+func printDoctorReport(report doctorReport) {
+	_, _ = fmt.Fprintf(os.Stdout, "ward doctor: source=%s\n", report.sourceSummary)
+	for _, check := range report.checks {
+		if check.err != nil {
+			_, _ = fmt.Fprintf(os.Stdout, "FAIL %s: %v\n", check.name, check.err)
+			continue
+		}
+		_, _ = fmt.Fprintf(os.Stdout, "PASS %s\n", check.name)
+	}
+	if report.failed() {
+		_, _ = fmt.Fprintf(os.Stdout, "ward doctor: %d failure(s)\n", report.failureCount())
+		return
+	}
+	_, _ = fmt.Fprintln(os.Stdout, "ward doctor: all checks passed")
+}
+
+func validateSmartDefaultsOperational(defs smartDefaults) error {
+	for repo, wf := range defs.agentWorkflowRepos {
+		if containsExamplePlaceholder(repo) {
+			return fmt.Errorf("smart defaults: agent-workflow repo %q still looks like a placeholder", repo)
+		}
+		if wf == "" {
+			return fmt.Errorf("smart defaults: agent-workflow repo %q has an empty workflow (fail-closed)", repo)
+		}
 	}
 	return nil
 }
 
-// runOllamaAt renders the host-side local-harness reachability probe, the pre-dispatch
-// mirror of the launch gate (ward#499). --skip ollama stands it down. See docs/doctor.md.
-func runOllamaAt(out io.Writer, opts doctorOptions) error {
-	if opts.skips[ollamaprobe.ProbeName] {
-		_, _ = fmt.Fprintf(out, "  %-11s %-4s %s\n", ollamaprobe.ProbeName, sevSkip, "skipped by --skip "+ollamaprobe.ProbeName)
+func validateRepoAuthorityOperational(defs smartDefaults) error {
+	if len(defs.trustedOwners) == 0 {
+		return fmt.Errorf("smart defaults: repo-authority needs at least one trusted-owner (fail-closed)")
+	}
+	for _, owner := range defs.trustedOwners {
+		if containsExamplePlaceholder(owner) {
+			return fmt.Errorf("smart defaults: repo-authority trusted-owner %q still looks like a placeholder", owner)
+		}
+	}
+	if len(defs.repoAuthorityRules) == 0 {
+		return fmt.Errorf("smart defaults: repo-authority needs at least one repo routing rule (fail-closed)")
+	}
+	for _, rule := range defs.repoAuthorityRules {
+		if containsExamplePlaceholder(rule.Pattern) {
+			return fmt.Errorf("smart defaults: repo-authority repo %q still looks like a placeholder", rule.Pattern)
+		}
+	}
+	return nil
+}
+
+func validateFleetOperational(fleet fleetconfig.Fleet) error {
+	if err := validateFleetDefaultsOperational(fleet); err != nil {
+		return err
+	}
+	return validateFleetRolesOperational(fleet)
+}
+
+func validateFleetDefaultsOperational(fleet fleetconfig.Fleet) error {
+	if fleet.Defaults.Agent == "" {
+		return fmt.Errorf("fleet: defaults.agent is required (fail-closed)")
+	}
+	if fleetAgentByName(fleet, fleet.Defaults.Agent).Name == "" {
+		return fmt.Errorf("fleet: defaults.agent %q is not a recognized agent", fleet.Defaults.Agent)
+	}
+	if containsExamplePlaceholder(fleet.Defaults.Agent) {
+		return fmt.Errorf("fleet: defaults.agent %q still looks like a placeholder", fleet.Defaults.Agent)
+	}
+	if fleet.Defaults.Attribution.Name == "" || fleet.Defaults.Attribution.Email == "" {
+		return fmt.Errorf("fleet: defaults.attribution needs both name and email (fail-closed)")
+	}
+	if containsExamplePlaceholder(fleet.Defaults.Attribution.Name) {
+		return fmt.Errorf("fleet: defaults.attribution.name %q still looks like a placeholder", fleet.Defaults.Attribution.Name)
+	}
+	if containsExamplePlaceholder(fleet.Defaults.Attribution.Email) {
+		return fmt.Errorf("fleet: defaults.attribution.email %q still looks like a placeholder", fleet.Defaults.Attribution.Email)
+	}
+	return nil
+}
+
+func validateFleetRolesOperational(fleet fleetconfig.Fleet) error {
+	requiredRoles := map[string]bool{"engineer": true, "director": true, "advisor": true}
+	seenRoles := map[string]bool{}
+	for _, role := range fleet.Roles {
+		seenRoles[role.Name] = true
+	}
+	for role := range requiredRoles {
+		if !seenRoles[role] {
+			return fmt.Errorf("fleet: missing required role %q (fail-closed)", role)
+		}
+	}
+	for _, role := range fleet.Roles {
+		if (role.Name == "director" || role.Name == "advisor") && len(role.Guardfiles.List) == 0 && role.Guardfiles.Prefix == "" {
+			return fmt.Errorf("fleet: role %q needs at least one guardfile binding (fail-closed)", role.Name)
+		}
+	}
+	return nil
+}
+
+func validateForgejoOpsOperational(src configSource) error {
+	gfBytes, err := fs.ReadFile(src.fsys, src.forgejoGuardfile)
+	if err != nil {
+		return fmt.Errorf("read ops guardfile %s: %w", src.forgejoGuardfile, err)
+	}
+	gf, err := guardfile.Parse(gfBytes)
+	if err != nil {
+		return err
+	}
+	if err := validateGuardfileOperational(gf); err != nil {
+		return err
+	}
+	if _, err := buildForgejoOpsFrom(src); err != nil {
+		return err
+	}
+	return nil
+}
+
+func validateExecAssetsOperational(src configSource) error {
+	entries, err := fs.ReadDir(src.fsys, src.execDir)
+	if err != nil {
+		return fmt.Errorf("read exec guardfiles: %w", err)
+	}
+	for _, name := range execGuardfileNames(entries, src.execMixedDialects) {
+		if err := validateExecAssetOperational(src, name); err != nil {
+			return err
+		}
+	}
+	return mountWardKdlExecFrom(setupCompileRoot(), src, leanRunner())
+}
+
+func execGuardfileNames(entries []fs.DirEntry, mixedDialects bool) []string {
+	names := make([]string, 0, len(entries))
+	for _, e := range entries {
+		if e.IsDir() || !execGuardfileNameSelected(e.Name(), mixedDialects) {
+			continue
+		}
+		names = append(names, e.Name())
+	}
+	return names
+}
+
+func execGuardfileNameSelected(name string, mixedDialects bool) bool {
+	if !mixedDialects {
+		return true
+	}
+	ok, _ := path.Match("ward-kdl.*.guardfile.kdl", name)
+	return ok
+}
+
+func validateExecAssetOperational(src configSource, name string) error {
+	gfBytes, err := fs.ReadFile(src.fsys, path.Join(src.execDir, name))
+	if err != nil {
+		return fmt.Errorf("read exec guardfile %s: %w", name, err)
+	}
+	if src.execMixedDialects && !isExecDialectGuardfile(gfBytes) {
 		return nil
 	}
-	var fails []string
-	for _, r := range ollamaprobe.DoctorProbe(context.Background(), os.Getenv) {
-		_, _ = fmt.Fprintf(out, "  %-11s %-4s %s\n", ollamaprobe.ProbeName, r.Severity, r.Detail)
-		if r.Severity == ollamaprobe.SevFail {
-			fails = append(fails, r.Detail)
-		}
+	gf, err := execverb.Parse(gfBytes)
+	if err != nil {
+		return fmt.Errorf("parse exec guardfile %s: %w", name, err)
 	}
-	if len(fails) > 0 {
-		return errors.New(strings.Join(fails, "; "))
+	if err := validateExecGuardfileOperational(gf); err != nil {
+		return fmt.Errorf("%s: %w", name, err)
 	}
 	return nil
 }
 
-// skipSet normalizes the --skip flag values into a lookup map. Unknown names
-// are kept and silently ignored, so a typo doesn't break a passing CI step.
-func skipSet(names []string) map[string]bool {
-	out := make(map[string]bool, len(names))
-	for _, n := range names {
-		out[strings.ToLower(strings.TrimSpace(n))] = true
+func validateGuardfileOperational(gf *guardfile.Guardfile) error {
+	if containsExamplePlaceholder(gf.BaseURL) {
+		return fmt.Errorf("guardfile base-url %q still looks like a placeholder", gf.BaseURL)
 	}
-	return out
+	if err := validateGuardfileAuthValuesOperational("guardfile auth", gf.Auth.Value); err != nil {
+		return err
+	}
+	for _, p := range gf.Auth.Params {
+		if err := validateGuardfileAuthValuesOperational("guardfile auth param "+p.Name, p.Value); err != nil {
+			return err
+		}
+	}
+	return validateGuardfileRestrictionsOperational(gf)
 }
 
-// defaultSudoRunner runs `sudo -n true` and returns its stderr, exit code, and
-// any spawn error. Exit 0 means it ran without a password (the failure mode).
-func defaultSudoRunner() (string, int, error) {
-	cmd := exec.Command("sudo", "-n", "true") // #nosec G204 -- fixed argv, no user input
-	var stderr bytes.Buffer
-	cmd.Stderr = &stderr
-	err := cmd.Run()
-	if err == nil {
-		return stderr.String(), 0, nil
+func validateGuardfileAuthValuesOperational(label string, values []guardfile.ValueSource) error {
+	for _, vs := range values {
+		if containsExamplePlaceholder(vs.Provider) {
+			return fmt.Errorf("%s provider %q still looks like a placeholder", label, vs.Provider)
+		}
+		if containsExamplePlaceholder(vs.Address) {
+			return fmt.Errorf("%s value %q still looks like a placeholder", label, vs.Address)
+		}
 	}
-	var exitErr *exec.ExitError
-	if errors.As(err, &exitErr) {
-		return stderr.String(), exitErr.ExitCode(), nil
-	}
-	return stderr.String(), -1, err
+	return nil
 }
 
-// summarizeSecurity renders a one-line summary of the security: block. Kept
-// pure so tests can drive it from synthesized values without touching disk.
-func summarizeSecurity(sec repocfg.Security) string {
-	if securityIsZero(sec) {
-		return "ward doctor security: no security: declared"
+func validateGuardfileRestrictionsOperational(gf *guardfile.Guardfile) error {
+	for _, r := range gf.Restrict {
+		for _, glob := range r.Globs {
+			if containsExamplePlaceholder(glob) {
+				return fmt.Errorf("guardfile restrict %s glob %q still looks like a placeholder", r.Param, glob)
+			}
+		}
 	}
-	sudo := "unrestricted"
-	if sec.Sudo.ForbidPasswordless {
-		sudo = "forbid_passwordless"
-	}
-	hooks := "none"
-	if len(sec.Hooks.DenyBareBinaries) > 0 || len(sec.Hooks.RouteHints) > 0 {
-		hooks = fmt.Sprintf("%d deny / %d route-hint", len(sec.Hooks.DenyBareBinaries), len(sec.Hooks.RouteHints))
-	}
-	return fmt.Sprintf("ward doctor security: %d protected, sudo=%s, hooks=%s",
-		len(sec.ProtectedBinaries), sudo, hooks)
+	return nil
 }
 
-// securityIsZero reports whether every field of sec is at its zero value.
-// repocfg.Load returns a zero Security when the YAML has no security: block.
-func securityIsZero(sec repocfg.Security) bool {
-	return len(sec.ProtectedBinaries) == 0 &&
-		!sec.Sudo.ForbidPasswordless &&
-		len(sec.Hooks.DenyBareBinaries) == 0 &&
-		len(sec.Hooks.RouteHints) == 0
+func validateExecGuardfileOperational(gf *execverb.Guardfile) error {
+	if containsExamplePlaceholder(gf.Bin) {
+		return fmt.Errorf("exec bin %q still looks like a placeholder", gf.Bin)
+	}
+	for _, tok := range gf.ArgvPrefix {
+		if containsExamplePlaceholder(tok) {
+			return fmt.Errorf("exec argv-prefix token %q still looks like a placeholder", tok)
+		}
+	}
+	if err := validateExecEnvOperational(gf); err != nil {
+		return err
+	}
+	if err := validateExecAllowOperational(gf); err != nil {
+		return err
+	}
+	if err := validateExecGrantsOperational(gf); err != nil {
+		return err
+	}
+	return validateExecWhensOperational(gf)
+}
+
+func validateExecEnvOperational(gf *execverb.Guardfile) error {
+	for _, env := range gf.Env {
+		if containsExamplePlaceholder(env.Name) {
+			return fmt.Errorf("exec env name %q still looks like a placeholder", env.Name)
+		}
+		if containsExamplePlaceholder(env.Provider) {
+			return fmt.Errorf("exec env provider %q still looks like a placeholder", env.Provider)
+		}
+		if containsExamplePlaceholder(env.Address) {
+			return fmt.Errorf("exec env address %q still looks like a placeholder", env.Address)
+		}
+	}
+	return nil
+}
+
+func validateExecAllowOperational(gf *execverb.Guardfile) error {
+	for _, allow := range gf.Allow {
+		if containsExamplePlaceholder(allow) {
+			return fmt.Errorf("exec allow binary %q still looks like a placeholder", allow)
+		}
+	}
+	return nil
+}
+
+func validateExecGrantsOperational(gf *execverb.Guardfile) error {
+	for _, g := range gf.Grants {
+		for _, tok := range g.Subcommand {
+			if containsExamplePlaceholder(tok) {
+				return fmt.Errorf("exec grant subcommand %q still looks like a placeholder", tok)
+			}
+		}
+		for _, tok := range g.Argv {
+			if containsExamplePlaceholder(tok) {
+				return fmt.Errorf("exec grant argv token %q still looks like a placeholder", tok)
+			}
+		}
+		if containsExamplePlaceholder(g.Bin) {
+			return fmt.Errorf("exec grant bin %q still looks like a placeholder", g.Bin)
+		}
+	}
+	return nil
+}
+
+func validateExecWhensOperational(gf *execverb.Guardfile) error {
+	for _, w := range gf.Whens {
+		for _, tok := range w.SourceCmd {
+			if containsExamplePlaceholder(tok) {
+				return fmt.Errorf("exec when source command %q still looks like a placeholder", tok)
+			}
+		}
+		for _, glob := range w.Patterns {
+			if containsExamplePlaceholder(glob) {
+				return fmt.Errorf("exec when glob %q still looks like a placeholder", glob)
+			}
+		}
+	}
+	for _, w := range gf.WrapWhens {
+		for _, glob := range w.Patterns {
+			if containsExamplePlaceholder(glob) {
+				return fmt.Errorf("exec wrap-when glob %q still looks like a placeholder", glob)
+			}
+		}
+	}
+	return nil
+}
+
+func containsExamplePlaceholder(s string) bool {
+	return strings.Contains(strings.ToLower(strings.TrimSpace(s)), "example")
 }
