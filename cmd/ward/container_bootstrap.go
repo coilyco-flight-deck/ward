@@ -444,7 +444,7 @@ func (r *Runner) runContainerBootstrap(ctx context.Context, c *cli.Command) erro
 	blog("bootstrap substrate warm start")
 	r.warmSubstrate(ctx, e)
 	blog("bootstrap substrate warm done")
-	prepareConfigBundleCache(e)
+	r.prepareConfigBundleCache(ctx, e)
 	blog("bootstrap context compose start")
 	r.composeContext(e)
 	blog("bootstrap permissions compose start")
@@ -1032,9 +1032,9 @@ func (r *Runner) warmSubstrateRepo(ctx context.Context, e bootstrapEnv, owner, n
 	}
 }
 
-// prepareConfigBundleCache pre-creates the per-container config-bundle dir while
-// bootstrap runs as root, so WARD_CONFIG_REF caches there without poisoning siblings.
-func prepareConfigBundleCache(e bootstrapEnv) {
+// prepareConfigBundleCache pre-creates the per-container config-bundle dir.
+// Bootstrap runs as root, then hands it to the agent uid for writable refreshes.
+func (r *Runner) prepareConfigBundleCache(ctx context.Context, e bootstrapEnv) {
 	getenv := func(key string) string {
 		switch key {
 		case "WARD_CONTAINER":
@@ -1053,6 +1053,16 @@ func prepareConfigBundleCache(e bootstrapEnv) {
 	if err != nil {
 		blog("config-bundle cache: %v", err)
 		return
+	}
+	if os.Geteuid() == 0 {
+		owner := strings.TrimSpace(e.AgentUID) + ":" + strings.TrimSpace(e.AgentGID)
+		if owner != ":" {
+			if cerr := r.Runner.Exec(ctx, "chown", "-R", owner, dir); cerr != nil {
+				blog("config-bundle cache handoff skipped: %v", cerr)
+			} else {
+				blog("config-bundle cache handed off to %s at %s", owner, dir)
+			}
+		}
 	}
 	blog("config-bundle cache ready at %s", dir)
 }
