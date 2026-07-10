@@ -108,6 +108,18 @@ type dispatchBrokerResponse struct {
 // a served run's deploy output off the shared read-only TUI (ward#389).
 var dispatchStdioMu sync.Mutex
 
+// dispatchStdioRestoreHook is a test hook that fires after a detached launch has
+// restored process stdio and closed its dispatch log.
+var dispatchStdioRestoreHook = func() {}
+
+// dispatchFailedDispatchLaunchHook lets tests bypass the slow real failure-comment
+// recovery path when they only care about the broker's structured response.
+var dispatchFailedDispatchLaunchHook = func(dispatchBrokerRequest, string, error) bool { return false }
+
+// dispatchFailedDispatchLaunchStartHook lets tests wait until the detached failure
+// branch has definitely entered its recovery path.
+var dispatchFailedDispatchLaunchStartHook = func() {}
+
 // dispatchRefLocks holds one mutex per issue ref so the broker serializes same-ref
 // dispatches before any container starts (ward#600, docs/agent-reservation.md).
 var dispatchRefLocks sync.Map // ref string -> *sync.Mutex
@@ -187,7 +199,7 @@ func (r *Runner) handleHostDispatchBrokerConn(ctx context.Context, conn net.Conn
 		r.runDispatchBrokerLogs(ctx, conn, req)
 		return
 	}
-	logPath, err := r.runHostDispatchBrokerRequest(ctx, req)
+	logPath, err := r.startHostDispatchBrokerRequest(ctx, req)
 	writeDispatchBrokerResponse(conn, logPath, err)
 }
 
@@ -212,31 +224,23 @@ func writeDispatchBrokerLogsResponse(conn net.Conn, source string, err error) {
 	}
 }
 
-// runHostDispatchBrokerRequest serves one validated run in-process, redirecting its
-// deploy output to a per-dispatch log so it can't corrupt the surface TUI (ward#389).
-func (r *Runner) runHostDispatchBrokerRequest(ctx context.Context, req dispatchBrokerRequest) (string, error) {
+// startHostDispatchBrokerRequest launches the validated request in the background
+// and returns once the launch has started so the broker can ack the surface promptly.
+func (r *Runner) startHostDispatchBrokerRequest(ctx context.Context, req dispatchBrokerRequest) (string, error) {
 	if err := validateDispatchBrokerRequest(req); err != nil {
 		return "", err
 	}
-	// Stop is a targeted control action, not a launch: it resolves + docker-stops one
-	// engineer, so it takes no dispatch log, no stdio redirect, and no ref lock (ward#627).
 	if dispatchAction(req.Action) == dispatchActionStop {
 		return r.runDispatchBrokerStop(ctx, req)
 	}
-	// Serialize on the ref so two same-N dispatches can't both reserve + spin: the
-	// second waits, then its reservation check sees the first's hold (ward#600).
+	var lock *sync.Mutex
 	if ref, err := parseAgentIssueRef(req.Argv[1]); err == nil {
-		lock := dispatchRefLock(ref.String())
-		lock.Lock()
-		defer lock.Unlock()
+		lock = dispatchRefLock(ref.String())
 	}
 	logf, logPath, err := openDispatchLog(req, time.Now())
 	if err != nil {
-		// Fail loud rather than fall back to the TTY: a broken log dir must not
-		// silently reroute the flood back onto the corrupted surface (ward#389).
 		return "", fmt.Errorf("dispatch broker: open run log: %w", err)
 	}
-
 	_, _ = fmt.Fprintf(logf, "ward dispatch broker: %s requested `ward agent %s`\n",
 		emptyDefault(req.Requester, "unknown-container"), redactDispatchBrokerArgv(req.Argv))
 	ref := ""
@@ -246,24 +250,46 @@ func (r *Runner) runHostDispatchBrokerRequest(ctx context.Context, req dispatchB
 	_, _ = fmt.Fprintf(logf, "ward dispatch broker: this log captures the host wrapper only; in-container engineer console/reap logs drain separately and are readable with `ward agent logs %s`\n",
 		ref)
 	restore := redirectStdioToLog(logf)
-	defer func() {
-		restore()
-		_ = logf.Close()
+	started := make(chan struct{})
+	go func() {
+		restored := false
+		defer func() {
+			if !restored {
+				restore()
+			}
+			_ = logf.Close()
+			dispatchStdioRestoreHook()
+		}()
+		if lock != nil {
+			lock.Lock()
+			defer lock.Unlock()
+		}
+		if err := withBrokerForwardingDisabled(func() error {
+			close(started)
+			return dispatchBrokerLaunch(ctx, req)
+		}); err != nil {
+			fmt.Fprintf(os.Stderr, "ward dispatch broker: launch failed: %v\n", err)
+			restore()
+			restored = true
+			dispatchFailedDispatchLaunchStartHook()
+			r.commentFailedDispatchLaunch(ctx, req, logPath, err)
+			return
+		}
+		fmt.Fprintf(os.Stderr, "ward dispatch broker: launch completed\n")
 	}()
-
-	if err := withBrokerForwardingDisabled(func() error {
-		return dispatchBrokerLaunch(ctx, req)
-	}); err != nil {
-		fmt.Fprintf(os.Stderr, "ward dispatch broker: launch failed: %v\n", err)
-		r.commentFailedDispatchLaunch(ctx, req, logPath, err)
-		return logPath, err
+	select {
+	case <-started:
+		return logPath, nil
+	case <-ctx.Done():
+		return "", ctx.Err()
 	}
-	fmt.Fprintf(os.Stderr, "ward dispatch broker: launch completed\n")
-	return logPath, nil
 }
 
 // commentFailedDispatchLaunch posts the failure comment with a detached timeout.
 func (r *Runner) commentFailedDispatchLaunch(ctx context.Context, req dispatchBrokerRequest, logPath string, launchErr error) {
+	if dispatchFailedDispatchLaunchHook(req, logPath, launchErr) {
+		return
+	}
 	ref, err := parseAgentIssueRef(req.Argv[1])
 	if err != nil {
 		return
@@ -684,27 +710,8 @@ func (r *Runner) maybeForwardAgentDispatchToHostBroker(ctx context.Context, c *c
 	if addr == "" || os.Getenv("WARD_READONLY") != "1" {
 		return false, nil
 	}
-	var argv []string
-	switch role {
-	case "engineer":
-		ref, ok := r.brokerDispatchRef(ctx, c.Args().First())
-		if !ok {
-			return false, nil
-		}
-		argv = brokerEngineerArgv(c, mode, ref)
-	case "advisor":
-		ref, ok := r.brokerDispatchRef(ctx, c.Args().First())
-		if !ok {
-			return false, nil
-		}
-		argv = brokerAdvisorArgv(c, mode, ref)
-	case "qa":
-		ref, ok := r.brokerDispatchRef(ctx, c.Args().First())
-		if !ok {
-			return false, nil
-		}
-		argv = brokerQaArgv(c, mode, ref)
-	default:
+	argv, ok := r.brokerDispatchArgvForRole(ctx, c, role, mode)
+	if !ok {
 		return false, nil
 	}
 	req := dispatchBrokerRequest{
@@ -732,6 +739,23 @@ func (r *Runner) maybeForwardAgentDispatchToHostBroker(ctx context.Context, c *c
 	return true, nil
 }
 
+func (r *Runner) brokerDispatchArgvForRole(ctx context.Context, c *cli.Command, role string, mode containerMode) ([]string, bool) {
+	ref, ok := r.brokerDispatchRef(ctx, c.Args().First())
+	if !ok {
+		return nil, false
+	}
+	switch role {
+	case "engineer":
+		return brokerEngineerArgv(c, mode, ref), true
+	case "advisor":
+		return brokerAdvisorArgv(c, mode, ref), true
+	case "qa":
+		return brokerQaArgv(c, mode, ref), true
+	default:
+		return nil, false
+	}
+}
+
 // brokerDispatchHarness returns the harness to forward into a sibling dispatch.
 // Explicit --harness/--agent/--driver wins; otherwise inherit WARD_AGENT/WARD_MODE.
 func brokerDispatchHarness(c *cli.Command, fallback containerMode) containerMode {
@@ -742,9 +766,12 @@ func brokerDispatchHarness(c *cli.Command, fallback containerMode) containerMode
 }
 
 func (r *Runner) brokerDispatchRef(ctx context.Context, arg string) (agentIssueRef, bool) {
-	ref, err := r.resolveAgentIssueRef(ctx, arg)
+	ref, err := parseAgentIssueRefWithoutAuthority(arg)
 	if err != nil {
-		return agentIssueRef{}, false
+		ref, err = r.resolveAgentIssueRef(ctx, arg)
+		if err != nil {
+			return agentIssueRef{}, false
+		}
 	}
 	return ref, true
 }

@@ -575,8 +575,25 @@ func TestRunAgentAdvisorRefDispatchReturnsPromptlyViaBroker(t *testing.T) {
 	started := make(chan struct{})
 	release := make(chan struct{})
 	done := make(chan struct{})
+	restored := make(chan struct{})
 	origLaunch := dispatchBrokerLaunch
-	t.Cleanup(func() { dispatchBrokerLaunch = origLaunch })
+	origRestoreHook := dispatchStdioRestoreHook
+	t.Cleanup(func() {
+		dispatchBrokerLaunch = origLaunch
+		dispatchStdioRestoreHook = origRestoreHook
+		select {
+		case <-restored:
+		case <-time.After(30 * time.Second):
+			t.Fatal("broker launch never restored stdio after release")
+		}
+	})
+	dispatchStdioRestoreHook = func() {
+		select {
+		case <-restored:
+		default:
+			close(restored)
+		}
+	}
 	dispatchBrokerLaunch = func(_ context.Context, req dispatchBrokerRequest) error {
 		if req.Role != "advisor" {
 			t.Errorf("launch role = %q, want advisor", req.Role)
@@ -611,7 +628,7 @@ func TestRunAgentAdvisorRefDispatchReturnsPromptlyViaBroker(t *testing.T) {
 			_ = json.NewEncoder(conn).Encode(dispatchBrokerResponse{OK: false, Error: "dispatch broker: token rejected"})
 			return
 		}
-		logPath, err := r.runHostDispatchBrokerRequest(t.Context(), req)
+		logPath, err := r.startHostDispatchBrokerRequest(t.Context(), req)
 		if err != nil {
 			_ = json.NewEncoder(conn).Encode(dispatchBrokerResponse{OK: false, Error: err.Error()})
 			return
@@ -846,12 +863,13 @@ func TestRunHostDispatchBrokerRequestClearsBrokerEnvWhileLaunchRuns(t *testing.T
 		Role: "advisor",
 		Argv: []string{"advisor", "coilyco-flight-deck/ward#795", "--harness", "codex"},
 	}
+	var logPath string
 	go func() {
-		logPath, err := (&Runner{}).runHostDispatchBrokerRequest(t.Context(), req)
+		gotLogPath, err := (&Runner{}).startHostDispatchBrokerRequest(t.Context(), req)
 		result <- struct {
 			logPath string
 			err     error
-		}{logPath: logPath, err: err}
+		}{logPath: gotLogPath, err: err}
 	}()
 	select {
 	case <-started:
@@ -872,6 +890,7 @@ func TestRunHostDispatchBrokerRequestClearsBrokerEnvWhileLaunchRuns(t *testing.T
 		if !strings.Contains(got.logPath, "dispatch") {
 			t.Fatalf("log path %q does not look like a dispatch log", got.logPath)
 		}
+		logPath = got.logPath
 	case <-time.After(2 * time.Second):
 		t.Fatal("runHostDispatchBrokerRequest never returned")
 	}
@@ -910,25 +929,62 @@ func TestRunHostDispatchBrokerRequestClearsBrokerEnvWhileLaunchRuns(t *testing.T
 // response: a launch error should carry the dispatch log path back to the caller.
 func TestRunHostDispatchBrokerRequestReturnsStructuredLaunchFailure(t *testing.T) {
 	t.Setenv("HOME", t.TempDir())
+	done := make(chan struct{})
+	recoveryStarted := make(chan struct{})
+	restored := make(chan struct{})
 	origLaunch := dispatchBrokerLaunch
-	t.Cleanup(func() { dispatchBrokerLaunch = origLaunch })
+	origRestoreHook := dispatchStdioRestoreHook
+	origFailedDispatchHook := dispatchFailedDispatchLaunchHook
+	origFailedDispatchStartHook := dispatchFailedDispatchLaunchStartHook
+	t.Cleanup(func() {
+		dispatchBrokerLaunch = origLaunch
+		dispatchStdioRestoreHook = origRestoreHook
+		dispatchFailedDispatchLaunchHook = origFailedDispatchHook
+		dispatchFailedDispatchLaunchStartHook = origFailedDispatchStartHook
+		select {
+		case <-restored:
+		case <-time.After(30 * time.Second):
+			t.Fatal("structured launch failure never restored stdio")
+		}
+	})
+	dispatchStdioRestoreHook = func() {
+		select {
+		case <-restored:
+		default:
+			close(restored)
+		}
+	}
+	dispatchFailedDispatchLaunchHook = func(dispatchBrokerRequest, string, error) bool { return true }
+	dispatchFailedDispatchLaunchStartHook = func() {
+		select {
+		case <-recoveryStarted:
+		default:
+			close(recoveryStarted)
+		}
+	}
 	dispatchBrokerLaunch = func(context.Context, dispatchBrokerRequest) error {
+		defer close(done)
 		return errors.New(`Conflict. The container name "/engineer-codex-ward-786" is already in use`)
 	}
+	r := &Runner{Runner: &shell.Runner{Resolve: func(bin string) (string, error) {
+		if bin == "ward" {
+			return "/bin/true", nil
+		}
+		return "", fmt.Errorf("unexpected binary %q", bin)
+	}}}
 	req := dispatchBrokerRequest{
 		Role: "engineer",
 		Argv: []string{"engineer", "coilyco-flight-deck/ward#786", "--harness", "codex"},
 	}
-	logPath, err := (&Runner{}).runHostDispatchBrokerRequest(t.Context(), req)
-	if err == nil {
-		t.Fatal("runHostDispatchBrokerRequest accepted a launch failure")
-	}
-	if !strings.Contains(err.Error(), "already in use") {
-		t.Fatalf("launch failure error = %v, want the Docker conflict", err)
+	logPath, err := r.startHostDispatchBrokerRequest(t.Context(), req)
+	if err != nil {
+		t.Fatalf("startHostDispatchBrokerRequest: %v", err)
 	}
 	if !strings.Contains(logPath, "dispatch") {
 		t.Fatalf("log path %q does not look like a dispatch log", logPath)
 	}
+	<-done
+	<-recoveryStarted
 }
 
 // TestCommentFailedDispatch writes the failure comment that supersedes a stale
