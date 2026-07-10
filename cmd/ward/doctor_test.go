@@ -93,9 +93,9 @@ smart-defaults {
 		_, err := parseSmartDefaults([]byte(`
 smart-defaults {
     agent-reservation-ttl "1h"
-    agent-workflow default=direct-main {
-        repo "coily/repo" workflow=pull-requests
-        repo "coily/repo" workflow=patch-only
+    agent-workflow default=merge-remote-main {
+        repo "coily/repo" workflow=pull-request
+        repo "coily/repo" workflow=remote-branch-only
     }
 }
 repo-authority default=forgejo {
@@ -111,7 +111,7 @@ repo-authority default=forgejo {
 		defs, err := parseSmartDefaults([]byte(`
 smart-defaults {
     agent-reservation-ttl "1h"
-    agent-workflow default=direct-main {
+    agent-workflow default=merge-remote-main {
     }
 }
 repo-authority default=forgejo {

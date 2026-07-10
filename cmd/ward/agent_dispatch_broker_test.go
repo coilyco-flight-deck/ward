@@ -76,7 +76,7 @@ func TestDispatchBrokerValidatesNarrowAPI(t *testing.T) {
 	if err := validateDispatchBrokerRequest(cfg); err != nil {
 		t.Errorf("valid engineer --config dispatch refused: %v", err)
 	}
-	wf := dispatchBrokerRequest{Role: "engineer", Argv: []string{"engineer", "coilyco-flight-deck/ward#1", "--workflow", "direct-main", "--details", "repair after PR #357"}}
+	wf := dispatchBrokerRequest{Role: "engineer", Argv: []string{"engineer", "coilyco-flight-deck/ward#1", "--workflow", "merge-remote-main", "--details", "repair after PR #357"}}
 	if err := validateDispatchBrokerRequest(wf); err != nil {
 		t.Errorf("valid engineer --workflow/--details dispatch refused: %v", err)
 	}
@@ -498,7 +498,7 @@ func TestBrokerEngineerArgvForwardsApprovedFlags(t *testing.T) {
 		"--image", "img", "--tag", "t1", "--ward-version", "v1",
 		"--repo", "coilyco-flight-deck/cli-guard",
 		"--config", "agent.claude.model=sonnet",
-		"--workflow", "direct-main", "--details", "repair after PR #357",
+		"--workflow", "merge-remote-main", "--details", "repair after PR #357",
 		"--aws", "--tailnet", "--tailnet-mode", "sidecar", "--force", "--skip-preflight",
 	})
 	got := brokerEngineerArgv(cmd, modeClaude, agentIssueRef{Owner: "coilyco-flight-deck", Repo: "ward", Number: 42})
@@ -509,7 +509,7 @@ func TestBrokerEngineerArgvForwardsApprovedFlags(t *testing.T) {
 		{"--ward-version", "v1"},
 		{"--repo", "coilyco-flight-deck/cli-guard"},
 		{"--config", "agent.claude.model=sonnet"},
-		{"--workflow", "direct-main"},
+		{"--workflow", "merge-remote-main"},
 		{"--details", "repair after PR #357"},
 		{"--tailnet-mode", "sidecar"},
 	} {
@@ -603,7 +603,7 @@ func TestForwardAgentDispatchToHostBrokerSendsCanonicalRequest(t *testing.T) {
 	t.Setenv("WARD_READONLY", "1")
 	t.Setenv("WARD_CONTAINER_NAME", "director-codex-host")
 	cmd := parseCommandForTest(t, agentEngineerFlags(), []string{
-		"engineer", "coilyco-flight-deck/ward#378", "--harness", "claude", "--workflow", "direct-main",
+		"engineer", "coilyco-flight-deck/ward#378", "--harness", "claude", "--workflow", "merge-remote-main",
 		"--details", "repair after PR #357", "--skip-preflight", "--skip-review",
 	})
 	forwarded, err := (&Runner{}).maybeForwardAgentDispatchToHostBroker(t.Context(), cmd, "engineer", modeClaude)
@@ -620,7 +620,7 @@ func TestForwardAgentDispatchToHostBrokerSendsCanonicalRequest(t *testing.T) {
 	if req.Token != "nonce-123" {
 		t.Errorf("forwarded token = %q, want the per-launch nonce", req.Token)
 	}
-	want := []string{"engineer", "coilyco-flight-deck/ward#378", "--harness", "claude", "--workflow", "direct-main", "--details", "repair after PR #357", "--skip-preflight", "--skip-review"}
+	want := []string{"engineer", "coilyco-flight-deck/ward#378", "--harness", "claude", "--workflow", "merge-remote-main", "--details", "repair after PR #357", "--skip-preflight", "--skip-review"}
 	if !reflect.DeepEqual(req.Argv, want) {
 		t.Errorf("forwarded argv = %v, want %v", req.Argv, want)
 	}
@@ -1482,7 +1482,7 @@ func TestRunAgentTaskDirectRoutesThroughBrokerOnReadonlySurface(t *testing.T) {
     container-assets-ttl "1h"
     container-read-only-extra-repo-ttl "24h"
     container-reap-keep "10"
-    agent-workflow default=direct-main {
+    agent-workflow default=merge-remote-main {
     }
 }
 `
@@ -1970,11 +1970,11 @@ func TestStartHostDispatchBrokerRequestDoesNotTrustCrossOwnerNameCollisions(t *t
 func TestRedactDispatchBrokerArgvKeepsWorkflowAndDetailsButScrubsSecrets(t *testing.T) {
 	got := redactDispatchBrokerArgv([]string{
 		"engineer", "coilyco-flight-deck/ward#1",
-		"--workflow", "direct-main",
+		"--workflow", "merge-remote-main",
 		"--details", "repair after PR #357",
 		"--config", "agent.claude.api-key=ghp_aaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaa",
 	})
-	for _, want := range []string{"--workflow direct-main", "--details repair after PR #357"} {
+	for _, want := range []string{"--workflow merge-remote-main", "--details repair after PR #357"} {
 		if !strings.Contains(got, want) {
 			t.Errorf("redacted argv %q missing %q", got, want)
 		}

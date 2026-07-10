@@ -31,18 +31,18 @@ director's merge and CI-status reach ([infrastructure#538](https://github.com/co
 Merge authority is product data in the embedded role catalog
 (`merge-authority` in the shipped roles KDL), keyed to the workflow-mode model:
 
-- `pull-requests` - the **director** may merge (the PR is the merge gate).
-- `pull-requests-and-merge` - the **engineer** self-merges; the director's
+- `pull-request` - the **director** may merge (the PR is the merge gate).
+- `pull-request-and-merge` - the **engineer** self-merges; the director's
   sweep also lands it.
-- `patch-only` / `direct-main` - merge withheld from every role.
+- `remote-branch-only` / `merge-remote-main` - merge withheld from every role.
 
 Status and runs are read verbs (any catalog role with `read`). Rerun needs an
 `engineering` or `project-management` role, so the advisor and QA roles cannot
 poke CI. An unknown role is denied everything, fail-closed.
 
 A PR names its own mode: the `ward.workflow:` marker the engineer stamps into a
-`pull-requests-and-merge` PR body. A PR without a marker is the plain
-`pull-requests` lane.
+`pull-request-and-merge` PR body. A PR without a marker is the plain
+`pull-request` lane.
 
 ## Where it runs
 

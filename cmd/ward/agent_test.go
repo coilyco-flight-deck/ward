@@ -510,13 +510,13 @@ func TestAgentSeedPromptPullRequestFailureCommenting(t *testing.T) {
 		"skip the PR comment",
 	} {
 		if !strings.Contains(pr, want) {
-			t.Fatalf("pull-requests seed missing %q\n%s", want, pr)
+			t.Fatalf("pull-request seed missing %q\n%s", want, pr)
 		}
 	}
 
 	direct := agentSeedPromptWorkflow(ref, "fail on PR", "do the thing", "", true, nil, workflowDirectToMain, true, "")
 	if strings.Contains(direct, "post the same actionable failure comment to both the linked issue and the PR") {
-		t.Fatalf("direct-main seed must not ask for PR comments when no PR exists\n%s", direct)
+		t.Fatalf("merge-remote-main seed must not ask for PR comments when no PR exists\n%s", direct)
 	}
 }
 
