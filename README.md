@@ -115,6 +115,7 @@ v0.x, and early on purpose. ward is a single-maintainer tool in active internal 
 - [docs/architecture.md](docs/architecture.md) - ward in three layers (cli-guard, ward-kdl, ward).
 - [AGENTS.md](AGENTS.md) - agent-facing operating rules.
 - [docs/FEATURES.md](docs/FEATURES.md) - inventory of what ships today.
+- [docs/features-release-tooling.md](docs/features-release-tooling.md) - cross-repo tooling and release convention.
 - [docs/compat-surface.md](docs/compat-surface.md) - release-facing provider compatibility matrix.
 - [docs/doctor.md](docs/doctor.md) - runtime config validation.
 - [.ward/ward.yaml](.ward/ward.yaml) - allowlisted commands.

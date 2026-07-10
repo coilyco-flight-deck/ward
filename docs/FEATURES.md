@@ -9,6 +9,7 @@ Inventory of what `ward` ships today.
 - `ward git` - audited git.
 - `ward setup` - the live config/cache warmer.
 - `ward doctor` - strict runtime config validation.
+- `source-doc-refs` - source-comment documentation path validation.
 - `.ward/ward.yaml` - the repo config schema in [ward-yaml.md](ward-yaml.md).
 
 ## Agent surface
@@ -65,6 +66,7 @@ contract in one place per subsystem.
 
 - [../README.md](../README.md) - the front page.
 - [../AGENTS.md](../AGENTS.md) - the operating rules.
+- [features-release-tooling.md](features-release-tooling.md) - the hook and release convention.
 - [../.ward/ward.yaml](../.ward/ward.yaml) - the repo allowlist.
 
 Cross-reference convention from [coilysiren/agentic-os#59](https://github.com/coilysiren/agentic-os/issues/59).
