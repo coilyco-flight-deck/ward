@@ -31,12 +31,6 @@ func loadEmbeddedAgentRoleCatalog() (agentRoleCatalog, error) {
 	return parseAgentRoleCatalog(b)
 }
 
-// loadBuiltInAgentRoleCatalog is the compatibility shim for newer callers. The
-// embedded KDL file still owns the shipped presets.
-func loadBuiltInAgentRoleCatalog() (agentRoleCatalog, error) {
-	return loadEmbeddedAgentRoleCatalog()
-}
-
 func cachedEmbeddedAgentRoleCatalog() (agentRoleCatalog, error) {
 	agentRoleCatalogCache.Do(func() {
 		agentRoleCatalogCache.catalog, agentRoleCatalogCache.err = loadEmbeddedAgentRoleCatalog()
@@ -54,10 +48,6 @@ func mustEmbeddedAgentRoleCatalog() agentRoleCatalog {
 		panic(err)
 	}
 	return cat
-}
-
-func mustBuiltInAgentRoleCatalog() agentRoleCatalog {
-	return mustEmbeddedAgentRoleCatalog()
 }
 
 func cloneAgentRoleDefinition(def agentRoleDefinition) agentRoleDefinition {
@@ -84,10 +74,6 @@ func cloneAgentRoleDefinitionMap(in map[string]agentRoleDefinition) map[string]a
 
 func embeddedAgentRoleDefinitions() map[string]agentRoleDefinition {
 	return cloneAgentRoleDefinitionMap(mustEmbeddedAgentRoleCatalog().Definitions)
-}
-
-func builtInAgentRoleDefinitions() map[string]agentRoleDefinition {
-	return embeddedAgentRoleDefinitions()
 }
 
 func embeddedAgentRoleDefinitionOrder() []string {
