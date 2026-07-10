@@ -41,7 +41,7 @@ var agentSubsystemPointers = []subsystemPointer{
 	{
 		label:    "container bring-up + reaper backstop",
 		keywords: []string{"reaper", "container reap", "ward-salvage", "bring-up", "bringup"},
-		paths:    []string{"docs/container.md", "docs/container-reap.md"},
+		paths:    []string{"docs/container.md", "docs/container-lifecycle.md"},
 	},
 	{
 		label:    "release + tap formula bump",

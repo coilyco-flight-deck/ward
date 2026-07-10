@@ -30,6 +30,7 @@ type agentIssueRef struct {
 	Number            int
 	Forge             forge
 	Tracker           tracker
+	MergeRequest      bool
 	URL               string
 	ShortcutWorkspace string
 }
@@ -58,6 +59,13 @@ func (r agentIssueRef) url() string {
 			return fmt.Sprintf("%s/%s/story/%d", shortcutAppBaseURL, workspace, r.Number)
 		}
 		return fmt.Sprintf("%s/story/%d", shortcutAppBaseURL, r.Number)
+	}
+	if r.Forge == forgeGitLab {
+		path := "issues"
+		if r.MergeRequest {
+			path = "merge_requests"
+		}
+		return fmt.Sprintf("%s/%s/%s/-/%s/%d", strings.TrimRight(r.Forge.baseURL(), "/"), r.Owner, r.Repo, path, r.Number)
 	}
 	return fmt.Sprintf("%s/%s/%s/issues/%d", strings.TrimRight(r.Forge.baseURL(), "/"), r.Owner, r.Repo, r.Number)
 }
@@ -103,6 +111,9 @@ func parseAgentIssueRef(s string) (agentIssueRef, error) {
 	if ghRef, ok := parseGitHubIssueRef(s); ok {
 		return ghRef, nil
 	}
+	if glRef, ok := parseGitLabIssueRef(s); ok {
+		return glRef, nil
+	}
 	if shortcutRef, ok := parseShortcutIssueRef(s); ok {
 		return shortcutRef, nil
 	}
@@ -128,44 +139,12 @@ func parseAgentIssueRef(s string) (agentIssueRef, error) {
 	// steer to the task verb that carries arbitrary pointers (ward#234).
 	if strings.Contains(s, "://") {
 		return agentIssueRef{}, fmt.Errorf(
-			"cannot parse issue ref %q: want owner/repo#N, a bare #N, %s/owner/repo/issues/N, or %s/<workspace>/story/N; "+
+			"cannot parse issue ref %q: want owner/repo#N, a bare #N, %s/owner/repo/issues/N, %s/owner/repo/-/issues/N, or %s/<workspace>/story/N; "+
 				"for a non-issue pointer (a CI run, job, or commit URL), hand it to the engineer "+
 				"role's freeform mode instead: ward agent engineer '<url>'",
-			s, strings.TrimRight(forgejoBaseURL, "/"), shortcutAppBaseURL)
+			s, strings.TrimRight(forgejoBaseURL, "/"), strings.TrimRight(gitlabBaseURL(), "/"), shortcutAppBaseURL)
 	}
-	return agentIssueRef{}, fmt.Errorf("cannot parse issue ref %q: want owner/repo#N, a bare #N, %s/owner/repo/issues/N, or %s/<workspace>/story/N", s, strings.TrimRight(forgejoBaseURL, "/"), shortcutAppBaseURL)
-}
-
-// parseAgentIssueRefWithoutAuthority parses the same ref shapes as parseAgentIssueRef
-// but leaves repo authority resolution to the caller.
-func parseAgentIssueRefWithoutAuthority(s string) (agentIssueRef, error) {
-	s = strings.TrimSpace(s)
-	if s == "" {
-		return agentIssueRef{}, fmt.Errorf("empty issue reference")
-	}
-	if ghRef, ok := parseGitHubIssueRef(s); ok {
-		return ghRef, nil
-	}
-	if ref, err := parseDispatchIssueRef(s); err == nil {
-		return ref, nil
-	}
-	ref, err := issueref.Parse(s, forgejoBaseURL)
-	if err == nil {
-		return agentIssueRef{Owner: ref.Owner, Repo: ref.Repo, Number: ref.Number}, nil
-	}
-	if !strings.Contains(s, "://") {
-		if ref, err := issueref.Parse("https://"+s, forgejoBaseURL); err == nil {
-			return agentIssueRef{Owner: ref.Owner, Repo: ref.Repo, Number: ref.Number}, nil
-		}
-	}
-	if strings.Contains(s, "://") {
-		return agentIssueRef{}, fmt.Errorf(
-			"cannot parse issue ref %q: want owner/repo#N, a bare #N, or %s/owner/repo/issues/N; "+
-				"for a non-issue pointer (a CI run, job, or commit URL), hand it to the engineer "+
-				"role's freeform mode instead: ward agent engineer '<url>'",
-			s, strings.TrimRight(forgejoBaseURL, "/"))
-	}
-	return agentIssueRef{}, fmt.Errorf("cannot parse issue ref %q: want owner/repo#N, a bare #N, or %s/owner/repo/issues/N", s, strings.TrimRight(forgejoBaseURL, "/"))
+	return agentIssueRef{}, fmt.Errorf("cannot parse issue ref %q: want owner/repo#N, a bare #N, %s/owner/repo/issues/N, %s/owner/repo/-/issues/N, or %s/<workspace>/story/N", s, strings.TrimRight(forgejoBaseURL, "/"), strings.TrimRight(gitlabBaseURL(), "/"), shortcutAppBaseURL)
 }
 
 // looksLikeExplicitForgejoIssueRef reports whether s names Forgejo directly rather
@@ -280,30 +259,31 @@ func headlessReflection(ref agentIssueRef, wf workflowMode, reviewGate bool, rev
 		"Put every other word inside one collapsed `<details><summary>details</summary>` block: the review " +
 		"summary or skip state, the workflow line (`workflow: <mode>; review summary: <summary or skip state>`), " +
 		"the short candid retrospective on how the implementation \"felt\", confidence, surprises, and follow-ups. Do not leave " +
-		"any visible prose outside that first status line. " + reviewLine + " " + headlessWorkflowFailureCommentClause(wf) + " A supervising director loop " +
+		"any visible prose outside that first status line. " + reviewLine + " " + headlessWorkflowFailureCommentClause(ref, wf) + " A supervising director loop " +
 		"(ward agent director) reads only that first line to classify the run, so for a normal run that completed " +
 		"its workflow it is `" + wardOutcomeMarker + " " + outcomeStatus + "`. Reserve blocked/failed for a run that genuinely could not land."
 }
 
-func headlessWorkflowFailureCommentClause(wf workflowMode) string {
+func headlessWorkflowFailureCommentClause(ref agentIssueRef, wf workflowMode) string {
 	mode := canonicalWorkflow(wf.orDefault())
 	if mode == workflowPullRequest || mode == workflowPullRequestAndMerge {
-		return workflowFailureCommentClause()
+		return workflowFailureCommentClauseFor(ref.Forge)
 	}
 	return ""
 }
 
 // reviewGateClause wires the pre-landing adversarial review panel into a headless
 // seed (ward#134): run `ward agent review` before landing. docs/dispatch-review.md.
-func reviewGateClause(wf workflowMode) string {
-	landing := "open the pull request"
+func reviewGateClause(ref agentIssueRef, wf workflowMode) string {
+	noun := workflowReviewNoun(ref.Forge)
+	landing := "open the " + noun
 	switch mode := string(canonicalWorkflow(wf.orDefault())); mode {
 	case string(workflowDirectToMain):
 		landing = "merge to `main`"
 	case string(workflowPullRequest):
-		landing = "open the pull request"
+		landing = "open the " + noun
 	case string(workflowPullRequestAndMerge):
-		landing = "merge the pull request"
+		landing = "merge the " + noun
 	case string(workflowRemoteBranchOnly):
 		landing = "push the remote branch"
 	}
@@ -312,13 +292,13 @@ func reviewGateClause(wf workflowMode) string {
 	case string(workflowDirectToMain):
 		workflowTail = "For `direct-main` workflows, landing means merging to `main`. Do not stop before the merge lands."
 	case string(workflowPullRequest):
-		workflowTail = "For `pull-requests` workflows, opening the pull request is not a stopping point. Keep watching the PR checks after it opens. A failing check is not done: fetch the logs/status, patch the branch, push the update, and repeat until the PR is green or the failure is genuinely blocked."
+		workflowTail = "For `pull-requests` workflows, opening the " + noun + " is not a stopping point. Keep watching the " + noun + " checks after it opens. A failing check is not done: fetch the logs/status, patch the branch, push the update, and repeat until the " + noun + " is green or the failure is genuinely blocked."
 	case string(workflowPullRequestAndMerge):
-		workflowTail = "For `pull-requests-and-merge` workflows, opening the pull request is not a stopping point. Keep watching the PR checks and merge status after it opens. A failing check is not done: fetch the logs/status, patch the branch, push the update, and repeat until the PR is green and merged or the failure is genuinely blocked."
+		workflowTail = "For `pull-requests-and-merge` workflows, opening the " + noun + " is not a stopping point. Keep watching the " + noun + " checks and merge status after it opens. A failing check is not done: fetch the logs/status, patch the branch, push the update, and repeat until the " + noun + " is green and merged or the failure is genuinely blocked."
 	case string(workflowRemoteBranchOnly):
 		workflowTail = "For `patch-only` workflows, the remote branch push is the finish line. Do not open a pull request and do not merge."
 	default:
-		workflowTail = "For `pull-requests` workflows, opening the pull request is not a stopping point. Keep watching the PR checks after it opens. A failing check is not done: fetch the logs/status, patch the branch, push the update, and repeat until the PR is green or the failure is genuinely blocked."
+		workflowTail = "For `pull-requests` workflows, opening the " + noun + " is not a stopping point. Keep watching the " + noun + " checks after it opens. A failing check is not done: fetch the logs/status, patch the branch, push the update, and repeat until the " + noun + " is green or the failure is genuinely blocked."
 	}
 	return fmt.Sprintf(
 		"REVIEW GATE (ward#134): before you land this change (%s), and ONLY after CI is green, run the "+
@@ -370,8 +350,13 @@ func grantedRepoDoneClause(extra []targetRepo) string {
 
 // forgeDisplayName is the capitalized forge name the seed + prompts read with.
 func forgeDisplayName(f forge) string {
-	if f == forgeGitHub {
+	switch f {
+	case forgeForgejo:
+		return "Forgejo"
+	case forgeGitHub:
 		return "GitHub"
+	case forgeGitLab:
+		return "GitLab"
 	}
 	return "Forgejo"
 }
@@ -392,11 +377,15 @@ func agentSeedPromptWorkflow(ref agentIssueRef, title, body, details string, hea
 	body = strings.TrimSpace(body)
 
 	action, inline := seedIssueBodyParts(body)
+	kind := "issue"
+	if ref.Forge == forgeGitLab && ref.MergeRequest {
+		kind = "merge request"
+	}
 	seed := fmt.Sprintf(
-		"Work on %s issue %s (%q).\n\n"+
+		"Work on %s %s %s (%q).\n\n"+
 			"URL: %s\n\n"+
 			"%s\n\n%s\n\n%s Then carry it end to end per your container doctrine - %s",
-		forgeDisplayName(ref.Forge), ref, title, ref.url(), carryIssueBanner(ref), cloneAnchorLine(ref), action, workflowCarryClause(ref, wf))
+		forgeDisplayName(ref.Forge), kind, ref, title, ref.url(), carryIssueBanner(ref), cloneAnchorLine(ref), action, workflowCarryClause(ref, wf))
 	if details = strings.TrimSpace(details); details != "" {
 		seed += fmt.Sprintf(
 			"\n\nOperator note (added at dispatch via --details; treat it as authoritative and "+
@@ -413,7 +402,7 @@ func agentSeedPromptWorkflow(ref agentIssueRef, title, body, details string, hea
 	// Before landing, a headless run must clear the review gate (ward#134).
 	// Remote-branch-only skips it because that workflow lands nothing else.
 	if headless && reviewGate && wf.orDefault() != workflowRemoteBranchOnly {
-		seed += "\n\n" + reviewGateClause(wf)
+		seed += "\n\n" + reviewGateClause(ref, wf)
 	}
 	// A headless run detaches unwatched, so it closes with a retrospective comment -
 	// the only voice it leaves behind; the landing phrase tracks the workflow (#281, #508).
@@ -2091,11 +2080,7 @@ func (r *Runner) runAgentTaskDirect(ctx context.Context, c *cli.Command, mode co
 
 	// task always detaches, so host dispatch is the last interactive moment - surface
 	// a stale-ward reminder before it files+launches (ward#143).
-	if preflightSkipped(c) {
-		writef(os.Stderr, "%s: skipping ward update reminder (--skip-preflight)\n", label)
-	} else {
-		r.maybeWarnWardOutdated(ctx)
-	}
+	r.maybeWarnWardOutdatedForTask(ctx, c, label)
 
 	cl, err := r.hostTrackerClient(ctx, trackerForgejo, mode)
 	if err != nil {
@@ -2124,12 +2109,26 @@ func (r *Runner) runAgentTaskDirect(ctx context.Context, c *cli.Command, mode co
 		justification = read
 	}
 
+	if forwarded, ferr := r.forwardFreeformEngineerLaunchToHostBroker(ctx, c, mode, ref); forwarded {
+		return ferr
+	}
+
 	// The freeform instructions are the filed body (no --details); a headless seed
 	// (inlined body + reflection) carried under the resolved workflow (#167, #281, #508).
 	reviewGate := reviewGateWanted(c, mode, ref)
 	seed := agentSeedPromptWorkflow(ref, title, body, "", true, nil, wf, reviewGate, "")
 	return r.launchAgentContainer(ctx, c, mode, "engineer",
 		resolvedWork{Ref: ref, Title: title, Body: body, Workflow: wf, ReviewGate: reviewGate, Seed: seed}, justification)
+}
+
+// maybeWarnWardOutdatedForTask keeps the freeform engineer reminder branch out of
+// runAgentTaskDirect so the launch path stays under the repo's cyclomatic limit.
+func (r *Runner) maybeWarnWardOutdatedForTask(ctx context.Context, c *cli.Command, label string) {
+	if preflightSkipped(c) {
+		writef(os.Stderr, "%s: skipping ward update reminder (--skip-preflight)\n", label)
+		return
+	}
+	r.maybeWarnWardOutdated(ctx)
 }
 
 // printAgentTaskPlan renders the repo, the issue that *would* be filed, and the

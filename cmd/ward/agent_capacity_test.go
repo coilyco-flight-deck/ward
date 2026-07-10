@@ -2,6 +2,7 @@ package main
 
 import (
 	"context"
+	"errors"
 	"fmt"
 	"os"
 	"path/filepath"
@@ -31,23 +32,31 @@ func engineerCountDockerStub(t *testing.T, count int) string {
 }
 
 func TestEngineerContainerLimitBelowAndAtLimit(t *testing.T) {
+	limit := engineerContainerLimitDefault()
 	t.Run("below limit", func(t *testing.T) {
-		r, _, _ := bufRunner(engineerCountDockerStub(t, engineerContainerLimit-1))
+		r, _, _ := bufRunner(engineerCountDockerStub(t, limit-1))
 		if err := r.enforceEngineerContainerLimit(context.Background(), "ward agent engineer"); err != nil {
 			t.Fatalf("enforceEngineerContainerLimit below limit: %v", err)
 		}
 	})
 
 	t.Run("at limit", func(t *testing.T) {
-		r, _, _ := bufRunner(engineerCountDockerStub(t, engineerContainerLimit))
+		r, _, _ := bufRunner(engineerCountDockerStub(t, limit))
 		err := r.enforceEngineerContainerLimit(context.Background(), "ward agent engineer")
 		if err == nil {
 			t.Fatal("enforceEngineerContainerLimit at limit: want error, got nil")
 		}
+		var capErr *engineerCapacityError
+		if !errors.As(err, &capErr) {
+			t.Fatalf("enforceEngineerContainerLimit at limit returned %T, want *engineerCapacityError", err)
+		}
+		if !isEngineerCapacityError(err) {
+			t.Fatal("enforceEngineerContainerLimit at limit should classify as engineer capacity backpressure")
+		}
 		for _, want := range []string{
 			"global engineer limit is reached",
-			"10 running",
-			"limit 10",
+			"running",
+			fmt.Sprintf("limit %d", limit),
 			"ward agent reap",
 		} {
 			if !strings.Contains(err.Error(), want) {
@@ -57,9 +66,56 @@ func TestEngineerContainerLimitBelowAndAtLimit(t *testing.T) {
 	})
 }
 
+func TestEngineerContainerLimitFromBundleOverride(t *testing.T) {
+	dir := t.TempDir()
+	body := `smart-defaults {
+    agent-reservation-ttl "1h"
+    agent-reservation-recheck-max "15s"
+    agent-reap-idle "1h"
+    agent-reap-max-cpu "5.0"
+    engineer-container-limit "15"
+    director-max-parallel "10"
+    director-limit "50"
+    director-poll-interval "30s"
+    reviewer-timeout "8m"
+    config-bundle-ttl "600s"
+    container-assets-ttl "1h"
+    container-read-only-extra-repo-ttl "24h"
+    container-reap-keep "10"
+    agent-workflow default=direct-main {
+        repo "coilyco-flight-deck/ward" workflow=pull-requests-and-merge
+    }
+}
+repo-authority default=forgejo {
+    trusted-owner coilysiren
+    repo "coilyco-flight-deck/*" forge=forgejo
+}`
+	if err := os.WriteFile(filepath.Join(dir, bundleDefaultsKDLPath), []byte(body), 0o644); err != nil {
+		t.Fatalf("write defaults bundle: %v", err)
+	}
+	t.Setenv(wardConfigRefEnv, "file://"+dir)
+	if got := engineerContainerLimitDefault(); got != 15 {
+		t.Fatalf("engineerContainerLimitDefault() = %d, want 15", got)
+	}
+
+	r, _, _ := bufRunner(engineerCountDockerStub(t, 14))
+	if err := r.enforceEngineerContainerLimit(context.Background(), "ward agent engineer"); err != nil {
+		t.Fatalf("enforceEngineerContainerLimit below overridden limit: %v", err)
+	}
+
+	r, _, _ = bufRunner(engineerCountDockerStub(t, 15))
+	err := r.enforceEngineerContainerLimit(context.Background(), "ward agent engineer")
+	if err == nil {
+		t.Fatal("enforceEngineerContainerLimit at overridden limit: want error, got nil")
+	}
+	if !strings.Contains(err.Error(), "limit 15") {
+		t.Fatalf("enforceEngineerContainerLimit overridden limit error = %v", err)
+	}
+}
+
 func TestLaunchAgentContainerRejectsAtLimitWithoutReservation(t *testing.T) {
 	t.Setenv("HOME", t.TempDir())
-	r, _, _ := bufRunner(engineerCountDockerStub(t, engineerContainerLimit))
+	r, _, _ := bufRunner(engineerCountDockerStub(t, engineerContainerLimitDefault()))
 	ref := agentIssueRef{Owner: "coilyco-flight-deck", Repo: "ward", Number: 884}
 	path, err := agentReservationPath(ref)
 	if err != nil {

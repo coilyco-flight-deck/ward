@@ -91,7 +91,7 @@ excludes = [
   "docs/container-lifecycle-logs.md",
   "docs/container-multi-repo.md",
   "docs/container-permissions.md",
-  "docs/container-reap.md",
+  "docs/container-lifecycle.md",
   "docs/container.md",
   "docs/context-probe.md",
   "docs/demo.md",

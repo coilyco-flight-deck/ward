@@ -36,7 +36,7 @@ Maintainers and warded agents on the canonical repo skip the mirror and follow t
 
 ## Extending ward to your stack
 
-**Add a stack by implementing an adapter behind a port, not by editing unrelated packages.** Start from the seam your stack needs, then follow [docs/compat-surface.md](docs/compat-surface.md).
+**Add a stack by implementing an adapter behind a port, not by editing unrelated packages.** Start from the seam your stack needs, then follow [docs/architecture.md](docs/architecture.md).
 
 1. Split `issueForge`.
 2. Add a GitLab forge adapter.

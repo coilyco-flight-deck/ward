@@ -9,24 +9,21 @@ import (
 	"net/http"
 	"net/url"
 	"os"
-	"os/exec"
 	"strconv"
 	"strings"
 	"time"
 
 	"forgejo.coilysiren.me/coilyco-flight-deck/cli-guard/cli/dispatch"
-	"forgejo.coilysiren.me/coilyco-flight-deck/cli-guard/cli/shell"
 	"forgejo.coilysiren.me/coilyco-flight-deck/cli-guard/pkg/broker"
 )
 
-// forgejo_ops.go is ward's Forgejo client, routed through the in-binary `ward ops
-// forgejo` guardfile runtime (ward#92). See docs/ops-forgejo-in-ward.md.
+// forgejo_ops.go is ward's core Forgejo client. Core agent paths use this
+// direct HTTP adapter, not the runtime-selected `ward ops forgejo` KDL surface.
 
 // forgejoBaseURL is the Forgejo origin, used to render issue URLs and parse refs.
-// Safe to hardcode; the bearer token resolves in the subprocess, not here.
-const forgejoBaseURL = "https://forgejo.coilysiren.me"
+var forgejoBaseURL = "https://forgejo.coilysiren.me"
 
-// forgejoListLimit caps each list/search page ward reads through the ops mount,
+// forgejoListLimit caps each list/search page ward reads through the REST API,
 // matching the survey/scan seams that never needed deep pagination.
 const forgejoListLimit = "50"
 
@@ -55,30 +52,23 @@ type forgejoRepoCapabilities struct {
 	HasPullRequests bool `json:"has_pull_requests"`
 }
 
-// forgejoClient drives Forgejo through `ward ops forgejo`. exe is the resolved
-// ward binary, r runs it audited, and mode signs the bodies it writes (ward#155).
+// forgejoClient drives Forgejo directly. r resolves host credentials when a
+// write needs them, and mode signs the core agent bodies it writes (ward#155).
 type forgejoClient struct {
 	r       *Runner
-	exe     string
 	mode    containerMode
 	baseURL string
 	token   string
 }
 
-// hostForgejoClient builds a client over the in-binary ops mount; auth resolves in
-// the subprocess (see forgejoTokenResolver). ctx is unused, kept for call sites.
-func (r *Runner) hostForgejoClient(_ context.Context) (*forgejoClient, error) {
-	exe, err := os.Executable()
-	if err != nil {
-		return nil, fmt.Errorf("forgejo: resolve ward binary: %w", err)
+// hostForgejoClient builds ward's core Forgejo adapter. It intentionally does
+// not consult WARD_CONFIG_REF or shell through generated ops leaves (ward#929).
+func (r *Runner) hostForgejoClient(ctx context.Context) *forgejoClient {
+	cl := &forgejoClient{r: r, mode: currentAgentMode(), baseURL: forgejoBaseURL}
+	if tok, err := r.resolveForgejoToken(ctx, broker.Target{}, forgeForgejo); err == nil && strings.TrimSpace(tok) != "" {
+		cl.token = tok
 	}
-	// Shell back to canonical ward, not the invoked `warded` shim, so the `ops`
-	// call skips the warded->`ward agent` rewrite that rejects --output (ward#304).
-	exe = canonicalWardExe(exe)
-	if strings.HasSuffix(exe, ".test") || strings.Contains(exe, "go-build") {
-		return nil, fmt.Errorf("forgejo: refusing to shell back through the test binary")
-	}
-	return &forgejoClient{r: r, exe: exe, mode: currentAgentMode(), baseURL: forgejoBaseURL}, nil
+	return cl
 }
 
 // withMode pins the signing identity for callers that know the mode rather than
@@ -88,8 +78,7 @@ func (c *forgejoClient) withMode(m containerMode) *forgejoClient {
 	return c
 }
 
-// withToken pins the already-resolved container Forgejo token for direct API
-// leaves that are not present in the generated ops surface.
+// withToken pins an already-resolved Forgejo token for direct API calls.
 func (c *forgejoClient) withToken(token string) *forgejoClient {
 	c.token = token
 	return c
@@ -112,71 +101,109 @@ func (c *forgejoClient) apiToken(ctx context.Context) (string, error) {
 	return tok, nil
 }
 
-// run shells the ward binary back to its `ops forgejo` mount, returning stdout. On a
-// non-zero exit it folds the subprocess stderr into the error (ward#596, docs/broker.md).
-func (c *forgejoClient) run(ctx context.Context, args ...string) ([]byte, error) {
-	if c.r == nil || c.r.Runner == nil {
-		return nil, fmt.Errorf("forgejo: no runner available for `ward ops forgejo %s`", strings.Join(args, " "))
+// optionalAPIToken returns a token already in this process. Read paths may use
+// it when present, but they do not fail closed on missing host SSM credentials.
+func (c *forgejoClient) optionalAPIToken() string {
+	if tok := strings.TrimSpace(c.token); tok != "" {
+		return tok
 	}
-	full := append([]string{"ops", "forgejo"}, args...)
-	var stdout, stderr bytes.Buffer
-	// #nosec G204 -- c.exe is the resolved canonical ward binary, argv is fixed verbs.
-	cmd := exec.CommandContext(ctx, c.exe, full...)
-	cmd.Stdout = &stdout
-	// Tee stderr: keep it streaming live (interactive/host runs keep their output)
-	// while capturing a copy so a failure can name the envelope, not just the code.
-	if live := c.stdioRunner().Stderr; live != nil {
-		cmd.Stderr = io.MultiWriter(live, &stderr)
-	} else {
-		cmd.Stderr = &stderr
-	}
-	cmd.Stdin = c.stdioRunner().Stdin
-	if env := c.stdioRunner().Env; env != nil {
-		cmd.Env = append(os.Environ(), env...)
-	}
-	if err := cmd.Run(); err != nil {
-		return stdout.Bytes(), foldOpsStderr(err, stderr.Bytes())
-	}
-	return stdout.Bytes(), nil
+	return ""
 }
 
-func (c *forgejoClient) stdioRunner() *shell.Runner {
-	if c != nil && c.r != nil && c.r.Runner != nil {
-		return c.r.Runner
+func (c *forgejoClient) apiBaseURL() string {
+	baseURL := strings.TrimRight(c.baseURL, "/")
+	if baseURL == "" {
+		baseURL = forgejoBaseURL
 	}
-	return &shell.Runner{
-		Stdout: os.Stdout,
-		Stderr: os.Stderr,
-		Stdin:  os.Stdin,
-		Env:    os.Environ(),
-	}
+	return strings.TrimRight(baseURL, "/")
 }
 
-// foldOpsStderr appends a subprocess's captured stderr to its exit error, so a caller
-// reads the cli-guard envelope, not a bare `exit status N`. Empty stderr: unchanged.
-func foldOpsStderr(err error, stderr []byte) error {
-	detail := condenseOpsStderr(stderr)
-	if detail == "" {
+func (c *forgejoClient) apiURL(segments ...string) string {
+	escaped := make([]string, 0, len(segments)+2)
+	escaped = append(escaped, "api", "v1")
+	for _, seg := range segments {
+		escaped = append(escaped, url.PathEscape(seg))
+	}
+	return c.apiBaseURL() + "/" + strings.Join(escaped, "/")
+}
+
+func (c *forgejoClient) doJSON(ctx context.Context, method string, segments []string, query url.Values, body any, requireToken bool, out any) ([]byte, error) {
+	rdr, err := jsonBodyReader(body)
+	if err != nil {
+		return nil, err
+	}
+	endpoint := c.apiURL(segments...)
+	if len(query) > 0 {
+		endpoint += "?" + query.Encode()
+	}
+	req, err := http.NewRequestWithContext(ctx, method, endpoint, rdr)
+	if err != nil {
+		return nil, err
+	}
+	if err := c.addAPIHeaders(ctx, req, body != nil, requireToken); err != nil {
+		return nil, err
+	}
+	resp, err := (&http.Client{Timeout: 30 * time.Second}).Do(req)
+	if err != nil {
+		return nil, err
+	}
+	defer func() { _ = resp.Body.Close() }()
+	return readAPIResponse(resp, method, segments, out)
+}
+
+func jsonBodyReader(body any) (io.Reader, error) {
+	if body == nil {
+		return http.NoBody, nil
+	}
+	payload, err := json.Marshal(body)
+	if err != nil {
+		return nil, err
+	}
+	return bytes.NewReader(payload), nil
+}
+
+func (c *forgejoClient) addAPIHeaders(ctx context.Context, req *http.Request, hasBody bool, requireToken bool) error {
+	req.Header.Set("Accept", "application/json")
+	if hasBody {
+		req.Header.Set("Content-Type", "application/json")
+	}
+	if !requireToken {
+		if tok := c.optionalAPIToken(); tok != "" {
+			req.Header.Set("Authorization", "token "+tok)
+		}
+		return nil
+	}
+	tok, err := c.apiToken(ctx)
+	if err != nil {
 		return err
 	}
-	return fmt.Errorf("%w: %s", err, detail)
+	req.Header.Set("Authorization", "token "+tok)
+	return nil
 }
 
-// condenseOpsStderr trims captured stderr to one line: blank lines drop, the rest join
-// with "; ", capped so a long envelope can't flood the surface's error (ward#596).
-func condenseOpsStderr(stderr []byte) string {
-	const maxLen = 800
-	var kept []string
-	for _, ln := range strings.Split(string(stderr), "\n") {
-		if ln = strings.TrimSpace(ln); ln != "" {
-			kept = append(kept, ln)
+func readAPIResponse(resp *http.Response, method string, segments []string, out any) ([]byte, error) {
+	data, readErr := io.ReadAll(resp.Body)
+	if readErr != nil {
+		return nil, fmt.Errorf("forgejo: read %s %s from %s: %w", method, apiPath(segments), resp.Status, readErr)
+	}
+	if resp.StatusCode < 200 || resp.StatusCode >= 300 {
+		return data, fmt.Errorf("forgejo %s %s returned %s after %d byte(s): %s", method, apiPath(segments), resp.Status, len(data), responseSnippet(data))
+	}
+	if out != nil && len(bytes.TrimSpace(data)) > 0 {
+		if err := json.Unmarshal(data, out); err != nil {
+			return data, fmt.Errorf("forgejo: parse %s %s from %s after %d byte(s): %s: %w", method, apiPath(segments), resp.Status, len(data), responseSnippet(data), err)
 		}
 	}
-	joined := strings.Join(kept, "; ")
-	if len(joined) > maxLen {
-		joined = joined[:maxLen] + "..."
+	return data, nil
+}
+
+func apiPath(segments []string) string {
+	escaped := make([]string, 0, len(segments)+2)
+	escaped = append(escaped, "api", "v1")
+	for _, seg := range segments {
+		escaped = append(escaped, url.PathEscape(seg))
 	}
-	return joined
+	return "/" + strings.Join(escaped, "/")
 }
 
 // fetchIssueByForge GETs an issue from the selected forge and decodes it into
@@ -195,18 +222,14 @@ func (r *Runner) fetchIssueByForge(ctx context.Context, label string, f forge, m
 // getIssue reads one issue and decodes the rendered JSON. Labels arrive as
 // objects, so they decode into a shadow field and flatten to the name list.
 func (c *forgejoClient) getIssue(ctx context.Context, owner, repo string, number int) (*dispatch.Issue, error) {
-	out, err := c.run(ctx, "issue", "get", owner, repo, strconv.Itoa(number), "--output", "json")
-	if err != nil {
-		return nil, fmt.Errorf("forgejo: get issue %s/%s#%d: %w", owner, repo, number, err)
-	}
 	var raw struct {
 		dispatch.Issue
 		Labels []struct {
 			Name string `json:"name"`
 		} `json:"labels"`
 	}
-	if err := json.Unmarshal(out, &raw); err != nil {
-		return nil, fmt.Errorf("forgejo: parse issue %s/%s#%d: %w", owner, repo, number, err)
+	if _, err := c.doJSON(ctx, http.MethodGet, []string{"repos", owner, repo, "issues", strconv.Itoa(number)}, nil, nil, false, &raw); err != nil {
+		return nil, fmt.Errorf("forgejo: get issue %s/%s#%d: %w", owner, repo, number, err)
 	}
 	issue := raw.Issue
 	for _, l := range raw.Labels {
@@ -270,47 +293,29 @@ func (c *forgejoClient) getPullRequestMergeabilityOnce(ctx context.Context, clie
 
 // listIssueComments fetches an issue's comment thread, oldest first.
 func (c *forgejoClient) listIssueComments(ctx context.Context, owner, repo string, number int) ([]issueComment, error) {
-	out, err := c.run(ctx, "issue-comment", "list", owner, repo, strconv.Itoa(number), "--output", "json")
-	if err != nil {
-		return nil, fmt.Errorf("forgejo: list comments on %s/%s#%d: %w", owner, repo, number, err)
-	}
 	var comments []issueComment
-	if err := json.Unmarshal(out, &comments); err != nil {
-		return nil, fmt.Errorf("forgejo: parse comments on %s/%s#%d: %w", owner, repo, number, err)
+	if _, err := c.doJSON(ctx, http.MethodGet, []string{"repos", owner, repo, "issues", strconv.Itoa(number), "comments"}, nil, nil, false, &comments); err != nil {
+		return nil, fmt.Errorf("forgejo: list comments on %s/%s#%d: %w", owner, repo, number, err)
 	}
 	return comments, nil
 }
 
 // createIssue opens a new issue and returns its number. Title+body ride a
-// --body-file (clears the argv metachar gate); the body is signed first (ward#155).
+// direct JSON request; the body is signed first (ward#155).
 func (c *forgejoClient) createIssue(ctx context.Context, owner, repo, title, body string) (int, error) {
-	path, cleanup, err := writeForgejoBody(map[string]string{"title": title, "body": c.mode.signBody(body)})
-	if err != nil {
-		return 0, err
-	}
-	defer cleanup()
-	out, err := c.run(ctx, "issue", "create", owner, repo, "--body-file", path, "--output", "json")
-	if err != nil {
-		return 0, fmt.Errorf("forgejo: create issue in %s/%s: %w", owner, repo, err)
-	}
 	var created struct {
 		Number int `json:"number"`
 	}
-	if err := json.Unmarshal(out, &created); err != nil {
-		return 0, fmt.Errorf("forgejo: parse created issue: %w", err)
+	body = c.mode.signBody(body)
+	if _, err := c.doJSON(ctx, http.MethodPost, []string{"repos", owner, repo, "issues"}, nil, map[string]string{"title": title, "body": body}, true, &created); err != nil {
+		return 0, fmt.Errorf("forgejo: create issue in %s/%s: %w", owner, repo, err)
 	}
 	return created.Number, nil
 }
 
-// commentIssue appends a comment to an existing issue. The body rides a
-// --body-file (same argv-gate reason as createIssue) and is signed first.
+// commentIssue appends a signed comment to an existing issue.
 func (c *forgejoClient) commentIssue(ctx context.Context, owner, repo string, number int, body string) error {
-	path, cleanup, err := writeForgejoBody(map[string]string{"body": c.mode.signBody(body)})
-	if err != nil {
-		return err
-	}
-	defer cleanup()
-	if _, err := c.run(ctx, "issue", "comment", owner, repo, strconv.Itoa(number), "--body-file", path); err != nil {
+	if _, err := c.doJSON(ctx, http.MethodPost, []string{"repos", owner, repo, "issues", strconv.Itoa(number), "comments"}, nil, map[string]string{"body": c.mode.signBody(body)}, true, nil); err != nil {
 		return fmt.Errorf("forgejo: comment issue %s/%s#%d: %w", owner, repo, number, err)
 	}
 	return nil
@@ -319,7 +324,7 @@ func (c *forgejoClient) commentIssue(ctx context.Context, owner, repo string, nu
 // closeIssue flips an existing issue to the closed state (the fixed-body close
 // toggle), used by the task route flow to retire an intake record once linked.
 func (c *forgejoClient) closeIssue(ctx context.Context, owner, repo string, number int) error {
-	if _, err := c.run(ctx, "issue", "close", owner, repo, strconv.Itoa(number)); err != nil {
+	if _, err := c.doJSON(ctx, http.MethodPatch, []string{"repos", owner, repo, "issues", strconv.Itoa(number)}, nil, map[string]string{"state": "closed"}, true, nil); err != nil {
 		return fmt.Errorf("forgejo: close issue %s/%s#%d: %w", owner, repo, number, err)
 	}
 	return nil
@@ -328,20 +333,16 @@ func (c *forgejoClient) closeIssue(ctx context.Context, owner, repo string, numb
 // reopenIssue flips a closed issue back open (the fixed-body reopen toggle); the
 // reaper uses it to undo a `closes #N` when a granted repo failed to land (ward#291).
 func (c *forgejoClient) reopenIssue(ctx context.Context, owner, repo string, number int) error {
-	if _, err := c.run(ctx, "issue", "reopen", owner, repo, strconv.Itoa(number)); err != nil {
+	if _, err := c.doJSON(ctx, http.MethodPatch, []string{"repos", owner, repo, "issues", strconv.Itoa(number)}, nil, map[string]string{"state": "open"}, true, nil); err != nil {
 		return fmt.Errorf("forgejo: reopen issue %s/%s#%d: %w", owner, repo, number, err)
 	}
 	return nil
 }
 
 func (c *forgejoClient) repoPullRequestsEnabled(ctx context.Context, owner, repo string) (bool, error) {
-	out, err := c.run(ctx, "repo", "get", owner, repo, "--output", "json")
-	if err != nil {
-		return false, fmt.Errorf("forgejo: get repo %s/%s: %w", owner, repo, err)
-	}
 	var caps forgejoRepoCapabilities
-	if err := json.Unmarshal(out, &caps); err != nil {
-		return false, fmt.Errorf("forgejo: parse repo %s/%s: %w", owner, repo, err)
+	if _, err := c.doJSON(ctx, http.MethodGet, []string{"repos", owner, repo}, nil, nil, false, &caps); err != nil {
+		return false, fmt.Errorf("forgejo: get repo %s/%s: %w", owner, repo, err)
 	}
 	return caps.HasPullRequests, nil
 }
@@ -638,13 +639,10 @@ func (c *forgejoClient) listOpenIssues(ctx context.Context, owner, repo string, 
 	if limit <= 0 {
 		limit = 50
 	}
-	out, err := c.run(ctx, "issue", "list", owner, repo, "--state", "open", "--type", "issues", "--limit", strconv.Itoa(limit), "--output", "json")
-	if err != nil {
-		return nil, fmt.Errorf("forgejo: list open issues in %s/%s: %w", owner, repo, err)
-	}
+	q := url.Values{"state": {"open"}, "type": {"issues"}, "limit": {strconv.Itoa(limit)}}
 	var raw []forgejoIssueRaw
-	if err := json.Unmarshal(out, &raw); err != nil {
-		return nil, fmt.Errorf("forgejo: parse issue list for %s/%s: %w", owner, repo, err)
+	if _, err := c.doJSON(ctx, http.MethodGet, []string{"repos", owner, repo, "issues"}, q, nil, false, &raw); err != nil {
+		return nil, fmt.Errorf("forgejo: list open issues in %s/%s: %w", owner, repo, err)
 	}
 	issues := make([]backlogIssue, 0, len(raw))
 	for _, ri := range raw {
@@ -665,13 +663,10 @@ func (c *forgejoClient) listOpenPullRequests(ctx context.Context, owner, repo st
 	if limit <= 0 {
 		limit = 50
 	}
-	out, err := c.run(ctx, "issue", "list", owner, repo, "--state", "open", "--type", "pulls", "--limit", strconv.Itoa(limit), "--output", "json")
-	if err != nil {
-		return nil, fmt.Errorf("forgejo: list open pull requests in %s/%s: %w", owner, repo, err)
-	}
+	q := url.Values{"state": {"open"}, "type": {"pulls"}, "limit": {strconv.Itoa(limit)}}
 	var raw []forgejoIssueRaw
-	if err := json.Unmarshal(out, &raw); err != nil {
-		return nil, fmt.Errorf("forgejo: parse pull request list for %s/%s: %w", owner, repo, err)
+	if _, err := c.doJSON(ctx, http.MethodGet, []string{"repos", owner, repo, "issues"}, q, nil, false, &raw); err != nil {
+		return nil, fmt.Errorf("forgejo: list open pull requests in %s/%s: %w", owner, repo, err)
 	}
 	prs := make([]directorPullRequest, 0, len(raw))
 	for _, ri := range raw {
@@ -708,11 +703,7 @@ func (c *forgejoClient) addIssueLabels(ctx context.Context, owner, repo string, 
 	if len(labels) == 0 {
 		return nil
 	}
-	args := []string{"issue-label", "add", owner, repo, strconv.Itoa(number)}
-	for _, l := range labels {
-		args = append(args, "--labels", l)
-	}
-	if _, err := c.run(ctx, args...); err != nil {
+	if _, err := c.doJSON(ctx, http.MethodPost, []string{"repos", owner, repo, "issues", strconv.Itoa(number), "labels"}, nil, map[string][]string{"labels": labels}, true, nil); err != nil {
 		return fmt.Errorf("forgejo: add labels %v to %s/%s#%d: %w", labels, owner, repo, number, err)
 	}
 	return nil
@@ -722,17 +713,20 @@ func (c *forgejoClient) addIssueLabels(ctx context.Context, owner, repo string, 
 // (the survey's primary owners are both - coilyco-* orgs and the coilysiren user).
 func (c *forgejoClient) listOwnerRepos(ctx context.Context, owner string) ([]repoBrief, error) {
 	var lastErr error
-	for _, leaf := range []string{"org-repo", "user-repo"} {
-		out, err := c.run(ctx, leaf, "list", owner, "--limit", forgejoListLimit, "--output", "json")
-		if err != nil {
+	for _, shape := range []struct {
+		label    string
+		segments []string
+	}{
+		{"org", []string{"orgs", owner, "repos"}},
+		{"user", []string{"users", owner, "repos"}},
+	} {
+		var repos []repoBrief
+		q := url.Values{"limit": {forgejoListLimit}}
+		if _, err := c.doJSON(ctx, http.MethodGet, shape.segments, q, nil, false, &repos); err != nil {
 			// A 404 means the owner is not that kind (org vs user); try the next
 			// shape before surfacing the failure.
-			lastErr = err
+			lastErr = fmt.Errorf("%s repos: %w", shape.label, err)
 			continue
-		}
-		var repos []repoBrief
-		if err := json.Unmarshal(out, &repos); err != nil {
-			return nil, fmt.Errorf("forgejo: parse repos for %s: %w", owner, err)
 		}
 		return repos, nil
 	}
@@ -826,15 +820,11 @@ func (raw forgejoIssueRaw) lean() leanIssue {
 }
 
 // viewIssue fetches an issue and its comment thread, projected to the lean shape
-// (ward#225), reading both through the ops mount.
+// (ward#225).
 func (c *forgejoClient) viewIssue(ctx context.Context, owner, repo string, number int) (*leanIssueView, error) {
-	out, err := c.run(ctx, "issue", "get", owner, repo, strconv.Itoa(number), "--output", "json")
-	if err != nil {
-		return nil, fmt.Errorf("forgejo: view issue %s/%s#%d: %w", owner, repo, number, err)
-	}
 	var raw forgejoIssueRaw
-	if err := json.Unmarshal(out, &raw); err != nil {
-		return nil, fmt.Errorf("forgejo: parse issue %s/%s#%d: %w", owner, repo, number, err)
+	if _, err := c.doJSON(ctx, http.MethodGet, []string{"repos", owner, repo, "issues", strconv.Itoa(number)}, nil, nil, false, &raw); err != nil {
+		return nil, fmt.Errorf("forgejo: view issue %s/%s#%d: %w", owner, repo, number, err)
 	}
 	comments, err := c.listIssueComments(ctx, owner, repo, number)
 	if err != nil {
@@ -855,27 +845,6 @@ func leanView(raw forgejoIssueRaw, comments []issueComment) *leanIssueView {
 		})
 	}
 	return view
-}
-
-// writeForgejoBody marshals a request body to a temp JSON file for --body-file,
-// returning the path and a cleanup that removes it. Keeps markdown off the argv gate.
-func writeForgejoBody(obj map[string]string) (path string, cleanup func(), err error) {
-	noop := func() {}
-	f, err := os.CreateTemp("", "ward-forgejo-body-*.json")
-	if err != nil {
-		return "", noop, fmt.Errorf("forgejo: create body file: %w", err)
-	}
-	remove := func() { _ = os.Remove(f.Name()) }
-	if err := json.NewEncoder(f).Encode(obj); err != nil {
-		_ = f.Close()
-		remove()
-		return "", noop, fmt.Errorf("forgejo: write body file: %w", err)
-	}
-	if err := f.Close(); err != nil {
-		remove()
-		return "", noop, fmt.Errorf("forgejo: close body file: %w", err)
-	}
-	return f.Name(), remove, nil
 }
 
 func responseSnippet(data []byte) string {

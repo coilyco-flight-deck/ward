@@ -8,9 +8,12 @@ import (
 	"fmt"
 	"io"
 	"net"
+	"net/http"
+	"net/http/httptest"
 	"os"
 	"path/filepath"
 	"reflect"
+	"slices"
 	"strings"
 	"testing"
 	"time"
@@ -508,6 +511,34 @@ func TestForwardAgentDispatchToHostBrokerSendsCanonicalRequest(t *testing.T) {
 	}
 }
 
+func TestDispatchBrokerForwardedLineIncludesLogPathWhenAvailable(t *testing.T) {
+	got := dispatchBrokerForwardedLine([]string{"engineer", "coilyco-flight-deck/ward#378", "--harness", "codex"}, "/tmp/ward/dispatch.log")
+	for _, want := range []string{
+		"ward dispatch broker: forwarded `ward agent engineer coilyco-flight-deck/ward#378 --harness codex` to host ward",
+		"(run output on the host at /tmp/ward/dispatch.log)",
+	} {
+		if !strings.Contains(got, want) {
+			t.Fatalf("forwarded line = %q, want %q", got, want)
+		}
+	}
+}
+
+func TestDispatchBrokerForwardedLineFallsBackToLookupCommandWhenPathMissing(t *testing.T) {
+	got := dispatchBrokerForwardedLine([]string{"engineer", "coilyco-flight-deck/ward#902", "--harness", "codex"}, "")
+	for _, want := range []string{
+		"ward dispatch broker: forwarded `ward agent engineer coilyco-flight-deck/ward#902 --harness codex` to host ward",
+		"dispatch log path unavailable yet",
+		"`ward agent logs coilyco-flight-deck/ward#902`",
+	} {
+		if !strings.Contains(got, want) {
+			t.Fatalf("forwarded line = %q, want %q", got, want)
+		}
+	}
+	if strings.Contains(got, "forwarded `ward agent engineer coilyco-flight-deck/ward#902 --harness codex` to host ward\n") {
+		t.Fatalf("forwarded line unexpectedly retained the bare success shape: %q", got)
+	}
+}
+
 func TestForwardAgentDispatchToHostBrokerInheritsSurfaceHarness(t *testing.T) {
 	// A Codex director surface should forward Codex engineers by default, not fall
 	// back to Claude just because `warded` itself defaults that way.
@@ -657,7 +688,7 @@ func TestRunAgentAdvisorRefDispatchReturnsPromptlyViaBroker(t *testing.T) {
 	origRestoreHook := dispatchStdioRestoreHook
 	t.Cleanup(func() {
 		dispatchBrokerLaunch = origLaunch
-		dispatchStdioRestoreHook = origRestoreHook
+		defer func() { dispatchStdioRestoreHook = origRestoreHook }()
 		select {
 		case <-restored:
 		case <-time.After(30 * time.Second):
@@ -765,7 +796,7 @@ func TestRunAgentAdvisorFreeformStaysLocal(t *testing.T) {
 	}
 
 	cmd := parseCommandForTest(t, agentAdvisorFlags(), []string{
-		"advisor", "how is the audit log written?", "--repo", "coilyco-flight-deck/ward", "--print",
+		"advisor", "how is the audit log written?", "--repo", "example-owner/ward", "--print",
 	})
 	if err := (&Runner{}).runAgentAdvisor(t.Context(), cmd, modeCodex); err != nil {
 		t.Fatalf("runAgentAdvisor freeform path: %v", err)
@@ -813,6 +844,75 @@ func TestForwardAgentDispatchToHostBrokerSupportsQa(t *testing.T) {
 	want := []string{"qa", "coilyco-flight-deck/ward#378", "--harness", "claude", "--family", "internal", "--thoroughness", "standard", "inspect the branch"}
 	if !reflect.DeepEqual(req.Argv, want) {
 		t.Errorf("qa forwarded argv = %v, want %v", req.Argv, want)
+	}
+}
+
+// TestSendDispatchBrokerLaunchRequestWaitsForResponse pins the durability fix:
+// a launch must not read as successful until the broker actually answers.
+func TestSendDispatchBrokerLaunchRequestWaitsForResponse(t *testing.T) {
+	ln, err := net.Listen("tcp", "127.0.0.1:0")
+	if err != nil {
+		t.Fatalf("listen broker: %v", err)
+	}
+	defer ln.Close()
+
+	gotReq := make(chan dispatchBrokerRequest, 1)
+	release := make(chan struct{})
+	go func() {
+		conn, err := ln.Accept()
+		if err != nil {
+			return
+		}
+		defer conn.Close()
+		var req dispatchBrokerRequest
+		if err := json.NewDecoder(conn).Decode(&req); err != nil {
+			return
+		}
+		gotReq <- req
+		<-release
+		_ = json.NewEncoder(conn).Encode(dispatchBrokerResponse{OK: true, LogPath: "/tmp/ward/dispatch.log"})
+	}()
+
+	ctx, cancel := context.WithTimeout(t.Context(), time.Second)
+	defer cancel()
+	done := make(chan struct {
+		logPath string
+		err     error
+	}, 1)
+	go func() {
+		logPath, err := sendDispatchBrokerLaunchRequest(ctx, ln.Addr().String(), dispatchBrokerRequest{
+			Role:      "advisor",
+			Argv:      []string{"advisor", "coilyco-flight-deck/ward#378", "--harness", "codex"},
+			Requester: "director-codex-host",
+			Token:     "nonce-adv",
+		})
+		done <- struct {
+			logPath string
+			err     error
+		}{logPath: logPath, err: err}
+	}()
+
+	select {
+	case <-gotReq:
+	case <-time.After(2 * time.Second):
+		t.Fatal("broker never received the launch request")
+	}
+	select {
+	case got := <-done:
+		t.Fatalf("launch returned before the broker responded: %+v", got)
+	case <-time.After(200 * time.Millisecond):
+	}
+	close(release)
+	select {
+	case got := <-done:
+		if got.err != nil {
+			t.Fatalf("launch request: %v", got.err)
+		}
+		if got.logPath != "/tmp/ward/dispatch.log" {
+			t.Fatalf("log path = %q, want the broker response", got.logPath)
+		}
+	case <-time.After(2 * time.Second):
+		t.Fatal("launch never returned after the broker responded")
 	}
 }
 
@@ -953,21 +1053,25 @@ func TestRunHostDispatchBrokerRequestClearsBrokerEnvWhileLaunchRuns(t *testing.T
 	case <-time.After(2 * time.Second):
 		t.Fatal("host launch never started")
 	}
+	var got struct {
+		logPath string
+		err     error
+	}
 	select {
-	case got := <-result:
+	case got = <-result:
 		t.Fatalf("runHostDispatchBrokerRequest returned early: %+v", got)
 	default:
 	}
 	close(release)
 	select {
-	case got := <-result:
+	case got = <-result:
 		if got.err != nil {
 			t.Fatalf("runHostDispatchBrokerRequest: %v", got.err)
 		}
+		logPath = got.logPath
 		if !strings.Contains(got.logPath, "dispatch") {
 			t.Fatalf("log path %q does not look like a dispatch log", got.logPath)
 		}
-		logPath = got.logPath
 	case <-time.After(2 * time.Second):
 		t.Fatal("runHostDispatchBrokerRequest never returned")
 	}
@@ -1015,7 +1119,7 @@ func TestRunHostDispatchBrokerRequestReturnsStructuredLaunchFailure(t *testing.T
 	origFailedDispatchStartHook := dispatchFailedDispatchLaunchStartHook
 	t.Cleanup(func() {
 		dispatchBrokerLaunch = origLaunch
-		dispatchStdioRestoreHook = origRestoreHook
+		defer func() { dispatchStdioRestoreHook = origRestoreHook }()
 		dispatchFailedDispatchLaunchHook = origFailedDispatchHook
 		dispatchFailedDispatchLaunchStartHook = origFailedDispatchStartHook
 		select {
@@ -1101,6 +1205,45 @@ func TestCommentFailedDispatch(t *testing.T) {
 	}
 }
 
+// TestCommentDeferredDispatch writes the backpressure comment that supersedes a
+// stale reservation when the forwarded launch hits the global engineer cap.
+func TestCommentDeferredDispatch(t *testing.T) {
+	r := &Runner{}
+	ref := agentIssueRef{Owner: "coilyco-flight-deck", Repo: "ward", Number: 902}
+	f := &fakeLockForge{}
+	req := dispatchBrokerRequest{
+		Role: "engineer",
+		Argv: []string{"engineer", ref.String(), "--harness", "codex", "--skip-preflight"},
+	}
+	capacityErr := newEngineerCapacityError("ward agent engineer --harness codex", 10, 10)
+
+	r.commentDeferredDispatch(context.Background(), f, modeCodex, ref, req, "/tmp/ward/dispatch.log", capacityErr)
+
+	if f.unlocked != 1 {
+		t.Fatalf("unlockIssue called %d times, want 1", f.unlocked)
+	}
+	if len(f.comments) != 1 {
+		t.Fatalf("commentIssue called %d times, want 1", len(f.comments))
+	}
+	body := f.comments[0]
+	for _, want := range []string{
+		agentReservationReleaseMarker,
+		agentNeedsRedispatchMarker,
+		"WARD-DISPATCH: deferred ⏸",
+		"Attempted harness: `codex`",
+		"Attempted run: `ward agent engineer coilyco-flight-deck/ward#902 --harness codex --skip-preflight`",
+		"Container: `engineer-codex-ward-902`",
+		"Container created: no running engineer was observed.",
+		"Host log: `/tmp/ward/dispatch.log`",
+		"Capacity: `ward agent engineer --harness codex: global engineer limit is reached: 10 running (limit 10); wait for a run to finish or run `ward agent reap` for stale engineers`",
+		"Retry: the issue stays queued and the director will try again when a slot opens.",
+	} {
+		if !strings.Contains(body, want) {
+			t.Errorf("deferred comment missing %q\n%s", want, body)
+		}
+	}
+}
+
 func TestNoBrokerKeepsDirectDispatchPath(t *testing.T) {
 	t.Setenv(envDispatchBrokerAddr, "")
 	t.Setenv("WARD_READONLY", "")
@@ -1111,6 +1254,184 @@ func TestNoBrokerKeepsDirectDispatchPath(t *testing.T) {
 	}
 	if forwarded {
 		t.Fatal("direct host dispatch should not forward without broker env")
+	}
+}
+
+// TestRunAgentTaskDirectRoutesThroughBrokerOnReadonlySurface is the ward#931 smoke.
+// It locks the ward#900 and ward#876 regression shape without a live LLM.
+func TestRunAgentTaskDirectRoutesThroughBrokerOnReadonlySurface(t *testing.T) {
+	t.Setenv("HOME", t.TempDir())
+	t.Setenv("FORGEJO_TOKEN", "forgejo-token")
+	t.Setenv("WARD_AGENT", "codex")
+	t.Setenv("WARD_MODE", "codex")
+	t.Setenv("WARD_READONLY", "1")
+	t.Setenv(envDispatchBrokerToken, "nonce-freeform")
+	t.Setenv("WARD_CONTAINER_NAME", "director-codex-host")
+
+	bundleDir := t.TempDir()
+	bundleBody := `smart-defaults {
+    agent-reservation-ttl "1h"
+    agent-reservation-recheck-max "15s"
+    agent-reap-idle "1h"
+    agent-reap-max-cpu "5.0"
+    engineer-container-limit "12"
+    director-max-parallel "10"
+    director-limit "50"
+    director-poll-interval "30s"
+    reviewer-timeout "8m"
+    config-bundle-ttl "600s"
+    container-assets-ttl "1h"
+    container-read-only-extra-repo-ttl "24h"
+    container-reap-keep "10"
+    agent-workflow default=direct-main {
+    }
+}
+
+repo-authority default=forgejo {
+    trusted-owner example-owner
+    trusted-owner coilyco-flight-deck
+    repo "example-owner/*" forge=github
+}`
+	if err := os.WriteFile(filepath.Join(bundleDir, bundleDefaultsKDLPath), []byte(bundleBody), 0o644); err != nil {
+		t.Fatalf("write bundle defaults: %v", err)
+	}
+	t.Setenv(wardConfigRefEnv, "file://"+bundleDir)
+
+	defs, err := currentSmartDefaultsWithError()
+	if err != nil {
+		t.Fatalf("load trusted bundle: %v", err)
+	}
+	if !slices.Contains(defs.trustedOwners, "coilyco-flight-deck") {
+		t.Fatalf("trusted owners = %v, want coilyco-flight-deck in the real bundle", defs.trustedOwners)
+	}
+
+	issueCreated := make(chan struct{}, 1)
+	issueErr := make(chan error, 1)
+	var issueReq struct {
+		Title string `json:"title"`
+		Body  string `json:"body"`
+	}
+	forgejo := httptest.NewServer(http.HandlerFunc(func(w http.ResponseWriter, r *http.Request) {
+		switch {
+		case r.Method == http.MethodPost && r.URL.Path == "/api/v1/repos/coilyco-flight-deck/agentic-os/issues":
+			if got := r.Header.Get("Authorization"); got != "token forgejo-token" {
+				select {
+				case issueErr <- fmt.Errorf("authorization header = %q, want token forgejo-token", got):
+				default:
+				}
+				w.WriteHeader(http.StatusUnauthorized)
+				return
+			}
+			if err := json.NewDecoder(r.Body).Decode(&issueReq); err != nil {
+				select {
+				case issueErr <- fmt.Errorf("decode issue body: %w", err):
+				default:
+				}
+				w.WriteHeader(http.StatusBadRequest)
+				return
+			}
+			_ = json.NewEncoder(w).Encode(map[string]int{"number": 400})
+			select {
+			case issueCreated <- struct{}{}:
+			default:
+			}
+		default:
+			select {
+			case issueErr <- fmt.Errorf("unexpected Forgejo request: %s %s", r.Method, r.URL.Path):
+			default:
+			}
+			w.WriteHeader(http.StatusNotFound)
+		}
+	}))
+	defer forgejo.Close()
+
+	origForgejoBase := forgejoBaseURL
+	forgejoBaseURL = forgejo.URL
+	t.Cleanup(func() { forgejoBaseURL = origForgejoBase })
+
+	ln, err := net.Listen("tcp", "127.0.0.1:0")
+	if err != nil {
+		t.Fatalf("listen broker: %v", err)
+	}
+	defer ln.Close()
+
+	gotReq := make(chan dispatchBrokerRequest, 1)
+	brokerErr := make(chan error, 1)
+	go func() {
+		conn, err := ln.Accept()
+		if err != nil {
+			brokerErr <- err
+			return
+		}
+		defer conn.Close()
+		var req dispatchBrokerRequest
+		if err := json.NewDecoder(conn).Decode(&req); err != nil {
+			brokerErr <- err
+			return
+		}
+		gotReq <- req
+		_ = json.NewEncoder(conn).Encode(dispatchBrokerResponse{OK: true, LogPath: "/tmp/ward/dispatch.log"})
+	}()
+
+	t.Setenv(envDispatchBrokerAddr, ln.Addr().String())
+	t.Setenv("WARD_FORGEJO_BASE", forgejo.URL)
+
+	r := &Runner{Runner: &shell.Runner{
+		Resolve: func(bin string) (string, error) {
+			if bin == "docker" {
+				return "", fmt.Errorf("local docker path should not be touched")
+			}
+			return "/bin/true", nil
+		},
+	}}
+	instructions := filepath.Join(t.TempDir(), "engineer-dispatch-smoke.md")
+	if err := os.WriteFile(instructions, []byte("Repair the launch path so read-only engineer dispatch uses the broker."), 0o644); err != nil {
+		t.Fatalf("write instructions: %v", err)
+	}
+	cmd := parseCommandForTest(t, agentEngineerFlags(), []string{
+		"engineer", "coilyco-flight-deck/agentic-os", "--instructions-file", instructions, "--skip-preflight",
+	})
+	if err := r.runAgentTask(context.Background(), cmd, modeCodex); err != nil {
+		t.Fatalf("runAgentTaskDirect smoke: %v", err)
+	}
+
+	select {
+	case <-issueCreated:
+	case <-time.After(2 * time.Second):
+		t.Fatal("freeform engineer never filed the issue")
+	}
+	select {
+	case err := <-issueErr:
+		t.Fatalf("forgejo smoke server: %v", err)
+	default:
+	}
+	if got, want := issueReq.Title, "Repair the launch path so read-only engineer dispatch uses the broker."; got != want {
+		t.Fatalf("filed issue title = %q, want %q", got, want)
+	}
+	if !strings.Contains(issueReq.Body, "Filed by `ward agent engineer --harness codex`.") {
+		t.Fatalf("filed issue body did not carry the provenance footer:\n%s", issueReq.Body)
+	}
+
+	var req dispatchBrokerRequest
+	select {
+	case req = <-gotReq:
+	case err := <-brokerErr:
+		t.Fatalf("broker smoke server: %v", err)
+	case <-time.After(2 * time.Second):
+		t.Fatal("engineer launch never reached the broker")
+	}
+	if req.Role != "engineer" {
+		t.Fatalf("broker role = %q, want engineer", req.Role)
+	}
+	wantArgv := []string{"engineer", "coilyco-flight-deck/agentic-os#400", "--harness", "codex", "--skip-preflight"}
+	if !reflect.DeepEqual(req.Argv, wantArgv) {
+		t.Fatalf("broker argv = %v, want %v", req.Argv, wantArgv)
+	}
+	if req.Requester != "director-codex-host" {
+		t.Fatalf("broker requester = %q, want director-codex-host", req.Requester)
+	}
+	if req.Token != "nonce-freeform" {
+		t.Fatalf("broker token = %q, want nonce-freeform", req.Token)
 	}
 }
 
@@ -1241,6 +1562,63 @@ func TestForwardAgentDispatchIncludesDispatchLogOnLaunchFailure(t *testing.T) {
 	}
 	if !strings.Contains(err.Error(), "/tmp/ward-agent-logs/dispatch/20260709T083000Z-director-codex-ward-786.log") {
 		t.Fatalf("error %q does not carry the dispatch log path", err)
+	}
+}
+
+func TestForwardAgentDispatchPrintsLookupCommandWhenLaunchSucceedsWithoutLogPath(t *testing.T) {
+	ln, err := net.Listen("tcp", "127.0.0.1:0")
+	if err != nil {
+		t.Fatalf("listen broker: %v", err)
+	}
+	defer ln.Close()
+	go func() {
+		conn, err := ln.Accept()
+		if err != nil {
+			return
+		}
+		defer conn.Close()
+		var req dispatchBrokerRequest
+		if err := json.NewDecoder(conn).Decode(&req); err != nil {
+			return
+		}
+		_ = json.NewEncoder(conn).Encode(dispatchBrokerResponse{OK: true})
+	}()
+
+	origStderr := os.Stderr
+	rPipe, wPipe, err := os.Pipe()
+	if err != nil {
+		t.Fatalf("pipe stderr: %v", err)
+	}
+	t.Cleanup(func() {
+		_ = wPipe.Close()
+		_ = rPipe.Close()
+		os.Stderr = origStderr
+	})
+	os.Stderr = wPipe
+	t.Setenv(envDispatchBrokerAddr, ln.Addr().String())
+	t.Setenv(envDispatchBrokerToken, "nonce-902")
+	t.Setenv("WARD_READONLY", "1")
+	t.Setenv("WARD_CONTAINER_NAME", "director-codex-host")
+	cmd := parseCommandForTest(t, agentEngineerFlags(), []string{"engineer", "coilyco-flight-deck/ward#902"})
+	r := &Runner{}
+	forwarded, ferr := r.maybeForwardAgentDispatchToHostBroker(context.Background(), cmd, "engineer", modeCodex)
+	_ = wPipe.Close()
+	if ferr != nil {
+		t.Fatalf("forwarded launch without log path returned error: %v", ferr)
+	}
+	if !forwarded {
+		t.Fatal("launch without log path did not forward")
+	}
+	var stderr bytes.Buffer
+	if _, err := io.Copy(&stderr, rPipe); err != nil {
+		t.Fatalf("read stderr: %v", err)
+	}
+	got := stderr.String()
+	if !strings.Contains(got, "dispatch log path unavailable yet") {
+		t.Fatalf("stderr = %q, want a clear no-path reason", got)
+	}
+	if !strings.Contains(got, "`ward agent logs coilyco-flight-deck/ward#902`") {
+		t.Fatalf("stderr = %q, want a deterministic lookup command", got)
 	}
 }
 

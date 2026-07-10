@@ -3,6 +3,7 @@ package main
 import (
 	"context"
 	"encoding/json"
+	"errors"
 	"os"
 	"os/exec"
 	"path/filepath"
@@ -408,7 +409,7 @@ type fakeNoOutcomeTracker struct {
 }
 
 func (f *fakeNoOutcomeTracker) getIssue(context.Context, string, string, int) (*dispatch.Issue, error) {
-	return nil, nil
+	return nil, errors.New("fakeNoOutcomeTracker: issue lookup not implemented")
 }
 
 func (f *fakeNoOutcomeTracker) listIssueComments(context.Context, string, string, int) ([]issueComment, error) {

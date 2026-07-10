@@ -1,102 +1,27 @@
 ---
-doc_goal: Give a contributor the full ward git surface as an audited, argv-validated gate over git - the thin passthroughs plus the three verbs that are not passthroughs (destination-gated clone, ephemeral-clone grep-remote, concurrency-safe commit) - so a reader knows which git calls route through the gate and why the special-cased ones exist.
+doc_goal: Describe the audited git surface as a release-era user contract, not as a moving issue log.
 ---
-# git verbs
+# ward git
 
-`ward git` fronts the contributor git surface behind cli-guard's audit +
-argv-validation pipeline. Every invocation validates argv and appends one
-audit row (`git.<verb>`) to the per-repo log. Ported from coily's `git`
-group ([coily#7](https://github.com/coilyco-bridge/coily/issues/7)).
+`ward git` wraps the git commands ward is willing to expose.
 
-## Passthroughs
+- `commit` is concurrency-safe.
+- `clone` is destination-gated.
+- network verbs keep the configured auth wiring.
+- all verbs stay audited.
 
-These are thin audited passthroughs to the underlying `git <verb>`:
+## See also
 
-```
-ward git status | log | diff | show | grep | add
-ward git fetch | pull | push
-ward git branch | checkout | stash | restore
-ward git remote
-```
+- [git-clone.md](git-clone.md) - clone-specific rules.
+- [exec-verb.md](exec-verb.md) - the gated repo surface.
+- [config-source.md](config-source.md) - where git auth and forge defaults come from.
 
-`grep` is a read-only content search over the current clone (flags pass to
-`git grep`). `remote` resolves repo identity, e.g. `ward git remote
-get-url origin` (plain `ward git remote` lists remotes), mirroring bare
-`git remote ...` behind the audit pipeline.
+## Typical commands
 
-A leading `-C <dir>` is hoisted ahead of the subcommand: `ward git status
--C /path` runs `git -C /path status` (operate on a repo other than cwd).
+- `ward git status`
+- `ward git commit -m ...`
+- `ward git fetch`
+- `ward git push`
 
-## Pre-configured Forgejo auth ([ward#507](https://forgejo.coilysiren.me/coilyco-flight-deck/ward/issues/507))
-
-The network verbs - `fetch`, `pull`, `push`, and `clone` - come with
-Forgejo credentials wired in, so `ward git push` against canonical Forgejo
-never drops to git's interactive username/password prompt. Ward resolves the
-Forgejo token exactly as `ward ops forgejo` does (`$FORGEJO_TOKEN`, else the
-SSM-held bot token) and injects it as a URL-scoped
-`http.https://forgejo.coilysiren.me/.extraheader` Basic-auth header through
-`GIT_CONFIG_*` env at exec time. Two properties follow from that shape:
-
-- **No leak.** The token rides the environment, never argv, so it stays out
-  of the `git.<verb>` audit row. The header is scoped to the Forgejo base
-  URL, so it never attaches to a github or third-party remote in the same
-  command.
-- **Best-effort.** With no resolvable token (no `$FORGEJO_TOKEN`, no aws
-  creds for SSM), nothing is injected and git behaves exactly as before -
-  its own credential helper, then the prompt. Auth is never made worse, only
-  supplied when available.
-
-## clone (destination-gated)
-
-`clone` is not a passthrough. It wraps `git clone` behind a destination
-gate so an agent cannot drop an unwanted **persistent** checkout into the
-tracked workspace. A clone is allowed iff its resolved destination is
-under an ephemeral root (`/tmp`/`$TMPDIR`) OR the repo is on a hardcoded
-allowlist. See [docs/git-clone.md](git-clone.md) for the full walkthrough.
-
-```
-ward git clone <url> [dir]
-```
-
-## grep-remote (ephemeral-clone code search)
-
-Forgejo has no REST code-search, so `ward git grep-remote <owner/repo>
-<pattern> [flags]` shallow-clones the repo (`--depth 1`) into an ephemeral
-temp dir via the `ward git clone` gate, greps tracked files at HEAD, then
-removes it. Args after the repo forward to `git grep`; scope is clone-local
-(no cross-repo or server-side search). A no-match grep (exit 1) is empty.
-
-## commit (concurrency-safe)
-
-`commit` is not a passthrough. It is a dedicated verb that is safe when
-multiple agent sessions share one working tree. It requires:
-
-```
-ward git commit -m "msg" -- <path> [<path>...]
-```
-
-### Why
-
-Two sessions sharing one checkout run `add` then `commit` as separate
-invocations. A second session's `add`/`commit` can interleave in the gap,
-and because `.git/index` and `.git/COMMIT_EDITMSG` are shared process-
-global files, one session's content lands under the other's message.
-
-### How
-
-- **Explicit pathspecs.** The `--` separator and named paths commit the
-  worktree content of exactly those paths (seeded from HEAD), so another
-  session's staged files cannot leak in.
-- **Private index.** `GIT_INDEX_FILE` points at a throwaway index seeded
-  from HEAD, so the commit never reads or writes the shared `.git/index`.
-  Seeding from HEAD plus `git add -A -- <paths>` lets new, modified, and
-  deleted paths all commit uniformly (the empty-index case used to refuse
-  new files).
-- **No editor.** The message must come from `-m`/`-F`; `-e`/`--edit` is
-  refused, so `.git/COMMIT_EDITMSG` is written-not-read and messages
-  cannot cross.
-
-After the commit, the named paths are resynced in the shared index to the
-new HEAD (`git reset -q HEAD -- <paths>`, best-effort) so the next `git
-status` reads clean for them without disturbing another session's staged
-entries.
+The point is not to replace git. It is to make the supported git paths
+auditable and consistent.

@@ -30,6 +30,7 @@ type reapEnv struct {
 	Base  string
 	Mode  string
 	Token string
+	Forge forge
 	// Container is WARD_CONTAINER_NAME, the run correlation id stamped on the reap
 	// surface (ward#517). See docs/container-lifecycle-logs.md.
 	Container string
@@ -61,9 +62,10 @@ func readReapEnv() (reapEnv, error) {
 	e := reapEnv{
 		Owner:     os.Getenv("WARD_TARGET_OWNER"),
 		Name:      os.Getenv("WARD_TARGET_NAME"),
-		Base:      os.Getenv("WARD_FORGEJO_BASE"),
+		Base:      envOr("WARD_CLONE_BASE", os.Getenv("WARD_FORGEJO_BASE")),
 		Mode:      os.Getenv("WARD_MODE"),
 		Token:     os.Getenv("FORGEJO_TOKEN"),
+		Forge:     parseForge(os.Getenv("WARD_FORGE")),
 		UpAt:      os.Getenv("WARD_CONTAINER_UP"),
 		Container: os.Getenv("WARD_CONTAINER_NAME"),
 		Launched:  os.Getenv(envAgentLaunched) == "1",
@@ -74,7 +76,7 @@ func readReapEnv() (reapEnv, error) {
 	e.Issue, _ = strconv.Atoi(os.Getenv("WARD_TARGET_ISSUE"))
 	e.ExtraRepos = parseExtraReposEnv(os.Getenv("WARD_EXTRA_REPOS"), e.Owner, e.Name)
 	if e.Owner == "" || e.Name == "" || e.Base == "" {
-		return e, fmt.Errorf("ward container reap: missing WARD_TARGET_OWNER/NAME/WARD_FORGEJO_BASE (run inside a ward container)")
+		return e, fmt.Errorf("ward container reap: missing WARD_TARGET_OWNER/NAME/WARD_CLONE_BASE (run inside a ward container)")
 	}
 	if e.Mode == "" {
 		e.Mode = string(defaultAgentMode())
@@ -636,11 +638,16 @@ func (r *Runner) fileSalvageIssue(ctx context.Context, env reapEnv, report salva
 	}
 	// The ops mount authenticates from $FORGEJO_TOKEN in-container (forgejoTokenResolver),
 	// so the reaper drives the same client host flows do.
-	fc, err := r.hostForgejoClient(ctx)
-	if err != nil {
-		return err
+	var fc salvageNotifier
+	switch env.Forge {
+	case forgeGitLab:
+		cl := r.hostGitLabClient(ctx, containerMode(env.Mode))
+		cl.token = env.Token
+		fc = cl
+	case forgeForgejo, forgeGitHub:
+		cl := r.hostForgejoClient(ctx)
+		fc = cl.withMode(containerMode(env.Mode)).withToken(env.Token)
 	}
-	fc = fc.withMode(containerMode(env.Mode)).withToken(env.Token)
 	return notifySalvage(ctx, fc, env, report)
 }
 
@@ -728,12 +735,16 @@ func (r *Runner) releaseReservationIfUnstarted(ctx context.Context, env reapEnv)
 		fmt.Fprintln(os.Stderr, "ward container reap: no FORGEJO_TOKEN to release the issue reservation")
 		return
 	}
-	fc, err := r.hostForgejoClient(ctx)
-	if err != nil {
-		fmt.Fprintf(os.Stderr, "ward container reap: could not build forgejo client to release reservation: %v\n", err)
-		return
+	var fc Tracker
+	switch env.Forge {
+	case forgeGitLab:
+		cl := r.hostGitLabClient(ctx, containerMode(env.Mode))
+		cl.token = env.Token
+		fc = cl
+	case forgeForgejo, forgeGitHub:
+		cl := r.hostForgejoClient(ctx)
+		fc = cl.withMode(containerMode(env.Mode)).withToken(env.Token)
 	}
-	fc = fc.withMode(containerMode(env.Mode))
 	// Name the specific pre-launch gate that died (auth / ollama-probe / bootstrap),
 	// its error line, and the recovery step - not just "smoke-test death" (ward#609).
 	gate, _ := readGateFailure()
@@ -761,11 +772,7 @@ func (r *Runner) commentLaunchedNoOutcomeIfNeeded(ctx context.Context, env reapE
 		fmt.Fprintf(os.Stderr, "ward container reap: cannot parse WARD_CONTAINER_UP for no-outcome check: %v\n", err)
 		return
 	}
-	fc, err := r.hostForgejoClient(ctx)
-	if err != nil {
-		fmt.Fprintf(os.Stderr, "ward container reap: could not build forgejo client for no-outcome check: %v\n", err)
-		return
-	}
+	fc := r.hostForgejoClient(ctx)
 	if err := postLaunchedNoOutcomeComment(ctx, fc.withMode(containerMode(env.Mode)), env, upAt); err != nil {
 		fmt.Fprintf(os.Stderr, "ward container reap: %v\n", err)
 	}
@@ -1018,12 +1025,16 @@ func (r *Runner) reportUnlandedExtraRepos(ctx context.Context, env reapEnv, repo
 		fmt.Fprintln(os.Stderr, "ward container reap: no FORGEJO_TOKEN to flag the un-landed granted repos on the issue")
 		return
 	}
-	fc, err := r.hostForgejoClient(ctx)
-	if err != nil {
-		fmt.Fprintf(os.Stderr, "ward container reap: could not build forgejo client to flag un-landed granted repos: %v\n", err)
-		return
+	var fc Tracker
+	switch env.Forge {
+	case forgeGitLab:
+		cl := r.hostGitLabClient(ctx, containerMode(env.Mode))
+		cl.token = env.Token
+		fc = cl
+	case forgeForgejo, forgeGitHub:
+		cl := r.hostForgejoClient(ctx)
+		fc = cl.withMode(containerMode(env.Mode)).withToken(env.Token)
 	}
-	fc = fc.withMode(containerMode(env.Mode))
 	// Reopen first (idempotent on an already-open issue), then comment: the issue
 	// must not read "done" while a granted repo's committed work is unreachable.
 	if rerr := fc.reopenIssue(ctx, env.Owner, env.Name, env.Issue); rerr != nil {

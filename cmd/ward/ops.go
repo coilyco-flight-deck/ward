@@ -348,10 +348,7 @@ func (r *Runner) runForgejoViewIssue(ctx context.Context, cmd *cli.Command) erro
 		fmt.Printf("would GET %s/api/v1/repos/%s/%s/issues/%d/comments\n", base, owner, repo, number)
 		return nil
 	}
-	cl, err := r.hostForgejoClient(ctx)
-	if err != nil {
-		return err
-	}
+	cl := r.hostForgejoClient(ctx)
 	view, err := cl.viewIssue(ctx, owner, repo, number)
 	if err != nil {
 		return err
