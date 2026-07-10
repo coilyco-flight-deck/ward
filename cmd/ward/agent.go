@@ -92,10 +92,11 @@ func cloneAnchorLine(ref agentIssueRef) string {
 		"You are reading this INSIDE that container, standing in a fresh clone of %s/%s at "+
 			"/workspace/%s - your current working directory right now: the repo's whole source tree - "+
 			"its real schemas, file layouts, and wiring - is on disk right here, not somewhere you have "+
-			"to go fetch. Explore it directly (start with `ls` and the repo's own docs) for any "+
-			"convention this task needs; never treat the codebase as absent or reason from assumed "+
-			"conventions while the actual files sit unread one command away.",
-		ref.Owner, ref.Repo, ref.Repo)
+			"to go fetch. In engineer mode that /workspace/%s clone is writable. Explore it directly "+
+			"(start with `ls` and the repo's own docs) for any convention this task needs; edit files, "+
+			"commit them, and push the result instead of answering only in logs. Never treat the codebase "+
+			"as absent or reason from assumed conventions while the actual files sit unread one command away.",
+		ref.Owner, ref.Repo, ref.Repo, ref.Repo)
 }
 
 // parseAgentIssueRef resolves owner/repo#N, a Forgejo/GitHub issue URL, or a bare #N / N.
@@ -144,38 +145,6 @@ func parseAgentIssueRef(s string) (agentIssueRef, error) {
 			s, strings.TrimRight(forgejoBaseURL, "/"), strings.TrimRight(gitlabBaseURL(), "/"), shortcutAppBaseURL)
 	}
 	return agentIssueRef{}, fmt.Errorf("cannot parse issue ref %q: want owner/repo#N, a bare #N, %s/owner/repo/issues/N, %s/owner/repo/-/issues/N, or %s/<workspace>/story/N", s, strings.TrimRight(forgejoBaseURL, "/"), strings.TrimRight(gitlabBaseURL(), "/"), shortcutAppBaseURL)
-}
-
-// parseAgentIssueRefWithoutAuthority parses the same ref shapes as parseAgentIssueRef
-// but leaves repo authority resolution to the caller.
-func parseAgentIssueRefWithoutAuthority(s string) (agentIssueRef, error) {
-	s = strings.TrimSpace(s)
-	if s == "" {
-		return agentIssueRef{}, fmt.Errorf("empty issue reference")
-	}
-	if ghRef, ok := parseGitHubIssueRef(s); ok {
-		return ghRef, nil
-	}
-	if ref, err := parseDispatchIssueRef(s); err == nil {
-		return ref, nil
-	}
-	ref, err := issueref.Parse(s, forgejoBaseURL)
-	if err == nil {
-		return agentIssueRef{Owner: ref.Owner, Repo: ref.Repo, Number: ref.Number}, nil
-	}
-	if !strings.Contains(s, "://") {
-		if ref, err := issueref.Parse("https://"+s, forgejoBaseURL); err == nil {
-			return agentIssueRef{Owner: ref.Owner, Repo: ref.Repo, Number: ref.Number}, nil
-		}
-	}
-	if strings.Contains(s, "://") {
-		return agentIssueRef{}, fmt.Errorf(
-			"cannot parse issue ref %q: want owner/repo#N, a bare #N, %s/owner/repo/issues/N, or %s/owner/repo/-/issues/N; "+
-				"for a non-issue pointer (a CI run, job, or commit URL), hand it to the engineer "+
-				"role's freeform mode instead: ward agent engineer '<url>'",
-			s, strings.TrimRight(forgejoBaseURL, "/"), strings.TrimRight(gitlabBaseURL(), "/"))
-	}
-	return agentIssueRef{}, fmt.Errorf("cannot parse issue ref %q: want owner/repo#N, a bare #N, %s/owner/repo/issues/N, or %s/owner/repo/-/issues/N", s, strings.TrimRight(forgejoBaseURL, "/"), strings.TrimRight(gitlabBaseURL(), "/"))
 }
 
 // looksLikeExplicitForgejoIssueRef reports whether s names Forgejo directly rather

@@ -853,7 +853,15 @@ func (r *Runner) maybeForwardAgentDispatchToHostBroker(ctx context.Context, c *c
 		Requester: strings.TrimSpace(os.Getenv("WARD_CONTAINER_NAME")),
 		Token:     strings.TrimSpace(os.Getenv(envDispatchBrokerToken)),
 	}
-	logPath, err := sendDispatchBrokerLaunchRequest(ctx, addr, req)
+	if role == "advisor" {
+		if err := fireAndForgetDispatchBrokerRequest(ctx, addr, req); err != nil {
+			return true, err
+		}
+		displayArgv := redactDispatchBrokerArgv(argv)
+		fmt.Fprintf(os.Stderr, "ward dispatch broker: forwarded `ward agent %s` to host ward\n", displayArgv)
+		return true, nil
+	}
+	logPath, err := sendDispatchBrokerRequest(ctx, addr, req)
 	if err != nil {
 		if logPath != "" {
 			return true, fmt.Errorf("%w (dispatch log: %s)", err, logPath)
@@ -862,6 +870,22 @@ func (r *Runner) maybeForwardAgentDispatchToHostBroker(ctx context.Context, c *c
 	}
 	fmt.Fprintln(os.Stderr, dispatchBrokerForwardedLine(argv, logPath))
 	return true, nil
+}
+
+// fireAndForgetDispatchBrokerRequest sends one dispatch request.
+func fireAndForgetDispatchBrokerRequest(ctx context.Context, addr string, req dispatchBrokerRequest) error {
+	var d net.Dialer
+	conn, err := d.DialContext(ctx, "tcp", addr)
+	if err != nil {
+		return fmt.Errorf("%w: the host dispatch broker did not answer at %s "+
+			"(WARD_DISPATCH_BROKER_ADDR, TCP over the docker gateway - see ward#382): %w",
+			errDispatchBrokerUnavailable, addr, err)
+	}
+	defer func() { _ = conn.Close() }()
+	if err := json.NewEncoder(conn).Encode(req); err != nil {
+		return fmt.Errorf("dispatch broker: send request: %w", err)
+	}
+	return nil
 }
 
 // forwardFreeformEngineerLaunchToHostBroker forwards the launch after a freshly
@@ -916,12 +940,9 @@ func brokerDispatchHarness(c *cli.Command, fallback containerMode) containerMode
 }
 
 func (r *Runner) brokerDispatchRef(ctx context.Context, arg string) (agentIssueRef, bool) {
-	ref, err := parseAgentIssueRefWithoutAuthority(arg)
+	ref, err := r.resolveAgentIssueRef(ctx, arg)
 	if err != nil {
-		ref, err = r.resolveAgentIssueRef(ctx, arg)
-		if err != nil {
-			return agentIssueRef{}, false
-		}
+		return agentIssueRef{}, false
 	}
 	return ref, true
 }

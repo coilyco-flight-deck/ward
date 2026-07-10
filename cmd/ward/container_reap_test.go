@@ -3,6 +3,7 @@ package main
 import (
 	"context"
 	"encoding/json"
+	"errors"
 	"os"
 	"os/exec"
 	"path/filepath"
@@ -10,6 +11,7 @@ import (
 	"testing"
 	"time"
 
+	"forgejo.coilysiren.me/coilyco-flight-deck/cli-guard/cli/dispatch"
 	"forgejo.coilysiren.me/coilyco-flight-deck/cli-guard/cli/shell"
 	"forgejo.coilysiren.me/coilyco-flight-deck/cli-guard/pkg/scan"
 	"github.com/urfave/cli/v3"
@@ -70,6 +72,7 @@ func TestRunContainerReapAnnouncesLogArchive(t *testing.T) {
 	t.Setenv("WARD_TARGET_NAME", "ward")
 	t.Setenv("WARD_FORGEJO_BASE", "https://forgejo.coilysiren.me")
 	t.Setenv("WARD_CONTAINER_NAME", "engineer-codex-ward-693")
+	t.Setenv("WARD_TARGET_ISSUE", "0")
 	t.Setenv("WARD_REAP_WORK", repo)
 
 	r := &Runner{Runner: &shell.Runner{Resolve: shell.PathResolver}}
@@ -396,6 +399,85 @@ func TestSalvageIssueBodyStampsAuthCauseAndAge(t *testing.T) {
 	}
 	if strings.Contains(cbody, "Container uptime at reap:") {
 		t.Errorf("conflict body should omit uptime when TokenAge is empty\n---\n%s", cbody)
+	}
+}
+
+type fakeNoOutcomeTracker struct {
+	comments  []issueComment
+	commented []string
+	unlocked  int
+}
+
+func (f *fakeNoOutcomeTracker) getIssue(context.Context, string, string, int) (*dispatch.Issue, error) {
+	return nil, errors.New("fakeNoOutcomeTracker: issue lookup not implemented")
+}
+
+func (f *fakeNoOutcomeTracker) listIssueComments(context.Context, string, string, int) ([]issueComment, error) {
+	return append([]issueComment(nil), f.comments...), nil
+}
+
+func (f *fakeNoOutcomeTracker) createIssue(context.Context, string, string, string, string) (int, error) {
+	return 0, nil
+}
+
+func (f *fakeNoOutcomeTracker) commentIssue(_ context.Context, _, _ string, _ int, body string) error {
+	f.commented = append(f.commented, body)
+	return nil
+}
+
+func (f *fakeNoOutcomeTracker) closeIssue(context.Context, string, string, int) error  { return nil }
+func (f *fakeNoOutcomeTracker) reopenIssue(context.Context, string, string, int) error { return nil }
+func (f *fakeNoOutcomeTracker) lockIssue(context.Context, string, string, int) error   { return nil }
+
+func (f *fakeNoOutcomeTracker) unlockIssue(_ context.Context, _, _ string, _ int) error {
+	f.unlocked++
+	return nil
+}
+
+func TestPostLaunchedNoOutcomeComment(t *testing.T) {
+	upAt := time.Date(2026, 7, 9, 12, 0, 0, 0, time.UTC)
+	fc := &fakeNoOutcomeTracker{
+		comments: []issueComment{
+			{Body: "WARD-OUTCOME: done ✅\n\n<details><summary>details</summary>\n\nold\n\n</details>", CreatedAt: upAt.Add(-time.Minute)},
+			{Body: "noise", CreatedAt: upAt.Add(time.Minute)},
+		},
+	}
+	env := reapEnv{Owner: "coilyco-flight-deck", Name: "ward", Issue: 697, Launched: true, Mode: "goose", Container: "engineer-goose-ward-697"}
+	if err := postLaunchedNoOutcomeComment(t.Context(), fc, env, upAt); err != nil {
+		t.Fatalf("postLaunchedNoOutcomeComment: %v", err)
+	}
+	if len(fc.commented) != 1 {
+		t.Fatalf("commented %d times, want 1", len(fc.commented))
+	}
+	if fc.unlocked != 1 {
+		t.Fatalf("unlockIssue called %d times, want 1", fc.unlocked)
+	}
+	if visible := visibleLinesBeforeDetails(fc.commented[0]); visible != "WARD-OUTCOME: failed ❌" {
+		t.Fatalf("visible line = %q\n%s", visible, fc.commented[0])
+	}
+	for _, want := range []string{"found no residual work to salvage", "exited without a `WARD-OUTCOME` comment", "engineer-goose-ward-697"} {
+		if !strings.Contains(fc.commented[0], want) {
+			t.Errorf("failure comment missing %q\n%s", want, fc.commented[0])
+		}
+	}
+}
+
+func TestPostLaunchedNoOutcomeCommentSkipsWhenOutcomeExists(t *testing.T) {
+	upAt := time.Date(2026, 7, 9, 12, 0, 0, 0, time.UTC)
+	fc := &fakeNoOutcomeTracker{
+		comments: []issueComment{
+			{Body: "WARD-OUTCOME: done ✅\n\n<details><summary>details</summary>\n\nlatest\n\n</details>", CreatedAt: upAt.Add(time.Minute)},
+		},
+	}
+	env := reapEnv{Owner: "coilyco-flight-deck", Name: "ward", Issue: 697, Launched: true, Mode: "goose", Container: "engineer-goose-ward-697"}
+	if err := postLaunchedNoOutcomeComment(t.Context(), fc, env, upAt); err != nil {
+		t.Fatalf("postLaunchedNoOutcomeComment: %v", err)
+	}
+	if len(fc.commented) != 0 {
+		t.Fatalf("commented %d times, want 0 when a WARD-OUTCOME already exists", len(fc.commented))
+	}
+	if fc.unlocked != 0 {
+		t.Fatalf("unlockIssue called %d times, want 0 when a WARD-OUTCOME already exists", fc.unlocked)
 	}
 }
 
