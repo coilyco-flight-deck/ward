@@ -15,6 +15,7 @@ const agentRosterDocPath = "../../" + agentRosterDoc
 // TestAgentRosterDocMatches fails when the committed docs/agent-roster.md drifts from
 // the code roster's regenerated markdown - mirrors TestOpsAssetsMatchWardKDL (ward#348).
 func TestAgentRosterDocMatches(t *testing.T) {
+	t.Setenv(wardConfigRefEnv, "file://"+writeBundleFixture(t))
 	want, err := agentRosterMarkdown()
 	if err != nil {
 		t.Fatalf("agentRosterMarkdown: %v", err)
@@ -36,12 +37,22 @@ func TestAgentRosterCommandRegistered(t *testing.T) {
 	}
 }
 
-// TestAgentRosterEnumeratesEveryRole asserts every registered non-meta role has a
-// descriptor and the four roles are all covered (ward#348, ward#353).
-func TestAgentRosterEnumeratesEveryRole(t *testing.T) {
-	rows, err := agentRosterRows()
+// TestEmbeddedAgentRoleCatalogDefinesShippedRoster proves the embedded role KDL
+// parses to the shipped four-role roster.
+func TestEmbeddedAgentRoleCatalogDefinesShippedRoster(t *testing.T) {
+	cat := mustEmbeddedAgentRoleCatalog()
+	for _, role := range []string{"engineer", "director", "advisor", "qa"} {
+		def, ok := cat.Definitions[role]
+		if !ok {
+			t.Fatalf("embedded catalog missing role %q", role)
+		}
+		if strings.TrimSpace(def.Tagline) == "" || strings.TrimSpace(def.Modes) == "" || strings.TrimSpace(def.DefaultHarness) == "" {
+			t.Fatalf("embedded catalog role %q missing required shipped fields: %+v", role, def)
+		}
+	}
+	rows, err := agentRosterRowsFromDefinitions(agentCommand().Commands, cat.Definitions)
 	if err != nil {
-		t.Fatalf("agentRosterRows: %v", err)
+		t.Fatalf("agentRosterRowsFromDefinitions: %v", err)
 	}
 	got := map[string]bool{}
 	for _, r := range rows {
@@ -68,7 +79,7 @@ func TestAgentRosterRowsRejectsUndescribedRole(t *testing.T) {
 		{Name: "engineer"},
 		{Name: "newcomer"}, // no resolved role definition entry
 	}
-	defs := builtInAgentRoleDefinitions()
+	defs := embeddedAgentRoleDefinitions()
 	delete(defs, "newcomer")
 	if _, err := agentRosterRowsFromDefinitions(cmds, defs); err == nil {
 		t.Fatal("agentRosterRowsFromDefinitions accepted a role with no descriptor; want an error")
@@ -78,6 +89,7 @@ func TestAgentRosterRowsRejectsUndescribedRole(t *testing.T) {
 // TestAgentRoleDefinitionsFromFleetAppliesOverlay proves a config-defined overlay
 // changes the effective roster without any Go registration change.
 func TestAgentRoleDefinitionsFromFleetAppliesOverlay(t *testing.T) {
+	base := embeddedAgentRoleDefinitions()
 	fleet := fleetconfig.Fleet{
 		Defaults: fleetconfig.Defaults{Agent: "claude"},
 		Roles: []fleetconfig.Role{
@@ -116,11 +128,21 @@ func TestAgentRoleDefinitionsFromFleetAppliesOverlay(t *testing.T) {
 	if defs[roleDirector].DefaultHarness != "claude" {
 		t.Fatalf("director default harness = %q, want fleet default claude", defs[roleDirector].DefaultHarness)
 	}
+	if defs[roleDirector].Tagline != base[roleDirector].Tagline {
+		t.Fatalf("director tagline changed by overlay: got %q want %q", defs[roleDirector].Tagline, base[roleDirector].Tagline)
+	}
+	if defs[roleDirector].Capabilities.String() != base[roleDirector].Capabilities.String() {
+		t.Fatalf("director capabilities changed by overlay: got %q want %q", defs[roleDirector].Capabilities.String(), base[roleDirector].Capabilities.String())
+	}
+	if defs[roleDirector].Modes != base[roleDirector].Modes {
+		t.Fatalf("director modes changed by overlay: got %q want %q", defs[roleDirector].Modes, base[roleDirector].Modes)
+	}
 }
 
 // TestAgentRosterMarkdownShape sanity-checks the generated body: the doc_goal
 // front-matter, the generated-by header, and a flat bullet per role linking its doc.
 func TestAgentRosterMarkdownShape(t *testing.T) {
+	t.Setenv(wardConfigRefEnv, "file://"+writeBundleFixture(t))
 	md, err := agentRosterMarkdown()
 	if err != nil {
 		t.Fatalf("agentRosterMarkdown: %v", err)
@@ -143,6 +165,7 @@ func TestAgentRosterMarkdownShape(t *testing.T) {
 // TestAgentRosterDefaultPrintsRoster asserts the truly-empty `warded` path renders the
 // generated role roster + launch hint, not the CLI flag dump (ward#360).
 func TestAgentRosterDefaultPrintsRoster(t *testing.T) {
+	t.Setenv(wardConfigRefEnv, "file://"+writeBundleFixture(t))
 	var buf strings.Builder
 	cmd := agentCommand()
 	cmd.Writer = &buf

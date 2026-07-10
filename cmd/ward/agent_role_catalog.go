@@ -9,8 +9,8 @@ import (
 	kdl "github.com/calico32/kdl-go"
 )
 
-// agent_role_catalog.go owns the embedded shipped role preset bundle. The KDL
-// source is ward-owned product data, not a fleet-config overlay.
+// agent_role_catalog.go owns the embedded shipped role-definition bundle. The
+// KDL source is ward-owned product data, not a fleet-config overlay.
 
 type agentRoleCatalog struct {
 	Order       []string
@@ -23,27 +23,41 @@ var agentRoleCatalogCache struct {
 	err     error
 }
 
-func loadBuiltInAgentRoleCatalog() (agentRoleCatalog, error) {
-	b, err := bakedAssets.ReadFile(rolesGeneratedKDLPath)
+func loadEmbeddedAgentRoleCatalog() (agentRoleCatalog, error) {
+	b, err := bakedAssets.ReadFile(roleDefinitionsGeneratedKDLPath)
 	if err != nil {
-		return agentRoleCatalog{}, fmt.Errorf("read agent role catalog %s: %w", rolesGeneratedKDLPath, err)
+		return agentRoleCatalog{}, fmt.Errorf("read agent role catalog %s: %w", roleDefinitionsGeneratedKDLPath, err)
 	}
 	return parseAgentRoleCatalog(b)
 }
 
-func cachedBuiltInAgentRoleCatalog() (agentRoleCatalog, error) {
+// loadBuiltInAgentRoleCatalog is the compatibility shim for newer callers. The
+// embedded KDL file still owns the shipped presets.
+func loadBuiltInAgentRoleCatalog() (agentRoleCatalog, error) {
+	return loadEmbeddedAgentRoleCatalog()
+}
+
+func cachedEmbeddedAgentRoleCatalog() (agentRoleCatalog, error) {
 	agentRoleCatalogCache.Do(func() {
-		agentRoleCatalogCache.catalog, agentRoleCatalogCache.err = loadBuiltInAgentRoleCatalog()
+		agentRoleCatalogCache.catalog, agentRoleCatalogCache.err = loadEmbeddedAgentRoleCatalog()
 	})
 	return agentRoleCatalogCache.catalog, agentRoleCatalogCache.err
 }
 
-func mustBuiltInAgentRoleCatalog() agentRoleCatalog {
-	cat, err := cachedBuiltInAgentRoleCatalog()
+func cachedBuiltInAgentRoleCatalog() (agentRoleCatalog, error) {
+	return cachedEmbeddedAgentRoleCatalog()
+}
+
+func mustEmbeddedAgentRoleCatalog() agentRoleCatalog {
+	cat, err := cachedEmbeddedAgentRoleCatalog()
 	if err != nil {
 		panic(err)
 	}
 	return cat
+}
+
+func mustBuiltInAgentRoleCatalog() agentRoleCatalog {
+	return mustEmbeddedAgentRoleCatalog()
 }
 
 func cloneAgentRoleDefinition(def agentRoleDefinition) agentRoleDefinition {
@@ -68,18 +82,26 @@ func cloneAgentRoleDefinitionMap(in map[string]agentRoleDefinition) map[string]a
 	return out
 }
 
-func builtInAgentRoleDefinitions() map[string]agentRoleDefinition {
-	return cloneAgentRoleDefinitionMap(mustBuiltInAgentRoleCatalog().Definitions)
+func embeddedAgentRoleDefinitions() map[string]agentRoleDefinition {
+	return cloneAgentRoleDefinitionMap(mustEmbeddedAgentRoleCatalog().Definitions)
 }
 
-func builtInAgentRoleDefinitionOrder() []string {
-	order := mustBuiltInAgentRoleCatalog().Order
+func builtInAgentRoleDefinitions() map[string]agentRoleDefinition {
+	return embeddedAgentRoleDefinitions()
+}
+
+func embeddedAgentRoleDefinitionOrder() []string {
+	order := mustEmbeddedAgentRoleCatalog().Order
 	if len(order) == 0 {
 		return nil
 	}
 	out := make([]string, len(order))
 	copy(out, order)
 	return out
+}
+
+func builtInAgentRoleDefinitionOrder() []string {
+	return embeddedAgentRoleDefinitionOrder()
 }
 
 func parseAgentRoleCatalog(src []byte) (agentRoleCatalog, error) { //nolint:gocyclo,cyclop,funlen

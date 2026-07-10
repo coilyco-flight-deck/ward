@@ -148,9 +148,9 @@ sync-defaults-assets: ## Mirror the smart-defaults ward-kdl.defaults.kdl into cm
 sync-role-assets: ## Mirror the shipped role-definition KDL into cmd/ward for embedding.
 	# The shipped agent role presets are product defaults, not a fleet overlay.
 	# go:embed can't reach the sibling .ward/ward-kdl/ dir, so mirror the canonical
-	# source here as roles.generated.kdl. roleassets_test.go fails the build on drift.
+	# source here as role-definitions.generated.kdl. roleassets_test.go fails the build on drift.
 	@mkdir -p ./cmd/ward/roleassets
-	cp ./.ward/ward-kdl/ward-kdl.roles.kdl ./cmd/ward/roleassets/roles.generated.kdl
+	cp ./.ward/ward-kdl/ward-kdl.role-definitions.kdl ./cmd/ward/roleassets/role-definitions.generated.kdl
 
 sync-topology-assets: ## Mirror the container topology bundle into cmd/ward for embedding (ward#655).
 	# The container-topology overlay is bundle data, not code: go:embed can't

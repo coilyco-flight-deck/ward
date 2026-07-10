@@ -1,5 +1,5 @@
-// Ward's shipped agent role presets. This is product-default data, not a guardfile
-// or a fleet overlay. The embedded copy mirrors this canonical source.
+// Ward's shipped agent role-definition presets. This is product-default data, not
+// a guardfile or a fleet overlay. The embedded copy mirrors this canonical source.
 agent-roles {
     role engineer {
         tagline "Implements a ticket end to end."

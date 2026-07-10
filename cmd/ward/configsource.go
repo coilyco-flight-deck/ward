@@ -34,7 +34,7 @@ var bakedSupportAssets embed.FS
 //go:embed defaultsassets/defaults.generated.kdl
 var bakedDefaultsAssets embed.FS
 
-//go:embed roleassets/roles.generated.kdl
+//go:embed roleassets/role-definitions.generated.kdl
 var bakedRoleAssets embed.FS
 
 //go:embed topologyassets/topology.generated.kdl
@@ -66,26 +66,28 @@ func (u unionFS) ReadFile(name string) ([]byte, error) {
 // Baked-layout paths, named once so the runtime mount and the drift tests
 // agree.
 const (
-	opsForgejoGuardfilePath  = "opsassets/forgejo.guardfile.generated.kdl"
-	opsForgejoSpecLockPath   = "opsassets/forgejo.swagger.lock.generated.json"
-	execAssetsDir            = "execassets"
-	fleetGeneratedKDLPath    = "fleetassets/fleet.generated.kdl"
-	defaultsGeneratedKDLPath = "defaultsassets/defaults.generated.kdl"
-	rolesGeneratedKDLPath    = "roleassets/roles.generated.kdl"
-	topologyGeneratedKDLPath = "topologyassets/topology.generated.kdl"
+	bundleOpsManifestPath           = "ward.bundle.kdl"
+	opsForgejoGuardfilePath         = "opsassets/forgejo.guardfile.generated.kdl"
+	opsForgejoSpecLockPath          = "opsassets/forgejo.swagger.lock.generated.json"
+	execAssetsDir                   = "execassets"
+	fleetGeneratedKDLPath           = "fleetassets/fleet.generated.kdl"
+	defaultsGeneratedKDLPath        = "defaultsassets/defaults.generated.kdl"
+	roleDefinitionsGeneratedKDLPath = "roleassets/role-definitions.generated.kdl"
+	topologyGeneratedKDLPath        = "topologyassets/topology.generated.kdl"
 )
 
-// Bundle-layout paths describe the flat .ward bundle a ref points at.
-// See docs/config-source.md.
+// Bundle-layout paths: the flat .ward bundle a ref points at (aos#332's landed layout).
 const (
-	bundleOpsManifestPath     = "ward.bundle.kdl"
-	bundleForgejoSpecLockPath = "forgejo.swagger.lock.json"
-	bundleAgentsKDLPath       = "agents.kdl"
-	bundleRolesKDLPath        = "roles.kdl"
-	bundleDefaultsKDLPath     = "defaults.kdl"
-	bundleReposKDLPath        = "repos.kdl"
-	bundleTopologyKDLPath     = "ward-kdl.topology.kdl"
-	bundleExecGuardfileGlob   = "guardfile.*.kdl"
+	// The compatibility monolith mirrors the baked ops guardfile.
+	// Role-facing tier guardfiles stay outside the ops CLI surface.
+	bundleForgejoGuardfilePath = "guardfile.forgejo.kdl"
+	bundleForgejoSpecLockPath  = "forgejo.swagger.lock.json"
+	bundleAgentsKDLPath        = "agents.kdl"
+	bundleRolesKDLPath         = "roles.kdl"
+	bundleDefaultsKDLPath      = "defaults.kdl"
+	bundleReposKDLPath         = "repos.kdl"
+	bundleTopologyKDLPath      = "ward-kdl.topology.kdl"
+	bundleExecGuardfileGlob    = "guardfile.*.kdl"
 )
 
 // configSource is the launch-selected home of the KDL config bundle: one fs.FS
