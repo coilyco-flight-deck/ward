@@ -83,7 +83,7 @@ roles {
 `,
 		bundleDefaultsKDLPath: `
 defaults {
-    agent-reservation-ttl "2h"
+    agent-reservation-ttl "3h"
     agent-reservation-recheck-max "9s"
     agent-reap-idle "90m"
     agent-reap-max-cpu "7.5"

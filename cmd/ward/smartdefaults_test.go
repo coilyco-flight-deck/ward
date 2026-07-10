@@ -141,6 +141,7 @@ func TestSmartDefaultsBundleMissingFileFailsLoud(t *testing.T) {
 func TestSmartDefaultsRejectsInvalidWorkflow(t *testing.T) {
 	dir := t.TempDir()
 	defaultsBody := `defaults {
+    agent-reservation-ttl "3h"
     agent-workflow default="merge-it"
 }`
 	if err := os.WriteFile(filepath.Join(dir, bundleDefaultsKDLPath), []byte(defaultsBody), 0o644); err != nil {
@@ -162,7 +163,7 @@ func TestSmartDefaultsRejectsInvalidWorkflow(t *testing.T) {
 func TestSmartDefaultsRejectsMissingRepoAuthority(t *testing.T) {
 	dir := t.TempDir()
 	body := `defaults {
-    agent-reservation-ttl "2h"
+    agent-reservation-ttl "3h"
 }`
 	if err := os.WriteFile(filepath.Join(dir, bundleDefaultsKDLPath), []byte(body), 0o644); err != nil {
 		t.Fatalf("write defaults bundle: %v", err)
