@@ -495,10 +495,20 @@ type forgejoCommitCombinedStatus struct {
 }
 
 type forgejoCommitStatus struct {
-	Context     string `json:"context"`
-	State       string `json:"state"`
+	Context string `json:"context"`
+	State   string `json:"state"`
+	// Status is where live Forgejo (gitea-compat) marshals the per-context
+	// state; effectiveState prefers whichever field the forge populated.
+	Status      string `json:"status"`
 	Description string `json:"description"`
 	TargetURL   string `json:"target_url"`
+}
+
+func (s forgejoCommitStatus) effectiveState() string {
+	if v := strings.TrimSpace(s.State); v != "" {
+		return v
+	}
+	return strings.TrimSpace(s.Status)
 }
 
 func (c *forgejoClient) getBranch(ctx context.Context, owner, repo, name string) (*forgejoBranch, error) {

@@ -323,7 +323,7 @@ func buildDirectorMergeStatusSummary(headSHA, branch string, required []string, 
 		if _, seen := statusByContext[ctx]; !seen {
 			fallback = append(fallback, ctx)
 		}
-		statusByContext[ctx] = strings.ToLower(strings.TrimSpace(st.State))
+		statusByContext[ctx] = strings.ToLower(st.effectiveState())
 	}
 	if len(required) == 0 {
 		required = fallback
