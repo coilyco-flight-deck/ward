@@ -999,6 +999,7 @@ func sendDispatchBrokerLaunchRequest(ctx context.Context, addr string, req dispa
 	}()
 	select {
 	case <-ctx.Done():
+		_ = conn.Close()
 		return "", ctx.Err()
 	case result := <-ch:
 		if result.err != nil {
@@ -1013,8 +1014,6 @@ func sendDispatchBrokerLaunchRequest(ctx context.Context, addr string, req dispa
 			return result.resp.LogPath, fmt.Errorf("dispatch broker: %s", result.resp.Error)
 		}
 		return result.resp.LogPath, nil
-	case <-time.After(100 * time.Millisecond):
-		return "", nil
 	}
 }
 
