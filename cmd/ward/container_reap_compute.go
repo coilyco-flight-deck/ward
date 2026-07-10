@@ -38,6 +38,11 @@ const (
 	reasonAuthFail reapReason = "push to main was rejected on auth (dead or rotated PAT)"
 )
 
+const (
+	commitStateAgentDidNotCommit                  = "agent did not commit"
+	commitStateCommitExistedButLackedCloseTrailer = "commit existed but lacked close trailer"
+)
+
 // authFailureMarkers are substrings git/forgejo emit when a push is rejected on
 // credentials not content; matched case-insensitively against the push output.
 var authFailureMarkers = []string{
@@ -139,6 +144,9 @@ type reapDecision struct {
 	// ProvState is the provenance file's state at the decision: "present",
 	// "missing or unreadable", or "not read (no origin/main)".
 	ProvState string
+	// CommitState names whether the agent had already made a commit before the
+	// reaper had to snapshot loose work.
+	CommitState string
 	// Landed is the run-owned-landed verdict (runProvenanceLanded) the gate saw.
 	Landed bool
 }
@@ -162,7 +170,9 @@ type reapDiagnostics struct {
 	Reason reapReason
 	// ProvState / Landed mirror reapDecision: provenance presence and the landed proof.
 	ProvState string
-	Landed    bool
+	// CommitState names whether the agent committed before residual capture.
+	CommitState string
+	Landed      bool
 	// Status is the `git status --porcelain` snapshot; TokenAge is the container
 	// uptime at reap (a baked-PAT age proxy).
 	Status   string
@@ -187,6 +197,7 @@ func renderReapDiagnostics(d reapDiagnostics) string {
 	fmt.Fprintf(&b, "decision gate:     %s\n", d.Gate)
 	fmt.Fprintf(&b, "reason:            %s\n", d.Reason)
 	fmt.Fprintf(&b, "provenance:        %s\n", d.ProvState)
+	fmt.Fprintf(&b, "agent commit:      %s\n", commitStateOrDash(d.CommitState))
 	fmt.Fprintf(&b, "run-owned landed:  %s\n", yesNo(d.Landed))
 	fmt.Fprintf(&b, "working tree:      %s\n", treeSummary(d.Status))
 	if d.TokenAge != "" {
@@ -235,6 +246,14 @@ func yesNo(b bool) string {
 	return "no"
 }
 
+func commitStateOrDash(state string) string {
+	s := strings.TrimSpace(state)
+	if s == "" {
+		return "-"
+	}
+	return s
+}
+
 // --- salvage branch + issue rendering ----------------------------------------
 
 // salvageBranchPrefix namespaces every reaper-pushed branch so they are easy to
@@ -273,6 +292,9 @@ type salvageReport struct {
 	// Diagnostics is the ward#531 block folded into the issue body so the same facts
 	// survive on the durable notification, not only on ephemeral stderr.
 	Diagnostics reapDiagnostics
+	// CommitState distinguishes a dirty-only run from one that already had a
+	// commit before the reaper had to snapshot residual work.
+	CommitState string
 	// PullRequestURL is the salvage PR opened for this branch when PRs are available.
 	PullRequestURL string
 	// PullRequestUnavailable names why ward fell back to branch-only salvage.
@@ -306,7 +328,7 @@ func salvageCommentBody(r salvageReport) string {
 
 // salvageDetailBody is the shared body of both the standalone issue and the
 // carried-issue comment: facts, likely-cause, recovery, findings, tree snapshot.
-func salvageDetailBody(r salvageReport) string {
+func salvageDetailBody(r salvageReport) string { //nolint:gocyclo,cyclop
 	var b strings.Builder
 	fmt.Fprintf(&b, "- **Repo:** `%s`\n", r.Repo.slug())
 	fmt.Fprintf(&b, "- **Salvage branch:** `%s`\n", r.Branch)
@@ -316,6 +338,9 @@ func salvageDetailBody(r salvageReport) string {
 		fmt.Fprintf(&b, "- **Pull request:** not opened - %s\n", r.PullRequestUnavailable)
 	}
 	fmt.Fprintf(&b, "- **Reason:** %s\n", r.Reason)
+	if r.CommitState != "" {
+		fmt.Fprintf(&b, "- **Agent commit:** %s\n", r.CommitState)
+	}
 	if r.TokenAge != "" {
 		fmt.Fprintf(&b, "- **Container uptime at reap:** %s (age of the baked Forgejo PAT snapshot; a long-lived container is likelier to carry a rotated token)\n", r.TokenAge)
 	}
@@ -332,6 +357,18 @@ func salvageDetailBody(r salvageReport) string {
 		b.WriteString("## Cleanup diagnostics\n\n```\n")
 		b.WriteString(renderReapDiagnostics(r.Diagnostics))
 		b.WriteString("\n```\n\n")
+	}
+
+	if r.Reason == reasonCloseRef && r.CommitState != "" {
+		b.WriteString("## Closing reference state\n\n")
+		switch r.CommitState {
+		case commitStateAgentDidNotCommit:
+			b.WriteString("The agent did not commit before teardown. The reaper had to snapshot dirty files into a residual commit, but that snapshot still lacked the same-repo closing reference needed to land.\n\n")
+		case commitStateCommitExistedButLackedCloseTrailer:
+			b.WriteString("A commit already existed before teardown, but the commit that should have landed did not carry the same-repo closing reference.\n\n")
+		default:
+			fmt.Fprintf(&b, "%s\n\n", r.CommitState)
+		}
 	}
 
 	b.WriteString("## Recover\n\n```bash\n")

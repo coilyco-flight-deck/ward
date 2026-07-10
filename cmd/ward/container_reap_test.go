@@ -204,6 +204,7 @@ func TestRenderReapDiagnosticsFalseSalvage(t *testing.T) {
 		Gate:          "no run-owned landed commit after dispatch",
 		Reason:        reasonConflict,
 		ProvState:     "present",
+		CommitState:   commitStateAgentDidNotCommit,
 		Landed:        false,
 		Status:        "",
 		TokenAge:      "6h03m",
@@ -217,8 +218,9 @@ func TestRenderReapDiagnosticsFalseSalvage(t *testing.T) {
 		"FALSE salvage",              // the ancestry verdict in plain words
 		"ward#504",                   // the false-salvage signature reference
 		"no run-owned landed commit", // the decision gate that fired
-		"run-owned landed:  no",      // the landed verdict
-		"6h03m",                      // container uptime / PAT-age proxy
+		"agent commit:      agent did not commit",
+		"run-owned landed:  no", // the landed verdict
+		"6h03m",                 // container uptime / PAT-age proxy
 	} {
 		if !strings.Contains(block, want) {
 			t.Errorf("diagnostics block missing %q\n---\n%s", want, block)
@@ -257,10 +259,12 @@ func TestSalvageIssueBodyFoldsDiagnostics(t *testing.T) {
 			Gate:          "no run-owned landed commit after dispatch",
 			Reason:        reasonConflict,
 			ProvState:     "present",
+			CommitState:   commitStateCommitExistedButLackedCloseTrailer,
 		},
+		CommitState: commitStateCommitExistedButLackedCloseTrailer,
 	}
 	body := salvageIssueBody(r)
-	for _, want := range []string{"## Cleanup diagnostics", reapDiagHeader, "v0.297.0", "FALSE salvage"} {
+	for _, want := range []string{"## Cleanup diagnostics", reapDiagHeader, "v0.297.0", "FALSE salvage", "agent commit:      commit existed but lacked close trailer"} {
 		if !strings.Contains(body, want) {
 			t.Errorf("salvage issue body missing folded diagnostic %q\n---\n%s", want, body)
 		}
@@ -270,6 +274,30 @@ func TestSalvageIssueBodyFoldsDiagnostics(t *testing.T) {
 	bare := salvageIssueBody(salvageReport{Repo: r.Repo, Mode: "claude", Branch: r.Branch, Reason: reasonConflict, Base: r.Base})
 	if strings.Contains(bare, "## Cleanup diagnostics") {
 		t.Error("a report with no diagnostics must omit the diagnostics section")
+	}
+}
+
+func TestSalvageIssueBodyExplainsCommitState(t *testing.T) {
+	dirtyOnly := salvageReport{
+		Repo:        targetRepo{Owner: "coilyco-flight-deck", Name: "ward"},
+		Mode:        "goose",
+		Branch:      "ward-salvage/ward-dirty",
+		Reason:      reasonCloseRef,
+		Base:        "https://forgejo.coilysiren.me",
+		Issue:       523,
+		CommitState: commitStateAgentDidNotCommit,
+	}
+	body := salvageIssueBody(dirtyOnly)
+	if !strings.Contains(body, "The agent did not commit before teardown") {
+		t.Fatalf("dirty-only salvage body missing did-not-commit explanation:\n%s", body)
+	}
+
+	committed := dirtyOnly
+	committed.Branch = "ward-salvage/ward-committed"
+	committed.CommitState = commitStateCommitExistedButLackedCloseTrailer
+	body = salvageIssueBody(committed)
+	if !strings.Contains(body, "A commit already existed before teardown") {
+		t.Fatalf("committed salvage body missing close-trailer explanation:\n%s", body)
 	}
 }
 
@@ -830,6 +858,71 @@ func TestReapTargetTreeResidualOnlyRunWithoutCloseRefSalvages(t *testing.T) {
 	}
 }
 
+// TestResidualCommitStateDistinguishesDirtyOnlyAndCommittedResidual covers the split.
+// Dirty-only work and committed work are classified separately.
+func TestResidualCommitStateDistinguishesDirtyOnlyAndCommittedResidual(t *testing.T) {
+	dirtyRepo := t.TempDir()
+	runGit(t, dirtyRepo, "init", "-b", "main")
+	runGit(t, dirtyRepo, "config", "user.email", "test@example.com")
+	runGit(t, dirtyRepo, "config", "user.name", "Test User")
+	runGitCommitAt(t, dirtyRepo, "2026-07-02T06:00:00Z", "base.txt", "base\n", "base")
+	runGit(t, dirtyRepo, "remote", "add", "origin", dirtyRepo)
+	runGit(t, dirtyRepo, "push", "origin", "main")
+	runGit(t, dirtyRepo, "update-ref", "refs/remotes/origin/main", "HEAD")
+	prov := runProvenance{
+		RunID:        "engineer-goose-infrastructure-523",
+		Repo:         "coilyco-flight-deck/infrastructure",
+		Issue:        523,
+		ReservedAt:   "2026-07-02T06:23:49Z",
+		BaselineMain: mustGitRev(t, dirtyRepo, "HEAD"),
+	}
+	provData, err := json.Marshal(prov)
+	if err != nil {
+		t.Fatal(err)
+	}
+	if err := os.WriteFile(filepath.Join(dirtyRepo, runProvenanceFile), provData, 0o644); err != nil {
+		t.Fatal(err)
+	}
+	if err := os.WriteFile(filepath.Join(dirtyRepo, "dirty.txt"), []byte("dirty\n"), 0o644); err != nil {
+		t.Fatal(err)
+	}
+
+	committedRepo := t.TempDir()
+	runGit(t, committedRepo, "init", "-b", "main")
+	runGit(t, committedRepo, "config", "user.email", "test@example.com")
+	runGit(t, committedRepo, "config", "user.name", "Test User")
+	runGitCommitAt(t, committedRepo, "2026-07-02T06:00:00Z", "base.txt", "base\n", "base")
+	runGit(t, committedRepo, "remote", "add", "origin", committedRepo)
+	runGit(t, committedRepo, "push", "origin", "main")
+	runGit(t, committedRepo, "update-ref", "refs/remotes/origin/main", "HEAD")
+	prov = runProvenance{
+		RunID:        "engineer-goose-infrastructure-523",
+		Repo:         "coilyco-flight-deck/infrastructure",
+		Issue:        523,
+		ReservedAt:   "2026-07-02T06:23:49Z",
+		BaselineMain: mustGitRev(t, committedRepo, "HEAD"),
+	}
+	provData, err = json.Marshal(prov)
+	if err != nil {
+		t.Fatal(err)
+	}
+	if err := os.WriteFile(filepath.Join(committedRepo, runProvenanceFile), provData, 0o644); err != nil {
+		t.Fatal(err)
+	}
+	runGitCommitAt(t, committedRepo, "2026-07-02T06:35:00Z", "feat.txt", "feat\n", "ward work")
+	if err := os.WriteFile(filepath.Join(committedRepo, "scratch.txt"), []byte("scratch\n"), 0o644); err != nil {
+		t.Fatal(err)
+	}
+
+	r := &Runner{Runner: &shell.Runner{Resolve: shell.PathResolver}}
+	if got := residualCommitState(t.Context(), r, dirtyRepo); got != commitStateAgentDidNotCommit {
+		t.Fatalf("dirty-only residual state = %q, want %q", got, commitStateAgentDidNotCommit)
+	}
+	if got := residualCommitState(t.Context(), r, committedRepo); got != commitStateCommitExistedButLackedCloseTrailer {
+		t.Fatalf("committed residual state = %q, want %q", got, commitStateCommitExistedButLackedCloseTrailer)
+	}
+}
+
 func TestReapTargetTreeRepairsResidualCommitCloseRef(t *testing.T) {
 	origin := t.TempDir()
 	runGit(t, origin, "init", "--bare", "-b", "main")
@@ -960,7 +1053,7 @@ func TestReapTargetTreeEmptyRepoMissingCloseRefSalvages(t *testing.T) {
 	if err := r.reapTargetTree(t.Context(), work, env, true); err != nil {
 		t.Fatalf("reapTargetTree salvaging a close-refless empty-repo run: %v", err)
 	}
-	if refExists(t.Context(), r, work, "origin/main") {
+	if refExists(t.Context(), r, work) {
 		t.Fatal("a salvaged run must NOT establish main on the empty repo")
 	}
 	out, _ := exec.Command("git", "-C", remote, "branch", "--list", salvageBranchPrefix+"*").CombinedOutput()

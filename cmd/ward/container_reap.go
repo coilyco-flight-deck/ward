@@ -177,11 +177,12 @@ func (r *Runner) runContainerReap(ctx context.Context, c *cli.Command) error {
 }
 
 // reapTargetTree is the target half of a reap, from capture through salvage.
-func (r *Runner) reapTargetTree(ctx context.Context, work string, env reapEnv, releaseReservation bool) error { //nolint:gocognit,gocyclo,cyclop,nestif
+func (r *Runner) reapTargetTree(ctx context.Context, work string, env reapEnv, releaseReservation bool) error { //nolint:gocognit,gocyclo,cyclop,nestif,funlen
 	if env.ReadOnly {
 		fmt.Fprintln(os.Stderr, "ward container reap: read-only session, nothing to salvage (skipping)")
 		return nil
 	}
+	commitState := residualCommitState(ctx, r, work)
 	statusSnapshot := r.captureAndCommitResidual(ctx, work, env)
 	fmt.Fprintf(os.Stderr, "ward container reap: residual status snapshot for %s: %q\n", work, strings.TrimSpace(statusSnapshot))
 
@@ -190,10 +191,10 @@ func (r *Runner) reapTargetTree(ctx context.Context, work string, env reapEnv, r
 	fmt.Fprintln(os.Stderr, "ward container reap: fetch origin start")
 	_ = r.Runner.Exec(ctx, "git", "-C", work, "fetch", "origin")
 	fmt.Fprintln(os.Stderr, "ward container reap: fetch origin done")
-	if !refExists(ctx, r, work, "origin/main") {
+	if !refExists(ctx, r, work) {
 		// Empty repo (no base branch): establish main from a clean run rather than
 		// salvage it just for starting empty (ward#599, docs/container-reap.md).
-		return r.reapEstablishMain(ctx, work, env, statusSnapshot, releaseReservation)
+		return r.reapEstablishMain(ctx, work, env, statusSnapshot, releaseReservation, commitState)
 	}
 
 	if !env.Workflow.landsOnMain() {
@@ -201,7 +202,7 @@ func (r *Runner) reapTargetTree(ctx context.Context, work string, env reapEnv, r
 		if len(findings) > 0 {
 			fmt.Fprintf(os.Stderr, "ward container cleanup: --workflow %s produced a diff the junk scan rejected; preserving on a salvage branch instead of treating the workflow boundary as success\n", env.Workflow.orDefault())
 			return r.salvage(ctx, work, env, reasonScan, false, findings, statusSnapshot,
-				reapDecision{Gate: "junk scan flagged the workflow-boundary diff", ProvState: "not read (workflow hold)"})
+				reapDecision{Gate: "junk scan flagged the workflow-boundary diff", ProvState: "not read (workflow hold)", CommitState: commitState})
 		}
 		fmt.Fprintf(os.Stderr, "WARD-REAP: nothing to reap (%s)\n", reapBoundaryReason(env.Workflow))
 		if releaseReservation {
@@ -221,12 +222,12 @@ func (r *Runner) reapTargetTree(ctx context.Context, work string, env reapEnv, r
 			if perr != nil {
 				fmt.Fprintf(os.Stderr, "ward container reap: provenance missing or unreadable on already-landed direct-main run: %v\n", perr)
 				return r.salvage(ctx, work, env, reasonConflict, false, nil, statusSnapshot,
-					reapDecision{Gate: "provenance missing or unreadable on already-landed direct-main run", ProvState: "missing or unreadable"})
+					reapDecision{Gate: "provenance missing or unreadable on already-landed direct-main run", ProvState: "missing or unreadable", CommitState: commitState})
 			}
 			if !r.runProvenanceLanded(ctx, work, prov, env.Issue) {
 				fmt.Fprintf(os.Stderr, "ward container reap: already-landed direct-main run is missing closes #%d; salvaging instead of returning success\n", env.Issue)
 				return r.salvage(ctx, work, env, reasonCloseRef, false, nil, statusSnapshot,
-					reapDecision{Gate: "missing same-repo closing reference on already-landed direct-main run", ProvState: "present", Landed: false})
+					reapDecision{Gate: "missing same-repo closing reference on already-landed direct-main run", ProvState: "present", CommitState: commitState, Landed: false})
 			}
 		}
 		fmt.Fprintf(os.Stderr, "WARD-REAP: nothing to reap (%s)\n", reapBoundaryReason(env.Workflow))
@@ -240,7 +241,7 @@ func (r *Runner) reapTargetTree(ctx context.Context, work string, env reapEnv, r
 	if perr != nil {
 		fmt.Fprintf(os.Stderr, "ward container reap: provenance missing or unreadable: %v\n", perr)
 		return r.salvage(ctx, work, env, reasonConflict, false, nil, statusSnapshot,
-			reapDecision{Gate: "provenance missing or unreadable", ProvState: "missing or unreadable"})
+			reapDecision{Gate: "provenance missing or unreadable", ProvState: "missing or unreadable", CommitState: commitState})
 	}
 	// The run-owned-landed verdict is computed once here and reused by every gate
 	// below (including executeReap) so the diagnostics block reports what each saw.
@@ -248,14 +249,14 @@ func (r *Runner) reapTargetTree(ctx context.Context, work string, env reapEnv, r
 	if env.Issue != 0 && !landed && !r.issueClosingReferencePresent(ctx, work, env.Issue) {
 		fmt.Fprintf(os.Stderr, "ward container reap: missing closes #%d in committed work; salvaging instead of landing on main\n", env.Issue)
 		return r.salvage(ctx, work, env, reasonCloseRef, false, nil, statusSnapshot,
-			reapDecision{Gate: "missing same-repo closing reference", ProvState: "present", Landed: landed})
+			reapDecision{Gate: "missing same-repo closing reference", ProvState: "present", CommitState: commitState, Landed: landed})
 	}
 
 	findings := scan.Diff(r.diffEntries(ctx, work, "origin/main...HEAD"))
 	if !landed {
 		fmt.Fprintln(os.Stderr, "ward container reap: no run-owned landed commit after dispatch; salvaging instead of claiming success")
 		return r.salvage(ctx, work, env, reasonConflict, false, findings, statusSnapshot,
-			reapDecision{Gate: "no run-owned landed commit after dispatch", ProvState: "present"})
+			reapDecision{Gate: "no run-owned landed commit after dispatch", ProvState: "present", CommitState: commitState})
 	}
 
 	action := decideReap(reapInputs{
@@ -273,7 +274,7 @@ const gitEmptyTree = "4b825dc642cb6eb9a060e54bf8d69288fbee4904"
 
 // reapEstablishMain lands the empty-repo case (origin/main absent): create main
 // from a clean, run-owned commit rather than salvage. See docs/container-reap.md.
-func (r *Runner) reapEstablishMain(ctx context.Context, work string, env reapEnv, statusSnapshot string, releaseReservation bool) error {
+func (r *Runner) reapEstablishMain(ctx context.Context, work string, env reapEnv, statusSnapshot string, releaseReservation bool, commitState string) error {
 	// No origin/main to diff against, so the whole HEAD history is residual work.
 	residual := revCount(ctx, r, work, "HEAD")
 	fmt.Fprintf(os.Stderr, "ward container cleanup: no origin/main; establish-main candidate with %d commit(s) on HEAD\n", residual)
@@ -294,7 +295,7 @@ func (r *Runner) reapEstablishMain(ctx context.Context, work string, env reapEnv
 		if len(findings) > 0 {
 			fmt.Fprintf(os.Stderr, "ward container cleanup: --workflow %s produced a diff the junk scan rejected; preserving on a salvage branch instead of treating the workflow boundary as success\n", env.Workflow.orDefault())
 			return r.salvage(ctx, work, env, reasonScan, false, findings, statusSnapshot,
-				reapDecision{Gate: "junk scan flagged the workflow-boundary diff", ProvState: "not read (no origin/main)"})
+				reapDecision{Gate: "junk scan flagged the workflow-boundary diff", ProvState: "not read (no origin/main)", CommitState: commitState})
 		}
 		fmt.Fprintf(os.Stderr, "WARD-REAP: nothing to reap (%s)\n", reapBoundaryReason(env.Workflow))
 		if releaseReservation {
@@ -308,7 +309,7 @@ func (r *Runner) reapEstablishMain(ctx context.Context, work string, env reapEnv
 	if !r.issueClosingReferenceInRange(ctx, work, env.Issue, "HEAD") {
 		fmt.Fprintf(os.Stderr, "ward container reap: missing closes #%d in committed work; salvaging instead of establishing main\n", env.Issue)
 		return r.salvage(ctx, work, env, reasonCloseRef, false, nil, statusSnapshot,
-			reapDecision{Gate: "missing same-repo closing reference", ProvState: "not read (no origin/main)"})
+			reapDecision{Gate: "missing same-repo closing reference", ProvState: "not read (no origin/main)", CommitState: commitState})
 	}
 
 	// Junk-scan the whole tree that would land: with no base ref, diff against
@@ -317,7 +318,7 @@ func (r *Runner) reapEstablishMain(ctx context.Context, work string, env reapEnv
 	if len(findings) > 0 {
 		fmt.Fprintf(os.Stderr, "ward container reap: junk scan flagged %d path(s); salvaging instead of establishing main\n", len(findings))
 		return r.salvage(ctx, work, env, reasonScan, false, findings, statusSnapshot,
-			reapDecision{Gate: "junk scan flagged the diff", ProvState: "not read (no origin/main)"})
+			reapDecision{Gate: "junk scan flagged the diff", ProvState: "not read (no origin/main)", CommitState: commitState})
 	}
 
 	// Establish main: push HEAD as the new default branch.
@@ -621,6 +622,7 @@ func (r *Runner) salvage(ctx context.Context, work string, env reapEnv, reason r
 		Base:        env.Base,
 		Issue:       env.Issue,
 		Diagnostics: diag,
+		CommitState: dec.CommitState,
 	}
 	if ferr := r.fileSalvageIssue(ctx, env, report); ferr != nil {
 		// The branch already preserved the work; a failed issue is a missed
@@ -912,7 +914,7 @@ func (r *Runner) checkExtraRepoLanded(ctx context.Context, env reapEnv, repo tar
 func (r *Runner) grantLanded(ctx context.Context, work string) (landed, hasMain bool) {
 	for attempt := 1; attempt <= grantLandingFetchAttempts; attempt++ {
 		_ = r.Runner.Exec(ctx, "git", "-C", work, "fetch", "origin")
-		if refExists(ctx, r, work, "origin/main") {
+		if refExists(ctx, r, work) {
 			hasMain = true
 			// Reachability: HEAD contained in origin/main (plain or merge-commit landing).
 			if isAncestor(ctx, r, work, "HEAD", "origin/main") {
@@ -1115,6 +1117,7 @@ func (r *Runner) gatherReapDiagnostics(ctx context.Context, work string, reason 
 		Gate:          dec.Gate,
 		Reason:        reason,
 		ProvState:     dec.ProvState,
+		CommitState:   dec.CommitState,
 		Landed:        dec.Landed,
 		Status:        status,
 		TokenAge:      tokenAge,
@@ -1148,6 +1151,23 @@ func shortSha(sha string) string {
 	return sha
 }
 
+// residualCommitState distinguishes a dirty-only run from one that already had
+// a commit before the reaper snapshotted the tree.
+func residualCommitState(ctx context.Context, r *Runner, work string) string {
+	statusBytes, _ := r.Runner.Capture(ctx, "git", "-C", work, "status", "--porcelain")
+	if strings.TrimSpace(filterReapResidualStatus(string(statusBytes))) == "" {
+		return ""
+	}
+	if refExists(ctx, r, work) {
+		if revCount(ctx, r, work, "origin/main..HEAD") == 0 {
+			return commitStateAgentDidNotCommit
+		}
+	} else if revCount(ctx, r, work, "HEAD") == 0 {
+		return commitStateAgentDidNotCommit
+	}
+	return commitStateCommitExistedButLackedCloseTrailer
+}
+
 // isAncestor reports `git merge-base --is-ancestor a b` (a is contained in b).
 func isAncestor(ctx context.Context, r *Runner, work, a, b string) bool {
 	return r.Runner.Exec(ctx, "git", "-C", work, "merge-base", "--is-ancestor", a, b) == nil
@@ -1165,8 +1185,8 @@ func hasStagedChanges(ctx context.Context, r *Runner, work string) bool {
 	return r.Runner.Exec(ctx, "git", "-C", work, "diff", "--cached", "--quiet") != nil
 }
 
-func refExists(ctx context.Context, r *Runner, work, ref string) bool {
-	return r.Runner.Exec(ctx, "git", "-C", work, "rev-parse", "--verify", "--quiet", ref) == nil
+func refExists(ctx context.Context, r *Runner, work string) bool {
+	return r.Runner.Exec(ctx, "git", "-C", work, "rev-parse", "--verify", "--quiet", "origin/main") == nil
 }
 
 func revCount(ctx context.Context, r *Runner, work, rangeRef string) int {
