@@ -23,6 +23,8 @@ This page groups the on-demand operational surfaces around a run.
 ## What to remember
 
 - `logs` prefers the live container, then falls back to the drained archive.
+- `logs` falls back to the live transcript tree when `docker logs` is empty,
+  then to the drained archive.
 - `stop` and `reap` only target engineer containers.
 - A run that is already finished should not be treated as a new failure.
 

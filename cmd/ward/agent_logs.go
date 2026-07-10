@@ -29,11 +29,12 @@ const (
 
 // agentLogSource is the resolved log source the host prints and streams from.
 type agentLogSource struct {
-	Kind      agentLogSourceKind
-	Container string
-	Path      string
-	Tail      int
-	Follow    bool
+	Kind           agentLogSourceKind
+	Container      string
+	Path           string
+	TranscriptTree string
+	Tail           int
+	Follow         bool
 }
 
 func (s agentLogSource) String() string {
@@ -153,7 +154,7 @@ func (r *Runner) resolveAgentLogsSourceForIssue(ctx context.Context, ref agentIs
 		if err != nil {
 			return agentLogSource{}, err
 		}
-		return agentLogSource{Kind: agentLogSourceDocker, Container: name, Tail: tail, Follow: follow}, nil
+		return agentLogSource{Kind: agentLogSourceDocker, Container: name, TranscriptTree: containerTranscriptDir, Tail: tail, Follow: follow}, nil
 	}
 	if src, err := findArchivedAgentLogSourceByIssue(ref, tail, follow, agentLogsDir(), drainConsoleFile); err != nil {
 		return agentLogSource{}, err
@@ -189,7 +190,7 @@ func (r *Runner) resolveAgentLogsSourceForName(ctx context.Context, name string,
 		if err := stopTargetGuard(name, role); err != nil {
 			return agentLogSource{}, err
 		}
-		return agentLogSource{Kind: agentLogSourceDocker, Container: name, Tail: tail, Follow: follow}, nil
+		return agentLogSource{Kind: agentLogSourceDocker, Container: name, TranscriptTree: containerTranscriptDir, Tail: tail, Follow: follow}, nil
 	}
 	if src, err := findArchivedAgentLogSourceByName(name, tail, follow, agentLogsDir(), drainConsoleFile); err != nil {
 		return agentLogSource{}, err
@@ -215,41 +216,75 @@ func (r *Runner) resolveAgentLogsSourceForName(ctx context.Context, name string,
 func (r *Runner) streamAgentLogsSource(ctx context.Context, source agentLogSource, w io.Writer) error {
 	switch source.Kind {
 	case agentLogSourceDocker:
-		argv := []string{"logs"}
-		if source.Tail > 0 {
-			argv = append(argv, "--tail", strconv.Itoa(source.Tail))
-		}
-		if source.Follow {
-			argv = append(argv, "--follow")
-		}
-		argv = append(argv, source.Container)
-		if source.Follow {
-			prevOut, prevErr := r.Runner.Stdout, r.Runner.Stderr
-			r.Runner.Stdout, r.Runner.Stderr = w, w
-			defer func() {
-				r.Runner.Stdout, r.Runner.Stderr = prevOut, prevErr
-			}()
-			return r.dockerExec(ctx, argv...)
-		}
-		out, err := r.dockerCapture(ctx, argv...)
-		if err != nil {
-			return err
-		}
-		_, err = w.Write(out)
-		return err
+		return r.streamDockerAgentLogsSource(ctx, source, w)
 	case agentLogSourceFile:
-		b, err := os.ReadFile(source.Path) // #nosec G304 -- ward-derived archive path under ~/.ward
-		if err != nil {
-			return err
-		}
-		if source.Tail > 0 {
-			b = tailBytes(b, source.Tail)
-		}
-		_, err = w.Write(b)
-		return err
+		return r.streamFileAgentLogsSource(source, w)
 	default:
 		return fmt.Errorf("ward agent logs: unknown log source kind %q", source.Kind)
 	}
+}
+
+func (r *Runner) streamDockerAgentLogsSource(ctx context.Context, source agentLogSource, w io.Writer) error {
+	argv := []string{"logs"}
+	if source.Tail > 0 {
+		argv = append(argv, "--tail", strconv.Itoa(source.Tail))
+	}
+	if source.Follow {
+		argv = append(argv, "--follow")
+	}
+	argv = append(argv, source.Container)
+	if source.Follow {
+		prevOut, prevErr := r.Runner.Stdout, r.Runner.Stderr
+		r.Runner.Stdout, r.Runner.Stderr = w, w
+		defer func() {
+			r.Runner.Stdout, r.Runner.Stderr = prevOut, prevErr
+		}()
+		return r.dockerExec(ctx, argv...)
+	}
+	out, err := r.dockerCapture(ctx, argv...)
+	if err != nil {
+		return err
+	}
+	if len(bytes.TrimSpace(out)) == 0 && strings.TrimSpace(source.TranscriptTree) != "" {
+		transcript := r.liveTranscriptSource(ctx, source.Container, source.TranscriptTree)
+		if len(transcript) > 0 {
+			if source.Tail > 0 {
+				transcript = tailBytes(transcript, source.Tail)
+			}
+			_, _ = fmt.Fprintf(w, "ward agent logs: docker logs empty; using live transcript tree from %s\n", source.TranscriptTree)
+			_, err = w.Write(transcript)
+			return err
+		}
+		_, _ = fmt.Fprintf(w, "ward agent logs: docker logs empty; live transcript tree at %s is empty\n", source.TranscriptTree)
+		return nil
+	}
+	_, err = w.Write(out)
+	return err
+}
+
+func (r *Runner) streamFileAgentLogsSource(source agentLogSource, w io.Writer) error {
+	b, err := os.ReadFile(source.Path) // #nosec G304 -- ward-derived archive path under ~/.ward
+	if err != nil {
+		return err
+	}
+	if source.Tail > 0 {
+		b = tailBytes(b, source.Tail)
+	}
+	_, err = w.Write(b)
+	return err
+}
+
+// liveTranscriptSource pulls the current transcript tree from a live engineer
+// container and returns the concatenated jsonl the drain would eventually archive.
+func (r *Runner) liveTranscriptSource(ctx context.Context, name, transcriptTree string) []byte {
+	prevErr := r.Runner.Stderr
+	r.Runner.Stderr = io.Discard
+	out, err := r.dockerCapture(ctx, "cp", name+":"+transcriptTree, "-")
+	r.Runner.Stderr = prevErr
+	if err != nil || len(out) == 0 {
+		return nil
+	}
+	return extractTranscriptFromTar(out)
 }
 
 // allEngineerContainersForIssue lists every live or exited engineer container that
