@@ -9,6 +9,7 @@ import (
 	"strings"
 	"testing"
 
+	"forgejo.coilysiren.me/coilyco-flight-deck/cli-guard/pkg/attribution"
 	"github.com/coilyco-flight-deck/ward/internal/agents"
 	"github.com/coilyco-flight-deck/ward/internal/agentsapi"
 
@@ -22,6 +23,14 @@ func testRunner() *Runner { return &Runner{Runner: &shell.Runner{Stderr: io.Disc
 
 // discardLog is the no-op Logger the ctx helpers pass where blog is not wanted.
 func discardLog(string, ...any) {}
+
+type panicExec struct{}
+
+func (panicExec) Exec(context.Context, string, ...string) error { panic("unexpected Exec call") }
+
+func (panicExec) Capture(context.Context, string, ...string) ([]byte, error) {
+	panic("unexpected Capture call")
+}
 
 // TestRegistryClaudeWriteCreds confirms claude's registry agent writes the injected
 // base64 blob to ~/.claude/.credentials.json (behaviour lives in the folder, ward#425).
@@ -185,5 +194,67 @@ func TestComposeAgentContainerPerMode(t *testing.T) {
 				t.Errorf("%s: composeAgentContainer wrote %s from another mode", tc.mode, tc.absent)
 			}
 		})
+	}
+}
+
+// TestSelfContainedHarnessInstall verifies the self-contained harnesses
+// explicitly prove their binary is already present and do not need Exec.
+func TestSelfContainedHarnessInstall(t *testing.T) {
+	cases := []containerMode{modeClaude, modeCodex, modeGoose}
+	for _, mode := range cases {
+		t.Run(string(mode), func(t *testing.T) {
+			dir := t.TempDir()
+			bin := lookupAgent(mode).Record().Binary
+			if err := os.WriteFile(filepath.Join(dir, bin), []byte("#!/bin/sh\nexit 0\n"), 0o755); err != nil {
+				t.Fatalf("write stub %s: %v", bin, err)
+			}
+			t.Setenv("PATH", dir+string(os.PathListSeparator)+os.Getenv("PATH"))
+			rc := agentsapi.RunCtx{Ctx: context.Background(), AgentHome: t.TempDir(), Log: discardLog, Exec: panicExec{}}
+			if err := lookupAgent(mode).Install(rc); err != nil {
+				t.Fatalf("%s Install: %v", mode, err)
+			}
+		})
+	}
+}
+
+type installHarnessProbeAgent struct {
+	binary        string
+	installDir    string
+	installCalled bool
+}
+
+func (a *installHarnessProbeAgent) Name() string { return "probe" }
+
+func (a *installHarnessProbeAgent) Record() agentsapi.Manifest {
+	return agentsapi.Manifest{Binary: a.binary}
+}
+
+func (a *installHarnessProbeAgent) Signer() attribution.Signer { return attribution.Signer{} }
+
+func (a *installHarnessProbeAgent) Install(_ agentsapi.RunCtx) error {
+	a.installCalled = true
+	return os.WriteFile(filepath.Join(a.installDir, a.binary), []byte("#!/bin/sh\nexit 0\n"), 0o755)
+}
+
+func (a *installHarnessProbeAgent) LaunchArgv(agentsapi.RunCtx) ([]string, bool) {
+	return []string{a.binary}, false
+}
+
+func (a *installHarnessProbeAgent) PreflightArgv(string) ([]string, bool) { return nil, false }
+
+// TestInstallHarnessRunsBeforeBinaryCheck proves the bootstrap helper calls the
+// required install hook before it validates the harness binary.
+func TestInstallHarnessRunsBeforeBinaryCheck(t *testing.T) {
+	binDir := t.TempDir()
+	t.Setenv("PATH", binDir+string(os.PathListSeparator)+os.Getenv("PATH"))
+	agent := &installHarnessProbeAgent{binary: "probe-harness", installDir: binDir}
+	if err := installHarness(agent, agentsapi.RunCtx{Ctx: context.Background(), AgentHome: t.TempDir(), Log: discardLog}); err != nil {
+		t.Fatalf("installHarness: %v", err)
+	}
+	if !agent.installCalled {
+		t.Fatal("installHarness did not call Install before verifying the binary")
+	}
+	if _, err := os.Stat(filepath.Join(binDir, agent.binary)); err != nil {
+		t.Fatalf("Install did not stage the harness binary: %v", err)
 	}
 }

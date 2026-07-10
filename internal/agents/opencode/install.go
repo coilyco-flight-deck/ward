@@ -1,6 +1,7 @@
 package opencode
 
 import (
+	"fmt"
 	"os"
 	"os/exec"
 	"path/filepath"
@@ -8,34 +9,38 @@ import (
 	"github.com/coilyco-flight-deck/ward/internal/agentsapi"
 )
 
-// Install self-installs the opencode binary (absent from the dev-base image) at
-// bootstrap; a no-op when it is already present. Best-effort like the bash.
+// Install performs the required opencode bootstrap. It tries to install the
+// binary and fails loudly if it is still missing afterward.
 func (a Agent) Install(rc agentsapi.RunCtx) error {
-	if commandExists("opencode") {
-		rc.Log("opencode already present in image; skipping install")
+	if commandExists(record.Binary) {
+		rc.Log("opencode already present in image; no install step required")
 		return nil
 	}
-	rc.Log("installing opencode (local Ollama-backed harness; not baked into the dev-base image yet)")
-	// The bash pipes `curl ... | bash`; reproduce via `bash -c` so the installer's
-	// own redirects to stderr are preserved (its stdout is the script, not output).
-	_ = rc.Exec.Exec(rc.Ctx, "bash", "-c", "curl -fsSL https://opencode.ai/install | bash >&2")
-	src := filepath.Join(os.Getenv("HOME"), ".opencode", "bin", "opencode")
+	if rc.Exec == nil {
+		return fmt.Errorf("opencode binary %q is missing and no executor is available to install it", record.Binary)
+	}
+	rc.Log("opencode missing from image; attempting bootstrap install")
+	if err := rc.Exec.Exec(rc.Ctx, "bash", "-c", "curl -fsSL https://opencode.ai/install | bash >&2"); err != nil {
+		return fmt.Errorf("opencode install bootstrap failed: %w", err)
+	}
+	src := filepath.Join(rc.AgentHome, ".opencode", "bin", "opencode")
 	if isExecutable(src) {
-		_ = rc.Exec.Exec(rc.Ctx, "install", "-m", "0755", src, "/usr/local/bin/opencode")
+		if err := rc.Exec.Exec(rc.Ctx, "install", "-m", "0755", src, "/usr/local/bin/opencode"); err != nil {
+			return fmt.Errorf("opencode install copy failed: %w", err)
+		}
 	}
-	if !commandExists("opencode") {
-		rc.Log("opencode install failed; opencode mode will abort before launch (use --image with opencode baked in, or fix network)")
+	if !commandExists(record.Binary) {
+		return fmt.Errorf("opencode install did not make %q available on PATH", record.Binary)
 	}
+	rc.Log("installed opencode harness")
 	return nil
 }
 
-// commandExists reports whether bin is on PATH (the bash `command -v`).
 func commandExists(bin string) bool {
 	_, err := exec.LookPath(bin)
 	return err == nil
 }
 
-// isExecutable reports whether path exists and has any execute bit (`[ -x ]`).
 func isExecutable(path string) bool {
 	info, err := os.Stat(path)
 	return err == nil && !info.IsDir() && info.Mode()&0o111 != 0
