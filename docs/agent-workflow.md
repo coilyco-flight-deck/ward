@@ -8,7 +8,8 @@ doc_goal: Capture the landing-policy surface in one place so the run modes and r
 - `direct-main` - merge to `main` and close.
 - `pull-requests` - open a PR and watch it to green.
 - `pull-requests-and-merge` - open a PR, wait for merge readiness, then let
-  the director merge sweep finish the landing.
+  the director merge sweep finish the landing. The machine-readable
+  `ward.workflow` marker uses the canonical `pull-request-and-merge` spelling.
 - `patch-only` - publish a branch only.
 
 ## Review
@@ -47,6 +48,7 @@ message when one already exists.
 This is the director-merge lane. The worker gets the PR ready, and the
 director merge sweep finishes the landing once the checks and review are
 green.
+The final machine-readable workflow marker uses `pull-request-and-merge`.
 
 ### patch-only
 
