@@ -765,6 +765,69 @@ func TestDirectorIssueScopeUsesOnlyTheReferencedIssue(t *testing.T) {
 	}
 }
 
+func TestIssueScopedDirectorRefreshStaysOnOneIssue(t *testing.T) {
+	t.Setenv("HOME", t.TempDir())
+	t.Setenv("FORGEJO_TOKEN", "secret")
+
+	bundleDir := t.TempDir()
+	if err := os.WriteFile(filepath.Join(bundleDir, "defaults.kdl"), []byte("defaults {\n}\n"), 0o644); err != nil {
+		t.Fatal(err)
+	}
+	if err := os.WriteFile(filepath.Join(bundleDir, "repos.kdl"), []byte("repos {\n  repo-authority default=forgejo {\n    trusted-owner coilyco-flight-deck\n  }\n}\n"), 0o644); err != nil {
+		t.Fatal(err)
+	}
+	t.Setenv("WARD_CONFIG_REF", "file://"+bundleDir)
+
+	oldBase := forgejoBaseURL
+	defer func() { forgejoBaseURL = oldBase }()
+
+	var sawIssue5, sawIssueList, sawPullList bool
+	srv := httptest.NewServer(http.HandlerFunc(func(w http.ResponseWriter, r *http.Request) {
+		switch {
+		case r.Method == http.MethodGet && r.URL.Path == "/api/v1/repos/coilyco-flight-deck/ward/issues/5":
+			sawIssue5 = true
+			_ = json.NewEncoder(w).Encode(map[string]any{
+				"number": 5, "title": "target issue", "body": "body", "state": "open",
+				"html_url": "https://forgejo.example/coilyco-flight-deck/ward/issues/5",
+				"labels":   []map[string]any{{"name": "P0"}, {"name": "headless"}},
+			})
+		case r.Method == http.MethodGet && r.URL.Path == "/api/v1/repos/coilyco-flight-deck/ward/issues/5/comments":
+			_ = json.NewEncoder(w).Encode([]map[string]any{})
+		case r.Method == http.MethodGet && strings.HasSuffix(r.URL.Path, "/issues") && r.URL.Query().Get("type") == "issues":
+			sawIssueList = true
+			t.Fatal("repo issue backlog must not be fetched during issue-scoped refresh")
+		case r.Method == http.MethodGet && strings.HasSuffix(r.URL.Path, "/issues") && r.URL.Query().Get("type") == "pulls":
+			sawPullList = true
+			t.Fatal("repo pull backlog must not be fetched during issue-scoped refresh")
+		default:
+			t.Fatalf("unexpected request: %s %s?%s", r.Method, r.URL.Path, r.URL.RawQuery)
+		}
+	}))
+	defer srv.Close()
+	forgejoBaseURL = srv.URL
+
+	refArg := srv.URL + "/coilyco-flight-deck/ward/issues/5"
+	r := &Runner{Runner: &shell.Runner{Stdout: io.Discard, Stderr: io.Discard}}
+	ref, err := r.resolveAgentIssueRef(t.Context(), refArg)
+	if err != nil {
+		t.Fatalf("resolveAgentIssueRef(%s): %v", refArg, err)
+	}
+	cfg := backlogConfig{mode: modeGoose, limit: 50, issueRef: &ref}
+
+	if err := r.backlogRefreshForDirector(t.Context(), "ward agent director", cfg, []string{ref.repoSlug()}); err != nil {
+		t.Fatalf("refresh 1: %v", err)
+	}
+	if err := r.backlogRefreshForDirector(t.Context(), "ward agent director", cfg, []string{ref.repoSlug()}); err != nil {
+		t.Fatalf("refresh 2: %v", err)
+	}
+	if !sawIssue5 {
+		t.Fatal("referenced issue was not fetched during refresh")
+	}
+	if sawIssueList || sawPullList {
+		t.Fatalf("issue-scoped refresh widened to backlog: issueList=%t pullList=%t", sawIssueList, sawPullList)
+	}
+}
+
 func TestResolveDirectorIssueRefFailsClosedAndDoesNotWiden(t *testing.T) {
 	t.Setenv("HOME", t.TempDir())
 	t.Setenv("FORGEJO_TOKEN", "secret")

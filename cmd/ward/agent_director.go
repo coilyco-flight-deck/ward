@@ -243,7 +243,7 @@ func directorEngineerHarness(c *cli.Command, directorMode containerMode) (contai
 func agentDirectorCommand() *cli.Command {
 	return &cli.Command{
 		Name:      "director",
-		Usage:     "Run an attached LLM-in-the-loop heartbeat over a repo's headless lane: poll, decide, dispatch, and surface on drain (ward#351). Engineers inherit the director's own harness by default; --engineer-harness overrides that dispatch default.",
+		Usage:     "Run an attached LLM-in-the-loop heartbeat over a repo's headless lane, or one exact issue ref: poll, decide, dispatch, and surface on drain (ward#351). Engineers inherit the director's own harness by default; --engineer-harness overrides that dispatch default.",
 		ArgsUsage: "(issue ref | scope via --repo; default: the cwd git origin)",
 		Description: `director runs an attached, autonomous heartbeat over a repo's open backlog. Each
 tick it reconciles in-flight engineers (reading their WARD-OUTCOME comments),
@@ -255,6 +255,10 @@ director's own harness by default, and --engineer-harness explicitly overrides t
 default. When the headless lane drains - nothing queued and nothing in flight - it
 surfaces an interactive session for new direction rather than exiting, and resumes
 the heartbeat if the queue refills (ward#351).
+
+When a single issue ref or Forgejo issue URL is given, the director fetches and
+validates that exact issue before the heartbeat starts and keeps the later
+refresh loop pinned to that issue instead of widening back into the repo backlog.
 
   warded director --repo coilyco-flight-deck/ward         # one repo
   warded director coilyco-flight-deck/ward#988            # one issue, fail-closed scope
@@ -411,14 +415,8 @@ func (r *Runner) driveBacklog(ctx context.Context, label string, repos []string,
 	if cfg.triage && !preview && cfg.issueRef == nil {
 		r.backlogTriage(ctx, label, repos, cfg.mode, cfg.limit)
 	}
-	if cfg.issueRef != nil {
-		if err := r.backlogRefreshIssue(ctx, label, cfg.mode, *cfg.issueRef); err != nil {
-			return err
-		}
-	} else {
-		if err := r.backlogRefresh(ctx, label, repos, cfg.limit); err != nil {
-			return err
-		}
+	if err := r.backlogRefreshForDirector(ctx, label, cfg, repos); err != nil {
+		return err
 	}
 	if err := r.backlogPrintStatus(repos); err != nil {
 		return err
@@ -434,6 +432,15 @@ func (r *Runner) driveBacklog(ctx context.Context, label string, repos []string,
 		return r.backlogPrintPlanned(label, repos, cfg.maxParallel)
 	}
 	return runDirectorLoop(ctx, cfg, &liveDirector{r: r, label: label, repos: repos, cfg: cfg})
+}
+
+// backlogRefreshForDirector keeps the live heartbeat on exactly one issue when the
+// director was scoped by issue ref, instead of widening back into the repo backlog.
+func (r *Runner) backlogRefreshForDirector(ctx context.Context, label string, cfg backlogConfig, repos []string) error {
+	if cfg.issueRef != nil {
+		return r.backlogRefreshIssue(ctx, label, cfg.mode, *cfg.issueRef)
+	}
+	return r.backlogRefresh(ctx, label, repos, cfg.limit)
 }
 
 // out returns the run's user-facing writer (lanes, summary), falling back to stdout.

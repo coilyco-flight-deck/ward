@@ -9,6 +9,8 @@ The director surface is the read-only control plane for runs.
 - It can keep a backlog moving without writing implementation code.
 - It can also run against one exact issue ref or Forgejo issue URL without
   widening into the repo backlog.
+- When issue-scoped, each heartbeat refresh stays pinned to that exact issue
+  instead of rehydrating the repo backlog.
 - It is the surface that hosts the merge-ready workflow for PR landings.
 - It distinguishes a fresh reservation hold from a stale one so dead runs do
   not block burndown forever.
