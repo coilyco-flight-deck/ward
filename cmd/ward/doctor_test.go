@@ -32,6 +32,8 @@ func TestRunDoctorWithValidBundle(t *testing.T) {
 
 func TestRunDoctorRejectsBakedPlaceholders(t *testing.T) {
 	t.Setenv(wardConfigRefEnv, "")
+	t.Setenv("WARD_TARGET_OWNER", "")
+	t.Setenv("WARD_TARGET_REPO", "")
 	report, err := runDoctor(context.Background())
 	if err == nil {
 		t.Fatal("runDoctor with baked config: want failure, got nil")
