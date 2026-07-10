@@ -5,6 +5,9 @@ doc_goal: Collapse the role roster into one durable page that names the four sta
 
 `ward agent` has four startup roles.
 
+Their definitions live in ward-owned embedded role-definition KDL, with fleet
+config acting only as an overlay.
+
 - `engineer` - implements a ticket end to end and detaches.
 - `director` - supervises the backlog and surfaces a read-only session.
 - `advisor` - answers questions and writes no code.

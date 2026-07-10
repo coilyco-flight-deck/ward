@@ -95,7 +95,7 @@ func (s semanticCapabilitySet) String() string {
 // semanticCapabilitiesForRole resolves the ward-owned semantic preset for one
 // startup role. Named roles are presets, not the only possible model.
 func semanticCapabilitiesForRole(role string) semanticCapabilitySet {
-	if defs, err := cachedBuiltInAgentRoleCatalog(); err == nil {
+	if defs, err := cachedEmbeddedAgentRoleCatalog(); err == nil {
 		if def, ok := defs.Definitions[role]; ok {
 			return def.Capabilities.clone()
 		}

@@ -32,11 +32,12 @@ Inventory of what `ward` ships today.
   [agent-roster.md](agent-roster.md), [agent-roles.md](agent-roles.md), [agent-harnesses.md](agent-harnesses.md),
   [agent-lifecycle.md](agent-lifecycle.md), [agent-director.md](agent-director.md),
   [agent-ops.md](agent-ops.md), [dispatch-review.md](dispatch-review.md), and
-  [agent-workflow.md](agent-workflow.md). The roster resolves from effective
-  role definitions plus fleet overlays, not a hand-edited role list. `ward agent
-  list` now carries known engineer capacity alongside the live rows, and `ward
-  agent logs` surfaces live docker output and, when that stream is empty, the
-  live transcript tree before it falls back to the drained archive.
+  [agent-workflow.md](agent-workflow.md). The roster resolves from ward-owned
+  embedded role definitions plus fleet overlays, not a hand-edited role list.
+  `ward agent list` now carries known engineer capacity alongside the live
+  rows, and `ward agent logs` surfaces live docker output and, when that stream
+  is empty, the live transcript tree before it falls back to the drained
+  archive.
 
 ## Container surface
 
@@ -52,7 +53,8 @@ Inventory of what `ward` ships today.
   [ward-kdl-surface.md](ward-kdl-surface.md),
   [ward-kdl-in-ward.md](ward-kdl-in-ward.md), and
   [ward-docker-exec.md](ward-docker-exec.md). It also embeds the shipped agent
-  role catalog from [ward-kdl.roles.kdl](../.ward/ward-kdl/ward-kdl.roles.kdl).
+  role catalog from
+  [ward-kdl.role-definitions.kdl](../.ward/ward-kdl/ward-kdl.role-definitions.kdl).
   Per-area guardfile refs are generated output, not release-era docs.
 - It accepts `first input` as exec-guard sugar for `arg0`, and ward injects the
   raw Forgejo Actions log fetch leaf directly into the shipped `ward ops

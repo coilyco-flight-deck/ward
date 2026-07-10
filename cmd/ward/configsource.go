@@ -32,7 +32,7 @@ var bakedSupportAssets embed.FS
 //go:embed defaultsassets/defaults.generated.kdl
 var bakedDefaultsAssets embed.FS
 
-//go:embed roleassets/roles.generated.kdl
+//go:embed roleassets/role-definitions.generated.kdl
 var bakedRoleAssets embed.FS
 
 //go:embed topologyassets/topology.generated.kdl
@@ -64,23 +64,19 @@ func (u unionFS) ReadFile(name string) ([]byte, error) {
 // Baked-layout paths, named once so the runtime mount and the drift tests
 // agree.
 const (
-	opsForgejoGuardfilePath  = "opsassets/forgejo.guardfile.generated.kdl"
-	opsForgejoSpecLockPath   = "opsassets/forgejo.swagger.lock.generated.json"
-	execAssetsDir            = "execassets"
-	fleetGeneratedKDLPath    = "fleetassets/fleet.generated.kdl"
-	defaultsGeneratedKDLPath = "defaultsassets/defaults.generated.kdl"
-	rolesGeneratedKDLPath    = "roleassets/roles.generated.kdl"
-	topologyGeneratedKDLPath = "topologyassets/topology.generated.kdl"
+	opsForgejoGuardfilePath         = "opsassets/forgejo.guardfile.generated.kdl"
+	opsForgejoSpecLockPath          = "opsassets/forgejo.swagger.lock.generated.json"
+	execAssetsDir                   = "execassets"
+	fleetGeneratedKDLPath           = "fleetassets/fleet.generated.kdl"
+	defaultsGeneratedKDLPath        = "defaultsassets/defaults.generated.kdl"
+	roleDefinitionsGeneratedKDLPath = "roleassets/role-definitions.generated.kdl"
+	topologyGeneratedKDLPath        = "topologyassets/topology.generated.kdl"
 )
 
-// Bundle-layout paths: the flat .ward bundle a ref points at (aos#332's landed
-// layout. See docs/config-source.md.
+// Bundle-layout paths: the flat .ward bundle a ref points at (aos#332's landed layout).
 const (
-	// The self-contained compatibility monolith, mirroring the baked source's
-	// flattened opsForgejoGuardfilePath. ward loads this via byte-Parse and has
-	// no ParseFile path, so the runtime surface must not `inherit` across files.
-	// The read/write/admin tier guardfiles are role-facing (bound in roles.kdl),
-	// not the ops CLI surface. See docs/ward-specs.md, docs/config-source.md.
+	// The compatibility monolith mirrors the baked ops guardfile.
+	// Role-facing tier guardfiles stay outside the ops CLI surface.
 	bundleForgejoGuardfilePath = "guardfile.forgejo.kdl"
 	bundleForgejoSpecLockPath  = "forgejo.swagger.lock.json"
 	bundleAgentsKDLPath        = "agents.kdl"

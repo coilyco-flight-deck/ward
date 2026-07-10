@@ -133,12 +133,12 @@ func roleOverlaySummary(overlays map[string]fleetconfig.RoleAgentOverride) strin
 // agentRoleDefinitionsFromFleet resolves the built-in role presets over the
 // effective fleet config's `roles` overlay.
 func agentRoleDefinitionsFromFleet(f fleetconfig.Fleet) (map[string]agentRoleDefinition, error) {
-	defs := builtInAgentRoleDefinitions()
-	order := builtInAgentRoleDefinitionOrder()
+	defs := embeddedAgentRoleDefinitions()
+	order := embeddedAgentRoleDefinitionOrder()
 	for _, role := range f.Roles {
 		def, ok := defs[role.Name]
 		if !ok {
-			return nil, fmt.Errorf("fleet config defines role %q, but ward only registers the shipped presets %q",
+			return nil, fmt.Errorf("fleet config defines role %q, but ward only registers the shipped embedded presets %q",
 				role.Name, strings.Join(order, ", "))
 		}
 		def.Guardfiles = cloneGuardfiles(role.Guardfiles)
@@ -171,8 +171,8 @@ type agentRosterRow struct {
 	Doc          string // the per-role detail doc, e.g. agent-engineer.md
 }
 
-// agentRosterRows enumerates the live roster: the shipped roles resolved through
-// the effective fleet config, minus the meta verbs, joined to their descriptors.
+// agentRosterRows enumerates the live roster: the embedded role defaults resolved
+// through the effective fleet config, minus the meta verbs, joined to descriptors.
 func agentRosterRows() ([]agentRosterRow, error) {
 	defs, err := agentRoleDefinitions()
 	if err != nil {
@@ -211,7 +211,7 @@ func agentRosterRowsFromDefinitions(cmds []*cli.Command, defs map[string]agentRo
 
 // agentRosterDocGoal is the doc_goal front-matter the generated page carries so it
 // grades against an explicit target like every ward doc (ward#289).
-const agentRosterDocGoal = "Give a reader the canonical, code-generated list of every ward agent startup role with its tagline, semantic capability preset, and invocation modes, so they can see the shipped role presets from the embedded role catalog plus any effective fleet overlays without the page drifting from the binary."
+const agentRosterDocGoal = "Give a reader the canonical, code-generated list of every ward agent startup role with its tagline, semantic capability preset, and invocation modes, so they can see the ward-owned embedded role defaults plus any effective fleet overlays without the page drifting from the binary."
 
 // agentRosterMarkdown renders the committed docs/agent-roster.md body: doc_goal
 // front-matter plus a flat bullet list (not a table, per the house Voice rules).
@@ -225,7 +225,7 @@ func agentRosterMarkdown() (string, error) {
 	fmt.Fprintf(&b, "# ward agent: the role roster\n\n")
 	fmt.Fprintf(&b, "<!-- Generated from the code roster by `ward agent roster --markdown` (ward#348); do not edit by hand. Regenerate with `%s`. -->\n\n", agentRosterRegenHint)
 	fmt.Fprintf(&b, "A flat list of every `ward agent` startup role - the roster the binary resolves from\n")
-	fmt.Fprintf(&b, "its built-in presets plus the effective fleet config's role overlays, so the page can never\n")
+	fmt.Fprintf(&b, "its embedded role defaults plus the effective fleet config's role overlays, so the page can never\n")
 	fmt.Fprintf(&b, "drift. Each role is one entry: what the specialist does, what semantic capabilities the\n")
 	fmt.Fprintf(&b, "preset carries, and how you invoke it (a ref acts on an issue, freeform text files or answers\n")
 	fmt.Fprintf(&b, "it). Run `ward agent roster` (`warded roster`) for this list live at the terminal, and the\n")
