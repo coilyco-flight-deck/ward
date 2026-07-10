@@ -100,7 +100,7 @@ func TestSelectConfigSourceFileRefCapturesRevision(t *testing.T) {
 // patterns: a rename must not silently empty the neutral default.
 func TestBakedSourcePathsExist(t *testing.T) {
 	src := bakedConfigSource()
-	for _, p := range []string{src.forgejoGuardfile, src.forgejoSpecLock, src.adminGuardfile, src.fleetKDL, src.defaultsKDL, src.topologyKDL} {
+	for _, p := range []string{src.forgejoGuardfile, src.forgejoSpecLock, src.fleetKDL, src.defaultsKDL, src.topologyKDL} {
 		if _, err := fs.ReadFile(src.fsys, p); err != nil {
 			t.Errorf("baked path %s unreadable: %v", p, err)
 		}
