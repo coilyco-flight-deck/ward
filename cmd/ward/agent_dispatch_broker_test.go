@@ -41,6 +41,10 @@ func TestDispatchBrokerValidatesNarrowAPI(t *testing.T) {
 	if err := validateDispatchBrokerRequest(ok); err != nil {
 		t.Errorf("valid engineer dispatch refused: %v", err)
 	}
+	pr := dispatchBrokerRequest{Role: "engineer", Argv: []string{"engineer", "coilyco-flight-deck/ward#1", "--pr", "--harness", "claude"}}
+	if err := validateDispatchBrokerRequest(pr); err != nil {
+		t.Errorf("valid engineer PR dispatch refused: %v", err)
+	}
 	advisor := dispatchBrokerRequest{Role: "advisor", Argv: []string{"advisor", "coilyco-flight-deck/ward#1", "--harness", "goose", "what changed?"}}
 	if err := validateDispatchBrokerRequest(advisor); err != nil {
 		t.Errorf("valid advisor dispatch refused: %v", err)

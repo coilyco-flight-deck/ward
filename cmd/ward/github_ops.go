@@ -121,6 +121,63 @@ func ghCommentsToIssueComments(raw []ghComment) []issueComment {
 	return out
 }
 
+func ghPullRequestPath(owner, repo string, number int) string {
+	return "/repos/" + owner + "/" + repo + "/pulls/" + strconv.Itoa(number)
+}
+
+func (c *githubClient) getPullRequestContext(ctx context.Context, owner, repo string, number int) (*agentPullRequestContext, error) {
+	out, err := c.run(ctx, "api", ghPullRequestPath(owner, repo, number))
+	if err != nil {
+		return nil, fmt.Errorf("github: get pull request %s/%s#%d: %w", owner, repo, number, err)
+	}
+	var raw struct {
+		Number    int    `json:"number"`
+		Title     string `json:"title"`
+		Body      string `json:"body"`
+		State     string `json:"state"`
+		HTMLURL   string `json:"html_url"`
+		Draft     bool   `json:"draft"`
+		Mergeable any    `json:"mergeable"`
+		Head      struct {
+			Ref string `json:"ref"`
+		} `json:"head"`
+		Base struct {
+			Ref string `json:"ref"`
+		} `json:"base"`
+	}
+	if err := json.Unmarshal(out, &raw); err != nil {
+		return nil, fmt.Errorf("github: parse pull request %s/%s#%d: %w", owner, repo, number, err)
+	}
+	var mergeability string
+	switch v := raw.Mergeable.(type) {
+	case bool:
+		mergeability = fmt.Sprintf("mergeable=%t", v)
+	case nil:
+		mergeability = "mergeable=unknown"
+	default:
+		mergeability = fmt.Sprintf("mergeable=%v", v)
+	}
+	if mergeability == "" {
+		mergeability = "mergeable=unknown"
+	}
+	if raw.Draft {
+		mergeability += ", draft=true"
+	}
+	return &agentPullRequestContext{
+		State:        strings.TrimSpace(raw.State),
+		Title:        strings.TrimSpace(raw.Title),
+		Body:         strings.TrimSpace(raw.Body),
+		URL:          strings.TrimSpace(raw.HTMLURL),
+		HeadRef:      strings.TrimSpace(raw.Head.Ref),
+		BaseRef:      strings.TrimSpace(raw.Base.Ref),
+		Mergeability: mergeability,
+	}, nil
+}
+
+func (c *githubClient) listPullRequestComments(ctx context.Context, owner, repo string, number int) ([]issueComment, error) {
+	return c.listIssueComments(ctx, owner, repo, number)
+}
+
 // createIssue opens an issue (signed body via --body-file, off argv) and returns its
 // number, parsed from the issue URL gh prints.
 func (c *githubClient) createIssue(ctx context.Context, owner, repo, title, body string) (int, error) {

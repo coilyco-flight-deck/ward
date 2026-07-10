@@ -6,7 +6,9 @@ import (
 	"path/filepath"
 	"strings"
 	"testing"
+	"time"
 
+	"forgejo.coilysiren.me/coilyco-flight-deck/cli-guard/cli/dispatch"
 	"forgejo.coilysiren.me/coilyco-flight-deck/cli-guard/cli/shell"
 	"github.com/urfave/cli/v3"
 )
@@ -815,6 +817,61 @@ func TestWrongRepoTarget(t *testing.T) {
 		}
 		if ok && (got.Owner != c.wantOwner || got.Name != c.wantName) {
 			t.Errorf("wrongRepoTarget(%q) = %s, want %s/%s", c.in, got.slug(), c.wantOwner, c.wantName)
+		}
+	}
+}
+
+func TestAgentWorkBranchPrefersPullRequestBranch(t *testing.T) {
+	got := agentWorkBranch(resolvedWork{
+		Ref:    agentIssueRef{Number: 913},
+		Branch: "feature/pr-repair",
+	})
+	if got != "feature/pr-repair" {
+		t.Fatalf("agentWorkBranch(PR) = %q, want %q", got, "feature/pr-repair")
+	}
+	if got := agentWorkBranch(resolvedWork{Ref: agentIssueRef{Number: 913}}); got != "issue-913" {
+		t.Fatalf("agentWorkBranch(issue) = %q, want %q", got, "issue-913")
+	}
+}
+
+func TestEngineerPRDetailsIncludesPRAndLinkedIssueContext(t *testing.T) {
+	now := time.Date(2026, 7, 10, 12, 0, 0, 0, time.UTC)
+	mk := func(body, login string) issueComment {
+		c := issueComment{Body: body, CreatedAt: now}
+		c.User.Login = login
+		return c
+	}
+	pr := agentPullRequestContext{
+		State:        "open",
+		Title:        "Repair merge conflict handling",
+		Body:         "This PR fixes the branch checkout path.",
+		URL:          "https://forgejo.coilysiren.me/coilyco-flight-deck/ward/pulls/913",
+		HeadRef:      "repair/branch-checkout",
+		BaseRef:      "main",
+		Mergeability: "mergeable=true",
+	}
+	linkedIssue := &dispatch.Issue{
+		Number: 913,
+		Title:  "Let engineer input accept a PR ref and start from that PR branch",
+		Body:   "Linked issue body.",
+		URL:    "https://forgejo.coilysiren.me/coilyco-flight-deck/ward/issues/913",
+	}
+	got := engineerPRDetails(pr, []issueComment{mk("PR thread note", "kai")}, linkedIssue, []issueComment{mk("linked issue thread note", "kai")})
+	for _, want := range []string{
+		"PR continuation context",
+		"Repair merge conflict handling",
+		pr.URL,
+		"source branch repair/branch-checkout",
+		"base branch main",
+		"mergeable=true",
+		"PR thread note",
+		"Linked issue context: 913",
+		linkedIssue.URL,
+		"Linked issue body.",
+		"linked issue thread note",
+	} {
+		if !strings.Contains(got, want) {
+			t.Fatalf("engineerPRDetails missing %q\n%s", want, got)
 		}
 	}
 }
