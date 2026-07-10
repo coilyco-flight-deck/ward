@@ -56,11 +56,11 @@ func runSetup(ctx context.Context) (setupReport, error) {
 	}
 
 	if rawRef == "" {
-		report.sourceSummary = "baked neutral default (no external config source active)"
+		report.sourceSummary = configSourceSummary(rawRef, src)
 		report.resolvedSHA = "embedded"
 		report.cachePath = "embedded neutral default"
 	} else {
-		report.sourceSummary = "WARD_CONFIG_REF=" + rawRef
+		report.sourceSummary = configSourceSummary(rawRef, src)
 		report.resolvedSHA = strings.TrimSpace(src.auditVersion)
 		if report.resolvedSHA == "" {
 			report.resolvedSHA = "unavailable"
