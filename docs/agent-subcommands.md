@@ -24,7 +24,7 @@ ref-vs-freeform invocation modes - lives in **[agent-roster.md](agent-roster.md)
 generated from the shipped presets plus the effective fleet role overlays by `ward agent roster`
 so it can never go stale. That page is the one source of truth for *which* roles exist; this
 doc and the per-role docs ([agent-engineer.md](agent-engineer.md),
-[agent-director.md](agent-director.md) + its [surface](agent-surface.md),
+[agent-director.md](agent-director.md) + its [surface](agent-director.md),
 [agent-advisor.md](agent-advisor.md), [agent-qa.md](agent-qa.md)) carry the prose detail
 behind each row. Run `warded roster` for the list live at the terminal.
 
@@ -42,7 +42,7 @@ The notes below are the behavioral detail the flat roster does not capture:
   one-shot picks which queued issues to dispatch under `--max-parallel`, and on drain surfaces
   a **read-only scope + dispatch session** (push credential revoked, reaper skips salvage;
   semantic preset: `read + project-management`;
-  [agent-surface.md](agent-surface.md)).
+  [agent-director.md](agent-director.md)).
 - **`advisor`** (was `reply` + `ask`) - the ref mode researches one-shot and posts the
   answer as a comment; freeform answers *inside* a fresh container and streams it inline.
   Semantic preset: `read`.
@@ -70,9 +70,9 @@ happy path doesn't rely on it: the agent commits/merges/pushes itself per its do
 finishing to a clean `main` push.
 
 That reaper handles a run that **exits**; a still-`Up` but wedged `engineer` is the
-job of the host-side idle-killer [`ward agent reap`](agent-reap.md), which stops one
+job of the host-side idle-killer [`ward agent reap`](agent-ops.md), which stops one
 gone log-silent past the threshold. A director that wants to halt a **specific**
-mis-scoped engineer on demand (not on idle) uses [`ward agent stop`](agent-stop.md),
+mis-scoped engineer on demand (not on idle) uses [`ward agent stop`](agent-ops.md),
 which forwards a stop through the dispatch broker - stop-only, engineer-only.
 
 ## See also

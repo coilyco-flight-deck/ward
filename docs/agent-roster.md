@@ -14,8 +14,8 @@ per-role docs each entry links to carry the prose detail. See
 [agent.md](agent.md) for the umbrella and the `warded` public face.
 
 - [`warded engineer`](agent-engineer.md) - Implements a ticket end to end. Capabilities: read + engineering. Modes: A ref carries that issue detached, fire-and-forget. Freeform text files an issue first, then carries it. Detached-only - interactive work funnels to the director. Role overlays: claude{model=claude-fable-5, reasoning-effort=medium}; codex{model=gpt-5.4-mini, reasoning-effort=medium}.
-- [`warded director`](agent-director.md) - Autonomously drives a repo's headless lane to drain. Capabilities: read + project-management. Modes: Attached LLM-in-the-loop heartbeat over a repo's backlog (`--repo` scope). Surfaces a read-only scope + dispatch session on drain, no ref. Role overlays: claude{model=claude-opus-4-8[1m], reasoning-effort=high}; codex{model=gpt-5.5, reasoning-effort=medium}.
-- [`warded advisor`](agent-advisor.md) - Answers without writing code. Capabilities: read. Modes: A ref researches the issue and posts the answer as a comment. Freeform text answers inline.
+- [`warded director`](agent-director.md) - Autonomously drives a repo's headless lane to drain. Capabilities: read + project-management. Modes: Attached LLM-in-the-loop heartbeat over a repo's backlog (`--repo` scope). Surfaces a read-only scope + dispatch session on drain, no ref. Role overlays: claude{model=claude-opus-4-8[1m], reasoning-effort=high}; codex{model=gpt-5.5, reasoning-effort=high}.
+- [`warded advisor`](agent-advisor.md) - Answers without writing code. Capabilities: read. Modes: A ref researches the issue and posts the answer as a comment. Freeform text answers inline. Role overlays: claude{model=claude-opus-4-8[1m], reasoning-effort=high}; codex{model=gpt-5.5, reasoning-effort=high}.
 - [`warded qa`](agent-qa.md) - Inspects a candidate and posts a structured verdict comment. Capabilities: read. Modes: A ref inspects the issue, branch, pull request, and checks, then posts a structured QA verdict comment. Freeform mode is not exposed.
 
 ## See also

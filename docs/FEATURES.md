@@ -24,7 +24,8 @@ Inventory of what `ward` ships today.
   [agent-roster.md](agent-roster.md), [agent-roles.md](agent-roles.md), [agent-harnesses.md](agent-harnesses.md),
   [agent-lifecycle.md](agent-lifecycle.md), [agent-director.md](agent-director.md),
   [agent-ops.md](agent-ops.md), [dispatch-review.md](dispatch-review.md), and
-  [agent-workflow.md](agent-workflow.md).
+  [agent-workflow.md](agent-workflow.md). The roster resolves from effective
+  role definitions plus fleet overlays, not a hand-edited role list.
 
 ## Container surface
 
