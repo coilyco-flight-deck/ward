@@ -2,6 +2,7 @@ package main
 
 import (
 	"context"
+	"errors"
 	"fmt"
 	"os"
 	"path/filepath"
@@ -45,10 +46,17 @@ func TestEngineerContainerLimitBelowAndAtLimit(t *testing.T) {
 		if err == nil {
 			t.Fatal("enforceEngineerContainerLimit at limit: want error, got nil")
 		}
+		var capErr *engineerCapacityError
+		if !errors.As(err, &capErr) {
+			t.Fatalf("enforceEngineerContainerLimit at limit returned %T, want *engineerCapacityError", err)
+		}
+		if !isEngineerCapacityError(err) {
+			t.Fatal("enforceEngineerContainerLimit at limit should classify as engineer capacity backpressure")
+		}
 		for _, want := range []string{
 			"global engineer limit is reached",
 			"running",
-			"limit 12",
+			fmt.Sprintf("limit %d", limit),
 			"ward agent reap",
 		} {
 			if !strings.Contains(err.Error(), want) {

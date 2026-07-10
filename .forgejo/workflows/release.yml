@@ -69,6 +69,27 @@ jobs:
           name: ${{ steps.tag.outputs.new_tag }}
           body: ${{ steps.notes.outputs.body }}
 
+      - name: Alert Telegram on main failure
+        if: ${{ failure() && github.ref == 'refs/heads/main' }}
+        shell: bash
+        env:
+          TELEGRAM_BOT_TOKEN: ${{ secrets.TELEGRAM_BOT_TOKEN }}
+          TELEGRAM_RED_CHAT_ID: ${{ secrets.TELEGRAM_RED_CHAT_ID }}
+        run: |
+          set -euo pipefail
+          if [ -z "${TELEGRAM_BOT_TOKEN:-}" ] || [ -z "${TELEGRAM_RED_CHAT_ID:-}" ]; then
+            echo "::warning::telegram alert skipped because one or more secrets are missing" >&2
+            exit 0
+          fi
+          message=$(printf '%s\n%s\n%s' \
+            "ward release workflow failed on main" \
+            "repo: ${GITHUB_REPOSITORY}" \
+            "run: ${GITHUB_SERVER_URL}/${GITHUB_REPOSITORY}/actions/runs/${GITHUB_RUN_ID}")
+          curl -fsS -X POST \
+            "https://api.telegram.org/bot${TELEGRAM_BOT_TOKEN}/sendMessage" \
+            -d chat_id="${TELEGRAM_RED_CHAT_ID}" \
+            --data-urlencode "text=${message}" \
+            -d disable_web_page_preview=true
   publish-binaries:
     needs: release
     if: ${{ needs.release.outputs.tag != '' }}
@@ -268,6 +289,27 @@ jobs:
           done
           echo "GitHub release ${TAG} published with the full matrix + SHA256SUMS"
 
+      - name: Alert Telegram on main failure
+        if: ${{ failure() && github.ref == 'refs/heads/main' }}
+        shell: bash
+        env:
+          TELEGRAM_BOT_TOKEN: ${{ secrets.TELEGRAM_BOT_TOKEN }}
+          TELEGRAM_RED_CHAT_ID: ${{ secrets.TELEGRAM_RED_CHAT_ID }}
+        run: |
+          set -euo pipefail
+          if [ -z "${TELEGRAM_BOT_TOKEN:-}" ] || [ -z "${TELEGRAM_RED_CHAT_ID:-}" ]; then
+            echo "::warning::telegram alert skipped because one or more secrets are missing" >&2
+            exit 0
+          fi
+          message=$(printf '%s\n%s\n%s' \
+            "ward release workflow failed on main" \
+            "repo: ${GITHUB_REPOSITORY}" \
+            "run: ${GITHUB_SERVER_URL}/${GITHUB_REPOSITORY}/actions/runs/${GITHUB_RUN_ID}")
+          curl -fsS -X POST \
+            "https://api.telegram.org/bot${TELEGRAM_BOT_TOKEN}/sendMessage" \
+            -d chat_id="${TELEGRAM_RED_CHAT_ID}" \
+            --data-urlencode "text=${message}" \
+            -d disable_web_page_preview=true
   publish-kdl-write:
     needs: release
     if: ${{ needs.release.outputs.tag != '' }}
@@ -389,6 +431,27 @@ jobs:
             echo "published ${file} to the internal channel ${base}/${file}"
           done
 
+      - name: Alert Telegram on main failure
+        if: ${{ failure() && github.ref == 'refs/heads/main' }}
+        shell: bash
+        env:
+          TELEGRAM_BOT_TOKEN: ${{ secrets.TELEGRAM_BOT_TOKEN }}
+          TELEGRAM_RED_CHAT_ID: ${{ secrets.TELEGRAM_RED_CHAT_ID }}
+        run: |
+          set -euo pipefail
+          if [ -z "${TELEGRAM_BOT_TOKEN:-}" ] || [ -z "${TELEGRAM_RED_CHAT_ID:-}" ]; then
+            echo "::warning::telegram alert skipped because one or more secrets are missing" >&2
+            exit 0
+          fi
+          message=$(printf '%s\n%s\n%s' \
+            "ward release workflow failed on main" \
+            "repo: ${GITHUB_REPOSITORY}" \
+            "run: ${GITHUB_SERVER_URL}/${GITHUB_REPOSITORY}/actions/runs/${GITHUB_RUN_ID}")
+          curl -fsS -X POST \
+            "https://api.telegram.org/bot${TELEGRAM_BOT_TOKEN}/sendMessage" \
+            -d chat_id="${TELEGRAM_RED_CHAT_ID}" \
+            --data-urlencode "text=${message}" \
+            -d disable_web_page_preview=true
   publish-kdl-read:
     needs: release
     if: ${{ needs.release.outputs.tag != '' }}
@@ -512,6 +575,27 @@ jobs:
             echo "published ${file} to the internal channel ${base}/${file}"
           done
 
+      - name: Alert Telegram on main failure
+        if: ${{ failure() && github.ref == 'refs/heads/main' }}
+        shell: bash
+        env:
+          TELEGRAM_BOT_TOKEN: ${{ secrets.TELEGRAM_BOT_TOKEN }}
+          TELEGRAM_RED_CHAT_ID: ${{ secrets.TELEGRAM_RED_CHAT_ID }}
+        run: |
+          set -euo pipefail
+          if [ -z "${TELEGRAM_BOT_TOKEN:-}" ] || [ -z "${TELEGRAM_RED_CHAT_ID:-}" ]; then
+            echo "::warning::telegram alert skipped because one or more secrets are missing" >&2
+            exit 0
+          fi
+          message=$(printf '%s\n%s\n%s' \
+            "ward release workflow failed on main" \
+            "repo: ${GITHUB_REPOSITORY}" \
+            "run: ${GITHUB_SERVER_URL}/${GITHUB_REPOSITORY}/actions/runs/${GITHUB_RUN_ID}")
+          curl -fsS -X POST \
+            "https://api.telegram.org/bot${TELEGRAM_BOT_TOKEN}/sendMessage" \
+            -d chat_id="${TELEGRAM_RED_CHAT_ID}" \
+            --data-urlencode "text=${message}" \
+            -d disable_web_page_preview=true
   bump-tap-formula:
     needs: [release, publish-binaries]
     if: ${{ needs.release.outputs.tag != '' }}
@@ -677,6 +761,27 @@ jobs:
           fi
           echo "tap ${TAP_REPO} formula bumped to ${TAG}"
 
+      - name: Alert Telegram on main failure
+        if: ${{ failure() && github.ref == 'refs/heads/main' }}
+        shell: bash
+        env:
+          TELEGRAM_BOT_TOKEN: ${{ secrets.TELEGRAM_BOT_TOKEN }}
+          TELEGRAM_RED_CHAT_ID: ${{ secrets.TELEGRAM_RED_CHAT_ID }}
+        run: |
+          set -euo pipefail
+          if [ -z "${TELEGRAM_BOT_TOKEN:-}" ] || [ -z "${TELEGRAM_RED_CHAT_ID:-}" ]; then
+            echo "::warning::telegram alert skipped because one or more secrets are missing" >&2
+            exit 0
+          fi
+          message=$(printf '%s\n%s\n%s' \
+            "ward release workflow failed on main" \
+            "repo: ${GITHUB_REPOSITORY}" \
+            "run: ${GITHUB_SERVER_URL}/${GITHUB_REPOSITORY}/actions/runs/${GITHUB_RUN_ID}")
+          curl -fsS -X POST \
+            "https://api.telegram.org/bot${TELEGRAM_BOT_TOKEN}/sendMessage" \
+            -d chat_id="${TELEGRAM_RED_CHAT_ID}" \
+            --data-urlencode "text=${message}" \
+            -d disable_web_page_preview=true
   bump-scoop-manifest:
     needs: [release, publish-binaries]
     if: ${{ needs.release.outputs.tag != '' }}
@@ -804,3 +909,24 @@ jobs:
             exit 1
           fi
           echo "bucket ${BUCKET_REPO} scoop manifest bumped to ${TAG}"
+      - name: Alert Telegram on main failure
+        if: ${{ failure() && github.ref == 'refs/heads/main' }}
+        shell: bash
+        env:
+          TELEGRAM_BOT_TOKEN: ${{ secrets.TELEGRAM_BOT_TOKEN }}
+          TELEGRAM_RED_CHAT_ID: ${{ secrets.TELEGRAM_RED_CHAT_ID }}
+        run: |
+          set -euo pipefail
+          if [ -z "${TELEGRAM_BOT_TOKEN:-}" ] || [ -z "${TELEGRAM_RED_CHAT_ID:-}" ]; then
+            echo "::warning::telegram alert skipped because one or more secrets are missing" >&2
+            exit 0
+          fi
+          message=$(printf '%s\n%s\n%s' \
+            "ward release workflow failed on main" \
+            "repo: ${GITHUB_REPOSITORY}" \
+            "run: ${GITHUB_SERVER_URL}/${GITHUB_REPOSITORY}/actions/runs/${GITHUB_RUN_ID}")
+          curl -fsS -X POST \
+            "https://api.telegram.org/bot${TELEGRAM_BOT_TOKEN}/sendMessage" \
+            -d chat_id="${TELEGRAM_RED_CHAT_ID}" \
+            --data-urlencode "text=${message}" \
+            -d disable_web_page_preview=true

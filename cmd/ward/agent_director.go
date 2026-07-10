@@ -1151,7 +1151,7 @@ func (r *Runner) backlogDispatchOne(ctx context.Context, label string, dispatch 
 			e.LastOutcome = outcome
 		})
 	}
-	container := r.backlogRunningContainer(ctx, targetRepo{Owner: ref.Owner, Name: ref.Repo}, ref.Number)
+	container := backlogDispatchContainerName(dispatch, ref)
 	if err := r.updateBacklogEntry(p.repo, p.Num, func(e *backlogEntry) {
 		e.State = "dispatched"
 		e.DispatchedAt = time.Now().UTC().Format(time.RFC3339)
@@ -1163,9 +1163,18 @@ func (r *Runner) backlogDispatchOne(ctx context.Context, label string, dispatch 
 	return nil
 }
 
+// backlogDispatchContainerName renders the launch-path container name.
+// The director records it without asking Docker so surfaces can reconcile runs.
+func backlogDispatchContainerName(dispatch dispatchEngineer, ref agentIssueRef) string {
+	return issueScopedContainerName(roleEngineer, dispatch.harness, targetRepo{Owner: ref.Owner, Name: ref.Repo}, ref.Number)
+}
+
 // directorDispatchDisposition classifies a dispatch error for the ledger (ward#352,
 // ward#524, ward#527). See docs/agent-director-dispatch.md.
 func directorDispatchDisposition(err error) (state string, outcome *backlogOutcome, deferred bool) {
+	if isEngineerCapacityError(err) {
+		return "queued", &backlogOutcome{Status: "deferred", Text: backlogTruncate(err.Error(), 300)}, true
+	}
 	if isDispatchDecline(err) {
 		return "failed", &backlogOutcome{Status: "declined", Text: backlogTruncate(err.Error(), 300)}, false
 	}
