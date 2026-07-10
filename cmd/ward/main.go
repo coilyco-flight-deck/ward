@@ -104,6 +104,7 @@ func rootCommand() *cli.Command {
 		Commands: []*cli.Command{
 			versionCommand(),
 			setupCommand(),
+			doctorCommand(),
 			execCommand(),
 			gitCommand(),
 			auditCommand(),

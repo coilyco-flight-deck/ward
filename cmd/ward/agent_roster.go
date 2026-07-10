@@ -5,8 +5,10 @@ import (
 	"fmt"
 	"io"
 	"os"
+	"sort"
 	"strings"
 
+	"forgejo.coilysiren.me/coilyco-flight-deck/cli-guard/pkg/fleetconfig"
 	"github.com/urfave/cli/v3"
 )
 
@@ -21,37 +23,138 @@ const agentRosterDoc = "docs/agent-roster.md"
 // generated header and drift-test failures so a red build is self-curing.
 const agentRosterRegenHint = "make agent-roster"
 
-// agentRoleInfo carries the tagline, semantic capability preset, and invocation note
-// columns a cli.Command does not.
-type agentRoleInfo struct {
-	Tagline      string // the one-line "what this specialist does"
-	Capabilities string // the ward-owned semantic posture for this preset
-	Modes        string // ref vs freeform; detached vs interactive
+type agentRolePosture string
+
+const (
+	agentRolePostureDetached    agentRolePosture = "detached"
+	agentRolePostureAttached    agentRolePosture = "attached"
+	agentRolePostureNoCode      agentRolePosture = "no-code"
+	agentRolePostureCodeLanding agentRolePosture = "code-landing"
+)
+
+// agentRoleDefinition carries the role bundle a startup role resolves from.
+// It includes the shipped preset fields plus the effective fleet overlay.
+type agentRoleDefinition struct {
+	Name           string
+	Tagline        string
+	Capabilities   semanticCapabilitySet
+	Modes          string
+	DefaultHarness string
+	Posture        agentRolePosture
+	Guardfiles     fleetconfig.Guardfiles
+	AgentOverlays  map[string]fleetconfig.RoleAgentOverride
 }
 
-// agentRoleInfos holds the per-role columns keyed by the registered role name. A
-// newly-registered role with no entry is a hard error (agentRosterRowsFrom).
-var agentRoleInfos = map[string]agentRoleInfo{
-	"engineer": {
-		Tagline:      "Implements a ticket end to end.",
-		Capabilities: semanticCapabilitiesForRole(roleEngineer).String(),
-		Modes:        "A ref carries that issue detached, fire-and-forget. Freeform text files an issue first, then carries it. Detached-only - interactive work funnels to the director.",
-	},
-	"director": {
-		Tagline:      "Autonomously drives a repo's headless lane to drain.",
-		Capabilities: semanticCapabilitiesForRole(roleDirector).String(),
-		Modes:        "Attached LLM-in-the-loop heartbeat over a repo's backlog (`--repo` scope). Surfaces a read-only scope + dispatch session on drain, no ref.",
-	},
-	"advisor": {
-		Tagline:      "Answers without writing code.",
-		Capabilities: semanticCapabilitiesForRole(roleAdvisor).String(),
-		Modes:        "A ref researches the issue and posts the answer as a comment. Freeform text answers inline.",
-	},
-	"qa": {
-		Tagline:      "Inspects a candidate and posts a structured verdict comment.",
-		Capabilities: semanticCapabilitiesForRole(roleQA).String(),
-		Modes:        "A ref inspects the issue, branch, pull request, and checks, then posts a structured QA verdict comment. Freeform mode is not exposed.",
-	},
+// cloneRoleOverlays copies a role's sparse agent overlay map so callers can
+// compose without mutating the parsed fleet config.
+func cloneRoleOverlays(in map[string]fleetconfig.RoleAgentOverride) map[string]fleetconfig.RoleAgentOverride {
+	if len(in) == 0 {
+		return nil
+	}
+	out := make(map[string]fleetconfig.RoleAgentOverride, len(in))
+	for name, ov := range in {
+		out[name] = ov
+	}
+	return out
+}
+
+// mergeRoleOverlays applies sparse fleet overlays onto a base role overlay map.
+func mergeRoleOverlays(base, override map[string]fleetconfig.RoleAgentOverride) map[string]fleetconfig.RoleAgentOverride {
+	if len(base) == 0 && len(override) == 0 {
+		return nil
+	}
+	out := cloneRoleOverlays(base)
+	if out == nil {
+		out = map[string]fleetconfig.RoleAgentOverride{}
+	}
+	for name, ov := range override {
+		cur := out[name]
+		if strings.TrimSpace(ov.Model) != "" {
+			cur.Model = strings.TrimSpace(ov.Model)
+		}
+		if strings.TrimSpace(ov.Endpoint) != "" {
+			cur.Endpoint = strings.TrimSpace(ov.Endpoint)
+		}
+		if strings.TrimSpace(ov.ReasoningEffort) != "" {
+			cur.ReasoningEffort = strings.TrimSpace(ov.ReasoningEffort)
+		}
+		if strings.TrimSpace(ov.Verbosity) != "" {
+			cur.Verbosity = strings.TrimSpace(ov.Verbosity)
+		}
+		out[name] = cur
+	}
+	return out
+}
+
+// cloneGuardfiles copies a role's guardfile selector so the resolved definition is
+// independent of the source fleet config.
+func cloneGuardfiles(in fleetconfig.Guardfiles) fleetconfig.Guardfiles {
+	out := fleetconfig.Guardfiles{Prefix: in.Prefix}
+	if len(in.List) != 0 {
+		out.List = append([]string{}, in.List...)
+	}
+	return out
+}
+
+// roleOverlaySummary renders a role's sparse agent overlays in a stable order.
+func roleOverlaySummary(overlays map[string]fleetconfig.RoleAgentOverride) string {
+	if len(overlays) == 0 {
+		return ""
+	}
+	names := make([]string, 0, len(overlays))
+	for name := range overlays {
+		names = append(names, name)
+	}
+	sort.Strings(names)
+	parts := make([]string, 0, len(names))
+	for _, name := range names {
+		ov := overlays[name]
+		fields := make([]string, 0, 4)
+		if strings.TrimSpace(ov.Model) != "" {
+			fields = append(fields, "model="+strings.TrimSpace(ov.Model))
+		}
+		if strings.TrimSpace(ov.Endpoint) != "" {
+			fields = append(fields, "endpoint="+strings.TrimSpace(ov.Endpoint))
+		}
+		if strings.TrimSpace(ov.ReasoningEffort) != "" {
+			fields = append(fields, "reasoning-effort="+strings.TrimSpace(ov.ReasoningEffort))
+		}
+		if strings.TrimSpace(ov.Verbosity) != "" {
+			fields = append(fields, "verbosity="+strings.TrimSpace(ov.Verbosity))
+		}
+		if len(fields) == 0 {
+			continue
+		}
+		parts = append(parts, fmt.Sprintf("%s{%s}", name, strings.Join(fields, ", ")))
+	}
+	return strings.Join(parts, "; ")
+}
+
+// agentRoleDefinitionsFromFleet resolves the built-in role presets over the
+// effective fleet config's `roles` overlay.
+func agentRoleDefinitionsFromFleet(f fleetconfig.Fleet) (map[string]agentRoleDefinition, error) {
+	defs := builtInAgentRoleDefinitions()
+	order := builtInAgentRoleDefinitionOrder()
+	for _, role := range f.Roles {
+		def, ok := defs[role.Name]
+		if !ok {
+			return nil, fmt.Errorf("fleet config defines role %q, but ward only registers the shipped presets %q",
+				role.Name, strings.Join(order, ", "))
+		}
+		def.Guardfiles = cloneGuardfiles(role.Guardfiles)
+		def.AgentOverlays = mergeRoleOverlays(def.AgentOverlays, role.AgentConfig)
+		defs[role.Name] = def
+	}
+	return defs, nil
+}
+
+// agentRoleDefinitions resolves the built-in presets against the live fleet config.
+func agentRoleDefinitions() (map[string]agentRoleDefinition, error) {
+	fleet, err := loadFleetConfig()
+	if err != nil {
+		return nil, err
+	}
+	return agentRoleDefinitionsFromFleet(fleet)
 }
 
 // agentMetaCommands are agent subcommands that are NOT startup roles.
@@ -68,30 +171,38 @@ type agentRosterRow struct {
 	Doc          string // the per-role detail doc, e.g. agent-engineer.md
 }
 
-// agentRosterRows enumerates the live roster: the roles agentCommand() registers,
-// minus the meta verbs, joined to their descriptors (ward#348).
+// agentRosterRows enumerates the live roster: the shipped roles resolved through
+// the effective fleet config, minus the meta verbs, joined to their descriptors.
 func agentRosterRows() ([]agentRosterRow, error) {
-	return agentRosterRowsFrom(agentCommand().Commands)
+	defs, err := agentRoleDefinitions()
+	if err != nil {
+		return nil, err
+	}
+	return agentRosterRowsFromDefinitions(agentCommand().Commands, defs)
 }
 
-// agentRosterRowsFrom is the pure core over an explicit command set (testable). A
-// registered non-meta role missing from agentRoleInfos is a hard error.
-func agentRosterRowsFrom(cmds []*cli.Command) ([]agentRosterRow, error) {
+// agentRosterRowsFromDefinitions is the pure core over an explicit command set and
+// resolved role definitions. Missing descriptors stay a hard error.
+func agentRosterRowsFromDefinitions(cmds []*cli.Command, defs map[string]agentRoleDefinition) ([]agentRosterRow, error) {
 	var rows []agentRosterRow
 	for _, cmd := range cmds {
 		if agentMetaCommands[cmd.Name] {
 			continue
 		}
-		info, ok := agentRoleInfos[cmd.Name]
+		info, ok := defs[cmd.Name]
 		if !ok {
-			return nil, fmt.Errorf("agent role %q has no roster descriptor; add it to agentRoleInfos in cmd/ward/agent_roster.go and regenerate %s with `%s`",
+			return nil, fmt.Errorf("agent role %q has no roster descriptor; add it to the embedded role catalog or the resolved fleet role overlays and regenerate %s with `%s`",
 				cmd.Name, agentRosterDoc, agentRosterRegenHint)
+		}
+		modes := info.Modes
+		if overlay := roleOverlaySummary(info.AgentOverlays); overlay != "" {
+			modes += " Role overlays: " + overlay + "."
 		}
 		rows = append(rows, agentRosterRow{
 			Role:         cmd.Name,
 			Tagline:      info.Tagline,
-			Capabilities: info.Capabilities,
-			Modes:        info.Modes,
+			Capabilities: info.Capabilities.String(),
+			Modes:        modes,
 			Doc:          "agent-" + cmd.Name + ".md",
 		})
 	}
@@ -100,7 +211,7 @@ func agentRosterRowsFrom(cmds []*cli.Command) ([]agentRosterRow, error) {
 
 // agentRosterDocGoal is the doc_goal front-matter the generated page carries so it
 // grades against an explicit target like every ward doc (ward#289).
-const agentRosterDocGoal = "Give a reader the canonical, code-generated list of every ward agent startup role with its tagline, semantic capability preset, and invocation modes, so they can pick engineer, director, advisor, or qa and know it can never drift from the binary."
+const agentRosterDocGoal = "Give a reader the canonical, code-generated list of every ward agent startup role with its tagline, semantic capability preset, and invocation modes, so they can see the shipped role presets from the embedded role catalog plus any effective fleet overlays without the page drifting from the binary."
 
 // agentRosterMarkdown renders the committed docs/agent-roster.md body: doc_goal
 // front-matter plus a flat bullet list (not a table, per the house Voice rules).
@@ -113,11 +224,12 @@ func agentRosterMarkdown() (string, error) {
 	fmt.Fprintf(&b, "---\ndoc_goal: %s\n---\n", agentRosterDocGoal)
 	fmt.Fprintf(&b, "# ward agent: the role roster\n\n")
 	fmt.Fprintf(&b, "<!-- Generated from the code roster by `ward agent roster --markdown` (ward#348); do not edit by hand. Regenerate with `%s`. -->\n\n", agentRosterRegenHint)
-	fmt.Fprintf(&b, "A flat list of every `ward agent` startup role - the roster `agentCommand()` registers in\n")
-	fmt.Fprintf(&b, "code, rendered by the binary describing itself so the page can never drift. Each role is one\n")
-	fmt.Fprintf(&b, "entry: what the specialist does, what semantic capabilities the preset carries, and how you\n")
-	fmt.Fprintf(&b, "invoke it (a ref acts on an issue, freeform text files or answers it). Run `ward agent roster` (`warded roster`) for this list live at the\n")
-	fmt.Fprintf(&b, "terminal, and the per-role docs each entry links to carry the prose detail. See\n")
+	fmt.Fprintf(&b, "A flat list of every `ward agent` startup role - the roster the binary resolves from\n")
+	fmt.Fprintf(&b, "its built-in presets plus the effective fleet config's role overlays, so the page can never\n")
+	fmt.Fprintf(&b, "drift. Each role is one entry: what the specialist does, what semantic capabilities the\n")
+	fmt.Fprintf(&b, "preset carries, and how you invoke it (a ref acts on an issue, freeform text files or answers\n")
+	fmt.Fprintf(&b, "it). Run `ward agent roster` (`warded roster`) for this list live at the terminal, and the\n")
+	fmt.Fprintf(&b, "per-role docs each entry links to carry the prose detail. See\n")
 	fmt.Fprintf(&b, "[agent.md](agent.md) for the umbrella and the `warded` public face.\n\n")
 	for _, row := range rows {
 		fmt.Fprintf(&b, "- [`warded %s`](%s) - %s Capabilities: %s. Modes: %s\n", row.Role, row.Doc, row.Tagline, row.Capabilities, row.Modes)

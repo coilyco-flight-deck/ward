@@ -662,9 +662,9 @@ func agentDefaultSurfaceAction() cli.ActionFunc {
 		}
 		arg := strings.TrimSpace(c.Args().First())
 		if _, err := parseAgentIssueRef(arg); err != nil {
-			return fmt.Errorf("unknown command %q for 'ward agent' (roles: engineer, director, advisor, qa); "+
+			return fmt.Errorf("unknown command %q for 'ward agent' (roles: %s); "+
 				"a bare ref like #98 or owner/repo#N runs the engineer, and freeform work goes to "+
-				"`ward agent engineer \"<instructions>\"`", arg)
+				"`ward agent engineer \"<instructions>\"`", arg, strings.Join(builtInAgentRoleDefinitionOrder(), ", "))
 		}
 		return agentEngineerAction()(ctx, c)
 	}
@@ -1696,7 +1696,7 @@ func carryingLine(label string, ref agentIssueRef, title string) string {
 
 // launchAgentContainer turns a resolved (ref, title, seed) into the container plan and
 // fires it detached - the shared tail of engineer, freeform task, and route (ward#356).
-func (r *Runner) launchAgentContainer(ctx context.Context, c *cli.Command, mode containerMode, surface string, w resolvedWork, justification string) error { //nolint:funlen,gocognit,gocyclo,cyclop
+func (r *Runner) launchAgentContainer(ctx context.Context, c *cli.Command, mode containerMode, surface string, w resolvedWork, justification string) error { //nolint:gocyclo,cyclop,gocognit,funlen
 	label := agentCmdline(mode, surface)
 	ref, title, seed := w.Ref, w.Title, w.Seed
 
