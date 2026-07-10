@@ -70,6 +70,19 @@ func TestDirectorDispatchDisposition(t *testing.T) {
 		t.Errorf("capacity outcome = %+v, want status=deferred", outcome)
 	}
 
+	// Open-PR backpressure is also a retryable deferral.
+	backpressure := newOpenPRBackpressureError("ward agent engineer", 7, 6)
+	state, outcome, deferred = directorDispatchDisposition(backpressure)
+	if !deferred {
+		t.Error("open-PR backpressure must defer, not fail")
+	}
+	if state != "queued" {
+		t.Errorf("backpressure state = %q, want queued", state)
+	}
+	if outcome == nil || outcome.Status != "deferred" {
+		t.Errorf("backpressure outcome = %+v, want status=deferred", outcome)
+	}
+
 	// A coded per-issue decline is a real verdict on the issue: park it terminal.
 	noGo := dispatchDeclineErr(dispatchNoGo, "preflight_no_go", "issue a/b#5 is infeasible")
 	state, outcome, deferred = directorDispatchDisposition(noGo)

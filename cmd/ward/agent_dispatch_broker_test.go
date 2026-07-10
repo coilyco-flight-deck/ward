@@ -1280,7 +1280,7 @@ func TestRunHostDispatchBrokerRequestReturnsStructuredLaunchFailure(t *testing.T
 	}}}
 	req := dispatchBrokerRequest{
 		Role: "engineer",
-		Argv: []string{"engineer", "coilyco-flight-deck/ward#786", "--harness", "codex"},
+		Argv: []string{"engineer", "coilyco-flight-deck/ward#786", "--harness", "codex", "--pr"},
 	}
 	logPath, err := r.startHostDispatchBrokerRequest(t.Context(), req)
 	if err == nil {
@@ -1474,6 +1474,7 @@ func TestRunAgentTaskDirectRoutesThroughBrokerOnReadonlySurface(t *testing.T) {
     agent-reap-idle "1h"
     agent-reap-max-cpu "5.0"
     engineer-container-limit "12"
+    engineer-open-pr-branch-limit "6"
     director-max-parallel "10"
     director-limit "50"
     director-poll-interval "30s"
@@ -1857,7 +1858,7 @@ func TestStartHostDispatchBrokerRequestWaitsForVisibleEngineer(t *testing.T) {
 
 	req := dispatchBrokerRequest{
 		Role:      "engineer",
-		Argv:      []string{"engineer", "coilyco-flight-deck/ward#1087", "--harness", "codex"},
+		Argv:      []string{"engineer", "coilyco-flight-deck/ward#1087", "--harness", "codex", "--pr"},
 		Requester: "director-codex-host",
 		Token:     "nonce-visible",
 	}
@@ -1891,7 +1892,7 @@ func TestStartHostDispatchBrokerRequestFailsWhenEngineerNeverBecomesVisible(t *t
 
 	req := dispatchBrokerRequest{
 		Role:      "engineer",
-		Argv:      []string{"engineer", "coilyco-flight-deck/ward#1087", "--harness", "codex"},
+		Argv:      []string{"engineer", "coilyco-flight-deck/ward#1087", "--harness", "codex", "--pr"},
 		Requester: "director-codex-host",
 		Token:     "nonce-missing",
 	}
@@ -1951,7 +1952,7 @@ func TestStartHostDispatchBrokerRequestDoesNotTrustCrossOwnerNameCollisions(t *t
 
 	req := dispatchBrokerRequest{
 		Role:      "engineer",
-		Argv:      []string{"engineer", "coilysiren/website#66", "--harness", "codex"},
+		Argv:      []string{"engineer", "coilysiren/website#66", "--harness", "codex", "--pr"},
 		Requester: "director-codex-host",
 		Token:     "nonce-collision",
 	}

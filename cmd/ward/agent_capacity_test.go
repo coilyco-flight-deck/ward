@@ -132,6 +132,7 @@ func TestEngineerContainerLimitFromBundleOverride(t *testing.T) {
     agent-reap-idle "1h"
     agent-reap-max-cpu "5.0"
     engineer-container-limit "15"
+    engineer-open-pr-branch-limit "6"
     director-max-parallel "10"
     director-limit "50"
     director-poll-interval "30s"

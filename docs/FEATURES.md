@@ -26,6 +26,9 @@ Inventory of what `ward` ships today.
 - **Reservation freshness in director burndown** - the backlog heartbeat now
   distinguishes fresh reservation holds from stale ones so headless issues can
   re-enter dispatch instead of parking forever behind a dead reservation.
+- **Open-PR backpressure gate** - net-new engineer dispatch pauses above the
+  open PR branch cap, while branch-based repair runs stay allowed so the queue
+  can drain instead of growing.
 - **Issue-scoped director dispatch** - `ward agent director` can take one exact
   issue ref or full Forgejo issue URL and stay scoped to that single issue
   instead of widening into the repo backlog.
