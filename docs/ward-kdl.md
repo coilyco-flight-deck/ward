@@ -30,9 +30,9 @@ regenerate when the source changes (`make build-ward-kdl`). Three dialects:
 
 `ward` (public face `warded`) is the product a user installs. It embeds the ward-kdl surfaces as `ward ops <api>`, `ward docker`, `ward agents <target>`, then adds the run-time-only layers ward-kdl never produces: `ward agent` and `ward exec`. The embeds are the baked default. `WARD_CONFIG_REF` still swaps edge-mounted surfaces at launch, but core agent/container defaults stay ward-owned ([config-source.md](config-source.md)). Exec guardfiles auto-mount at their `wrap` path ([ward-kdl-in-ward.md](ward-kdl-in-ward.md)).
 
-## The per-area reference docs
+## The per-area reference output
 
-Every guardfile gets a generated reference doc beside it, committed under [docs/ward-kdl/](ward-kdl/). Emitted by ward-kdl's `surface.Markdown()`, they describe one area's verbs. [ward-kdl-surface.md](ward-kdl-surface.md) is the flat index across every area.
+`ward-kdl` can still emit per-area Markdown reference output beside each guardfile, but that output is generated material, not release-era docs, and this repo no longer commits it. [ward-kdl-surface.md](ward-kdl-surface.md) is the committed flat index across every area.
 
 ## See also
 

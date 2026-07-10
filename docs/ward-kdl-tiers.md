@@ -61,10 +61,3 @@ additive scaffolding beside the base, never a migration of it.
 
 - [ward-kdl.md](ward-kdl.md) - what ward-kdl is: the build-time authoring layer.
 - [ward-kdl-surface.md](ward-kdl-surface.md) - the full generated verb surface.
-- the wired references: forgejo
-  [read](ward-kdl/ward-kdl.forgejo.read.guardfile.md) /
-  [write](ward-kdl/ward-kdl.forgejo.write.guardfile.md) /
-  [admin](ward-kdl/ward-kdl.forgejo.admin.guardfile.md), signoz
-  [read](ward-kdl/ward-kdl.signoz.read.guardfile.md) /
-  [write](ward-kdl/ward-kdl.signoz.write.guardfile.md) /
-  [admin](ward-kdl/ward-kdl.signoz.admin.guardfile.md).

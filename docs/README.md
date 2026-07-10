@@ -122,7 +122,7 @@ New to ward? Read [architecture.md](architecture.md) first - it frames the whole
 - [config-source.md](config-source.md) - the `WARD_CONFIG_REF` edge-surface fs.FS-at-launch seam: baked neutral default vs a live-resolved bundle for guarded surfaces.
 - [config-ref-resolver.md](config-ref-resolver.md) - the `WARD_CONFIG_REF` git-ref grammar and its TTL-cached `syncGitRef` resolver.
 - [fleet-local.md](fleet-local.md) - `~/.ward/fleet.local.kdl`, the operator-local config reader.
-- [ward-kdl/](ward-kdl/) - 23 generated per-area guardfile references (git, aws, docker, the agents/ops/pkg surfaces, ...), indexed area-by-area from [ward-kdl-surface.md](ward-kdl-surface.md).
+- Generated per-area guardfile references are build output, not release-era docs. Use [ward-kdl-surface.md](ward-kdl-surface.md) for the committed area index.
 
 ## Operator ops surfaces
 

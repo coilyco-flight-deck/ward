@@ -44,6 +44,8 @@ locks, `ward-kdl.fleet.kdl`, and `ward-kdl.topology.kdl`. Those values are
 deployment config, not engine code, and the build swaps them through the
 assets-dir convention.
 
+Per-area Markdown refs are generated, not committed.
+
 ## Bring your own specs
 
 The bundle is read from the tracked `.ward/ward-kdl/` directory - the assets-dir

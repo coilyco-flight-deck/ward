@@ -1,7 +1,7 @@
 # ward docker exec
 
 `ward docker exec` is the **one mutating verb** on the otherwise read-only
-[`ward docker`](ward-kdl/ward-kdl.docker.guardfile.md) surface. It shells into a
+`ward docker` surface. It shells into a
 **ward-managed container** - one ward itself launched via [`ward agent`](agent.md) -
 and refuses every other container.
 
@@ -62,7 +62,7 @@ hard refusal - reach for bare `docker exec` there, where the host lockdown decid
 
 ## See also
 
-- [ward-kdl/ward-kdl.docker.guardfile.md](ward-kdl/ward-kdl.docker.guardfile.md) - the read-only docker verbs this sits beside.
+- [ward-kdl-surface.md](ward-kdl-surface.md) - the read-only docker verbs this sits beside.
 - [container.md](container.md) - the ward-managed container model and its `ward.*` labels.
 - [container-permissions.md](container-permissions.md) - the `bypassPermissions` posture inside a run.
 - [agent.md](agent.md) - `ward agent`, the launcher that creates exec's targets.
