@@ -26,6 +26,9 @@ Inventory of what `ward` ships today.
 - **Reservation freshness in director burndown** - the backlog heartbeat now
   distinguishes fresh reservation holds from stale ones so headless issues can
   re-enter dispatch instead of parking forever behind a dead reservation.
+- **Issue-scoped director dispatch** - `ward agent director` can take one exact
+  issue ref or full Forgejo issue URL and stay scoped to that single issue
+  instead of widening into the repo backlog.
 - **Dispatch broker version carry-through** - brokered launches forward the
   caller's resolved ward version and report the effective version in brokered
   launch output. See [agent-dispatch-broker.md](agent-dispatch-broker.md).
