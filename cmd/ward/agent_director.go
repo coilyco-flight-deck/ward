@@ -1151,7 +1151,7 @@ func (r *Runner) backlogDispatchOne(ctx context.Context, label string, dispatch 
 			e.LastOutcome = outcome
 		})
 	}
-	container := r.backlogRunningContainer(ctx, targetRepo{Owner: ref.Owner, Name: ref.Repo}, ref.Number)
+	container := backlogDispatchContainerName(dispatch, ref)
 	if err := r.updateBacklogEntry(p.repo, p.Num, func(e *backlogEntry) {
 		e.State = "dispatched"
 		e.DispatchedAt = time.Now().UTC().Format(time.RFC3339)
@@ -1161,6 +1161,13 @@ func (r *Runner) backlogDispatchOne(ctx context.Context, label string, dispatch 
 	}
 	fmt.Fprintf(os.Stderr, "%s: dispatched %s (container %s)\n", label, ref, containerOrUnknown(container))
 	return nil
+}
+
+// backlogDispatchContainerName renders the issue-scoped container name the launch
+// path uses. The director records it without asking Docker so read-only surfaces
+// can keep reconciling broker-forwarded runs even when local Docker is unavailable.
+func backlogDispatchContainerName(dispatch dispatchEngineer, ref agentIssueRef) string {
+	return issueScopedContainerName(roleEngineer, dispatch.harness, targetRepo{Owner: ref.Owner, Name: ref.Repo}, ref.Number)
 }
 
 // directorDispatchDisposition classifies a dispatch error for the ledger (ward#352,
