@@ -1,9 +1,7 @@
 // SigNoz ops surface for ward-kdl, driving the vendored signoz.openapi.json - a
 // hand-authored minimal spec (SigNoz publishes no usable OpenAPI: its upstream
-// docs/api/openapi.yml ships components/schemas with no paths). The spec models
-// only the CRU endpoints granted below; delete/destroy verbs are denied here and
-// never compile in. SigNoz is the traces + logs pane on ser8 (signoz/signoz
-// 0.128.0, example deployment). See ../../docs/ward-kdl/ward-kdl.signoz.guardfile.md.
+// docs/api/openapi.yml ships components/schemas with no paths). This baked copy
+// is example-safe; the real deployment bundle carries the live host/token.
 //
 // base-url is opaque: the UI rides a tailnet HTTPS service (TS_HOSTNAME signoz),
 // whose FQDN is a SecureString, so the host resolves from SSM at request time -

@@ -1,89 +1,43 @@
 ---
-doc_goal: Establish ward exec as the audited dev-verb gate at the heart of ward's forge-agnostic half - argv-validated, one JSONL audit row, refused unless the tree reconstructs from git history - and make the platform-conditional enforcement depth (Linux depth-N sandbox jail versus the depth-0 macOS/Windows brew-path limit) explicit so no reader over-scopes the containment guarantee.
+doc_goal: Give the dev-verb gate a compact release-era reference so contributors know what `ward exec` does and what it refuses.
 ---
-# exec verb
+# ward exec
 
-`ward exec` is the audited gate at the heart of ward's forge-agnostic half - the
-one path a repo's `build`/`test`/`vet`/`lint`/`tidy`/`cover` runs through so
-nothing reaches `make` or `go` unchecked. Every run answers to three properties,
-its contract as a gate:
+`ward exec <verb>` runs a repo dev verb through the gate.
 
-- **argv validation** - every argv token is checked against cli-guard's
-  shell-metacharacter policy before the command runs.
-- **one audit row** - each run appends a single append-only JSONL row to
-  `~/.ward/audit/<repo>.jsonl` (verb prefix `repo.<cmd>`).
-- **clean-tree gate** - the run is refused unless the declaring `ward.yaml` is
-  committed and HEAD is synced, so the audit row reconstructs from git history.
+## The contract
 
-The sections below deepen each in turn. Mechanically, the verb walks up from cwd
-looking for a ward or coily allowlist, then exposes each declared command as a
-leaf subcommand.
+- argv is validated before the verb runs.
+- one audit row is written for every invocation.
+- the repo must be clean and synced.
+- unknown verbs fall back to `ward exec` routing.
 
-Unknown top-level verbs that match a declared leaf fall back to `exec`
-automatically (`ward test` -> `ward exec test`), and every ward-managed repo
-is expected to declare the `build`/`test`/`install` triple. See
-[docs/verb-fallback.md](verb-fallback.md).
+## Enforcement depth
 
-When no config is reachable, `exec` is still registered (so `--help`
-and the `version` verb behave consistently) but every invocation
-returns a clear error pointing at the missing file.
+- on Linux, the gate can run inside the sandbox jail.
+- on macOS and Windows, enforcement is shallower and follows the host
+  allowlist.
 
-Each leaf runs the configured argv inside the repo that declared it,
-after validating every argv token against cli-guard's
-shell-metacharacter policy. Every invocation runs through cli-guard's
-verb pipeline, so each `ward exec` run appends one JSONL audit row to
-`~/.ward/audit/<repo>.jsonl` (verb prefix `repo.<cmd>`).
+The important part is that the verb still passes through the same audited path
+either way.
 
-For a concrete demo of what the gate turns away - the clean-tree refusal and the
-argv-metacharacter refusal side by side, with the loud-override note - see
-[docs/gate-demo.md](gate-demo.md).
+## What it is for
 
-## Enforcement depth by platform
+- `build`, `test`, `lint`, `tidy`, `cover`, and similar repo verbs.
+- the `ward git` surface and the audit trail around it.
 
-The gate is a **verb-level** boundary - it bounds what call is expressible, not
-what a process can touch once running (see
-[docs/comparison-openshell.md](comparison-openshell.md)). How deep that boundary
-holds against **descendant** processes differs by platform, and the difference is
-material:
+## Example
 
-- **Linux: depth-N.** Sandboxed verbs (e.g. `ward docker exec`) run inside
-  cli-guard's `sandbox` jail, so the wrapper holds at arbitrary process depth,
-  not just depth 0. A descendant of a gated verb that invokes a wrapped tool -
-  by name or absolute path - re-enters the gate. A descendant escape here is a
-  vulnerability ([SECURITY.md](../SECURITY.md)).
-- **macOS / Windows: depth-0.** There is no sandbox jail. Enforcement is the
-  harness allowlist alone, which only sees the top-level call: a child process
-  spawned by a gated verb can invoke a wrapped tool without re-entering the gate.
-  This descendant bypass is a **known limitation by design**, not a vulnerability.
+```bash
+ward exec test
+ward exec lint
+ward exec build
+```
 
-So the strongest containment property - the gate holding at arbitrary process
-depth - is **Linux-only**. macOS and Windows adopters (the audience the
-brew-first [Install](../README.md#install) path predominantly serves) get
-top-level argv validation, the audit row, and the clean-tree gate, but **not**
-descendant containment. Scope any "the gate holds no matter how deep the call
-nests" expectation to Linux.
+The command you type is not a free shell. It is a checked, logged repo verb.
 
-## Clean-tree gate
+## See also
 
-A repo verb's audit row records the argv expanded from `.ward/ward.yaml`,
-so the row can only be reconstructed from git history if the declaring
-`ward.yaml` is committed and HEAD has a synced upstream branch. The gate
-(cli-guard's `gittree`) therefore refuses an `exec` verb when:
-
-- the declaring `ward.yaml` is itself among the dirty paths, or
-- HEAD is detached / has no upstream / is behind its upstream.
-
-Working-tree dirt that does **not** touch `ward.yaml` does not refuse -
-the committed `ward.yaml` plus HEAD still reconstruct the invocation - but
-the `git status --porcelain` snapshot is stamped onto the audit row
-(`working_tree_status`) for forensics.
-
-### Override
-
-`ward --audit-override-dirty exec <cmd>` bypasses the gate for genuine
-emergencies. The audit row is tagged `audit_override=true` and captures
-the working-tree status so the run can still be reconstructed after the
-fact. This mirrors `coily --audit-override-dirty`.
-
-This is the contributor-side port of coily's repo-verb gate
-([coilysiren/coily#211](https://forgejo.coilysiren.me/coilyco-bridge/coily/issues/211)).
+- [ward-yaml.md](ward-yaml.md) - the repo config schema.
+- [audit.md](audit.md) - the audit log format.
+- [verb-fallback.md](verb-fallback.md) - the fallback rule.

@@ -1,54 +1,29 @@
----
-doc_goal: Let a maintainer or a GitHub-arriving installer understand how one build per tag publishes a byte-identical binary matrix plus SHA256SUMS to both the Forgejo and GitHub release pages, why the checksums cannot drift, and when to reach for a raw binary versus Homebrew.
----
-# Release binaries: the dual-forge matrix
+# release binaries
 
-Every tag publishes the **same binary matrix to both release pages** - the
-canonical [Forgejo release](https://forgejo.coilysiren.me/coilyco-flight-deck/ward/releases)
-and the [GitHub mirror release](https://github.com/coilyco-flight-deck/ward/releases)
-([ward#454](https://forgejo.coilysiren.me/coilyco-flight-deck/ward/issues/454)). The `publish-binaries` job in
-[`.forgejo/workflows/release.yml`](../.forgejo/workflows/release.yml) is the one
-place that builds and uploads them.
+Each release publishes a tagged binary matrix plus checksums.
 
-## The assets, and who installs which way
+- The matrix covers the supported OS and architecture pairs.
+- `SHA256SUMS` is published with the release.
+- The release pages on Forgejo and GitHub mirror the same artifacts.
 
-- **`ward-{darwin,linux}-{amd64,arm64}`** - four static binaries, one per
-  platform. A GitHub arrival, or the container path, downloads the one for their
-  machine, `chmod +x`es it, and runs it - no Go toolchain, no round-trip to
-  forgejo.coilysiren.me ([ward#414](https://forgejo.coilysiren.me/coilyco-flight-deck/ward/issues/414), [ward#442](https://forgejo.coilysiren.me/coilyco-flight-deck/ward/issues/442)).
-- **`ward-windows-{amd64,arm64}.exe`** + a bare-digest **`.exe.sha256`** sidecar
-  each. scoop autoupdate reads the hash from that per-asset sidecar (coily.json's
-  contract), so `coilyco-flight-deck/scoop-bucket`'s `ward.json` installs off the release
-  page ([ward#561](https://forgejo.coilysiren.me/coilyco-flight-deck/ward/issues/561)).
-- **`SHA256SUMS`** - one digest per binary (windows exes included), bare
-  basenames, so `sha256sum -c SHA256SUMS` verifies from whichever page the file
-  came off. Raw-binary installs use this; Homebrew pins the per-platform asset
-  digests directly and scoop needs the `.exe.sha256` sidecars.
-- **Most people should install via a package manager** (see the
-  [README](../README.md#install)): Homebrew on macOS/Linux, scoop on Windows.
-  Raw binaries serve the rest.
+## Why it exists
 
-The Homebrew tap now downloads the matching release binary for the current
-platform and verifies it, so `brew` consumes the same bytes the release page
-serves. See [release.md](release.md).
+- the tarball or binary is what most users install.
+- the checksum file is what makes the release verifiable.
+- the matrix keeps the install story aligned across the supported hosts.
 
-## Why the checksums cannot drift
+## User view
 
-The job builds the whole matrix **once** with `CGO_ENABLED=0` (ward is pure Go,
-so every target cross-compiles from the linux/amd64 runner) and uploads the
-**byte-identical files** to both forges. Same bytes in, same `SHA256SUMS` on both
-pages - there is no second build to diverge ([ward#438](https://forgejo.coilysiren.me/coilyco-flight-deck/ward/issues/438)). The GitHub release also
-reuses the exact Forgejo release body, so the notes match too.
+- pick the platform binary for your host.
+- verify it with the checksum file.
+- install it through the channel you prefer.
 
-## How the GitHub half is wired
+## What to expect
 
-- It is part of the **release pipeline**, not the ref mirror.
-- It authenticates with **`GITHUB_MIRROR_PAT`** (scope: `repo` / contents:write on the GitHub mirror). **Provision it before a [ward#454](https://forgejo.coilysiren.me/coilyco-flight-deck/ward/issues/454) release run.** Unset, the GitHub half skips loudly and the Forgejo release is unaffected.
-- The release is authored by the PAT user, not `github-actions[bot]`.
-- The step pushes the tag to GitHub first (idempotent), creates or reuses the
-  release, then replaces same-named assets so a workflow re-run is safe.
+- the binaries are named by platform and architecture.
+- the tags match the release tag on Forgejo.
+- the mirror copies the same release payload, not a different build.
 
 ## See also
 
-- [release.md](release.md) - the full release pipeline.
-- [homebrew-build.md](homebrew-build.md) - the build-from-source notes for other tap formulae.
+- [release.md](release.md) - the release workflow.

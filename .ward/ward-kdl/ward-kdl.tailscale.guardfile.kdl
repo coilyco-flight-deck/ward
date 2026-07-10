@@ -1,16 +1,13 @@
 // Tailscale ops surface for ward-kdl, driving the vendored tailscale.openapi.yaml
-// (OpenAPI 3.1, YAML). Path params arrive as $refs into components/parameters and
-// the ACL body rides requestBody (json + hujson). Auth is the bearer scheme. Ops
-// resolve by convention (cli-guard#147); only the ACL singleton keeps an explicit
-// op. See ../../docs/ward-kdl/ward-kdl.tailscale.guardfile.md.
+// (OpenAPI 3.1, YAML). This baked copy is an example-safe placeholder; the real
+// deployment bundle carries the live tailnet host and API key.
 wrap ward-kdl ops tailscale {
     spec tailscale.openapi.yaml
-    base-url "api.tailscale.com/api/v2"
+    base-url "example.tailscale.invalid/api/v2"
     auth bearer {
-        value ssm "/tailscale/api-key"
+        value ssm "/example/tailscale/api-key"
     }
-    // Scope gate: every tailnet-scoped leaf must name an example* tailnet (widen if
-    // renamed). Name it explicitly - the API's "-" default trips the flag parser.
+    // Scope gate: every tailnet-scoped leaf must name an example tailnet.
     restrict tailnet matches example*
     // devices: list and inspect. Deletion is denied - removing a device from the
     // tailnet is disruptive and human-only.

@@ -143,6 +143,7 @@ func TestReviewGateClauseInSeed(t *testing.T) {
 // TestEngineerSeedDefaultsSkipReviewGate proves engineer dispatches now omit the
 // in-container review clause by default, while the manual review verb remains.
 func TestEngineerSeedDefaultsSkipReviewGate(t *testing.T) {
+	t.Setenv("HOME", t.TempDir())
 	ref := agentIssueRef{Owner: "coilyco-flight-deck", Repo: "ward", Number: 676}
 	cmd := parseCommandForTest(t, agentSurfaceFlags(), []string{"engineer", ref.String()})
 
@@ -204,6 +205,7 @@ func TestReportPanelMachineLine(t *testing.T) {
 func TestReviewGateWantedHonorsSkipsAndConfig(t *testing.T) {
 	ref := agentIssueRef{Owner: "coilyco-flight-deck", Repo: "ward", Number: 676}
 	t.Run("default engineer dispatch skips review temporarily", func(t *testing.T) {
+		t.Setenv("HOME", t.TempDir())
 		cmd := parseCommandForTest(t, agentSurfaceFlags(), []string{"engineer", ref.String()})
 		wanted, reason := reviewGateDecision(cmd, "engineer", modeCodex, ref)
 		if wanted {

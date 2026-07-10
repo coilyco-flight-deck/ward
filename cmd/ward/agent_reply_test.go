@@ -346,9 +346,9 @@ func TestPartitionReplySpecs(t *testing.T) {
 	specs := []replyIssueSpec{
 		{Repo: "example-owner/cli-guard", Title: "a", Body: "b"},
 		{Repo: "example-owner/ward", Title: "c", Body: "d"},
-		{Repo: "evilcorp/pwn", Title: "x", Body: "y"},           // untrusted -> dropped
-		{Repo: "example-owner/ward#9", Title: "z"},              // malformed -> dropped
-		{Repo: "example-owner/agentic-os", Title: "", Body: ""}, // empty title -> dropped
+		{Repo: "evilcorp/pwn", Title: "x", Body: "y"},         // untrusted -> dropped
+		{Repo: "example-owner/ward#9", Title: "z"},            // malformed -> dropped
+		{Repo: "example-bot/agentic-os", Title: "", Body: ""}, // empty title -> dropped
 	}
 	allowed, dropped := r.partitionReplySpecs(specs)
 	if len(allowed) != 2 {

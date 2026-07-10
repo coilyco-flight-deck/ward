@@ -516,7 +516,7 @@ func TestOwnerAllowed(t *testing.T) {
 			t.Errorf("ownerAllowed(%q) = false, want true", ok)
 		}
 	}
-	for _, bad := range []string{"evilcorp", "", "Coilysiren", "coilyco-flight-deck"} {
+	for _, bad := range []string{"evilcorp", "", "Example-owner", "coilyco-bridge", "coilyco-flight-deck"} {
 		if r.ownerAllowed(bad) {
 			t.Errorf("ownerAllowed(%q) = true, want false", bad)
 		}

@@ -5,8 +5,6 @@ import (
 	"context"
 	"encoding/json"
 	"fmt"
-	"os"
-	"os/exec"
 	"strconv"
 	"strings"
 
@@ -17,57 +15,31 @@ import (
 // broker_exec.go is the privileged half of ward's root credential broker: the
 // injected broker.Executor + broker.Authorizer (ward#329). See docs/broker.md.
 
-// wardKdlWriteBin is the write-tier forgejo binary the executor shells: read +
-// create/edit, no delete leaf compiled in (ward#240, an out-of-tier verb absent).
-const wardKdlWriteBin = "ward-kdl-write"
-
-// cmdRunner runs name with args and env, returning combined output. Injected so
-// the executor's argv shaping is unit-testable without the real binary on PATH.
-type cmdRunner func(ctx context.Context, name string, args, env []string) ([]byte, error)
-
-// execCmdRunner is the production cmdRunner: run the binary, capture output.
-func execCmdRunner(ctx context.Context, name string, args, env []string) ([]byte, error) {
-	cmd := exec.CommandContext(ctx, name, args...) // #nosec G204 -- name is a fixed const, args are broker-validated
-	cmd.Env = env
-	return cmd.CombinedOutput()
-}
-
-// wardKdlWriteExecutor is the broker.Executor: it mutates the forge by shelling
-// the write binary, holding the bot token and seeding it into env (docs/broker.md).
+// wardKdlWriteExecutor is the broker.Executor: it mutates Forgejo through ward's
+// typed core adapter, holding the bot token in memory (docs/broker.md).
 type wardKdlWriteExecutor struct {
 	// token is the root-held forgejo bot credential, seeded into FORGEJO_TOKEN.
 	token string
-	// run executes the write binary; defaults to execCmdRunner when nil.
-	run cmdRunner
+	// baseURL is test-only; production uses forgejoBaseURL.
+	baseURL string
 }
 
-// exec shells the write binary with the bot token in env (never argv), wrapping
-// a failure with the token-free argv and any captured output for the audit log.
-func (e *wardKdlWriteExecutor) exec(ctx context.Context, args []string) ([]byte, error) {
-	run := e.run
-	if run == nil {
-		run = execCmdRunner
+func (e *wardKdlWriteExecutor) client() *forgejoClient {
+	baseURL := strings.TrimRight(e.baseURL, "/")
+	if baseURL == "" {
+		baseURL = forgejoBaseURL
 	}
-	env := append(os.Environ(), credseed.EnvForgejoToken+"="+e.token)
-	out, err := run(ctx, wardKdlWriteBin, args, env)
-	if err != nil {
-		return nil, fmt.Errorf("broker: %s %s: %w: %s",
-			wardKdlWriteBin, strings.Join(args, " "), err, bytes.TrimSpace(out))
-	}
-	return out, nil
+	return &forgejoClient{token: e.token, baseURL: baseURL}
 }
 
 // FileIssue files a new issue under target; the JSON projection yields the
 // forge-assigned number + html_url for the broker.Result.
 func (e *wardKdlWriteExecutor) FileIssue(ctx context.Context, target broker.Target, title, body string) (broker.Result, error) {
-	args := []string{"ops", "forgejo", "issue", "create", target.Owner, target.Repo, "--title", title}
-	if body != "" {
-		args = append(args, "--body", body)
-	}
-	args = append(args, "--output", "json")
-	out, err := e.exec(ctx, args)
+	out, err := e.client().doJSON(ctx, "POST",
+		[]string{"repos", target.Owner, target.Repo, "issues"}, nil,
+		map[string]string{"title": title, "body": body}, true, nil)
 	if err != nil {
-		return broker.Result{}, err
+		return broker.Result{}, fmt.Errorf("broker: create issue %s/%s: %w", target.Owner, target.Repo, err)
 	}
 	return parseIssueResult(out), nil
 }
@@ -75,31 +47,32 @@ func (e *wardKdlWriteExecutor) FileIssue(ctx context.Context, target broker.Targ
 // EditIssue edits target's issue; an empty title/body/state leaves that field
 // untouched, per the broker.Executor contract.
 func (e *wardKdlWriteExecutor) EditIssue(ctx context.Context, target broker.Target, title, body, state string) (broker.Result, error) {
-	args := []string{"ops", "forgejo", "issue", "edit", target.Owner, target.Repo, strconv.Itoa(target.Number)}
+	payload := map[string]string{}
 	if title != "" {
-		args = append(args, "--title", title)
+		payload["title"] = title
 	}
 	if body != "" {
-		args = append(args, "--body", body)
+		payload["body"] = body
 	}
 	if state != "" {
-		args = append(args, "--state", state)
+		payload["state"] = state
 	}
-	args = append(args, "--output", "json")
-	out, err := e.exec(ctx, args)
+	out, err := e.client().doJSON(ctx, "PATCH",
+		[]string{"repos", target.Owner, target.Repo, "issues", strconv.Itoa(target.Number)}, nil,
+		payload, true, nil)
 	if err != nil {
-		return broker.Result{}, err
+		return broker.Result{}, fmt.Errorf("broker: edit issue %s/%s#%d: %w", target.Owner, target.Repo, target.Number, err)
 	}
 	return parseIssueResult(out), nil
 }
 
-// CommentIssue posts body via `issue comment` (the ward#380 shadow leaf), NOT
-// `comment create` - no `comment` resource exists, so it posted nothing (ward#613).
+// CommentIssue posts body via Forgejo's issue-comment endpoint.
 func (e *wardKdlWriteExecutor) CommentIssue(ctx context.Context, target broker.Target, body string) (broker.Result, error) {
-	args := []string{"ops", "forgejo", "issue", "comment", target.Owner, target.Repo, strconv.Itoa(target.Number), "--body", body, "--output", "json"}
-	out, err := e.exec(ctx, args)
+	out, err := e.client().doJSON(ctx, "POST",
+		[]string{"repos", target.Owner, target.Repo, "issues", strconv.Itoa(target.Number), "comments"}, nil,
+		map[string]string{"body": body}, true, nil)
 	if err != nil {
-		return broker.Result{}, err
+		return broker.Result{}, fmt.Errorf("broker: comment issue %s/%s#%d: %w", target.Owner, target.Repo, target.Number, err)
 	}
 	res := parseCommentResult(out)
 	if res.Number == 0 {
@@ -108,17 +81,30 @@ func (e *wardKdlWriteExecutor) CommentIssue(ctx context.Context, target broker.T
 	return res, nil
 }
 
-// LabelIssue mutates target issue's label membership by mode, shelling the
-// `issue-label <mode>` leaf; cli-guard's labelInvariants already gated it fail-closed.
+// LabelIssue mutates target issue's label membership by mode through Forgejo.
+// cli-guard's labelInvariants already gated it fail-closed.
 func (e *wardKdlWriteExecutor) LabelIssue(ctx context.Context, target broker.Target, mode string, labels []string) (broker.Result, error) {
-	args := []string{"ops", "forgejo", "issue-label", mode, target.Owner, target.Repo, strconv.Itoa(target.Number)}
-	for _, l := range labels {
-		args = append(args, "--labels", l)
+	cl := e.client()
+	segments := []string{"repos", target.Owner, target.Repo, "issues", strconv.Itoa(target.Number), "labels"}
+	var out []byte
+	var err error
+	switch mode {
+	case broker.LabelAdd:
+		out, err = cl.doJSON(ctx, "POST", segments, nil, map[string][]string{"labels": labels}, true, nil)
+	case broker.LabelSet:
+		out, err = cl.doJSON(ctx, "PUT", segments, nil, map[string][]string{"labels": labels}, true, nil)
+	case broker.LabelRemove:
+		for _, label := range labels {
+			out, err = cl.doJSON(ctx, "DELETE", append(segments, label), nil, nil, true, nil)
+			if err != nil {
+				break
+			}
+		}
+	default:
+		return broker.Result{}, fmt.Errorf("broker: unsupported label mode %q", mode)
 	}
-	args = append(args, "--output", "json")
-	out, err := e.exec(ctx, args)
 	if err != nil {
-		return broker.Result{}, err
+		return broker.Result{}, fmt.Errorf("broker: label issue %s/%s#%d: %w", target.Owner, target.Repo, target.Number, err)
 	}
 	// The label leaf returns the issue's label array, not an {number} object, so
 	// parseIssueResult falls to Detail; reuse the target number for the rendered ref.

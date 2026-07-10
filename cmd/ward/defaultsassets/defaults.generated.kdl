@@ -3,6 +3,7 @@ smart-defaults {
     agent-reservation-recheck-max "15s"
     agent-reap-idle "1h"
     agent-reap-max-cpu "5.0"
+    engineer-container-limit "12"
     director-max-parallel "10"
     director-limit "50"
     director-poll-interval "30s"

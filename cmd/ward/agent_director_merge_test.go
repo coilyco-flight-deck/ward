@@ -5,15 +5,10 @@ import (
 	"encoding/json"
 	"net/http"
 	"net/http/httptest"
-	"os"
-	"path/filepath"
-	"runtime"
-	"strconv"
 	"strings"
 	"testing"
 
 	"forgejo.coilysiren.me/coilyco-flight-deck/cli-guard/cli/dispatch"
-	"forgejo.coilysiren.me/coilyco-flight-deck/cli-guard/cli/shell"
 )
 
 func TestDirectorMergeDecision(t *testing.T) {
@@ -241,11 +236,6 @@ func TestDirectorRunMetaParsesWorkflowAndReview(t *testing.T) {
 }
 
 func TestDirectorMergeEligibilityRequiresMatchingQAVerdict(t *testing.T) {
-	if runtime.GOOS == "windows" {
-		t.Skip("shell-script fake exe is POSIX-only")
-	}
-	dir := t.TempDir()
-	fake := filepath.Join(dir, "fake-ward")
 	currentQA := qaVerdictCommentFrom(modeClaude, qaThoroughness{}, qaFamilyInternal, "inspect the branch", qaLaunchContext{
 		IssueRef:       "coilyco-flight-deck/ward#729",
 		PRRef:          "coilyco-flight-deck/ward#729",
@@ -262,32 +252,26 @@ func TestDirectorMergeEligibilityRequiresMatchingQAVerdict(t *testing.T) {
 		Workflow:       string(workflowPullRequestAndMerge),
 		RunIdentity:    "ward-qa-2",
 	}, qaVerdict{Verdict: "fail", Summary: "stale result"})
-	script := `#!/bin/sh
-case "$3 $4" in
-"issue get")
-cat <<'JSON'
-{"number":729,"title":"ship the fix","body":"closes #729","state":"open","html_url":"https://f/729","labels":[]}
-JSON
-;;
-"issue-comment list")
-cat <<'JSON'
-[{"body":"WARD-OUTCOME: merge-ready\n\n<details><summary>details</summary>\n\nworkflow: pull-request-and-merge; review summary: passed: all green\n\n</details>","created_at":"2026-07-09T00:00:00Z","user":{"login":"coilyco-ops"}},{"body":` + strconv.Quote(currentQA) + `,"created_at":"2026-07-09T00:05:00Z","user":{"login":"coilyco-ops"}},{"body":` + strconv.Quote(staleQA) + `,"created_at":"2026-07-09T00:10:00Z","user":{"login":"coilyco-ops"}}]
-JSON
-;;
-*)
-echo "unexpected args: $@" >&2
-exit 1
-;;
-esac
-`
-	if err := os.WriteFile(fake, []byte(script), 0o755); err != nil { // #nosec G306 -- test-only executable
-		t.Fatalf("write fake ward: %v", err)
-	}
 	prsrv := httptest.NewServer(http.HandlerFunc(func(w http.ResponseWriter, r *http.Request) {
 		if got := r.Header.Get("Authorization"); got != "token secret" {
 			t.Fatalf("auth header = %q, want token secret", got)
 		}
 		switch r.URL.Path {
+		case "/api/v1/repos/coilyco-flight-deck/ward/issues/729":
+			_ = json.NewEncoder(w).Encode(map[string]any{
+				"number":   729,
+				"title":    "ship the fix",
+				"body":     "closes #729",
+				"state":    "open",
+				"html_url": "https://f/729",
+				"labels":   []map[string]any{},
+			})
+		case "/api/v1/repos/coilyco-flight-deck/ward/issues/729/comments":
+			_ = json.NewEncoder(w).Encode([]map[string]any{
+				{"body": "WARD-OUTCOME: merge-ready\n\n<details><summary>details</summary>\n\nworkflow: pull-request-and-merge; review summary: passed: all green\n\n</details>", "created_at": "2026-07-09T00:00:00Z", "user": map[string]any{"login": "coilyco-ops"}},
+				{"body": currentQA, "created_at": "2026-07-09T00:05:00Z", "user": map[string]any{"login": "coilyco-ops"}},
+				{"body": staleQA, "created_at": "2026-07-09T00:10:00Z", "user": map[string]any{"login": "coilyco-ops"}},
+			})
 		case "/api/v1/repos/coilyco-flight-deck/ward/pulls/729":
 			_ = json.NewEncoder(w).Encode(map[string]any{
 				"number":   729,
@@ -326,7 +310,7 @@ esac
 		}
 	}))
 	defer prsrv.Close()
-	cl := &forgejoClient{r: &Runner{Runner: &shell.Runner{}}, exe: fake, baseURL: prsrv.URL, token: "secret"}
+	cl := &forgejoClient{baseURL: prsrv.URL, token: "secret"}
 
 	allowed, reason, linked, meta := directorMergeEligibility(context.Background(), "coilyco-flight-deck", "ward",
 		directorPullRequest{Issue: dispatch.Issue{Number: 729, Title: "ship the fix", Body: "closes #729\n" + directorMergeWorkflowMarker + "\n"}, Mergeable: true, MergeableKnown: true}, cl, cl)
@@ -394,7 +378,36 @@ func TestDirectorMergeEligibilityRejectsStaleRequiredStatus(t *testing.T) {
 	}
 }
 
+func TestDirectorMergeEligibilityFallsBackWhenBaseBranchHasNoRequiredStatusContexts(t *testing.T) {
+	cl, pr := directorMergeEligibilityFixtureWithBranchProtection(t, "abc123", map[string]string{
+		"test / test (pull_request)": "success",
+	}, "success", false, nil)
+	allowed, reason, linked, meta := directorMergeEligibility(context.Background(), "coilyco-flight-deck", "ward", pr, cl, cl)
+	if !allowed || reason != "" || linked != 729 {
+		t.Fatalf("fallback PR = %v %q %d, want true/\"\"/729", allowed, reason, linked)
+	}
+	if meta.Status.HeadSHA != "abc123" || meta.Status.State != "success" || len(meta.Status.Checks) != 2 {
+		t.Fatalf("fallback status = %+v, want live status summary", meta.Status)
+	}
+	want := map[string]bool{
+		"ci/build=success":                   false,
+		"test / test (pull_request)=success": false,
+	}
+	for _, got := range meta.Status.Checks {
+		want[got.Context+"="+got.State] = true
+	}
+	for key, seen := range want {
+		if !seen {
+			t.Fatalf("fallback status missing %s in %+v", key, meta.Status.Checks)
+		}
+	}
+}
+
 func directorMergeEligibilityFixture(t *testing.T, headSHA string, contexts map[string]string, combinedState string) (*forgejoClient, directorPullRequest) {
+	return directorMergeEligibilityFixtureWithBranchProtection(t, headSHA, contexts, combinedState, true, []string{"ci/build", "ci/test"})
+}
+
+func directorMergeEligibilityFixtureWithBranchProtection(t *testing.T, headSHA string, contexts map[string]string, combinedState string, enableStatusCheck bool, branchContexts []string) (*forgejoClient, directorPullRequest) {
 	t.Helper()
 	if combinedState == "" {
 		combinedState = "success"
@@ -421,33 +434,26 @@ func directorMergeEligibilityFixture(t *testing.T, headSHA string, contexts map[
 		Workflow:       string(workflowPullRequestAndMerge),
 		RunIdentity:    "ward-qa-2",
 	}, qaVerdict{Verdict: "fail", Summary: "stale result"})
-	script := `#!/bin/sh
-case "$3 $4" in
-"issue get")
-cat <<'JSON'
-{"number":729,"title":"ship the fix","body":"closes #729","state":"open","html_url":"https://f/729","labels":[]}
-JSON
-;;
-"issue-comment list")
-cat <<'JSON'
-[{"body":"WARD-OUTCOME: merge-ready\n\n<details><summary>details</summary>\n\nworkflow: pull-request-and-merge; review summary: passed: all green\n\n</details>","created_at":"2026-07-09T00:00:00Z","user":{"login":"coilyco-ops"}},{"body":` + strconv.Quote(currentQA) + `,"created_at":"2026-07-09T00:05:00Z","user":{"login":"coilyco-ops"}},{"body":` + strconv.Quote(staleQA) + `,"created_at":"2026-07-09T00:10:00Z","user":{"login":"coilyco-ops"}}]
-JSON
-;;
-*)
-echo "unexpected args: $@" >&2
-exit 1
-;;
-esac
-`
-	fake := filepath.Join(t.TempDir(), "fake-ward")
-	if err := os.WriteFile(fake, []byte(script), 0o755); err != nil { // #nosec G306 -- test-only executable
-		t.Fatalf("write fake ward: %v", err)
-	}
 	prsrv := httptest.NewServer(http.HandlerFunc(func(w http.ResponseWriter, r *http.Request) {
 		if got := r.Header.Get("Authorization"); got != "token secret" {
 			t.Fatalf("auth header = %q, want token secret", got)
 		}
 		switch r.URL.Path {
+		case "/api/v1/repos/coilyco-flight-deck/ward/issues/729":
+			_ = json.NewEncoder(w).Encode(map[string]any{
+				"number":   729,
+				"title":    "ship the fix",
+				"body":     "closes #729",
+				"state":    "open",
+				"html_url": "https://f/729",
+				"labels":   []map[string]any{},
+			})
+		case "/api/v1/repos/coilyco-flight-deck/ward/issues/729/comments":
+			_ = json.NewEncoder(w).Encode([]map[string]any{
+				{"body": "WARD-OUTCOME: merge-ready\n\n<details><summary>details</summary>\n\nworkflow: pull-request-and-merge; review summary: passed: all green\n\n</details>", "created_at": "2026-07-09T00:00:00Z", "user": map[string]any{"login": "coilyco-ops"}},
+				{"body": currentQA, "created_at": "2026-07-09T00:05:00Z", "user": map[string]any{"login": "coilyco-ops"}},
+				{"body": staleQA, "created_at": "2026-07-09T00:10:00Z", "user": map[string]any{"login": "coilyco-ops"}},
+			})
 		case "/api/v1/repos/coilyco-flight-deck/ward/pulls/729":
 			_ = json.NewEncoder(w).Encode(map[string]any{
 				"number":   729,
@@ -465,11 +471,15 @@ esac
 				},
 			})
 		case "/api/v1/repos/coilyco-flight-deck/ward/branches/main":
+			contexts := branchContexts
+			if contexts == nil {
+				contexts = []string{}
+			}
 			_ = json.NewEncoder(w).Encode(map[string]any{
 				"name":                  "main",
 				"protected":             true,
-				"enable_status_check":   true,
-				"status_check_contexts": []string{"ci/build", "ci/test"},
+				"enable_status_check":   enableStatusCheck,
+				"status_check_contexts": contexts,
 			})
 		case "/api/v1/repos/coilyco-flight-deck/ward/commits/" + headSHA + "/status":
 			statuses := make([]map[string]any, 0, len(contexts))
@@ -497,38 +507,12 @@ esac
 		}
 	}))
 	t.Cleanup(prsrv.Close)
-	return &forgejoClient{r: &Runner{Runner: &shell.Runner{}}, exe: fake, baseURL: prsrv.URL, token: "secret"},
+	return &forgejoClient{baseURL: prsrv.URL, token: "secret"},
 		directorPullRequest{Issue: dispatch.Issue{Number: 729, Title: "ship the fix", Body: "closes #729\n" + directorMergeWorkflowMarker + "\n"}, Mergeable: true, MergeableKnown: true}
 }
 
 func TestDirectorMergeEligibilityRejectsMergeConflict(t *testing.T) {
-	if runtime.GOOS == "windows" {
-		t.Skip("shell-script fake exe is POSIX-only")
-	}
-	dir := t.TempDir()
-	fake := filepath.Join(dir, "fake-ward")
-	script := `#!/bin/sh
-case "$3 $4" in
-"issue get")
-cat <<'JSON'
-{"number":729,"title":"ship the fix","body":"closes #729","state":"open","html_url":"https://f/729","labels":[]}
-JSON
-;;
-"issue-comment list")
-cat <<'JSON'
-[{"body":"WARD-OUTCOME: merge-ready\n\n<details><summary>details</summary>\n\nworkflow: pull-request-and-merge; review summary: passed: all green\n\n</details>","created_at":"2026-07-09T00:00:00Z","user":{"login":"coilyco-ops"}}]
-JSON
-;;
-*)
-echo "unexpected args: $@" >&2
-exit 1
-;;
-esac
-`
-	if err := os.WriteFile(fake, []byte(script), 0o755); err != nil { // #nosec G306 -- test-only executable
-		t.Fatalf("write fake ward: %v", err)
-	}
-	cl := &forgejoClient{r: &Runner{Runner: &shell.Runner{}}, exe: fake}
+	cl := &forgejoClient{}
 
 	allowed, reason, linked, meta := directorMergeEligibility(context.Background(), "coilyco-flight-deck", "ward",
 		directorPullRequest{Issue: dispatch.Issue{Number: 729, Title: "ship the fix", Body: "closes #729\n" + directorMergeWorkflowMarker + "\n"}, Mergeable: false, MergeableKnown: true}, cl, cl)
@@ -547,29 +531,16 @@ esac
 }
 
 func TestListOpenPullRequestsReadsMergeability(t *testing.T) {
-	if runtime.GOOS == "windows" {
-		t.Skip("shell-script fake exe is POSIX-only")
-	}
-	dir := t.TempDir()
-	fake := filepath.Join(dir, "fake-ward")
-	script := `#!/bin/sh
-case "$3 $4" in
-"issue list")
-cat <<'JSON'
-[{"number":701,"title":"mergeable","body":"closes #701","state":"open","html_url":"https://f/701","labels":[]},{"number":702,"title":"conflicted","body":"closes #702","state":"open","html_url":"https://f/702","labels":[]}]
-JSON
-;;
-*)
-echo "unexpected args: $@" >&2
-exit 1
-;;
-esac
-`
-	if err := os.WriteFile(fake, []byte(script), 0o755); err != nil { // #nosec G306 -- test-only executable
-		t.Fatalf("write fake ward: %v", err)
-	}
 	srv := httptest.NewServer(http.HandlerFunc(func(w http.ResponseWriter, r *http.Request) {
 		switch r.URL.Path {
+		case "/api/v1/repos/coilyco-flight-deck/ward/issues":
+			if got := r.URL.Query().Get("type"); got != "pulls" {
+				t.Fatalf("issue list type = %q, want pulls", got)
+			}
+			_ = json.NewEncoder(w).Encode([]map[string]any{
+				{"number": 701, "title": "mergeable", "body": "closes #701", "state": "open", "html_url": "https://f/701", "labels": []map[string]any{}},
+				{"number": 702, "title": "conflicted", "body": "closes #702", "state": "open", "html_url": "https://f/702", "labels": []map[string]any{}},
+			})
 		case "/api/v1/repos/coilyco-flight-deck/ward/pulls/701":
 			if got := r.Header.Get("Authorization"); got != "token secret" {
 				t.Fatalf("auth header = %q, want token secret", got)
@@ -583,7 +554,7 @@ esac
 	}))
 	defer srv.Close()
 
-	cl := &forgejoClient{r: &Runner{Runner: &shell.Runner{}}, exe: fake, baseURL: srv.URL, token: "secret"}
+	cl := &forgejoClient{baseURL: srv.URL, token: "secret"}
 	prs, err := cl.listOpenPullRequests(context.Background(), "coilyco-flight-deck", "ward", 50)
 	if err != nil {
 		t.Fatalf("listOpenPullRequests: %v", err)
