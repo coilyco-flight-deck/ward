@@ -37,7 +37,7 @@ func TestConfigJSON(t *testing.T) {
 		`"$schema": "https://opencode.ai/config.json"`,
 		`"model": "ollama/qwen3-coder:30b"`,
 		`"baseURL": "http://host.docker.internal:8082/v1"`,
-		`"x-request-id": "engineer-codex-ward-861"`,
+		`"x-request-id": "engineer-codex-ward-861:`,
 		`"x-ward-run-id": "engineer-codex-ward-861"`,
 		`"x-ward-issue-ref": "coilyco-flight-deck/ward#861"`,
 		`"x-ward-thread-id": "thread-123"`,
@@ -74,7 +74,7 @@ func TestComposeConfigWrites(t *testing.T) {
 	if !strings.Contains(string(got), `"model": "ollama/qwen3-coder:30b"`) {
 		t.Errorf("opencode.json missing model:\n%s", got)
 	}
-	if !strings.Contains(string(got), `"x-request-id": "engineer-codex-ward-861"`) {
+	if !strings.Contains(string(got), `"x-request-id": "engineer-codex-ward-861:`) {
 		t.Errorf("opencode.json missing request id:\n%s", got)
 	}
 }

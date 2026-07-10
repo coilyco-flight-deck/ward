@@ -1,6 +1,8 @@
 package opencode
 
 import (
+	"crypto/sha256"
+	"encoding/hex"
 	"encoding/json"
 	"fmt"
 	"os"
@@ -81,7 +83,7 @@ func opencodeHeaders(rc agentsapi.RunCtx) map[string]string {
 		key   string
 		value string
 	}{
-		{key: "x-request-id", value: env.RunID},
+		{key: "x-request-id", value: opencodeRequestID(env)},
 		{key: "x-ward-run-id", value: env.RunID},
 		{key: "x-ward-container-name", value: env.ContainerName},
 		{key: "x-ward-role", value: env.Role},
@@ -101,4 +103,27 @@ func opencodeHeaders(rc agentsapi.RunCtx) map[string]string {
 		return nil
 	}
 	return headers
+}
+
+func opencodeRequestID(env agentsapi.Correlation) string {
+	runID := strings.TrimSpace(env.RunID)
+	if runID == "" {
+		runID = strings.TrimSpace(env.ContainerName)
+	}
+	if runID == "" {
+		return ""
+	}
+	seed := strings.Join([]string{
+		strings.TrimSpace(env.ContainerName),
+		strings.TrimSpace(env.Role),
+		strings.TrimSpace(env.Harness),
+		strings.TrimSpace(env.TargetRepo),
+		strings.TrimSpace(env.IssueRef),
+		strings.TrimSpace(env.Workflow),
+		strings.TrimSpace(env.ContextLevel),
+		strings.TrimSpace(env.Version),
+		strings.TrimSpace(env.ThreadID),
+	}, "\x1f")
+	sum := sha256.Sum256([]byte(seed))
+	return runID + ":" + hex.EncodeToString(sum[:4])
 }
