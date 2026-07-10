@@ -17,6 +17,8 @@ Hand-written surfaces still win collisions.
 - it keeps exec guardfiles on the same audited path as the rest of ward.
 - it lets the generated surface show up under the shipped binary without a
   second command tree.
+- it accepts `first input` as sugar for `arg0` in exec guardfile predicates, so
+  older and newer guardfiles can share the same mount path.
 
 ## Collision rule
 

@@ -50,6 +50,9 @@ Inventory of what `ward` ships today.
   [ward-docker-exec.md](ward-docker-exec.md). It also embeds the shipped agent
   role catalog from [ward-kdl.roles.kdl](../.ward/ward-kdl/ward-kdl.roles.kdl).
   Per-area guardfile refs are generated output, not release-era docs.
+- It accepts `first input` as exec-guard sugar for `arg0`, and ward injects the
+  raw Forgejo Actions log fetch leaf directly into the shipped `ward ops
+  forgejo` surface.
 - Runtime `WARD_CONFIG_REF` bundles affect edge/operator surfaces, not the core
   agent control plane.
 - Coilyco-targeted operator surfaces fail fast when they would otherwise fall

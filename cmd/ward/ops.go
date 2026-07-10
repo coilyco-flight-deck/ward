@@ -99,6 +99,7 @@ func buildForgejoOpsFrom(src configSource) (*cli.Command, error) {
 	r.overrideForgejoViewIssue(forgejo)
 	r.overrideForgejoCreateIssue(forgejo)
 	r.overrideForgejoCommentIssue(forgejo)
+	r.overrideForgejoActionsLogs(forgejo)
 	return forgejo, nil
 }
 
@@ -249,6 +250,34 @@ func (r *Runner) overrideForgejoCommentIssue(forgejo *cli.Command) {
 	}
 }
 
+// overrideForgejoActionsLogs adds the raw actions log fetch leaf that the
+// generated surface currently cannot express without a shell bridge.
+func (r *Runner) overrideForgejoActionsLogs(forgejo *cli.Command) {
+	actions := subCommandNamed(forgejo, "actions")
+	if actions == nil {
+		actions = &cli.Command{
+			Name:  "actions",
+			Usage: "Forgejo Actions endpoints",
+		}
+		forgejo.Commands = append(forgejo.Commands, actions)
+	}
+	if subCommandNamed(actions, "logs") != nil {
+		return
+	}
+	actions.Commands = append(actions.Commands, &cli.Command{
+		Name:        "logs",
+		Usage:       "GET /repos/{owner}/{repo}/actions/runs/{run}/jobs/{job}/attempt/{attempt}/logs (raw)",
+		Description: "Fetch a Forgejo Actions run log directly over HTTP and stream the raw body to stdout.",
+		ArgsUsage:   "<owner> <repo> <run> <job> <attempt>",
+		Action: r.WrapVerb(verb.Spec{
+			Name:       "ward.ops.forgejo.actions.logs",
+			SkipPolicy: true,
+			ArgsFunc:   func(c *cli.Command) (map[string]string, []string) { return nil, c.Args().Slice() },
+			Action:     r.runForgejoActionsLogs,
+		}, r.Audit),
+	})
+}
+
 // runForgejoCommentIssueBodyFile resolves `--body-file` into `--body`, then
 // delegates; absent --body-file it is a pass-through (ward#404).
 func runForgejoCommentIssueBodyFile(ctx context.Context, cmd *cli.Command, orig cli.ActionFunc) error {
@@ -275,6 +304,27 @@ func runForgejoCommentIssueBodyFile(ctx context.Context, cmd *cli.Command, orig 
 		return fmt.Errorf("ward ops forgejo issue comment: bind body from --%s: %w", flagBodyFile, err)
 	}
 	return orig(ctx, cmd)
+}
+
+// runForgejoActionsLogs streams one raw Forgejo Actions log response to stdout.
+func (r *Runner) runForgejoActionsLogs(ctx context.Context, cmd *cli.Command) error {
+	args := cmd.Args().Slice()
+	if len(args) != 5 {
+		return fmt.Errorf("ward ops forgejo actions logs: need <owner> <repo> <run> <job> <attempt>, got %d arg(s)", len(args))
+	}
+	owner, repo, run, job, attempt := args[0], args[1], args[2], args[3], args[4]
+	if !strings.HasPrefix(owner, brokerOwnerPrefix) {
+		return fmt.Errorf("ward ops forgejo actions logs: owner %q is out of scope; restricted to %s* owners", owner, brokerOwnerPrefix)
+	}
+	cl := r.hostForgejoClient(ctx)
+	body, err := cl.getRaw(ctx, []string{"repos", owner, repo, "actions", "runs", run, "jobs", job, "attempt", attempt, "logs"}, "text/plain")
+	if err != nil {
+		return err
+	}
+	if _, err := os.Stdout.Write(body); err != nil {
+		return fmt.Errorf("ward ops forgejo actions logs: write stdout: %w", err)
+	}
+	return nil
 }
 
 // rerootGroupToWard rewrites a parsed guardfile's leading group token from the

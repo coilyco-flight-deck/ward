@@ -35,6 +35,59 @@ func TestCreateIssueBodyIsSigned(t *testing.T) {
 	}
 }
 
+func TestForgejoClientGetRawStreamsPlainBody(t *testing.T) {
+	var gotAuth, gotAccept string
+	srv := httptest.NewServer(http.HandlerFunc(func(w http.ResponseWriter, r *http.Request) {
+		gotAuth = r.Header.Get("Authorization")
+		gotAccept = r.Header.Get("Accept")
+		if r.Method != http.MethodGet {
+			t.Fatalf("method = %s, want GET", r.Method)
+		}
+		if r.URL.Path != "/api/v1/repos/coilyco-flight-deck/ward/actions/runs/123/jobs/456/attempt/7/logs" {
+			t.Fatalf("path = %q, want actions log endpoint", r.URL.Path)
+		}
+		_, _ = w.Write([]byte("line 1\nline 2\n"))
+	}))
+	defer srv.Close()
+
+	cl := &forgejoClient{baseURL: srv.URL, token: "secret"}
+	body, err := cl.getRaw(context.Background(), []string{"repos", "coilyco-flight-deck", "ward", "actions", "runs", "123", "jobs", "456", "attempt", "7", "logs"}, "text/plain")
+	if err != nil {
+		t.Fatalf("getRaw: %v", err)
+	}
+	if got := string(body); got != "line 1\nline 2\n" {
+		t.Fatalf("body = %q, want raw text", got)
+	}
+	if gotAuth != "token secret" {
+		t.Fatalf("Authorization = %q, want bearer token header", gotAuth)
+	}
+	if gotAccept != "text/plain" {
+		t.Fatalf("Accept = %q, want text/plain", gotAccept)
+	}
+}
+
+func TestForgejoClientGetRawReportsStatus(t *testing.T) {
+	srv := httptest.NewServer(http.HandlerFunc(func(w http.ResponseWriter, _ *http.Request) {
+		w.WriteHeader(http.StatusTeapot)
+		_, _ = w.Write([]byte("brew failed"))
+	}))
+	defer srv.Close()
+
+	cl := &forgejoClient{baseURL: srv.URL, token: "secret"}
+	body, err := cl.getRaw(context.Background(), []string{"repos", "coilyco-flight-deck", "ward", "actions", "runs", "123", "jobs", "456", "attempt", "7", "logs"}, "text/plain")
+	if err == nil {
+		t.Fatal("getRaw: want error, got nil")
+	}
+	if string(body) != "brew failed" {
+		t.Fatalf("raw body = %q, want response bytes back", string(body))
+	}
+	for _, want := range []string{"418 I'm a teapot", "/api/v1/repos/coilyco-flight-deck/ward/actions/runs/123/jobs/456/attempt/7/logs", "brew failed"} {
+		if !strings.Contains(err.Error(), want) {
+			t.Fatalf("error %q does not contain %q", err, want)
+		}
+	}
+}
+
 func TestGetPullRequestRetriesEmptyBodyThenSucceeds(t *testing.T) {
 	var calls int32
 	srv := httptest.NewServer(http.HandlerFunc(func(w http.ResponseWriter, _ *http.Request) {
@@ -166,6 +219,20 @@ func TestForgejoGraftInventory(t *testing.T) {
 		t.Error("graft 3: `issue comment` leaf absent")
 	} else if !hasFlagNamed(comment, flagBodyFile) {
 		t.Errorf("graft 3 gone: `issue comment` no longer accepts --%s", flagBodyFile)
+	}
+	actions := subCommandNamed(forgejo, "actions")
+	if actions == nil {
+		t.Fatal("graft 4: `actions` group absent")
+	}
+	if logs := subCommandNamed(actions, "logs"); logs == nil {
+		t.Error("graft 4 gone: `actions logs` leaf absent")
+	} else {
+		if !strings.Contains(logs.Usage, "/repos/{owner}/{repo}/actions/runs/{run}/jobs/{job}/attempt/{attempt}/logs") {
+			t.Errorf("actions logs usage = %q, want HTTP path shape", logs.Usage)
+		}
+		if !strings.Contains(logs.Description, "raw body") {
+			t.Errorf("actions logs description = %q, want raw-body fetch wording", logs.Description)
+		}
 	}
 }
 

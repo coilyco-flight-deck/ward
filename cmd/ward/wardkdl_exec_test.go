@@ -2,6 +2,7 @@ package main
 
 import (
 	"context"
+	"io/fs"
 	"strings"
 	"testing"
 
@@ -133,6 +134,29 @@ func TestForgejoKeySealed(t *testing.T) {
 		if ranArgv != nil {
 			t.Errorf("%s: kubectl was exec'd despite the seal: %q", name, strings.Join(ranArgv, " "))
 		}
+	}
+}
+
+func TestMountWardKdlExecAcceptsFirstInputSugar(t *testing.T) {
+	root := newWardKdlTestRoot()
+	gfBytes, err := fs.ReadFile(bakedAssets, execAssetsDir+"/ward-kdl.aws.guardfile.kdl")
+	if err != nil {
+		t.Fatalf("read aws guardfile: %v", err)
+	}
+	gfBytes = []byte(strings.ReplaceAll(string(gfBytes), "arg0", "first input"))
+	if err := mountOneWardKdlExec(root, gfBytes, leanRunner()); err != nil {
+		t.Fatalf("mountOneWardKdlExec with first input sugar: %v", err)
+	}
+	ops := commandNamed(root.Commands, "ops")
+	if ops == nil {
+		t.Fatal("ops group vanished")
+	}
+	aws := commandNamed(ops.Commands, "aws")
+	if aws == nil {
+		t.Fatalf("aws group missing after mount; got %v", commandNames(ops.Commands))
+	}
+	if commandNamed(aws.Commands, "s3") == nil {
+		t.Fatalf("aws subtree looks incomplete after parse sugar mount; got %v", commandNames(aws.Commands))
 	}
 }
 
