@@ -37,7 +37,7 @@ func agentDirectorMergeCommand() *cli.Command {
 		Name:        "merge",
 		Usage:       "Merge eligible ward-owned PRs whose issue thread authorizes director merge.",
 		ArgsUsage:   "(scope via --repo; default: the cwd git origin)",
-		Description: `merge scans open pull requests in scope and merges only the ones the ward issue thread marks as director-merge authorized: the linked issue ended with WARD-OUTCOME: merge-ready, the final comment says workflow: pull-requests-and-merge, the review summary is passed, the PR is mergeable against the current base branch, and it is not salvage/draft noise. The director records the final done outcome only after the merge lands. pull-requests still needs a human. See docs/agent-director.md and docs/agent-workflow.md.`,
+		Description: `merge scans open pull requests in scope and merges only the ones the ward issue thread marks as director-merge authorized: the linked issue ended with WARD-OUTCOME: merge-ready, the final comment says workflow: pull-request-and-merge, the review summary is passed, the PR is mergeable against the current base branch, and it is not salvage/draft noise. The director records the final done outcome only after the merge lands. pull-requests still needs a human. See docs/agent-director.md and docs/agent-workflow.md.`,
 		Flags:       directorMergeFlags(),
 		Action: func(ctx context.Context, c *cli.Command) error {
 			r := newRunner()
@@ -221,10 +221,10 @@ func directorMergePullRequestGate(pr directorPullRequest) (string, bool) {
 	}
 	wf, ok := directorPRWorkflowMarker(pr.Body)
 	if !ok {
-		return "PR body missing ward.workflow: pull-requests-and-merge marker", false
+		return "PR body missing ward.workflow: pull-request-and-merge marker", false
 	}
 	if wf != string(workflowPullRequestAndMerge) {
-		return "PR body carries ward.workflow: " + wf + "; need pull-requests-and-merge", false
+		return "PR body carries ward.workflow: " + wf + "; need pull-request-and-merge", false
 	}
 	return "", true
 }
@@ -320,7 +320,7 @@ func buildDirectorMergeStatusSummary(headSHA, branch string, required []string, 
 		if ctx == "" {
 			continue
 		}
-		state := st.effectiveState()
+		state := strings.ToLower(st.effectiveState())
 		if state == "" {
 			continue
 		}
@@ -359,7 +359,7 @@ func directorPRWorkflowMarker(body string) (string, bool) {
 			continue
 		}
 		if m := directorWorkflowMarkerRE.FindStringSubmatch(s); m != nil {
-			return strings.ToLower(strings.TrimSpace(m[1])), true
+			return string(canonicalWorkflow(workflowMode(strings.ToLower(strings.TrimSpace(m[1]))))), true
 		}
 	}
 	return "", false
@@ -426,7 +426,9 @@ func recordDirectorMergeDone(ctx context.Context, cl Tracker, owner, repo string
 func directorMergeDoneComment(prNumber int, meta directorRunMeta) string {
 	workflow := strings.TrimSpace(meta.Workflow)
 	if workflow == "" {
-		workflow = string(workflowPullRequestAndMerge)
+		workflow = workflowMachineToken(workflowPullRequestAndMerge)
+	} else {
+		workflow = workflowMachineToken(workflowMode(workflow))
 	}
 	review := strings.TrimSpace(meta.Review)
 	if review == "" {

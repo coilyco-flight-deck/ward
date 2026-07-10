@@ -194,7 +194,7 @@ func TestDirectorRunMetaParsesWorkflowAndReview(t *testing.T) {
 		"",
 		"<details><summary>details</summary>",
 		"",
-		"workflow: pull-requests-and-merge; review summary: passed: all green",
+		"workflow: pull-request-and-merge; review summary: passed: all green",
 		"checked head sha: abc123",
 		"status context: ci/build=success, ci/test=success",
 		"status state: success",
@@ -233,6 +233,38 @@ func TestDirectorRunMetaParsesWorkflowAndReview(t *testing.T) {
 	}
 	if !strings.Contains(doneBody, "checked head sha: abc123") || !strings.Contains(doneBody, "status context: ci/build=success, ci/test=success") {
 		t.Fatalf("done comment should name the checked head SHA and status context, got: %s", doneBody)
+	}
+}
+
+func TestDirectorMergeDecisionRejectsSkippedReview(t *testing.T) {
+	body := strings.Join([]string{
+		"WARD-OUTCOME: submitted",
+		"",
+		"<details><summary>details</summary>",
+		"",
+		"workflow: pull-request-and-merge; review summary: review gate skipped by ~/.ward/config.yaml default",
+		"checked head sha: abc123",
+		"status context: ci/build=success, ci/test=success",
+		"status state: success",
+		"",
+		"</details>",
+	}, "\n")
+	meta := parseDirectorRunMeta(body)
+	if !meta.HasOutcome || meta.Outcome.Status != "submitted" {
+		t.Fatalf("meta outcome = %+v, want submitted", meta)
+	}
+	if meta.Workflow != string(workflowPullRequestAndMerge) {
+		t.Fatalf("meta workflow = %q, want %q", meta.Workflow, workflowPullRequestAndMerge)
+	}
+	if meta.Review != "review gate skipped by ~/.ward/config.yaml default" {
+		t.Fatalf("meta review = %q, want skipped-review summary", meta.Review)
+	}
+	allowed, reason, _, _ := directorMergeDecision(dispatch.Issue{Title: "ship the fix", Body: "closes #729\n"}, 729, meta)
+	if allowed {
+		t.Fatal("skipped-review run: want deny, got allow")
+	}
+	if reason != "linked issue did not finish with WARD-OUTCOME: merge-ready" {
+		t.Fatalf("skipped-review reason = %q, want merge-ready denial", reason)
 	}
 }
 
@@ -334,7 +366,7 @@ func TestDirectorMergeEligibilityRequiresMatchingQAVerdict(t *testing.T) {
 	if allowed {
 		t.Fatal("unmarked PR: want deny, got allow")
 	}
-	if reason != "PR body missing ward.workflow: pull-requests-and-merge marker" {
+	if reason != "PR body missing ward.workflow: pull-request-and-merge marker" {
 		t.Fatalf("unmarked PR reason = %q, want missing-marker denial", reason)
 	}
 }
@@ -700,6 +732,12 @@ func TestListOpenPullRequestsReadsMergeability(t *testing.T) {
 	srv := httptest.NewServer(http.HandlerFunc(func(w http.ResponseWriter, r *http.Request) {
 		switch r.URL.Path {
 		case "/api/v1/repos/coilyco-flight-deck/ward/issues":
+			if got := r.URL.Query().Get("state"); got != "open" {
+				t.Fatalf("state query = %q, want open", got)
+			}
+			if got := r.URL.Query().Get("type"); got != "pulls" {
+				t.Fatalf("type query = %q, want pulls", got)
+			}
 			_ = json.NewEncoder(w).Encode([]map[string]any{
 				{"number": 701, "title": "mergeable", "body": "closes #701", "state": "open", "html_url": "https://f/701", "labels": []map[string]any{}, "pull_request": map[string]any{"url": "https://f/701"}},
 				{"number": 702, "title": "conflicted", "body": "closes #702", "state": "open", "html_url": "https://f/702", "labels": []map[string]any{}, "pull_request": map[string]any{"url": "https://f/702"}},

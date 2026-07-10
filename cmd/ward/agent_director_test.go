@@ -6,6 +6,7 @@ import (
 	"encoding/json"
 	"errors"
 	"fmt"
+	"io"
 	"net/http"
 	"net/http/httptest"
 	"os"
@@ -642,6 +643,190 @@ func TestBacklogRefreshReservationStates(t *testing.T) {
 	}
 	if got := led.Issues["12"]; got == nil || got.State != backlogReservationSafeToRedispatch {
 		t.Fatalf("#12 state = %+v, want %q", got, backlogReservationSafeToRedispatch)
+	}
+}
+
+func TestDirectorIssueScopeUsesOnlyTheReferencedIssue(t *testing.T) {
+	t.Setenv("HOME", t.TempDir())
+	t.Setenv("FORGEJO_TOKEN", "secret")
+
+	bundleDir := t.TempDir()
+	if err := os.WriteFile(filepath.Join(bundleDir, "defaults.kdl"), []byte("defaults {\n}\n"), 0o644); err != nil {
+		t.Fatal(err)
+	}
+	if err := os.WriteFile(filepath.Join(bundleDir, "repos.kdl"), []byte("repos {\n  repo-authority default=forgejo {\n    trusted-owner coilyco-flight-deck\n  }\n}\n"), 0o644); err != nil {
+		t.Fatal(err)
+	}
+	t.Setenv("WARD_CONFIG_REF", "file://"+bundleDir)
+
+	oldBase := forgejoBaseURL
+	defer func() { forgejoBaseURL = oldBase }()
+
+	var sawIssue5, sawIssue6, sawIssueList, sawPullList bool
+	srv := httptest.NewServer(http.HandlerFunc(func(w http.ResponseWriter, r *http.Request) {
+		switch {
+		case r.Method == http.MethodGet && r.URL.Path == "/api/v1/repos/coilyco-flight-deck/ward/issues/5":
+			sawIssue5 = true
+			_ = json.NewEncoder(w).Encode(map[string]any{
+				"number": 5, "title": "target issue", "body": "body", "state": "open",
+				"html_url": "https://forgejo.example/coilyco-flight-deck/ward/issues/5",
+				"labels":   []map[string]any{{"name": "P0"}, {"name": "headless"}},
+			})
+		case r.Method == http.MethodGet && r.URL.Path == "/api/v1/repos/coilyco-flight-deck/ward/issues/5/comments":
+			_ = json.NewEncoder(w).Encode([]map[string]any{})
+		case r.Method == http.MethodGet && r.URL.Path == "/api/v1/repos/coilyco-flight-deck/ward/issues/6":
+			sawIssue6 = true
+			t.Fatal("side-by-side issue #6 must not be fetched in issue-scoped director mode")
+		case r.Method == http.MethodGet && strings.HasSuffix(r.URL.Path, "/issues") && r.URL.Query().Get("type") == "issues":
+			sawIssueList = true
+			t.Fatal("repo issue backlog must not be fetched in issue-scoped director mode")
+		case r.Method == http.MethodGet && strings.HasSuffix(r.URL.Path, "/issues") && r.URL.Query().Get("type") == "pulls":
+			sawPullList = true
+			t.Fatal("repo pull backlog must not be fetched in issue-scoped director mode")
+		default:
+			t.Fatalf("unexpected request: %s %s?%s", r.Method, r.URL.Path, r.URL.RawQuery)
+		}
+	}))
+	defer srv.Close()
+	forgejoBaseURL = srv.URL
+
+	run := func(t *testing.T, refArg string) {
+		t.Helper()
+		cmd := &cli.Command{Name: "director", Flags: directorFlags(), Action: func(context.Context, *cli.Command) error { return nil }}
+		if err := cmd.Run(t.Context(), []string{"director", "--dry-run", "--no-triage", refArg}); err != nil {
+			t.Fatalf("parse %s: %v", refArg, err)
+		}
+		r := &Runner{Runner: &shell.Runner{Stdout: io.Discard, Stderr: io.Discard}}
+		if err := r.runAgentBacklog(t.Context(), cmd, modeGoose); err != nil {
+			t.Fatalf("runAgentBacklog(%s): %v", refArg, err)
+		}
+		led, err := loadBacklogLedger("coilyco-flight-deck/ward")
+		if err != nil {
+			t.Fatalf("load ledger: %v", err)
+		}
+		if len(led.Issues) != 1 {
+			t.Fatalf("issue-scoped ledger length = %d, want 1", len(led.Issues))
+		}
+		if got := led.Issues["5"]; got == nil || got.Title != "target issue" {
+			t.Fatalf("ledger entry = %+v, want issue #5", got)
+		}
+	}
+
+	t.Run("repo-slug", func(t *testing.T) {
+		run(t, "coilyco-flight-deck/ward#5")
+	})
+	t.Run("forgejo-url", func(t *testing.T) {
+		run(t, srv.URL+"/coilyco-flight-deck/ward/issues/5")
+	})
+
+	if !sawIssue5 {
+		t.Fatal("referenced issue was not fetched")
+	}
+	if sawIssue6 || sawIssueList || sawPullList {
+		t.Fatalf("issue-scoped director widened to backlog: issue6=%t issueList=%t pullList=%t", sawIssue6, sawIssueList, sawPullList)
+	}
+}
+
+func TestResolveDirectorIssueRefFailsClosedAndDoesNotWiden(t *testing.T) {
+	t.Setenv("HOME", t.TempDir())
+	t.Setenv("FORGEJO_TOKEN", "secret")
+
+	bundleDir := t.TempDir()
+	if err := os.WriteFile(filepath.Join(bundleDir, "defaults.kdl"), []byte("defaults {\n}\n"), 0o644); err != nil {
+		t.Fatal(err)
+	}
+	if err := os.WriteFile(filepath.Join(bundleDir, "repos.kdl"), []byte("repos {\n  repo-authority default=forgejo {\n    trusted-owner coilyco-flight-deck\n  }\n}\n"), 0o644); err != nil {
+		t.Fatal(err)
+	}
+	t.Setenv("WARD_CONFIG_REF", "file://"+bundleDir)
+	reservedAt := time.Now().UTC().Add(-10 * time.Minute).Format(time.RFC3339)
+
+	oldBase := forgejoBaseURL
+	defer func() { forgejoBaseURL = oldBase }()
+
+	cases := []struct {
+		name     string
+		state    string
+		labels   []string
+		comments []map[string]any
+		wantSub  string
+		refArg   string
+	}{
+		{
+			name:    "closed",
+			state:   "closed",
+			labels:  []string{"P0", "headless"},
+			wantSub: "issue-closed",
+			refArg:  "coilyco-flight-deck/ward#6",
+		},
+		{
+			name:    "ineligible",
+			state:   "open",
+			labels:  []string{"P1", "interactive"},
+			wantSub: "mode-ceiling",
+			refArg:  "coilyco-flight-deck/ward#6",
+		},
+		{
+			name:   "already-reserved",
+			state:  "open",
+			labels: []string{"P0", "headless"},
+			comments: []map[string]any{
+				{"body": agentReservationMarker + "\nreserved", "created_at": reservedAt, "user": map[string]any{"login": "coilyco-ops"}},
+			},
+			wantSub: "already reserved remotely",
+			refArg:  "",
+		},
+	}
+
+	for _, tc := range cases {
+		t.Run(tc.name, func(t *testing.T) {
+			var sawIssueList, sawPullList bool
+			srv := httptest.NewServer(http.HandlerFunc(func(w http.ResponseWriter, r *http.Request) {
+				switch {
+				case r.Method == http.MethodGet && r.URL.Path == "/api/v1/repos/coilyco-flight-deck/ward/issues/6":
+					_ = json.NewEncoder(w).Encode(map[string]any{
+						"number": 6, "title": "target issue", "body": "body", "state": tc.state,
+						"html_url": "https://forgejo.example/coilyco-flight-deck/ward/issues/6",
+						"labels": func() []map[string]any {
+							out := make([]map[string]any, 0, len(tc.labels))
+							for _, l := range tc.labels {
+								out = append(out, map[string]any{"name": l})
+							}
+							return out
+						}(),
+					})
+				case r.Method == http.MethodGet && r.URL.Path == "/api/v1/repos/coilyco-flight-deck/ward/issues/6/comments":
+					_ = json.NewEncoder(w).Encode(tc.comments)
+				case r.Method == http.MethodGet && strings.HasSuffix(r.URL.Path, "/issues") && r.URL.Query().Get("type") == "issues":
+					sawIssueList = true
+					t.Fatal("repo issue backlog must not be fetched in fail-closed issue scope")
+				case r.Method == http.MethodGet && strings.HasSuffix(r.URL.Path, "/issues") && r.URL.Query().Get("type") == "pulls":
+					sawPullList = true
+					t.Fatal("repo pull backlog must not be fetched in fail-closed issue scope")
+				default:
+					t.Fatalf("unexpected request: %s %s?%s", r.Method, r.URL.Path, r.URL.RawQuery)
+				}
+			}))
+			defer srv.Close()
+			forgejoBaseURL = srv.URL
+
+			refArg := tc.refArg
+			if refArg == "" {
+				refArg = srv.URL + "/coilyco-flight-deck/ward/issues/6"
+			}
+
+			r := &Runner{Runner: &shell.Runner{Stdout: io.Discard, Stderr: io.Discard}}
+			ref, err := r.resolveDirectorIssueRef(t.Context(), nil, "ward agent director", modeGoose, refArg)
+			if err == nil {
+				t.Fatalf("resolveDirectorIssueRef(%s) = %+v, want error", tc.name, ref)
+			}
+			if !strings.Contains(err.Error(), tc.wantSub) && !strings.Contains(err.Error(), "not open") && !strings.Contains(err.Error(), "not headless/autonomous eligible") {
+				t.Fatalf("resolveDirectorIssueRef(%s) error = %v, want %q", tc.name, err, tc.wantSub)
+			}
+			if sawIssueList || sawPullList {
+				t.Fatalf("fail-closed issue scope widened to backlog: issueList=%t pullList=%t", sawIssueList, sawPullList)
+			}
+		})
 	}
 }
 

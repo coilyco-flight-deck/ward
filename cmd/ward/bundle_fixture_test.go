@@ -12,7 +12,6 @@ import (
 func writeBundleFixture(t *testing.T) string {
 	t.Helper()
 	dir := t.TempDir()
-	bundleDir := filepath.Join(dir, ".ward")
 
 	files := map[string]string{
 		bundleAgentsKDLPath: `
@@ -137,15 +136,8 @@ topology {
 	}
 
 	for name, body := range files {
-		data := []byte(strings.TrimSpace(body) + "\n")
-		if err := os.WriteFile(filepath.Join(dir, name), data, 0o644); err != nil {
+		if err := os.WriteFile(filepath.Join(dir, name), []byte(strings.TrimSpace(body)+"\n"), 0o644); err != nil {
 			t.Fatalf("write %s: %v", name, err)
-		}
-		if err := os.MkdirAll(bundleDir, 0o755); err != nil {
-			t.Fatalf("mkdir %s: %v", bundleDir, err)
-		}
-		if err := os.WriteFile(filepath.Join(bundleDir, name), data, 0o644); err != nil {
-			t.Fatalf("write %s: %v", filepath.Join(".ward", name), err)
 		}
 	}
 

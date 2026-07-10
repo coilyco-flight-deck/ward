@@ -41,6 +41,10 @@ func TestDispatchBrokerValidatesNarrowAPI(t *testing.T) {
 	if err := validateDispatchBrokerRequest(ok); err != nil {
 		t.Errorf("valid engineer dispatch refused: %v", err)
 	}
+	pr := dispatchBrokerRequest{Role: "engineer", Argv: []string{"engineer", "coilyco-flight-deck/ward#1", "--pr", "--harness", "claude"}}
+	if err := validateDispatchBrokerRequest(pr); err != nil {
+		t.Errorf("valid engineer PR dispatch refused: %v", err)
+	}
 	advisor := dispatchBrokerRequest{Role: "advisor", Argv: []string{"advisor", "coilyco-flight-deck/ward#1", "--harness", "goose", "what changed?"}}
 	if err := validateDispatchBrokerRequest(advisor); err != nil {
 		t.Errorf("valid advisor dispatch refused: %v", err)
@@ -1293,6 +1297,38 @@ func TestCommentDeferredDispatch(t *testing.T) {
 		if !strings.Contains(body, want) {
 			t.Errorf("deferred comment missing %q\n%s", want, body)
 		}
+	}
+}
+
+func TestStopFailedDispatchContainerStopsTheAttemptedEngineer(t *testing.T) {
+	dir := t.TempDir()
+	logPath := filepath.Join(dir, "docker.log")
+	name := issueScopedContainerName(roleEngineer, modeCodex, targetRepo{Owner: "coilyco-flight-deck", Name: "ward"}, 689)
+	script := filepath.Join(dir, "docker")
+	body := "#!/bin/sh\n" +
+		"printf '%s\\n' \"$*\" >> \"" + logPath + "\"\n" +
+		"case \"$1\" in\n" +
+		"  ps) printf '%s\\n' '" + name + "' ;;\n" +
+		"  stop) exit 0 ;;\n" +
+		"esac\n" +
+		"exit 0\n"
+	if err := os.WriteFile(script, []byte(body), 0o755); err != nil { //nolint:gosec
+		t.Fatalf("write fake docker: %v", err)
+	}
+	r := &Runner{Runner: &shell.Runner{
+		Stdout:  &bytes.Buffer{},
+		Stderr:  &bytes.Buffer{},
+		Resolve: func(string) (string, error) { return script, nil },
+	}}
+
+	r.stopFailedDispatchContainer(context.Background(), modeCodex, agentIssueRef{Owner: "coilyco-flight-deck", Repo: "ward", Number: 689}, roleEngineer, name)
+
+	log := readFile(t, logPath)
+	if !strings.Contains(log, "ps --filter name=^"+name+"$ --format {{.Names}}") {
+		t.Fatalf("stop helper did not probe the running container:\n%s", log)
+	}
+	if !strings.Contains(log, "stop "+name) {
+		t.Fatalf("stop helper did not stop the attempted container:\n%s", log)
 	}
 }
 
