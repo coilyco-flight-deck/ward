@@ -73,7 +73,8 @@ const (
 	topologyGeneratedKDLPath = "topologyassets/topology.generated.kdl"
 )
 
-// Bundle-layout paths: the flat .ward bundle a ref points at (aos#332's landed layout).
+// Bundle-layout paths: the flat .ward bundle a ref points at.
+// The runtime surface must not inherit across files.
 const (
 	// The self-contained compatibility monolith mirrors the baked source's flat guardfile.
 	// The role guardfiles stay role-facing, and runtime config must not inherit files.
