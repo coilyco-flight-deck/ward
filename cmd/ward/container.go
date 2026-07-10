@@ -119,7 +119,7 @@ func dictatableID() string {
 
 // buildUpPlan assembles the pure plan from parsed flags and resolved inputs;
 // agentArgs seed the agent's argv. Errors only on a bad --repo grant (ward#230).
-func buildUpPlan(c *cli.Command, repo targetRepo, mode containerMode, role, cwd, assetsDir string, agentArgs []string, mountAgentLogs bool) (upPlan, error) {
+func buildUpPlan(c *cli.Command, repo targetRepo, mode containerMode, role, cwd, assetsDir string, agentArgs []string, mountSurfaceExtras bool) (upPlan, error) {
 	wardSrc := c.String("ward-source")
 	// The container downloads this host's ward version by default; --ward-version
 	// (env WARD_AGENT_VERSION) overrides it to pin a known-good release (ward#312).
@@ -165,10 +165,10 @@ func buildUpPlan(c *cli.Command, repo targetRepo, mode containerMode, role, cwd,
 		return upPlan{}, err
 	}
 
-	// The director surface opts into a read-only bind of the redacted agent-log drain so it
-	// reads past runs' logs without a docker socket; other runs leave it off (ward#525/526).
+	// The director surface opts into read-only binds of the redacted agent-log drain.
+	// It also mounts the Docker socket so it can reap engineers (ward#1001).
 	agentLogs := ""
-	if mountAgentLogs {
+	if mountSurfaceExtras {
 		agentLogs = agentLogsRedactedDir()
 	}
 	// The per-container machine id rides the ward.machine label. Director surface
@@ -186,7 +186,7 @@ func buildUpPlan(c *cli.Command, repo targetRepo, mode containerMode, role, cwd,
 		ForgejoBase:       forgejoBaseURL,
 		HostCwd:           cwd,
 		AWSHome:           awsHome,
-		Mounts:            leastAccessMounts(cwd, mountOpts{AssetsDir: assetsDir, AWSHome: awsHome, WardSource: wardSrc, AgentLogsDir: agentLogs}),
+		Mounts:            appendSurfaceMounts(leastAccessMounts(cwd, mountOpts{AssetsDir: assetsDir, AWSHome: awsHome, WardSource: wardSrc, AgentLogsDir: agentLogs}), mountSurfaceExtras),
 		Interactive:       !c.Bool("detach"),
 		TTY:               !c.Bool("detach") && terminalAttached(),
 		WardVersion:       wardVersion,
@@ -199,6 +199,13 @@ func buildUpPlan(c *cli.Command, repo targetRepo, mode containerMode, role, cwd,
 		SkipPreflight:     c.Bool("skip-preflight") || c.Bool("no-preflight"),
 		ConfigEnv:         configEnv,
 	}, nil
+}
+
+func appendSurfaceMounts(mounts []mountSpec, mountSurfaceExtras bool) []mountSpec {
+	if mountSurfaceExtras {
+		mounts = append(mounts, dockerSockMount())
+	}
+	return mounts
 }
 
 func containerNameSuffix(role string, machine string) string {

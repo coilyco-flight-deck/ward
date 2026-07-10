@@ -136,16 +136,16 @@ func TestAgentLogsMountOptIn(t *testing.T) {
 	}
 }
 
-// buildUpPlan binds the agent-log drain only when its opt-in is passed (the surface
-// path passes readOnly), and leaves it unbound otherwise (ward#525).
-func TestBuildUpPlanAgentLogsThreading(t *testing.T) {
-	run := func(mountAgentLogs bool) upPlan {
+// buildUpPlan binds the director-surface extras only when its opt-in is passed.
+// The extras are the redacted agent-log drain and the Docker socket (ward#525/#1001).
+func TestBuildUpPlanDirectorSurfaceThreading(t *testing.T) {
+	run := func(mountSurfaceExtras bool) upPlan {
 		var got upPlan
 		probe := &cli.Command{
 			Name:  "probe",
 			Flags: tailnetProbeFlags(),
 			Action: func(_ context.Context, c *cli.Command) error {
-				p, err := buildUpPlan(c, targetRepo{Owner: "o", Name: "r"}, modeClaude, roleDirector, t.TempDir(), t.TempDir(), nil, mountAgentLogs)
+				p, err := buildUpPlan(c, targetRepo{Owner: "o", Name: "r"}, modeClaude, roleDirector, t.TempDir(), t.TempDir(), nil, mountSurfaceExtras)
 				if err != nil {
 					return err
 				}
@@ -166,11 +166,22 @@ func TestBuildUpPlanAgentLogsThreading(t *testing.T) {
 		}
 		return false
 	}
-	if has(run(false)) {
-		t.Error("buildUpPlan(mountAgentLogs=false) must not bind the agent-log drain")
+	hasSock := func(p upPlan) bool {
+		for _, m := range p.Mounts {
+			if m.Target == containerDockerSock {
+				return true
+			}
+		}
+		return false
+	}
+	if has(run(false)) || hasSock(run(false)) {
+		t.Error("buildUpPlan(mountSurfaceExtras=false) must not bind director-surface extras")
 	}
 	if !has(run(true)) {
-		t.Errorf("buildUpPlan(mountAgentLogs=true) must bind the agent-log drain at %s", containerAgentLogsMount)
+		t.Errorf("buildUpPlan(mountSurfaceExtras=true) must bind the agent-log drain at %s", containerAgentLogsMount)
+	}
+	if !hasSock(run(true)) {
+		t.Errorf("buildUpPlan(mountSurfaceExtras=true) must bind the Docker socket at %s", containerDockerSock)
 	}
 }
 

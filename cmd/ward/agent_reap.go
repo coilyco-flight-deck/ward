@@ -8,6 +8,7 @@ import (
 	"io"
 	"os"
 	"strconv"
+	"strings"
 	"time"
 
 	"forgejo.coilysiren.me/coilyco-flight-deck/cli-guard/cli/verb"
@@ -75,6 +76,7 @@ func (r *Runner) runAgentReap(ctx context.Context, c *cli.Command) error {
 	maxCPU := c.Float("max-cpu")
 	dryRun := c.Bool("dry-run")
 	interval := c.Duration("interval")
+	readOnly := os.Getenv("WARD_READONLY") == "1"
 
 	w := c.Root().Writer
 	if w == nil {
@@ -82,12 +84,15 @@ func (r *Runner) runAgentReap(ctx context.Context, c *cli.Command) error {
 	}
 
 	if interval <= 0 {
-		return r.agentReapSweep(ctx, threshold, maxCPU, dryRun, w)
+		return r.agentReapSweep(ctx, threshold, maxCPU, dryRun, readOnly, w)
 	}
 
 	writef(w, "ward agent reap: standing daemon, sweeping every %s (idle >= %s)\n", interval, threshold)
 	for {
-		if err := r.agentReapSweep(ctx, threshold, maxCPU, dryRun, w); err != nil {
+		if err := r.agentReapSweep(ctx, threshold, maxCPU, dryRun, readOnly, w); err != nil {
+			if readOnlyDockerUnavailableErr(err) {
+				return err
+			}
 			writef(w, "ward agent reap: sweep error (continuing): %v\n", err)
 		}
 		select {
@@ -100,9 +105,12 @@ func (r *Runner) runAgentReap(ctx context.Context, c *cli.Command) error {
 
 // agentReapSweep is one full pass: list running engineers, stop those the verdict
 // marks. Best-effort per container - a failed probe or stop is logged and skipped.
-func (r *Runner) agentReapSweep(ctx context.Context, threshold time.Duration, maxCPU float64, dryRun bool, w io.Writer) error {
+func (r *Runner) agentReapSweep(ctx context.Context, threshold time.Duration, maxCPU float64, dryRun, readOnly bool, w io.Writer) error {
 	names, err := r.runningEngineerContainers(ctx)
 	if err != nil {
+		if readOnly && dockerUnavailableErr(err) {
+			return fmt.Errorf("ward agent reap: reaping is unsupported on this read-only director surface because the Docker socket is unavailable: %w", err)
+		}
 		return fmt.Errorf("list running engineer containers: %w", err)
 	}
 	if len(names) == 0 {
@@ -139,6 +147,27 @@ func (r *Runner) agentReapSweep(ctx context.Context, threshold time.Duration, ma
 	}
 	writef(w, "ward agent reap: swept %d engineer(s): %s %d, kept %d.\n", len(names), action, stopped, spared)
 	return nil
+}
+
+func dockerUnavailableErr(err error) bool {
+	if err == nil {
+		return false
+	}
+	msg := strings.ToLower(err.Error())
+	for _, marker := range []string{
+		"cannot connect to the docker daemon",
+		"permission denied",
+		"no such file or directory",
+	} {
+		if strings.Contains(msg, marker) {
+			return true
+		}
+	}
+	return false
+}
+
+func readOnlyDockerUnavailableErr(err error) bool {
+	return strings.Contains(strings.ToLower(err.Error()), "reaping is unsupported on this read-only director surface because the docker socket is unavailable")
 }
 
 // runningEngineerContainers lists the running engineer containers by their
