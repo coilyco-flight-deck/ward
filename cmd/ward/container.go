@@ -703,34 +703,73 @@ func downloadWardBootstrapBinary(ctx context.Context, wardVersion, path string) 
 		return err
 	}
 	asset := fmt.Sprintf("%s/coilyco-flight-deck/ward/releases/download/%s/ward-linux-%s", forgejoBaseURL, tag, arch)
+	var lastErr error
+	for attempt := 1; attempt <= bootstrapDownloadAttempts; attempt++ {
+		retryable, err := downloadWardBootstrapBinaryOnce(ctx, asset, path)
+		if err == nil {
+			return nil
+		}
+		lastErr = err
+		if !retryable || attempt == bootstrapDownloadAttempts {
+			break
+		}
+		if !waitForBootstrapRetry(ctx) {
+			return ctx.Err()
+		}
+	}
+	return fmt.Errorf("ward container: download Go bootstrap binary %s after %d attempt(s): %w", asset, bootstrapDownloadAttempts, lastErr)
+}
+
+const bootstrapDownloadAttempts = 5
+
+var bootstrapDownloadSleep = time.Sleep
+
+func waitForBootstrapRetry(ctx context.Context) bool {
+	done := make(chan struct{})
+	go func() {
+		bootstrapDownloadSleep(bootstrapDownloadBackoff)
+		close(done)
+	}()
+	select {
+	case <-ctx.Done():
+		return false
+	case <-done:
+		return true
+	}
+}
+
+const bootstrapDownloadBackoff = 2 * time.Second
+
+func downloadWardBootstrapBinaryOnce(ctx context.Context, asset, path string) (bool, error) {
 	req, err := http.NewRequestWithContext(ctx, http.MethodGet, asset, nil)
 	if err != nil {
-		return fmt.Errorf("ward container: prepare bootstrap download %s: %w", asset, err)
+		return false, fmt.Errorf("ward container: prepare bootstrap download %s: %w", asset, err)
 	}
 	if token := strings.TrimSpace(os.Getenv("FORGEJO_TOKEN")); token != "" {
 		req.Header.Set("Authorization", "token "+token)
 	}
 	resp, err := http.DefaultClient.Do(req)
 	if err != nil {
-		return fmt.Errorf("ward container: download Go bootstrap binary %s: %w", asset, err)
+		return true, fmt.Errorf("ward container: download Go bootstrap binary %s: %w", asset, err)
 	}
 	defer func() { _ = resp.Body.Close() }()
 	if resp.StatusCode != http.StatusOK {
 		body, _ := io.ReadAll(io.LimitReader(resp.Body, 4096))
-		return fmt.Errorf("ward container: download Go bootstrap binary %s: unexpected status %s: %s", asset, resp.Status, strings.TrimSpace(string(body)))
+		retryable := resp.StatusCode == http.StatusNotFound || resp.StatusCode == http.StatusTooManyRequests || resp.StatusCode >= 500
+		return retryable, fmt.Errorf("ward container: download Go bootstrap binary %s: unexpected status %s: %s", asset, resp.Status, strings.TrimSpace(string(body)))
 	}
 	f, err := os.Create(path)
 	if err != nil {
-		return fmt.Errorf("ward container: create bootstrap binary %s: %w", path, err)
+		return false, fmt.Errorf("ward container: create bootstrap binary %s: %w", path, err)
 	}
 	defer f.Close()
 	if _, err := io.Copy(f, resp.Body); err != nil {
-		return fmt.Errorf("ward container: write bootstrap binary %s: %w", path, err)
+		return false, fmt.Errorf("ward container: write bootstrap binary %s: %w", path, err)
 	}
 	if err := f.Chmod(0o755); err != nil {
-		return fmt.Errorf("ward container: chmod bootstrap binary %s: %w", path, err)
+		return false, fmt.Errorf("ward container: chmod bootstrap binary %s: %w", path, err)
 	}
-	return nil
+	return false, nil
 }
 
 func resolveWardBootstrapTag(ctx context.Context, wardVersion string) (string, error) {
