@@ -63,8 +63,12 @@ type forgejoClient struct {
 
 // hostForgejoClient builds ward's core Forgejo adapter. It intentionally does
 // not consult WARD_CONFIG_REF or shell through generated ops leaves (ward#929).
-func (r *Runner) hostForgejoClient(_ context.Context) *forgejoClient {
-	return &forgejoClient{r: r, mode: currentAgentMode(), baseURL: forgejoBaseURL}
+func (r *Runner) hostForgejoClient(ctx context.Context) *forgejoClient {
+	cl := &forgejoClient{r: r, mode: currentAgentMode(), baseURL: forgejoBaseURL}
+	if tok, err := r.resolveForgejoToken(ctx, broker.Target{}, forgeForgejo); err == nil && strings.TrimSpace(tok) != "" {
+		cl.token = tok
+	}
+	return cl
 }
 
 // withMode pins the signing identity for callers that know the mode rather than
