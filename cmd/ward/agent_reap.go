@@ -13,6 +13,8 @@ import (
 	"github.com/urfave/cli/v3"
 )
 
+const engineerContainerLimit = 10
+
 // agent_reap.go wires `ward agent reap`, the host-side idle-killer for wedged
 // engineer containers (issue #376). The pure verdict lives in agent_reap_compute.go.
 
@@ -150,6 +152,22 @@ func (r *Runner) runningEngineerContainers(ctx context.Context) ([]string, error
 	}
 	// parseExitedContainerNames is a plain non-blank-line splitter (name is historical).
 	return parseExitedContainerNames(string(out)), nil
+}
+
+// enforceEngineerContainerLimit refuses a new engineer launch when the host is
+// already at the fixed concurrency ceiling.
+func (r *Runner) enforceEngineerContainerLimit(ctx context.Context, label string) error {
+	names, err := r.runningEngineerContainers(ctx)
+	if err != nil {
+		return fmt.Errorf("%s: count running engineer containers: %w", label, err)
+	}
+	if count := len(names); count >= engineerContainerLimit {
+		return fmt.Errorf(
+			"%s: global engineer limit is reached: %d running (limit %d); wait for a run to finish or run `ward agent reap` for stale engineers",
+			label, count, engineerContainerLimit,
+		)
+	}
+	return nil
 }
 
 // engineerReapState gathers one engineer's idle inputs: idle from its last log

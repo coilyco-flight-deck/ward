@@ -1699,6 +1699,12 @@ func (r *Runner) launchAgentContainer(ctx context.Context, c *cli.Command, mode 
 		}
 	}
 
+	if !c.Bool("print") {
+		if err := r.enforceEngineerContainerLimit(ctx, label); err != nil {
+			return err
+		}
+	}
+
 	// A detached run leaves its assets for the next sweep (it cannot delete the
 	// still-mounted dir on return), so the cleanup hook is discarded.
 	assetsDir, _, err := writeContainerAssets(ctx, c.String("ward-source"), strings.TrimSpace(c.String("ward-version")))
