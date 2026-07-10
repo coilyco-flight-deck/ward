@@ -695,7 +695,7 @@ func agentDefaultSurfaceAction() cli.ActionFunc {
 		if _, err := parseAgentIssueRef(arg); err != nil {
 			return fmt.Errorf("unknown command %q for 'ward agent' (roles: %s); "+
 				"a bare ref like #98 or owner/repo#N runs the engineer, and freeform work goes to "+
-				"`ward agent engineer \"<instructions>\"`", arg, strings.Join(agentRoleDefinitionOrder, ", "))
+				"`ward agent engineer \"<instructions>\"`", arg, strings.Join(builtInAgentRoleDefinitionOrder(), ", "))
 		}
 		return agentEngineerAction()(ctx, c)
 	}

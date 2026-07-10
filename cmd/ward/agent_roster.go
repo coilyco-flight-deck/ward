@@ -45,44 +45,6 @@ type agentRoleDefinition struct {
 	AgentOverlays  map[string]fleetconfig.RoleAgentOverride
 }
 
-// agentRoleDefinitionOrder keeps the shipped roster stable.
-var agentRoleDefinitionOrder = []string{roleEngineer, roleDirector, roleAdvisor, roleQA}
-
-// builtInAgentRoleDefinitions are ward-owned defaults. Fleet roles may refine the
-// launch overlay, but these are the shipped presets.
-func builtInAgentRoleDefinitions() map[string]agentRoleDefinition {
-	return map[string]agentRoleDefinition{
-		roleEngineer: {
-			Name:         roleEngineer,
-			Tagline:      "Implements a ticket end to end.",
-			Capabilities: semanticCapabilitiesForRole(roleEngineer),
-			Modes:        "A ref carries that issue detached, fire-and-forget. Freeform text files an issue first, then carries it. Detached-only - interactive work funnels to the director.",
-			Posture:      agentRolePostureCodeLanding,
-		},
-		roleDirector: {
-			Name:         roleDirector,
-			Tagline:      "Autonomously drives a repo's headless lane to drain.",
-			Capabilities: semanticCapabilitiesForRole(roleDirector),
-			Modes:        "Attached LLM-in-the-loop heartbeat over a repo's backlog (`--repo` scope). Surfaces a read-only scope + dispatch session on drain, no ref.",
-			Posture:      agentRolePostureAttached,
-		},
-		roleAdvisor: {
-			Name:         roleAdvisor,
-			Tagline:      "Answers without writing code.",
-			Capabilities: semanticCapabilitiesForRole(roleAdvisor),
-			Modes:        "A ref researches the issue and posts the answer as a comment. Freeform text answers inline.",
-			Posture:      agentRolePostureNoCode,
-		},
-		roleQA: {
-			Name:         roleQA,
-			Tagline:      "Inspects a candidate and posts a structured verdict comment.",
-			Capabilities: semanticCapabilitiesForRole(roleQA),
-			Modes:        "A ref inspects the issue, branch, pull request, and checks, then posts a structured QA verdict comment. Freeform mode is not exposed.",
-			Posture:      agentRolePostureNoCode,
-		},
-	}
-}
-
 // cloneRoleOverlays copies a role's sparse agent overlay map so callers can
 // compose without mutating the parsed fleet config.
 func cloneRoleOverlays(in map[string]fleetconfig.RoleAgentOverride) map[string]fleetconfig.RoleAgentOverride {
@@ -92,6 +54,34 @@ func cloneRoleOverlays(in map[string]fleetconfig.RoleAgentOverride) map[string]f
 	out := make(map[string]fleetconfig.RoleAgentOverride, len(in))
 	for name, ov := range in {
 		out[name] = ov
+	}
+	return out
+}
+
+// mergeRoleOverlays applies sparse fleet overlays onto a base role overlay map.
+func mergeRoleOverlays(base, override map[string]fleetconfig.RoleAgentOverride) map[string]fleetconfig.RoleAgentOverride {
+	if len(base) == 0 && len(override) == 0 {
+		return nil
+	}
+	out := cloneRoleOverlays(base)
+	if out == nil {
+		out = map[string]fleetconfig.RoleAgentOverride{}
+	}
+	for name, ov := range override {
+		cur := out[name]
+		if strings.TrimSpace(ov.Model) != "" {
+			cur.Model = strings.TrimSpace(ov.Model)
+		}
+		if strings.TrimSpace(ov.Endpoint) != "" {
+			cur.Endpoint = strings.TrimSpace(ov.Endpoint)
+		}
+		if strings.TrimSpace(ov.ReasoningEffort) != "" {
+			cur.ReasoningEffort = strings.TrimSpace(ov.ReasoningEffort)
+		}
+		if strings.TrimSpace(ov.Verbosity) != "" {
+			cur.Verbosity = strings.TrimSpace(ov.Verbosity)
+		}
+		out[name] = cur
 	}
 	return out
 }
@@ -144,25 +134,16 @@ func roleOverlaySummary(overlays map[string]fleetconfig.RoleAgentOverride) strin
 // effective fleet config's `roles` overlay.
 func agentRoleDefinitionsFromFleet(f fleetconfig.Fleet) (map[string]agentRoleDefinition, error) {
 	defs := builtInAgentRoleDefinitions()
+	order := builtInAgentRoleDefinitionOrder()
 	for _, role := range f.Roles {
 		def, ok := defs[role.Name]
 		if !ok {
 			return nil, fmt.Errorf("fleet config defines role %q, but ward only registers the shipped presets %q",
-				role.Name, strings.Join(agentRoleDefinitionOrder, ", "))
+				role.Name, strings.Join(order, ", "))
 		}
-		def.DefaultHarness = strings.TrimSpace(f.Defaults.Agent)
 		def.Guardfiles = cloneGuardfiles(role.Guardfiles)
-		def.AgentOverlays = cloneRoleOverlays(role.AgentConfig)
+		def.AgentOverlays = mergeRoleOverlays(def.AgentOverlays, role.AgentConfig)
 		defs[role.Name] = def
-	}
-	for name, def := range defs {
-		if strings.TrimSpace(def.DefaultHarness) == "" {
-			def.DefaultHarness = strings.TrimSpace(f.Defaults.Agent)
-		}
-		if strings.TrimSpace(def.DefaultHarness) == "" {
-			def.DefaultHarness = frontierAgentOrder[0]
-		}
-		defs[name] = def
 	}
 	return defs, nil
 }
@@ -210,7 +191,7 @@ func agentRosterRowsFromDefinitions(cmds []*cli.Command, defs map[string]agentRo
 		}
 		info, ok := defs[cmd.Name]
 		if !ok {
-			return nil, fmt.Errorf("agent role %q has no roster descriptor; add it to the resolved role definitions in cmd/ward/agent_roster.go and regenerate %s with `%s`",
+			return nil, fmt.Errorf("agent role %q has no roster descriptor; add it to the embedded role catalog or the resolved fleet role overlays and regenerate %s with `%s`",
 				cmd.Name, agentRosterDoc, agentRosterRegenHint)
 		}
 		modes := info.Modes
@@ -230,7 +211,7 @@ func agentRosterRowsFromDefinitions(cmds []*cli.Command, defs map[string]agentRo
 
 // agentRosterDocGoal is the doc_goal front-matter the generated page carries so it
 // grades against an explicit target like every ward doc (ward#289).
-const agentRosterDocGoal = "Give a reader the canonical, code-generated list of every ward agent startup role with its tagline, semantic capability preset, and invocation modes, so they can see the shipped role presets plus any effective fleet overlays without the page drifting from the binary."
+const agentRosterDocGoal = "Give a reader the canonical, code-generated list of every ward agent startup role with its tagline, semantic capability preset, and invocation modes, so they can see the shipped role presets from the embedded role catalog plus any effective fleet overlays without the page drifting from the binary."
 
 // agentRosterMarkdown renders the committed docs/agent-roster.md body: doc_goal
 // front-matter plus a flat bullet list (not a table, per the house Voice rules).

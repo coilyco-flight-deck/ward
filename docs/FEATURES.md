@@ -40,7 +40,8 @@ Inventory of what `ward` ships today.
   [ward-kdl-authoring.md](ward-kdl-authoring.md),
   [ward-kdl-surface.md](ward-kdl-surface.md),
   [ward-kdl-in-ward.md](ward-kdl-in-ward.md), and
-  [ward-docker-exec.md](ward-docker-exec.md).
+  [ward-docker-exec.md](ward-docker-exec.md). It also embeds the shipped agent
+  role catalog from [ward-kdl.roles.kdl](../.ward/ward-kdl/ward-kdl.roles.kdl).
 - Runtime `WARD_CONFIG_REF` bundles affect edge/operator surfaces, not the core
   agent control plane.
 

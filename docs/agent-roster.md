@@ -1,5 +1,5 @@
 ---
-doc_goal: Give a reader the canonical, code-generated list of every ward agent startup role with its tagline, semantic capability preset, and invocation modes, so they can see the shipped role presets plus any effective fleet overlays without the page drifting from the binary.
+doc_goal: Give a reader the canonical, code-generated list of every ward agent startup role with its tagline, semantic capability preset, and invocation modes, so they can see the shipped role presets from the embedded role catalog plus any effective fleet overlays without the page drifting from the binary.
 ---
 # ward agent: the role roster
 
