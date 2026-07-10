@@ -6,6 +6,7 @@ import (
 	"regexp"
 	"strconv"
 	"strings"
+	"time"
 
 	"forgejo.coilysiren.me/coilyco-flight-deck/cli-guard/cli/dispatch"
 	"github.com/urfave/cli/v3"
@@ -16,6 +17,8 @@ import (
 
 var directorClosingRefRE = regexp.MustCompile(`(?i)\b(?:closes|fixes|resolves)\s+#(\d+)\b`)
 var directorWorkflowMarkerRE = regexp.MustCompile(`(?i)\bward\.workflow:\s*([[:alnum:]-]+)\b`)
+
+const directorMergeConflictStaleAfter = 2 * time.Hour
 
 // directorMergeFlags keeps the merge subcommand narrow: scope + preview only.
 func directorMergeFlags() []cli.Flag {
@@ -34,7 +37,7 @@ func agentDirectorMergeCommand() *cli.Command {
 		Name:        "merge",
 		Usage:       "Merge eligible ward-owned PRs whose issue thread authorizes director merge.",
 		ArgsUsage:   "(scope via --repo; default: the cwd git origin)",
-		Description: `merge scans open pull requests in scope and merges only the ones the ward issue thread marks as director-merge authorized: the linked issue ended with WARD-OUTCOME: merge-ready, the final comment says workflow: pull-requests-and-merge, the review summary is passed, the PR is mergeable against the current base branch, and it is not salvage/draft noise. The director records the final done outcome only after the merge lands. pull-requests still needs a human. See docs/agent-director.md and docs/agent-workflow.md.`,
+		Description: `merge scans open pull requests in scope and merges only the ones the ward issue thread marks as director-merge authorized: the linked issue ended with WARD-OUTCOME: merge-ready, the final comment says workflow: pull-request-and-merge, the review summary is passed, the PR is mergeable against the current base branch, and it is not salvage/draft noise. The director records the final done outcome only after the merge lands. pull-requests still needs a human. See docs/agent-director.md and docs/agent-workflow.md.`,
 		Flags:       directorMergeFlags(),
 		Action: func(ctx context.Context, c *cli.Command) error {
 			r := newRunner()
@@ -114,11 +117,51 @@ func directorMergeEligibility(ctx context.Context, owner, repo string, pr direct
 	if !ok {
 		return false, "no same-repo closing reference in the PR body", 0, directorRunMeta{}
 	}
+	if pr.MergeableKnown && !pr.Mergeable {
+		return false, directorMergeConflictReason(ctx, owner, repo, linked, pr, issueClient), linked, directorRunMeta{}
+	}
 	meta, reason, allowed := directorMergeIssueMeta(ctx, owner, repo, pr, linked, prClient, issueClient)
 	if !allowed {
 		return false, reason, linked, meta
 	}
 	return directorMergeDecision(pr.Issue, linked, meta)
+}
+
+func directorMergeConflictReason(ctx context.Context, owner, repo string, linked int, pr directorPullRequest, issueClient Tracker) string {
+	comments, err := issueClient.listIssueComments(ctx, owner, repo, linked)
+	if err != nil {
+		return "PR is not mergeable against the current base branch; rebase or merge base and resolve the conflict first"
+	}
+	return directorMergeConflictReasonFromComments(pr, comments, time.Now().UTC())
+}
+
+func directorMergeConflictReasonFromComments(pr directorPullRequest, comments []issueComment, now time.Time) string {
+	latest, ok := latestBacklogOutcomeComment(comments)
+	if !ok {
+		if pr.UpdatedAt.IsZero() {
+			return "PR is not mergeable against the current base branch; active worker branch with no WARD-OUTCOME yet"
+		}
+		age := now.Sub(pr.UpdatedAt)
+		if age >= directorMergeConflictStaleAfter {
+			return fmt.Sprintf("PR is not mergeable against the current base branch; stale worker branch with no WARD-OUTCOME yet (updated %s ago)", humanDuration(age))
+		}
+		return fmt.Sprintf("PR is not mergeable against the current base branch; active worker branch with no WARD-OUTCOME yet (updated %s ago)", humanDuration(age))
+	}
+	meta := parseDirectorRunMeta(latest.Body)
+	switch strings.ToLower(strings.TrimSpace(meta.Outcome.Status)) {
+	case "blocked", "failed":
+		review := strings.TrimSpace(meta.Review)
+		if review == "" {
+			return fmt.Sprintf("PR is not mergeable against the current base branch; linked issue is %s", meta.Outcome.Status)
+		}
+		return fmt.Sprintf("PR is not mergeable against the current base branch; linked issue is %s (%s)", meta.Outcome.Status, review)
+	case "submitted":
+		return "PR is not mergeable against the current base branch; linked issue is submitted, not merge-ready"
+	case "merge-ready":
+		return "PR is not mergeable against the current base branch; linked issue is merge-ready but the branch still conflicts with main"
+	default:
+		return fmt.Sprintf("PR is not mergeable against the current base branch; linked issue ended with WARD-OUTCOME: %s", meta.Outcome.Status)
+	}
 }
 
 func directorMergeIssueMeta(ctx context.Context, owner, repo string, pr directorPullRequest, linked int, prClient *forgejoClient, issueClient Tracker) (directorRunMeta, string, bool) {
@@ -178,10 +221,10 @@ func directorMergePullRequestGate(pr directorPullRequest) (string, bool) {
 	}
 	wf, ok := directorPRWorkflowMarker(pr.Body)
 	if !ok {
-		return "PR body missing ward.workflow: pull-requests-and-merge marker", false
+		return "PR body missing ward.workflow: pull-request-and-merge marker", false
 	}
 	if wf != string(workflowPullRequestAndMerge) {
-		return "PR body carries ward.workflow: " + wf + "; need pull-requests-and-merge", false
+		return "PR body carries ward.workflow: " + wf + "; need pull-request-and-merge", false
 	}
 	return "", true
 }
@@ -312,7 +355,7 @@ func directorPRWorkflowMarker(body string) (string, bool) {
 			continue
 		}
 		if m := directorWorkflowMarkerRE.FindStringSubmatch(s); m != nil {
-			return strings.ToLower(strings.TrimSpace(m[1])), true
+			return string(canonicalWorkflow(workflowMode(strings.ToLower(strings.TrimSpace(m[1]))))), true
 		}
 	}
 	return "", false
@@ -379,7 +422,9 @@ func recordDirectorMergeDone(ctx context.Context, cl Tracker, owner, repo string
 func directorMergeDoneComment(prNumber int, meta directorRunMeta) string {
 	workflow := strings.TrimSpace(meta.Workflow)
 	if workflow == "" {
-		workflow = string(workflowPullRequestAndMerge)
+		workflow = workflowMachineToken(workflowPullRequestAndMerge)
+	} else {
+		workflow = workflowMachineToken(workflowMode(workflow))
 	}
 	review := strings.TrimSpace(meta.Review)
 	if review == "" {

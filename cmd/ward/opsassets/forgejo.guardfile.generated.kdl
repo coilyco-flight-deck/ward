@@ -234,12 +234,16 @@ wrap ward-kdl ops forgejo {
     can edit release
     can delete release
     can upload-asset release
-    // pulls: not surfaced through ward. Read them in the Forgejo web UI.
+    // pulls: read-only view/list stay web-only; merge/edit are surfaced.
     never view pr {
         message "pull requests are not exposed through ward; read them in the web UI"
     }
     never list pr {
         message "pull requests are not exposed through ward; read them in the web UI"
+    }
+    can edit pr {
+        op repoEditPullRequest
+        describe "edit a pull request (PATCH /repos/{owner}/{repo}/pulls/{index}). The director uses this for merge-gate body/title edits without falling back to issue edit."
     }
     can merge pr {
         op repoMergePullRequest

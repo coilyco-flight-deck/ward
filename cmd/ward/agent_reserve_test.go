@@ -255,6 +255,53 @@ func TestPrecheckReservationLogs(t *testing.T) {
 	}
 }
 
+// TestAgentReservationLockSerializesConcurrentHarnesses proves the strict launch
+// lock keeps two near-simultaneous harnesses from both deciding on the same issue.
+func TestAgentReservationLockSerializesConcurrentHarnesses(t *testing.T) {
+	t.Setenv("HOME", t.TempDir())
+	r := &Runner{}
+	ref := agentIssueRef{Owner: "coilyco-flight-deck", Repo: "ward", Number: 1034}
+
+	locked := make(chan struct{})
+	release := make(chan struct{})
+	firstDone := make(chan error, 1)
+	go func() {
+		firstDone <- r.withAgentReservationLock(ref, func() error {
+			close(locked)
+			<-release
+			return nil
+		})
+	}()
+	select {
+	case <-locked:
+	case <-time.After(time.Second):
+		t.Fatal("first harness did not acquire the reservation lock")
+	}
+
+	secondDone := make(chan error, 1)
+	go func() {
+		secondDone <- r.withAgentReservationLock(ref, func() error { return nil })
+	}()
+	select {
+	case err := <-secondDone:
+		t.Fatalf("second harness acquired the reservation lock early: %v", err)
+	case <-time.After(100 * time.Millisecond):
+	}
+
+	close(release)
+	if err := <-firstDone; err != nil {
+		t.Fatalf("first harness lock release: %v", err)
+	}
+	select {
+	case err := <-secondDone:
+		if err != nil {
+			t.Fatalf("second harness lock acquire: %v", err)
+		}
+	case <-time.After(time.Second):
+		t.Fatal("second harness never acquired the reservation lock")
+	}
+}
+
 func TestFreshReservationComment(t *testing.T) {
 	now := time.Date(2026, 6, 18, 12, 0, 0, 0, time.UTC)
 	ttl := 2 * time.Hour

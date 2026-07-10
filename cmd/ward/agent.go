@@ -326,7 +326,12 @@ func reviewGateDisabledByTemporaryDefault(role string) bool {
 // headlessReflection is the headless run's closing "how it felt" retro led by a
 // WARD-OUTCOME line; its landing phrase is workflow-aware (ward#281, ward#508).
 func headlessReflection(ref agentIssueRef, wf workflowMode, reviewGate bool, reviewSkip string) string {
-	outcomeStatus := workflowOutcomeStatus(wf)
+	outcomeStatus := workflowOutcomeStatus(wf, reviewGate)
+	workflowLine := "workflow: <mode>; review summary: <summary or skip state>"
+	landingPhrase := workflowLandingPhrase(ref, wf)
+	if canonicalWorkflow(wf.orDefault()) == workflowPullRequestAndMerge {
+		workflowLine = "workflow: pull-request-and-merge; review summary: <summary or skip state>"
+	}
 	reviewLine := "If a review ran, read `~/.ward/review-summary.txt` and copy its exact one-line summary into the same final comment."
 	if !reviewGate {
 		reviewLine = "The in-container review gate was intentionally skipped"
@@ -334,15 +339,18 @@ func headlessReflection(ref agentIssueRef, wf workflowMode, reviewGate bool, rev
 			reviewLine += " because " + reviewSkip
 		}
 		reviewLine += ", so the final comment must say that explicitly."
+		if canonicalWorkflow(wf.orDefault()) == workflowPullRequestAndMerge {
+			landingPhrase = "the pull request is open and the review gate was intentionally skipped"
+		}
 	}
-	return "Finally, as your very last step - only after " + workflowLandingPhrase(ref, wf) + " - post one hypercurt " +
+	return "Finally, as your very last step - only after " + landingPhrase + " - post one hypercurt " +
 		"comment on this issue. The only visible text before the collapsed block is a single machine-readable " +
 		"status line - its very first visible line, exactly one of:\n" +
 		"  `" + wardOutcomeMarker + " " + outcomeStatus + "`\n" +
 		"  `" + wardOutcomeMarker + " blocked 🛑`\n" +
 		"  `" + wardOutcomeMarker + " failed ❌`\n" +
 		"Put every other word inside one collapsed `<details><summary>details</summary>` block: the review " +
-		"summary or skip state, the workflow line (`workflow: <mode>; review summary: <summary or skip state>`), " +
+		"summary or skip state, the workflow line (`" + workflowLine + "`), " +
 		"the short candid retrospective on how the implementation \"felt\", confidence, surprises, and follow-ups. Do not leave " +
 		"any visible prose outside that first status line. " + reviewLine + " " + headlessWorkflowFailureCommentClause(ref, wf) + " A supervising director loop " +
 		"(ward agent director) reads only that first line to classify the run, so for a normal run that completed " +
@@ -2006,8 +2014,12 @@ func (r *Runner) launchAgentContainer(ctx context.Context, c *cli.Command, mode 
 	// Reserve the issue so another run won't redo it. Fold the dynamic seed context into
 	// the comment so a pre-launch-gate death self-documents on the thread (ward#609).
 	seedCtx := buildReservationSeedContext(w, plan, time.Now().UTC())
-	release, err := r.reserveIssue(ctx, label, mode, ref, plan.Name, plan.Branch, justification, seedCtx, c.Bool("force"), plan.SkipPreflight)
-	if err != nil {
+	var release func()
+	if err := r.withAgentReservationLock(ref, func() error {
+		var reserveErr error
+		release, reserveErr = r.reserveIssue(ctx, label, mode, ref, plan.Name, plan.Branch, justification, seedCtx, c.Bool("force"), plan.SkipPreflight)
+		return reserveErr
+	}); err != nil {
 		return err
 	}
 	// Arm a rollback: a launch that fails before the container is confirmed up must retract

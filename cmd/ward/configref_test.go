@@ -93,9 +93,9 @@ func TestConfigBundleCacheRoot(t *testing.T) {
 		return func(k string) string { return m[k] }
 	}
 	gc := t.TempDir()
-	got, err := configBundleCacheRoot(env(map[string]string{"WARD_CONTAINER": "1", "WARD_GITCACHE": gc}))
-	if err != nil || got != filepath.Join(gc, "config-bundle") {
-		t.Errorf("container root = %q (%v), want %s/config-bundle", got, err, gc)
+	got, err := configBundleCacheRoot(env(map[string]string{"WARD_CONTAINER": "1", "WARD_GITCACHE": gc, "WARD_CONTAINER_NAME": "director-1234"}))
+	if err != nil || got != filepath.Join(gc, "config-bundle", "director-1234") {
+		t.Errorf("container root = %q (%v), want %s/config-bundle/director-1234", got, err, gc)
 	}
 	if !isDir(got) {
 		t.Errorf("container root %q was not created", got)
