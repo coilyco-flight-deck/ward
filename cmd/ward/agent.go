@@ -2111,11 +2111,7 @@ func (r *Runner) runAgentTaskDirect(ctx context.Context, c *cli.Command, mode co
 
 	// task always detaches, so host dispatch is the last interactive moment - surface
 	// a stale-ward reminder before it files+launches (ward#143).
-	if preflightSkipped(c) {
-		writef(os.Stderr, "%s: skipping ward update reminder (--skip-preflight)\n", label)
-	} else {
-		r.maybeWarnWardOutdated(ctx)
-	}
+	r.maybeWarnWardOutdatedForTask(ctx, c, label)
 
 	cl, err := r.hostTrackerClient(ctx, trackerForgejo, mode)
 	if err != nil {
@@ -2144,12 +2140,26 @@ func (r *Runner) runAgentTaskDirect(ctx context.Context, c *cli.Command, mode co
 		justification = read
 	}
 
+	if forwarded, ferr := r.forwardFreeformEngineerLaunchToHostBroker(ctx, c, mode, ref); forwarded {
+		return ferr
+	}
+
 	// The freeform instructions are the filed body (no --details); a headless seed
 	// (inlined body + reflection) carried under the resolved workflow (#167, #281, #508).
 	reviewGate := reviewGateWanted(c, mode, ref)
 	seed := agentSeedPromptWorkflow(ref, title, body, "", true, nil, wf, reviewGate, "")
 	return r.launchAgentContainer(ctx, c, mode, "engineer",
 		resolvedWork{Ref: ref, Title: title, Body: body, Workflow: wf, ReviewGate: reviewGate, Seed: seed}, justification)
+}
+
+// maybeWarnWardOutdatedForTask keeps the freeform engineer reminder branch out of
+// runAgentTaskDirect so the launch path stays under the repo's cyclomatic limit.
+func (r *Runner) maybeWarnWardOutdatedForTask(ctx context.Context, c *cli.Command, label string) {
+	if preflightSkipped(c) {
+		writef(os.Stderr, "%s: skipping ward update reminder (--skip-preflight)\n", label)
+		return
+	}
+	r.maybeWarnWardOutdated(ctx)
 }
 
 // printAgentTaskPlan renders the repo, the issue that *would* be filed, and the

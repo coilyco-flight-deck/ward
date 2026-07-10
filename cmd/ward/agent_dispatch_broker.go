@@ -800,6 +800,36 @@ func (r *Runner) maybeForwardAgentDispatchToHostBroker(ctx context.Context, c *c
 	return true, nil
 }
 
+// forwardFreeformEngineerLaunchToHostBroker forwards the launch after a freshly
+// filed freeform engineer issue on read-only surfaces.
+func (r *Runner) forwardFreeformEngineerLaunchToHostBroker(ctx context.Context, c *cli.Command, mode containerMode, ref agentIssueRef) (bool, error) {
+	addr := strings.TrimSpace(os.Getenv(envDispatchBrokerAddr))
+	if addr == "" || os.Getenv("WARD_READONLY") != "1" {
+		return false, nil
+	}
+	req := dispatchBrokerRequest{
+		Role:      "engineer",
+		Argv:      brokerEngineerArgv(c, mode, ref),
+		Requester: strings.TrimSpace(os.Getenv("WARD_CONTAINER_NAME")),
+		Token:     strings.TrimSpace(os.Getenv(envDispatchBrokerToken)),
+	}
+	logPath, err := sendDispatchBrokerLaunchRequest(ctx, addr, req)
+	if err != nil {
+		if logPath != "" {
+			return true, fmt.Errorf("%w (dispatch log: %s)", err, logPath)
+		}
+		return true, err
+	}
+	displayArgv := redactDispatchBrokerArgv(req.Argv)
+	if logPath != "" {
+		fmt.Fprintf(os.Stderr, "ward dispatch broker: forwarded `ward agent %s` to host ward (run output on the host at %s)\n",
+			displayArgv, logPath)
+	} else {
+		fmt.Fprintf(os.Stderr, "ward dispatch broker: forwarded `ward agent %s` to host ward\n", displayArgv)
+	}
+	return true, nil
+}
+
 // brokerDispatchHarness returns the harness to forward into a sibling dispatch.
 // Explicit --harness/--agent/--driver wins; otherwise inherit WARD_AGENT/WARD_MODE.
 func brokerDispatchHarness(c *cli.Command, fallback containerMode) containerMode {

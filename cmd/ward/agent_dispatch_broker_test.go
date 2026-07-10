@@ -8,9 +8,12 @@ import (
 	"fmt"
 	"io"
 	"net"
+	"net/http"
+	"net/http/httptest"
 	"os"
 	"path/filepath"
 	"reflect"
+	"slices"
 	"strings"
 	"testing"
 	"time"
@@ -1115,6 +1118,184 @@ func TestNoBrokerKeepsDirectDispatchPath(t *testing.T) {
 	}
 	if forwarded {
 		t.Fatal("direct host dispatch should not forward without broker env")
+	}
+}
+
+// TestRunAgentTaskDirectRoutesThroughBrokerOnReadonlySurface is the ward#931 smoke.
+// It locks the ward#900 and ward#876 regression shape without a live LLM.
+func TestRunAgentTaskDirectRoutesThroughBrokerOnReadonlySurface(t *testing.T) {
+	t.Setenv("HOME", t.TempDir())
+	t.Setenv("FORGEJO_TOKEN", "forgejo-token")
+	t.Setenv("WARD_AGENT", "codex")
+	t.Setenv("WARD_MODE", "codex")
+	t.Setenv("WARD_READONLY", "1")
+	t.Setenv(envDispatchBrokerToken, "nonce-freeform")
+	t.Setenv("WARD_CONTAINER_NAME", "director-codex-host")
+
+	bundleDir := t.TempDir()
+	bundleBody := `smart-defaults {
+    agent-reservation-ttl "1h"
+    agent-reservation-recheck-max "15s"
+    agent-reap-idle "1h"
+    agent-reap-max-cpu "5.0"
+    engineer-container-limit "12"
+    director-max-parallel "10"
+    director-limit "50"
+    director-poll-interval "30s"
+    reviewer-timeout "8m"
+    config-bundle-ttl "600s"
+    container-assets-ttl "1h"
+    container-read-only-extra-repo-ttl "24h"
+    container-reap-keep "10"
+    agent-workflow default=direct-main {
+    }
+}
+
+repo-authority default=forgejo {
+    trusted-owner example-owner
+    trusted-owner coilyco-flight-deck
+    repo "example-owner/*" forge=github
+}`
+	if err := os.WriteFile(filepath.Join(bundleDir, bundleDefaultsKDLPath), []byte(bundleBody), 0o644); err != nil {
+		t.Fatalf("write bundle defaults: %v", err)
+	}
+	t.Setenv(wardConfigRefEnv, "file://"+bundleDir)
+
+	defs, err := currentSmartDefaultsWithError()
+	if err != nil {
+		t.Fatalf("load trusted bundle: %v", err)
+	}
+	if !slices.Contains(defs.trustedOwners, "coilyco-flight-deck") {
+		t.Fatalf("trusted owners = %v, want coilyco-flight-deck in the real bundle", defs.trustedOwners)
+	}
+
+	issueCreated := make(chan struct{}, 1)
+	issueErr := make(chan error, 1)
+	var issueReq struct {
+		Title string `json:"title"`
+		Body  string `json:"body"`
+	}
+	forgejo := httptest.NewServer(http.HandlerFunc(func(w http.ResponseWriter, r *http.Request) {
+		switch {
+		case r.Method == http.MethodPost && r.URL.Path == "/api/v1/repos/coilyco-flight-deck/agentic-os/issues":
+			if got := r.Header.Get("Authorization"); got != "token forgejo-token" {
+				select {
+				case issueErr <- fmt.Errorf("authorization header = %q, want token forgejo-token", got):
+				default:
+				}
+				w.WriteHeader(http.StatusUnauthorized)
+				return
+			}
+			if err := json.NewDecoder(r.Body).Decode(&issueReq); err != nil {
+				select {
+				case issueErr <- fmt.Errorf("decode issue body: %w", err):
+				default:
+				}
+				w.WriteHeader(http.StatusBadRequest)
+				return
+			}
+			_ = json.NewEncoder(w).Encode(map[string]int{"number": 400})
+			select {
+			case issueCreated <- struct{}{}:
+			default:
+			}
+		default:
+			select {
+			case issueErr <- fmt.Errorf("unexpected Forgejo request: %s %s", r.Method, r.URL.Path):
+			default:
+			}
+			w.WriteHeader(http.StatusNotFound)
+		}
+	}))
+	defer forgejo.Close()
+
+	origForgejoBase := forgejoBaseURL
+	forgejoBaseURL = forgejo.URL
+	t.Cleanup(func() { forgejoBaseURL = origForgejoBase })
+
+	ln, err := net.Listen("tcp", "127.0.0.1:0")
+	if err != nil {
+		t.Fatalf("listen broker: %v", err)
+	}
+	defer ln.Close()
+
+	gotReq := make(chan dispatchBrokerRequest, 1)
+	brokerErr := make(chan error, 1)
+	go func() {
+		conn, err := ln.Accept()
+		if err != nil {
+			brokerErr <- err
+			return
+		}
+		defer conn.Close()
+		var req dispatchBrokerRequest
+		if err := json.NewDecoder(conn).Decode(&req); err != nil {
+			brokerErr <- err
+			return
+		}
+		gotReq <- req
+		_ = json.NewEncoder(conn).Encode(dispatchBrokerResponse{OK: true, LogPath: "/tmp/ward/dispatch.log"})
+	}()
+
+	t.Setenv(envDispatchBrokerAddr, ln.Addr().String())
+	t.Setenv("WARD_FORGEJO_BASE", forgejo.URL)
+
+	r := &Runner{Runner: &shell.Runner{
+		Resolve: func(bin string) (string, error) {
+			if bin == "docker" {
+				return "", fmt.Errorf("local docker path should not be touched")
+			}
+			return "/bin/true", nil
+		},
+	}}
+	instructions := filepath.Join(t.TempDir(), "engineer-dispatch-smoke.md")
+	if err := os.WriteFile(instructions, []byte("Repair the launch path so read-only engineer dispatch uses the broker."), 0o644); err != nil {
+		t.Fatalf("write instructions: %v", err)
+	}
+	cmd := parseCommandForTest(t, agentEngineerFlags(), []string{
+		"engineer", "coilyco-flight-deck/agentic-os", "--instructions-file", instructions, "--skip-preflight",
+	})
+	if err := r.runAgentTask(context.Background(), cmd, modeCodex); err != nil {
+		t.Fatalf("runAgentTaskDirect smoke: %v", err)
+	}
+
+	select {
+	case <-issueCreated:
+	case <-time.After(2 * time.Second):
+		t.Fatal("freeform engineer never filed the issue")
+	}
+	select {
+	case err := <-issueErr:
+		t.Fatalf("forgejo smoke server: %v", err)
+	default:
+	}
+	if got, want := issueReq.Title, "Repair the launch path so read-only engineer dispatch uses the broker."; got != want {
+		t.Fatalf("filed issue title = %q, want %q", got, want)
+	}
+	if !strings.Contains(issueReq.Body, "Filed by `ward agent engineer --harness codex`.") {
+		t.Fatalf("filed issue body did not carry the provenance footer:\n%s", issueReq.Body)
+	}
+
+	var req dispatchBrokerRequest
+	select {
+	case req = <-gotReq:
+	case err := <-brokerErr:
+		t.Fatalf("broker smoke server: %v", err)
+	case <-time.After(2 * time.Second):
+		t.Fatal("engineer launch never reached the broker")
+	}
+	if req.Role != "engineer" {
+		t.Fatalf("broker role = %q, want engineer", req.Role)
+	}
+	wantArgv := []string{"engineer", "coilyco-flight-deck/agentic-os#400", "--harness", "codex", "--skip-preflight"}
+	if !reflect.DeepEqual(req.Argv, wantArgv) {
+		t.Fatalf("broker argv = %v, want %v", req.Argv, wantArgv)
+	}
+	if req.Requester != "director-codex-host" {
+		t.Fatalf("broker requester = %q, want director-codex-host", req.Requester)
+	}
+	if req.Token != "nonce-freeform" {
+		t.Fatalf("broker token = %q, want nonce-freeform", req.Token)
 	}
 }
 
