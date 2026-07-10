@@ -1,6 +1,6 @@
 # ward-kdl-admin ops forgejo
 
-Spec-driven CLI. Every verb issues an HTTP request against the API base https://forgejo.coilysiren.me/api/v1.
+Spec-driven CLI. Every verb issues an HTTP request against the API base https://git.example.com/api/v1.
 
 Authenticates with the "Authorization" header (scheme header-token), reading the token from env FORGEJO_TOKEN. The token value is never shown.
 
@@ -454,7 +454,7 @@ owners and a non-owner tries to change the value of private.
 - `--website` (string, optional): a URL with more information about the repository.
 - `--wiki_branch` (string, optional): sets the branch used for this repository's wiki.
 
-## ward-kdl-admin ops forgejo org-repo create - create a repo inside an existing org (POST /orgs/{org}/repos); the org-scoped sibling of `create repo` (which targets /user/repos, a path the bot lacks write:user for). The coilyco-ops token already carries write:organization, so this is a missing verb, not a missing scope (ward#218). op pinned because a bare `create org-repo` also matches the deprecated alias. Org create/delete stay human-only; this creates repos within an org, not orgs themselves.
+## ward-kdl-admin ops forgejo org-repo create - create a repo inside an existing org (POST /orgs/{org}/repos); the org-scoped sibling of `create repo` (which targets /user/repos, a path the bot lacks write:user for). The example deployment token already carries write:organization, so this is a missing verb, not a missing scope. op pinned because a bare `create org-repo` also matches the deprecated alias. Org create/delete stay human-only; this creates repos within an org, not orgs themselves.
 
 `POST /orgs/{org}/repos`
 
@@ -817,7 +817,7 @@ Positional arguments (3):
 - `<repo>` (string)
 - `<id>` (string)
 
-## ward-kdl-admin ops forgejo issue-comment delete - delete a single issue comment by its comment ID (DELETE /repos/{owner}/{repo}/issues/comments/{id}). op pinned for the same reason `list issue-comment` pins issueGetComments - the bare `delete issue-comment` convention does not reach issueDeleteComment. This is the cleanup path a stale reservation road-block needed (ward#570): a `ward agent` launch that dies before its container comes up posts a release-marker comment to retract the hold, but the orphaned `ward-agent-reservation` comment itself could only be removed by hand until this leaf. {owner}-scoped by the coily* gate above; irreversible, so it is a targeted-ID delete, never a bulk sweep.
+## ward-kdl-admin ops forgejo issue-comment delete - delete a single issue comment by its comment ID (DELETE /repos/{owner}/{repo}/issues/comments/{id}). op pinned for the same reason `list issue-comment` pins issueGetComments - the bare `delete issue-comment` convention does not reach issueDeleteComment. This is the cleanup path a stale reservation road-block needed (ward#570): a `ward agent` launch that dies before its container comes up posts a release-marker comment to retract the hold, but the orphaned `ward-agent-reservation` comment itself could only be removed by hand until this leaf. {owner}-scoped by the example gate above; irreversible, so it is a targeted-ID delete, never a bulk sweep.
 
 `DELETE /repos/{owner}/{repo}/issues/comments/{id}`
 
@@ -876,7 +876,7 @@ The `until` and `fail-when` expressions above are [JMESPath, Community Edition](
 
 Every verb whose path carries one of these parameters must supply a value matching a glob below, or it fails closed.
 
-- `owner` must match: coily*
+- `owner` must match: example*
 
 ## Denied operations
 

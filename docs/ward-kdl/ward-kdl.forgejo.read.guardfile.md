@@ -1,8 +1,8 @@
 # ward-kdl-read ops forgejo
 
-Spec-driven CLI. Every verb issues an HTTP request against the API base https://forgejo.coilysiren.me/api/v1.
+Spec-driven CLI. Every verb issues an HTTP request against the API base https://git.example.com/api/v1.
 
-Authenticates with the "Authorization" header (scheme header-token), reading the token from ssm /forgejo/coilyco-ops/api-token. The token value is never shown.
+Authenticates with the "Authorization" header (scheme header-token), reading the token from ssm /example/forgejo/api-token. The token value is never shown.
 
 ## ward-kdl-read ops forgejo repo get
 
@@ -411,7 +411,7 @@ The `until` and `fail-when` expressions above are [JMESPath, Community Edition](
 
 Every verb whose path carries one of these parameters must supply a value matching a glob below, or it fails closed.
 
-- `owner` must match: coily*
+- `owner` must match: example*
 
 ## Denied operations
 

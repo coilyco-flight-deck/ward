@@ -28,7 +28,7 @@ regenerate when the source changes (`make build-ward-kdl`). Three dialects:
 
 ## Run time: `ward` embeds the emitted surfaces
 
-`ward` (public face `warded`) is the product a user installs. It embeds the ward-kdl surfaces as `ward ops <api>`, `ward docker`, `ward agents <target>`, then adds the run-time-only layers ward-kdl never produces: `ward agent` and `ward exec`. The embeds are the baked default. `WARD_CONFIG_REF` still swaps edge-mounted surfaces at launch, but core agent/container defaults stay ward-owned ([config-source.md](config-source.md)). Exec guardfiles auto-mount at their `wrap` path ([ward-kdl-in-ward.md](ward-kdl-in-ward.md)).
+`ward` embeds the ward-kdl surfaces as `ward ops <api>`, `ward docker`, and `ward agents <target>`, then adds `ward agent` and `ward exec`. The embeds are the baked example-safe default. `WARD_CONFIG_REF` still swaps edge-mounted surfaces at launch, but core agent/container defaults stay ward-owned and the real deployment bundle comes from aos' `.ward/` tree ([config-source.md](config-source.md)). Exec guardfiles auto-mount at their `wrap` path ([ward-kdl-in-ward.md](ward-kdl-in-ward.md)).
 
 ## The per-area reference docs
 

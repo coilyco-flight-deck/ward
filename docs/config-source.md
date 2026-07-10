@@ -3,7 +3,7 @@ doc_goal: Pin the WARD_CONFIG_REF edge-surface config-source seam - the fs.FS th
 ---
 # The edge config source: `WARD_CONFIG_REF` and the fs.FS-at-launch seam
 
-Since [ward#653](https://forgejo.coilysiren.me/coilyco-flight-deck/ward/issues/653) (epic [ward#650](https://forgejo.coilysiren.me/coilyco-flight-deck/ward/issues/650)), ward's edge-mounted KDL surfaces compile at launch from a selected `fs.FS`, not a hard-wired embed. `cmd/ward/configsource.go` picks it. The baked agent/container defaults stay ward-owned, and the launch-selected smart-defaults bundle reads the same selection path for runtime policy. Three sites read it:
+Since [ward#653](https://forgejo.coilysiren.me/coilyco-flight-deck/ward/issues/653) (epic [ward#650](https://forgejo.coilysiren.me/coilyco-flight-deck/ward/issues/650)), ward's edge-mounted KDL surfaces compile at launch from a selected `fs.FS`, not a hard-wired embed. `cmd/ward/configsource.go` picks it. The baked agent/container defaults stay ward-owned, and the baked ward-kdl bundle is now the example-safe starter. The coilyco deployment bundle lives in aos' `.ward/` tree and is selected here at launch. Three sites read it:
 
 - `ward ops forgejo` - spec guardfile + swagger lock, plus the optional admin guardfile.
 - the exec-dialect auto-mount - `ward docker`, `ward agents <tool>`, `ward ops {aws,kubectl,...}`.
@@ -17,7 +17,7 @@ Since [ward#653](https://forgejo.coilysiren.me/coilyco-flight-deck/ward/issues/6
 
 ## Bundle layout
 
-A ref points at a **flat** bundle directory - the [aos#332](https://github.com/coilysiren/agentic-os/issues/332) layout, same as `.ward/ward-kdl/`:
+A ref points at a **flat** bundle directory - the [aos#332](https://github.com/coilysiren/agentic-os/issues/332) layout, same as `.ward/ward-kdl/` and the aos-owned bundle under `/substrate/agentic-os/.ward`:
 
 - `ward-kdl.forgejo.guardfile.kdl` + `forgejo.swagger.lock.json` - the spec
   surface for `ops forgejo`.

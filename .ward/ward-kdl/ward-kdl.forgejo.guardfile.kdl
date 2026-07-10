@@ -9,16 +9,16 @@
 // ../../docs/ward-kdl/ward-kdl.forgejo.guardfile.md.
 wrap ward-kdl ops forgejo {
     spec forgejo.swagger.v1.json
-    base-url "forgejo.coilysiren.me/api/v1"
-    // Auth as the coilyco-ops bot, not a personal PAT (ward#151), so automated
-    // ops attribute to the bot. Token + scopes: provision-coilyco-ops-bot.sh.
+    base-url "git.example.com/api/v1"
+    // Auth as an example bot, not a personal PAT. Token + scopes are deployment
+    // specific and belong to the selected bundle, not the baked default.
     auth header-token {
         header Authorization
         prefix "token "
-        value ssm "/forgejo/coilyco-ops/api-token"
+        value ssm "/example/forgejo/api-token"
     }
-    // Scope gate: every leaf whose path carries {owner} must name a coily* owner.
-    restrict owner matches coily*
+    // Scope gate: every leaf whose path carries {owner} must name an example owner.
+    restrict owner matches example*
     // repos: read/create/edit/delete plus the cross-repo `search` finder. Fork
     // and archive/unarchive are denied below as human-only irreversible toggles.
     can get repo
@@ -50,7 +50,7 @@ wrap ward-kdl ops forgejo {
     }
     can create org-repo {
         op createOrgRepo
-        describe "create a repo inside an existing org (POST /orgs/{org}/repos); the org-scoped sibling of `create repo` (which targets /user/repos, a path the bot lacks write:user for). The coilyco-ops token already carries write:organization, so this is a missing verb, not a missing scope (ward#218). op pinned because a bare `create org-repo` also matches the deprecated alias. Org create/delete stay human-only; this creates repos within an org, not orgs themselves."
+        describe "create a repo inside an existing org (POST /orgs/{org}/repos); the org-scoped sibling of `create repo` (which targets /user/repos, a path the bot lacks write:user for). The example deployment token already carries write:organization, so this is a missing verb, not a missing scope. op pinned because a bare `create org-repo` also matches the deprecated alias. Org create/delete stay human-only; this creates repos within an org, not orgs themselves."
     }
     can list org-repo {
         op orgListRepos
@@ -58,7 +58,7 @@ wrap ward-kdl ops forgejo {
     }
     can list user-repo {
         op userListRepos
-        describe "list the repos a user owns (GET /users/{username}/repos). coilysiren is a user, not an org, so the route survey reaches its repos here rather than through `org-repo list`. Read-only, the survey's other half."
+        describe "list the repos a user owns (GET /users/{username}/repos). The example deployment user is a user, not an org, so the route survey reaches its repos here rather than through `org-repo list`. Read-only, the survey's other half."
     }
     // search finders: global read-only finders keyed on a query string, with no
     // {owner}/{org} path param to gate - server-wide reads, no new behavior (ward#368).

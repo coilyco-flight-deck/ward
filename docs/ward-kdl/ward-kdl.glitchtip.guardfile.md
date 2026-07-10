@@ -1,8 +1,8 @@
 # ward-kdl ops glitchtip
 
-Spec-driven CLI. Every verb issues an HTTP request against the API base (resolved from ssm /glitchtip/base-url).
+Spec-driven CLI. Every verb issues an HTTP request against the API base (resolved from ssm /example/glitchtip/base-url).
 
-Authenticates with the "Authorization" header (scheme bearer), reading the token from ssm /glitchtip/api-token. The token value is never shown.
+Authenticates with the "Authorization" header (scheme bearer), reading the token from ssm /example/glitchtip/api-token. The token value is never shown.
 
 ## ward-kdl ops glitchtip organization get
 
