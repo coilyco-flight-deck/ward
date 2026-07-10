@@ -12,7 +12,6 @@ import (
 	"regexp"
 	"slices"
 	"strings"
-	"sync/atomic"
 	"testing"
 	"time"
 
@@ -690,27 +689,41 @@ func TestWriteContainerAssetsStagesWardBinary(t *testing.T) {
 	}
 }
 
-func TestDownloadWardBootstrapBinaryRetries404(t *testing.T) {
+func TestDownloadWardBootstrapBinarySelectsLatestAssetBearingRelease(t *testing.T) {
 	origBase := forgejoBaseURL
 	forgejoBaseURL = ""
 	t.Cleanup(func() { forgejoBaseURL = origBase })
 
-	origSleep := bootstrapDownloadSleep
-	bootstrapDownloadSleep = func(time.Duration) {}
-	t.Cleanup(func() { bootstrapDownloadSleep = origSleep })
-
-	var assetHits int32
+	var listHits, assetHits map[string]int
+	listHits = map[string]int{}
+	assetHits = map[string]int{}
 	srv := httptest.NewServer(http.HandlerFunc(func(w http.ResponseWriter, r *http.Request) {
 		switch {
-		case strings.HasSuffix(r.URL.Path, "/releases/latest"):
+		case strings.HasSuffix(r.URL.Path, "/releases"):
 			w.Header().Set("Content-Type", "application/json")
-			_, _ = fmt.Fprint(w, `{"tag_name":"v1.2.3"}`)
-		case strings.Contains(r.URL.Path, "/releases/download/v1.2.3/ward-linux-"):
-			if atomic.AddInt32(&assetHits, 1) == 1 {
-				http.Error(w, "not ready yet", http.StatusNotFound)
-				return
+			switch r.URL.Query().Get("page") {
+			case "1":
+				listHits["1"]++
+				_, _ = fmt.Fprint(w, `[
+					{"tag_name":"v0.580.0","draft":false,"prerelease":false,"assets":[]},
+					{"tag_name":"v0.579.0","draft":false,"prerelease":false,"assets":[]}
+				]`)
+			case "2":
+				listHits["2"]++
+				_, _ = fmt.Fprint(w, `[
+					{"tag_name":"v0.578.0","draft":false,"prerelease":false,"assets":[{"name":"ward-linux-arm64"}]}
+				]`)
+			case "3":
+				listHits["3"]++
+				_, _ = fmt.Fprint(w, `[]`)
+			default:
+				t.Fatalf("unexpected releases page %q", r.URL.Query().Get("page"))
 			}
+		case strings.Contains(r.URL.Path, "/releases/download/v0.578.0/ward-linux-arm64"):
+			assetHits["v0.578.0"]++
 			_, _ = w.Write([]byte("bootstrapped ward"))
+		case strings.Contains(r.URL.Path, "/releases/download/v0.580.0/") || strings.Contains(r.URL.Path, "/releases/download/v0.579.0/"):
+			t.Fatalf("bootstrap selection should skip assetless releases, hit %q", r.URL.Path)
 		default:
 			t.Fatalf("unexpected request path %q", r.URL.Path)
 		}
@@ -729,8 +742,42 @@ func TestDownloadWardBootstrapBinaryRetries404(t *testing.T) {
 	if got := string(data); got != "bootstrapped ward" {
 		t.Fatalf("staged binary = %q, want %q", got, "bootstrapped ward")
 	}
-	if got := atomic.LoadInt32(&assetHits); got != 2 {
-		t.Fatalf("asset fetch hits = %d, want 2 (404 retry then success)", got)
+	if got := assetHits["v0.578.0"]; got != 1 {
+		t.Fatalf("selected release asset hits = %d, want 1", got)
+	}
+	if got := len(listHits); got != 2 {
+		t.Fatalf("releases list pages = %v, want two pages scanned", listHits)
+	}
+}
+
+func TestDownloadWardBootstrapBinaryReportsReleaseAssetsNotReady(t *testing.T) {
+	origBase := forgejoBaseURL
+	forgejoBaseURL = ""
+	t.Cleanup(func() { forgejoBaseURL = origBase })
+
+	srv := httptest.NewServer(http.HandlerFunc(func(w http.ResponseWriter, r *http.Request) {
+		switch {
+		case strings.Contains(r.URL.Path, "/releases/download/v0.544.0/ward-linux-arm64"):
+			http.Error(w, "Not Found", http.StatusNotFound)
+		default:
+			t.Fatalf("unexpected request path %q", r.URL.Path)
+		}
+	}))
+	t.Cleanup(srv.Close)
+	forgejoBaseURL = srv.URL
+
+	dir := t.TempDir()
+	err := downloadWardBootstrapBinary(context.Background(), "v0.544.0", filepath.Join(dir, "ward"))
+	if err == nil {
+		t.Fatal("downloadWardBootstrapBinary should fail on a missing release asset")
+	}
+	if !isReleaseAssetsNotReadyError(err) {
+		t.Fatalf("download error = %v, want release-assets-not-ready classification", err)
+	}
+	for _, want := range []string{"v0.544.0", "ward-linux-arm64", "release-assets-not-ready"} {
+		if !strings.Contains(err.Error(), want) {
+			t.Errorf("missing %q in error %v", want, err)
+		}
 	}
 }
 
