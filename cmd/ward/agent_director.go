@@ -1130,37 +1130,76 @@ func backlogReservationState(comments []issueComment, now time.Time, ttl time.Du
 func (r *Runner) backlogRefresh(ctx context.Context, label string, repos []string, limit int) error {
 	cl := r.hostForgejoClient(ctx)
 	for _, repo := range repos {
-		owner, name, _ := strings.Cut(repo, "/")
-		issues, lerr := cl.listOpenIssues(ctx, owner, name, limit)
-		if lerr != nil {
-			return fmt.Errorf("%s: %w", label, lerr)
-		}
-		prs, perr := cl.listOpenPullRequests(ctx, owner, name, limit)
-		if perr != nil {
-			return fmt.Errorf("%s: %w", label, perr)
-		}
-		led, lerr := loadBacklogLedger(repo)
-		if lerr != nil {
-			return fmt.Errorf("%s: %w", label, lerr)
-		}
-		prBacklog := make([]backlogIssue, 0, len(prs))
-		for _, pr := range prs {
-			prBacklog = append(prBacklog, backlogIssue{
-				Number: pr.Number,
-				Kind:   backlogKindPullRequest,
-				Title:  pr.Title,
-				Body:   pr.Body,
-				URL:    pr.URL,
-				Labels: append([]string(nil), pr.Labels...),
-			})
-		}
-		refreshBacklogLedger(led, rankBacklogIssues(combineOpenBacklogIssues(issues, prBacklog)))
-		_ = r.backlogRefreshReservationStates(ctx, cl, repo, led)
-		if serr := saveBacklogLedger(led); serr != nil {
-			return fmt.Errorf("%s: %w", label, serr)
+		if err := r.backlogRefreshRepo(ctx, cl, label, repo, limit); err != nil {
+			return err
 		}
 	}
 	return nil
+}
+
+func (r *Runner) backlogRefreshRepo(ctx context.Context, cl *forgejoClient, label, repo string, limit int) error {
+	owner, name, _ := strings.Cut(repo, "/")
+	issues, err := r.openBacklogIssues(ctx, cl, owner, name, limit)
+	if err != nil {
+		return fmt.Errorf("%s: %w", label, err)
+	}
+	prs, err := r.openBacklogPullRequests(ctx, cl, owner, name, limit)
+	if err != nil {
+		return fmt.Errorf("%s: %w", label, err)
+	}
+	led, err := loadBacklogLedger(repo)
+	if err != nil {
+		return fmt.Errorf("%s: %w", label, err)
+	}
+	refreshBacklogLedger(led, rankBacklogIssues(combineOpenBacklogIssues(issues, prs)))
+	_ = r.backlogRefreshReservationStates(ctx, cl, repo, led)
+	if err := saveBacklogLedger(led); err != nil {
+		return fmt.Errorf("%s: %w", label, err)
+	}
+	return nil
+}
+
+func (r *Runner) openBacklogIssues(ctx context.Context, cl *forgejoClient, owner, repo string, limit int) ([]backlogIssue, error) {
+	raw, err := cl.listOpenIssueFeedByType(ctx, owner, repo, limit, "issues")
+	if err != nil {
+		return nil, err
+	}
+	issues := make([]backlogIssue, 0, len(raw))
+	for _, ri := range raw {
+		if ri.isPullRequest() {
+			continue
+		}
+		issues = append(issues, issueBacklogIssue(ri))
+	}
+	return issues, nil
+}
+
+func (r *Runner) openBacklogPullRequests(ctx context.Context, cl *forgejoClient, owner, repo string, limit int) ([]backlogIssue, error) {
+	raw, err := cl.listOpenIssueFeedByType(ctx, owner, repo, limit, "pulls")
+	if err != nil {
+		return nil, err
+	}
+	prs := make([]backlogIssue, 0, len(raw))
+	for _, ri := range raw {
+		if !ri.isPullRequest() {
+			continue
+		}
+		prs = append(prs, issueBacklogIssue(ri))
+	}
+	return prs, nil
+}
+
+func issueBacklogIssue(ri forgejoIssueRaw) backlogIssue {
+	bi := backlogIssue{Number: ri.Number, Kind: backlogKindIssue, Title: ri.Title, Body: ri.Body, URL: ri.HTMLURL}
+	if ri.isPullRequest() {
+		bi.Kind = backlogKindPullRequest
+	}
+	for _, l := range ri.Labels {
+		if l.Name != "" {
+			bi.Labels = append(bi.Labels, l.Name)
+		}
+	}
+	return bi
 }
 
 // backlogRefreshReservationStates overlays live reservation freshness onto the
