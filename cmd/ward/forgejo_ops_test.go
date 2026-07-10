@@ -195,6 +195,8 @@ func TestGetPullRequestMergeabilityReportsNotFoundWithoutRaw404(t *testing.T) {
 // TestForgejoGraftInventory is the ward#407 removal guardrail: every behavior the
 // four buildForgejoOps grafts must re-home is asserted present on the built tree.
 func TestForgejoGraftInventory(t *testing.T) {
+	dir := writeBundleFixture(t)
+	t.Setenv(wardConfigRefEnv, "file://"+dir)
 	forgejo, err := buildForgejoOps()
 	if err != nil {
 		t.Fatalf("buildForgejoOps: %v", err)

@@ -11,6 +11,8 @@ import (
 // TestOverrideForgejoCreateIssueAddsQuietFlag asserts the built `issue create`
 // leaf gains the --quiet flag and keeps an action after the override (ward#316).
 func TestOverrideForgejoCreateIssueAddsQuietFlag(t *testing.T) {
+	dir := writeBundleFixture(t)
+	t.Setenv(wardConfigRefEnv, "file://"+dir)
 	forgejo, err := buildForgejoOps()
 	if err != nil {
 		t.Fatalf("buildForgejoOps: %v", err)

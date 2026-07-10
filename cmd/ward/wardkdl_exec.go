@@ -26,8 +26,8 @@ func mountWardKdlExec(root *cli.Command, r *Runner) error {
 	return mountWardKdlExecFrom(root, src, r)
 }
 
-// mountWardKdlExecFrom scans src.execDir and grafts each exec guardfile; a mixed
-// bundle dir is filtered to ward-kdl.*.guardfile.kdl files carrying an exec block.
+// mountWardKdlExecFrom scans src.execDir and grafts each exec guardfile.
+// Mixed bundles filter to the exec guardfile glob and skip spec siblings.
 func mountWardKdlExecFrom(root *cli.Command, src configSource, r *Runner) error {
 	r.configAuditVersion = src.auditVersion
 
@@ -42,7 +42,7 @@ func mountWardKdlExecFrom(root *cli.Command, src configSource, r *Runner) error 
 			continue
 		}
 		if src.execMixedDialects {
-			if ok, _ := path.Match("ward-kdl.*.guardfile.kdl", e.Name()); !ok {
+			if ok, _ := path.Match(src.execGuardfileGlob, e.Name()); !ok {
 				continue
 			}
 		}

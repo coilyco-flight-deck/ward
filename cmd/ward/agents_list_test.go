@@ -102,6 +102,8 @@ func TestAgentsListTableDefault(t *testing.T) {
 // TestAgentsListSurvivesExecMount is the collision-win invariant: mounting the
 // launchers onto the hand-written `agents` group leaves `list` in place beside them.
 func TestAgentsListSurvivesExecMount(t *testing.T) {
+	t.Setenv("WARD_TARGET_OWNER", "example-owner")
+	t.Setenv("WARD_TARGET_REPO", "example-owner/example-repo")
 	root := &cli.Command{
 		Name: "ward",
 		Commands: []*cli.Command{

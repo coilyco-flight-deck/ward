@@ -71,25 +71,64 @@ jobs:
 
       - name: Alert Telegram on main failure
         if: ${{ failure() && github.ref == 'refs/heads/main' }}
-        shell: bash
         env:
-          TELEGRAM_BOT_TOKEN: ${{ secrets.TELEGRAM_BOT_TOKEN }}
-          TELEGRAM_RED_CHAT_ID: ${{ secrets.TELEGRAM_RED_CHAT_ID }}
+          BOT_TOKEN: ${{ secrets.TELEGRAM_BOT_TOKEN }}
+          CHAT_ID: ${{ secrets.TELEGRAM_RED_CHAT_ID }}
+          REPO: ${{ github.repository }}
+          WORKFLOW: ${{ github.workflow }}
+          JOB: ${{ github.job }}
+          REF: ${{ github.ref }}
+          SHA: ${{ github.sha }}
+          RUN_URL: ${{ github.server_url }}/${{ github.repository }}/actions/runs/${{ github.run_id }}
+          API_BASE: https://api.telegram.org
         run: |
           set -euo pipefail
-          if [ -z "${TELEGRAM_BOT_TOKEN:-}" ] || [ -z "${TELEGRAM_RED_CHAT_ID:-}" ]; then
-            echo "::warning::telegram alert skipped because one or more secrets are missing" >&2
-            exit 0
-          fi
-          message=$(printf '%s\n%s\n%s' \
-            "ward release workflow failed on main" \
-            "repo: ${GITHUB_REPOSITORY}" \
-            "run: ${GITHUB_SERVER_URL}/${GITHUB_REPOSITORY}/actions/runs/${GITHUB_RUN_ID}")
-          curl -fsS -X POST \
-            "https://api.telegram.org/bot${TELEGRAM_BOT_TOKEN}/sendMessage" \
-            -d chat_id="${TELEGRAM_RED_CHAT_ID}" \
-            --data-urlencode "text=${message}" \
-            -d disable_web_page_preview=true
+          python3 - <<'PY'
+          import os
+          import urllib.error
+          import urllib.parse
+          import urllib.request
+
+          def build_message(repo, workflow, job, ref, sha, run_url):
+              return "\n".join([
+                  "CI failed on main",
+                  f"repo: {repo}",
+                  f"workflow: {workflow}",
+                  f"job: {job}",
+                  f"ref: {ref}",
+                  f"sha: {sha}",
+                  f"run: {run_url}",
+              ])
+
+          def main():
+              bot_token = os.environ["BOT_TOKEN"]
+              chat_id = os.environ["CHAT_ID"]
+              message = build_message(
+                  os.environ["REPO"],
+                  os.environ["WORKFLOW"],
+                  os.environ["JOB"],
+                  os.environ["REF"],
+                  os.environ["SHA"],
+                  os.environ["RUN_URL"],
+              )
+              payload = urllib.parse.urlencode(
+                  {
+                      "chat_id": chat_id,
+                      "text": message,
+                      "disable_web_page_preview": "true",
+                  }
+              ).encode("utf-8")
+              url = f"{os.environ['API_BASE'].rstrip('/')}/bot{bot_token}/sendMessage"
+              req = urllib.request.Request(url, data=payload, method="POST")
+              try:
+                  with urllib.request.urlopen(req, timeout=15) as resp:
+                      resp.read()
+              except urllib.error.URLError as exc:
+                  print(f"telegram alert failed: {exc}")
+                  raise SystemExit(1)
+
+          main()
+          PY
   publish-binaries:
     needs: release
     if: ${{ needs.release.outputs.tag != '' }}
@@ -291,25 +330,64 @@ jobs:
 
       - name: Alert Telegram on main failure
         if: ${{ failure() && github.ref == 'refs/heads/main' }}
-        shell: bash
         env:
-          TELEGRAM_BOT_TOKEN: ${{ secrets.TELEGRAM_BOT_TOKEN }}
-          TELEGRAM_RED_CHAT_ID: ${{ secrets.TELEGRAM_RED_CHAT_ID }}
+          BOT_TOKEN: ${{ secrets.TELEGRAM_BOT_TOKEN }}
+          CHAT_ID: ${{ secrets.TELEGRAM_RED_CHAT_ID }}
+          REPO: ${{ github.repository }}
+          WORKFLOW: ${{ github.workflow }}
+          JOB: ${{ github.job }}
+          REF: ${{ github.ref }}
+          SHA: ${{ github.sha }}
+          RUN_URL: ${{ github.server_url }}/${{ github.repository }}/actions/runs/${{ github.run_id }}
+          API_BASE: https://api.telegram.org
         run: |
           set -euo pipefail
-          if [ -z "${TELEGRAM_BOT_TOKEN:-}" ] || [ -z "${TELEGRAM_RED_CHAT_ID:-}" ]; then
-            echo "::warning::telegram alert skipped because one or more secrets are missing" >&2
-            exit 0
-          fi
-          message=$(printf '%s\n%s\n%s' \
-            "ward release workflow failed on main" \
-            "repo: ${GITHUB_REPOSITORY}" \
-            "run: ${GITHUB_SERVER_URL}/${GITHUB_REPOSITORY}/actions/runs/${GITHUB_RUN_ID}")
-          curl -fsS -X POST \
-            "https://api.telegram.org/bot${TELEGRAM_BOT_TOKEN}/sendMessage" \
-            -d chat_id="${TELEGRAM_RED_CHAT_ID}" \
-            --data-urlencode "text=${message}" \
-            -d disable_web_page_preview=true
+          python3 - <<'PY'
+          import os
+          import urllib.error
+          import urllib.parse
+          import urllib.request
+
+          def build_message(repo, workflow, job, ref, sha, run_url):
+              return "\n".join([
+                  "CI failed on main",
+                  f"repo: {repo}",
+                  f"workflow: {workflow}",
+                  f"job: {job}",
+                  f"ref: {ref}",
+                  f"sha: {sha}",
+                  f"run: {run_url}",
+              ])
+
+          def main():
+              bot_token = os.environ["BOT_TOKEN"]
+              chat_id = os.environ["CHAT_ID"]
+              message = build_message(
+                  os.environ["REPO"],
+                  os.environ["WORKFLOW"],
+                  os.environ["JOB"],
+                  os.environ["REF"],
+                  os.environ["SHA"],
+                  os.environ["RUN_URL"],
+              )
+              payload = urllib.parse.urlencode(
+                  {
+                      "chat_id": chat_id,
+                      "text": message,
+                      "disable_web_page_preview": "true",
+                  }
+              ).encode("utf-8")
+              url = f"{os.environ['API_BASE'].rstrip('/')}/bot{bot_token}/sendMessage"
+              req = urllib.request.Request(url, data=payload, method="POST")
+              try:
+                  with urllib.request.urlopen(req, timeout=15) as resp:
+                      resp.read()
+              except urllib.error.URLError as exc:
+                  print(f"telegram alert failed: {exc}")
+                  raise SystemExit(1)
+
+          main()
+          PY
   publish-kdl-write:
     needs: release
     if: ${{ needs.release.outputs.tag != '' }}
@@ -433,25 +511,64 @@ jobs:
 
       - name: Alert Telegram on main failure
         if: ${{ failure() && github.ref == 'refs/heads/main' }}
-        shell: bash
         env:
-          TELEGRAM_BOT_TOKEN: ${{ secrets.TELEGRAM_BOT_TOKEN }}
-          TELEGRAM_RED_CHAT_ID: ${{ secrets.TELEGRAM_RED_CHAT_ID }}
+          BOT_TOKEN: ${{ secrets.TELEGRAM_BOT_TOKEN }}
+          CHAT_ID: ${{ secrets.TELEGRAM_RED_CHAT_ID }}
+          REPO: ${{ github.repository }}
+          WORKFLOW: ${{ github.workflow }}
+          JOB: ${{ github.job }}
+          REF: ${{ github.ref }}
+          SHA: ${{ github.sha }}
+          RUN_URL: ${{ github.server_url }}/${{ github.repository }}/actions/runs/${{ github.run_id }}
+          API_BASE: https://api.telegram.org
         run: |
           set -euo pipefail
-          if [ -z "${TELEGRAM_BOT_TOKEN:-}" ] || [ -z "${TELEGRAM_RED_CHAT_ID:-}" ]; then
-            echo "::warning::telegram alert skipped because one or more secrets are missing" >&2
-            exit 0
-          fi
-          message=$(printf '%s\n%s\n%s' \
-            "ward release workflow failed on main" \
-            "repo: ${GITHUB_REPOSITORY}" \
-            "run: ${GITHUB_SERVER_URL}/${GITHUB_REPOSITORY}/actions/runs/${GITHUB_RUN_ID}")
-          curl -fsS -X POST \
-            "https://api.telegram.org/bot${TELEGRAM_BOT_TOKEN}/sendMessage" \
-            -d chat_id="${TELEGRAM_RED_CHAT_ID}" \
-            --data-urlencode "text=${message}" \
-            -d disable_web_page_preview=true
+          python3 - <<'PY'
+          import os
+          import urllib.error
+          import urllib.parse
+          import urllib.request
+
+          def build_message(repo, workflow, job, ref, sha, run_url):
+              return "\n".join([
+                  "CI failed on main",
+                  f"repo: {repo}",
+                  f"workflow: {workflow}",
+                  f"job: {job}",
+                  f"ref: {ref}",
+                  f"sha: {sha}",
+                  f"run: {run_url}",
+              ])
+
+          def main():
+              bot_token = os.environ["BOT_TOKEN"]
+              chat_id = os.environ["CHAT_ID"]
+              message = build_message(
+                  os.environ["REPO"],
+                  os.environ["WORKFLOW"],
+                  os.environ["JOB"],
+                  os.environ["REF"],
+                  os.environ["SHA"],
+                  os.environ["RUN_URL"],
+              )
+              payload = urllib.parse.urlencode(
+                  {
+                      "chat_id": chat_id,
+                      "text": message,
+                      "disable_web_page_preview": "true",
+                  }
+              ).encode("utf-8")
+              url = f"{os.environ['API_BASE'].rstrip('/')}/bot{bot_token}/sendMessage"
+              req = urllib.request.Request(url, data=payload, method="POST")
+              try:
+                  with urllib.request.urlopen(req, timeout=15) as resp:
+                      resp.read()
+              except urllib.error.URLError as exc:
+                  print(f"telegram alert failed: {exc}")
+                  raise SystemExit(1)
+
+          main()
+          PY
   publish-kdl-read:
     needs: release
     if: ${{ needs.release.outputs.tag != '' }}
@@ -577,25 +694,64 @@ jobs:
 
       - name: Alert Telegram on main failure
         if: ${{ failure() && github.ref == 'refs/heads/main' }}
-        shell: bash
         env:
-          TELEGRAM_BOT_TOKEN: ${{ secrets.TELEGRAM_BOT_TOKEN }}
-          TELEGRAM_RED_CHAT_ID: ${{ secrets.TELEGRAM_RED_CHAT_ID }}
+          BOT_TOKEN: ${{ secrets.TELEGRAM_BOT_TOKEN }}
+          CHAT_ID: ${{ secrets.TELEGRAM_RED_CHAT_ID }}
+          REPO: ${{ github.repository }}
+          WORKFLOW: ${{ github.workflow }}
+          JOB: ${{ github.job }}
+          REF: ${{ github.ref }}
+          SHA: ${{ github.sha }}
+          RUN_URL: ${{ github.server_url }}/${{ github.repository }}/actions/runs/${{ github.run_id }}
+          API_BASE: https://api.telegram.org
         run: |
           set -euo pipefail
-          if [ -z "${TELEGRAM_BOT_TOKEN:-}" ] || [ -z "${TELEGRAM_RED_CHAT_ID:-}" ]; then
-            echo "::warning::telegram alert skipped because one or more secrets are missing" >&2
-            exit 0
-          fi
-          message=$(printf '%s\n%s\n%s' \
-            "ward release workflow failed on main" \
-            "repo: ${GITHUB_REPOSITORY}" \
-            "run: ${GITHUB_SERVER_URL}/${GITHUB_REPOSITORY}/actions/runs/${GITHUB_RUN_ID}")
-          curl -fsS -X POST \
-            "https://api.telegram.org/bot${TELEGRAM_BOT_TOKEN}/sendMessage" \
-            -d chat_id="${TELEGRAM_RED_CHAT_ID}" \
-            --data-urlencode "text=${message}" \
-            -d disable_web_page_preview=true
+          python3 - <<'PY'
+          import os
+          import urllib.error
+          import urllib.parse
+          import urllib.request
+
+          def build_message(repo, workflow, job, ref, sha, run_url):
+              return "\n".join([
+                  "CI failed on main",
+                  f"repo: {repo}",
+                  f"workflow: {workflow}",
+                  f"job: {job}",
+                  f"ref: {ref}",
+                  f"sha: {sha}",
+                  f"run: {run_url}",
+              ])
+
+          def main():
+              bot_token = os.environ["BOT_TOKEN"]
+              chat_id = os.environ["CHAT_ID"]
+              message = build_message(
+                  os.environ["REPO"],
+                  os.environ["WORKFLOW"],
+                  os.environ["JOB"],
+                  os.environ["REF"],
+                  os.environ["SHA"],
+                  os.environ["RUN_URL"],
+              )
+              payload = urllib.parse.urlencode(
+                  {
+                      "chat_id": chat_id,
+                      "text": message,
+                      "disable_web_page_preview": "true",
+                  }
+              ).encode("utf-8")
+              url = f"{os.environ['API_BASE'].rstrip('/')}/bot{bot_token}/sendMessage"
+              req = urllib.request.Request(url, data=payload, method="POST")
+              try:
+                  with urllib.request.urlopen(req, timeout=15) as resp:
+                      resp.read()
+              except urllib.error.URLError as exc:
+                  print(f"telegram alert failed: {exc}")
+                  raise SystemExit(1)
+
+          main()
+          PY
   bump-tap-formula:
     needs: [release, publish-binaries]
     if: ${{ needs.release.outputs.tag != '' }}
@@ -763,25 +919,64 @@ jobs:
 
       - name: Alert Telegram on main failure
         if: ${{ failure() && github.ref == 'refs/heads/main' }}
-        shell: bash
         env:
-          TELEGRAM_BOT_TOKEN: ${{ secrets.TELEGRAM_BOT_TOKEN }}
-          TELEGRAM_RED_CHAT_ID: ${{ secrets.TELEGRAM_RED_CHAT_ID }}
+          BOT_TOKEN: ${{ secrets.TELEGRAM_BOT_TOKEN }}
+          CHAT_ID: ${{ secrets.TELEGRAM_RED_CHAT_ID }}
+          REPO: ${{ github.repository }}
+          WORKFLOW: ${{ github.workflow }}
+          JOB: ${{ github.job }}
+          REF: ${{ github.ref }}
+          SHA: ${{ github.sha }}
+          RUN_URL: ${{ github.server_url }}/${{ github.repository }}/actions/runs/${{ github.run_id }}
+          API_BASE: https://api.telegram.org
         run: |
           set -euo pipefail
-          if [ -z "${TELEGRAM_BOT_TOKEN:-}" ] || [ -z "${TELEGRAM_RED_CHAT_ID:-}" ]; then
-            echo "::warning::telegram alert skipped because one or more secrets are missing" >&2
-            exit 0
-          fi
-          message=$(printf '%s\n%s\n%s' \
-            "ward release workflow failed on main" \
-            "repo: ${GITHUB_REPOSITORY}" \
-            "run: ${GITHUB_SERVER_URL}/${GITHUB_REPOSITORY}/actions/runs/${GITHUB_RUN_ID}")
-          curl -fsS -X POST \
-            "https://api.telegram.org/bot${TELEGRAM_BOT_TOKEN}/sendMessage" \
-            -d chat_id="${TELEGRAM_RED_CHAT_ID}" \
-            --data-urlencode "text=${message}" \
-            -d disable_web_page_preview=true
+          python3 - <<'PY'
+          import os
+          import urllib.error
+          import urllib.parse
+          import urllib.request
+
+          def build_message(repo, workflow, job, ref, sha, run_url):
+              return "\n".join([
+                  "CI failed on main",
+                  f"repo: {repo}",
+                  f"workflow: {workflow}",
+                  f"job: {job}",
+                  f"ref: {ref}",
+                  f"sha: {sha}",
+                  f"run: {run_url}",
+              ])
+
+          def main():
+              bot_token = os.environ["BOT_TOKEN"]
+              chat_id = os.environ["CHAT_ID"]
+              message = build_message(
+                  os.environ["REPO"],
+                  os.environ["WORKFLOW"],
+                  os.environ["JOB"],
+                  os.environ["REF"],
+                  os.environ["SHA"],
+                  os.environ["RUN_URL"],
+              )
+              payload = urllib.parse.urlencode(
+                  {
+                      "chat_id": chat_id,
+                      "text": message,
+                      "disable_web_page_preview": "true",
+                  }
+              ).encode("utf-8")
+              url = f"{os.environ['API_BASE'].rstrip('/')}/bot{bot_token}/sendMessage"
+              req = urllib.request.Request(url, data=payload, method="POST")
+              try:
+                  with urllib.request.urlopen(req, timeout=15) as resp:
+                      resp.read()
+              except urllib.error.URLError as exc:
+                  print(f"telegram alert failed: {exc}")
+                  raise SystemExit(1)
+
+          main()
+          PY
   bump-scoop-manifest:
     needs: [release, publish-binaries]
     if: ${{ needs.release.outputs.tag != '' }}
@@ -911,22 +1106,61 @@ jobs:
           echo "bucket ${BUCKET_REPO} scoop manifest bumped to ${TAG}"
       - name: Alert Telegram on main failure
         if: ${{ failure() && github.ref == 'refs/heads/main' }}
-        shell: bash
         env:
-          TELEGRAM_BOT_TOKEN: ${{ secrets.TELEGRAM_BOT_TOKEN }}
-          TELEGRAM_RED_CHAT_ID: ${{ secrets.TELEGRAM_RED_CHAT_ID }}
+          BOT_TOKEN: ${{ secrets.TELEGRAM_BOT_TOKEN }}
+          CHAT_ID: ${{ secrets.TELEGRAM_RED_CHAT_ID }}
+          REPO: ${{ github.repository }}
+          WORKFLOW: ${{ github.workflow }}
+          JOB: ${{ github.job }}
+          REF: ${{ github.ref }}
+          SHA: ${{ github.sha }}
+          RUN_URL: ${{ github.server_url }}/${{ github.repository }}/actions/runs/${{ github.run_id }}
+          API_BASE: https://api.telegram.org
         run: |
           set -euo pipefail
-          if [ -z "${TELEGRAM_BOT_TOKEN:-}" ] || [ -z "${TELEGRAM_RED_CHAT_ID:-}" ]; then
-            echo "::warning::telegram alert skipped because one or more secrets are missing" >&2
-            exit 0
-          fi
-          message=$(printf '%s\n%s\n%s' \
-            "ward release workflow failed on main" \
-            "repo: ${GITHUB_REPOSITORY}" \
-            "run: ${GITHUB_SERVER_URL}/${GITHUB_REPOSITORY}/actions/runs/${GITHUB_RUN_ID}")
-          curl -fsS -X POST \
-            "https://api.telegram.org/bot${TELEGRAM_BOT_TOKEN}/sendMessage" \
-            -d chat_id="${TELEGRAM_RED_CHAT_ID}" \
-            --data-urlencode "text=${message}" \
-            -d disable_web_page_preview=true
+          python3 - <<'PY'
+          import os
+          import urllib.error
+          import urllib.parse
+          import urllib.request
+
+          def build_message(repo, workflow, job, ref, sha, run_url):
+              return "\n".join([
+                  "CI failed on main",
+                  f"repo: {repo}",
+                  f"workflow: {workflow}",
+                  f"job: {job}",
+                  f"ref: {ref}",
+                  f"sha: {sha}",
+                  f"run: {run_url}",
+              ])
+
+          def main():
+              bot_token = os.environ["BOT_TOKEN"]
+              chat_id = os.environ["CHAT_ID"]
+              message = build_message(
+                  os.environ["REPO"],
+                  os.environ["WORKFLOW"],
+                  os.environ["JOB"],
+                  os.environ["REF"],
+                  os.environ["SHA"],
+                  os.environ["RUN_URL"],
+              )
+              payload = urllib.parse.urlencode(
+                  {
+                      "chat_id": chat_id,
+                      "text": message,
+                      "disable_web_page_preview": "true",
+                  }
+              ).encode("utf-8")
+              url = f"{os.environ['API_BASE'].rstrip('/')}/bot{bot_token}/sendMessage"
+              req = urllib.request.Request(url, data=payload, method="POST")
+              try:
+                  with urllib.request.urlopen(req, timeout=15) as resp:
+                      resp.read()
+              except urllib.error.URLError as exc:
+                  print(f"telegram alert failed: {exc}")
+                  raise SystemExit(1)
+
+          main()
+          PY

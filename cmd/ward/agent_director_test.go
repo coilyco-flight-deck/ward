@@ -651,7 +651,10 @@ func TestDirectorIssueScopeUsesOnlyTheReferencedIssue(t *testing.T) {
 	t.Setenv("FORGEJO_TOKEN", "secret")
 
 	bundleDir := t.TempDir()
-	if err := os.WriteFile(filepath.Join(bundleDir, "ward-kdl.defaults.kdl"), []byte("smart-defaults {\n}\nrepo-authority default=forgejo {\n  trusted-owner coilyco-flight-deck\n}\n"), 0o644); err != nil {
+	if err := os.WriteFile(filepath.Join(bundleDir, "defaults.kdl"), []byte("defaults {\n}\n"), 0o644); err != nil {
+		t.Fatal(err)
+	}
+	if err := os.WriteFile(filepath.Join(bundleDir, "repos.kdl"), []byte("repos {\n  repo-authority default=forgejo {\n    trusted-owner coilyco-flight-deck\n  }\n}\n"), 0o644); err != nil {
 		t.Fatal(err)
 	}
 	t.Setenv("WARD_CONFIG_REF", "file://"+bundleDir)
@@ -729,7 +732,10 @@ func TestResolveDirectorIssueRefFailsClosedAndDoesNotWiden(t *testing.T) {
 	t.Setenv("FORGEJO_TOKEN", "secret")
 
 	bundleDir := t.TempDir()
-	if err := os.WriteFile(filepath.Join(bundleDir, "ward-kdl.defaults.kdl"), []byte("smart-defaults {\n}\nrepo-authority default=forgejo {\n  trusted-owner coilyco-flight-deck\n}\n"), 0o644); err != nil {
+	if err := os.WriteFile(filepath.Join(bundleDir, "defaults.kdl"), []byte("defaults {\n}\n"), 0o644); err != nil {
+		t.Fatal(err)
+	}
+	if err := os.WriteFile(filepath.Join(bundleDir, "repos.kdl"), []byte("repos {\n  repo-authority default=forgejo {\n    trusted-owner coilyco-flight-deck\n  }\n}\n"), 0o644); err != nil {
 		t.Fatal(err)
 	}
 	t.Setenv("WARD_CONFIG_REF", "file://"+bundleDir)
