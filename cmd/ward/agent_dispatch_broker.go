@@ -788,15 +788,7 @@ func (r *Runner) maybeForwardAgentDispatchToHostBroker(ctx context.Context, c *c
 		}
 		return true, err
 	}
-	displayArgv := redactDispatchBrokerArgv(argv)
-	// This line is captured as tool output by the surface agent, not written to the
-	// raw TTY, so naming the host-side run log here is safe and aids discovery.
-	if logPath != "" {
-		fmt.Fprintf(os.Stderr, "ward dispatch broker: forwarded `ward agent %s` to host ward (run output on the host at %s)\n",
-			displayArgv, logPath)
-	} else {
-		fmt.Fprintf(os.Stderr, "ward dispatch broker: forwarded `ward agent %s` to host ward\n", displayArgv)
-	}
+	fmt.Fprintln(os.Stderr, dispatchBrokerForwardedLine(argv, logPath))
 	return true, nil
 }
 
@@ -820,14 +812,26 @@ func (r *Runner) forwardFreeformEngineerLaunchToHostBroker(ctx context.Context, 
 		}
 		return true, err
 	}
-	displayArgv := redactDispatchBrokerArgv(req.Argv)
-	if logPath != "" {
-		fmt.Fprintf(os.Stderr, "ward dispatch broker: forwarded `ward agent %s` to host ward (run output on the host at %s)\n",
-			displayArgv, logPath)
-	} else {
-		fmt.Fprintf(os.Stderr, "ward dispatch broker: forwarded `ward agent %s` to host ward\n", displayArgv)
-	}
+	fmt.Fprintln(os.Stderr, dispatchBrokerForwardedLine(req.Argv, logPath))
 	return true, nil
+}
+
+// dispatchBrokerForwardedLine renders the stable text for a forwarded launch.
+// If logPath is missing, it falls back to a deterministic lookup command.
+func dispatchBrokerForwardedLine(argv []string, logPath string) string {
+	displayArgv := redactDispatchBrokerArgv(argv)
+	base := fmt.Sprintf("ward dispatch broker: forwarded `ward agent %s` to host ward", displayArgv)
+	if path := strings.TrimSpace(logPath); path != "" {
+		return fmt.Sprintf("%s (run output on the host at %s)", base, path)
+	}
+	ref := ""
+	if len(argv) >= 2 {
+		ref = strings.TrimSpace(argv[1])
+	}
+	if ref != "" {
+		return fmt.Sprintf("%s (dispatch log path unavailable yet; inspect later with `ward agent logs %s`)", base, ref)
+	}
+	return fmt.Sprintf("%s (dispatch log path unavailable yet; no lookup command could be derived)", base)
 }
 
 // brokerDispatchHarness returns the harness to forward into a sibling dispatch.
