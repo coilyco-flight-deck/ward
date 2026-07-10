@@ -111,7 +111,7 @@ func TestForgejoKeySealed(t *testing.T) {
 	if err := root.Run(context.Background(), []string{"ward", "ops", "forgejo-key", "read"}); err != nil {
 		t.Fatalf("clean `read` was refused: %v", err)
 	}
-	wantArgv := `kubectl get secret forgejo-runner-secrets -n forgejo -o go-template={{index .data "api-token" | base64decode}}`
+	wantArgv := `kubectl get secret example-runner-secrets -n example -o go-template={{index .data "api-token" | base64decode}}`
 	if got := strings.Join(ranArgv, " "); got != wantArgv {
 		t.Errorf("sealed argv mismatch:\n got %q\nwant %q", got, wantArgv)
 	}
