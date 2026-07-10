@@ -22,6 +22,7 @@ type smartDefaults struct {
 	reservationRecheckDefaultMax  time.Duration
 	agentReapIdleDefault          time.Duration
 	agentReapMaxCPUDefault        float64
+	engineerContainerLimit        int
 	directorMaxParallel           int
 	directorLimit                 int
 	directorPollInterval          time.Duration
@@ -56,6 +57,7 @@ func bakedSmartDefaults() smartDefaults {
 		reservationRecheckDefaultMax:  15 * time.Second,
 		agentReapIdleDefault:          time.Hour,
 		agentReapMaxCPUDefault:        5.0,
+		engineerContainerLimit:        12,
 		directorMaxParallel:           10,
 		directorLimit:                 50,
 		directorPollInterval:          30 * time.Second,
@@ -195,6 +197,12 @@ func applySmartDefaultNode(defs *smartDefaults, n *kdl.Node) error { //nolint:go
 			return err
 		}
 		defs.agentReapMaxCPUDefault = v
+	case "engineer-container-limit":
+		v, err := smartDefaultsIntArg(n, "smart-defaults > engineer-container-limit")
+		if err != nil {
+			return err
+		}
+		defs.engineerContainerLimit = v
 	case "director-max-parallel":
 		v, err := smartDefaultsIntArg(n, "smart-defaults > director-max-parallel")
 		if err != nil {
@@ -249,7 +257,7 @@ func applySmartDefaultNode(defs *smartDefaults, n *kdl.Node) error { //nolint:go
 		}
 	default:
 		return unknownSmartDefaultsNode("smart-defaults body", n.Name(),
-			"agent-reservation-ttl | agent-reservation-recheck-max | agent-reap-idle | agent-reap-max-cpu | director-max-parallel | director-limit | director-poll-interval | reviewer-timeout | config-bundle-ttl | container-assets-ttl | container-read-only-extra-repo-ttl | container-reap-keep | agent-workflow")
+			"agent-reservation-ttl | agent-reservation-recheck-max | agent-reap-idle | agent-reap-max-cpu | engineer-container-limit | director-max-parallel | director-limit | director-poll-interval | reviewer-timeout | config-bundle-ttl | container-assets-ttl | container-read-only-extra-repo-ttl | container-reap-keep | agent-workflow")
 	}
 	return nil
 }
@@ -599,6 +607,8 @@ func reservationRecheckDefaultMax() time.Duration {
 func agentReapIdleDefault() time.Duration { return currentSmartDefaults().agentReapIdleDefault }
 
 func agentReapMaxCPUDefault() float64 { return currentSmartDefaults().agentReapMaxCPUDefault }
+
+func engineerContainerLimitDefault() int { return currentSmartDefaults().engineerContainerLimit }
 
 func directorMaxParallelDefault() int { return currentSmartDefaults().directorMaxParallel }
 
