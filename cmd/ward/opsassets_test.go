@@ -74,6 +74,24 @@ func TestOpsForgejoIssueCommentDeleteMounts(t *testing.T) {
 	}
 }
 
+// TestOpsForgejoPrEditMounts pins the PR-native edit leaf: the pr subtree keeps
+// edit alongside the existing read/merge surface.
+func TestOpsForgejoPrEditMounts(t *testing.T) {
+	dir := writeBundleFixture(t)
+	t.Setenv(wardConfigRefEnv, "file://"+dir)
+	forgejo, err := buildForgejoOps()
+	if err != nil {
+		t.Fatalf("buildForgejoOps: %v", err)
+	}
+	pr := commandNamed(forgejo.Commands, "pr")
+	if pr == nil {
+		t.Fatalf("forgejo group missing pr command; got %v", commandNames(forgejo.Commands))
+	}
+	if commandNamed(pr.Commands, "edit") == nil {
+		t.Fatalf("pr command missing edit leaf; got %v", commandNames(pr.Commands))
+	}
+}
+
 // TestOpsCommandShape asserts the umbrella mounts forgejo under `ops`, the shape
 // main.go registers.
 func TestOpsCommandShape(t *testing.T) {
