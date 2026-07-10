@@ -508,6 +508,7 @@ func (r *Runner) runContainerBootstrap(ctx context.Context, c *cli.Command) erro
 	blog("launching %s as uid %s", e.Agent, e.AgentUID)
 	blog("bootstrap launch handoff: %s", e.Agent)
 	r.launchAgent(ctx, e, work, argv, stream)
+	blog("bootstrap launch returned: agent process exited, deferred reaper runs next")
 	return nil
 }
 
@@ -1315,6 +1316,20 @@ func (r *Runner) launchAgent(ctx context.Context, e bootstrapEnv, work string, a
 	}
 }
 
+func (r *Runner) launchStdout() io.Writer {
+	if r != nil && r.Runner != nil && r.Runner.Stdout != nil {
+		return r.Runner.Stdout
+	}
+	return os.Stdout
+}
+
+func (r *Runner) launchStderr() io.Writer {
+	if r != nil && r.Runner != nil && r.Runner.Stderr != nil {
+		return r.Runner.Stderr
+	}
+	return os.Stderr
+}
+
 // agentDeathLogLine names an OOM kill explicitly when Docker state still knows it.
 func (r *Runner) agentDeathLogLine(ctx context.Context, container string, runErr error) string {
 	if state, ok := r.inspectContainerState(ctx, container); ok && state.OOMKilled {
@@ -1328,8 +1343,8 @@ func (r *Runner) agentDeathLogLine(ctx context.Context, container string, runErr
 func (r *Runner) runWithStdin(ctx context.Context, work string, launch []string, stdinPath string) error {
 	cmd := exec.CommandContext(ctx, launch[0], launch[1:]...) // #nosec G204 -- fixed setpriv/agent argv
 	cmd.Dir = work
-	cmd.Stdout = os.Stdout
-	cmd.Stderr = os.Stderr
+	cmd.Stdout = r.launchStdout()
+	cmd.Stderr = r.launchStderr()
 	if stdinPath == "" {
 		cmd.Stdin = os.Stdin
 	} else {
@@ -1347,7 +1362,7 @@ func (r *Runner) runWithStdin(ctx context.Context, work string, launch []string,
 func (r *Runner) runStreaming(ctx context.Context, work string, launch []string) error {
 	cmd := exec.CommandContext(ctx, launch[0], launch[1:]...) // #nosec G204 -- fixed setpriv/agent argv
 	cmd.Dir = work
-	cmd.Stderr = os.Stderr
+	cmd.Stderr = r.launchStderr()
 	devnull, _ := os.Open(os.DevNull)
 	if devnull != nil {
 		defer func() { _ = devnull.Close() }()
@@ -1360,7 +1375,7 @@ func (r *Runner) runStreaming(ctx context.Context, work string, launch []string)
 	if serr := cmd.Start(); serr != nil {
 		return serr
 	}
-	streamProgress(pipe, os.Stdout)
+	streamProgress(pipe, r.launchStdout())
 	return cmd.Wait()
 }
 

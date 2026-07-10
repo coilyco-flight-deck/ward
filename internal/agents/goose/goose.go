@@ -71,7 +71,7 @@ func (a Agent) PreflightArgv(prompt string) ([]string, bool) {
 // Interactive drops the seed (a goose session is not auto-fed the prompt).
 func (a Agent) LaunchArgv(rc agentsapi.RunCtx) (argv []string, stream bool) {
 	if rc.Headless || rc.Ask {
-		return append([]string{"goose", "run", "-t"}, rc.Seed...), false
+		return append([]string{"goose", "run", "--no-session", "-t"}, rc.Seed...), false
 	}
 	return []string{"goose", "session"}, false
 }

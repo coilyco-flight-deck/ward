@@ -6,6 +6,7 @@ package main
 import (
 	"fmt"
 	"path/filepath"
+	"slices"
 	"sync"
 
 	"forgejo.coilysiren.me/coilyco-flight-deck/cli-guard/pkg/fleetconfig"
@@ -73,32 +74,48 @@ func (a agentAdapter) preflightArgv(prompt string) ([]string, bool) {
 // launchArgv returns the in-container argv for the selected posture. The prompt
 // seed is appended by the caller.
 func (a agentAdapter) launchArgv(headless, ask bool, model string, seed []string) ([]string, bool) { //nolint:cyclop
-	switch {
-	case ask && len(a.Argv.Preflight) > 0:
-		argv := append([]string{}, a.Argv.Preflight...)
-		if model != "" && a.Binary == string(modeClaude) {
-			argv = append(argv, "--model", model)
-		}
-		argv = append(argv, seed...)
-		return argv, false
-	case headless || ask:
-		argv := append([]string{}, a.Argv.Headless...)
-		if model != "" && a.Binary == string(modeClaude) {
-			argv = append(argv, "--model", model)
-		}
-		argv = append(argv, seed...)
-		return argv, a.Stream == "stream-json"
-	default:
-		argv := append([]string{}, a.Argv.Interactive...)
-		if model != "" && a.Binary == string(modeClaude) {
-			argv = append(argv, "--model", model)
-		}
-		switch a.Name {
-		case string(modeClaude), string(modeCodex):
-			argv = append(argv, seed...)
-		}
-		return argv, false
+	if ask && len(a.Argv.Preflight) > 0 {
+		return a.launchSeededArgv(a.Argv.Preflight, model, seed, true), false
 	}
+	if headless || ask {
+		argv := append([]string{}, a.Argv.Headless...)
+		if a.Name == string(modeGoose) {
+			argv = gooseHeadlessArgv(argv)
+		}
+		return a.launchSeededArgv(argv, model, seed, true), a.Stream == "stream-json"
+	}
+	argv := append([]string{}, a.Argv.Interactive...)
+	if model != "" && a.Binary == string(modeClaude) {
+		argv = append(argv, "--model", model)
+	}
+	switch a.Name {
+	case string(modeClaude), string(modeCodex):
+		argv = append(argv, seed...)
+	}
+	return argv, false
+}
+
+func (a agentAdapter) launchSeededArgv(argv []string, model string, seed []string, appendSeed bool) []string {
+	if model != "" && a.Binary == string(modeClaude) {
+		argv = append(argv, "--model", model)
+	}
+	if appendSeed {
+		argv = append(argv, seed...)
+	}
+	return argv
+}
+
+// gooseHeadlessArgv ensures Goose headless runs are sessionless and keep the
+// `goose run --no-session -t` subcommand shape that exits after the final turn.
+func gooseHeadlessArgv(argv []string) []string {
+	if len(argv) < 2 || argv[0] != "goose" || argv[1] != "run" || slices.Contains(argv, "--no-session") {
+		return argv
+	}
+	out := make([]string, 0, len(argv)+1)
+	out = append(out, argv[:2]...)
+	out = append(out, "--no-session")
+	out = append(out, argv[2:]...)
+	return out
 }
 
 // agentManifest is the parsed manifest: a schema version plus the agent records.
