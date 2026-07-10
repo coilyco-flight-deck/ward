@@ -19,6 +19,7 @@ import (
 	"time"
 
 	"forgejo.coilysiren.me/coilyco-flight-deck/cli-guard/pkg/config"
+	"forgejo.coilysiren.me/coilyco-flight-deck/cli-guard/pkg/version"
 	"github.com/urfave/cli/v3"
 )
 
@@ -250,6 +251,9 @@ func (r *Runner) startHostDispatchBrokerRequest(ctx context.Context, req dispatc
 	}
 	_, _ = fmt.Fprintf(logf, "ward dispatch broker: %s requested `ward agent %s`\n",
 		emptyDefault(req.Requester, "unknown-container"), redactDispatchBrokerArgv(req.Argv))
+	if v := dispatchBrokerWardVersion(req.Argv); v != "" {
+		_, _ = fmt.Fprintf(logf, "ward dispatch broker: effective ward version for this launch: %s\n", v)
+	}
 	ref := ""
 	if len(req.Argv) >= 2 {
 		ref = req.Argv[1]
@@ -917,6 +921,9 @@ func (r *Runner) forwardFreeformEngineerLaunchToHostBroker(ctx context.Context, 
 func dispatchBrokerForwardedLine(argv []string, logPath string) string {
 	displayArgv := redactDispatchBrokerArgv(argv)
 	base := fmt.Sprintf("ward dispatch broker: forwarded `ward agent %s` to host ward", displayArgv)
+	if v := dispatchBrokerWardVersion(argv); v != "" {
+		base += fmt.Sprintf(" (effective ward %s)", v)
+	}
 	if path := strings.TrimSpace(logPath); path != "" {
 		return fmt.Sprintf("%s (run output on the host at %s)", base, path)
 	}
@@ -928,6 +935,21 @@ func dispatchBrokerForwardedLine(argv []string, logPath string) string {
 		return fmt.Sprintf("%s (dispatch log path unavailable yet; inspect later with `ward agent logs %s`)", base, ref)
 	}
 	return fmt.Sprintf("%s (dispatch log path unavailable yet; no lookup command could be derived)", base)
+}
+
+// dispatchBrokerWardVersion extracts the version the brokered launch will carry.
+func dispatchBrokerWardVersion(argv []string) string {
+	for i := 0; i+1 < len(argv); i++ {
+		if argv[i] == "--ward-version" {
+			if v := strings.TrimSpace(argv[i+1]); v != "" {
+				return v
+			}
+		}
+	}
+	if version.LooksReleased(Version) {
+		return Version
+	}
+	return ""
 }
 
 // brokerDispatchHarness returns the harness to forward into a sibling dispatch.
@@ -1002,6 +1024,18 @@ func brokerQaArgv(c *cli.Command, mode containerMode, ref agentIssueRef) []strin
 	return argv
 }
 
+// brokerWardVersion resolves the ward version a brokered launch should carry.
+// Explicit pins win; released callers otherwise forward their current release.
+func brokerWardVersion(c *cli.Command) string {
+	if v := strings.TrimSpace(c.String("ward-version")); v != "" {
+		return v
+	}
+	if version.LooksReleased(Version) {
+		return Version
+	}
+	return ""
+}
+
 // appendBrokerConfigFlags forwards each repeatable --config override to the host-side
 // dispatch argv (ward#616); the host re-parses + validates it via parseConfigOverrides.
 func appendBrokerConfigFlags(argv []string, c *cli.Command) []string {
@@ -1014,7 +1048,7 @@ func appendBrokerConfigFlags(argv []string, c *cli.Command) []string {
 }
 
 func appendBrokerContainerFlags(argv []string, c *cli.Command) []string {
-	for _, name := range []string{"image", "tag", "ward-version", "branch", "tailnet-mode"} {
+	for _, name := range []string{"image", "tag", "branch", "tailnet-mode"} {
 		if v := strings.TrimSpace(c.String(name)); c.IsSet(name) && v != "" {
 			argv = append(argv, "--"+name, v)
 		}
@@ -1029,6 +1063,9 @@ func appendBrokerContainerFlags(argv []string, c *cli.Command) []string {
 		if c.Bool(name) {
 			argv = append(argv, "--"+name)
 		}
+	}
+	if v := brokerWardVersion(c); v != "" {
+		argv = append(argv, "--ward-version", v)
 	}
 	return argv
 }
