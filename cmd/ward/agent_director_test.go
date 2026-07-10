@@ -577,16 +577,13 @@ func TestBacklogRefreshUsesForgejoTokenForPrivateRepos(t *testing.T) {
 		if got := r.Header.Get("Authorization"); got != "token secret" {
 			t.Fatalf("auth header = %q, want token secret", got)
 		}
-		switch {
-		case r.URL.Path == "/api/v1/repos/coilyco-flight-deck/ward/issues" && r.URL.Query().Get("type") == "issues":
+		switch r.URL.Path {
+		case "/api/v1/repos/coilyco-flight-deck/ward/issues":
 			_ = json.NewEncoder(w).Encode([]map[string]any{
-				{"number": 11, "title": "private issue", "body": "body", "state": "open", "html_url": "https://f/issues/11", "labels": []map[string]any{}},
+				{"number": 11, "title": "private issue", "body": "body", "state": "open", "html_url": "https://f/issues/11", "labels": []map[string]any{}, "pull_request": nil},
+				{"number": 12, "title": "private pr", "body": "closes #12", "state": "open", "html_url": "https://f/pulls/12", "labels": []map[string]any{}, "pull_request": map[string]any{"url": "https://f/pulls/12"}},
 			})
-		case r.URL.Path == "/api/v1/repos/coilyco-flight-deck/ward/issues" && r.URL.Query().Get("type") == "pulls":
-			_ = json.NewEncoder(w).Encode([]map[string]any{
-				{"number": 12, "title": "private pr", "body": "closes #12", "state": "open", "html_url": "https://f/pulls/12", "labels": []map[string]any{}},
-			})
-		case r.URL.Path == "/api/v1/repos/coilyco-flight-deck/ward/pulls/12":
+		case "/api/v1/repos/coilyco-flight-deck/ward/pulls/12":
 			_ = json.NewEncoder(w).Encode(map[string]any{"number": 12, "mergeable": true})
 		default:
 			t.Fatalf("unexpected path: %s?%s", r.URL.Path, r.URL.RawQuery)

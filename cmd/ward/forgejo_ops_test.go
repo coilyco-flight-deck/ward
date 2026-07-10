@@ -260,6 +260,61 @@ func TestForgejoGetIssueFlattensLabels(t *testing.T) {
 	}
 }
 
+func TestListOpenIssuesAndPullRequestsClassifyPullRequestNull(t *testing.T) {
+	var issueFeedCalls int
+	srv := httptest.NewServer(http.HandlerFunc(func(w http.ResponseWriter, r *http.Request) {
+		switch r.URL.Path {
+		case "/api/v1/repos/coilyco-flight-deck/ward/issues":
+			if got := r.URL.Query().Get("state"); got != "open" {
+				t.Fatalf("state query = %q, want open", got)
+			}
+			if got := r.URL.Query().Get("type"); got != "" {
+				t.Fatalf("type query = %q, want empty generic issue feed", got)
+			}
+			issueFeedCalls++
+			_ = json.NewEncoder(w).Encode([]map[string]any{
+				{
+					"number": 982, "title": "normal issue", "body": "body", "state": "open",
+					"html_url": "https://f/issues/982", "labels": []map[string]any{},
+					"pull_request": nil,
+				},
+				{
+					"number": 983, "title": "open PR", "body": "closes #983", "state": "open",
+					"html_url": "https://f/pulls/983", "labels": []map[string]any{},
+					"pull_request": map[string]any{"url": "https://f/pulls/983"},
+				},
+			})
+		case "/api/v1/repos/coilyco-flight-deck/ward/pulls/983":
+			if got := r.Header.Get("Authorization"); got != "token secret" {
+				t.Fatalf("auth header = %q, want token secret", got)
+			}
+			_, _ = w.Write([]byte(`{"mergeable":true}`))
+		default:
+			t.Fatalf("unexpected path: %s?%s", r.URL.Path, r.URL.RawQuery)
+		}
+	}))
+	defer srv.Close()
+
+	cl := &forgejoClient{baseURL: srv.URL, token: "secret"}
+	issues, err := cl.listOpenIssues(context.Background(), "coilyco-flight-deck", "ward", 50)
+	if err != nil {
+		t.Fatalf("listOpenIssues: %v", err)
+	}
+	if len(issues) != 1 || issues[0].Number != 982 {
+		t.Fatalf("issues = %+v, want only the normal issue", issues)
+	}
+	prs, err := cl.listOpenPullRequests(context.Background(), "coilyco-flight-deck", "ward", 50)
+	if err != nil {
+		t.Fatalf("listOpenPullRequests: %v", err)
+	}
+	if len(prs) != 1 || prs[0].Number != 983 || !prs[0].Mergeable || !prs[0].MergeableKnown {
+		t.Fatalf("prs = %+v, want only the real PR with mergeability", prs)
+	}
+	if issueFeedCalls != 2 {
+		t.Fatalf("issue feed calls = %d, want 2", issueFeedCalls)
+	}
+}
+
 func TestFetchIssueIgnoresBadConfigRef(t *testing.T) {
 	t.Setenv(wardConfigRefEnv, "file:///definitely/not/a/ward-bundle")
 	orig := forgejoBaseURL
