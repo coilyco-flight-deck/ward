@@ -686,10 +686,10 @@ func (c *forgejoClient) listOpenIssues(ctx context.Context, owner, repo string, 
 	return issues, nil
 }
 
-// listOpenPullRequests lists a repo's open pull requests with the same lean
-// shape as issues, filtered by the shared Forgejo issue classifier.
+// listOpenPullRequests lists a repo's open PRs via Forgejo's typed feed so
+// pagination stays scoped to PR rows.
 func (c *forgejoClient) listOpenPullRequests(ctx context.Context, owner, repo string, limit int) ([]directorPullRequest, error) {
-	raw, err := c.listOpenIssueFeed(ctx, owner, repo, limit)
+	raw, err := c.listOpenIssueFeedByType(ctx, owner, repo, limit, "pulls")
 	if err != nil {
 		return nil, err
 	}
