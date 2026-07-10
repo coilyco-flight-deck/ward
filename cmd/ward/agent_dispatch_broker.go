@@ -69,7 +69,25 @@ const (
 	dispatchActionList = "list"
 	// dispatchActionLogs streams one engineer's logs back to the requester.
 	dispatchActionLogs = "logs"
+	// dispatchActionPRStatus reads one PR head's combined CI status natively (ward#1067).
+	dispatchActionPRStatus = "pr-status"
+	// dispatchActionPRMerge merges one PR through ward's compiled client, gated by
+	// the embedded role x workflow permission table (ward#1067).
+	dispatchActionPRMerge = "pr-merge"
+	// dispatchActionCIRuns lists a repo's Actions runs with conclusions (ward#1067).
+	dispatchActionCIRuns = "ci-runs"
+	// dispatchActionCIRerun reruns one Actions run natively (ward#1067).
+	dispatchActionCIRerun = "ci-rerun"
 )
+
+// prWorkflowDispatchActions is the ward#1067 action set: PR-workflow verbs the
+// broker serves natively, host-side, on ward's compiled Forgejo client.
+var prWorkflowDispatchActions = map[string]bool{
+	dispatchActionPRStatus: true,
+	dispatchActionPRMerge:  true,
+	dispatchActionCIRuns:   true,
+	dispatchActionCIRerun:  true,
+}
 
 type dispatchBrokerRequest struct {
 	// Action discriminates a launch (default/empty) from a stop control action
@@ -84,6 +102,10 @@ type dispatchBrokerRequest struct {
 	Requester string `json:"requester,omitempty"`
 	Tail      int    `json:"tail,omitempty"`
 	Follow    bool   `json:"follow,omitempty"`
+	// RunID names the Actions run a ci-rerun acts on (ward#1067).
+	RunID int64 `json:"run_id,omitempty"`
+	// Limit caps a ci-runs read (ward#1067).
+	Limit int `json:"limit,omitempty"`
 	// Token is the per-launch shared secret the surface echoes back so the host
 	// broker authenticates the dial (the TCP port has no socket file perms).
 	Token string `json:"token,omitempty"`
@@ -205,6 +227,10 @@ func (r *Runner) handleHostDispatchBrokerConn(ctx context.Context, conn net.Conn
 	}
 	if dispatchAction(req.Action) == dispatchActionList {
 		r.runDispatchBrokerList(ctx, conn, req)
+		return
+	}
+	if prWorkflowDispatchActions[dispatchAction(req.Action)] {
+		r.runDispatchBrokerPRWorkflow(ctx, conn, req)
 		return
 	}
 	logPath, err := r.startHostDispatchBrokerRequest(ctx, req)
@@ -401,6 +427,7 @@ func (r *Runner) commentFailedDispatch(ctx context.Context, cl Tracker, mode con
 	if req.Role == roleEngineer {
 		container = issueScopedContainerName(req.Role, mode, targetRepo{Owner: ref.Owner, Name: ref.Repo}, ref.Number)
 	}
+	r.stopFailedDispatchContainer(ctx, mode, ref, req.Role, container)
 	body := dispatchLaunchFailureCommentBody(mode, container, req, logPath, launchErr)
 	if err := cl.commentIssue(ctx, ref.Owner, ref.Repo, ref.Number, body); err != nil {
 		fmt.Fprintf(os.Stderr, "ward dispatch broker: could not comment failed dispatch on %s: %v\n", ref, err)
@@ -419,6 +446,7 @@ func (r *Runner) commentDeferredDispatch(ctx context.Context, cl Tracker, mode c
 	if req.Role == roleEngineer {
 		container = issueScopedContainerName(req.Role, mode, targetRepo{Owner: ref.Owner, Name: ref.Repo}, ref.Number)
 	}
+	r.stopFailedDispatchContainer(ctx, mode, ref, req.Role, container)
 	body := dispatchLaunchDeferredCommentBody(mode, container, req, logPath, launchErr)
 	if err := cl.commentIssue(ctx, ref.Owner, ref.Repo, ref.Number, body); err != nil {
 		fmt.Fprintf(os.Stderr, "ward dispatch broker: could not comment deferred dispatch on %s: %v\n", ref, err)
@@ -428,6 +456,26 @@ func (r *Runner) commentDeferredDispatch(ctx context.Context, cl Tracker, mode c
 		fmt.Fprintf(os.Stderr, "ward dispatch broker: could not unlock issue %s after deferred dispatch: %v\n", ref, err)
 	}
 	fmt.Fprintf(os.Stderr, "ward dispatch broker: released deferred dispatch reservation on %s\n", ref)
+}
+
+// stopFailedDispatchContainer best-effort stops the attempted engineer container
+// when a forwarded dispatch failed after the reservation decision was made.
+func (r *Runner) stopFailedDispatchContainer(ctx context.Context, mode containerMode, ref agentIssueRef, role, container string) {
+	if role != roleEngineer || r == nil || r.Runner == nil {
+		return
+	}
+	name := strings.TrimSpace(container)
+	if name == "" {
+		name = issueScopedContainerName(roleEngineer, mode, targetRepo{Owner: ref.Owner, Name: ref.Repo}, ref.Number)
+	}
+	if !r.containerRunning(ctx, name) {
+		return
+	}
+	if err := r.dockerExec(ctx, "stop", name); err != nil {
+		fmt.Fprintf(os.Stderr, "ward dispatch broker: could not stop failed dispatch container %s: %v\n", name, err)
+		return
+	}
+	fmt.Fprintf(os.Stderr, "ward dispatch broker: stopped failed dispatch container %s\n", name)
 }
 
 // commentDeferredReleaseAssetsDispatch writes the release-assets-not-ready comment.
@@ -845,7 +893,7 @@ func validateDispatchBrokerArgv(role string, tail []string) error {
 		for _, f := range []string{"--image", "--tag", "--ward-version", "--branch", "--repo", "--tailnet-mode"} {
 			valueFlags[f] = true
 		}
-		for _, f := range []string{"--aws", "--tailnet", "--no-pull", "--force", "--skip-preflight", "--no-preflight", "--skip-review", "--no-review-gate"} {
+		for _, f := range []string{"--aws", "--tailnet", "--no-pull", "--force", "--skip-preflight", "--no-preflight", "--skip-review", "--no-review-gate", "--pr"} {
 			boolFlags[f] = true
 		}
 		return validateDispatchBrokerFlags(role, tail, valueFlags, boolFlags, false)
@@ -1048,6 +1096,9 @@ func brokerEngineerArgv(c *cli.Command, mode containerMode, ref agentIssueRef) [
 	}
 	if c.Bool("force") {
 		argv = append(argv, "--force")
+	}
+	if c.Bool("pr") {
+		argv = append(argv, "--pr")
 	}
 	if c.Bool("skip-preflight") {
 		argv = append(argv, "--skip-preflight")

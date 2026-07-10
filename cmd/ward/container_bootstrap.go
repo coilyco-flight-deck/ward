@@ -1157,6 +1157,13 @@ scrollback. Reserve an in-session subagent for read-only fan-out that only feeds
   the dispatcher authenticate out of the box. The token is the bot's full credential,
   so the no-push rule below is a convention you keep, not yet a credential boundary
   (a dispatch-only token is tracked in ward#318).
+- **PR-workflow management is native ward, not specgen** (ward#1067): ` + "`ward agent pr status <owner/repo#N>`" + `
+  reads one PR head's combined CI status, ` + "`ward agent pr merge <owner/repo#N>`" + ` merges an
+  eligible PR (head-pinned, checks-green-gated), ` + "`ward agent pr runs <owner/repo>`" + ` lists
+  Actions runs with conclusions, and ` + "`ward agent pr rerun <owner/repo> <run-id>`" + ` reruns one.
+  These forward through the host dispatch broker on ward's compiled Forgejo client, gated
+  by the embedded role x workflow permission table, so they keep working even when the
+  ` + "`ward ops forgejo`" + ` specgen surface is stripped or rolled back (infrastructure#538).
 	- The host docker socket is mounted at ` + "`/var/run/docker.sock`" + `, so ` + "`ward agent reap`" + `
   can list and stop stale engineer containers and a dispatched ` + "`warded #N`" + ` can spawn its
   sibling container. If Docker access is intentionally unavailable on this surface,
@@ -1292,6 +1299,20 @@ func (r *Runner) reap(ctx context.Context, work string) {
 	}
 }
 
+func (r *Runner) launchStdout() io.Writer {
+	if r != nil && r.Runner != nil && r.Runner.Stdout != nil {
+		return r.Runner.Stdout
+	}
+	return os.Stdout
+}
+
+func (r *Runner) launchStderr() io.Writer {
+	if r != nil && r.Runner != nil && r.Runner.Stderr != nil {
+		return r.Runner.Stderr
+	}
+	return os.Stderr
+}
+
 // reapWorkTree reaps the target tree then verifies every --repo grant landed too
 // (ward#291); the entrypoint defer never releases the reservation (agent launched).
 func (r *Runner) reapWorkTree(ctx context.Context, work string, env reapEnv) error {
@@ -1325,20 +1346,7 @@ func (r *Runner) launchAgent(ctx context.Context, e bootstrapEnv, work string, a
 			blog(r.agentDeathLogLine(ctx, e.Container, rerr))
 		}
 	}
-}
-
-func (r *Runner) launchStdout() io.Writer {
-	if r != nil && r.Runner != nil && r.Runner.Stdout != nil {
-		return r.Runner.Stdout
-	}
-	return os.Stdout
-}
-
-func (r *Runner) launchStderr() io.Writer {
-	if r != nil && r.Runner != nil && r.Runner.Stderr != nil {
-		return r.Runner.Stderr
-	}
-	return os.Stderr
+	blog("bootstrap launch returned: agent process exited, deferred reaper runs next")
 }
 
 // agentDeathLogLine names an OOM kill explicitly when Docker state still knows it.
