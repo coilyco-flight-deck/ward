@@ -10,9 +10,9 @@ import (
 	"os"
 	"path/filepath"
 	"regexp"
+	"runtime"
 	"slices"
 	"strings"
-	"sync/atomic"
 	"testing"
 	"time"
 
@@ -346,8 +346,8 @@ func TestUpPlanLabels(t *testing.T) {
 
 func TestLeastAccessMountsDefaultIsCwdOnly(t *testing.T) {
 	mounts := leastAccessMounts("/home/kai/projects/coilyco-bridge/agentic-os-kai", mountOpts{AssetsDir: "/tmp/ward-assets"})
-	// The target repo must never be a host bind: only cwd + assets binds, plus
-	// the gitcache named volume.
+	// The target repo must never be a host bind: only cwd + assets binds,
+	// plus the staged entrypoint file and the gitcache named volume.
 	var hostBinds []string
 	for _, m := range mounts {
 		if !m.Volume {
@@ -357,9 +357,13 @@ func TestLeastAccessMountsDefaultIsCwdOnly(t *testing.T) {
 			t.Errorf("host bind %q is writable; least-access binds are read-only", m.Source)
 		}
 	}
-	wantBinds := []string{"/home/kai/projects/coilyco-bridge/agentic-os-kai", "/tmp/ward-assets"}
+	wantBinds := []string{
+		"/home/kai/projects/coilyco-bridge/agentic-os-kai",
+		"/tmp/ward-assets",
+		filepath.Join("/tmp/ward-assets", containerEntrypointRel),
+	}
 	if !slices.Equal(hostBinds, wantBinds) {
-		t.Errorf("default host binds = %v, want exactly %v (cwd + assets, no target repo)", hostBinds, wantBinds)
+		t.Errorf("default host binds = %v, want exactly %v (cwd + assets + entrypoint, no target repo)", hostBinds, wantBinds)
 	}
 }
 
@@ -369,7 +373,7 @@ func TestLeastAccessMountsOptIns(t *testing.T) {
 	for _, m := range mounts {
 		targets[m.Target] = true
 	}
-	for _, want := range []string{containerContextMount, containerGitcacheMnt, containerWardAssets, containerAWSMount, containerWardSrcMount} {
+	for _, want := range []string{containerContextMount, containerGitcacheMnt, containerWardAssets, containerEntrypointPath, containerAWSMount, containerWardSrcMount} {
 		if !targets[want] {
 			t.Errorf("opt-in mount set missing %q", want)
 		}
@@ -604,7 +608,7 @@ func TestWardEnvContainerMarker(t *testing.T) {
 func sampleUpPlan() upPlan {
 	repo := targetRepo{Owner: "coilyco-gaming", Name: "eco-app"}
 	return upPlan{
-		Image:       "forgejo.coilysiren.me/coilyco-flight-deck/agentic-os:latest",
+		Image:       "forgejo.coilysiren.me/coilyco-flight-deck/agentic-os-full:latest",
 		Name:        "engineer-claude-eco-app-140",
 		Role:        roleEngineer,
 		Machine:     "deadbeef",
@@ -690,27 +694,44 @@ func TestWriteContainerAssetsStagesWardBinary(t *testing.T) {
 	}
 }
 
-func TestDownloadWardBootstrapBinaryRetries404(t *testing.T) {
+func TestDownloadWardBootstrapBinarySelectsLatestAssetBearingRelease(t *testing.T) {
 	origBase := forgejoBaseURL
 	forgejoBaseURL = ""
 	t.Cleanup(func() { forgejoBaseURL = origBase })
 
-	origSleep := bootstrapDownloadSleep
-	bootstrapDownloadSleep = func(time.Duration) {}
-	t.Cleanup(func() { bootstrapDownloadSleep = origSleep })
+	arch := runtime.GOARCH
+	assetName := bootstrapWardBinaryAssetName(arch)
 
-	var assetHits int32
+	var listHits, assetHits map[string]int
+	listHits = map[string]int{}
+	assetHits = map[string]int{}
 	srv := httptest.NewServer(http.HandlerFunc(func(w http.ResponseWriter, r *http.Request) {
 		switch {
-		case strings.HasSuffix(r.URL.Path, "/releases/latest"):
+		case strings.HasSuffix(r.URL.Path, "/releases"):
 			w.Header().Set("Content-Type", "application/json")
-			_, _ = fmt.Fprint(w, `{"tag_name":"v1.2.3"}`)
-		case strings.Contains(r.URL.Path, "/releases/download/v1.2.3/ward-linux-"):
-			if atomic.AddInt32(&assetHits, 1) == 1 {
-				http.Error(w, "not ready yet", http.StatusNotFound)
-				return
+			switch r.URL.Query().Get("page") {
+			case "1":
+				listHits["1"]++
+				_, _ = fmt.Fprint(w, `[
+					{"tag_name":"v0.580.0","draft":false,"prerelease":false,"assets":[]},
+					{"tag_name":"v0.579.0","draft":false,"prerelease":false,"assets":[]}
+				]`)
+			case "2":
+				listHits["2"]++
+				_, _ = fmt.Fprint(w, `[
+					{"tag_name":"v0.578.0","draft":false,"prerelease":false,"assets":[{"name":"`+assetName+`"}]}
+				]`)
+			case "3":
+				listHits["3"]++
+				_, _ = fmt.Fprint(w, `[]`)
+			default:
+				t.Fatalf("unexpected releases page %q", r.URL.Query().Get("page"))
 			}
+		case strings.Contains(r.URL.Path, "/releases/download/v0.578.0/"+assetName):
+			assetHits["v0.578.0"]++
 			_, _ = w.Write([]byte("bootstrapped ward"))
+		case strings.Contains(r.URL.Path, "/releases/download/v0.580.0/") || strings.Contains(r.URL.Path, "/releases/download/v0.579.0/"):
+			t.Fatalf("bootstrap selection should skip assetless releases, hit %q", r.URL.Path)
 		default:
 			t.Fatalf("unexpected request path %q", r.URL.Path)
 		}
@@ -729,8 +750,45 @@ func TestDownloadWardBootstrapBinaryRetries404(t *testing.T) {
 	if got := string(data); got != "bootstrapped ward" {
 		t.Fatalf("staged binary = %q, want %q", got, "bootstrapped ward")
 	}
-	if got := atomic.LoadInt32(&assetHits); got != 2 {
-		t.Fatalf("asset fetch hits = %d, want 2 (404 retry then success)", got)
+	if got := assetHits["v0.578.0"]; got != 1 {
+		t.Fatalf("selected release asset hits = %d, want 1", got)
+	}
+	if got := len(listHits); got != 2 {
+		t.Fatalf("releases list pages = %v, want two pages scanned", listHits)
+	}
+}
+
+func TestDownloadWardBootstrapBinaryReportsReleaseAssetsNotReady(t *testing.T) {
+	origBase := forgejoBaseURL
+	forgejoBaseURL = ""
+	t.Cleanup(func() { forgejoBaseURL = origBase })
+
+	arch := runtime.GOARCH
+	assetName := bootstrapWardBinaryAssetName(arch)
+
+	srv := httptest.NewServer(http.HandlerFunc(func(w http.ResponseWriter, r *http.Request) {
+		switch {
+		case strings.Contains(r.URL.Path, "/releases/download/v0.544.0/"+assetName):
+			http.Error(w, "Not Found", http.StatusNotFound)
+		default:
+			t.Fatalf("unexpected request path %q", r.URL.Path)
+		}
+	}))
+	t.Cleanup(srv.Close)
+	forgejoBaseURL = srv.URL
+
+	dir := t.TempDir()
+	err := downloadWardBootstrapBinary(context.Background(), "v0.544.0", filepath.Join(dir, "ward"))
+	if err == nil {
+		t.Fatal("downloadWardBootstrapBinary should fail on a missing release asset")
+	}
+	if !isReleaseAssetsNotReadyError(err) {
+		t.Fatalf("download error = %v, want release-assets-not-ready classification", err)
+	}
+	for _, want := range []string{"v0.544.0", assetName, "release-assets-not-ready"} {
+		if !strings.Contains(err.Error(), want) {
+			t.Errorf("missing %q in error %v", want, err)
+		}
 	}
 }
 
@@ -778,7 +836,7 @@ func TestDockerCreateArgvShape(t *testing.T) {
 		"--label ward.repo=coilyco-gaming/eco-app",
 		"--label ward.machine=deadbeef",
 		"--label ward.issue=140",
-		"--entrypoint " + containerWardAssets + "/" + containerEntrypointRel,
+		"--entrypoint " + containerEntrypointPath,
 		"-it",
 		"--env-file /tmp/ward-env-xyz",
 		"-e WARD_CONTAINER_NAME=engineer-claude-eco-app-140",
@@ -798,7 +856,7 @@ func TestDockerCreateArgvShape(t *testing.T) {
 		}
 	}
 	// The image is the final arg.
-	if argv[len(argv)-1] != "forgejo.coilysiren.me/coilyco-flight-deck/agentic-os:latest" {
+	if argv[len(argv)-1] != "forgejo.coilysiren.me/coilyco-flight-deck/agentic-os-full:latest" {
 		t.Errorf("image must be the final arg, got %q", argv[len(argv)-1])
 	}
 }
@@ -839,7 +897,7 @@ func TestDockerCreateNoBindsArgv(t *testing.T) {
 	}
 	for _, want := range []string{
 		"--name engineer-claude-eco-app-140",
-		"--entrypoint " + containerWardAssets + "/" + containerEntrypointRel,
+		"--entrypoint " + containerEntrypointPath,
 		"-v " + containerGitcacheVol + ":" + containerGitcacheMnt, // the named volume survives
 		"--env-file /tmp/ward-env-xyz",
 		"-e WARD_TARGET_REPO=coilyco-gaming/eco-app",
@@ -875,8 +933,8 @@ func TestHostBindMounts(t *testing.T) {
 		targets = append(targets, m.Target)
 	}
 	joined := strings.Join(targets, " ")
-	if !strings.Contains(joined, containerContextMount) || !strings.Contains(joined, containerWardAssets) {
-		t.Errorf("hostBindMounts should include the cwd context + assets binds, got targets %v", targets)
+	if !strings.Contains(joined, containerContextMount) || !strings.Contains(joined, containerWardAssets) || !strings.Contains(joined, containerEntrypointPath) {
+		t.Errorf("hostBindMounts should include the cwd context + assets + entrypoint binds, got targets %v", targets)
 	}
 	if strings.Contains(joined, containerGitcacheMnt) {
 		t.Error("hostBindMounts must exclude the gitcache named volume")
@@ -1211,8 +1269,8 @@ func TestEntrypointClonesExtraRepos(t *testing.T) {
 	}
 }
 
-// TestEntrypointGooseHeadless locks ward#141: entrypoint runs `goose run -t <seed>`
-// (not claude `-p`) and mirrors doctrine into .goosehints since goose ignores ~/.claude.
+// TestEntrypointGooseHeadless locks ward#141.
+// Entrypoint runs goose run --no-session -t <seed> and mirrors doctrine into .goosehints.
 func TestEntrypointGooseHeadless(t *testing.T) {
 	t.Skip("entrypoint delegates harness-specific setup to ward container bootstrap now")
 	data, err := containerAssets.ReadFile("containerassets/" + containerEntrypointRel)
@@ -1221,18 +1279,18 @@ func TestEntrypointGooseHeadless(t *testing.T) {
 	}
 	script := string(data)
 	for _, want := range []string{
-		`case "$WARD_MODE" in`, // launch argv is mode-aware
-		"goose run -t",         // headless goose runs the seed to completion
-		"goose session",        // interactive goose
-		".goosehints",          // doctrine mirrored to goose's hints file
+		`case "$WARD_MODE" in`,      // launch argv is mode-aware
+		"goose run --no-session -t", // headless goose runs the seed to completion
+		"goose session",             // interactive goose
+		".goosehints",               // doctrine mirrored to goose's hints file
 	} {
 		if !strings.Contains(script, want) {
 			t.Errorf("entrypoint missing %q (ward#141 goose headless)", want)
 		}
 	}
-	// goose headless must not borrow claude's stream-json flags: the goose `run -t`
-	// invocation precedes the claude `-p --output-format` block in the mode switch.
-	goose := strings.Index(script, "goose run -t")
+	// goose headless must not borrow claude's stream-json flags.
+	// The goose run --no-session -t invocation precedes the claude -p --output-format block.
+	goose := strings.Index(script, "goose run --no-session -t")
 	claudeFlags := strings.Index(script, "--output-format stream-json")
 	if goose < 0 || claudeFlags < 0 || goose > claudeFlags {
 		t.Errorf("goose headless argv must be distinct from claude stream-json (goose=%d claude=%d)", goose, claudeFlags)

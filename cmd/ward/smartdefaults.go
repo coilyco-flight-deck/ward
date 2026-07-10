@@ -108,8 +108,15 @@ func currentSmartDefaultsWithError() (smartDefaults, error) {
 	return defs, err
 }
 
+// smartDefaultsGuardExemptVerbs must stay reachable with the config bundle
+// absent or rolled back (ward#1067): the native PR-workflow meta verb.
+var smartDefaultsGuardExemptVerbs = map[string]bool{"pr": true}
+
 func smartDefaultsGuard(surface string) cli.BeforeFunc {
-	return func(ctx context.Context, _ *cli.Command) (context.Context, error) {
+	return func(ctx context.Context, c *cli.Command) (context.Context, error) {
+		if smartDefaultsGuardExemptVerbs[strings.TrimSpace(c.Args().First())] {
+			return ctx, nil
+		}
 		if _, err := currentSmartDefaultsWithError(); err != nil {
 			return ctx, fmt.Errorf("%s: %w", surface, err)
 		}

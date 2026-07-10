@@ -2,7 +2,6 @@ package main
 
 import (
 	"context"
-	"fmt"
 	"io/fs"
 	"os"
 	"path/filepath"
@@ -83,6 +82,29 @@ func TestOpsCommandReportsBakedConfigForCoilycoTarget(t *testing.T) {
 	}
 }
 
+// TestOpsForgejoUnavailableNestedHelpReportsMountFailure pins the nested-help path.
+// It must keep the mount-failure context instead of degrading to "No help topic".
+func TestOpsForgejoUnavailableNestedHelpReportsMountFailure(t *testing.T) {
+	dir := t.TempDir()
+	t.Setenv(wardConfigRefEnv, "file://"+dir)
+
+	cmd := rootCommand()
+	err := cmd.Run(context.Background(), []string{"ward", "ops", "forgejo", "issue", "list", "--help"})
+	if err == nil {
+		t.Fatal("nested help on an unavailable surface returned nil")
+	}
+	for _, want := range []string{
+		"ward ops forgejo: unavailable",
+		"guardfile runtime failed to mount",
+		"missing top-level `wrap ward-kdl ops forgejo` block",
+		"Try `ward ops forgejo --help` or `ward ops forgejo describe` once the bundle is mounted",
+	} {
+		if !strings.Contains(err.Error(), want) {
+			t.Fatalf("error %q does not contain %q", err, want)
+		}
+	}
+}
+
 // TestSelectConfigSourceRejectsMalformedGitRef pins fail-loud: a ref that is
 // neither file:// nor the git grammar errors, never a silent baked fallback.
 func TestSelectConfigSourceRejectsMalformedGitRef(t *testing.T) {
@@ -153,9 +175,9 @@ func TestBakedSourcePathsExist(t *testing.T) {
 	}
 }
 
-// TestBuildForgejoOpsFromRealBundle compiles `ops forgejo` from the neutral bundle.
-// The bundled admin guardfile is absent, so baked grafts it.
-func TestBuildForgejoOpsFromRealBundle(t *testing.T) {
+// TestBuildForgejoOpsFromNeutralBundle compiles `ops forgejo` from the neutral
+// bundle metadata, not from a coilyco filename constant.
+func TestBuildForgejoOpsFromNeutralBundle(t *testing.T) {
 	dir := writeBundleFixture(t)
 	forgejo, err := buildForgejoOpsFrom(bundleConfigSource(dir))
 	if err != nil {
@@ -343,19 +365,21 @@ func TestOpsCommandDegradesOnBadRef(t *testing.T) {
 }
 
 // TestBuildForgejoOpsWithRealLookingConfigRef exercises the live ops startup path
-// against a believable git-ref WARD_CONFIG_REF and confirms it returns.
+// against a believable bundle checkout and confirms it returns.
 func TestBuildForgejoOpsWithRealLookingConfigRef(t *testing.T) {
-	bareRepo := makeTestConfigBundleRepo(t)
+	dir := writeBundleFixture(t)
+	gitFixture(t, dir, "init", "-b", "main", ".")
+	gitFixture(t, dir, "add", ".")
+	gitFixture(t, dir, "commit", "-m", "bundle")
+	abs, err := filepath.Abs(dir)
+	if err != nil {
+		t.Fatalf("abs(%s): %v", dir, err)
+	}
 
 	home := t.TempDir()
 	t.Setenv("HOME", home)
 	t.Setenv("XDG_CONFIG_HOME", filepath.Join(home, ".config"))
-	t.Setenv(wardConfigRefEnv, "forgejo.coilysiren.me/coilyco-flight-deck/agentic-os@main//.ward")
-	if err := os.WriteFile(filepath.Join(home, ".gitconfig"), []byte(fmt.Sprintf(`[url "%s"]
-	insteadOf = https://forgejo.coilysiren.me/coilyco-flight-deck/agentic-os.git
-`, bareRepo)), 0o644); err != nil {
-		t.Fatalf("write gitconfig: %v", err)
-	}
+	t.Setenv(wardConfigRefEnv, "file://"+abs)
 
 	type result struct {
 		cmd *cli.Command
@@ -381,36 +405,6 @@ func TestBuildForgejoOpsWithRealLookingConfigRef(t *testing.T) {
 	case <-time.After(10 * time.Second):
 		t.Fatal("buildForgejoOps deadlocked while resolving a real-looking WARD_CONFIG_REF")
 	}
-}
-
-func makeTestConfigBundleRepo(t *testing.T) string {
-	t.Helper()
-	work := t.TempDir()
-	bundleDir := filepath.Join(work, ".ward")
-	if err := os.MkdirAll(bundleDir, 0o755); err != nil {
-		t.Fatal(err)
-	}
-	fixture := writeBundleFixture(t)
-	for _, name := range []string{bundleFixtureForgejoPath, bundleFixtureSpecLockPath} {
-		src := filepath.Join(fixture, name)
-		dst := filepath.Join(bundleDir, name)
-		b, err := os.ReadFile(src)
-		if err != nil {
-			t.Fatalf("read %s: %v", src, err)
-		}
-		if err := os.WriteFile(dst, b, 0o644); err != nil {
-			t.Fatalf("write %s: %v", dst, err)
-		}
-	}
-	gitFixture(t, work, "init", "-b", "main", ".")
-	gitFixture(t, work, "add", ".")
-	gitFixture(t, work, "commit", "-m", "bundle")
-
-	bareRepo := t.TempDir()
-	gitFixture(t, bareRepo, "init", "--bare", ".")
-	gitFixture(t, work, "remote", "add", "origin", bareRepo)
-	gitFixture(t, work, "push", "-u", "origin", "main")
-	return bareRepo
 }
 
 // TestBuildForgejoOpsAnnotatesSelectedConfigSource keeps the active config source

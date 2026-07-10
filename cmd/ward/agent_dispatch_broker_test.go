@@ -41,6 +41,10 @@ func TestDispatchBrokerValidatesNarrowAPI(t *testing.T) {
 	if err := validateDispatchBrokerRequest(ok); err != nil {
 		t.Errorf("valid engineer dispatch refused: %v", err)
 	}
+	pr := dispatchBrokerRequest{Role: "engineer", Argv: []string{"engineer", "coilyco-flight-deck/ward#1", "--pr", "--harness", "claude"}}
+	if err := validateDispatchBrokerRequest(pr); err != nil {
+		t.Errorf("valid engineer PR dispatch refused: %v", err)
+	}
 	advisor := dispatchBrokerRequest{Role: "advisor", Argv: []string{"advisor", "coilyco-flight-deck/ward#1", "--harness", "goose", "what changed?"}}
 	if err := validateDispatchBrokerRequest(advisor); err != nil {
 		t.Errorf("valid advisor dispatch refused: %v", err)
@@ -378,7 +382,7 @@ func TestForwardAgentListSendsListRequestAndRelaysBody(t *testing.T) {
 }
 
 func TestResolveDispatchBrokerLogsSourcePrefersLiveDocker(t *testing.T) {
-	r := fakeAgentLogsDockerRunner(t, "engineer-claude-ward-692\n", "live-one\nlive-two\n", nil)
+	r := fakeAgentLogsDockerRunner(t, "engineer-claude-ward-692\n", "live-one\nlive-two\n", nil, "")
 	src, err := r.resolveDispatchBrokerLogsSource(t.Context(), dispatchBrokerRequest{Target: "coilyco-flight-deck/ward#692", Tail: 2})
 	if err != nil {
 		t.Fatalf("resolve live source: %v", err)
@@ -400,7 +404,7 @@ func TestResolveDispatchBrokerLogsSourceFallsBackToLiveTranscriptWhenDockerEmpty
 		"projects/enc/session-a.jsonl": `{"type":"assistant","text":"working"}` + "\n" + `{"type":"assistant","text":"still here"}` + "\n",
 		"projects/enc/session-b.jsonl": `{"type":"assistant","text":"latest"}` + "\n",
 	})
-	r := fakeAgentLogsDockerRunner(t, "engineer-claude-ward-692\n", "", tarBytes)
+	r := fakeAgentLogsDockerRunner(t, "engineer-claude-ward-692\n", "", tarBytes, ".claude/projects")
 	src, err := r.resolveDispatchBrokerLogsSource(t.Context(), dispatchBrokerRequest{Target: "coilyco-flight-deck/ward#692", Tail: 2})
 	if err != nil {
 		t.Fatalf("resolve transcript source: %v", err)
@@ -411,7 +415,35 @@ func TestResolveDispatchBrokerLogsSourceFallsBackToLiveTranscriptWhenDockerEmpty
 	}
 	got := out.String()
 	for _, want := range []string{
-		"ward agent logs: docker logs empty; using live transcript tree from /home/ubuntu/.claude/projects",
+		"ward agent logs: docker logs empty; using live transcript tree from",
+		".claude/projects",
+		`{"type":"assistant","text":"still here"}`,
+		`{"type":"assistant","text":"latest"}`,
+	} {
+		if !strings.Contains(got, want) {
+			t.Fatalf("fallback output missing %q\n%s", want, got)
+		}
+	}
+}
+
+func TestResolveDispatchBrokerLogsSourceUsesCodexTranscriptTreeWhenDockerEmpty(t *testing.T) {
+	tarBytes := liveTranscriptTar(t, map[string]string{
+		"sessions/session-a.jsonl": `{"type":"assistant","text":"working"}` + "\n" + `{"type":"assistant","text":"still here"}` + "\n",
+		"sessions/session-b.jsonl": `{"type":"assistant","text":"latest"}` + "\n",
+	})
+	r := fakeAgentLogsDockerRunner(t, "engineer-codex-ward-692\n", "", tarBytes, ".codex/sessions")
+	src, err := r.resolveDispatchBrokerLogsSource(t.Context(), dispatchBrokerRequest{Target: "coilyco-flight-deck/ward#692", Tail: 2})
+	if err != nil {
+		t.Fatalf("resolve transcript source: %v", err)
+	}
+	var out bytes.Buffer
+	if err := r.streamAgentLogsSource(t.Context(), src, &out); err != nil {
+		t.Fatalf("stream transcript fallback: %v", err)
+	}
+	got := out.String()
+	for _, want := range []string{
+		"ward agent logs: docker logs empty; using live transcript tree from",
+		".codex/sessions",
 		`{"type":"assistant","text":"still here"}`,
 		`{"type":"assistant","text":"latest"}`,
 	} {
@@ -436,7 +468,7 @@ func TestResolveDispatchBrokerLogsSourceFallsBackToArchive(t *testing.T) {
 	if err := os.WriteFile(filepath.Join(archiveDir, drainConsoleFile), []byte("one\ntwo\nthree\n"), 0o644); err != nil {
 		t.Fatalf("write console: %v", err)
 	}
-	r := fakeAgentLogsDockerRunner(t, "", "", nil)
+	r := fakeAgentLogsDockerRunner(t, "", "", nil, "")
 	src, err := r.resolveDispatchBrokerLogsSource(t.Context(), dispatchBrokerRequest{Target: "coilyco-flight-deck/ward#692", Tail: 1})
 	if err != nil {
 		t.Fatalf("resolve archive source: %v", err)
@@ -446,6 +478,9 @@ func TestResolveDispatchBrokerLogsSourceFallsBackToArchive(t *testing.T) {
 	}
 	if got := src.Path; got != filepath.Join(archiveDir, drainConsoleFile) {
 		t.Errorf("archive path = %q, want %q", got, filepath.Join(archiveDir, drainConsoleFile))
+	}
+	if got := src.String(); !strings.Contains(got, "(outcome unknown)") {
+		t.Fatalf("archive source string = %q, want the final outcome marker", got)
 	}
 	var out bytes.Buffer
 	if err := r.streamAgentLogsSource(t.Context(), src, &out); err != nil {
@@ -486,6 +521,43 @@ func TestBrokerEngineerArgvForwardsApprovedFlags(t *testing.T) {
 		if !containsArg(got, want) {
 			t.Errorf("forwarded argv missing %q: %v", want, got)
 		}
+	}
+}
+
+// TestBrokerEngineerArgvForwardsOverrideFlags covers ward#1045: each --override-*
+// spelling forwards as typed, and neither flag rides in uninvited.
+func TestBrokerEngineerArgvForwardsOverrideFlags(t *testing.T) {
+	ref := agentIssueRef{Owner: "coilyco-flight-deck", Repo: "ward", Number: 42}
+
+	cmd := parseCommandForTest(t, agentEngineerFlags(), []string{
+		"engineer", "coilyco-flight-deck/ward#42", "--harness", "claude",
+		"--override-reservation", "--override-capacity",
+	})
+	got := brokerEngineerArgv(cmd, modeClaude, ref)
+	for _, want := range []string{"--override-reservation", "--override-capacity"} {
+		if !containsArg(got, want) {
+			t.Errorf("forwarded argv missing %q: %v", want, got)
+		}
+	}
+	if containsArg(got, "--force") {
+		t.Errorf("forwarded argv must not rewrite the new spelling to --force: %v", got)
+	}
+
+	bare := brokerEngineerArgv(parseCommandForTest(t, agentEngineerFlags(), []string{
+		"engineer", "coilyco-flight-deck/ward#42", "--harness", "claude",
+	}), modeClaude, ref)
+	for _, unwanted := range []string{"--force", "--override-reservation", "--override-capacity"} {
+		if containsArg(bare, unwanted) {
+			t.Errorf("bare forwarded argv must not carry %q: %v", unwanted, bare)
+		}
+	}
+}
+
+// TestValidateDispatchBrokerArgvApprovesOverrideFlags covers ward#1045: the host
+// broker accepts both --override-* spellings and the deprecated --force alias.
+func TestValidateDispatchBrokerArgvApprovesOverrideFlags(t *testing.T) {
+	if err := validateDispatchBrokerArgv("engineer", []string{"--override-reservation", "--override-capacity", "--force"}); err != nil {
+		t.Fatalf("validateDispatchBrokerArgv override flags: %v", err)
 	}
 }
 
@@ -721,6 +793,7 @@ func TestForwardAgentDispatchToHostBrokerAllowsRefWithoutPrompt(t *testing.T) {
 // regression for fire-and-forget advisor ref dispatch through the broker.
 func TestRunAgentAdvisorRefDispatchReturnsPromptlyViaBroker(t *testing.T) {
 	t.Setenv("HOME", t.TempDir())
+	t.Setenv(wardConfigRefEnv, "file://"+writeBundleFixture(t))
 	r := &Runner{}
 
 	ln, err := net.Listen("tcp", "127.0.0.1:0")
@@ -1210,11 +1283,14 @@ func TestRunHostDispatchBrokerRequestReturnsStructuredLaunchFailure(t *testing.T
 		Argv: []string{"engineer", "coilyco-flight-deck/ward#786", "--harness", "codex"},
 	}
 	logPath, err := r.startHostDispatchBrokerRequest(t.Context(), req)
-	if err != nil {
-		t.Fatalf("startHostDispatchBrokerRequest: %v", err)
+	if err == nil {
+		t.Fatal("startHostDispatchBrokerRequest unexpectedly succeeded")
 	}
 	if !strings.Contains(logPath, "dispatch") {
 		t.Fatalf("log path %q does not look like a dispatch log", logPath)
+	}
+	if !strings.Contains(err.Error(), "already in use") {
+		t.Fatalf("error %q does not carry the launch failure", err)
 	}
 	<-done
 	<-recoveryStarted
@@ -1249,7 +1325,7 @@ func TestCommentFailedDispatch(t *testing.T) {
 		"Container: `engineer-codex-ward-689`",
 		"Container created: no running engineer was observed.",
 		"Host log: `/tmp/ward/dispatch.log`",
-		"Retry: choose another harness if the first one is down, or rerun with `--force` if the reservation is stale.",
+		"Retry: choose another harness if the first one is down, or rerun with `--override-reservation` if the reservation is stale.",
 	} {
 		if !strings.Contains(body, want) {
 			t.Errorf("failure comment missing %q\n%s", want, body)
@@ -1292,6 +1368,77 @@ func TestCommentDeferredDispatch(t *testing.T) {
 	} {
 		if !strings.Contains(body, want) {
 			t.Errorf("deferred comment missing %q\n%s", want, body)
+		}
+	}
+}
+
+func TestStopFailedDispatchContainerStopsTheAttemptedEngineer(t *testing.T) {
+	dir := t.TempDir()
+	logPath := filepath.Join(dir, "docker.log")
+	name := issueScopedContainerName(roleEngineer, modeCodex, targetRepo{Owner: "coilyco-flight-deck", Name: "ward"}, 689)
+	script := filepath.Join(dir, "docker")
+	body := "#!/bin/sh\n" +
+		"printf '%s\\n' \"$*\" >> \"" + logPath + "\"\n" +
+		"case \"$1\" in\n" +
+		"  ps) printf '%s\\n' '" + name + "' ;;\n" +
+		"  stop) exit 0 ;;\n" +
+		"esac\n" +
+		"exit 0\n"
+	if err := os.WriteFile(script, []byte(body), 0o755); err != nil { //nolint:gosec
+		t.Fatalf("write fake docker: %v", err)
+	}
+	r := &Runner{Runner: &shell.Runner{
+		Stdout:  &bytes.Buffer{},
+		Stderr:  &bytes.Buffer{},
+		Resolve: func(string) (string, error) { return script, nil },
+	}}
+
+	r.stopFailedDispatchContainer(context.Background(), modeCodex, agentIssueRef{Owner: "coilyco-flight-deck", Repo: "ward", Number: 689}, roleEngineer, name)
+
+	log := readFile(t, logPath)
+	if !strings.Contains(log, "ps --filter name=^"+name+"$ --format {{.Names}}") {
+		t.Fatalf("stop helper did not probe the running container:\n%s", log)
+	}
+	if !strings.Contains(log, "stop "+name) {
+		t.Fatalf("stop helper did not stop the attempted container:\n%s", log)
+	}
+}
+
+// TestCommentDeferredReleaseAssetsDispatch writes the backpressure comment that
+// supersedes a stale reservation when the selected release lacks its asset.
+func TestCommentDeferredReleaseAssetsDispatch(t *testing.T) {
+	r := &Runner{}
+	ref := agentIssueRef{Owner: "coilyco-flight-deck", Repo: "ward", Number: 903}
+	f := &fakeLockForge{}
+	req := dispatchBrokerRequest{
+		Role: "engineer",
+		Argv: []string{"engineer", ref.String(), "--harness", "codex", "--skip-preflight"},
+	}
+	assetErr := newReleaseAssetsNotReadyError("v0.544.0", "ward-linux-arm64", "Not Found")
+
+	r.commentDeferredReleaseAssetsDispatch(context.Background(), f, modeCodex, ref, req, "/tmp/ward/dispatch.log", assetErr)
+
+	if f.unlocked != 1 {
+		t.Fatalf("unlockIssue called %d times, want 1", f.unlocked)
+	}
+	if len(f.comments) != 1 {
+		t.Fatalf("commentIssue called %d times, want 1", len(f.comments))
+	}
+	body := f.comments[0]
+	for _, want := range []string{
+		agentReservationReleaseMarker,
+		agentNeedsRedispatchMarker,
+		"WARD-DISPATCH: deferred ⏸",
+		"release-assets-not-ready details",
+		"Attempted harness: `codex`",
+		"Attempted run: `ward agent engineer coilyco-flight-deck/ward#903 --harness codex --skip-preflight`",
+		"Container: `engineer-codex-ward-903`",
+		"Host log: `/tmp/ward/dispatch.log`",
+		"Release assets: `ward container: release-assets-not-ready/deferred: v0.544.0 missing ward-linux-arm64: Not Found`",
+		"Retry: the issue stays queued until the release publishes the missing platform assets, then the director can try again.",
+	} {
+		if !strings.Contains(body, want) {
+			t.Errorf("release-assets deferred comment missing %q\n%s", want, body)
 		}
 	}
 }
@@ -1433,10 +1580,20 @@ func TestRunAgentTaskDirectRoutesThroughBrokerOnReadonlySurface(t *testing.T) {
 	t.Setenv(envDispatchBrokerAddr, ln.Addr().String())
 	t.Setenv("WARD_FORGEJO_BASE", forgejo.URL)
 
+	dockerName := issueScopedContainerName(roleEngineer, modeCodex, targetRepo{Owner: "coilyco-flight-deck", Name: "agentic-os"}, 400)
+	dockerScript := filepath.Join(t.TempDir(), "docker")
+	if err := os.WriteFile(dockerScript, []byte("#!/bin/sh\n"+
+		"if [ \"$1\" = ps ]; then\n"+
+		"  printf '%s\\n' "+shellQuote(dockerName)+"\n"+
+		"  exit 0\n"+
+		"fi\n"+
+		"exit 0\n"), 0o700); err != nil { // #nosec G306 -- test fixture
+		t.Fatalf("write fake docker: %v", err)
+	}
 	r := &Runner{Runner: &shell.Runner{
 		Resolve: func(bin string) (string, error) {
 			if bin == "docker" {
-				return "", fmt.Errorf("local docker path should not be touched")
+				return dockerScript, nil
 			}
 			return "/bin/true", nil
 		},
@@ -1679,6 +1836,137 @@ func TestForwardAgentDispatchPrintsLookupCommandWhenLaunchSucceedsWithoutLogPath
 	}
 }
 
+func TestStartHostDispatchBrokerRequestWaitsForVisibleEngineer(t *testing.T) {
+	t.Setenv("HOME", t.TempDir())
+	r := fakeEngineerVisibilityDockerRunner(t, "engineer-codex-ward-1087", 2)
+
+	origLaunch := dispatchBrokerLaunch
+	origTimeout := dispatchBrokerVisibilityTimeout
+	origPoll := dispatchBrokerVisibilityPoll
+	origFailedHook := dispatchFailedDispatchLaunchHook
+	t.Cleanup(func() {
+		dispatchBrokerLaunch = origLaunch
+		dispatchBrokerVisibilityTimeout = origTimeout
+		dispatchBrokerVisibilityPoll = origPoll
+		dispatchFailedDispatchLaunchHook = origFailedHook
+	})
+	dispatchBrokerVisibilityTimeout = 250 * time.Millisecond
+	dispatchBrokerVisibilityPoll = 10 * time.Millisecond
+	dispatchFailedDispatchLaunchHook = func(dispatchBrokerRequest, string, error) bool { return true }
+	dispatchBrokerLaunch = func(context.Context, dispatchBrokerRequest) error { return nil }
+
+	req := dispatchBrokerRequest{
+		Role:      "engineer",
+		Argv:      []string{"engineer", "coilyco-flight-deck/ward#1087", "--harness", "codex"},
+		Requester: "director-codex-host",
+		Token:     "nonce-visible",
+	}
+	logPath, err := r.startHostDispatchBrokerRequest(context.Background(), req)
+	if err != nil {
+		t.Fatalf("startHostDispatchBrokerRequest: %v", err)
+	}
+	if logPath == "" {
+		t.Fatal("startHostDispatchBrokerRequest returned an empty log path")
+	}
+}
+
+func TestStartHostDispatchBrokerRequestFailsWhenEngineerNeverBecomesVisible(t *testing.T) {
+	t.Setenv("HOME", t.TempDir())
+	r := fakeEngineerVisibilityDockerRunner(t, "", 0)
+
+	origLaunch := dispatchBrokerLaunch
+	origTimeout := dispatchBrokerVisibilityTimeout
+	origPoll := dispatchBrokerVisibilityPoll
+	origFailedHook := dispatchFailedDispatchLaunchHook
+	t.Cleanup(func() {
+		dispatchBrokerLaunch = origLaunch
+		dispatchBrokerVisibilityTimeout = origTimeout
+		dispatchBrokerVisibilityPoll = origPoll
+		dispatchFailedDispatchLaunchHook = origFailedHook
+	})
+	dispatchBrokerVisibilityTimeout = 75 * time.Millisecond
+	dispatchBrokerVisibilityPoll = 10 * time.Millisecond
+	dispatchFailedDispatchLaunchHook = func(dispatchBrokerRequest, string, error) bool { return true }
+	dispatchBrokerLaunch = func(context.Context, dispatchBrokerRequest) error { return nil }
+
+	req := dispatchBrokerRequest{
+		Role:      "engineer",
+		Argv:      []string{"engineer", "coilyco-flight-deck/ward#1087", "--harness", "codex"},
+		Requester: "director-codex-host",
+		Token:     "nonce-missing",
+	}
+	logPath, err := r.startHostDispatchBrokerRequest(context.Background(), req)
+	if err == nil {
+		t.Fatal("startHostDispatchBrokerRequest unexpectedly succeeded")
+	}
+	if logPath == "" {
+		t.Fatal("startHostDispatchBrokerRequest returned an empty log path on failure")
+	}
+	if !strings.Contains(err.Error(), "ward agent list") {
+		t.Fatalf("error = %q, want the director-surface follow-up command", err)
+	}
+}
+
+func TestStartHostDispatchBrokerRequestDoesNotTrustCrossOwnerNameCollisions(t *testing.T) {
+	t.Setenv("HOME", t.TempDir())
+	dir := t.TempDir()
+	script := filepath.Join(dir, "docker")
+	collidingName := "engineer-codex-website-66"
+	body := "#!/bin/sh\n" +
+		"if [ \"$1\" = ps ]; then\n" +
+		"  for arg in \"$@\"; do\n" +
+		"    case \"$arg\" in\n" +
+		"      name=^" + collidingName + "$)\n" +
+		"        printf '%s\\n' " + shellQuote(collidingName) + "\n" +
+		"        exit 0\n" +
+		"        ;;\n" +
+		"    esac\n" +
+		"  done\n" +
+		"  exit 0\n" +
+		"fi\n" +
+		"printf '%s\\n' \"unexpected docker args: $*\" >&2\n" +
+		"exit 1\n"
+	if err := os.WriteFile(script, []byte(body), 0o700); err != nil { // #nosec G306 -- test fixture
+		t.Fatalf("write fake docker: %v", err)
+	}
+	r := &Runner{Runner: &shell.Runner{
+		Stderr:  io.Discard,
+		Resolve: func(_ string) (string, error) { return script, nil },
+	}}
+
+	origLaunch := dispatchBrokerLaunch
+	origTimeout := dispatchBrokerVisibilityTimeout
+	origPoll := dispatchBrokerVisibilityPoll
+	origFailedHook := dispatchFailedDispatchLaunchHook
+	t.Cleanup(func() {
+		dispatchBrokerLaunch = origLaunch
+		dispatchBrokerVisibilityTimeout = origTimeout
+		dispatchBrokerVisibilityPoll = origPoll
+		dispatchFailedDispatchLaunchHook = origFailedHook
+	})
+	dispatchBrokerVisibilityTimeout = 75 * time.Millisecond
+	dispatchBrokerVisibilityPoll = 10 * time.Millisecond
+	dispatchFailedDispatchLaunchHook = func(dispatchBrokerRequest, string, error) bool { return true }
+	dispatchBrokerLaunch = func(context.Context, dispatchBrokerRequest) error { return nil }
+
+	req := dispatchBrokerRequest{
+		Role:      "engineer",
+		Argv:      []string{"engineer", "coilysiren/website#66", "--harness", "codex"},
+		Requester: "director-codex-host",
+		Token:     "nonce-collision",
+	}
+	logPath, err := r.startHostDispatchBrokerRequest(context.Background(), req)
+	if err == nil {
+		t.Fatal("startHostDispatchBrokerRequest unexpectedly succeeded on a cross-owner name collision")
+	}
+	if logPath == "" {
+		t.Fatal("startHostDispatchBrokerRequest returned an empty log path on failure")
+	}
+	if !strings.Contains(err.Error(), "ward agent list") {
+		t.Fatalf("error = %q, want the visibility follow-up command", err)
+	}
+}
+
 func TestRedactDispatchBrokerArgvKeepsWorkflowAndDetailsButScrubsSecrets(t *testing.T) {
 	got := redactDispatchBrokerArgv([]string{
 		"engineer", "coilyco-flight-deck/ward#1",
@@ -1716,7 +2004,7 @@ func TestDispatchLogNameIsStampedAndAttributable(t *testing.T) {
 	}
 }
 
-func fakeAgentLogsDockerRunner(t *testing.T, psOut, logsOut string, cpOut []byte) *Runner {
+func fakeAgentLogsDockerRunner(t *testing.T, psOut, logsOut string, cpOut []byte, wantCpSuffix string) *Runner {
 	t.Helper()
 	dir := t.TempDir()
 	script := filepath.Join(dir, "docker")
@@ -1728,6 +2016,7 @@ func fakeAgentLogsDockerRunner(t *testing.T, psOut, logsOut string, cpOut []byte
 		}
 	}
 	body := "#!/bin/sh\n" +
+		"want_cp_suffix=" + shellQuote(wantCpSuffix) + "\n" +
 		"if [ \"$1\" = ps ] && [ \"$2\" = -a ]; then\n" +
 		"  printf '%s' " + shellQuote(psOut) + "\n" +
 		"  exit 0\n" +
@@ -1737,8 +2026,43 @@ func fakeAgentLogsDockerRunner(t *testing.T, psOut, logsOut string, cpOut []byte
 		"  exit 0\n" +
 		"fi\n" +
 		"if [ \"$1\" = cp ]; then\n" +
+		"  if [ -n \"$want_cp_suffix\" ]; then\n" +
+		"    case \"$2\" in\n" +
+		"      *\"$want_cp_suffix\") ;;\n" +
+		"      *) printf '%s\\n' \"unexpected docker cp source: $2\" >&2; exit 1;;\n" +
+		"    esac\n" +
+		"  fi\n" +
 		"  if [ -n " + shellQuote(cpPath) + " ]; then\n" +
 		"    cat " + shellQuote(cpPath) + "\n" +
+		"  fi\n" +
+		"  exit 0\n" +
+		"fi\n" +
+		"printf '%s\\n' \"unexpected docker args: $*\" >&2\n" +
+		"exit 1\n"
+	if err := os.WriteFile(script, []byte(body), 0o700); err != nil { // #nosec G306 -- test fixture
+		t.Fatalf("write fake docker: %v", err)
+	}
+	return &Runner{Runner: &shell.Runner{
+		Stderr:  io.Discard,
+		Resolve: func(_ string) (string, error) { return script, nil },
+	}}
+}
+
+func fakeEngineerVisibilityDockerRunner(t *testing.T, visibleName string, visibleAfter int) *Runner {
+	t.Helper()
+	dir := t.TempDir()
+	script := filepath.Join(dir, "docker")
+	countPath := filepath.Join(dir, "count")
+	body := "#!/bin/sh\n" +
+		"if [ \"$1\" = ps ]; then\n" +
+		"  count=0\n" +
+		"  if [ -f " + shellQuote(countPath) + " ]; then\n" +
+		"    count=$(cat " + shellQuote(countPath) + ")\n" +
+		"  fi\n" +
+		"  count=$((count + 1))\n" +
+		"  printf '%s' \"$count\" > " + shellQuote(countPath) + "\n" +
+		"  if [ \"$count\" -ge " + fmt.Sprintf("%d", visibleAfter) + " ] && [ -n " + shellQuote(visibleName) + " ]; then\n" +
+		"    printf '%s\\n' " + shellQuote(visibleName) + "\n" +
 		"  fi\n" +
 		"  exit 0\n" +
 		"fi\n" +

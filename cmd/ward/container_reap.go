@@ -787,8 +787,8 @@ func (r *Runner) releaseReservationIfUnstarted(ctx context.Context, env reapEnv)
 	fmt.Fprintf(os.Stderr, "ward container reap: released issue reservation on #%d (container exited pre-launch, did no work)\n", env.Issue)
 }
 
-// releaseReservationIfTerminalOutcome retracts the remote reservation when the run ends.
-// The terminal WARD-OUTCOME supersedes the hold, so later redispatch needs no --force.
+// releaseReservationIfTerminalOutcome retracts the remote reservation when the run
+// ends: the terminal WARD-OUTCOME supersedes the hold, so redispatch needs no override.
 func (r *Runner) releaseReservationIfTerminalOutcome(ctx context.Context, env reapEnv) {
 	if !env.Launched || env.Issue == 0 {
 		return
@@ -841,7 +841,7 @@ func terminalReservationReleaseCommentBody(mode containerMode, container string,
 	visible := "WARD-RESERVATION: released 🛑"
 	var b strings.Builder
 	fmt.Fprintf(&b, "Run finished with `%s %s`.\n\n", wardOutcomeMarker, outcome.Status)
-	fmt.Fprintf(&b, "`ward container reap` released container `%s` (`--harness %s`): the terminal outcome supersedes the reservation, so a later redispatch no longer needs `--force`.\n", container, mode)
+	fmt.Fprintf(&b, "`ward container reap` released container `%s` (`--harness %s`): the terminal outcome supersedes the reservation, so a later redispatch no longer needs `--override-reservation`.\n", container, mode)
 	if summary := strings.TrimSpace(outcome.Text); summary != "" {
 		fmt.Fprintf(&b, "\n**Outcome summary:** %s\n", summary)
 	}

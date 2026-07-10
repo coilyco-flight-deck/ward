@@ -8,6 +8,7 @@ import (
 	"fmt"
 	"os"
 	"path/filepath"
+	"strings"
 	"time"
 )
 
@@ -74,16 +75,37 @@ func (r *Runner) ensureMirrorFresh(ctx context.Context, spec gitRefSpec, ttl tim
 		return true, nil
 	}
 	if substrateMirrorStale(spec.mirror, int64(ttl.Seconds()), time.Now()) {
-		logf("gitsync: refresh %s (TTL %s elapsed)", spec.url, ttl)
-		if uerr := r.netExec(ctx, spec, "git", "-C", spec.mirror, "remote", "update", "--prune"); uerr != nil {
-			// Cache-fallback: the cached mirror keeps serving; FETCH_HEAD is
-			// untouched so the next invocation retries the refresh.
-			logf("gitsync: refresh failed %s (using cached state)", spec.url)
-			return false, nil //nolint:nilerr // never brick offline (ward#654)
-		}
-		return true, nil
+		return r.refreshStaleMirror(ctx, spec, ttl, logf)
 	}
 	return false, nil
+}
+
+func (r *Runner) refreshStaleMirror(ctx context.Context, spec gitRefSpec, ttl time.Duration, logf func(format string, a ...any)) (bool, error) {
+	if refreshDeniedRecently(spec.mirror, refreshDeniedBackoff(ttl)) {
+		return false, nil
+	}
+	if denied, derr := fetchHeadPermissionDenied(spec.mirror); denied {
+		logf("gitsync: refresh failed %s at %s/FETCH_HEAD: permission denied (using cached state; make the cache writable by the ward process or isolate it per user/container)", spec.url, spec.mirror)
+		markRefreshDenied(spec.mirror)
+		return false, nil
+	} else if derr != nil {
+		logf("gitsync: refresh failed %s at %s: %v (using cached state)", spec.url, spec.mirror, derr)
+		return false, nil
+	}
+	logf("gitsync: refresh %s (TTL %s elapsed)", spec.url, ttl)
+	if uerr := r.netExec(ctx, spec, "git", "-C", spec.mirror, "remote", "update", "--prune"); uerr != nil {
+		// Cache-fallback keeps the cached mirror serving. Permission-denied failures
+		// get a more specific diagnostic so a bad cache path is easy to recognize.
+		if isFetchHeadPermissionDenied(uerr) {
+			logf("gitsync: refresh failed %s at %s/FETCH_HEAD: permission denied (using cached state; make the cache writable by the ward process or isolate it per user/container)", spec.url, spec.mirror)
+			markRefreshDenied(spec.mirror)
+		} else {
+			logf("gitsync: refresh failed %s (using cached state)", spec.url)
+		}
+		return false, nil //nolint:nilerr // never brick offline (ward#654)
+	}
+	clearRefreshDenied(spec.mirror)
+	return true, nil
 }
 
 // dropWorkingCheckout re-creates spec.work from the mirror and detaches it at
@@ -138,4 +160,56 @@ func touchFetchHead(mirror string) {
 	if err := os.Chtimes(head, now, now); err != nil {
 		_ = os.WriteFile(head, nil, 0o644)
 	}
+}
+
+func refreshDeniedMarker(mirror string) string {
+	return filepath.Join(filepath.Dir(mirror), ".refresh-denied")
+}
+
+func refreshDeniedRecently(mirror string, ttl time.Duration) bool {
+	fi, err := os.Stat(refreshDeniedMarker(mirror))
+	if err != nil {
+		return false
+	}
+	return time.Since(fi.ModTime()) < ttl
+}
+
+func refreshDeniedBackoff(ttl time.Duration) time.Duration {
+	if ttl > 0 {
+		return ttl
+	}
+	return configBundleTTLDefault()
+}
+
+func markRefreshDenied(mirror string) {
+	head := filepath.Join(mirror, "FETCH_HEAD")
+	if _, err := os.Stat(head); err != nil {
+		return
+	}
+	now := time.Now()
+	_ = os.WriteFile(refreshDeniedMarker(mirror), []byte(now.Format(time.RFC3339Nano)), 0o644)
+}
+
+func clearRefreshDenied(mirror string) {
+	_ = os.Remove(refreshDeniedMarker(mirror))
+}
+
+func fetchHeadPermissionDenied(mirror string) (bool, error) {
+	head := filepath.Join(mirror, "FETCH_HEAD")
+	fi, err := os.Stat(head)
+	if err != nil {
+		return false, err
+	}
+	if fi.Mode().Perm()&0o222 != 0 {
+		return false, nil
+	}
+	return true, nil
+}
+
+func isFetchHeadPermissionDenied(err error) bool {
+	if err == nil {
+		return false
+	}
+	s := strings.ToLower(err.Error())
+	return strings.Contains(s, "fetch_head") && strings.Contains(s, "permission denied")
 }
