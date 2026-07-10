@@ -59,14 +59,11 @@ build-ward-kdl: ## build or rebuild the ward-kdl binary, one shot for ease of us
 	# cross-repo follow-up tracked in ward#503 / aos#315, not this local build.
 	# The driver discovers every ward-kdl.*.guardfile.kdl beside this one that
 	# shares the `wrap ward-kdl` binary name and merges them into one binary,
-	# keeping each API's spec lock and reference doc separate. Adding a new
+	# keeping each API's spec lock separate. The per-area Markdown reference
+	# output is generated material, not committed release-era docs. Adding a new
 	# ward-kdl.<api>.guardfile.kdl is the only step to grow the surface.
 	go run $(DRIVER) lock  --guardfile ./.ward/ward-kdl/ward-kdl.forgejo.guardfile.kdl
 	go run $(DRIVER) build --guardfile ./.ward/ward-kdl/ward-kdl.forgejo.guardfile.kdl --out bin --set-version $(KDL_VERSION)
-	# The driver writes each reference doc beside its guardfile; the committed
-	# copies live under docs/ward-kdl/, so relocate them after every rebuild.
-	@mkdir -p docs/ward-kdl
-	mv ./.ward/ward-kdl/ward-kdl.*.guardfile.md ./docs/ward-kdl/
 	$(MAKE) build-ward-kdl-tiers
 	$(MAKE) sync-ops-assets
 	$(MAKE) sync-exec-assets
@@ -75,7 +72,7 @@ build-ward-kdl: ## build or rebuild the ward-kdl binary, one shot for ease of us
 	$(MAKE) sync-topology-assets
 
 build-ward-kdl-tiers: ## build the read/write/admin tier binaries, discovering every area dropped into each tier subdir (ward#240, ward#338).
-	@mkdir -p bin docs/ward-kdl
+	@mkdir -p bin
 	# Permission tiers: read ⊂ write ⊂ admin, composed by `inherit` (cli-guard#160)
 	# over per-area grants (forgejo's wildcard `"*"`, cli-guard#159; signoz's
 	# explicit per-resource leaves). Each tier is its own standalone binary under
@@ -106,9 +103,7 @@ build-ward-kdl-tiers: ## build the read/write/admin tier binaries, discovering e
 		for gf in $$dir/ward-kdl.*.guardfile.kdl; do \
 			go run $(DRIVER) lock  --guardfile "$$gf"; \
 			go run $(DRIVER) build --guardfile "$$gf" --out bin --set-version $(KDL_VERSION); \
-			go run $(DRIVER) gen   --guardfile "$$gf"; \
 		done; \
-		mv $$dir/ward-kdl.*.guardfile.md docs/ward-kdl/; \
 	done
 
 build-ward-kdl-forgejo-tiers: build-ward-kdl-tiers ## Back-compat alias for build-ward-kdl-tiers (ward#338 generalized it past forgejo).
