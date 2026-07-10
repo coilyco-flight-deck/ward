@@ -728,6 +728,7 @@ func TestForwardAgentDispatchToHostBrokerAllowsRefWithoutPrompt(t *testing.T) {
 // regression for fire-and-forget advisor ref dispatch through the broker.
 func TestRunAgentAdvisorRefDispatchReturnsPromptlyViaBroker(t *testing.T) {
 	t.Setenv("HOME", t.TempDir())
+	t.Setenv(wardConfigRefEnv, "file://"+writeBundleFixture(t))
 	r := &Runner{}
 
 	ln, err := net.Listen("tcp", "127.0.0.1:0")

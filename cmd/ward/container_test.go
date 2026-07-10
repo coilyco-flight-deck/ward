@@ -346,8 +346,8 @@ func TestUpPlanLabels(t *testing.T) {
 
 func TestLeastAccessMountsDefaultIsCwdOnly(t *testing.T) {
 	mounts := leastAccessMounts("/home/kai/projects/coilyco-bridge/agentic-os-kai", mountOpts{AssetsDir: "/tmp/ward-assets"})
-	// The target repo must never be a host bind: only cwd + assets binds, plus
-	// the gitcache named volume.
+	// The target repo must never be a host bind: only cwd + assets binds,
+	// plus the staged entrypoint file and the gitcache named volume.
 	var hostBinds []string
 	for _, m := range mounts {
 		if !m.Volume {
@@ -357,9 +357,13 @@ func TestLeastAccessMountsDefaultIsCwdOnly(t *testing.T) {
 			t.Errorf("host bind %q is writable; least-access binds are read-only", m.Source)
 		}
 	}
-	wantBinds := []string{"/home/kai/projects/coilyco-bridge/agentic-os-kai", "/tmp/ward-assets"}
+	wantBinds := []string{
+		"/home/kai/projects/coilyco-bridge/agentic-os-kai",
+		"/tmp/ward-assets",
+		filepath.Join("/tmp/ward-assets", containerEntrypointRel),
+	}
 	if !slices.Equal(hostBinds, wantBinds) {
-		t.Errorf("default host binds = %v, want exactly %v (cwd + assets, no target repo)", hostBinds, wantBinds)
+		t.Errorf("default host binds = %v, want exactly %v (cwd + assets + entrypoint, no target repo)", hostBinds, wantBinds)
 	}
 }
 
@@ -369,7 +373,7 @@ func TestLeastAccessMountsOptIns(t *testing.T) {
 	for _, m := range mounts {
 		targets[m.Target] = true
 	}
-	for _, want := range []string{containerContextMount, containerGitcacheMnt, containerWardAssets, containerAWSMount, containerWardSrcMount} {
+	for _, want := range []string{containerContextMount, containerGitcacheMnt, containerWardAssets, containerEntrypointPath, containerAWSMount, containerWardSrcMount} {
 		if !targets[want] {
 			t.Errorf("opt-in mount set missing %q", want)
 		}
@@ -604,7 +608,7 @@ func TestWardEnvContainerMarker(t *testing.T) {
 func sampleUpPlan() upPlan {
 	repo := targetRepo{Owner: "coilyco-gaming", Name: "eco-app"}
 	return upPlan{
-		Image:       "forgejo.coilysiren.me/coilyco-flight-deck/agentic-os:latest",
+		Image:       "forgejo.coilysiren.me/coilyco-flight-deck/agentic-os-full:latest",
 		Name:        "engineer-claude-eco-app-140",
 		Role:        roleEngineer,
 		Machine:     "deadbeef",
@@ -832,7 +836,7 @@ func TestDockerCreateArgvShape(t *testing.T) {
 		"--label ward.repo=coilyco-gaming/eco-app",
 		"--label ward.machine=deadbeef",
 		"--label ward.issue=140",
-		"--entrypoint " + containerWardAssets + "/" + containerEntrypointRel,
+		"--entrypoint " + containerEntrypointPath,
 		"-it",
 		"--env-file /tmp/ward-env-xyz",
 		"-e WARD_CONTAINER_NAME=engineer-claude-eco-app-140",
@@ -852,7 +856,7 @@ func TestDockerCreateArgvShape(t *testing.T) {
 		}
 	}
 	// The image is the final arg.
-	if argv[len(argv)-1] != "forgejo.coilysiren.me/coilyco-flight-deck/agentic-os:latest" {
+	if argv[len(argv)-1] != "forgejo.coilysiren.me/coilyco-flight-deck/agentic-os-full:latest" {
 		t.Errorf("image must be the final arg, got %q", argv[len(argv)-1])
 	}
 }
@@ -893,7 +897,7 @@ func TestDockerCreateNoBindsArgv(t *testing.T) {
 	}
 	for _, want := range []string{
 		"--name engineer-claude-eco-app-140",
-		"--entrypoint " + containerWardAssets + "/" + containerEntrypointRel,
+		"--entrypoint " + containerEntrypointPath,
 		"-v " + containerGitcacheVol + ":" + containerGitcacheMnt, // the named volume survives
 		"--env-file /tmp/ward-env-xyz",
 		"-e WARD_TARGET_REPO=coilyco-gaming/eco-app",
@@ -929,8 +933,8 @@ func TestHostBindMounts(t *testing.T) {
 		targets = append(targets, m.Target)
 	}
 	joined := strings.Join(targets, " ")
-	if !strings.Contains(joined, containerContextMount) || !strings.Contains(joined, containerWardAssets) {
-		t.Errorf("hostBindMounts should include the cwd context + assets binds, got targets %v", targets)
+	if !strings.Contains(joined, containerContextMount) || !strings.Contains(joined, containerWardAssets) || !strings.Contains(joined, containerEntrypointPath) {
+		t.Errorf("hostBindMounts should include the cwd context + assets + entrypoint binds, got targets %v", targets)
 	}
 	if strings.Contains(joined, containerGitcacheMnt) {
 		t.Error("hostBindMounts must exclude the gitcache named volume")

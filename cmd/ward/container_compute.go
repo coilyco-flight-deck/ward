@@ -7,6 +7,7 @@ import (
 	"fmt"
 	"net"
 	"os"
+	"path/filepath"
 	"regexp"
 	"sort"
 	"strings"
@@ -17,7 +18,7 @@ import (
 const (
 	// containerImageDefault is the aos-published dev-base image, run unmodified;
 	// ward bind-mounts its embedded entrypoint+doctrine and stages ward.
-	containerImageDefault = "forgejo.coilysiren.me/coilyco-flight-deck/agentic-os"
+	containerImageDefault = "forgejo.coilysiren.me/coilyco-flight-deck/agentic-os-full"
 
 	// containerImageTagDefault tracks the image's :latest moving tag.
 	containerImageTagDefault = "latest"
@@ -37,8 +38,9 @@ const (
 
 	// containerWardAssets is where ward's embedded entrypoint + doctrine are
 	// bind-mounted, read-only. The image bakes none of this in.
-	containerWardAssets    = "/opt/ward"
-	containerEntrypointRel = "entrypoint.sh"
+	containerWardAssets     = "/opt/ward"
+	containerEntrypointPath = "/opt/agentic-os/ward-shell-entrypoint.sh"
+	containerEntrypointRel  = "entrypoint.sh"
 
 	// containerWardSrcMount is where --ward-source mounts a ward checkout, so
 	// the host stages the ward binary from it instead of downloading the release.
@@ -381,6 +383,7 @@ func leastAccessMounts(hostCwd string, opts mountOpts) []mountSpec {
 	}
 	if opts.AssetsDir != "" {
 		mounts = append(mounts, mountSpec{Source: opts.AssetsDir, Target: containerWardAssets, ReadOnly: true, Volume: false})
+		mounts = append(mounts, mountSpec{Source: filepath.Join(opts.AssetsDir, containerEntrypointRel), Target: containerEntrypointPath, ReadOnly: true, Volume: false})
 	}
 	if opts.AWSHome != "" {
 		mounts = append(mounts, mountSpec{Source: opts.AWSHome, Target: containerAWSMount, ReadOnly: true, Volume: false})
@@ -770,7 +773,7 @@ func dockerArgvHead(verb string, p upPlan) []string {
 	for _, l := range p.labels() {
 		argv = append(argv, "--label", l)
 	}
-	argv = append(argv, "--entrypoint", containerWardAssets+"/"+containerEntrypointRel)
+	argv = append(argv, "--entrypoint", containerEntrypointPath)
 	// Tailnet route (mutually exclusive, off by default): --host-net shares the host's
 	// namespace (ward#330), --ts-sidecar joins the shared ward-tailnet net (ward#349).
 	switch {
