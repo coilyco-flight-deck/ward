@@ -380,7 +380,9 @@ func (r *Runner) waitForDispatchBrokerEngineerVisibility(ctx context.Context, re
 	for {
 		visible, err := r.dispatchBrokerEngineerVisible(deadlineCtx, name)
 		if err != nil {
-			return err
+			return fmt.Errorf(
+				"dispatch broker: launch accepted but could not confirm engineer visibility; "+
+					"inspect with `ward agent list` from the director surface: %w", err)
 		}
 		if visible {
 			return nil
