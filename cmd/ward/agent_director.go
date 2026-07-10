@@ -498,10 +498,7 @@ func (r *Runner) expandOrgScopes(ctx context.Context, label string, orgs []strin
 	if len(orgs) == 0 {
 		return nil, nil
 	}
-	cl, err := r.hostForgejoClient(ctx)
-	if err != nil {
-		return nil, fmt.Errorf("%s: %w", label, err)
-	}
+	cl := r.hostForgejoClient(ctx)
 	var out []string
 	for _, org := range orgs {
 		repos, lerr := cl.listOwnerRepos(ctx, org)
@@ -1103,10 +1100,7 @@ func backlogTierIndex(tier string) int {
 
 // backlogRefresh rebuilds each repo's ledger from its live open backlog.
 func (r *Runner) backlogRefresh(ctx context.Context, label string, repos []string, limit int) error {
-	cl, err := r.hostForgejoClient(ctx)
-	if err != nil {
-		return fmt.Errorf("%s: %w", label, err)
-	}
+	cl := r.hostForgejoClient(ctx)
 	for _, repo := range repos {
 		owner, name, _ := strings.Cut(repo, "/")
 		issues, lerr := cl.listOpenIssues(ctx, owner, name, limit)

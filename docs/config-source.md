@@ -7,7 +7,8 @@ Some ward surfaces resolve config at launch instead of from the repo file.
 
 - The runtime keeps a baked default bundle.
 - `WARD_CONFIG_REF` can swap in a live bundle.
-- the selected source feeds guarded edge surfaces and agent defaults.
+- the selected source feeds guarded edge/operator surfaces.
+- core agent control-plane paths use ward-owned Go adapters and baked core data.
 
 ## See also
 
@@ -20,4 +21,7 @@ Some ward surfaces resolve config at launch instead of from the repo file.
 - a live bundle lets the launch target change without rebuilding the binary.
 - the selected bundle still needs to be auditable and explainable.
 
-This is the seam for edge surfaces, not a place to hide repo policy.
+This is the seam for edge surfaces, not a place to hide repo policy. A bad or
+incompatible `WARD_CONFIG_REF` can degrade the generated `ward ops ...` surface
+it owns, but it must not break issue lookup, reservation, broker dispatch,
+reaper comments, or container bootstrap.

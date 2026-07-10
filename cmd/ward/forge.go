@@ -252,16 +252,10 @@ func (r *Runner) hostTrackerClient(ctx context.Context, t tracker, mode containe
 	case trackerShortcut:
 		return r.hostShortcutClient(mode)
 	case trackerForgejo:
-		cl, err := r.hostForgejoClient(ctx)
-		if err != nil {
-			return nil, err
-		}
+		cl := r.hostForgejoClient(ctx)
 		return cl.withMode(mode), nil
 	default:
-		cl, err := r.hostForgejoClient(ctx)
-		if err != nil {
-			return nil, err
-		}
+		cl := r.hostForgejoClient(ctx)
 		return cl.withMode(mode), nil
 	}
 }

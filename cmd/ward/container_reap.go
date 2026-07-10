@@ -642,10 +642,7 @@ func (r *Runner) fileSalvageIssue(ctx context.Context, env reapEnv, report salva
 		cl.token = env.Token
 		fc = cl
 	case forgeForgejo, forgeGitHub:
-		cl, err := r.hostForgejoClient(ctx)
-		if err != nil {
-			return err
-		}
+		cl := r.hostForgejoClient(ctx)
 		fc = cl.withMode(containerMode(env.Mode)).withToken(env.Token)
 	}
 	return notifySalvage(ctx, fc, env, report)
@@ -742,11 +739,7 @@ func (r *Runner) releaseReservationIfUnstarted(ctx context.Context, env reapEnv)
 		cl.token = env.Token
 		fc = cl
 	case forgeForgejo, forgeGitHub:
-		cl, err := r.hostForgejoClient(ctx)
-		if err != nil {
-			fmt.Fprintf(os.Stderr, "ward container reap: could not build forgejo client to release reservation: %v\n", err)
-			return
-		}
+		cl := r.hostForgejoClient(ctx)
 		fc = cl.withMode(containerMode(env.Mode)).withToken(env.Token)
 	}
 	// Name the specific pre-launch gate that died (auth / ollama-probe / bootstrap),
@@ -966,11 +959,7 @@ func (r *Runner) reportUnlandedExtraRepos(ctx context.Context, env reapEnv, repo
 		cl.token = env.Token
 		fc = cl
 	case forgeForgejo, forgeGitHub:
-		cl, err := r.hostForgejoClient(ctx)
-		if err != nil {
-			fmt.Fprintf(os.Stderr, "ward container reap: could not build forgejo client to flag un-landed granted repos: %v\n", err)
-			return
-		}
+		cl := r.hostForgejoClient(ctx)
 		fc = cl.withMode(containerMode(env.Mode)).withToken(env.Token)
 	}
 	// Reopen first (idempotent on an already-open issue), then comment: the issue

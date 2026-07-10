@@ -657,7 +657,7 @@ func TestRunAgentAdvisorRefDispatchReturnsPromptlyViaBroker(t *testing.T) {
 	origRestoreHook := dispatchStdioRestoreHook
 	t.Cleanup(func() {
 		dispatchBrokerLaunch = origLaunch
-		dispatchStdioRestoreHook = origRestoreHook
+		defer func() { dispatchStdioRestoreHook = origRestoreHook }()
 		select {
 		case <-restored:
 		case <-time.After(30 * time.Second):
@@ -1019,7 +1019,7 @@ func TestRunHostDispatchBrokerRequestReturnsStructuredLaunchFailure(t *testing.T
 	origFailedDispatchStartHook := dispatchFailedDispatchLaunchStartHook
 	t.Cleanup(func() {
 		dispatchBrokerLaunch = origLaunch
-		dispatchStdioRestoreHook = origRestoreHook
+		defer func() { dispatchStdioRestoreHook = origRestoreHook }()
 		dispatchFailedDispatchLaunchHook = origFailedDispatchHook
 		dispatchFailedDispatchLaunchStartHook = origFailedDispatchStartHook
 		select {

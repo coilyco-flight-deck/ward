@@ -17,6 +17,9 @@ Inventory of what `ward` ships today.
 
 - `ward agent` - the guarded execution layer.
 - `warded` - the symlinked public face.
+- Core tracker/forge adapters - issue lookup, reservation, dispatch broker
+  writes, reaper comments, and director merge reads do not depend on generated
+  `ward ops` leaves.
 - `ward agent` roles and workflows - see [agent.md](agent.md),
   [agent-roster.md](agent-roster.md), [agent-roles.md](agent-roles.md), [agent-harnesses.md](agent-harnesses.md),
   [agent-lifecycle.md](agent-lifecycle.md), [agent-director.md](agent-director.md),
@@ -37,6 +40,8 @@ Inventory of what `ward` ships today.
   [ward-kdl-surface.md](ward-kdl-surface.md),
   [ward-kdl-in-ward.md](ward-kdl-in-ward.md), and
   [ward-docker-exec.md](ward-docker-exec.md).
+- Runtime `WARD_CONFIG_REF` bundles affect edge/operator surfaces, not the core
+  agent control plane.
 
 ## Release and docs
 

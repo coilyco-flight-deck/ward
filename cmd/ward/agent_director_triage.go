@@ -249,12 +249,7 @@ func (r *Runner) backlogTriage(ctx context.Context, label string, repos []string
 		fmt.Fprintf(os.Stderr, "%s: note: %s self-assessment unavailable; skipping startup triage.\n", label, bin)
 		return
 	}
-	cl, err := r.hostForgejoClient(ctx)
-	if err != nil {
-		fmt.Fprintf(os.Stderr, "%s: note: cannot triage (%v); leaving labels unchanged.\n", label, err)
-		return
-	}
-	cl = cl.withMode(mode)
+	cl := r.hostForgejoClient(ctx).withMode(mode)
 	for _, repo := range repos {
 		r.triageRepo(ctx, label, repo, cl, mode, limit)
 	}

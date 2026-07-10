@@ -54,10 +54,7 @@ func (r *Runner) runDirectorMerge(ctx context.Context, c *cli.Command) error {
 	if err := r.backlogTrustGate(label, repos); err != nil {
 		return err
 	}
-	prClient, err := r.hostForgejoClient(ctx)
-	if err != nil {
-		return fmt.Errorf("%s: %w", label, err)
-	}
+	prClient := r.hostForgejoClient(ctx)
 	issueClient, err := r.hostTrackerClient(ctx, trackerForgejo, currentAgentMode())
 	if err != nil {
 		return fmt.Errorf("%s: %w", label, err)

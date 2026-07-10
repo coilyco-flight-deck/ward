@@ -7,6 +7,7 @@ doc_goal: Keep the Forgejo operator surface as one concise guide after the suppo
 
 - It wraps the supported Forgejo REST calls.
 - It is the canonical operator path for ward's own repo.
+- It is an edge surface. Core `ward agent` dispatch uses typed Go adapters.
 - The embedded surface is what the binary ships.
 
 ## What it replaces
@@ -24,6 +25,8 @@ doc_goal: Keep the Forgejo operator surface as one concise guide after the suppo
 
 The details live in the generated surface when you are working in the build
 layer. The release binary only needs the stable user-facing contract here.
+Runtime config source changes can reshape this operator surface without
+changing the core agent control plane.
 
 ## Why it still gets a page
 

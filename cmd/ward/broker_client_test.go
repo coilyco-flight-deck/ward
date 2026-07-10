@@ -76,7 +76,7 @@ func TestIsOutOfTierRefusal(t *testing.T) {
 		}
 	}
 	apiErrors := []string{
-		"broker: ward-kdl-write ops forgejo issue create: exit status 1: 404 not found",
+		"broker: create issue coilyco/ward: forgejo POST /api/v1/repos/coilyco/ward/issues returned 404 Not Found",
 		"some unrelated failure",
 	}
 	for _, m := range apiErrors {

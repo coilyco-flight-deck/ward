@@ -13,10 +13,7 @@ import (
 // directorMergeEligiblePullRequests sweeps ward-owned PRs that already satisfy the
 // explicit director merge boundary and merges them through Forgejo.
 func (r *Runner) directorMergeEligiblePullRequests(ctx context.Context, label string, repos []string) error {
-	prClient, err := r.hostForgejoClient(ctx)
-	if err != nil {
-		return fmt.Errorf("%s: %w", label, err)
-	}
+	prClient := r.hostForgejoClient(ctx)
 	issueClient, err := r.hostTrackerClient(ctx, trackerForgejo, currentAgentMode())
 	if err != nil {
 		return fmt.Errorf("%s: %w", label, err)
