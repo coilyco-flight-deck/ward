@@ -60,6 +60,7 @@ guides, not issue slices.
 - [ward-kdl-in-ward.md](ward-kdl-in-ward.md) - exec mounts into `ward`.
 - [ward-kdl-authoring.md](ward-kdl-authoring.md) - author and rebuild guardfiles.
 - [ward-docker-exec.md](ward-docker-exec.md) - `ward docker exec`.
+- Generated per-area guardfile references are build output, not release-era docs.
 
 ## Ops and examples
 
