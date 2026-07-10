@@ -511,6 +511,34 @@ func TestForwardAgentDispatchToHostBrokerSendsCanonicalRequest(t *testing.T) {
 	}
 }
 
+func TestDispatchBrokerForwardedLineIncludesLogPathWhenAvailable(t *testing.T) {
+	got := dispatchBrokerForwardedLine([]string{"engineer", "coilyco-flight-deck/ward#378", "--harness", "codex"}, "/tmp/ward/dispatch.log")
+	for _, want := range []string{
+		"ward dispatch broker: forwarded `ward agent engineer coilyco-flight-deck/ward#378 --harness codex` to host ward",
+		"(run output on the host at /tmp/ward/dispatch.log)",
+	} {
+		if !strings.Contains(got, want) {
+			t.Fatalf("forwarded line = %q, want %q", got, want)
+		}
+	}
+}
+
+func TestDispatchBrokerForwardedLineFallsBackToLookupCommandWhenPathMissing(t *testing.T) {
+	got := dispatchBrokerForwardedLine([]string{"engineer", "coilyco-flight-deck/ward#902", "--harness", "codex"}, "")
+	for _, want := range []string{
+		"ward dispatch broker: forwarded `ward agent engineer coilyco-flight-deck/ward#902 --harness codex` to host ward",
+		"dispatch log path unavailable yet",
+		"`ward agent logs coilyco-flight-deck/ward#902`",
+	} {
+		if !strings.Contains(got, want) {
+			t.Fatalf("forwarded line = %q, want %q", got, want)
+		}
+	}
+	if strings.Contains(got, "forwarded `ward agent engineer coilyco-flight-deck/ward#902 --harness codex` to host ward\n") {
+		t.Fatalf("forwarded line unexpectedly retained the bare success shape: %q", got)
+	}
+}
+
 func TestForwardAgentDispatchToHostBrokerInheritsSurfaceHarness(t *testing.T) {
 	// A Codex director surface should forward Codex engineers by default, not fall
 	// back to Claude just because `warded` itself defaults that way.
@@ -1495,6 +1523,63 @@ func TestForwardAgentDispatchIncludesDispatchLogOnLaunchFailure(t *testing.T) {
 	}
 	if !strings.Contains(err.Error(), "/tmp/ward-agent-logs/dispatch/20260709T083000Z-director-codex-ward-786.log") {
 		t.Fatalf("error %q does not carry the dispatch log path", err)
+	}
+}
+
+func TestForwardAgentDispatchPrintsLookupCommandWhenLaunchSucceedsWithoutLogPath(t *testing.T) {
+	ln, err := net.Listen("tcp", "127.0.0.1:0")
+	if err != nil {
+		t.Fatalf("listen broker: %v", err)
+	}
+	defer ln.Close()
+	go func() {
+		conn, err := ln.Accept()
+		if err != nil {
+			return
+		}
+		defer conn.Close()
+		var req dispatchBrokerRequest
+		if err := json.NewDecoder(conn).Decode(&req); err != nil {
+			return
+		}
+		_ = json.NewEncoder(conn).Encode(dispatchBrokerResponse{OK: true})
+	}()
+
+	origStderr := os.Stderr
+	rPipe, wPipe, err := os.Pipe()
+	if err != nil {
+		t.Fatalf("pipe stderr: %v", err)
+	}
+	t.Cleanup(func() {
+		_ = wPipe.Close()
+		_ = rPipe.Close()
+		os.Stderr = origStderr
+	})
+	os.Stderr = wPipe
+	t.Setenv(envDispatchBrokerAddr, ln.Addr().String())
+	t.Setenv(envDispatchBrokerToken, "nonce-902")
+	t.Setenv("WARD_READONLY", "1")
+	t.Setenv("WARD_CONTAINER_NAME", "director-codex-host")
+	cmd := parseCommandForTest(t, agentEngineerFlags(), []string{"engineer", "coilyco-flight-deck/ward#902"})
+	r := &Runner{}
+	forwarded, ferr := r.maybeForwardAgentDispatchToHostBroker(context.Background(), cmd, "engineer", modeCodex)
+	_ = wPipe.Close()
+	if ferr != nil {
+		t.Fatalf("forwarded launch without log path returned error: %v", ferr)
+	}
+	if !forwarded {
+		t.Fatal("launch without log path did not forward")
+	}
+	var stderr bytes.Buffer
+	if _, err := io.Copy(&stderr, rPipe); err != nil {
+		t.Fatalf("read stderr: %v", err)
+	}
+	got := stderr.String()
+	if !strings.Contains(got, "dispatch log path unavailable yet") {
+		t.Fatalf("stderr = %q, want a clear no-path reason", got)
+	}
+	if !strings.Contains(got, "`ward agent logs coilyco-flight-deck/ward#902`") {
+		t.Fatalf("stderr = %q, want a deterministic lookup command", got)
 	}
 }
 
