@@ -193,7 +193,7 @@ func TestDirectorRunMetaParsesWorkflowAndReview(t *testing.T) {
 		"",
 		"<details><summary>details</summary>",
 		"",
-		"workflow: pull-requests-and-merge; review summary: passed: all green",
+		"workflow: pull-request-and-merge; review summary: passed: all green",
 		"checked head sha: abc123",
 		"status context: ci/build=success, ci/test=success",
 		"status state: success",
@@ -333,7 +333,7 @@ func TestDirectorMergeEligibilityRequiresMatchingQAVerdict(t *testing.T) {
 	if allowed {
 		t.Fatal("unmarked PR: want deny, got allow")
 	}
-	if reason != "PR body missing ward.workflow: pull-requests-and-merge marker" {
+	if reason != "PR body missing ward.workflow: pull-request-and-merge marker" {
 		t.Fatalf("unmarked PR reason = %q, want missing-marker denial", reason)
 	}
 }
