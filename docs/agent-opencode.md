@@ -26,7 +26,7 @@ supported yet ([#395](https://forgejo.coilysiren.me/coilyco-flight-deck/ward/iss
 
 ## Install stance
 
-Best-effort self-install. An image that already contains `opencode` short-circuits it.
+Best-effort self-install. An image that already contains `opencode` short-circuits it. If the binary is still absent after install, bootstrap aborts before launch instead of dropping to a shell.
 
 ## Launch dialect
 

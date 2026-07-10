@@ -64,6 +64,8 @@ const (
 	// dispatchActionStop is the targeted control action (ward#627): docker-stop one
 	// running engineer named by Target - stop-only, engineer-only, no launch argv.
 	dispatchActionStop = "stop"
+	// dispatchActionList is the read-only control action: list running engineers.
+	dispatchActionList = "list"
 	// dispatchActionLogs streams one engineer's logs back to the requester.
 	dispatchActionLogs = "logs"
 )
@@ -77,6 +79,7 @@ type dispatchBrokerRequest struct {
 	// Target names the stop action's container: owner/repo#N (resolved by labels) or
 	// a container name. Empty on a launch request (ward#627).
 	Target    string `json:"target,omitempty"`
+	Format    string `json:"format,omitempty"`
 	Requester string `json:"requester,omitempty"`
 	Tail      int    `json:"tail,omitempty"`
 	Follow    bool   `json:"follow,omitempty"`
@@ -199,6 +202,10 @@ func (r *Runner) handleHostDispatchBrokerConn(ctx context.Context, conn net.Conn
 		r.runDispatchBrokerLogs(ctx, conn, req)
 		return
 	}
+	if dispatchAction(req.Action) == dispatchActionList {
+		r.runDispatchBrokerList(ctx, conn, req)
+		return
+	}
 	logPath, err := r.startHostDispatchBrokerRequest(ctx, req)
 	writeDispatchBrokerResponse(conn, logPath, err)
 }
@@ -295,6 +302,10 @@ func (r *Runner) commentFailedDispatchLaunch(ctx context.Context, req dispatchBr
 	}
 	ref, err := parseAgentIssueRef(req.Argv[1])
 	if err != nil {
+		return
+	}
+	if r == nil || r.Runner == nil {
+		fmt.Fprintf(os.Stderr, "ward dispatch broker: skipping failure comment for %s: no shell runner available\n", ref)
 		return
 	}
 	mode := dispatchBrokerRequestMode(req)
@@ -540,12 +551,14 @@ func validateDispatchBrokerRequest(req dispatchBrokerRequest) error {
 	switch dispatchAction(req.Action) {
 	case dispatchActionStop:
 		return validateDispatchBrokerStop(req)
+	case dispatchActionList:
+		return validateDispatchBrokerList(req)
 	case dispatchActionLogs:
 		return validateDispatchBrokerLogs(req)
 	case dispatchActionLaunch:
 		return validateDispatchBrokerLaunch(req)
 	default:
-		return fmt.Errorf("dispatch broker: action %q refused (allowed: launch, stop, logs)", req.Action)
+		return fmt.Errorf("dispatch broker: action %q refused (allowed: launch, stop, list, logs)", req.Action)
 	}
 }
 
@@ -602,6 +615,23 @@ func validateDispatchBrokerLogs(req dispatchBrokerRequest) error {
 	return nil
 }
 
+// validateDispatchBrokerList checks the list shape: no target, no argv, and a
+// known output format.
+func validateDispatchBrokerList(req dispatchBrokerRequest) error {
+	if len(req.Argv) != 0 {
+		return fmt.Errorf("dispatch broker: list takes no launch argv, got %v", req.Argv)
+	}
+	if strings.TrimSpace(req.Target) != "" {
+		return fmt.Errorf("dispatch broker: list takes no target, got %q", req.Target)
+	}
+	switch strings.TrimSpace(req.Format) {
+	case "", "json", "text":
+	default:
+		return fmt.Errorf("dispatch broker: list format %q refused (allowed: text, json)", req.Format)
+	}
+	return nil
+}
+
 // validateDispatchBrokerLaunch is the launch-request shape (the original narrow API):
 // an engineer/advisor role, an argv led by that role, and an issue ref (ward#378).
 func validateDispatchBrokerLaunch(req dispatchBrokerRequest) error {
@@ -640,6 +670,17 @@ func (r *Runner) runDispatchBrokerLogs(ctx context.Context, conn net.Conn, req d
 	if err := r.streamAgentLogsSource(ctx, source, conn); err != nil {
 		fmt.Fprintf(os.Stderr, "ward dispatch broker: logs stream failed: %v\n", err)
 	}
+}
+
+// runDispatchBrokerList serves the read-only engineer list back over the broker.
+func (r *Runner) runDispatchBrokerList(ctx context.Context, conn net.Conn, req dispatchBrokerRequest) {
+	body, err := r.renderAgentList(ctx, strings.TrimSpace(req.Format) == "json")
+	if err != nil {
+		writeDispatchBrokerResponse(conn, "", err)
+		return
+	}
+	writeDispatchBrokerResponse(conn, "", nil)
+	_, _ = io.WriteString(conn, body)
 }
 
 // resolveDispatchBrokerLogsSource resolves the request target to one readable

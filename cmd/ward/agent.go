@@ -649,6 +649,9 @@ trusted owner.`, agentHarnessChoices(), defaultAgentMode()),
 			// stop is a control verb, not a startup role: a director surface stops
 			// one running engineer through the dispatch broker (ward#627). docs/agent-stop.md.
 			agentStopCommand(),
+			// list is a read verb, not a startup role: a director surface lists
+			// running engineer containers through the dispatch broker. docs/agent-list.md.
+			agentListCommand(),
 			// logs is a read verb, not a startup role: a director surface reads one
 			// engineer's logs through the dispatch broker. docs/agent-logs.md.
 			agentLogsCommand(),

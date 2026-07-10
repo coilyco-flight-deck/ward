@@ -14,10 +14,7 @@ field-by-field render of that struct, so a `.ward/ward.yaml` can be authored
 from ward docs alone. When ward's pinned cli-guard bumps, this page is the thing
 to re-check against `repocfg`.
 
-**Current release note.** The live release surface no longer ships `ward setup`
-or `ward doctor`. The former setup/doctor behavior is preserved in
-[ward-setup-doctor-inventory.md](ward-setup-doctor-inventory.md)
-for the rebirth pass.
+**Current release note.** `ward setup` is now the live cache warmer / config doctor for the selected runtime surfaces. `ward doctor` remains retired, and the older scaffold shape is preserved in [ward-setup-doctor-inventory.md](ward-setup-doctor-inventory.md) as historical context for the onboarding skeleton.
 
 **What ward's loader reads.** Only two top-level keys: `commands:` and
 `security:`. Any other top-level key (including `catalog:`) is ignored by ward -
@@ -31,13 +28,12 @@ enforces nothing is the worst failure shape for a security tool.
 or validation failures surface only through the config load path, not as a
 runtime security gate. So a `security:` block with a typo does not imply
 protection, and the repo owner should treat it as untrusted until the schema is
-checked. The retired `ward doctor` loud-validator behavior is preserved in the
-release-planning inventory instead of the live surface.
+checked. `ward setup` is the live loud-validator companion for the selected runtime source. It pre-bakes and validates the configured surfaces before the first real ward command needs them, while `ward doctor` stays retired.
 
 ## Top-level keys
 
 - **`commands:`** - map of dev-verb name to its declaration. Read by ward. See [commands](#commands).
-- **`security:`** - the security policy block. Parsed by ward for schema compatibility, but not enforced by any live ward surface. The retired `ward doctor` fail-on-missing-block behavior is captured in the release-planning inventory. See [security](#security).
+- **`security:`** - the security policy block. Parsed by ward for schema compatibility, but not enforced by any live ward surface. `ward setup` validates the selected source and compiles the live surfaces, while `ward doctor` remains retired. See [security](#security).
 - **`catalog:`** - **not read by ward for repo verbs.** This is `coilyco-flight-deck/agentic-os` catalog tooling metadata (repo description + cross-repo `dependsOn`). ward's `repocfg` loader still unmarshals only `commands` + `security` for config compatibility, while every warded agent role (engineer, director, advisor, qa) reads `catalog.dependsOn` at launch to auto-mount those upstreams as read-only reference clones ([ward#573](https://forgejo.coilysiren.me/coilyco-flight-deck/ward/issues/573); [container-multi-repo.md](container-multi-repo.md)). A `dependsOn` entry may be a bare `owner/name` (resolved on canonical Forgejo over HTTPS) **or a full git clone URL** carrying a non-Forgejo host and transport - `ssh://git@github.com/StrangeLoopGames/Eco.git`, `git@github.com:owner/name.git`, or a bare `github.com/owner/name` (synthesized to the sanctioned ssh form). An external host is honored over its own transport off a **host-side ssh-seeded** gitcache mirror, never mirrored onto Forgejo, and a dep that does not hydrate **fails loud** at launch instead of silently reading as present ([ward#612](https://forgejo.coilysiren.me/coilyco-flight-deck/ward/issues/612)). It is safe to include for the catalog tooling and safe to omit if you do not use it.
 
 ## commands
@@ -57,7 +53,7 @@ Two forms are accepted for the value:
 Mapping-form fields:
 
 - **`run:`** - **required.** The command line, split on whitespace into an argv slice (`strings.Fields`, not a shell parse). `run: make build` becomes `["make", "build"]`. `argv[0]` is resolved via `$PATH` at exec time. An empty `run` (or one that parses to zero tokens) fails the load. Every token is checked against cli-guard's shell-metacharacter policy at load time (unless `allow_metacharacters` is set), so `run: sh -c 'a && b'` is rejected - `run:` is a single argv, never a shell pipeline.
-- **`description:`** - optional. Human blurb shown in `ward exec --help`. It was also one side of the retired `ward doctor` drift check, now captured in the release-planning inventory. Defaults to empty.
+- **`description:`** - optional. Human blurb shown in `ward exec --help`. It was also one side of the retired `ward doctor` drift check, and it now sits alongside the live `ward setup` onboarding skeleton as historical context. Defaults to empty.
 - **`allow_metacharacters:`** - optional bool, default `false`. A per-command escape hatch that opts this verb **out** of the shell-metacharacter validator, for both the YAML-declared argv tokens (skipped at load) and the caller-supplied args at exec time. When set, ward stamps the audit row with `policy_skipped=true`. Use only when the command legitimately needs a metacharacter in an argument. It widens the gate for that one verb, so it is loud in the audit trail on purpose.
 - **`audit:`** - optional mapping. Its one field is **`egress:`** (bool, default `false`), which in cli-guard opts a command into a per-invocation CONNECT egress proxy that a consumer wires around exec. **ward's `exec` does not currently wire that proxy for repo verbs**, so `audit.egress` on a `commands.<name>` entry is parsed and validated but has no runtime effect in ward yet. Declaring it is harmless and forward-compatible, not active.
 
@@ -191,8 +187,7 @@ security:
       hint: "run plans only - applies go through CI"
 ```
 
-Validate the live parts with `ward exec`. The retired `ward doctor`
-inventory documents the drift check and probe summary that used to live here.
+Validate the live parts with `ward exec`. Use `ward setup` to pre-bake and validate the selected runtime source before first use. The retired `ward doctor` inventory documents the drift check and probe summary that used to live here.
 
 ## What ward reads, ignores, and no-ops
 
@@ -207,7 +202,7 @@ The honest map, so nothing reads as protected when it is not:
 - [config-discovery.md](config-discovery.md) - how ward resolves which `.ward/ward.yaml` to read.
 - [exec-verb.md](exec-verb.md) - `ward exec <verb>`, the dev-verb gate that runs `run:`.
 - [verb-fallback.md](verb-fallback.md) - bare `ward <verb>` fallback + the build/test/install triple.
-- [ward-setup-doctor-inventory.md](ward-setup-doctor-inventory.md) - the retired setup/doctor inventory.
+- [ward-setup-doctor-inventory.md](ward-setup-doctor-inventory.md) - the live `ward setup` onboarding skeleton and historical setup/doctor inventory.
 - [../.ward/ward.yaml](../.ward/ward.yaml) - ward's own live config.
 
 Cross-reference convention from [coilysiren/agentic-os#59](https://github.com/coilysiren/agentic-os/issues/59).
