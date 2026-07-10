@@ -13,6 +13,7 @@ import (
 	"time"
 
 	"forgejo.coilysiren.me/coilyco-flight-deck/cli-guard/pkg/config"
+	"forgejo.coilysiren.me/coilyco-flight-deck/cli-guard/pkg/flock"
 )
 
 // agent_reserve.go gives every `ward agent` run a two-sided reservation (local
@@ -138,6 +139,38 @@ func agentReservationPath(ref agentIssueRef) (string, error) {
 		return "", err
 	}
 	return filepath.Join(dir, agentReservationsSubdir, agentReservationFilename(ref)), nil
+}
+
+// agentReservationLockPath resolves the per-issue `.lock` sibling for ref.
+// The strict launch lock serializes concurrent directors before launch.
+func agentReservationLockPath(ref agentIssueRef) (string, error) {
+	path, err := agentReservationPath(ref)
+	if err != nil {
+		return "", err
+	}
+	return strings.TrimSuffix(path, ".json") + ".lock", nil
+}
+
+// withAgentReservationLock runs fn under an exclusive flock for ref.
+// A lock failure is terminal here because reservation authority must serialize.
+func (r *Runner) withAgentReservationLock(ref agentIssueRef, fn func() error) error {
+	path, err := agentReservationLockPath(ref)
+	if err != nil {
+		return err
+	}
+	if err := os.MkdirAll(filepath.Dir(path), 0o700); err != nil {
+		return err
+	}
+	f, err := os.OpenFile(path, os.O_CREATE|os.O_RDWR, 0o644) // #nosec G304 -- ward-derived lock path under ~/.ward
+	if err != nil {
+		return err
+	}
+	defer func() { _ = f.Close() }()
+	if err := flock.Exclusive(f); err != nil {
+		return fmt.Errorf("lock reservation %s: %w", path, err)
+	}
+	defer func() { _ = flock.Unlock(f) }()
+	return fn()
 }
 
 // reservationFresh reports whether a reservation stamped at `at` still blocks as

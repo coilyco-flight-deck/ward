@@ -1746,8 +1746,12 @@ func (r *Runner) launchAgentContainer(ctx context.Context, c *cli.Command, mode 
 	// Reserve the issue so another run won't redo it. Fold the dynamic seed context into
 	// the comment so a pre-launch-gate death self-documents on the thread (ward#609).
 	seedCtx := buildReservationSeedContext(w, plan, time.Now().UTC())
-	release, err := r.reserveIssue(ctx, label, mode, ref, plan.Name, plan.Branch, justification, seedCtx, c.Bool("force"), plan.SkipPreflight)
-	if err != nil {
+	var release func()
+	if err := r.withAgentReservationLock(ref, func() error {
+		var reserveErr error
+		release, reserveErr = r.reserveIssue(ctx, label, mode, ref, plan.Name, plan.Branch, justification, seedCtx, c.Bool("force"), plan.SkipPreflight)
+		return reserveErr
+	}); err != nil {
 		return err
 	}
 	// Arm a rollback: a launch that fails before the container is confirmed up must retract
