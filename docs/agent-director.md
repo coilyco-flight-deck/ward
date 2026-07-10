@@ -23,6 +23,7 @@ The director surface is the read-only control plane for runs.
 
 - check whether an engineer is still alive.
 - read the last logs before deciding whether to re-dispatch.
+- inspect the queue/status view for stale reservations, redispatch candidates, submitted PRs, and stale-open done issues.
 - stop a run that is definitely on the wrong ref.
 - target one issue by `owner/repo#N` or full Forgejo issue URL when the run
   should stay scoped to a single decision payload.
@@ -40,5 +41,6 @@ for supervision and landing, not for implementation.
 ## See also
 
 - [agent-ops.md](agent-ops.md) - list, logs, stop, reap.
+- [agent-pr-workflow.md](agent-pr-workflow.md) - native merge, CI status, and rerun tools.
 - [agent-workflow.md](agent-workflow.md) - PR and merge policy.
 - [agent-roles.md](agent-roles.md) - role semantics.

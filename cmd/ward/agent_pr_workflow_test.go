@@ -1,0 +1,380 @@
+package main
+
+import (
+	"context"
+	"errors"
+	"net/http"
+	"net/http/httptest"
+	"strings"
+	"testing"
+)
+
+// TestPRWorkflowMergeAuthorityMatrix pins the ward#1067 acceptance matrix:
+// director merges in pull-requests, engineer in and-merge, nobody in branch modes.
+func TestPRWorkflowMergeAuthorityMatrix(t *testing.T) {
+	cases := []struct {
+		role    string
+		wf      workflowMode
+		allowed bool
+	}{
+		{roleDirector, workflowPullRequest, true},
+		{roleDirector, workflowPullRequestAndMerge, true},
+		{roleDirector, workflowRemoteBranchOnly, false},
+		{roleDirector, workflowDirectToMain, false},
+		{roleEngineer, workflowPullRequest, false},
+		{roleEngineer, workflowPullRequestAndMerge, true},
+		{roleEngineer, workflowRemoteBranchOnly, false},
+		{roleEngineer, workflowDirectToMain, false},
+		{roleAdvisor, workflowPullRequest, false},
+		{roleAdvisor, workflowPullRequestAndMerge, false},
+		{roleQA, workflowPullRequest, false},
+		{roleQA, workflowPullRequestAndMerge, false},
+	}
+	for _, tc := range cases {
+		err := prWorkflowPermitted(tc.role, tc.wf, prOpMerge)
+		if tc.allowed && err != nil {
+			t.Errorf("prWorkflowPermitted(%s, %s, merge) = %v, want allowed", tc.role, tc.wf, err)
+		}
+		if !tc.allowed && err == nil {
+			t.Errorf("prWorkflowPermitted(%s, %s, merge) = nil, want denied", tc.role, tc.wf)
+		}
+	}
+}
+
+// TestPRWorkflowReadAndRerunGates pins the non-merge gates, including the
+// fail-closed denial of an unknown role.
+func TestPRWorkflowReadAndRerunGates(t *testing.T) {
+	for _, role := range []string{roleEngineer, roleDirector, roleAdvisor, roleQA} {
+		for _, op := range []prWorkflowOp{prOpStatus, prOpRuns} {
+			if err := prWorkflowPermitted(role, "", op); err != nil {
+				t.Errorf("prWorkflowPermitted(%s, %s) = %v, want allowed", role, op, err)
+			}
+		}
+	}
+	for _, tc := range []struct {
+		role    string
+		allowed bool
+	}{
+		{roleEngineer, true},
+		{roleDirector, true},
+		{roleAdvisor, false},
+		{roleQA, false},
+	} {
+		err := prWorkflowPermitted(tc.role, "", prOpRerun)
+		if tc.allowed && err != nil {
+			t.Errorf("prWorkflowPermitted(%s, rerun) = %v, want allowed", tc.role, err)
+		}
+		if !tc.allowed && err == nil {
+			t.Errorf("prWorkflowPermitted(%s, rerun) = nil, want denied", tc.role)
+		}
+	}
+	for _, op := range []prWorkflowOp{prOpMerge, prOpStatus, prOpRuns, prOpRerun} {
+		if err := prWorkflowPermitted("session", workflowPullRequestAndMerge, op); err == nil {
+			t.Errorf("prWorkflowPermitted(session, %s) = nil, want fail-closed denial", op)
+		}
+	}
+}
+
+// TestPRWorkflowMarkerMode pins the marker fallback: a PR without a
+// ward.workflow marker is the plain pull-requests lane.
+func TestPRWorkflowMarkerMode(t *testing.T) {
+	if got := prWorkflowMarkerMode("closes #12\n\nward.workflow: pull-requests-and-merge\n"); got != workflowPullRequestAndMerge {
+		t.Errorf("marker mode = %s, want %s", got, workflowPullRequestAndMerge)
+	}
+	if got := prWorkflowMarkerMode("closes #12\n\nward.workflow: pull-request-and-merge\n"); got != workflowPullRequestAndMerge {
+		t.Errorf("legacy marker mode = %s, want %s", got, workflowPullRequestAndMerge)
+	}
+	if got := prWorkflowMarkerMode("closes #12\n"); got != workflowPullRequest {
+		t.Errorf("unmarked mode = %s, want %s", got, workflowPullRequest)
+	}
+}
+
+// TestPRWorkflowRoleDefaultsToDirectorOnHost pins the acting-role resolution.
+func TestPRWorkflowRoleDefaultsToDirectorOnHost(t *testing.T) {
+	t.Setenv("WARD_ROLE", "")
+	if got := prWorkflowRole(); got != roleDirector {
+		t.Errorf("prWorkflowRole() = %q, want %q", got, roleDirector)
+	}
+	t.Setenv("WARD_ROLE", roleEngineer)
+	if got := prWorkflowRole(); got != roleEngineer {
+		t.Errorf("prWorkflowRole() = %q, want %q", got, roleEngineer)
+	}
+}
+
+// prWorkflowFakeForge serves the minimal Forgejo API surface the merge executor
+// walks: PR read, merged-state, base branch, combined status, merge.
+type prWorkflowFakeForge struct {
+	prBody        string
+	combinedState string
+	contextState  string
+	merged        bool
+	mergeCalls    int
+	mergedChecks  int
+}
+
+func (f *prWorkflowFakeForge) server(t *testing.T) *httptest.Server {
+	t.Helper()
+	mux := http.NewServeMux()
+	mux.HandleFunc("/api/v1/repos/coilyco-flight-deck/ward/pulls/7", func(w http.ResponseWriter, _ *http.Request) {
+		_, _ = w.Write([]byte(`{"number":7,"title":"t","body":` + jsonString(f.prBody) + `,"state":"open","head":{"sha":"headsha","ref":"issue-7"},"base":{"ref":"main"}}`))
+	})
+	mux.HandleFunc("/api/v1/repos/coilyco-flight-deck/ward/pulls/7/merge", func(w http.ResponseWriter, r *http.Request) {
+		if r.Method == http.MethodPost {
+			f.mergeCalls++
+			f.merged = true
+			w.WriteHeader(http.StatusOK)
+			return
+		}
+		f.mergedChecks++
+		if f.merged {
+			w.WriteHeader(http.StatusNoContent)
+			return
+		}
+		w.WriteHeader(http.StatusNotFound)
+	})
+	mux.HandleFunc("/api/v1/repos/coilyco-flight-deck/ward/branches/main", func(w http.ResponseWriter, _ *http.Request) {
+		_, _ = w.Write([]byte(`{"name":"main","protected":true,"enable_status_check":true,"status_check_contexts":["test"]}`))
+	})
+	// Per-context state rides the `status` key on live Forgejo (gitea-compat),
+	// not `state` - the fake serves the live shape to pin effectiveState.
+	mux.HandleFunc("/api/v1/repos/coilyco-flight-deck/ward/commits/headsha/status", func(w http.ResponseWriter, _ *http.Request) {
+		_, _ = w.Write([]byte(`{"state":"` + f.combinedState + `","sha":"headsha","total_count":1,"statuses":[{"context":"test","status":"` + f.contextState + `"}]}`))
+	})
+	return httptest.NewServer(mux)
+}
+
+func jsonString(s string) string {
+	var b strings.Builder
+	b.WriteByte('"')
+	for _, r := range s {
+		switch r {
+		case '"':
+			b.WriteString(`\"`)
+		case '\\':
+			b.WriteString(`\\`)
+		case '\n':
+			b.WriteString(`\n`)
+		default:
+			b.WriteRune(r)
+		}
+	}
+	b.WriteByte('"')
+	return b.String()
+}
+
+// TestPRWorkflowMergeExecEngineerSelfMerge drives the engineer self-merge lane
+// end to end against a fake forge, head-pinned and merged-state confirmed.
+func TestPRWorkflowMergeExecEngineerSelfMerge(t *testing.T) {
+	fake := &prWorkflowFakeForge{
+		prBody:        "closes #6\n\nward.workflow: pull-requests-and-merge\n",
+		combinedState: "success",
+		contextState:  "success",
+	}
+	srv := fake.server(t)
+	defer srv.Close()
+	cl := &forgejoClient{baseURL: srv.URL, token: "secret"}
+	out, err := prWorkflowMergeExec(context.Background(), cl, roleEngineer, "coilyco-flight-deck", "ward", 7)
+	if err != nil {
+		t.Fatalf("prWorkflowMergeExec: %v", err)
+	}
+	if fake.mergeCalls != 1 {
+		t.Fatalf("merge calls = %d, want 1", fake.mergeCalls)
+	}
+	if !strings.Contains(out, "merged coilyco-flight-deck/ward#7") || !strings.Contains(out, "merged-state check: merged") {
+		t.Fatalf("merge output = %q, want merged + merged-state confirmation", out)
+	}
+}
+
+// TestPRWorkflowMergeExecDeniesEngineerWithoutMarker pins the mode gate: an
+// unmarked PR is the pull-requests lane, engineer denied, no forge mutation.
+func TestPRWorkflowMergeExecDeniesEngineerWithoutMarker(t *testing.T) {
+	fake := &prWorkflowFakeForge{prBody: "closes #6\n", combinedState: "success", contextState: "success"}
+	srv := fake.server(t)
+	defer srv.Close()
+	cl := &forgejoClient{baseURL: srv.URL, token: "secret"}
+	_, err := prWorkflowMergeExec(context.Background(), cl, roleEngineer, "coilyco-flight-deck", "ward", 7)
+	if err == nil {
+		t.Fatal("want engineer denial in the pull-requests lane, got nil")
+	}
+	if !strings.Contains(err.Error(), "may not merge under workflow pull-requests") {
+		t.Fatalf("denial = %v, want role x mode wording", err)
+	}
+	if fake.mergeCalls != 0 {
+		t.Fatalf("merge calls = %d, want 0 (gate must precede mutation)", fake.mergeCalls)
+	}
+}
+
+// TestPRWorkflowMergeExecDirectorMergesUnmarkedPR pins the director half of the
+// matrix: an unmarked (pull-requests lane) PR is director-mergeable.
+func TestPRWorkflowMergeExecDirectorMergesUnmarkedPR(t *testing.T) {
+	fake := &prWorkflowFakeForge{prBody: "closes #6\n", combinedState: "success", contextState: "success"}
+	srv := fake.server(t)
+	defer srv.Close()
+	cl := &forgejoClient{baseURL: srv.URL, token: "secret"}
+	if _, err := prWorkflowMergeExec(context.Background(), cl, roleDirector, "coilyco-flight-deck", "ward", 7); err != nil {
+		t.Fatalf("director merge in pull-requests lane: %v", err)
+	}
+	if fake.mergeCalls != 1 {
+		t.Fatalf("merge calls = %d, want 1", fake.mergeCalls)
+	}
+}
+
+// TestPRWorkflowMergeExecRefusesRedStatus pins the live status gate: a failing
+// required context stops the merge before any mutation.
+func TestPRWorkflowMergeExecRefusesRedStatus(t *testing.T) {
+	fake := &prWorkflowFakeForge{
+		prBody:        "closes #6\n\nward.workflow: pull-requests-and-merge\n",
+		combinedState: "failure",
+		contextState:  "failure",
+	}
+	srv := fake.server(t)
+	defer srv.Close()
+	cl := &forgejoClient{baseURL: srv.URL, token: "secret"}
+	_, err := prWorkflowMergeExec(context.Background(), cl, roleDirector, "coilyco-flight-deck", "ward", 7)
+	if err == nil {
+		t.Fatal("want red-status refusal, got nil")
+	}
+	if !strings.Contains(err.Error(), "test=failure") {
+		t.Fatalf("refusal = %v, want the failing required context named", err)
+	}
+	if fake.mergeCalls != 0 {
+		t.Fatalf("merge calls = %d, want 0", fake.mergeCalls)
+	}
+}
+
+// TestPRWorkflowStatusReportRendersCombinedStatus pins the native per-PR CI
+// status read a director surface depends on (infrastructure#538).
+func TestPRWorkflowStatusReportRendersCombinedStatus(t *testing.T) {
+	fake := &prWorkflowFakeForge{prBody: "closes #6\n", combinedState: "failure", contextState: "failure"}
+	srv := fake.server(t)
+	defer srv.Close()
+	cl := &forgejoClient{baseURL: srv.URL, token: "secret"}
+	out, err := prWorkflowStatusReport(context.Background(), cl, "coilyco-flight-deck", "ward", 7)
+	if err != nil {
+		t.Fatalf("prWorkflowStatusReport: %v", err)
+	}
+	for _, want := range []string{"combined status: failure", "test = failure", "required on main: test"} {
+		if !strings.Contains(out, want) {
+			t.Errorf("status report %q missing %q", out, want)
+		}
+	}
+}
+
+// TestValidateDispatchBrokerPRWorkflowShapes pins the broker request gate for
+// the ward#1067 actions.
+func TestValidateDispatchBrokerPRWorkflowShapes(t *testing.T) {
+	valid := []dispatchBrokerRequest{
+		{Action: dispatchActionPRStatus, Role: roleDirector, Target: "coilyco-flight-deck/ward#7"},
+		{Action: dispatchActionPRMerge, Role: roleDirector, Target: "coilyco-flight-deck/ward#7"},
+		{Action: dispatchActionCIRuns, Role: roleDirector, Target: "coilyco-flight-deck/ward", Limit: 5},
+		{Action: dispatchActionCIRerun, Role: roleDirector, Target: "coilyco-flight-deck/ward", RunID: 42},
+	}
+	for _, req := range valid {
+		if err := validateDispatchBrokerPRWorkflow(req); err != nil {
+			t.Errorf("validate(%s) = %v, want ok", req.Action, err)
+		}
+	}
+	invalid := []struct {
+		name string
+		req  dispatchBrokerRequest
+	}{
+		{"missing role", dispatchBrokerRequest{Action: dispatchActionPRMerge, Target: "coilyco-flight-deck/ward#7"}},
+		{"unknown role", dispatchBrokerRequest{Action: dispatchActionPRMerge, Role: "session", Target: "coilyco-flight-deck/ward#7"}},
+		{"launch argv", dispatchBrokerRequest{Action: dispatchActionPRMerge, Role: roleDirector, Target: "coilyco-flight-deck/ward#7", Argv: []string{"x"}}},
+		{"no target", dispatchBrokerRequest{Action: dispatchActionPRStatus, Role: roleDirector}},
+		{"non-ref target", dispatchBrokerRequest{Action: dispatchActionPRMerge, Role: roleDirector, Target: "coilyco-flight-deck/ward"}},
+		{"out-of-scope owner", dispatchBrokerRequest{Action: dispatchActionPRMerge, Role: roleDirector, Target: "evil/ward#7"}},
+		{"runs with ref target", dispatchBrokerRequest{Action: dispatchActionCIRuns, Role: roleDirector, Target: "coilyco-flight-deck/ward#7"}},
+		{"rerun without run id", dispatchBrokerRequest{Action: dispatchActionCIRerun, Role: roleDirector, Target: "coilyco-flight-deck/ward"}},
+		{"rerun out-of-scope owner", dispatchBrokerRequest{Action: dispatchActionCIRerun, Role: roleDirector, Target: "evil/ward", RunID: 1}},
+	}
+	for _, tc := range invalid {
+		if err := validateDispatchBrokerPRWorkflow(tc.req); err == nil {
+			t.Errorf("validate(%s) = nil, want refusal", tc.name)
+		}
+	}
+}
+
+// TestExecDispatchBrokerPRWorkflowGatesRerunByRole pins the host-side re-check:
+// the broker denies an advisor rerun before any forge call.
+func TestExecDispatchBrokerPRWorkflowGatesRerunByRole(t *testing.T) {
+	srv := httptest.NewServer(http.HandlerFunc(func(http.ResponseWriter, *http.Request) {
+		t.Fatal("denied rerun must not reach the forge")
+	}))
+	defer srv.Close()
+	cl := &forgejoClient{baseURL: srv.URL, token: "secret"}
+	_, err := execDispatchBrokerPRWorkflowWith(context.Background(), cl, dispatchBrokerRequest{
+		Action: dispatchActionCIRerun, Role: roleAdvisor, Target: "coilyco-flight-deck/ward", RunID: 42,
+	})
+	if err == nil || !strings.Contains(err.Error(), "rerun is withheld") {
+		t.Fatalf("advisor rerun = %v, want role denial", err)
+	}
+}
+
+// TestExecDispatchBrokerPRWorkflowMergeRoundTrip drives the brokered merge on
+// the fake forge - the read-only surface path with the specgen bundle absent.
+func TestExecDispatchBrokerPRWorkflowMergeRoundTrip(t *testing.T) {
+	fake := &prWorkflowFakeForge{
+		prBody:        "closes #6\n\nward.workflow: pull-requests-and-merge\n",
+		combinedState: "success",
+		contextState:  "success",
+	}
+	srv := fake.server(t)
+	defer srv.Close()
+	cl := &forgejoClient{baseURL: srv.URL, token: "secret"}
+	out, err := execDispatchBrokerPRWorkflowWith(context.Background(), cl, dispatchBrokerRequest{
+		Action: dispatchActionPRMerge, Role: roleDirector, Target: "coilyco-flight-deck/ward#7",
+	})
+	if err != nil {
+		t.Fatalf("brokered merge: %v", err)
+	}
+	if fake.mergeCalls != 1 || !strings.Contains(out, "merged coilyco-flight-deck/ward#7") {
+		t.Fatalf("brokered merge output = %q (mergeCalls %d), want one merge", out, fake.mergeCalls)
+	}
+}
+
+// TestAgentRoleCatalogParsesMergeAuthority pins the embedded catalog grants and
+// the fail-closed authoring rules for the merge-authority node.
+func TestAgentRoleCatalogParsesMergeAuthority(t *testing.T) {
+	cat, err := cachedBuiltInAgentRoleCatalog()
+	if err != nil {
+		t.Fatalf("load embedded catalog: %v", err)
+	}
+	if got := cat.Definitions[roleEngineer].MergeAuthority; len(got) != 1 || got[0] != workflowPullRequestAndMerge {
+		t.Errorf("engineer merge authority = %v, want [%s]", got, workflowPullRequestAndMerge)
+	}
+	if got := cat.Definitions[roleDirector].MergeAuthority; len(got) != 2 {
+		t.Errorf("director merge authority = %v, want pull-requests + pull-requests-and-merge", got)
+	}
+	if got := cat.Definitions[roleAdvisor].MergeAuthority; len(got) != 0 {
+		t.Errorf("advisor merge authority = %v, want none", got)
+	}
+
+	bad := `agent-roles {
+    role engineer {
+        tagline "t"
+        capabilities read
+        modes "m"
+        default-harness claude
+        posture code-landing
+        merge-authority "direct-main"
+    }
+}`
+	if _, err := parseAgentRoleCatalog([]byte(bad)); err == nil || !strings.Contains(err.Error(), "merge-authority") {
+		t.Errorf("parse bad merge-authority = %v, want fail-closed error", err)
+	}
+}
+
+// TestForgeRerunGapSurfacesLoudly pins the agentic-os#434 degradation: a forge
+// without the rerun API yields the distinct unsupported error, never silence.
+func TestForgeRerunGapSurfacesLoudly(t *testing.T) {
+	srv := httptest.NewServer(http.HandlerFunc(func(w http.ResponseWriter, r *http.Request) {
+		http.NotFound(w, r)
+	}))
+	defer srv.Close()
+	cl := &forgejoClient{baseURL: srv.URL, token: "secret"}
+	err := cl.rerunActionRun(context.Background(), "coilyco-flight-deck", "ward", 42)
+	if !errors.Is(err, errForgeRerunUnsupported) {
+		t.Fatalf("rerun on gap forge = %v, want errForgeRerunUnsupported", err)
+	}
+}

@@ -84,8 +84,8 @@ func (r *Runner) resolveConfigBundle(ctx context.Context, cr configRef, rawRef s
 	return filepath.Join(work, cr.subpath), nil
 }
 
-// configBundleCacheRoot picks and creates the cache home: the shared gitcache
-// volume in a container, else ~/.cache/ward (an unwritable volume degrades).
+// configBundleCacheRoot picks and creates the cache home: a per-container subdir
+// in containers, else ~/.cache/ward.
 func configBundleCacheRoot(getenv func(string) string) (string, error) {
 	if getenv("WARD_CONTAINER") == "1" {
 		cache := getenv("WARD_GITCACHE")
@@ -93,6 +93,11 @@ func configBundleCacheRoot(getenv func(string) string) (string, error) {
 			cache = containerGitcacheMnt
 		}
 		root := filepath.Join(cache, "config-bundle")
+		if instance := strings.TrimSpace(getenv("WARD_CONTAINER_NAME")); instance != "" {
+			root = filepath.Join(root, instance)
+		} else if uid := strings.TrimSpace(getenv("WARD_AGENT_UID")); uid != "" {
+			root = filepath.Join(root, uid)
+		}
 		if err := os.MkdirAll(root, 0o777); err == nil {
 			return root, nil
 		}

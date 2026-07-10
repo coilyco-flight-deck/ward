@@ -6,7 +6,9 @@ import (
 	"path/filepath"
 	"strings"
 	"testing"
+	"time"
 
+	"forgejo.coilysiren.me/coilyco-flight-deck/cli-guard/cli/dispatch"
 	"forgejo.coilysiren.me/coilyco-flight-deck/cli-guard/cli/shell"
 	"github.com/urfave/cli/v3"
 )
@@ -819,6 +821,61 @@ func TestWrongRepoTarget(t *testing.T) {
 	}
 }
 
+func TestAgentWorkBranchPrefersPullRequestBranch(t *testing.T) {
+	got := agentWorkBranch(resolvedWork{
+		Ref:    agentIssueRef{Number: 913},
+		Branch: "feature/pr-repair",
+	})
+	if got != "feature/pr-repair" {
+		t.Fatalf("agentWorkBranch(PR) = %q, want %q", got, "feature/pr-repair")
+	}
+	if got := agentWorkBranch(resolvedWork{Ref: agentIssueRef{Number: 913}}); got != "issue-913" {
+		t.Fatalf("agentWorkBranch(issue) = %q, want %q", got, "issue-913")
+	}
+}
+
+func TestEngineerPRDetailsIncludesPRAndLinkedIssueContext(t *testing.T) {
+	now := time.Date(2026, 7, 10, 12, 0, 0, 0, time.UTC)
+	mk := func(body, login string) issueComment {
+		c := issueComment{Body: body, CreatedAt: now}
+		c.User.Login = login
+		return c
+	}
+	pr := agentPullRequestContext{
+		State:        "open",
+		Title:        "Repair merge conflict handling",
+		Body:         "This PR fixes the branch checkout path.",
+		URL:          "https://forgejo.coilysiren.me/coilyco-flight-deck/ward/pulls/913",
+		HeadRef:      "repair/branch-checkout",
+		BaseRef:      "main",
+		Mergeability: "mergeable=true",
+	}
+	linkedIssue := &dispatch.Issue{
+		Number: 913,
+		Title:  "Let engineer input accept a PR ref and start from that PR branch",
+		Body:   "Linked issue body.",
+		URL:    "https://forgejo.coilysiren.me/coilyco-flight-deck/ward/issues/913",
+	}
+	got := engineerPRDetails(pr, []issueComment{mk("PR thread note", "kai")}, linkedIssue, []issueComment{mk("linked issue thread note", "kai")})
+	for _, want := range []string{
+		"PR continuation context",
+		"Repair merge conflict handling",
+		pr.URL,
+		"source branch repair/branch-checkout",
+		"base branch main",
+		"mergeable=true",
+		"PR thread note",
+		"Linked issue context: 913",
+		linkedIssue.URL,
+		"Linked issue body.",
+		"linked issue thread note",
+	} {
+		if !strings.Contains(got, want) {
+			t.Fatalf("engineerPRDetails missing %q\n%s", want, got)
+		}
+	}
+}
+
 func TestBlindfireIssueBody(t *testing.T) {
 	w := resolvedWork{
 		Ref:  agentIssueRef{Owner: "coilyco-flight-deck", Repo: "ward", Number: 159},
@@ -1054,7 +1111,7 @@ func commandHasFlag(cmd *cli.Command, name string) bool {
 }
 
 // A goose headless plan threads both WARD_MODE=goose and WARD_HEADLESS=1 so the
-// entrypoint picks the `goose run -t` branch.
+// entrypoint picks the `goose run --no-session -t` branch.
 func TestGooseHeadlessPlanEnv(t *testing.T) {
 	p := sampleUpPlan()
 	p.Mode = modeGoose
