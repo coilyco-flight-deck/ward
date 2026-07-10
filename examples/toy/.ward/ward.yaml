@@ -1,6 +1,6 @@
 # toy - ward's minimal example repo config. ward reads only `commands:` and
 # `security:`; `catalog:` is agentic-os tooling metadata it ignores. The
-# security: block is required per ward#450. Field reference: ../../docs/ward-yaml.md.
+# security: block is required per ward#450. Field reference: ../../../docs/ward-yaml.md.
 catalog:
   description: "toy - ward's minimal example repo, the demo (ward#250/#251) and spec-bundle (ward#453) anchor."
   dependsOn: []

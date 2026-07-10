@@ -12,8 +12,9 @@
 // stashed in SSM. SigNoz keys ride the SIGNOZ-API-KEY header verbatim (no
 // "Bearer " prefix), NOT the email/password session exchange the deploy scripts
 // use (POST /api/v2/sessions/email_password) - a clean static header-token, like
-// forgejo. The SSM key + its SSM.md row are minted by a human; see ward#241's
-// follow-up. Every `can` resolves its operationId by convention (cli-guard#147);
+// forgejo. The SSM key and config-source notes are minted by a human.
+// See ward#241's follow-up.
+// Every `can` resolves its operationId by convention (cli-guard#147);
 // the query/pipeline ops pin `op` because their paths are not CRUD-shaped.
 wrap ward-kdl ops signoz {
     spec signoz.openapi.json

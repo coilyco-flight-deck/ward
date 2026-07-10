@@ -91,6 +91,7 @@ Post-push at +120s, verify the release run on Forgejo Actions (not the GitHub mi
 - [README.md](README.md) - human intro.
 - [docs/README.md](docs/README.md) - docs, by subsystem.
 - [docs/FEATURES.md](docs/FEATURES.md) - what ships today.
+- [docs/features-release-tooling.md](docs/features-release-tooling.md) - cross-repo tooling and release convention.
 - [.ward/ward.yaml](.ward/ward.yaml) - allowlisted commands.
 
 Cross-reference convention from [coilysiren/agentic-os#59](https://github.com/coilysiren/agentic-os/issues/59).

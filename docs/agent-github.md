@@ -1,0 +1,15 @@
+---
+doc_goal: Keep the GitHub token-source anchor stable after the old page was collapsed.
+---
+# agent github
+
+This page is the durable anchor for GitHub token resolution and host selection.
+
+- It covers env, `gh`, and App-based token sources.
+- It keeps GitHub separate from Forgejo's canonical release path.
+- The token is resolved on the host, not from SSM.
+
+## See also
+
+- [compat-surface.md](compat-surface.md) - shipped provider and token-source matrix.
+- [forgejo-token-audit.md](forgejo-token-audit.md) - the raw token read surface.

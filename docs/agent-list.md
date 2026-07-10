@@ -1,0 +1,15 @@
+---
+doc_goal: Keep the list-anchor stable after the old page was collapsed.
+---
+# agent list
+
+This page is the durable anchor for the live engineer list surface.
+
+- It shows which runs are active right now.
+- It is part of the operator run-surfaces set, not the launch path.
+- It pairs naturally with logs and stop.
+
+## See also
+
+- [agent-ops.md](agent-ops.md) - logs, stop, list, reap.
+- [troubleshooting.md](troubleshooting.md) - what to inspect when a run is stuck.
