@@ -737,6 +737,21 @@ func (c *forgejoClient) listOpenIssueFeed(ctx context.Context, owner, repo strin
 	return raw, nil
 }
 
+func (c *forgejoClient) listOpenIssueFeedByType(ctx context.Context, owner, repo string, limit int, typ string) ([]forgejoIssueRaw, error) {
+	if limit <= 0 {
+		limit = 50
+	}
+	q := url.Values{"state": {"open"}, "limit": {strconv.Itoa(limit)}}
+	if typ != "" {
+		q.Set("type", typ)
+	}
+	var raw []forgejoIssueRaw
+	if _, err := c.doJSON(ctx, http.MethodGet, []string{"repos", owner, repo, "issues"}, q, nil, false, &raw); err != nil {
+		return nil, fmt.Errorf("forgejo: list open issues in %s/%s: %w", owner, repo, err)
+	}
+	return raw, nil
+}
+
 // addIssueLabels adds the labels (by name) to an open issue - the write side of startup
 // triage (ward#397); an undefined label errors, up to the best-effort caller.
 func (c *forgejoClient) addIssueLabels(ctx context.Context, owner, repo string, number int, labels []string) error {

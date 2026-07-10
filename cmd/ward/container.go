@@ -320,6 +320,12 @@ func (r *Runner) resolveOllamaHost(ctx context.Context) string {
 // resolveForgejoToken resolves the child env-file's push/API token: GitHub and GitLab
 // from host-side env or CLI fallbacks; Forgejo via broker seed, env, then SSM.
 func (r *Runner) resolveForgejoToken(ctx context.Context, target broker.Target, f forge) (string, error) {
+	if tok := strings.TrimSpace(os.Getenv("FORGEJO_TOKEN")); tok != "" {
+		return tok, nil
+	}
+	if r == nil || r.Runner == nil {
+		return "", fmt.Errorf("ward container: resolve Forgejo token: no shell runner configured")
+	}
 	if f == forgeGitHub {
 		return r.resolveGitHubToken(ctx, target.Owner, target.Repo)
 	}
@@ -327,9 +333,6 @@ func (r *Runner) resolveForgejoToken(ctx context.Context, target broker.Target, 
 		return r.resolveGitLabToken(ctx, target.Owner, target.Repo)
 	}
 	if tok, ok := r.brokerDispatchSeed(ctx, target); ok {
-		return tok, nil
-	}
-	if tok := strings.TrimSpace(os.Getenv("FORGEJO_TOKEN")); tok != "" {
 		return tok, nil
 	}
 	out, err := r.Runner.Capture(ctx, "aws", "ssm", "get-parameter",
