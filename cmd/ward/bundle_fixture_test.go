@@ -9,11 +9,29 @@ import (
 	"testing"
 )
 
+const (
+	neutralBundleForgejoGuardfilePath = "ops.forgejo.kdl"
+	compatBundleForgejoGuardfilePath  = "guardfile.forgejo.kdl"
+)
+
 func writeBundleFixture(t *testing.T) string {
+	return writeBundleFixtureWithForgejoGuardfile(t, neutralBundleForgejoGuardfilePath)
+}
+
+func writeCompatBundleFixture(t *testing.T) string {
+	return writeBundleFixtureWithForgejoGuardfile(t, compatBundleForgejoGuardfilePath)
+}
+
+func writeBundleFixtureWithForgejoGuardfile(t *testing.T, forgejoGuardfilePath string) string {
 	t.Helper()
 	dir := t.TempDir()
 
 	files := map[string]string{
+		bundleOpsManifestPath: fmt.Sprintf(`
+ops {
+    forgejo "%s"
+}
+`, forgejoGuardfilePath),
 		bundleAgentsKDLPath: `
 agents {
     schema-version 2
@@ -89,7 +107,7 @@ repos {
         repo "example-owner/*" forge=github
     }
 }
-`,
+	`,
 		bundleTopologyKDLPath: `
 topology {
     tailnet-network "net-x"
@@ -102,8 +120,7 @@ topology {
     substrate-ttl "42"
 }
 `,
-		bundleForgejoGuardfilePath: "",
-		bundleForgejoSpecLockPath:  "",
+		bundleForgejoSpecLockPath: "",
 	}
 
 	// Reuse the embedded Forgejo guardfile + spec lock so the split-layout fixture
@@ -112,12 +129,20 @@ topology {
 	if err != nil {
 		t.Fatalf("read baked ops guardfile: %v", err)
 	}
-	files[bundleForgejoGuardfilePath] = string(forgejoGuardfile)
+	files[forgejoGuardfilePath] = string(forgejoGuardfile)
 	specLock, err := bakedAssets.ReadFile(opsForgejoSpecLockPath)
 	if err != nil {
 		t.Fatalf("read baked ops spec lock: %v", err)
 	}
 	files[bundleForgejoSpecLockPath] = string(specLock)
+
+	if forgejoGuardfilePath == compatBundleForgejoGuardfilePath {
+		files["guardfile.forgejo.write.kdl"] = strings.TrimSpace(`
+wrap ward-kdl ops forgejo {
+    inherit guardfile.forgejo.read.kdl
+}
+`)
+	}
 
 	entries, err := fs.ReadDir(bakedAssets, execAssetsDir)
 	if err != nil {

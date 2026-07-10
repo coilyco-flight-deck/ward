@@ -63,7 +63,11 @@ func buildForgejoOpsFrom(src configSource) (*cli.Command, error) {
 	r := leanRunner()
 	r.configAuditVersion = src.auditVersion
 
-	gfBytes, err := fs.ReadFile(src.fsys, src.forgejoGuardfile)
+	forgejoGuardfile, err := src.forgejoGuardfilePath()
+	if err != nil {
+		return nil, err
+	}
+	gfBytes, err := fs.ReadFile(src.fsys, forgejoGuardfile)
 	if err != nil {
 		return nil, fmt.Errorf("read guardfile: %w", err)
 	}

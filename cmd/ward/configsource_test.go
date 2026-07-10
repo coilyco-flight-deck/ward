@@ -128,6 +128,12 @@ func TestSelectConfigSourceFileRef(t *testing.T) {
 	if src.topologyKDL != bundleTopologyKDLPath {
 		t.Errorf("bundle topology path = %q, want %q", src.topologyKDL, bundleTopologyKDLPath)
 	}
+	if src.forgejoGuardfile != "" {
+		t.Errorf("bundle forgejo guardfile = %q, want empty and metadata-driven", src.forgejoGuardfile)
+	}
+	if src.bundleOpsManifest != bundleOpsManifestPath {
+		t.Errorf("bundle ops manifest = %q, want %q", src.bundleOpsManifest, bundleOpsManifestPath)
+	}
 	if src.execGuardfileGlob != bundleExecGuardfileGlob {
 		t.Errorf("bundle exec glob = %q, want %q", src.execGuardfileGlob, bundleExecGuardfileGlob)
 	}
@@ -167,9 +173,9 @@ func TestBakedSourcePathsExist(t *testing.T) {
 	}
 }
 
-// TestBuildForgejoOpsFromRealBundle compiles `ops forgejo` from the neutral bundle.
-// The bundled admin guardfile is absent, so baked grafts it.
-func TestBuildForgejoOpsFromRealBundle(t *testing.T) {
+// TestBuildForgejoOpsFromNeutralBundle compiles `ops forgejo` from the neutral
+// bundle metadata, not from a coilyco filename constant.
+func TestBuildForgejoOpsFromNeutralBundle(t *testing.T) {
 	dir := writeBundleFixture(t)
 	forgejo, err := buildForgejoOpsFrom(bundleConfigSource(dir))
 	if err != nil {
@@ -191,6 +197,22 @@ func TestBuildForgejoOpsFromRealBundle(t *testing.T) {
 	}
 	if commandNamed(baked.Commands, "admin") != nil {
 		t.Error("baked build still mounted the removed admin surface")
+	}
+}
+
+// TestBuildForgejoOpsFromCompatBundle keeps the coilyco compatibility path
+// covered while still routing through the neutral metadata entrypoint.
+func TestBuildForgejoOpsFromCompatBundle(t *testing.T) {
+	dir := writeCompatBundleFixture(t)
+	forgejo, err := buildForgejoOpsFrom(bundleConfigSource(dir))
+	if err != nil {
+		t.Fatalf("buildForgejoOpsFrom compat bundle: %v", err)
+	}
+	if commandNamed(forgejo.Commands, "issue") == nil {
+		t.Fatal("compat bundle lost the issue surface")
+	}
+	if _, err := fs.Stat(os.DirFS(dir), "guardfile.forgejo.write.kdl"); err != nil {
+		t.Fatalf("compat bundle missing the role-facing write tier: %v", err)
 	}
 }
 

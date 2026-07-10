@@ -13,6 +13,8 @@ import (
 	"path/filepath"
 	"regexp"
 	"strings"
+
+	kdl "github.com/calico32/kdl-go"
 )
 
 // wardConfigRefEnv selects the config source. Unset means the baked default.
@@ -76,16 +78,14 @@ const (
 // Bundle-layout paths describe the flat .ward bundle a ref points at.
 // See docs/config-source.md.
 const (
-	// The self-contained compatibility monolith mirrors the baked
-	// source's flattened opsForgejoGuardfilePath.
-	bundleForgejoGuardfilePath = "guardfile.forgejo.kdl"
-	bundleForgejoSpecLockPath  = "forgejo.swagger.lock.json"
-	bundleAgentsKDLPath        = "agents.kdl"
-	bundleRolesKDLPath         = "roles.kdl"
-	bundleDefaultsKDLPath      = "defaults.kdl"
-	bundleReposKDLPath         = "repos.kdl"
-	bundleTopologyKDLPath      = "ward-kdl.topology.kdl"
-	bundleExecGuardfileGlob    = "guardfile.*.kdl"
+	bundleOpsManifestPath     = "ward.bundle.kdl"
+	bundleForgejoSpecLockPath = "forgejo.swagger.lock.json"
+	bundleAgentsKDLPath       = "agents.kdl"
+	bundleRolesKDLPath        = "roles.kdl"
+	bundleDefaultsKDLPath     = "defaults.kdl"
+	bundleReposKDLPath        = "repos.kdl"
+	bundleTopologyKDLPath     = "ward-kdl.topology.kdl"
+	bundleExecGuardfileGlob   = "guardfile.*.kdl"
 )
 
 // configSource is the launch-selected home of the KDL config bundle: one fs.FS
@@ -116,6 +116,10 @@ type configSource struct {
 	// topologyKDL feeds the edge container-topology resolver.
 	topologyKDL string
 
+	// bundleOpsManifest points at the bundle-level metadata that names the
+	// Forgejo ops entrypoint without baking a consumer filename into product code.
+	bundleOpsManifest string
+
 	// execDir is scanned by mountWardKdlExec; execMixedDialects marks a bundle
 	// dir where spec-dialect files sit beside exec ones and are filtered out.
 	execDir           string
@@ -142,13 +146,13 @@ func bakedConfigSource() configSource {
 func bundleConfigSource(dir string) configSource {
 	return configSource{
 		fsys:              os.DirFS(dir),
-		forgejoGuardfile:  bundleForgejoGuardfilePath,
 		forgejoSpecLock:   bundleForgejoSpecLockPath,
 		agentsKDL:         bundleAgentsKDLPath,
 		rolesKDL:          bundleRolesKDLPath,
 		defaultsKDL:       bundleDefaultsKDLPath,
 		reposKDL:          bundleReposKDLPath,
 		topologyKDL:       bundleTopologyKDLPath,
+		bundleOpsManifest: bundleOpsManifestPath,
 		execDir:           ".",
 		execGuardfileGlob: bundleExecGuardfileGlob,
 		execMixedDialects: true,
@@ -227,6 +231,60 @@ func configSourceSummary(rawRef string, src configSource) string {
 		return wardConfigRefEnv + "=" + rawRef + " (bundle " + src.auditVersion + ")"
 	}
 	return wardConfigRefEnv + "=" + rawRef
+}
+
+func (src configSource) forgejoGuardfilePath() (string, error) {
+	if p := strings.TrimSpace(src.forgejoGuardfile); p != "" {
+		return p, nil
+	}
+	if strings.TrimSpace(src.bundleOpsManifest) == "" {
+		return "", fmt.Errorf("bundle ops manifest path is unset")
+	}
+	manifest, err := fs.ReadFile(src.fsys, src.bundleOpsManifest)
+	if err != nil {
+		return "", fmt.Errorf("read bundle ops manifest %s: %w", src.bundleOpsManifest, err)
+	}
+	return parseBundleForgejoGuardfilePath(manifest)
+}
+
+func parseBundleForgejoGuardfilePath(src []byte) (string, error) {
+	doc, err := kdl.ParseString(string(src))
+	if err != nil {
+		return "", fmt.Errorf("bundle ops manifest: parse KDL: %w", err)
+	}
+	if len(doc.Nodes) != 1 {
+		return "", fmt.Errorf("bundle ops manifest needs one top-level `ops` block (fail-closed)")
+	}
+	root := doc.Nodes[0]
+	if root.Name() != "ops" {
+		return "", fmt.Errorf("bundle ops manifest needs a top-level `ops` block (found %q; fail-closed)", root.Name())
+	}
+	if len(root.Arguments()) != 0 {
+		return "", fmt.Errorf("bundle ops manifest `ops` takes no arguments (fail-closed)")
+	}
+	if len(root.Properties()) != 0 {
+		return "", fmt.Errorf("bundle ops manifest `ops` takes no properties (fail-closed)")
+	}
+	var forgejo string
+	seen := false
+	for _, c := range root.Children().Nodes {
+		if c.Name() != "forgejo" {
+			return "", fmt.Errorf("bundle ops manifest: unknown node %q in `ops` body (want forgejo; fail-closed)", c.Name())
+		}
+		if seen {
+			return "", fmt.Errorf("bundle ops manifest: duplicate `forgejo` entrypoint (fail-closed)")
+		}
+		p, err := bundleSingleStringArg(c, "ops forgejo entrypoint")
+		if err != nil {
+			return "", fmt.Errorf("bundle ops manifest: %w", err)
+		}
+		forgejo = p
+		seen = true
+	}
+	if !seen {
+		return "", fmt.Errorf("bundle ops manifest: missing `forgejo` entrypoint (fail-closed)")
+	}
+	return forgejo, nil
 }
 
 func coilycoTargetRepo() (targetRepo, bool) {
