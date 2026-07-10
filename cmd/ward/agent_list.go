@@ -257,23 +257,7 @@ func agentRunningEngineerFromInspect(now time.Time, snap agentDockerInspectConta
 	branch := strings.TrimSpace(env["WARD_BRANCH"])
 	status := strings.TrimSpace(snap.State.Status)
 	startedAt, _ := parseDockerInspectTime(snap.State.StartedAt)
-	reservedAt := time.Time{}
-	host := ""
-	if issueNum > 0 && owner != "" && repoName != "" {
-		if res, ok, _ := readAgentReservationMust(agentIssueRef{Owner: owner, Repo: repoName, Number: issueNum}); ok {
-			reservedAt = res.At
-			host = strings.TrimSpace(res.Host)
-			if branch == "" {
-				branch = strings.TrimSpace(res.Branch)
-			}
-		}
-	}
-	ageAt := time.Time{}
-	if !reservedAt.IsZero() {
-		ageAt = reservedAt
-	} else {
-		ageAt = startedAt
-	}
+	reservedAt, host, branch := agentRunningEngineerReservationDetails(owner, repoName, issueNum, branch)
 	repo := repoSlug
 	if owner != "" && repoName != "" {
 		repo = fmt.Sprintf("%s/%s", owner, repoName)
@@ -296,10 +280,32 @@ func agentRunningEngineerFromInspect(now time.Time, snap agentDockerInspectConta
 	if owner != "" && repoName != "" && issueNum > 0 {
 		out.Ref = fmt.Sprintf("%s/%s#%d", owner, repoName, issueNum)
 	}
-	if !ageAt.IsZero() {
+	if ageAt := agentRunningEngineerAgeBase(reservedAt, startedAt); !ageAt.IsZero() {
 		out.Age = now.Sub(ageAt)
 	}
 	return out
+}
+
+func agentRunningEngineerReservationDetails(owner, repoName string, issueNum int, branch string) (time.Time, string, string) {
+	reservedAt := time.Time{}
+	host := ""
+	if issueNum > 0 && owner != "" && repoName != "" {
+		if res, ok, _ := readAgentReservationMust(agentIssueRef{Owner: owner, Repo: repoName, Number: issueNum}); ok {
+			reservedAt = res.At
+			host = strings.TrimSpace(res.Host)
+			if branch == "" {
+				branch = strings.TrimSpace(res.Branch)
+			}
+		}
+	}
+	return reservedAt, host, branch
+}
+
+func agentRunningEngineerAgeBase(reservedAt, startedAt time.Time) time.Time {
+	if !reservedAt.IsZero() {
+		return reservedAt
+	}
+	return startedAt
 }
 
 func readAgentReservationMust(ref agentIssueRef) (*agentReservation, bool, error) {
