@@ -96,6 +96,8 @@ func mapForgejoWriteOp(resource, verbName string) (forgejoBrokerOp, bool) {
 	switch resource {
 	case "issue":
 		return mapForgejoIssueOp(verbName)
+	case "pr":
+		return mapForgejoPrOp(verbName)
 	case "issue-label":
 		return mapForgejoLabelOp(verbName)
 	default:
@@ -117,6 +119,17 @@ func mapForgejoIssueOp(verbName string) (forgejoBrokerOp, bool) {
 		return forgejoBrokerOp{op: broker.OpEditIssue, state: "closed"}, true
 	case "reopen":
 		return forgejoBrokerOp{op: broker.OpEditIssue, state: "open"}, true
+	default:
+		return forgejoBrokerOp{}, false
+	}
+}
+
+// mapForgejoPrOp maps the PR edit surface onto the same broker op as issue edit;
+// the executor uses the target shape to choose the PR endpoint when needed.
+func mapForgejoPrOp(verbName string) (forgejoBrokerOp, bool) {
+	switch verbName {
+	case "edit":
+		return forgejoBrokerOp{op: broker.OpEditIssue}, true
 	default:
 		return forgejoBrokerOp{}, false
 	}
