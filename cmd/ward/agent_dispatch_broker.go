@@ -372,13 +372,12 @@ func (r *Runner) waitForDispatchBrokerEngineerVisibility(ctx context.Context, re
 	if err != nil {
 		return err
 	}
-	name := issueScopedContainerName(roleEngineer, dispatchBrokerRequestMode(req), targetRepo{Owner: ref.Owner, Name: ref.Repo}, ref.Number)
 	deadlineCtx, cancel := context.WithTimeout(ctx, dispatchBrokerVisibilityTimeout)
 	defer cancel()
 	ticker := time.NewTicker(dispatchBrokerVisibilityPoll)
 	defer ticker.Stop()
 	for {
-		visible, err := r.dispatchBrokerEngineerVisible(deadlineCtx, name)
+		visible, err := r.dispatchBrokerEngineerVisible(deadlineCtx, ref)
 		if err != nil {
 			return fmt.Errorf(
 				"dispatch broker: launch accepted but could not confirm engineer visibility; "+
@@ -399,10 +398,14 @@ func (r *Runner) waitForDispatchBrokerEngineerVisibility(ctx context.Context, re
 
 // dispatchBrokerEngineerVisible checks whether the expected engineer is visible
 // in the host's running-engineer list.
-func (r *Runner) dispatchBrokerEngineerVisible(ctx context.Context, name string) (bool, error) {
-	out, err := r.dockerCapture(ctx, "ps", "--filter", "name=^"+name+"$", "--format", "{{.Names}}")
+func (r *Runner) dispatchBrokerEngineerVisible(ctx context.Context, ref agentIssueRef) (bool, error) {
+	out, err := r.dockerCapture(ctx, "ps", "--format", "{{.Names}}",
+		"--filter", "label="+containerLabel,
+		"--filter", "label="+labelRole+"="+roleEngineer,
+		"--filter", "label="+labelRepo+"="+ref.repoSlug(),
+		"--filter", fmt.Sprintf("label=%s=%d", labelIssue, ref.Number))
 	if err != nil {
-		return false, fmt.Errorf("dispatch broker: check engineer visibility for %q: %w", name, err)
+		return false, fmt.Errorf("dispatch broker: check engineer visibility for %s: %w", ref, err)
 	}
 	return strings.TrimSpace(string(out)) != "", nil
 }
