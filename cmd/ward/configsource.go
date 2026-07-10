@@ -76,8 +76,8 @@ const (
 // Bundle-layout paths: the flat .ward bundle a ref points at.
 // The runtime reads the compatibility monolith and the split names below.
 const (
-	// The self-contained compatibility monolith mirrors the baked source's
-	// flattened guardfile and is loaded via bytes, not ParseFile.
+	// The compatibility monolith mirrors the baked source's flattened guardfile.
+	// Runtime config must not `inherit` across files; see docs/config-source.md.
 	bundleForgejoGuardfilePath = "guardfile.forgejo.kdl"
 	bundleForgejoSpecLockPath  = "forgejo.swagger.lock.json"
 	bundleAgentsKDLPath        = "agents.kdl"

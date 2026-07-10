@@ -6,6 +6,7 @@ import (
 	"regexp"
 	"strconv"
 	"strings"
+	"time"
 
 	"forgejo.coilysiren.me/coilyco-flight-deck/cli-guard/cli/dispatch"
 	"github.com/urfave/cli/v3"
@@ -16,6 +17,8 @@ import (
 
 var directorClosingRefRE = regexp.MustCompile(`(?i)\b(?:closes|fixes|resolves)\s+#(\d+)\b`)
 var directorWorkflowMarkerRE = regexp.MustCompile(`(?i)\bward\.workflow:\s*([[:alnum:]-]+)\b`)
+
+const directorMergeConflictStaleAfter = 2 * time.Hour
 
 // directorMergeFlags keeps the merge subcommand narrow: scope + preview only.
 func directorMergeFlags() []cli.Flag {
@@ -114,11 +117,51 @@ func directorMergeEligibility(ctx context.Context, owner, repo string, pr direct
 	if !ok {
 		return false, "no same-repo closing reference in the PR body", 0, directorRunMeta{}
 	}
+	if pr.MergeableKnown && !pr.Mergeable {
+		return false, directorMergeConflictReason(ctx, owner, repo, linked, pr, issueClient), linked, directorRunMeta{}
+	}
 	meta, reason, allowed := directorMergeIssueMeta(ctx, owner, repo, pr, linked, prClient, issueClient)
 	if !allowed {
 		return false, reason, linked, meta
 	}
 	return directorMergeDecision(pr.Issue, linked, meta)
+}
+
+func directorMergeConflictReason(ctx context.Context, owner, repo string, linked int, pr directorPullRequest, issueClient Tracker) string {
+	comments, err := issueClient.listIssueComments(ctx, owner, repo, linked)
+	if err != nil {
+		return "PR is not mergeable against the current base branch; rebase or merge base and resolve the conflict first"
+	}
+	return directorMergeConflictReasonFromComments(pr, comments, time.Now().UTC())
+}
+
+func directorMergeConflictReasonFromComments(pr directorPullRequest, comments []issueComment, now time.Time) string {
+	latest, ok := latestBacklogOutcomeComment(comments)
+	if !ok {
+		if pr.UpdatedAt.IsZero() {
+			return "PR is not mergeable against the current base branch; active worker branch with no WARD-OUTCOME yet"
+		}
+		age := now.Sub(pr.UpdatedAt)
+		if age >= directorMergeConflictStaleAfter {
+			return fmt.Sprintf("PR is not mergeable against the current base branch; stale worker branch with no WARD-OUTCOME yet (updated %s ago)", humanDuration(age))
+		}
+		return fmt.Sprintf("PR is not mergeable against the current base branch; active worker branch with no WARD-OUTCOME yet (updated %s ago)", humanDuration(age))
+	}
+	meta := parseDirectorRunMeta(latest.Body)
+	switch strings.ToLower(strings.TrimSpace(meta.Outcome.Status)) {
+	case "blocked", "failed":
+		review := strings.TrimSpace(meta.Review)
+		if review == "" {
+			return fmt.Sprintf("PR is not mergeable against the current base branch; linked issue is %s", meta.Outcome.Status)
+		}
+		return fmt.Sprintf("PR is not mergeable against the current base branch; linked issue is %s (%s)", meta.Outcome.Status, review)
+	case "submitted":
+		return "PR is not mergeable against the current base branch; linked issue is submitted, not merge-ready"
+	case "merge-ready":
+		return "PR is not mergeable against the current base branch; linked issue is merge-ready but the branch still conflicts with main"
+	default:
+		return fmt.Sprintf("PR is not mergeable against the current base branch; linked issue ended with WARD-OUTCOME: %s", meta.Outcome.Status)
+	}
 }
 
 func directorMergeIssueMeta(ctx context.Context, owner, repo string, pr directorPullRequest, linked int, prClient *forgejoClient, issueClient Tracker) (directorRunMeta, string, bool) {

@@ -68,6 +68,7 @@ jobs:
           tag: ${{ steps.tag.outputs.new_tag }}
           name: ${{ steps.tag.outputs.new_tag }}
           body: ${{ steps.notes.outputs.body }}
+          draft: true
 
       - name: Alert Telegram on main failure
         if: ${{ failure() && github.ref == 'refs/heads/main' }}
@@ -244,6 +245,24 @@ jobs:
               "${FORGEJO_API}/releases/${rel_id}/assets?name=${name}"
             echo "uploaded ${name} to Forgejo"
           done
+
+      - name: Publish the Forgejo release after assets land
+        env:
+          TOKEN: ${{ secrets.CI_RELEASE_TOKEN }}
+        run: |
+          set -euo pipefail
+          rel_id=$(curl -fsSL -H "Authorization: token ${TOKEN}" \
+            "${FORGEJO_API}/releases/tags/${TAG}" \
+            | grep -oE '"id"[[:space:]]*:[[:space:]]*[0-9]+' | head -1 | grep -oE '[0-9]+')
+          if [ -z "${rel_id:-}" ]; then
+            echo "::error::no release found for tag ${TAG}" >&2
+            exit 1
+          fi
+          curl -fsSL -X PATCH -H "Authorization: token ${TOKEN}" \
+            -H "Content-Type: application/json" \
+            --data '{"draft":false}' \
+            "${FORGEJO_API}/releases/${rel_id}"
+          echo "published Forgejo release ${TAG} after assets landed"
 
       - name: Publish the same assets to the GitHub mirror release
         env:
