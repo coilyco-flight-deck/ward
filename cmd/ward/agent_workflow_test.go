@@ -231,21 +231,21 @@ func TestAgentSeedPromptWorkflow(t *testing.T) {
 	}
 }
 
-// TestWorkflowEnvAndLabels pins the container plumbing: a non-default workflow rides
-// WARD_WORKFLOW + a ward.workflow label; direct-main leaves both untouched (ward#508).
+// TestWorkflowEnvAndLabels pins the container plumbing: every plan carries the
+// workflow in env, and non-default workflows also ride a ward.workflow label.
 func TestWorkflowEnvAndLabels(t *testing.T) {
 	repo := targetRepo{Owner: "coilyco-flight-deck", Name: "ward"}
 
 	direct := upPlan{Role: roleEngineer, Mode: modeClaude, Repo: repo, Issue: 508, Workflow: workflowDirectToMain}
-	if _, ok := direct.wardEnv()["WARD_WORKFLOW"]; ok {
-		t.Error("direct-main plan must NOT export WARD_WORKFLOW")
+	if got := direct.wardEnv()["WARD_WORKFLOW"]; got != "direct-main" {
+		t.Errorf("direct-main plan WARD_WORKFLOW = %q, want direct-main", got)
 	}
 	if strings.Contains(strings.Join(direct.labels(), " "), labelWorkflow) {
 		t.Error("direct-main plan must NOT carry a ward.workflow label")
 	}
 	// The zero value behaves like the direct-main default.
-	if got := (upPlan{Repo: repo}).wardEnv()["WARD_WORKFLOW"]; got != "" {
-		t.Errorf("a plan with no workflow set WARD_WORKFLOW = %q, want empty", got)
+	if got := (upPlan{Repo: repo}).wardEnv()["WARD_WORKFLOW"]; got != "direct-main" {
+		t.Errorf("a plan with no workflow set WARD_WORKFLOW = %q, want direct-main", got)
 	}
 
 	branchOnly := upPlan{Role: roleEngineer, Mode: modeClaude, Repo: repo, Issue: 508, Workflow: workflowRemoteBranchOnly}

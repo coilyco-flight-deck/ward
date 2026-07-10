@@ -65,6 +65,7 @@ type bootstrapEnv struct {
 	// the push credential, compose the restriction. See docs/agent-surface.md.
 	ReadOnly          bool
 	WardVersionSource string
+	WardVersion       string
 	ForgejoHost       string
 	// Forge is the TARGET repo's host (ward#489, GitLab added in #635): GitHub and GitLab
 	// clone off CloneBase with their own push users, else Forgejo + coilyco-ops.
@@ -199,6 +200,7 @@ func readBootstrapEnv() (bootstrapEnv, error) {
 		Ask:               os.Getenv("WARD_ASK") == "1",
 		ReadOnly:          os.Getenv("WARD_READONLY") == "1",
 		WardVersionSource: envOr(envAgentVersionSource, ""),
+		WardVersion:       envOr("WARD_VERSION", ""),
 
 		SubstrateSeed:     envOr("WARD_SUBSTRATE_SEED", "/opt/substrate-seed"),
 		SubstrateDest:     envOr("WARD_SUBSTRATE_DEST", "/substrate"),
@@ -290,7 +292,7 @@ func echoRunContextGo(e bootstrapEnv, agentArgs []string) {
 		e.TargetOwner, e.TargetName, ref, orDefaultLabel(e.Branch, "(default)"),
 		e.Mode, e.Agent, orDefaultLabel(e.Container, "(unnamed)"),
 		orDefaultLabel(os.Getenv("WARD_WORKFLOW"), "direct-main"),
-		orDefaultLabel(e.WardVersionSource, wardVersionLaunchLabel(os.Getenv("WARD_VERSION"), "")),
+		orDefaultLabel(e.WardVersionSource, wardVersionLaunchLabel(e.WardVersion, "")),
 		orDefaultLabel(os.Getenv("WARD_CONTAINER_UP"), "(unset)"), seed)
 }
 

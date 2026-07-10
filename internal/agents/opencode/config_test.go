@@ -14,11 +14,33 @@ func noopLog(string, ...any) {}
 // TestConfigJSON keeps the literal $schema key (not interpolated) and
 // interpolates the model + URL in the right places.
 func TestConfigJSON(t *testing.T) {
-	got := configJSON("qwen3-coder:30b", "http://localhost:11434/v1")
+	got, err := configJSON(agentsapi.RunCtx{
+		OpencodeModel: "qwen3-coder:30b",
+		OllamaURL:     "http://host.docker.internal:8082/v1",
+		Correlation: agentsapi.Correlation{
+			RunID:         "engineer-codex-ward-861",
+			ContainerName: "engineer-codex-ward-861",
+			Role:          "engineer",
+			Harness:       "opencode",
+			TargetRepo:    "coilyco-flight-deck/ward",
+			IssueRef:      "coilyco-flight-deck/ward#861",
+			Workflow:      "pull-requests-and-merge",
+			ContextLevel:  "0",
+			Version:       "1.2.3",
+			ThreadID:      "thread-123",
+		},
+	})
+	if err != nil {
+		t.Fatalf("configJSON: %v", err)
+	}
 	for _, want := range []string{
 		`"$schema": "https://opencode.ai/config.json"`,
 		`"model": "ollama/qwen3-coder:30b"`,
-		`"baseURL": "http://localhost:11434/v1"`,
+		`"baseURL": "http://host.docker.internal:8082/v1"`,
+		`"x-request-id": "engineer-codex-ward-861"`,
+		`"x-ward-run-id": "engineer-codex-ward-861"`,
+		`"x-ward-issue-ref": "coilyco-flight-deck/ward#861"`,
+		`"x-ward-thread-id": "thread-123"`,
 		`"qwen3-coder:30b": {}`,
 	} {
 		if !strings.Contains(got, want) {
@@ -31,7 +53,17 @@ func TestConfigJSON(t *testing.T) {
 // ~/.config/opencode from the RunCtx model/url knobs.
 func TestComposeConfigWrites(t *testing.T) {
 	home := t.TempDir()
-	rc := agentsapi.RunCtx{AgentHome: home, Log: noopLog, OpencodeModel: "qwen3-coder:30b", OllamaURL: "http://localhost:11434/v1"}
+	rc := agentsapi.RunCtx{
+		AgentHome:     home,
+		Log:           noopLog,
+		OpencodeModel: "qwen3-coder:30b",
+		OllamaURL:     "http://host.docker.internal:8082/v1",
+		Correlation: agentsapi.Correlation{
+			RunID:      "engineer-codex-ward-861",
+			Harness:    "opencode",
+			TargetRepo: "coilyco-flight-deck/ward",
+		},
+	}
 	if err := (Agent{}).ComposeConfig(rc); err != nil {
 		t.Fatalf("ComposeConfig: %v", err)
 	}
@@ -41,5 +73,8 @@ func TestComposeConfigWrites(t *testing.T) {
 	}
 	if !strings.Contains(string(got), `"model": "ollama/qwen3-coder:30b"`) {
 		t.Errorf("opencode.json missing model:\n%s", got)
+	}
+	if !strings.Contains(string(got), `"x-request-id": "engineer-codex-ward-861"`) {
+		t.Errorf("opencode.json missing request id:\n%s", got)
 	}
 }

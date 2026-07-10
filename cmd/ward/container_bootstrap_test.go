@@ -212,6 +212,7 @@ func TestReadBootstrapEnvDefaults(t *testing.T) {
 		"WARD_AGENT_UID", "WARD_AGENT_GID", "WARD_AGENT_HOME", "WARD_BRANCH",
 		"WARD_ROLE", "WARD_TS_SOCKS5",
 		"WARD_HEADLESS", "WARD_ASK", "WARD_MIRROR_NAME", "WARD_SUBSTRATE_SKIP",
+		"WARD_VERSION",
 	} {
 		t.Setenv(k, "")
 	}
@@ -238,6 +239,7 @@ func TestReadBootstrapEnvDefaults(t *testing.T) {
 		"AgentUID":       e.AgentUID,
 		"AgentHome":      e.AgentHome,
 		"ForgejoHost":    e.ForgejoHost,
+		"WardVersion":    e.WardVersion,
 	}
 	want := map[string]string{
 		"Mode":           "claude",
@@ -245,7 +247,7 @@ func TestReadBootstrapEnvDefaults(t *testing.T) {
 		"ContextLevel":   "2",
 		"GitCache":       "/gitcache",
 		"QwenModel":      "qwen3-coder:30b",
-		"OllamaURL":      "http://localhost:11434/v1",
+		"OllamaURL":      "http://host.docker.internal:8082/v1",
 		"CodexModel":     "gpt-5.4",
 		"CodexEffort":    "medium",
 		"CodexVerbosity": "low",
@@ -254,6 +256,7 @@ func TestReadBootstrapEnvDefaults(t *testing.T) {
 		"AgentUID":       "1000",
 		"AgentHome":      "/home/ubuntu",
 		"ForgejoHost":    "forgejo.coilysiren.me",
+		"WardVersion":    "",
 	}
 	for field, got := range checks {
 		if got != want[field] {
@@ -275,6 +278,7 @@ func TestReadBootstrapEnvDirectorCodexOverlay(t *testing.T) {
 		"WARD_AGENT_UID", "WARD_AGENT_GID", "WARD_AGENT_HOME", "WARD_BRANCH",
 		"WARD_HEADLESS", "WARD_ASK", "WARD_MIRROR_NAME", "WARD_SUBSTRATE_SKIP",
 		"WARD_ROLE",
+		"WARD_VERSION",
 	} {
 		t.Setenv(k, "")
 	}

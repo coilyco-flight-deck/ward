@@ -109,8 +109,16 @@ var metaEnvAllow = []string{
 	"WARD_TARGET_OWNER",
 	"WARD_TARGET_NAME",
 	"WARD_TARGET_ISSUE",
+	"WARD_RUN_ID",
+	"WARD_HARNESS",
+	"WARD_ROLE",
 	"WARD_MODE",
 	"WARD_BRANCH",
+	"WARD_ISSUE_REF",
+	"WARD_WORKFLOW",
+	"WARD_CONTEXT_LEVEL",
+	"WARD_VERSION",
+	"WARD_THREAD_ID",
 }
 
 // run outcome strings recorded in meta.json, inferred from the reaper's console
