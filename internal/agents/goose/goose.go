@@ -25,7 +25,7 @@ var record = agentsapi.Manifest{
 	Auth:         "ollama",
 	Argv: agentsapi.Argv{
 		Preflight:   []string{"goose", "run", "-t"},
-		Headless:    []string{"goose", "run", "-t"},
+		Headless:    []string{"goose", "run", "--no-session", "-t"},
 		Interactive: []string{"goose", "session"},
 	},
 	Identity: attribution.Identity{Name: "Goose"},
