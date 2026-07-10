@@ -320,13 +320,15 @@ func (r *Runner) acquireLocalReservation(ctx context.Context, label string, mode
 // precheckLiveIssueWorker refuses when the deterministic engineer container already
 // exists and is running, even if the local sentinel is absent or stale.
 func (r *Runner) precheckLiveIssueWorker(ctx context.Context, label string, ref agentIssueRef, container string, force bool) error {
-	if force {
+	if force || r == nil || r.Runner == nil {
 		return nil
 	}
-	if r == nil || r.Runner == nil {
-		return nil
+	out, err := r.dockerCapture(ctx, "ps",
+		"--filter", "name=^"+container+"$", "--format", "{{.Names}}")
+	if err != nil {
+		return err
 	}
-	if r.containerRunning(ctx, container) {
+	if strings.TrimSpace(string(out)) != "" {
 		fmt.Fprintf(os.Stderr, "%s: reservation precheck saw live worker container %s for %s\n", label, container, ref)
 		return newReservationConflict(
 			"%s: issue %s already has a running worker container %s; wait for it to finish or pass --force to reclaim",
@@ -339,10 +341,10 @@ func (r *Runner) precheckLiveIssueWorker(ctx context.Context, label string, ref 
 // matches the launch that wrote it.
 func removeAgentReservationIfOwned(path string, want agentReservation) (bool, error) {
 	got, ok, err := readAgentReservation(path)
-	if err != nil || !ok || got == nil {
+	if err != nil {
 		return false, err
 	}
-	if !agentReservationMatches(got, want) {
+	if !ok || got == nil || !agentReservationMatches(got, want) {
 		return false, nil
 	}
 	return true, removeAgentReservation(path)

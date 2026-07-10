@@ -290,6 +290,9 @@ func (r *Runner) commentFailedDispatchLaunch(ctx context.Context, req dispatchBr
 	if dispatchFailedDispatchLaunchHook(req, logPath, launchErr) {
 		return
 	}
+	if r == nil || r.Runner == nil {
+		return
+	}
 	ref, err := parseAgentIssueRef(req.Argv[1])
 	if err != nil {
 		return
@@ -703,6 +706,23 @@ func emptyDefault(s, fallback string) string {
 	return s
 }
 
+func brokerDispatchArgvForRole(ctx context.Context, r *Runner, c *cli.Command, role string, mode containerMode) ([]string, bool) {
+	ref, ok := r.brokerDispatchRef(ctx, c.Args().First())
+	if !ok {
+		return nil, false
+	}
+	switch role {
+	case "engineer":
+		return brokerEngineerArgv(c, mode, ref), true
+	case "advisor":
+		return brokerAdvisorArgv(c, mode, ref), true
+	case "qa":
+		return brokerQaArgv(c, mode, ref), true
+	default:
+		return nil, false
+	}
+}
+
 // maybeForwardAgentDispatchToHostBroker is the in-container ref-mode gate.
 // It only runs inside a read-only director surface with a broker socket.
 func (r *Runner) maybeForwardAgentDispatchToHostBroker(ctx context.Context, c *cli.Command, role string, mode containerMode) (bool, error) {
@@ -710,7 +730,7 @@ func (r *Runner) maybeForwardAgentDispatchToHostBroker(ctx context.Context, c *c
 	if addr == "" || os.Getenv("WARD_READONLY") != "1" {
 		return false, nil
 	}
-	argv, ok := r.brokerDispatchArgvForRole(ctx, c, role, mode)
+	argv, ok := brokerDispatchArgvForRole(ctx, r, c, role, mode)
 	if !ok {
 		return false, nil
 	}
@@ -720,7 +740,7 @@ func (r *Runner) maybeForwardAgentDispatchToHostBroker(ctx context.Context, c *c
 		Requester: strings.TrimSpace(os.Getenv("WARD_CONTAINER_NAME")),
 		Token:     strings.TrimSpace(os.Getenv(envDispatchBrokerToken)),
 	}
-	logPath, err := sendDispatchBrokerRequest(ctx, addr, req)
+	logPath, err := sendDispatchBrokerLaunchRequest(ctx, addr, req)
 	if err != nil {
 		if logPath != "" {
 			return true, fmt.Errorf("%w (dispatch log: %s)", err, logPath)
@@ -737,23 +757,6 @@ func (r *Runner) maybeForwardAgentDispatchToHostBroker(ctx context.Context, c *c
 		fmt.Fprintf(os.Stderr, "ward dispatch broker: forwarded `ward agent %s` to host ward\n", displayArgv)
 	}
 	return true, nil
-}
-
-func (r *Runner) brokerDispatchArgvForRole(ctx context.Context, c *cli.Command, role string, mode containerMode) ([]string, bool) {
-	ref, ok := r.brokerDispatchRef(ctx, c.Args().First())
-	if !ok {
-		return nil, false
-	}
-	switch role {
-	case "engineer":
-		return brokerEngineerArgv(c, mode, ref), true
-	case "advisor":
-		return brokerAdvisorArgv(c, mode, ref), true
-	case "qa":
-		return brokerQaArgv(c, mode, ref), true
-	default:
-		return nil, false
-	}
 }
 
 // brokerDispatchHarness returns the harness to forward into a sibling dispatch.
@@ -895,6 +898,53 @@ func sendDispatchBrokerRequest(ctx context.Context, addr string, req dispatchBro
 		return resp.LogPath, fmt.Errorf("dispatch broker: %s", resp.Error)
 	}
 	return resp.LogPath, nil
+}
+
+func sendDispatchBrokerLaunchRequest(ctx context.Context, addr string, req dispatchBrokerRequest) (string, error) {
+	var d net.Dialer
+	conn, err := d.DialContext(ctx, "tcp", addr)
+	if err != nil {
+		return "", fmt.Errorf("%w: the host dispatch broker did not answer at %s "+
+			"(WARD_DISPATCH_BROKER_ADDR, TCP over the docker gateway - see ward#382): %w",
+			errDispatchBrokerUnavailable, addr, err)
+	}
+	if err := json.NewEncoder(conn).Encode(req); err != nil {
+		_ = conn.Close()
+		return "", fmt.Errorf("dispatch broker: send request: %w", err)
+	}
+	type responseResult struct {
+		resp dispatchBrokerResponse
+		err  error
+	}
+	ch := make(chan responseResult, 1)
+	go func() {
+		defer func() { _ = conn.Close() }()
+		var resp dispatchBrokerResponse
+		if err := json.NewDecoder(conn).Decode(&resp); err != nil {
+			ch <- responseResult{err: err}
+			return
+		}
+		ch <- responseResult{resp: resp}
+	}()
+	select {
+	case <-ctx.Done():
+		return "", ctx.Err()
+	case result := <-ch:
+		if result.err != nil {
+			return "", fmt.Errorf("dispatch broker: read response from %s: %w", addr, result.err)
+		}
+		if !result.resp.OK {
+			if isCredentialBrokerReply(result.resp.Error) {
+				return "", fmt.Errorf("%w: %s answered as the credential broker, not the dispatch broker "+
+					"(WARD_DISPATCH_BROKER_ADDR points at the wrong broker - see ward#382)",
+					errDispatchBrokerUnavailable, addr)
+			}
+			return result.resp.LogPath, fmt.Errorf("dispatch broker: %s", result.resp.Error)
+		}
+		return result.resp.LogPath, nil
+	case <-time.After(100 * time.Millisecond):
+		return "", nil
+	}
 }
 
 // sendDispatchBrokerLogsRequest sends a logs request and returns the source + body

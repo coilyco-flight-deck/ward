@@ -102,6 +102,8 @@ func TestParseAgentIssueRef(t *testing.T) {
 		{"98", "", "", 98, false},
 		{"  #98  ", "", "", 98, false},
 		{"#98?thing=stuff", "", "", 98, false},
+		{"https://app.shortcut.com/acme/story/1234/fix-thing", "", "", 1234, false},
+		{"sc-77", "", "", 77, false},
 		{"", "", "", 0, true},
 		{"coilyco-flight-deck/ward", "", "", 0, true},    // no #N
 		{"coilyco-flight-deck/ward#0", "", "", 0, true},  // non-positive
@@ -185,6 +187,25 @@ func TestAgentIssueRefURL(t *testing.T) {
 	back, err := parseAgentIssueRef(ref.url())
 	if err != nil || back != ref {
 		t.Errorf("url round-trip = %+v, %v; want %+v", back, err, ref)
+	}
+}
+
+func TestAgentIssueRefShortcutURL(t *testing.T) {
+	ref := agentIssueRef{
+		Number:            77,
+		Tracker:           trackerShortcut,
+		URL:               "https://app.shortcut.com/acme/story/77/fix-it",
+		ShortcutWorkspace: "acme",
+	}
+	if got, want := ref.url(), ref.URL; got != want {
+		t.Fatalf("shortcut url() = %q, want %q", got, want)
+	}
+	back, err := parseAgentIssueRef(ref.url())
+	if err != nil {
+		t.Fatalf("parseAgentIssueRef(shortcut): %v", err)
+	}
+	if back.Number != ref.Number || back.Tracker != trackerShortcut || back.URL != ref.URL || back.ShortcutWorkspace != ref.ShortcutWorkspace {
+		t.Fatalf("shortcut round-trip = %+v, want %+v", back, ref)
 	}
 }
 
