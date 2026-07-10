@@ -14,7 +14,7 @@ New to ward? Read [architecture.md](architecture.md) first - it frames the whole
 - [FEATURES.md](FEATURES.md) - inventory of what ships today.
 - [comparison-openshell.md](comparison-openshell.md) - ward vs NVIDIA OpenShell: verb-level gate vs kernel sandbox.
 - [comparison-container-use.md](comparison-container-use.md) - ward vs Dagger container-use: capability gate + autonomous driver vs container isolation + human-at-the-merge.
-- [ward-setup-doctor-inventory.md](ward-setup-doctor-inventory.md) - the paused `setup` and `doctor` behavior inventory, with the rebirth note.
+- [ward-setup-doctor-inventory.md](ward-setup-doctor-inventory.md) - the live `ward setup` cache-warmer skeleton, with historical setup/doctor notes.
 - [troubleshooting.md](troubleshooting.md) - symptom-indexed entry point for a failed `warded` run.
 - [audit.md](audit.md) - the append-only JSONL audit row written per invocation.
 - [config-discovery.md](config-discovery.md) - how ward resolves the allowlist config path.
