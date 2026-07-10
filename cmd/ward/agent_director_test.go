@@ -2,8 +2,11 @@ package main
 
 import (
 	"bytes"
+	"encoding/json"
 	"errors"
 	"fmt"
+	"net/http"
+	"net/http/httptest"
 	"os"
 	"path/filepath"
 	"reflect"
@@ -544,6 +547,42 @@ func TestRefreshBacklogLedger(t *testing.T) {
 	}
 	if e := led.Issues["14"]; e == nil || e.State != "failed" {
 		t.Errorf("#14 genuine decline must stay failed, got %+v", e)
+	}
+}
+
+// TestBacklogRefreshUsesForgejoTokenForPrivateRepos covers the director startup
+// refresh path for private Forgejo repos.
+func TestBacklogRefreshUsesForgejoTokenForPrivateRepos(t *testing.T) {
+	t.Setenv("HOME", t.TempDir())
+	t.Setenv("FORGEJO_TOKEN", "secret")
+
+	oldBase := forgejoBaseURL
+	defer func() { forgejoBaseURL = oldBase }()
+
+	srv := httptest.NewServer(http.HandlerFunc(func(w http.ResponseWriter, r *http.Request) {
+		if got := r.Header.Get("Authorization"); got != "token secret" {
+			t.Fatalf("auth header = %q, want token secret", got)
+		}
+		switch {
+		case r.URL.Path == "/api/v1/repos/coilyco-flight-deck/ward/issues" && r.URL.Query().Get("type") == "issues":
+			_ = json.NewEncoder(w).Encode([]map[string]any{
+				{"number": 11, "title": "private issue", "body": "body", "state": "open", "html_url": "https://f/issues/11", "labels": []map[string]any{}},
+			})
+		case r.URL.Path == "/api/v1/repos/coilyco-flight-deck/ward/issues" && r.URL.Query().Get("type") == "pulls":
+			_ = json.NewEncoder(w).Encode([]map[string]any{
+				{"number": 12, "title": "private pr", "body": "closes #12", "state": "open", "html_url": "https://f/pulls/12", "labels": []map[string]any{}},
+			})
+		case r.URL.Path == "/api/v1/repos/coilyco-flight-deck/ward/pulls/12":
+			_ = json.NewEncoder(w).Encode(map[string]any{"number": 12, "mergeable": true})
+		default:
+			t.Fatalf("unexpected path: %s?%s", r.URL.Path, r.URL.RawQuery)
+		}
+	}))
+	defer srv.Close()
+	forgejoBaseURL = srv.URL
+
+	if err := (&Runner{}).backlogRefresh(t.Context(), "director", []string{"coilyco-flight-deck/ward"}, 50); err != nil {
+		t.Fatalf("backlogRefresh: %v", err)
 	}
 }
 
