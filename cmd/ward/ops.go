@@ -50,7 +50,13 @@ func buildForgejoOps() (*cli.Command, error) {
 	if err != nil {
 		return nil, err
 	}
-	return buildForgejoOpsFrom(src)
+	forgejo, err := buildForgejoOpsFrom(src)
+	if err != nil {
+		return nil, err
+	}
+	sourceSummary := configSourceSummary(strings.TrimSpace(os.Getenv(wardConfigRefEnv)), src)
+	forgejo.Description = sourceSummary + "\n\n" + strings.TrimSpace(forgejo.Description)
+	return forgejo, nil
 }
 
 // buildForgejoOpsFrom parses src's guardfile + spec lock and specverb.Builds
