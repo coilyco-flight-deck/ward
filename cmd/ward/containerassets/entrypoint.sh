@@ -13,9 +13,9 @@ log() { printf 'ward-container: %s\n' "$*" >&2; }
 : "${WARD_FORGEJO_BASE:?missing WARD_FORGEJO_BASE}"
 
 install_ward() {
-  ln -sf /opt/ward/ward /usr/local/bin/ward
+  install -m 0755 /opt/ward/ward /usr/local/bin/ward
   ln -sf ward /usr/local/bin/warded
-  /opt/ward/ward version >&2 || die "ward did not install correctly"
+  /usr/local/bin/ward version >&2 || die "ward did not install correctly"
   /usr/local/bin/warded --help >/dev/null 2>&1 || die "warded did not install correctly"
 }
 
@@ -23,7 +23,7 @@ die() { log "fatal: $*"; exit 1; }
 
 main() {
   install_ward
-  exec /opt/ward/ward container bootstrap "$@"
+  exec /usr/local/bin/ward container bootstrap "$@"
 }
 
 main "$@"
