@@ -53,7 +53,7 @@ func agentQACommand() *cli.Command {
 	return &cli.Command{
 		Name:      "qa",
 		Usage:     "Inspect a ticket, branch, PR, and checks, then post a structured QA verdict comment; no implementation edits.",
-		ArgsUsage: "<owner/repo#N | #N | forgejo-issue-url> [extra framing]",
+		ArgsUsage: "<owner/repo#N | #N | issue-url> [extra framing]",
 		Flags:     agentQAFlags(),
 		Action: func(ctx context.Context, c *cli.Command) error {
 			r := newRunner()
@@ -255,7 +255,7 @@ func qaResearchPrompt(ref agentIssueRef, title, body string, comments []issueCom
 		prompt = "(no prompt given)"
 	}
 	return fmt.Sprintf(
-		"You are doing a one-shot QA inspection on a Forgejo issue. You are NOT implementing anything, "+
+		"You are doing a one-shot QA inspection on the authoritative issue thread for this repo. You are NOT implementing anything, "+
 			"NOT changing code, and NOT carrying this issue to merge. Your job is to inspect the candidate "+
 			"branch, any linked pull request, and the current checks, then report a structured verdict.\n\n"+
 			"Emit your answer as a SINGLE fenced ```json block and nothing else outside it, in this shape:\n\n"+

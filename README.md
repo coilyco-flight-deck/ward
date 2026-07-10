@@ -12,12 +12,12 @@ ward's second half is a **guarded execution layer for coding agents**. `ward age
 ## What it requires
 
 - **macOS or Linux + Homebrew** to install the binary (see [Install](#install)).
-- **A Forgejo instance** for the agent driver (`warded` / `ward agent`) and the operator surface (`ward ops forgejo`). ward is **Forgejo-canonical**: it carries Forgejo issues and pushes to a Forgejo `main`, and the GitHub mirror is read-only and PR-gated. Which Forgejo, exactly? See the note below the list.
+- **A Forgejo instance** for ward's own operator surface (`ward ops forgejo`). ward is **Forgejo-canonical** for ward itself: it carries Forgejo issues and pushes to a Forgejo `main`, and the GitHub mirror is read-only and PR-gated. The agent driver follows the target repo's authority policy, so `coilysiren/*` can be GitHub-authoritative. Which Forgejo, exactly? See the note below the list.
 - **Docker** for the container agent flow - each `warded` run boots an ephemeral container, configures forge git auth inside it, runs the agent, and reaps it. The first run pulls one image, `forgejo.coilysiren.me/coilyco-flight-deck/agentic-os:latest` (anonymous pull, no login). See [`docs/container.md`](docs/container.md) for the registry, tag policy, and how to pin off the moving tag.
 
 The plain verb gate (`ward exec`, `ward git`, `ward audit`) needs none of the above - just the repo and its `.ward/ward.yaml`.
 
-**Which Forgejo? As shipped, ward targets one - `forgejo.coilysiren.me` - and only `coily*`-owned orgs.** The API endpoint, the private coilyco-ops SSM token path, and an `owner matches coily*` gate on every owner-scoped verb are compiled into the Forgejo ops surface ([`ward-kdl.forgejo.guardfile.kdl`](.ward/ward-kdl/ward-kdl.forgejo.guardfile.kdl)), and the bot attribution defaults into the embedded fleet manifest ([`ward-kdl.fleet.kdl`](.ward/ward-kdl/ward-kdl.fleet.kdl)) - none of them runtime config. The forge-agnostic verb gate runs against any repo, but the agent driver and `ward ops forgejo` **cannot be repointed at your own instance after install**: retargeting means a **source build** with those two files edited and the binary rebuilt. Turning the endpoint, token, and owner gate into operator config is tracked in [ward#395](https://forgejo.coilysiren.me/coilyco-flight-deck/ward/issues/395) and [ward#396](https://forgejo.coilysiren.me/coilyco-flight-deck/ward/issues/396).
+**Which Forgejo?** As shipped, ward defaults its guarded Forgejo surfaces to `forgejo.coilysiren.me` and `coily*`-owned orgs. The endpoint, token path, and owner gate are read from the selected config bundle for those edge surfaces ([`docs/config-source.md`](docs/config-source.md)), so `WARD_CONFIG_REF` can retarget them without a source rebuild. Rebuilding from source only changes the baked default bundle and embedded defaults. The forge-agnostic verb gate still runs against any repo.
 
 ## What it does
 
@@ -36,7 +36,7 @@ brew tap coilyco-flight-deck/tap https://forgejo.coilysiren.me/coilyco-flight-de
 brew install coilyco-flight-deck/tap/ward
 ```
 
-The explicit-URL form is required because the tap lives on forgejo, not github.com. The formula installs `ward` (stamped with the release tag) plus the `warded` symlink, and nothing else. The `ward-kdl` authoring binary is **not** installed - its surfaces are already embedded in `ward`. Spec authors who need `ward-kdl` build it from a ward checkout - see [ward-kdl-authoring.md](docs/ward-kdl-authoring.md).
+The explicit-URL form is required because the tap lives on forgejo, not github.com. The formula installs `ward` (stamped with the release tag) plus the `warded` symlink, and nothing else. The `ward-kdl` authoring binary is **not** installed - its surfaces are already embedded in `ward`. Most adopters stop at `.ward/ward.yaml`; spec authors who need `ward-kdl` build it from a ward checkout - see [ward-kdl-authoring.md](docs/ward-kdl-authoring.md).
 
 **Building from source.** ward's `go.mod` pins [cli-guard][cli-guard] from `forgejo.coilysiren.me/coilyco-flight-deck/cli-guard`, so a plain `go build` needs that Forgejo host reachable and the repo public. For local development, `make workspace` resolves cli-guard from a sibling checkout through a gitignored `go.work`; see [docs/workspace.md](docs/workspace.md).
 
@@ -55,7 +55,7 @@ ward git commit -m ...   # concurrency-safe, audited git
 ward audit tail --follow # stream the audit log
 ```
 
-The agent driver, against a Forgejo issue. `warded` is a thin symlink onto `ward agent` - read it as a protective circle, the container bounding the agent's reach, not "warded off":
+The agent driver, against the repo's authoritative issue thread. `warded` is a thin symlink onto `ward agent` - read it as a protective circle, the container bounding the agent's reach, not "warded off":
 
 ```
 warded #98               # put an engineer on issue #98, fire-and-forget
@@ -102,7 +102,7 @@ v0.x, and early on purpose. ward is a single-maintainer tool in active internal 
 
 ## Support
 
-**Canonical development happens on [Forgejo][ward-forgejo]** - `main`, the issues, and every commit live there. That instance's registration is closed, so the **GitHub mirror is the public front door for everyone except the maintainer**: file a [bug or feature request][new-issue] there with just a GitHub account and a maintainer carries an accepted change across. If you are working directly in the canonical repo, use Forgejo issues and Forgejo `closes #N` links. The full contributor flow is in [CONTRIBUTING.md](CONTRIBUTING.md). Conduct: [Code of Conduct](CODE_OF_CONDUCT.md). Security: [SECURITY.md](SECURITY.md). License: [`LICENSE`](./LICENSE).
+**Canonical development happens on [Forgejo][ward-forgejo]** - `main`, the issues, and every commit live there. That instance's registration is closed, so the **GitHub mirror is the public front door for everyone except the maintainer**: file a [bug or feature request][new-issue] there with just a GitHub account and a maintainer carries an accepted change across. If you are working directly in the canonical repo, use Forgejo issues and Forgejo `closes #N` links. For `coilysiren/*`, the agent driver resolves the authoritative tracker from the repo-authority policy instead of assuming Forgejo. Conduct: [Code of Conduct](CODE_OF_CONDUCT.md). Security: [SECURITY.md]. License: [`LICENSE`](./LICENSE).
 
 [cli-guard]: https://forgejo.coilysiren.me/coilyco-flight-deck/cli-guard
 [new-issue]: https://github.com/coilyco-flight-deck/ward/issues/new/choose

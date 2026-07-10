@@ -64,11 +64,15 @@ type tracker int
 const (
 	trackerForgejo tracker = iota
 	trackerGitHub
+	trackerShortcut
 )
 
 // String renders the tracker as the lowercase token used in logs and env-like
 // strings.
 func (t tracker) String() string {
+	if t == trackerShortcut {
+		return "shortcut"
+	}
 	if t == trackerGitHub {
 		return "github"
 	}
@@ -82,6 +86,41 @@ func trackerFromForge(f forge) tracker {
 		return trackerGitHub
 	}
 	return trackerForgejo
+}
+
+const (
+	shortcutAppBaseURL   = "https://app.shortcut.com"
+	shortcutAPIBaseURL   = "https://api.app.shortcut.com/api/v3"
+	shortcutWorkspaceEnv = "SHORTCUT_WORKSPACE"
+	shortcutTokenEnv     = "SHORTCUT_API_TOKEN"
+)
+
+var shortcutStoryURLRE = regexp.MustCompile(`(?i)^(?:https?://)?(?:www\.)?app\.shortcut\.com/([^/]+)/story/(\d+)(?:/[^/?#]*)?(?:[/?#].*)?$`)
+var shortcutStoryRefRE = regexp.MustCompile(`(?i)^(?:sc-|shortcut-)(\d+)$`)
+
+func parseShortcutIssueRef(s string) (agentIssueRef, bool) {
+	trimmed := strings.TrimSpace(s)
+	m := shortcutStoryURLRE.FindStringSubmatch(trimmed)
+	if m != nil {
+		n, err := parsePositiveInt(m[2])
+		if err != nil || n <= 0 {
+			return agentIssueRef{}, false
+		}
+		return agentIssueRef{Number: n, Tracker: trackerShortcut, URL: trimmed, ShortcutWorkspace: m[1]}, true
+	}
+	m = shortcutStoryRefRE.FindStringSubmatch(trimmed)
+	if m == nil {
+		return agentIssueRef{}, false
+	}
+	n, err := parsePositiveInt(m[1])
+	if err != nil || n <= 0 {
+		return agentIssueRef{}, false
+	}
+	ref := agentIssueRef{Number: n, Tracker: trackerShortcut}
+	if workspace := strings.TrimSpace(os.Getenv(shortcutWorkspaceEnv)); workspace != "" {
+		ref.ShortcutWorkspace = workspace
+	}
+	return ref, true
 }
 
 // parseForge maps the WARD_FORGE token back to a forge, defaulting to Forgejo for
@@ -137,7 +176,7 @@ func parsePositiveInt(s string) (int, error) {
 var errForgeLockUnsupported = errors.New("this forge's API cannot lock an issue conversation")
 
 // Tracker is the forge-independent issue-thread surface the host dispatch path and
-// reaper drive: Forgejo (forgejoClient) or GitHub via `gh` (githubClient).
+// reaper drive: Forgejo (forgejoClient), GitHub via `gh` (githubClient), or Shortcut.
 type Tracker interface {
 	getIssue(ctx context.Context, owner, repo string, number int) (*dispatch.Issue, error)
 	listIssueComments(ctx context.Context, owner, repo string, number int) ([]issueComment, error)
@@ -157,6 +196,8 @@ func (r *Runner) hostTrackerClient(ctx context.Context, t tracker, mode containe
 	switch t {
 	case trackerGitHub:
 		return r.hostGitHubClient(mode)
+	case trackerShortcut:
+		return r.hostShortcutClient(mode)
 	case trackerForgejo:
 		cl, err := r.hostForgejoClient(ctx)
 		if err != nil {

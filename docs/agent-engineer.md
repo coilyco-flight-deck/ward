@@ -4,7 +4,7 @@ doc_goal: Make an operator fluent in the engineer role as the detached, issue-to
 # ward agent engineer
 
 `ward agent engineer` (public face `warded engineer`) is the **implement-a-ticket**
-role of the startup roster: it carries a Forgejo issue end to end -
+role of the startup roster: it carries the repo's authoritative issue thread end to end -
 implement, commit, merge to main, push, `closes #N`. It folds in the retired
 `headless`/`task` verbs, and **the argument type selects the mode**. Engineer is
 **detached / autonomous only**: hands-on work goes to the
@@ -28,7 +28,7 @@ The first argument decides the mode (`parseAgentIssueRef` succeeds for a ref, an
 errors on non-ref text for freeform):
 
 - **A ref** (`owner/repo#N`, a bare `#N` / `N` inferring `owner/repo` from the cwd's
-  git origin, or a Forgejo issue URL) carries that issue.
+  git origin, or an issue URL) carries that issue.
 - **Freeform text** (or a bare `owner/repo` plus `--instructions-file`) files an issue
   first, then carries it (retired `task` flow).
 

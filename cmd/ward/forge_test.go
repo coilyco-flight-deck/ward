@@ -123,6 +123,9 @@ func TestParseForge(t *testing.T) {
 	if forgeGitHub.String() != "github" || forgeForgejo.String() != "forgejo" {
 		t.Errorf("String() = %q/%q", forgeGitHub.String(), forgeForgejo.String())
 	}
+	if trackerShortcut.String() != "shortcut" {
+		t.Errorf("shortcut tracker String() = %q, want shortcut", trackerShortcut.String())
+	}
 }
 
 // TestForgeAndTrackerPairIndependence proves the git host and issue tracker can be

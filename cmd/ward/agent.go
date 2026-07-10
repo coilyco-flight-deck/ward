@@ -25,11 +25,13 @@ import (
 // agentIssueRef is a parsed issue reference for `ward agent`. Forge tags the git
 // host, tracker tags the issue thread. The default pairing stays zero-config.
 type agentIssueRef struct {
-	Owner   string
-	Repo    string
-	Number  int
-	Forge   forge
-	Tracker tracker
+	Owner             string
+	Repo              string
+	Number            int
+	Forge             forge
+	Tracker           tracker
+	URL               string
+	ShortcutWorkspace string
 }
 
 func (r agentIssueRef) String() string {
@@ -41,9 +43,22 @@ func (r agentIssueRef) repoSlug() string {
 	return r.Owner + "/" + r.Repo
 }
 
-// url renders the canonical issue URL for the seeded prompt, off the ref's forge
-// base (Forgejo or GitHub); both use the /owner/repo/issues/N path shape (ward#489).
+// url renders the canonical issue URL for the seeded prompt.
+// Shortcut preserves the story URL it was parsed from.
 func (r agentIssueRef) url() string {
+	if strings.TrimSpace(r.URL) != "" {
+		return strings.TrimSpace(r.URL)
+	}
+	if r.trackerOrDefault() == trackerShortcut {
+		workspace := strings.TrimSpace(r.ShortcutWorkspace)
+		if workspace == "" {
+			workspace = strings.TrimSpace(os.Getenv(shortcutWorkspaceEnv))
+		}
+		if workspace != "" {
+			return fmt.Sprintf("%s/%s/story/%d", shortcutAppBaseURL, workspace, r.Number)
+		}
+		return fmt.Sprintf("%s/story/%d", shortcutAppBaseURL, r.Number)
+	}
 	return fmt.Sprintf("%s/%s/%s/issues/%d", strings.TrimRight(r.Forge.baseURL(), "/"), r.Owner, r.Repo, r.Number)
 }
 
@@ -83,18 +98,25 @@ func parseAgentIssueRef(s string) (agentIssueRef, error) {
 		return agentIssueRef{}, fmt.Errorf("empty issue reference")
 	}
 	// A github.com URL or `github.com/owner/repo#N` short form is unambiguously a
-	// GitHub ref (ward#489); anything else falls through to the Forgejo parser.
+	// GitHub ref (ward#489). Shortcut story URLs are recognized first as well.
 	if ghRef, ok := parseGitHubIssueRef(s); ok {
 		return ghRef, nil
 	}
+	if shortcutRef, ok := parseShortcutIssueRef(s); ok {
+		return shortcutRef, nil
+	}
 	if ref, err := parseDispatchIssueRef(s); err == nil {
+		if !looksLikeExplicitForgejoIssueRef(s) {
+			ref.Forge = currentSmartDefaults().forgeForRepo(ref.Owner, ref.Repo)
+			ref.Tracker = trackerFromForge(ref.Forge)
+		}
 		return ref, nil
 	}
 	ref, err := issueref.Parse(s, forgejoBaseURL)
 	if err == nil {
 		return agentIssueRef{Owner: ref.Owner, Repo: ref.Repo, Number: ref.Number}, nil
 	}
-	// Accept scheme-less Forgejo issue URLs as a convenience for dictated refs and
+	// Accept scheme-less issue URLs as a convenience for dictated refs and
 	// pasted URLs that dropped their protocol in transit.
 	if !strings.Contains(s, "://") {
 		if ref, err := issueref.Parse("https://"+s, forgejoBaseURL); err == nil {
@@ -105,12 +127,58 @@ func parseAgentIssueRef(s string) (agentIssueRef, error) {
 	// steer to the task verb that carries arbitrary pointers (ward#234).
 	if strings.Contains(s, "://") {
 		return agentIssueRef{}, fmt.Errorf(
+			"cannot parse issue ref %q: want owner/repo#N, a bare #N, %s/owner/repo/issues/N, or %s/<workspace>/story/N; "+
+				"for a non-issue pointer (a CI run, job, or commit URL), hand it to the engineer "+
+				"role's freeform mode instead: ward agent engineer '<url>'",
+			s, strings.TrimRight(forgejoBaseURL, "/"), shortcutAppBaseURL)
+	}
+	return agentIssueRef{}, fmt.Errorf("cannot parse issue ref %q: want owner/repo#N, a bare #N, %s/owner/repo/issues/N, or %s/<workspace>/story/N", s, strings.TrimRight(forgejoBaseURL, "/"), shortcutAppBaseURL)
+}
+
+// parseAgentIssueRefWithoutAuthority parses the same ref shapes as parseAgentIssueRef
+// but leaves repo authority resolution to the caller.
+func parseAgentIssueRefWithoutAuthority(s string) (agentIssueRef, error) {
+	s = strings.TrimSpace(s)
+	if s == "" {
+		return agentIssueRef{}, fmt.Errorf("empty issue reference")
+	}
+	if ghRef, ok := parseGitHubIssueRef(s); ok {
+		return ghRef, nil
+	}
+	if ref, err := parseDispatchIssueRef(s); err == nil {
+		return ref, nil
+	}
+	ref, err := issueref.Parse(s, forgejoBaseURL)
+	if err == nil {
+		return agentIssueRef{Owner: ref.Owner, Repo: ref.Repo, Number: ref.Number}, nil
+	}
+	if !strings.Contains(s, "://") {
+		if ref, err := issueref.Parse("https://"+s, forgejoBaseURL); err == nil {
+			return agentIssueRef{Owner: ref.Owner, Repo: ref.Repo, Number: ref.Number}, nil
+		}
+	}
+	if strings.Contains(s, "://") {
+		return agentIssueRef{}, fmt.Errorf(
 			"cannot parse issue ref %q: want owner/repo#N, a bare #N, or %s/owner/repo/issues/N; "+
 				"for a non-issue pointer (a CI run, job, or commit URL), hand it to the engineer "+
 				"role's freeform mode instead: ward agent engineer '<url>'",
 			s, strings.TrimRight(forgejoBaseURL, "/"))
 	}
 	return agentIssueRef{}, fmt.Errorf("cannot parse issue ref %q: want owner/repo#N, a bare #N, or %s/owner/repo/issues/N", s, strings.TrimRight(forgejoBaseURL, "/"))
+}
+
+// looksLikeExplicitForgejoIssueRef reports whether s names Forgejo directly rather
+// than relying on compact owner/repo syntax.
+func looksLikeExplicitForgejoIssueRef(s string) bool {
+	s = strings.ToLower(strings.TrimSpace(s))
+	if s == "" {
+		return false
+	}
+	if strings.Contains(s, "://") {
+		return true
+	}
+	base := strings.ToLower(strings.TrimRight(forgejoBaseURL, "/"))
+	return strings.HasPrefix(s, base+"/") || strings.HasPrefix(s, "www."+base+"/")
 }
 
 func parseDispatchIssueRef(s string) (agentIssueRef, error) {
@@ -532,7 +600,7 @@ func agentCmdline(mode containerMode, surface string) string {
 func agentCommand() *cli.Command {
 	return &cli.Command{
 		Name:   "agent",
-		Usage:  "Send an agent into a fresh ephemeral container to carry a Forgejo issue end to end (a bare ref runs the engineer).",
+		Usage:  "Send an agent into a fresh ephemeral container to carry the authoritative issue end to end (a bare ref runs the engineer).",
 		Before: smartDefaultsGuard("ward agent"),
 		Description: fmt.Sprintf(`agent is the issue-carrying dispatcher (the spelling 'warded' fronts), a
 roster of startup roles (ward#347): you do not invoke a mode, you send in a
@@ -541,7 +609,8 @@ harness (%s, default %s; --agent is an equal accepted spelling, --driver a
 deprecated alias for one release, ward#660).
 A BARE REF with no role word runs the 'engineer' role - the fire-and-forget
 default. A bare #N (or N) infers the owner/repo from the cwd's git origin;
-owner/repo#N and a full Forgejo issue URL also work. One line replaces a full
+owner/repo#N resolves through the selected repo-authority policy, and a full
+issue URL also works. One line replaces a full
 container bring-up stack plus a prompt.
 
   warded coilyco-flight-deck/ward#98          # bare ref -> engineer run (warded face)
@@ -1103,7 +1172,7 @@ func preflightPrompt(ref agentIssueRef, title, body, details string, comments []
 	gate := subsystemPreflightBlock(ref, title, body)
 	return fmt.Sprintf(
 		"You are about to be sent, fire-and-forget, into an ephemeral container to carry "+
-			"this Forgejo issue end to end on your own - implement, commit, merge to main, "+
+			"this issue end to end on your own - implement, commit, merge to main, "+
 			"push - with no human watching once you detach.\n\n"+
 			"That detached run happens in %s pulled inside the container. "+
 			"The directory you are reading this in right now is unrelated host scratch - it may "+
@@ -1637,7 +1706,7 @@ func carryingLine(label string, ref agentIssueRef, title string) string {
 
 // launchAgentContainer turns a resolved (ref, title, seed) into the container plan and
 // fires it detached - the shared tail of engineer, freeform task, and route (ward#356).
-func (r *Runner) launchAgentContainer(ctx context.Context, c *cli.Command, mode containerMode, surface string, w resolvedWork, justification string) error { //nolint:gocyclo,cyclop
+func (r *Runner) launchAgentContainer(ctx context.Context, c *cli.Command, mode containerMode, surface string, w resolvedWork, justification string) error { //nolint:funlen,gocognit,gocyclo,cyclop
 	label := agentCmdline(mode, surface)
 	ref, title, seed := w.Ref, w.Title, w.Seed
 
@@ -1648,6 +1717,12 @@ func (r *Runner) launchAgentContainer(ctx context.Context, c *cli.Command, mode 
 			writef(os.Stderr, "%s: warning: %s\n", label, reason)
 		} else {
 			return fmt.Errorf("%s: %s", label, reason)
+		}
+	}
+
+	if !c.Bool("print") {
+		if err := r.enforceEngineerContainerLimit(ctx, label); err != nil {
+			return err
 		}
 	}
 

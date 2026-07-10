@@ -8,18 +8,21 @@ Zero to a verifiable first `warded` dry run. Read [README.md](../README.md) firs
 ## Can you get to a first run today?
 
 The `warded` agent driver is not forge-agnostic - it targets `forgejo.coilysiren.me`
-and a config-bundle-backed owner / repo authority policy.
+by default and follows a config-bundle-backed owner / repo authority policy.
 
 - **Owner trust gate** - dispatch refuses owners outside the trusted-owner set
   selected by the active `repo-authority` block, **before** it reads `--print`
   ([agent-trust-gate.md](agent-trust-gate.md)).
-- **Endpoint lock** - your own Forgejo or GitHub policy needs a source bundle
-  with the right authority mappings ([ward#441](https://forgejo.coilysiren.me/coilyco-flight-deck/ward/issues/441), configurable path [ward#395](https://forgejo.coilysiren.me/coilyco-flight-deck/ward/issues/395)).
+- **Endpoint lock** - your own Forgejo or GitHub policy needs the selected
+  bundle to carry the right authority mappings and endpoint values
+  ([ward#441](https://forgejo.coilysiren.me/coilyco-flight-deck/ward/issues/441), configurable path [ward#395](https://forgejo.coilysiren.me/coilyco-flight-deck/ward/issues/395)).
 
 Self-host nothing? You **can** render a `--print` plan today against a trusted
 public repo (`coilyco-flight-deck/ward#N`, anonymous read, no token) to confirm
-your install. You **cannot** yet drive a live run against your own org without
-forking. The plain verb gate (`ward exec`/`git`/`audit`) has none of these limits.
+your install. To drive a live run against your own org, the selected bundle must
+trust that owner and you need the matching token. The plain verb gate
+(`ward exec`/`git`/`audit`) has none of these limits, so most adopters start
+there and only move to `warded` when they need the agent driver.
 
 ## 1. Prerequisites
 
