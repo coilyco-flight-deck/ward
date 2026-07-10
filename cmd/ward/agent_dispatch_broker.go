@@ -58,6 +58,14 @@ var dispatchBrokerLaunch = func(ctx context.Context, req dispatchBrokerRequest) 
 	}
 }
 
+// dispatchBrokerVisibilityTimeout bounds the post-launch wait for a forwarded
+// engineer run to show up in the director-facing list.
+var dispatchBrokerVisibilityTimeout = 10 * time.Second
+
+// dispatchBrokerVisibilityPoll is the cadence for checking whether a forwarded
+// engineer launch is visible yet.
+var dispatchBrokerVisibilityPoll = 100 * time.Millisecond
+
 const (
 	// dispatchActionLaunch is the default action: launch a sibling engineer/advisor
 	// run. An empty Action normalizes to it, keeping older launch requests byte-compatible.
@@ -258,8 +266,8 @@ func writeDispatchBrokerLogsResponse(conn net.Conn, source string, err error) {
 	}
 }
 
-// startHostDispatchBrokerRequest launches the validated request in the background
-// and returns once the launch has started so the broker can ack the surface promptly.
+// startHostDispatchBrokerRequest launches the validated request in the background.
+// It returns once the run is visible enough to count as real.
 func (r *Runner) startHostDispatchBrokerRequest(ctx context.Context, req dispatchBrokerRequest) (string, error) {
 	if err := validateDispatchBrokerRequest(req); err != nil {
 		return "", err
@@ -288,37 +296,115 @@ func (r *Runner) startHostDispatchBrokerRequest(ctx context.Context, req dispatc
 		ref)
 	restore := redirectStdioToLog(logf)
 	started := make(chan struct{})
-	go func() {
-		restored := false
-		defer func() {
-			if !restored {
-				restore()
-			}
-			_ = logf.Close()
-			dispatchStdioRestoreHook()
-		}()
-		if lock != nil {
-			lock.Lock()
-			defer lock.Unlock()
+	done := make(chan dispatchBrokerLaunchResult, 1)
+	go r.handleHostDispatchBrokerLaunch(ctx, req, logPath, logf, restore, lock, started, done)
+	if req.Role == roleAdvisor {
+		return waitForDispatchBrokerLaunchStart(ctx, logPath, started)
+	}
+	return waitForDispatchBrokerLaunchResult(ctx, done)
+}
+
+type dispatchBrokerLaunchResult struct {
+	logPath string
+	err     error
+}
+
+func (r *Runner) handleHostDispatchBrokerLaunch(ctx context.Context, req dispatchBrokerRequest, logPath string, logf *os.File, restore func(), lock *sync.Mutex, started chan struct{}, done chan<- dispatchBrokerLaunchResult) {
+	restored := false
+	defer func() {
+		if !restored {
+			restore()
 		}
-		if err := withBrokerForwardingDisabled(func() error {
-			close(started)
-			return dispatchBrokerLaunch(ctx, req)
-		}); err != nil {
+		_ = logf.Close()
+		dispatchStdioRestoreHook()
+	}()
+	if lock != nil {
+		lock.Lock()
+		defer lock.Unlock()
+	}
+	if err := withBrokerForwardingDisabled(func() error {
+		close(started)
+		return dispatchBrokerLaunch(ctx, req)
+	}); err != nil {
+		restore()
+		restored = true
+		dispatchFailedDispatchLaunchStartHook()
+		r.commentDispatchLaunchError(ctx, req, logPath, err)
+		done <- dispatchBrokerLaunchResult{logPath: logPath, err: err}
+		return
+	}
+	if dispatchAction(req.Action) == dispatchActionLaunch && req.Role == roleEngineer {
+		if err := r.waitForDispatchBrokerEngineerVisibility(ctx, req); err != nil {
 			restore()
 			restored = true
 			dispatchFailedDispatchLaunchStartHook()
 			r.commentDispatchLaunchError(ctx, req, logPath, err)
+			done <- dispatchBrokerLaunchResult{logPath: logPath, err: err}
 			return
 		}
-		fmt.Fprintf(os.Stderr, "ward dispatch broker: launch completed\n")
-	}()
+	}
+	fmt.Fprintf(os.Stderr, "ward dispatch broker: launch completed\n")
+	done <- dispatchBrokerLaunchResult{logPath: logPath, err: nil}
+}
+
+func waitForDispatchBrokerLaunchStart(ctx context.Context, logPath string, started <-chan struct{}) (string, error) {
 	select {
 	case <-started:
 		return logPath, nil
 	case <-ctx.Done():
 		return "", ctx.Err()
 	}
+}
+
+func waitForDispatchBrokerLaunchResult(ctx context.Context, done <-chan dispatchBrokerLaunchResult) (string, error) {
+	select {
+	case result := <-done:
+		return result.logPath, result.err
+	case <-ctx.Done():
+		return "", ctx.Err()
+	}
+}
+
+// waitForDispatchBrokerEngineerVisibility polls until the forwarded engineer is
+// visible in the director-facing list or the confirmation window expires.
+func (r *Runner) waitForDispatchBrokerEngineerVisibility(ctx context.Context, req dispatchBrokerRequest) error {
+	ref, err := parseAgentIssueRef(req.Argv[1])
+	if err != nil {
+		return err
+	}
+	name := issueScopedContainerName(roleEngineer, dispatchBrokerRequestMode(req), targetRepo{Owner: ref.Owner, Name: ref.Repo}, ref.Number)
+	deadlineCtx, cancel := context.WithTimeout(ctx, dispatchBrokerVisibilityTimeout)
+	defer cancel()
+	ticker := time.NewTicker(dispatchBrokerVisibilityPoll)
+	defer ticker.Stop()
+	for {
+		visible, err := r.dispatchBrokerEngineerVisible(deadlineCtx, name)
+		if err != nil {
+			return fmt.Errorf(
+				"dispatch broker: launch accepted but could not confirm engineer visibility; "+
+					"inspect with `ward agent list` from the director surface: %w", err)
+		}
+		if visible {
+			return nil
+		}
+		select {
+		case <-deadlineCtx.Done():
+			return fmt.Errorf(
+				"dispatch broker: launch accepted but the forwarded engineer never became visible; " +
+					"inspect with `ward agent list` from the director surface")
+		case <-ticker.C:
+		}
+	}
+}
+
+// dispatchBrokerEngineerVisible checks whether the expected engineer is visible
+// in the host's running-engineer list.
+func (r *Runner) dispatchBrokerEngineerVisible(ctx context.Context, name string) (bool, error) {
+	out, err := r.dockerCapture(ctx, "ps", "--filter", "name=^"+name+"$", "--format", "{{.Names}}")
+	if err != nil {
+		return false, fmt.Errorf("dispatch broker: check engineer visibility for %q: %w", name, err)
+	}
+	return strings.TrimSpace(string(out)) != "", nil
 }
 
 // commentFailedDispatchLaunch posts the failure comment with a detached timeout.

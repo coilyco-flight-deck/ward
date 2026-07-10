@@ -1283,11 +1283,14 @@ func TestRunHostDispatchBrokerRequestReturnsStructuredLaunchFailure(t *testing.T
 		Argv: []string{"engineer", "coilyco-flight-deck/ward#786", "--harness", "codex"},
 	}
 	logPath, err := r.startHostDispatchBrokerRequest(t.Context(), req)
-	if err != nil {
-		t.Fatalf("startHostDispatchBrokerRequest: %v", err)
+	if err == nil {
+		t.Fatal("startHostDispatchBrokerRequest unexpectedly succeeded")
 	}
 	if !strings.Contains(logPath, "dispatch") {
 		t.Fatalf("log path %q does not look like a dispatch log", logPath)
+	}
+	if !strings.Contains(err.Error(), "already in use") {
+		t.Fatalf("error %q does not carry the launch failure", err)
 	}
 	<-done
 	<-recoveryStarted
@@ -1577,10 +1580,20 @@ func TestRunAgentTaskDirectRoutesThroughBrokerOnReadonlySurface(t *testing.T) {
 	t.Setenv(envDispatchBrokerAddr, ln.Addr().String())
 	t.Setenv("WARD_FORGEJO_BASE", forgejo.URL)
 
+	dockerName := issueScopedContainerName(roleEngineer, modeCodex, targetRepo{Owner: "coilyco-flight-deck", Name: "agentic-os"}, 400)
+	dockerScript := filepath.Join(t.TempDir(), "docker")
+	if err := os.WriteFile(dockerScript, []byte("#!/bin/sh\n"+
+		"if [ \"$1\" = ps ]; then\n"+
+		"  printf '%s\\n' "+shellQuote(dockerName)+"\n"+
+		"  exit 0\n"+
+		"fi\n"+
+		"exit 0\n"), 0o700); err != nil { // #nosec G306 -- test fixture
+		t.Fatalf("write fake docker: %v", err)
+	}
 	r := &Runner{Runner: &shell.Runner{
 		Resolve: func(bin string) (string, error) {
 			if bin == "docker" {
-				return "", fmt.Errorf("local docker path should not be touched")
+				return dockerScript, nil
 			}
 			return "/bin/true", nil
 		},
@@ -1823,6 +1836,77 @@ func TestForwardAgentDispatchPrintsLookupCommandWhenLaunchSucceedsWithoutLogPath
 	}
 }
 
+func TestStartHostDispatchBrokerRequestWaitsForVisibleEngineer(t *testing.T) {
+	t.Setenv("HOME", t.TempDir())
+	r := fakeEngineerVisibilityDockerRunner(t, "engineer-codex-ward-1087", 2)
+
+	origLaunch := dispatchBrokerLaunch
+	origTimeout := dispatchBrokerVisibilityTimeout
+	origPoll := dispatchBrokerVisibilityPoll
+	origFailedHook := dispatchFailedDispatchLaunchHook
+	t.Cleanup(func() {
+		dispatchBrokerLaunch = origLaunch
+		dispatchBrokerVisibilityTimeout = origTimeout
+		dispatchBrokerVisibilityPoll = origPoll
+		dispatchFailedDispatchLaunchHook = origFailedHook
+	})
+	dispatchBrokerVisibilityTimeout = 250 * time.Millisecond
+	dispatchBrokerVisibilityPoll = 10 * time.Millisecond
+	dispatchFailedDispatchLaunchHook = func(dispatchBrokerRequest, string, error) bool { return true }
+	dispatchBrokerLaunch = func(context.Context, dispatchBrokerRequest) error { return nil }
+
+	req := dispatchBrokerRequest{
+		Role:      "engineer",
+		Argv:      []string{"engineer", "coilyco-flight-deck/ward#1087", "--harness", "codex"},
+		Requester: "director-codex-host",
+		Token:     "nonce-visible",
+	}
+	logPath, err := r.startHostDispatchBrokerRequest(context.Background(), req)
+	if err != nil {
+		t.Fatalf("startHostDispatchBrokerRequest: %v", err)
+	}
+	if logPath == "" {
+		t.Fatal("startHostDispatchBrokerRequest returned an empty log path")
+	}
+}
+
+func TestStartHostDispatchBrokerRequestFailsWhenEngineerNeverBecomesVisible(t *testing.T) {
+	t.Setenv("HOME", t.TempDir())
+	r := fakeEngineerVisibilityDockerRunner(t, "", 0)
+
+	origLaunch := dispatchBrokerLaunch
+	origTimeout := dispatchBrokerVisibilityTimeout
+	origPoll := dispatchBrokerVisibilityPoll
+	origFailedHook := dispatchFailedDispatchLaunchHook
+	t.Cleanup(func() {
+		dispatchBrokerLaunch = origLaunch
+		dispatchBrokerVisibilityTimeout = origTimeout
+		dispatchBrokerVisibilityPoll = origPoll
+		dispatchFailedDispatchLaunchHook = origFailedHook
+	})
+	dispatchBrokerVisibilityTimeout = 75 * time.Millisecond
+	dispatchBrokerVisibilityPoll = 10 * time.Millisecond
+	dispatchFailedDispatchLaunchHook = func(dispatchBrokerRequest, string, error) bool { return true }
+	dispatchBrokerLaunch = func(context.Context, dispatchBrokerRequest) error { return nil }
+
+	req := dispatchBrokerRequest{
+		Role:      "engineer",
+		Argv:      []string{"engineer", "coilyco-flight-deck/ward#1087", "--harness", "codex"},
+		Requester: "director-codex-host",
+		Token:     "nonce-missing",
+	}
+	logPath, err := r.startHostDispatchBrokerRequest(context.Background(), req)
+	if err == nil {
+		t.Fatal("startHostDispatchBrokerRequest unexpectedly succeeded")
+	}
+	if logPath == "" {
+		t.Fatal("startHostDispatchBrokerRequest returned an empty log path on failure")
+	}
+	if !strings.Contains(err.Error(), "ward agent list") {
+		t.Fatalf("error = %q, want the director-surface follow-up command", err)
+	}
+}
+
 func TestRedactDispatchBrokerArgvKeepsWorkflowAndDetailsButScrubsSecrets(t *testing.T) {
 	got := redactDispatchBrokerArgv([]string{
 		"engineer", "coilyco-flight-deck/ward#1",
@@ -1890,6 +1974,35 @@ func fakeAgentLogsDockerRunner(t *testing.T, psOut, logsOut string, cpOut []byte
 		"  fi\n" +
 		"  if [ -n " + shellQuote(cpPath) + " ]; then\n" +
 		"    cat " + shellQuote(cpPath) + "\n" +
+		"  fi\n" +
+		"  exit 0\n" +
+		"fi\n" +
+		"printf '%s\\n' \"unexpected docker args: $*\" >&2\n" +
+		"exit 1\n"
+	if err := os.WriteFile(script, []byte(body), 0o700); err != nil { // #nosec G306 -- test fixture
+		t.Fatalf("write fake docker: %v", err)
+	}
+	return &Runner{Runner: &shell.Runner{
+		Stderr:  io.Discard,
+		Resolve: func(_ string) (string, error) { return script, nil },
+	}}
+}
+
+func fakeEngineerVisibilityDockerRunner(t *testing.T, visibleName string, visibleAfter int) *Runner {
+	t.Helper()
+	dir := t.TempDir()
+	script := filepath.Join(dir, "docker")
+	countPath := filepath.Join(dir, "count")
+	body := "#!/bin/sh\n" +
+		"if [ \"$1\" = ps ]; then\n" +
+		"  count=0\n" +
+		"  if [ -f " + shellQuote(countPath) + " ]; then\n" +
+		"    count=$(cat " + shellQuote(countPath) + ")\n" +
+		"  fi\n" +
+		"  count=$((count + 1))\n" +
+		"  printf '%s' \"$count\" > " + shellQuote(countPath) + "\n" +
+		"  if [ \"$count\" -ge " + fmt.Sprintf("%d", visibleAfter) + " ] && [ -n " + shellQuote(visibleName) + " ]; then\n" +
+		"    printf '%s\\n' " + shellQuote(visibleName) + "\n" +
 		"  fi\n" +
 		"  exit 0\n" +
 		"fi\n" +
