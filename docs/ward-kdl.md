@@ -1,45 +1,37 @@
 ---
-doc_goal: One answer to what ward-kdl is, how it differs from ward, and whether a repo needs a guardfile - build-time authoring layer vs run-time product.
+doc_goal: Explain ward-kdl as the build-time authoring layer and keep the guardfile question answerable in one page.
 ---
-# ward-kdl: the build-time authoring layer
+# ward-kdl
 
-**ward-kdl is the build-time authoring layer. `ward` is the run-time product that embeds what it authors. [cli-guard](https://forgejo.coilysiren.me/coilyco-flight-deck/cli-guard) is the engine both stand on.** Three roles, told apart by **when** they run. The conceptual model lives in [architecture.md](architecture.md).
+`ward-kdl` is the build-time authoring layer.
 
-## Do you need to author a guardfile? (start here)
+- It turns guardfile sources into audited CLI surfaces.
+- `ward` embeds the generated output at runtime.
+- Most repos do not need to author a guardfile at all.
 
-Almost certainly not. **A repo needs a guardfile only when it runs its own `ward
-ops` operator surface. Dev-verb adoption is `.ward/ward.yaml` and nothing else.**
-The fork every adopter hits first:
+## When you need it
 
-- **Dev-verb gate** (`ward exec build/test/lint`, `ward git`, the audit log) on your repo: a committed [`.ward/ward.yaml`](../.ward/ward.yaml) is the whole contract, no guardfile. That surface is forge-agnostic and already embedded in the installed `ward`. See [ward-yaml.md](ward-yaml.md).
-- **Your own operator surface** (`ward ops forgejo/aws`, the fleet roster) against your own endpoints, tokens, and owner gate: only then a guardfile, and even then you **swap placeholders** in the neutral example bundle and rebuild from source. See [ward-kdl-authoring.md](ward-kdl-authoring.md) and the grammar in [guardfile-grammar.md](guardfile-grammar.md). Guardfiles are ward's own build-time internals, not a per-repo file a `ward exec` user maintains.
+- You need `ward-kdl` when you are shipping a custom operator surface.
+- If you only use `ward exec` and `ward git`, `.ward/ward.yaml` is enough.
 
-## Build time: source in, validated artifact out
+## The build-time split
 
-You author a source file, cli-guard compiles or validates it, `ward` embeds the
-result. Nothing is fetched at runtime. `ward-kdl` is `protoc` for permissions and
-fleet config, and you rarely run it by hand: you run what it produced and
-regenerate when the source changes (`make build-ward-kdl`). Three dialects:
+- source files live in the authoring layer.
+- the generator turns them into audited command trees.
+- the shipped binary carries the generated tree, not the source bundle.
 
-- **Dialect 1, permission surfaces** - `*.guardfile.kdl` spec + exec files. Least-privilege, audited. Parsed by `cli/execverb` + `http/specverb`.
-- **Dialect 2, fleet-config manifest** - `ward-kdl.fleet.kdl`: identity, model, endpoint, attribution, roster defaults, sparse overrides, `roles`.
-- **Dialect 3, operator-local** - the same `fleetconfig` parser, sourced from a local `~/.ward/fleet.local.kdl`, not embedded and tracked separately.
-- **Smart defaults bundle** - `ward-kdl.defaults.kdl`: selected runtime policy defaults plus repo-authority for trusted-owner and bare-ref resolution. Parsed via `defaultsassets/`.
+That split is why the docs still talk about `ward-kdl` even after the generated
+reference pages were removed from the tree.
 
-## Run time: `ward` embeds the emitted surfaces
+## The practical rule
 
-`ward` embeds the ward-kdl surfaces as `ward ops <api>`, `ward docker`, and `ward agents <target>`, then adds `ward agent` and `ward exec`. The embeds are the baked example-safe default. `WARD_CONFIG_REF` still swaps edge-mounted surfaces at launch, but core agent/container defaults stay ward-owned and the real deployment bundle comes from aos' `.ward/` tree ([config-source.md](config-source.md)). Exec guardfiles auto-mount at their `wrap` path ([ward-kdl-in-ward.md](ward-kdl-in-ward.md)).
-
-## The per-area reference docs
-
-Every guardfile gets a generated reference doc beside it, committed under [docs/ward-kdl/](ward-kdl/). Emitted by ward-kdl's `surface.Markdown()`, they describe one area's verbs. [ward-kdl-surface.md](ward-kdl-surface.md) is the flat index across every area.
+If a repo contributor only wants the dev-verb gate, they do not need to learn
+ward-kdl. If someone is authoring or changing a shipped operator surface, they
+do.
 
 ## See also
 
-- [guardfile-grammar.md](guardfile-grammar.md) - the dialect-1 KDL grammar and a minimal guardfile.
-- [ward-kdl-authoring.md](ward-kdl-authoring.md) - getting the compiler, swapping the bundle.
-- [architecture.md](architecture.md) - the three-layer model (cli-guard / ward-kdl / ward).
-- [ward-kdl-surface.md](ward-kdl-surface.md) - the full generated verb surface, area by area.
-- [ward-kdl-in-ward.md](ward-kdl-in-ward.md) - how exec guardfiles auto-mount into `ward`.
-
-Cross-reference convention from [coilysiren/agentic-os#59](https://github.com/coilysiren/agentic-os/issues/59).
+- [ward-kdl-authoring.md](ward-kdl-authoring.md) - the authoring loop.
+- [ward-kdl-surface.md](ward-kdl-surface.md) - the generated surface.
+- [ward-kdl-in-ward.md](ward-kdl-in-ward.md) - exec guardfile mounts.
+- [ward-docker-exec.md](ward-docker-exec.md) - the shell-into-run leaf.

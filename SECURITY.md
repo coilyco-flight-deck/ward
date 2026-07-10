@@ -28,16 +28,16 @@ ward wraps [cli-guard](https://forgejo.coilysiren.me/coilyco-flight-deck/cli-gua
 - `.ward/ward.yaml` parse paths that execute shell or import host state in ways the README does not describe
 - on Linux, a descendant of a sandboxed ward verb (e.g. `ward docker exec`) invoking a wrapped tool — by name or absolute path — without re-entering the gate. ward runs sandboxed verbs inside cli-guard's `sandbox` jail so the wrapper holds at arbitrary process depth, not just depth 0; an escape is a vulnerability. The jail is Linux-only — on macOS/Windows enforcement is depth-0 (the harness allowlist) and descendant bypass is a known limitation, not a vulnerability
 
-The gate is **verb-level** - it bounds what call is expressible, not what a process can touch once running. [docs/comparison-openshell.md](docs/comparison-openshell.md) is the threat-model reference for what it does and does not defend, and why an escaped process is the container's job, not the gate's.
+The gate is **verb-level** - it bounds what call is expressible, not what a process can touch once running. [docs/exec-verb.md](docs/exec-verb.md) is the short reference for what it does and does not defend, and why an escaped process is the container's job, not the gate's.
 
 ### The agent/container surface (`ward agent`)
 
-`ward agent` fresh-clones the target into a throwaway container, seeds real host credentials (the harness login, the bot `FORGEJO_TOKEN`, `~/.aws` under `--aws`), runs the agent under `bypassPermissions` with no deny wall, and pushes to `main`. The container's isolation is the **sole** boundary ([docs/container-permissions.md](docs/container-permissions.md)). Interested in reports of:
+`ward agent` fresh-clones the target into a throwaway container, seeds real host credentials (the harness login, the bot `FORGEJO_TOKEN`, `~/.aws` under `--aws`), runs the agent under `bypassPermissions` with no deny wall, and pushes to `main`. The container's isolation is the **sole** boundary ([docs/container.md](docs/container.md)). Interested in reports of:
 
-- credential leakage: a seeded secret (the claude OAuth blob, codex auth, `FORGEJO_TOKEN`, `~/.aws`) reaching argv, the audit log, or an `env` dump - anywhere outside its mode-600 `--env-file` / git-credential file ([docs/agent-credentials.md](docs/agent-credentials.md))
+- credential leakage: a seeded secret (the claude OAuth blob, codex auth, `FORGEJO_TOKEN`, `~/.aws`) reaching argv, the audit log, or an `env` dump - anywhere outside its mode-600 `--env-file` / git-credential file ([docs/agent-lifecycle.md](docs/agent-lifecycle.md))
 - container escape: a run reaching the host filesystem past the read-only cwd bind, the docker socket, or another concurrent container. Isolation is the only boundary, so an escape past the one throwaway clone is a vulnerability, not a known limitation
 - cross-repo credential bleed: in a multi-repo run (`--repo` grants), one repo's push token or credential being usable against a repo outside the granted set, or a run reaching a repo it was never granted
-- telemetry or audit gaps in a `ward agent` run (parallel to the exec audit-log bullet): a drained `meta.json` or SigNoz envelope leaking a secret the redaction should have dropped, or a run leaving no reconstructable record ([docs/agent-observability.md](docs/agent-observability.md))
+- telemetry or audit gaps in a `ward agent` run (parallel to the exec audit-log bullet): a drained `meta.json` or log archive leaking a secret the redaction should have dropped, or a run leaving no reconstructable record ([docs/agent-ops.md](docs/agent-ops.md))
 
 Out of scope (file as regular issues, not vulnerabilities):
 

@@ -1,81 +1,31 @@
 ---
-doc_goal: Show how ward-kdl exec-dialect guardfiles auto-graft onto the `ward` command tree at their `wrap` path through ward's audit pipeline - replacing per-surface Go grafts with one general delegation mechanism - and why hand-written surfaces win collisions and spec-dialect files stay out.
+doc_goal: Keep the exec-dialect auto-mount rule in one concise place after the generated reference docs were removed.
 ---
-# Auto-mounting ward-kdl exec guardfiles into `ward`
+# ward-kdl in ward
 
-[ward#284](https://forgejo.coilysiren.me/coilyco-flight-deck/ward/issues/284) wires the exec-dialect ward-kdl guardfiles into the `ward` binary as a
-**general delegation mechanism**, replacing the one-off graft pattern. Before
-this, the only exec surface reachable through `ward` was the hand-grafted
-`graftForgejoAdminExec` slice (cmd/ward/ops.go); every other guardfile -
-including `ward-kdl.git.guardfile.kdl` - compiled only into the standalone
-`ward-kdl` binary.
+Exec-dialect guardfiles can mount into `ward` at their `wrap` path.
 
-## What mounts
+- `ward-kdl docker` becomes `ward docker`.
+- `ward-kdl ops aws` becomes `ward ops aws`.
+- `ward-kdl agents claude` becomes `ward agents claude`.
 
-Every **exec-dialect** guardfile (`.ward/ward-kdl/ward-kdl.<area>.guardfile.kdl`
-with an `exec <bin>` block) is grafted onto the `ward` command tree at the path
-its `wrap` block names. The leading `ward-kdl` token maps to the `ward` root and
-is dropped, so the rest of the `wrap` path becomes the mount path:
+Hand-written surfaces still win collisions.
 
-- `wrap ward-kdl docker` -> `ward docker`
-- `wrap ward-kdl ops aws` -> `ward ops aws` (grafted beside the existing `ops` group)
-- `wrap ward-kdl agents claude` -> `ward agents claude`
+## Why it matters
 
-Today that lights up `ward docker`, `ward ops {aws,kubectl}`, and
-`ward agents {aider,claude,codex,goose,ollama,opencode}` - surfaces that were
-dark through `ward` before.
+- it removes the one-off Go graft pattern.
+- it keeps exec guardfiles on the same audited path as the rest of ward.
+- it lets the generated surface show up under the shipped binary without a
+  second command tree.
 
-Spec-dialect guardfiles (forgejo, trello, tailscale, glitchtip, signoz, glama,
-skillsmp) are **not** auto-mounted here: they need a spec lock + auth and ride
-the `specverb` path (`ward ops forgejo`, cmd/ward/ops.go).
+## Collision rule
 
-## How it works
-
-`cmd/ward/wardkdl_exec.go` reads the exec guardfiles off the launch-selected
-config source ([config-source.md](config-source.md), [ward#653](https://forgejo.coilysiren.me/coilyco-flight-deck/ward/issues/653)) - by default the
-baked embeds (mirrored into `cmd/ward/execassets/` by `make sync-exec-assets`,
-since `go:embed` cannot reach the sibling `.ward/ward-kdl/` dir), or a live
-`WARD_CONFIG_REF` bundle - parses each with `execverb.Parse`,
-`execverb.Build`s its group, and grafts it onto the root - creating shared
-intermediate groups (`ops`, `agents`) once. `main.go` calls `mountWardKdlExec`
-before the verb-fallback set is read, so the new top-level groups (`docker`,
-`agents`) count as real verbs. Every leaf wraps through ward's audit pipeline, so
-each call writes one JSONL audit row and the wrapped binary owns its
-credentials. `env` values resolve lazily at exec time, so mounting never
-touches a token source.
-
-Adding a new exec guardfile + `make build-ward-kdl` is the only step to grow the
-surface - no per-guardfile Go graft.
-
-## Collisions: hand-written surfaces win
-
-One exec guardfile names a path a hand-written `ward` command already owns:
-
-- `wrap ward-kdl git` -> `ward git` (cmd/ward/git.go)
-
-The mount **skips** a guardfile whose leaf is already taken, leaving the
-hand-written command in place. This is deliberate: the hand-written `ward git`
-carries mutating, concurrency-safe verbs (`commit`, `add`, `push`) the read-only
-git guardfile does not. The guardfile stays reachable through the standalone
-`ward-kdl` binary. Reconciling it with the hand-written surface (e.g. routing a
-future `git clone` repo-allowlist guard through `ward git`) is left to that
-surface's own follow-ups.
-
-The forgejo admin/doctor remote-exec slice is a separate special case: it
-declares `wrap ward ops forgejo` (not `ward-kdl ...`) and is grafted onto the
-`specverb` forgejo group so REST and remote-exec share one command. It is not
-part of this auto-discovery set. See [ops-forgejo-admin](ops-forgejo-admin.md).
-
-## Drift
-
-`execassets_test.go` fails the build when the embedded mirror drifts from the
-canonical exec-dialect guardfiles - a missing file, a byte mismatch, an extra
-file, or a spec-dialect file that slipped in. Re-sync with `make
-sync-exec-assets` (folded into `make build-ward-kdl`).
+If `ward` already owns a path, the hand-written command stays in place and the
+guardfile mount skips that leaf. That keeps the special cases where they belong
+and prevents the generated surface from silently overriding a deliberate
+hand-written command.
 
 ## See also
 
-- [ward-kdl.md](ward-kdl.md) - what `ward-kdl` is: the build-time layer.
-- [ops-forgejo-admin.md](ops-forgejo-admin.md) - the one-off graft this generalizes.
-- [ward-kdl-surface.md](ward-kdl-surface.md) - the full ward-kdl verb surface.
-- [git-verbs.md](git-verbs.md) - the hand-written `ward git` surface that wins the collision.
+- [ward-kdl-surface.md](ward-kdl-surface.md) - the generated family list.
+- [ward-docker-exec.md](ward-docker-exec.md) - the `ward docker exec` leaf.
