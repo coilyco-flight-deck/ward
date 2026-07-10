@@ -20,16 +20,10 @@ excludes = [
   # Pre-existing size debt: docs/hook.md is 92 lines, over the 80-line cap.
   # The split is tracked in coilyco-flight-deck/ward#50; drop this when it lands.
   "docs/hook.md",
-  # Generated surface reference (specverb-gen). The driver emits one beside each
-  # Guardfile; the reviewed copies are committed under docs/ward-kdl/ (ward#279)
-  # and grow with the verb surface, so the layout size cap does not apply. One
-  # slash-less basename glob covers every generated doc wherever it lands - the
-  # reviewed copy under docs/ward-kdl/ and the gitignored beside-the-kdl emission
-  # under cmd/ward-kdl/ (incl. the per-tier ward-kdl-<read,write,admin>/ subdirs,
-  # ward#240). The directory pattern keeps the docs/ward-kdl/ subfolder itself
-  # from tripping the docs-flatness rule.
+  # Generated surface reference markdown is build output, not release docs. The
+  # basename glob keeps any transient ward-kdl.<area>.guardfile.md emission out
+  # of the layout cap without naming a committed docs/ tree.
   "ward-kdl.*.guardfile.md",
-  "docs/ward-kdl/**",
   # Embedded container agent doctrine: a ward binary asset (go:embed), not a
   # doc, and it must sit beside its package, so the markdown-location and size
   # caps do not apply. See docs/container.md.
@@ -132,7 +126,6 @@ excludes = [
 # upstream relative links so this exclude can drop. Tracked: ward#501.
 excludes = [
   "ward-kdl.*.guardfile.md",
-  "docs/ward-kdl/**",
 ]
 
 [tool.agentic-os.code-comments]

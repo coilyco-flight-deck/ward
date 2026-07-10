@@ -32,6 +32,53 @@ func TestSelectConfigSourceDefaultsBaked(t *testing.T) {
 	}
 }
 
+// TestSelectConfigSourceRejectsBakedConfigForCoilycoTarget pins the fail-fast
+// path for a coilyco director surface with no external config ref.
+func TestSelectConfigSourceRejectsBakedConfigForCoilycoTarget(t *testing.T) {
+	t.Setenv(wardConfigRefEnv, "")
+	t.Setenv("WARD_TARGET_OWNER", "coilyco-flight-deck")
+	t.Setenv("WARD_TARGET_REPO", "coilyco-flight-deck/ward")
+	if _, err := selectConfigSource(); err == nil {
+		t.Fatal("coilyco target selected the baked config source; want a loud diagnostic")
+	} else {
+		for _, want := range []string{
+			"active config source is baked neutral default",
+			"expected WARD_CONFIG_REF",
+			"coilyco-flight-deck/ward",
+		} {
+			if !strings.Contains(err.Error(), want) {
+				t.Errorf("error %q does not contain %q", err, want)
+			}
+		}
+	}
+}
+
+// TestOpsCommandReportsBakedConfigForCoilycoTarget pins the operator boundary.
+// The mounted `ward ops forgejo` leaf must fail with the config diagnostic.
+func TestOpsCommandReportsBakedConfigForCoilycoTarget(t *testing.T) {
+	t.Setenv(wardConfigRefEnv, "")
+	t.Setenv("WARD_TARGET_OWNER", "coilyco-flight-deck")
+	t.Setenv("WARD_TARGET_REPO", "coilyco-flight-deck/ward")
+	cmd := opsCommand()
+	forgejo := commandNamed(cmd.Commands, "forgejo")
+	if forgejo == nil {
+		t.Fatal("ops umbrella lost forgejo")
+	}
+	err := forgejo.Action(context.Background(), forgejo)
+	if err == nil {
+		t.Fatal("coilyco target mounted the baked config source; want a loud diagnostic")
+	}
+	for _, want := range []string{
+		"active config source is baked neutral default",
+		"expected WARD_CONFIG_REF",
+		"coilyco-flight-deck/ward",
+	} {
+		if !strings.Contains(err.Error(), want) {
+			t.Errorf("error %q does not contain %q", err, want)
+		}
+	}
+}
+
 // TestSelectConfigSourceRejectsMalformedGitRef pins fail-loud: a ref that is
 // neither file:// nor the git grammar errors, never a silent baked fallback.
 func TestSelectConfigSourceRejectsMalformedGitRef(t *testing.T) {
@@ -252,6 +299,25 @@ func TestOpsCommandDegradesOnBadRef(t *testing.T) {
 	}
 	if err == nil || !strings.Contains(err.Error(), wardConfigRefEnv) {
 		t.Errorf("degraded leaf error = %v, want it to name %s", err, wardConfigRefEnv)
+	}
+}
+
+// TestBuildForgejoOpsAnnotatesSelectedConfigSource keeps the active config source
+// visible in the mounted Forgejo surface, so describe/help can surface it.
+func TestBuildForgejoOpsAnnotatesSelectedConfigSource(t *testing.T) {
+	abs, err := filepath.Abs(wardKdlSrcDir)
+	if err != nil {
+		t.Fatalf("abs(%s): %v", wardKdlSrcDir, err)
+	}
+	t.Setenv(wardConfigRefEnv, "file://"+abs)
+	t.Setenv("WARD_TARGET_OWNER", "")
+	t.Setenv("WARD_TARGET_REPO", "")
+	forgejo, err := buildForgejoOps()
+	if err != nil {
+		t.Fatalf("buildForgejoOps with fixture ref: %v", err)
+	}
+	if !strings.Contains(forgejo.Description, "WARD_CONFIG_REF=file://") {
+		t.Fatalf("forgejo description = %q, want the active config source", forgejo.Description)
 	}
 }
 

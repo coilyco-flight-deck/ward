@@ -72,9 +72,9 @@ OWNER_BASE = {
 # .agents/, scripts/) is contributor-facing and keeps terse refs (ward#443).
 INCLUDE_GLOBS = ["README.md", "docs/**/*.md"]
 
-# Never scanned: generated docs (would drift against their generator) and the PR
-# template (its `Fixes #123` is a GitHub example that resolves in a real PR).
-EXCLUDE_SUBSTR = ["docs/ward-kdl/", "docs/agent-roster.md", "docs/PULL_REQUEST_TEMPLATE.md"]
+# Never scanned: the PR template (its `Fixes #123` is a GitHub example that
+# resolves in a real PR).
+EXCLUDE_SUBSTR = ["docs/agent-roster.md", "docs/PULL_REQUEST_TEMPLATE.md"]
 
 # Was the deep design docs hand-tuned to the 4000-char doc cap; ward#521 trimmed
 # each to fit WITH linked refs, so it is empty (kept defined for reuse; see docstring).
