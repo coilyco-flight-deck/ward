@@ -807,6 +807,66 @@
       "type": "object",
       "x-go-package": "forgejo.org/modules/structs"
     },
+    "EditPullRequestOption": {
+      "description": "EditPullRequestOption options when modify pull request",
+      "properties": {
+        "allow_maintainer_edit": {
+          "type": "boolean",
+          "x-go-name": "AllowMaintainerEdit"
+        },
+        "assignee": {
+          "type": "string",
+          "x-go-name": "Assignee"
+        },
+        "assignees": {
+          "items": {
+            "type": "string"
+          },
+          "type": "array",
+          "x-go-name": "Assignees"
+        },
+        "base": {
+          "type": "string",
+          "x-go-name": "Base"
+        },
+        "body": {
+          "type": "string",
+          "x-go-name": "Body"
+        },
+        "due_date": {
+          "format": "date-time",
+          "type": "string",
+          "x-go-name": "Deadline"
+        },
+        "labels": {
+          "items": {
+            "format": "int64",
+            "type": "integer"
+          },
+          "type": "array",
+          "x-go-name": "Labels"
+        },
+        "milestone": {
+          "format": "int64",
+          "type": "integer",
+          "x-go-name": "Milestone"
+        },
+        "state": {
+          "type": "string",
+          "x-go-name": "State"
+        },
+        "title": {
+          "type": "string",
+          "x-go-name": "Title"
+        },
+        "unset_due_date": {
+          "type": "boolean",
+          "x-go-name": "RemoveDeadline"
+        }
+      },
+      "type": "object",
+      "x-go-package": "forgejo.org/modules/structs"
+    },
     "EditLabelOption": {
       "description": "EditLabelOption options for editing a label",
       "properties": {
@@ -1598,6 +1658,212 @@
           "format": "date-time",
           "type": "string",
           "x-go-name": "Merged"
+        }
+      },
+      "type": "object",
+      "x-go-package": "forgejo.org/modules/structs"
+    },
+    "PRBranchInfo": {
+      "description": "PRBranchInfo information about a branch",
+      "properties": {
+        "label": {
+          "type": "string",
+          "x-go-name": "Name"
+        },
+        "ref": {
+          "type": "string",
+          "x-go-name": "Ref"
+        },
+        "repo": {
+          "$ref": "#/definitions/Repository"
+        },
+        "repo_id": {
+          "format": "int64",
+          "type": "integer",
+          "x-go-name": "RepoID"
+        },
+        "sha": {
+          "type": "string",
+          "x-go-name": "Sha"
+        }
+      },
+      "type": "object",
+      "x-go-package": "forgejo.org/modules/structs"
+    },
+    "PullRequest": {
+      "description": "PullRequest represents a pull request",
+      "properties": {
+        "additions": {
+          "format": "int64",
+          "type": "integer",
+          "x-go-name": "Additions"
+        },
+        "allow_maintainer_edit": {
+          "type": "boolean",
+          "x-go-name": "AllowMaintainerEdit"
+        },
+        "assignee": {
+          "$ref": "#/definitions/User"
+        },
+        "assignees": {
+          "items": {
+            "$ref": "#/definitions/User"
+          },
+          "type": "array",
+          "x-go-name": "Assignees"
+        },
+        "base": {
+          "$ref": "#/definitions/PRBranchInfo"
+        },
+        "body": {
+          "type": "string",
+          "x-go-name": "Body"
+        },
+        "changed_files": {
+          "format": "int64",
+          "type": "integer",
+          "x-go-name": "ChangedFiles"
+        },
+        "closed_at": {
+          "format": "date-time",
+          "type": "string",
+          "x-go-name": "Closed"
+        },
+        "comments": {
+          "format": "int64",
+          "type": "integer",
+          "x-go-name": "Comments"
+        },
+        "created_at": {
+          "format": "date-time",
+          "type": "string",
+          "x-go-name": "Created"
+        },
+        "deletions": {
+          "format": "int64",
+          "type": "integer",
+          "x-go-name": "Deletions"
+        },
+        "diff_url": {
+          "type": "string",
+          "x-go-name": "DiffURL"
+        },
+        "draft": {
+          "type": "boolean",
+          "x-go-name": "Draft"
+        },
+        "due_date": {
+          "format": "date-time",
+          "type": "string",
+          "x-go-name": "Deadline"
+        },
+        "flow": {
+          "format": "int64",
+          "type": "integer",
+          "x-go-name": "Flow"
+        },
+        "head": {
+          "$ref": "#/definitions/PRBranchInfo"
+        },
+        "html_url": {
+          "type": "string",
+          "x-go-name": "HTMLURL"
+        },
+        "id": {
+          "format": "int64",
+          "type": "integer",
+          "x-go-name": "ID"
+        },
+        "is_locked": {
+          "type": "boolean",
+          "x-go-name": "IsLocked"
+        },
+        "labels": {
+          "items": {
+            "$ref": "#/definitions/Label"
+          },
+          "type": "array",
+          "x-go-name": "Labels"
+        },
+        "merge_base": {
+          "type": "string",
+          "x-go-name": "MergeBase"
+        },
+        "merge_commit_sha": {
+          "type": "string",
+          "x-go-name": "MergedCommitID"
+        },
+        "mergeable": {
+          "type": "boolean",
+          "x-go-name": "Mergeable"
+        },
+        "merged": {
+          "type": "boolean",
+          "x-go-name": "HasMerged"
+        },
+        "merged_at": {
+          "format": "date-time",
+          "type": "string",
+          "x-go-name": "Merged"
+        },
+        "merged_by": {
+          "$ref": "#/definitions/User"
+        },
+        "milestone": {
+          "$ref": "#/definitions/Milestone"
+        },
+        "number": {
+          "format": "int64",
+          "type": "integer",
+          "x-go-name": "Index"
+        },
+        "patch_url": {
+          "type": "string",
+          "x-go-name": "PatchURL"
+        },
+        "pin_order": {
+          "format": "int64",
+          "type": "integer",
+          "x-go-name": "PinOrder"
+        },
+        "requested_reviewers": {
+          "items": {
+            "$ref": "#/definitions/User"
+          },
+          "type": "array",
+          "x-go-name": "RequestedReviewers"
+        },
+        "requested_reviewers_teams": {
+          "items": {
+            "$ref": "#/definitions/Team"
+          },
+          "type": "array",
+          "x-go-name": "RequestedReviewersTeams"
+        },
+        "review_comments": {
+          "description": "number of review comments made on the diff of a PR review (not including comments on commits or issues in a PR)",
+          "format": "int64",
+          "type": "integer",
+          "x-go-name": "ReviewComments"
+        },
+        "state": {
+          "$ref": "#/definitions/StateType"
+        },
+        "title": {
+          "type": "string",
+          "x-go-name": "Title"
+        },
+        "updated_at": {
+          "format": "date-time",
+          "type": "string",
+          "x-go-name": "Updated"
+        },
+        "url": {
+          "type": "string",
+          "x-go-name": "URL"
+        },
+        "user": {
+          "$ref": "#/definitions/User"
         }
       },
       "type": "object",
@@ -4321,6 +4587,72 @@
         ]
       }
     },
+    "/repos/{owner}/{repo}/pulls/{index}": {
+      "patch": {
+        "consumes": [
+          "application/json"
+        ],
+        "operationId": "repoEditPullRequest",
+        "parameters": [
+          {
+            "description": "owner of the repo",
+            "in": "path",
+            "name": "owner",
+            "required": true,
+            "type": "string"
+          },
+          {
+            "description": "name of the repo",
+            "in": "path",
+            "name": "repo",
+            "required": true,
+            "type": "string"
+          },
+          {
+            "description": "index of the pull request to edit",
+            "format": "int64",
+            "in": "path",
+            "name": "index",
+            "required": true,
+            "type": "integer"
+          },
+          {
+            "in": "body",
+            "name": "body",
+            "schema": {
+              "$ref": "#/definitions/EditPullRequestOption"
+            }
+          }
+        ],
+        "produces": [
+          "application/json"
+        ],
+        "responses": {
+          "201": {
+            "$ref": "#/responses/PullRequest"
+          },
+          "403": {
+            "$ref": "#/responses/forbidden"
+          },
+          "404": {
+            "$ref": "#/responses/notFound"
+          },
+          "409": {
+            "$ref": "#/responses/error"
+          },
+          "412": {
+            "$ref": "#/responses/error"
+          },
+          "422": {
+            "$ref": "#/responses/validationError"
+          }
+        },
+        "summary": "Update a pull request. If using deadline only the date will be taken into account, and time of day ignored.",
+        "tags": [
+          "repository"
+        ]
+      }
+    },
     "/repos/{owner}/{repo}/pulls/{index}/merge": {
       "post": {
         "operationId": "repoMergePullRequest",
@@ -5129,6 +5461,12 @@
           "$ref": "#/definitions/Organization"
         },
         "type": "array"
+      }
+    },
+    "PullRequest": {
+      "description": "PullRequest",
+      "schema": {
+        "$ref": "#/definitions/PullRequest"
       }
     },
     "Release": {
