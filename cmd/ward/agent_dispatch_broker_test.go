@@ -1177,6 +1177,45 @@ func TestCommentFailedDispatch(t *testing.T) {
 	}
 }
 
+// TestCommentDeferredDispatch writes the backpressure comment that supersedes a
+// stale reservation when the forwarded launch hits the global engineer cap.
+func TestCommentDeferredDispatch(t *testing.T) {
+	r := &Runner{}
+	ref := agentIssueRef{Owner: "coilyco-flight-deck", Repo: "ward", Number: 902}
+	f := &fakeLockForge{}
+	req := dispatchBrokerRequest{
+		Role: "engineer",
+		Argv: []string{"engineer", ref.String(), "--harness", "codex", "--skip-preflight"},
+	}
+	capacityErr := newEngineerCapacityError("ward agent engineer --harness codex", 10, 10)
+
+	r.commentDeferredDispatch(context.Background(), f, modeCodex, ref, req, "/tmp/ward/dispatch.log", capacityErr)
+
+	if f.unlocked != 1 {
+		t.Fatalf("unlockIssue called %d times, want 1", f.unlocked)
+	}
+	if len(f.comments) != 1 {
+		t.Fatalf("commentIssue called %d times, want 1", len(f.comments))
+	}
+	body := f.comments[0]
+	for _, want := range []string{
+		agentReservationReleaseMarker,
+		agentNeedsRedispatchMarker,
+		"WARD-DISPATCH: deferred ⏸",
+		"Attempted harness: `codex`",
+		"Attempted run: `ward agent engineer coilyco-flight-deck/ward#902 --harness codex --skip-preflight`",
+		"Container: `engineer-codex-ward-902`",
+		"Container created: no running engineer was observed.",
+		"Host log: `/tmp/ward/dispatch.log`",
+		"Capacity: `ward agent engineer --harness codex: global engineer limit is reached: 10 running (limit 10); wait for a run to finish or run `ward agent reap` for stale engineers`",
+		"Retry: the issue stays queued and the director will try again when a slot opens.",
+	} {
+		if !strings.Contains(body, want) {
+			t.Errorf("deferred comment missing %q\n%s", want, body)
+		}
+	}
+}
+
 func TestNoBrokerKeepsDirectDispatchPath(t *testing.T) {
 	t.Setenv(envDispatchBrokerAddr, "")
 	t.Setenv("WARD_READONLY", "")

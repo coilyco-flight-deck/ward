@@ -3,6 +3,7 @@ package main
 import (
 	"bytes"
 	"context"
+	"errors"
 	"fmt"
 	"io"
 	"os"
@@ -162,12 +163,33 @@ func (r *Runner) enforceEngineerContainerLimit(ctx context.Context, label string
 	}
 	limit := engineerContainerLimitDefault()
 	if count := len(names); count >= limit {
-		return fmt.Errorf(
-			"%s: global engineer limit is reached: %d running (limit %d); wait for a run to finish or run `ward agent reap` for stale engineers",
-			label, count, limit,
-		)
+		return newEngineerCapacityError(label, count, limit)
 	}
 	return nil
+}
+
+// engineerCapacityError marks a launch refusal because the global engineer cap
+// is already full. It is backpressure, not a terminal launch failure.
+type engineerCapacityError struct {
+	label   string
+	running int
+	limit   int
+}
+
+func (e *engineerCapacityError) Error() string {
+	return fmt.Sprintf(
+		"%s: global engineer limit is reached: %d running (limit %d); wait for a run to finish or run `ward agent reap` for stale engineers",
+		e.label, e.running, e.limit,
+	)
+}
+
+func newEngineerCapacityError(label string, running, limit int) error {
+	return &engineerCapacityError{label: label, running: running, limit: limit}
+}
+
+func isEngineerCapacityError(err error) bool {
+	var capErr *engineerCapacityError
+	return errors.As(err, &capErr)
 }
 
 // engineerReapState gathers one engineer's idle inputs: idle from its last log
