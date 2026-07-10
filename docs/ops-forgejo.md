@@ -22,6 +22,8 @@ doc_goal: Keep the Forgejo operator surface as one concise guide after the suppo
 - issue and PR management.
 - release and label operations.
 - the limited admin-side verbs ward exposes to itself.
+- the raw Forgejo Actions log fetch leaf, which streams plaintext run logs
+  directly over HTTP instead of shelling out to a local bridge script.
 
 The details live in the generated surface when you are working in the build
 layer. The release binary only needs the stable user-facing contract here.

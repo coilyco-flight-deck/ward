@@ -1,6 +1,7 @@
 package main
 
 import (
+	"bytes"
 	"fmt"
 	"io/fs"
 	"path"
@@ -66,7 +67,7 @@ func mountWardKdlExecFrom(root *cli.Command, src configSource, r *Runner) error 
 // mountOneWardKdlExec parses, builds, and grafts a single exec guardfile, a
 // no-op when the leaf path is already taken (hand-written command wins).
 func mountOneWardKdlExec(root *cli.Command, gfBytes []byte, r *Runner) error {
-	gf, err := execverb.Parse(gfBytes)
+	gf, err := execverb.Parse(normalizeFirstInputSugar(gfBytes))
 	if err != nil {
 		return fmt.Errorf("parse: %w", err)
 	}
@@ -99,6 +100,12 @@ func mountOneWardKdlExec(root *cli.Command, gfBytes []byte, r *Runner) error {
 	}
 	parent.Commands = append(parent.Commands, group)
 	return nil
+}
+
+// normalizeFirstInputSugar keeps the exec-dialect parser compatible with the
+// guardfile shorthand `first input`, which ward accepts as `arg0`.
+func normalizeFirstInputSugar(gfBytes []byte) []byte {
+	return bytes.ReplaceAll(gfBytes, []byte("first input"), []byte("arg0"))
 }
 
 // findOrCreateGroup returns parent's subcommand named name, creating an empty

@@ -151,6 +151,36 @@ func (c *forgejoClient) doJSON(ctx context.Context, method string, segments []st
 	return readAPIResponse(resp, method, segments, out)
 }
 
+// getRaw GETs one Forgejo endpoint and returns the body without JSON decoding.
+// Callers use this for text/plain and other opaque bodies.
+func (c *forgejoClient) getRaw(ctx context.Context, segments []string, accept string) ([]byte, error) {
+	token, err := c.apiToken(ctx)
+	if err != nil {
+		return nil, err
+	}
+	req, err := http.NewRequestWithContext(ctx, http.MethodGet, c.apiURL(segments...), nil)
+	if err != nil {
+		return nil, err
+	}
+	req.Header.Set("Authorization", "token "+token)
+	if accept != "" {
+		req.Header.Set("Accept", accept)
+	}
+	resp, err := (&http.Client{Timeout: 30 * time.Second}).Do(req)
+	if err != nil {
+		return nil, err
+	}
+	defer func() { _ = resp.Body.Close() }()
+	data, readErr := io.ReadAll(resp.Body)
+	if readErr != nil {
+		return nil, fmt.Errorf("forgejo: read %s from %s: %w", apiPath(segments), resp.Status, readErr)
+	}
+	if resp.StatusCode < 200 || resp.StatusCode >= 300 {
+		return data, fmt.Errorf("forgejo get %s returned %s after %d byte(s): %s", apiPath(segments), resp.Status, len(data), responseSnippet(data))
+	}
+	return data, nil
+}
+
 func jsonBodyReader(body any) (io.Reader, error) {
 	if body == nil {
 		return http.NoBody, nil
