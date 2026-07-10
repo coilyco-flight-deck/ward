@@ -401,6 +401,7 @@ func (r *Runner) commentFailedDispatch(ctx context.Context, cl Tracker, mode con
 	if req.Role == roleEngineer {
 		container = issueScopedContainerName(req.Role, mode, targetRepo{Owner: ref.Owner, Name: ref.Repo}, ref.Number)
 	}
+	r.stopFailedDispatchContainer(ctx, mode, ref, req.Role, container)
 	body := dispatchLaunchFailureCommentBody(mode, container, req, logPath, launchErr)
 	if err := cl.commentIssue(ctx, ref.Owner, ref.Repo, ref.Number, body); err != nil {
 		fmt.Fprintf(os.Stderr, "ward dispatch broker: could not comment failed dispatch on %s: %v\n", ref, err)
@@ -419,6 +420,7 @@ func (r *Runner) commentDeferredDispatch(ctx context.Context, cl Tracker, mode c
 	if req.Role == roleEngineer {
 		container = issueScopedContainerName(req.Role, mode, targetRepo{Owner: ref.Owner, Name: ref.Repo}, ref.Number)
 	}
+	r.stopFailedDispatchContainer(ctx, mode, ref, req.Role, container)
 	body := dispatchLaunchDeferredCommentBody(mode, container, req, logPath, launchErr)
 	if err := cl.commentIssue(ctx, ref.Owner, ref.Repo, ref.Number, body); err != nil {
 		fmt.Fprintf(os.Stderr, "ward dispatch broker: could not comment deferred dispatch on %s: %v\n", ref, err)
@@ -428,6 +430,26 @@ func (r *Runner) commentDeferredDispatch(ctx context.Context, cl Tracker, mode c
 		fmt.Fprintf(os.Stderr, "ward dispatch broker: could not unlock issue %s after deferred dispatch: %v\n", ref, err)
 	}
 	fmt.Fprintf(os.Stderr, "ward dispatch broker: released deferred dispatch reservation on %s\n", ref)
+}
+
+// stopFailedDispatchContainer best-effort stops the attempted engineer container
+// when a forwarded dispatch failed after the reservation decision was made.
+func (r *Runner) stopFailedDispatchContainer(ctx context.Context, mode containerMode, ref agentIssueRef, role, container string) {
+	if role != roleEngineer || r == nil || r.Runner == nil {
+		return
+	}
+	name := strings.TrimSpace(container)
+	if name == "" {
+		name = issueScopedContainerName(roleEngineer, mode, targetRepo{Owner: ref.Owner, Name: ref.Repo}, ref.Number)
+	}
+	if !r.containerRunning(ctx, name) {
+		return
+	}
+	if err := r.dockerExec(ctx, "stop", name); err != nil {
+		fmt.Fprintf(os.Stderr, "ward dispatch broker: could not stop failed dispatch container %s: %v\n", name, err)
+		return
+	}
+	fmt.Fprintf(os.Stderr, "ward dispatch broker: stopped failed dispatch container %s\n", name)
 }
 
 // commentDeferredReleaseAssetsDispatch writes the release-assets-not-ready comment.
