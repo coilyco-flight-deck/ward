@@ -1,8 +1,7 @@
 // GlitchTip ops surface for ward-kdl, driving the vendored glitchtip.openapi.json
 // (OpenAPI 3.1, django-ninja). GlitchTip is the self-hosted, Sentry-compatible
-// error tracker on kai-server; this surface exists to bulk-provision the ~20
-// projects + their DSNs (ward#170) instead of hand-clicking each in the UI, so
-// the Sentry retirement / DSN cutover (infrastructure#395) can proceed.
+// error tracker in the example deployment; this surface exists to bulk-provision
+// the projects + their DSNs (ward#170) instead of hand-clicking each in the UI.
 //
 // The host is opaque (the tailnet FQDN is a SecureString), so base-url resolves
 // from SSM at request time rather than sitting literal in the file - the block
@@ -20,14 +19,14 @@
 // See ../../docs/ward-kdl/ward-kdl.glitchtip.guardfile.md.
 wrap ward-kdl ops glitchtip {
     spec glitchtip.openapi.json
-    // Block form: the tailnet FQDN behind base-url is opaque (SecureString in
-    // SSM /glitchtip/base-url); spec paths already carry /api/0, so this is host-only.
+    // Block form: the tailnet FQDN behind base-url is opaque (SSM
+    // /example/glitchtip/base-url); spec paths already carry /api/0.
     base-url {
-        value ssm "/glitchtip/base-url"
+        value ssm "/example/glitchtip/base-url"
     }
     // TokenAuth = HTTP bearer. The bearer scheme sets Authorization: Bearer <token>.
     auth bearer {
-        value ssm "/glitchtip/api-token"
+        value ssm "/example/glitchtip/api-token"
     }
     // organizations (org:read): read-only. The instance's single org is created
     // by a human on first login; create/delete stay human-only and irreversible.
@@ -80,7 +79,7 @@ wrap ward-kdl ops glitchtip {
     // provision-project: the payoff. Create a project under a team, then mint its
     // DSN in one audited sequence. See describe for the slug/binding rationale.
     action provision-project {
-        describe "Create a project under a team and mint its DSN in one shot. The final call returns a ProjectKey whose `dsn.public` is what the cutover writes into /sentry-dsn/<slug>. Name the project to mirror the param slug (e.g. backend, eco-mcp-app, galaxy-gen, website, kai-server) so the cutover is a pure value-swap: GlitchTip derives the project slug from the name, so a slug-form name lands deterministically. Only `name` is bound - the other ProjectIn/ProjectKeyIn fields (slug, platform, key name) are nullable anyOf schemas that do not lower to flags; set platform in the UI if needed."
+        describe "Create a project under a team and mint its DSN in one shot. The final call returns a ProjectKey whose `dsn.public` is what the cutover writes into /sentry-dsn/<slug>. Name the project to mirror the param slug in your own deployment so the cutover is a pure value-swap: GlitchTip derives the project slug from the name, so a slug-form name lands deterministically. Only `name` is bound - the other ProjectIn/ProjectKeyIn fields (slug, platform, key name) are nullable anyOf schemas that do not lower to flags; set platform in the UI if needed."
         input organization {
             positional
             required

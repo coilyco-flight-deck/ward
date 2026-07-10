@@ -344,11 +344,11 @@ func TestSplitRepoSlug(t *testing.T) {
 func TestPartitionReplySpecs(t *testing.T) {
 	r := &Runner{}
 	specs := []replyIssueSpec{
-		{Repo: "coilyco-flight-deck/cli-guard", Title: "a", Body: "b"},
-		{Repo: "coilyco-flight-deck/ward", Title: "c", Body: "d"},
+		{Repo: "example-owner/cli-guard", Title: "a", Body: "b"},
+		{Repo: "example-owner/ward", Title: "c", Body: "d"},
 		{Repo: "evilcorp/pwn", Title: "x", Body: "y"},        // untrusted -> dropped
-		{Repo: "coilyco-flight-deck/ward#9", Title: "z"},     // malformed -> dropped
-		{Repo: "coilysiren/agentic-os", Title: "", Body: ""}, // empty title -> dropped
+		{Repo: "example-owner/ward#9", Title: "z"},           // malformed -> dropped
+		{Repo: "example-owner/agentic-os", Title: "", Body: ""}, // empty title -> dropped
 	}
 	allowed, dropped := r.partitionReplySpecs(specs)
 	if len(allowed) != 2 {

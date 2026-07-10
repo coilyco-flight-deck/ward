@@ -9,9 +9,9 @@ wrap ward-kdl ops tailscale {
     auth bearer {
         value ssm "/tailscale/api-key"
     }
-    // Scope gate: every tailnet-scoped leaf must name a coily* tailnet (widen if
+    // Scope gate: every tailnet-scoped leaf must name an example* tailnet (widen if
     // renamed). Name it explicitly - the API's "-" default trips the flag parser.
-    restrict tailnet matches coily*
+    restrict tailnet matches example*
     // devices: list and inspect. Deletion is denied - removing a device from the
     // tailnet is disruptive and human-only.
     can list devices

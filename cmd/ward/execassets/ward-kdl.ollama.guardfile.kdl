@@ -6,12 +6,12 @@
 // verbs mount. Destructive (rm, push, create, cp), the daemon (serve), and
 // registry auth (signin/signout) are intentionally not exposed. The SSM
 // prerequisite:
-//   /coilysiren/ollama/host - the tower Ollama URL, e.g. http://<host>:11434
+//   /example/ollama/host - the tower Ollama URL, e.g. http://<host>:11434
 // See ../../docs/ward-kdl/ward-kdl.ollama.guardfile.md.
 wrap ward-kdl agents ollama {
     exec ollama {
         env OLLAMA_HOST {
-            value ssm "/coilysiren/ollama/host"
+            value ssm "/example/ollama/host"
         }
     }
     can run list {

@@ -57,8 +57,7 @@ To build `ward` against your own deployment:
 2. Replace each placeholder (`git.example.com`, `/example/...`, `example*`, `example-bot`) with your deployment's values.
 3. Run `make build-ward-kdl`, then `make test`.
 
-Ward's own tracked bundle still carries the coilyco values today ([ward#441](https://forgejo.coilysiren.me/coilyco-flight-deck/ward/issues/441)).
-Since [ward#653](https://forgejo.coilysiren.me/coilyco-flight-deck/ward/issues/653) a rebuild is optional: the shipped binary can still resolve a bundle live at launch via `WARD_CONFIG_REF` for edge-mounted surfaces ([config-source.md](config-source.md)); rebuilding changes the **baked default** that core runtime and the edge fallback both use. The release-CI overlay is gone.
+Ward's tracked bundle is now the neutral starter bundle. Copy [examples/ward-specs/](../examples/ward-specs) and overlay your deployment values when you need a custom one. Since [ward#653](https://forgejo.coilysiren.me/coilyco-flight-deck/ward/issues/653) a rebuild is optional: the shipped binary can still resolve a bundle live at launch via `WARD_CONFIG_REF` for edge-mounted surfaces ([config-source.md](config-source.md)); rebuilding changes the **baked default** that core runtime and the edge fallback both use. The release-CI overlay is gone.
 
 ## See also
 

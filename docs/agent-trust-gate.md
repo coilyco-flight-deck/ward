@@ -46,8 +46,8 @@ Every dispatch surface enforces the same check, not just the engineer:
 
 The set is runtime-extensible through the config bundle, not a binary rebuild.
 Edit the selected bundle's `repo-authority` block to add or remove trusted
-owners, then point `WARD_CONFIG_REF` at that bundle. The shipped bundle keeps
-the current fleet policy, but the binary only reads the config.
+owners, then point `WARD_CONFIG_REF` at that bundle. The shipped bundle is the
+neutral starter, and the binary only reads the selected config.
 
 ## Why the plain verb gate does not catch this
 

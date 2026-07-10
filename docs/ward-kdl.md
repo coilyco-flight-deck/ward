@@ -3,7 +3,7 @@ doc_goal: One answer to what ward-kdl is, how it differs from ward, and whether 
 ---
 # ward-kdl: the build-time authoring layer
 
-**ward-kdl is the build-time authoring layer. `ward` is the run-time product that embeds what it authors. [cli-guard](https://forgejo.coilysiren.me/coilyco-flight-deck/cli-guard) is the engine both stand on.** Three roles, told apart by **when** they run. The conceptual model lives in [architecture.md](architecture.md).
+**ward-kdl is the build-time authoring layer. `ward` is the run-time product that embeds what it authors. [cli-guard](https://forgejo.coilysiren.me/coilyco-flight-deck/cli-guard) is the engine both stand on.** Three roles, told apart by **when** they run.
 
 ## Do you need to author a guardfile? (start here)
 
@@ -28,7 +28,7 @@ regenerate when the source changes (`make build-ward-kdl`). Three dialects:
 
 ## Run time: `ward` embeds the emitted surfaces
 
-`ward` (public face `warded`) is the product a user installs. It embeds the ward-kdl surfaces as `ward ops <api>`, `ward docker`, `ward agents <target>`, then adds the run-time-only layers ward-kdl never produces: `ward agent` and `ward exec`. The embeds are the baked default. `WARD_CONFIG_REF` still swaps edge-mounted surfaces at launch, but core agent/container defaults stay ward-owned ([config-source.md](config-source.md)). Exec guardfiles auto-mount at their `wrap` path ([ward-kdl-in-ward.md](ward-kdl-in-ward.md)).
+`ward` (public face `warded`) is the product a user installs. It embeds the ward-kdl surfaces as `ward ops <api>`, `ward docker`, `ward agents <target>`, then adds the run-time-only layers ward-kdl never produces: `ward agent` and `ward exec`. The embeds are the neutral baked default. `WARD_CONFIG_REF` still swaps edge-mounted surfaces at launch, but core agent/container defaults stay ward-owned and operator-specific bundle values come from the selected ref ([config-source.md](config-source.md)). Exec guardfiles auto-mount at their `wrap` path ([ward-kdl-in-ward.md](ward-kdl-in-ward.md)).
 
 ## The per-area reference docs
 

@@ -224,7 +224,7 @@ Positional arguments (2):
 
 Every verb whose path carries one of these parameters must supply a value matching a glob below, or it fails closed.
 
-- `tailnet` must match: coily*
+- `tailnet` must match: example*
 
 ## Denied operations
 

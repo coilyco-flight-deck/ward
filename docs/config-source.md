@@ -3,7 +3,7 @@ doc_goal: Pin the WARD_CONFIG_REF edge-surface config-source seam - the fs.FS th
 ---
 # The edge config source: `WARD_CONFIG_REF` and the fs.FS-at-launch seam
 
-Since [ward#653](https://forgejo.coilysiren.me/coilyco-flight-deck/ward/issues/653) (epic [ward#650](https://forgejo.coilysiren.me/coilyco-flight-deck/ward/issues/650)), ward's edge-mounted KDL surfaces compile at launch from a selected `fs.FS`, not a hard-wired embed. `cmd/ward/configsource.go` picks it. The baked agent/container defaults stay ward-owned, and the launch-selected smart-defaults bundle reads the same selection path for runtime policy. Three sites read it:
+Since [ward#653](https://forgejo.coilysiren.me/coilyco-flight-deck/ward/issues/653) (epic [ward#650](https://forgejo.coilysiren.me/coilyco-flight-deck/ward/issues/650)), ward's edge-mounted KDL surfaces compile at launch from a selected `fs.FS`, not a hard-wired embed. `cmd/ward/configsource.go` picks it. The baked agent/container defaults stay ward-owned, the tracked bundle is neutral, and operator-specific values come from the selected bundle. Three sites read it:
 
 - `ward ops forgejo` - spec guardfile + swagger lock, plus the optional admin guardfile.
 - the exec-dialect auto-mount - `ward docker`, `ward agents <tool>`, `ward ops {aws,kubectl,...}`.

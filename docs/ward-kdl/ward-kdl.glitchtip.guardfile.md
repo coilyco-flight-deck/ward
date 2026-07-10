@@ -1,8 +1,8 @@
 # ward-kdl ops glitchtip
 
-Spec-driven CLI. Every verb issues an HTTP request against the API base (resolved from ssm /glitchtip/base-url).
+Spec-driven CLI. Every verb issues an HTTP request against the API base (resolved from ssm /example/glitchtip/base-url).
 
-Authenticates with the "Authorization" header (scheme bearer), reading the token from ssm /glitchtip/api-token. The token value is never shown.
+Authenticates with the "Authorization" header (scheme bearer), reading the token from ssm /example/glitchtip/api-token. The token value is never shown.
 
 ## ward-kdl ops glitchtip organization get
 
@@ -208,7 +208,7 @@ Positional arguments (2):
 - `<issue_id>` (string)
 - `<event_id>` (string)
 
-## ward-kdl ops glitchtip action provision-project - Create a project under a team and mint its DSN in one shot. The final call returns a ProjectKey whose `dsn.public` is what the cutover writes into /sentry-dsn/<slug>. Name the project to mirror the param slug (e.g. backend, eco-mcp-app, galaxy-gen, website, kai-server) so the cutover is a pure value-swap: GlitchTip derives the project slug from the name, so a slug-form name lands deterministically. Only `name` is bound - the other ProjectIn/ProjectKeyIn fields (slug, platform, key name) are nullable anyOf schemas that do not lower to flags; set platform in the UI if needed.
+## ward-kdl ops glitchtip action provision-project - Create a project under a team and mint its DSN in one shot. The final call returns a ProjectKey whose `dsn.public` is what the cutover writes into /sentry-dsn/<slug>. Name the project to mirror the param slug in your own deployment so the cutover is a pure value-swap: GlitchTip derives the project slug from the name, so a slug-form name lands deterministically. Only `name` is bound - the other ProjectIn/ProjectKeyIn fields (slug, platform, key name) are nullable anyOf schemas that do not lower to flags; set platform in the UI if needed.
 
 Complex action. Runs 2 granted calls in order, threading $step.field data between them:
 

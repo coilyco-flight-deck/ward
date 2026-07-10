@@ -15,8 +15,8 @@ the Forgejo and GitHub release pages ([release-binaries.md](release-binaries.md)
 ## No build-time config overlay (superseded by live resolve)
 
 `publish-binaries` compiles straight from ward's tree: the released binary
-embeds the tracked `.ward/ward-kdl/` mirrors as the **baked default**, and
-personal config is resolved **live at launch** through the `WARD_CONFIG_REF`
+embeds the tracked `.ward/ward-kdl/` mirrors as the **neutral baked default**, and
+operator config is resolved **live at launch** through the `WARD_CONFIG_REF`
 config-source seam ([config-source.md](config-source.md), [ward#653](https://forgejo.coilysiren.me/coilyco-flight-deck/ward/issues/653), epic
 [ward#650](https://forgejo.coilysiren.me/coilyco-flight-deck/ward/issues/650)). The former aos `ward-specs` bundle overlay - fetched,
 sha256-verified, and copied over the embeds before the cross-compile loop

@@ -1,8 +1,8 @@
 # ward-kdl ops forgejo
 
-Spec-driven CLI. Every verb issues an HTTP request against the API base https://forgejo.coilysiren.me/api/v1.
+Spec-driven CLI. Every verb issues an HTTP request against the API base https://git.example.com/api/v1.
 
-Authenticates with the "Authorization" header (scheme header-token), reading the token from ssm /forgejo/coilyco-ops/api-token. The token value is never shown.
+Authenticates with the "Authorization" header (scheme header-token), reading the token from ssm /example/forgejo/api-token. The token value is never shown.
 
 ## ward-kdl ops forgejo repo get
 
@@ -141,7 +141,7 @@ Options (2):
 - `--page` (integer, optional): page number of results to return (1-based)
 - `--limit` (integer, optional): page size of results
 
-## ward-kdl ops forgejo org-repo create - create a repo inside an existing org (POST /orgs/{org}/repos); the org-scoped sibling of `create repo` (which targets /user/repos, a path the bot lacks write:user for). The coilyco-ops token already carries write:organization, so this is a missing verb, not a missing scope (ward#218). op pinned because a bare `create org-repo` also matches the deprecated alias. Org create/delete stay human-only; this creates repos within an org, not orgs themselves.
+## ward-kdl ops forgejo org-repo create - create a repo inside an existing org (POST /orgs/{org}/repos); the org-scoped sibling of `create repo` (which targets /user/repos, a path the bot lacks write:user for). The placeholder token can carry write:organization in your own deployment, so this is a missing verb, not a missing scope (ward#218). op pinned because a bare `create org-repo` also matches the deprecated alias. Org create/delete stay human-only; this creates repos within an org, not orgs themselves.
 
 `POST /orgs/{org}/repos`
 
@@ -181,7 +181,7 @@ Options (2):
 - `--page` (integer, optional): page number of results to return (1-based)
 - `--limit` (integer, optional): page size of results
 
-## ward-kdl ops forgejo user-repo list - list the repos a user owns (GET /users/{username}/repos). coilysiren is a user, not an org, so the route survey reaches its repos here rather than through `org-repo list`. Read-only, the survey's other half.
+## ward-kdl ops forgejo user-repo list - list the repos a user owns (GET /users/{username}/repos). The route survey reaches user-owned repos here rather than through `org-repo list`. Read-only, the survey's other half.
 
 `GET /users/{username}/repos`
 
@@ -578,7 +578,7 @@ Options (2):
 - `--since` (string, optional): if provided, only comments updated since the specified time are returned.
 - `--before` (string, optional): if provided, only comments updated before the provided time are returned.
 
-## ward-kdl ops forgejo issue-comment delete - delete a single issue comment by its comment ID (DELETE /repos/{owner}/{repo}/issues/comments/{id}). op pinned for the same reason `list issue-comment` pins issueGetComments - the bare `delete issue-comment` convention does not reach issueDeleteComment. This is the cleanup path a stale reservation road-block needed (ward#570): a `ward agent` launch that dies before its container comes up posts a release-marker comment to retract the hold, but the orphaned `ward-agent-reservation` comment itself could only be removed by hand until this leaf. {owner}-scoped by the coily* gate above; irreversible, so it is a targeted-ID delete, never a bulk sweep.
+## ward-kdl ops forgejo issue-comment delete - delete a single issue comment by its comment ID (DELETE /repos/{owner}/{repo}/issues/comments/{id}). op pinned for the same reason `list issue-comment` pins issueGetComments - the bare `delete issue-comment` convention does not reach issueDeleteComment. This is the cleanup path a stale reservation road-block needed (ward#570): a `ward agent` launch that dies before its container comes up posts a release-marker comment to retract the hold, but the orphaned `ward-agent-reservation` comment itself could only be removed by hand until this leaf. {owner}-scoped by the example* gate above; irreversible, so it is a targeted-ID delete, never a bulk sweep.
 
 `DELETE /repos/{owner}/{repo}/issues/comments/{id}`
 
@@ -748,7 +748,7 @@ Options (3):
 - `--attachment` (file, optional): attachment to upload (this parameter is incompatible with `external_url`)
 - `--external_url` (string, optional): url to external asset (this parameter is incompatible with `attachment`)
 
-## ward-kdl ops forgejo pr merge - merge a pull request (POST /repos/{owner}/{repo}/pulls/{index}/merge). Controlled director authority: ward-owned runs may land only when the issue thread says workflow: pull-requests-and-merge, the final WARD-OUTCOME is merge-ready, the review summary passed, and the PR is mergeable against the current base branch. The director records the final done outcome after the merge lands.
+## ward-kdl ops forgejo pr merge - merge a pull request (POST /repos/{owner}/{repo}/pulls/{index}/merge). Controlled director authority: ward-owned runs may land only when the issue thread says workflow: pull-requests-and-merge, the final WARD-OUTCOME is merge-ready, the review summary passed, and the PR is mergeable against the current base branch.
 
 `POST /repos/{owner}/{repo}/pulls/{index}/merge`
 
@@ -899,7 +899,7 @@ The `until` and `fail-when` expressions above are [JMESPath, Community Edition](
 
 Every verb whose path carries one of these parameters must supply a value matching a glob below, or it fails closed.
 
-- `owner` must match: coily*
+- `owner` must match: example*
 
 ## Denied operations
 

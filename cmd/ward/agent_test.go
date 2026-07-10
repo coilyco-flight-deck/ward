@@ -216,7 +216,7 @@ func TestUntrustedOwnerErr(t *testing.T) {
 	msg := r.untrustedOwnerErr("warded", "evilcorp").Error()
 	for _, want := range []string{
 		`refusing untrusted owner "evilcorp"`,
-		"coilyco-flight-deck",      // the accepted set is named
+		"example-owner",            // the accepted set is named
 		"docs/agent-trust-gate.md", // the signpost the issue asked for
 	} {
 		if !strings.Contains(msg, want) {
@@ -511,12 +511,12 @@ func TestAgentSeedPromptPullRequestFailureCommenting(t *testing.T) {
 
 func TestOwnerAllowed(t *testing.T) {
 	r := &Runner{}
-	for _, ok := range []string{"coilysiren", "coilyco-bridge", "coilyco-flight-deck", "coilyco-gaming"} {
+	for _, ok := range []string{"example-owner"} {
 		if !r.ownerAllowed(ok) {
 			t.Errorf("ownerAllowed(%q) = false, want true", ok)
 		}
 	}
-	for _, bad := range []string{"evilcorp", "", "Coilysiren"} {
+	for _, bad := range []string{"evilcorp", "", "Coilysiren", "coilyco-flight-deck"} {
 		if r.ownerAllowed(bad) {
 			t.Errorf("ownerAllowed(%q) = true, want false", bad)
 		}
