@@ -1,4 +1,5 @@
 // SigNoz ADMIN tier - the top of the read ⊂ write ⊂ admin chain (ward#338).
+// This baked copy is example-safe; the deployment bundle carries the live host/token.
 // `inherit` (cli-guard#160) composes the whole write tier (which itself composes
 // read). For most areas admin is where the irreversible `delete` verb is added,
 // but signoz is CRU-only: every delete is denied and the spec models no delete

@@ -1,11 +1,7 @@
 // ward-kdl ops forgejo-key - read ONLY the Forgejo API token from the k3s
 // external-secrets mirror through kubectl (cli-guard execverb, exec dialect).
-// This is the non-2FA path to the token: external-secrets mirrors
-// /forgejo/api-token (SSM) into the `forgejo-runner-secrets` Secret (key
-// `api-token`, namespace `forgejo`) using static AWS creds, so a scoped kubectl
-// reader over the tailnet reaches it without an AWS call or a 2FA prompt
-// (ward#386). The single `read` grant pins the ENTIRE kubectl invocation with an
-// `argv` override and then seals it against any caller expansion:
+// This baked copy is example-safe: the real deployment bundle carries the live
+// secret path and Secret name.
 //
 //   - `deny-when any-arg matches "*"` refuses every trailing positional, so the
 //     caller can never append another resource/secret name.
@@ -26,11 +22,11 @@
 wrap ward-kdl ops forgejo-key {
     exec kubectl
     can run read {
-        argv get secret forgejo-runner-secrets -n forgejo -o "go-template={{index .data \"api-token\" | base64decode}}"
+        argv get secret example-runner-secrets -n example -o "go-template={{index .data \"api-token\" | base64decode}}"
         // seal the argv: no trailing positionals, no caller flags (see header).
         deny-when any-arg matches *
         allow-flag --ward-sealed-single-key
-        describe "read ONLY the forgejo api-token from the k3s external-secrets mirror, decoded"
+        describe "read ONLY the example forgejo api-token from the k3s external-secrets mirror, decoded"
     }
     // Back-link footer (ward#309): doc-link regenerates a `## See also` section
     // into this guardfile's reference doc, so it survives every rebuild wipe-proof.

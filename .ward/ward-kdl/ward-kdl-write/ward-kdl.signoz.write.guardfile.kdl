@@ -1,4 +1,5 @@
 // SigNoz WRITE tier - the middle of the read ⊂ write ⊂ admin chain (ward#338).
+// This baked copy is example-safe; the deployment bundle carries the live host/token.
 // `inherit` (cli-guard#160) pulls in every read-tier grant (and its
 // spec/base-url/auth singletons, which this file does not restate), then layers
 // the authoring verbs on top: create/edit over dashboards and rules, plus the two

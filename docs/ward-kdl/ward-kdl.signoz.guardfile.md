@@ -1,8 +1,8 @@
 # ward-kdl ops signoz
 
-Spec-driven CLI. Every verb issues an HTTP request against the API base (resolved from ssm /coilysiren/signoz-ser8/base-url).
+Spec-driven CLI. Every verb issues an HTTP request against the API base (resolved from ssm /example/signoz/base-url).
 
-Authenticates with the "SIGNOZ-API-KEY" header (scheme header-token), reading the token from ssm /coilysiren/signoz-ser8/api-token. The token value is never shown.
+Authenticates with the "SIGNOZ-API-KEY" header (scheme header-token), reading the token from ssm /example/signoz/api-token. The token value is never shown.
 
 ## ward-kdl ops signoz query-range create - execute a v3 range query (POST /api/v3/query_range). A POST that READS telemetry - nothing is created. Supply the builder/clickhouse/promql tree via --body-file; --start/--end (epoch ms) and --step are convenience flags.
 

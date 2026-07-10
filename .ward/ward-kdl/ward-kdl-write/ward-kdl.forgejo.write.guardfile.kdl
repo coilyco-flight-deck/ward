@@ -21,7 +21,7 @@ wrap ward-kdl-write ops forgejo {
     inherit "../ward-kdl-read/ward-kdl.forgejo.read.guardfile.kdl"
     // Scope gate: re-declared per tier (harmless dedup) so it reads present in
     // this tier's own guardfile and generated doc.
-    restrict owner matches coily*
+    restrict owner matches example*
     // Auth override (ward#331): the in-container broker shells this binary where
     // there is no SSM, so write reads its token from env. See ../../../docs/broker.md.
     auth header-token {
@@ -35,7 +35,7 @@ wrap ward-kdl-write ops forgejo {
     can edit repo
     can create org-repo {
         op createOrgRepo
-        describe "create a repo inside an existing org (POST /orgs/{org}/repos); the org-scoped sibling of `create repo` (which targets /user/repos, a path the bot lacks write:user for). The coilyco-ops token already carries write:organization, so this is a missing verb, not a missing scope (ward#218). op pinned because a bare `create org-repo` also matches the deprecated alias. Org create/delete stay human-only; this creates repos within an org, not orgs themselves."
+        describe "create a repo inside an existing org (POST /orgs/{org}/repos); the org-scoped sibling of `create repo` (which targets /user/repos, a path the bot lacks write:user for). The example deployment token already carries write:organization, so this is a missing verb, not a missing scope. op pinned because a bare `create org-repo` also matches the deprecated alias. Org create/delete stay human-only; this creates repos within an org, not orgs themselves."
     }
     // org-labels: create/edit (mint/rename the org taxonomy). Repo-level label
     // create/edit stay policy-disabled by the inherited read-tier `never`s (ward#107).

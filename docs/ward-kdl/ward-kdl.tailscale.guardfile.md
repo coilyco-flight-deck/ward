@@ -1,8 +1,8 @@
 # ward-kdl ops tailscale
 
-Spec-driven CLI. Every verb issues an HTTP request against the API base https://api.tailscale.com/api/v2.
+Spec-driven CLI. Every verb issues an HTTP request against the API base https://example.tailscale.invalid/api/v2.
 
-Authenticates with the "Authorization" header (scheme bearer), reading the token from ssm /tailscale/api-key. The token value is never shown.
+Authenticates with the "Authorization" header (scheme bearer), reading the token from ssm /example/tailscale/api-key. The token value is never shown.
 
 ## ward-kdl ops tailscale devices list
 
@@ -224,7 +224,7 @@ Positional arguments (2):
 
 Every verb whose path carries one of these parameters must supply a value matching a glob below, or it fails closed.
 
-- `tailnet` must match: coily*
+- `tailnet` must match: example*
 
 ## Denied operations
 

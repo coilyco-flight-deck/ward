@@ -38,20 +38,12 @@ func TestSmartDefaultsFromBundleSource(t *testing.T) {
     container-read-only-extra-repo-ttl "48h"
     container-reap-keep "12"
     agent-workflow default="direct-main" {
-        repo "coilyco-flight-deck/ward" workflow="pull-requests-and-merge"
     }
 }
 
 repo-authority default=forgejo {
-    trusted-owner "coilysiren"
-    trusted-owner "coilyco-bridge"
-    trusted-owner "coilyco-flight-deck"
-    trusted-owner "coilyco-gaming"
-
-    repo "coilysiren/*" forge=github
-    repo "coilyco-bridge/*" forge=forgejo
-    repo "coilyco-flight-deck/*" forge=forgejo
-    repo "coilyco-gaming/*" forge=forgejo
+    trusted-owner "example-owner"
+    repo "example-owner/*" forge=github
 }`
 	if err := os.WriteFile(filepath.Join(dir, bundleDefaultsKDLPath), []byte(body), 0o644); err != nil {
 		t.Fatalf("write defaults bundle: %v", err)
@@ -78,8 +70,8 @@ repo-authority default=forgejo {
 	if defs.agentWorkflowDefault != workflowDirectToMain {
 		t.Errorf("bundle workflow default = %q, want direct-main", defs.agentWorkflowDefault)
 	}
-	if defs.agentWorkflowRepos["coilyco-flight-deck/ward"] != workflowPullRequestAndMerge {
-		t.Errorf("bundle ward workflow = %q, want pull-requests-and-merge", defs.agentWorkflowRepos["coilyco-flight-deck/ward"])
+	if len(defs.agentWorkflowRepos) != 0 {
+		t.Errorf("bundle workflow overrides = %v, want none in the neutral starter", defs.agentWorkflowRepos)
 	}
 }
 

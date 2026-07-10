@@ -765,7 +765,7 @@ func TestRunAgentAdvisorFreeformStaysLocal(t *testing.T) {
 	}
 
 	cmd := parseCommandForTest(t, agentAdvisorFlags(), []string{
-		"advisor", "how is the audit log written?", "--repo", "coilyco-flight-deck/ward", "--print",
+		"advisor", "how is the audit log written?", "--repo", "example-owner/ward", "--print",
 	})
 	if err := (&Runner{}).runAgentAdvisor(t.Context(), cmd, modeCodex); err != nil {
 		t.Fatalf("runAgentAdvisor freeform path: %v", err)
