@@ -73,14 +73,9 @@ const (
 	topologyGeneratedKDLPath = "topologyassets/topology.generated.kdl"
 )
 
-// Bundle-layout paths: the flat .ward bundle a ref points at (aos#332's landed
-// layout. See docs/config-source.md.
+// Bundle-layout paths: the flat .ward bundle a ref points at.
+// See docs/config-source.md.
 const (
-	// The self-contained compatibility monolith, mirroring the baked source's
-	// flattened opsForgejoGuardfilePath. ward loads this via byte-Parse and has
-	// no ParseFile path, so the runtime surface must not `inherit` across files.
-	// The read/write/admin tier guardfiles are role-facing (bound in roles.kdl),
-	// not the ops CLI surface. See docs/ward-specs.md, docs/config-source.md.
 	bundleForgejoGuardfilePath = "guardfile.forgejo.kdl"
 	bundleForgejoSpecLockPath  = "forgejo.swagger.lock.json"
 	bundleAgentsKDLPath        = "agents.kdl"
@@ -212,14 +207,11 @@ func selectedConfigRef() (string, error) {
 	if !ok {
 		return "", nil
 	}
-	if os.Getenv("WARD_READONLY") == "1" {
-		reconstructed, err := coilycoConfigRefFromTargetRepo(target, resolveInvokeCWD())
-		if err != nil {
-			return "", fmt.Errorf("%s: active config source is %s; expected WARD_CONFIG_REF to point at the coilyco bundle for target %s (and could not reconstruct it from target metadata: %w)", wardConfigRefEnv, configSourceSummary(ref, src), target.slug(), err)
-		}
-		return reconstructed, nil
+	reconstructed, err := coilycoConfigRefFromTargetRepo(target, resolveInvokeCWD())
+	if err != nil {
+		return "", fmt.Errorf("%s: active config source is %s; expected WARD_CONFIG_REF to point at the coilyco bundle for target %s (and could not reconstruct it from target metadata: %w)", wardConfigRefEnv, configSourceSummary(ref, src), target.slug(), err)
 	}
-	return "", fmt.Errorf("%s: active config source is %s; expected WARD_CONFIG_REF to point at the coilyco bundle for target %s", wardConfigRefEnv, configSourceSummary(ref, src), target.slug())
+	return reconstructed, nil
 }
 
 func configSourceSummary(rawRef string, src configSource) string {
