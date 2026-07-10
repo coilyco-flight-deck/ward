@@ -1435,16 +1435,43 @@ func TestNotifySalvageCarriedIssueRepoensAndComments(t *testing.T) {
 	if f.created != 0 {
 		t.Errorf("carried salvage must NOT file a standalone issue, got created=%d", f.created)
 	}
-	if visible := visibleLinesBeforeDetails(f.commentBody); visible != "WARD-REAP: reopened 🛑" {
+	if visible := visibleLinesBeforeDetails(f.commentBody); visible != "WARD-OUTCOME: submitted" {
 		t.Fatalf("salvage visible line = %q\n%s", visible, f.commentBody)
 	}
-	for _, want := range []string{"WARD-REAP: reopened", "ward-salvage/ward-abc123", string(reasonConflict), "git fetch", "/pulls/716", "<details><summary>salvage details</summary>"} {
+	for _, want := range []string{"WARD-OUTCOME: submitted", "ward-salvage/ward-abc123", string(reasonConflict), "git fetch", "/pulls/716", "<details><summary>salvage details</summary>"} {
 		if !strings.Contains(f.commentBody, want) {
 			t.Errorf("carried-issue comment missing %q\n---\n%s", want, f.commentBody)
 		}
 	}
 	if !strings.Contains(f.prBody, "closes #518") {
 		t.Errorf("salvage PR body must carry the closing ref for the carried issue:\n%s", f.prBody)
+	}
+}
+
+// TestNotifySalvageCarriedIssueWithoutPullRequestBlocks covers the no-PR residual
+// case: the carried issue still gets a machine-readable outcome and the branch path.
+func TestNotifySalvageCarriedIssueWithoutPullRequestBlocks(t *testing.T) {
+	f := &fakeSalvageNotifier{prEnabled: false}
+	env := reapEnv{Owner: "coilyco-flight-deck", Name: "ward", Base: "https://forgejo.coilysiren.me", Mode: "codex", Issue: 1039}
+	report := salvageReport{
+		Repo:                   env.repo(),
+		Mode:                   "codex",
+		Branch:                 "ward-salvage/ward-abc123",
+		Reason:                 reasonConflict,
+		Base:                   env.Base,
+		Issue:                  1039,
+		PullRequestUnavailable: "pull requests are disabled for this repo",
+	}
+	if err := notifySalvage(t.Context(), f, env, report); err != nil {
+		t.Fatalf("notifySalvage: %v", err)
+	}
+	if visible := visibleLinesBeforeDetails(f.commentBody); visible != "WARD-OUTCOME: blocked 🛑" {
+		t.Fatalf("salvage visible line = %q\n%s", visible, f.commentBody)
+	}
+	for _, want := range []string{"pull requests are disabled for this repo", "ward-salvage/ward-abc123", string(reasonConflict)} {
+		if !strings.Contains(f.commentBody, want) {
+			t.Errorf("blocked salvage comment missing %q\n---\n%s", want, f.commentBody)
+		}
 	}
 }
 

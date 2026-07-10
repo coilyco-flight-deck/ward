@@ -447,6 +447,9 @@ func TestResolveDispatchBrokerLogsSourceFallsBackToArchive(t *testing.T) {
 	if got := src.Path; got != filepath.Join(archiveDir, drainConsoleFile) {
 		t.Errorf("archive path = %q, want %q", got, filepath.Join(archiveDir, drainConsoleFile))
 	}
+	if got := src.String(); !strings.Contains(got, "(outcome unknown)") {
+		t.Fatalf("archive source string = %q, want the final outcome marker", got)
+	}
 	var out bytes.Buffer
 	if err := r.streamAgentLogsSource(t.Context(), src, &out); err != nil {
 		t.Fatalf("stream archive source: %v", err)
