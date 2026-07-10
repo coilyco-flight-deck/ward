@@ -714,13 +714,22 @@ func (r *Runner) maybeForwardAgentDispatchToHostBroker(ctx context.Context, c *c
 		Requester: strings.TrimSpace(os.Getenv("WARD_CONTAINER_NAME")),
 		Token:     strings.TrimSpace(os.Getenv(envDispatchBrokerToken)),
 	}
-	if err := sendDispatchBrokerLaunchRequest(ctx, addr, req); err != nil {
+	logPath, err := sendDispatchBrokerLaunchRequest(ctx, addr, req)
+	if err != nil {
+		if logPath != "" {
+			return true, fmt.Errorf("%w (dispatch log: %s)", err, logPath)
+		}
 		return true, err
 	}
 	displayArgv := redactDispatchBrokerArgv(argv)
 	// This line is captured as tool output by the surface agent, not written to the
 	// raw TTY, so naming the host-side run log here is safe and aids discovery.
-	fmt.Fprintf(os.Stderr, "ward dispatch broker: forwarded `ward agent %s` to host ward\n", displayArgv)
+	if logPath != "" {
+		fmt.Fprintf(os.Stderr, "ward dispatch broker: forwarded `ward agent %s` to host ward (run output on the host at %s)\n",
+			displayArgv, logPath)
+	} else {
+		fmt.Fprintf(os.Stderr, "ward dispatch broker: forwarded `ward agent %s` to host ward\n", displayArgv)
+	}
 	return true, nil
 }
 
@@ -862,19 +871,51 @@ func sendDispatchBrokerRequest(ctx context.Context, addr string, req dispatchBro
 	return resp.LogPath, nil
 }
 
-func sendDispatchBrokerLaunchRequest(ctx context.Context, addr string, req dispatchBrokerRequest) error {
+func sendDispatchBrokerLaunchRequest(ctx context.Context, addr string, req dispatchBrokerRequest) (string, error) {
 	var d net.Dialer
 	conn, err := d.DialContext(ctx, "tcp", addr)
 	if err != nil {
-		return fmt.Errorf("%w: the host dispatch broker did not answer at %s "+
+		return "", fmt.Errorf("%w: the host dispatch broker did not answer at %s "+
 			"(WARD_DISPATCH_BROKER_ADDR, TCP over the docker gateway - see ward#382): %w",
 			errDispatchBrokerUnavailable, addr, err)
 	}
-	defer func() { _ = conn.Close() }()
 	if err := json.NewEncoder(conn).Encode(req); err != nil {
-		return fmt.Errorf("dispatch broker: send request: %w", err)
+		_ = conn.Close()
+		return "", fmt.Errorf("dispatch broker: send request: %w", err)
 	}
-	return nil
+	type responseResult struct {
+		resp dispatchBrokerResponse
+		err  error
+	}
+	ch := make(chan responseResult, 1)
+	go func() {
+		defer func() { _ = conn.Close() }()
+		var resp dispatchBrokerResponse
+		if err := json.NewDecoder(conn).Decode(&resp); err != nil {
+			ch <- responseResult{err: err}
+			return
+		}
+		ch <- responseResult{resp: resp}
+	}()
+	select {
+	case <-ctx.Done():
+		return "", ctx.Err()
+	case result := <-ch:
+		if result.err != nil {
+			return "", fmt.Errorf("dispatch broker: read response from %s: %w", addr, result.err)
+		}
+		if !result.resp.OK {
+			if isCredentialBrokerReply(result.resp.Error) {
+				return "", fmt.Errorf("%w: %s answered as the credential broker, not the dispatch broker "+
+					"(WARD_DISPATCH_BROKER_ADDR points at the wrong broker - see ward#382)",
+					errDispatchBrokerUnavailable, addr)
+			}
+			return result.resp.LogPath, fmt.Errorf("dispatch broker: %s", result.resp.Error)
+		}
+		return result.resp.LogPath, nil
+	case <-time.After(100 * time.Millisecond):
+		return "", nil
+	}
 }
 
 // sendDispatchBrokerLogsRequest sends a logs request and returns the source + body
