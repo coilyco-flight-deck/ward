@@ -1035,18 +1035,25 @@ func (r *Runner) warmSubstrateRepo(ctx context.Context, e bootstrapEnv, owner, n
 // prepareConfigBundleCache pre-creates the per-container config-bundle dir while
 // bootstrap runs as root, so WARD_CONFIG_REF caches there without poisoning siblings.
 func prepareConfigBundleCache(e bootstrapEnv) {
-	dir := filepath.Join(e.GitCache, "config-bundle")
-	if instance := strings.TrimSpace(e.Container); instance != "" {
-		dir = filepath.Join(dir, instance)
-	} else if uid := strings.TrimSpace(e.AgentUID); uid != "" {
-		dir = filepath.Join(dir, uid)
+	getenv := func(key string) string {
+		switch key {
+		case "WARD_CONTAINER":
+			return "1"
+		case "WARD_GITCACHE":
+			return e.GitCache
+		case "WARD_CONTAINER_NAME":
+			return e.Container
+		case "WARD_AGENT_UID":
+			return e.AgentUID
+		default:
+			return ""
+		}
 	}
-	if err := os.MkdirAll(dir, 0o777); err != nil {
-		blog("config-bundle cache: %v (in-container refs fall back to the home cache)", err)
+	dir, err := configBundleCacheRoot(getenv)
+	if err != nil {
+		blog("config-bundle cache: %v", err)
 		return
 	}
-	// Chmod past the umask: the agent user, not root, writes here.
-	_ = os.Chmod(dir, 0o777)
 	blog("config-bundle cache ready at %s", dir)
 }
 

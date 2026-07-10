@@ -3,6 +3,7 @@ package main
 import (
 	"os"
 	"path/filepath"
+	"runtime"
 	"strings"
 	"testing"
 	"time"
@@ -113,6 +114,19 @@ func TestConfigBundleCacheRoot(t *testing.T) {
 	got, err = configBundleCacheRoot(env(map[string]string{"WARD_CONTAINER": "1", "WARD_GITCACHE": ro}))
 	if err != nil || !strings.HasSuffix(got, filepath.Join("ward", "config-bundle")) {
 		t.Errorf("unwritable-volume root = %q (%v), want the home-cache fallback", got, err)
+	}
+	if runtime.GOOS != "windows" {
+		locked := filepath.Join(t.TempDir(), "locked")
+		if err := os.MkdirAll(locked, 0o755); err != nil {
+			t.Fatal(err)
+		}
+		if err := os.Chmod(locked, 0o555); err != nil {
+			t.Fatal(err)
+		}
+		got, err = configBundleCacheRoot(env(map[string]string{"WARD_CONTAINER": "1", "WARD_GITCACHE": locked}))
+		if err != nil || !strings.HasSuffix(got, filepath.Join("ward", "config-bundle")) {
+			t.Errorf("read-only container root = %q (%v), want the home-cache fallback", got, err)
+		}
 	}
 }
 
