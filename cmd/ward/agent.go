@@ -1303,19 +1303,8 @@ func (r *Runner) runAgentWork(ctx context.Context, c *cli.Command, mode containe
 	if err != nil {
 		return err
 	}
-	// Warn at host dispatch if ward is stale; a detached run buries the only
-	// `ward version` signal in a container log (ward#143). --print stays offline.
-	if !c.Bool("print") {
-		if preflightSkipped(c) {
-			writef(os.Stderr, "%s: skipping ward update reminder (--skip-preflight)\n", label)
-		} else {
-			r.maybeWarnWardOutdated(ctx)
-		}
-	}
-	if !w.ReviewGate && !c.Bool("print") {
-		if _, skipReason := reviewGateDecision(c, surface, mode, w.Ref); skipReason != "" {
-			r.writeSkippedReviewSummaryHandoff(mode, skipReason)
-		}
+	if err := r.runAgentWorkPreLaunchChecks(ctx, c, mode, surface, label, w); err != nil {
+		return err
 	}
 	workerName := issueScopedContainerName(roleEngineer, mode, targetRepo{Owner: w.Ref.Owner, Name: w.Ref.Repo}, w.Ref.Number)
 	if err := r.precheckLiveIssueWorker(ctx, label, w.Ref, workerName, overrideReservation(c)); err != nil {
@@ -1343,6 +1332,29 @@ func (r *Runner) runAgentWork(ctx context.Context, c *cli.Command, mode containe
 		justification = read
 	}
 	return r.launchAgentContainer(ctx, c, mode, surface, w, justification)
+}
+
+func (r *Runner) runAgentWorkPreLaunchChecks(ctx context.Context, c *cli.Command, mode containerMode, surface, label string, w resolvedWork) error {
+	if c.Bool("print") {
+		return nil
+	}
+	// Warn at host dispatch if ward is stale; a detached run buries the only
+	// `ward version` signal in a container log (ward#143).
+	if preflightSkipped(c) {
+		writef(os.Stderr, "%s: skipping ward update reminder (--skip-preflight)\n", label)
+	} else {
+		r.maybeWarnWardOutdated(ctx)
+	}
+	if !w.ReviewGate {
+		r.maybeWriteSkippedReviewSummaryHandoff(mode, c, surface, w.Ref)
+	}
+	return r.maybeLaunchOpenPRBackpressure(ctx, label, w.Ref.repoSlug(), c, w)
+}
+
+func (r *Runner) maybeWriteSkippedReviewSummaryHandoff(mode containerMode, c *cli.Command, surface string, ref agentIssueRef) {
+	if _, skipReason := reviewGateDecision(c, surface, mode, ref); skipReason != "" {
+		r.writeSkippedReviewSummaryHandoff(mode, skipReason)
+	}
 }
 
 // preflightTimeout caps the pre-flight read so a wedged agent can't hold the
@@ -2001,6 +2013,9 @@ func (r *Runner) launchAgentContainer(ctx context.Context, c *cli.Command, mode 
 		}
 	}
 
+	if err := r.maybeLaunchOpenPRBackpressure(ctx, label, w.Ref.repoSlug(), c, w); err != nil {
+		return err
+	}
 	if !c.Bool("print") {
 		if err := r.enforceEngineerContainerLimit(ctx, label, c.Bool("override-capacity")); err != nil {
 			return err

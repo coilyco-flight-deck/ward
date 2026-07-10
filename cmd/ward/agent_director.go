@@ -1402,7 +1402,7 @@ func backlogDispatchContainerName(dispatch dispatchEngineer, ref agentIssueRef) 
 // directorDispatchDisposition classifies a dispatch error for the ledger (ward#352,
 // ward#524, ward#527). See docs/agent-director-dispatch.md.
 func directorDispatchDisposition(err error) (state string, outcome *backlogOutcome, deferred bool) {
-	if isEngineerCapacityError(err) {
+	if isEngineerCapacityError(err) || isOpenPRBackpressureError(err) {
 		return "queued", &backlogOutcome{Status: "deferred", Text: backlogTruncate(err.Error(), 300)}, true
 	}
 	if isDispatchDecline(err) {
