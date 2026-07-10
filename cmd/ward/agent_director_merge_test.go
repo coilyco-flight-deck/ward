@@ -394,7 +394,36 @@ func TestDirectorMergeEligibilityRejectsStaleRequiredStatus(t *testing.T) {
 	}
 }
 
+func TestDirectorMergeEligibilityFallsBackWhenBaseBranchHasNoRequiredStatusContexts(t *testing.T) {
+	cl, pr := directorMergeEligibilityFixtureWithBranchProtection(t, "abc123", map[string]string{
+		"test / test (pull_request)": "success",
+	}, "success", false, nil)
+	allowed, reason, linked, meta := directorMergeEligibility(context.Background(), "coilyco-flight-deck", "ward", pr, cl, cl)
+	if !allowed || reason != "" || linked != 729 {
+		t.Fatalf("fallback PR = %v %q %d, want true/\"\"/729", allowed, reason, linked)
+	}
+	if meta.Status.HeadSHA != "abc123" || meta.Status.State != "success" || len(meta.Status.Checks) != 2 {
+		t.Fatalf("fallback status = %+v, want live status summary", meta.Status)
+	}
+	want := map[string]bool{
+		"ci/build=success":                   false,
+		"test / test (pull_request)=success": false,
+	}
+	for _, got := range meta.Status.Checks {
+		want[got.Context+"="+got.State] = true
+	}
+	for key, seen := range want {
+		if !seen {
+			t.Fatalf("fallback status missing %s in %+v", key, meta.Status.Checks)
+		}
+	}
+}
+
 func directorMergeEligibilityFixture(t *testing.T, headSHA string, contexts map[string]string, combinedState string) (*forgejoClient, directorPullRequest) {
+	return directorMergeEligibilityFixtureWithBranchProtection(t, headSHA, contexts, combinedState, true, []string{"ci/build", "ci/test"})
+}
+
+func directorMergeEligibilityFixtureWithBranchProtection(t *testing.T, headSHA string, contexts map[string]string, combinedState string, enableStatusCheck bool, branchContexts []string) (*forgejoClient, directorPullRequest) {
 	t.Helper()
 	if combinedState == "" {
 		combinedState = "success"
@@ -465,11 +494,15 @@ esac
 				},
 			})
 		case "/api/v1/repos/coilyco-flight-deck/ward/branches/main":
+			contexts := branchContexts
+			if contexts == nil {
+				contexts = []string{}
+			}
 			_ = json.NewEncoder(w).Encode(map[string]any{
 				"name":                  "main",
 				"protected":             true,
-				"enable_status_check":   true,
-				"status_check_contexts": []string{"ci/build", "ci/test"},
+				"enable_status_check":   enableStatusCheck,
+				"status_check_contexts": contexts,
 			})
 		case "/api/v1/repos/coilyco-flight-deck/ward/commits/" + headSHA + "/status":
 			statuses := make([]map[string]any, 0, len(contexts))

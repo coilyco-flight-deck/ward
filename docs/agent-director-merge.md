@@ -19,6 +19,10 @@ issue thread says:
 - the current PR head SHA still has the required branch status checks right
   before the merge call
 
+If the base branch has no declared required status contexts, the director falls
+back to the live status contexts reported on the PR head SHA instead of treating
+the queue as a dead end.
+
 That keeps `pull-requests` human-gated. The director does not gain a general
 PR-review or blanket repo-write surface here. A conflicting PR is not done,
 even if CI is green and the issue thread says merge-ready. After the merge
