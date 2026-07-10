@@ -132,8 +132,8 @@ func TestBuildForgejoOpsFromRealBundle(t *testing.T) {
 	if err != nil {
 		t.Fatalf("buildForgejoOpsFrom(baked): %v", err)
 	}
-	if commandNamed(baked.Commands, "admin") == nil {
-		t.Error("baked build lost the admin graft")
+	if commandNamed(baked.Commands, "admin") != nil {
+		t.Error("baked build still mounted the removed admin surface")
 	}
 }
 
