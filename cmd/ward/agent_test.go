@@ -1054,7 +1054,7 @@ func commandHasFlag(cmd *cli.Command, name string) bool {
 }
 
 // A goose headless plan threads both WARD_MODE=goose and WARD_HEADLESS=1 so the
-// entrypoint picks the `goose run -t` branch.
+// entrypoint picks the `goose run --no-session -t` branch.
 func TestGooseHeadlessPlanEnv(t *testing.T) {
 	p := sampleUpPlan()
 	p.Mode = modeGoose
