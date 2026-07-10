@@ -1710,12 +1710,6 @@ func (r *Runner) launchAgentContainer(ctx context.Context, c *cli.Command, mode 
 		}
 	}
 
-	if !c.Bool("print") {
-		if err := r.enforceEngineerContainerLimit(ctx, label); err != nil {
-			return err
-		}
-	}
-
 	// A detached run leaves its assets for the next sweep (it cannot delete the
 	// still-mounted dir on return), so the cleanup hook is discarded.
 	assetsDir, _, err := writeContainerAssets(ctx, r, c.String("ward-source"), strings.TrimSpace(c.String("ward-version")))
@@ -1734,80 +1728,86 @@ func (r *Runner) launchAgentContainer(ctx context.Context, c *cli.Command, mode 
 		return printAgentPlan(c, plan, ref, title, seed, surface)
 	}
 
-	// Echo the issue title so the operator sees *what* this run carries, not just the
-	// opaque ref number - the one line saying the right issue is in flight (ward#307).
-	if line := carryingLine(label, ref, title); line != "" {
-		writeln(os.Stderr, line)
-	}
-	// Dump the seed for a killed run's auditable task record (ward#400), unless
-	// --quiet-seed (director auto-dispatch shares this console; ward#519).
-	maybeDumpSeed(os.Stderr, seed, c.Bool("quiet-seed"))
-
-	// Reserve the issue so another run won't redo it. Fold the dynamic seed context into
-	// the comment so a pre-launch-gate death self-documents on the thread (ward#609).
-	seedCtx := buildReservationSeedContext(w, plan, time.Now().UTC())
-	release, err := r.reserveIssue(ctx, label, mode, ref, plan.Name, plan.Branch, justification, seedCtx, c.Bool("force"), plan.SkipPreflight)
-	if err != nil {
-		return err
-	}
-	// Arm a rollback: a launch that fails before the container is confirmed up must retract
-	// BOTH reservation halves, not orphan the hold + forge road-block (ward#570, docs).
-	launched := false
-	defer func() {
-		if !launched {
-			release()
-		}
-	}()
-
-	// Ready the ward-tailnet network before the sweep + pull burn, so a host missing it
-	// gets it created here (idempotent), not a raw 125 mid-launch (ward#597).
-	if plan.SkipPreflight {
-		logLaunchPreflightSkips(label, plan, c.Bool("no-pull"))
-	} else {
-		if err := r.preflightTailnet(ctx, plan); err != nil {
+	return r.withEngineerCapacityLock(func() error {
+		if err := r.enforceEngineerContainerLimit(ctx, label); err != nil {
 			return err
 		}
-	}
 
-	// Reclaim dead containers' writable layers before adding one more, so the
-	// agent fleet can't exhaust the docker disk and wedge new launches (ward#272).
-	r.sweepStaleContainers(ctx)
+		// Echo the issue title so the operator sees *what* this run carries, not just the
+		// opaque ref number - the one line saying the right issue is in flight (ward#307).
+		if line := carryingLine(label, ref, title); line != "" {
+			writeln(os.Stderr, line)
+		}
+		// Dump the seed for a killed run's auditable task record (ward#400), unless
+		// --quiet-seed (director auto-dispatch shares this console; ward#519).
+		maybeDumpSeed(os.Stderr, seed, c.Bool("quiet-seed"))
 
-	// The engineer name is deterministic, so an exited same-issue corpse in the
-	// keep-N window would block the name; clear it for reuse (ward#364).
-	r.clearExitedContainer(ctx, plan.Name)
-	switch {
-	case plan.SkipPreflight && !c.Bool("no-pull"):
-		logLaunchImageDecision(label, plan, c.Bool("no-pull"))
-	case !plan.SkipPreflight && !c.Bool("no-pull"):
-		logLaunchImageDecision(label, plan, c.Bool("no-pull"))
-		r.pullAgentImage(ctx, plan, label)
-	default:
-		writef(os.Stderr, "%s: image pull skipped for %s (--no-pull)\n", label, plan.Image)
-	}
-	// Resolve host creds (agent + aws export-inject) before the env-file; a good AWS export
-	// drops the ~/.aws mount for injected AWS_* env (ward#586).
-	launchCreds := r.resolveLaunchCreds(ctx, &plan, mode)
-	envFile, cleanupEnv, err := r.writeTokenEnvFile(ctx, planDispatchTarget(plan), plan.Forge, launchCreds)
-	if err != nil {
-		return err
-	}
-	writef(os.Stderr, "%s: wrote launch env file for %s\n", label, ref)
-	defer cleanupEnv()
-	if err := r.createAgentContainer(ctx, plan, envFile); err != nil {
-		return err
-	}
-	// The container is up: disarm the reservation rollback so it now lives for the
-	// container's lifetime (ward#570).
-	launched = true
-	// Spawn the detached drain-on-exit waiter so the run drains the moment it exits,
-	// not only at keep-10 eviction (ward#510; docs/agent-observability.md).
-	if !inContainer() {
-		// In-container dispatch skips it - the waiter would die with its own reaped
-		// container - and leans on the next sweep's idempotent drain instead.
-		r.spawnDrainWaiter(plan.Name)
-	}
-	return nil
+		// Reserve the issue so another run won't redo it. Fold the dynamic seed context into
+		// the comment so a pre-launch-gate death self-documents on the thread (ward#609).
+		seedCtx := buildReservationSeedContext(w, plan, time.Now().UTC())
+		release, err := r.reserveIssue(ctx, label, mode, ref, plan.Name, plan.Branch, justification, seedCtx, c.Bool("force"), plan.SkipPreflight)
+		if err != nil {
+			return err
+		}
+		// Arm a rollback: a launch that fails before the container is confirmed up must retract
+		// BOTH reservation halves, not orphan the hold + forge road-block (ward#570, docs).
+		launched := false
+		defer func() {
+			if !launched {
+				release()
+			}
+		}()
+
+		// Ready the ward-tailnet network before the sweep + pull burn, so a host missing it
+		// gets it created here (idempotent), not a raw 125 mid-launch (ward#597).
+		if plan.SkipPreflight {
+			logLaunchPreflightSkips(label, plan, c.Bool("no-pull"))
+		} else {
+			if err := r.preflightTailnet(ctx, plan); err != nil {
+				return err
+			}
+		}
+
+		// Reclaim dead containers' writable layers before adding one more, so the
+		// agent fleet can't exhaust the docker disk and wedge new launches (ward#272).
+		r.sweepStaleContainers(ctx)
+
+		// The engineer name is deterministic, so an exited same-issue corpse in the
+		// keep-N window would block the name; clear it for reuse (ward#364).
+		r.clearExitedContainer(ctx, plan.Name)
+		switch {
+		case plan.SkipPreflight && !c.Bool("no-pull"):
+			logLaunchImageDecision(label, plan, c.Bool("no-pull"))
+		case !plan.SkipPreflight && !c.Bool("no-pull"):
+			logLaunchImageDecision(label, plan, c.Bool("no-pull"))
+			r.pullAgentImage(ctx, plan, label)
+		default:
+			writef(os.Stderr, "%s: image pull skipped for %s (--no-pull)\n", label, plan.Image)
+		}
+		// Resolve host creds (agent + aws export-inject) before the env-file; a good AWS export
+		// drops the ~/.aws mount for injected AWS_* env (ward#586).
+		launchCreds := r.resolveLaunchCreds(ctx, &plan, mode)
+		envFile, cleanupEnv, err := r.writeTokenEnvFile(ctx, planDispatchTarget(plan), plan.Forge, launchCreds)
+		if err != nil {
+			return err
+		}
+		writef(os.Stderr, "%s: wrote launch env file for %s\n", label, ref)
+		defer cleanupEnv()
+		if err := r.createAgentContainer(ctx, plan, envFile); err != nil {
+			return err
+		}
+		// The container is up: disarm the reservation rollback so it now lives for the
+		// container's lifetime (ward#570).
+		launched = true
+		// Spawn the detached drain-on-exit waiter so the run drains the moment it exits,
+		// not only at keep-10 eviction (ward#510; docs/agent-observability.md).
+		if !inContainer() {
+			// In-container dispatch skips it - the waiter would die with its own reaped
+			// container - and leans on the next sweep's idempotent drain instead.
+			r.spawnDrainWaiter(plan.Name)
+		}
+		return nil
+	})
 }
 
 // prelaunchDispatch runs the shared pre-`docker create` steps for the advisor/director

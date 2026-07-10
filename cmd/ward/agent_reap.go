@@ -7,11 +7,13 @@ import (
 	"fmt"
 	"io"
 	"os"
+	"path/filepath"
 	"strconv"
 	"strings"
 	"time"
 
 	"forgejo.coilysiren.me/coilyco-flight-deck/cli-guard/cli/verb"
+	"forgejo.coilysiren.me/coilyco-flight-deck/cli-guard/pkg/config"
 	"github.com/urfave/cli/v3"
 )
 
@@ -195,6 +197,33 @@ func (r *Runner) enforceEngineerContainerLimit(ctx context.Context, label string
 		return newEngineerCapacityError(label, count, limit)
 	}
 	return nil
+}
+
+// engineerCapacityLockPath resolves the host-side flock that serializes engineer
+// admission so concurrent dispatches cannot race the global count check.
+func engineerCapacityLockPath() (string, error) {
+	dir, err := config.GlobalDir()
+	if err != nil {
+		return "", err
+	}
+	if err := os.MkdirAll(dir, 0o750); err != nil {
+		return "", err
+	}
+	return filepath.Join(dir, "engineer-capacity.lock"), nil
+}
+
+// withEngineerCapacityLock serializes the capacity check and container create
+// window. It fails closed if the lock path cannot be resolved or prepared.
+func (r *Runner) withEngineerCapacityLock(fn func() error) error {
+	lockPath, err := engineerCapacityLockPath()
+	if err != nil {
+		return err
+	}
+	var fnErr error
+	r.withFlock(lockPath, func() {
+		fnErr = fn()
+	})
+	return fnErr
 }
 
 // engineerCapacityError marks a launch refusal because the global engineer cap

@@ -7,6 +7,7 @@ import (
 	"os"
 	"path/filepath"
 	"strings"
+	"sync"
 	"testing"
 
 	"github.com/urfave/cli/v3"
@@ -29,6 +30,48 @@ func engineerCountDockerStub(t *testing.T, count int) string {
 		t.Fatalf("write docker stub: %v", err)
 	}
 	return stub
+}
+
+func engineerCapacityRaceDockerStub(t *testing.T, running []string) (stub string, statePath string) {
+	t.Helper()
+	dir := t.TempDir()
+	statePath = filepath.Join(dir, "running.txt")
+	if err := os.WriteFile(statePath, []byte(strings.Join(running, "\n")+"\n"), 0o644); err != nil {
+		t.Fatalf("seed running state: %v", err)
+	}
+	stub = filepath.Join(dir, "docker")
+	script := "#!/bin/sh\n" +
+		"state=" + shellQuote(statePath) + "\n" +
+		"cmd=$1\n" +
+		"shift\n" +
+		"case \"$cmd\" in\n" +
+		"  ps)\n" +
+		"    if [ \"$1\" = -a ]; then\n" +
+		"      exit 0\n" +
+		"    fi\n" +
+		"    cat \"$state\"\n" +
+		"    ;;\n" +
+		"  start)\n" +
+		"    name=$1\n" +
+		"    if ! grep -Fxq \"$name\" \"$state\"; then\n" +
+		"      printf '%s\\n' \"$name\" >> \"$state\"\n" +
+		"    fi\n" +
+		"    printf '%s\\n' \"$name\"\n" +
+		"    ;;\n" +
+		"  rm)\n" +
+		"    exit 0\n" +
+		"    ;;\n" +
+		"  cp)\n" +
+		"    exit 0\n" +
+		"    ;;\n" +
+		"  *)\n" +
+		"    exit 0\n" +
+		"    ;;\n" +
+		"esac\n"
+	if err := os.WriteFile(stub, []byte(script), 0o755); err != nil { //nolint:gosec
+		t.Fatalf("write race docker stub: %v", err)
+	}
+	return stub, statePath
 }
 
 func TestEngineerContainerLimitBelowAndAtLimit(t *testing.T) {
@@ -138,5 +181,64 @@ func TestLaunchAgentContainerRejectsAtLimitWithoutReservation(t *testing.T) {
 	}
 	if _, ok, _ := readAgentReservation(path); ok {
 		t.Fatal("launchAgentContainer at limit should not reserve the issue")
+	}
+}
+
+func TestEngineerCapacityLockSerializesConcurrentAdmissions(t *testing.T) {
+	t.Setenv("HOME", t.TempDir())
+	limit := engineerContainerLimitDefault()
+	running := make([]string, 0, limit-1)
+	for i := 0; i < limit-1; i++ {
+		running = append(running, fmt.Sprintf("engineer-%02d", i+1))
+	}
+	stub, _ := engineerCapacityRaceDockerStub(t, running)
+	t.Setenv("PATH", filepath.Dir(stub)+string(os.PathListSeparator)+os.Getenv("PATH"))
+	r, _, _ := bufRunner(stub)
+
+	launch := func(name string) error {
+		return r.withEngineerCapacityLock(func() error {
+			if err := r.enforceEngineerContainerLimit(context.Background(), "ward agent engineer"); err != nil {
+				return err
+			}
+			return r.dockerExec(context.Background(), "start", name)
+		})
+	}
+
+	start := make(chan struct{})
+	errs := make(chan error, 2)
+	var wg sync.WaitGroup
+	for _, name := range []string{"engineer-race-a", "engineer-race-b"} {
+		wg.Add(1)
+		go func(name string) {
+			defer wg.Done()
+			<-start
+			errs <- launch(name)
+		}(name)
+	}
+	close(start)
+	wg.Wait()
+	close(errs)
+
+	var success, refused int
+	for err := range errs {
+		switch {
+		case err == nil:
+			success++
+		case isEngineerCapacityError(err):
+			refused++
+		default:
+			t.Fatalf("unexpected launch error: %v", err)
+		}
+	}
+	if success != 1 || refused != 1 {
+		t.Fatalf("launch results = success:%d refused:%d, want 1 each", success, refused)
+	}
+
+	names, err := r.runningEngineerContainers(context.Background())
+	if err != nil {
+		t.Fatalf("runningEngineerContainers: %v", err)
+	}
+	if got := len(names); got != limit {
+		t.Fatalf("final running count = %d, want %d", got, limit)
 	}
 }
