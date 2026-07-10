@@ -44,8 +44,10 @@ var (
 )
 
 const (
-	backlogKindIssue       = "issue"
-	backlogKindPullRequest = "pull-request"
+	backlogKindIssue                   = "issue"
+	backlogKindPullRequest             = "pull-request"
+	backlogReservationWaitingReaper    = "waiting-reaper"
+	backlogReservationSafeToRedispatch = "safe-to-redispatch"
 )
 
 // backlogIssue is one open issue read from the live backlog, the ranking input.
@@ -945,7 +947,7 @@ func backlogOutcomeState(status string) string {
 }
 
 func backlogStateSummaryOrder() []string {
-	return []string{"done", "submitted", "merge-ready", "blocked", "failed", "queued", "dispatched", "surfaced", "skipped"}
+	return []string{"done", "submitted", "merge-ready", "blocked", "failed", "queued", backlogReservationSafeToRedispatch, backlogReservationWaitingReaper, "dispatched", "surfaced", "skipped"}
 }
 
 // --- ledger persistence ----------------------------------------------------
@@ -1047,18 +1049,20 @@ func (r *Runner) backlogScopeEntries(repos []string) []*backlogEntry {
 	return out
 }
 
-// backlogLaneCounts tallies the headless work still outstanding: queued (ready to
-// dispatch) and in flight (dispatched). The loop drains when both reach zero.
-func backlogLaneCounts(entries []*backlogEntry) (queued, inflight int) {
+// backlogLaneCounts tallies queued, in-flight, and reservation-hold work.
+// The loop drains when all three reach zero.
+func backlogLaneCounts(entries []*backlogEntry) (queued, inflight, held int) {
 	for _, e := range entries {
 		switch e.State {
-		case "queued":
+		case "queued", backlogReservationSafeToRedispatch:
 			queued++
 		case "dispatched":
 			inflight++
+		case backlogReservationWaitingReaper:
+			held++
 		}
 	}
-	return queued, inflight
+	return queued, inflight, held
 }
 
 // backlogQueuedPicks returns the queued headless entries across the scope, ranked
@@ -1066,7 +1070,8 @@ func backlogLaneCounts(entries []*backlogEntry) (queued, inflight int) {
 func backlogQueuedPicks(entries []*backlogEntry) []*backlogEntry {
 	var picks []*backlogEntry
 	for _, e := range entries {
-		if e.State == "queued" {
+		switch e.State {
+		case "queued", backlogReservationSafeToRedispatch:
 			picks = append(picks, e)
 		}
 	}
@@ -1094,6 +1099,29 @@ func backlogTierIndex(tier string) int {
 		}
 	}
 	return len(backlogTierOrder)
+}
+
+// backlogHasReservationComment reports whether the thread still carries any
+// reservation marker, fresh or stale.
+func backlogHasReservationComment(comments []issueComment) bool {
+	for _, c := range comments {
+		if strings.Contains(c.Body, agentReservationMarker) {
+			return true
+		}
+	}
+	return false
+}
+
+// backlogReservationState classifies reservation-only holds for the director.
+// Fresh holds wait for the reaper/TTL. Stale holds are safe to redispatch.
+func backlogReservationState(comments []issueComment, now time.Time, ttl time.Duration) string {
+	if _, held := freshReservationComment(comments, now, ttl); held {
+		return backlogReservationWaitingReaper
+	}
+	if backlogHasReservationComment(comments) {
+		return backlogReservationSafeToRedispatch
+	}
+	return ""
 }
 
 // --- loop steps ------------------------------------------------------------
@@ -1127,11 +1155,95 @@ func (r *Runner) backlogRefresh(ctx context.Context, label string, repos []strin
 			})
 		}
 		refreshBacklogLedger(led, rankBacklogIssues(combineOpenBacklogIssues(issues, prBacklog)))
+		_ = r.backlogRefreshReservationStates(ctx, cl, repo, led)
 		if serr := saveBacklogLedger(led); serr != nil {
 			return fmt.Errorf("%s: %w", label, serr)
 		}
 	}
 	return nil
+}
+
+// backlogRefreshReservationStates overlays live reservation freshness onto the
+// freshly ranked ledger so stale holds re-enter the queue and fresh holds park.
+func (r *Runner) backlogRefreshReservationStates(ctx context.Context, cl Tracker, repo string, led *backlogLedger) bool {
+	changed := false
+	now := time.Now().UTC()
+	ttl := agentReservationTTL()
+	tr := targetRepo{Owner: ownerOf(repo), Name: nameOf(repo)}
+	for _, e := range led.Issues {
+		if r.backlogRefreshReservationState(ctx, cl, repo, tr, now, ttl, e) {
+			changed = true
+		}
+	}
+	return changed
+}
+
+func (r *Runner) backlogRefreshReservationState(ctx context.Context, cl Tracker, repo string, tr targetRepo, now time.Time, ttl time.Duration, e *backlogEntry) bool {
+	if !backlogRefreshReservationTracked(e) {
+		return false
+	}
+	if name := r.backlogRunningContainer(ctx, tr, e.Num); strings.TrimSpace(name) != "" {
+		return r.backlogPromoteRunningReservation(repo, now, e, name)
+	}
+	comments, err := cl.listIssueComments(ctx, tr.Owner, tr.Name, e.Num)
+	if err != nil {
+		fmt.Fprintf(os.Stderr, "backlog: note: cannot read reservation state for %s#%d (%v)\n", repo, e.Num, err)
+		return false
+	}
+	return r.backlogRefreshReservationHold(repo, e, comments, now, ttl)
+}
+
+func backlogRefreshReservationTracked(e *backlogEntry) bool {
+	if backlogKindOf(e.Kind) != backlogKindIssue || e.Lane != "headless" {
+		return false
+	}
+	switch e.State {
+	case "done", "submitted", "merge-ready", "blocked", "failed":
+		return false
+	default:
+		return true
+	}
+}
+
+func (r *Runner) backlogPromoteRunningReservation(repo string, now time.Time, e *backlogEntry, name string) bool {
+	if e.State == "dispatched" && e.Container == name {
+		return false
+	}
+	e.State = "dispatched"
+	e.Container = name
+	if strings.TrimSpace(e.DispatchedAt) == "" {
+		e.DispatchedAt = now.Format(time.RFC3339)
+	}
+	fmt.Fprintf(os.Stderr, "  %s#%d -> dispatched (running container %s)\n", repo, e.Num, name)
+	return true
+}
+
+func (r *Runner) backlogRefreshReservationHold(repo string, e *backlogEntry, comments []issueComment, now time.Time, ttl time.Duration) bool {
+	state := backlogReservationState(comments, now, ttl)
+	switch state {
+	case backlogReservationWaitingReaper:
+		if e.State == state {
+			return false
+		}
+		e.State = state
+		e.Container = ""
+		fmt.Fprintf(os.Stderr, "  %s#%d -> %s (fresh reservation still waiting for reap/TTL)\n", repo, e.Num, state)
+		return true
+	case backlogReservationSafeToRedispatch:
+		if e.State == state {
+			return false
+		}
+		e.State = state
+		fmt.Fprintf(os.Stderr, "  %s#%d -> %s (reservation stale)\n", repo, e.Num, state)
+		return true
+	default:
+		if e.State == backlogReservationWaitingReaper || e.State == backlogReservationSafeToRedispatch {
+			e.State = "queued"
+			fmt.Fprintf(os.Stderr, "  %s#%d -> queued (reservation marker cleared)\n", repo, e.Num)
+			return true
+		}
+		return false
+	}
 }
 
 // backlogDispatchOne launches one queued issue and records the transition. A launch error
@@ -1321,6 +1433,9 @@ func reconcileNoOutcome(comments []issueComment, dispatchedAt time.Time, attempt
 // backlogContainerRunning reports whether a dispatched entry's container is still
 // up: by recorded name when known, else by the issue's running-container probe.
 func (r *Runner) backlogContainerRunning(ctx context.Context, repo targetRepo, e *backlogEntry) bool {
+	if r == nil || r.Runner == nil {
+		return false
+	}
 	if strings.TrimSpace(e.Container) != "" {
 		return r.containerRunning(ctx, e.Container)
 	}
@@ -1330,6 +1445,9 @@ func (r *Runner) backlogContainerRunning(ctx context.Context, repo targetRepo, e
 // backlogRunningContainer returns the running engineer carrying repo#num, found by
 // its ward.role/ward.repo/ward.issue labels (AND-combined), "" when none (ward#364).
 func (r *Runner) backlogRunningContainer(ctx context.Context, repo targetRepo, num int) string {
+	if r == nil || r.Runner == nil {
+		return ""
+	}
 	out, err := r.dockerCapture(ctx, "ps", "--format", "{{.Names}}",
 		"--filter", "label="+labelRole+"="+roleEngineer,
 		"--filter", "label="+labelRepo+"="+repo.slug(),

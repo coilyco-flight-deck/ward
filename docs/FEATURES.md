@@ -22,6 +22,9 @@ Inventory of what `ward` ships today.
 - Core tracker/forge adapters - issue lookup, reservation, dispatch broker
   writes, reaper comments, and director merge reads do not depend on generated
   `ward ops` leaves.
+- **Reservation freshness in director burndown** - the backlog heartbeat now
+  distinguishes fresh reservation holds from stale ones so headless issues can
+  re-enter dispatch instead of parking forever behind a dead reservation.
 - **Dispatch broker version carry-through** - brokered launches forward the
   caller's resolved ward version and report the effective version in brokered
   launch output. See [agent-dispatch-broker.md](agent-dispatch-broker.md).

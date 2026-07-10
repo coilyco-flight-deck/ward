@@ -77,7 +77,7 @@ type directorBackend interface {
 	// reportDrained prints the "headless backlog drained" summary.
 	reportDrained() error
 	// reportMaxCycles notes a stop forced by --max-cycles.
-	reportMaxCycles(queued, inflight int)
+	reportMaxCycles(queued, inflight, held int)
 	// summary prints the terminal disposition by state.
 	summary() error
 }
@@ -101,8 +101,8 @@ func directorStartupPhase(ctx context.Context, be directorBackend) (bool, error)
 	be.poll(ctx)
 	be.refresh(ctx)
 	be.mergeEligiblePullRequests(ctx)
-	queued, inflight := backlogLaneCounts(be.entries())
-	if queued == 0 && inflight == 0 {
+	queued, inflight, held := backlogLaneCounts(be.entries())
+	if queued == 0 && inflight == 0 && held == 0 {
 		return directorHandleDrain(ctx, be)
 	}
 	// One-time init gate (ward#361): ask once whether to drain now or surface first.
@@ -119,15 +119,15 @@ func directorHeartbeatTick(ctx context.Context, cfg backlogConfig, be directorBa
 	be.mergeEligiblePullRequests(ctx)
 
 	entries := be.entries()
-	queued, inflight := backlogLaneCounts(entries)
+	queued, inflight, held := backlogLaneCounts(entries)
 
 	// Drain -> surface, rather than exit (ward#351).
-	if queued == 0 && inflight == 0 {
+	if queued == 0 && inflight == 0 && held == 0 {
 		return directorHandleDrain(ctx, be)
 	}
 
 	if cfg.maxCycles > 0 && cycle >= cfg.maxCycles {
-		be.reportMaxCycles(queued, inflight)
+		be.reportMaxCycles(queued, inflight, held)
 		return true, be.summary()
 	}
 
@@ -191,8 +191,8 @@ func directorHandleDrain(ctx context.Context, be directorBackend) (bool, error) 
 	// The human had the floor; re-check the lane. New headless work resumes the
 	// heartbeat, else the drain is a deliberate stop.
 	be.refresh(ctx)
-	q2, i2 := backlogLaneCounts(be.entries())
-	return q2 == 0 && i2 == 0, nil
+	q2, i2, h2 := backlogLaneCounts(be.entries())
+	return q2 == 0 && i2 == 0 && h2 == 0, nil
 }
 
 // directorDispatchTick asks the LLM which queued issues to dispatch under the free-slot
@@ -355,9 +355,9 @@ func directorAwaitEnter(ctx context.Context, tty *os.File, label string, cfg bac
 
 func (d *liveDirector) reportDrained() error { return d.r.backlogPrintDrained(d.label, d.repos) }
 
-func (d *liveDirector) reportMaxCycles(queued, inflight int) {
-	fmt.Fprintf(os.Stderr, "%s: reached --max-cycles %d (%d queued, %d in flight); stopping.\n",
-		d.label, d.cfg.maxCycles, queued, inflight)
+func (d *liveDirector) reportMaxCycles(queued, inflight, held int) {
+	fmt.Fprintf(os.Stderr, "%s: reached --max-cycles %d (%d queued, %d in flight, %d waiting on reap); stopping.\n",
+		d.label, d.cfg.maxCycles, queued, inflight, held)
 }
 
 func (d *liveDirector) summary() error { return d.r.backlogPrintSummary(d.repos) }
@@ -435,6 +435,12 @@ func directorDecidePrompt(picks []*backlogEntry, avail int, entries []*backlogEn
 	if inflight := directorStateLines(entries, "dispatched"); len(inflight) > 0 {
 		b.WriteString("\nIN FLIGHT (already dispatched, do not re-pick):\n")
 		for _, ln := range inflight {
+			fmt.Fprintf(&b, "- %s\n", ln)
+		}
+	}
+	if held := directorStateLines(entries, backlogReservationWaitingReaper); len(held) > 0 {
+		b.WriteString("\nRESERVATION HOLDS (fresh reservation still waiting for reap/TTL):\n")
+		for _, ln := range held {
 			fmt.Fprintf(&b, "- %s\n", ln)
 		}
 	}
@@ -648,6 +654,10 @@ func drainedStateLabel(state string) string {
 		return "pr-submitted"
 	case "merge-ready":
 		return "pr-merge-ready"
+	case backlogReservationWaitingReaper:
+		return "reservation-wait"
+	case backlogReservationSafeToRedispatch:
+		return "reservation-ready"
 	default:
 		return state
 	}
