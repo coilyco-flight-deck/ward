@@ -1,6 +1,3 @@
----
-doc_goal: Keep the inventory of shipped surfaces current after the docs collapse, without dragging the deleted issue-slice pages along with it.
----
 # ward features
 
 Inventory of what `ward` ships today.
@@ -52,6 +49,7 @@ Inventory of what `ward` ships today.
 
 ## Release and docs
 
+- [compat-surface.md](compat-surface.md) - the release-facing provider matrix.
 - [release.md](release.md) and [release-binaries.md](release-binaries.md).
 - [homebrew-build.md](homebrew-build.md), [golangci.md](golangci.md), and
   [troubleshooting.md](troubleshooting.md).

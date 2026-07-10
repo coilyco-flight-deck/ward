@@ -7,6 +7,7 @@ operating surface only.
 
 - [architecture.md](architecture.md) - the three layers.
 - [FEATURES.md](FEATURES.md) - what ships today.
+- [compat-surface.md](compat-surface.md) - the release-facing matrix of shipped providers, operator-local sources, and explicit non-providers.
 - [exec-verb.md](exec-verb.md) - the guarded dev-verb gate.
 - [audit.md](audit.md) - the append-only audit trail.
 - [verb-fallback.md](verb-fallback.md) - `ward exec` fallback routing.
