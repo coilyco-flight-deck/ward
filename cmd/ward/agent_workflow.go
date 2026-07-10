@@ -156,6 +156,13 @@ func workflowCarryClause(ref agentIssueRef, wf workflowMode) string {
 	}
 }
 
+func workflowReviewNoun(f forge) string {
+	if f == forgeGitLab {
+		return "merge request"
+	}
+	return "pull request"
+}
+
 // directToMainCarryClause tells the agent to land the run on main.
 func directToMainCarryClause(ref agentIssueRef) string {
 	return fmt.Sprintf(
@@ -165,44 +172,55 @@ func directToMainCarryClause(ref agentIssueRef) string {
 
 // pullRequestCarryClause tells the agent to land via a pull request.
 func pullRequestCarryClause(ref agentIssueRef) string {
+	noun := workflowReviewNoun(ref.Forge)
 	return fmt.Sprintf(
-		"implement on a feature branch, commit, push the branch to origin, and open a pull request "+
+		"implement on a feature branch, commit, push the branch to origin, and open a %s "+
 			"against `main` whose body carries `closes #%d`. "+
-			"%s Do NOT push to `main` directly or merge it yourself - in the `pull-requests` workflow the pull request "+
-			"IS the merge gate, and the director is encouraged to merge it later if policy allows. When the PR is green, "+
+			"%s Do NOT push to `main` directly or merge it yourself - in the `pull-requests` workflow the %s "+
+			"IS the merge gate, and the director is encouraged to merge it later if policy allows. When the %s is green, "+
 			"the engineer's final visible outcome is `WARD-OUTCOME: submitted`, not `done`.",
-		ref.Number, pullRequestCIWatchClause())
+		noun, ref.Number, pullRequestCIWatchClauseFor(ref.Forge), noun, noun)
 }
 
 // pullRequestAndMergeCarryClause tells the agent to open a PR and keep it merge-ready
 // until the PR is actually merged.
 func pullRequestAndMergeCarryClause(ref agentIssueRef) string {
+	noun := workflowReviewNoun(ref.Forge)
 	return fmt.Sprintf(
-		"implement on a feature branch, commit, push the branch to origin, and open a pull request "+
+		"implement on a feature branch, commit, push the branch to origin, and open a %s "+
 			"against `main` whose body carries `closes #%d` and `%s`. This run is director-merge authorized: "+
-			"the worker still opens the pull request, but the engineer's final visible outcome is `WARD-OUTCOME: merge-ready`; "+
-			"the run is not done until the pull request is merged and the director records the final done outcome. "+
+			"the worker still opens the %s, but the engineer's final visible outcome is `WARD-OUTCOME: merge-ready`; "+
+			"the run is not done until the %s is merged and the director records the final done outcome. "+
 			"%s Keep the branch ready for merge and do not claim success early.",
-		ref.Number, directorMergeWorkflowMarker, pullRequestCIWatchClause())
+		noun, ref.Number, directorMergeWorkflowMarker, noun, noun, pullRequestCIWatchClauseFor(ref.Forge))
 }
 
 // pullRequestCIWatchClause tells pull-requests workflows that opening the PR is not
 // the end. They must keep watching CI/checks and only report done once the PR is green.
-func pullRequestCIWatchClause() string {
-	return "After the PR opens, keep watching its CI/checks and fetch the status/logs if anything " +
+func pullRequestCIWatchClauseFor(f forge) string {
+	noun := workflowReviewNoun(f)
+	return "After the " + noun + " opens, keep watching its CI/checks and fetch the status/logs if anything " +
 		"fails. Patch the branch, push updates, and repeat until the checks are green or the failure is " +
 		"genuinely blocked. A failing check is not a done state, and the final `WARD-OUTCOME` comment " +
-		"is not allowed until the PR is green. " + workflowFailureCommentClause()
+		"is not allowed until the " + noun + " is green. " + workflowFailureCommentClauseFor(f)
 }
 
 // workflowFailureCommentClause tells PR workflows to mirror failure comments onto
 // the PR itself, while keeping the issue comment unchanged.
-func workflowFailureCommentClause() string {
-	return "If this run has opened or found a pull request and then fails for any reason, post the same " +
-		"actionable failure comment to both the linked issue and the PR. Keep the issue comment unchanged, " +
-		"including any reservation-lock release/clear/hand-back wording that belongs there. The PR comment " +
-		"must omit reservation-lock release/clear/hand-back wording and should reuse the existing " +
-		"signature/idempotency marker if one is present. If no PR exists, skip the PR comment."
+func workflowFailureCommentClauseFor(f forge) string {
+	if f == forgeGitLab {
+		noun := workflowReviewNoun(f)
+		return "If this run has opened or found a " + noun + " and then fails for any reason, post the same " +
+			"actionable failure comment to both the linked issue and the " + noun + ". Keep the issue comment unchanged, " +
+			"including any reservation-lock release/clear/hand-back wording that belongs there. The " + noun + " comment " +
+			"must omit reservation-lock release/clear/hand-back wording and should reuse the existing " +
+			"signature/idempotency marker if one is present. If no " + noun + " exists, skip the " + noun + " comment."
+	}
+	return "If this run has opened or found a PR and then fails for any reason, post the same actionable failure " +
+		"comment to both the linked issue and the PR. Keep the issue comment unchanged, including any " +
+		"reservation-lock release/clear/hand-back wording that belongs there. The PR comment must omit " +
+		"reservation-lock release/clear/hand-back wording and should reuse the existing signature/idempotency marker " +
+		"if one is present. If no PR exists, skip the PR comment."
 }
 
 // remoteBranchOnlyCarryClause tells the agent it has no PR or merge authority:
@@ -216,14 +234,15 @@ func remoteBranchOnlyCarryClause(ref agentIssueRef) string {
 }
 
 // workflowLandingPhrase names "done" for the reflection's "only after ..." opener.
-func workflowLandingPhrase(_ agentIssueRef, wf workflowMode) string {
+func workflowLandingPhrase(ref agentIssueRef, wf workflowMode) string {
+	noun := workflowReviewNoun(ref.Forge)
 	switch wf.orDefault() {
 	case workflowDirectToMain:
 		return "the work is committed, merged to main, and pushed"
 	case workflowPullRequest:
-		return "the branch is pushed, the pull request is open, and the required checks are green"
+		return "the branch is pushed, the " + noun + " is open, and the required checks are green"
 	case workflowPullRequestAndMerge:
-		return "the pull request is reviewed and merge-ready"
+		return "the " + noun + " is reviewed and merge-ready"
 	case workflowRemoteBranchOnly:
 		return "the remote branch is pushed"
 	default:

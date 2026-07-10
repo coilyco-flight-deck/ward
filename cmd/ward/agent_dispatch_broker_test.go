@@ -953,21 +953,25 @@ func TestRunHostDispatchBrokerRequestClearsBrokerEnvWhileLaunchRuns(t *testing.T
 	case <-time.After(2 * time.Second):
 		t.Fatal("host launch never started")
 	}
+	var got struct {
+		logPath string
+		err     error
+	}
 	select {
-	case got := <-result:
+	case got = <-result:
 		t.Fatalf("runHostDispatchBrokerRequest returned early: %+v", got)
 	default:
 	}
 	close(release)
 	select {
-	case got := <-result:
+	case got = <-result:
 		if got.err != nil {
 			t.Fatalf("runHostDispatchBrokerRequest: %v", got.err)
 		}
+		logPath = got.logPath
 		if !strings.Contains(got.logPath, "dispatch") {
 			t.Fatalf("log path %q does not look like a dispatch log", got.logPath)
 		}
-		logPath = got.logPath
 	case <-time.After(2 * time.Second):
 		t.Fatal("runHostDispatchBrokerRequest never returned")
 	}
