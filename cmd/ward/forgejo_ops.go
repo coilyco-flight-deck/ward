@@ -706,6 +706,8 @@ func (c *forgejoClient) listOpenPullRequests(ctx context.Context, owner, repo st
 				State:  ri.State,
 				URL:    ri.HTMLURL,
 			},
+			CreatedAt: ri.CreatedAt,
+			UpdatedAt: ri.UpdatedAt,
 		}
 		for _, l := range ri.Labels {
 			if l.Name != "" {
@@ -730,6 +732,21 @@ func (c *forgejoClient) listOpenIssueFeed(ctx context.Context, owner, repo strin
 		limit = 50
 	}
 	q := url.Values{"state": {"open"}, "limit": {strconv.Itoa(limit)}}
+	var raw []forgejoIssueRaw
+	if _, err := c.doJSON(ctx, http.MethodGet, []string{"repos", owner, repo, "issues"}, q, nil, false, &raw); err != nil {
+		return nil, fmt.Errorf("forgejo: list open issues in %s/%s: %w", owner, repo, err)
+	}
+	return raw, nil
+}
+
+func (c *forgejoClient) listOpenIssueFeedByType(ctx context.Context, owner, repo string, limit int, typ string) ([]forgejoIssueRaw, error) {
+	if limit <= 0 {
+		limit = 50
+	}
+	q := url.Values{"state": {"open"}, "limit": {strconv.Itoa(limit)}}
+	if typ != "" {
+		q.Set("type", typ)
+	}
 	var raw []forgejoIssueRaw
 	if _, err := c.doJSON(ctx, http.MethodGet, []string{"repos", owner, repo, "issues"}, q, nil, false, &raw); err != nil {
 		return nil, fmt.Errorf("forgejo: list open issues in %s/%s: %w", owner, repo, err)
@@ -840,6 +857,8 @@ type directorPullRequest struct {
 	Mergeable      bool
 	MergeableKnown bool
 	MergeableError string
+	CreatedAt      time.Time
+	UpdatedAt      time.Time
 }
 
 // lean projects the raw issue down to the reader-facing leanIssue.

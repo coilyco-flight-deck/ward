@@ -76,7 +76,7 @@ const (
 // Bundle-layout paths: the flat .ward bundle a ref points at (aos#332's landed layout).
 const (
 	// The self-contained compatibility monolith mirrors the baked source's flat guardfile.
-	// The read/write/admin tier guardfiles stay role-facing, not the ops CLI surface.
+	// The role guardfiles stay role-facing, and runtime config must not inherit files.
 	bundleForgejoGuardfilePath = "guardfile.forgejo.kdl"
 	bundleForgejoSpecLockPath  = "forgejo.swagger.lock.json"
 	bundleAgentsKDLPath        = "agents.kdl"
