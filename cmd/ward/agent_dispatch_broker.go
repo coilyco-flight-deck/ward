@@ -264,6 +264,9 @@ func (r *Runner) runHostDispatchBrokerRequest(ctx context.Context, req dispatchB
 
 // commentFailedDispatchLaunch posts the failure comment with a detached timeout.
 func (r *Runner) commentFailedDispatchLaunch(ctx context.Context, req dispatchBrokerRequest, logPath string, launchErr error) {
+	if r == nil || r.Runner == nil {
+		return
+	}
 	ref, err := parseAgentIssueRef(req.Argv[1])
 	if err != nil {
 		return
@@ -711,22 +714,13 @@ func (r *Runner) maybeForwardAgentDispatchToHostBroker(ctx context.Context, c *c
 		Requester: strings.TrimSpace(os.Getenv("WARD_CONTAINER_NAME")),
 		Token:     strings.TrimSpace(os.Getenv(envDispatchBrokerToken)),
 	}
-	logPath, err := sendDispatchBrokerRequest(ctx, addr, req)
-	if err != nil {
-		if logPath != "" {
-			return true, fmt.Errorf("%w (dispatch log: %s)", err, logPath)
-		}
+	if err := sendDispatchBrokerLaunchRequest(ctx, addr, req); err != nil {
 		return true, err
 	}
 	displayArgv := redactDispatchBrokerArgv(argv)
 	// This line is captured as tool output by the surface agent, not written to the
 	// raw TTY, so naming the host-side run log here is safe and aids discovery.
-	if logPath != "" {
-		fmt.Fprintf(os.Stderr, "ward dispatch broker: forwarded `ward agent %s` to host ward (run output on the host at %s)\n",
-			displayArgv, logPath)
-	} else {
-		fmt.Fprintf(os.Stderr, "ward dispatch broker: forwarded `ward agent %s` to host ward\n", displayArgv)
-	}
+	fmt.Fprintf(os.Stderr, "ward dispatch broker: forwarded `ward agent %s` to host ward\n", displayArgv)
 	return true, nil
 }
 
@@ -866,6 +860,21 @@ func sendDispatchBrokerRequest(ctx context.Context, addr string, req dispatchBro
 		return resp.LogPath, fmt.Errorf("dispatch broker: %s", resp.Error)
 	}
 	return resp.LogPath, nil
+}
+
+func sendDispatchBrokerLaunchRequest(ctx context.Context, addr string, req dispatchBrokerRequest) error {
+	var d net.Dialer
+	conn, err := d.DialContext(ctx, "tcp", addr)
+	if err != nil {
+		return fmt.Errorf("%w: the host dispatch broker did not answer at %s "+
+			"(WARD_DISPATCH_BROKER_ADDR, TCP over the docker gateway - see ward#382): %w",
+			errDispatchBrokerUnavailable, addr, err)
+	}
+	defer func() { _ = conn.Close() }()
+	if err := json.NewEncoder(conn).Encode(req); err != nil {
+		return fmt.Errorf("dispatch broker: send request: %w", err)
+	}
+	return nil
 }
 
 // sendDispatchBrokerLogsRequest sends a logs request and returns the source + body

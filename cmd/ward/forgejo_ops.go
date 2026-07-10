@@ -118,14 +118,17 @@ func (c *forgejoClient) run(ctx context.Context, args ...string) ([]byte, error)
 	cmd.Stdout = &stdout
 	// Tee stderr: keep it streaming live (interactive/host runs keep their output)
 	// while capturing a copy so a failure can name the envelope, not just the code.
-	if live := c.r.Runner.Stderr; live != nil {
+	if c.r != nil && c.r.Runner != nil && c.r.Runner.Stderr != nil {
+		live := c.r.Runner.Stderr
 		cmd.Stderr = io.MultiWriter(live, &stderr)
 	} else {
 		cmd.Stderr = &stderr
 	}
-	cmd.Stdin = c.r.Runner.Stdin
-	if c.r.Runner.Env != nil {
-		cmd.Env = append(os.Environ(), c.r.Runner.Env...)
+	if c.r != nil && c.r.Runner != nil {
+		cmd.Stdin = c.r.Runner.Stdin
+		if c.r.Runner.Env != nil {
+			cmd.Env = append(os.Environ(), c.r.Runner.Env...)
+		}
 	}
 	if err := cmd.Run(); err != nil {
 		return stdout.Bytes(), foldOpsStderr(err, stderr.Bytes())
