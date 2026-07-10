@@ -24,15 +24,55 @@ func TestFrontierAgentDefaultsAreKeyedAndComplete(t *testing.T) {
 
 func writeFleetBundle(t *testing.T, dir, body string) {
 	t.Helper()
-	if err := os.WriteFile(filepath.Join(dir, bundleFleetKDLPath), []byte(body), 0o644); err != nil {
-		t.Fatalf("write bundle fleet: %v", err)
+	if err := os.WriteFile(filepath.Join(dir, bundleAgentsKDLPath), []byte(body), 0o644); err != nil {
+		t.Fatalf("write bundle agents: %v", err)
+	}
+	if err := os.WriteFile(filepath.Join(dir, bundleRolesKDLPath), []byte(`roles {
+    role engineer {
+    }
+    role director {
+        guardfile guardfile.aws.kdl
+        guardfile guardfile.tailscale.kdl
+    }
+    role advisor {
+        guardfile guardfile.aws.kdl
+        guardfile guardfile.tailscale.kdl
+    }
+}`), 0o644); err != nil {
+		t.Fatalf("write bundle roles: %v", err)
+	}
+	if err := os.WriteFile(filepath.Join(dir, bundleDefaultsKDLPath), []byte(`defaults {
+    agent-reservation-ttl "1h"
+    agent-reservation-recheck-max "15s"
+    agent-reap-idle "1h"
+    agent-reap-max-cpu "5.0"
+    engineer-container-limit "12"
+    director-max-parallel "10"
+    director-limit "50"
+    director-poll-interval "30s"
+    reviewer-timeout "8m"
+    config-bundle-ttl "600s"
+    container-assets-ttl "1h"
+    container-read-only-extra-repo-ttl "24h"
+    container-reap-keep "10"
+}
+`), 0o644); err != nil {
+		t.Fatalf("write bundle defaults: %v", err)
+	}
+	if err := os.WriteFile(filepath.Join(dir, bundleReposKDLPath), []byte(`repos {
+    repo-authority default=forgejo {
+        trusted-owner example-owner
+        repo "example-owner/*" forge=github
+    }
+}`), 0o644); err != nil {
+		t.Fatalf("write bundle repos: %v", err)
 	}
 }
 
 func TestLoadFleetConfigResolvesFrontierDefaults(t *testing.T) {
 	dir := t.TempDir()
 	writeFleetBundle(t, dir, `
-fleet {
+agents {
     schema-version 2
     agent claude {
     }
@@ -68,7 +108,7 @@ fleet {
 func TestLoadFleetConfigSparseFrontierOverride(t *testing.T) {
 	dir := t.TempDir()
 	writeFleetBundle(t, dir, `
-fleet {
+agents {
     schema-version 2
     agent claude {
         context-level 1
@@ -99,7 +139,7 @@ fleet {
 func TestLoadFleetConfigRejectsIncompleteCustomAgent(t *testing.T) {
 	dir := t.TempDir()
 	writeFleetBundle(t, dir, `
-fleet {
+agents {
     schema-version 2
     agent widget {
         context-level 1

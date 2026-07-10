@@ -73,6 +73,8 @@ func TestViewIssueProjectsLogins(t *testing.T) {
 // TestOverrideForgejoViewIssueSwapsLeaf asserts the built forgejo tree exposes
 // `issue view` with an action installed (the lean override, not the engine leaf).
 func TestOverrideForgejoViewIssueSwapsLeaf(t *testing.T) {
+	dir := writeBundleFixture(t)
+	t.Setenv(wardConfigRefEnv, "file://"+dir)
 	forgejo, err := buildForgejoOps()
 	if err != nil {
 		t.Fatalf("buildForgejoOps: %v", err)

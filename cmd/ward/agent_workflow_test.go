@@ -266,20 +266,25 @@ func TestWorkflowEnvAndLabels(t *testing.T) {
 
 func TestAgentWorkflowSmartDefaults(t *testing.T) {
 	dir := t.TempDir()
-	body := `smart-defaults {
+	defaultsBody := `defaults {
     agent-workflow default="direct-main" {
         repo "coilyco-flight-deck/ward" workflow="pull-requests-and-merge"
     }
 }
-
-repo-authority default=forgejo {
-    trusted-owner "coilysiren"
-    trusted-owner "coilyco-flight-deck"
-    repo "coilysiren/*" forge=github
-    repo "coilyco-flight-deck/*" forge=forgejo
+`
+	reposBody := `repos {
+    repo-authority default=forgejo {
+        trusted-owner "coilysiren"
+        trusted-owner "coilyco-flight-deck"
+        repo "coilysiren/*" forge=github
+        repo "coilyco-flight-deck/*" forge=forgejo
+    }
 }`
-	if err := os.WriteFile(filepath.Join(dir, bundleDefaultsKDLPath), []byte(body), 0o644); err != nil {
+	if err := os.WriteFile(filepath.Join(dir, bundleDefaultsKDLPath), []byte(defaultsBody), 0o644); err != nil {
 		t.Fatalf("write defaults bundle: %v", err)
+	}
+	if err := os.WriteFile(filepath.Join(dir, bundleReposKDLPath), []byte(reposBody), 0o644); err != nil {
+		t.Fatalf("write repos bundle: %v", err)
 	}
 	t.Setenv(wardConfigRefEnv, "file://"+dir)
 

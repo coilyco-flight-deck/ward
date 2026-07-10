@@ -81,6 +81,14 @@ func currentSmartDefaults() smartDefaults {
 
 func currentSmartDefaultsWithError() (smartDefaults, error) {
 	ref := strings.TrimSpace(os.Getenv(wardConfigRefEnv))
+	if ref == "" {
+		defs := bakedSmartDefaults()
+		src, err := selectConfigSource()
+		if err == nil {
+			defs, err = loadSmartDefaultsFrom(src)
+		}
+		return defs, err
+	}
 
 	smartDefaultsCache.Lock()
 	defer smartDefaultsCache.Unlock()
@@ -110,11 +118,21 @@ func smartDefaultsGuard(surface string) cli.BeforeFunc {
 }
 
 func loadSmartDefaultsFrom(src configSource) (smartDefaults, error) {
-	b, err := fs.ReadFile(src.fsys, src.defaultsKDL)
-	if err != nil {
-		return smartDefaults{}, fmt.Errorf("read smart defaults %s: %w", src.defaultsKDL, err)
+	if src.reposKDL == "" {
+		b, err := fs.ReadFile(src.fsys, src.defaultsKDL)
+		if err != nil {
+			return smartDefaults{}, fmt.Errorf("read smart defaults %s: %w", src.defaultsKDL, err)
+		}
+		return parseSmartDefaults(b)
 	}
-	return parseSmartDefaults(b)
+	defs := bakedSmartDefaults()
+	if err := parseBundleDefaultsFrom(src, &defs); err != nil {
+		return smartDefaults{}, err
+	}
+	if err := parseBundleReposFrom(src, &defs); err != nil {
+		return smartDefaults{}, err
+	}
+	return defs, nil
 }
 
 func parseSmartDefaults(src []byte) (smartDefaults, error) {
@@ -137,6 +155,108 @@ func parseSmartDefaults(src []byte) (smartDefaults, error) {
 		return smartDefaults{}, fmt.Errorf("smart defaults: missing top-level `repo-authority` block (fail-closed)")
 	}
 	return defs, nil
+}
+
+func parseBundleDefaultsFrom(src configSource, defs *smartDefaults) error {
+	b, err := fs.ReadFile(src.fsys, src.defaultsKDL)
+	if err != nil {
+		return fmt.Errorf("read smart defaults %s: %w", src.defaultsKDL, err)
+	}
+	doc, err := kdl.ParseString(string(b))
+	if err != nil {
+		return fmt.Errorf("smart defaults: parse KDL: %w", err)
+	}
+	seenDefaults := false
+	for _, n := range doc.Nodes {
+		if n.Name() != "defaults" && n.Name() != "smart-defaults" {
+			return unknownSmartDefaultsNode("top-level", n.Name(), "defaults")
+		}
+		if seenDefaults {
+			return fmt.Errorf("smart defaults: duplicate top-level `defaults` block (fail-closed)")
+		}
+		seenDefaults = true
+		if len(n.Arguments()) != 0 {
+			return fmt.Errorf("smart defaults: `defaults` takes no arguments (fail-closed)")
+		}
+		if len(n.Properties()) != 0 {
+			return fmt.Errorf("smart defaults: `defaults` takes no properties (fail-closed)")
+		}
+		for _, c := range n.Children().Nodes {
+			if err := applySmartDefaultNode(defs, c); err != nil {
+				return err
+			}
+		}
+	}
+	if !seenDefaults {
+		return fmt.Errorf("smart defaults: missing top-level `defaults` block (fail-closed)")
+	}
+	return nil
+}
+
+func parseBundleReposFrom(src configSource, defs *smartDefaults) error {
+	b, err := fs.ReadFile(src.fsys, src.reposKDL)
+	if err != nil {
+		return fmt.Errorf("read repo authority %s: %w", src.reposKDL, err)
+	}
+	doc, err := kdl.ParseString(string(b))
+	if err != nil {
+		return fmt.Errorf("repo authority: parse KDL: %w", err)
+	}
+	seenRepos := false
+	for _, n := range doc.Nodes {
+		if err := applyBundleReposNode(defs, n, &seenRepos); err != nil {
+			return err
+		}
+	}
+	if !seenRepos {
+		return fmt.Errorf("repo authority: missing top-level `repos` block (fail-closed)")
+	}
+	return nil
+}
+
+func applyBundleReposNode(defs *smartDefaults, n *kdl.Node, seenRepos *bool) error {
+	switch n.Name() {
+	case "repos":
+		return applyBundleReposBlock(defs, n, seenRepos)
+	case "repo-authority":
+		if *seenRepos {
+			return fmt.Errorf("repo authority: duplicate top-level `repo-authority` block (fail-closed)")
+		}
+		*seenRepos = true
+		return applyRepoAuthority(defs, n)
+	default:
+		return unknownSmartDefaultsNode("top-level", n.Name(), "repos")
+	}
+}
+
+func applyBundleReposBlock(defs *smartDefaults, n *kdl.Node, seenRepos *bool) error {
+	if *seenRepos {
+		return fmt.Errorf("repo authority: duplicate top-level `repos` block (fail-closed)")
+	}
+	*seenRepos = true
+	if len(n.Arguments()) != 0 {
+		return fmt.Errorf("repo authority: `repos` takes no arguments (fail-closed)")
+	}
+	if len(n.Properties()) != 0 {
+		return fmt.Errorf("repo authority: `repos` takes no properties (fail-closed)")
+	}
+	var repoAuthoritySeen bool
+	for _, c := range n.Children().Nodes {
+		if c.Name() != "repo-authority" {
+			return unknownSmartDefaultsNode("repos body", c.Name(), "repo-authority")
+		}
+		if repoAuthoritySeen {
+			return fmt.Errorf("repo authority: duplicate top-level `repo-authority` block (fail-closed)")
+		}
+		repoAuthoritySeen = true
+		if err := applyRepoAuthority(defs, c); err != nil {
+			return err
+		}
+	}
+	if !repoAuthoritySeen {
+		return fmt.Errorf("repo authority: missing top-level `repo-authority` block (fail-closed)")
+	}
+	return nil
 }
 
 func applySmartDefaultsTopLevelNode(defs *smartDefaults, seenDefaults, seenAuthority *bool, n *kdl.Node) error {

@@ -1,8 +1,7 @@
 package main
 
 import (
-	"os"
-	"path/filepath"
+	"strings"
 	"testing"
 
 	"forgejo.coilysiren.me/coilyco-flight-deck/cli-guard/pkg/fleetconfig"
@@ -12,12 +11,16 @@ import (
 // TestCapabilityGuardfilesExist pins the name constants to real files so a guardfile
 // rename that outran a constant can't silently drop a role's capability (ward#578).
 func TestCapabilityGuardfilesExist(t *testing.T) {
-	for _, name := range []string{guardfileAWS, guardfileTailscale} {
-		// ward-kdl moved to the .ward/ config dir (ward#435).
-		path := filepath.Join("..", "..", ".ward", "ward-kdl", name)
-		if _, err := os.Stat(path); err != nil {
-			t.Errorf("capability guardfile %q does not exist at %s (%v); a rename must update the constant", name, path, err)
-		}
+	path := execAssetsDir + "/" + guardfileAWS
+	if _, err := bakedAssets.ReadFile(path); err != nil {
+		t.Errorf("capability guardfile %q does not exist at %s (%v); a rename must update the constant", guardfileAWS, path, err)
+	}
+	fleet, err := bakedAssets.ReadFile(fleetGeneratedKDLPath)
+	if err != nil {
+		t.Fatalf("read baked fleet config: %v", err)
+	}
+	if !strings.Contains(string(fleet), guardfileTailscale) {
+		t.Errorf("baked fleet config does not reference %q", guardfileTailscale)
 	}
 }
 
