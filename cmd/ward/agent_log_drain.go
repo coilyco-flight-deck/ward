@@ -357,19 +357,22 @@ type runMeta struct {
 	Issue     string `json:"issue,omitempty"`
 	Driver    string `json:"driver,omitempty"`
 	Branch    string `json:"branch,omitempty"`
+	OOMKilled bool   `json:"OOMKilled,omitempty"`
 	Outcome   string `json:"outcome"`
 }
 
 // buildRunMeta assembles the meta record from the container's inspected env
-// (allowlisted) and the reaper's console markers.
+// (allowlisted), the inspected Docker state, and the reaper's console markers.
 func (r *Runner) buildRunMeta(ctx context.Context, name, console string) runMeta {
 	env := r.inspectContainerEnv(ctx, name)
+	state, ok := r.inspectContainerState(ctx, name)
 	return runMeta{
 		Container: name,
 		Repo:      env["WARD_TARGET_REPO"],
 		Issue:     env["WARD_TARGET_ISSUE"],
 		Driver:    env["WARD_MODE"],
 		Branch:    env["WARD_BRANCH"],
+		OOMKilled: ok && state.OOMKilled,
 		Outcome:   classifyReapOutcome(console),
 	}
 }
@@ -389,6 +392,29 @@ func (r *Runner) inspectContainerEnv(ctx context.Context, name string) map[strin
 		return map[string]string{}
 	}
 	return pickMetaEnv(env, metaEnvAllow)
+}
+
+// dockerContainerState is the inspect-time Docker state subset used for the OOM
+// breadcrumb. The JSON tags mirror `docker inspect --format {{json .State}}`.
+type dockerContainerState struct {
+	OOMKilled bool `json:"OOMKilled"`
+}
+
+// inspectContainerState reads the container's inspected Docker state and returns
+// only the OOM breadcrumb. A read or parse failure is best-effort false.
+func (r *Runner) inspectContainerState(ctx context.Context, name string) (dockerContainerState, bool) {
+	prevErr := r.Runner.Stderr
+	r.Runner.Stderr = io.Discard
+	out, err := r.dockerCapture(ctx, "inspect", "--format", "{{json .State}}", name)
+	r.Runner.Stderr = prevErr
+	if err != nil {
+		return dockerContainerState{}, false
+	}
+	var state dockerContainerState
+	if jerr := json.Unmarshal(bytes.TrimSpace(out), &state); jerr != nil {
+		return dockerContainerState{}, false
+	}
+	return state, true
 }
 
 // pickMetaEnv selects only allowlisted keys from a docker `KEY=VALUE` env slice.
