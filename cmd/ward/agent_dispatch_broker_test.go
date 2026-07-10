@@ -1907,6 +1907,66 @@ func TestStartHostDispatchBrokerRequestFailsWhenEngineerNeverBecomesVisible(t *t
 	}
 }
 
+func TestStartHostDispatchBrokerRequestDoesNotTrustCrossOwnerNameCollisions(t *testing.T) {
+	t.Setenv("HOME", t.TempDir())
+	dir := t.TempDir()
+	script := filepath.Join(dir, "docker")
+	collidingName := "engineer-codex-website-66"
+	body := "#!/bin/sh\n" +
+		"if [ \"$1\" = ps ]; then\n" +
+		"  for arg in \"$@\"; do\n" +
+		"    case \"$arg\" in\n" +
+		"      name=^" + collidingName + "$)\n" +
+		"        printf '%s\\n' " + shellQuote(collidingName) + "\n" +
+		"        exit 0\n" +
+		"        ;;\n" +
+		"    esac\n" +
+		"  done\n" +
+		"  exit 0\n" +
+		"fi\n" +
+		"printf '%s\\n' \"unexpected docker args: $*\" >&2\n" +
+		"exit 1\n"
+	if err := os.WriteFile(script, []byte(body), 0o700); err != nil { // #nosec G306 -- test fixture
+		t.Fatalf("write fake docker: %v", err)
+	}
+	r := &Runner{Runner: &shell.Runner{
+		Stderr:  io.Discard,
+		Resolve: func(_ string) (string, error) { return script, nil },
+	}}
+
+	origLaunch := dispatchBrokerLaunch
+	origTimeout := dispatchBrokerVisibilityTimeout
+	origPoll := dispatchBrokerVisibilityPoll
+	origFailedHook := dispatchFailedDispatchLaunchHook
+	t.Cleanup(func() {
+		dispatchBrokerLaunch = origLaunch
+		dispatchBrokerVisibilityTimeout = origTimeout
+		dispatchBrokerVisibilityPoll = origPoll
+		dispatchFailedDispatchLaunchHook = origFailedHook
+	})
+	dispatchBrokerVisibilityTimeout = 75 * time.Millisecond
+	dispatchBrokerVisibilityPoll = 10 * time.Millisecond
+	dispatchFailedDispatchLaunchHook = func(dispatchBrokerRequest, string, error) bool { return true }
+	dispatchBrokerLaunch = func(context.Context, dispatchBrokerRequest) error { return nil }
+
+	req := dispatchBrokerRequest{
+		Role:      "engineer",
+		Argv:      []string{"engineer", "coilysiren/website#66", "--harness", "codex"},
+		Requester: "director-codex-host",
+		Token:     "nonce-collision",
+	}
+	logPath, err := r.startHostDispatchBrokerRequest(context.Background(), req)
+	if err == nil {
+		t.Fatal("startHostDispatchBrokerRequest unexpectedly succeeded on a cross-owner name collision")
+	}
+	if logPath == "" {
+		t.Fatal("startHostDispatchBrokerRequest returned an empty log path on failure")
+	}
+	if !strings.Contains(err.Error(), "ward agent list") {
+		t.Fatalf("error = %q, want the visibility follow-up command", err)
+	}
+}
+
 func TestRedactDispatchBrokerArgvKeepsWorkflowAndDetailsButScrubsSecrets(t *testing.T) {
 	got := redactDispatchBrokerArgv([]string{
 		"engineer", "coilyco-flight-deck/ward#1",
