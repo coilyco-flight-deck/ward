@@ -5,11 +5,14 @@ import (
 	"encoding/base64"
 	"fmt"
 	"io"
+	"net/http"
+	"net/http/httptest"
 	"os"
 	"path/filepath"
 	"regexp"
 	"slices"
 	"strings"
+	"sync/atomic"
 	"testing"
 	"time"
 
@@ -684,6 +687,50 @@ func TestWriteContainerAssetsStagesWardBinary(t *testing.T) {
 	}
 	if info.Mode()&0o111 == 0 {
 		t.Fatalf("staged ward binary must be executable, mode %o", info.Mode())
+	}
+}
+
+func TestDownloadWardBootstrapBinaryRetries404(t *testing.T) {
+	origBase := forgejoBaseURL
+	forgejoBaseURL = ""
+	t.Cleanup(func() { forgejoBaseURL = origBase })
+
+	origSleep := bootstrapDownloadSleep
+	bootstrapDownloadSleep = func(time.Duration) {}
+	t.Cleanup(func() { bootstrapDownloadSleep = origSleep })
+
+	var assetHits int32
+	srv := httptest.NewServer(http.HandlerFunc(func(w http.ResponseWriter, r *http.Request) {
+		switch {
+		case strings.HasSuffix(r.URL.Path, "/releases/latest"):
+			w.Header().Set("Content-Type", "application/json")
+			_, _ = fmt.Fprint(w, `{"tag_name":"v1.2.3"}`)
+		case strings.Contains(r.URL.Path, "/releases/download/v1.2.3/ward-linux-"):
+			if atomic.AddInt32(&assetHits, 1) == 1 {
+				http.Error(w, "not ready yet", http.StatusNotFound)
+				return
+			}
+			_, _ = w.Write([]byte("bootstrapped ward"))
+		default:
+			t.Fatalf("unexpected request path %q", r.URL.Path)
+		}
+	}))
+	t.Cleanup(srv.Close)
+	forgejoBaseURL = srv.URL
+
+	dir := t.TempDir()
+	if err := downloadWardBootstrapBinary(context.Background(), "dev", filepath.Join(dir, "ward")); err != nil {
+		t.Fatalf("downloadWardBootstrapBinary: %v", err)
+	}
+	data, err := os.ReadFile(filepath.Join(dir, "ward"))
+	if err != nil {
+		t.Fatalf("read staged binary: %v", err)
+	}
+	if got := string(data); got != "bootstrapped ward" {
+		t.Fatalf("staged binary = %q, want %q", got, "bootstrapped ward")
+	}
+	if got := atomic.LoadInt32(&assetHits); got != 2 {
+		t.Fatalf("asset fetch hits = %d, want 2 (404 retry then success)", got)
 	}
 }
 
