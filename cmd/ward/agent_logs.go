@@ -30,6 +30,7 @@ const (
 // agentLogSource is the resolved log source the host prints and streams from.
 type agentLogSource struct {
 	Kind           agentLogSourceKind
+	Label          string
 	Container      string
 	Path           string
 	TranscriptTree string
@@ -51,6 +52,19 @@ func (s agentLogSource) String() string {
 		}
 		return b.String()
 	case agentLogSourceFile:
+		if label := strings.TrimSpace(s.Label); label != "" {
+			var b strings.Builder
+			b.WriteString(label)
+			b.WriteString(" ")
+			b.WriteString(s.Path)
+			if s.Tail > 0 {
+				fmt.Fprintf(&b, " --tail %d", s.Tail)
+			}
+			if s.Follow {
+				b.WriteString(" --follow")
+			}
+			return b.String()
+		}
 		return s.Path
 	default:
 		return ""
@@ -156,7 +170,7 @@ func (r *Runner) resolveAgentLogsSourceForIssue(ctx context.Context, ref agentIs
 		}
 		return agentLogSource{Kind: agentLogSourceDocker, Container: name, TranscriptTree: containerTranscriptDir, Tail: tail, Follow: follow}, nil
 	}
-	if src, err := findArchivedAgentLogSourceByIssue(ref, tail, follow, agentLogsDir(), drainConsoleFile); err != nil {
+	if src, err := findArchivedAgentLogSourceByIssue(ref, tail, follow, agentLogsDir(), drainConsoleFile, "archive path"); err != nil {
 		return agentLogSource{}, err
 	} else if src.Kind != "" {
 		if follow {
@@ -164,7 +178,7 @@ func (r *Runner) resolveAgentLogsSourceForIssue(ctx context.Context, ref agentIs
 		}
 		return src, nil
 	}
-	if src, err := findArchivedAgentLogSourceByIssue(ref, tail, follow, agentLogsRedactedDir(), drainConsoleRedactedFile); err != nil {
+	if src, err := findArchivedAgentLogSourceByIssue(ref, tail, follow, agentLogsRedactedDir(), drainConsoleRedactedFile, "archive path"); err != nil {
 		return agentLogSource{}, err
 	} else if src.Kind != "" {
 		if follow {
@@ -192,7 +206,7 @@ func (r *Runner) resolveAgentLogsSourceForName(ctx context.Context, name string,
 		}
 		return agentLogSource{Kind: agentLogSourceDocker, Container: name, TranscriptTree: containerTranscriptDir, Tail: tail, Follow: follow}, nil
 	}
-	if src, err := findArchivedAgentLogSourceByName(name, tail, follow, agentLogsDir(), drainConsoleFile); err != nil {
+	if src, err := findArchivedAgentLogSourceByName(name, tail, follow, agentLogsDir(), drainConsoleFile, "archive path"); err != nil {
 		return agentLogSource{}, err
 	} else if src.Kind != "" {
 		if follow {
@@ -200,7 +214,7 @@ func (r *Runner) resolveAgentLogsSourceForName(ctx context.Context, name string,
 		}
 		return src, nil
 	}
-	if src, err := findArchivedAgentLogSourceByName(name, tail, follow, agentLogsRedactedDir(), drainConsoleRedactedFile); err != nil {
+	if src, err := findArchivedAgentLogSourceByName(name, tail, follow, agentLogsRedactedDir(), drainConsoleRedactedFile, "archive path"); err != nil {
 		return agentLogSource{}, err
 	} else if src.Kind != "" {
 		if follow {
@@ -251,11 +265,11 @@ func (r *Runner) streamDockerAgentLogsSource(ctx context.Context, source agentLo
 			if source.Tail > 0 {
 				transcript = tailBytes(transcript, source.Tail)
 			}
-			_, _ = fmt.Fprintf(w, "ward agent logs: docker logs empty; using live transcript tree from %s\n", source.TranscriptTree)
+			_, _ = fmt.Fprintf(w, "ward agent logs: %s had no readable bytes; using live transcript tree from %s\n", source.String(), source.TranscriptTree)
 			_, err = w.Write(transcript)
 			return err
 		}
-		_, _ = fmt.Fprintf(w, "ward agent logs: docker logs empty; live transcript tree at %s is empty\n", source.TranscriptTree)
+		_, _ = fmt.Fprintf(w, "ward agent logs: %s had no readable bytes; live transcript tree at %s is empty\n", source.String(), source.TranscriptTree)
 		return nil
 	}
 	_, err = w.Write(out)
@@ -269,6 +283,10 @@ func (r *Runner) streamFileAgentLogsSource(source agentLogSource, w io.Writer) e
 	}
 	if source.Tail > 0 {
 		b = tailBytes(b, source.Tail)
+	}
+	if len(b) == 0 {
+		_, _ = fmt.Fprintf(w, "ward agent logs: %s has no readable bytes\n", source.String())
+		return nil
 	}
 	_, err = w.Write(b)
 	return err
@@ -317,7 +335,7 @@ func (r *Runner) containerPresent(ctx context.Context, name string) bool {
 
 // findArchivedAgentLogSourceByIssue scans the archive tree for a drained engineer
 // run whose meta.json matches the given issue.
-func findArchivedAgentLogSourceByIssue(ref agentIssueRef, tail int, follow bool, baseDir, consoleName string) (agentLogSource, error) {
+func findArchivedAgentLogSourceByIssue(ref agentIssueRef, tail int, follow bool, baseDir, consoleName, label string) (agentLogSource, error) {
 	entries, err := os.ReadDir(baseDir)
 	if err != nil {
 		if os.IsNotExist(err) {
@@ -342,7 +360,7 @@ func findArchivedAgentLogSourceByIssue(ref agentIssueRef, tail int, follow bool,
 	case 0:
 		return agentLogSource{}, nil
 	case 1:
-		return agentLogSource{Kind: agentLogSourceFile, Path: filepath.Join(candidates[0], consoleName), Tail: tail, Follow: follow}, nil
+		return agentLogSource{Kind: agentLogSourceFile, Label: label, Path: filepath.Join(candidates[0], consoleName), Tail: tail, Follow: follow}, nil
 	default:
 		sort.Strings(candidates)
 		return agentLogSource{}, fmt.Errorf("dispatch broker: %q matches %d drained engineer log directories (%s) - refusing to guess; read one by its container name",
@@ -351,16 +369,16 @@ func findArchivedAgentLogSourceByIssue(ref agentIssueRef, tail int, follow bool,
 }
 
 // findArchivedAgentLogSourceByName looks up one exact drained container archive.
-func findArchivedAgentLogSourceByName(name string, tail int, follow bool, baseDir, consoleName string) (agentLogSource, error) {
+func findArchivedAgentLogSourceByName(name string, tail int, follow bool, baseDir, consoleName, label string) (agentLogSource, error) {
 	match := func(container string) bool {
 		return container == name
 	}
-	return findArchivedAgentLogSource(name, baseDir, consoleName, tail, follow, match)
+	return findArchivedAgentLogSource(name, baseDir, consoleName, label, tail, follow, match)
 }
 
 // findArchivedAgentLogSource scans one archive tree and returns the single matching
 // source, preferring the raw console.log naming for the source line.
-func findArchivedAgentLogSource(target, baseDir, consoleName string, tail int, follow bool, match func(string) bool) (agentLogSource, error) {
+func findArchivedAgentLogSource(target, baseDir, consoleName, label string, tail int, follow bool, match func(string) bool) (agentLogSource, error) {
 	entries, err := os.ReadDir(baseDir)
 	if err != nil {
 		if os.IsNotExist(err) {
@@ -384,7 +402,7 @@ func findArchivedAgentLogSource(target, baseDir, consoleName string, tail int, f
 	case 0:
 		return agentLogSource{}, nil
 	case 1:
-		return agentLogSource{Kind: agentLogSourceFile, Path: filepath.Join(candidates[0], consoleName), Tail: tail, Follow: follow}, nil
+		return agentLogSource{Kind: agentLogSourceFile, Label: label, Path: filepath.Join(candidates[0], consoleName), Tail: tail, Follow: follow}, nil
 	default:
 		sort.Strings(candidates)
 		return agentLogSource{}, fmt.Errorf("dispatch broker: %q matches %d drained engineer log directories (%s) - refusing to guess; read one by its container name",
