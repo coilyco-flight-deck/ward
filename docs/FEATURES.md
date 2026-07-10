@@ -41,12 +41,17 @@ Inventory of what `ward` ships today.
 - **`ward agent` roles and workflows** - see [agent.md](agent.md),
   [agent-roster.md](agent-roster.md), [agent-roles.md](agent-roles.md), [agent-harnesses.md](agent-harnesses.md),
   [agent-lifecycle.md](agent-lifecycle.md), [agent-director.md](agent-director.md),
-  [agent-ops.md](agent-ops.md), [dispatch-review.md](dispatch-review.md), and
+  [agent-ops.md](agent-ops.md), [agent-dispatch-health.md](agent-dispatch-health.md),
+  [dispatch-review.md](dispatch-review.md), and
   [agent-workflow.md](agent-workflow.md). The roster resolves from effective
   role definitions plus fleet overlays, not a hand-edited role list. `ward agent
   list` now carries known engineer capacity alongside the live rows, and `ward
   agent logs` surfaces live docker output and, when that stream is empty, the
   live transcript tree before it falls back to the drained archive.
+- **Dispatch-health surfacing** - `ward agent dispatch-health` computes the live
+  dispatch pathology summary, injects a capability-gated Claude status line,
+  and emits the stable `WARD-DISPATCH-HEALTH:` alert line for the existing
+  alert rules.
 - **PR repair input mode** - `ward agent engineer` accepts PR URLs and PR refs,
   seeds the continuation context, and starts the run from the PR source branch
   instead of recreating work from the issue branch.
