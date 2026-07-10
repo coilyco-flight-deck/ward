@@ -25,7 +25,8 @@ Inventory of what `ward` ships today.
   [agent-roster.md](agent-roster.md), [agent-roles.md](agent-roles.md), [agent-harnesses.md](agent-harnesses.md),
   [agent-lifecycle.md](agent-lifecycle.md), [agent-director.md](agent-director.md),
   [agent-ops.md](agent-ops.md), [dispatch-review.md](dispatch-review.md), and
-  [agent-workflow.md](agent-workflow.md).
+  [agent-workflow.md](agent-workflow.md). The roster resolves from effective
+  role definitions plus fleet overlays, not a hand-edited role list.
 
 ## Container surface
 
@@ -40,8 +41,9 @@ Inventory of what `ward` ships today.
   [ward-kdl-authoring.md](ward-kdl-authoring.md),
   [ward-kdl-surface.md](ward-kdl-surface.md),
   [ward-kdl-in-ward.md](ward-kdl-in-ward.md), and
-  [ward-docker-exec.md](ward-docker-exec.md). Per-area guardfile refs are
-  generated output, not release-era docs.
+  [ward-docker-exec.md](ward-docker-exec.md). It also embeds the shipped agent
+  role catalog from [ward-kdl.roles.kdl](../.ward/ward-kdl/ward-kdl.roles.kdl).
+  Per-area guardfile refs are generated output, not release-era docs.
 - Runtime `WARD_CONFIG_REF` bundles affect edge/operator surfaces, not the core
   agent control plane.
 - Coilyco-targeted operator surfaces fail fast when they would otherwise fall
