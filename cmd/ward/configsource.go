@@ -76,8 +76,8 @@ const (
 // Bundle-layout paths: the flat .ward bundle a ref points at (aos#332's landed
 // layout. See docs/config-source.md.
 const (
-	// The self-contained ops monolith mirroring the baked source's flattened
-	// guardfile: byte-Parsed, never `inherit`. See docs/config-source.md.
+	// The self-contained compatibility monolith mirrors the baked source's
+	// flattened guardfile. Runtime config must not `inherit` across files.
 	bundleForgejoGuardfilePath = "guardfile.forgejo.kdl"
 	bundleForgejoSpecLockPath  = "forgejo.swagger.lock.json"
 	bundleAgentsKDLPath        = "agents.kdl"
