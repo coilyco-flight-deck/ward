@@ -106,7 +106,7 @@ func TestAgentRunningEngineerFromInspectIncludesReservation(t *testing.T) {
 	if payload.AtCapacity == nil || *payload.AtCapacity {
 		t.Fatalf("at_capacity = %v, want false", payload.AtCapacity)
 	}
-	if len(payload.Engineers) != 1 || payload.Engineers[0].ExecutionLimit != "90m" {
+	if len(payload.Engineers) != 1 || payload.Engineers[0].ExecutionLimit != "1h30m0s" {
 		t.Fatalf("engineer budget JSON = %+v", payload.Engineers)
 	}
 	if !strings.Contains(payload.Engineers[0].BudgetRemaining, "remaining of 90m limit") {
@@ -121,7 +121,7 @@ func TestAgentRunningEngineerFromInspectIncludesReservation(t *testing.T) {
 		`"limit": 12`,
 		`"remaining": 11`,
 		`"at_capacity": false`,
-		`"execution_limit": "90m"`,
+		`"execution_limit": "1h30m0s"`,
 	} {
 		if !strings.Contains(string(jbuf), want) {
 			t.Fatalf("payload json missing %q:\n%s", want, jbuf)

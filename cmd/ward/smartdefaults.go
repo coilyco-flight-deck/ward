@@ -53,7 +53,7 @@ var smartDefaultsCache struct {
 
 func bakedSmartDefaults() smartDefaults {
 	return smartDefaults{
-		agentReservationTTL:           time.Hour,
+		agentReservationTTL:           3 * time.Hour,
 		reservationRecheckDefaultMax:  15 * time.Second,
 		agentReapIdleDefault:          time.Hour,
 		agentReapMaxCPUDefault:        5.0,
