@@ -26,7 +26,8 @@ incompatible `WARD_CONFIG_REF` can degrade the generated `ward ops ...` surface
 it owns, but it must not break issue lookup, reservation, broker dispatch,
 reaper comments, or container bootstrap.
 
-For coilyco-targeted director/operator surfaces, the baked neutral bundle is not
-good enough. If `WARD_TARGET_OWNER` or `WARD_TARGET_REPO` names a coilyco repo
-and no external bundle is active, ward fails early with a diagnostic that names
-the active source and the expected `WARD_CONFIG_REF` bundle.
+For coilyco-targeted director/operator surfaces and coilyco engineer containers,
+the baked neutral bundle is not good enough. If `WARD_TARGET_OWNER` or
+`WARD_TARGET_REPO` names a coilyco repo and no external bundle is active, ward
+fails early with a diagnostic that names the active source and the expected
+`WARD_CONFIG_REF` bundle.

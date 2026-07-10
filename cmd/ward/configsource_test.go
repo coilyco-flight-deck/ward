@@ -22,6 +22,8 @@ import (
 // WARD_CONFIG_REF means the baked embed, never an error.
 func TestSelectConfigSourceDefaultsBaked(t *testing.T) {
 	t.Setenv(wardConfigRefEnv, "")
+	t.Setenv("WARD_TARGET_OWNER", "")
+	t.Setenv("WARD_TARGET_REPO", "")
 	src, err := selectConfigSource()
 	if err != nil {
 		t.Fatalf("selectConfigSource with unset ref: %v", err)
@@ -34,14 +36,15 @@ func TestSelectConfigSourceDefaultsBaked(t *testing.T) {
 	}
 }
 
-// TestSelectConfigSourceRejectsBakedConfigForCoilycoTarget pins the fail-fast
-// path for a coilyco director surface with no external config ref.
-func TestSelectConfigSourceRejectsBakedConfigForCoilycoTarget(t *testing.T) {
+// TestSelectConfigSourceRejectsCoilycoTargetWithoutCheckout pins the fail-fast
+// path when ward can name a coilyco target but cannot reconstruct a checkout.
+func TestSelectConfigSourceRejectsCoilycoTargetWithoutCheckout(t *testing.T) {
 	t.Setenv(wardConfigRefEnv, "")
 	t.Setenv("WARD_TARGET_OWNER", "coilyco-flight-deck")
 	t.Setenv("WARD_TARGET_REPO", "coilyco-flight-deck/ward")
+	t.Setenv("COILY_INVOKE_CWD", t.TempDir())
 	if _, err := selectConfigSource(); err == nil {
-		t.Fatal("coilyco target selected the baked config source; want a loud diagnostic")
+		t.Fatal("coilyco target without a checkout selected the baked config source; want a loud diagnostic")
 	} else {
 		for _, want := range []string{
 			"active config source is baked neutral default",
@@ -55,12 +58,36 @@ func TestSelectConfigSourceRejectsBakedConfigForCoilycoTarget(t *testing.T) {
 	}
 }
 
-// TestOpsCommandReportsBakedConfigForCoilycoTarget pins the operator boundary.
-// The mounted `ward ops forgejo` leaf must fail with the config diagnostic.
-func TestOpsCommandReportsBakedConfigForCoilycoTarget(t *testing.T) {
+// TestSelectConfigSourceReconstructsCoilycoTargetFromCheckout pins the writable
+// coilyco path. A real checkout reconstructs WARD_CONFIG_REF instead of falling back.
+func TestSelectConfigSourceReconstructsCoilycoTargetFromCheckout(t *testing.T) {
+	work := t.TempDir()
+	gitFixture(t, work, "init", "-b", "main", ".")
+	gitFixture(t, work, "commit", "--allow-empty", "-m", "seed")
+	head := gitFixture(t, work, "rev-parse", "HEAD")
+
 	t.Setenv(wardConfigRefEnv, "")
 	t.Setenv("WARD_TARGET_OWNER", "coilyco-flight-deck")
 	t.Setenv("WARD_TARGET_REPO", "coilyco-flight-deck/ward")
+	t.Setenv("COILY_INVOKE_CWD", work)
+
+	got, err := selectedConfigRef()
+	if err != nil {
+		t.Fatalf("selectedConfigRef: %v", err)
+	}
+	want := "forgejo.coilysiren.me/coilyco-flight-deck/ward@" + head + "//.ward"
+	if got != want {
+		t.Fatalf("selectedConfigRef = %q, want %q", got, want)
+	}
+}
+
+// TestOpsCommandReportsMissingCheckoutForCoilycoTarget pins the operator
+// boundary. Missing checkout metadata must fail loud for a coilyco target.
+func TestOpsCommandReportsMissingCheckoutForCoilycoTarget(t *testing.T) {
+	t.Setenv(wardConfigRefEnv, "")
+	t.Setenv("WARD_TARGET_OWNER", "coilyco-flight-deck")
+	t.Setenv("WARD_TARGET_REPO", "coilyco-flight-deck/ward")
+	t.Setenv("COILY_INVOKE_CWD", t.TempDir())
 	cmd := opsCommand()
 	forgejo := commandNamed(cmd.Commands, "forgejo")
 	if forgejo == nil {
@@ -68,10 +95,10 @@ func TestOpsCommandReportsBakedConfigForCoilycoTarget(t *testing.T) {
 	}
 	err := forgejo.Action(context.Background(), forgejo)
 	if err == nil {
-		t.Fatal("coilyco target mounted the baked config source; want a loud diagnostic")
+		t.Fatal("coilyco target without a checkout mounted the baked config source; want a loud diagnostic")
 	}
 	for _, want := range []string{
-		"active config source is baked neutral default",
+		"could not reconstruct it from target metadata",
 		"expected WARD_CONFIG_REF",
 		"coilyco-flight-deck/ward",
 	} {
