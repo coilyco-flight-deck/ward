@@ -908,8 +908,8 @@ func TestRunAgentAdvisorFreeformStaysLocal(t *testing.T) {
 	t.Setenv(envDispatchBrokerToken, "nonce-freeform")
 	t.Setenv("WARD_READONLY", "1")
 	t.Setenv(wardConfigRefEnv, "file://"+writeBundleFixture(t))
-	t.Setenv("WARD_TARGET_OWNER", "example-owner")
-	t.Setenv("WARD_TARGET_REPO", "example-owner/ward")
+	t.Setenv("WARD_TARGET_OWNER", "coilysiren")
+	t.Setenv("WARD_TARGET_REPO", "coilysiren/example")
 	stubContainerBootstrapStage(t)
 
 	origLaunch := dispatchBrokerLaunch
@@ -921,7 +921,7 @@ func TestRunAgentAdvisorFreeformStaysLocal(t *testing.T) {
 	}
 
 	cmd := parseCommandForTest(t, agentAdvisorFlags(), []string{
-		"advisor", "how is the audit log written?", "--repo", "example-owner/ward", "--print",
+		"advisor", "how is the audit log written?", "--repo", "coilysiren/example", "--print",
 	})
 	if err := (&Runner{}).runAgentAdvisor(t.Context(), cmd, modeCodex); err != nil {
 		t.Fatalf("runAgentAdvisor freeform path: %v", err)
@@ -1488,9 +1488,9 @@ func TestRunAgentTaskDirectRoutesThroughBrokerOnReadonlySurface(t *testing.T) {
 `
 	reposBody := `repos {
     repo-authority default=forgejo {
-        trusted-owner example-owner
+        trusted-owner coilysiren
         trusted-owner coilyco-flight-deck
-        repo "example-owner/*" forge=github
+        repo "coilysiren/*" forge=github
     }
 }`
 	if err := os.WriteFile(filepath.Join(bundleDir, bundleFixtureDefaultsPath), []byte(defaultsBody), 0o644); err != nil {

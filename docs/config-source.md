@@ -22,6 +22,10 @@ Some ward surfaces resolve config at launch instead of from the repo file.
 - the selected bundle still needs to be auditable and explainable.
 - the bundle's `ward.bundle.kdl` metadata names the Forgejo ops entrypoint.
 
+When ward needs a concrete GitHub repo that actually resolves in examples or
+tests, the baked bundle uses `coilysiren/example`. That repo is a public
+placeholder target, not a deployment-specific dependency.
+
 This is the seam for edge surfaces, not a place to hide repo policy. A bad or
 incompatible `WARD_CONFIG_REF` can degrade the generated `ward ops ...` surface
 it owns, but it must not break issue lookup, reservation, broker dispatch,

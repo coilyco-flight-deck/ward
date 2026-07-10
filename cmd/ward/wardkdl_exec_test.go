@@ -26,8 +26,8 @@ func newWardKdlTestRoot() *cli.Command {
 // TestMountWardKdlExecMountsNewSurfaces asserts the auto-discovery lights up the
 // dark exec surfaces: `agents <tool>`, `docker`, and `ops {aws,kubectl}`.
 func TestMountWardKdlExecMountsNewSurfaces(t *testing.T) {
-	t.Setenv("WARD_TARGET_OWNER", "example-owner")
-	t.Setenv("WARD_TARGET_REPO", "example-owner/example-repo")
+	t.Setenv("WARD_TARGET_OWNER", "coilysiren")
+	t.Setenv("WARD_TARGET_REPO", "coilysiren/example")
 	root := newWardKdlTestRoot()
 	if err := mountWardKdlExec(root, leanRunner()); err != nil {
 		t.Fatalf("mountWardKdlExec: %v", err)
@@ -67,8 +67,8 @@ func TestMountWardKdlExecMountsNewSurfaces(t *testing.T) {
 // TestMountWardKdlExecSkipsCollisions asserts a guardfile whose leaf collides
 // with a hand-written command is skipped, never duplicated or overwritten.
 func TestMountWardKdlExecSkipsCollisions(t *testing.T) {
-	t.Setenv("WARD_TARGET_OWNER", "example-owner")
-	t.Setenv("WARD_TARGET_REPO", "example-owner/example-repo")
+	t.Setenv("WARD_TARGET_OWNER", "coilysiren")
+	t.Setenv("WARD_TARGET_REPO", "coilysiren/example")
 	root := newWardKdlTestRoot()
 	if err := mountWardKdlExec(root, leanRunner()); err != nil {
 		t.Fatalf("mountWardKdlExec: %v", err)
@@ -142,8 +142,8 @@ func TestForgejoKeySealed(t *testing.T) {
 }
 
 func TestMountWardKdlExecAcceptsFirstInputSugar(t *testing.T) {
-	t.Setenv("WARD_TARGET_OWNER", "example-owner")
-	t.Setenv("WARD_TARGET_REPO", "example-owner/example-repo")
+	t.Setenv("WARD_TARGET_OWNER", "coilysiren")
+	t.Setenv("WARD_TARGET_REPO", "coilysiren/example")
 	root := newWardKdlTestRoot()
 	gfBytes, err := fs.ReadFile(bakedAssets, execAssetsDir+"/ward-kdl.aws.guardfile.kdl")
 	if err != nil {
