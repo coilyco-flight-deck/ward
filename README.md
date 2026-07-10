@@ -33,6 +33,7 @@ brew install coilyco-flight-deck/tap/ward
 ward exec test
 ward git commit -m ...
 ward audit tail --follow
+ward doctor
 ward agent engineer #98
 warded #98
 ```
