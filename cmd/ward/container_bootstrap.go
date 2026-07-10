@@ -1031,10 +1031,15 @@ func (r *Runner) warmSubstrateRepo(ctx context.Context, e bootstrapEnv, owner, n
 	}
 }
 
-// prepareConfigBundleCache pre-creates the gitcache's config-bundle dir while
-// the bootstrap runs as root, so the agent's WARD_CONFIG_REF caches there (ward#654).
+// prepareConfigBundleCache pre-creates the per-container config-bundle dir while
+// bootstrap runs as root, so WARD_CONFIG_REF caches there without poisoning siblings.
 func prepareConfigBundleCache(e bootstrapEnv) {
 	dir := filepath.Join(e.GitCache, "config-bundle")
+	if instance := strings.TrimSpace(e.Container); instance != "" {
+		dir = filepath.Join(dir, instance)
+	} else if uid := strings.TrimSpace(e.AgentUID); uid != "" {
+		dir = filepath.Join(dir, uid)
+	}
 	if err := os.MkdirAll(dir, 0o777); err != nil {
 		blog("config-bundle cache: %v (in-container refs fall back to the home cache)", err)
 		return
