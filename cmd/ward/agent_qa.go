@@ -198,7 +198,7 @@ func (r *Runner) captureQAResearch(ctx context.Context, c *cli.Command, mode con
 	repo := targetRepo{Owner: ref.Owner, Name: ref.Repo}
 	cwd := resolveInvokeCWD()
 
-	assetsDir, cleanupAssets, err := writeContainerAssets(ctx, c.String("ward-source"), strings.TrimSpace(c.String("ward-version")))
+	assetsDir, cleanupAssets, err := writeContainerAssets(ctx, r, c.String("ward-source"), strings.TrimSpace(c.String("ward-version")))
 	if err != nil {
 		return "", fmt.Errorf("%s: %w", label, err)
 	}

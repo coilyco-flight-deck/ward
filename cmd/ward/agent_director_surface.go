@@ -118,7 +118,7 @@ func (r *Runner) prepareScratchPlan(ctx context.Context, c *cli.Command, mode co
 	if !r.ownerAllowed(repo.Owner) {
 		return upPlan{}, func() {}, r.untrustedOwnerErr(label, repo.Owner)
 	}
-	assetsDir, cleanupAssets, err := writeContainerAssets(ctx, c.String("ward-source"), strings.TrimSpace(c.String("ward-version")))
+	assetsDir, cleanupAssets, err := writeContainerAssets(ctx, r, c.String("ward-source"), strings.TrimSpace(c.String("ward-version")))
 	if err != nil {
 		return upPlan{}, func() {}, err
 	}

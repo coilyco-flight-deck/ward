@@ -505,7 +505,7 @@ const containerAssetsPrefix = "ward-container-assets-"
 
 // sweepStaleContainerAssets best-effort reclaims past-TTL asset dirs in dir, left
 // by detached runs that cannot delete their own still-mounted dir on return.
-func sweepStaleContainerAssets(dir string) {
+func sweepStaleContainerAssets(dir string, live map[string]bool) {
 	entries, err := os.ReadDir(dir)
 	if err != nil {
 		return
@@ -518,8 +518,51 @@ func sweepStaleContainerAssets(dir string) {
 		if ierr != nil || time.Since(info.ModTime()) < containerAssetsTTL() {
 			continue
 		}
+		if live != nil && live[filepath.Join(dir, e.Name())] {
+			continue
+		}
 		_ = os.RemoveAll(filepath.Join(dir, e.Name()))
 	}
+}
+
+// dockerInspectMount mirrors the subset of `docker inspect --format {{json .Mounts}}`.
+// It only carries the fields needed to find the host path behind a live /opt/ward bind.
+type dockerInspectMount struct {
+	Source      string `json:"Source"`
+	Destination string `json:"Destination"`
+}
+
+// liveContainerAssetDirs returns live /opt/ward bind sources.
+// If docker can't answer conclusively, the caller must skip stale sweeping.
+func (r *Runner) liveContainerAssetDirs(ctx context.Context) (map[string]bool, bool) {
+	out, err := r.dockerCapture(ctx, "ps", "--filter", "label="+containerLabel, "--filter", "status=running", "--format", "{{.Names}}")
+	if err != nil {
+		return nil, false
+	}
+	live := map[string]bool{}
+	ok := true
+	for _, raw := range strings.Split(strings.TrimSpace(string(out)), "\n") {
+		name := strings.TrimSpace(raw)
+		if name == "" {
+			continue
+		}
+		mountsOut, merr := r.dockerCapture(ctx, "inspect", "--format", "{{json .Mounts}}", name)
+		if merr != nil {
+			ok = false
+			continue
+		}
+		var mounts []dockerInspectMount
+		if jerr := json.Unmarshal(mountsOut, &mounts); jerr != nil {
+			ok = false
+			continue
+		}
+		for _, m := range mounts {
+			if m.Destination == containerWardAssets && strings.TrimSpace(m.Source) != "" {
+				live[m.Source] = true
+			}
+		}
+	}
+	return live, ok
 }
 
 // sweepStaleContainers host-side-reclaims exited ward containers' writable layers
@@ -571,9 +614,11 @@ func (r *Runner) clearExitedContainer(ctx context.Context, name string) {
 
 // writeContainerAssets materializes the embedded entrypoint + doctrine and stages
 // the matching ward binary into a per-run dir under launchStagingDir.
-func writeContainerAssets(ctx context.Context, wardSource, wardVersion string) (dir string, cleanup func(), err error) {
+func writeContainerAssets(ctx context.Context, r *Runner, wardSource, wardVersion string) (dir string, cleanup func(), err error) {
 	root := launchStagingDir()
-	sweepStaleContainerAssets(root)
+	if r != nil {
+		r.sweepStaleContainerAssets(ctx, root)
+	}
 	dir, err = os.MkdirTemp(root, containerAssetsPrefix+"*")
 	if err != nil {
 		return "", func() {}, fmt.Errorf("ward container: create assets dir: %w", err)
@@ -604,6 +649,17 @@ func writeContainerAssets(ctx context.Context, wardSource, wardVersion string) (
 		return "", func() {}, err
 	}
 	return dir, cleanup, nil
+}
+
+func (r *Runner) sweepStaleContainerAssets(ctx context.Context, dir string) {
+	if r == nil || r.Runner == nil {
+		return
+	}
+	live, ok := r.liveContainerAssetDirs(ctx)
+	if !ok {
+		return
+	}
+	sweepStaleContainerAssets(dir, live)
 }
 
 func realStageWardBootstrapBinary(ctx context.Context, dir, wardSource, wardVersion string) error {

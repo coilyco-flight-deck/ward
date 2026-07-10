@@ -16,6 +16,7 @@ install_ward() {
   ln -sf /opt/ward/ward /usr/local/bin/ward
   ln -sf ward /usr/local/bin/warded
   /opt/ward/ward version >&2 || die "ward did not install correctly"
+  /usr/local/bin/warded --help >/dev/null 2>&1 || die "warded did not install correctly"
 }
 
 die() { log "fatal: $*"; exit 1; }
