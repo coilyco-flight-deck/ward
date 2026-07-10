@@ -73,11 +73,10 @@ const (
 	topologyGeneratedKDLPath = "topologyassets/topology.generated.kdl"
 )
 
-// Bundle-layout paths: the flat .ward bundle a ref points at (aos#332's landed
-// layout. See docs/config-source.md.
+// Bundle-layout paths: the flat .ward bundle a ref points at (aos#332's landed layout).
 const (
-	// The compatibility monolith mirrors the baked source's flattened guardfile.
-	// Runtime config must not `inherit` across files; see docs/config-source.md.
+	// The self-contained compatibility monolith mirrors the baked source's flat guardfile.
+	// The role guardfiles stay role-facing, and runtime config must not inherit files.
 	bundleForgejoGuardfilePath = "guardfile.forgejo.kdl"
 	bundleForgejoSpecLockPath  = "forgejo.swagger.lock.json"
 	bundleAgentsKDLPath        = "agents.kdl"
