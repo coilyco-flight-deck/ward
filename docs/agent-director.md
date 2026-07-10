@@ -37,5 +37,6 @@ for supervision and landing, not for implementation.
 ## See also
 
 - [agent-ops.md](agent-ops.md) - list, logs, stop, reap.
+- [agent-pr-workflow.md](agent-pr-workflow.md) - native merge, CI status, and rerun tools.
 - [agent-workflow.md](agent-workflow.md) - PR and merge policy.
 - [agent-roles.md](agent-roles.md) - role semantics.

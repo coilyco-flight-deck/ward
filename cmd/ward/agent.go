@@ -652,6 +652,9 @@ trusted owner.`, agentHarnessChoices(), defaultAgentMode()),
 			// logs is a read verb, not a startup role: a director surface reads one
 			// engineer's logs through the dispatch broker. docs/agent-logs.md.
 			agentLogsCommand(),
+			// pr carries the native PR-workflow verbs (merge/status/runs/rerun), not a
+			// startup role (ward#1067). docs/agent-pr-workflow.md.
+			agentPRCommand(),
 			// review is the pre-landing adversarial-review gate, not a startup role
 			// (ward#134): a diff must survive a multi-model panel. docs/dispatch-review.md.
 			agentReviewCommand(),
