@@ -819,6 +819,75 @@ func TestForwardAgentDispatchToHostBrokerSupportsQa(t *testing.T) {
 	}
 }
 
+// TestSendDispatchBrokerLaunchRequestWaitsForResponse pins the durability fix:
+// a launch must not read as successful until the broker actually answers.
+func TestSendDispatchBrokerLaunchRequestWaitsForResponse(t *testing.T) {
+	ln, err := net.Listen("tcp", "127.0.0.1:0")
+	if err != nil {
+		t.Fatalf("listen broker: %v", err)
+	}
+	defer ln.Close()
+
+	gotReq := make(chan dispatchBrokerRequest, 1)
+	release := make(chan struct{})
+	go func() {
+		conn, err := ln.Accept()
+		if err != nil {
+			return
+		}
+		defer conn.Close()
+		var req dispatchBrokerRequest
+		if err := json.NewDecoder(conn).Decode(&req); err != nil {
+			return
+		}
+		gotReq <- req
+		<-release
+		_ = json.NewEncoder(conn).Encode(dispatchBrokerResponse{OK: true, LogPath: "/tmp/ward/dispatch.log"})
+	}()
+
+	ctx, cancel := context.WithTimeout(t.Context(), time.Second)
+	defer cancel()
+	done := make(chan struct {
+		logPath string
+		err     error
+	}, 1)
+	go func() {
+		logPath, err := sendDispatchBrokerLaunchRequest(ctx, ln.Addr().String(), dispatchBrokerRequest{
+			Role:      "advisor",
+			Argv:      []string{"advisor", "coilyco-flight-deck/ward#378", "--harness", "codex"},
+			Requester: "director-codex-host",
+			Token:     "nonce-adv",
+		})
+		done <- struct {
+			logPath string
+			err     error
+		}{logPath: logPath, err: err}
+	}()
+
+	select {
+	case <-gotReq:
+	case <-time.After(2 * time.Second):
+		t.Fatal("broker never received the launch request")
+	}
+	select {
+	case got := <-done:
+		t.Fatalf("launch returned before the broker responded: %+v", got)
+	case <-time.After(200 * time.Millisecond):
+	}
+	close(release)
+	select {
+	case got := <-done:
+		if got.err != nil {
+			t.Fatalf("launch request: %v", got.err)
+		}
+		if got.logPath != "/tmp/ward/dispatch.log" {
+			t.Fatalf("log path = %q, want the broker response", got.logPath)
+		}
+	case <-time.After(2 * time.Second):
+		t.Fatal("launch never returned after the broker responded")
+	}
+}
+
 func TestDispatchBrokerEnvIsPlanLocal(t *testing.T) {
 	p := sampleUpPlan()
 	if _, ok := p.wardEnv()[envDispatchBrokerAddr]; ok {
