@@ -1952,7 +1952,7 @@ func TestStartHostDispatchBrokerRequestDoesNotTrustCrossOwnerNameCollisions(t *t
 
 	req := dispatchBrokerRequest{
 		Role:      "engineer",
-		Argv:      []string{"engineer", "coilysiren/website#66", "--harness", "codex"},
+		Argv:      []string{"engineer", "coilysiren/website#66", "--harness", "codex", "--pr"},
 		Requester: "director-codex-host",
 		Token:     "nonce-collision",
 	}
