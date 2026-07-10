@@ -17,7 +17,7 @@ ward's second half is a **guarded execution layer for coding agents**. `ward age
 
 The plain verb gate (`ward exec`, `ward git`, `ward audit`) needs none of the above - just the repo and its `.ward/ward.yaml`.
 
-**Which Forgejo? As shipped, ward targets one - `forgejo.coilysiren.me` - and only `coily*`-owned orgs.** The API endpoint, the private coilyco-ops SSM token path, and an `owner matches coily*` gate on every owner-scoped verb are compiled into the Forgejo ops surface ([`ward-kdl.forgejo.guardfile.kdl`](.ward/ward-kdl/ward-kdl.forgejo.guardfile.kdl)), and the bot attribution defaults into the embedded fleet manifest ([`ward-kdl.fleet.kdl`](.ward/ward-kdl/ward-kdl.fleet.kdl)) - none of them runtime config. The forge-agnostic verb gate runs against any repo, but the agent driver and `ward ops forgejo` **cannot be repointed at your own instance after install**: retargeting means a **source build** with those two files edited and the binary rebuilt. Turning the endpoint, token, and owner gate into operator config is tracked in [ward#395](https://forgejo.coilysiren.me/coilyco-flight-deck/ward/issues/395) and [ward#396](https://forgejo.coilysiren.me/coilyco-flight-deck/ward/issues/396).
+**Which Forgejo?** As shipped, ward defaults its guarded Forgejo surfaces to `forgejo.coilysiren.me` and `coily*`-owned orgs. The endpoint, token path, and owner gate are read from the selected config bundle for those edge surfaces ([`docs/config-source.md`](docs/config-source.md)), so `WARD_CONFIG_REF` can retarget them without a source rebuild. Rebuilding from source only changes the baked default bundle and embedded defaults. The forge-agnostic verb gate still runs against any repo.
 
 ## What it does
 
@@ -36,7 +36,7 @@ brew tap coilyco-flight-deck/tap https://forgejo.coilysiren.me/coilyco-flight-de
 brew install coilyco-flight-deck/tap/ward
 ```
 
-The explicit-URL form is required because the tap lives on forgejo, not github.com. The formula installs `ward` (stamped with the release tag) plus the `warded` symlink, and nothing else. The `ward-kdl` authoring binary is **not** installed - its surfaces are already embedded in `ward`. Spec authors who need `ward-kdl` build it from a ward checkout - see [ward-kdl-authoring.md](docs/ward-kdl-authoring.md).
+The explicit-URL form is required because the tap lives on forgejo, not github.com. The formula installs `ward` (stamped with the release tag) plus the `warded` symlink, and nothing else. The `ward-kdl` authoring binary is **not** installed - its surfaces are already embedded in `ward`. Most adopters stop at `.ward/ward.yaml`; spec authors who need `ward-kdl` build it from a ward checkout - see [ward-kdl-authoring.md](docs/ward-kdl-authoring.md).
 
 **Building from source.** ward's `go.mod` pins [cli-guard][cli-guard] from `forgejo.coilysiren.me/coilyco-flight-deck/cli-guard`, so a plain `go build` needs that Forgejo host reachable and the repo public. For local development, `make workspace` resolves cli-guard from a sibling checkout through a gitignored `go.work`; see [docs/workspace.md](docs/workspace.md).
 
