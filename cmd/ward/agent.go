@@ -25,11 +25,13 @@ import (
 // agentIssueRef is a parsed issue reference for `ward agent`. Forge tags the git
 // host, tracker tags the issue thread. The default pairing stays zero-config.
 type agentIssueRef struct {
-	Owner             string
-	Repo              string
-	Number            int
-	Forge             forge
-	Tracker           tracker
+	Owner   string
+	Repo    string
+	Number  int
+	Forge   forge
+	Tracker tracker
+	// MergeRequest marks the ref as PR/MR-shaped. Forgejo/GitHub treat it as a
+	// pull request; GitLab keeps its merge-request wording.
 	MergeRequest      bool
 	URL               string
 	ShortcutWorkspace string
@@ -67,7 +69,22 @@ func (r agentIssueRef) url() string {
 		}
 		return fmt.Sprintf("%s/%s/%s/-/%s/%d", strings.TrimRight(r.Forge.baseURL(), "/"), r.Owner, r.Repo, path, r.Number)
 	}
+	if r.MergeRequest {
+		return fmt.Sprintf("%s/%s/%s/%s/%d", strings.TrimRight(r.Forge.baseURL(), "/"), r.Owner, r.Repo, pullRequestPathSegment(r.Forge), r.Number)
+	}
 	return fmt.Sprintf("%s/%s/%s/issues/%d", strings.TrimRight(r.Forge.baseURL(), "/"), r.Owner, r.Repo, r.Number)
+}
+
+func pullRequestPathSegment(f forge) string {
+	switch f {
+	case forgeForgejo:
+		return "pulls"
+	case forgeGitHub:
+		return "pull"
+	case forgeGitLab:
+		return "merge_requests"
+	}
+	return "pulls"
 }
 
 // trackerOrDefault resolves the issue-thread port, defaulting to the host's
@@ -105,6 +122,9 @@ func parseAgentIssueRef(s string) (agentIssueRef, error) {
 	s = strings.TrimSpace(s)
 	if s == "" {
 		return agentIssueRef{}, fmt.Errorf("empty issue reference")
+	}
+	if prRef, ok := parseAgentPullRequestRef(s); ok {
+		return prRef, nil
 	}
 	// A github.com URL or `github.com/owner/repo#N` short form is unambiguously a
 	// GitHub ref (ward#489). Shortcut story URLs are recognized first as well.
@@ -145,6 +165,63 @@ func parseAgentIssueRef(s string) (agentIssueRef, error) {
 			s, strings.TrimRight(forgejoBaseURL, "/"), strings.TrimRight(gitlabBaseURL(), "/"), shortcutAppBaseURL)
 	}
 	return agentIssueRef{}, fmt.Errorf("cannot parse issue ref %q: want owner/repo#N, a bare #N, %s/owner/repo/issues/N, %s/owner/repo/-/issues/N, or %s/<workspace>/story/N", s, strings.TrimRight(forgejoBaseURL, "/"), strings.TrimRight(gitlabBaseURL(), "/"), shortcutAppBaseURL)
+}
+
+var forgejoPullRequestRefRE = regexp.MustCompile(`(?i)^(?:https?://)?(?:www\.)?` + regexp.QuoteMeta(strings.TrimRight(forgejoBaseURL, "/")) +
+	`/([\w.-]+)/([\w.-]+?)(?:\.git)?/(?:pull|pulls)/(\d+)(?:[/?#].*)?$`)
+var githubPullRequestRefRE = regexp.MustCompile(`(?i)^(?:https?://)?(?:www\.)?github\.com/([\w.-]+)/([\w.-]+?)(?:\.git)?/(?:pull|pulls)/(\d+)(?:[/?#].*)?$`)
+var compactPullRequestRefRE = regexp.MustCompile(`(?i)^([\w.-]+)/([\w.-]+?)(?:\.git)?!(\d+)$`)
+
+// parseAgentPullRequestRef resolves a PR/MR ref into the shared issue ref shape.
+func parseAgentPullRequestRef(s string) (agentIssueRef, bool) {
+	s = strings.TrimSpace(s)
+	if s == "" {
+		return agentIssueRef{}, false
+	}
+	if ghRef, ok := parseGitHubPullRequestRef(s); ok {
+		return ghRef, true
+	}
+	if fjRef, ok := parseForgejoPullRequestRef(s); ok {
+		return fjRef, true
+	}
+	if glRef, ok := parseGitLabIssueRef(s); ok && glRef.MergeRequest {
+		return glRef, true
+	}
+	if m := compactPullRequestRefRE.FindStringSubmatch(s); m != nil {
+		n, err := parsePositiveInt(m[3])
+		if err != nil || n <= 0 {
+			return agentIssueRef{}, false
+		}
+		ref := agentIssueRef{Owner: m[1], Repo: strings.TrimSuffix(m[2], ".git"), Number: n, MergeRequest: true}
+		ref.Forge = currentSmartDefaults().forgeForRepo(ref.Owner, ref.Repo)
+		ref.Tracker = trackerFromForge(ref.Forge)
+		return ref, true
+	}
+	return agentIssueRef{}, false
+}
+
+func parseGitHubPullRequestRef(s string) (agentIssueRef, bool) {
+	m := githubPullRequestRefRE.FindStringSubmatch(strings.TrimSpace(s))
+	if m == nil {
+		return agentIssueRef{}, false
+	}
+	n, err := parsePositiveInt(m[3])
+	if err != nil || n <= 0 {
+		return agentIssueRef{}, false
+	}
+	return agentIssueRef{Owner: m[1], Repo: strings.TrimSuffix(m[2], ".git"), Number: n, Forge: forgeGitHub, Tracker: trackerGitHub, MergeRequest: true, URL: strings.TrimSpace(s)}, true
+}
+
+func parseForgejoPullRequestRef(s string) (agentIssueRef, bool) {
+	m := forgejoPullRequestRefRE.FindStringSubmatch(strings.TrimSpace(s))
+	if m == nil {
+		return agentIssueRef{}, false
+	}
+	n, err := parsePositiveInt(m[3])
+	if err != nil || n <= 0 {
+		return agentIssueRef{}, false
+	}
+	return agentIssueRef{Owner: m[1], Repo: strings.TrimSuffix(m[2], ".git"), Number: n, Forge: forgeForgejo, Tracker: trackerForgejo, MergeRequest: true, URL: strings.TrimSpace(s)}, true
 }
 
 // looksLikeExplicitForgejoIssueRef reports whether s names Forgejo directly rather
@@ -200,7 +277,11 @@ func (r *Runner) resolveAgentIssueRef(ctx context.Context, arg string) (agentIss
 		if ref.Forge == 0 {
 			ref.Forge = currentSmartDefaults().forgeForRepo(ref.Owner, ref.Repo)
 		}
-		writef(os.Stderr, "ward agent: resolved issue ref %s -> %s\n", arg, ref)
+		kind := "issue ref"
+		if ref.MergeRequest {
+			kind = "pull request ref"
+		}
+		writef(os.Stderr, "ward agent: resolved %s %s -> %s\n", kind, arg, ref)
 		return ref, nil
 	}
 	repo, _, terr := r.resolveTarget(ctx, "")
@@ -213,7 +294,11 @@ func (r *Runner) resolveAgentIssueRef(ctx context.Context, arg string) (agentIss
 	if ref.Forge == 0 {
 		ref.Forge = currentSmartDefaults().forgeForRepo(ref.Owner, ref.Repo)
 	}
-	writef(os.Stderr, "ward agent: inferred bare issue ref %s -> %s from cwd origin\n", arg, ref)
+	kind := "bare issue ref"
+	if ref.MergeRequest {
+		kind = "bare pull request ref"
+	}
+	writef(os.Stderr, "ward agent: inferred %s %s -> %s from cwd origin\n", kind, arg, ref)
 	return ref, nil
 }
 
@@ -241,7 +326,12 @@ func reviewGateDisabledByTemporaryDefault(role string) bool {
 // headlessReflection is the headless run's closing "how it felt" retro led by a
 // WARD-OUTCOME line; its landing phrase is workflow-aware (ward#281, ward#508).
 func headlessReflection(ref agentIssueRef, wf workflowMode, reviewGate bool, reviewSkip string) string {
-	outcomeStatus := workflowOutcomeStatus(wf)
+	outcomeStatus := workflowOutcomeStatus(wf, reviewGate)
+	workflowLine := "workflow: <mode>; review summary: <summary or skip state>"
+	landingPhrase := workflowLandingPhrase(ref, wf)
+	if canonicalWorkflow(wf.orDefault()) == workflowPullRequestAndMerge {
+		workflowLine = "workflow: pull-request-and-merge; review summary: <summary or skip state>"
+	}
 	reviewLine := "If a review ran, read `~/.ward/review-summary.txt` and copy its exact one-line summary into the same final comment."
 	if !reviewGate {
 		reviewLine = "The in-container review gate was intentionally skipped"
@@ -249,15 +339,18 @@ func headlessReflection(ref agentIssueRef, wf workflowMode, reviewGate bool, rev
 			reviewLine += " because " + reviewSkip
 		}
 		reviewLine += ", so the final comment must say that explicitly."
+		if canonicalWorkflow(wf.orDefault()) == workflowPullRequestAndMerge {
+			landingPhrase = "the pull request is open and the review gate was intentionally skipped"
+		}
 	}
-	return "Finally, as your very last step - only after " + workflowLandingPhrase(ref, wf) + " - post one hypercurt " +
+	return "Finally, as your very last step - only after " + landingPhrase + " - post one hypercurt " +
 		"comment on this issue. The only visible text before the collapsed block is a single machine-readable " +
 		"status line - its very first visible line, exactly one of:\n" +
 		"  `" + wardOutcomeMarker + " " + outcomeStatus + "`\n" +
 		"  `" + wardOutcomeMarker + " blocked 🛑`\n" +
 		"  `" + wardOutcomeMarker + " failed ❌`\n" +
 		"Put every other word inside one collapsed `<details><summary>details</summary>` block: the review " +
-		"summary or skip state, the workflow line (`workflow: <mode>; review summary: <summary or skip state>`), " +
+		"summary or skip state, the workflow line (`" + workflowLine + "`), " +
 		"the short candid retrospective on how the implementation \"felt\", confidence, surprises, and follow-ups. Do not leave " +
 		"any visible prose outside that first status line. " + reviewLine + " " + headlessWorkflowFailureCommentClause(ref, wf) + " A supervising director loop " +
 		"(ward agent director) reads only that first line to classify the run, so for a normal run that completed " +
@@ -644,6 +737,9 @@ trusted owner.`, agentHarnessChoices(), defaultAgentMode()),
 			// logs is a read verb, not a startup role: a director surface reads one
 			// engineer's logs through the dispatch broker. docs/agent-logs.md.
 			agentLogsCommand(),
+			// pr carries the native PR-workflow verbs (merge/status/runs/rerun), not a
+			// startup role (ward#1067). docs/agent-pr-workflow.md.
+			agentPRCommand(),
 			// review is the pre-landing adversarial-review gate, not a startup role
 			// (ward#134): a diff must survive a multi-model panel. docs/dispatch-review.md.
 			agentReviewCommand(),
@@ -738,6 +834,7 @@ type resolvedWork struct {
 	Comments   []issueComment
 	Details    string
 	Seed       string
+	Branch     string
 	ReviewGate bool
 	// ExtraRepos are the --repo grants the run also clones writable (ward#230);
 	// the pre-flight must hear about them or it false-NO-GOs cross-repo work (ward#266).
@@ -747,9 +844,88 @@ type resolvedWork struct {
 	Workflow workflowMode
 }
 
+// agentPullRequestContext carries the extra seed metadata a PR-ref engineer run
+// needs to start from the existing branch instead of treating it like fresh work.
+type agentPullRequestContext struct {
+	State        string
+	Title        string
+	Body         string
+	URL          string
+	HeadRef      string
+	BaseRef      string
+	Mergeability string
+}
+
+func (pr agentPullRequestContext) summaryLine() string {
+	parts := []string{
+		"source branch " + emptyDefault(pr.HeadRef, "(unknown)"),
+		"base branch " + emptyDefault(pr.BaseRef, "(unknown)"),
+		"mergeability " + emptyDefault(pr.Mergeability, "(unknown)"),
+	}
+	return strings.Join(parts, ", ")
+}
+
+type prContextTracker interface {
+	getPullRequestContext(context.Context, string, string, int) (*agentPullRequestContext, error)
+	listPullRequestComments(context.Context, string, string, int) ([]issueComment, error)
+}
+
+func joinNonEmptyBlocks(blocks ...string) string {
+	var out []string
+	for _, block := range blocks {
+		if block = strings.TrimSpace(block); block != "" {
+			out = append(out, block)
+		}
+	}
+	return strings.Join(out, "\n\n")
+}
+
+func issueBodyWithComments(body string, comments []issueComment) string {
+	body = strings.TrimSpace(body)
+	thread := preflightComments(comments)
+	if thread == "" {
+		return body
+	}
+	if body != "" {
+		return body + "\n\nComment thread (oldest first):\n\n" + thread
+	}
+	return "Comment thread (oldest first):\n\n" + thread
+}
+
+func engineerPRDetails(pr agentPullRequestContext, comments []issueComment, linkedIssue *dispatch.Issue, linkedComments []issueComment) string {
+	var b strings.Builder
+	b.WriteString("PR continuation context. Treat this as repair or continuation work on an existing pull request, not fresh issue implementation.\n")
+	if pr.Title != "" {
+		fmt.Fprintf(&b, "- PR title: %s\n", pr.Title)
+	}
+	if pr.URL != "" {
+		fmt.Fprintf(&b, "- PR URL: %s\n", pr.URL)
+	}
+	if pr.State != "" {
+		fmt.Fprintf(&b, "- PR state: %s\n", pr.State)
+	}
+	fmt.Fprintf(&b, "- PR summary: %s\n", pr.summaryLine())
+	if pr.Body = strings.TrimSpace(pr.Body); pr.Body != "" {
+		fmt.Fprintf(&b, "\n----- PR body -----\n%s\n----- end PR body -----\n", pr.Body)
+	}
+	if thread := preflightComments(comments); thread != "" {
+		fmt.Fprintf(&b, "\n----- PR comment thread -----\n%s\n----- end PR comment thread -----\n", thread)
+	}
+	if linkedIssue != nil {
+		fmt.Fprintf(&b, "\nLinked issue context: %d (%q)\nURL: %s\n", linkedIssue.Number, strings.TrimSpace(linkedIssue.Title), linkedIssue.URL)
+		if linkedIssue.Body != "" {
+			fmt.Fprintf(&b, "----- linked issue body -----\n%s\n----- end linked issue body -----\n", strings.TrimSpace(linkedIssue.Body))
+		}
+		if thread := preflightComments(linkedComments); thread != "" {
+			fmt.Fprintf(&b, "----- linked issue comment thread -----\n%s\n----- end linked issue comment thread -----\n", thread)
+		}
+	}
+	return strings.TrimSpace(b.String())
+}
+
 // resolveAgentWork parses + trust-gates the ref, fetches the issue (failing fast
 // before any container spins), and returns the ref, title, body, and seed prompt.
-func (r *Runner) resolveAgentWork(ctx context.Context, c *cli.Command, mode containerMode, surface string) (resolvedWork, error) { //nolint:gocyclo,cyclop
+func (r *Runner) resolveAgentWork(ctx context.Context, c *cli.Command, mode containerMode, surface string) (resolvedWork, error) { //nolint:gocyclo,cyclop,gocognit,funlen
 	label := agentCmdline(mode, surface)
 	ref, err := r.resolveAgentIssueRef(ctx, c.Args().First())
 	if err != nil {
@@ -760,33 +936,13 @@ func (r *Runner) resolveAgentWork(ctx context.Context, c *cli.Command, mode cont
 	if c.Bool("github") {
 		ref.Forge = forgeGitHub
 	}
+	if c.Bool("pr") {
+		ref.MergeRequest = true
+	}
 	// Trust gate: the in-container agent runs under bypassPermissions, so only
 	// spin one up for an owner in the trusted-owner set. Mirrors dispatch's check.
 	if !r.ownerAllowed(ref.Owner) {
 		return resolvedWork{}, r.untrustedOwnerErr(label, ref.Owner)
-	}
-	issue, err := r.fetchIssue(ctx, ref)
-	if err != nil {
-		return resolvedWork{}, fmt.Errorf("%s: resolve issue %s: %w", label, ref, err)
-	}
-	// Re-dispatch guard: a closed issue is already landed, so no-op instead of
-	// spinning to rediscover it; --force/--print work it anyway (ward#600, docs).
-	if st := strings.ToLower(strings.TrimSpace(issue.State)); st != "" && st != "open" {
-		if !c.Bool("force") && !c.Bool("print") {
-			return resolvedWork{}, dispatchDeclineErr(dispatchIssueClosed, "issue-closed",
-				"%s: issue %s is %s, not open - nothing to do (pass --force to work it anyway)", label, ref, st)
-		}
-		writef(os.Stderr, "%s: note: issue %s is %s, not open - working it anyway (--force/--print).\n", label, ref, st)
-	}
-	// Automation-mode gate: engineer dispatch only refuses issues explicitly
-	// labeled interactive; consult/default issues are dispatchable (ward#663).
-	if surface == "engineer" && issueHasModeLabel(issue.Labels, "interactive") {
-		if !c.Bool("force") && !c.Bool("print") {
-			return resolvedWork{}, dispatchDeclineErr(dispatchModeCeiling, "mode-ceiling",
-				"%s: refusing to dispatch the %s role on %s: the issue is explicitly labeled interactive - remove that label or pass --force to override (consult/default issues dispatch normally)",
-				label, surface, ref)
-		}
-		writef(os.Stderr, "%s: note: issue %s is explicitly labeled interactive - dispatching anyway (--force/--print).\n", label, ref)
 	}
 	// Resolve the landing policy up front so a bad --workflow fails before any
 	// container spins, and the seed carries the right carry clause (ward#508).
@@ -794,13 +950,78 @@ func (r *Runner) resolveAgentWork(ctx context.Context, c *cli.Command, mode cont
 	if werr != nil {
 		return resolvedWork{}, fmt.Errorf("%s: %w", label, werr)
 	}
-	title := strings.TrimSpace(issue.Title)
+	issue, issueErr := r.fetchIssue(ctx, ref)
+	if issueErr != nil && !ref.MergeRequest {
+		return resolvedWork{}, fmt.Errorf("%s: resolve issue %s: %w", label, ref, issueErr)
+	}
+	var title string
+	var body string
 	details := strings.TrimSpace(c.String("details"))
-	// Fetch comments so the pre-flight sees decisions made there, not just the
-	// body (ward#154); degrade to a body-only read on failure (the prior behavior).
-	comments, cerr := r.fetchIssueComments(ctx, ref)
-	if cerr != nil {
-		writef(os.Stderr, "%s: note: could not read comments on %s (%v); pre-flight reads the body only\n", label, ref, cerr)
+	var comments []issueComment
+	var cerr error
+	branch := ""
+	if ref.MergeRequest { //nolint:nestif
+		pr, prComments, prLinkedIssue, prLinkedComments, perr := r.resolveAgentPullRequestWork(ctx, mode, ref)
+		if perr != nil {
+			return resolvedWork{}, fmt.Errorf("%s: resolve pull request %s: %w", label, ref, perr)
+		}
+		state := pr.State
+		if issueErr == nil && issue != nil {
+			if strings.TrimSpace(issue.State) != "" {
+				state = issue.State
+			}
+			if surface == "engineer" && issueHasModeLabel(issue.Labels, "interactive") {
+				if !c.Bool("force") && !c.Bool("print") {
+					return resolvedWork{}, dispatchDeclineErr(dispatchModeCeiling, "mode-ceiling",
+						"%s: refusing to dispatch the %s role on %s: the issue is explicitly labeled interactive - remove that label or pass --force to override (consult/default issues dispatch normally)",
+						label, surface, ref)
+				}
+				writef(os.Stderr, "%s: note: issue %s is explicitly labeled interactive - dispatching anyway (--force/print).\n", label, ref)
+			}
+		}
+		if st := strings.ToLower(strings.TrimSpace(state)); st != "" && st != "open" {
+			if !c.Bool("force") && !c.Bool("print") {
+				return resolvedWork{}, dispatchDeclineErr(dispatchIssueClosed, "issue-closed",
+					"%s: issue %s is %s, not open - nothing to do (pass --force to work it anyway)", label, ref, st)
+			}
+			writef(os.Stderr, "%s: note: issue %s is %s, not open - working it anyway (--force/--print).\n", label, ref, st)
+		}
+		title = strings.TrimSpace(pr.Title)
+		body = strings.TrimSpace(pr.Body)
+		comments = prComments
+		branch = strings.TrimSpace(pr.HeadRef)
+		details = joinNonEmptyBlocks(engineerPRDetails(pr, comments, prLinkedIssue, prLinkedComments), details)
+	} else {
+		if issueErr != nil {
+			return resolvedWork{}, fmt.Errorf("%s: resolve issue %s: %w", label, ref, issueErr)
+		}
+		// Re-dispatch guard: a closed issue is already landed, so no-op instead of
+		// spinning to rediscover it; --force/--print work it anyway (ward#600, docs).
+		if st := strings.ToLower(strings.TrimSpace(issue.State)); st != "" && st != "open" {
+			if !c.Bool("force") && !c.Bool("print") {
+				return resolvedWork{}, dispatchDeclineErr(dispatchIssueClosed, "issue-closed",
+					"%s: issue %s is %s, not open - nothing to do (pass --force to work it anyway)", label, ref, st)
+			}
+			writef(os.Stderr, "%s: note: issue %s is %s, not open - working it anyway (--force/--print).\n", label, ref, st)
+		}
+		// Automation-mode gate: engineer dispatch only refuses issues explicitly
+		// labeled interactive; consult/default issues are dispatchable (ward#663).
+		if surface == "engineer" && issueHasModeLabel(issue.Labels, "interactive") {
+			if !c.Bool("force") && !c.Bool("print") {
+				return resolvedWork{}, dispatchDeclineErr(dispatchModeCeiling, "mode-ceiling",
+					"%s: refusing to dispatch the %s role on %s: the issue is explicitly labeled interactive - remove that label or pass --force to override (consult/default issues dispatch normally)",
+					label, surface, ref)
+			}
+			writef(os.Stderr, "%s: note: issue %s is explicitly labeled interactive - dispatching anyway (--force/print).\n", label, ref)
+		}
+		title = strings.TrimSpace(issue.Title)
+		body = strings.TrimSpace(issue.Body)
+		// Fetch comments so the pre-flight sees decisions made there, not just the
+		// body (ward#154); degrade to a body-only read on failure (the prior behavior).
+		comments, cerr = r.fetchIssueComments(ctx, ref)
+		if cerr != nil {
+			writef(os.Stderr, "%s: note: could not read comments on %s (%v); pre-flight reads the body only\n", label, ref, cerr)
+		}
 	}
 	// Resolve the --repo grants now so the pre-flight sees these repos too (ward#266,
 	// ward#280; extraRepoGrant reads --repo, the --with-repo alias gone in ward#362).
@@ -811,7 +1032,49 @@ func (r *Runner) resolveAgentWork(ctx context.Context, c *cli.Command, mode cont
 	// The engineer detaches fire-and-forget (ward#356), so its seed always gets the
 	// closing reflection - the only voice it leaves behind (ward#281).
 	reviewGate, reviewSkip := reviewGateDecision(c, surface, mode, ref)
-	return resolvedWork{Ref: ref, Title: title, Body: issue.Body, Comments: comments, Details: details, ExtraRepos: extra, Workflow: wf, ReviewGate: reviewGate, Seed: agentSeedPromptWorkflow(ref, title, issue.Body, details, true, extra, wf, reviewGate, reviewSkip)}, nil
+	if branch == "" {
+		branch = fmt.Sprintf("issue-%d", ref.Number)
+	}
+	seedBody := body
+	if !ref.MergeRequest {
+		seedBody = issueBodyWithComments(body, comments)
+	}
+	seed := agentSeedPromptWorkflow(ref, title, seedBody, details, true, extra, wf, reviewGate, reviewSkip)
+	return resolvedWork{Ref: ref, Title: title, Body: seedBody, Comments: comments, Details: details, Seed: seed, Branch: branch, ExtraRepos: extra, Workflow: wf, ReviewGate: reviewGate}, nil
+}
+
+func (r *Runner) resolveAgentPullRequestWork(ctx context.Context, mode containerMode, ref agentIssueRef) (agentPullRequestContext, []issueComment, *dispatch.Issue, []issueComment, error) {
+	cl, err := r.hostTrackerClient(ctx, ref.trackerOrDefault(), mode)
+	if err != nil {
+		return agentPullRequestContext{}, nil, nil, nil, err
+	}
+	prc, ok := cl.(prContextTracker)
+	if !ok {
+		return agentPullRequestContext{}, nil, nil, nil, fmt.Errorf("tracker does not expose pull request context")
+	}
+	pr, err := prc.getPullRequestContext(ctx, ref.Owner, ref.Repo, ref.Number)
+	if err != nil {
+		return agentPullRequestContext{}, nil, nil, nil, err
+	}
+	comments, err := prc.listPullRequestComments(ctx, ref.Owner, ref.Repo, ref.Number)
+	if err != nil {
+		writef(os.Stderr, "%s: note: could not read pull request comments on %s (%v); continuing with the PR body only\n", agentCmdline(mode, "engineer"), ref, err)
+	}
+	var linkedIssue *dispatch.Issue
+	var linkedComments []issueComment
+	if linkedNum, ok := directorLinkedIssueNumber(pr.Body); ok && linkedNum > 0 && linkedNum != ref.Number {
+		linkedRef := agentIssueRef{Owner: ref.Owner, Repo: ref.Repo, Number: linkedNum, Forge: ref.Forge, Tracker: ref.trackerOrDefault()}
+		linkedIssue, err = r.fetchIssueByForge(ctx, agentCmdline(mode, "engineer"), ref.Forge, mode, linkedRef.Owner, linkedRef.Repo, linkedRef.Number)
+		if err != nil {
+			writef(os.Stderr, "%s: note: could not resolve linked issue %s (%v); continuing without linked issue context\n", agentCmdline(mode, "engineer"), linkedRef, err)
+		} else {
+			linkedComments, err = r.fetchIssueComments(ctx, linkedRef)
+			if err != nil {
+				writef(os.Stderr, "%s: note: could not read linked issue comments on %s (%v); continuing without them\n", agentCmdline(mode, "engineer"), linkedRef, err)
+			}
+		}
+	}
+	return *pr, comments, linkedIssue, linkedComments, nil
 }
 
 // fetchIssue reads the issue off the ref's tracker.
@@ -1633,7 +1896,7 @@ func preflightWrongRepoComment(mode containerMode, surface string, filed agentIs
 
 // buildAgentPlan composes the detached container plan (seeded argv, issue-<N> branch,
 // named container) for a resolved issue; it strips TTY flags so it never grabs a pty.
-func buildAgentPlan(c *cli.Command, mode containerMode, ref agentIssueRef, seed string, assetsDir string) (upPlan, error) {
+func buildAgentPlan(c *cli.Command, mode containerMode, ref agentIssueRef, branch string, seed string, assetsDir string) (upPlan, error) {
 	cwd := resolveInvokeCWD()
 	if cwd == "" {
 		return upPlan{}, fmt.Errorf("cannot resolve the current directory")
@@ -1643,8 +1906,9 @@ func buildAgentPlan(c *cli.Command, mode containerMode, ref agentIssueRef, seed 
 	if err != nil {
 		return upPlan{}, err
 	}
+	plan.Branch = strings.TrimSpace(branch)
 	if plan.Branch == "" {
-		plan.Branch = fmt.Sprintf("issue-%d", ref.Number)
+		plan.Branch = agentWorkBranch(resolvedWork{Ref: ref})
 	}
 	// Re-cast the session plan as an engineer: role-led name, unique by
 	// repo+issue (ward#364). Issue also carries so the reaper can release it (ward#264).
@@ -1667,6 +1931,13 @@ func buildAgentPlan(c *cli.Command, mode containerMode, ref agentIssueRef, seed 
 	plan.Interactive = false
 	plan.TTY = false
 	return plan, nil
+}
+
+func agentWorkBranch(w resolvedWork) string {
+	if branch := strings.TrimSpace(w.Branch); branch != "" {
+		return branch
+	}
+	return fmt.Sprintf("issue-%d", w.Ref.Number)
 }
 
 // seedLogBlock wraps the seeded prompt in greppable markers, shared by --print and the
@@ -1723,7 +1994,7 @@ func (r *Runner) launchAgentContainer(ctx context.Context, c *cli.Command, mode 
 		return err
 	}
 
-	plan, err := buildAgentPlan(c, mode, ref, seed, assetsDir)
+	plan, err := buildAgentPlan(c, mode, ref, w.Branch, seed, assetsDir)
 	if err != nil {
 		return fmt.Errorf("%s: %w", label, err)
 	}
@@ -1746,8 +2017,12 @@ func (r *Runner) launchAgentContainer(ctx context.Context, c *cli.Command, mode 
 	// Reserve the issue so another run won't redo it. Fold the dynamic seed context into
 	// the comment so a pre-launch-gate death self-documents on the thread (ward#609).
 	seedCtx := buildReservationSeedContext(w, plan, time.Now().UTC())
-	release, err := r.reserveIssue(ctx, label, mode, ref, plan.Name, plan.Branch, justification, seedCtx, c.Bool("force"), plan.SkipPreflight)
-	if err != nil {
+	var release func()
+	if err := r.withAgentReservationLock(ref, func() error {
+		var reserveErr error
+		release, reserveErr = r.reserveIssue(ctx, label, mode, ref, plan.Name, plan.Branch, justification, seedCtx, c.Bool("force"), plan.SkipPreflight)
+		return reserveErr
+	}); err != nil {
 		return err
 	}
 	// Arm a rollback: a launch that fails before the container is confirmed up must retract

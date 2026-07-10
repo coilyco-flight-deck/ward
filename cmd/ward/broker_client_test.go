@@ -39,6 +39,7 @@ func TestMapForgejoWriteOp(t *testing.T) {
 	}{
 		{"issue", "create", broker.OpFileIssue, "", "", true},
 		{"issue", "edit", broker.OpEditIssue, "", "", true},
+		{"pr", "edit", broker.OpEditIssue, "", "", true},
 		{"issue", "comment", broker.OpCommentIssue, "", "", true},
 		{"issue", "close", broker.OpEditIssue, "closed", "", true},
 		{"issue", "reopen", broker.OpEditIssue, "open", "", true},
@@ -203,6 +204,19 @@ func TestBrokerForgejoActionRouting(t *testing.T) {
 		}
 		if !strings.Contains(out, "coilyco/ward#99") {
 			t.Errorf("brokered create output = %q, want the created ref", out)
+		}
+	})
+
+	t.Run("brokered pr edit routes to broker", func(t *testing.T) {
+		t.Setenv(envBrokerSocket, sock)
+		called := false
+		act := r.brokerForgejoAction("ward.ops.forgejo.pr.edit", markCalled(&called))
+		out := captureLeaf(t, act, []string{"coilyco", "ward", "42", "--title", "hi", "--body", "b"})
+		if called {
+			t.Error("a brokered PR edit must NOT run the direct action")
+		}
+		if !strings.Contains(out, "coilyco/ward#99") || !strings.Contains(out, "via broker") {
+			t.Errorf("brokered PR edit output = %q, want the issue ref via broker", out)
 		}
 	})
 

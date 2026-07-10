@@ -33,6 +33,7 @@ type agentLogSource struct {
 	Container      string
 	Path           string
 	TranscriptTree string
+	ArchiveMeta    runMeta
 	Tail           int
 	Follow         bool
 }
@@ -51,6 +52,9 @@ func (s agentLogSource) String() string {
 		}
 		return b.String()
 	case agentLogSourceFile:
+		if strings.TrimSpace(s.ArchiveMeta.Outcome) != "" {
+			return fmt.Sprintf("%s (outcome %s)", s.Path, s.ArchiveMeta.Outcome)
+		}
 		return s.Path
 	default:
 		return ""
@@ -342,7 +346,8 @@ func findArchivedAgentLogSourceByIssue(ref agentIssueRef, tail int, follow bool,
 	case 0:
 		return agentLogSource{}, nil
 	case 1:
-		return agentLogSource{Kind: agentLogSourceFile, Path: filepath.Join(candidates[0], consoleName), Tail: tail, Follow: follow}, nil
+		meta, _ := readRunMeta(filepath.Join(candidates[0], drainMetaFile))
+		return agentLogSource{Kind: agentLogSourceFile, Path: filepath.Join(candidates[0], consoleName), ArchiveMeta: meta, Tail: tail, Follow: follow}, nil
 	default:
 		sort.Strings(candidates)
 		return agentLogSource{}, fmt.Errorf("dispatch broker: %q matches %d drained engineer log directories (%s) - refusing to guess; read one by its container name",
@@ -384,7 +389,8 @@ func findArchivedAgentLogSource(target, baseDir, consoleName string, tail int, f
 	case 0:
 		return agentLogSource{}, nil
 	case 1:
-		return agentLogSource{Kind: agentLogSourceFile, Path: filepath.Join(candidates[0], consoleName), Tail: tail, Follow: follow}, nil
+		meta, _ := readRunMeta(filepath.Join(candidates[0], drainMetaFile))
+		return agentLogSource{Kind: agentLogSourceFile, Path: filepath.Join(candidates[0], consoleName), ArchiveMeta: meta, Tail: tail, Follow: follow}, nil
 	default:
 		sort.Strings(candidates)
 		return agentLogSource{}, fmt.Errorf("dispatch broker: %q matches %d drained engineer log directories (%s) - refusing to guess; read one by its container name",

@@ -33,7 +33,7 @@ const (
 
 	// directorMergeWorkflowMarker is the PR-body marker the director sweep reads
 	// when deciding whether a ward-owned PR may be merged automatically.
-	directorMergeWorkflowMarker = "ward.workflow: pull-requests-and-merge"
+	directorMergeWorkflowMarker = "ward.workflow: pull-request-and-merge"
 )
 
 // orDefault collapses the "" zero value onto the default and normalizes legacy
@@ -122,6 +122,15 @@ func canonicalWorkflow(w workflowMode) workflowMode {
 	default:
 		return workflowMode(strings.TrimSpace(string(w)))
 	}
+}
+
+// workflowMachineToken renders the canonical workflow token
+// for machine-readable comment bodies and PR markers.
+func workflowMachineToken(w workflowMode) string {
+	if canonicalWorkflow(w) == workflowPullRequestAndMerge {
+		return "pull-request-and-merge"
+	}
+	return string(canonicalWorkflow(w))
 }
 
 // agentWorkflow resolves the --workflow flag to a workflowMode, erroring on an
@@ -252,11 +261,14 @@ func workflowLandingPhrase(ref agentIssueRef, wf workflowMode) string {
 
 // workflowOutcomeStatus names the nonterminal completion state a worker should
 // report at its boundary for the selected workflow.
-func workflowOutcomeStatus(wf workflowMode) string {
+func workflowOutcomeStatus(wf workflowMode, reviewGate bool) string {
 	switch mode := string(canonicalWorkflow(wf.orDefault())); mode {
 	case string(workflowPullRequest):
 		return "submitted"
 	case string(workflowPullRequestAndMerge):
+		if !reviewGate {
+			return "submitted"
+		}
 		return "merge-ready"
 	case string(workflowDirectToMain):
 		return "done"
