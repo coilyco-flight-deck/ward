@@ -471,8 +471,8 @@ func (r *Runner) runContainerBootstrap(ctx context.Context, c *cli.Command) erro
 	// setup ran as root. Keep ANTHROPIC_API_KEY from shadowing the OAuth creds.
 	r.chownAgentTree(ctx, e, work)
 	if e.ReadOnly {
-		// Explore: scope push off this clone but keep the dispatch token + socket so
-		// it can commission sibling runs (ward#293, ward#315).
+		// Read-only surface: scope push off this clone but keep the dispatch token +
+		// socket so it can commission sibling runs and reap stale ones (ward#293, ward#315).
 		r.makeReadOnlyTree(work)
 		r.revokePushCredential(ctx)
 		r.grantDockerSocketAccess(ctx, e)
@@ -622,22 +622,22 @@ func (r *Runner) revokePushCredential(ctx context.Context) {
 	blog("read-only session: dropped this clone's push wiring; FORGEJO_TOKEN kept for dispatch-only (file/launch, no push; ward#315)")
 }
 
-// grantDockerSocketAccess lets the dropped agent reach the mounted socket to dispatch
-// a sibling, no host-inode chmod (ward#315, ward#319). See agent-surface.md.
+// grantDockerSocketAccess lets the dropped agent reach the mounted socket.
+// It supports dispatch/reap without host changes (ward#315, ward#319).
 func (r *Runner) grantDockerSocketAccess(ctx context.Context, e bootstrapEnv) {
 	const sock = "/var/run/docker.sock"
 	if !isSocket(sock) {
-		blog("explore: no docker socket mounted - dispatch unavailable this run (ward#315)")
+		blog("surface: no docker socket mounted - dispatch and reap unavailable this run (ward#315)")
 		return
 	}
 	info, err := os.Stat(sock)
 	if err != nil {
-		blog("explore: could not stat docker socket; dispatch may fail: %v (ward#315)", err)
+		blog("surface: could not stat docker socket; dispatch or reap may fail: %v (ward#315)", err)
 		return
 	}
 	sockgid, ok := fileGID(info)
 	if !ok {
-		blog("explore: could not read docker socket gid; dispatch may fail (ward#315)")
+		blog("surface: could not read docker socket gid; dispatch or reap may fail (ward#315)")
 		return
 	}
 	if sockgid == 0 {
@@ -646,7 +646,7 @@ func (r *Runner) grantDockerSocketAccess(ctx context.Context, e bootstrapEnv) {
 	}
 	u, uerr := user.LookupId(e.AgentUID)
 	if uerr != nil {
-		blog("explore: no passwd entry for uid %s; cannot group-grant the socket (ward#315)", e.AgentUID)
+		blog("surface: no passwd entry for uid %s; cannot group-grant the socket (ward#315)", e.AgentUID)
 		return
 	}
 	gidStr := strconv.Itoa(sockgid)
@@ -656,10 +656,10 @@ func (r *Runner) grantDockerSocketAccess(ctx context.Context, e bootstrapEnv) {
 		_ = r.Runner.Exec(ctx, "groupadd", "-g", gidStr, "dockerhost")
 	}
 	if aerr := r.Runner.Exec(ctx, "usermod", "-aG", gidStr, u.Username); aerr != nil {
-		blog("explore: could not add %s to socket group (gid %s); dispatch may fail: %v (ward#315)", u.Username, gidStr, aerr)
+		blog("surface: could not add %s to socket group (gid %s); dispatch or reap may fail: %v (ward#315)", u.Username, gidStr, aerr)
 		return
 	}
-	blog("explore: granted docker socket access to %s via group gid %s; no socket perms changed (ward#315)", u.Username, gidStr)
+	blog("surface: granted docker socket access to %s via group gid %s; no socket perms changed (ward#315)", u.Username, gidStr)
 }
 
 // bridgeDockerSocket bridges a root:root docker socket to an agent-group-owned socket
@@ -667,18 +667,18 @@ func (r *Runner) grantDockerSocketAccess(ctx context.Context, e bootstrapEnv) {
 func (r *Runner) bridgeDockerSocket(ctx context.Context, e bootstrapEnv, sock string) {
 	const bridge = "/tmp/docker-agent.sock"
 	if !commandExists("socat") {
-		blog("explore: socat absent from image; dispatch unavailable on a root:root socket (ward#319)")
+		blog("surface: socat absent from image; dispatch and reap unavailable on a root:root socket (ward#319)")
 		return
 	}
 	_ = os.Remove(bridge)
 	listen := fmt.Sprintf("UNIX-LISTEN:%s,fork,group=%s,mode=0660", bridge, e.AgentGID)
 	cmd := exec.CommandContext(ctx, "socat", listen, "UNIX-CONNECT:"+sock) // #nosec G204 -- fixed socat bridge argv
 	if serr := cmd.Start(); serr != nil {
-		blog("explore: could not start docker socket bridge; dispatch may fail: %v (ward#319)", serr)
+		blog("surface: could not start docker socket bridge; dispatch or reap may fail: %v (ward#319)", serr)
 		return
 	}
 	_ = os.Setenv("DOCKER_HOST", "unix://"+bridge)
-	blog("explore: bridged root:root docker socket to %s for the agent (gid %s; ward#319)", bridge, e.AgentGID)
+	blog("surface: bridged root:root docker socket to %s for the agent (gid %s; ward#319)", bridge, e.AgentGID)
 }
 
 // ensureGitCredReadable re-asserts the credential perms stay readable by the
@@ -1151,9 +1151,11 @@ scrollback. Reserve an in-session subagent for read-only fan-out that only feeds
   the dispatcher authenticate out of the box. The token is the bot's full credential,
   so the no-push rule below is a convention you keep, not yet a credential boundary
   (a dispatch-only token is tracked in ward#318).
-- The host docker socket is mounted at ` + "`/var/run/docker.sock`" + `, so a dispatched
-  ` + "`warded #N`" + ` can spawn its sibling container. If you hit a socket permission error on
-  dispatch, the group-grant did not reach this host's socket - see ward#319.
+	- The host docker socket is mounted at ` + "`/var/run/docker.sock`" + `, so ` + "`ward agent reap`" + `
+  can list and stop stale engineer containers and a dispatched ` + "`warded #N`" + ` can spawn its
+  sibling container. If Docker access is intentionally unavailable on this surface,
+  ` + "`ward agent reap`" + ` will say reaping is unsupported here instead of pretending the socket is mounted.
+  If you hit a socket permission error, the group-grant did not reach this host's socket - see ward#319.
 
 You **must not**:
 

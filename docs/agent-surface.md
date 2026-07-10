@@ -8,6 +8,7 @@ This page is the durable anchor for the read-only agent surface.
 - It covers the seedless interactive surface that drops into drain.
 - It names the `WARD_READONLY` restriction and brokered read-only access.
 - It separates the supervisory lane from the detached engineer path.
+- It keeps the director surface's Docker-backed reap path visible when that socket is mounted.
 
 ## See also
 
