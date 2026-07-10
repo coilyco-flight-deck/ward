@@ -242,6 +242,9 @@ func (c *forgejoClient) getPullRequestMergeabilityOnce(ctx context.Context, clie
 	if readErr != nil {
 		return nil, false, fmt.Errorf("forgejo: read pull request %s/%s#%d from %s: %w", owner, repo, number, resp.Status, readErr)
 	}
+	if resp.StatusCode == http.StatusNotFound {
+		return nil, false, fmt.Errorf("forgejo: pull request %s/%s#%d not found after %d byte(s): %s", owner, repo, number, len(data), responseSnippet(data))
+	}
 	if resp.StatusCode < 200 || resp.StatusCode >= 300 {
 		return nil, false, fmt.Errorf("forgejo pull request GET returned %s after %d byte(s): %s", resp.Status, len(data), responseSnippet(data))
 	}
@@ -591,6 +594,9 @@ func (c *forgejoClient) getPullRequestOnce(ctx context.Context, client *http.Cli
 	data, readErr := io.ReadAll(resp.Body)
 	if readErr != nil {
 		return nil, false, fmt.Errorf("forgejo: read pull request %s/%s#%d from %s: %w", owner, repo, index, resp.Status, readErr)
+	}
+	if resp.StatusCode == http.StatusNotFound {
+		return nil, false, fmt.Errorf("forgejo: pull request %s/%s#%d not found after %d byte(s): %s", owner, repo, index, len(data), responseSnippet(data))
 	}
 	if resp.StatusCode < 200 || resp.StatusCode >= 300 {
 		return nil, false, fmt.Errorf("forgejo get PR returned %s after %d byte(s): %s", resp.Status, len(data), firstLine(string(data)))
