@@ -1,8 +1,14 @@
 package main
 
 import (
+	"context"
+	"errors"
+	"io"
+	"strings"
 	"testing"
 	"time"
+
+	"forgejo.coilysiren.me/coilyco-flight-deck/cli-guard/cli/shell"
 )
 
 // TestLastDockerLogTime parses the newest timestamp from --timestamps log output,
@@ -169,5 +175,24 @@ func TestAgentLogsCommandRegistered(t *testing.T) {
 		if r.Role == "logs" {
 			t.Error("logs leaked into the role roster; it is a maintenance verb")
 		}
+	}
+}
+
+// TestAgentReapSweepReportsUnsupportedOnReadOnlyDirectorSurface keeps the read-only
+// director error honest when the Docker socket is intentionally unavailable.
+func TestAgentReapSweepReportsUnsupportedOnReadOnlyDirectorSurface(t *testing.T) {
+	t.Setenv("WARD_READONLY", "1")
+	r := &Runner{Runner: &shell.Runner{Resolve: func(bin string) (string, error) {
+		if bin == "docker" {
+			return "", errors.New("Cannot connect to the Docker daemon at unix:///var/run/docker.sock")
+		}
+		return "/bin/true", nil
+	}}}
+	err := r.agentReapSweep(context.Background(), time.Hour, 5, false, true, io.Discard)
+	if err == nil {
+		t.Fatal("expected an unsupported-surface error")
+	}
+	if got := err.Error(); !strings.Contains(got, "reaping is unsupported on this read-only director surface") {
+		t.Fatalf("error = %q, want a read-only surface unsupported message", got)
 	}
 }

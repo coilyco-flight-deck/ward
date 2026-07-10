@@ -1,12 +1,8 @@
 # ward
 
-Ward is the open-source operations layer for unattended coding agents.
+Ward is an operations layer for unattended coding agents. It sheilds them from the vagaries of turbulent execution context and scaffolds them into the workflows they already know how to use.
 
-Give Ward an issue. It launches Claude Code, Codex, Goose, or OpenCode in an isolated environment, supervises the run, preserves work through failure, and carries the result to a pull request or an explicit blocked outcome.
-
-**ward wraps a project's dev verbs - `build`, `test`, `vet`, `lint`, `tidy`, `cover` - behind a policy gate, so nothing reaches `make` or `go` unchecked.** Every run validates its own arguments, appends one line to an audit log, and is refused if it could not be reconstructed from git history. This half is **forge-agnostic**: point it at any git repo - GitHub included - with nothing but a `.ward/ward.yaml` and Homebrew, no forge account of any kind. Only ward's second half, the agent driver below, is tied to a specific forge.
-
-ward's second half is a **guarded execution layer for coding agents**. `ward agent` launches a subscription-authenticated coding CLI (claude, codex, goose, ...) into an ephemeral, least-access container and drives it through an issue-to-merge workflow, its reach bounded by repo-scoped credentials, cli-guard policy, and a durable audit trail. Internally that half is a **manifest-backed harness driver** - it knows how to launch each agent through its own CLI dialect - but the external product is the governed execution layer around it, not the driver. Its landing policy is selectable per run (`--workflow direct-main|pull-requests|pull-requests-and-merge|patch-only`, see [`docs/agent-workflow.md`](docs/agent-workflow.md)). That surface is exposed as **`warded`**, a thin symlink onto `ward agent`, and sits on the three-layer split covered below and in [`docs/architecture.md`](docs/architecture.md).
+ward's it works via running as a guarded execution layer. `ward agent` launches a your authenticated coding CLI (claude, codex, goose, ...) into an ephemeral, least-access container and drives it through an issue-to-merge workflow, or an issue to PR workflow, while bounded by credentials scoping and a durable audit trail. Fuinctionally it is a manifest-backed harness driver** - it knows how to launch each agent through its own CLI dialect - but the external product is the governed execution layer around it, not the driver. That surface is exposed as **`warded`**, a thin symlink onto `ward agent`, and sits on the three-layer split covered below and in [`docs/architecture.md`](docs/architecture.md).
 
 ## Who it's for
 

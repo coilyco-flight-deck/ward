@@ -706,6 +706,8 @@ func (c *forgejoClient) listOpenPullRequests(ctx context.Context, owner, repo st
 				State:  ri.State,
 				URL:    ri.HTMLURL,
 			},
+			CreatedAt: ri.CreatedAt,
+			UpdatedAt: ri.UpdatedAt,
 		}
 		for _, l := range ri.Labels {
 			if l.Name != "" {
@@ -877,6 +879,8 @@ type directorPullRequest struct {
 	Mergeable      bool
 	MergeableKnown bool
 	MergeableError string
+	CreatedAt      time.Time
+	UpdatedAt      time.Time
 }
 
 // lean projects the raw issue down to the reader-facing leanIssue.

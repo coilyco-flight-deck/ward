@@ -32,8 +32,8 @@ func TestRunDoctorWithValidBundle(t *testing.T) {
 
 func TestRunDoctorRejectsBakedPlaceholders(t *testing.T) {
 	t.Setenv(wardConfigRefEnv, "")
-	t.Setenv("WARD_TARGET_OWNER", "")
-	t.Setenv("WARD_TARGET_REPO", "")
+	t.Setenv("WARD_TARGET_OWNER", "example-owner")
+	t.Setenv("WARD_TARGET_REPO", "example-owner/example-repo")
 	report, err := runDoctor(context.Background())
 	if err == nil {
 		t.Fatal("runDoctor with baked config: want failure, got nil")
@@ -172,7 +172,7 @@ repo-authority default=forgejo {
 
 func copyDoctorBundle(t *testing.T) string {
 	t.Helper()
-	src := filepath.Join("..", "..", ".ward", "ward-kdl")
+	src := writeBundleFixture(t)
 	dst, err := os.MkdirTemp("/dev/shm", "ward-doctor-*")
 	if err != nil {
 		t.Fatalf("copy doctor bundle tempdir: %v", err)
@@ -206,14 +206,12 @@ func copyDoctorBundle(t *testing.T) string {
 		if err != nil {
 			return err
 		}
-		if strings.HasSuffix(d.Name(), ".kdl") {
-			body := string(b)
-			for _, repl := range replacements {
-				body = strings.ReplaceAll(body, repl.old, repl.new)
-			}
-			body = strings.ReplaceAll(body, "example", "coily")
-			b = []byte(body)
+		body := string(b)
+		for _, repl := range replacements {
+			body = strings.ReplaceAll(body, repl.old, repl.new)
 		}
+		body = strings.ReplaceAll(body, "example", "coily")
+		b = []byte(body)
 		return os.WriteFile(target, b, 0o644)
 	})
 	if err != nil {

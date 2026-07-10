@@ -7,6 +7,7 @@ import (
 	"encoding/base64"
 	"encoding/hex"
 	"encoding/json"
+	"errors"
 	"fmt"
 	"io"
 	"net"
@@ -24,6 +25,8 @@ import (
 	"forgejo.coilysiren.me/coilyco-flight-deck/cli-guard/pkg/broker"
 	"github.com/urfave/cli/v3"
 )
+
+const wardBootstrapRepo = "coilyco-flight-deck/ward"
 
 // container.go wires the hidden `ward container` plumbing namespace (ward#263:
 // reap/bootstrap) + docker side effects + host forgejo-token resolution.
@@ -119,7 +122,7 @@ func dictatableID() string {
 
 // buildUpPlan assembles the pure plan from parsed flags and resolved inputs;
 // agentArgs seed the agent's argv. Errors only on a bad --repo grant (ward#230).
-func buildUpPlan(c *cli.Command, repo targetRepo, mode containerMode, role, cwd, assetsDir string, agentArgs []string, mountAgentLogs bool) (upPlan, error) {
+func buildUpPlan(c *cli.Command, repo targetRepo, mode containerMode, role, cwd, assetsDir string, agentArgs []string, mountSurfaceExtras bool) (upPlan, error) {
 	wardSrc := c.String("ward-source")
 	// The container downloads this host's ward version by default; --ward-version
 	// (env WARD_AGENT_VERSION) overrides it to pin a known-good release (ward#312).
@@ -165,10 +168,10 @@ func buildUpPlan(c *cli.Command, repo targetRepo, mode containerMode, role, cwd,
 		return upPlan{}, err
 	}
 
-	// The director surface opts into a read-only bind of the redacted agent-log drain so it
-	// reads past runs' logs without a docker socket; other runs leave it off (ward#525/526).
+	// The director surface opts into read-only binds of the redacted agent-log drain.
+	// It also mounts the Docker socket so it can reap engineers (ward#1001).
 	agentLogs := ""
-	if mountAgentLogs {
+	if mountSurfaceExtras {
 		agentLogs = agentLogsRedactedDir()
 	}
 	// The per-container machine id rides the ward.machine label. Director surface
@@ -186,7 +189,7 @@ func buildUpPlan(c *cli.Command, repo targetRepo, mode containerMode, role, cwd,
 		ForgejoBase:       forgejoBaseURL,
 		HostCwd:           cwd,
 		AWSHome:           awsHome,
-		Mounts:            leastAccessMounts(cwd, mountOpts{AssetsDir: assetsDir, AWSHome: awsHome, WardSource: wardSrc, AgentLogsDir: agentLogs}),
+		Mounts:            appendSurfaceMounts(leastAccessMounts(cwd, mountOpts{AssetsDir: assetsDir, AWSHome: awsHome, WardSource: wardSrc, AgentLogsDir: agentLogs}), mountSurfaceExtras),
 		Interactive:       !c.Bool("detach"),
 		TTY:               !c.Bool("detach") && terminalAttached(),
 		WardVersion:       wardVersion,
@@ -199,6 +202,13 @@ func buildUpPlan(c *cli.Command, repo targetRepo, mode containerMode, role, cwd,
 		SkipPreflight:     c.Bool("skip-preflight") || c.Bool("no-preflight"),
 		ConfigEnv:         configEnv,
 	}, nil
+}
+
+func appendSurfaceMounts(mounts []mountSpec, mountSurfaceExtras bool) []mountSpec {
+	if mountSurfaceExtras {
+		mounts = append(mounts, dockerSockMount())
+	}
+	return mounts
 }
 
 func containerNameSuffix(role string, machine string) string {
@@ -313,6 +323,12 @@ func (r *Runner) resolveOllamaHost(ctx context.Context) string {
 // resolveForgejoToken resolves the child env-file's push/API token: GitHub and GitLab
 // from host-side env or CLI fallbacks; Forgejo via broker seed, env, then SSM.
 func (r *Runner) resolveForgejoToken(ctx context.Context, target broker.Target, f forge) (string, error) {
+	if tok := strings.TrimSpace(os.Getenv("FORGEJO_TOKEN")); tok != "" {
+		return tok, nil
+	}
+	if r == nil || r.Runner == nil {
+		return "", fmt.Errorf("ward container: resolve Forgejo token: no shell runner configured")
+	}
 	if f == forgeGitHub {
 		return r.resolveGitHubToken(ctx, target.Owner, target.Repo)
 	}
@@ -320,9 +336,6 @@ func (r *Runner) resolveForgejoToken(ctx context.Context, target broker.Target, 
 		return r.resolveGitLabToken(ctx, target.Owner, target.Repo)
 	}
 	if tok, ok := r.brokerDispatchSeed(ctx, target); ok {
-		return tok, nil
-	}
-	if tok := strings.TrimSpace(os.Getenv("FORGEJO_TOKEN")); tok != "" {
 		return tok, nil
 	}
 	out, err := r.Runner.Capture(ctx, "aws", "ssm", "get-parameter",
@@ -694,18 +707,19 @@ func buildWardBootstrapBinary(ctx context.Context, wardSource, path string) erro
 }
 
 func downloadWardBootstrapBinary(ctx context.Context, wardVersion, path string) error {
-	tag, err := resolveWardBootstrapTag(ctx, wardVersion)
-	if err != nil {
-		return err
-	}
 	arch, err := bootstrapGOARCH()
 	if err != nil {
 		return err
 	}
-	asset := fmt.Sprintf("%s/coilyco-flight-deck/ward/releases/download/%s/ward-linux-%s", forgejoBaseURL, tag, arch)
+	assetName := bootstrapWardBinaryAssetName(arch)
+	tag, err := resolveWardBootstrapTag(ctx, wardVersion, assetName)
+	if err != nil {
+		return err
+	}
+	asset := fmt.Sprintf("%s/%s/releases/download/%s/%s", forgejoBaseURL, wardBootstrapRepo, tag, assetName)
 	var lastErr error
 	for attempt := 1; attempt <= bootstrapDownloadAttempts; attempt++ {
-		retryable, err := downloadWardBootstrapBinaryOnce(ctx, asset, path)
+		retryable, err := downloadWardBootstrapBinaryOnce(ctx, tag, assetName, asset, path)
 		if err == nil {
 			return nil
 		}
@@ -740,7 +754,7 @@ func waitForBootstrapRetry(ctx context.Context) bool {
 
 const bootstrapDownloadBackoff = 2 * time.Second
 
-func downloadWardBootstrapBinaryOnce(ctx context.Context, asset, path string) (bool, error) {
+func downloadWardBootstrapBinaryOnce(ctx context.Context, tag, assetName, asset, path string) (bool, error) {
 	req, err := http.NewRequestWithContext(ctx, http.MethodGet, asset, nil)
 	if err != nil {
 		return false, fmt.Errorf("ward container: prepare bootstrap download %s: %w", asset, err)
@@ -755,7 +769,10 @@ func downloadWardBootstrapBinaryOnce(ctx context.Context, asset, path string) (b
 	defer func() { _ = resp.Body.Close() }()
 	if resp.StatusCode != http.StatusOK {
 		body, _ := io.ReadAll(io.LimitReader(resp.Body, 4096))
-		retryable := resp.StatusCode == http.StatusNotFound || resp.StatusCode == http.StatusTooManyRequests || resp.StatusCode >= 500
+		if resp.StatusCode == http.StatusNotFound {
+			return false, newReleaseAssetsNotReadyError(tag, assetName, strings.TrimSpace(string(body)))
+		}
+		retryable := resp.StatusCode == http.StatusTooManyRequests || resp.StatusCode >= 500
 		return retryable, fmt.Errorf("ward container: download Go bootstrap binary %s: unexpected status %s: %s", asset, resp.Status, strings.TrimSpace(string(body)))
 	}
 	f, err := os.Create(path)
@@ -772,37 +789,113 @@ func downloadWardBootstrapBinaryOnce(ctx context.Context, asset, path string) (b
 	return false, nil
 }
 
-func resolveWardBootstrapTag(ctx context.Context, wardVersion string) (string, error) {
+func resolveWardBootstrapTag(ctx context.Context, wardVersion, assetName string) (string, error) {
 	tag := strings.TrimSpace(wardVersion)
 	if tag != "" && tag != "dev" {
 		return tag, nil
 	}
-	req, err := http.NewRequestWithContext(ctx, http.MethodGet, forgejoBaseURL+"/api/v1/repos/coilyco-flight-deck/ward/releases/latest", nil)
+	return resolveWardBootstrapLatestTag(ctx, assetName)
+}
+
+type forgejoReleaseAsset struct {
+	Name string `json:"name"`
+}
+
+type forgejoRelease struct {
+	TagName    string                `json:"tag_name"`
+	Draft      bool                  `json:"draft"`
+	Prerelease bool                  `json:"prerelease"`
+	Assets     []forgejoReleaseAsset `json:"assets"`
+}
+
+type releaseAssetsNotReadyError struct {
+	tag   string
+	asset string
+	body  string
+}
+
+func (e *releaseAssetsNotReadyError) Error() string {
+	msg := "ward container: release-assets-not-ready/deferred"
+	if e.tag != "" {
+		msg += ": " + e.tag
+	}
+	if e.asset != "" {
+		msg += " missing " + e.asset
+	}
+	if body := strings.TrimSpace(e.body); body != "" {
+		msg += ": " + body
+	}
+	return msg
+}
+
+func newReleaseAssetsNotReadyError(tag, asset, body string) error {
+	return &releaseAssetsNotReadyError{tag: strings.TrimSpace(tag), asset: strings.TrimSpace(asset), body: strings.TrimSpace(body)}
+}
+
+func isReleaseAssetsNotReadyError(err error) bool {
+	var target *releaseAssetsNotReadyError
+	return errors.As(err, &target)
+}
+
+func bootstrapWardBinaryAssetName(arch string) string {
+	return "ward-linux-" + arch
+}
+
+func resolveWardBootstrapLatestTag(ctx context.Context, assetName string) (string, error) {
+	for page := 1; ; page++ {
+		releases, err := fetchWardBootstrapReleasesPage(ctx, page)
+		if err != nil {
+			return "", err
+		}
+		if len(releases) == 0 {
+			break
+		}
+		for _, release := range releases {
+			if release.Draft || release.Prerelease {
+				continue
+			}
+			if releaseHasBootstrapAsset(release, assetName) {
+				if tag := strings.TrimSpace(release.TagName); tag != "" {
+					return tag, nil
+				}
+			}
+		}
+	}
+	return "", newReleaseAssetsNotReadyError("", assetName, "no published release carries the required bootstrap asset yet")
+}
+
+func fetchWardBootstrapReleasesPage(ctx context.Context, page int) ([]forgejoRelease, error) {
+	url := fmt.Sprintf("%s/api/v1/repos/%s/releases?limit=100&page=%d", forgejoBaseURL, wardBootstrapRepo, page)
+	req, err := http.NewRequestWithContext(ctx, http.MethodGet, url, nil)
 	if err != nil {
-		return "", fmt.Errorf("ward container: resolve bootstrap release tag: %w", err)
+		return nil, fmt.Errorf("ward container: list bootstrap releases page %d: %w", page, err)
 	}
 	if token := strings.TrimSpace(os.Getenv("FORGEJO_TOKEN")); token != "" {
 		req.Header.Set("Authorization", "token "+token)
 	}
 	resp, err := http.DefaultClient.Do(req)
 	if err != nil {
-		return "", fmt.Errorf("ward container: resolve bootstrap release tag: %w", err)
+		return nil, fmt.Errorf("ward container: list bootstrap releases page %d: %w", page, err)
 	}
 	defer func() { _ = resp.Body.Close() }()
 	if resp.StatusCode != http.StatusOK {
 		body, _ := io.ReadAll(io.LimitReader(resp.Body, 4096))
-		return "", fmt.Errorf("ward container: resolve bootstrap release tag: unexpected status %s: %s", resp.Status, strings.TrimSpace(string(body)))
+		return nil, fmt.Errorf("ward container: list bootstrap releases page %d: unexpected status %s: %s", page, resp.Status, strings.TrimSpace(string(body)))
 	}
-	var payload struct {
-		TagName string `json:"tag_name"`
+	var releases []forgejoRelease
+	if err := json.NewDecoder(resp.Body).Decode(&releases); err != nil {
+		return nil, fmt.Errorf("ward container: decode bootstrap releases page %d: %w", page, err)
 	}
-	if err := json.NewDecoder(resp.Body).Decode(&payload); err != nil {
-		return "", fmt.Errorf("ward container: decode bootstrap release tag: %w", err)
+	return releases, nil
+}
+
+func releaseHasBootstrapAsset(release forgejoRelease, assetName string) bool {
+	for _, asset := range release.Assets {
+		if strings.TrimSpace(asset.Name) == assetName {
+			return true
+		}
 	}
-	if strings.TrimSpace(payload.TagName) == "" {
-		return "", fmt.Errorf("ward container: resolve bootstrap release tag: empty tag_name")
-	}
-	return strings.TrimSpace(payload.TagName), nil
+	return false
 }
 
 func bootstrapGOARCH() (string, error) {

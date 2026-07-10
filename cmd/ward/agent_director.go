@@ -1128,16 +1128,16 @@ func backlogReservationState(comments []issueComment, now time.Time, ttl time.Du
 
 // backlogRefresh rebuilds each repo's ledger from its live open backlog.
 func (r *Runner) backlogRefresh(ctx context.Context, label string, repos []string, limit int) error {
+	cl := r.hostForgejoClient(ctx)
 	for _, repo := range repos {
-		if err := r.backlogRefreshRepo(ctx, label, repo, limit); err != nil {
+		if err := r.backlogRefreshRepo(ctx, cl, label, repo, limit); err != nil {
 			return err
 		}
 	}
 	return nil
 }
 
-func (r *Runner) backlogRefreshRepo(ctx context.Context, label, repo string, limit int) error {
-	cl := r.hostForgejoClient(ctx)
+func (r *Runner) backlogRefreshRepo(ctx context.Context, cl *forgejoClient, label, repo string, limit int) error {
 	owner, name, _ := strings.Cut(repo, "/")
 	rawIssues, lerr := cl.listOpenIssueFeedByType(ctx, owner, name, limit, "issues")
 	if lerr != nil {

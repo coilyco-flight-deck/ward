@@ -342,6 +342,7 @@ func TestSplitRepoSlug(t *testing.T) {
 // The trust gate drops untrusted owners and malformed slugs; only trusted, named
 // specs survive, and distinctRepoCount reflects the surviving repos (ward#424).
 func TestPartitionReplySpecs(t *testing.T) {
+	t.Setenv(wardConfigRefEnv, "file://"+writeBundleFixture(t))
 	r := &Runner{}
 	specs := []replyIssueSpec{
 		{Repo: "example-owner/cli-guard", Title: "a", Body: "b"},

@@ -1,3 +1,3 @@
-# .ward/ward-kdl - the build-time authoring layer
+# ward-kdl bundle
 
-See [docs/ward-kdl-authoring.md](../../docs/ward-kdl-authoring.md).
+This directory holds the generated ward-kdl bundle used by docs and build scripts.
