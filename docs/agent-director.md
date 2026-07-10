@@ -19,6 +19,7 @@ The director surface is the read-only control plane for runs.
 
 - check whether an engineer is still alive.
 - read the last logs before deciding whether to re-dispatch.
+- inspect the queue/status view for stale reservations, redispatch candidates, submitted PRs, and stale-open done issues.
 - stop a run that is definitely on the wrong ref.
 - sweep the merge-ready branch once CI is green.
 

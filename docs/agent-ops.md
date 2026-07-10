@@ -6,6 +6,7 @@ doc_goal: Collapse the operational run surface into one page that covers the rea
 This page groups the on-demand operational surfaces around a run.
 
 - `ward agent director` - the read-only supervisory lane.
+- `ward agent director queue` / `status` - the read-only queue view for stale reservations, redispatch candidates, and open PR handoffs.
 - `ward agent list` - show live engineer runs.
 - `ward agent logs` - read one run's logs.
 - `ward agent stop` - stop one run on purpose.
