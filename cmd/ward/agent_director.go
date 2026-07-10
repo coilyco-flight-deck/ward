@@ -1163,9 +1163,8 @@ func (r *Runner) backlogDispatchOne(ctx context.Context, label string, dispatch 
 	return nil
 }
 
-// backlogDispatchContainerName renders the issue-scoped container name the launch
-// path uses. The director records it without asking Docker so read-only surfaces
-// can keep reconciling broker-forwarded runs even when local Docker is unavailable.
+// backlogDispatchContainerName renders the launch-path container name.
+// The director records it without asking Docker so surfaces can reconcile runs.
 func backlogDispatchContainerName(dispatch dispatchEngineer, ref agentIssueRef) string {
 	return issueScopedContainerName(roleEngineer, dispatch.harness, targetRepo{Owner: ref.Owner, Name: ref.Repo}, ref.Number)
 }
