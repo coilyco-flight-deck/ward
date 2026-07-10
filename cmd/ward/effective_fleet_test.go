@@ -24,24 +24,22 @@ func TestFrontierAgentDefaultsAreKeyedAndComplete(t *testing.T) {
 
 func writeFleetBundle(t *testing.T, dir, body string) {
 	t.Helper()
-	if err := os.WriteFile(filepath.Join(dir, bundleAgentsKDLPath), []byte(body), 0o644); err != nil {
+	if err := os.WriteFile(filepath.Join(dir, bundleFixtureAgentsPath), []byte(body), 0o644); err != nil {
 		t.Fatalf("write bundle agents: %v", err)
 	}
-	if err := os.WriteFile(filepath.Join(dir, bundleRolesKDLPath), []byte(`roles {
+	if err := os.WriteFile(filepath.Join(dir, bundleFixtureRolesPath), []byte(`roles {
     role engineer {
     }
     role director {
-        guardfile guardfile.aws.kdl
-        guardfile guardfile.tailscale.kdl
+        guardfiles ward-kdl.aws.guardfile.kdl ward-kdl.tailscale.guardfile.kdl
     }
     role advisor {
-        guardfile guardfile.aws.kdl
-        guardfile guardfile.tailscale.kdl
+        guardfiles ward-kdl.aws.guardfile.kdl ward-kdl.tailscale.guardfile.kdl
     }
 }`), 0o644); err != nil {
 		t.Fatalf("write bundle roles: %v", err)
 	}
-	if err := os.WriteFile(filepath.Join(dir, bundleDefaultsKDLPath), []byte(`defaults {
+	if err := os.WriteFile(filepath.Join(dir, bundleFixtureDefaultsPath), []byte(`defaults {
     agent-reservation-ttl "1h"
     agent-reservation-recheck-max "15s"
     agent-reap-idle "1h"
@@ -59,7 +57,7 @@ func writeFleetBundle(t *testing.T, dir, body string) {
 `), 0o644); err != nil {
 		t.Fatalf("write bundle defaults: %v", err)
 	}
-	if err := os.WriteFile(filepath.Join(dir, bundleReposKDLPath), []byte(`repos {
+	if err := os.WriteFile(filepath.Join(dir, bundleFixtureReposPath), []byte(`repos {
     repo-authority default=forgejo {
         trusted-owner example-owner
         repo "example-owner/*" forge=github

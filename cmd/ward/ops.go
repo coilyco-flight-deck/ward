@@ -7,6 +7,7 @@ import (
 	"io"
 	"io/fs"
 	"os"
+	"path"
 	"strconv"
 	"strings"
 
@@ -15,6 +16,7 @@ import (
 	"forgejo.coilysiren.me/coilyco-flight-deck/cli-guard/http/respfmt"
 	"forgejo.coilysiren.me/coilyco-flight-deck/cli-guard/http/specverb"
 	"forgejo.coilysiren.me/coilyco-flight-deck/cli-guard/pkg/valuesource"
+	kdl "github.com/calico32/kdl-go"
 	"github.com/urfave/cli/v3"
 )
 
@@ -63,20 +65,16 @@ func buildForgejoOpsFrom(src configSource) (*cli.Command, error) {
 	r := leanRunner()
 	r.configAuditVersion = src.auditVersion
 
-	gfBytes, err := fs.ReadFile(src.fsys, src.forgejoGuardfile)
+	gf, gfPath, err := loadForgejoGuardfileFrom(src)
 	if err != nil {
-		return nil, fmt.Errorf("read guardfile: %w", err)
-	}
-	gf, err := guardfile.Parse(gfBytes)
-	if err != nil {
-		return nil, fmt.Errorf("parse guardfile: %w", err)
+		return nil, err
 	}
 	// Re-root the group prefix to ward's brand so these in-process verbs audit as
 	// `ward.ops.forgejo.*`, not `ward-kdl.*` (ward#270, docs/ops-forgejo-in-ward.md).
 	rerootGroupToWard(gf.Group)
-	spec, err := fs.ReadFile(src.fsys, src.forgejoSpecLock)
+	_, spec, err := loadForgejoSpecLockFrom(src, gfPath, gf.Spec)
 	if err != nil {
-		return nil, fmt.Errorf("read spec lock: %w", err)
+		return nil, err
 	}
 
 	forgejo, err := specverb.Build(specverb.Config{
@@ -101,6 +99,64 @@ func buildForgejoOpsFrom(src configSource) (*cli.Command, error) {
 	r.overrideForgejoCommentIssue(forgejo)
 	r.overrideForgejoActionsLogs(forgejo)
 	return forgejo, nil
+}
+
+func loadForgejoSpecLockFrom(src configSource, gfPath, gfSpec string) (string, []byte, error) {
+	if src.forgejoSpecLock != "" {
+		spec, err := fs.ReadFile(src.fsys, src.forgejoSpecLock)
+		if err != nil {
+			return "", nil, fmt.Errorf("read spec lock %s: %w", src.forgejoSpecLock, err)
+		}
+		return src.forgejoSpecLock, spec, nil
+	}
+	if gfPath != "" {
+		specPath := path.Join(path.Dir(gfPath), gfSpec)
+		spec, err := fs.ReadFile(src.fsys, specPath)
+		if err == nil {
+			return specPath, spec, nil
+		}
+	}
+	specPath, spec, err := findUniqueBundleFileWithExt(src, ".json", "Forgejo spec lock")
+	if err != nil {
+		return "", nil, err
+	}
+	return specPath, spec, nil
+}
+
+func loadForgejoGuardfileFrom(src configSource) (*guardfile.Guardfile, string, error) {
+	if src.forgejoGuardfile != "" {
+		gfBytes, err := fs.ReadFile(src.fsys, src.forgejoGuardfile)
+		if err != nil {
+			return nil, "", fmt.Errorf("read guardfile: %w", err)
+		}
+		gf, err := guardfile.Parse(gfBytes)
+		if err != nil {
+			return nil, "", fmt.Errorf("parse guardfile: %w", err)
+		}
+		return gf, src.forgejoGuardfile, nil
+	}
+	files, err := loadBundleKDLFiles(src)
+	if err != nil {
+		return nil, "", err
+	}
+	file, node, err := findMergedBundleNode(files, "top-level `wrap ward-kdl ops forgejo` block", func(n *kdl.Node) bool {
+		if !wrapNodeMatchesPath(n, "ward-kdl", "ops", "forgejo") && !wrapNodeMatchesPath(n, "ward", "ops", "forgejo") {
+			return false
+		}
+		return n.GetChild("exec") == nil
+	})
+	if err != nil {
+		return nil, "", err
+	}
+	srcBytes, err := emitKDLDocument(node)
+	if err != nil {
+		return nil, "", fmt.Errorf("emit forgejo bundle %s: %w", file.path, err)
+	}
+	gf, err := guardfile.Parse(srcBytes)
+	if err != nil {
+		return nil, "", fmt.Errorf("parse guardfile %s: %w", file.path, err)
+	}
+	return gf, file.path, nil
 }
 
 // forgejoTokenResolver resolves the Forgejo bot token: the baked $FORGEJO_TOKEN in
