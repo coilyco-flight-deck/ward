@@ -4,6 +4,8 @@ doc_goal: Keep the generated ward-kdl surface readable without the old per-area 
 # ward-kdl surface
 
 The generated surface is the audited command set built from a guardfile.
+The old per-area Markdown references were generated output and are no longer
+committed.
 
 ## Families
 

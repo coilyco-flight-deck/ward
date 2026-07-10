@@ -23,6 +23,9 @@ doc_goal: Explain ward-kdl as the build-time authoring layer and keep the guardf
 That split is why the docs still talk about `ward-kdl` even after the generated
 reference pages were removed from the tree.
 
+The per-area Markdown refs that `ward-kdl` can emit are generated output, not
+committed release-era docs.
+
 ## The practical rule
 
 If a repo contributor only wants the dev-verb gate, they do not need to learn
