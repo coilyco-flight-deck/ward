@@ -515,13 +515,42 @@ func (r *Runner) runContainerBootstrap(ctx context.Context, c *cli.Command) erro
 	return nil
 }
 
-// surfaceScratchDir returns the writable cache/temp root for this surface. Read-only
-// director sessions use the gitcache volume so Go verification has real space.
-func surfaceScratchDir(e bootstrapEnv) string {
-	if e.ReadOnly {
-		return filepath.Join(e.GitCache, "surface-scratch")
+const surfaceScratchFloorBytes = 512 * 1024 * 1024
+
+// surfaceScratchRoot returns the writable cache/temp root for this surface.
+// Read-only director sessions use the gitcache volume for Go verification headroom.
+func surfaceScratchRoot(readOnly bool, gitcache string) string {
+	if readOnly {
+		return filepath.Join(gitcache, "surface-scratch")
 	}
 	return "/scratch"
+}
+
+// surfaceScratchDir returns the writable cache/temp root for this surface.
+func surfaceScratchDir(e bootstrapEnv) string {
+	return surfaceScratchRoot(e.ReadOnly, e.GitCache)
+}
+
+// directorSurfaceScratchDir returns the scratch root the host gate advertises
+// before the container launches.
+func directorSurfaceScratchDir(readOnly bool) string {
+	return surfaceScratchRoot(readOnly, containerGitcacheMnt)
+}
+
+// surfaceScratchGoCacheDir returns the Go build cache root under the surface
+// scratch location.
+func surfaceScratchGoCacheDir(scratchDir string) string {
+	return filepath.Join(scratchDir, "go-build")
+}
+
+// surfaceScratchBudgetReport renders the current free-space budget for the
+// scratch volume.
+func surfaceScratchBudgetReport(scratchDir string) string {
+	free, total, err := surfaceScratchDiskFreeBytes(scratchDir)
+	if err != nil {
+		return "disk usage unavailable"
+	}
+	return fmt.Sprintf("%s free of %s", diskBytes(free), diskBytes(total))
 }
 
 // prepareScratchSpace provisions the writable throwaway area and points common temp
@@ -531,7 +560,7 @@ func (r *Runner) prepareScratchSpace(scratchDir string) error {
 		return fmt.Errorf("prepare scratch/cache root %s: %w", scratchDir, err)
 	}
 	subdirs := []string{
-		filepath.Join(scratchDir, "go-build"),
+		surfaceScratchGoCacheDir(scratchDir),
 		filepath.Join(scratchDir, "go-mod"),
 		filepath.Join(scratchDir, "go-tmp"),
 		filepath.Join(scratchDir, "xdg-cache"),
@@ -543,15 +572,31 @@ func (r *Runner) prepareScratchSpace(scratchDir string) error {
 		_ = os.Chmod(dir, 0o1777)
 	}
 	_ = os.Chmod(scratchDir, 0o1777)
+	if err := surfaceScratchBudgetError(scratchDir); err != nil {
+		return err
+	}
 	_ = os.Setenv("TMPDIR", scratchDir)
 	_ = os.Setenv("TMP", scratchDir)
 	_ = os.Setenv("TEMP", scratchDir)
-	_ = os.Setenv("GOCACHE", filepath.Join(scratchDir, "go-build"))
+	_ = os.Setenv("GOCACHE", surfaceScratchGoCacheDir(scratchDir))
 	_ = os.Setenv("GOMODCACHE", filepath.Join(scratchDir, "go-mod"))
 	_ = os.Setenv("GOTMPDIR", filepath.Join(scratchDir, "go-tmp"))
 	_ = os.Setenv("XDG_CACHE_HOME", filepath.Join(scratchDir, "xdg-cache"))
-	blog("scratch/cache area ready at %s (Go caches under %s)", scratchDir, filepath.Join(scratchDir, "go-build"))
+	blog("scratch/cache area ready at %s (%s; Go caches under %s)", scratchDir, surfaceScratchBudgetReport(scratchDir), surfaceScratchGoCacheDir(scratchDir))
 	return nil
+}
+
+func diskBytes(b uint64) string {
+	const unit = 1024
+	if b < unit {
+		return fmt.Sprintf("%dB", b)
+	}
+	div, exp := uint64(unit), 0
+	for n := b / unit; n >= unit; n /= unit {
+		div *= unit
+		exp++
+	}
+	return fmt.Sprintf("%.1f%ciB", float64(b)/float64(div), "KMGTPE"[exp])
 }
 
 // makeReadOnlyTree removes write bits from a cloned workspace so the surface

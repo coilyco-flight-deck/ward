@@ -10,6 +10,7 @@ This page is the durable anchor for the read-only agent surface.
 - It separates the supervisory lane from the detached engineer path.
 - It keeps the director surface's Docker-backed reap path visible when that socket is mounted.
 - It gives the read-only director surface a gitcache-backed scratch and Go cache root so focused verification has writable space.
+- It prints the scratch root and budget at startup, then fails loudly if that writable space is too small for focused Go verification.
 
 ## See also
 

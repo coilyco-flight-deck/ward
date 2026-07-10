@@ -34,6 +34,9 @@ func TestRenderScratchGateContents(t *testing.T) {
 		"claude (claude)",               // agent binary (mode)
 		p.Image,                         // resolved image
 		"explicit pin v0.16.0",          // ward version pin
+		"/gitcache/surface-scratch",     // read-only scratch root
+		"go-build",                      // Go cache root under the scratch
+		"at least 512.0MiB free",        // budget floor
 		"coilyco-flight-deck/cli-guard", // --with-repo grant
 		"Press Enter to launch",         // action prompt
 	} {
@@ -50,6 +53,9 @@ func TestRenderScratchGateWritableNoExtras(t *testing.T) {
 	got := b.String()
 	if !strings.Contains(got, "writable") {
 		t.Errorf("a writable plan must render access=writable; got:\n%s", got)
+	}
+	if !strings.Contains(got, "/scratch") {
+		t.Errorf("a writable plan must show its scratch root; got:\n%s", got)
 	}
 	if strings.Contains(got, "with:") {
 		t.Errorf("no --with-repo grants means no with: line; got:\n%s", got)
