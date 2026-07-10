@@ -497,8 +497,17 @@ type forgejoCommitCombinedStatus struct {
 type forgejoCommitStatus struct {
 	Context     string `json:"context"`
 	State       string `json:"state"`
+	Status      string `json:"status"`
 	Description string `json:"description"`
 	TargetURL   string `json:"target_url"`
+}
+
+func (st forgejoCommitStatus) effectiveState() string {
+	state := strings.ToLower(strings.TrimSpace(st.State))
+	if state != "" {
+		return state
+	}
+	return strings.ToLower(strings.TrimSpace(st.Status))
 }
 
 func (c *forgejoClient) getBranch(ctx context.Context, owner, repo, name string) (*forgejoBranch, error) {

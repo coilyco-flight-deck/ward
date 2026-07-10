@@ -378,6 +378,97 @@ func TestDirectorMergeEligibilityRejectsStaleRequiredStatus(t *testing.T) {
 	}
 }
 
+func TestDirectorMergeEligibilityUsesLatestStatusHistoryEntry(t *testing.T) {
+	var currentQA, staleQA string
+	currentQA = qaVerdictCommentFrom(modeClaude, qaThoroughness{}, qaFamilyInternal, "inspect the branch", qaLaunchContext{
+		IssueRef:       "coilyco-flight-deck/ward#729",
+		PRRef:          "coilyco-flight-deck/ward#729",
+		ReviewedSHA:    "abc123",
+		ReviewerFamily: qaFamilyInternal,
+		Workflow:       string(workflowPullRequestAndMerge),
+		RunIdentity:    "ward-qa-1",
+	}, qaVerdict{Verdict: "pass", Summary: "checks are green"})
+	staleQA = qaVerdictCommentFrom(modeClaude, qaThoroughness{}, qaFamilyInternal, "inspect the branch", qaLaunchContext{
+		IssueRef:       "coilyco-flight-deck/ward#729",
+		PRRef:          "coilyco-flight-deck/ward#729",
+		ReviewedSHA:    "deadbeef",
+		ReviewerFamily: qaFamilyInternal,
+		Workflow:       string(workflowPullRequestAndMerge),
+		RunIdentity:    "ward-qa-2",
+	}, qaVerdict{Verdict: "fail", Summary: "stale result"})
+	srv := httptest.NewServer(http.HandlerFunc(func(w http.ResponseWriter, r *http.Request) {
+		switch r.URL.Path {
+		case "/api/v1/repos/coilyco-flight-deck/ward/issues/729":
+			_ = json.NewEncoder(w).Encode(map[string]any{
+				"number":   729,
+				"title":    "ship the fix",
+				"body":     "closes #729",
+				"state":    "open",
+				"html_url": "https://f/729",
+				"labels":   []map[string]any{},
+			})
+		case "/api/v1/repos/coilyco-flight-deck/ward/issues/729/comments":
+			_ = json.NewEncoder(w).Encode([]map[string]any{
+				{"body": "WARD-OUTCOME: merge-ready\n\n<details><summary>details</summary>\n\nworkflow: pull-request-and-merge; review summary: passed: all green\n\n</details>", "created_at": "2026-07-09T00:00:00Z", "user": map[string]any{"login": "coilyco-ops"}},
+				{"body": currentQA, "created_at": "2026-07-09T00:05:00Z", "user": map[string]any{"login": "coilyco-ops"}},
+				{"body": staleQA, "created_at": "2026-07-09T00:10:00Z", "user": map[string]any{"login": "coilyco-ops"}},
+			})
+		case "/api/v1/repos/coilyco-flight-deck/ward/pulls/729":
+			_ = json.NewEncoder(w).Encode(map[string]any{
+				"number":   729,
+				"title":    "ship the fix",
+				"body":     "closes #729\n" + directorMergeWorkflowMarker + "\n",
+				"state":    "open",
+				"draft":    false,
+				"html_url": "https://f/pr/729",
+				"head": map[string]any{
+					"sha": "abc123",
+					"ref": "issue-729",
+				},
+				"base": map[string]any{
+					"ref": "main",
+				},
+			})
+		case "/api/v1/repos/coilyco-flight-deck/ward/branches/main":
+			_ = json.NewEncoder(w).Encode(map[string]any{
+				"name":                "main",
+				"protected":           true,
+				"enable_status_check": true,
+				"status_check_contexts": []string{
+					"test / test (pull_request)",
+				},
+			})
+		case "/api/v1/repos/coilyco-flight-deck/ward/commits/abc123/status":
+			_ = json.NewEncoder(w).Encode(map[string]any{
+				"state":       "success",
+				"sha":         "abc123",
+				"total_count": 2,
+				"statuses": []map[string]any{
+					{"context": "test / test (pull_request)", "state": "pending"},
+					{"context": "test / test (pull_request)", "status": "success", "description": "Successful in 28s"},
+				},
+			})
+		default:
+			t.Fatalf("unexpected path: %s", r.URL.Path)
+		}
+	}))
+	defer srv.Close()
+
+	cl := &forgejoClient{baseURL: srv.URL, token: "secret"}
+	allowed, reason, linked, meta := directorMergeEligibility(context.Background(), "coilyco-flight-deck", "ward",
+		directorPullRequest{Issue: dispatch.Issue{Number: 729, Title: "ship the fix", Body: "closes #729\n" + directorMergeWorkflowMarker + "\n"}, Mergeable: true, MergeableKnown: true}, cl, cl)
+	if !allowed || reason != "" || linked != 729 {
+		t.Fatalf("eligible PR = %v %q %d, want true/\"\"/729", allowed, reason, linked)
+	}
+	if len(meta.Status.Checks) != 1 || meta.Status.Checks[0].Context != "test / test (pull_request)" || meta.Status.Checks[0].State != "success" {
+		t.Fatalf("eligible PR status = %+v, want latest successful status", meta.Status)
+	}
+	doneBody := directorMergeDoneComment(729, meta)
+	if !strings.Contains(doneBody, "status context: test / test (pull_request)=success") {
+		t.Fatalf("done comment should name the latest successful status, got: %s", doneBody)
+	}
+}
+
 func TestDirectorMergeEligibilityFallsBackWhenBaseBranchHasNoRequiredStatusContexts(t *testing.T) {
 	cl, pr := directorMergeEligibilityFixtureWithBranchProtection(t, "abc123", map[string]string{
 		"test / test (pull_request)": "success",
@@ -400,6 +491,26 @@ func TestDirectorMergeEligibilityFallsBackWhenBaseBranchHasNoRequiredStatusConte
 		if !seen {
 			t.Fatalf("fallback status missing %s in %+v", key, meta.Status.Checks)
 		}
+	}
+}
+
+func TestBuildDirectorMergeStatusSummaryReportsLatestStateValue(t *testing.T) {
+	combined := &forgejoCommitCombinedStatus{
+		State: "failure",
+		Statuses: []forgejoCommitStatus{
+			{Context: "ci/test", State: "pending"},
+			{Context: "ci/test", Status: "failure"},
+		},
+	}
+	summary, reason, ok := buildDirectorMergeStatusSummary("abc123", "main", []string{"ci/test"}, combined)
+	if ok {
+		t.Fatalf("summary = %+v, want denial", summary)
+	}
+	if summary.State != "failure" {
+		t.Fatalf("summary state = %q, want failure", summary.State)
+	}
+	if !strings.Contains(reason, "ci/test=failure") {
+		t.Fatalf("reason = %q, want failure value", reason)
 	}
 }
 
