@@ -631,7 +631,7 @@ func TestBacklogRefreshReservationStates(t *testing.T) {
 
 	now := time.Now().UTC()
 	fresh := now.Add(-10 * time.Minute).UTC().Format(time.RFC3339)
-	stale := now.Add(-2 * time.Hour).UTC().Format(time.RFC3339)
+	stale := now.Add(-4 * time.Hour).UTC().Format(time.RFC3339)
 	srv := httptest.NewServer(http.HandlerFunc(func(w http.ResponseWriter, r *http.Request) {
 		switch {
 		case r.URL.Path == "/api/v1/repos/coilyco-flight-deck/ward/issues" && r.URL.Query().Get("state") == "open":
