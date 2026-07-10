@@ -2,7 +2,7 @@
 
 Ward is a harness driving operations layer for unattended coding agents. It sheilds them from the vagaries of turbulent execution context and scaffolds them into the workflows they already know how to use.
 
-ward's it works via running as a guarded execution layer. `ward agent` launches a your authenticated coding CLI (claude, codex, goose, ...) into an ephemeral, least-access container and drives it through an issue-to-merge workflow, or an issue to PR workflow, while bounded by credentials scoping and a durable audit trail. Fuinctionally it is a manifest-backed harness driver** - it knows how to launch each agent through its own CLI dialect - but the external product is the governed execution layer around it, not the driver. That surface is exposed as **`warded`**, a thin symlink onto `ward agent`, and sits on the three-layer split covered below and in [`docs/architecture.md`](docs/architecture.md).
+ward's it works via running as a guarded execution layer and workflow system. `ward agent` launches a your authenticated coding CLI (claude, codex, goose, ...) into an ephemeral, least-access container and drives it through an issue-to-merge workflow, or an issue to PR workflow, while bounded by credentials scoping and a durable audit trail. Fuinctionally it is a manifest-backed harness driver** - it knows how to launch each agent through its own CLI dialect - but the external product is the governed execution layer around it, not the driver. That surface is exposed as **`warded`**, a thin symlink onto `ward agent`, and sits on the three-layer split covered below and in [`docs/architecture.md`](docs/architecture.md).
 
 ## Who it's for
 
