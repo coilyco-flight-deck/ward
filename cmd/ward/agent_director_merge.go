@@ -54,10 +54,7 @@ func (r *Runner) runDirectorMerge(ctx context.Context, c *cli.Command) error {
 	if err := r.backlogTrustGate(label, repos); err != nil {
 		return err
 	}
-	prClient, err := r.hostForgejoClient(ctx)
-	if err != nil {
-		return fmt.Errorf("%s: %w", label, err)
-	}
+	prClient := r.hostForgejoClient(ctx)
 	issueClient, err := r.hostTrackerClient(ctx, trackerForgejo, currentAgentMode())
 	if err != nil {
 		return fmt.Errorf("%s: %w", label, err)
@@ -202,9 +199,6 @@ func directorMergeStatusGate(ctx context.Context, cl *forgejoClient, owner, repo
 		return directorMergeStatusCheck{}, "could not read base branch status checks: " + firstLine(err.Error()), false
 	}
 	required := normalizeDirectorRequiredContexts(branch.StatusCheckContexts)
-	if len(required) == 0 {
-		return directorMergeStatusCheck{}, "base branch " + baseBranch + " does not declare required status check contexts", false
-	}
 	combined, err := cl.getCommitCombinedStatus(ctx, owner, repo, headSHA)
 	if err != nil {
 		return directorMergeStatusCheck{}, "could not read live commit status for current PR head SHA: " + firstLine(err.Error()), false
@@ -277,15 +271,22 @@ func buildDirectorMergeStatusSummary(headSHA, branch string, required []string, 
 		summary.State = "unknown"
 	}
 	statusByContext := map[string]string{}
+	var fallback []string
 	for _, st := range combined.Statuses {
 		ctx := strings.TrimSpace(st.Context)
 		if ctx == "" {
 			continue
 		}
+		if _, seen := statusByContext[ctx]; !seen {
+			fallback = append(fallback, ctx)
+		}
 		statusByContext[ctx] = strings.ToLower(strings.TrimSpace(st.State))
 	}
 	if len(required) == 0 {
-		return summary, "base branch does not declare any required status contexts", false
+		required = fallback
+		if len(required) == 0 {
+			return summary, "base branch does not declare any required status contexts", false
+		}
 	}
 	for _, ctx := range required {
 		state, ok := statusByContext[ctx]

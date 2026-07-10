@@ -446,10 +446,7 @@ func qaParseCommentField(meta *qaCommentMeta, s string) bool {
 // findLinkedPullRequest resolves the merge-lane PR for the issue, if any, and
 // returns its current Forgejo head SHA for commit-bound QA commentary.
 func (r *Runner) findLinkedPullRequest(ctx context.Context, ref agentIssueRef, _ any, _ []issueComment) (*forgejoPullRequest, bool, error) {
-	cl, err := r.hostForgejoClient(ctx)
-	if err != nil {
-		return nil, false, err
-	}
+	cl := r.hostForgejoClient(ctx)
 	prs, err := cl.listOpenPullRequests(ctx, ref.Owner, ref.Repo, 50)
 	if err != nil {
 		return nil, false, err

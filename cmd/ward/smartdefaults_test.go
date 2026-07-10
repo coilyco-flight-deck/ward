@@ -16,7 +16,7 @@ func TestSmartDefaultsBaked(t *testing.T) {
 	if defs.agentReservationTTL != time.Hour {
 		t.Errorf("baked reservation ttl = %s, want 1h", defs.agentReservationTTL)
 	}
-	if defs.directorMaxParallel != 10 || defs.directorLimit != 50 || defs.containerReapKeep != 10 {
+	if defs.engineerContainerLimit != 12 || defs.directorMaxParallel != 10 || defs.directorLimit != 50 || defs.containerReapKeep != 10 {
 		t.Errorf("baked defaults = %+v, want the neutral policy bundle", defs)
 	}
 }
@@ -28,6 +28,7 @@ func TestSmartDefaultsFromBundleSource(t *testing.T) {
     agent-reservation-recheck-max "9s"
     agent-reap-idle "90m"
     agent-reap-max-cpu "7.5"
+    engineer-container-limit "17"
     director-max-parallel "13"
     director-limit "77"
     director-poll-interval "45s"
@@ -37,20 +38,12 @@ func TestSmartDefaultsFromBundleSource(t *testing.T) {
     container-read-only-extra-repo-ttl "48h"
     container-reap-keep "12"
     agent-workflow default="direct-main" {
-        repo "coilyco-flight-deck/ward" workflow="pull-requests-and-merge"
     }
 }
 
 repo-authority default=forgejo {
-    trusted-owner "coilysiren"
-    trusted-owner "coilyco-bridge"
-    trusted-owner "coilyco-flight-deck"
-    trusted-owner "coilyco-gaming"
-
-    repo "coilysiren/*" forge=github
-    repo "coilyco-bridge/*" forge=forgejo
-    repo "coilyco-flight-deck/*" forge=forgejo
-    repo "coilyco-gaming/*" forge=forgejo
+    trusted-owner "example-owner"
+    repo "example-owner/*" forge=github
 }`
 	if err := os.WriteFile(filepath.Join(dir, bundleDefaultsKDLPath), []byte(body), 0o644); err != nil {
 		t.Fatalf("write defaults bundle: %v", err)
@@ -65,7 +58,7 @@ repo-authority default=forgejo {
 	if defs.agentReapIdleDefault != 90*time.Minute || defs.agentReapMaxCPUDefault != 7.5 {
 		t.Errorf("bundle reap defaults = %+v", defs)
 	}
-	if defs.directorMaxParallel != 13 || defs.directorLimit != 77 || defs.directorPollInterval != 45*time.Second {
+	if defs.engineerContainerLimit != 17 || defs.directorMaxParallel != 13 || defs.directorLimit != 77 || defs.directorPollInterval != 45*time.Second {
 		t.Errorf("bundle director defaults = %+v", defs)
 	}
 	if defs.reviewerTimeout != 11*time.Minute || defs.configBundleTTL != 15*time.Minute {
@@ -77,8 +70,8 @@ repo-authority default=forgejo {
 	if defs.agentWorkflowDefault != workflowDirectToMain {
 		t.Errorf("bundle workflow default = %q, want direct-main", defs.agentWorkflowDefault)
 	}
-	if defs.agentWorkflowRepos["coilyco-flight-deck/ward"] != workflowPullRequestAndMerge {
-		t.Errorf("bundle ward workflow = %q, want pull-requests-and-merge", defs.agentWorkflowRepos["coilyco-flight-deck/ward"])
+	if len(defs.agentWorkflowRepos) != 0 {
+		t.Errorf("bundle workflow overrides = %v, want none in the neutral starter", defs.agentWorkflowRepos)
 	}
 }
 

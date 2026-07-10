@@ -1,9 +1,6 @@
 // SigNoz READ tier - the base of the read ⊂ write ⊂ admin chain for the signoz
-// area (ward#338, the second area to tier after forgejo). A `ward-kdl-read`
-// binary whose only signoz verbs are the semantic reads: the active log-pipeline
-// set and the get/list pair over dashboards and alert rules. Everything else -
-// create/edit and the (already-denied) deletes - is never compiled into this
-// binary, so it cannot be invoked at all.
+// area (ward#338, the second area to tier after forgejo). This baked copy is
+// example-safe; the real deployment bundle carries the live host/token.
 //
 // This file is the singleton-bearing root of the signoz chain: it declares the
 // `spec`, `base-url`, and `auth` the write and admin tiers inherit (cli-guard#160
@@ -20,11 +17,11 @@
 wrap ward-kdl-read ops signoz {
     spec signoz.openapi.json
     base-url {
-        value ssm "/coilysiren/signoz-ser8/base-url"
+        value ssm "/example/signoz/base-url"
     }
     auth header-token {
         header SIGNOZ-API-KEY
-        value ssm "/coilysiren/signoz-ser8/api-token"
+        value ssm "/example/signoz/api-token"
     }
     // read tier: the semantic reads only. No create/edit leaf mounts here, and
     // signoz has no allowed delete at any tier (the deletes are denied at write).

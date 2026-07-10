@@ -1,30 +1,24 @@
----
-doc_goal: Show a ward contributor how `make workspace` collapses the cross-module release loop into a local `go.work` so cli-guard edits resolve from a sibling checkout instantly, and why that file stays gitignored to keep single-repo CI and the headless container building from the pinned version.
----
-# Working on cli-guard side by side (Go workspace)
+# workspace
 
-ward consumes [cli-guard](https://forgejo.coilysiren.me/coilyco-flight-deck/cli-guard) as a separate Go module, pinned in `go.mod` (and via the Makefile `REF` for the `specverb-gen` driver). Without a workspace, every cli-guard change you want to use here costs a full cross-module release: tag + release cli-guard, `go get` the new version into ward's `go.mod`, bump the Makefile `REF`, then the change is usable.
+`make workspace` is the local development path for ward itself.
 
-A Go workspace collapses that loop for local dev. With cli-guard checked out beside ward:
+- It resolves a sibling `cli-guard` checkout through `go.work`.
+- It keeps local builds off the network when the sibling checkout exists.
 
-```
-ward/         <- you are here
-cli-guard/    <- ../cli-guard
-```
+## When to use it
 
-run:
+- when you are hacking ward and have a sibling cli-guard checkout.
+- when you want local source changes to drive the build.
+- when you do not want to depend on the Forgejo-hosted upstream during a local
+  edit loop.
 
-```
-make workspace
-```
+## What it does not do
 
-That writes a **gitignored** `go.work` (`use (. ../cli-guard)`). cli-guard now resolves from your local working tree for `go build`, `ward exec`, and `specverb-gen` runs - **no tag, no `go get`, no `REF` bump**. Edit cli-guard, rebuild ward, done.
-
-- The target errors clearly if `../cli-guard` is missing.
-- `go.work` and `go.work.sum` are gitignored on purpose: a committed `use (. ../cli-guard)` would break single-repo builds in CI and the headless `warded` container, where the sibling isn't present. Single-repo builds keep resolving cli-guard from the pinned module version.
-- Delete `go.work` to return to the pinned version at any time.
+- it does not change the release story.
+- it does not change the Homebrew install story.
+- it does not replace the repo gate.
 
 ## See also
 
-- [CONTRIBUTING.md](../CONTRIBUTING.md) - the contribution process this workflow supports.
-- [README.md](../README.md) - human-facing intro, install steps.
+- [homebrew-build.md](homebrew-build.md) - the install path.
+- [release.md](release.md) - the release path.

@@ -37,6 +37,13 @@ repos:
   # PATH (pre-commit already needs it). scripts/lint_issue_refs.py --fix rewrites.
   - repo: local
     hooks:
+      - id: golangci-lint
+        name: golangci-lint (matches ward exec lint)
+        description: Run the repo's golangci-lint gate at commit time so local pre-commit catches the same Go complexity checks as CI.
+        entry: golangci-lint run ./...
+        language: system
+        always_run: true
+        pass_filenames: false
       - id: issue-refs
         name: issue refs resolve for GitHub readers (ward#446)
         entry: python3 scripts/lint_issue_refs.py

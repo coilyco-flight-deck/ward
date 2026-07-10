@@ -154,6 +154,44 @@ func TestBuildAgentArgv(t *testing.T) {
 	}
 }
 
+func TestLaunchAgentReportsOOMKilled(t *testing.T) {
+	dir := t.TempDir()
+	docker := filepath.Join(dir, "docker")
+	setpriv := filepath.Join(dir, "setpriv")
+	dockerBody := "#!/bin/sh\n" +
+		"if [ \"$1\" = inspect ] && [ \"$2\" = --format ] && [ \"$3\" = '{{json .State}}' ]; then\n" +
+		"  printf '%s' " + shellQuote(`{"OOMKilled":true,"ExitCode":0}`) + "\n" +
+		"  exit 0\n" +
+		"fi\n" +
+		"exit 1\n"
+	setprivBody := "#!/bin/sh\nkill -9 $$\n"
+	if err := os.WriteFile(docker, []byte(dockerBody), 0o700); err != nil { // #nosec G306 -- test fixture
+		t.Fatalf("write fake docker: %v", err)
+	}
+	if err := os.WriteFile(setpriv, []byte(setprivBody), 0o700); err != nil { // #nosec G306 -- test fixture
+		t.Fatalf("write fake setpriv: %v", err)
+	}
+	t.Setenv("PATH", dir+string(os.PathListSeparator)+os.Getenv("PATH"))
+	r := &Runner{Runner: &shell.Runner{Stderr: io.Discard, Resolve: shell.PathResolver}}
+	stderr := captureTestStderr(t, func() {
+		r.launchAgent(context.Background(), bootstrapEnv{Container: "director-codex-vg94"}, t.TempDir(), []string{"codex"}, false)
+	})
+	if !strings.Contains(stderr, "signal: killed") {
+		t.Fatalf("launchAgent stderr missing signal kill breadcrumb:\n%s", stderr)
+	}
+	if !strings.Contains(stderr, "OOMKilled=true") {
+		t.Fatalf("launchAgent stderr missing OOM breadcrumb:\n%s", stderr)
+	}
+}
+
+func TestEnsureLaunchBinaryAvailable(t *testing.T) {
+	if err := ensureLaunchBinaryAvailable("definitely-not-a-ward-binary"); err == nil {
+		t.Fatal("missing agent binary should be a hard bootstrap failure")
+	} else if !strings.Contains(err.Error(), "definitely-not-a-ward-binary") {
+		t.Fatalf("error should name the missing binary, got %v", err)
+	}
+}
+
 func TestNamedGate(t *testing.T) {
 	err := agentsapi.NewGateError("model-config", context.Canceled)
 	if got, ok := namedGate(err); !ok || got != "model-config" {
@@ -211,8 +249,8 @@ func TestReadBootstrapEnvDefaults(t *testing.T) {
 		"CodexModel":     "gpt-5.4",
 		"CodexEffort":    "medium",
 		"CodexVerbosity": "low",
-		"GitUserName":    "coilyco-ops",
-		"GitUserEmail":   "coilyco-ops@coilysiren.me",
+		"GitUserName":    "example-bot",
+		"GitUserEmail":   "bot@example.com",
 		"AgentUID":       "1000",
 		"AgentHome":      "/home/ubuntu",
 		"ForgejoHost":    "forgejo.coilysiren.me",
@@ -224,6 +262,55 @@ func TestReadBootstrapEnvDefaults(t *testing.T) {
 	}
 	if e.Headless || e.Ask {
 		t.Errorf("Headless/Ask should default false: %v/%v", e.Headless, e.Ask)
+	}
+}
+
+// TestReadBootstrapEnvDirectorCodexOverlay covers the director bootstrap path:
+// the baked fleet overlay resolves high effort and the startup echo prints it.
+func TestReadBootstrapEnvDirectorCodexOverlay(t *testing.T) {
+	for _, k := range []string{
+		"WARD_MODE", "WARD_AGENT", "WARD_CONTEXT_LEVEL", "WARD_GITCACHE", "WARD_CONTEXT_SRC",
+		"WARD_QWEN_MODEL", "WARD_OLLAMA_URL", "WARD_GIT_NAME", "WARD_GIT_EMAIL",
+		"WARD_CODEX_MODEL", "WARD_CODEX_REASONING_EFFORT", "WARD_CODEX_VERBOSITY",
+		"WARD_AGENT_UID", "WARD_AGENT_GID", "WARD_AGENT_HOME", "WARD_BRANCH",
+		"WARD_HEADLESS", "WARD_ASK", "WARD_MIRROR_NAME", "WARD_SUBSTRATE_SKIP",
+		"WARD_ROLE",
+	} {
+		t.Setenv(k, "")
+	}
+	t.Setenv("WARD_TARGET_OWNER", "coilyco-flight-deck")
+	t.Setenv("WARD_TARGET_NAME", "ward")
+	t.Setenv("WARD_FORGEJO_BASE", "https://forgejo.coilysiren.me")
+	t.Setenv("WARD_MODE", "codex")
+	t.Setenv("WARD_AGENT", "codex")
+	t.Setenv("WARD_ROLE", "director")
+
+	e, err := readBootstrapEnv()
+	if err != nil {
+		t.Fatalf("unexpected error: %v", err)
+	}
+	if e.CodexEffort != "high" {
+		t.Fatalf("director overlay resolved codex effort = %q, want high", e.CodexEffort)
+	}
+
+	prev := os.Stderr
+	r, w, _ := os.Pipe()
+	os.Stderr = w
+	t.Cleanup(func() { os.Stderr = prev })
+
+	done := make(chan string, 1)
+	go func() {
+		var out strings.Builder
+		_, _ = io.Copy(&out, r)
+		done <- out.String()
+	}()
+
+	rc := (&Runner{}).agentRunCtx(t.Context(), e, nil)
+	echoAgentConfigGo(e, rc, modeCodex)
+	_ = w.Close()
+	got := <-done
+	if !strings.Contains(got, "agent:         codex") || !strings.Contains(got, "effort:        high") {
+		t.Fatalf("director startup config echo should surface high codex effort; got:\n%s", got)
 	}
 }
 

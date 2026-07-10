@@ -211,10 +211,7 @@ func (r *Runner) bounceRouteToHuman(ctx context.Context, signed Tracker, label s
 // surveyRoute builds a live repo catalog, asks the mode's host agent to pick the
 // routing target, and returns the parsed verdict plus the raw read.
 func (r *Runner) surveyRoute(ctx context.Context, mode containerMode, taskText string) (routeOutcome, string, error) {
-	catalog, err := r.surveyRepoCatalog(ctx)
-	if err != nil {
-		return routeOutcome{}, "", err
-	}
+	catalog := r.surveyRepoCatalog(ctx)
 	if len(catalog) == 0 {
 		return routeOutcome{}, "", fmt.Errorf("no candidate repos found across %s", strings.Join(r.trustedOwners(), ", "))
 	}
@@ -238,11 +235,8 @@ func (r *Runner) surveyRoute(ctx context.Context, mode containerMode, taskText s
 
 // surveyRepoCatalog lists routable repos across the primary orgs (dropping
 // archived/empty + the inbox); a per-owner list failure is skipped, not fatal.
-func (r *Runner) surveyRepoCatalog(ctx context.Context) ([]repoCatalogEntry, error) {
-	cl, err := r.hostForgejoClient(ctx)
-	if err != nil {
-		return nil, err
-	}
+func (r *Runner) surveyRepoCatalog(ctx context.Context) []repoCatalogEntry {
+	cl := r.hostForgejoClient(ctx)
 	var entries []repoCatalogEntry
 	for _, owner := range r.trustedOwners() {
 		repos, err := cl.listOwnerRepos(ctx, owner)
@@ -261,7 +255,7 @@ func (r *Runner) surveyRepoCatalog(ctx context.Context) ([]repoCatalogEntry, err
 		}
 	}
 	sort.Slice(entries, func(i, j int) bool { return entries[i].Slug < entries[j].Slug })
-	return entries, nil
+	return entries
 }
 
 // renderRepoCatalog formats the candidate repos as one `owner/repo — description`

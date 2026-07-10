@@ -2,87 +2,93 @@ package main
 
 import (
 	"context"
+	"encoding/json"
+	"net/http"
+	"net/http/httptest"
 	"os"
-	"strings"
 	"testing"
 
 	"forgejo.coilysiren.me/coilyco-flight-deck/cli-guard/pkg/broker"
-	"forgejo.coilysiren.me/coilyco-flight-deck/cli-guard/pkg/credseed"
-	"github.com/urfave/cli/v3"
 )
 
-// recordingRunner captures the one command's argv + env and returns canned
-// output, asserting argv shaping without the real binary on PATH.
-type recordingRunner struct {
-	name string
-	args []string
-	env  []string
-	out  []byte
-	err  error
-}
+func TestExecutorFileIssueHTTP(t *testing.T) {
+	var gotMethod, gotPath, gotAuth string
+	var gotBody map[string]string
+	srv := httptest.NewServer(http.HandlerFunc(func(w http.ResponseWriter, r *http.Request) {
+		gotMethod, gotPath, gotAuth = r.Method, r.URL.Path, r.Header.Get("Authorization")
+		if err := json.NewDecoder(r.Body).Decode(&gotBody); err != nil {
+			t.Fatalf("decode request body: %v", err)
+		}
+		w.WriteHeader(http.StatusCreated)
+		_, _ = w.Write([]byte(`{"number": 42, "html_url": "https://forge/x/y/issues/42"}`))
+	}))
+	defer srv.Close()
 
-func (r *recordingRunner) run(_ context.Context, name string, args, env []string) ([]byte, error) {
-	r.name, r.args, r.env = name, args, env
-	return r.out, r.err
-}
-
-func TestExecutorFileIssueArgv(t *testing.T) {
-	rr := &recordingRunner{out: []byte(`{"number": 42, "html_url": "https://forge/x/y/issues/42"}`)}
-	ex := &wardKdlWriteExecutor{token: "tok", run: rr.run}
-
+	ex := &wardKdlWriteExecutor{token: "tok", baseURL: srv.URL}
 	res, err := ex.FileIssue(context.Background(), broker.Target{Owner: "coilyco-flight-deck", Repo: "ward"}, "title here", "body here")
 	if err != nil {
 		t.Fatalf("FileIssue: %v", err)
 	}
-	if rr.name != wardKdlWriteBin {
-		t.Errorf("binary = %q, want %q", rr.name, wardKdlWriteBin)
+	if gotMethod != http.MethodPost || gotPath != "/api/v1/repos/coilyco-flight-deck/ward/issues" {
+		t.Errorf("request = %s %s, want POST issue-create endpoint", gotMethod, gotPath)
 	}
-	want := []string{"ops", "forgejo", "issue", "create", "coilyco-flight-deck", "ward", "--title", "title here", "--body", "body here", "--output", "json"}
-	if strings.Join(rr.args, "\x00") != strings.Join(want, "\x00") {
-		t.Errorf("argv =\n  %v\nwant\n  %v", rr.args, want)
+	if gotAuth != "token tok" {
+		t.Errorf("auth = %q, want token tok", gotAuth)
+	}
+	if gotBody["title"] != "title here" || gotBody["body"] != "body here" {
+		t.Errorf("body = %#v, want title/body", gotBody)
 	}
 	if res.Number != 42 || res.URL != "https://forge/x/y/issues/42" {
 		t.Errorf("result = %+v, want number 42 + html_url", res)
 	}
-	// The token rides env, never argv.
-	for _, a := range rr.args {
-		if strings.Contains(a, "tok") {
-			t.Errorf("token leaked into argv: %v", rr.args)
-		}
-	}
-	if !containsEnv(rr.env, credseed.EnvForgejoToken, "tok") {
-		t.Errorf("env missing %s=tok: %v", credseed.EnvForgejoToken, rr.env)
-	}
 }
 
 func TestExecutorEditIssueOmitsEmptyFields(t *testing.T) {
-	rr := &recordingRunner{out: []byte(`{"number": 7}`)}
-	ex := &wardKdlWriteExecutor{token: "tok", run: rr.run}
+	var gotBody map[string]string
+	srv := httptest.NewServer(http.HandlerFunc(func(w http.ResponseWriter, r *http.Request) {
+		if r.Method != http.MethodPatch || r.URL.Path != "/api/v1/repos/coilyco/r/issues/7" {
+			t.Fatalf("request = %s %s, want PATCH issue endpoint", r.Method, r.URL.Path)
+		}
+		if err := json.NewDecoder(r.Body).Decode(&gotBody); err != nil {
+			t.Fatalf("decode request body: %v", err)
+		}
+		_, _ = w.Write([]byte(`{"number": 7}`))
+	}))
+	defer srv.Close()
 
+	ex := &wardKdlWriteExecutor{token: "tok", baseURL: srv.URL}
 	if _, err := ex.EditIssue(context.Background(), broker.Target{Owner: "coilyco", Repo: "r", Number: 7}, "", "new body", "closed"); err != nil {
 		t.Fatalf("EditIssue: %v", err)
 	}
-	want := []string{"ops", "forgejo", "issue", "edit", "coilyco", "r", "7", "--body", "new body", "--state", "closed", "--output", "json"}
-	if strings.Join(rr.args, "\x00") != strings.Join(want, "\x00") {
-		t.Errorf("argv =\n  %v\nwant\n  %v", rr.args, want)
+	if _, ok := gotBody["title"]; ok {
+		t.Errorf("empty title should be omitted, body = %#v", gotBody)
+	}
+	if gotBody["body"] != "new body" || gotBody["state"] != "closed" {
+		t.Errorf("body = %#v, want body + state only", gotBody)
 	}
 }
 
-func TestExecutorCommentIssueArgvAndResultNumber(t *testing.T) {
-	// The shadow renders {comment, issue} together (ward#613): the html_url rides a
-	// nested `comment` object, and the reused target number stands in for the absent one.
-	rr := &recordingRunner{out: []byte(`{"comment": {"html_url": "https://forge/x/y/issues/7#issuecomment-1"}, "issue": {"number": 7}}`)}
-	ex := &wardKdlWriteExecutor{token: "tok", run: rr.run}
+func TestExecutorCommentIssueHTTPAndResultNumber(t *testing.T) {
+	var gotBody map[string]string
+	srv := httptest.NewServer(http.HandlerFunc(func(w http.ResponseWriter, r *http.Request) {
+		if r.Method != http.MethodPost || r.URL.Path != "/api/v1/repos/coilyco/r/issues/7/comments" {
+			t.Fatalf("request = %s %s, want POST comment endpoint", r.Method, r.URL.Path)
+		}
+		if err := json.NewDecoder(r.Body).Decode(&gotBody); err != nil {
+			t.Fatalf("decode request body: %v", err)
+		}
+		w.WriteHeader(http.StatusCreated)
+		_, _ = w.Write([]byte(`{"html_url": "https://forge/x/y/issues/7#issuecomment-1"}`))
+	}))
+	defer srv.Close()
 
+	ex := &wardKdlWriteExecutor{token: "tok", baseURL: srv.URL}
 	res, err := ex.CommentIssue(context.Background(), broker.Target{Owner: "coilyco", Repo: "r", Number: 7}, "hello")
 	if err != nil {
 		t.Fatalf("CommentIssue: %v", err)
 	}
-	// `issue comment`, NOT `comment create` - no `comment` resource exists (ward#613);
-	// TestExecutorWriteArgvHitsRealLeaves pins this against the generated tree.
-	want := []string{"ops", "forgejo", "issue", "comment", "coilyco", "r", "7", "--body", "hello", "--output", "json"}
-	if strings.Join(rr.args, "\x00") != strings.Join(want, "\x00") {
-		t.Errorf("argv =\n  %v\nwant\n  %v", rr.args, want)
+	if gotBody["body"] != "hello" {
+		t.Errorf("body = %#v, want comment body", gotBody)
 	}
 	if res.Number != 7 {
 		t.Errorf("result number = %d, want 7 (reused from target)", res.Number)
@@ -92,36 +98,65 @@ func TestExecutorCommentIssueArgvAndResultNumber(t *testing.T) {
 	}
 }
 
-func TestExecutorLabelIssueArgv(t *testing.T) {
-	// The label leaf returns the issue's label array, not an {number} object, so
-	// the result number falls back to the target's (ward#625).
-	rr := &recordingRunner{out: []byte(`[{"name":"headless"}]`)}
-	ex := &wardKdlWriteExecutor{token: "tok", run: rr.run}
+func TestExecutorLabelIssueHTTP(t *testing.T) {
+	tests := []struct {
+		name       string
+		mode       string
+		labels     []string
+		wantMethod []string
+		wantPath   []string
+	}{
+		{"add", broker.LabelAdd, []string{"headless", "P1"}, []string{http.MethodPost}, []string{"/api/v1/repos/coilyco/r/issues/7/labels"}},
+		{"set", broker.LabelSet, []string{"P2"}, []string{http.MethodPut}, []string{"/api/v1/repos/coilyco/r/issues/7/labels"}},
+		{"remove", broker.LabelRemove, []string{"headless", "P1"}, []string{http.MethodDelete, http.MethodDelete}, []string{"/api/v1/repos/coilyco/r/issues/7/labels/headless", "/api/v1/repos/coilyco/r/issues/7/labels/P1"}},
+	}
+	for _, tt := range tests {
+		t.Run(tt.name, func(t *testing.T) {
+			var gotMethods, gotPaths []string
+			srv := httptest.NewServer(http.HandlerFunc(func(w http.ResponseWriter, r *http.Request) {
+				gotMethods = append(gotMethods, r.Method)
+				gotPaths = append(gotPaths, r.URL.Path)
+				if r.Method == http.MethodPost || r.Method == http.MethodPut {
+					var body map[string][]string
+					if err := json.NewDecoder(r.Body).Decode(&body); err != nil {
+						t.Fatalf("decode request body: %v", err)
+					}
+					if len(body["labels"]) != len(tt.labels) {
+						t.Fatalf("labels body = %#v, want %v", body, tt.labels)
+					}
+				}
+				if r.Method == http.MethodDelete {
+					w.WriteHeader(http.StatusNoContent)
+					return
+				}
+				_, _ = w.Write([]byte(`[{"name":"headless"}]`))
+			}))
+			defer srv.Close()
 
-	res, err := ex.LabelIssue(context.Background(), broker.Target{Owner: "coilyco", Repo: "r", Number: 7}, broker.LabelAdd, []string{"headless", "P1"})
-	if err != nil {
-		t.Fatalf("LabelIssue: %v", err)
-	}
-	want := []string{"ops", "forgejo", "issue-label", "add", "coilyco", "r", "7", "--labels", "headless", "--labels", "P1", "--output", "json"}
-	if strings.Join(rr.args, "\x00") != strings.Join(want, "\x00") {
-		t.Errorf("argv =\n  %v\nwant\n  %v", rr.args, want)
-	}
-	if res.Number != 7 {
-		t.Errorf("result number = %d, want 7 (reused from target)", res.Number)
-	}
-	// The mode rides the verb, never a flag; the token rides env, never argv.
-	for _, a := range rr.args {
-		if strings.Contains(a, "tok") {
-			t.Errorf("token leaked into argv: %v", rr.args)
-		}
+			ex := &wardKdlWriteExecutor{token: "tok", baseURL: srv.URL}
+			res, err := ex.LabelIssue(context.Background(), broker.Target{Owner: "coilyco", Repo: "r", Number: 7}, tt.mode, tt.labels)
+			if err != nil {
+				t.Fatalf("LabelIssue: %v", err)
+			}
+			if res.Number != 7 {
+				t.Errorf("result number = %d, want 7 (reused from target)", res.Number)
+			}
+			if len(gotMethods) != len(tt.wantMethod) {
+				t.Fatalf("requests = %v %v, want %v %v", gotMethods, gotPaths, tt.wantMethod, tt.wantPath)
+			}
+			for i := range tt.wantMethod {
+				if gotMethods[i] != tt.wantMethod[i] || gotPaths[i] != tt.wantPath[i] {
+					t.Errorf("request %d = %s %s, want %s %s", i, gotMethods[i], gotPaths[i], tt.wantMethod[i], tt.wantPath[i])
+				}
+			}
+		})
 	}
 }
 
 // Unit C: Dispatch vends the root-held token as the child env-file seed; it
-// shells nothing (no recordingRunner call) - the seed rides Result.Detail.
+// shells nothing - the seed rides Result.Detail.
 func TestExecutorDispatchVendsSeed(t *testing.T) {
-	rr := &recordingRunner{}
-	ex := &wardKdlWriteExecutor{token: "tok", run: rr.run}
+	ex := &wardKdlWriteExecutor{token: "tok"}
 	res, err := ex.Dispatch(context.Background(), broker.Target{Owner: "coilyco", Repo: "r", Number: 1})
 	if err != nil {
 		t.Fatalf("Dispatch should be served in Unit C: %v", err)
@@ -129,14 +164,11 @@ func TestExecutorDispatchVendsSeed(t *testing.T) {
 	if res.Detail != "tok" {
 		t.Errorf("dispatch seed = %q, want the held token in Result.Detail", res.Detail)
 	}
-	if rr.args != nil {
-		t.Errorf("Dispatch must not shell the write binary; ran %v", rr.args)
-	}
 }
 
 // With no token held, Dispatch errors rather than vending an empty seed.
 func TestExecutorDispatchNoToken(t *testing.T) {
-	ex := &wardKdlWriteExecutor{token: "", run: (&recordingRunner{}).run}
+	ex := &wardKdlWriteExecutor{token: ""}
 	if _, err := ex.Dispatch(context.Background(), broker.Target{Owner: "coilyco", Repo: "r", Number: 1}); err == nil {
 		t.Fatal("Dispatch with no token should error, not vend an empty seed")
 	}
@@ -257,7 +289,7 @@ func TestBrokerServerRoundTrip(t *testing.T) {
 }
 
 // fakeExecutor records which methods were called and returns a canned result,
-// standing in for the real ward-kdl-write shell-out in the socket round-trip.
+// standing in for the real direct executor in the socket round-trip.
 type fakeExecutor struct {
 	result         broker.Result
 	fileCalled     bool
@@ -290,101 +322,4 @@ func (f *fakeExecutor) LabelIssue(_ context.Context, _ broker.Target, mode strin
 func (f *fakeExecutor) Dispatch(_ context.Context, _ broker.Target) (broker.Result, error) {
 	f.dispatchCalled = true
 	return f.result, nil
-}
-
-// containsEnv reports whether env carries key=value.
-func containsEnv(env []string, key, value string) bool {
-	for _, e := range env {
-		if e == key+"="+value {
-			return true
-		}
-	}
-	return false
-}
-
-// TestExecutorWriteArgvHitsRealLeaves resolves each write executor's argv against
-// the real generated forgejo tree, catching ward#613's wrong `comment create` path.
-func TestExecutorWriteArgvHitsRealLeaves(t *testing.T) {
-	forgejo, err := buildForgejoOps()
-	if err != nil {
-		t.Fatalf("buildForgejoOps: %v", err)
-	}
-	tgt := broker.Target{Owner: "coilyco", Repo: "r", Number: 7}
-	cases := []struct {
-		name string
-		run  func(*wardKdlWriteExecutor) error
-	}{
-		{"FileIssue", func(e *wardKdlWriteExecutor) error {
-			_, err := e.FileIssue(context.Background(), tgt, "t", "b")
-			return err
-		}},
-		{"EditIssue", func(e *wardKdlWriteExecutor) error {
-			_, err := e.EditIssue(context.Background(), tgt, "t", "b", "closed")
-			return err
-		}},
-		{"CommentIssue", func(e *wardKdlWriteExecutor) error {
-			_, err := e.CommentIssue(context.Background(), tgt, "hello")
-			return err
-		}},
-		{"LabelIssue", func(e *wardKdlWriteExecutor) error {
-			_, err := e.LabelIssue(context.Background(), tgt, broker.LabelAdd, []string{"headless"})
-			return err
-		}},
-	}
-	for _, tc := range cases {
-		t.Run(tc.name, func(t *testing.T) {
-			rr := &recordingRunner{out: []byte(`{}`)}
-			ex := &wardKdlWriteExecutor{token: "tok", run: rr.run}
-			if err := tc.run(ex); err != nil {
-				t.Fatalf("%s: %v", tc.name, err)
-			}
-			assertArgvResolves(t, forgejo, rr.args)
-		})
-	}
-}
-
-// assertArgvResolves fails when argv (an executor's `ops forgejo ...` shell-out)
-// does not resolve to a real leaf whose flags include every `--flag` in argv.
-func assertArgvResolves(t *testing.T, forgejo *cli.Command, argv []string) {
-	t.Helper()
-	if len(argv) < 2 || argv[0] != "ops" || argv[1] != "forgejo" {
-		t.Fatalf("argv %v is not an `ops forgejo ...` shell-out", argv)
-	}
-	cur := forgejo
-	i := 2
-	// Descend subcommands until a token stops matching (positionals/flags begin).
-	for ; i < len(argv); i++ {
-		next := commandNamed(cur.Commands, argv[i])
-		if next == nil {
-			break
-		}
-		cur = next
-	}
-	if cur == forgejo {
-		t.Fatalf("argv %v resolved no forgejo subcommand (verb path is wrong)", argv)
-	}
-	// Every remaining `--flag` must be defined on the resolved leaf.
-	for ; i < len(argv); i++ {
-		tok := argv[i]
-		if !strings.HasPrefix(tok, "--") {
-			continue
-		}
-		flag := strings.TrimPrefix(tok, "--")
-		if !flagDefined(cur, flag) {
-			t.Errorf("leaf %q does not define %q (argv %v); a shell-out to it fails with "+
-				"`flag provided but not defined: -%s`", cur.Name, tok, argv, flag)
-		}
-	}
-}
-
-// flagDefined reports whether cmd declares a flag with the given name.
-func flagDefined(cmd *cli.Command, name string) bool {
-	for _, f := range cmd.Flags {
-		for _, n := range f.Names() {
-			if n == name {
-				return true
-			}
-		}
-	}
-	return false
 }

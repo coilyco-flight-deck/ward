@@ -69,6 +69,12 @@ jobs:
           name: ${{ steps.tag.outputs.new_tag }}
           body: ${{ steps.notes.outputs.body }}
 
+      - name: Alert Telegram on main failure
+        if: ${{ failure() && github.ref == 'refs/heads/main' }}
+        uses: coilyco-flight-deck/agentic-os/actions/telegram-alert@main
+        with:
+          bot-token: ${{ secrets.TELEGRAM_BOT_TOKEN }}
+          chat-id: ${{ secrets.TELEGRAM_RED_CHAT_ID }}
   publish-binaries:
     needs: release
     if: ${{ needs.release.outputs.tag != '' }}
@@ -268,6 +274,12 @@ jobs:
           done
           echo "GitHub release ${TAG} published with the full matrix + SHA256SUMS"
 
+      - name: Alert Telegram on main failure
+        if: ${{ failure() && github.ref == 'refs/heads/main' }}
+        uses: coilyco-flight-deck/agentic-os/actions/telegram-alert@main
+        with:
+          bot-token: ${{ secrets.TELEGRAM_BOT_TOKEN }}
+          chat-id: ${{ secrets.TELEGRAM_RED_CHAT_ID }}
   publish-kdl-write:
     needs: release
     if: ${{ needs.release.outputs.tag != '' }}
@@ -389,6 +401,12 @@ jobs:
             echo "published ${file} to the internal channel ${base}/${file}"
           done
 
+      - name: Alert Telegram on main failure
+        if: ${{ failure() && github.ref == 'refs/heads/main' }}
+        uses: coilyco-flight-deck/agentic-os/actions/telegram-alert@main
+        with:
+          bot-token: ${{ secrets.TELEGRAM_BOT_TOKEN }}
+          chat-id: ${{ secrets.TELEGRAM_RED_CHAT_ID }}
   publish-kdl-read:
     needs: release
     if: ${{ needs.release.outputs.tag != '' }}
@@ -512,6 +530,12 @@ jobs:
             echo "published ${file} to the internal channel ${base}/${file}"
           done
 
+      - name: Alert Telegram on main failure
+        if: ${{ failure() && github.ref == 'refs/heads/main' }}
+        uses: coilyco-flight-deck/agentic-os/actions/telegram-alert@main
+        with:
+          bot-token: ${{ secrets.TELEGRAM_BOT_TOKEN }}
+          chat-id: ${{ secrets.TELEGRAM_RED_CHAT_ID }}
   bump-tap-formula:
     needs: [release, publish-binaries]
     if: ${{ needs.release.outputs.tag != '' }}
@@ -677,6 +701,12 @@ jobs:
           fi
           echo "tap ${TAP_REPO} formula bumped to ${TAG}"
 
+      - name: Alert Telegram on main failure
+        if: ${{ failure() && github.ref == 'refs/heads/main' }}
+        uses: coilyco-flight-deck/agentic-os/actions/telegram-alert@main
+        with:
+          bot-token: ${{ secrets.TELEGRAM_BOT_TOKEN }}
+          chat-id: ${{ secrets.TELEGRAM_RED_CHAT_ID }}
   bump-scoop-manifest:
     needs: [release, publish-binaries]
     if: ${{ needs.release.outputs.tag != '' }}
@@ -804,3 +834,9 @@ jobs:
             exit 1
           fi
           echo "bucket ${BUCKET_REPO} scoop manifest bumped to ${TAG}"
+      - name: Alert Telegram on main failure
+        if: ${{ failure() && github.ref == 'refs/heads/main' }}
+        uses: coilyco-flight-deck/agentic-os/actions/telegram-alert@main
+        with:
+          bot-token: ${{ secrets.TELEGRAM_BOT_TOKEN }}
+          chat-id: ${{ secrets.TELEGRAM_RED_CHAT_ID }}

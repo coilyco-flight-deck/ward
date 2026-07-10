@@ -20,7 +20,7 @@ Unsure? You are almost certainly the **adopter**. The delegated "set this up for
 The ordered path, start to finish:
 
 1. **Install** - `brew tap coilyco-flight-deck/tap https://forgejo.coilysiren.me/coilyco-flight-deck/homebrew-tap`, then `brew install coilyco-flight-deck/tap/ward`. The explicit tap URL is required because the tap lives on Forgejo, not github.com. Full steps: [README Install](README.md#install).
-2. **Inventory the retired surfaces** - the former `ward setup` and `ward doctor` behavior is preserved in [docs/ward-setup-doctor-inventory.md](docs/ward-setup-doctor-inventory.md). Use that note when the rebirth pass lands the smaller replacement.
+2. **Inventory the compact release-era surfaces** - the former `ward setup` and `ward doctor` behavior is now folded into the smaller docs set, especially [docs/agent-lifecycle.md](docs/agent-lifecycle.md) and [docs/ward-kdl.md](docs/ward-kdl.md).
 3. **Use the live gate** - route current dev work through `ward exec build`, `ward exec test`, and the other verbs declared in `.ward/ward.yaml`. To hand-edit or understand a field, use the schema reference in [docs/ward-yaml.md](docs/ward-yaml.md). The live contract is the command allowlist, not the retired setup/doctor surface.
 Once that is done, contributors route dev work through the verbs your `.ward/ward.yaml` declares - `ward exec build`, `ward exec test`, and so on. See [docs/exec-verb.md](docs/exec-verb.md).
 

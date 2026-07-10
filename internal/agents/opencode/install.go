@@ -24,7 +24,7 @@ func (a Agent) Install(rc agentsapi.RunCtx) error {
 		_ = rc.Exec.Exec(rc.Ctx, "install", "-m", "0755", src, "/usr/local/bin/opencode")
 	}
 	if !commandExists("opencode") {
-		rc.Log("opencode install failed; opencode mode will drop to a shell (use --image with opencode baked in, or fix network)")
+		rc.Log("opencode install failed; opencode mode will abort before launch (use --image with opencode baked in, or fix network)")
 	}
 	return nil
 }

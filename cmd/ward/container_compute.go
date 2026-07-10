@@ -704,9 +704,9 @@ func (p upPlan) wardEnv() map[string]string { //nolint:gocyclo,cyclop
 	// No WARD_CONTEXT_REPOS is emitted: the read-only context set is resolved in-container
 	// from the fresh clone, since the host cwd may not be the target repo (ward#580).
 
-	// A GitHub run clones off github.com + drives `gh` (ward#489); Forgejo runs emit
-	// neither key, so their env is unchanged (WARD_FORGEJO_BASE stays Forgejo).
-	if p.Forge == forgeGitHub {
+	// GitHub and GitLab runs clone off their own forge + drive their host-side
+	// issue clients, so the clone base rides only for non-Forgejo forges.
+	if p.Forge != forgeForgejo {
 		env["WARD_FORGE"] = p.Forge.String()
 		env["WARD_CLONE_BASE"] = p.Forge.baseURL()
 	}

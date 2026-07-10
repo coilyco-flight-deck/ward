@@ -26,7 +26,7 @@ fleet {
     // -> defaults.agent, WARD_GIT_NAME/WARD_GIT_EMAIL -> defaults.attribution.
     defaults {
         agent claude
-        attribution name=coilyco-ops email=coilyco-ops@coilysiren.me
+        attribution name=example-bot email=bot@example.com
     }
     // Sparse frontier override: builtin launch shapes fill the rest.
     agent claude {
@@ -56,13 +56,21 @@ fleet {
             }
             agent codex {
                 model gpt-5.5
-                reasoning-effort medium
+                reasoning-effort high
             }
         }
         // advisor does live-observe research: the aws SSM read + the tailnet route.
         // `advisor --no-tailnet` opts a rare isolated run back out.
         role advisor {
             guardfiles ward-kdl.aws.guardfile.kdl ward-kdl.tailscale.guardfile.kdl
+            agent claude {
+                model "claude-opus-4-8[1m]"
+                reasoning-effort high
+            }
+            agent codex {
+                model gpt-5.5
+                reasoning-effort high
+            }
         }
     }
 }
