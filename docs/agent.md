@@ -4,7 +4,7 @@ doc_goal: Serve as the reference entrypoint that makes a reader grasp ward agent
 # ward agent
 
 `ward agent` is **ward's whole second half: the guarded execution layer for
-coding agents**. Each invocation takes a Forgejo issue and drives a
+coding agents**. Each invocation takes the repo's authoritative issue thread and drives a
 subscription-authenticated coding CLI (claude, codex, ...) through it from issue
 to merge inside a **fresh, least-access ephemeral [container](container.md)** -
 reach bounded by repo-scoped credentials, cli-guard policy, and a durable
@@ -15,8 +15,8 @@ surface: the hand-run `ward container up`/`exec`/`down`/`ls` verbs are retired.
 ## Prerequisites
 
 A **live** run needs **Docker running** (each boots an ephemeral
-[container](container.md)) and a reachable **Forgejo** instance. `--print` needs
-neither. Full list: [first-run.md §1](first-run.md#1-prerequisites).
+[container](container.md)) and a reachable issue host for the target repo.
+`--print` needs neither. Full list: [first-run.md §1](first-run.md#1-prerequisites).
 
 ## The `warded` public face
 
