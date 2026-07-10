@@ -18,6 +18,14 @@ import (
 	"github.com/urfave/cli/v3"
 )
 
+const opsUnavailableReasonKey = "ward.ops.unavailable.reason"
+
+var showCommandHelpOriginal = cli.ShowCommandHelp
+
+func init() {
+	cli.ShowCommandHelp = showCommandHelpWithUnavailableOps
+}
+
 // ops.go is ward's in-binary forgejo guardfile runtime (`ward ops forgejo`,
 // ward#92/#270), compiled from the launch-selected config source (ward#653).
 
@@ -27,10 +35,11 @@ func opsCommand() *cli.Command {
 	forgejo, err := buildForgejoOps()
 	if err != nil {
 		forgejo = &cli.Command{
-			Name:  "forgejo",
-			Usage: "guarded Forgejo REST surface (unavailable)",
+			Name:     "forgejo",
+			Usage:    "guarded Forgejo REST surface (unavailable)",
+			Metadata: map[string]any{opsUnavailableReasonKey: err},
 			Action: func(context.Context, *cli.Command) error {
-				return fmt.Errorf("ward ops forgejo: guardfile runtime failed to mount: %w", err)
+				return forgejoUnavailableError(err)
 			},
 		}
 	}
@@ -105,6 +114,33 @@ func buildForgejoOpsFrom(src configSource) (*cli.Command, error) {
 	r.overrideForgejoCommentIssue(forgejo)
 	r.overrideForgejoActionsLogs(forgejo)
 	return forgejo, nil
+}
+
+func showCommandHelpWithUnavailableOps(ctx context.Context, cmd *cli.Command, commandName string) error {
+	if reason := forgejoUnavailableReason(cmd); reason != nil && subCommandNamed(cmd, commandName) == nil {
+		return forgejoUnavailableHelpError(reason)
+	}
+	return showCommandHelpOriginal(ctx, cmd, commandName)
+}
+
+func forgejoUnavailableReason(cmd *cli.Command) error {
+	if cmd == nil || cmd.Metadata == nil {
+		return nil
+	}
+	raw, ok := cmd.Metadata[opsUnavailableReasonKey]
+	if !ok {
+		return nil
+	}
+	reason, _ := raw.(error)
+	return reason
+}
+
+func forgejoUnavailableError(reason error) error {
+	return fmt.Errorf("ward ops forgejo: unavailable - guardfile runtime failed to mount: %w. Try `ward ops forgejo --help` or `ward ops forgejo describe` once the bundle is mounted", reason)
+}
+
+func forgejoUnavailableHelpError(reason error) error {
+	return fmt.Errorf("ward ops forgejo: unavailable - guardfile runtime failed to mount: %w. Try `ward ops forgejo --help` or `ward ops forgejo describe` once the bundle is mounted", reason)
 }
 
 // forgejoTokenResolver resolves the Forgejo bot token: the baked $FORGEJO_TOKEN in

@@ -82,6 +82,29 @@ func TestOpsCommandReportsBakedConfigForCoilycoTarget(t *testing.T) {
 	}
 }
 
+// TestOpsForgejoUnavailableNestedHelpReportsMountFailure pins the nested-help path.
+// It must keep the mount-failure context instead of degrading to "No help topic".
+func TestOpsForgejoUnavailableNestedHelpReportsMountFailure(t *testing.T) {
+	dir := t.TempDir()
+	t.Setenv(wardConfigRefEnv, "file://"+dir)
+
+	cmd := rootCommand()
+	err := cmd.Run(context.Background(), []string{"ward", "ops", "forgejo", "issue", "list", "--help"})
+	if err == nil {
+		t.Fatal("nested help on an unavailable surface returned nil")
+	}
+	for _, want := range []string{
+		"ward ops forgejo: unavailable",
+		"guardfile runtime failed to mount",
+		"read bundle ops manifest ward.bundle.kdl",
+		"Try `ward ops forgejo --help` or `ward ops forgejo describe` once the bundle is mounted",
+	} {
+		if !strings.Contains(err.Error(), want) {
+			t.Fatalf("error %q does not contain %q", err, want)
+		}
+	}
+}
+
 // TestSelectConfigSourceRejectsMalformedGitRef pins fail-loud: a ref that is
 // neither file:// nor the git grammar errors, never a silent baked fallback.
 func TestSelectConfigSourceRejectsMalformedGitRef(t *testing.T) {

@@ -382,7 +382,7 @@ func TestForwardAgentListSendsListRequestAndRelaysBody(t *testing.T) {
 }
 
 func TestResolveDispatchBrokerLogsSourcePrefersLiveDocker(t *testing.T) {
-	r := fakeAgentLogsDockerRunner(t, "engineer-claude-ward-692\n", "live-one\nlive-two\n", nil)
+	r := fakeAgentLogsDockerRunner(t, "engineer-claude-ward-692\n", "live-one\nlive-two\n", nil, "")
 	src, err := r.resolveDispatchBrokerLogsSource(t.Context(), dispatchBrokerRequest{Target: "coilyco-flight-deck/ward#692", Tail: 2})
 	if err != nil {
 		t.Fatalf("resolve live source: %v", err)
@@ -404,7 +404,7 @@ func TestResolveDispatchBrokerLogsSourceFallsBackToLiveTranscriptWhenDockerEmpty
 		"projects/enc/session-a.jsonl": `{"type":"assistant","text":"working"}` + "\n" + `{"type":"assistant","text":"still here"}` + "\n",
 		"projects/enc/session-b.jsonl": `{"type":"assistant","text":"latest"}` + "\n",
 	})
-	r := fakeAgentLogsDockerRunner(t, "engineer-claude-ward-692\n", "", tarBytes)
+	r := fakeAgentLogsDockerRunner(t, "engineer-claude-ward-692\n", "", tarBytes, ".claude/projects")
 	src, err := r.resolveDispatchBrokerLogsSource(t.Context(), dispatchBrokerRequest{Target: "coilyco-flight-deck/ward#692", Tail: 2})
 	if err != nil {
 		t.Fatalf("resolve transcript source: %v", err)
@@ -415,7 +415,35 @@ func TestResolveDispatchBrokerLogsSourceFallsBackToLiveTranscriptWhenDockerEmpty
 	}
 	got := out.String()
 	for _, want := range []string{
-		"ward agent logs: docker logs empty; using live transcript tree from /home/ubuntu/.claude/projects",
+		"ward agent logs: docker logs empty; using live transcript tree from",
+		".claude/projects",
+		`{"type":"assistant","text":"still here"}`,
+		`{"type":"assistant","text":"latest"}`,
+	} {
+		if !strings.Contains(got, want) {
+			t.Fatalf("fallback output missing %q\n%s", want, got)
+		}
+	}
+}
+
+func TestResolveDispatchBrokerLogsSourceUsesCodexTranscriptTreeWhenDockerEmpty(t *testing.T) {
+	tarBytes := liveTranscriptTar(t, map[string]string{
+		"sessions/session-a.jsonl": `{"type":"assistant","text":"working"}` + "\n" + `{"type":"assistant","text":"still here"}` + "\n",
+		"sessions/session-b.jsonl": `{"type":"assistant","text":"latest"}` + "\n",
+	})
+	r := fakeAgentLogsDockerRunner(t, "engineer-codex-ward-692\n", "", tarBytes, ".codex/sessions")
+	src, err := r.resolveDispatchBrokerLogsSource(t.Context(), dispatchBrokerRequest{Target: "coilyco-flight-deck/ward#692", Tail: 2})
+	if err != nil {
+		t.Fatalf("resolve transcript source: %v", err)
+	}
+	var out bytes.Buffer
+	if err := r.streamAgentLogsSource(t.Context(), src, &out); err != nil {
+		t.Fatalf("stream transcript fallback: %v", err)
+	}
+	got := out.String()
+	for _, want := range []string{
+		"ward agent logs: docker logs empty; using live transcript tree from",
+		".codex/sessions",
 		`{"type":"assistant","text":"still here"}`,
 		`{"type":"assistant","text":"latest"}`,
 	} {
@@ -440,7 +468,7 @@ func TestResolveDispatchBrokerLogsSourceFallsBackToArchive(t *testing.T) {
 	if err := os.WriteFile(filepath.Join(archiveDir, drainConsoleFile), []byte("one\ntwo\nthree\n"), 0o644); err != nil {
 		t.Fatalf("write console: %v", err)
 	}
-	r := fakeAgentLogsDockerRunner(t, "", "", nil)
+	r := fakeAgentLogsDockerRunner(t, "", "", nil, "")
 	src, err := r.resolveDispatchBrokerLogsSource(t.Context(), dispatchBrokerRequest{Target: "coilyco-flight-deck/ward#692", Tail: 1})
 	if err != nil {
 		t.Fatalf("resolve archive source: %v", err)
@@ -1831,7 +1859,7 @@ func TestDispatchLogNameIsStampedAndAttributable(t *testing.T) {
 	}
 }
 
-func fakeAgentLogsDockerRunner(t *testing.T, psOut, logsOut string, cpOut []byte) *Runner {
+func fakeAgentLogsDockerRunner(t *testing.T, psOut, logsOut string, cpOut []byte, wantCpSuffix string) *Runner {
 	t.Helper()
 	dir := t.TempDir()
 	script := filepath.Join(dir, "docker")
@@ -1843,6 +1871,7 @@ func fakeAgentLogsDockerRunner(t *testing.T, psOut, logsOut string, cpOut []byte
 		}
 	}
 	body := "#!/bin/sh\n" +
+		"want_cp_suffix=" + shellQuote(wantCpSuffix) + "\n" +
 		"if [ \"$1\" = ps ] && [ \"$2\" = -a ]; then\n" +
 		"  printf '%s' " + shellQuote(psOut) + "\n" +
 		"  exit 0\n" +
@@ -1852,6 +1881,12 @@ func fakeAgentLogsDockerRunner(t *testing.T, psOut, logsOut string, cpOut []byte
 		"  exit 0\n" +
 		"fi\n" +
 		"if [ \"$1\" = cp ]; then\n" +
+		"  if [ -n \"$want_cp_suffix\" ]; then\n" +
+		"    case \"$2\" in\n" +
+		"      *\"$want_cp_suffix\") ;;\n" +
+		"      *) printf '%s\\n' \"unexpected docker cp source: $2\" >&2; exit 1;;\n" +
+		"    esac\n" +
+		"  fi\n" +
 		"  if [ -n " + shellQuote(cpPath) + " ]; then\n" +
 		"    cat " + shellQuote(cpPath) + "\n" +
 		"  fi\n" +
