@@ -330,6 +330,11 @@ func (r *Runner) commentDispatchLaunchError(ctx context.Context, req dispatchBro
 		r.commentDeferredDispatchLaunch(ctx, req, logPath, launchErr)
 		return
 	}
+	if isReleaseAssetsNotReadyError(launchErr) {
+		fmt.Fprintf(os.Stderr, "ward dispatch broker: launch deferred: %v\n", launchErr)
+		r.commentDeferredReleaseAssetsLaunch(ctx, req, logPath, launchErr)
+		return
+	}
 	fmt.Fprintf(os.Stderr, "ward dispatch broker: launch failed: %v\n", launchErr)
 	r.commentFailedDispatchLaunch(ctx, req, logPath, launchErr)
 }
@@ -353,6 +358,27 @@ func (r *Runner) commentDeferredDispatchLaunch(ctx context.Context, req dispatch
 		return
 	}
 	r.commentDeferredDispatch(commentCtx, cl, mode, ref, req, logPath, launchErr)
+}
+
+// commentDeferredReleaseAssetsLaunch posts the release-assets-not-ready comment.
+// It clears the stale reservation when the selected release's asset is missing.
+func (r *Runner) commentDeferredReleaseAssetsLaunch(ctx context.Context, req dispatchBrokerRequest, logPath string, launchErr error) {
+	if r == nil || r.Runner == nil {
+		return
+	}
+	ref, err := parseAgentIssueRef(req.Argv[1])
+	if err != nil {
+		return
+	}
+	mode := dispatchBrokerRequestMode(req)
+	commentCtx, cancel := context.WithTimeout(context.WithoutCancel(ctx), 30*time.Second)
+	defer cancel()
+	cl, cerr := r.hostTrackerClient(commentCtx, ref.trackerOrDefault(), mode)
+	if cerr != nil {
+		fmt.Fprintf(os.Stderr, "ward dispatch broker: could not build issue client to comment deferred dispatch on %s: %v\n", ref, cerr)
+		return
+	}
+	r.commentDeferredReleaseAssetsDispatch(commentCtx, cl, mode, ref, req, logPath, launchErr)
 }
 
 // dispatchBrokerRequestMode resolves the requested harness for a forwarded dispatch.
@@ -404,6 +430,24 @@ func (r *Runner) commentDeferredDispatch(ctx context.Context, cl Tracker, mode c
 	fmt.Fprintf(os.Stderr, "ward dispatch broker: released deferred dispatch reservation on %s\n", ref)
 }
 
+// commentDeferredReleaseAssetsDispatch writes the release-assets-not-ready comment.
+// It clears the stale reservation after a published release still lacks the asset.
+func (r *Runner) commentDeferredReleaseAssetsDispatch(ctx context.Context, cl Tracker, mode containerMode, ref agentIssueRef, req dispatchBrokerRequest, logPath string, launchErr error) {
+	container := emptyDefault(req.Requester, "unknown-container")
+	if req.Role == roleEngineer {
+		container = issueScopedContainerName(req.Role, mode, targetRepo{Owner: ref.Owner, Name: ref.Repo}, ref.Number)
+	}
+	body := dispatchLaunchReleaseAssetsDeferredCommentBody(mode, container, req, logPath, launchErr)
+	if err := cl.commentIssue(ctx, ref.Owner, ref.Repo, ref.Number, body); err != nil {
+		fmt.Fprintf(os.Stderr, "ward dispatch broker: could not comment deferred release-assets-not-ready dispatch on %s: %v\n", ref, err)
+		return
+	}
+	if err := cl.unlockIssue(ctx, ref.Owner, ref.Repo, ref.Number); err != nil && !errors.Is(err, errForgeLockUnsupported) {
+		fmt.Fprintf(os.Stderr, "ward dispatch broker: could not unlock issue %s after deferred release-assets-not-ready dispatch: %v\n", ref, err)
+	}
+	fmt.Fprintf(os.Stderr, "ward dispatch broker: released deferred release-assets-not-ready reservation on %s\n", ref)
+}
+
 // dispatchLaunchFailureCommentBody supersedes the stale reservation with a visible
 // failure comment and the retry shape an operator needs.
 func dispatchLaunchFailureCommentBody(mode containerMode, container string, req dispatchBrokerRequest, logPath string, launchErr error) string {
@@ -446,6 +490,28 @@ func dispatchLaunchDeferredCommentBody(mode containerMode, container string, req
 		mode, attempted, container, logDetail, firstLine(launchErr.Error()))
 	return agentReservationReleaseMarker + "\n" + agentNeedsRedispatchMarker + "\n" +
 		collapsedIssueComment("WARD-DISPATCH: deferred ⏸", "deferred details", detail)
+}
+
+// dispatchLaunchReleaseAssetsDeferredCommentBody renders the deferred comment.
+// It explains that the selected release was visible before its bootstrap asset.
+func dispatchLaunchReleaseAssetsDeferredCommentBody(mode containerMode, container string, req dispatchBrokerRequest, logPath string, launchErr error) string {
+	attempted := redactDispatchBrokerArgv(req.Argv)
+	logDetail := "unavailable"
+	if strings.TrimSpace(logPath) != "" {
+		logDetail = logPath
+	}
+	detail := fmt.Sprintf(
+		"This forwarded dispatch was deferred because the selected release was visible before its bootstrap asset was ready.\n\n"+
+			"Attempted harness: `%s`\n"+
+			"Attempted run: `ward agent %s`\n"+
+			"Container: `%s`\n"+
+			"Container created: no running engineer was observed.\n"+
+			"Host log: `%s`\n"+
+			"Release assets: `%s`\n\n"+
+			"Retry: the issue stays queued until the release publishes the missing platform assets, then the director can try again.",
+		mode, attempted, container, logDetail, firstLine(launchErr.Error()))
+	return agentReservationReleaseMarker + "\n" + agentNeedsRedispatchMarker + "\n" +
+		collapsedIssueComment("WARD-DISPATCH: deferred ⏸", "release-assets-not-ready details", detail)
 }
 
 // withBrokerForwardingDisabled temporarily clears the read-only surface markers so

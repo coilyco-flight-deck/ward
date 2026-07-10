@@ -38,6 +38,11 @@ const (
 	reasonAuthFail reapReason = "push to main was rejected on auth (dead or rotated PAT)"
 )
 
+const (
+	commitStateAgentDidNotCommit                  = "agent did not commit"
+	commitStateCommitExistedButLackedCloseTrailer = "commit existed but lacked close trailer"
+)
+
 // authFailureMarkers are substrings git/forgejo emit when a push is rejected on
 // credentials not content; matched case-insensitively against the push output.
 var authFailureMarkers = []string{
@@ -139,6 +144,8 @@ type reapDecision struct {
 	// ProvState is the provenance file's state at the decision: "present",
 	// "missing or unreadable", or "not read (no origin/main)".
 	ProvState string
+	// CommitState distinguishes dirty-only residual work from already-committed work.
+	CommitState string
 	// Landed is the run-owned-landed verdict (runProvenanceLanded) the gate saw.
 	Landed bool
 }
@@ -160,9 +167,11 @@ type reapDiagnostics struct {
 	// Gate / Reason name the decision branch taken and its human reason.
 	Gate   string
 	Reason reapReason
-	// ProvState / Landed mirror reapDecision: provenance presence and the landed proof.
-	ProvState string
-	Landed    bool
+	// ProvState / CommitState / Landed mirror reapDecision: provenance presence,
+	// whether the agent had already committed, and the landed proof.
+	ProvState   string
+	CommitState string
+	Landed      bool
 	// Status is the `git status --porcelain` snapshot; TokenAge is the container
 	// uptime at reap (a baked-PAT age proxy).
 	Status   string
@@ -187,6 +196,9 @@ func renderReapDiagnostics(d reapDiagnostics) string {
 	fmt.Fprintf(&b, "decision gate:     %s\n", d.Gate)
 	fmt.Fprintf(&b, "reason:            %s\n", d.Reason)
 	fmt.Fprintf(&b, "provenance:        %s\n", d.ProvState)
+	if d.CommitState != "" {
+		fmt.Fprintf(&b, "agent commit:      %s\n", d.CommitState)
+	}
 	fmt.Fprintf(&b, "run-owned landed:  %s\n", yesNo(d.Landed))
 	fmt.Fprintf(&b, "working tree:      %s\n", treeSummary(d.Status))
 	if d.TokenAge != "" {
@@ -252,11 +264,12 @@ func salvageBranchName(id string) string {
 
 // salvageReport is everything the issue text needs about one cleanup salvage.
 type salvageReport struct {
-	Repo     targetRepo
-	Mode     string
-	Branch   string
-	Reason   reapReason
-	Findings []scan.Finding
+	Repo        targetRepo
+	Mode        string
+	Branch      string
+	Reason      reapReason
+	CommitState string
+	Findings    []scan.Finding
 	// Issue is the carried issue this run was dispatched for (0 for a freeform
 	// run); a carried salvage comments here instead of filing a new issue (ward#518).
 	Issue int
@@ -316,6 +329,9 @@ func salvageDetailBody(r salvageReport) string {
 		fmt.Fprintf(&b, "- **Pull request:** not opened - %s\n", r.PullRequestUnavailable)
 	}
 	fmt.Fprintf(&b, "- **Reason:** %s\n", r.Reason)
+	if r.CommitState != "" {
+		fmt.Fprintf(&b, "- **Agent commit:** %s\n", r.CommitState)
+	}
 	if r.TokenAge != "" {
 		fmt.Fprintf(&b, "- **Container uptime at reap:** %s (age of the baked Forgejo PAT snapshot; a long-lived container is likelier to carry a rotated token)\n", r.TokenAge)
 	}
@@ -333,6 +349,8 @@ func salvageDetailBody(r salvageReport) string {
 		b.WriteString(renderReapDiagnostics(r.Diagnostics))
 		b.WriteString("\n```\n\n")
 	}
+
+	b.WriteString(closingReferenceStateBody(r))
 
 	b.WriteString("## Recover\n\n```bash\n")
 	fmt.Fprintf(&b, "git fetch %s %s\n", r.Repo.cloneURL(r.Base), r.Branch)
@@ -358,6 +376,20 @@ func salvageDetailBody(r salvageReport) string {
 		b.WriteString("\n```\n")
 	}
 	return b.String()
+}
+
+func closingReferenceStateBody(r salvageReport) string {
+	if r.Reason != reasonCloseRef || r.CommitState == "" {
+		return ""
+	}
+	switch r.CommitState {
+	case commitStateAgentDidNotCommit:
+		return "## Closing reference state\n\nThe agent did not commit before teardown. The reaper had to snapshot dirty files into a residual commit, but that snapshot still lacked the same-repo closing reference needed to land.\n\n"
+	case commitStateCommitExistedButLackedCloseTrailer:
+		return "## Closing reference state\n\nA commit already existed before teardown, but the commit that should have landed did not carry the same-repo closing reference.\n\n"
+	default:
+		return "## Closing reference state\n\n" + r.CommitState + "\n\n"
+	}
 }
 
 // --- granted-repo (--repo) push verification (ward#291) ----------------------
