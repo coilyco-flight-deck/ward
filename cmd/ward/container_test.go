@@ -50,7 +50,7 @@ func TestSweepStaleContainerAssets(t *testing.T) {
 	if err := os.Chtimes(stale, past, past); err != nil {
 		t.Fatal(err)
 	}
-	sweepStaleContainerAssets(tmp)
+	sweepStaleContainerAssets(tmp, nil)
 	if _, err := os.Stat(stale); !os.IsNotExist(err) {
 		t.Error("stale asset dir should have been swept")
 	}
@@ -59,6 +59,74 @@ func TestSweepStaleContainerAssets(t *testing.T) {
 	}
 	if _, err := os.Stat(other); err != nil {
 		t.Error("unrelated dir must not be touched")
+	}
+}
+
+func TestSweepStaleContainerAssetsSkipsLiveDirs(t *testing.T) {
+	tmp := t.TempDir()
+	live := filepath.Join(tmp, containerAssetsPrefix+"live")
+	stale := filepath.Join(tmp, containerAssetsPrefix+"stale")
+	for _, d := range []string{live, stale} {
+		if err := os.MkdirAll(d, 0o755); err != nil {
+			t.Fatal(err)
+		}
+	}
+	past := time.Now().Add(-2 * containerAssetsTTL())
+	for _, d := range []string{live, stale} {
+		if err := os.Chtimes(d, past, past); err != nil {
+			t.Fatal(err)
+		}
+	}
+	sweepStaleContainerAssets(tmp, map[string]bool{live: true})
+	if _, err := os.Stat(live); err != nil {
+		t.Fatalf("live asset dir must survive the sweep: %v", err)
+	}
+	if _, err := os.Stat(stale); !os.IsNotExist(err) {
+		t.Fatal("stale asset dir should still be swept when it is not live")
+	}
+}
+
+func fakeDockerLiveAssetsRunner(t *testing.T) *Runner {
+	t.Helper()
+	dir := t.TempDir()
+	script := filepath.Join(dir, "docker")
+	body := "#!/bin/sh\n" +
+		"case \"$1\" in\n" +
+		"  ps)\n" +
+		"    printf '%s\\n' c1 c2\n" +
+		"    exit 0\n" +
+		"    ;;\n" +
+		"  inspect)\n" +
+		"    case \"$4\" in\n" +
+		"      c1) printf '%s' " + shellQuote(`[{"Source":"/tmp/asset-c1","Destination":"/opt/ward"}]`) + " ; exit 0 ;;\n" +
+		"      c2) printf '%s' " + shellQuote(`[{"Source":"/tmp/asset-c2","Destination":"/opt/ward"},{"Source":"/tmp/ignore","Destination":"/tmp"}]`) + " ; exit 0 ;;\n" +
+		"    esac\n" +
+		"    exit 1\n" +
+		"    ;;\n" +
+		"esac\n" +
+		"exit 1\n"
+	if err := os.WriteFile(script, []byte(body), 0o700); err != nil { // #nosec G306 -- test fixture
+		t.Fatalf("write fake docker: %v", err)
+	}
+	return &Runner{Runner: &shell.Runner{
+		Stderr:  io.Discard,
+		Resolve: func(_ string) (string, error) { return script, nil },
+	}}
+}
+
+func TestLiveContainerAssetDirs(t *testing.T) {
+	r := fakeDockerLiveAssetsRunner(t)
+	live, ok := r.liveContainerAssetDirs(context.Background())
+	if !ok {
+		t.Fatal("liveContainerAssetDirs should succeed on the fake docker output")
+	}
+	for _, want := range []string{"/tmp/asset-c1", "/tmp/asset-c2"} {
+		if !live[want] {
+			t.Fatalf("liveContainerAssetDirs missing %q in %v", want, live)
+		}
+	}
+	if live["/tmp/ignore"] {
+		t.Fatal("liveContainerAssetDirs must ignore non-/opt/ward mounts")
 	}
 }
 
@@ -577,7 +645,7 @@ func TestWriteContainerAssetsStagesUnderHome(t *testing.T) {
 	home := t.TempDir()
 	t.Setenv("HOME", home)
 	stubContainerBootstrapStage(t)
-	dir, cleanup, err := writeContainerAssets(context.Background(), "", "")
+	dir, cleanup, err := writeContainerAssets(context.Background(), nil, "", "")
 	if err != nil {
 		t.Fatalf("writeContainerAssets: %v", err)
 	}
@@ -605,7 +673,7 @@ func TestWriteContainerAssetsStagesWardBinary(t *testing.T) {
 	}
 	t.Cleanup(func() { stageWardBootstrapBinary = prev })
 
-	dir, cleanup, err := writeContainerAssets(context.Background(), "/src/ward", "v0.1.2")
+	dir, cleanup, err := writeContainerAssets(context.Background(), nil, "/src/ward", "v0.1.2")
 	if err != nil {
 		t.Fatalf("writeContainerAssets: %v", err)
 	}
@@ -1156,8 +1224,8 @@ func TestEntrypointDelegatesBootstrap(t *testing.T) {
 	}
 	script := string(data)
 	for _, want := range []string{
-		"ln -sf /opt/ward/ward /usr/local/bin/ward",
-		"exec /opt/ward/ward container bootstrap \"$@\"",
+		"install -m 0755 /opt/ward/ward /usr/local/bin/ward",
+		"exec /usr/local/bin/ward container bootstrap \"$@\"",
 	} {
 		if !strings.Contains(script, want) {
 			t.Errorf("entrypoint missing %q (bootstrap delegation)", want)
@@ -1203,8 +1271,9 @@ func TestEntrypointBootstrapDelegation(t *testing.T) {
 	}
 	script := string(data)
 	for _, want := range []string{
-		"ln -sf /opt/ward/ward /usr/local/bin/ward",
-		"exec /opt/ward/ward container bootstrap \"$@\"",
+		"install -m 0755 /opt/ward/ward /usr/local/bin/ward",
+		"/usr/local/bin/warded --help >/dev/null 2>&1 || die \"warded did not install correctly\"",
+		"exec /usr/local/bin/ward container bootstrap \"$@\"",
 	} {
 		if !strings.Contains(script, want) {
 			t.Fatalf("entrypoint missing %q", want)
