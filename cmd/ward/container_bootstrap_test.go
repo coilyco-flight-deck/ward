@@ -154,6 +154,14 @@ func TestBuildAgentArgv(t *testing.T) {
 	}
 }
 
+func TestEnsureLaunchBinaryAvailable(t *testing.T) {
+	if err := ensureLaunchBinaryAvailable("definitely-not-a-ward-binary"); err == nil {
+		t.Fatal("missing agent binary should be a hard bootstrap failure")
+	} else if !strings.Contains(err.Error(), "definitely-not-a-ward-binary") {
+		t.Fatalf("error should name the missing binary, got %v", err)
+	}
+}
+
 func TestNamedGate(t *testing.T) {
 	err := agentsapi.NewGateError("model-config", context.Canceled)
 	if got, ok := namedGate(err); !ok || got != "model-config" {
