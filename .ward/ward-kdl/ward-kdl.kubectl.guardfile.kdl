@@ -1,7 +1,7 @@
 // ward-kdl ops kubectl - host-native kubectl as an allowlist (cli-guard
 // execverb, exec dialect). Wraps the image-baked `/usr/local/bin/kubectl`
 // against the active
-// kubeconfig (kai-server k3s over the tailnet); the binary is fixed at parse,
+// kubeconfig (k3s over the tailnet); the binary is fixed at parse,
 // so the caller can never substitute it. Deny-by-default: only the read verbs
 // (including `diff`, the non-mutating server-side preview of an apply) and the
 // friendly deploy surface (apply / scale / rollout) mount. Destructive

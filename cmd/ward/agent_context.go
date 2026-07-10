@@ -28,7 +28,7 @@ type catalogContextRepo struct {
 }
 
 // external reports whether this dep names a non-Forgejo host, so it must clone over
-// its own transport off a host-side ssh-seeded gitcache mirror, never CloneBase.
+// its own transport off a host-side seeded gitcache mirror, never CloneBase.
 func (c catalogContextRepo) external() bool { return c.CloneURL != "" }
 
 // catalogContextRepos returns the target's catalog.dependsOn as read-only context
@@ -130,7 +130,7 @@ func resolveContextRepos(auto []catalogContextRepo, explicit []targetRepo, targe
 		out = append(out, repo)
 		reason := "read-only catalog dependency"
 		if repo.external() {
-			reason = "read-only external catalog dependency (" + repo.Host + ", seeded host-side over ssh)"
+			reason = "read-only external catalog dependency (" + repo.Host + ", host-side seeded)"
 		}
 		notes = append(notes, extraRepoLogLine{Slug: slug, Reason: reason})
 	}

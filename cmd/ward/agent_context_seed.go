@@ -12,8 +12,8 @@ import (
 // seedExternalContextMirrors seeds the ward-gitcache volume with every external
 // catalog.dependsOn mirror host-side before the sealed container launches (ward#612).
 func (r *Runner) seedExternalContextMirrors(ctx context.Context, plan upPlan) {
-	// Only the real host carries the user's ssh keychain; an in-container dispatch has
-	// none, so leave the seed and let the sealed child fail loud on a missing mirror.
+	// Only the real host can seed the mirror.
+	// An in-container dispatch has none of the launch-time credentials.
 	if inContainer() {
 		return
 	}
@@ -38,8 +38,8 @@ func externalContextDeps(cwd string) []catalogContextRepo {
 	return out
 }
 
-// seedExternalContextMirror clones one external dep over the host's default ssh keychain
-// into the gitcache volume; a clone or copy failure warns loud (ward#612).
+// seedExternalContextMirror clones one external dep over the host's default credential
+// chain into the gitcache volume; a clone or copy failure warns loud (ward#612).
 func (r *Runner) seedExternalContextMirror(ctx context.Context, plan upPlan, dep catalogContextRepo) {
 	mirror := dep.Owner + "__" + dep.Name + ".git"
 	lock := filepath.Join(os.TempDir(), "ward-extseed-"+dep.Owner+"__"+dep.Name+".lock")
@@ -51,7 +51,7 @@ func (r *Runner) seedExternalContextMirror(ctx context.Context, plan upPlan, dep
 				dep.Owner, dep.Name, containerGitcacheVol)
 			return
 		}
-		writef(r.Runner.Stderr, "ward agent: seeding external dep %s/%s host-side over ssh from %s (ward#612)\n",
+		writef(r.Runner.Stderr, "ward agent: seeding external dep %s/%s host-side from %s (ward#612)\n",
 			dep.Owner, dep.Name, dep.CloneURL)
 		tmp, err := os.MkdirTemp("", "ward-extseed-")
 		if err != nil {
@@ -61,17 +61,17 @@ func (r *Runner) seedExternalContextMirror(ctx context.Context, plan upPlan, dep
 		}
 		defer func() { _ = os.RemoveAll(tmp) }()
 		dst := filepath.Join(tmp, mirror)
-		// Clone on the HOST over the user's default ssh identity (agent, then ~/.ssh /
-		// ~/.ssh/config) - what a plain `git clone` resolves. The key stays on the host.
+		// Clone on the HOST over the user's default git credentials (agent, then ~/.ssh /
+		// ~/.ssh/config); the credential chain stays on the host.
 		if cerr := r.Runner.Exec(ctx, "git", "clone", "--mirror", dep.CloneURL, dst); cerr != nil {
-			writef(r.Runner.Stderr, "ward agent: MISSING DEPENDENCY: host-side ssh clone of %s failed: %v. "+
-				"The host user's default ssh identity must have clone access to %s/%s; the sealed "+
+			writef(r.Runner.Stderr, "ward agent: MISSING DEPENDENCY: host-side clone of %s failed: %v. "+
+				"The host user's default git credentials must have clone access to %s/%s; the sealed "+
 				"container will report the missing sibling ../%s at bring-up (ward#611, ward#612)\n",
 				dep.CloneURL, cerr, dep.Owner, dep.Name, dep.Name)
 			return
 		}
 		// Copy the finished bare mirror into the volume via a cp-only helper - it touches
-		// no ssh and no external forge, so no key crosses into any container.
+		// no external forge, so no credential material crosses into any container.
 		if cperr := r.copyMirrorIntoGitcache(ctx, plan.Image, tmp, mirror); cperr != nil {
 			writef(r.Runner.Stderr, "ward agent: MISSING DEPENDENCY: staged %s/%s but could not copy it into %s: %v; "+
 				"the container will fail loud at bring-up (ward#612)\n", dep.Owner, dep.Name, containerGitcacheVol, cperr)

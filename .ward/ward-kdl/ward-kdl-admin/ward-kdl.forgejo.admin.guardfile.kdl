@@ -12,8 +12,7 @@
 // mounts (the Phase-2 candidate for `ward ops forgejo`, ward#92).
 //
 // "admin" here means the irreversible REST verb (delete), not Forgejo's
-// server-side admin/doctor subcommands: those have no REST equivalent and ride
-// the exec-dialect ../../ward/opsassets/forgejo-admin.guardfile.kdl instead.
+// server-side maintenance verbs.
 //
 // Actions are child-local (not inherited, cli-guard v0.72.0), so all four curated
 // actions are re-declared verbatim here so admin fully matches the monolith

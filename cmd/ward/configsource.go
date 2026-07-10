@@ -18,13 +18,15 @@ import (
 const wardConfigRefEnv = "WARD_CONFIG_REF"
 
 // bakedAssets is the baked neutral default: mirrors of .ward/ward-kdl plus the
-// admin guardfile and smart defaults.
+// smart defaults.
 
-//go:embed opsassets/*.generated.kdl opsassets/*.generated.json execassets/*.guardfile.kdl
-var bakedMainAssets embed.FS
+//go:embed opsassets/*.generated.kdl
+//go:embed opsassets/*.generated.json
+var bakedOpsAssets embed.FS
 
-//go:embed opsassets/forgejo-admin.guardfile.kdl fleetassets/fleet.generated.kdl
-var bakedWardAssets embed.FS
+//go:embed execassets/*.guardfile.kdl
+//go:embed fleetassets/fleet.generated.kdl
+var bakedSupportAssets embed.FS
 
 //go:embed defaultsassets/defaults.generated.kdl
 var bakedDefaultsAssets embed.FS
@@ -35,7 +37,7 @@ var bakedRoleAssets embed.FS
 //go:embed topologyassets/topology.generated.kdl
 var bakedTopologyAssets embed.FS
 
-var bakedAssets = unionFS{primary: unionFS{primary: bakedMainAssets, fallback: bakedWardAssets}, fallback: unionFS{primary: bakedDefaultsAssets, fallback: unionFS{primary: bakedRoleAssets, fallback: bakedTopologyAssets}}}
+var bakedAssets = unionFS{primary: unionFS{primary: bakedOpsAssets, fallback: bakedSupportAssets}, fallback: unionFS{primary: bakedDefaultsAssets, fallback: unionFS{primary: bakedRoleAssets, fallback: bakedTopologyAssets}}}
 
 type unionFS struct {
 	primary  fs.FS
@@ -59,27 +61,25 @@ func (u unionFS) ReadFile(name string) ([]byte, error) {
 }
 
 // Baked-layout paths, named once so the runtime mount and the drift tests
-// agree; the admin path is the exec-dialect remote-exec slice (ward#81).
+// agree.
 const (
-	opsForgejoGuardfilePath      = "opsassets/forgejo.guardfile.generated.kdl"
-	opsForgejoSpecLockPath       = "opsassets/forgejo.swagger.lock.generated.json"
-	opsForgejoAdminGuardfilePath = "opsassets/forgejo-admin.guardfile.kdl"
-	execAssetsDir                = "execassets"
-	fleetGeneratedKDLPath        = "fleetassets/fleet.generated.kdl"
-	defaultsGeneratedKDLPath     = "defaultsassets/defaults.generated.kdl"
-	rolesGeneratedKDLPath        = "roleassets/roles.generated.kdl"
-	topologyGeneratedKDLPath     = "topologyassets/topology.generated.kdl"
+	opsForgejoGuardfilePath  = "opsassets/forgejo.guardfile.generated.kdl"
+	opsForgejoSpecLockPath   = "opsassets/forgejo.swagger.lock.generated.json"
+	execAssetsDir            = "execassets"
+	fleetGeneratedKDLPath    = "fleetassets/fleet.generated.kdl"
+	defaultsGeneratedKDLPath = "defaultsassets/defaults.generated.kdl"
+	rolesGeneratedKDLPath    = "roleassets/roles.generated.kdl"
+	topologyGeneratedKDLPath = "topologyassets/topology.generated.kdl"
 )
 
 // Bundle-layout paths: the flat .ward bundle a ref points at (aos#332's landed
 // layout, identical to this repo's .ward/ward-kdl/). See docs/config-source.md.
 const (
-	bundleForgejoGuardfilePath      = "ward-kdl.forgejo.guardfile.kdl"
-	bundleForgejoSpecLockPath       = "forgejo.swagger.lock.json"
-	bundleForgejoAdminGuardfilePath = "forgejo-admin.guardfile.kdl"
-	bundleFleetKDLPath              = "ward-kdl.fleet.kdl"
-	bundleDefaultsKDLPath           = "ward-kdl.defaults.kdl"
-	bundleTopologyKDLPath           = "ward-kdl.topology.kdl"
+	bundleForgejoGuardfilePath = "ward-kdl.forgejo.guardfile.kdl"
+	bundleForgejoSpecLockPath  = "forgejo.swagger.lock.json"
+	bundleFleetKDLPath         = "ward-kdl.fleet.kdl"
+	bundleDefaultsKDLPath      = "ward-kdl.defaults.kdl"
+	bundleTopologyKDLPath      = "ward-kdl.topology.kdl"
 )
 
 // configSource is the launch-selected home of the KDL config bundle: one fs.FS
@@ -93,10 +93,6 @@ type configSource struct {
 	// forgejoGuardfile + forgejoSpecLock feed buildForgejoOps (specverb).
 	forgejoGuardfile string
 	forgejoSpecLock  string
-
-	// adminGuardfile feeds graftForgejoAdminExec; a source that omits it
-	// withholds the admin surface - absent at compile time, guardfile-style.
-	adminGuardfile string
 
 	// fleetKDL feeds the edge fleetconfig parse path.
 	fleetKDL string
@@ -120,7 +116,6 @@ func bakedConfigSource() configSource {
 		fsys:             bakedAssets,
 		forgejoGuardfile: opsForgejoGuardfilePath,
 		forgejoSpecLock:  opsForgejoSpecLockPath,
-		adminGuardfile:   opsForgejoAdminGuardfilePath,
 		fleetKDL:         fleetGeneratedKDLPath,
 		defaultsKDL:      defaultsGeneratedKDLPath,
 		topologyKDL:      topologyGeneratedKDLPath,
@@ -134,7 +129,6 @@ func bundleConfigSource(dir string) configSource {
 		fsys:              os.DirFS(dir),
 		forgejoGuardfile:  bundleForgejoGuardfilePath,
 		forgejoSpecLock:   bundleForgejoSpecLockPath,
-		adminGuardfile:    bundleForgejoAdminGuardfilePath,
 		fleetKDL:          bundleFleetKDLPath,
 		defaultsKDL:       bundleDefaultsKDLPath,
 		topologyKDL:       bundleTopologyKDLPath,

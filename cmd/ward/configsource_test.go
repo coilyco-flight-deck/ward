@@ -149,7 +149,7 @@ func TestSelectConfigSourceFileRefCapturesRevision(t *testing.T) {
 // patterns: a rename must not silently empty the neutral default.
 func TestBakedSourcePathsExist(t *testing.T) {
 	src := bakedConfigSource()
-	for _, p := range []string{src.forgejoGuardfile, src.forgejoSpecLock, src.adminGuardfile, src.fleetKDL, src.defaultsKDL, src.topologyKDL} {
+	for _, p := range []string{src.forgejoGuardfile, src.forgejoSpecLock, src.fleetKDL, src.defaultsKDL, src.topologyKDL} {
 		if _, err := fs.ReadFile(src.fsys, p); err != nil {
 			t.Errorf("baked path %s unreadable: %v", p, err)
 		}
@@ -181,8 +181,8 @@ func TestBuildForgejoOpsFromRealBundle(t *testing.T) {
 	if err != nil {
 		t.Fatalf("buildForgejoOpsFrom(baked): %v", err)
 	}
-	if commandNamed(baked.Commands, "admin") == nil {
-		t.Error("baked build lost the admin graft")
+	if commandNamed(baked.Commands, "admin") != nil {
+		t.Error("baked build still mounted the removed admin surface")
 	}
 }
 
