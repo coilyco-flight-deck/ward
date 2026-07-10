@@ -3,7 +3,6 @@ package main
 import (
 	"context"
 	"encoding/json"
-	"errors"
 	"fmt"
 	"io"
 	"io/fs"
@@ -11,7 +10,6 @@ import (
 	"strconv"
 	"strings"
 
-	"forgejo.coilysiren.me/coilyco-flight-deck/cli-guard/cli/execverb"
 	"forgejo.coilysiren.me/coilyco-flight-deck/cli-guard/cli/verb"
 	"forgejo.coilysiren.me/coilyco-flight-deck/cli-guard/http/guardfile"
 	"forgejo.coilysiren.me/coilyco-flight-deck/cli-guard/http/respfmt"
@@ -50,7 +48,13 @@ func buildForgejoOps() (*cli.Command, error) {
 	if err != nil {
 		return nil, err
 	}
-	return buildForgejoOpsFrom(src)
+	forgejo, err := buildForgejoOpsFrom(src)
+	if err != nil {
+		return nil, err
+	}
+	sourceSummary := configSourceSummary(strings.TrimSpace(os.Getenv(wardConfigRefEnv)), src)
+	forgejo.Description = sourceSummary + "\n\n" + strings.TrimSpace(forgejo.Description)
+	return forgejo, nil
 }
 
 // buildForgejoOpsFrom parses src's guardfile + spec lock and specverb.Builds
@@ -95,12 +99,6 @@ func buildForgejoOpsFrom(src configSource) (*cli.Command, error) {
 	r.overrideForgejoViewIssue(forgejo)
 	r.overrideForgejoCreateIssue(forgejo)
 	r.overrideForgejoCommentIssue(forgejo)
-
-	// Graft the exec-dialect admin/doctor remote-exec slice onto the same
-	// forgejo group, so both transports share one operator verb (ward#81).
-	if err := graftForgejoAdminExec(forgejo, src, r); err != nil {
-		return nil, err
-	}
 	return forgejo, nil
 }
 
@@ -111,35 +109,6 @@ func (r *Runner) forgejoTokenResolver(ctx context.Context, ssmPath string) (stri
 		return tok, nil
 	}
 	return r.ssmValueResolver(ctx, ssmPath)
-}
-
-// graftForgejoAdminExec appends the admin/doctor subtrees onto forgejo; a source
-// with no admin guardfile withholds the surface. See docs/ops-forgejo-admin.md.
-func graftForgejoAdminExec(forgejo *cli.Command, src configSource, r *Runner) error {
-	gfBytes, err := fs.ReadFile(src.fsys, src.adminGuardfile)
-	if errors.Is(err, fs.ErrNotExist) {
-		return nil
-	}
-	if err != nil {
-		return fmt.Errorf("read admin guardfile: %w", err)
-	}
-	gf, err := execverb.Parse(gfBytes)
-	if err != nil {
-		return fmt.Errorf("parse admin guardfile: %w", err)
-	}
-	group, err := execverb.Build(execverb.Config{
-		Guardfile: gf,
-		Wrap: func(s verb.Spec) cli.ActionFunc {
-			return r.WrapVerb(s, r.Audit)
-		},
-		// Run is nil: the exec-dialect leaves shell out to the real `ssh`
-		// transport. The wrapped binary owns its own credentials, so no SSM auth.
-	})
-	if err != nil {
-		return fmt.Errorf("build admin guardfile: %w", err)
-	}
-	forgejo.Commands = append(forgejo.Commands, group.Commands...)
-	return nil
 }
 
 // overrideForgejoViewIssue swaps the built `issue view` leaf for the lean

@@ -19,9 +19,14 @@ doc_goal: Explain ward-kdl as the build-time authoring layer and keep the guardf
 - source files live in the authoring layer.
 - the generator turns them into audited command trees.
 - the shipped binary carries the generated tree, not the source bundle.
+- ward also embeds shipped agent role presets from `.ward/ward-kdl/ward-kdl.roles.kdl`
+  so the role roster is code-generated from product-default data, not hand-written prose.
 
 That split is why the docs still talk about `ward-kdl` even after the generated
 reference pages were removed from the tree.
+
+The per-area Markdown refs that `ward-kdl` can emit are generated output, not
+committed release-era docs.
 
 ## The practical rule
 

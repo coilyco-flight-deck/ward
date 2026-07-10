@@ -167,22 +167,6 @@ func TestForgejoGraftInventory(t *testing.T) {
 	} else if !hasFlagNamed(comment, flagBodyFile) {
 		t.Errorf("graft 3 gone: `issue comment` no longer accepts --%s", flagBodyFile)
 	}
-	// Graft 4 (graftForgejoAdminExec): the admin/doctor remote-exec subtrees.
-	for parent, leaves := range map[string][]string{
-		"admin":  {"user", "auth"},
-		"doctor": {"check"},
-	} {
-		group := subCommandNamed(forgejo, parent)
-		if group == nil {
-			t.Errorf("graft 4 gone: `%s` subtree absent from the forgejo group", parent)
-			continue
-		}
-		for _, leaf := range leaves {
-			if subCommandNamed(group, leaf) == nil {
-				t.Errorf("graft 4 gone: `%s %s` leaf absent", parent, leaf)
-			}
-		}
-	}
 }
 
 // TestForgejoGetIssueFlattensLabels pins that getIssue flattens the Forgejo

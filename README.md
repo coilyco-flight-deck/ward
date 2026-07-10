@@ -33,6 +33,7 @@ brew install coilyco-flight-deck/tap/ward
 ward exec test
 ward git commit -m ...
 ward audit tail --follow
+ward doctor
 ward agent engineer #98
 warded #98
 ```
@@ -48,6 +49,7 @@ warded #98
 
 - [AGENTS.md](AGENTS.md) - the agent operating rules.
 - [docs/FEATURES.md](docs/FEATURES.md) - what ships today.
+- [docs/compat-surface.md](docs/compat-surface.md) - the release-facing provider matrix.
 - [.ward/ward.yaml](.ward/ward.yaml) - the repo allowlist.
 - [docs/README.md](docs/README.md) - the docs index.
 - [docs/architecture.md](docs/architecture.md) - the three-layer model.

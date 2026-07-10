@@ -2,11 +2,13 @@ package main
 
 import (
 	"context"
+	"fmt"
 	"io/fs"
 	"os"
 	"path/filepath"
 	"strings"
 	"testing"
+	"time"
 
 	"forgejo.coilysiren.me/coilyco-flight-deck/cli-guard/cli/verb"
 	"forgejo.coilysiren.me/coilyco-flight-deck/cli-guard/pkg/audit"
@@ -29,6 +31,53 @@ func TestSelectConfigSourceDefaultsBaked(t *testing.T) {
 	}
 	if src.execMixedDialects {
 		t.Error("baked source must not dialect-filter (execassets is pre-filtered)")
+	}
+}
+
+// TestSelectConfigSourceRejectsBakedConfigForCoilycoTarget pins the fail-fast
+// path for a coilyco director surface with no external config ref.
+func TestSelectConfigSourceRejectsBakedConfigForCoilycoTarget(t *testing.T) {
+	t.Setenv(wardConfigRefEnv, "")
+	t.Setenv("WARD_TARGET_OWNER", "coilyco-flight-deck")
+	t.Setenv("WARD_TARGET_REPO", "coilyco-flight-deck/ward")
+	if _, err := selectConfigSource(); err == nil {
+		t.Fatal("coilyco target selected the baked config source; want a loud diagnostic")
+	} else {
+		for _, want := range []string{
+			"active config source is baked neutral default",
+			"expected WARD_CONFIG_REF",
+			"coilyco-flight-deck/ward",
+		} {
+			if !strings.Contains(err.Error(), want) {
+				t.Errorf("error %q does not contain %q", err, want)
+			}
+		}
+	}
+}
+
+// TestOpsCommandReportsBakedConfigForCoilycoTarget pins the operator boundary.
+// The mounted `ward ops forgejo` leaf must fail with the config diagnostic.
+func TestOpsCommandReportsBakedConfigForCoilycoTarget(t *testing.T) {
+	t.Setenv(wardConfigRefEnv, "")
+	t.Setenv("WARD_TARGET_OWNER", "coilyco-flight-deck")
+	t.Setenv("WARD_TARGET_REPO", "coilyco-flight-deck/ward")
+	cmd := opsCommand()
+	forgejo := commandNamed(cmd.Commands, "forgejo")
+	if forgejo == nil {
+		t.Fatal("ops umbrella lost forgejo")
+	}
+	err := forgejo.Action(context.Background(), forgejo)
+	if err == nil {
+		t.Fatal("coilyco target mounted the baked config source; want a loud diagnostic")
+	}
+	for _, want := range []string{
+		"active config source is baked neutral default",
+		"expected WARD_CONFIG_REF",
+		"coilyco-flight-deck/ward",
+	} {
+		if !strings.Contains(err.Error(), want) {
+			t.Errorf("error %q does not contain %q", err, want)
+		}
 	}
 }
 
@@ -100,7 +149,7 @@ func TestSelectConfigSourceFileRefCapturesRevision(t *testing.T) {
 // patterns: a rename must not silently empty the neutral default.
 func TestBakedSourcePathsExist(t *testing.T) {
 	src := bakedConfigSource()
-	for _, p := range []string{src.forgejoGuardfile, src.forgejoSpecLock, src.adminGuardfile, src.fleetKDL, src.defaultsKDL, src.topologyKDL} {
+	for _, p := range []string{src.forgejoGuardfile, src.forgejoSpecLock, src.fleetKDL, src.defaultsKDL, src.topologyKDL} {
 		if _, err := fs.ReadFile(src.fsys, p); err != nil {
 			t.Errorf("baked path %s unreadable: %v", p, err)
 		}
@@ -132,8 +181,8 @@ func TestBuildForgejoOpsFromRealBundle(t *testing.T) {
 	if err != nil {
 		t.Fatalf("buildForgejoOpsFrom(baked): %v", err)
 	}
-	if commandNamed(baked.Commands, "admin") == nil {
-		t.Error("baked build lost the admin graft")
+	if commandNamed(baked.Commands, "admin") != nil {
+		t.Error("baked build still mounted the removed admin surface")
 	}
 }
 
@@ -252,6 +301,95 @@ func TestOpsCommandDegradesOnBadRef(t *testing.T) {
 	}
 	if err == nil || !strings.Contains(err.Error(), wardConfigRefEnv) {
 		t.Errorf("degraded leaf error = %v, want it to name %s", err, wardConfigRefEnv)
+	}
+}
+
+// TestBuildForgejoOpsWithRealLookingConfigRef exercises the live ops startup path
+// against a believable git-ref WARD_CONFIG_REF and confirms it returns.
+func TestBuildForgejoOpsWithRealLookingConfigRef(t *testing.T) {
+	bareRepo := makeTestConfigBundleRepo(t)
+
+	home := t.TempDir()
+	t.Setenv("HOME", home)
+	t.Setenv("XDG_CONFIG_HOME", filepath.Join(home, ".config"))
+	t.Setenv(wardConfigRefEnv, "forgejo.coilysiren.me/coilyco-flight-deck/agentic-os@main//.ward")
+	if err := os.WriteFile(filepath.Join(home, ".gitconfig"), []byte(fmt.Sprintf(`[url "%s"]
+	insteadOf = https://forgejo.coilysiren.me/coilyco-flight-deck/agentic-os.git
+`, bareRepo)), 0o644); err != nil {
+		t.Fatalf("write gitconfig: %v", err)
+	}
+
+	type result struct {
+		cmd *cli.Command
+		err error
+	}
+	done := make(chan result, 1)
+	go func() {
+		cmd, err := buildForgejoOps()
+		done <- result{cmd: cmd, err: err}
+	}()
+
+	select {
+	case res := <-done:
+		if res.err != nil {
+			t.Fatalf("buildForgejoOps with real-looking WARD_CONFIG_REF: %v", res.err)
+		}
+		if res.cmd == nil {
+			t.Fatal("buildForgejoOps returned a nil command")
+		}
+		if commandNamed(res.cmd.Commands, "issue") == nil {
+			t.Fatalf("buildForgejoOps returned an incomplete forgejo group: %v", commandNames(res.cmd.Commands))
+		}
+	case <-time.After(10 * time.Second):
+		t.Fatal("buildForgejoOps deadlocked while resolving a real-looking WARD_CONFIG_REF")
+	}
+}
+
+func makeTestConfigBundleRepo(t *testing.T) string {
+	t.Helper()
+	work := t.TempDir()
+	bundleDir := filepath.Join(work, ".ward")
+	if err := os.MkdirAll(bundleDir, 0o755); err != nil {
+		t.Fatal(err)
+	}
+	for _, name := range []string{"ward-kdl.forgejo.guardfile.kdl", "forgejo.swagger.lock.json"} {
+		src := filepath.Join(wardKdlSrcDir, name)
+		dst := filepath.Join(bundleDir, name)
+		b, err := os.ReadFile(src)
+		if err != nil {
+			t.Fatalf("read %s: %v", src, err)
+		}
+		if err := os.WriteFile(dst, b, 0o644); err != nil {
+			t.Fatalf("write %s: %v", dst, err)
+		}
+	}
+	gitFixture(t, work, "init", "-b", "main", ".")
+	gitFixture(t, work, "add", ".")
+	gitFixture(t, work, "commit", "-m", "bundle")
+
+	bareRepo := t.TempDir()
+	gitFixture(t, bareRepo, "init", "--bare", ".")
+	gitFixture(t, work, "remote", "add", "origin", bareRepo)
+	gitFixture(t, work, "push", "-u", "origin", "main")
+	return bareRepo
+}
+
+// TestBuildForgejoOpsAnnotatesSelectedConfigSource keeps the active config source
+// visible in the mounted Forgejo surface, so describe/help can surface it.
+func TestBuildForgejoOpsAnnotatesSelectedConfigSource(t *testing.T) {
+	abs, err := filepath.Abs(wardKdlSrcDir)
+	if err != nil {
+		t.Fatalf("abs(%s): %v", wardKdlSrcDir, err)
+	}
+	t.Setenv(wardConfigRefEnv, "file://"+abs)
+	t.Setenv("WARD_TARGET_OWNER", "")
+	t.Setenv("WARD_TARGET_REPO", "")
+	forgejo, err := buildForgejoOps()
+	if err != nil {
+		t.Fatalf("buildForgejoOps with fixture ref: %v", err)
+	}
+	if !strings.Contains(forgejo.Description, "WARD_CONFIG_REF=file://") {
+		t.Fatalf("forgejo description = %q, want the active config source", forgejo.Description)
 	}
 }
 

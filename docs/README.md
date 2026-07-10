@@ -7,9 +7,11 @@ operating surface only.
 
 - [architecture.md](architecture.md) - the three layers.
 - [FEATURES.md](FEATURES.md) - what ships today.
+- [compat-surface.md](compat-surface.md) - the release-facing matrix of shipped providers, operator-local sources, and explicit non-providers.
 - [exec-verb.md](exec-verb.md) - the guarded dev-verb gate.
 - [audit.md](audit.md) - the append-only audit trail.
 - [verb-fallback.md](verb-fallback.md) - `ward exec` fallback routing.
+- [doctor.md](doctor.md) - runtime config validation.
 - [git-verbs.md](git-verbs.md) - audited git.
 - [git-clone.md](git-clone.md) - destination-gated clone.
 - [config-discovery.md](config-discovery.md) - how ward finds config.
@@ -60,6 +62,7 @@ guides, not issue slices.
 - [ward-kdl-in-ward.md](ward-kdl-in-ward.md) - exec mounts into `ward`.
 - [ward-kdl-authoring.md](ward-kdl-authoring.md) - author and rebuild guardfiles.
 - [ward-docker-exec.md](ward-docker-exec.md) - `ward docker exec`.
+- Generated per-area guardfile references are build output, not release-era docs.
 
 ## Ops and examples
 

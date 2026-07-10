@@ -7,7 +7,7 @@
     },
     {
       "from": "forgejo.coilysiren.me/coilyco-gaming/eco-ops",
-      "to": "forgejo.coilysiren.me/StrangeLoopGames/Eco",
+      "to": "forgejo.coilysiren.me/acme/widgets",
       "type": "dependsOn"
     }
   ]

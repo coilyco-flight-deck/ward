@@ -29,20 +29,20 @@ func writeCatalogConfig(t *testing.T, deps ...string) string {
 }
 
 // externalContextDeps keeps only the non-Forgejo entries (the ones needing a
-// host-side ssh seed); bare owner/name and forgejo URLs are internal and dropped.
+// host-side seed); bare owner/name and Forgejo URLs are internal and dropped.
 func TestExternalContextDepsFiltersToExternal(t *testing.T) {
 	cwd := writeCatalogConfig(t,
-		"ssh://git@github.com/StrangeLoopGames/Eco.git",
+		"ssh://git@github.com/acme/widgets.git",
 		"coilyco-flight-deck/eco-protos",
 		"forgejo.coilysiren.me/coilyco-flight-deck/cli-guard",
 	)
 	deps := externalContextDeps(cwd)
 	if len(deps) != 1 {
-		t.Fatalf("externalContextDeps = %+v, want only the github Eco dep", deps)
+		t.Fatalf("externalContextDeps = %+v, want only the github widgets dep", deps)
 	}
-	if deps[0].slug() != "StrangeLoopGames/Eco" || deps[0].Host != "github.com" ||
-		deps[0].CloneURL != "ssh://git@github.com/StrangeLoopGames/Eco.git" {
-		t.Fatalf("external dep = %+v, want Eco over ssh on github.com", deps[0])
+	if deps[0].slug() != "acme/widgets" || deps[0].Host != "github.com" ||
+		deps[0].CloneURL != "ssh://git@github.com/acme/widgets.git" {
+		t.Fatalf("external dep = %+v, want widgets over ssh on github.com", deps[0])
 	}
 }
 
@@ -57,16 +57,16 @@ func TestExternalContextDepsNoConfig(t *testing.T) {
 // The seed helper argv target the shared gitcache volume + mount, bind the staged
 // clone read-only, and name the exact mirror dir - the plumbing the seed depends on.
 func TestGitcacheSeedArgv(t *testing.T) {
-	probe := gitcacheMirrorProbeArgv("img:latest", "StrangeLoopGames__Eco.git")
+	probe := gitcacheMirrorProbeArgv("img:latest", "acme__widgets.git")
 	wantProbe := []string{"run", "--rm", "-v", "ward-gitcache:/gitcache", "img:latest",
-		"test", "-d", "/gitcache/StrangeLoopGames__Eco.git"}
+		"test", "-d", "/gitcache/acme__widgets.git"}
 	if strings.Join(probe, " ") != strings.Join(wantProbe, " ") {
 		t.Fatalf("gitcacheMirrorProbeArgv = %v, want %v", probe, wantProbe)
 	}
-	cp := gitcacheMirrorCopyArgv("img:latest", "/tmp/stage", "StrangeLoopGames__Eco.git")
+	cp := gitcacheMirrorCopyArgv("img:latest", "/tmp/stage", "acme__widgets.git")
 	wantCp := []string{"run", "--rm", "-v", "ward-gitcache:/gitcache",
 		"-v", "/tmp/stage:/ward-seed:ro", "img:latest",
-		"cp", "-a", "/ward-seed/StrangeLoopGames__Eco.git", "/gitcache/StrangeLoopGames__Eco.git"}
+		"cp", "-a", "/ward-seed/acme__widgets.git", "/gitcache/acme__widgets.git"}
 	if strings.Join(cp, " ") != strings.Join(wantCp, " ") {
 		t.Fatalf("gitcacheMirrorCopyArgv = %v, want %v", cp, wantCp)
 	}
@@ -107,15 +107,15 @@ func seedStubRunner(t *testing.T, logPath string, gitFails bool) (*Runner, *stri
 	return r, &errb
 }
 
-// A first-time external dep clones host-side over ssh, then copies the bare mirror
+// A first-time external dep clones host-side, then copies the bare mirror
 // into the gitcache volume via the cp-only helper (ward#612).
 func TestSeedExternalContextMirrorClonesAndCopies(t *testing.T) {
 	logPath := filepath.Join(t.TempDir(), "cmds.log")
 	r, errb := seedStubRunner(t, logPath, false)
 	dep := catalogContextRepo{
-		targetRepo: targetRepo{Owner: "StrangeLoopGames", Name: "Eco"},
+		targetRepo: targetRepo{Owner: "acme", Name: "widgets"},
 		Host:       "github.com",
-		CloneURL:   "ssh://git@github.com/StrangeLoopGames/Eco.git",
+		CloneURL:   "ssh://git@github.com/acme/widgets.git",
 	}
 	r.seedExternalContextMirror(t.Context(), sampleUpPlan(), dep)
 
@@ -124,31 +124,31 @@ func TestSeedExternalContextMirrorClonesAndCopies(t *testing.T) {
 		t.Fatalf("read log: %v", err)
 	}
 	got := string(log)
-	if !strings.Contains(got, "git clone --mirror ssh://git@github.com/StrangeLoopGames/Eco.git") {
-		t.Errorf("expected a host-side ssh clone, got commands:\n%s", got)
+	if !strings.Contains(got, "git clone --mirror ssh://git@github.com/acme/widgets.git") {
+		t.Errorf("expected a host-side clone, got commands:\n%s", got)
 	}
-	if !strings.Contains(got, "cp -a /ward-seed/StrangeLoopGames__Eco.git /gitcache/StrangeLoopGames__Eco.git") {
+	if !strings.Contains(got, "cp -a /ward-seed/acme__widgets.git /gitcache/acme__widgets.git") {
 		t.Errorf("expected a cp of the mirror into the gitcache volume, got commands:\n%s", got)
 	}
-	if !strings.Contains(errb.String(), "seeded external dep StrangeLoopGames/Eco") {
+	if !strings.Contains(errb.String(), "seeded external dep acme/widgets") {
 		t.Errorf("expected a success line naming the seeded dep, got stderr:\n%s", errb.String())
 	}
 }
 
-// A host-side clone the ssh identity cannot read fails LOUD - a MISSING DEPENDENCY
+// A host-side clone the credentials cannot read fails LOUD - a MISSING DEPENDENCY
 // line naming the dep - and never copies an empty mirror into the volume (ward#612).
 func TestSeedExternalContextMirrorFailsLoudOnCloneError(t *testing.T) {
 	logPath := filepath.Join(t.TempDir(), "cmds.log")
 	r, errb := seedStubRunner(t, logPath, true)
 	dep := catalogContextRepo{
-		targetRepo: targetRepo{Owner: "StrangeLoopGames", Name: "Eco"},
+		targetRepo: targetRepo{Owner: "acme", Name: "widgets"},
 		Host:       "github.com",
-		CloneURL:   "ssh://git@github.com/StrangeLoopGames/Eco.git",
+		CloneURL:   "ssh://git@github.com/acme/widgets.git",
 	}
 	r.seedExternalContextMirror(t.Context(), sampleUpPlan(), dep)
 
 	if !strings.Contains(errb.String(), "MISSING DEPENDENCY") ||
-		!strings.Contains(errb.String(), "StrangeLoopGames/Eco") {
+		!strings.Contains(errb.String(), "acme/widgets") {
 		t.Errorf("expected a loud MISSING DEPENDENCY naming the dep, got stderr:\n%s", errb.String())
 	}
 	log, _ := os.ReadFile(logPath)

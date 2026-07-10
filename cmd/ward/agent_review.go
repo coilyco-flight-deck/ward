@@ -139,11 +139,7 @@ func (r *Runner) postReviewConclusionComment(ctx context.Context, res reviewpane
 		writef(r.Runner.Stderr, "ward agent review: WARNING: could not parse issue ref %q for conclusion comment: %v\n", ref, err)
 		return
 	}
-	cl, err := r.hostTrackerClient(ctx, parsed.trackerOrDefault(), containerMode(res.Worker))
-	if err != nil {
-		writef(r.Runner.Stderr, "ward agent review: WARNING: could not build tracker client for conclusion comment: %v\n", err)
-		return
-	}
+	cl := r.hostForgejoClient(ctx)
 	if err := cl.commentIssue(ctx, parsed.Owner, parsed.Repo, parsed.Number, reviewConclusionCommentBody(res)); err != nil {
 		writef(r.Runner.Stderr, "ward agent review: WARNING: could not post review conclusion comment on %s: %v\n", parsed, err)
 	}

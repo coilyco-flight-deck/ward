@@ -870,6 +870,9 @@ func TestContainerNamespaceHiddenPlumbingOnly(t *testing.T) {
 	if !c.Hidden {
 		t.Error("container umbrella must be Hidden so `ward --help` drops it (ward#263)")
 	}
+	if c.Before != nil {
+		t.Fatal("container bootstrap must not run the edge WARD_CONFIG_REF guard")
+	}
 	got := map[string]bool{}
 	for _, sub := range c.Commands {
 		got[sub.Name] = true

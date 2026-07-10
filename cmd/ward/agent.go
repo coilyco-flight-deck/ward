@@ -92,10 +92,11 @@ func cloneAnchorLine(ref agentIssueRef) string {
 		"You are reading this INSIDE that container, standing in a fresh clone of %s/%s at "+
 			"/workspace/%s - your current working directory right now: the repo's whole source tree - "+
 			"its real schemas, file layouts, and wiring - is on disk right here, not somewhere you have "+
-			"to go fetch. Explore it directly (start with `ls` and the repo's own docs) for any "+
-			"convention this task needs; never treat the codebase as absent or reason from assumed "+
-			"conventions while the actual files sit unread one command away.",
-		ref.Owner, ref.Repo, ref.Repo)
+			"to go fetch. In engineer mode that /workspace/%s clone is writable. Explore it directly "+
+			"(start with `ls` and the repo's own docs) for any convention this task needs; edit files, "+
+			"commit them, and push the result instead of answering only in logs. Never treat the codebase "+
+			"as absent or reason from assumed conventions while the actual files sit unread one command away.",
+		ref.Owner, ref.Repo, ref.Repo, ref.Repo)
 }
 
 // parseAgentIssueRef resolves owner/repo#N, a Forgejo/GitHub issue URL, or a bare #N / N.
@@ -144,38 +145,6 @@ func parseAgentIssueRef(s string) (agentIssueRef, error) {
 			s, strings.TrimRight(forgejoBaseURL, "/"), strings.TrimRight(gitlabBaseURL(), "/"), shortcutAppBaseURL)
 	}
 	return agentIssueRef{}, fmt.Errorf("cannot parse issue ref %q: want owner/repo#N, a bare #N, %s/owner/repo/issues/N, %s/owner/repo/-/issues/N, or %s/<workspace>/story/N", s, strings.TrimRight(forgejoBaseURL, "/"), strings.TrimRight(gitlabBaseURL(), "/"), shortcutAppBaseURL)
-}
-
-// parseAgentIssueRefWithoutAuthority parses the same ref shapes as parseAgentIssueRef
-// but leaves repo authority resolution to the caller.
-func parseAgentIssueRefWithoutAuthority(s string) (agentIssueRef, error) {
-	s = strings.TrimSpace(s)
-	if s == "" {
-		return agentIssueRef{}, fmt.Errorf("empty issue reference")
-	}
-	if ghRef, ok := parseGitHubIssueRef(s); ok {
-		return ghRef, nil
-	}
-	if ref, err := parseDispatchIssueRef(s); err == nil {
-		return ref, nil
-	}
-	ref, err := issueref.Parse(s, forgejoBaseURL)
-	if err == nil {
-		return agentIssueRef{Owner: ref.Owner, Repo: ref.Repo, Number: ref.Number}, nil
-	}
-	if !strings.Contains(s, "://") {
-		if ref, err := issueref.Parse("https://"+s, forgejoBaseURL); err == nil {
-			return agentIssueRef{Owner: ref.Owner, Repo: ref.Repo, Number: ref.Number}, nil
-		}
-	}
-	if strings.Contains(s, "://") {
-		return agentIssueRef{}, fmt.Errorf(
-			"cannot parse issue ref %q: want owner/repo#N, a bare #N, %s/owner/repo/issues/N, or %s/owner/repo/-/issues/N; "+
-				"for a non-issue pointer (a CI run, job, or commit URL), hand it to the engineer "+
-				"role's freeform mode instead: ward agent engineer '<url>'",
-			s, strings.TrimRight(forgejoBaseURL, "/"), strings.TrimRight(gitlabBaseURL(), "/"))
-	}
-	return agentIssueRef{}, fmt.Errorf("cannot parse issue ref %q: want owner/repo#N, a bare #N, %s/owner/repo/issues/N, or %s/owner/repo/-/issues/N", s, strings.TrimRight(forgejoBaseURL, "/"), strings.TrimRight(gitlabBaseURL(), "/"))
 }
 
 // looksLikeExplicitForgejoIssueRef reports whether s names Forgejo directly rather
@@ -693,9 +662,9 @@ func agentDefaultSurfaceAction() cli.ActionFunc {
 		}
 		arg := strings.TrimSpace(c.Args().First())
 		if _, err := parseAgentIssueRef(arg); err != nil {
-			return fmt.Errorf("unknown command %q for 'ward agent' (roles: engineer, director, advisor, qa); "+
+			return fmt.Errorf("unknown command %q for 'ward agent' (roles: %s); "+
 				"a bare ref like #98 or owner/repo#N runs the engineer, and freeform work goes to "+
-				"`ward agent engineer \"<instructions>\"`", arg)
+				"`ward agent engineer \"<instructions>\"`", arg, strings.Join(builtInAgentRoleDefinitionOrder(), ", "))
 		}
 		return agentEngineerAction()(ctx, c)
 	}
@@ -1727,7 +1696,7 @@ func carryingLine(label string, ref agentIssueRef, title string) string {
 
 // launchAgentContainer turns a resolved (ref, title, seed) into the container plan and
 // fires it detached - the shared tail of engineer, freeform task, and route (ward#356).
-func (r *Runner) launchAgentContainer(ctx context.Context, c *cli.Command, mode containerMode, surface string, w resolvedWork, justification string) error { //nolint:funlen,gocognit,gocyclo,cyclop
+func (r *Runner) launchAgentContainer(ctx context.Context, c *cli.Command, mode containerMode, surface string, w resolvedWork, justification string) error { //nolint:gocyclo,cyclop,gocognit,funlen
 	label := agentCmdline(mode, surface)
 	ref, title, seed := w.Ref, w.Title, w.Seed
 
@@ -1921,8 +1890,8 @@ func (r *Runner) createAgentContainer(ctx context.Context, plan upPlan, envFile 
 	// The aws capability binds ~/.aws, but a host with no AWS identity mounts an empty
 	// dir - warn loudly so a NoCredentials hole doesn't read as delivered creds (ward#579).
 	r.maybeWarnAWSMount(plan)
-	// Seed any external (non-Forgejo) catalog.dependsOn mirror host-side over the user's
-	// ssh keychain before the sealed container clones from the warm gitcache (ward#612).
+	// Seed any external (non-Forgejo) catalog.dependsOn mirror host-side before the
+	// sealed container clones from the warm gitcache (ward#612).
 	r.seedExternalContextMirrors(ctx, plan)
 	// The ward-tailnet network ready-up (create-if-absent + standing mac-proxy box
 	// warning) already ran before the pull in each dispatch path, so nothing here.

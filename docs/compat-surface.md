@@ -1,0 +1,66 @@
+---
+doc_goal: Map ward's compatibility seams to the real ports and reference adapters so a contributor can extend the right boundary and see what ward embeds instead of vendoring.
+---
+# Compatibility surface
+
+ward stays small by pushing stack-specific behavior behind a few seams. This page is the release-facing matrix for the external systems ward can talk to today, plus the ones it explicitly does not.
+
+States mean:
+
+- shipped - the adapter or guarded surface is in tree and part of the release
+- partial - only part of the provider surface is wired today
+- planned or deferred - tracked work, not shipped
+- not a ward provider - explicitly out of scope
+
+## Git platforms / forges
+
+- Forgejo - shipped. `cmd/ward/forgejo_ops.go`, `docs/ops-forgejo.md`.
+- GitHub - shipped. `cmd/ward/github_ops.go`.
+- GitLab - not a ward provider. `CONTRIBUTING.md`.
+
+## Issue trackers
+
+- Forgejo, GitHub, Shortcut - shipped. `cmd/ward/forgejo_ops.go`, `cmd/ward/github_ops.go`, `cmd/ward/shortcut_ops.go`.
+- Trello - not a ward tracker provider. `docs/ward-kdl-surface.md`.
+- Jira, Linear - not a ward provider.
+
+## Container runtimes
+
+- Docker - shipped. `cmd/ward/container.go`, `docs/container.md`.
+- Podman - not a ward provider. `CONTRIBUTING.md`.
+
+## Agent harnesses
+
+- Claude, Codex, Goose, Opencode - shipped. `docs/agent-harnesses.md`, `docs/agent-claude.md`, `docs/agent-codex.md`, `docs/agent-goose.md`, `docs/agent-opencode.md`.
+- Aider - shipped as a ward-kdl launcher. `docs/ward-kdl-surface.md`.
+- Ollama - partial backend, not a harness. `docs/agent-harnesses.md`, `docs/agent-goose.md`, `docs/agent-opencode.md`.
+
+## Guarded ops providers authored through ward-kdl
+
+- Forgejo, Tailscale, Trello, GlitchTip, SigNoz - shipped spec-driven ops. `docs/ward-kdl.md`, `docs/ward-kdl-surface.md`, `docs/ops-forgejo.md`.
+- AWS, kubectl, Docker, agents, pkg - shipped exec-dialect ops. `docs/ward-kdl-surface.md`, `docs/ward-kdl-in-ward.md`, `docs/ward-docker-exec.md`.
+
+## Config and auth sources
+
+- `WARD_CONFIG_REF` - shipped. `docs/config-source.md`, `cmd/ward/configsource.go`, `cmd/ward/configref.go`.
+- `~/.ward/fleet.local.kdl` - shipped operator-local overlay. `cmd/ward/fleetlocal.go`.
+- `WARD_GITHUB_TOKEN_SOURCE`, `env`, `gh`, `app` - shipped GitHub token path. `cmd/ward/forge.go`, `cmd/ward/github_app.go`.
+- `SHORTCUT_API_TOKEN`, `SSM` - shipped operator input and backing store. `cmd/ward/shortcut_ops.go`, `cmd/ward/container.go`, `cmd/ward/forgejo_ops.go`.
+
+## Adding your stack
+
+- GitHub + Issues - reuse the GitHub forge adapter, keep the current runtime, and only split the tracker seam if needed.
+- GitLab + Issues - add a forge adapter for GitLab, then keep or split the tracker seam to match the issue API.
+- GitHub + Trello - keep the GitHub forge adapter and add a Trello tracker adapter.
+- GitLab + Shortcut - add both the GitLab forge adapter and the Shortcut tracker adapter.
+- Any stack + podman - keep the higher-level launch flow and replace the container runtime seam.
+
+## On embedding
+
+ward embeds its own launch assets with `go:embed` in `cmd/ward/container.go` and the other `cmd/ward/*assets` bundles. It does not vendor docker, git, or agent CLIs.
+
+## See also
+
+- [CONTRIBUTING.md](../CONTRIBUTING.md)
+- [agentsapi.md](agentsapi.md)
+- [container.md](container.md)
