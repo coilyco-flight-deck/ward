@@ -20,10 +20,22 @@ import (
 
 const agentListSchemaVersion = 1
 
+type agentListCapacity struct {
+	Count       int
+	Limit       *int
+	Remaining   *int
+	AtCapacity  *bool
+	Unavailable bool
+}
+
 // agentListJSON is the stable machine shape `ward agent list --json` emits.
 type agentListJSON struct {
 	SchemaVersion int                  `json:"schema_version"`
 	GeneratedAt   string               `json:"generated_at"`
+	Count         int                  `json:"count"`
+	Limit         *int                 `json:"limit"`
+	Remaining     *int                 `json:"remaining"`
+	AtCapacity    *bool                `json:"at_capacity"`
 	Engineers     []agentListJSONEntry `json:"engineers"`
 }
 
@@ -162,14 +174,8 @@ func (r *Runner) renderAgentList(ctx context.Context, jsonOut bool) (string, err
 		return "", err
 	}
 	if jsonOut {
-		payload := agentListJSON{
-			SchemaVersion: agentListSchemaVersion,
-			GeneratedAt:   time.Now().UTC().Format(time.RFC3339Nano),
-			Engineers:     make([]agentListJSONEntry, 0, len(rows)),
-		}
-		for _, row := range rows {
-			payload.Engineers = append(payload.Engineers, row.toJSON())
-		}
+		payload := agentListJSONFromRows(rows)
+		payload.GeneratedAt = time.Now().UTC().Format(time.RFC3339Nano)
 		buf, err := json.MarshalIndent(payload, "", "  ")
 		if err != nil {
 			return "", err
@@ -214,6 +220,22 @@ type agentRunningEngineer struct {
 	Status     string
 }
 
+func agentListJSONFromRows(rows []agentRunningEngineer) agentListJSON {
+	capacity := agentListCapacityForCount(len(rows))
+	payload := agentListJSON{
+		SchemaVersion: agentListSchemaVersion,
+		Count:         capacity.Count,
+		Limit:         capacity.Limit,
+		Remaining:     capacity.Remaining,
+		AtCapacity:    capacity.AtCapacity,
+		Engineers:     make([]agentListJSONEntry, 0, len(rows)),
+	}
+	for _, row := range rows {
+		payload.Engineers = append(payload.Engineers, row.toJSON())
+	}
+	return payload
+}
+
 func (r agentRunningEngineer) toJSON() agentListJSONEntry {
 	return agentListJSONEntry{
 		Container:  r.Container,
@@ -228,6 +250,27 @@ func (r agentRunningEngineer) toJSON() agentListJSONEntry {
 		Age:        formatDuration(r.Age),
 		Status:     r.Status,
 	}
+}
+
+func agentListCapacityForCount(count int) agentListCapacity {
+	defs, err := currentSmartDefaultsWithError()
+	limit := defs.engineerContainerLimit
+	capacity := agentListCapacity{Count: count}
+	if err != nil {
+		capacity.Unavailable = true
+	}
+	if limit <= 0 {
+		return capacity
+	}
+	capacity.Limit = &limit
+	remaining := limit - count
+	if remaining < 0 {
+		remaining = 0
+	}
+	capacity.Remaining = &remaining
+	atCapacity := count >= limit
+	capacity.AtCapacity = &atCapacity
+	return capacity
 }
 
 func (r *Runner) runningEngineerRow(ctx context.Context, now time.Time, name string) (agentRunningEngineer, error) {
@@ -361,8 +404,9 @@ func formatDuration(d time.Duration) string {
 }
 
 func renderAgentListHuman(rows []agentRunningEngineer) string {
+	capacity := agentListCapacityForCount(len(rows))
 	var b strings.Builder
-	fmt.Fprintf(&b, "ward agent: running engineer containers (%d)\n", len(rows))
+	fmt.Fprintf(&b, "ward agent: running engineer containers %s\n", formatAgentListCapacity(capacity))
 	if len(rows) == 0 {
 		b.WriteString("\n  no running engineer containers.\n")
 		return b.String()
@@ -381,4 +425,24 @@ func renderAgentListHuman(rows []agentRunningEngineer) string {
 		fmt.Fprintf(&b, "    status:    %s\n", emptyDefault(row.Status, "-"))
 	}
 	return b.String()
+}
+
+func formatAgentListCapacity(capacity agentListCapacity) string {
+	note := ""
+	if capacity.Unavailable {
+		note = ", capacity source unavailable through broker"
+	}
+	if capacity.Limit == nil {
+		return fmt.Sprintf("(%d, capacity unavailable through broker)", capacity.Count)
+	}
+	if capacity.Remaining == nil || capacity.AtCapacity == nil {
+		return fmt.Sprintf("(%d/%d)%s", capacity.Count, *capacity.Limit, note)
+	}
+	if *capacity.AtCapacity {
+		return fmt.Sprintf("(%d/%d, at capacity)%s", capacity.Count, *capacity.Limit, note)
+	}
+	if *capacity.Remaining == 1 {
+		return fmt.Sprintf("(%d/%d, 1 slot free)%s", capacity.Count, *capacity.Limit, note)
+	}
+	return fmt.Sprintf("(%d/%d, %d slots free)%s", capacity.Count, *capacity.Limit, *capacity.Remaining, note)
 }

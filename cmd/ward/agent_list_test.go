@@ -86,9 +86,37 @@ func TestAgentRunningEngineerFromInspectIncludesReservation(t *testing.T) {
 		t.Fatalf("json output missing container: %s", buf)
 	}
 
+	payload := agentListJSONFromRows([]agentRunningEngineer{row})
+	if payload.Count != 1 {
+		t.Fatalf("count = %d, want 1", payload.Count)
+	}
+	if payload.Limit == nil || *payload.Limit != engineerContainerLimitDefault() {
+		t.Fatalf("limit = %v, want %d", payload.Limit, engineerContainerLimitDefault())
+	}
+	if payload.Remaining == nil || *payload.Remaining != engineerContainerLimitDefault()-1 {
+		t.Fatalf("remaining = %v, want %d", payload.Remaining, engineerContainerLimitDefault()-1)
+	}
+	if payload.AtCapacity == nil || *payload.AtCapacity {
+		t.Fatalf("at_capacity = %v, want false", payload.AtCapacity)
+	}
+	jbuf, err := json.MarshalIndent(payload, "", "  ")
+	if err != nil {
+		t.Fatalf("marshal payload json: %v", err)
+	}
+	for _, want := range []string{
+		`"count": 1`,
+		`"limit": 12`,
+		`"remaining": 11`,
+		`"at_capacity": false`,
+	} {
+		if !strings.Contains(string(jbuf), want) {
+			t.Fatalf("payload json missing %q:\n%s", want, jbuf)
+		}
+	}
+
 	human := renderAgentListHuman([]agentRunningEngineer{row})
 	for _, want := range []string{
-		"ward agent: running engineer containers (1)",
+		"ward agent: running engineer containers (1/12, 11 slots free)",
 		"coilyco-gaming/factory-game-v3#18",
 		"kais-macbook-pro-2.local",
 		"issue-18",
@@ -97,5 +125,21 @@ func TestAgentRunningEngineerFromInspectIncludesReservation(t *testing.T) {
 		if !strings.Contains(human, want) {
 			t.Fatalf("human output missing %q:\n%s", want, human)
 		}
+	}
+}
+
+func TestFormatAgentListCapacityNotesUnavailableSource(t *testing.T) {
+	limit := 12
+	remaining := 1
+	atCapacity := false
+	got := formatAgentListCapacity(agentListCapacity{
+		Count:       11,
+		Limit:       &limit,
+		Remaining:   &remaining,
+		AtCapacity:  &atCapacity,
+		Unavailable: true,
+	})
+	if !strings.Contains(got, "capacity source unavailable through broker") {
+		t.Fatalf("formatted capacity missing unavailable note: %q", got)
 	}
 }

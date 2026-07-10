@@ -6,7 +6,7 @@ doc_goal: Collapse the operational run surface into one page that covers the rea
 This page groups the on-demand operational surfaces around a run.
 
 - `ward agent director` - the read-only supervisory lane.
-- `ward agent list` - show live engineer runs.
+- `ward agent list` - show live engineer runs and capacity when the limit is known.
 - `ward agent logs` - read one run's logs.
 - `ward agent stop` - stop one run on purpose.
 - `ward agent reap` - stop wedged engineer containers by idle policy.
@@ -32,7 +32,7 @@ This page groups the on-demand operational surfaces around a run.
 
 ### list
 
-`list` answers "what engineer runs are active right now?".
+`list` answers "what engineer runs are active right now?" and shows the known limit plus remaining slots when available.
 
 ### logs
 
