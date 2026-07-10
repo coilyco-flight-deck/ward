@@ -42,6 +42,7 @@ New to ward? Read [architecture.md](architecture.md) first - it frames the whole
 - [agent-roster.md](agent-roster.md) - the generated role roster.
 - [agent-reap.md](agent-reap.md) - `ward agent reap`, the host-side idle-killer for wedged engineer containers.
 - [agent-stop.md](agent-stop.md) - `ward agent stop`, the director-surface on-demand engineer stop through the dispatch broker.
+- [agent-list.md](agent-list.md) - `ward agent list`, the director-surface engineer inventory through the dispatch broker.
 - [agent-logs.md](agent-logs.md) - `ward agent logs`, the director-surface on-demand engineer log read through the dispatch broker.
 - [agent-engineer.md](agent-engineer.md) - the implement-a-ticket role.
 - [agent-director.md](agent-director.md) - the autonomous-backlog heartbeat role.
