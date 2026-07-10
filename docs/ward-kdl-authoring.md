@@ -35,6 +35,7 @@ Most repos do not need a guardfile.
 - if the generated output changes, the release docs should still explain the
   shipped behavior.
 - the authoring doc should stay in sync with the surface and mount docs.
+- per-area Markdown refs are generated output, not committed release docs.
 
 ## See also
 
