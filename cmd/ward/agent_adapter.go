@@ -75,7 +75,11 @@ func (a agentAdapter) preflightArgv(prompt string) ([]string, bool) {
 // seed is appended by the caller.
 func (a agentAdapter) launchArgv(headless, ask bool, model string, seed []string) ([]string, bool) { //nolint:cyclop
 	if ask && len(a.Argv.Preflight) > 0 {
-		return a.launchSeededArgv(a.Argv.Preflight, model, seed, true), false
+		argv := a.launchSeededArgv(a.Argv.Preflight, model, seed, true)
+		if a.Name == string(modeGoose) {
+			argv = gooseHeadlessArgv(argv)
+		}
+		return argv, false
 	}
 	if headless || ask {
 		argv := append([]string{}, a.Argv.Headless...)
