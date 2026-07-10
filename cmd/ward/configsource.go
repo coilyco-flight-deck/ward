@@ -73,10 +73,8 @@ const (
 )
 
 // Bundle-layout paths cover the flat .ward bundle a ref points at.
-// See docs/config-source.md.
+// See docs/config-source.md for the compatibility layout.
 const (
-	// The self-contained compatibility monolith mirrors the baked source's
-	// flattened opsForgejoGuardfilePath.
 	bundleForgejoGuardfilePath = "guardfile.forgejo.kdl"
 	bundleForgejoSpecLockPath  = "forgejo.swagger.lock.json"
 	bundleAgentsKDLPath        = "agents.kdl"
