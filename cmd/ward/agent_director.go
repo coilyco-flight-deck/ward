@@ -1128,37 +1128,60 @@ func backlogReservationState(comments []issueComment, now time.Time, ttl time.Du
 
 // backlogRefresh rebuilds each repo's ledger from its live open backlog.
 func (r *Runner) backlogRefresh(ctx context.Context, label string, repos []string, limit int) error {
-	cl := r.hostForgejoClient(ctx)
 	for _, repo := range repos {
-		owner, name, _ := strings.Cut(repo, "/")
-		issues, lerr := cl.listOpenIssues(ctx, owner, name, limit)
-		if lerr != nil {
-			return fmt.Errorf("%s: %w", label, lerr)
+		if err := r.backlogRefreshRepo(ctx, label, repo, limit); err != nil {
+			return err
 		}
-		prs, perr := cl.listOpenPullRequests(ctx, owner, name, limit)
-		if perr != nil {
-			return fmt.Errorf("%s: %w", label, perr)
+	}
+	return nil
+}
+
+func (r *Runner) backlogRefreshRepo(ctx context.Context, label, repo string, limit int) error {
+	cl := r.hostForgejoClient(ctx)
+	owner, name, _ := strings.Cut(repo, "/")
+	rawIssues, lerr := cl.listOpenIssueFeedByType(ctx, owner, name, limit, "issues")
+	if lerr != nil {
+		return fmt.Errorf("%s: %w", label, lerr)
+	}
+	rawPRs, perr := cl.listOpenIssueFeedByType(ctx, owner, name, limit, "pulls")
+	if perr != nil {
+		return fmt.Errorf("%s: %w", label, perr)
+	}
+	led, lerr := loadBacklogLedger(repo)
+	if lerr != nil {
+		return fmt.Errorf("%s: %w", label, lerr)
+	}
+	issues := make([]backlogIssue, 0, len(rawIssues))
+	for _, ri := range rawIssues {
+		bi := backlogIssue{Number: ri.Number, Kind: backlogKindIssue, Title: ri.Title, Body: ri.Body, URL: ri.HTMLURL}
+		for _, l := range ri.Labels {
+			if l.Name != "" {
+				bi.Labels = append(bi.Labels, l.Name)
+			}
 		}
-		led, lerr := loadBacklogLedger(repo)
-		if lerr != nil {
-			return fmt.Errorf("%s: %w", label, lerr)
+		issues = append(issues, bi)
+	}
+	prBacklog := make([]backlogIssue, 0, len(rawPRs))
+	for _, pr := range rawPRs {
+		labels := make([]string, 0, len(pr.Labels))
+		for _, l := range pr.Labels {
+			if l.Name != "" {
+				labels = append(labels, l.Name)
+			}
 		}
-		prBacklog := make([]backlogIssue, 0, len(prs))
-		for _, pr := range prs {
-			prBacklog = append(prBacklog, backlogIssue{
-				Number: pr.Number,
-				Kind:   backlogKindPullRequest,
-				Title:  pr.Title,
-				Body:   pr.Body,
-				URL:    pr.URL,
-				Labels: append([]string(nil), pr.Labels...),
-			})
-		}
-		refreshBacklogLedger(led, rankBacklogIssues(combineOpenBacklogIssues(issues, prBacklog)))
-		_ = r.backlogRefreshReservationStates(ctx, cl, repo, led)
-		if serr := saveBacklogLedger(led); serr != nil {
-			return fmt.Errorf("%s: %w", label, serr)
-		}
+		prBacklog = append(prBacklog, backlogIssue{
+			Number: pr.Number,
+			Kind:   backlogKindPullRequest,
+			Title:  pr.Title,
+			Body:   pr.Body,
+			URL:    pr.HTMLURL,
+			Labels: labels,
+		})
+	}
+	refreshBacklogLedger(led, rankBacklogIssues(combineOpenBacklogIssues(issues, prBacklog)))
+	_ = r.backlogRefreshReservationStates(ctx, cl, repo, led)
+	if serr := saveBacklogLedger(led); serr != nil {
+		return fmt.Errorf("%s: %w", label, serr)
 	}
 	return nil
 }
