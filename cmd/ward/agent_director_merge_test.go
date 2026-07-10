@@ -64,7 +64,7 @@ func TestDirectorMergeDecision(t *testing.T) {
 			name: "needs-merge-workflow",
 			pr:   basePR,
 			meta: directorRunMeta{HasOutcome: true, Outcome: backlogOutcome{Status: "merge-ready"}, Workflow: string(workflowPullRequest), Review: "passed: ok"},
-			want: "workflow pull-requests still needs human merge approval",
+			want: "workflow pull-request still needs human merge approval",
 		},
 		{
 			name: "needs-internal-family",
@@ -717,7 +717,7 @@ func TestDirectorMergeConflictReasonFromComments(t *testing.T) {
 			"",
 			"<details><summary>details</summary>",
 			"",
-			"workflow: pull-requests-and-merge; review summary: review gate skipped by ~/.ward/config.yaml default",
+			"workflow: pull-request-and-merge; review summary: review gate skipped by ~/.ward/config.yaml default",
 			"",
 			"</details>",
 		}, "\n"),

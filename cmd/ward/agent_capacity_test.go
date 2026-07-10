@@ -140,8 +140,8 @@ func TestEngineerContainerLimitFromBundleOverride(t *testing.T) {
     container-assets-ttl "1h"
     container-read-only-extra-repo-ttl "24h"
     container-reap-keep "10"
-    agent-workflow default=direct-main {
-        repo "coilyco-flight-deck/ward" workflow=pull-requests-and-merge
+    agent-workflow default=merge-remote-main {
+        repo "coilyco-flight-deck/ward" workflow=pull-request-and-merge
     }
 }
 `

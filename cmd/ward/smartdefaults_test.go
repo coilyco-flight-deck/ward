@@ -39,7 +39,7 @@ func TestSmartDefaultsFromBundleSource(t *testing.T) {
     container-assets-ttl "3h"
     container-read-only-extra-repo-ttl "48h"
     container-reap-keep "12"
-    agent-workflow default="direct-main" {
+    agent-workflow default="merge-remote-main" {
     }
 }
 `
@@ -75,7 +75,7 @@ func TestSmartDefaultsFromBundleSource(t *testing.T) {
 		t.Errorf("bundle container defaults = %+v", defs)
 	}
 	if defs.agentWorkflowDefault != workflowDirectToMain {
-		t.Errorf("bundle workflow default = %q, want direct-main", defs.agentWorkflowDefault)
+		t.Errorf("bundle workflow default = %q, want merge-remote-main", defs.agentWorkflowDefault)
 	}
 	if len(defs.agentWorkflowRepos) != 0 {
 		t.Errorf("bundle workflow overrides = %v, want none in the neutral starter", defs.agentWorkflowRepos)

@@ -289,7 +289,7 @@ func echoRunContextGo(e bootstrapEnv, agentArgs []string) {
 		"===== end ward run context =====\n",
 		e.TargetOwner, e.TargetName, ref, orDefaultLabel(e.Branch, "(default)"),
 		e.Mode, e.Agent, orDefaultLabel(e.Container, "(unnamed)"),
-		orDefaultLabel(os.Getenv("WARD_WORKFLOW"), "direct-main"),
+		orDefaultLabel(os.Getenv("WARD_WORKFLOW"), "merge-remote-main"),
 		orDefaultLabel(e.WardVersionSource, wardVersionLaunchLabel(os.Getenv("WARD_VERSION"), "")),
 		orDefaultLabel(os.Getenv("WARD_CONTAINER_UP"), "(unset)"), seed)
 }
