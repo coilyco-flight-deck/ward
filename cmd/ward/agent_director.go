@@ -40,13 +40,19 @@ var (
 	// backlogModeLane maps a mode label to the loop lane it feeds.
 	backlogModeLane = map[string]string{"headless": "headless", "interactive": "interactive", "consult": "consult"}
 	// backlogLanes is the print/iteration order of the lanes the loop tracks.
-	backlogLanes = []string{"headless", "interactive", "consult", "untriaged"}
+	backlogLanes = []string{"headless", "pull-request", "interactive", "consult", "untriaged"}
+)
+
+const (
+	backlogKindIssue       = "issue"
+	backlogKindPullRequest = "pull-request"
 )
 
 // backlogIssue is one open issue read from the live backlog, the ranking input.
 // Body is populated for the startup triage pass (ward#397); ranking ignores it.
 type backlogIssue struct {
 	Number int
+	Kind   string
 	Title  string
 	Body   string
 	Labels []string
@@ -56,6 +62,7 @@ type backlogIssue struct {
 // rankedBacklogIssue annotates an issue with its tier/mode/lane after ranking.
 type rankedBacklogIssue struct {
 	Num   int
+	Kind  string
 	Title string
 	Tier  string
 	Mode  string
@@ -64,15 +71,17 @@ type rankedBacklogIssue struct {
 }
 
 // backlogOutcome is the parsed WARD-OUTCOME status of a finished run.
+// The ledger stores explicit nonterminal PR outcomes as well as terminal ones.
 type backlogOutcome struct {
 	Status string `yaml:"status"`
 	Text   string `yaml:"text"`
 }
 
-// backlogEntry is one tracked issue in a repo's ledger: its ranked metadata plus
-// the loop state it moves through (queued -> dispatched -> done/blocked/failed).
+// backlogEntry is one tracked issue in a repo's ledger.
+// It moves through queued -> dispatched -> done/submitted/merge-ready/blocked/failed.
 type backlogEntry struct {
 	Num          int             `yaml:"num"`
+	Kind         string          `yaml:"kind,omitempty"`
 	Title        string          `yaml:"title"`
 	Tier         string          `yaml:"tier,omitempty"`
 	Mode         string          `yaml:"mode,omitempty"`
@@ -99,14 +108,15 @@ type backlogLedger struct {
 // dispatchEngineer is the container/harness flag set the director forwards into each
 // engineer it dispatches, so the run inherits the operator's container intent (ward#355).
 type dispatchEngineer struct {
-	harness     containerMode // the engineer harness: --engineer-harness, else director's --harness
-	image       string
-	tag         string
-	wardVersion string
-	aws         bool
-	hostNet     bool
-	tsSidecar   bool
-	force       bool
+	harness           containerMode // the engineer harness: --engineer-harness, else director's --harness
+	image             string
+	tag               string
+	wardVersion       string
+	wardVersionSource string
+	aws               bool
+	hostNet           bool
+	tsSidecar         bool
+	force             bool
 }
 
 // engineerArgv renders the `ward agent engineer` argv that carries one issue, forwarding
@@ -121,8 +131,10 @@ func (c dispatchEngineer) engineerArgv(ref agentIssueRef) []string {
 	if tag := strings.TrimSpace(c.tag); tag != "" {
 		argv = append(argv, "--tag", tag)
 	}
-	if v := strings.TrimSpace(c.wardVersion); v != "" {
-		argv = append(argv, "--ward-version", v)
+	if c.wardVersionSource == wardVersionSourceExplicit {
+		if v := strings.TrimSpace(c.wardVersion); v != "" {
+			argv = append(argv, "--ward-version", v)
+		}
 	}
 	if c.aws {
 		argv = append(argv, "--aws")
@@ -246,11 +258,10 @@ the heartbeat if the queue refills (ward#351).
 It is attached/interactive only - there is no --detach (a detached director poses
 runaway-dispatch risk). State lives in a durable per-repo ledger under ~/.ward/backlog,
 so a killed loop resumes from disk. Only the narrow headless lane is auto-dispatched;
-interactive and consult issues are surfaced, not launched. See docs/agent-director.md.`,
+interactive issues are surfaced, not launched. See docs/agent-director.md.`,
 		Flags: directorFlags(),
-		// consult is the director's interactive consult-to-headless conversion pass
-		// (ward#493): `warded director consult` walks the consult + untriaged queue.
-		Commands: []*cli.Command{agentConsultCommand()},
+		// merge is the explicit PR-land authority boundary for ward-owned work.
+		Commands: []*cli.Command{agentDirectorMergeCommand()},
 		Action: func(ctx context.Context, c *cli.Command) error {
 			r := newRunner()
 			mode, err := agentHarness(c)
@@ -300,14 +311,15 @@ func (r *Runner) runAgentBacklog(ctx context.Context, c *cli.Command, mode conta
 		print:        c.Bool("print"),
 		triage:       c.Bool("triage") && !c.Bool("no-triage"),
 		dispatch: dispatchEngineer{
-			harness:     engDriver,
-			image:       c.String("image"),
-			tag:         c.String("tag"),
-			wardVersion: strings.TrimSpace(c.String("ward-version")),
-			aws:         c.Bool("aws"),
-			hostNet:     hostNet,
-			tsSidecar:   tsSidecar,
-			force:       c.Bool("force"),
+			harness:           engDriver,
+			image:             c.String("image"),
+			tag:               c.String("tag"),
+			wardVersion:       strings.TrimSpace(c.String("ward-version")),
+			wardVersionSource: resolveWardVersionSource(c, c.String("ward-version")),
+			aws:               c.Bool("aws"),
+			hostNet:           hostNet,
+			tsSidecar:         tsSidecar,
+			force:             c.Bool("force"),
 		},
 		wardSource: strings.TrimSpace(c.String("ward-source")),
 		noPull:     c.Bool("no-pull"),
@@ -600,17 +612,19 @@ func backlogLaneForLabels(tier, mode string) string {
 // rankBacklogIssues tags each issue with tier/mode/lane and sorts by lane, then
 // tier, then number. Ports backlog-loop.py's rank (no triage-score tie-break yet).
 func rankBacklogIssues(issues []backlogIssue) []rankedBacklogIssue {
-	laneRank := map[string]int{"headless": 0, "interactive": 1, "consult": 2, "untriaged": 3}
+	laneRank := map[string]int{"headless": 0, "pull-request": 1, "interactive": 2, "consult": 3, "untriaged": 4}
 	out := make([]rankedBacklogIssue, 0, len(issues))
 	for _, it := range issues {
+		kind := backlogKindOf(it.Kind)
 		tier := backlogTierOf(it.Labels)
 		mode := backlogModeOf(it.Labels)
 		out = append(out, rankedBacklogIssue{
 			Num:   it.Number,
+			Kind:  kind,
 			Title: it.Title,
 			Tier:  tier,
 			Mode:  mode,
-			Lane:  backlogLaneForLabels(tier, mode),
+			Lane:  backlogLaneForKind(kind, tier, mode),
 			URL:   it.URL,
 		})
 	}
@@ -633,6 +647,23 @@ func rankBacklogIssues(issues []backlogIssue) []rankedBacklogIssue {
 	return out
 }
 
+func backlogKindOf(kind string) string {
+	switch strings.ToLower(strings.TrimSpace(kind)) {
+	case backlogKindPullRequest:
+		return backlogKindPullRequest
+	default:
+		return backlogKindIssue
+	}
+}
+
+// backlogLaneForKind maps a backlog item's kind and labels to a lane.
+func backlogLaneForKind(kind, tier, mode string) string {
+	if backlogKindOf(kind) == backlogKindPullRequest {
+		return backlogKindPullRequest
+	}
+	return backlogLaneForLabels(tier, mode)
+}
+
 // refreshBacklogLedger folds a fresh ranked backlog into the ledger, preserving
 // in-flight state and dropping closed non-mid-flight issues. Ports refresh_ledger.
 func refreshBacklogLedger(led *backlogLedger, ranked []rankedBacklogIssue) {
@@ -652,7 +683,7 @@ func backlogNewEntryState(lane string) string {
 	switch lane {
 	case "headless":
 		return "queued"
-	case "interactive":
+	case "pull-request", "interactive":
 		return "surfaced"
 	default:
 		return "skipped"
@@ -683,6 +714,7 @@ func applyRankedBacklogEntry(led *backlogLedger, rk rankedBacklogIssue) {
 		entry.LastOutcome = nil
 	}
 	entry.Num = rk.Num
+	entry.Kind = backlogKindOf(rk.Kind)
 	entry.Title = rk.Title
 	entry.Tier = rk.Tier
 	entry.Mode = rk.Mode
@@ -708,29 +740,157 @@ func dropClosedBacklogEntries(led *backlogLedger, seen map[int]bool) {
 
 // --- outcome parsing -------------------------------------------------------
 
-// backlogOutcomeRE parses the status + reason that follow the WARD-OUTCOME marker.
-var backlogOutcomeRE = regexp.MustCompile(`(?i)^(done|blocked|failed)\b[\s:.\-]*(.*)`)
+// backlogOutcomeRE parses the status + optional status emoji + reason that
+// follow the WARD-OUTCOME marker.
+var backlogOutcomeRE = regexp.MustCompile(`(?i)^(done|submitted|merge-ready|pending|ready-for-merge|blocked|failed)\b(?:\s+[✅🛑❌])?[\s:.\-]*(.*)`)
 
 // parseBacklogOutcome classifies the latest comment leading with WARD-OUTCOME,
 // nil when none. Ports backlog-loop.py's parse_outcome.
 func parseBacklogOutcome(comments []issueComment) *backlogOutcome {
+	latest, ok := latestBacklogOutcomeComment(comments)
+	if !ok {
+		return nil
+	}
+	o, ok := backlogOutcomeOfComment(latest.Body)
+	if !ok {
+		return nil
+	}
+	return &o
+}
+
+// latestBacklogOutcomeComment returns the most recent comment body carrying a
+// WARD-OUTCOME marker.
+func latestBacklogOutcomeComment(comments []issueComment) (issueComment, bool) {
 	type hit struct {
 		at time.Time
-		o  backlogOutcome
+		c  issueComment
 	}
 	var hits []hit
 	for _, c := range comments {
-		o, ok := backlogOutcomeOfComment(c.Body)
+		if _, ok := backlogOutcomeOfComment(c.Body); !ok {
+			continue
+		}
+		hits = append(hits, hit{at: c.CreatedAt, c: c})
+	}
+	if len(hits) == 0 {
+		return issueComment{}, false
+	}
+	sort.SliceStable(hits, func(i, j int) bool { return hits[i].at.Before(hits[j].at) })
+	return hits[len(hits)-1].c, true
+}
+
+// directorRunMeta is the small policy payload the director merge command reads
+// from a worker's final comment: workflow marker + review summary.
+type directorRunMeta struct {
+	Workflow    string
+	Review      string
+	Outcome     backlogOutcome
+	HasOutcome  bool
+	IssueRef    string
+	QA          qaCommentMeta
+	PRHeadSHA   string
+	PRRef       string
+	Status      directorMergeStatusSummary
+	CommentedBy string
+	CommentedAt time.Time
+}
+
+// latestQAVerdictComment returns the newest QA verdict comment that matches the
+// requested issue/PR/head SHA tuple. Older or stale SHAs do not override.
+func latestQAVerdictComment(comments []issueComment, issueRef, prRef, headSHA string) (qaCommentMeta, bool) {
+	type hit struct {
+		at time.Time
+		m  qaCommentMeta
+	}
+	var hits []hit
+	issueRef = strings.TrimSpace(issueRef)
+	prRef = strings.TrimSpace(prRef)
+	headSHA = strings.TrimSpace(headSHA)
+	if issueRef == "" || prRef == "" || headSHA == "" {
+		return qaCommentMeta{}, false
+	}
+	for _, c := range comments {
+		meta, ok := parseQAVerdictComment(c.Body)
 		if !ok {
 			continue
 		}
-		hits = append(hits, hit{at: c.CreatedAt, o: o})
+		if strings.TrimSpace(meta.IssueRef) != issueRef {
+			continue
+		}
+		if strings.TrimSpace(meta.PRRef) != prRef {
+			continue
+		}
+		if strings.TrimSpace(meta.ReviewedSHA) != headSHA {
+			continue
+		}
+		hits = append(hits, hit{at: c.CreatedAt, m: meta})
 	}
 	if len(hits) == 0 {
-		return nil
+		return qaCommentMeta{}, false
 	}
 	sort.SliceStable(hits, func(i, j int) bool { return hits[i].at.Before(hits[j].at) })
-	return &hits[len(hits)-1].o
+	return hits[len(hits)-1].m, true
+}
+
+// parseDirectorRunMeta parses a final worker comment for the director merge gate.
+// It accepts the machine line shape documented in headlessReflection.
+func parseDirectorRunMeta(body string) directorRunMeta {
+	meta := directorRunMeta{}
+	if o, ok := backlogOutcomeOfComment(body); ok {
+		meta.Outcome = o
+		meta.HasOutcome = true
+	}
+	for _, ln := range strings.Split(body, "\n") {
+		s := backlogCommentLine(ln)
+		if s == "" {
+			continue
+		}
+		for _, part := range strings.Split(s, ";") {
+			field := strings.TrimSpace(part)
+			lower := strings.ToLower(field)
+			switch {
+			case strings.HasPrefix(lower, "workflow:"):
+				meta.Workflow = string(canonicalWorkflow(workflowMode(strings.TrimSpace(field[len("workflow:"):]))))
+			case strings.HasPrefix(lower, "review summary:"):
+				meta.Review = strings.TrimSpace(field[len("review summary:"):])
+			case strings.HasPrefix(lower, "checked head sha:"):
+				meta.Status.HeadSHA = strings.TrimSpace(field[len("checked head sha:"):])
+			case strings.HasPrefix(lower, "status state:"):
+				meta.Status.State = strings.TrimSpace(field[len("status state:"):])
+			case strings.HasPrefix(lower, "status context:"):
+				meta.Status.Checks = parseDirectorStatusContexts(strings.TrimSpace(field[len("status context:"):]))
+			}
+		}
+	}
+	return meta
+}
+
+func parseDirectorStatusContexts(s string) []directorMergeStatusContext {
+	s = strings.TrimSpace(s)
+	if s == "" || s == "<status unavailable>" {
+		return nil
+	}
+	parts := strings.Split(s, ",")
+	out := make([]directorMergeStatusContext, 0, len(parts))
+	for _, part := range parts {
+		field := strings.TrimSpace(part)
+		if field == "" {
+			continue
+		}
+		ctx, state, ok := strings.Cut(field, "=")
+		if !ok {
+			out = append(out, directorMergeStatusContext{Context: field})
+			continue
+		}
+		out = append(out, directorMergeStatusContext{Context: strings.TrimSpace(ctx), State: strings.TrimSpace(state)})
+	}
+	return out
+}
+
+// backlogCommentLine normalizes the leading quote/list markers the same way the
+// WARD-OUTCOME parser does, so the policy parser can read wrapped comments too.
+func backlogCommentLine(ln string) string {
+	return strings.TrimSpace(strings.TrimLeft(strings.TrimSpace(ln), ">*-•# "))
 }
 
 // backlogOutcomeOfComment parses the WARD-OUTCOME status from one comment body,
@@ -750,26 +910,45 @@ func backlogOutcomeOfComment(body string) (backlogOutcome, bool) {
 	rest := strings.TrimSpace(line[len(wardOutcomeMarker):])
 	o := backlogOutcome{Status: "unknown", Text: rest}
 	if m := backlogOutcomeRE.FindStringSubmatch(rest); m != nil {
-		o.Status = strings.ToLower(m[1])
+		o.Status = normalizeBacklogOutcomeStatus(strings.ToLower(m[1]))
 		o.Text = strings.TrimSpace(m[2])
 	}
 	o.Text = backlogTruncate(o.Text, 500)
 	return o, true
 }
 
-// backlogOutcomeState maps a parsed outcome status to the ledger state it lands in;
-// an unrecognized status parks as blocked (a human should look). Ports poll_repo.
+func normalizeBacklogOutcomeStatus(status string) string {
+	switch strings.TrimSpace(strings.ToLower(status)) {
+	case "pending":
+		return "submitted"
+	case "ready-for-merge":
+		return "merge-ready"
+	default:
+		return strings.TrimSpace(strings.ToLower(status))
+	}
+}
+
+// backlogOutcomeState maps a parsed outcome status to the ledger state it lands in.
+// Submitted and merge-ready stay explicit nonterminal states. Unknowns park blocked.
 func backlogOutcomeState(status string) string {
-	switch status {
+	switch normalizeBacklogOutcomeStatus(status) {
 	case "done":
 		return "done"
 	case "failed":
 		return "failed"
 	case "blocked":
 		return "blocked"
+	case "submitted":
+		return "submitted"
+	case "merge-ready":
+		return "merge-ready"
 	default:
 		return "blocked"
 	}
+}
+
+func backlogStateSummaryOrder() []string {
+	return []string{"done", "submitted", "merge-ready", "blocked", "failed", "queued", "dispatched", "surfaced", "skipped"}
 }
 
 // --- ledger persistence ----------------------------------------------------
@@ -934,11 +1113,26 @@ func (r *Runner) backlogRefresh(ctx context.Context, label string, repos []strin
 		if lerr != nil {
 			return fmt.Errorf("%s: %w", label, lerr)
 		}
+		prs, perr := cl.listOpenPullRequests(ctx, owner, name, limit)
+		if perr != nil {
+			return fmt.Errorf("%s: %w", label, perr)
+		}
 		led, lerr := loadBacklogLedger(repo)
 		if lerr != nil {
 			return fmt.Errorf("%s: %w", label, lerr)
 		}
-		refreshBacklogLedger(led, rankBacklogIssues(issues))
+		prBacklog := make([]backlogIssue, 0, len(prs))
+		for _, pr := range prs {
+			prBacklog = append(prBacklog, backlogIssue{
+				Number: pr.Number,
+				Kind:   backlogKindPullRequest,
+				Title:  pr.Title,
+				Body:   pr.Body,
+				URL:    pr.URL,
+				Labels: append([]string(nil), pr.Labels...),
+			})
+		}
+		refreshBacklogLedger(led, rankBacklogIssues(combineOpenBacklogIssues(issues, prBacklog)))
 		if serr := saveBacklogLedger(led); serr != nil {
 			return fmt.Errorf("%s: %w", label, serr)
 		}
@@ -1009,7 +1203,7 @@ func (r *Runner) backlogDispatch(ctx context.Context, dispatch dispatchEngineer,
 
 // backlogPoll reconciles each dispatched issue across the scope against reality.
 func (r *Runner) backlogPoll(ctx context.Context, label string, repos []string) {
-	cl, err := r.hostForgejoClient(ctx)
+	cl, err := r.hostTrackerClient(ctx, trackerForgejo, currentAgentMode())
 	if err != nil {
 		fmt.Fprintf(os.Stderr, "%s: note: cannot poll (%v)\n", label, err)
 		return
@@ -1020,7 +1214,7 @@ func (r *Runner) backlogPoll(ctx context.Context, label string, repos []string) 
 }
 
 // backlogPollRepo reconciles one repo's dispatched issues and saves on any change.
-func (r *Runner) backlogPollRepo(ctx context.Context, label, repo string, cl *forgejoClient) {
+func (r *Runner) backlogPollRepo(ctx context.Context, label, repo string, cl Tracker) {
 	led, err := loadBacklogLedger(repo)
 	if err != nil {
 		fmt.Fprintf(os.Stderr, "%s: note: cannot poll %s (%v)\n", label, repo, err)
@@ -1042,7 +1236,7 @@ func (r *Runner) backlogPollRepo(ctx context.Context, label, repo string, cl *fo
 
 // backlogReconcile moves one exited dispatched entry to its outcome state; a gone
 // container with no WARD-OUTCOME is parked failed. Returns whether it changed.
-func (r *Runner) backlogReconcile(ctx context.Context, cl *forgejoClient, repo string, tr targetRepo, e *backlogEntry) bool {
+func (r *Runner) backlogReconcile(ctx context.Context, cl Tracker, repo string, tr targetRepo, e *backlogEntry) bool {
 	if e.State != "dispatched" || r.backlogContainerRunning(ctx, tr, e) {
 		return false
 	}
@@ -1172,7 +1366,7 @@ func (r *Runner) backlogPrintStatus(repos []string) error {
 		fmt.Fprintf(&b, "\n  %s lane (%d):\n", lane, len(items))
 		for _, e := range items {
 			fmt.Fprintf(&b, "    %-30s [%-2s] %-10s %s\n",
-				e.repo+"#"+strconv.Itoa(e.Num), tierOrDash(e.Tier), stateOrDash(e.State), backlogTruncate(e.Title, 60))
+				backlogEntryDisplayRef(e), tierOrDash(e.Tier), stateOrDash(e.State), backlogTruncate(e.Title, 60))
 		}
 	}
 	return r.emit(b.String())
@@ -1204,6 +1398,31 @@ func (r *Runner) backlogPrintPlanned(label string, repos []string, maxParallel i
 	return r.emit(b.String())
 }
 
+func backlogEntryDisplayRef(e *backlogEntry) string {
+	return backlogEntryKindPrefix(e.Kind) + " " + e.repo + "#" + strconv.Itoa(e.Num)
+}
+
+func backlogEntryKindPrefix(kind string) string {
+	switch backlogKindOf(kind) {
+	case backlogKindPullRequest:
+		return "PR"
+	default:
+		return "issue"
+	}
+}
+
+// combineOpenBacklogIssues folds the live open issue and PR feeds into one ranking
+// input while preserving every issue row and tagging PR rows explicitly.
+func combineOpenBacklogIssues(issues, prs []backlogIssue) []backlogIssue {
+	out := make([]backlogIssue, 0, len(issues)+len(prs))
+	out = append(out, issues...)
+	for _, pr := range prs {
+		pr.Kind = backlogKindPullRequest
+		out = append(out, pr)
+	}
+	return out
+}
+
 // backlogPrintDirectorPlan renders director's OWN container/harness plan for --print
 // (ward#355): the harness split, the image pin, the dispatch argv. Launches nothing.
 func (r *Runner) backlogPrintDirectorPlan(label string, repos []string, cfg backlogConfig) error {
@@ -1215,7 +1434,7 @@ func (r *Runner) backlogPrintDirectorPlan(label string, repos []string, cfg back
 	fmt.Fprintf(&b, "engineer harness: %s (the engineers it dispatches)\n", cy.harness)
 	fmt.Fprintf(&b, "max-parallel:    %d\n", cfg.maxParallel)
 	fmt.Fprintf(&b, "image:           %s\n", imageRef(cy.image, cy.tag))
-	fmt.Fprintf(&b, "ward-version:    %s\n", directorWardVersion(cy.wardVersion))
+	fmt.Fprintf(&b, "ward-version:    %s\n", wardVersionLaunchLabel(cy.wardVersion, cy.wardVersionSource))
 	if cfg.wardSource != "" {
 		fmt.Fprintf(&b, "ward-source:     %s (surface session builds ward from here)\n", cfg.wardSource)
 	}
@@ -1233,15 +1452,6 @@ func (r *Runner) backlogPrintDirectorPlan(label string, repos []string, cfg back
 	return r.emit(b.String())
 }
 
-// directorWardVersion renders the ward release the dispatches pin: the explicit
-// --ward-version, else this host's ward (the buildUpPlan default).
-func directorWardVersion(v string) string {
-	if strings.TrimSpace(v) == "" {
-		return Version + " (this host)"
-	}
-	return v
-}
-
 // backlogPrintSummary prints the terminal disposition of the run by state.
 func (r *Runner) backlogPrintSummary(repos []string) error {
 	counts := map[string]int{}
@@ -1250,7 +1460,7 @@ func (r *Runner) backlogPrintSummary(repos []string) error {
 	}
 	var b strings.Builder
 	fmt.Fprintf(&b, "\nbacklog summary (%s):\n", strings.Join(repos, ", "))
-	for _, st := range []string{"done", "blocked", "failed", "queued", "dispatched", "surfaced", "skipped"} {
+	for _, st := range backlogStateSummaryOrder() {
 		if counts[st] > 0 {
 			fmt.Fprintf(&b, "  %-10s %d\n", st, counts[st])
 		}

@@ -36,9 +36,6 @@ const (
 	reasonPushRace reapReason = "push to main was rejected (the remote advanced)"
 	reasonPushFail reapReason = "push to main failed"
 	reasonAuthFail reapReason = "push to main was rejected on auth (dead or rotated PAT)"
-	// reasonWorkflowHold: the run's --workflow (pr/patch-only) does not land on main,
-	// so the reaper preserves work on a branch rather than force-pushing main (ward#508).
-	reasonWorkflowHold reapReason = "run workflow does not land on main (--workflow pr/patch-only)"
 )
 
 // authFailureMarkers are substrings git/forgejo emit when a push is rejected on
@@ -253,7 +250,7 @@ func salvageBranchName(id string) string {
 	return salvageBranchPrefix + id
 }
 
-// salvageReport is everything the issue text needs about one salvage.
+// salvageReport is everything the issue text needs about one cleanup salvage.
 type salvageReport struct {
 	Repo     targetRepo
 	Mode     string
@@ -292,7 +289,7 @@ func salvageIssueTitle(r salvageReport) string {
 // run (no carried issue): intro plus the shared detail body.
 func salvageIssueBody(r salvageReport) string {
 	var b strings.Builder
-	fmt.Fprintf(&b, "An ephemeral `ward container` (%s mode) finished but its work was **not merged to `main`**, so the reaper preserved it on a branch before the container was torn down.\n\n", r.Mode)
+	fmt.Fprintf(&b, "An ephemeral `ward container` (%s mode) finished but its work was **not merged to `main`**, so cleanup preserved it on a branch before the container was torn down.\n\n", r.Mode)
 	b.WriteString(salvageDetailBody(r))
 	return b.String()
 }
@@ -301,10 +298,10 @@ func salvageIssueBody(r salvageReport) string {
 // issue (ward#518): a reopen banner plus the shared detail body.
 func salvageCommentBody(r salvageReport) string {
 	var b strings.Builder
-	b.WriteString("## ⚠️ Reopened: this run's work did not land on `main`\n\n")
-	fmt.Fprintf(&b, "An ephemeral `ward container` (%s mode) dispatched for this issue finished but its work was **not merged to `main`**, so the reaper preserved it on a branch before teardown and reopened the issue (a closing reference for #%d never reached `main`). Recover from the salvage branch below.\n\n", r.Mode, r.Issue)
+	visible := "WARD-REAP: reopened 🛑"
+	fmt.Fprintf(&b, "An ephemeral `ward container` (%s mode) dispatched for this issue finished but its work was **not merged to `main`**, so cleanup preserved it on a branch before teardown and reopened the issue (a closing reference for #%d never reached `main`). Recover from the salvage branch below.\n\n", r.Mode, r.Issue)
 	b.WriteString(salvageDetailBody(r))
-	return b.String()
+	return collapsedIssueComment(visible, "salvage details", b.String())
 }
 
 // salvageDetailBody is the shared body of both the standalone issue and the
@@ -332,7 +329,7 @@ func salvageDetailBody(r salvageReport) string {
 	// Fold the ward#531 diagnostics block in verbatim so a false-salvage
 	// self-diagnoses on the durable issue, not only on ephemeral stderr.
 	if strings.TrimSpace(r.Diagnostics.WardVersion) != "" {
-		b.WriteString("## Reap diagnostics\n\n```\n")
+		b.WriteString("## Cleanup diagnostics\n\n```\n")
 		b.WriteString(renderReapDiagnostics(r.Diagnostics))
 		b.WriteString("\n```\n\n")
 	}
@@ -397,8 +394,8 @@ type extraRepoUnlanded struct {
 // which grants did not land, where each was preserved, and how to recover (ward#291).
 func unlandedExtraReposComment(env reapEnv, reports []extraRepoUnlanded) string {
 	var b strings.Builder
-	b.WriteString("## ⚠️ Reopened: a granted `--repo` push did not land\n\n")
-	fmt.Fprintf(&b, "This run held `--repo` grants and closed against `%s`, but the reaper could not confirm "+
+	visible := "WARD-REAP: reopened 🛑"
+	fmt.Fprintf(&b, "This run held `--repo` grants and closed against `%s`, but cleanup could not confirm "+
 		"every granted repo's work reached its `main`. A secondary push can be silently rejected (a "+
 		"non-fast-forward on a busy `main`, a dead/rotated PAT) while the primary push succeeds, so the "+
 		"issue is **reopened** rather than left reading \"done\" with the cross-repo half lost.\n\n",
@@ -428,7 +425,7 @@ func unlandedExtraReposComment(env reapEnv, reports []extraRepoUnlanded) string 
 	}
 	b.WriteString("Re-run the cross-repo half, or - per ward#291 - file it as a native issue in the granted " +
 		"repo so it becomes a single-repo run that sidesteps this failure mode.\n")
-	return b.String()
+	return collapsedIssueComment(visible, "grant details", b.String())
 }
 
 // sortedUnlanded orders un-landed grants by slug for deterministic rendering.

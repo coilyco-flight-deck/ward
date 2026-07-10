@@ -24,6 +24,7 @@ var drainAgentLiterals = map[string]bool{
 // per-agent literals: the manifest reader plus the signature/review exceptions.
 var drainGateAllowlist = map[string]bool{
 	"agent_adapter.go":   true, // manifest reader + runtime adapter projection
+	"agent_fleet.go":     true, // ward-owned frontier roster + effective merge layer
 	"agent_signature.go": true, // roster identity/signer defaults
 	"agent_review.go":    true, // review-panel roster: which families review + their availability preconditions (ward#134)
 }

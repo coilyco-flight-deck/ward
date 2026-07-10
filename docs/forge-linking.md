@@ -24,7 +24,7 @@ priority order.
    mirror (`github.com/coilyco-flight-deck/ward`, `/issues/new/choose`). Forgejo
    registration is closed, so a GitHub link is the only one an outside
    contributor can act on. This covers the README's support/contribute copy,
-   the issue templates, and the PR template.
+   the GitHub issue forms, and the PR template.
 
 3. **Canonical or infrastructural reference -> Forgejo.** Things that only exist
    on Forgejo - the brew tap URL, the container registry, the canonical releases
@@ -34,7 +34,7 @@ priority order.
 
 ## By surface
 
-- **Public-facing** (`README.md`, `SECURITY.md`, issue templates, PR template)
+- **Public-facing** (`README.md`, `SECURITY.md`, GitHub issue forms, PR template)
   keeps Forgejo to the canonical-fact case 3 and sends every **navigational**
   link to GitHub under case 2.
 - **Contributor-facing** (`CONTRIBUTING.md`, `AGENTS.md`, `docs/`, source) names

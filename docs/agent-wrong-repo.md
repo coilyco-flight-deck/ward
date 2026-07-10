@@ -1,5 +1,5 @@
 ---
-doc_goal: Explain the pre-flight WRONG-REPO verdict as a cheap, no-search reroute that blind-fires a misfiled issue into its correct trusted repo and bounces to NO-GO when the target is untrusted or unusable, so a reader understands both the mechanism and its guardrails.
+doc_goal: Explain the pre-flight WRONG-REPO verdict as a cheap, no-search reroute that blind-fires a misfiled issue into its correct trusted repo and bounces to NO-GO when the target is untrusted or unusable, so a reader understands both the mechanism and the config-backed guardrails.
 ---
 # ward agent: WRONG-REPO blind-fire ([ward#159](https://forgejo.coilysiren.me/coilyco-flight-deck/ward/issues/159))
 
@@ -21,10 +21,10 @@ acts on it cheaply:
 - Nothing launches on either side. A human (or a later `ward agent` run) picks up
   the routed issue.
 
-Guardrails: the target repo must be in ward's primary-org trust set (the same
-gate `work` applies to its own owner), and it can't be the issue's own repo. If
-the agent names an untrusted repo, no usable `owner/repo`, or the same repo, the
-verdict degrades to a **NO-GO bounce** so a human routes it instead.
+Guardrails: the target repo must be in the selected bundle's trusted-owner set
+(the same gate `work` applies to its own owner), and it can't be the issue's own
+repo. If the agent names an untrusted repo, no usable `owner/repo`, or the same
+repo, the verdict degrades to a **NO-GO bounce** so a human routes it instead.
 
 ## See also
 

@@ -60,7 +60,7 @@ func classifyTaskInvocation(arg, file string) (route bool, repoArg string, err e
 }
 
 // taskRepoRef coerces a `task` positional to an owner/repo slug ONLY for a bare
-// `owner/repo[#N]` or a Forgejo issue URL; else false for ROUTE (ward#234; docs).
+// `owner/repo[#N]` or an issue URL; else false for ROUTE (ward#234; docs).
 func taskRepoRef(arg string) (string, bool) {
 	arg = strings.TrimSpace(arg)
 	if arg == "" {
@@ -99,50 +99,48 @@ func (r *Runner) runAgentTaskRoute(ctx context.Context, c *cli.Command, mode con
 	// interactive moment - surface a stale-ward reminder before it files (ward#143).
 	r.maybeWarnWardOutdated(ctx)
 
-	cl, err := r.hostForgejoClient(ctx)
+	cl, err := r.hostTrackerClient(ctx, trackerForgejo, mode)
 	if err != nil {
 		return fmt.Errorf("%s: %w", label, err)
 	}
-	signed := cl.withMode(mode)
-
 	// 1. File the intake record - the literal ask, captured before routing.
-	intakeNum, err := signed.createIssue(ctx, inboxOwner, inboxRepo, title, routeIntakeBody(mode, taskText))
+	intakeNum, err := cl.createIssue(ctx, inboxOwner, inboxRepo, title, routeIntakeBody(mode, taskText))
 	if err != nil {
 		return fmt.Errorf("%s: file intake issue in %s/%s: %w", label, inboxOwner, inboxRepo, err)
 	}
-	intake := agentIssueRef{Owner: inboxOwner, Repo: inboxRepo, Number: intakeNum}
+	intake := agentIssueRef{Owner: inboxOwner, Repo: inboxRepo, Number: intakeNum, Tracker: trackerForgejo}
 	fmt.Fprintf(os.Stderr, "%s: filed intake %s - %s\n", label, intake, intake.url())
 
 	// 2. Survey the fleet live + route (a one-shot agent call over a live catalog).
 	outcome, read, serr := r.surveyRoute(ctx, mode, taskText)
 	if serr != nil {
 		reason := fmt.Sprintf("route survey did not complete: %v", serr)
-		return r.bounceRouteToHuman(ctx, signed, label, mode, intake, reason, read)
+		return r.bounceRouteToHuman(ctx, cl, label, mode, intake, reason, read)
 	}
 	if outcome.Verdict != routeRepo {
-		return r.bounceRouteToHuman(ctx, signed, label, mode, intake, routeBounceReason(outcome), read)
+		return r.bounceRouteToHuman(ctx, cl, label, mode, intake, routeBounceReason(outcome), read)
 	}
 
 	// Validate the routed target: a trusted owner, and never the inbox itself.
 	target, reason, ok := r.resolveRouteTarget(outcome)
 	if !ok {
-		return r.bounceRouteToHuman(ctx, signed, label, mode, intake, reason, read)
+		return r.bounceRouteToHuman(ctx, cl, label, mode, intake, reason, read)
 	}
 
 	// 3. File the scoped child issue in the routed repo, cross-linked to intake.
 	childBody := routeChildBody(mode, taskText, outcome.Note, intake)
-	childNum, err := signed.createIssue(ctx, target.Owner, target.Name, title, childBody)
+	childNum, err := cl.createIssue(ctx, target.Owner, target.Name, title, childBody)
 	if err != nil {
 		return fmt.Errorf("%s: file child issue in %s: %w", label, target.slug(), err)
 	}
-	child := agentIssueRef{Owner: target.Owner, Repo: target.Name, Number: childNum}
+	child := agentIssueRef{Owner: target.Owner, Repo: target.Name, Number: childNum, Tracker: trackerForgejo}
 	fmt.Fprintf(os.Stderr, "%s: routed %s -> child %s - %s\n", label, intake, child, child.url())
 
 	// 4. Cross-link the child onto the intake record, then close the intake.
-	if cerr := signed.commentIssue(ctx, intake.Owner, intake.Repo, intake.Number, routeRoutedComment(mode, child, outcome.Note, read)); cerr != nil {
+	if cerr := cl.commentIssue(ctx, intake.Owner, intake.Repo, intake.Number, routeRoutedComment(mode, child, outcome.Note, read)); cerr != nil {
 		return fmt.Errorf("%s: cross-link intake %s: %w", label, intake, cerr)
 	}
-	if cerr := signed.closeIssue(ctx, intake.Owner, intake.Repo, intake.Number); cerr != nil {
+	if cerr := cl.closeIssue(ctx, intake.Owner, intake.Repo, intake.Number); cerr != nil {
 		// The child is filed and cross-linked; a failed close is cosmetic, so warn
 		// rather than strand the run.
 		fmt.Fprintf(os.Stderr, "%s: note: could not close intake %s (%v); it's cross-linked, close it by hand\n", label, intake, cerr)
@@ -193,7 +191,7 @@ func (r *Runner) resolveRouteTarget(outcome routeOutcome) (targetRepo, string, b
 	target, ok := wrongRepoTarget(outcome.Repo)
 	if !ok || !r.ownerAllowed(target.Owner) || (target.Owner == inboxOwner && target.Name == inboxRepo) {
 		reason := fmt.Sprintf("survey routed to an unusable target %q (it must be a trusted owner - %s - and not the inbox itself)",
-			outcome.Repo, strings.Join(r.primaryOrgs(), ", "))
+			outcome.Repo, strings.Join(r.trustedOwners(), ", "))
 		return targetRepo{}, reason, false
 	}
 	return target, "", true
@@ -201,7 +199,7 @@ func (r *Runner) resolveRouteTarget(outcome routeOutcome) (targetRepo, string, b
 
 // bounceRouteToHuman comments the UNCLEAR verdict on the still-open intake record
 // and launches nothing - the consult exit when the survey can't route confidently.
-func (r *Runner) bounceRouteToHuman(ctx context.Context, signed *forgejoClient, label string, mode containerMode, intake agentIssueRef, reason, read string) error {
+func (r *Runner) bounceRouteToHuman(ctx context.Context, signed Tracker, label string, mode containerMode, intake agentIssueRef, reason, read string) error {
 	fmt.Fprintf(os.Stderr, "%s: route UNCLEAR for intake %s; launching nothing, leaving it open for a human.\n", label, intake)
 	if cerr := signed.commentIssue(ctx, intake.Owner, intake.Repo, intake.Number, routeUnclearComment(mode, reason, read)); cerr != nil {
 		return fmt.Errorf("%s: comment UNCLEAR on %s: %w", label, intake, cerr)
@@ -218,7 +216,7 @@ func (r *Runner) surveyRoute(ctx context.Context, mode containerMode, taskText s
 		return routeOutcome{}, "", err
 	}
 	if len(catalog) == 0 {
-		return routeOutcome{}, "", fmt.Errorf("no candidate repos found across %s", strings.Join(r.primaryOrgs(), ", "))
+		return routeOutcome{}, "", fmt.Errorf("no candidate repos found across %s", strings.Join(r.trustedOwners(), ", "))
 	}
 	argv, stdin, ok := hostOneShot(mode, routeSurveyPrompt(taskText, renderRepoCatalog(catalog)))
 	if !ok {
@@ -246,7 +244,7 @@ func (r *Runner) surveyRepoCatalog(ctx context.Context) ([]repoCatalogEntry, err
 		return nil, err
 	}
 	var entries []repoCatalogEntry
-	for _, owner := range r.primaryOrgs() {
+	for _, owner := range r.trustedOwners() {
 		repos, err := cl.listOwnerRepos(ctx, owner)
 		if err != nil {
 			fmt.Fprintf(os.Stderr, "ward agent engineer: note: could not list repos for %s (%v); skipping it in the survey\n", owner, err)
@@ -385,7 +383,7 @@ func routeChildBody(mode containerMode, taskText, scoped string, intake agentIss
 // is filed: where the work was routed, the scoping note, and the survey read. Pure.
 func routeRoutedComment(mode containerMode, child agentIssueRef, scoped, read string) string {
 	var b strings.Builder
-	fmt.Fprintf(&b, "### 🧭 ward task route\n\n")
+	visible := "WARD-STATUS: routed 🧭"
 	fmt.Fprintf(&b, "`%s` surveyed the fleet and routed this task to **%s**:\n\n", agentCmdline(mode, "engineer"), child.repoSlug())
 	fmt.Fprintf(&b, "- %s - %s\n\n", child, child.url())
 	if scoped = strings.TrimSpace(scoped); scoped != "" {
@@ -393,10 +391,10 @@ func routeRoutedComment(mode containerMode, child agentIssueRef, scoped, read st
 	}
 	fmt.Fprintf(&b, "Closing this intake record; follow the child issue for the carry-to-merge.\n")
 	if read = strings.TrimSpace(read); read != "" {
-		fmt.Fprintf(&b, "\n<details><summary>full route survey</summary>\n\n%s\n\n</details>\n", read)
+		fmt.Fprintf(&b, "\n## Full route survey\n\n%s\n", read)
 	}
-	fmt.Fprintf(&b, "\n---\nPosted automatically by `%s` route (ward#164).", agentCmdline(mode, "engineer"))
-	return b.String()
+	fmt.Fprintf(&b, "\nPosted automatically by `%s` route (ward#164).", agentCmdline(mode, "engineer"))
+	return collapsedIssueComment(visible, "route details", b.String())
 }
 
 // routeUnclearComment renders the intake comment when the survey can't route:
@@ -407,7 +405,7 @@ func routeUnclearComment(mode containerMode, reason, read string) string {
 		reason = "(no reason given)"
 	}
 	var b strings.Builder
-	fmt.Fprintf(&b, "### 🧭 ward task route: UNCLEAR\n\n")
+	visible := "WARD-STATUS: route unclear 🛑"
 	fmt.Fprintf(&b, "`%s` surveyed the fleet but could not confidently route this task, so it "+
 		"filed nothing downstream and launched no container. This intake record stays open for a human to "+
 		"route.\n\n", agentCmdline(mode, "engineer"))
@@ -415,10 +413,10 @@ func routeUnclearComment(mode containerMode, reason, read string) string {
 	fmt.Fprintf(&b, "Once you know the target repo, re-dispatch in DIRECT mode - `%s <owner/repo> "+
 		"--instructions-file <path>` - or file the issue by hand and run `%s <ref>`.\n", agentCmdline(mode, "engineer"), agentCmdline(mode, "engineer"))
 	if read = strings.TrimSpace(read); read != "" {
-		fmt.Fprintf(&b, "\n<details><summary>full route survey</summary>\n\n%s\n\n</details>\n", read)
+		fmt.Fprintf(&b, "\n## Full route survey\n\n%s\n", read)
 	}
-	fmt.Fprintf(&b, "\n---\nPosted automatically by `%s` route (ward#164).", agentCmdline(mode, "engineer"))
-	return b.String()
+	fmt.Fprintf(&b, "\nPosted automatically by `%s` route (ward#164).", agentCmdline(mode, "engineer"))
+	return collapsedIssueComment(visible, "route details", b.String())
 }
 
 // printAgentTaskRoutePlan renders the intake record that *would* be filed and the
@@ -434,7 +432,7 @@ func printAgentTaskRoutePlan(c *cli.Command, mode containerMode, taskText, title
 	fmt.Fprintf(&b, "intake:  %s/%s (the literal task is filed here first, then routed live)\n", inboxOwner, inboxRepo)
 	fmt.Fprintf(&b, "title:   %s\n", title)
 	fmt.Fprintf(&b, "----- intake issue to file -----\ntitle: %s\n\n%s\n----- end -----\n", title, routeIntakeBody(mode, taskText))
-	fmt.Fprintf(&b, "# then, live: survey repos across %s, file a scoped child issue in the routed repo,\n", strings.Join(defaultPrimaryOrgs(), ", "))
+	fmt.Fprintf(&b, "# then, live: survey repos across %s, file a scoped child issue in the routed repo,\n", strings.Join(currentSmartDefaults().trustedOwnerList(), ", "))
 	fmt.Fprintf(&b, "# cross-link + close the intake record, and carry the child to merge headless.\n")
 	fmt.Fprintf(&b, "# an UNCLEAR survey files no child and launches nothing, leaving the intake record for a human.\n")
 	_, err := io.WriteString(out, b.String())

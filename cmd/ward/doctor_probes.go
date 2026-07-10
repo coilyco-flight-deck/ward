@@ -163,9 +163,3 @@ func runCredEnvProbe(binaries []repocfg.ProtectedBinary, getenv envLookup, stric
 	}
 	return out
 }
-
-// oneLine collapses whitespace runs into single spaces and trims, so a
-// multi-line sudo stderr doesn't break per-line rendering.
-func oneLine(s string) string {
-	return strings.Join(strings.Fields(s), " ")
-}

@@ -1,6 +1,7 @@
 package main
 
 import (
+	"bufio"
 	"context"
 	"crypto/rand"
 	"crypto/subtle"
@@ -8,6 +9,7 @@ import (
 	"encoding/json"
 	"errors"
 	"fmt"
+	"io"
 	"net"
 	"os"
 	"path/filepath"
@@ -36,6 +38,25 @@ const (
 
 var errDispatchBrokerUnavailable = errors.New("dispatch broker unavailable")
 
+// dispatchBrokerLaunchMu serializes the process-global env override while the host
+// broker kicks off a forwarded run so one launch cannot leak into another.
+var dispatchBrokerLaunchMu sync.Mutex
+
+// dispatchBrokerLaunch runs the validated request's role-specific launch.
+// Tests override this hook to keep the broker path fast and observable.
+var dispatchBrokerLaunch = func(ctx context.Context, req dispatchBrokerRequest) error {
+	switch req.Role {
+	case "engineer":
+		return agentEngineerCommand().Run(ctx, req.Argv)
+	case "advisor":
+		return agentAdvisorCommand().Run(ctx, req.Argv)
+	case "qa":
+		return agentQACommand().Run(ctx, req.Argv)
+	default:
+		return fmt.Errorf("role %q is not dispatchable", req.Role)
+	}
+}
+
 const (
 	// dispatchActionLaunch is the default action: launch a sibling engineer/advisor
 	// run. An empty Action normalizes to it, keeping older launch requests byte-compatible.
@@ -43,6 +64,8 @@ const (
 	// dispatchActionStop is the targeted control action (ward#627): docker-stop one
 	// running engineer named by Target - stop-only, engineer-only, no launch argv.
 	dispatchActionStop = "stop"
+	// dispatchActionLogs streams one engineer's logs back to the requester.
+	dispatchActionLogs = "logs"
 )
 
 type dispatchBrokerRequest struct {
@@ -55,6 +78,8 @@ type dispatchBrokerRequest struct {
 	// a container name. Empty on a launch request (ward#627).
 	Target    string `json:"target,omitempty"`
 	Requester string `json:"requester,omitempty"`
+	Tail      int    `json:"tail,omitempty"`
+	Follow    bool   `json:"follow,omitempty"`
 	// Token is the per-launch shared secret the surface echoes back so the host
 	// broker authenticates the dial (the TCP port has no socket file perms).
 	Token string `json:"token,omitempty"`
@@ -72,6 +97,8 @@ func dispatchAction(a string) string {
 type dispatchBrokerResponse struct {
 	OK    bool   `json:"ok"`
 	Error string `json:"error,omitempty"`
+	// Source names the log source the host used for a logs request.
+	Source string `json:"source,omitempty"`
 	// LogPath is the host path the served run's stdout/stderr were redirected to,
 	// so the requesting surface can name it without any bytes hitting the TTY (ward#389).
 	LogPath string `json:"log_path,omitempty"`
@@ -80,6 +107,18 @@ type dispatchBrokerResponse struct {
 // dispatchStdioMu serializes the process-global os.Stdout/os.Stderr swap that keeps
 // a served run's deploy output off the shared read-only TUI (ward#389).
 var dispatchStdioMu sync.Mutex
+
+// dispatchStdioRestoreHook is a test hook that fires after a detached launch has
+// restored process stdio and closed its dispatch log.
+var dispatchStdioRestoreHook = func() {}
+
+// dispatchFailedDispatchLaunchHook lets tests bypass the slow real failure-comment
+// recovery path when they only care about the broker's structured response.
+var dispatchFailedDispatchLaunchHook = func(dispatchBrokerRequest, string, error) bool { return false }
+
+// dispatchFailedDispatchLaunchStartHook lets tests wait until the detached failure
+// branch has definitely entered its recovery path.
+var dispatchFailedDispatchLaunchStartHook = func() {}
 
 // dispatchRefLocks holds one mutex per issue ref so the broker serializes same-ref
 // dispatches before any container starts (ward#600, docs/agent-reservation.md).
@@ -156,7 +195,11 @@ func (r *Runner) handleHostDispatchBrokerConn(ctx context.Context, conn net.Conn
 	if req.Requester == "" {
 		req.Requester = requester
 	}
-	logPath, err := r.runHostDispatchBrokerRequest(ctx, req)
+	if dispatchAction(req.Action) == dispatchActionLogs {
+		r.runDispatchBrokerLogs(ctx, conn, req)
+		return
+	}
+	logPath, err := r.startHostDispatchBrokerRequest(ctx, req)
 	writeDispatchBrokerResponse(conn, logPath, err)
 }
 
@@ -165,47 +208,186 @@ func writeDispatchBrokerResponse(conn net.Conn, logPath string, err error) {
 	if err != nil {
 		resp.Error = err.Error()
 	}
-	_ = json.NewEncoder(conn).Encode(resp)
+	if data, merr := json.Marshal(resp); merr == nil {
+		_, _ = conn.Write(data)
+	}
 }
 
-// runHostDispatchBrokerRequest serves one validated run in-process, redirecting its
-// deploy output to a per-dispatch log so it can't corrupt the surface TUI (ward#389).
-func (r *Runner) runHostDispatchBrokerRequest(ctx context.Context, req dispatchBrokerRequest) (string, error) {
+// writeDispatchBrokerLogsResponse writes the response header for a logs request.
+func writeDispatchBrokerLogsResponse(conn net.Conn, source string, err error) {
+	resp := dispatchBrokerResponse{OK: err == nil, Source: source}
+	if err != nil {
+		resp.Error = err.Error()
+	}
+	if data, merr := json.Marshal(resp); merr == nil {
+		_, _ = conn.Write(data)
+	}
+}
+
+// startHostDispatchBrokerRequest launches the validated request in the background
+// and returns once the launch has started so the broker can ack the surface promptly.
+func (r *Runner) startHostDispatchBrokerRequest(ctx context.Context, req dispatchBrokerRequest) (string, error) {
 	if err := validateDispatchBrokerRequest(req); err != nil {
 		return "", err
 	}
-	// Stop is a targeted control action, not a launch: it resolves + docker-stops one
-	// engineer, so it takes no dispatch log, no stdio redirect, and no ref lock (ward#627).
 	if dispatchAction(req.Action) == dispatchActionStop {
 		return r.runDispatchBrokerStop(ctx, req)
 	}
-	// Serialize on the ref so two same-N dispatches can't both reserve + spin: the
-	// second waits, then its reservation check sees the first's hold (ward#600).
+	var lock *sync.Mutex
 	if ref, err := parseAgentIssueRef(req.Argv[1]); err == nil {
-		lock := dispatchRefLock(ref.String())
-		lock.Lock()
-		defer lock.Unlock()
+		lock = dispatchRefLock(ref.String())
 	}
 	logf, logPath, err := openDispatchLog(req, time.Now())
 	if err != nil {
-		// Fail loud rather than fall back to the TTY: a broken log dir must not
-		// silently reroute the flood back onto the corrupted surface (ward#389).
 		return "", fmt.Errorf("dispatch broker: open run log: %w", err)
 	}
-	defer func() { _ = logf.Close() }()
-	restore := redirectStdioToLog(logf)
-	defer restore()
-
 	_, _ = fmt.Fprintf(logf, "ward dispatch broker: %s requested `ward agent %s`\n",
-		emptyDefault(req.Requester, "unknown-container"), strings.Join(req.Argv, " "))
-	switch req.Role {
-	case "engineer":
-		return logPath, agentEngineerCommand().Run(ctx, req.Argv)
-	case "advisor":
-		return logPath, agentAdvisorCommand().Run(ctx, req.Argv)
-	default:
-		return logPath, fmt.Errorf("role %q is not dispatchable", req.Role)
+		emptyDefault(req.Requester, "unknown-container"), redactDispatchBrokerArgv(req.Argv))
+	ref := ""
+	if len(req.Argv) >= 2 {
+		ref = req.Argv[1]
 	}
+	_, _ = fmt.Fprintf(logf, "ward dispatch broker: this log captures the host wrapper only; in-container engineer console/reap logs drain separately and are readable with `ward agent logs %s`\n",
+		ref)
+	restore := redirectStdioToLog(logf)
+	started := make(chan struct{})
+	go func() {
+		restored := false
+		defer func() {
+			if !restored {
+				restore()
+			}
+			_ = logf.Close()
+			dispatchStdioRestoreHook()
+		}()
+		if lock != nil {
+			lock.Lock()
+			defer lock.Unlock()
+		}
+		if err := withBrokerForwardingDisabled(func() error {
+			close(started)
+			return dispatchBrokerLaunch(ctx, req)
+		}); err != nil {
+			fmt.Fprintf(os.Stderr, "ward dispatch broker: launch failed: %v\n", err)
+			restore()
+			restored = true
+			dispatchFailedDispatchLaunchStartHook()
+			r.commentFailedDispatchLaunch(ctx, req, logPath, err)
+			return
+		}
+		fmt.Fprintf(os.Stderr, "ward dispatch broker: launch completed\n")
+	}()
+	select {
+	case <-started:
+		return logPath, nil
+	case <-ctx.Done():
+		return "", ctx.Err()
+	}
+}
+
+// commentFailedDispatchLaunch posts the failure comment with a detached timeout.
+func (r *Runner) commentFailedDispatchLaunch(ctx context.Context, req dispatchBrokerRequest, logPath string, launchErr error) {
+	if dispatchFailedDispatchLaunchHook(req, logPath, launchErr) {
+		return
+	}
+	if r == nil || r.Runner == nil {
+		return
+	}
+	ref, err := parseAgentIssueRef(req.Argv[1])
+	if err != nil {
+		return
+	}
+	mode := dispatchBrokerRequestMode(req)
+	commentCtx, cancel := context.WithTimeout(context.WithoutCancel(ctx), 30*time.Second)
+	defer cancel()
+	cl, cerr := r.hostTrackerClient(commentCtx, ref.trackerOrDefault(), mode)
+	if cerr != nil {
+		fmt.Fprintf(os.Stderr, "ward dispatch broker: could not build issue client to comment failed dispatch on %s: %v\n", ref, cerr)
+		return
+	}
+	r.commentFailedDispatch(commentCtx, cl, mode, ref, req, logPath, launchErr)
+}
+
+// dispatchBrokerRequestMode resolves the requested harness for a forwarded dispatch.
+func dispatchBrokerRequestMode(req dispatchBrokerRequest) containerMode {
+	for i := 0; i+1 < len(req.Argv); i++ {
+		switch req.Argv[i] {
+		case "--harness", "--agent", "--driver":
+			if mode, err := parseMode(req.Argv[i+1]); err == nil {
+				return mode
+			}
+		}
+	}
+	return currentAgentMode()
+}
+
+// commentFailedDispatch writes the visible failure comment and clears the stale
+// reservation signal after a forwarded launch never became a running engineer.
+func (r *Runner) commentFailedDispatch(ctx context.Context, cl Tracker, mode containerMode, ref agentIssueRef, req dispatchBrokerRequest, logPath string, launchErr error) {
+	container := emptyDefault(req.Requester, "unknown-container")
+	if req.Role == roleEngineer {
+		container = issueScopedContainerName(req.Role, mode, targetRepo{Owner: ref.Owner, Name: ref.Repo}, ref.Number)
+	}
+	body := dispatchLaunchFailureCommentBody(mode, container, req, logPath, launchErr)
+	if err := cl.commentIssue(ctx, ref.Owner, ref.Repo, ref.Number, body); err != nil {
+		fmt.Fprintf(os.Stderr, "ward dispatch broker: could not comment failed dispatch on %s: %v\n", ref, err)
+		return
+	}
+	if err := cl.unlockIssue(ctx, ref.Owner, ref.Repo, ref.Number); err != nil && !errors.Is(err, errForgeLockUnsupported) {
+		fmt.Fprintf(os.Stderr, "ward dispatch broker: could not unlock issue %s after failed dispatch: %v\n", ref, err)
+	}
+	fmt.Fprintf(os.Stderr, "ward dispatch broker: released failed dispatch reservation on %s\n", ref)
+}
+
+// dispatchLaunchFailureCommentBody supersedes the stale reservation with a visible
+// failure comment and the retry shape an operator needs.
+func dispatchLaunchFailureCommentBody(mode containerMode, container string, req dispatchBrokerRequest, logPath string, launchErr error) string {
+	attempted := redactDispatchBrokerArgv(req.Argv)
+	logDetail := "unavailable"
+	if strings.TrimSpace(logPath) != "" {
+		logDetail = logPath
+	}
+	detail := fmt.Sprintf(
+		"This forwarded dispatch failed after the issue was already reserved.\n\n"+
+			"Attempted harness: `%s`\n"+
+			"Attempted run: `ward agent %s`\n"+
+			"Container: `%s`\n"+
+			"Container created: no running engineer was observed.\n"+
+			"Host log: `%s`\n"+
+			"Failure: `%s`\n\n"+
+			"Retry: choose another harness if the first one is down, or rerun with `--force` if the reservation is stale.",
+		mode, attempted, container, logDetail, firstLine(launchErr.Error()))
+	return agentReservationReleaseMarker + "\n" + agentNeedsRedispatchMarker + "\n" +
+		collapsedIssueComment("WARD-DISPATCH: failed ❌", "failure details", detail)
+}
+
+// withBrokerForwardingDisabled temporarily clears the read-only surface markers so
+// the host-side launch does not re-enter the broker and deadlock on itself.
+func withBrokerForwardingDisabled(fn func() error) error {
+	dispatchBrokerLaunchMu.Lock()
+	defer dispatchBrokerLaunchMu.Unlock()
+
+	type savedEnv struct {
+		value string
+		set   bool
+	}
+	saved := map[string]savedEnv{}
+	for _, key := range []string{"WARD_READONLY", envDispatchBrokerAddr, envDispatchBrokerToken} {
+		if v, ok := os.LookupEnv(key); ok {
+			saved[key] = savedEnv{value: v, set: true}
+		}
+		_ = os.Unsetenv(key)
+	}
+	defer func() {
+		for _, key := range []string{"WARD_READONLY", envDispatchBrokerAddr, envDispatchBrokerToken} {
+			if v, ok := saved[key]; ok && v.set {
+				_ = os.Setenv(key, v.value)
+				continue
+			}
+			_ = os.Unsetenv(key)
+		}
+	}()
+	return fn()
 }
 
 // runDispatchBrokerStop resolves the stop target to one running engineer and
@@ -297,18 +479,23 @@ func stopTargetGuard(name, role string) error {
 	}
 }
 
-// selectSingleStopTarget picks exactly one engineer from a match set, refusing on
-// zero or more than one (ambiguous) with the candidates listed, not a guess (ward#627).
-func selectSingleStopTarget(target string, names []string) (string, error) {
+// selectSingleEngineerTarget picks exactly one engineer from a match set, refusing
+// on zero or more than one (ambiguous) with the candidates listed, not a guess.
+func selectSingleEngineerTarget(action, target string, names []string) (string, error) {
 	switch len(names) {
 	case 1:
 		return names[0], nil
 	case 0:
-		return "", fmt.Errorf("dispatch broker: no running engineer container matches %q - nothing to stop", target)
+		return "", fmt.Errorf("dispatch broker: no running engineer container matches %q - nothing to %s", target, action)
 	default:
 		return "", fmt.Errorf("dispatch broker: %q matches %d running engineer containers (%s) - "+
-			"refusing to guess; stop one by its container name", target, len(names), strings.Join(names, ", "))
+			"refusing to guess; %s one by its container name", target, len(names), strings.Join(names, ", "), action)
 	}
+}
+
+// selectSingleStopTarget keeps the ward#627 stop wording stable.
+func selectSingleStopTarget(target string, names []string) (string, error) {
+	return selectSingleEngineerTarget("stop", target, names)
 }
 
 // openDispatchLog creates ~/.ward/agent-logs/dispatch and opens the per-dispatch
@@ -353,10 +540,12 @@ func validateDispatchBrokerRequest(req dispatchBrokerRequest) error {
 	switch dispatchAction(req.Action) {
 	case dispatchActionStop:
 		return validateDispatchBrokerStop(req)
+	case dispatchActionLogs:
+		return validateDispatchBrokerLogs(req)
 	case dispatchActionLaunch:
 		return validateDispatchBrokerLaunch(req)
 	default:
-		return fmt.Errorf("dispatch broker: action %q refused (allowed: launch, stop)", req.Action)
+		return fmt.Errorf("dispatch broker: action %q refused (allowed: launch, stop, logs)", req.Action)
 	}
 }
 
@@ -388,14 +577,39 @@ func validateDispatchBrokerStop(req dispatchBrokerRequest) error {
 	return nil
 }
 
+// validateDispatchBrokerLogs checks the logs shape: a target, no argv, and a
+// non-negative tail. follow is just a request hint.
+func validateDispatchBrokerLogs(req dispatchBrokerRequest) error {
+	if len(req.Argv) != 0 {
+		return fmt.Errorf("dispatch broker: logs takes no launch argv, got %v", req.Argv)
+	}
+	target := strings.TrimSpace(req.Target)
+	if target == "" {
+		return fmt.Errorf("dispatch broker: logs requires a target (owner/repo#N or a container name)")
+	}
+	if strings.ContainsRune(target, '\x00') {
+		return fmt.Errorf("dispatch broker: logs target contains NUL")
+	}
+	if strings.HasPrefix(target, "-") {
+		return fmt.Errorf("dispatch broker: logs target %q must not be a flag", target)
+	}
+	if _, err := parseAgentIssueRef(target); err != nil && !dispatchStopTargetRe.MatchString(target) {
+		return fmt.Errorf("dispatch broker: logs target %q is neither an issue ref (owner/repo#N) nor a container name", target)
+	}
+	if req.Tail < 0 {
+		return fmt.Errorf("dispatch broker: logs tail must be >= 0")
+	}
+	return nil
+}
+
 // validateDispatchBrokerLaunch is the launch-request shape (the original narrow API):
 // an engineer/advisor role, an argv led by that role, and an issue ref (ward#378).
 func validateDispatchBrokerLaunch(req dispatchBrokerRequest) error {
 	if req.Target != "" {
 		return fmt.Errorf("dispatch broker: launch takes no stop target, got %q", req.Target)
 	}
-	if req.Role != "engineer" && req.Role != "advisor" {
-		return fmt.Errorf("dispatch broker: role %q refused (allowed: engineer, advisor)", req.Role)
+	if req.Role != "engineer" && req.Role != "advisor" && req.Role != "qa" {
+		return fmt.Errorf("dispatch broker: role %q refused (allowed: engineer, advisor, qa)", req.Role)
 	}
 	if len(req.Argv) == 0 || req.Argv[0] != req.Role {
 		return fmt.Errorf("dispatch broker: argv must begin with role %q", req.Role)
@@ -414,12 +628,37 @@ func validateDispatchBrokerLaunch(req dispatchBrokerRequest) error {
 	return validateDispatchBrokerArgv(req.Role, req.Argv[2:])
 }
 
+// runDispatchBrokerLogs resolves one engineer run to a live docker source or a
+// drained archive, then streams its logs back over the request connection.
+func (r *Runner) runDispatchBrokerLogs(ctx context.Context, conn net.Conn, req dispatchBrokerRequest) {
+	source, err := r.resolveDispatchBrokerLogsSource(ctx, req)
+	if err != nil {
+		writeDispatchBrokerLogsResponse(conn, "", err)
+		return
+	}
+	writeDispatchBrokerLogsResponse(conn, source.String(), nil)
+	if err := r.streamAgentLogsSource(ctx, source, conn); err != nil {
+		fmt.Fprintf(os.Stderr, "ward dispatch broker: logs stream failed: %v\n", err)
+	}
+}
+
+// resolveDispatchBrokerLogsSource resolves the request target to one readable
+// engineer log source.
+func (r *Runner) resolveDispatchBrokerLogsSource(ctx context.Context, req dispatchBrokerRequest) (agentLogSource, error) {
+	if ref, err := parseAgentIssueRef(req.Target); err == nil && ref.Owner != "" && ref.Repo != "" {
+		return r.resolveAgentLogsSourceForIssue(ctx, ref, req.Tail, req.Follow)
+	}
+	return r.resolveAgentLogsSourceForName(ctx, req.Target, req.Tail, req.Follow)
+}
+
 func validateDispatchBrokerArgv(role string, tail []string) error {
 	// --config is repeatable on both roles (ward#616); --harness, its equal --agent
 	// spelling, and the pre-#660 --driver alias stay approved for skew-safety (ward#660).
 	valueFlags := map[string]bool{"--harness": true, "--agent": true, "--driver": true, "--config": true}
 	boolFlags := map[string]bool{"--print": true}
 	if role == "engineer" {
+		valueFlags["--workflow"] = true
+		valueFlags["--details"] = true
 		for _, f := range []string{"--image", "--tag", "--ward-version", "--branch", "--repo", "--tailnet-mode"} {
 			valueFlags[f] = true
 		}
@@ -427,6 +666,9 @@ func validateDispatchBrokerArgv(role string, tail []string) error {
 			boolFlags[f] = true
 		}
 		return validateDispatchBrokerFlags(role, tail, valueFlags, boolFlags, false)
+	}
+	if role == "qa" {
+		valueFlags["--family"] = true
 	}
 	valueFlags["--thoroughness"] = true
 	valueFlags["--depth"] = true
@@ -464,6 +706,23 @@ func emptyDefault(s, fallback string) string {
 	return s
 }
 
+func brokerDispatchArgvForRole(ctx context.Context, r *Runner, c *cli.Command, role string, mode containerMode) ([]string, bool) {
+	ref, ok := r.brokerDispatchRef(ctx, c.Args().First())
+	if !ok {
+		return nil, false
+	}
+	switch role {
+	case "engineer":
+		return brokerEngineerArgv(c, mode, ref), true
+	case "advisor":
+		return brokerAdvisorArgv(c, mode, ref), true
+	case "qa":
+		return brokerQaArgv(c, mode, ref), true
+	default:
+		return nil, false
+	}
+}
+
 // maybeForwardAgentDispatchToHostBroker is the in-container ref-mode gate.
 // It only runs inside a read-only director surface with a broker socket.
 func (r *Runner) maybeForwardAgentDispatchToHostBroker(ctx context.Context, c *cli.Command, role string, mode containerMode) (bool, error) {
@@ -471,21 +730,8 @@ func (r *Runner) maybeForwardAgentDispatchToHostBroker(ctx context.Context, c *c
 	if addr == "" || os.Getenv("WARD_READONLY") != "1" {
 		return false, nil
 	}
-	var argv []string
-	switch role {
-	case "engineer":
-		ref, ok := r.brokerDispatchRef(ctx, c.Args().First())
-		if !ok {
-			return false, nil
-		}
-		argv = brokerEngineerArgv(c, mode, ref)
-	case "advisor":
-		ref, ok := r.brokerDispatchRef(ctx, c.Args().First())
-		if !ok {
-			return false, nil
-		}
-		argv = brokerAdvisorArgv(c, mode, ref)
-	default:
+	argv, ok := brokerDispatchArgvForRole(ctx, r, c, role, mode)
+	if !ok {
 		return false, nil
 	}
 	req := dispatchBrokerRequest{
@@ -494,32 +740,56 @@ func (r *Runner) maybeForwardAgentDispatchToHostBroker(ctx context.Context, c *c
 		Requester: strings.TrimSpace(os.Getenv("WARD_CONTAINER_NAME")),
 		Token:     strings.TrimSpace(os.Getenv(envDispatchBrokerToken)),
 	}
-	logPath, err := sendDispatchBrokerRequest(ctx, addr, req)
+	logPath, err := sendDispatchBrokerLaunchRequest(ctx, addr, req)
 	if err != nil {
+		if logPath != "" {
+			return true, fmt.Errorf("%w (dispatch log: %s)", err, logPath)
+		}
 		return true, err
 	}
+	displayArgv := redactDispatchBrokerArgv(argv)
 	// This line is captured as tool output by the surface agent, not written to the
 	// raw TTY, so naming the host-side run log here is safe and aids discovery.
 	if logPath != "" {
 		fmt.Fprintf(os.Stderr, "ward dispatch broker: forwarded `ward agent %s` to host ward (run output on the host at %s)\n",
-			strings.Join(argv, " "), logPath)
+			displayArgv, logPath)
 	} else {
-		fmt.Fprintf(os.Stderr, "ward dispatch broker: forwarded `ward agent %s` to host ward\n", strings.Join(argv, " "))
+		fmt.Fprintf(os.Stderr, "ward dispatch broker: forwarded `ward agent %s` to host ward\n", displayArgv)
 	}
 	return true, nil
 }
 
+// brokerDispatchHarness returns the harness to forward into a sibling dispatch.
+// Explicit --harness/--agent/--driver wins; otherwise inherit WARD_AGENT/WARD_MODE.
+func brokerDispatchHarness(c *cli.Command, fallback containerMode) containerMode {
+	if c.IsSet("harness") || c.IsSet("agent") || c.IsSet("driver") {
+		return fallback
+	}
+	return currentAgentMode()
+}
+
 func (r *Runner) brokerDispatchRef(ctx context.Context, arg string) (agentIssueRef, bool) {
-	ref, err := r.resolveAgentIssueRef(ctx, arg)
+	ref, err := parseAgentIssueRefWithoutAuthority(arg)
 	if err != nil {
-		return agentIssueRef{}, false
+		ref, err = r.resolveAgentIssueRef(ctx, arg)
+		if err != nil {
+			return agentIssueRef{}, false
+		}
 	}
 	return ref, true
 }
 
 func brokerEngineerArgv(c *cli.Command, mode containerMode, ref agentIssueRef) []string {
-	argv := []string{"engineer", ref.String(), "--harness", string(mode)}
+	argv := []string{"engineer", ref.String(), "--harness", string(brokerDispatchHarness(c, mode))}
 	argv = appendBrokerContainerFlags(argv, c)
+	if c.IsSet("workflow") {
+		if wf := strings.TrimSpace(c.String("workflow")); wf != "" {
+			argv = append(argv, "--workflow", wf)
+		}
+	}
+	if details := strings.TrimSpace(c.String("details")); details != "" {
+		argv = append(argv, "--details", details)
+	}
 	if c.Bool("force") {
 		argv = append(argv, "--force")
 	}
@@ -536,7 +806,23 @@ func brokerEngineerArgv(c *cli.Command, mode containerMode, ref agentIssueRef) [
 }
 
 func brokerAdvisorArgv(c *cli.Command, mode containerMode, ref agentIssueRef) []string {
-	argv := []string{"advisor", ref.String(), "--harness", string(mode)}
+	argv := []string{"advisor", ref.String(), "--harness", string(brokerDispatchHarness(c, mode))}
+	if lvl := strings.TrimSpace(c.String("thoroughness")); lvl != "" {
+		argv = append(argv, "--thoroughness", lvl)
+	}
+	argv = appendBrokerConfigFlags(argv, c)
+	if c.Bool("print") {
+		argv = append(argv, "--print")
+	}
+	argv = append(argv, c.Args().Tail()...)
+	return argv
+}
+
+func brokerQaArgv(c *cli.Command, mode containerMode, ref agentIssueRef) []string {
+	argv := []string{"qa", ref.String(), "--harness", string(brokerDispatchHarness(c, mode))}
+	if family := strings.TrimSpace(c.String("family")); family != "" {
+		argv = append(argv, "--family", family)
+	}
 	if lvl := strings.TrimSpace(c.String("thoroughness")); lvl != "" {
 		argv = append(argv, "--thoroughness", lvl)
 	}
@@ -579,6 +865,10 @@ func appendBrokerContainerFlags(argv []string, c *cli.Command) []string {
 	return argv
 }
 
+func redactDispatchBrokerArgv(argv []string) string {
+	return redactSecrets(strings.Join(argv, " "))
+}
+
 func sendDispatchBrokerRequest(ctx context.Context, addr string, req dispatchBrokerRequest) (string, error) {
 	var d net.Dialer
 	conn, err := d.DialContext(ctx, "tcp", addr)
@@ -610,8 +900,148 @@ func sendDispatchBrokerRequest(ctx context.Context, addr string, req dispatchBro
 	return resp.LogPath, nil
 }
 
+func sendDispatchBrokerLaunchRequest(ctx context.Context, addr string, req dispatchBrokerRequest) (string, error) {
+	var d net.Dialer
+	conn, err := d.DialContext(ctx, "tcp", addr)
+	if err != nil {
+		return "", fmt.Errorf("%w: the host dispatch broker did not answer at %s "+
+			"(WARD_DISPATCH_BROKER_ADDR, TCP over the docker gateway - see ward#382): %w",
+			errDispatchBrokerUnavailable, addr, err)
+	}
+	if err := json.NewEncoder(conn).Encode(req); err != nil {
+		_ = conn.Close()
+		return "", fmt.Errorf("dispatch broker: send request: %w", err)
+	}
+	type responseResult struct {
+		resp dispatchBrokerResponse
+		err  error
+	}
+	ch := make(chan responseResult, 1)
+	go func() {
+		defer func() { _ = conn.Close() }()
+		var resp dispatchBrokerResponse
+		if err := json.NewDecoder(conn).Decode(&resp); err != nil {
+			ch <- responseResult{err: err}
+			return
+		}
+		ch <- responseResult{resp: resp}
+	}()
+	select {
+	case <-ctx.Done():
+		return "", ctx.Err()
+	case result := <-ch:
+		if result.err != nil {
+			return "", fmt.Errorf("dispatch broker: read response from %s: %w", addr, result.err)
+		}
+		if !result.resp.OK {
+			if isCredentialBrokerReply(result.resp.Error) {
+				return "", fmt.Errorf("%w: %s answered as the credential broker, not the dispatch broker "+
+					"(WARD_DISPATCH_BROKER_ADDR points at the wrong broker - see ward#382)",
+					errDispatchBrokerUnavailable, addr)
+			}
+			return result.resp.LogPath, fmt.Errorf("dispatch broker: %s", result.resp.Error)
+		}
+		return result.resp.LogPath, nil
+	case <-time.After(100 * time.Millisecond):
+		return "", nil
+	}
+}
+
+// sendDispatchBrokerLogsRequest sends a logs request and returns the source + body
+// stream for the caller to relay.
+func sendDispatchBrokerLogsRequest(ctx context.Context, addr string, req dispatchBrokerRequest) (string, io.ReadCloser, error) {
+	var d net.Dialer
+	conn, err := d.DialContext(ctx, "tcp", addr)
+	if err != nil {
+		return "", nil, fmt.Errorf("%w: the host dispatch broker did not answer at %s "+
+			"(WARD_DISPATCH_BROKER_ADDR, TCP over the docker gateway - see ward#382): %w",
+			errDispatchBrokerUnavailable, addr, err)
+	}
+	if err := json.NewEncoder(conn).Encode(req); err != nil {
+		_ = conn.Close()
+		return "", nil, fmt.Errorf("dispatch broker: send request: %w", err)
+	}
+	dec := json.NewDecoder(conn)
+	var resp dispatchBrokerResponse
+	if err := dec.Decode(&resp); err != nil {
+		_ = conn.Close()
+		return "", nil, fmt.Errorf("dispatch broker: read response from %s: %w", addr, err)
+	}
+	if !resp.OK {
+		_ = conn.Close()
+		if isCredentialBrokerReply(resp.Error) {
+			return "", nil, fmt.Errorf("%w: %s answered as the credential broker, not the dispatch broker "+
+				"(WARD_DISPATCH_BROKER_ADDR points at the wrong broker - see ward#382)",
+				errDispatchBrokerUnavailable, addr)
+		}
+		return "", nil, fmt.Errorf("dispatch broker: %s", resp.Error)
+	}
+	return resp.Source, &connReadCloser{
+		Reader: skipLeadingSeparator(io.MultiReader(dec.Buffered(), conn)),
+		CloseFn: func() error {
+			return conn.Close()
+		},
+	}, nil
+}
+
 // isCredentialBrokerReply spots the credential broker's protocol-version refusal:
 // the dispatch client reached cmd/ward/broker.go, not the dispatch broker (ward#382).
 func isCredentialBrokerReply(msg string) bool {
 	return strings.Contains(msg, "unsupported protocol version")
+}
+
+type connReadCloser struct {
+	io.Reader
+	CloseFn func() error
+}
+
+func (c *connReadCloser) Close() error {
+	if c.CloseFn != nil {
+		return c.CloseFn()
+	}
+	return nil
+}
+
+// skipLeadingSeparator drops one broker framing line break from a streamed body.
+func skipLeadingSeparator(r io.Reader) io.Reader {
+	return &separatorSkippingReader{r: bufio.NewReader(r)}
+}
+
+type separatorSkippingReader struct {
+	r       *bufio.Reader
+	skipped bool
+}
+
+func (s *separatorSkippingReader) Read(p []byte) (int, error) {
+	if !s.skipped {
+		s.skipped = true
+		s.skipLeadingSeparator()
+	}
+	return s.r.Read(p)
+}
+
+func (s *separatorSkippingReader) skipLeadingSeparator() {
+	for {
+		b, err := s.r.Peek(1)
+		if err != nil {
+			return
+		}
+		if b[0] == '\n' {
+			_, _ = s.r.ReadByte()
+			continue
+		}
+		if b[0] == '\r' {
+			_, _ = s.r.ReadByte()
+			s.skipOptionalLineFeed()
+			continue
+		}
+		return
+	}
+}
+
+func (s *separatorSkippingReader) skipOptionalLineFeed() {
+	next, err := s.r.Peek(1)
+	if err == nil && next[0] == '\n' {
+		_, _ = s.r.ReadByte()
+	}
 }

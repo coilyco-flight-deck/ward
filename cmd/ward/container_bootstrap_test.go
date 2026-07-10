@@ -140,13 +140,6 @@ func TestBuildAgentArgv(t *testing.T) {
 			seed:     seed,
 			wantArgv: []string{"opencode"},
 		},
-		{
-			// The retired "qwen" alias (ward#401) still drives the opencode dialect.
-			name:     "qwen alias oneshot",
-			env:      bootstrapEnv{Mode: "qwen", Agent: "opencode", Headless: true},
-			seed:     seed,
-			wantArgv: []string{"opencode", "run", "work issue #5"},
-		},
 	}
 	for _, tc := range cases {
 		t.Run(tc.name, func(t *testing.T) {
@@ -179,7 +172,7 @@ func TestReadBootstrapEnvDefaults(t *testing.T) {
 		"WARD_QWEN_MODEL", "WARD_OLLAMA_URL", "WARD_GIT_NAME", "WARD_GIT_EMAIL",
 		"WARD_CODEX_MODEL", "WARD_CODEX_REASONING_EFFORT", "WARD_CODEX_VERBOSITY",
 		"WARD_AGENT_UID", "WARD_AGENT_GID", "WARD_AGENT_HOME", "WARD_BRANCH",
-		"WARD_ROLE",
+		"WARD_ROLE", "WARD_TS_SOCKS5",
 		"WARD_HEADLESS", "WARD_ASK", "WARD_MIRROR_NAME", "WARD_SUBSTRATE_SKIP",
 	} {
 		t.Setenv(k, "")
@@ -234,6 +227,85 @@ func TestReadBootstrapEnvDefaults(t *testing.T) {
 	}
 }
 
+// TestReadBootstrapEnvDirectorCodexOverlay covers the director bootstrap path:
+// the baked fleet overlay resolves high effort and the startup echo prints it.
+func TestReadBootstrapEnvDirectorCodexOverlay(t *testing.T) {
+	for _, k := range []string{
+		"WARD_MODE", "WARD_AGENT", "WARD_CONTEXT_LEVEL", "WARD_GITCACHE", "WARD_CONTEXT_SRC",
+		"WARD_QWEN_MODEL", "WARD_OLLAMA_URL", "WARD_GIT_NAME", "WARD_GIT_EMAIL",
+		"WARD_CODEX_MODEL", "WARD_CODEX_REASONING_EFFORT", "WARD_CODEX_VERBOSITY",
+		"WARD_AGENT_UID", "WARD_AGENT_GID", "WARD_AGENT_HOME", "WARD_BRANCH",
+		"WARD_HEADLESS", "WARD_ASK", "WARD_MIRROR_NAME", "WARD_SUBSTRATE_SKIP",
+		"WARD_ROLE",
+	} {
+		t.Setenv(k, "")
+	}
+	t.Setenv("WARD_TARGET_OWNER", "coilyco-flight-deck")
+	t.Setenv("WARD_TARGET_NAME", "ward")
+	t.Setenv("WARD_FORGEJO_BASE", "https://forgejo.coilysiren.me")
+	t.Setenv("WARD_MODE", "codex")
+	t.Setenv("WARD_AGENT", "codex")
+	t.Setenv("WARD_ROLE", "director")
+
+	e, err := readBootstrapEnv()
+	if err != nil {
+		t.Fatalf("unexpected error: %v", err)
+	}
+	if e.CodexEffort != "high" {
+		t.Fatalf("director overlay resolved codex effort = %q, want high", e.CodexEffort)
+	}
+
+	prev := os.Stderr
+	r, w, _ := os.Pipe()
+	os.Stderr = w
+	t.Cleanup(func() { os.Stderr = prev })
+
+	done := make(chan string, 1)
+	go func() {
+		var out strings.Builder
+		_, _ = io.Copy(&out, r)
+		done <- out.String()
+	}()
+
+	rc := (&Runner{}).agentRunCtx(t.Context(), e, nil)
+	echoAgentConfigGo(e, rc, modeCodex)
+	_ = w.Close()
+	got := <-done
+	if !strings.Contains(got, "agent:         codex") || !strings.Contains(got, "effort:        high") {
+		t.Fatalf("director startup config echo should surface high codex effort; got:\n%s", got)
+	}
+}
+
+// echoRunContextGo should name whether the ward version came from a host ward
+// default, an explicit pin, or latest resolution so startup logs are actionable.
+func TestEchoRunContextGoVersionSource(t *testing.T) {
+	prev := os.Stderr
+	r, w, _ := os.Pipe()
+	os.Stderr = w
+	t.Cleanup(func() { os.Stderr = prev })
+
+	done := make(chan string, 1)
+	go func() {
+		var out strings.Builder
+		_, _ = io.Copy(&out, r)
+		done <- out.String()
+	}()
+
+	echoRunContextGo(bootstrapEnv{
+		TargetOwner:       "coilyco-flight-deck",
+		TargetName:        "ward",
+		Container:         "ward-container",
+		Mode:              "claude",
+		Agent:             "claude",
+		WardVersionSource: wardVersionLaunchLabel("v0.16.0", wardVersionSourceExplicit),
+	}, []string{"task"})
+	_ = w.Close()
+	got := <-done
+	if !strings.Contains(got, "ward:     explicit pin v0.16.0") {
+		t.Fatalf("explicit pin should be visible in run context; got:\n%s", got)
+	}
+}
+
 // Claude onboarding + creds and codex creds/config drained to their agent
 // folders in ward#425 Phase 3; their tests live there now (internal/agents/*).
 
@@ -273,6 +345,182 @@ func gitURL(t *testing.T, work, flag string) string {
 		t.Fatalf("git remote get-url %s: %v\n%s", flag, err, out)
 	}
 	return strings.TrimSpace(string(out))
+}
+
+func gitText(t *testing.T, dir string, argv ...string) string {
+	t.Helper()
+	out, err := exec.Command("git", append([]string{"-C", dir}, argv...)...).CombinedOutput()
+	if err != nil {
+		t.Fatalf("git %v failed: %v\n%s", argv, err, out)
+	}
+	return strings.TrimSpace(string(out))
+}
+
+func seedBranchResumeRepo(t *testing.T, cloneBase, name string) (string, string) {
+	t.Helper()
+	const owner = "owner"
+	const branch = "issue-735"
+	seed := t.TempDir()
+	runGit(t, seed, "init", "-b", "main", "-q")
+	runGit(t, seed, "config", "user.name", "Ward Test")
+	runGit(t, seed, "config", "user.email", "ward@example.com")
+	runGitCommitAt(t, seed, "2026-07-09T00:00:00Z", "main.txt", "main\n", "main commit")
+	mainRev := mustGitRev(t, seed, "HEAD")
+	branchRev := mainRev
+	if branch != "" {
+		runGit(t, seed, "checkout", "-b", branch)
+		runGitCommitAt(t, seed, "2026-07-09T00:01:00Z", "branch.txt", branch+"\n", "branch commit")
+		branchRev = mustGitRev(t, seed, "HEAD")
+		runGit(t, seed, "checkout", "main")
+	}
+	remote := filepath.Join(cloneBase, owner, name+".git")
+	if err := os.MkdirAll(filepath.Dir(remote), 0o755); err != nil {
+		t.Fatal(err)
+	}
+	runGit(t, t.TempDir(), "clone", "--bare", seed, remote)
+	return mainRev, branchRev
+}
+
+func useTestWorkspaceRoot(t *testing.T) string {
+	t.Helper()
+	old := workspaceRoot
+	root := t.TempDir()
+	workspaceRoot = root
+	t.Cleanup(func() { workspaceRoot = old })
+	return root
+}
+
+func TestCloneTargetResumesExistingOriginBranch(t *testing.T) {
+	if _, err := exec.LookPath("git"); err != nil {
+		t.Skip("git not on PATH")
+	}
+	r := gitRunner()
+	workspace := useTestWorkspaceRoot(t)
+	cloneBase := t.TempDir()
+	gitCache := t.TempDir()
+	name := "target-branch-resume"
+	branch := "issue-735"
+	mainRev, branchRev := seedBranchResumeRepo(t, cloneBase, name)
+
+	work, err := r.cloneTarget(context.Background(), bootstrapEnv{
+		TargetOwner: "owner",
+		TargetName:  name,
+		ForgejoBase: "https://forgejo.example",
+		CloneBase:   cloneBase,
+		GitCache:    gitCache,
+		MirrorName:  "mirror.git",
+		Branch:      branch,
+	})
+	if err != nil {
+		t.Fatalf("cloneTarget: %v", err)
+	}
+	if got := mustGitRev(t, work, "HEAD"); got != branchRev {
+		t.Fatalf("HEAD = %s, want resumed branch rev %s", got, branchRev)
+	}
+	if got := gitText(t, work, "rev-parse", "--abbrev-ref", "HEAD"); got != branch {
+		t.Fatalf("current branch = %q, want %q", got, branch)
+	}
+	if got := mustGitRev(t, work, "origin/"+branch); got != branchRev {
+		t.Fatalf("origin/%s = %s, want %s", branch, got, branchRev)
+	}
+	if got := mustGitRev(t, work, "origin/main"); got != mainRev {
+		t.Fatalf("origin/main = %s, want %s", got, mainRev)
+	}
+	if got := work; got != filepath.Join(workspace, name) {
+		t.Fatalf("work dir = %q, want %q", got, filepath.Join(workspace, name))
+	}
+}
+
+func TestCloneTargetStartsFromBaseWhenOriginBranchMissing(t *testing.T) {
+	if _, err := exec.LookPath("git"); err != nil {
+		t.Skip("git not on PATH")
+	}
+	r := gitRunner()
+	useTestWorkspaceRoot(t)
+	cloneBase := t.TempDir()
+	gitCache := t.TempDir()
+	name := "target-branch-base"
+	mainRev, _ := seedBranchResumeRepo(t, cloneBase, name)
+
+	work, err := r.cloneTarget(context.Background(), bootstrapEnv{
+		TargetOwner: "owner",
+		TargetName:  name,
+		ForgejoBase: "https://forgejo.example",
+		CloneBase:   cloneBase,
+		GitCache:    gitCache,
+		MirrorName:  "mirror.git",
+		Branch:      "issue-999",
+	})
+	if err != nil {
+		t.Fatalf("cloneTarget: %v", err)
+	}
+	if got := mustGitRev(t, work, "HEAD"); got != mainRev {
+		t.Fatalf("HEAD = %s, want base rev %s", got, mainRev)
+	}
+	if got := gitText(t, work, "rev-parse", "--abbrev-ref", "HEAD"); got != "issue-999" {
+		t.Fatalf("current branch = %q, want %q", got, "issue-999")
+	}
+}
+
+func TestCloneExtraRepoResumesExistingOriginBranch(t *testing.T) {
+	if _, err := exec.LookPath("git"); err != nil {
+		t.Skip("git not on PATH")
+	}
+	r := gitRunner()
+	useTestWorkspaceRoot(t)
+	cloneBase := t.TempDir()
+	gitCache := t.TempDir()
+	name := "extra-branch-resume"
+	branch := "issue-735"
+	mainRev, branchRev := seedBranchResumeRepo(t, cloneBase, name)
+
+	r.cloneExtraRepo(context.Background(), bootstrapEnv{
+		ForgejoBase: "https://forgejo.example",
+		CloneBase:   cloneBase,
+		GitCache:    gitCache,
+		Branch:      branch,
+	}, targetRepo{Owner: "owner", Name: name}, false, "")
+
+	work := filepath.Join(workspaceRoot, name)
+	if got := mustGitRev(t, work, "HEAD"); got != branchRev {
+		t.Fatalf("HEAD = %s, want resumed branch rev %s", got, branchRev)
+	}
+	if got := gitText(t, work, "rev-parse", "--abbrev-ref", "HEAD"); got != branch {
+		t.Fatalf("current branch = %q, want %q", got, branch)
+	}
+	if got := mustGitRev(t, work, "origin/"+branch); got != branchRev {
+		t.Fatalf("origin/%s = %s, want %s", branch, got, branchRev)
+	}
+	if got := mustGitRev(t, work, "origin/main"); got != mainRev {
+		t.Fatalf("origin/main = %s, want %s", got, mainRev)
+	}
+}
+
+func TestCloneExtraRepoStartsFromBaseWhenOriginBranchMissing(t *testing.T) {
+	if _, err := exec.LookPath("git"); err != nil {
+		t.Skip("git not on PATH")
+	}
+	r := gitRunner()
+	useTestWorkspaceRoot(t)
+	cloneBase := t.TempDir()
+	gitCache := t.TempDir()
+	name := "extra-branch-base"
+	mainRev, _ := seedBranchResumeRepo(t, cloneBase, name)
+
+	r.cloneExtraRepo(context.Background(), bootstrapEnv{
+		ForgejoBase: "https://forgejo.example",
+		CloneBase:   cloneBase,
+		GitCache:    gitCache,
+		Branch:      "issue-999",
+	}, targetRepo{Owner: "owner", Name: name}, false, "")
+
+	work := filepath.Join(workspaceRoot, name)
+	if got := mustGitRev(t, work, "HEAD"); got != mainRev {
+		t.Fatalf("HEAD = %s, want base rev %s", got, mainRev)
+	}
+	if got := gitText(t, work, "rev-parse", "--abbrev-ref", "HEAD"); got != "issue-999" {
+		t.Fatalf("current branch = %q, want %q", got, "issue-999")
+	}
 }
 
 // TestInstallReadOnlyPushGuard covers ward#299: a read-only session lands the

@@ -16,9 +16,11 @@ comments on the **GitHub** issue, and the run lands as a **pull request** on Git
   retrospective) go through the [`gh` CLI](https://cli.github.com), mirroring how a
   Forgejo run drives `ward ops forgejo`.
 - **Landing** is a **pull request**, not a push to `main`. The in-container agent runs
-  `gh pr create` whose body carries `Closes #<n>`. The [reaper](container-reap.md) does
-  not open the PR on GitHub - it only preserves a salvage branch + files a GitHub issue
-  - so the agent opening the PR before it exits is the done-condition.
+  `gh pr create` whose body carries `Closes #<n>`. After the PR opens, the agent keeps
+  watching its checks and only reports done once they are green or the run is genuinely
+  blocked. The [reaper](container-reap.md) does not open the PR on GitHub - it only
+  preserves a salvage branch + files a GitHub issue - so the agent opening the PR
+  before it exits is still the merge gate.
 - **ward's own machinery stays on Forgejo.** The container still downloads the ward
   release + broker binary and warms `/substrate` from Forgejo (`WARD_FORGEJO_BASE`).
   Only the target repo moves to GitHub, via `WARD_CLONE_BASE` + `WARD_FORGE=github`,
@@ -41,16 +43,35 @@ tighter GraphQL lane - see [github-rate-limits.md](github-rate-limits.md).
   warded coilysiren/agentic-os#461 --github
   ```
 
-A plain `owner/repo#N`, a Forgejo URL, or a bare `#N` still mean Forgejo. The
-[trusted-owner](agent-trust-gate.md) allowlist is shared across both forges.
+A plain `owner/repo#N` resolves through the selected config bundle's authority
+policy. If that bundle maps the repo to GitHub, the compact ref is GitHub too;
+otherwise it stays Forgejo. A Forgejo URL still means Forgejo, and a bare `#N`
+inherits the current checkout's authority. The [trusted-owner](agent-trust-gate.md)
+allowlist is shared across both forges.
+
+## Migration posture
+
+For existing `coilysiren/*` Forgejo issues, the cutover plan is manual and
+deliberate:
+
+* inventory the open Forgejo issues in each repo
+* migrate each one to GitHub, or close it on Forgejo if it is obsolete
+* comment back on the Forgejo issue with the GitHub replacement URL
+* close and, where possible, lock the Forgejo issue so the discussion does not split
 
 ## Supplying the GitHub token
 
 GitHub auth is a host-side token, **operator-selectable** by `WARD_GITHUB_TOKEN_SOURCE`
-and defaulting to `env` ([ward#533](https://forgejo.coilysiren.me/coilyco-flight-deck/ward/issues/533)): `env` reads `WARD_GITHUB_TOKEN`/`GH_TOKEN`/`GITHUB_TOKEN`,
-`gh` mints a fresh one via `gh auth token`, and `app` ([ward#534](https://forgejo.coilysiren.me/coilyco-flight-deck/ward/issues/534)) mints a short-lived,
-repo-scoped GitHub App installation token from an App key (SSM param name via operator
-config, no baked path). Full detail: [github-token.md](github-token.md).
+and defaulting to the bot-backed `app` path once the App provisioning env is present
+([ward#533](https://forgejo.coilysiren.me/coilyco-flight-deck/ward/issues/533)): `env` reads
+`WARD_GITHUB_TOKEN`/`GH_TOKEN`/`GITHUB_TOKEN`, `gh` mints a fresh one via `gh auth token`, and
+`app` ([ward#534](https://forgejo.coilysiren.me/coilyco-flight-deck/ward/issues/534)) mints a
+short-lived, repo-scoped GitHub App installation token from an App key (SSM param name via
+operator config, no baked path). Full detail: [github-token.md](github-token.md).
+
+Autonomous GitHub runs use the same bot author and bot committer policy as Forgejo runs. Attended
+or local runs can still override `WARD_GIT_NAME` and `WARD_GIT_EMAIL` before launch when a human
+needs different attribution.
 
 ## Worked example
 
@@ -61,7 +82,7 @@ only the `env`-mode equivalent:
 # gh mode: ward mints from your gh login at dispatch, nothing to export
 WARD_GITHUB_TOKEN_SOURCE=gh warded https://github.com/coilysiren/agentic-os/issues/461
 
-# env mode (default): export a token yourself (a gh login, or a repo-scoped PAT)
+# env mode: export a token yourself (a gh login, or a repo-scoped PAT)
 export GITHUB_TOKEN="$(gh auth token)"
 warded https://github.com/coilysiren/agentic-os/issues/461
 ```

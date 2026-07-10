@@ -1,5 +1,5 @@
 ---
-doc_goal: Show examples/toy/ as the smallest thing that is still a real ward-managed repo and the concrete anchor for demo and spec-bundle - the four ward-facing pieces (Makefile, .ward/ward.yaml with a required security block, guardfile, dev-base) and what each teaches - so a reader can copy it as a starting point and tell it apart from the sibling spec bundle.
+doc_goal: Show examples/toy/ as the smallest thing that is still a real ward-managed repo and the concrete anchor for demo and spec-bundle - the four ward-facing pieces (Makefile, .ward/ward.yaml, guardfile, dev-base) and what each teaches - so a reader can copy it as a starting point and tell it apart from the sibling spec bundle.
 ---
 # the toy example repo
 
@@ -16,7 +16,7 @@ point is not the program - it is the four ward-facing pieces around it:
 
 - **Makefile** - self-documenting targets, each with a `## <help>` comment.
 - **`.ward/ward.yaml`** - the allowlist: the build/test/install triple plus a
-  `security:` block (required per [ward#450](https://forgejo.coilysiren.me/coilyco-flight-deck/ward/issues/450)).
+  `security:` block preserved for inventory compatibility.
 - **`toy.guardfile.kdl`** - a minimal ward-kdl permission surface, deny-by-default.
 - **dev-base** - the container image a `ward agent` run pulls (referenced, not baked).
 
@@ -24,11 +24,11 @@ point is not the program - it is the four ward-facing pieces around it:
 
 - **The verb gate** - `ward exec build` runs `make build` through cli-guard:
   argv validated, one audit row, clean+synced gate. See [exec-verb.md](exec-verb.md).
-- **`ward doctor`** - cross-checks each `commands.<name>` against the Makefile
-  (`run:` is `make <name>`, the `## help` text equals `description:`) and
-  summarizes the `security:` block. See [doctor.md](doctor.md).
-- **The security block** - `protected_binaries` (docker, deny-direct), `sudo`,
-  and `hooks.deny_bare_binaries`. Field-by-field: [ward-yaml.md](ward-yaml.md).
+- **Release-planning inventory** - records the former `setup` and `doctor`
+  behavior shape, including the Makefile contract and the security probe
+  inventory. See [ward-setup-doctor-inventory.md](ward-setup-doctor-inventory.md).
+- **The security block** - preserved for inventory compatibility. Field-by-field:
+  [ward-yaml.md](ward-yaml.md).
 - **The guardfile** - the exec-dialect shape a consumer authors before
   generating a gated CLI. See [ward-kdl-authoring.md](ward-kdl-authoring.md).
 - **The dev-base image** - what `ward agent` clones the repo into. See
@@ -40,7 +40,6 @@ point is not the program - it is the four ward-facing pieces around it:
 cd examples/toy
 ward exec build
 ward exec test
-ward doctor
 ```
 
 The guardfile and `.ward/ward.yaml` are complete enough to copy into a new repo

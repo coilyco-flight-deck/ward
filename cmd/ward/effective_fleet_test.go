@@ -7,6 +7,21 @@ import (
 	"testing"
 )
 
+func TestFrontierAgentDefaultsAreKeyedAndComplete(t *testing.T) {
+	for _, name := range frontierAgentNames() {
+		a, ok := frontierAgentDefaults[name]
+		if !ok {
+			t.Fatalf("frontier defaults missing %q", name)
+		}
+		if a.Name != name {
+			t.Errorf("frontier defaults[%q].Name = %q", name, a.Name)
+		}
+		if a.Binary == "" || len(a.Argv.Headless) == 0 || a.Argv.Headless[0] != a.Binary {
+			t.Errorf("frontier defaults[%q] is not a complete launch shape: %+v", name, a)
+		}
+	}
+}
+
 func writeFleetBundle(t *testing.T, dir, body string) {
 	t.Helper()
 	if err := os.WriteFile(filepath.Join(dir, bundleFleetKDLPath), []byte(body), 0o644); err != nil {
@@ -23,11 +38,13 @@ fleet {
     }
 }
 `)
-	t.Setenv(wardConfigRefEnv, "file://"+dir)
-
-	f, err := loadFleetConfig()
+	raw, err := loadRawFleetConfigFrom(bundleConfigSource(dir))
 	if err != nil {
-		t.Fatalf("loadFleetConfig: %v", err)
+		t.Fatalf("loadRawFleetConfigFrom: %v", err)
+	}
+	f, err := resolveEffectiveFleet(raw)
+	if err != nil {
+		t.Fatalf("resolveEffectiveFleet: %v", err)
 	}
 
 	if got := len(f.Agents); got < len(frontierAgentOrder) {
@@ -58,11 +75,13 @@ fleet {
     }
 }
 `)
-	t.Setenv(wardConfigRefEnv, "file://"+dir)
-
-	f, err := loadFleetConfig()
+	raw, err := loadRawFleetConfigFrom(bundleConfigSource(dir))
 	if err != nil {
-		t.Fatalf("loadFleetConfig: %v", err)
+		t.Fatalf("loadRawFleetConfigFrom: %v", err)
+	}
+	f, err := resolveEffectiveFleet(raw)
+	if err != nil {
+		t.Fatalf("resolveEffectiveFleet: %v", err)
 	}
 
 	claude, ok := fleetAgent(f, string(modeClaude))
@@ -91,13 +110,15 @@ fleet {
     }
 }
 `)
-	t.Setenv(wardConfigRefEnv, "file://"+dir)
-
-	_, err := loadFleetConfig()
+	raw, err := loadRawFleetConfigFrom(bundleConfigSource(dir))
+	if err != nil {
+		t.Fatalf("loadRawFleetConfigFrom: %v", err)
+	}
+	_, err = resolveEffectiveFleet(raw)
 	if err == nil {
-		t.Fatal("loadFleetConfig accepted an incomplete custom agent; want a loud failure")
+		t.Fatal("resolveEffectiveFleet accepted an incomplete custom agent; want a loud failure")
 	}
 	if !strings.Contains(err.Error(), "has no binary") {
-		t.Fatalf("loadFleetConfig error = %v, want missing-binary failure", err)
+		t.Fatalf("resolveEffectiveFleet error = %v, want missing-binary failure", err)
 	}
 }

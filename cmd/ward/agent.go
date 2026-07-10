@@ -22,13 +22,16 @@ import (
 // agent.go wires the `ward agent` umbrella + the shared dispatch internals the engineer
 // role uses (ward#263, ward#347), sharing the bring-up Go directly. See docs/agent.md.
 
-// agentIssueRef is a parsed issue reference for `ward agent`. Forge tags the host:
-// a github.com ref parses to forgeGitHub, everything else forgeForgejo (ward#489).
+// agentIssueRef is a parsed issue reference for `ward agent`. Forge tags the git
+// host, tracker tags the issue thread. The default pairing stays zero-config.
 type agentIssueRef struct {
-	Owner  string
-	Repo   string
-	Number int
-	Forge  forge
+	Owner             string
+	Repo              string
+	Number            int
+	Forge             forge
+	Tracker           tracker
+	URL               string
+	ShortcutWorkspace string
 }
 
 func (r agentIssueRef) String() string {
@@ -40,10 +43,32 @@ func (r agentIssueRef) repoSlug() string {
 	return r.Owner + "/" + r.Repo
 }
 
-// url renders the canonical issue URL for the seeded prompt, off the ref's forge
-// base (Forgejo or GitHub); both use the /owner/repo/issues/N path shape (ward#489).
+// url renders the canonical issue URL for the seeded prompt.
+// Shortcut preserves the story URL it was parsed from.
 func (r agentIssueRef) url() string {
+	if strings.TrimSpace(r.URL) != "" {
+		return strings.TrimSpace(r.URL)
+	}
+	if r.trackerOrDefault() == trackerShortcut {
+		workspace := strings.TrimSpace(r.ShortcutWorkspace)
+		if workspace == "" {
+			workspace = strings.TrimSpace(os.Getenv(shortcutWorkspaceEnv))
+		}
+		if workspace != "" {
+			return fmt.Sprintf("%s/%s/story/%d", shortcutAppBaseURL, workspace, r.Number)
+		}
+		return fmt.Sprintf("%s/story/%d", shortcutAppBaseURL, r.Number)
+	}
 	return fmt.Sprintf("%s/%s/%s/issues/%d", strings.TrimRight(r.Forge.baseURL(), "/"), r.Owner, r.Repo, r.Number)
+}
+
+// trackerOrDefault resolves the issue-thread port, defaulting to the host's
+// paired tracker when the field is left zero.
+func (r agentIssueRef) trackerOrDefault() tracker {
+	if r.Tracker == trackerGitHub || r.Tracker == trackerForgejo {
+		return r.Tracker
+	}
+	return trackerFromForge(r.Forge)
 }
 
 // carryIssueBanner renders the exact carried issue once, as a stable identity
@@ -66,22 +91,32 @@ func cloneAnchorLine(ref agentIssueRef) string {
 }
 
 // parseAgentIssueRef resolves owner/repo#N, a Forgejo/GitHub issue URL, or a bare #N / N.
-// ward keeps the task-verb steer (ward#234, ward#282).
+// ward keeps the task-verb steer (ward#234, ward#282) while reusing the shared parser.
 func parseAgentIssueRef(s string) (agentIssueRef, error) {
 	s = strings.TrimSpace(s)
 	if s == "" {
 		return agentIssueRef{}, fmt.Errorf("empty issue reference")
 	}
 	// A github.com URL or `github.com/owner/repo#N` short form is unambiguously a
-	// GitHub ref (ward#489); anything else falls through to the Forgejo parser.
+	// GitHub ref (ward#489). Shortcut story URLs are recognized first as well.
 	if ghRef, ok := parseGitHubIssueRef(s); ok {
 		return ghRef, nil
+	}
+	if shortcutRef, ok := parseShortcutIssueRef(s); ok {
+		return shortcutRef, nil
+	}
+	if ref, err := parseDispatchIssueRef(s); err == nil {
+		if !looksLikeExplicitForgejoIssueRef(s) {
+			ref.Forge = currentSmartDefaults().forgeForRepo(ref.Owner, ref.Repo)
+			ref.Tracker = trackerFromForge(ref.Forge)
+		}
+		return ref, nil
 	}
 	ref, err := issueref.Parse(s, forgejoBaseURL)
 	if err == nil {
 		return agentIssueRef{Owner: ref.Owner, Repo: ref.Repo, Number: ref.Number}, nil
 	}
-	// Accept scheme-less Forgejo issue URLs as a convenience for dictated refs and
+	// Accept scheme-less issue URLs as a convenience for dictated refs and
 	// pasted URLs that dropped their protocol in transit.
 	if !strings.Contains(s, "://") {
 		if ref, err := issueref.Parse("https://"+s, forgejoBaseURL); err == nil {
@@ -92,12 +127,86 @@ func parseAgentIssueRef(s string) (agentIssueRef, error) {
 	// steer to the task verb that carries arbitrary pointers (ward#234).
 	if strings.Contains(s, "://") {
 		return agentIssueRef{}, fmt.Errorf(
+			"cannot parse issue ref %q: want owner/repo#N, a bare #N, %s/owner/repo/issues/N, or %s/<workspace>/story/N; "+
+				"for a non-issue pointer (a CI run, job, or commit URL), hand it to the engineer "+
+				"role's freeform mode instead: ward agent engineer '<url>'",
+			s, strings.TrimRight(forgejoBaseURL, "/"), shortcutAppBaseURL)
+	}
+	return agentIssueRef{}, fmt.Errorf("cannot parse issue ref %q: want owner/repo#N, a bare #N, %s/owner/repo/issues/N, or %s/<workspace>/story/N", s, strings.TrimRight(forgejoBaseURL, "/"), shortcutAppBaseURL)
+}
+
+// parseAgentIssueRefWithoutAuthority parses the same ref shapes as parseAgentIssueRef
+// but leaves repo authority resolution to the caller.
+func parseAgentIssueRefWithoutAuthority(s string) (agentIssueRef, error) {
+	s = strings.TrimSpace(s)
+	if s == "" {
+		return agentIssueRef{}, fmt.Errorf("empty issue reference")
+	}
+	if ghRef, ok := parseGitHubIssueRef(s); ok {
+		return ghRef, nil
+	}
+	if ref, err := parseDispatchIssueRef(s); err == nil {
+		return ref, nil
+	}
+	ref, err := issueref.Parse(s, forgejoBaseURL)
+	if err == nil {
+		return agentIssueRef{Owner: ref.Owner, Repo: ref.Repo, Number: ref.Number}, nil
+	}
+	if !strings.Contains(s, "://") {
+		if ref, err := issueref.Parse("https://"+s, forgejoBaseURL); err == nil {
+			return agentIssueRef{Owner: ref.Owner, Repo: ref.Repo, Number: ref.Number}, nil
+		}
+	}
+	if strings.Contains(s, "://") {
+		return agentIssueRef{}, fmt.Errorf(
 			"cannot parse issue ref %q: want owner/repo#N, a bare #N, or %s/owner/repo/issues/N; "+
 				"for a non-issue pointer (a CI run, job, or commit URL), hand it to the engineer "+
 				"role's freeform mode instead: ward agent engineer '<url>'",
 			s, strings.TrimRight(forgejoBaseURL, "/"))
 	}
-	return agentIssueRef{}, err
+	return agentIssueRef{}, fmt.Errorf("cannot parse issue ref %q: want owner/repo#N, a bare #N, or %s/owner/repo/issues/N", s, strings.TrimRight(forgejoBaseURL, "/"))
+}
+
+// looksLikeExplicitForgejoIssueRef reports whether s names Forgejo directly rather
+// than relying on compact owner/repo syntax.
+func looksLikeExplicitForgejoIssueRef(s string) bool {
+	s = strings.ToLower(strings.TrimSpace(s))
+	if s == "" {
+		return false
+	}
+	if strings.Contains(s, "://") {
+		return true
+	}
+	base := strings.ToLower(strings.TrimRight(forgejoBaseURL, "/"))
+	return strings.HasPrefix(s, base+"/") || strings.HasPrefix(s, "www."+base+"/")
+}
+
+func parseDispatchIssueRef(s string) (agentIssueRef, error) {
+	ref, err := dispatch.ParseIssueRef(forgejoBaseURL, s)
+	if err != nil {
+		return agentIssueRef{}, err
+	}
+	return agentIssueRef{
+		Owner:   ref.Owner,
+		Repo:    ref.Repo,
+		Number:  ref.Number,
+		Forge:   dispatchPlatformToForge(ref.Platform),
+		Tracker: dispatchPlatformToTracker(ref.Platform),
+	}, nil
+}
+
+func dispatchPlatformToForge(p dispatch.Platform) forge {
+	if p == dispatch.PlatformGitHub {
+		return forgeGitHub
+	}
+	return forgeForgejo
+}
+
+func dispatchPlatformToTracker(p dispatch.Platform) tracker {
+	if p == dispatch.PlatformGitHub {
+		return trackerGitHub
+	}
+	return trackerForgejo
 }
 
 // resolveAgentIssueRef parses the ref and, for a bare #N / N, fills owner/repo from
@@ -108,6 +217,9 @@ func (r *Runner) resolveAgentIssueRef(ctx context.Context, arg string) (agentIss
 		return agentIssueRef{}, err
 	}
 	if ref.Owner != "" && ref.Repo != "" {
+		if ref.Forge == 0 {
+			ref.Forge = currentSmartDefaults().forgeForRepo(ref.Owner, ref.Repo)
+		}
 		writef(os.Stderr, "ward agent: resolved issue ref %s -> %s\n", arg, ref)
 		return ref, nil
 	}
@@ -118,6 +230,9 @@ func (r *Runner) resolveAgentIssueRef(ctx context.Context, arg string) (agentIss
 				"(use owner/repo#%d or run from inside the repo's checkout): %w", arg, ref.Number, terr)
 	}
 	ref.Owner, ref.Repo = repo.Owner, repo.Name
+	if ref.Forge == 0 {
+		ref.Forge = currentSmartDefaults().forgeForRepo(ref.Owner, ref.Repo)
+	}
 	writef(os.Stderr, "ward agent: inferred bare issue ref %s -> %s from cwd origin\n", arg, ref)
 	return ref, nil
 }
@@ -135,9 +250,18 @@ const emptyBodySeedAction = "This issue has no body, so work from the title alon
 	"issue content, screenshots, or other artifacts that are not there (an empty body is not an " +
 	"invitation to invent one). The comment thread at that URL may hold later context worth a quick read."
 
+// TODO(ward#792): remove this emergency default once brokered QA replaces the
+// in-container review gate.
+const temporaryReviewGateSkipReason = "the temporary ward default pending brokered QA"
+
+func reviewGateDisabledByTemporaryDefault(role string) bool {
+	return role == "engineer"
+}
+
 // headlessReflection is the headless run's closing "how it felt" retro led by a
 // WARD-OUTCOME line; its landing phrase is workflow-aware (ward#281, ward#508).
 func headlessReflection(ref agentIssueRef, wf workflowMode, reviewGate bool, reviewSkip string) string {
+	outcomeStatus := workflowOutcomeStatus(wf)
 	reviewLine := "If a review ran, read `~/.ward/review-summary.txt` and copy its exact one-line summary into the same final comment."
 	if !reviewGate {
 		reviewLine = "The in-container review gate was intentionally skipped"
@@ -146,27 +270,54 @@ func headlessReflection(ref agentIssueRef, wf workflowMode, reviewGate bool, rev
 		}
 		reviewLine += ", so the final comment must say that explicitly."
 	}
-	return "Finally, as your very last step - only after " + workflowLandingPhrase(ref, wf) + " - post a SHORT " +
-		"comment on this issue (a few sentences, in your own voice) on how the " +
-		"implementation \"felt\": how the work went, anything that surprised you or fought back, how confident you " +
-		"are in the result, and any rough edges or follow-ups worth filing. This is a candid retrospective, not a " +
-		"status report or a changelog - keep it brief and honest, and post it even if the work went smoothly.\n\n" +
-		"Begin that final comment with a single machine-readable status line - its very first line, exactly one of:\n" +
-		"  `" + wardOutcomeMarker + " done - <one line on what landed>`\n" +
-		"  `" + wardOutcomeMarker + " blocked - <the one specific decision or piece of information you need from a human>`\n" +
-		"  `" + wardOutcomeMarker + " failed - <why, briefly>`\n" +
-		"then your retrospective on the lines below it. Include a second line that summarizes the review outcome " +
-		"or skip state so the conclusion comment carries it too. " + reviewLine + " A supervising director loop " +
+	return "Finally, as your very last step - only after " + workflowLandingPhrase(ref, wf) + " - post one hypercurt " +
+		"comment on this issue. The only visible text before the collapsed block is a single machine-readable " +
+		"status line - its very first visible line, exactly one of:\n" +
+		"  `" + wardOutcomeMarker + " " + outcomeStatus + "`\n" +
+		"  `" + wardOutcomeMarker + " blocked 🛑`\n" +
+		"  `" + wardOutcomeMarker + " failed ❌`\n" +
+		"Put every other word inside one collapsed `<details><summary>details</summary>` block: the review " +
+		"summary or skip state, the workflow line (`workflow: <mode>; review summary: <summary or skip state>`), " +
+		"the short candid retrospective on how the implementation \"felt\", confidence, surprises, and follow-ups. Do not leave " +
+		"any visible prose outside that first status line. " + reviewLine + " " + headlessWorkflowFailureCommentClause(wf) + " A supervising director loop " +
 		"(ward agent director) reads only that first line to classify the run, so for a normal run that completed " +
-		"its workflow it is `" + wardOutcomeMarker + " done`; reserve blocked/failed for a run that genuinely could not land."
+		"its workflow it is `" + wardOutcomeMarker + " " + outcomeStatus + "`. Reserve blocked/failed for a run that genuinely could not land."
+}
+
+func headlessWorkflowFailureCommentClause(wf workflowMode) string {
+	mode := canonicalWorkflow(wf.orDefault())
+	if mode == workflowPullRequest || mode == workflowPullRequestAndMerge {
+		return workflowFailureCommentClause()
+	}
+	return ""
 }
 
 // reviewGateClause wires the pre-landing adversarial review panel into a headless
 // seed (ward#134): run `ward agent review` before landing. docs/dispatch-review.md.
-func reviewGateClause(ref agentIssueRef, wf workflowMode) string {
+func reviewGateClause(wf workflowMode) string {
 	landing := "open the pull request"
-	if wf.orDefault() == workflowDirectMain && ref.Forge != forgeGitHub {
+	switch mode := string(canonicalWorkflow(wf.orDefault())); mode {
+	case string(workflowDirectToMain):
 		landing = "merge to `main`"
+	case string(workflowPullRequest):
+		landing = "open the pull request"
+	case string(workflowPullRequestAndMerge):
+		landing = "merge the pull request"
+	case string(workflowRemoteBranchOnly):
+		landing = "push the remote branch"
+	}
+	var workflowTail string
+	switch mode := string(canonicalWorkflow(wf.orDefault())); mode {
+	case string(workflowDirectToMain):
+		workflowTail = "For `direct-main` workflows, landing means merging to `main`. Do not stop before the merge lands."
+	case string(workflowPullRequest):
+		workflowTail = "For `pull-requests` workflows, opening the pull request is not a stopping point. Keep watching the PR checks after it opens. A failing check is not done: fetch the logs/status, patch the branch, push the update, and repeat until the PR is green or the failure is genuinely blocked."
+	case string(workflowPullRequestAndMerge):
+		workflowTail = "For `pull-requests-and-merge` workflows, opening the pull request is not a stopping point. Keep watching the PR checks and merge status after it opens. A failing check is not done: fetch the logs/status, patch the branch, push the update, and repeat until the PR is green and merged or the failure is genuinely blocked."
+	case string(workflowRemoteBranchOnly):
+		workflowTail = "For `patch-only` workflows, the remote branch push is the finish line. Do not open a pull request and do not merge."
+	default:
+		workflowTail = "For `pull-requests` workflows, opening the pull request is not a stopping point. Keep watching the PR checks after it opens. A failing check is not done: fetch the logs/status, patch the branch, push the update, and repeat until the PR is green or the failure is genuinely blocked."
 	}
 	return fmt.Sprintf(
 		"REVIEW GATE (ward#134): before you land this change (%s), and ONLY after CI is green, run the "+
@@ -175,17 +326,18 @@ func reviewGateClause(ref agentIssueRef, wf workflowMode) string {
 			"harness family by default, and can escalate to other families only as a later, higher-cost fallback. "+
 			"The reviewer works inside the worker container against the live filesystem state and prints a machine "+
 			"line on stdout:\n"+
-			"  - `WARD-REVIEW: pass ...`  -> you are cleared to land; proceed.\n"+
-			"  - `WARD-REVIEW: block ...` -> do NOT %s and do NOT merge. Post the reviewer verdicts and reasons "+
-			"as a comment, include the review summary in the same conclusion comment, and close with `WARD-OUTCOME: blocked`. The gate is fail-closed - a "+
+			"  - `WARD-REVIEW: pass ...`  -> you are cleared to land. Proceed.\n"+
+			"  - `WARD-REVIEW: block ...` -> do NOT %s and do NOT merge. Post one hypercurt conclusion comment "+
+			"starting with `WARD-OUTCOME: blocked 🛑` and put the reviewer verdicts, reasons, and review summary inside its collapsed details block. The gate is fail-closed - a "+
 			"reviewer error or timeout is a block, not a pass.\n"+
 			"  - `WARD-REVIEW: advisory ...` -> only if the gate had no runnable reviewer at all. Treat that as a "+
 			"block, not a pass, and write the skip/availability summary into the conclusion comment so the issue shows "+
 			"why the review could not run. `ward agent review` writes the exact one-line review summary to `~/.ward/review-summary.txt`; copy that line verbatim into the same conclusion comment.\n"+
+			"%s\n"+
 			"The gate's exit code mirrors the verdict (non-zero on block), so a shell `&&` also enforces it. Do "+
 			"not skip it, and do not land on a block. If the review was intentionally skipped via `--skip-review`, "+
 			"`--skip-preflight`, or config, the final `WARD-OUTCOME` comment must say so explicitly.",
-		landing, landing)
+		landing, landing, workflowTail)
 }
 
 // grantedRepoDoneClause widens the done-condition for a --repo grant (ward#291):
@@ -223,22 +375,6 @@ func forgeDisplayName(f forge) string {
 	return "Forgejo"
 }
 
-// forgeCarryClause is the forge-specific tail of the seed's carry sentence (ward#489):
-// Forgejo merges to main + pushes; GitHub pushes a branch + opens a PR (the merge gate).
-func forgeCarryClause(ref agentIssueRef) string {
-	if ref.Forge == forgeGitHub {
-		return fmt.Sprintf(
-			"implement on a feature branch, commit, push the branch to origin, and open a pull request "+
-				"with `gh pr create` whose body carries `Closes #%d`. Do NOT push to the repository's `main` "+
-				"branch directly - on GitHub the pull request is the merge gate. `gh` is authenticated from "+
-				"the GITHUB_TOKEN in your environment.",
-			ref.Number)
-	}
-	return fmt.Sprintf(
-		"implement, commit, merge to main, push - and close the issue with a commit trailer: closes #%d.",
-		ref.Number)
-}
-
 // agentSeedPrompt seeds a direct-main run (the default): a thin wrapper over
 // agentSeedPromptWorkflow so legacy callers stay byte-for-byte (ward#405, ward#508).
 func agentSeedPrompt(ref agentIssueRef, title, body, details string, headless bool, extra []targetRepo) string {
@@ -273,15 +409,15 @@ func agentSeedPromptWorkflow(ref agentIssueRef, title, body, details string, hea
 	if block := subsystemSeedBlock(ref, title, body); block != "" {
 		seed += "\n\n" + block
 	}
-	// Before landing, a headless run must clear the review gate (ward#134);
-	// skipped for patch-only (lands nothing) and when review is intentionally disabled.
-	if headless && reviewGate && wf.orDefault() != workflowPatchOnly {
-		seed += "\n\n" + reviewGateClause(ref, wf)
+	// Before landing, a headless run must clear the review gate (ward#134).
+	// Remote-branch-only skips it because that workflow lands nothing else.
+	if headless && reviewGate && wf.orDefault() != workflowRemoteBranchOnly {
+		seed += "\n\n" + reviewGateClause(wf)
 	}
 	// A headless run detaches unwatched, so it closes with a retrospective comment -
 	// the only voice it leaves behind; the landing phrase tracks the workflow (#281, #508).
 	if headless {
-		seed += "\n\n" + headlessReflection(ref, wf, reviewGate && wf.orDefault() != workflowPatchOnly, reviewSkip)
+		seed += "\n\n" + headlessReflection(ref, wf, reviewGate && wf.orDefault() != workflowRemoteBranchOnly, reviewSkip)
 	}
 	return seed + inline
 }
@@ -439,6 +575,20 @@ func agentHarness(c *cli.Command) (containerMode, error) {
 	return m, nil
 }
 
+// surfaceDispatchMode resolves the harness for a director-surface sibling dispatch.
+// Explicit flags win; otherwise inherit WARD_AGENT/WARD_MODE on brokered surfaces.
+func surfaceDispatchMode(c *cli.Command) (containerMode, error) {
+	mode, err := agentHarness(c)
+	if err != nil {
+		return "", err
+	}
+	if os.Getenv(envDispatchBrokerAddr) != "" && os.Getenv("WARD_READONLY") == "1" &&
+		!c.IsSet("harness") && !c.IsSet("agent") && !c.IsSet("driver") {
+		return currentAgentMode(), nil
+	}
+	return mode, nil
+}
+
 // agentCmdline renders the canonical `ward agent <surface> --harness <mode>` form
 // (ward#185) for labels, provenance lines, and the re-dispatch hints ward prints.
 func agentCmdline(mode containerMode, surface string) string {
@@ -450,21 +600,23 @@ func agentCmdline(mode containerMode, surface string) string {
 func agentCommand() *cli.Command {
 	return &cli.Command{
 		Name:   "agent",
-		Usage:  "Send an agent into a fresh ephemeral container to carry a Forgejo issue end to end (a bare ref runs the engineer).",
+		Usage:  "Send an agent into a fresh ephemeral container to carry the authoritative issue end to end (a bare ref runs the engineer).",
 		Before: smartDefaultsGuard("ward agent"),
 		Description: fmt.Sprintf(`agent is the issue-carrying dispatcher (the spelling 'warded' fronts), a
 roster of startup roles (ward#347): you do not invoke a mode, you send in a
-role. Pick a role (engineer|director|advisor) and --harness picks the
+role. Pick a role (engineer|director|advisor|qa) and --harness picks the
 harness (%s, default %s; --agent is an equal accepted spelling, --driver a
 deprecated alias for one release, ward#660).
 A BARE REF with no role word runs the 'engineer' role - the fire-and-forget
 default. A bare #N (or N) infers the owner/repo from the cwd's git origin;
-owner/repo#N and a full Forgejo issue URL also work. One line replaces a full
+owner/repo#N resolves through the selected repo-authority policy, and a full
+issue URL also works. One line replaces a full
 container bring-up stack plus a prompt.
 
   warded coilyco-flight-deck/ward#98          # bare ref -> engineer run (warded face)
   warded #98                                  # owner/repo inferred from the cwd
   warded engineer #98                         # implement a ticket: detached fire-and-forget
+  warded qa #98                               # structured QA verdict comment, no implementation edits
   warded engineer "fix the flaky exec_gate test" # freeform -> file an issue first, then carry
   warded <role> #98 --harness <harness>       # pick another harness
   warded <role> #98 --agent <harness>        # --agent: the same pick, equal spelling
@@ -486,6 +638,7 @@ trusted owner.`, agentHarnessChoices(), defaultAgentMode()),
 			agentEngineerCommand(),
 			agentDirectorCommand(),
 			agentAdvisorCommand(),
+			agentQACommand(),
 			// roster is a self-describe verb, not a startup role: it prints the
 			// flat list of the roles above (ward#348). See docs/agent-roster.md.
 			agentRosterCommand(),
@@ -495,6 +648,9 @@ trusted owner.`, agentHarnessChoices(), defaultAgentMode()),
 			// stop is a control verb, not a startup role: a director surface stops
 			// one running engineer through the dispatch broker (ward#627). docs/agent-stop.md.
 			agentStopCommand(),
+			// logs is a read verb, not a startup role: a director surface reads one
+			// engineer's logs through the dispatch broker. docs/agent-logs.md.
+			agentLogsCommand(),
 			// review is the pre-landing adversarial-review gate, not a startup role
 			// (ward#134): a diff must survive a multi-model panel. docs/dispatch-review.md.
 			agentReviewCommand(),
@@ -513,7 +669,7 @@ func agentDefaultSurfaceAction() cli.ActionFunc {
 		}
 		arg := strings.TrimSpace(c.Args().First())
 		if _, err := parseAgentIssueRef(arg); err != nil {
-			return fmt.Errorf("unknown command %q for 'ward agent' (roles: engineer, director, advisor); "+
+			return fmt.Errorf("unknown command %q for 'ward agent' (roles: engineer, director, advisor, qa); "+
 				"a bare ref like #98 or owner/repo#N runs the engineer, and freeform work goes to "+
 				"`ward agent engineer \"<instructions>\"`", arg)
 		}
@@ -542,7 +698,7 @@ func agentImageFlags() []cli.Flag {
 func agentSurfaceFlags() []cli.Flag {
 	flags := agentHarnessFlags()
 	flags = append(flags,
-		// --workflow picks the landing policy: direct-main|pr|patch-only (ward#508).
+		// --workflow picks the landing policy (ward#508).
 		workflowFlag(),
 		// --branch is hidden (ward#362): the issue-<N> default is the intelligent choice.
 		&cli.StringFlag{Name: "branch", Hidden: true, Usage: "feature branch to create inside the clone (default: issue-<N>)"},
@@ -563,15 +719,21 @@ func agentSurfaceFlags() []cli.Flag {
 		&cli.BoolFlag{Name: "force", Usage: "skip the local + remote concurrency reservation checks (reclaim a stale or foreign hold)"},
 	)
 	// The detached run gets an autonomous pre-flight before launching (ward#137).
-	// skip-preflight skips that and the review gate; skip-host-preflight leaves review on.
+	// skip-preflight skips that, the launch-adjacent probes, and the review gate.
 	flags = append(flags,
-		&cli.BoolFlag{Name: "skip-preflight", Aliases: []string{"no-preflight"}, Usage: "skip the pre-flight feasibility check and the in-container review gate, then detach immediately"},
+		&cli.BoolFlag{Name: "skip-preflight", Aliases: []string{"no-preflight"}, Usage: "skip the host pre-flight, reservation re-check wait, launch-adjacent network/image/update probes, and the in-container review gate, then detach immediately"},
 		&cli.BoolFlag{Name: "skip-host-preflight", Hidden: true, Usage: "internal: skip only the host pre-flight; director auto-dispatch uses this so the review gate still runs"},
 	)
 	// --quiet-seed silences the seeded-prompt/issue-body stderr dump under director
 	// auto-dispatch, whose console the in-process engineer shares (ward#519).
 	flags = append(flags, &cli.BoolFlag{Name: "quiet-seed", Hidden: true, Usage: "suppress the seeded-prompt/issue-body dump to stderr (set by director auto-dispatch; the seed still rides into the container as its task text) - ward#519"})
 	return flags
+}
+
+// preflightSkipped reports whether the operator asked to bypass the launch-adjacent
+// preflight bucket (`--skip-preflight` or its alias).
+func preflightSkipped(c *cli.Command) bool {
+	return c.Bool("skip-preflight") || c.Bool("no-preflight")
 }
 
 // resolvedWork bundles resolveAgentWork's output: ref, title, body, comment thread
@@ -587,8 +749,8 @@ type resolvedWork struct {
 	// ExtraRepos are the --repo grants the run also clones writable (ward#230);
 	// the pre-flight must hear about them or it false-NO-GOs cross-repo work (ward#266).
 	ExtraRepos []targetRepo
-	// Workflow is the landing policy (--workflow, ward#508): direct-main|pr|patch-only.
-	// It shapes the seed's carry clause, rides the container, and gates the reaper.
+	// Workflow is the landing policy (--workflow, ward#508).
+	// It shapes the seed, container env, and reaper gate.
 	Workflow workflowMode
 }
 
@@ -606,7 +768,7 @@ func (r *Runner) resolveAgentWork(ctx context.Context, c *cli.Command, mode cont
 		ref.Forge = forgeGitHub
 	}
 	// Trust gate: the in-container agent runs under bypassPermissions, so only
-	// spin one up for an owner in the primary-org set. Mirrors dispatch's check.
+	// spin one up for an owner in the trusted-owner set. Mirrors dispatch's check.
 	if !r.ownerAllowed(ref.Owner) {
 		return resolvedWork{}, r.untrustedOwnerErr(label, ref.Owner)
 	}
@@ -659,10 +821,10 @@ func (r *Runner) resolveAgentWork(ctx context.Context, c *cli.Command, mode cont
 	return resolvedWork{Ref: ref, Title: title, Body: issue.Body, Comments: comments, Details: details, ExtraRepos: extra, Workflow: wf, ReviewGate: reviewGate, Seed: agentSeedPromptWorkflow(ref, title, issue.Body, details, true, extra, wf, reviewGate, reviewSkip)}, nil
 }
 
-// fetchIssue reads the issue off the ref's forge (Forgejo via the ops mount, GitHub
-// via `gh`; ward#489), the pre-flight resolve seam that fails fast before a container.
+// fetchIssue reads the issue off the ref's tracker.
+// It fails fast before a container launches.
 func (r *Runner) fetchIssue(ctx context.Context, ref agentIssueRef) (*dispatch.Issue, error) {
-	cl, err := r.hostForgeClient(ctx, ref.Forge, currentAgentMode())
+	cl, err := r.hostTrackerClient(ctx, ref.trackerOrDefault(), currentAgentMode())
 	if err != nil {
 		return nil, err
 	}
@@ -720,9 +882,9 @@ func resolveIssueWithRetry(label, ref string, sleep func(time.Duration), get fun
 }
 
 // fetchIssueComments returns the comment thread (oldest first) for the pre-flight
-// read via the ref's forge client; caller degrades gracefully on error.
+// read via the ref's tracker client; caller degrades gracefully on error.
 func (r *Runner) fetchIssueComments(ctx context.Context, ref agentIssueRef) ([]issueComment, error) {
-	cl, err := r.hostForgeClient(ctx, ref.Forge, currentAgentMode())
+	cl, err := r.hostTrackerClient(ctx, ref.trackerOrDefault(), currentAgentMode())
 	if err != nil {
 		return nil, err
 	}
@@ -787,16 +949,19 @@ func reviewGateDecision(c *cli.Command, role string, worker containerMode, ref a
 	if c.Bool("skip-review") || c.Bool("no-review-gate") {
 		return false, "review gate skipped by --skip-review / --no-review-gate"
 	}
-	if c.Bool("skip-preflight") || c.Bool("no-preflight") {
+	if preflightSkipped(c) {
 		return false, "review gate skipped because --skip-preflight / --no-preflight also skips review"
 	}
 	skips, err := loadReviewSkips()
 	if err != nil {
 		writef(os.Stderr, "ward agent: note: could not read review skip defaults: %v\n", err)
-		return true, ""
+		skips = nil
 	}
 	if reviewSkipMatches(skips, role, string(worker), ref.repoSlug()) {
 		return false, "review gate skipped by ~/.ward/config.yaml default"
+	}
+	if reviewGateDisabledByTemporaryDefault(role) {
+		return false, temporaryReviewGateSkipReason
 	}
 	return true, ""
 }
@@ -857,6 +1022,7 @@ func reviewSkipMatch(raw, role, worker, repo string) bool {
 // runAgentWork resolves the issue, seeds the prompt, runs the autonomous
 // pre-flight (runPreflight), and launches the detached run (ward#356).
 func (r *Runner) runAgentWork(ctx context.Context, c *cli.Command, mode containerMode, surface string) error {
+	label := agentCmdline(mode, surface)
 	w, err := r.resolveAgentWork(ctx, c, mode, surface)
 	if err != nil {
 		return err
@@ -864,12 +1030,20 @@ func (r *Runner) runAgentWork(ctx context.Context, c *cli.Command, mode containe
 	// Warn at host dispatch if ward is stale; a detached run buries the only
 	// `ward version` signal in a container log (ward#143). --print stays offline.
 	if !c.Bool("print") {
-		r.maybeWarnWardOutdated(ctx)
+		if preflightSkipped(c) {
+			writef(os.Stderr, "%s: skipping ward update reminder (--skip-preflight)\n", label)
+		} else {
+			r.maybeWarnWardOutdated(ctx)
+		}
 	}
 	if !w.ReviewGate && !c.Bool("print") {
 		if _, skipReason := reviewGateDecision(c, surface, mode, w.Ref); skipReason != "" {
 			r.writeSkippedReviewSummaryHandoff(mode, skipReason)
 		}
+	}
+	workerName := issueScopedContainerName(roleEngineer, mode, targetRepo{Owner: w.Ref.Owner, Name: w.Ref.Repo}, w.Ref.Number)
+	if err := r.precheckLiveIssueWorker(ctx, label, w.Ref, workerName, c.Bool("force")); err != nil {
+		return err
 	}
 	var justification string
 	if preflightWanted(c) {
@@ -902,7 +1076,52 @@ const preflightTimeout = 3 * time.Minute
 // preflightWanted gates the pre-flight to an interactive dispatch (a human at the
 // terminal who walked away), never --print, honoring --skip-preflight. See docs.
 func preflightWanted(c *cli.Command) bool {
-	return terminalAttached() && !c.Bool("print") && !c.Bool("skip-preflight") && !c.Bool("skip-host-preflight")
+	return terminalAttached() && !c.Bool("print") && !preflightSkipped(c) && !c.Bool("skip-host-preflight")
+}
+
+// launchPreflightSkipReasons lists the launch-adjacent probes skipped by
+// --skip-preflight for the current plan.
+func launchPreflightSkipReasons(plan upPlan, noPull bool) []string {
+	if !plan.SkipPreflight {
+		return nil
+	}
+	reasons := []string{}
+	if plan.TSSidecar {
+		reasons = append(reasons, "ward-tailnet readiness check")
+	}
+	if !noPull {
+		reasons = append(reasons, "image pull")
+	}
+	return reasons
+}
+
+func logLaunchPreflightSkips(label string, plan upPlan, noPull bool) {
+	if !plan.SkipPreflight {
+		return
+	}
+	for _, reason := range launchPreflightSkipReasons(plan, noPull) {
+		writef(os.Stderr, "%s: skipping %s (--skip-preflight)\n", label, reason)
+	}
+}
+
+func logLaunchImageDecision(label string, plan upPlan, noPull bool) {
+	switch {
+	case plan.SkipPreflight && !noPull:
+		writef(os.Stderr, "%s: skipping image pull (--skip-preflight)\n", label)
+	case !plan.SkipPreflight && !noPull:
+		writef(os.Stderr, "%s: image pull enabled for %s\n", label, plan.Image)
+	}
+}
+
+func appendLaunchPreflightNotes(b *strings.Builder, plan upPlan, noPull bool) {
+	if !plan.SkipPreflight {
+		return
+	}
+	writef(b, "# skip-preflight: launch-adjacent probes are bypassed before the container starts; trust and closed-issue checks still run\n")
+	for _, reason := range launchPreflightSkipReasons(plan, noPull) {
+		writef(b, "# skip-preflight: skipping %s\n", reason)
+	}
+	writef(b, "# pull skipped (--skip-preflight); image: %s\n", plan.Image)
 }
 
 // preflightPrompt asks the about-to-detach agent for a feasibility read ending on a
@@ -950,7 +1169,7 @@ func preflightPrompt(ref agentIssueRef, title, body, details string, comments []
 	gate := subsystemPreflightBlock(ref, title, body)
 	return fmt.Sprintf(
 		"You are about to be sent, fire-and-forget, into an ephemeral container to carry "+
-			"this Forgejo issue end to end on your own - implement, commit, merge to main, "+
+			"this issue end to end on your own - implement, commit, merge to main, "+
 			"push - with no human watching once you detach.\n\n"+
 			"That detached run happens in %s pulled inside the container. "+
 			"The directory you are reading this in right now is unrelated host scratch - it may "+
@@ -1156,7 +1375,7 @@ func (r *Runner) handlePreflightWrongRepo(ctx context.Context, mode containerMod
 	// An untrusted repo, the issue's own repo, or a half target is no blind-fire
 	// target: bounce to a human rather than guessing.
 	if !ok || sameRepo || !r.ownerAllowed(target.Owner) {
-		reason := wrongRepoBounceReason(outcome, target, r.primaryOrgs(), ok, sameRepo)
+		reason := wrongRepoBounceReason(outcome, target, r.trustedOwners(), ok, sameRepo)
 		writef(os.Stderr, "%s: pre-flight WRONG-REPO unusable for %s; bouncing to a human.\n", label, w.Ref)
 		if cerr := r.postPreflightNoGo(ctx, mode, surface, w.Ref, reason, read); cerr != nil {
 			return fmt.Errorf("post NO-GO comment on %s: %w", w.Ref, cerr)
@@ -1167,8 +1386,8 @@ func (r *Runner) handlePreflightWrongRepo(ctx context.Context, mode containerMod
 	}
 
 	writef(os.Stderr, "%s: pre-flight WRONG-REPO for %s -> %s; blind-firing an issue there, launching nothing.\n", label, w.Ref, target.slug())
-	// The blind-fire target lives on the same forge as the source issue (ward#489).
-	signed, err := r.hostForgeClient(ctx, w.Ref.Forge, mode)
+	// The blind-fire target lives on the same tracker as the source issue (ward#489).
+	signed, err := r.hostTrackerClient(ctx, w.Ref.trackerOrDefault(), mode)
 	if err != nil {
 		return err
 	}
@@ -1177,7 +1396,7 @@ func (r *Runner) handlePreflightWrongRepo(ctx context.Context, mode containerMod
 	if err != nil {
 		return fmt.Errorf("blind-fire issue into %s: %w", target.slug(), err)
 	}
-	filed := agentIssueRef{Owner: target.Owner, Repo: target.Name, Number: number, Forge: w.Ref.Forge}
+	filed := agentIssueRef{Owner: target.Owner, Repo: target.Name, Number: number, Forge: w.Ref.Forge, Tracker: w.Ref.trackerOrDefault()}
 	writef(os.Stderr, "%s: blind-fired %s - %s\n", label, filed, filed.url())
 	// Point the original issue at the freshly-filed one so the trail is visible.
 	if cerr := signed.commentIssue(ctx, w.Ref.Owner, w.Ref.Repo, w.Ref.Number,
@@ -1278,7 +1497,7 @@ func (s dispatchDockerState) blocked() (bool, string) {
 	default:
 		detail = "no host dispatch broker is attached (WARD_DISPATCH_BROKER_ADDR unset) and the image carries no docker client, so neither dispatch path is available"
 	}
-	return true, fmt.Sprintf("%s - %s. A director surface session dispatches over the host broker; a plain container needs a docker client in the image. See docs/agent-surface.md", base, detail)
+	return true, fmt.Sprintf("%s - %s. A director surface container dispatches over the host broker; a plain container needs a docker client in the image. See docs/agent-surface.md", base, detail)
 }
 
 // preflightVerdict is ward's read of the agent's pre-flight self-assessment.
@@ -1335,10 +1554,10 @@ func parsePreflightVerdict(read string) preflightOutcome {
 	return out
 }
 
-// postPreflightNoGo comments the NO-GO verdict back on the issue (host Forgejo
+// postPreflightNoGo comments the NO-GO verdict back on the issue (host tracker
 // client, SSM-backed token), bouncing it to a human instead of failing silently.
 func (r *Runner) postPreflightNoGo(ctx context.Context, mode containerMode, surface string, ref agentIssueRef, reason, read string) error {
-	cl, err := r.hostForgeClient(ctx, ref.Forge, mode)
+	cl, err := r.hostTrackerClient(ctx, ref.trackerOrDefault(), mode)
 	if err != nil {
 		return err
 	}
@@ -1357,7 +1576,7 @@ func preflightNoGoComment(mode containerMode, surface, reason, read string) stri
 		reason = "(no reason given)"
 	}
 	var b strings.Builder
-	writef(&b, "### 🛫 ward pre-flight: NO-GO\n\n")
+	visible := "WARD-STATUS: pre-flight NO-GO 🛑"
 	writef(&b, "`%s` ran a pre-flight feasibility read on this issue before "+
 		"detaching a fire-and-forget run, and the agent judged it **NO-GO** - it should not be carried "+
 		"unattended until a human weighs in.\n\n", agentCmdline(mode, surface))
@@ -1368,10 +1587,10 @@ func preflightNoGoComment(mode containerMode, surface, reason, read string) stri
 		"or split it), then re-dispatch - `%s <ref> --skip-preflight` skips this gate "+
 		"once you've decided it's good to go.\n", agentCmdline(mode, "engineer"))
 	if read = strings.TrimSpace(read); read != "" {
-		writef(&b, "\n<details><summary>full pre-flight read</summary>\n\n%s\n\n</details>\n", read)
+		writef(&b, "\n## Full pre-flight read\n\n%s\n", read)
 	}
-	writef(&b, "\n---\nPosted automatically by `%s` pre-flight (ward#147, ward#149).\n%s", agentCmdline(mode, surface), preflightNoGoMarker)
-	return b.String()
+	writef(&b, "\nPosted automatically by `%s` pre-flight (ward#147, ward#149).", agentCmdline(mode, surface))
+	return preflightNoGoMarker + "\n" + collapsedIssueComment(visible, "pre-flight details", b.String())
 }
 
 // blindfireIssueBody renders the WRONG-REPO blind-fire body (ward#159): source
@@ -1404,7 +1623,7 @@ func preflightWrongRepoComment(mode containerMode, surface string, filed agentIs
 		reason = "(no reason given)"
 	}
 	var b strings.Builder
-	writef(&b, "### 🎯 ward pre-flight: WRONG-REPO\n\n")
+	visible := "WARD-STATUS: pre-flight WRONG-REPO 🎯"
 	writef(&b, "`%s` ran a pre-flight read on this issue and judged the work "+
 		"belongs in **%s**, not here. Rather than burn cycles searching, it blind-fired a fresh "+
 		"issue there:\n\n", agentCmdline(mode, surface), filed.repoSlug())
@@ -1413,10 +1632,10 @@ func preflightWrongRepoComment(mode containerMode, surface string, filed agentIs
 	writef(&b, "No container was launched here. If the routing is wrong, close %s and re-dispatch "+
 		"this issue with `%s <ref> --skip-preflight` to skip the gate.\n", filed, agentCmdline(mode, "engineer"))
 	if read = strings.TrimSpace(read); read != "" {
-		writef(&b, "\n<details><summary>full pre-flight read</summary>\n\n%s\n\n</details>\n", read)
+		writef(&b, "\n## Full pre-flight read\n\n%s\n", read)
 	}
-	writef(&b, "\n---\nPosted automatically by `%s` pre-flight (ward#159).", agentCmdline(mode, surface))
-	return b.String()
+	writef(&b, "\nPosted automatically by `%s` pre-flight (ward#159).", agentCmdline(mode, surface))
+	return collapsedIssueComment(visible, "pre-flight details", b.String())
 }
 
 // buildAgentPlan composes the detached container plan (seeded argv, issue-<N> branch,
@@ -1484,7 +1703,7 @@ func carryingLine(label string, ref agentIssueRef, title string) string {
 
 // launchAgentContainer turns a resolved (ref, title, seed) into the container plan and
 // fires it detached - the shared tail of engineer, freeform task, and route (ward#356).
-func (r *Runner) launchAgentContainer(ctx context.Context, c *cli.Command, mode containerMode, surface string, w resolvedWork, justification string) error { //nolint:gocyclo,cyclop
+func (r *Runner) launchAgentContainer(ctx context.Context, c *cli.Command, mode containerMode, surface string, w resolvedWork, justification string) error { //nolint:funlen,gocognit,gocyclo,cyclop
 	label := agentCmdline(mode, surface)
 	ref, title, seed := w.Ref, w.Title, w.Seed
 
@@ -1498,9 +1717,15 @@ func (r *Runner) launchAgentContainer(ctx context.Context, c *cli.Command, mode 
 		}
 	}
 
+	if !c.Bool("print") {
+		if err := r.enforceEngineerContainerLimit(ctx, label); err != nil {
+			return err
+		}
+	}
+
 	// A detached run leaves its assets for the next sweep (it cannot delete the
 	// still-mounted dir on return), so the cleanup hook is discarded.
-	assetsDir, _, err := writeContainerAssets()
+	assetsDir, _, err := writeContainerAssets(ctx, c.String("ward-source"), strings.TrimSpace(c.String("ward-version")))
 	if err != nil {
 		return err
 	}
@@ -1528,7 +1753,7 @@ func (r *Runner) launchAgentContainer(ctx context.Context, c *cli.Command, mode 
 	// Reserve the issue so another run won't redo it. Fold the dynamic seed context into
 	// the comment so a pre-launch-gate death self-documents on the thread (ward#609).
 	seedCtx := buildReservationSeedContext(w, plan, time.Now().UTC())
-	release, err := r.reserveIssue(ctx, label, mode, ref, plan.Name, plan.Branch, justification, seedCtx, c.Bool("force"))
+	release, err := r.reserveIssue(ctx, label, mode, ref, plan.Name, plan.Branch, justification, seedCtx, c.Bool("force"), plan.SkipPreflight)
 	if err != nil {
 		return err
 	}
@@ -1543,8 +1768,12 @@ func (r *Runner) launchAgentContainer(ctx context.Context, c *cli.Command, mode 
 
 	// Ready the ward-tailnet network before the sweep + pull burn, so a host missing it
 	// gets it created here (idempotent), not a raw 125 mid-launch (ward#597).
-	if err := r.preflightTailnet(ctx, plan); err != nil {
-		return err
+	if plan.SkipPreflight {
+		logLaunchPreflightSkips(label, plan, c.Bool("no-pull"))
+	} else {
+		if err := r.preflightTailnet(ctx, plan); err != nil {
+			return err
+		}
 	}
 
 	// Reclaim dead containers' writable layers before adding one more, so the
@@ -1554,10 +1783,13 @@ func (r *Runner) launchAgentContainer(ctx context.Context, c *cli.Command, mode 
 	// The engineer name is deterministic, so an exited same-issue corpse in the
 	// keep-N window would block the name; clear it for reuse (ward#364).
 	r.clearExitedContainer(ctx, plan.Name)
-	if !c.Bool("no-pull") {
-		writef(os.Stderr, "%s: image pull enabled for %s\n", label, plan.Image)
+	switch {
+	case plan.SkipPreflight && !c.Bool("no-pull"):
+		logLaunchImageDecision(label, plan, c.Bool("no-pull"))
+	case !plan.SkipPreflight && !c.Bool("no-pull"):
+		logLaunchImageDecision(label, plan, c.Bool("no-pull"))
 		r.pullAgentImage(ctx, plan, label)
-	} else {
+	default:
 		writef(os.Stderr, "%s: image pull skipped for %s (--no-pull)\n", label, plan.Image)
 	}
 	// Resolve host creds (agent + aws export-inject) before the env-file; a good AWS export
@@ -1832,7 +2064,7 @@ func (r *Runner) runAgentTaskDirect(ctx context.Context, c *cli.Command, mode co
 		return fmt.Errorf("%s: %w", label, err)
 	}
 	// Same trust gate as the engineer: the container runs bypassPermissions, so
-	// only file + work against an owner in the primary-org set.
+	// only file + work against an owner in the trusted-owner set.
 	if !r.ownerAllowed(repo.Owner) {
 		return r.untrustedOwnerErr(label, repo.Owner)
 	}
@@ -1855,17 +2087,21 @@ func (r *Runner) runAgentTaskDirect(ctx context.Context, c *cli.Command, mode co
 
 	// task always detaches, so host dispatch is the last interactive moment - surface
 	// a stale-ward reminder before it files+launches (ward#143).
-	r.maybeWarnWardOutdated(ctx)
+	if preflightSkipped(c) {
+		writef(os.Stderr, "%s: skipping ward update reminder (--skip-preflight)\n", label)
+	} else {
+		r.maybeWarnWardOutdated(ctx)
+	}
 
-	cl, err := r.hostForgejoClient(ctx)
+	cl, err := r.hostTrackerClient(ctx, trackerForgejo, mode)
 	if err != nil {
 		return fmt.Errorf("%s: %w", label, err)
 	}
-	number, err := cl.withMode(mode).createIssue(ctx, repo.Owner, repo.Name, title, body)
+	number, err := cl.createIssue(ctx, repo.Owner, repo.Name, title, body)
 	if err != nil {
 		return fmt.Errorf("%s: file issue in %s/%s: %w", label, repo.Owner, repo.Name, err)
 	}
-	ref := agentIssueRef{Owner: repo.Owner, Repo: repo.Name, Number: number}
+	ref := agentIssueRef{Owner: repo.Owner, Repo: repo.Name, Number: number, Tracker: trackerForgejo}
 	writef(os.Stderr, "%s: filed %s - %s\n", label, ref, ref.url())
 
 	// The freeform engineer run carries headless, so it gets the same pre-flight
@@ -1932,9 +2168,12 @@ func printAgentTaskPlan(c *cli.Command, mode containerMode, repo targetRepo, tit
 	writef(&b, "name:    %s\n", plan.Name)
 	writef(&b, "----- issue to file -----\ntitle: %s\n\n%s\n----- end -----\n", title, body)
 	writef(&b, "----- seeded prompt (#N filled once filed) -----\n%s\n----- end -----\n", seed)
-	if c.Bool("no-pull") {
+	appendLaunchPreflightNotes(&b, plan, c.Bool("no-pull"))
+	switch {
+	case plan.SkipPreflight:
+	case c.Bool("no-pull"):
 		writef(&b, "# pull skipped (--no-pull); image: %s\n", plan.Image)
-	} else {
+	default:
 		writef(&b, "docker pull %s\n", plan.Image)
 	}
 	writef(&b, "docker %s\n", strings.Join(dockerCreateArgv(plan, "<ward-forgejo-token-envfile>"), " "))
@@ -1942,18 +2181,19 @@ func printAgentTaskPlan(c *cli.Command, mode containerMode, repo targetRepo, tit
 	return werr
 }
 
-// ownerAllowed reports whether owner is in ward's primary-org trust set, via
+// ownerAllowed reports whether owner is in ward's trusted-owner set, via
 // cli-guard's pkg/ownertrust (ward supplies the accepted set).
 func (r *Runner) ownerAllowed(owner string) bool {
-	return ownertrust.List{Extra: r.primaryOrgs()}.Allowed(owner)
+	owners := r.trustedOwners()
+	return ownertrust.List{Primary: firstTrustedOwner(owners), Extra: trustedOwnerExtras(owners)}.Allowed(owner)
 }
 
 // untrustedOwnerErr is the trust-gate refusal shared by every dispatch surface:
 // it names the accepted set and points at docs/agent-trust-gate.md (ward#484).
 func (r *Runner) untrustedOwnerErr(label, owner string) error {
 	return exitcode.New(dispatchUntrustedOwner, "untrusted_owner",
-		fmt.Errorf("%s: refusing untrusted owner %q (allowed: %s). This build dispatches only for its compiled-in primary orgs - see docs/agent-trust-gate.md",
-			label, owner, strings.Join(r.primaryOrgs(), ", ")), "")
+		fmt.Errorf("%s: refusing untrusted owner %q (allowed: %s). This build dispatches only for its configured trusted owners - see docs/agent-trust-gate.md",
+			label, owner, strings.Join(r.trustedOwners(), ", ")), "")
 }
 
 // printAgentPlan renders the resolved issue, the seeded prompt, and the docker
@@ -1976,9 +2216,12 @@ func printAgentPlan(c *cli.Command, p upPlan, ref agentIssueRef, title, seed, su
 	writef(&b, "workflow: %s\n", p.Workflow.orDefault())
 	writef(&b, "name:    %s\n", p.Name)
 	writef(&b, "%s", seedLogBlock(seed))
-	if c.Bool("no-pull") {
+	appendLaunchPreflightNotes(&b, p, c.Bool("no-pull"))
+	switch {
+	case p.SkipPreflight:
+	case c.Bool("no-pull"):
 		writef(&b, "# pull skipped (--no-pull); image: %s\n", p.Image)
-	} else {
+	default:
 		writef(&b, "docker pull %s\n", p.Image)
 	}
 	if p.TSSidecar {

@@ -159,35 +159,45 @@ func TestMountWardKdlExecFromRealBundle(t *testing.T) {
 	}
 }
 
-// TestLoadFleetConfigFromBundleRef parses the dialect-2 fleet config off a
-// file:// WARD_CONFIG_REF end to end.
-func TestLoadFleetConfigFromBundleRef(t *testing.T) {
+// TestLoadFleetConfigFromBundleSource parses the dialect-2 fleet config from an
+// explicit bundle source, independent of WARD_CONFIG_REF.
+func TestLoadFleetConfigFromBundleSource(t *testing.T) {
 	abs, err := filepath.Abs(wardKdlSrcDir)
 	if err != nil {
 		t.Fatalf("abs(%s): %v", wardKdlSrcDir, err)
 	}
-	t.Setenv(wardConfigRefEnv, "file://"+abs)
-	f, err := loadFleetConfig()
+	raw, err := loadRawFleetConfigFrom(bundleConfigSource(abs))
 	if err != nil {
-		t.Fatalf("loadFleetConfig from bundle ref: %v", err)
+		t.Fatalf("loadRawFleetConfigFrom bundle source: %v", err)
+	}
+	f, err := resolveEffectiveFleet(raw)
+	if err != nil {
+		t.Fatalf("resolveEffectiveFleet: %v", err)
 	}
 	if f.SchemaVersion == 0 || len(f.Agents) == 0 {
 		t.Errorf("bundle fleet config parsed empty (schema=%d, agents=%d)", f.SchemaVersion, len(f.Agents))
 	}
 }
 
-// TestLoadFleetConfigBundleMissingFleetFailsLoud pins the no-silent-fallback
-// rule: a bundle without its fleet KDL errors, it does not read the baked one.
-func TestLoadFleetConfigBundleMissingFleetFailsLoud(t *testing.T) {
-	t.Setenv(wardConfigRefEnv, "file://"+t.TempDir())
-	if _, err := loadFleetConfig(); err == nil {
-		t.Fatal("empty bundle parsed a fleet config; want a loud read error")
+// TestCoreLoadFleetConfigIgnoresBadConfigRef pins the boundary: a bad
+// WARD_CONFIG_REF does not block the baked fleet defaults.
+func TestCoreLoadFleetConfigIgnoresBadConfigRef(t *testing.T) {
+	t.Setenv(wardConfigRefEnv, "not-a-resolvable-ref")
+	f, err := loadFleetConfig()
+	if err != nil {
+		t.Fatalf("loadFleetConfig with bad ref: %v", err)
+	}
+	if f.SchemaVersion == 0 || len(f.Agents) == 0 {
+		t.Errorf("core fleet config parsed empty (schema=%d, agents=%d)", f.SchemaVersion, len(f.Agents))
+	}
+	if claude, ok := fleetAgent(f, string(modeClaude)); !ok || claude.Binary != "claude" {
+		t.Errorf("core fleet config lost claude defaults: %+v (ok=%v)", claude, ok)
 	}
 }
 
-// TestLoadContainerTopologyFromBundleRef parses the staged topology bundle off a
-// file:// WARD_CONFIG_REF end to end.
-func TestLoadContainerTopologyFromBundleRef(t *testing.T) {
+// TestLoadContainerTopologyFromBundleSource parses the staged topology bundle
+// from an explicit bundle source, independent of WARD_CONFIG_REF.
+func TestLoadContainerTopologyFromBundleSource(t *testing.T) {
 	dir := t.TempDir()
 	src := `topology {
     tailnet-network "net-x"
@@ -202,16 +212,28 @@ func TestLoadContainerTopologyFromBundleRef(t *testing.T) {
 	if err := os.WriteFile(filepath.Join(dir, bundleTopologyKDLPath), []byte(src), 0o644); err != nil {
 		t.Fatalf("write topology bundle: %v", err)
 	}
-	t.Setenv(wardConfigRefEnv, "file://"+dir)
-	topo, err := currentContainerTopologyWithError()
+	topo, err := loadContainerTopologyFrom(bundleConfigSource(dir))
 	if err != nil {
-		t.Fatalf("currentContainerTopologyWithError from bundle ref: %v", err)
+		t.Fatalf("loadContainerTopologyFrom(bundle source): %v", err)
 	}
 	if topo.TailnetNetwork != "net-x" || topo.TailnetProxy != "proxy-x:9050" || topo.TowerHost != "tower-x" || topo.TowerOllamaPort != "19090" {
 		t.Errorf("bundle topology parsed unexpectedly: %+v", topo)
 	}
 	if topo.SubstrateSeed != "/seed-x" || topo.SubstrateDest != "/dest-x" || topo.SubstrateManifest != "/manifest-x" || topo.SubstrateTTL != "42" {
 		t.Errorf("bundle substrate topology parsed unexpectedly: %+v", topo)
+	}
+}
+
+// TestCoreContainerTopologyIgnoresBadConfigRef pins the boundary: a bad
+// WARD_CONFIG_REF does not block the baked container topology.
+func TestCoreContainerTopologyIgnoresBadConfigRef(t *testing.T) {
+	t.Setenv(wardConfigRefEnv, "not-a-resolvable-ref")
+	topo, err := currentContainerTopologyWithError()
+	if err != nil {
+		t.Fatalf("currentContainerTopologyWithError with bad ref: %v", err)
+	}
+	if topo.TailnetNetwork != defaultTailnetNetwork || topo.TailnetProxy != defaultTailnetProxy || topo.TowerHost != defaultTowerHost || topo.TowerOllamaPort != defaultTowerOllamaPort {
+		t.Errorf("core container topology drifted: %+v", topo)
 	}
 }
 

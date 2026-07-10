@@ -21,41 +21,51 @@ const agentRosterDoc = "docs/agent-roster.md"
 // generated header and drift-test failures so a red build is self-curing.
 const agentRosterRegenHint = "make agent-roster"
 
-// agentRoleInfo carries the flat-list columns a cli.Command does not: the "what this
-// specialist does" tagline and the ref-vs-freeform invocation note.
+// agentRoleInfo carries the tagline, semantic capability preset, and invocation note
+// columns a cli.Command does not.
 type agentRoleInfo struct {
-	Tagline string // the one-line "what this specialist does"
-	Modes   string // ref vs freeform; detached vs interactive
+	Tagline      string // the one-line "what this specialist does"
+	Capabilities string // the ward-owned semantic posture for this preset
+	Modes        string // ref vs freeform; detached vs interactive
 }
 
 // agentRoleInfos holds the per-role columns keyed by the registered role name. A
 // newly-registered role with no entry is a hard error (agentRosterRowsFrom).
 var agentRoleInfos = map[string]agentRoleInfo{
 	"engineer": {
-		Tagline: "Implements a ticket end to end.",
-		Modes:   "A ref carries that issue detached, fire-and-forget. Freeform text files an issue first, then carries it. Detached-only - interactive work funnels to the director.",
+		Tagline:      "Implements a ticket end to end.",
+		Capabilities: semanticCapabilitiesForRole(roleEngineer).String(),
+		Modes:        "A ref carries that issue detached, fire-and-forget. Freeform text files an issue first, then carries it. Detached-only - interactive work funnels to the director.",
 	},
 	"director": {
-		Tagline: "Autonomously drives a repo's headless lane to drain.",
-		Modes:   "Attached LLM-in-the-loop heartbeat over a repo's backlog (`--repo` scope). Surfaces a read-only scope + dispatch session on drain, no ref.",
+		Tagline:      "Autonomously drives a repo's headless lane to drain.",
+		Capabilities: semanticCapabilitiesForRole(roleDirector).String(),
+		Modes:        "Attached LLM-in-the-loop heartbeat over a repo's backlog (`--repo` scope). Surfaces a read-only scope + dispatch session on drain, no ref.",
 	},
 	"advisor": {
-		Tagline: "Answers without writing code.",
-		Modes:   "A ref researches the issue and posts the answer as a comment. Freeform text answers inline.",
+		Tagline:      "Answers without writing code.",
+		Capabilities: semanticCapabilitiesForRole(roleAdvisor).String(),
+		Modes:        "A ref researches the issue and posts the answer as a comment. Freeform text answers inline.",
+	},
+	"qa": {
+		Tagline:      "Inspects a candidate and posts a structured verdict comment.",
+		Capabilities: semanticCapabilitiesForRole(roleQA).String(),
+		Modes:        "A ref inspects the issue, branch, pull request, and checks, then posts a structured QA verdict comment. Freeform mode is not exposed.",
 	},
 }
 
 // agentMetaCommands are agent subcommands that are NOT startup roles (self-describe
 // `roster`, maintenance `reap`, control `stop`, review gate `review`); roster skips them.
-var agentMetaCommands = map[string]bool{"roster": true, "reap": true, "stop": true, "review": true}
+var agentMetaCommands = map[string]bool{"roster": true, "reap": true, "stop": true, "logs": true, "review": true}
 
 // agentRosterRow is one rendered roster entry: the role, its tagline, its modes, and
 // the per-role detail doc it links to.
 type agentRosterRow struct {
-	Role    string
-	Tagline string
-	Modes   string
-	Doc     string // the per-role detail doc, e.g. agent-engineer.md
+	Role         string
+	Tagline      string
+	Capabilities string
+	Modes        string
+	Doc          string // the per-role detail doc, e.g. agent-engineer.md
 }
 
 // agentRosterRows enumerates the live roster: the roles agentCommand() registers,
@@ -78,10 +88,11 @@ func agentRosterRowsFrom(cmds []*cli.Command) ([]agentRosterRow, error) {
 				cmd.Name, agentRosterDoc, agentRosterRegenHint)
 		}
 		rows = append(rows, agentRosterRow{
-			Role:    cmd.Name,
-			Tagline: info.Tagline,
-			Modes:   info.Modes,
-			Doc:     "agent-" + cmd.Name + ".md",
+			Role:         cmd.Name,
+			Tagline:      info.Tagline,
+			Capabilities: info.Capabilities,
+			Modes:        info.Modes,
+			Doc:          "agent-" + cmd.Name + ".md",
 		})
 	}
 	return rows, nil
@@ -89,7 +100,7 @@ func agentRosterRowsFrom(cmds []*cli.Command) ([]agentRosterRow, error) {
 
 // agentRosterDocGoal is the doc_goal front-matter the generated page carries so it
 // grades against an explicit target like every ward doc (ward#289).
-const agentRosterDocGoal = "Give a reader the canonical, code-generated list of every ward agent startup role with its tagline and invocation modes, so they can pick engineer, director, or advisor and know it can never drift from the binary."
+const agentRosterDocGoal = "Give a reader the canonical, code-generated list of every ward agent startup role with its tagline, semantic capability preset, and invocation modes, so they can pick engineer, director, advisor, or qa and know it can never drift from the binary."
 
 // agentRosterMarkdown renders the committed docs/agent-roster.md body: doc_goal
 // front-matter plus a flat bullet list (not a table, per the house Voice rules).
@@ -104,12 +115,12 @@ func agentRosterMarkdown() (string, error) {
 	fmt.Fprintf(&b, "<!-- Generated from the code roster by `ward agent roster --markdown` (ward#348); do not edit by hand. Regenerate with `%s`. -->\n\n", agentRosterRegenHint)
 	fmt.Fprintf(&b, "A flat list of every `ward agent` startup role - the roster `agentCommand()` registers in\n")
 	fmt.Fprintf(&b, "code, rendered by the binary describing itself so the page can never drift. Each role is one\n")
-	fmt.Fprintf(&b, "entry: what the specialist does and how you invoke it (a ref acts on an issue, freeform text\n")
-	fmt.Fprintf(&b, "files or answers it). Run `ward agent roster` (`warded roster`) for this list live at the\n")
+	fmt.Fprintf(&b, "entry: what the specialist does, what semantic capabilities the preset carries, and how you\n")
+	fmt.Fprintf(&b, "invoke it (a ref acts on an issue, freeform text files or answers it). Run `ward agent roster` (`warded roster`) for this list live at the\n")
 	fmt.Fprintf(&b, "terminal, and the per-role docs each entry links to carry the prose detail. See\n")
 	fmt.Fprintf(&b, "[agent.md](agent.md) for the umbrella and the `warded` public face.\n\n")
 	for _, row := range rows {
-		fmt.Fprintf(&b, "- [`warded %s`](%s) - %s Modes: %s\n", row.Role, row.Doc, row.Tagline, row.Modes)
+		fmt.Fprintf(&b, "- [`warded %s`](%s) - %s Capabilities: %s. Modes: %s\n", row.Role, row.Doc, row.Tagline, row.Capabilities, row.Modes)
 	}
 	fmt.Fprintf(&b, "\n## See also\n\n")
 	fmt.Fprintf(&b, "- [agent.md](agent.md) - the `ward agent` umbrella and the `warded` public face.\n")
@@ -128,6 +139,7 @@ func agentRosterTable() (string, error) {
 	fmt.Fprintf(&b, "ward agent: the startup-role roster (%d roles)\n", len(rows))
 	for _, row := range rows {
 		fmt.Fprintf(&b, "\n  warded %s - %s\n", row.Role, row.Tagline)
+		fmt.Fprintf(&b, "    capabilities: %s\n", row.Capabilities)
 		fmt.Fprintf(&b, "    modes: %s\n", row.Modes)
 		fmt.Fprintf(&b, "    docs:  docs/%s\n", row.Doc)
 	}

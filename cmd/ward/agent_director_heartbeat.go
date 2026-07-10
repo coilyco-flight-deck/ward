@@ -54,6 +54,8 @@ type directorBackend interface {
 	poll(ctx context.Context)
 	// refresh rebuilds the ledger from the live backlog; errors are non-fatal here.
 	refresh(ctx context.Context)
+	// mergeEligiblePullRequests sweeps ward-owned PRs that satisfy the policy boundary.
+	mergeEligiblePullRequests(ctx context.Context)
 	// entries returns every tracked ledger entry across the scope.
 	entries() []*backlogEntry
 	// probeForgeHealth runs one cheap live forge read (the top candidate's issue get) so a
@@ -83,43 +85,61 @@ type directorBackend interface {
 // runDirectorLoop is the heartbeat: poll + reconcile, refresh, then surface (on drain)
 // or LLM-decide + dispatch, then sleep. Loops until drained, --max-cycles, or cancel.
 func runDirectorLoop(ctx context.Context, cfg backlogConfig, be directorBackend) error {
-	// One-time init gate (ward#361): ask once whether to drain now or surface first.
-	// Never re-asked per tick or on a later resume. See docs/agent-director.md.
-	if stop, err := directorKickoff(ctx, be); err != nil || stop {
+	if stop, err := directorStartupPhase(ctx, be); err != nil || stop {
 		return err
 	}
 	for cycle := 1; ; cycle++ {
-		// Deterministic half: reconcile in-flight, then pick up issues closed/promoted/
-		// filed since the last pass. Both reuse #346's ledger layer.
-		be.poll(ctx)
-		be.refresh(ctx)
-
-		entries := be.entries()
-		queued, inflight := backlogLaneCounts(entries)
-
-		// Drain -> surface, rather than exit (ward#351).
-		if queued == 0 && inflight == 0 {
-			stop, err := directorHandleDrain(ctx, be)
-			if err != nil || stop {
-				return err
-			}
-			continue
-		}
-
-		if cfg.maxCycles > 0 && cycle >= cfg.maxCycles {
-			be.reportMaxCycles(queued, inflight)
-			return be.summary()
-		}
-
-		// LLM half: one host one-shot decides which queued issues to dispatch, bounded
-		// by the free-slot budget; dispatch the chosen set, then sleep cheaply.
-		if err := directorDispatchTick(ctx, cfg, be, entries, inflight); err != nil {
-			return err
-		}
-		if err := directorWait(ctx, cfg, be, inflight); err != nil {
+		if stop, err := directorHeartbeatTick(ctx, cfg, be, cycle); err != nil || stop {
 			return err
 		}
 	}
+}
+
+// directorStartupPhase does one deterministic reconcile before the init gate, then either
+// skips kickoff for an already-drained lane or asks once whether to drain now.
+func directorStartupPhase(ctx context.Context, be directorBackend) (bool, error) {
+	be.poll(ctx)
+	be.refresh(ctx)
+	be.mergeEligiblePullRequests(ctx)
+	queued, inflight := backlogLaneCounts(be.entries())
+	if queued == 0 && inflight == 0 {
+		return directorHandleDrain(ctx, be)
+	}
+	// One-time init gate (ward#361): ask once whether to drain now or surface first.
+	// Never re-asked per tick or on a later resume. See docs/agent-director.md.
+	return directorKickoff(ctx, be)
+}
+
+// directorHeartbeatTick runs one drain/dispatch/sleep heartbeat cycle.
+func directorHeartbeatTick(ctx context.Context, cfg backlogConfig, be directorBackend, cycle int) (bool, error) {
+	// Deterministic half: reconcile in-flight, then pick up issues closed/promoted/
+	// filed since the last pass. Both reuse #346's ledger layer.
+	be.poll(ctx)
+	be.refresh(ctx)
+	be.mergeEligiblePullRequests(ctx)
+
+	entries := be.entries()
+	queued, inflight := backlogLaneCounts(entries)
+
+	// Drain -> surface, rather than exit (ward#351).
+	if queued == 0 && inflight == 0 {
+		return directorHandleDrain(ctx, be)
+	}
+
+	if cfg.maxCycles > 0 && cycle >= cfg.maxCycles {
+		be.reportMaxCycles(queued, inflight)
+		return true, be.summary()
+	}
+
+	// LLM half: one host one-shot decides which queued issues to dispatch, bounded
+	// by the free-slot budget; dispatch the chosen set, then sleep cheaply.
+	if err := directorDispatchTick(ctx, cfg, be, entries, inflight); err != nil {
+		return true, err
+	}
+	if err := directorWait(ctx, cfg, be, inflight); err != nil {
+		return true, err
+	}
+	return false, nil
 }
 
 // directorWait ends a tick's sleep window: slots-full offers an on-demand surface
@@ -263,6 +283,12 @@ func (d *liveDirector) poll(ctx context.Context) { d.r.backlogPoll(ctx, d.label,
 func (d *liveDirector) refresh(ctx context.Context) {
 	if err := d.r.backlogRefresh(ctx, d.label, d.repos, d.cfg.limit); err != nil {
 		fmt.Fprintf(os.Stderr, "%s: note: refresh failed (%v); continuing with the prior ledger\n", d.label, err)
+	}
+}
+
+func (d *liveDirector) mergeEligiblePullRequests(ctx context.Context) {
+	if err := d.r.directorMergeEligiblePullRequests(ctx, d.label, d.repos); err != nil {
+		fmt.Fprintf(os.Stderr, "%s: note: PR merge sweep failed (%v); continuing\n", d.label, err)
 	}
 }
 
@@ -574,8 +600,10 @@ func directorSurfaceArgv(contextRepo string, cfg backlogConfig) []string {
 	if v := strings.TrimSpace(cy.tag); v != "" {
 		argv = append(argv, "--tag", v)
 	}
-	if v := strings.TrimSpace(cy.wardVersion); v != "" {
-		argv = append(argv, "--ward-version", v)
+	if cy.wardVersionSource == wardVersionSourceExplicit {
+		if v := strings.TrimSpace(cy.wardVersion); v != "" {
+			argv = append(argv, "--ward-version", v)
+		}
 	}
 	if v := strings.TrimSpace(cfg.wardSource); v != "" {
 		argv = append(argv, "--ward-source", v)
@@ -604,7 +632,7 @@ func (r *Runner) backlogPrintDrained(label string, repos []string) error {
 	}
 	var b strings.Builder
 	fmt.Fprintf(&b, "\n%s: headless backlog drained - nothing queued or in flight (%s).\n", label, strings.Join(repos, ", "))
-	for _, st := range []string{"done", "blocked", "failed", "surfaced", "skipped"} {
+	for _, st := range []string{"done", "submitted", "merge-ready", "blocked", "failed", "surfaced", "skipped"} {
 		if counts[st] > 0 {
 			fmt.Fprintf(&b, "  %-10s %d\n", drainedStateLabel(st), counts[st])
 		}
@@ -620,6 +648,10 @@ func drainedStateLabel(state string) string {
 		return "parked-blocked"
 	case "failed":
 		return "parked-failed"
+	case "submitted":
+		return "pr-submitted"
+	case "merge-ready":
+		return "pr-merge-ready"
 	default:
 		return state
 	}

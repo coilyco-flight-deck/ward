@@ -14,34 +14,35 @@ New to ward? Read [architecture.md](architecture.md) first - it frames the whole
 - [FEATURES.md](FEATURES.md) - inventory of what ships today.
 - [comparison-openshell.md](comparison-openshell.md) - ward vs NVIDIA OpenShell: verb-level gate vs kernel sandbox.
 - [comparison-container-use.md](comparison-container-use.md) - ward vs Dagger container-use: capability gate + autonomous driver vs container isolation + human-at-the-merge.
-- [setup.md](setup.md) - `ward setup` (`warded setup`), guided onboarding: scaffold `.ward/ward.yaml` from the Makefile, then run doctor.
-- [doctor.md](doctor.md) - `ward doctor`, the single diagnostic verb, incl. the allowlist drift guard.
+- [ward-setup-doctor-inventory.md](ward-setup-doctor-inventory.md) - the paused `setup` and `doctor` behavior inventory, with the rebirth note.
 - [troubleshooting.md](troubleshooting.md) - symptom-indexed entry point for a failed `warded` run.
 - [audit.md](audit.md) - the append-only JSONL audit row written per invocation.
 - [config-discovery.md](config-discovery.md) - how ward resolves the allowlist config path.
 - [ward-yaml.md](ward-yaml.md) - field-by-field `.ward/ward.yaml` schema reference (commands + the security: block).
 - [golangci.md](golangci.md) - the strict-ish golangci-lint configuration.
 - [homebrew-build.md](homebrew-build.md) - Homebrew build + cli-guard pinning notes.
+- [error-reporting.md](error-reporting.md) - ward's own off-by-default GlitchTip crash reporting, for top-level Go panics only.
 
 ## Contributor dev-verb gate
 
 - [exec-verb.md](exec-verb.md) - `ward exec <verb>`: run a repo dev verb through the gate.
 - [gate-demo.md](gate-demo.md) - what the gate refuses: the clean-tree + argv-metacharacter denial demo.
-- [demo.md](demo.md) - the launch demo: one happy path plus three danger classes, driven live against `examples/toy/` by [`../examples/demo.sh`](../examples/demo.sh).
+- [demo.md](demo.md) - the launch demo: one happy path plus two danger classes, driven live against `examples/toy/` by [`../examples/demo.sh`](../examples/demo.sh).
 - [workflow-mirror.md](workflow-mirror.md) - the Forgejo/GitHub `test` workflow mirror and drift checker.
 - [verb-fallback.md](verb-fallback.md) - unknown-verb rewrite to `ward exec` + the build/test/install triple.
 - [git-verbs.md](git-verbs.md) - `ward git`: audited, concurrency-safe git surface.
 - [git-clone.md](git-clone.md) - `ward git clone`, destination-gated.
-- [hook.md](hook.md) - `ward hook`, the Claude Code hook entry points.
 
 ## `ward agent` (headless harness runner)
 
 - [first-run.md](first-run.md) - zero to a verifiable first `warded` dry run: prerequisites, install/verify, a safe `--print` first command.
 - [agent.md](agent.md) - the entrypoint to the ephemeral container that carries a feature.
 - [agent-subcommands.md](agent-subcommands.md) - how the roles differ (what they do, attachment, scope).
+- [agent-role-capabilities.md](agent-role-capabilities.md) - the semantic role vocabulary and default presets.
 - [agent-roster.md](agent-roster.md) - the generated role roster.
 - [agent-reap.md](agent-reap.md) - `ward agent reap`, the host-side idle-killer for wedged engineer containers.
 - [agent-stop.md](agent-stop.md) - `ward agent stop`, the director-surface on-demand engineer stop through the dispatch broker.
+- [agent-logs.md](agent-logs.md) - `ward agent logs`, the director-surface on-demand engineer log read through the dispatch broker.
 - [agent-engineer.md](agent-engineer.md) - the implement-a-ticket role.
 - [agent-director.md](agent-director.md) - the autonomous-backlog heartbeat role.
 - [agent-director-dispatch.md](agent-director-dispatch.md) - how the director parks vs. defers a dispatch error.
@@ -61,14 +62,13 @@ New to ward? Read [architecture.md](architecture.md) first - it frames the whole
 - [agent-github.md](agent-github.md) - GitHub as a first-class forge: token setup + the PR-landing loop.
 - [github-rate-limits.md](github-rate-limits.md) - ward's GitHub client stays on the REST budget, off GraphQL.
 - [director-startup-triage.md](director-startup-triage.md) - director startup triage (autonomous drain).
-- [director-consult.md](director-consult.md) - `warded director consult`, the interactive consult-to-headless conversion interview.
 - [director-on-demand-surface.md](director-on-demand-surface.md) - the director's on-demand surface.
 - [broker.md](broker.md) - the root credential broker that hardens the director's surface.
 - [forgejo-token-audit.md](forgejo-token-audit.md) - the audited set of raw Forgejo-token read sites + the build-time guard that freezes it.
 - [agent-credentials.md](agent-credentials.md) - how each harness's host credential is seeded.
 - [agent-aws-creds.md](agent-aws-creds.md) - how the aws capability delivers AWS creds (export-and-inject, mount fallback).
 - [agent-attribution.md](agent-attribution.md) - agent attribution on Forgejo write bodies.
-- [agent-observability.md](agent-observability.md) - agent-run log/telemetry drain + opt-in OTLP.
+- [agent-observability.md](agent-observability.md) - agent-run log drain + redacted local archive, with SigNoz deferred.
 - [agent-dispatch-contract.md](agent-dispatch-contract.md) - dispatch exit codes + `meta.json` outcome enum for supervising runs.
 - [agent-host-net.md](agent-host-net.md) - `--tailnet`, the opt-in network escalation.
 - [agent-ts-sidecar.md](agent-ts-sidecar.md) - the Docker Desktop tailnet-route sidecar.
@@ -80,7 +80,7 @@ New to ward? Read [architecture.md](architecture.md) first - it frames the whole
 ## Agent harnesses (drivers)
 
 - [agent-drivers.md](agent-drivers.md) - the four harnesses (`--harness`) compared (first-run facts side by side).
-- [enforcement-boundary.md](enforcement-boundary.md) - where the enforcement boundary sits per harness (claude hook vs container-edge verb gate).
+- [enforcement-boundary.md](enforcement-boundary.md) - where the enforcement boundary sits per harness (container-edge verb gate).
 - [agent-local-harnesses.md](agent-local-harnesses.md) - index of the local harness pages.
 - [agent-local-model.md](agent-local-model.md) - bring your own Ollama: defaults, the supported route, and the current limitation ([#395](https://forgejo.coilysiren.me/coilyco-flight-deck/ward/issues/395)).
 - [agent-claude.md](agent-claude.md) - the `claude` full cloud harness.
@@ -118,11 +118,10 @@ New to ward? Read [architecture.md](architecture.md) first - it frames the whole
 - [ward-kdl-authoring.md](ward-kdl-authoring.md) - authoring guardfiles: getting the compiler, swapping the bundle.
 - [guardfile-grammar.md](guardfile-grammar.md) - the dialect-1 KDL grammar, a minimal working guardfile, where auth config lives.
 - [kdl-legibility.md](kdl-legibility.md) - the [ward#287](https://forgejo.coilysiren.me/coilyco-flight-deck/ward/issues/287) proposal to rename the quirky KDL tokens (`argv`, `$var`) to human-readable spellings.
-- [ward-kdl.brew.scoped.md](ward-kdl.brew.scoped.md) - why `ward pkg brew` scoped verbs stay gated Go.
-- [config-source.md](config-source.md) - the `WARD_CONFIG_REF` fs.FS-at-launch seam: baked neutral default vs a live-resolved bundle.
+- [config-source.md](config-source.md) - the `WARD_CONFIG_REF` edge-surface fs.FS-at-launch seam: baked neutral default vs a live-resolved bundle for guarded surfaces.
 - [config-ref-resolver.md](config-ref-resolver.md) - the `WARD_CONFIG_REF` git-ref grammar and its TTL-cached `syncGitRef` resolver.
 - [fleet-local.md](fleet-local.md) - `~/.ward/fleet.local.kdl`, the operator-local config reader.
-- [ward-kdl/](ward-kdl/) - 24 generated per-area guardfile references (git, aws, docker, the agents/ops/pkg surfaces, ...), indexed area-by-area from [ward-kdl-surface.md](ward-kdl-surface.md).
+- [ward-kdl/](ward-kdl/) - 23 generated per-area guardfile references (git, aws, docker, the agents/ops/pkg surfaces, ...), indexed area-by-area from [ward-kdl-surface.md](ward-kdl-surface.md).
 
 ## Operator ops surfaces
 
@@ -131,12 +130,13 @@ New to ward? Read [architecture.md](architecture.md) first - it frames the whole
 - [ops-forgejo-admin.md](ops-forgejo-admin.md) - the `{admin,doctor}` remote-exec slice.
 - [ops-forgejo-view.md](ops-forgejo-view.md) - the lean `issue view` override.
 - [ops-forgejo-quiet.md](ops-forgejo-quiet.md) - the `issue create --quiet` machine-output mode.
+- [shortcut-tracker.md](shortcut-tracker.md) - ward's Shortcut Story tracker adapter: auth, URL round-trip, and workflow-state mapping.
 - [ops-forgejo-graft-removal.md](ops-forgejo-graft-removal.md) - the [ward#407](https://forgejo.coilysiren.me/coilyco-flight-deck/ward/issues/407) consult: per-graft design for removing the four Go grafts over the specverb tree.
 
 ## Examples
 
 - [example-repo.md](example-repo.md) - the `examples/toy/` minimal ward-managed repo (Makefile + `.ward/ward.yaml` with a `security:` block + a ward-kdl guardfile), the demo and spec-bundle anchor.
-- [demo.md](demo.md) - the runnable launch demo ([`../examples/demo.sh`](../examples/demo.sh)) driven against `examples/toy/`: one happy path, three danger classes.
+- [demo.md](demo.md) - the runnable launch demo ([`../examples/demo.sh`](../examples/demo.sh)) driven against `examples/toy/`: one happy path, two danger classes.
 
 ## Release
 

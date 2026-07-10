@@ -19,6 +19,21 @@ import (
 	"github.com/urfave/cli/v3"
 )
 
+func stubContainerBootstrapStage(t *testing.T) {
+	t.Helper()
+	prev := stageWardBootstrapBinary
+	stageWardBootstrapBinary = func(_ context.Context, dir, wardSource, wardVersion string) error {
+		if wardSource != "" {
+			t.Fatalf("test bootstrap stage unexpectedly asked to build from source %q", wardSource)
+		}
+		if wardVersion != "" {
+			t.Fatalf("test bootstrap stage unexpectedly asked to resolve release %q", wardVersion)
+		}
+		return os.WriteFile(filepath.Join(dir, "ward"), []byte("#!/bin/sh\nexit 0\n"), 0o755)
+	}
+	t.Cleanup(func() { stageWardBootstrapBinary = prev })
+}
+
 // TestSweepStaleContainerAssets reclaims dirs past the TTL (left by detached
 // runs) while sparing fresh ones and unrelated dirs.
 func TestSweepStaleContainerAssets(t *testing.T) {
@@ -109,27 +124,79 @@ func TestTargetFromRemoteURL(t *testing.T) {
 	}
 }
 
-func TestSessionContainerNameUniqueAndSafe(t *testing.T) {
+func TestDirectorContainerNameUniqueAndSafe(t *testing.T) {
 	repo := targetRepo{Owner: "coilyco-gaming", Name: "eco-app"}
-	a := containerRoleName(roleSession, modeClaude, repo, 0, "a1b2c3d4")
-	b := containerRoleName(roleSession, modeClaude, repo, 0, "e5f6a7b8")
+	suffixRe := regexp.MustCompile(`^[a-hjkm-pqrstuvwxyz]{2}[456789]{2}$`)
+	a := containerRoleName(roleDirector, modeClaude, repo, 0, "ab85")
+	b := containerRoleName(roleDirector, modeClaude, repo, 0, "cd97")
 	if a == b {
-		t.Fatalf("two issueless runs must not collide on the machine suffix: %q == %q", a, b)
+		t.Fatalf("two issueless surface runs must not collide on the agent-id suffix: %q == %q", a, b)
 	}
-	// Role-led + prefixless: no ward- prefix any more (ward#364).
-	if !strings.HasPrefix(a, "session-claude-") {
-		t.Errorf("name %q missing the session-<driver>- lead", a)
+	if !strings.HasPrefix(a, "director-claude-") {
+		t.Errorf("name %q missing the director-<driver>- lead", a)
 	}
 	if strings.HasPrefix(a, "ward-") {
 		t.Errorf("name %q still carries the dropped ward- prefix", a)
 	}
-	// docker forbids these; sanitization must strip them.
+	if !suffixRe.MatchString(strings.TrimPrefix(a, "director-claude-")) {
+		t.Errorf("director name %q does not end in a dictatable agent-id suffix", a)
+	}
+	// docker forbids these; the director name must stay safe even though it no
+	// longer carries the repo name.
 	weird := targetRepo{Owner: "x", Name: "we/ird name!"}
-	got := containerRoleName(roleSession, modeClaude, weird, 0, "deadbeef")
+	got := containerRoleName(roleDirector, modeClaude, weird, 0, "ab85")
 	for _, bad := range []string{"/", " ", "!"} {
 		if strings.Contains(got, bad) {
-			t.Errorf("sanitized name %q still contains %q", got, bad)
+			t.Errorf("director name %q still contains %q", got, bad)
 		}
+	}
+}
+
+func TestDictatableIDShape(t *testing.T) {
+	re := regexp.MustCompile(`^[a-hjkm-pqrstuvwxyz]{2}[456789]{2}$`)
+	for i := 0; i < 32; i++ {
+		if got := dictatableID(); !re.MatchString(got) {
+			t.Fatalf("dictatableID() = %q, want %s", got, re)
+		}
+	}
+}
+
+func TestBuildUpPlanDirectorUsesDictatableSuffix(t *testing.T) {
+	prev := directorSurfaceSessionSuffix
+	directorSurfaceSessionSuffix = func() string { return "ab85" }
+	t.Cleanup(func() { directorSurfaceSessionSuffix = prev })
+
+	probe := &cli.Command{
+		Name:  "probe",
+		Flags: tailnetProbeFlags(),
+		Action: func(_ context.Context, c *cli.Command) error {
+			p, err := buildUpPlan(c, targetRepo{Owner: "o", Name: "r"}, modeClaude, roleDirector, t.TempDir(), t.TempDir(), nil, false)
+			if err != nil {
+				return err
+			}
+			if got, want := p.Name, "director-claude-ab85"; got != want {
+				t.Fatalf("director buildUpPlan name = %q, want %q", got, want)
+			}
+			if !regexp.MustCompile(`^director-[a-z]+-[a-hjkm-pqrstuvwxyz]{2}[456789]{2}$`).MatchString(p.Name) {
+				t.Fatalf("director buildUpPlan name = %q, want the dictatable agent-id shape", p.Name)
+			}
+			return nil
+		},
+	}
+	if err := probe.Run(context.Background(), []string{"probe"}); err != nil {
+		t.Fatalf("probe run: %v", err)
+	}
+}
+
+func TestAdvisorResearchPlanUsesIssueScope(t *testing.T) {
+	ref := agentIssueRef{Owner: "coilyco-flight-deck", Repo: "ward", Number: 818, Forge: forgeForgejo}
+	base := upPlan{Mode: modeClaude, Repo: targetRepo{Owner: ref.Owner, Name: ref.Repo}, Machine: "deadbeef"}
+	got := advisorResearchPlan(base, ref)
+	if want := "advisor-claude-ward-818"; got.Name != want {
+		t.Fatalf("advisor research name = %q, want %q", got.Name, want)
+	}
+	if other := advisorResearchPlan(upPlan{Mode: modeClaude, Repo: base.Repo, Machine: "beadfeed"}, ref); other.Name != got.Name {
+		t.Fatalf("advisor research name must be issue-scoped, got %q and %q", other.Name, got.Name)
 	}
 }
 
@@ -190,6 +257,14 @@ func TestUpPlanLabels(t *testing.T) {
 	}
 	if !strings.Contains(got, "ward.role=advisor") || !strings.Contains(got, "ward.driver=codex") {
 		t.Errorf("advisor labels %q missing role/driver", got)
+	}
+	qa := upPlan{Role: roleQA, Mode: modeGoose, Repo: repo, Machine: "cafefeed"}
+	got = strings.Join(qa.labels(), " ")
+	if strings.Contains(got, "ward.issue") {
+		t.Errorf("QA run must not carry a ward.issue label: %q", got)
+	}
+	if !strings.Contains(got, "ward.role=qa") || !strings.Contains(got, "ward.driver=goose") {
+		t.Errorf("qa labels %q missing role/driver", got)
 	}
 	// A plan with no Role set falls back to the session role so the label is never blank.
 	bare := upPlan{Mode: modeClaude, Repo: repo}
@@ -501,7 +576,8 @@ func TestWriteContainerAssetsStagesUnderHome(t *testing.T) {
 	// (never /tmp) for a snap docker daemon to see it at `docker run` (ward#574).
 	home := t.TempDir()
 	t.Setenv("HOME", home)
-	dir, cleanup, err := writeContainerAssets()
+	stubContainerBootstrapStage(t)
+	dir, cleanup, err := writeContainerAssets(context.Background(), "", "")
 	if err != nil {
 		t.Fatalf("writeContainerAssets: %v", err)
 	}
@@ -511,6 +587,35 @@ func TestWriteContainerAssetsStagesUnderHome(t *testing.T) {
 	}
 	if !strings.HasPrefix(filepath.Base(dir), containerAssetsPrefix) {
 		t.Errorf("assets dir %q must carry the sweep-recognizable prefix %q", dir, containerAssetsPrefix)
+	}
+}
+
+func TestWriteContainerAssetsStagesWardBinary(t *testing.T) {
+	home := t.TempDir()
+	t.Setenv("HOME", home)
+	prev := stageWardBootstrapBinary
+	stageWardBootstrapBinary = func(_ context.Context, dir, wardSource, wardVersion string) error {
+		if wardSource != "/src/ward" {
+			t.Fatalf("stage bootstrap source = %q, want /src/ward", wardSource)
+		}
+		if wardVersion != "v0.1.2" {
+			t.Fatalf("stage bootstrap version = %q, want v0.1.2", wardVersion)
+		}
+		return os.WriteFile(filepath.Join(dir, "ward"), []byte("#!/bin/sh\nexit 0\n"), 0o755)
+	}
+	t.Cleanup(func() { stageWardBootstrapBinary = prev })
+
+	dir, cleanup, err := writeContainerAssets(context.Background(), "/src/ward", "v0.1.2")
+	if err != nil {
+		t.Fatalf("writeContainerAssets: %v", err)
+	}
+	defer cleanup()
+	info, err := os.Stat(filepath.Join(dir, "ward"))
+	if err != nil {
+		t.Fatalf("staged ward binary missing: %v", err)
+	}
+	if info.Mode()&0o111 == 0 {
+		t.Fatalf("staged ward binary must be executable, mode %o", info.Mode())
 	}
 }
 
@@ -1039,7 +1144,7 @@ func TestEntrypointComposesCanonicalAgentDoctrine(t *testing.T) {
 }
 
 // TestEntrypointDelegatesBootstrap locks the new boundary: the shell entrypoint
-// only installs ward and hands off to `ward container bootstrap`.
+// only links the staged ward binary and hands off to `ward container bootstrap`.
 func TestEntrypointDelegatesBootstrap(t *testing.T) {
 	t.Skip("entrypoint delegates harness-specific setup to ward container bootstrap now")
 	data, err := containerAssets.ReadFile("containerassets/" + containerEntrypointRel)
@@ -1048,8 +1153,8 @@ func TestEntrypointDelegatesBootstrap(t *testing.T) {
 	}
 	script := string(data)
 	for _, want := range []string{
-		"exec ward container bootstrap \"$@\"",
-		"install_ward()", // the shell still owns only binary installation
+		"ln -sf /opt/ward/ward /usr/local/bin/ward",
+		"exec /opt/ward/ward container bootstrap \"$@\"",
 	} {
 		if !strings.Contains(script, want) {
 			t.Errorf("entrypoint missing %q (bootstrap delegation)", want)
@@ -1087,8 +1192,7 @@ func TestEntrypointHasNoHarnessConfigBranches(t *testing.T) {
 	}
 }
 
-// TestEntrypointBootstrapDelegation is the active boundary test: the shell only
-// installs ward and execs the Go bootstrap, with no harness-specific config code.
+// TestEntrypointBootstrapDelegation checks the thin shell shim and staged ward handoff.
 func TestEntrypointBootstrapDelegation(t *testing.T) {
 	data, err := containerAssets.ReadFile("containerassets/" + containerEntrypointRel)
 	if err != nil {
@@ -1096,14 +1200,17 @@ func TestEntrypointBootstrapDelegation(t *testing.T) {
 	}
 	script := string(data)
 	for _, want := range []string{
-		"exec ward container bootstrap \"$@\"",
-		"install_ward()",
+		"ln -sf /opt/ward/ward /usr/local/bin/ward",
+		"exec /opt/ward/ward container bootstrap \"$@\"",
 	} {
 		if !strings.Contains(script, want) {
 			t.Fatalf("entrypoint missing %q", want)
 		}
 	}
 	for _, banned := range []string{
+		"install_ward_from_source",
+		"install_ward_from_release",
+		"resolve_ward_tag",
 		"compose_codex_config",
 		"compose_goose_config",
 		"compose_opencode_config",
@@ -1201,7 +1308,7 @@ func TestRepoCloneURLAndMirror(t *testing.T) {
 // overrides the host ward version the container downloads; unset keeps Version.
 func TestBuildUpPlanWardVersion(t *testing.T) {
 	run := func(args []string) string {
-		var got string
+		var got upPlan
 		probe := &cli.Command{
 			Name: "probe",
 			Flags: []cli.Flag{
@@ -1219,7 +1326,46 @@ func TestBuildUpPlanWardVersion(t *testing.T) {
 				if err != nil {
 					return err
 				}
-				got = p.WardVersion
+				got = p
+				return nil
+			},
+		}
+		if err := probe.Run(context.Background(), append([]string{"probe"}, args...)); err != nil {
+			t.Fatalf("probe run: %v", err)
+		}
+		return got.WardVersion
+	}
+	if got := run([]string{"--ward-version", "v0.148.0"}); got != "v0.148.0" {
+		t.Errorf("--ward-version override: WardVersion = %q, want v0.148.0", got)
+	}
+	if got := run(nil); got != Version {
+		t.Errorf("unset: WardVersion = %q, want host Version %q", got, Version)
+	}
+}
+
+// TestBuildUpPlanWardVersionSource covers the source label that keeps inherited host
+// versions from turning into implicit child pins.
+func TestBuildUpPlanWardVersionSource(t *testing.T) {
+	run := func(args []string) upPlan {
+		var got upPlan
+		probe := &cli.Command{
+			Name: "probe",
+			Flags: []cli.Flag{
+				&cli.StringFlag{Name: "ward-version", Sources: cli.EnvVars(envAgentVersion)},
+				&cli.StringFlag{Name: "ward-source"},
+				&cli.StringFlag{Name: "image", Value: containerImageDefault},
+				&cli.StringFlag{Name: "tag", Value: containerImageTagDefault},
+				&cli.StringFlag{Name: "branch"},
+				&cli.StringSliceFlag{Name: "repo"},
+				&cli.BoolFlag{Name: "aws"},
+				&cli.BoolFlag{Name: "detach"},
+			},
+			Action: func(_ context.Context, c *cli.Command) error {
+				p, err := buildUpPlan(c, targetRepo{Owner: "o", Name: "r"}, modeClaude, roleSession, t.TempDir(), t.TempDir(), nil, false)
+				if err != nil {
+					return err
+				}
+				got = p
 				return nil
 			},
 		}
@@ -1228,11 +1374,17 @@ func TestBuildUpPlanWardVersion(t *testing.T) {
 		}
 		return got
 	}
-	if got := run([]string{"--ward-version", "v0.148.0"}); got != "v0.148.0" {
-		t.Errorf("--ward-version override: WardVersion = %q, want v0.148.0", got)
+
+	if got := run([]string{"--ward-version", "v0.148.0"}); got.WardVersionSource != wardVersionSourceExplicit {
+		t.Errorf("explicit --ward-version should record explicit source, got %q", got.WardVersionSource)
 	}
-	if got := run(nil); got != Version {
-		t.Errorf("unset: WardVersion = %q, want host Version %q", got, Version)
+	if got := run(nil); got.WardVersionSource != func() string {
+		if Version == "dev" {
+			return wardVersionSourceLatest
+		}
+		return wardVersionSourceHost
+	}() {
+		t.Errorf("unset --ward-version should record the default source, got %q", got.WardVersionSource)
 	}
 }
 

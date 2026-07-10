@@ -17,9 +17,9 @@ The shared launch helpers show ~10 flags: the positional ref/task, `--harness`
 `--force` skips the reservation checks ([agent-reservation.md](agent-reservation.md)).
 `--config` (repeatable) overrides the agent's model-context config
 ([agent-config-overrides.md](agent-config-overrides.md)). The engineer **always detaches**.
-`--skip-review` disables the in-container review gate, and `--skip-preflight` skips both
-the host pre-flight and the review gate. `--no-review-gate` and `--no-preflight` stay
-accepted as aliases.
+`--skip-review` disables the in-container review gate, and `--skip-preflight` skips the
+host pre-flight and launch-adjacent startup probes. See [agent-preflight.md](agent-preflight.md)
+for scope and safety gates. `--no-review-gate` and `--no-preflight` stay accepted as aliases.
 
 ### Host/cloud capability is a per-role guardfile set, not a flag
 
@@ -40,7 +40,6 @@ live-observe set, engineer/director hold none). See [agent-capability.md](agent-
 
 * `--instructions` / `-i` - use the freeform positional, or `--instructions-file` in DIRECT mode.
 * `--with-repo` - the alias of `--repo` is gone (advisor and director keep their own separate `--with-repo`).
-* `--go-bootstrap` - the experimental toggle left the surface.
 
 ## Quiet launch for detached runs
 

@@ -25,28 +25,19 @@ var configFlagOverride string
 
 func explicitConfigPath() string { return configFlagOverride }
 
-// sandboxShimSubcommand maps a wrapped-tool basename to the ward subcommand
-// that re-enters the gate for it. Keep in sync with wardSandboxTools.
-var sandboxShimSubcommand = map[string][]string{
-	"brew": {"pkg", "brew"},
+func main() {
+	os.Exit(run())
 }
 
-func main() {
+func run() int {
 	// Internal jail-helper re-exec, before normal CLI parsing; never returns on
 	// success (it execs the real tool).
 	if sandbox.IsJailInvocation(os.Args) {
 		if err := sandbox.RunJail(os.Args[2:]); err != nil {
 			fmt.Fprintln(os.Stderr, "ward:", err)
-			os.Exit(1)
+			return 1
 		}
-		return
-	}
-
-	// Multicall shim: invoked under a wrapped tool's name (the jail masked it),
-	// rewrite argv to re-enter the gate as `ward <subcommand> <args>`.
-	if sub, ok := sandboxShimSubcommand[filepath.Base(os.Args[0])]; ok {
-		rewritten := append([]string{"ward"}, sub...)
-		os.Args = append(rewritten, os.Args[1:]...)
+		return 0
 	}
 
 	// Public-face shim: invoked as `warded` (a symlink), rewrite argv to the
@@ -54,6 +45,9 @@ func main() {
 	os.Args = maybeRewriteWardedShim(os.Args)
 
 	configFlagOverride = preParseConfigFlag(os.Args)
+	if initErrorReporting() {
+		defer reportPanic()
+	}
 	app := &cli.Command{
 		Name:    "ward",
 		Usage:   "a contributor-facing cli-guard consumer",
@@ -74,14 +68,9 @@ func main() {
 		},
 		Commands: []*cli.Command{
 			versionCommand(),
-			upgradeCommand(),
 			execCommand(),
-			pkgCommand(),
 			gitCommand(),
 			auditCommand(),
-			doctorCommand(),
-			setupCommand(),
-			hookCommand(),
 			containerCommand(),
 			agentCommand(),
 			agentsCommand(),
@@ -102,6 +91,7 @@ func main() {
 	// Unknown-verb fallback: `ward <leaf>` -> `ward exec <leaf>` for a declared
 	// leaf that isn't a top-level verb. See docs/verb-fallback.md, issue #87.
 	os.Args = maybeRewriteToExec(os.Args, topLevelVerbs(app))
+	configureCrashReportingScope(os.Args)
 
 	if err := app.Run(context.Background(), os.Args); err != nil {
 		fmt.Fprintln(os.Stderr, "ward:", err)
@@ -109,14 +99,15 @@ func main() {
 		// subprocess's own code, then 1.
 		var coded exitcode.Coded
 		if errors.As(err, &coded) {
-			os.Exit(coded.Code())
+			return coded.Code()
 		}
 		var ee *exec.ExitError
 		if errors.As(err, &ee) {
-			os.Exit(ee.ExitCode())
+			return ee.ExitCode()
 		}
-		os.Exit(1)
+		return 1
 	}
+	return 0
 }
 
 // rootValueFlags are root-level flags whose space-form value is the next token
@@ -186,18 +177,11 @@ func maybeRewriteToExec(args []string, topLevel map[string]bool) []string {
 // ward binary becomes the product's user-facing command (ward#247). See docs/agent.md.
 const wardedShimName = "warded"
 
-// wardedSetupVerb is the one warded subcommand carved out of the agent rewrite:
-// `warded setup` routes to `ward setup` (contributor onboarding, not dispatch; ward#426).
-const wardedSetupVerb = "setup"
-
-// maybeRewriteWardedShim rewrites `warded <args>` to `ward agent <args>` (ward#282);
-// `warded setup` is carved out to `ward setup` (ward#426). Pure for testing.
+// maybeRewriteWardedShim rewrites `warded <args>` to `ward agent <args>` (ward#282).
+// Pure for testing.
 func maybeRewriteWardedShim(args []string) []string {
 	if len(args) == 0 || filepath.Base(args[0]) != wardedShimName {
 		return args
-	}
-	if len(args) > 1 && args[1] == wardedSetupVerb {
-		return append([]string{"ward"}, args[1:]...)
 	}
 	rewritten := make([]string, 0, len(args)+1)
 	rewritten = append(rewritten, "ward", "agent")
@@ -219,9 +203,6 @@ func canonicalWardExe(exe string) string {
 		if st, err := os.Stat(ward); err == nil && !st.IsDir() {
 			return ward
 		}
-	}
-	if p := canonicalWardPath(); p != "" {
-		return p
 	}
 	if p, err := exec.LookPath("ward"); err == nil {
 		return p

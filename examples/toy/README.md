@@ -12,9 +12,10 @@ Everything here is deliberately tiny and dependency-free (a pure POSIX-`sh`
 - `greet.sh` - the toy CLI. `sh greet.sh <name>` prints `hello, <name>`.
 - `test.sh` - one assertion, non-zero on mismatch.
 - `Makefile` - `build` / `test` / `vet` / `install`, each with a `## help`
-  comment `ward doctor` checks against `.ward/ward.yaml`.
+  comment. The former `ward setup` / `ward doctor` shape is captured in the
+  release-planning inventory.
 - `.ward/ward.yaml` - the allowlist: the build/test/install triple plus a
-  `security:` block (required per ward#450).
+  `security:` block preserved for inventory compatibility.
 - `toy.guardfile.kdl` - a minimal ward-kdl permission surface (deny-by-default).
 
 ## Try it
@@ -23,10 +24,9 @@ Everything here is deliberately tiny and dependency-free (a pure POSIX-`sh`
 cd examples/toy
 ward exec build     # runs `make build` through the gate, one audit row
 ward exec test      # runs `make test`
-ward doctor         # validates ward.yaml <-> Makefile + the security: block
 ```
 
-For the launch demo - one happy path plus three danger classes, driven against
+For the launch demo - one happy path plus two danger classes, driven against
 this repo - run `sh ../demo.sh` from here (or `sh examples/demo.sh` from the
 repo root). Walkthrough: [../../docs/demo.md](../../docs/demo.md).
 

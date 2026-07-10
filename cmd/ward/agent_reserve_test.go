@@ -6,6 +6,7 @@ import (
 	"fmt"
 	"io"
 	"os"
+	"reflect"
 	"strings"
 	"testing"
 	"time"
@@ -321,6 +322,9 @@ func TestFreshReservationComment(t *testing.T) {
 func TestReservationCommentBodyIsRoadBlock(t *testing.T) {
 	now := time.Date(2026, 7, 3, 12, 0, 0, 0, time.UTC)
 	body := reservationCommentBody(modeClaude, "engineer-claude-ward-494", "box", now, "", nil)
+	if visible := visibleLinesBeforeDetails(body); visible != "WARD-RESERVATION: held 🔒" {
+		t.Fatalf("reservation visible line = %q\n%s", visible, body)
+	}
 	for _, want := range []string{
 		"Do not comment on or edit this issue",
 		"new issue, dispatched fresh",
@@ -332,7 +336,7 @@ func TestReservationCommentBodyIsRoadBlock(t *testing.T) {
 	}
 }
 
-// fakeLockForge is a near-no-op issueForge recording lock/unlock and comment posts, so
+// fakeLockForge is a near-no-op Tracker recording lock/unlock and comment posts, so
 // lockReservedIssue (ward#494) and releaseRemoteReservation (ward#570) can be exercised.
 type fakeLockForge struct {
 	lockErr      error
@@ -343,12 +347,14 @@ type fakeLockForge struct {
 	comments     []string
 	listComments []issueComment
 	listErr      error
+	listCalls    int
 }
 
 func (f *fakeLockForge) getIssue(context.Context, string, string, int) (*dispatch.Issue, error) {
 	return &dispatch.Issue{}, nil
 }
 func (f *fakeLockForge) listIssueComments(context.Context, string, string, int) ([]issueComment, error) {
+	f.listCalls++
 	return f.listComments, f.listErr
 }
 func (f *fakeLockForge) createIssue(context.Context, string, string, string, string) (int, error) {
@@ -502,6 +508,100 @@ func TestIsReservationConflict(t *testing.T) {
 	}
 }
 
+func dockerRunningStub(t *testing.T, name string) string {
+	t.Helper()
+	stub := t.TempDir() + "/docker"
+	script := "#!/bin/sh\n" +
+		"if [ \"$1\" = ps ] && [ \"$2\" = --filter ] && [ \"$3\" = " + shellQuote("name=^"+name+"$") + " ] && [ \"$4\" = --format ]; then\n" +
+		"  printf '%s\\n' " + shellQuote(name) + "\n" +
+		"  exit 0\n" +
+		"fi\n" +
+		"printf '%s\\n' \"unexpected docker args: $*\" >&2\n" +
+		"exit 1\n"
+	if err := os.WriteFile(stub, []byte(script), 0o755); err != nil { //nolint:gosec
+		t.Fatalf("write docker stub: %v", err)
+	}
+	return stub
+}
+
+func dockerAbsentStub(t *testing.T) string {
+	t.Helper()
+	stub := t.TempDir() + "/docker"
+	script := "#!/bin/sh\n" +
+		"if [ \"$1\" = ps ]; then\n" +
+		"  exit 0\n" +
+		"fi\n" +
+		"printf '%s\\n' \"unexpected docker args: $*\" >&2\n" +
+		"exit 1\n"
+	if err := os.WriteFile(stub, []byte(script), 0o755); err != nil { //nolint:gosec
+		t.Fatalf("write docker stub: %v", err)
+	}
+	return stub
+}
+
+func TestAcquireLocalReservationRefusesRunningWorkerWithoutSentinel(t *testing.T) {
+	t.Setenv("HOME", t.TempDir())
+	ref := agentIssueRef{Owner: "coilyco-flight-deck", Repo: "ward", Number: 788}
+	container := "engineer-claude-ward-788"
+	r, _, _ := bufRunner(dockerRunningStub(t, container))
+	path, err := agentReservationPath(ref)
+	if err != nil {
+		t.Fatalf("agentReservationPath: %v", err)
+	}
+	if _, err := os.Stat(path); !os.IsNotExist(err) {
+		t.Fatalf("sentinel unexpectedly existed before the acquire: %v", err)
+	}
+	if _, err := r.acquireLocalReservation(context.Background(), "lbl", modeClaude, ref, container, "issue-788", time.Now().UTC(), false); err == nil {
+		t.Fatal("acquireLocalReservation accepted a live worker with no sentinel")
+	} else if !strings.Contains(err.Error(), "already has a running worker container") {
+		t.Fatalf("acquireLocalReservation error = %v, want a live-worker refusal", err)
+	}
+	if _, err := os.Stat(path); !os.IsNotExist(err) {
+		t.Fatalf("refusal wrote a sentinel unexpectedly: %v", err)
+	}
+}
+
+func TestAcquireLocalReservationReleaseLeavesForeignSentinel(t *testing.T) {
+	t.Setenv("HOME", t.TempDir())
+	ref := agentIssueRef{Owner: "coilyco-flight-deck", Repo: "ward", Number: 789}
+	container := "engineer-claude-ward-789"
+	r, _, _ := bufRunner(dockerAbsentStub(t))
+	path, err := agentReservationPath(ref)
+	if err != nil {
+		t.Fatalf("agentReservationPath: %v", err)
+	}
+	now := time.Date(2026, 7, 9, 9, 0, 0, 0, time.UTC)
+	release, err := r.acquireLocalReservation(context.Background(), "lbl", modeClaude, ref, container, "issue-789", now, false)
+	if err != nil {
+		t.Fatalf("acquireLocalReservation: %v", err)
+	}
+	foreign := agentReservation{
+		Owner:     ref.Owner,
+		Repo:      ref.Repo,
+		Number:    ref.Number,
+		Mode:      string(modeClaude),
+		Container: "engineer-claude-ward-789-other",
+		Branch:    "issue-789-other",
+		Host:      "other-host",
+		PID:       4242,
+		At:        now.Add(time.Minute),
+	}
+	if err := writeAgentReservation(path, foreign); err != nil {
+		t.Fatalf("overwrite reservation with foreign owner: %v", err)
+	}
+	release()
+	got, ok, err := readAgentReservation(path)
+	if err != nil {
+		t.Fatalf("readAgentReservation after release: %v", err)
+	}
+	if !ok {
+		t.Fatal("release deleted a sentinel that no longer belonged to this launch")
+	}
+	if got == nil || !reflect.DeepEqual(*got, foreign) {
+		t.Fatalf("reservation after release = %+v, want %+v", got, foreign)
+	}
+}
+
 // TestPostReservationComment covers ward#402's bounded retry: a clean first post, a
 // ride over transient failures, and a give-up after the attempts run out.
 func TestPostReservationComment(t *testing.T) {
@@ -565,7 +665,7 @@ func TestPostReservationComment(t *testing.T) {
 func TestReservationCommentBodyHasMarker(t *testing.T) {
 	now := time.Date(2026, 6, 18, 12, 0, 0, 0, time.UTC)
 	body := reservationCommentBody(modeCodex, "engineer-codex-ward-142", "tower", now, "", nil)
-	for _, want := range []string{agentReservationMarker, "ward agent --harness codex", "engineer-codex-ward-142", "tower", "1h TTL"} {
+	for _, want := range []string{agentReservationMarker, "WARD-RESERVATION: held", "ward agent --harness codex", "engineer-codex-ward-142", "tower", "1h TTL"} {
 		if !strings.Contains(body, want) {
 			t.Errorf("reservation comment missing %q\n got: %s", want, body)
 		}
@@ -582,7 +682,7 @@ func TestReservationCommentBodyFoldsJustification(t *testing.T) {
 	now := time.Date(2026, 6, 18, 12, 0, 0, 0, time.UTC)
 	read := "Main risk is the schema migration.\n\nGO"
 	body := reservationCommentBody(modeClaude, "engineer-claude-ward-383", "box", now, "  "+read+"  ", nil)
-	for _, want := range []string{"pre-flight read (GO)", "<details>", read, "**GO**"} {
+	for _, want := range []string{"reservation details", "pre-flight read (GO)", "<details>", read, "**GO**"} {
 		if !strings.Contains(body, want) {
 			t.Errorf("reservation comment missing %q\n got: %s", want, body)
 		}
@@ -661,7 +761,7 @@ func TestReservationRecheckLost(t *testing.T) {
 	t.Run("earlier rival wins -> we yield", func(t *testing.T) {
 		reservationRecheckDelay = func() time.Duration { return time.Millisecond }
 		f := &fakeLockForge{listComments: []issueComment{ourComment, rival}}
-		lost, winner := r.reservationRecheckLost(context.Background(), f, "label", ref, container)
+		lost, winner := r.reservationRecheckLost(context.Background(), f, "label", ref, container, false)
 		if !lost {
 			t.Fatalf("expected to yield to the earlier rival, got lost=false")
 		}
@@ -674,7 +774,7 @@ func TestReservationRecheckLost(t *testing.T) {
 		reservationRecheckDelay = func() time.Duration { return time.Millisecond }
 		later := issueComment{Body: reservationCommentBody(modeClaude, container, "rival-host", now.Add(2*time.Second), "", nil), CreatedAt: now.Add(2 * time.Second)}
 		f := &fakeLockForge{listComments: []issueComment{ourComment, later}}
-		if lost, _ := r.reservationRecheckLost(context.Background(), f, "label", ref, container); lost {
+		if lost, _ := r.reservationRecheckLost(context.Background(), f, "label", ref, container, false); lost {
 			t.Errorf("earliest claim should proceed, got lost=true")
 		}
 	})
@@ -682,7 +782,7 @@ func TestReservationRecheckLost(t *testing.T) {
 	t.Run("disabled window -> proceed without reading", func(t *testing.T) {
 		reservationRecheckDelay = func() time.Duration { return 0 }
 		f := &fakeLockForge{listComments: []issueComment{rival}}
-		if lost, _ := r.reservationRecheckLost(context.Background(), f, "label", ref, container); lost {
+		if lost, _ := r.reservationRecheckLost(context.Background(), f, "label", ref, container, false); lost {
 			t.Errorf("disabled re-check should never yield, got lost=true")
 		}
 	})
@@ -690,8 +790,28 @@ func TestReservationRecheckLost(t *testing.T) {
 	t.Run("read error -> fail open", func(t *testing.T) {
 		reservationRecheckDelay = func() time.Duration { return time.Millisecond }
 		f := &fakeLockForge{listErr: errors.New("forge down")}
-		if lost, _ := r.reservationRecheckLost(context.Background(), f, "label", ref, container); lost {
+		if lost, _ := r.reservationRecheckLost(context.Background(), f, "label", ref, container, false); lost {
 			t.Errorf("a read failure must fail open, got lost=true")
+		}
+	})
+
+	t.Run("skip-preflight -> skip wait and reread", func(t *testing.T) {
+		reservationRecheckDelay = func() time.Duration {
+			t.Fatal("reservationRecheckDelay must not run when --skip-preflight is set")
+			return 0
+		}
+		f := &fakeLockForge{listComments: []issueComment{rival}}
+		got := captureTestStderr(t, func() {
+			lost, winner := r.reservationRecheckLost(context.Background(), f, "label", ref, container, true)
+			if lost || winner != "" {
+				t.Fatalf("skip-preflight recheck = lost=%v winner=%q, want false/empty", lost, winner)
+			}
+		})
+		if f.listCalls != 0 {
+			t.Fatalf("skip-preflight recheck reread thread %d times, want 0", f.listCalls)
+		}
+		if !strings.Contains(got, "skipping reservation re-check (--skip-preflight)") {
+			t.Fatalf("skip-preflight recheck log missing skip line:\n%s", got)
 		}
 	})
 }
@@ -734,7 +854,7 @@ func TestReservationSeedContextRender(t *testing.T) {
 		Driver:       "claude",
 		RunID:        "engineer-claude-ward-609",
 		WardVersion:  "v0.80.0",
-		Workflow:     workflowDirectMain,
+		Workflow:     workflowDirectToMain,
 		Included:     []reservationThreadEntry{{Author: "kai", At: now.Add(-time.Hour)}},
 		Stripped:     []reservationThreadEntry{{Author: "coilyco-ops", At: now.Add(-30 * time.Minute)}},
 		DispatchedAt: now,
@@ -781,7 +901,7 @@ func TestBuildReservationSeedContextPartition(t *testing.T) {
 	w := resolvedWork{
 		Ref:      agentIssueRef{Owner: "o", Repo: "r", Number: 1},
 		Body:     "body",
-		Workflow: workflowDirectMain,
+		Workflow: workflowDirectToMain,
 		Comments: []issueComment{
 			mk("a real human comment", "kai"),                                             // included
 			mk(reservationCommentBody(modeClaude, "c", "h", now, "", nil), "coilyco-ops"), // stripped (reservation marker)
@@ -806,10 +926,12 @@ func TestBuildReservationSeedContextPartition(t *testing.T) {
 // TestReservationReleaseCommentBodyGate pins the enriched release comment (ward#609):
 // a nil gate keeps the generic text; a gate names the gate, recovery, and error.
 func TestReservationReleaseCommentBodyGate(t *testing.T) {
-	// nil -> generic, unchanged behavior.
 	generic := reservationReleaseCommentBody(modeClaude, "engineer-claude-ward-609", nil)
 	if !strings.HasPrefix(generic, agentReservationReleaseMarker) || !strings.Contains(generic, "smoke-test death") {
 		t.Fatalf("generic release comment regressed: %s", generic)
+	}
+	if visible := visibleLinesBeforeDetails(generic); visible != "WARD-RESERVATION: released 🛑" {
+		t.Fatalf("generic release visible line = %q\n%s", visible, generic)
 	}
 	if strings.Contains(generic, "**Gate:**") {
 		t.Errorf("generic release comment should carry no Gate section: %s", generic)
@@ -823,14 +945,18 @@ func TestReservationReleaseCommentBodyGate(t *testing.T) {
 	// auth gate -> names the gate, the recovery, and the folded error line.
 	gf := &gateFailure{Gate: "auth", Detail: "auth smoke test: claude -p rejected the credentials (exit 1)"}
 	enriched := reservationReleaseCommentBody(modeClaude, "engineer-claude-ward-609", gf)
+	if visible := visibleLinesBeforeDetails(enriched); visible != "WARD-RESERVATION: released 🛑" {
+		t.Fatalf("enriched release visible line = %q\n%s", visible, enriched)
+	}
 	for _, want := range []string{
 		agentReservationReleaseMarker,
 		agentNeedsRedispatchMarker,
 		"Run never started",
+		"release details",
 		"**auth** pre-launch gate",
 		"**Gate:** auth smoke test (claude credentials)",
 		"**Recovery:** Refresh the host claude login",
-		"error from the gate",
+		"Error from the gate",
 		"rejected the credentials",
 	} {
 		if !strings.Contains(enriched, want) {

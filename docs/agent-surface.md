@@ -15,6 +15,9 @@ remote**. It reads the code, scopes the work, files it, and dispatches it.
 
 The current workspace clone is enforced read-only by the container, and `/scratch`
 is the writable escape hatch for temporary scripts and throwaway files.
+Raw `ward ops forgejo pr merge` is not a valid escape hatch here. The director's
+merge lane is the policy-checked path, and read-only surface use of the raw merge
+leaf is refused.
 
 ## When the director surfaces
 
@@ -63,8 +66,12 @@ warded coilyco-flight-deck/ward#NNN  # dispatch a sealed engineer
 The surface forwards `warded engineer ...` and `warded advisor ...` ref-mode dispatches to
 a host-side broker over TCP (guarded by a per-launch token). Host ward launches the
 sibling from the native host context, so Claude/Codex/Goose credentials resolve from the
-host home, not the director container. The broker accepts only that constrained
-dispatch API; unrelated ward verbs and arbitrary shell never cross it.
+host home, not the director container, and the surface returns as soon as the launch or
+refusal is acknowledged. The broker accepts only that constrained dispatch API; unrelated
+ward verbs and arbitrary shell never cross it.
+
+That brokered path is the fire-and-forget lane for issue refs. The freeform advisor path
+stays intentionally synchronous because it is an answer session, not a sibling dispatch.
 
 That broker inherits the surface's own harness by default. A surfaced Codex director
 therefore dispatches Codex engineers unless you explicitly override the engineer

@@ -13,11 +13,16 @@ container` verb: the hand-run `up`/`exec`/`down`/`ls` leaves were retired,
 leaving `ward container` plumbing-only and hidden from `ward --help` (only the
 entrypoint-internal `reap`/`bootstrap` remain; debug uses raw `docker`).
 
+The host stages the matching ward binary into the container assets before PID 1
+starts, so the embedded shell stays a thin shim.
+
 ## The model
 
 Three departures from a transparent, shared, bind-mounted container:
 - **One container per run, many at once** - named for its role
-  (`engineer-<driver>-<repo>-<N>`); `ward.*` labels carry identity.
+  (`engineer-<driver>-<repo>-<N>` for carried issues, `director-<driver>-<agent-id>`
+  for director surfaces, `advisor-<driver>-<repo>-<issue>` for issue-scoped advisor
+  research); `ward.*` labels carry identity.
 - **Fresh clone inside, never on the host** - cached through a shared
   `ward-gitcache` bare mirror, so the host's repo tree stays untouched.
 - **Least access** - the only default host bind is the **cwd** (read-only) plus
@@ -67,11 +72,10 @@ provenance detail: [container-image.md](container-image.md).
 ## Inside the container
 
 The entrypoint is embedded in the ward binary and bind-mounted into the
-unmodified image. It configures forgejo git auth, installs ward, clones the
-target into `/workspace/<repo>`, installs pre-commit hooks
+unmodified image. It configures forgejo git auth, links the staged ward binary
+into place, verifies it, clones the target into `/workspace/<repo>`, installs pre-commit hooks
 ([container-precommit.md](container-precommit.md)), composes context +
-permissions, hydrates the merged `~/.mcporter/mcporter.json` from the mounted
-`/substrate/agentic-os-kai` bundle, launches the agent, then reaps. The push
+permissions, launches the agent, then reaps. The push
 token - the `coilyco-ops` bot's, from SSM `/forgejo/coilyco-ops/api-token`,
 not a personal PAT ([ward#161](https://forgejo.coilysiren.me/coilyco-flight-deck/ward/issues/161)) -
 resolves **on the host**, via a private 0600 `--env-file`, never in argv or
@@ -87,8 +91,8 @@ atop the agent's context and **overrides** the host harness's hold-backs, so it
 finishes the whole feature autonomously with the container's isolation as the
 wall. It is its own
 **permission manager** (`bypassPermissions`;
-[container-permissions.md](container-permissions.md)); on exit the reaper lands
-clean work on `main` or salvages it ([reap](container-reap.md)).
+[container-permissions.md](container-permissions.md)); on exit the cleanup path
+lands clean work on `main` or salvages it ([reap](container-reap.md)).
 
 ## See also
 

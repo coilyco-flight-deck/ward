@@ -1,5 +1,5 @@
 ---
-doc_goal: Make an operator understand the interactive pre-launch gate as the deliberate status-and-consent beat before an interactive container takes the terminal - the Enter-to-launch summary and the u-to-upgrade-then-re-exec path - and why it exists to stop metadata scrolling past into the alt-screen with a stale ward.
+doc_goal: Make an operator understand the interactive pre-launch gate as the deliberate status-and-consent beat before an interactive container takes the terminal - the Enter-to-launch summary - and why it exists to stop metadata scrolling past into the alt-screen with a stale ward.
 ---
 # ward agent: interactive pre-launch gate ([ward#366](https://forgejo.coilysiren.me/coilyco-flight-deck/ward/issues/366))
 
@@ -35,27 +35,6 @@ A readable pre-flight summary and a deliberate "go" instead of being teleported
 into the alt-screen. For `director`'s drain-surface this doubles as the "new
 direction" comms area before the read-only session opens.
 
-## Affordance B: u to upgrade ward, then re-launch
-
-When the host `ward` is behind latest (the `version.Behind` read that drives the
-dispatch heads-up, [ward#143](https://forgejo.coilysiren.me/coilyco-flight-deck/ward/issues/143)), the gate offers a second choice - type `u` then
-Enter to run `ward upgrade` and **re-launch the same invocation**:
-
-```
-host ward v0.16.0 is behind the latest release v0.17.0.
-Press Enter to launch, or type u then Enter to upgrade ward and re-launch.
-```
-
-This retires the operator's manual `watch "brew upgrade ..."` loop.
-
-After `ward upgrade` the on-disk binary is new but the running process is the old
-`ward`, so re-launch re-execs the freshly-installed binary with the current argv
-(`syscall.Exec`), not stale in-memory code. The exec target is canonicalized
-against the same homebrew allow-list the PreToolUse hook uses
-(`guardBinaryPaths["ward"]`), so it can't be PATH-hijacked. With no canonical path
-(a dev/source build) or a failed exec, it falls back to the v1: report the upgrade
-and tell the operator to re-run, launching nothing stale.
-
 ## When the gate is skipped
 
 - **`--print`** returns the dry-run plan before the gate is reached.
@@ -67,13 +46,12 @@ Engineer is detached-only ([ward#356](https://forgejo.coilysiren.me/coilyco-flig
 
 ## Seams
 
-The stdin read, TTY probe, and re-exec sit behind package seams
-(`gateTerminalAttached`, the `Runner`'s reader/writer, `reExec`) so tests drive the
-status block, the outdated branch, and gate-shown-vs-skipped without a terminal.
+The stdin read, TTY probe, and status writer sit behind package seams
+(`gateTerminalAttached`, the `Runner`'s reader/writer) so tests drive the
+status block and gate-shown-vs-skipped without a terminal.
 See `cmd/ward/agent_gate.go`.
 
 ## See also
 
 - [docs/agent-surface.md](agent-surface.md) - the read-only surface the gate fronts.
 - [docs/agent-preflight.md](agent-preflight.md) - the detached GO/NO-GO pre-flight.
-- [docs/hook.md](hook.md) - the path-canonicalization the re-exec mirrors.

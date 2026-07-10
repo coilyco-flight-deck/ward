@@ -169,11 +169,6 @@ func TestMaybeRewriteWardedShim(t *testing.T) {
 			want: []string{"ward", "agent", "engineer", "#98", "--harness", "codex"},
 		},
 		{
-			name: "warded setup carves out to ward setup, not ward agent",
-			args: []string{"warded", "setup", "--force"},
-			want: []string{"ward", "setup", "--force"},
-		},
-		{
 			name: "ward itself is untouched",
 			args: []string{"ward", "agent", "engineer", "#98"},
 			want: []string{"ward", "agent", "engineer", "#98"},
@@ -270,21 +265,12 @@ func TestCanonicalWardExeFallback(t *testing.T) {
 
 	t.Run("never returns the shim when a ward resolves", func(t *testing.T) {
 		t.Setenv("PATH", pathDir)
-		// The allow-list wins when a canonical ward is installed on this host; only
-		// otherwise does it fall through to the PATH `ward`. Either way, not the shim.
-		want := canonicalWardPath()
-		if want == "" {
-			want = pathWard
-		}
-		if got := canonicalWardExe(warded); got != want {
-			t.Fatalf("canonicalWardExe(%q) = %q, want %q", warded, got, want)
+		if got := canonicalWardExe(warded); got != pathWard {
+			t.Fatalf("canonicalWardExe(%q) = %q, want %q", warded, got, pathWard)
 		}
 	})
 
 	t.Run("returns the shim when nothing resolves", func(t *testing.T) {
-		if canonicalWardPath() != "" {
-			t.Skip("a canonical ward is installed here; the shim can never be the last resort")
-		}
 		t.Setenv("PATH", "")
 		if got := canonicalWardExe(warded); got != warded {
 			t.Fatalf("canonicalWardExe(%q) = %q, want the shim unchanged", warded, got)

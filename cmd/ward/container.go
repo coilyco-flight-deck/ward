@@ -6,9 +6,13 @@ import (
 	"embed"
 	"encoding/base64"
 	"encoding/hex"
+	"encoding/json"
 	"fmt"
+	"io"
 	"net"
+	"net/http"
 	"os"
+	"os/exec"
 	"path/filepath"
 	"runtime"
 	"strings"
@@ -63,7 +67,6 @@ in-container entrypoint, not by hand. See docs/agent.md for the contributor surf
 		Commands: []*cli.Command{
 			containerReapCommand(),
 			containerBootstrapCommand(),
-			containerMcporterHydrateCommand(),
 			containerResolveContextCommand(),
 			containerSubstrateInventoryCommand(),
 			containerSubstrateCatalogCommand(),
@@ -94,16 +97,38 @@ func (r *Runner) resolveAgentCreds(ctx context.Context, mode containerMode) []ag
 	return nil
 }
 
+var directorSurfaceSessionSuffix = dictatableID
+var stageWardBootstrapBinary = realStageWardBootstrapBinary
+
+// dictatableID returns the aos/o2r short agent-id shape: two lowercase letters
+// from the dictatable alphabet, then two digits.
+func dictatableID() string {
+	const letters = "abcdefghjkmpqrstuvwxyz"
+	const digits = "456789"
+
+	var raw [4]byte
+	if _, err := rand.Read(raw[:]); err != nil {
+		return "zz00"
+	}
+	return string([]byte{
+		letters[int(raw[0])%len(letters)],
+		letters[int(raw[1])%len(letters)],
+		digits[int(raw[2])%len(digits)],
+		digits[int(raw[3])%len(digits)],
+	})
+}
+
 // buildUpPlan assembles the pure plan from parsed flags and resolved inputs;
 // agentArgs seed the agent's argv. Errors only on a bad --repo grant (ward#230).
 func buildUpPlan(c *cli.Command, repo targetRepo, mode containerMode, role, cwd, assetsDir string, agentArgs []string, mountAgentLogs bool) (upPlan, error) {
 	wardSrc := c.String("ward-source")
 	// The container downloads this host's ward version by default; --ward-version
 	// (env WARD_AGENT_VERSION) overrides it to pin a known-good release (ward#312).
-	wardVersion := Version
-	if v := strings.TrimSpace(c.String("ward-version")); v != "" {
-		wardVersion = v
+	wardVersion := strings.TrimSpace(c.String("ward-version"))
+	if wardVersion == "" {
+		wardVersion = Version
 	}
+	wardVersionSource := resolveWardVersionSource(c, wardVersion)
 	// A pin behind this host ships an older in-container reaper - the last line against
 	// lost/false-salvaged work - so refuse the downgrade unless opted in (ward#529).
 	if err := wardDowngradeGuard(wardVersion, Version, c.Bool("allow-ward-downgrade")); err != nil {
@@ -147,33 +172,41 @@ func buildUpPlan(c *cli.Command, repo targetRepo, mode containerMode, role, cwd,
 	if mountAgentLogs {
 		agentLogs = agentLogsRedactedDir()
 	}
-	// The per-container machine id: rides the ward.machine label, names issueless
-	// roles. A role-led run overrides Role+Name after this (ward#364).
+	// The per-container machine id rides the ward.machine label. Director surface
+	// containers use a short dictatable id suffix instead of the machine id.
 	machine := randHex()
 	return upPlan{
-		Image:          imageRef(c.String("image"), c.String("tag")),
-		Name:           containerRoleName(roleSession, mode, repo, 0, machine),
-		Role:           roleSession,
-		ConfigRole:     role,
-		Machine:        machine,
-		Repo:           repo,
-		Mode:           mode,
-		Branch:         c.String("branch"),
-		ForgejoBase:    forgejoBaseURL,
-		HostCwd:        cwd,
-		AWSHome:        awsHome,
-		Mounts:         leastAccessMounts(cwd, mountOpts{AssetsDir: assetsDir, AWSHome: awsHome, WardSource: wardSrc, AgentLogsDir: agentLogs}),
-		Interactive:    !c.Bool("detach"),
-		TTY:            !c.Bool("detach") && terminalAttached(),
-		WardVersion:    wardVersion,
-		WardFromSource: wardSrc != "",
-		AgentArgs:      agentArgs,
-		ExtraRepos:     extra,
-		HostNet:        hostNet,
-		TSSidecar:      tsSidecar,
-		SkipPreflight:  c.Bool("skip-preflight") || c.Bool("no-preflight"),
-		ConfigEnv:      configEnv,
+		Image:             imageRef(c.String("image"), c.String("tag")),
+		Name:              containerRoleName(role, mode, repo, 0, containerNameSuffix(role, machine)),
+		Role:              role,
+		ConfigRole:        role,
+		Machine:           machine,
+		Repo:              repo,
+		Mode:              mode,
+		Branch:            c.String("branch"),
+		ForgejoBase:       forgejoBaseURL,
+		HostCwd:           cwd,
+		AWSHome:           awsHome,
+		Mounts:            leastAccessMounts(cwd, mountOpts{AssetsDir: assetsDir, AWSHome: awsHome, WardSource: wardSrc, AgentLogsDir: agentLogs}),
+		Interactive:       !c.Bool("detach"),
+		TTY:               !c.Bool("detach") && terminalAttached(),
+		WardVersion:       wardVersion,
+		WardVersionSource: wardVersionSource,
+		WardFromSource:    wardSrc != "",
+		AgentArgs:         agentArgs,
+		ExtraRepos:        extra,
+		HostNet:           hostNet,
+		TSSidecar:         tsSidecar,
+		SkipPreflight:     c.Bool("skip-preflight") || c.Bool("no-preflight"),
+		ConfigEnv:         configEnv,
 	}, nil
+}
+
+func containerNameSuffix(role string, machine string) string {
+	if role == roleSession || role == roleDirector {
+		return directorSurfaceSessionSuffix()
+	}
+	return machine
 }
 
 // localHasTailscale0 reports whether a tailscale0 interface exists on this host's
@@ -515,9 +548,9 @@ func (r *Runner) clearExitedContainer(ctx context.Context, name string) {
 	clearDrainMarker(agentLogsDir(), name)
 }
 
-// writeContainerAssets materializes the embedded entrypoint + doctrine into a per-run
-// dir under launchStagingDir (snap-visible $HOME; ward#574) mounted ro at /opt/ward.
-func writeContainerAssets() (dir string, cleanup func(), err error) {
+// writeContainerAssets materializes the embedded entrypoint + doctrine and stages
+// the matching ward binary into a per-run dir under launchStagingDir.
+func writeContainerAssets(ctx context.Context, wardSource, wardVersion string) (dir string, cleanup func(), err error) {
 	root := launchStagingDir()
 	sweepStaleContainerAssets(root)
 	dir, err = os.MkdirTemp(root, containerAssetsPrefix+"*")
@@ -545,5 +578,123 @@ func writeContainerAssets() (dir string, cleanup func(), err error) {
 			return "", func() {}, fmt.Errorf("ward container: write %s: %w", f.name, werr)
 		}
 	}
+	if err := stageWardBootstrapBinary(ctx, dir, wardSource, wardVersion); err != nil {
+		cleanup()
+		return "", func() {}, err
+	}
 	return dir, cleanup, nil
+}
+
+func realStageWardBootstrapBinary(ctx context.Context, dir, wardSource, wardVersion string) error {
+	path := filepath.Join(dir, "ward")
+	if strings.TrimSpace(wardSource) != "" {
+		return buildWardBootstrapBinary(ctx, wardSource, path)
+	}
+	return downloadWardBootstrapBinary(ctx, wardVersion, path)
+}
+
+func buildWardBootstrapBinary(ctx context.Context, wardSource, path string) error {
+	arch, err := bootstrapGOARCH()
+	if err != nil {
+		return err
+	}
+	cmd := exec.CommandContext(ctx, "go", "build", "-o", path, "./cmd/ward") // #nosec G204 -- fixed bootstrap argv
+	cmd.Dir = wardSource
+	cmd.Env = append(os.Environ(),
+		"CGO_ENABLED=0",
+		"GOOS=linux",
+		"GOARCH="+arch,
+		"GOPROXY=direct",
+		"GOSUMDB=off",
+	)
+	out, err := cmd.CombinedOutput()
+	if err != nil {
+		return fmt.Errorf("ward container: build Go bootstrap binary from %s: %w: %s", wardSource, err, strings.TrimSpace(string(out)))
+	}
+	if err := os.Chmod(path, 0o755); err != nil {
+		return fmt.Errorf("ward container: chmod Go bootstrap binary %s: %w", path, err)
+	}
+	return nil
+}
+
+func downloadWardBootstrapBinary(ctx context.Context, wardVersion, path string) error {
+	tag, err := resolveWardBootstrapTag(ctx, wardVersion)
+	if err != nil {
+		return err
+	}
+	arch, err := bootstrapGOARCH()
+	if err != nil {
+		return err
+	}
+	asset := fmt.Sprintf("%s/coilyco-flight-deck/ward/releases/download/%s/ward-linux-%s", forgejoBaseURL, tag, arch)
+	req, err := http.NewRequestWithContext(ctx, http.MethodGet, asset, nil)
+	if err != nil {
+		return fmt.Errorf("ward container: prepare bootstrap download %s: %w", asset, err)
+	}
+	if token := strings.TrimSpace(os.Getenv("FORGEJO_TOKEN")); token != "" {
+		req.Header.Set("Authorization", "token "+token)
+	}
+	resp, err := http.DefaultClient.Do(req)
+	if err != nil {
+		return fmt.Errorf("ward container: download Go bootstrap binary %s: %w", asset, err)
+	}
+	defer func() { _ = resp.Body.Close() }()
+	if resp.StatusCode != http.StatusOK {
+		body, _ := io.ReadAll(io.LimitReader(resp.Body, 4096))
+		return fmt.Errorf("ward container: download Go bootstrap binary %s: unexpected status %s: %s", asset, resp.Status, strings.TrimSpace(string(body)))
+	}
+	f, err := os.Create(path)
+	if err != nil {
+		return fmt.Errorf("ward container: create bootstrap binary %s: %w", path, err)
+	}
+	defer f.Close()
+	if _, err := io.Copy(f, resp.Body); err != nil {
+		return fmt.Errorf("ward container: write bootstrap binary %s: %w", path, err)
+	}
+	if err := f.Chmod(0o755); err != nil {
+		return fmt.Errorf("ward container: chmod bootstrap binary %s: %w", path, err)
+	}
+	return nil
+}
+
+func resolveWardBootstrapTag(ctx context.Context, wardVersion string) (string, error) {
+	tag := strings.TrimSpace(wardVersion)
+	if tag != "" && tag != "dev" {
+		return tag, nil
+	}
+	req, err := http.NewRequestWithContext(ctx, http.MethodGet, forgejoBaseURL+"/api/v1/repos/coilyco-flight-deck/ward/releases/latest", nil)
+	if err != nil {
+		return "", fmt.Errorf("ward container: resolve bootstrap release tag: %w", err)
+	}
+	if token := strings.TrimSpace(os.Getenv("FORGEJO_TOKEN")); token != "" {
+		req.Header.Set("Authorization", "token "+token)
+	}
+	resp, err := http.DefaultClient.Do(req)
+	if err != nil {
+		return "", fmt.Errorf("ward container: resolve bootstrap release tag: %w", err)
+	}
+	defer func() { _ = resp.Body.Close() }()
+	if resp.StatusCode != http.StatusOK {
+		body, _ := io.ReadAll(io.LimitReader(resp.Body, 4096))
+		return "", fmt.Errorf("ward container: resolve bootstrap release tag: unexpected status %s: %s", resp.Status, strings.TrimSpace(string(body)))
+	}
+	var payload struct {
+		TagName string `json:"tag_name"`
+	}
+	if err := json.NewDecoder(resp.Body).Decode(&payload); err != nil {
+		return "", fmt.Errorf("ward container: decode bootstrap release tag: %w", err)
+	}
+	if strings.TrimSpace(payload.TagName) == "" {
+		return "", fmt.Errorf("ward container: resolve bootstrap release tag: empty tag_name")
+	}
+	return strings.TrimSpace(payload.TagName), nil
+}
+
+func bootstrapGOARCH() (string, error) {
+	switch runtime.GOARCH {
+	case "amd64", "arm64":
+		return runtime.GOARCH, nil
+	default:
+		return "", fmt.Errorf("ward container: unsupported bootstrap architecture %q", runtime.GOARCH)
+	}
 }

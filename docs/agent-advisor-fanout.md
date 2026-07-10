@@ -1,5 +1,5 @@
 ---
-doc_goal: Make clear how the advisor's structured emit deterministically fans a cross-repo design into one trust-gated issue per repo plus an index comment, so a reader trusts that ward - never the agent - files under its bot identity only in repos the operator's trust gate allows.
+doc_goal: Make clear how the advisor's structured emit deterministically fans a cross-repo design into one trust-gated issue per repo plus an index comment, so a reader trusts that ward - never the agent - files under its bot identity only in repos the selected config bundle allows.
 ---
 # advisor ref mode: structured emit and cross-repo fan-out
 
@@ -25,13 +25,12 @@ structured contract never hard-fails a reply.
 ## Per-repo trust gate
 
 Issue creation is deterministic and gated **per target repo**: every spec's owner must
-pass the same `ownerAllowed` / primary-org check as the source ref (the [owner trust
-gate](agent-trust-gate.md) - the security-relevant
-part is that fan-out files under ward's bot identity in repos the operator never named). A spec
-naming an untrusted owner or a malformed slug is **dropped, never created**, and the drop
-is surfaced in the index (or single) comment rather than silently swallowed. If the gate
-drops the plan below 2 distinct repos, ward falls back to a single comment and notes what
-it withheld.
+pass the same `ownerAllowed` / trusted-owner check as the source ref (the [owner trust
+gate](agent-trust-gate.md) - the security-relevant part is that fan-out files under
+ward's bot identity in repos the operator never named). A spec naming an untrusted owner
+or a malformed slug is **dropped, never created**, and the drop is surfaced in the index
+(or single) comment rather than silently swallowed. If the gate drops the plan below 2
+distinct repos, ward falls back to a single comment and notes what it withheld.
 
 ## Sequencing
 

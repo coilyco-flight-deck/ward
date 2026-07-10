@@ -96,13 +96,7 @@ func (r *Runner) runScratchSession(ctx context.Context, c *cli.Command, mode con
 
 	// Pre-launch gate before the fullscreen TUI (ward#366); see docs/agent-gate.md.
 	// proceed=false means an upgrade re-launch superseded this process's launch.
-	proceed, err := r.runScratchGate(ctx, c, plan, readOnly, label)
-	if err != nil {
-		return err
-	}
-	if !proceed {
-		return nil
-	}
+	r.runScratchGate(ctx, plan, readOnly)
 
 	access := "writable"
 	if readOnly {
@@ -120,11 +114,11 @@ func (r *Runner) prepareScratchPlan(ctx context.Context, c *cli.Command, mode co
 		return upPlan{}, func() {}, fmt.Errorf("%s: %w", label, err)
 	}
 	// Trust gate: a bypassPermissions clone of private code, so only act on an owner
-	// in the primary-org set - the same gate the engineer + advisor roles apply.
+	// in the trusted-owner set - the same gate the engineer + advisor roles apply.
 	if !r.ownerAllowed(repo.Owner) {
 		return upPlan{}, func() {}, r.untrustedOwnerErr(label, repo.Owner)
 	}
-	assetsDir, cleanupAssets, err := writeContainerAssets()
+	assetsDir, cleanupAssets, err := writeContainerAssets(ctx, c.String("ward-source"), strings.TrimSpace(c.String("ward-version")))
 	if err != nil {
 		return upPlan{}, func() {}, err
 	}
@@ -139,10 +133,6 @@ func (r *Runner) prepareScratchPlan(ctx context.Context, c *cli.Command, mode co
 	// The broker's host:port + token are set later in attachHostDispatchBroker,
 	// once the TCP listener binds and its ephemeral port is known (ward#391).
 
-	// Name it session-<driver>-<machine> (issueless, so the machine id disambiguates
-	// concurrent surface sessions) and label ward.role=session (ward#364, ward#353).
-	plan.Role = roleSession
-	plan.Name = containerRoleName(roleSession, mode, repo, 0, plan.Machine)
 	return plan, cleanupAssets, nil
 }
 

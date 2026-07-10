@@ -14,10 +14,6 @@ const (
 	// ProbeName is the ward doctor row label and --skip key, referenced by core as a
 	// symbol so no per-agent literal lands in cmd/ward (the ward#425 ratchet).
 	ProbeName = "ollama"
-	// OpencodeEndpointEnv / GooseHostEnv are the same env the dispatch path binds:
-	// opencode's endpoint override and goose's base64 endpoint (SSM-resolved host-side).
-	OpencodeEndpointEnv = "WARD_OLLAMA_URL"
-	GooseHostEnv        = "WARD_GOOSE_OLLAMA_HOST_B64"
 )
 
 // Doctor row severities, mirroring ward doctor's probeResult severities so core

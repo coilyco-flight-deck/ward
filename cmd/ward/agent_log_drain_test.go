@@ -67,19 +67,19 @@ func TestSweepActionsDrainsWithoutEviction(t *testing.T) {
 	}
 }
 
-// TestResolveSinkMode covers the env override + the local-exclusive default.
+// TestResolveSinkMode covers the env label + the local disk default.
 func TestResolveSinkMode(t *testing.T) {
 	cases := []struct {
 		set  string
 		want sinkMode
 	}{
 		{"", defaultSinkMode},
-		{"signoz", sinkSignoz},
 		{"disk", sinkDisk},
-		{"both", sinkBoth},
-		{"DISK", sinkDisk},           // case-insensitive
-		{"  both  ", sinkBoth},       // trimmed
-		{"garbage", defaultSinkMode}, // unrecognized falls back, never fails
+		{"signoz", sinkMode("signoz")},
+		{"both", sinkMode("both")},
+		{"DISK", sinkDisk},               // case-insensitive
+		{"  both  ", sinkMode("both")},   // trimmed
+		{"garbage", sinkMode("garbage")}, // labels are still surfaced, not routed
 	}
 	for _, c := range cases {
 		t.Setenv(envSinkMode, c.set)
@@ -87,19 +87,8 @@ func TestResolveSinkMode(t *testing.T) {
 			t.Errorf("resolveSinkMode with %q = %q, want %q", c.set, got, c.want)
 		}
 	}
-	// The default must be signoz-exclusive: no disk, yes signoz.
-	if defaultSinkMode.wantsDisk() {
-		t.Error("default sink writes to disk; ward#532 requires signoz-exclusive by default")
-	}
-	if !defaultSinkMode.wantsSignoz() {
-		t.Error("default sink does not ship to signoz")
-	}
-	// both is the only mode that does both.
-	if !sinkBoth.wantsDisk() || !sinkBoth.wantsSignoz() {
-		t.Error("both mode must do disk AND signoz")
-	}
-	if sinkDisk.wantsSignoz() || sinkSignoz.wantsDisk() {
-		t.Error("disk/signoz modes must be exclusive")
+	if defaultSinkMode != sinkDisk {
+		t.Error("default sink must keep the local disk archive")
 	}
 }
 
@@ -141,8 +130,7 @@ func TestDrainAgentRunIdempotentSkipsMarked(t *testing.T) {
 	markDrained(base, name)
 
 	// A docker that errors on every call: if the skip path called docker at all, the
-	// disk sink would try to run it. Route to disk so a drain WOULD hit docker.
-	t.Setenv(envSinkMode, string(sinkDisk))
+	// disk sink would try to run it.
 	r := fakeDockerRunner(t, "", 1)
 	r.drainAgentRunIdempotent(context.Background(), name, base)
 
@@ -238,7 +226,7 @@ func TestClassifyReapOutcome(t *testing.T) {
 		{"landed", "ward container reap: landed on main\n", outcomePushedMain},
 		{"salvage-branch", "ward container reap: preserved work on ward-salvage/ward-abc (merge conflict)\n", outcomeSalvage},
 		{"salvage-prefix", "preserved un-landed granted-repo work on ward-salvage/x\n", outcomeSalvage},
-		{"nothing", "ward container reap: nothing to reap (tree clean, HEAD on origin/main)\n", outcomeNothing},
+		{"nothing", "WARD-REAP: nothing to reap (tree clean, HEAD on origin/main)\n", outcomeNothing},
 		{"empty", "", outcomeUnknown},
 		{"noise", "some unrelated docker output\n", outcomeUnknown},
 	}

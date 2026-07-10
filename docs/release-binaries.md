@@ -25,8 +25,8 @@ place that builds and uploads them.
   came off. Raw-binary installs use this; Homebrew pins the per-platform asset
   digests directly and scoop needs the `.exe.sha256` sidecars.
 - **Most people should install via a package manager** (see the
-  [README](../README.md#install)): Homebrew on macOS/Linux, scoop on Windows,
-  `ward upgrade` driving the right one by OS. Raw binaries serve the rest.
+  [README](../README.md#install)): Homebrew on macOS/Linux, scoop on Windows.
+  Raw binaries serve the rest.
 
 The Homebrew tap now downloads the matching release binary for the current
 platform and verifies it, so `brew` consumes the same bytes the release page

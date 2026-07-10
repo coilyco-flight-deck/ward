@@ -23,6 +23,10 @@ import (
 )
 
 const (
+	// OpencodeEndpointEnv / GooseHostEnv are the same env the dispatch path binds.
+	// They live here because the local-harness launch gate still consumes them.
+	OpencodeEndpointEnv = "WARD_OLLAMA_URL"
+	GooseHostEnv        = "WARD_GOOSE_OLLAMA_HOST_B64"
 	// skipEnv shares claude's smoke-test bypass switch so one lever silences every
 	// pre-launch gate (synced with entrypoint.sh's WARD_SMOKE_TEST_SKIP).
 	skipEnv = "WARD_SMOKE_TEST_SKIP"

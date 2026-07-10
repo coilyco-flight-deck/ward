@@ -56,8 +56,10 @@ repos already trusted, no trust dialog on the first prompt.
 codex still has no host GO/NO-GO preflight, but headless launches now run a
 bounded in-container `codex exec` probe before the model starts. The probe uses
 the resolved model and the cheapest sandbox/approval posture, so a stale model
-string fails as `model-config` instead of silently falling back. Other codex
-launch failures still surface through the same probe as `codex-probe`.
+string fails as `model-config` instead of silently falling back. The probe feeds
+`Reply with exactly ok.` on stdin through `codex exec -` so Codex does not take
+the prompt-argument stdin path. Other codex launch failures still surface
+through the same probe as `codex-probe`.
 
 ## See also
 

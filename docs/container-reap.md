@@ -1,17 +1,17 @@
 ---
 doc_goal: Give an operator full confidence in the deterministic teardown reaper as the no-lost-work backstop - how EXIT-trap arming makes it fire on every exit path beyond the agent's reach, the ordered land-or-salvage decision (empty-repo establish-main, nothing-to-reap, closing-ref, integrate, junk-scan, push-or-salvage, grant-verify), and the PAT-rotation and auth-classification caveats - so its land-or-salvage contract is trustable rather than opaque.
 ---
-# ward container reap
+# ward container cleanup
 
 `ward container reap` is the deterministic teardown backstop for
 [`ward container`](container.md). A container is throwaway: once it goes down,
 anything not pushed is gone. The no-lost-work guarantee lives here, not in the
-agent.
+agent. User-facing logs and issue comments call this path **cleanup**.
 
 ## How it runs
 
 The entrypoint arms `reap` as a `trap ... EXIT` and does **not** `exec` the
-agent, so the reaper fires on every exit path - clean finish, crash, or Ctrl-C.
+agent, so cleanup fires on every exit path - clean finish, crash, or Ctrl-C.
 By the time it runs, the agent's permissions are out of the loop, so nothing it
 does can defeat it. It is a hidden entrypoint-called verb.
 
@@ -35,7 +35,9 @@ does can defeat it. It is a hidden entrypoint-called verb.
    already in `origin/main` is done, but a launched direct-main run still
    re-reads its dispatch provenance here to confirm the landed history carries
    the same-repo `closes #N` before reading as success. A landed run missing
-   that reference is a failed invariant, not a quiet success.
+   that reference is a failed invariant, not a quiet success. A clean
+   `pull-requests`/`pull-requests-and-merge`/`patch-only` boundary is also done,
+   even though `main` stayed untouched.
 5. Verifies the carried issue has a same-repo closing reference (`closes`,
    `fixes`, or `resolves`) when residual work remains or the run needs the
    post-rebase push-site re-check. Missing reference means salvage, not push,
@@ -59,8 +61,9 @@ does can defeat it. It is a hidden entrypoint-called verb.
    - anything else (conflict, scan finding, missing closing reference, rejected
      push) -> **salvage**: push to
      a `ward-salvage/<id>` branch (durable), then notify - a **carried**
-     run comments the notice back on its issue and **reopens** it; when PRs are
-     available ward opens a pull request for the salvage branch and links it in
+     run comments a one-line `WARD-REAP: reopened` notice back on its issue,
+     folds the recovery detail, and **reopens** it. When PRs are available ward
+     opens a pull request for the salvage branch and links it in
      the notice, otherwise it states the branch-only fallback reason. A
      **freeform** run files exactly **one** standalone `[ward-salvage]` issue,
      never appended.
@@ -110,9 +113,9 @@ invariant is enforced one layer up, at **dispatch**: `buildUpPlan` refuses to
 launch a container pinned to a ward strictly **older** than the dispatching host
 ([ward#529](https://forgejo.coilysiren.me/coilyco-flight-deck/ward/issues/529),
 [agent-ward-downgrade.md](agent-ward-downgrade.md)), so a known-buggy reaper never
-ships in the first place. Keep the dispatching host's ward current
-(`brew upgrade coilyco-flight-deck/tap/ward`) and do not pass an older
-`--ward-version` / `WARD_AGENT_VERSION` without `--allow-ward-downgrade`.
+ships in the first place. Keep the dispatching host's ward current and do not
+pass an older `--ward-version` / `WARD_AGENT_VERSION` without
+`--allow-ward-downgrade`.
 
 ## Operator note: don't rotate the token mid-run
 
@@ -139,8 +142,9 @@ bring-up to read the PAT from SSM, never during reap.
 
 When a container exits **before** launching the agent (the [ward#222](https://forgejo.coilysiren.me/coilyco-flight-deck/ward/issues/222) smoke gate,
 an unreachable Ollama endpoint, or a bootstrap failure), the reaper retracts the
-reservation with a release comment - and that comment now names the **specific
-gate** that died, folds in the actual error line, and gives the recovery step,
+reservation with a release comment. Only one `WARD-RESERVATION: released` line is
+visible, while the collapsed details name the **specific gate** that died, fold in
+the actual error line, and give the recovery step,
 so an operator diagnoses on the issue thread rather than in docker logs. The
 entrypoint records the failing gate (`auth` / `ollama-probe` / `bootstrap`) to
 `WARD_GATE_FAILURE_FILE` (default `/run/ward/gate-failure`); the reaper reads it in
@@ -148,7 +152,7 @@ entrypoint records the failing gate (`auth` / `ollama-probe` / `bootstrap`) to
 generic release comment. See [agent-reservation.md](agent-reservation.md).
 
 The release comment is also **loud and machine-detectable** ([ward#595](https://forgejo.coilysiren.me/coilyco-flight-deck/ward/issues/595)): it leads
-with a "⚠️ Run never started — this issue needs re-dispatch" headline and carries the
+with a `WARD-RESERVATION: released` status line and carries the
 `<!-- ward-needs-redispatch -->` marker (`agentNeedsRedispatchMarker`), so an orphaned run
 reads as a call to action, not a benign reservation-release that a human or a heartbeat
 mistakes for "was dispatched, in flight". A `ward agent director` re-queues such an issue

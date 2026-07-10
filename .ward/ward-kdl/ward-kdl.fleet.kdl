@@ -11,11 +11,11 @@
 // it to cmd/ward/fleetassets/fleet.generated.kdl for go:embed (which cannot
 // reach this sibling dir); fleetassets_test.go fails the build on drift.
 //
-// This is the single source of the roster + per-agent divergence, feeding the
-// container_bootstrap.go env-defaults, restated in the ratified fleet grammar.
-// ward#419 deleted the old agent-adapters.yaml mirror, collapsing the ward#415
-// three-way pin to a two-way one: the contract test (agent_adapter_test.go,
-// TestFleetSwitchesTwoWayPin) pins fleet.generated.kdl <-> the parseMode roster.
+// The frontier launch shapes are ward-owned built-ins in cmd/ward/agent_fleet.go.
+// This bundle is the sparse override layer plus role tuning, not the product
+// default source. ward#419 deleted the old agent-adapters.yaml mirror, and the
+// contract test (agent_adapter_test.go, TestFleetSwitchesTwoWayPin) still pins
+// fleet.generated.kdl <-> the parseMode roster.
 //
 // POST-#412 roster: `opencode` is the canonical harness key (qwen is only the
 // backing model + a deprecated --mode alias). The runtime reads this manifest
@@ -28,59 +28,9 @@ fleet {
         agent claude
         attribution name=coilyco-ops email=coilyco-ops@coilysiren.me
     }
-    // claude: full context (2), stream-json headless, keychain auth. model /
-    // reasoning-effort are override-only (ward#616): empty defaults keep bare launch.
+    // Sparse frontier override: builtin launch shapes fill the rest.
     agent claude {
-        binary claude
-        context-level 2
-        stream stream-json
-        auth claude-keychain
-        model ""
-        reasoning-effort ""
-        argv {
-            preflight claude -p
-            headless claude -p --verbose --output-format stream-json
-            interactive claude
-        }
-    }
-    // codex: scoped context (level 1), no stream, codex-file auth, no pre-flight.
-    agent codex {
-        binary codex
-        context-level 1
-        stream none
-        auth codex-file
-        model gpt-5.4
-        reasoning-effort medium
-        verbosity low
-        argv {
-            headless codex exec
-            interactive codex
-        }
-    }
-    // opencode: minimal context (level 0), no stream, no host auth, no pre-flight.
-    agent opencode {
-        binary opencode
-        context-level 0
-        stream none
-        auth none
-        model qwen3-coder:30b
-        endpoint "http://localhost:11434/v1"
-        argv {
-            headless opencode run
-            interactive opencode
-        }
-    }
-    // goose: full context (level 2) like claude, no stream, ollama auth.
-    agent goose {
-        binary goose
-        context-level 2
-        stream none
-        auth ollama
-        argv {
-            preflight goose run -t
-            headless goose run -t
-            interactive goose session
-        }
+
     }
     // Per-role capability roster (ward#578) + per-agent model/effort overlay
     // (cli-guard#192, ward#620); overlay precedence in docs/agent-config-overrides.md.
@@ -106,13 +56,21 @@ fleet {
             }
             agent codex {
                 model gpt-5.5
-                reasoning-effort medium
+                reasoning-effort high
             }
         }
         // advisor does live-observe research: the aws SSM read + the tailnet route.
         // `advisor --no-tailnet` opts a rare isolated run back out.
         role advisor {
             guardfiles ward-kdl.aws.guardfile.kdl ward-kdl.tailscale.guardfile.kdl
+            agent claude {
+                model "claude-opus-4-8[1m]"
+                reasoning-effort high
+            }
+            agent codex {
+                model gpt-5.5
+                reasoning-effort high
+            }
         }
     }
 }

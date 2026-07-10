@@ -1,5 +1,5 @@
 ---
-doc_goal: Carry the behavioral detail behind the three ward agent roles - engineer detached, director attached heartbeat, advisor answer-only - map the old retired verbs onto them, and explain the shared pre-flight and reaper backstop so an operator knows what each role does and leaves behind.
+doc_goal: Carry the behavioral detail behind the four ward agent roles - engineer detached, director attached heartbeat, advisor answer-only, qa verdict-only - map the old retired verbs onto them, and explain the shared pre-flight and reaper backstop so an operator knows what each role does and leaves behind.
 ---
 # ward agent: the role roster
 
@@ -7,23 +7,28 @@ The `ward agent` roles differ in what they do, how attached they are, and what t
 leave behind. See [docs/agent.md](agent.md) for the family overview and the `warded`
 public face (`warded <role> <ref>`, the spelling these examples front). The roster is a
 hard rename of the old verbs: `work`/`headless`/`task` → `engineer`, `backlog` →
-`director`, `reply`/`ask` → `advisor`, `sandbox` removed, and folded the read-only
-`explore`/`architect` into the **director's surface phase**. The old spellings error as
-unknown commands.
+`director`, `reply`/`ask` → `advisor`, plus the opt-in `qa` inspection role.
+`sandbox` was removed, and `explore`/`architect` were folded into the **director's
+surface phase**. The old spellings error as unknown commands.
+
+The semantic posture for those roles is separate from the KDL guardfile tiers.
+[agent-role-capabilities.md](agent-role-capabilities.md) names the ward-owned
+`read` / `project-management` / `engineering` / `ops` / `admin` vocabulary.
 
 A **bare ref with no role word runs `engineer`**: `warded #98`
 dispatches the fire-and-forget engineer, and a bare `#N`/`N` infers `owner/repo` from the cwd
 origin. The role words below override that default.
 
-## The three roles
+## The roles
 
 The canonical flat enumeration of the roles - one row each, with the tagline and the
 ref-vs-freeform invocation modes - lives in **[agent-roster.md](agent-roster.md)**,
 generated from the code roster by `ward agent roster` so it can never go stale.
 That page is the one source of truth for *which* roles exist; this doc and the
 per-role docs ([agent-engineer.md](agent-engineer.md), [agent-director.md](agent-director.md)
-+ its [surface](agent-surface.md), [agent-advisor.md](agent-advisor.md)) carry the prose
-detail behind each row. Run `warded roster` for the list live at the terminal.
++ its [surface](agent-surface.md), [agent-advisor.md](agent-advisor.md),
+[agent-qa.md](agent-qa.md)) carry the prose detail behind each row. Run `warded roster`
+for the list live at the terminal.
 
 The notes below are the behavioral detail the flat roster does not capture:
 
@@ -32,15 +37,20 @@ The notes below are the behavioral detail the flat roster does not capture:
   for claude it **streams live progress** to the container log. From a terminal it first runs
   a **pre-flight check** ([agent-preflight.md](agent-preflight.md)): a GO launches, a NO-GO
   comments and launches nothing. Its seed **closes with a "how it felt" comment**
-  led by a `WARD-OUTCOME` line. No attach surface (`work`/`--watch` retired);
+  led by a `WARD-OUTCOME` line. Semantic preset: `read + engineering`. No attach surface (`work`/`--watch` retired);
   interactive work funnels to `director`. Freeform text files an issue first, then carries it:
   DIRECT for an explicit `owner/repo`, ROUTE for a freeform task with no repo.
 - **`director`** (was `backlog`) - an attached heartbeat: polls `WARD-OUTCOME`, an LLM
   one-shot picks which queued issues to dispatch under `--max-parallel`, and on drain surfaces
   a **read-only scope + dispatch session** (push credential revoked, reaper skips salvage;
+  semantic preset: `read + project-management`;
   [agent-surface.md](agent-surface.md)).
 - **`advisor`** (was `reply` + `ask`) - the ref mode researches one-shot and posts the
   answer as a comment; freeform answers *inside* a fresh container and streams it inline.
+  Semantic preset: `read`.
+- **`qa`** - opt-in structured inspection: a ref reads the issue, candidate branch/PR,
+  and checks, then posts a verdict comment. No code edits, no default gating.
+  Semantic preset: `read`.
 
 ## Pre-flight parity
 
@@ -49,7 +59,9 @@ in both ref and freeform mode: freeform files the issue first, then gives the
 same GO / NO-GO read before detaching. A NO-GO comments on the just-filed issue and
 launches nothing, leaving a real issue a human can pick up or re-dispatch with
 `engineer ... --skip-preflight`. It honors the same skips (`--print`,
-`--skip-preflight` / `--no-preflight`, no terminal). ROUTE's live survey *is* its
+`--skip-preflight` / `--no-preflight`, no terminal), and `--skip-preflight` also
+cuts the launch-adjacent reservation re-check, update reminder, and network/image
+pre-start probes before the container starts. ROUTE's live survey *is* its
 feasibility gate, so ROUTE skips the pre-flight.
 
 ## Reaper backstop
@@ -71,3 +83,4 @@ which forwards a stop through the dispatch broker - stop-only, engineer-only.
 - [docs/agent.md](agent.md) - the `ward agent` roster and usage.
 - [docs/agent-engineer.md](agent-engineer.md) - what the engineer does step by step.
 - [docs/agent-preflight.md](agent-preflight.md) - the detached GO/NO-GO pre-flight.
+- [docs/agent-qa.md](agent-qa.md) - the opt-in QA inspection role.

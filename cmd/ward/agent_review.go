@@ -1,9 +1,11 @@
 package main
 
 import (
+	"bytes"
 	"context"
 	"encoding/json"
 	"fmt"
+	"io"
 	"os"
 	"os/exec"
 	"path/filepath"
@@ -13,13 +15,13 @@ import (
 
 	"forgejo.coilysiren.me/coilyco-flight-deck/cli-guard/cli/verb"
 	"forgejo.coilysiren.me/coilyco-flight-deck/cli-guard/pkg/config"
-	"github.com/coilyco-flight-deck/ward/internal/launchgate/ollamaprobe"
+	"github.com/coilyco-flight-deck/ward/internal/agentsapi"
 	"github.com/coilyco-flight-deck/ward/internal/reviewpanel"
 	"github.com/urfave/cli/v3"
 )
 
-// agent_review.go wires `ward agent review` (ward#134): the fleet roster, reviewer
-// subprocesses, probes, and sidecar log onto internal/reviewpanel.
+// agent_review.go wires `ward agent review` (ward#134): the fleet roster,
+// reviewer subprocesses, probes, and sidecar log onto internal/reviewpanel.
 
 // reviewClassEnv pins the panel's autonomy class into the container, so the gate reads
 // it from the host, not the (untrusted) worker.
@@ -67,10 +69,26 @@ func writeReviewSummaryHandoff(res reviewpanel.PanelResult) error {
 	return os.WriteFile(path, []byte(reviewSummary(res)+"\n"), 0o600) //nolint:gosec // per-run handoff file in ~/.ward
 }
 
+// failClosedNoReviewerResult converts the no-runnable-reviewer advisory fallback
+// into the blocked wording every downstream surface should inherit.
+func failClosedNoReviewerResult(res reviewpanel.PanelResult) reviewpanel.PanelResult {
+	if res.Gate != reviewpanel.GateAdvisory {
+		return res
+	}
+	res.Gate = reviewpanel.GateBlock
+	if note := strings.TrimSpace(res.Note); note != "" {
+		note = strings.TrimPrefix(note, "ADVISORY-ONLY REVIEW: ")
+		note = strings.ReplaceAll(note, " and did NOT gate this diff.", " and the gate blocked fail-closed.")
+		res.Note = strings.TrimSpace(note)
+		return res
+	}
+	res.Note = "no reviewer family was available; the gate blocked fail-closed"
+	return res
+}
+
 // reviewConclusionCommentBody renders the issue comment body that records the
 // review conclusion for every gate outcome.
 func reviewConclusionCommentBody(res reviewpanel.PanelResult) string {
-	var b strings.Builder
 	status := "done"
 	switch res.Gate {
 	case reviewpanel.GateBlock:
@@ -80,7 +98,9 @@ func reviewConclusionCommentBody(res reviewpanel.PanelResult) string {
 	case reviewpanel.GatePass:
 		status = "done"
 	}
-	fmt.Fprintf(&b, "%s %s - review summary: %s\n\n", wardOutcomeMarker, status, reviewSummary(res))
+	var b strings.Builder
+	visible := fmt.Sprintf("%s %s %s", wardOutcomeMarker, status, outcomeStatusEmoji(status))
+	writef(&b, "review summary: %s\n\n", reviewSummary(res))
 	writef(&b, "Review panel verdicts:\n")
 	for _, rv := range res.Reviewers {
 		note := rv.Reason
@@ -92,7 +112,20 @@ func reviewConclusionCommentBody(res reviewpanel.PanelResult) string {
 	if strings.TrimSpace(res.Note) != "" {
 		writef(&b, "\nPanel note: %s\n", truncateLine(res.Note, 200))
 	}
-	return b.String()
+	return collapsedIssueComment(visible, "review details", b.String())
+}
+
+func outcomeStatusEmoji(status string) string {
+	switch status {
+	case "done":
+		return "✅"
+	case "blocked":
+		return "🛑"
+	case "failed":
+		return "❌"
+	default:
+		return ""
+	}
 }
 
 // postReviewConclusionComment writes the review conclusion back to the issue thread.
@@ -111,7 +144,6 @@ func (r *Runner) postReviewConclusionComment(ctx context.Context, res reviewpane
 		writef(r.Runner.Stderr, "ward agent review: WARNING: could not build Forgejo client for conclusion comment: %v\n", err)
 		return
 	}
-	cl = cl.withMode(containerMode(res.Worker))
 	if err := cl.commentIssue(ctx, parsed.Owner, parsed.Repo, parsed.Number, reviewConclusionCommentBody(res)); err != nil {
 		writef(r.Runner.Stderr, "ward agent review: WARNING: could not post review conclusion comment on %s: %v\n", parsed, err)
 	}
@@ -151,8 +183,8 @@ func (e reviewBlockedError) Error() string {
 		e.result.Passes, e.result.Threshold, e.result.Class, reviewSummary(e.result))
 }
 
-// agentReviewCommand builds `ward agent review`, the pre-landing panel gate plus
-// its stats reader. It is a maintenance/gate verb, not a startup role.
+// agentReviewCommand builds `ward agent review`, the pre-landing panel gate. It
+// is a maintenance/gate verb, not a startup role.
 func agentReviewCommand() *cli.Command {
 	return &cli.Command{
 		Name:  "review",
@@ -173,8 +205,7 @@ persisted to a sidecar log beside the audit trail. See docs/dispatch-review.md.`
 			&cli.BoolFlag{Name: "print", Usage: "resolve the panel plan + built prompt and exit; run no reviewer"},
 			&cli.BoolFlag{Name: "json", Usage: "emit the panel result as JSON on stdout"},
 		},
-		Action:   agentReviewAction(),
-		Commands: []*cli.Command{agentReviewStatsCommand()},
+		Action: agentReviewAction(),
 	}
 }
 
@@ -231,12 +262,7 @@ func (r *Runner) runAgentReview(ctx context.Context, c *cli.Command) error {
 	}
 	result := deps.Execute(cfg)
 
-	if result.Gate == reviewpanel.GateAdvisory {
-		result.Gate = reviewpanel.GateBlock
-		if result.Note == "" {
-			result.Note = "review had no runnable reviewer; blocking fail-closed"
-		}
-	}
+	result = failClosedNoReviewerResult(result)
 	if werr := writeReviewSummaryHandoff(result); werr != nil {
 		if path, perr := reviewSummaryPath(); perr == nil {
 			writef(r.Runner.Stderr, "ward agent review: WARNING: could not write review summary handoff %s: %v\n", path, werr)
@@ -346,8 +372,22 @@ func (r *Runner) reviewerRunner(ctx context.Context) reviewpanel.RunFunc {
 		argv := append(append([]string{}, rec.Argv.Headless...), prompt)
 		rctx, cancel := context.WithTimeout(ctx, reviewerTimeoutDefault())
 		defer cancel()
+		var stderr bytes.Buffer
+		prevStderr := r.Runner.Stderr
+		if prevStderr == nil {
+			prevStderr = io.Discard
+		}
+		r.Runner.Stderr = io.MultiWriter(prevStderr, &stderr)
+		defer func() { r.Runner.Stderr = prevStderr }()
 		out, err := r.Runner.Capture(rctx, argv[0], argv[1:]...)
 		if err != nil {
+			detail := strings.TrimSpace(stderr.String())
+			if detail == "" {
+				detail = strings.TrimSpace(string(out))
+			}
+			if detail != "" {
+				return string(out), fmt.Errorf("%s: %w: %s", rv.Family, err, truncateLine(detail, 400))
+			}
 			return string(out), fmt.Errorf("%s: %w", rv.Family, err)
 		}
 		return string(out), nil
@@ -358,26 +398,50 @@ func (r *Runner) reviewerRunner(ctx context.Context) reviewpanel.RunFunc {
 // its credential/endpoint be reachable. An unavailable reviewer is dropped.
 func (r *Runner) reviewerAvailable(ctx context.Context) reviewpanel.AvailFunc {
 	return func(rv reviewpanel.Reviewer) (bool, string) {
-		bin := lookupAgent(containerMode(rv.Family)).Record().Binary
+		agent := lookupAgent(containerMode(rv.Family))
+		bin := agent.Record().Binary
 		if bin == "" {
 			bin = rv.Family
 		}
 		if _, err := exec.LookPath(bin); err != nil {
 			return false, bin + " not on PATH"
 		}
-		if rv.Family == "opencode" {
-			endpoint := strings.TrimSpace(os.Getenv(ollamaprobe.OpencodeEndpointEnv))
-			if endpoint == "" {
-				return false, "no " + ollamaprobe.OpencodeEndpointEnv + " (ollama endpoint) set"
-			}
+		if lg, ok := agent.(agentsapi.LaunchGate); ok {
 			pctx, cancel := context.WithTimeout(ctx, 5*time.Second)
 			defer cancel()
-			if _, err := ollamaprobe.ReachOnce(pctx, endpoint); err != nil {
-				return false, "ollama unreachable at " + endpoint + ": " + err.Error()
+			if err := lg.PreLaunchCheck(reviewerRunCtx(pctx, rv)); err != nil {
+				return false, firstLine(err.Error())
 			}
 		}
 		return true, ""
 	}
+}
+
+// reviewerRunCtx builds the light-weight in-container context the reviewer launch
+// gates expect when deciding whether a family can actually run here.
+func reviewerRunCtx(ctx context.Context, rv reviewpanel.Reviewer) agentsapi.RunCtx {
+	rc := agentsapi.RunCtx{
+		Ctx:           ctx,
+		Headless:      true,
+		AgentHome:     homeDir(),
+		AgentUID:      envOr("WARD_AGENT_UID", ""),
+		AgentGID:      envOr("WARD_AGENT_GID", ""),
+		CodexEffort:   envOr("WARD_CODEX_REASONING_EFFORT", ""),
+		ClaudeEffort:  envOr("WARD_CLAUDE_REASONING_EFFORT", ""),
+		OpencodeModel: envOr("WARD_QWEN_MODEL", ""),
+		OllamaURL:     envOr("WARD_OLLAMA_URL", ""),
+		Log:           func(string, ...any) {},
+	}
+	switch rv.Family {
+	case string(modeCodex):
+		rc.CodexModel = firstNonEmpty(rv.Model, envOr("WARD_CODEX_MODEL", ""))
+		rc.CodexVerbosity = envOr("WARD_CODEX_VERBOSITY", "")
+	case string(modeClaude):
+		rc.ClaudeModel = firstNonEmpty(rv.Model, envOr("WARD_CLAUDE_MODEL", ""))
+	case string(modeOpencode):
+		rc.OpencodeModel = firstNonEmpty(rv.Model, envOr("WARD_QWEN_MODEL", ""))
+	}
+	return rc
 }
 
 // reviewIssueRef renders owner/repo#N from the container target env, or "".
@@ -396,7 +460,8 @@ func reviewIssueURL() string {
 	if owner == "" || name == "" || err != nil {
 		return ""
 	}
-	ref := agentIssueRef{Owner: owner, Repo: name, Number: n, Forge: parseForge(os.Getenv("WARD_FORGE"))}
+	fg := parseForge(os.Getenv("WARD_FORGE"))
+	ref := agentIssueRef{Owner: owner, Repo: name, Number: n, Forge: fg, Tracker: trackerFromForge(fg)}
 	return ref.url()
 }
 

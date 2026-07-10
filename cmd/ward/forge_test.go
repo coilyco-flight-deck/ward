@@ -3,6 +3,8 @@ package main
 import (
 	"errors"
 	"io"
+	"net/http"
+	"net/http/httptest"
 	"os"
 	"path/filepath"
 	"strings"
@@ -51,6 +53,9 @@ func TestParseGitHubIssueRef(t *testing.T) {
 		if got.Forge != forgeGitHub {
 			t.Errorf("parseGitHubIssueRef(%q): forge=%v want github", c.in, got.Forge)
 		}
+		if got.Tracker != trackerGitHub {
+			t.Errorf("parseGitHubIssueRef(%q): tracker=%v want github", c.in, got.Tracker)
+		}
 	}
 }
 
@@ -64,6 +69,9 @@ func TestParseAgentIssueRefForge(t *testing.T) {
 	if gh.Forge != forgeGitHub {
 		t.Errorf("github URL parsed to forge %v, want github", gh.Forge)
 	}
+	if gh.Tracker != trackerGitHub {
+		t.Errorf("github URL parsed to tracker %v, want github", gh.Tracker)
+	}
 	fj, err := parseAgentIssueRef("coilyco-flight-deck/ward#98")
 	if err != nil {
 		t.Fatalf("parseAgentIssueRef(forgejo short): %v", err)
@@ -71,17 +79,26 @@ func TestParseAgentIssueRefForge(t *testing.T) {
 	if fj.Forge != forgeForgejo {
 		t.Errorf("forgejo short ref parsed to forge %v, want forgejo", fj.Forge)
 	}
+	if fj.Tracker != trackerForgejo {
+		t.Errorf("forgejo short ref parsed to tracker %v, want forgejo", fj.Tracker)
+	}
 }
 
 // TestForgeURLAndBase checks the forge-selected issue URL + clone base.
 func TestForgeURLAndBase(t *testing.T) {
-	gh := agentIssueRef{Owner: "owner", Repo: "repo", Number: 5, Forge: forgeGitHub}
+	gh := agentIssueRef{Owner: "owner", Repo: "repo", Number: 5, Forge: forgeGitHub, Tracker: trackerGitHub}
 	if got, want := gh.url(), "https://github.com/owner/repo/issues/5"; got != want {
 		t.Errorf("github url = %q, want %q", got, want)
+	}
+	if got, want := gh.trackerOrDefault(), trackerGitHub; got != want {
+		t.Errorf("github tracker = %v, want %v", got, want)
 	}
 	fj := agentIssueRef{Owner: "coilyco-flight-deck", Repo: "ward", Number: 5}
 	if got, want := fj.url(), forgejoBaseURL+"/coilyco-flight-deck/ward/issues/5"; got != want {
 		t.Errorf("forgejo url = %q, want %q", got, want)
+	}
+	if got, want := fj.trackerOrDefault(), trackerForgejo; got != want {
+		t.Errorf("forgejo tracker = %v, want %v", got, want)
 	}
 	if forgeGitHub.baseURL() != githubBaseURL || forgeGitHub.host() != "github.com" {
 		t.Errorf("github base/host = %q/%q", forgeGitHub.baseURL(), forgeGitHub.host())
@@ -106,24 +123,41 @@ func TestParseForge(t *testing.T) {
 	if forgeGitHub.String() != "github" || forgeForgejo.String() != "forgejo" {
 		t.Errorf("String() = %q/%q", forgeGitHub.String(), forgeForgejo.String())
 	}
+	if trackerShortcut.String() != "shortcut" {
+		t.Errorf("shortcut tracker String() = %q, want shortcut", trackerShortcut.String())
+	}
 }
 
-// TestForgeCarryClause verifies the seed's carry sentence is forge-specific: GitHub
-// opens a PR (never pushes main), Forgejo merges to main + closes the issue.
-func TestForgeCarryClause(t *testing.T) {
-	gh := forgeCarryClause(agentIssueRef{Owner: "o", Repo: "r", Number: 7, Forge: forgeGitHub})
-	for _, want := range []string{"gh pr create", "Closes #7", "pull request", "GITHUB_TOKEN"} {
-		if !strings.Contains(gh, want) {
-			t.Errorf("github carry clause missing %q: %s", want, gh)
+// TestForgeAndTrackerPairIndependence proves the git host and issue tracker can be
+// set separately on the same issue ref.
+func TestForgeAndTrackerPairIndependence(t *testing.T) {
+	ref := agentIssueRef{Owner: "owner", Repo: "repo", Number: 9, Forge: forgeGitHub, Tracker: trackerForgejo}
+	if got, want := ref.url(), "https://github.com/owner/repo/issues/9"; got != want {
+		t.Fatalf("paired ref url = %q, want %q", got, want)
+	}
+	if got, want := ref.trackerOrDefault(), trackerForgejo; got != want {
+		t.Fatalf("paired ref tracker = %v, want %v", got, want)
+	}
+	if got, want := trackerFromForge(ref.Forge), trackerGitHub; got != want {
+		t.Fatalf("paired ref host tracker default = %v, want %v", got, want)
+	}
+}
+
+// TestDirectToMainCarryClause verifies the fast path is generic across forges and
+// tells the agent to land the issue on main.
+func TestDirectToMainCarryClause(t *testing.T) {
+	for _, ref := range []agentIssueRef{
+		{Owner: "o", Repo: "r", Number: 7},
+		{Owner: "o", Repo: "r", Number: 7, Forge: forgeGitHub},
+	} {
+		got := directToMainCarryClause(ref)
+		for _, want := range []string{"merge to main", "closes #7"} {
+			if !strings.Contains(got, want) {
+				t.Errorf("direct-main carry clause missing %q: %s", want, got)
+			}
 		}
-	}
-	if strings.Contains(gh, "merge to main") {
-		t.Errorf("github carry clause should not tell the agent to merge to main: %s", gh)
-	}
-	fj := forgeCarryClause(agentIssueRef{Owner: "o", Repo: "r", Number: 8})
-	for _, want := range []string{"merge to main", "closes #8"} {
-		if !strings.Contains(fj, want) {
-			t.Errorf("forgejo carry clause missing %q: %s", want, fj)
+		if strings.Contains(got, "gh pr create") || strings.Contains(got, "pull request") {
+			t.Errorf("direct-main carry clause should not mention a PR boundary: %s", got)
 		}
 	}
 }
@@ -225,6 +259,33 @@ func TestResolveGitHubTokenSourceSelects(t *testing.T) {
 		_, err := r.resolveGitHubToken(t.Context(), "coilyco", "ward")
 		if err == nil || !strings.Contains(err.Error(), envGitHubAppID) {
 			t.Fatalf("app source with no config = %v, want an error naming %s", err, envGitHubAppID)
+		}
+	})
+
+	t.Run("unset source defaults to app when provisioned", func(t *testing.T) {
+		_, keyPEM := genTestKeyPEM(t)
+		srv := httptest.NewServer(http.HandlerFunc(func(w http.ResponseWriter, r *http.Request) {
+			switch {
+			case r.Method == http.MethodGet && r.URL.Path == "/repos/coilyco/ward/installation":
+				_, _ = w.Write([]byte(`{"id": 42}`))
+			case r.Method == http.MethodPost && r.URL.Path == "/app/installations/42/access_tokens":
+				_, _ = w.Write([]byte(`{"token":"ghs_default_app"}`))
+			default:
+				w.WriteHeader(http.StatusNotFound)
+			}
+		}))
+		defer srv.Close()
+
+		orig := githubAPIBase
+		githubAPIBase = srv.URL
+		defer func() { githubAPIBase = orig }()
+
+		r := awsPEMStubRunner(t, keyPEM)
+		t.Setenv("WARD_GITHUB_TOKEN_SOURCE", "")
+		t.Setenv(envGitHubAppID, "999")
+		t.Setenv(envGitHubAppKeySSM, "/ward/github-app/key")
+		if got, err := r.resolveGitHubToken(t.Context(), "coilyco", "ward"); err != nil || got != "ghs_default_app" {
+			t.Fatalf("default source = %q,%v want ghs_default_app,nil", got, err)
 		}
 	})
 

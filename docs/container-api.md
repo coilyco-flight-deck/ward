@@ -12,7 +12,7 @@ ready-to-work clone. That handoff **is** the container API - the stable contract
 between host `ward` (`docker run` composed in
 [`container_compute.go`](../cmd/ward/container_compute.go)) and the entrypoint that
 reads it. None of it is baked into the image, so an image pin never changes this
-contract - only a ward upgrade does.
+contract - only replacing the host ward binary does.
 
 Three interface surfaces, plus the capability ladder they key off:
 
@@ -43,7 +43,8 @@ Opt-in mounts (off unless the flag is set):
 - **`~/.aws` -> `/root/.aws`** (ro) - `--aws`, the broad SSM read surface.
 - **ward checkout -> `/opt/ward-src`** (ro) - `--ward-source`; build ward from source. Sets `WARD_FROM_SOURCE`.
 - **agent-log drain -> `/opt/ward-agent-logs`** (ro) - the director's redacted log read ([agent-surface-log-read.md](agent-surface-log-read.md)).
-- **read-only ward-kdl helper -> `/usr/local/bin/ward-kdl-read`** (best-effort, read-only director sessions only) - the kai-server observe surface for non-mutating ssh-through-docker checks.
+- **read-only ward-kdl helper -> `/usr/local/bin/ward-kdl-read`** (best-effort, read-only director sessions only) - the non-mutating ssh-through-docker check helper.
+- **tailnet proxy env -> `WARD_TS_SOCKS5`** (best-effort, only when the sidecar route is active) - a generic SOCKS5 proxy value for callers that know how to use it.
 - **`/var/run/docker.sock`** (rw) - the surface dispatch path ([agent-surface.md](agent-surface.md)).
 
 ## What the entrypoint produces

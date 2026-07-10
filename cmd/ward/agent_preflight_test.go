@@ -90,7 +90,7 @@ func TestCapturePreflightRunsInNeutralDir(t *testing.T) {
 func TestHostOneShotKeepsPromptOffCommandLine(t *testing.T) {
 	// A prompt whose ref + question sit BELOW the first newline - exactly the shape
 	// the Windows shim truncated to its preamble, dropping the ref/question (ward#548).
-	prompt := "You are doing one-shot research on a Forgejo issue.\n\n" +
+	prompt := "You are doing one-shot research on the authoritative issue thread for this repo.\n\n" +
 		"Issue: coilyco-gaming/eco-ops#26\n----- the question to answer -----\nverify the telemetry flows\n----- end -----"
 
 	argv, stdin, ok := hostOneShot(modeClaude, prompt)

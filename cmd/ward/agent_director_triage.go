@@ -57,6 +57,7 @@ type triageVerdict struct {
 	Score       int
 	Mode        string
 	Confident   bool
+	Reason      string
 }
 
 // collectTriageCandidates keeps issues missing a tier or mode label (a fully-labeled one
@@ -177,6 +178,8 @@ func triagePrompt(cands []triageCandidate) string {
 	b.WriteString("Some issues are marked [P0-CANDIDATE] because their text tripped an incident content-net. For " +
 		"those ONLY, also judge whether it is an ACTIVE incident / live exposure right now (P0=yes) or merely " +
 		"discusses the topic (P0=no).\n\n")
+	b.WriteString("Also include REASON=<one short sentence> that states the main signal you used. Keep the reason " +
+		"brief and specific. For a P0 candidate, mention whether it is an active incident/live exposure or only a topic mention.\n\n")
 	b.WriteString("ISSUES:\n")
 	for _, c := range cands {
 		flag := ""
@@ -187,17 +190,18 @@ func triagePrompt(cands []triageCandidate) string {
 		fmt.Fprintf(&b, "- #%d%s %q :: %s\n", c.Num, flag, backlogTruncate(c.Title, 120), body)
 	}
 	b.WriteString("\nFor EACH issue output exactly one line, no other prose:\n" +
-		"  #<num> SCORE=<0-3> MODE=<headless|interactive|consult> CONF=<high|low>[ P0=<yes|no>]\n" +
+		"  #<num> SCORE=<0-3> MODE=<headless|interactive|consult> CONF=<high|low>[ P0=<yes|no>] REASON=<short sentence>\n" +
 		"Use CONF=high only when you are confident of the MODE; otherwise CONF=low (it fails closed to consult).\n")
 	return b.String()
 }
 
 var (
-	triageLineRE  = regexp.MustCompile(`#(\d+)`)
-	triageScoreRE = regexp.MustCompile(`(?i)score\s*[:=]?\s*([0-3])`)
-	triageModeRE  = regexp.MustCompile(`(?i)mode\s*[:=]?\s*(headless|interactive|consult)`)
-	triageConfRE  = regexp.MustCompile(`(?i)conf(?:idence)?\s*[:=]?\s*(high|low)`)
-	triageP0RE    = regexp.MustCompile(`(?i)p0\s*[:=]?\s*(yes|no|true|false)`)
+	triageLineRE   = regexp.MustCompile(`#(\d+)`)
+	triageScoreRE  = regexp.MustCompile(`(?i)score\s*[:=]?\s*([0-3])`)
+	triageModeRE   = regexp.MustCompile(`(?i)mode\s*[:=]?\s*(headless|interactive|consult)`)
+	triageConfRE   = regexp.MustCompile(`(?i)conf(?:idence)?\s*[:=]?\s*(high|low)`)
+	triageP0RE     = regexp.MustCompile(`(?i)p0\s*[:=]?\s*(yes|no|true|false)`)
+	triageReasonRE = regexp.MustCompile(`(?i)reason\s*[:=]?\s*(.*)$`)
 )
 
 // parseTriageVerdicts reads the one-shot's per-issue lines into verdicts keyed by number
@@ -226,6 +230,9 @@ func parseTriageVerdicts(read string) map[int]triageVerdict {
 		}
 		if p := triageP0RE.FindStringSubmatch(line); p != nil {
 			v.P0Confirmed = strings.EqualFold(p[1], "yes") || strings.EqualFold(p[1], "true")
+		}
+		if rs := triageReasonRE.FindStringSubmatch(line); rs != nil {
+			v.Reason = strings.TrimSpace(rs[1])
 		}
 		out[num] = v
 	}
@@ -303,15 +310,19 @@ func (r *Runner) triageWriteLabels(ctx context.Context, label, repo string, cl *
 		if len(add) == 0 {
 			continue
 		}
-		if err := cl.addIssueLabels(ctx, owner, name, c.Num, add); err != nil {
+		err := cl.addIssueLabels(ctx, owner, name, c.Num, add)
+		if err != nil {
 			fmt.Fprintf(os.Stderr, "%s: note: cannot label %s#%d %v (%v); skipping.\n", label, repo, c.Num, add, err)
-			continue
-		}
-		fmt.Fprintf(os.Stderr, "  %s#%d += %s\n", repo, c.Num, strings.Join(add, " "))
-		for _, l := range add {
-			if l == "headless" {
-				promoted++
+		} else {
+			fmt.Fprintf(os.Stderr, "  %s#%d += %s\n", repo, c.Num, strings.Join(add, " "))
+			for _, l := range add {
+				if l == "headless" {
+					promoted++
+				}
 			}
+		}
+		if cerr := cl.commentIssue(ctx, owner, name, c.Num, triageCommentBody(c, verdicts[c.Num], tiers[c.Num], add, err)); cerr != nil {
+			fmt.Fprintf(os.Stderr, "%s: note: cannot comment triage reasoning on %s#%d (%v); skipping.\n", label, repo, c.Num, cerr)
 		}
 	}
 	fmt.Fprintf(os.Stderr, "%s: triage - %s done (%d issue(s) promoted to headless).\n", label, repo, promoted)
@@ -328,4 +339,49 @@ func triageLabelsFor(c triageCandidate, v triageVerdict, tier string) []string {
 		add = append(add, triageMode(v))
 	}
 	return add
+}
+
+// triageCommentBody renders the startup triage reasoning back onto the issue thread:
+// one visible line, then the method, verdict, and reason in collapsed details.
+func triageCommentBody(c triageCandidate, v triageVerdict, tier string, labels []string, labelErr error) string {
+	visible := fmt.Sprintf("WARD-TRIAGE: #%d", c.Num)
+	if len(labels) > 0 {
+		visible += " " + strings.Join(labels, " ")
+	}
+	if v.Confident && v.Mode != "" {
+		visible += " (" + triageMode(v) + ")"
+	}
+	var b strings.Builder
+	b.WriteString("method: tooling-issue-prioritization\n")
+	if c.P0Candidate {
+		fmt.Fprintf(&b, "P0 candidate: yes\n")
+		fmt.Fprintf(&b, "P0 confirm: %s\n", boolWord(v.P0Confirmed))
+	} else {
+		b.WriteString("P0 candidate: no\n")
+	}
+	fmt.Fprintf(&b, "score: %d\n", v.Score)
+	fmt.Fprintf(&b, "mode: %s\n", triageMode(v))
+	fmt.Fprintf(&b, "confidence: %s\n", boolWord(v.Confident))
+	if strings.TrimSpace(tier) != "" {
+		fmt.Fprintf(&b, "tier: %s\n", tier)
+	}
+	if len(labels) > 0 {
+		fmt.Fprintf(&b, "labels: %s\n", strings.Join(labels, " "))
+	}
+	if strings.TrimSpace(v.Reason) != "" {
+		fmt.Fprintf(&b, "reason: %s\n", strings.TrimSpace(v.Reason))
+	} else {
+		b.WriteString("reason: unavailable\n")
+	}
+	if labelErr != nil {
+		fmt.Fprintf(&b, "\nlabel write: %v\n", labelErr)
+	}
+	return collapsedIssueComment(visible, "triage details", b.String())
+}
+
+func boolWord(ok bool) string {
+	if ok {
+		return "yes"
+	}
+	return "no"
 }

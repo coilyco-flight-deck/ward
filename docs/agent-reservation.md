@@ -14,8 +14,8 @@ works it at once, on this host or another:
 - **Local file sentinel.** `~/.ward/agent-reservations/<owner>-<repo>-issue-<N>.json`
   records the container holding the issue. A fresh sentinel whose container is
   still running blocks a new run on the same host.
-- **Remote Forgejo comment.** The run posts a marker comment (`🔒 Reserved by
-  ward agent ...`) on the issue and refuses to start if it finds a fresh one
+- **Remote Forgejo comment.** The run posts a marker comment (`WARD-RESERVATION:
+  held`) on the issue and refuses to start if it finds a fresh one
   already there - that's another host carrying the issue. When the dispatch cleared
   an explicit **GO** [pre-flight](agent-preflight.md), that comment folds in the
   collapsed GO read, so the reservation records *why* the issue was judged
@@ -28,21 +28,23 @@ The reservation comment is posted **before** the in-container auth smoke gate
 **what** it was carrying. That makes the tracker, not docker logs, the primary
 diagnostic surface. Three surfaces, each its own job:
 
-- **Reservation comment = WHAT.** The comment folds the **dynamic** per-run seed
-  context into a collapsed `<details>` block: the resolved ref, target branch,
-  driver, run id, dispatch timestamp, the landing workflow, and which thread
-  comments were **included vs stripped** in the pre-flight read (ward strips its
-  own automation - reservation pings and NO-GO verdicts). The static container
+- **Reservation comment = WHAT.** The visible tracker text is a single
+  `WARD-RESERVATION` line. The comment folds the **dynamic** per-run seed context
+  into collapsed `<details>`: the resolved ref, target branch, driver, run id,
+  dispatch timestamp, the landing workflow, and which thread comments were
+  **included vs stripped** in the pre-flight read (ward strips its own automation
+  - reservation pings and NO-GO verdicts). The static container
   doctrine and seed boilerplate are identical every run, so they are
   **referenced by ward version, never pasted**. No secret-bearing content is
   added: comment **bodies** are never included (only author + timestamp), and
   the issue body stays on the issue page instead of being re-pasted into the
   reservation comment.
 - **Reservation-released comment = WHY + RECOVER.** When a container dies at a
-  pre-launch gate, the reaper's release comment names the **specific gate** that
-  failed (`auth`, `ollama-probe`, or `bootstrap`), folds in the actual error line,
-  and gives the recovery step (for `auth`: refresh the host claude login, then
-  re-dispatch). See [container-reap.md](container-reap.md).
+  pre-launch gate, the reaper's release comment keeps only one
+  `WARD-RESERVATION: released` line visible. The details block names the
+  **specific gate** that failed (`auth`, `ollama-probe`, or `bootstrap`), folds in
+  the actual error line, and gives the recovery step (for `auth`: refresh the host
+  claude login, then re-dispatch). See [container-reap.md](container-reap.md).
 - **Docker-log echo = BACKSTOP.** The container entrypoint echoes the same dynamic
   context (plus the seed/task text) to stdout at startup, **before any gate**, as a
   delimited greppable `ward run context` banner - the last-resort surface for an
@@ -180,8 +182,8 @@ version` there. When the run is detached, no human watches that log, so the cue
 that the **host** ward binary is itself behind a release is lost. To keep that
 awareness, ward does a best-effort check at the host dispatch moment: it resolves
 the latest `coilyco-flight-deck/ward` release tag and, if the host binary is
-behind it, prints a two-line stderr reminder pointing at
-[`ward upgrade`](../README.md).
+behind it, prints a two-line stderr reminder telling the operator to refresh
+the host binary before launching.
 
 The lookup routes through the in-binary [`ward ops forgejo`](ops-forgejo-in-ward.md)
 `release list` specverb, whose `--query "[0].tag_name"` projection returns

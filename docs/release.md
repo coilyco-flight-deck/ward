@@ -5,7 +5,7 @@ doc_goal: Let a maintainer trust and repair ward's Forgejo-canonical push-to-mai
 
 Forgejo-canonical release on push to `main`. The
 `.forgejo/workflows/release.yml` pipeline cuts the tag + release, then bumps the
-homebrew formula(e) so `brew upgrade ward` downloads and verifies the tagged
+homebrew formula(e) so the package manager downloads and verifies the tagged
 release binary.
 
 ward's formula downloads the per-platform release binaries (`url` + `sha256`),
@@ -36,9 +36,7 @@ keyed to the release tag, never the public release page
   ([broker.md](broker.md)).
 - **`publish-kdl-read`** - the read tier a **sealed read-only director** session
   pulls via the entrypoint's `install_ward_kdl_read`, the non-mutating
-  ssh-through-docker observe surface
-  ([ward#547](https://forgejo.coilysiren.me/coilyco-flight-deck/ward/issues/547),
-  [ward#572](https://forgejo.coilysiren.me/coilyco-flight-deck/ward/issues/572)).
+  ssh-through-docker helper ([ward#572](https://forgejo.coilysiren.me/coilyco-flight-deck/ward/issues/572)).
   Without this producer the entrypoint's best-effort fetch 404'd every run, so a
   director session never got the helper.
 
@@ -78,8 +76,8 @@ OS, so every install channel is a **push** from the tag build rather than a poll
   - **It targets the Forgejo bucket, not the GitHub mirror.** The bucket is
     Forgejo-canonical: users add it with
     `scoop bucket add ... https://forgejo.coilysiren.me/...` and its `checkver`
-    reads the Forgejo `releases.atom` feed, so `scoop update ward` only sees a
-    manifest that is current on **Forgejo**. Pushing to the mirror alone would
+    reads the Forgejo `releases.atom` feed, so scoop only sees a manifest that
+    is current on **Forgejo**. Pushing to the mirror alone would
     not clear the user-facing lag, so the job writes where scoop reads - the
     homebrew-tap sibling is Forgejo for the same reason.
   - The manifest hashes come from the per-asset `.exe.sha256` sidecars

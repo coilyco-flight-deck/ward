@@ -14,7 +14,8 @@ The tokens are grammar, parsed by cli-guard's `specverb-gen` (the engine), not
 by anything in this repo. So the rename is a **cli-guard PR that adds aliases**,
 and ward's guardfiles switch to the new spelling only once that alias ships.
 Aliases, never hard renames: every current file keeps parsing, `kdlfmt` and
-`ward doctor` stay green, and authors migrate on their own schedule. Related:
+the release-planning inventory stays green, and authors migrate on their own
+schedule. Related:
 [ward#205](https://forgejo.coilysiren.me/coilyco-flight-deck/ward/issues/205),
 [ward#297](https://forgejo.coilysiren.me/coilyco-flight-deck/ward/issues/297).
 The legend for reading them **today** lives in

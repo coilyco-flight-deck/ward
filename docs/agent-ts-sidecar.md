@@ -73,6 +73,8 @@ calls **auto-route** to the tower with no per-client config.
 
 The explicit per-request proxy path stays valid, `WARD_TS_SOCKS5` +
 `WARD_TOWER_OLLAMA` are plain: `curl --proxy "$WARD_TS_SOCKS5" "$WARD_TOWER_OLLAMA/api/tags"`.
+If you need SSH reachability or proxy recipes, keep that in local infrastructure
+or operator docs. Ward only carries the generic proxy env.
 
 ## Use it
 

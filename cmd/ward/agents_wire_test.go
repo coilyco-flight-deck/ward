@@ -133,7 +133,7 @@ func TestComposeAgentContainerCodexSurfaceTrust(t *testing.T) {
 		Mode:       string(modeCodex),
 		AgentHome:  home,
 		TargetName: "agentic-os",
-		ReadOnly:   true, // the director surface session (WARD_READONLY=1)
+		ReadOnly:   true, // the director surface container (WARD_READONLY=1)
 	}
 	rc := r.agentRunCtx(context.Background(), e, nil)
 	rc.TrustDirs = agentTrustDirs(e)

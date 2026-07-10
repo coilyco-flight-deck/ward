@@ -24,11 +24,11 @@ regenerate when the source changes (`make build-ward-kdl`). Three dialects:
 - **Dialect 1, permission surfaces** - `*.guardfile.kdl` spec + exec files. Least-privilege, audited. Parsed by `cli/execverb` + `http/specverb`.
 - **Dialect 2, fleet-config manifest** - `ward-kdl.fleet.kdl`: identity, model, endpoint, attribution, roster defaults, sparse overrides, `roles`.
 - **Dialect 3, operator-local** - the same `fleetconfig` parser, sourced from a local `~/.ward/fleet.local.kdl`, not embedded and tracked separately.
-- **Smart defaults bundle** - `ward-kdl.defaults.kdl`: launch-selected runtime policy defaults for reservation TTL, recheck cadence, reap thresholds, director cadence, and container retention. Parsed by ward at launch, embedded via `defaultsassets/`.
+- **Smart defaults bundle** - `ward-kdl.defaults.kdl`: selected runtime policy defaults plus repo-authority for trusted-owner and bare-ref resolution. Parsed via `defaultsassets/`.
 
 ## Run time: `ward` embeds the emitted surfaces
 
-`ward` (public face `warded`) is the product a user installs. It embeds the ward-kdl surfaces as `ward ops <api>`, `ward docker`, `ward agents <target>`, then adds the run-time-only layers ward-kdl never produces: `ward agent` and `ward exec`. The embeds are the baked default: `WARD_CONFIG_REF` can select a live bundle at launch ([config-source.md](config-source.md)). Exec guardfiles auto-mount at their `wrap` path ([ward-kdl-in-ward.md](ward-kdl-in-ward.md)).
+`ward` (public face `warded`) is the product a user installs. It embeds the ward-kdl surfaces as `ward ops <api>`, `ward docker`, `ward agents <target>`, then adds the run-time-only layers ward-kdl never produces: `ward agent` and `ward exec`. The embeds are the baked default. `WARD_CONFIG_REF` still swaps edge-mounted surfaces at launch, but core agent/container defaults stay ward-owned ([config-source.md](config-source.md)). Exec guardfiles auto-mount at their `wrap` path ([ward-kdl-in-ward.md](ward-kdl-in-ward.md)).
 
 ## The per-area reference docs
 

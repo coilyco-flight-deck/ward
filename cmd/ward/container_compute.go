@@ -10,11 +10,13 @@ import (
 	"regexp"
 	"sort"
 	"strings"
+
+	"github.com/urfave/cli/v3"
 )
 
 const (
 	// containerImageDefault is the aos-published dev-base image, run unmodified;
-	// ward bind-mounts its embedded entrypoint+doctrine and downloads ward.
+	// ward bind-mounts its embedded entrypoint+doctrine and stages ward.
 	containerImageDefault = "forgejo.coilysiren.me/coilyco-flight-deck/agentic-os"
 
 	// containerImageTagDefault tracks the image's :latest moving tag.
@@ -25,9 +27,13 @@ const (
 	envAgentImage = "WARD_AGENT_IMAGE"
 	envAgentTag   = "WARD_AGENT_TAG"
 
-	// envAgentVersion pins the ward release the container downloads, independent of
-	// the dev-base image tag; --ward-version overrides it per run (ward#312).
+	// envAgentVersion pins the ward release the host stages for the container,
+	// independent of the dev-base image tag; --ward-version overrides it per run (ward#312).
 	envAgentVersion = "WARD_AGENT_VERSION"
+
+	// envAgentVersionSource records whether the container's ward version came from an
+	// explicit operator pin, the host ward default, or in-container latest resolution.
+	envAgentVersionSource = "WARD_VERSION_SOURCE"
 
 	// containerWardAssets is where ward's embedded entrypoint + doctrine are
 	// bind-mounted, read-only. The image bakes none of this in.
@@ -35,7 +41,7 @@ const (
 	containerEntrypointRel = "entrypoint.sh"
 
 	// containerWardSrcMount is where --ward-source mounts a ward checkout, so
-	// the entrypoint builds ward from it instead of downloading the release.
+	// the host stages the ward binary from it instead of downloading the release.
 	containerWardSrcMount = "/opt/ward-src"
 
 	// containerContextMount holds the read-only host cwd (operating context):
@@ -52,7 +58,7 @@ const (
 	containerAWSMount = "/root/.aws"
 
 	// containerAgentLogsMount is where the host agent-log drain binds read-only in a
-	// director surface session; surface-only opt-in (ward#525, redacted source ward#526).
+	// director surface container; surface-only opt-in (ward#525, redacted source ward#526).
 	containerAgentLogsMount = "/opt/ward-agent-logs"
 
 	// containerDockerSock is the host docker socket bound into a read-only surface session
@@ -205,10 +211,13 @@ func parseSubstrateManifest(data string) ([]substrateRepo, error) {
 type containerMode string
 
 // container roles lead the name + the ward.role label (ward#364). director is a host
-// loop, not a container, but its surface session runs as roleSession (ward#353).
+// loop, not a container, but its surface container runs as roleDirector (ward#353).
 const (
 	roleEngineer = "engineer"
 	roleAdvisor  = "advisor"
+	roleQA       = "qa"
+	roleOps      = "ops"
+	roleAdmin    = "admin"
 	roleSession  = "session"
 	// roleDirector keys the director's per-role capability lookup (ward#578); empty
 	// set by default - it forwards capability to children, holds none itself.
@@ -314,13 +323,19 @@ func safeRepoName(repo targetRepo) string {
 	return safe
 }
 
-// containerRoleName builds the role-led, prefixless container name (ward#364):
-// engineer-<driver>-<repo>-<N> for an engineer, else <role>-<driver>-<machine>.
-func containerRoleName(role string, mode containerMode, repo targetRepo, issue int, machine string) string {
+// issueScopedContainerName builds the issue-scoped container name shape:
+// <role>-<driver>-<repo>-<N>. Engineer and issue-scoped advisor runs use it.
+func issueScopedContainerName(role string, mode containerMode, repo targetRepo, issue int) string {
+	return fmt.Sprintf("%s-%s-%s-%d", role, mode, safeRepoName(repo), issue)
+}
+
+// containerRoleName builds the role-led container name: engineer uses the
+// issue-scoped shape, and other roles use <role>-<driver>-<suffix>.
+func containerRoleName(role string, mode containerMode, repo targetRepo, issue int, suffix string) string {
 	if role == roleEngineer {
-		return fmt.Sprintf("%s-%s-%s-%d", role, mode, safeRepoName(repo), issue)
+		return issueScopedContainerName(role, mode, repo, issue)
 	}
-	return fmt.Sprintf("%s-%s-%s", role, mode, machine)
+	return fmt.Sprintf("%s-%s-%s", role, mode, suffix)
 }
 
 // mountSpec is one docker -v binding: a host path or named volume, the
@@ -417,8 +432,10 @@ type upPlan struct {
 	// WardVersion pins the ward release the entrypoint downloads (matches the
 	// launcher); "dev" or "" tells the entrypoint to resolve the latest release.
 	WardVersion string
+	// WardVersionSource records explicit pin, host ward, or latest resolution.
+	WardVersionSource string
 	// WardFromSource is set when --ward-source mounted a checkout: the
-	// entrypoint builds ward from it instead of downloading.
+	// host staging builds ward from it instead of downloading.
 	WardFromSource bool
 	// AgentArgs ride after the image as the in-container agent's argv (the
 	// entrypoint's `"$WARD_AGENT" "$@"`); empty for a bare interactive bring-up.
@@ -429,9 +446,6 @@ type upPlan struct {
 	// Ask runs the in-container agent one-shot, attached (claude -p plain, no
 	// stream-json); exports WARD_ASK=1, set by `ward agent advisor`'s freeform mode.
 	Ask bool
-	// GoBootstrap (EXPERIMENTAL, ward#181) exports WARD_USE_GO_BOOTSTRAP=1 so the
-	// entrypoint delegates to `ward container bootstrap` instead of its bash logic.
-	GoBootstrap bool
 	// ExtraRepos are additional writable repos this run was granted to clone +
 	// operate against (--repo, ward#230); see docs/container-multi-repo.md.
 	ExtraRepos []targetRepo
@@ -468,6 +482,44 @@ type upPlan struct {
 	// ConfigEnv are the resolved `--config` overrides as WARD_* env keys (ward#616),
 	// merged into wardEnv so the in-container envOr resolves them over the fleet default.
 	ConfigEnv map[string]string
+}
+
+const (
+	wardVersionSourceExplicit = "explicit pin"
+	wardVersionSourceHost     = "host ward"
+	wardVersionSourceLatest   = "latest (resolved in-container)"
+)
+
+// wardVersionLaunchLabel renders the startup-visible ward version summary.
+func wardVersionLaunchLabel(version, source string) string {
+	version = strings.TrimSpace(version)
+	source = strings.TrimSpace(source)
+	switch source {
+	case wardVersionSourceExplicit, wardVersionSourceHost:
+		if version == "" {
+			return source
+		}
+		return source + " " + version
+	case wardVersionSourceLatest:
+		return wardVersionSourceLatest
+	}
+	if version == "" || version == "dev" {
+		return wardVersionSourceLatest
+	}
+	return wardVersionSourceHost + " " + version
+}
+
+// resolveWardVersionSource classifies the resolved version for startup logs and
+// child-engineer forwarding.
+func resolveWardVersionSource(c *cli.Command, version string) string {
+	version = strings.TrimSpace(version)
+	if version == "" || version == "dev" {
+		return wardVersionSourceLatest
+	}
+	if c.IsSet("ward-version") {
+		return wardVersionSourceExplicit
+	}
+	return wardVersionSourceHost
 }
 
 // extraRepoLogLine describes one repo that ended up in the merged grant set.
@@ -581,18 +633,19 @@ func (p upPlan) wardEnv() map[string]string { //nolint:gocyclo,cyclop
 		"WARD_CONTAINER_NAME": p.Name,
 		// Explicit "inside a ward container" marker host-only fleet-walk scripts fence
 		// on (ward#114); a host shell never has it. See docs/container-skill-surface.md.
-		"WARD_CONTAINER":     "1",
-		"WARD_TARGET_REPO":   p.Repo.slug(),
-		"WARD_TARGET_OWNER":  p.Repo.Owner,
-		"WARD_TARGET_NAME":   p.Repo.Name,
-		"WARD_FORGEJO_BASE":  p.ForgejoBase,
-		"WARD_MODE":          string(p.Mode),
-		"WARD_CONTEXT_LEVEL": fmt.Sprintf("%d", rec.ContextLevel),
-		"WARD_AGENT":         rec.Binary,
-		"WARD_GITCACHE":      containerGitcacheMnt,
-		"WARD_CONTEXT_SRC":   containerContextMount,
-		"WARD_MIRROR_NAME":   p.Repo.mirrorName(),
-		"WARD_VERSION":       p.WardVersion,
+		"WARD_CONTAINER":      "1",
+		"WARD_TARGET_REPO":    p.Repo.slug(),
+		"WARD_TARGET_OWNER":   p.Repo.Owner,
+		"WARD_TARGET_NAME":    p.Repo.Name,
+		"WARD_FORGEJO_BASE":   p.ForgejoBase,
+		"WARD_MODE":           string(p.Mode),
+		"WARD_CONTEXT_LEVEL":  fmt.Sprintf("%d", rec.ContextLevel),
+		"WARD_AGENT":          rec.Binary,
+		"WARD_GITCACHE":       containerGitcacheMnt,
+		"WARD_CONTEXT_SRC":    containerContextMount,
+		"WARD_MIRROR_NAME":    p.Repo.mirrorName(),
+		"WARD_VERSION":        p.WardVersion,
+		"WARD_VERSION_SOURCE": wardVersionLaunchLabel(p.WardVersion, p.WardVersionSource),
 		// Terminal color: a bare TERM with no COLORTERM makes the in-container agent
 		// downgrade its palette to ~mono; advertise 256-color + truecolor for color.
 		"TERM":      "xterm-256color",
@@ -644,9 +697,6 @@ func (p upPlan) wardEnv() map[string]string { //nolint:gocyclo,cyclop
 		// --target follows the same override the host resolved (ward#395).
 		env[envTowerHost] = towerMagicDNS()
 		env[envTowerOllamaPort] = towerOllamaPort()
-	}
-	if p.GoBootstrap {
-		env["WARD_USE_GO_BOOTSTRAP"] = "1"
 	}
 	if len(p.ExtraRepos) > 0 {
 		env["WARD_EXTRA_REPOS"] = extraReposEnv(p.ExtraRepos)

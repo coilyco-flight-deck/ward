@@ -102,6 +102,8 @@ func TestParseAgentIssueRef(t *testing.T) {
 		{"98", "", "", 98, false},
 		{"  #98  ", "", "", 98, false},
 		{"#98?thing=stuff", "", "", 98, false},
+		{"https://app.shortcut.com/acme/story/1234/fix-thing", "", "", 1234, false},
+		{"sc-77", "", "", 77, false},
 		{"", "", "", 0, true},
 		{"coilyco-flight-deck/ward", "", "", 0, true},    // no #N
 		{"coilyco-flight-deck/ward#0", "", "", 0, true},  // non-positive
@@ -127,6 +129,48 @@ func TestParseAgentIssueRef(t *testing.T) {
 	}
 }
 
+func TestParseAgentIssueRefUsesRepoAuthorityPolicy(t *testing.T) {
+	dir := t.TempDir()
+	body := `smart-defaults {
+    agent-reservation-ttl "1h"
+}
+
+repo-authority default=forgejo {
+    trusted-owner "coilysiren"
+    trusted-owner "coilyco-flight-deck"
+    repo "coilysiren/*" forge=github
+    repo "coilyco-flight-deck/*" forge=forgejo
+}`
+	if err := os.WriteFile(filepath.Join(dir, bundleDefaultsKDLPath), []byte(body), 0o644); err != nil {
+		t.Fatalf("write defaults bundle: %v", err)
+	}
+	t.Setenv(wardConfigRefEnv, "file://"+dir)
+
+	gh, err := parseAgentIssueRef("coilysiren/agentic-os#461")
+	if err != nil {
+		t.Fatalf("parseAgentIssueRef(github-authoritative): %v", err)
+	}
+	if gh.Forge != forgeGitHub || gh.Tracker != trackerGitHub {
+		t.Fatalf("parseAgentIssueRef(github-authoritative) = %+v, want github forge/tracker", gh)
+	}
+
+	fj, err := parseAgentIssueRef("coilyco-flight-deck/ward#98")
+	if err != nil {
+		t.Fatalf("parseAgentIssueRef(forgejo-authoritative): %v", err)
+	}
+	if fj.Forge != forgeForgejo || fj.Tracker != trackerForgejo {
+		t.Fatalf("parseAgentIssueRef(forgejo-authoritative) = %+v, want forgejo forge/tracker", fj)
+	}
+
+	explicit, err := parseAgentIssueRef(forgejoBaseURL + "/coilyco-flight-deck/ward/issues/98")
+	if err != nil {
+		t.Fatalf("parseAgentIssueRef(explicit forgejo url): %v", err)
+	}
+	if explicit.Forge != forgeForgejo || explicit.Tracker != trackerForgejo {
+		t.Fatalf("parseAgentIssueRef(explicit forgejo url) = %+v, want explicit forgejo", explicit)
+	}
+}
+
 func TestAgentIssueRefURL(t *testing.T) {
 	ref := agentIssueRef{Owner: "coilyco-flight-deck", Repo: "ward", Number: 98}
 	want := forgejoBaseURL + "/coilyco-flight-deck/ward/issues/98"
@@ -134,6 +178,7 @@ func TestAgentIssueRefURL(t *testing.T) {
 		t.Errorf("url() = %q, want %q", got, want)
 	}
 	ref.Forge = forgeGitHub
+	ref.Tracker = trackerGitHub
 	want = githubBaseURL + "/coilyco-flight-deck/ward/issues/98"
 	if got := ref.url(); got != want {
 		t.Errorf("url() with github base = %q, want %q", got, want)
@@ -142,6 +187,25 @@ func TestAgentIssueRefURL(t *testing.T) {
 	back, err := parseAgentIssueRef(ref.url())
 	if err != nil || back != ref {
 		t.Errorf("url round-trip = %+v, %v; want %+v", back, err, ref)
+	}
+}
+
+func TestAgentIssueRefShortcutURL(t *testing.T) {
+	ref := agentIssueRef{
+		Number:            77,
+		Tracker:           trackerShortcut,
+		URL:               "https://app.shortcut.com/acme/story/77/fix-it",
+		ShortcutWorkspace: "acme",
+	}
+	if got, want := ref.url(), ref.URL; got != want {
+		t.Fatalf("shortcut url() = %q, want %q", got, want)
+	}
+	back, err := parseAgentIssueRef(ref.url())
+	if err != nil {
+		t.Fatalf("parseAgentIssueRef(shortcut): %v", err)
+	}
+	if back.Number != ref.Number || back.Tracker != trackerShortcut || back.URL != ref.URL || back.ShortcutWorkspace != ref.ShortcutWorkspace {
+		t.Fatalf("shortcut round-trip = %+v, want %+v", back, ref)
 	}
 }
 
@@ -425,6 +489,26 @@ func TestAgentSeedPromptHeadlessReflection(t *testing.T) {
 	}
 }
 
+func TestAgentSeedPromptPullRequestFailureCommenting(t *testing.T) {
+	ref := agentIssueRef{Owner: "coilyco-flight-deck", Repo: "ward", Number: 813}
+	pr := agentSeedPromptWorkflow(ref, "fail on PR", "do the thing", "", true, nil, workflowPullRequest, true, "")
+	for _, want := range []string{
+		"post the same actionable failure comment to both the linked issue and the PR",
+		"reservation-lock release/clear/hand-back wording",
+		"signature/idempotency marker",
+		"skip the PR comment",
+	} {
+		if !strings.Contains(pr, want) {
+			t.Fatalf("pull-requests seed missing %q\n%s", want, pr)
+		}
+	}
+
+	direct := agentSeedPromptWorkflow(ref, "fail on PR", "do the thing", "", true, nil, workflowDirectToMain, true, "")
+	if strings.Contains(direct, "post the same actionable failure comment to both the linked issue and the PR") {
+		t.Fatalf("direct-main seed must not ask for PR comments when no PR exists\n%s", direct)
+	}
+}
+
 func TestOwnerAllowed(t *testing.T) {
 	r := &Runner{}
 	for _, ok := range []string{"coilysiren", "coilyco-bridge", "coilyco-flight-deck", "coilyco-gaming"} {
@@ -436,6 +520,41 @@ func TestOwnerAllowed(t *testing.T) {
 		if r.ownerAllowed(bad) {
 			t.Errorf("ownerAllowed(%q) = true, want false", bad)
 		}
+	}
+}
+
+func TestResolveAgentIssueRefUsesRepoAuthorityPolicy(t *testing.T) {
+	dir := t.TempDir()
+	body := `smart-defaults {
+    agent-reservation-ttl "1h"
+}
+
+repo-authority default=forgejo {
+    trusted-owner "coilysiren"
+    trusted-owner "coilyco-flight-deck"
+    repo "coilysiren/*" forge=github
+    repo "coilyco-flight-deck/*" forge=forgejo
+}`
+	if err := os.WriteFile(filepath.Join(dir, bundleDefaultsKDLPath), []byte(body), 0o644); err != nil {
+		t.Fatalf("write defaults bundle: %v", err)
+	}
+	t.Setenv(wardConfigRefEnv, "file://"+dir)
+
+	r := &Runner{}
+	ghRef, err := r.resolveAgentIssueRef(t.Context(), "coilysiren/agentic-os#461")
+	if err != nil {
+		t.Fatalf("resolveAgentIssueRef(github-authoritative): %v", err)
+	}
+	if ghRef.Forge != forgeGitHub {
+		t.Fatalf("resolveAgentIssueRef(github-authoritative) forge = %v, want github", ghRef.Forge)
+	}
+
+	fjRef, err := r.resolveAgentIssueRef(t.Context(), "coilyco-flight-deck/ward#98")
+	if err != nil {
+		t.Fatalf("resolveAgentIssueRef(forgejo-authoritative): %v", err)
+	}
+	if fjRef.Forge != forgeForgejo {
+		t.Fatalf("resolveAgentIssueRef(forgejo-authoritative) forge = %v, want forgejo", fjRef.Forge)
 	}
 }
 
@@ -627,6 +746,9 @@ func TestParsePreflightVerdict(t *testing.T) {
 
 func TestPreflightNoGoComment(t *testing.T) {
 	got := preflightNoGoComment(modeClaude, "engineer", "needs human scoping", "The scope is unclear.\nNO-GO: needs human scoping")
+	if visible := visibleLinesBeforeDetails(got); visible != "WARD-STATUS: pre-flight NO-GO 🛑" {
+		t.Fatalf("preflightNoGoComment visible line = %q\n%s", visible, got)
+	}
 	for _, want := range []string{
 		"NO-GO",                                // names the verdict
 		"needs human scoping",                  // carries the reason
@@ -634,6 +756,7 @@ func TestPreflightNoGoComment(t *testing.T) {
 		"--skip-preflight",                     // tells the human how to re-dispatch
 		"No container was launched",
 		"<details>",             // folds the full read away
+		"pre-flight details",    // names the folded block
 		"The scope is unclear.", // includes the read verbatim
 		preflightNoGoMarker,     // hidden token so later reads can drop this comment
 	} {
@@ -651,8 +774,8 @@ func TestPreflightNoGoComment(t *testing.T) {
 	if !strings.Contains(empty, "(no reason given)") {
 		t.Errorf("empty reason should render a placeholder; got: %s", empty)
 	}
-	if strings.Contains(empty, "<details>") {
-		t.Errorf("an empty read should omit the details block; got: %s", empty)
+	if !strings.Contains(empty, "<details>") {
+		t.Errorf("status comments should keep details collapsed even without a read; got: %s", empty)
 	}
 }
 
@@ -712,6 +835,9 @@ func TestBlindfireIssueBody(t *testing.T) {
 func TestPreflightWrongRepoComment(t *testing.T) {
 	filed := agentIssueRef{Owner: "coilyco-bridge", Repo: "coily", Number: 42}
 	got := preflightWrongRepoComment(modeClaude, "engineer", filed, "ops verb", "It's ops.\nWRONG-REPO: coilyco-bridge/coily - ops verb")
+	if visible := visibleLinesBeforeDetails(got); visible != "WARD-STATUS: pre-flight WRONG-REPO 🎯" {
+		t.Fatalf("preflightWrongRepoComment visible line = %q\n%s", visible, got)
+	}
 	for _, want := range []string{
 		"WRONG-REPO",           // names the verdict
 		"coilyco-bridge/coily", // the target repo slug
@@ -720,7 +846,8 @@ func TestPreflightWrongRepoComment(t *testing.T) {
 		"No container was launched here",
 		"--skip-preflight", // how to override if the routing is wrong
 		"<details>",        // folds the read away
-		"It's ops.",        // the read verbatim
+		"pre-flight details",
+		"It's ops.", // the read verbatim
 	} {
 		if !strings.Contains(got, want) {
 			t.Errorf("preflightWrongRepoComment missing %q\n got: %s", want, got)
@@ -731,8 +858,8 @@ func TestPreflightWrongRepoComment(t *testing.T) {
 	if !strings.Contains(empty, "(no reason given)") {
 		t.Errorf("empty reason should render a placeholder; got: %s", empty)
 	}
-	if strings.Contains(empty, "<details>") {
-		t.Errorf("an empty read should omit the details block; got: %s", empty)
+	if !strings.Contains(empty, "<details>") {
+		t.Errorf("status comments should keep details collapsed even without a read; got: %s", empty)
 	}
 }
 
@@ -740,7 +867,7 @@ func TestPreflightWrongRepoComment(t *testing.T) {
 // in-container agent's argv: after the image, never as a -e env, never leaked.
 func TestDockerCreateArgvSeedsAgentArgs(t *testing.T) {
 	p := sampleUpPlan()
-	seed := "Work on Forgejo issue coilyco-flight-deck/ward#98."
+	seed := "Work on issue coilyco-flight-deck/ward#98."
 	p.AgentArgs = []string{seed}
 	argv := dockerCreateArgv(p, "/tmp/ward-env-xyz")
 

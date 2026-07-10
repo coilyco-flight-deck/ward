@@ -207,7 +207,7 @@ func hostname() string {
 
 // reserveIssue acquires both reservation sides before a container fires (ward#570). It
 // returns a release retracting both halves; a remote failure rolls the local hold back.
-func (r *Runner) reserveIssue(ctx context.Context, label string, mode containerMode, ref agentIssueRef, container, branch, justification string, seedCtx *reservationSeedContext, force bool) (func(), error) {
+func (r *Runner) reserveIssue(ctx context.Context, label string, mode containerMode, ref agentIssueRef, container, branch, justification string, seedCtx *reservationSeedContext, force bool, skipPreflight bool) (func(), error) {
 	now := time.Now().UTC()
 	fmt.Fprintf(os.Stderr, "%s: reservation start for %s (container=%s branch=%s force=%t)\n", label, ref, container, branch, force)
 	releaseLocal, err := r.acquireLocalReservation(ctx, label, mode, ref, container, branch, now, force)
@@ -215,7 +215,7 @@ func (r *Runner) reserveIssue(ctx context.Context, label string, mode containerM
 		fmt.Fprintf(os.Stderr, "%s: reservation local acquire failed for %s: %v\n", label, ref, err)
 		return nil, err
 	}
-	releaseRemote, err := r.acquireRemoteReservation(ctx, label, mode, ref, container, justification, seedCtx, now, force)
+	releaseRemote, err := r.acquireRemoteReservation(ctx, label, mode, ref, container, justification, seedCtx, now, force, skipPreflight)
 	if err != nil {
 		fmt.Fprintf(os.Stderr, "%s: reservation remote acquire failed for %s: %v\n", label, ref, err)
 		releaseLocal()
@@ -286,6 +286,9 @@ func (r *Runner) acquireLocalReservation(ctx context.Context, label string, mode
 		if err := r.precheckLocalReservation(ctx, label, ref, now); err != nil {
 			return nil, err
 		}
+		if err := r.precheckLiveIssueWorker(ctx, label, ref, container, force); err != nil {
+			return nil, err
+		}
 	}
 	fmt.Fprintf(os.Stderr, "%s: reservation local acquire writing %s\n", label, path)
 	res := agentReservation{
@@ -303,7 +306,76 @@ func (r *Runner) acquireLocalReservation(ctx context.Context, label string, mode
 		return nil, fmt.Errorf("%s: write reservation %s: %w", label, path, err)
 	}
 	fmt.Fprintf(os.Stderr, "%s: reservation local acquire wrote %s\n", label, path)
-	return func() { _ = removeAgentReservation(path) }, nil
+	return func() {
+		released, err := removeAgentReservationIfOwned(path, res)
+		switch {
+		case err != nil:
+			fmt.Fprintf(os.Stderr, "%s: warning: could not release the local reservation on %s (%v)\n", label, ref, err)
+		case !released:
+			fmt.Fprintf(os.Stderr, "%s: warning: skipped local reservation release on %s because it no longer belongs to this launch\n", label, ref)
+		}
+	}, nil
+}
+
+// precheckLiveIssueWorker refuses when the deterministic engineer container already
+// exists and is running, even if the local sentinel is absent or stale.
+func (r *Runner) precheckLiveIssueWorker(ctx context.Context, label string, ref agentIssueRef, container string, force bool) error {
+	if force || r == nil || r.Runner == nil {
+		return nil
+	}
+	out, err := r.dockerCapture(ctx, "ps",
+		"--filter", "name=^"+container+"$", "--format", "{{.Names}}")
+	if err != nil {
+		return err
+	}
+	if strings.TrimSpace(string(out)) != "" {
+		fmt.Fprintf(os.Stderr, "%s: reservation precheck saw live worker container %s for %s\n", label, container, ref)
+		return newReservationConflict(
+			"%s: issue %s already has a running worker container %s; wait for it to finish or pass --force to reclaim",
+			label, ref, container)
+	}
+	return nil
+}
+
+// removeAgentReservationIfOwned deletes the local sentinel only when it still
+// matches the launch that wrote it.
+func removeAgentReservationIfOwned(path string, want agentReservation) (bool, error) {
+	got, ok, err := readAgentReservation(path)
+	if err != nil {
+		return false, err
+	}
+	if !ok || got == nil || !agentReservationMatches(got, want) {
+		return false, nil
+	}
+	return true, removeAgentReservation(path)
+}
+
+type agentReservationIdentity struct {
+	Owner     string
+	Repo      string
+	Number    int
+	Mode      string
+	Container string
+	Branch    string
+	Host      string
+	PID       int
+}
+
+func agentReservationIdentityOf(res agentReservation) agentReservationIdentity {
+	return agentReservationIdentity{
+		Owner:     res.Owner,
+		Repo:      res.Repo,
+		Number:    res.Number,
+		Mode:      res.Mode,
+		Container: res.Container,
+		Branch:    res.Branch,
+		Host:      res.Host,
+		PID:       res.PID,
+	}
+}
+
+func agentReservationMatches(got *agentReservation, want agentReservation) bool {
+	return agentReservationIdentityOf(*got) == agentReservationIdentityOf(want) && got.At.Equal(want.At)
 }
 
 // containerRunning reports whether the named container is running; an empty name or
@@ -337,10 +409,10 @@ const reservationWarnToken = "remote reservation NOT posted"
 
 // acquireRemoteReservation refuses on a fresh reservation comment (unless force), else
 // posts one and returns a remote-release to roll it back (ward#402/#570, docs).
-func (r *Runner) acquireRemoteReservation(ctx context.Context, label string, mode containerMode, ref agentIssueRef, container, justification string, seedCtx *reservationSeedContext, now time.Time, force bool) (func(), error) {
-	cl, err := r.hostForgeClient(ctx, ref.Forge, mode)
+func (r *Runner) acquireRemoteReservation(ctx context.Context, label string, mode containerMode, ref agentIssueRef, container, justification string, seedCtx *reservationSeedContext, now time.Time, force bool, skipPreflight bool) (func(), error) {
+	cl, err := r.hostTrackerClient(ctx, ref.trackerOrDefault(), mode)
 	if err != nil {
-		warnRemoteReservationLost(label, ref, fmt.Sprintf("could not build the %s client: %v", ref.Forge, err))
+		warnRemoteReservationLost(label, ref, fmt.Sprintf("could not build the %s client: %v", ref.trackerOrDefault(), err))
 		return func() {}, nil
 	}
 	ttl := agentReservationTTL()
@@ -368,7 +440,7 @@ func (r *Runner) acquireRemoteReservation(ctx context.Context, label string, mod
 	// Jittered double-check backstop for any path the broker per-ref lock misses
 	// (two direct host runs, or cross-host); --force skips it (ward#600, docs).
 	if !force {
-		if lost, winner := r.reservationRecheckLost(ctx, cl, label, ref, container); lost {
+		if lost, winner := r.reservationRecheckLost(ctx, cl, label, ref, container, skipPreflight); lost {
 			// Leave our comment to lapse at the TTL (a release marker would free the
 			// winner too) and refuse so only the winner proceeds (ward#600).
 			return nil, newReservationConflict(
@@ -383,7 +455,7 @@ func (r *Runner) acquireRemoteReservation(ctx context.Context, label string, mod
 
 // releaseRemoteReservation retracts this run's forge road-block on a launch that dies
 // before the container is up: a release-marker comment plus a best-effort unlock (#570).
-func (r *Runner) releaseRemoteReservation(ctx context.Context, cl issueForge, label string, mode containerMode, ref agentIssueRef, container string) {
+func (r *Runner) releaseRemoteReservation(ctx context.Context, cl Tracker, label string, mode containerMode, ref agentIssueRef, container string) {
 	if err := cl.commentIssue(ctx, ref.Owner, ref.Repo, ref.Number, reservationReleaseCommentBody(mode, container, nil)); err != nil {
 		fmt.Fprintf(os.Stderr, "%s: warning: could not release the remote reservation on %s (%v); a re-run may need --force until the %s TTL lapses (ward#570)\n", label, ref, err, conciseDuration(agentReservationTTL()))
 		return
@@ -398,12 +470,12 @@ func (r *Runner) releaseRemoteReservation(ctx context.Context, cl issueForge, la
 
 // lockReservedIssue seals the reserved issue best-effort, logging the outcome (locked
 // / unsupported-forge / soft-failure) and never returning an error (ward#494, docs).
-func (r *Runner) lockReservedIssue(ctx context.Context, cl issueForge, label string, ref agentIssueRef) {
+func (r *Runner) lockReservedIssue(ctx context.Context, cl Tracker, label string, ref agentIssueRef) {
 	switch err := cl.lockIssue(ctx, ref.Owner, ref.Repo, ref.Number); {
 	case err == nil:
 		fmt.Fprintf(os.Stderr, "%s: locked issue %s conversation for the reservation window\n", label, ref)
 	case errors.Is(err, errForgeLockUnsupported):
-		fmt.Fprintf(os.Stderr, "%s: issue %s conversation left unlocked - the %s API has no lock leaf; the reservation comment is the road-block (ward#494)\n", label, ref, ref.Forge)
+		fmt.Fprintf(os.Stderr, "%s: issue %s conversation left unlocked - the %s API has no lock leaf; the reservation comment is the road-block (ward#494)\n", label, ref, ref.trackerOrDefault())
 	default:
 		fmt.Fprintf(os.Stderr, "%s: warning: could not lock issue %s conversation (%v); the reservation comment still stands as the road-block (ward#494)\n", label, ref, err)
 	}
@@ -489,7 +561,11 @@ type reservationClaim struct {
 
 // reservationRecheckLost re-reads the thread after a jittered pause; a concurrent run
 // winning the tiebreak makes this run yield. A disabled window/read error fails open.
-func (r *Runner) reservationRecheckLost(ctx context.Context, cl issueForge, label string, ref agentIssueRef, container string) (bool, string) {
+func (r *Runner) reservationRecheckLost(ctx context.Context, cl Tracker, label string, ref agentIssueRef, container string, skipPreflight bool) (bool, string) {
+	if skipPreflight {
+		fmt.Fprintf(os.Stderr, "%s: skipping reservation re-check (--skip-preflight)\n", label)
+		return false, ""
+	}
 	delay := reservationRecheckDelay()
 	if delay <= 0 {
 		return false, "" // disabled via WARD_AGENT_RESERVE_RECHECK
@@ -567,16 +643,18 @@ func winningReservationClaim(claims []reservationClaim) (reservationClaim, bool)
 // justification folds in the GO read (ward#383), seedCtx the seed context (ward#609).
 func reservationCommentBody(mode containerMode, container, host string, now time.Time, justification string, seedCtx *reservationSeedContext) string {
 	ttl := agentReservationTTL()
+	visible := "WARD-RESERVATION: held 🔒"
 	body := fmt.Sprintf(
-		"%s\n🔒 Reserved by `ward agent --harness %s` — container `%s` on host `%s` is carrying this issue (reserved %s). "+
-			"Concurrent `ward agent` runs are blocked until it finishes or the reservation goes stale (%s TTL); "+
+		"Holder: container `%s` on host `%s`.\n\n"+
+			"Reserved by `ward agent --harness %s` (reserved %s). "+
+			"Concurrent `ward agent` runs are blocked until it finishes or the reservation goes stale (%s TTL). "+
 			"`--force` overrides.\n\n"+
 			"**Do not comment on or edit this issue to steer the run while it is reserved.** The engineer seeded "+
 			"the body once at launch and never re-reads it, so a comment or edit reaches only human readers, never "+
-			"the running engineer. A correction goes to a **new issue, dispatched fresh** — that is the only channel "+
+			"the running engineer. A correction goes to a **new issue, dispatched fresh**. That is the only channel "+
 			"that reaches a run in flight. Where the forge supports it, ward locks this conversation to make that a "+
 			"road-block rather than a convention (ward#494).",
-		agentReservationMarker, mode, container, host, now.Format(time.RFC3339), conciseDuration(ttl))
+		container, host, mode, now.Format(time.RFC3339), conciseDuration(ttl))
 	if justification = strings.TrimSpace(justification); justification != "" {
 		body += fmt.Sprintf(
 			"\n\nThe pre-flight judged this issue **GO** for an unattended run. Its justification:\n\n"+
@@ -584,34 +662,37 @@ func reservationCommentBody(mode containerMode, container, host string, now time
 			justification)
 	}
 	body += seedCtx.render()
-	return body
+	return agentReservationMarker + "\n" + collapsedIssueComment(visible, "reservation details", body)
 }
 
 // reservationReleaseCommentBody is the reaper's retract comment for a do-nothing exit
-// (ward#264); a non-nil gate names the gate, error, and recovery (ward#609, see docs).
+// (ward#264). A non-nil gate names the gate, error, and recovery (ward#609, see docs).
 func reservationReleaseCommentBody(mode containerMode, container string, gate *gateFailure) string {
 	if gate == nil {
-		return fmt.Sprintf(
-			"%s\n%s\n⚠️ **Run never started — this issue needs re-dispatch.** `ward container reap` released "+
-				"container `%s` (`--harness %s`): it exited without launching the agent (smoke-test death, "+
-				"ward#222/#264/#595), so it did no work and the hold it took is retracted. Nothing is running on this "+
-				"issue. A `ward agent director` re-queues it automatically; a manual `ward agent` retry no longer "+
-				"needs `--force`.",
-			agentReservationReleaseMarker, agentNeedsRedispatchMarker, container, mode)
+		visible := "WARD-RESERVATION: released 🛑"
+		detail := fmt.Sprintf(
+			"Run never started. `ward container reap` released container `%s` (`--harness %s`): it exited "+
+				"without launching the agent (smoke-test death, ward#222/#264/#595), so it did no work and the "+
+				"hold it took is retracted. Nothing is running on this issue. It needs re-dispatch. A `ward agent director` re-queues "+
+				"it automatically. A manual `ward agent` retry no longer needs `--force`.",
+			container, mode)
+		return agentReservationReleaseMarker + "\n" + agentNeedsRedispatchMarker + "\n" +
+			collapsedIssueComment(visible, "release details", detail)
 	}
 	label, recovery := gateRecovery(gate.Gate)
+	visible := "WARD-RESERVATION: released 🛑"
 	body := fmt.Sprintf(
-		"%s\n%s\n⚠️ **Run never started — this issue needs re-dispatch.** `ward container reap` released "+
-			"container `%s` (`--harness %s`): it exited at the **%s** pre-launch gate without launching the agent "+
-			"(ward#222/#264/#595/#609), so it did no work and the hold it took is retracted. Nothing is running on "+
-			"this issue. A `ward agent director` re-queues it automatically; a manual `ward agent` retry no longer "+
-			"needs `--force`.\n\n"+
+		"Run never started. `ward container reap` released container `%s` (`--harness %s`): it exited at the "+
+			"**%s** pre-launch gate without launching the agent (ward#222/#264/#595/#609), so it did no work and "+
+			"the hold it took is retracted. Nothing is running on this issue. It needs re-dispatch. A `ward agent director` re-queues "+
+			"it automatically. A manual `ward agent` retry no longer needs `--force`.\n\n"+
 			"**Gate:** %s\n\n**Recovery:** %s",
-		agentReservationReleaseMarker, agentNeedsRedispatchMarker, container, mode, gate.Gate, label, recovery)
+		container, mode, gate.Gate, label, recovery)
 	if d := reservationScrubDetail(gate.Detail); d != "" {
-		body += fmt.Sprintf("\n\n<details><summary>error from the gate</summary>\n\n```\n%s\n```\n\n</details>", d)
+		body += fmt.Sprintf("\n\n## Error from the gate\n\n```\n%s\n```", d)
 	}
-	return body
+	return agentReservationReleaseMarker + "\n" + agentNeedsRedispatchMarker + "\n" +
+		collapsedIssueComment(visible, "release details", body)
 }
 
 // --- reservation seed context (ward#609): the WHAT surface --------------------

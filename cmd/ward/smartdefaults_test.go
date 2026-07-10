@@ -21,7 +21,7 @@ func TestSmartDefaultsBaked(t *testing.T) {
 	}
 }
 
-func TestSmartDefaultsBundleRef(t *testing.T) {
+func TestSmartDefaultsFromBundleSource(t *testing.T) {
 	dir := t.TempDir()
 	body := `smart-defaults {
     agent-reservation-ttl "2h"
@@ -37,16 +37,27 @@ func TestSmartDefaultsBundleRef(t *testing.T) {
     container-read-only-extra-repo-ttl "48h"
     container-reap-keep "12"
     agent-workflow default="direct-main" {
-        repo "coilyco-flight-deck/ward" workflow="pr"
+        repo "coilyco-flight-deck/ward" workflow="pull-requests-and-merge"
     }
+}
+
+repo-authority default=forgejo {
+    trusted-owner "coilysiren"
+    trusted-owner "coilyco-bridge"
+    trusted-owner "coilyco-flight-deck"
+    trusted-owner "coilyco-gaming"
+
+    repo "coilysiren/*" forge=github
+    repo "coilyco-bridge/*" forge=forgejo
+    repo "coilyco-flight-deck/*" forge=forgejo
+    repo "coilyco-gaming/*" forge=forgejo
 }`
 	if err := os.WriteFile(filepath.Join(dir, bundleDefaultsKDLPath), []byte(body), 0o644); err != nil {
 		t.Fatalf("write defaults bundle: %v", err)
 	}
-	t.Setenv(wardConfigRefEnv, "file://"+dir)
-	defs, err := currentSmartDefaultsWithError()
+	defs, err := loadSmartDefaultsFrom(bundleConfigSource(dir))
 	if err != nil {
-		t.Fatalf("currentSmartDefaultsWithError(bundle): %v", err)
+		t.Fatalf("loadSmartDefaultsFrom(bundle source): %v", err)
 	}
 	if defs.agentReservationTTL != 2*time.Hour || defs.reservationRecheckDefaultMax != 9*time.Second {
 		t.Errorf("bundle reservation defaults = %+v", defs)
@@ -63,11 +74,18 @@ func TestSmartDefaultsBundleRef(t *testing.T) {
 	if defs.containerAssetsTTL != 3*time.Hour || defs.containerReadOnlyExtraRepoTTL != 48*time.Hour || defs.containerReapKeep != 12 {
 		t.Errorf("bundle container defaults = %+v", defs)
 	}
-	if defs.agentWorkflowDefault != workflowDirectMain {
+	if defs.agentWorkflowDefault != workflowDirectToMain {
 		t.Errorf("bundle workflow default = %q, want direct-main", defs.agentWorkflowDefault)
 	}
-	if defs.agentWorkflowRepos["coilyco-flight-deck/ward"] != workflowPR {
-		t.Errorf("bundle ward workflow = %q, want pr", defs.agentWorkflowRepos["coilyco-flight-deck/ward"])
+	if defs.agentWorkflowRepos["coilyco-flight-deck/ward"] != workflowPullRequestAndMerge {
+		t.Errorf("bundle ward workflow = %q, want pull-requests-and-merge", defs.agentWorkflowRepos["coilyco-flight-deck/ward"])
+	}
+}
+
+func TestSmartDefaultsRejectsBadConfigRef(t *testing.T) {
+	t.Setenv(wardConfigRefEnv, "not-a-resolvable-ref")
+	if _, err := currentSmartDefaultsWithError(); err == nil {
+		t.Fatal("currentSmartDefaultsWithError with bad ref: want a loud config-source error")
 	}
 }
 
@@ -79,15 +97,13 @@ func TestSmartDefaultsRejectsMalformedValue(t *testing.T) {
 	if err := os.WriteFile(filepath.Join(dir, bundleDefaultsKDLPath), []byte(body), 0o644); err != nil {
 		t.Fatalf("write malformed defaults bundle: %v", err)
 	}
-	t.Setenv(wardConfigRefEnv, "file://"+dir)
-	if _, err := currentSmartDefaultsWithError(); err == nil {
+	if _, err := loadSmartDefaultsFrom(bundleConfigSource(dir)); err == nil {
 		t.Fatal("malformed smart defaults selected a bundle; want a loud parse error")
 	}
 }
 
 func TestSmartDefaultsBundleMissingFileFailsLoud(t *testing.T) {
-	t.Setenv(wardConfigRefEnv, "file://"+t.TempDir())
-	if _, err := currentSmartDefaultsWithError(); err == nil {
+	if _, err := loadSmartDefaultsFrom(bundleConfigSource(t.TempDir())); err == nil {
 		t.Fatal("bundle without smart defaults selected a source; want a loud read error")
 	}
 }
@@ -100,8 +116,21 @@ func TestSmartDefaultsRejectsInvalidWorkflow(t *testing.T) {
 	if err := os.WriteFile(filepath.Join(dir, bundleDefaultsKDLPath), []byte(body), 0o644); err != nil {
 		t.Fatalf("write malformed defaults bundle: %v", err)
 	}
+	if _, err := loadSmartDefaultsFrom(bundleConfigSource(dir)); err == nil {
+		t.Fatal("invalid workflow default selected a bundle; want a loud parse error")
+	}
+}
+
+func TestSmartDefaultsRejectsMissingRepoAuthority(t *testing.T) {
+	dir := t.TempDir()
+	body := `smart-defaults {
+    agent-reservation-ttl "2h"
+}`
+	if err := os.WriteFile(filepath.Join(dir, bundleDefaultsKDLPath), []byte(body), 0o644); err != nil {
+		t.Fatalf("write defaults bundle: %v", err)
+	}
 	t.Setenv(wardConfigRefEnv, "file://"+dir)
 	if _, err := currentSmartDefaultsWithError(); err == nil {
-		t.Fatal("invalid workflow default selected a bundle; want a loud parse error")
+		t.Fatal("bundle without repo-authority selected a source; want a loud parse error")
 	}
 }

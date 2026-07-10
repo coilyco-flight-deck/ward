@@ -1,6 +1,7 @@
 package main
 
 import (
+	"bytes"
 	"errors"
 	"fmt"
 	"os"
@@ -10,6 +11,7 @@ import (
 	"testing"
 	"time"
 
+	"forgejo.coilysiren.me/coilyco-flight-deck/cli-guard/cli/shell"
 	"forgejo.coilysiren.me/coilyco-flight-deck/cli-guard/pkg/exitcode"
 	"github.com/urfave/cli/v3"
 )
@@ -94,11 +96,15 @@ func TestDispatchEngineerArgv(t *testing.T) {
 			t.Errorf("bare argv should not carry %q: %v", unwanted, bare)
 		}
 	}
+	hostDefault := dispatchEngineer{harness: modeClaude, wardVersion: "v0.463.0", wardVersionSource: wardVersionSourceHost}.engineerArgv(ref)
+	if containsArg(hostDefault, "--ward-version") {
+		t.Errorf("inherited host ward-version must not be forwarded: %v", hostDefault)
+	}
 
 	// A fully-loaded dispatch forwards the resolved container intent; a resolved host-net
 	// route forwards as the consolidated --tailnet + an explicit --tailnet-mode (ward#362).
 	full := dispatchEngineer{
-		harness: modeGoose, image: "ghcr.io/x/dev", tag: "v9", wardVersion: "v0.58.0",
+		harness: modeGoose, image: "ghcr.io/x/dev", tag: "v9", wardVersion: "v0.58.0", wardVersionSource: wardVersionSourceExplicit,
 		aws: true, hostNet: true, tsSidecar: false, force: true,
 	}.engineerArgv(ref)
 	for _, want := range [][2]string{
@@ -243,40 +249,68 @@ func directorFlagSet(t *testing.T, set map[string]string) *cli.Command {
 // TestDirectorSurfaceArgv covers ward#355: director's drain surface inherits its
 // container/harness flags and runs on director's OWN harness, never the engineer harness.
 func TestDirectorSurfaceArgv(t *testing.T) {
-	cfg := backlogConfig{
-		mode:       modeClaude,
-		dispatch:   dispatchEngineer{harness: modeGoose, image: "img", tag: "t1", wardVersion: "v1", aws: true, tsSidecar: true},
-		wardSource: "/src/ward",
-		noPull:     true,
-		withRepo:   []string{"a/b", "c/d"},
-	}
-	argv := directorSurfaceArgv("coilyco-flight-deck/ward", cfg)
-	if argv[0] != directorSurfaceVerb {
-		t.Errorf("surface argv[0] = %q, want %q", argv[0], directorSurfaceVerb)
-	}
-	if !argFollowedBy(argv, "--harness", "claude") {
-		t.Errorf("surface must run on director's own harness (claude), not the engineer harness: %v", argv)
-	}
-	for _, want := range [][2]string{
-		{"--repo", "coilyco-flight-deck/ward"}, {"--image", "img"}, {"--tag", "t1"},
-		{"--ward-version", "v1"}, {"--ward-source", "/src/ward"},
-		{"--with-repo", "a/b"}, {"--with-repo", "c/d"},
-	} {
-		if !argFollowedBy(argv, want[0], want[1]) {
-			t.Errorf("surface argv missing %s %s: %v", want[0], want[1], argv)
+	t.Run("inherited host version is not forwarded", func(t *testing.T) {
+		cfg := backlogConfig{
+			mode: modeClaude,
+			dispatch: dispatchEngineer{
+				harness:           modeGoose,
+				image:             "img",
+				tag:               "t1",
+				wardVersion:       "v1",
+				wardVersionSource: wardVersionSourceHost,
+				aws:               true,
+				tsSidecar:         true,
+			},
+			wardSource: "/src/ward",
+			noPull:     true,
+			withRepo:   []string{"a/b", "c/d"},
 		}
-	}
-	for _, want := range []string{"--aws", "--tailnet", "--no-pull"} {
-		if !containsArg(argv, want) {
-			t.Errorf("surface argv missing %q: %v", want, argv)
+		argv := directorSurfaceArgv("coilyco-flight-deck/ward", cfg)
+		if argv[0] != directorSurfaceVerb {
+			t.Errorf("surface argv[0] = %q, want %q", argv[0], directorSurfaceVerb)
 		}
-	}
-	if !argFollowedBy(argv, "--tailnet-mode", "sidecar") {
-		t.Errorf("surface argv must forward the resolved sidecar mechanism as --tailnet-mode sidecar: %v", argv)
-	}
-	if containsArg(argv, "goose") {
-		t.Errorf("surface argv must not carry the engineer harness: %v", argv)
-	}
+		if !argFollowedBy(argv, "--harness", "claude") {
+			t.Errorf("surface must run on director's own harness (claude), not the engineer harness: %v", argv)
+		}
+		for _, want := range [][2]string{
+			{"--repo", "coilyco-flight-deck/ward"}, {"--image", "img"}, {"--tag", "t1"},
+			{"--ward-source", "/src/ward"},
+			{"--with-repo", "a/b"}, {"--with-repo", "c/d"},
+		} {
+			if !argFollowedBy(argv, want[0], want[1]) {
+				t.Errorf("surface argv missing %s %s: %v", want[0], want[1], argv)
+			}
+		}
+		for _, want := range []string{"--aws", "--tailnet", "--no-pull"} {
+			if !containsArg(argv, want) {
+				t.Errorf("surface argv missing %q: %v", want, argv)
+			}
+		}
+		if containsArg(argv, "--ward-version") {
+			t.Errorf("surface argv must not forward an inherited host ward-version pin: %v", argv)
+		}
+		if !argFollowedBy(argv, "--tailnet-mode", "sidecar") {
+			t.Errorf("surface argv must forward the resolved sidecar mechanism as --tailnet-mode sidecar: %v", argv)
+		}
+		if containsArg(argv, "goose") {
+			t.Errorf("surface argv must not carry the engineer harness: %v", argv)
+		}
+	})
+
+	t.Run("explicit pin is forwarded", func(t *testing.T) {
+		cfg := backlogConfig{
+			mode: modeClaude,
+			dispatch: dispatchEngineer{
+				harness:           modeGoose,
+				wardVersion:       "v1",
+				wardVersionSource: wardVersionSourceExplicit,
+			},
+		}
+		argv := directorSurfaceArgv("coilyco-flight-deck/ward", cfg)
+		if !argFollowedBy(argv, "--ward-version", "v1") {
+			t.Fatalf("surface argv must forward an explicit ward-version pin: %v", argv)
+		}
+	})
 }
 
 func TestParseScopeRepos(t *testing.T) {
@@ -412,26 +446,28 @@ func TestOrgReposToSlugs(t *testing.T) {
 
 func TestBacklogLaneForLabels(t *testing.T) {
 	cases := []struct {
+		kind   string
 		labels []string
 		tier   string
 		mode   string
 		lane   string
 	}{
-		{[]string{"P0", "headless"}, "P0", "headless", "headless"},
-		{[]string{"P2", "interactive"}, "P2", "interactive", "interactive"},
-		{[]string{"P1", "consult"}, "P1", "consult", "consult"},
-		{[]string{"headless"}, "", "headless", "untriaged"},              // no tier -> untriaged
-		{[]string{"P3"}, "P3", "", "untriaged"},                          // no mode -> untriaged
-		{[]string{"unrelated", "label"}, "", "", "untriaged"},            // neither
-		{[]string{"P4", "P0", "headless"}, "P0", "headless", "headless"}, // highest tier wins
+		{backlogKindIssue, []string{"P0", "headless"}, "P0", "headless", "headless"},
+		{backlogKindIssue, []string{"P2", "interactive"}, "P2", "interactive", "interactive"},
+		{backlogKindIssue, []string{"P1", "consult"}, "P1", "consult", "consult"},
+		{backlogKindIssue, []string{"headless"}, "", "headless", "untriaged"},              // no tier -> untriaged
+		{backlogKindIssue, []string{"P3"}, "P3", "", "untriaged"},                          // no mode -> untriaged
+		{backlogKindIssue, []string{"unrelated", "label"}, "", "", "untriaged"},            // neither
+		{backlogKindIssue, []string{"P4", "P0", "headless"}, "P0", "headless", "headless"}, // highest tier wins
+		{backlogKindPullRequest, []string{"P0", "headless"}, "P0", "headless", backlogKindPullRequest},
 	}
 	for _, c := range cases {
 		tier := backlogTierOf(c.labels)
 		mode := backlogModeOf(c.labels)
-		lane := backlogLaneForLabels(tier, mode)
+		lane := backlogLaneForKind(c.kind, tier, mode)
 		if tier != c.tier || mode != c.mode || lane != c.lane {
-			t.Errorf("labels %v => tier=%q mode=%q lane=%q, want tier=%q mode=%q lane=%q",
-				c.labels, tier, mode, lane, c.tier, c.mode, c.lane)
+			t.Errorf("kind=%q labels %v => tier=%q mode=%q lane=%q, want tier=%q mode=%q lane=%q",
+				c.kind, c.labels, tier, mode, lane, c.tier, c.mode, c.lane)
 		}
 	}
 }
@@ -443,9 +479,10 @@ func TestRankBacklogIssues(t *testing.T) {
 		{Number: 5, Title: "P0 headless", Labels: []string{"P0", "headless"}},
 		{Number: 30, Title: "P0 interactive", Labels: []string{"P0", "interactive"}},
 		{Number: 7, Title: "P1 headless", Labels: []string{"P1", "headless"}},
+		{Number: 40, Kind: backlogKindPullRequest, Title: "P0 PR", Labels: []string{"P0", "headless"}},
 	}
 	got := rankBacklogIssues(issues)
-	wantOrder := []int{5, 7, 20, 30, 10} // headless by tier, then interactive, then untriaged
+	wantOrder := []int{5, 7, 20, 40, 30, 10} // headless by tier, then PRs, then interactive, then untriaged
 	var gotOrder []int
 	for _, r := range got {
 		gotOrder = append(gotOrder, r.Num)
@@ -453,7 +490,7 @@ func TestRankBacklogIssues(t *testing.T) {
 	if !reflect.DeepEqual(gotOrder, wantOrder) {
 		t.Errorf("rank order = %v, want %v", gotOrder, wantOrder)
 	}
-	if got[0].Lane != "headless" || got[3].Lane != "interactive" || got[4].Lane != "untriaged" {
+	if got[0].Lane != "headless" || got[3].Lane != backlogKindPullRequest || got[4].Lane != "interactive" || got[5].Lane != "untriaged" {
 		t.Errorf("lane assignment wrong: %+v", got)
 	}
 }
@@ -464,6 +501,8 @@ func TestRefreshBacklogLedger(t *testing.T) {
 		"5": {Num: 5, Lane: "headless", State: "dispatched", Container: "engineer-claude-b-5"},
 		// previously surfaced (interactive), now re-triaged into headless -> promote to queued
 		"7": {Num: 7, Lane: "interactive", State: "surfaced"},
+		// PRs should stay visible as surfaced follow-up work.
+		"8": {Num: 8, Kind: backlogKindPullRequest, Lane: backlogKindPullRequest, State: "surfaced"},
 		// a done issue that has since closed (absent from the live set) -> dropped
 		"9": {Num: 9, Lane: "headless", State: "done"},
 		// ward#527: a pre-#524 dispatch-error stranding -> re-queued, outcome cleared
@@ -474,6 +513,7 @@ func TestRefreshBacklogLedger(t *testing.T) {
 	ranked := rankBacklogIssues([]backlogIssue{
 		{Number: 5, Title: "five", Labels: []string{"P0", "headless"}},
 		{Number: 7, Title: "seven", Labels: []string{"P1", "headless"}}, // promoted to headless
+		{Number: 8, Kind: backlogKindPullRequest, Title: "eight", Labels: []string{"P0", "headless"}},
 		{Number: 11, Title: "eleven", Labels: []string{"P2", "interactive"}},
 		{Number: 12, Title: "twelve", Labels: nil}, // untriaged
 		{Number: 13, Title: "thirteen", Labels: []string{"P0", "headless"}},
@@ -486,6 +526,9 @@ func TestRefreshBacklogLedger(t *testing.T) {
 	}
 	if e := led.Issues["7"]; e == nil || e.State != "queued" || e.Lane != "headless" {
 		t.Errorf("#7 should be promoted to queued/headless, got %+v", e)
+	}
+	if e := led.Issues["8"]; e == nil || e.State != "surfaced" || e.Lane != backlogKindPullRequest || e.Kind != backlogKindPullRequest {
+		t.Errorf("#8 PR should stay surfaced/pull-request, got %+v", e)
 	}
 	if _, ok := led.Issues["9"]; ok {
 		t.Errorf("#9 closed+done should be dropped, still present")
@@ -501,6 +544,45 @@ func TestRefreshBacklogLedger(t *testing.T) {
 	}
 	if e := led.Issues["14"]; e == nil || e.State != "failed" {
 		t.Errorf("#14 genuine decline must stay failed, got %+v", e)
+	}
+}
+
+func TestCombineOpenBacklogIssues(t *testing.T) {
+	issues := []backlogIssue{{Number: 5, Kind: backlogKindIssue, Title: "issue"}}
+	prs := []backlogIssue{{Number: 8, Title: "pr"}}
+
+	got := combineOpenBacklogIssues(issues, prs)
+	if len(got) != 2 {
+		t.Fatalf("combined length = %d, want 2", len(got))
+	}
+	if got[0].Kind != backlogKindIssue || got[0].Number != 5 {
+		t.Fatalf("issue row was not preserved: %+v", got[0])
+	}
+	if got[1].Kind != backlogKindPullRequest || got[1].Number != 8 {
+		t.Fatalf("PR row was not tagged/folded in: %+v", got[1])
+	}
+}
+
+func TestBacklogPrintStatusDistinguishesPRs(t *testing.T) {
+	t.Setenv("HOME", t.TempDir())
+	repo := "a/b"
+	led := &backlogLedger{Repo: repo, Issues: map[string]*backlogEntry{
+		"5": {Num: 5, Kind: backlogKindIssue, Lane: "headless", State: "queued", Title: "issue work"},
+		"8": {Num: 8, Kind: backlogKindPullRequest, Lane: backlogKindPullRequest, State: "surfaced", Title: "PR follow-up"},
+	}}
+	if err := saveBacklogLedger(led); err != nil {
+		t.Fatalf("save ledger: %v", err)
+	}
+	out := &bytes.Buffer{}
+	r := &Runner{Runner: &shell.Runner{Stdout: out}}
+	if err := r.backlogPrintStatus([]string{repo}); err != nil {
+		t.Fatalf("backlogPrintStatus: %v", err)
+	}
+	got := out.String()
+	for _, want := range []string{"issue a/b#5", "PR a/b#8", "pull-request lane"} {
+		if !strings.Contains(got, want) {
+			t.Fatalf("status output missing %q\n%s", want, got)
+		}
 	}
 }
 
@@ -526,6 +608,36 @@ func TestParseBacklogOutcome(t *testing.T) {
 			comments:   []issueComment{{Body: "WARD-OUTCOME: done - merged and pushed\n\nfelt smooth", CreatedAt: at("2026-06-25T10:00:00Z")}},
 			wantStatus: "done",
 			wantText:   "merged and pushed",
+		},
+		{
+			name:       "submitted leading line",
+			comments:   []issueComment{{Body: "WARD-OUTCOME: submitted - PR opened, waiting for human merge\n\nfelt calm", CreatedAt: at("2026-06-25T10:00:00Z")}},
+			wantStatus: "submitted",
+			wantText:   "PR opened, waiting for human merge",
+		},
+		{
+			name:       "merge-ready leading line",
+			comments:   []issueComment{{Body: "WARD-OUTCOME: merge-ready - review passed, handoff to director\n\nfelt calm", CreatedAt: at("2026-06-25T10:00:00Z")}},
+			wantStatus: "merge-ready",
+			wantText:   "review passed, handoff to director",
+		},
+		{
+			name:       "pending aliases to submitted",
+			comments:   []issueComment{{Body: "WARD-OUTCOME: pending - PR opened, waiting for human merge\n\nfelt calm", CreatedAt: at("2026-06-25T10:00:00Z")}},
+			wantStatus: "submitted",
+			wantText:   "PR opened, waiting for human merge",
+		},
+		{
+			name:       "ready-for-merge aliases to merge-ready",
+			comments:   []issueComment{{Body: "WARD-OUTCOME: ready-for-merge - review passed, handoff to director\n\nfelt calm", CreatedAt: at("2026-06-25T10:00:00Z")}},
+			wantStatus: "merge-ready",
+			wantText:   "review passed, handoff to director",
+		},
+		{
+			name:       "bare emoji line",
+			comments:   []issueComment{{Body: "WARD-OUTCOME: done ✅\n\n<details><summary>details</summary>\n\nmerged and pushed\n\n</details>", CreatedAt: at("2026-06-25T10:00:00Z")}},
+			wantStatus: "done",
+			wantText:   "",
 		},
 		{
 			name:       "blocked with reason after bullet/quote markers",
@@ -570,15 +682,44 @@ func TestParseBacklogOutcome(t *testing.T) {
 
 func TestBacklogOutcomeState(t *testing.T) {
 	cases := map[string]string{
-		"done":    "done",
-		"failed":  "failed",
-		"blocked": "blocked",
-		"unknown": "blocked", // unrecognized parks as blocked
-		"weird":   "blocked",
+		"done":            "done",
+		"failed":          "failed",
+		"blocked":         "blocked",
+		"submitted":       "submitted",
+		"merge-ready":     "merge-ready",
+		"pending":         "submitted",
+		"ready-for-merge": "merge-ready",
+		"unknown":         "blocked", // unrecognized parks as blocked
+		"weird":           "blocked",
 	}
 	for in, want := range cases {
 		if got := backlogOutcomeState(in); got != want {
 			t.Errorf("backlogOutcomeState(%q) = %q, want %q", in, got, want)
+		}
+	}
+}
+
+func TestBacklogSummarySurfacesPRStates(t *testing.T) {
+	repo := "a/b"
+	led := &backlogLedger{
+		Repo: repo,
+		Issues: map[string]*backlogEntry{
+			"1": {Num: 1, Lane: "headless", State: "submitted", Title: "submitted issue", repo: repo},
+			"2": {Num: 2, Lane: "headless", State: "merge-ready", Title: "merge-ready issue", repo: repo},
+		},
+	}
+	if err := saveBacklogLedger(led); err != nil {
+		t.Fatalf("save ledger: %v", err)
+	}
+	var out bytes.Buffer
+	r := &Runner{Runner: &shell.Runner{Stdout: &out}}
+	if err := r.backlogPrintSummary([]string{repo}); err != nil {
+		t.Fatalf("backlogPrintSummary: %v", err)
+	}
+	got := out.String()
+	for _, want := range []string{"submitted", "merge-ready"} {
+		if !strings.Contains(got, want) {
+			t.Fatalf("summary missing %q\n%s", want, got)
 		}
 	}
 }

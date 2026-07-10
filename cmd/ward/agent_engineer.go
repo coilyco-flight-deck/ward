@@ -31,7 +31,7 @@ func agentEngineerCommand() *cli.Command {
 		Name: "engineer",
 		Usage: "Implement a ticket end to end: a ref carries it detached, " +
 			"freeform text files an issue first then carries it.",
-		ArgsUsage: "<owner/repo#N | #N | forgejo-issue-url | '<freeform instructions>'>",
+		ArgsUsage: "<owner/repo#N | #N | issue-url | '<freeform instructions>'>",
 		Flags:     agentEngineerFlags(),
 		Action:    agentEngineerAction(),
 	}
@@ -42,7 +42,7 @@ func agentEngineerCommand() *cli.Command {
 func agentEngineerAction() cli.ActionFunc {
 	return func(ctx context.Context, c *cli.Command) error {
 		r := newRunner()
-		mode, err := agentHarness(c)
+		mode, err := surfaceDispatchMode(c)
 		if err != nil {
 			return fmt.Errorf("ward agent engineer: %w", err)
 		}

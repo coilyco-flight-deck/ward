@@ -1,0 +1,415 @@
+package main
+
+import (
+	"context"
+	"fmt"
+	"regexp"
+	"strconv"
+	"strings"
+
+	"forgejo.coilysiren.me/coilyco-flight-deck/cli-guard/cli/dispatch"
+	"github.com/urfave/cli/v3"
+)
+
+// agent_director_merge.go wires `ward agent director merge`: the explicit PR-merge
+// lane the director uses for ward-owned PRs that are authorized to land.
+
+var directorClosingRefRE = regexp.MustCompile(`(?i)\b(?:closes|fixes|resolves)\s+#(\d+)\b`)
+var directorWorkflowMarkerRE = regexp.MustCompile(`(?i)\bward\.workflow:\s*([[:alnum:]-]+)\b`)
+
+// directorMergeFlags keeps the merge subcommand narrow: scope + preview only.
+func directorMergeFlags() []cli.Flag {
+	return []cli.Flag{
+		&cli.StringFlag{Name: "repo", Usage: "comma-separated scope 'a/b,c/d' (default: director.default-scope from ~/.ward/config.yaml, else the cwd git origin)"},
+		&cli.StringSliceFlag{Name: "org", Usage: "expand every repo an org owns into the scope (owner; repeatable), unioned with --repo and de-duped"},
+		&cli.IntFlag{Name: "limit", Value: directorLimitDefault(), Usage: "open issues read per repo per refresh"},
+		&cli.BoolFlag{Name: "dry-run", Usage: "show the PRs that would merge, then exit without merging"},
+		&cli.BoolFlag{Name: "print", Usage: "alias for --dry-run"},
+	}
+}
+
+// agentDirectorMergeCommand builds the explicit director merge lane.
+func agentDirectorMergeCommand() *cli.Command {
+	return &cli.Command{
+		Name:        "merge",
+		Usage:       "Merge eligible ward-owned PRs whose issue thread authorizes director merge.",
+		ArgsUsage:   "(scope via --repo; default: the cwd git origin)",
+		Description: `merge scans open pull requests in scope and merges only the ones the ward issue thread marks as director-merge authorized: the linked issue ended with WARD-OUTCOME: merge-ready, the final comment says workflow: pull-requests-and-merge, the review summary is passed, the PR is mergeable against the current base branch, and it is not salvage/draft noise. The director records the final done outcome only after the merge lands. pull-requests still needs a human. See docs/agent-director.md and docs/agent-workflow.md.`,
+		Flags:       directorMergeFlags(),
+		Action: func(ctx context.Context, c *cli.Command) error {
+			r := newRunner()
+			return r.runDirectorMerge(ctx, c)
+		},
+	}
+}
+
+// runDirectorMerge resolves scope, filters the open PR set down to merge-eligible
+// candidates, and merges them one by one.
+func (r *Runner) runDirectorMerge(ctx context.Context, c *cli.Command) error {
+	label := "ward agent director merge"
+	repos, err := r.resolveDirectorScope(ctx, c, label)
+	if err != nil {
+		return err
+	}
+	if err := r.backlogTrustGate(label, repos); err != nil {
+		return err
+	}
+	prClient, err := r.hostForgejoClient(ctx)
+	if err != nil {
+		return fmt.Errorf("%s: %w", label, err)
+	}
+	issueClient, err := r.hostTrackerClient(ctx, trackerForgejo, currentAgentMode())
+	if err != nil {
+		return fmt.Errorf("%s: %w", label, err)
+	}
+	preview := c.Bool("dry-run") || c.Bool("print")
+	limit := c.Int("limit")
+	if limit < 1 {
+		limit = directorLimitDefault()
+	}
+	var merged, skipped int
+	for _, repo := range repos {
+		repoMerged, repoSkipped, err := r.runDirectorMergeRepo(ctx, label, prClient, issueClient, repo, limit, preview)
+		if err != nil {
+			return err
+		}
+		merged += repoMerged
+		skipped += repoSkipped
+	}
+	_, _ = fmt.Fprintf(r.Runner.Stdout, "%s: merged %d PR(s), skipped %d\n", label, merged, skipped)
+	return nil
+}
+
+func (r *Runner) runDirectorMergeRepo(ctx context.Context, label string, prClient *forgejoClient, issueClient Tracker, repo string, limit int, preview bool) (merged, skipped int, err error) {
+	owner, name, _ := strings.Cut(repo, "/")
+	prs, err := prClient.listOpenPullRequests(ctx, owner, name, limit)
+	if err != nil {
+		return 0, 0, fmt.Errorf("%s: %w", label, err)
+	}
+	for _, pr := range prs {
+		ok, reason, linked, meta := directorMergeEligibility(ctx, owner, name, pr, prClient, issueClient)
+		if !ok {
+			skipped++
+			_, _ = fmt.Fprintf(r.Runner.Stderr, "%s: skipping %s/%s#%d: %s\n", label, owner, name, pr.Number, reason)
+			continue
+		}
+		if preview {
+			_, _ = fmt.Fprintf(r.Runner.Stderr, "%s: would merge %s/%s#%d (issue #%d, workflow %s, review %q, head %s, status %s)\n",
+				label, owner, name, pr.Number, linked, meta.Workflow, meta.Review, meta.PRHeadSHA, meta.Status.summary())
+			continue
+		}
+		if err := prClient.mergePullRequestWithHead(ctx, owner, name, pr.Number, meta.PRHeadSHA); err != nil {
+			return merged, skipped, fmt.Errorf("%s: merge %s/%s#%d: %w", label, owner, name, pr.Number, err)
+		}
+		if err := recordDirectorMergeDone(ctx, issueClient, owner, name, linked, pr.Number, meta); err != nil {
+			return merged, skipped, fmt.Errorf("%s: record done for %s/%s#%d after merge: %w", label, owner, name, pr.Number, err)
+		}
+		merged++
+		_, _ = fmt.Fprintf(r.Runner.Stderr, "%s: merged %s/%s#%d (issue #%d)\n", label, owner, name, pr.Number, linked)
+	}
+	return merged, skipped, nil
+}
+
+// directorMergeEligibility returns whether pr is the narrow, ward-owned lane.
+// The policy closes over the issue thread, not just the PR title.
+func directorMergeEligibility(ctx context.Context, owner, repo string, pr directorPullRequest, prClient *forgejoClient, issueClient Tracker) (ok bool, reason string, linked int, meta directorRunMeta) {
+	linked, ok = directorLinkedIssueNumber(pr.Body)
+	if !ok {
+		return false, "no same-repo closing reference in the PR body", 0, directorRunMeta{}
+	}
+	meta, reason, allowed := directorMergeIssueMeta(ctx, owner, repo, pr, linked, prClient, issueClient)
+	if !allowed {
+		return false, reason, linked, meta
+	}
+	return directorMergeDecision(pr.Issue, linked, meta)
+}
+
+func directorMergeIssueMeta(ctx context.Context, owner, repo string, pr directorPullRequest, linked int, prClient *forgejoClient, issueClient Tracker) (directorRunMeta, string, bool) {
+	var meta directorRunMeta
+	if reason, ok := directorMergePullRequestGate(pr); !ok {
+		return directorRunMeta{}, reason, false
+	}
+	if _, err := issueClient.getIssue(ctx, owner, repo, linked); err != nil {
+		return directorRunMeta{}, "could not read linked issue: " + firstLine(err.Error()), false
+	}
+	comments, err := issueClient.listIssueComments(ctx, owner, repo, linked)
+	if err != nil {
+		return directorRunMeta{}, "could not read linked issue comments: " + firstLine(err.Error()), false
+	}
+	prInfo, err := prClient.getPullRequest(ctx, owner, repo, pr.Number)
+	if err != nil {
+		return directorRunMeta{}, "could not read linked PR details: " + firstLine(err.Error()), false
+	}
+	meta.IssueRef = fmt.Sprintf("%s/%s#%d", owner, repo, linked)
+	meta.PRHeadSHA = strings.TrimSpace(prInfo.Head.SHA)
+	meta.PRRef = prInfo.ref(owner, repo)
+	if meta.PRHeadSHA == "" {
+		return meta, "linked PR did not expose a head SHA", false
+	}
+	status, reason, ok := directorMergeStatusGate(ctx, prClient, owner, repo, prInfo.Base.Ref, meta.PRHeadSHA)
+	if !ok {
+		return directorRunMeta{Status: status.Status}, reason, false
+	}
+	latest, ok := latestBacklogOutcomeComment(comments)
+	if !ok {
+		return directorRunMeta{}, "linked issue never reached a WARD-OUTCOME comment", false
+	}
+	meta = parseDirectorRunMeta(latest.Body)
+	meta.CommentedBy = latest.User.Login
+	meta.CommentedAt = latest.CreatedAt
+	meta.IssueRef = fmt.Sprintf("%s/%s#%d", owner, repo, linked)
+	meta.PRHeadSHA = strings.TrimSpace(prInfo.Head.SHA)
+	meta.PRRef = prInfo.ref(owner, repo)
+	meta.Status = status.Status
+	qa, ok := latestQAVerdictComment(comments, meta.IssueRef, meta.PRRef, meta.PRHeadSHA)
+	if !ok {
+		return meta, "linked issue does not have a passing WARD-QA verdict for the current PR head SHA", false
+	}
+	meta.QA = qa
+	return meta, "", true
+}
+
+func directorMergePullRequestGate(pr directorPullRequest) (string, bool) {
+	switch {
+	case !pr.MergeableKnown:
+		if pr.MergeableError == "" {
+			return "could not read PR mergeability", false
+		}
+		return "could not read PR mergeability: " + pr.MergeableError, false
+	case !pr.Mergeable:
+		return "PR is not mergeable against the current base branch; rebase or merge base and resolve the conflict first", false
+	}
+	wf, ok := directorPRWorkflowMarker(pr.Body)
+	if !ok {
+		return "PR body missing ward.workflow: pull-requests-and-merge marker", false
+	}
+	if wf != string(workflowPullRequestAndMerge) {
+		return "PR body carries ward.workflow: " + wf + "; need pull-requests-and-merge", false
+	}
+	return "", true
+}
+
+// directorMergeStatusGate checks the live branch-protection requirement set
+// against the PR head SHA immediately before merge.
+func directorMergeStatusGate(ctx context.Context, cl *forgejoClient, owner, repo, baseBranch, headSHA string) (directorMergeStatusCheck, string, bool) {
+	baseBranch = strings.TrimSpace(baseBranch)
+	headSHA = strings.TrimSpace(headSHA)
+	if baseBranch == "" {
+		return directorMergeStatusCheck{}, "linked PR did not expose a base branch", false
+	}
+	branch, err := cl.getBranch(ctx, owner, repo, baseBranch)
+	if err != nil {
+		return directorMergeStatusCheck{}, "could not read base branch status checks: " + firstLine(err.Error()), false
+	}
+	required := normalizeDirectorRequiredContexts(branch.StatusCheckContexts)
+	if len(required) == 0 {
+		return directorMergeStatusCheck{}, "base branch " + baseBranch + " does not declare required status check contexts", false
+	}
+	combined, err := cl.getCommitCombinedStatus(ctx, owner, repo, headSHA)
+	if err != nil {
+		return directorMergeStatusCheck{}, "could not read live commit status for current PR head SHA: " + firstLine(err.Error()), false
+	}
+	summary, reason, ok := buildDirectorMergeStatusSummary(headSHA, baseBranch, required, combined)
+	if !ok {
+		return directorMergeStatusCheck{Status: summary}, reason, false
+	}
+	return directorMergeStatusCheck{Status: summary}, "", true
+}
+
+type directorMergeStatusCheck struct {
+	Status directorMergeStatusSummary
+}
+
+type directorMergeStatusSummary struct {
+	Branch  string
+	HeadSHA string
+	State   string
+	Checks  []directorMergeStatusContext
+}
+
+type directorMergeStatusContext struct {
+	Context string
+	State   string
+}
+
+func (s directorMergeStatusSummary) summary() string {
+	if s.HeadSHA == "" && s.State == "" && len(s.Checks) == 0 {
+		return "<no status>"
+	}
+	parts := s.contextParts()
+	if len(parts) == 0 {
+		return fmt.Sprintf("%s on %s", s.State, s.HeadSHA)
+	}
+	return fmt.Sprintf("%s on %s (%s)", s.State, s.HeadSHA, strings.Join(parts, ", "))
+}
+
+func (s directorMergeStatusSummary) contextSummary() string {
+	parts := s.contextParts()
+	if len(parts) == 0 {
+		return "<status unavailable>"
+	}
+	return strings.Join(parts, ", ")
+}
+
+func (s directorMergeStatusSummary) contextParts() []string {
+	var parts []string
+	for _, check := range s.Checks {
+		parts = append(parts, fmt.Sprintf("%s=%s", check.Context, check.State))
+	}
+	return parts
+}
+
+func normalizeDirectorRequiredContexts(contexts []string) []string {
+	seen := map[string]bool{}
+	var out []string
+	for _, c := range contexts {
+		if c = strings.TrimSpace(c); c != "" && !seen[c] {
+			seen[c] = true
+			out = append(out, c)
+		}
+	}
+	return out
+}
+
+func buildDirectorMergeStatusSummary(headSHA, branch string, required []string, combined *forgejoCommitCombinedStatus) (directorMergeStatusSummary, string, bool) {
+	summary := directorMergeStatusSummary{Branch: branch, HeadSHA: headSHA, State: strings.ToLower(strings.TrimSpace(combined.State))}
+	if summary.State == "" {
+		summary.State = "unknown"
+	}
+	statusByContext := map[string]string{}
+	for _, st := range combined.Statuses {
+		ctx := strings.TrimSpace(st.Context)
+		if ctx == "" {
+			continue
+		}
+		statusByContext[ctx] = strings.ToLower(strings.TrimSpace(st.State))
+	}
+	if len(required) == 0 {
+		return summary, "base branch does not declare any required status contexts", false
+	}
+	for _, ctx := range required {
+		state, ok := statusByContext[ctx]
+		if !ok {
+			return summary, fmt.Sprintf("linked PR head SHA %s is missing required status context %s", headSHA, ctx), false
+		}
+		if state != "success" {
+			return summary, fmt.Sprintf("linked PR head SHA %s has required status context %s=%s", headSHA, ctx, state), false
+		}
+		summary.Checks = append(summary.Checks, directorMergeStatusContext{Context: ctx, State: state})
+	}
+	if summary.State != "success" {
+		return summary, fmt.Sprintf("linked PR head SHA %s did not report a successful combined status", headSHA), false
+	}
+	return summary, "", true
+}
+
+// directorPRWorkflowMarker extracts the workflow marker from a PR body.
+func directorPRWorkflowMarker(body string) (string, bool) {
+	for _, ln := range strings.Split(body, "\n") {
+		s := backlogCommentLine(ln)
+		if s == "" {
+			continue
+		}
+		if m := directorWorkflowMarkerRE.FindStringSubmatch(s); m != nil {
+			return strings.ToLower(strings.TrimSpace(m[1])), true
+		}
+	}
+	return "", false
+}
+
+// directorMergeDecision is the pure policy boundary for the director merge lane.
+func directorMergeDecision(pr dispatch.Issue, linked int, meta directorRunMeta) (ok bool, reason string, _ int, _ directorRunMeta) {
+	title := strings.ToLower(strings.TrimSpace(pr.Title))
+	switch {
+	case strings.HasPrefix(title, "ward salvage:"):
+		return false, "salvage PRs are cleanup noise, not merge-authorized work", linked, meta
+	case strings.HasPrefix(title, "wip:") || strings.HasPrefix(title, "[wip]"):
+		return false, "draft PRs are not merge-authorized", linked, meta
+	}
+	status := strings.ToLower(strings.TrimSpace(meta.Outcome.Status))
+	if status != "merge-ready" {
+		if !meta.HasOutcome {
+			return false, "linked issue did not finish with a WARD-OUTCOME comment", linked, meta
+		}
+		return false, "linked issue did not finish with WARD-OUTCOME: merge-ready", linked, meta
+	}
+	wf := strings.TrimSpace(meta.Workflow)
+	if wf != string(workflowPullRequestAndMerge) {
+		if wf == "" {
+			return false, "linked issue comment did not record the merge workflow", linked, meta
+		}
+		return false, "workflow " + meta.Workflow + " still needs human merge approval", linked, meta
+	}
+	if reason, ok := directorMergeQAGate(meta); !ok {
+		return false, reason, linked, meta
+	}
+	return true, "", linked, meta
+}
+
+func directorMergeQAGate(meta directorRunMeta) (reason string, ok bool) {
+	if strings.TrimSpace(meta.QA.ReviewerFamily) != qaFamilyInternal {
+		return "linked issue QA verdict was not from the internal reviewer family", false
+	}
+	if strings.ToLower(strings.TrimSpace(meta.QA.Verdict)) != "pass" {
+		return "linked issue QA verdict did not pass", false
+	}
+	if strings.TrimSpace(meta.QA.ReviewedSHA) != strings.TrimSpace(meta.PRHeadSHA) {
+		return "linked issue QA verdict does not match the current PR head SHA", false
+	}
+	if strings.TrimSpace(meta.QA.IssueRef) != strings.TrimSpace(meta.IssueRef) {
+		return "linked issue QA verdict does not name the current issue", false
+	}
+	if strings.TrimSpace(meta.QA.PRRef) != strings.TrimSpace(meta.PRRef) {
+		return "linked issue QA verdict does not name the current PR", false
+	}
+	if strings.TrimSpace(meta.QA.RunIdentity) == "" {
+		return "linked issue QA verdict is missing run identity", false
+	}
+	return "", true
+}
+
+// recordDirectorMergeDone posts the director's final done outcome only after the
+// PR has actually merged to main.
+func recordDirectorMergeDone(ctx context.Context, cl Tracker, owner, repo string, linked, prNumber int, meta directorRunMeta) error {
+	body := directorMergeDoneComment(prNumber, meta)
+	return cl.commentIssue(ctx, owner, repo, linked, body)
+}
+
+func directorMergeDoneComment(prNumber int, meta directorRunMeta) string {
+	workflow := strings.TrimSpace(meta.Workflow)
+	if workflow == "" {
+		workflow = string(workflowPullRequestAndMerge)
+	}
+	review := strings.TrimSpace(meta.Review)
+	if review == "" {
+		review = "passed: director merged the pull request"
+	}
+	status := strings.TrimSpace(meta.Status.contextSummary())
+	if status == "" {
+		status = "<status unavailable>"
+	}
+	return fmt.Sprintf(
+		"WARD-OUTCOME: done ✅\n\n"+
+			"<details><summary>details</summary>\n\n"+
+			"workflow: %s; review summary: %s\n\n"+
+			"checked head sha: %s\n"+
+			"status context: %s\n"+
+			"status state: %s\n\n"+
+			"merged PR #%d to main after the merge gate passed.\n\n"+
+			"</details>",
+		workflow, review, strings.TrimSpace(meta.Status.HeadSHA), status, strings.TrimSpace(meta.Status.State), prNumber)
+}
+
+// directorLinkedIssueNumber extracts the first same-repo closing reference from a
+// PR body. It is the join key from the PR back to the carried issue thread.
+func directorLinkedIssueNumber(body string) (int, bool) {
+	m := directorClosingRefRE.FindStringSubmatch(body)
+	if m == nil {
+		return 0, false
+	}
+	n, err := strconv.Atoi(m[1])
+	if err != nil || n <= 0 {
+		return 0, false
+	}
+	return n, true
+}

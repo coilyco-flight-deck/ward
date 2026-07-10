@@ -4,7 +4,7 @@ doc_goal: Serve as the reference entrypoint that makes a reader grasp ward agent
 # ward agent
 
 `ward agent` is **ward's whole second half: the guarded execution layer for
-coding agents**. Each invocation takes a Forgejo issue and drives a
+coding agents**. Each invocation takes the repo's authoritative issue thread and drives a
 subscription-authenticated coding CLI (claude, codex, ...) through it from issue
 to merge inside a **fresh, least-access ephemeral [container](container.md)** -
 reach bounded by repo-scoped credentials, cli-guard policy, and a durable
@@ -15,8 +15,8 @@ surface: the hand-run `ward container up`/`exec`/`down`/`ls` verbs are retired.
 ## Prerequisites
 
 A **live** run needs **Docker running** (each boots an ephemeral
-[container](container.md)) and a reachable **Forgejo** instance. `--print` needs
-neither. Full list: [first-run.md §1](first-run.md#1-prerequisites).
+[container](container.md)) and a reachable issue host for the target repo.
+`--print` needs neither. Full list: [first-run.md §1](first-run.md#1-prerequisites).
 
 ## The `warded` public face
 
@@ -35,13 +35,20 @@ or answers it.
   **detached only**. [agent-engineer.md](agent-engineer.md).
 - **`director`** (was `backlog`) - autonomous backlog supervisor: dispatches
   engineers, surfaces a read-only session on drain. Holds the **live-observe set**
-  (aws + tailnet) so its container reaches the live kai-server for the read-only
-  `ward ops eco observe` surface ([ward#547](https://forgejo.coilysiren.me/coilyco-flight-deck/ward/issues/547)). [agent-director.md](agent-director.md).
+  (aws + tailnet) so its container reaches the live kai-server for read-only checks.
+  [agent-director.md](agent-director.md).
 - **`advisor`** (was `reply`+`ask`) - answers, writes no code: a ref comments,
   freeform is interactive. The advisor role holds the **live-observe guardfile
   set** (the tailnet + `~/.aws`, per its `roles` entry in `ward-kdl.fleet.kdl`,
   [ward#578](https://forgejo.coilysiren.me/coilyco-flight-deck/ward/issues/578)), so research reaches the backend with no flag, and `--no-tailnet`
   keeps a rare run isolated. [agent-advisor.md](agent-advisor.md).
+- **`qa`** - opt-in QA inspection and verdict comments: a ref inspects the issue,
+  the candidate branch or PR, and the checks, then posts a structured verdict
+  comment without editing implementation state. [agent-qa.md](agent-qa.md).
+
+The semantic posture for those roles is documented in
+[agent-role-capabilities.md](agent-role-capabilities.md). That layer is ward-owned
+and separate from the KDL edge surfaces.
 
 The standalone `architect`/`explore`/`sandbox` roles now error - folded
 them into the director's [surface session](agent-surface.md). The `--harness`
@@ -59,6 +66,8 @@ warded director --repo owner/name               # autonomous headless-lane loop;
 warded advisor #98                              # research the issue with the default brief, post a comment
 warded advisor #98 "what would it take to..."   # same, with extra framing
 warded advisor "how is the audit log written?"  # freeform: interactive (--oneshot = one answer)
+warded qa #98                                   # structured QA verdict comment, no code edits
+ward agent logs #98                             # read one engineer run's logs through the broker
 ```
 
 The role comes first (`--harness` picks the harness, default claude, and
@@ -92,16 +101,19 @@ Grouped by the surface you are reaching for.
 **Roles and drivers** (what runs, and which harness runs it)
 
 - [agent-roster.md](agent-roster.md) - flat list of every role (`ward agent roster`).
-- [agent-subcommands.md](agent-subcommands.md) - the three roles compared + the reaper.
+- [agent-subcommands.md](agent-subcommands.md) - the roles compared + the reaper.
+- [agent-qa.md](agent-qa.md) - the opt-in QA inspection role.
+- [agent-role-capabilities.md](agent-role-capabilities.md) - the semantic role capability vocabulary.
 - [agent-drivers.md](agent-drivers.md) - the harnesses (`--harness`) compared.
 - [agent-surface.md](agent-surface.md) - the director's read-only surface.
 
 **Landing and safety** (how a run is fenced and where it lands)
 
-- [agent-workflow.md](agent-workflow.md) - `--workflow direct-main|pr|patch-only`, the run's landing policy.
+- [agent-workflow.md](agent-workflow.md) - `--workflow direct-main|pull-requests|pull-requests-and-merge|patch-only`, the run's landing policy.
 - [dispatch-review.md](dispatch-review.md) - the in-container code-review gate that runs before a diff lands.
 - [agent-preflight.md](agent-preflight.md) - the detached GO/NO-GO pre-flight.
 - [agent-reap.md](agent-reap.md) - the host-side idle-killer.
+- [agent-logs.md](agent-logs.md) - the brokered engineer log read.
 - [agent-trust-gate.md](agent-trust-gate.md) - the owner trust gate.
 - [agent-wrong-repo.md](agent-wrong-repo.md) - the WRONG-REPO blind-fire.
 - [agent-reservation.md](agent-reservation.md) - reservation, TTL, `--force`.

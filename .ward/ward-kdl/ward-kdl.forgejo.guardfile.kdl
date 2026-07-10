@@ -241,6 +241,10 @@ wrap ward-kdl ops forgejo {
     never list pr {
         message "pull requests are not exposed through ward; read them in the web UI"
     }
+    can merge pr {
+        op repoMergePullRequest
+        describe "merge a pull request (POST /repos/{owner}/{repo}/pulls/{index}/merge). Controlled director authority: ward-owned runs may land only when the issue thread says workflow: pull-requests-and-merge, the final WARD-OUTCOME is merge-ready, the review summary passed, and the PR is mergeable against the current base branch."
+    }
     // issue-labels: the compound resource targets the issue's labels sub-collection;
     // add/set/remove are the membership verbs (POST/PUT/DELETE).
     can list issue-label

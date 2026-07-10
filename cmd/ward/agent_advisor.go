@@ -49,11 +49,11 @@ func agentAdvisorCommand() *cli.Command {
 		Name: "advisor",
 		Usage: "Answer without writing code: a ref researches the issue and posts the answer as a comment; " +
 			"freeform text opens an interactive seeded session (one-shot streamed answer with no TTY or --oneshot). The advisor role holds the live-observe guardfile set (tailnet + ~/.aws) by default; use --no-tailnet to stay isolated. No code change.",
-		ArgsUsage: "<owner/repo#N | forgejo-issue-url> [prompt] | '<question>'",
+		ArgsUsage: "<owner/repo#N | issue-url> [prompt] | '<question>'",
 		Flags:     agentAdvisorFlags(),
 		Action: func(ctx context.Context, c *cli.Command) error {
 			r := newRunner()
-			mode, err := agentHarness(c)
+			mode, err := surfaceDispatchMode(c)
 			if err != nil {
 				return fmt.Errorf("ward agent advisor: %w", err)
 			}
@@ -100,7 +100,7 @@ func (r *Runner) runAgentAsk(ctx context.Context, c *cli.Command, mode container
 		return fmt.Errorf("%s: %w", label, err)
 	}
 	// Trust gate: this spins a bypassPermissions container and clones the repo, so
-	// only act on an owner in the primary-org set - the same gate the other roles apply.
+	// only act on an owner in the trusted-owner set - the same gate the other roles apply.
 	if !r.ownerAllowed(repo.Owner) {
 		return r.untrustedOwnerErr(label, repo.Owner)
 	}
@@ -114,7 +114,7 @@ func (r *Runner) runAgentAsk(ctx context.Context, c *cli.Command, mode container
 		seed = askPrompt(question)
 	}
 
-	assetsDir, cleanupAssets, err := writeContainerAssets()
+	assetsDir, cleanupAssets, err := writeContainerAssets(ctx, c.String("ward-source"), strings.TrimSpace(c.String("ward-version")))
 	if err != nil {
 		return err
 	}

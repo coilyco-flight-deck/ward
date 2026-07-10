@@ -1,5 +1,5 @@
 ---
-doc_goal: Walk a newcomer from zero to a verifiable warded --print dry run while making the agent driver's real nature land - a governed, forge-locked, owner-gated execution layer, not a generic runner - so the trust gate and endpoint lock read as the containment they are, not as friction.
+doc_goal: Walk a newcomer from zero to a verifiable warded --print dry run while making the agent driver's real nature land - a governed, config-backed, owner-gated execution layer, not a generic runner - so the trust gate and endpoint lock read as the containment they are, not as friction.
 ---
 # ward first-run guide
 
@@ -8,18 +8,21 @@ Zero to a verifiable first `warded` dry run. Read [README.md](../README.md) firs
 ## Can you get to a first run today?
 
 The `warded` agent driver is not forge-agnostic - it targets `forgejo.coilysiren.me`
-and a fixed owner set, both compiled in and not repointable after install.
+by default and follows a config-bundle-backed owner / repo authority policy.
 
-- **Owner trust gate** - dispatch refuses owners outside `coilysiren`,
-  `coilyco-bridge`, `coilyco-flight-deck`, `coilyco-gaming`, **before** it reads
-  `--print` ([agent-trust-gate.md](agent-trust-gate.md)).
-- **Endpoint lock** - your own Forgejo needs a source build with edited manifests
+- **Owner trust gate** - dispatch refuses owners outside the trusted-owner set
+  selected by the active `repo-authority` block, **before** it reads `--print`
+  ([agent-trust-gate.md](agent-trust-gate.md)).
+- **Endpoint lock** - your own Forgejo or GitHub policy needs the selected
+  bundle to carry the right authority mappings and endpoint values
   ([ward#441](https://forgejo.coilysiren.me/coilyco-flight-deck/ward/issues/441), configurable path [ward#395](https://forgejo.coilysiren.me/coilyco-flight-deck/ward/issues/395)).
 
 Self-host nothing? You **can** render a `--print` plan today against a trusted
 public repo (`coilyco-flight-deck/ward#N`, anonymous read, no token) to confirm
-your install. You **cannot** yet drive a live run against your own org without
-forking. The plain verb gate (`ward exec`/`git`/`audit`) has none of these limits.
+your install. To drive a live run against your own org, the selected bundle must
+trust that owner and you need the matching token. The plain verb gate
+(`ward exec`/`git`/`audit`) has none of these limits, so most adopters start
+there and only move to `warded` when they need the agent driver.
 
 ## 1. Prerequisites
 
@@ -39,13 +42,14 @@ forking. The plain verb gate (`ward exec`/`git`/`audit`) has none of these limit
 ```bash
 brew install coilyco-flight-deck/tap/ward   # full tap steps in the README
 ward version                                # installed release tag
-ward doctor                                 # .ward/ward.yaml vs Makefile + host probes
+ward exec test                              # any repo with a Makefile can verify the gate
 ```
 
 - **`warded` is the agent driver only, not a `ward` alias.** `warded version`
   errors - use `ward version`. `warded` understands only roles and refs.
-- **`ward doctor` does not check the trust gate** ([doctor.md](doctor.md)), so it
-  passes even where every `warded` call is refused ([ward#195](https://forgejo.coilysiren.me/coilyco-flight-deck/ward/issues/195)).
+- **The trust gate lives in `warded`, not the plain verb gate.** A repo can
+  still be refused even when `ward exec` works, because the dispatch owner
+  allowlist is separate from repo verbs ([ward#195](https://forgejo.coilysiren.me/coilyco-flight-deck/ward/issues/195)).
 
 ## 3. First command: a `--print` dry run
 

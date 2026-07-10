@@ -18,8 +18,8 @@ import (
 // resolves user-side, never here (ward#489, #441).
 const githubBaseURL = "https://github.com"
 
-// forge identifies which hosting service a ref/clone/issue-thread targets. The zero
-// value forgeForgejo keeps every forge-unaware ref, plan, and env on Forgejo.
+// forge identifies which git host a ref/clone/PR targets. The zero value forgeForgejo
+// keeps every host-unaware ref, plan, and env on Forgejo.
 type forge int
 
 const (
@@ -57,6 +57,72 @@ func (f forge) gitPushUser() string {
 	return "coilyco-ops"
 }
 
+// tracker identifies which issue-thread system a ref points at. It defaults to
+// Forgejo so host-unaware refs keep the current zero-config behavior.
+type tracker int
+
+const (
+	trackerForgejo tracker = iota
+	trackerGitHub
+	trackerShortcut
+)
+
+// String renders the tracker as the lowercase token used in logs and env-like
+// strings.
+func (t tracker) String() string {
+	if t == trackerShortcut {
+		return "shortcut"
+	}
+	if t == trackerGitHub {
+		return "github"
+	}
+	return "forgejo"
+}
+
+// trackerFromForge keeps the current zero-config pairing: Forgejo host -> Forgejo
+// tracker, GitHub host -> GitHub tracker.
+func trackerFromForge(f forge) tracker {
+	if f == forgeGitHub {
+		return trackerGitHub
+	}
+	return trackerForgejo
+}
+
+const (
+	shortcutAppBaseURL   = "https://app.shortcut.com"
+	shortcutAPIBaseURL   = "https://api.app.shortcut.com/api/v3"
+	shortcutWorkspaceEnv = "SHORTCUT_WORKSPACE"
+	shortcutTokenEnv     = "SHORTCUT_API_TOKEN"
+)
+
+var shortcutStoryURLRE = regexp.MustCompile(`(?i)^(?:https?://)?(?:www\.)?app\.shortcut\.com/([^/]+)/story/(\d+)(?:/[^/?#]*)?(?:[/?#].*)?$`)
+var shortcutStoryRefRE = regexp.MustCompile(`(?i)^(?:sc-|shortcut-)(\d+)$`)
+
+func parseShortcutIssueRef(s string) (agentIssueRef, bool) {
+	trimmed := strings.TrimSpace(s)
+	m := shortcutStoryURLRE.FindStringSubmatch(trimmed)
+	if m != nil {
+		n, err := parsePositiveInt(m[2])
+		if err != nil || n <= 0 {
+			return agentIssueRef{}, false
+		}
+		return agentIssueRef{Number: n, Tracker: trackerShortcut, URL: trimmed, ShortcutWorkspace: m[1]}, true
+	}
+	m = shortcutStoryRefRE.FindStringSubmatch(trimmed)
+	if m == nil {
+		return agentIssueRef{}, false
+	}
+	n, err := parsePositiveInt(m[1])
+	if err != nil || n <= 0 {
+		return agentIssueRef{}, false
+	}
+	ref := agentIssueRef{Number: n, Tracker: trackerShortcut}
+	if workspace := strings.TrimSpace(os.Getenv(shortcutWorkspaceEnv)); workspace != "" {
+		ref.ShortcutWorkspace = workspace
+	}
+	return ref, true
+}
+
 // parseForge maps the WARD_FORGE token back to a forge, defaulting to Forgejo for
 // an empty or unknown value so a missing env can never flip an existing run.
 func parseForge(s string) forge {
@@ -85,7 +151,7 @@ func parseGitHubIssueRef(s string) (agentIssueRef, bool) {
 	if err != nil || n <= 0 {
 		return agentIssueRef{}, false
 	}
-	return agentIssueRef{Owner: m[1], Repo: strings.TrimSuffix(m[2], ".git"), Number: n, Forge: forgeGitHub}, true
+	return agentIssueRef{Owner: m[1], Repo: strings.TrimSuffix(m[2], ".git"), Number: n, Forge: forgeGitHub, Tracker: trackerGitHub}, true
 }
 
 // parsePositiveInt parses a base-10 issue number, rejecting a leading sign or
@@ -109,9 +175,9 @@ func parsePositiveInt(s string) (int, error) {
 // API has no lock leaf (Forgejo); the caller falls back to the comment (ward#494).
 var errForgeLockUnsupported = errors.New("this forge's API cannot lock an issue conversation")
 
-// issueForge is the forge-independent issue-thread surface the host dispatch path
-// and reaper drive: Forgejo (forgejoClient) or GitHub via `gh` (githubClient).
-type issueForge interface {
+// Tracker is the forge-independent issue-thread surface the host dispatch path and
+// reaper drive: Forgejo (forgejoClient), GitHub via `gh` (githubClient), or Shortcut.
+type Tracker interface {
 	getIssue(ctx context.Context, owner, repo string, number int) (*dispatch.Issue, error)
 	listIssueComments(ctx context.Context, owner, repo string, number int) ([]issueComment, error)
 	createIssue(ctx context.Context, owner, repo, title, body string) (int, error)
@@ -124,21 +190,31 @@ type issueForge interface {
 	unlockIssue(ctx context.Context, owner, repo string, number int) error
 }
 
-// hostForgeClient returns the issue-thread client for f, signing writes as mode.
+// hostTrackerClient returns the issue-thread client for t, signing writes as mode.
 // Forgejo routes through the in-binary ops mount; GitHub shells out to `gh`.
-func (r *Runner) hostForgeClient(ctx context.Context, f forge, mode containerMode) (issueForge, error) {
-	if f == forgeGitHub {
+func (r *Runner) hostTrackerClient(ctx context.Context, t tracker, mode containerMode) (Tracker, error) {
+	switch t {
+	case trackerGitHub:
 		return r.hostGitHubClient(mode)
+	case trackerShortcut:
+		return r.hostShortcutClient(mode)
+	case trackerForgejo:
+		cl, err := r.hostForgejoClient(ctx)
+		if err != nil {
+			return nil, err
+		}
+		return cl.withMode(mode), nil
+	default:
+		cl, err := r.hostForgejoClient(ctx)
+		if err != nil {
+			return nil, err
+		}
+		return cl.withMode(mode), nil
 	}
-	cl, err := r.hostForgejoClient(ctx)
-	if err != nil {
-		return nil, err
-	}
-	return cl.withMode(mode), nil
 }
 
 // githubTokenSource selects how the GitHub dispatch path provisions its token
-// (ward#533): env (the publishable default), gh, or app. See docs/agent-github.md.
+// (ward#533): env, gh, or app. See docs/agent-github.md.
 type githubTokenSource int
 
 const (
@@ -161,8 +237,8 @@ func (s githubTokenSource) String() string {
 	}
 }
 
-// parseGitHubTokenSource maps a WARD_GITHUB_TOKEN_SOURCE value to a source (empty is
-// the env default); an unrecognized value is a hard error, never a silent fall-through.
+// parseGitHubTokenSource maps a WARD_GITHUB_TOKEN_SOURCE value to a source;
+// an unrecognized value is a hard error, never a silent fall-through.
 func parseGitHubTokenSource(s string) (githubTokenSource, error) {
 	switch strings.ToLower(strings.TrimSpace(s)) {
 	case "", "env":
@@ -177,12 +253,25 @@ func parseGitHubTokenSource(s string) (githubTokenSource, error) {
 	}
 }
 
+// defaultGitHubTokenSource picks the fleet default when WARD_GITHUB_TOKEN_SOURCE is
+// unset: prefer the bot-backed App path once its provisioning env is present, else env.
+func defaultGitHubTokenSource() githubTokenSource {
+	if strings.TrimSpace(os.Getenv(envGitHubAppID)) != "" && strings.TrimSpace(os.Getenv(envGitHubAppKeySSM)) != "" {
+		return githubTokenApp
+	}
+	return githubTokenEnv
+}
+
 // resolveGitHubToken provisions the GitHub token for clone/push + `gh`, dispatching on
 // WARD_GITHUB_TOKEN_SOURCE; owner/repo scope the app arm (ward#489/533/534).
 func (r *Runner) resolveGitHubToken(ctx context.Context, owner, repo string) (string, error) {
-	src, err := parseGitHubTokenSource(os.Getenv("WARD_GITHUB_TOKEN_SOURCE"))
+	raw := os.Getenv("WARD_GITHUB_TOKEN_SOURCE")
+	src, err := parseGitHubTokenSource(raw)
 	if err != nil {
 		return "", err
+	}
+	if strings.TrimSpace(raw) == "" {
+		src = defaultGitHubTokenSource()
 	}
 	switch src {
 	case githubTokenGH:

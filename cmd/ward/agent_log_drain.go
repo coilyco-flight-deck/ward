@@ -77,41 +77,30 @@ func clearDrainMarker(baseDir, name string) {
 	_ = os.Remove(drainMarkerPath(baseDir, name))
 }
 
-// sinkMode selects where a drained run lands (ward#532): signoz (local-exclusive,
-// full detail, no disk), disk (today's artifacts), or both. See docs.
+// sinkMode labels the requested sink. The release surface always writes the local
+// disk archive, but the legacy env knob is still read for compatibility.
 type sinkMode string
 
 const (
-	sinkSignoz sinkMode = "signoz"
-	sinkDisk   sinkMode = "disk"
-	sinkBoth   sinkMode = "both"
+	sinkDisk sinkMode = "disk"
 )
 
-// defaultSinkMode is the local-exclusive default: on Kai's machine the drain
-// ships full detail to the local SigNoz and persists nothing to disk (ward#532).
-const defaultSinkMode = sinkSignoz
+// defaultSinkMode keeps the local archive by default.
+const defaultSinkMode = sinkDisk
 
 // envSinkMode overrides the sink mode - the operator-local knob today, and the
 // seam a future ward-kdl config field slots behind (env > config > default).
 const envSinkMode = "WARD_AGENT_SINK"
 
-// resolveSinkMode reads the env override, else the local-exclusive default. An
-// unrecognized value falls back rather than failing (the sweep must not abort).
+// resolveSinkMode reads the env override. The return value is now informational,
+// because the drain itself always writes the local disk archive.
 func resolveSinkMode() sinkMode {
-	switch sinkMode(strings.ToLower(strings.TrimSpace(os.Getenv(envSinkMode)))) {
-	case sinkDisk:
-		return sinkDisk
-	case sinkBoth:
-		return sinkBoth
-	case sinkSignoz:
-		return sinkSignoz
-	default:
+	raw := sinkMode(strings.ToLower(strings.TrimSpace(os.Getenv(envSinkMode))))
+	if raw == "" {
 		return defaultSinkMode
 	}
+	return raw
 }
-
-func (m sinkMode) wantsDisk() bool   { return m == sinkDisk || m == sinkBoth }
-func (m sinkMode) wantsSignoz() bool { return m == sinkSignoz || m == sinkBoth }
 
 // metaEnvAllow is the strict allowlist of container env keys copied into meta.json.
 // Config.Env also carries --env-file secrets, so only these known-safe dims ride.
@@ -138,7 +127,7 @@ const (
 var reapOutcomeValues = []string{
 	outcomePushedMain, // clean integration + push to main
 	outcomeSalvage,    // conflict / scan finding / rejected or auth-failed push
-	outcomeNothing,    // the tree was already clean, nothing to reap
+	outcomeNothing,    // the tree was already clean or the workflow boundary was reached
 	outcomeUnknown,    // no reaper marker matched (crash, external stop, abort)
 }
 
@@ -150,6 +139,12 @@ func agentLogsDir() string {
 		home = os.TempDir()
 	}
 	return filepath.Join(home, config.AppDir(), agentLogsSubdir)
+}
+
+// agentLogsDisplayDir renders the host archive root in the container log stream
+// using the stable tilde path the operator can apply on the host.
+func agentLogsDisplayDir(name string) string {
+	return filepath.Join("~", config.AppDir(), agentLogsSubdir, name)
 }
 
 // agentLogsRedactedDir resolves the parallel redacted archive root (ward#526),
@@ -248,15 +243,10 @@ func (r *Runner) drainAgentRun(ctx context.Context, name, dir string) {
 	// Meta: safe dims from the inspected env allowlist + the inferred outcome.
 	meta := r.buildRunMeta(ctx, name, string(console))
 
-	if mode.wantsDisk() {
-		r.writeDiskArtifacts(name, dir, console, transcript, meta)
-		// The redacted view rides the same disk gate: whenever the raw archive lands, its
-		// scrubbed sibling lands too, for the director surface mount (ward#526).
-		r.writeRedactedArtifacts(name, console, transcript, meta)
-	}
-	if mode.wantsSignoz() {
-		r.shipToSignoz(ctx, console, transcript, meta)
-	}
+	r.writeDiskArtifacts(name, dir, console, transcript, meta)
+	// The redacted view rides the same disk gate: whenever the raw archive lands, its
+	// scrubbed sibling lands too, for the director surface mount (ward#526).
+	r.writeRedactedArtifacts(name, console, transcript, meta)
 	fmt.Fprintf(os.Stderr, "ward container: drained %s (sink %s, outcome %s)\n", name, mode, meta.Outcome)
 }
 
@@ -284,7 +274,7 @@ func (r *Runner) writeDiskArtifacts(name, dir string, console, transcript []byte
 }
 
 // writeRedactedArtifacts persists the redacted-at-rest view (ward#526) under the
-// agent-logs-redacted tree; scrubbers shared with the SigNoz export. Best-effort.
+// agent-logs-redacted tree; the same scrubbers feed the redacted transcript view.
 func (r *Runner) writeRedactedArtifacts(name string, console, transcript []byte, meta runMeta) {
 	dir := filepath.Join(agentLogsRedactedDir(), name)
 	if err := os.MkdirAll(dir, 0o755); err != nil {
