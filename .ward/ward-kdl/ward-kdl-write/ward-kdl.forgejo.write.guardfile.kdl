@@ -1,0 +1,291 @@
+// Forgejo WRITE tier - the middle of the read ⊂ write ⊂ admin chain (ward#240),
+// now carrying the real curated surface ported from the monolith (ward#278,
+// Phase 1). The bare `can create *` / `can edit *` wildcards are gone: this tier
+// lists the explicit create/edit leaves of the curated subset instead, so it
+// grants exactly the hand-hardened authoring verbs, not every create/edit-able
+// swagger resource.
+//
+// `inherit` pulls in every read-tier grant (the read leaves) AND every read-tier
+// `never` denial (cli-guard v0.72.0 makes deny inherit up), plus the read root's
+// spec/base-url singletons, which this file does not restate. So the label
+// policy-disable, the fork/archive/org denials, and `never delete issue` all stay
+// in force here without restatement. The result is read + curated create/edit: a
+// `ward-kdl-write` binary that authors content but never deletes it (no delete
+// leaf is compiled in at this tier - that is admin).
+//
+// Actions are child-local (not inherited, cli-guard v0.72.0), so the read-family
+// actions (list-all issue, view issue) are re-declared verbatim here to keep the
+// tiers monotonic, alongside the write-family actions (move-issue, comment
+// issue). See ../../../docs/ward-kdl/ward-kdl.forgejo.write.guardfile.md.
+wrap ward-kdl-write ops forgejo {
+    inherit "../ward-kdl-read/ward-kdl.forgejo.read.guardfile.kdl"
+    // Scope gate: re-declared per tier (harmless dedup) so it reads present in
+    // this tier's own guardfile and generated doc.
+    restrict owner matches example*
+    // Auth override (ward#331): the in-container broker shells this binary where
+    // there is no SSM, so write reads its token from env. See ../../../docs/broker.md.
+    auth header-token {
+        header Authorization
+        prefix "token "
+        value env FORGEJO_TOKEN
+    }
+    // repos: create/edit. delete is admin-only; fork/archive/unarchive stay denied
+    // by the inherited read-tier `never`s.
+    can create repo
+    can edit repo
+    can create org-repo {
+        op createOrgRepo
+        describe "create a repo inside an existing org (POST /orgs/{org}/repos); the org-scoped sibling of `create repo` (which targets /user/repos, a path the bot lacks write:user for). The example deployment token already carries write:organization, so this is a missing verb, not a missing scope. op pinned because a bare `create org-repo` also matches the deprecated alias. Org create/delete stay human-only; this creates repos within an org, not orgs themselves."
+    }
+    // org-labels: create/edit (mint/rename the org taxonomy). Repo-level label
+    // create/edit stay policy-disabled by the inherited read-tier `never`s (ward#107).
+    can create org-label
+    can edit org-label
+    // milestones: create/edit plus the close/reopen fixed-body toggles (the toggles
+    // resolve like edit and carry only `body`).
+    can create milestone
+    can edit milestone
+    can close milestone {
+        body state=closed
+    }
+    can reopen milestone {
+        body state=open
+    }
+    // issues: create/edit/comment plus the close/reopen fixed-body toggles. delete
+    // stays denied by the inherited read-tier `never delete issue`.
+    can create issue
+    can edit issue
+    can comment issue
+    can close issue {
+        body state=closed
+    }
+    can reopen issue {
+        body state=open
+    }
+    // releases, with the multipart asset upload beside them (upload-asset resolves
+    // as create-on the assets sub-collection). delete is admin-only.
+    can create release
+    can edit release
+    can upload-asset release
+    // issue-labels: the compound resource targets the issue's labels sub-collection;
+    // add/set/remove are the membership verbs (POST/PUT/DELETE).
+    can add issue-label
+    can set issue-label
+    can remove issue-label
+    // list-all issue: read-family action re-declared verbatim (child-local) so the
+    // write tier stays a superset of read (ward#278).
+    action list-all issue {
+        describe "List all issues by auto-paginating issue list."
+        input owner {
+            positional
+            required
+            help "repo owner"
+        }
+        input repo {
+            positional
+            required
+            help "repo name"
+        }
+        input state {
+            flag
+            help "whether issue is open or closed"
+        }
+        input labels {
+            flag
+            help "comma separated list of labels"
+        }
+        input q {
+            flag
+            help "search string"
+        }
+        input type {
+            flag
+            help "filter by type (issues / pulls)"
+        }
+        input milestones {
+            flag
+            help "comma separated list of milestone names or ids"
+        }
+        input since {
+            flag
+            help "Only show items updated after the given RFC3339 time"
+        }
+        input before {
+            flag
+            help "Only show items updated before the given RFC3339 time"
+        }
+        input created_by {
+            flag
+            help "Only show items created by the given user"
+        }
+        input assigned_by {
+            flag
+            help "Only show items assigned by the given user"
+        }
+        input mentioned_by {
+            flag
+            help "Only show items mentioning the given user"
+        }
+        input limit {
+            flag
+            help "page size of results"
+        }
+        input sort {
+            flag
+            help "Type of sort"
+        }
+        collect list issue {
+            args {
+                owner $owner
+                repo $repo
+                state $state
+                labels $labels
+                q $q
+                type $type
+                milestones $milestones
+                since $since
+                before $before
+                created_by $created_by
+                assigned_by $assigned_by
+                mentioned_by $mentioned_by
+                sort $sort
+            }
+            page-param page
+            limit-param limit
+            limit $limit
+            default-limit "50"
+            as issues
+        }
+    }
+    // view issue: read-family shadow action re-declared verbatim (child-local) so
+    // a write-tier view still returns the comment thread (ward#170), matching read.
+    action view issue {
+        describe "View an issue with its full comment thread (issue + comments). Shadows the generated `issue view` (same 3-arg signature) so a view never misses the comments - the ward#170 failure mode where an agent reads the body and skips the thread. ward#225: ward's CLI renders this through a lean projection that collapses every commenter to its login literal, so a multi-comment issue no longer repeats each commenter's full profile once per comment; the guardfile shape is unchanged."
+        input owner {
+            positional
+            required
+            help "repo owner"
+        }
+        input repo {
+            positional
+            required
+            help "repo name"
+        }
+        input index {
+            positional
+            required
+            help "issue number"
+        }
+        call view issue {
+            args {
+                owner $owner
+                repo $repo
+                index $index
+            }
+            as issue
+        }
+        call list issue-comment {
+            args {
+                owner $owner
+                repo $repo
+                index $index
+            }
+            as comments
+        }
+    }
+    // move-issue: copy title/body to a target repo, back-link, then CLOSE the
+    // source (never delete). Its `view issue` call resolves to the inherited leaf.
+    action move-issue {
+        describe "Move an issue to another repo (copy title/body, back-link, close source). Never deletes."
+        input source {
+            positional
+            required
+            help "source owner/name"
+        }
+        input index {
+            positional
+            required
+            help "source issue number"
+        }
+        input target {
+            positional
+            required
+            help "target owner/name"
+        }
+        call view issue {
+            args {
+                owner-repo $source
+                index $index
+            }
+            as src
+        }
+        call create issue {
+            args {
+                owner-repo $target
+                title $src.title
+                body $src.body
+            }
+            as dst
+        }
+        call comment issue {
+            args {
+                owner-repo $source
+                index $index
+                body $dst.html_url
+            }
+        }
+        call close issue {
+            args {
+                owner-repo $source
+                index $index
+            }
+        }
+    }
+    // comment issue: shadow the leaf so a comment on a CLOSED issue warns instead
+    // of posting silently - get-then-comment with a fail-when over state (ward#380).
+    action comment issue {
+        describe "Post a comment on an issue, warning when the issue is closed (ward#380). Shadows the generated `issue comment` leaf (same 3-arg + --body signature): it GETs the issue to read its state, posts the comment, then `fail-when`s on state=='closed' so commenting on a closed issue exits non-zero instead of passing silently. The comment IS still created - the non-zero exit and the issue body in the output are the warning that the target was closed, not a block on the post. Renders {comment, issue} together like every mount call action."
+        input owner {
+            positional
+            required
+            help "repo owner"
+        }
+        input repo {
+            positional
+            required
+            help "repo name"
+        }
+        input index {
+            positional
+            required
+            help "issue number"
+        }
+        input body {
+            flag
+            required
+            help "The body of the comment"
+        }
+        call get issue {
+            args {
+                owner $owner
+                repo $repo
+                index $index
+            }
+            as issue
+        }
+        call comment issue {
+            args {
+                owner $owner
+                repo $repo
+                index $index
+                body $body
+            }
+            as comment
+        }
+        fail-when "$issue.state == 'closed'"
+    }
+    // Back-link footer (ward#309): doc-link regenerates a `## See also` section
+    // into this guardfile's reference doc, so it survives every rebuild wipe-proof.
+    doc-link "../ward-kdl.md" ward-kdl.md "the build-time authoring layer behind this surface"
+    doc-link "../ward-kdl-surface.md" ward-kdl-surface.md "the full generated verb surface, area by area"
+}

@@ -7,6 +7,7 @@ import (
 	"net/http/httptest"
 	"strings"
 	"testing"
+	"time"
 
 	"forgejo.coilysiren.me/coilyco-flight-deck/cli-guard/cli/dispatch"
 )
@@ -193,7 +194,7 @@ func TestDirectorRunMetaParsesWorkflowAndReview(t *testing.T) {
 		"",
 		"<details><summary>details</summary>",
 		"",
-		"workflow: pull-requests-and-merge; review summary: passed: all green",
+		"workflow: pull-request-and-merge; review summary: passed: all green",
 		"checked head sha: abc123",
 		"status context: ci/build=success, ci/test=success",
 		"status state: success",
@@ -232,6 +233,38 @@ func TestDirectorRunMetaParsesWorkflowAndReview(t *testing.T) {
 	}
 	if !strings.Contains(doneBody, "checked head sha: abc123") || !strings.Contains(doneBody, "status context: ci/build=success, ci/test=success") {
 		t.Fatalf("done comment should name the checked head SHA and status context, got: %s", doneBody)
+	}
+}
+
+func TestDirectorMergeDecisionRejectsSkippedReview(t *testing.T) {
+	body := strings.Join([]string{
+		"WARD-OUTCOME: submitted",
+		"",
+		"<details><summary>details</summary>",
+		"",
+		"workflow: pull-request-and-merge; review summary: review gate skipped by ~/.ward/config.yaml default",
+		"checked head sha: abc123",
+		"status context: ci/build=success, ci/test=success",
+		"status state: success",
+		"",
+		"</details>",
+	}, "\n")
+	meta := parseDirectorRunMeta(body)
+	if !meta.HasOutcome || meta.Outcome.Status != "submitted" {
+		t.Fatalf("meta outcome = %+v, want submitted", meta)
+	}
+	if meta.Workflow != string(workflowPullRequestAndMerge) {
+		t.Fatalf("meta workflow = %q, want %q", meta.Workflow, workflowPullRequestAndMerge)
+	}
+	if meta.Review != "review gate skipped by ~/.ward/config.yaml default" {
+		t.Fatalf("meta review = %q, want skipped-review summary", meta.Review)
+	}
+	allowed, reason, _, _ := directorMergeDecision(dispatch.Issue{Title: "ship the fix", Body: "closes #729\n"}, 729, meta)
+	if allowed {
+		t.Fatal("skipped-review run: want deny, got allow")
+	}
+	if reason != "linked issue did not finish with WARD-OUTCOME: merge-ready" {
+		t.Fatalf("skipped-review reason = %q, want merge-ready denial", reason)
 	}
 }
 
@@ -333,7 +366,7 @@ func TestDirectorMergeEligibilityRequiresMatchingQAVerdict(t *testing.T) {
 	if allowed {
 		t.Fatal("unmarked PR: want deny, got allow")
 	}
-	if reason != "PR body missing ward.workflow: pull-requests-and-merge marker" {
+	if reason != "PR body missing ward.workflow: pull-request-and-merge marker" {
 		t.Fatalf("unmarked PR reason = %q, want missing-marker denial", reason)
 	}
 }
@@ -512,10 +545,8 @@ func directorMergeEligibilityFixtureWithBranchProtection(t *testing.T, headSHA s
 }
 
 func TestDirectorMergeEligibilityRejectsMergeConflict(t *testing.T) {
-	cl := &forgejoClient{}
-
 	allowed, reason, linked, meta := directorMergeEligibility(context.Background(), "coilyco-flight-deck", "ward",
-		directorPullRequest{Issue: dispatch.Issue{Number: 729, Title: "ship the fix", Body: "closes #729\n" + directorMergeWorkflowMarker + "\n"}, Mergeable: false, MergeableKnown: true}, cl, cl)
+		directorPullRequest{Issue: dispatch.Issue{Number: 729, Title: "ship the fix", Body: "closes #729\n" + directorMergeWorkflowMarker + "\n"}, Mergeable: false, MergeableKnown: true}, &forgejoClient{}, mergeConflictTracker{})
 	if allowed {
 		t.Fatal("conflicting PR: want deny, got allow")
 	}
@@ -527,6 +558,62 @@ func TestDirectorMergeEligibilityRejectsMergeConflict(t *testing.T) {
 	}
 	if meta.HasOutcome {
 		t.Fatalf("conflicting PR should not need issue metadata, got %+v", meta)
+	}
+}
+
+type mergeConflictTracker struct{}
+
+func (mergeConflictTracker) getIssue(context.Context, string, string, int) (*dispatch.Issue, error) {
+	return &dispatch.Issue{}, nil
+}
+
+func (mergeConflictTracker) listIssueComments(context.Context, string, string, int) ([]issueComment, error) {
+	return nil, context.Canceled
+}
+
+func (mergeConflictTracker) createIssue(context.Context, string, string, string, string) (int, error) {
+	return 0, nil
+}
+
+func (mergeConflictTracker) commentIssue(context.Context, string, string, int, string) error {
+	return nil
+}
+func (mergeConflictTracker) closeIssue(context.Context, string, string, int) error  { return nil }
+func (mergeConflictTracker) reopenIssue(context.Context, string, string, int) error { return nil }
+func (mergeConflictTracker) lockIssue(context.Context, string, string, int) error   { return nil }
+func (mergeConflictTracker) unlockIssue(context.Context, string, string, int) error { return nil }
+
+func TestDirectorMergeConflictReasonFromComments(t *testing.T) {
+	now := time.Date(2026, 7, 10, 18, 0, 0, 0, time.UTC)
+	pr := directorPullRequest{
+		Issue:     dispatch.Issue{Number: 729, Title: "ship the fix", Body: "closes #729\n" + directorMergeWorkflowMarker + "\n"},
+		UpdatedAt: now.Add(-30 * time.Minute),
+	}
+	active := directorMergeConflictReasonFromComments(pr, nil, now)
+	if !strings.Contains(active, "active worker branch with no WARD-OUTCOME yet") || !strings.Contains(active, "30m ago") {
+		t.Fatalf("active reason = %q, want active worker classification", active)
+	}
+
+	pr.UpdatedAt = now.Add(-3 * time.Hour)
+	stale := directorMergeConflictReasonFromComments(pr, nil, now)
+	if !strings.Contains(stale, "stale worker branch with no WARD-OUTCOME yet") || !strings.Contains(stale, "3h0m ago") {
+		t.Fatalf("stale reason = %q, want stale worker classification", stale)
+	}
+
+	blocked := directorMergeConflictReasonFromComments(pr, []issueComment{{
+		Body: strings.Join([]string{
+			"WARD-OUTCOME: blocked 🛑",
+			"",
+			"<details><summary>details</summary>",
+			"",
+			"workflow: pull-requests-and-merge; review summary: review gate skipped by ~/.ward/config.yaml default",
+			"",
+			"</details>",
+		}, "\n"),
+		CreatedAt: now.Add(-time.Minute),
+	}}, now)
+	if !strings.Contains(blocked, "linked issue is blocked") || !strings.Contains(blocked, "review gate skipped by ~/.ward/config.yaml default") {
+		t.Fatalf("blocked reason = %q, want review-blocked classification", blocked)
 	}
 }
 

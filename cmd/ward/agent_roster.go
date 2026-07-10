@@ -43,6 +43,9 @@ type agentRoleDefinition struct {
 	Posture        agentRolePosture
 	Guardfiles     fleetconfig.Guardfiles
 	AgentOverlays  map[string]fleetconfig.RoleAgentOverride
+	// MergeAuthority lists the workflow modes this role may merge a PR under
+	// (ward#1067): embedded product data, never a fleet overlay; absent = never merges.
+	MergeAuthority []workflowMode
 }
 
 // cloneRoleOverlays copies a role's sparse agent overlay map so callers can
@@ -159,7 +162,7 @@ func agentRoleDefinitions() (map[string]agentRoleDefinition, error) {
 
 // agentMetaCommands are agent subcommands that are NOT startup roles.
 // `roster`, `reap`, `stop`/`list`, and `review` are meta verbs, so roster skips them.
-var agentMetaCommands = map[string]bool{"roster": true, "reap": true, "stop": true, "list": true, "logs": true, "review": true}
+var agentMetaCommands = map[string]bool{"roster": true, "reap": true, "stop": true, "list": true, "logs": true, "review": true, "pr": true}
 
 // agentRosterRow is one rendered roster entry: the role, its tagline, its modes, and
 // the per-role detail doc it links to.

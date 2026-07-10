@@ -1,0 +1,263 @@
+// Forgejo READ tier - the base of the read ⊂ write ⊂ admin chain (ward#240),
+// now carrying the real curated surface ported from the monolith
+// ../ward-kdl.forgejo.guardfile.kdl (ward#278, Phase 1). The bare `can get *` /
+// `can list *` wildcards are gone: they over-granted every get/list-able swagger
+// resource and dropped every curated construct. This tier lists the explicit
+// read-side leaves of the curated subset instead, so the surface is exactly the
+// hand-hardened one (ward#107/#109/#170/#218/#225/#368), not the whole spec.
+//
+// This file is the singleton-bearing root of the chain: it declares the `spec`,
+// `base-url`, and `auth` the write and admin tiers inherit (a child inherits a
+// singleton only when it declares none of its own). It is ALSO the single home
+// for every `never` denial: cli-guard v0.72.0 makes `never`/`cannot` inherit up
+// the chain (deny-low posture, supersedes cli-guard#160), so a denial declared
+// once here holds at write and admin too - no per-tier restatement. The curated
+// denials therefore all live below, beside the read verb family each shadows.
+//
+// Auto-resolution per cli-guard#147. See
+// ../../../docs/ward-kdl/ward-kdl.forgejo.read.guardfile.md.
+wrap ward-kdl-read ops forgejo {
+    spec forgejo.swagger.v1.json
+    base-url "git.example.com/api/v1"
+    // Auth as an example bot, not a personal PAT. Token + scopes are deployment
+    // specific and belong to the selected bundle, not the baked default.
+    auth header-token {
+        header Authorization
+        prefix "token "
+        value ssm "/example/forgejo/api-token"
+    }
+    // Scope gate: every leaf whose path carries {owner} must name an example owner.
+    // Re-declared per tier (harmless dedup) so it reads present in each tier's doc.
+    restrict owner matches example*
+    // repos: read plus the cross-repo `search` finder. Fork and archive/unarchive
+    // are denied below as human-only toggles; the denials inherit up to write/admin.
+    can get repo
+    can search repo {
+        describe "cross-repo repo finder (GET /repos/search)"
+    }
+    never fork repo {
+        message "forking is a human-only operation; fork in the web UI"
+    }
+    never archive repo {
+        message "archive/unarchive flips a repo's lifecycle; do it in the web UI"
+    }
+    never unarchive repo {
+        message "archive/unarchive flips a repo's lifecycle; do it in the web UI"
+    }
+    // orgs: read-only. Org create and delete are human-only; the denials inherit
+    // up to write/admin.
+    can get org
+    can list org
+    never create org {
+        message "org creation is a human-only operation"
+    }
+    never delete org {
+        message "org deletion is irreversible and human-only"
+    }
+    can list org-repo {
+        op orgListRepos
+        describe "list the repos an org owns (GET /orgs/{org}/repos). The route survey (ward#92) catalogs each primary org's repos through this leaf; `user-repo list` covers the one primary owner that is a user, not an org."
+    }
+    can list user-repo {
+        op userListRepos
+        describe "list the repos a user owns (GET /users/{username}/repos). coilysiren is a user, not an org, so the route survey reaches its repos here rather than through `org-repo list`. Read-only, the survey's other half."
+    }
+    // search finders: global read-only finders keyed on a query string, with no
+    // {owner}/{org} path param to gate - server-wide reads, no new behavior (ward#368).
+    can search user {
+        describe "user finder (GET /users/search)"
+    }
+    can search topic {
+        describe "topic finder (GET /topics/search)"
+    }
+    // org-labels: org-level labels (/orgs/{org}/labels); the `org` ancestor scopes
+    // them away from repo labels. Read side here; create/edit/delete are up-tier.
+    can get org-label
+    can list org-label
+    // repo-labels: repo-scoped label create/edit are policy-disabled (ward#107).
+    // Mint/rename via org-label; denials inherit up. op pinned (bare `label` = org path).
+    never create label {
+        op issueCreateLabel
+        describe "op pinned because a bare `label` resource otherwise resolves to the shallower org path. A repo-level label (POST/PATCH /repos/{owner}/{repo}/labels) that duplicates an org label silently shadows it; that path minted the off-palette dup P0-P4 labels across 26 repos (340 tags re-pointed, 67 labels deleted - coilyco-bridge/coily#248)."
+        message "repo-level label create is policy-disabled (ward#107): it mints labels that duplicate and shadow the org P0-P4 taxonomy. Create org labels with `create org-label`."
+    }
+    never edit label {
+        op issueEditLabel
+        message "repo-level label edit is policy-disabled (ward#107): edit the org taxonomy with `edit org-label`."
+    }
+    // org-members: the org membership roster (GET /orgs/{org}/members); the `org`
+    // ancestor scopes it like the org-label/org-repo siblings. Read-only (ward#368).
+    can list org-member {
+        describe "org member list (GET /orgs/{org}/members)"
+    }
+    // milestones: read side. create/edit/delete and the close/reopen toggles are
+    // up-tier.
+    can get milestone
+    can list milestone
+    // issues: read side plus the cross-repo `search` finder. delete is denied
+    // (close instead, up-tier); the denial inherits up.
+    can get issue
+    can view issue
+    can list issue
+    can search issue
+    never delete issue {
+        message "issue deletion is irreversible; close it instead (move-issue does this)"
+    }
+    can list issue-comment {
+        op issueGetComments
+        describe "the comments sub-collection GET, pinned by op (the convention resolves `list issue-comment` against issueGetComments poorly). The `view issue` shadow action below chains this so a view returns the thread."
+    }
+    // repo refs: read-only list sub-collections (commits/branches/tags), each
+    // {owner}-scoped by the coily* gate above; native GETs, no new behavior (ward#368).
+    can list commit {
+        op repoGetAllCommits
+        describe "commit list (GET /repos/{owner}/{repo}/commits). op pinned because the operationId is repoGetAllCommits - a `get`-shaped id the `list commit` convention does not reach."
+    }
+    can list branch {
+        op repoListBranches
+        describe "branch list (GET /repos/{owner}/{repo}/branches). op pinned because a bare `list branch` otherwise resolves to repoListBranchProtection (GET .../branch_protections), the shallower branch-prefixed match."
+    }
+    can list tag {
+        describe "tag list (GET /repos/{owner}/{repo}/tags)"
+    }
+    // releases: read side. create/edit/upload/delete are up-tier.
+    can get release
+    can list release
+    // pulls: not surfaced through ward. Read them in the Forgejo web UI. The
+    // denials inherit up so no tier exposes a pr verb.
+    never view pr {
+        message "pull requests are not exposed through ward; read them in the web UI"
+    }
+    never list pr {
+        message "pull requests are not exposed through ward; read them in the web UI"
+    }
+    // issue-labels: read side (the attach/set/remove membership verbs are up-tier).
+    can list issue-label
+    // actions tasks: the read-only CI-run listing surface.
+    can list tasks
+    // list-all issue: auto-paginate the issue list (read-family). Actions are
+    // child-local (cli-guard v0.72.0), so it is re-declared in write/admin (ward#278).
+    action list-all issue {
+        describe "List all issues by auto-paginating issue list."
+        input owner {
+            positional
+            required
+            help "repo owner"
+        }
+        input repo {
+            positional
+            required
+            help "repo name"
+        }
+        input state {
+            flag
+            help "whether issue is open or closed"
+        }
+        input labels {
+            flag
+            help "comma separated list of labels"
+        }
+        input q {
+            flag
+            help "search string"
+        }
+        input type {
+            flag
+            help "filter by type (issues / pulls)"
+        }
+        input milestones {
+            flag
+            help "comma separated list of milestone names or ids"
+        }
+        input since {
+            flag
+            help "Only show items updated after the given RFC3339 time"
+        }
+        input before {
+            flag
+            help "Only show items updated before the given RFC3339 time"
+        }
+        input created_by {
+            flag
+            help "Only show items created by the given user"
+        }
+        input assigned_by {
+            flag
+            help "Only show items assigned by the given user"
+        }
+        input mentioned_by {
+            flag
+            help "Only show items mentioning the given user"
+        }
+        input limit {
+            flag
+            help "page size of results"
+        }
+        input sort {
+            flag
+            help "Type of sort"
+        }
+        collect list issue {
+            args {
+                owner $owner
+                repo $repo
+                state $state
+                labels $labels
+                q $q
+                type $type
+                milestones $milestones
+                since $since
+                before $before
+                created_by $created_by
+                assigned_by $assigned_by
+                mentioned_by $mentioned_by
+                sort $sort
+            }
+            page-param page
+            limit-param limit
+            limit $limit
+            default-limit "50"
+            as issues
+        }
+    }
+    // view issue: shadow the `issue view` leaf so a view returns issue + comment
+    // thread (ward#170). Read-family; re-declared up-tier (actions are child-local).
+    action view issue {
+        describe "View an issue with its full comment thread (issue + comments). Shadows the generated `issue view` (same 3-arg signature) so a view never misses the comments - the ward#170 failure mode where an agent reads the body and skips the thread. ward#225: ward's CLI renders this through a lean projection that collapses every commenter to its login literal, so a multi-comment issue no longer repeats each commenter's full profile once per comment; the guardfile shape is unchanged."
+        input owner {
+            positional
+            required
+            help "repo owner"
+        }
+        input repo {
+            positional
+            required
+            help "repo name"
+        }
+        input index {
+            positional
+            required
+            help "issue number"
+        }
+        call view issue {
+            args {
+                owner $owner
+                repo $repo
+                index $index
+            }
+            as issue
+        }
+        call list issue-comment {
+            args {
+                owner $owner
+                repo $repo
+                index $index
+            }
+            as comments
+        }
+    }
+    // Back-link footer (ward#309): doc-link regenerates a `## See also` section
+    // into this guardfile's reference doc, so it survives every rebuild wipe-proof.
+    doc-link "../ward-kdl.md" ward-kdl.md "the build-time authoring layer behind this surface"
+    doc-link "../ward-kdl-surface.md" ward-kdl-surface.md "the full generated verb surface, area by area"
+}

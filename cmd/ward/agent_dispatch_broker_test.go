@@ -41,6 +41,10 @@ func TestDispatchBrokerValidatesNarrowAPI(t *testing.T) {
 	if err := validateDispatchBrokerRequest(ok); err != nil {
 		t.Errorf("valid engineer dispatch refused: %v", err)
 	}
+	pr := dispatchBrokerRequest{Role: "engineer", Argv: []string{"engineer", "coilyco-flight-deck/ward#1", "--pr", "--harness", "claude"}}
+	if err := validateDispatchBrokerRequest(pr); err != nil {
+		t.Errorf("valid engineer PR dispatch refused: %v", err)
+	}
 	advisor := dispatchBrokerRequest{Role: "advisor", Argv: []string{"advisor", "coilyco-flight-deck/ward#1", "--harness", "goose", "what changed?"}}
 	if err := validateDispatchBrokerRequest(advisor); err != nil {
 		t.Errorf("valid advisor dispatch refused: %v", err)
@@ -1292,6 +1296,77 @@ func TestCommentDeferredDispatch(t *testing.T) {
 	} {
 		if !strings.Contains(body, want) {
 			t.Errorf("deferred comment missing %q\n%s", want, body)
+		}
+	}
+}
+
+func TestStopFailedDispatchContainerStopsTheAttemptedEngineer(t *testing.T) {
+	dir := t.TempDir()
+	logPath := filepath.Join(dir, "docker.log")
+	name := issueScopedContainerName(roleEngineer, modeCodex, targetRepo{Owner: "coilyco-flight-deck", Name: "ward"}, 689)
+	script := filepath.Join(dir, "docker")
+	body := "#!/bin/sh\n" +
+		"printf '%s\\n' \"$*\" >> \"" + logPath + "\"\n" +
+		"case \"$1\" in\n" +
+		"  ps) printf '%s\\n' '" + name + "' ;;\n" +
+		"  stop) exit 0 ;;\n" +
+		"esac\n" +
+		"exit 0\n"
+	if err := os.WriteFile(script, []byte(body), 0o755); err != nil { //nolint:gosec
+		t.Fatalf("write fake docker: %v", err)
+	}
+	r := &Runner{Runner: &shell.Runner{
+		Stdout:  &bytes.Buffer{},
+		Stderr:  &bytes.Buffer{},
+		Resolve: func(string) (string, error) { return script, nil },
+	}}
+
+	r.stopFailedDispatchContainer(context.Background(), modeCodex, agentIssueRef{Owner: "coilyco-flight-deck", Repo: "ward", Number: 689}, roleEngineer, name)
+
+	log := readFile(t, logPath)
+	if !strings.Contains(log, "ps --filter name=^"+name+"$ --format {{.Names}}") {
+		t.Fatalf("stop helper did not probe the running container:\n%s", log)
+	}
+	if !strings.Contains(log, "stop "+name) {
+		t.Fatalf("stop helper did not stop the attempted container:\n%s", log)
+	}
+}
+
+// TestCommentDeferredReleaseAssetsDispatch writes the backpressure comment that
+// supersedes a stale reservation when the selected release lacks its asset.
+func TestCommentDeferredReleaseAssetsDispatch(t *testing.T) {
+	r := &Runner{}
+	ref := agentIssueRef{Owner: "coilyco-flight-deck", Repo: "ward", Number: 903}
+	f := &fakeLockForge{}
+	req := dispatchBrokerRequest{
+		Role: "engineer",
+		Argv: []string{"engineer", ref.String(), "--harness", "codex", "--skip-preflight"},
+	}
+	assetErr := newReleaseAssetsNotReadyError("v0.544.0", "ward-linux-arm64", "Not Found")
+
+	r.commentDeferredReleaseAssetsDispatch(context.Background(), f, modeCodex, ref, req, "/tmp/ward/dispatch.log", assetErr)
+
+	if f.unlocked != 1 {
+		t.Fatalf("unlockIssue called %d times, want 1", f.unlocked)
+	}
+	if len(f.comments) != 1 {
+		t.Fatalf("commentIssue called %d times, want 1", len(f.comments))
+	}
+	body := f.comments[0]
+	for _, want := range []string{
+		agentReservationReleaseMarker,
+		agentNeedsRedispatchMarker,
+		"WARD-DISPATCH: deferred ⏸",
+		"release-assets-not-ready details",
+		"Attempted harness: `codex`",
+		"Attempted run: `ward agent engineer coilyco-flight-deck/ward#903 --harness codex --skip-preflight`",
+		"Container: `engineer-codex-ward-903`",
+		"Host log: `/tmp/ward/dispatch.log`",
+		"Release assets: `ward container: release-assets-not-ready/deferred: v0.544.0 missing ward-linux-arm64: Not Found`",
+		"Retry: the issue stays queued until the release publishes the missing platform assets, then the director can try again.",
+	} {
+		if !strings.Contains(body, want) {
+			t.Errorf("release-assets deferred comment missing %q\n%s", want, body)
 		}
 	}
 }

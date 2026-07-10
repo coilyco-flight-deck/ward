@@ -223,6 +223,13 @@ func TestForgejoGraftInventory(t *testing.T) {
 	} else if !hasFlagNamed(comment, flagBodyFile) {
 		t.Errorf("graft 3 gone: `issue comment` no longer accepts --%s", flagBodyFile)
 	}
+	pr := subCommandNamed(forgejo, "pr")
+	if pr == nil {
+		t.Fatal("forgejo group has no `pr` subtree")
+	}
+	if subCommandNamed(pr, "edit") == nil {
+		t.Error("pr edit leaf absent")
+	}
 	actions := subCommandNamed(forgejo, "actions")
 	if actions == nil {
 		t.Fatal("graft 4: `actions` group absent")
