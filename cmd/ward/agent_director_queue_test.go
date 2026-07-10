@@ -107,6 +107,16 @@ func TestDirectorQueueClassifiesRequestedStates(t *testing.T) {
 			wantState: directorQueueStateDoneOpen,
 			wantAct:   directorQueueActionCloseDone,
 		},
+		{
+			name: "done pr",
+			kind: backlogKindPullRequest,
+			comments: []issueComment{{
+				Body:      "WARD-OUTCOME: done ✅\n\n<details><summary>details</summary>\n\nmerged and pushed\n\n</details>",
+				CreatedAt: now.Add(-10 * time.Minute),
+			}},
+			wantState: directorQueueStateDoneOpen,
+			wantAct:   directorQueueActionWait,
+		},
 	}
 	for _, tc := range cases {
 		t.Run(tc.name, func(t *testing.T) {
@@ -122,6 +132,13 @@ func TestDirectorQueueClassifiesRequestedStates(t *testing.T) {
 			}
 			if got.State != tc.wantState || got.Action != tc.wantAct {
 				t.Fatalf("state/action = %q/%q, want %q/%q", got.State, got.Action, tc.wantState, tc.wantAct)
+			}
+			wantKind := backlogKindIssue
+			if tc.kind == backlogKindPullRequest {
+				wantKind = backlogKindPullRequest
+			}
+			if got.Kind != wantKind {
+				t.Fatalf("Kind = %q, want canonical backlog kind %q", got.Kind, wantKind)
 			}
 		})
 	}
@@ -142,6 +159,7 @@ func TestRenderDirectorQueueStatusShowsNextActions(t *testing.T) {
 			repo: {
 				{Issue: dispatch.Issue{Number: 4, Title: "submitted pr", Labels: []string{"P0"}}},
 				{Issue: dispatch.Issue{Number: 5, Title: "merge-ready pr", Labels: []string{"P0"}}},
+				{Issue: dispatch.Issue{Number: 6, Title: "done pr", Labels: []string{"P0"}}},
 			},
 		},
 		comments: map[string][]issueComment{
@@ -165,6 +183,10 @@ func TestRenderDirectorQueueStatusShowsNextActions(t *testing.T) {
 				Body:      "WARD-OUTCOME: merge-ready - review passed, handoff to director",
 				CreatedAt: now.Add(-10 * time.Minute),
 			}},
+			repo + "#6": {{
+				Body:      "WARD-OUTCOME: done ✅\n\n<details><summary>details</summary>\n\nmerged\n\n</details>",
+				CreatedAt: now.Add(-10 * time.Minute),
+			}},
 		},
 	}
 	out, err := renderDirectorQueueStatus(context.Background(), cl, []string{repo}, 50)
@@ -177,10 +199,15 @@ func TestRenderDirectorQueueStatusShowsNextActions(t *testing.T) {
 		directorQueueActionMergePR,
 		directorQueueActionCloseDone,
 		directorQueueActionWait,
+		"PR     " + repo + "#6",
+		"issue  " + repo + "#3",
 	} {
 		if !strings.Contains(out, want) {
 			t.Fatalf("rendered queue missing %q\n%s", want, out)
 		}
+	}
+	if strings.Contains(out, directorQueueActionCloseDone+"=2") {
+		t.Fatalf("done PR misclassified as closeable stale-open issue\n%s", out)
 	}
 }
 

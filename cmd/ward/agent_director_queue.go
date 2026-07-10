@@ -38,6 +38,8 @@ type directorQueueClient interface {
 type directorQueueItem struct {
 	Repo   string
 	Number int
+	// Kind is the canonical backlog kind (backlogKindIssue/backlogKindPullRequest),
+	// never the display prefix - formatting derives the prefix at render time.
 	Kind   string
 	Tier   string
 	Title  string
@@ -175,7 +177,7 @@ func formatDirectorQueueStatus(repos []string, items []directorQueueItem) string
 			currentAction = item.Action
 			fmt.Fprintf(&b, "%s (%d)\n", currentAction, counts[currentAction])
 		}
-		fmt.Fprintf(&b, "  %-6s %s#%d [%-2s] %s - %s\n", item.Kind, item.Repo, item.Number, tierOrDash(item.Tier), item.State, backlogTruncate(item.Title, 72))
+		fmt.Fprintf(&b, "  %-6s %s#%d [%-2s] %s - %s\n", backlogEntryKindPrefix(item.Kind), item.Repo, item.Number, tierOrDash(item.Tier), item.State, backlogTruncate(item.Title, 72))
 		fmt.Fprintf(&b, "    next: %s\n", item.Action)
 		if strings.TrimSpace(item.Note) != "" {
 			fmt.Fprintf(&b, "    note: %s\n", item.Note)
@@ -188,7 +190,7 @@ func classifyDirectorQueueIssue(repo string, issue backlogIssue, comments []issu
 	item := directorQueueItem{
 		Repo:   repo,
 		Number: issue.Number,
-		Kind:   backlogEntryKindPrefix(issue.Kind),
+		Kind:   backlogKindOf(issue.Kind),
 		Tier:   backlogTierOf(issue.Labels),
 		Title:  issue.Title,
 	}
@@ -227,7 +229,7 @@ func classifyDirectorQueuePR(repo string, pr directorPullRequest, comments []iss
 	item := directorQueueItem{
 		Repo:   repo,
 		Number: pr.Number,
-		Kind:   backlogEntryKindPrefix(backlogKindPullRequest),
+		Kind:   backlogKindPullRequest,
 		Tier:   backlogTierOf(pr.Labels),
 		Title:  pr.Title,
 	}
