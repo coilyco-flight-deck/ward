@@ -31,7 +31,22 @@ jobs:
         run: golangci-lint run ./...
       - name: Alert Telegram on main failure
         if: ${{ failure() && github.ref == 'refs/heads/main' }}
-        uses: coilyco-flight-deck/agentic-os/actions/telegram-alert@main
-        with:
-          bot-token: ${{ secrets.TELEGRAM_BOT_TOKEN }}
-          chat-id: ${{ secrets.TELEGRAM_RED_CHAT_ID }}
+        shell: bash
+        env:
+          TELEGRAM_BOT_TOKEN: ${{ secrets.TELEGRAM_BOT_TOKEN }}
+          TELEGRAM_RED_CHAT_ID: ${{ secrets.TELEGRAM_RED_CHAT_ID }}
+        run: |
+          set -euo pipefail
+          if [ -z "${TELEGRAM_BOT_TOKEN:-}" ] || [ -z "${TELEGRAM_RED_CHAT_ID:-}" ]; then
+            echo "::warning::telegram alert skipped because one or more secrets are missing" >&2
+            exit 0
+          fi
+          message=$(printf '%s\n%s\n%s' \
+            "ward test workflow failed on main" \
+            "repo: ${GITHUB_REPOSITORY}" \
+            "run: ${GITHUB_SERVER_URL}/${GITHUB_REPOSITORY}/actions/runs/${GITHUB_RUN_ID}")
+          curl -fsS -X POST \
+            "https://api.telegram.org/bot${TELEGRAM_BOT_TOKEN}/sendMessage" \
+            -d chat_id="${TELEGRAM_RED_CHAT_ID}" \
+            --data-urlencode "text=${message}" \
+            -d disable_web_page_preview=true
