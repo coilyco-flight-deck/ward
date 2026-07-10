@@ -30,12 +30,11 @@ func TestRoleOverlayResolvesModelEffort(t *testing.T) {
 		claudeModel, claudeEffort, codexModel, codexEffort string
 	}{
 		// director: strongest model at 1M context, high effort (heartbeat lane).
-		{"director", "claude-opus-4-8[1m]", "high", "gpt-5.5", "medium"},
+		{"director", "claude-opus-4-8[1m]", "high", "gpt-5.5", "high"},
 		// engineer: cheaper/faster model at the same medium effort (parallel fan-out).
 		{"engineer", "claude-fable-5", "medium", "gpt-5.4-mini", "medium"},
-		// advisor sets no overlay: it inherits the flat per-agent fleet default
-		// (claude model empty -> bare launch; codex gpt-5.4/medium).
-		{"advisor", "", "", "gpt-5.4", "medium"},
+		// advisor mirrors the director overlay for both supported frontier agents.
+		{"advisor", "claude-opus-4-8[1m]", "high", "gpt-5.5", "high"},
 		// an unknown/empty role carries no overlay: the flat default stands.
 		{"", "", "", "gpt-5.4", "medium"},
 	}
@@ -97,7 +96,7 @@ func TestRoleOverlayBadConfigRefDoesNotAffectCoreDefaults(t *testing.T) {
 	if e.ClaudeModel != "claude-opus-4-8[1m]" || e.ClaudeEffort != "high" {
 		t.Fatalf("bad ref disturbed the baked director overlay for claude: %+v", e)
 	}
-	if e.CodexModel != "gpt-5.5" || e.CodexEffort != "medium" {
+	if e.CodexModel != "gpt-5.5" || e.CodexEffort != "high" {
 		t.Fatalf("bad ref disturbed the baked director overlay for codex: %+v", e)
 	}
 
