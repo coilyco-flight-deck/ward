@@ -136,6 +136,46 @@ func TestGetPullRequestReadsBodyLargerThan4096(t *testing.T) {
 	}
 }
 
+func TestGetPullRequestReportsNotFoundWithoutRaw404(t *testing.T) {
+	srv := httptest.NewServer(http.HandlerFunc(func(w http.ResponseWriter, _ *http.Request) {
+		w.WriteHeader(http.StatusNotFound)
+		_, _ = w.Write([]byte(`{"message":"The target couldn't be found."}`))
+	}))
+	defer srv.Close()
+
+	cl := &forgejoClient{baseURL: srv.URL, token: "secret"}
+	_, err := cl.getPullRequest(context.Background(), "coilyco-flight-deck", "ward", 865)
+	if err == nil {
+		t.Fatal("getPullRequest: want error, got nil")
+	}
+	if strings.Contains(err.Error(), "404 Not Found") {
+		t.Fatalf("getPullRequest leaked raw 404 wording: %q", err)
+	}
+	if !strings.Contains(err.Error(), "pull request coilyco-flight-deck/ward#865 not found") {
+		t.Fatalf("getPullRequest not-found wording = %q", err)
+	}
+}
+
+func TestGetPullRequestMergeabilityReportsNotFoundWithoutRaw404(t *testing.T) {
+	srv := httptest.NewServer(http.HandlerFunc(func(w http.ResponseWriter, _ *http.Request) {
+		w.WriteHeader(http.StatusNotFound)
+		_, _ = w.Write([]byte(`{"message":"The target couldn't be found."}`))
+	}))
+	defer srv.Close()
+
+	cl := &forgejoClient{baseURL: srv.URL, token: "secret"}
+	_, err := cl.getPullRequestMergeability(context.Background(), "coilyco-flight-deck", "ward", 866)
+	if err == nil {
+		t.Fatal("getPullRequestMergeability: want error, got nil")
+	}
+	if strings.Contains(err.Error(), "404 Not Found") {
+		t.Fatalf("getPullRequestMergeability leaked raw 404 wording: %q", err)
+	}
+	if !strings.Contains(err.Error(), "pull request coilyco-flight-deck/ward#866 not found") {
+		t.Fatalf("getPullRequestMergeability not-found wording = %q", err)
+	}
+}
+
 // TestForgejoClientInvocationsUseAcceptedFlags is the ward#404 skew guard: every
 // flag forgejoClient passes on an `ops forgejo` verb must be one the verb accepts.
 func TestForgejoClientInvocationsUseAcceptedFlags(t *testing.T) {

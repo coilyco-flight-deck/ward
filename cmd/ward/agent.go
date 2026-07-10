@@ -648,6 +648,9 @@ trusted owner.`, agentHarnessChoices(), defaultAgentMode()),
 			// stop is a control verb, not a startup role: a director surface stops
 			// one running engineer through the dispatch broker (ward#627). docs/agent-stop.md.
 			agentStopCommand(),
+			// list is a read verb, not a startup role: a director surface lists
+			// running engineer containers through the dispatch broker. docs/agent-list.md.
+			agentListCommand(),
 			// logs is a read verb, not a startup role: a director surface reads one
 			// engineer's logs through the dispatch broker. docs/agent-logs.md.
 			agentLogsCommand(),
@@ -1703,7 +1706,7 @@ func carryingLine(label string, ref agentIssueRef, title string) string {
 
 // launchAgentContainer turns a resolved (ref, title, seed) into the container plan and
 // fires it detached - the shared tail of engineer, freeform task, and route (ward#356).
-func (r *Runner) launchAgentContainer(ctx context.Context, c *cli.Command, mode containerMode, surface string, w resolvedWork, justification string) error { //nolint:gocognit,gocyclo,cyclop,funlen
+func (r *Runner) launchAgentContainer(ctx context.Context, c *cli.Command, mode containerMode, surface string, w resolvedWork, justification string) error { //nolint:funlen,gocognit,gocyclo,cyclop
 	label := agentCmdline(mode, surface)
 	ref, title, seed := w.Ref, w.Title, w.Seed
 

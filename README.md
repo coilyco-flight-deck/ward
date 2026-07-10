@@ -25,7 +25,7 @@ Wraps a project's dev verbs behind cli-guard's policy gate. Every ward-managed r
 
 **Enforcement depth is platform-conditional.** On **Linux** sandboxed verbs run inside cli-guard's sandbox jail, so the gate holds at arbitrary process depth. On **macOS and Windows** - what the brew-first path predominantly serves - enforcement is **depth-0** (the harness allowlist only): a child spawned by a gated verb can invoke a wrapped tool without re-entering the gate, a known limitation by design. See [`docs/exec-verb.md`](docs/exec-verb.md) (Enforcement depth by platform).
 
-Each repo declares its verbs (and an optional `security:` policy) in [`.ward/ward.yaml`](.ward/ward.yaml). For the field-by-field schema see [`docs/ward-yaml.md`](docs/ward-yaml.md). The current `setup` and `doctor` surfaces are paused for release planning and inventoried in [`docs/ward-setup-doctor-inventory.md`](docs/ward-setup-doctor-inventory.md); a smaller replacement will be rebirthed immediately before release.
+Each repo declares its verbs (and an optional `security:` policy) in [`.ward/ward.yaml`](.ward/ward.yaml). For the field-by-field schema see [`docs/ward-yaml.md`](docs/ward-yaml.md). `ward setup` pre-bakes the selected runtime source; its onboarding skeleton lives in [`docs/ward-setup-doctor-inventory.md`](docs/ward-setup-doctor-inventory.md). `ward doctor` remains retired.
 
 ## Install
 
@@ -53,6 +53,7 @@ ward exec build          # run a declared dev verb through the gate
 ward exec test
 ward git commit -m ...   # concurrency-safe, audited git
 ward audit tail --follow # stream the audit log
+ward setup               # warm and validate the selected config source
 ```
 
 The agent driver, against the repo's authoritative issue thread. `warded` is a thin symlink onto `ward agent` - read it as a protective circle, the container bounding the agent's reach, not "warded off":
@@ -84,7 +85,7 @@ See [`docs/architecture.md`](docs/architecture.md).
 
 Over 60 pages under [`docs/`](docs/) cover each surface. The anchors:
 
-- **The verb gate** - [exec-verb.md](docs/exec-verb.md) (the gate), [verb-fallback.md](docs/verb-fallback.md), [git-verbs.md](docs/git-verbs.md), [audit.md](docs/audit.md). The current `setup` and `doctor` shapes are captured in the release-planning inventory instead of the live surface. The boundary is the verb gate itself, plus the container edge in the agent flow ([enforcement-boundary.md](docs/enforcement-boundary.md)).
+- **The verb gate** - [exec-verb.md](docs/exec-verb.md) (the gate), [verb-fallback.md](docs/verb-fallback.md), [git-verbs.md](docs/git-verbs.md), [audit.md](docs/audit.md), [ward setup](docs/ward-setup-doctor-inventory.md). The boundary is the verb gate itself, plus the container edge in the agent flow ([enforcement-boundary.md](docs/enforcement-boundary.md)).
 - **The agent driver** - [first-run.md](docs/first-run.md) (zero to a first `--print` dry run), [agent.md](docs/agent.md) (the reference), the roster [agent-engineer.md](docs/agent-engineer.md) / [agent-director.md](docs/agent-director.md) / [agent-advisor.md](docs/agent-advisor.md), the [agent-gate.md](docs/agent-gate.md), [agent-credentials.md](docs/agent-credentials.md), [agent-observability.md](docs/agent-observability.md).
 - **The container** - [container.md](docs/container.md), [container-reap.md](docs/container-reap.md) (land-or-salvage on teardown), [container-multi-repo.md](docs/container-multi-repo.md), [container-substrate.md](docs/container-substrate.md).
 - **Operator surface (ward-kdl / ops)** - [ward-kdl.md](docs/ward-kdl.md), [ward-kdl-tiers.md](docs/ward-kdl-tiers.md), [ops-forgejo.md](docs/ops-forgejo.md).
@@ -114,7 +115,7 @@ v0.x, and early on purpose. ward is a single-maintainer tool in active internal 
 - [docs/architecture.md](docs/architecture.md) - ward in three layers (cli-guard, ward-kdl, ward).
 - [AGENTS.md](AGENTS.md) - agent-facing operating rules.
 - [docs/FEATURES.md](docs/FEATURES.md) - inventory of what ships today.
-- [docs/ward-setup-doctor-inventory.md](docs/ward-setup-doctor-inventory.md) - the paused setup/doctor behavior inventory.
+- [docs/ward-setup-doctor-inventory.md](docs/ward-setup-doctor-inventory.md) - the live `ward setup` onboarding skeleton and historical setup/doctor notes.
 - [.ward/ward.yaml](.ward/ward.yaml) - allowlisted commands.
 - [docs/ward-yaml.md](docs/ward-yaml.md) - field-by-field `.ward/ward.yaml` schema reference.
 
