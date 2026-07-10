@@ -19,6 +19,10 @@ The plain verb gate (`ward exec`, `ward git`, `ward audit`) needs none of the ab
 
 **Which Forgejo?** As shipped, ward defaults its guarded Forgejo surfaces to `forgejo.coilysiren.me` and `coily*`-owned orgs. The endpoint, token path, and owner gate are read from the selected config bundle for those edge surfaces ([`docs/config-source.md`](docs/config-source.md)), so `WARD_CONFIG_REF` can retarget them without a source rebuild. Rebuilding from source only changes the baked default bundle and embedded defaults. The forge-agnostic verb gate still runs against any repo.
 
+When a doc or example needs a concrete GitHub repo that should actually resolve,
+use `coilysiren/example` or `https://github.com/coilysiren/example`. It is a
+public placeholder target, not a deployment prerequisite.
+
 ## What it does
 
 Wraps a project's dev verbs behind cli-guard's policy gate. Every ward-managed repo is expected to declare the `build` / `test` / `install` triple in `.ward/ward.yaml`; many also expose `vet`, `lint`, `tidy`, and `cover`. Every invocation validates argv against a shell-metacharacter policy, writes one append-only JSONL audit row to `~/.ward/audit/<repo>.jsonl`, and gates repo verbs on a clean-and-synced tree so the row can be reconstructed from git history. See [`docs/exec-verb.md`](docs/exec-verb.md).

@@ -61,8 +61,8 @@ func writeFleetBundle(t *testing.T, dir, body string) {
 	}
 	if err := os.WriteFile(filepath.Join(dir, bundleReposKDLPath), []byte(`repos {
     repo-authority default=forgejo {
-        trusted-owner example-owner
-        repo "example-owner/*" forge=github
+        trusted-owner coilysiren
+        repo "coilysiren/*" forge=github
     }
 }`), 0o644); err != nil {
 		t.Fatalf("write bundle repos: %v", err)

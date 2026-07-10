@@ -9,8 +9,8 @@ import (
 
 func TestSmartDefaultsBaked(t *testing.T) {
 	t.Setenv(wardConfigRefEnv, "")
-	t.Setenv("WARD_TARGET_OWNER", "example-owner")
-	t.Setenv("WARD_TARGET_REPO", "example-owner/example-repo")
+	t.Setenv("WARD_TARGET_OWNER", "coilysiren")
+	t.Setenv("WARD_TARGET_REPO", "coilysiren/example")
 	defs, err := currentSmartDefaultsWithError()
 	if err != nil {
 		t.Fatalf("currentSmartDefaultsWithError(baked): %v", err)
@@ -20,6 +20,12 @@ func TestSmartDefaultsBaked(t *testing.T) {
 	}
 	if defs.engineerContainerLimit != 12 || defs.directorMaxParallel != 10 || defs.directorLimit != 50 || defs.containerReapKeep != 10 {
 		t.Errorf("baked defaults = %+v, want the neutral policy bundle", defs)
+	}
+	if len(defs.trustedOwners) == 0 || defs.trustedOwners[0] != "coilysiren" {
+		t.Errorf("baked trusted owners = %v, want coilysiren", defs.trustedOwners)
+	}
+	if len(defs.repoAuthorityRules) == 0 || defs.repoAuthorityRules[0].Pattern != "coilysiren/*" || defs.repoAuthorityRules[0].Forge != forgeGitHub {
+		t.Errorf("baked repo authority = %+v, want coilysiren/* on github", defs.repoAuthorityRules)
 	}
 }
 
@@ -45,8 +51,8 @@ func TestSmartDefaultsFromBundleSource(t *testing.T) {
 `
 	reposBody := `repos {
     repo-authority default=forgejo {
-        trusted-owner "example-owner"
-        repo "example-owner/*" forge=github
+        trusted-owner "coilysiren"
+        repo "coilysiren/*" forge=github
     }
 }`
 	if err := os.WriteFile(filepath.Join(dir, bundleDefaultsKDLPath), []byte(defaultsBody), 0o644); err != nil {
@@ -99,8 +105,8 @@ func TestSmartDefaultsRejectsMalformedValue(t *testing.T) {
 	}
 	if err := os.WriteFile(filepath.Join(dir, bundleReposKDLPath), []byte(`repos {
     repo-authority default=forgejo {
-        trusted-owner "example-owner"
-        repo "example-owner/*" forge=github
+        trusted-owner "coilysiren"
+        repo "coilysiren/*" forge=github
     }
 }`), 0o644); err != nil {
 		t.Fatalf("write repos bundle: %v", err)
@@ -126,8 +132,8 @@ func TestSmartDefaultsRejectsInvalidWorkflow(t *testing.T) {
 	}
 	if err := os.WriteFile(filepath.Join(dir, bundleReposKDLPath), []byte(`repos {
     repo-authority default=forgejo {
-        trusted-owner "example-owner"
-        repo "example-owner/*" forge=github
+        trusted-owner "coilysiren"
+        repo "coilysiren/*" forge=github
     }
 }`), 0o644); err != nil {
 		t.Fatalf("write repos bundle: %v", err)

@@ -22,8 +22,8 @@ import (
 // WARD_CONFIG_REF means the baked embed, never an error.
 func TestSelectConfigSourceDefaultsBaked(t *testing.T) {
 	t.Setenv(wardConfigRefEnv, "")
-	t.Setenv("WARD_TARGET_OWNER", "example-owner")
-	t.Setenv("WARD_TARGET_REPO", "example-owner/example-repo")
+	t.Setenv("WARD_TARGET_OWNER", "coilysiren")
+	t.Setenv("WARD_TARGET_REPO", "coilysiren/example")
 	src, err := selectConfigSource()
 	if err != nil {
 		t.Fatalf("selectConfigSource with unset ref: %v", err)
@@ -395,8 +395,8 @@ func TestBuildForgejoOpsAnnotatesSelectedConfigSource(t *testing.T) {
 		t.Fatalf("abs(%s): %v", dir, err)
 	}
 	t.Setenv(wardConfigRefEnv, "file://"+abs)
-	t.Setenv("WARD_TARGET_OWNER", "example-owner")
-	t.Setenv("WARD_TARGET_REPO", "example-owner/example-repo")
+	t.Setenv("WARD_TARGET_OWNER", "coilysiren")
+	t.Setenv("WARD_TARGET_REPO", "coilysiren/example")
 	forgejo, err := buildForgejoOps()
 	if err != nil {
 		t.Fatalf("buildForgejoOps with fixture ref: %v", err)

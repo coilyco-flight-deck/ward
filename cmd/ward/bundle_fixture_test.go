@@ -85,8 +85,8 @@ defaults {
 		bundleReposKDLPath: `
 repos {
     repo-authority default=forgejo {
-        trusted-owner "example-owner"
-        repo "example-owner/*" forge=github
+        trusted-owner "coilysiren"
+        repo "coilysiren/*" forge=github
     }
 }
 `,

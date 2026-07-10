@@ -345,11 +345,11 @@ func TestPartitionReplySpecs(t *testing.T) {
 	t.Setenv(wardConfigRefEnv, "file://"+writeBundleFixture(t))
 	r := &Runner{}
 	specs := []replyIssueSpec{
-		{Repo: "example-owner/cli-guard", Title: "a", Body: "b"},
-		{Repo: "example-owner/ward", Title: "c", Body: "d"},
-		{Repo: "evilcorp/pwn", Title: "x", Body: "y"},         // untrusted -> dropped
-		{Repo: "example-owner/ward#9", Title: "z"},            // malformed -> dropped
-		{Repo: "example-bot/agentic-os", Title: "", Body: ""}, // empty title -> dropped
+		{Repo: "coilysiren/example", Title: "a", Body: "b"},
+		{Repo: "coilysiren/ward", Title: "c", Body: "d"},
+		{Repo: "evilcorp/pwn", Title: "x", Body: "y"},        // untrusted -> dropped
+		{Repo: "coilysiren/example#9", Title: "z"},           // malformed -> dropped
+		{Repo: "coilysiren/agentic-os", Title: "", Body: ""}, // empty title -> dropped
 	}
 	allowed, dropped := r.partitionReplySpecs(specs)
 	if len(allowed) != 2 {
