@@ -1,27 +1,24 @@
----
-doc_goal: Let a maintainer touching the brew formula understand why it forces GOPROXY=direct and GOSUMDB=off - the untagged cli-guard pseudo-version that proxy.golang.org 403s - so the workaround is not stripped out and a from-source install keeps working.
----
-# Homebrew build notes
+# homebrew build
 
-## GOPROXY bypass
+Ward's Homebrew formula installs the shipped binary and its `warded` symlink.
 
-cli-guard has no semver tags yet, so source-built consumers pin via
-pseudo-version. `proxy.golang.org` 403s the fresh pseudo-version on
-first fetch even though the upstream tarball is reachable. The Formula
-sets `GOPROXY=direct` and `GOSUMDB=off` in the brew sandbox to bypass
-the proxy for module fetches.
+- The tap is Forgejo-hosted.
+- The formula does not install the build-time authoring binary.
+- `make` and `go` builds still happen from a source checkout.
 
-This note no longer applies to `ward` itself: the tap now downloads the
-tagged release binary instead of building `ward` from source.
+## What the formula is for
 
-## When this can be removed
+- installing the release binary.
+- giving contributors the release-era user path.
+- keeping the install story simple enough for the docs front page.
 
-The override is temporary and keyed to a single condition: cli-guard has no
-semver tags yet. Once cli-guard ships tagged releases, `proxy.golang.org`
-serves the module normally and the fetch no longer 403s, so the
-`GOPROXY=direct` and `GOSUMDB=off` lines in the Formula's brew-sandbox block
-can drop. A maintainer touching the Formula should check for a cli-guard tag
-before assuming the workaround is still load-bearing - it is safe to revisit
-the moment that tag exists, not before.
+## What it is not for
 
-See [coilysiren/homebrew-tap#14](https://github.com/coilysiren/homebrew-tap/issues/14).
+- building ward from source.
+- authoring guardfiles.
+- replacing the release pipeline.
+
+## See also
+
+- [release.md](release.md) - how the binary is published.
+- [workspace.md](workspace.md) - local source builds.

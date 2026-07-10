@@ -22,7 +22,7 @@ wrap ward-kdl-admin ops forgejo {
     inherit "../ward-kdl-write/ward-kdl.forgejo.write.guardfile.kdl"
     // Scope gate: re-declared per tier (harmless dedup) so it reads present in
     // this tier's own guardfile and generated doc.
-    restrict owner matches coily*
+    restrict owner matches example*
     // repos: the irreversible delete. fork/archive/unarchive stay denied by the
     // inherited read-tier `never`s.
     can delete repo {
@@ -38,7 +38,7 @@ wrap ward-kdl-admin ops forgejo {
     // reservation road-block needed (ward#570). `delete issue` stays denied (inherited).
     can delete issue-comment {
         op issueDeleteComment
-        describe "delete a single issue comment by its comment ID (DELETE /repos/{owner}/{repo}/issues/comments/{id}). op pinned for the same reason `list issue-comment` pins issueGetComments - the bare `delete issue-comment` convention does not reach issueDeleteComment. This is the cleanup path a stale reservation road-block needed (ward#570): a `ward agent` launch that dies before its container comes up posts a release-marker comment to retract the hold, but the orphaned `ward-agent-reservation` comment itself could only be removed by hand until this leaf. {owner}-scoped by the coily* gate above; irreversible, so it is a targeted-ID delete, never a bulk sweep."
+        describe "delete a single issue comment by its comment ID (DELETE /repos/{owner}/{repo}/issues/comments/{id}). op pinned for the same reason `list issue-comment` pins issueGetComments - the bare `delete issue-comment` convention does not reach issueDeleteComment. This is the cleanup path a stale reservation road-block needed (ward#570): a `ward agent` launch that dies before its container comes up posts a release-marker comment to retract the hold, but the orphaned `ward-agent-reservation` comment itself could only be removed by hand until this leaf. {owner}-scoped by the example gate above; irreversible, so it is a targeted-ID delete, never a bulk sweep."
     }
     // list-all issue: read-family action re-declared verbatim (child-local) so admin
     // stays a superset of the lower tiers and matches the monolith (ward#278).

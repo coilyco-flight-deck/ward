@@ -41,9 +41,9 @@ func containerBrokerCommand() *cli.Command {
 		Description: `broker is the privileged side of ward's root credential broker (ward#329).
 Started as root by the container entrypoint before the agent drops privilege, it
 holds the forgejo bot token (from FORGEJO_TOKEN) and serves the write-tier ops -
-file / edit / comment issue - by shelling ` + wardKdlWriteBin + `, authorizing each
-request against the write tier (cli-guard#167). The dropped explore agent dials
-the socket and asks; it never sees the credential. See docs/broker.md.`,
+file / edit / comment issue - through ward's core Forgejo adapter, authorizing
+each request against the write tier (cli-guard#167). The dropped explore agent
+dials the socket and asks; it never sees the credential. See docs/broker.md.`,
 		Flags: []cli.Flag{
 			&cli.StringFlag{
 				Name:    "socket",

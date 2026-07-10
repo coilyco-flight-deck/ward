@@ -368,11 +368,7 @@ func (r *Runner) directorProbeForgeHealth(ctx context.Context, label string, top
 	if top == nil || strings.TrimSpace(top.repo) == "" {
 		return forgeHealthUnknown
 	}
-	cl, err := r.hostForgejoClient(ctx)
-	if err != nil {
-		fmt.Fprintf(os.Stderr, "%s: note: cannot probe forge health (%v); treating it as unknown this tick.\n", label, err)
-		return forgeHealthUnknown
-	}
+	cl := r.hostForgejoClient(ctx)
 	pctx, cancel := context.WithTimeout(ctx, directorProbeTimeout)
 	defer cancel()
 	if _, err := cl.getIssue(pctx, ownerOf(top.repo), nameOf(top.repo), top.Num); err != nil {

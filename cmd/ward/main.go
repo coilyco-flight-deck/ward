@@ -48,35 +48,7 @@ func run() int {
 	if initErrorReporting() {
 		defer reportPanic()
 	}
-	app := &cli.Command{
-		Name:    "ward",
-		Usage:   "a contributor-facing cli-guard consumer",
-		Version: Version,
-		Flags: []cli.Flag{
-			&cli.StringFlag{
-				Name:    "config",
-				Usage:   "Path to a ward/coily yaml allowlist. Overrides cwd walk-up. $WARD_CONFIG is the env-var equivalent; --config wins.",
-				Sources: cli.EnvVars("WARD_CONFIG"),
-			},
-			&cli.BoolFlag{
-				Name: "audit-override-dirty",
-				Usage: "Bypass the clean+synced tree gate on `ward exec` repo verbs. " +
-					"Tags the audit row with audit_override=true and captures the " +
-					"working tree status. For genuine emergencies only: the gate " +
-					"exists so audit rows can be reconstructed from git history.",
-			},
-		},
-		Commands: []*cli.Command{
-			versionCommand(),
-			execCommand(),
-			gitCommand(),
-			auditCommand(),
-			containerCommand(),
-			agentCommand(),
-			agentsCommand(),
-			opsCommand(),
-		},
-	}
+	app := rootCommand()
 
 	// Auto-mount the exec-dialect ward-kdl guardfiles before the verb set is
 	// read, so they count as top-level verbs (ward#284). A failure is non-fatal.
@@ -108,6 +80,40 @@ func run() int {
 		return 1
 	}
 	return 0
+}
+
+func rootCommand() *cli.Command {
+	return &cli.Command{
+		Name:    "ward",
+		Usage:   "a contributor-facing cli-guard consumer",
+		Version: Version,
+		Flags: []cli.Flag{
+			&cli.StringFlag{
+				Name:    "config",
+				Usage:   "Path to a ward/coily yaml allowlist. Overrides cwd walk-up. $WARD_CONFIG is the env-var equivalent; --config wins.",
+				Sources: cli.EnvVars("WARD_CONFIG"),
+			},
+			&cli.BoolFlag{
+				Name: "audit-override-dirty",
+				Usage: "Bypass the clean+synced tree gate on `ward exec` repo verbs. " +
+					"Tags the audit row with audit_override=true and captures the " +
+					"working tree status. For genuine emergencies only: the gate " +
+					"exists so audit rows can be reconstructed from git history.",
+			},
+		},
+		Commands: []*cli.Command{
+			versionCommand(),
+			setupCommand(),
+			doctorCommand(),
+			execCommand(),
+			gitCommand(),
+			auditCommand(),
+			containerCommand(),
+			agentCommand(),
+			agentsCommand(),
+			opsCommand(),
+		},
+	}
 }
 
 // rootValueFlags are root-level flags whose space-form value is the next token

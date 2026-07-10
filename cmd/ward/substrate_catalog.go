@@ -139,10 +139,7 @@ func (r *Runner) generateSubstrateCatalog(ctx context.Context, out, dest, tier s
 	if err != nil {
 		return err
 	}
-	cl, err := r.hostForgejoClient(ctx)
-	if err != nil {
-		return err
-	}
+	cl := r.hostForgejoClient(ctx)
 	cat, err := buildSubstrateCatalog(ctx, cl, manifest, dest)
 	if err != nil {
 		return err

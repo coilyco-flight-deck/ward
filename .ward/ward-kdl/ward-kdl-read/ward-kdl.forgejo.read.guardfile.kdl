@@ -18,17 +18,17 @@
 // ../../../docs/ward-kdl/ward-kdl.forgejo.read.guardfile.md.
 wrap ward-kdl-read ops forgejo {
     spec forgejo.swagger.v1.json
-    base-url "forgejo.coilysiren.me/api/v1"
-    // Auth as the coilyco-ops bot, not a personal PAT (ward#151), so automated
-    // ops attribute to the bot. Token + scopes: provision-coilyco-ops-bot.sh.
+    base-url "git.example.com/api/v1"
+    // Auth as an example bot, not a personal PAT. Token + scopes are deployment
+    // specific and belong to the selected bundle, not the baked default.
     auth header-token {
         header Authorization
         prefix "token "
-        value ssm "/forgejo/coilyco-ops/api-token"
+        value ssm "/example/forgejo/api-token"
     }
-    // Scope gate: every leaf whose path carries {owner} must name a coily* owner.
+    // Scope gate: every leaf whose path carries {owner} must name an example owner.
     // Re-declared per tier (harmless dedup) so it reads present in each tier's doc.
-    restrict owner matches coily*
+    restrict owner matches example*
     // repos: read plus the cross-repo `search` finder. Fork and archive/unarchive
     // are denied below as human-only toggles; the denials inherit up to write/admin.
     can get repo

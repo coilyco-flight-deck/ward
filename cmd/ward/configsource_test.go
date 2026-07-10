@@ -14,7 +14,7 @@ import (
 )
 
 // configsource_test.go covers the ward#653 seam: the selection contract plus
-// real-bundle integration against .ward/ward-kdl (the aos#332 flat layout).
+// real-bundle integration against the tracked neutral bundle in .ward/ward-kdl.
 
 // TestSelectConfigSourceDefaultsBaked pins the neutral default: no
 // WARD_CONFIG_REF means the baked embed, never an error.
@@ -111,8 +111,8 @@ func TestBakedSourcePathsExist(t *testing.T) {
 	}
 }
 
-// TestBuildForgejoOpsFromRealBundle compiles `ops forgejo` from the bundle dir;
-// no admin guardfile there means the slice is withheld, while baked grafts it.
+// TestBuildForgejoOpsFromRealBundle compiles `ops forgejo` from the neutral bundle.
+// The bundled admin guardfile is absent, so baked grafts it.
 func TestBuildForgejoOpsFromRealBundle(t *testing.T) {
 	forgejo, err := buildForgejoOpsFrom(bundleConfigSource(wardKdlSrcDir))
 	if err != nil {
@@ -137,8 +137,8 @@ func TestBuildForgejoOpsFromRealBundle(t *testing.T) {
 	}
 }
 
-// TestMountWardKdlExecFromRealBundle mounts exec surfaces from the mixed bundle
-// dir: exec guardfiles graft, spec-dialect siblings filter out, no mount error.
+// TestMountWardKdlExecFromRealBundle mounts exec surfaces from the local neutral
+// bundle: exec guardfiles graft, spec-dialect siblings filter out, no mount error.
 func TestMountWardKdlExecFromRealBundle(t *testing.T) {
 	root := newWardKdlTestRoot()
 	if err := mountWardKdlExecFrom(root, bundleConfigSource(wardKdlSrcDir), leanRunner()); err != nil {

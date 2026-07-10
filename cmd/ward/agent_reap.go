@@ -3,6 +3,7 @@ package main
 import (
 	"bytes"
 	"context"
+	"errors"
 	"fmt"
 	"io"
 	"os"
@@ -12,8 +13,6 @@ import (
 	"forgejo.coilysiren.me/coilyco-flight-deck/cli-guard/cli/verb"
 	"github.com/urfave/cli/v3"
 )
-
-const engineerContainerLimit = 10
 
 // agent_reap.go wires `ward agent reap`, the host-side idle-killer for wedged
 // engineer containers (issue #376). The pure verdict lives in agent_reap_compute.go.
@@ -42,8 +41,9 @@ session) are idle by design - sitting at a prompt is normal, not wedged - and ar
 left untouched.
 
 Authored here; the fleet rollout (a launchd timer or a converged daemon) is an
-ansible role in infrastructure, per the authoring-vs-rollout split. The setup
-and doctor surfaces are now release-planning inventory, not live wiring.
+ansible role in infrastructure, per the authoring-vs-rollout split. The old
+setup/doctor scaffold is historical, while the live ` + "`ward setup`" + ` command now
+handles the config pre-bake and diagnostics path.
 
   ward agent reap                 # sweep once, stop engineers idle > 1h
   ward agent reap --dry-run       # report what would be stopped, stopping nothing
@@ -155,19 +155,41 @@ func (r *Runner) runningEngineerContainers(ctx context.Context) ([]string, error
 }
 
 // enforceEngineerContainerLimit refuses a new engineer launch when the host is
-// already at the fixed concurrency ceiling.
+// already at the configured concurrency ceiling.
 func (r *Runner) enforceEngineerContainerLimit(ctx context.Context, label string) error {
 	names, err := r.runningEngineerContainers(ctx)
 	if err != nil {
 		return fmt.Errorf("%s: count running engineer containers: %w", label, err)
 	}
-	if count := len(names); count >= engineerContainerLimit {
-		return fmt.Errorf(
-			"%s: global engineer limit is reached: %d running (limit %d); wait for a run to finish or run `ward agent reap` for stale engineers",
-			label, count, engineerContainerLimit,
-		)
+	limit := engineerContainerLimitDefault()
+	if count := len(names); count >= limit {
+		return newEngineerCapacityError(label, count, limit)
 	}
 	return nil
+}
+
+// engineerCapacityError marks a launch refusal because the global engineer cap
+// is already full. It is backpressure, not a terminal launch failure.
+type engineerCapacityError struct {
+	label   string
+	running int
+	limit   int
+}
+
+func (e *engineerCapacityError) Error() string {
+	return fmt.Sprintf(
+		"%s: global engineer limit is reached: %d running (limit %d); wait for a run to finish or run `ward agent reap` for stale engineers",
+		e.label, e.running, e.limit,
+	)
+}
+
+func newEngineerCapacityError(label string, running, limit int) error {
+	return &engineerCapacityError{label: label, running: running, limit: limit}
+}
+
+func isEngineerCapacityError(err error) bool {
+	var capErr *engineerCapacityError
+	return errors.As(err, &capErr)
 }
 
 // engineerReapState gathers one engineer's idle inputs: idle from its last log

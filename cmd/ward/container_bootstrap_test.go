@@ -154,6 +154,44 @@ func TestBuildAgentArgv(t *testing.T) {
 	}
 }
 
+func TestLaunchAgentReportsOOMKilled(t *testing.T) {
+	dir := t.TempDir()
+	docker := filepath.Join(dir, "docker")
+	setpriv := filepath.Join(dir, "setpriv")
+	dockerBody := "#!/bin/sh\n" +
+		"if [ \"$1\" = inspect ] && [ \"$2\" = --format ] && [ \"$3\" = '{{json .State}}' ]; then\n" +
+		"  printf '%s' " + shellQuote(`{"OOMKilled":true,"ExitCode":0}`) + "\n" +
+		"  exit 0\n" +
+		"fi\n" +
+		"exit 1\n"
+	setprivBody := "#!/bin/sh\nkill -9 $$\n"
+	if err := os.WriteFile(docker, []byte(dockerBody), 0o700); err != nil { // #nosec G306 -- test fixture
+		t.Fatalf("write fake docker: %v", err)
+	}
+	if err := os.WriteFile(setpriv, []byte(setprivBody), 0o700); err != nil { // #nosec G306 -- test fixture
+		t.Fatalf("write fake setpriv: %v", err)
+	}
+	t.Setenv("PATH", dir+string(os.PathListSeparator)+os.Getenv("PATH"))
+	r := &Runner{Runner: &shell.Runner{Stderr: io.Discard, Resolve: shell.PathResolver}}
+	stderr := captureTestStderr(t, func() {
+		r.launchAgent(context.Background(), bootstrapEnv{Container: "director-codex-vg94"}, t.TempDir(), []string{"codex"}, false)
+	})
+	if !strings.Contains(stderr, "signal: killed") {
+		t.Fatalf("launchAgent stderr missing signal kill breadcrumb:\n%s", stderr)
+	}
+	if !strings.Contains(stderr, "OOMKilled=true") {
+		t.Fatalf("launchAgent stderr missing OOM breadcrumb:\n%s", stderr)
+	}
+}
+
+func TestEnsureLaunchBinaryAvailable(t *testing.T) {
+	if err := ensureLaunchBinaryAvailable("definitely-not-a-ward-binary"); err == nil {
+		t.Fatal("missing agent binary should be a hard bootstrap failure")
+	} else if !strings.Contains(err.Error(), "definitely-not-a-ward-binary") {
+		t.Fatalf("error should name the missing binary, got %v", err)
+	}
+}
+
 func TestNamedGate(t *testing.T) {
 	err := agentsapi.NewGateError("model-config", context.Canceled)
 	if got, ok := namedGate(err); !ok || got != "model-config" {
@@ -211,8 +249,8 @@ func TestReadBootstrapEnvDefaults(t *testing.T) {
 		"CodexModel":     "gpt-5.4",
 		"CodexEffort":    "medium",
 		"CodexVerbosity": "low",
-		"GitUserName":    "coilyco-ops",
-		"GitUserEmail":   "coilyco-ops@coilysiren.me",
+		"GitUserName":    "example-bot",
+		"GitUserEmail":   "bot@example.com",
 		"AgentUID":       "1000",
 		"AgentHome":      "/home/ubuntu",
 		"ForgejoHost":    "forgejo.coilysiren.me",

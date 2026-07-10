@@ -1,61 +1,13 @@
----
-doc_goal: Let an operator run and reason about the local Ollama-backed opencode harness - its config, install stance, launch dialect, and the in-container reachability probe that keeps a dead endpoint from silently hanging a dispatched run - and know exactly what host repointing is not yet supported.
----
-# ward agent opencode
+# warded opencode
 
-`opencode` is the local Ollama-backed harness behind the renamed `qwen` mode.
+The `opencode` role is the local Ollama-backed harness.
 
-## Capabilities
-
-- Host credential channel: none.
-- Container config: writes `~/.config/opencode/opencode.json`.
-- Install step: self-installs the standalone `opencode` binary at container start.
-
-## Config shape
-
-The config registers a local Ollama provider with the default model pinned to
-`ollama/$WARD_QWEN_MODEL` at `$WARD_OLLAMA_URL`.
-
-**Bring your own Ollama:** those two vars default to `qwen3-coder:30b` and
-`http://localhost:11434/v1`, are read only at in-container bootstrap, and are **not**
-threaded from the host - so setting them on your host does not repoint opencode
-today. If you run your own Ollama, read [agent-local-model.md](agent-local-model.md)
-first: on native Linux the host-net route makes the baked-in `localhost:11434` reach
-your local Ollama, but Docker Desktop and repointing the endpoint/model are not
-supported yet ([#395](https://forgejo.coilysiren.me/coilyco-flight-deck/ward/issues/395)).
-
-## Install stance
-
-Best-effort self-install. An image that already contains `opencode` short-circuits it.
-
-## Launch dialect
-
-- Host preflight: none.
-- Headless: `opencode run <seed>`.
-- Interactive: `opencode`.
-
-## Smoke gate
-
-No **host GO/NO-GO pre-flight**: opencode has no host one-shot wired, so dispatch
-proceeds without a pre-dispatch check (see [agent-preflight.md](agent-preflight.md)).
-
-There **is** an **in-container Ollama reachability probe** (pre-launch, [ward#487](https://forgejo.coilysiren.me/coilyco-flight-deck/ward/issues/487)),
-the local-model analog of claude's auth smoke test. A headless opencode whose
-Ollama endpoint is down would hang the dispatched container exactly like an
-undetected bad claude credential (the failure mode a smoke gate exists to prevent).
-So before launching, the entrypoint TCP-probes `WARD_OLLAMA_URL` (the endpoint the
-opencode config binds) with a short retry window, then checks that the configured
-model is actually advertised by that Ollama. On an unreachable endpoint it
-**aborts the container with a clear error** naming the endpoint and how to recover;
-on a reachable endpoint with a missing model it aborts as `model-config`, telling
-the operator to update the fleet model string or pin `WARD_CONFIG_REF` to a
-compatible ref. The probe is headless-only (an interactive TUI has a human
-watching); set `WARD_SMOKE_TEST_SKIP=1` to bypass it (the same switch claude's
-probe reads).
+- It uses the local model endpoint instead of host credentials.
+- It has no host one-shot preflight.
+- It launches headless work with `opencode run`.
 
 ## See also
 
-- [docs/agent-qwen.md](agent-qwen.md) - the deprecated `qwen` alias that resolves here.
-- [docs/agent-local-model.md](agent-local-model.md) - bring your own Ollama: defaults, the supported route, and the current limitation ([#395](https://forgejo.coilysiren.me/coilyco-flight-deck/ward/issues/395)).
-- [docs/agent-local-harnesses.md](agent-local-harnesses.md) - the local harness index.
-- [docs/agent.md](agent.md) - the roster and roles vs harnesses split.
+- [agent-harnesses.md](agent-harnesses.md) - the harness comparison.
+- [container-contract.md](container-contract.md) - the local runtime contract.
+- [agent-roster.md](agent-roster.md) - the generated roster entry.

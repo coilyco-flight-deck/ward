@@ -1,8 +1,6 @@
 // GlitchTip ops surface for ward-kdl, driving the vendored glitchtip.openapi.json
-// (OpenAPI 3.1, django-ninja). GlitchTip is the self-hosted, Sentry-compatible
-// error tracker on kai-server; this surface exists to bulk-provision the ~20
-// projects + their DSNs (ward#170) instead of hand-clicking each in the UI, so
-// the Sentry retirement / DSN cutover (infrastructure#395) can proceed.
+// (OpenAPI 3.1, django-ninja). This baked copy is an example-safe placeholder:
+// the real deployment bundle carries the live host/token and project inventory.
 //
 // The host is opaque (the tailnet FQDN is a SecureString), so base-url resolves
 // from SSM at request time rather than sitting literal in the file - the block
@@ -23,11 +21,11 @@ wrap ward-kdl ops glitchtip {
     // Block form: the tailnet FQDN behind base-url is opaque (SecureString in
     // SSM /glitchtip/base-url); spec paths already carry /api/0, so this is host-only.
     base-url {
-        value ssm "/glitchtip/base-url"
+        value ssm "/example/glitchtip/base-url"
     }
     // TokenAuth = HTTP bearer. The bearer scheme sets Authorization: Bearer <token>.
     auth bearer {
-        value ssm "/glitchtip/api-token"
+        value ssm "/example/glitchtip/api-token"
     }
     // organizations (org:read): read-only. The instance's single org is created
     // by a human on first login; create/delete stay human-only and irreversible.

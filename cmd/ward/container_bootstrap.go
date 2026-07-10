@@ -66,8 +66,8 @@ type bootstrapEnv struct {
 	ReadOnly          bool
 	WardVersionSource string
 	ForgejoHost       string
-	// Forge is the TARGET repo's host (ward#489): GitHub clones off CloneBase as
-	// x-access-token, else Forgejo + coilyco-ops. CloneBase defaults to ForgejoBase.
+	// Forge is the TARGET repo's host (ward#489, GitLab added in #635): GitHub and GitLab
+	// clone off CloneBase with their own push users, else Forgejo + coilyco-ops.
 	Forge     forge
 	CloneBase string
 	CloneHost string
@@ -417,6 +417,11 @@ func (r *Runner) runContainerBootstrap(ctx context.Context, c *cli.Command) erro
 		_ = inst.Install(rc)
 		blog("bootstrap installer done: %s", mode)
 	}
+	if err := ensureLaunchBinaryAvailable(e.Agent); err != nil {
+		blog("fatal: %v", err)
+		writeGateFailure("bootstrap", err.Error())
+		return err
+	}
 	work, cerr := r.cloneTarget(ctx, e)
 	if cerr != nil {
 		return cerr
@@ -605,7 +610,7 @@ func (r *Runner) configureGitAuth(ctx context.Context, e bootstrapEnv) {
 	_ = r.Runner.Exec(ctx, "git", "config", "--system", "credential.helper",
 		"!"+forgejoGitCredentialHelperPath)
 	// Push as the forge's bot: FORGEJO_TOKEN carries the Forgejo bot token (coilyco-ops)
-	// or the user-supplied GitHub token with the x-access-token user (ward#245, ward#489).
+	// or the user-supplied GitHub/GitLab token with the forge-specific HTTPS user.
 	cred := fmt.Sprintf("https://%s:%s@%s\n", e.Forge.gitPushUser(), token, e.CloneHost)
 	if werr := os.WriteFile(forgejoGitCredentialsPath, []byte(cred), 0o640); werr != nil {
 		blog("could not write git credentials: %v", werr)
@@ -1307,17 +1312,25 @@ func (r *Runner) launchAgent(ctx context.Context, e bootstrapEnv, work string, a
 	switch {
 	case stream:
 		if rerr := r.runStreaming(ctx, work, launch); rerr != nil {
-			blog("agent exited non-zero (%v); reaping anyway", rerr)
+			blog(r.agentDeathLogLine(ctx, e.Container, rerr))
 		}
 	case e.oneshot():
 		if rerr := r.runWithStdin(ctx, work, launch, os.DevNull); rerr != nil {
-			blog("agent exited non-zero (%v); reaping anyway", rerr)
+			blog(r.agentDeathLogLine(ctx, e.Container, rerr))
 		}
 	default:
 		if rerr := r.runWithStdin(ctx, work, launch, ""); rerr != nil {
-			blog("agent exited non-zero (%v); reaping anyway", rerr)
+			blog(r.agentDeathLogLine(ctx, e.Container, rerr))
 		}
 	}
+}
+
+// agentDeathLogLine names an OOM kill explicitly when Docker state still knows it.
+func (r *Runner) agentDeathLogLine(ctx context.Context, container string, runErr error) string {
+	if state, ok := r.inspectContainerState(ctx, container); ok && state.OOMKilled {
+		return fmt.Sprintf("agent exited non-zero (%v; docker state: OOMKilled=true); reaping anyway", runErr)
+	}
+	return fmt.Sprintf("agent exited non-zero (%v); reaping anyway", runErr)
 }
 
 // runWithStdin runs launch in work with stdin from stdinPath (os.DevNull pins
@@ -1565,6 +1578,15 @@ func (r *Runner) withFlock(lockPath string, fn func()) {
 func commandExists(bin string) bool {
 	_, err := exec.LookPath(bin)
 	return err == nil
+}
+
+// ensureLaunchBinaryAvailable reports a missing selected agent binary as a hard
+// bootstrap failure so the run aborts instead of falling back to a shell.
+func ensureLaunchBinaryAvailable(agent string) error {
+	if commandExists(agent) {
+		return nil
+	}
+	return fmt.Errorf("selected agent binary %q is not present in this image", agent)
 }
 
 func isDir(path string) bool {
