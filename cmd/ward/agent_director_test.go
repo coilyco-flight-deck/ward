@@ -608,13 +608,11 @@ func TestBacklogRefreshReservationStates(t *testing.T) {
 	stale := now.Add(-2 * time.Hour).UTC().Format(time.RFC3339)
 	srv := httptest.NewServer(http.HandlerFunc(func(w http.ResponseWriter, r *http.Request) {
 		switch {
-		case r.URL.Path == "/api/v1/repos/coilyco-flight-deck/ward/issues" && r.URL.Query().Get("type") == "issues":
+		case r.URL.Path == "/api/v1/repos/coilyco-flight-deck/ward/issues" && r.URL.Query().Get("state") == "open":
 			_ = json.NewEncoder(w).Encode([]map[string]any{
 				{"number": 11, "title": "fresh reservation", "body": "body", "state": "open", "html_url": "https://f/issues/11", "labels": []map[string]any{{"name": "P0"}, {"name": "headless"}}},
 				{"number": 12, "title": "stale reservation", "body": "body", "state": "open", "html_url": "https://f/issues/12", "labels": []map[string]any{{"name": "P1"}, {"name": "headless"}}},
 			})
-		case r.URL.Path == "/api/v1/repos/coilyco-flight-deck/ward/issues" && r.URL.Query().Get("type") == "pulls":
-			_ = json.NewEncoder(w).Encode([]map[string]any{})
 		case r.URL.Path == "/api/v1/repos/coilyco-flight-deck/ward/issues/11/comments":
 			_ = json.NewEncoder(w).Encode([]map[string]any{
 				{"body": agentReservationMarker + "\nreserved", "created_at": fresh, "user": map[string]any{"login": "coilyco-ops"}},

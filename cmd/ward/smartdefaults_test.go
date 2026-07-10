@@ -9,6 +9,8 @@ import (
 
 func TestSmartDefaultsBaked(t *testing.T) {
 	t.Setenv(wardConfigRefEnv, "")
+	t.Setenv("WARD_TARGET_OWNER", "example-owner")
+	t.Setenv("WARD_TARGET_REPO", "example-owner/example-repo")
 	defs, err := currentSmartDefaultsWithError()
 	if err != nil {
 		t.Fatalf("currentSmartDefaultsWithError(baked): %v", err)
@@ -23,7 +25,7 @@ func TestSmartDefaultsBaked(t *testing.T) {
 
 func TestSmartDefaultsFromBundleSource(t *testing.T) {
 	dir := t.TempDir()
-	body := `smart-defaults {
+	defaultsBody := `defaults {
     agent-reservation-ttl "2h"
     agent-reservation-recheck-max "9s"
     agent-reap-idle "90m"
@@ -40,13 +42,18 @@ func TestSmartDefaultsFromBundleSource(t *testing.T) {
     agent-workflow default="direct-main" {
     }
 }
-
-repo-authority default=forgejo {
-    trusted-owner "example-owner"
-    repo "example-owner/*" forge=github
+`
+	reposBody := `repos {
+    repo-authority default=forgejo {
+        trusted-owner "example-owner"
+        repo "example-owner/*" forge=github
+    }
 }`
-	if err := os.WriteFile(filepath.Join(dir, bundleDefaultsKDLPath), []byte(body), 0o644); err != nil {
+	if err := os.WriteFile(filepath.Join(dir, bundleDefaultsKDLPath), []byte(defaultsBody), 0o644); err != nil {
 		t.Fatalf("write defaults bundle: %v", err)
+	}
+	if err := os.WriteFile(filepath.Join(dir, bundleReposKDLPath), []byte(reposBody), 0o644); err != nil {
+		t.Fatalf("write repos bundle: %v", err)
 	}
 	defs, err := loadSmartDefaultsFrom(bundleConfigSource(dir))
 	if err != nil {
@@ -84,11 +91,19 @@ func TestSmartDefaultsRejectsBadConfigRef(t *testing.T) {
 
 func TestSmartDefaultsRejectsMalformedValue(t *testing.T) {
 	dir := t.TempDir()
-	body := `smart-defaults {
+	defaultsBody := `defaults {
     agent-reservation-ttl "nope"
 }`
-	if err := os.WriteFile(filepath.Join(dir, bundleDefaultsKDLPath), []byte(body), 0o644); err != nil {
+	if err := os.WriteFile(filepath.Join(dir, bundleDefaultsKDLPath), []byte(defaultsBody), 0o644); err != nil {
 		t.Fatalf("write malformed defaults bundle: %v", err)
+	}
+	if err := os.WriteFile(filepath.Join(dir, bundleReposKDLPath), []byte(`repos {
+    repo-authority default=forgejo {
+        trusted-owner "example-owner"
+        repo "example-owner/*" forge=github
+    }
+}`), 0o644); err != nil {
+		t.Fatalf("write repos bundle: %v", err)
 	}
 	if _, err := loadSmartDefaultsFrom(bundleConfigSource(dir)); err == nil {
 		t.Fatal("malformed smart defaults selected a bundle; want a loud parse error")
@@ -103,11 +118,19 @@ func TestSmartDefaultsBundleMissingFileFailsLoud(t *testing.T) {
 
 func TestSmartDefaultsRejectsInvalidWorkflow(t *testing.T) {
 	dir := t.TempDir()
-	body := `smart-defaults {
+	defaultsBody := `defaults {
     agent-workflow default="merge-it"
 }`
-	if err := os.WriteFile(filepath.Join(dir, bundleDefaultsKDLPath), []byte(body), 0o644); err != nil {
+	if err := os.WriteFile(filepath.Join(dir, bundleDefaultsKDLPath), []byte(defaultsBody), 0o644); err != nil {
 		t.Fatalf("write malformed defaults bundle: %v", err)
+	}
+	if err := os.WriteFile(filepath.Join(dir, bundleReposKDLPath), []byte(`repos {
+    repo-authority default=forgejo {
+        trusted-owner "example-owner"
+        repo "example-owner/*" forge=github
+    }
+}`), 0o644); err != nil {
+		t.Fatalf("write repos bundle: %v", err)
 	}
 	if _, err := loadSmartDefaultsFrom(bundleConfigSource(dir)); err == nil {
 		t.Fatal("invalid workflow default selected a bundle; want a loud parse error")
@@ -116,14 +139,17 @@ func TestSmartDefaultsRejectsInvalidWorkflow(t *testing.T) {
 
 func TestSmartDefaultsRejectsMissingRepoAuthority(t *testing.T) {
 	dir := t.TempDir()
-	body := `smart-defaults {
+	body := `defaults {
     agent-reservation-ttl "2h"
 }`
 	if err := os.WriteFile(filepath.Join(dir, bundleDefaultsKDLPath), []byte(body), 0o644); err != nil {
 		t.Fatalf("write defaults bundle: %v", err)
 	}
-	t.Setenv(wardConfigRefEnv, "file://"+dir)
-	if _, err := currentSmartDefaultsWithError(); err == nil {
+	if err := os.WriteFile(filepath.Join(dir, bundleReposKDLPath), []byte(`repos {
+}`), 0o644); err != nil {
+		t.Fatalf("write repos bundle: %v", err)
+	}
+	if _, err := loadSmartDefaultsFrom(bundleConfigSource(dir)); err == nil {
 		t.Fatal("bundle without repo-authority selected a source; want a loud parse error")
 	}
 }

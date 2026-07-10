@@ -834,6 +834,9 @@ func TestRunAgentAdvisorFreeformStaysLocal(t *testing.T) {
 	t.Setenv(envDispatchBrokerAddr, "127.0.0.1:12345")
 	t.Setenv(envDispatchBrokerToken, "nonce-freeform")
 	t.Setenv("WARD_READONLY", "1")
+	t.Setenv(wardConfigRefEnv, "file://"+writeBundleFixture(t))
+	t.Setenv("WARD_TARGET_OWNER", "example-owner")
+	t.Setenv("WARD_TARGET_REPO", "example-owner/ward")
 	stubContainerBootstrapStage(t)
 
 	origLaunch := dispatchBrokerLaunch
@@ -1318,7 +1321,7 @@ func TestRunAgentTaskDirectRoutesThroughBrokerOnReadonlySurface(t *testing.T) {
 	t.Setenv("WARD_CONTAINER_NAME", "director-codex-host")
 
 	bundleDir := t.TempDir()
-	bundleBody := `smart-defaults {
+	defaultsBody := `defaults {
     agent-reservation-ttl "1h"
     agent-reservation-recheck-max "15s"
     agent-reap-idle "1h"
@@ -1335,14 +1338,19 @@ func TestRunAgentTaskDirectRoutesThroughBrokerOnReadonlySurface(t *testing.T) {
     agent-workflow default=direct-main {
     }
 }
-
-repo-authority default=forgejo {
-    trusted-owner example-owner
-    trusted-owner coilyco-flight-deck
-    repo "example-owner/*" forge=github
+`
+	reposBody := `repos {
+    repo-authority default=forgejo {
+        trusted-owner example-owner
+        trusted-owner coilyco-flight-deck
+        repo "example-owner/*" forge=github
+    }
 }`
-	if err := os.WriteFile(filepath.Join(bundleDir, bundleDefaultsKDLPath), []byte(bundleBody), 0o644); err != nil {
+	if err := os.WriteFile(filepath.Join(bundleDir, bundleDefaultsKDLPath), []byte(defaultsBody), 0o644); err != nil {
 		t.Fatalf("write bundle defaults: %v", err)
+	}
+	if err := os.WriteFile(filepath.Join(bundleDir, bundleReposKDLPath), []byte(reposBody), 0o644); err != nil {
+		t.Fatalf("write bundle repos: %v", err)
 	}
 	t.Setenv(wardConfigRefEnv, "file://"+bundleDir)
 

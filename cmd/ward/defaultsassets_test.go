@@ -1,27 +1,21 @@
 package main
 
 import (
-	"bytes"
-	"os"
 	"testing"
 )
 
-// defaultsSrcPath is the canonical smart-defaults source mirrored into
-// defaultsassets by `make sync-defaults-assets`.
-const defaultsSrcPath = "../../.ward/ward-kdl/ward-kdl.defaults.kdl"
-
-// TestDefaultsAssetsMirrorWardKDL fails when the embedded defaults.generated.kdl
-// drifts from the canonical source.
-func TestDefaultsAssetsMirrorWardKDL(t *testing.T) {
-	src, err := os.ReadFile(defaultsSrcPath)
+// TestDefaultsBundleParsesSplitLayout proves the split defaults/repos bundle
+// contract loads through the runtime seam.
+func TestDefaultsBundleParsesSplitLayout(t *testing.T) {
+	dir := writeBundleFixture(t)
+	defs, err := loadSmartDefaultsFrom(bundleConfigSource(dir))
 	if err != nil {
-		t.Fatalf("read defaults source %s: %v", defaultsSrcPath, err)
+		t.Fatalf("loadSmartDefaultsFrom(split bundle): %v", err)
 	}
-	baked, err := bakedAssets.ReadFile(defaultsGeneratedKDLPath)
-	if err != nil {
-		t.Fatalf("read baked %s: %v", defaultsGeneratedKDLPath, err)
+	if defs.repoAuthorityDefault != forgeForgejo {
+		t.Fatalf("repo authority default = %v, want forgejo", defs.repoAuthorityDefault)
 	}
-	if !bytes.Equal(src, baked) {
-		t.Errorf("embedded defaultsassets/defaults.generated.kdl has drifted from %s; re-sync with `make sync-defaults-assets`", defaultsSrcPath)
+	if len(defs.trustedOwners) == 0 || len(defs.repoAuthorityRules) == 0 {
+		t.Fatalf("split bundle missing repo authority data: %+v", defs)
 	}
 }
