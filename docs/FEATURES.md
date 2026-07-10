@@ -31,8 +31,9 @@ Inventory of what `ward` ships today.
   [agent-ops.md](agent-ops.md), [dispatch-review.md](dispatch-review.md), and
   [agent-workflow.md](agent-workflow.md). The roster resolves from effective
   role definitions plus fleet overlays, not a hand-edited role list. `ward agent
-  logs` surfaces live docker output and, when that stream is empty, the live
-  transcript tree before it falls back to the drained archive.
+  list` now carries known engineer capacity alongside the live rows, and `ward
+  agent logs` surfaces live docker output and, when that stream is empty, the
+  live transcript tree before it falls back to the drained archive.
 
 ## Container surface
 
