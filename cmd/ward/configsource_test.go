@@ -2,11 +2,13 @@ package main
 
 import (
 	"context"
+	"fmt"
 	"io/fs"
 	"os"
 	"path/filepath"
 	"strings"
 	"testing"
+	"time"
 
 	"forgejo.coilysiren.me/coilyco-flight-deck/cli-guard/cli/verb"
 	"forgejo.coilysiren.me/coilyco-flight-deck/cli-guard/pkg/audit"
@@ -300,6 +302,76 @@ func TestOpsCommandDegradesOnBadRef(t *testing.T) {
 	if err == nil || !strings.Contains(err.Error(), wardConfigRefEnv) {
 		t.Errorf("degraded leaf error = %v, want it to name %s", err, wardConfigRefEnv)
 	}
+}
+
+// TestBuildForgejoOpsWithRealLookingConfigRef exercises the live ops startup path
+// against a believable git-ref WARD_CONFIG_REF and confirms it returns.
+func TestBuildForgejoOpsWithRealLookingConfigRef(t *testing.T) {
+	bareRepo := makeTestConfigBundleRepo(t)
+
+	home := t.TempDir()
+	t.Setenv("HOME", home)
+	t.Setenv("XDG_CONFIG_HOME", filepath.Join(home, ".config"))
+	t.Setenv(wardConfigRefEnv, "forgejo.coilysiren.me/coilyco-flight-deck/agentic-os@main//.ward")
+	if err := os.WriteFile(filepath.Join(home, ".gitconfig"), []byte(fmt.Sprintf(`[url "%s"]
+	insteadOf = https://forgejo.coilysiren.me/coilyco-flight-deck/agentic-os.git
+`, bareRepo)), 0o644); err != nil {
+		t.Fatalf("write gitconfig: %v", err)
+	}
+
+	type result struct {
+		cmd *cli.Command
+		err error
+	}
+	done := make(chan result, 1)
+	go func() {
+		cmd, err := buildForgejoOps()
+		done <- result{cmd: cmd, err: err}
+	}()
+
+	select {
+	case res := <-done:
+		if res.err != nil {
+			t.Fatalf("buildForgejoOps with real-looking WARD_CONFIG_REF: %v", res.err)
+		}
+		if res.cmd == nil {
+			t.Fatal("buildForgejoOps returned a nil command")
+		}
+		if commandNamed(res.cmd.Commands, "issue") == nil {
+			t.Fatalf("buildForgejoOps returned an incomplete forgejo group: %v", commandNames(res.cmd.Commands))
+		}
+	case <-time.After(10 * time.Second):
+		t.Fatal("buildForgejoOps deadlocked while resolving a real-looking WARD_CONFIG_REF")
+	}
+}
+
+func makeTestConfigBundleRepo(t *testing.T) string {
+	t.Helper()
+	work := t.TempDir()
+	bundleDir := filepath.Join(work, ".ward")
+	if err := os.MkdirAll(bundleDir, 0o755); err != nil {
+		t.Fatal(err)
+	}
+	for _, name := range []string{"ward-kdl.forgejo.guardfile.kdl", "forgejo.swagger.lock.json"} {
+		src := filepath.Join(wardKdlSrcDir, name)
+		dst := filepath.Join(bundleDir, name)
+		b, err := os.ReadFile(src)
+		if err != nil {
+			t.Fatalf("read %s: %v", src, err)
+		}
+		if err := os.WriteFile(dst, b, 0o644); err != nil {
+			t.Fatalf("write %s: %v", dst, err)
+		}
+	}
+	gitFixture(t, work, "init", "-b", "main", ".")
+	gitFixture(t, work, "add", ".")
+	gitFixture(t, work, "commit", "-m", "bundle")
+
+	bareRepo := t.TempDir()
+	gitFixture(t, bareRepo, "init", "--bare", ".")
+	gitFixture(t, work, "remote", "add", "origin", bareRepo)
+	gitFixture(t, work, "push", "-u", "origin", "main")
+	return bareRepo
 }
 
 // TestBuildForgejoOpsAnnotatesSelectedConfigSource keeps the active config source
