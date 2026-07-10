@@ -59,7 +59,6 @@ func containerCommand() *cli.Command {
 		Name:   "container",
 		Hidden: true,
 		Usage:  "Entrypoint-internal container plumbing (reap/bootstrap plus startup helpers). Use `ward agent` to run a feature.",
-		Before: smartDefaultsGuard("ward container"),
 		Description: `container is plumbing-only as of ward#263: the user-facing lifecycle verbs
 (up/exec/down/ls) were retired in favour of ` + "`ward agent`" + `. The leaves that
 remain here - reap, bootstrap, and a few startup helpers - are invoked by the
