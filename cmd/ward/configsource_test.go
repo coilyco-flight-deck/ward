@@ -129,6 +129,12 @@ func TestSelectConfigSourceFileRef(t *testing.T) {
 	if src.topologyKDL != bundleTopologyKDLPath {
 		t.Errorf("bundle topology path = %q, want %q", src.topologyKDL, bundleTopologyKDLPath)
 	}
+	if src.forgejoGuardfile != "" {
+		t.Errorf("bundle forgejo guardfile = %q, want empty and metadata-driven", src.forgejoGuardfile)
+	}
+	if src.bundleOpsManifest != bundleOpsManifestPath {
+		t.Errorf("bundle ops manifest = %q, want %q", src.bundleOpsManifest, bundleOpsManifestPath)
+	}
 	if src.execGuardfileGlob != bundleExecGuardfileGlob {
 		t.Errorf("bundle exec glob = %q, want %q", src.execGuardfileGlob, bundleExecGuardfileGlob)
 	}
@@ -168,9 +174,9 @@ func TestBakedSourcePathsExist(t *testing.T) {
 	}
 }
 
-// TestBuildForgejoOpsFromRealBundle compiles `ops forgejo` from the neutral bundle.
-// The bundled admin guardfile is absent, so baked grafts it.
-func TestBuildForgejoOpsFromRealBundle(t *testing.T) {
+// TestBuildForgejoOpsFromNeutralBundle compiles `ops forgejo` from the neutral
+// bundle metadata, not from a coilyco filename constant.
+func TestBuildForgejoOpsFromNeutralBundle(t *testing.T) {
 	dir := writeBundleFixture(t)
 	forgejo, err := buildForgejoOpsFrom(bundleConfigSource(dir))
 	if err != nil {
@@ -192,6 +198,22 @@ func TestBuildForgejoOpsFromRealBundle(t *testing.T) {
 	}
 	if commandNamed(baked.Commands, "admin") != nil {
 		t.Error("baked build still mounted the removed admin surface")
+	}
+}
+
+// TestBuildForgejoOpsFromCompatBundle keeps the coilyco compatibility path
+// covered while still routing through the neutral metadata entrypoint.
+func TestBuildForgejoOpsFromCompatBundle(t *testing.T) {
+	dir := writeCompatBundleFixture(t)
+	forgejo, err := buildForgejoOpsFrom(bundleConfigSource(dir))
+	if err != nil {
+		t.Fatalf("buildForgejoOpsFrom compat bundle: %v", err)
+	}
+	if commandNamed(forgejo.Commands, "issue") == nil {
+		t.Fatal("compat bundle lost the issue surface")
+	}
+	if _, err := fs.Stat(os.DirFS(dir), "guardfile.forgejo.write.kdl"); err != nil {
+		t.Fatalf("compat bundle missing the role-facing write tier: %v", err)
 	}
 }
 
@@ -323,6 +345,7 @@ func TestBuildForgejoOpsWithRealLookingConfigRef(t *testing.T) {
 	home := t.TempDir()
 	t.Setenv("HOME", home)
 	t.Setenv("XDG_CONFIG_HOME", filepath.Join(home, ".config"))
+	t.Setenv(wardConfigTTLEnv, "0")
 	t.Setenv(wardConfigRefEnv, "forgejo.coilysiren.me/coilyco-flight-deck/agentic-os@main//.ward")
 	if err := os.WriteFile(filepath.Join(home, ".gitconfig"), []byte(fmt.Sprintf(`[url "%s"]
 	insteadOf = https://forgejo.coilysiren.me/coilyco-flight-deck/agentic-os.git
@@ -364,15 +387,17 @@ func makeTestConfigBundleRepo(t *testing.T) string {
 		t.Fatal(err)
 	}
 	fixture := writeBundleFixture(t)
-	for _, name := range []string{bundleForgejoGuardfilePath, bundleForgejoSpecLockPath} {
+	for _, name := range []string{bundleOpsManifestPath, neutralBundleForgejoGuardfilePath, bundleForgejoSpecLockPath} {
 		src := filepath.Join(fixture, name)
-		dst := filepath.Join(bundleDir, name)
 		b, err := os.ReadFile(src)
 		if err != nil {
 			t.Fatalf("read %s: %v", src, err)
 		}
-		if err := os.WriteFile(dst, b, 0o644); err != nil {
-			t.Fatalf("write %s: %v", dst, err)
+		for _, dstDir := range []string{work, bundleDir} {
+			dst := filepath.Join(dstDir, name)
+			if err := os.WriteFile(dst, b, 0o644); err != nil {
+				t.Fatalf("write %s: %v", dst, err)
+			}
 		}
 	}
 	gitFixture(t, work, "init", "-b", "main", ".")

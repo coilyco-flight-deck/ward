@@ -216,9 +216,13 @@ func validateFleetRolesOperational(fleet fleetconfig.Fleet) error {
 }
 
 func validateForgejoOpsOperational(src configSource) error {
-	gfBytes, err := fs.ReadFile(src.fsys, src.forgejoGuardfile)
+	forgejoGuardfile, err := src.forgejoGuardfilePath()
 	if err != nil {
-		return fmt.Errorf("read ops guardfile %s: %w", src.forgejoGuardfile, err)
+		return err
+	}
+	gfBytes, err := fs.ReadFile(src.fsys, forgejoGuardfile)
+	if err != nil {
+		return fmt.Errorf("read ops guardfile %s: %w", forgejoGuardfile, err)
 	}
 	gf, err := guardfile.Parse(gfBytes)
 	if err != nil {
