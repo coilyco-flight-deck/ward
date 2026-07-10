@@ -36,9 +36,13 @@ Inventory of what `ward` ships today.
   [ward-kdl-authoring.md](ward-kdl-authoring.md),
   [ward-kdl-surface.md](ward-kdl-surface.md),
   [ward-kdl-in-ward.md](ward-kdl-in-ward.md), and
-  [ward-docker-exec.md](ward-docker-exec.md).
+  [ward-docker-exec.md](ward-docker-exec.md). Per-area guardfile refs are
+  generated output, not release-era docs.
 - Runtime `WARD_CONFIG_REF` bundles affect edge/operator surfaces, not the core
   agent control plane.
+- Coilyco-targeted operator surfaces fail fast when they would otherwise fall
+  back to the baked example bundle, naming the active source and the expected
+  `WARD_CONFIG_REF` bundle.
 
 ## Release and docs
 

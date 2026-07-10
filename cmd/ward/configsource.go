@@ -144,7 +144,11 @@ func bundleConfigSource(dir string) configSource {
 func selectConfigSource() (configSource, error) {
 	ref := strings.TrimSpace(os.Getenv(wardConfigRefEnv))
 	if ref == "" {
-		return bakedConfigSource(), nil
+		src := bakedConfigSource()
+		if target, ok := coilycoTargetSlug(); ok {
+			return configSource{}, fmt.Errorf("%s: active config source is %s; expected WARD_CONFIG_REF to point at the coilyco bundle for target %s", wardConfigRefEnv, configSourceSummary(ref, src), target)
+		}
+		return src, nil
 	}
 	// A set-but-unresolvable ref fails loud, never a silent baked fallback
 	// (docs/config-source.md).
@@ -178,6 +182,28 @@ func selectConfigSource() (configSource, error) {
 	}
 	src.auditVersion = rev
 	return src, nil
+}
+
+func configSourceSummary(rawRef string, src configSource) string {
+	if strings.TrimSpace(rawRef) == "" {
+		return "baked neutral default (no external config source active)"
+	}
+	if strings.TrimSpace(src.auditVersion) != "" {
+		return wardConfigRefEnv + "=" + rawRef + " (bundle " + src.auditVersion + ")"
+	}
+	return wardConfigRefEnv + "=" + rawRef
+}
+
+func coilycoTargetSlug() (string, bool) {
+	owner := strings.TrimSpace(os.Getenv("WARD_TARGET_OWNER"))
+	repo := strings.TrimSpace(os.Getenv("WARD_TARGET_REPO"))
+	if strings.HasPrefix(owner, "coilyco") || strings.HasPrefix(repo, "coilyco") {
+		if repo != "" {
+			return repo, true
+		}
+		return owner, true
+	}
+	return "", false
 }
 
 // coreRuntimeConfigSource is ward-owned runtime data: the baked neutral default
