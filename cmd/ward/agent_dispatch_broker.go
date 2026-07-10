@@ -108,6 +108,18 @@ type dispatchBrokerResponse struct {
 // a served run's deploy output off the shared read-only TUI (ward#389).
 var dispatchStdioMu sync.Mutex
 
+// dispatchStdioRestoreHook is a test hook that fires after a detached launch has
+// restored process stdio and closed its dispatch log.
+var dispatchStdioRestoreHook = func() {}
+
+// dispatchFailedDispatchLaunchHook lets tests bypass the slow real failure-comment
+// recovery path when they only care about the broker's structured response.
+var dispatchFailedDispatchLaunchHook = func(dispatchBrokerRequest, string, error) bool { return false }
+
+// dispatchFailedDispatchLaunchStartHook lets tests wait until the detached failure
+// branch has definitely entered its recovery path.
+var dispatchFailedDispatchLaunchStartHook = func() {}
+
 // dispatchRefLocks holds one mutex per issue ref so the broker serializes same-ref
 // dispatches before any container starts (ward#600, docs/agent-reservation.md).
 var dispatchRefLocks sync.Map // ref string -> *sync.Mutex
@@ -296,6 +308,7 @@ func (r *Runner) startHostDispatchBrokerRequest(ctx context.Context, req dispatc
 				restore()
 			}
 			_ = logf.Close()
+			dispatchStdioRestoreHook()
 		}()
 		if lock != nil {
 			lock.Lock()
@@ -308,6 +321,7 @@ func (r *Runner) startHostDispatchBrokerRequest(ctx context.Context, req dispatc
 			fmt.Fprintf(os.Stderr, "ward dispatch broker: launch failed: %v\n", err)
 			restore()
 			restored = true
+			dispatchFailedDispatchLaunchStartHook()
 			r.commentFailedDispatchLaunch(ctx, req, logPath, err)
 			return
 		}
@@ -323,6 +337,9 @@ func (r *Runner) startHostDispatchBrokerRequest(ctx context.Context, req dispatc
 
 // commentFailedDispatchLaunch posts the failure comment with a detached timeout.
 func (r *Runner) commentFailedDispatchLaunch(ctx context.Context, req dispatchBrokerRequest, logPath string, launchErr error) {
+	if dispatchFailedDispatchLaunchHook(req, logPath, launchErr) {
+		return
+	}
 	ref, err := parseAgentIssueRef(req.Argv[1])
 	if err != nil {
 		return
