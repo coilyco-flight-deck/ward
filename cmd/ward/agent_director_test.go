@@ -55,6 +55,19 @@ func TestDirectorDispatchDisposition(t *testing.T) {
 		t.Errorf("generic launch failure: state=%q deferred=%v, want queued+deferred", state, deferred)
 	}
 
+	// Global engineer backpressure defers too. It is not a terminal dispatch failure.
+	capacity := newEngineerCapacityError("ward agent engineer --harness codex", 10, 10)
+	state, outcome, deferred = directorDispatchDisposition(capacity)
+	if !deferred {
+		t.Error("engineer capacity backpressure must defer, not fail")
+	}
+	if state != "queued" {
+		t.Errorf("capacity state = %q, want queued", state)
+	}
+	if outcome == nil || outcome.Status != "deferred" {
+		t.Errorf("capacity outcome = %+v, want status=deferred", outcome)
+	}
+
 	// A coded per-issue decline is a real verdict on the issue: park it terminal.
 	noGo := dispatchDeclineErr(dispatchNoGo, "preflight_no_go", "issue a/b#5 is infeasible")
 	state, outcome, deferred = directorDispatchDisposition(noGo)
