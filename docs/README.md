@@ -10,6 +10,7 @@ operating surface only.
 - [exec-verb.md](exec-verb.md) - the guarded dev-verb gate.
 - [audit.md](audit.md) - the append-only audit trail.
 - [verb-fallback.md](verb-fallback.md) - `ward exec` fallback routing.
+- [doctor.md](doctor.md) - runtime config validation.
 - [git-verbs.md](git-verbs.md) - audited git.
 - [git-clone.md](git-clone.md) - destination-gated clone.
 - [config-discovery.md](config-discovery.md) - how ward finds config.

@@ -5,6 +5,7 @@ import (
 	"strings"
 	"testing"
 
+	"forgejo.coilysiren.me/coilyco-flight-deck/cli-guard/pkg/fleetconfig"
 	"github.com/urfave/cli/v3"
 )
 
@@ -65,10 +66,55 @@ func TestAgentRosterEnumeratesEveryRole(t *testing.T) {
 func TestAgentRosterRowsRejectsUndescribedRole(t *testing.T) {
 	cmds := []*cli.Command{
 		{Name: "engineer"},
-		{Name: "newcomer"}, // no agentRoleInfos entry
+		{Name: "newcomer"}, // no resolved role definition entry
 	}
-	if _, err := agentRosterRowsFrom(cmds); err == nil {
-		t.Fatal("agentRosterRowsFrom accepted a role with no descriptor; want an error")
+	defs := builtInAgentRoleDefinitions()
+	delete(defs, "newcomer")
+	if _, err := agentRosterRowsFromDefinitions(cmds, defs); err == nil {
+		t.Fatal("agentRosterRowsFromDefinitions accepted a role with no descriptor; want an error")
+	}
+}
+
+// TestAgentRoleDefinitionsFromFleetAppliesOverlay proves a config-defined overlay
+// changes the effective roster without any Go registration change.
+func TestAgentRoleDefinitionsFromFleetAppliesOverlay(t *testing.T) {
+	fleet := fleetconfig.Fleet{
+		Defaults: fleetconfig.Defaults{Agent: "claude"},
+		Roles: []fleetconfig.Role{
+			{
+				Name: roleDirector,
+				AgentConfig: map[string]fleetconfig.RoleAgentOverride{
+					"claude": {
+						Model:           "director-preview",
+						ReasoningEffort: "high",
+					},
+				},
+			},
+		},
+	}
+	defs, err := agentRoleDefinitionsFromFleet(fleet)
+	if err != nil {
+		t.Fatalf("agentRoleDefinitionsFromFleet: %v", err)
+	}
+	rows, err := agentRosterRowsFromDefinitions(agentCommand().Commands, defs)
+	if err != nil {
+		t.Fatalf("agentRosterRowsFromDefinitions: %v", err)
+	}
+	var directorRow *agentRosterRow
+	for i := range rows {
+		if rows[i].Role == roleDirector {
+			directorRow = &rows[i]
+			break
+		}
+	}
+	if directorRow == nil {
+		t.Fatal("director row missing from resolved roster")
+	}
+	if !strings.Contains(directorRow.Modes, "Role overlays: claude{model=director-preview, reasoning-effort=high}.") {
+		t.Fatalf("director row modes did not include the config overlay summary: %q", directorRow.Modes)
+	}
+	if defs[roleDirector].DefaultHarness != "claude" {
+		t.Fatalf("director default harness = %q, want fleet default claude", defs[roleDirector].DefaultHarness)
 	}
 }
 

@@ -1,4 +1,4 @@
-.PHONY: help build test vet lint lint-refs lint-workflows tidy cover install ward-kdl install-tmp lock skew sync-ops-assets sync-exec-assets sync-fleet-assets sync-topology-assets sync-defaults-assets build-ward-kdl build-ward-kdl-tiers build-ward-kdl-forgejo-tiers workspace agent-roster
+.PHONY: help build test vet lint lint-refs lint-workflows tidy cover install ward-kdl install-tmp lock skew sync-ops-assets sync-exec-assets sync-fleet-assets sync-topology-assets sync-defaults-assets sync-role-assets build-ward-kdl build-ward-kdl-tiers build-ward-kdl-forgejo-tiers workspace agent-roster
 
 KDL_SPECS := forgejo.coilysiren.me/coilyco-flight-deck/cli-guard/cmd/kdl-specs
 
@@ -144,6 +144,13 @@ sync-defaults-assets: ## Mirror the smart-defaults ward-kdl.defaults.kdl into cm
 	# as defaults.generated.kdl. defaultsassets_test.go fails the build on drift.
 	@mkdir -p ./cmd/ward/defaultsassets
 	cp ./.ward/ward-kdl/ward-kdl.defaults.kdl ./cmd/ward/defaultsassets/defaults.generated.kdl
+
+sync-role-assets: ## Mirror the shipped role-definition KDL into cmd/ward for embedding.
+	# The shipped agent role presets are product defaults, not a fleet overlay.
+	# go:embed can't reach the sibling .ward/ward-kdl/ dir, so mirror the canonical
+	# source here as roles.generated.kdl. roleassets_test.go fails the build on drift.
+	@mkdir -p ./cmd/ward/roleassets
+	cp ./.ward/ward-kdl/ward-kdl.roles.kdl ./cmd/ward/roleassets/roles.generated.kdl
 
 sync-topology-assets: ## Mirror the container topology bundle into cmd/ward for embedding (ward#655).
 	# The container-topology overlay is bundle data, not code: go:embed can't
