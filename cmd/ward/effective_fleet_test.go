@@ -42,7 +42,7 @@ func writeFleetBundle(t *testing.T, dir, body string) {
 		t.Fatalf("write bundle roles: %v", err)
 	}
 	if err := os.WriteFile(filepath.Join(dir, bundleDefaultsKDLPath), []byte(`defaults {
-    agent-reservation-ttl "1h"
+    agent-reservation-ttl "3h"
     agent-reservation-recheck-max "15s"
     agent-reap-idle "1h"
     agent-reap-max-cpu "5.0"

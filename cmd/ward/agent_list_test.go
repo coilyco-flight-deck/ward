@@ -49,6 +49,9 @@ func TestAgentRunningEngineerFromInspectIncludesReservation(t *testing.T) {
 	if row.Container != "engineer-codex-factory-game-v3-18" {
 		t.Fatalf("container = %q", row.Container)
 	}
+	if row.Role != roleEngineer {
+		t.Fatalf("role = %q", row.Role)
+	}
 	if row.Ref != "coilyco-gaming/factory-game-v3#18" {
 		t.Fatalf("ref = %q", row.Ref)
 	}
@@ -70,6 +73,9 @@ func TestAgentRunningEngineerFromInspectIncludesReservation(t *testing.T) {
 	if row.Status != "running" {
 		t.Fatalf("status = %q", row.Status)
 	}
+	if row.ExecutionLimit != 90*time.Minute {
+		t.Fatalf("execution limit = %s, want 90m", row.ExecutionLimit)
+	}
 	if row.ReservedAt.IsZero() || row.StartedAt.IsZero() {
 		t.Fatalf("expected reservation and start timestamps, got reserved=%v started=%v", row.ReservedAt, row.StartedAt)
 	}
@@ -86,7 +92,8 @@ func TestAgentRunningEngineerFromInspectIncludesReservation(t *testing.T) {
 		t.Fatalf("json output missing container: %s", buf)
 	}
 
-	payload := agentListJSONFromRows([]agentRunningEngineer{row})
+	defs := bakedSmartDefaults()
+	payload := agentListJSONFromRows([]agentRunningEngineer{row}, defs)
 	if payload.Count != 1 {
 		t.Fatalf("count = %d, want 1", payload.Count)
 	}
@@ -99,6 +106,12 @@ func TestAgentRunningEngineerFromInspectIncludesReservation(t *testing.T) {
 	if payload.AtCapacity == nil || *payload.AtCapacity {
 		t.Fatalf("at_capacity = %v, want false", payload.AtCapacity)
 	}
+	if len(payload.Engineers) != 1 || payload.Engineers[0].ExecutionLimit != "90m" {
+		t.Fatalf("engineer budget JSON = %+v", payload.Engineers)
+	}
+	if !strings.Contains(payload.Engineers[0].BudgetRemaining, "remaining of 90m limit") {
+		t.Fatalf("engineer budget remaining = %q", payload.Engineers[0].BudgetRemaining)
+	}
 	jbuf, err := json.MarshalIndent(payload, "", "  ")
 	if err != nil {
 		t.Fatalf("marshal payload json: %v", err)
@@ -108,19 +121,21 @@ func TestAgentRunningEngineerFromInspectIncludesReservation(t *testing.T) {
 		`"limit": 12`,
 		`"remaining": 11`,
 		`"at_capacity": false`,
+		`"execution_limit": "90m"`,
 	} {
 		if !strings.Contains(string(jbuf), want) {
 			t.Fatalf("payload json missing %q:\n%s", want, jbuf)
 		}
 	}
 
-	human := renderAgentListHuman([]agentRunningEngineer{row})
+	human := renderAgentListHuman([]agentRunningEngineer{row}, defs)
 	for _, want := range []string{
 		"ward agent: running engineer containers (1/12, 11 slots free)",
 		"coilyco-gaming/factory-game-v3#18",
 		"kais-macbook-pro-2.local",
 		"issue-18",
 		"running",
+		"budget:    73m remaining of 90m limit",
 	} {
 		if !strings.Contains(human, want) {
 			t.Fatalf("human output missing %q:\n%s", want, human)

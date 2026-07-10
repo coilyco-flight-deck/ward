@@ -153,6 +153,7 @@ func (r *Runner) advisorFreeformPlan(ctx context.Context, c *cli.Command, mode c
 	if oneshot {
 		seed = askPrompt(question)
 	}
+	seed += agentRunBudgetNote(roleAdvisor)
 
 	assetsDir, cleanupAssets, err := writeContainerAssets(ctx, r, c.String("ward-source"), strings.TrimSpace(c.String("ward-version")))
 	if err != nil {

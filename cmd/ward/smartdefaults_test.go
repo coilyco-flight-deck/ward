@@ -3,6 +3,7 @@ package main
 import (
 	"os"
 	"path/filepath"
+	"strings"
 	"testing"
 	"time"
 )
@@ -15,8 +16,8 @@ func TestSmartDefaultsBaked(t *testing.T) {
 	if err != nil {
 		t.Fatalf("currentSmartDefaultsWithError(baked): %v", err)
 	}
-	if defs.agentReservationTTL != time.Hour {
-		t.Errorf("baked reservation ttl = %s, want 1h", defs.agentReservationTTL)
+	if defs.agentReservationTTL != 3*time.Hour {
+		t.Errorf("baked reservation ttl = %s, want 3h", defs.agentReservationTTL)
 	}
 	if defs.engineerContainerLimit != 12 || defs.directorMaxParallel != 10 || defs.directorLimit != 50 || defs.containerReapKeep != 10 {
 		t.Errorf("baked defaults = %+v, want the neutral policy bundle", defs)
@@ -107,6 +108,27 @@ func TestSmartDefaultsRejectsMalformedValue(t *testing.T) {
 	}
 	if _, err := loadSmartDefaultsFrom(bundleConfigSource(dir)); err == nil {
 		t.Fatal("malformed smart defaults selected a bundle; want a loud parse error")
+	}
+}
+
+func TestSmartDefaultsRejectsReservationTTLUnderRoleLimit(t *testing.T) {
+	dir := t.TempDir()
+	defaultsBody := `defaults {
+    agent-reservation-ttl "1h"
+}`
+	if err := os.WriteFile(filepath.Join(dir, bundleDefaultsKDLPath), []byte(defaultsBody), 0o644); err != nil {
+		t.Fatalf("write defaults bundle: %v", err)
+	}
+	if err := os.WriteFile(filepath.Join(dir, bundleReposKDLPath), []byte(`repos {
+    repo-authority default=forgejo {
+        trusted-owner "example-owner"
+        repo "example-owner/*" forge=github
+    }
+}`), 0o644); err != nil {
+		t.Fatalf("write repos bundle: %v", err)
+	}
+	if _, err := loadSmartDefaultsFrom(bundleConfigSource(dir)); err == nil || !strings.Contains(err.Error(), "must exceed role") {
+		t.Fatalf("reservation ttl under role limit should fail loud, got %v", err)
 	}
 }
 

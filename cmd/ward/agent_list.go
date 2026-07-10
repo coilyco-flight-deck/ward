@@ -41,17 +41,21 @@ type agentListJSON struct {
 
 // agentListJSONEntry is one running engineer container.
 type agentListJSONEntry struct {
-	Container  string `json:"container"`
-	Harness    string `json:"harness"`
-	Repo       string `json:"repo"`
-	Issue      string `json:"issue"`
-	Ref        string `json:"ref"`
-	Branch     string `json:"branch"`
-	Host       string `json:"host"`
-	ReservedAt string `json:"reserved_at"`
-	StartedAt  string `json:"started_at"`
-	Age        string `json:"age"`
-	Status     string `json:"status"`
+	Container       string `json:"container"`
+	Role            string `json:"role"`
+	Harness         string `json:"harness"`
+	Repo            string `json:"repo"`
+	Issue           string `json:"issue"`
+	Ref             string `json:"ref"`
+	Branch          string `json:"branch"`
+	Host            string `json:"host"`
+	ReservedAt      string `json:"reserved_at"`
+	StartedAt       string `json:"started_at"`
+	Age             string `json:"age"`
+	ExecutionLimit  string `json:"execution_limit"`
+	BudgetRemaining string `json:"budget_remaining"`
+	BudgetExpiresAt string `json:"budget_expires_at"`
+	Status          string `json:"status"`
 }
 
 type agentDockerInspectContainer struct {
@@ -169,12 +173,16 @@ func sendDispatchBrokerListRequest(ctx context.Context, addr string, req dispatc
 
 // renderAgentList renders the active engineer runs in either human or JSON form.
 func (r *Runner) renderAgentList(ctx context.Context, jsonOut bool) (string, error) {
+	defs, err := currentSmartDefaultsWithError()
+	if err != nil {
+		return "", err
+	}
 	rows, err := r.runningEngineerRows(ctx)
 	if err != nil {
 		return "", err
 	}
 	if jsonOut {
-		payload := agentListJSONFromRows(rows)
+		payload := agentListJSONFromRows(rows, defs)
 		payload.GeneratedAt = time.Now().UTC().Format(time.RFC3339Nano)
 		buf, err := json.MarshalIndent(payload, "", "  ")
 		if err != nil {
@@ -182,7 +190,7 @@ func (r *Runner) renderAgentList(ctx context.Context, jsonOut bool) (string, err
 		}
 		return string(buf) + "\n", nil
 	}
-	return renderAgentListHuman(rows), nil
+	return renderAgentListHuman(rows, defs), nil
 }
 
 // runningEngineerRows gathers the live engineer list from docker + reservation data.
@@ -207,21 +215,23 @@ func (r *Runner) runningEngineerRows(ctx context.Context) ([]agentRunningEnginee
 }
 
 type agentRunningEngineer struct {
-	Container  string
-	Harness    string
-	Repo       string
-	Issue      string
-	Ref        string
-	Branch     string
-	Host       string
-	ReservedAt time.Time
-	StartedAt  time.Time
-	Age        time.Duration
-	Status     string
+	Container      string
+	Role           string
+	Harness        string
+	Repo           string
+	Issue          string
+	Ref            string
+	Branch         string
+	Host           string
+	ReservedAt     time.Time
+	StartedAt      time.Time
+	Age            time.Duration
+	ExecutionLimit time.Duration
+	Status         string
 }
 
-func agentListJSONFromRows(rows []agentRunningEngineer) agentListJSON {
-	capacity := agentListCapacityForCount(len(rows))
+func agentListJSONFromRows(rows []agentRunningEngineer, defs smartDefaults) agentListJSON {
+	capacity := agentListCapacityForCount(len(rows), defs)
 	payload := agentListJSON{
 		SchemaVersion: agentListSchemaVersion,
 		Count:         capacity.Count,
@@ -237,29 +247,35 @@ func agentListJSONFromRows(rows []agentRunningEngineer) agentListJSON {
 }
 
 func (r agentRunningEngineer) toJSON() agentListJSONEntry {
+	limit := r.ExecutionLimit
+	expiresAt := time.Time{}
+	if limit > 0 {
+		expiresAt = agentRunningEngineerAgeBase(r.ReservedAt, r.StartedAt).Add(limit)
+	}
 	return agentListJSONEntry{
-		Container:  r.Container,
-		Harness:    r.Harness,
-		Repo:       r.Repo,
-		Issue:      r.Issue,
-		Ref:        r.Ref,
-		Branch:     r.Branch,
-		Host:       r.Host,
-		ReservedAt: formatJSONTime(r.ReservedAt),
-		StartedAt:  formatJSONTime(r.StartedAt),
-		Age:        formatDuration(r.Age),
-		Status:     r.Status,
+		Container:       r.Container,
+		Role:            r.Role,
+		Harness:         r.Harness,
+		Repo:            r.Repo,
+		Issue:           r.Issue,
+		Ref:             r.Ref,
+		Branch:          r.Branch,
+		Host:            r.Host,
+		ReservedAt:      formatJSONTime(r.ReservedAt),
+		StartedAt:       formatJSONTime(r.StartedAt),
+		Age:             formatDuration(r.Age),
+		ExecutionLimit:  formatDuration(limit),
+		BudgetRemaining: agentRunBudgetSummary(r.Role, r.Age),
+		BudgetExpiresAt: formatJSONTime(expiresAt),
+		Status:          r.Status,
 	}
 }
 
-func agentListCapacityForCount(count int) agentListCapacity {
-	defs, err := currentSmartDefaultsWithError()
+func agentListCapacityForCount(count int, defs smartDefaults) agentListCapacity {
 	limit := defs.engineerContainerLimit
 	capacity := agentListCapacity{Count: count}
-	if err != nil {
-		capacity.Unavailable = true
-	}
 	if limit <= 0 {
+		capacity.Unavailable = true
 		return capacity
 	}
 	capacity.Limit = &limit
@@ -292,6 +308,10 @@ func agentRunningEngineerFromInspect(now time.Time, snap agentDockerInspectConta
 	name := strings.TrimPrefix(strings.TrimSpace(snap.Name), "/")
 	env := agentEnvMap(snap.Config.Env)
 	labels := snap.Config.Labels
+	role := firstNonEmptyList(strings.TrimSpace(labels[labelRole]), strings.TrimSpace(env["WARD_ROLE"]))
+	if role == "" {
+		role = roleEngineer
+	}
 	harness := firstNonEmptyList(strings.TrimSpace(labels[labelDriver]), strings.TrimSpace(env["WARD_MODE"]))
 	repoSlug := firstNonEmptyList(strings.TrimSpace(labels[labelRepo]), strings.TrimSpace(env["WARD_TARGET_REPO"]))
 	owner := firstNonEmptyList(strings.TrimSpace(env["WARD_TARGET_OWNER"]), strings.TrimSpace(env["WARD_OWNER"]))
@@ -307,6 +327,7 @@ func agentRunningEngineerFromInspect(now time.Time, snap agentDockerInspectConta
 	}
 	out := agentRunningEngineer{
 		Container:  name,
+		Role:       role,
 		Harness:    harness,
 		Repo:       repo,
 		Issue:      "",
@@ -325,6 +346,9 @@ func agentRunningEngineerFromInspect(now time.Time, snap agentDockerInspectConta
 	}
 	if ageAt := agentRunningEngineerAgeBase(reservedAt, startedAt); !ageAt.IsZero() {
 		out.Age = now.Sub(ageAt)
+	}
+	if limit, ok := agentRoleExecutionLimit(role); ok {
+		out.ExecutionLimit = limit
 	}
 	return out
 }
@@ -403,8 +427,8 @@ func formatDuration(d time.Duration) string {
 	return d.Round(time.Second).String()
 }
 
-func renderAgentListHuman(rows []agentRunningEngineer) string {
-	capacity := agentListCapacityForCount(len(rows))
+func renderAgentListHuman(rows []agentRunningEngineer, defs smartDefaults) string {
+	capacity := agentListCapacityForCount(len(rows), defs)
 	var b strings.Builder
 	fmt.Fprintf(&b, "ward agent: running engineer containers %s\n", formatAgentListCapacity(capacity))
 	if len(rows) == 0 {
@@ -422,6 +446,9 @@ func renderAgentListHuman(rows []agentRunningEngineer) string {
 		fmt.Fprintf(&b, "    reserved:  %s\n", emptyDefault(formatJSONTime(row.ReservedAt), "-"))
 		fmt.Fprintf(&b, "    started:   %s\n", emptyDefault(formatJSONTime(row.StartedAt), "-"))
 		fmt.Fprintf(&b, "    age:       %s\n", emptyDefault(formatDuration(row.Age), "-"))
+		if budget := agentRunBudgetSummary(row.Role, row.Age); budget != "" {
+			fmt.Fprintf(&b, "    budget:    %s\n", budget)
+		}
 		fmt.Fprintf(&b, "    status:    %s\n", emptyDefault(row.Status, "-"))
 	}
 	return b.String()

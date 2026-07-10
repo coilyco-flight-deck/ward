@@ -135,7 +135,7 @@ func TestParseAgentIssueRef(t *testing.T) {
 func TestParseAgentIssueRefUsesRepoAuthorityPolicy(t *testing.T) {
 	dir := t.TempDir()
 	defaultsBody := `defaults {
-    agent-reservation-ttl "1h"
+    agent-reservation-ttl "3h"
 }
 `
 	reposBody := `repos {
@@ -538,7 +538,7 @@ func TestOwnerAllowed(t *testing.T) {
 func TestResolveAgentIssueRefUsesRepoAuthorityPolicy(t *testing.T) {
 	dir := t.TempDir()
 	defaultsBody := `defaults {
-    agent-reservation-ttl "1h"
+    agent-reservation-ttl "3h"
 }
 `
 	reposBody := `repos {

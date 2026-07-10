@@ -1060,6 +1060,7 @@ func (r *Runner) resolveAgentWork(ctx context.Context, c *cli.Command, mode cont
 		seedBody = issueBodyWithComments(body, comments)
 	}
 	seed := agentSeedPromptWorkflow(ref, title, seedBody, details, true, extra, wf, reviewGate, reviewSkip)
+	seed += agentRunBudgetNote(roleEngineer)
 	return resolvedWork{Ref: ref, Title: title, Body: seedBody, Comments: comments, Details: details, Seed: seed, Branch: branch, ExtraRepos: extra, Workflow: wf, ReviewGate: reviewGate}, nil
 }
 
@@ -2412,6 +2413,7 @@ func (r *Runner) runAgentTaskDirect(ctx context.Context, c *cli.Command, mode co
 	// (inlined body + reflection) carried under the resolved workflow (#167, #281, #508).
 	reviewGate := reviewGateWanted(c, mode, ref)
 	seed := agentSeedPromptWorkflow(ref, title, body, "", true, nil, wf, reviewGate, "")
+	seed += agentRunBudgetNote(roleEngineer)
 	return r.launchAgentContainer(ctx, c, mode, "engineer",
 		resolvedWork{Ref: ref, Title: title, Body: body, Workflow: wf, ReviewGate: reviewGate, Seed: seed}, justification)
 }
@@ -2441,6 +2443,7 @@ func printAgentTaskPlan(c *cli.Command, mode containerMode, repo targetRepo, tit
 	wf, _ := agentWorkflow(c, repo.slug())
 	reviewGate := reviewGateWanted(c, mode, previewRef)
 	seed := agentSeedPromptWorkflow(previewRef, title, body, "", true, nil, wf, reviewGate, "")
+	seed += agentRunBudgetNote(roleEngineer)
 	plan, err := buildUpPlan(c, repo, mode, roleEngineer, "", "", []string{seed}, false)
 	if err != nil {
 		return err

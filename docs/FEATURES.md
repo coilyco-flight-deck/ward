@@ -43,10 +43,12 @@ Inventory of what `ward` ships today.
   [agent-lifecycle.md](agent-lifecycle.md), [agent-director.md](agent-director.md),
   [agent-ops.md](agent-ops.md), [dispatch-review.md](dispatch-review.md), and
   [agent-workflow.md](agent-workflow.md). The roster resolves from effective
-  role definitions plus fleet overlays, not a hand-edited role list. `ward agent
-  list` now carries known engineer capacity alongside the live rows, and `ward
-  agent logs` surfaces live docker output and, when that stream is empty, the
-  live transcript tree before it falls back to the drained archive.
+  role definitions plus fleet overlays, not a hand-edited role list. Startup
+  roles now ship per-role execution limits, and the reservation TTL must stay
+  strictly above those limits at load time. `ward agent list` carries known
+  engineer capacity plus the live run budget countdown alongside the rows, and
+  `ward agent logs` surfaces live docker output and, when that stream is empty,
+  the live transcript tree before it falls back to the drained archive.
 - **PR repair input mode** - `ward agent engineer` accepts PR URLs and PR refs,
   seeds the continuation context, and starts the run from the PR source branch
   instead of recreating work from the issue branch.
