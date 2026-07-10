@@ -242,3 +242,30 @@ func TestEngineerCapacityLockSerializesConcurrentAdmissions(t *testing.T) {
 		t.Fatalf("final running count = %d, want %d", got, limit)
 	}
 }
+
+func TestEngineerCapacityLockFailsClosedWhenLockPathUnavailable(t *testing.T) {
+	t.Setenv("HOME", t.TempDir())
+	lockPath, err := engineerCapacityLockPath()
+	if err != nil {
+		t.Fatalf("engineerCapacityLockPath: %v", err)
+	}
+	if err := os.MkdirAll(lockPath, 0o755); err != nil {
+		t.Fatalf("mkdir lock path: %v", err)
+	}
+
+	r := &Runner{}
+	called := false
+	err = r.withEngineerCapacityLock(func() error {
+		called = true
+		return nil
+	})
+	if err == nil {
+		t.Fatal("withEngineerCapacityLock: want error when lock path cannot be opened, got nil")
+	}
+	if called {
+		t.Fatal("withEngineerCapacityLock: fn ran despite lock path failure")
+	}
+	if !strings.Contains(err.Error(), "engineer capacity lock: open") {
+		t.Fatalf("withEngineerCapacityLock error = %v", err)
+	}
+}

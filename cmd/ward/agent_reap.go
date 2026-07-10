@@ -14,6 +14,7 @@ import (
 
 	"forgejo.coilysiren.me/coilyco-flight-deck/cli-guard/cli/verb"
 	"forgejo.coilysiren.me/coilyco-flight-deck/cli-guard/pkg/config"
+	"forgejo.coilysiren.me/coilyco-flight-deck/cli-guard/pkg/flock"
 	"github.com/urfave/cli/v3"
 )
 
@@ -213,17 +214,22 @@ func engineerCapacityLockPath() (string, error) {
 }
 
 // withEngineerCapacityLock serializes the capacity check and container create
-// window. It fails closed if the lock path cannot be resolved or prepared.
+// window. It fails closed if the lock path cannot be resolved, opened, or locked.
 func (r *Runner) withEngineerCapacityLock(fn func() error) error {
 	lockPath, err := engineerCapacityLockPath()
 	if err != nil {
 		return err
 	}
-	var fnErr error
-	r.withFlock(lockPath, func() {
-		fnErr = fn()
-	})
-	return fnErr
+	f, err := os.OpenFile(lockPath, os.O_CREATE|os.O_RDWR, 0o644) // #nosec G304 -- ward-derived lock path under ~/.ward
+	if err != nil {
+		return fmt.Errorf("engineer capacity lock: open %s: %w", lockPath, err)
+	}
+	defer func() { _ = f.Close() }()
+	if err := flock.Exclusive(f); err != nil {
+		return fmt.Errorf("engineer capacity lock: acquire %s: %w", lockPath, err)
+	}
+	defer func() { _ = flock.Unlock(f) }()
+	return fn()
 }
 
 // engineerCapacityError marks a launch refusal because the global engineer cap
