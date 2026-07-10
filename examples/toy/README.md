@@ -34,7 +34,7 @@ repo root). Walkthrough: [../../docs/demo.md](../../docs/demo.md).
 
 A `ward agent` run against a repo like this pulls the aos-published **dev-base**
 container image and clones fresh inside it - see
-[../../docs/container-image.md](../../docs/container-image.md). Nothing here
-bakes that image; the toy is what the agent clones, not what it runs in.
+[../../docs/container.md](../../docs/container.md). Nothing here bakes that
+image; the toy is what the agent clones, not what it runs in.
 
 Full walkthrough: [../../docs/example-repo.md](../../docs/example-repo.md).

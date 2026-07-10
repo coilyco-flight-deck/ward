@@ -1,68 +1,34 @@
 ---
-doc_goal: Explain the /substrate reference-repo layer as what lets a least-access boxed agent read a convention or contract without reaching outside its container - the public/private tier split that keeps the dev-base image shareable, TTL-gated mirror warming, and the read-from-either / act-only-on-workspace rule when a repo lands in both trees.
+doc_goal: Describe the read-only substrate and multi-repo mounts as one operator-facing contract instead of a set of issue slices.
 ---
-# container substrate reference repos
+# ward container substrate
 
-Beyond the target repo, every `ward container` warms a fixed set of cross-cutting
-**reference repos** - doctrine, skills, the cross-repo contracts, the dev/ops
-CLIs - so an agent can read a convention without reaching outside its box. The
-canonical list is [`preclone-repos.txt`](../cmd/ward/containerassets/preclone-repos.txt),
-`owner/name  tier` per line, embedded in the binary and parsed by both Go and
-the entrypoint. They land under `/substrate/<name>`.
+`/substrate` holds read-only reference checkouts that every container session
+can read.
 
-## Tiers
+- It is a reference cache, not a work surface.
+- The workspace clone remains the authoritative writable tree.
+- Multi-repo runs can add extra read-only grants or repo mounts.
 
-Each entry carries a tier, split on a public/private boundary so the published
-dev-base image stays shareable:
+## What to expect
 
-- `image` - public (coilysiren + coilyco-flight-deck). The image-tier seed list
-  is canonical in aos and baked into the dev-base image at `/opt/substrate-seed`,
-  so a cold host warms these with no network. See its
-  [`docs/dev-base-image.md`](https://forgejo.coilysiren.me/coilyco-flight-deck/agentic-os/src/branch/main/docs/dev-base-image.md).
-- `cache` - coilyco-bridge (leak-tolerant/private). Never baked; cloned over the
-  network on first use.
+- The container sees the target repo first.
+- Dependencies or granted repos can appear read-only beside it.
+- The reaper ignores read-only references when it verifies landing.
 
-## Warming
+## Why it exists
 
-Both tiers live in the shared `ward-gitcache` volume as bare mirrors, with a
-local working copy under `/substrate/<name>`. The mirror is refreshed by a
-**TTL-gated fetch** (`WARD_SUBSTRATE_TTL`, default 600s): the first container past
-the TTL does one fetch per repo, the rest skip the gate, and an `flock`
-serialises concurrent inits against a given mirror. On a cold volume an
-image-tier repo hydrates from its baked seed (a local copy, no network) instead
-of cloning.
+- it keeps shared dependencies out of the writable workspace.
+- it lets the run inspect upstreams without mutating them.
+- it gives the reaper a clean line between landing work and borrowing context.
 
-Warming is **best-effort** - any failure logs and the container continues.
-`WARD_SUBSTRATE_SKIP=1` skips it entirely. The agent-facing note lives in
-[AGENTS.container.md](../cmd/ward/containerassets/AGENTS.container.md).
+## Multi-repo behavior
 
-## Labeling the mounts ([ward#593](https://forgejo.coilysiren.me/coilyco-flight-deck/ward/issues/593))
-
-Warming the repos is not enough. A mount the agent is never told to read is a
-silent pile on disk, and a session that does not spelunk it falls back to
-interrogating the operator for facts already in `/substrate/infrastructure`: the
-"'discoverable in the clone' is a trap" failure the doctrine names.
-
-So the composed context ends with a **read-these-first** block: one bullet per
-warmed `/substrate/<name>`, each with a self-sourced tagline from that repo's own
-`README.md` (then `AGENTS.md`, then `docs/FEATURES.md`) so the label never drifts.
-The block is one-sourced across the bash and Go compose paths via the hidden `ward
-container substrate-inventory` command. When the seed carries a
-[substrate catalog](substrate-catalog.md) the bullets are enriched with each repo's
-canonical `full_name`, description, and Forgejo topics ([ward#594](https://forgejo.coilysiren.me/coilyco-flight-deck/ward/issues/594)). These
-skills are read **as docs**, never a rebuilt symlink forest
-([container-skill-surface.md](container-skill-surface.md)).
-
-## When a repo lands in both trees
-
-Because the substrate copy and the target/granted clones hydrate from the same
-`ward-gitcache` mirror, a manifest repo that is *also* the target (or a `--repo`
-grant) ends up under **both** `/substrate/<name>` and `/workspace/<name>` at the
-same HEAD. That overlap is expected. `/workspace/<name>` is authoritative for
-work; `/substrate/<name>` stays read-only reference even for active repos. The
-read-from-either / act-only-on-`/workspace` rule lives in
-[AGENTS.container.md](../cmd/ward/containerassets/AGENTS.container.md).
+The same container model can mount extra repos in read-only mode for larger
+flows. The rule stays the same: only the target repo is writable unless the
+workflow explicitly granted something else.
 
 ## See also
 
-[container.md](container.md) - the container model and lifecycle.
+- [container-lifecycle.md](container-lifecycle.md) - how the box starts and ends.
+- [container-contract.md](container-contract.md) - the mount and env contract.

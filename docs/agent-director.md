@@ -1,74 +1,38 @@
-doc_goal: Let an operator run and reason about the director as ward's autonomous backlog supervisor - the LLM heartbeat that drains a repo's headless lane under trust and slot bounds - not mistake it for a one-shot command.
+---
+doc_goal: Give the director surface one durable description so the read-only lane and its merge-ready follow-through do not live in scattered issue pages.
 ---
 # ward agent director
 
-`ward agent director` (public face `warded director`) is the **autonomous backlog
-supervisor** role: it drives a repo's headless lane to drain. It is an LLM loop.
+The director surface is the read-only control plane for runs.
 
-## Startup triage
+- It can inspect the fleet, read logs, and stop a run.
+- It can keep a backlog moving without writing implementation code.
+- It is the surface that hosts the merge-ready workflow for PR landings.
 
-Before the init gate, director folds in a **triage pass** (on by default, `--no-triage` skips)
-that writes the tier + mode labels the heartbeat reads and leaves a reasoning comment.
-See
-[director-startup-triage.md](director-startup-triage.md).
+## Why it exists
 
-## The init gate
+- Interactive work should not share the detached engineer path.
+- Supervisory work needs a read-only session with brokered access.
+- Merge follow-up needs a lane that can verify checks before merge.
 
-At startup, director polls once, then checks whether headless work is queued or in flight.
-If empty, it skips the init gate and drains/surfaces.
-If work remains, it asks whether to drain now. **yes**/Enter drains, **no** surfaces first.
+## Typical uses
 
-## The heartbeat
+- check whether an engineer is still alive.
+- read the last logs before deciding whether to re-dispatch.
+- stop a run that is definitely on the wrong ref.
+- sweep the merge-ready branch once CI is green.
 
-`director` is **attached/interactive only** - no `--detach` (runaway-dispatch risk). Each tick:
+The director surface is intentionally narrower than the engineer path. It is
+for supervision and landing, not for implementation.
 
-1. **Poll + reconcile** in-flight engineers: on exit read `WARD-OUTCOME`. `submitted` and `merge-ready` are PR states.
-2. **Refresh** each ledger from the backlog by tier (`P0`-`P4`) and mode
-   (`headless`/`interactive`/`consult`), folding PRs into a `pull-requests` lane `issue #N` / `PR #N`.
-3. **Probe** forge liveness (the top candidate's issue get) so a recovery reaches the decision.
-4. **Sweep** ward-owned PRs that carry the `pull-requests-and-merge` marker. See [agent-director-pr-merge.md](agent-director-pr-merge.md).
-5. **Decide** via a host one-shot over the candidates + forge-health; answers `DISPATCH:
-   <numbers>`/`none`, can only **narrow or hold**, and **fails open to rank**.
-6. **Dispatch** the chosen set via the engineer (`agent.<mode>.engineer`).
-7. **Sleep** `--poll-interval`, **no LLM open**.
+## What it is not
 
-Only the **headless** lane auto-dispatches; interactive issues surface. The merge sweep is narrow and policy-bound. See [agent-director-pr-merge.md](agent-director-pr-merge.md).
-
-## The WARD-OUTCOME marker
-
-Engineer retrospectives lead with `WARD-OUTCOME:`; a no-marker exit is parked `failed`.
-
-See [agent-director-merge.md](agent-director-merge.md).
-
-## Scope, ledger, trust
-
-`--repo a/b,c/d` spans many repos (de-duped); `--org <org>` expands to every repo it
-owns, unioned with `--repo` (empty expansion errors). State lives in a per-repo YAML ledger under
-`~/.ward/backlog/`; dispatch needs every scope repo trusted.
-
-**Config-stored default scope.** With neither `--repo` nor `--org`, director reads
-`director.default-scope` from `~/.ward/config.yaml` (each entry an **org** or bare `owner/name`)
-via the same union/de-dup/trust path; an absent key falls back to the cwd origin. Host-owned.
-
-## Flags
-
-- `--repo`/`--org` scope; `--max-parallel N` (10); `--triage`/`--no-triage` (on by
-  default); `--limit` (50); `--poll-interval` (30s); `--max-cycles` (0=drained); `--dry-run`.
-  `--harness` (claude) drives director's session; `--engineer-harness` overrides it.
-  Hidden `--engineer-driver` stays an alias.
-- Container/harness parity: `--image`/`--tag`, `--ward-source`/`--ward-version`,
-  `--aws`, `--tailnet`, `--no-pull`, `--with-repo`, `--print`, `--force` - the dispatch subset
-  reaches each engineer, the full set the surface; `--branch`/`--no-preflight`/`--watch`/`--detach` absent.
-
-## Dispatch-error disposition
-
-Only a coded per-issue decline parks `failed`; a conflict or launch/infra failure defers and
-retries, and a **livelock guard** breaks a stale-infra hold on a live-ok forge:
-[agent-director-dispatch.md](agent-director-dispatch.md).
+- it is not a shell into the target repo.
+- it is not a general-purpose container admin surface.
+- it is not a replacement for the issue thread.
 
 ## See also
 
-- [docs/agent.md](agent.md) - the `ward agent` roster + `warded` face.
-- [docs/agent-surface.md](agent-surface.md) - the read-only surface it drops into.
-- [docs/agent-engineer.md](agent-engineer.md) - the engineer it dispatches.
-- [docs/agent-workflow.md](agent-workflow.md) - the run landing policy, including the director-owned merge boundary.
+- [agent-ops.md](agent-ops.md) - list, logs, stop, reap.
+- [agent-workflow.md](agent-workflow.md) - PR and merge policy.
+- [agent-roles.md](agent-roles.md) - role semantics.
