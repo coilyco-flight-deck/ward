@@ -281,12 +281,15 @@ func (d *liveDirector) poll(ctx context.Context) { d.r.backlogPoll(ctx, d.label,
 // refresh is best-effort in-loop: a transient read error must not kill a heartbeat
 // that is otherwise tracking live containers (the next tick retries).
 func (d *liveDirector) refresh(ctx context.Context) {
-	if err := d.r.backlogRefresh(ctx, d.label, d.repos, d.cfg.limit); err != nil {
+	if err := d.r.backlogRefreshForDirector(ctx, d.label, d.cfg, d.repos); err != nil {
 		fmt.Fprintf(os.Stderr, "%s: note: refresh failed (%v); continuing with the prior ledger\n", d.label, err)
 	}
 }
 
 func (d *liveDirector) mergeEligiblePullRequests(ctx context.Context) {
+	if d.cfg.issueRef != nil {
+		return
+	}
 	if err := d.r.directorMergeEligiblePullRequests(ctx, d.label, d.repos); err != nil {
 		fmt.Fprintf(os.Stderr, "%s: note: PR merge sweep failed (%v); continuing\n", d.label, err)
 	}

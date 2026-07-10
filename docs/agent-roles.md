@@ -60,7 +60,8 @@ The QA role is a light-weight inspection pass.
 The role is the first noun after `warded` or `ward agent`.
 
 - `warded #98` means engineer.
-- `warded director #98` means the supervisory lane.
+- `warded director owner/repo#98` means the supervisory lane scoped to one issue.
+- `warded director #98` means the supervisory lane when the current checkout supplies the repo.
 - `warded advisor #98` means the answer-only path.
 - `warded qa #98` means structured inspection.
 
