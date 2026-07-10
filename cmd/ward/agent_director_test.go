@@ -2,6 +2,7 @@ package main
 
 import (
 	"bytes"
+	"context"
 	"encoding/json"
 	"errors"
 	"fmt"
@@ -890,5 +891,41 @@ func TestBacklogLedgerRoundTrip(t *testing.T) {
 	e := got.Issues["42"]
 	if e == nil || e.Num != 42 || e.State != "dispatched" || e.Title != "carry me" {
 		t.Errorf("reloaded entry = %+v", e)
+	}
+}
+
+func TestBacklogDispatchContainerName(t *testing.T) {
+	ref := agentIssueRef{Owner: "coilyco-flight-deck", Repo: "ward", Number: 900}
+	got := backlogDispatchContainerName(dispatchEngineer{harness: modeCodex}, ref)
+	want := issueScopedContainerName(roleEngineer, modeCodex, targetRepo{Owner: ref.Owner, Name: ref.Repo}, ref.Number)
+	if got != want {
+		t.Fatalf("backlogDispatchContainerName() = %q, want %q", got, want)
+	}
+}
+
+func TestBacklogReconcileKeepsDispatchedWhenDockerUnavailable(t *testing.T) {
+	t.Setenv("HOME", t.TempDir())
+	ref := agentIssueRef{Owner: "coilyco-flight-deck", Repo: "ward", Number: 900}
+	entry := &backlogEntry{
+		Num:          ref.Number,
+		Title:        "broker-forwarded run",
+		Lane:         "headless",
+		State:        "dispatched",
+		Container:    backlogDispatchContainerName(dispatchEngineer{harness: modeCodex}, ref),
+		DispatchedAt: time.Now().UTC().Format(time.RFC3339),
+		repo:         ref.repoSlug(),
+	}
+	r := &Runner{Runner: &shell.Runner{Resolve: func(bin string) (string, error) {
+		if bin == "docker" {
+			return "", errors.New("Cannot connect to the Docker daemon at unix:///var/run/docker.sock")
+		}
+		return "/bin/true", nil
+	}}}
+	changed := r.backlogReconcile(context.Background(), &fakeLockForge{}, ref.repoSlug(), targetRepo{Owner: ref.Owner, Name: ref.Repo}, entry)
+	if changed {
+		t.Fatal("docker lookup error must not mark a broker-forwarded dispatched run failed")
+	}
+	if entry.State != "dispatched" {
+		t.Fatalf("entry state = %q, want dispatched", entry.State)
 	}
 }
