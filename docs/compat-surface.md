@@ -25,9 +25,9 @@ ward stays small by pushing stack-specific behavior behind a few seams.
 
 - **What** - the issue-tracker seam, split off from the git host.
 - **Port** - `Tracker` in `cmd/ward/forge.go`.
-- **Reference adapters** - the Forgejo and GitHub issue-thread clients.
+- **Reference adapters** - the Forgejo, GitHub, and Shortcut issue-thread clients.
 - **Must satisfy** - create, comment, close/reopen, lock/unlock, and read issue threads without dragging in git-host behavior.
-- **Friction** - high for Jira, Linear, Trello, or Shortcut.
+- **Friction** - high for Jira, Linear, and Trello. Shortcut is now shipped.
 
 ## Container runtime
 
