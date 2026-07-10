@@ -10,6 +10,7 @@ import (
 	"os"
 	"path/filepath"
 	"regexp"
+	"runtime"
 	"slices"
 	"strings"
 	"testing"
@@ -694,6 +695,9 @@ func TestDownloadWardBootstrapBinarySelectsLatestAssetBearingRelease(t *testing.
 	forgejoBaseURL = ""
 	t.Cleanup(func() { forgejoBaseURL = origBase })
 
+	arch := runtime.GOARCH
+	assetName := bootstrapWardBinaryAssetName(arch)
+
 	var listHits, assetHits map[string]int
 	listHits = map[string]int{}
 	assetHits = map[string]int{}
@@ -711,7 +715,7 @@ func TestDownloadWardBootstrapBinarySelectsLatestAssetBearingRelease(t *testing.
 			case "2":
 				listHits["2"]++
 				_, _ = fmt.Fprint(w, `[
-					{"tag_name":"v0.578.0","draft":false,"prerelease":false,"assets":[{"name":"ward-linux-arm64"}]}
+					{"tag_name":"v0.578.0","draft":false,"prerelease":false,"assets":[{"name":"`+assetName+`"}]}
 				]`)
 			case "3":
 				listHits["3"]++
@@ -719,7 +723,7 @@ func TestDownloadWardBootstrapBinarySelectsLatestAssetBearingRelease(t *testing.
 			default:
 				t.Fatalf("unexpected releases page %q", r.URL.Query().Get("page"))
 			}
-		case strings.Contains(r.URL.Path, "/releases/download/v0.578.0/ward-linux-arm64"):
+		case strings.Contains(r.URL.Path, "/releases/download/v0.578.0/"+assetName):
 			assetHits["v0.578.0"]++
 			_, _ = w.Write([]byte("bootstrapped ward"))
 		case strings.Contains(r.URL.Path, "/releases/download/v0.580.0/") || strings.Contains(r.URL.Path, "/releases/download/v0.579.0/"):
@@ -755,9 +759,12 @@ func TestDownloadWardBootstrapBinaryReportsReleaseAssetsNotReady(t *testing.T) {
 	forgejoBaseURL = ""
 	t.Cleanup(func() { forgejoBaseURL = origBase })
 
+	arch := runtime.GOARCH
+	assetName := bootstrapWardBinaryAssetName(arch)
+
 	srv := httptest.NewServer(http.HandlerFunc(func(w http.ResponseWriter, r *http.Request) {
 		switch {
-		case strings.Contains(r.URL.Path, "/releases/download/v0.544.0/ward-linux-arm64"):
+		case strings.Contains(r.URL.Path, "/releases/download/v0.544.0/"+assetName):
 			http.Error(w, "Not Found", http.StatusNotFound)
 		default:
 			t.Fatalf("unexpected request path %q", r.URL.Path)
@@ -774,7 +781,7 @@ func TestDownloadWardBootstrapBinaryReportsReleaseAssetsNotReady(t *testing.T) {
 	if !isReleaseAssetsNotReadyError(err) {
 		t.Fatalf("download error = %v, want release-assets-not-ready classification", err)
 	}
-	for _, want := range []string{"v0.544.0", "ward-linux-arm64", "release-assets-not-ready"} {
+	for _, want := range []string{"v0.544.0", assetName, "release-assets-not-ready"} {
 		if !strings.Contains(err.Error(), want) {
 			t.Errorf("missing %q in error %v", want, err)
 		}
