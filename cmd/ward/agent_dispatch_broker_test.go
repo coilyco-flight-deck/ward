@@ -1280,7 +1280,7 @@ func TestRunHostDispatchBrokerRequestReturnsStructuredLaunchFailure(t *testing.T
 	}}}
 	req := dispatchBrokerRequest{
 		Role: "engineer",
-		Argv: []string{"engineer", "coilyco-flight-deck/ward#786", "--harness", "codex"},
+		Argv: []string{"engineer", "coilyco-flight-deck/ward#786", "--harness", "codex", "--pr"},
 	}
 	logPath, err := r.startHostDispatchBrokerRequest(t.Context(), req)
 	if err == nil {
@@ -1858,7 +1858,7 @@ func TestStartHostDispatchBrokerRequestWaitsForVisibleEngineer(t *testing.T) {
 
 	req := dispatchBrokerRequest{
 		Role:      "engineer",
-		Argv:      []string{"engineer", "coilyco-flight-deck/ward#1087", "--harness", "codex"},
+		Argv:      []string{"engineer", "coilyco-flight-deck/ward#1087", "--harness", "codex", "--pr"},
 		Requester: "director-codex-host",
 		Token:     "nonce-visible",
 	}
@@ -1892,7 +1892,7 @@ func TestStartHostDispatchBrokerRequestFailsWhenEngineerNeverBecomesVisible(t *t
 
 	req := dispatchBrokerRequest{
 		Role:      "engineer",
-		Argv:      []string{"engineer", "coilyco-flight-deck/ward#1087", "--harness", "codex"},
+		Argv:      []string{"engineer", "coilyco-flight-deck/ward#1087", "--harness", "codex", "--pr"},
 		Requester: "director-codex-host",
 		Token:     "nonce-missing",
 	}
