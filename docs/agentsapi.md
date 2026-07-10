@@ -5,6 +5,7 @@
 - each harness lives behind the registry.
 - the registry keeps the launch code from hard-coding per-agent branches.
 - the docs page exists so the seam stays named.
+- every harness exposes the same best-effort `Install` hook before launch.
 
 ## See also
 

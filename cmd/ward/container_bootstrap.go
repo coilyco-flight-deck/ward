@@ -411,12 +411,9 @@ func (r *Runner) runContainerBootstrap(ctx context.Context, c *cli.Command) erro
 	echoAgentConfigGo(e, rc, mode)
 
 	r.configureGitAuth(ctx, e)
-	// Installer: opencode self-installs before the clone (absent from the image).
-	if inst, ok := agent.(agentsapi.Installer); ok {
-		blog("bootstrap installer start: %s", mode)
-		_ = inst.Install(rc)
-		blog("bootstrap installer done: %s", mode)
-	}
+	blog("bootstrap installer start: %s", mode)
+	_ = agent.Install(rc)
+	blog("bootstrap installer done: %s", mode)
 	if err := ensureLaunchBinaryAvailable(e.Agent); err != nil {
 		blog("fatal: %v", err)
 		writeGateFailure("bootstrap", err.Error())

@@ -16,6 +16,8 @@ Inventory of what `ward` ships today.
 
 - **`ward agent`** - the guarded execution layer.
 - **`warded`** - the symlinked public face.
+- Harness self-install bootstrap - the container calls each harness's
+  best-effort install hook before launch.
 - Core tracker/forge adapters - issue lookup, reservation, dispatch broker
   writes, reaper comments, and director merge reads do not depend on generated
   `ward ops` leaves.

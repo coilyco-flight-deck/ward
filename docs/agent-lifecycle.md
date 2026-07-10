@@ -22,6 +22,7 @@ The launch path is short and explicit.
 
 Host-side credentials are resolved before the container starts. The run then
 inherits the selected harness context level and mount set.
+Each harness also gets a best-effort self-install hook before launch.
 
 ## Common launch checks
 
