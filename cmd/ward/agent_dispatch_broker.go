@@ -512,7 +512,7 @@ func dispatchLaunchFailureCommentBody(mode containerMode, container string, req 
 			"Container created: no running engineer was observed.\n"+
 			"Host log: `%s`\n"+
 			"Failure: `%s`\n\n"+
-			"Retry: choose another harness if the first one is down, or rerun with `--force` if the reservation is stale.",
+			"Retry: choose another harness if the first one is down, or rerun with `--override-reservation` if the reservation is stale.",
 		mode, attempted, container, logDetail, firstLine(launchErr.Error()))
 	return agentReservationReleaseMarker + "\n" + agentNeedsRedispatchMarker + "\n" +
 		collapsedIssueComment("WARD-DISPATCH: failed ❌", "failure details", detail)
@@ -893,7 +893,7 @@ func validateDispatchBrokerArgv(role string, tail []string) error {
 		for _, f := range []string{"--image", "--tag", "--ward-version", "--branch", "--repo", "--tailnet-mode"} {
 			valueFlags[f] = true
 		}
-		for _, f := range []string{"--aws", "--tailnet", "--no-pull", "--force", "--skip-preflight", "--no-preflight", "--skip-review", "--no-review-gate", "--pr"} {
+		for _, f := range []string{"--aws", "--tailnet", "--no-pull", "--force", "--override-reservation", "--override-capacity", "--skip-preflight", "--no-preflight", "--skip-review", "--no-review-gate", "--pr"} {
 			boolFlags[f] = true
 		}
 		return validateDispatchBrokerFlags(role, tail, valueFlags, boolFlags, false)
@@ -1094,8 +1094,16 @@ func brokerEngineerArgv(c *cli.Command, mode containerMode, ref agentIssueRef) [
 	if details := strings.TrimSpace(c.String("details")); details != "" {
 		argv = append(argv, "--details", details)
 	}
+	// Forward each --override-* spelling as typed (ward#1045): the host prints the
+	// --force deprecation notice itself, and capacity never rides on reservation.
+	if c.Bool("override-reservation") {
+		argv = append(argv, "--override-reservation")
+	}
 	if c.Bool("force") {
 		argv = append(argv, "--force")
+	}
+	if c.Bool("override-capacity") {
+		argv = append(argv, "--override-capacity")
 	}
 	if c.Bool("pr") {
 		argv = append(argv, "--pr")

@@ -524,6 +524,43 @@ func TestBrokerEngineerArgvForwardsApprovedFlags(t *testing.T) {
 	}
 }
 
+// TestBrokerEngineerArgvForwardsOverrideFlags covers ward#1045: each --override-*
+// spelling forwards as typed, and neither flag rides in uninvited.
+func TestBrokerEngineerArgvForwardsOverrideFlags(t *testing.T) {
+	ref := agentIssueRef{Owner: "coilyco-flight-deck", Repo: "ward", Number: 42}
+
+	cmd := parseCommandForTest(t, agentEngineerFlags(), []string{
+		"engineer", "coilyco-flight-deck/ward#42", "--harness", "claude",
+		"--override-reservation", "--override-capacity",
+	})
+	got := brokerEngineerArgv(cmd, modeClaude, ref)
+	for _, want := range []string{"--override-reservation", "--override-capacity"} {
+		if !containsArg(got, want) {
+			t.Errorf("forwarded argv missing %q: %v", want, got)
+		}
+	}
+	if containsArg(got, "--force") {
+		t.Errorf("forwarded argv must not rewrite the new spelling to --force: %v", got)
+	}
+
+	bare := brokerEngineerArgv(parseCommandForTest(t, agentEngineerFlags(), []string{
+		"engineer", "coilyco-flight-deck/ward#42", "--harness", "claude",
+	}), modeClaude, ref)
+	for _, unwanted := range []string{"--force", "--override-reservation", "--override-capacity"} {
+		if containsArg(bare, unwanted) {
+			t.Errorf("bare forwarded argv must not carry %q: %v", unwanted, bare)
+		}
+	}
+}
+
+// TestValidateDispatchBrokerArgvApprovesOverrideFlags covers ward#1045: the host
+// broker accepts both --override-* spellings and the deprecated --force alias.
+func TestValidateDispatchBrokerArgvApprovesOverrideFlags(t *testing.T) {
+	if err := validateDispatchBrokerArgv("engineer", []string{"--override-reservation", "--override-capacity", "--force"}); err != nil {
+		t.Fatalf("validateDispatchBrokerArgv override flags: %v", err)
+	}
+}
+
 func TestBrokerEngineerArgvDefaultsToCurrentReleasedWardVersion(t *testing.T) {
 	origVersion := Version
 	Version = "v0.569.0"
@@ -1284,7 +1321,7 @@ func TestCommentFailedDispatch(t *testing.T) {
 		"Container: `engineer-codex-ward-689`",
 		"Container created: no running engineer was observed.",
 		"Host log: `/tmp/ward/dispatch.log`",
-		"Retry: choose another harness if the first one is down, or rerun with `--force` if the reservation is stale.",
+		"Retry: choose another harness if the first one is down, or rerun with `--override-reservation` if the reservation is stale.",
 	} {
 		if !strings.Contains(body, want) {
 			t.Errorf("failure comment missing %q\n%s", want, body)

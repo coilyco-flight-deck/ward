@@ -5,6 +5,7 @@ import (
 	"os"
 	"path/filepath"
 	"strings"
+	"sync"
 	"testing"
 	"time"
 
@@ -1168,6 +1169,68 @@ func TestAgentImageFlagsCarryEnvSources(t *testing.T) {
 		for flag := range wantEnv {
 			if !seen[flag] {
 				t.Errorf("%s: no --%s flag found", name, flag)
+			}
+		}
+	}
+}
+
+// TestOverrideReservationFlagFamily covers ward#1045: --override-reservation is the
+// spelling, --force the noticed deprecated alias, --override-capacity independent.
+func TestOverrideReservationFlagFamily(t *testing.T) {
+	parse := func(extra ...string) *cli.Command {
+		argv := append([]string{"engineer", "coilyco-flight-deck/ward#42", "--harness", "claude"}, extra...)
+		return parseCommandForTest(t, agentEngineerFlags(), argv)
+	}
+
+	if overrideReservation(parse()) {
+		t.Error("bare dispatch must not read as a reservation override")
+	}
+	if !overrideReservation(parse("--override-reservation")) {
+		t.Error("--override-reservation must read as a reservation override")
+	}
+	if overrideReservation(parse("--override-capacity")) {
+		t.Error("--override-capacity must never imply a reservation override")
+	}
+	if c := parse("--override-reservation"); c.Bool("override-capacity") {
+		t.Error("--override-reservation must never imply a capacity override")
+	}
+
+	// The deprecated alias still works and prints its notice; reset the Once so
+	// this test owns the first use.
+	forceFlagDeprecationOnce = sync.Once{}
+	var aliased bool
+	notice := captureTestStderr(t, func() {
+		aliased = overrideReservation(parse("--force"))
+	})
+	if !aliased {
+		t.Error("--force must still read as a reservation override (deprecated alias)")
+	}
+	if !strings.Contains(notice, "--force is deprecated") || !strings.Contains(notice, "--override-reservation") {
+		t.Errorf("first --force use should print the deprecation notice, got %q", notice)
+	}
+}
+
+// TestAgentSurfaceOverrideFlagVisibility covers ward#1045: on the engineer surface
+// the --override-* pair is visible and narrow, the --force alias hidden.
+func TestAgentSurfaceOverrideFlagVisibility(t *testing.T) {
+	for _, name := range []string{"override-reservation", "override-capacity", "force"} {
+		if !commandHasFlag(agentEngineerCommand(), name) {
+			t.Errorf("ward agent engineer missing --%s (ward#1045)", name)
+		}
+	}
+	for _, f := range agentEngineerFlags() {
+		bf, ok := f.(*cli.BoolFlag)
+		if !ok {
+			continue
+		}
+		switch bf.Name {
+		case "force":
+			if !bf.Hidden {
+				t.Error("--force alias is visible; want it hidden (ward#1045)")
+			}
+		case "override-reservation", "override-capacity":
+			if bf.Hidden {
+				t.Errorf("--%s is hidden; want it visible (ward#1045)", bf.Name)
 			}
 		}
 	}

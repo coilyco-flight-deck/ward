@@ -9,6 +9,7 @@ import (
 	"path/filepath"
 	"regexp"
 	"strings"
+	"sync"
 	"time"
 
 	"forgejo.coilysiren.me/coilyco-flight-deck/cli-guard/cli/dispatch"
@@ -805,7 +806,11 @@ func agentSurfaceFlags() []cli.Flag {
 		&cli.BoolFlag{Name: "print", Usage: "resolve the issue + seeded prompt + docker plan and exit; inject no push token, run nothing"},
 		// --no-pull is hidden (ward#362): a cached-image optimization, not everyday surface.
 		&cli.BoolFlag{Name: "no-pull", Hidden: true, Usage: "skip the image pull (use the cached local image)"},
-		&cli.BoolFlag{Name: "force", Usage: "skip the local + remote concurrency reservation checks (reclaim a stale or foreign hold)"},
+		// The --override-* family (ward#1045): two distinct escape hatches that never
+		// imply each other - a hold may be stale, the OOM ceiling never is.
+		&cli.BoolFlag{Name: "override-reservation", Usage: "skip the local + remote concurrency reservation checks (reclaim a stale or foreign per-issue hold); never overrides the pool ceiling"},
+		&cli.BoolFlag{Name: "force", Hidden: true, Usage: "deprecated alias for --override-reservation (ward#1045); reclaims a reservation hold only, never the pool ceiling"},
+		&cli.BoolFlag{Name: "override-capacity", Usage: "launch exactly one engineer past the OOM pool ceiling; the ceiling counts real running containers, so exceeding it risks host thrash or OOM (ward#1045)"},
 	)
 	// The detached run gets an autonomous pre-flight before launching (ward#137).
 	// skip-preflight skips that, the launch-adjacent probes, and the review gate.
@@ -823,6 +828,21 @@ func agentSurfaceFlags() []cli.Flag {
 // preflight bucket (`--skip-preflight` or its alias).
 func preflightSkipped(c *cli.Command) bool {
 	return c.Bool("skip-preflight") || c.Bool("no-preflight")
+}
+
+// forceFlagDeprecationOnce keeps the --force deprecation notice to one line per
+// process, however many gates read the flag on the way to a launch.
+var forceFlagDeprecationOnce sync.Once
+
+// overrideReservation reads --override-reservation or its deprecated --force alias
+// (ward#1045, noticed once); it never implies --override-capacity, or vice versa.
+func overrideReservation(c *cli.Command) bool {
+	if c.Bool("force") {
+		forceFlagDeprecationOnce.Do(func() {
+			fmt.Fprintln(os.Stderr, "ward agent: --force is deprecated; use --override-reservation (ward#1045). It reclaims a reservation hold only - launching past the pool ceiling is --override-capacity, never implied by this flag.")
+		})
+	}
+	return c.Bool("override-reservation") || c.Bool("force")
 }
 
 // resolvedWork bundles resolveAgentWork's output: ref, title, body, comment thread
@@ -971,20 +991,20 @@ func (r *Runner) resolveAgentWork(ctx context.Context, c *cli.Command, mode cont
 				state = issue.State
 			}
 			if surface == "engineer" && issueHasModeLabel(issue.Labels, "interactive") {
-				if !c.Bool("force") && !c.Bool("print") {
+				if !overrideReservation(c) && !c.Bool("print") {
 					return resolvedWork{}, dispatchDeclineErr(dispatchModeCeiling, "mode-ceiling",
-						"%s: refusing to dispatch the %s role on %s: the issue is explicitly labeled interactive - remove that label or pass --force to override (consult/default issues dispatch normally)",
+						"%s: refusing to dispatch the %s role on %s: the issue is explicitly labeled interactive - remove that label or pass --override-reservation to override (consult/default issues dispatch normally)",
 						label, surface, ref)
 				}
-				writef(os.Stderr, "%s: note: issue %s is explicitly labeled interactive - dispatching anyway (--force/print).\n", label, ref)
+				writef(os.Stderr, "%s: note: issue %s is explicitly labeled interactive - dispatching anyway (--override-reservation/print).\n", label, ref)
 			}
 		}
 		if st := strings.ToLower(strings.TrimSpace(state)); st != "" && st != "open" {
-			if !c.Bool("force") && !c.Bool("print") {
+			if !overrideReservation(c) && !c.Bool("print") {
 				return resolvedWork{}, dispatchDeclineErr(dispatchIssueClosed, "issue-closed",
-					"%s: issue %s is %s, not open - nothing to do (pass --force to work it anyway)", label, ref, st)
+					"%s: issue %s is %s, not open - nothing to do (pass --override-reservation to work it anyway)", label, ref, st)
 			}
-			writef(os.Stderr, "%s: note: issue %s is %s, not open - working it anyway (--force/--print).\n", label, ref, st)
+			writef(os.Stderr, "%s: note: issue %s is %s, not open - working it anyway (--override-reservation/--print).\n", label, ref, st)
 		}
 		title = strings.TrimSpace(pr.Title)
 		body = strings.TrimSpace(pr.Body)
@@ -996,23 +1016,23 @@ func (r *Runner) resolveAgentWork(ctx context.Context, c *cli.Command, mode cont
 			return resolvedWork{}, fmt.Errorf("%s: resolve issue %s: %w", label, ref, issueErr)
 		}
 		// Re-dispatch guard: a closed issue is already landed, so no-op instead of
-		// spinning to rediscover it; --force/--print work it anyway (ward#600, docs).
+		// rediscovering it; --override-reservation/--print work it anyway (ward#600).
 		if st := strings.ToLower(strings.TrimSpace(issue.State)); st != "" && st != "open" {
-			if !c.Bool("force") && !c.Bool("print") {
+			if !overrideReservation(c) && !c.Bool("print") {
 				return resolvedWork{}, dispatchDeclineErr(dispatchIssueClosed, "issue-closed",
-					"%s: issue %s is %s, not open - nothing to do (pass --force to work it anyway)", label, ref, st)
+					"%s: issue %s is %s, not open - nothing to do (pass --override-reservation to work it anyway)", label, ref, st)
 			}
-			writef(os.Stderr, "%s: note: issue %s is %s, not open - working it anyway (--force/--print).\n", label, ref, st)
+			writef(os.Stderr, "%s: note: issue %s is %s, not open - working it anyway (--override-reservation/--print).\n", label, ref, st)
 		}
 		// Automation-mode gate: engineer dispatch only refuses issues explicitly
 		// labeled interactive; consult/default issues are dispatchable (ward#663).
 		if surface == "engineer" && issueHasModeLabel(issue.Labels, "interactive") {
-			if !c.Bool("force") && !c.Bool("print") {
+			if !overrideReservation(c) && !c.Bool("print") {
 				return resolvedWork{}, dispatchDeclineErr(dispatchModeCeiling, "mode-ceiling",
-					"%s: refusing to dispatch the %s role on %s: the issue is explicitly labeled interactive - remove that label or pass --force to override (consult/default issues dispatch normally)",
+					"%s: refusing to dispatch the %s role on %s: the issue is explicitly labeled interactive - remove that label or pass --override-reservation to override (consult/default issues dispatch normally)",
 					label, surface, ref)
 			}
-			writef(os.Stderr, "%s: note: issue %s is explicitly labeled interactive - dispatching anyway (--force/print).\n", label, ref)
+			writef(os.Stderr, "%s: note: issue %s is explicitly labeled interactive - dispatching anyway (--override-reservation/print).\n", label, ref)
 		}
 		title = strings.TrimSpace(issue.Title)
 		body = strings.TrimSpace(issue.Body)
@@ -1298,14 +1318,14 @@ func (r *Runner) runAgentWork(ctx context.Context, c *cli.Command, mode containe
 		}
 	}
 	workerName := issueScopedContainerName(roleEngineer, mode, targetRepo{Owner: w.Ref.Owner, Name: w.Ref.Repo}, w.Ref.Number)
-	if err := r.precheckLiveIssueWorker(ctx, label, w.Ref, workerName, c.Bool("force")); err != nil {
+	if err := r.precheckLiveIssueWorker(ctx, label, w.Ref, workerName, overrideReservation(c)); err != nil {
 		return err
 	}
 	var justification string
 	if preflightWanted(c) {
 		// ward#184: gate on the cheap, authoritative reservation before a full LLM
 		// pre-flight is spent on an issue another run holds. See docs/agent.md.
-		if perr := r.precheckReservation(ctx, agentCmdline(mode, surface), w, c.Bool("force")); perr != nil {
+		if perr := r.precheckReservation(ctx, agentCmdline(mode, surface), w, overrideReservation(c)); perr != nil {
 			return perr
 		}
 		proceed, read, perr := r.runPreflight(ctx, mode, surface, w)
@@ -1982,7 +2002,7 @@ func (r *Runner) launchAgentContainer(ctx context.Context, c *cli.Command, mode 
 	}
 
 	if !c.Bool("print") {
-		if err := r.enforceEngineerContainerLimit(ctx, label); err != nil {
+		if err := r.enforceEngineerContainerLimit(ctx, label, c.Bool("override-capacity")); err != nil {
 			return err
 		}
 	}
@@ -2020,7 +2040,7 @@ func (r *Runner) launchAgentContainer(ctx context.Context, c *cli.Command, mode 
 	var release func()
 	if err := r.withAgentReservationLock(ref, func() error {
 		var reserveErr error
-		release, reserveErr = r.reserveIssue(ctx, label, mode, ref, plan.Name, plan.Branch, justification, seedCtx, c.Bool("force"), plan.SkipPreflight)
+		release, reserveErr = r.reserveIssue(ctx, label, mode, ref, plan.Name, plan.Branch, justification, seedCtx, overrideReservation(c), plan.SkipPreflight)
 		return reserveErr
 	}); err != nil {
 		return err

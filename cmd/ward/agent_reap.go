@@ -183,18 +183,26 @@ func (r *Runner) runningEngineerContainers(ctx context.Context) ([]string, error
 	return parseExitedContainerNames(string(out)), nil
 }
 
-// enforceEngineerContainerLimit refuses a new engineer launch when the host is
-// already at the configured concurrency ceiling.
-func (r *Runner) enforceEngineerContainerLimit(ctx context.Context, label string) error {
+// enforceEngineerContainerLimit refuses a new engineer launch at the OOM ceiling;
+// --override-capacity grants one loud launch past it and never stacks (ward#1045).
+func (r *Runner) enforceEngineerContainerLimit(ctx context.Context, label string, overrideCapacity bool) error {
 	names, err := r.runningEngineerContainers(ctx)
 	if err != nil {
 		return fmt.Errorf("%s: count running engineer containers: %w", label, err)
 	}
 	limit := engineerContainerLimitDefault()
-	if count := len(names); count >= limit {
-		return newEngineerCapacityError(label, count, limit)
+	count := len(names)
+	if count < limit {
+		return nil
 	}
-	return nil
+	if overrideCapacity {
+		if count == limit {
+			fmt.Fprintf(os.Stderr, "%s: WARNING: launching over the engineer OOM ceiling (%d/%d) - host may thrash or OOM (--override-capacity)\n", label, count+1, limit)
+			return nil
+		}
+		fmt.Fprintf(os.Stderr, "%s: note: --override-capacity grants exactly one launch past the ceiling and the pool is already past it (%d/%d); refusing (ward#1045)\n", label, count, limit)
+	}
+	return newEngineerCapacityError(label, count, limit)
 }
 
 // engineerCapacityError marks a launch refusal because the global engineer cap
