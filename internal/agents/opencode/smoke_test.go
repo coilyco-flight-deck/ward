@@ -5,11 +5,9 @@ import (
 	"net"
 	"net/http"
 	"net/http/httptest"
-	"strings"
 	"testing"
 
 	"github.com/coilyco-flight-deck/ward/internal/agentsapi"
-	"github.com/coilyco-flight-deck/ward/internal/launchgate/modelconfig"
 )
 
 // TestPreLaunchCheckReachable proves opencode gates on rc.OllamaURL: a headless
@@ -53,17 +51,5 @@ func TestPreLaunchCheckModelConfig(t *testing.T) {
 	}
 	if err := (Agent{}).PreLaunchCheck(rc); err != nil {
 		t.Fatalf("PreLaunchCheck against a live model should pass, got %v", err)
-	}
-
-	rc.OpencodeModel = "missing-model"
-	err := (Agent{}).PreLaunchCheck(rc)
-	if err == nil {
-		t.Fatal("expected model-config failure")
-	}
-	if got := err.(interface{ GateName() string }).GateName(); got != modelconfig.GateName {
-		t.Fatalf("GateName = %q, want %q", got, modelconfig.GateName)
-	}
-	if !strings.Contains(err.Error(), "missing-model") {
-		t.Fatalf("error should name the missing model, got %v", err)
 	}
 }

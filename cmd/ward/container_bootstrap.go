@@ -411,17 +411,13 @@ func (r *Runner) runContainerBootstrap(ctx context.Context, c *cli.Command) erro
 	echoAgentConfigGo(e, rc, mode)
 
 	r.configureGitAuth(ctx, e)
-	// Installer: opencode self-installs before the clone (absent from the image).
-	if inst, ok := agent.(agentsapi.Installer); ok {
-		blog("bootstrap installer start: %s", mode)
-		_ = inst.Install(rc)
-		blog("bootstrap installer done: %s", mode)
-	}
-	if err := ensureLaunchBinaryAvailable(e.Agent); err != nil {
+	blog("bootstrap installer start: %s", mode)
+	if err := installHarness(agent, rc); err != nil {
 		blog("fatal: %v", err)
 		writeGateFailure("bootstrap", err.Error())
 		return err
 	}
+	blog("bootstrap installer done: %s", mode)
 	work, cerr := r.cloneTarget(ctx, e)
 	if cerr != nil {
 		return cerr
@@ -467,12 +463,6 @@ func (r *Runner) runContainerBootstrap(ctx context.Context, c *cli.Command) erro
 
 	branch := r.captureTrim(ctx, "git", "-C", work, "branch", "--show-current")
 	blog("ready: %s/%s on %s [mode=%s]", e.TargetOwner, e.TargetName, branch, e.Mode)
-
-	if !commandExists(e.Agent) {
-		blog("selected agent binary %q is not present in this image; dropping to a shell (reaper runs on exit)", e.Agent)
-		_ = r.Runner.Exec(ctx, "bash")
-		return nil
-	}
 
 	argv, stream := buildAgentArgv(e, agentArgs)
 	logAgentArgv(e, agentArgs)
@@ -1587,6 +1577,15 @@ func ensureLaunchBinaryAvailable(agent string) error {
 		return nil
 	}
 	return fmt.Errorf("selected agent binary %q is not present in this image", agent)
+}
+
+// installHarness runs the required harness install hook and then verifies the
+// selected binary is actually available before launch can proceed.
+func installHarness(agent agentsapi.Agent, rc agentsapi.RunCtx) error {
+	if err := agent.Install(rc); err != nil {
+		return err
+	}
+	return ensureLaunchBinaryAvailable(agent.Record().Binary)
 }
 
 func isDir(path string) bool {

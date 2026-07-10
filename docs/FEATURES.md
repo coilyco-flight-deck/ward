@@ -16,6 +16,9 @@ Inventory of what `ward` ships today.
 
 - **`ward agent`** - the guarded execution layer.
 - **`warded`** - the symlinked public face.
+- **Harness install hooks** - bootstrap now requires a harness install step
+  before launch, with self-contained declarations for claude/codex/goose and a
+  required opencode install path.
 - Core tracker/forge adapters - issue lookup, reservation, dispatch broker
   writes, reaper comments, and director merge reads do not depend on generated
   `ward ops` leaves.

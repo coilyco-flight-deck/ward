@@ -24,21 +24,29 @@ The harness choice affects credentials, preflight shape, and context level.
 
 `claude` is the default cloud path. It uses the host subscription login and
 enters the container with the credential material ward seeds at launch.
+Its install step is self-contained and only verifies that `claude` is already
+on PATH.
 
 ### codex
 
 `codex` is the OpenAI path. It uses the host-side auth file or login flow and
 then launches the agent inside the container.
+Its install step is self-contained and only verifies that `codex` is already
+on PATH.
 
 ### goose
 
 `goose` is the local-model path. It talks to an Ollama endpoint and does not
 need the same cloud credential shape.
+Its install step is self-contained and only verifies that `goose` is already
+on PATH.
 
 ### opencode
 
 `opencode` is the other local-model path. It shares the same Ollama-style
 endpoint model and is useful when you want a lean local loop.
+Its install step is required. Bootstrap attempts to install it and fails
+loudly if the binary is still missing afterward.
 
 ## Context level
 

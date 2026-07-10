@@ -4,8 +4,8 @@ package agentsapi
 
 import "forgejo.coilysiren.me/coilyco-flight-deck/cli-guard/pkg/attribution"
 
-// Agent is the core contract every harness implements. Optional behaviour is
-// split into the capability interfaces below, which core feature-tests (ward#401).
+// Agent is the core contract every harness implements. Install is required so
+// bootstrap can prove the harness is ready before launch or fail loudly.
 type Agent interface {
 	// Name is the roster key - the --mode value, e.g. "claude".
 	Name() string
@@ -13,6 +13,9 @@ type Agent interface {
 	Record() Manifest
 	// Signer builds the cli-guard signer from Record().Identity plus ward's marker.
 	Signer() attribution.Signer
+	// Install performs the harness bootstrap step before launch. Self-contained
+	// harnesses can make this a verified no-op.
+	Install(RunCtx) error
 	// LaunchArgv builds the in-container agent argv (no setpriv prefix) and reports
 	// whether to wrap its output in the stream-json progress parser.
 	LaunchArgv(RunCtx) (argv []string, stream bool)
@@ -34,12 +37,6 @@ type CredentialProvider interface {
 // file in-container (codex, opencode, goose); claude needs none.
 type ConfigComposer interface {
 	ComposeConfig(RunCtx) error
-}
-
-// Installer is implemented by an agent whose binary is not baked into the image
-// and self-installs at bootstrap (opencode).
-type Installer interface {
-	Install(RunCtx) error
 }
 
 // OnboardingSeeder is implemented by an agent that seeds first-run state to skip

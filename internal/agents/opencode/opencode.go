@@ -43,7 +43,6 @@ type Agent struct{}
 var (
 	_ agentsapi.Agent          = Agent{}
 	_ agentsapi.ConfigComposer = Agent{}
-	_ agentsapi.Installer      = Agent{}
 	_ agentsapi.LaunchGate     = Agent{}
 )
 

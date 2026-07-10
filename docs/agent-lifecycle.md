@@ -6,15 +6,17 @@ doc_goal: Compress the launch path into one release-era guide so a reader can te
 The launch path is short and explicit.
 
 1. Resolve the issue or ref.
-2. Run the preflight that matches the role and harness.
-3. Post or refresh the reservation comment.
-4. Launch the ephemeral container.
-5. Hand off to the selected workflow.
+2. Run the harness install step and verify the selected binary is available.
+3. Run the preflight that matches the role and harness.
+4. Post or refresh the reservation comment.
+5. Launch the ephemeral container.
+6. Hand off to the selected workflow.
 
 ## What the launch path enforces
 
 - The target must be trusted for the selected forge policy.
 - A reserved issue stays reserved until the run finishes or times out.
+- A missing harness binary or failed install aborts before the run starts.
 - The run writes one auditable trail, not a silent shell session.
 - `--print` shows the launch without starting it.
 
@@ -27,6 +29,7 @@ inherits the selected harness context level and mount set.
 
 - issue ownership matches the configured trust list.
 - the repo is the expected repo.
+- the harness install hook completed successfully and left the binary on PATH.
 - the selected harness can reach its credential source or endpoint.
 - the reservation comment still belongs to this run.
 

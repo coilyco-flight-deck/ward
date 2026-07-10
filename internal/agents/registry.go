@@ -1,8 +1,8 @@
 // Package agents is the agentsapi.Agent registry (ward#412, Phase 2 of ward#401):
 // it wires the four harness packages into a name-keyed map core dispatches
 // through, retiring the scattered `switch e.Mode` once call sites cut over
-// (Phase 3). The agents it serves are DATA-only - Name/Record/Signer/argv are
-// pure; the capability closures are wired by core (cmd/ward) at dispatch.
+// (Phase 3). The agents it serves own their concrete install and capability
+// behavior in the harness packages; core wires them at dispatch.
 // See docs/agentsapi.md.
 package agents
 
