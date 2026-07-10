@@ -633,19 +633,18 @@ func (c *forgejoClient) unlockIssue(_ context.Context, _, _ string, _ int) error
 	return errForgeLockUnsupported
 }
 
-// listOpenIssues lists a repo's open issues (not pulls) with their labels, the
-// backlog loop's ranking input (ward#346). Mirrors backlog-loop.py's fetch.
+// listOpenIssues reads the shared Forgejo feed for open issues.
+// pull_request:null rows stay issues; PR rows are skipped.
 func (c *forgejoClient) listOpenIssues(ctx context.Context, owner, repo string, limit int) ([]backlogIssue, error) {
-	if limit <= 0 {
-		limit = 50
-	}
-	q := url.Values{"state": {"open"}, "type": {"issues"}, "limit": {strconv.Itoa(limit)}}
-	var raw []forgejoIssueRaw
-	if _, err := c.doJSON(ctx, http.MethodGet, []string{"repos", owner, repo, "issues"}, q, nil, false, &raw); err != nil {
-		return nil, fmt.Errorf("forgejo: list open issues in %s/%s: %w", owner, repo, err)
+	raw, err := c.listOpenIssueFeed(ctx, owner, repo, limit)
+	if err != nil {
+		return nil, err
 	}
 	issues := make([]backlogIssue, 0, len(raw))
 	for _, ri := range raw {
+		if ri.isPullRequest() {
+			continue
+		}
 		bi := backlogIssue{Number: ri.Number, Kind: backlogKindIssue, Title: ri.Title, Body: ri.Body, URL: ri.HTMLURL}
 		for _, l := range ri.Labels {
 			if l.Name != "" {
@@ -658,18 +657,17 @@ func (c *forgejoClient) listOpenIssues(ctx context.Context, owner, repo string, 
 }
 
 // listOpenPullRequests lists a repo's open pull requests with the same lean
-// shape as issues, but filtered to type=pulls for the director merge lane.
+// shape as issues, filtered by the shared Forgejo issue classifier.
 func (c *forgejoClient) listOpenPullRequests(ctx context.Context, owner, repo string, limit int) ([]directorPullRequest, error) {
-	if limit <= 0 {
-		limit = 50
-	}
-	q := url.Values{"state": {"open"}, "type": {"pulls"}, "limit": {strconv.Itoa(limit)}}
-	var raw []forgejoIssueRaw
-	if _, err := c.doJSON(ctx, http.MethodGet, []string{"repos", owner, repo, "issues"}, q, nil, false, &raw); err != nil {
-		return nil, fmt.Errorf("forgejo: list open pull requests in %s/%s: %w", owner, repo, err)
+	raw, err := c.listOpenIssueFeed(ctx, owner, repo, limit)
+	if err != nil {
+		return nil, err
 	}
 	prs := make([]directorPullRequest, 0, len(raw))
 	for _, ri := range raw {
+		if !ri.isPullRequest() {
+			continue
+		}
 		pr := directorPullRequest{
 			Issue: dispatch.Issue{
 				Number: ri.Number,
@@ -695,6 +693,18 @@ func (c *forgejoClient) listOpenPullRequests(ctx context.Context, owner, repo st
 		prs = append(prs, pr)
 	}
 	return prs, nil
+}
+
+func (c *forgejoClient) listOpenIssueFeed(ctx context.Context, owner, repo string, limit int) ([]forgejoIssueRaw, error) {
+	if limit <= 0 {
+		limit = 50
+	}
+	q := url.Values{"state": {"open"}, "limit": {strconv.Itoa(limit)}}
+	var raw []forgejoIssueRaw
+	if _, err := c.doJSON(ctx, http.MethodGet, []string{"repos", owner, repo, "issues"}, q, nil, false, &raw); err != nil {
+		return nil, fmt.Errorf("forgejo: list open issues in %s/%s: %w", owner, repo, err)
+	}
+	return raw, nil
 }
 
 // addIssueLabels adds the labels (by name) to an open issue - the write side of startup
@@ -764,15 +774,16 @@ type leanComment struct {
 
 // forgejoIssueRaw is the slice of Forgejo's issue JSON leanIssue projects from.
 type forgejoIssueRaw struct {
-	Number    int       `json:"number"`
-	Title     string    `json:"title"`
-	Body      string    `json:"body"`
-	State     string    `json:"state"`
-	HTMLURL   string    `json:"html_url"`
-	Comments  int       `json:"comments"`
-	CreatedAt time.Time `json:"created_at"`
-	UpdatedAt time.Time `json:"updated_at"`
-	User      struct {
+	Number      int       `json:"number"`
+	Title       string    `json:"title"`
+	Body        string    `json:"body"`
+	State       string    `json:"state"`
+	HTMLURL     string    `json:"html_url"`
+	Comments    int       `json:"comments"`
+	CreatedAt   time.Time `json:"created_at"`
+	UpdatedAt   time.Time `json:"updated_at"`
+	PullRequest *struct{} `json:"pull_request"`
+	User        struct {
 		Login string `json:"login"`
 	} `json:"user"`
 	Labels []struct {
@@ -781,6 +792,10 @@ type forgejoIssueRaw struct {
 	Assignees []struct {
 		Login string `json:"login"`
 	} `json:"assignees"`
+}
+
+func (raw forgejoIssueRaw) isPullRequest() bool {
+	return raw.PullRequest != nil
 }
 
 // forgejoPullRequestRaw is the focused PR detail shape used for mergeability.

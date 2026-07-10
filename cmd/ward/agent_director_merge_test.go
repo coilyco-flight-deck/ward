@@ -534,12 +534,9 @@ func TestListOpenPullRequestsReadsMergeability(t *testing.T) {
 	srv := httptest.NewServer(http.HandlerFunc(func(w http.ResponseWriter, r *http.Request) {
 		switch r.URL.Path {
 		case "/api/v1/repos/coilyco-flight-deck/ward/issues":
-			if got := r.URL.Query().Get("type"); got != "pulls" {
-				t.Fatalf("issue list type = %q, want pulls", got)
-			}
 			_ = json.NewEncoder(w).Encode([]map[string]any{
-				{"number": 701, "title": "mergeable", "body": "closes #701", "state": "open", "html_url": "https://f/701", "labels": []map[string]any{}},
-				{"number": 702, "title": "conflicted", "body": "closes #702", "state": "open", "html_url": "https://f/702", "labels": []map[string]any{}},
+				{"number": 701, "title": "mergeable", "body": "closes #701", "state": "open", "html_url": "https://f/701", "labels": []map[string]any{}, "pull_request": map[string]any{"url": "https://f/701"}},
+				{"number": 702, "title": "conflicted", "body": "closes #702", "state": "open", "html_url": "https://f/702", "labels": []map[string]any{}, "pull_request": map[string]any{"url": "https://f/702"}},
 			})
 		case "/api/v1/repos/coilyco-flight-deck/ward/pulls/701":
 			if got := r.Header.Get("Authorization"); got != "token secret" {
