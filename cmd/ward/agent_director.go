@@ -182,6 +182,7 @@ type backlogConfig struct {
 	dryRun       bool
 	print        bool
 	triage       bool
+	issueRef     *agentIssueRef
 	dispatch     dispatchEngineer
 	// surface fields configure director's OWN surface session (ward#355, ward#353):
 	// ward-source + with-repo + no-pull on top of dispatch's fields.
@@ -240,7 +241,7 @@ func agentDirectorCommand() *cli.Command {
 	return &cli.Command{
 		Name:      "director",
 		Usage:     "Run an attached LLM-in-the-loop heartbeat over a repo's headless lane: poll, decide, dispatch, and surface on drain (ward#351). Engineers inherit the director's own harness by default; --engineer-harness overrides that dispatch default.",
-		ArgsUsage: "(scope via --repo; default: the cwd git origin)",
+		ArgsUsage: "(issue ref | scope via --repo; default: the cwd git origin)",
 		Description: `director runs an attached, autonomous heartbeat over a repo's open backlog. Each
 tick it reconciles in-flight engineers (reading their WARD-OUTCOME comments),
 refreshes the ledger from the live backlog (ranking issues into lanes by tier/mode
@@ -253,6 +254,8 @@ surfaces an interactive session for new direction rather than exiting, and resum
 the heartbeat if the queue refills (ward#351).
 
   warded director --repo coilyco-flight-deck/ward         # one repo
+  warded director coilyco-flight-deck/ward#988            # one issue, fail-closed scope
+  warded director https://forgejo.coilysiren.me/coilyco-flight-deck/ward/issues/988 # same as above
   warded director --repo a/b,c/d --max-parallel 3         # comma-separated scope
   warded director --org coilyco-flight-deck                # every repo the org owns (ward#370)
   warded director --dry-run                                # ranked lanes + planned dispatches, launch nothing
@@ -285,9 +288,23 @@ interactive issues are surfaced, not launched. See docs/agent-director.md.`,
 // director role's loop body; ward#347).
 func (r *Runner) runAgentBacklog(ctx context.Context, c *cli.Command, mode containerMode) error {
 	label := agentCmdline(mode, "director")
-	repos, err := r.resolveDirectorScope(ctx, c, label)
-	if err != nil {
-		return err
+	var (
+		repos    []string
+		issueRef *agentIssueRef
+		err      error
+	)
+	if arg := strings.TrimSpace(c.Args().First()); arg != "" {
+		ref, ierr := r.resolveDirectorIssueRef(ctx, c, label, mode, arg)
+		if ierr != nil {
+			return ierr
+		}
+		repos = []string{ref.repoSlug()}
+		issueRef = &ref
+	} else {
+		repos, err = r.resolveDirectorScope(ctx, c, label)
+		if err != nil {
+			return err
+		}
 	}
 	if err := r.backlogTrustGate(label, repos); err != nil {
 		return err
@@ -312,6 +329,7 @@ func (r *Runner) runAgentBacklog(ctx context.Context, c *cli.Command, mode conta
 		dryRun:       c.Bool("dry-run"),
 		print:        c.Bool("print"),
 		triage:       c.Bool("triage") && !c.Bool("no-triage"),
+		issueRef:     issueRef,
 		dispatch: dispatchEngineer{
 			harness:           engDriver,
 			image:             c.String("image"),
@@ -331,6 +349,40 @@ func (r *Runner) runAgentBacklog(ctx context.Context, c *cli.Command, mode conta
 		cfg.maxParallel = 1
 	}
 	return r.driveBacklog(ctx, label, repos, cfg)
+}
+
+// resolveDirectorIssueRef validates a single issue-scoped director target.
+// The target must be open, headless/autonomous eligible, and not already reserved.
+func (r *Runner) resolveDirectorIssueRef(ctx context.Context, _ *cli.Command, label string, mode containerMode, arg string) (agentIssueRef, error) {
+	ref, err := r.resolveAgentIssueRef(ctx, arg)
+	if err != nil {
+		return agentIssueRef{}, fmt.Errorf("%s: %w", label, err)
+	}
+	if !r.ownerAllowed(ref.Owner) {
+		return agentIssueRef{}, r.untrustedOwnerErr(label, ref.Owner)
+	}
+	issue, err := r.fetchIssueByForge(ctx, label, ref.Forge, mode, ref.Owner, ref.Repo, ref.Number)
+	if err != nil {
+		return agentIssueRef{}, fmt.Errorf("%s: resolve issue %s: %w", label, ref, err)
+	}
+	if st := strings.ToLower(strings.TrimSpace(issue.State)); st != "open" {
+		return agentIssueRef{}, dispatchDeclineErr(dispatchIssueClosed, "issue-closed",
+			"%s: issue %s is %s, not open - nothing to do", label, ref, emptyDefault(st, "unknown"))
+	}
+	tier := backlogTierOf(issue.Labels)
+	modeLabel := backlogModeOf(issue.Labels)
+	if lane := backlogLaneForLabels(tier, modeLabel); lane != "headless" {
+		return agentIssueRef{}, dispatchDeclineErr(dispatchModeCeiling, "mode-ceiling",
+			"%s: issue %s is not headless/autonomous eligible (tier=%s mode=%s)", label, ref, emptyDefault(tier, "--"), emptyDefault(modeLabel, "--"))
+	}
+	comments, cerr := r.fetchIssueComments(ctx, ref)
+	if cerr != nil {
+		return agentIssueRef{}, fmt.Errorf("%s: resolve issue %s comments: %w", label, ref, cerr)
+	}
+	if err := r.precheckReservation(ctx, label, resolvedWork{Ref: ref, Title: issue.Title, Body: issue.Body, Comments: comments}, false); err != nil {
+		return agentIssueRef{}, err
+	}
+	return ref, nil
 }
 
 // backlogTrustGate refuses the run unless every scope repo is a well-formed
@@ -353,11 +405,17 @@ func (r *Runner) backlogTrustGate(label string, repos []string) error {
 func (r *Runner) driveBacklog(ctx context.Context, label string, repos []string, cfg backlogConfig) error {
 	// --print and --dry-run are both launch-nothing previews, so neither triggers triage.
 	preview := cfg.dryRun || cfg.print
-	if cfg.triage && !preview {
+	if cfg.triage && !preview && cfg.issueRef == nil {
 		r.backlogTriage(ctx, label, repos, cfg.mode, cfg.limit)
 	}
-	if err := r.backlogRefresh(ctx, label, repos, cfg.limit); err != nil {
-		return err
+	if cfg.issueRef != nil {
+		if err := r.backlogRefreshIssue(ctx, label, cfg.mode, *cfg.issueRef); err != nil {
+			return err
+		}
+	} else {
+		if err := r.backlogRefresh(ctx, label, repos, cfg.limit); err != nil {
+			return err
+		}
 	}
 	if err := r.backlogPrintStatus(repos); err != nil {
 		return err
@@ -1159,6 +1217,40 @@ func (r *Runner) backlogRefresh(ctx context.Context, label string, repos []strin
 		if serr := saveBacklogLedger(led); serr != nil {
 			return fmt.Errorf("%s: %w", label, serr)
 		}
+	}
+	return nil
+}
+
+// backlogRefreshIssue rebuilds the ledger from exactly one validated issue, so the
+// issue-ref director path never widens into the repo backlog.
+func (r *Runner) backlogRefreshIssue(ctx context.Context, label string, mode containerMode, ref agentIssueRef) error {
+	issue, err := r.fetchIssueByForge(ctx, label, ref.Forge, mode, ref.Owner, ref.Repo, ref.Number)
+	if err != nil {
+		return fmt.Errorf("%s: resolve issue %s: %w", label, ref, err)
+	}
+	led, err := loadBacklogLedger(ref.repoSlug())
+	if err != nil {
+		return fmt.Errorf("%s: %w", label, err)
+	}
+	if led.Issues == nil {
+		led.Issues = map[string]*backlogEntry{}
+	}
+	key := strconv.Itoa(ref.Number)
+	for k := range led.Issues {
+		if k != key {
+			delete(led.Issues, k)
+		}
+	}
+	refreshBacklogLedger(led, rankBacklogIssues([]backlogIssue{{
+		Number: ref.Number,
+		Kind:   backlogKindIssue,
+		Title:  issue.Title,
+		Body:   issue.Body,
+		Labels: append([]string(nil), issue.Labels...),
+		URL:    issue.URL,
+	}}))
+	if err := saveBacklogLedger(led); err != nil {
+		return fmt.Errorf("%s: %w", label, err)
 	}
 	return nil
 }
