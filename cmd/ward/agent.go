@@ -1921,8 +1921,8 @@ func (r *Runner) createAgentContainer(ctx context.Context, plan upPlan, envFile 
 	// The aws capability binds ~/.aws, but a host with no AWS identity mounts an empty
 	// dir - warn loudly so a NoCredentials hole doesn't read as delivered creds (ward#579).
 	r.maybeWarnAWSMount(plan)
-	// Seed any external (non-Forgejo) catalog.dependsOn mirror host-side over the user's
-	// ssh keychain before the sealed container clones from the warm gitcache (ward#612).
+	// Seed any external (non-Forgejo) catalog.dependsOn mirror host-side before the
+	// sealed container clones from the warm gitcache (ward#612).
 	r.seedExternalContextMirrors(ctx, plan)
 	// The ward-tailnet network ready-up (create-if-absent + standing mac-proxy box
 	// warning) already ran before the pull in each dispatch path, so nothing here.

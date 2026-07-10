@@ -18,7 +18,7 @@ func TestCatalogContextRepos(t *testing.T) {
 	if err := os.WriteFile(filepath.Join(wardDir, "ward.yaml"), []byte(`catalog:
   dependsOn:
     - coilyco-flight-deck/cli-guard
-    - StrangeLoopGames/Eco
+    - acme/widgets
 `), 0o644); err != nil { //nolint:gosec
 		t.Fatalf("write ward.yaml: %v", err)
 	}
@@ -26,10 +26,10 @@ func TestCatalogContextRepos(t *testing.T) {
 	if err != nil {
 		t.Fatalf("loadRepoLocalCatalogDeps: %v", err)
 	}
-	if len(deps) != 2 || deps[0].slug() != "coilyco-flight-deck/cli-guard" || deps[1].slug() != "StrangeLoopGames/Eco" {
-		t.Fatalf("ward deps = %+v, want cli-guard + Eco", deps)
+	if len(deps) != 2 || deps[0].slug() != "coilyco-flight-deck/cli-guard" || deps[1].slug() != "acme/widgets" {
+		t.Fatalf("ward deps = %+v, want cli-guard + widgets", deps)
 	}
-	if got := catalogContextRepos(root); len(got) != 2 || got[1].slug() != "StrangeLoopGames/Eco" {
+	if got := catalogContextRepos(root); len(got) != 2 || got[1].slug() != "acme/widgets" {
 		t.Fatalf("catalogContextRepos(ward) = %+v, want catalog deps", got)
 	}
 }
@@ -49,7 +49,7 @@ func TestLoadRepoLocalCatalogDepsPrefersWardOverCoily(t *testing.T) {
 	}
 	if err := os.WriteFile(filepath.Join(root, ".coily", "coily.yaml"), []byte(`catalog:
   dependsOn:
-    - StrangeLoopGames/Eco
+    - acme/widgets
 `), 0o644); err != nil { //nolint:gosec
 		t.Fatalf("write coily.yaml: %v", err)
 	}
@@ -68,12 +68,12 @@ func TestResolveContextReposDedupes(t *testing.T) {
 	target := targetRepo{Owner: "coilyco-gaming", Name: "eco-ops"}
 	auto := []targetRepo{
 		{Owner: "coilyco-gaming", Name: "eco-ops"},         // the target: dropped
-		{Owner: "StrangeLoopGames", Name: "Eco"},           // a writable grant: dropped
+		{Owner: "acme", Name: "widgets"},                   // a writable grant: dropped
 		{Owner: "coilyco-flight-deck", Name: "cli-guard"},  // a substrate repo: dropped
 		{Owner: "coilyco-flight-deck", Name: "eco-protos"}, // kept
 		{Owner: "coilyco-flight-deck", Name: "eco-protos"}, // dup of the above: dropped
 	}
-	explicit := []targetRepo{{Owner: "StrangeLoopGames", Name: "Eco"}}
+	explicit := []targetRepo{{Owner: "acme", Name: "widgets"}}
 	substrate := map[string]bool{"coilyco-flight-deck/cli-guard": true}
 
 	got, notes := resolveContextRepos(depsOf(auto), explicit, target, substrate)
@@ -107,9 +107,9 @@ func TestParseCatalogDep(t *testing.T) {
 	}{
 		{"coilyco-flight-deck/cli-guard", "coilyco-flight-deck/cli-guard", false, "", ""},
 		{"forgejo.coilysiren.me/coilyco-flight-deck/eco-protos", "coilyco-flight-deck/eco-protos", false, "", ""},
-		{"ssh://git@github.com/StrangeLoopGames/Eco.git", "StrangeLoopGames/Eco", true, "github.com", "ssh://git@github.com/StrangeLoopGames/Eco.git"},
-		{"github.com/StrangeLoopGames/Eco", "StrangeLoopGames/Eco", true, "github.com", "ssh://git@github.com/StrangeLoopGames/Eco.git"},
-		{"git@github.com:StrangeLoopGames/Eco.git", "StrangeLoopGames/Eco", true, "github.com", "git@github.com:StrangeLoopGames/Eco.git"},
+		{"ssh://git@github.com/acme/widgets.git", "acme/widgets", true, "github.com", "ssh://git@github.com/acme/widgets.git"},
+		{"github.com/acme/widgets", "acme/widgets", true, "github.com", "ssh://git@github.com/acme/widgets.git"},
+		{"git@github.com:acme/widgets.git", "acme/widgets", true, "github.com", "git@github.com:acme/widgets.git"},
 		{"https://gitlab.com/group/proj.git", "group/proj", true, "gitlab.com", "https://gitlab.com/group/proj.git"},
 	}
 	for _, c := range cases {
@@ -142,7 +142,7 @@ func TestExternalCatalogDepEndToEnd(t *testing.T) {
 	}
 	if err := os.WriteFile(filepath.Join(wardDir, "ward.yaml"), []byte(`catalog:
   dependsOn:
-    - ssh://git@github.com/StrangeLoopGames/Eco.git
+    - ssh://git@github.com/acme/widgets.git
     - coilyco-flight-deck/eco-protos
 `), 0o644); err != nil { //nolint:gosec
 		t.Fatalf("write ward.yaml: %v", err)
@@ -153,24 +153,24 @@ func TestExternalCatalogDepEndToEnd(t *testing.T) {
 		t.Fatalf("resolveCatalogContextRepos = %+v, want Eco + eco-protos", repos)
 	}
 	eco := repos[0]
-	if !eco.external() || eco.Host != "github.com" || eco.CloneURL != "ssh://git@github.com/StrangeLoopGames/Eco.git" {
-		t.Fatalf("Eco dep = %+v, want external github.com over ssh", eco)
+	if !eco.external() || eco.Host != "github.com" || eco.CloneURL != "ssh://git@github.com/acme/widgets.git" {
+		t.Fatalf("widgets dep = %+v, want external github.com over ssh", eco)
 	}
-	if eco.slug() != "StrangeLoopGames/Eco" {
-		t.Fatalf("Eco slug = %q, want StrangeLoopGames/Eco", eco.slug())
+	if eco.slug() != "acme/widgets" {
+		t.Fatalf("widgets slug = %q, want acme/widgets", eco.slug())
 	}
 	if !strings.Contains(notes[0].Reason, "external") || !strings.Contains(notes[0].Reason, "github.com") {
-		t.Fatalf("Eco note = %q, want an external github.com reason", notes[0].Reason)
+		t.Fatalf("widgets note = %q, want an external github.com reason", notes[0].Reason)
 	}
 	// The env encoding must carry the honored URL, and re-parse back to the same dep.
 	env := contextReposEnv(repos)
-	want := "StrangeLoopGames/Eco=ssh://git@github.com/StrangeLoopGames/Eco.git coilyco-flight-deck/eco-protos"
+	want := "acme/widgets=ssh://git@github.com/acme/widgets.git coilyco-flight-deck/eco-protos"
 	if env != want {
 		t.Fatalf("contextReposEnv = %q, want %q", env, want)
 	}
 	back := parseContextReposEnv(env, target.Owner, target.Name)
 	if len(back) != 2 || !back[0].external() || back[0].CloneURL != eco.CloneURL || back[0].Host != "github.com" {
-		t.Fatalf("parseContextReposEnv round-trip = %+v, want Eco external preserved", back)
+		t.Fatalf("parseContextReposEnv round-trip = %+v, want widgets external preserved", back)
 	}
 	if back[1].external() || back[1].slug() != "coilyco-flight-deck/eco-protos" {
 		t.Fatalf("parseContextReposEnv[1] = %+v, want internal eco-protos", back[1])
@@ -191,13 +191,13 @@ func TestResolveCatalogContextReposFromClone(t *testing.T) {
   dependsOn:
     - forgejo.coilysiren.me/coilyco-flight-deck/cli-guard
     - coilyco-gaming/eco-ops
-    - StrangeLoopGames/Eco
+    - acme/widgets
     - coilyco-flight-deck/eco-protos
 `), 0o644); err != nil { //nolint:gosec
 		t.Fatalf("write ward.yaml: %v", err)
 	}
-	target := targetRepo{Owner: "coilyco-gaming", Name: "eco-ops"}  // must drop (the target)
-	extra := []targetRepo{{Owner: "StrangeLoopGames", Name: "Eco"}} // must drop (writable grant)
+	target := targetRepo{Owner: "coilyco-gaming", Name: "eco-ops"} // must drop (the target)
+	extra := []targetRepo{{Owner: "acme", Name: "widgets"}}        // must drop (writable grant)
 	repos, notes := resolveCatalogContextRepos(work, target, extra)
 	if len(repos) != 1 || repos[0].slug() != "coilyco-flight-deck/eco-protos" {
 		t.Fatalf("resolveCatalogContextRepos = %+v, want only eco-protos", repos)

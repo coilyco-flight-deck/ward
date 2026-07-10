@@ -33,7 +33,7 @@ func TestSubstrateInventoryBlock(t *testing.T) {
 	}
 
 	dest := t.TempDir()
-	writeRepo(t, dest, "infrastructure", "# infrastructure\n\nEverything Kai needs to stand up and operate kai-server.\n")
+	writeRepo(t, dest, "infrastructure", "# infrastructure\n\nEverything needed to stand up and operate the cluster.\n")
 	writeRepo(t, dest, "cli-guard", "# cli-guard\n\n[![badge][x]][y]\n\nThe policy and routing engine.\n")
 	// A README that opens with a code fence and has no heading yields no tagline,
 	// but the repo is still listed (bare path) so the mount is never hidden.
@@ -49,7 +49,7 @@ func TestSubstrateInventoryBlock(t *testing.T) {
 	}
 	for _, want := range []string{
 		"read these BEFORE asking",
-		"- **" + filepath.Join(dest, "infrastructure") + "** - Everything Kai needs to stand up and operate kai-server.",
+		"- **" + filepath.Join(dest, "infrastructure") + "** - Everything needed to stand up and operate the cluster.",
 		"- **" + filepath.Join(dest, "cli-guard") + "** - The policy and routing engine.",
 		"- **" + filepath.Join(dest, "coilysiren") + "**",
 	} {
