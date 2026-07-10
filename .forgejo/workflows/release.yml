@@ -71,10 +71,15 @@ jobs:
 
       - name: Alert Telegram on main failure
         if: ${{ failure() && github.ref == 'refs/heads/main' }}
-        uses: coilyco-flight-deck/agentic-os/actions/telegram-alert@main
-        with:
-          bot-token: ${{ secrets.TELEGRAM_BOT_TOKEN }}
-          chat-id: ${{ secrets.TELEGRAM_RED_CHAT_ID }}
+        env:
+          TELEGRAM_BOT_TOKEN: ${{ secrets.TELEGRAM_BOT_TOKEN }}
+          TELEGRAM_RED_CHAT_ID: ${{ secrets.TELEGRAM_RED_CHAT_ID }}
+        run: |
+          set -euo pipefail
+          message="${GITHUB_REPOSITORY} ${GITHUB_WORKFLOW} failed on main (${GITHUB_SERVER_URL}/${GITHUB_REPOSITORY}/actions/runs/${GITHUB_RUN_ID})"
+          curl -fsSL -X POST "https://api.telegram.org/bot${TELEGRAM_BOT_TOKEN}/sendMessage" \
+            --data-urlencode "chat_id=${TELEGRAM_RED_CHAT_ID}" \
+            --data-urlencode "text=${message}" >/dev/null
   publish-binaries:
     needs: release
     if: ${{ needs.release.outputs.tag != '' }}
@@ -276,10 +281,15 @@ jobs:
 
       - name: Alert Telegram on main failure
         if: ${{ failure() && github.ref == 'refs/heads/main' }}
-        uses: coilyco-flight-deck/agentic-os/actions/telegram-alert@main
-        with:
-          bot-token: ${{ secrets.TELEGRAM_BOT_TOKEN }}
-          chat-id: ${{ secrets.TELEGRAM_RED_CHAT_ID }}
+        env:
+          TELEGRAM_BOT_TOKEN: ${{ secrets.TELEGRAM_BOT_TOKEN }}
+          TELEGRAM_RED_CHAT_ID: ${{ secrets.TELEGRAM_RED_CHAT_ID }}
+        run: |
+          set -euo pipefail
+          message="${GITHUB_REPOSITORY} ${GITHUB_WORKFLOW} failed on main (${GITHUB_SERVER_URL}/${GITHUB_REPOSITORY}/actions/runs/${GITHUB_RUN_ID})"
+          curl -fsSL -X POST "https://api.telegram.org/bot${TELEGRAM_BOT_TOKEN}/sendMessage" \
+            --data-urlencode "chat_id=${TELEGRAM_RED_CHAT_ID}" \
+            --data-urlencode "text=${message}" >/dev/null
   publish-kdl-write:
     needs: release
     if: ${{ needs.release.outputs.tag != '' }}
@@ -403,10 +413,15 @@ jobs:
 
       - name: Alert Telegram on main failure
         if: ${{ failure() && github.ref == 'refs/heads/main' }}
-        uses: coilyco-flight-deck/agentic-os/actions/telegram-alert@main
-        with:
-          bot-token: ${{ secrets.TELEGRAM_BOT_TOKEN }}
-          chat-id: ${{ secrets.TELEGRAM_RED_CHAT_ID }}
+        env:
+          TELEGRAM_BOT_TOKEN: ${{ secrets.TELEGRAM_BOT_TOKEN }}
+          TELEGRAM_RED_CHAT_ID: ${{ secrets.TELEGRAM_RED_CHAT_ID }}
+        run: |
+          set -euo pipefail
+          message="${GITHUB_REPOSITORY} ${GITHUB_WORKFLOW} failed on main (${GITHUB_SERVER_URL}/${GITHUB_REPOSITORY}/actions/runs/${GITHUB_RUN_ID})"
+          curl -fsSL -X POST "https://api.telegram.org/bot${TELEGRAM_BOT_TOKEN}/sendMessage" \
+            --data-urlencode "chat_id=${TELEGRAM_RED_CHAT_ID}" \
+            --data-urlencode "text=${message}" >/dev/null
   publish-kdl-read:
     needs: release
     if: ${{ needs.release.outputs.tag != '' }}
@@ -532,10 +547,15 @@ jobs:
 
       - name: Alert Telegram on main failure
         if: ${{ failure() && github.ref == 'refs/heads/main' }}
-        uses: coilyco-flight-deck/agentic-os/actions/telegram-alert@main
-        with:
-          bot-token: ${{ secrets.TELEGRAM_BOT_TOKEN }}
-          chat-id: ${{ secrets.TELEGRAM_RED_CHAT_ID }}
+        env:
+          TELEGRAM_BOT_TOKEN: ${{ secrets.TELEGRAM_BOT_TOKEN }}
+          TELEGRAM_RED_CHAT_ID: ${{ secrets.TELEGRAM_RED_CHAT_ID }}
+        run: |
+          set -euo pipefail
+          message="${GITHUB_REPOSITORY} ${GITHUB_WORKFLOW} failed on main (${GITHUB_SERVER_URL}/${GITHUB_REPOSITORY}/actions/runs/${GITHUB_RUN_ID})"
+          curl -fsSL -X POST "https://api.telegram.org/bot${TELEGRAM_BOT_TOKEN}/sendMessage" \
+            --data-urlencode "chat_id=${TELEGRAM_RED_CHAT_ID}" \
+            --data-urlencode "text=${message}" >/dev/null
   bump-tap-formula:
     needs: [release, publish-binaries]
     if: ${{ needs.release.outputs.tag != '' }}
@@ -703,10 +723,15 @@ jobs:
 
       - name: Alert Telegram on main failure
         if: ${{ failure() && github.ref == 'refs/heads/main' }}
-        uses: coilyco-flight-deck/agentic-os/actions/telegram-alert@main
-        with:
-          bot-token: ${{ secrets.TELEGRAM_BOT_TOKEN }}
-          chat-id: ${{ secrets.TELEGRAM_RED_CHAT_ID }}
+        env:
+          TELEGRAM_BOT_TOKEN: ${{ secrets.TELEGRAM_BOT_TOKEN }}
+          TELEGRAM_RED_CHAT_ID: ${{ secrets.TELEGRAM_RED_CHAT_ID }}
+        run: |
+          set -euo pipefail
+          message="${GITHUB_REPOSITORY} ${GITHUB_WORKFLOW} failed on main (${GITHUB_SERVER_URL}/${GITHUB_REPOSITORY}/actions/runs/${GITHUB_RUN_ID})"
+          curl -fsSL -X POST "https://api.telegram.org/bot${TELEGRAM_BOT_TOKEN}/sendMessage" \
+            --data-urlencode "chat_id=${TELEGRAM_RED_CHAT_ID}" \
+            --data-urlencode "text=${message}" >/dev/null
   bump-scoop-manifest:
     needs: [release, publish-binaries]
     if: ${{ needs.release.outputs.tag != '' }}
@@ -836,7 +861,12 @@ jobs:
           echo "bucket ${BUCKET_REPO} scoop manifest bumped to ${TAG}"
       - name: Alert Telegram on main failure
         if: ${{ failure() && github.ref == 'refs/heads/main' }}
-        uses: coilyco-flight-deck/agentic-os/actions/telegram-alert@main
-        with:
-          bot-token: ${{ secrets.TELEGRAM_BOT_TOKEN }}
-          chat-id: ${{ secrets.TELEGRAM_RED_CHAT_ID }}
+        env:
+          TELEGRAM_BOT_TOKEN: ${{ secrets.TELEGRAM_BOT_TOKEN }}
+          TELEGRAM_RED_CHAT_ID: ${{ secrets.TELEGRAM_RED_CHAT_ID }}
+        run: |
+          set -euo pipefail
+          message="${GITHUB_REPOSITORY} ${GITHUB_WORKFLOW} failed on main (${GITHUB_SERVER_URL}/${GITHUB_REPOSITORY}/actions/runs/${GITHUB_RUN_ID})"
+          curl -fsSL -X POST "https://api.telegram.org/bot${TELEGRAM_BOT_TOKEN}/sendMessage" \
+            --data-urlencode "chat_id=${TELEGRAM_RED_CHAT_ID}" \
+            --data-urlencode "text=${message}" >/dev/null
