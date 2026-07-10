@@ -275,11 +275,10 @@ func (r *Runner) startHostDispatchBrokerRequest(ctx context.Context, req dispatc
 			close(started)
 			return dispatchBrokerLaunch(ctx, req)
 		}); err != nil {
-			fmt.Fprintf(os.Stderr, "ward dispatch broker: launch failed: %v\n", err)
 			restore()
 			restored = true
 			dispatchFailedDispatchLaunchStartHook()
-			r.commentFailedDispatchLaunch(ctx, req, logPath, err)
+			r.commentDispatchLaunchError(ctx, req, logPath, err)
 			return
 		}
 		fmt.Fprintf(os.Stderr, "ward dispatch broker: launch completed\n")
@@ -319,6 +318,39 @@ func (r *Runner) commentFailedDispatchLaunch(ctx context.Context, req dispatchBr
 	r.commentFailedDispatch(commentCtx, cl, mode, ref, req, logPath, launchErr)
 }
 
+// commentDispatchLaunchError routes a launch refusal to the deferred or failed
+// issue comment path after the host broker has restored its stdio.
+func (r *Runner) commentDispatchLaunchError(ctx context.Context, req dispatchBrokerRequest, logPath string, launchErr error) {
+	if isEngineerCapacityError(launchErr) {
+		fmt.Fprintf(os.Stderr, "ward dispatch broker: launch deferred: %v\n", launchErr)
+		r.commentDeferredDispatchLaunch(ctx, req, logPath, launchErr)
+		return
+	}
+	fmt.Fprintf(os.Stderr, "ward dispatch broker: launch failed: %v\n", launchErr)
+	r.commentFailedDispatchLaunch(ctx, req, logPath, launchErr)
+}
+
+// commentDeferredDispatchLaunch posts the capacity backpressure comment and clears
+// the stale reservation after a forwarded launch was queued instead of started.
+func (r *Runner) commentDeferredDispatchLaunch(ctx context.Context, req dispatchBrokerRequest, logPath string, launchErr error) {
+	if r == nil || r.Runner == nil {
+		return
+	}
+	ref, err := parseAgentIssueRef(req.Argv[1])
+	if err != nil {
+		return
+	}
+	mode := dispatchBrokerRequestMode(req)
+	commentCtx, cancel := context.WithTimeout(context.WithoutCancel(ctx), 30*time.Second)
+	defer cancel()
+	cl, cerr := r.hostTrackerClient(commentCtx, ref.trackerOrDefault(), mode)
+	if cerr != nil {
+		fmt.Fprintf(os.Stderr, "ward dispatch broker: could not build issue client to comment deferred dispatch on %s: %v\n", ref, cerr)
+		return
+	}
+	r.commentDeferredDispatch(commentCtx, cl, mode, ref, req, logPath, launchErr)
+}
+
 // dispatchBrokerRequestMode resolves the requested harness for a forwarded dispatch.
 func dispatchBrokerRequestMode(req dispatchBrokerRequest) containerMode {
 	for i := 0; i+1 < len(req.Argv); i++ {
@@ -350,6 +382,24 @@ func (r *Runner) commentFailedDispatch(ctx context.Context, cl Tracker, mode con
 	fmt.Fprintf(os.Stderr, "ward dispatch broker: released failed dispatch reservation on %s\n", ref)
 }
 
+// commentDeferredDispatch writes the visible deferred comment and clears the stale
+// reservation after a forwarded launch hit the global engineer cap.
+func (r *Runner) commentDeferredDispatch(ctx context.Context, cl Tracker, mode containerMode, ref agentIssueRef, req dispatchBrokerRequest, logPath string, launchErr error) {
+	container := emptyDefault(req.Requester, "unknown-container")
+	if req.Role == roleEngineer {
+		container = issueScopedContainerName(req.Role, mode, targetRepo{Owner: ref.Owner, Name: ref.Repo}, ref.Number)
+	}
+	body := dispatchLaunchDeferredCommentBody(mode, container, req, logPath, launchErr)
+	if err := cl.commentIssue(ctx, ref.Owner, ref.Repo, ref.Number, body); err != nil {
+		fmt.Fprintf(os.Stderr, "ward dispatch broker: could not comment deferred dispatch on %s: %v\n", ref, err)
+		return
+	}
+	if err := cl.unlockIssue(ctx, ref.Owner, ref.Repo, ref.Number); err != nil && !errors.Is(err, errForgeLockUnsupported) {
+		fmt.Fprintf(os.Stderr, "ward dispatch broker: could not unlock issue %s after deferred dispatch: %v\n", ref, err)
+	}
+	fmt.Fprintf(os.Stderr, "ward dispatch broker: released deferred dispatch reservation on %s\n", ref)
+}
+
 // dispatchLaunchFailureCommentBody supersedes the stale reservation with a visible
 // failure comment and the retry shape an operator needs.
 func dispatchLaunchFailureCommentBody(mode containerMode, container string, req dispatchBrokerRequest, logPath string, launchErr error) string {
@@ -370,6 +420,28 @@ func dispatchLaunchFailureCommentBody(mode containerMode, container string, req 
 		mode, attempted, container, logDetail, firstLine(launchErr.Error()))
 	return agentReservationReleaseMarker + "\n" + agentNeedsRedispatchMarker + "\n" +
 		collapsedIssueComment("WARD-DISPATCH: failed ❌", "failure details", detail)
+}
+
+// dispatchLaunchDeferredCommentBody supersedes the stale reservation with a visible
+// deferred comment and the retry shape an operator needs when the cap is full.
+func dispatchLaunchDeferredCommentBody(mode containerMode, container string, req dispatchBrokerRequest, logPath string, launchErr error) string {
+	attempted := redactDispatchBrokerArgv(req.Argv)
+	logDetail := "unavailable"
+	if strings.TrimSpace(logPath) != "" {
+		logDetail = logPath
+	}
+	detail := fmt.Sprintf(
+		"This forwarded dispatch was deferred after the issue was already reserved.\n\n"+
+			"Attempted harness: `%s`\n"+
+			"Attempted run: `ward agent %s`\n"+
+			"Container: `%s`\n"+
+			"Container created: no running engineer was observed.\n"+
+			"Host log: `%s`\n"+
+			"Capacity: `%s`\n\n"+
+			"Retry: the issue stays queued and the director will try again when a slot opens.",
+		mode, attempted, container, logDetail, firstLine(launchErr.Error()))
+	return agentReservationReleaseMarker + "\n" + agentNeedsRedispatchMarker + "\n" +
+		collapsedIssueComment("WARD-DISPATCH: deferred ⏸", "deferred details", detail)
 }
 
 // withBrokerForwardingDisabled temporarily clears the read-only surface markers so
@@ -788,15 +860,7 @@ func (r *Runner) maybeForwardAgentDispatchToHostBroker(ctx context.Context, c *c
 		}
 		return true, err
 	}
-	displayArgv := redactDispatchBrokerArgv(argv)
-	// This line is captured as tool output by the surface agent, not written to the
-	// raw TTY, so naming the host-side run log here is safe and aids discovery.
-	if logPath != "" {
-		fmt.Fprintf(os.Stderr, "ward dispatch broker: forwarded `ward agent %s` to host ward (run output on the host at %s)\n",
-			displayArgv, logPath)
-	} else {
-		fmt.Fprintf(os.Stderr, "ward dispatch broker: forwarded `ward agent %s` to host ward\n", displayArgv)
-	}
+	fmt.Fprintln(os.Stderr, dispatchBrokerForwardedLine(argv, logPath))
 	return true, nil
 }
 
@@ -820,14 +884,26 @@ func (r *Runner) forwardFreeformEngineerLaunchToHostBroker(ctx context.Context, 
 		}
 		return true, err
 	}
-	displayArgv := redactDispatchBrokerArgv(req.Argv)
-	if logPath != "" {
-		fmt.Fprintf(os.Stderr, "ward dispatch broker: forwarded `ward agent %s` to host ward (run output on the host at %s)\n",
-			displayArgv, logPath)
-	} else {
-		fmt.Fprintf(os.Stderr, "ward dispatch broker: forwarded `ward agent %s` to host ward\n", displayArgv)
-	}
+	fmt.Fprintln(os.Stderr, dispatchBrokerForwardedLine(req.Argv, logPath))
 	return true, nil
+}
+
+// dispatchBrokerForwardedLine renders the stable text for a forwarded launch.
+// If logPath is missing, it falls back to a deterministic lookup command.
+func dispatchBrokerForwardedLine(argv []string, logPath string) string {
+	displayArgv := redactDispatchBrokerArgv(argv)
+	base := fmt.Sprintf("ward dispatch broker: forwarded `ward agent %s` to host ward", displayArgv)
+	if path := strings.TrimSpace(logPath); path != "" {
+		return fmt.Sprintf("%s (run output on the host at %s)", base, path)
+	}
+	ref := ""
+	if len(argv) >= 2 {
+		ref = strings.TrimSpace(argv[1])
+	}
+	if ref != "" {
+		return fmt.Sprintf("%s (dispatch log path unavailable yet; inspect later with `ward agent logs %s`)", base, ref)
+	}
+	return fmt.Sprintf("%s (dispatch log path unavailable yet; no lookup command could be derived)", base)
 }
 
 // brokerDispatchHarness returns the harness to forward into a sibling dispatch.

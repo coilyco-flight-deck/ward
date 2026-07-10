@@ -2,6 +2,7 @@ package main
 
 import (
 	"bytes"
+	"context"
 	"encoding/json"
 	"errors"
 	"fmt"
@@ -53,6 +54,19 @@ func TestDirectorDispatchDisposition(t *testing.T) {
 	state, _, deferred = directorDispatchDisposition(errors.New("image pull failed"))
 	if !deferred || state != "queued" {
 		t.Errorf("generic launch failure: state=%q deferred=%v, want queued+deferred", state, deferred)
+	}
+
+	// Global engineer backpressure defers too. It is not a terminal dispatch failure.
+	capacity := newEngineerCapacityError("ward agent engineer --harness codex", 10, 10)
+	state, outcome, deferred = directorDispatchDisposition(capacity)
+	if !deferred {
+		t.Error("engineer capacity backpressure must defer, not fail")
+	}
+	if state != "queued" {
+		t.Errorf("capacity state = %q, want queued", state)
+	}
+	if outcome == nil || outcome.Status != "deferred" {
+		t.Errorf("capacity outcome = %+v, want status=deferred", outcome)
 	}
 
 	// A coded per-issue decline is a real verdict on the issue: park it terminal.
@@ -877,5 +891,41 @@ func TestBacklogLedgerRoundTrip(t *testing.T) {
 	e := got.Issues["42"]
 	if e == nil || e.Num != 42 || e.State != "dispatched" || e.Title != "carry me" {
 		t.Errorf("reloaded entry = %+v", e)
+	}
+}
+
+func TestBacklogDispatchContainerName(t *testing.T) {
+	ref := agentIssueRef{Owner: "coilyco-flight-deck", Repo: "ward", Number: 900}
+	got := backlogDispatchContainerName(dispatchEngineer{harness: modeCodex}, ref)
+	want := issueScopedContainerName(roleEngineer, modeCodex, targetRepo{Owner: ref.Owner, Name: ref.Repo}, ref.Number)
+	if got != want {
+		t.Fatalf("backlogDispatchContainerName() = %q, want %q", got, want)
+	}
+}
+
+func TestBacklogReconcileKeepsDispatchedWhenDockerUnavailable(t *testing.T) {
+	t.Setenv("HOME", t.TempDir())
+	ref := agentIssueRef{Owner: "coilyco-flight-deck", Repo: "ward", Number: 900}
+	entry := &backlogEntry{
+		Num:          ref.Number,
+		Title:        "broker-forwarded run",
+		Lane:         "headless",
+		State:        "dispatched",
+		Container:    backlogDispatchContainerName(dispatchEngineer{harness: modeCodex}, ref),
+		DispatchedAt: time.Now().UTC().Format(time.RFC3339),
+		repo:         ref.repoSlug(),
+	}
+	r := &Runner{Runner: &shell.Runner{Resolve: func(bin string) (string, error) {
+		if bin == "docker" {
+			return "", errors.New("Cannot connect to the Docker daemon at unix:///var/run/docker.sock")
+		}
+		return "/bin/true", nil
+	}}}
+	changed := r.backlogReconcile(context.Background(), &fakeLockForge{}, ref.repoSlug(), targetRepo{Owner: ref.Owner, Name: ref.Repo}, entry)
+	if changed {
+		t.Fatal("docker lookup error must not mark a broker-forwarded dispatched run failed")
+	}
+	if entry.State != "dispatched" {
+		t.Fatalf("entry state = %q, want dispatched", entry.State)
 	}
 }

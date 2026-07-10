@@ -4,10 +4,13 @@ import (
 	"archive/tar"
 	"bytes"
 	"context"
+	"io"
 	"os"
 	"path/filepath"
 	"strings"
 	"testing"
+
+	"forgejo.coilysiren.me/coilyco-flight-deck/cli-guard/cli/shell"
 )
 
 // TestSweepActionsDrainPrecedesRemove is the load-bearing ordering assertion: every
@@ -214,6 +217,42 @@ func TestPickMetaEnvAllowlistOnly(t *testing.T) {
 		if strings.Contains(v, "secrettoken123") || strings.Contains(v, "eyJzZWNyZXQ") {
 			t.Fatalf("secret material leaked through %q = %q", k, v)
 		}
+	}
+}
+
+func dockerInspectStateStubDir(t *testing.T, stateJSON, envJSON string) string {
+	t.Helper()
+	dir := t.TempDir()
+	script := filepath.Join(dir, "docker")
+	body := "#!/bin/sh\n" +
+		"if [ \"$1\" = inspect ] && [ \"$2\" = --format ] && [ \"$3\" = '{{json .State}}' ]; then\n" +
+		"  printf '%s' " + shellQuote(stateJSON) + "\n" +
+		"  exit 0\n" +
+		"fi\n" +
+		"if [ \"$1\" = inspect ] && [ \"$2\" = --format ] && [ \"$3\" = '{{json .Config.Env}}' ]; then\n" +
+		"  printf '%s' " + shellQuote(envJSON) + "\n" +
+		"  exit 0\n" +
+		"fi\n" +
+		"exit 1\n"
+	if err := os.WriteFile(script, []byte(body), 0o700); err != nil { // #nosec G306 -- test fixture
+		t.Fatalf("write fake docker: %v", err)
+	}
+	return dir
+}
+
+func TestBuildRunMetaRecordsOOMKilled(t *testing.T) {
+	dir := dockerInspectStateStubDir(t,
+		`{"OOMKilled":true,"ExitCode":0}`,
+		`["WARD_TARGET_REPO=coilyco-flight-deck/ward","WARD_TARGET_ISSUE=883","WARD_MODE=codex","WARD_BRANCH=issue-883"]`,
+	)
+	t.Setenv("PATH", dir+string(os.PathListSeparator)+os.Getenv("PATH"))
+	r := &Runner{Runner: &shell.Runner{Stderr: io.Discard, Resolve: shell.PathResolver}}
+	meta := r.buildRunMeta(t.Context(), "director-codex-vg94", "agent exited non-zero (signal: killed; docker state: OOMKilled=true); reaping anyway")
+	if !meta.OOMKilled {
+		t.Fatal("buildRunMeta must carry Docker OOMKilled=true into meta.json")
+	}
+	if meta.Container != "director-codex-vg94" || meta.Repo != "coilyco-flight-deck/ward" || meta.Outcome != outcomeUnknown {
+		t.Fatalf("unexpected meta record: %+v", meta)
 	}
 }
 
