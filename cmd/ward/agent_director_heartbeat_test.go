@@ -183,9 +183,9 @@ func (f *fakeDirector) offerSurface(context.Context, time.Duration) (bool, error
 	}
 	return false, nil
 }
-func (f *fakeDirector) reportDrained() error     { f.drainedCalls++; return nil }
-func (f *fakeDirector) reportMaxCycles(int, int) { f.maxCycleCalls++ }
-func (f *fakeDirector) summary() error           { f.summaryCalls++; return nil }
+func (f *fakeDirector) reportDrained() error          { f.drainedCalls++; return nil }
+func (f *fakeDirector) reportMaxCycles(int, int, int) { f.maxCycleCalls++ }
+func (f *fakeDirector) summary() error                { f.summaryCalls++; return nil }
 
 // TestRunDirectorLoopSmoke is the acceptance smoke: one actionable issue dispatches,
 // reconciles its WARD-OUTCOME next tick, then drains and surfaces (does not exit).

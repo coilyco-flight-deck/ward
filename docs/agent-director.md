@@ -8,6 +8,8 @@ The director surface is the read-only control plane for runs.
 - It can inspect the fleet, read logs, and stop a run.
 - It can keep a backlog moving without writing implementation code.
 - It is the surface that hosts the merge-ready workflow for PR landings.
+- It distinguishes a fresh reservation hold from a stale one so dead runs do
+  not block burndown forever.
 
 ## Why it exists
 

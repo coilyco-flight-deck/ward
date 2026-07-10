@@ -597,6 +597,56 @@ func TestBacklogRefreshUsesForgejoTokenForPrivateRepos(t *testing.T) {
 	}
 }
 
+func TestBacklogRefreshReservationStates(t *testing.T) {
+	t.Setenv("HOME", t.TempDir())
+
+	oldBase := forgejoBaseURL
+	defer func() { forgejoBaseURL = oldBase }()
+
+	now := time.Now().UTC()
+	fresh := now.Add(-10 * time.Minute).UTC().Format(time.RFC3339)
+	stale := now.Add(-2 * time.Hour).UTC().Format(time.RFC3339)
+	srv := httptest.NewServer(http.HandlerFunc(func(w http.ResponseWriter, r *http.Request) {
+		switch {
+		case r.URL.Path == "/api/v1/repos/coilyco-flight-deck/ward/issues" && r.URL.Query().Get("type") == "issues":
+			_ = json.NewEncoder(w).Encode([]map[string]any{
+				{"number": 11, "title": "fresh reservation", "body": "body", "state": "open", "html_url": "https://f/issues/11", "labels": []map[string]any{{"name": "P0"}, {"name": "headless"}}},
+				{"number": 12, "title": "stale reservation", "body": "body", "state": "open", "html_url": "https://f/issues/12", "labels": []map[string]any{{"name": "P1"}, {"name": "headless"}}},
+			})
+		case r.URL.Path == "/api/v1/repos/coilyco-flight-deck/ward/issues" && r.URL.Query().Get("type") == "pulls":
+			_ = json.NewEncoder(w).Encode([]map[string]any{})
+		case r.URL.Path == "/api/v1/repos/coilyco-flight-deck/ward/issues/11/comments":
+			_ = json.NewEncoder(w).Encode([]map[string]any{
+				{"body": agentReservationMarker + "\nreserved", "created_at": fresh, "user": map[string]any{"login": "coilyco-ops"}},
+			})
+		case r.URL.Path == "/api/v1/repos/coilyco-flight-deck/ward/issues/12/comments":
+			_ = json.NewEncoder(w).Encode([]map[string]any{
+				{"body": agentReservationMarker + "\nreserved", "created_at": stale, "user": map[string]any{"login": "coilyco-ops"}},
+			})
+		default:
+			t.Fatalf("unexpected path: %s?%s", r.URL.Path, r.URL.RawQuery)
+		}
+	}))
+	defer srv.Close()
+	forgejoBaseURL = srv.URL
+
+	t.Setenv("WARD_AGENT_RESERVE_RECHECK", "off")
+	r := &Runner{}
+	if err := r.backlogRefresh(t.Context(), "director", []string{"coilyco-flight-deck/ward"}, 50); err != nil {
+		t.Fatalf("backlogRefresh: %v", err)
+	}
+	led, err := loadBacklogLedger("coilyco-flight-deck/ward")
+	if err != nil {
+		t.Fatalf("load ledger: %v", err)
+	}
+	if got := led.Issues["11"]; got == nil || got.State != backlogReservationWaitingReaper {
+		t.Fatalf("#11 state = %+v, want %q", got, backlogReservationWaitingReaper)
+	}
+	if got := led.Issues["12"]; got == nil || got.State != backlogReservationSafeToRedispatch {
+		t.Fatalf("#12 state = %+v, want %q", got, backlogReservationSafeToRedispatch)
+	}
+}
+
 func TestCombineOpenBacklogIssues(t *testing.T) {
 	issues := []backlogIssue{{Number: 5, Kind: backlogKindIssue, Title: "issue"}}
 	prs := []backlogIssue{{Number: 8, Title: "pr"}}
@@ -841,21 +891,43 @@ func TestBacklogLaneCountsAndPicks(t *testing.T) {
 	entries := []*backlogEntry{
 		{Num: 1, State: "queued", Tier: "P1", repo: "a/b"},
 		{Num: 2, State: "dispatched", Tier: "P0", repo: "a/b"},
-		{Num: 3, State: "queued", Tier: "P0", repo: "c/d"},
+		{Num: 3, State: backlogReservationSafeToRedispatch, Tier: "P0", repo: "c/d"},
 		{Num: 4, State: "done", Tier: "P0", repo: "a/b"},
 		{Num: 5, State: "blocked", Tier: "P0", repo: "a/b"},
+		{Num: 6, State: backlogReservationWaitingReaper, Tier: "P2", repo: "a/b"},
 	}
-	queued, inflight := backlogLaneCounts(entries)
-	if queued != 2 || inflight != 1 {
-		t.Fatalf("counts = queued %d inflight %d, want 2/1", queued, inflight)
+	queued, inflight, held := backlogLaneCounts(entries)
+	if queued != 2 || inflight != 1 || held != 1 {
+		t.Fatalf("counts = queued %d inflight %d held %d, want 2/1/1", queued, inflight, held)
 	}
 	picks := backlogQueuedPicks(entries)
 	if len(picks) != 2 {
 		t.Fatalf("want 2 picks, got %d", len(picks))
 	}
-	// P0 (#3) ranks ahead of P1 (#1)
+	// P0 (#3) ranks ahead of P1 (#1); the waiting-reaper hold stays out of picks.
 	if picks[0].Num != 3 || picks[1].Num != 1 {
 		t.Errorf("pick order = %d,%d, want 3,1", picks[0].Num, picks[1].Num)
+	}
+}
+
+func TestBacklogReservationState(t *testing.T) {
+	now := time.Date(2026, 7, 10, 9, 0, 0, 0, time.UTC)
+	fresh := issueComment{Body: agentReservationMarker + "\nreserved", CreatedAt: now.Add(-10 * time.Minute)}
+	stale := issueComment{Body: agentReservationMarker + "\nreserved", CreatedAt: now.Add(-2 * time.Hour)}
+	released := issueComment{Body: agentReservationMarker + "\nreserved", CreatedAt: now.Add(-2 * time.Hour)}
+	release := issueComment{Body: agentReservationReleaseMarker, CreatedAt: now.Add(-time.Minute)}
+
+	if got := backlogReservationState([]issueComment{fresh}, now, time.Hour); got != backlogReservationWaitingReaper {
+		t.Fatalf("fresh reservation = %q, want %q", got, backlogReservationWaitingReaper)
+	}
+	if got := backlogReservationState([]issueComment{stale}, now, time.Hour); got != backlogReservationSafeToRedispatch {
+		t.Fatalf("stale reservation = %q, want %q", got, backlogReservationSafeToRedispatch)
+	}
+	if got := backlogReservationState([]issueComment{released, release}, now, time.Hour); got != backlogReservationSafeToRedispatch {
+		t.Fatalf("released reservation = %q, want %q", got, backlogReservationSafeToRedispatch)
+	}
+	if got := backlogReservationState(nil, now, time.Hour); got != "" {
+		t.Fatalf("no reservation markers = %q, want empty", got)
 	}
 }
 

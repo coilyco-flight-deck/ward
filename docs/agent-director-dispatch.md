@@ -6,6 +6,7 @@ doc_goal: Keep the director-dispatch anchor stable after the old page was collap
 This page is the durable anchor for the director's dispatch tick.
 
 - It covers the heartbeat's dispatch decision and hold logic.
+- It keeps fresh reservation holds parked while stale ones re-enter the queue.
 - It keeps the dispatcher comments readable after the old page was removed.
 
 ## See also
