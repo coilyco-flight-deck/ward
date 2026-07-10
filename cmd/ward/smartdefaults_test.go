@@ -49,10 +49,10 @@ func TestSmartDefaultsFromBundleSource(t *testing.T) {
         repo "example-owner/*" forge=github
     }
 }`
-	if err := os.WriteFile(filepath.Join(dir, bundleDefaultsKDLPath), []byte(defaultsBody), 0o644); err != nil {
+	if err := os.WriteFile(filepath.Join(dir, bundleFixtureDefaultsPath), []byte(defaultsBody), 0o644); err != nil {
 		t.Fatalf("write defaults bundle: %v", err)
 	}
-	if err := os.WriteFile(filepath.Join(dir, bundleReposKDLPath), []byte(reposBody), 0o644); err != nil {
+	if err := os.WriteFile(filepath.Join(dir, bundleFixtureReposPath), []byte(reposBody), 0o644); err != nil {
 		t.Fatalf("write repos bundle: %v", err)
 	}
 	defs, err := loadSmartDefaultsFrom(bundleConfigSource(dir))
@@ -94,10 +94,10 @@ func TestSmartDefaultsRejectsMalformedValue(t *testing.T) {
 	defaultsBody := `defaults {
     agent-reservation-ttl "nope"
 }`
-	if err := os.WriteFile(filepath.Join(dir, bundleDefaultsKDLPath), []byte(defaultsBody), 0o644); err != nil {
+	if err := os.WriteFile(filepath.Join(dir, bundleFixtureDefaultsPath), []byte(defaultsBody), 0o644); err != nil {
 		t.Fatalf("write malformed defaults bundle: %v", err)
 	}
-	if err := os.WriteFile(filepath.Join(dir, bundleReposKDLPath), []byte(`repos {
+	if err := os.WriteFile(filepath.Join(dir, bundleFixtureReposPath), []byte(`repos {
     repo-authority default=forgejo {
         trusted-owner "example-owner"
         repo "example-owner/*" forge=github
@@ -121,10 +121,10 @@ func TestSmartDefaultsRejectsInvalidWorkflow(t *testing.T) {
 	defaultsBody := `defaults {
     agent-workflow default="merge-it"
 }`
-	if err := os.WriteFile(filepath.Join(dir, bundleDefaultsKDLPath), []byte(defaultsBody), 0o644); err != nil {
+	if err := os.WriteFile(filepath.Join(dir, bundleFixtureDefaultsPath), []byte(defaultsBody), 0o644); err != nil {
 		t.Fatalf("write malformed defaults bundle: %v", err)
 	}
-	if err := os.WriteFile(filepath.Join(dir, bundleReposKDLPath), []byte(`repos {
+	if err := os.WriteFile(filepath.Join(dir, bundleFixtureReposPath), []byte(`repos {
     repo-authority default=forgejo {
         trusted-owner "example-owner"
         repo "example-owner/*" forge=github
@@ -142,10 +142,10 @@ func TestSmartDefaultsRejectsMissingRepoAuthority(t *testing.T) {
 	body := `defaults {
     agent-reservation-ttl "2h"
 }`
-	if err := os.WriteFile(filepath.Join(dir, bundleDefaultsKDLPath), []byte(body), 0o644); err != nil {
+	if err := os.WriteFile(filepath.Join(dir, bundleFixtureDefaultsPath), []byte(body), 0o644); err != nil {
 		t.Fatalf("write defaults bundle: %v", err)
 	}
-	if err := os.WriteFile(filepath.Join(dir, bundleReposKDLPath), []byte(`repos {
+	if err := os.WriteFile(filepath.Join(dir, bundleFixtureReposPath), []byte(`repos {
 }`), 0o644); err != nil {
 		t.Fatalf("write repos bundle: %v", err)
 	}

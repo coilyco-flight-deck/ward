@@ -3,9 +3,6 @@ package main
 import (
 	"bytes"
 	"fmt"
-	"io/fs"
-	"path"
-	"sort"
 
 	"forgejo.coilysiren.me/coilyco-flight-deck/cli-guard/cli/execverb"
 	"forgejo.coilysiren.me/coilyco-flight-deck/cli-guard/cli/verb"
@@ -31,34 +28,16 @@ func mountWardKdlExec(root *cli.Command, r *Runner) error {
 func mountWardKdlExecFrom(root *cli.Command, src configSource, r *Runner) error {
 	r.configAuditVersion = src.auditVersion
 
-	entries, err := fs.ReadDir(src.fsys, src.execDir)
+	files, err := loadBundleKDLFiles(src)
 	if err != nil {
 		return fmt.Errorf("read exec guardfiles: %w", err)
 	}
-	// Sort so the mount order (and the --help listing) is deterministic.
-	names := make([]string, 0, len(entries))
-	for _, e := range entries {
-		if e.IsDir() {
-			continue
-		}
-		if src.execMixedDialects {
-			if ok, _ := path.Match(src.execGuardfileGlob, e.Name()); !ok {
-				continue
-			}
-		}
-		names = append(names, e.Name())
-	}
-	sort.Strings(names)
-	for _, name := range names {
-		gfBytes, err := fs.ReadFile(src.fsys, path.Join(src.execDir, name))
-		if err != nil {
-			return fmt.Errorf("mount %s: read: %w", name, err)
-		}
-		if src.execMixedDialects && !isExecDialectGuardfile(gfBytes) {
+	for _, file := range files {
+		if src.execMixedDialects && !isExecDialectGuardfile(file.src) {
 			continue // spec-dialect sibling; it rides the specverb path (ops.go)
 		}
-		if err := mountOneWardKdlExec(root, gfBytes, r); err != nil {
-			return fmt.Errorf("mount %s: %w", name, err)
+		if err := mountOneWardKdlExec(root, file.src, r); err != nil {
+			return fmt.Errorf("mount %s: %w", file.path, err)
 		}
 	}
 	return nil

@@ -146,10 +146,10 @@ func TestParseAgentIssueRefUsesRepoAuthorityPolicy(t *testing.T) {
         repo "coilyco-flight-deck/*" forge=forgejo
     }
 }`
-	if err := os.WriteFile(filepath.Join(dir, bundleDefaultsKDLPath), []byte(defaultsBody), 0o644); err != nil {
+	if err := os.WriteFile(filepath.Join(dir, bundleFixtureDefaultsPath), []byte(defaultsBody), 0o644); err != nil {
 		t.Fatalf("write defaults bundle: %v", err)
 	}
-	if err := os.WriteFile(filepath.Join(dir, bundleReposKDLPath), []byte(reposBody), 0o644); err != nil {
+	if err := os.WriteFile(filepath.Join(dir, bundleFixtureReposPath), []byte(reposBody), 0o644); err != nil {
 		t.Fatalf("write repos bundle: %v", err)
 	}
 	t.Setenv(wardConfigRefEnv, "file://"+dir)
@@ -549,10 +549,10 @@ func TestResolveAgentIssueRefUsesRepoAuthorityPolicy(t *testing.T) {
         repo "coilyco-flight-deck/*" forge=forgejo
     }
 }`
-	if err := os.WriteFile(filepath.Join(dir, bundleDefaultsKDLPath), []byte(defaultsBody), 0o644); err != nil {
+	if err := os.WriteFile(filepath.Join(dir, bundleFixtureDefaultsPath), []byte(defaultsBody), 0o644); err != nil {
 		t.Fatalf("write defaults bundle: %v", err)
 	}
-	if err := os.WriteFile(filepath.Join(dir, bundleReposKDLPath), []byte(reposBody), 0o644); err != nil {
+	if err := os.WriteFile(filepath.Join(dir, bundleFixtureReposPath), []byte(reposBody), 0o644); err != nil {
 		t.Fatalf("write repos bundle: %v", err)
 	}
 	t.Setenv(wardConfigRefEnv, "file://"+dir)

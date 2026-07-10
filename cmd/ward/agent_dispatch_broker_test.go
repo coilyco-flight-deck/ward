@@ -1493,10 +1493,10 @@ func TestRunAgentTaskDirectRoutesThroughBrokerOnReadonlySurface(t *testing.T) {
         repo "example-owner/*" forge=github
     }
 }`
-	if err := os.WriteFile(filepath.Join(bundleDir, bundleDefaultsKDLPath), []byte(defaultsBody), 0o644); err != nil {
+	if err := os.WriteFile(filepath.Join(bundleDir, bundleFixtureDefaultsPath), []byte(defaultsBody), 0o644); err != nil {
 		t.Fatalf("write bundle defaults: %v", err)
 	}
-	if err := os.WriteFile(filepath.Join(bundleDir, bundleReposKDLPath), []byte(reposBody), 0o644); err != nil {
+	if err := os.WriteFile(filepath.Join(bundleDir, bundleFixtureReposPath), []byte(reposBody), 0o644); err != nil {
 		t.Fatalf("write bundle repos: %v", err)
 	}
 	t.Setenv(wardConfigRefEnv, "file://"+bundleDir)
