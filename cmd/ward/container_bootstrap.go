@@ -1292,6 +1292,20 @@ func (r *Runner) reap(ctx context.Context, work string) {
 	}
 }
 
+func (r *Runner) launchStdout() io.Writer {
+	if r != nil && r.Runner != nil && r.Runner.Stdout != nil {
+		return r.Runner.Stdout
+	}
+	return os.Stdout
+}
+
+func (r *Runner) launchStderr() io.Writer {
+	if r != nil && r.Runner != nil && r.Runner.Stderr != nil {
+		return r.Runner.Stderr
+	}
+	return os.Stderr
+}
+
 // reapWorkTree reaps the target tree then verifies every --repo grant landed too
 // (ward#291); the entrypoint defer never releases the reservation (agent launched).
 func (r *Runner) reapWorkTree(ctx context.Context, work string, env reapEnv) error {
@@ -1325,20 +1339,7 @@ func (r *Runner) launchAgent(ctx context.Context, e bootstrapEnv, work string, a
 			blog(r.agentDeathLogLine(ctx, e.Container, rerr))
 		}
 	}
-}
-
-func (r *Runner) launchStdout() io.Writer {
-	if r != nil && r.Runner != nil && r.Runner.Stdout != nil {
-		return r.Runner.Stdout
-	}
-	return os.Stdout
-}
-
-func (r *Runner) launchStderr() io.Writer {
-	if r != nil && r.Runner != nil && r.Runner.Stderr != nil {
-		return r.Runner.Stderr
-	}
-	return os.Stderr
+	blog("bootstrap launch returned: agent process exited, deferred reaper runs next")
 }
 
 // agentDeathLogLine names an OOM kill explicitly when Docker state still knows it.
