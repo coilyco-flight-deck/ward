@@ -46,6 +46,7 @@ guides, not issue slices.
 - [agent-lifecycle.md](agent-lifecycle.md) - launch, preflight, reservation.
 - [agent-director.md](agent-director.md) - the read-only director lane.
 - [agent-ops.md](agent-ops.md) - logs, stop, list, reap.
+- [agent-dispatch-broker.md](agent-dispatch-broker.md) - the brokered launch version contract.
 - [agent-workflow.md](agent-workflow.md) - landing policy and review.
 
 ## Container

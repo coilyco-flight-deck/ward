@@ -19,6 +19,9 @@ Inventory of what `ward` ships today.
 - Core tracker/forge adapters - issue lookup, reservation, dispatch broker
   writes, reaper comments, and director merge reads do not depend on generated
   `ward ops` leaves.
+- **Dispatch broker version carry-through** - brokered launches forward the
+  caller's resolved ward version and report the effective version in brokered
+  launch output. See [agent-dispatch-broker.md](agent-dispatch-broker.md).
 - **`ward agent` roles and workflows** - see [agent.md](agent.md),
   [agent-roster.md](agent-roster.md), [agent-roles.md](agent-roles.md), [agent-harnesses.md](agent-harnesses.md),
   [agent-lifecycle.md](agent-lifecycle.md), [agent-director.md](agent-director.md),

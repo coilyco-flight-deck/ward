@@ -489,6 +489,21 @@ func TestBrokerEngineerArgvForwardsApprovedFlags(t *testing.T) {
 	}
 }
 
+func TestBrokerEngineerArgvDefaultsToCurrentReleasedWardVersion(t *testing.T) {
+	origVersion := Version
+	Version = "v0.569.0"
+	t.Cleanup(func() { Version = origVersion })
+
+	cmd := parseCommandForTest(t, agentEngineerFlags(), []string{
+		"engineer", "coilyco-flight-deck/ward#42",
+		"--harness", "claude",
+	})
+	got := brokerEngineerArgv(cmd, modeClaude, agentIssueRef{Owner: "coilyco-flight-deck", Repo: "ward", Number: 42})
+	if !argFollowedBy(got, "--ward-version", "v0.569.0") {
+		t.Fatalf("brokered argv = %v, want the current released ward version to be forwarded", got)
+	}
+}
+
 func TestForwardAgentDispatchToHostBrokerSendsCanonicalRequest(t *testing.T) {
 	// ward#391: the transport is TCP over the docker gateway, not a unix socket, so
 	// the stub broker listens on a loopback TCP port and the container dials it.
@@ -540,9 +555,10 @@ func TestForwardAgentDispatchToHostBrokerSendsCanonicalRequest(t *testing.T) {
 }
 
 func TestDispatchBrokerForwardedLineIncludesLogPathWhenAvailable(t *testing.T) {
-	got := dispatchBrokerForwardedLine([]string{"engineer", "coilyco-flight-deck/ward#378", "--harness", "codex"}, "/tmp/ward/dispatch.log")
+	got := dispatchBrokerForwardedLine([]string{"engineer", "coilyco-flight-deck/ward#378", "--harness", "codex", "--ward-version", "v0.569.0"}, "/tmp/ward/dispatch.log")
 	for _, want := range []string{
-		"ward dispatch broker: forwarded `ward agent engineer coilyco-flight-deck/ward#378 --harness codex` to host ward",
+		"ward dispatch broker: forwarded `ward agent engineer coilyco-flight-deck/ward#378 --harness codex --ward-version v0.569.0` to host ward",
+		"(effective ward v0.569.0)",
 		"(run output on the host at /tmp/ward/dispatch.log)",
 	} {
 		if !strings.Contains(got, want) {
@@ -552,9 +568,10 @@ func TestDispatchBrokerForwardedLineIncludesLogPathWhenAvailable(t *testing.T) {
 }
 
 func TestDispatchBrokerForwardedLineFallsBackToLookupCommandWhenPathMissing(t *testing.T) {
-	got := dispatchBrokerForwardedLine([]string{"engineer", "coilyco-flight-deck/ward#902", "--harness", "codex"}, "")
+	got := dispatchBrokerForwardedLine([]string{"engineer", "coilyco-flight-deck/ward#902", "--harness", "codex", "--ward-version", "v0.569.0"}, "")
 	for _, want := range []string{
-		"ward dispatch broker: forwarded `ward agent engineer coilyco-flight-deck/ward#902 --harness codex` to host ward",
+		"ward dispatch broker: forwarded `ward agent engineer coilyco-flight-deck/ward#902 --harness codex --ward-version v0.569.0` to host ward",
+		"(effective ward v0.569.0)",
 		"dispatch log path unavailable yet",
 		"`ward agent logs coilyco-flight-deck/ward#902`",
 	} {
@@ -613,6 +630,10 @@ func TestForwardAgentDispatchToHostBrokerInheritsSurfaceHarness(t *testing.T) {
 func TestForwardAgentDispatchToHostBrokerInheritsRunningDirectorHarness(t *testing.T) {
 	// The broker should inherit the director's current harness from WARD_AGENT/WARD_MODE
 	// when the surfaced command did not explicitly override it.
+	origVersion := Version
+	Version = "v0.569.0"
+	t.Cleanup(func() { Version = origVersion })
+
 	ln, err := net.Listen("tcp", "127.0.0.1:0")
 	if err != nil {
 		t.Fatalf("listen broker: %v", err)
@@ -649,7 +670,7 @@ func TestForwardAgentDispatchToHostBrokerInheritsRunningDirectorHarness(t *testi
 		t.Fatal("codex director dispatch did not forward despite broker env")
 	}
 	req := <-gotReq
-	want := []string{"engineer", "coilyco-flight-deck/ward#378", "--harness", "codex", "--skip-preflight", "--skip-review"}
+	want := []string{"engineer", "coilyco-flight-deck/ward#378", "--harness", "codex", "--ward-version", "v0.569.0", "--skip-preflight", "--skip-review"}
 	if !reflect.DeepEqual(req.Argv, want) {
 		t.Errorf("inherited-harness forwarded argv = %v, want %v", req.Argv, want)
 	}
