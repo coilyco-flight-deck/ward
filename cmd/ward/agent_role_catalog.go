@@ -4,6 +4,7 @@ import (
 	"fmt"
 	"strings"
 	"sync"
+	"time"
 
 	"forgejo.coilysiren.me/coilyco-flight-deck/cli-guard/pkg/fleetconfig"
 	kdl "github.com/calico32/kdl-go"
@@ -51,6 +52,9 @@ func cloneAgentRoleDefinition(def agentRoleDefinition) agentRoleDefinition {
 	out.Capabilities = def.Capabilities.clone()
 	out.Guardfiles = cloneGuardfiles(def.Guardfiles)
 	out.AgentOverlays = cloneRoleOverlays(def.AgentOverlays)
+	if len(def.MergeAuthority) > 0 {
+		out.MergeAuthority = append([]workflowMode(nil), def.MergeAuthority...)
+	}
 	return out
 }
 
@@ -139,40 +143,59 @@ func parseAgentRoleDefinitionNode(n *kdl.Node) (agentRoleDefinition, error) {
 		DefaultHarness: "",
 		AgentOverlays:  map[string]fleetconfig.RoleAgentOverride{},
 	}
-	for _, c := range n.Children().Nodes {
-		handler, ok := agentRoleDefinitionChildParsers[c.Name()]
-		if !ok {
-			return agentRoleDefinition{}, unknownAgentRoleCatalogNode("agent-roles > role "+name, c.Name(), "tagline | capabilities | modes | default-harness | posture | overlay")
-		}
-		if err := handler(&def, c, name); err != nil {
-			return agentRoleDefinition{}, err
-		}
+	if err := parseAgentRoleDefinitionChildren(&def, n, name); err != nil {
+		return agentRoleDefinition{}, err
 	}
-	if strings.TrimSpace(def.Tagline) == "" {
-		return agentRoleDefinition{}, fmt.Errorf("agent role catalog: role %q missing tagline (fail-closed)", name)
-	}
-	if len(def.Capabilities) == 0 {
-		return agentRoleDefinition{}, fmt.Errorf("agent role catalog: role %q missing capabilities (fail-closed)", name)
-	}
-	if strings.TrimSpace(def.Modes) == "" {
-		return agentRoleDefinition{}, fmt.Errorf("agent role catalog: role %q missing modes (fail-closed)", name)
-	}
-	if strings.TrimSpace(def.DefaultHarness) == "" {
-		return agentRoleDefinition{}, fmt.Errorf("agent role catalog: role %q missing default-harness (fail-closed)", name)
-	}
-	if def.Posture == "" {
-		return agentRoleDefinition{}, fmt.Errorf("agent role catalog: role %q missing posture (fail-closed)", name)
+	if err := validateAgentRoleDefinition(def, name); err != nil {
+		return agentRoleDefinition{}, err
 	}
 	return def, nil
 }
 
+func parseAgentRoleDefinitionChildren(def *agentRoleDefinition, n *kdl.Node, roleName string) error {
+	for _, c := range n.Children().Nodes {
+		handler, ok := agentRoleDefinitionChildParsers[c.Name()]
+		if !ok {
+			return unknownAgentRoleCatalogNode("agent-roles > role "+roleName, c.Name(), "tagline | capabilities | modes | default-harness | posture | execution-time-limit | overlay | merge-authority")
+		}
+		if err := handler(def, c, roleName); err != nil {
+			return err
+		}
+	}
+	return nil
+}
+
+func validateAgentRoleDefinition(def agentRoleDefinition, name string) error {
+	if strings.TrimSpace(def.Tagline) == "" {
+		return fmt.Errorf("agent role catalog: role %q missing tagline (fail-closed)", name)
+	}
+	if len(def.Capabilities) == 0 {
+		return fmt.Errorf("agent role catalog: role %q missing capabilities (fail-closed)", name)
+	}
+	if strings.TrimSpace(def.Modes) == "" {
+		return fmt.Errorf("agent role catalog: role %q missing modes (fail-closed)", name)
+	}
+	if strings.TrimSpace(def.DefaultHarness) == "" {
+		return fmt.Errorf("agent role catalog: role %q missing default-harness (fail-closed)", name)
+	}
+	if def.Posture == "" {
+		return fmt.Errorf("agent role catalog: role %q missing posture (fail-closed)", name)
+	}
+	if !def.ExecutionLimitSet {
+		return fmt.Errorf("agent role catalog: role %q missing execution-time-limit (fail-closed)", name)
+	}
+	return nil
+}
+
 var agentRoleDefinitionChildParsers = map[string]func(def *agentRoleDefinition, n *kdl.Node, roleName string) error{
-	"tagline":         parseAgentRoleDefinitionTagline,
-	"capabilities":    parseAgentRoleDefinitionCapabilities,
-	"modes":           parseAgentRoleDefinitionModes,
-	"default-harness": parseAgentRoleDefinitionDefaultHarness,
-	"posture":         parseAgentRoleDefinitionPosture,
-	"overlay":         parseAgentRoleDefinitionOverlay,
+	"tagline":              parseAgentRoleDefinitionTagline,
+	"capabilities":         parseAgentRoleDefinitionCapabilities,
+	"modes":                parseAgentRoleDefinitionModes,
+	"default-harness":      parseAgentRoleDefinitionDefaultHarness,
+	"posture":              parseAgentRoleDefinitionPosture,
+	"execution-time-limit": parseAgentRoleDefinitionExecutionTimeLimit,
+	"overlay":              parseAgentRoleDefinitionOverlay,
+	"merge-authority":      parseAgentRoleDefinitionMergeAuthority,
 }
 
 func parseAgentRoleDefinitionTagline(def *agentRoleDefinition, n *kdl.Node, roleName string) error {
@@ -224,6 +247,54 @@ func parseAgentRoleDefinitionPosture(def *agentRoleDefinition, n *kdl.Node, role
 		return fmt.Errorf("agent role catalog: role %q posture %q must be detached|attached|no-code|code-landing (fail-closed)", roleName, v)
 	}
 	def.Posture = posture
+	return nil
+}
+
+func parseAgentRoleDefinitionExecutionTimeLimit(def *agentRoleDefinition, n *kdl.Node, roleName string) error {
+	v, err := agentRoleStringArg(n, "agent-roles > role > execution-time-limit")
+	if err != nil {
+		return fmt.Errorf("agent role catalog: role %q: %w", roleName, err)
+	}
+	switch strings.ToLower(strings.TrimSpace(v)) {
+	case "none", "off", "0", "false":
+		def.ExecutionTimeLimit = 0
+		def.ExecutionLimitSet = true
+		return nil
+	}
+	d, derr := time.ParseDuration(v)
+	if derr != nil || d <= 0 {
+		return fmt.Errorf("agent role catalog: role %q execution-time-limit %q must be a positive duration or none (fail-closed)", roleName, v)
+	}
+	def.ExecutionTimeLimit = d
+	def.ExecutionLimitSet = true
+	return nil
+}
+
+// parseAgentRoleDefinitionMergeAuthority parses the role's PR merge grant (ward#1067):
+// only the two PR-carrying modes are grantable, fail-closed. docs/agent-pr-workflow.md.
+func parseAgentRoleDefinitionMergeAuthority(def *agentRoleDefinition, n *kdl.Node, roleName string) error {
+	if len(def.MergeAuthority) != 0 {
+		return fmt.Errorf("agent role catalog: role %q repeats merge-authority (fail-closed)", roleName)
+	}
+	if len(n.Arguments()) == 0 {
+		return fmt.Errorf("agent role catalog: role %q merge-authority expects at least one workflow mode (drop the node to withhold merge; fail-closed)", roleName)
+	}
+	seen := map[workflowMode]bool{}
+	for _, arg := range n.Arguments() {
+		if arg.Kind() != kdl.String {
+			return fmt.Errorf("agent role catalog: role %q merge-authority values must be strings (fail-closed)", roleName)
+		}
+		mode := workflowMode(strings.TrimSpace(arg.String()))
+		if mode != workflowPullRequest && mode != workflowPullRequestAndMerge {
+			return fmt.Errorf("agent role catalog: role %q merge-authority %q must be %s or %s - the other workflow modes never merge a pull request (fail-closed)",
+				roleName, mode, workflowPullRequest, workflowPullRequestAndMerge)
+		}
+		if seen[mode] {
+			return fmt.Errorf("agent role catalog: role %q merge-authority repeats %q (fail-closed)", roleName, mode)
+		}
+		seen[mode] = true
+		def.MergeAuthority = append(def.MergeAuthority, mode)
+	}
 	return nil
 }
 

@@ -59,7 +59,7 @@ var frontierAgentDefaults = map[string]fleetconfig.Agent{
 		Auth:         "ollama",
 		Argv: fleetconfig.Argv{
 			Preflight:   []string{"goose", "run", "-t"},
-			Headless:    []string{"goose", "run", "-t"},
+			Headless:    []string{"goose", "run", "--no-session", "-t"},
 			Interactive: []string{"goose", "session"},
 		},
 	},

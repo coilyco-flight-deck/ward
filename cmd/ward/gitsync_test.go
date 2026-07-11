@@ -2,9 +2,11 @@ package main
 
 import (
 	"context"
+	"fmt"
 	"os"
 	"os/exec"
 	"path/filepath"
+	"runtime"
 	"strings"
 	"testing"
 	"time"
@@ -181,5 +183,48 @@ func TestSyncGitRefBadRefFailsLoud(t *testing.T) {
 	}
 	if isDir(spec.work) {
 		t.Error("failed checkout left the work dir behind; a later sync would reuse it as current")
+	}
+}
+
+// TestSyncGitRefPermissionDeniedFetchHeadFallsBack pins the permission-denied cache
+// case: a stale mirror with an unwritable FETCH_HEAD still serves cached state.
+func TestSyncGitRefPermissionDeniedFetchHeadFallsBack(t *testing.T) {
+	if runtime.GOOS == "windows" {
+		t.Skip("permission-bit cache tests are Unix-specific")
+	}
+	origin := newTestOrigin(t)
+	spec := testSpec(t, origin)
+	var logs strings.Builder
+	spec.logf = func(format string, a ...any) {
+		fmt.Fprintf(&logs, format+"\n", a...)
+	}
+	r := leanRunner()
+	if _, err := r.syncGitRef(context.Background(), spec, time.Hour); err != nil {
+		t.Fatalf("first sync: %v", err)
+	}
+	head := filepath.Join(spec.mirror, "FETCH_HEAD")
+	if err := os.Chmod(head, 0o444); err != nil {
+		t.Fatalf("chmod FETCH_HEAD read-only: %v", err)
+	}
+	work, err := r.syncGitRef(context.Background(), spec, 0)
+	if err != nil {
+		t.Fatalf("permission-denied sync: %v", err)
+	}
+	if got := readMarker(t, work); got != "v1" {
+		t.Fatalf("permission-denied marker = %q, want cached v1", got)
+	}
+	out := strings.ToLower(logs.String())
+	if !strings.Contains(out, "permission denied") {
+		t.Fatalf("diagnostic log missing permission denied breadcrumb:\n%s", logs.String())
+	}
+	if !strings.Contains(logs.String(), spec.mirror) {
+		t.Fatalf("diagnostic log missing cache path %s:\n%s", spec.mirror, logs.String())
+	}
+	before := logs.String()
+	if _, err := r.syncGitRef(context.Background(), spec, 0); err != nil {
+		t.Fatalf("suppressed permission-denied sync: %v", err)
+	}
+	if got := logs.String(); got != before {
+		t.Fatalf("permission-denied sync retried noisily:\nbefore:\n%s\nafter:\n%s", before, got)
 	}
 }

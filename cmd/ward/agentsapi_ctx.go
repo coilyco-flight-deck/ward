@@ -87,7 +87,7 @@ func agentCorrelation(e bootstrapEnv, mode containerMode) agentsapi.Correlation 
 		Harness:       e.Agent,
 		TargetRepo:    e.TargetOwner + "/" + e.TargetName,
 		IssueRef:      ref,
-		Workflow:      orDefaultLabel(os.Getenv("WARD_WORKFLOW"), "direct-main"),
+		Workflow:      orDefaultLabel(os.Getenv("WARD_WORKFLOW"), "merge-remote-main"),
 		ContextLevel:  e.ContextLevel,
 		Version:       e.WardVersion,
 		ThreadID:      harnessThreadID(mode),

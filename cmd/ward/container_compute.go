@@ -7,6 +7,7 @@ import (
 	"fmt"
 	"net"
 	"os"
+	"path/filepath"
 	"regexp"
 	"sort"
 	"strings"
@@ -17,7 +18,7 @@ import (
 const (
 	// containerImageDefault is the aos-published dev-base image, run unmodified;
 	// ward bind-mounts its embedded entrypoint+doctrine and stages ward.
-	containerImageDefault = "forgejo.coilysiren.me/coilyco-flight-deck/agentic-os"
+	containerImageDefault = "forgejo.coilysiren.me/coilyco-flight-deck/agentic-os-full"
 
 	// containerImageTagDefault tracks the image's :latest moving tag.
 	containerImageTagDefault = "latest"
@@ -37,8 +38,9 @@ const (
 
 	// containerWardAssets is where ward's embedded entrypoint + doctrine are
 	// bind-mounted, read-only. The image bakes none of this in.
-	containerWardAssets    = "/opt/ward"
-	containerEntrypointRel = "entrypoint.sh"
+	containerWardAssets     = "/opt/ward"
+	containerEntrypointPath = "/opt/agentic-os/ward-shell-entrypoint.sh"
+	containerEntrypointRel  = "entrypoint.sh"
 
 	// containerWardSrcMount is where --ward-source mounts a ward checkout, so
 	// the host stages the ward binary from it instead of downloading the release.
@@ -381,6 +383,7 @@ func leastAccessMounts(hostCwd string, opts mountOpts) []mountSpec {
 	}
 	if opts.AssetsDir != "" {
 		mounts = append(mounts, mountSpec{Source: opts.AssetsDir, Target: containerWardAssets, ReadOnly: true, Volume: false})
+		mounts = append(mounts, mountSpec{Source: filepath.Join(opts.AssetsDir, containerEntrypointRel), Target: containerEntrypointPath, ReadOnly: true, Volume: false})
 	}
 	if opts.AWSHome != "" {
 		mounts = append(mounts, mountSpec{Source: opts.AWSHome, Target: containerAWSMount, ReadOnly: true, Volume: false})
@@ -470,7 +473,7 @@ type upPlan struct {
 	// TSSidecar attaches the run to the shared ward-tailnet network so it reaches
 	// the standing mac-proxy box (--ts-sidecar, ward#349). docs/agent-ts-sidecar.md.
 	TSSidecar bool
-	// Workflow is the run's landing policy (--workflow, ward#508): non-direct-main
+	// Workflow is the run's landing policy (--workflow, ward#508): non-merge-remote-main
 	// runs export WARD_WORKFLOW + a ward.workflow label. See docs/agent-workflow.md.
 	Workflow workflowMode
 	// SkipPreflight mirrors --skip-preflight into the container launch gate so host
@@ -632,7 +635,6 @@ func (p upPlan) correlationEnv() map[string]string {
 		"WARD_RUN_ID":         p.Name,
 		"WARD_CONTAINER_NAME": p.Name,
 		"WARD_HARNESS":        string(p.Mode),
-		"WARD_WORKFLOW":       string(p.Workflow.orDefault()),
 		"WARD_TARGET_REPO":    p.Repo.slug(),
 		"WARD_TARGET_OWNER":   p.Repo.Owner,
 		"WARD_TARGET_NAME":    p.Repo.Name,
@@ -749,8 +751,8 @@ func (p upPlan) wardEnv() map[string]string { //nolint:gocyclo,cyclop
 		env["WARD_FORGE"] = p.Forge.String()
 		env["WARD_CLONE_BASE"] = p.Forge.baseURL()
 	}
-	// A non-default landing policy rides in so the in-container reaper can refuse to
-	// force-push main (ward#508); direct-main omits the key, keeping today's env intact.
+	// A non-default landing policy rides in so the reaper can refuse to
+	// force-push main (ward#508); merge-remote-main omits the key.
 	if !p.Workflow.landsOnMain() {
 		env["WARD_WORKFLOW"] = string(p.Workflow.orDefault())
 	}
@@ -792,7 +794,7 @@ func (p upPlan) labels() []string {
 		out = append(out, fmt.Sprintf("%s=%d", labelIssue, p.Issue))
 	}
 	// A non-default landing policy is stamped so poll/reaper/sweep can see it
-	// without reading the container env (ward#508); direct-main stays unlabeled.
+	// without reading the container env (ward#508); merge-remote-main stays unlabeled.
 	if !p.Workflow.landsOnMain() {
 		out = append(out, labelWorkflow+"="+string(p.Workflow.orDefault()))
 	}
@@ -806,7 +808,7 @@ func dockerArgvHead(verb string, p upPlan) []string {
 	for _, l := range p.labels() {
 		argv = append(argv, "--label", l)
 	}
-	argv = append(argv, "--entrypoint", containerWardAssets+"/"+containerEntrypointRel)
+	argv = append(argv, "--entrypoint", containerEntrypointPath)
 	// Tailnet route (mutually exclusive, off by default): --host-net shares the host's
 	// namespace (ward#330), --ts-sidecar joins the shared ward-tailnet net (ward#349).
 	switch {

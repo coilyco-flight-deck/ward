@@ -31,6 +31,8 @@ type Manifest struct {
 	ReasoningEffort string
 	// Verbosity is the default verbosity knob; empty when none.
 	Verbosity string
+	// StatusLine marks a harness that can render a live status-line command.
+	StatusLine bool
 }
 
 // Argv holds the argv prefixes for the three ways ward invokes an agent; the

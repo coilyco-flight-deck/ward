@@ -50,7 +50,7 @@ type reapEnv struct {
 	// The reaper verifies each one landed before done (ward#291).
 	ExtraRepos []targetRepo
 	// Workflow mirrors WARD_WORKFLOW (ward#508).
-	// Empty reads as direct-main; PR and patch-only modes stay on a branch.
+	// Empty reads as merge-remote-main; PR and remote-branch-only modes stay on a branch.
 	Workflow workflowMode
 }
 
@@ -113,11 +113,11 @@ func reapBoundaryReason(w workflowMode) string {
 	case workflowDirectToMain:
 		return "tree clean, HEAD on origin/main"
 	case workflowPullRequest:
-		return "workflow pull-requests boundary reached: branch pushed, pull request open, and required CI checks are green"
+		return "workflow pull-request boundary reached: branch pushed, pull request open, and required CI checks are green"
 	case workflowPullRequestAndMerge:
-		return "workflow pull-requests-and-merge boundary reached: branch pushed, pull request open, and required CI checks are green"
+		return "workflow pull-request-and-merge boundary reached: branch pushed, pull request open, and required CI checks are green"
 	case workflowRemoteBranchOnly:
-		return "workflow patch-only boundary reached: remote branch pushed"
+		return "workflow remote-branch-only boundary reached: remote branch pushed"
 	default:
 		return "tree clean, workflow boundary reached"
 	}
@@ -170,6 +170,7 @@ func (r *Runner) runContainerReap(ctx context.Context, c *cli.Command) error {
 	fmt.Fprintf(os.Stderr, "ward container reap: work tree confirmed at %s\n", work)
 	terr := r.reapTargetTree(ctx, work, env, true)
 	unlanded := r.verifyExtraReposLanded(ctx, env)
+	r.releaseReservationIfTerminalOutcome(ctx, env)
 	if terr == nil && !unlanded {
 		r.commentLaunchedNoOutcomeIfNeeded(ctx, env)
 	}
@@ -216,18 +217,18 @@ func (r *Runner) reapTargetTree(ctx context.Context, work string, env reapEnv, r
 	residual := revCount(ctx, r, work, "origin/main..HEAD")
 	fmt.Fprintf(os.Stderr, "ward container reap: residual commit count against origin/main = %d\n", residual)
 	cleanTree := strings.TrimSpace(statusSnapshot) == ""
-	if residual == 0 && cleanTree { //nolint:nestif // clean-tree fast path carries the direct-main proof branch
+	if residual == 0 && cleanTree { //nolint:nestif // clean-tree fast path carries the merge-remote-main proof branch
 		if env.Launched && env.Workflow.landsOnMain() && env.Issue != 0 {
 			prov, perr := r.readRunProvenance(work)
 			if perr != nil {
-				fmt.Fprintf(os.Stderr, "ward container reap: provenance missing or unreadable on already-landed direct-main run: %v\n", perr)
+				fmt.Fprintf(os.Stderr, "ward container reap: provenance missing or unreadable on already-landed merge-remote-main run: %v\n", perr)
 				return r.salvage(ctx, work, env, reasonConflict, false, nil, statusSnapshot,
-					reapDecision{Gate: "provenance missing or unreadable on already-landed direct-main run", ProvState: "missing or unreadable", CommitState: commitState})
+					reapDecision{Gate: "provenance missing or unreadable on already-landed merge-remote-main run", ProvState: "missing or unreadable", CommitState: commitState})
 			}
 			if !r.runProvenanceLanded(ctx, work, prov, env.Issue) {
-				fmt.Fprintf(os.Stderr, "ward container reap: already-landed direct-main run is missing closes #%d; salvaging instead of returning success\n", env.Issue)
+				fmt.Fprintf(os.Stderr, "ward container reap: already-landed merge-remote-main run is missing closes #%d; salvaging instead of returning success\n", env.Issue)
 				return r.salvage(ctx, work, env, reasonCloseRef, false, nil, statusSnapshot,
-					reapDecision{Gate: "missing same-repo closing reference on already-landed direct-main run", ProvState: "present", CommitState: commitState, Landed: false})
+					reapDecision{Gate: "missing same-repo closing reference on already-landed merge-remote-main run", ProvState: "present", CommitState: commitState, Landed: false})
 			}
 		}
 		fmt.Fprintf(os.Stderr, "WARD-REAP: nothing to reap (%s)\n", reapBoundaryReason(env.Workflow))
@@ -297,7 +298,7 @@ func (r *Runner) reapEstablishMain(ctx context.Context, work string, env reapEnv
 		return nil
 	}
 
-	// A pull-requests, pull-requests-and-merge, or patch-only run never lands on main.
+	// A pull-request, pull-request-and-merge, or remote-branch-only run never lands on main.
 	// That includes the establish-main case (ward#508).
 	if !env.Workflow.landsOnMain() {
 		findings := scan.Diff(r.diffEntries(ctx, work, gitEmptyTree+"..HEAD"))
@@ -784,6 +785,67 @@ func (r *Runner) releaseReservationIfUnstarted(ctx context.Context, env reapEnv)
 		fmt.Fprintf(os.Stderr, "ward container reap: could not unlock issue #%d after release: %v\n", env.Issue, err)
 	}
 	fmt.Fprintf(os.Stderr, "ward container reap: released issue reservation on #%d (container exited pre-launch, did no work)\n", env.Issue)
+}
+
+// releaseReservationIfTerminalOutcome retracts the remote reservation when the run
+// ends: the terminal WARD-OUTCOME supersedes the hold, so redispatch needs no override.
+func (r *Runner) releaseReservationIfTerminalOutcome(ctx context.Context, env reapEnv) {
+	if !env.Launched || env.Issue == 0 {
+		return
+	}
+	upAt, err := time.Parse(time.RFC3339, strings.TrimSpace(env.UpAt))
+	if err != nil {
+		fmt.Fprintf(os.Stderr, "ward container reap: cannot parse WARD_CONTAINER_UP for terminal-outcome release: %v\n", err)
+		return
+	}
+	fc := r.hostForgejoClient(ctx)
+	if err := releaseReservationIfTerminalOutcomeComment(ctx, fc.withMode(containerMode(env.Mode)), env, upAt); err != nil {
+		fmt.Fprintf(os.Stderr, "ward container reap: %v\n", err)
+	}
+}
+
+func releaseReservationIfTerminalOutcomeComment(ctx context.Context, fc Tracker, env reapEnv, afterAt time.Time) error {
+	comments, err := fc.listIssueComments(ctx, env.Owner, env.Name, env.Issue)
+	if err != nil {
+		return fmt.Errorf("could not read issue comments for terminal-outcome release on #%d: %w", env.Issue, err)
+	}
+	outcome, ok := latestBacklogOutcomeCommentAfter(comments, afterAt)
+	if !ok {
+		return nil
+	}
+	o, ok := backlogOutcomeOfComment(outcome.Body)
+	if !ok || !terminalReservationOutcome(o.Status) {
+		return nil
+	}
+	body := terminalReservationReleaseCommentBody(containerMode(env.Mode), env.Container, o)
+	if err := fc.commentIssue(ctx, env.Owner, env.Name, env.Issue, body); err != nil {
+		return fmt.Errorf("could not release terminal reservation on #%d: %w", env.Issue, err)
+	}
+	if err := fc.unlockIssue(ctx, env.Owner, env.Name, env.Issue); err != nil && !errors.Is(err, errForgeLockUnsupported) {
+		return fmt.Errorf("could not unlock issue #%d after terminal outcome release: %w", env.Issue, err)
+	}
+	fmt.Fprintf(os.Stderr, "ward container reap: released issue reservation on #%d after terminal outcome %s\n", env.Issue, o.Status)
+	return nil
+}
+
+func terminalReservationOutcome(status string) bool {
+	switch strings.ToLower(strings.TrimSpace(status)) {
+	case "done", "blocked", "failed", "merge-ready":
+		return true
+	default:
+		return false
+	}
+}
+
+func terminalReservationReleaseCommentBody(mode containerMode, container string, outcome backlogOutcome) string {
+	visible := "WARD-RESERVATION: released 🛑"
+	var b strings.Builder
+	fmt.Fprintf(&b, "Run finished with `%s %s`.\n\n", wardOutcomeMarker, outcome.Status)
+	fmt.Fprintf(&b, "`ward container reap` released container `%s` (`--harness %s`): the terminal outcome supersedes the reservation, so a later redispatch no longer needs `--override-reservation`.\n", container, mode)
+	if summary := strings.TrimSpace(outcome.Text); summary != "" {
+		fmt.Fprintf(&b, "\n**Outcome summary:** %s\n", summary)
+	}
+	return agentReservationReleaseMarker + "\n" + collapsedIssueComment(visible, "release details", b.String())
 }
 
 // commentLaunchedNoOutcomeIfNeeded marks a launched run failed when it exits with

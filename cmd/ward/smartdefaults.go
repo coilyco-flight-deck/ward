@@ -23,6 +23,7 @@ type smartDefaults struct {
 	agentReapIdleDefault          time.Duration
 	agentReapMaxCPUDefault        float64
 	engineerContainerLimit        int
+	engineerOpenPRBranchLimit     int
 	directorMaxParallel           int
 	directorLimit                 int
 	directorPollInterval          time.Duration
@@ -53,11 +54,12 @@ var smartDefaultsCache struct {
 
 func bakedSmartDefaults() smartDefaults {
 	return smartDefaults{
-		agentReservationTTL:           time.Hour,
+		agentReservationTTL:           3 * time.Hour,
 		reservationRecheckDefaultMax:  15 * time.Second,
 		agentReapIdleDefault:          time.Hour,
 		agentReapMaxCPUDefault:        5.0,
 		engineerContainerLimit:        12,
+		engineerOpenPRBranchLimit:     6,
 		directorMaxParallel:           10,
 		directorLimit:                 50,
 		directorPollInterval:          30 * time.Second,
@@ -108,8 +110,15 @@ func currentSmartDefaultsWithError() (smartDefaults, error) {
 	return defs, err
 }
 
+// smartDefaultsGuardExemptVerbs must stay reachable with the config bundle
+// absent or rolled back (ward#1067): the native PR-workflow meta verb.
+var smartDefaultsGuardExemptVerbs = map[string]bool{"pr": true}
+
 func smartDefaultsGuard(surface string) cli.BeforeFunc {
-	return func(ctx context.Context, _ *cli.Command) (context.Context, error) {
+	return func(ctx context.Context, c *cli.Command) (context.Context, error) {
+		if smartDefaultsGuardExemptVerbs[strings.TrimSpace(c.Args().First())] {
+			return ctx, nil
+		}
 		if _, err := currentSmartDefaultsWithError(); err != nil {
 			return ctx, fmt.Errorf("%s: %w", surface, err)
 		}
@@ -118,18 +127,44 @@ func smartDefaultsGuard(surface string) cli.BeforeFunc {
 }
 
 func loadSmartDefaultsFrom(src configSource) (smartDefaults, error) {
-	if src.reposKDL == "" {
+	if src.defaultsKDL != "" {
 		b, err := fs.ReadFile(src.fsys, src.defaultsKDL)
 		if err != nil {
 			return smartDefaults{}, fmt.Errorf("read smart defaults %s: %w", src.defaultsKDL, err)
 		}
-		return parseSmartDefaults(b)
+		defs, err := parseSmartDefaults(b)
+		if err != nil {
+			return smartDefaults{}, err
+		}
+		if err := validateReservationTTLInvariant(defs); err != nil {
+			return smartDefaults{}, err
+		}
+		return defs, nil
 	}
-	defs := bakedSmartDefaults()
-	if err := parseBundleDefaultsFrom(src, &defs); err != nil {
+	return loadBundleSmartDefaultsFrom(src)
+}
+
+func loadBundleSmartDefaultsFrom(src configSource) (smartDefaults, error) {
+	files, err := loadBundleKDLFiles(src)
+	if err != nil {
 		return smartDefaults{}, err
 	}
-	if err := parseBundleReposFrom(src, &defs); err != nil {
+	defs := bakedSmartDefaults()
+	defaultsFile, defaultsNode, err := findUniqueNamedBundleNode(files, "top-level `defaults` block", "defaults", "smart-defaults")
+	if err != nil {
+		return smartDefaults{}, err
+	}
+	if err := parseBundleDefaultsNode(defaultsFile.path, defaultsNode, &defs); err != nil {
+		return smartDefaults{}, err
+	}
+	reposFile, reposNode, err := findUniqueNamedBundleNode(files, "top-level `repos` or `repo-authority` block", "repos", "repo-authority")
+	if err != nil {
+		return smartDefaults{}, err
+	}
+	if err := parseBundleReposNode(reposFile.path, reposNode, &defs); err != nil {
+		return smartDefaults{}, err
+	}
+	if err := validateReservationTTLInvariant(defs); err != nil {
 		return smartDefaults{}, err
 	}
 	return defs, nil
@@ -157,106 +192,55 @@ func parseSmartDefaults(src []byte) (smartDefaults, error) {
 	return defs, nil
 }
 
-func parseBundleDefaultsFrom(src configSource, defs *smartDefaults) error {
-	b, err := fs.ReadFile(src.fsys, src.defaultsKDL)
-	if err != nil {
-		return fmt.Errorf("read smart defaults %s: %w", src.defaultsKDL, err)
+func parseBundleDefaultsNode(srcPath string, n *kdl.Node, defs *smartDefaults) error {
+	if n.Name() != "defaults" && n.Name() != "smart-defaults" {
+		return unknownSmartDefaultsNode("top-level", n.Name(), "defaults")
 	}
-	doc, err := kdl.ParseString(string(b))
-	if err != nil {
-		return fmt.Errorf("smart defaults: parse KDL: %w", err)
+	if len(n.Arguments()) != 0 {
+		return fmt.Errorf("smart defaults: `defaults` takes no arguments (fail-closed)")
 	}
-	seenDefaults := false
-	for _, n := range doc.Nodes {
-		if n.Name() != "defaults" && n.Name() != "smart-defaults" {
-			return unknownSmartDefaultsNode("top-level", n.Name(), "defaults")
-		}
-		if seenDefaults {
-			return fmt.Errorf("smart defaults: duplicate top-level `defaults` block (fail-closed)")
-		}
-		seenDefaults = true
-		if len(n.Arguments()) != 0 {
-			return fmt.Errorf("smart defaults: `defaults` takes no arguments (fail-closed)")
-		}
-		if len(n.Properties()) != 0 {
-			return fmt.Errorf("smart defaults: `defaults` takes no properties (fail-closed)")
-		}
-		for _, c := range n.Children().Nodes {
-			if err := applySmartDefaultNode(defs, c); err != nil {
-				return err
-			}
-		}
+	if len(n.Properties()) != 0 {
+		return fmt.Errorf("smart defaults: `defaults` takes no properties (fail-closed)")
 	}
-	if !seenDefaults {
-		return fmt.Errorf("smart defaults: missing top-level `defaults` block (fail-closed)")
+	for _, c := range n.Children().Nodes {
+		if err := applySmartDefaultNode(defs, c); err != nil {
+			return fmt.Errorf("%s: %w", srcPath, err)
+		}
 	}
 	return nil
 }
 
-func parseBundleReposFrom(src configSource, defs *smartDefaults) error {
-	b, err := fs.ReadFile(src.fsys, src.reposKDL)
-	if err != nil {
-		return fmt.Errorf("read repo authority %s: %w", src.reposKDL, err)
-	}
-	doc, err := kdl.ParseString(string(b))
-	if err != nil {
-		return fmt.Errorf("repo authority: parse KDL: %w", err)
-	}
-	seenRepos := false
-	for _, n := range doc.Nodes {
-		if err := applyBundleReposNode(defs, n, &seenRepos); err != nil {
-			return err
-		}
-	}
-	if !seenRepos {
-		return fmt.Errorf("repo authority: missing top-level `repos` block (fail-closed)")
-	}
-	return nil
-}
-
-func applyBundleReposNode(defs *smartDefaults, n *kdl.Node, seenRepos *bool) error {
+func parseBundleReposNode(srcPath string, n *kdl.Node, defs *smartDefaults) error {
 	switch n.Name() {
 	case "repos":
-		return applyBundleReposBlock(defs, n, seenRepos)
-	case "repo-authority":
-		if *seenRepos {
-			return fmt.Errorf("repo authority: duplicate top-level `repo-authority` block (fail-closed)")
+		if len(n.Arguments()) != 0 {
+			return fmt.Errorf("repo authority: `repos` takes no arguments (fail-closed)")
 		}
-		*seenRepos = true
+		if len(n.Properties()) != 0 {
+			return fmt.Errorf("repo authority: `repos` takes no properties (fail-closed)")
+		}
+		var repoAuthoritySeen bool
+		for _, c := range n.Children().Nodes {
+			if c.Name() != "repo-authority" {
+				return unknownSmartDefaultsNode("repos body", c.Name(), "repo-authority")
+			}
+			if repoAuthoritySeen {
+				return fmt.Errorf("repo authority: duplicate top-level `repo-authority` block (fail-closed)")
+			}
+			repoAuthoritySeen = true
+			if err := applyRepoAuthority(defs, c); err != nil {
+				return fmt.Errorf("%s: %w", srcPath, err)
+			}
+		}
+		if !repoAuthoritySeen {
+			return fmt.Errorf("repo authority: missing top-level `repo-authority` block (fail-closed)")
+		}
+		return nil
+	case "repo-authority":
 		return applyRepoAuthority(defs, n)
 	default:
 		return unknownSmartDefaultsNode("top-level", n.Name(), "repos")
 	}
-}
-
-func applyBundleReposBlock(defs *smartDefaults, n *kdl.Node, seenRepos *bool) error {
-	if *seenRepos {
-		return fmt.Errorf("repo authority: duplicate top-level `repos` block (fail-closed)")
-	}
-	*seenRepos = true
-	if len(n.Arguments()) != 0 {
-		return fmt.Errorf("repo authority: `repos` takes no arguments (fail-closed)")
-	}
-	if len(n.Properties()) != 0 {
-		return fmt.Errorf("repo authority: `repos` takes no properties (fail-closed)")
-	}
-	var repoAuthoritySeen bool
-	for _, c := range n.Children().Nodes {
-		if c.Name() != "repo-authority" {
-			return unknownSmartDefaultsNode("repos body", c.Name(), "repo-authority")
-		}
-		if repoAuthoritySeen {
-			return fmt.Errorf("repo authority: duplicate top-level `repo-authority` block (fail-closed)")
-		}
-		repoAuthoritySeen = true
-		if err := applyRepoAuthority(defs, c); err != nil {
-			return err
-		}
-	}
-	if !repoAuthoritySeen {
-		return fmt.Errorf("repo authority: missing top-level `repo-authority` block (fail-closed)")
-	}
-	return nil
 }
 
 func applySmartDefaultsTopLevelNode(defs *smartDefaults, seenDefaults, seenAuthority *bool, n *kdl.Node) error {
@@ -323,6 +307,12 @@ func applySmartDefaultNode(defs *smartDefaults, n *kdl.Node) error { //nolint:go
 			return err
 		}
 		defs.engineerContainerLimit = v
+	case "engineer-open-pr-branch-limit":
+		v, err := smartDefaultsIntArg(n, "smart-defaults > engineer-open-pr-branch-limit")
+		if err != nil {
+			return err
+		}
+		defs.engineerOpenPRBranchLimit = v
 	case "director-max-parallel":
 		v, err := smartDefaultsIntArg(n, "smart-defaults > director-max-parallel")
 		if err != nil {
@@ -377,7 +367,7 @@ func applySmartDefaultNode(defs *smartDefaults, n *kdl.Node) error { //nolint:go
 		}
 	default:
 		return unknownSmartDefaultsNode("smart-defaults body", n.Name(),
-			"agent-reservation-ttl | agent-reservation-recheck-max | agent-reap-idle | agent-reap-max-cpu | engineer-container-limit | director-max-parallel | director-limit | director-poll-interval | reviewer-timeout | config-bundle-ttl | container-assets-ttl | container-read-only-extra-repo-ttl | container-reap-keep | agent-workflow")
+			"agent-reservation-ttl | agent-reservation-recheck-max | agent-reap-idle | agent-reap-max-cpu | engineer-container-limit | engineer-open-pr-branch-limit | director-max-parallel | director-limit | director-poll-interval | reviewer-timeout | config-bundle-ttl | container-assets-ttl | container-read-only-extra-repo-ttl | container-reap-keep | agent-workflow")
 	}
 	return nil
 }
@@ -512,6 +502,25 @@ func applySmartDefaultWorkflow(defs *smartDefaults, n *kdl.Node) error {
 			return fmt.Errorf("smart defaults: smart-defaults > agent-workflow > repo %q repeated (fail-closed)", repo)
 		}
 		defs.agentWorkflowRepos[repo] = wf
+	}
+	return nil
+}
+
+func validateReservationTTLInvariant(defs smartDefaults) error {
+	cat, err := cachedBuiltInAgentRoleCatalog()
+	if err != nil {
+		return fmt.Errorf("smart defaults: load embedded role catalog: %w", err)
+	}
+	ttl := defs.agentReservationTTL
+	for _, name := range cat.Order {
+		def, ok := cat.Definitions[name]
+		if !ok || !def.ExecutionLimitSet || def.ExecutionTimeLimit <= 0 {
+			continue
+		}
+		if ttl <= def.ExecutionTimeLimit {
+			return fmt.Errorf("smart defaults: agent-reservation-ttl %s must exceed role %q execution-time-limit %s (fail-closed)",
+				conciseDuration(ttl), name, conciseDuration(def.ExecutionTimeLimit))
+		}
 	}
 	return nil
 }
@@ -732,6 +741,8 @@ func agentReapIdleDefault() time.Duration { return currentSmartDefaults().agentR
 func agentReapMaxCPUDefault() float64 { return currentSmartDefaults().agentReapMaxCPUDefault }
 
 func engineerContainerLimitDefault() int { return currentSmartDefaults().engineerContainerLimit }
+
+func engineerOpenPRBranchLimitDefault() int { return currentSmartDefaults().engineerOpenPRBranchLimit }
 
 func directorMaxParallelDefault() int { return currentSmartDefaults().directorMaxParallel }
 

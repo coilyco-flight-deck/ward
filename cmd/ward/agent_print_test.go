@@ -32,7 +32,7 @@ func TestPrintAgentPlanShowsAgentProxyAndCorrelation(t *testing.T) {
 		"WARD_RUN_ID=engineer-opencode-ward-861",
 		"WARD_HARNESS=opencode",
 		"WARD_ISSUE_REF=coilyco-flight-deck/ward#861",
-		"WARD_WORKFLOW=pull-requests-and-merge",
+		"WARD_WORKFLOW=pull-request-and-merge",
 		"WARD_VERSION=1.2.3",
 	} {
 		if !strings.Contains(got, want) {

@@ -59,6 +59,71 @@ func TestParseGitHubIssueRef(t *testing.T) {
 	}
 }
 
+// TestParseGitHubPullRequestRef covers the GitHub pull-request URL forms ward
+// should treat as PR continuation work, not as fresh issue work.
+func TestParseGitHubPullRequestRef(t *testing.T) {
+	cases := []struct {
+		in        string
+		wantOwner string
+		wantRepo  string
+		wantNum   int
+		wantOK    bool
+	}{
+		{"https://github.com/owner/repo/pull/12", "owner", "repo", 12, true},
+		{"https://github.com/owner/repo/pulls/12", "owner", "repo", 12, true},
+		{"github.com/owner/repo/pull/7", "owner", "repo", 7, true},
+		{"https://github.com/owner/repo/issues/12", "", "", 0, false},
+		{"https://forgejo.coilysiren.me/coilyco-flight-deck/ward/pulls/1", "", "", 0, false},
+	}
+	for _, c := range cases {
+		got, ok := parseGitHubPullRequestRef(c.in)
+		if ok != c.wantOK {
+			t.Errorf("parseGitHubPullRequestRef(%q): ok=%v want %v", c.in, ok, c.wantOK)
+			continue
+		}
+		if !ok {
+			continue
+		}
+		if got.Owner != c.wantOwner || got.Repo != c.wantRepo || got.Number != c.wantNum {
+			t.Errorf("parseGitHubPullRequestRef(%q) = %s/%s#%d, want %s/%s#%d", c.in, got.Owner, got.Repo, got.Number, c.wantOwner, c.wantRepo, c.wantNum)
+		}
+		if got.Forge != forgeGitHub || !got.MergeRequest {
+			t.Errorf("parseGitHubPullRequestRef(%q) = %+v, want GitHub PR ref", c.in, got)
+		}
+	}
+}
+
+// TestParseForgejoPullRequestRef covers the Forgejo PR URL shapes ward accepts.
+func TestParseForgejoPullRequestRef(t *testing.T) {
+	cases := []struct {
+		in        string
+		wantOwner string
+		wantRepo  string
+		wantNum   int
+		wantOK    bool
+	}{
+		{forgejoBaseURL + "/coilyco-flight-deck/ward/pulls/12", "coilyco-flight-deck", "ward", 12, true},
+		{forgejoBaseURL + "/coilyco-flight-deck/ward/pull/12", "coilyco-flight-deck", "ward", 12, true},
+		{"https://github.com/owner/repo/pull/12", "", "", 0, false},
+	}
+	for _, c := range cases {
+		got, ok := parseForgejoPullRequestRef(c.in)
+		if ok != c.wantOK {
+			t.Errorf("parseForgejoPullRequestRef(%q): ok=%v want %v", c.in, ok, c.wantOK)
+			continue
+		}
+		if !ok {
+			continue
+		}
+		if got.Owner != c.wantOwner || got.Repo != c.wantRepo || got.Number != c.wantNum {
+			t.Errorf("parseForgejoPullRequestRef(%q) = %s/%s#%d, want %s/%s#%d", c.in, got.Owner, got.Repo, got.Number, c.wantOwner, c.wantRepo, c.wantNum)
+		}
+		if got.Forge != forgeForgejo || !got.MergeRequest {
+			t.Errorf("parseForgejoPullRequestRef(%q) = %+v, want Forgejo PR ref", c.in, got)
+		}
+	}
+}
+
 // TestParseGitLabIssueRef covers the GitLab issue and merge-request URL forms
 // ward#635 accepts and the non-GitLab inputs it must leave for the Forgejo parser.
 func TestParseGitLabIssueRef(t *testing.T) {
@@ -133,6 +198,16 @@ func TestParseAgentIssueRefForge(t *testing.T) {
 	if gl.Tracker != trackerGitLab {
 		t.Errorf("gitlab URL parsed to tracker %v, want gitlab", gl.Tracker)
 	}
+	pr, err := parseAgentIssueRef("coilyco-flight-deck/ward!98")
+	if err != nil {
+		t.Fatalf("parseAgentIssueRef(forgejo pr): %v", err)
+	}
+	if !pr.MergeRequest || pr.Forge != forgeForgejo || pr.Tracker != trackerForgejo {
+		t.Errorf("forgejo PR ref parsed to %+v, want Forgejo PR", pr)
+	}
+	if pr.URL != "" {
+		t.Errorf("bare PR ref should not preserve a URL, got %q", pr.URL)
+	}
 	fj, err := parseAgentIssueRef("coilyco-flight-deck/ward#98")
 	if err != nil {
 		t.Fatalf("parseAgentIssueRef(forgejo short): %v", err)
@@ -151,12 +226,20 @@ func TestForgeURLAndBase(t *testing.T) {
 	if got, want := gh.url(), "https://github.com/owner/repo/issues/5"; got != want {
 		t.Errorf("github url = %q, want %q", got, want)
 	}
+	gh.MergeRequest = true
+	if got, want := gh.url(), "https://github.com/owner/repo/pull/5"; got != want {
+		t.Errorf("github pr url = %q, want %q", got, want)
+	}
 	if got, want := gh.trackerOrDefault(), trackerGitHub; got != want {
 		t.Errorf("github tracker = %v, want %v", got, want)
 	}
 	fj := agentIssueRef{Owner: "coilyco-flight-deck", Repo: "ward", Number: 5}
 	if got, want := fj.url(), forgejoBaseURL+"/coilyco-flight-deck/ward/issues/5"; got != want {
 		t.Errorf("forgejo url = %q, want %q", got, want)
+	}
+	fj.MergeRequest = true
+	if got, want := fj.url(), forgejoBaseURL+"/coilyco-flight-deck/ward/pulls/5"; got != want {
+		t.Errorf("forgejo pr url = %q, want %q", got, want)
 	}
 	if got, want := fj.trackerOrDefault(), trackerForgejo; got != want {
 		t.Errorf("forgejo tracker = %v, want %v", got, want)
@@ -271,11 +354,11 @@ func TestDirectToMainCarryClause(t *testing.T) {
 		got := directToMainCarryClause(ref)
 		for _, want := range []string{"merge to main", "closes #7"} {
 			if !strings.Contains(got, want) {
-				t.Errorf("direct-main carry clause missing %q: %s", want, got)
+				t.Errorf("merge-remote-main carry clause missing %q: %s", want, got)
 			}
 		}
 		if strings.Contains(got, "gh pr create") || strings.Contains(got, "pull request") {
-			t.Errorf("direct-main carry clause should not mention a PR boundary: %s", got)
+			t.Errorf("merge-remote-main carry clause should not mention a PR boundary: %s", got)
 		}
 	}
 }

@@ -234,16 +234,20 @@ wrap ward-kdl ops forgejo {
     can edit release
     can delete release
     can upload-asset release
-    // pulls: not surfaced through ward. Read them in the Forgejo web UI.
+    // pulls: read-only view/list stay web-only; merge/edit are surfaced.
     never view pr {
         message "pull requests are not exposed through ward; read them in the web UI"
     }
     never list pr {
         message "pull requests are not exposed through ward; read them in the web UI"
     }
+    can edit pr {
+        op repoEditPullRequest
+        describe "edit a pull request (PATCH /repos/{owner}/{repo}/pulls/{index}). The director uses this for merge-gate body/title edits without falling back to issue edit."
+    }
     can merge pr {
         op repoMergePullRequest
-        describe "merge a pull request (POST /repos/{owner}/{repo}/pulls/{index}/merge). Controlled director authority: ward-owned runs may land only when the issue thread says workflow: pull-requests-and-merge, the final WARD-OUTCOME is merge-ready, the review summary passed, and the PR is mergeable against the current base branch."
+        describe "merge a pull request (POST /repos/{owner}/{repo}/pulls/{index}/merge). Controlled director authority: ward-owned runs may land only when the issue thread says workflow: pull-request-and-merge, the final WARD-OUTCOME is merge-ready, the review summary passed, and the PR is mergeable against the current base branch."
     }
     // issue-labels: the compound resource targets the issue's labels sub-collection;
     // add/set/remove are the membership verbs (POST/PUT/DELETE).

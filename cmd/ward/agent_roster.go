@@ -7,6 +7,7 @@ import (
 	"os"
 	"sort"
 	"strings"
+	"time"
 
 	"forgejo.coilysiren.me/coilyco-flight-deck/cli-guard/pkg/fleetconfig"
 	"github.com/urfave/cli/v3"
@@ -35,14 +36,19 @@ const (
 // agentRoleDefinition carries the role bundle a startup role resolves from.
 // It includes the shipped preset fields plus the effective fleet overlay.
 type agentRoleDefinition struct {
-	Name           string
-	Tagline        string
-	Capabilities   semanticCapabilitySet
-	Modes          string
-	DefaultHarness string
-	Posture        agentRolePosture
-	Guardfiles     fleetconfig.Guardfiles
-	AgentOverlays  map[string]fleetconfig.RoleAgentOverride
+	Name               string
+	Tagline            string
+	Capabilities       semanticCapabilitySet
+	Modes              string
+	DefaultHarness     string
+	Posture            agentRolePosture
+	ExecutionTimeLimit time.Duration
+	ExecutionLimitSet  bool
+	Guardfiles         fleetconfig.Guardfiles
+	AgentOverlays      map[string]fleetconfig.RoleAgentOverride
+	// MergeAuthority lists the workflow modes this role may merge a PR under
+	// (ward#1067): embedded product data, never a fleet overlay; absent = never merges.
+	MergeAuthority []workflowMode
 }
 
 // cloneRoleOverlays copies a role's sparse agent overlay map so callers can
@@ -159,7 +165,7 @@ func agentRoleDefinitions() (map[string]agentRoleDefinition, error) {
 
 // agentMetaCommands are agent subcommands that are NOT startup roles.
 // `roster`, `reap`, `stop`/`list`, and `review` are meta verbs, so roster skips them.
-var agentMetaCommands = map[string]bool{"roster": true, "reap": true, "stop": true, "list": true, "logs": true, "review": true}
+var agentMetaCommands = map[string]bool{"roster": true, "reap": true, "stop": true, "list": true, "logs": true, "dispatch-health": true, "review": true, "pr": true}
 
 // agentRosterRow is one rendered roster entry: the role, its tagline, its modes, and
 // the per-role detail doc it links to.

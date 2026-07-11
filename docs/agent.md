@@ -53,10 +53,12 @@ warded #98
 warded engineer #98
 warded advisor #98 "what is the failure mode?"
 warded director --repo owner/name
+warded director owner/name#98
 ```
 
 The bare ref form defaults to `engineer`. The ref can be a bare `#N`, a full
-`owner/repo#N`, or a full Forgejo URL.
+`owner/repo#N`, a full Forgejo issue URL, or, for `director`, an issue-scoped
+positional ref.
 
 ## Why the docs are smaller
 

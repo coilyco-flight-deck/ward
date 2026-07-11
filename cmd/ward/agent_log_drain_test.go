@@ -320,6 +320,40 @@ func TestExtractTranscriptFromTar(t *testing.T) {
 	}
 }
 
+func TestDrainTranscriptUsesHarnessTranscriptTree(t *testing.T) {
+	cases := []struct {
+		name        string
+		container   string
+		wantSuffix  string
+		wantContent string
+	}{
+		{
+			name:        "claude",
+			container:   "engineer-claude-ward-883",
+			wantSuffix:  ".claude/projects",
+			wantContent: `{"type":"assistant","text":"claude progress"}` + "\n",
+		},
+		{
+			name:        "codex",
+			container:   "engineer-codex-ward-883",
+			wantSuffix:  ".codex/sessions",
+			wantContent: `{"type":"assistant","text":"codex progress"}` + "\n",
+		},
+	}
+	for _, tc := range cases {
+		t.Run(tc.name, func(t *testing.T) {
+			tarBytes := liveTranscriptTar(t, map[string]string{
+				"sessions/session-a.jsonl": tc.wantContent,
+			})
+			r := fakeAgentLogsDockerRunner(t, "", "", tarBytes, tc.wantSuffix)
+			got := r.drainTranscript(t.Context(), tc.container)
+			if !strings.Contains(string(got), tc.wantContent) {
+				t.Fatalf("drainTranscript(%q) = %q, want transcript content", tc.container, got)
+			}
+		})
+	}
+}
+
 func TestExtractTranscriptFromTarGarbage(t *testing.T) {
 	if got := extractTranscriptFromTar([]byte("not a tar at all")); len(got) != 0 {
 		t.Errorf("garbage tar yielded %q, want empty", got)
