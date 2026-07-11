@@ -52,16 +52,15 @@ Inventory of what `ward` ships today.
   [agent-roster.md](agent-roster.md), [agent-roles.md](agent-roles.md), [agent-harnesses.md](agent-harnesses.md),
   [agent-lifecycle.md](agent-lifecycle.md), [agent-director.md](agent-director.md),
   [agent-ops.md](agent-ops.md), [agent-dispatch-health.md](agent-dispatch-health.md),
-  [dispatch-review.md](dispatch-review.md), and
-  [agent-workflow.md](agent-workflow.md). The roster resolves from effective
-  role definitions plus fleet overlays, not a hand-edited role list. Startup
-  roles now use `merge-remote-main`, `pull-request`, `pull-request-and-merge`,
-  and `remote-branch-only`. Startup roles now ship per-role execution limits,
-  and the reservation TTL must stay strictly above those limits at load time.
-  `ward agent list` carries known engineer capacity plus the live run budget
-  countdown alongside the rows, and `ward agent logs` surfaces live docker
-  output and, when that stream is empty, the live transcript tree before it
-  falls back to the drained archive.
+  [dispatch-review.md](dispatch-review.md), and [agent-workflow.md](agent-workflow.md).
+  The roster resolves from ward-owned embedded role definitions plus fleet overlays,
+  not a hand-edited role list. Startup roles now use `merge-remote-main`,
+  `pull-request`, `pull-request-and-merge`, and `remote-branch-only`. Startup
+  roles now ship per-role execution limits, and the reservation TTL must stay
+  strictly above those limits at load time. `ward agent list` carries known
+  engineer capacity plus the live run budget countdown alongside the rows, and
+  `ward agent logs` surfaces live docker output and, when that stream is empty,
+  the live transcript tree before it falls back to the drained archive.
 - **Dispatch-health surfacing** - `ward agent dispatch-health` computes the live
   dispatch pathology summary, injects a capability-gated Claude status line,
   and emits the stable `WARD-DISPATCH-HEALTH:` alert line for the existing
@@ -84,7 +83,8 @@ Inventory of what `ward` ships today.
   [ward-kdl-surface.md](ward-kdl-surface.md),
   [ward-kdl-in-ward.md](ward-kdl-in-ward.md), and
   [ward-docker-exec.md](ward-docker-exec.md). It also embeds the shipped agent
-  role catalog from [ward-kdl.roles.kdl](../.ward/ward-kdl/ward-kdl.roles.kdl).
+  role catalog from
+  [ward-kdl.role-definitions.kdl](../.ward/ward-kdl/ward-kdl.role-definitions.kdl).
   Per-area guardfile refs are generated output, not release-era docs.
 - It accepts `first input` as exec-guard sugar for `arg0`, and ward injects the
   raw Forgejo Actions log fetch leaf directly into the shipped `ward ops

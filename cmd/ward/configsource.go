@@ -32,7 +32,7 @@ var bakedSupportAssets embed.FS
 //go:embed defaultsassets/defaults.generated.kdl
 var bakedDefaultsAssets embed.FS
 
-//go:embed roleassets/roles.generated.kdl
+//go:embed roleassets/role-definitions.generated.kdl
 var bakedRoleAssets embed.FS
 
 //go:embed topologyassets/topology.generated.kdl
@@ -64,13 +64,13 @@ func (u unionFS) ReadFile(name string) ([]byte, error) {
 // Baked-layout paths, named once so the runtime mount and the drift tests
 // agree.
 const (
-	opsForgejoGuardfilePath  = "opsassets/forgejo.guardfile.generated.kdl"
-	opsForgejoSpecLockPath   = "opsassets/forgejo.swagger.lock.generated.json"
-	execAssetsDir            = "execassets"
-	fleetGeneratedKDLPath    = "fleetassets/fleet.generated.kdl"
-	defaultsGeneratedKDLPath = "defaultsassets/defaults.generated.kdl"
-	rolesGeneratedKDLPath    = "roleassets/roles.generated.kdl"
-	topologyGeneratedKDLPath = "topologyassets/topology.generated.kdl"
+	opsForgejoGuardfilePath         = "opsassets/forgejo.guardfile.generated.kdl"
+	opsForgejoSpecLockPath          = "opsassets/forgejo.swagger.lock.generated.json"
+	execAssetsDir                   = "execassets"
+	fleetGeneratedKDLPath           = "fleetassets/fleet.generated.kdl"
+	defaultsGeneratedKDLPath        = "defaultsassets/defaults.generated.kdl"
+	roleDefinitionsGeneratedKDLPath = "roleassets/role-definitions.generated.kdl"
+	topologyGeneratedKDLPath        = "topologyassets/topology.generated.kdl"
 )
 
 // configSource is the launch-selected home of the KDL config bundle: one fs.FS
