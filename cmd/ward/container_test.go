@@ -607,7 +607,6 @@ func TestWardEnvCorrelationEnvelope(t *testing.T) {
 		{"WARD_RUN_ID", p.Name},
 		{"WARD_HARNESS", string(p.Mode)},
 		{"WARD_ISSUE_REF", p.Repo.slug() + "#140"},
-		{"WARD_WORKFLOW", "direct-main"},
 		{"WARD_CONTEXT_LEVEL", "2"},
 		{"WARD_VERSION", "v0.16.0"},
 		{"WARD_TARGET_REPO", p.Repo.slug()},
@@ -615,6 +614,9 @@ func TestWardEnvCorrelationEnvelope(t *testing.T) {
 		if got := env[want.key]; got != want.value {
 			t.Errorf("%s = %q, want %q", want.key, got, want.value)
 		}
+	}
+	if got := env["WARD_WORKFLOW"]; got != "" {
+		t.Errorf("WARD_WORKFLOW = %q, want it absent for the merge-remote-main default", got)
 	}
 }
 
