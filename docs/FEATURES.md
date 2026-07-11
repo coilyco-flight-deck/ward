@@ -16,6 +16,9 @@ Inventory of what `ward` ships today.
 
 - **`ward agent`** - the guarded execution layer.
 - **`warded`** - the symlinked public face.
+- **Agent-proxy correlation for local engineers** - opencode engineer runs now
+  route through the local agent-proxy endpoint with stable ward correlation
+  headers and request ids so traces join back to ward run logs.
 - **`ward agent director queue` / `status`** - the read-only queue view for stale reservations, redispatch candidates, PR handoffs, and stale-open done issues.
 - **Harness install hooks** - bootstrap now requires a harness install step
   before launch, with self-contained declarations for claude/codex/goose and a

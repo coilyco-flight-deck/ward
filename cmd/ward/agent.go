@@ -2485,6 +2485,15 @@ func printAgentTaskPlan(c *cli.Command, mode containerMode, repo targetRepo, tit
 	writef(&b, "branch:  %s\n", plan.Branch)
 	writef(&b, "workflow: %s\n", plan.Workflow.orDefault())
 	writef(&b, "name:    %s\n", plan.Name)
+	if plan.Mode == modeOpencode {
+		if endpoint := opencodeEndpointPreview(plan); endpoint != "" {
+			writef(&b, "agent-proxy: %s\n", endpoint)
+		}
+	}
+	writef(&b, "correlation:\n")
+	for _, line := range printCorrelationEnvelope(plan) {
+		writef(&b, "  %s\n", line)
+	}
 	writef(&b, "----- issue to file -----\ntitle: %s\n\n%s\n----- end -----\n", title, body)
 	writef(&b, "----- seeded prompt (#N filled once filed) -----\n%s\n----- end -----\n", seed)
 	appendLaunchPreflightNotes(&b, plan, c.Bool("no-pull"))
@@ -2498,6 +2507,46 @@ func printAgentTaskPlan(c *cli.Command, mode containerMode, repo targetRepo, tit
 	writef(&b, "docker %s\n", strings.Join(dockerCreateArgv(plan, "<ward-forgejo-token-envfile>"), " "))
 	_, werr := io.WriteString(out, b.String())
 	return werr
+}
+
+func opencodeEndpointPreview(p upPlan) string {
+	if v := strings.TrimSpace(p.ConfigEnv["WARD_OLLAMA_URL"]); v != "" {
+		return v
+	}
+	if v := strings.TrimSpace(os.Getenv("WARD_OLLAMA_URL")); v != "" {
+		return v
+	}
+	if a, ok := frontierAgentDefaults[string(modeOpencode)]; ok {
+		return a.Endpoint
+	}
+	return ""
+}
+
+func printCorrelationEnvelope(p upPlan) []string {
+	env := p.correlationEnv()
+	keys := []string{
+		"WARD_RUN_ID",
+		"WARD_CONTAINER_NAME",
+		"WARD_ROLE",
+		"WARD_HARNESS",
+		"WARD_TARGET_OWNER",
+		"WARD_TARGET_NAME",
+		"WARD_TARGET_REPO",
+		"WARD_ISSUE_REF",
+		"WARD_CONTEXT_LEVEL",
+		"WARD_VERSION",
+		"WARD_THREAD_ID",
+	}
+	var out []string
+	for _, key := range keys {
+		if v := strings.TrimSpace(env[key]); v != "" {
+			out = append(out, key+"="+v)
+		}
+	}
+	if wf := strings.TrimSpace(string(p.Workflow.orDefault())); wf != "" && !p.Workflow.landsOnMain() {
+		out = append(out, "WARD_WORKFLOW="+wf)
+	}
+	return out
 }
 
 // ownerAllowed reports whether owner is in ward's trusted-owner set, via
@@ -2534,6 +2583,15 @@ func printAgentPlan(c *cli.Command, p upPlan, ref agentIssueRef, title, seed, su
 	writef(&b, "branch:  %s\n", p.Branch)
 	writef(&b, "workflow: %s\n", p.Workflow.orDefault())
 	writef(&b, "name:    %s\n", p.Name)
+	if p.Mode == modeOpencode {
+		if endpoint := opencodeEndpointPreview(p); endpoint != "" {
+			writef(&b, "agent-proxy: %s\n", endpoint)
+		}
+	}
+	writef(&b, "correlation:\n")
+	for _, line := range printCorrelationEnvelope(p) {
+		writef(&b, "  %s\n", line)
+	}
 	writef(&b, "%s", seedLogBlock(seed))
 	appendLaunchPreflightNotes(&b, p, c.Bool("no-pull"))
 	switch {

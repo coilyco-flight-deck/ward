@@ -49,3 +49,18 @@ type EnvLine struct {
 	Key   string
 	Value string
 }
+
+// Correlation captures the stable, non-secret run metadata ward can share with
+// harnesses and downstream request headers.
+type Correlation struct {
+	RunID         string
+	ContainerName string
+	Role          string
+	Harness       string
+	TargetRepo    string
+	IssueRef      string
+	Workflow      string
+	ContextLevel  string
+	Version       string
+	ThreadID      string
+}
