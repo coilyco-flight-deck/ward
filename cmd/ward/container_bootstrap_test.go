@@ -205,6 +205,7 @@ func TestGooseCompletionOutput(t *testing.T) {
 }
 
 func TestRunContainerBootstrapGooseNoSessionExitsAndReaps(t *testing.T) {
+	preserveScratchEnv(t)
 	prevWorkspaceRoot := workspaceRoot
 	workspaceRoot = t.TempDir()
 	t.Cleanup(func() { workspaceRoot = prevWorkspaceRoot })
@@ -292,6 +293,29 @@ func TestRunContainerBootstrapGooseNoSessionExitsAndReaps(t *testing.T) {
 			t.Fatalf("stderr missing %q:\n%s", want, stderr)
 		}
 	}
+}
+
+func preserveScratchEnv(t *testing.T) {
+	t.Helper()
+	keys := []string{"TMPDIR", "TMP", "TEMP", "GOCACHE", "GOMODCACHE", "GOTMPDIR", "XDG_CACHE_HOME"}
+	saved := make(map[string]*string, len(keys))
+	for _, key := range keys {
+		if value, ok := os.LookupEnv(key); ok {
+			v := value
+			saved[key] = &v
+			continue
+		}
+		saved[key] = nil
+	}
+	t.Cleanup(func() {
+		for _, key := range keys {
+			if value := saved[key]; value != nil {
+				_ = os.Setenv(key, *value)
+				continue
+			}
+			_ = os.Unsetenv(key)
+		}
+	})
 }
 
 func restoreWritableTree(t *testing.T, root string) {
@@ -973,14 +997,59 @@ func TestPrepareScratchSpace(t *testing.T) {
 	t.Setenv("TMPDIR", "")
 	t.Setenv("TMP", "")
 	t.Setenv("TEMP", "")
-	r.prepareScratchSpace(scratch)
+	t.Setenv("GOCACHE", "")
+	t.Setenv("GOMODCACHE", "")
+	t.Setenv("GOTMPDIR", "")
+	t.Setenv("XDG_CACHE_HOME", "")
+	if err := r.prepareScratchSpace(scratch); err != nil {
+		t.Fatalf("prepareScratchSpace: %v", err)
+	}
 	for _, key := range []string{"TMPDIR", "TMP", "TEMP"} {
 		if got := os.Getenv(key); got != scratch {
 			t.Errorf("%s = %q, want %s", key, got, scratch)
 		}
 	}
+	for _, key := range []string{"GOCACHE", "GOMODCACHE", "GOTMPDIR", "XDG_CACHE_HOME"} {
+		if got := os.Getenv(key); !strings.HasPrefix(got, scratch+string(os.PathSeparator)) {
+			t.Errorf("%s = %q, want a subdir under %s", key, got, scratch)
+		}
+	}
 	if info, err := os.Stat(scratch); err != nil || !info.IsDir() {
 		t.Fatalf("%s not provisioned: %v", scratch, err)
+	}
+}
+
+func TestPrepareScratchSpaceLowBudget(t *testing.T) {
+	r := &Runner{}
+	scratch := t.TempDir()
+	prev := surfaceScratchDiskFreeBytes
+	surfaceScratchDiskFreeBytes = func(string) (uint64, uint64, error) {
+		return surfaceScratchFloorBytes - 1, surfaceScratchFloorBytes, nil
+	}
+	t.Cleanup(func() { surfaceScratchDiskFreeBytes = prev })
+
+	err := r.prepareScratchSpace(scratch)
+	if err == nil {
+		t.Fatal("prepareScratchSpace should refuse a low-budget scratch root")
+	}
+	for _, want := range []string{
+		scratch,
+		"focused Go verification",
+		"recommended cache/temp location",
+		diskBytes(surfaceScratchFloorBytes),
+	} {
+		if !strings.Contains(err.Error(), want) {
+			t.Fatalf("low-budget error %q missing %q", err, want)
+		}
+	}
+}
+
+func TestSurfaceScratchDir(t *testing.T) {
+	if got := surfaceScratchDir(bootstrapEnv{GitCache: "/gitcache"}); got != "/scratch" {
+		t.Fatalf("surfaceScratchDir(writable) = %q, want /scratch", got)
+	}
+	if got := surfaceScratchDir(bootstrapEnv{GitCache: "/gitcache", ReadOnly: true}); got != filepath.Join("/gitcache", "surface-scratch") {
+		t.Fatalf("surfaceScratchDir(read-only) = %q, want %q", got, filepath.Join("/gitcache", "surface-scratch"))
 	}
 }
 
