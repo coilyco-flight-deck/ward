@@ -951,6 +951,18 @@ func TestComposeContextRuntimeDoctrineLoadPoints(t *testing.T) {
 	}
 }
 
+func TestComposeClaudeSettingsInjectsStatusLineOnlyForClaude(t *testing.T) {
+	base := []byte(`{"tui":"fullscreen","permissions":{"defaultMode":"bypassPermissions"}}`)
+	gotClaude := composeClaudeSettings(modeClaude, base)
+	if !strings.Contains(string(gotClaude), `"statusLine"`) {
+		t.Fatalf("claude settings missing statusLine:\n%s", gotClaude)
+	}
+	gotCodex := composeClaudeSettings(modeCodex, base)
+	if strings.Contains(string(gotCodex), `"statusLine"`) {
+		t.Fatalf("codex settings should not gain statusLine:\n%s", gotCodex)
+	}
+}
+
 func TestPrepareScratchSpace(t *testing.T) {
 	r := &Runner{}
 	scratch := t.TempDir()

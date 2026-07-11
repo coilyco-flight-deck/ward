@@ -1269,11 +1269,35 @@ func (r *Runner) composePermissions(e bootstrapEnv) {
 		blog("could not read container permission policy: %v", rerr)
 		return
 	}
-	if werr := os.WriteFile(out, data, 0o644); werr != nil { // #nosec G306 -- permission policy, not a secret
+	buf := composeClaudeSettings(containerMode(e.Mode), data)
+	if werr := os.WriteFile(out, buf, 0o644); werr != nil { // #nosec G306 -- permission policy, not a secret
 		blog("could not write container permission policy: %v", werr)
 		return
 	}
 	blog("wrote container permission policy to %s", out)
+}
+
+func composeClaudeSettings(mode containerMode, data []byte) []byte {
+	if !lookupAgent(mode).Record().StatusLine {
+		return data
+	}
+	var settings map[string]any
+	if err := json.Unmarshal(data, &settings); err != nil {
+		blog("could not parse container permission policy: %v; writing the base file unchanged", err)
+		return data
+	}
+	settings["statusLine"] = map[string]any{
+		"type":            "command",
+		"command":         "ward agent dispatch-health --line",
+		"padding":         1,
+		"refreshInterval": 5,
+	}
+	buf, err := json.MarshalIndent(settings, "", "  ")
+	if err != nil {
+		blog("could not marshal status-line settings: %v; writing the base file unchanged", err)
+		return data
+	}
+	return append(buf, '\n')
 }
 
 // --- reaper: deterministic teardown backstop ---------------------------------

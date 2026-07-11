@@ -27,6 +27,10 @@ enters the container with the credential material ward seeds at launch.
 Its install step is self-contained and only verifies that `claude` is already
 on PATH.
 
+Claude is also the only shipped harness that currently renders the live
+dispatch-health status line. Ward detects that capability from the harness
+manifest and injects the status command only for supported harnesses.
+
 ### codex
 
 `codex` is the OpenAI path. It uses the host-side auth file or login flow and
@@ -65,4 +69,5 @@ This page keeps the comparison in one place and lets the other docs stay short.
 
 - [agent.md](agent.md) - the entrypoint.
 - [agent-lifecycle.md](agent-lifecycle.md) - launch-time checks.
+- [agent-dispatch-health.md](agent-dispatch-health.md) - the status line and alert feed.
 - [container-contract.md](container-contract.md) - the context and mount contract.
