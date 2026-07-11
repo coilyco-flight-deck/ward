@@ -40,6 +40,12 @@ Status and runs are read verbs (any catalog role with `read`). Rerun needs an
 `engineering` or `project-management` role, so the advisor and QA roles cannot
 poke CI. An unknown role is denied everything, fail-closed.
 
+When a PR repair path is failing, ward now prints a concrete bucket first:
+`ci-parity-gap`, `main-red`, `merge-queue-churn`, or `pr-regression`. That
+bucket is carried into the PR repair seed and the status readout so the next
+step names the actual failure mode instead of launching another vague repair
+loop.
+
 A PR names its own mode: the `ward.workflow:` marker the engineer stamps into a
 `pull-request-and-merge` PR body. A PR without a marker is the plain
 `pull-request` lane.

@@ -874,9 +874,12 @@ type agentPullRequestContext struct {
 	Title        string
 	Body         string
 	URL          string
+	HeadSHA      string
 	HeadRef      string
 	BaseRef      string
 	Mergeability string
+	RepairBucket string
+	RepairNote   string
 }
 
 func (pr agentPullRequestContext) summaryLine() string {
@@ -928,6 +931,12 @@ func engineerPRDetails(pr agentPullRequestContext, comments []issueComment, link
 		fmt.Fprintf(&b, "- PR state: %s\n", pr.State)
 	}
 	fmt.Fprintf(&b, "- PR summary: %s\n", pr.summaryLine())
+	if bucket := strings.TrimSpace(pr.RepairBucket); bucket != "" {
+		fmt.Fprintf(&b, "- PR repair bucket: %s\n", bucket)
+	}
+	if note := strings.TrimSpace(pr.RepairNote); note != "" {
+		fmt.Fprintf(&b, "- PR repair note: %s\n", note)
+	}
 	if pr.Body = strings.TrimSpace(pr.Body); pr.Body != "" {
 		fmt.Fprintf(&b, "\n----- PR body -----\n%s\n----- end PR body -----\n", pr.Body)
 	}
@@ -1097,6 +1106,9 @@ func (r *Runner) resolveAgentPullRequestWork(ctx context.Context, mode container
 				writef(os.Stderr, "%s: note: could not read linked issue comments on %s (%v); continuing without them\n", agentCmdline(mode, "engineer"), linkedRef, err)
 			}
 		}
+	}
+	if fc, ok := cl.(*forgejoClient); ok {
+		annotateForgejoPRRepair(ctx, fc, ref.Owner, ref.Repo, pr, ref, mode)
 	}
 	return *pr, comments, linkedIssue, linkedComments, nil
 }
