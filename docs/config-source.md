@@ -36,11 +36,11 @@ good enough. If `WARD_TARGET_OWNER` or `WARD_TARGET_REPO` names a coilyco repo
 and no external bundle is active, ward fails early with a diagnostic that names
 the active source and the expected `WARD_CONFIG_REF` bundle.
 
-## Bundle monolith constraint
+## The bundle ops monolith
 
-The bundle layout is the flat `.ward` shape landed in [aos#332](https://github.com/coilysiren/agentic-os/issues/332), authored by the
-aos ward-specs doc. `guardfile.forgejo.kdl` is the self-contained compatibility
-monolith mirroring the baked source's flattened guardfile: ward loads it via
-byte-Parse and has no ParseFile path, so the runtime ops surface must not
-`inherit` across bundle files. The read/write/admin tier guardfiles are
-role-facing (bound in `roles.kdl`), not the ops CLI surface.
+- `guardfile.forgejo.kdl` is the self-contained compatibility monolith,
+  mirroring the baked source's flattened forgejo guardfile.
+- ward loads it via a byte-level parse with no file resolver, so the runtime
+  ops surface must not `inherit` across files.
+- the read/write/admin tier guardfiles in the bundle are role-facing (bound in
+  `roles.kdl`), not the ops CLI surface.
