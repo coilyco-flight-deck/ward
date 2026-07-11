@@ -73,6 +73,12 @@ const (
 	topologyGeneratedKDLPath        = "topologyassets/topology.generated.kdl"
 )
 
+// Bundle-layout paths: the flat .ward bundle a ref points at.
+// See docs/config-source.md.
+const (
+	bundleExecGuardfileGlob = "guardfile.*.kdl"
+)
+
 // configSource is the launch-selected home of the KDL config bundle: one fs.FS
 // plus the per-layout paths the edge build sites read.
 type configSource struct {
@@ -97,6 +103,7 @@ type configSource struct {
 	// execDir is scanned by mountWardKdlExec; execMixedDialects marks a bundle
 	// dir where spec-dialect files sit beside exec ones and are filtered out.
 	execDir           string
+	execGuardfileGlob string
 	execMixedDialects bool
 }
 
@@ -104,13 +111,14 @@ type configSource struct {
 // today's behavior. The pre-filtered execassets mirror scans unfiltered.
 func bakedConfigSource() configSource {
 	return configSource{
-		fsys:             bakedAssets,
-		forgejoGuardfile: opsForgejoGuardfilePath,
-		forgejoSpecLock:  opsForgejoSpecLockPath,
-		fleetKDL:         fleetGeneratedKDLPath,
-		defaultsKDL:      defaultsGeneratedKDLPath,
-		topologyKDL:      topologyGeneratedKDLPath,
-		execDir:          execAssetsDir,
+		fsys:              bakedAssets,
+		forgejoGuardfile:  opsForgejoGuardfilePath,
+		forgejoSpecLock:   opsForgejoSpecLockPath,
+		fleetKDL:          fleetGeneratedKDLPath,
+		defaultsKDL:       defaultsGeneratedKDLPath,
+		topologyKDL:       topologyGeneratedKDLPath,
+		execDir:           execAssetsDir,
+		execGuardfileGlob: "ward-kdl.*.guardfile.kdl",
 	}
 }
 
@@ -119,6 +127,7 @@ func bundleConfigSource(dir string) configSource {
 	return configSource{
 		fsys:              os.DirFS(dir),
 		execDir:           ".",
+		execGuardfileGlob: bundleExecGuardfileGlob,
 		execMixedDialects: true,
 	}
 }
@@ -177,14 +186,11 @@ func selectedConfigRef() (string, error) {
 	if !ok {
 		return "", nil
 	}
-	if os.Getenv("WARD_READONLY") == "1" {
-		reconstructed, err := coilycoConfigRefFromTargetRepo(target, resolveInvokeCWD())
-		if err != nil {
-			return "", fmt.Errorf("%s: active config source is %s; expected WARD_CONFIG_REF to point at the coilyco bundle for target %s (and could not reconstruct it from target metadata: %w)", wardConfigRefEnv, configSourceSummary(ref, src), target.slug(), err)
-		}
-		return reconstructed, nil
+	reconstructed, err := coilycoConfigRefFromTargetRepo(target, resolveInvokeCWD())
+	if err != nil {
+		return "", fmt.Errorf("%s: active config source is %s; expected WARD_CONFIG_REF to point at the coilyco bundle for target %s (and could not reconstruct it from target metadata: %w)", wardConfigRefEnv, configSourceSummary(ref, src), target.slug(), err)
 	}
-	return "", fmt.Errorf("%s: active config source is %s; expected WARD_CONFIG_REF to point at the coilyco bundle for target %s", wardConfigRefEnv, configSourceSummary(ref, src), target.slug())
+	return reconstructed, nil
 }
 
 func configSourceSummary(rawRef string, src configSource) string {
