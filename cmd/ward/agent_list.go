@@ -52,18 +52,22 @@ type agentListJSON struct {
 
 // agentListJSONEntry is one active engineer launch row.
 type agentListJSONEntry struct {
-	Container  string `json:"container"`
-	Harness    string `json:"harness"`
-	Repo       string `json:"repo"`
-	Issue      string `json:"issue"`
-	Ref        string `json:"ref"`
-	Branch     string `json:"branch"`
-	Host       string `json:"host"`
-	ReservedAt string `json:"reserved_at"`
-	StartedAt  string `json:"started_at"`
-	Age        string `json:"age"`
-	Phase      string `json:"phase"`
-	Status     string `json:"status"`
+	Container       string `json:"container"`
+	Role            string `json:"role"`
+	Harness         string `json:"harness"`
+	Repo            string `json:"repo"`
+	Issue           string `json:"issue"`
+	Ref             string `json:"ref"`
+	Branch          string `json:"branch"`
+	Host            string `json:"host"`
+	ReservedAt      string `json:"reserved_at"`
+	StartedAt       string `json:"started_at"`
+	Age             string `json:"age"`
+	ExecutionLimit  string `json:"execution_limit"`
+	BudgetRemaining string `json:"budget_remaining"`
+	BudgetExpiresAt string `json:"budget_expires_at"`
+	Phase           string `json:"phase"`
+	Status          string `json:"status"`
 }
 
 type agentDockerInspectContainer struct {
@@ -228,18 +232,20 @@ func (r *Runner) agentListRows(ctx context.Context) ([]agentRunningEngineer, err
 }
 
 type agentRunningEngineer struct {
-	Container  string
-	Harness    string
-	Repo       string
-	Issue      string
-	Ref        string
-	Branch     string
-	Host       string
-	ReservedAt time.Time
-	StartedAt  time.Time
-	Age        time.Duration
-	Phase      string
-	Status     string
+	Container      string
+	Role           string
+	Harness        string
+	Repo           string
+	Issue          string
+	Ref            string
+	Branch         string
+	Host           string
+	ReservedAt     time.Time
+	StartedAt      time.Time
+	Age            time.Duration
+	ExecutionLimit time.Duration
+	Phase          string
+	Status         string
 }
 
 func agentListJSONFromRows(rows []agentRunningEngineer) agentListJSON {
@@ -259,19 +265,28 @@ func agentListJSONFromRows(rows []agentRunningEngineer) agentListJSON {
 }
 
 func (r agentRunningEngineer) toJSON() agentListJSONEntry {
+	limit := r.ExecutionLimit
+	expiresAt := time.Time{}
+	if limit > 0 {
+		expiresAt = agentRunningEngineerAgeBase(r.ReservedAt, r.StartedAt).Add(limit)
+	}
 	return agentListJSONEntry{
-		Container:  r.Container,
-		Harness:    r.Harness,
-		Repo:       r.Repo,
-		Issue:      r.Issue,
-		Ref:        r.Ref,
-		Branch:     r.Branch,
-		Host:       r.Host,
-		ReservedAt: formatJSONTime(r.ReservedAt),
-		StartedAt:  formatJSONTime(r.StartedAt),
-		Age:        formatDuration(r.Age),
-		Phase:      emptyDefault(r.Phase, "-"),
-		Status:     r.Status,
+		Container:       r.Container,
+		Role:            r.Role,
+		Harness:         r.Harness,
+		Repo:            r.Repo,
+		Issue:           r.Issue,
+		Ref:             r.Ref,
+		Branch:          r.Branch,
+		Host:            r.Host,
+		ReservedAt:      formatJSONTime(r.ReservedAt),
+		StartedAt:       formatJSONTime(r.StartedAt),
+		Age:             formatDuration(r.Age),
+		ExecutionLimit:  formatDuration(limit),
+		BudgetRemaining: agentRunBudgetSummary(r.Role, r.Age),
+		BudgetExpiresAt: formatJSONTime(expiresAt),
+		Phase:           emptyDefault(r.Phase, "-"),
+		Status:          r.Status,
 	}
 }
 
@@ -283,6 +298,7 @@ func agentListCapacityForCount(count int) agentListCapacity {
 		capacity.Unavailable = true
 	}
 	if limit <= 0 {
+		capacity.Unavailable = true
 		return capacity
 	}
 	capacity.Limit = &limit
@@ -353,6 +369,7 @@ func activeReservedEngineerRow(path string, now time.Time, seen map[string]bool)
 	}
 	row := agentRunningEngineer{
 		Container:  emptyDefault(strings.TrimSpace(res.Container), "(reserved)"),
+		Role:       roleEngineer,
 		Harness:    emptyDefault(strings.TrimSpace(res.Mode), "-"),
 		Repo:       ref.repoSlug(),
 		Issue:      strconv.Itoa(ref.Number),
@@ -363,6 +380,9 @@ func activeReservedEngineerRow(path string, now time.Time, seen map[string]bool)
 		Age:        now.Sub(res.At),
 		Phase:      agentLaunchPhaseQueued,
 		Status:     "reserved",
+	}
+	if limit, ok := agentRoleExecutionLimit(roleEngineer); ok {
+		row.ExecutionLimit = limit
 	}
 	if phase, status, ok := dispatchLaunchPhaseForReservation(ref); ok {
 		row.Phase = phase
@@ -522,6 +542,10 @@ func agentRunningEngineerFromInspect(now time.Time, snap agentDockerInspectConta
 	name := strings.TrimPrefix(strings.TrimSpace(snap.Name), "/")
 	env := agentEnvMap(snap.Config.Env)
 	labels := snap.Config.Labels
+	role := firstNonEmptyList(strings.TrimSpace(labels[labelRole]), strings.TrimSpace(env["WARD_ROLE"]))
+	if role == "" {
+		role = roleEngineer
+	}
 	harness := firstNonEmptyList(strings.TrimSpace(labels[labelDriver]), strings.TrimSpace(env["WARD_MODE"]))
 	repoSlug := firstNonEmptyList(strings.TrimSpace(labels[labelRepo]), strings.TrimSpace(env["WARD_TARGET_REPO"]))
 	owner := firstNonEmptyList(strings.TrimSpace(env["WARD_TARGET_OWNER"]), strings.TrimSpace(env["WARD_OWNER"]))
@@ -537,6 +561,7 @@ func agentRunningEngineerFromInspect(now time.Time, snap agentDockerInspectConta
 	}
 	out := agentRunningEngineer{
 		Container:  name,
+		Role:       role,
 		Harness:    harness,
 		Repo:       repo,
 		Issue:      "",
@@ -556,6 +581,9 @@ func agentRunningEngineerFromInspect(now time.Time, snap agentDockerInspectConta
 	}
 	if ageAt := agentRunningEngineerAgeBase(reservedAt, startedAt); !ageAt.IsZero() {
 		out.Age = now.Sub(ageAt)
+	}
+	if limit, ok := agentRoleExecutionLimit(role); ok {
+		out.ExecutionLimit = limit
 	}
 	return out
 }
@@ -653,6 +681,9 @@ func renderAgentListHuman(rows []agentRunningEngineer) string {
 		fmt.Fprintf(&b, "    reserved:  %s\n", emptyDefault(formatJSONTime(row.ReservedAt), "-"))
 		fmt.Fprintf(&b, "    started:   %s\n", emptyDefault(formatJSONTime(row.StartedAt), "-"))
 		fmt.Fprintf(&b, "    age:       %s\n", emptyDefault(formatDuration(row.Age), "-"))
+		if budget := agentRunBudgetSummary(row.Role, row.Age); budget != "" {
+			fmt.Fprintf(&b, "    budget:    %s\n", budget)
+		}
 		fmt.Fprintf(&b, "    phase:     %s\n", emptyDefault(row.Phase, "-"))
 		fmt.Fprintf(&b, "    status:    %s\n", emptyDefault(row.Status, "-"))
 	}

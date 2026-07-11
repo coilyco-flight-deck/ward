@@ -644,7 +644,7 @@ func TestBacklogRefreshReservationStates(t *testing.T) {
 
 	now := time.Now().UTC()
 	fresh := now.Add(-10 * time.Minute).UTC().Format(time.RFC3339)
-	stale := now.Add(-2 * time.Hour).UTC().Format(time.RFC3339)
+	stale := now.Add(-4 * time.Hour).UTC().Format(time.RFC3339)
 	srv := httptest.NewServer(http.HandlerFunc(func(w http.ResponseWriter, r *http.Request) {
 		switch {
 		case r.URL.Path == "/api/v1/repos/coilyco-flight-deck/ward/issues" && r.URL.Query().Get("state") == "open":
@@ -689,7 +689,7 @@ func TestDirectorIssueScopeUsesOnlyTheReferencedIssue(t *testing.T) {
 	t.Setenv("FORGEJO_TOKEN", "secret")
 
 	bundleDir := t.TempDir()
-	if err := os.WriteFile(filepath.Join(bundleDir, "defaults.kdl"), []byte("defaults {\n}\n"), 0o644); err != nil {
+	if err := os.WriteFile(filepath.Join(bundleDir, "defaults.kdl"), []byte("defaults {\n    agent-reservation-ttl \"3h\"\n}\n"), 0o644); err != nil {
 		t.Fatal(err)
 	}
 	if err := os.WriteFile(filepath.Join(bundleDir, "repos.kdl"), []byte("repos {\n  repo-authority default=forgejo {\n    trusted-owner coilyco-flight-deck\n  }\n}\n"), 0o644); err != nil {
@@ -833,7 +833,7 @@ func TestResolveDirectorIssueRefFailsClosedAndDoesNotWiden(t *testing.T) {
 	t.Setenv("FORGEJO_TOKEN", "secret")
 
 	bundleDir := t.TempDir()
-	if err := os.WriteFile(filepath.Join(bundleDir, "defaults.kdl"), []byte("defaults {\n}\n"), 0o644); err != nil {
+	if err := os.WriteFile(filepath.Join(bundleDir, "defaults.kdl"), []byte("defaults {\n    agent-reservation-ttl \"3h\"\n}\n"), 0o644); err != nil {
 		t.Fatal(err)
 	}
 	if err := os.WriteFile(filepath.Join(bundleDir, "repos.kdl"), []byte("repos {\n  repo-authority default=forgejo {\n    trusted-owner coilyco-flight-deck\n  }\n}\n"), 0o644); err != nil {

@@ -107,6 +107,7 @@ func (r *Runner) runAgentQA(ctx context.Context, c *cli.Command, mode containerM
 	}
 	prompt = qaInspectionPrompt(prompt)
 	research := qaResearchPrompt(ref, title, issue.Body, comments, prompt, level, qaCtx)
+	research += agentRunBudgetNote(roleQA)
 
 	if c.Bool("print") {
 		return printAgentQAPlan(c, mode, ref, title, prompt, level, research)

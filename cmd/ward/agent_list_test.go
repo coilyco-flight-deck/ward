@@ -51,6 +51,9 @@ func TestAgentRunningEngineerFromInspectIncludesReservation(t *testing.T) {
 	if row.Container != "engineer-codex-factory-game-v3-18" {
 		t.Fatalf("container = %q", row.Container)
 	}
+	if row.Role != roleEngineer {
+		t.Fatalf("role = %q", row.Role)
+	}
 	if row.Ref != "coilyco-gaming/factory-game-v3#18" {
 		t.Fatalf("ref = %q", row.Ref)
 	}
@@ -71,6 +74,9 @@ func TestAgentRunningEngineerFromInspectIncludesReservation(t *testing.T) {
 	}
 	if row.Status != "running" {
 		t.Fatalf("status = %q", row.Status)
+	}
+	if row.ExecutionLimit != 90*time.Minute {
+		t.Fatalf("execution limit = %s, want 90m", row.ExecutionLimit)
 	}
 	if row.Phase != agentLaunchPhaseRunning {
 		t.Fatalf("phase = %q", row.Phase)
@@ -104,6 +110,12 @@ func TestAgentRunningEngineerFromInspectIncludesReservation(t *testing.T) {
 	if payload.AtCapacity == nil || *payload.AtCapacity {
 		t.Fatalf("at_capacity = %v, want false", payload.AtCapacity)
 	}
+	if len(payload.Engineers) != 1 || payload.Engineers[0].ExecutionLimit != "1h30m0s" {
+		t.Fatalf("engineer budget JSON = %+v", payload.Engineers)
+	}
+	if !strings.Contains(payload.Engineers[0].BudgetRemaining, "remaining of 90m limit") {
+		t.Fatalf("engineer budget remaining = %q", payload.Engineers[0].BudgetRemaining)
+	}
 	jbuf, err := json.MarshalIndent(payload, "", "  ")
 	if err != nil {
 		t.Fatalf("marshal payload json: %v", err)
@@ -113,6 +125,8 @@ func TestAgentRunningEngineerFromInspectIncludesReservation(t *testing.T) {
 		`"limit": 12`,
 		`"remaining": 11`,
 		`"at_capacity": false`,
+		`"execution_limit": "1h30m0s"`,
+		`"budget_remaining": "73m remaining of 90m limit"`,
 		`"phase": "container running"`,
 	} {
 		if !strings.Contains(string(jbuf), want) {
@@ -127,6 +141,8 @@ func TestAgentRunningEngineerFromInspectIncludesReservation(t *testing.T) {
 		"kais-macbook-pro-2.local",
 		"issue-18",
 		"running",
+		"budget:    73m remaining of 90m limit",
+		"phase:     container running",
 		"container running",
 	} {
 		if !strings.Contains(human, want) {

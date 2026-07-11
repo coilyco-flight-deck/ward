@@ -712,7 +712,7 @@ func TestPostReservationComment(t *testing.T) {
 func TestReservationCommentBodyHasMarker(t *testing.T) {
 	now := time.Date(2026, 6, 18, 12, 0, 0, 0, time.UTC)
 	body := reservationCommentBody(modeCodex, "engineer-codex-ward-142", "tower", now, "", nil)
-	for _, want := range []string{agentReservationMarker, "WARD-RESERVATION: held", "ward agent --harness codex", "engineer-codex-ward-142", "tower", "1h TTL"} {
+	for _, want := range []string{agentReservationMarker, "WARD-RESERVATION: held", "ward agent --harness codex", "engineer-codex-ward-142", "tower", "3h TTL"} {
 		if !strings.Contains(body, want) {
 			t.Errorf("reservation comment missing %q\n got: %s", want, body)
 		}

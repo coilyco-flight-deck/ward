@@ -47,12 +47,14 @@ Inventory of what `ward` ships today.
   [agent-ops.md](agent-ops.md), [agent-dispatch-health.md](agent-dispatch-health.md),
   [dispatch-review.md](dispatch-review.md), and
   [agent-workflow.md](agent-workflow.md). The roster resolves from effective
-  role definitions plus fleet overlays, not a hand-edited role list. The
-  workflow model now uses `merge-remote-main`, `pull-request`,
-  `pull-request-and-merge`, and `remote-branch-only`. `ward agent list` now
-  carries known engineer capacity alongside the live rows, and `ward agent
-  logs` surfaces live docker output and, when that stream is empty, the live
-  transcript tree before it falls back to the drained archive.
+  role definitions plus fleet overlays, not a hand-edited role list. Startup
+  roles now use `merge-remote-main`, `pull-request`, `pull-request-and-merge`,
+  and `remote-branch-only`. Startup roles now ship per-role execution limits,
+  and the reservation TTL must stay strictly above those limits at load time.
+  `ward agent list` carries known engineer capacity plus the live run budget
+  countdown alongside the rows, and `ward agent logs` surfaces live docker
+  output and, when that stream is empty, the live transcript tree before it
+  falls back to the drained archive.
 - **Dispatch-health surfacing** - `ward agent dispatch-health` computes the live
   dispatch pathology summary, injects a capability-gated Claude status line,
   and emits the stable `WARD-DISPATCH-HEALTH:` alert line for the existing

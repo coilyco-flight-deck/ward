@@ -54,7 +54,7 @@ var smartDefaultsCache struct {
 
 func bakedSmartDefaults() smartDefaults {
 	return smartDefaults{
-		agentReservationTTL:           time.Hour,
+		agentReservationTTL:           3 * time.Hour,
 		reservationRecheckDefaultMax:  15 * time.Second,
 		agentReapIdleDefault:          time.Hour,
 		agentReapMaxCPUDefault:        5.0,
@@ -132,7 +132,14 @@ func loadSmartDefaultsFrom(src configSource) (smartDefaults, error) {
 		if err != nil {
 			return smartDefaults{}, fmt.Errorf("read smart defaults %s: %w", src.defaultsKDL, err)
 		}
-		return parseSmartDefaults(b)
+		defs, err := parseSmartDefaults(b)
+		if err != nil {
+			return smartDefaults{}, err
+		}
+		if err := validateReservationTTLInvariant(defs); err != nil {
+			return smartDefaults{}, err
+		}
+		return defs, nil
 	}
 	return loadBundleSmartDefaultsFrom(src)
 }
@@ -155,6 +162,9 @@ func loadBundleSmartDefaultsFrom(src configSource) (smartDefaults, error) {
 		return smartDefaults{}, err
 	}
 	if err := parseBundleReposNode(reposFile.path, reposNode, &defs); err != nil {
+		return smartDefaults{}, err
+	}
+	if err := validateReservationTTLInvariant(defs); err != nil {
 		return smartDefaults{}, err
 	}
 	return defs, nil
@@ -492,6 +502,25 @@ func applySmartDefaultWorkflow(defs *smartDefaults, n *kdl.Node) error {
 			return fmt.Errorf("smart defaults: smart-defaults > agent-workflow > repo %q repeated (fail-closed)", repo)
 		}
 		defs.agentWorkflowRepos[repo] = wf
+	}
+	return nil
+}
+
+func validateReservationTTLInvariant(defs smartDefaults) error {
+	cat, err := cachedBuiltInAgentRoleCatalog()
+	if err != nil {
+		return fmt.Errorf("smart defaults: load embedded role catalog: %w", err)
+	}
+	ttl := defs.agentReservationTTL
+	for _, name := range cat.Order {
+		def, ok := cat.Definitions[name]
+		if !ok || !def.ExecutionLimitSet || def.ExecutionTimeLimit <= 0 {
+			continue
+		}
+		if ttl <= def.ExecutionTimeLimit {
+			return fmt.Errorf("smart defaults: agent-reservation-ttl %s must exceed role %q execution-time-limit %s (fail-closed)",
+				conciseDuration(ttl), name, conciseDuration(def.ExecutionTimeLimit))
+		}
 	}
 	return nil
 }

@@ -47,7 +47,7 @@ func TestStrictValidationFailures(t *testing.T) {
 	t.Run("unknown keys", func(t *testing.T) {
 		_, err := parseSmartDefaults([]byte(`
 smart-defaults {
-    agent-reservation-ttl "1h"
+    agent-reservation-ttl "3h"
     bad-key "x"
 }
 repo-authority default=forgejo {
@@ -62,7 +62,7 @@ repo-authority default=forgejo {
 	t.Run("bad enum", func(t *testing.T) {
 		_, err := parseSmartDefaults([]byte(`
 smart-defaults {
-    agent-reservation-ttl "1h"
+    agent-reservation-ttl "3h"
     agent-workflow default=banana {
     }
 }
@@ -78,7 +78,7 @@ repo-authority default=forgejo {
 	t.Run("missing required block", func(t *testing.T) {
 		_, err := parseSmartDefaults([]byte(`
 smart-defaults {
-    agent-reservation-ttl "1h"
+    agent-reservation-ttl "3h"
 }
 `))
 		if err == nil || !strings.Contains(err.Error(), "missing top-level `repo-authority` block") {
@@ -89,7 +89,7 @@ smart-defaults {
 	t.Run("duplicate workflow repo", func(t *testing.T) {
 		_, err := parseSmartDefaults([]byte(`
 smart-defaults {
-    agent-reservation-ttl "1h"
+    agent-reservation-ttl "3h"
     agent-workflow default=merge-remote-main {
         repo "coily/repo" workflow=pull-request
         repo "coily/repo" workflow=remote-branch-only
@@ -107,7 +107,7 @@ repo-authority default=forgejo {
 	t.Run("placeholder owner", func(t *testing.T) {
 		defs, err := parseSmartDefaults([]byte(`
 smart-defaults {
-    agent-reservation-ttl "1h"
+    agent-reservation-ttl "3h"
     agent-workflow default=merge-remote-main {
     }
 }
@@ -126,7 +126,7 @@ repo-authority default=forgejo {
 	t.Run("malformed repo pattern", func(t *testing.T) {
 		_, err := parseSmartDefaults([]byte(`
 smart-defaults {
-    agent-reservation-ttl "1h"
+    agent-reservation-ttl "3h"
 }
 repo-authority default=forgejo {
     trusted-owner coily
@@ -154,7 +154,7 @@ repo-authority default=forgejo {
 	t.Run("invalid number", func(t *testing.T) {
 		_, err := parseSmartDefaults([]byte(`
 smart-defaults {
-    agent-reservation-ttl "1h"
+    agent-reservation-ttl "3h"
     engineer-container-limit "nope"
 }
 repo-authority default=forgejo {

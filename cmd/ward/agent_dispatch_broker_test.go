@@ -1469,7 +1469,7 @@ func TestRunAgentTaskDirectRoutesThroughBrokerOnReadonlySurface(t *testing.T) {
 
 	bundleDir := t.TempDir()
 	defaultsBody := `defaults {
-    agent-reservation-ttl "1h"
+    agent-reservation-ttl "3h"
     agent-reservation-recheck-max "15s"
     agent-reap-idle "1h"
     agent-reap-max-cpu "5.0"

@@ -7,6 +7,7 @@ import (
 	"os"
 	"sort"
 	"strings"
+	"time"
 
 	"forgejo.coilysiren.me/coilyco-flight-deck/cli-guard/pkg/fleetconfig"
 	"github.com/urfave/cli/v3"
@@ -35,14 +36,16 @@ const (
 // agentRoleDefinition carries the role bundle a startup role resolves from.
 // It includes the shipped preset fields plus the effective fleet overlay.
 type agentRoleDefinition struct {
-	Name           string
-	Tagline        string
-	Capabilities   semanticCapabilitySet
-	Modes          string
-	DefaultHarness string
-	Posture        agentRolePosture
-	Guardfiles     fleetconfig.Guardfiles
-	AgentOverlays  map[string]fleetconfig.RoleAgentOverride
+	Name               string
+	Tagline            string
+	Capabilities       semanticCapabilitySet
+	Modes              string
+	DefaultHarness     string
+	Posture            agentRolePosture
+	ExecutionTimeLimit time.Duration
+	ExecutionLimitSet  bool
+	Guardfiles         fleetconfig.Guardfiles
+	AgentOverlays      map[string]fleetconfig.RoleAgentOverride
 	// MergeAuthority lists the workflow modes this role may merge a PR under
 	// (ward#1067): embedded product data, never a fleet overlay; absent = never merges.
 	MergeAuthority []workflowMode
