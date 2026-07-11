@@ -205,6 +205,7 @@ func TestGooseCompletionOutput(t *testing.T) {
 }
 
 func TestRunContainerBootstrapGooseNoSessionExitsAndReaps(t *testing.T) {
+	preserveScratchEnv(t)
 	prevWorkspaceRoot := workspaceRoot
 	workspaceRoot = t.TempDir()
 	t.Cleanup(func() { workspaceRoot = prevWorkspaceRoot })
@@ -292,6 +293,29 @@ func TestRunContainerBootstrapGooseNoSessionExitsAndReaps(t *testing.T) {
 			t.Fatalf("stderr missing %q:\n%s", want, stderr)
 		}
 	}
+}
+
+func preserveScratchEnv(t *testing.T) {
+	t.Helper()
+	keys := []string{"TMPDIR", "TMP", "TEMP", "GOCACHE", "GOMODCACHE", "GOTMPDIR", "XDG_CACHE_HOME"}
+	saved := make(map[string]*string, len(keys))
+	for _, key := range keys {
+		if value, ok := os.LookupEnv(key); ok {
+			v := value
+			saved[key] = &v
+			continue
+		}
+		saved[key] = nil
+	}
+	t.Cleanup(func() {
+		for _, key := range keys {
+			if value := saved[key]; value != nil {
+				_ = os.Setenv(key, *value)
+				continue
+			}
+			_ = os.Unsetenv(key)
+		}
+	})
 }
 
 func restoreWritableTree(t *testing.T, root string) {
