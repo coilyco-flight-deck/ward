@@ -485,6 +485,9 @@ type forgejoBranch struct {
 	Protected           bool     `json:"protected"`
 	EnableStatusCheck   bool     `json:"enable_status_check"`
 	StatusCheckContexts []string `json:"status_check_contexts"`
+	Commit              struct {
+		ID string `json:"id"`
+	} `json:"commit"`
 }
 
 type forgejoCommitCombinedStatus struct {
@@ -672,6 +675,7 @@ func (c *forgejoClient) getPullRequestContext(ctx context.Context, owner, repo s
 		Title:        strings.TrimSpace(pr.Title),
 		Body:         strings.TrimSpace(pr.Body),
 		URL:          strings.TrimSpace(pr.HTMLURL),
+		HeadSHA:      strings.TrimSpace(pr.Head.SHA),
 		HeadRef:      strings.TrimSpace(pr.Head.Ref),
 		BaseRef:      strings.TrimSpace(pr.Base.Ref),
 		Mergeability: fmt.Sprintf("mergeable=%t", pr.Mergeable),

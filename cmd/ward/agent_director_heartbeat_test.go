@@ -160,6 +160,8 @@ func (f *fakeDirector) decide(_ context.Context, picks []*backlogEntry, avail in
 	return floor
 }
 
+func (f *fakeDirector) dispatchHealth(context.Context, []*backlogEntry, int) {}
+
 func (f *fakeDirector) dispatch(_ context.Context, p *backlogEntry) error {
 	f.dispatched = append(f.dispatched, p.Num)
 	p.State = "dispatched"
@@ -450,6 +452,8 @@ func (d *dispoDirector) dispatch(ctx context.Context, p *backlogEntry) error {
 	}
 	return d.fakeDirector.dispatch(ctx, p)
 }
+
+func (d *dispoDirector) dispatchHealth(context.Context, []*backlogEntry, int) {}
 
 // TestRunDirectorLoopDefersReservationConflict covers ward#352: a reservation conflict
 // leaves the issue queued/eligible, never failed, never dispatched (backend seam).

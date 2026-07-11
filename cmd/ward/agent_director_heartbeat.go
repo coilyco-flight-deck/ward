@@ -64,6 +64,8 @@ type directorBackend interface {
 	// decide is the LLM one-shot: from the ranked picks, budget, ledger state, and the live
 	// forge-health signal it returns which entries to dispatch this tick (<= avail).
 	decide(ctx context.Context, picks []*backlogEntry, avail int, entries []*backlogEntry, health forgeHealth) []*backlogEntry
+	// dispatchHealth surfaces the current pathology snapshot when the backend supports it.
+	dispatchHealth(ctx context.Context, entries []*backlogEntry, maxParallel int)
 	// dispatch launches one chosen issue's engineer run and records the transition.
 	dispatch(ctx context.Context, p *backlogEntry) error
 	// surface hands control to an interactive session on drain; ran=false means none
@@ -120,6 +122,7 @@ func directorHeartbeatTick(ctx context.Context, cfg backlogConfig, be directorBa
 
 	entries := be.entries()
 	queued, inflight, held := backlogLaneCounts(entries)
+	be.dispatchHealth(ctx, entries, cfg.maxParallel)
 
 	// Drain -> surface, rather than exit (ward#351).
 	if queued == 0 && inflight == 0 && held == 0 {
@@ -266,10 +269,11 @@ func isInfraFailureOutcome(o *backlogOutcome) bool {
 // liveDirector is the production directorBackend, driving the real ledger, LLM one-shot,
 // engineer dispatch, and read-only surface session for one director run.
 type liveDirector struct {
-	r     *Runner
-	label string
-	repos []string
-	cfg   backlogConfig
+	r         *Runner
+	label     string
+	repos     []string
+	cfg       backlogConfig
+	healthKey string
 }
 
 func (d *liveDirector) confirmKickoff(context.Context) (bool, error) {
@@ -281,12 +285,15 @@ func (d *liveDirector) poll(ctx context.Context) { d.r.backlogPoll(ctx, d.label,
 // refresh is best-effort in-loop: a transient read error must not kill a heartbeat
 // that is otherwise tracking live containers (the next tick retries).
 func (d *liveDirector) refresh(ctx context.Context) {
-	if err := d.r.backlogRefresh(ctx, d.label, d.repos, d.cfg.limit); err != nil {
+	if err := d.r.backlogRefreshForDirector(ctx, d.label, d.cfg, d.repos); err != nil {
 		fmt.Fprintf(os.Stderr, "%s: note: refresh failed (%v); continuing with the prior ledger\n", d.label, err)
 	}
 }
 
 func (d *liveDirector) mergeEligiblePullRequests(ctx context.Context) {
+	if d.cfg.issueRef != nil {
+		return
+	}
 	if err := d.r.directorMergeEligiblePullRequests(ctx, d.label, d.repos); err != nil {
 		fmt.Fprintf(os.Stderr, "%s: note: PR merge sweep failed (%v); continuing\n", d.label, err)
 	}
@@ -300,6 +307,22 @@ func (d *liveDirector) probeForgeHealth(ctx context.Context, top *backlogEntry) 
 
 func (d *liveDirector) decide(ctx context.Context, picks []*backlogEntry, avail int, entries []*backlogEntry, health forgeHealth) []*backlogEntry {
 	return d.r.directorDecide(ctx, d.label, d.cfg.mode, picks, avail, entries, health)
+}
+
+func (d *liveDirector) dispatchHealth(ctx context.Context, entries []*backlogEntry, maxParallel int) {
+	_ = entries
+	report := d.r.dispatchHealthSnapshot(ctx, d.repos, maxParallel)
+	if !report.alertable() {
+		d.healthKey = ""
+		return
+	}
+	key := report.alertKey()
+	if key == d.healthKey {
+		return
+	}
+	d.healthKey = key
+	fmt.Fprintf(os.Stderr, "WARD-DISPATCH-HEALTH: %s\n", report.summaryLine())
+	_ = notifyDispatchHealth(ctx, report)
 }
 
 func (d *liveDirector) dispatch(ctx context.Context, p *backlogEntry) error {

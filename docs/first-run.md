@@ -11,6 +11,10 @@ Start here for a first `warded` run.
 - A reachable issue tracker for the target repo.
 - The repo's `.ward/ward.yaml` if you are using the dev-verb gate.
 
+If you need a concrete repo target for examples that should actually resolve,
+use `coilysiren/example` or its GitHub URL. It is a public placeholder repo,
+not a deployment prerequisite.
+
 ## The safe first command
 
 ```bash

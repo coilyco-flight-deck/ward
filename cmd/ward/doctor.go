@@ -3,9 +3,7 @@ package main
 import (
 	"context"
 	"fmt"
-	"io/fs"
 	"os"
-	"path"
 	"strings"
 
 	"forgejo.coilysiren.me/coilyco-flight-deck/cli-guard/cli/execverb"
@@ -216,15 +214,7 @@ func validateFleetRolesOperational(fleet fleetconfig.Fleet) error {
 }
 
 func validateForgejoOpsOperational(src configSource) error {
-	forgejoGuardfile, err := src.forgejoGuardfilePath()
-	if err != nil {
-		return err
-	}
-	gfBytes, err := fs.ReadFile(src.fsys, forgejoGuardfile)
-	if err != nil {
-		return fmt.Errorf("read ops guardfile %s: %w", forgejoGuardfile, err)
-	}
-	gf, err := guardfile.Parse(gfBytes)
+	gf, _, err := loadForgejoGuardfileFrom(src)
 	if err != nil {
 		return err
 	}
@@ -238,51 +228,28 @@ func validateForgejoOpsOperational(src configSource) error {
 }
 
 func validateExecAssetsOperational(src configSource) error {
-	entries, err := fs.ReadDir(src.fsys, src.execDir)
+	files, err := loadBundleKDLFiles(src)
 	if err != nil {
 		return fmt.Errorf("read exec guardfiles: %w", err)
 	}
-	for _, name := range execGuardfileNames(entries, src.execMixedDialects) {
-		if err := validateExecAssetOperational(src, name); err != nil {
+	for _, file := range files {
+		if src.execMixedDialects && !isExecDialectGuardfile(file.src) {
+			continue
+		}
+		if err := validateExecAssetOperational(file); err != nil {
 			return err
 		}
 	}
 	return mountWardKdlExecFrom(setupCompileRoot(), src, leanRunner())
 }
 
-func execGuardfileNames(entries []fs.DirEntry, mixedDialects bool) []string {
-	names := make([]string, 0, len(entries))
-	for _, e := range entries {
-		if e.IsDir() || !execGuardfileNameSelected(e.Name(), mixedDialects) {
-			continue
-		}
-		names = append(names, e.Name())
-	}
-	return names
-}
-
-func execGuardfileNameSelected(name string, mixedDialects bool) bool {
-	if !mixedDialects {
-		return true
-	}
-	ok, _ := path.Match(bundleExecGuardfileGlob, name)
-	return ok
-}
-
-func validateExecAssetOperational(src configSource, name string) error {
-	gfBytes, err := fs.ReadFile(src.fsys, path.Join(src.execDir, name))
+func validateExecAssetOperational(file bundleKDLFile) error {
+	gf, err := execverb.Parse(file.src)
 	if err != nil {
-		return fmt.Errorf("read exec guardfile %s: %w", name, err)
-	}
-	if src.execMixedDialects && !isExecDialectGuardfile(gfBytes) {
-		return nil
-	}
-	gf, err := execverb.Parse(gfBytes)
-	if err != nil {
-		return fmt.Errorf("parse exec guardfile %s: %w", name, err)
+		return fmt.Errorf("parse exec guardfile %s: %w", file.path, err)
 	}
 	if err := validateExecGuardfileOperational(gf); err != nil {
-		return fmt.Errorf("%s: %w", name, err)
+		return fmt.Errorf("%s: %w", file.path, err)
 	}
 	return nil
 }

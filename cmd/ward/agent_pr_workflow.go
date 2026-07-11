@@ -89,7 +89,7 @@ func workflowModesJoin(modes []workflowMode) string {
 }
 
 // prWorkflowMarkerMode reads the workflow mode from a PR's body marker; no
-// marker means the plain pull-requests lane (only and-merge PRs are stamped).
+// marker means the plain pull-request lane (only and-merge PRs are stamped).
 func prWorkflowMarkerMode(body string) workflowMode {
 	if marker, ok := directorPRWorkflowMarker(body); ok {
 		return canonicalWorkflow(workflowMode(marker))
@@ -125,6 +125,22 @@ func prWorkflowStatusReport(ctx context.Context, cl *forgejoClient, owner, repo 
 	}
 	if len(combined.Statuses) == 0 {
 		b.WriteString("  (no status contexts reported yet)\n")
+	}
+	if strings.ToLower(strings.TrimSpace(combined.State)) != "success" {
+		prCtx := agentPullRequestContext{
+			State:        strings.TrimSpace(pr.State),
+			Title:        strings.TrimSpace(pr.Title),
+			Body:         strings.TrimSpace(pr.Body),
+			URL:          strings.TrimSpace(pr.HTMLURL),
+			HeadSHA:      head,
+			HeadRef:      strings.TrimSpace(pr.Head.Ref),
+			BaseRef:      strings.TrimSpace(pr.Base.Ref),
+			Mergeability: fmt.Sprintf("mergeable=%t", pr.Mergeable),
+		}
+		if assessment, aerr := classifyForgejoPRRepair(ctx, cl, owner, repo, prCtx); aerr == nil && assessment.Bucket != "" {
+			fmt.Fprintf(&b, "  repair bucket: %s\n", assessment.Bucket)
+			fmt.Fprintf(&b, "  repair note: %s\n", assessment.Note)
+		}
 	}
 	// The required-context set is advisory here: the merge tool re-checks it
 	// fail-closed. A branch read failure degrades to a note, not an error.
@@ -221,8 +237,8 @@ runtime KDL specgen surface, so they keep working with the '.ward/' guardfile
 bundle absent or rolled back (infrastructure#538).
 
 Merge authority is keyed to the workflow-mode model in the embedded role
-catalog: the director merges under pull-requests and pull-requests-and-merge,
-the engineer self-merges under pull-requests-and-merge only, and patch-only
+catalog: the director merges under pull-request and pull-request-and-merge,
+the engineer self-merges under pull-request-and-merge only, and remote-branch-only
 withholds merge from everyone. Status and runs are read verbs; rerun needs an
 engineering or project-management role.
 

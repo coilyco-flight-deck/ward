@@ -596,6 +596,30 @@ func TestWardEnvContainerName(t *testing.T) {
 	}
 }
 
+// TestWardEnvCorrelationEnvelope asserts the stable run metadata rides the
+// container env so launchers and request headers can correlate the run.
+func TestWardEnvCorrelationEnvelope(t *testing.T) {
+	p := sampleUpPlan()
+	env := p.wardEnv()
+	for _, want := range []struct {
+		key, value string
+	}{
+		{"WARD_RUN_ID", p.Name},
+		{"WARD_HARNESS", string(p.Mode)},
+		{"WARD_ISSUE_REF", p.Repo.slug() + "#140"},
+		{"WARD_CONTEXT_LEVEL", "2"},
+		{"WARD_VERSION", "v0.16.0"},
+		{"WARD_TARGET_REPO", p.Repo.slug()},
+	} {
+		if got := env[want.key]; got != want.value {
+			t.Errorf("%s = %q, want %q", want.key, got, want.value)
+		}
+	}
+	if got := env["WARD_WORKFLOW"]; got != "" {
+		t.Errorf("WARD_WORKFLOW = %q, want it absent for the merge-remote-main default", got)
+	}
+}
+
 // TestWardEnvContainerMarker asserts every run exports the WARD_CONTAINER=1 fence
 // marker host-only fleet scripts key off (ward#114).
 func TestWardEnvContainerMarker(t *testing.T) {

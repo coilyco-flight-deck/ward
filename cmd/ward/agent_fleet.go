@@ -45,7 +45,7 @@ var frontierAgentDefaults = map[string]fleetconfig.Agent{
 		Stream:       "none",
 		Auth:         "none",
 		Model:        "qwen3-coder:30b",
-		Endpoint:     "http://localhost:11434/v1",
+		Endpoint:     "http://host.docker.internal:8082/v1",
 		Argv: fleetconfig.Argv{
 			Headless:    []string{"opencode", "run"},
 			Interactive: []string{"opencode"},

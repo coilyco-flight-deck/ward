@@ -76,7 +76,7 @@ func TestDispatchBrokerValidatesNarrowAPI(t *testing.T) {
 	if err := validateDispatchBrokerRequest(cfg); err != nil {
 		t.Errorf("valid engineer --config dispatch refused: %v", err)
 	}
-	wf := dispatchBrokerRequest{Role: "engineer", Argv: []string{"engineer", "coilyco-flight-deck/ward#1", "--workflow", "direct-main", "--details", "repair after PR #357"}}
+	wf := dispatchBrokerRequest{Role: "engineer", Argv: []string{"engineer", "coilyco-flight-deck/ward#1", "--workflow", "merge-remote-main", "--details", "repair after PR #357"}}
 	if err := validateDispatchBrokerRequest(wf); err != nil {
 		t.Errorf("valid engineer --workflow/--details dispatch refused: %v", err)
 	}
@@ -498,7 +498,7 @@ func TestBrokerEngineerArgvForwardsApprovedFlags(t *testing.T) {
 		"--image", "img", "--tag", "t1", "--ward-version", "v1",
 		"--repo", "coilyco-flight-deck/cli-guard",
 		"--config", "agent.claude.model=sonnet",
-		"--workflow", "direct-main", "--details", "repair after PR #357",
+		"--workflow", "merge-remote-main", "--details", "repair after PR #357",
 		"--aws", "--tailnet", "--tailnet-mode", "sidecar", "--force", "--skip-preflight",
 	})
 	got := brokerEngineerArgv(cmd, modeClaude, agentIssueRef{Owner: "coilyco-flight-deck", Repo: "ward", Number: 42})
@@ -509,7 +509,7 @@ func TestBrokerEngineerArgvForwardsApprovedFlags(t *testing.T) {
 		{"--ward-version", "v1"},
 		{"--repo", "coilyco-flight-deck/cli-guard"},
 		{"--config", "agent.claude.model=sonnet"},
-		{"--workflow", "direct-main"},
+		{"--workflow", "merge-remote-main"},
 		{"--details", "repair after PR #357"},
 		{"--tailnet-mode", "sidecar"},
 	} {
@@ -603,7 +603,7 @@ func TestForwardAgentDispatchToHostBrokerSendsCanonicalRequest(t *testing.T) {
 	t.Setenv("WARD_READONLY", "1")
 	t.Setenv("WARD_CONTAINER_NAME", "director-codex-host")
 	cmd := parseCommandForTest(t, agentEngineerFlags(), []string{
-		"engineer", "coilyco-flight-deck/ward#378", "--harness", "claude", "--workflow", "direct-main",
+		"engineer", "coilyco-flight-deck/ward#378", "--harness", "claude", "--workflow", "merge-remote-main",
 		"--details", "repair after PR #357", "--skip-preflight", "--skip-review",
 	})
 	forwarded, err := (&Runner{}).maybeForwardAgentDispatchToHostBroker(t.Context(), cmd, "engineer", modeClaude)
@@ -620,7 +620,7 @@ func TestForwardAgentDispatchToHostBrokerSendsCanonicalRequest(t *testing.T) {
 	if req.Token != "nonce-123" {
 		t.Errorf("forwarded token = %q, want the per-launch nonce", req.Token)
 	}
-	want := []string{"engineer", "coilyco-flight-deck/ward#378", "--harness", "claude", "--workflow", "direct-main", "--details", "repair after PR #357", "--skip-preflight", "--skip-review"}
+	want := []string{"engineer", "coilyco-flight-deck/ward#378", "--harness", "claude", "--workflow", "merge-remote-main", "--details", "repair after PR #357", "--skip-preflight", "--skip-review"}
 	if !reflect.DeepEqual(req.Argv, want) {
 		t.Errorf("forwarded argv = %v, want %v", req.Argv, want)
 	}
@@ -908,8 +908,8 @@ func TestRunAgentAdvisorFreeformStaysLocal(t *testing.T) {
 	t.Setenv(envDispatchBrokerToken, "nonce-freeform")
 	t.Setenv("WARD_READONLY", "1")
 	t.Setenv(wardConfigRefEnv, "file://"+writeBundleFixture(t))
-	t.Setenv("WARD_TARGET_OWNER", "example-owner")
-	t.Setenv("WARD_TARGET_REPO", "example-owner/ward")
+	t.Setenv("WARD_TARGET_OWNER", "coilysiren")
+	t.Setenv("WARD_TARGET_REPO", "coilysiren/example")
 	stubContainerBootstrapStage(t)
 
 	origLaunch := dispatchBrokerLaunch
@@ -921,7 +921,7 @@ func TestRunAgentAdvisorFreeformStaysLocal(t *testing.T) {
 	}
 
 	cmd := parseCommandForTest(t, agentAdvisorFlags(), []string{
-		"advisor", "how is the audit log written?", "--repo", "example-owner/ward", "--print",
+		"advisor", "how is the audit log written?", "--repo", "coilysiren/example", "--print",
 	})
 	if err := (&Runner{}).runAgentAdvisor(t.Context(), cmd, modeCodex); err != nil {
 		t.Fatalf("runAgentAdvisor freeform path: %v", err)
@@ -1280,7 +1280,7 @@ func TestRunHostDispatchBrokerRequestReturnsStructuredLaunchFailure(t *testing.T
 	}}}
 	req := dispatchBrokerRequest{
 		Role: "engineer",
-		Argv: []string{"engineer", "coilyco-flight-deck/ward#786", "--harness", "codex"},
+		Argv: []string{"engineer", "coilyco-flight-deck/ward#786", "--harness", "codex", "--pr"},
 	}
 	logPath, err := r.startHostDispatchBrokerRequest(t.Context(), req)
 	if err == nil {
@@ -1469,11 +1469,12 @@ func TestRunAgentTaskDirectRoutesThroughBrokerOnReadonlySurface(t *testing.T) {
 
 	bundleDir := t.TempDir()
 	defaultsBody := `defaults {
-    agent-reservation-ttl "1h"
+    agent-reservation-ttl "3h"
     agent-reservation-recheck-max "15s"
     agent-reap-idle "1h"
     agent-reap-max-cpu "5.0"
     engineer-container-limit "12"
+    engineer-open-pr-branch-limit "6"
     director-max-parallel "10"
     director-limit "50"
     director-poll-interval "30s"
@@ -1482,21 +1483,21 @@ func TestRunAgentTaskDirectRoutesThroughBrokerOnReadonlySurface(t *testing.T) {
     container-assets-ttl "1h"
     container-read-only-extra-repo-ttl "24h"
     container-reap-keep "10"
-    agent-workflow default=direct-main {
+    agent-workflow default=merge-remote-main {
     }
 }
 `
 	reposBody := `repos {
     repo-authority default=forgejo {
-        trusted-owner example-owner
+        trusted-owner coilysiren
         trusted-owner coilyco-flight-deck
-        repo "example-owner/*" forge=github
+        repo "coilysiren/*" forge=github
     }
 }`
-	if err := os.WriteFile(filepath.Join(bundleDir, bundleDefaultsKDLPath), []byte(defaultsBody), 0o644); err != nil {
+	if err := os.WriteFile(filepath.Join(bundleDir, bundleFixtureDefaultsPath), []byte(defaultsBody), 0o644); err != nil {
 		t.Fatalf("write bundle defaults: %v", err)
 	}
-	if err := os.WriteFile(filepath.Join(bundleDir, bundleReposKDLPath), []byte(reposBody), 0o644); err != nil {
+	if err := os.WriteFile(filepath.Join(bundleDir, bundleFixtureReposPath), []byte(reposBody), 0o644); err != nil {
 		t.Fatalf("write bundle repos: %v", err)
 	}
 	t.Setenv(wardConfigRefEnv, "file://"+bundleDir)
@@ -1857,7 +1858,7 @@ func TestStartHostDispatchBrokerRequestWaitsForVisibleEngineer(t *testing.T) {
 
 	req := dispatchBrokerRequest{
 		Role:      "engineer",
-		Argv:      []string{"engineer", "coilyco-flight-deck/ward#1087", "--harness", "codex"},
+		Argv:      []string{"engineer", "coilyco-flight-deck/ward#1087", "--harness", "codex", "--pr"},
 		Requester: "director-codex-host",
 		Token:     "nonce-visible",
 	}
@@ -1891,7 +1892,7 @@ func TestStartHostDispatchBrokerRequestFailsWhenEngineerNeverBecomesVisible(t *t
 
 	req := dispatchBrokerRequest{
 		Role:      "engineer",
-		Argv:      []string{"engineer", "coilyco-flight-deck/ward#1087", "--harness", "codex"},
+		Argv:      []string{"engineer", "coilyco-flight-deck/ward#1087", "--harness", "codex", "--pr"},
 		Requester: "director-codex-host",
 		Token:     "nonce-missing",
 	}
@@ -1951,7 +1952,7 @@ func TestStartHostDispatchBrokerRequestDoesNotTrustCrossOwnerNameCollisions(t *t
 
 	req := dispatchBrokerRequest{
 		Role:      "engineer",
-		Argv:      []string{"engineer", "coilysiren/website#66", "--harness", "codex"},
+		Argv:      []string{"engineer", "coilysiren/website#66", "--harness", "codex", "--pr"},
 		Requester: "director-codex-host",
 		Token:     "nonce-collision",
 	}
@@ -1970,11 +1971,11 @@ func TestStartHostDispatchBrokerRequestDoesNotTrustCrossOwnerNameCollisions(t *t
 func TestRedactDispatchBrokerArgvKeepsWorkflowAndDetailsButScrubsSecrets(t *testing.T) {
 	got := redactDispatchBrokerArgv([]string{
 		"engineer", "coilyco-flight-deck/ward#1",
-		"--workflow", "direct-main",
+		"--workflow", "merge-remote-main",
 		"--details", "repair after PR #357",
 		"--config", "agent.claude.api-key=ghp_aaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaa",
 	})
-	for _, want := range []string{"--workflow direct-main", "--details repair after PR #357"} {
+	for _, want := range []string{"--workflow merge-remote-main", "--details repair after PR #357"} {
 		if !strings.Contains(got, want) {
 			t.Errorf("redacted argv %q missing %q", got, want)
 		}

@@ -473,7 +473,7 @@ type upPlan struct {
 	// TSSidecar attaches the run to the shared ward-tailnet network so it reaches
 	// the standing mac-proxy box (--ts-sidecar, ward#349). docs/agent-ts-sidecar.md.
 	TSSidecar bool
-	// Workflow is the run's landing policy (--workflow, ward#508): non-direct-main
+	// Workflow is the run's landing policy (--workflow, ward#508): non-merge-remote-main
 	// runs export WARD_WORKFLOW + a ward.workflow label. See docs/agent-workflow.md.
 	Workflow workflowMode
 	// SkipPreflight mirrors --skip-preflight into the container launch gate so host
@@ -628,6 +628,35 @@ func parseConfigOverrides(entries []string) (map[string]string, error) {
 	return out, nil
 }
 
+// correlationEnv renders the stable, non-secret run envelope that the agent
+// process and any request-header adapter can see.
+func (p upPlan) correlationEnv() map[string]string {
+	env := map[string]string{
+		"WARD_RUN_ID":         p.Name,
+		"WARD_CONTAINER_NAME": p.Name,
+		"WARD_HARNESS":        string(p.Mode),
+		"WARD_TARGET_REPO":    p.Repo.slug(),
+		"WARD_TARGET_OWNER":   p.Repo.Owner,
+		"WARD_TARGET_NAME":    p.Repo.Name,
+		"WARD_CONTEXT_LEVEL":  fmt.Sprintf("%d", lookupAgent(p.Mode).Record().ContextLevel),
+		"WARD_VERSION":        p.WardVersion,
+	}
+	if p.ConfigRole != "" {
+		env["WARD_ROLE"] = p.ConfigRole
+	} else if p.Role != "" {
+		env["WARD_ROLE"] = p.Role
+	}
+	if p.Repo.Owner != "" && p.Repo.Name != "" {
+		if p.Issue > 0 {
+			env["WARD_ISSUE_REF"] = fmt.Sprintf("%s#%d", p.Repo.slug(), p.Issue)
+		}
+	}
+	if threadID := harnessThreadID(p.Mode); threadID != "" {
+		env["WARD_THREAD_ID"] = threadID
+	}
+	return env
+}
+
 // wardEnv is the non-secret WARD_* config the entrypoint reads. Everything
 // here is safe to print and to record; the token never appears.
 func (p upPlan) wardEnv() map[string]string { //nolint:gocyclo,cyclop
@@ -643,8 +672,10 @@ func (p upPlan) wardEnv() map[string]string { //nolint:gocyclo,cyclop
 		"WARD_TARGET_REPO":    p.Repo.slug(),
 		"WARD_TARGET_OWNER":   p.Repo.Owner,
 		"WARD_TARGET_NAME":    p.Repo.Name,
+		"WARD_RUN_ID":         p.Name,
 		"WARD_FORGEJO_BASE":   p.ForgejoBase,
 		"WARD_MODE":           string(p.Mode),
+		"WARD_HARNESS":        string(p.Mode),
 		"WARD_CONTEXT_LEVEL":  fmt.Sprintf("%d", rec.ContextLevel),
 		"WARD_AGENT":          rec.Binary,
 		"WARD_GITCACHE":       containerGitcacheMnt,
@@ -673,6 +704,7 @@ func (p upPlan) wardEnv() map[string]string { //nolint:gocyclo,cyclop
 	}
 	if p.Issue != 0 {
 		env["WARD_TARGET_ISSUE"] = fmt.Sprintf("%d", p.Issue)
+		env["WARD_ISSUE_REF"] = fmt.Sprintf("%s#%d", p.Repo.slug(), p.Issue)
 	}
 	if p.WardFromSource {
 		env["WARD_FROM_SOURCE"] = containerWardSrcMount
@@ -719,10 +751,13 @@ func (p upPlan) wardEnv() map[string]string { //nolint:gocyclo,cyclop
 		env["WARD_FORGE"] = p.Forge.String()
 		env["WARD_CLONE_BASE"] = p.Forge.baseURL()
 	}
-	// A non-default landing policy rides in so the in-container reaper can refuse to
-	// force-push main (ward#508); direct-main omits the key, keeping today's env intact.
+	// A non-default landing policy rides in so the reaper can refuse to
+	// force-push main (ward#508); merge-remote-main omits the key.
 	if !p.Workflow.landsOnMain() {
 		env["WARD_WORKFLOW"] = string(p.Workflow.orDefault())
+	}
+	for k, v := range p.correlationEnv() {
+		env[k] = v
 	}
 	if p.SkipPreflight {
 		env["WARD_SMOKE_TEST_SKIP"] = "1"
@@ -759,7 +794,7 @@ func (p upPlan) labels() []string {
 		out = append(out, fmt.Sprintf("%s=%d", labelIssue, p.Issue))
 	}
 	// A non-default landing policy is stamped so poll/reaper/sweep can see it
-	// without reading the container env (ward#508); direct-main stays unlabeled.
+	// without reading the container env (ward#508); merge-remote-main stays unlabeled.
 	if !p.Workflow.landsOnMain() {
 		out = append(out, labelWorkflow+"="+string(p.Workflow.orDefault()))
 	}

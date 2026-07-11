@@ -6,6 +6,8 @@
 - the registry keeps the launch code from hard-coding per-agent branches.
 - the `Agent` contract includes `Install`, so bootstrap can prove the harness
   is ready before launch or fail loudly.
+- the inert manifest can also carry capability bits, such as whether the harness
+  can render a live status line.
 - the docs page exists so the seam stays named.
 
 ## See also

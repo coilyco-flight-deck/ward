@@ -2,6 +2,8 @@ package main
 
 import (
 	"encoding/json"
+	"os"
+	"path/filepath"
 	"strings"
 	"testing"
 	"time"
@@ -49,6 +51,9 @@ func TestAgentRunningEngineerFromInspectIncludesReservation(t *testing.T) {
 	if row.Container != "engineer-codex-factory-game-v3-18" {
 		t.Fatalf("container = %q", row.Container)
 	}
+	if row.Role != roleEngineer {
+		t.Fatalf("role = %q", row.Role)
+	}
 	if row.Ref != "coilyco-gaming/factory-game-v3#18" {
 		t.Fatalf("ref = %q", row.Ref)
 	}
@@ -69,6 +74,12 @@ func TestAgentRunningEngineerFromInspectIncludesReservation(t *testing.T) {
 	}
 	if row.Status != "running" {
 		t.Fatalf("status = %q", row.Status)
+	}
+	if row.ExecutionLimit != 90*time.Minute {
+		t.Fatalf("execution limit = %s, want 90m", row.ExecutionLimit)
+	}
+	if row.Phase != agentLaunchPhaseRunning {
+		t.Fatalf("phase = %q", row.Phase)
 	}
 	if row.ReservedAt.IsZero() || row.StartedAt.IsZero() {
 		t.Fatalf("expected reservation and start timestamps, got reserved=%v started=%v", row.ReservedAt, row.StartedAt)
@@ -99,6 +110,12 @@ func TestAgentRunningEngineerFromInspectIncludesReservation(t *testing.T) {
 	if payload.AtCapacity == nil || *payload.AtCapacity {
 		t.Fatalf("at_capacity = %v, want false", payload.AtCapacity)
 	}
+	if len(payload.Engineers) != 1 || payload.Engineers[0].ExecutionLimit != "1h30m0s" {
+		t.Fatalf("engineer budget JSON = %+v", payload.Engineers)
+	}
+	if !strings.Contains(payload.Engineers[0].BudgetRemaining, "remaining of 90m limit") {
+		t.Fatalf("engineer budget remaining = %q", payload.Engineers[0].BudgetRemaining)
+	}
 	jbuf, err := json.MarshalIndent(payload, "", "  ")
 	if err != nil {
 		t.Fatalf("marshal payload json: %v", err)
@@ -108,6 +125,9 @@ func TestAgentRunningEngineerFromInspectIncludesReservation(t *testing.T) {
 		`"limit": 12`,
 		`"remaining": 11`,
 		`"at_capacity": false`,
+		`"execution_limit": "1h30m0s"`,
+		`"budget_remaining": "73m remaining of 90m limit"`,
+		`"phase": "container running"`,
 	} {
 		if !strings.Contains(string(jbuf), want) {
 			t.Fatalf("payload json missing %q:\n%s", want, jbuf)
@@ -116,15 +136,121 @@ func TestAgentRunningEngineerFromInspectIncludesReservation(t *testing.T) {
 
 	human := renderAgentListHuman([]agentRunningEngineer{row})
 	for _, want := range []string{
-		"ward agent: running engineer containers (1/12, 11 slots free)",
+		"ward agent: active engineer launches (running + reserved) (1/12, 11 slots free)",
 		"coilyco-gaming/factory-game-v3#18",
 		"kais-macbook-pro-2.local",
 		"issue-18",
 		"running",
+		"budget:    73m remaining of 90m limit",
+		"phase:     container running",
+		"container running",
 	} {
 		if !strings.Contains(human, want) {
 			t.Fatalf("human output missing %q:\n%s", want, human)
 		}
+	}
+}
+
+func TestAgentListIncludesReservedLaunchPhase(t *testing.T) {
+	t.Setenv("HOME", t.TempDir())
+	now := time.Now().UTC()
+	ref := agentIssueRef{Owner: "coilyco-flight-deck", Repo: "ward", Number: 1033}
+	resPath, err := agentReservationPath(ref)
+	if err != nil {
+		t.Fatalf("agentReservationPath: %v", err)
+	}
+	if err := writeAgentReservation(resPath, agentReservation{
+		Owner:     ref.Owner,
+		Repo:      ref.Repo,
+		Number:    ref.Number,
+		Mode:      string(modeCodex),
+		Container: "engineer-codex-ward-1033",
+		Branch:    "issue-1033",
+		Host:      "director-box",
+		At:        now.Add(-2 * time.Minute),
+	}); err != nil {
+		t.Fatalf("writeAgentReservation: %v", err)
+	}
+	dispatchDir := filepath.Join(agentLogsDir(), dispatchLogsSubdir)
+	if err := os.MkdirAll(dispatchDir, 0o755); err != nil {
+		t.Fatalf("MkdirAll dispatch logs: %v", err)
+	}
+	logPath := filepath.Join(dispatchDir, "20260710T101500Z-director-box-coilyco-flight-deck-ward-1033.log")
+	if err := os.WriteFile(logPath, []byte(
+		"ward dispatch broker: director-box requested `ward agent engineer coilyco-flight-deck/ward#1033 --harness codex`\n"+
+			"ward dispatch broker: launch plan ready for coilyco-flight-deck/ward#1033 (container=engineer-codex-ward-1033 branch=issue-1033 readOnly=true tailnet=false/false)\n"+
+			"ward dispatch broker: wrote launch env file for coilyco-flight-deck/ward#1033\n"), 0o644); err != nil {
+		t.Fatalf("write dispatch log: %v", err)
+	}
+
+	r := fakeEngineerVisibilityDockerRunner(t, "", 0)
+	rows, err := r.agentListRows(t.Context())
+	if err != nil {
+		t.Fatalf("agentListRows: %v", err)
+	}
+	if len(rows) != 1 {
+		t.Fatalf("rows = %d, want 1", len(rows))
+	}
+	row := rows[0]
+	if row.Ref != ref.String() {
+		t.Fatalf("ref = %q, want %q", row.Ref, ref.String())
+	}
+	if row.Phase != agentLaunchPhaseStarting {
+		t.Fatalf("phase = %q, want %q", row.Phase, agentLaunchPhaseStarting)
+	}
+	if row.Status != "starting" {
+		t.Fatalf("status = %q, want starting", row.Status)
+	}
+	if row.ReservedAt.IsZero() || !row.ReservedAt.Equal(now.Add(-2*time.Minute)) {
+		t.Fatalf("reserved_at = %v, want %v", row.ReservedAt, now.Add(-2*time.Minute))
+	}
+	human := renderAgentListHuman(rows)
+	for _, want := range []string{
+		"ward agent: active engineer launches (running + reserved) (1/12, 11 slots free)",
+		ref.String(),
+		"phase:     container starting",
+		"status:    starting",
+	} {
+		if !strings.Contains(human, want) {
+			t.Fatalf("reserved-launch human output missing %q:\n%s", want, human)
+		}
+	}
+}
+
+func TestDispatchLaunchPhaseFromLog(t *testing.T) {
+	cases := []struct {
+		name string
+		body string
+		want string
+	}{
+		{
+			name: "accepted",
+			body: "ward dispatch broker: director requested `ward agent engineer coilyco-flight-deck/ward#1 --harness codex`\n",
+			want: agentLaunchPhaseQueued,
+		},
+		{
+			name: "preflight",
+			body: "ward dispatch broker: director requested `ward agent engineer coilyco-flight-deck/ward#1 --harness codex`\nward agent: preflight start for coilyco-flight-deck/ward#1 via codex\n",
+			want: agentLaunchPhasePreflight,
+		},
+		{
+			name: "starting",
+			body: "ward dispatch broker: director requested `ward agent engineer coilyco-flight-deck/ward#1 --harness codex`\nward agent: wrote launch env file for coilyco-flight-deck/ward#1\n",
+			want: agentLaunchPhaseStarting,
+		},
+		{
+			name: "failed",
+			body: "ward dispatch broker: director requested `ward agent engineer coilyco-flight-deck/ward#1 --harness codex`\nWARD-DISPATCH: failed ❌\n",
+			want: agentLaunchPhaseFailed,
+		},
+	}
+	for _, tc := range cases {
+		t.Run(tc.name, func(t *testing.T) {
+			got, _, ok := dispatchLaunchPhaseFromLog(tc.body)
+			if !ok || got != tc.want {
+				t.Fatalf("dispatchLaunchPhaseFromLog = %q (ok=%v), want %q", got, ok, tc.want)
+			}
+		})
 	}
 }
 

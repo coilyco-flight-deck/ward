@@ -31,6 +31,8 @@ type Manifest struct {
 	ReasoningEffort string
 	// Verbosity is the default verbosity knob; empty when none.
 	Verbosity string
+	// StatusLine marks a harness that can render a live status-line command.
+	StatusLine bool
 }
 
 // Argv holds the argv prefixes for the three ways ward invokes an agent; the
@@ -46,4 +48,19 @@ type Argv struct {
 type EnvLine struct {
 	Key   string
 	Value string
+}
+
+// Correlation captures the stable, non-secret run metadata ward can share with
+// harnesses and downstream request headers.
+type Correlation struct {
+	RunID         string
+	ContainerName string
+	Role          string
+	Harness       string
+	TargetRepo    string
+	IssueRef      string
+	Workflow      string
+	ContextLevel  string
+	Version       string
+	ThreadID      string
 }
