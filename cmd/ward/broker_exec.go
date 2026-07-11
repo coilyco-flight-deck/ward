@@ -5,6 +5,7 @@ import (
 	"context"
 	"encoding/json"
 	"fmt"
+	"net/http"
 	"strconv"
 	"strings"
 
@@ -57,13 +58,28 @@ func (e *wardKdlWriteExecutor) EditIssue(ctx context.Context, target broker.Targ
 	if state != "" {
 		payload["state"] = state
 	}
-	out, err := e.client().doJSON(ctx, "PATCH",
-		[]string{"repos", target.Owner, target.Repo, "issues", strconv.Itoa(target.Number)}, nil,
-		payload, true, nil)
+	segments, err := e.editTargetSegments(ctx, target)
+	if err != nil {
+		return broker.Result{}, err
+	}
+	out, err := e.client().doJSON(ctx, http.MethodPatch, segments, nil, payload, true, nil)
 	if err != nil {
 		return broker.Result{}, fmt.Errorf("broker: edit issue %s/%s#%d: %w", target.Owner, target.Repo, target.Number, err)
 	}
 	return parseIssueResult(out), nil
+}
+
+// editTargetSegments resolves whether the target number is an issue or a PR so
+// the broker can reach Forgejo's native endpoint for both without changing the wire op.
+func (e *wardKdlWriteExecutor) editTargetSegments(ctx context.Context, target broker.Target) ([]string, error) {
+	var raw forgejoIssueRaw
+	if _, err := e.client().doJSON(ctx, http.MethodGet, []string{"repos", target.Owner, target.Repo, "issues", strconv.Itoa(target.Number)}, nil, nil, true, &raw); err != nil {
+		return nil, fmt.Errorf("broker: detect issue type %s/%s#%d: %w", target.Owner, target.Repo, target.Number, err)
+	}
+	if raw.PullRequest != nil {
+		return []string{"repos", target.Owner, target.Repo, "pulls", strconv.Itoa(target.Number)}, nil
+	}
+	return []string{"repos", target.Owner, target.Repo, "issues", strconv.Itoa(target.Number)}, nil
 }
 
 // CommentIssue posts body via Forgejo's issue-comment endpoint.

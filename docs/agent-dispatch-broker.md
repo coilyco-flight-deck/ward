@@ -24,3 +24,4 @@ when the run is read-only or otherwise brokered.
 
 - [agent-director.md](agent-director.md) - the read-only director lane.
 - [agent-ops.md](agent-ops.md) - the brokered operational surfaces.
+- [agent-pr-workflow.md](agent-pr-workflow.md) - the native PR-workflow actions the broker serves.

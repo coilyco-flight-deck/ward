@@ -485,6 +485,9 @@ type forgejoBranch struct {
 	Protected           bool     `json:"protected"`
 	EnableStatusCheck   bool     `json:"enable_status_check"`
 	StatusCheckContexts []string `json:"status_check_contexts"`
+	Commit              struct {
+		ID string `json:"id"`
+	} `json:"commit"`
 }
 
 type forgejoCommitCombinedStatus struct {
@@ -495,10 +498,20 @@ type forgejoCommitCombinedStatus struct {
 }
 
 type forgejoCommitStatus struct {
-	Context     string `json:"context"`
-	State       string `json:"state"`
+	Context string `json:"context"`
+	State   string `json:"state"`
+	// Status is where live Forgejo (gitea-compat) marshals the per-context
+	// state; effectiveState prefers whichever field the forge populated.
+	Status      string `json:"status"`
 	Description string `json:"description"`
 	TargetURL   string `json:"target_url"`
+}
+
+func (s forgejoCommitStatus) effectiveState() string {
+	if v := strings.TrimSpace(s.State); v != "" {
+		return v
+	}
+	return strings.TrimSpace(s.Status)
 }
 
 func (c *forgejoClient) getBranch(ctx context.Context, owner, repo, name string) (*forgejoBranch, error) {
@@ -652,6 +665,27 @@ func (c *forgejoClient) getPullRequestOnce(ctx context.Context, client *http.Cli
 	return &pr, false, nil
 }
 
+func (c *forgejoClient) getPullRequestContext(ctx context.Context, owner, repo string, index int) (*agentPullRequestContext, error) {
+	pr, err := c.getPullRequest(ctx, owner, repo, index)
+	if err != nil {
+		return nil, err
+	}
+	return &agentPullRequestContext{
+		State:        strings.TrimSpace(pr.State),
+		Title:        strings.TrimSpace(pr.Title),
+		Body:         strings.TrimSpace(pr.Body),
+		URL:          strings.TrimSpace(pr.HTMLURL),
+		HeadSHA:      strings.TrimSpace(pr.Head.SHA),
+		HeadRef:      strings.TrimSpace(pr.Head.Ref),
+		BaseRef:      strings.TrimSpace(pr.Base.Ref),
+		Mergeability: fmt.Sprintf("mergeable=%t", pr.Mergeable),
+	}, nil
+}
+
+func (c *forgejoClient) listPullRequestComments(ctx context.Context, owner, repo string, number int) ([]issueComment, error) {
+	return c.listIssueComments(ctx, owner, repo, number)
+}
+
 // lockIssue is unsupported: Forgejo's API (gitea-1.22 compat) exposes no issue-lock
 // leaf, so the reservation road-block stays the marker comment (ward#494, docs).
 func (c *forgejoClient) lockIssue(_ context.Context, _, _ string, _ int) error {
@@ -686,10 +720,10 @@ func (c *forgejoClient) listOpenIssues(ctx context.Context, owner, repo string, 
 	return issues, nil
 }
 
-// listOpenPullRequests lists a repo's open pull requests with the same lean
-// shape as issues, filtered by the shared Forgejo issue classifier.
+// listOpenPullRequests lists a repo's open PRs via Forgejo's typed feed so
+// pagination stays scoped to PR rows.
 func (c *forgejoClient) listOpenPullRequests(ctx context.Context, owner, repo string, limit int) ([]directorPullRequest, error) {
-	raw, err := c.listOpenIssueFeed(ctx, owner, repo, limit)
+	raw, err := c.listOpenIssueFeedByType(ctx, owner, repo, limit, "pulls")
 	if err != nil {
 		return nil, err
 	}
@@ -706,6 +740,8 @@ func (c *forgejoClient) listOpenPullRequests(ctx context.Context, owner, repo st
 				State:  ri.State,
 				URL:    ri.HTMLURL,
 			},
+			CreatedAt: ri.CreatedAt,
+			UpdatedAt: ri.UpdatedAt,
 		}
 		for _, l := range ri.Labels {
 			if l.Name != "" {
@@ -735,6 +771,43 @@ func (c *forgejoClient) listOpenIssueFeed(ctx context.Context, owner, repo strin
 		return nil, fmt.Errorf("forgejo: list open issues in %s/%s: %w", owner, repo, err)
 	}
 	return raw, nil
+}
+
+// listOpenIssueFeedByType reads Forgejo's open issue feed.
+// The director backlog uses it to keep issue and PR scans separate.
+func (c *forgejoClient) listOpenIssueFeedByType(ctx context.Context, owner, repo string, limit int, kind string) ([]forgejoIssueRaw, error) {
+	if limit <= 0 {
+		limit = 50
+	}
+	q := url.Values{"state": {"open"}, "limit": {strconv.Itoa(limit)}}
+	if kind = strings.TrimSpace(kind); kind != "" {
+		q.Set("type", kind)
+	}
+	var raw []forgejoIssueRaw
+	if _, err := c.doJSON(ctx, http.MethodGet, []string{"repos", owner, repo, "issues"}, q, nil, false, &raw); err != nil {
+		return nil, fmt.Errorf("forgejo: list open %s in %s/%s: %w", kind, owner, repo, err)
+	}
+	return filterOpenIssueFeedByType(raw, kind), nil
+}
+
+func filterOpenIssueFeedByType(raw []forgejoIssueRaw, kind string) []forgejoIssueRaw {
+	kind = strings.TrimSpace(kind)
+	if kind == "" {
+		return raw
+	}
+	out := make([]forgejoIssueRaw, 0, len(raw))
+	for _, ri := range raw {
+		if kind == "pulls" {
+			if ri.isPullRequest() {
+				out = append(out, ri)
+			}
+			continue
+		}
+		if kind == "issues" && !ri.isPullRequest() {
+			out = append(out, ri)
+		}
+	}
+	return out
 }
 
 // addIssueLabels adds the labels (by name) to an open issue - the write side of startup
@@ -840,6 +913,8 @@ type directorPullRequest struct {
 	Mergeable      bool
 	MergeableKnown bool
 	MergeableError string
+	CreatedAt      time.Time
+	UpdatedAt      time.Time
 }
 
 // lean projects the raw issue down to the reader-facing leanIssue.

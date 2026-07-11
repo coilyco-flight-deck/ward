@@ -32,7 +32,7 @@ var bakedSupportAssets embed.FS
 //go:embed defaultsassets/defaults.generated.kdl
 var bakedDefaultsAssets embed.FS
 
-//go:embed roleassets/roles.generated.kdl
+//go:embed roleassets/role-definitions.generated.kdl
 var bakedRoleAssets embed.FS
 
 //go:embed topologyassets/topology.generated.kdl
@@ -64,26 +64,19 @@ func (u unionFS) ReadFile(name string) ([]byte, error) {
 // Baked-layout paths, named once so the runtime mount and the drift tests
 // agree.
 const (
-	opsForgejoGuardfilePath  = "opsassets/forgejo.guardfile.generated.kdl"
-	opsForgejoSpecLockPath   = "opsassets/forgejo.swagger.lock.generated.json"
-	execAssetsDir            = "execassets"
-	fleetGeneratedKDLPath    = "fleetassets/fleet.generated.kdl"
-	defaultsGeneratedKDLPath = "defaultsassets/defaults.generated.kdl"
-	rolesGeneratedKDLPath    = "roleassets/roles.generated.kdl"
-	topologyGeneratedKDLPath = "topologyassets/topology.generated.kdl"
+	opsForgejoGuardfilePath         = "opsassets/forgejo.guardfile.generated.kdl"
+	opsForgejoSpecLockPath          = "opsassets/forgejo.swagger.lock.generated.json"
+	execAssetsDir                   = "execassets"
+	fleetGeneratedKDLPath           = "fleetassets/fleet.generated.kdl"
+	defaultsGeneratedKDLPath        = "defaultsassets/defaults.generated.kdl"
+	roleDefinitionsGeneratedKDLPath = "roleassets/role-definitions.generated.kdl"
+	topologyGeneratedKDLPath        = "topologyassets/topology.generated.kdl"
 )
 
 // Bundle-layout paths: the flat .ward bundle a ref points at.
 // See docs/config-source.md.
 const (
-	bundleForgejoGuardfilePath = "guardfile.forgejo.kdl"
-	bundleForgejoSpecLockPath  = "forgejo.swagger.lock.json"
-	bundleAgentsKDLPath        = "agents.kdl"
-	bundleRolesKDLPath         = "roles.kdl"
-	bundleDefaultsKDLPath      = "defaults.kdl"
-	bundleReposKDLPath         = "repos.kdl"
-	bundleTopologyKDLPath      = "ward-kdl.topology.kdl"
-	bundleExecGuardfileGlob    = "guardfile.*.kdl"
+	bundleExecGuardfileGlob = "guardfile.*.kdl"
 )
 
 // configSource is the launch-selected home of the KDL config bundle: one fs.FS
@@ -101,15 +94,8 @@ type configSource struct {
 	// fleetKDL feeds the legacy embedded fleetconfig parse path.
 	fleetKDL string
 
-	// agentsKDL + rolesKDL feed the split bundle fleetconfig parse path.
-	agentsKDL string
-	rolesKDL  string
-
 	// defaultsKDL feeds the edge smart-defaults parser.
 	defaultsKDL string
-
-	// reposKDL feeds the split bundle smart-defaults repo-authority parser.
-	reposKDL string
 
 	// topologyKDL feeds the edge container-topology resolver.
 	topologyKDL string
@@ -136,17 +122,10 @@ func bakedConfigSource() configSource {
 	}
 }
 
-// bundleConfigSource reads the flat .ward bundle layout out of dir.
+// bundleConfigSource reads the launch-selected .ward bundle layout out of dir.
 func bundleConfigSource(dir string) configSource {
 	return configSource{
 		fsys:              os.DirFS(dir),
-		forgejoGuardfile:  bundleForgejoGuardfilePath,
-		forgejoSpecLock:   bundleForgejoSpecLockPath,
-		agentsKDL:         bundleAgentsKDLPath,
-		rolesKDL:          bundleRolesKDLPath,
-		defaultsKDL:       bundleDefaultsKDLPath,
-		reposKDL:          bundleReposKDLPath,
-		topologyKDL:       bundleTopologyKDLPath,
 		execDir:           ".",
 		execGuardfileGlob: bundleExecGuardfileGlob,
 		execMixedDialects: true,

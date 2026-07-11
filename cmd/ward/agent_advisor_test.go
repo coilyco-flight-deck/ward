@@ -1,6 +1,9 @@
 package main
 
 import (
+	"bytes"
+	"os"
+	"path/filepath"
 	"strings"
 	"testing"
 )
@@ -140,6 +143,41 @@ func TestAdvisorNoTailnetOptOut(t *testing.T) {
 		if m.Target == containerAWSMount {
 			t.Fatalf("advisor --no-tailnet should keep the plan isolated, but got ~/.aws mount %+v", m)
 		}
+	}
+}
+
+func TestAdvisorFreeformInstructionsFileUsesExplicitRepoAndImageContract(t *testing.T) {
+	home := t.TempDir()
+	t.Setenv("HOME", home)
+	t.Setenv(wardConfigRefEnv, "file://"+writeBundleFixture(t))
+	t.Setenv("COILY_INVOKE_CWD", t.TempDir())
+	instructions := filepath.Join(t.TempDir(), "advisor-brief.md")
+	if err := os.WriteFile(instructions, []byte("Review the launch contract and report the mismatch."), 0o644); err != nil {
+		t.Fatalf("write instructions: %v", err)
+	}
+	cmd := parseCommandForTest(t, agentAdvisorFlags(), []string{
+		"advisor",
+		"coilysiren/example",
+		"--instructions-file", instructions,
+		"--print",
+	})
+	var out bytes.Buffer
+	cmd.Writer = &out
+	if err := (&Runner{}).runAgentAsk(t.Context(), cmd, modeCodex); err != nil {
+		t.Fatalf("runAgentAsk print path: %v", err)
+	}
+	got := out.String()
+	for _, want := range []string{
+		"repo:   coilysiren/example",
+		"docker pull forgejo.coilysiren.me/coilyco-flight-deck/agentic-os-full:latest",
+		"--entrypoint " + containerEntrypointPath,
+	} {
+		if !strings.Contains(got, want) {
+			t.Fatalf("advisor print output missing %q\n---\n%s", want, got)
+		}
+	}
+	if strings.Contains(got, "coilyco-flight-deck/ward") {
+		t.Fatalf("advisor print output still drifted to the cwd repo:\n%s", got)
 	}
 }
 

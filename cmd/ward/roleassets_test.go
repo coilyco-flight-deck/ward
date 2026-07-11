@@ -6,22 +6,22 @@ import (
 	"testing"
 )
 
-// roleSrcPath is the canonical agent-role preset source mirrored into roleassets
+// roleSrcPath is the canonical role-definition source mirrored into roleassets
 // by `make sync-role-assets`.
-const roleSrcPath = "../../.ward/ward-kdl/ward-kdl.roles.kdl"
+const roleSrcPath = "../../.ward/ward-kdl/ward-kdl.role-definitions.kdl"
 
-// TestRoleAssetsMirrorWardKDL fails when the embedded roles.generated.kdl drifts
-// from the canonical source.
+// TestRoleAssetsMirrorWardKDL fails when the embedded role-definition asset
+// drifts from the canonical source.
 func TestRoleAssetsMirrorWardKDL(t *testing.T) {
 	src, err := os.ReadFile(roleSrcPath)
 	if err != nil {
 		t.Fatalf("read role source %s: %v", roleSrcPath, err)
 	}
-	baked, err := bakedAssets.ReadFile(rolesGeneratedKDLPath)
+	baked, err := bakedAssets.ReadFile(roleDefinitionsGeneratedKDLPath)
 	if err != nil {
-		t.Fatalf("read baked %s: %v", rolesGeneratedKDLPath, err)
+		t.Fatalf("read baked %s: %v", roleDefinitionsGeneratedKDLPath, err)
 	}
 	if !bytes.Equal(src, baked) {
-		t.Errorf("embedded roleassets/roles.generated.kdl has drifted from %s; re-sync with `make sync-role-assets`", roleSrcPath)
+		t.Errorf("embedded %s has drifted from %s; re-sync with `make sync-role-assets`", roleDefinitionsGeneratedKDLPath, roleSrcPath)
 	}
 }

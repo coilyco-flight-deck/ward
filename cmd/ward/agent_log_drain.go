@@ -28,9 +28,25 @@ const agentLogsSubdir = "agent-logs"
 // (ward#526): a SEPARATE tree the surface binds so raw logs never mount. See docs.
 const agentLogsRedactedSubdir = "agent-logs-redacted"
 
-// containerTranscriptDir is where claude writes session jsonl for the agent user;
-// the drain `docker cp`s the tree out as a tar and concatenates the jsonl.
-const containerTranscriptDir = "/home/ubuntu/.claude/projects"
+// containerTranscriptDir returns the harness live transcript tree path.
+// Claude uses ~/.claude/projects. Codex uses ~/.codex/sessions.
+const (
+	containerClaudeTranscriptDir = "/home/ubuntu/.claude/projects"
+	containerCodexTranscriptDir  = "/home/ubuntu/.codex/sessions"
+)
+
+func containerTranscriptDir(mode containerMode) string {
+	switch mode {
+	case modeClaude:
+		return containerClaudeTranscriptDir
+	case modeCodex:
+		return containerCodexTranscriptDir
+	case modeOpencode, modeGoose:
+		return ""
+	default:
+		return ""
+	}
+}
 
 // drained artifact filenames inside ~/.ward/agent-logs/<slug>/.
 const (
@@ -109,8 +125,16 @@ var metaEnvAllow = []string{
 	"WARD_TARGET_OWNER",
 	"WARD_TARGET_NAME",
 	"WARD_TARGET_ISSUE",
+	"WARD_RUN_ID",
+	"WARD_HARNESS",
+	"WARD_ROLE",
 	"WARD_MODE",
 	"WARD_BRANCH",
+	"WARD_ISSUE_REF",
+	"WARD_WORKFLOW",
+	"WARD_CONTEXT_LEVEL",
+	"WARD_VERSION",
+	"WARD_THREAD_ID",
 }
 
 // run outcome strings recorded in meta.json, inferred from the reaper's console
@@ -244,7 +268,7 @@ func (r *Runner) drainAgentRun(ctx context.Context, name, dir string) {
 	meta := r.buildRunMeta(ctx, name, string(console))
 
 	r.writeDiskArtifacts(name, dir, console, transcript, meta)
-	// The redacted view rides the same disk gate: whenever the raw archive lands, its
+	// The redacted view rides the same disk gate. When the raw archive lands, its
 	// scrubbed sibling lands too, for the director surface mount (ward#526).
 	r.writeRedactedArtifacts(name, console, transcript, meta)
 	fmt.Fprintf(os.Stderr, "ward container: drained %s (sink %s, outcome %s)\n", name, mode, meta.Outcome)
@@ -309,18 +333,36 @@ func (r *Runner) dockerLogsCombined(ctx context.Context, name string) []byte {
 }
 
 // drainTranscript `docker cp`s the transcript tree out as a tar and returns the
-// concatenated jsonl; an absent tree (a goose run writes none) returns nil.
+// concatenated jsonl. An absent tree (goose/opencode/unknown) returns nil.
 func (r *Runner) drainTranscript(ctx context.Context, name string) []byte {
+	tree := containerTranscriptDir(containerModeFromContainerName(name))
+	if strings.TrimSpace(tree) == "" {
+		return nil
+	}
 	// `docker cp <c>:<path> -` writes a tar of <path> to stdout. The trailing
 	// stderr ("no such file") is discarded; an empty/garbage tar yields nil.
 	prevErr := r.Runner.Stderr
 	r.Runner.Stderr = io.Discard
-	out, err := r.dockerCapture(ctx, "cp", name+":"+containerTranscriptDir, "-")
+	out, err := r.dockerCapture(ctx, "cp", name+":"+tree, "-")
 	r.Runner.Stderr = prevErr
 	if err != nil || len(out) == 0 {
 		return nil
 	}
 	return extractTranscriptFromTar(out)
+}
+
+func containerModeFromContainerName(name string) containerMode {
+	parts := strings.SplitN(name, "-", 3)
+	if len(parts) < 2 {
+		return ""
+	}
+	mode := containerMode(parts[1])
+	switch mode {
+	case modeClaude, modeCodex, modeOpencode, modeGoose:
+		return mode
+	default:
+		return ""
+	}
 }
 
 // extractTranscriptFromTar concatenates the *.jsonl members of a tar stream in

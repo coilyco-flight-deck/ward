@@ -27,6 +27,7 @@ var record = agentsapi.Manifest{
 	ContextLevel: 2,
 	Stream:       "stream-json",
 	Auth:         "claude-keychain",
+	StatusLine:   true,
 	Argv: agentsapi.Argv{
 		Preflight:   []string{"claude", "-p"},
 		Headless:    []string{"claude", "-p", "--verbose", "--output-format", "stream-json"},

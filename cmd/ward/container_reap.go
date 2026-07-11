@@ -50,7 +50,7 @@ type reapEnv struct {
 	// The reaper verifies each one landed before done (ward#291).
 	ExtraRepos []targetRepo
 	// Workflow mirrors WARD_WORKFLOW (ward#508).
-	// Empty reads as direct-main; PR and patch-only modes stay on a branch.
+	// Empty reads as merge-remote-main; PR and remote-branch-only modes stay on a branch.
 	Workflow workflowMode
 }
 
@@ -113,11 +113,11 @@ func reapBoundaryReason(w workflowMode) string {
 	case workflowDirectToMain:
 		return "tree clean, HEAD on origin/main"
 	case workflowPullRequest:
-		return "workflow pull-requests boundary reached: branch pushed, pull request open, and required CI checks are green"
+		return "workflow pull-request boundary reached: branch pushed, pull request open, and required CI checks are green"
 	case workflowPullRequestAndMerge:
-		return "workflow pull-requests-and-merge boundary reached: branch pushed, pull request open, and required CI checks are green"
+		return "workflow pull-request-and-merge boundary reached: branch pushed, pull request open, and required CI checks are green"
 	case workflowRemoteBranchOnly:
-		return "workflow patch-only boundary reached: remote branch pushed"
+		return "workflow remote-branch-only boundary reached: remote branch pushed"
 	default:
 		return "tree clean, workflow boundary reached"
 	}
@@ -170,6 +170,7 @@ func (r *Runner) runContainerReap(ctx context.Context, c *cli.Command) error {
 	fmt.Fprintf(os.Stderr, "ward container reap: work tree confirmed at %s\n", work)
 	terr := r.reapTargetTree(ctx, work, env, true)
 	unlanded := r.verifyExtraReposLanded(ctx, env)
+	r.releaseReservationIfTerminalOutcome(ctx, env)
 	if terr == nil && !unlanded {
 		r.commentLaunchedNoOutcomeIfNeeded(ctx, env)
 	}
@@ -177,11 +178,12 @@ func (r *Runner) runContainerReap(ctx context.Context, c *cli.Command) error {
 }
 
 // reapTargetTree is the target half of a reap, from capture through salvage.
-func (r *Runner) reapTargetTree(ctx context.Context, work string, env reapEnv, releaseReservation bool) error { //nolint:gocognit,gocyclo,cyclop,nestif
+func (r *Runner) reapTargetTree(ctx context.Context, work string, env reapEnv, releaseReservation bool) error { //nolint:gocognit,gocyclo,cyclop,nestif,funlen
 	if env.ReadOnly {
 		fmt.Fprintln(os.Stderr, "ward container reap: read-only session, nothing to salvage (skipping)")
 		return nil
 	}
+	commitState := residualCommitState(ctx, r, work)
 	statusSnapshot := r.captureAndCommitResidual(ctx, work, env)
 	fmt.Fprintf(os.Stderr, "ward container reap: residual status snapshot for %s: %q\n", work, strings.TrimSpace(statusSnapshot))
 
@@ -190,10 +192,10 @@ func (r *Runner) reapTargetTree(ctx context.Context, work string, env reapEnv, r
 	fmt.Fprintln(os.Stderr, "ward container reap: fetch origin start")
 	_ = r.Runner.Exec(ctx, "git", "-C", work, "fetch", "origin")
 	fmt.Fprintln(os.Stderr, "ward container reap: fetch origin done")
-	if !refExists(ctx, r, work, "origin/main") {
+	if !refExists(ctx, r, work) {
 		// Empty repo (no base branch): establish main from a clean run rather than
 		// salvage it just for starting empty (ward#599, docs/container-reap.md).
-		return r.reapEstablishMain(ctx, work, env, statusSnapshot, releaseReservation)
+		return r.reapEstablishMain(ctx, work, env, statusSnapshot, releaseReservation, commitState)
 	}
 
 	if !env.Workflow.landsOnMain() {
@@ -201,7 +203,7 @@ func (r *Runner) reapTargetTree(ctx context.Context, work string, env reapEnv, r
 		if len(findings) > 0 {
 			fmt.Fprintf(os.Stderr, "ward container cleanup: --workflow %s produced a diff the junk scan rejected; preserving on a salvage branch instead of treating the workflow boundary as success\n", env.Workflow.orDefault())
 			return r.salvage(ctx, work, env, reasonScan, false, findings, statusSnapshot,
-				reapDecision{Gate: "junk scan flagged the workflow-boundary diff", ProvState: "not read (workflow hold)"})
+				reapDecision{Gate: "junk scan flagged the workflow-boundary diff", ProvState: "not read (workflow hold)", CommitState: commitState})
 		}
 		fmt.Fprintf(os.Stderr, "WARD-REAP: nothing to reap (%s)\n", reapBoundaryReason(env.Workflow))
 		if releaseReservation {
@@ -215,18 +217,18 @@ func (r *Runner) reapTargetTree(ctx context.Context, work string, env reapEnv, r
 	residual := revCount(ctx, r, work, "origin/main..HEAD")
 	fmt.Fprintf(os.Stderr, "ward container reap: residual commit count against origin/main = %d\n", residual)
 	cleanTree := strings.TrimSpace(statusSnapshot) == ""
-	if residual == 0 && cleanTree { //nolint:nestif // clean-tree fast path carries the direct-main proof branch
+	if residual == 0 && cleanTree { //nolint:nestif // clean-tree fast path carries the merge-remote-main proof branch
 		if env.Launched && env.Workflow.landsOnMain() && env.Issue != 0 {
 			prov, perr := r.readRunProvenance(work)
 			if perr != nil {
-				fmt.Fprintf(os.Stderr, "ward container reap: provenance missing or unreadable on already-landed direct-main run: %v\n", perr)
+				fmt.Fprintf(os.Stderr, "ward container reap: provenance missing or unreadable on already-landed merge-remote-main run: %v\n", perr)
 				return r.salvage(ctx, work, env, reasonConflict, false, nil, statusSnapshot,
-					reapDecision{Gate: "provenance missing or unreadable on already-landed direct-main run", ProvState: "missing or unreadable"})
+					reapDecision{Gate: "provenance missing or unreadable on already-landed merge-remote-main run", ProvState: "missing or unreadable", CommitState: commitState})
 			}
 			if !r.runProvenanceLanded(ctx, work, prov, env.Issue) {
-				fmt.Fprintf(os.Stderr, "ward container reap: already-landed direct-main run is missing closes #%d; salvaging instead of returning success\n", env.Issue)
+				fmt.Fprintf(os.Stderr, "ward container reap: already-landed merge-remote-main run is missing closes #%d; salvaging instead of returning success\n", env.Issue)
 				return r.salvage(ctx, work, env, reasonCloseRef, false, nil, statusSnapshot,
-					reapDecision{Gate: "missing same-repo closing reference on already-landed direct-main run", ProvState: "present", Landed: false})
+					reapDecision{Gate: "missing same-repo closing reference on already-landed merge-remote-main run", ProvState: "present", CommitState: commitState, Landed: false})
 			}
 		}
 		fmt.Fprintf(os.Stderr, "WARD-REAP: nothing to reap (%s)\n", reapBoundaryReason(env.Workflow))
@@ -240,22 +242,31 @@ func (r *Runner) reapTargetTree(ctx context.Context, work string, env reapEnv, r
 	if perr != nil {
 		fmt.Fprintf(os.Stderr, "ward container reap: provenance missing or unreadable: %v\n", perr)
 		return r.salvage(ctx, work, env, reasonConflict, false, nil, statusSnapshot,
-			reapDecision{Gate: "provenance missing or unreadable", ProvState: "missing or unreadable"})
+			reapDecision{Gate: "provenance missing or unreadable", ProvState: "missing or unreadable", CommitState: commitState})
 	}
 	// The run-owned-landed verdict is computed once here and reused by every gate
 	// below (including executeReap) so the diagnostics block reports what each saw.
 	landed := r.runProvenanceLanded(ctx, work, prov, env.Issue)
+	if env.Issue != 0 && !landed && commitState == commitStateAgentDidNotCommit {
+		repaired, err := r.repairDirtyOnlyClosingReference(ctx, work, env)
+		if err != nil {
+			fmt.Fprintf(os.Stderr, "ward container reap: dirty-only closing reference repair failed: %v\n", err)
+			return r.salvage(ctx, work, env, reasonCloseRef, false, nil, statusSnapshot,
+				reapDecision{Gate: "dirty-only closing reference repair failed", ProvState: "present", CommitState: commitState, Landed: false})
+		}
+		landed = repaired
+	}
 	if env.Issue != 0 && !landed && !r.issueClosingReferencePresent(ctx, work, env.Issue) {
 		fmt.Fprintf(os.Stderr, "ward container reap: missing closes #%d in committed work; salvaging instead of landing on main\n", env.Issue)
 		return r.salvage(ctx, work, env, reasonCloseRef, false, nil, statusSnapshot,
-			reapDecision{Gate: "missing same-repo closing reference", ProvState: "present", Landed: landed})
+			reapDecision{Gate: "missing same-repo closing reference", ProvState: "present", CommitState: commitState, Landed: landed})
 	}
 
 	findings := scan.Diff(r.diffEntries(ctx, work, "origin/main...HEAD"))
 	if !landed {
 		fmt.Fprintln(os.Stderr, "ward container reap: no run-owned landed commit after dispatch; salvaging instead of claiming success")
 		return r.salvage(ctx, work, env, reasonConflict, false, findings, statusSnapshot,
-			reapDecision{Gate: "no run-owned landed commit after dispatch", ProvState: "present"})
+			reapDecision{Gate: "no run-owned landed commit after dispatch", ProvState: "present", CommitState: commitState})
 	}
 
 	action := decideReap(reapInputs{
@@ -264,7 +275,7 @@ func (r *Runner) reapTargetTree(ctx context.Context, work string, env reapEnv, r
 		Findings:         findings,
 	})
 	fmt.Fprintf(os.Stderr, "ward container reap: decision=%d for %s\n", action, work)
-	return r.executeReap(ctx, work, env, action, findings, statusSnapshot, landed, prov)
+	return r.executeReap(ctx, work, env, action, findings, statusSnapshot, landed, prov, commitState)
 }
 
 // gitEmptyTree is git's canonical empty-tree object (SHA-1); diffing against it
@@ -273,7 +284,7 @@ const gitEmptyTree = "4b825dc642cb6eb9a060e54bf8d69288fbee4904"
 
 // reapEstablishMain lands the empty-repo case (origin/main absent): create main
 // from a clean, run-owned commit rather than salvage. See docs/container-reap.md.
-func (r *Runner) reapEstablishMain(ctx context.Context, work string, env reapEnv, statusSnapshot string, releaseReservation bool) error {
+func (r *Runner) reapEstablishMain(ctx context.Context, work string, env reapEnv, statusSnapshot string, releaseReservation bool, commitState string) error {
 	// No origin/main to diff against, so the whole HEAD history is residual work.
 	residual := revCount(ctx, r, work, "HEAD")
 	fmt.Fprintf(os.Stderr, "ward container cleanup: no origin/main; establish-main candidate with %d commit(s) on HEAD\n", residual)
@@ -287,14 +298,14 @@ func (r *Runner) reapEstablishMain(ctx context.Context, work string, env reapEnv
 		return nil
 	}
 
-	// A pull-requests, pull-requests-and-merge, or patch-only run never lands on main.
+	// A pull-request, pull-request-and-merge, or remote-branch-only run never lands on main.
 	// That includes the establish-main case (ward#508).
 	if !env.Workflow.landsOnMain() {
 		findings := scan.Diff(r.diffEntries(ctx, work, gitEmptyTree+"..HEAD"))
 		if len(findings) > 0 {
 			fmt.Fprintf(os.Stderr, "ward container cleanup: --workflow %s produced a diff the junk scan rejected; preserving on a salvage branch instead of treating the workflow boundary as success\n", env.Workflow.orDefault())
 			return r.salvage(ctx, work, env, reasonScan, false, findings, statusSnapshot,
-				reapDecision{Gate: "junk scan flagged the workflow-boundary diff", ProvState: "not read (no origin/main)"})
+				reapDecision{Gate: "junk scan flagged the workflow-boundary diff", ProvState: "not read (no origin/main)", CommitState: commitState})
 		}
 		fmt.Fprintf(os.Stderr, "WARD-REAP: nothing to reap (%s)\n", reapBoundaryReason(env.Workflow))
 		if releaseReservation {
@@ -308,7 +319,7 @@ func (r *Runner) reapEstablishMain(ctx context.Context, work string, env reapEnv
 	if !r.issueClosingReferenceInRange(ctx, work, env.Issue, "HEAD") {
 		fmt.Fprintf(os.Stderr, "ward container reap: missing closes #%d in committed work; salvaging instead of establishing main\n", env.Issue)
 		return r.salvage(ctx, work, env, reasonCloseRef, false, nil, statusSnapshot,
-			reapDecision{Gate: "missing same-repo closing reference", ProvState: "not read (no origin/main)"})
+			reapDecision{Gate: "missing same-repo closing reference", ProvState: "not read (no origin/main)", CommitState: commitState})
 	}
 
 	// Junk-scan the whole tree that would land: with no base ref, diff against
@@ -317,7 +328,7 @@ func (r *Runner) reapEstablishMain(ctx context.Context, work string, env reapEnv
 	if len(findings) > 0 {
 		fmt.Fprintf(os.Stderr, "ward container reap: junk scan flagged %d path(s); salvaging instead of establishing main\n", len(findings))
 		return r.salvage(ctx, work, env, reasonScan, false, findings, statusSnapshot,
-			reapDecision{Gate: "junk scan flagged the diff", ProvState: "not read (no origin/main)"})
+			reapDecision{Gate: "junk scan flagged the diff", ProvState: "not read (no origin/main)", CommitState: commitState})
 	}
 
 	// Establish main: push HEAD as the new default branch.
@@ -335,7 +346,7 @@ func (r *Runner) reapEstablishMain(ctx context.Context, work string, env reapEnv
 	}
 	fmt.Fprintf(os.Stderr, "ward container reap: establish-main push rejected (%s); salvaging\n", reason)
 	return r.salvage(ctx, work, env, reason, authCause, findings, statusSnapshot,
-		reapDecision{Gate: "establish-main push rejected", ProvState: "not read (no origin/main)"})
+		reapDecision{Gate: "establish-main push rejected", ProvState: "not read (no origin/main)", CommitState: commitState})
 }
 
 // resolveReapWork picks the clone work tree: --work, then $WARD_REAP_WORK (set
@@ -416,31 +427,31 @@ func (r *Runner) integrate(ctx context.Context, work string, residual int) bool 
 
 // executeReap carries out the decided action: do nothing, push to main (falling
 // to salvage if the push is rejected), or salvage.
-func (r *Runner) executeReap(ctx context.Context, work string, env reapEnv, action reapAction, findings []scan.Finding, status string, landed bool, prov runProvenance) error {
+func (r *Runner) executeReap(ctx context.Context, work string, env reapEnv, action reapAction, findings []scan.Finding, status string, landed bool, prov runProvenance, commitState string) error {
 	switch action {
 	case reapNothing:
 		fmt.Fprintln(os.Stderr, "ward container reap: nothing to reap")
 		return nil
 	case reapPushMain:
-		return r.executePushMainReap(ctx, work, env, findings, status, landed, prov)
+		return r.executePushMainReap(ctx, work, env, findings, status, landed, prov, commitState)
 	case reapSalvage:
 		reason, gate := reasonConflict, "merge conflict integrating onto main"
 		if len(findings) > 0 {
 			reason, gate = reasonScan, "junk scan flagged the diff"
 		}
 		return r.salvage(ctx, work, env, reason, false, findings, status,
-			reapDecision{Gate: gate, ProvState: "present", Landed: true})
+			reapDecision{Gate: gate, ProvState: "present", CommitState: commitState, Landed: true})
 	}
 	return nil
 }
 
-func (r *Runner) executePushMainReap(ctx context.Context, work string, env reapEnv, findings []scan.Finding, status string, landed bool, prov runProvenance) error {
+func (r *Runner) executePushMainReap(ctx context.Context, work string, env reapEnv, findings []scan.Finding, status string, landed bool, prov runProvenance, commitState string) error {
 	if !landed {
 		fmt.Fprintln(os.Stderr, "ward container reap: remote main has no run-owned commit after dispatch; salvaging")
 		return r.salvage(ctx, work, env, reasonConflict, false, findings, status,
-			reapDecision{Gate: "remote main has no run-owned commit (pre-push recheck)", ProvState: "present"})
+			reapDecision{Gate: "remote main has no run-owned commit (pre-push recheck)", ProvState: "present", CommitState: commitState})
 	}
-	if err := r.ensureClosingReferenceBeforePush(ctx, work, env, findings, status, landed, prov); err != nil {
+	if err := r.ensureClosingReferenceBeforePush(ctx, work, env, findings, status, landed, prov, commitState); err != nil {
 		return err
 	}
 	fmt.Fprintln(os.Stderr, "ward container reap: push to main start")
@@ -457,10 +468,10 @@ func (r *Runner) executePushMainReap(ctx context.Context, work string, env reapE
 	}
 	fmt.Fprintf(os.Stderr, "ward container reap: push to main rejected (%s); salvaging\n", reason)
 	return r.salvage(ctx, work, env, reason, authCause, findings, status,
-		reapDecision{Gate: "push to main rejected", ProvState: "present", Landed: true})
+		reapDecision{Gate: "push to main rejected", ProvState: "present", CommitState: commitState, Landed: true})
 }
 
-func (r *Runner) ensureClosingReferenceBeforePush(ctx context.Context, work string, env reapEnv, findings []scan.Finding, status string, landed bool, prov runProvenance) error {
+func (r *Runner) ensureClosingReferenceBeforePush(ctx context.Context, work string, env reapEnv, findings []scan.Finding, status string, landed bool, prov runProvenance, commitState string) error {
 	if env.Issue == 0 || r.issueClosingReferencePresent(ctx, work, env.Issue) {
 		return nil
 	}
@@ -469,17 +480,17 @@ func (r *Runner) ensureClosingReferenceBeforePush(ctx context.Context, work stri
 	if !closingReferenceRepairSafe(prov, env) {
 		fmt.Fprintf(os.Stderr, "ward container reap: closing reference for #%d absent from the history about to land; salvaging instead of pushing main\n", env.Issue)
 		return r.salvage(ctx, work, env, reasonCloseRef, false, findings, status,
-			reapDecision{Gate: "missing same-repo closing reference (push-site recheck)", ProvState: "present", Landed: landed})
+			reapDecision{Gate: "missing same-repo closing reference (push-site recheck)", ProvState: "present", CommitState: commitState, Landed: landed})
 	}
 	fmt.Fprintf(os.Stderr, "ward container reap: closing reference for #%d absent from the history about to land; repairing before push\n", env.Issue)
 	if err := r.repairClosingReference(ctx, work, env); err != nil {
 		fmt.Fprintf(os.Stderr, "ward container reap: closing reference repair failed: %v\n", err)
 		return r.salvage(ctx, work, env, reasonCloseRef, false, findings, status,
-			reapDecision{Gate: "missing same-repo closing reference (push-site repair failed)", ProvState: "present", Landed: landed})
+			reapDecision{Gate: "missing same-repo closing reference (push-site repair failed)", ProvState: "present", CommitState: commitState, Landed: landed})
 	}
 	if !r.issueClosingReferencePresent(ctx, work, env.Issue) {
 		return r.salvage(ctx, work, env, reasonCloseRef, false, findings, status,
-			reapDecision{Gate: "missing same-repo closing reference (push-site repair failed)", ProvState: "present", Landed: landed})
+			reapDecision{Gate: "missing same-repo closing reference (push-site repair failed)", ProvState: "present", CommitState: commitState, Landed: landed})
 	}
 	fmt.Fprintf(os.Stderr, "ward container reap: repaired closing reference for #%d\n", env.Issue)
 	return nil
@@ -553,6 +564,20 @@ func (r *Runner) repairClosingReference(ctx context.Context, work string, env re
 	return r.Runner.Exec(ctx, "git", "-C", work, "commit", "--allow-empty", "-m", subject, "-m", fmt.Sprintf("closes #%d", env.Issue))
 }
 
+func (r *Runner) repairDirtyOnlyClosingReference(ctx context.Context, work string, env reapEnv) (bool, error) {
+	if env.Issue == 0 || r.issueClosingReferencePresent(ctx, work, env.Issue) {
+		return true, nil
+	}
+	fmt.Fprintf(os.Stderr, "ward container reap: dirty-only run is missing closes #%d; repairing before landing\n", env.Issue)
+	if err := r.repairClosingReference(ctx, work, env); err != nil {
+		return false, err
+	}
+	if !r.issueClosingReferencePresent(ctx, work, env.Issue) {
+		return false, fmt.Errorf("dirty-only closing reference repair failed")
+	}
+	return true, nil
+}
+
 func (r *Runner) amendClosingReference(ctx context.Context, work, msg string, issue int) error {
 	repaired := appendClosingReferenceToMessage(msg, issue)
 	tmp, err := os.CreateTemp("", "ward-closing-reference-*.txt")
@@ -614,6 +639,7 @@ func (r *Runner) salvage(ctx context.Context, work string, env reapEnv, reason r
 		Mode:        env.Mode,
 		Branch:      branch,
 		Reason:      reason,
+		CommitState: diag.CommitState,
 		AuthCause:   authCause,
 		TokenAge:    age,
 		Findings:    findings,
@@ -759,6 +785,67 @@ func (r *Runner) releaseReservationIfUnstarted(ctx context.Context, env reapEnv)
 		fmt.Fprintf(os.Stderr, "ward container reap: could not unlock issue #%d after release: %v\n", env.Issue, err)
 	}
 	fmt.Fprintf(os.Stderr, "ward container reap: released issue reservation on #%d (container exited pre-launch, did no work)\n", env.Issue)
+}
+
+// releaseReservationIfTerminalOutcome retracts the remote reservation when the run
+// ends: the terminal WARD-OUTCOME supersedes the hold, so redispatch needs no override.
+func (r *Runner) releaseReservationIfTerminalOutcome(ctx context.Context, env reapEnv) {
+	if !env.Launched || env.Issue == 0 {
+		return
+	}
+	upAt, err := time.Parse(time.RFC3339, strings.TrimSpace(env.UpAt))
+	if err != nil {
+		fmt.Fprintf(os.Stderr, "ward container reap: cannot parse WARD_CONTAINER_UP for terminal-outcome release: %v\n", err)
+		return
+	}
+	fc := r.hostForgejoClient(ctx)
+	if err := releaseReservationIfTerminalOutcomeComment(ctx, fc.withMode(containerMode(env.Mode)), env, upAt); err != nil {
+		fmt.Fprintf(os.Stderr, "ward container reap: %v\n", err)
+	}
+}
+
+func releaseReservationIfTerminalOutcomeComment(ctx context.Context, fc Tracker, env reapEnv, afterAt time.Time) error {
+	comments, err := fc.listIssueComments(ctx, env.Owner, env.Name, env.Issue)
+	if err != nil {
+		return fmt.Errorf("could not read issue comments for terminal-outcome release on #%d: %w", env.Issue, err)
+	}
+	outcome, ok := latestBacklogOutcomeCommentAfter(comments, afterAt)
+	if !ok {
+		return nil
+	}
+	o, ok := backlogOutcomeOfComment(outcome.Body)
+	if !ok || !terminalReservationOutcome(o.Status) {
+		return nil
+	}
+	body := terminalReservationReleaseCommentBody(containerMode(env.Mode), env.Container, o)
+	if err := fc.commentIssue(ctx, env.Owner, env.Name, env.Issue, body); err != nil {
+		return fmt.Errorf("could not release terminal reservation on #%d: %w", env.Issue, err)
+	}
+	if err := fc.unlockIssue(ctx, env.Owner, env.Name, env.Issue); err != nil && !errors.Is(err, errForgeLockUnsupported) {
+		return fmt.Errorf("could not unlock issue #%d after terminal outcome release: %w", env.Issue, err)
+	}
+	fmt.Fprintf(os.Stderr, "ward container reap: released issue reservation on #%d after terminal outcome %s\n", env.Issue, o.Status)
+	return nil
+}
+
+func terminalReservationOutcome(status string) bool {
+	switch strings.ToLower(strings.TrimSpace(status)) {
+	case "done", "blocked", "failed", "merge-ready":
+		return true
+	default:
+		return false
+	}
+}
+
+func terminalReservationReleaseCommentBody(mode containerMode, container string, outcome backlogOutcome) string {
+	visible := "WARD-RESERVATION: released 🛑"
+	var b strings.Builder
+	fmt.Fprintf(&b, "Run finished with `%s %s`.\n\n", wardOutcomeMarker, outcome.Status)
+	fmt.Fprintf(&b, "`ward container reap` released container `%s` (`--harness %s`): the terminal outcome supersedes the reservation, so a later redispatch no longer needs `--override-reservation`.\n", container, mode)
+	if summary := strings.TrimSpace(outcome.Text); summary != "" {
+		fmt.Fprintf(&b, "\n**Outcome summary:** %s\n", summary)
+	}
+	return agentReservationReleaseMarker + "\n" + collapsedIssueComment(visible, "release details", b.String())
 }
 
 // commentLaunchedNoOutcomeIfNeeded marks a launched run failed when it exits with
@@ -912,7 +999,7 @@ func (r *Runner) checkExtraRepoLanded(ctx context.Context, env reapEnv, repo tar
 func (r *Runner) grantLanded(ctx context.Context, work string) (landed, hasMain bool) {
 	for attempt := 1; attempt <= grantLandingFetchAttempts; attempt++ {
 		_ = r.Runner.Exec(ctx, "git", "-C", work, "fetch", "origin")
-		if refExists(ctx, r, work, "origin/main") {
+		if refExists(ctx, r, work) {
 			hasMain = true
 			// Reachability: HEAD contained in origin/main (plain or merge-commit landing).
 			if isAncestor(ctx, r, work, "HEAD", "origin/main") {
@@ -1115,6 +1202,7 @@ func (r *Runner) gatherReapDiagnostics(ctx context.Context, work string, reason 
 		Gate:          dec.Gate,
 		Reason:        reason,
 		ProvState:     dec.ProvState,
+		CommitState:   dec.CommitState,
 		Landed:        dec.Landed,
 		Status:        status,
 		TokenAge:      tokenAge,
@@ -1148,6 +1236,23 @@ func shortSha(sha string) string {
 	return sha
 }
 
+// residualCommitState distinguishes a dirty-only run from one that already had
+// a commit before the reaper snapshotted the tree.
+func residualCommitState(ctx context.Context, r *Runner, work string) string {
+	statusBytes, _ := r.Runner.Capture(ctx, "git", "-C", work, "status", "--porcelain")
+	if strings.TrimSpace(filterReapResidualStatus(string(statusBytes))) == "" {
+		return ""
+	}
+	if refExists(ctx, r, work) {
+		if revCount(ctx, r, work, "origin/main..HEAD") == 0 {
+			return commitStateAgentDidNotCommit
+		}
+	} else if revCount(ctx, r, work, "HEAD") == 0 {
+		return commitStateAgentDidNotCommit
+	}
+	return commitStateCommitExistedButLackedCloseTrailer
+}
+
 // isAncestor reports `git merge-base --is-ancestor a b` (a is contained in b).
 func isAncestor(ctx context.Context, r *Runner, work, a, b string) bool {
 	return r.Runner.Exec(ctx, "git", "-C", work, "merge-base", "--is-ancestor", a, b) == nil
@@ -1165,8 +1270,8 @@ func hasStagedChanges(ctx context.Context, r *Runner, work string) bool {
 	return r.Runner.Exec(ctx, "git", "-C", work, "diff", "--cached", "--quiet") != nil
 }
 
-func refExists(ctx context.Context, r *Runner, work, ref string) bool {
-	return r.Runner.Exec(ctx, "git", "-C", work, "rev-parse", "--verify", "--quiet", ref) == nil
+func refExists(ctx context.Context, r *Runner, work string) bool {
+	return r.Runner.Exec(ctx, "git", "-C", work, "rev-parse", "--verify", "--quiet", "origin/main") == nil
 }
 
 func revCount(ctx context.Context, r *Runner, work, rangeRef string) int {

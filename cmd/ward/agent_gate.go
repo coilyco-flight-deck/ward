@@ -6,6 +6,7 @@ import (
 	"fmt"
 	"io"
 	"os"
+	"path/filepath"
 	"strings"
 
 	"forgejo.coilysiren.me/coilyco-flight-deck/cli-guard/pkg/version"
@@ -53,6 +54,9 @@ type scratchGateStatus struct {
 	wardVersion       string   // the ward release the container will run
 	wardVersionSource string   // how the ward version resolved (explicit pin, host ward, latest)
 	withRepos         []string // --with-repo grants landed alongside the primary repo
+	scratchRoot       string   // writable temp/cache root the surface will use
+	scratchGoCache    string   // GOCACHE root beneath the writable surface root
+	scratchBudget     string   // human budget note for the writable surface
 	behind            bool     // the host ward binary is behind the latest release
 	current           string   // the host ward version
 	latest            string   // the latest ward release tag
@@ -75,6 +79,7 @@ func newScratchGateStatus(p upPlan, readOnly, behind bool, current, latest strin
 	for _, e := range p.ExtraRepos {
 		extras = append(extras, e.slug())
 	}
+	scratchRoot := directorSurfaceScratchDir(readOnly)
 	return scratchGateStatus{
 		access:            access,
 		repo:              p.Repo.slug(),
@@ -84,6 +89,9 @@ func newScratchGateStatus(p upPlan, readOnly, behind bool, current, latest strin
 		wardVersion:       wv,
 		wardVersionSource: p.WardVersionSource,
 		withRepos:         extras,
+		scratchRoot:       scratchRoot,
+		scratchGoCache:    filepath.Join(scratchRoot, "go-build"),
+		scratchBudget:     "at least " + diskBytes(surfaceScratchFloorBytes) + " free",
 		behind:            behind,
 		current:           current,
 		latest:            latest,
@@ -100,6 +108,9 @@ func renderScratchGate(w io.Writer, s scratchGateStatus) {
 	writef(&b, "  agent:    %s (%s)\n", s.agentBinary, s.mode)
 	writef(&b, "  image:    %s\n", s.image)
 	writef(&b, "  ward:     %s\n", wardVersionLaunchLabel(s.wardVersion, s.wardVersionSource))
+	writef(&b, "  scratch:  %s\n", s.scratchRoot)
+	writef(&b, "  cache:    %s\n", s.scratchGoCache)
+	writef(&b, "  budget:   %s\n", s.scratchBudget)
 	if len(s.withRepos) > 0 {
 		writef(&b, "  with:     %s\n", strings.Join(s.withRepos, ", "))
 	}

@@ -3,6 +3,7 @@ package main
 import (
 	"context"
 	"encoding/json"
+	"fmt"
 	"net/http"
 	"net/http/httptest"
 	"strings"
@@ -222,6 +223,13 @@ func TestForgejoGraftInventory(t *testing.T) {
 	} else if !hasFlagNamed(comment, flagBodyFile) {
 		t.Errorf("graft 3 gone: `issue comment` no longer accepts --%s", flagBodyFile)
 	}
+	pr := subCommandNamed(forgejo, "pr")
+	if pr == nil {
+		t.Fatal("forgejo group has no `pr` subtree")
+	}
+	if subCommandNamed(pr, "edit") == nil {
+		t.Error("pr edit leaf absent")
+	}
 	actions := subCommandNamed(forgejo, "actions")
 	if actions == nil {
 		t.Fatal("graft 4: `actions` group absent")
@@ -264,28 +272,40 @@ func TestForgejoGetIssueFlattensLabels(t *testing.T) {
 
 func TestListOpenIssuesAndPullRequestsClassifyPullRequestNull(t *testing.T) {
 	var issueFeedCalls int
+	var typedPullFeedCalls int
 	srv := httptest.NewServer(http.HandlerFunc(func(w http.ResponseWriter, r *http.Request) {
 		switch r.URL.Path {
 		case "/api/v1/repos/coilyco-flight-deck/ward/issues":
 			if got := r.URL.Query().Get("state"); got != "open" {
 				t.Fatalf("state query = %q, want open", got)
 			}
-			if got := r.URL.Query().Get("type"); got != "" {
-				t.Fatalf("type query = %q, want empty generic issue feed", got)
+			switch got := r.URL.Query().Get("type"); got {
+			case "":
+				issueFeedCalls++
+				_ = json.NewEncoder(w).Encode([]map[string]any{
+					{
+						"number": 982, "title": "normal issue", "body": "body", "state": "open",
+						"html_url": "https://f/issues/982", "labels": []map[string]any{},
+						"pull_request": nil,
+					},
+					{
+						"number": 983, "title": "open PR", "body": "closes #983", "state": "open",
+						"html_url": "https://f/pulls/983", "labels": []map[string]any{},
+						"pull_request": map[string]any{"url": "https://f/pulls/983"},
+					},
+				})
+			case "pulls":
+				typedPullFeedCalls++
+				_ = json.NewEncoder(w).Encode([]map[string]any{
+					{
+						"number": 983, "title": "open PR", "body": "closes #983", "state": "open",
+						"html_url": "https://f/pulls/983", "labels": []map[string]any{},
+						"pull_request": map[string]any{"url": "https://f/pulls/983"},
+					},
+				})
+			default:
+				t.Fatalf("type query = %q, want empty generic issue feed or pulls", got)
 			}
-			issueFeedCalls++
-			_ = json.NewEncoder(w).Encode([]map[string]any{
-				{
-					"number": 982, "title": "normal issue", "body": "body", "state": "open",
-					"html_url": "https://f/issues/982", "labels": []map[string]any{},
-					"pull_request": nil,
-				},
-				{
-					"number": 983, "title": "open PR", "body": "closes #983", "state": "open",
-					"html_url": "https://f/pulls/983", "labels": []map[string]any{},
-					"pull_request": map[string]any{"url": "https://f/pulls/983"},
-				},
-			})
 		case "/api/v1/repos/coilyco-flight-deck/ward/pulls/983":
 			if got := r.Header.Get("Authorization"); got != "token secret" {
 				t.Fatalf("auth header = %q, want token secret", got)
@@ -312,8 +332,68 @@ func TestListOpenIssuesAndPullRequestsClassifyPullRequestNull(t *testing.T) {
 	if len(prs) != 1 || prs[0].Number != 983 || !prs[0].Mergeable || !prs[0].MergeableKnown {
 		t.Fatalf("prs = %+v, want only the real PR with mergeability", prs)
 	}
-	if issueFeedCalls != 2 {
-		t.Fatalf("issue feed calls = %d, want 2", issueFeedCalls)
+	if issueFeedCalls != 1 {
+		t.Fatalf("issue feed calls = %d, want 1", issueFeedCalls)
+	}
+	if typedPullFeedCalls != 1 {
+		t.Fatalf("typed pull feed calls = %d, want 1", typedPullFeedCalls)
+	}
+}
+
+func TestListOpenPullRequestsKeepsTypedPaginationWhenGenericIssuesFillFirstPage(t *testing.T) {
+	var genericIssueFeedCalls int
+	var typedPullFeedCalls int
+	srv := httptest.NewServer(http.HandlerFunc(func(w http.ResponseWriter, r *http.Request) {
+		switch r.URL.Path {
+		case "/api/v1/repos/coilyco-flight-deck/ward/issues":
+			if got := r.URL.Query().Get("state"); got != "open" {
+				t.Fatalf("state query = %q, want open", got)
+			}
+			if got := r.URL.Query().Get("type"); got == "" {
+				genericIssueFeedCalls++
+				rows := make([]map[string]any, 0, 50)
+				for i := 0; i < 50; i++ {
+					rows = append(rows, map[string]any{
+						"number": 1000 + i, "title": "normal issue", "body": "body", "state": "open",
+						"html_url": fmt.Sprintf("https://f/issues/%d", 1000+i), "labels": []map[string]any{},
+						"pull_request": nil,
+					})
+				}
+				_ = json.NewEncoder(w).Encode(rows)
+				return
+			}
+			if got := r.URL.Query().Get("type"); got != "pulls" {
+				t.Fatalf("type query = %q, want pulls", got)
+			}
+			typedPullFeedCalls++
+			_ = json.NewEncoder(w).Encode([]map[string]any{
+				{
+					"number": 1983, "title": "late PR", "body": "closes #1983", "state": "open",
+					"html_url": "https://f/pulls/1983", "labels": []map[string]any{},
+					"pull_request": map[string]any{"url": "https://f/pulls/1983"},
+				},
+			})
+		case "/api/v1/repos/coilyco-flight-deck/ward/pulls/1983":
+			_, _ = w.Write([]byte(`{"mergeable":true}`))
+		default:
+			t.Fatalf("unexpected path: %s?%s", r.URL.Path, r.URL.RawQuery)
+		}
+	}))
+	defer srv.Close()
+
+	cl := &forgejoClient{baseURL: srv.URL, token: "secret"}
+	prs, err := cl.listOpenPullRequests(context.Background(), "coilyco-flight-deck", "ward", 50)
+	if err != nil {
+		t.Fatalf("listOpenPullRequests: %v", err)
+	}
+	if len(prs) != 1 || prs[0].Number != 1983 || !prs[0].Mergeable || !prs[0].MergeableKnown {
+		t.Fatalf("prs = %+v, want the typed PR beyond the generic issue page", prs)
+	}
+	if genericIssueFeedCalls != 0 {
+		t.Fatalf("generic issue feed calls = %d, want 0", genericIssueFeedCalls)
+	}
+	if typedPullFeedCalls != 1 {
+		t.Fatalf("typed pull feed calls = %d, want 1", typedPullFeedCalls)
 	}
 }
 

@@ -15,8 +15,8 @@ func TestSetupCommandRegistered(t *testing.T) {
 
 func TestRunSetupWithUnsetRef(t *testing.T) {
 	t.Setenv(wardConfigRefEnv, "")
-	t.Setenv("WARD_TARGET_OWNER", "example-owner")
-	t.Setenv("WARD_TARGET_REPO", "example-owner/example-repo")
+	t.Setenv("WARD_TARGET_OWNER", "coilysiren")
+	t.Setenv("WARD_TARGET_REPO", "coilysiren/example")
 	report, err := runSetup(context.Background())
 	if err != nil {
 		t.Fatalf("runSetup with unset ref: %v", err)

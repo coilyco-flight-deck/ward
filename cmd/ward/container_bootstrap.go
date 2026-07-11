@@ -65,6 +65,7 @@ type bootstrapEnv struct {
 	// the push credential, compose the restriction. See docs/agent-surface.md.
 	ReadOnly          bool
 	WardVersionSource string
+	WardVersion       string
 	ForgejoHost       string
 	// Forge is the TARGET repo's host (ward#489, GitLab added in #635): GitHub and GitLab
 	// clone off CloneBase with their own push users, else Forgejo + coilyco-ops.
@@ -199,6 +200,7 @@ func readBootstrapEnv() (bootstrapEnv, error) {
 		Ask:               os.Getenv("WARD_ASK") == "1",
 		ReadOnly:          os.Getenv("WARD_READONLY") == "1",
 		WardVersionSource: envOr(envAgentVersionSource, ""),
+		WardVersion:       envOr("WARD_VERSION", ""),
 
 		SubstrateSeed:     envOr("WARD_SUBSTRATE_SEED", "/opt/substrate-seed"),
 		SubstrateDest:     envOr("WARD_SUBSTRATE_DEST", "/substrate"),
@@ -289,8 +291,8 @@ func echoRunContextGo(e bootstrapEnv, agentArgs []string) {
 		"===== end ward run context =====\n",
 		e.TargetOwner, e.TargetName, ref, orDefaultLabel(e.Branch, "(default)"),
 		e.Mode, e.Agent, orDefaultLabel(e.Container, "(unnamed)"),
-		orDefaultLabel(os.Getenv("WARD_WORKFLOW"), "direct-main"),
-		orDefaultLabel(e.WardVersionSource, wardVersionLaunchLabel(os.Getenv("WARD_VERSION"), "")),
+		orDefaultLabel(os.Getenv("WARD_WORKFLOW"), "merge-remote-main"),
+		orDefaultLabel(e.WardVersionSource, wardVersionLaunchLabel(e.WardVersion, "")),
 		orDefaultLabel(os.Getenv("WARD_CONTAINER_UP"), "(unset)"), seed)
 }
 
@@ -458,7 +460,11 @@ func (r *Runner) runContainerBootstrap(ctx context.Context, c *cli.Command) erro
 	blog("bootstrap agent container composition done")
 
 	_ = os.Setenv("WARD_REAP_WORK", work)
-	r.prepareScratchSpace("/scratch")
+	if err := r.prepareScratchSpace(surfaceScratchDir(e)); err != nil {
+		blog("fatal: %v", err)
+		writeGateFailure("bootstrap", err.Error()) // reaper release-comment context (ward#609)
+		return err
+	}
 	defer r.reap(ctx, work)
 
 	branch := r.captureTrim(ctx, "git", "-C", work, "branch", "--show-current")
@@ -508,21 +514,92 @@ func (r *Runner) runContainerBootstrap(ctx context.Context, c *cli.Command) erro
 	blog("launching %s as uid %s", e.Agent, e.AgentUID)
 	blog("bootstrap launch handoff: %s", e.Agent)
 	r.launchAgent(ctx, e, work, argv, stream)
+	blog("bootstrap launch returned: agent process exited, deferred reaper runs next")
 	return nil
 }
 
-// prepareScratchSpace provisions the writable throwaway area used by read-only
-// sessions and points common temp env vars at it.
-func (r *Runner) prepareScratchSpace(scratchDir string) {
+const surfaceScratchFloorBytes = 512 * 1024 * 1024
+
+// surfaceScratchRoot returns the writable cache/temp root for this surface.
+// Read-only director sessions use the gitcache volume for Go verification headroom.
+func surfaceScratchRoot(readOnly bool, gitcache string) string {
+	if readOnly {
+		return filepath.Join(gitcache, "surface-scratch")
+	}
+	return "/scratch"
+}
+
+// surfaceScratchDir returns the writable cache/temp root for this surface.
+func surfaceScratchDir(e bootstrapEnv) string {
+	return surfaceScratchRoot(e.ReadOnly, e.GitCache)
+}
+
+// directorSurfaceScratchDir returns the scratch root the host gate advertises
+// before the container launches.
+func directorSurfaceScratchDir(readOnly bool) string {
+	return surfaceScratchRoot(readOnly, containerGitcacheMnt)
+}
+
+// surfaceScratchGoCacheDir returns the Go build cache root under the surface
+// scratch location.
+func surfaceScratchGoCacheDir(scratchDir string) string {
+	return filepath.Join(scratchDir, "go-build")
+}
+
+// surfaceScratchBudgetReport renders the current free-space budget for the
+// scratch volume.
+func surfaceScratchBudgetReport(scratchDir string) string {
+	free, total, err := surfaceScratchDiskFreeBytes(scratchDir)
+	if err != nil {
+		return "disk usage unavailable"
+	}
+	return fmt.Sprintf("%s free of %s", diskBytes(free), diskBytes(total))
+}
+
+// prepareScratchSpace provisions the writable throwaway area and points common temp
+// and Go cache env vars at it.
+func (r *Runner) prepareScratchSpace(scratchDir string) error {
 	if err := os.MkdirAll(scratchDir, 0o1777); err != nil {
-		blog("could not create %s: %v", scratchDir, err)
-		return
+		return fmt.Errorf("prepare scratch/cache root %s: %w", scratchDir, err)
+	}
+	subdirs := []string{
+		surfaceScratchGoCacheDir(scratchDir),
+		filepath.Join(scratchDir, "go-mod"),
+		filepath.Join(scratchDir, "go-tmp"),
+		filepath.Join(scratchDir, "xdg-cache"),
+	}
+	for _, dir := range subdirs {
+		if err := os.MkdirAll(dir, 0o1777); err != nil {
+			return fmt.Errorf("prepare scratch/cache dir %s: %w", dir, err)
+		}
+		_ = os.Chmod(dir, 0o1777)
 	}
 	_ = os.Chmod(scratchDir, 0o1777)
+	if err := surfaceScratchBudgetError(scratchDir); err != nil {
+		return err
+	}
 	_ = os.Setenv("TMPDIR", scratchDir)
 	_ = os.Setenv("TMP", scratchDir)
 	_ = os.Setenv("TEMP", scratchDir)
-	blog("scratch area ready at %s", scratchDir)
+	_ = os.Setenv("GOCACHE", surfaceScratchGoCacheDir(scratchDir))
+	_ = os.Setenv("GOMODCACHE", filepath.Join(scratchDir, "go-mod"))
+	_ = os.Setenv("GOTMPDIR", filepath.Join(scratchDir, "go-tmp"))
+	_ = os.Setenv("XDG_CACHE_HOME", filepath.Join(scratchDir, "xdg-cache"))
+	blog("scratch/cache area ready at %s (%s; Go caches under %s)", scratchDir, surfaceScratchBudgetReport(scratchDir), surfaceScratchGoCacheDir(scratchDir))
+	return nil
+}
+
+func diskBytes(b uint64) string {
+	const unit = 1024
+	if b < unit {
+		return fmt.Sprintf("%dB", b)
+	}
+	div, exp := uint64(unit), 0
+	for n := b / unit; n >= unit; n /= unit {
+		div *= unit
+		exp++
+	}
+	return fmt.Sprintf("%.1f%ciB", float64(b)/float64(div), "KMGTPE"[exp])
 }
 
 // makeReadOnlyTree removes write bits from a cloned workspace so the surface
@@ -1031,10 +1108,15 @@ func (r *Runner) warmSubstrateRepo(ctx context.Context, e bootstrapEnv, owner, n
 	}
 }
 
-// prepareConfigBundleCache pre-creates the gitcache's config-bundle dir while
-// the bootstrap runs as root, so the agent's WARD_CONFIG_REF caches there (ward#654).
+// prepareConfigBundleCache pre-creates the per-container config-bundle dir while
+// bootstrap runs as root, so WARD_CONFIG_REF caches there without poisoning siblings.
 func prepareConfigBundleCache(e bootstrapEnv) {
 	dir := filepath.Join(e.GitCache, "config-bundle")
+	if instance := strings.TrimSpace(e.Container); instance != "" {
+		dir = filepath.Join(dir, instance)
+	} else if uid := strings.TrimSpace(e.AgentUID); uid != "" {
+		dir = filepath.Join(dir, uid)
+	}
 	if err := os.MkdirAll(dir, 0o777); err != nil {
 		blog("config-bundle cache: %v (in-container refs fall back to the home cache)", err)
 		return
@@ -1151,6 +1233,13 @@ scrollback. Reserve an in-session subagent for read-only fan-out that only feeds
   the dispatcher authenticate out of the box. The token is the bot's full credential,
   so the no-push rule below is a convention you keep, not yet a credential boundary
   (a dispatch-only token is tracked in ward#318).
+- **PR-workflow management is native ward, not specgen** (ward#1067): ` + "`ward agent pr status <owner/repo#N>`" + `
+  reads one PR head's combined CI status, ` + "`ward agent pr merge <owner/repo#N>`" + ` merges an
+  eligible PR (head-pinned, checks-green-gated), ` + "`ward agent pr runs <owner/repo>`" + ` lists
+  Actions runs with conclusions, and ` + "`ward agent pr rerun <owner/repo> <run-id>`" + ` reruns one.
+  These forward through the host dispatch broker on ward's compiled Forgejo client, gated
+  by the embedded role x workflow permission table, so they keep working even when the
+  ` + "`ward ops forgejo`" + ` specgen surface is stripped or rolled back (infrastructure#538).
 	- The host docker socket is mounted at ` + "`/var/run/docker.sock`" + `, so ` + "`ward agent reap`" + `
   can list and stop stale engineer containers and a dispatched ` + "`warded #N`" + ` can spawn its
   sibling container. If Docker access is intentionally unavailable on this surface,
@@ -1256,11 +1345,35 @@ func (r *Runner) composePermissions(e bootstrapEnv) {
 		blog("could not read container permission policy: %v", rerr)
 		return
 	}
-	if werr := os.WriteFile(out, data, 0o644); werr != nil { // #nosec G306 -- permission policy, not a secret
+	buf := composeClaudeSettings(containerMode(e.Mode), data)
+	if werr := os.WriteFile(out, buf, 0o644); werr != nil { // #nosec G306 -- permission policy, not a secret
 		blog("could not write container permission policy: %v", werr)
 		return
 	}
 	blog("wrote container permission policy to %s", out)
+}
+
+func composeClaudeSettings(mode containerMode, data []byte) []byte {
+	if !lookupAgent(mode).Record().StatusLine {
+		return data
+	}
+	var settings map[string]any
+	if err := json.Unmarshal(data, &settings); err != nil {
+		blog("could not parse container permission policy: %v; writing the base file unchanged", err)
+		return data
+	}
+	settings["statusLine"] = map[string]any{
+		"type":            "command",
+		"command":         "ward agent dispatch-health --line",
+		"padding":         1,
+		"refreshInterval": 5,
+	}
+	buf, err := json.MarshalIndent(settings, "", "  ")
+	if err != nil {
+		blog("could not marshal status-line settings: %v; writing the base file unchanged", err)
+		return data
+	}
+	return append(buf, '\n')
 }
 
 // --- reaper: deterministic teardown backstop ---------------------------------
@@ -1286,6 +1399,20 @@ func (r *Runner) reap(ctx context.Context, work string) {
 	}
 }
 
+func (r *Runner) launchStdout() io.Writer {
+	if r != nil && r.Runner != nil && r.Runner.Stdout != nil {
+		return r.Runner.Stdout
+	}
+	return os.Stdout
+}
+
+func (r *Runner) launchStderr() io.Writer {
+	if r != nil && r.Runner != nil && r.Runner.Stderr != nil {
+		return r.Runner.Stderr
+	}
+	return os.Stderr
+}
+
 // reapWorkTree reaps the target tree then verifies every --repo grant landed too
 // (ward#291); the entrypoint defer never releases the reservation (agent launched).
 func (r *Runner) reapWorkTree(ctx context.Context, work string, env reapEnv) error {
@@ -1306,6 +1433,10 @@ func (r *Runner) launchAgent(ctx context.Context, e bootstrapEnv, work string, a
 		if rerr := r.runStreaming(ctx, work, launch); rerr != nil {
 			blog(r.agentDeathLogLine(ctx, e.Container, rerr))
 		}
+	case e.oneshot() && containerMode(e.Mode) == modeGoose:
+		if rerr := r.runGooseCompletionWatch(ctx, work, launch); rerr != nil {
+			blog(r.agentDeathLogLine(ctx, e.Container, rerr))
+		}
 	case e.oneshot():
 		if rerr := r.runWithStdin(ctx, work, launch, os.DevNull); rerr != nil {
 			blog(r.agentDeathLogLine(ctx, e.Container, rerr))
@@ -1315,6 +1446,7 @@ func (r *Runner) launchAgent(ctx context.Context, e bootstrapEnv, work string, a
 			blog(r.agentDeathLogLine(ctx, e.Container, rerr))
 		}
 	}
+	blog("bootstrap launch returned: agent process exited, deferred reaper runs next")
 }
 
 // agentDeathLogLine names an OOM kill explicitly when Docker state still knows it.
@@ -1330,8 +1462,8 @@ func (r *Runner) agentDeathLogLine(ctx context.Context, container string, runErr
 func (r *Runner) runWithStdin(ctx context.Context, work string, launch []string, stdinPath string) error {
 	cmd := exec.CommandContext(ctx, launch[0], launch[1:]...) // #nosec G204 -- fixed setpriv/agent argv
 	cmd.Dir = work
-	cmd.Stdout = os.Stdout
-	cmd.Stderr = os.Stderr
+	cmd.Stdout = r.launchStdout()
+	cmd.Stderr = r.launchStderr()
 	if stdinPath == "" {
 		cmd.Stdin = os.Stdin
 	} else {
@@ -1349,7 +1481,7 @@ func (r *Runner) runWithStdin(ctx context.Context, work string, launch []string,
 func (r *Runner) runStreaming(ctx context.Context, work string, launch []string) error {
 	cmd := exec.CommandContext(ctx, launch[0], launch[1:]...) // #nosec G204 -- fixed setpriv/agent argv
 	cmd.Dir = work
-	cmd.Stderr = os.Stderr
+	cmd.Stderr = r.launchStderr()
 	devnull, _ := os.Open(os.DevNull)
 	if devnull != nil {
 		defer func() { _ = devnull.Close() }()
@@ -1362,8 +1494,113 @@ func (r *Runner) runStreaming(ctx context.Context, work string, launch []string)
 	if serr := cmd.Start(); serr != nil {
 		return serr
 	}
-	streamProgress(pipe, os.Stdout)
+	streamProgress(pipe, r.launchStdout())
 	return cmd.Wait()
+}
+
+// gooseCompletionGrace is the short post-final-output window the watchdog gives Goose.
+// Ward force-stops a process that keeps running after the terminal answer.
+const gooseCompletionGrace = 5 * time.Second
+
+// gooseCompletionOutput reports whether a line looks like Goose's terminal answer.
+// The watchdog uses it as the success boundary before requesting exit.
+func gooseCompletionOutput(line string) bool {
+	lower := strings.ToLower(line)
+	return strings.Contains(lower, "implementation complete") ||
+		strings.Contains(lower, "requirements satisfied")
+}
+
+type gooseCompletionWatch struct {
+	sawCompletion <-chan struct{}
+	stdoutDone    <-chan error
+	waitDone      <-chan error
+}
+
+// startGooseCompletionWatch starts the stdout copier and process waiter for the
+// Goose completion watchdog.
+func startGooseCompletionWatch(cmd *exec.Cmd, stdout io.ReadCloser, w io.Writer) gooseCompletionWatch {
+	sawCompletion := make(chan struct{}, 1)
+	stdoutDone := make(chan error, 1)
+	go func() {
+		defer close(stdoutDone)
+		sc := bufio.NewScanner(stdout)
+		sc.Buffer(make([]byte, 0, 64*1024), 16*1024*1024)
+		for sc.Scan() {
+			line := sc.Text()
+			writeln(w, line)
+			if gooseCompletionOutput(line) {
+				select {
+				case sawCompletion <- struct{}{}:
+				default:
+				}
+			}
+		}
+		stdoutDone <- sc.Err()
+	}()
+	waitDone := make(chan error, 1)
+	go func() {
+		waitDone <- cmd.Wait()
+	}()
+	return gooseCompletionWatch{sawCompletion: sawCompletion, stdoutDone: stdoutDone, waitDone: waitDone}
+}
+
+// finishGooseCompletionWatch waits for the watchdog to observe completion and
+// then lets the process exit, forcing a kill only if it stays alive.
+func finishGooseCompletionWatch(cmd *exec.Cmd, watch gooseCompletionWatch) error {
+	select {
+	case <-watch.sawCompletion:
+		blog("goose terminal completion output observed; requesting exit")
+		_ = cmd.Process.Signal(os.Interrupt)
+		select {
+		case <-watch.waitDone:
+		case <-time.After(gooseCompletionGrace):
+			blog("goose process still running after terminal completion output; forcing termination")
+			_ = cmd.Process.Kill()
+			<-watch.waitDone
+		}
+		scanErr := <-watch.stdoutDone
+		if scanErr != nil {
+			return scanErr
+		}
+		blog("goose process exited after terminal completion output")
+		return nil
+	case scanErr := <-watch.stdoutDone:
+		waitErr := <-watch.waitDone
+		if scanErr != nil {
+			return scanErr
+		}
+		select {
+		case <-watch.sawCompletion:
+			blog("goose process exited after terminal completion output")
+			return nil
+		default:
+		}
+		if waitErr != nil {
+			return waitErr
+		}
+		return fmt.Errorf("goose exited without terminal completion output")
+	}
+}
+
+// runGooseCompletionWatch runs a headless Goose under a completion watchdog.
+// Once stdout shows the terminal answer, Ward exits the process if needed.
+func (r *Runner) runGooseCompletionWatch(ctx context.Context, work string, launch []string) error {
+	cmd := exec.CommandContext(ctx, launch[0], launch[1:]...) // #nosec G204 -- fixed setpriv/agent argv
+	cmd.Dir = work
+	cmd.Stderr = r.launchStderr()
+	devnull, _ := os.Open(os.DevNull)
+	if devnull != nil {
+		defer func() { _ = devnull.Close() }()
+	}
+	cmd.Stdin = devnull
+	stdout, err := cmd.StdoutPipe()
+	if err != nil {
+		return err
+	}
+	if err := cmd.Start(); err != nil {
+		return err
+	}
+	return finishGooseCompletionWatch(cmd, startGooseCompletionWatch(cmd, stdout, r.launchStdout()))
 }
 
 // setprivPrefix builds the bash launch prefix: drop to the agent uid/gid with
