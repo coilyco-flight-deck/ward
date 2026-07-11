@@ -11,7 +11,6 @@ import (
 	"testing"
 	"time"
 
-	"forgejo.coilysiren.me/coilyco-flight-deck/cli-guard/cli/dispatch"
 	"forgejo.coilysiren.me/coilyco-flight-deck/cli-guard/cli/shell"
 	"forgejo.coilysiren.me/coilyco-flight-deck/cli-guard/pkg/scan"
 	"github.com/urfave/cli/v3"
@@ -436,7 +435,7 @@ type fakeNoOutcomeTracker struct {
 	unlocked  int
 }
 
-func (f *fakeNoOutcomeTracker) getIssue(context.Context, string, string, int) (*dispatch.Issue, error) {
+func (f *fakeNoOutcomeTracker) getIssue(context.Context, string, string, int) (*Issue, error) {
 	return nil, errors.New("fakeNoOutcomeTracker: issue lookup not implemented")
 }
 
@@ -469,7 +468,7 @@ type fakeTerminalOutcomeTracker struct {
 	postAt    time.Time
 }
 
-func (f *fakeTerminalOutcomeTracker) getIssue(context.Context, string, string, int) (*dispatch.Issue, error) {
+func (f *fakeTerminalOutcomeTracker) getIssue(context.Context, string, string, int) (*Issue, error) {
 	return nil, errors.New("fakeTerminalOutcomeTracker: issue lookup not implemented")
 }
 

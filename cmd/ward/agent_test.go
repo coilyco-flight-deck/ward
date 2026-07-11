@@ -9,7 +9,6 @@ import (
 	"testing"
 	"time"
 
-	"forgejo.coilysiren.me/coilyco-flight-deck/cli-guard/cli/dispatch"
 	"forgejo.coilysiren.me/coilyco-flight-deck/cli-guard/cli/shell"
 	"github.com/urfave/cli/v3"
 )
@@ -851,7 +850,7 @@ func TestEngineerPRDetailsIncludesPRAndLinkedIssueContext(t *testing.T) {
 		BaseRef:      "main",
 		Mergeability: "mergeable=true",
 	}
-	linkedIssue := &dispatch.Issue{
+	linkedIssue := &Issue{
 		Number: 913,
 		Title:  "Let engineer input accept a PR ref and start from that PR branch",
 		Body:   "Linked issue body.",
