@@ -139,6 +139,7 @@ func (c *githubClient) getPullRequestContext(ctx context.Context, owner, repo st
 		Draft     bool   `json:"draft"`
 		Mergeable any    `json:"mergeable"`
 		Head      struct {
+			SHA string `json:"sha"`
 			Ref string `json:"ref"`
 		} `json:"head"`
 		Base struct {
@@ -168,6 +169,7 @@ func (c *githubClient) getPullRequestContext(ctx context.Context, owner, repo st
 		Title:        strings.TrimSpace(raw.Title),
 		Body:         strings.TrimSpace(raw.Body),
 		URL:          strings.TrimSpace(raw.HTMLURL),
+		HeadSHA:      strings.TrimSpace(raw.Head.SHA),
 		HeadRef:      strings.TrimSpace(raw.Head.Ref),
 		BaseRef:      strings.TrimSpace(raw.Base.Ref),
 		Mergeability: mergeability,

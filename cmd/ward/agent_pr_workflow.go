@@ -126,6 +126,22 @@ func prWorkflowStatusReport(ctx context.Context, cl *forgejoClient, owner, repo 
 	if len(combined.Statuses) == 0 {
 		b.WriteString("  (no status contexts reported yet)\n")
 	}
+	if strings.ToLower(strings.TrimSpace(combined.State)) != "success" {
+		prCtx := agentPullRequestContext{
+			State:        strings.TrimSpace(pr.State),
+			Title:        strings.TrimSpace(pr.Title),
+			Body:         strings.TrimSpace(pr.Body),
+			URL:          strings.TrimSpace(pr.HTMLURL),
+			HeadSHA:      head,
+			HeadRef:      strings.TrimSpace(pr.Head.Ref),
+			BaseRef:      strings.TrimSpace(pr.Base.Ref),
+			Mergeability: fmt.Sprintf("mergeable=%t", pr.Mergeable),
+		}
+		if assessment, aerr := classifyForgejoPRRepair(ctx, cl, owner, repo, prCtx); aerr == nil && assessment.Bucket != "" {
+			fmt.Fprintf(&b, "  repair bucket: %s\n", assessment.Bucket)
+			fmt.Fprintf(&b, "  repair note: %s\n", assessment.Note)
+		}
+	}
 	// The required-context set is advisory here: the merge tool re-checks it
 	// fail-closed. A branch read failure degrades to a note, not an error.
 	if branch, berr := cl.getBranch(ctx, owner, repo, pr.Base.Ref); berr == nil {

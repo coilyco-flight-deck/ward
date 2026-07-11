@@ -44,6 +44,10 @@ Inventory of what `ward` ships today.
   presets), with zero runtime-specgen dependency. On a read-only director
   surface they forward through the dispatch broker. See
   [agent-pr-workflow.md](agent-pr-workflow.md).
+- **PR repair classification** - failing PR repair paths now bucket the live
+  Forgejo state into `ci-parity-gap`, `main-red`, `merge-queue-churn`, or
+  `pr-regression` before they dispatch another engineer, and the status / seed
+  path prints the selected bucket with a concrete next action.
 - **`ward agent` roles and workflows** - see [agent.md](agent.md),
   [agent-roster.md](agent-roster.md), [agent-roles.md](agent-roles.md), [agent-harnesses.md](agent-harnesses.md),
   [agent-lifecycle.md](agent-lifecycle.md), [agent-director.md](agent-director.md),
