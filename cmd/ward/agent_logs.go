@@ -176,6 +176,14 @@ func (r *Runner) resolveAgentLogsSourceForIssue(ctx context.Context, ref agentIs
 		}
 		return src, nil
 	}
+	if path, ok, err := latestDispatchLogPathForRef(ref); err != nil {
+		return agentLogSource{}, err
+	} else if ok {
+		if follow {
+			return agentLogSource{}, fmt.Errorf("ward agent logs: --follow requires a live docker container for %s", ref)
+		}
+		return agentLogSource{Kind: agentLogSourceFile, Path: path}, nil
+	}
 	return agentLogSource{}, fmt.Errorf("dispatch broker: no engineer log source matches %q", ref.String())
 }
 

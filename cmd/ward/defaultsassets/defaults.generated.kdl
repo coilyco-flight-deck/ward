@@ -4,6 +4,7 @@ smart-defaults {
     agent-reap-idle "1h"
     agent-reap-max-cpu "5.0"
     engineer-container-limit "12"
+    engineer-open-pr-branch-limit "6"
     director-max-parallel "10"
     director-limit "50"
     director-poll-interval "30s"
@@ -12,11 +13,11 @@ smart-defaults {
     container-assets-ttl "1h"
     container-read-only-extra-repo-ttl "24h"
     container-reap-keep "10"
-    agent-workflow default=direct-main {
+    agent-workflow default=merge-remote-main {
 
     }
 }
 repo-authority default=forgejo {
-    trusted-owner example-owner
-    repo "example-owner/*" forge=github
+    trusted-owner coilysiren
+    repo "coilysiren/*" forge=github
 }

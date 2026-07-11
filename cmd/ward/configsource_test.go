@@ -21,8 +21,8 @@ import (
 // WARD_CONFIG_REF means the baked embed, never an error.
 func TestSelectConfigSourceDefaultsBaked(t *testing.T) {
 	t.Setenv(wardConfigRefEnv, "")
-	t.Setenv("WARD_TARGET_OWNER", "example-owner")
-	t.Setenv("WARD_TARGET_REPO", "example-owner/example-repo")
+	t.Setenv("WARD_TARGET_OWNER", "coilysiren")
+	t.Setenv("WARD_TARGET_REPO", "coilysiren/example")
 	src, err := selectConfigSource()
 	if err != nil {
 		t.Fatalf("selectConfigSource with unset ref: %v", err)
@@ -96,7 +96,7 @@ func TestOpsForgejoUnavailableNestedHelpReportsMountFailure(t *testing.T) {
 	for _, want := range []string{
 		"ward ops forgejo: unavailable",
 		"guardfile runtime failed to mount",
-		"read bundle ops manifest ward.bundle.kdl",
+		"missing top-level `wrap ward-kdl ops forgejo` block",
 		"Try `ward ops forgejo --help` or `ward ops forgejo describe` once the bundle is mounted",
 	} {
 		if !strings.Contains(err.Error(), want) {
@@ -136,29 +136,8 @@ func TestSelectConfigSourceFileRef(t *testing.T) {
 	if !src.execMixedDialects {
 		t.Error("bundle source must dialect-filter its exec scan")
 	}
-	if src.agentsKDL != bundleAgentsKDLPath {
-		t.Errorf("bundle agents path = %q, want %q", src.agentsKDL, bundleAgentsKDLPath)
-	}
-	if src.rolesKDL != bundleRolesKDLPath {
-		t.Errorf("bundle roles path = %q, want %q", src.rolesKDL, bundleRolesKDLPath)
-	}
-	if src.defaultsKDL != bundleDefaultsKDLPath {
-		t.Errorf("bundle defaults path = %q, want %q", src.defaultsKDL, bundleDefaultsKDLPath)
-	}
-	if src.reposKDL != bundleReposKDLPath {
-		t.Errorf("bundle repos path = %q, want %q", src.reposKDL, bundleReposKDLPath)
-	}
-	if src.topologyKDL != bundleTopologyKDLPath {
-		t.Errorf("bundle topology path = %q, want %q", src.topologyKDL, bundleTopologyKDLPath)
-	}
-	if src.forgejoGuardfile != "" {
-		t.Errorf("bundle forgejo guardfile = %q, want empty and metadata-driven", src.forgejoGuardfile)
-	}
-	if src.bundleOpsManifest != bundleOpsManifestPath {
-		t.Errorf("bundle ops manifest = %q, want %q", src.bundleOpsManifest, bundleOpsManifestPath)
-	}
-	if src.execGuardfileGlob != bundleExecGuardfileGlob {
-		t.Errorf("bundle exec glob = %q, want %q", src.execGuardfileGlob, bundleExecGuardfileGlob)
+	if src.execDir != "." {
+		t.Errorf("bundle exec dir = %q, want dot-root scan", src.execDir)
 	}
 }
 
@@ -223,19 +202,45 @@ func TestBuildForgejoOpsFromNeutralBundle(t *testing.T) {
 	}
 }
 
-// TestBuildForgejoOpsFromCompatBundle keeps the coilyco compatibility path
-// covered while still routing through the neutral metadata entrypoint.
-func TestBuildForgejoOpsFromCompatBundle(t *testing.T) {
-	dir := writeCompatBundleFixture(t)
-	forgejo, err := buildForgejoOpsFrom(bundleConfigSource(dir))
-	if err != nil {
-		t.Fatalf("buildForgejoOpsFrom compat bundle: %v", err)
+func TestBundleLoadersAcceptAggregateBundle(t *testing.T) {
+	dir := writeAggregateBundleFixture(t)
+	if _, err := loadRawFleetConfigFrom(bundleConfigSource(dir)); err != nil {
+		t.Fatalf("loadRawFleetConfigFrom(aggregate): %v", err)
 	}
-	if commandNamed(forgejo.Commands, "issue") == nil {
-		t.Fatal("compat bundle lost the issue surface")
+	if _, err := loadSmartDefaultsFrom(bundleConfigSource(dir)); err != nil {
+		t.Fatalf("loadSmartDefaultsFrom(aggregate): %v", err)
 	}
-	if _, err := fs.Stat(os.DirFS(dir), "guardfile.forgejo.write.kdl"); err != nil {
-		t.Fatalf("compat bundle missing the role-facing write tier: %v", err)
+	if _, err := loadContainerTopologyFrom(bundleConfigSource(dir)); err != nil {
+		t.Fatalf("loadContainerTopologyFrom(aggregate): %v", err)
+	}
+	if _, err := buildForgejoOpsFrom(bundleConfigSource(dir)); err != nil {
+		t.Fatalf("buildForgejoOpsFrom(aggregate): %v", err)
+	}
+}
+
+func TestBundleLoadersFailClosedOnDuplicateSemanticNodes(t *testing.T) {
+	dir := t.TempDir()
+	writeBundleFixtureFile(t, dir, "one.kdl", `topology {
+    tailnet-network "net-1"
+}`)
+	writeBundleFixtureFile(t, dir, "two.kdl", `topology {
+    tower-host "tower-2"
+}`)
+	if _, err := loadContainerTopologyFrom(bundleConfigSource(dir)); err == nil || !strings.Contains(err.Error(), "duplicate top-level `topology` block") {
+		t.Fatalf("duplicate topology did not fail closed: %v", err)
+	}
+
+	dir = t.TempDir()
+	writeBundleFixtureFile(t, dir, "one.kdl", `agents {
+    schema-version 2
+    agent claude {}
+}`)
+	writeBundleFixtureFile(t, dir, "two.kdl", `fleet {
+    schema-version 2
+    agent claude {}
+}`)
+	if _, err := loadRawFleetConfigFrom(bundleConfigSource(dir)); err == nil || !strings.Contains(err.Error(), "conflicting fleet layouts") {
+		t.Fatalf("conflicting fleet layouts did not fail closed: %v", err)
 	}
 }
 
@@ -313,7 +318,7 @@ func TestLoadContainerTopologyFromBundleSource(t *testing.T) {
     substrate-manifest "/manifest-x"
     substrate-ttl "42"
 }`
-	if err := os.WriteFile(filepath.Join(dir, bundleTopologyKDLPath), []byte(src), 0o644); err != nil {
+	if err := os.WriteFile(filepath.Join(dir, bundleFixtureTopologyPath), []byte(src), 0o644); err != nil {
 		t.Fatalf("write topology bundle: %v", err)
 	}
 	topo, err := loadContainerTopologyFrom(bundleConfigSource(dir))
@@ -411,8 +416,8 @@ func TestBuildForgejoOpsAnnotatesSelectedConfigSource(t *testing.T) {
 		t.Fatalf("abs(%s): %v", dir, err)
 	}
 	t.Setenv(wardConfigRefEnv, "file://"+abs)
-	t.Setenv("WARD_TARGET_OWNER", "example-owner")
-	t.Setenv("WARD_TARGET_REPO", "example-owner/example-repo")
+	t.Setenv("WARD_TARGET_OWNER", "coilysiren")
+	t.Setenv("WARD_TARGET_REPO", "coilysiren/example")
 	forgejo, err := buildForgejoOps()
 	if err != nil {
 		t.Fatalf("buildForgejoOps with fixture ref: %v", err)

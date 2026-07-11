@@ -8,7 +8,7 @@ agent-roles {
         execution-time-limit "90m"
         default-harness claude
         posture code-landing
-        merge-authority pull-requests-and-merge
+        merge-authority pull-request-and-merge
     }
     role director {
         tagline "Autonomously drives a repo's headless lane to drain."
@@ -17,7 +17,7 @@ agent-roles {
         execution-time-limit none
         default-harness claude
         posture attached
-        merge-authority pull-requests pull-requests-and-merge
+        merge-authority pull-request pull-request-and-merge
     }
     role advisor {
         tagline "Answers without writing code."

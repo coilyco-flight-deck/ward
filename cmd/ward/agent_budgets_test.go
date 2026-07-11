@@ -10,7 +10,7 @@ import (
 
 func TestAgentRunBudgetNote(t *testing.T) {
 	dir := writeBundleFixture(t)
-	if err := os.WriteFile(filepath.Join(dir, bundleDefaultsKDLPath), []byte(`
+	if err := os.WriteFile(filepath.Join(dir, bundleFixtureDefaultsPath), []byte(`
 defaults {
     agent-reservation-ttl "3h"
 }

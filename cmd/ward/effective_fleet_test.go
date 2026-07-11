@@ -24,29 +24,28 @@ func TestFrontierAgentDefaultsAreKeyedAndComplete(t *testing.T) {
 
 func writeFleetBundle(t *testing.T, dir, body string) {
 	t.Helper()
-	if err := os.WriteFile(filepath.Join(dir, bundleAgentsKDLPath), []byte(body), 0o644); err != nil {
+	if err := os.WriteFile(filepath.Join(dir, bundleFixtureAgentsPath), []byte(body), 0o644); err != nil {
 		t.Fatalf("write bundle agents: %v", err)
 	}
-	if err := os.WriteFile(filepath.Join(dir, bundleRolesKDLPath), []byte(`roles {
+	if err := os.WriteFile(filepath.Join(dir, bundleFixtureRolesPath), []byte(`roles {
     role engineer {
     }
     role director {
-        guardfile guardfile.aws.kdl
-        guardfile guardfile.tailscale.kdl
+        guardfiles ward-kdl.aws.guardfile.kdl ward-kdl.tailscale.guardfile.kdl
     }
     role advisor {
-        guardfile guardfile.aws.kdl
-        guardfile guardfile.tailscale.kdl
+        guardfiles ward-kdl.aws.guardfile.kdl ward-kdl.tailscale.guardfile.kdl
     }
 }`), 0o644); err != nil {
 		t.Fatalf("write bundle roles: %v", err)
 	}
-	if err := os.WriteFile(filepath.Join(dir, bundleDefaultsKDLPath), []byte(`defaults {
+	if err := os.WriteFile(filepath.Join(dir, bundleFixtureDefaultsPath), []byte(`defaults {
     agent-reservation-ttl "3h"
     agent-reservation-recheck-max "15s"
     agent-reap-idle "1h"
     agent-reap-max-cpu "5.0"
     engineer-container-limit "12"
+    engineer-open-pr-branch-limit "6"
     director-max-parallel "10"
     director-limit "50"
     director-poll-interval "30s"
@@ -59,10 +58,10 @@ func writeFleetBundle(t *testing.T, dir, body string) {
 `), 0o644); err != nil {
 		t.Fatalf("write bundle defaults: %v", err)
 	}
-	if err := os.WriteFile(filepath.Join(dir, bundleReposKDLPath), []byte(`repos {
+	if err := os.WriteFile(filepath.Join(dir, bundleFixtureReposPath), []byte(`repos {
     repo-authority default=forgejo {
-        trusted-owner example-owner
-        repo "example-owner/*" forge=github
+        trusted-owner coilysiren
+        repo "coilysiren/*" forge=github
     }
 }`), 0o644); err != nil {
 		t.Fatalf("write bundle repos: %v", err)

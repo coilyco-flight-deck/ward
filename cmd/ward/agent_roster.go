@@ -165,7 +165,7 @@ func agentRoleDefinitions() (map[string]agentRoleDefinition, error) {
 
 // agentMetaCommands are agent subcommands that are NOT startup roles.
 // `roster`, `reap`, `stop`/`list`, and `review` are meta verbs, so roster skips them.
-var agentMetaCommands = map[string]bool{"roster": true, "reap": true, "stop": true, "list": true, "logs": true, "review": true, "pr": true}
+var agentMetaCommands = map[string]bool{"roster": true, "reap": true, "stop": true, "list": true, "logs": true, "dispatch-health": true, "review": true, "pr": true}
 
 // agentRosterRow is one rendered roster entry: the role, its tagline, its modes, and
 // the per-role detail doc it links to.

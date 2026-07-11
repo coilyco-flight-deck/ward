@@ -89,7 +89,7 @@ func workflowModesJoin(modes []workflowMode) string {
 }
 
 // prWorkflowMarkerMode reads the workflow mode from a PR's body marker; no
-// marker means the plain pull-requests lane (only and-merge PRs are stamped).
+// marker means the plain pull-request lane (only and-merge PRs are stamped).
 func prWorkflowMarkerMode(body string) workflowMode {
 	if marker, ok := directorPRWorkflowMarker(body); ok {
 		return canonicalWorkflow(workflowMode(marker))
@@ -221,8 +221,8 @@ runtime KDL specgen surface, so they keep working with the '.ward/' guardfile
 bundle absent or rolled back (infrastructure#538).
 
 Merge authority is keyed to the workflow-mode model in the embedded role
-catalog: the director merges under pull-requests and pull-requests-and-merge,
-the engineer self-merges under pull-requests-and-merge only, and patch-only
+catalog: the director merges under pull-request and pull-request-and-merge,
+the engineer self-merges under pull-request-and-merge only, and remote-branch-only
 withholds merge from everyone. Status and runs are read verbs; rerun needs an
 engineering or project-management role.
 
