@@ -139,7 +139,7 @@ func (r *Runner) runAgentDispatchHealth(ctx context.Context, c *cli.Command) err
 
 func (r *Runner) dispatchHealthSnapshot(ctx context.Context, repos []string, maxParallel int) dispatchHealthReport {
 	entries := r.backlogScopeEntries(repos)
-	rows, err := r.runningEngineerRows(ctx)
+	rows, err := r.agentListRows(ctx)
 	report := dispatchHealthReport{
 		Scope: repos,
 	}

@@ -9,8 +9,8 @@ import (
 
 func TestSmartDefaultsBaked(t *testing.T) {
 	t.Setenv(wardConfigRefEnv, "")
-	t.Setenv("WARD_TARGET_OWNER", "example-owner")
-	t.Setenv("WARD_TARGET_REPO", "example-owner/example-repo")
+	t.Setenv("WARD_TARGET_OWNER", "coilysiren")
+	t.Setenv("WARD_TARGET_REPO", "coilysiren/example")
 	defs, err := currentSmartDefaultsWithError()
 	if err != nil {
 		t.Fatalf("currentSmartDefaultsWithError(baked): %v", err)
@@ -20,6 +20,12 @@ func TestSmartDefaultsBaked(t *testing.T) {
 	}
 	if defs.engineerContainerLimit != 12 || defs.directorMaxParallel != 10 || defs.directorLimit != 50 || defs.containerReapKeep != 10 {
 		t.Errorf("baked defaults = %+v, want the neutral policy bundle", defs)
+	}
+	if len(defs.trustedOwners) == 0 || defs.trustedOwners[0] != "coilysiren" {
+		t.Errorf("baked trusted owners = %v, want coilysiren", defs.trustedOwners)
+	}
+	if len(defs.repoAuthorityRules) == 0 || defs.repoAuthorityRules[0].Pattern != "coilysiren/*" || defs.repoAuthorityRules[0].Forge != forgeGitHub {
+		t.Errorf("baked repo authority = %+v, want coilysiren/* on github", defs.repoAuthorityRules)
 	}
 }
 
@@ -31,6 +37,7 @@ func TestSmartDefaultsFromBundleSource(t *testing.T) {
     agent-reap-idle "90m"
     agent-reap-max-cpu "7.5"
     engineer-container-limit "17"
+    engineer-open-pr-branch-limit "8"
     director-max-parallel "13"
     director-limit "77"
     director-poll-interval "45s"
@@ -39,20 +46,20 @@ func TestSmartDefaultsFromBundleSource(t *testing.T) {
     container-assets-ttl "3h"
     container-read-only-extra-repo-ttl "48h"
     container-reap-keep "12"
-    agent-workflow default="direct-main" {
+    agent-workflow default="merge-remote-main" {
     }
 }
 `
 	reposBody := `repos {
     repo-authority default=forgejo {
-        trusted-owner "example-owner"
-        repo "example-owner/*" forge=github
+        trusted-owner "coilysiren"
+        repo "coilysiren/*" forge=github
     }
 }`
-	if err := os.WriteFile(filepath.Join(dir, bundleDefaultsKDLPath), []byte(defaultsBody), 0o644); err != nil {
+	if err := os.WriteFile(filepath.Join(dir, bundleFixtureDefaultsPath), []byte(defaultsBody), 0o644); err != nil {
 		t.Fatalf("write defaults bundle: %v", err)
 	}
-	if err := os.WriteFile(filepath.Join(dir, bundleReposKDLPath), []byte(reposBody), 0o644); err != nil {
+	if err := os.WriteFile(filepath.Join(dir, bundleFixtureReposPath), []byte(reposBody), 0o644); err != nil {
 		t.Fatalf("write repos bundle: %v", err)
 	}
 	defs, err := loadSmartDefaultsFrom(bundleConfigSource(dir))
@@ -68,6 +75,9 @@ func TestSmartDefaultsFromBundleSource(t *testing.T) {
 	if defs.engineerContainerLimit != 17 || defs.directorMaxParallel != 13 || defs.directorLimit != 77 || defs.directorPollInterval != 45*time.Second {
 		t.Errorf("bundle director defaults = %+v", defs)
 	}
+	if defs.engineerOpenPRBranchLimit != 8 {
+		t.Errorf("bundle open-pr defaults = %+v", defs)
+	}
 	if defs.reviewerTimeout != 11*time.Minute || defs.configBundleTTL != 15*time.Minute {
 		t.Errorf("bundle duration defaults = %+v", defs)
 	}
@@ -75,7 +85,7 @@ func TestSmartDefaultsFromBundleSource(t *testing.T) {
 		t.Errorf("bundle container defaults = %+v", defs)
 	}
 	if defs.agentWorkflowDefault != workflowDirectToMain {
-		t.Errorf("bundle workflow default = %q, want direct-main", defs.agentWorkflowDefault)
+		t.Errorf("bundle workflow default = %q, want merge-remote-main", defs.agentWorkflowDefault)
 	}
 	if len(defs.agentWorkflowRepos) != 0 {
 		t.Errorf("bundle workflow overrides = %v, want none in the neutral starter", defs.agentWorkflowRepos)
@@ -94,13 +104,13 @@ func TestSmartDefaultsRejectsMalformedValue(t *testing.T) {
 	defaultsBody := `defaults {
     agent-reservation-ttl "nope"
 }`
-	if err := os.WriteFile(filepath.Join(dir, bundleDefaultsKDLPath), []byte(defaultsBody), 0o644); err != nil {
+	if err := os.WriteFile(filepath.Join(dir, bundleFixtureDefaultsPath), []byte(defaultsBody), 0o644); err != nil {
 		t.Fatalf("write malformed defaults bundle: %v", err)
 	}
-	if err := os.WriteFile(filepath.Join(dir, bundleReposKDLPath), []byte(`repos {
+	if err := os.WriteFile(filepath.Join(dir, bundleFixtureReposPath), []byte(`repos {
     repo-authority default=forgejo {
-        trusted-owner "example-owner"
-        repo "example-owner/*" forge=github
+        trusted-owner "coilysiren"
+        repo "coilysiren/*" forge=github
     }
 }`), 0o644); err != nil {
 		t.Fatalf("write repos bundle: %v", err)
@@ -121,13 +131,13 @@ func TestSmartDefaultsRejectsInvalidWorkflow(t *testing.T) {
 	defaultsBody := `defaults {
     agent-workflow default="merge-it"
 }`
-	if err := os.WriteFile(filepath.Join(dir, bundleDefaultsKDLPath), []byte(defaultsBody), 0o644); err != nil {
+	if err := os.WriteFile(filepath.Join(dir, bundleFixtureDefaultsPath), []byte(defaultsBody), 0o644); err != nil {
 		t.Fatalf("write malformed defaults bundle: %v", err)
 	}
-	if err := os.WriteFile(filepath.Join(dir, bundleReposKDLPath), []byte(`repos {
+	if err := os.WriteFile(filepath.Join(dir, bundleFixtureReposPath), []byte(`repos {
     repo-authority default=forgejo {
-        trusted-owner "example-owner"
-        repo "example-owner/*" forge=github
+        trusted-owner "coilysiren"
+        repo "coilysiren/*" forge=github
     }
 }`), 0o644); err != nil {
 		t.Fatalf("write repos bundle: %v", err)
@@ -142,10 +152,10 @@ func TestSmartDefaultsRejectsMissingRepoAuthority(t *testing.T) {
 	body := `defaults {
     agent-reservation-ttl "2h"
 }`
-	if err := os.WriteFile(filepath.Join(dir, bundleDefaultsKDLPath), []byte(body), 0o644); err != nil {
+	if err := os.WriteFile(filepath.Join(dir, bundleFixtureDefaultsPath), []byte(body), 0o644); err != nil {
 		t.Fatalf("write defaults bundle: %v", err)
 	}
-	if err := os.WriteFile(filepath.Join(dir, bundleReposKDLPath), []byte(`repos {
+	if err := os.WriteFile(filepath.Join(dir, bundleFixtureReposPath), []byte(`repos {
 }`), 0o644); err != nil {
 		t.Fatalf("write repos bundle: %v", err)
 	}

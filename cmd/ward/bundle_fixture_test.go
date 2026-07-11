@@ -10,29 +10,24 @@ import (
 )
 
 const (
-	neutralBundleForgejoGuardfilePath = "ops.forgejo.kdl"
-	compatBundleForgejoGuardfilePath  = "guardfile.forgejo.kdl"
+	bundleFixtureAgentsPath   = "alpha.kdl"
+	bundleFixtureRolesPath    = "bravo.kdl"
+	bundleFixtureDefaultsPath = "charlie.kdl"
+	bundleFixtureReposPath    = "delta.kdl"
+	bundleFixtureTopologyPath = "echo.kdl"
+	bundleFixtureForgejoPath  = "foxtrot.kdl"
+	bundleFixtureSpecLockPath = "golf.json"
+	bundleAggregatePath       = "hotel.kdl"
+	bundleAggregateForgejo    = "india.kdl"
+	bundleAggregateSpecLock   = "juliet.json"
 )
 
 func writeBundleFixture(t *testing.T) string {
-	return writeBundleFixtureWithForgejoGuardfile(t, neutralBundleForgejoGuardfilePath)
-}
-
-func writeCompatBundleFixture(t *testing.T) string {
-	return writeBundleFixtureWithForgejoGuardfile(t, compatBundleForgejoGuardfilePath)
-}
-
-func writeBundleFixtureWithForgejoGuardfile(t *testing.T, forgejoGuardfilePath string) string {
 	t.Helper()
 	dir := t.TempDir()
 
 	files := map[string]string{
-		bundleOpsManifestPath: fmt.Sprintf(`
-ops {
-    forgejo "%s"
-}
-`, forgejoGuardfilePath),
-		bundleAgentsKDLPath: `
+		bundleFixtureAgentsPath: `
 agents {
     schema-version 2
     defaults {
@@ -43,7 +38,7 @@ agents {
     }
 }
 `,
-		bundleRolesKDLPath: `
+		bundleFixtureRolesPath: `
 roles {
     role engineer {
         agent claude {
@@ -56,8 +51,7 @@ roles {
         }
     }
     role director {
-        guardfile guardfile.aws.kdl
-        guardfile guardfile.tailscale.kdl
+        guardfiles ward-kdl.aws.guardfile.kdl ward-kdl.tailscale.guardfile.kdl
         agent claude {
             model "claude-opus-4-8[1m]"
             reasoning-effort high
@@ -68,8 +62,7 @@ roles {
         }
     }
     role advisor {
-        guardfile guardfile.aws.kdl
-        guardfile guardfile.tailscale.kdl
+        guardfiles ward-kdl.aws.guardfile.kdl ward-kdl.tailscale.guardfile.kdl
         agent claude {
             model "claude-opus-4-8[1m]"
             reasoning-effort high
@@ -81,13 +74,14 @@ roles {
     }
 }
 `,
-		bundleDefaultsKDLPath: `
+		bundleFixtureDefaultsPath: `
 defaults {
     agent-reservation-ttl "2h"
     agent-reservation-recheck-max "9s"
     agent-reap-idle "90m"
     agent-reap-max-cpu "7.5"
     engineer-container-limit "17"
+    engineer-open-pr-branch-limit "8"
     director-max-parallel "13"
     director-limit "77"
     director-poll-interval "45s"
@@ -96,19 +90,19 @@ defaults {
     container-assets-ttl "3h"
     container-read-only-extra-repo-ttl "48h"
     container-reap-keep "12"
-    agent-workflow default="direct-main" {
+    agent-workflow default="merge-remote-main" {
     }
 }
 `,
-		bundleReposKDLPath: `
+		bundleFixtureReposPath: `
 repos {
     repo-authority default=forgejo {
-        trusted-owner "example-owner"
-        repo "example-owner/*" forge=github
+        trusted-owner "coilysiren"
+        repo "coilysiren/*" forge=github
     }
 }
-	`,
-		bundleTopologyKDLPath: `
+`,
+		bundleFixtureTopologyPath: `
 topology {
     tailnet-network "net-x"
     tailnet-proxy "proxy-x:9050"
@@ -120,7 +114,6 @@ topology {
     substrate-ttl "42"
 }
 `,
-		bundleForgejoSpecLockPath: "",
 	}
 
 	// Reuse the embedded Forgejo guardfile + spec lock so the split-layout fixture
@@ -129,25 +122,18 @@ topology {
 	if err != nil {
 		t.Fatalf("read baked ops guardfile: %v", err)
 	}
-	files[forgejoGuardfilePath] = string(forgejoGuardfile)
+	files[bundleFixtureForgejoPath] = strings.ReplaceAll(string(forgejoGuardfile), "forgejo.swagger.v1.json", bundleFixtureSpecLockPath)
 	specLock, err := bakedAssets.ReadFile(opsForgejoSpecLockPath)
 	if err != nil {
 		t.Fatalf("read baked ops spec lock: %v", err)
 	}
-	files[bundleForgejoSpecLockPath] = string(specLock)
-
-	if forgejoGuardfilePath == compatBundleForgejoGuardfilePath {
-		files["guardfile.forgejo.write.kdl"] = strings.TrimSpace(`
-wrap ward-kdl ops forgejo {
-    inherit guardfile.forgejo.read.kdl
-}
-`)
-	}
+	files[bundleFixtureSpecLockPath] = string(specLock)
 
 	entries, err := fs.ReadDir(bakedAssets, execAssetsDir)
 	if err != nil {
 		t.Fatalf("read baked execassets: %v", err)
 	}
+	execIndex := 0
 	for _, e := range entries {
 		if e.IsDir() {
 			continue
@@ -157,22 +143,84 @@ wrap ward-kdl ops forgejo {
 		if err != nil {
 			t.Fatalf("read baked %s: %v", srcName, err)
 		}
-		files[bundleGuardfileName(e.Name())] = string(src)
+		execIndex++
+		files[fmt.Sprintf("exec/%02d.kdl", execIndex)] = string(src)
 	}
 
 	for name, body := range files {
-		if err := os.WriteFile(filepath.Join(dir, name), []byte(strings.TrimSpace(body)+"\n"), 0o644); err != nil {
-			t.Fatalf("write %s: %v", name, err)
-		}
+		writeBundleFixtureFile(t, dir, name, body)
 	}
 
 	return dir
 }
 
-func bundleGuardfileName(name string) string {
-	if !strings.HasPrefix(name, "ward-kdl.") || !strings.HasSuffix(name, ".guardfile.kdl") {
-		return name
+func writeAggregateBundleFixture(t *testing.T) string {
+	t.Helper()
+	dir := t.TempDir()
+	parts := []string{
+		strings.TrimSpace(`
+agents {
+    schema-version 2
+    defaults {
+        agent claude
+        attribution name=example-bot email=bot@example.com
+    }
+    agent claude {
+    }
+}
+`),
+		strings.TrimSpace(`
+roles {
+    role engineer {
+        agent claude {
+            model claude-fable-5
+            reasoning-effort medium
+        }
+    }
+}
+`),
+		strings.TrimSpace(`
+defaults {
+    agent-reservation-ttl "2h"
+    agent-reservation-recheck-max "9s"
+}
+`),
+		strings.TrimSpace(`
+repos {
+    repo-authority default=forgejo {
+        trusted-owner "coilysiren"
+        repo "coilysiren/*" forge=github
+    }
+}
+`),
+		strings.TrimSpace(`
+topology {
+    tailnet-network "net-x"
+    tower-host "tower-x"
+}
+`),
 	}
-	trimmed := strings.TrimSuffix(strings.TrimPrefix(name, "ward-kdl."), ".guardfile.kdl")
-	return fmt.Sprintf("guardfile.%s.kdl", trimmed)
+	writeBundleFixtureFile(t, dir, bundleAggregatePath, strings.Join(parts, "\n\n"))
+	forgejoGuardfile, err := bakedAssets.ReadFile(opsForgejoGuardfilePath)
+	if err != nil {
+		t.Fatalf("read baked ops guardfile: %v", err)
+	}
+	writeBundleFixtureFile(t, dir, bundleAggregateForgejo, strings.ReplaceAll(string(forgejoGuardfile), "forgejo.swagger.v1.json", bundleAggregateSpecLock))
+	specLock, err := bakedAssets.ReadFile(opsForgejoSpecLockPath)
+	if err != nil {
+		t.Fatalf("read baked ops spec lock: %v", err)
+	}
+	writeBundleFixtureFile(t, dir, bundleAggregateSpecLock, string(specLock))
+	return dir
+}
+
+func writeBundleFixtureFile(t *testing.T, dir, name, body string) {
+	t.Helper()
+	full := filepath.Join(dir, name)
+	if err := os.MkdirAll(filepath.Dir(full), 0o755); err != nil {
+		t.Fatalf("mkdir %s: %v", filepath.Dir(full), err)
+	}
+	if err := os.WriteFile(full, []byte(strings.TrimSpace(body)+"\n"), 0o644); err != nil {
+		t.Fatalf("write %s: %v", name, err)
+	}
 }

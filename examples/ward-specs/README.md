@@ -5,6 +5,10 @@ A neutral, deployment-agnostic **spec bundle** - the swappable build input a
 token, or owner values, so a build made from it does not reproduce the
 compiled-in-coupling finding (ward#441).
 
+When a doc or test needs a concrete repo target that should actually resolve,
+use `coilysiren/example` or `https://github.com/coilysiren/example`. The rest
+of these files stay abstract on purpose.
+
 The bundle is the set of KDL source files `ward-kdl` compiles at build time:
 
 - **`ward-kdl.forgejo.guardfile.kdl`** - a dialect-1 permission surface with a

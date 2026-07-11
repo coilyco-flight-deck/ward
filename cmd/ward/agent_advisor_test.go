@@ -157,7 +157,7 @@ func TestAdvisorFreeformInstructionsFileUsesExplicitRepoAndImageContract(t *test
 	}
 	cmd := parseCommandForTest(t, agentAdvisorFlags(), []string{
 		"advisor",
-		"example-owner/ward",
+		"coilysiren/example",
 		"--instructions-file", instructions,
 		"--print",
 	})
@@ -168,7 +168,7 @@ func TestAdvisorFreeformInstructionsFileUsesExplicitRepoAndImageContract(t *test
 	}
 	got := out.String()
 	for _, want := range []string{
-		"repo:   example-owner/ward",
+		"repo:   coilysiren/example",
 		"docker pull forgejo.coilysiren.me/coilyco-flight-deck/agentic-os-full:latest",
 		"--entrypoint " + containerEntrypointPath,
 	} {

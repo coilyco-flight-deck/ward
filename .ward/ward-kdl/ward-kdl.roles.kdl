@@ -7,7 +7,7 @@ agent-roles {
         modes "A ref carries that issue detached, fire-and-forget. Freeform text files an issue first, then carries it. Detached-only - interactive work funnels to the director."
         default-harness claude
         posture code-landing
-        merge-authority pull-requests-and-merge
+        merge-authority pull-request-and-merge
     }
     role director {
         tagline "Autonomously drives a repo's headless lane to drain."
@@ -15,7 +15,7 @@ agent-roles {
         modes "Attached LLM-in-the-loop heartbeat over a repo's backlog (`--repo` scope). Surfaces a read-only scope + dispatch session on drain, no ref."
         default-harness claude
         posture attached
-        merge-authority pull-requests pull-requests-and-merge
+        merge-authority pull-request pull-request-and-merge
     }
     role advisor {
         tagline "Answers without writing code."

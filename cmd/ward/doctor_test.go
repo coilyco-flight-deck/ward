@@ -30,19 +30,16 @@ func TestRunDoctorWithValidBundle(t *testing.T) {
 	}
 }
 
-func TestRunDoctorRejectsBakedPlaceholders(t *testing.T) {
+func TestRunDoctorWithBakedDefaultsKeepsRepoAuthorityClean(t *testing.T) {
 	t.Setenv(wardConfigRefEnv, "")
-	t.Setenv("WARD_TARGET_OWNER", "example-owner")
-	t.Setenv("WARD_TARGET_REPO", "example-owner/example-repo")
+	t.Setenv("WARD_TARGET_OWNER", "coilysiren")
+	t.Setenv("WARD_TARGET_REPO", "coilysiren/example")
 	report, err := runDoctor(context.Background())
-	if err == nil {
-		t.Fatal("runDoctor with baked config: want failure, got nil")
+	if !strings.Contains(report.sourceSummary, "baked neutral default") {
+		t.Fatalf("source summary = %q, want the baked source note", report.sourceSummary)
 	}
-	if !report.failed() {
-		t.Fatalf("runDoctor with baked config should fail: %+v", report.checks)
-	}
-	if !containsCheck(report.checks, "repo authority") && !containsCheck(report.checks, "fleet") {
-		t.Fatalf("runDoctor with baked config did not flag placeholder surfaces: %+v", report.checks)
+	if containsCheck(report.checks, "repo authority") {
+		t.Fatalf("runDoctor with baked config still flagged repo authority: %+v (err=%v)", report.checks, err)
 	}
 }
 
@@ -93,9 +90,9 @@ smart-defaults {
 		_, err := parseSmartDefaults([]byte(`
 smart-defaults {
     agent-reservation-ttl "1h"
-    agent-workflow default=direct-main {
-        repo "coily/repo" workflow=pull-requests
-        repo "coily/repo" workflow=patch-only
+    agent-workflow default=merge-remote-main {
+        repo "coily/repo" workflow=pull-request
+        repo "coily/repo" workflow=remote-branch-only
     }
 }
 repo-authority default=forgejo {
@@ -111,12 +108,12 @@ repo-authority default=forgejo {
 		defs, err := parseSmartDefaults([]byte(`
 smart-defaults {
     agent-reservation-ttl "1h"
-    agent-workflow default=direct-main {
+    agent-workflow default=merge-remote-main {
     }
 }
 repo-authority default=forgejo {
-    trusted-owner example-owner
-    repo "example-owner/*" forge=github
+    trusted-owner example-placeholder-owner
+    repo "example-placeholder-owner/*" forge=github
 }`))
 		if err != nil {
 			t.Fatalf("parseSmartDefaults: %v", err)
@@ -182,7 +179,7 @@ func copyDoctorBundle(t *testing.T) string {
 		old string
 		new string
 	}{
-		{"example-owner", "coilyco-flight-deck"},
+		{"coilysiren", "coilyco-flight-deck"},
 		{"example-bot", "coily-bot"},
 		{"bot@example.com", "bot@coilyco.flight-deck"},
 		{"git.example.com", "forgejo.coilysiren.me"},

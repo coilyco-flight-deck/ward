@@ -322,6 +322,14 @@ func (r *Runner) handleHostDispatchBrokerLaunch(ctx context.Context, req dispatc
 		lock.Lock()
 		defer lock.Unlock()
 	}
+	if err := r.dispatchBrokerOpenPRBackpressureCheck(ctx, req, agentCmdline(dispatchBrokerRequestMode(req), req.Role)); err != nil {
+		restore()
+		restored = true
+		dispatchFailedDispatchLaunchStartHook()
+		r.commentDispatchLaunchError(ctx, req, logPath, err)
+		done <- dispatchBrokerLaunchResult{logPath: logPath, err: err}
+		return
+	}
 	if err := withBrokerForwardingDisabled(func() error {
 		close(started)
 		return dispatchBrokerLaunch(ctx, req)
@@ -440,7 +448,7 @@ func (r *Runner) commentFailedDispatchLaunch(ctx context.Context, req dispatchBr
 // commentDispatchLaunchError routes a launch refusal to the deferred or failed
 // issue comment path after the host broker has restored its stdio.
 func (r *Runner) commentDispatchLaunchError(ctx context.Context, req dispatchBrokerRequest, logPath string, launchErr error) {
-	if isEngineerCapacityError(launchErr) {
+	if isEngineerCapacityError(launchErr) || isOpenPRBackpressureError(launchErr) {
 		fmt.Fprintf(os.Stderr, "ward dispatch broker: launch deferred: %v\n", launchErr)
 		r.commentDeferredDispatchLaunch(ctx, req, logPath, launchErr)
 		return

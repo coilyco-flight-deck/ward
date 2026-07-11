@@ -132,6 +132,7 @@ func TestEngineerContainerLimitFromBundleOverride(t *testing.T) {
     agent-reap-idle "1h"
     agent-reap-max-cpu "5.0"
     engineer-container-limit "15"
+    engineer-open-pr-branch-limit "6"
     director-max-parallel "10"
     director-limit "50"
     director-poll-interval "30s"
@@ -140,8 +141,8 @@ func TestEngineerContainerLimitFromBundleOverride(t *testing.T) {
     container-assets-ttl "1h"
     container-read-only-extra-repo-ttl "24h"
     container-reap-keep "10"
-    agent-workflow default=direct-main {
-        repo "coilyco-flight-deck/ward" workflow=pull-requests-and-merge
+    agent-workflow default=merge-remote-main {
+        repo "coilyco-flight-deck/ward" workflow=pull-request-and-merge
     }
 }
 `
@@ -151,10 +152,10 @@ func TestEngineerContainerLimitFromBundleOverride(t *testing.T) {
         repo "coilyco-flight-deck/*" forge=forgejo
     }
 }`
-	if err := os.WriteFile(filepath.Join(dir, bundleDefaultsKDLPath), []byte(defaultsBody), 0o644); err != nil {
+	if err := os.WriteFile(filepath.Join(dir, bundleFixtureDefaultsPath), []byte(defaultsBody), 0o644); err != nil {
 		t.Fatalf("write defaults bundle: %v", err)
 	}
-	if err := os.WriteFile(filepath.Join(dir, bundleReposKDLPath), []byte(reposBody), 0o644); err != nil {
+	if err := os.WriteFile(filepath.Join(dir, bundleFixtureReposPath), []byte(reposBody), 0o644); err != nil {
 		t.Fatalf("write repos bundle: %v", err)
 	}
 	t.Setenv(wardConfigRefEnv, "file://"+dir)

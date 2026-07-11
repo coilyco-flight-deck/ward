@@ -384,15 +384,15 @@ func reviewGateClause(ref agentIssueRef, wf workflowMode) string {
 	var workflowTail string
 	switch mode := string(canonicalWorkflow(wf.orDefault())); mode {
 	case string(workflowDirectToMain):
-		workflowTail = "For `direct-main` workflows, landing means merging to `main`. Do not stop before the merge lands."
+		workflowTail = "For `merge-remote-main` workflows, landing means merging to `main`. Do not stop before the merge lands."
 	case string(workflowPullRequest):
-		workflowTail = "For `pull-requests` workflows, opening the " + noun + " is not a stopping point. Keep watching the " + noun + " checks after it opens. A failing check is not done: fetch the logs/status, patch the branch, push the update, and repeat until the " + noun + " is green or the failure is genuinely blocked."
+		workflowTail = "For `pull-request` workflows, opening the " + noun + " is not a stopping point. Keep watching the " + noun + " checks after it opens. A failing check is not done: fetch the logs/status, patch the branch, push the update, and repeat until the " + noun + " is green or the failure is genuinely blocked."
 	case string(workflowPullRequestAndMerge):
-		workflowTail = "For `pull-requests-and-merge` workflows, opening the " + noun + " is not a stopping point. Keep watching the " + noun + " checks and merge status after it opens. A failing check is not done: fetch the logs/status, patch the branch, push the update, and repeat until the " + noun + " is green and merged or the failure is genuinely blocked."
+		workflowTail = "For `pull-request-and-merge` workflows, opening the " + noun + " is not a stopping point. Keep watching the " + noun + " checks and merge status after it opens. A failing check is not done: fetch the logs/status, patch the branch, push the update, and repeat until the " + noun + " is green and merged or the failure is genuinely blocked."
 	case string(workflowRemoteBranchOnly):
-		workflowTail = "For `patch-only` workflows, the remote branch push is the finish line. Do not open a pull request and do not merge."
+		workflowTail = "For `remote-branch-only` workflows, the remote branch push is the finish line. Do not open a pull request and do not merge."
 	default:
-		workflowTail = "For `pull-requests` workflows, opening the " + noun + " is not a stopping point. Keep watching the " + noun + " checks after it opens. A failing check is not done: fetch the logs/status, patch the branch, push the update, and repeat until the " + noun + " is green or the failure is genuinely blocked."
+		workflowTail = "For `pull-request` workflows, opening the " + noun + " is not a stopping point. Keep watching the " + noun + " checks after it opens. A failing check is not done: fetch the logs/status, patch the branch, push the update, and repeat until the " + noun + " is green or the failure is genuinely blocked."
 	}
 	return fmt.Sprintf(
 		"REVIEW GATE (ward#134): before you land this change (%s), and ONLY after CI is green, run the "+
@@ -455,7 +455,7 @@ func forgeDisplayName(f forge) string {
 	return "Forgejo"
 }
 
-// agentSeedPrompt seeds a direct-main run (the default): a thin wrapper over
+// agentSeedPrompt seeds a merge-remote-main run (the default): a thin wrapper over
 // agentSeedPromptWorkflow so legacy callers stay byte-for-byte (ward#405, ward#508).
 func agentSeedPrompt(ref agentIssueRef, title, body, details string, headless bool, extra []targetRepo) string {
 	return agentSeedPromptWorkflow(ref, title, body, details, headless, extra, defaultWorkflow, true, "")
@@ -1306,19 +1306,8 @@ func (r *Runner) runAgentWork(ctx context.Context, c *cli.Command, mode containe
 	if err != nil {
 		return err
 	}
-	// Warn at host dispatch if ward is stale; a detached run buries the only
-	// `ward version` signal in a container log (ward#143). --print stays offline.
-	if !c.Bool("print") {
-		if preflightSkipped(c) {
-			writef(os.Stderr, "%s: skipping ward update reminder (--skip-preflight)\n", label)
-		} else {
-			r.maybeWarnWardOutdated(ctx)
-		}
-	}
-	if !w.ReviewGate && !c.Bool("print") {
-		if _, skipReason := reviewGateDecision(c, surface, mode, w.Ref); skipReason != "" {
-			r.writeSkippedReviewSummaryHandoff(mode, skipReason)
-		}
+	if err := r.runAgentWorkPreLaunchChecks(ctx, c, mode, surface, label, w); err != nil {
+		return err
 	}
 	workerName := issueScopedContainerName(roleEngineer, mode, targetRepo{Owner: w.Ref.Owner, Name: w.Ref.Repo}, w.Ref.Number)
 	if err := r.precheckLiveIssueWorker(ctx, label, w.Ref, workerName, overrideReservation(c)); err != nil {
@@ -1346,6 +1335,29 @@ func (r *Runner) runAgentWork(ctx context.Context, c *cli.Command, mode containe
 		justification = read
 	}
 	return r.launchAgentContainer(ctx, c, mode, surface, w, justification)
+}
+
+func (r *Runner) runAgentWorkPreLaunchChecks(ctx context.Context, c *cli.Command, mode containerMode, surface, label string, w resolvedWork) error {
+	if c.Bool("print") {
+		return nil
+	}
+	// Warn at host dispatch if ward is stale; a detached run buries the only
+	// `ward version` signal in a container log (ward#143).
+	if preflightSkipped(c) {
+		writef(os.Stderr, "%s: skipping ward update reminder (--skip-preflight)\n", label)
+	} else {
+		r.maybeWarnWardOutdated(ctx)
+	}
+	if !w.ReviewGate {
+		r.maybeWriteSkippedReviewSummaryHandoff(mode, c, surface, w.Ref)
+	}
+	return r.maybeLaunchOpenPRBackpressure(ctx, label, w.Ref.repoSlug(), c, w)
+}
+
+func (r *Runner) maybeWriteSkippedReviewSummaryHandoff(mode containerMode, c *cli.Command, surface string, ref agentIssueRef) {
+	if _, skipReason := reviewGateDecision(c, surface, mode, ref); skipReason != "" {
+		r.writeSkippedReviewSummaryHandoff(mode, skipReason)
+	}
 }
 
 // preflightTimeout caps the pre-flight read so a wedged agent can't hold the
@@ -2004,6 +2016,9 @@ func (r *Runner) launchAgentContainer(ctx context.Context, c *cli.Command, mode 
 		}
 	}
 
+	if err := r.maybeLaunchOpenPRBackpressure(ctx, label, w.Ref.repoSlug(), c, w); err != nil {
+		return err
+	}
 	if !c.Bool("print") {
 		if err := r.enforceEngineerContainerLimit(ctx, label, c.Bool("override-capacity")); err != nil {
 			return err

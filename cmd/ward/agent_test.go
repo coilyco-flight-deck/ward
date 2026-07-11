@@ -146,10 +146,10 @@ func TestParseAgentIssueRefUsesRepoAuthorityPolicy(t *testing.T) {
         repo "coilyco-flight-deck/*" forge=forgejo
     }
 }`
-	if err := os.WriteFile(filepath.Join(dir, bundleDefaultsKDLPath), []byte(defaultsBody), 0o644); err != nil {
+	if err := os.WriteFile(filepath.Join(dir, bundleFixtureDefaultsPath), []byte(defaultsBody), 0o644); err != nil {
 		t.Fatalf("write defaults bundle: %v", err)
 	}
-	if err := os.WriteFile(filepath.Join(dir, bundleReposKDLPath), []byte(reposBody), 0o644); err != nil {
+	if err := os.WriteFile(filepath.Join(dir, bundleFixtureReposPath), []byte(reposBody), 0o644); err != nil {
 		t.Fatalf("write repos bundle: %v", err)
 	}
 	t.Setenv(wardConfigRefEnv, "file://"+dir)
@@ -225,7 +225,7 @@ func TestUntrustedOwnerErr(t *testing.T) {
 	msg := r.untrustedOwnerErr("warded", "evilcorp").Error()
 	for _, want := range []string{
 		`refusing untrusted owner "evilcorp"`,
-		"example-owner",            // the accepted set is named
+		"coilysiren",               // the accepted set is named
 		"docs/agent-trust-gate.md", // the signpost the issue asked for
 	} {
 		if !strings.Contains(msg, want) {
@@ -510,20 +510,20 @@ func TestAgentSeedPromptPullRequestFailureCommenting(t *testing.T) {
 		"skip the PR comment",
 	} {
 		if !strings.Contains(pr, want) {
-			t.Fatalf("pull-requests seed missing %q\n%s", want, pr)
+			t.Fatalf("pull-request seed missing %q\n%s", want, pr)
 		}
 	}
 
 	direct := agentSeedPromptWorkflow(ref, "fail on PR", "do the thing", "", true, nil, workflowDirectToMain, true, "")
 	if strings.Contains(direct, "post the same actionable failure comment to both the linked issue and the PR") {
-		t.Fatalf("direct-main seed must not ask for PR comments when no PR exists\n%s", direct)
+		t.Fatalf("merge-remote-main seed must not ask for PR comments when no PR exists\n%s", direct)
 	}
 }
 
 func TestOwnerAllowed(t *testing.T) {
 	t.Setenv(wardConfigRefEnv, "file://"+writeBundleFixture(t))
 	r := &Runner{}
-	for _, ok := range []string{"example-owner"} {
+	for _, ok := range []string{"coilysiren"} {
 		if !r.ownerAllowed(ok) {
 			t.Errorf("ownerAllowed(%q) = false, want true", ok)
 		}
@@ -549,10 +549,10 @@ func TestResolveAgentIssueRefUsesRepoAuthorityPolicy(t *testing.T) {
         repo "coilyco-flight-deck/*" forge=forgejo
     }
 }`
-	if err := os.WriteFile(filepath.Join(dir, bundleDefaultsKDLPath), []byte(defaultsBody), 0o644); err != nil {
+	if err := os.WriteFile(filepath.Join(dir, bundleFixtureDefaultsPath), []byte(defaultsBody), 0o644); err != nil {
 		t.Fatalf("write defaults bundle: %v", err)
 	}
-	if err := os.WriteFile(filepath.Join(dir, bundleReposKDLPath), []byte(reposBody), 0o644); err != nil {
+	if err := os.WriteFile(filepath.Join(dir, bundleFixtureReposPath), []byte(reposBody), 0o644); err != nil {
 		t.Fatalf("write repos bundle: %v", err)
 	}
 	t.Setenv(wardConfigRefEnv, "file://"+dir)
@@ -1085,8 +1085,8 @@ func TestAgentHarnessAliasResolution(t *testing.T) {
 // TestRetiredVerbsErrorAsUnknown covers ward#347's hard rename: a bare `ward agent
 // <old-verb>` (not a ref) errors as an unknown command, not filed as freeform work.
 func TestRetiredVerbsErrorAsUnknown(t *testing.T) {
-	t.Setenv("WARD_TARGET_OWNER", "example-owner")
-	t.Setenv("WARD_TARGET_REPO", "example-owner/example-repo")
+	t.Setenv("WARD_TARGET_OWNER", "coilysiren")
+	t.Setenv("WARD_TARGET_REPO", "coilysiren/example")
 	for _, verb := range []string{"explore", "sandbox", "headless", "work", "reply", "ask", "backlog"} {
 		err := agentCommand().Run(t.Context(), []string{"agent", verb})
 		if err == nil {
