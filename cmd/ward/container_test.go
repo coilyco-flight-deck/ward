@@ -346,8 +346,8 @@ func TestUpPlanLabels(t *testing.T) {
 
 func TestLeastAccessMountsDefaultIsCwdOnly(t *testing.T) {
 	mounts := leastAccessMounts("/home/kai/projects/coilyco-bridge/agentic-os-kai", mountOpts{AssetsDir: "/tmp/ward-assets"})
-	// The target repo must never be a host bind: only cwd + assets binds, plus
-	// the gitcache named volume.
+	// The target repo must never be a host bind: only cwd + assets binds,
+	// plus the staged entrypoint file and the gitcache named volume.
 	var hostBinds []string
 	for _, m := range mounts {
 		if !m.Volume {
@@ -357,9 +357,13 @@ func TestLeastAccessMountsDefaultIsCwdOnly(t *testing.T) {
 			t.Errorf("host bind %q is writable; least-access binds are read-only", m.Source)
 		}
 	}
-	wantBinds := []string{"/home/kai/projects/coilyco-bridge/agentic-os-kai", "/tmp/ward-assets"}
+	wantBinds := []string{
+		"/home/kai/projects/coilyco-bridge/agentic-os-kai",
+		"/tmp/ward-assets",
+		filepath.Join("/tmp/ward-assets", containerEntrypointRel),
+	}
 	if !slices.Equal(hostBinds, wantBinds) {
-		t.Errorf("default host binds = %v, want exactly %v (cwd + assets, no target repo)", hostBinds, wantBinds)
+		t.Errorf("default host binds = %v, want exactly %v (cwd + assets + entrypoint, no target repo)", hostBinds, wantBinds)
 	}
 }
 
@@ -369,7 +373,7 @@ func TestLeastAccessMountsOptIns(t *testing.T) {
 	for _, m := range mounts {
 		targets[m.Target] = true
 	}
-	for _, want := range []string{containerContextMount, containerGitcacheMnt, containerWardAssets, containerAWSMount, containerWardSrcMount} {
+	for _, want := range []string{containerContextMount, containerGitcacheMnt, containerWardAssets, containerEntrypointPath, containerAWSMount, containerWardSrcMount} {
 		if !targets[want] {
 			t.Errorf("opt-in mount set missing %q", want)
 		}
@@ -592,6 +596,30 @@ func TestWardEnvContainerName(t *testing.T) {
 	}
 }
 
+// TestWardEnvCorrelationEnvelope asserts the stable run metadata rides the
+// container env so launchers and request headers can correlate the run.
+func TestWardEnvCorrelationEnvelope(t *testing.T) {
+	p := sampleUpPlan()
+	env := p.wardEnv()
+	for _, want := range []struct {
+		key, value string
+	}{
+		{"WARD_RUN_ID", p.Name},
+		{"WARD_HARNESS", string(p.Mode)},
+		{"WARD_ISSUE_REF", p.Repo.slug() + "#140"},
+		{"WARD_CONTEXT_LEVEL", "2"},
+		{"WARD_VERSION", "v0.16.0"},
+		{"WARD_TARGET_REPO", p.Repo.slug()},
+	} {
+		if got := env[want.key]; got != want.value {
+			t.Errorf("%s = %q, want %q", want.key, got, want.value)
+		}
+	}
+	if got := env["WARD_WORKFLOW"]; got != "" {
+		t.Errorf("WARD_WORKFLOW = %q, want it absent for the merge-remote-main default", got)
+	}
+}
+
 // TestWardEnvContainerMarker asserts every run exports the WARD_CONTAINER=1 fence
 // marker host-only fleet scripts key off (ward#114).
 func TestWardEnvContainerMarker(t *testing.T) {
@@ -604,7 +632,7 @@ func TestWardEnvContainerMarker(t *testing.T) {
 func sampleUpPlan() upPlan {
 	repo := targetRepo{Owner: "coilyco-gaming", Name: "eco-app"}
 	return upPlan{
-		Image:       "forgejo.coilysiren.me/coilyco-flight-deck/agentic-os:latest",
+		Image:       "forgejo.coilysiren.me/coilyco-flight-deck/agentic-os-full:latest",
 		Name:        "engineer-claude-eco-app-140",
 		Role:        roleEngineer,
 		Machine:     "deadbeef",
@@ -832,7 +860,7 @@ func TestDockerCreateArgvShape(t *testing.T) {
 		"--label ward.repo=coilyco-gaming/eco-app",
 		"--label ward.machine=deadbeef",
 		"--label ward.issue=140",
-		"--entrypoint " + containerWardAssets + "/" + containerEntrypointRel,
+		"--entrypoint " + containerEntrypointPath,
 		"-it",
 		"--env-file /tmp/ward-env-xyz",
 		"-e WARD_CONTAINER_NAME=engineer-claude-eco-app-140",
@@ -852,7 +880,7 @@ func TestDockerCreateArgvShape(t *testing.T) {
 		}
 	}
 	// The image is the final arg.
-	if argv[len(argv)-1] != "forgejo.coilysiren.me/coilyco-flight-deck/agentic-os:latest" {
+	if argv[len(argv)-1] != "forgejo.coilysiren.me/coilyco-flight-deck/agentic-os-full:latest" {
 		t.Errorf("image must be the final arg, got %q", argv[len(argv)-1])
 	}
 }
@@ -893,7 +921,7 @@ func TestDockerCreateNoBindsArgv(t *testing.T) {
 	}
 	for _, want := range []string{
 		"--name engineer-claude-eco-app-140",
-		"--entrypoint " + containerWardAssets + "/" + containerEntrypointRel,
+		"--entrypoint " + containerEntrypointPath,
 		"-v " + containerGitcacheVol + ":" + containerGitcacheMnt, // the named volume survives
 		"--env-file /tmp/ward-env-xyz",
 		"-e WARD_TARGET_REPO=coilyco-gaming/eco-app",
@@ -929,8 +957,8 @@ func TestHostBindMounts(t *testing.T) {
 		targets = append(targets, m.Target)
 	}
 	joined := strings.Join(targets, " ")
-	if !strings.Contains(joined, containerContextMount) || !strings.Contains(joined, containerWardAssets) {
-		t.Errorf("hostBindMounts should include the cwd context + assets binds, got targets %v", targets)
+	if !strings.Contains(joined, containerContextMount) || !strings.Contains(joined, containerWardAssets) || !strings.Contains(joined, containerEntrypointPath) {
+		t.Errorf("hostBindMounts should include the cwd context + assets + entrypoint binds, got targets %v", targets)
 	}
 	if strings.Contains(joined, containerGitcacheMnt) {
 		t.Error("hostBindMounts must exclude the gitcache named volume")
@@ -1265,8 +1293,8 @@ func TestEntrypointClonesExtraRepos(t *testing.T) {
 	}
 }
 
-// TestEntrypointGooseHeadless locks ward#141: entrypoint runs `goose run -t <seed>`
-// (not claude `-p`) and mirrors doctrine into .goosehints since goose ignores ~/.claude.
+// TestEntrypointGooseHeadless locks ward#141.
+// Entrypoint runs goose run --no-session -t <seed> and mirrors doctrine into .goosehints.
 func TestEntrypointGooseHeadless(t *testing.T) {
 	t.Skip("entrypoint delegates harness-specific setup to ward container bootstrap now")
 	data, err := containerAssets.ReadFile("containerassets/" + containerEntrypointRel)
@@ -1275,18 +1303,18 @@ func TestEntrypointGooseHeadless(t *testing.T) {
 	}
 	script := string(data)
 	for _, want := range []string{
-		`case "$WARD_MODE" in`, // launch argv is mode-aware
-		"goose run -t",         // headless goose runs the seed to completion
-		"goose session",        // interactive goose
-		".goosehints",          // doctrine mirrored to goose's hints file
+		`case "$WARD_MODE" in`,      // launch argv is mode-aware
+		"goose run --no-session -t", // headless goose runs the seed to completion
+		"goose session",             // interactive goose
+		".goosehints",               // doctrine mirrored to goose's hints file
 	} {
 		if !strings.Contains(script, want) {
 			t.Errorf("entrypoint missing %q (ward#141 goose headless)", want)
 		}
 	}
-	// goose headless must not borrow claude's stream-json flags: the goose `run -t`
-	// invocation precedes the claude `-p --output-format` block in the mode switch.
-	goose := strings.Index(script, "goose run -t")
+	// goose headless must not borrow claude's stream-json flags.
+	// The goose run --no-session -t invocation precedes the claude -p --output-format block.
+	goose := strings.Index(script, "goose run --no-session -t")
 	claudeFlags := strings.Index(script, "--output-format stream-json")
 	if goose < 0 || claudeFlags < 0 || goose > claudeFlags {
 		t.Errorf("goose headless argv must be distinct from claude stream-json (goose=%d claude=%d)", goose, claudeFlags)

@@ -58,6 +58,14 @@ var dispatchBrokerLaunch = func(ctx context.Context, req dispatchBrokerRequest) 
 	}
 }
 
+// dispatchBrokerVisibilityTimeout bounds the post-launch wait for a forwarded
+// engineer run to show up in the director-facing list.
+var dispatchBrokerVisibilityTimeout = 10 * time.Second
+
+// dispatchBrokerVisibilityPoll is the cadence for checking whether a forwarded
+// engineer launch is visible yet.
+var dispatchBrokerVisibilityPoll = 100 * time.Millisecond
+
 const (
 	// dispatchActionLaunch is the default action: launch a sibling engineer/advisor
 	// run. An empty Action normalizes to it, keeping older launch requests byte-compatible.
@@ -69,7 +77,25 @@ const (
 	dispatchActionList = "list"
 	// dispatchActionLogs streams one engineer's logs back to the requester.
 	dispatchActionLogs = "logs"
+	// dispatchActionPRStatus reads one PR head's combined CI status natively (ward#1067).
+	dispatchActionPRStatus = "pr-status"
+	// dispatchActionPRMerge merges one PR through ward's compiled client, gated by
+	// the embedded role x workflow permission table (ward#1067).
+	dispatchActionPRMerge = "pr-merge"
+	// dispatchActionCIRuns lists a repo's Actions runs with conclusions (ward#1067).
+	dispatchActionCIRuns = "ci-runs"
+	// dispatchActionCIRerun reruns one Actions run natively (ward#1067).
+	dispatchActionCIRerun = "ci-rerun"
 )
+
+// prWorkflowDispatchActions is the ward#1067 action set: PR-workflow verbs the
+// broker serves natively, host-side, on ward's compiled Forgejo client.
+var prWorkflowDispatchActions = map[string]bool{
+	dispatchActionPRStatus: true,
+	dispatchActionPRMerge:  true,
+	dispatchActionCIRuns:   true,
+	dispatchActionCIRerun:  true,
+}
 
 type dispatchBrokerRequest struct {
 	// Action discriminates a launch (default/empty) from a stop control action
@@ -84,6 +110,10 @@ type dispatchBrokerRequest struct {
 	Requester string `json:"requester,omitempty"`
 	Tail      int    `json:"tail,omitempty"`
 	Follow    bool   `json:"follow,omitempty"`
+	// RunID names the Actions run a ci-rerun acts on (ward#1067).
+	RunID int64 `json:"run_id,omitempty"`
+	// Limit caps a ci-runs read (ward#1067).
+	Limit int `json:"limit,omitempty"`
 	// Token is the per-launch shared secret the surface echoes back so the host
 	// broker authenticates the dial (the TCP port has no socket file perms).
 	Token string `json:"token,omitempty"`
@@ -207,6 +237,10 @@ func (r *Runner) handleHostDispatchBrokerConn(ctx context.Context, conn net.Conn
 		r.runDispatchBrokerList(ctx, conn, req)
 		return
 	}
+	if prWorkflowDispatchActions[dispatchAction(req.Action)] {
+		r.runDispatchBrokerPRWorkflow(ctx, conn, req)
+		return
+	}
 	logPath, err := r.startHostDispatchBrokerRequest(ctx, req)
 	writeDispatchBrokerResponse(conn, logPath, err)
 }
@@ -232,8 +266,8 @@ func writeDispatchBrokerLogsResponse(conn net.Conn, source string, err error) {
 	}
 }
 
-// startHostDispatchBrokerRequest launches the validated request in the background
-// and returns once the launch has started so the broker can ack the surface promptly.
+// startHostDispatchBrokerRequest launches the validated request in the background.
+// It returns once the run is visible enough to count as real.
 func (r *Runner) startHostDispatchBrokerRequest(ctx context.Context, req dispatchBrokerRequest) (string, error) {
 	if err := validateDispatchBrokerRequest(req); err != nil {
 		return "", err
@@ -262,37 +296,126 @@ func (r *Runner) startHostDispatchBrokerRequest(ctx context.Context, req dispatc
 		ref)
 	restore := redirectStdioToLog(logf)
 	started := make(chan struct{})
-	go func() {
-		restored := false
-		defer func() {
-			if !restored {
-				restore()
-			}
-			_ = logf.Close()
-			dispatchStdioRestoreHook()
-		}()
-		if lock != nil {
-			lock.Lock()
-			defer lock.Unlock()
+	done := make(chan dispatchBrokerLaunchResult, 1)
+	go r.handleHostDispatchBrokerLaunch(ctx, req, logPath, logf, restore, lock, started, done)
+	if req.Role == roleAdvisor {
+		return waitForDispatchBrokerLaunchStart(ctx, logPath, started)
+	}
+	return waitForDispatchBrokerLaunchResult(ctx, done)
+}
+
+type dispatchBrokerLaunchResult struct {
+	logPath string
+	err     error
+}
+
+func (r *Runner) handleHostDispatchBrokerLaunch(ctx context.Context, req dispatchBrokerRequest, logPath string, logf *os.File, restore func(), lock *sync.Mutex, started chan struct{}, done chan<- dispatchBrokerLaunchResult) {
+	restored := false
+	defer func() {
+		if !restored {
+			restore()
 		}
-		if err := withBrokerForwardingDisabled(func() error {
-			close(started)
-			return dispatchBrokerLaunch(ctx, req)
-		}); err != nil {
+		_ = logf.Close()
+		dispatchStdioRestoreHook()
+	}()
+	if lock != nil {
+		lock.Lock()
+		defer lock.Unlock()
+	}
+	if err := r.dispatchBrokerOpenPRBackpressureCheck(ctx, req, agentCmdline(dispatchBrokerRequestMode(req), req.Role)); err != nil {
+		restore()
+		restored = true
+		dispatchFailedDispatchLaunchStartHook()
+		r.commentDispatchLaunchError(ctx, req, logPath, err)
+		done <- dispatchBrokerLaunchResult{logPath: logPath, err: err}
+		return
+	}
+	if err := withBrokerForwardingDisabled(func() error {
+		close(started)
+		return dispatchBrokerLaunch(ctx, req)
+	}); err != nil {
+		restore()
+		restored = true
+		dispatchFailedDispatchLaunchStartHook()
+		r.commentDispatchLaunchError(ctx, req, logPath, err)
+		done <- dispatchBrokerLaunchResult{logPath: logPath, err: err}
+		return
+	}
+	if dispatchAction(req.Action) == dispatchActionLaunch && req.Role == roleEngineer {
+		if err := r.waitForDispatchBrokerEngineerVisibility(ctx, req); err != nil {
 			restore()
 			restored = true
 			dispatchFailedDispatchLaunchStartHook()
 			r.commentDispatchLaunchError(ctx, req, logPath, err)
+			done <- dispatchBrokerLaunchResult{logPath: logPath, err: err}
 			return
 		}
-		fmt.Fprintf(os.Stderr, "ward dispatch broker: launch completed\n")
-	}()
+	}
+	fmt.Fprintf(os.Stderr, "ward dispatch broker: launch completed\n")
+	done <- dispatchBrokerLaunchResult{logPath: logPath, err: nil}
+}
+
+func waitForDispatchBrokerLaunchStart(ctx context.Context, logPath string, started <-chan struct{}) (string, error) {
 	select {
 	case <-started:
 		return logPath, nil
 	case <-ctx.Done():
 		return "", ctx.Err()
 	}
+}
+
+func waitForDispatchBrokerLaunchResult(ctx context.Context, done <-chan dispatchBrokerLaunchResult) (string, error) {
+	select {
+	case result := <-done:
+		return result.logPath, result.err
+	case <-ctx.Done():
+		return "", ctx.Err()
+	}
+}
+
+// waitForDispatchBrokerEngineerVisibility polls until the forwarded engineer is
+// visible in the director-facing list or the confirmation window expires.
+func (r *Runner) waitForDispatchBrokerEngineerVisibility(ctx context.Context, req dispatchBrokerRequest) error {
+	ref, err := parseAgentIssueRef(req.Argv[1])
+	if err != nil {
+		return err
+	}
+	deadlineCtx, cancel := context.WithTimeout(ctx, dispatchBrokerVisibilityTimeout)
+	defer cancel()
+	ticker := time.NewTicker(dispatchBrokerVisibilityPoll)
+	defer ticker.Stop()
+	for {
+		visible, err := r.dispatchBrokerEngineerVisible(deadlineCtx, ref)
+		if err != nil {
+			return fmt.Errorf(
+				"dispatch broker: launch accepted but could not confirm engineer visibility; "+
+					"inspect with `ward agent list` from the director surface: %w", err)
+		}
+		if visible {
+			return nil
+		}
+		select {
+		case <-deadlineCtx.Done():
+			return fmt.Errorf(
+				"dispatch broker: launch accepted but the forwarded engineer never became visible; " +
+					"inspect with `ward agent list` from the director surface")
+		case <-ticker.C:
+		}
+	}
+}
+
+// dispatchBrokerEngineerVisible checks whether the expected engineer is visible
+// in the host's running-engineer list.
+func (r *Runner) dispatchBrokerEngineerVisible(ctx context.Context, ref agentIssueRef) (bool, error) {
+	out, err := r.dockerCapture(ctx, "ps", "--format", "{{.Names}}",
+		"--filter", "label="+containerLabel,
+		"--filter", "label="+labelRole+"="+roleEngineer,
+		"--filter", "label="+labelRepo+"="+ref.repoSlug(),
+		"--filter", fmt.Sprintf("label=%s=%d", labelIssue, ref.Number))
+	if err != nil {
+		return false, fmt.Errorf("dispatch broker: check engineer visibility for %s: %w", ref, err)
+	}
+	return strings.TrimSpace(string(out)) != "", nil
 }
 
 // commentFailedDispatchLaunch posts the failure comment with a detached timeout.
@@ -325,7 +448,7 @@ func (r *Runner) commentFailedDispatchLaunch(ctx context.Context, req dispatchBr
 // commentDispatchLaunchError routes a launch refusal to the deferred or failed
 // issue comment path after the host broker has restored its stdio.
 func (r *Runner) commentDispatchLaunchError(ctx context.Context, req dispatchBrokerRequest, logPath string, launchErr error) {
-	if isEngineerCapacityError(launchErr) {
+	if isEngineerCapacityError(launchErr) || isOpenPRBackpressureError(launchErr) {
 		fmt.Fprintf(os.Stderr, "ward dispatch broker: launch deferred: %v\n", launchErr)
 		r.commentDeferredDispatchLaunch(ctx, req, logPath, launchErr)
 		return
@@ -401,6 +524,7 @@ func (r *Runner) commentFailedDispatch(ctx context.Context, cl Tracker, mode con
 	if req.Role == roleEngineer {
 		container = issueScopedContainerName(req.Role, mode, targetRepo{Owner: ref.Owner, Name: ref.Repo}, ref.Number)
 	}
+	r.stopFailedDispatchContainer(ctx, mode, ref, req.Role, container)
 	body := dispatchLaunchFailureCommentBody(mode, container, req, logPath, launchErr)
 	if err := cl.commentIssue(ctx, ref.Owner, ref.Repo, ref.Number, body); err != nil {
 		fmt.Fprintf(os.Stderr, "ward dispatch broker: could not comment failed dispatch on %s: %v\n", ref, err)
@@ -419,6 +543,7 @@ func (r *Runner) commentDeferredDispatch(ctx context.Context, cl Tracker, mode c
 	if req.Role == roleEngineer {
 		container = issueScopedContainerName(req.Role, mode, targetRepo{Owner: ref.Owner, Name: ref.Repo}, ref.Number)
 	}
+	r.stopFailedDispatchContainer(ctx, mode, ref, req.Role, container)
 	body := dispatchLaunchDeferredCommentBody(mode, container, req, logPath, launchErr)
 	if err := cl.commentIssue(ctx, ref.Owner, ref.Repo, ref.Number, body); err != nil {
 		fmt.Fprintf(os.Stderr, "ward dispatch broker: could not comment deferred dispatch on %s: %v\n", ref, err)
@@ -428,6 +553,26 @@ func (r *Runner) commentDeferredDispatch(ctx context.Context, cl Tracker, mode c
 		fmt.Fprintf(os.Stderr, "ward dispatch broker: could not unlock issue %s after deferred dispatch: %v\n", ref, err)
 	}
 	fmt.Fprintf(os.Stderr, "ward dispatch broker: released deferred dispatch reservation on %s\n", ref)
+}
+
+// stopFailedDispatchContainer best-effort stops the attempted engineer container
+// when a forwarded dispatch failed after the reservation decision was made.
+func (r *Runner) stopFailedDispatchContainer(ctx context.Context, mode containerMode, ref agentIssueRef, role, container string) {
+	if role != roleEngineer || r == nil || r.Runner == nil {
+		return
+	}
+	name := strings.TrimSpace(container)
+	if name == "" {
+		name = issueScopedContainerName(roleEngineer, mode, targetRepo{Owner: ref.Owner, Name: ref.Repo}, ref.Number)
+	}
+	if !r.containerRunning(ctx, name) {
+		return
+	}
+	if err := r.dockerExec(ctx, "stop", name); err != nil {
+		fmt.Fprintf(os.Stderr, "ward dispatch broker: could not stop failed dispatch container %s: %v\n", name, err)
+		return
+	}
+	fmt.Fprintf(os.Stderr, "ward dispatch broker: stopped failed dispatch container %s\n", name)
 }
 
 // commentDeferredReleaseAssetsDispatch writes the release-assets-not-ready comment.
@@ -464,7 +609,7 @@ func dispatchLaunchFailureCommentBody(mode containerMode, container string, req 
 			"Container created: no running engineer was observed.\n"+
 			"Host log: `%s`\n"+
 			"Failure: `%s`\n\n"+
-			"Retry: choose another harness if the first one is down, or rerun with `--force` if the reservation is stale.",
+			"Retry: choose another harness if the first one is down, or rerun with `--override-reservation` if the reservation is stale.",
 		mode, attempted, container, logDetail, firstLine(launchErr.Error()))
 	return agentReservationReleaseMarker + "\n" + agentNeedsRedispatchMarker + "\n" +
 		collapsedIssueComment("WARD-DISPATCH: failed ❌", "failure details", detail)
@@ -845,7 +990,7 @@ func validateDispatchBrokerArgv(role string, tail []string) error {
 		for _, f := range []string{"--image", "--tag", "--ward-version", "--branch", "--repo", "--tailnet-mode"} {
 			valueFlags[f] = true
 		}
-		for _, f := range []string{"--aws", "--tailnet", "--no-pull", "--force", "--skip-preflight", "--no-preflight", "--skip-review", "--no-review-gate"} {
+		for _, f := range []string{"--aws", "--tailnet", "--no-pull", "--force", "--override-reservation", "--override-capacity", "--skip-preflight", "--no-preflight", "--skip-review", "--no-review-gate", "--pr"} {
 			boolFlags[f] = true
 		}
 		return validateDispatchBrokerFlags(role, tail, valueFlags, boolFlags, false)
@@ -1046,8 +1191,19 @@ func brokerEngineerArgv(c *cli.Command, mode containerMode, ref agentIssueRef) [
 	if details := strings.TrimSpace(c.String("details")); details != "" {
 		argv = append(argv, "--details", details)
 	}
+	// Forward each --override-* spelling as typed (ward#1045): the host prints the
+	// --force deprecation notice itself, and capacity never rides on reservation.
+	if c.Bool("override-reservation") {
+		argv = append(argv, "--override-reservation")
+	}
 	if c.Bool("force") {
 		argv = append(argv, "--force")
+	}
+	if c.Bool("override-capacity") {
+		argv = append(argv, "--override-capacity")
+	}
+	if c.Bool("pr") {
+		argv = append(argv, "--pr")
 	}
 	if c.Bool("skip-preflight") {
 		argv = append(argv, "--skip-preflight")

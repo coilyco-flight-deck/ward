@@ -46,13 +46,17 @@ func TestExecutorFileIssueHTTP(t *testing.T) {
 func TestExecutorEditIssueOmitsEmptyFields(t *testing.T) {
 	var gotBody map[string]string
 	srv := httptest.NewServer(http.HandlerFunc(func(w http.ResponseWriter, r *http.Request) {
-		if r.Method != http.MethodPatch || r.URL.Path != "/api/v1/repos/coilyco/r/issues/7" {
-			t.Fatalf("request = %s %s, want PATCH issue endpoint", r.Method, r.URL.Path)
+		switch {
+		case r.Method == http.MethodGet && r.URL.Path == "/api/v1/repos/coilyco/r/issues/7":
+			_, _ = w.Write([]byte(`{"number":7,"pull_request":null}`))
+		case r.Method == http.MethodPatch && r.URL.Path == "/api/v1/repos/coilyco/r/issues/7":
+			if err := json.NewDecoder(r.Body).Decode(&gotBody); err != nil {
+				t.Fatalf("decode request body: %v", err)
+			}
+			_, _ = w.Write([]byte(`{"number": 7}`))
+		default:
+			t.Fatalf("request = %s %s, want GET+PATCH issue endpoint", r.Method, r.URL.Path)
 		}
-		if err := json.NewDecoder(r.Body).Decode(&gotBody); err != nil {
-			t.Fatalf("decode request body: %v", err)
-		}
-		_, _ = w.Write([]byte(`{"number": 7}`))
 	}))
 	defer srv.Close()
 
@@ -65,6 +69,32 @@ func TestExecutorEditIssueOmitsEmptyFields(t *testing.T) {
 	}
 	if gotBody["body"] != "new body" || gotBody["state"] != "closed" {
 		t.Errorf("body = %#v, want body + state only", gotBody)
+	}
+}
+
+func TestExecutorEditIssueRoutesPullRequestsToPullEndpoint(t *testing.T) {
+	var gotBody map[string]string
+	srv := httptest.NewServer(http.HandlerFunc(func(w http.ResponseWriter, r *http.Request) {
+		switch {
+		case r.Method == http.MethodGet && r.URL.Path == "/api/v1/repos/coilyco/r/issues/7":
+			_, _ = w.Write([]byte(`{"number":7,"pull_request":{"url":"https://forge/x/y/pulls/7"}}`))
+		case r.Method == http.MethodPatch && r.URL.Path == "/api/v1/repos/coilyco/r/pulls/7":
+			if err := json.NewDecoder(r.Body).Decode(&gotBody); err != nil {
+				t.Fatalf("decode request body: %v", err)
+			}
+			_, _ = w.Write([]byte(`{"number": 7}`))
+		default:
+			t.Fatalf("request = %s %s, want GET issue + PATCH pull endpoint", r.Method, r.URL.Path)
+		}
+	}))
+	defer srv.Close()
+
+	ex := &wardKdlWriteExecutor{token: "tok", baseURL: srv.URL}
+	if _, err := ex.EditIssue(context.Background(), broker.Target{Owner: "coilyco", Repo: "r", Number: 7}, "new title", "new body", "open"); err != nil {
+		t.Fatalf("EditIssue: %v", err)
+	}
+	if gotBody["title"] != "new title" || gotBody["body"] != "new body" || gotBody["state"] != "open" {
+		t.Errorf("body = %#v, want title/body/state on pull endpoint", gotBody)
 	}
 }
 

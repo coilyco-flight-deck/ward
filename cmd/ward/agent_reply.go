@@ -96,6 +96,7 @@ func (r *Runner) runAgentReply(ctx context.Context, c *cli.Command, mode contain
 
 	prompt = advisorResearchPrompt(prompt)
 	research := replyResearchPrompt(ref, title, issue.Body, comments, prompt, level)
+	research += agentRunBudgetNote(roleAdvisor)
 
 	if c.Bool("print") {
 		return printAgentReplyPlan(c, mode, ref, title, prompt, level, research)

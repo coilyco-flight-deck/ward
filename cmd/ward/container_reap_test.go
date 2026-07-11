@@ -775,7 +775,7 @@ func TestReapTargetTreeLandedAndClosedDoesNotSalvage(t *testing.T) {
 }
 
 // TestReapTargetTreeLandedDirectToMainWithoutCloseRefSalvages covers ward#674.
-// A direct-main run already on origin/main must still verify its carried closes ref.
+// A merge-remote-main run already on origin/main still verifies its closes ref.
 func TestReapTargetTreeLandedDirectToMainWithoutCloseRefSalvages(t *testing.T) {
 	origin := t.TempDir()
 	runGit(t, origin, "init", "--bare", "-b", "main")
@@ -811,28 +811,28 @@ func TestReapTargetTreeLandedDirectToMainWithoutCloseRefSalvages(t *testing.T) {
 	r := &Runner{Runner: &shell.Runner{Resolve: shell.PathResolver}}
 	env := reapEnv{Owner: "coilyco-flight-deck", Name: "ward", Base: "https://forgejo.coilysiren.me", Mode: "codex", Issue: 674, Launched: true, Workflow: workflowDirectToMain}
 	if err := r.reapTargetTree(t.Context(), work, env, false); err != nil {
-		t.Fatalf("reapTargetTree on a landed direct-main run without closes #674: %v", err)
+		t.Fatalf("reapTargetTree on a landed merge-remote-main run without closes #674: %v", err)
 	}
 
 	if got, want := mustGitRev(t, origin, "main"), mustGitRev(t, work, "HEAD"); got != want {
-		t.Fatalf("a landed direct-main run without closes #674 must not advance main again: origin main=%s work HEAD=%s", got, want)
+		t.Fatalf("a landed merge-remote-main run without closes #674 must not advance main again: origin main=%s work HEAD=%s", got, want)
 	}
 	out, _ := exec.Command("git", "-C", origin, "branch", "--list", salvageBranchPrefix+"*").CombinedOutput()
 	if strings.TrimSpace(string(out)) == "" {
-		t.Fatal("a landed direct-main run without closes #674 must be preserved on a salvage branch")
+		t.Fatal("a landed merge-remote-main run without closes #674 must be preserved on a salvage branch")
 	}
 }
 
 // TestReapTargetTreeWorkflowBoundaryDoesNotSalvage covers the clean workflow boundary.
-// Pull-requests, pull-requests-and-merge, and patch-only runs land there.
+// Pull-request, pull-request-and-merge, and remote-branch-only runs land there.
 func TestReapTargetTreeWorkflowBoundaryDoesNotSalvage(t *testing.T) {
 	for _, tc := range []struct {
 		name     string
 		workflow workflowMode
 	}{
-		{name: "pull-requests", workflow: workflowPullRequest},
-		{name: "pull-requests-and-merge", workflow: workflowPullRequestAndMerge},
-		{name: "patch-only", workflow: workflowRemoteBranchOnly},
+		{name: "pull-request", workflow: workflowPullRequest},
+		{name: "pull-request-and-merge", workflow: workflowPullRequestAndMerge},
+		{name: "remote-branch-only", workflow: workflowRemoteBranchOnly},
 	} {
 		t.Run(tc.name, func(t *testing.T) {
 			origin := t.TempDir()
@@ -1547,16 +1547,43 @@ func TestNotifySalvageCarriedIssueRepoensAndComments(t *testing.T) {
 	if f.created != 0 {
 		t.Errorf("carried salvage must NOT file a standalone issue, got created=%d", f.created)
 	}
-	if visible := visibleLinesBeforeDetails(f.commentBody); visible != "WARD-REAP: reopened 🛑" {
+	if visible := visibleLinesBeforeDetails(f.commentBody); visible != "WARD-OUTCOME: submitted" {
 		t.Fatalf("salvage visible line = %q\n%s", visible, f.commentBody)
 	}
-	for _, want := range []string{"WARD-REAP: reopened", "ward-salvage/ward-abc123", string(reasonConflict), "git fetch", "/pulls/716", "<details><summary>salvage details</summary>"} {
+	for _, want := range []string{"WARD-OUTCOME: submitted", "ward-salvage/ward-abc123", string(reasonConflict), "git fetch", "/pulls/716", "<details><summary>salvage details</summary>"} {
 		if !strings.Contains(f.commentBody, want) {
 			t.Errorf("carried-issue comment missing %q\n---\n%s", want, f.commentBody)
 		}
 	}
 	if !strings.Contains(f.prBody, "closes #518") {
 		t.Errorf("salvage PR body must carry the closing ref for the carried issue:\n%s", f.prBody)
+	}
+}
+
+// TestNotifySalvageCarriedIssueWithoutPullRequestBlocks covers the no-PR residual
+// case: the carried issue still gets a machine-readable outcome and the branch path.
+func TestNotifySalvageCarriedIssueWithoutPullRequestBlocks(t *testing.T) {
+	f := &fakeSalvageNotifier{prEnabled: false}
+	env := reapEnv{Owner: "coilyco-flight-deck", Name: "ward", Base: "https://forgejo.coilysiren.me", Mode: "codex", Issue: 1039}
+	report := salvageReport{
+		Repo:                   env.repo(),
+		Mode:                   "codex",
+		Branch:                 "ward-salvage/ward-abc123",
+		Reason:                 reasonConflict,
+		Base:                   env.Base,
+		Issue:                  1039,
+		PullRequestUnavailable: "pull requests are disabled for this repo",
+	}
+	if err := notifySalvage(t.Context(), f, env, report); err != nil {
+		t.Fatalf("notifySalvage: %v", err)
+	}
+	if visible := visibleLinesBeforeDetails(f.commentBody); visible != "WARD-OUTCOME: blocked 🛑" {
+		t.Fatalf("salvage visible line = %q\n%s", visible, f.commentBody)
+	}
+	for _, want := range []string{"pull requests are disabled for this repo", "ward-salvage/ward-abc123", string(reasonConflict)} {
+		if !strings.Contains(f.commentBody, want) {
+			t.Errorf("blocked salvage comment missing %q\n---\n%s", want, f.commentBody)
+		}
 	}
 }
 

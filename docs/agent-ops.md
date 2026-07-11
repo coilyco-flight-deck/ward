@@ -6,7 +6,9 @@ doc_goal: Collapse the operational run surface into one page that covers the rea
 This page groups the on-demand operational surfaces around a run.
 
 - `ward agent director` - the read-only supervisory lane.
-- `ward agent list` - show live engineer runs and capacity when the limit is known.
+- `ward agent director queue` / `status` - the read-only queue view for stale reservations, redispatch candidates, and open PR handoffs.
+- `ward agent dispatch-health` - the dispatch pathology summary, status line feed, and alert line.
+- `ward agent list` - show live engineer runs, reserved launches, and capacity when the limit is known.
 - `ward agent logs` - read one run's logs.
 - `ward agent stop` - stop one run on purpose.
 - `ward agent reap` - stop wedged engineer containers by idle policy.
@@ -23,8 +25,8 @@ This page groups the on-demand operational surfaces around a run.
 ## What to remember
 
 - `logs` prefers the live container, then falls back to the drained archive.
-- `logs` falls back to the live transcript tree when `docker logs` is empty,
-  then to the drained archive.
+- `logs` falls back to the harness-specific live transcript tree when `docker
+  logs` is empty, then to the drained archive.
 - `stop` and `reap` only target engineer containers.
 - A run that is already finished should not be treated as a new failure.
 
@@ -32,7 +34,7 @@ This page groups the on-demand operational surfaces around a run.
 
 ### list
 
-`list` answers "what engineer runs are active right now?" and shows the known limit plus remaining slots when available.
+`list` answers "what engineer runs are active right now?" and shows the known limit plus remaining slots when available. It also surfaces reservation-backed launches before their container is visible and tags each entry with the current phase.
 
 ### logs
 
@@ -57,5 +59,6 @@ This page groups the on-demand operational surfaces around a run.
 ## See also
 
 - [agent-director.md](agent-director.md) - the director surface itself.
+- [agent-dispatch-health.md](agent-dispatch-health.md) - the dispatch-health summary and alert line.
 - [agent-lifecycle.md](agent-lifecycle.md) - how runs start.
 - [troubleshooting.md](troubleshooting.md) - what to check when a run wedges.

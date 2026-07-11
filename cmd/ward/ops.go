@@ -7,6 +7,7 @@ import (
 	"io"
 	"io/fs"
 	"os"
+	"path"
 	"strconv"
 	"strings"
 
@@ -15,8 +16,17 @@ import (
 	"forgejo.coilysiren.me/coilyco-flight-deck/cli-guard/http/respfmt"
 	"forgejo.coilysiren.me/coilyco-flight-deck/cli-guard/http/specverb"
 	"forgejo.coilysiren.me/coilyco-flight-deck/cli-guard/pkg/valuesource"
+	kdl "github.com/calico32/kdl-go"
 	"github.com/urfave/cli/v3"
 )
+
+const opsUnavailableReasonKey = "ward.ops.unavailable.reason"
+
+var showCommandHelpOriginal = cli.ShowCommandHelp
+
+func init() {
+	cli.ShowCommandHelp = showCommandHelpWithUnavailableOps
+}
 
 // ops.go is ward's in-binary forgejo guardfile runtime (`ward ops forgejo`,
 // ward#92/#270), compiled from the launch-selected config source (ward#653).
@@ -27,10 +37,11 @@ func opsCommand() *cli.Command {
 	forgejo, err := buildForgejoOps()
 	if err != nil {
 		forgejo = &cli.Command{
-			Name:  "forgejo",
-			Usage: "guarded Forgejo REST surface (unavailable)",
+			Name:     "forgejo",
+			Usage:    "guarded Forgejo REST surface (unavailable)",
+			Metadata: map[string]any{opsUnavailableReasonKey: err},
 			Action: func(context.Context, *cli.Command) error {
-				return fmt.Errorf("ward ops forgejo: guardfile runtime failed to mount: %w", err)
+				return forgejoUnavailableError(err)
 			},
 		}
 	}
@@ -63,20 +74,16 @@ func buildForgejoOpsFrom(src configSource) (*cli.Command, error) {
 	r := leanRunner()
 	r.configAuditVersion = src.auditVersion
 
-	gfBytes, err := fs.ReadFile(src.fsys, src.forgejoGuardfile)
+	gf, gfPath, err := loadForgejoGuardfileFrom(src)
 	if err != nil {
-		return nil, fmt.Errorf("read guardfile: %w", err)
-	}
-	gf, err := guardfile.Parse(gfBytes)
-	if err != nil {
-		return nil, fmt.Errorf("parse guardfile: %w", err)
+		return nil, err
 	}
 	// Re-root the group prefix to ward's brand so these in-process verbs audit as
 	// `ward.ops.forgejo.*`, not `ward-kdl.*` (ward#270, docs/ops-forgejo-in-ward.md).
 	rerootGroupToWard(gf.Group)
-	spec, err := fs.ReadFile(src.fsys, src.forgejoSpecLock)
+	_, spec, err := loadForgejoSpecLockFrom(src, gfPath, gf.Spec)
 	if err != nil {
-		return nil, fmt.Errorf("read spec lock: %w", err)
+		return nil, err
 	}
 
 	forgejo, err := specverb.Build(specverb.Config{
@@ -101,6 +108,91 @@ func buildForgejoOpsFrom(src configSource) (*cli.Command, error) {
 	r.overrideForgejoCommentIssue(forgejo)
 	r.overrideForgejoActionsLogs(forgejo)
 	return forgejo, nil
+}
+
+func loadForgejoSpecLockFrom(src configSource, gfPath, gfSpec string) (string, []byte, error) {
+	if src.forgejoSpecLock != "" {
+		spec, err := fs.ReadFile(src.fsys, src.forgejoSpecLock)
+		if err != nil {
+			return "", nil, fmt.Errorf("read spec lock %s: %w", src.forgejoSpecLock, err)
+		}
+		return src.forgejoSpecLock, spec, nil
+	}
+	if gfPath != "" {
+		specPath := path.Join(path.Dir(gfPath), gfSpec)
+		spec, err := fs.ReadFile(src.fsys, specPath)
+		if err == nil {
+			return specPath, spec, nil
+		}
+	}
+	specPath, spec, err := findUniqueBundleFileWithExt(src, ".json", "Forgejo spec lock")
+	if err != nil {
+		return "", nil, err
+	}
+	return specPath, spec, nil
+}
+
+func loadForgejoGuardfileFrom(src configSource) (*guardfile.Guardfile, string, error) {
+	if src.forgejoGuardfile != "" {
+		gfBytes, err := fs.ReadFile(src.fsys, src.forgejoGuardfile)
+		if err != nil {
+			return nil, "", fmt.Errorf("read guardfile: %w", err)
+		}
+		gf, err := guardfile.Parse(gfBytes)
+		if err != nil {
+			return nil, "", fmt.Errorf("parse guardfile: %w", err)
+		}
+		return gf, src.forgejoGuardfile, nil
+	}
+	files, err := loadBundleKDLFiles(src)
+	if err != nil {
+		return nil, "", err
+	}
+	file, node, err := findMergedBundleNode(files, "top-level `wrap ward-kdl ops forgejo` block", func(n *kdl.Node) bool {
+		if !wrapNodeMatchesPath(n, "ward-kdl", "ops", "forgejo") && !wrapNodeMatchesPath(n, "ward", "ops", "forgejo") {
+			return false
+		}
+		return n.GetChild("exec") == nil
+	})
+	if err != nil {
+		return nil, "", err
+	}
+	srcBytes, err := emitKDLDocument(node)
+	if err != nil {
+		return nil, "", fmt.Errorf("emit forgejo bundle %s: %w", file.path, err)
+	}
+	gf, err := guardfile.Parse(srcBytes)
+	if err != nil {
+		return nil, "", fmt.Errorf("parse guardfile %s: %w", file.path, err)
+	}
+	return gf, file.path, nil
+}
+
+func showCommandHelpWithUnavailableOps(ctx context.Context, cmd *cli.Command, commandName string) error {
+	if reason := forgejoUnavailableReason(cmd); reason != nil && subCommandNamed(cmd, commandName) == nil {
+		return forgejoUnavailableHelpError(reason)
+	}
+	return showCommandHelpOriginal(ctx, cmd, commandName)
+}
+
+func forgejoUnavailableReason(cmd *cli.Command) error {
+	if cmd == nil || cmd.Metadata == nil {
+		return nil
+	}
+	raw, ok := cmd.Metadata[opsUnavailableReasonKey]
+	if !ok {
+		return nil
+	}
+	reason, _ := raw.(error)
+	return reason
+}
+
+func forgejoUnavailableError(reason error) error {
+	return fmt.Errorf("ward ops forgejo: unavailable - guardfile runtime failed to mount: %w. Try `ward ops forgejo --help` or `ward ops forgejo describe` once the bundle is mounted", reason)
+}
+
+func forgejoUnavailableHelpError(reason error) error {
+	return fmt.Errorf("ward ops forgejo: unavailable - guardfile runtime failed to mount: %w. Try `ward ops forgejo --help` or `ward ops forgejo describe` once the bundle is mounted", reason)
 }
 
 // forgejoTokenResolver resolves the Forgejo bot token: the baked $FORGEJO_TOKEN in

@@ -35,14 +35,14 @@ func TestEngineerContainerLimitBelowAndAtLimit(t *testing.T) {
 	limit := engineerContainerLimitDefault()
 	t.Run("below limit", func(t *testing.T) {
 		r, _, _ := bufRunner(engineerCountDockerStub(t, limit-1))
-		if err := r.enforceEngineerContainerLimit(context.Background(), "ward agent engineer"); err != nil {
+		if err := r.enforceEngineerContainerLimit(context.Background(), "ward agent engineer", false); err != nil {
 			t.Fatalf("enforceEngineerContainerLimit below limit: %v", err)
 		}
 	})
 
 	t.Run("at limit", func(t *testing.T) {
 		r, _, _ := bufRunner(engineerCountDockerStub(t, limit))
-		err := r.enforceEngineerContainerLimit(context.Background(), "ward agent engineer")
+		err := r.enforceEngineerContainerLimit(context.Background(), "ward agent engineer", false)
 		if err == nil {
 			t.Fatal("enforceEngineerContainerLimit at limit: want error, got nil")
 		}
@@ -66,14 +66,73 @@ func TestEngineerContainerLimitBelowAndAtLimit(t *testing.T) {
 	})
 }
 
+// TestEngineerContainerLimitOverrideCapacity covers ward#1045: --override-capacity
+// grants one loud launch past the OOM ceiling and never stacks past limit+1.
+func TestEngineerContainerLimitOverrideCapacity(t *testing.T) {
+	limit := engineerContainerLimitDefault()
+
+	t.Run("at limit with override launches loudly", func(t *testing.T) {
+		r, _, _ := bufRunner(engineerCountDockerStub(t, limit))
+		var err error
+		stderr := captureTestStderr(t, func() {
+			err = r.enforceEngineerContainerLimit(context.Background(), "ward agent engineer", true)
+		})
+		if err != nil {
+			t.Fatalf("enforceEngineerContainerLimit at limit with override: %v", err)
+		}
+		for _, want := range []string{
+			"WARNING",
+			fmt.Sprintf("(%d/%d)", limit+1, limit),
+			"OOM",
+			"--override-capacity",
+		} {
+			if !strings.Contains(stderr, want) {
+				t.Errorf("override warning missing %q: %q", want, stderr)
+			}
+		}
+	})
+
+	t.Run("already over the ceiling refuses even with override", func(t *testing.T) {
+		r, _, _ := bufRunner(engineerCountDockerStub(t, limit+1))
+		var err error
+		stderr := captureTestStderr(t, func() {
+			err = r.enforceEngineerContainerLimit(context.Background(), "ward agent engineer", true)
+		})
+		if err == nil {
+			t.Fatal("enforceEngineerContainerLimit over limit with override: want error, got nil")
+		}
+		if !isEngineerCapacityError(err) {
+			t.Fatalf("over-limit override refusal should classify as capacity backpressure: %T %v", err, err)
+		}
+		if !strings.Contains(stderr, "exactly one launch past the ceiling") {
+			t.Errorf("over-limit override refusal should explain the one-launch bound: %q", stderr)
+		}
+	})
+
+	t.Run("below limit with override stays quiet", func(t *testing.T) {
+		r, _, _ := bufRunner(engineerCountDockerStub(t, limit-1))
+		var err error
+		stderr := captureTestStderr(t, func() {
+			err = r.enforceEngineerContainerLimit(context.Background(), "ward agent engineer", true)
+		})
+		if err != nil {
+			t.Fatalf("enforceEngineerContainerLimit below limit with override: %v", err)
+		}
+		if strings.Contains(stderr, "WARNING") {
+			t.Errorf("below-limit override should not warn: %q", stderr)
+		}
+	})
+}
+
 func TestEngineerContainerLimitFromBundleOverride(t *testing.T) {
 	dir := t.TempDir()
 	defaultsBody := `defaults {
-    agent-reservation-ttl "1h"
+    agent-reservation-ttl "3h"
     agent-reservation-recheck-max "15s"
     agent-reap-idle "1h"
     agent-reap-max-cpu "5.0"
     engineer-container-limit "15"
+    engineer-open-pr-branch-limit "6"
     director-max-parallel "10"
     director-limit "50"
     director-poll-interval "30s"
@@ -82,8 +141,8 @@ func TestEngineerContainerLimitFromBundleOverride(t *testing.T) {
     container-assets-ttl "1h"
     container-read-only-extra-repo-ttl "24h"
     container-reap-keep "10"
-    agent-workflow default=direct-main {
-        repo "coilyco-flight-deck/ward" workflow=pull-requests-and-merge
+    agent-workflow default=merge-remote-main {
+        repo "coilyco-flight-deck/ward" workflow=pull-request-and-merge
     }
 }
 `
@@ -93,10 +152,10 @@ func TestEngineerContainerLimitFromBundleOverride(t *testing.T) {
         repo "coilyco-flight-deck/*" forge=forgejo
     }
 }`
-	if err := os.WriteFile(filepath.Join(dir, bundleDefaultsKDLPath), []byte(defaultsBody), 0o644); err != nil {
+	if err := os.WriteFile(filepath.Join(dir, bundleFixtureDefaultsPath), []byte(defaultsBody), 0o644); err != nil {
 		t.Fatalf("write defaults bundle: %v", err)
 	}
-	if err := os.WriteFile(filepath.Join(dir, bundleReposKDLPath), []byte(reposBody), 0o644); err != nil {
+	if err := os.WriteFile(filepath.Join(dir, bundleFixtureReposPath), []byte(reposBody), 0o644); err != nil {
 		t.Fatalf("write repos bundle: %v", err)
 	}
 	t.Setenv(wardConfigRefEnv, "file://"+dir)
@@ -105,12 +164,12 @@ func TestEngineerContainerLimitFromBundleOverride(t *testing.T) {
 	}
 
 	r, _, _ := bufRunner(engineerCountDockerStub(t, 14))
-	if err := r.enforceEngineerContainerLimit(context.Background(), "ward agent engineer"); err != nil {
+	if err := r.enforceEngineerContainerLimit(context.Background(), "ward agent engineer", false); err != nil {
 		t.Fatalf("enforceEngineerContainerLimit below overridden limit: %v", err)
 	}
 
 	r, _, _ = bufRunner(engineerCountDockerStub(t, 15))
-	err := r.enforceEngineerContainerLimit(context.Background(), "ward agent engineer")
+	err := r.enforceEngineerContainerLimit(context.Background(), "ward agent engineer", false)
 	if err == nil {
 		t.Fatal("enforceEngineerContainerLimit at overridden limit: want error, got nil")
 	}

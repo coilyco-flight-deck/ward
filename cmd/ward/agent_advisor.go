@@ -29,6 +29,7 @@ func agentAdvisorFlags() []cli.Flag {
 		// Freeform mode (was `ask`): the fresh container the inline answer leans on.
 		&cli.StringFlag{Name: "repo", Usage: "freeform mode: owner/repo to clone for context (default: inferred from the cwd's git origin)"},
 		&cli.StringSliceFlag{Name: "with-repo", Usage: "freeform mode: clone an additional repo for context (owner/name; repeatable), landed under /workspace alongside the primary repo (ward#230)."},
+		&cli.StringFlag{Name: "instructions-file", Usage: "freeform mode: read the question body from a file (escape hatch for long bodies, or a bare owner/repo + a brief)"},
 		// Freeform mode is interactive by default under a TTY (ward#388); --oneshot
 		// forces the streamed one-shot answer even on a terminal (scripting escape hatch).
 		&cli.BoolFlag{Name: "oneshot", Aliases: []string{"answer"}, Usage: "freeform mode: force the one-shot streamed answer even under a TTY (default: interactive seeded session when a terminal is attached)"},
@@ -86,54 +87,27 @@ func (r *Runner) runAgentAdvisor(ctx context.Context, c *cli.Command, mode conta
 func (r *Runner) runAgentAsk(ctx context.Context, c *cli.Command, mode containerMode) error {
 	label := agentCmdline(mode, "advisor")
 
-	// The whole arg tail is the question, joined so an unquoted multi-word
-	// question still works (the canonical form is one quoted arg).
-	question := strings.TrimSpace(strings.Join(c.Args().Slice(), " "))
-	if question == "" {
-		return fmt.Errorf("%s: no question: pass it as the argument, e.g. %s \"how does X work here?\"", label, label)
-	}
-
-	// The context repo is --repo, else inferred from the cwd's git origin (the
-	// same target resolution the container bring-up uses).
-	repo, cwd, err := r.resolveTarget(ctx, strings.TrimSpace(c.String("repo")))
-	if err != nil {
-		return fmt.Errorf("%s: %w", label, err)
-	}
-	// Trust gate: this spins a bypassPermissions container and clones the repo, so
-	// only act on an owner in the trusted-owner set - the same gate the other roles apply.
-	if !r.ownerAllowed(repo.Owner) {
-		return r.untrustedOwnerErr(label, repo.Owner)
-	}
-
-	// Interactive by default under a TTY; one-shot streamed answer with no TTY
-	// (piped/CI/host-broker) or --oneshot. terminalAttached() drives plan.TTY (ward#388).
-	oneshot := c.Bool("oneshot") || !terminalAttached()
-
-	seed := interactivePrompt(question)
-	if oneshot {
-		seed = askPrompt(question)
-	}
-
-	assetsDir, cleanupAssets, err := writeContainerAssets(ctx, r, c.String("ward-source"), strings.TrimSpace(c.String("ward-version")))
+	repoArg, err := advisorFreeformRepoArg(c, label)
 	if err != nil {
 		return err
 	}
-	// A freeform answer runs attached and ephemeral, so its assets clean up on return.
+	question, err := advisorFreeformQuestion(c, label)
+	if err != nil {
+		return err
+	}
+
+	return r.runAgentAdvisorFreeform(ctx, c, mode, label, repoArg, question)
+}
+
+func (r *Runner) runAgentAdvisorFreeform(ctx context.Context, c *cli.Command, mode containerMode, label, repoArg, question string) error {
+	repo, plan, seed, cleanupAssets, err := r.advisorFreeformPlan(ctx, c, mode, label, repoArg, question)
+	if err != nil {
+		return err
+	}
 	defer cleanupAssets()
 
-	plan, err := buildUpPlan(c, repo, mode, roleAdvisor, cwd, assetsDir, []string{seed}, false)
-	if err != nil {
-		return err
-	}
-	plan.ReadOnly = true
-	// Only the one-shot path exports WARD_ASK=1 (claude -p): the interactive default
-	// leaves it unset so the entrypoint takes the plain seeded `claude <seed>` branch.
-	plan.Ask = oneshot
-	// Name it advisor-<driver>-<machine> (issueless, so the machine id disambiguates
-	// concurrent answers) and label it ward.role=advisor (ward#364).
-	plan.Role = roleAdvisor
-	plan.Name = containerRoleName(roleAdvisor, mode, repo, 0, plan.Machine)
-
+	// The context repo is --repo, or an explicit owner/repo paired with
+	// --instructions-file, else inferred from the cwd git origin.
 	if c.Bool("print") {
 		return printAgentAskPlan(c, plan, question, seed)
 	}
@@ -159,6 +133,79 @@ func (r *Runner) runAgentAsk(ctx context.Context, c *cli.Command, mode container
 		fmt.Fprintf(os.Stderr, "%s: opening an interactive %s session about %s in a fresh container (read-only; follow up as you like)...\n\n", label, lookupAgent(mode).Record().Binary, repo.slug())
 	}
 	return r.createAgentContainer(ctx, plan, envFile)
+}
+
+func (r *Runner) advisorFreeformPlan(ctx context.Context, c *cli.Command, mode containerMode, label, repoArg, question string) (targetRepo, upPlan, string, func(), error) {
+	repo, cwd, err := r.resolveTarget(ctx, repoArg)
+	if err != nil {
+		return targetRepo{}, upPlan{}, "", func() {}, fmt.Errorf("%s: %w", label, err)
+	}
+	// Trust gate: this spins a bypassPermissions container and clones the repo, so
+	// only act on an owner in the trusted-owner set - the same gate the other roles apply.
+	if !r.ownerAllowed(repo.Owner) {
+		return targetRepo{}, upPlan{}, "", func() {}, r.untrustedOwnerErr(label, repo.Owner)
+	}
+
+	// Interactive by default under a TTY; one-shot streamed answer with no TTY
+	// (piped/CI/host-broker) or --oneshot. terminalAttached() drives plan.TTY (ward#388).
+	oneshot := c.Bool("oneshot") || !terminalAttached()
+	seed := interactivePrompt(question)
+	if oneshot {
+		seed = askPrompt(question)
+	}
+	seed += agentRunBudgetNote(roleAdvisor)
+
+	assetsDir, cleanupAssets, err := writeContainerAssets(ctx, r, c.String("ward-source"), strings.TrimSpace(c.String("ward-version")))
+	if err != nil {
+		return targetRepo{}, upPlan{}, "", func() {}, err
+	}
+	plan, err := buildUpPlan(c, repo, mode, roleAdvisor, cwd, assetsDir, []string{seed}, false)
+	if err != nil {
+		cleanupAssets()
+		return targetRepo{}, upPlan{}, "", func() {}, err
+	}
+	plan.ReadOnly = true
+	// Only the one-shot path exports WARD_ASK=1 (claude -p): the interactive default
+	// leaves it unset so the entrypoint takes the plain seeded `claude <seed>` branch.
+	plan.Ask = oneshot
+	// Name it advisor-<driver>-<machine> (issueless, so the machine id disambiguates
+	// concurrent answers) and label it ward.role=advisor (ward#364).
+	plan.Role = roleAdvisor
+	plan.Name = containerRoleName(roleAdvisor, mode, repo, 0, plan.Machine)
+	return repo, plan, seed, cleanupAssets, nil
+}
+
+func advisorFreeformRepoArg(c *cli.Command, label string) (string, error) {
+	repoArg := strings.TrimSpace(c.String("repo"))
+	if strings.TrimSpace(c.String("instructions-file")) == "" {
+		return repoArg, nil
+	}
+	arg := strings.TrimSpace(c.Args().First())
+	if arg == "" {
+		return repoArg, nil
+	}
+	repo, err := parseRepoRef(arg)
+	if err != nil {
+		return "", fmt.Errorf("%s: got a freeform question as the positional argument and also --instructions-file; pass the repo one way, not both", label)
+	}
+	return repo.slug(), nil
+}
+
+func advisorFreeformQuestion(c *cli.Command, label string) (string, error) {
+	if strings.TrimSpace(c.String("instructions-file")) != "" {
+		question, err := taskInstructions(c)
+		if err != nil {
+			return "", fmt.Errorf("%s: %w", label, err)
+		}
+		return question, nil
+	}
+	// The whole arg tail is the question, joined so an unquoted multi-word
+	// question still works (the canonical form is one quoted arg).
+	question := strings.TrimSpace(strings.Join(c.Args().Slice(), " "))
+	if question == "" {
+		return "", fmt.Errorf("%s: no question: pass it as the argument, e.g. %s \"how does X work here?\"", label, label)
+	}
+	return question, nil
 }
 
 // askPrompt light-wraps the question so the in-container agent answers inline (no

@@ -16,6 +16,10 @@ Inventory of what `ward` ships today.
 
 - **`ward agent`** - the guarded execution layer.
 - **`warded`** - the symlinked public face.
+- **Agent-proxy correlation for local engineers** - opencode engineer runs now
+  route through the local agent-proxy endpoint with stable ward correlation
+  headers and request ids so traces join back to ward run logs.
+- **`ward agent director queue` / `status`** - the read-only queue view for stale reservations, redispatch candidates, PR handoffs, and stale-open done issues.
 - **Harness install hooks** - bootstrap now requires a harness install step
   before launch, with self-contained declarations for claude/codex/goose and a
   required opencode install path.
@@ -25,18 +29,42 @@ Inventory of what `ward` ships today.
 - **Reservation freshness in director burndown** - the backlog heartbeat now
   distinguishes fresh reservation holds from stale ones so headless issues can
   re-enter dispatch instead of parking forever behind a dead reservation.
+- **Open-PR backpressure gate** - net-new engineer dispatch pauses above the
+  open PR branch cap, while branch-based repair runs stay allowed so the queue
+  can drain instead of growing.
+- **Issue-scoped director dispatch** - `ward agent director` can take one exact
+  issue ref or full Forgejo issue URL and stay scoped to that single issue
+  instead of widening into the repo backlog.
 - **Dispatch broker version carry-through** - brokered launches forward the
   caller's resolved ward version and report the effective version in brokered
   launch output. See [agent-dispatch-broker.md](agent-dispatch-broker.md).
+- **Native PR-workflow tools** - `ward agent pr` merge / status / runs / rerun
+  run on ward's compiled Forgejo client, gated by the embedded role x workflow
+  permission table (merge authority is product data in the shipped role
+  presets), with zero runtime-specgen dependency. On a read-only director
+  surface they forward through the dispatch broker. See
+  [agent-pr-workflow.md](agent-pr-workflow.md).
 - **`ward agent` roles and workflows** - see [agent.md](agent.md),
   [agent-roster.md](agent-roster.md), [agent-roles.md](agent-roles.md), [agent-harnesses.md](agent-harnesses.md),
   [agent-lifecycle.md](agent-lifecycle.md), [agent-director.md](agent-director.md),
-  [agent-ops.md](agent-ops.md), [dispatch-review.md](dispatch-review.md), and
+  [agent-ops.md](agent-ops.md), [agent-dispatch-health.md](agent-dispatch-health.md),
+  [dispatch-review.md](dispatch-review.md), and
   [agent-workflow.md](agent-workflow.md). The roster resolves from effective
-  role definitions plus fleet overlays, not a hand-edited role list. `ward agent
-  list` now carries known engineer capacity alongside the live rows, and `ward
-  agent logs` surfaces live docker output and, when that stream is empty, the
-  live transcript tree before it falls back to the drained archive.
+  role definitions plus fleet overlays, not a hand-edited role list. Startup
+  roles now use `merge-remote-main`, `pull-request`, `pull-request-and-merge`,
+  and `remote-branch-only`. Startup roles now ship per-role execution limits,
+  and the reservation TTL must stay strictly above those limits at load time.
+  `ward agent list` carries known engineer capacity plus the live run budget
+  countdown alongside the rows, and `ward agent logs` surfaces live docker
+  output and, when that stream is empty, the live transcript tree before it
+  falls back to the drained archive.
+- **Dispatch-health surfacing** - `ward agent dispatch-health` computes the live
+  dispatch pathology summary, injects a capability-gated Claude status line,
+  and emits the stable `WARD-DISPATCH-HEALTH:` alert line for the existing
+  alert rules.
+- **PR repair input mode** - `ward agent engineer` accepts PR URLs and PR refs,
+  seeds the continuation context, and starts the run from the PR source branch
+  instead of recreating work from the issue branch.
 
 ## Container surface
 
@@ -57,6 +85,9 @@ Inventory of what `ward` ships today.
 - It accepts `first input` as exec-guard sugar for `arg0`, and ward injects the
   raw Forgejo Actions log fetch leaf directly into the shipped `ward ops
   forgejo` surface.
+- The embedded Forgejo surface now includes a PR-native edit leaf, so merge-gate
+  body/title updates can target `/pulls/{index}` without falling back to issue
+  edit.
 - Runtime `WARD_CONFIG_REF` bundles affect edge/operator surfaces, not the core
   agent control plane.
 - Coilyco-targeted operator surfaces fail fast when they would otherwise fall

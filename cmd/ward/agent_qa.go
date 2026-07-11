@@ -96,7 +96,7 @@ func (r *Runner) runAgentQA(ctx context.Context, c *cli.Command, mode containerM
 	qaCtx := qaLaunchContext{
 		IssueRef:       ref.String(),
 		ReviewerFamily: family,
-		Workflow:       string(workflowPullRequestAndMerge),
+		Workflow:       workflowMachineToken(workflowPullRequestAndMerge),
 		RunIdentity:    reviewSessionID(),
 	}
 	if prErr != nil {
@@ -107,6 +107,7 @@ func (r *Runner) runAgentQA(ctx context.Context, c *cli.Command, mode containerM
 	}
 	prompt = qaInspectionPrompt(prompt)
 	research := qaResearchPrompt(ref, title, issue.Body, comments, prompt, level, qaCtx)
+	research += agentRunBudgetNote(roleQA)
 
 	if c.Bool("print") {
 		return printAgentQAPlan(c, mode, ref, title, prompt, level, research)
@@ -342,7 +343,7 @@ func qaVerdictCommentFrom(_ containerMode, _ qaThoroughness, family, prompt stri
 	writef(&b, "verdict: %s\n", strings.ToLower(strings.TrimSpace(verdict.Verdict)))
 	writef(&b, "reviewed_sha: %s\n", strings.TrimSpace(ctx.ReviewedSHA))
 	writef(&b, "reviewer_family: %s\n", strings.TrimSpace(family))
-	writef(&b, "workflow: %s\n", strings.TrimSpace(ctx.Workflow))
+	writef(&b, "workflow: %s\n", workflowMachineToken(workflowMode(strings.TrimSpace(ctx.Workflow))))
 	writef(&b, "issue_ref: %s\n", strings.TrimSpace(ctx.IssueRef))
 	writef(&b, "pr_ref: %s\n", strings.TrimSpace(ctx.PRRef))
 	writef(&b, "reason: %s\n", strings.TrimSpace(verdict.Summary))
