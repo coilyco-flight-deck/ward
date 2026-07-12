@@ -8,7 +8,7 @@ require (
 )
 
 require (
-	forgejo.coilysiren.me/coilyco-flight-deck/cli-guard v0.85.1-0.20260709002015-4744df17086f
+	forgejo.coilysiren.me/coilyco-flight-deck/cli-guard v0.94.0
 	github.com/calico32/kdl-go v0.14.1
 	github.com/getsentry/sentry-go v0.47.0
 )
@@ -35,7 +35,6 @@ require (
 	github.com/santhosh-tekuri/jsonschema/v6 v6.0.2 // indirect
 	golang.org/x/exp v0.0.0-20230314191032-db074128a8ec // indirect
 	golang.org/x/sys v0.44.0 // indirect
-	golang.org/x/term v0.43.0 // indirect
 	golang.org/x/text v0.37.0 // indirect
 	gopkg.in/natefinch/lumberjack.v2 v2.2.1 // indirect
 )

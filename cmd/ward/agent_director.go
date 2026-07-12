@@ -579,7 +579,18 @@ func (r *Runner) expandOrgScopes(ctx context.Context, label string, orgs []strin
 		if len(slugs) == 0 {
 			return nil, fmt.Errorf("%s: --org %q expanded to no repos (unknown org, or only archived/empty repos)", label, org)
 		}
-		out = append(out, slugs...)
+		kept := slugs[:0:0]
+		for _, slug := range slugs {
+			if !r.burndownEnabled(slug) {
+				fmt.Fprintf(os.Stderr, "%s: skipping %s (burndown disabled in repos.kdl)\n", label, slug)
+				continue
+			}
+			kept = append(kept, slug)
+		}
+		if len(kept) == 0 {
+			return nil, fmt.Errorf("%s: --org %q expanded to no repos (every repo has burndown disabled in repos.kdl)", label, org)
+		}
+		out = append(out, kept...)
 	}
 	return out, nil
 }

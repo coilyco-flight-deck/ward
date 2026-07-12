@@ -8,7 +8,6 @@ import (
 	"strings"
 	"time"
 
-	"forgejo.coilysiren.me/coilyco-flight-deck/cli-guard/cli/dispatch"
 	"github.com/urfave/cli/v3"
 )
 
@@ -366,7 +365,7 @@ func directorPRWorkflowMarker(body string) (string, bool) {
 }
 
 // directorMergeDecision is the pure policy boundary for the director merge lane.
-func directorMergeDecision(pr dispatch.Issue, linked int, meta directorRunMeta) (ok bool, reason string, _ int, _ directorRunMeta) {
+func directorMergeDecision(pr Issue, linked int, meta directorRunMeta) (ok bool, reason string, _ int, _ directorRunMeta) {
 	title := strings.ToLower(strings.TrimSpace(pr.Title))
 	switch {
 	case strings.HasPrefix(title, "ward salvage:"):

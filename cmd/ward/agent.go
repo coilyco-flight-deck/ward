@@ -12,7 +12,6 @@ import (
 	"sync"
 	"time"
 
-	"forgejo.coilysiren.me/coilyco-flight-deck/cli-guard/cli/dispatch"
 	"forgejo.coilysiren.me/coilyco-flight-deck/cli-guard/pkg/exitcode"
 	"forgejo.coilysiren.me/coilyco-flight-deck/cli-guard/pkg/issueref"
 	"forgejo.coilysiren.me/coilyco-flight-deck/cli-guard/pkg/ownertrust"
@@ -240,7 +239,7 @@ func looksLikeExplicitForgejoIssueRef(s string) bool {
 }
 
 func parseDispatchIssueRef(s string) (agentIssueRef, error) {
-	ref, err := dispatch.ParseIssueRef(forgejoBaseURL, s)
+	ref, err := ParseIssueRef(forgejoBaseURL, s)
 	if err != nil {
 		return agentIssueRef{}, err
 	}
@@ -253,15 +252,15 @@ func parseDispatchIssueRef(s string) (agentIssueRef, error) {
 	}, nil
 }
 
-func dispatchPlatformToForge(p dispatch.Platform) forge {
-	if p == dispatch.PlatformGitHub {
+func dispatchPlatformToForge(p Platform) forge {
+	if p == PlatformGitHub {
 		return forgeGitHub
 	}
 	return forgeForgejo
 }
 
-func dispatchPlatformToTracker(p dispatch.Platform) tracker {
-	if p == dispatch.PlatformGitHub {
+func dispatchPlatformToTracker(p Platform) tracker {
+	if p == PlatformGitHub {
 		return trackerGitHub
 	}
 	return trackerForgejo
@@ -918,7 +917,7 @@ func issueBodyWithComments(body string, comments []issueComment) string {
 	return "Comment thread (oldest first):\n\n" + thread
 }
 
-func engineerPRDetails(pr agentPullRequestContext, comments []issueComment, linkedIssue *dispatch.Issue, linkedComments []issueComment) string {
+func engineerPRDetails(pr agentPullRequestContext, comments []issueComment, linkedIssue *Issue, linkedComments []issueComment) string {
 	var b strings.Builder
 	b.WriteString("PR continuation context. Treat this as repair or continuation work on an existing pull request, not fresh issue implementation.\n")
 	if pr.Title != "" {
@@ -1076,7 +1075,7 @@ func (r *Runner) resolveAgentWork(ctx context.Context, c *cli.Command, mode cont
 	return resolvedWork{Ref: ref, Title: title, Body: seedBody, Comments: comments, Details: details, Seed: seed, Branch: branch, ExtraRepos: extra, Workflow: wf, ReviewGate: reviewGate}, nil
 }
 
-func (r *Runner) resolveAgentPullRequestWork(ctx context.Context, mode containerMode, ref agentIssueRef) (agentPullRequestContext, []issueComment, *dispatch.Issue, []issueComment, error) {
+func (r *Runner) resolveAgentPullRequestWork(ctx context.Context, mode containerMode, ref agentIssueRef) (agentPullRequestContext, []issueComment, *Issue, []issueComment, error) {
 	cl, err := r.hostTrackerClient(ctx, ref.trackerOrDefault(), mode)
 	if err != nil {
 		return agentPullRequestContext{}, nil, nil, nil, err
@@ -1093,7 +1092,7 @@ func (r *Runner) resolveAgentPullRequestWork(ctx context.Context, mode container
 	if err != nil {
 		writef(os.Stderr, "%s: note: could not read pull request comments on %s (%v); continuing with the PR body only\n", agentCmdline(mode, "engineer"), ref, err)
 	}
-	var linkedIssue *dispatch.Issue
+	var linkedIssue *Issue
 	var linkedComments []issueComment
 	if linkedNum, ok := directorLinkedIssueNumber(pr.Body); ok && linkedNum > 0 && linkedNum != ref.Number {
 		linkedRef := agentIssueRef{Owner: ref.Owner, Repo: ref.Repo, Number: linkedNum, Forge: ref.Forge, Tracker: ref.trackerOrDefault()}
@@ -1115,12 +1114,12 @@ func (r *Runner) resolveAgentPullRequestWork(ctx context.Context, mode container
 
 // fetchIssue reads the issue off the ref's tracker.
 // It fails fast before a container launches.
-func (r *Runner) fetchIssue(ctx context.Context, ref agentIssueRef) (*dispatch.Issue, error) {
+func (r *Runner) fetchIssue(ctx context.Context, ref agentIssueRef) (*Issue, error) {
 	cl, err := r.hostTrackerClient(ctx, ref.trackerOrDefault(), currentAgentMode())
 	if err != nil {
 		return nil, err
 	}
-	return resolveIssueWithRetry("ward agent", ref.String(), resolveIssueSleep, func() (*dispatch.Issue, error) {
+	return resolveIssueWithRetry("ward agent", ref.String(), resolveIssueSleep, func() (*Issue, error) {
 		return cl.getIssue(ctx, ref.Owner, ref.Repo, ref.Number)
 	})
 }
@@ -1154,8 +1153,8 @@ func transientResolveErr(err error) bool {
 
 // resolveIssueWithRetry runs get up to resolveRetryAttempts times, backing off between
 // transient failures (never after the last, never on a permanent 4xx). See ward#497.
-func resolveIssueWithRetry(label, ref string, sleep func(time.Duration), get func() (*dispatch.Issue, error)) (*dispatch.Issue, error) {
-	var issue *dispatch.Issue
+func resolveIssueWithRetry(label, ref string, sleep func(time.Duration), get func() (*Issue, error)) (*Issue, error) {
+	var issue *Issue
 	var err error
 	for attempt := 1; attempt <= resolveRetryAttempts; attempt++ {
 		if issue, err = get(); err == nil {

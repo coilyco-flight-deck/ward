@@ -10,8 +10,6 @@ import (
 	"strings"
 	"testing"
 	"time"
-
-	"forgejo.coilysiren.me/coilyco-flight-deck/cli-guard/cli/dispatch"
 )
 
 func captureTestStderr(t *testing.T, fn func()) string {
@@ -397,8 +395,8 @@ type fakeLockForge struct {
 	listCalls    int
 }
 
-func (f *fakeLockForge) getIssue(context.Context, string, string, int) (*dispatch.Issue, error) {
-	return &dispatch.Issue{}, nil
+func (f *fakeLockForge) getIssue(context.Context, string, string, int) (*Issue, error) {
+	return &Issue{}, nil
 }
 func (f *fakeLockForge) listIssueComments(context.Context, string, string, int) ([]issueComment, error) {
 	f.listCalls++

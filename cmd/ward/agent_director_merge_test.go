@@ -8,12 +8,10 @@ import (
 	"strings"
 	"testing"
 	"time"
-
-	"forgejo.coilysiren.me/coilyco-flight-deck/cli-guard/cli/dispatch"
 )
 
 func TestDirectorMergeDecision(t *testing.T) {
-	basePR := dispatch.Issue{
+	basePR := Issue{
 		Title: "ship the fix",
 		Body:  "closes #729\n",
 	}
@@ -44,19 +42,19 @@ func TestDirectorMergeDecision(t *testing.T) {
 
 	cases := []struct {
 		name string
-		pr   dispatch.Issue
+		pr   Issue
 		meta directorRunMeta
 		want string
 	}{
 		{
 			name: "salvage",
-			pr:   dispatch.Issue{Title: "ward salvage: residual cleanup", Body: "closes #729"},
+			pr:   Issue{Title: "ward salvage: residual cleanup", Body: "closes #729"},
 			meta: baseMeta,
 			want: "salvage PRs are cleanup noise, not merge-authorized work",
 		},
 		{
 			name: "wip",
-			pr:   dispatch.Issue{Title: "WIP: ship the fix", Body: "closes #729"},
+			pr:   Issue{Title: "WIP: ship the fix", Body: "closes #729"},
 			meta: baseMeta,
 			want: "draft PRs are not merge-authorized",
 		},
@@ -259,7 +257,7 @@ func TestDirectorMergeDecisionRejectsSkippedReview(t *testing.T) {
 	if meta.Review != "review gate skipped by ~/.ward/config.yaml default" {
 		t.Fatalf("meta review = %q, want skipped-review summary", meta.Review)
 	}
-	allowed, reason, _, _ := directorMergeDecision(dispatch.Issue{Title: "ship the fix", Body: "closes #729\n"}, 729, meta)
+	allowed, reason, _, _ := directorMergeDecision(Issue{Title: "ship the fix", Body: "closes #729\n"}, 729, meta)
 	if allowed {
 		t.Fatal("skipped-review run: want deny, got allow")
 	}
@@ -346,7 +344,7 @@ func TestDirectorMergeEligibilityRequiresMatchingQAVerdict(t *testing.T) {
 	cl := &forgejoClient{baseURL: prsrv.URL, token: "secret"}
 
 	allowed, reason, linked, meta := directorMergeEligibility(context.Background(), "coilyco-flight-deck", "ward",
-		directorPullRequest{Issue: dispatch.Issue{Number: 729, Title: "ship the fix", Body: "closes #729\n" + directorMergeWorkflowMarker + "\n"}, Mergeable: true, MergeableKnown: true}, cl, cl)
+		directorPullRequest{Issue: Issue{Number: 729, Title: "ship the fix", Body: "closes #729\n" + directorMergeWorkflowMarker + "\n"}, Mergeable: true, MergeableKnown: true}, cl, cl)
 	if !allowed || reason != "" || linked != 729 {
 		t.Fatalf("eligible PR = %v %q %d, want true/\"\"/729", allowed, reason, linked)
 	}
@@ -362,7 +360,7 @@ func TestDirectorMergeEligibilityRequiresMatchingQAVerdict(t *testing.T) {
 	}
 
 	allowed, reason, _, _ = directorMergeEligibility(context.Background(), "coilyco-flight-deck", "ward",
-		directorPullRequest{Issue: dispatch.Issue{Number: 729, Title: "ship the fix", Body: "closes #729\n"}, Mergeable: true, MergeableKnown: true}, cl, cl)
+		directorPullRequest{Issue: Issue{Number: 729, Title: "ship the fix", Body: "closes #729\n"}, Mergeable: true, MergeableKnown: true}, cl, cl)
 	if allowed {
 		t.Fatal("unmarked PR: want deny, got allow")
 	}
@@ -489,7 +487,7 @@ func TestDirectorMergeEligibilityUsesLatestStatusHistoryEntry(t *testing.T) {
 
 	cl := &forgejoClient{baseURL: srv.URL, token: "secret"}
 	allowed, reason, linked, meta := directorMergeEligibility(context.Background(), "coilyco-flight-deck", "ward",
-		directorPullRequest{Issue: dispatch.Issue{Number: 729, Title: "ship the fix", Body: "closes #729\n" + directorMergeWorkflowMarker + "\n"}, Mergeable: true, MergeableKnown: true}, cl, cl)
+		directorPullRequest{Issue: Issue{Number: 729, Title: "ship the fix", Body: "closes #729\n" + directorMergeWorkflowMarker + "\n"}, Mergeable: true, MergeableKnown: true}, cl, cl)
 	if !allowed || reason != "" || linked != 729 {
 		t.Fatalf("eligible PR = %v %q %d, want true/\"\"/729", allowed, reason, linked)
 	}
@@ -652,12 +650,12 @@ func directorMergeEligibilityFixtureWithBranchProtection(t *testing.T, headSHA s
 	}))
 	t.Cleanup(prsrv.Close)
 	return &forgejoClient{baseURL: prsrv.URL, token: "secret"},
-		directorPullRequest{Issue: dispatch.Issue{Number: 729, Title: "ship the fix", Body: "closes #729\n" + directorMergeWorkflowMarker + "\n"}, Mergeable: true, MergeableKnown: true}
+		directorPullRequest{Issue: Issue{Number: 729, Title: "ship the fix", Body: "closes #729\n" + directorMergeWorkflowMarker + "\n"}, Mergeable: true, MergeableKnown: true}
 }
 
 func TestDirectorMergeEligibilityRejectsMergeConflict(t *testing.T) {
 	allowed, reason, linked, meta := directorMergeEligibility(context.Background(), "coilyco-flight-deck", "ward",
-		directorPullRequest{Issue: dispatch.Issue{Number: 729, Title: "ship the fix", Body: "closes #729\n" + directorMergeWorkflowMarker + "\n"}, Mergeable: false, MergeableKnown: true}, &forgejoClient{}, mergeConflictTracker{})
+		directorPullRequest{Issue: Issue{Number: 729, Title: "ship the fix", Body: "closes #729\n" + directorMergeWorkflowMarker + "\n"}, Mergeable: false, MergeableKnown: true}, &forgejoClient{}, mergeConflictTracker{})
 	if allowed {
 		t.Fatal("conflicting PR: want deny, got allow")
 	}
@@ -674,8 +672,8 @@ func TestDirectorMergeEligibilityRejectsMergeConflict(t *testing.T) {
 
 type mergeConflictTracker struct{}
 
-func (mergeConflictTracker) getIssue(context.Context, string, string, int) (*dispatch.Issue, error) {
-	return &dispatch.Issue{}, nil
+func (mergeConflictTracker) getIssue(context.Context, string, string, int) (*Issue, error) {
+	return &Issue{}, nil
 }
 
 func (mergeConflictTracker) listIssueComments(context.Context, string, string, int) ([]issueComment, error) {
@@ -697,7 +695,7 @@ func (mergeConflictTracker) unlockIssue(context.Context, string, string, int) er
 func TestDirectorMergeConflictReasonFromComments(t *testing.T) {
 	now := time.Date(2026, 7, 10, 18, 0, 0, 0, time.UTC)
 	pr := directorPullRequest{
-		Issue:     dispatch.Issue{Number: 729, Title: "ship the fix", Body: "closes #729\n" + directorMergeWorkflowMarker + "\n"},
+		Issue:     Issue{Number: 729, Title: "ship the fix", Body: "closes #729\n" + directorMergeWorkflowMarker + "\n"},
 		UpdatedAt: now.Add(-30 * time.Minute),
 	}
 	active := directorMergeConflictReasonFromComments(pr, nil, now)
@@ -770,7 +768,7 @@ func TestListOpenPullRequestsReadsMergeability(t *testing.T) {
 
 func TestDirectorMergeEligibilitySkipsUnknownMergeability(t *testing.T) {
 	ok, reason, linked, _ := directorMergeEligibility(context.Background(), "coilyco-flight-deck", "ward",
-		directorPullRequest{Issue: dispatch.Issue{Title: "ship the fix", Body: "closes #729\n" + directorMergeWorkflowMarker + "\n"}}, &forgejoClient{}, &forgejoClient{})
+		directorPullRequest{Issue: Issue{Title: "ship the fix", Body: "closes #729\n" + directorMergeWorkflowMarker + "\n"}}, &forgejoClient{}, &forgejoClient{})
 	if ok {
 		t.Fatal("unknown mergeability: want skip, got allow")
 	}

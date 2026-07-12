@@ -37,6 +37,9 @@ type smartDefaults struct {
 	trustedOwners                 []string
 	repoAuthorityDefault          forge
 	repoAuthorityRules            []repoAuthorityRule
+	burndownConfigured            bool
+	burndownDefault               bool
+	burndownRepos                 map[string]bool
 }
 
 type repoAuthorityRule struct {
@@ -219,17 +222,10 @@ func parseBundleReposNode(srcPath string, n *kdl.Node, defs *smartDefaults) erro
 		if len(n.Properties()) != 0 {
 			return fmt.Errorf("repo authority: `repos` takes no properties (fail-closed)")
 		}
-		var repoAuthoritySeen bool
+		var repoAuthoritySeen, burndownSeen bool
 		for _, c := range n.Children().Nodes {
-			if c.Name() != "repo-authority" {
-				return unknownSmartDefaultsNode("repos body", c.Name(), "repo-authority")
-			}
-			if repoAuthoritySeen {
-				return fmt.Errorf("repo authority: duplicate top-level `repo-authority` block (fail-closed)")
-			}
-			repoAuthoritySeen = true
-			if err := applyRepoAuthority(defs, c); err != nil {
-				return fmt.Errorf("%s: %w", srcPath, err)
+			if err := applyBundleReposChild(defs, srcPath, c, &repoAuthoritySeen, &burndownSeen); err != nil {
+				return err
 			}
 		}
 		if !repoAuthoritySeen {
@@ -474,6 +470,102 @@ func smartDefaultsForgeProp(n *kdl.Node, name, label string) (forge, error) {
 	return parseForge(raw), nil
 }
 
+func applyBundleReposChild(defs *smartDefaults, srcPath string, c *kdl.Node, repoAuthoritySeen, burndownSeen *bool) error {
+	switch c.Name() {
+	case "repo-authority":
+		if *repoAuthoritySeen {
+			return fmt.Errorf("repo authority: duplicate top-level `repo-authority` block (fail-closed)")
+		}
+		*repoAuthoritySeen = true
+		if err := applyRepoAuthority(defs, c); err != nil {
+			return fmt.Errorf("%s: %w", srcPath, err)
+		}
+	case "burndown":
+		if *burndownSeen {
+			return fmt.Errorf("burndown: duplicate `burndown` block (fail-closed)")
+		}
+		*burndownSeen = true
+		if err := applyBurndown(defs, c); err != nil {
+			return fmt.Errorf("%s: %w", srcPath, err)
+		}
+	default:
+		return unknownSmartDefaultsNode("repos body", c.Name(), "repo-authority | burndown")
+	}
+	return nil
+}
+
+// applyBurndown reads the burndown repo-exclusion block (ward#1105):
+//
+//	burndown default=#true {
+//	    repo "owner/name" #false
+//	}
+//
+// `default` sets the fleet-wide posture and each `repo` overrides it, so an
+// exclusion survives a repo joining a trusted owner later.
+func applyBurndown(defs *smartDefaults, n *kdl.Node) error {
+	if len(n.Arguments()) != 0 {
+		return fmt.Errorf("smart defaults: burndown takes no arguments (fail-closed)")
+	}
+	def, ok, err := smartDefaultsBoolProp(n, "default", "burndown default")
+	if err != nil {
+		return err
+	}
+	if !ok {
+		return fmt.Errorf("smart defaults: burndown missing `default` property (fail-closed)")
+	}
+	defs.burndownConfigured = true
+	defs.burndownDefault = def
+	if defs.burndownRepos == nil {
+		defs.burndownRepos = map[string]bool{}
+	}
+	for _, c := range n.Children().Nodes {
+		if c.Name() != "repo" {
+			return unknownSmartDefaultsNode("burndown body", c.Name(), "repo")
+		}
+		if err := applyBurndownRepo(defs, c); err != nil {
+			return err
+		}
+	}
+	return nil
+}
+
+func applyBurndownRepo(defs *smartDefaults, c *kdl.Node) error {
+	args := c.Arguments()
+	if len(args) != 2 {
+		return fmt.Errorf("smart defaults: burndown > repo expects `repo \"owner/name\" #true|#false`, got %d value(s) (fail-closed)", len(args))
+	}
+	if args[0].Kind() != kdl.String {
+		return fmt.Errorf("smart defaults: burndown > repo slug must be a string (fail-closed)")
+	}
+	slug := strings.TrimSpace(args[0].String())
+	if !validRepoAuthorityPattern(slug) || strings.Contains(slug, "*") {
+		return fmt.Errorf("smart defaults: burndown > repo %q must be an exact owner/name (fail-closed)", slug)
+	}
+	if _, dup := defs.burndownRepos[slug]; dup {
+		return fmt.Errorf("smart defaults: burndown > repo %q repeated (fail-closed)", slug)
+	}
+	enabled, err := smartDefaultsBoolValue(args[1], "burndown > repo "+slug)
+	if err != nil {
+		return err
+	}
+	defs.burndownRepos[slug] = enabled
+	return nil
+}
+
+// burndownEnabled reports whether the director may burn a repo's backlog down.
+// An explicit per-repo value wins, then the block default. A bundle with no
+// burndown block excludes nothing, so an absent block cannot silently drain the
+// director's whole scope.
+func (d smartDefaults) burndownEnabled(slug string) bool {
+	if !d.burndownConfigured {
+		return true
+	}
+	if v, ok := d.burndownRepos[strings.TrimSpace(slug)]; ok {
+		return v
+	}
+	return d.burndownDefault
+}
+
 func validRepoAuthorityPattern(s string) bool {
 	s = strings.TrimSpace(s)
 	owner, repo, ok := strings.Cut(s, "/")
@@ -621,6 +713,27 @@ func trustedOwnerExtras(owners []string) []string {
 		}
 	}
 	return extra
+}
+
+func smartDefaultsBoolProp(n *kdl.Node, name, label string) (bool, bool, error) {
+	v, ok := n.Properties()[name]
+	if !ok {
+		return false, false, nil
+	}
+	b, err := smartDefaultsBoolValue(v, label)
+	if err != nil {
+		return false, true, err
+	}
+	return b, true, nil
+}
+
+// smartDefaultsBoolValue insists on a KDL v2 boolean (#true / #false). A bare
+// true / false lexes as an identifier, so it never reaches here as a bool.
+func smartDefaultsBoolValue(v kdl.Value, label string) (bool, error) {
+	if v.Kind() != kdl.Bool {
+		return false, fmt.Errorf("smart defaults: %s must be #true or #false (fail-closed)", label)
+	}
+	return v.Bool(), nil
 }
 
 func smartDefaultsStringProp(n *kdl.Node, name, label string) (string, bool, error) {

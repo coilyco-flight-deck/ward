@@ -7,8 +7,6 @@ import (
 	"os"
 	"regexp"
 	"strings"
-
-	"forgejo.coilysiren.me/coilyco-flight-deck/cli-guard/cli/dispatch"
 )
 
 // forge.go makes the git-hosting service a first-class dimension of a `ward agent`
@@ -230,7 +228,7 @@ var errForgeLockUnsupported = errors.New("this forge's API cannot lock an issue 
 // Tracker is the forge-independent issue-thread surface for host dispatch and reaping.
 // Forgejo, GitHub, GitLab, or Shortcut.
 type Tracker interface {
-	getIssue(ctx context.Context, owner, repo string, number int) (*dispatch.Issue, error)
+	getIssue(ctx context.Context, owner, repo string, number int) (*Issue, error)
 	listIssueComments(ctx context.Context, owner, repo string, number int) ([]issueComment, error)
 	createIssue(ctx context.Context, owner, repo, title, body string) (int, error)
 	commentIssue(ctx context.Context, owner, repo string, number int, body string) error
