@@ -205,6 +205,7 @@ func TestGooseCompletionOutput(t *testing.T) {
 }
 
 func TestRunContainerBootstrapGooseNoSessionExitsAndReaps(t *testing.T) {
+	preserveScratchEnv(t)
 	prevWorkspaceRoot := workspaceRoot
 	workspaceRoot = t.TempDir()
 	t.Cleanup(func() { workspaceRoot = prevWorkspaceRoot })
@@ -294,6 +295,29 @@ func TestRunContainerBootstrapGooseNoSessionExitsAndReaps(t *testing.T) {
 	}
 }
 
+func preserveScratchEnv(t *testing.T) {
+	t.Helper()
+	keys := []string{"TMPDIR", "TMP", "TEMP", "GOCACHE", "GOMODCACHE", "GOTMPDIR", "XDG_CACHE_HOME"}
+	saved := make(map[string]*string, len(keys))
+	for _, key := range keys {
+		if value, ok := os.LookupEnv(key); ok {
+			v := value
+			saved[key] = &v
+			continue
+		}
+		saved[key] = nil
+	}
+	t.Cleanup(func() {
+		for _, key := range keys {
+			if value := saved[key]; value != nil {
+				_ = os.Setenv(key, *value)
+				continue
+			}
+			_ = os.Unsetenv(key)
+		}
+	})
+}
+
 func restoreWritableTree(t *testing.T, root string) {
 	t.Helper()
 	_ = filepath.WalkDir(root, func(path string, d fs.DirEntry, err error) error {
@@ -337,6 +361,7 @@ func TestReadBootstrapEnvDefaults(t *testing.T) {
 		"WARD_AGENT_UID", "WARD_AGENT_GID", "WARD_AGENT_HOME", "WARD_BRANCH",
 		"WARD_ROLE", "WARD_TS_SOCKS5",
 		"WARD_HEADLESS", "WARD_ASK", "WARD_MIRROR_NAME", "WARD_SUBSTRATE_SKIP",
+		"WARD_VERSION",
 	} {
 		t.Setenv(k, "")
 	}
@@ -363,6 +388,7 @@ func TestReadBootstrapEnvDefaults(t *testing.T) {
 		"AgentUID":       e.AgentUID,
 		"AgentHome":      e.AgentHome,
 		"ForgejoHost":    e.ForgejoHost,
+		"WardVersion":    e.WardVersion,
 	}
 	want := map[string]string{
 		"Mode":           "claude",
@@ -370,7 +396,7 @@ func TestReadBootstrapEnvDefaults(t *testing.T) {
 		"ContextLevel":   "2",
 		"GitCache":       "/gitcache",
 		"QwenModel":      "qwen3-coder:30b",
-		"OllamaURL":      "http://localhost:11434/v1",
+		"OllamaURL":      "http://host.docker.internal:8082/v1",
 		"CodexModel":     "gpt-5.4",
 		"CodexEffort":    "medium",
 		"CodexVerbosity": "low",
@@ -379,6 +405,7 @@ func TestReadBootstrapEnvDefaults(t *testing.T) {
 		"AgentUID":       "1000",
 		"AgentHome":      "/home/ubuntu",
 		"ForgejoHost":    "forgejo.coilysiren.me",
+		"WardVersion":    "",
 	}
 	for field, got := range checks {
 		if got != want[field] {
@@ -400,6 +427,7 @@ func TestReadBootstrapEnvDirectorCodexOverlay(t *testing.T) {
 		"WARD_AGENT_UID", "WARD_AGENT_GID", "WARD_AGENT_HOME", "WARD_BRANCH",
 		"WARD_HEADLESS", "WARD_ASK", "WARD_MIRROR_NAME", "WARD_SUBSTRATE_SKIP",
 		"WARD_ROLE",
+		"WARD_VERSION",
 	} {
 		t.Setenv(k, "")
 	}
@@ -951,20 +979,77 @@ func TestComposeContextRuntimeDoctrineLoadPoints(t *testing.T) {
 	}
 }
 
+func TestComposeClaudeSettingsInjectsStatusLineOnlyForClaude(t *testing.T) {
+	base := []byte(`{"tui":"fullscreen","permissions":{"defaultMode":"bypassPermissions"}}`)
+	gotClaude := composeClaudeSettings(modeClaude, base)
+	if !strings.Contains(string(gotClaude), `"statusLine"`) {
+		t.Fatalf("claude settings missing statusLine:\n%s", gotClaude)
+	}
+	gotCodex := composeClaudeSettings(modeCodex, base)
+	if strings.Contains(string(gotCodex), `"statusLine"`) {
+		t.Fatalf("codex settings should not gain statusLine:\n%s", gotCodex)
+	}
+}
+
 func TestPrepareScratchSpace(t *testing.T) {
 	r := &Runner{}
 	scratch := t.TempDir()
 	t.Setenv("TMPDIR", "")
 	t.Setenv("TMP", "")
 	t.Setenv("TEMP", "")
-	r.prepareScratchSpace(scratch)
+	t.Setenv("GOCACHE", "")
+	t.Setenv("GOMODCACHE", "")
+	t.Setenv("GOTMPDIR", "")
+	t.Setenv("XDG_CACHE_HOME", "")
+	if err := r.prepareScratchSpace(scratch); err != nil {
+		t.Fatalf("prepareScratchSpace: %v", err)
+	}
 	for _, key := range []string{"TMPDIR", "TMP", "TEMP"} {
 		if got := os.Getenv(key); got != scratch {
 			t.Errorf("%s = %q, want %s", key, got, scratch)
 		}
 	}
+	for _, key := range []string{"GOCACHE", "GOMODCACHE", "GOTMPDIR", "XDG_CACHE_HOME"} {
+		if got := os.Getenv(key); !strings.HasPrefix(got, scratch+string(os.PathSeparator)) {
+			t.Errorf("%s = %q, want a subdir under %s", key, got, scratch)
+		}
+	}
 	if info, err := os.Stat(scratch); err != nil || !info.IsDir() {
 		t.Fatalf("%s not provisioned: %v", scratch, err)
+	}
+}
+
+func TestPrepareScratchSpaceLowBudget(t *testing.T) {
+	r := &Runner{}
+	scratch := t.TempDir()
+	prev := surfaceScratchDiskFreeBytes
+	surfaceScratchDiskFreeBytes = func(string) (uint64, uint64, error) {
+		return surfaceScratchFloorBytes - 1, surfaceScratchFloorBytes, nil
+	}
+	t.Cleanup(func() { surfaceScratchDiskFreeBytes = prev })
+
+	err := r.prepareScratchSpace(scratch)
+	if err == nil {
+		t.Fatal("prepareScratchSpace should refuse a low-budget scratch root")
+	}
+	for _, want := range []string{
+		scratch,
+		"focused Go verification",
+		"recommended cache/temp location",
+		diskBytes(surfaceScratchFloorBytes),
+	} {
+		if !strings.Contains(err.Error(), want) {
+			t.Fatalf("low-budget error %q missing %q", err, want)
+		}
+	}
+}
+
+func TestSurfaceScratchDir(t *testing.T) {
+	if got := surfaceScratchDir(bootstrapEnv{GitCache: "/gitcache"}); got != "/scratch" {
+		t.Fatalf("surfaceScratchDir(writable) = %q, want /scratch", got)
+	}
+	if got := surfaceScratchDir(bootstrapEnv{GitCache: "/gitcache", ReadOnly: true}); got != filepath.Join("/gitcache", "surface-scratch") {
+		t.Fatalf("surfaceScratchDir(read-only) = %q, want %q", got, filepath.Join("/gitcache", "surface-scratch"))
 	}
 }
 

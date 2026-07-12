@@ -9,7 +9,6 @@ import (
 	"strings"
 	"time"
 
-	"forgejo.coilysiren.me/coilyco-flight-deck/cli-guard/cli/dispatch"
 	"forgejo.coilysiren.me/coilyco-flight-deck/cli-guard/cli/shell"
 )
 
@@ -47,8 +46,8 @@ func (c *githubClient) run(ctx context.Context, args ...string) ([]byte, error) 
 func ghSlug(owner, repo string) string { return owner + "/" + repo }
 
 // getIssue reads one issue via REST `gh api /repos/{o}/{r}/issues/{n}` (ward#466)
-// and maps it to dispatch.Issue; ToLower keeps state matching Forgejo's "open".
-func (c *githubClient) getIssue(ctx context.Context, owner, repo string, number int) (*dispatch.Issue, error) {
+// and maps it to Issue; ToLower keeps state matching Forgejo's "open".
+func (c *githubClient) getIssue(ctx context.Context, owner, repo string, number int) (*Issue, error) {
 	out, err := c.run(ctx, "api", ghIssuePath(owner, repo, number))
 	if err != nil {
 		return nil, fmt.Errorf("github: get issue %s/%s#%d: %w", owner, repo, number, err)
@@ -66,7 +65,7 @@ func (c *githubClient) getIssue(ctx context.Context, owner, repo string, number 
 	if err := json.Unmarshal(out, &raw); err != nil {
 		return nil, fmt.Errorf("github: parse issue %s/%s#%d: %w", owner, repo, number, err)
 	}
-	issue := &dispatch.Issue{
+	issue := &Issue{
 		Number: raw.Number,
 		Title:  raw.Title,
 		Body:   raw.Body,
@@ -139,6 +138,7 @@ func (c *githubClient) getPullRequestContext(ctx context.Context, owner, repo st
 		Draft     bool   `json:"draft"`
 		Mergeable any    `json:"mergeable"`
 		Head      struct {
+			SHA string `json:"sha"`
 			Ref string `json:"ref"`
 		} `json:"head"`
 		Base struct {
@@ -168,6 +168,7 @@ func (c *githubClient) getPullRequestContext(ctx context.Context, owner, repo st
 		Title:        strings.TrimSpace(raw.Title),
 		Body:         strings.TrimSpace(raw.Body),
 		URL:          strings.TrimSpace(raw.HTMLURL),
+		HeadSHA:      strings.TrimSpace(raw.Head.SHA),
 		HeadRef:      strings.TrimSpace(raw.Head.Ref),
 		BaseRef:      strings.TrimSpace(raw.Base.Ref),
 		Mergeability: mergeability,

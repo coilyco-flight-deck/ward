@@ -5,6 +5,8 @@ import (
 	"os"
 	"path/filepath"
 	"runtime"
+	"strconv"
+	"strings"
 
 	"github.com/coilyco-flight-deck/ward/internal/agentsapi"
 )
@@ -53,6 +55,49 @@ func agentTrustDirs(e bootstrapEnv) []string {
 	return dirs
 }
 
+func harnessThreadID(mode containerMode) string {
+	candidates := []string{"WARD_THREAD_ID"}
+	switch mode {
+	case modeCodex:
+		candidates = append([]string{"CODEX_THREAD_ID"}, candidates...)
+	case modeClaude:
+		candidates = append([]string{"CLAUDE_SESSION_ID"}, candidates...)
+	case modeGoose:
+		candidates = append([]string{"GOOSE_SESSION_ID"}, candidates...)
+	case modeOpencode:
+		candidates = append([]string{"OPENCODE_SESSION_ID", "OPENCODE_THREAD_ID"}, candidates...)
+	}
+	for _, k := range candidates {
+		if v := strings.TrimSpace(os.Getenv(k)); v != "" {
+			return v
+		}
+	}
+	return ""
+}
+
+func agentCorrelation(e bootstrapEnv, mode containerMode) agentsapi.Correlation {
+	ref := e.TargetOwner + "/" + e.TargetName
+	if e.Issue > 0 {
+		ref = ref + "#" + strconv.Itoa(e.Issue)
+	}
+	c := agentsapi.Correlation{
+		RunID:         e.Container,
+		ContainerName: e.Container,
+		Role:          e.Role,
+		Harness:       e.Agent,
+		TargetRepo:    e.TargetOwner + "/" + e.TargetName,
+		IssueRef:      ref,
+		Workflow:      orDefaultLabel(os.Getenv("WARD_WORKFLOW"), "merge-remote-main"),
+		ContextLevel:  e.ContextLevel,
+		Version:       e.WardVersion,
+		ThreadID:      harnessThreadID(mode),
+	}
+	if c.RunID == "" {
+		c.RunID = c.ContainerName
+	}
+	return c
+}
+
 // agentRunCtx builds the in-container view the capabilities act against; seed is
 // the entrypoint's "$@" (the one-shot prompt, empty for interactive).
 func (r *Runner) agentRunCtx(ctx context.Context, e bootstrapEnv, seed []string) agentsapi.RunCtx {
@@ -71,6 +116,7 @@ func (r *Runner) agentRunCtx(ctx context.Context, e bootstrapEnv, seed []string)
 		ClaudeEffort:   e.ClaudeEffort,
 		OpencodeModel:  e.QwenModel,
 		OllamaURL:      e.OllamaURL,
+		Correlation:    agentCorrelation(e, containerMode(e.Mode)),
 		Seed:           seed,
 		Exec:           r.Runner,
 		Log:            blog,

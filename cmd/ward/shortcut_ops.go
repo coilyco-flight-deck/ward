@@ -11,8 +11,6 @@ import (
 	"strconv"
 	"strings"
 	"time"
-
-	"forgejo.coilysiren.me/coilyco-flight-deck/cli-guard/cli/dispatch"
 )
 
 // shortcut_ops.go is ward's Shortcut tracker client, using the public REST API
@@ -105,12 +103,12 @@ type shortcutWorkflowStateRaw struct {
 	Type string `json:"type"`
 }
 
-func (c *shortcutClient) getIssue(ctx context.Context, owner, repo string, number int) (*dispatch.Issue, error) {
+func (c *shortcutClient) getIssue(ctx context.Context, owner, repo string, number int) (*Issue, error) {
 	var raw shortcutStoryRaw
 	if err := c.request(ctx, http.MethodGet, "/stories/"+strconv.Itoa(number), nil, &raw, http.StatusOK); err != nil {
 		return nil, fmt.Errorf("shortcut: get story %s/%s#%d: %w", owner, repo, number, err)
 	}
-	issue := &dispatch.Issue{
+	issue := &Issue{
 		Number: raw.ID,
 		Title:  raw.Name,
 		Body:   raw.Description,

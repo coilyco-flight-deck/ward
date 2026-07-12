@@ -65,6 +65,7 @@ type bootstrapEnv struct {
 	// the push credential, compose the restriction. See docs/agent-surface.md.
 	ReadOnly          bool
 	WardVersionSource string
+	WardVersion       string
 	ForgejoHost       string
 	// Forge is the TARGET repo's host (ward#489, GitLab added in #635): GitHub and GitLab
 	// clone off CloneBase with their own push users, else Forgejo + coilyco-ops.
@@ -199,6 +200,7 @@ func readBootstrapEnv() (bootstrapEnv, error) {
 		Ask:               os.Getenv("WARD_ASK") == "1",
 		ReadOnly:          os.Getenv("WARD_READONLY") == "1",
 		WardVersionSource: envOr(envAgentVersionSource, ""),
+		WardVersion:       envOr("WARD_VERSION", ""),
 
 		SubstrateSeed:     envOr("WARD_SUBSTRATE_SEED", "/opt/substrate-seed"),
 		SubstrateDest:     envOr("WARD_SUBSTRATE_DEST", "/substrate"),
@@ -289,8 +291,8 @@ func echoRunContextGo(e bootstrapEnv, agentArgs []string) {
 		"===== end ward run context =====\n",
 		e.TargetOwner, e.TargetName, ref, orDefaultLabel(e.Branch, "(default)"),
 		e.Mode, e.Agent, orDefaultLabel(e.Container, "(unnamed)"),
-		orDefaultLabel(os.Getenv("WARD_WORKFLOW"), "direct-main"),
-		orDefaultLabel(e.WardVersionSource, wardVersionLaunchLabel(os.Getenv("WARD_VERSION"), "")),
+		orDefaultLabel(os.Getenv("WARD_WORKFLOW"), "merge-remote-main"),
+		orDefaultLabel(e.WardVersionSource, wardVersionLaunchLabel(e.WardVersion, "")),
 		orDefaultLabel(os.Getenv("WARD_CONTAINER_UP"), "(unset)"), seed)
 }
 
@@ -458,7 +460,11 @@ func (r *Runner) runContainerBootstrap(ctx context.Context, c *cli.Command) erro
 	blog("bootstrap agent container composition done")
 
 	_ = os.Setenv("WARD_REAP_WORK", work)
-	r.prepareScratchSpace("/scratch")
+	if err := r.prepareScratchSpace(surfaceScratchDir(e)); err != nil {
+		blog("fatal: %v", err)
+		writeGateFailure("bootstrap", err.Error()) // reaper release-comment context (ward#609)
+		return err
+	}
 	defer r.reap(ctx, work)
 
 	branch := r.captureTrim(ctx, "git", "-C", work, "branch", "--show-current")
@@ -512,18 +518,88 @@ func (r *Runner) runContainerBootstrap(ctx context.Context, c *cli.Command) erro
 	return nil
 }
 
-// prepareScratchSpace provisions the writable throwaway area used by read-only
-// sessions and points common temp env vars at it.
-func (r *Runner) prepareScratchSpace(scratchDir string) {
+const surfaceScratchFloorBytes = 512 * 1024 * 1024
+
+// surfaceScratchRoot returns the writable cache/temp root for this surface.
+// Read-only director sessions use the gitcache volume for Go verification headroom.
+func surfaceScratchRoot(readOnly bool, gitcache string) string {
+	if readOnly {
+		return filepath.Join(gitcache, "surface-scratch")
+	}
+	return "/scratch"
+}
+
+// surfaceScratchDir returns the writable cache/temp root for this surface.
+func surfaceScratchDir(e bootstrapEnv) string {
+	return surfaceScratchRoot(e.ReadOnly, e.GitCache)
+}
+
+// directorSurfaceScratchDir returns the scratch root the host gate advertises
+// before the container launches.
+func directorSurfaceScratchDir(readOnly bool) string {
+	return surfaceScratchRoot(readOnly, containerGitcacheMnt)
+}
+
+// surfaceScratchGoCacheDir returns the Go build cache root under the surface
+// scratch location.
+func surfaceScratchGoCacheDir(scratchDir string) string {
+	return filepath.Join(scratchDir, "go-build")
+}
+
+// surfaceScratchBudgetReport renders the current free-space budget for the
+// scratch volume.
+func surfaceScratchBudgetReport(scratchDir string) string {
+	free, total, err := surfaceScratchDiskFreeBytes(scratchDir)
+	if err != nil {
+		return "disk usage unavailable"
+	}
+	return fmt.Sprintf("%s free of %s", diskBytes(free), diskBytes(total))
+}
+
+// prepareScratchSpace provisions the writable throwaway area and points common temp
+// and Go cache env vars at it.
+func (r *Runner) prepareScratchSpace(scratchDir string) error {
 	if err := os.MkdirAll(scratchDir, 0o1777); err != nil {
-		blog("could not create %s: %v", scratchDir, err)
-		return
+		return fmt.Errorf("prepare scratch/cache root %s: %w", scratchDir, err)
+	}
+	subdirs := []string{
+		surfaceScratchGoCacheDir(scratchDir),
+		filepath.Join(scratchDir, "go-mod"),
+		filepath.Join(scratchDir, "go-tmp"),
+		filepath.Join(scratchDir, "xdg-cache"),
+	}
+	for _, dir := range subdirs {
+		if err := os.MkdirAll(dir, 0o1777); err != nil {
+			return fmt.Errorf("prepare scratch/cache dir %s: %w", dir, err)
+		}
+		_ = os.Chmod(dir, 0o1777)
 	}
 	_ = os.Chmod(scratchDir, 0o1777)
+	if err := surfaceScratchBudgetError(scratchDir); err != nil {
+		return err
+	}
 	_ = os.Setenv("TMPDIR", scratchDir)
 	_ = os.Setenv("TMP", scratchDir)
 	_ = os.Setenv("TEMP", scratchDir)
-	blog("scratch area ready at %s", scratchDir)
+	_ = os.Setenv("GOCACHE", surfaceScratchGoCacheDir(scratchDir))
+	_ = os.Setenv("GOMODCACHE", filepath.Join(scratchDir, "go-mod"))
+	_ = os.Setenv("GOTMPDIR", filepath.Join(scratchDir, "go-tmp"))
+	_ = os.Setenv("XDG_CACHE_HOME", filepath.Join(scratchDir, "xdg-cache"))
+	blog("scratch/cache area ready at %s (%s; Go caches under %s)", scratchDir, surfaceScratchBudgetReport(scratchDir), surfaceScratchGoCacheDir(scratchDir))
+	return nil
+}
+
+func diskBytes(b uint64) string {
+	const unit = 1024
+	if b < unit {
+		return fmt.Sprintf("%dB", b)
+	}
+	div, exp := uint64(unit), 0
+	for n := b / unit; n >= unit; n /= unit {
+		div *= unit
+		exp++
+	}
+	return fmt.Sprintf("%.1f%ciB", float64(b)/float64(div), "KMGTPE"[exp])
 }
 
 // makeReadOnlyTree removes write bits from a cloned workspace so the surface
@@ -1286,11 +1362,35 @@ func (r *Runner) composePermissions(e bootstrapEnv) {
 		blog("could not read container permission policy: %v", rerr)
 		return
 	}
-	if werr := os.WriteFile(out, data, 0o644); werr != nil { // #nosec G306 -- permission policy, not a secret
+	buf := composeClaudeSettings(containerMode(e.Mode), data)
+	if werr := os.WriteFile(out, buf, 0o644); werr != nil { // #nosec G306 -- permission policy, not a secret
 		blog("could not write container permission policy: %v", werr)
 		return
 	}
 	blog("wrote container permission policy to %s", out)
+}
+
+func composeClaudeSettings(mode containerMode, data []byte) []byte {
+	if !lookupAgent(mode).Record().StatusLine {
+		return data
+	}
+	var settings map[string]any
+	if err := json.Unmarshal(data, &settings); err != nil {
+		blog("could not parse container permission policy: %v; writing the base file unchanged", err)
+		return data
+	}
+	settings["statusLine"] = map[string]any{
+		"type":            "command",
+		"command":         "ward agent dispatch-health --line",
+		"padding":         1,
+		"refreshInterval": 5,
+	}
+	buf, err := json.MarshalIndent(settings, "", "  ")
+	if err != nil {
+		blog("could not marshal status-line settings: %v; writing the base file unchanged", err)
+		return data
+	}
+	return append(buf, '\n')
 }
 
 // --- reaper: deterministic teardown backstop ---------------------------------

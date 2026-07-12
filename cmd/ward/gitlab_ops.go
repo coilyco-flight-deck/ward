@@ -11,8 +11,6 @@ import (
 	"strconv"
 	"strings"
 	"time"
-
-	"forgejo.coilysiren.me/coilyco-flight-deck/cli-guard/cli/dispatch"
 )
 
 // gitlab_ops.go is ward's GitLab issue-thread + merge-request client. It mirrors
@@ -82,7 +80,7 @@ func (c *gitlabClient) do(ctx context.Context, owner, repo, method, path string,
 	return resp, data, nil
 }
 
-func (c *gitlabClient) getIssue(ctx context.Context, owner, repo string, number int) (*dispatch.Issue, error) {
+func (c *gitlabClient) getIssue(ctx context.Context, owner, repo string, number int) (*Issue, error) {
 	resp, data, err := c.do(ctx, owner, repo, http.MethodGet, gitlabProjectPath(owner, repo)+"/issues/"+strconv.Itoa(number), nil) //nolint:bodyclose
 	if err != nil {
 		return nil, fmt.Errorf("gitlab: get issue %s/%s#%d: %w", owner, repo, number, err)
@@ -101,7 +99,7 @@ func (c *gitlabClient) getIssue(ctx context.Context, owner, repo string, number 
 	if err := json.Unmarshal(data, &raw); err != nil {
 		return nil, fmt.Errorf("gitlab: parse issue %s/%s#%d: %w", owner, repo, number, err)
 	}
-	issue := &dispatch.Issue{
+	issue := &Issue{
 		Number: raw.IID,
 		Title:  raw.Title,
 		Body:   raw.Description,

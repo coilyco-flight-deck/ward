@@ -11,7 +11,6 @@ import (
 	"testing"
 	"time"
 
-	"forgejo.coilysiren.me/coilyco-flight-deck/cli-guard/cli/dispatch"
 	"forgejo.coilysiren.me/coilyco-flight-deck/cli-guard/cli/shell"
 	"forgejo.coilysiren.me/coilyco-flight-deck/cli-guard/pkg/scan"
 	"github.com/urfave/cli/v3"
@@ -436,7 +435,7 @@ type fakeNoOutcomeTracker struct {
 	unlocked  int
 }
 
-func (f *fakeNoOutcomeTracker) getIssue(context.Context, string, string, int) (*dispatch.Issue, error) {
+func (f *fakeNoOutcomeTracker) getIssue(context.Context, string, string, int) (*Issue, error) {
 	return nil, errors.New("fakeNoOutcomeTracker: issue lookup not implemented")
 }
 
@@ -469,7 +468,7 @@ type fakeTerminalOutcomeTracker struct {
 	postAt    time.Time
 }
 
-func (f *fakeTerminalOutcomeTracker) getIssue(context.Context, string, string, int) (*dispatch.Issue, error) {
+func (f *fakeTerminalOutcomeTracker) getIssue(context.Context, string, string, int) (*Issue, error) {
 	return nil, errors.New("fakeTerminalOutcomeTracker: issue lookup not implemented")
 }
 
@@ -775,7 +774,7 @@ func TestReapTargetTreeLandedAndClosedDoesNotSalvage(t *testing.T) {
 }
 
 // TestReapTargetTreeLandedDirectToMainWithoutCloseRefSalvages covers ward#674.
-// A direct-main run already on origin/main must still verify its carried closes ref.
+// A merge-remote-main run already on origin/main still verifies its closes ref.
 func TestReapTargetTreeLandedDirectToMainWithoutCloseRefSalvages(t *testing.T) {
 	origin := t.TempDir()
 	runGit(t, origin, "init", "--bare", "-b", "main")
@@ -811,28 +810,28 @@ func TestReapTargetTreeLandedDirectToMainWithoutCloseRefSalvages(t *testing.T) {
 	r := &Runner{Runner: &shell.Runner{Resolve: shell.PathResolver}}
 	env := reapEnv{Owner: "coilyco-flight-deck", Name: "ward", Base: "https://forgejo.coilysiren.me", Mode: "codex", Issue: 674, Launched: true, Workflow: workflowDirectToMain}
 	if err := r.reapTargetTree(t.Context(), work, env, false); err != nil {
-		t.Fatalf("reapTargetTree on a landed direct-main run without closes #674: %v", err)
+		t.Fatalf("reapTargetTree on a landed merge-remote-main run without closes #674: %v", err)
 	}
 
 	if got, want := mustGitRev(t, origin, "main"), mustGitRev(t, work, "HEAD"); got != want {
-		t.Fatalf("a landed direct-main run without closes #674 must not advance main again: origin main=%s work HEAD=%s", got, want)
+		t.Fatalf("a landed merge-remote-main run without closes #674 must not advance main again: origin main=%s work HEAD=%s", got, want)
 	}
 	out, _ := exec.Command("git", "-C", origin, "branch", "--list", salvageBranchPrefix+"*").CombinedOutput()
 	if strings.TrimSpace(string(out)) == "" {
-		t.Fatal("a landed direct-main run without closes #674 must be preserved on a salvage branch")
+		t.Fatal("a landed merge-remote-main run without closes #674 must be preserved on a salvage branch")
 	}
 }
 
 // TestReapTargetTreeWorkflowBoundaryDoesNotSalvage covers the clean workflow boundary.
-// Pull-requests, pull-requests-and-merge, and patch-only runs land there.
+// Pull-request, pull-request-and-merge, and remote-branch-only runs land there.
 func TestReapTargetTreeWorkflowBoundaryDoesNotSalvage(t *testing.T) {
 	for _, tc := range []struct {
 		name     string
 		workflow workflowMode
 	}{
-		{name: "pull-requests", workflow: workflowPullRequest},
-		{name: "pull-requests-and-merge", workflow: workflowPullRequestAndMerge},
-		{name: "patch-only", workflow: workflowRemoteBranchOnly},
+		{name: "pull-request", workflow: workflowPullRequest},
+		{name: "pull-request-and-merge", workflow: workflowPullRequestAndMerge},
+		{name: "remote-branch-only", workflow: workflowRemoteBranchOnly},
 	} {
 		t.Run(tc.name, func(t *testing.T) {
 			origin := t.TempDir()

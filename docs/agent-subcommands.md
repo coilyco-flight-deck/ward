@@ -21,9 +21,9 @@ The operational backstop lives in the smaller operator docs:
 
 The canonical flat enumeration of the roles - one row each, with the tagline and the
 ref-vs-freeform invocation modes - lives in **[agent-roster.md](agent-roster.md)**,
-generated from the shipped presets plus the effective fleet role overlays by `ward agent roster`
-so it can never go stale. That page is the one source of truth for *which* roles exist; this
-doc and the per-role docs ([agent-engineer.md](agent-engineer.md),
+generated from the ward-owned embedded role defaults plus the effective fleet role overlays by
+`ward agent roster` so it can never go stale. That page is the one source of truth for *which*
+roles exist; this doc and the per-role docs ([agent-engineer.md](agent-engineer.md),
 [agent-director.md](agent-director.md) + its [surface](agent-director.md),
 [agent-advisor.md](agent-advisor.md), [agent-qa.md](agent-qa.md)) carry the prose detail
 behind each row. Run `warded roster` for the list live at the terminal.

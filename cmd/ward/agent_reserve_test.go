@@ -10,8 +10,6 @@ import (
 	"strings"
 	"testing"
 	"time"
-
-	"forgejo.coilysiren.me/coilyco-flight-deck/cli-guard/cli/dispatch"
 )
 
 func captureTestStderr(t *testing.T, fn func()) string {
@@ -397,8 +395,8 @@ type fakeLockForge struct {
 	listCalls    int
 }
 
-func (f *fakeLockForge) getIssue(context.Context, string, string, int) (*dispatch.Issue, error) {
-	return &dispatch.Issue{}, nil
+func (f *fakeLockForge) getIssue(context.Context, string, string, int) (*Issue, error) {
+	return &Issue{}, nil
 }
 func (f *fakeLockForge) listIssueComments(context.Context, string, string, int) ([]issueComment, error) {
 	f.listCalls++
@@ -712,7 +710,7 @@ func TestPostReservationComment(t *testing.T) {
 func TestReservationCommentBodyHasMarker(t *testing.T) {
 	now := time.Date(2026, 6, 18, 12, 0, 0, 0, time.UTC)
 	body := reservationCommentBody(modeCodex, "engineer-codex-ward-142", "tower", now, "", nil)
-	for _, want := range []string{agentReservationMarker, "WARD-RESERVATION: held", "ward agent --harness codex", "engineer-codex-ward-142", "tower", "1h TTL"} {
+	for _, want := range []string{agentReservationMarker, "WARD-RESERVATION: held", "ward agent --harness codex", "engineer-codex-ward-142", "tower", "3h TTL"} {
 		if !strings.Contains(body, want) {
 			t.Errorf("reservation comment missing %q\n got: %s", want, body)
 		}

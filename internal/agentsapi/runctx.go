@@ -64,6 +64,8 @@ type RunCtx struct {
 	OpencodeModel string
 	// OllamaURL is the local ollama endpoint the opencode config binds.
 	OllamaURL string
+	// Correlation is the stable run metadata harnesses can surface in headers.
+	Correlation Correlation
 	// Seed is the agent's seed argv (the entrypoint's "$@"): the one-shot prompt,
 	// empty for a bare interactive session. LaunchArgv appends it.
 	Seed []string

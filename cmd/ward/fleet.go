@@ -4,11 +4,11 @@ package main
 // Edge bundle selection stays on the configsource seam, core agents stay baked.
 
 import (
-	"bytes"
 	"fmt"
 	"io/fs"
 
 	"forgejo.coilysiren.me/coilyco-flight-deck/cli-guard/pkg/fleetconfig"
+	kdl "github.com/calico32/kdl-go"
 )
 
 // loadFleetConfig resolves ward's built-in frontier defaults over the baked
@@ -26,44 +26,104 @@ func loadFleetConfigFrom(src configSource) (fleetconfig.Fleet, error) {
 }
 
 func loadRawFleetConfigFrom(src configSource) (fleetconfig.Fleet, error) {
-	if src.fleetKDL != "" && src.agentsKDL == "" && src.rolesKDL == "" {
+	if src.fleetKDL != "" {
 		b, err := fs.ReadFile(src.fsys, src.fleetKDL)
 		if err != nil {
 			return fleetconfig.Fleet{}, fmt.Errorf("read fleet config %s: %w", src.fleetKDL, err)
 		}
 		return fleetconfig.Parse(b)
 	}
-	if src.agentsKDL == "" {
-		return fleetconfig.Fleet{}, fmt.Errorf("read fleet config: missing agents bundle path")
-	}
-	agents, err := loadBundleAgentsConfigFrom(src)
+	return loadBundleFleetConfigFrom(src)
+}
+
+func loadBundleFleetConfigFrom(src configSource) (fleetconfig.Fleet, error) {
+	files, err := loadBundleKDLFiles(src)
 	if err != nil {
 		return fleetconfig.Fleet{}, err
 	}
-	roles, err := loadBundleRolesFrom(src)
+	sel, err := selectBundleFleetNodes(files)
 	if err != nil {
 		return fleetconfig.Fleet{}, err
 	}
-	agents.Roles = roles
-	return agents, nil
+	return parseBundleFleetSelection(sel)
 }
 
-func loadBundleAgentsConfigFrom(src configSource) (fleetconfig.Fleet, error) {
-	b, err := fs.ReadFile(src.fsys, src.agentsKDL)
+type bundleFleetSelection struct {
+	descNode     *kdl.Node
+	directorNode *kdl.Node
+	fleetNode    *kdl.Node
+	agentsNode   *kdl.Node
+	rolesNode    *kdl.Node
+}
+
+func selectBundleFleetNodes(files []bundleKDLFile) (bundleFleetSelection, error) {
+	_, descNode, _, err := findOptionalNamedBundleNode(files, "top-level `description` block", "description")
 	if err != nil {
-		return fleetconfig.Fleet{}, fmt.Errorf("read fleet config %s: %w", src.agentsKDL, err)
+		return bundleFleetSelection{}, err
 	}
-	return fleetconfig.Parse(renameBundleRootNode(b, "agents", "fleet"))
-}
-
-func renameBundleRootNode(src []byte, from, to string) []byte {
-	return bytes.Replace(src, []byte(from+" {"), []byte(to+" {"), 1)
-}
-
-func loadBundleRolesFrom(src configSource) ([]fleetconfig.Role, error) {
-	b, err := fs.ReadFile(src.fsys, src.rolesKDL)
+	_, directorNode, _, err := findOptionalNamedBundleNode(files, "top-level `director` block", "director")
 	if err != nil {
-		return nil, fmt.Errorf("read fleet roles %s: %w", src.rolesKDL, err)
+		return bundleFleetSelection{}, err
 	}
-	return parseBundleRoles(b)
+	fleetFile, fleetNode, fleetOK, err := findOptionalNamedBundleNode(files, "top-level `fleet` block", "fleet")
+	if err != nil {
+		return bundleFleetSelection{}, err
+	}
+	agentsFile, agentsNode, agentsOK, err := findOptionalNamedBundleNode(files, "top-level `agents` block", "agents")
+	if err != nil {
+		return bundleFleetSelection{}, err
+	}
+	rolesFile, rolesNode, rolesOK, err := findOptionalNamedBundleNode(files, "top-level `roles` block", "roles")
+	if err != nil {
+		return bundleFleetSelection{}, err
+	}
+	if fleetOK && (agentsOK || rolesOK) {
+		conflictPath := agentsFile.path
+		if !agentsOK {
+			conflictPath = rolesFile.path
+		}
+		return bundleFleetSelection{}, fmt.Errorf("bundle: conflicting fleet layouts in %s and %s (fail-closed)", fleetFile.path, conflictPath)
+	}
+	if !fleetOK && !agentsOK {
+		return bundleFleetSelection{}, fmt.Errorf("bundle: missing top-level `agents` or `fleet` block (fail-closed)")
+	}
+	sel := bundleFleetSelection{
+		descNode:     descNode,
+		directorNode: directorNode,
+		fleetNode:    fleetNode,
+		agentsNode:   agentsNode,
+		rolesNode:    rolesNode,
+	}
+	return sel, nil
+}
+
+func parseBundleFleetSelection(sel bundleFleetSelection) (fleetconfig.Fleet, error) {
+	nodes := make([]*kdl.Node, 0, 3)
+	if sel.descNode != nil {
+		nodes = append(nodes, sel.descNode)
+	}
+	if sel.directorNode != nil {
+		nodes = append(nodes, sel.directorNode)
+	}
+	if sel.fleetNode != nil {
+		nodes = append(nodes, sel.fleetNode)
+		return parseBundleFleetNodes(nodes)
+	}
+	fleet := kdl.NewNode("fleet")
+	fleet.AddChildren(sel.agentsNode.Children().Nodes...)
+	if sel.rolesNode != nil {
+		roles := kdl.NewNode("roles")
+		roles.AddChildren(sel.rolesNode.Children().Nodes...)
+		fleet.AddChild(roles)
+	}
+	nodes = append(nodes, fleet)
+	return parseBundleFleetNodes(nodes)
+}
+
+func parseBundleFleetNodes(nodes []*kdl.Node) (fleetconfig.Fleet, error) {
+	srcBytes, err := emitKDLDocument(nodes...)
+	if err != nil {
+		return fleetconfig.Fleet{}, fmt.Errorf("emit fleet bundle: %w", err)
+	}
+	return fleetconfig.Parse(srcBytes)
 }

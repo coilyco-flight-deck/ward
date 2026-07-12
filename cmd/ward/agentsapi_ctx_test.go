@@ -19,17 +19,21 @@ func TestAgentRunCtxCarve(t *testing.T) {
 	e := bootstrapEnv{
 		AgentHome:      "/home/ubuntu",
 		TargetName:     "ward",
+		TargetOwner:    "coilyco-flight-deck",
 		AgentUID:       "1000",
 		AgentGID:       "1000",
 		Headless:       true,
 		Ask:            false,
+		Container:      "engineer-codex-ward-861",
+		Role:           roleEngineer,
+		WardVersion:    "1.2.3",
 		CodexModel:     "gpt-5.4-mini",
 		CodexEffort:    "low",
 		CodexVerbosity: "low",
 		ClaudeModel:    "sonnet",
 		ClaudeEffort:   "medium",
 		QwenModel:      "qwen3-coder:30b",
-		OllamaURL:      "http://localhost:11434/v1",
+		OllamaURL:      "http://host.docker.internal:8082/v1",
 	}
 	r := &Runner{Runner: &shell.Runner{Stderr: io.Discard}}
 	seed := []string{"carry issue #410"}
@@ -62,6 +66,18 @@ func TestAgentRunCtxCarve(t *testing.T) {
 	}
 	if rc.OllamaURL != e.OllamaURL {
 		t.Errorf("OllamaURL = %q, want %q", rc.OllamaURL, e.OllamaURL)
+	}
+	if rc.Correlation.RunID != e.Container || rc.Correlation.ContainerName != e.Container {
+		t.Errorf("Correlation run/container = %q/%q, want %q/%q", rc.Correlation.RunID, rc.Correlation.ContainerName, e.Container, e.Container)
+	}
+	if rc.Correlation.Role != e.Role || rc.Correlation.Harness != e.Agent {
+		t.Errorf("Correlation role/harness = %q/%q, want %q/%q", rc.Correlation.Role, rc.Correlation.Harness, e.Role, e.Agent)
+	}
+	if rc.Correlation.TargetRepo != "coilyco-flight-deck/ward" || rc.Correlation.IssueRef != "coilyco-flight-deck/ward" {
+		t.Errorf("Correlation target/issue = %q/%q, want repo path", rc.Correlation.TargetRepo, rc.Correlation.IssueRef)
+	}
+	if rc.Correlation.Version != e.WardVersion {
+		t.Errorf("Correlation version = %q, want %q", rc.Correlation.Version, e.WardVersion)
 	}
 	if len(rc.Seed) != 1 || rc.Seed[0] != seed[0] {
 		t.Errorf("Seed = %v, want %v", rc.Seed, seed)

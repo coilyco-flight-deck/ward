@@ -118,7 +118,9 @@ type dispatchEngineer struct {
 	aws               bool
 	hostNet           bool
 	tsSidecar         bool
-	force             bool
+	// overrideReservation forwards --override-reservation (ward#352, ward#1045);
+	// --override-capacity is per-launch only and never propagated by the loop.
+	overrideReservation bool
 }
 
 // engineerArgv renders the `ward agent engineer` argv that carries one issue, forwarding
@@ -142,8 +144,8 @@ func (c dispatchEngineer) engineerArgv(ref agentIssueRef) []string {
 		argv = append(argv, "--aws")
 	}
 	argv = appendTailnetArgv(argv, c.hostNet, c.tsSidecar)
-	if c.force {
-		argv = append(argv, "--force")
+	if c.overrideReservation {
+		argv = append(argv, "--override-reservation")
 	}
 	return argv
 }
@@ -213,7 +215,8 @@ func directorFlags() []cli.Flag {
 	return append(flags,
 		&cli.BoolFlag{Name: "print", Usage: "resolve director's container/harness plan + the planned dispatches and exit; launch nothing"},
 		&cli.BoolFlag{Name: "no-pull", Usage: "skip the image pull"},
-		&cli.BoolFlag{Name: "force", Usage: "propagate --force to dispatched engineers so they reclaim a stale or foreign reservation instead of deferring (ward#352); off by default"},
+		&cli.BoolFlag{Name: "override-reservation", Usage: "propagate --override-reservation to dispatched engineers so they reclaim a stale or foreign reservation instead of deferring (ward#352, ward#1045); off by default. Never touches the pool ceiling - --override-capacity is per-launch only, not a director knob"},
+		&cli.BoolFlag{Name: "force", Hidden: true, Usage: "deprecated alias for --override-reservation (ward#1045)"},
 	)
 }
 
@@ -240,7 +243,7 @@ func directorEngineerHarness(c *cli.Command, directorMode containerMode) (contai
 func agentDirectorCommand() *cli.Command {
 	return &cli.Command{
 		Name:      "director",
-		Usage:     "Run an attached LLM-in-the-loop heartbeat over a repo's headless lane: poll, decide, dispatch, and surface on drain (ward#351). Engineers inherit the director's own harness by default; --engineer-harness overrides that dispatch default.",
+		Usage:     "Run an attached LLM-in-the-loop heartbeat over a repo's headless lane, or one exact issue ref: poll, decide, dispatch, and surface on drain (ward#351). Engineers inherit the director's own harness by default; --engineer-harness overrides that dispatch default.",
 		ArgsUsage: "(issue ref | scope via --repo; default: the cwd git origin)",
 		Description: `director runs an attached, autonomous heartbeat over a repo's open backlog. Each
 tick it reconciles in-flight engineers (reading their WARD-OUTCOME comments),
@@ -252,6 +255,10 @@ director's own harness by default, and --engineer-harness explicitly overrides t
 default. When the headless lane drains - nothing queued and nothing in flight - it
 surfaces an interactive session for new direction rather than exiting, and resumes
 the heartbeat if the queue refills (ward#351).
+
+When a single issue ref or Forgejo issue URL is given, the director fetches and
+validates that exact issue before the heartbeat starts and keeps the later
+refresh loop pinned to that issue instead of widening back into the repo backlog.
 
   warded director --repo coilyco-flight-deck/ward         # one repo
   warded director coilyco-flight-deck/ward#988            # one issue, fail-closed scope
@@ -331,15 +338,15 @@ func (r *Runner) runAgentBacklog(ctx context.Context, c *cli.Command, mode conta
 		triage:       c.Bool("triage") && !c.Bool("no-triage"),
 		issueRef:     issueRef,
 		dispatch: dispatchEngineer{
-			harness:           engDriver,
-			image:             c.String("image"),
-			tag:               c.String("tag"),
-			wardVersion:       strings.TrimSpace(c.String("ward-version")),
-			wardVersionSource: resolveWardVersionSource(c, c.String("ward-version")),
-			aws:               c.Bool("aws"),
-			hostNet:           hostNet,
-			tsSidecar:         tsSidecar,
-			force:             c.Bool("force"),
+			harness:             engDriver,
+			image:               c.String("image"),
+			tag:                 c.String("tag"),
+			wardVersion:         strings.TrimSpace(c.String("ward-version")),
+			wardVersionSource:   resolveWardVersionSource(c, c.String("ward-version")),
+			aws:                 c.Bool("aws"),
+			hostNet:             hostNet,
+			tsSidecar:           tsSidecar,
+			overrideReservation: overrideReservation(c),
 		},
 		wardSource: strings.TrimSpace(c.String("ward-source")),
 		noPull:     c.Bool("no-pull"),
@@ -408,14 +415,8 @@ func (r *Runner) driveBacklog(ctx context.Context, label string, repos []string,
 	if cfg.triage && !preview && cfg.issueRef == nil {
 		r.backlogTriage(ctx, label, repos, cfg.mode, cfg.limit)
 	}
-	if cfg.issueRef != nil {
-		if err := r.backlogRefreshIssue(ctx, label, cfg.mode, *cfg.issueRef); err != nil {
-			return err
-		}
-	} else {
-		if err := r.backlogRefresh(ctx, label, repos, cfg.limit); err != nil {
-			return err
-		}
+	if err := r.backlogRefreshForDirector(ctx, label, cfg, repos); err != nil {
+		return err
 	}
 	if err := r.backlogPrintStatus(repos); err != nil {
 		return err
@@ -431,6 +432,15 @@ func (r *Runner) driveBacklog(ctx context.Context, label string, repos []string,
 		return r.backlogPrintPlanned(label, repos, cfg.maxParallel)
 	}
 	return runDirectorLoop(ctx, cfg, &liveDirector{r: r, label: label, repos: repos, cfg: cfg})
+}
+
+// backlogRefreshForDirector keeps the live heartbeat on exactly one issue when the
+// director was scoped by issue ref, instead of widening back into the repo backlog.
+func (r *Runner) backlogRefreshForDirector(ctx context.Context, label string, cfg backlogConfig, repos []string) error {
+	if cfg.issueRef != nil {
+		return r.backlogRefreshIssue(ctx, label, cfg.mode, *cfg.issueRef)
+	}
+	return r.backlogRefresh(ctx, label, repos, cfg.limit)
 }
 
 // out returns the run's user-facing writer (lanes, summary), falling back to stdout.
@@ -569,7 +579,18 @@ func (r *Runner) expandOrgScopes(ctx context.Context, label string, orgs []strin
 		if len(slugs) == 0 {
 			return nil, fmt.Errorf("%s: --org %q expanded to no repos (unknown org, or only archived/empty repos)", label, org)
 		}
-		out = append(out, slugs...)
+		kept := slugs[:0:0]
+		for _, slug := range slugs {
+			if !r.burndownEnabled(slug) {
+				fmt.Fprintf(os.Stderr, "%s: skipping %s (burndown disabled in repos.kdl)\n", label, slug)
+				continue
+			}
+			kept = append(kept, slug)
+		}
+		if len(kept) == 0 {
+			return nil, fmt.Errorf("%s: --org %q expanded to no repos (every repo has burndown disabled in repos.kdl)", label, org)
+		}
+		out = append(out, kept...)
 	}
 	return out, nil
 }
@@ -1399,7 +1420,7 @@ func backlogDispatchContainerName(dispatch dispatchEngineer, ref agentIssueRef) 
 // directorDispatchDisposition classifies a dispatch error for the ledger (ward#352,
 // ward#524, ward#527). See docs/agent-director-dispatch.md.
 func directorDispatchDisposition(err error) (state string, outcome *backlogOutcome, deferred bool) {
-	if isEngineerCapacityError(err) {
+	if isEngineerCapacityError(err) || isOpenPRBackpressureError(err) {
 		return "queued", &backlogOutcome{Status: "deferred", Text: backlogTruncate(err.Error(), 300)}, true
 	}
 	if isDispatchDecline(err) {
@@ -1677,7 +1698,7 @@ func (r *Runner) backlogPrintDirectorPlan(label string, repos []string, cfg back
 	fmt.Fprintf(&b, "aws:             %t\n", cy.aws)
 	fmt.Fprintf(&b, "tailnet:         %s\n", tailnetPlanLabel(cy.hostNet, cy.tsSidecar))
 	fmt.Fprintf(&b, "no-pull:         %t\n", cfg.noPull)
-	fmt.Fprintf(&b, "force:           %t (propagated to engineers; default defers on a reservation conflict)\n", cy.force)
+	fmt.Fprintf(&b, "override-reservation: %t (propagated to engineers; default defers on a reservation conflict)\n", cy.overrideReservation)
 	if len(cfg.withRepo) > 0 {
 		fmt.Fprintf(&b, "with-repo:       %s (cloned into the surface session)\n", strings.Join(cfg.withRepo, ", "))
 	}

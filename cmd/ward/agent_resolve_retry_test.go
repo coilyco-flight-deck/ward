@@ -6,8 +6,6 @@ import (
 	"strings"
 	"testing"
 	"time"
-
-	"forgejo.coilysiren.me/coilyco-flight-deck/cli-guard/cli/dispatch"
 )
 
 // TestTransientResolveErr pins ward#497's classifier: a pinned 4xx is permanent (no
@@ -67,11 +65,11 @@ func TestTransientResolveErr(t *testing.T) {
 // ride over a transient blip, a fast fail on a permanent 4xx, and a give-up.
 func TestResolveIssueWithRetry(t *testing.T) {
 	noSleep := func(time.Duration) {}
-	ok := &dispatch.Issue{Title: "ready"}
+	ok := &Issue{Title: "ready"}
 
 	t.Run("first read wins", func(t *testing.T) {
 		calls := 0
-		got, err := resolveIssueWithRetry("t", "o/r#1", noSleep, func() (*dispatch.Issue, error) {
+		got, err := resolveIssueWithRetry("t", "o/r#1", noSleep, func() (*Issue, error) {
 			calls++
 			return ok, nil
 		})
@@ -82,7 +80,7 @@ func TestResolveIssueWithRetry(t *testing.T) {
 
 	t.Run("transient blip then success", func(t *testing.T) {
 		calls, sleeps := 0, 0
-		got, err := resolveIssueWithRetry("t", "o/r#1", func(time.Duration) { sleeps++ }, func() (*dispatch.Issue, error) {
+		got, err := resolveIssueWithRetry("t", "o/r#1", func(time.Duration) { sleeps++ }, func() (*Issue, error) {
 			calls++
 			if calls < 3 {
 				return nil, errors.New("exit status 3: -> 500 Internal Server Error")
@@ -97,7 +95,7 @@ func TestResolveIssueWithRetry(t *testing.T) {
 	t.Run("permanent 4xx fails on the first try", func(t *testing.T) {
 		calls := 0
 		perm := errors.New("exit status 3: -> 403 Forbidden")
-		_, err := resolveIssueWithRetry("t", "o/r#1", func(time.Duration) { t.Fatal("must not sleep on a permanent failure") }, func() (*dispatch.Issue, error) {
+		_, err := resolveIssueWithRetry("t", "o/r#1", func(time.Duration) { t.Fatal("must not sleep on a permanent failure") }, func() (*Issue, error) {
 			calls++
 			return nil, perm
 		})
@@ -109,7 +107,7 @@ func TestResolveIssueWithRetry(t *testing.T) {
 	t.Run("exhausts on a persistent transient failure", func(t *testing.T) {
 		calls, sleeps := 0, 0
 		blip := errors.New("exit status 3: the API was unreachable")
-		_, err := resolveIssueWithRetry("t", "o/r#1", func(time.Duration) { sleeps++ }, func() (*dispatch.Issue, error) {
+		_, err := resolveIssueWithRetry("t", "o/r#1", func(time.Duration) { sleeps++ }, func() (*Issue, error) {
 			calls++
 			return nil, blip
 		})

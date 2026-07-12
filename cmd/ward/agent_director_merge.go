@@ -8,7 +8,6 @@ import (
 	"strings"
 	"time"
 
-	"forgejo.coilysiren.me/coilyco-flight-deck/cli-guard/cli/dispatch"
 	"github.com/urfave/cli/v3"
 )
 
@@ -37,7 +36,7 @@ func agentDirectorMergeCommand() *cli.Command {
 		Name:        "merge",
 		Usage:       "Merge eligible ward-owned PRs whose issue thread authorizes director merge.",
 		ArgsUsage:   "(scope via --repo; default: the cwd git origin)",
-		Description: `merge scans open pull requests in scope and merges only the ones the ward issue thread marks as director-merge authorized: the linked issue ended with WARD-OUTCOME: merge-ready, the final comment says workflow: pull-request-and-merge, the review summary is passed, the PR is mergeable against the current base branch, and it is not salvage/draft noise. The director records the final done outcome only after the merge lands. pull-requests still needs a human. See docs/agent-director.md and docs/agent-workflow.md.`,
+		Description: `merge scans open pull requests in scope and merges only the ones the ward issue thread marks as director-merge authorized: the linked issue ended with WARD-OUTCOME: merge-ready, the final comment says workflow: pull-request-and-merge, the review summary is passed, the PR is mergeable against the current base branch, and it is not salvage/draft noise. The director records the final done outcome only after the merge lands. pull-request still needs a human. See docs/agent-director.md and docs/agent-workflow.md.`,
 		Flags:       directorMergeFlags(),
 		Action: func(ctx context.Context, c *cli.Command) error {
 			r := newRunner()
@@ -366,7 +365,7 @@ func directorPRWorkflowMarker(body string) (string, bool) {
 }
 
 // directorMergeDecision is the pure policy boundary for the director merge lane.
-func directorMergeDecision(pr dispatch.Issue, linked int, meta directorRunMeta) (ok bool, reason string, _ int, _ directorRunMeta) {
+func directorMergeDecision(pr Issue, linked int, meta directorRunMeta) (ok bool, reason string, _ int, _ directorRunMeta) {
 	title := strings.ToLower(strings.TrimSpace(pr.Title))
 	switch {
 	case strings.HasPrefix(title, "ward salvage:"):

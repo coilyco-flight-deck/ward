@@ -21,6 +21,8 @@ Ward releases are Forgejo-canonical.
 ## Pipeline notes
 
 - the release workflow is Forgejo-canonical.
+- every other step blocks behind the test gate: a `main` push whose vet, test,
+  or lint checks fail tags nothing and publishes nothing.
 - the published binaries should match the tagged source state.
 - the install channel update should follow the release, not invent a second
   release story.

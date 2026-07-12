@@ -7,7 +7,6 @@ import (
 	"testing"
 	"time"
 
-	"forgejo.coilysiren.me/coilyco-flight-deck/cli-guard/cli/dispatch"
 	"github.com/urfave/cli/v3"
 )
 
@@ -126,7 +125,7 @@ func TestDirectorQueueClassifiesRequestedStates(t *testing.T) {
 			}
 			var got directorQueueItem
 			if tc.kind == backlogKindPullRequest {
-				got = classifyDirectorQueuePR(repo, directorPullRequest{Issue: dispatch.Issue{Number: 1, Title: tc.name, Labels: []string{"P0"}}}, tc.comments, now, ttl)
+				got = classifyDirectorQueuePR(repo, directorPullRequest{Issue: Issue{Number: 1, Title: tc.name, Labels: []string{"P0"}}}, tc.comments, now, ttl)
 			} else {
 				got = classifyDirectorQueueIssue(repo, issue, tc.comments, now, ttl)
 			}
@@ -157,9 +156,9 @@ func TestRenderDirectorQueueStatusShowsNextActions(t *testing.T) {
 		},
 		prs: map[string][]directorPullRequest{
 			repo: {
-				{Issue: dispatch.Issue{Number: 4, Title: "submitted pr", Labels: []string{"P0"}}},
-				{Issue: dispatch.Issue{Number: 5, Title: "merge-ready pr", Labels: []string{"P0"}}},
-				{Issue: dispatch.Issue{Number: 6, Title: "done pr", Labels: []string{"P0"}}},
+				{Issue: Issue{Number: 4, Title: "submitted pr", Labels: []string{"P0"}}},
+				{Issue: Issue{Number: 5, Title: "merge-ready pr", Labels: []string{"P0"}}},
+				{Issue: Issue{Number: 6, Title: "done pr", Labels: []string{"P0"}}},
 			},
 		},
 		comments: map[string][]issueComment{

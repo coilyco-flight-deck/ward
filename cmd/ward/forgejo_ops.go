@@ -13,7 +13,6 @@ import (
 	"strings"
 	"time"
 
-	"forgejo.coilysiren.me/coilyco-flight-deck/cli-guard/cli/dispatch"
 	"forgejo.coilysiren.me/coilyco-flight-deck/cli-guard/pkg/broker"
 )
 
@@ -237,23 +236,23 @@ func apiPath(segments []string) string {
 }
 
 // fetchIssueByForge GETs an issue from the selected forge and decodes it into
-// dispatch.Issue, the advisor-path resolve seam sharing the dispatch retry (ward#497).
-func (r *Runner) fetchIssueByForge(ctx context.Context, label string, f forge, mode containerMode, owner, repo string, number int) (*dispatch.Issue, error) {
+// Issue, the advisor-path resolve seam sharing the dispatch retry (ward#497).
+func (r *Runner) fetchIssueByForge(ctx context.Context, label string, f forge, mode containerMode, owner, repo string, number int) (*Issue, error) {
 	cl, err := r.hostTrackerClient(ctx, trackerFromForge(f), mode)
 	if err != nil {
 		return nil, err
 	}
 	ref := fmt.Sprintf("%s/%s#%d", owner, repo, number)
-	return resolveIssueWithRetry(label, ref, resolveIssueSleep, func() (*dispatch.Issue, error) {
+	return resolveIssueWithRetry(label, ref, resolveIssueSleep, func() (*Issue, error) {
 		return cl.getIssue(ctx, owner, repo, number)
 	})
 }
 
 // getIssue reads one issue and decodes the rendered JSON. Labels arrive as
 // objects, so they decode into a shadow field and flatten to the name list.
-func (c *forgejoClient) getIssue(ctx context.Context, owner, repo string, number int) (*dispatch.Issue, error) {
+func (c *forgejoClient) getIssue(ctx context.Context, owner, repo string, number int) (*Issue, error) {
 	var raw struct {
-		dispatch.Issue
+		Issue
 		Labels []struct {
 			Name string `json:"name"`
 		} `json:"labels"`
@@ -485,6 +484,9 @@ type forgejoBranch struct {
 	Protected           bool     `json:"protected"`
 	EnableStatusCheck   bool     `json:"enable_status_check"`
 	StatusCheckContexts []string `json:"status_check_contexts"`
+	Commit              struct {
+		ID string `json:"id"`
+	} `json:"commit"`
 }
 
 type forgejoCommitCombinedStatus struct {
@@ -672,6 +674,7 @@ func (c *forgejoClient) getPullRequestContext(ctx context.Context, owner, repo s
 		Title:        strings.TrimSpace(pr.Title),
 		Body:         strings.TrimSpace(pr.Body),
 		URL:          strings.TrimSpace(pr.HTMLURL),
+		HeadSHA:      strings.TrimSpace(pr.Head.SHA),
 		HeadRef:      strings.TrimSpace(pr.Head.Ref),
 		BaseRef:      strings.TrimSpace(pr.Base.Ref),
 		Mergeability: fmt.Sprintf("mergeable=%t", pr.Mergeable),
@@ -729,7 +732,7 @@ func (c *forgejoClient) listOpenPullRequests(ctx context.Context, owner, repo st
 			continue
 		}
 		pr := directorPullRequest{
-			Issue: dispatch.Issue{
+			Issue: Issue{
 				Number: ri.Number,
 				Title:  ri.Title,
 				Body:   ri.Body,
@@ -905,7 +908,7 @@ type forgejoPullRequestRaw struct {
 // directorPullRequest is the open PR list projection used by the director merge
 // lane. It keeps the issue surface plus the focused mergeability bit.
 type directorPullRequest struct {
-	dispatch.Issue
+	Issue
 	Mergeable      bool
 	MergeableKnown bool
 	MergeableError string

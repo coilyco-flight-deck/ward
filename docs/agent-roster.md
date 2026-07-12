@@ -1,12 +1,12 @@
 ---
-doc_goal: Give a reader the canonical, code-generated list of every ward agent startup role with its tagline, semantic capability preset, and invocation modes, so they can see the shipped role presets from the embedded role catalog plus any effective fleet overlays without the page drifting from the binary.
+doc_goal: Give a reader the canonical, code-generated list of every ward agent startup role with its tagline, semantic capability preset, and invocation modes, so they can see the ward-owned embedded role defaults plus any effective fleet overlays without the page drifting from the binary.
 ---
 # ward agent: the role roster
 
 <!-- Generated from the code roster by `ward agent roster --markdown` (ward#348); do not edit by hand. Regenerate with `make agent-roster`. -->
 
 A flat list of every `ward agent` startup role - the roster the binary resolves from
-its built-in presets plus the effective fleet config's role overlays, so the page can never
+its embedded role defaults plus the effective fleet config's role overlays, so the page can never
 drift. Each role is one entry: what the specialist does, what semantic capabilities the
 preset carries, and how you invoke it (a ref acts on an issue, freeform text files or answers
 it). Run `ward agent roster` (`warded roster`) for this list live at the terminal, and the

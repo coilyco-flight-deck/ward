@@ -9,9 +9,9 @@ import (
 	"path/filepath"
 	"regexp"
 	"strings"
+	"sync"
 	"time"
 
-	"forgejo.coilysiren.me/coilyco-flight-deck/cli-guard/cli/dispatch"
 	"forgejo.coilysiren.me/coilyco-flight-deck/cli-guard/pkg/exitcode"
 	"forgejo.coilysiren.me/coilyco-flight-deck/cli-guard/pkg/issueref"
 	"forgejo.coilysiren.me/coilyco-flight-deck/cli-guard/pkg/ownertrust"
@@ -239,7 +239,7 @@ func looksLikeExplicitForgejoIssueRef(s string) bool {
 }
 
 func parseDispatchIssueRef(s string) (agentIssueRef, error) {
-	ref, err := dispatch.ParseIssueRef(forgejoBaseURL, s)
+	ref, err := ParseIssueRef(forgejoBaseURL, s)
 	if err != nil {
 		return agentIssueRef{}, err
 	}
@@ -252,15 +252,15 @@ func parseDispatchIssueRef(s string) (agentIssueRef, error) {
 	}, nil
 }
 
-func dispatchPlatformToForge(p dispatch.Platform) forge {
-	if p == dispatch.PlatformGitHub {
+func dispatchPlatformToForge(p Platform) forge {
+	if p == PlatformGitHub {
 		return forgeGitHub
 	}
 	return forgeForgejo
 }
 
-func dispatchPlatformToTracker(p dispatch.Platform) tracker {
-	if p == dispatch.PlatformGitHub {
+func dispatchPlatformToTracker(p Platform) tracker {
+	if p == PlatformGitHub {
 		return trackerGitHub
 	}
 	return trackerForgejo
@@ -383,15 +383,15 @@ func reviewGateClause(ref agentIssueRef, wf workflowMode) string {
 	var workflowTail string
 	switch mode := string(canonicalWorkflow(wf.orDefault())); mode {
 	case string(workflowDirectToMain):
-		workflowTail = "For `direct-main` workflows, landing means merging to `main`. Do not stop before the merge lands."
+		workflowTail = "For `merge-remote-main` workflows, landing means merging to `main`. Do not stop before the merge lands."
 	case string(workflowPullRequest):
-		workflowTail = "For `pull-requests` workflows, opening the " + noun + " is not a stopping point. Keep watching the " + noun + " checks after it opens. A failing check is not done: fetch the logs/status, patch the branch, push the update, and repeat until the " + noun + " is green or the failure is genuinely blocked."
+		workflowTail = "For `pull-request` workflows, opening the " + noun + " is not a stopping point. Keep watching the " + noun + " checks after it opens. A failing check is not done: fetch the logs/status, patch the branch, push the update, and repeat until the " + noun + " is green or the failure is genuinely blocked."
 	case string(workflowPullRequestAndMerge):
-		workflowTail = "For `pull-requests-and-merge` workflows, opening the " + noun + " is not a stopping point. Keep watching the " + noun + " checks and merge status after it opens. A failing check is not done: fetch the logs/status, patch the branch, push the update, and repeat until the " + noun + " is green and merged or the failure is genuinely blocked."
+		workflowTail = "For `pull-request-and-merge` workflows, opening the " + noun + " is not a stopping point. Keep watching the " + noun + " checks and merge status after it opens. A failing check is not done: fetch the logs/status, patch the branch, push the update, and repeat until the " + noun + " is green and merged or the failure is genuinely blocked."
 	case string(workflowRemoteBranchOnly):
-		workflowTail = "For `patch-only` workflows, the remote branch push is the finish line. Do not open a pull request and do not merge."
+		workflowTail = "For `remote-branch-only` workflows, the remote branch push is the finish line. Do not open a pull request and do not merge."
 	default:
-		workflowTail = "For `pull-requests` workflows, opening the " + noun + " is not a stopping point. Keep watching the " + noun + " checks after it opens. A failing check is not done: fetch the logs/status, patch the branch, push the update, and repeat until the " + noun + " is green or the failure is genuinely blocked."
+		workflowTail = "For `pull-request` workflows, opening the " + noun + " is not a stopping point. Keep watching the " + noun + " checks after it opens. A failing check is not done: fetch the logs/status, patch the branch, push the update, and repeat until the " + noun + " is green or the failure is genuinely blocked."
 	}
 	return fmt.Sprintf(
 		"REVIEW GATE (ward#134): before you land this change (%s), and ONLY after CI is green, run the "+
@@ -454,7 +454,7 @@ func forgeDisplayName(f forge) string {
 	return "Forgejo"
 }
 
-// agentSeedPrompt seeds a direct-main run (the default): a thin wrapper over
+// agentSeedPrompt seeds a merge-remote-main run (the default): a thin wrapper over
 // agentSeedPromptWorkflow so legacy callers stay byte-for-byte (ward#405, ward#508).
 func agentSeedPrompt(ref agentIssueRef, title, body, details string, headless bool, extra []targetRepo) string {
 	return agentSeedPromptWorkflow(ref, title, body, details, headless, extra, defaultWorkflow, true, "")
@@ -737,6 +737,9 @@ trusted owner.`, agentHarnessChoices(), defaultAgentMode()),
 			// logs is a read verb, not a startup role: a director surface reads one
 			// engineer's logs through the dispatch broker. docs/agent-logs.md.
 			agentLogsCommand(),
+			// dispatch-health is a read verb, not a startup role: it summarizes the
+			// current pathology and feeds the Claude status line.
+			agentDispatchHealthCommand(),
 			// pr carries the native PR-workflow verbs (merge/status/runs/rerun), not a
 			// startup role (ward#1067). docs/agent-pr-workflow.md.
 			agentPRCommand(),
@@ -760,7 +763,7 @@ func agentDefaultSurfaceAction() cli.ActionFunc {
 		if _, err := parseAgentIssueRef(arg); err != nil {
 			return fmt.Errorf("unknown command %q for 'ward agent' (roles: %s); "+
 				"a bare ref like #98 or owner/repo#N runs the engineer, and freeform work goes to "+
-				"`ward agent engineer \"<instructions>\"`", arg, strings.Join(builtInAgentRoleDefinitionOrder(), ", "))
+				"`ward agent engineer \"<instructions>\"`", arg, strings.Join(embeddedAgentRoleDefinitionOrder(), ", "))
 		}
 		return agentEngineerAction()(ctx, c)
 	}
@@ -805,7 +808,11 @@ func agentSurfaceFlags() []cli.Flag {
 		&cli.BoolFlag{Name: "print", Usage: "resolve the issue + seeded prompt + docker plan and exit; inject no push token, run nothing"},
 		// --no-pull is hidden (ward#362): a cached-image optimization, not everyday surface.
 		&cli.BoolFlag{Name: "no-pull", Hidden: true, Usage: "skip the image pull (use the cached local image)"},
-		&cli.BoolFlag{Name: "force", Usage: "skip the local + remote concurrency reservation checks (reclaim a stale or foreign hold)"},
+		// The --override-* family (ward#1045): two distinct escape hatches that never
+		// imply each other - a hold may be stale, the OOM ceiling never is.
+		&cli.BoolFlag{Name: "override-reservation", Usage: "skip the local + remote concurrency reservation checks (reclaim a stale or foreign per-issue hold); never overrides the pool ceiling"},
+		&cli.BoolFlag{Name: "force", Hidden: true, Usage: "deprecated alias for --override-reservation (ward#1045); reclaims a reservation hold only, never the pool ceiling"},
+		&cli.BoolFlag{Name: "override-capacity", Usage: "launch exactly one engineer past the OOM pool ceiling; the ceiling counts real running containers, so exceeding it risks host thrash or OOM (ward#1045)"},
 	)
 	// The detached run gets an autonomous pre-flight before launching (ward#137).
 	// skip-preflight skips that, the launch-adjacent probes, and the review gate.
@@ -823,6 +830,21 @@ func agentSurfaceFlags() []cli.Flag {
 // preflight bucket (`--skip-preflight` or its alias).
 func preflightSkipped(c *cli.Command) bool {
 	return c.Bool("skip-preflight") || c.Bool("no-preflight")
+}
+
+// forceFlagDeprecationOnce keeps the --force deprecation notice to one line per
+// process, however many gates read the flag on the way to a launch.
+var forceFlagDeprecationOnce sync.Once
+
+// overrideReservation reads --override-reservation or its deprecated --force alias
+// (ward#1045, noticed once); it never implies --override-capacity, or vice versa.
+func overrideReservation(c *cli.Command) bool {
+	if c.Bool("force") {
+		forceFlagDeprecationOnce.Do(func() {
+			fmt.Fprintln(os.Stderr, "ward agent: --force is deprecated; use --override-reservation (ward#1045). It reclaims a reservation hold only - launching past the pool ceiling is --override-capacity, never implied by this flag.")
+		})
+	}
+	return c.Bool("override-reservation") || c.Bool("force")
 }
 
 // resolvedWork bundles resolveAgentWork's output: ref, title, body, comment thread
@@ -851,9 +873,12 @@ type agentPullRequestContext struct {
 	Title        string
 	Body         string
 	URL          string
+	HeadSHA      string
 	HeadRef      string
 	BaseRef      string
 	Mergeability string
+	RepairBucket string
+	RepairNote   string
 }
 
 func (pr agentPullRequestContext) summaryLine() string {
@@ -892,7 +917,7 @@ func issueBodyWithComments(body string, comments []issueComment) string {
 	return "Comment thread (oldest first):\n\n" + thread
 }
 
-func engineerPRDetails(pr agentPullRequestContext, comments []issueComment, linkedIssue *dispatch.Issue, linkedComments []issueComment) string {
+func engineerPRDetails(pr agentPullRequestContext, comments []issueComment, linkedIssue *Issue, linkedComments []issueComment) string {
 	var b strings.Builder
 	b.WriteString("PR continuation context. Treat this as repair or continuation work on an existing pull request, not fresh issue implementation.\n")
 	if pr.Title != "" {
@@ -905,6 +930,12 @@ func engineerPRDetails(pr agentPullRequestContext, comments []issueComment, link
 		fmt.Fprintf(&b, "- PR state: %s\n", pr.State)
 	}
 	fmt.Fprintf(&b, "- PR summary: %s\n", pr.summaryLine())
+	if bucket := strings.TrimSpace(pr.RepairBucket); bucket != "" {
+		fmt.Fprintf(&b, "- PR repair bucket: %s\n", bucket)
+	}
+	if note := strings.TrimSpace(pr.RepairNote); note != "" {
+		fmt.Fprintf(&b, "- PR repair note: %s\n", note)
+	}
 	if pr.Body = strings.TrimSpace(pr.Body); pr.Body != "" {
 		fmt.Fprintf(&b, "\n----- PR body -----\n%s\n----- end PR body -----\n", pr.Body)
 	}
@@ -971,20 +1002,20 @@ func (r *Runner) resolveAgentWork(ctx context.Context, c *cli.Command, mode cont
 				state = issue.State
 			}
 			if surface == "engineer" && issueHasModeLabel(issue.Labels, "interactive") {
-				if !c.Bool("force") && !c.Bool("print") {
+				if !overrideReservation(c) && !c.Bool("print") {
 					return resolvedWork{}, dispatchDeclineErr(dispatchModeCeiling, "mode-ceiling",
-						"%s: refusing to dispatch the %s role on %s: the issue is explicitly labeled interactive - remove that label or pass --force to override (consult/default issues dispatch normally)",
+						"%s: refusing to dispatch the %s role on %s: the issue is explicitly labeled interactive - remove that label or pass --override-reservation to override (consult/default issues dispatch normally)",
 						label, surface, ref)
 				}
-				writef(os.Stderr, "%s: note: issue %s is explicitly labeled interactive - dispatching anyway (--force/print).\n", label, ref)
+				writef(os.Stderr, "%s: note: issue %s is explicitly labeled interactive - dispatching anyway (--override-reservation/print).\n", label, ref)
 			}
 		}
 		if st := strings.ToLower(strings.TrimSpace(state)); st != "" && st != "open" {
-			if !c.Bool("force") && !c.Bool("print") {
+			if !overrideReservation(c) && !c.Bool("print") {
 				return resolvedWork{}, dispatchDeclineErr(dispatchIssueClosed, "issue-closed",
-					"%s: issue %s is %s, not open - nothing to do (pass --force to work it anyway)", label, ref, st)
+					"%s: issue %s is %s, not open - nothing to do (pass --override-reservation to work it anyway)", label, ref, st)
 			}
-			writef(os.Stderr, "%s: note: issue %s is %s, not open - working it anyway (--force/--print).\n", label, ref, st)
+			writef(os.Stderr, "%s: note: issue %s is %s, not open - working it anyway (--override-reservation/--print).\n", label, ref, st)
 		}
 		title = strings.TrimSpace(pr.Title)
 		body = strings.TrimSpace(pr.Body)
@@ -996,23 +1027,23 @@ func (r *Runner) resolveAgentWork(ctx context.Context, c *cli.Command, mode cont
 			return resolvedWork{}, fmt.Errorf("%s: resolve issue %s: %w", label, ref, issueErr)
 		}
 		// Re-dispatch guard: a closed issue is already landed, so no-op instead of
-		// spinning to rediscover it; --force/--print work it anyway (ward#600, docs).
+		// rediscovering it; --override-reservation/--print work it anyway (ward#600).
 		if st := strings.ToLower(strings.TrimSpace(issue.State)); st != "" && st != "open" {
-			if !c.Bool("force") && !c.Bool("print") {
+			if !overrideReservation(c) && !c.Bool("print") {
 				return resolvedWork{}, dispatchDeclineErr(dispatchIssueClosed, "issue-closed",
-					"%s: issue %s is %s, not open - nothing to do (pass --force to work it anyway)", label, ref, st)
+					"%s: issue %s is %s, not open - nothing to do (pass --override-reservation to work it anyway)", label, ref, st)
 			}
-			writef(os.Stderr, "%s: note: issue %s is %s, not open - working it anyway (--force/--print).\n", label, ref, st)
+			writef(os.Stderr, "%s: note: issue %s is %s, not open - working it anyway (--override-reservation/--print).\n", label, ref, st)
 		}
 		// Automation-mode gate: engineer dispatch only refuses issues explicitly
 		// labeled interactive; consult/default issues are dispatchable (ward#663).
 		if surface == "engineer" && issueHasModeLabel(issue.Labels, "interactive") {
-			if !c.Bool("force") && !c.Bool("print") {
+			if !overrideReservation(c) && !c.Bool("print") {
 				return resolvedWork{}, dispatchDeclineErr(dispatchModeCeiling, "mode-ceiling",
-					"%s: refusing to dispatch the %s role on %s: the issue is explicitly labeled interactive - remove that label or pass --force to override (consult/default issues dispatch normally)",
+					"%s: refusing to dispatch the %s role on %s: the issue is explicitly labeled interactive - remove that label or pass --override-reservation to override (consult/default issues dispatch normally)",
 					label, surface, ref)
 			}
-			writef(os.Stderr, "%s: note: issue %s is explicitly labeled interactive - dispatching anyway (--force/print).\n", label, ref)
+			writef(os.Stderr, "%s: note: issue %s is explicitly labeled interactive - dispatching anyway (--override-reservation/print).\n", label, ref)
 		}
 		title = strings.TrimSpace(issue.Title)
 		body = strings.TrimSpace(issue.Body)
@@ -1040,10 +1071,11 @@ func (r *Runner) resolveAgentWork(ctx context.Context, c *cli.Command, mode cont
 		seedBody = issueBodyWithComments(body, comments)
 	}
 	seed := agentSeedPromptWorkflow(ref, title, seedBody, details, true, extra, wf, reviewGate, reviewSkip)
+	seed += agentRunBudgetNote(roleEngineer)
 	return resolvedWork{Ref: ref, Title: title, Body: seedBody, Comments: comments, Details: details, Seed: seed, Branch: branch, ExtraRepos: extra, Workflow: wf, ReviewGate: reviewGate}, nil
 }
 
-func (r *Runner) resolveAgentPullRequestWork(ctx context.Context, mode containerMode, ref agentIssueRef) (agentPullRequestContext, []issueComment, *dispatch.Issue, []issueComment, error) {
+func (r *Runner) resolveAgentPullRequestWork(ctx context.Context, mode containerMode, ref agentIssueRef) (agentPullRequestContext, []issueComment, *Issue, []issueComment, error) {
 	cl, err := r.hostTrackerClient(ctx, ref.trackerOrDefault(), mode)
 	if err != nil {
 		return agentPullRequestContext{}, nil, nil, nil, err
@@ -1060,7 +1092,7 @@ func (r *Runner) resolveAgentPullRequestWork(ctx context.Context, mode container
 	if err != nil {
 		writef(os.Stderr, "%s: note: could not read pull request comments on %s (%v); continuing with the PR body only\n", agentCmdline(mode, "engineer"), ref, err)
 	}
-	var linkedIssue *dispatch.Issue
+	var linkedIssue *Issue
 	var linkedComments []issueComment
 	if linkedNum, ok := directorLinkedIssueNumber(pr.Body); ok && linkedNum > 0 && linkedNum != ref.Number {
 		linkedRef := agentIssueRef{Owner: ref.Owner, Repo: ref.Repo, Number: linkedNum, Forge: ref.Forge, Tracker: ref.trackerOrDefault()}
@@ -1074,17 +1106,20 @@ func (r *Runner) resolveAgentPullRequestWork(ctx context.Context, mode container
 			}
 		}
 	}
+	if fc, ok := cl.(*forgejoClient); ok {
+		annotateForgejoPRRepair(ctx, fc, ref.Owner, ref.Repo, pr, ref, mode)
+	}
 	return *pr, comments, linkedIssue, linkedComments, nil
 }
 
 // fetchIssue reads the issue off the ref's tracker.
 // It fails fast before a container launches.
-func (r *Runner) fetchIssue(ctx context.Context, ref agentIssueRef) (*dispatch.Issue, error) {
+func (r *Runner) fetchIssue(ctx context.Context, ref agentIssueRef) (*Issue, error) {
 	cl, err := r.hostTrackerClient(ctx, ref.trackerOrDefault(), currentAgentMode())
 	if err != nil {
 		return nil, err
 	}
-	return resolveIssueWithRetry("ward agent", ref.String(), resolveIssueSleep, func() (*dispatch.Issue, error) {
+	return resolveIssueWithRetry("ward agent", ref.String(), resolveIssueSleep, func() (*Issue, error) {
 		return cl.getIssue(ctx, ref.Owner, ref.Repo, ref.Number)
 	})
 }
@@ -1118,8 +1153,8 @@ func transientResolveErr(err error) bool {
 
 // resolveIssueWithRetry runs get up to resolveRetryAttempts times, backing off between
 // transient failures (never after the last, never on a permanent 4xx). See ward#497.
-func resolveIssueWithRetry(label, ref string, sleep func(time.Duration), get func() (*dispatch.Issue, error)) (*dispatch.Issue, error) {
-	var issue *dispatch.Issue
+func resolveIssueWithRetry(label, ref string, sleep func(time.Duration), get func() (*Issue, error)) (*Issue, error) {
+	var issue *Issue
 	var err error
 	for attempt := 1; attempt <= resolveRetryAttempts; attempt++ {
 		if issue, err = get(); err == nil {
@@ -1283,29 +1318,18 @@ func (r *Runner) runAgentWork(ctx context.Context, c *cli.Command, mode containe
 	if err != nil {
 		return err
 	}
-	// Warn at host dispatch if ward is stale; a detached run buries the only
-	// `ward version` signal in a container log (ward#143). --print stays offline.
-	if !c.Bool("print") {
-		if preflightSkipped(c) {
-			writef(os.Stderr, "%s: skipping ward update reminder (--skip-preflight)\n", label)
-		} else {
-			r.maybeWarnWardOutdated(ctx)
-		}
-	}
-	if !w.ReviewGate && !c.Bool("print") {
-		if _, skipReason := reviewGateDecision(c, surface, mode, w.Ref); skipReason != "" {
-			r.writeSkippedReviewSummaryHandoff(mode, skipReason)
-		}
+	if err := r.runAgentWorkPreLaunchChecks(ctx, c, mode, surface, label, w); err != nil {
+		return err
 	}
 	workerName := issueScopedContainerName(roleEngineer, mode, targetRepo{Owner: w.Ref.Owner, Name: w.Ref.Repo}, w.Ref.Number)
-	if err := r.precheckLiveIssueWorker(ctx, label, w.Ref, workerName, c.Bool("force")); err != nil {
+	if err := r.precheckLiveIssueWorker(ctx, label, w.Ref, workerName, overrideReservation(c)); err != nil {
 		return err
 	}
 	var justification string
 	if preflightWanted(c) {
 		// ward#184: gate on the cheap, authoritative reservation before a full LLM
 		// pre-flight is spent on an issue another run holds. See docs/agent.md.
-		if perr := r.precheckReservation(ctx, agentCmdline(mode, surface), w, c.Bool("force")); perr != nil {
+		if perr := r.precheckReservation(ctx, agentCmdline(mode, surface), w, overrideReservation(c)); perr != nil {
 			return perr
 		}
 		proceed, read, perr := r.runPreflight(ctx, mode, surface, w)
@@ -1323,6 +1347,29 @@ func (r *Runner) runAgentWork(ctx context.Context, c *cli.Command, mode containe
 		justification = read
 	}
 	return r.launchAgentContainer(ctx, c, mode, surface, w, justification)
+}
+
+func (r *Runner) runAgentWorkPreLaunchChecks(ctx context.Context, c *cli.Command, mode containerMode, surface, label string, w resolvedWork) error {
+	if c.Bool("print") {
+		return nil
+	}
+	// Warn at host dispatch if ward is stale; a detached run buries the only
+	// `ward version` signal in a container log (ward#143).
+	if preflightSkipped(c) {
+		writef(os.Stderr, "%s: skipping ward update reminder (--skip-preflight)\n", label)
+	} else {
+		r.maybeWarnWardOutdated(ctx)
+	}
+	if !w.ReviewGate {
+		r.maybeWriteSkippedReviewSummaryHandoff(mode, c, surface, w.Ref)
+	}
+	return r.maybeLaunchOpenPRBackpressure(ctx, label, w.Ref.repoSlug(), c, w)
+}
+
+func (r *Runner) maybeWriteSkippedReviewSummaryHandoff(mode containerMode, c *cli.Command, surface string, ref agentIssueRef) {
+	if _, skipReason := reviewGateDecision(c, surface, mode, ref); skipReason != "" {
+		r.writeSkippedReviewSummaryHandoff(mode, skipReason)
+	}
 }
 
 // preflightTimeout caps the pre-flight read so a wedged agent can't hold the
@@ -1981,8 +2028,11 @@ func (r *Runner) launchAgentContainer(ctx context.Context, c *cli.Command, mode 
 		}
 	}
 
+	if err := r.maybeLaunchOpenPRBackpressure(ctx, label, w.Ref.repoSlug(), c, w); err != nil {
+		return err
+	}
 	if !c.Bool("print") {
-		if err := r.enforceEngineerContainerLimit(ctx, label); err != nil {
+		if err := r.enforceEngineerContainerLimit(ctx, label, c.Bool("override-capacity")); err != nil {
 			return err
 		}
 	}
@@ -2020,7 +2070,7 @@ func (r *Runner) launchAgentContainer(ctx context.Context, c *cli.Command, mode 
 	var release func()
 	if err := r.withAgentReservationLock(ref, func() error {
 		var reserveErr error
-		release, reserveErr = r.reserveIssue(ctx, label, mode, ref, plan.Name, plan.Branch, justification, seedCtx, c.Bool("force"), plan.SkipPreflight)
+		release, reserveErr = r.reserveIssue(ctx, label, mode, ref, plan.Name, plan.Branch, justification, seedCtx, overrideReservation(c), plan.SkipPreflight)
 		return reserveErr
 	}); err != nil {
 		return err
@@ -2392,6 +2442,7 @@ func (r *Runner) runAgentTaskDirect(ctx context.Context, c *cli.Command, mode co
 	// (inlined body + reflection) carried under the resolved workflow (#167, #281, #508).
 	reviewGate := reviewGateWanted(c, mode, ref)
 	seed := agentSeedPromptWorkflow(ref, title, body, "", true, nil, wf, reviewGate, "")
+	seed += agentRunBudgetNote(roleEngineer)
 	return r.launchAgentContainer(ctx, c, mode, "engineer",
 		resolvedWork{Ref: ref, Title: title, Body: body, Workflow: wf, ReviewGate: reviewGate, Seed: seed}, justification)
 }
@@ -2421,6 +2472,7 @@ func printAgentTaskPlan(c *cli.Command, mode containerMode, repo targetRepo, tit
 	wf, _ := agentWorkflow(c, repo.slug())
 	reviewGate := reviewGateWanted(c, mode, previewRef)
 	seed := agentSeedPromptWorkflow(previewRef, title, body, "", true, nil, wf, reviewGate, "")
+	seed += agentRunBudgetNote(roleEngineer)
 	plan, err := buildUpPlan(c, repo, mode, roleEngineer, "", "", []string{seed}, false)
 	if err != nil {
 		return err
@@ -2444,6 +2496,15 @@ func printAgentTaskPlan(c *cli.Command, mode containerMode, repo targetRepo, tit
 	writef(&b, "branch:  %s\n", plan.Branch)
 	writef(&b, "workflow: %s\n", plan.Workflow.orDefault())
 	writef(&b, "name:    %s\n", plan.Name)
+	if plan.Mode == modeOpencode {
+		if endpoint := opencodeEndpointPreview(plan); endpoint != "" {
+			writef(&b, "agent-proxy: %s\n", endpoint)
+		}
+	}
+	writef(&b, "correlation:\n")
+	for _, line := range printCorrelationEnvelope(plan) {
+		writef(&b, "  %s\n", line)
+	}
 	writef(&b, "----- issue to file -----\ntitle: %s\n\n%s\n----- end -----\n", title, body)
 	writef(&b, "----- seeded prompt (#N filled once filed) -----\n%s\n----- end -----\n", seed)
 	appendLaunchPreflightNotes(&b, plan, c.Bool("no-pull"))
@@ -2457,6 +2518,46 @@ func printAgentTaskPlan(c *cli.Command, mode containerMode, repo targetRepo, tit
 	writef(&b, "docker %s\n", strings.Join(dockerCreateArgv(plan, "<ward-forgejo-token-envfile>"), " "))
 	_, werr := io.WriteString(out, b.String())
 	return werr
+}
+
+func opencodeEndpointPreview(p upPlan) string {
+	if v := strings.TrimSpace(p.ConfigEnv["WARD_OLLAMA_URL"]); v != "" {
+		return v
+	}
+	if v := strings.TrimSpace(os.Getenv("WARD_OLLAMA_URL")); v != "" {
+		return v
+	}
+	if a, ok := frontierAgentDefaults[string(modeOpencode)]; ok {
+		return a.Endpoint
+	}
+	return ""
+}
+
+func printCorrelationEnvelope(p upPlan) []string {
+	env := p.correlationEnv()
+	keys := []string{
+		"WARD_RUN_ID",
+		"WARD_CONTAINER_NAME",
+		"WARD_ROLE",
+		"WARD_HARNESS",
+		"WARD_TARGET_OWNER",
+		"WARD_TARGET_NAME",
+		"WARD_TARGET_REPO",
+		"WARD_ISSUE_REF",
+		"WARD_CONTEXT_LEVEL",
+		"WARD_VERSION",
+		"WARD_THREAD_ID",
+	}
+	var out []string
+	for _, key := range keys {
+		if v := strings.TrimSpace(env[key]); v != "" {
+			out = append(out, key+"="+v)
+		}
+	}
+	if wf := strings.TrimSpace(string(p.Workflow.orDefault())); wf != "" && !p.Workflow.landsOnMain() {
+		out = append(out, "WARD_WORKFLOW="+wf)
+	}
+	return out
 }
 
 // ownerAllowed reports whether owner is in ward's trusted-owner set, via
@@ -2493,6 +2594,15 @@ func printAgentPlan(c *cli.Command, p upPlan, ref agentIssueRef, title, seed, su
 	writef(&b, "branch:  %s\n", p.Branch)
 	writef(&b, "workflow: %s\n", p.Workflow.orDefault())
 	writef(&b, "name:    %s\n", p.Name)
+	if p.Mode == modeOpencode {
+		if endpoint := opencodeEndpointPreview(p); endpoint != "" {
+			writef(&b, "agent-proxy: %s\n", endpoint)
+		}
+	}
+	writef(&b, "correlation:\n")
+	for _, line := range printCorrelationEnvelope(p) {
+		writef(&b, "  %s\n", line)
+	}
 	writef(&b, "%s", seedLogBlock(seed))
 	appendLaunchPreflightNotes(&b, p, c.Bool("no-pull"))
 	switch {

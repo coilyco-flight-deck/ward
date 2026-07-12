@@ -82,7 +82,7 @@ func TestRegistryConfigComposersWrite(t *testing.T) {
 			if !ok {
 				t.Fatalf("%s must be a ConfigComposer", tc.mode)
 			}
-			rc := agentsapi.RunCtx{Ctx: context.Background(), AgentHome: home, Log: discardLog, OpencodeModel: "qwen3-coder:30b", OllamaURL: "http://localhost:11434/v1"}
+			rc := agentsapi.RunCtx{Ctx: context.Background(), AgentHome: home, Log: discardLog, OpencodeModel: "qwen3-coder:30b", OllamaURL: "http://host.docker.internal:8082/v1"}
 			if err := cc.ComposeConfig(rc); err != nil {
 				t.Fatalf("ComposeConfig: %v", err)
 			}
@@ -184,7 +184,7 @@ func TestComposeAgentContainerPerMode(t *testing.T) {
 				AgentHome:  home,
 				TargetName: "ward",
 				QwenModel:  "qwen3-coder:30b",
-				OllamaURL:  "http://localhost:11434/v1",
+				OllamaURL:  "http://host.docker.internal:8082/v1",
 			}, nil)
 			composeAgentContainer(a, rc)
 			if _, err := os.Stat(filepath.Join(home, tc.present)); err != nil {

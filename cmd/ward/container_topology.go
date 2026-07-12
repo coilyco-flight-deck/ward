@@ -76,6 +76,9 @@ func currentContainerTopologyWithError() (containerTopology, error) {
 }
 
 func loadContainerTopologyFrom(src configSource) (containerTopology, error) {
+	if src.topologyKDL == "" {
+		return loadBundleContainerTopologyFrom(src)
+	}
 	topo := containerTopologyDefaults
 	b, err := fs.ReadFile(src.fsys, src.topologyKDL)
 	if err != nil {
@@ -89,6 +92,22 @@ func loadContainerTopologyFrom(src configSource) (containerTopology, error) {
 		return topo, err
 	}
 	return parsed, nil
+}
+
+func loadBundleContainerTopologyFrom(src configSource) (containerTopology, error) {
+	files, err := loadBundleKDLFiles(src)
+	if err != nil {
+		return containerTopologyDefaults, err
+	}
+	_, topoNode, err := findUniqueNamedBundleNode(files, "top-level `topology` block", "topology")
+	if err != nil {
+		return containerTopologyDefaults, err
+	}
+	srcBytes, err := emitKDLDocument(topoNode)
+	if err != nil {
+		return containerTopologyDefaults, fmt.Errorf("emit topology bundle: %w", err)
+	}
+	return parseContainerTopology(srcBytes)
 }
 
 func parseContainerTopology(src []byte) (containerTopology, error) { //nolint:funlen,gocognit,gocyclo,cyclop
