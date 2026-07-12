@@ -98,19 +98,19 @@ func configBundleCacheRoot(getenv func(string) string) (string, error) {
 		} else if uid := strings.TrimSpace(getenv("WARD_AGENT_UID")); uid != "" {
 			root = filepath.Join(root, uid)
 		}
-		if err := os.MkdirAll(root, 0o777); err == nil {
+		if writableConfigBundleRoot(root, 0o777) {
 			return root, nil
 		}
 	}
 	base, err := os.UserCacheDir()
 	if err != nil {
-		return "", fmt.Errorf("config-bundle cache dir: %w", err)
+		return writableConfigBundleTempRoot()
 	}
 	root := filepath.Join(base, "ward", "config-bundle")
-	if err := os.MkdirAll(root, 0o755); err != nil {
-		return "", fmt.Errorf("config-bundle cache %s: %w", root, err)
+	if writableConfigBundleRoot(root, 0o755) {
+		return root, nil
 	}
-	return root, nil
+	return writableConfigBundleTempRoot()
 }
 
 // configBundleTTL reads WARD_CONFIG_TTL (seconds); unset or malformed falls
@@ -127,4 +127,26 @@ func configBundleTTL(getenv func(string) string) time.Duration {
 func hashConfigRef(raw string) string {
 	sum := sha256.Sum256([]byte(raw))
 	return hex.EncodeToString(sum[:])[:16]
+}
+
+func writableConfigBundleRoot(root string, perm os.FileMode) bool {
+	if err := os.MkdirAll(root, perm); err != nil {
+		return false
+	}
+	probe, err := os.CreateTemp(root, ".ward-write-probe-*")
+	if err != nil {
+		return false
+	}
+	name := probe.Name()
+	_ = probe.Close()
+	_ = os.Remove(name)
+	return true
+}
+
+func writableConfigBundleTempRoot() (string, error) {
+	root := filepath.Join(os.TempDir(), "ward", "config-bundle")
+	if writableConfigBundleRoot(root, 0o755) {
+		return root, nil
+	}
+	return "", fmt.Errorf("config-bundle cache root is not writable in the configured cache, home cache, or temp cache")
 }
