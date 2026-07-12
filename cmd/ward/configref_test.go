@@ -115,7 +115,9 @@ func TestConfigBundleCacheRoot(t *testing.T) {
 	if err != nil || !strings.HasSuffix(got, filepath.Join("ward", "config-bundle")) {
 		t.Errorf("unwritable-volume root = %q (%v), want the home-cache fallback", got, err)
 	}
-	if runtime.GOOS != "windows" {
+	// root (the CI runner user) ignores 0o555 mode bits, so the chmod cannot
+	// make the dir unwritable there - skip alongside the Windows skip.
+	if runtime.GOOS != "windows" && os.Geteuid() != 0 {
 		locked := filepath.Join(t.TempDir(), "locked")
 		if err := os.MkdirAll(locked, 0o755); err != nil {
 			t.Fatal(err)
