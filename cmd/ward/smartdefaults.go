@@ -87,12 +87,7 @@ func currentSmartDefaults() smartDefaults {
 func currentSmartDefaultsWithError() (smartDefaults, error) {
 	ref := strings.TrimSpace(os.Getenv(wardConfigRefEnv))
 	if ref == "" {
-		defs := bakedSmartDefaults()
-		src, err := selectConfigSource()
-		if err == nil {
-			defs, err = loadSmartDefaultsFrom(src)
-		}
-		return defs, err
+		return loadCurrentSmartDefaults()
 	}
 
 	smartDefaultsCache.Lock()
@@ -101,15 +96,25 @@ func currentSmartDefaultsWithError() (smartDefaults, error) {
 		return smartDefaultsCache.defaults, smartDefaultsCache.err
 	}
 
-	defs := bakedSmartDefaults()
-	src, err := selectConfigSource()
-	if err == nil {
-		defs, err = loadSmartDefaultsFrom(src)
-	}
+	defs, err := loadCurrentSmartDefaults()
 	smartDefaultsCache.ref = ref
 	smartDefaultsCache.initialized = true
 	smartDefaultsCache.defaults = defs
 	smartDefaultsCache.err = err
+	return defs, err
+}
+
+// loadCurrentSmartDefaults resolves the config source and parses its defaults,
+// naming the serving source in any failure so a fail-closed value is
+// attributable to the bundle that carried it (the aos#452 stale-pin class).
+func loadCurrentSmartDefaults() (smartDefaults, error) {
+	defs := bakedSmartDefaults()
+	src, err := selectConfigSource()
+	if err == nil {
+		if defs, err = loadSmartDefaultsFrom(src); err != nil {
+			err = fmt.Errorf("%w [config source: %s]", err, src.sourceDesc())
+		}
+	}
 	return defs, err
 }
 

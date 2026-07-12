@@ -8,6 +8,7 @@ import (
 	"fmt"
 	"os"
 	"path/filepath"
+	"regexp"
 	"strings"
 	"time"
 )
@@ -75,9 +76,29 @@ func (r *Runner) ensureMirrorFresh(ctx context.Context, spec gitRefSpec, ttl tim
 		return true, nil
 	}
 	if substrateMirrorStale(spec.mirror, int64(ttl.Seconds()), time.Now()) {
+		// A full-sha ref already present in the mirror is immutable: the pin
+		// can never resolve differently, so a TTL refresh buys nothing and a
+		// network/credential hiccup would only add launch noise (aos#452).
+		if immutableRefPresent(ctx, r, spec) {
+			touchFetchHead(spec.mirror)
+			return false, nil
+		}
 		return r.refreshStaleMirror(ctx, spec, ttl, logf)
 	}
 	return false, nil
+}
+
+// fullShaRe matches a complete 40-hex git object name; abbreviated shas stay
+// on the refresh path since a future fetch could disambiguate them differently.
+var fullShaRe = regexp.MustCompile(`^[0-9a-f]{40}$`)
+
+// immutableRefPresent reports whether spec.ref is a full sha the mirror
+// already holds as a commit.
+func immutableRefPresent(ctx context.Context, r *Runner, spec gitRefSpec) bool {
+	if !fullShaRe.MatchString(spec.ref) {
+		return false
+	}
+	return r.Runner.Exec(ctx, "git", "-C", spec.mirror, "cat-file", "-e", spec.ref+"^{commit}") == nil
 }
 
 func (r *Runner) refreshStaleMirror(ctx context.Context, spec gitRefSpec, ttl time.Duration, logf func(format string, a ...any)) (bool, error) {

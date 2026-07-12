@@ -84,6 +84,13 @@ const (
 type configSource struct {
 	fsys fs.FS
 
+	// desc names the selected source for error messages: the raw config ref
+	// for external bundles, empty for the baked default. A fail-closed
+	// smart-defaults error must say WHERE the offending value came from -
+	// the stale-pin incident behind aos#452/aos#472 cost a whole diagnosis
+	// chain because the error named the value but not the serving bundle.
+	desc string
+
 	// auditVersion stamps the resolved bundle identity into the audit row.
 	auditVersion string
 
@@ -165,6 +172,7 @@ func selectConfigSource() (configSource, error) {
 		return configSource{}, fmt.Errorf("%s: bundle path %s is not a directory", wardConfigRefEnv, dir)
 	}
 	src := bundleConfigSource(dir)
+	src.desc = ref
 	rev, err := bundleRevision(dir)
 	if err != nil {
 		if isFile {
@@ -174,6 +182,18 @@ func selectConfigSource() (configSource, error) {
 	}
 	src.auditVersion = rev
 	return src, nil
+}
+
+// sourceDesc renders the selected source for error text: the raw ref plus the
+// resolved bundle sha when one exists, else the baked default.
+func (s configSource) sourceDesc() string {
+	if strings.TrimSpace(s.desc) == "" {
+		return "baked neutral defaults"
+	}
+	if v := strings.TrimSpace(s.auditVersion); v != "" {
+		return s.desc + " (bundle " + v + ")"
+	}
+	return s.desc
 }
 
 func selectedConfigRef() (string, error) {

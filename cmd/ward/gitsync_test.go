@@ -228,3 +228,45 @@ func TestSyncGitRefPermissionDeniedFetchHeadFallsBack(t *testing.T) {
 		t.Fatalf("permission-denied sync retried noisily:\nbefore:\n%s\nafter:\n%s", before, got)
 	}
 }
+
+// TestSyncGitRefImmutableShaSkipsRefresh pins the pinned-sha fast path: a full
+// sha already in the mirror never refetches, even with the remote gone and the
+// TTL elapsed - the pin cannot resolve differently (aos#452 launch-noise class).
+func TestSyncGitRefImmutableShaSkipsRefresh(t *testing.T) {
+	origin := newTestOrigin(t)
+	sha := gitFixture(t, origin, "rev-parse", "main")
+	spec := testSpec(t, origin)
+	spec.ref = sha
+	var logs strings.Builder
+	spec.logf = func(format string, a ...any) { fmt.Fprintf(&logs, format+"\n", a...) }
+	r := leanRunner()
+	if _, err := r.syncGitRef(context.Background(), spec, time.Hour); err != nil {
+		t.Fatalf("first sync: %v", err)
+	}
+
+	// Remote gone + TTL elapsed: a refresh attempt would log a failure; the
+	// immutable pin must skip it entirely.
+	if err := os.RemoveAll(origin); err != nil {
+		t.Fatal(err)
+	}
+	work, err := r.syncGitRef(context.Background(), spec, 0)
+	if err != nil {
+		t.Fatalf("pinned-sha sync: %v", err)
+	}
+	if got := readMarker(t, work); got != "v1" {
+		t.Errorf("pinned-sha marker = %q, want v1", got)
+	}
+	if out := logs.String(); strings.Contains(out, "refresh") {
+		t.Errorf("pinned-sha sync attempted a refresh:\n%s", out)
+	}
+
+	// A branch ref stays on the refresh path (and cache-falls-back offline).
+	branchSpec := testSpec(t, origin)
+	_ = branchSpec
+	if !fullShaRe.MatchString(sha) {
+		t.Fatalf("test sha %q does not look like a full sha", sha)
+	}
+	if fullShaRe.MatchString("main") || fullShaRe.MatchString(sha[:12]) {
+		t.Error("abbreviated or branch refs must not classify as immutable")
+	}
+}

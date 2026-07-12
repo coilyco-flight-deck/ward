@@ -186,3 +186,29 @@ func TestSmartDefaultsRejectsMissingRepoAuthority(t *testing.T) {
 		t.Fatal("bundle without repo-authority selected a source; want a loud parse error")
 	}
 }
+
+// TestSmartDefaultsFailureNamesTheConfigSource pins the attribution contract:
+// a fail-closed defaults error names the bundle that served the value (the
+// aos#452 stale-pin incident was undiagnosable from the value alone).
+func TestSmartDefaultsFailureNamesTheConfigSource(t *testing.T) {
+	dir := t.TempDir()
+	// 1h undercuts the built-in engineer 90m limit: trips the TTL invariant.
+	if err := os.WriteFile(filepath.Join(dir, "defaults.kdl"),
+		[]byte("defaults {\n    agent-reservation-ttl \"1h\"\n}\n"), 0o644); err != nil {
+		t.Fatal(err)
+	}
+	if err := os.WriteFile(filepath.Join(dir, "repos.kdl"),
+		[]byte("repos {\n    repo-authority default=forgejo {\n        trusted-owner coilysiren\n    }\n}\n"), 0o644); err != nil {
+		t.Fatal(err)
+	}
+	ref := "file://" + filepath.ToSlash(dir)
+	t.Setenv(wardConfigRefEnv, ref)
+
+	_, err := currentSmartDefaultsWithError()
+	if err == nil || !strings.Contains(err.Error(), "must exceed role") {
+		t.Fatalf("want the reservation-TTL invariant failure, got %v", err)
+	}
+	if !strings.Contains(err.Error(), ref) {
+		t.Errorf("error does not name the serving config source %q:\n%v", ref, err)
+	}
+}
