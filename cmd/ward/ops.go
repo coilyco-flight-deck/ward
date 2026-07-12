@@ -157,6 +157,7 @@ func loadForgejoGuardfileFrom(src configSource) (*guardfile.Guardfile, string, e
 	if err != nil {
 		return nil, "", err
 	}
+	resolvePlaceholderSentinels(node)
 	srcBytes, err := emitKDLDocument(node)
 	if err != nil {
 		return nil, "", fmt.Errorf("emit forgejo bundle %s: %w", file.path, err)
