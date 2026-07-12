@@ -134,3 +134,7 @@ func resolveInvokeCWD() string {
 func (r *Runner) trustedOwners() []string {
 	return currentSmartDefaults().trustedOwnerList()
 }
+
+func (r *Runner) burndownEnabled(slug string) bool {
+	return currentSmartDefaults().burndownEnabled(slug)
+}
