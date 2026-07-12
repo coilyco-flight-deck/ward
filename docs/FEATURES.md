@@ -100,6 +100,9 @@ Inventory of what `ward` ships today.
 
 ## Release and docs
 
+- Two-stage release (ward#1117): promote.yml gates every main push and
+  fast-forwards `release` when green; release.yml runs on `release` pushes
+  under a no-cancel concurrency queue. See [release.md](release.md).
 - [compat-surface.md](compat-surface.md) - the release-facing provider matrix.
 - [release.md](release.md) and [release-binaries.md](release-binaries.md).
 - [homebrew-build.md](homebrew-build.md), [golangci.md](golangci.md), and
