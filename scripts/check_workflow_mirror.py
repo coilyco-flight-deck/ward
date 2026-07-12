@@ -20,7 +20,10 @@ MIRRORED = [
         "forgejo": ".forgejo/workflows/test.yml",
     },
 ]
-FORGEJO_ONLY = [".forgejo/workflows/release.yml"]
+FORGEJO_ONLY = [
+    ".forgejo/workflows/release.yml",
+    ".forgejo/workflows/promote.yml",
+]
 GITHUB_ONLY: list[str] = []
 RUNS_ON_RE = re.compile(r"^(?P<pre>\s*runs-on:\s*)(?P<val>\S+)(?P<post>\s*)$")
 

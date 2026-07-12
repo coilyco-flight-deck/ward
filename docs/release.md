@@ -3,26 +3,31 @@ doc_goal: Keep the release pipeline as a short user-facing reference after the d
 ---
 # release
 
-Ward releases are Forgejo-canonical.
+Ward releases are Forgejo-canonical and two-stage (ward#1117).
 
-- Pushes to `main` drive the release workflow.
+- `promote.yml` gates every `main` push (vet, test, lint) and, when green,
+  fast-forwards the `release` branch to that sha with `CI_RELEASE_TOKEN`.
+- `release.yml` runs on `release` pushes only, under a no-cancel concurrency
+  queue: promoted shas release in sequence, never overlap-and-cancel.
 - The pipeline stages the release as a draft, publishes the binary matrix, then makes the release visible.
 - The GitHub mirror stays a front door, not the source of truth.
 
 ## The basic shape
 
 1. merge to `main`.
-2. tag a draft release.
-3. publish the binary matrix.
-4. publish checksums.
-5. publish the release.
-6. update the install channel.
+2. promote gate goes green; `release` fast-forwards to the sha.
+3. tag a draft release from `release`.
+4. publish the binary matrix.
+5. publish checksums.
+6. publish the release.
+7. update the install channel.
 
 ## Pipeline notes
 
 - the release workflow is Forgejo-canonical.
-- every other step blocks behind the test gate: a `main` push whose vet, test,
-  or lint checks fail tags nothing and publishes nothing.
+- every other step blocks behind the test gate, run twice (promote on `main`,
+  then again on `release`): a push whose vet, test, or lint checks fail
+  promotes nothing, tags nothing, and publishes nothing.
 - the published binaries should match the tagged source state.
 - the install channel update should follow the release, not invent a second
   release story.

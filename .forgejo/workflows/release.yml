@@ -1,17 +1,27 @@
-# Forgejo-canonical release pipeline. See docs/release.md.
-# Every other job blocks behind the leading `test` gate job (ward#999): a main
-# push whose checks fail must not tag, publish binaries, or bump an install
-# channel. Forgejo Actions has no cross-workflow `needs`, so this pipeline runs
-# its own copy of the checks from .forgejo/workflows/test.yml (that workflow
-# still runs independently, covering pull requests). The `release` job needs
-# `test`, and every other job needs `release`, so the whole pipeline blocks
-# transitively.
+# Forgejo-canonical release pipeline, stage 2 of the two-stage flow
+# (ward#1117): promote.yml gates every main push and fast-forwards the
+# `release` branch when green; this pipeline runs on `release` pushes only,
+# under a concurrency queue (cancel-in-progress: false) so promoted shas
+# release in sequence instead of overlap-and-cancel. A workflow_dispatch
+# re-fires it against the `release` ref on a missed enqueue. See
+# docs/release.md. Every other job blocks behind the leading `test` gate job
+# (ward#999): a promoted push whose checks fail must not tag, publish
+# binaries, or bump an install channel. Forgejo Actions has no cross-workflow
+# `needs`, so this pipeline runs its own copy of the checks from
+# .forgejo/workflows/test.yml (that workflow still runs independently,
+# covering pull requests). The `release` job needs `test`, and every other
+# job needs `release`, so the whole pipeline blocks transitively.
 
 name: release
 
 on:
   push:
-    branches: [main]
+    branches: [release]
+  workflow_dispatch:
+
+concurrency:
+  group: release-pipeline
+  cancel-in-progress: false
 
 permissions:
   contents: write
@@ -35,7 +45,7 @@ jobs:
         timeout-minutes: 5
         run: golangci-lint run ./...
       - name: Alert Telegram on main failure
-        if: ${{ failure() && github.ref == 'refs/heads/main' }}
+        if: ${{ failure() && github.ref == 'refs/heads/release' }}
         env:
           BOT_TOKEN: ${{ secrets.TELEGRAM_BOT_TOKEN }}
           CHAT_ID: ${{ secrets.TELEGRAM_RED_CHAT_ID }}
@@ -156,7 +166,7 @@ jobs:
           draft: true
 
       - name: Alert Telegram on main failure
-        if: ${{ failure() && github.ref == 'refs/heads/main' }}
+        if: ${{ failure() && github.ref == 'refs/heads/release' }}
         env:
           BOT_TOKEN: ${{ secrets.TELEGRAM_BOT_TOKEN }}
           CHAT_ID: ${{ secrets.TELEGRAM_RED_CHAT_ID }}
@@ -433,7 +443,7 @@ jobs:
           echo "GitHub release ${TAG} published with the full matrix + SHA256SUMS"
 
       - name: Alert Telegram on main failure
-        if: ${{ failure() && github.ref == 'refs/heads/main' }}
+        if: ${{ failure() && github.ref == 'refs/heads/release' }}
         env:
           BOT_TOKEN: ${{ secrets.TELEGRAM_BOT_TOKEN }}
           CHAT_ID: ${{ secrets.TELEGRAM_RED_CHAT_ID }}
@@ -658,7 +668,7 @@ jobs:
           echo "tap ${TAP_REPO} formula bumped to ${TAG}"
 
       - name: Alert Telegram on main failure
-        if: ${{ failure() && github.ref == 'refs/heads/main' }}
+        if: ${{ failure() && github.ref == 'refs/heads/release' }}
         env:
           BOT_TOKEN: ${{ secrets.TELEGRAM_BOT_TOKEN }}
           CHAT_ID: ${{ secrets.TELEGRAM_RED_CHAT_ID }}
@@ -845,7 +855,7 @@ jobs:
           fi
           echo "bucket ${BUCKET_REPO} scoop manifest bumped to ${TAG}"
       - name: Alert Telegram on main failure
-        if: ${{ failure() && github.ref == 'refs/heads/main' }}
+        if: ${{ failure() && github.ref == 'refs/heads/release' }}
         env:
           BOT_TOKEN: ${{ secrets.TELEGRAM_BOT_TOKEN }}
           CHAT_ID: ${{ secrets.TELEGRAM_RED_CHAT_ID }}
