@@ -10,6 +10,7 @@ import (
 	"path/filepath"
 	"syscall"
 
+	"forgejo.coilysiren.me/coilyco-flight-deck/cli-guard/cli/shell"
 	"forgejo.coilysiren.me/coilyco-flight-deck/cli-guard/pkg/broker"
 	"forgejo.coilysiren.me/coilyco-flight-deck/cli-guard/pkg/credseed"
 	"github.com/urfave/cli/v3"
@@ -65,6 +66,7 @@ dials the socket and asks; it never sees the credential. See docs/broker.md.`,
 // runContainerBroker resolves the root-held token, opens + permissions the
 // socket, then serves until a signal cancels it.
 func runContainerBroker(ctx context.Context, c *cli.Command) error {
+	r := &Runner{Runner: &shell.Runner{Stdout: os.Stdout, Stderr: os.Stderr, Stdin: os.Stdin}}
 	token := os.Getenv(credseed.EnvForgejoToken)
 	if token == "" {
 		return fmt.Errorf("ward container broker: %s not set; the broker has no credential to hold", credseed.EnvForgejoToken)
@@ -79,7 +81,7 @@ func runContainerBroker(ctx context.Context, c *cli.Command) error {
 	}
 
 	exec := &wardKdlWriteExecutor{token: token}
-	srv, err := broker.NewServer(ln, exec, writeTierAuthorizer())
+	srv, err := broker.NewServer(ln, exec, r.writeTierAuthorizer())
 	if err != nil {
 		_ = ln.Close()
 		return fmt.Errorf("ward container broker: %w", err)

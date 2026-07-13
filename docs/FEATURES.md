@@ -20,6 +20,7 @@ Inventory of what `ward` ships today.
   route through the local agent-proxy endpoint with stable ward correlation
   headers and request ids so traces join back to ward run logs.
 - **`ward agent director queue` / `status`** - the read-only queue view for stale reservations, redispatch candidates, PR handoffs, and stale-open done issues.
+- **Read-only Forgejo issue-comment guard** - director-surface comments on an issue now fail closed while a live engineer run or fresh reservation owns that issue, instead of talking over the run.
 - **Harness install hooks** - bootstrap now requires a harness install step
   before launch, with self-contained declarations for claude/codex/goose and a
   required opencode install path.

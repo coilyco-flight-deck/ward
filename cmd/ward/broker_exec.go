@@ -8,6 +8,7 @@ import (
 	"net/http"
 	"strconv"
 	"strings"
+	"time"
 
 	"forgejo.coilysiren.me/coilyco-flight-deck/cli-guard/pkg/broker"
 	"forgejo.coilysiren.me/coilyco-flight-deck/cli-guard/pkg/credseed"
@@ -190,7 +191,9 @@ var writeTierOps = map[broker.Op]bool{
 
 // writeTierAuthorizer is the broker.Authorizer: the write-op allowlist + Policy's
 // invariants, plus an owner scope gate mirroring the write guardfile's restrict.
-func writeTierAuthorizer() broker.Authorizer {
+// Comment writes also fail closed when a live engineer or fresh reservation owns
+// the issue, so the read-only director surface does not talk over an active run.
+func (r *Runner) writeTierAuthorizer() broker.Authorizer {
 	policy := broker.Policy{Ops: writeTierOps}
 	return broker.AuthorizerFunc(func(ctx context.Context, req broker.Request) error {
 		if err := policy.Authorize(ctx, req); err != nil {
@@ -199,6 +202,86 @@ func writeTierAuthorizer() broker.Authorizer {
 		if brokerOwnerPrefix != "" && !strings.HasPrefix(req.Target.Owner, brokerOwnerPrefix) {
 			return fmt.Errorf("broker: owner %q is out of scope (restricted to %s* owners)", req.Target.Owner, brokerOwnerPrefix)
 		}
+		if req.Op == broker.OpCommentIssue && r != nil && r.Runner != nil {
+			if err := r.guardReadOnlyIssueComment(ctx, req.Target); err != nil {
+				return err
+			}
+		}
 		return nil
 	})
+}
+
+// guardReadOnlyIssueComment blocks a read-only surface comment when the issue is
+// currently owned by a live engineer container or a fresh reservation claim.
+func (r *Runner) guardReadOnlyIssueComment(ctx context.Context, target broker.Target) error {
+	ref := agentIssueRef{Owner: target.Owner, Repo: target.Repo, Number: target.Number}
+	running, err := r.runningEngineerContainersForIssue(ctx, ref)
+	if err != nil {
+		return fmt.Errorf("broker: check active engineer runs for %s: %w", ref, err)
+	}
+	comments, err := r.hostForgejoClient(ctx).listIssueComments(ctx, ref.Owner, ref.Repo, ref.Number)
+	if err != nil {
+		return fmt.Errorf("broker: read issue comments for %s: %w", ref, err)
+	}
+	if reason, ok := readOnlyIssueCommentBlockReason(ref, running, comments, time.Now().UTC()); ok {
+		return fmt.Errorf("broker: refusing read-only issue comment on %s: %s", ref, reason)
+	}
+	return nil
+}
+
+// runningEngineerContainersForIssue reads the live engineer list for one issue and
+// returns the matching container names. It fails closed on docker errors.
+func (r *Runner) runningEngineerContainersForIssue(ctx context.Context, ref agentIssueRef) ([]string, error) {
+	out, err := r.dockerCapture(ctx, "ps", "--format", "{{.Names}}",
+		"--filter", "label="+containerLabel,
+		"--filter", "label="+labelRole+"="+roleEngineer,
+		"--filter", "label="+labelRepo+"="+ref.repoSlug(),
+		"--filter", fmt.Sprintf("label=%s=%d", labelIssue, ref.Number))
+	if err != nil {
+		return nil, fmt.Errorf("check live engineer containers for %s: %w", ref, err)
+	}
+	return parseExitedContainerNames(string(out)), nil
+}
+
+// readOnlyIssueCommentBlockReason returns the refusal text when a running engineer
+// or fresh reservation already owns the issue.
+func readOnlyIssueCommentBlockReason(ref agentIssueRef, running []string, comments []issueComment, now time.Time) (string, bool) {
+	if reason := runningIssueCommentBlockReason(ref, running); reason != "" {
+		return reason, true
+	}
+	if claim, ok := winningReservationClaim(reservationClaims(comments, now, agentReservationTTL())); ok {
+		return reservationIssueCommentBlockReason(ref, claim), true
+	}
+	return "", false
+}
+
+func runningIssueCommentBlockReason(ref agentIssueRef, running []string) string {
+	running = compactStrings(running)
+	switch len(running) {
+	case 0:
+		return ""
+	case 1:
+		return fmt.Sprintf("running engineer container %s owns this issue; use `ward agent list`, `ward agent logs %s`, or file a separate issue", running[0], ref.String())
+	default:
+		return fmt.Sprintf("%d running engineer containers (%s) own this issue; use `ward agent list`, `ward agent logs %s`, or file a separate issue", len(running), strings.Join(running, ", "), ref.String())
+	}
+}
+
+func reservationIssueCommentBlockReason(ref agentIssueRef, claim reservationClaim) string {
+	owner := strings.TrimSpace(claim.identity)
+	if owner == "" {
+		owner = "another engineer run"
+	}
+	when := claim.at.UTC().Format(time.RFC3339)
+	return fmt.Sprintf("fresh reservation %s at %s owns this issue; use `ward agent list`, `ward agent logs %s`, or file a separate issue", owner, when, ref.String())
+}
+
+func compactStrings(values []string) []string {
+	out := make([]string, 0, len(values))
+	for _, v := range values {
+		if s := strings.TrimSpace(v); s != "" {
+			out = append(out, s)
+		}
+	}
+	return out
 }
