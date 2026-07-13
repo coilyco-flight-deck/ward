@@ -31,7 +31,7 @@ const wardBootstrapRepo = "coilyco-flight-deck/ward"
 // container.go wires the hidden `ward container` plumbing namespace (ward#263:
 // reap/bootstrap) + docker side effects + host forgejo-token resolution.
 
-//go:embed containerassets/entrypoint.sh containerassets/AGENTS.container.md
+//go:embed containerassets/entrypoint.sh AGENTS.container.txt
 //go:embed containerassets/settings.container.json containerassets/preclone-repos.txt
 var containerAssets embed.FS
 
@@ -646,7 +646,11 @@ func writeContainerAssets(ctx context.Context, r *Runner, wardSource, wardVersio
 		{containerSubstrateRel, 0o644},
 	}
 	for _, f := range files {
-		data, rerr := containerAssets.ReadFile("containerassets/" + f.name)
+		path := "containerassets/" + f.name
+		if f.name == "AGENTS.container.md" {
+			path = "AGENTS.container.txt"
+		}
+		data, rerr := containerAssets.ReadFile(path)
 		if rerr != nil {
 			cleanup()
 			return "", func() {}, fmt.Errorf("ward container: read embedded %s: %w", f.name, rerr)
