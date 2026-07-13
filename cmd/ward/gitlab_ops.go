@@ -120,6 +120,7 @@ func (c *gitlabClient) listIssueComments(ctx context.Context, owner, repo string
 		return nil, fmt.Errorf("gitlab: list comments on %s/%s#%d returned %s: %s", owner, repo, number, resp.Status, firstLine(string(data)))
 	}
 	var raw []struct {
+		ID        int    `json:"id"`
 		Body      string `json:"body"`
 		CreatedAt string `json:"created_at"`
 		Author    struct {
@@ -131,7 +132,7 @@ func (c *gitlabClient) listIssueComments(ctx context.Context, owner, repo string
 	}
 	out := make([]issueComment, 0, len(raw))
 	for _, rc := range raw {
-		ic := issueComment{Body: rc.Body}
+		ic := issueComment{ID: rc.ID, Body: rc.Body}
 		ic.User.Login = rc.Author.Username
 		if t, err := time.Parse(time.RFC3339Nano, rc.CreatedAt); err == nil {
 			ic.CreatedAt = t
@@ -153,6 +154,7 @@ func (c *gitlabClient) listPullRequestComments(ctx context.Context, owner, repo 
 		return nil, fmt.Errorf("gitlab: list comments on %s/%s!%d returned %s: %s", owner, repo, number, resp.Status, firstLine(string(data)))
 	}
 	var raw []struct {
+		ID        int    `json:"id"`
 		Body      string `json:"body"`
 		CreatedAt string `json:"created_at"`
 		Author    struct {
@@ -164,7 +166,7 @@ func (c *gitlabClient) listPullRequestComments(ctx context.Context, owner, repo 
 	}
 	out := make([]issueComment, 0, len(raw))
 	for _, rc := range raw {
-		ic := issueComment{Body: rc.Body}
+		ic := issueComment{ID: rc.ID, Body: rc.Body}
 		ic.User.Login = rc.Author.Username
 		if t, err := time.Parse(time.RFC3339Nano, rc.CreatedAt); err == nil {
 			ic.CreatedAt = t
@@ -266,6 +268,12 @@ func (c *gitlabClient) commentIssue(ctx context.Context, owner, repo string, num
 	if resp.StatusCode < 200 || resp.StatusCode >= 300 {
 		return fmt.Errorf("gitlab: comment issue %s/%s#%d returned %s: %s", owner, repo, number, resp.Status, firstLine(string(data)))
 	}
+	return nil
+}
+
+func (c *gitlabClient) deleteIssueComment(_ context.Context, _, _ string, _ int) error {
+	// The shared Tracker surface does not carry the parent issue IID here, so the
+	// GitLab adapter leaves comment deletion best-effort.
 	return nil
 }
 

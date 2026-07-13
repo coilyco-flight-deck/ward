@@ -20,6 +20,8 @@ This page is the durable anchor for launch-time reservations.
   collides with the finishing run's hold or races the reaper's release comment.
 - The reaper still posts the terminal release comment for legibility, but skips
   it when a newer reservation shows a follow-up run already took the issue over.
+- Once the hold is no longer active, ward deletes stale reservation and dispatch
+  telemetry comments instead of leaving them as issue-history noise.
 - A launch that never becomes visible releases its launch-intent sentinel
   immediately. The TTL is only the orphaned-launch backstop.
 - The local sentinel is a cache. The issue thread decides whether a run is

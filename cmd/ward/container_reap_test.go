@@ -433,6 +433,7 @@ func TestSalvageIssueBodyStampsAuthCauseAndAge(t *testing.T) {
 type fakeNoOutcomeTracker struct {
 	comments  []issueComment
 	commented []string
+	deleted   []int
 	unlocked  int
 }
 
@@ -453,6 +454,11 @@ func (f *fakeNoOutcomeTracker) commentIssue(_ context.Context, _, _ string, _ in
 	return nil
 }
 
+func (f *fakeNoOutcomeTracker) deleteIssueComment(_ context.Context, _, _ string, commentID int) error {
+	f.deleted = append(f.deleted, commentID)
+	return nil
+}
+
 func (f *fakeNoOutcomeTracker) closeIssue(context.Context, string, string, int) error  { return nil }
 func (f *fakeNoOutcomeTracker) reopenIssue(context.Context, string, string, int) error { return nil }
 func (f *fakeNoOutcomeTracker) lockIssue(context.Context, string, string, int) error   { return nil }
@@ -465,6 +471,7 @@ func (f *fakeNoOutcomeTracker) unlockIssue(_ context.Context, _, _ string, _ int
 type fakeTerminalOutcomeTracker struct {
 	comments  []issueComment
 	commented []string
+	deleted   []int
 	unlocked  int
 	postAt    time.Time
 }
@@ -484,6 +491,11 @@ func (f *fakeTerminalOutcomeTracker) createIssue(context.Context, string, string
 func (f *fakeTerminalOutcomeTracker) commentIssue(_ context.Context, _, _ string, _ int, body string) error {
 	f.commented = append(f.commented, body)
 	f.comments = append(f.comments, issueComment{Body: body, CreatedAt: f.postAt})
+	return nil
+}
+
+func (f *fakeTerminalOutcomeTracker) deleteIssueComment(_ context.Context, _, _ string, commentID int) error {
+	f.deleted = append(f.deleted, commentID)
 	return nil
 }
 
@@ -544,6 +556,7 @@ func TestReleaseReservationIfTerminalOutcomeComment(t *testing.T) {
 		t.Run(tc.name, func(t *testing.T) {
 			fc := &fakeTerminalOutcomeTracker{
 				comments: []issueComment{
+					{ID: 99, Body: reservationCommentBody(modeGoose, "engineer-goose-ward-1042", "box", upAt.Add(-2*time.Minute), "", nil), CreatedAt: upAt.Add(-2 * time.Minute)},
 					{Body: "WARDED_WORKFLOW: " + tc.status + " 🛑\n\n<details><summary>details</summary>\n\nfinished\n\n</details>", CreatedAt: upAt.Add(time.Minute)},
 				},
 				postAt: upAt.Add(2 * time.Minute),
@@ -573,6 +586,9 @@ func TestReleaseReservationIfTerminalOutcomeComment(t *testing.T) {
 				if !strings.Contains(fc.commented[0], want) {
 					t.Errorf("terminal release comment missing %q\n%s", want, fc.commented[0])
 				}
+			}
+			if got := fmt.Sprintf("%v", fc.deleted); got != "[99]" {
+				t.Fatalf("deleted comments = %s, want [99]", got)
 			}
 		})
 	}

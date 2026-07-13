@@ -29,6 +29,7 @@ const forgejoListLimit = "50"
 // issueComment is one row of an issue's comment thread - just the fields the
 // reservation check needs: body (for the marker), author, and post time.
 type issueComment struct {
+	ID        int       `json:"id"`
 	Body      string    `json:"body"`
 	CreatedAt time.Time `json:"created_at"`
 	User      struct {
@@ -346,6 +347,13 @@ func (c *forgejoClient) createIssue(ctx context.Context, owner, repo, title, bod
 func (c *forgejoClient) commentIssue(ctx context.Context, owner, repo string, number int, body string) error {
 	if _, err := c.doJSON(ctx, http.MethodPost, []string{"repos", owner, repo, "issues", strconv.Itoa(number), "comments"}, nil, map[string]string{"body": c.mode.signBody(body)}, true, nil); err != nil {
 		return fmt.Errorf("forgejo: comment issue %s/%s#%d: %w", owner, repo, number, err)
+	}
+	return nil
+}
+
+func (c *forgejoClient) deleteIssueComment(ctx context.Context, owner, repo string, commentID int) error {
+	if _, err := c.doJSON(ctx, http.MethodDelete, []string{"repos", owner, repo, "issues", "comments", strconv.Itoa(commentID)}, nil, nil, true, nil); err != nil {
+		return fmt.Errorf("forgejo: delete issue comment %s/%s#%d: %w", owner, repo, commentID, err)
 	}
 	return nil
 }

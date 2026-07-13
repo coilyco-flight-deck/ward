@@ -19,6 +19,7 @@ Inventory of what `ward` ships today.
 - `WARD_CONFIG_REF` accepts local KDL files or bundle directories.
 - `ward agent director queue` / `status` - read-only queue view.
 - Read-only Forgejo issue-comment guard.
+- Transient reservation and dispatch comments are cleaned up after release.
 - Harness install hooks for claude, codex, goose, and opencode.
 - Core tracker and forge adapters do not depend on generated `ward ops` leaves.
 - Launch-intent vs running-engineer split in list, dispatch-health, reap, and director burndown.

@@ -36,6 +36,21 @@ func TestCreateIssueBodyIsSigned(t *testing.T) {
 	}
 }
 
+func TestForgejoClientDeleteIssueComment(t *testing.T) {
+	srv := httptest.NewServer(http.HandlerFunc(func(w http.ResponseWriter, r *http.Request) {
+		if r.Method != http.MethodDelete || r.URL.Path != "/api/v1/repos/coilyco-flight-deck/ward/issues/comments/7" {
+			t.Fatalf("request = %s %s, want issue comment delete endpoint", r.Method, r.URL.Path)
+		}
+		w.WriteHeader(http.StatusNoContent)
+	}))
+	defer srv.Close()
+
+	cl := &forgejoClient{baseURL: srv.URL, token: "secret", mode: modeClaude}
+	if err := cl.deleteIssueComment(context.Background(), "coilyco-flight-deck", "ward", 7); err != nil {
+		t.Fatalf("deleteIssueComment: %v", err)
+	}
+}
+
 func TestForgejoClientGetRawStreamsPlainBody(t *testing.T) {
 	var gotAuth, gotAccept string
 	srv := httptest.NewServer(http.HandlerFunc(func(w http.ResponseWriter, r *http.Request) {

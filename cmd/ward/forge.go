@@ -232,6 +232,7 @@ type Tracker interface {
 	listIssueComments(ctx context.Context, owner, repo string, number int) ([]issueComment, error)
 	createIssue(ctx context.Context, owner, repo, title, body string) (int, error)
 	commentIssue(ctx context.Context, owner, repo string, number int, body string) error
+	deleteIssueComment(ctx context.Context, owner, repo string, commentID int) error
 	closeIssue(ctx context.Context, owner, repo string, number int) error
 	reopenIssue(ctx context.Context, owner, repo string, number int) error
 	// lockIssue seals the conversation against in-flight steering (ward#494), returning

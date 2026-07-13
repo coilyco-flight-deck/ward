@@ -687,6 +687,9 @@ func (mergeConflictTracker) createIssue(context.Context, string, string, string,
 func (mergeConflictTracker) commentIssue(context.Context, string, string, int, string) error {
 	return nil
 }
+func (mergeConflictTracker) deleteIssueComment(context.Context, string, string, int) error {
+	return nil
+}
 func (mergeConflictTracker) closeIssue(context.Context, string, string, int) error  { return nil }
 func (mergeConflictTracker) reopenIssue(context.Context, string, string, int) error { return nil }
 func (mergeConflictTracker) lockIssue(context.Context, string, string, int) error   { return nil }

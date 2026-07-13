@@ -1301,7 +1301,11 @@ func TestRunHostDispatchBrokerRequestReturnsStructuredLaunchFailure(t *testing.T
 func TestCommentFailedDispatch(t *testing.T) {
 	r := &Runner{}
 	ref := agentIssueRef{Owner: "coilyco-flight-deck", Repo: "ward", Number: 689}
-	f := &fakeLockForge{}
+	f := &fakeLockForge{
+		listComments: []issueComment{
+			{ID: 11, Body: reservationCommentBody(modeCodex, "engineer-codex-ward-689", "host", time.Now().Add(-time.Minute), "", nil), CreatedAt: time.Now().Add(-time.Minute)},
+		},
+	}
 	req := dispatchBrokerRequest{
 		Role: "engineer",
 		Argv: []string{"engineer", ref.String(), "--harness", "codex", "--skip-preflight"},
@@ -1312,24 +1316,11 @@ func TestCommentFailedDispatch(t *testing.T) {
 	if f.unlocked != 1 {
 		t.Fatalf("unlockIssue called %d times, want 1", f.unlocked)
 	}
-	if len(f.comments) != 1 {
-		t.Fatalf("commentIssue called %d times, want 1", len(f.comments))
+	if len(f.comments) != 0 {
+		t.Fatalf("commentIssue called %d times, want 0", len(f.comments))
 	}
-	body := f.comments[0]
-	for _, want := range []string{
-		agentReservationReleaseMarker,
-		agentNeedsRedispatchMarker,
-		"WARDED_WORKFLOW: dispatch-failed",
-		"Attempted harness: `codex`",
-		"Attempted run: `ward agent engineer coilyco-flight-deck/ward#689 --harness codex --skip-preflight`",
-		"Container: `engineer-codex-ward-689`",
-		"Container created: no running engineer was observed.",
-		"Host log: `/tmp/ward/dispatch.log`",
-		"Retry: choose another harness if the first one is down, or rerun with `--override-reservation` if the reservation is stale.",
-	} {
-		if !strings.Contains(body, want) {
-			t.Errorf("failure comment missing %q\n%s", want, body)
-		}
+	if got := fmt.Sprintf("%v", f.deleted); got != "[11]" {
+		t.Fatalf("deleted comments = %s, want [11]", got)
 	}
 }
 
@@ -1378,7 +1369,11 @@ func TestCommentReservationConflictDispatch(t *testing.T) {
 func TestCommentDeferredDispatch(t *testing.T) {
 	r := &Runner{}
 	ref := agentIssueRef{Owner: "coilyco-flight-deck", Repo: "ward", Number: 902}
-	f := &fakeLockForge{}
+	f := &fakeLockForge{
+		listComments: []issueComment{
+			{ID: 21, Body: dispatchLaunchDeferredCommentBody(modeCodex, "engineer-codex-ward-902", dispatchBrokerRequest{Role: "engineer", Argv: []string{"engineer", ref.String(), "--harness", "codex", "--skip-preflight"}}, "/tmp/ward/dispatch.log", newEngineerCapacityError("ward agent engineer --harness codex", 10, 10)), CreatedAt: time.Now().Add(-time.Minute)},
+		},
+	}
 	req := dispatchBrokerRequest{
 		Role: "engineer",
 		Argv: []string{"engineer", ref.String(), "--harness", "codex", "--skip-preflight"},
@@ -1390,25 +1385,11 @@ func TestCommentDeferredDispatch(t *testing.T) {
 	if f.unlocked != 1 {
 		t.Fatalf("unlockIssue called %d times, want 1", f.unlocked)
 	}
-	if len(f.comments) != 1 {
-		t.Fatalf("commentIssue called %d times, want 1", len(f.comments))
+	if len(f.comments) != 0 {
+		t.Fatalf("commentIssue called %d times, want 0", len(f.comments))
 	}
-	body := f.comments[0]
-	for _, want := range []string{
-		agentReservationReleaseMarker,
-		agentNeedsRedispatchMarker,
-		"WARDED_WORKFLOW: dispatch-deferred",
-		"Attempted harness: `codex`",
-		"Attempted run: `ward agent engineer coilyco-flight-deck/ward#902 --harness codex --skip-preflight`",
-		"Container: `engineer-codex-ward-902`",
-		"Container created: no running engineer was observed.",
-		"Host log: `/tmp/ward/dispatch.log`",
-		"Capacity: `ward agent engineer --harness codex: global engineer limit is reached: 10 running (limit 10); wait for a run to finish or run `ward agent reap` for stale engineers`",
-		"Retry: the issue stays queued and the director will try again when a slot opens.",
-	} {
-		if !strings.Contains(body, want) {
-			t.Errorf("deferred comment missing %q\n%s", want, body)
-		}
+	if got := fmt.Sprintf("%v", f.deleted); got != "[21]" {
+		t.Fatalf("deleted comments = %s, want [21]", got)
 	}
 }
 
@@ -1449,7 +1430,11 @@ func TestStopFailedDispatchContainerStopsTheAttemptedEngineer(t *testing.T) {
 func TestCommentDeferredReleaseAssetsDispatch(t *testing.T) {
 	r := &Runner{}
 	ref := agentIssueRef{Owner: "coilyco-flight-deck", Repo: "ward", Number: 903}
-	f := &fakeLockForge{}
+	f := &fakeLockForge{
+		listComments: []issueComment{
+			{ID: 31, Body: dispatchLaunchReleaseAssetsDeferredCommentBody(modeCodex, "engineer-codex-ward-903", dispatchBrokerRequest{Role: "engineer", Argv: []string{"engineer", ref.String(), "--harness", "codex", "--skip-preflight"}}, "/tmp/ward/dispatch.log", newReleaseAssetsNotReadyError("v0.544.0", "ward-linux-arm64", "Not Found")), CreatedAt: time.Now().Add(-time.Minute)},
+		},
+	}
 	req := dispatchBrokerRequest{
 		Role: "engineer",
 		Argv: []string{"engineer", ref.String(), "--harness", "codex", "--skip-preflight"},
@@ -1461,25 +1446,11 @@ func TestCommentDeferredReleaseAssetsDispatch(t *testing.T) {
 	if f.unlocked != 1 {
 		t.Fatalf("unlockIssue called %d times, want 1", f.unlocked)
 	}
-	if len(f.comments) != 1 {
-		t.Fatalf("commentIssue called %d times, want 1", len(f.comments))
+	if len(f.comments) != 0 {
+		t.Fatalf("commentIssue called %d times, want 0", len(f.comments))
 	}
-	body := f.comments[0]
-	for _, want := range []string{
-		agentReservationReleaseMarker,
-		agentNeedsRedispatchMarker,
-		"WARDED_WORKFLOW: dispatch-deferred",
-		"release-assets-not-ready details",
-		"Attempted harness: `codex`",
-		"Attempted run: `ward agent engineer coilyco-flight-deck/ward#903 --harness codex --skip-preflight`",
-		"Container: `engineer-codex-ward-903`",
-		"Host log: `/tmp/ward/dispatch.log`",
-		"Release assets: `ward container: release-assets-not-ready/deferred: v0.544.0 missing ward-linux-arm64: Not Found`",
-		"Retry: the issue stays queued until the release publishes the missing platform assets, then the director can try again.",
-	} {
-		if !strings.Contains(body, want) {
-			t.Errorf("release-assets deferred comment missing %q\n%s", want, body)
-		}
+	if got := fmt.Sprintf("%v", f.deleted); got != "[31]" {
+		t.Fatalf("deleted comments = %s, want [31]", got)
 	}
 }
 

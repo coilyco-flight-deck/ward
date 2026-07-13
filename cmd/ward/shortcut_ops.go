@@ -134,7 +134,7 @@ func (c *shortcutClient) listIssueComments(ctx context.Context, owner, repo stri
 	}
 	comments := make([]issueComment, 0, len(raw))
 	for _, rc := range raw {
-		ic := issueComment{Body: rc.Text}
+		ic := issueComment{ID: rc.ID, Body: rc.Text}
 		ic.User.Login = rc.AuthorID
 		if t, err := time.Parse(time.RFC3339, rc.CreatedAt); err == nil {
 			ic.CreatedAt = t
@@ -174,6 +174,12 @@ func (c *shortcutClient) commentIssue(ctx context.Context, owner, repo string, n
 	if err := c.request(ctx, http.MethodPost, "/stories/"+strconv.Itoa(number)+"/comments", req, nil, http.StatusCreated); err != nil {
 		return fmt.Errorf("shortcut: comment story %s/%s#%d: %w", owner, repo, number, err)
 	}
+	return nil
+}
+
+func (c *shortcutClient) deleteIssueComment(_ context.Context, _, _ string, _ int) error {
+	// Shortcut exposes comment deletion, but the shared Tracker surface does not
+	// carry the parent story number here, so this adapter leaves cleanup best-effort.
 	return nil
 }
 
