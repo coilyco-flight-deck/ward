@@ -16,6 +16,8 @@ The launch path is short and explicit.
 
 - The target must be trusted for the selected forge policy.
 - A reserved issue stays reserved until the run finishes or times out.
+- The repo must still have room under the three-engineer working cap, which
+  composes with the open-PR backpressure gate.
 - A missing harness binary or failed install aborts before the run starts.
 - The run writes one auditable trail, not a silent shell session.
 - `--print` shows the launch without starting it.

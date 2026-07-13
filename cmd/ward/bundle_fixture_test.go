@@ -81,6 +81,7 @@ defaults {
     agent-reap-idle "90m"
     agent-reap-max-cpu "7.5"
     engineer-container-limit "17"
+    engineer-repo-working-limit "3"
     engineer-open-pr-branch-limit "8"
     director-max-parallel "13"
     director-limit "77"

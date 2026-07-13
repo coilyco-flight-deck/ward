@@ -38,6 +38,7 @@ func TestSmartDefaultsFromBundleSource(t *testing.T) {
     agent-reap-idle "90m"
     agent-reap-max-cpu "7.5"
     engineer-container-limit "17"
+    engineer-repo-working-limit "3"
     engineer-open-pr-branch-limit "8"
     director-max-parallel "13"
     director-limit "77"
@@ -73,7 +74,7 @@ func TestSmartDefaultsFromBundleSource(t *testing.T) {
 	if defs.agentReapIdleDefault != 90*time.Minute || defs.agentReapMaxCPUDefault != 7.5 {
 		t.Errorf("bundle reap defaults = %+v", defs)
 	}
-	if defs.engineerContainerLimit != 17 || defs.directorMaxParallel != 13 || defs.directorLimit != 77 || defs.directorPollInterval != 45*time.Second {
+	if defs.engineerContainerLimit != 17 || defs.engineerRepoWorkingLimit != 3 || defs.directorMaxParallel != 13 || defs.directorLimit != 77 || defs.directorPollInterval != 45*time.Second {
 		t.Errorf("bundle director defaults = %+v", defs)
 	}
 	if defs.engineerOpenPRBranchLimit != 8 {

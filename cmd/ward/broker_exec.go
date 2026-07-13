@@ -190,9 +190,7 @@ var writeTierOps = map[broker.Op]bool{
 }
 
 // writeTierAuthorizer is the broker.Authorizer: the write-op allowlist + Policy's
-// invariants, plus an owner scope gate mirroring the write guardfile's restrict.
-// Comment writes also fail closed when a live engineer or fresh reservation owns
-// the issue, so the read-only director surface does not talk over an active run.
+// invariants, plus the owner scope gate mirroring the write guardfile's restrict.
 func (r *Runner) writeTierAuthorizer() broker.Authorizer {
 	policy := broker.Policy{Ops: writeTierOps}
 	return broker.AuthorizerFunc(func(ctx context.Context, req broker.Request) error {

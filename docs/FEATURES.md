@@ -31,8 +31,9 @@ Inventory of what `ward` ships today.
   distinguishes fresh reservation holds from stale ones so headless issues can
   re-enter dispatch instead of parking forever behind a dead reservation.
 - **Open-PR backpressure gate** - net-new engineer dispatch pauses above the
-  open PR branch cap, while branch-based repair runs stay allowed so the queue
-  can drain instead of growing.
+  open PR branch cap, and the repo-working cap keeps only three engineers
+  active in one repo at a time, while branch-based repair runs stay allowed so
+  the queue can drain instead of growing.
 - **Issue-scoped director dispatch** - `ward agent director` can take one exact
   issue ref or full Forgejo issue URL and stay scoped to that single issue
   instead of widening into the repo backlog.
