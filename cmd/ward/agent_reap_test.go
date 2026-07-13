@@ -4,6 +4,8 @@ import (
 	"context"
 	"errors"
 	"io"
+	"os"
+	"path/filepath"
 	"strings"
 	"testing"
 	"time"
@@ -155,6 +157,44 @@ func TestAgentReapCommandRegistered(t *testing.T) {
 		if r.Role == "reap" {
 			t.Error("reap leaked into the role roster; it is a maintenance verb")
 		}
+	}
+}
+
+func TestClearStalePrelaunchReservationReleasesIssueAndSentinel(t *testing.T) {
+	t.Setenv("HOME", t.TempDir())
+	now := time.Now().UTC()
+	ref := agentIssueRef{Owner: "coilyco-flight-deck", Repo: "ward", Number: 1035}
+	path, err := agentReservationPath(ref)
+	if err != nil {
+		t.Fatalf("agentReservationPath: %v", err)
+	}
+	res := agentReservation{
+		Owner:     ref.Owner,
+		Repo:      ref.Repo,
+		Number:    ref.Number,
+		Mode:      string(modeCodex),
+		Container: "engineer-codex-ward-1035",
+		Branch:    "issue-1035",
+		Host:      "director-box",
+		At:        now.Add(-time.Minute),
+	}
+	if err := os.MkdirAll(filepath.Dir(path), 0o700); err != nil {
+		t.Fatalf("MkdirAll reservation dir: %v", err)
+	}
+	if err := writeAgentReservation(path, res); err != nil {
+		t.Fatalf("writeAgentReservation: %v", err)
+	}
+	hold := stalePrelaunchReservation{Path: path, Reservation: res}
+	fake := &fakeNoOutcomeTracker{}
+	clearStalePrelaunchReservation(context.Background(), fake, "ward agent reap", hold)
+	if len(fake.commented) != 1 {
+		t.Fatalf("commented %d times, want 1", len(fake.commented))
+	}
+	if fake.unlocked != 1 {
+		t.Fatalf("unlocked %d times, want 1", fake.unlocked)
+	}
+	if _, ok, _ := readAgentReservation(path); ok {
+		t.Fatal("stale prelaunch reservation should be removed")
 	}
 }
 

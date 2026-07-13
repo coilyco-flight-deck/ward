@@ -167,7 +167,7 @@ func TestAgentListIncludesReservedLaunchPhase(t *testing.T) {
 		Container: "engineer-codex-ward-1033",
 		Branch:    "issue-1033",
 		Host:      "director-box",
-		At:        now.Add(-2 * time.Minute),
+		At:        now.Add(-time.Second),
 	}); err != nil {
 		t.Fatalf("writeAgentReservation: %v", err)
 	}
@@ -201,8 +201,8 @@ func TestAgentListIncludesReservedLaunchPhase(t *testing.T) {
 	if row.Status != "starting" {
 		t.Fatalf("status = %q, want starting", row.Status)
 	}
-	if row.ReservedAt.IsZero() || !row.ReservedAt.Equal(now.Add(-2*time.Minute)) {
-		t.Fatalf("reserved_at = %v, want %v", row.ReservedAt, now.Add(-2*time.Minute))
+	if row.ReservedAt.IsZero() || !row.ReservedAt.Equal(now.Add(-time.Second)) {
+		t.Fatalf("reserved_at = %v, want %v", row.ReservedAt, now.Add(-time.Second))
 	}
 	human := renderAgentListHuman(rows)
 	for _, want := range []string{
@@ -214,6 +214,52 @@ func TestAgentListIncludesReservedLaunchPhase(t *testing.T) {
 		if !strings.Contains(human, want) {
 			t.Fatalf("reserved-launch human output missing %q:\n%s", want, human)
 		}
+	}
+}
+
+func TestAgentListDropsStalePrelaunchLaunches(t *testing.T) {
+	t.Setenv("HOME", t.TempDir())
+	origTimeout := dispatchBrokerVisibilityTimeout
+	dispatchBrokerVisibilityTimeout = 25 * time.Millisecond
+	t.Cleanup(func() { dispatchBrokerVisibilityTimeout = origTimeout })
+
+	now := time.Now().UTC()
+	ref := agentIssueRef{Owner: "coilyco-flight-deck", Repo: "ward", Number: 1034}
+	resPath, err := agentReservationPath(ref)
+	if err != nil {
+		t.Fatalf("agentReservationPath: %v", err)
+	}
+	if err := writeAgentReservation(resPath, agentReservation{
+		Owner:     ref.Owner,
+		Repo:      ref.Repo,
+		Number:    ref.Number,
+		Mode:      string(modeCodex),
+		Container: "engineer-codex-ward-1034",
+		Branch:    "issue-1034",
+		Host:      "director-box",
+		At:        now.Add(-time.Second),
+	}); err != nil {
+		t.Fatalf("writeAgentReservation: %v", err)
+	}
+	dispatchDir := filepath.Join(agentLogsDir(), dispatchLogsSubdir)
+	if err := os.MkdirAll(dispatchDir, 0o755); err != nil {
+		t.Fatalf("MkdirAll dispatch logs: %v", err)
+	}
+	logPath := filepath.Join(dispatchDir, "20260710T101500Z-director-box-coilyco-flight-deck-ward-1034.log")
+	if err := os.WriteFile(logPath, []byte(
+		"ward dispatch broker: director-box requested `ward agent engineer coilyco-flight-deck/ward#1034 --harness codex`\n"+
+			"ward dispatch broker: launch plan ready for coilyco-flight-deck/ward#1034 (container=engineer-codex-ward-1034 branch=issue-1034 readOnly=true tailnet=false/false)\n"+
+			"ward dispatch broker: wrote launch env file for coilyco-flight-deck/ward#1034\n"), 0o644); err != nil {
+		t.Fatalf("write dispatch log: %v", err)
+	}
+
+	r := fakeEngineerVisibilityDockerRunner(t, "", 0)
+	rows, err := r.agentListRows(t.Context())
+	if err != nil {
+		t.Fatalf("agentListRows: %v", err)
+	}
+	if len(rows) != 0 {
+		t.Fatalf("rows = %d, want stale prelaunch launch to drop out of the active count", len(rows))
 	}
 }
 

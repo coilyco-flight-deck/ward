@@ -7,11 +7,13 @@ import (
 	"fmt"
 	"io"
 	"os"
+	"path/filepath"
 	"strconv"
 	"strings"
 	"time"
 
 	"forgejo.coilysiren.me/coilyco-flight-deck/cli-guard/cli/verb"
+	"forgejo.coilysiren.me/coilyco-flight-deck/cli-guard/pkg/config"
 	"github.com/urfave/cli/v3"
 )
 
@@ -113,13 +115,31 @@ func (r *Runner) agentReapSweep(ctx context.Context, threshold time.Duration, ma
 		}
 		return fmt.Errorf("list running engineer containers: %w", err)
 	}
-	if len(names) == 0 {
+	now := time.Now()
+	stopped, spared := r.reapRunningEngineers(ctx, names, threshold, maxCPU, dryRun, w, now)
+	cleared, err := r.reapStalePrelaunchReservations(ctx, now, nil, dryRun, w)
+	if err != nil {
+		writef(w, "ward agent reap: warning: could not scan stale prelaunch reservations (%v)\n", err)
+	}
+
+	if len(names) == 0 && cleared == 0 {
 		writeln(w, "ward agent reap: no running engineer containers.")
 		return nil
 	}
 
-	now := time.Now()
-	var stopped, spared int
+	action := "stopped"
+	if dryRun {
+		action = "would stop"
+	}
+	summary := fmt.Sprintf("ward agent reap: swept %d engineer(s): %s %d, kept %d", len(names), action, stopped, spared)
+	if cleared > 0 {
+		summary += fmt.Sprintf(", cleared %d stale prelaunch reservation(s)", cleared)
+	}
+	writef(w, "%s.\n", summary)
+	return nil
+}
+
+func (r *Runner) reapRunningEngineers(ctx context.Context, names []string, threshold time.Duration, maxCPU float64, dryRun bool, w io.Writer, now time.Time) (stopped, spared int) {
 	for _, name := range names {
 		st := r.engineerReapState(ctx, name, now)
 		stop, reason := reapVerdict(st, threshold, maxCPU)
@@ -140,13 +160,31 @@ func (r *Runner) agentReapSweep(ctx context.Context, threshold time.Duration, ma
 		}
 		stopped++
 	}
+	return stopped, spared
+}
 
-	action := "stopped"
-	if dryRun {
-		action = "would stop"
+func (r *Runner) reapStalePrelaunchReservations(ctx context.Context, now time.Time, scope map[string]bool, dryRun bool, w io.Writer) (int, error) {
+	stale, err := r.stalePrelaunchReservations(ctx, now, scope)
+	if err != nil {
+		return 0, err
 	}
-	writef(w, "ward agent reap: swept %d engineer(s): %s %d, kept %d.\n", len(names), action, stopped, spared)
-	return nil
+	cleared := 0
+	for _, hold := range stale {
+		ref := hold.Ref()
+		if dryRun {
+			writef(w, "ward agent reap: WOULD clear stale prelaunch reservation %s - %s\n", ref, hold.Reason(now))
+			cleared++
+			continue
+		}
+		writef(w, "ward agent reap: clearing stale prelaunch reservation %s - %s\n", ref, hold.Reason(now))
+		if cl, cerr := r.hostTrackerClient(ctx, ref.trackerOrDefault(), hold.Mode()); cerr != nil {
+			writef(w, "ward agent reap: could not build issue client to clear %s (%v); continuing\n", ref, cerr)
+		} else {
+			clearStalePrelaunchReservation(ctx, cl, "ward agent reap", hold)
+		}
+		cleared++
+	}
+	return cleared, nil
 }
 
 func dockerUnavailableErr(err error) bool {
@@ -168,6 +206,96 @@ func dockerUnavailableErr(err error) bool {
 
 func readOnlyDockerUnavailableErr(err error) bool {
 	return strings.Contains(strings.ToLower(err.Error()), "reaping is unsupported on this read-only director surface because the docker socket is unavailable")
+}
+
+type stalePrelaunchReservation struct {
+	Path        string
+	Reservation agentReservation
+}
+
+func (s stalePrelaunchReservation) Ref() agentIssueRef {
+	return agentIssueRef{Owner: s.Reservation.Owner, Repo: s.Reservation.Repo, Number: s.Reservation.Number}
+}
+
+func (s stalePrelaunchReservation) Mode() containerMode {
+	mode := strings.TrimSpace(s.Reservation.Mode)
+	if mode == "" {
+		return currentAgentMode()
+	}
+	return containerMode(mode)
+}
+
+func (s stalePrelaunchReservation) Container() string {
+	container := strings.TrimSpace(s.Reservation.Container)
+	if container == "" {
+		return issueScopedContainerName(roleEngineer, s.Mode(), targetRepo{Owner: s.Reservation.Owner, Name: s.Reservation.Repo}, s.Reservation.Number)
+	}
+	return container
+}
+
+func (s stalePrelaunchReservation) Reason(now time.Time) string {
+	return fmt.Sprintf("launch-confirmation TTL %s elapsed (reserved %s ago)", conciseDuration(agentLaunchConfirmationTTL()), formatDuration(now.Sub(s.Reservation.At)))
+}
+
+func clearStalePrelaunchReservation(ctx context.Context, cl Tracker, label string, hold stalePrelaunchReservation) {
+	(&Runner{}).releaseRemoteReservation(ctx, cl, label, hold.Mode(), hold.Ref(), hold.Container())
+	if released, err := removeAgentReservationIfOwned(hold.Path, hold.Reservation); err != nil {
+		fmt.Fprintf(os.Stderr, "%s: warning: could not remove stale reservation on %s (%v)\n", label, hold.Ref(), err)
+	} else if !released {
+		fmt.Fprintf(os.Stderr, "%s: warning: stale reservation on %s was already replaced before reap\n", label, hold.Ref())
+	}
+}
+
+func (r *Runner) stalePrelaunchReservations(ctx context.Context, now time.Time, scope map[string]bool) ([]stalePrelaunchReservation, error) {
+	globalDir, err := config.GlobalDir()
+	if err != nil {
+		return nil, err
+	}
+	dir := filepath.Join(globalDir, agentReservationsSubdir)
+	entries, err := os.ReadDir(dir)
+	if err != nil {
+		if os.IsNotExist(err) {
+			return nil, nil
+		}
+		return nil, fmt.Errorf("list stale prelaunch reservations: %w", err)
+	}
+	out := make([]stalePrelaunchReservation, 0, len(entries))
+	for _, entry := range entries {
+		hold, ok := stalePrelaunchReservationFromEntry(ctx, r, dir, entry, now, scope)
+		if !ok {
+			continue
+		}
+		out = append(out, hold)
+	}
+	return out, nil
+}
+
+func stalePrelaunchReservationFromEntry(ctx context.Context, r *Runner, dir string, entry os.DirEntry, now time.Time, scope map[string]bool) (stalePrelaunchReservation, bool) {
+	if entry.IsDir() || !strings.HasSuffix(entry.Name(), ".json") {
+		return stalePrelaunchReservation{}, false
+	}
+	return stalePrelaunchReservationFromPath(ctx, r, filepath.Join(dir, entry.Name()), now, scope)
+}
+
+func stalePrelaunchReservationFromPath(ctx context.Context, r *Runner, path string, now time.Time, scope map[string]bool) (stalePrelaunchReservation, bool) {
+	res, ok, err := readAgentReservation(path)
+	if err != nil || !ok || res == nil {
+		return stalePrelaunchReservation{}, false
+	}
+	ref := agentIssueRef{Owner: res.Owner, Repo: res.Repo, Number: res.Number}
+	if ref.Owner == "" || ref.Repo == "" || ref.Number <= 0 {
+		return stalePrelaunchReservation{}, false
+	}
+	if len(scope) > 0 && !scope[ref.repoSlug()] {
+		return stalePrelaunchReservation{}, false
+	}
+	if reservationFresh(res.At, now, agentLaunchConfirmationTTL()) {
+		return stalePrelaunchReservation{}, false
+	}
+	if r.containerRunning(ctx, res.Container) {
+		return stalePrelaunchReservation{}, false
+	}
+	return stalePrelaunchReservation{Path: path, Reservation: *res}, true
 }
 
 // runningEngineerContainers lists the running engineer containers by their

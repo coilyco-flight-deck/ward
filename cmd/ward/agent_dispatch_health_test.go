@@ -45,3 +45,14 @@ func TestDispatchHealthReportSummaryLine(t *testing.T) {
 		t.Fatal("report with signals should be alertable")
 	}
 }
+
+func TestDispatchHealthReportFlagsStalePrelaunch(t *testing.T) {
+	report := dispatchHealthReport{StalePrelaunch: 2, Signals: []string{"stale-prelaunch"}}
+	line := report.summaryLine()
+	if !strings.Contains(line, "stale-prelaunch=2") {
+		t.Fatalf("summary line missing stale-prelaunch count: %s", line)
+	}
+	if !strings.Contains(strings.Join(dispatchHealthSignals(report), ","), "stale-prelaunch") {
+		t.Fatal("stale prelaunch reservations should surface as a signal")
+	}
+}
