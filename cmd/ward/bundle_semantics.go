@@ -172,7 +172,7 @@ func findMergedBundleNode(files []bundleKDLFile, label string, match func(*kdl.N
 				return nil, nil, fmt.Errorf("bundle: conflicting %s in %s and %s (fail-closed)", label, hit.path, files[i].path)
 			}
 			if children := n.Children(); children != nil {
-				merged.AddChildren(cloneNodes(children.Nodes)...)
+				merged.Children().Nodes = mergePlaceholderAwareChildren(merged.Children().Nodes, cloneNodes(children.Nodes)...)
 			}
 		}
 	}

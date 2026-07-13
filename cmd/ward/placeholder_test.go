@@ -31,16 +31,25 @@ func childValues(n *kdl.Node, name string) []string {
 	return out
 }
 
+func childNode(n *kdl.Node, name string) *kdl.Node {
+	for _, c := range n.Children().Nodes {
+		if c.Name() == name {
+			return c
+		}
+	}
+	return nil
+}
+
 // A sentinel must lose to a real value on either side of the merge: cli-guard
 // singletons are last-wins, so before this the file walk order decided the surface.
 func TestPlaceholderSentinelYieldsToRealValueEitherOrder(t *testing.T) {
 	for name, src := range map[string]string{
 		"sentinel last": `wrap ward-kdl ops forgejo {
     base-url "forgejo.coilysiren.me/api/v1"
-    (placeholder)base-url "git.example.com/api/v1"
+    base-url (placeholder)"git.example.com/api/v1"
 }`,
 		"sentinel first": `wrap ward-kdl ops forgejo {
-    (placeholder)base-url "git.example.com/api/v1"
+    base-url (placeholder)"git.example.com/api/v1"
     base-url "forgejo.coilysiren.me/api/v1"
 }`,
 	} {
@@ -55,11 +64,48 @@ func TestPlaceholderSentinelYieldsToRealValueEitherOrder(t *testing.T) {
 	}
 }
 
+func TestPlaceholderSentinelYieldsToRealNestedValueEitherOrder(t *testing.T) {
+	for name, src := range map[string]string{
+		"sentinel last": `wrap ward-kdl ops forgejo {
+    auth header-token {
+        value ssm "/coilyco/forgejo/api-token"
+    }
+    auth header-token {
+        value ssm (placeholder)"/example/forgejo/api-token"
+    }
+}`,
+		"sentinel first": `wrap ward-kdl ops forgejo {
+    auth header-token {
+        value ssm (placeholder)"/example/forgejo/api-token"
+    }
+    auth header-token {
+        value ssm "/coilyco/forgejo/api-token"
+    }
+}`,
+	} {
+		t.Run(name, func(t *testing.T) {
+			n := mergedWrap(t, src)
+			resolvePlaceholderSentinels(n)
+			auth := childNode(n, "auth")
+			if auth == nil {
+				t.Fatal("auth node missing after placeholder resolution")
+			}
+			value := childNode(auth, "value")
+			if value == nil {
+				t.Fatal("value node missing after placeholder resolution")
+			}
+			if got := value.Arg(1).String(); got != "/coilyco/forgejo/api-token" {
+				t.Fatalf("the real nested value must be the only survivor, got %q", got)
+			}
+		})
+	}
+}
+
 // With nothing to override it the sentinel survives, so doctor still fails the
 // deployment that never supplied its own value. That is the whole point of it.
 func TestPlaceholderSentinelSurvivesWhenNothingSuppliesIt(t *testing.T) {
 	n := mergedWrap(t, `wrap ward-kdl ops forgejo {
-    (placeholder)base-url "git.example.com/api/v1"
+    base-url (placeholder)"git.example.com/api/v1"
 }`)
 	resolvePlaceholderSentinels(n)
 	got := childValues(n, "base-url")
