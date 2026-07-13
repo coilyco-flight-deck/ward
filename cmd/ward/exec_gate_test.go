@@ -5,6 +5,7 @@ import (
 	"os"
 	"os/exec"
 	"path/filepath"
+	"strings"
 	"testing"
 
 	"forgejo.coilysiren.me/coilyco-flight-deck/cli-guard/cli/gittree"
@@ -51,6 +52,52 @@ func TestDirtIsOutsideWardConfig(t *testing.T) {
 			got := dirtIsOutsideWardConfig(tc.state, root, cfg)
 			if got != tc.want {
 				t.Fatalf("dirtIsOutsideWardConfig(%+v) = %v, want %v", tc.state, got, tc.want)
+			}
+		})
+	}
+}
+
+func TestFormatExecGateRefusal(t *testing.T) {
+	cases := []struct {
+		name  string
+		state *gittree.State
+		verb  string
+		keep  []string
+		drop  []string
+	}{
+		{
+			name:  "dirty tree keeps clean-tree guidance",
+			state: &gittree.State{Reason: "working tree is dirty", Recovery: "  git commit\n", Status: " M README\n"},
+			verb:  "repo.test",
+			keep:  []string{"Repo verbs require a clean tree", "--audit-override-dirty"},
+		},
+		{
+			name:  "missing upstream gets upstream guidance",
+			state: &gittree.State{Reason: "branch \"main\" has no upstream", Branch: "main"},
+			verb:  "repo.test",
+			keep:  []string{"branch with an upstream", "git push -u origin main"},
+			drop:  []string{"clean tree", "--audit-override-dirty"},
+		},
+		{
+			name:  "behind upstream gets sync guidance",
+			state: &gittree.State{Reason: "1 commits behind origin/main"},
+			verb:  "repo.test",
+			keep:  []string{"synced branch", "git pull --ff-only"},
+			drop:  []string{"clean tree", "--audit-override-dirty"},
+		},
+	}
+	for _, tc := range cases {
+		t.Run(tc.name, func(t *testing.T) {
+			got := formatExecGateRefusal(tc.state, tc.verb)
+			for _, want := range tc.keep {
+				if !strings.Contains(got, want) {
+					t.Fatalf("formatExecGateRefusal missing %q; got:\n%s", want, got)
+				}
+			}
+			for _, notWant := range tc.drop {
+				if strings.Contains(got, notWant) {
+					t.Fatalf("formatExecGateRefusal unexpectedly contained %q; got:\n%s", notWant, got)
+				}
 			}
 		})
 	}
