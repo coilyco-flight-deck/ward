@@ -215,7 +215,7 @@ func TestParseIssueResultUnparseableIsBestEffort(t *testing.T) {
 }
 
 func TestWriteTierAuthorizer(t *testing.T) {
-	auth := writeTierAuthorizer()
+	auth := (&Runner{}).writeTierAuthorizer()
 	ctx := context.Background()
 	tests := []struct {
 		name   string
@@ -270,7 +270,7 @@ func TestBrokerServerRoundTrip(t *testing.T) {
 	}
 
 	fake := &fakeExecutor{result: broker.Result{Number: 99, URL: "https://forge/i/99"}}
-	srv, err := broker.NewServer(ln, fake, writeTierAuthorizer())
+	srv, err := broker.NewServer(ln, fake, (&Runner{}).writeTierAuthorizer())
 	if err != nil {
 		t.Fatalf("NewServer: %v", err)
 	}

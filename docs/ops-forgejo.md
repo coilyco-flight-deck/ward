@@ -9,6 +9,8 @@ doc_goal: Keep the Forgejo operator surface as one concise guide after the suppo
 - It is the canonical operator path for ward's own repo.
 - It is an edge surface. Core `ward agent` dispatch uses typed Go adapters.
 - The embedded surface is what the binary ships.
+- Read-only director comments on issues now fail closed when a live engineer run
+  or fresh reservation already owns that issue.
 
 ## What it replaces
 

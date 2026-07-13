@@ -20,6 +20,7 @@ Inventory of what `ward` ships today.
   route through the local agent-proxy endpoint with stable ward correlation
   headers and request ids so traces join back to ward run logs.
 - **`ward agent director queue` / `status`** - the read-only queue view for stale reservations, redispatch candidates, PR handoffs, and stale-open done issues.
+- **Read-only Forgejo issue-comment guard** - director-surface comments on an issue now fail closed while a live engineer run or fresh reservation owns that issue, instead of talking over the run.
 - **Harness install hooks** - bootstrap now requires a harness install step
   before launch, with self-contained declarations for claude/codex/goose and a
   required opencode install path.
@@ -100,7 +101,7 @@ Inventory of what `ward` ships today.
 
 ## Release and docs
 
-- Two-stage release (ward#1117): promote.yml gates every main push and
+- Two-stage release ([ward#1117](https://forgejo.coilysiren.me/coilyco-flight-deck/ward/issues/1117)): promote.yml gates every main push and
   fast-forwards `release` when green; release.yml runs on `release` pushes
   under a no-cancel concurrency queue. See [release.md](release.md).
 - [compat-surface.md](compat-surface.md) - the release-facing provider matrix.
