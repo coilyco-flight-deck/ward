@@ -460,7 +460,13 @@ func (r *Runner) runContainerBootstrap(ctx context.Context, c *cli.Command) erro
 	blog("bootstrap agent container composition done")
 
 	_ = os.Setenv("WARD_REAP_WORK", work)
-	if err := r.prepareScratchSpace(surfaceScratchDir(e)); err != nil {
+	scratchDir := surfaceScratchDir(e)
+	if err := r.prepareScratchSpace(scratchDir); err != nil {
+		blog("fatal: %v", err)
+		writeGateFailure("bootstrap", err.Error()) // reaper release-comment context (ward#609)
+		return err
+	}
+	if err := ensureScratchAlias(scratchDir, surfaceScratchMnt); err != nil {
 		blog("fatal: %v", err)
 		writeGateFailure("bootstrap", err.Error()) // reaper release-comment context (ward#609)
 		return err
@@ -520,13 +526,17 @@ func (r *Runner) runContainerBootstrap(ctx context.Context, c *cli.Command) erro
 
 const surfaceScratchFloorBytes = 512 * 1024 * 1024
 
+// surfaceScratchMnt is the doctrine-promised scratch path: the composed agent
+// context names it as the writable escape hatch on every surface.
+const surfaceScratchMnt = "/scratch"
+
 // surfaceScratchRoot returns the writable cache/temp root for this surface.
 // Read-only director sessions use the gitcache volume for Go verification headroom.
 func surfaceScratchRoot(readOnly bool, gitcache string) string {
 	if readOnly {
 		return filepath.Join(gitcache, "surface-scratch")
 	}
-	return "/scratch"
+	return surfaceScratchMnt
 }
 
 // surfaceScratchDir returns the writable cache/temp root for this surface.
@@ -586,6 +596,32 @@ func (r *Runner) prepareScratchSpace(scratchDir string) error {
 	_ = os.Setenv("GOTMPDIR", filepath.Join(scratchDir, "go-tmp"))
 	_ = os.Setenv("XDG_CACHE_HOME", filepath.Join(scratchDir, "xdg-cache"))
 	blog("scratch/cache area ready at %s (%s; Go caches under %s)", scratchDir, surfaceScratchBudgetReport(scratchDir), surfaceScratchGoCacheDir(scratchDir))
+	return nil
+}
+
+// ensureScratchAlias makes the doctrine-promised alias real when the actual scratch
+// root lives elsewhere - read-only surfaces keep it on the gitcache volume (ward#1142).
+func ensureScratchAlias(scratchDir, alias string) error {
+	if scratchDir == alias {
+		return nil
+	}
+	if target, err := os.Readlink(alias); err == nil && target == scratchDir {
+		return nil
+	}
+	// Lstat does not follow links, so a stale symlink lands in the removal
+	// branch while a real directory (already writable scratch) is kept.
+	if fi, err := os.Lstat(alias); err == nil {
+		if fi.IsDir() {
+			return nil
+		}
+		if rerr := os.Remove(alias); rerr != nil {
+			return fmt.Errorf("replace stale scratch alias %s: %w", alias, rerr)
+		}
+	}
+	if err := os.Symlink(scratchDir, alias); err != nil {
+		return fmt.Errorf("link scratch alias %s -> %s: %w", alias, scratchDir, err)
+	}
+	blog("scratch alias ready: %s -> %s", alias, scratchDir)
 	return nil
 }
 

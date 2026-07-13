@@ -31,9 +31,8 @@ func childValues(n *kdl.Node, name string) []string {
 	return out
 }
 
-// A sentinel must lose to a real value no matter which side of the merge it is
-// on. cli-guard's singletons are last-wins, so before this the file the walk
-// happened to reach last decided the surface.
+// A sentinel must lose to a real value on either side of the merge: cli-guard
+// singletons are last-wins, so before this the file walk order decided the surface.
 func TestPlaceholderSentinelYieldsToRealValueEitherOrder(t *testing.T) {
 	for name, src := range map[string]string{
 		"sentinel last": `wrap ward-kdl ops forgejo {

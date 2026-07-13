@@ -9,10 +9,8 @@ import (
 	"forgejo.coilysiren.me/coilyco-flight-deck/cli-guard/pkg/issueref"
 )
 
-// The issue types used to come from cli-guard/cli/dispatch, which cli-guard
-// removed as a legacy subsystem. cli-guard parses a *reference* (an argument
-// shape, pkg/issueref); it has no concept of an issue. The issue itself, and
-// which forge it resolves against, are ward's domain, so they live here.
+// The issue types lived in cli-guard/cli/dispatch, removed as legacy. cli-guard
+// parses a *reference* (pkg/issueref) - the issue and its forge are ward's domain.
 
 // Platform tags which forge an issue ref resolves against. Empty means the ref
 // was shortform, so the caller picks the forge.
@@ -48,16 +46,14 @@ type Issue struct {
 	Labels []string `json:"-"`
 }
 
-// githubIssueRefRE matches github.com issue URLs and compact refs, tolerating an
-// optional scheme, www, .git, and trailing query / fragment text. issueref.Parse
-// covers the short, bare, and Forgejo-URL forms but does not know GitHub.
+// githubIssueRefRE matches github.com issue URLs and compact refs, tolerating scheme,
+// www, .git, and trailing query/fragment. issueref.Parse does not know GitHub.
 var githubIssueRefRE = regexp.MustCompile(
 	`(?i)^(?:https?://)?(?:www\.)?github\.com/([A-Za-z0-9._-]+)/([A-Za-z0-9._-]+?)(?:\.git)?(?:/issues/(\d+)|#(\d+))(?:[/?#].*)?$`,
 )
 
 // ParseIssueRef resolves every supported reference form. GitHub is matched first
-// because issueref.Parse would otherwise never see it; the rest delegates to
-// cli-guard so ward and cli-guard normalize refs identically.
+// (issueref.Parse would never see it), then cli-guard normalizes the rest identically.
 func ParseIssueRef(baseURL, s string) (IssueRef, error) {
 	s = strings.TrimSpace(s)
 	if m := githubIssueRefRE.FindStringSubmatch(s); m != nil {
@@ -91,9 +87,8 @@ func ParseIssueRef(baseURL, s string) (IssueRef, error) {
 	return IssueRef{}, err
 }
 
-// platformOf tags a ref that issueref.Parse accepted. Parse does not report
-// which form matched, so the Forgejo host is what separates a URL ref from the
-// shortform owner/repo#N (which stays untagged for the caller to route).
+// platformOf tags a ref that issueref.Parse accepted. Parse does not report which
+// form matched, so the Forgejo host separates a URL ref from untagged owner/repo#N.
 func platformOf(s, baseURL string) Platform {
 	if baseURL == "" {
 		return ""
