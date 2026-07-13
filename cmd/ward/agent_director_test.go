@@ -1215,6 +1215,83 @@ func TestBacklogReservationState(t *testing.T) {
 	}
 }
 
+// TestBacklogRedispatchSweepTracked pins which parked entries the ward#1149 marker
+// sweep considers: terminal-but-not-done headless issues.
+func TestBacklogRedispatchSweepTracked(t *testing.T) {
+	for state, want := range map[string]bool{
+		"submitted":                        true,
+		"merge-ready":                      true,
+		"blocked":                          true,
+		"failed":                           true,
+		"done":                             false,
+		"queued":                           false,
+		"dispatched":                       false,
+		backlogReservationWaitingReaper:    false,
+		backlogReservationSafeToRedispatch: false,
+	} {
+		e := &backlogEntry{Kind: backlogKindIssue, Lane: "headless", State: state}
+		if got := backlogRedispatchSweepTracked(e); got != want {
+			t.Errorf("state %q tracked = %t, want %t", state, got, want)
+		}
+	}
+	if backlogRedispatchSweepTracked(&backlogEntry{Kind: backlogKindPullRequest, Lane: "headless", State: "merge-ready"}) {
+		t.Error("a pull-request entry must not be swept")
+	}
+	if backlogRedispatchSweepTracked(&backlogEntry{Kind: backlogKindIssue, Lane: "interactive", State: "merge-ready"}) {
+		t.Error("a non-headless entry must not be swept")
+	}
+}
+
+// TestBacklogSweepNeedsRedispatch drives the ward#1149 sweep: an unhandled marker
+// re-queues (bounded), a newer outcome leaves parked, the cap parks blocked.
+func TestBacklogSweepNeedsRedispatch(t *testing.T) {
+	now := time.Date(2026, 7, 13, 9, 0, 0, 0, time.UTC)
+	r := &Runner{}
+	tr := targetRepo{Owner: "coilyco-flight-deck", Name: "ward"}
+	marker := issueComment{
+		Body:      agentReservationReleaseMarker + "\n" + agentNeedsRedispatchMarker + "\nWARD-DISPATCH: failed ❌",
+		CreatedAt: now.Add(-time.Minute),
+	}
+	outcome := issueComment{Body: "WARD-OUTCOME: merge-ready", CreatedAt: now.Add(-30 * time.Minute)}
+
+	e := &backlogEntry{
+		Num: 927, Kind: backlogKindIssue, Lane: "headless", State: "merge-ready",
+		Container: "engineer-codex-ward-927", DispatchedAt: now.Add(-time.Hour).Format(time.RFC3339),
+	}
+	if !r.backlogSweepNeedsRedispatch(context.Background(), "coilyco-flight-deck/ward", tr, e, []issueComment{outcome, marker}) {
+		t.Fatal("sweep did not re-queue the unhandled marker")
+	}
+	if e.State != "queued" || e.Container != "" || e.DispatchedAt != "" {
+		t.Fatalf("swept entry = %+v, want queued with a cleared dispatch record", e)
+	}
+	if e.RedispatchAttempts != 1 {
+		t.Fatalf("attempts = %d, want 1", e.RedispatchAttempts)
+	}
+	if e.LastOutcome == nil || e.LastOutcome.Status != "needs-redispatch-requeued" {
+		t.Fatalf("outcome = %+v, want needs-redispatch-requeued", e.LastOutcome)
+	}
+
+	// A newer outcome means the marker was handled: no re-queue.
+	handled := issueComment{Body: "WARD-OUTCOME: merge-ready", CreatedAt: now}
+	e2 := &backlogEntry{Num: 928, Kind: backlogKindIssue, Lane: "headless", State: "merge-ready"}
+	if r.backlogSweepNeedsRedispatch(context.Background(), "coilyco-flight-deck/ward", tr, e2, []issueComment{marker, handled}) {
+		t.Fatal("sweep re-queued a marker an outcome already superseded")
+	}
+
+	// The cap parks it blocked instead of looping.
+	e3 := &backlogEntry{Num: 929, Kind: backlogKindIssue, Lane: "headless", State: "failed", RedispatchAttempts: redispatchAttemptCap}
+	if !r.backlogSweepNeedsRedispatch(context.Background(), "coilyco-flight-deck/ward", tr, e3, []issueComment{marker}) {
+		t.Fatal("capped sweep did not park the entry")
+	}
+	if e3.State != "blocked" || e3.LastOutcome == nil || e3.LastOutcome.Status != "redispatch-cap-reached" {
+		t.Fatalf("capped entry = %+v (outcome %+v), want blocked/redispatch-cap-reached", e3, e3.LastOutcome)
+	}
+	// Already blocked at cap: no churn.
+	if r.backlogSweepNeedsRedispatch(context.Background(), "coilyco-flight-deck/ward", tr, e3, []issueComment{marker}) {
+		t.Fatal("capped+blocked entry must not keep reporting changes")
+	}
+}
+
 func TestBacklogLedgerRoundTrip(t *testing.T) {
 	t.Setenv("HOME", t.TempDir())
 	repo := "coilyco-flight-deck/ward"

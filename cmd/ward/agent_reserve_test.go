@@ -362,6 +362,51 @@ func TestFreshReservationComment(t *testing.T) {
 	}
 }
 
+// TestFreshReservationCommentTerminalOutcomeSupersedes pins ward#1149: a terminal
+// WARD-OUTCOME posted at/after the reservation retracts it at check time.
+func TestFreshReservationCommentTerminalOutcomeSupersedes(t *testing.T) {
+	now := time.Date(2026, 7, 10, 12, 0, 0, 0, time.UTC)
+	ttl := 2 * time.Hour
+	mk := func(body string, age time.Duration) issueComment {
+		c := issueComment{Body: body, CreatedAt: now.Add(-age)}
+		c.User.Login = "coilyco-ops"
+		return c
+	}
+	reserved := reservationCommentBody(modeClaude, "engineer-claude-ward-987", "box", now.Add(-30*time.Minute), "", nil)
+	outcome := "WARD-OUTCOME: merge-ready\n\n<details><summary>details</summary>\n\nPR open, checks green\n\n</details>"
+
+	// The terminal outcome after the reservation frees the issue immediately.
+	if _, held := freshReservationComment([]issueComment{
+		mk(reserved, 30*time.Minute),
+		mk(outcome, time.Minute),
+	}, now, ttl); held {
+		t.Error("a terminal WARD-OUTCOME after the reservation must supersede it (ward#1149)")
+	}
+	// Every terminal status supersedes, including the pull-request workflows'.
+	for _, status := range []string{"done ✅", "submitted", "blocked 🛑", "failed ❌"} {
+		if _, held := freshReservationComment([]issueComment{
+			mk(reserved, 30*time.Minute),
+			mk("WARD-OUTCOME: "+status, time.Minute),
+		}, now, ttl); held {
+			t.Errorf("WARD-OUTCOME: %s after the reservation must supersede it", status)
+		}
+	}
+	// A reservation NEWER than the outcome still blocks (a follow-up run's hold).
+	if _, held := freshReservationComment([]issueComment{
+		mk(outcome, 30*time.Minute),
+		mk(reserved, time.Minute),
+	}, now, ttl); !held {
+		t.Error("a reservation posted after the outcome must still block")
+	}
+	// A non-terminal outcome line does not retract.
+	if _, held := freshReservationComment([]issueComment{
+		mk(reserved, 30*time.Minute),
+		mk("WARD-OUTCOME: pondering", time.Minute),
+	}, now, ttl); !held {
+		t.Error("a non-terminal outcome must not retract the reservation")
+	}
+}
+
 // TestReservationCommentBodyIsRoadBlock pins ward#494: the reservation comment carries
 // the explicit "do not comment/edit to steer the run" road-block directive.
 func TestReservationCommentBodyIsRoadBlock(t *testing.T) {
@@ -785,6 +830,11 @@ func TestReservationClaims(t *testing.T) {
 	rel := issueComment{Body: reservationReleaseCommentBody(modeClaude, "engineer-claude-ward-600", nil), CreatedAt: now}
 	if c := reservationClaims([]issueComment{a, b, rel}, now, ttl); len(c) != 0 {
 		t.Errorf("a release at/after the claims left %d live, want 0", len(c))
+	}
+	// A terminal outcome at/after the claims retracts them like a release (ward#1149).
+	oc := issueComment{Body: "WARD-OUTCOME: merge-ready", CreatedAt: now}
+	if c := reservationClaims([]issueComment{a, b, oc}, now, ttl); len(c) != 0 {
+		t.Errorf("a terminal outcome at/after the claims left %d live, want 0", len(c))
 	}
 }
 

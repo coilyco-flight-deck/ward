@@ -1315,6 +1315,14 @@ func (r *Runner) backlogRefreshReservationStates(ctx context.Context, cl Tracker
 }
 
 func (r *Runner) backlogRefreshReservationState(ctx context.Context, cl Tracker, repo string, tr targetRepo, now time.Time, ttl time.Duration, e *backlogEntry) bool {
+	if backlogRedispatchSweepTracked(e) {
+		comments, err := cl.listIssueComments(ctx, tr.Owner, tr.Name, e.Num)
+		if err != nil {
+			fmt.Fprintf(os.Stderr, "backlog: note: cannot read redispatch state for %s#%d (%v)\n", repo, e.Num, err)
+			return false
+		}
+		return r.backlogSweepNeedsRedispatch(ctx, repo, tr, e, comments)
+	}
 	if !backlogRefreshReservationTracked(e) {
 		return false
 	}
@@ -1327,6 +1335,57 @@ func (r *Runner) backlogRefreshReservationState(ctx context.Context, cl Tracker,
 		return false
 	}
 	return r.backlogRefreshReservationHold(repo, e, comments, now, ttl)
+}
+
+// backlogRedispatchSweepTracked marks the parked headless issues the ward#1149 marker
+// sweep considers; done is excluded (about to close, not to redispatch). See docs.
+func backlogRedispatchSweepTracked(e *backlogEntry) bool {
+	if backlogKindOf(e.Kind) != backlogKindIssue || e.Lane != "headless" {
+		return false
+	}
+	switch e.State {
+	case "submitted", "merge-ready", "blocked", "failed":
+		return true
+	default:
+		return false
+	}
+}
+
+// backlogSweepNeedsRedispatch gives the needs-redispatch marker an owner (ward#1149):
+// an unhandled marker re-queues the parked entry, bounded by redispatchAttemptCap.
+func (r *Runner) backlogSweepNeedsRedispatch(ctx context.Context, repo string, tr targetRepo, e *backlogEntry, comments []issueComment) bool {
+	if latestDirectorQueueSignal(comments).Kind != directorQueueSignalRedispatch {
+		return false
+	}
+	// A live engineer on the issue means the marker is already being handled: its
+	// run posts an outcome (a newer signal) when it finishes.
+	if strings.TrimSpace(r.backlogRunningContainer(ctx, tr, e.Num)) != "" {
+		return false
+	}
+	if e.RedispatchAttempts >= redispatchAttemptCap {
+		if e.State == "blocked" {
+			return false
+		}
+		e.State = "blocked"
+		e.LastOutcome = &backlogOutcome{
+			Status: "redispatch-cap-reached",
+			Text: fmt.Sprintf("needs-redispatch marker swept %d× without a completed run (ward#1149); "+
+				"re-dispatch cap reached - fix the failing dispatch or re-dispatch by hand", e.RedispatchAttempts),
+		}
+		fmt.Fprintf(os.Stderr, "  %s#%d -> blocked (needs-redispatch sweep cap reached)\n", repo, e.Num)
+		return true
+	}
+	e.RedispatchAttempts++
+	e.State = "queued"
+	e.Container = ""
+	e.DispatchedAt = ""
+	e.LastOutcome = &backlogOutcome{
+		Status: "needs-redispatch-requeued",
+		Text: fmt.Sprintf("unhandled needs-redispatch marker on the thread; re-queued for re-dispatch "+
+			"(attempt %d/%d, ward#1149)", e.RedispatchAttempts, redispatchAttemptCap),
+	}
+	fmt.Fprintf(os.Stderr, "  %s#%d -> queued (needs-redispatch marker swept, attempt %d/%d)\n", repo, e.Num, e.RedispatchAttempts, redispatchAttemptCap)
+	return true
 }
 
 func backlogRefreshReservationTracked(e *backlogEntry) bool {
