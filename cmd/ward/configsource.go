@@ -158,6 +158,14 @@ func selectConfigSource() (configSource, error) {
 		}
 		return src, nil
 	}
+	src, err := remoteConfigSource(ref)
+	if err != nil {
+		return configSource{}, err
+	}
+	return src, nil
+}
+
+func remoteConfigSource(ref string) (configSource, error) {
 	dir, isFile := strings.CutPrefix(ref, "file://")
 	if !isFile {
 		// The git-ref grammar (ward#654): parse, then sync through the shared
