@@ -8,6 +8,7 @@ smart-defaults {
     agent-image "forgejo.coilysiren.me/coilyco-flight-deck/agentic-os-full"
     agent-tag latest
     engineer-container-limit "12"
+    engineer-repo-working-limit "3"
     engineer-open-pr-branch-limit "6"
     director-max-parallel "10"
     director-limit "50"

@@ -45,6 +45,7 @@ func writeFleetBundle(t *testing.T, dir, body string) {
     agent-reap-idle "1h"
     agent-reap-max-cpu "5.0"
     engineer-container-limit "12"
+    engineer-repo-working-limit "3"
     engineer-open-pr-branch-limit "6"
     director-max-parallel "10"
     director-limit "50"

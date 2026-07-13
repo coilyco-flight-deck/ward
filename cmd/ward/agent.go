@@ -2034,6 +2034,9 @@ func (r *Runner) launchAgentContainer(ctx context.Context, c *cli.Command, mode 
 	if err := r.maybeLaunchOpenPRBackpressure(ctx, label, w.Ref.repoSlug(), c, w); err != nil {
 		return err
 	}
+	if err := r.maybeLaunchRepoEngineerBackpressure(ctx, label, w.Ref.repoSlug(), c); err != nil {
+		return err
+	}
 	if !c.Bool("print") {
 		if err := r.enforceEngineerContainerLimit(ctx, label, c.Bool("override-capacity")); err != nil {
 			return err
@@ -2071,10 +2074,23 @@ func (r *Runner) launchAgentContainer(ctx context.Context, c *cli.Command, mode 
 	// the comment so a pre-launch-gate death self-documents on the thread (ward#609).
 	seedCtx := buildReservationSeedContext(w, plan, time.Now().UTC())
 	var release func()
-	if err := r.withAgentReservationLock(ref, func() error {
-		var reserveErr error
-		release, reserveErr = r.reserveIssue(ctx, label, mode, ref, plan.Name, plan.Branch, justification, seedCtx, overrideReservation(c), plan.SkipPreflight)
-		return reserveErr
+	if err := r.withAgentRepoLaunchLock(w.Ref.repoSlug(), func() error {
+		if err := r.launchOpenPRBackpressureCheck(ctx, label, w.Ref.repoSlug(), openPRBackpressureApplies(c, w)); err != nil {
+			return err
+		}
+		if err := r.launchRepoEngineerBackpressureCheck(ctx, label, w.Ref.repoSlug()); err != nil {
+			return err
+		}
+		if !c.Bool("print") {
+			if err := r.enforceEngineerContainerLimit(ctx, label, c.Bool("override-capacity")); err != nil {
+				return err
+			}
+		}
+		return r.withAgentReservationLock(ref, func() error {
+			var reserveErr error
+			release, reserveErr = r.reserveIssue(ctx, label, mode, ref, plan.Name, plan.Branch, justification, seedCtx, overrideReservation(c), plan.SkipPreflight)
+			return reserveErr
+		})
 	}); err != nil {
 		return err
 	}

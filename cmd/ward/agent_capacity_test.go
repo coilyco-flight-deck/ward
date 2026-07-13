@@ -2,12 +2,16 @@ package main
 
 import (
 	"context"
+	"encoding/json"
 	"errors"
 	"fmt"
+	"net/http"
+	"net/http/httptest"
 	"os"
 	"path/filepath"
 	"strings"
 	"testing"
+	"time"
 
 	"github.com/urfave/cli/v3"
 )
@@ -28,6 +32,33 @@ func engineerCountDockerStub(t *testing.T, count int) string {
 	if err := os.WriteFile(stub, []byte(b.String()), 0o755); err != nil { //nolint:gosec
 		t.Fatalf("write docker stub: %v", err)
 	}
+	t.Setenv("PATH", filepath.Dir(stub)+string(os.PathListSeparator)+os.Getenv("PATH"))
+	return stub
+}
+
+func engineerRepoAndGlobalCountDockerStub(t *testing.T, repo string, repoCount, globalCount int) string {
+	t.Helper()
+	stub := filepath.Join(t.TempDir(), "docker")
+	var b strings.Builder
+	b.WriteString("#!/bin/sh\n")
+	b.WriteString("if [ \"$1\" = ps ] && [ \"$2\" = --format ] && [ \"$3\" = '{{.Names}}' ] && [ \"$4\" = --filter ] && [ \"$5\" = label=ward=true ] && [ \"$6\" = --filter ] && [ \"$7\" = label=ward.role=engineer ] && [ \"$8\" = --filter ] && [ \"$9\" = label=ward.repo=" + repo + " ]; then\n")
+	for i := 0; i < repoCount; i++ {
+		fmt.Fprintf(&b, "  printf '%%s\\n' %s\n", shellQuote(fmt.Sprintf("engineer-%02d", i+1)))
+	}
+	b.WriteString("  exit 0\n")
+	b.WriteString("fi\n")
+	b.WriteString("if [ \"$1\" = ps ] && [ \"$2\" = --format ] && [ \"$3\" = '{{.Names}}' ] && [ \"$4\" = --filter ] && [ \"$5\" = label=ward=true ] && [ \"$6\" = --filter ] && [ \"$7\" = label=ward.role=engineer ]; then\n")
+	for i := 0; i < globalCount; i++ {
+		fmt.Fprintf(&b, "  printf '%%s\\n' %s\n", shellQuote(fmt.Sprintf("engineer-%02d", i+1)))
+	}
+	b.WriteString("  exit 0\n")
+	b.WriteString("fi\n")
+	b.WriteString("printf '%s\\n' \"unexpected docker args: $*\" >&2\n")
+	b.WriteString("exit 1\n")
+	if err := os.WriteFile(stub, []byte(b.String()), 0o755); err != nil { //nolint:gosec
+		t.Fatalf("write docker stub: %v", err)
+	}
+	t.Setenv("PATH", filepath.Dir(stub)+string(os.PathListSeparator)+os.Getenv("PATH"))
 	return stub
 }
 
@@ -132,6 +163,7 @@ func TestEngineerContainerLimitFromBundleOverride(t *testing.T) {
     agent-reap-idle "1h"
     agent-reap-max-cpu "5.0"
     engineer-container-limit "15"
+    engineer-repo-working-limit "3"
     engineer-open-pr-branch-limit "6"
     director-max-parallel "10"
     director-limit "50"
@@ -180,7 +212,7 @@ func TestEngineerContainerLimitFromBundleOverride(t *testing.T) {
 
 func TestLaunchAgentContainerRejectsAtLimitWithoutReservation(t *testing.T) {
 	t.Setenv("HOME", t.TempDir())
-	r, _, _ := bufRunner(engineerCountDockerStub(t, engineerContainerLimitDefault()))
+	r, _, _ := bufRunner(engineerRepoAndGlobalCountDockerStub(t, "coilyco-flight-deck/ward", 0, engineerContainerLimitDefault()))
 	ref := agentIssueRef{Owner: "coilyco-flight-deck", Repo: "ward", Number: 884}
 	path, err := agentReservationPath(ref)
 	if err != nil {
@@ -203,5 +235,68 @@ func TestLaunchAgentContainerRejectsAtLimitWithoutReservation(t *testing.T) {
 	}
 	if _, ok, _ := readAgentReservation(path); ok {
 		t.Fatal("launchAgentContainer at limit should not reserve the issue")
+	}
+}
+
+func TestLaunchAgentContainerRejectsAtRepoWorkingLimitWithoutReservation(t *testing.T) {
+	t.Setenv("HOME", t.TempDir())
+
+	oldBase := forgejoBaseURL
+	defer func() { forgejoBaseURL = oldBase }()
+	mux := http.NewServeMux()
+	mux.HandleFunc("/api/v1/repos/coilyco-flight-deck/ward/issues", func(w http.ResponseWriter, r *http.Request) {
+		if r.URL.Query().Get("type") != "pulls" {
+			t.Fatalf("unexpected issue feed query: %s", r.URL.RawQuery)
+		}
+		_ = json.NewEncoder(w).Encode([]map[string]any{})
+	})
+	srv := httptest.NewServer(mux)
+	defer srv.Close()
+	forgejoBaseURL = srv.URL
+
+	r, _, _ := bufRunner(engineerRepoAndGlobalCountDockerStub(t, "coilyco-flight-deck/ward", engineerRepoWorkingLimitDefault()-1, 0))
+	ref := agentIssueRef{Owner: "coilyco-flight-deck", Repo: "ward", Number: 885}
+	path, err := agentReservationPath(ref)
+	if err != nil {
+		t.Fatalf("agentReservationPath: %v", err)
+	}
+	if _, ok, _ := readAgentReservation(path); ok {
+		t.Fatalf("reservation unexpectedly existed before the launch")
+	}
+
+	reservationPath, err := agentReservationPath(agentIssueRef{Owner: "coilyco-flight-deck", Repo: "ward", Number: 883})
+	if err != nil {
+		t.Fatalf("agentReservationPath: %v", err)
+	}
+	if err := writeAgentReservation(reservationPath, agentReservation{
+		Owner:     "coilyco-flight-deck",
+		Repo:      "ward",
+		Number:    883,
+		Mode:      "codex",
+		Container: "reserved-engineer-03",
+		Branch:    "main",
+		Host:      "test-host",
+		PID:       1234,
+		At:        time.Now().UTC(),
+	}); err != nil {
+		t.Fatalf("writeAgentReservation: %v", err)
+	}
+
+	err = r.launchAgentContainer(context.Background(), &cli.Command{}, modeClaude, "engineer", resolvedWork{
+		Ref:   ref,
+		Title: "limit test",
+		Seed:  "seed",
+	}, "")
+	if err == nil {
+		t.Fatal("launchAgentContainer at repo working limit: want error, got nil")
+	}
+	if !isEngineerRepoWorkingBackpressureError(err) {
+		t.Fatalf("launchAgentContainer at repo working limit returned %T, want repo backpressure", err)
+	}
+	if !strings.Contains(err.Error(), "repo engineer limit is reached") {
+		t.Fatalf("launchAgentContainer at repo working limit error = %v", err)
+	}
+	if _, ok, _ := readAgentReservation(path); ok {
+		t.Fatal("launchAgentContainer at repo working limit should not reserve the issue")
 	}
 }

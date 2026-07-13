@@ -43,6 +43,7 @@ func TestSmartDefaultsFromBundleSource(t *testing.T) {
     agent-image "ghcr.io/example/ward-agent"
     agent-tag "2026.07"
     engineer-container-limit "17"
+    engineer-repo-working-limit "3"
     engineer-open-pr-branch-limit "8"
     director-max-parallel "13"
     director-limit "77"
@@ -81,7 +82,7 @@ func TestSmartDefaultsFromBundleSource(t *testing.T) {
 	if defs.agentImage != "ghcr.io/example/ward-agent" || defs.agentTag != "2026.07" {
 		t.Errorf("bundle agent image/tag = %q:%q", defs.agentImage, defs.agentTag)
 	}
-	if defs.engineerContainerLimit != 17 || defs.directorMaxParallel != 13 || defs.directorLimit != 77 || defs.directorPollInterval != 45*time.Second {
+	if defs.engineerContainerLimit != 17 || defs.engineerRepoWorkingLimit != 3 || defs.directorMaxParallel != 13 || defs.directorLimit != 77 || defs.directorPollInterval != 45*time.Second {
 		t.Errorf("bundle director defaults = %+v", defs)
 	}
 	if defs.engineerOpenPRBranchLimit != 8 {

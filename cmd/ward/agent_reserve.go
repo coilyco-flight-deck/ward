@@ -151,6 +151,16 @@ func agentReservationLockPath(ref agentIssueRef) (string, error) {
 	return strings.TrimSuffix(path, ".json") + ".lock", nil
 }
 
+// agentRepoLaunchLockPath resolves the repo-scoped `.lock` sibling under the
+// reservation directory. It serializes repo-wide launch gating before reserve.
+func agentRepoLaunchLockPath(repo string) (string, error) {
+	dir, err := config.GlobalDir()
+	if err != nil {
+		return "", err
+	}
+	return filepath.Join(dir, agentReservationsSubdir, config.SanitizeSlug("repo-"+strings.TrimSpace(repo))) + ".lock", nil
+}
+
 // withAgentReservationLock runs fn under an exclusive flock for ref.
 // A lock failure is terminal here because reservation authority must serialize.
 func (r *Runner) withAgentReservationLock(ref agentIssueRef, fn func() error) error {
@@ -168,6 +178,28 @@ func (r *Runner) withAgentReservationLock(ref agentIssueRef, fn func() error) er
 	defer func() { _ = f.Close() }()
 	if err := flock.Exclusive(f); err != nil {
 		return fmt.Errorf("lock reservation %s: %w", path, err)
+	}
+	defer func() { _ = flock.Unlock(f) }()
+	return fn()
+}
+
+// withAgentRepoLaunchLock runs fn under an exclusive flock for one repo so the
+// repo-working cap and reservation acquisition serialize across concurrent launches.
+func (r *Runner) withAgentRepoLaunchLock(repo string, fn func() error) error {
+	path, err := agentRepoLaunchLockPath(repo)
+	if err != nil {
+		return err
+	}
+	if err := os.MkdirAll(filepath.Dir(path), 0o700); err != nil {
+		return err
+	}
+	f, err := os.OpenFile(path, os.O_CREATE|os.O_RDWR, 0o644) // #nosec G304 -- ward-derived lock path under ~/.ward
+	if err != nil {
+		return err
+	}
+	defer func() { _ = f.Close() }()
+	if err := flock.Exclusive(f); err != nil {
+		return fmt.Errorf("lock repo launch %s: %w", path, err)
 	}
 	defer func() { _ = flock.Unlock(f) }()
 	return fn()

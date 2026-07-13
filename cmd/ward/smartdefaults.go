@@ -25,6 +25,7 @@ type smartDefaults struct {
 	agentImage                    string
 	agentTag                      string
 	engineerContainerLimit        int
+	engineerRepoWorkingLimit      int
 	engineerOpenPRBranchLimit     int
 	directorMaxParallel           int
 	directorLimit                 int
@@ -66,6 +67,7 @@ func bakedSmartDefaults() smartDefaults {
 		agentImage:                    containerImageDefault,
 		agentTag:                      containerImageTagDefault,
 		engineerContainerLimit:        12,
+		engineerRepoWorkingLimit:      3,
 		engineerOpenPRBranchLimit:     6,
 		directorMaxParallel:           10,
 		directorLimit:                 50,
@@ -323,6 +325,12 @@ func applySmartDefaultNode(defs *smartDefaults, n *kdl.Node) error { //nolint:go
 			return err
 		}
 		defs.engineerContainerLimit = v
+	case "engineer-repo-working-limit":
+		v, err := smartDefaultsIntArg(n, "smart-defaults > engineer-repo-working-limit")
+		if err != nil {
+			return err
+		}
+		defs.engineerRepoWorkingLimit = v
 	case "engineer-open-pr-branch-limit":
 		v, err := smartDefaultsIntArg(n, "smart-defaults > engineer-open-pr-branch-limit")
 		if err != nil {
@@ -383,7 +391,7 @@ func applySmartDefaultNode(defs *smartDefaults, n *kdl.Node) error { //nolint:go
 		}
 	default:
 		return unknownSmartDefaultsNode("smart-defaults body", n.Name(),
-			"agent-reservation-ttl | agent-reservation-recheck-max | agent-reap-idle | agent-reap-max-cpu | agent-image | agent-tag | engineer-container-limit | engineer-open-pr-branch-limit | director-max-parallel | director-limit | director-poll-interval | reviewer-timeout | config-bundle-ttl | container-assets-ttl | container-read-only-extra-repo-ttl | container-reap-keep | agent-workflow")
+			"agent-reservation-ttl | agent-reservation-recheck-max | agent-reap-idle | agent-reap-max-cpu | agent-image | agent-tag | engineer-container-limit | engineer-repo-working-limit | engineer-open-pr-branch-limit | director-max-parallel | director-limit | director-poll-interval | reviewer-timeout | config-bundle-ttl | container-assets-ttl | container-read-only-extra-repo-ttl | container-reap-keep | agent-workflow")
 	}
 	return nil
 }
@@ -882,6 +890,8 @@ func agentTagDefault() string {
 }
 
 func engineerContainerLimitDefault() int { return currentSmartDefaults().engineerContainerLimit }
+
+func engineerRepoWorkingLimitDefault() int { return currentSmartDefaults().engineerRepoWorkingLimit }
 
 func engineerOpenPRBranchLimitDefault() int { return currentSmartDefaults().engineerOpenPRBranchLimit }
 
