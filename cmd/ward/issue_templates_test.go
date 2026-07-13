@@ -7,17 +7,15 @@ import (
 	"testing"
 )
 
-// TestNoForgejoIssueTemplateSurface fails if a Forgejo-facing issue template
-// directory appears under .forgejo. GitHub issue forms stay GitHub-only.
-func TestNoForgejoIssueTemplateSurface(t *testing.T) {
+// TestNoIssueTemplateSurface fails if any issue template surface comes back.
+func TestNoIssueTemplateSurface(t *testing.T) {
 	root := filepath.Clean(filepath.Join("..", ".."))
-	forgejoRoot := filepath.Join(root, ".forgejo")
-	if _, err := os.Stat(forgejoRoot); err != nil {
-		t.Fatalf("stat %s: %v", forgejoRoot, err)
+	if _, err := os.Stat(root); err != nil {
+		t.Fatalf("stat %s: %v", root, err)
 	}
 
 	var hits []string
-	err := filepath.WalkDir(forgejoRoot, func(path string, _ os.DirEntry, err error) error {
+	err := filepath.WalkDir(root, func(path string, _ os.DirEntry, err error) error {
 		if err != nil {
 			return err
 		}
@@ -27,9 +25,9 @@ func TestNoForgejoIssueTemplateSurface(t *testing.T) {
 		return nil
 	})
 	if err != nil {
-		t.Fatalf("walk %s: %v", forgejoRoot, err)
+		t.Fatalf("walk %s: %v", root, err)
 	}
 	if len(hits) > 0 {
-		t.Fatalf("Forgejo-side structured issue templates must not live under .forgejo: %v", hits)
+		t.Fatalf("issue templates must not live in the repository: %v", hits)
 	}
 }
