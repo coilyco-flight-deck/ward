@@ -90,7 +90,7 @@ func pullRequestPathSegment(f forge) string {
 // trackerOrDefault resolves the issue-thread port, defaulting to the host's
 // paired tracker when the field is left zero.
 func (r agentIssueRef) trackerOrDefault() tracker {
-	if r.Tracker == trackerGitHub || r.Tracker == trackerForgejo {
+	if r.Tracker == trackerGitHub || r.Tracker == trackerGitLab || r.Tracker == trackerShortcut || r.Tracker == trackerForgejo {
 		return r.Tracker
 	}
 	return trackerFromForge(r.Forge)
@@ -2034,7 +2034,7 @@ func (r *Runner) launchAgentContainer(ctx context.Context, c *cli.Command, mode 
 	if err := r.maybeLaunchOpenPRBackpressure(ctx, label, w.Ref.repoSlug(), c, w); err != nil {
 		return err
 	}
-	if err := r.maybeLaunchRepoEngineerBackpressure(ctx, label, w.Ref.repoSlug(), c); err != nil {
+	if err := r.maybeLaunchRepoEngineerBackpressure(ctx, label, w.Ref, c); err != nil {
 		return err
 	}
 	if !c.Bool("print") {
@@ -2078,7 +2078,7 @@ func (r *Runner) launchAgentContainer(ctx context.Context, c *cli.Command, mode 
 		if err := r.launchOpenPRBackpressureCheck(ctx, label, w.Ref.repoSlug(), openPRBackpressureApplies(c, w)); err != nil {
 			return err
 		}
-		if err := r.launchRepoEngineerBackpressureCheck(ctx, label, w.Ref.repoSlug()); err != nil {
+		if err := r.launchRepoEngineerBackpressureCheck(ctx, label, w.Ref); err != nil {
 			return err
 		}
 		if !c.Bool("print") {
