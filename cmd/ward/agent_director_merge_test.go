@@ -115,6 +115,13 @@ func TestDirectorLinkedIssueNumber(t *testing.T) {
 func TestMergePullRequestRequestShape(t *testing.T) {
 	var gotToken, gotMethod, gotPath string
 	srv := httptest.NewServer(http.HandlerFunc(func(w http.ResponseWriter, r *http.Request) {
+		if r.URL.Path == "/api/v1/repos/coilyco-flight-deck/ward" {
+			_, _ = w.Write([]byte(`{"allow_merge_commits":true,"default_merge_style":"merge"}`))
+			return
+		}
+		if r.URL.Path != "/api/v1/repos/coilyco-flight-deck/ward/pulls/729/merge" {
+			t.Fatalf("path = %q, want merge endpoint", r.URL.Path)
+		}
 		gotToken = r.Header.Get("Authorization")
 		gotMethod = r.Method
 		gotPath = r.URL.Path
@@ -164,6 +171,10 @@ func TestMergePullRequestRefusesFromReadOnlySurface(t *testing.T) {
 func TestMergePullRequestWithHeadPinsHeadCommitID(t *testing.T) {
 	var gotBody map[string]string
 	srv := httptest.NewServer(http.HandlerFunc(func(w http.ResponseWriter, r *http.Request) {
+		if r.URL.Path == "/api/v1/repos/coilyco-flight-deck/ward" {
+			_, _ = w.Write([]byte(`{"allow_merge_commits":true,"default_merge_style":"merge"}`))
+			return
+		}
 		if r.URL.Path != "/api/v1/repos/coilyco-flight-deck/ward/pulls/729/merge" {
 			t.Fatalf("path = %q, want merge endpoint", r.URL.Path)
 		}
