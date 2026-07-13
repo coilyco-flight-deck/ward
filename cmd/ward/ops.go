@@ -107,6 +107,7 @@ func buildForgejoOpsFrom(src configSource) (*cli.Command, error) {
 	r.overrideForgejoCreateIssue(forgejo)
 	r.overrideForgejoCommentIssue(forgejo)
 	r.overrideForgejoActionsLogs(forgejo)
+	r.overrideForgejoActionsGenerateRunnerToken(forgejo)
 	return forgejo, nil
 }
 
@@ -354,14 +355,7 @@ func (r *Runner) overrideForgejoCommentIssue(forgejo *cli.Command) {
 // overrideForgejoActionsLogs adds the raw actions log fetch leaf that the
 // generated surface currently cannot express without a shell bridge.
 func (r *Runner) overrideForgejoActionsLogs(forgejo *cli.Command) {
-	actions := subCommandNamed(forgejo, "actions")
-	if actions == nil {
-		actions = &cli.Command{
-			Name:  "actions",
-			Usage: "Forgejo Actions endpoints",
-		}
-		forgejo.Commands = append(forgejo.Commands, actions)
-	}
+	actions := ensureForgejoActionsGroup(forgejo)
 	if subCommandNamed(actions, "logs") != nil {
 		return
 	}
@@ -377,6 +371,50 @@ func (r *Runner) overrideForgejoActionsLogs(forgejo *cli.Command) {
 			Action:     r.runForgejoActionsLogs,
 		}, r.Audit),
 	})
+}
+
+// overrideForgejoActionsGenerateRunnerToken adds the runner-token mint leaf the
+// director and ops surfaces need for Forgejo runner registration bootstrap.
+func (r *Runner) overrideForgejoActionsGenerateRunnerToken(forgejo *cli.Command) {
+	actions := ensureForgejoActionsGroup(forgejo)
+	if subCommandNamed(actions, "generate-runner-token") != nil {
+		return
+	}
+	actions.Commands = append(actions.Commands, &cli.Command{
+		Name:      "generate-runner-token",
+		Usage:     "Generate a Forgejo runner registration token",
+		ArgsUsage: "[--scope SCOPE]",
+		Description: "Generate a Forgejo runner registration token by exec'ing the " +
+			"Forgejo CLI inside the forgejo pod, then stream the token to stdout. " +
+			"--scope restricts the token to {owner}[/{repo}]; omit it for a global runner.",
+		Flags: []cli.Flag{
+			&cli.StringFlag{
+				Name:    "scope",
+				Aliases: []string{"s"},
+				Usage:   "{owner}[/{repo}] scope for the runner token; omit for a global runner",
+			},
+		},
+		Action: r.WrapVerb(verb.Spec{
+			Name:       "ward.ops.forgejo.actions.generate-runner-token",
+			SkipPolicy: true,
+			ArgsFunc:   func(c *cli.Command) (map[string]string, []string) { return nil, c.Args().Slice() },
+			Action:     r.runForgejoActionsGenerateRunnerToken,
+		}, r.Audit),
+	})
+}
+
+// ensureForgejoActionsGroup returns the forgejo actions group, creating the
+// manual surface shell when the spec-generated tree did not mount it.
+func ensureForgejoActionsGroup(forgejo *cli.Command) *cli.Command {
+	actions := subCommandNamed(forgejo, "actions")
+	if actions == nil {
+		actions = &cli.Command{
+			Name:  "actions",
+			Usage: "Forgejo Actions endpoints",
+		}
+		forgejo.Commands = append(forgejo.Commands, actions)
+	}
+	return actions
 }
 
 // runForgejoCommentIssueBodyFile resolves `--body-file` into `--body`, then
@@ -426,6 +464,20 @@ func (r *Runner) runForgejoActionsLogs(ctx context.Context, cmd *cli.Command) er
 		return fmt.Errorf("ward ops forgejo actions logs: write stdout: %w", err)
 	}
 	return nil
+}
+
+// runForgejoActionsGenerateRunnerToken shells into the Forgejo pod and streams
+// the runner registration token that forgejo actions generate-runner-token emits.
+func (r *Runner) runForgejoActionsGenerateRunnerToken(ctx context.Context, cmd *cli.Command) error {
+	if args := cmd.Args().Slice(); len(args) != 0 {
+		return fmt.Errorf("ward ops forgejo actions generate-runner-token: unexpected positional args %v", args)
+	}
+	scope := strings.TrimSpace(cmd.String("scope"))
+	argv := []string{"-n", "forgejo", "exec", "deploy/forgejo", "--", "forgejo", "actions", "generate-runner-token"}
+	if scope != "" {
+		argv = append(argv, "--scope", scope)
+	}
+	return r.Runner.Exec(ctx, "kubectl", argv...)
 }
 
 // rerootGroupToWard rewrites a parsed guardfile's leading group token from the

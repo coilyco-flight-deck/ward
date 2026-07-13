@@ -112,7 +112,7 @@ func TestRunExecGateIntegration(t *testing.T) {
 
 	t.Run("clean synced tree passes", func(t *testing.T) {
 		repo := newSyncedRepo(t)
-		state, used, err := runExecGate(rootCmd(false), repo, filepath.Join(repo, ".ward", "ward.yaml"), "repo.test")
+		state, used, err := runExecGate(rootCmd(false), repo, filepath.Join(repo, ".ward", "ward.yaml"), "repo.test", false)
 		if err != nil {
 			t.Fatalf("clean tree refused: %v", err)
 		}
@@ -127,7 +127,7 @@ func TestRunExecGateIntegration(t *testing.T) {
 	t.Run("dirt outside ward.yaml passes and captures status", func(t *testing.T) {
 		repo := newSyncedRepo(t)
 		writeFile(t, filepath.Join(repo, "scratch.txt"), "dirty\n")
-		state, used, err := runExecGate(rootCmd(false), repo, filepath.Join(repo, ".ward", "ward.yaml"), "repo.test")
+		state, used, err := runExecGate(rootCmd(false), repo, filepath.Join(repo, ".ward", "ward.yaml"), "repo.test", false)
 		if err != nil {
 			t.Fatalf("dirt outside config refused: %v", err)
 		}
@@ -142,7 +142,7 @@ func TestRunExecGateIntegration(t *testing.T) {
 	t.Run("dirty ward.yaml refuses without override", func(t *testing.T) {
 		repo := newSyncedRepo(t)
 		writeFile(t, filepath.Join(repo, ".ward", "ward.yaml"), "commands: {}\n# dirty\n")
-		_, _, err := runExecGate(rootCmd(false), repo, filepath.Join(repo, ".ward", "ward.yaml"), "repo.test")
+		_, _, err := runExecGate(rootCmd(false), repo, filepath.Join(repo, ".ward", "ward.yaml"), "repo.test", false)
 		if err == nil {
 			t.Fatalf("expected refusal when ward.yaml is dirty")
 		}
@@ -151,7 +151,7 @@ func TestRunExecGateIntegration(t *testing.T) {
 	t.Run("override bypasses a dirty ward.yaml", func(t *testing.T) {
 		repo := newSyncedRepo(t)
 		writeFile(t, filepath.Join(repo, ".ward", "ward.yaml"), "commands: {}\n# dirty\n")
-		state, used, err := runExecGate(rootCmd(true), repo, filepath.Join(repo, ".ward", "ward.yaml"), "repo.test")
+		state, used, err := runExecGate(rootCmd(true), repo, filepath.Join(repo, ".ward", "ward.yaml"), "repo.test", false)
 		if err != nil {
 			t.Fatalf("override should bypass the gate: %v", err)
 		}
@@ -160,6 +160,30 @@ func TestRunExecGateIntegration(t *testing.T) {
 		}
 		if state.Status == "" {
 			t.Fatalf("expected captured working-tree status under override")
+		}
+	})
+
+	t.Run("read-only surface-check skips upstream fetch", func(t *testing.T) {
+		repo := t.TempDir()
+		git(t, repo, "init", "-b", "main", ".")
+		git(t, repo, "config", "user.email", "test@example.com")
+		git(t, repo, "config", "user.name", "ward test")
+		if err := os.MkdirAll(filepath.Join(repo, ".ward"), 0o755); err != nil {
+			t.Fatal(err)
+		}
+		writeFile(t, filepath.Join(repo, ".ward", "ward.yaml"), "commands: {}\n")
+		git(t, repo, "add", ".")
+		git(t, repo, "commit", "-m", "seed")
+
+		state, used, err := runExecGate(rootCmd(false), repo, filepath.Join(repo, ".ward", "ward.yaml"), "repo.surface-check", true)
+		if err != nil {
+			t.Fatalf("read-only surface-check refused: %v", err)
+		}
+		if used {
+			t.Fatalf("override should be false on the read-only pass")
+		}
+		if !state.Clean {
+			t.Fatalf("expected clean read-only state, got %+v", state)
 		}
 	})
 }

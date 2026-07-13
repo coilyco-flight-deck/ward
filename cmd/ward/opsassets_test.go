@@ -92,6 +92,24 @@ func TestOpsForgejoPrEditMounts(t *testing.T) {
 	}
 }
 
+func TestOpsForgejoActionsGenerateRunnerTokenMounts(t *testing.T) {
+	dir := writeBundleFixture(t)
+	t.Setenv(wardConfigRefEnv, "file://"+dir)
+	forgejo, err := buildForgejoOps()
+	if err != nil {
+		t.Fatalf("buildForgejoOps: %v", err)
+	}
+	actions := commandNamed(forgejo.Commands, "actions")
+	if actions == nil {
+		t.Fatalf("forgejo group missing actions command; got %v", commandNames(forgejo.Commands))
+	}
+	if mint := commandNamed(actions.Commands, "generate-runner-token"); mint == nil {
+		t.Fatalf("actions command missing generate-runner-token; got %v", commandNames(actions.Commands))
+	} else if !strings.Contains(mint.Usage, "runner registration token") {
+		t.Fatalf("actions generate-runner-token usage = %q, want runner-token wording", mint.Usage)
+	}
+}
+
 // TestOpsCommandShape asserts the umbrella mounts forgejo under `ops`, the shape
 // main.go registers.
 func TestOpsCommandShape(t *testing.T) {

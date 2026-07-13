@@ -95,6 +95,9 @@ Inventory of what `ward` ships today.
 - It accepts `first input` as exec-guard sugar for `arg0`, and ward injects the
   raw Forgejo Actions log fetch leaf directly into the shipped `ward ops
   forgejo` surface.
+- The embedded Forgejo surface also includes the runner-token mint leaf, so
+  operators can call `ward ops forgejo actions generate-runner-token` without
+  falling back to a shell bridge.
 - The embedded Forgejo surface now includes a PR-native edit leaf, so merge-gate
   body/title updates can target `/pulls/{index}` without falling back to issue
   edit.
