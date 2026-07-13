@@ -169,6 +169,76 @@ func TestSelectConfigSourceFileRef(t *testing.T) {
 	}
 }
 
+func TestSelectConfigSourceLocalFilePath(t *testing.T) {
+	file := writeSingleFileBundleFixture(t)
+	abs, err := filepath.Abs(file)
+	if err != nil {
+		t.Fatalf("abs(%s): %v", file, err)
+	}
+	rel, err := filepath.Rel(resolveInvokeCWD(), abs)
+	if err != nil {
+		t.Fatalf("rel(%s): %v", abs, err)
+	}
+	for _, tc := range []struct {
+		name string
+		ref  string
+	}{
+		{name: "absolute", ref: abs},
+		{name: "relative", ref: rel},
+	} {
+		t.Run(tc.name, func(t *testing.T) {
+			t.Setenv(wardConfigRefEnv, tc.ref)
+			src, err := selectConfigSource()
+			if err != nil {
+				t.Fatalf("selectConfigSource(%s): %v", tc.ref, err)
+			}
+			if src.execDir != filepath.Base(abs) {
+				t.Errorf("bundle exec root = %q, want %q", src.execDir, filepath.Base(abs))
+			}
+			if !src.execMixedDialects {
+				t.Error("single-file bundle must dialect-filter its exec scan")
+			}
+			for _, load := range []struct {
+				name string
+				fn   func(configSource) error
+			}{
+				{
+					name: "fleet",
+					fn: func(src configSource) error {
+						_, err := loadRawFleetConfigFrom(src)
+						return err
+					},
+				},
+				{
+					name: "smart-defaults",
+					fn: func(src configSource) error {
+						_, err := loadSmartDefaultsFrom(src)
+						return err
+					},
+				},
+				{
+					name: "topology",
+					fn: func(src configSource) error {
+						_, err := loadContainerTopologyFrom(src)
+						return err
+					},
+				},
+				{
+					name: "ops",
+					fn: func(src configSource) error {
+						_, err := buildForgejoOpsFrom(src)
+						return err
+					},
+				},
+			} {
+				if err := load.fn(src); err != nil {
+					t.Fatalf("load %s from %s: %v", load.name, tc.ref, err)
+				}
+			}
+		})
+	}
+}
+
 // TestSelectConfigSourceFileRefCapturesRevision pins the audit-integrity seam:
 // when a local bundle is itself a git checkout, ward records its HEAD sha.
 func TestSelectConfigSourceFileRefCapturesRevision(t *testing.T) {
