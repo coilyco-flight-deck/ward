@@ -810,6 +810,7 @@ func (r *Runner) releaseReservationIfUnstarted(ctx context.Context, env reapEnv)
 	if err := fc.unlockIssue(ctx, env.Owner, env.Name, env.Issue); err != nil && !errors.Is(err, errForgeLockUnsupported) {
 		fmt.Fprintf(os.Stderr, "ward container reap: could not unlock issue #%d after release: %v\n", env.Issue, err)
 	}
+	deleteTransientWorkflowComments(ctx, fc, agentIssueRef{Owner: env.Owner, Repo: env.Name, Number: env.Issue}, time.Now().UTC())
 	fmt.Fprintf(os.Stderr, "ward container reap: released issue reservation on #%d (container exited pre-launch, did no work)\n", env.Issue)
 }
 
@@ -856,6 +857,7 @@ func releaseReservationIfTerminalOutcomeComment(ctx context.Context, fc Tracker,
 	if err := fc.unlockIssue(ctx, env.Owner, env.Name, env.Issue); err != nil && !errors.Is(err, errForgeLockUnsupported) {
 		return fmt.Errorf("could not unlock issue #%d after terminal outcome release: %w", env.Issue, err)
 	}
+	deleteTransientWorkflowComments(ctx, fc, agentIssueRef{Owner: env.Owner, Repo: env.Name, Number: env.Issue}, outcome.CreatedAt)
 	fmt.Fprintf(os.Stderr, "ward container reap: released issue reservation on #%d after terminal outcome %s\n", env.Issue, o.Status)
 	return nil
 }

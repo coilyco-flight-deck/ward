@@ -177,7 +177,6 @@ func workflowReservationHeldVisible() string { return workflowCommentVisible("re
 func workflowReservationReleasedVisible() string {
 	return workflowCommentVisible("reservation-released")
 }
-func workflowDispatchFailedVisible() string   { return workflowCommentVisible("dispatch-failed") }
 func workflowDispatchDeferredVisible() string { return workflowCommentVisible("dispatch-deferred") }
 func workflowReviewVisible(status string) string {
 	switch strings.ToLower(strings.TrimSpace(status)) {

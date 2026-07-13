@@ -49,8 +49,8 @@ func TestGHIssuePath(t *testing.T) {
 // timestamp degrading to the zero time rather than dropping the row.
 func TestGHCommentsToIssueComments(t *testing.T) {
 	raw := []ghComment{
-		{Body: "first", CreatedAt: "2026-07-01T10:00:00Z"},
-		{Body: "second", CreatedAt: "not-a-time"},
+		{ID: 1, Body: "first", CreatedAt: "2026-07-01T10:00:00Z"},
+		{ID: 2, Body: "second", CreatedAt: "not-a-time"},
 	}
 	raw[0].User.Login = "alice"
 	raw[1].User.Login = "bob"
@@ -58,7 +58,7 @@ func TestGHCommentsToIssueComments(t *testing.T) {
 	if len(got) != 2 {
 		t.Fatalf("mapped %d comments, want 2", len(got))
 	}
-	if got[0].Body != "first" || got[0].User.Login != "alice" {
+	if got[0].ID != 1 || got[0].Body != "first" || got[0].User.Login != "alice" {
 		t.Errorf("comment 0 = %+v", got[0])
 	}
 	if !got[0].CreatedAt.Equal(time.Date(2026, 7, 1, 10, 0, 0, 0, time.UTC)) {
@@ -69,6 +69,29 @@ func TestGHCommentsToIssueComments(t *testing.T) {
 	}
 	if got[1].User.Login != "bob" {
 		t.Errorf("comment 1 author = %q", got[1].User.Login)
+	}
+}
+
+func TestGithubDeleteIssueComment(t *testing.T) {
+	dir := t.TempDir()
+	argvFile := filepath.Join(dir, "argv")
+	ghStub := filepath.Join(dir, "gh")
+	script := "#!/bin/sh\nfor a in \"$@\"; do echo \"$a\" >> " + argvFile + "; done\necho '---' >> " + argvFile + "\n"
+	if err := os.WriteFile(ghStub, []byte(script), 0o755); err != nil { //nolint:gosec
+		t.Fatal(err)
+	}
+	r := &Runner{Runner: &shell.Runner{Resolve: func(string) (string, error) { return ghStub, nil }}}
+	c := &githubClient{r: r, mode: modeClaude}
+	if err := c.deleteIssueComment(context.Background(), "coilyco-flight-deck", "ward", 123); err != nil {
+		t.Fatalf("deleteIssueComment: %v", err)
+	}
+	out, err := os.ReadFile(argvFile)
+	if err != nil {
+		t.Fatalf("read argv: %v", err)
+	}
+	got := string(out)
+	if !strings.Contains(got, "api\n-X\nDELETE\n/repos/coilyco-flight-deck/ward/issues/comments/123\n") {
+		t.Fatalf("gh argv missing delete endpoint\n got:\n%s", got)
 	}
 }
 

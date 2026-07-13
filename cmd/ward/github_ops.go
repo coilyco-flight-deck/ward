@@ -83,6 +83,7 @@ func (c *githubClient) getIssue(ctx context.Context, owner, repo string, number 
 // ghComment is one row of the REST `.../issues/{n}/comments` array (ward#466):
 // REST names the fields created_at/user, not the GraphQL createdAt/author.
 type ghComment struct {
+	ID        int    `json:"id"`
 	Body      string `json:"body"`
 	CreatedAt string `json:"created_at"`
 	User      struct {
@@ -110,7 +111,7 @@ func (c *githubClient) listIssueComments(ctx context.Context, owner, repo string
 func ghCommentsToIssueComments(raw []ghComment) []issueComment {
 	out := make([]issueComment, 0, len(raw))
 	for _, rc := range raw {
-		ic := issueComment{Body: rc.Body}
+		ic := issueComment{ID: rc.ID, Body: rc.Body}
 		ic.User.Login = rc.User.Login
 		if t, err := time.Parse(time.RFC3339, rc.CreatedAt); err == nil {
 			ic.CreatedAt = t
@@ -213,6 +214,13 @@ func (c *githubClient) commentIssue(ctx context.Context, owner, repo string, num
 	return nil
 }
 
+func (c *githubClient) deleteIssueComment(ctx context.Context, owner, repo string, commentID int) error {
+	if _, err := c.run(ctx, "api", "-X", "DELETE", ghIssueCommentPath(owner, repo, commentID)); err != nil {
+		return fmt.Errorf("github: delete issue comment %s/%s#%d: %w", owner, repo, commentID, err)
+	}
+	return nil
+}
+
 // closeIssue flips an issue to closed via REST PATCH (ward#466: `gh issue close`
 // would route through a GraphQL mutation; the REST state flip stays on the REST budget).
 func (c *githubClient) closeIssue(ctx context.Context, owner, repo string, number int) error {
@@ -252,6 +260,10 @@ func (c *githubClient) unlockIssue(ctx context.Context, owner, repo string, numb
 // by every REST call in this client. Pure + testable.
 func ghIssuePath(owner, repo string, number int) string {
 	return "/repos/" + owner + "/" + repo + "/issues/" + strconv.Itoa(number)
+}
+
+func ghIssueCommentPath(owner, repo string, commentID int) string {
+	return "/repos/" + owner + "/" + repo + "/issues/comments/" + strconv.Itoa(commentID)
 }
 
 // issueNumberFromURL pulls the trailing issue/PR number off a github.com URL like

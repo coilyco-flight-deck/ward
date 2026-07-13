@@ -558,42 +558,36 @@ func dispatchBrokerRequestMode(req dispatchBrokerRequest) containerMode {
 	return currentAgentMode()
 }
 
-// commentFailedDispatch writes the visible failure comment and clears the stale
-// reservation signal after a forwarded launch never became a running engineer.
+// commentFailedDispatch clears the stale reservation signal after a forwarded
+// launch never became a running engineer, leaving the telemetry on the host log.
 func (r *Runner) commentFailedDispatch(ctx context.Context, cl Tracker, mode containerMode, ref agentIssueRef, req dispatchBrokerRequest, logPath string, launchErr error) {
 	container := emptyDefault(req.Requester, "unknown-container")
 	if req.Role == roleEngineer {
 		container = issueScopedContainerName(req.Role, mode, targetRepo{Owner: ref.Owner, Name: ref.Repo}, ref.Number)
 	}
 	r.stopFailedDispatchContainer(ctx, mode, ref, req.Role, container)
-	body := dispatchLaunchFailureCommentBody(mode, container, req, logPath, launchErr)
-	if err := cl.commentIssue(ctx, ref.Owner, ref.Repo, ref.Number, body); err != nil {
-		fmt.Fprintf(os.Stderr, "ward dispatch broker: could not comment failed dispatch on %s: %v\n", ref, err)
-		return
-	}
 	if err := cl.unlockIssue(ctx, ref.Owner, ref.Repo, ref.Number); err != nil && !errors.Is(err, errForgeLockUnsupported) {
 		fmt.Fprintf(os.Stderr, "ward dispatch broker: could not unlock issue %s after failed dispatch: %v\n", ref, err)
 	}
+	deleteTransientWorkflowComments(ctx, cl, ref, time.Now().UTC())
 	fmt.Fprintf(os.Stderr, "ward dispatch broker: released failed dispatch reservation on %s\n", ref)
+	fmt.Fprintf(os.Stderr, "ward dispatch broker: failed dispatch telemetry stayed on the host log for %s (%s: %s)\n", ref, logPath, firstLine(launchErr.Error()))
 }
 
-// commentDeferredDispatch writes the visible deferred comment and clears the stale
-// reservation after a forwarded launch hit the global engineer cap.
+// commentDeferredDispatch clears the stale reservation after a forwarded launch
+// hit the global engineer cap, leaving the telemetry on the host log.
 func (r *Runner) commentDeferredDispatch(ctx context.Context, cl Tracker, mode containerMode, ref agentIssueRef, req dispatchBrokerRequest, logPath string, launchErr error) {
 	container := emptyDefault(req.Requester, "unknown-container")
 	if req.Role == roleEngineer {
 		container = issueScopedContainerName(req.Role, mode, targetRepo{Owner: ref.Owner, Name: ref.Repo}, ref.Number)
 	}
 	r.stopFailedDispatchContainer(ctx, mode, ref, req.Role, container)
-	body := dispatchLaunchDeferredCommentBody(mode, container, req, logPath, launchErr)
-	if err := cl.commentIssue(ctx, ref.Owner, ref.Repo, ref.Number, body); err != nil {
-		fmt.Fprintf(os.Stderr, "ward dispatch broker: could not comment deferred dispatch on %s: %v\n", ref, err)
-		return
-	}
 	if err := cl.unlockIssue(ctx, ref.Owner, ref.Repo, ref.Number); err != nil && !errors.Is(err, errForgeLockUnsupported) {
 		fmt.Fprintf(os.Stderr, "ward dispatch broker: could not unlock issue %s after deferred dispatch: %v\n", ref, err)
 	}
+	deleteTransientWorkflowComments(ctx, cl, ref, time.Now().UTC())
 	fmt.Fprintf(os.Stderr, "ward dispatch broker: released deferred dispatch reservation on %s\n", ref)
+	fmt.Fprintf(os.Stderr, "ward dispatch broker: deferred dispatch telemetry stayed on the host log for %s (%s: %s)\n", ref, logPath, firstLine(launchErr.Error()))
 }
 
 // stopFailedDispatchContainer best-effort stops the attempted engineer container
@@ -616,44 +610,19 @@ func (r *Runner) stopFailedDispatchContainer(ctx context.Context, mode container
 	fmt.Fprintf(os.Stderr, "ward dispatch broker: stopped failed dispatch container %s\n", name)
 }
 
-// commentDeferredReleaseAssetsDispatch writes the release-assets-not-ready comment.
-// It clears the stale reservation after a published release still lacks the asset.
+// commentDeferredReleaseAssetsDispatch clears the stale reservation after a
+// published release still lacks the asset, leaving the telemetry on the host log.
 func (r *Runner) commentDeferredReleaseAssetsDispatch(ctx context.Context, cl Tracker, mode containerMode, ref agentIssueRef, req dispatchBrokerRequest, logPath string, launchErr error) {
 	container := emptyDefault(req.Requester, "unknown-container")
 	if req.Role == roleEngineer {
 		container = issueScopedContainerName(req.Role, mode, targetRepo{Owner: ref.Owner, Name: ref.Repo}, ref.Number)
 	}
-	body := dispatchLaunchReleaseAssetsDeferredCommentBody(mode, container, req, logPath, launchErr)
-	if err := cl.commentIssue(ctx, ref.Owner, ref.Repo, ref.Number, body); err != nil {
-		fmt.Fprintf(os.Stderr, "ward dispatch broker: could not comment deferred release-assets-not-ready dispatch on %s: %v\n", ref, err)
-		return
-	}
 	if err := cl.unlockIssue(ctx, ref.Owner, ref.Repo, ref.Number); err != nil && !errors.Is(err, errForgeLockUnsupported) {
 		fmt.Fprintf(os.Stderr, "ward dispatch broker: could not unlock issue %s after deferred release-assets-not-ready dispatch: %v\n", ref, err)
 	}
-	fmt.Fprintf(os.Stderr, "ward dispatch broker: released deferred release-assets-not-ready reservation on %s\n", ref)
-}
-
-// dispatchLaunchFailureCommentBody supersedes the stale reservation with a visible
-// failure comment and the retry shape an operator needs.
-func dispatchLaunchFailureCommentBody(mode containerMode, container string, req dispatchBrokerRequest, logPath string, launchErr error) string {
-	attempted := redactDispatchBrokerArgv(req.Argv)
-	logDetail := "unavailable"
-	if strings.TrimSpace(logPath) != "" {
-		logDetail = logPath
-	}
-	detail := fmt.Sprintf(
-		"This forwarded dispatch failed after the issue was already reserved.\n\n"+
-			"Attempted harness: `%s`\n"+
-			"Attempted run: `ward agent %s`\n"+
-			"Container: `%s`\n"+
-			"Container created: no running engineer was observed.\n"+
-			"Host log: `%s`\n"+
-			"Failure: `%s`\n\n"+
-			"Retry: choose another harness if the first one is down, or rerun with `--override-reservation` if the reservation is stale.",
-		mode, attempted, container, logDetail, firstLine(launchErr.Error()))
-	return agentReservationReleaseMarker + "\n" + agentNeedsRedispatchMarker + "\n" +
-		collapsedIssueComment(workflowDispatchFailedVisible(), "failure details", detail)
+	deleteTransientWorkflowComments(ctx, cl, ref, time.Now().UTC())
+	fmt.Fprintf(os.Stderr, "ward dispatch broker: released deferred release-assets-not-ready reservation on %s (%s)\n", ref, container)
+	fmt.Fprintf(os.Stderr, "ward dispatch broker: release-assets telemetry stayed on the host log for %s (%s: %s)\n", ref, logPath, firstLine(launchErr.Error()))
 }
 
 // dispatchLaunchDeferredCommentBody supersedes the stale reservation with a visible

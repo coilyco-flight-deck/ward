@@ -565,6 +565,7 @@ func (r *Runner) releaseRemoteReservation(ctx context.Context, cl Tracker, label
 	if err := cl.unlockIssue(ctx, ref.Owner, ref.Repo, ref.Number); err != nil && !errors.Is(err, errForgeLockUnsupported) {
 		fmt.Fprintf(os.Stderr, "%s: warning: could not unlock %s after releasing the reservation (%v) (ward#570)\n", label, ref, err)
 	}
+	deleteTransientWorkflowComments(ctx, cl, ref, time.Now().UTC())
 	fmt.Fprintf(os.Stderr, "%s: released remote reservation on %s (launch failed before the container came up, ward#570)\n", label, ref)
 }
 

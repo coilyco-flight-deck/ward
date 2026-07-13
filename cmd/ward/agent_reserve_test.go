@@ -435,6 +435,7 @@ type fakeLockForge struct {
 	unlocked     int
 	commentErr   error
 	comments     []string
+	deleted      []int
 	listComments []issueComment
 	listErr      error
 	listCalls    int
@@ -455,6 +456,10 @@ func (f *fakeLockForge) commentIssue(_ context.Context, _, _ string, _ int, body
 		return f.commentErr
 	}
 	f.comments = append(f.comments, body)
+	return nil
+}
+func (f *fakeLockForge) deleteIssueComment(_ context.Context, _, _ string, commentID int) error {
+	f.deleted = append(f.deleted, commentID)
 	return nil
 }
 func (f *fakeLockForge) closeIssue(context.Context, string, string, int) error  { return nil }
@@ -506,7 +511,11 @@ func TestReleaseRemoteReservation(t *testing.T) {
 
 	// Happy path: one release-marker comment, then an unlock, with a confirming log.
 	t.Run("posts release and unlocks", func(t *testing.T) {
-		f := &fakeLockForge{}
+		f := &fakeLockForge{
+			listComments: []issueComment{
+				{ID: 42, Body: reservationCommentBody(modeClaude, "engineer-claude-ward-570", "host", time.Now().Add(-time.Minute), "", nil), CreatedAt: time.Now().Add(-time.Minute)},
+			},
+		}
 		out := captureTestStderr(t, func() {
 			r.releaseRemoteReservation(context.Background(), f, "lbl", modeClaude, ref, "engineer-claude-ward-570")
 		})
@@ -515,6 +524,9 @@ func TestReleaseRemoteReservation(t *testing.T) {
 		}
 		if f.unlocked != 1 {
 			t.Fatalf("unlockIssue called %d times, want 1", f.unlocked)
+		}
+		if got := fmt.Sprintf("%v", f.deleted); got != "[42]" {
+			t.Fatalf("deleted comments = %s, want [42]", got)
 		}
 		if !strings.Contains(out, "released remote reservation") {
 			t.Fatalf("missing release log:\n%s", out)
