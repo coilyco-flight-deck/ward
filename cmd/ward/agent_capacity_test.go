@@ -263,7 +263,7 @@ func TestLaunchRepoEngineerBackpressureIgnoresStaleDockerWhenIssueThreadIsClear(
 	forgejoBaseURL = srv.URL
 
 	r, _, _ := bufRunner(engineerRepoAndGlobalCountDockerStub(t, "coilyco-flight-deck/ward", 0, engineerContainerLimitDefault()))
-	if err := r.launchRepoEngineerBackpressureCheck(context.Background(), "lbl", "coilyco-flight-deck/ward"); err != nil {
+	if err := r.launchRepoEngineerBackpressureCheck(context.Background(), "lbl", agentIssueRef{Owner: "coilyco-flight-deck", Repo: "ward"}); err != nil {
 		t.Fatalf("launchRepoEngineerBackpressureCheck with clear issue thread and stale docker: %v", err)
 	}
 }
@@ -315,14 +315,14 @@ func TestActiveEngineerLaunchCountIgnoresLaunchIntents(t *testing.T) {
 		t.Fatalf("writeAgentReservation: %v", err)
 	}
 
-	count, err := r.activeEngineerLaunchCountForRepo(context.Background(), "coilyco-flight-deck/ward")
+	count, err := r.activeEngineerLaunchCountForRepo(context.Background(), agentIssueRef{Owner: "coilyco-flight-deck", Repo: "ward"})
 	if err != nil {
 		t.Fatalf("activeEngineerLaunchCountForRepo: %v", err)
 	}
 	if count != 1 {
 		t.Fatalf("activeEngineerLaunchCountForRepo = %d, want 1 from issue state", count)
 	}
-	if err := r.launchRepoEngineerBackpressureCheck(context.Background(), "lbl", "coilyco-flight-deck/ward"); err != nil {
+	if err := r.launchRepoEngineerBackpressureCheck(context.Background(), "lbl", agentIssueRef{Owner: "coilyco-flight-deck", Repo: "ward"}); err != nil {
 		t.Fatalf("launchRepoEngineerBackpressureCheck should ignore launch intents, got %v", err)
 	}
 	if _, ok, _ := readAgentReservation(path); ok {
@@ -389,7 +389,7 @@ func TestActiveEngineerLaunchCountUsesIssueThreadAuthority(t *testing.T) {
 
 	t.Run("issue hold beats empty docker", func(t *testing.T) {
 		r, _, _ := bufRunner(engineerCountDockerStub(t, 0))
-		count, err := r.activeEngineerLaunchCountForRepo(context.Background(), "coilyco-flight-deck/ward")
+		count, err := r.activeEngineerLaunchCountForRepo(context.Background(), agentIssueRef{Owner: "coilyco-flight-deck", Repo: "ward"})
 		if err != nil {
 			t.Fatalf("activeEngineerLaunchCountForRepo: %v", err)
 		}
@@ -403,7 +403,7 @@ func TestActiveEngineerLaunchCountUsesIssueThreadAuthority(t *testing.T) {
 		// The issue thread says only one issue is truly reserved, so the stale
 		// Docker count must not win the guard decision.
 		rows[0].Comments = nil
-		count, err := r.activeEngineerLaunchCountForRepo(context.Background(), "coilyco-flight-deck/ward")
+		count, err := r.activeEngineerLaunchCountForRepo(context.Background(), agentIssueRef{Owner: "coilyco-flight-deck", Repo: "ward"})
 		if err != nil {
 			t.Fatalf("activeEngineerLaunchCountForRepo: %v", err)
 		}
@@ -411,4 +411,43 @@ func TestActiveEngineerLaunchCountUsesIssueThreadAuthority(t *testing.T) {
 			t.Fatalf("activeEngineerLaunchCountForRepo = %d, want 0 from clean issue state", count)
 		}
 	})
+}
+
+func TestActiveEngineerLaunchCountFallsBackSafelyForShortcutTracker(t *testing.T) {
+	t.Setenv("HOME", t.TempDir())
+	t.Setenv(shortcutTokenEnv, "secret")
+	oldBase := forgejoBaseURL
+	defer func() { forgejoBaseURL = oldBase }()
+	forgejoSrv := httptest.NewServer(http.HandlerFunc(func(_ http.ResponseWriter, r *http.Request) {
+		t.Fatalf("Forgejo client must not be called for shortcut refs: %s %s", r.Method, r.URL.Path)
+	}))
+	defer forgejoSrv.Close()
+	forgejoBaseURL = forgejoSrv.URL
+
+	ref := agentIssueRef{
+		Owner:             "acme",
+		Repo:              "ward",
+		Number:            77,
+		Tracker:           trackerShortcut,
+		URL:               "https://app.shortcut.com/acme/story/77/fix-it",
+		ShortcutWorkspace: "acme",
+	}
+	r, _, _ := bufRunner(engineerCountDockerStub(t, 0))
+
+	count, err := r.activeEngineerLaunchCountForRepo(context.Background(), ref)
+	if err != nil {
+		t.Fatalf("activeEngineerLaunchCountForRepo(shortcut): %v", err)
+	}
+	if count != 0 {
+		t.Fatalf("activeEngineerLaunchCountForRepo(shortcut) = %d, want 0 from the safe Docker fallback", count)
+	}
+
+	err = r.launchRepoEngineerBackpressureCheck(context.Background(), "lbl", ref)
+	if err != nil {
+		t.Fatalf("launchRepoEngineerBackpressureCheck(shortcut) should use the safe fallback: %v", err)
+	}
+
+	if _, err := r.activeEngineerLaunchCountFromIssueThread(context.Background(), ref); !isRepoIssueScanUnsupported(err) {
+		t.Fatalf("activeEngineerLaunchCountFromIssueThread(shortcut) error = %v, want explicit unsupported tracker error", err)
+	}
 }
