@@ -68,7 +68,7 @@ func TestWorkflowCarryClauseDirectToMain(t *testing.T) {
 // TestWorkflowCarryClausePullRequest checks the PR carry clause.
 func TestWorkflowCarryClausePullRequest(t *testing.T) {
 	got := workflowCarryClause(agentIssueRef{Owner: "o", Repo: "r", Number: 12}, workflowPullRequest)
-	for _, want := range []string{"pull request", "closes #12", "watching its CI/checks", "director is encouraged to merge it later"} {
+	for _, want := range []string{"pull request", "closes #12", "paragraph or two", "small bullet list", "watching its CI/checks", "director is encouraged to merge it later"} {
 		if !strings.Contains(got, want) {
 			t.Errorf("pull-request carry clause missing %q\n got: %s", want, got)
 		}
@@ -92,7 +92,7 @@ func TestWorkflowCarryClausePullRequest(t *testing.T) {
 // terms when the target forge is GitLab.
 func TestWorkflowCarryClauseGitLabMR(t *testing.T) {
 	got := workflowCarryClause(agentIssueRef{Owner: "o", Repo: "r", Number: 12, Forge: forgeGitLab}, workflowPullRequest)
-	for _, want := range []string{"merge request", "closes #12", "watching its CI/checks", "director is encouraged to merge it later"} {
+	for _, want := range []string{"merge request", "closes #12", "paragraph or two", "small bullet list", "watching its CI/checks", "director is encouraged to merge it later"} {
 		if !strings.Contains(got, want) {
 			t.Errorf("gitlab pull-request carry clause missing %q\n got: %s", want, got)
 		}
@@ -109,7 +109,7 @@ func TestWorkflowCarryClauseGitLabMR(t *testing.T) {
 // the PR flow and says the run is not done until the merge lands.
 func TestWorkflowCarryClausePullRequestAndMerge(t *testing.T) {
 	got := workflowCarryClause(agentIssueRef{Owner: "o", Repo: "r", Number: 17}, workflowPullRequestAndMerge)
-	for _, want := range []string{"pull request", "closes #17", directorMergeWorkflowMarker, "director-merge authorized", "WARD-OUTCOME: merge-ready"} {
+	for _, want := range []string{"pull request", "closes #17", "paragraph or two", "small bullet list", directorMergeWorkflowMarker, "director-merge authorized", "WARD-OUTCOME: merge-ready"} {
 		if !strings.Contains(got, want) {
 			t.Errorf("pull-request-and-merge carry clause missing %q\n got: %s", want, got)
 		}
@@ -235,6 +235,9 @@ func TestAgentSeedPromptWorkflow(t *testing.T) {
 	}
 	if !strings.Contains(branchOnly, "the remote branch is pushed") {
 		t.Errorf("remote-branch-only reflection should name the branch landing\n got: %s", branchOnly)
+	}
+	if strings.Contains(branchOnly, "paragraph or two") || strings.Contains(branchOnly, "small bullet list") {
+		t.Errorf("remote-branch-only reflection must not ask for a PR description\n got: %s", branchOnly)
 	}
 	if strings.Contains(branchOnly, "post the same actionable failure comment to both the linked issue and the PR") {
 		t.Errorf("remote-branch-only reflection must not ask for PR comments when no PR exists\n got: %s", branchOnly)

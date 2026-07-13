@@ -183,10 +183,11 @@ func pullRequestCarryClause(ref agentIssueRef) string {
 	return fmt.Sprintf(
 		"implement on a feature branch, commit, push the branch to origin, and open a %s "+
 			"against `main` whose body carries `closes #%d`. "+
+			"%s "+
 			"%s Do NOT push to `main` directly or merge it yourself - in the `pull-request` workflow the %s "+
 			"IS the merge gate, and the director is encouraged to merge it later if policy allows. When the %s is green, "+
 			"the engineer's final visible outcome is `WARD-OUTCOME: submitted`, not `done`.",
-		noun, ref.Number, pullRequestCIWatchClauseFor(ref.Forge), noun, noun)
+		noun, ref.Number, pullRequestDescriptionClause(noun), pullRequestCIWatchClauseFor(ref.Forge), noun, noun)
 }
 
 // pullRequestAndMergeCarryClause tells the agent to open a PR and keep it merge-ready
@@ -196,10 +197,18 @@ func pullRequestAndMergeCarryClause(ref agentIssueRef) string {
 	return fmt.Sprintf(
 		"implement on a feature branch, commit, push the branch to origin, and open a %s "+
 			"against `main` whose body carries `closes #%d` and `%s`. This run is director-merge authorized: "+
+			"%s "+
 			"the worker still opens the %s, but the engineer's final visible outcome is `WARD-OUTCOME: merge-ready`; "+
 			"the run is not done until the %s is merged and the director records the final done outcome. "+
 			"%s Keep the branch ready for merge and do not claim success early.",
-		noun, ref.Number, directorMergeWorkflowMarker, noun, noun, pullRequestCIWatchClauseFor(ref.Forge))
+		noun, ref.Number, directorMergeWorkflowMarker, pullRequestDescriptionClause(noun), noun, noun, pullRequestCIWatchClauseFor(ref.Forge))
+}
+
+// pullRequestDescriptionClause tells the worker to write a short useful PR body.
+func pullRequestDescriptionClause(noun string) string {
+	return fmt.Sprintf(
+		"Write a short %s description before opening it. Keep it to a paragraph or two and a small bullet list: what changed, why, and any test or CI notes. Do not leave the %s body empty.",
+		noun, noun)
 }
 
 // pullRequestCIWatchClause tells pull-request workflows that opening the PR is not
