@@ -51,6 +51,31 @@ func TestMatchSubsystemPointers(t *testing.T) {
 	if got := matchSubsystemPointers(wardRef(3), "tidy up a typo", "fix a comment"); len(got) != 0 {
 		t.Errorf("an unrelated issue should match no pointers; got %v", got)
 	}
+
+	// Placeholder-adoption issues should light up the config/setup guidance.
+	placeholder := matchSubsystemPointers(
+		wardRef(1125),
+		"Simple ward native pre flight agent that guides you in how to setup various placeholders, then prompts a restart",
+		"help the user to adapt the container to their needs; Recursive invokes will be important here",
+	)
+	foundPlaceholder := false
+	for _, p := range placeholder {
+		if p.label != "placeholder setup + restart loop" {
+			continue
+		}
+		foundPlaceholder = true
+		for _, want := range []string{"docs/doctor.md", "docs/config-source.md", "examples/ward-specs/README.md"} {
+			if !containsString(p.paths, want) {
+				t.Errorf("placeholder pointer missing %q; got %v", want, p.paths)
+			}
+		}
+		if !strings.Contains(p.followUp, "restart `warded`") {
+			t.Errorf("placeholder pointer follow-up should prompt a restart; got %q", p.followUp)
+		}
+	}
+	if !foundPlaceholder {
+		t.Fatal("placeholder-adoption issue should match the placeholder setup pointer")
+	}
 }
 
 // TestMatchSubsystemPointersScopedToWard covers ward#236's repo scoping: the map
@@ -80,6 +105,21 @@ func TestSubsystemSeedBlock(t *testing.T) {
 	// No match -> empty block, so a plain issue's seed is untouched.
 	if got := subsystemSeedBlock(wardRef(1), "tidy a typo", "nothing notable"); got != "" {
 		t.Errorf("seed block should be empty when no subsystem matches; got: %s", got)
+	}
+
+	placeholder := subsystemSeedBlock(
+		wardRef(1125),
+		"Simple ward native pre flight agent that guides you in how to setup various placeholders, then prompts a restart",
+		"help the user to adapt the container to their needs; Recursive invokes will be important here",
+	)
+	for _, want := range []string{
+		"docs/doctor.md",
+		"examples/ward-specs/README.md",
+		"restart `warded`",
+	} {
+		if !strings.Contains(placeholder, want) {
+			t.Errorf("placeholder seed block missing %q\n got: %s", want, placeholder)
+		}
 	}
 }
 
@@ -125,4 +165,13 @@ func TestPreflightPromptContextGate(t *testing.T) {
 	if strings.Contains(plain, "ward subsystems whose conventions live in the clone") {
 		t.Errorf("a plain issue should carry no subsystem pointer block; got: %s", plain)
 	}
+}
+
+func containsString(values []string, want string) bool {
+	for _, value := range values {
+		if value == want {
+			return true
+		}
+	}
+	return false
 }
