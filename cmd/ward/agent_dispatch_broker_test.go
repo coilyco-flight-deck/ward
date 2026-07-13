@@ -198,6 +198,64 @@ func TestStopTargetGuardEngineerOnly(t *testing.T) {
 	}
 }
 
+func TestResolveEngineerStopTargetStopsVisibleEngineer(t *testing.T) {
+	r := fakeStopDockRunner(t, "engineer-codex-ward-625", roleEngineer)
+	got, err := r.resolveEngineerStopTarget(t.Context(), "coilyco-flight-deck/ward#625")
+	if err != nil {
+		t.Fatalf("resolve visible engineer: %v", err)
+	}
+	if got != "engineer-codex-ward-625" {
+		t.Fatalf("resolve visible engineer = %q, want the running container", got)
+	}
+}
+
+func TestResolveEngineerStopTargetRejectsGhostReservation(t *testing.T) {
+	home := t.TempDir()
+	t.Setenv("HOME", home)
+	ref := agentIssueRef{Owner: "coilyco-flight-deck", Repo: "ward", Number: 1200}
+	path, err := agentReservationPath(ref)
+	if err != nil {
+		t.Fatalf("reservation path: %v", err)
+	}
+	if err := writeAgentReservation(path, agentReservation{
+		Owner:     ref.Owner,
+		Repo:      ref.Repo,
+		Number:    ref.Number,
+		Mode:      string(modeCodex),
+		Container: "engineer-codex-ward-1200",
+		At:        time.Now().Add(-2 * agentLaunchConfirmationTTL()),
+	}); err != nil {
+		t.Fatalf("write reservation: %v", err)
+	}
+	r := fakeStopDockRunner(t, "", roleEngineer)
+	_, err = r.resolveEngineerStopTarget(t.Context(), ref.String())
+	if err == nil {
+		t.Fatal("ghost reservation was accepted as stoppable")
+	}
+	for _, want := range []string{
+		"ghost launch record",
+		"not stoppable through ward agent stop",
+		"no running container exists",
+		"ward agent reap",
+	} {
+		if !strings.Contains(err.Error(), want) {
+			t.Fatalf("ghost refusal %q missing %q", err, want)
+		}
+	}
+}
+
+func TestResolveEngineerStopTargetUnknownRef(t *testing.T) {
+	t.Setenv("HOME", t.TempDir())
+	r := fakeStopDockRunner(t, "", roleEngineer)
+	_, err := r.resolveEngineerStopTarget(t.Context(), "coilyco-flight-deck/ward#9999")
+	if err == nil {
+		t.Fatal("unknown ref was accepted as stoppable")
+	}
+	if !strings.Contains(err.Error(), "no running engineer container matches") {
+		t.Fatalf("unknown ref refusal = %v, want the generic no-match message", err)
+	}
+}
+
 // TestSelectSingleStopTarget covers the ward#627 match-count rule: exactly one match
 // stops, zero and more-than-one refuse (the multi case lists the candidates).
 func TestSelectSingleStopTarget(t *testing.T) {
@@ -224,7 +282,7 @@ func TestSelectSingleStopTarget(t *testing.T) {
 func TestForwardAgentStopOffSurfaceErrors(t *testing.T) {
 	t.Setenv(envDispatchBrokerAddr, "")
 	t.Setenv("WARD_READONLY", "")
-	err := (&Runner{}).forwardAgentStopToHostBroker(context.Background(), "coilyco-flight-deck/ward#625")
+	err := (&Runner{}).forwardAgentStopToHostBroker(context.Background(), "coilyco-flight-deck/ward#625", false)
 	if err == nil {
 		t.Fatal("off-surface stop did not error")
 	}
@@ -260,7 +318,7 @@ func TestForwardAgentStopSendsStopRequest(t *testing.T) {
 	t.Setenv(envDispatchBrokerToken, "nonce-627")
 	t.Setenv("WARD_READONLY", "1")
 	t.Setenv("WARD_CONTAINER_NAME", "director-claude-host")
-	if err := (&Runner{}).forwardAgentStopToHostBroker(t.Context(), "coilyco-flight-deck/ward#625"); err != nil {
+	if err := (&Runner{}).forwardAgentStopToHostBroker(t.Context(), "coilyco-flight-deck/ward#625", false); err != nil {
 		t.Fatalf("forward stop: %v", err)
 	}
 	req := <-gotReq
@@ -270,11 +328,80 @@ func TestForwardAgentStopSendsStopRequest(t *testing.T) {
 	if req.Target != "coilyco-flight-deck/ward#625" {
 		t.Errorf("target = %q, want the ref", req.Target)
 	}
+	if req.Preview {
+		t.Error("stop request unexpectedly marked preview")
+	}
 	if req.Token != "nonce-627" {
 		t.Errorf("token = %q, want the per-launch nonce", req.Token)
 	}
 	if len(req.Argv) != 0 {
 		t.Errorf("stop request carried launch argv: %v", req.Argv)
+	}
+}
+
+func TestForwardAgentStopPrintRequestsPreview(t *testing.T) {
+	ln, err := net.Listen("tcp", "127.0.0.1:0")
+	if err != nil {
+		t.Fatalf("listen broker: %v", err)
+	}
+	defer ln.Close()
+
+	gotReq := make(chan dispatchBrokerRequest, 1)
+	go func() {
+		conn, err := ln.Accept()
+		if err != nil {
+			return
+		}
+		defer conn.Close()
+		var req dispatchBrokerRequest
+		_ = json.NewDecoder(conn).Decode(&req)
+		gotReq <- req
+		_ = json.NewEncoder(conn).Encode(dispatchBrokerResponse{OK: true, LogPath: "engineer-claude-ward-625"})
+	}()
+
+	r := &Runner{Runner: &shell.Runner{Stdout: io.Discard, Stderr: io.Discard}}
+	t.Setenv(envDispatchBrokerAddr, ln.Addr().String())
+	t.Setenv(envDispatchBrokerToken, "nonce-627")
+	t.Setenv("WARD_READONLY", "1")
+	t.Setenv("WARD_CONTAINER_NAME", "director-claude-host")
+	origStderr := os.Stderr
+	rPipe, wPipe, err := os.Pipe()
+	if err != nil {
+		t.Fatalf("pipe stderr: %v", err)
+	}
+	t.Cleanup(func() {
+		_ = wPipe.Close()
+		_ = rPipe.Close()
+		os.Stderr = origStderr
+	})
+	os.Stderr = wPipe
+	cmd := &cli.Command{
+		Name:  "stop",
+		Flags: []cli.Flag{&cli.BoolFlag{Name: "print"}},
+		Action: func(ctx context.Context, c *cli.Command) error {
+			return r.runAgentStop(ctx, c)
+		},
+	}
+	if err := cmd.Run(t.Context(), []string{"stop", "--print", "coilyco-flight-deck/ward#625"}); err != nil {
+		t.Fatalf("run stop --print: %v", err)
+	}
+	_ = wPipe.Close()
+	req := <-gotReq
+	if req.Action != dispatchActionStop {
+		t.Errorf("action = %q, want stop", req.Action)
+	}
+	if !req.Preview {
+		t.Error("print request was not marked preview")
+	}
+	if req.Target != "coilyco-flight-deck/ward#625" {
+		t.Errorf("target = %q, want the ref", req.Target)
+	}
+	var stderr bytes.Buffer
+	if _, err := io.Copy(&stderr, rPipe); err != nil {
+		t.Fatalf("read stderr: %v", err)
+	}
+	if !strings.Contains(stderr.String(), "would stop engineer container engineer-claude-ward-625 on host ward") {
+		t.Fatalf("print output = %q, want the preview stop line", stderr.String())
 	}
 }
 
@@ -2079,6 +2206,39 @@ func fakeEngineerVisibilityDockerRunner(t *testing.T, visibleName string, visibl
 		"  fi\n" +
 		"  exit 0\n" +
 		"fi\n" +
+		"printf '%s\\n' \"unexpected docker args: $*\" >&2\n" +
+		"exit 1\n"
+	if err := os.WriteFile(script, []byte(body), 0o700); err != nil { // #nosec G306 -- test fixture
+		t.Fatalf("write fake docker: %v", err)
+	}
+	return &Runner{Runner: &shell.Runner{
+		Stderr:  io.Discard,
+		Resolve: func(_ string) (string, error) { return script, nil },
+	}}
+}
+
+func fakeStopDockRunner(t *testing.T, visibleName, visibleRole string) *Runner {
+	t.Helper()
+	dir := t.TempDir()
+	script := filepath.Join(dir, "docker")
+	body := "#!/bin/sh\n" +
+		"case \"$1\" in\n" +
+		"  ps)\n" +
+		"    if [ -n " + shellQuote(visibleName) + " ]; then\n" +
+		"      printf '%s\\n' " + shellQuote(visibleName) + "\n" +
+		"    fi\n" +
+		"    exit 0\n" +
+		"    ;;\n" +
+		"  inspect)\n" +
+		"    if [ -n " + shellQuote(visibleName) + " ]; then\n" +
+		"      printf '%s\\n' " + shellQuote(visibleRole) + "\n" +
+		"    fi\n" +
+		"    exit 0\n" +
+		"    ;;\n" +
+		"  stop)\n" +
+		"    exit 0\n" +
+		"    ;;\n" +
+		"esac\n" +
 		"printf '%s\\n' \"unexpected docker args: $*\" >&2\n" +
 		"exit 1\n"
 	if err := os.WriteFile(script, []byte(body), 0o700); err != nil { // #nosec G306 -- test fixture

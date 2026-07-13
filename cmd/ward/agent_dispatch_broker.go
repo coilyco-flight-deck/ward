@@ -110,6 +110,8 @@ type dispatchBrokerRequest struct {
 	Requester string `json:"requester,omitempty"`
 	Tail      int    `json:"tail,omitempty"`
 	Follow    bool   `json:"follow,omitempty"`
+	// Preview asks the stop action to resolve the target without stopping it.
+	Preview bool `json:"preview,omitempty"`
 	// RunID names the Actions run a ci-rerun acts on (ward#1067).
 	RunID int64 `json:"run_id,omitempty"`
 	// Limit caps a ci-runs read (ward#1067).
@@ -275,6 +277,9 @@ func (r *Runner) startHostDispatchBrokerRequest(ctx context.Context, req dispatc
 		return "", err
 	}
 	if dispatchAction(req.Action) == dispatchActionStop {
+		if req.Preview {
+			return r.runDispatchBrokerStopPreview(ctx, req)
+		}
 		return r.runDispatchBrokerStop(ctx, req)
 	}
 	var lock *sync.Mutex
@@ -737,17 +742,29 @@ func (r *Runner) runDispatchBrokerStop(ctx context.Context, req dispatchBrokerRe
 	return name, nil
 }
 
+// runDispatchBrokerStopPreview resolves the stop target but leaves the container
+// running. It uses the same stoppability criteria as a real stop.
+func (r *Runner) runDispatchBrokerStopPreview(ctx context.Context, req dispatchBrokerRequest) (string, error) {
+	return r.resolveEngineerStopTarget(ctx, strings.TrimSpace(req.Target))
+}
+
 // resolveEngineerStopTarget maps a stop target to one running engineer, fail-closed
 // on role (ward#627): owner/repo#N matches by label, else it is a container name.
 func (r *Runner) resolveEngineerStopTarget(ctx context.Context, target string) (string, error) {
 	// owner/repo#N: match by the engineer identity labels (ward#364). The role filter
 	// is engineer-only, and selectSingleStopTarget refuses zero / more-than-one.
 	if ref, err := parseAgentIssueRef(target); err == nil && ref.Owner != "" && ref.Repo != "" {
-		name, serr := selectSingleStopTarget(target, r.runningEngineersForIssue(ctx, ref))
-		if serr != nil {
-			return "", serr
+		running := r.runningEngineersForIssue(ctx, ref)
+		name, serr := selectSingleStopTarget(target, running)
+		if serr == nil {
+			return r.guardEngineerStop(ctx, name)
 		}
-		return r.guardEngineerStop(ctx, name)
+		if len(running) == 0 {
+			if _, ok, herr := r.reservedEngineerHold(ref); herr == nil && ok {
+				return "", fmt.Errorf("dispatch broker: %q is a ghost launch record, not stoppable through ward agent stop: no running container exists; use `ward agent reap`, the stale reservation cleanup path, or a future stale-prelaunch override instead", ref)
+			}
+		}
+		return "", serr
 	}
 	// Otherwise a container name: it must be a running container, and its role is
 	// re-checked fail-closed below (never an advisor/director/session).
@@ -755,6 +772,23 @@ func (r *Runner) resolveEngineerStopTarget(ctx context.Context, target string) (
 		return "", fmt.Errorf("dispatch broker: no running container named %q to stop", target)
 	}
 	return r.guardEngineerStop(ctx, target)
+}
+
+// reservedEngineerHold reports whether a ref still has a local launch-intent
+// reservation, even when no running engineer container is visible yet.
+func (r *Runner) reservedEngineerHold(ref agentIssueRef) (*agentReservation, bool, error) {
+	path, err := agentReservationPath(ref)
+	if err != nil {
+		return nil, false, err
+	}
+	res, ok, err := readAgentReservation(path)
+	if err != nil || !ok || res == nil {
+		return nil, false, err
+	}
+	if res.Owner != ref.Owner || res.Repo != ref.Repo || res.Number != ref.Number {
+		return nil, false, nil
+	}
+	return res, true, nil
 }
 
 // guardEngineerStop reads a resolved container's ward.role and refuses unless it is

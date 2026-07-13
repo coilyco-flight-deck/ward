@@ -10,7 +10,8 @@ This page groups the on-demand operational surfaces around a run.
 - `ward agent dispatch-health` - the dispatch pathology summary, status line feed, and alert line.
 - `ward agent list` - show running engineers, launch intents, and capacity when the limit is known.
 - `ward agent logs` - read one run's logs.
-- `ward agent stop` - stop one run on purpose.
+- `ward agent stop` - stop one visible running engineer on purpose. Ghost
+  launch records are not stoppable here.
 - `ward agent reap` - stop wedged engineer containers by idle policy and clear stale prelaunch reservations that never became visible.
 
 ## Shared contract
@@ -29,7 +30,8 @@ This page groups the on-demand operational surfaces around a run.
 - `logs` prefers the live container, then falls back to the drained archive.
 - `logs` falls back to the harness-specific live transcript tree when `docker
   logs` is empty, then to the drained archive.
-- `stop` and `reap` only target engineer containers.
+- `stop` and `reap` only target engineer containers, and `stop` refuses a
+  reservation-only ghost record.
 - A run that is already finished should not be treated as a new failure.
 
 ## Surface map
@@ -53,7 +55,8 @@ This page groups the on-demand operational surfaces around a run.
 ## Operational notes
 
 - `list` and `logs` are usually the first stop when a run seems stuck.
-- `stop` is the manual correction path.
+- `stop` is the manual correction path for a live engineer.
+- Use `reap` or the stale-reservation cleanup path for a ghost launch record.
 - `reap` is the safety net for idle engineer containers and stale launch intents.
 - `reap` clears cache state, but the issue thread remains the canonical reservation record.
 - none of these surfaces should surprise a caller with a write to the target
