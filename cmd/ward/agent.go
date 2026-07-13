@@ -725,6 +725,9 @@ trusted owner.`, agentHarnessChoices(), defaultAgentMode()),
 			// roster is a self-describe verb, not a startup role: it prints the
 			// flat list of the roles above (ward#348). See docs/agent-roster.md.
 			agentRosterCommand(),
+			// flags is a self-describe verb, not a startup role: it prints the
+			// command flag tree in docs/agent-flags.md.
+			agentFlagsCommand(),
 			// reap is a maintenance verb, not a startup role: the host-side
 			// idle-killer for wedged engineer containers (#376). docs/agent-reap.md.
 			agentReapCommand(),

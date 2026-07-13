@@ -50,7 +50,7 @@ Inventory of what `ward` ships today.
   `pr-regression` before they dispatch another engineer, and the status / seed
   path prints the selected bucket with a concrete next action.
 - **`ward agent` roles and workflows** - see [agent.md](agent.md),
-  [agent-roster.md](agent-roster.md), [agent-roles.md](agent-roles.md), [agent-harnesses.md](agent-harnesses.md),
+  [agent-roster.md](agent-roster.md), [agent-flags.md](agent-flags.md), [agent-roles.md](agent-roles.md), [agent-harnesses.md](agent-harnesses.md),
   [agent-lifecycle.md](agent-lifecycle.md), [agent-director.md](agent-director.md),
   [agent-ops.md](agent-ops.md), [agent-dispatch-health.md](agent-dispatch-health.md),
   [dispatch-review.md](dispatch-review.md), and [agent-workflow.md](agent-workflow.md).
