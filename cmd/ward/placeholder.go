@@ -4,13 +4,8 @@ import (
 	kdl "github.com/calico32/kdl-go"
 )
 
-// placeholderAnnotation marks a value as a sentinel rather than real config:
-//
-//	(placeholder)base-url "git.example.com/api/v1"
-//
-// ward must never embed real deployment config, so its generic guardfiles have
-// to name *some* host, token, and owner gate. Marking those as sentinels is what
-// lets `ward doctor` fail a deployment that never supplied its own.
+// placeholderAnnotation marks a value as a sentinel rather than real config.
+// ward uses sentinels so generic guardfiles can stay example-safe.
 const placeholderAnnotation = "placeholder"
 
 func isPlaceholderNode(n *kdl.Node) bool {
@@ -21,18 +16,8 @@ func isPlaceholderNode(n *kdl.Node) bool {
 	return ok && typ == placeholderAnnotation
 }
 
-// resolvePlaceholderSentinels drops every sentinel child that a real sibling of
-// the same name already supplies.
-//
-// This is order-independent on purpose. The bundle merge concatenates children
-// across files, and cli-guard's singletons are last-wins (applyBaseURL keeps the
-// last non-empty, `gf.Auth = a` overwrites). So whichever file the walk happened
-// to reach last decided the surface: a generic guardfile's sentinel base-url
-// could beat the deployment's real one while its auth lost, pairing an example
-// host with a live credential. A sentinel that can win a merge is worse than no
-// sentinel at all.
-//
-// A sentinel with no real counterpart survives, so doctor still fails on it.
+// resolvePlaceholderSentinels drops sentinel children when a real sibling exists.
+// The merge is order-independent so a placeholder can never beat a real value.
 func resolvePlaceholderSentinels(n *kdl.Node) {
 	if n == nil {
 		return

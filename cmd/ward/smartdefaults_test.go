@@ -187,9 +187,8 @@ func TestSmartDefaultsRejectsMissingRepoAuthority(t *testing.T) {
 	}
 }
 
-// TestSmartDefaultsFailureNamesTheConfigSource pins the attribution contract:
-// a fail-closed defaults error names the bundle that served the value (the
-// aos#452 stale-pin incident was undiagnosable from the value alone).
+// TestSmartDefaultsFailureNamesTheConfigSource pins the attribution contract.
+// A fail-closed defaults error names the bundle that served the value.
 func TestSmartDefaultsFailureNamesTheConfigSource(t *testing.T) {
 	dir := t.TempDir()
 	// 1h undercuts the built-in engineer 90m limit: trips the TTL invariant.

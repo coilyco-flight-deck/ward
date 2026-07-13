@@ -89,6 +89,9 @@ Inventory of what `ward` ships today.
 - It accepts `first input` as exec-guard sugar for `arg0`, and ward injects the
   raw Forgejo Actions log fetch leaf directly into the shipped `ward ops
   forgejo` surface.
+- The embedded Forgejo surface also includes the runner-token mint leaf, so
+  operators can call `ward ops forgejo actions generate-runner-token` without
+  falling back to a shell bridge.
 - The embedded Forgejo surface now includes a PR-native edit leaf, so merge-gate
   body/title updates can target `/pulls/{index}` without falling back to issue
   edit.
@@ -100,7 +103,7 @@ Inventory of what `ward` ships today.
 
 ## Release and docs
 
-- Two-stage release (ward#1117): promote.yml gates every main push and
+- Two-stage release ([ward#1117](https://forgejo.coilysiren.me/coilyco-flight-deck/ward/issues/1117)): promote.yml gates every main push and
   fast-forwards `release` when green; release.yml runs on `release` pushes
   under a no-cancel concurrency queue. See [release.md](release.md).
 - [compat-surface.md](compat-surface.md) - the release-facing provider matrix.

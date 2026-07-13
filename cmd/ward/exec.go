@@ -107,7 +107,7 @@ func (r *Runner) runExecLeaf(ctx context.Context, c *cli.Command, cfg *repocfg.C
 			rec.AuditOverride = overrideUsed
 		},
 		Action: func(ctx context.Context, cmd *cli.Command) error {
-			state, used, err := runExecGate(cmd, repoRoot, cfg.Path, verbName)
+			state, used, err := runExecGate(cmd, repoRoot, cfg.Path, verbName, os.Getenv("WARD_READONLY") == "1" && rc.Name == "surface-check")
 			if err != nil {
 				return err
 			}

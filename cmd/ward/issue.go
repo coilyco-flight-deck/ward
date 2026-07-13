@@ -9,13 +9,11 @@ import (
 	"forgejo.coilysiren.me/coilyco-flight-deck/cli-guard/pkg/issueref"
 )
 
-// The issue types used to come from cli-guard/cli/dispatch, which cli-guard
-// removed as a legacy subsystem. cli-guard parses a *reference* (an argument
-// shape, pkg/issueref); it has no concept of an issue. The issue itself, and
-// which forge it resolves against, are ward's domain, so they live here.
+// The issue types used to come from cli-guard/cli/dispatch, which is gone now.
+// cli-guard parses a reference; ward owns the issue and forge mapping here.
 
-// Platform tags which forge an issue ref resolves against. Empty means the ref
-// was shortform, so the caller picks the forge.
+// Platform tags which forge an issue ref resolves against.
+// Empty means the ref was shortform, so the caller picks the forge.
 type Platform string
 
 const (
@@ -35,29 +33,27 @@ func (i IssueRef) String() string {
 	return fmt.Sprintf("%s/%s#%d", i.Owner, i.Repo, i.Number)
 }
 
-// Issue is the platform-neutral fetch result. GitHub and Forgejo share the same
-// JSON field names, so one struct covers both.
+// Issue is the platform-neutral fetch result.
+// GitHub and Forgejo share the same JSON field names, so one struct covers both.
 type Issue struct {
 	Number int    `json:"number"`
 	Title  string `json:"title"`
 	Body   string `json:"body"`
 	State  string `json:"state"`
 	URL    string `json:"html_url"`
-	// Labels holds the issue's label names, populated by each fetcher (label
-	// JSON is objects, not strings, so json:"-"). Drives the ceiling gate.
+	// Labels holds the issue's label names.
+	// JSON uses objects, not strings, so json:"-".
 	Labels []string `json:"-"`
 }
 
-// githubIssueRefRE matches github.com issue URLs and compact refs, tolerating an
-// optional scheme, www, .git, and trailing query / fragment text. issueref.Parse
-// covers the short, bare, and Forgejo-URL forms but does not know GitHub.
+// githubIssueRefRE matches github.com issue URLs and compact refs.
+// issueref.Parse covers the short, bare, and Forgejo-URL forms but does not know GitHub.
 var githubIssueRefRE = regexp.MustCompile(
 	`(?i)^(?:https?://)?(?:www\.)?github\.com/([A-Za-z0-9._-]+)/([A-Za-z0-9._-]+?)(?:\.git)?(?:/issues/(\d+)|#(\d+))(?:[/?#].*)?$`,
 )
 
-// ParseIssueRef resolves every supported reference form. GitHub is matched first
-// because issueref.Parse would otherwise never see it; the rest delegates to
-// cli-guard so ward and cli-guard normalize refs identically.
+// ParseIssueRef resolves every supported reference form.
+// GitHub is matched first so issueref.Parse still sees the rest.
 func ParseIssueRef(baseURL, s string) (IssueRef, error) {
 	s = strings.TrimSpace(s)
 	if m := githubIssueRefRE.FindStringSubmatch(s); m != nil {
@@ -76,8 +72,8 @@ func ParseIssueRef(baseURL, s string) (IssueRef, error) {
 			Platform: platformOf(s, baseURL),
 		}, nil
 	}
-	// A scheme-less Forgejo URL (forge.host/owner/repo/issues/N) is still a
-	// Forgejo ref; issueref.Parse only matches it once it carries a scheme.
+	// A scheme-less Forgejo URL is still a Forgejo ref.
+	// issueref.Parse only matches it once it carries a scheme.
 	if baseURL != "" && !strings.Contains(s, "://") {
 		if ref, retryErr := issueref.Parse("https://"+s, baseURL); retryErr == nil {
 			return IssueRef{
@@ -91,9 +87,8 @@ func ParseIssueRef(baseURL, s string) (IssueRef, error) {
 	return IssueRef{}, err
 }
 
-// platformOf tags a ref that issueref.Parse accepted. Parse does not report
-// which form matched, so the Forgejo host is what separates a URL ref from the
-// shortform owner/repo#N (which stays untagged for the caller to route).
+// platformOf tags a ref that issueref.Parse accepted.
+// The Forgejo host separates a URL ref from the shortform owner/repo#N.
 func platformOf(s, baseURL string) Platform {
 	if baseURL == "" {
 		return ""

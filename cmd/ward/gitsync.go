@@ -70,15 +70,14 @@ func (r *Runner) ensureMirrorFresh(ctx context.Context, spec gitRefSpec, ttl tim
 			_ = os.RemoveAll(spec.mirror)
 			return false, fmt.Errorf("clone --mirror %s: %w", spec.url, cerr)
 		}
-		// clone writes no FETCH_HEAD, which substrateMirrorStale reads as
-		// forever-fresh; stamp it so the TTL clock starts at clone time.
+		// Clone writes no FETCH_HEAD.
+		// Stamp it so the TTL clock starts at clone time.
 		touchFetchHead(spec.mirror)
 		return true, nil
 	}
 	if substrateMirrorStale(spec.mirror, int64(ttl.Seconds()), time.Now()) {
-		// A full-sha ref already present in the mirror is immutable: the pin
-		// can never resolve differently, so a TTL refresh buys nothing and a
-		// network/credential hiccup would only add launch noise (aos#452).
+		// A full-sha ref already present in the mirror is immutable.
+		// A TTL refresh would only add launch noise.
 		if immutableRefPresent(ctx, r, spec) {
 			touchFetchHead(spec.mirror)
 			return false, nil

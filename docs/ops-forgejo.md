@@ -24,6 +24,8 @@ doc_goal: Keep the Forgejo operator surface as one concise guide after the suppo
 - the limited admin-side verbs ward exposes to itself.
 - the raw Forgejo Actions log fetch leaf, which streams plaintext run logs
   directly over HTTP instead of shelling out to a local bridge script.
+- the Forgejo runner-token mint leaf, which shells the in-pod `forgejo actions
+  generate-runner-token` CLI and streams the registration token to stdout.
 
 The details live in the generated surface when you are working in the build
 layer. The release binary only needs the stable user-facing contract here.

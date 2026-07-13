@@ -59,9 +59,8 @@ func TestBurndownDefaultFalseInvertsTheFallback(t *testing.T) {
 }
 
 func TestBurndownAbsentBlockExcludesNothing(t *testing.T) {
-	// The zero value of a bool is false, so a bundle with no burndown block must
-	// not fall through to "excluded" - that would silently drain the director's
-	// entire scope on every bundle that predates the block.
+	// The zero value of a bool is false.
+	// A bundle with no burndown block must not fall through to "excluded".
 	defs := burndownDefaults(t, "repos {\n"+burndownAuthority+"}\n")
 	if !defs.burndownEnabled("coilyco-flight-deck/ward") {
 		t.Error("with no burndown block, no repo is excluded")
