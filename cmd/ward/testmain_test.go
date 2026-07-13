@@ -7,10 +7,7 @@ import (
 )
 
 // TestMain neutralizes the operator's live config environment before any test
-// runs (ward#1128): without this, a developer shell's WARD_CONFIG_REF makes
-// test binaries gitsync the real config bundle mid-suite - network fetches,
-// credential prompts, and cache writes from what should be hermetic units.
-// Tests that need these variables set them explicitly with t.Setenv.
+// runs. Tests that need these variables set them explicitly with t.Setenv.
 func TestMain(m *testing.M) {
 	for _, k := range []string{
 		"WARD_CONFIG_REF", "WARD_CONFIG_TTL",

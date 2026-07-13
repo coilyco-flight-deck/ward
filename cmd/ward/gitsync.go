@@ -76,9 +76,8 @@ func (r *Runner) ensureMirrorFresh(ctx context.Context, spec gitRefSpec, ttl tim
 		return true, nil
 	}
 	if substrateMirrorStale(spec.mirror, int64(ttl.Seconds()), time.Now()) {
-		// A full-sha ref already present in the mirror is immutable: the pin
-		// can never resolve differently, so a TTL refresh buys nothing and a
-		// network/credential hiccup would only add launch noise (aos#452).
+		// A full-sha ref already present in the mirror is immutable, so a TTL
+		// refresh buys nothing and only adds launch noise.
 		if immutableRefPresent(ctx, r, spec) {
 			touchFetchHead(spec.mirror)
 			return false, nil

@@ -31,9 +31,8 @@ func childValues(n *kdl.Node, name string) []string {
 	return out
 }
 
-// A sentinel must lose to a real value no matter which side of the merge it is
-// on. cli-guard's singletons are last-wins, so before this the file the walk
-// happened to reach last decided the surface.
+// A sentinel must lose to a real value no matter which side of the merge it
+// lands on.
 func TestPlaceholderSentinelYieldsToRealValueEitherOrder(t *testing.T) {
 	for name, src := range map[string]string{
 		"sentinel last": `wrap ward-kdl ops forgejo {
@@ -56,8 +55,8 @@ func TestPlaceholderSentinelYieldsToRealValueEitherOrder(t *testing.T) {
 	}
 }
 
-// With nothing to override it the sentinel survives, so doctor still fails the
-// deployment that never supplied its own value. That is the whole point of it.
+// With nothing to override it, the sentinel survives so doctor still fails the
+// deployment that never supplied its own value.
 func TestPlaceholderSentinelSurvivesWhenNothingSuppliesIt(t *testing.T) {
 	n := mergedWrap(t, `wrap ward-kdl ops forgejo {
     (placeholder)base-url "git.example.com/api/v1"
@@ -69,8 +68,8 @@ func TestPlaceholderSentinelSurvivesWhenNothingSuppliesIt(t *testing.T) {
 	}
 }
 
-// Only the marked node yields. An unmarked duplicate is a real conflict and must
-// still reach cli-guard, which is what catches it.
+// Only the marked node yields. An unmarked duplicate is a real conflict and
+// must still reach cli-guard.
 func TestPlaceholderResolutionLeavesUnmarkedNodesAlone(t *testing.T) {
 	n := mergedWrap(t, `wrap ward-kdl ops forgejo {
     base-url "a.example/api/v1"

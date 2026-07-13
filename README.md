@@ -107,10 +107,10 @@ v0.x, and early on purpose. ward is a single-maintainer tool in active internal 
 
 ## Support
 
-**Canonical development happens on [Forgejo][ward-forgejo]** - `main`, the issues, and every commit live there. That instance's registration is closed, so the **GitHub mirror is the public front door for everyone except the maintainer**: file a [bug or feature request][new-issue] there with just a GitHub account and a maintainer carries an accepted change across. If you are working directly in the canonical repo, use Forgejo issues and Forgejo `closes #N` links. For `coilysiren/*`, the agent driver resolves the authoritative tracker from the repo-authority policy instead of assuming Forgejo. Conduct: [Code of Conduct](CODE_OF_CONDUCT.md). Security: [SECURITY.md]. License: [`LICENSE`](./LICENSE).
+**Canonical development happens on [Forgejo][ward-forgejo]** - `main`, the issues, and every commit live there. That instance's registration is closed, so the **GitHub mirror is the public front door for everyone except the maintainer**: file a [new issue][new-issue] there with just a GitHub account and a maintainer carries an accepted change across. If you are working directly in the canonical repo, use Forgejo issues and Forgejo `closes #N` links. For `coilysiren/*`, the agent driver resolves the authoritative tracker from the repo-authority policy instead of assuming Forgejo. Conduct: [Code of Conduct](CODE_OF_CONDUCT.md). Security: [SECURITY.md]. License: [`LICENSE`](./LICENSE).
 
 [cli-guard]: https://forgejo.coilysiren.me/coilyco-flight-deck/cli-guard
-[new-issue]: https://github.com/coilyco-flight-deck/ward/issues/new/choose
+[new-issue]: https://github.com/coilyco-flight-deck/ward/issues/new
 [ward-forgejo]: https://forgejo.coilysiren.me/coilyco-flight-deck/ward
 
 ## See also
