@@ -1,0 +1,8 @@
+# Persistent clone allowlist loaded by ward at startup.
+coilyco-flight-deck/agentic-os
+coilyco-bridge/agentic-os-hardware
+coilyco-bridge/agentic-os-kai
+coilyco-bridge/deploy
+coilyco-flight-deck/infrastructure
+coilyco-bridge/lore
+coilysiren/coilysiren

@@ -73,7 +73,7 @@ func (c *githubClient) getIssue(ctx context.Context, owner, repo string, number 
 		URL:    raw.HTMLURL,
 	}
 	// Populate the label names so the automation-mode ceiling gate can
-	// read them (agentic-os#246); GitHub labels are objects, not strings.
+	// read them; GitHub labels are objects, not strings.
 	for _, l := range raw.Labels {
 		issue.Labels = append(issue.Labels, l.Name)
 	}

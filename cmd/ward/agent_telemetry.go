@@ -13,7 +13,7 @@ import (
 const telemetryArgCap = 512
 
 // redactionRules is the Warp custom_secret_regex_list ported to RE2 (lookahead-free,
-// so verbatim). Source: agentic-os/warp/templates/settings.toml.tmpl. See docs.
+// so verbatim). Source: the upstream Warp template. See docs.
 var redactionRules = []*regexp.Regexp{
 	// Public IPv4 (excludes loopback / RFC1918 / link-local; CGNAT kept).
 	regexp.MustCompile(`\b(?:(?:[1-9]|1[1-9]|[2-9]\d|1[01]\d|12[0-6]|12[89]|1[3-5]\d|16[0-8]|17[01]|17[3-9]|18\d|19[01]|19[3-9]|2[0-4]\d|25[0-5])\.(?:25[0-5]|2[0-4]\d|1\d\d|[1-9]?\d)|169\.(?:255|25[0-3]|2[0-4]\d|1\d\d|[1-9]?\d)|172\.(?:25[0-5]|2[0-4]\d|1\d\d|3[2-9]|[4-9]\d|1[0-5]|[0-9])|192\.(?:25[0-5]|2[0-4]\d|1[7-9]\d|16[0-7]|1[0-5]\d|169|[1-9]?\d))(?:\.(?:25[0-5]|2[0-4]\d|1\d\d|[1-9]?\d)){2}\b`),

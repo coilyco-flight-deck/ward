@@ -13,16 +13,8 @@ import (
 )
 
 // cloneAllowlist is the baked-in set of repos (owner/name, lowercased) that may
-// be cloned into a persistent path. Never read from disk. See docs/git-clone.md.
-var cloneAllowlist = map[string]bool{
-	"coilyco-flight-deck/agentic-os":     true,
-	"coilyco-bridge/agentic-os-hardware": true,
-	"coilyco-bridge/agentic-os-kai":      true,
-	"coilyco-bridge/deploy":              true,
-	"coilyco-flight-deck/infrastructure": true,
-	"coilyco-bridge/lore":                true,
-	"coilysiren/coilysiren":              true,
-}
+// be cloned into a persistent path. It comes from the embedded container data.
+var cloneAllowlist = mustLoadCloneAllowlist()
 
 // cloneValueFlags are the `git clone` options that consume the next argv token,
 // so the destination scanner skips it rather than treating it as a positional.
@@ -173,10 +165,19 @@ func cloneGate(repoURL, destAbs string, getenv func(string) string) error {
 		return nil
 	}
 	return fmt.Errorf("ward git clone: refused - %q is not under an ephemeral root "+
-		"(/tmp or $TMPDIR) and %q is not on ward's hardcoded clone allowlist. Clone "+
+		"(/tmp or $TMPDIR) and %q is not on ward's clone allowlist. Clone "+
 		"off-allowlist repos into /tmp, or add the repo to the allowlist in "+
 		"cmd/ward/git_clone.go if it legitimately belongs on disk (ward#285)",
 		destAbs, repoURL)
+}
+
+func mustLoadCloneAllowlist() map[string]bool {
+	lines := mustReadContainerAssetLines("clone-allowlist.txt")
+	out := make(map[string]bool, len(lines))
+	for _, line := range lines {
+		out[strings.ToLower(line)] = true
+	}
+	return out
 }
 
 // destUnderEphemeral reports whether destAbs resolves under any ephemeral root,

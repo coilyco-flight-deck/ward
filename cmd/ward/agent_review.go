@@ -27,24 +27,17 @@ import (
 // it from the host, not the (untrusted) worker.
 const reviewClassEnv = "WARD_REVIEW_CLASS"
 
-// reviewSkillPath resolves the hand-curated aos code-review skill that the prompt
+// reviewSkillPath resolves the hand-curated code-review skill that the prompt
 // embeds into the reviewer context.
 func reviewSkillPath() string {
-	candidates := []string{}
-	if dest := strings.TrimSpace(os.Getenv("WARD_WORKSPACE_DEST")); dest != "" {
-		candidates = append(candidates, filepath.Join(dest, "agentic-os", ".agents", "skills", "tooling-code-review", "SKILL.md"))
-	}
-	candidates = append(candidates, "/workspace/agentic-os/.agents/skills/tooling-code-review/SKILL.md")
-	if dest := strings.TrimSpace(os.Getenv("WARD_SUBSTRATE_DEST")); dest != "" {
-		candidates = append(candidates, filepath.Join(dest, "agentic-os", ".agents", "skills", "tooling-code-review", "SKILL.md"))
-	}
-	candidates = append(candidates, filepath.Join(containerSubstrateDest, "agentic-os", ".agents", "skills", "tooling-code-review", "SKILL.md"))
-	for _, path := range candidates {
+	candidates := mustReadContainerAssetLines("review-skill-paths.txt")
+	for _, candidate := range candidates {
+		path := os.ExpandEnv(candidate)
 		if st, err := os.Stat(path); err == nil && !st.IsDir() {
 			return path
 		}
 	}
-	return candidates[len(candidates)-1]
+	return os.ExpandEnv(candidates[len(candidates)-1])
 }
 
 // reviewSummaryPath is the handoff file the final conclusion comment reads.
@@ -145,7 +138,7 @@ func (r *Runner) postReviewConclusionComment(ctx context.Context, res reviewpane
 	}
 }
 
-// reviewSkillFallback is the embedded aos code-review skill text, used when the
+// reviewSkillFallback is the embedded code-review skill text, used when the
 // mounted skill file is unavailable.
 const reviewSkillFallback = `---
 name: tooling-code-review
@@ -187,7 +180,7 @@ func agentReviewCommand() *cli.Command {
 		Usage: "Run the in-container code-review pass over this run's diff before it lands (ward#134).",
 		Description: `review is the pre-PR code-review gate. Run it INSIDE a dispatch container,
 after CI is green and before you open the pull request or merge: it builds the
-diff-vs-main, loads the hand-curated aos review skill, and hands the diff to the
+diff-vs-main, loads the hand-curated review skill, and hands the diff to the
 worker's own harness family first, with other families available as a later,
 higher-cost fallback. The reviewer runs against the live filesystem state and
 blocks the landing unless a class-tiered quorum passes. It fails closed: a reviewer

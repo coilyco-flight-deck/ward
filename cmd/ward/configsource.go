@@ -84,11 +84,8 @@ const (
 type configSource struct {
 	fsys fs.FS
 
-	// desc names the selected source for error messages: the raw config ref
-	// for external bundles, empty for the baked default. A fail-closed
-	// smart-defaults error must say WHERE the offending value came from -
-	// the stale-pin incident behind aos#452/aos#472 cost a whole diagnosis
-	// chain because the error named the value but not the serving bundle.
+	// desc names the selected source for error messages: raw config ref for
+	// external bundles, empty for the baked default.
 	desc string
 
 	// auditVersion stamps the resolved bundle identity into the audit row.

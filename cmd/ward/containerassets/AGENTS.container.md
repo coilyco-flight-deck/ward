@@ -121,7 +121,7 @@ repos (above) - under `/workspace`.
 
 The skills here are **read as docs**, not a rebuilt host skill-symlink forest.
 The core language / `kai-*` / `coding-*` / `agents-*` skills live in the
-agentic-os + agentic-os-kai substrate, so read them straight off
+companion substrate, so read them straight off
 `/substrate/<name>/.agents/skills/`. A capability skill from a **non-substrate**
 repo is not warmed - it rides a `--repo owner/name` grant, which clones that repo
 full under `/workspace` with its skills. Fleet-wide management scripts (the ones
@@ -138,7 +138,7 @@ repo) is also on the substrate manifest, you'll find it under **both**
 `/workspace/<name>` and `/substrate/<name>` - two working copies hydrated from
 the one shared gitcache mirror, so they start at the **same HEAD**. This is not a
 conflict to resolve; it is the expected overlap. The image-tier substrate seed
-is owned in aos, and ward-targeted runs read ward itself from `/workspace/ward`
+is owned in the companion release layer, and ward-targeted runs read ward itself from `/workspace/ward`
 when it is the target. The rule that picks between trees is simple:
 
 - `/workspace/<name>` is **authoritative for work** - edits, commits, the feature

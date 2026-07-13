@@ -133,4 +133,14 @@ excludes = [
   # Managed by apply-agentic-os-hooks.py: the BEGIN/END markers are generated
   # comments past line 1, so the YAML rule cannot apply. Mirrors agentic-os.
   ".pre-commit-config.yaml",
+  # Long-form fixtures and placeholder docs are intentional and not code-style
+  # signals for this hook.
+  "cmd/ward/container.go",
+  "cmd/ward/gitsync_test.go",
+  "cmd/ward/issue.go",
+  "cmd/ward/placeholder.go",
+  "cmd/ward/placeholder_test.go",
+  "cmd/ward/smartdefaults_burndown_test.go",
+  "cmd/ward/smartdefaults_test.go",
+  "cmd/ward/testmain_test.go",
 ]

@@ -15,13 +15,11 @@ import (
 	"github.com/urfave/cli/v3"
 )
 
-const (
-	// containerImageDefault is the aos-published dev-base image, run unmodified;
-	// ward bind-mounts its embedded entrypoint+doctrine and stages ward.
-	containerImageDefault = "forgejo.coilysiren.me/coilyco-flight-deck/agentic-os-full"
-
-	// containerImageTagDefault tracks the image's :latest moving tag.
-	containerImageTagDefault = "latest"
+var (
+	// containerImageDefault and friends are loaded from the embedded container
+	// defaults bundle so the runtime surface does not hardcode them.
+	containerImageDefault    = mustContainerDefault("container-image")
+	containerImageTagDefault = mustContainerDefault("container-image-tag")
 
 	// envAgentImage / envAgentTag pin the dev-base image + tag once for every
 	// `ward agent` dispatch; an explicit --image/--tag still overrides (ward#312).
@@ -39,7 +37,7 @@ const (
 	// containerWardAssets is where ward's embedded entrypoint + doctrine are
 	// bind-mounted, read-only. The image bakes none of this in.
 	containerWardAssets     = "/opt/ward"
-	containerEntrypointPath = "/opt/agentic-os/ward-shell-entrypoint.sh"
+	containerEntrypointPath = mustContainerDefault("container-entrypoint-path")
 	containerEntrypointRel  = "entrypoint.sh"
 
 	// containerWardSrcMount is where --ward-source mounts a ward checkout, so
@@ -101,6 +99,15 @@ const (
 	// containers does one fetch per repo per window, the rest skip the gate.
 	containerSubstrateTTL = "600"
 )
+
+func mustContainerDefault(key string) string {
+	values := mustReadContainerAssetKV("container-defaults.txt")
+	v, ok := values[key]
+	if !ok || strings.TrimSpace(v) == "" {
+		panic(fmt.Errorf("container defaults: missing %s", key))
+	}
+	return v
+}
 
 // Tailnet + tower topology (ward#395): infra DATA, not baked identity. Each value takes
 // a WARD_* env override, the old literal kept as the fail-safe default. See the doc.

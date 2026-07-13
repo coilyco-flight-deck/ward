@@ -20,7 +20,7 @@
 #            Cold-cloned into the gitcache on first use, then TTL-refreshed.
 #
 # This is the runtime substrate manifest for ward containers. The image-tier
-# rows are denormalized from aos's canonical
+# rows are denormalized from the canonical
 # docker/dev-base/substrate-image-repos.txt, which owns the baked dev-base seed.
 # The ansible local-sync (infrastructure/scripts/clone-substrate-repos.sh)
 # syncs this same list into ~/projects. The two stay denormalized copies, not a

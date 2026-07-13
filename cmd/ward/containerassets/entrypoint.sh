@@ -1,5 +1,5 @@
 #!/usr/bin/env bash
-# ward container entrypoint. Bind-mounted into the aos dev-base image at
+# ward container entrypoint. Bind-mounted into the dev-base image at
 # /opt/agentic-os/ward-shell-entrypoint.sh by `ward agent` at container
 # bring-up (it is embedded in the ward binary, not baked into the image). The
 # shell now stays as a thin POSIX shim: it links to the ward binary the host

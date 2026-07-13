@@ -396,7 +396,7 @@ func reviewGateClause(ref agentIssueRef, wf workflowMode) string {
 	return fmt.Sprintf(
 		"REVIEW GATE (ward#134): before you land this change (%s), and ONLY after CI is green, run the "+
 			"in-container code-review pass:\n\n    ward agent review --ci-log <path-to-your-green-ci-output>\n\n"+
-			"It loads the hand-curated code-review skill from the companion aos checkout, starts with your own "+
+			"It loads the hand-curated code-review skill from the companion checkout, starts with your own "+
 			"harness family by default, and can escalate to other families only as a later, higher-cost fallback. "+
 			"The reviewer works inside the worker container against the live filesystem state and prints a machine "+
 			"line on stdout:\n"+

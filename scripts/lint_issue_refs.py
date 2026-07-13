@@ -45,14 +45,11 @@ FORGEJO = "https://forgejo.coilysiren.me"
 GITHUB = "https://github.com"
 
 # prefix (terse repo shorthand) -> canonical issue web base. ward/cli-guard are
-# Forgejo; the agentic-os family, coily, and the taps are GitHub (ward-kdl is ward).
+# Forgejo; coily and the taps are GitHub (ward-kdl is ward).
 PREFIX_BASE = {
     "ward": f"{FORGEJO}/coilyco-flight-deck/ward",
     "ward-kdl": f"{FORGEJO}/coilyco-flight-deck/ward",
     "cli-guard": f"{FORGEJO}/coilyco-flight-deck/cli-guard",
-    "agentic-os": f"{GITHUB}/coilysiren/agentic-os",
-    "aos": f"{GITHUB}/coilysiren/agentic-os",
-    "agentic-os-kai": f"{GITHUB}/coilysiren/agentic-os-kai",
     "coily": f"{GITHUB}/coilyco-bridge/coily",
     "homebrew-tap": f"{GITHUB}/coilysiren/homebrew-tap",
     "infrastructure": f"{GITHUB}/coilysiren/infrastructure",

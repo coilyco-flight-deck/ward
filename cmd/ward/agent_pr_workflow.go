@@ -210,7 +210,7 @@ func prWorkflowRunsReport(ctx context.Context, cl *forgejoClient, owner, repo st
 }
 
 // prWorkflowRerunExec asks the forge to rerun one Actions run natively; the
-// forge-gap fallback (agentic-os#434) surfaces as a loud, actionable error.
+// forge-gap fallback surfaces as a loud, actionable error.
 func prWorkflowRerunExec(ctx context.Context, cl *forgejoClient, owner, repo string, runID int64) (string, error) {
 	run, err := cl.getActionRun(ctx, owner, repo, runID)
 	if err != nil {
@@ -294,7 +294,7 @@ func agentPRRunsCommand() *cli.Command {
 func agentPRRerunCommand() *cli.Command {
 	return &cli.Command{
 		Name:      "rerun",
-		Usage:     "Rerun one failed Actions run natively (the agentic-os#434 forge gap degrades loudly, never silently).",
+		Usage:     "Rerun one failed Actions run natively (the forge rerun gap degrades loudly, never silently).",
 		ArgsUsage: "<owner/repo> <run-id>",
 		Action:    prWorkflowAction("agent.pr.rerun", runAgentPRRerun),
 	}

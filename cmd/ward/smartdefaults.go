@@ -104,9 +104,8 @@ func currentSmartDefaultsWithError() (smartDefaults, error) {
 	return defs, err
 }
 
-// loadCurrentSmartDefaults resolves the config source and parses its defaults,
-// naming the serving source in any failure so a fail-closed value is
-// attributable to the bundle that carried it (the aos#452 stale-pin class).
+// loadCurrentSmartDefaults resolves the config source and parses its defaults.
+// Fail-closed values must name the serving source, not just the value.
 func loadCurrentSmartDefaults() (smartDefaults, error) {
 	defs := bakedSmartDefaults()
 	src, err := selectConfigSource()
@@ -499,14 +498,8 @@ func applyBundleReposChild(defs *smartDefaults, srcPath string, c *kdl.Node, rep
 	return nil
 }
 
-// applyBurndown reads the burndown repo-exclusion block (ward#1105):
-//
-//	burndown default=#true {
-//	    repo "owner/name" #false
-//	}
-//
-// `default` sets the fleet-wide posture and each `repo` overrides it, so an
-// exclusion survives a repo joining a trusted owner later.
+// applyBurndown reads the burndown repo-exclusion block (ward#1105).
+// `default` sets the fleet-wide posture and each `repo` overrides it.
 func applyBurndown(defs *smartDefaults, n *kdl.Node) error {
 	if len(n.Arguments()) != 0 {
 		return fmt.Errorf("smart defaults: burndown takes no arguments (fail-closed)")
@@ -558,9 +551,7 @@ func applyBurndownRepo(defs *smartDefaults, c *kdl.Node) error {
 }
 
 // burndownEnabled reports whether the director may burn a repo's backlog down.
-// An explicit per-repo value wins, then the block default. A bundle with no
-// burndown block excludes nothing, so an absent block cannot silently drain the
-// director's whole scope.
+// An absent burndown block excludes nothing, so it cannot silently drain scope.
 func (d smartDefaults) burndownEnabled(slug string) bool {
 	if !d.burndownConfigured {
 		return true
