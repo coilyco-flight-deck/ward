@@ -40,6 +40,7 @@ determines where the work is allowed to land.
 The old issue-slice pages are gone. The durable follow-on docs are:
 
 - [agent-roles.md](agent-roles.md)
+- [agent-flags.md](agent-flags.md)
 - [agent-harnesses.md](agent-harnesses.md)
 - [agent-lifecycle.md](agent-lifecycle.md)
 - [agent-director.md](agent-director.md)
