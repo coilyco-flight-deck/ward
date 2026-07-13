@@ -18,10 +18,11 @@ import (
 const (
 	// containerImageDefault is the aos-published dev-base image, run unmodified;
 	// ward bind-mounts its embedded entrypoint+doctrine and stages ward.
-	containerImageDefault = "forgejo.coilysiren.me/coilyco-flight-deck/agentic-os-full"
+	containerImageDefault = "forgejo.coilysiren.me/coilyco-flight-deck/agentic-os"
 
-	// containerImageTagDefault tracks the image's :latest moving tag.
-	containerImageTagDefault = "latest"
+	// containerImageTagDefault tracks the moving alias named for the aos
+	// branch that publishes the image family (:latest is retired).
+	containerImageTagDefault = "release"
 
 	// envAgentImage / envAgentTag pin the dev-base image + tag once for every
 	// `ward agent` dispatch; an explicit --image/--tag still overrides (ward#312).

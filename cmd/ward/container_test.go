@@ -632,7 +632,7 @@ func TestWardEnvContainerMarker(t *testing.T) {
 func sampleUpPlan() upPlan {
 	repo := targetRepo{Owner: "coilyco-gaming", Name: "eco-app"}
 	return upPlan{
-		Image:       "forgejo.coilysiren.me/coilyco-flight-deck/agentic-os-full:latest",
+		Image:       "forgejo.coilysiren.me/coilyco-flight-deck/agentic-os:release",
 		Name:        "engineer-claude-eco-app-140",
 		Role:        roleEngineer,
 		Machine:     "deadbeef",
@@ -880,7 +880,7 @@ func TestDockerCreateArgvShape(t *testing.T) {
 		}
 	}
 	// The image is the final arg.
-	if argv[len(argv)-1] != "forgejo.coilysiren.me/coilyco-flight-deck/agentic-os-full:latest" {
+	if argv[len(argv)-1] != "forgejo.coilysiren.me/coilyco-flight-deck/agentic-os:release" {
 		t.Errorf("image must be the final arg, got %q", argv[len(argv)-1])
 	}
 }
@@ -1108,7 +1108,7 @@ func TestDockerRmArgv(t *testing.T) {
 func TestImageRef(t *testing.T) {
 	cases := []struct{ image, tag, want string }{
 		{"forgejo.coilysiren.me/coilyco-flight-deck/agentic-os", "latest", "forgejo.coilysiren.me/coilyco-flight-deck/agentic-os:latest"},
-		{"forgejo.coilysiren.me/coilyco-flight-deck/agentic-os", "", "forgejo.coilysiren.me/coilyco-flight-deck/agentic-os:latest"},
+		{"forgejo.coilysiren.me/coilyco-flight-deck/agentic-os", "", "forgejo.coilysiren.me/coilyco-flight-deck/agentic-os:release"},
 		{"forgejo.coilysiren.me/coilyco-flight-deck/agentic-os:v1.2.3", "latest", "forgejo.coilysiren.me/coilyco-flight-deck/agentic-os:v1.2.3"},
 		{"repo@sha256:abc", "latest", "repo@sha256:abc"},
 	}

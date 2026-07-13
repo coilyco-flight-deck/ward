@@ -169,7 +169,7 @@ func TestAdvisorFreeformInstructionsFileUsesExplicitRepoAndImageContract(t *test
 	got := out.String()
 	for _, want := range []string{
 		"repo:   coilysiren/example",
-		"docker pull forgejo.coilysiren.me/coilyco-flight-deck/agentic-os-full:latest",
+		"docker pull forgejo.coilysiren.me/coilyco-flight-deck/agentic-os:release",
 		"--entrypoint " + containerEntrypointPath,
 	} {
 		if !strings.Contains(got, want) {
