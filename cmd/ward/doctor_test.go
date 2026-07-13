@@ -43,6 +43,59 @@ func TestRunDoctorWithBakedDefaultsKeepsRepoAuthorityClean(t *testing.T) {
 	}
 }
 
+func TestRunDoctorRejectsSurvivingPlaceholderSentinels(t *testing.T) {
+	dir := copyDoctorBundle(t)
+	writeBundleFixtureFile(t, dir, bundleFixtureForgejoPath, `
+wrap ward-kdl ops forgejo {
+    spec forgejo.swagger.v1.json
+    base-url (placeholder)"git.example.com/api/v1"
+    auth header-token {
+        header Authorization
+        prefix "token "
+        value ssm (placeholder)"/example/forgejo/api-token"
+    }
+    restrict owner matches (placeholder)"example*"
+    can get repo
+}
+`)
+	t.Setenv(wardConfigRefEnv, "file://"+dir)
+
+	report, err := runDoctor(context.Background())
+	if err == nil {
+		t.Fatalf("runDoctor with surviving placeholders passed; checks=%+v", report.checks)
+	}
+	if !containsCheck(report.checks, "ops bundle") {
+		t.Fatalf("runDoctor did not flag the ops bundle: %+v", report.checks)
+	}
+	if !strings.Contains(lastCheckErr(report.checks).Error(), "placeholder sentinel") {
+		t.Fatalf("placeholder failure did not mention the sentinel: %v", lastCheckErr(report.checks))
+	}
+}
+
+func TestRunDoctorCanAllowPlaceholderSentinels(t *testing.T) {
+	dir := copyDoctorBundle(t)
+	writeBundleFixtureFile(t, dir, bundleFixtureForgejoPath, `
+wrap ward-kdl ops forgejo {
+    spec forgejo.swagger.v1.json
+    base-url (placeholder)"git.example.com/api/v1"
+    auth header-token {
+        header Authorization
+        prefix "token "
+        value ssm (placeholder)"/example/forgejo/api-token"
+    }
+    restrict owner matches (placeholder)"example*"
+    can get repo
+}
+`)
+	t.Setenv(wardConfigRefEnv, "file://"+dir)
+	t.Setenv(doctorAllowPlaceholdersEnv, "1")
+
+	report, err := runDoctor(context.Background())
+	if err != nil {
+		t.Fatalf("runDoctor with allowed placeholders: %v; checks=%+v; exec err=%v", err, report.checks, lastCheckErr(report.checks))
+	}
+}
+
 func TestStrictValidationFailures(t *testing.T) {
 	t.Run("unknown keys", func(t *testing.T) {
 		_, err := parseSmartDefaults([]byte(`
@@ -118,7 +171,7 @@ repo-authority default=forgejo {
 		if err != nil {
 			t.Fatalf("parseSmartDefaults: %v", err)
 		}
-		if err := validateRepoAuthorityOperational(defs); err == nil || !strings.Contains(err.Error(), "placeholder") {
+		if err := validateRepoAuthorityOperational(defs, false); err == nil || !strings.Contains(err.Error(), "placeholder") {
 			t.Fatalf("placeholder owner: got %v", err)
 		}
 	})

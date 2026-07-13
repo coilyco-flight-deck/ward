@@ -144,20 +144,10 @@ func loadForgejoGuardfileFrom(src configSource) (*guardfile.Guardfile, string, e
 		}
 		return gf, src.forgejoGuardfile, nil
 	}
-	files, err := loadBundleKDLFiles(src)
+	file, node, err := loadForgejoGuardfileNodeFrom(src)
 	if err != nil {
 		return nil, "", err
 	}
-	file, node, err := findMergedBundleNode(files, "top-level `wrap ward-kdl ops forgejo` block", func(n *kdl.Node) bool {
-		if !wrapNodeMatchesPath(n, "ward-kdl", "ops", "forgejo") && !wrapNodeMatchesPath(n, "ward", "ops", "forgejo") {
-			return false
-		}
-		return n.GetChild("exec") == nil
-	})
-	if err != nil {
-		return nil, "", err
-	}
-	resolvePlaceholderSentinels(node)
 	srcBytes, err := emitKDLDocument(node)
 	if err != nil {
 		return nil, "", fmt.Errorf("emit forgejo bundle %s: %w", file.path, err)
@@ -167,6 +157,24 @@ func loadForgejoGuardfileFrom(src configSource) (*guardfile.Guardfile, string, e
 		return nil, "", fmt.Errorf("parse guardfile %s: %w", file.path, err)
 	}
 	return gf, file.path, nil
+}
+
+func loadForgejoGuardfileNodeFrom(src configSource) (*bundleKDLFile, *kdl.Node, error) {
+	files, err := loadBundleKDLFiles(src)
+	if err != nil {
+		return nil, nil, err
+	}
+	file, node, err := findMergedBundleNode(files, "top-level `wrap ward-kdl ops forgejo` block", func(n *kdl.Node) bool {
+		if !wrapNodeMatchesPath(n, "ward-kdl", "ops", "forgejo") && !wrapNodeMatchesPath(n, "ward", "ops", "forgejo") {
+			return false
+		}
+		return n.GetChild("exec") == nil
+	})
+	if err != nil {
+		return nil, nil, err
+	}
+	resolvePlaceholderSentinels(node)
+	return file, node, nil
 }
 
 func showCommandHelpWithUnavailableOps(ctx context.Context, cmd *cli.Command, commandName string) error {
