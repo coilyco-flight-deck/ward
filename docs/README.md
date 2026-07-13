@@ -55,7 +55,6 @@ Start here if you open `docs/` directly. The tree holds the release-era operatin
 - [ward-kdl-surface.md](ward-kdl-surface.md) - generated surface overview.
 - [ward-kdl-in-ward.md](ward-kdl-in-ward.md) - exec mounts into `ward`.
 - [ward-kdl-authoring.md](ward-kdl-authoring.md) - author and rebuild guardfiles.
-- [ward-docker-exec.md](ward-docker-exec.md) - `ward docker exec`.
 
 ## Ops and examples
 

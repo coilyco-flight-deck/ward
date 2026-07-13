@@ -41,4 +41,3 @@ do.
 - [ward-kdl-authoring.md](ward-kdl-authoring.md) - the authoring loop.
 - [ward-kdl-surface.md](ward-kdl-surface.md) - the generated surface.
 - [ward-kdl-in-ward.md](ward-kdl-in-ward.md) - exec guardfile mounts.
-- [ward-docker-exec.md](ward-docker-exec.md) - the shell-into-run leaf.

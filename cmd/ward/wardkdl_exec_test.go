@@ -24,7 +24,7 @@ func newWardKdlTestRoot() *cli.Command {
 }
 
 // TestMountWardKdlExecMountsNewSurfaces asserts the auto-discovery lights up the
-// dark exec surfaces: `agents <tool>`, `docker`, and `ops {aws,kubectl}`.
+// generated exec surfaces: `agents <tool>`, `docker`, and `ops {aws,kubectl}`.
 func TestMountWardKdlExecMountsNewSurfaces(t *testing.T) {
 	t.Setenv("WARD_TARGET_OWNER", "coilysiren")
 	t.Setenv("WARD_TARGET_REPO", "coilysiren/example")
@@ -46,6 +46,13 @@ func TestMountWardKdlExecMountsNewSurfaces(t *testing.T) {
 	if commandNamed(root.Commands, "docker") == nil {
 		t.Errorf("ward docker group not mounted; got %v", commandNames(root.Commands))
 	}
+	docker := commandNamed(root.Commands, "docker")
+	if docker == nil {
+		t.Fatal("docker group vanished")
+	}
+	if commandNamed(docker.Commands, "exec") != nil {
+		t.Errorf("ward docker exec should not be mounted; got %v", commandNames(docker.Commands))
+	}
 
 	ops := commandNamed(root.Commands, "ops")
 	if ops == nil {
@@ -61,6 +68,18 @@ func TestMountWardKdlExecMountsNewSurfaces(t *testing.T) {
 	aws := commandNamed(ops.Commands, "aws")
 	if aws == nil || commandNamed(aws.Commands, "sts") == nil {
 		t.Errorf("ward ops aws did not mount its sts subtree; got %v", commandNames(aws.Commands))
+	}
+}
+
+// TestWardDockerExecIsUnknownCommand pins the removal contract end to end.
+// The binary rejects `ward docker exec` before the old leaf can run.
+func TestWardDockerExecIsUnknownCommand(t *testing.T) {
+	err := rejectDockerExecInvocation([]string{"ward", "docker", "exec"})
+	if err == nil {
+		t.Fatal("ward docker exec unexpectedly succeeded")
+	}
+	if !strings.Contains(err.Error(), "unknown command") {
+		t.Fatalf("ward docker exec should be unknown, got: %v", err)
 	}
 }
 

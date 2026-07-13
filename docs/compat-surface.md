@@ -38,7 +38,7 @@ States mean:
 ## Guarded ops providers authored through ward-kdl
 
 - Forgejo, Tailscale, Trello, GlitchTip, SigNoz - shipped spec-driven ops. `docs/ward-kdl.md`, `docs/ward-kdl-surface.md`, `docs/ops-forgejo.md`.
-- AWS, kubectl, Docker, agents, pkg - shipped exec-dialect ops. `docs/ward-kdl-surface.md`, `docs/ward-kdl-in-ward.md`, `docs/ward-docker-exec.md`.
+- AWS, kubectl, Docker, agents, pkg - shipped exec-dialect ops. `docs/ward-kdl-surface.md`, `docs/ward-kdl-in-ward.md`.
 
 ## Config and auth sources
 
