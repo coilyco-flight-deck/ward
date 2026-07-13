@@ -1687,26 +1687,44 @@ func (r *Runner) backlogPrintDirectorPlan(label string, repos []string, cfg back
 	var b strings.Builder
 	fmt.Fprintf(&b, "\n# %s (print)\n", label)
 	fmt.Fprintf(&b, "scope:           %s\n", strings.Join(repos, ", "))
-	fmt.Fprintf(&b, "director harness: %s (its own heartbeat one-shot + drain surface)\n", cfg.mode)
-	fmt.Fprintf(&b, "engineer harness: %s (the engineers it dispatches)\n", cy.harness)
-	fmt.Fprintf(&b, "max-parallel:    %d\n", cfg.maxParallel)
-	fmt.Fprintf(&b, "image:           %s\n", imageRef(cy.image, cy.tag))
-	fmt.Fprintf(&b, "ward-version:    %s\n", wardVersionLaunchLabel(cy.wardVersion, cy.wardVersionSource))
-	if cfg.wardSource != "" {
-		fmt.Fprintf(&b, "ward-source:     %s (surface session builds ward from here)\n", cfg.wardSource)
-	}
-	fmt.Fprintf(&b, "aws:             %t\n", cy.aws)
-	fmt.Fprintf(&b, "tailnet:         %s\n", tailnetPlanLabel(cy.hostNet, cy.tsSidecar))
-	fmt.Fprintf(&b, "no-pull:         %t\n", cfg.noPull)
-	fmt.Fprintf(&b, "override-reservation: %t (propagated to engineers; default defers on a reservation conflict)\n", cy.overrideReservation)
-	if len(cfg.withRepo) > 0 {
-		fmt.Fprintf(&b, "with-repo:       %s (cloned into the surface session)\n", strings.Join(cfg.withRepo, ", "))
+	if err := appendDirectorLaunchConfig(&b, cfg); err != nil {
+		return err
 	}
 	// Show the exact argv each dispatch forwards, with a placeholder ref slot.
 	argv := cy.engineerArgv(agentIssueRef{Owner: "owner", Repo: "repo", Number: 0})
 	argv[1] = "<owner/repo#N>"
 	fmt.Fprintf(&b, "dispatch:        ward agent %s\n", strings.Join(argv, " "))
 	return r.emit(b.String())
+}
+
+// appendDirectorLaunchConfig renders the resolved launch knobs in the same shape the
+// pre-launch print path sees them, including the selected config source.
+func appendDirectorLaunchConfig(b *strings.Builder, cfg backlogConfig) error {
+	src, err := selectConfigSource()
+	if err != nil {
+		return err
+	}
+	cy := cfg.dispatch
+	fmt.Fprintf(b, "config source:   %s\n", src.sourceDesc())
+	fmt.Fprintf(b, "director harness: %s (its own heartbeat one-shot + drain surface)\n", cfg.mode)
+	fmt.Fprintf(b, "limit:           %d\n", cfg.limit)
+	fmt.Fprintf(b, "max-parallel:    %d\n", cfg.maxParallel)
+	fmt.Fprintf(b, "poll-interval:   %s\n", cfg.pollInterval)
+	fmt.Fprintf(b, "max-cycles:      %d\n", cfg.maxCycles)
+	fmt.Fprintf(b, "engineer-harness: %s\n", cy.harness)
+	fmt.Fprintf(b, "image:           %s\n", imageRef(cy.image, cy.tag))
+	fmt.Fprintf(b, "ward-version:    %s\n", wardVersionLaunchLabel(cy.wardVersion, cy.wardVersionSource))
+	if cfg.wardSource != "" {
+		fmt.Fprintf(b, "ward-source:     %s (surface session builds ward from here)\n", cfg.wardSource)
+	}
+	fmt.Fprintf(b, "aws:             %t\n", cy.aws)
+	fmt.Fprintf(b, "tailnet:         %s\n", tailnetPlanLabel(cy.hostNet, cy.tsSidecar))
+	fmt.Fprintf(b, "no-pull:         %t\n", cfg.noPull)
+	fmt.Fprintf(b, "override-reservation: %t (propagated to engineers; default defers on a reservation conflict)\n", cy.overrideReservation)
+	if len(cfg.withRepo) > 0 {
+		fmt.Fprintf(b, "with-repo:       %s (cloned into the surface session)\n", strings.Join(cfg.withRepo, ", "))
+	}
+	return nil
 }
 
 // backlogPrintSummary prints the terminal disposition of the run by state.

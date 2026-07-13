@@ -188,6 +188,49 @@ func TestDirectorDispatchQuietsSeedConsole(t *testing.T) {
 	}
 }
 
+// TestBacklogPrintDirectorPlanIncludesCLIConfig covers the print path's explicit
+// CLI/config summary and the defaults that previously vanished from the launch plan.
+func TestBacklogPrintDirectorPlanIncludesCLIConfig(t *testing.T) {
+	t.Setenv(wardConfigRefEnv, "file://"+t.TempDir())
+
+	var out bytes.Buffer
+	r := &Runner{Runner: &shell.Runner{Stdout: &out, Stderr: io.Discard}}
+	cfg := backlogConfig{
+		mode:         modeClaude,
+		maxParallel:  4,
+		limit:        17,
+		pollInterval: 45 * time.Second,
+		maxCycles:    12,
+		dispatch: dispatchEngineer{
+			harness:             modeGoose,
+			image:               "img",
+			tag:                 "tag",
+			overrideReservation: true,
+		},
+		withRepo:   []string{"a/b"},
+		noPull:     true,
+		wardSource: "/src/ward",
+	}
+
+	if err := r.backlogPrintDirectorPlan("ward agent director", []string{"coilyco-flight-deck/ward"}, cfg); err != nil {
+		t.Fatalf("backlogPrintDirectorPlan: %v", err)
+	}
+	got := out.String()
+	for _, want := range []string{
+		"config source:   file://",
+		"limit:           17",
+		"max-parallel:    4",
+		"poll-interval:   45s",
+		"max-cycles:      12",
+		"engineer-harness: goose",
+		"ward-source:     /src/ward",
+	} {
+		if !strings.Contains(got, want) {
+			t.Errorf("print output missing %q\n---\n%s", want, got)
+		}
+	}
+}
+
 // TestDirectorEngineerHarness covers the two-level precedence (ward#355): set
 // --engineer-harness wins; --engineer-driver remains a hidden fallback alias.
 func TestDirectorEngineerHarness(t *testing.T) {
