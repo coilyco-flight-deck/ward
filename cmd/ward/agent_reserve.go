@@ -542,19 +542,33 @@ func warnRemoteReservationLost(label string, ref agentIssueRef, detail string) {
 		label, reservationWarnToken, ref, detail)
 }
 
-// freshReservationComment describes the still-blocking reservation on the thread,
-// if any: the latest fresh reservation with no release (ward#264) at/after it.
-func freshReservationComment(comments []issueComment, now time.Time, ttl time.Duration) (string, bool) {
-	var latest *issueComment
+// reservationRetractedAt is the newest timestamp at which the thread retracted its
+// reservations: a release marker, or a terminal WARD-OUTCOME (ward#1149, docs).
+func reservationRetractedAt(comments []issueComment) time.Time {
 	var released time.Time
 	for i := range comments {
 		c := &comments[i]
-		// Test release first: its marker is a distinct substring, but ordering the
-		// check keeps the intent obvious.
-		if strings.Contains(c.Body, agentReservationReleaseMarker) {
-			if c.CreatedAt.After(released) {
-				released = c.CreatedAt
+		retracts := strings.Contains(c.Body, agentReservationReleaseMarker)
+		if !retracts {
+			if o, ok := backlogOutcomeOfComment(c.Body); ok && terminalReservationOutcome(o.Status) {
+				retracts = true
 			}
+		}
+		if retracts && c.CreatedAt.After(released) {
+			released = c.CreatedAt
+		}
+	}
+	return released
+}
+
+// freshReservationComment describes the still-blocking reservation on the thread, if
+// any: the latest fresh one no release (ward#264) / terminal outcome (#1149) retracts.
+func freshReservationComment(comments []issueComment, now time.Time, ttl time.Duration) (string, bool) {
+	var latest *issueComment
+	released := reservationRetractedAt(comments)
+	for i := range comments {
+		c := &comments[i]
+		if strings.Contains(c.Body, agentReservationReleaseMarker) {
 			continue
 		}
 		if !strings.Contains(c.Body, agentReservationMarker) {
@@ -570,7 +584,8 @@ func freshReservationComment(comments []issueComment, now time.Time, ttl time.Du
 	if latest == nil {
 		return "", false
 	}
-	// A release stamped at or after the latest reservation retracts it.
+	// A release or terminal outcome stamped at or after the latest reservation
+	// retracts it.
 	if !released.Before(latest.CreatedAt) {
 		return "", false
 	}
@@ -621,15 +636,10 @@ func (r *Runner) reservationRecheckLost(ctx context.Context, cl Tracker, label s
 	return true, winner.identity
 }
 
-// reservationClaims extracts the live (fresh, un-released) reservation claims from the
-// thread, honoring freshReservationComment's release semantics (newest release wins).
+// reservationClaims extracts the live (fresh, un-retracted) reservation claims from
+// the thread, honoring freshReservationComment's release + terminal-outcome semantics.
 func reservationClaims(comments []issueComment, now time.Time, ttl time.Duration) []reservationClaim {
-	var released time.Time
-	for i := range comments {
-		if strings.Contains(comments[i].Body, agentReservationReleaseMarker) && comments[i].CreatedAt.After(released) {
-			released = comments[i].CreatedAt
-		}
-	}
+	released := reservationRetractedAt(comments)
 	var claims []reservationClaim
 	for i := range comments {
 		c := &comments[i]
@@ -639,7 +649,7 @@ func reservationClaims(comments []issueComment, now time.Time, ttl time.Duration
 		if !reservationFresh(c.CreatedAt, now, ttl) {
 			continue
 		}
-		// A release stamped at or after this claim retracts it.
+		// A release or terminal outcome stamped at or after this claim retracts it.
 		if !released.Before(c.CreatedAt) {
 			continue
 		}

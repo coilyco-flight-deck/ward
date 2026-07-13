@@ -1333,6 +1333,46 @@ func TestCommentFailedDispatch(t *testing.T) {
 	}
 }
 
+// TestCommentReservationConflictDispatch pins ward#1149: a collision defers without
+// touching the live hold (no release marker, no unlock) and leaves the sweep signal.
+func TestCommentReservationConflictDispatch(t *testing.T) {
+	r := &Runner{}
+	ref := agentIssueRef{Owner: "coilyco-flight-deck", Repo: "ward", Number: 927}
+	f := &fakeLockForge{}
+	req := dispatchBrokerRequest{
+		Role: "engineer",
+		Argv: []string{"engineer", ref.String(), "--harness", "codex"},
+	}
+	conflict := newReservationConflict(
+		"ward agent engineer --harness codex: issue %s is already reserved remotely (by @coilyco-ops); wait for it to finish or pass --override-reservation to override", ref)
+
+	r.commentReservationConflictDispatch(context.Background(), f, modeCodex, ref, req, "/tmp/ward/dispatch.log", conflict)
+
+	if f.unlocked != 0 {
+		t.Fatalf("unlockIssue called %d times, want 0 - the live run's seal must stay", f.unlocked)
+	}
+	if len(f.comments) != 1 {
+		t.Fatalf("commentIssue called %d times, want 1", len(f.comments))
+	}
+	body := f.comments[0]
+	if strings.Contains(body, agentReservationReleaseMarker) {
+		t.Errorf("conflict comment must not carry the release marker (the hold belongs to the live run)\n%s", body)
+	}
+	for _, want := range []string{
+		agentNeedsRedispatchMarker,
+		"WARD-DISPATCH: deferred ⏸",
+		"reservation-collision details",
+		"Attempted harness: `codex`",
+		"Attempted run: `ward agent engineer coilyco-flight-deck/ward#927 --harness codex`",
+		"Host log: `/tmp/ward/dispatch.log`",
+		"terminal `WARD-OUTCOME` supersedes its reservation (ward#1149)",
+	} {
+		if !strings.Contains(body, want) {
+			t.Errorf("conflict comment missing %q\n%s", want, body)
+		}
+	}
+}
+
 // TestCommentDeferredDispatch writes the backpressure comment that supersedes a
 // stale reservation when the forwarded launch hits the global engineer cap.
 func TestCommentDeferredDispatch(t *testing.T) {

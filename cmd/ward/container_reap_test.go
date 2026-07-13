@@ -539,6 +539,7 @@ func TestReleaseReservationIfTerminalOutcomeComment(t *testing.T) {
 		{name: "blocked", status: "blocked"},
 		{name: "merge-ready", status: "merge-ready"},
 		{name: "failed", status: "failed"},
+		{name: "submitted", status: "submitted"},
 	} {
 		t.Run(tc.name, func(t *testing.T) {
 			fc := &fakeTerminalOutcomeTracker{
@@ -574,6 +575,37 @@ func TestReleaseReservationIfTerminalOutcomeComment(t *testing.T) {
 				}
 			}
 		})
+	}
+}
+
+// TestReleaseReservationSkipsWhenNewerReservationHolds pins ward#1149: reap keeps the
+// terminal release off a thread a follow-up run re-reserved after the outcome.
+func TestReleaseReservationSkipsWhenNewerReservationHolds(t *testing.T) {
+	upAt := time.Date(2026, 7, 9, 12, 0, 0, 0, time.UTC)
+	fc := &fakeTerminalOutcomeTracker{
+		comments: []issueComment{
+			{Body: "WARD-OUTCOME: merge-ready\n\n<details><summary>details</summary>\n\nfinished\n\n</details>", CreatedAt: upAt.Add(time.Minute)},
+			{Body: reservationCommentBody(modeGoose, "engineer-goose-ward-1042", "box", upAt.Add(2*time.Minute), "", nil), CreatedAt: upAt.Add(2 * time.Minute)},
+		},
+		postAt: upAt.Add(3 * time.Minute),
+	}
+	env := reapEnv{
+		Owner:     "coilyco-flight-deck",
+		Name:      "ward",
+		Issue:     1042,
+		Launched:  true,
+		Mode:      "goose",
+		Container: "engineer-goose-ward-1042",
+		UpAt:      upAt.Add(-time.Minute).Format(time.RFC3339),
+	}
+	if err := releaseReservationIfTerminalOutcomeComment(t.Context(), fc, env, upAt); err != nil {
+		t.Fatalf("releaseReservationIfTerminalOutcomeComment: %v", err)
+	}
+	if len(fc.commented) != 0 {
+		t.Fatalf("commented %d times, want 0 when a newer reservation holds the issue", len(fc.commented))
+	}
+	if fc.unlocked != 0 {
+		t.Fatalf("unlockIssue called %d times, want 0 when a newer reservation holds the issue", fc.unlocked)
 	}
 }
 

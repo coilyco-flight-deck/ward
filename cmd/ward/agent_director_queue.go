@@ -326,7 +326,9 @@ func latestDirectorQueueSignal(comments []issueComment) directorQueueSignal {
 	var sig directorQueueSignal
 	for _, c := range comments {
 		switch {
-		case strings.Contains(c.Body, agentReservationReleaseMarker) && strings.Contains(c.Body, agentNeedsRedispatchMarker):
+		// The needs-redispatch marker alone is the signal: a reservation-collision
+		// deferral carries it without a release marker (ward#1149).
+		case strings.Contains(c.Body, agentNeedsRedispatchMarker):
 			if c.CreatedAt.After(sig.At) {
 				sig = directorQueueSignal{Kind: directorQueueSignalRedispatch, At: c.CreatedAt, Comment: c}
 			}
