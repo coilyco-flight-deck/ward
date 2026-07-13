@@ -360,7 +360,7 @@ type engineerCapacityError struct {
 
 func (e *engineerCapacityError) Error() string {
 	return fmt.Sprintf(
-		"%s: global engineer limit is reached: %d running (limit %d); wait for a run to finish or run `ward agent reap` for stale engineers",
+		"%s: global engineer limit is reached: %d running (limit %d); wait for a run to finish, run `ward agent reap` for stale engineers, or follow docs/agent-ops.md for manual stale reservation cleanup",
 		e.label, e.running, e.limit,
 	)
 }

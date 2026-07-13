@@ -11,12 +11,15 @@ Start here when a run failed or seemed to do nothing.
 - never launched.
 - `ward exec` refused.
 - the run never landed on `main`.
+- capacity looks full even though `ward agent list` shows a ghost `container
+  starting` record.
 
 ## What to check
 
 - `~/.ward/agent-logs/<container>/`.
 - the reservation comment on the issue.
 - the preflight or trust gate that blocked the launch.
+- if the issue is already terminal, stale reservation cleanup is not the fix.
 
 ## Fast triage
 
@@ -33,6 +36,10 @@ Start here when a run failed or seemed to do nothing.
 - if the branch exists but the merge did not happen, the issue is usually in
   workflow or review.
 - if the run vanished, the issue is usually in teardown or reap.
+- if `ward agent list --json` shows `phase: container starting` with an empty
+  `started_at`, use the manual stale reservation cleanup path in
+  [agent-stale-reservation-cleanup.md](agent-stale-reservation-cleanup.md)
+  before host-side debugging.
 - if Docker says `OOMKilled=true`, treat it as host memory pressure, not a
   normal reap.
 - if `sudo` says the no new privileges flag is set, or SSH rejects a
@@ -48,6 +55,10 @@ Start here when a run failed or seemed to do nothing.
   memory pressure first.
 - if there is a landed branch but not main, start with workflow.
 - if the issue thread has a reservation comment, read that first.
+- if the issue thread still carries the reservation marker and the visible run
+  is not running, use the issue-comment cleanup path from
+  [agent-stale-reservation-cleanup.md](agent-stale-reservation-cleanup.md)
+  instead of deleting any host file.
 
 ## See also
 
