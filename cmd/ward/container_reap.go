@@ -817,6 +817,12 @@ func releaseReservationIfTerminalOutcomeComment(ctx context.Context, fc Tracker,
 	if !ok || !terminalReservationOutcome(o.Status) {
 		return nil
 	}
+	// A reservation newer than the outcome means a follow-up run already took the
+	// issue over; posting a release now would retract that live hold (ward#1149).
+	if reservationCommentAfter(comments, outcome.CreatedAt) {
+		fmt.Fprintf(os.Stderr, "ward container reap: keeping the terminal release off #%d - a newer reservation holds the issue (ward#1149)\n", env.Issue)
+		return nil
+	}
 	body := terminalReservationReleaseCommentBody(containerMode(env.Mode), env.Container, o)
 	if err := fc.commentIssue(ctx, env.Owner, env.Name, env.Issue, body); err != nil {
 		return fmt.Errorf("could not release terminal reservation on #%d: %w", env.Issue, err)
@@ -828,9 +834,26 @@ func releaseReservationIfTerminalOutcomeComment(ctx context.Context, fc Tracker,
 	return nil
 }
 
+// reservationCommentAfter reports whether any reservation-marker comment (not a
+// release) was posted strictly after at - a follow-up run's fresh hold (ward#1149).
+func reservationCommentAfter(comments []issueComment, at time.Time) bool {
+	for i := range comments {
+		c := &comments[i]
+		if strings.Contains(c.Body, agentReservationReleaseMarker) || !strings.Contains(c.Body, agentReservationMarker) {
+			continue
+		}
+		if c.CreatedAt.After(at) {
+			return true
+		}
+	}
+	return false
+}
+
+// terminalReservationOutcome reports whether an outcome status ends the run's hold;
+// submitted/merge-ready are the PR workflows' final outcomes, so they count (ward#1149).
 func terminalReservationOutcome(status string) bool {
 	switch strings.ToLower(strings.TrimSpace(status)) {
-	case "done", "blocked", "failed", "merge-ready":
+	case "done", "blocked", "failed", "merge-ready", "submitted":
 		return true
 	default:
 		return false

@@ -143,6 +143,24 @@ func TestDirectorQueueClassifiesRequestedStates(t *testing.T) {
 	}
 }
 
+// TestLatestDirectorQueueSignalNeedsRedispatchAlone pins ward#1149: the marker alone
+// signals redispatch - a collision deferral carries it without a release marker.
+func TestLatestDirectorQueueSignalNeedsRedispatchAlone(t *testing.T) {
+	now := time.Date(2026, 7, 10, 9, 0, 0, 0, time.UTC)
+	comments := []issueComment{
+		{Body: agentReservationMarker + "\nWARD-RESERVATION: held 🔒", CreatedAt: now.Add(-time.Hour)},
+		{Body: "WARD-OUTCOME: merge-ready", CreatedAt: now.Add(-30 * time.Minute)},
+		{Body: agentNeedsRedispatchMarker + "\nWARD-DISPATCH: deferred ⏸", CreatedAt: now.Add(-time.Minute)},
+	}
+	sig := latestDirectorQueueSignal(comments)
+	if sig.Kind != directorQueueSignalRedispatch {
+		t.Fatalf("signal = %q, want %q", sig.Kind, directorQueueSignalRedispatch)
+	}
+	if !sig.At.Equal(now.Add(-time.Minute)) {
+		t.Fatalf("signal at = %s, want the marker comment's timestamp", sig.At)
+	}
+}
+
 func TestRenderDirectorQueueStatusShowsNextActions(t *testing.T) {
 	repo := "coilyco-flight-deck/ward"
 	now := time.Now().UTC()

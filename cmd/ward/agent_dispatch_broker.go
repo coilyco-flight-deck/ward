@@ -458,6 +458,11 @@ func (r *Runner) commentDispatchLaunchError(ctx context.Context, req dispatchBro
 		r.commentDeferredReleaseAssetsLaunch(ctx, req, logPath, launchErr)
 		return
 	}
+	if isReservationConflict(launchErr) {
+		fmt.Fprintf(os.Stderr, "ward dispatch broker: launch deferred: %v\n", launchErr)
+		r.commentReservationConflictLaunch(ctx, req, logPath, launchErr)
+		return
+	}
 	fmt.Fprintf(os.Stderr, "ward dispatch broker: launch failed: %v\n", launchErr)
 	r.commentFailedDispatchLaunch(ctx, req, logPath, launchErr)
 }
@@ -502,6 +507,38 @@ func (r *Runner) commentDeferredReleaseAssetsLaunch(ctx context.Context, req dis
 		return
 	}
 	r.commentDeferredReleaseAssetsDispatch(commentCtx, cl, mode, ref, req, logPath, launchErr)
+}
+
+// commentReservationConflictLaunch posts the reservation-collision comment after a
+// forwarded launch refused because another run still holds the issue (ward#1149, docs).
+func (r *Runner) commentReservationConflictLaunch(ctx context.Context, req dispatchBrokerRequest, logPath string, launchErr error) {
+	if r == nil || r.Runner == nil {
+		return
+	}
+	ref, err := parseAgentIssueRef(req.Argv[1])
+	if err != nil {
+		return
+	}
+	mode := dispatchBrokerRequestMode(req)
+	commentCtx, cancel := context.WithTimeout(context.WithoutCancel(ctx), 30*time.Second)
+	defer cancel()
+	cl, cerr := r.hostTrackerClient(commentCtx, ref.trackerOrDefault(), mode)
+	if cerr != nil {
+		fmt.Fprintf(os.Stderr, "ward dispatch broker: could not build issue client to comment reservation-collision dispatch on %s: %v\n", ref, cerr)
+		return
+	}
+	r.commentReservationConflictDispatch(commentCtx, cl, mode, ref, req, logPath, launchErr)
+}
+
+// commentReservationConflictDispatch writes the reservation-collision deferred
+// comment: no container stop, no unlock, no release marker (ward#1149).
+func (r *Runner) commentReservationConflictDispatch(ctx context.Context, cl Tracker, mode containerMode, ref agentIssueRef, req dispatchBrokerRequest, logPath string, launchErr error) {
+	body := dispatchLaunchReservationConflictCommentBody(mode, req, logPath, launchErr)
+	if err := cl.commentIssue(ctx, ref.Owner, ref.Repo, ref.Number, body); err != nil {
+		fmt.Fprintf(os.Stderr, "ward dispatch broker: could not comment reservation-collision dispatch on %s: %v\n", ref, err)
+		return
+	}
+	fmt.Fprintf(os.Stderr, "ward dispatch broker: deferred dispatch on %s behind the live reservation (ward#1149)\n", ref)
 }
 
 // dispatchBrokerRequestMode resolves the requested harness for a forwarded dispatch.
@@ -635,6 +672,29 @@ func dispatchLaunchDeferredCommentBody(mode containerMode, container string, req
 		mode, attempted, container, logDetail, firstLine(launchErr.Error()))
 	return agentReservationReleaseMarker + "\n" + agentNeedsRedispatchMarker + "\n" +
 		collapsedIssueComment("WARD-DISPATCH: deferred ⏸", "deferred details", detail)
+}
+
+// dispatchLaunchReservationConflictCommentBody renders the collision deferral: the
+// needs-redispatch marker WITHOUT a release marker - the hold is the live run's (#1149).
+func dispatchLaunchReservationConflictCommentBody(mode containerMode, req dispatchBrokerRequest, logPath string, launchErr error) string {
+	attempted := redactDispatchBrokerArgv(req.Argv)
+	logDetail := "unavailable"
+	if strings.TrimSpace(logPath) != "" {
+		logDetail = logPath
+	}
+	detail := fmt.Sprintf(
+		"This forwarded dispatch collided with a reservation another run still holds.\n\n"+
+			"Attempted harness: `%s`\n"+
+			"Attempted run: `ward agent %s`\n"+
+			"Host log: `%s`\n"+
+			"Collision: `%s`\n\n"+
+			"Nothing new is running for this dispatch, and the live run's hold is untouched. "+
+			"Retry: a `ward agent director` heartbeat sweeps this marker and redispatches once the hold "+
+			"releases - the run's terminal `WARD-OUTCOME` supersedes its reservation (ward#1149). A manual "+
+			"retry can pass `--override-reservation` if the collision is genuinely stale.",
+		mode, attempted, logDetail, firstLine(launchErr.Error()))
+	return agentNeedsRedispatchMarker + "\n" +
+		collapsedIssueComment("WARD-DISPATCH: deferred ⏸", "reservation-collision details", detail)
 }
 
 // dispatchLaunchReleaseAssetsDeferredCommentBody renders the deferred comment.
