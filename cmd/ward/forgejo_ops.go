@@ -571,9 +571,16 @@ func (c *forgejoClient) mergePullRequestWithHeadAndStyle(ctx context.Context, ow
 	if err != nil {
 		return err
 	}
-	payloadBody := map[string]string{"do": style}
+	payloadBody := struct {
+		Do                     string `json:"do"`
+		HeadCommitID           string `json:"head_commit_id,omitempty"`
+		DeleteBranchAfterMerge bool   `json:"delete_branch_after_merge"`
+	}{
+		Do:                     style,
+		DeleteBranchAfterMerge: settings.DefaultDeleteBranchAfterMerge,
+	}
 	if headSHA = strings.TrimSpace(headSHA); headSHA != "" {
-		payloadBody["head_commit_id"] = headSHA
+		payloadBody.HeadCommitID = headSHA
 	}
 	payload, err := json.Marshal(payloadBody)
 	if err != nil {

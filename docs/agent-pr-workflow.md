@@ -17,8 +17,9 @@ director's merge and CI-status reach ([infrastructure#538](https://github.com/co
   required contexts.
 - `ward agent pr merge <owner/repo#N> [--style STYLE]` - merge one PR:
   permission gate, live required-status gate, a merge pinned to the checked
-  head commit, repo-default merge style selection when allowed, then the
-  merged-state check (`GET /repos/{owner}/{repo}/pulls/{index}/merge`).
+  head commit, repo-default merge style selection when allowed, repo-default
+  delete-branch propagation, then the merged-state check
+  (`GET /repos/{owner}/{repo}/pulls/{index}/merge`).
 - `ward agent pr runs [owner/repo] [--limit N]` - Actions runs with per-run
   conclusions (`GET /repos/{owner}/{repo}/actions/runs`).
 - `ward agent pr rerun <owner/repo> <run-id>` - rerun one Actions run. The

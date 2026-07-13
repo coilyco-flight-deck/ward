@@ -105,19 +105,21 @@ func TestPRWorkflowRoleDefaultsToDirectorOnHost(t *testing.T) {
 // prWorkflowFakeForge serves the minimal Forgejo API surface the merge executor
 // walks: PR read, merged-state, base branch, combined status, merge.
 type prWorkflowFakeForge struct {
-	prBody                    string
-	combinedState             string
-	contextState              string
-	defaultMergeStyle         string
-	allowMergeCommits         bool
-	allowSquashMerge          bool
-	allowFastForwardOnlyMerge bool
-	allowRebase               bool
-	allowRebaseExplicit       bool
-	merged                    bool
-	mergeCalls                int
-	mergeDo                   string
-	mergedChecks              int
+	prBody                        string
+	combinedState                 string
+	contextState                  string
+	defaultMergeStyle             string
+	defaultDeleteBranchAfterMerge bool
+	allowMergeCommits             bool
+	allowSquashMerge              bool
+	allowFastForwardOnlyMerge     bool
+	allowRebase                   bool
+	allowRebaseExplicit           bool
+	merged                        bool
+	mergeCalls                    int
+	mergeDo                       string
+	mergeDeleteBranchAfterMerge   bool
+	mergedChecks                  int
 }
 
 func (f *prWorkflowFakeForge) server(t *testing.T) *httptest.Server {
@@ -127,16 +129,21 @@ func (f *prWorkflowFakeForge) server(t *testing.T) *httptest.Server {
 		_, _ = w.Write([]byte(`{"number":7,"title":"t","body":` + jsonString(f.prBody) + `,"state":"open","head":{"sha":"headsha","ref":"issue-7"},"base":{"ref":"main"}}`))
 	})
 	mux.HandleFunc("/api/v1/repos/coilyco-flight-deck/ward", func(w http.ResponseWriter, _ *http.Request) {
-		_, _ = w.Write([]byte(`{"allow_merge_commits":` + jsonBool(f.allowMergeCommits) + `,"allow_squash_merge":` + jsonBool(f.allowSquashMerge) + `,"allow_fast_forward_only_merge":` + jsonBool(f.allowFastForwardOnlyMerge) + `,"allow_rebase":` + jsonBool(f.allowRebase) + `,"allow_rebase_explicit":` + jsonBool(f.allowRebaseExplicit) + `,"default_merge_style":` + jsonString(f.defaultMergeStyle) + `}`))
+		_, _ = w.Write([]byte(`{"allow_merge_commits":` + jsonBool(f.allowMergeCommits) + `,"allow_squash_merge":` + jsonBool(f.allowSquashMerge) + `,"allow_fast_forward_only_merge":` + jsonBool(f.allowFastForwardOnlyMerge) + `,"allow_rebase":` + jsonBool(f.allowRebase) + `,"allow_rebase_explicit":` + jsonBool(f.allowRebaseExplicit) + `,"default_merge_style":` + jsonString(f.defaultMergeStyle) + `,"default_delete_branch_after_merge":` + jsonBool(f.defaultDeleteBranchAfterMerge) + `}`))
 	})
 	mux.HandleFunc("/api/v1/repos/coilyco-flight-deck/ward/pulls/7/merge", func(w http.ResponseWriter, r *http.Request) {
 		if r.Method == http.MethodPost {
 			f.mergeCalls++
-			var body map[string]string
+			var body struct {
+				Do                     string `json:"do"`
+				HeadCommitID           string `json:"head_commit_id"`
+				DeleteBranchAfterMerge bool   `json:"delete_branch_after_merge"`
+			}
 			if err := json.NewDecoder(r.Body).Decode(&body); err != nil {
 				t.Fatalf("decode body: %v", err)
 			}
-			f.mergeDo = body["do"]
+			f.mergeDo = body.Do
+			f.mergeDeleteBranchAfterMerge = body.DeleteBranchAfterMerge
 			f.merged = true
 			w.WriteHeader(http.StatusOK)
 			return
@@ -245,11 +252,12 @@ func TestPRWorkflowMergeExecExplicitSquash(t *testing.T) {
 // squash-only repo that defaults to squash.
 func TestPRWorkflowMergeExecUsesRepoDefaultStyle(t *testing.T) {
 	fake := &prWorkflowFakeForge{
-		prBody:            "closes #6\n\nward.workflow: pull-request-and-merge\n",
-		combinedState:     "success",
-		contextState:      "success",
-		defaultMergeStyle: "squash",
-		allowSquashMerge:  true,
+		prBody:                        "closes #6\n\nward.workflow: pull-request-and-merge\n",
+		combinedState:                 "success",
+		contextState:                  "success",
+		defaultMergeStyle:             "squash",
+		defaultDeleteBranchAfterMerge: true,
+		allowSquashMerge:              true,
 	}
 	srv := fake.server(t)
 	defer srv.Close()
@@ -259,6 +267,45 @@ func TestPRWorkflowMergeExecUsesRepoDefaultStyle(t *testing.T) {
 	}
 	if fake.mergeDo != "squash" {
 		t.Fatalf("merge do = %q, want squash", fake.mergeDo)
+	}
+	if !fake.mergeDeleteBranchAfterMerge {
+		t.Fatalf("merge delete_branch_after_merge = %t, want true", fake.mergeDeleteBranchAfterMerge)
+	}
+}
+
+// TestPRWorkflowMergeExecCarriesRepoDeleteBranchDefault pins the merge payload's
+// delete-branch flag for both repo-default values.
+func TestPRWorkflowMergeExecCarriesRepoDeleteBranchDefault(t *testing.T) {
+	for _, tc := range []struct {
+		name                          string
+		defaultDeleteBranchAfterMerge bool
+	}{
+		{name: "false", defaultDeleteBranchAfterMerge: false},
+		{name: "true", defaultDeleteBranchAfterMerge: true},
+	} {
+		t.Run(tc.name, func(t *testing.T) {
+			fake := &prWorkflowFakeForge{
+				prBody:                        "closes #6\n\nward.workflow: pull-request-and-merge\n",
+				combinedState:                 "success",
+				contextState:                  "success",
+				defaultMergeStyle:             "merge",
+				defaultDeleteBranchAfterMerge: tc.defaultDeleteBranchAfterMerge,
+				allowMergeCommits:             true,
+				allowSquashMerge:              true,
+				allowFastForwardOnlyMerge:     true,
+				allowRebase:                   true,
+				allowRebaseExplicit:           true,
+			}
+			srv := fake.server(t)
+			defer srv.Close()
+			cl := &forgejoClient{baseURL: srv.URL, token: "secret"}
+			if _, err := prWorkflowMergeExec(context.Background(), cl, roleDirector, "coilyco-flight-deck", "ward", 7, "squash"); err != nil {
+				t.Fatalf("prWorkflowMergeExec delete-branch default: %v", err)
+			}
+			if fake.mergeDeleteBranchAfterMerge != tc.defaultDeleteBranchAfterMerge {
+				t.Fatalf("merge delete_branch_after_merge = %t, want %t", fake.mergeDeleteBranchAfterMerge, tc.defaultDeleteBranchAfterMerge)
+			}
+		})
 	}
 }
 

@@ -255,6 +255,10 @@ func TestForgeURLAndBase(t *testing.T) {
 	if got, want := gl.trackerOrDefault(), trackerGitLab; got != want {
 		t.Errorf("gitlab tracker = %v, want %v", got, want)
 	}
+	sc := agentIssueRef{Owner: "acme", Repo: "ward", Number: 7, Tracker: trackerShortcut, URL: "https://app.shortcut.com/acme/story/7"}
+	if got, want := sc.trackerOrDefault(), trackerShortcut; got != want {
+		t.Errorf("shortcut tracker = %v, want %v", got, want)
+	}
 	if forgeGitHub.baseURL() != githubBaseURL || forgeGitHub.host() != "github.com" {
 		t.Errorf("github base/host = %q/%q", forgeGitHub.baseURL(), forgeGitHub.host())
 	}
