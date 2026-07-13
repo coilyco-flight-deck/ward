@@ -18,6 +18,7 @@ type subsystemPointer struct {
 	label    string   // human name of the subsystem, shown in the pointer block
 	keywords []string // case-insensitive substrings in the title/body that trigger it
 	paths    []string // repo-relative docs/skills to read first, most-canonical first
+	followUp string   // optional extra guidance to append after the paths
 }
 
 // agentSubsystemPointers is the static keyword -> path map (ward#236). Order is
@@ -37,6 +38,20 @@ var agentSubsystemPointers = []subsystemPointer{
 		label:    "ward agent dispatch + headless pre-flight",
 		keywords: []string{"ward agent", "headless", "pre-flight", "preflight", "warded", "agent-dispatch"},
 		paths:    []string{"docs/agent.md", "docs/agent-preflight.md", ".agents/skills/tooling-ward-agent/SKILL.md"},
+	},
+	{
+		label: "placeholder setup + restart loop",
+		keywords: []string{
+			"placeholder",
+			"placeholders",
+			"restart",
+		},
+		paths: []string{
+			"docs/doctor.md",
+			"docs/config-source.md",
+			"examples/ward-specs/README.md",
+		},
+		followUp: "Once the placeholders are replaced, tell the user to restart `warded` so the resolved config is picked up before the next launch.",
 	},
 	{
 		label:    "container bring-up + reaper backstop",
@@ -82,27 +97,53 @@ func subsystemPointerLines(hits []subsystemPointer) string {
 	return strings.TrimRight(b.String(), "\n")
 }
 
+// subsystemPointerFollowUps renders any extra guidance attached to matched
+// pointers. Empty when no pointer carries a follow-up note.
+func subsystemPointerFollowUps(hits []subsystemPointer) string {
+	var b strings.Builder
+	for _, p := range hits {
+		if strings.TrimSpace(p.followUp) == "" {
+			continue
+		}
+		if b.Len() > 0 {
+			b.WriteString("\n\n")
+		}
+		b.WriteString(strings.TrimSpace(p.followUp))
+	}
+	return strings.TrimSpace(b.String())
+}
+
 // subsystemSeedBlock is the front-loading block appended to a matched headless
 // seed (ward#236 item 1); empty when no keyword matched.
 func subsystemSeedBlock(ref agentIssueRef, title, body string) string {
-	lines := subsystemPointerLines(matchSubsystemPointers(ref, title, body))
+	hits := matchSubsystemPointers(ref, title, body)
+	lines := subsystemPointerLines(hits)
 	if lines == "" {
 		return ""
 	}
-	return "Front-load before you plan: this issue names ward subsystems whose conventions, " +
+	block := "Front-load before you plan: this issue names ward subsystems whose conventions, " +
 		"schemas, and wiring already live in the fresh clone. Read each of these in full BEFORE your " +
 		"first edit - do not defer them to lazy mid-task discovery. \"Discoverable in the clone\" is not " +
 		"\"read\"; a path you only located is a gap you have not closed:\n\n" + lines + "\n\n" +
 		"If the work touches a convention not listed here, find and read it the same way before editing."
+	if followUps := subsystemPointerFollowUps(hits); followUps != "" {
+		block += "\n\n" + followUps
+	}
+	return block
 }
 
 // subsystemPreflightBlock hands the matched pointers to the pre-flight read
 // (ward#236 item 2); empty when no keyword matched.
 func subsystemPreflightBlock(ref agentIssueRef, title, body string) string {
-	lines := subsystemPointerLines(matchSubsystemPointers(ref, title, body))
+	hits := matchSubsystemPointers(ref, title, body)
+	lines := subsystemPointerLines(hits)
 	if lines == "" {
 		return ""
 	}
-	return "\n\nThis issue names ward subsystems whose conventions live in the clone you will get. " +
+	block := "\n\nThis issue names ward subsystems whose conventions live in the clone you will get. " +
 		"The detached run is expected to front-load these before its first edit:\n\n" + lines
+	if followUps := subsystemPointerFollowUps(hits); followUps != "" {
+		block += "\n\n" + followUps
+	}
+	return block
 }
