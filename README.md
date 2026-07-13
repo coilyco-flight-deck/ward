@@ -1,8 +1,25 @@
 # ward
 
-Ward is a harness driving operations layer for unattended coding agents. It sheilds them from the vagaries of turbulent execution context and scaffolds them into the workflows they already know how to use.
+Ward is the governed execution layer for unattended coding agents. It keeps work in fresh clones and least-access containers, then carries it through issue, branch, PR, logs, and merge outcomes with a durable audit trail.
 
-ward's it works via running as a guarded execution layer and workflow system. `ward agent` launches a your authenticated coding CLI (claude, codex, goose, ...) into an ephemeral, least-access container and drives it through an issue-to-merge workflow, or an issue to PR workflow, while bounded by credentials scoping and a durable audit trail. Fuinctionally it is a manifest-backed harness driver** - it knows how to launch each agent through its own CLI dialect - but the external product is the governed execution layer around it, not the driver. That surface is exposed as **`warded`**, a thin symlink onto `ward agent`, and sits on the three-layer split covered below and in [`docs/architecture.md`](docs/architecture.md).
+## Why ward
+
+Use Ward when the work breaks into separable streams and you want the system to keep moving even if one stream stalls.
+
+- concurrency for independent work streams.
+- resumability across interruptions and long-running work.
+- failure containment through fresh clones and isolated engineer containers.
+- auditability through issues, branches, PRs, logs, outcomes, and review trail.
+- role separation between director, engineer, QA, and review lanes.
+- reproducibility from declared context and containerized runs.
+- backlog throughput across separable tasks.
+- human interruptibility by issue and PR without losing one giant in-flight context.
+
+Ward is the better fit for parallel, separable, auditable, failure-prone work. A single strong goal agent can still be faster for one coherent refactor through a tight core subsystem.
+
+If the orchestration itself is flaky, that is a Ward product bug, not an operator burden. The target model is still the one above.
+
+`ward agent` launches an authenticated coding CLI (claude, codex, goose, ...) into an ephemeral, least-access container and drives it through an issue-to-merge workflow or an issue-to-PR workflow, while bounded by credential scoping and a durable audit trail. Functionally it is a manifest-backed harness driver - it knows how to launch each agent through its own CLI dialect - but the external product is the governed execution layer around it, not the driver. That surface is exposed as **`warded`**, a thin symlink onto `ward agent`, and sits on the three-layer split covered below and in [`docs/architecture.md`](docs/architecture.md).
 
 ## Who it's for
 
