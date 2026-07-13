@@ -1,8 +1,14 @@
 [tool.agentic-os.documentation-layout]
 readme_max_lines = 200
 readme_max_chars = 14000
+# These are intentionally large release-era index docs or generated container
+# assets. Keep the exemption narrow until the docs are split further.
 excludes = [
   "ward-kdl.*.guardfile.md",
+  "cmd/ward/containerassets/AGENTS.container.md",
+  "docs/FEATURES.md",
+  "docs/README.md",
+  "docs/agent-subcommands.md",
 ]
 
 [tool.agentic-os.code-comments]
