@@ -25,9 +25,10 @@ Ward releases are Forgejo-canonical and two-stage (ward#1117).
 ## Pipeline notes
 
 - the release workflow is Forgejo-canonical.
-- every other step blocks behind the test gate, run twice (promote on `main`,
-  then again on `release`): a push whose vet, test, or lint checks fail
-  promotes nothing, tags nothing, and publishes nothing.
+- every step blocks behind the promote gate on `main`: a push whose vet,
+  test, or lint checks fail promotes nothing, tags nothing, and publishes
+  nothing. `release` never re-runs the suite - a flaky rerun must not fail
+  an already-vouched promotion.
 - the published binaries should match the tagged source state.
 - the install channel update should follow the release, not invent a second
   release story.

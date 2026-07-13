@@ -4,13 +4,12 @@
 # under a concurrency queue (cancel-in-progress: false) so promoted shas
 # release in sequence instead of overlap-and-cancel. A workflow_dispatch
 # re-fires it against the `release` ref on a missed enqueue. See
-# docs/release.md. Every other job blocks behind the leading `test` gate job
-# (ward#999): a promoted push whose checks fail must not tag, publish
-# binaries, or bump an install channel. Forgejo Actions has no cross-workflow
-# `needs`, so this pipeline runs its own copy of the checks from
-# .forgejo/workflows/test.yml (that workflow still runs independently,
-# covering pull requests). The `release` job needs `test`, and every other
-# job needs `release`, so the whole pipeline blocks transitively.
+# docs/release.md. There is no test job here: promote.yml already ran the
+# full check suite on the exact sha it fast-forwarded, so re-running it on
+# `release` only lets a flaky rerun fail an already-vouched promotion (Kai's
+# call, 2026-07-12; this retires the ward#999 front-gate copy of test.yml,
+# which still runs independently covering pull requests). Every other job
+# needs `release`, so the pipeline still blocks transitively behind the tag.
 
 name: release
 
@@ -27,85 +26,7 @@ permissions:
   contents: write
 
 jobs:
-  test:
-    runs-on: docker
-    timeout-minutes: 10
-    container:
-      image: forgejo.coilysiren.me/coilyco-flight-deck/agentic-os:latest
-    steps:
-      - uses: actions/checkout@v6
-
-      - name: go vet
-        run: go vet ./...
-
-      - name: go test
-        run: go test ./...
-
-      - name: golangci-lint
-        timeout-minutes: 5
-        run: golangci-lint run ./...
-      - name: Alert Telegram on main failure
-        if: ${{ failure() && github.ref == 'refs/heads/release' }}
-        env:
-          BOT_TOKEN: ${{ secrets.TELEGRAM_BOT_TOKEN }}
-          CHAT_ID: ${{ secrets.TELEGRAM_RED_CHAT_ID }}
-          REPO: ${{ github.repository }}
-          WORKFLOW: ${{ github.workflow }}
-          JOB: ${{ github.job }}
-          REF: ${{ github.ref }}
-          SHA: ${{ github.sha }}
-          RUN_URL: ${{ github.server_url }}/${{ github.repository }}/actions/runs/${{ github.run_id }}
-          API_BASE: https://api.telegram.org
-        run: |
-          set -euo pipefail
-          python3 - <<'PY'
-          import os
-          import urllib.error
-          import urllib.parse
-          import urllib.request
-
-          def build_message(repo, workflow, job, ref, sha, run_url):
-              return "\n".join([
-                  "CI failed on main",
-                  f"repo: {repo}",
-                  f"workflow: {workflow}",
-                  f"job: {job}",
-                  f"ref: {ref}",
-                  f"sha: {sha}",
-                  f"run: {run_url}",
-              ])
-
-          def main():
-              bot_token = os.environ["BOT_TOKEN"]
-              chat_id = os.environ["CHAT_ID"]
-              message = build_message(
-                  os.environ["REPO"],
-                  os.environ["WORKFLOW"],
-                  os.environ["JOB"],
-                  os.environ["REF"],
-                  os.environ["SHA"],
-                  os.environ["RUN_URL"],
-              )
-              payload = urllib.parse.urlencode(
-                  {
-                      "chat_id": chat_id,
-                      "text": message,
-                      "disable_web_page_preview": "true",
-                  }
-              ).encode("utf-8")
-              url = f"{os.environ['API_BASE'].rstrip('/')}/bot{bot_token}/sendMessage"
-              req = urllib.request.Request(url, data=payload, method="POST")
-              try:
-                  with urllib.request.urlopen(req, timeout=15) as resp:
-                      resp.read()
-              except urllib.error.URLError as exc:
-                  print(f"telegram alert failed: {exc}")
-                  raise SystemExit(1)
-
-          main()
-          PY
   release:
-    needs: test
     runs-on: docker
     container:
       image: forgejo.coilysiren.me/coilyco-flight-deck/agentic-os:latest
