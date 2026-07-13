@@ -35,6 +35,10 @@ Start here when a run failed or seemed to do nothing.
 - if the run vanished, the issue is usually in teardown or reap.
 - if Docker says `OOMKilled=true`, treat it as host memory pressure, not a
   normal reap.
+- if `sudo` says the no new privileges flag is set, or SSH rejects a
+  root-owned include inside the jail, the privileged leg is being asked to
+  self-converge inside `ward exec`. Move that leg outside the jail or run it
+  from another host.
 
 ## Common readings
 

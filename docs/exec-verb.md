@@ -17,6 +17,10 @@ doc_goal: Give the dev-verb gate a compact release-era reference so contributors
 - on Linux, the gate can run inside the sandbox jail.
 - on macOS and Windows, enforcement is shallower and follows the host
   allowlist.
+- the Linux jail is not a privilege-escalation path. `sudo` stays blocked by
+  `no_new_privs`, so `become:true`-style converges cannot self-elevate inside
+  the jail. `ask_pass` does not change that. Jailed SSH can also reject
+  root-owned config includes under userns mappings.
 
 The important part is that the verb still passes through the same audited path
 either way.
@@ -25,6 +29,8 @@ either way.
 
 - `build`, `test`, `lint`, `tidy`, `cover`, and similar repo verbs.
 - the `ward git` surface and the audit trail around it.
+- privileged converge steps that can run without needing `sudo` or jail-local
+  SSH config ownership checks.
 
 ## Example
 
