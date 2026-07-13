@@ -57,6 +57,7 @@ guides, not issue slices.
 - [container-contract.md](container-contract.md) - mounts, env, permissions.
 - [container-lifecycle.md](container-lifecycle.md) - launch, debug, teardown.
 - [container-substrate.md](container-substrate.md) - `/substrate` and multi-repo.
+- [demo-image.md](demo-image.md) - the public demo image build.
 
 ## ward-kdl
 

@@ -93,6 +93,7 @@ Over 60 pages under [`docs/`](docs/) cover each surface. The anchors:
 - **The verb gate** - [exec-verb.md](docs/exec-verb.md) (the gate), [verb-fallback.md](docs/verb-fallback.md), [git-verbs.md](docs/git-verbs.md), [audit.md](docs/audit.md), [doctor.md](docs/doctor.md). The boundary is the verb gate itself, plus the container edge in the agent flow ([container-contract.md](docs/container-contract.md)).
 - **The agent driver** - [first-run.md](docs/first-run.md) (zero to a first `--print` dry run), [agent.md](docs/agent.md) (the reference), the roster [agent-engineer.md](docs/agent-engineer.md) / [agent-director.md](docs/agent-director.md) / [agent-advisor.md](docs/agent-advisor.md), [agent-lifecycle.md](docs/agent-lifecycle.md), [agent-ops.md](docs/agent-ops.md).
 - **The container** - [container.md](docs/container.md), [container-lifecycle.md](docs/container-lifecycle.md) (land-or-salvage on teardown), [container-substrate.md](docs/container-substrate.md).
+- **The demo image** - [docs/demo-image.md](docs/demo-image.md).
 - **Operator surface (ward-kdl / ops)** - [ward-kdl.md](docs/ward-kdl.md), [ward-kdl-surface.md](docs/ward-kdl-surface.md), [ops-forgejo.md](docs/ops-forgejo.md).
 - **Build & release** - [homebrew-build.md](docs/homebrew-build.md), [release.md](docs/release.md), [golangci.md](docs/golangci.md).
 

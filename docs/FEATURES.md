@@ -75,6 +75,8 @@ Inventory of what `ward` ships today.
   [container-contract.md](container-contract.md),
   [container-lifecycle.md](container-lifecycle.md), and
   [container-substrate.md](container-substrate.md).
+- Public demo image build - `ward exec demo-image` builds a neutral OSS
+  workspace + substrate walkthrough image. See [demo-image.md](demo-image.md).
 
 ## ward-kdl
 
@@ -100,7 +102,7 @@ Inventory of what `ward` ships today.
 
 ## Release and docs
 
-- Two-stage release (ward#1117): promote.yml gates every main push and
+- Two-stage release ([ward#1117](https://forgejo.coilysiren.me/coilyco-flight-deck/ward/issues/1117)): promote.yml gates every main push and
   fast-forwards `release` when green; release.yml runs on `release` pushes
   under a no-cancel concurrency queue. See [release.md](release.md).
 - [compat-surface.md](compat-surface.md) - the release-facing provider matrix.
