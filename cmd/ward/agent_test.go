@@ -1173,6 +1173,33 @@ func TestAgentImageFlagsCarryEnvSources(t *testing.T) {
 	}
 }
 
+// TestAgentImageFlagsUseSmartDefaults covers the KDL-backed launch defaults:
+// a smart-defaults bundle can set the agent image and tag when env/flags do not.
+func TestAgentImageFlagsUseSmartDefaults(t *testing.T) {
+	dir := t.TempDir()
+	defaultsBody := `smart-defaults {
+    agent-reservation-ttl "3h"
+    agent-image "ghcr.io/example/ward-agent"
+    agent-tag "2026.07"
+}
+repo-authority default=forgejo {
+    trusted-owner coilysiren
+    repo "coilysiren/*" forge=github
+}
+`
+	if err := os.WriteFile(filepath.Join(dir, bundleFixtureDefaultsPath), []byte(defaultsBody), 0o644); err != nil {
+		t.Fatalf("write defaults bundle: %v", err)
+	}
+	t.Setenv(wardConfigRefEnv, "file://"+dir)
+	cmd := parseCommandForTest(t, agentEngineerFlags(), []string{"engineer", "coilyco-flight-deck/ward#42", "--harness", "claude"})
+	if got := cmd.String("image"); got != "ghcr.io/example/ward-agent" {
+		t.Fatalf("image default = %q, want %q", got, "ghcr.io/example/ward-agent")
+	}
+	if got := cmd.String("tag"); got != "2026.07" {
+		t.Fatalf("tag default = %q, want %q", got, "2026.07")
+	}
+}
+
 // TestOverrideReservationFlagFamily covers ward#1045: --override-reservation is the
 // spelling, --force the noticed deprecated alias, --override-capacity independent.
 func TestOverrideReservationFlagFamily(t *testing.T) {

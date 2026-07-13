@@ -22,6 +22,8 @@ type smartDefaults struct {
 	reservationRecheckDefaultMax  time.Duration
 	agentReapIdleDefault          time.Duration
 	agentReapMaxCPUDefault        float64
+	agentImage                    string
+	agentTag                      string
 	engineerContainerLimit        int
 	engineerOpenPRBranchLimit     int
 	directorMaxParallel           int
@@ -61,6 +63,8 @@ func bakedSmartDefaults() smartDefaults {
 		reservationRecheckDefaultMax:  15 * time.Second,
 		agentReapIdleDefault:          time.Hour,
 		agentReapMaxCPUDefault:        5.0,
+		agentImage:                    containerImageDefault,
+		agentTag:                      containerImageTagDefault,
 		engineerContainerLimit:        12,
 		engineerOpenPRBranchLimit:     6,
 		directorMaxParallel:           10,
@@ -302,6 +306,18 @@ func applySmartDefaultNode(defs *smartDefaults, n *kdl.Node) error { //nolint:go
 			return err
 		}
 		defs.agentReapMaxCPUDefault = v
+	case "agent-image":
+		v, err := smartDefaultsStringArg(n, "smart-defaults > agent-image")
+		if err != nil {
+			return err
+		}
+		defs.agentImage = v
+	case "agent-tag":
+		v, err := smartDefaultsStringArg(n, "smart-defaults > agent-tag")
+		if err != nil {
+			return err
+		}
+		defs.agentTag = v
 	case "engineer-container-limit":
 		v, err := smartDefaultsIntArg(n, "smart-defaults > engineer-container-limit")
 		if err != nil {
@@ -368,7 +384,7 @@ func applySmartDefaultNode(defs *smartDefaults, n *kdl.Node) error { //nolint:go
 		}
 	default:
 		return unknownSmartDefaultsNode("smart-defaults body", n.Name(),
-			"agent-reservation-ttl | agent-reservation-recheck-max | agent-reap-idle | agent-reap-max-cpu | engineer-container-limit | engineer-open-pr-branch-limit | director-max-parallel | director-limit | director-poll-interval | reviewer-timeout | config-bundle-ttl | container-assets-ttl | container-read-only-extra-repo-ttl | container-reap-keep | agent-workflow")
+			"agent-reservation-ttl | agent-reservation-recheck-max | agent-reap-idle | agent-reap-max-cpu | agent-image | agent-tag | engineer-container-limit | engineer-open-pr-branch-limit | director-max-parallel | director-limit | director-poll-interval | reviewer-timeout | config-bundle-ttl | container-assets-ttl | container-read-only-extra-repo-ttl | container-reap-keep | agent-workflow")
 	}
 	return nil
 }
@@ -857,6 +873,22 @@ func reservationRecheckDefaultMax() time.Duration {
 func agentReapIdleDefault() time.Duration { return currentSmartDefaults().agentReapIdleDefault }
 
 func agentReapMaxCPUDefault() float64 { return currentSmartDefaults().agentReapMaxCPUDefault }
+
+func agentImageDefault() string {
+	v := strings.TrimSpace(currentSmartDefaults().agentImage)
+	if v == "" {
+		return containerImageDefault
+	}
+	return v
+}
+
+func agentTagDefault() string {
+	v := strings.TrimSpace(currentSmartDefaults().agentTag)
+	if v == "" {
+		return containerImageTagDefault
+	}
+	return v
+}
 
 func engineerContainerLimitDefault() int { return currentSmartDefaults().engineerContainerLimit }
 
