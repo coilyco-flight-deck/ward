@@ -19,9 +19,9 @@ import (
 )
 
 // agent_list.go wires `ward agent list` (alias `ps`): the director-surface read
-// path for active engineer launches, including reservation-backed launches.
+// path for running engineers plus launch intents.
 
-const agentListSchemaVersion = 2
+const agentListSchemaVersion = 3
 
 const (
 	agentLaunchPhaseQueued    = "broker accepted / queued"
@@ -48,6 +48,7 @@ type agentListJSON struct {
 	SchemaVersion int                  `json:"schema_version"`
 	GeneratedAt   string               `json:"generated_at"`
 	Count         int                  `json:"count"`
+	LaunchIntents int                  `json:"launch_intents"`
 	Limit         *int                 `json:"limit"`
 	Remaining     *int                 `json:"remaining"`
 	AtCapacity    *bool                `json:"at_capacity"`
@@ -91,8 +92,8 @@ func agentListCommand() *cli.Command {
 	return &cli.Command{
 		Name:    "list",
 		Aliases: []string{"ps"},
-		Usage:   "List active engineer launches through the dispatch broker - director-surface, read-only, issue-aware.",
-		Description: "list prints the active engineer launches that carry ward labels, including reserved launches before their container appears.\n" +
+		Usage:   "List running engineers and launch intents through the dispatch broker - director-surface, read-only, issue-aware.",
+		Description: "list prints the running engineer containers that carry ward labels, plus launch intents before their container appears.\n" +
 			"The host side uses the same label-backed broker path as `ward agent stop --print` " +
 			"to resolve a single engineer, but here it reports the whole active set instead of " +
 			"one target. `--json` emits a stable machine-readable schema. The `ps` alias " +
@@ -253,10 +254,12 @@ type agentRunningEngineer struct {
 }
 
 func agentListJSONFromRows(rows []agentRunningEngineer) agentListJSON {
-	capacity := agentListCapacityForCount(len(rows))
+	running, pending := agentListRunningAndPendingCounts(rows)
+	capacity := agentListCapacityForCount(running)
 	payload := agentListJSON{
 		SchemaVersion: agentListSchemaVersion,
 		Count:         capacity.Count,
+		LaunchIntents: pending,
 		Limit:         capacity.Limit,
 		Remaining:     capacity.Remaining,
 		AtCapacity:    capacity.AtCapacity,
@@ -314,6 +317,17 @@ func agentListCapacityForCount(count int) agentListCapacity {
 	atCapacity := count >= limit
 	capacity.AtCapacity = &atCapacity
 	return capacity
+}
+
+func agentListRunningAndPendingCounts(rows []agentRunningEngineer) (running, pending int) {
+	for _, row := range rows {
+		if row.Phase == agentLaunchPhaseRunning {
+			running++
+			continue
+		}
+		pending++
+	}
+	return running, pending
 }
 
 func (r *Runner) reservedEngineerRows(ctx context.Context, now time.Time, seen map[string]bool) ([]agentRunningEngineer, error) {
@@ -679,11 +693,20 @@ func formatDuration(d time.Duration) string {
 }
 
 func renderAgentListHuman(rows []agentRunningEngineer) string {
-	capacity := agentListCapacityForCount(len(rows))
+	running, pending := agentListRunningAndPendingCounts(rows)
+	capacity := agentListCapacityForCount(running)
 	var b strings.Builder
-	fmt.Fprintf(&b, "ward agent: active engineer launches (running + reserved) %s\n", formatAgentListCapacity(capacity))
+	fmt.Fprintf(&b, "ward agent: running engineers %s", formatAgentListCapacity(capacity))
+	if pending > 0 {
+		noun := "launch intents"
+		if pending == 1 {
+			noun = "launch intent"
+		}
+		fmt.Fprintf(&b, " + %d %s pending", pending, noun)
+	}
+	b.WriteString("\n")
 	if len(rows) == 0 {
-		b.WriteString("\n  no active engineer launches.\n")
+		b.WriteString("\n  no running engineers.\n")
 		return b.String()
 	}
 	for _, row := range rows {

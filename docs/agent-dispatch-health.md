@@ -7,6 +7,7 @@ doc_goal: Keep the dispatch-health surface and its alert line in one durable pla
 
 - It reads the backlog ledger and the live engineer list.
 - It reports queued, in-flight, held, submitted, merge-ready, deferred, and failed counts.
+- It reports running engineers separately from launch intents.
 - It surfaces double-dispatch, stale prelaunch holds, backpressure, and runaway signals.
 - It prints the stable `WARD-DISPATCH-HEALTH:` line that the director loop and alert rules can match.
 

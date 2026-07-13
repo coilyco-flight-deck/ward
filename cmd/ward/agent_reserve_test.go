@@ -563,6 +563,55 @@ func TestReleaseRemoteReservation(t *testing.T) {
 	})
 }
 
+// TestWaitForDispatchBrokerEngineerVisibilityReleasesFailedLaunchIntent keeps the
+// launch-intent cleanup immediate when a launch never becomes visible.
+func TestWaitForDispatchBrokerEngineerVisibilityReleasesFailedLaunchIntent(t *testing.T) {
+	t.Setenv("HOME", t.TempDir())
+	origTimeout := dispatchBrokerVisibilityTimeout
+	origPoll := dispatchBrokerVisibilityPoll
+	dispatchBrokerVisibilityTimeout = 25 * time.Millisecond
+	dispatchBrokerVisibilityPoll = time.Millisecond
+	t.Cleanup(func() {
+		dispatchBrokerVisibilityTimeout = origTimeout
+		dispatchBrokerVisibilityPoll = origPoll
+	})
+
+	ref := agentIssueRef{Owner: "coilyco-flight-deck", Repo: "ward", Number: 991}
+	path, err := agentReservationPath(ref)
+	if err != nil {
+		t.Fatalf("agentReservationPath: %v", err)
+	}
+	now := time.Now().UTC()
+	if err := writeAgentReservation(path, agentReservation{
+		Owner:     ref.Owner,
+		Repo:      ref.Repo,
+		Number:    ref.Number,
+		Mode:      string(modeClaude),
+		Container: "engineer-claude-ward-991",
+		Branch:    "issue-991",
+		Host:      "director-box",
+		At:        now,
+	}); err != nil {
+		t.Fatalf("writeAgentReservation: %v", err)
+	}
+	called := false
+	registerDispatchLaunchReservationRelease(ref, func() {
+		called = true
+		_ = removeAgentReservation(path)
+	})
+	r, _, _ := bufRunner(dockerAbsentStub(t))
+	err = r.waitForDispatchBrokerEngineerVisibility(context.Background(), dispatchBrokerRequest{Argv: []string{"engineer", ref.String()}})
+	if err == nil {
+		t.Fatal("waitForDispatchBrokerEngineerVisibility: want a visibility failure, got nil")
+	}
+	if !called {
+		t.Fatal("visibility failure should immediately release the pending launch intent")
+	}
+	if _, ok, _ := readAgentReservation(path); ok {
+		t.Fatal("visibility failure should remove the local launch-intent sentinel")
+	}
+}
+
 // TestForgejoLockUnsupported asserts the Forgejo client reports no lock leaf, the
 // signal lockReservedIssue downgrades to the comment road-block (ward#494).
 func TestForgejoLockUnsupported(t *testing.T) {

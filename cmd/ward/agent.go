@@ -2089,6 +2089,9 @@ func (r *Runner) launchAgentContainer(ctx context.Context, c *cli.Command, mode 
 		return r.withAgentReservationLock(ref, func() error {
 			var reserveErr error
 			release, reserveErr = r.reserveIssue(ctx, label, mode, ref, plan.Name, plan.Branch, justification, seedCtx, overrideReservation(c), plan.SkipPreflight)
+			if reserveErr == nil && dispatchLaunchReservationTracking(ctx) {
+				registerDispatchLaunchReservationRelease(ref, release)
+			}
 			return reserveErr
 		})
 	}); err != nil {
@@ -2099,7 +2102,7 @@ func (r *Runner) launchAgentContainer(ctx context.Context, c *cli.Command, mode 
 	launched := false
 	defer func() {
 		if !launched {
-			release()
+			releaseDispatchLaunchReservation(ref)
 		}
 	}()
 

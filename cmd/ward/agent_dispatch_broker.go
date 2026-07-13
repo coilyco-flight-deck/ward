@@ -330,9 +330,10 @@ func (r *Runner) handleHostDispatchBrokerLaunch(ctx context.Context, req dispatc
 		done <- dispatchBrokerLaunchResult{logPath: logPath, err: err}
 		return
 	}
+	launchCtx := withDispatchLaunchReservationTracking(ctx)
 	if err := withBrokerForwardingDisabled(func() error {
 		close(started)
-		return dispatchBrokerLaunch(ctx, req)
+		return dispatchBrokerLaunch(launchCtx, req)
 	}); err != nil {
 		restore()
 		restored = true
@@ -387,15 +388,18 @@ func (r *Runner) waitForDispatchBrokerEngineerVisibility(ctx context.Context, re
 	for {
 		visible, err := r.dispatchBrokerEngineerVisible(deadlineCtx, ref)
 		if err != nil {
+			releaseDispatchLaunchReservation(ref)
 			return fmt.Errorf(
 				"dispatch broker: launch accepted but could not confirm engineer visibility; "+
 					"inspect with `ward agent list` from the director surface: %w", err)
 		}
 		if visible {
+			forgetDispatchLaunchReservationRelease(ref)
 			return nil
 		}
 		select {
 		case <-deadlineCtx.Done():
+			releaseDispatchLaunchReservation(ref)
 			return fmt.Errorf(
 				"dispatch broker: launch accepted but the forwarded engineer never became visible; " +
 					"inspect with `ward agent list` from the director surface")

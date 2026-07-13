@@ -16,6 +16,7 @@ func TestDispatchHealthReportSummaryLine(t *testing.T) {
 		Deferred:         2,
 		Failed:           1,
 		Running:          2,
+		LaunchIntents:    1,
 		RecentDispatches: 5,
 		DuplicateRefs:    []string{"coilyco-flight-deck/ward#9×2"},
 		Backpressure:     true,
@@ -33,6 +34,7 @@ func TestDispatchHealthReportSummaryLine(t *testing.T) {
 		"double-dispatch=coilyco-flight-deck/ward#9×2",
 		"backpressure=on",
 		"runaway=on",
+		"launch-intents=1",
 	} {
 		if !strings.Contains(line, want) {
 			t.Fatalf("summary line missing %q:\n%s", want, line)
@@ -47,10 +49,13 @@ func TestDispatchHealthReportSummaryLine(t *testing.T) {
 }
 
 func TestDispatchHealthReportFlagsStalePrelaunch(t *testing.T) {
-	report := dispatchHealthReport{StalePrelaunch: 2, Signals: []string{"stale-prelaunch"}}
+	report := dispatchHealthReport{StalePrelaunch: 2, LaunchIntents: 3, Signals: []string{"stale-prelaunch"}}
 	line := report.summaryLine()
 	if !strings.Contains(line, "stale-prelaunch=2") {
 		t.Fatalf("summary line missing stale-prelaunch count: %s", line)
+	}
+	if !strings.Contains(line, "launch-intents=3") {
+		t.Fatalf("summary line missing launch-intents count: %s", line)
 	}
 	if !strings.Contains(strings.Join(dispatchHealthSignals(report), ","), "stale-prelaunch") {
 		t.Fatal("stale prelaunch reservations should surface as a signal")

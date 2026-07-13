@@ -101,6 +101,9 @@ func TestAgentRunningEngineerFromInspectIncludesReservation(t *testing.T) {
 	if payload.Count != 1 {
 		t.Fatalf("count = %d, want 1", payload.Count)
 	}
+	if payload.LaunchIntents != 0 {
+		t.Fatalf("launch_intents = %d, want 0", payload.LaunchIntents)
+	}
 	if payload.Limit == nil || *payload.Limit != engineerContainerLimitDefault() {
 		t.Fatalf("limit = %v, want %d", payload.Limit, engineerContainerLimitDefault())
 	}
@@ -136,7 +139,7 @@ func TestAgentRunningEngineerFromInspectIncludesReservation(t *testing.T) {
 
 	human := renderAgentListHuman([]agentRunningEngineer{row})
 	for _, want := range []string{
-		"ward agent: active engineer launches (running + reserved) (1/12, 11 slots free)",
+		"ward agent: running engineers (1/12, 11 slots free)",
 		"coilyco-gaming/factory-game-v3#18",
 		"kais-macbook-pro-2.local",
 		"issue-18",
@@ -201,12 +204,19 @@ func TestAgentListIncludesReservedLaunchPhase(t *testing.T) {
 	if row.Status != "starting" {
 		t.Fatalf("status = %q, want starting", row.Status)
 	}
+	payload := agentListJSONFromRows(rows)
+	if payload.Count != 0 {
+		t.Fatalf("count = %d, want 0 running engineers", payload.Count)
+	}
+	if payload.LaunchIntents != 1 {
+		t.Fatalf("launch_intents = %d, want 1", payload.LaunchIntents)
+	}
 	if row.ReservedAt.IsZero() || !row.ReservedAt.Equal(now.Add(-time.Second)) {
 		t.Fatalf("reserved_at = %v, want %v", row.ReservedAt, now.Add(-time.Second))
 	}
 	human := renderAgentListHuman(rows)
 	for _, want := range []string{
-		"ward agent: active engineer launches (running + reserved) (1/12, 11 slots free)",
+		"ward agent: running engineers (0/12, 12 slots free) + 1 launch intent pending",
 		ref.String(),
 		"phase:     container starting",
 		"status:    starting",

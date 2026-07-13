@@ -2,10 +2,8 @@ package main
 
 import (
 	"context"
-	"errors"
 	"fmt"
 	"strings"
-	"time"
 
 	"github.com/urfave/cli/v3"
 )
@@ -28,11 +26,6 @@ func (e *engineerRepoWorkingBackpressureError) Error() string {
 
 func newEngineerRepoWorkingBackpressureError(label, repo string, working, limit int) error {
 	return &engineerRepoWorkingBackpressureError{label: label, repo: repo, working: working, limit: limit}
-}
-
-func isEngineerRepoWorkingBackpressureError(err error) bool {
-	var backpressureErr *engineerRepoWorkingBackpressureError
-	return errors.As(err, &backpressureErr)
 }
 
 // launchRepoEngineerBackpressureCheck refuses engineer launches once the repo
@@ -58,8 +51,7 @@ func (r *Runner) maybeLaunchRepoEngineerBackpressure(ctx context.Context, label 
 	return r.launchRepoEngineerBackpressureCheck(ctx, label, repo)
 }
 
-// activeEngineerLaunchCountForRepo counts fresh engineer work in one repo,
-// including reservation-backed launches that have not yet shown up as containers.
+// activeEngineerLaunchCountForRepo counts visible engineer workers in one repo.
 func (r *Runner) activeEngineerLaunchCountForRepo(ctx context.Context, repo string) (int, error) {
 	repo = strings.TrimSpace(repo)
 	if repo == "" {
@@ -69,20 +61,5 @@ func (r *Runner) activeEngineerLaunchCountForRepo(ctx context.Context, repo stri
 	if err != nil {
 		return 0, err
 	}
-	count := len(running)
-	seen := make(map[string]bool, len(running))
-	for _, name := range running {
-		seen[strings.TrimSpace(name)] = true
-	}
-	now := time.Now().UTC()
-	pending, err := r.reservedEngineerRows(ctx, now, seen)
-	if err != nil {
-		return 0, err
-	}
-	for _, row := range pending {
-		if row.Repo == repo {
-			count++
-		}
-	}
-	return count, nil
+	return len(running), nil
 }
