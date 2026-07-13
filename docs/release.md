@@ -3,7 +3,7 @@ doc_goal: Keep the release pipeline as a short user-facing reference after the d
 ---
 # release
 
-Ward releases are Forgejo-canonical and two-stage (ward#1117).
+Ward releases are Forgejo-canonical and two-stage ([ward#1117](https://forgejo.coilysiren.me/coilyco-flight-deck/ward/issues/1117)).
 
 - `promote.yml` gates every `main` push (vet, test, lint) and, when green,
   fast-forwards the `release` branch to that sha with `CI_RELEASE_TOKEN`.
