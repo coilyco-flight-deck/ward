@@ -30,12 +30,13 @@ const (
 type reapReason string
 
 const (
-	reasonConflict reapReason = "merge conflict integrating onto main"
-	reasonScan     reapReason = "diff flagged by the junk scan"
-	reasonCloseRef reapReason = "missing same-repo closing reference"
-	reasonPushRace reapReason = "push to main was rejected (the remote advanced)"
-	reasonPushFail reapReason = "push to main failed"
-	reasonAuthFail reapReason = "push to main was rejected on auth (dead or rotated PAT)"
+	reasonConflict  reapReason = "merge conflict integrating onto main"
+	reasonScan      reapReason = "diff flagged by the junk scan"
+	reasonPreCommit reapReason = "pre-commit suite rejected the residual tree"
+	reasonCloseRef  reapReason = "missing same-repo closing reference"
+	reasonPushRace  reapReason = "push to main was rejected (the remote advanced)"
+	reasonPushFail  reapReason = "push to main failed"
+	reasonAuthFail  reapReason = "push to main was rejected on auth (dead or rotated PAT)"
 )
 
 const (
@@ -332,61 +333,85 @@ func salvageOutcomeVisible(r salvageReport) string {
 // carried-issue comment: facts, likely-cause, recovery, findings, tree snapshot.
 func salvageDetailBody(r salvageReport) string {
 	var b strings.Builder
-	fmt.Fprintf(&b, "- **Repo:** `%s`\n", r.Repo.slug())
-	fmt.Fprintf(&b, "- **Salvage branch:** `%s`\n", r.Branch)
+	appendSalvageIdentity(&b, r)
+	appendSalvageCauses(&b, r)
+	appendSalvageDiagnostics(&b, r)
+	appendSalvageRecovery(&b, r)
+	appendSalvageFindings(&b, r)
+	appendSalvageStatus(&b, r)
+	return b.String()
+}
+
+func appendSalvageIdentity(b *strings.Builder, r salvageReport) {
+	fmt.Fprintf(b, "- **Repo:** `%s`\n", r.Repo.slug())
+	fmt.Fprintf(b, "- **Salvage branch:** `%s`\n", r.Branch)
 	if r.PullRequestURL != "" {
-		fmt.Fprintf(&b, "- **Pull request:** %s\n", r.PullRequestURL)
+		fmt.Fprintf(b, "- **Pull request:** %s\n", r.PullRequestURL)
 	} else if r.PullRequestUnavailable != "" {
-		fmt.Fprintf(&b, "- **Pull request:** not opened - %s\n", r.PullRequestUnavailable)
+		fmt.Fprintf(b, "- **Pull request:** not opened - %s\n", r.PullRequestUnavailable)
 	}
-	fmt.Fprintf(&b, "- **Reason:** %s\n", r.Reason)
+	fmt.Fprintf(b, "- **Reason:** %s\n", r.Reason)
 	if r.CommitState != "" {
-		fmt.Fprintf(&b, "- **Agent commit:** %s\n", r.CommitState)
+		fmt.Fprintf(b, "- **Agent commit:** %s\n", r.CommitState)
 	}
 	if r.TokenAge != "" {
-		fmt.Fprintf(&b, "- **Container uptime at reap:** %s (age of the baked Forgejo PAT snapshot; a long-lived container is likelier to carry a rotated token)\n", r.TokenAge)
+		fmt.Fprintf(b, "- **Container uptime at reap:** %s (age of the baked Forgejo PAT snapshot; a long-lived container is likelier to carry a rotated token)\n", r.TokenAge)
 	}
 	b.WriteString("\n")
+}
 
+func appendSalvageCauses(b *strings.Builder, r salvageReport) {
 	if r.AuthCause {
 		b.WriteString("## Likely cause: dead/rotated PAT, not a conflict\n\n")
 		b.WriteString("The push was rejected on **credentials**, not content. The Forgejo PAT baked into this container at `up` time was most likely rotated or revoked while it ran, so the final push to `main` (and any salvage-branch push) failed on auth. This is **not** a merge conflict - the work on the salvage branch should rebase and land cleanly once pushed with a live token. Don't rotate the PAT while containers are in flight; see docs/container-reap.md.\n\n")
 	}
+	if r.Reason == reasonPreCommit {
+		b.WriteString("## Likely cause: pre-commit gate rejected the residual tree\n\n")
+		b.WriteString("The reaper ran the repo's pre-commit suite before landing the residual work. The tree was red, so the run was preserved on a ward-salvage branch instead of being pushed to `main`.\n\n")
+	}
+}
 
+func appendSalvageDiagnostics(b *strings.Builder, r salvageReport) {
+	if strings.TrimSpace(r.Diagnostics.WardVersion) == "" {
+		return
+	}
 	// Fold the ward#531 diagnostics block in verbatim so a false-salvage
 	// self-diagnoses on the durable issue, not only on ephemeral stderr.
-	if strings.TrimSpace(r.Diagnostics.WardVersion) != "" {
-		b.WriteString("## Cleanup diagnostics\n\n```\n")
-		b.WriteString(renderReapDiagnostics(r.Diagnostics))
-		b.WriteString("\n```\n\n")
-	}
+	b.WriteString("## Cleanup diagnostics\n\n```\n")
+	b.WriteString(renderReapDiagnostics(r.Diagnostics))
+	b.WriteString("\n```\n\n")
+}
 
+func appendSalvageRecovery(b *strings.Builder, r salvageReport) {
 	b.WriteString(closingReferenceStateBody(r))
-
 	b.WriteString("## Recover\n\n```bash\n")
-	fmt.Fprintf(&b, "git fetch %s %s\n", r.Repo.cloneURL(r.Base), r.Branch)
-	fmt.Fprintf(&b, "git checkout -b %s FETCH_HEAD\n", r.Branch)
+	fmt.Fprintf(b, "git fetch %s %s\n", r.Repo.cloneURL(r.Base), r.Branch)
+	fmt.Fprintf(b, "git checkout -b %s FETCH_HEAD\n", r.Branch)
 	b.WriteString("```\n\n")
-
 	if r.Reason == reasonCloseRef && r.Issue != 0 {
 		b.WriteString("This salvage was blocked by a missing closing reference. To recover, amend or cherry-pick the salvaged work so the landing commit message includes `closes #")
-		fmt.Fprintf(&b, "%d`, or add a small empty trailer commit with `closes #%d`, then land the branch.\n\n", r.Issue, r.Issue)
+		fmt.Fprintf(b, "%d`, or add a small empty trailer commit with `closes #%d`, then land the branch.\n\n", r.Issue, r.Issue)
 	}
+}
 
-	if len(r.Findings) > 0 {
-		b.WriteString("## Junk-scan findings\n\nThese paths kept the diff off `main`. Review before merging:\n\n")
-		for _, f := range sortedFindings(r.Findings) {
-			fmt.Fprintf(&b, "- `%s` - %s\n", f.Path, f.Reason)
-		}
-		b.WriteString("\n")
+func appendSalvageFindings(b *strings.Builder, r salvageReport) {
+	if len(r.Findings) == 0 {
+		return
 	}
+	b.WriteString("## Junk-scan findings\n\nThese paths kept the diff off `main`. Review before merging:\n\n")
+	for _, f := range sortedFindings(r.Findings) {
+		fmt.Fprintf(b, "- `%s` - %s\n", f.Path, f.Reason)
+	}
+	b.WriteString("\n")
+}
 
-	if strings.TrimSpace(r.Status) != "" {
-		b.WriteString("## Working tree at reap time\n\n```\n")
-		b.WriteString(strings.TrimRight(r.Status, "\n"))
-		b.WriteString("\n```\n")
+func appendSalvageStatus(b *strings.Builder, r salvageReport) {
+	if strings.TrimSpace(r.Status) == "" {
+		return
 	}
-	return b.String()
+	b.WriteString("## Working tree at reap time\n\n```\n")
+	b.WriteString(strings.TrimRight(r.Status, "\n"))
+	b.WriteString("\n```\n")
 }
 
 func closingReferenceStateBody(r salvageReport) string {

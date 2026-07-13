@@ -330,6 +330,11 @@ func (r *Runner) reapEstablishMain(ctx context.Context, work string, env reapEnv
 		return r.salvage(ctx, work, env, reasonScan, false, findings, statusSnapshot,
 			reapDecision{Gate: "junk scan flagged the diff", ProvState: "not read (no origin/main)", CommitState: commitState})
 	}
+	if err := r.runPreCommitGate(ctx, work); err != nil {
+		fmt.Fprintf(os.Stderr, "ward container reap: %v; salvaging\n", err)
+		return r.salvage(ctx, work, env, reasonPreCommit, false, findings, statusSnapshot,
+			reapDecision{Gate: "pre-commit suite rejected the residual tree", ProvState: "not read (no origin/main)", CommitState: commitState})
+	}
 
 	// Establish main: push HEAD as the new default branch.
 	fmt.Fprintln(os.Stderr, "ward container reap: establishing main from run work (empty repo) start")
@@ -454,6 +459,11 @@ func (r *Runner) executePushMainReap(ctx context.Context, work string, env reapE
 	if err := r.ensureClosingReferenceBeforePush(ctx, work, env, findings, status, landed, prov, commitState); err != nil {
 		return err
 	}
+	if err := r.runPreCommitGate(ctx, work); err != nil {
+		fmt.Fprintf(os.Stderr, "ward container reap: %v; salvaging\n", err)
+		return r.salvage(ctx, work, env, reasonPreCommit, false, findings, status,
+			reapDecision{Gate: "pre-commit suite rejected the residual tree", ProvState: "present", CommitState: commitState, Landed: landed})
+	}
 	fmt.Fprintln(os.Stderr, "ward container reap: push to main start")
 	out, perr := r.pushCapture(ctx, work, "HEAD:main")
 	if perr == nil {
@@ -469,6 +479,22 @@ func (r *Runner) executePushMainReap(ctx context.Context, work string, env reapE
 	fmt.Fprintf(os.Stderr, "ward container reap: push to main rejected (%s); salvaging\n", reason)
 	return r.salvage(ctx, work, env, reason, authCause, findings, status,
 		reapDecision{Gate: "push to main rejected", ProvState: "present", CommitState: commitState, Landed: true})
+}
+
+func (r *Runner) runPreCommitGate(ctx context.Context, work string) error {
+	if !isFile(filepath.Join(work, ".pre-commit-config.yaml")) {
+		fmt.Fprintln(os.Stderr, "ward container reap: no .pre-commit-config.yaml; skipping pre-commit gate")
+		return nil
+	}
+	if !commandExists("pre-commit") {
+		return fmt.Errorf("pre-commit is not on PATH")
+	}
+	fmt.Fprintf(os.Stderr, "ward container reap: pre-commit run --all-files start for %s\n", work)
+	if err := r.execIn(ctx, work, "pre-commit", "run", "--all-files"); err != nil {
+		return fmt.Errorf("pre-commit run --all-files failed: %w", err)
+	}
+	fmt.Fprintf(os.Stderr, "ward container reap: pre-commit gate clean for %s\n", work)
+	return nil
 }
 
 func (r *Runner) ensureClosingReferenceBeforePush(ctx context.Context, work string, env reapEnv, findings []scan.Finding, status string, landed bool, prov runProvenance, commitState string) error {

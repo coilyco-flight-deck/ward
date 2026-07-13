@@ -179,8 +179,8 @@ func parseIssueResult(out []byte) broker.Result {
 	return broker.Result{Number: payload.Number, URL: url}
 }
 
-// writeTierOps is the op allowlist this daemon serves: file / edit / comment / label
-// + dispatch (ward#334, ward#625); delete/admin refuse out-of-tier before the executor.
+// writeTierOps is the op allowlist this daemon serves.
+// File/edit/comment/label/dispatch stay in tier; delete/admin refuse out of tier.
 var writeTierOps = map[broker.Op]bool{
 	broker.OpFileIssue:    true,
 	broker.OpEditIssue:    true,
@@ -189,10 +189,8 @@ var writeTierOps = map[broker.Op]bool{
 	broker.OpDispatch:     true,
 }
 
-// writeTierAuthorizer is the broker.Authorizer: the write-op allowlist + Policy's
-// invariants, plus an owner scope gate mirroring the write guardfile's restrict.
-// Comment writes also fail closed when a live engineer or fresh reservation owns
-// the issue, so the read-only director surface does not talk over an active run.
+// writeTierAuthorizer is the broker.Authorizer for the write tier.
+// It also enforces the owner scope gate and blocks comment writes on active runs.
 func (r *Runner) writeTierAuthorizer() broker.Authorizer {
 	policy := broker.Policy{Ops: writeTierOps}
 	return broker.AuthorizerFunc(func(ctx context.Context, req broker.Request) error {

@@ -4,6 +4,7 @@ import (
 	"context"
 	"encoding/json"
 	"errors"
+	"fmt"
 	"os"
 	"os/exec"
 	"path/filepath"
@@ -1089,6 +1090,168 @@ func TestReapTargetTreeDirtyOnlyResidualRunRepairsAndLands(t *testing.T) {
 	out, _ = exec.Command("git", "-C", origin, "branch", "--list", salvageBranchPrefix+"*").CombinedOutput()
 	if strings.TrimSpace(string(out)) != "" {
 		t.Fatalf("dirty-only Goose landing must not create a salvage branch, got: %q", string(out))
+	}
+}
+
+func TestReapTargetTreeRunsPreCommitBeforeLanding(t *testing.T) {
+	origin := t.TempDir()
+	runGit(t, origin, "init", "--bare", "-b", "main")
+	work := t.TempDir()
+	runGit(t, work, "init", "-b", "main")
+	runGit(t, work, "config", "user.email", "test@example.com")
+	runGit(t, work, "config", "user.name", "Test User")
+	runGitCommitAt(t, work, "2026-07-10T06:00:00Z", "base.txt", "base\n", "base")
+	runGit(t, work, "remote", "add", "origin", origin)
+	runGit(t, work, "push", "origin", "main")
+	runGit(t, work, "update-ref", "refs/remotes/origin/main", "HEAD")
+	if err := os.WriteFile(filepath.Join(work, ".pre-commit-config.yaml"), []byte("repos: []\n"), 0o644); err != nil {
+		t.Fatal(err)
+	}
+	runGit(t, work, "add", ".pre-commit-config.yaml")
+	runGit(t, work, "commit", "-m", "add pre-commit config")
+	runGit(t, work, "push", "origin", "main")
+	runGit(t, work, "update-ref", "refs/remotes/origin/main", "HEAD")
+	baseline := mustGitRev(t, work, "origin/main")
+	prov := runProvenance{
+		RunID:        "engineer-goose-ward-523",
+		Repo:         "coilyco-flight-deck/ward",
+		Issue:        523,
+		ReservedAt:   "2026-07-10T06:05:00Z",
+		BaselineMain: baseline,
+	}
+	provData, err := json.Marshal(prov)
+	if err != nil {
+		t.Fatal(err)
+	}
+	if err := os.WriteFile(filepath.Join(work, runProvenanceFile), provData, 0o644); err != nil {
+		t.Fatal(err)
+	}
+
+	binDir := t.TempDir()
+	logFile := filepath.Join(binDir, "pre-commit.log")
+	script := fmt.Sprintf("#!/bin/sh\nprintf '%%s\\n' \"$@\" >> %s\nexit 0\n", logFile)
+	if err := os.WriteFile(filepath.Join(binDir, "pre-commit"), []byte(script), 0o755); err != nil {
+		t.Fatal(err)
+	}
+	t.Setenv("PATH", binDir+string(os.PathListSeparator)+os.Getenv("PATH"))
+
+	if err := os.WriteFile(filepath.Join(work, "scratch.txt"), []byte("scratch\n"), 0o644); err != nil {
+		t.Fatal(err)
+	}
+
+	r := &Runner{Runner: &shell.Runner{Resolve: shell.PathResolver}}
+	env := reapEnv{
+		Owner:    "coilyco-flight-deck",
+		Name:     "ward",
+		Base:     "https://forgejo.coilysiren.me",
+		Mode:     "goose",
+		Issue:    523,
+		Launched: true,
+		Workflow: workflowDirectToMain,
+	}
+	stderr := captureTestStderr(t, func() {
+		if err := r.reapTargetTree(t.Context(), work, env, false); err != nil {
+			t.Fatalf("reapTargetTree landing a dirty-only goose run: %v", err)
+		}
+	})
+	if !strings.Contains(stderr, "pre-commit run --all-files start") {
+		t.Fatalf("stderr missing pre-commit gate:\n%s", stderr)
+	}
+	if strings.Index(stderr, "pre-commit run --all-files start") > strings.Index(stderr, "push to main start") {
+		t.Fatalf("pre-commit gate must run before the push:\n%s", stderr)
+	}
+	gotLog, err := os.ReadFile(logFile)
+	if err != nil {
+		t.Fatalf("read pre-commit log: %v", err)
+	}
+	if !strings.Contains(string(gotLog), "run") || !strings.Contains(string(gotLog), "--all-files") {
+		t.Fatalf("pre-commit log missing argv:\n%s", string(gotLog))
+	}
+	if got, want := mustGitRev(t, origin, "main"), mustGitRev(t, work, "HEAD"); got != want {
+		t.Fatalf("pre-commit clean run must land on main: origin main=%s work HEAD=%s baseline=%s", got, want, baseline)
+	}
+}
+
+func TestReapTargetTreePreCommitFailureSalvagesInsteadOfPushingMain(t *testing.T) {
+	origin := t.TempDir()
+	runGit(t, origin, "init", "--bare", "-b", "main")
+	work := t.TempDir()
+	runGit(t, work, "init", "-b", "main")
+	runGit(t, work, "config", "user.email", "test@example.com")
+	runGit(t, work, "config", "user.name", "Test User")
+	runGitCommitAt(t, work, "2026-07-10T07:00:00Z", "base.txt", "base\n", "base")
+	runGit(t, work, "remote", "add", "origin", origin)
+	runGit(t, work, "push", "origin", "main")
+	runGit(t, work, "update-ref", "refs/remotes/origin/main", "HEAD")
+	if err := os.WriteFile(filepath.Join(work, ".pre-commit-config.yaml"), []byte("repos: []\n"), 0o644); err != nil {
+		t.Fatal(err)
+	}
+	runGit(t, work, "add", ".pre-commit-config.yaml")
+	runGit(t, work, "commit", "-m", "add pre-commit config")
+	runGit(t, work, "push", "origin", "main")
+	runGit(t, work, "update-ref", "refs/remotes/origin/main", "HEAD")
+	baseline := mustGitRev(t, work, "origin/main")
+	prov := runProvenance{
+		RunID:        "engineer-goose-ward-524",
+		Repo:         "coilyco-flight-deck/ward",
+		Issue:        524,
+		ReservedAt:   "2026-07-10T07:05:00Z",
+		BaselineMain: baseline,
+	}
+	provData, err := json.Marshal(prov)
+	if err != nil {
+		t.Fatal(err)
+	}
+	if err := os.WriteFile(filepath.Join(work, runProvenanceFile), provData, 0o644); err != nil {
+		t.Fatal(err)
+	}
+
+	binDir := t.TempDir()
+	logFile := filepath.Join(binDir, "pre-commit.log")
+	script := fmt.Sprintf("#!/bin/sh\nprintf '%%s\\n' \"$@\" >> %s\nexit 1\n", logFile)
+	if err := os.WriteFile(filepath.Join(binDir, "pre-commit"), []byte(script), 0o755); err != nil {
+		t.Fatal(err)
+	}
+	t.Setenv("PATH", binDir+string(os.PathListSeparator)+os.Getenv("PATH"))
+
+	if err := os.WriteFile(filepath.Join(work, "scratch.txt"), []byte("scratch\n"), 0o644); err != nil {
+		t.Fatal(err)
+	}
+
+	r := &Runner{Runner: &shell.Runner{Resolve: shell.PathResolver}}
+	env := reapEnv{
+		Owner:    "coilyco-flight-deck",
+		Name:     "ward",
+		Base:     "https://forgejo.coilysiren.me",
+		Mode:     "goose",
+		Issue:    524,
+		Launched: true,
+		Workflow: workflowDirectToMain,
+	}
+	stderr := captureTestStderr(t, func() {
+		if err := r.reapTargetTree(t.Context(), work, env, false); err != nil {
+			t.Fatalf("reapTargetTree salvaging a red tree: %v", err)
+		}
+	})
+	if !strings.Contains(stderr, "pre-commit run --all-files failed") {
+		t.Fatalf("stderr missing pre-commit failure:\n%s", stderr)
+	}
+	if !strings.Contains(stderr, "salvaging") {
+		t.Fatalf("stderr missing salvage handoff:\n%s", stderr)
+	}
+	if got, want := mustGitRev(t, origin, "main"), baseline; got != want {
+		t.Fatalf("pre-commit failure must not advance main: origin main=%s baseline=%s", got, want)
+	}
+	out, _ := exec.Command("git", "-C", origin, "branch", "--list", salvageBranchPrefix+"*").CombinedOutput()
+	if strings.TrimSpace(string(out)) == "" {
+		t.Fatal("pre-commit failure must preserve the work on a salvage branch")
+	}
+	gotLog, err := os.ReadFile(logFile)
+	if err != nil {
+		t.Fatalf("read pre-commit log: %v", err)
+	}
+	if !strings.Contains(string(gotLog), "run") || !strings.Contains(string(gotLog), "--all-files") {
+		t.Fatalf("pre-commit log missing argv:\n%s", string(gotLog))
 	}
 }
 
