@@ -339,7 +339,7 @@ func triageLabelsFor(c triageCandidate, v triageVerdict, tier string) []string {
 // triageCommentBody renders the startup triage reasoning back onto the issue thread:
 // one visible line, then the method, verdict, and reason in collapsed details.
 func triageCommentBody(c triageCandidate, v triageVerdict, tier string, labels []string, labelErr error) string {
-	visible := fmt.Sprintf("WARD-TRIAGE: #%d", c.Num)
+	visible := workflowStatusVisible("triage", fmt.Sprintf("#%d", c.Num))
 	if len(labels) > 0 {
 		visible += " " + strings.Join(labels, " ")
 	}

@@ -21,7 +21,7 @@ The operational backstop lives in the smaller operator docs.
 The canonical flat roster lives in [agent-roster.md](agent-roster.md). It is generated from the ward-owned embedded role defaults plus the effective fleet overlays, so it stays current. This doc and the per-role docs ([agent-engineer.md](agent-engineer.md), [agent-director.md](agent-director.md), [agent-advisor.md](agent-advisor.md), [agent-qa.md](agent-qa.md)) carry the prose detail behind each row. Run `warded roster` for the live list.
 
 - **`engineer`** - detached only. A ref runs the agent in print mode to completion and exits into the reaper. From a terminal it first runs a pre-flight check ([agent-preflight.md](agent-preflight.md)): GO launches, NO-GO comments and launches nothing. Freeform text files an issue first, then carries it.
-- **`director`** - an attached heartbeat. It polls `WARD-OUTCOME`, dispatches queued issues under `--max-parallel`, and on drain surfaces a read-only scope plus dispatch session.
+- **`director`** - an attached heartbeat. It polls `WARDED_WORKFLOW`, dispatches queued issues under `--max-parallel`, and on drain surfaces a read-only scope plus dispatch session.
 - **`advisor`** - ref mode researches one-shot and posts the answer as a comment. Freeform answers inside a fresh container and streams inline.
 - **`qa`** - opt-in structured inspection. A ref reads the issue, candidate branch or PR, and checks, then posts a verdict comment.
 

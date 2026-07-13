@@ -354,17 +354,7 @@ func reservationQueueNote(comment issueComment) string {
 }
 
 func queueCommentSummary(body string) string {
-	lines := strings.Split(strings.TrimSpace(body), "\n")
-	for _, ln := range lines {
-		s := strings.TrimSpace(strings.TrimLeft(strings.TrimSpace(ln), ">*-•# "))
-		if s == "" || strings.HasPrefix(s, "<!--") || strings.HasPrefix(strings.ToLower(s), "<details") {
-			continue
-		}
-		if s != "" {
-			return s
-		}
-	}
-	return ""
+	return workflowCommentSummary(body)
 }
 
 func directorQueueActionOrder(action string) int {

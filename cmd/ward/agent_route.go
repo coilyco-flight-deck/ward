@@ -378,7 +378,7 @@ func routeChildBody(mode containerMode, taskText, scoped string, intake agentIss
 // is filed: where the work was routed, the scoping note, and the survey read. Pure.
 func routeRoutedComment(mode containerMode, child agentIssueRef, scoped, read string) string {
 	var b strings.Builder
-	visible := "WARD-STATUS: routed 🧭"
+	visible := workflowStatusVisible("routed", "🧭")
 	fmt.Fprintf(&b, "`%s` surveyed the fleet and routed this task to **%s**:\n\n", agentCmdline(mode, "engineer"), child.repoSlug())
 	fmt.Fprintf(&b, "- %s - %s\n\n", child, child.url())
 	if scoped = strings.TrimSpace(scoped); scoped != "" {
@@ -400,7 +400,7 @@ func routeUnclearComment(mode containerMode, reason, read string) string {
 		reason = "(no reason given)"
 	}
 	var b strings.Builder
-	visible := "WARD-STATUS: route unclear 🛑"
+	visible := workflowStatusVisible("route-unclear", "🛑")
 	fmt.Fprintf(&b, "`%s` surveyed the fleet but could not confidently route this task, so it "+
 		"filed nothing downstream and launched no container. This intake record stays open for a human to "+
 		"route.\n\n", agentCmdline(mode, "engineer"))

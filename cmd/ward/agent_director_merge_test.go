@@ -74,13 +74,13 @@ func TestDirectorMergeDecision(t *testing.T) {
 			name: "needs-ready-state",
 			pr:   basePR,
 			meta: directorRunMeta{HasOutcome: true, Outcome: backlogOutcome{Status: "submitted"}, Workflow: string(workflowPullRequestAndMerge), Review: "passed: ok"},
-			want: "linked issue did not finish with WARD-OUTCOME: merge-ready",
+			want: "linked issue did not finish with WARDED_WORKFLOW: merge-ready",
 		},
 		{
 			name: "done-is-not-merge-ready",
 			pr:   basePR,
 			meta: directorRunMeta{HasOutcome: true, Outcome: backlogOutcome{Status: "done"}, Workflow: string(workflowPullRequestAndMerge), Review: "passed: ok"},
-			want: "linked issue did not finish with WARD-OUTCOME: merge-ready",
+			want: "linked issue did not finish with WARDED_WORKFLOW: merge-ready",
 		},
 	}
 	for _, tc := range cases {
@@ -261,7 +261,7 @@ func TestDirectorMergeDecisionRejectsSkippedReview(t *testing.T) {
 	if allowed {
 		t.Fatal("skipped-review run: want deny, got allow")
 	}
-	if reason != "linked issue did not finish with WARD-OUTCOME: merge-ready" {
+	if reason != "linked issue did not finish with WARDED_WORKFLOW: merge-ready" {
 		t.Fatalf("skipped-review reason = %q, want merge-ready denial", reason)
 	}
 }
@@ -699,13 +699,13 @@ func TestDirectorMergeConflictReasonFromComments(t *testing.T) {
 		UpdatedAt: now.Add(-30 * time.Minute),
 	}
 	active := directorMergeConflictReasonFromComments(pr, nil, now)
-	if !strings.Contains(active, "active worker branch with no WARD-OUTCOME yet") || !strings.Contains(active, "30m ago") {
+	if !strings.Contains(active, "active worker branch with no WARDED_WORKFLOW yet") || !strings.Contains(active, "30m ago") {
 		t.Fatalf("active reason = %q, want active worker classification", active)
 	}
 
 	pr.UpdatedAt = now.Add(-3 * time.Hour)
 	stale := directorMergeConflictReasonFromComments(pr, nil, now)
-	if !strings.Contains(stale, "stale worker branch with no WARD-OUTCOME yet") || !strings.Contains(stale, "3h0m ago") {
+	if !strings.Contains(stale, "stale worker branch with no WARDED_WORKFLOW yet") || !strings.Contains(stale, "3h0m ago") {
 		t.Fatalf("stale reason = %q, want stale worker classification", stale)
 	}
 

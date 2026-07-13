@@ -24,10 +24,6 @@ import (
 // agent_director.go is `ward agent director`, the autonomous backlog-supervisor role
 // (ward#347, was backlog; ward#346, subsuming ward#310). See docs/agent-director.md.
 
-// wardOutcomeMarker leads a headless run's final comment (ward#310); the loop reads
-// only this line to classify the run. See docs/agent-director.md.
-const wardOutcomeMarker = "WARD-OUTCOME:"
-
 // backlogLedgerSubdir is the directory under ~/.ward holding one durable per-repo
 // ledger, so a killed loop resumes from disk rather than re-deriving state.
 const backlogLedgerSubdir = "backlog"
@@ -72,7 +68,7 @@ type rankedBacklogIssue struct {
 	URL   string
 }
 
-// backlogOutcome is the parsed WARD-OUTCOME status of a finished run.
+// backlogOutcome is the parsed WARDED_WORKFLOW status of a finished run.
 // The ledger stores explicit nonterminal PR outcomes as well as terminal ones.
 type backlogOutcome struct {
 	Status string `yaml:"status"`
@@ -246,7 +242,7 @@ func agentDirectorCommand() *cli.Command {
 		Usage:     "Run an attached LLM-in-the-loop heartbeat over a repo's headless lane, or one exact issue ref: poll, decide, dispatch, and surface on drain (ward#351). Engineers inherit the director's own harness by default; --engineer-harness overrides that dispatch default.",
 		ArgsUsage: "(issue ref | scope via --repo; default: the cwd git origin)",
 		Description: `director runs an attached, autonomous heartbeat over a repo's open backlog. Each
-tick it reconciles in-flight engineers (reading their WARD-OUTCOME comments),
+tick it reconciles in-flight engineers (reading their WARDED_WORKFLOW comments),
 refreshes the ledger from the live backlog (ranking issues into lanes by tier/mode
 labels), asks a host one-shot which queued headless issues to dispatch under
 --max-parallel, dispatches the chosen set via ward's native engineer, then
@@ -819,10 +815,10 @@ func dropClosedBacklogEntries(led *backlogLedger, seen map[int]bool) {
 // --- outcome parsing -------------------------------------------------------
 
 // backlogOutcomeRE parses the status + optional status emoji + reason that
-// follow the WARD-OUTCOME marker.
+// follow the WARDED_WORKFLOW marker.
 var backlogOutcomeRE = regexp.MustCompile(`(?i)^(done|submitted|merge-ready|pending|ready-for-merge|blocked|failed)\b(?:\s+[✅🛑❌])?[\s:.\-]*(.*)`)
 
-// parseBacklogOutcome classifies the latest comment leading with WARD-OUTCOME,
+// parseBacklogOutcome classifies the latest comment leading with WARDED_WORKFLOW,
 // nil when none. Ports backlog-loop.py's parse_outcome.
 func parseBacklogOutcome(comments []issueComment) *backlogOutcome {
 	latest, ok := latestBacklogOutcomeComment(comments)
@@ -837,7 +833,7 @@ func parseBacklogOutcome(comments []issueComment) *backlogOutcome {
 }
 
 // latestBacklogOutcomeComment returns the most recent comment body carrying a
-// WARD-OUTCOME marker.
+// WARDED_WORKFLOW marker.
 func latestBacklogOutcomeComment(comments []issueComment) (issueComment, bool) {
 	type hit struct {
 		at time.Time
@@ -966,30 +962,34 @@ func parseDirectorStatusContexts(s string) []directorMergeStatusContext {
 }
 
 // backlogCommentLine normalizes the leading quote/list markers the same way the
-// WARD-OUTCOME parser does, so the policy parser can read wrapped comments too.
+// WARDED_WORKFLOW parser does, so the policy parser can read wrapped comments too.
 func backlogCommentLine(ln string) string {
 	return strings.TrimSpace(strings.TrimLeft(strings.TrimSpace(ln), ">*-•# "))
 }
 
-// backlogOutcomeOfComment parses the WARD-OUTCOME status from one comment body,
+// backlogOutcomeOfComment parses the WARDED_WORKFLOW status from one comment body,
 // reporting ok=false when the body carries no leading marker line.
 func backlogOutcomeOfComment(body string) (backlogOutcome, bool) {
-	var line string
-	for _, ln := range strings.Split(body, "\n") {
-		s := strings.TrimSpace(strings.TrimLeft(strings.TrimSpace(ln), ">*-•# "))
-		if strings.HasPrefix(strings.ToUpper(s), wardOutcomeMarker) {
-			line = s
-			break
-		}
-	}
-	if line == "" {
+	header, ok := parseWorkflowCommentHeader(body)
+	if !ok {
 		return backlogOutcome{}, false
 	}
-	rest := strings.TrimSpace(line[len(wardOutcomeMarker):])
-	o := backlogOutcome{Status: "unknown", Text: rest}
-	if m := backlogOutcomeRE.FindStringSubmatch(rest); m != nil {
+	status := normalizeBacklogOutcomeStatus(header.Variant)
+	o := backlogOutcome{Status: "unknown"}
+	switch {
+	case workflowCommentIsTerminalOutcomeVariant(header.Variant):
+		o.Status = status
+		o.Text = header.Detail
+	case !header.Legacy || workflowCommentIsLegacyWorkflowCommentVariant(header.Variant):
+		return backlogOutcome{}, false
+	default:
+		o.Text = workflowCommentDetail(header.Raw)
+	}
+	if m := backlogOutcomeRE.FindStringSubmatch(header.Detail); m != nil {
 		o.Status = normalizeBacklogOutcomeStatus(strings.ToLower(m[1]))
-		o.Text = strings.TrimSpace(m[2])
+		o.Text = workflowCommentDetail(m[2])
+	} else if o.Status != "unknown" {
+		o.Text = workflowCommentDetail(o.Text)
 	}
 	o.Text = backlogTruncate(o.Text, 500)
 	return o, true
@@ -1545,7 +1545,7 @@ func (r *Runner) backlogPollRepo(ctx context.Context, label, repo string, cl Tra
 }
 
 // backlogReconcile moves one exited dispatched entry to its outcome state; a gone
-// container with no WARD-OUTCOME is parked failed. Returns whether it changed.
+// container with no WARDED_WORKFLOW is parked failed. Returns whether it changed.
 func (r *Runner) backlogReconcile(ctx context.Context, cl Tracker, repo string, tr targetRepo, e *backlogEntry) bool {
 	if e.State != "dispatched" || r.backlogContainerRunning(ctx, tr, e) {
 		return false
@@ -1601,13 +1601,13 @@ func prelaunchDeathRelease(comments []issueComment, dispatchedAt time.Time) bool
 	return false
 }
 
-// reconcileNoOutcome classifies a gone dispatched container with no WARD-OUTCOME:
-// a pre-launch death re-queues (bounded), else it parks failed (ward#595, docs).
+// reconcileNoOutcome classifies a gone dispatched container with no terminal outcome.
+// A pre-launch death re-queues (bounded), else it parks failed (ward#595, docs).
 func reconcileNoOutcome(comments []issueComment, dispatchedAt time.Time, attempts int) (state string, outcome *backlogOutcome, nextAttempts int) {
 	if !prelaunchDeathRelease(comments, dispatchedAt) {
 		return "failed", &backlogOutcome{
 			Status: "exited-no-outcome",
-			Text:   "container exited without a WARD-OUTCOME comment; read its log",
+			Text:   "container exited without a WARDED_WORKFLOW comment; read its log",
 		}, attempts
 	}
 	attempts++

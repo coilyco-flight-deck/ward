@@ -186,7 +186,7 @@ func pullRequestCarryClause(ref agentIssueRef) string {
 			"%s "+
 			"%s Do NOT push to `main` directly or merge it yourself - in the `pull-request` workflow the %s "+
 			"IS the merge gate, and the director is encouraged to merge it later if policy allows. When the %s is green, "+
-			"the engineer's final visible outcome is `WARD-OUTCOME: submitted`, not `done`.",
+			"the engineer's final visible outcome is `"+workflowOutcomeVisible("submitted")+"`, not `done`.",
 		noun, ref.Number, pullRequestDescriptionClause(noun), pullRequestCIWatchClauseFor(ref.Forge), noun, noun)
 }
 
@@ -198,7 +198,7 @@ func pullRequestAndMergeCarryClause(ref agentIssueRef) string {
 		"implement on a feature branch, commit, push the branch to origin, and open a %s "+
 			"against `main` whose body carries `closes #%d` and `%s`. This run is director-merge authorized: "+
 			"%s "+
-			"the worker still opens the %s, but the engineer's final visible outcome is `WARD-OUTCOME: merge-ready`; "+
+			"the worker still opens the %s, but the engineer's final visible outcome is `"+workflowOutcomeVisible("merge-ready")+"`; "+
 			"the run is not done until the %s is merged and the director records the final done outcome. "+
 			"%s Keep the branch ready for merge and do not claim success early.",
 		noun, ref.Number, directorMergeWorkflowMarker, pullRequestDescriptionClause(noun), noun, noun, pullRequestCIWatchClauseFor(ref.Forge))
@@ -217,7 +217,7 @@ func pullRequestCIWatchClauseFor(f forge) string {
 	noun := workflowReviewNoun(f)
 	return "After the " + noun + " opens, keep watching its CI/checks and fetch the status/logs if anything " +
 		"fails. Patch the branch, push updates, and repeat until the checks are green or the failure is " +
-		"genuinely blocked. A failing check is not a done state, and the final `WARD-OUTCOME` comment " +
+		"genuinely blocked. A failing check is not a done state, and the final `WARDED_WORKFLOW` comment " +
 		"is not allowed until the " + noun + " is green. " + workflowFailureCommentClauseFor(f)
 }
 

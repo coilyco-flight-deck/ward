@@ -321,11 +321,11 @@ func salvageCommentBody(r salvageReport) string {
 func salvageOutcomeVisible(r salvageReport) string {
 	switch {
 	case strings.TrimSpace(r.PullRequestURL) != "":
-		return "WARD-OUTCOME: submitted"
+		return workflowOutcomeVisible("submitted")
 	case strings.TrimSpace(r.PullRequestUnavailable) != "":
-		return "WARD-OUTCOME: blocked 🛑"
+		return workflowOutcomeVisible("blocked")
 	default:
-		return "WARD-OUTCOME: failed ❌"
+		return workflowOutcomeVisible("failed")
 	}
 }
 
@@ -462,7 +462,7 @@ type extraRepoUnlanded struct {
 // which grants did not land, where each was preserved, and how to recover (ward#291).
 func unlandedExtraReposComment(env reapEnv, reports []extraRepoUnlanded) string {
 	var b strings.Builder
-	visible := "WARD-REAP: reopened 🛑"
+	visible := workflowReapVisible("reopened")
 	fmt.Fprintf(&b, "This run held `--repo` grants and closed against `%s`, but cleanup could not confirm "+
 		"every granted repo's work reached its `main`. A secondary push can be silently rejected (a "+
 		"non-fast-forward on a busy `main`, a dead/rotated PAT) while the primary push succeeds, so the "+

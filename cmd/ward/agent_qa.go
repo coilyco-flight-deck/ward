@@ -323,7 +323,7 @@ func qaVerdictComment(mode containerMode, level qaThoroughness, family, prompt s
 	if verdict, ok := parseQAVerdict(read); ok {
 		return qaVerdictCommentFrom(mode, level, family, prompt, ctx, verdict)
 	}
-	visible := "WARD-QA: failed ❌"
+	visible := workflowQAVisible("failed", outcomeStatusEmoji("failed"))
 	return collapsedIssueComment(visible, "qa details", "Could not parse a structured QA verdict.\n\n"+strings.TrimSpace(read))
 }
 
@@ -338,7 +338,7 @@ type qaLaunchContext struct {
 
 func qaVerdictCommentFrom(_ containerMode, _ qaThoroughness, family, prompt string, ctx qaLaunchContext, verdict qaVerdict) string {
 	status, emoji := qaOutcomeStatus(verdict.Verdict)
-	visible := fmt.Sprintf("WARD-QA: %s %s", status, emoji)
+	visible := workflowQAVisible(status, emoji)
 	var b strings.Builder
 	writef(&b, "verdict: %s\n", strings.ToLower(strings.TrimSpace(verdict.Verdict)))
 	writef(&b, "reviewed_sha: %s\n", strings.TrimSpace(ctx.ReviewedSHA))
@@ -405,7 +405,7 @@ func parseQAVerdictComment(body string) (qaCommentMeta, bool) {
 		if s == "" {
 			continue
 		}
-		if strings.HasPrefix(strings.ToUpper(s), "WARD-QA:") {
+		if header, ok := parseWorkflowCommentHeader(s); ok && strings.HasPrefix(header.Variant, "qa-") {
 			found = true
 			continue
 		}

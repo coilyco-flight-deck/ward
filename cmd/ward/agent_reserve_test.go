@@ -412,7 +412,7 @@ func TestFreshReservationCommentTerminalOutcomeSupersedes(t *testing.T) {
 func TestReservationCommentBodyIsRoadBlock(t *testing.T) {
 	now := time.Date(2026, 7, 3, 12, 0, 0, 0, time.UTC)
 	body := reservationCommentBody(modeClaude, "engineer-claude-ward-494", "box", now, "", nil)
-	if visible := visibleLinesBeforeDetails(body); visible != "WARD-RESERVATION: held 🔒" {
+	if visible := visibleLinesBeforeDetails(body); visible != "WARDED_WORKFLOW: reservation-held" {
 		t.Fatalf("reservation visible line = %q\n%s", visible, body)
 	}
 	for _, want := range []string{
@@ -804,7 +804,7 @@ func TestPostReservationComment(t *testing.T) {
 func TestReservationCommentBodyHasMarker(t *testing.T) {
 	now := time.Date(2026, 6, 18, 12, 0, 0, 0, time.UTC)
 	body := reservationCommentBody(modeCodex, "engineer-codex-ward-142", "tower", now, "", nil)
-	for _, want := range []string{agentReservationMarker, "WARD-RESERVATION: held", "ward agent --harness codex", "engineer-codex-ward-142", "tower", "3h TTL"} {
+	for _, want := range []string{agentReservationMarker, "WARDED_WORKFLOW: reservation-held", "ward agent --harness codex", "engineer-codex-ward-142", "tower", "3h TTL"} {
 		if !strings.Contains(body, want) {
 			t.Errorf("reservation comment missing %q\n got: %s", want, body)
 		}
@@ -1074,7 +1074,7 @@ func TestReservationReleaseCommentBodyGate(t *testing.T) {
 	if !strings.HasPrefix(generic, agentReservationReleaseMarker) || !strings.Contains(generic, "smoke-test death") {
 		t.Fatalf("generic release comment regressed: %s", generic)
 	}
-	if visible := visibleLinesBeforeDetails(generic); visible != "WARD-RESERVATION: released 🛑" {
+	if visible := visibleLinesBeforeDetails(generic); visible != "WARDED_WORKFLOW: reservation-released" {
 		t.Fatalf("generic release visible line = %q\n%s", visible, generic)
 	}
 	if strings.Contains(generic, "**Gate:**") {
@@ -1089,7 +1089,7 @@ func TestReservationReleaseCommentBodyGate(t *testing.T) {
 	// auth gate -> names the gate, the recovery, and the folded error line.
 	gf := &gateFailure{Gate: "auth", Detail: "auth smoke test: claude -p rejected the credentials (exit 1)"}
 	enriched := reservationReleaseCommentBody(modeClaude, "engineer-claude-ward-609", gf)
-	if visible := visibleLinesBeforeDetails(enriched); visible != "WARD-RESERVATION: released 🛑" {
+	if visible := visibleLinesBeforeDetails(enriched); visible != "WARDED_WORKFLOW: reservation-released" {
 		t.Fatalf("enriched release visible line = %q\n%s", visible, enriched)
 	}
 	for _, want := range []string{

@@ -609,8 +609,8 @@ func warnRemoteReservationLost(label string, ref agentIssueRef, detail string) {
 		label, reservationWarnToken, ref, detail)
 }
 
-// reservationRetractedAt is the newest timestamp at which the thread retracted its
-// reservations: a release marker, or a terminal WARD-OUTCOME (ward#1149, docs).
+// reservationRetractedAt is the newest timestamp at which the thread retracted
+// a reservation or a terminal WARDED_WORKFLOW outcome (ward#1149, docs).
 func reservationRetractedAt(comments []issueComment) time.Time {
 	var released time.Time
 	for i := range comments {
@@ -753,7 +753,7 @@ func winningReservationClaim(claims []reservationClaim) (reservationClaim, bool)
 // justification folds in the GO read (ward#383), seedCtx the seed context (ward#609).
 func reservationCommentBody(mode containerMode, container, host string, now time.Time, justification string, seedCtx *reservationSeedContext) string {
 	ttl := agentReservationTTL()
-	visible := "WARD-RESERVATION: held 🔒"
+	visible := workflowReservationHeldVisible()
 	body := fmt.Sprintf(
 		"Holder: launch intent for container `%s` on host `%s`.\n\n"+
 			"Accepted by `ward agent --harness %s` (reserved %s). "+
@@ -779,7 +779,7 @@ func reservationCommentBody(mode containerMode, container, host string, now time
 // (ward#264). A non-nil gate names the gate, error, and recovery (ward#609, see docs).
 func reservationReleaseCommentBody(mode containerMode, container string, gate *gateFailure) string {
 	if gate == nil {
-		visible := "WARD-RESERVATION: released 🛑"
+		visible := workflowReservationReleasedVisible()
 		detail := fmt.Sprintf(
 			"Run never started. `ward container reap` released container `%s` (`--harness %s`): it exited "+
 				"without launching the agent (smoke-test death, ward#222/#264/#595), so it did no work and the "+
@@ -790,7 +790,7 @@ func reservationReleaseCommentBody(mode containerMode, container string, gate *g
 			collapsedIssueComment(visible, "release details", detail)
 	}
 	label, recovery := gateRecovery(gate.Gate)
-	visible := "WARD-RESERVATION: released 🛑"
+	visible := workflowReservationReleasedVisible()
 	body := fmt.Sprintf(
 		"Run never started. `ward container reap` released container `%s` (`--harness %s`): it exited at the "+
 			"**%s** pre-launch gate without launching the agent (ward#222/#264/#595/#609), so it did no work and "+
