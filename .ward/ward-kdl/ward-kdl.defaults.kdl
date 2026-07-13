@@ -3,6 +3,10 @@ smart-defaults {
     agent-reservation-recheck-max "15s"
     agent-reap-idle "1h"
     agent-reap-max-cpu "5.0"
+    // The dev-base image and tag the `ward agent` container launches use when
+    // no env override or per-run flag pins them.
+    agent-image "forgejo.coilysiren.me/coilyco-flight-deck/agentic-os-full"
+    agent-tag latest
     engineer-container-limit "10"
     engineer-open-pr-branch-limit "5"
     director-max-parallel "20"

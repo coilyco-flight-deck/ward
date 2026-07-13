@@ -1021,8 +1021,11 @@ func imageRef(image, tag string) string {
 	if strings.Contains(image, "@") || strings.Contains(image[strings.LastIndex(image, "/")+1:], ":") {
 		return image
 	}
+	if image == "" {
+		image = agentImageDefault()
+	}
 	if tag == "" {
-		tag = containerImageTagDefault
+		tag = agentTagDefault()
 	}
 	return image + ":" + tag
 }
