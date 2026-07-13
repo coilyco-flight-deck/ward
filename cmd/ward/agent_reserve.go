@@ -10,6 +10,7 @@ import (
 	"path/filepath"
 	"regexp"
 	"strings"
+	"sync"
 	"time"
 
 	"forgejo.coilysiren.me/coilyco-flight-deck/cli-guard/pkg/config"
@@ -98,6 +99,40 @@ const agentReservationReleaseMarker = "<!-- ward-agent-reservation-released -->"
 // agentNeedsRedispatchMarker is the loud, greppable token a pre-launch-death release
 // carries so an orphaned run reads as "needs re-dispatch", not benign (ward#595).
 const agentNeedsRedispatchMarker = "<!-- ward-needs-redispatch -->"
+
+// dispatchLaunchReservationReleases keeps the local launch-intent cleanup hook long
+// enough for the host broker to clear a failed prelaunch immediately.
+var dispatchLaunchReservationReleases sync.Map // ref string -> func()
+
+type dispatchLaunchReservationTrackingKey struct{}
+
+func withDispatchLaunchReservationTracking(ctx context.Context) context.Context {
+	return context.WithValue(ctx, dispatchLaunchReservationTrackingKey{}, true)
+}
+
+func dispatchLaunchReservationTracking(ctx context.Context) bool {
+	tracked, _ := ctx.Value(dispatchLaunchReservationTrackingKey{}).(bool)
+	return tracked
+}
+
+func registerDispatchLaunchReservationRelease(ref agentIssueRef, release func()) {
+	if release == nil {
+		return
+	}
+	dispatchLaunchReservationReleases.Store(ref.String(), release)
+}
+
+func forgetDispatchLaunchReservationRelease(ref agentIssueRef) {
+	dispatchLaunchReservationReleases.Delete(ref.String())
+}
+
+func releaseDispatchLaunchReservation(ref agentIssueRef) {
+	if v, ok := dispatchLaunchReservationReleases.LoadAndDelete(ref.String()); ok {
+		if release, ok := v.(func()); ok && release != nil {
+			release()
+		}
+	}
+}
 
 // agentReservation is the local sentinel payload: who holds an issue, in which
 // container, since when. Persisted as pretty JSON so a human can read it.
@@ -270,8 +305,8 @@ func hostname() string {
 	return "unknown"
 }
 
-// reserveIssue acquires both reservation sides before a container fires (ward#570). It
-// returns a release retracting both halves; a remote failure rolls the local hold back.
+// reserveIssue acquires both reservation sides before a container fires (ward#570).
+// It returns a release for both halves. Remote failure rolls the local intent back.
 func (r *Runner) reserveIssue(ctx context.Context, label string, mode containerMode, ref agentIssueRef, container, branch, justification string, seedCtx *reservationSeedContext, override bool, skipPreflight bool) (func(), error) {
 	now := time.Now().UTC()
 	fmt.Fprintf(os.Stderr, "%s: reservation start for %s (container=%s branch=%s override-reservation=%t)\n", label, ref, container, branch, override)
@@ -714,16 +749,16 @@ func winningReservationClaim(claims []reservationClaim) (reservationClaim, bool)
 	return best, true
 }
 
-// reservationCommentBody is the marker comment claiming an issue: a non-empty
+// reservationCommentBody is the marker comment claiming an issue intent: a non-empty
 // justification folds in the GO read (ward#383), seedCtx the seed context (ward#609).
 func reservationCommentBody(mode containerMode, container, host string, now time.Time, justification string, seedCtx *reservationSeedContext) string {
 	ttl := agentReservationTTL()
 	visible := "WARD-RESERVATION: held 🔒"
 	body := fmt.Sprintf(
-		"Holder: container `%s` on host `%s`.\n\n"+
-			"Reserved by `ward agent --harness %s` (reserved %s). "+
-			"Concurrent `ward agent` runs are blocked until it finishes or the reservation goes stale (%s TTL). "+
-			"`--override-reservation` overrides.\n\n"+
+		"Holder: launch intent for container `%s` on host `%s`.\n\n"+
+			"Accepted by `ward agent --harness %s` (reserved %s). "+
+			"Concurrent `ward agent` runs are blocked until this intent becomes visible or the intent is released. "+
+			"The stale-intent fallback is still TTL-bounded (%s TTL). `--override-reservation` overrides.\n\n"+
 			"**Do not comment on or edit this issue to steer the run while it is reserved.** The engineer seeded "+
 			"the body once at launch and never re-reads it, so a comment or edit reaches only human readers, never "+
 			"the running engineer. A correction goes to a **new issue, dispatched fresh**. That is the only channel "+
@@ -748,7 +783,7 @@ func reservationReleaseCommentBody(mode containerMode, container string, gate *g
 		detail := fmt.Sprintf(
 			"Run never started. `ward container reap` released container `%s` (`--harness %s`): it exited "+
 				"without launching the agent (smoke-test death, ward#222/#264/#595), so it did no work and the "+
-				"hold it took is retracted. Nothing is running on this issue. It needs re-dispatch. A `ward agent director` re-queues "+
+				"launch intent it took is retracted. Nothing is running on this issue. It needs re-dispatch. A `ward agent director` re-queues "+
 				"it automatically. A manual `ward agent` retry no longer needs `--override-reservation`.",
 			container, mode)
 		return agentReservationReleaseMarker + "\n" + agentNeedsRedispatchMarker + "\n" +
@@ -759,7 +794,7 @@ func reservationReleaseCommentBody(mode containerMode, container string, gate *g
 	body := fmt.Sprintf(
 		"Run never started. `ward container reap` released container `%s` (`--harness %s`): it exited at the "+
 			"**%s** pre-launch gate without launching the agent (ward#222/#264/#595/#609), so it did no work and "+
-			"the hold it took is retracted. Nothing is running on this issue. It needs re-dispatch. A `ward agent director` re-queues "+
+			"the launch intent it took is retracted. Nothing is running on this issue. It needs re-dispatch. A `ward agent director` re-queues "+
 			"it automatically. A manual `ward agent` retry no longer needs `--override-reservation`.\n\n"+
 			"**Gate:** %s\n\n**Recovery:** %s",
 		container, mode, gate.Gate, label, recovery)

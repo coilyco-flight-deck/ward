@@ -8,7 +8,7 @@ This page groups the on-demand operational surfaces around a run.
 - `ward agent director` - the read-only supervisory lane.
 - `ward agent director queue` / `status` - the read-only queue view for stale reservations, redispatch candidates, and open PR handoffs.
 - `ward agent dispatch-health` - the dispatch pathology summary, status line feed, and alert line.
-- `ward agent list` - show live engineer runs, reserved launches, and capacity when the limit is known.
+- `ward agent list` - show running engineers, launch intents, and capacity when the limit is known.
 - `ward agent logs` - read one run's logs.
 - `ward agent stop` - stop one run on purpose.
 - `ward agent reap` - stop wedged engineer containers by idle policy and clear stale prelaunch reservations that never became visible.
@@ -34,7 +34,7 @@ This page groups the on-demand operational surfaces around a run.
 
 ### list
 
-`list` answers "what engineer runs are active right now?" and shows the known limit plus remaining slots when available. It also surfaces reservation-backed launches before their container is visible and tags each entry with the current phase.
+`list` answers "what running engineers are active right now?" and shows the known limit plus remaining slots when available. It also surfaces launch intents before their container is visible and tags each entry with the current phase.
 
 ### logs
 
@@ -46,13 +46,13 @@ This page groups the on-demand operational surfaces around a run.
 
 ### reap
 
-`reap` answers "this engineer is wedged and needs a host-side stop".
+`reap` answers "this engineer is wedged and needs a host-side stop" and clears stale launch intents that never became visible.
 
 ## Operational notes
 
 - `list` and `logs` are usually the first stop when a run seems stuck.
 - `stop` is the manual correction path.
-- `reap` is the safety net for idle engineer containers and stale prelaunch holds.
+- `reap` is the safety net for idle engineer containers and stale launch intents.
 - none of these surfaces should surprise a caller with a write to the target
   repo.
 

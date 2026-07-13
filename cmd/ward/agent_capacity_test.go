@@ -2,11 +2,8 @@ package main
 
 import (
 	"context"
-	"encoding/json"
 	"errors"
 	"fmt"
-	"net/http"
-	"net/http/httptest"
 	"os"
 	"path/filepath"
 	"strings"
@@ -238,32 +235,14 @@ func TestLaunchAgentContainerRejectsAtLimitWithoutReservation(t *testing.T) {
 	}
 }
 
-func TestLaunchAgentContainerRejectsAtRepoWorkingLimitWithoutReservation(t *testing.T) {
+func TestActiveEngineerLaunchCountIgnoresLaunchIntents(t *testing.T) {
 	t.Setenv("HOME", t.TempDir())
-
-	oldBase := forgejoBaseURL
-	defer func() { forgejoBaseURL = oldBase }()
-	mux := http.NewServeMux()
-	mux.HandleFunc("/api/v1/repos/coilyco-flight-deck/ward/issues", func(w http.ResponseWriter, r *http.Request) {
-		if r.URL.Query().Get("type") != "pulls" {
-			t.Fatalf("unexpected issue feed query: %s", r.URL.RawQuery)
-		}
-		_ = json.NewEncoder(w).Encode([]map[string]any{})
-	})
-	srv := httptest.NewServer(mux)
-	defer srv.Close()
-	forgejoBaseURL = srv.URL
-
 	r, _, _ := bufRunner(engineerRepoAndGlobalCountDockerStub(t, "coilyco-flight-deck/ward", engineerRepoWorkingLimitDefault()-1, 0))
 	ref := agentIssueRef{Owner: "coilyco-flight-deck", Repo: "ward", Number: 885}
 	path, err := agentReservationPath(ref)
 	if err != nil {
 		t.Fatalf("agentReservationPath: %v", err)
 	}
-	if _, ok, _ := readAgentReservation(path); ok {
-		t.Fatalf("reservation unexpectedly existed before the launch")
-	}
-
 	reservationPath, err := agentReservationPath(agentIssueRef{Owner: "coilyco-flight-deck", Repo: "ward", Number: 883})
 	if err != nil {
 		t.Fatalf("agentReservationPath: %v", err)
@@ -282,21 +261,17 @@ func TestLaunchAgentContainerRejectsAtRepoWorkingLimitWithoutReservation(t *test
 		t.Fatalf("writeAgentReservation: %v", err)
 	}
 
-	err = r.launchAgentContainer(context.Background(), &cli.Command{}, modeClaude, "engineer", resolvedWork{
-		Ref:   ref,
-		Title: "limit test",
-		Seed:  "seed",
-	}, "")
-	if err == nil {
-		t.Fatal("launchAgentContainer at repo working limit: want error, got nil")
+	count, err := r.activeEngineerLaunchCountForRepo(context.Background(), "coilyco-flight-deck/ward")
+	if err != nil {
+		t.Fatalf("activeEngineerLaunchCountForRepo: %v", err)
 	}
-	if !isEngineerRepoWorkingBackpressureError(err) {
-		t.Fatalf("launchAgentContainer at repo working limit returned %T, want repo backpressure", err)
+	if count != engineerRepoWorkingLimitDefault()-1 {
+		t.Fatalf("activeEngineerLaunchCountForRepo = %d, want %d", count, engineerRepoWorkingLimitDefault()-1)
 	}
-	if !strings.Contains(err.Error(), "repo engineer limit is reached") {
-		t.Fatalf("launchAgentContainer at repo working limit error = %v", err)
+	if err := r.launchRepoEngineerBackpressureCheck(context.Background(), "lbl", "coilyco-flight-deck/ward"); err != nil {
+		t.Fatalf("launchRepoEngineerBackpressureCheck should ignore launch intents, got %v", err)
 	}
 	if _, ok, _ := readAgentReservation(path); ok {
-		t.Fatal("launchAgentContainer at repo working limit should not reserve the issue")
+		t.Fatal("launchRepoEngineerBackpressureCheck should not touch the target issue reservation")
 	}
 }

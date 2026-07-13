@@ -15,7 +15,7 @@ import (
 	"github.com/urfave/cli/v3"
 )
 
-const agentDispatchHealthSchemaVersion = 1
+const agentDispatchHealthSchemaVersion = 2
 
 type dispatchHealthJSON struct {
 	SchemaVersion    int      `json:"schema_version"`
@@ -29,6 +29,7 @@ type dispatchHealthJSON struct {
 	Deferred         int      `json:"deferred"`
 	Failed           int      `json:"failed"`
 	Running          int      `json:"running"`
+	LaunchIntents    int      `json:"launch_intents"`
 	RecentDispatches int      `json:"recent_dispatches"`
 	StalePrelaunch   int      `json:"stale_prelaunch"`
 	DuplicateRefs    []string `json:"duplicate_refs,omitempty"`
@@ -51,6 +52,7 @@ type dispatchHealthReport struct {
 	Deferred         int
 	Failed           int
 	Running          int
+	LaunchIntents    int
 	RecentDispatches int
 	StalePrelaunch   int
 	DuplicateRefs    []string
@@ -159,12 +161,19 @@ func (r *Runner) dispatchHealthSnapshot(ctx context.Context, repos []string, max
 		report.Warnings = append(report.Warnings, firstLine(serr.Error()))
 	}
 	rows = filterRunningEngineerRows(rows, scope)
-	report.Running = len(rows)
+	runningRows := make([]agentRunningEngineer, 0, len(rows))
+	for _, row := range rows {
+		if row.Phase == agentLaunchPhaseRunning {
+			runningRows = append(runningRows, row)
+		}
+	}
+	report.Running = len(runningRows)
+	report.LaunchIntents = len(rows) - len(runningRows)
 	report.Queued, report.InFlight, report.Held = backlogLaneCounts(entries)
 	for _, e := range entries {
 		dispatchHealthTallyEntry(&report, e)
 	}
-	report.RecentDispatches, report.DuplicateRefs = dispatchHealthRunningSignals(rows)
+	report.RecentDispatches, report.DuplicateRefs = dispatchHealthRunningSignals(runningRows)
 	report.StalePrelaunch = len(stale)
 	report.Backpressure = maxParallel > 0 && report.InFlight >= maxParallel && report.Queued > 0
 	report.Runaway = maxParallel > 0 && report.RecentDispatches > maxParallel*2
@@ -262,6 +271,7 @@ func (r dispatchHealthReport) alertKey() string {
 		fmt.Sprintf("d=%d", r.Deferred),
 		fmt.Sprintf("f=%d", r.Failed),
 		fmt.Sprintf("r=%d", r.Running),
+		fmt.Sprintf("li=%d", r.LaunchIntents),
 		fmt.Sprintf("rd=%d", r.RecentDispatches),
 		fmt.Sprintf("sp=%d", r.StalePrelaunch),
 	}, r.Signals...), "|")
@@ -269,8 +279,8 @@ func (r dispatchHealthReport) alertKey() string {
 
 func (r dispatchHealthReport) summaryLine() string {
 	if !r.alertable() {
-		return fmt.Sprintf("dispatch-health: ok queued=%d inflight=%d held=%d submitted=%d merge-ready=%d running=%d",
-			r.Queued, r.InFlight, r.Held, r.Submitted, r.MergeReady, r.Running)
+		return fmt.Sprintf("dispatch-health: ok queued=%d inflight=%d held=%d submitted=%d merge-ready=%d running=%d launch-intents=%d",
+			r.Queued, r.InFlight, r.Held, r.Submitted, r.MergeReady, r.Running, r.LaunchIntents)
 	}
 	parts := []string{
 		fmt.Sprintf("queued=%d", r.Queued),
@@ -281,6 +291,7 @@ func (r dispatchHealthReport) summaryLine() string {
 		fmt.Sprintf("deferred=%d", r.Deferred),
 		fmt.Sprintf("failed=%d", r.Failed),
 		fmt.Sprintf("running=%d", r.Running),
+		fmt.Sprintf("launch-intents=%d", r.LaunchIntents),
 		fmt.Sprintf("recent=%d", r.RecentDispatches),
 		fmt.Sprintf("stale-prelaunch=%d", r.StalePrelaunch),
 	}
@@ -323,6 +334,7 @@ func (r dispatchHealthReport) toJSON() dispatchHealthJSON {
 		Deferred:         r.Deferred,
 		Failed:           r.Failed,
 		Running:          r.Running,
+		LaunchIntents:    r.LaunchIntents,
 		RecentDispatches: r.RecentDispatches,
 		StalePrelaunch:   r.StalePrelaunch,
 		DuplicateRefs:    append([]string{}, r.DuplicateRefs...),

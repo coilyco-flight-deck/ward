@@ -7,6 +7,8 @@ This page is the durable anchor for launch-time reservations.
 
 - It covers the local sentinel and the remote marker comment.
 - It keeps the TTL and release-marker comments readable.
+- A launch intent is not a running engineer. Running capacity belongs to the
+  visible container, while the launch intent is just the prelaunch lease.
 
 ## Release semantics
 
@@ -17,6 +19,8 @@ This page is the durable anchor for launch-time reservations.
   collides with the finishing run's hold or races the reaper's release comment.
 - The reaper still posts the terminal release comment for legibility, but skips
   it when a newer reservation shows a follow-up run already took the issue over.
+- A launch that never becomes visible releases its launch-intent sentinel
+  immediately. The TTL is only the orphaned-launch backstop.
 
 ## Collisions and the redispatch marker
 
