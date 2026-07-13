@@ -2,15 +2,16 @@ package main
 
 import (
 	"context"
+	"encoding/json"
 	"errors"
 	"fmt"
+	"net/http"
+	"net/http/httptest"
 	"os"
 	"path/filepath"
 	"strings"
 	"testing"
 	"time"
-
-	"github.com/urfave/cli/v3"
 )
 
 func engineerCountDockerStub(t *testing.T, count int) string {
@@ -57,6 +58,52 @@ func engineerRepoAndGlobalCountDockerStub(t *testing.T, repo string, repoCount, 
 	}
 	t.Setenv("PATH", filepath.Dir(stub)+string(os.PathListSeparator)+os.Getenv("PATH"))
 	return stub
+}
+
+type issueThreadAuthorityRow struct {
+	Number   int
+	Title    string
+	Body     string
+	Labels   []string
+	Comments []issueComment
+}
+
+func issueThreadAuthorityServer(t *testing.T, rows []issueThreadAuthorityRow) *httptest.Server {
+	t.Helper()
+	mux := http.NewServeMux()
+	mux.HandleFunc("/api/v1/repos/coilyco-flight-deck/ward/issues", func(w http.ResponseWriter, r *http.Request) {
+		switch r.URL.Query().Get("type") {
+		case "issues":
+			issues := make([]map[string]any, 0, len(rows))
+			for _, row := range rows {
+				labels := make([]map[string]any, 0, len(row.Labels))
+				for _, label := range row.Labels {
+					labels = append(labels, map[string]any{"name": label})
+				}
+				issues = append(issues, map[string]any{
+					"number":       row.Number,
+					"title":        row.Title,
+					"body":         row.Body,
+					"html_url":     fmt.Sprintf("https://forgejo.example/coilyco-flight-deck/ward/issues/%d", row.Number),
+					"labels":       labels,
+					"state":        "open",
+					"pull_request": nil,
+				})
+			}
+			_ = json.NewEncoder(w).Encode(issues)
+		case "pulls":
+			_ = json.NewEncoder(w).Encode([]map[string]any{})
+		default:
+			t.Fatalf("unexpected issue feed query: %s", r.URL.RawQuery)
+		}
+	})
+	for _, row := range rows {
+		row := row
+		mux.HandleFunc("/api/v1/repos/coilyco-flight-deck/ward/issues/"+fmt.Sprint(row.Number)+"/comments", func(w http.ResponseWriter, _ *http.Request) {
+			_ = json.NewEncoder(w).Encode(row.Comments)
+		})
+	}
+	return httptest.NewServer(mux)
 }
 
 func TestEngineerContainerLimitBelowAndAtLimit(t *testing.T) {
@@ -207,39 +254,46 @@ workflow default=merge-remote-main {
 	}
 }
 
-func TestLaunchAgentContainerRejectsAtLimitWithoutReservation(t *testing.T) {
+func TestLaunchRepoEngineerBackpressureIgnoresStaleDockerWhenIssueThreadIsClear(t *testing.T) {
 	t.Setenv("HOME", t.TempDir())
-	r, _, _ := bufRunner(engineerRepoAndGlobalCountDockerStub(t, "coilyco-flight-deck/ward", 0, engineerContainerLimitDefault()))
-	ref := agentIssueRef{Owner: "coilyco-flight-deck", Repo: "ward", Number: 884}
-	path, err := agentReservationPath(ref)
-	if err != nil {
-		t.Fatalf("agentReservationPath: %v", err)
-	}
-	if _, ok, _ := readAgentReservation(path); ok {
-		t.Fatalf("reservation unexpectedly existed before the launch")
-	}
+	oldBase := forgejoBaseURL
+	defer func() { forgejoBaseURL = oldBase }()
+	srv := issueThreadAuthorityServer(t, nil)
+	defer srv.Close()
+	forgejoBaseURL = srv.URL
 
-	err = r.launchAgentContainer(context.Background(), &cli.Command{}, modeClaude, "engineer", resolvedWork{
-		Ref:   ref,
-		Title: "limit test",
-		Seed:  "seed",
-	}, "")
-	if err == nil {
-		t.Fatal("launchAgentContainer at limit: want error, got nil")
-	}
-	if !strings.Contains(err.Error(), "global engineer limit is reached") {
-		t.Fatalf("launchAgentContainer at limit error = %v", err)
-	}
-	if _, ok, _ := readAgentReservation(path); ok {
-		t.Fatal("launchAgentContainer at limit should not reserve the issue")
+	r, _, _ := bufRunner(engineerRepoAndGlobalCountDockerStub(t, "coilyco-flight-deck/ward", 0, engineerContainerLimitDefault()))
+	if err := r.launchRepoEngineerBackpressureCheck(context.Background(), "lbl", "coilyco-flight-deck/ward"); err != nil {
+		t.Fatalf("launchRepoEngineerBackpressureCheck with clear issue thread and stale docker: %v", err)
 	}
 }
 
 func TestActiveEngineerLaunchCountIgnoresLaunchIntents(t *testing.T) {
 	t.Setenv("HOME", t.TempDir())
+	oldBase := forgejoBaseURL
+	defer func() { forgejoBaseURL = oldBase }()
+	now := time.Now().UTC()
+	rows := []issueThreadAuthorityRow{
+		{
+			Number: 883,
+			Title:  "clear issue",
+			Body:   "body",
+			Labels: []string{"P0", "headless"},
+		},
+		{
+			Number:   884,
+			Title:    "reserved issue",
+			Body:     "body",
+			Labels:   []string{"P0", "headless"},
+			Comments: []issueComment{{Body: reservationCommentBody(modeClaude, "engineer-claude-ward-884", "box", now.Add(-time.Minute), "", nil), CreatedAt: now.Add(-time.Minute)}},
+		},
+	}
+	srv := issueThreadAuthorityServer(t, rows)
+	defer srv.Close()
+	forgejoBaseURL = srv.URL
+
 	r, _, _ := bufRunner(engineerRepoAndGlobalCountDockerStub(t, "coilyco-flight-deck/ward", engineerRepoWorkingLimitDefault()-1, 0))
-	ref := agentIssueRef{Owner: "coilyco-flight-deck", Repo: "ward", Number: 885}
-	path, err := agentReservationPath(ref)
+	path, err := agentReservationPath(agentIssueRef{Owner: "coilyco-flight-deck", Repo: "ward", Number: 885})
 	if err != nil {
 		t.Fatalf("agentReservationPath: %v", err)
 	}
@@ -265,8 +319,8 @@ func TestActiveEngineerLaunchCountIgnoresLaunchIntents(t *testing.T) {
 	if err != nil {
 		t.Fatalf("activeEngineerLaunchCountForRepo: %v", err)
 	}
-	if count != engineerRepoWorkingLimitDefault()-1 {
-		t.Fatalf("activeEngineerLaunchCountForRepo = %d, want %d", count, engineerRepoWorkingLimitDefault()-1)
+	if count != 1 {
+		t.Fatalf("activeEngineerLaunchCountForRepo = %d, want 1 from issue state", count)
 	}
 	if err := r.launchRepoEngineerBackpressureCheck(context.Background(), "lbl", "coilyco-flight-deck/ward"); err != nil {
 		t.Fatalf("launchRepoEngineerBackpressureCheck should ignore launch intents, got %v", err)
@@ -274,4 +328,87 @@ func TestActiveEngineerLaunchCountIgnoresLaunchIntents(t *testing.T) {
 	if _, ok, _ := readAgentReservation(path); ok {
 		t.Fatal("launchRepoEngineerBackpressureCheck should not touch the target issue reservation")
 	}
+}
+
+func TestActiveEngineerLaunchCountUsesIssueThreadAuthority(t *testing.T) {
+	t.Setenv("HOME", t.TempDir())
+	oldBase := forgejoBaseURL
+	defer func() { forgejoBaseURL = oldBase }()
+
+	type issueRow struct {
+		Number   int
+		Title    string
+		Body     string
+		Labels   []string
+		Comments []issueComment
+	}
+	now := time.Now().UTC()
+	rows := []issueRow{
+		{
+			Number:   1,
+			Title:    "held issue",
+			Body:     "body",
+			Labels:   []string{"P0", "headless"},
+			Comments: []issueComment{{Body: reservationCommentBody(modeClaude, "engineer-claude-ward-1", "box", now.Add(-time.Minute), "", nil), CreatedAt: now.Add(-time.Minute)}},
+		},
+		{
+			Number: 2,
+			Title:  "clear issue",
+			Body:   "body",
+			Labels: []string{"P0", "headless"},
+		},
+	}
+
+	srv := httptest.NewServer(http.HandlerFunc(func(w http.ResponseWriter, r *http.Request) {
+		switch {
+		case r.Method == http.MethodGet && r.URL.Path == "/api/v1/repos/coilyco-flight-deck/ward/issues" && r.URL.Query().Get("type") == "issues":
+			issues := make([]map[string]any, 0, len(rows))
+			for _, row := range rows {
+				labels := make([]map[string]any, 0, len(row.Labels))
+				for _, label := range row.Labels {
+					labels = append(labels, map[string]any{"name": label})
+				}
+				issues = append(issues, map[string]any{
+					"number": row.Number, "title": row.Title, "body": row.Body, "html_url": fmt.Sprintf("https://forgejo.example/coilyco-flight-deck/ward/issues/%d", row.Number),
+					"labels": labels,
+				})
+			}
+			_ = json.NewEncoder(w).Encode(issues)
+		case r.Method == http.MethodGet && r.URL.Path == "/api/v1/repos/coilyco-flight-deck/ward/issues/1/comments":
+			_ = json.NewEncoder(w).Encode(rows[0].Comments)
+		case r.Method == http.MethodGet && r.URL.Path == "/api/v1/repos/coilyco-flight-deck/ward/issues/2/comments":
+			_ = json.NewEncoder(w).Encode([]issueComment{})
+		case r.Method == http.MethodGet && r.URL.Path == "/api/v1/repos/coilyco-flight-deck/ward/issues" && r.URL.Query().Get("type") == "pulls":
+			_ = json.NewEncoder(w).Encode([]map[string]any{})
+		default:
+			t.Fatalf("unexpected request: %s %s?%s", r.Method, r.URL.Path, r.URL.RawQuery)
+		}
+	}))
+	defer srv.Close()
+	forgejoBaseURL = srv.URL
+
+	t.Run("issue hold beats empty docker", func(t *testing.T) {
+		r, _, _ := bufRunner(engineerCountDockerStub(t, 0))
+		count, err := r.activeEngineerLaunchCountForRepo(context.Background(), "coilyco-flight-deck/ward")
+		if err != nil {
+			t.Fatalf("activeEngineerLaunchCountForRepo: %v", err)
+		}
+		if count != 1 {
+			t.Fatalf("activeEngineerLaunchCountForRepo = %d, want 1 from issue state", count)
+		}
+	})
+
+	t.Run("clean issue beats stale docker", func(t *testing.T) {
+		r, _, _ := bufRunner(engineerCountDockerStub(t, 4))
+		// The issue thread says only one issue is truly reserved, so the stale
+		// Docker count must not win the guard decision.
+		rows[0].Comments = nil
+		count, err := r.activeEngineerLaunchCountForRepo(context.Background(), "coilyco-flight-deck/ward")
+		if err != nil {
+			t.Fatalf("activeEngineerLaunchCountForRepo: %v", err)
+		}
+		if count != 0 {
+			t.Fatalf("activeEngineerLaunchCountForRepo = %d, want 0 from clean issue state", count)
+		}
+	})
 }

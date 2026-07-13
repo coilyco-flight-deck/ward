@@ -17,8 +17,8 @@ import (
 	"forgejo.coilysiren.me/coilyco-flight-deck/cli-guard/pkg/flock"
 )
 
-// agent_reserve.go gives every `ward agent` run a two-sided reservation (local
-// sentinel + Forgejo marker comment), TTL-bounded; --override-reservation reclaims.
+// agent_reserve.go gives every `ward agent` run an issue-thread reservation plus a
+// local cache sentinel. The issue thread is canonical and the cache is rebuildable.
 
 // reservationConflictError marks a refusal because another run already holds the issue's
 // reservation - not a launch failure, so the director defers it (ward#352).
@@ -146,19 +146,6 @@ type agentReservation struct {
 	Host      string    `json:"host"`
 	PID       int       `json:"pid"`
 	At        time.Time `json:"at"`
-}
-
-// summary renders a reservation for a refusal message.
-func (res agentReservation) summary() string {
-	c := res.Container
-	if c == "" {
-		c = "(unknown container)"
-	}
-	host := res.Host
-	if host == "" {
-		host = "(unknown host)"
-	}
-	return fmt.Sprintf("container %s on host %s (since %s)", c, host, res.At.UTC().Format(time.RFC3339))
 }
 
 // agentReservationFilename is the per-issue sentinel basename, slugged so it is
@@ -305,20 +292,20 @@ func hostname() string {
 	return "unknown"
 }
 
-// reserveIssue acquires both reservation sides before a container fires (ward#570).
-// It returns a release for both halves. Remote failure rolls the local intent back.
+// reserveIssue acquires the issue-thread reservation first, then refreshes the local
+// cache. Remote failure rolls the local intent back. Local failure retracts it.
 func (r *Runner) reserveIssue(ctx context.Context, label string, mode containerMode, ref agentIssueRef, container, branch, justification string, seedCtx *reservationSeedContext, override bool, skipPreflight bool) (func(), error) {
 	now := time.Now().UTC()
 	fmt.Fprintf(os.Stderr, "%s: reservation start for %s (container=%s branch=%s override-reservation=%t)\n", label, ref, container, branch, override)
-	releaseLocal, err := r.acquireLocalReservation(ctx, label, mode, ref, container, branch, now, override)
-	if err != nil {
-		fmt.Fprintf(os.Stderr, "%s: reservation local acquire failed for %s: %v\n", label, ref, err)
-		return nil, err
-	}
 	releaseRemote, err := r.acquireRemoteReservation(ctx, label, mode, ref, container, justification, seedCtx, now, override, skipPreflight)
 	if err != nil {
 		fmt.Fprintf(os.Stderr, "%s: reservation remote acquire failed for %s: %v\n", label, ref, err)
-		releaseLocal()
+		return nil, err
+	}
+	releaseLocal, err := r.acquireLocalReservation(ctx, label, mode, ref, container, branch, now, override)
+	if err != nil {
+		fmt.Fprintf(os.Stderr, "%s: reservation local acquire failed for %s: %v\n", label, ref, err)
+		releaseRemote()
 		return nil, err
 	}
 	fmt.Fprintf(os.Stderr, "%s: reservation acquired for %s\n", label, ref)
@@ -331,7 +318,7 @@ func (r *Runner) reserveIssue(ctx context.Context, label string, mode containerM
 }
 
 // precheckReservation runs reserveIssue's read-only refusal half ahead of the LLM
-// pre-flight (ward#184, docs), reusing the thread; --override-reservation bypasses.
+// pre-flight and uses the issue thread as the canonical source.
 func (r *Runner) precheckReservation(ctx context.Context, label string, w resolvedWork, override bool) error {
 	fmt.Fprintf(os.Stderr, "%s: reservation precheck start for %s (override-reservation=%t)\n", label, w.Ref, override)
 	if override {
@@ -340,55 +327,47 @@ func (r *Runner) precheckReservation(ctx context.Context, label string, w resolv
 	}
 	now := time.Now().UTC()
 	ttl := agentReservationTTL()
-	if err := r.precheckLocalReservation(ctx, label, w.Ref, now); err != nil {
-		fmt.Fprintf(os.Stderr, "%s: reservation precheck failed locally for %s: %v\n", label, w.Ref, err)
-		return err
-	}
 	if who, held := freshReservationComment(w.Comments, now, ttl); held {
 		fmt.Fprintf(os.Stderr, "%s: reservation precheck failed remotely for %s: %s\n", label, w.Ref, who)
 		return newReservationConflict(
 			"%s: issue %s is already reserved remotely (%s); wait for it to finish or pass --override-reservation to override",
 			label, w.Ref, who)
 	}
+	if err := r.precheckLocalReservation(ctx, label, w.Ref, now); err != nil {
+		fmt.Fprintf(os.Stderr, "%s: reservation cache note for %s: %v\n", label, w.Ref, err)
+	}
 	fmt.Fprintf(os.Stderr, "%s: reservation precheck passed for %s\n", label, w.Ref)
 	return nil
 }
 
-// precheckLocalReservation reports a conflict if a fresh local sentinel for a
-// still-running container owns ref, without writing one (shared, ward#184).
-func (r *Runner) precheckLocalReservation(ctx context.Context, label string, ref agentIssueRef, now time.Time) error {
+// precheckLocalReservation inspects the local cache sentinel and never blocks.
+func (r *Runner) precheckLocalReservation(_ context.Context, label string, ref agentIssueRef, now time.Time) error {
 	path, err := agentReservationPath(ref)
 	if err != nil {
-		return fmt.Errorf("%s: resolve reservation path: %w", label, err)
+		return fmt.Errorf("resolve reservation path: %w", err)
 	}
 	existing, ok, rerr := readAgentReservation(path)
 	if rerr != nil {
-		return fmt.Errorf("%s: read reservation %s: %w", label, path, rerr)
+		return fmt.Errorf("read reservation %s: %w", path, rerr)
 	}
-	if ok && reservationFresh(existing.At, now, agentReservationTTL()) && r.containerRunning(ctx, existing.Container) {
-		fmt.Fprintf(os.Stderr, "%s: reservation precheck saw live local holder for %s at %s\n", label, ref, path)
-		return newReservationConflict(
-			"%s: issue %s is already reserved locally by %s; wait for it to finish or pass --override-reservation to reclaim",
-			label, ref, existing.summary())
+	if !ok || existing == nil {
+		return nil
 	}
-	fmt.Fprintf(os.Stderr, "%s: reservation precheck found no live local holder for %s\n", label, ref)
+	if reservationFresh(existing.At, now, agentReservationTTL()) {
+		fmt.Fprintf(os.Stderr, "%s: reservation cache note for %s at %s, but the issue thread remains authoritative\n", label, ref, path)
+		return nil
+	}
+	_ = removeAgentReservation(path)
+	fmt.Fprintf(os.Stderr, "%s: cleared stale reservation cache for %s at %s\n", label, ref, path)
 	return nil
 }
 
-// acquireLocalReservation writes this run's sentinel (refusing a fresh one held by
-// a live container unless --override-reservation), returning a deleting release.
-func (r *Runner) acquireLocalReservation(ctx context.Context, label string, mode containerMode, ref agentIssueRef, container, branch string, now time.Time, override bool) (func(), error) {
+// acquireLocalReservation writes this run's cache sentinel. The issue thread owns
+// the canonical reservation decision, so the local file is only a cache.
+func (r *Runner) acquireLocalReservation(_ context.Context, label string, mode containerMode, ref agentIssueRef, container, branch string, now time.Time, _ bool) (func(), error) {
 	path, err := agentReservationPath(ref)
 	if err != nil {
 		return nil, fmt.Errorf("%s: resolve reservation path: %w", label, err)
-	}
-	if !override {
-		if err := r.precheckLocalReservation(ctx, label, ref, now); err != nil {
-			return nil, err
-		}
-		if err := r.precheckLiveIssueWorker(ctx, label, ref, container, override); err != nil {
-			return nil, err
-		}
 	}
 	fmt.Fprintf(os.Stderr, "%s: reservation local acquire writing %s\n", label, path)
 	res := agentReservation{
@@ -417,22 +396,16 @@ func (r *Runner) acquireLocalReservation(ctx context.Context, label string, mode
 	}, nil
 }
 
-// precheckLiveIssueWorker refuses when the deterministic engineer container already
-// exists and is running, even if the local sentinel is absent or stale.
+// precheckLiveIssueWorker is a cache note only.
+// The issue thread is canonical.
 func (r *Runner) precheckLiveIssueWorker(ctx context.Context, label string, ref agentIssueRef, container string, override bool) error {
 	if override || r == nil || r.Runner == nil {
 		return nil
 	}
-	out, err := r.dockerCapture(ctx, "ps",
+	out, _ := r.dockerCapture(ctx, "ps",
 		"--filter", "name=^"+container+"$", "--format", "{{.Names}}")
-	if err != nil {
-		return err
-	}
 	if strings.TrimSpace(string(out)) != "" {
-		fmt.Fprintf(os.Stderr, "%s: reservation precheck saw live worker container %s for %s\n", label, container, ref)
-		return newReservationConflict(
-			"%s: issue %s already has a running worker container %s; wait for it to finish or pass --override-reservation to reclaim",
-			label, ref, container)
+		fmt.Fprintf(os.Stderr, "%s: cache note: running worker container %s still exists for %s, but the issue thread remains canonical\n", label, container, ref)
 	}
 	return nil
 }
@@ -507,8 +480,8 @@ var reservationPostSleep = time.Sleep
 // WARN carries, so an operator sweeps the dispatch logs by grep (ward#402).
 const reservationWarnToken = "remote reservation NOT posted"
 
-// acquireRemoteReservation refuses on a fresh reservation comment (unless overridden),
-// else posts one and returns a remote-release to roll it back (ward#402/#570, docs).
+// acquireRemoteReservation refuses on a fresh reservation comment unless overridden.
+// It posts one and returns a release to roll it back.
 func (r *Runner) acquireRemoteReservation(ctx context.Context, label string, mode containerMode, ref agentIssueRef, container, justification string, seedCtx *reservationSeedContext, now time.Time, override bool, skipPreflight bool) (func(), error) {
 	cl, err := r.hostTrackerClient(ctx, ref.trackerOrDefault(), mode)
 	if err != nil {
@@ -603,7 +576,7 @@ func postReservationComment(ctx context.Context, attempts int, backoff time.Dura
 // reservation could not be posted; the run proceeds on the local sentinel (ward#402).
 func warnRemoteReservationLost(label string, ref agentIssueRef, detail string) {
 	fmt.Fprintf(os.Stderr,
-		"%s: warning: %s for %s (%s); the local sentinel still holds this host, but cross-host dedup and "+
+		"%s: warning: %s for %s (%s); the local cache still records this host, but cross-host dedup and "+
 			"the issue-thread reservation signal are LOST for this run - check the host forgejo token/SSM "+
 			"path and this issue's thread (ward#402)\n",
 		label, reservationWarnToken, ref, detail)

@@ -5,7 +5,8 @@ doc_goal: Keep the reservation anchor stable after the old page was collapsed.
 
 This page is the durable anchor for launch-time reservations.
 
-- It covers the local sentinel and the remote marker comment.
+- The issue thread is canonical.
+- It covers the remote marker comment and the local cache sentinel.
 - It keeps the TTL and release-marker comments readable.
 - A launch intent is not a running engineer. Running capacity belongs to the
   visible container, while the launch intent is just the prelaunch lease.
@@ -21,6 +22,8 @@ This page is the durable anchor for launch-time reservations.
   it when a newer reservation shows a follow-up run already took the issue over.
 - A launch that never becomes visible releases its launch-intent sentinel
   immediately. The TTL is only the orphaned-launch backstop.
+- The local sentinel is a cache. The issue thread decides whether a run is
+  reserved, and stale cache never blocks when the thread is clear.
 
 ## Collisions and the redispatch marker
 
