@@ -54,7 +54,7 @@ func execDispatchBrokerPRWorkflowWith(ctx context.Context, cl *forgejoClient, re
 		}
 		// The merge gate needs the PR's workflow marker, so it runs inside the
 		// executor - after the PR body is in hand, before any mutation.
-		return prWorkflowMergeExec(ctx, cl, role, ref.Owner, ref.Repo, ref.Number)
+		return prWorkflowMergeExec(ctx, cl, role, ref.Owner, ref.Repo, ref.Number, req.MergeStyle)
 	case dispatchActionCIRuns:
 		owner, name, _ := strings.Cut(req.Target, "/")
 		if err := prWorkflowPermitted(role, "", prOpRuns); err != nil {

@@ -113,34 +113,57 @@ func TestDirectorLinkedIssueNumber(t *testing.T) {
 }
 
 func TestMergePullRequestRequestShape(t *testing.T) {
-	var gotToken, gotMethod, gotPath string
-	srv := httptest.NewServer(http.HandlerFunc(func(w http.ResponseWriter, r *http.Request) {
-		gotToken = r.Header.Get("Authorization")
-		gotMethod = r.Method
-		gotPath = r.URL.Path
-		var body map[string]string
-		if err := json.NewDecoder(r.Body).Decode(&body); err != nil {
-			t.Fatalf("decode body: %v", err)
-		}
-		if body["do"] != "merge" {
-			t.Fatalf("body do = %q, want merge", body["do"])
-		}
-		w.WriteHeader(http.StatusAccepted)
-	}))
-	defer srv.Close()
+	for _, tc := range []struct {
+		name                          string
+		defaultDeleteBranchAfterMerge bool
+	}{
+		{name: "preserves-false", defaultDeleteBranchAfterMerge: false},
+		{name: "preserves-true", defaultDeleteBranchAfterMerge: true},
+	} {
+		t.Run(tc.name, func(t *testing.T) {
+			var gotToken, gotMethod, gotPath string
+			srv := httptest.NewServer(http.HandlerFunc(func(w http.ResponseWriter, r *http.Request) {
+				if r.URL.Path == "/api/v1/repos/coilyco-flight-deck/ward" {
+					_, _ = w.Write([]byte(`{"allow_merge_commits":true,"default_merge_style":"merge","default_delete_branch_after_merge":` + jsonBool(tc.defaultDeleteBranchAfterMerge) + `}`))
+					return
+				}
+				if r.URL.Path != "/api/v1/repos/coilyco-flight-deck/ward/pulls/729/merge" {
+					t.Fatalf("path = %q, want merge endpoint", r.URL.Path)
+				}
+				gotToken = r.Header.Get("Authorization")
+				gotMethod = r.Method
+				gotPath = r.URL.Path
+				var body struct {
+					Do                     string `json:"do"`
+					DeleteBranchAfterMerge bool   `json:"delete_branch_after_merge"`
+				}
+				if err := json.NewDecoder(r.Body).Decode(&body); err != nil {
+					t.Fatalf("decode body: %v", err)
+				}
+				if body.Do != "merge" {
+					t.Fatalf("body do = %q, want merge", body.Do)
+				}
+				if body.DeleteBranchAfterMerge != tc.defaultDeleteBranchAfterMerge {
+					t.Fatalf("body delete_branch_after_merge = %t, want %t", body.DeleteBranchAfterMerge, tc.defaultDeleteBranchAfterMerge)
+				}
+				w.WriteHeader(http.StatusAccepted)
+			}))
+			defer srv.Close()
 
-	cl := &forgejoClient{baseURL: srv.URL, token: "secret"}
-	if err := cl.mergePullRequest(context.Background(), "coilyco-flight-deck", "ward", 729); err != nil {
-		t.Fatalf("mergePullRequest: %v", err)
-	}
-	if gotToken != "token secret" {
-		t.Fatalf("auth header = %q, want token secret", gotToken)
-	}
-	if gotMethod != http.MethodPost {
-		t.Fatalf("method = %q, want POST", gotMethod)
-	}
-	if gotPath != "/api/v1/repos/coilyco-flight-deck/ward/pulls/729/merge" {
-		t.Fatalf("path = %q, want merge endpoint", gotPath)
+			cl := &forgejoClient{baseURL: srv.URL, token: "secret"}
+			if err := cl.mergePullRequest(context.Background(), "coilyco-flight-deck", "ward", 729); err != nil {
+				t.Fatalf("mergePullRequest: %v", err)
+			}
+			if gotToken != "token secret" {
+				t.Fatalf("auth header = %q, want token secret", gotToken)
+			}
+			if gotMethod != http.MethodPost {
+				t.Fatalf("method = %q, want POST", gotMethod)
+			}
+			if gotPath != "/api/v1/repos/coilyco-flight-deck/ward/pulls/729/merge" {
+				t.Fatalf("path = %q, want merge endpoint", gotPath)
+			}
+		})
 	}
 }
 
@@ -162,8 +185,16 @@ func TestMergePullRequestRefusesFromReadOnlySurface(t *testing.T) {
 }
 
 func TestMergePullRequestWithHeadPinsHeadCommitID(t *testing.T) {
-	var gotBody map[string]string
+	var gotBody struct {
+		Do                     string `json:"do"`
+		HeadCommitID           string `json:"head_commit_id"`
+		DeleteBranchAfterMerge bool   `json:"delete_branch_after_merge"`
+	}
 	srv := httptest.NewServer(http.HandlerFunc(func(w http.ResponseWriter, r *http.Request) {
+		if r.URL.Path == "/api/v1/repos/coilyco-flight-deck/ward" {
+			_, _ = w.Write([]byte(`{"allow_merge_commits":true,"default_merge_style":"merge","default_delete_branch_after_merge":true}`))
+			return
+		}
 		if r.URL.Path != "/api/v1/repos/coilyco-flight-deck/ward/pulls/729/merge" {
 			t.Fatalf("path = %q, want merge endpoint", r.URL.Path)
 		}
@@ -178,11 +209,14 @@ func TestMergePullRequestWithHeadPinsHeadCommitID(t *testing.T) {
 	if err := cl.mergePullRequestWithHead(context.Background(), "coilyco-flight-deck", "ward", 729, "abc123"); err != nil {
 		t.Fatalf("mergePullRequestWithHead: %v", err)
 	}
-	if gotBody["do"] != "merge" {
-		t.Fatalf("body do = %q, want merge", gotBody["do"])
+	if gotBody.Do != "merge" {
+		t.Fatalf("body do = %q, want merge", gotBody.Do)
 	}
-	if gotBody["head_commit_id"] != "abc123" {
-		t.Fatalf("body head_commit_id = %q, want abc123", gotBody["head_commit_id"])
+	if gotBody.HeadCommitID != "abc123" {
+		t.Fatalf("body head_commit_id = %q, want abc123", gotBody.HeadCommitID)
+	}
+	if !gotBody.DeleteBranchAfterMerge {
+		t.Fatalf("body delete_branch_after_merge = %t, want true", gotBody.DeleteBranchAfterMerge)
 	}
 }
 

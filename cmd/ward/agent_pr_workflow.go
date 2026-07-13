@@ -154,7 +154,7 @@ func prWorkflowStatusReport(ctx context.Context, cl *forgejoClient, owner, repo 
 
 // prWorkflowMergeExec merges one PR through ward's compiled client: permission
 // gate, live required-status gate, head-pinned merge, merged-state check.
-func prWorkflowMergeExec(ctx context.Context, cl *forgejoClient, role, owner, repo string, index int) (string, error) {
+func prWorkflowMergeExec(ctx context.Context, cl *forgejoClient, role, owner, repo string, index int, mergeStyle string) (string, error) {
 	pr, err := cl.getPullRequest(ctx, owner, repo, index)
 	if err != nil {
 		return "", err
@@ -177,7 +177,7 @@ func prWorkflowMergeExec(ctx context.Context, cl *forgejoClient, role, owner, re
 	if !ok {
 		return "", fmt.Errorf("pr merge: %s/%s#%d: %s", owner, repo, index, reason)
 	}
-	if err := cl.mergePullRequestWithHead(ctx, owner, repo, index, head); err != nil {
+	if err := cl.mergePullRequestWithHeadAndStyle(ctx, owner, repo, index, head, mergeStyle); err != nil {
 		return "", fmt.Errorf("pr merge: %s/%s#%d: %w", owner, repo, index, err)
 	}
 	confirm := "merged-state check: merged"
@@ -273,9 +273,12 @@ func agentPRStatusCommand() *cli.Command {
 func agentPRMergeCommand() *cli.Command {
 	return &cli.Command{
 		Name:      "merge",
-		Usage:     "Merge one PR natively: embedded role x workflow gate, live status gate, head-pinned merge, merged-state check.",
+		Usage:     "Merge one PR natively: embedded role x workflow gate, live status gate, head-pinned merge, merge-style selection, merged-state check.",
 		ArgsUsage: "<owner/repo#N | #N>",
-		Action:    prWorkflowAction("agent.pr.merge", runAgentPRMerge),
+		Flags: []cli.Flag{
+			&cli.StringFlag{Name: "style", Usage: "Forgejo merge style: merge, squash, fast-forward-only, rebase, or rebase-merge (default: repo default_merge_style when allowed)"},
+		},
+		Action: prWorkflowAction("agent.pr.merge", runAgentPRMerge),
 	}
 }
 
@@ -414,11 +417,11 @@ func runAgentPRMerge(ctx context.Context, r *Runner, c *cli.Command) error {
 		return err
 	}
 	if handled, err := prWorkflowForwarded(ctx, r, dispatchBrokerRequest{
-		Action: dispatchActionPRMerge, Target: ref.String(),
+		Action: dispatchActionPRMerge, Target: ref.String(), MergeStyle: c.String("style"),
 	}); handled {
 		return err
 	}
-	body, err := prWorkflowMergeExec(ctx, r.hostForgejoClient(ctx), prWorkflowRole(), ref.Owner, ref.Repo, ref.Number)
+	body, err := prWorkflowMergeExec(ctx, r.hostForgejoClient(ctx), prWorkflowRole(), ref.Owner, ref.Repo, ref.Number, c.String("style"))
 	if err != nil {
 		return fmt.Errorf("%s: %w", label, err)
 	}

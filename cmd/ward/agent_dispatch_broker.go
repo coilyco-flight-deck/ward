@@ -114,6 +114,8 @@ type dispatchBrokerRequest struct {
 	RunID int64 `json:"run_id,omitempty"`
 	// Limit caps a ci-runs read (ward#1067).
 	Limit int `json:"limit,omitempty"`
+	// MergeStyle names the Forgejo merge style for pr-merge requests.
+	MergeStyle string `json:"merge_style,omitempty"`
 	// Token is the per-launch shared secret the surface echoes back so the host
 	// broker authenticates the dial (the TCP port has no socket file perms).
 	Token string `json:"token,omitempty"`

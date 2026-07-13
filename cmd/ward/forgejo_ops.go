@@ -52,6 +52,102 @@ type forgejoRepoCapabilities struct {
 	HasPullRequests bool `json:"has_pull_requests"`
 }
 
+type forgejoRepositoryMergeSettings struct {
+	AllowMergeCommits             bool   `json:"allow_merge_commits"`
+	AllowRebase                   bool   `json:"allow_rebase"`
+	AllowRebaseExplicit           bool   `json:"allow_rebase_explicit"`
+	AllowRebaseUpdate             bool   `json:"allow_rebase_update"`
+	AllowSquashMerge              bool   `json:"allow_squash_merge"`
+	AllowFastForwardOnlyMerge     bool   `json:"allow_fast_forward_only_merge"`
+	DefaultMergeStyle             string `json:"default_merge_style"`
+	DefaultDeleteBranchAfterMerge bool   `json:"default_delete_branch_after_merge"`
+}
+
+func (r forgejoRepositoryMergeSettings) allowedMergeStyles() []string {
+	allowed := make([]string, 0, 5)
+	if r.AllowMergeCommits {
+		allowed = append(allowed, "merge")
+	}
+	if r.AllowSquashMerge {
+		allowed = append(allowed, "squash")
+	}
+	if r.AllowFastForwardOnlyMerge {
+		allowed = append(allowed, "fast-forward-only")
+	}
+	if r.AllowRebase {
+		allowed = append(allowed, "rebase")
+	}
+	if r.AllowRebaseExplicit {
+		allowed = append(allowed, "rebase-merge")
+	}
+	return allowed
+}
+
+func (r forgejoRepositoryMergeSettings) styleAllowed(style string) bool {
+	switch mergeStyleKey(style) {
+	case "merge":
+		return r.AllowMergeCommits
+	case "squash":
+		return r.AllowSquashMerge
+	case "fast-forward-only":
+		return r.AllowFastForwardOnlyMerge
+	case "rebase":
+		return r.AllowRebase
+	case "rebase-merge":
+		return r.AllowRebaseExplicit
+	default:
+		return false
+	}
+}
+
+func mergeStyleKey(style string) string {
+	return strings.ToLower(strings.TrimSpace(style))
+}
+
+func mergeStyleSupported(style string) bool {
+	switch mergeStyleKey(style) {
+	case "merge", "squash", "fast-forward-only", "rebase", "rebase-merge":
+		return true
+	default:
+		return false
+	}
+}
+
+func mergeStyleList(styles []string) string {
+	if len(styles) == 0 {
+		return "none"
+	}
+	return strings.Join(styles, ", ")
+}
+
+func resolveMergeStyle(requested string, settings *forgejoRepositoryMergeSettings) (string, error) {
+	requested = mergeStyleKey(requested)
+	supported := []string{"merge", "squash", "fast-forward-only", "rebase", "rebase-merge"}
+	if requested != "" {
+		if !mergeStyleSupported(requested) {
+			return "", fmt.Errorf("pr merge: merge style %q is not supported; supported styles: %s", requested, strings.Join(supported, ", "))
+		}
+		if settings != nil && !settings.styleAllowed(requested) {
+			return "", fmt.Errorf("pr merge: merge style %q is not allowed by this repository; allowed styles: %s", requested, mergeStyleList(settings.allowedMergeStyles()))
+		}
+		return requested, nil
+	}
+	if settings == nil {
+		return "", fmt.Errorf("pr merge: repository merge settings are unavailable; pass --style to choose a merge style")
+	}
+	defaultStyle := mergeStyleKey(settings.DefaultMergeStyle)
+	if defaultStyle == "" {
+		return "", fmt.Errorf("pr merge: repository default_merge_style is empty; allowed styles: %s; pass --style to choose one", mergeStyleList(settings.allowedMergeStyles()))
+	}
+	if !mergeStyleSupported(defaultStyle) {
+		return "", fmt.Errorf("pr merge: repository default_merge_style %q is not supported; supported styles: %s; pass --style to choose one", defaultStyle, strings.Join(supported, ", "))
+	}
+	if !settings.styleAllowed(defaultStyle) {
+		return "", fmt.Errorf("pr merge: repository default_merge_style %q is not allowed; allowed styles: %s; pass --style to choose one", defaultStyle, mergeStyleList(settings.allowedMergeStyles()))
+	}
+	return defaultStyle, nil
+}
+
 // forgejoClient drives Forgejo directly. r resolves host credentials when a
 // write needs them, and mode signs the core agent bodies it writes (ward#155).
 type forgejoClient struct {
@@ -439,6 +535,14 @@ func (c *forgejoClient) createPullRequest(ctx context.Context, owner, repo, head
 	return "", fmt.Errorf("forgejo create PR response omitted html_url")
 }
 
+func (c *forgejoClient) getRepository(ctx context.Context, owner, repo string) (*forgejoRepositoryMergeSettings, error) {
+	var out forgejoRepositoryMergeSettings
+	if _, err := c.doJSON(ctx, http.MethodGet, []string{"repos", owner, repo}, nil, nil, false, &out); err != nil {
+		return nil, fmt.Errorf("forgejo: get repo %s/%s: %w", owner, repo, err)
+	}
+	return &out, nil
+}
+
 // mergePullRequest merges an open PR through Forgejo's merge endpoint.
 // The director uses it for the narrow ward-owned merge lane.
 func (c *forgejoClient) mergePullRequest(ctx context.Context, owner, repo string, index int) error {
@@ -451,13 +555,32 @@ func (c *forgejoClient) mergePullRequest(ctx context.Context, owner, repo string
 // mergePullRequestWithHead merges an open PR through Forgejo's merge endpoint and
 // pins the head commit the director just checked, so a stale PR head cannot land.
 func (c *forgejoClient) mergePullRequestWithHead(ctx context.Context, owner, repo string, index int, headSHA string) error {
+	return c.mergePullRequestWithHeadAndStyle(ctx, owner, repo, index, headSHA, "")
+}
+
+func (c *forgejoClient) mergePullRequestWithHeadAndStyle(ctx context.Context, owner, repo string, index int, headSHA, mergeStyle string) error {
 	token, err := c.apiToken(ctx)
 	if err != nil {
 		return err
 	}
-	payloadBody := map[string]string{"do": "merge"}
+	settings, err := c.getRepository(ctx, owner, repo)
+	if err != nil {
+		return err
+	}
+	style, err := resolveMergeStyle(mergeStyle, settings)
+	if err != nil {
+		return err
+	}
+	payloadBody := struct {
+		Do                     string `json:"do"`
+		HeadCommitID           string `json:"head_commit_id,omitempty"`
+		DeleteBranchAfterMerge bool   `json:"delete_branch_after_merge"`
+	}{
+		Do:                     style,
+		DeleteBranchAfterMerge: settings.DefaultDeleteBranchAfterMerge,
+	}
 	if headSHA = strings.TrimSpace(headSHA); headSHA != "" {
-		payloadBody["head_commit_id"] = headSHA
+		payloadBody.HeadCommitID = headSHA
 	}
 	payload, err := json.Marshal(payloadBody)
 	if err != nil {
