@@ -201,7 +201,7 @@ func TestSmartDefaultsRejectsMissingRepoAuthority(t *testing.T) {
 func TestSmartDefaultsFailureNamesTheConfigSource(t *testing.T) {
 	dir := t.TempDir()
 	// 1h undercuts the built-in engineer 90m limit: trips the TTL invariant.
-	if err := os.WriteFile(filepath.Join(dir, "defaults.kdl"),
+	if err := os.WriteFile(filepath.Join(dir, "workflow.kdl"),
 		[]byte("defaults {\n    agent-reservation-ttl \"1h\"\n}\n"), 0o644); err != nil {
 		t.Fatal(err)
 	}

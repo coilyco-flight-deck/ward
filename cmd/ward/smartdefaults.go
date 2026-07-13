@@ -163,16 +163,30 @@ func loadBundleSmartDefaultsFrom(src configSource) (smartDefaults, error) {
 		return smartDefaults{}, err
 	}
 	defs := bakedSmartDefaults()
-	defaultsFile, defaultsNode, err := findUniqueNamedBundleNode(files, "top-level `defaults` block", "defaults", "smart-defaults")
+	defaultsFile, defaultsNode, ok, err := findOptionalNamedBundleNode(files, "top-level `defaults` block", "defaults", "smart-defaults")
 	if err != nil {
 		return smartDefaults{}, err
 	}
-	if err := parseBundleDefaultsNode(defaultsFile.path, defaultsNode, &defs); err != nil {
-		return smartDefaults{}, err
+	if ok {
+		if err := parseBundleDefaultsNode(defaultsFile.path, defaultsNode, &defs); err != nil {
+			return smartDefaults{}, err
+		}
 	}
-	reposFile, reposNode, err := findUniqueNamedBundleNode(files, "top-level `repos` or `repo-authority` block", "repos", "repo-authority")
+	workflowFile, workflowNode, ok, err := findOptionalNamedBundleNode(files, "top-level `workflow` block", "workflow")
 	if err != nil {
 		return smartDefaults{}, err
+	}
+	if ok {
+		if err := parseBundleWorkflowNode(workflowFile.path, workflowNode, &defs); err != nil {
+			return smartDefaults{}, err
+		}
+	}
+	reposFile, reposNode, ok, err := findOptionalNamedBundleNode(files, "top-level `repos` or `repo-authority` block", "repos", "repo-authority")
+	if err != nil {
+		return smartDefaults{}, err
+	}
+	if !ok {
+		return smartDefaults{}, fmt.Errorf("bundle: missing top-level `repos` or `repo-authority` block (fail-closed)")
 	}
 	if err := parseBundleReposNode(reposFile.path, reposNode, &defs); err != nil {
 		return smartDefaults{}, err
@@ -210,15 +224,44 @@ func parseBundleDefaultsNode(srcPath string, n *kdl.Node, defs *smartDefaults) e
 		return unknownSmartDefaultsNode("top-level", n.Name(), "defaults")
 	}
 	if len(n.Arguments()) != 0 {
-		return fmt.Errorf("smart defaults: `defaults` takes no arguments (fail-closed)")
+		return fmt.Errorf("smart defaults: `%s` takes no arguments (fail-closed)", n.Name())
 	}
 	if len(n.Properties()) != 0 {
-		return fmt.Errorf("smart defaults: `defaults` takes no properties (fail-closed)")
+		return fmt.Errorf("smart defaults: `%s` takes no properties (fail-closed)", n.Name())
 	}
 	for _, c := range n.Children().Nodes {
 		if err := applySmartDefaultNode(defs, c); err != nil {
 			return fmt.Errorf("%s: %w", srcPath, err)
 		}
+	}
+	return nil
+}
+
+func parseBundleWorkflowNode(srcPath string, n *kdl.Node, defs *smartDefaults) error {
+	if n.Name() != "workflow" {
+		return unknownSmartDefaultsNode("top-level", n.Name(), "workflow")
+	}
+	if len(n.Arguments()) != 0 {
+		return fmt.Errorf("smart defaults: `workflow` takes no arguments (fail-closed)")
+	}
+	if err := applyBundleWorkflowDefault(defs, n); err != nil {
+		return fmt.Errorf("%s: %w", srcPath, err)
+	}
+	if err := requireBundleWorkflowProperties(n); err != nil {
+		return fmt.Errorf("%s: %w", srcPath, err)
+	}
+	if defs.agentWorkflowRepos == nil {
+		defs.agentWorkflowRepos = map[string]workflowMode{}
+	}
+	for _, c := range n.Children().Nodes {
+		repo, wf, err := parseBundleWorkflowRepo(c)
+		if err != nil {
+			return fmt.Errorf("%s: %w", srcPath, err)
+		}
+		if _, dup := defs.agentWorkflowRepos[repo]; dup {
+			return fmt.Errorf("smart defaults: workflow > repo %q repeated (fail-closed)", repo)
+		}
+		defs.agentWorkflowRepos[repo] = wf
 	}
 	return nil
 }
@@ -616,6 +659,61 @@ func applySmartDefaultWorkflow(defs *smartDefaults, n *kdl.Node) error {
 		defs.agentWorkflowRepos[repo] = wf
 	}
 	return nil
+}
+
+func applyBundleWorkflowDefault(defs *smartDefaults, n *kdl.Node) error {
+	v, ok, err := smartDefaultsStringProp(n, "default", "workflow default")
+	if err != nil {
+		return err
+	}
+	if !ok {
+		return fmt.Errorf("smart defaults: `workflow` missing `default` property (fail-closed)")
+	}
+	wf, err := parseWorkflow(v)
+	if err != nil {
+		return fmt.Errorf("smart defaults: workflow default: %w (fail-closed)", err)
+	}
+	defs.agentWorkflowDefault = wf
+	return nil
+}
+
+func requireBundleWorkflowProperties(n *kdl.Node) error {
+	for prop := range n.Properties() {
+		if prop != "default" {
+			return fmt.Errorf("smart defaults: workflow unknown property %q (want default; fail-closed)", prop)
+		}
+	}
+	return nil
+}
+
+func parseBundleWorkflowRepo(c *kdl.Node) (string, workflowMode, error) {
+	if c.Name() != "repo" {
+		return "", workflowMode(""), unknownSmartDefaultsNode("workflow body", c.Name(), "repo")
+	}
+	repo, err := smartDefaultsStringArg(c, "workflow > repo")
+	if err != nil {
+		return "", workflowMode(""), err
+	}
+	if !validWorkflowRepoSlug(repo) {
+		return "", workflowMode(""), fmt.Errorf("smart defaults: workflow > repo %q must be owner/name (fail-closed)", repo)
+	}
+	wfRaw, ok, err := smartDefaultsStringProp(c, "workflow", "workflow > repo workflow")
+	if err != nil {
+		return "", workflowMode(""), err
+	}
+	if !ok {
+		return "", workflowMode(""), fmt.Errorf("smart defaults: workflow > repo %q missing workflow property (fail-closed)", repo)
+	}
+	for prop := range c.Properties() {
+		if prop != "workflow" {
+			return "", workflowMode(""), fmt.Errorf("smart defaults: workflow > repo unknown property %q (want workflow; fail-closed)", prop)
+		}
+	}
+	wf, err := parseWorkflow(wfRaw)
+	if err != nil {
+		return "", workflowMode(""), fmt.Errorf("smart defaults: workflow > repo %q: %w (fail-closed)", repo, err)
+	}
+	return repo, wf, nil
 }
 
 func validateReservationTTLInvariant(defs smartDefaults) error {

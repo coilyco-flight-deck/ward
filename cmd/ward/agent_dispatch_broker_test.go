@@ -1524,8 +1524,8 @@ func TestRunAgentTaskDirectRoutesThroughBrokerOnReadonlySurface(t *testing.T) {
     container-assets-ttl "1h"
     container-read-only-extra-repo-ttl "24h"
     container-reap-keep "10"
-    agent-workflow default=merge-remote-main {
-    }
+}
+workflow default=merge-remote-main {
 }
 `
 	reposBody := `repos {
