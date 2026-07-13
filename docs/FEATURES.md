@@ -21,16 +21,16 @@ Inventory of what `ward` ships today.
 - Read-only Forgejo issue-comment guard.
 - Transient reservation and dispatch comments are cleaned up after release.
 - Harness install hooks for claude, codex, goose, and opencode.
-- Core tracker and forge adapters skip generated `ward ops` leaves.
-- Launch-intent vs running-engineer split in list, reap, and director burndown.
-- Issue-thread-backed reservations, with local sentinels and Docker labels cached.
-- Open-PR backpressure gate.
+- Core tracker and forge adapters do not depend on generated `ward ops` leaves.
+- Launch-intent vs running-engineer split in list, dispatch-health, reap, and director burndown.
+- Issue-thread-backed reservations, with local cache sentinels.
+- Open-PR backpressure.
 - Issue-scoped director dispatch.
-- Dispatch broker version carry-through. [agent-dispatch-broker.md](agent-dispatch-broker.md).
+- Dispatch broker version carry-through. See [agent-dispatch-broker.md](agent-dispatch-broker.md).
 - Native PR-workflow tools. See [agent-pr-workflow.md](agent-pr-workflow.md).
 - PR repair classification.
 - `ward agent` roles and workflows. See [agent.md](agent.md), [agent-roster.md](agent-roster.md), [agent-flags.md](agent-flags.md), [agent-roles.md](agent-roles.md), [agent-harnesses.md](agent-harnesses.md), [agent-lifecycle.md](agent-lifecycle.md), [agent-director.md](agent-director.md), [agent-ops.md](agent-ops.md), [agent-dispatch-health.md](agent-dispatch-health.md), [dispatch-review.md](dispatch-review.md), and [agent-workflow.md](agent-workflow.md).
-- Dispatch-health surfacing.
+- Dispatch-health.
 - PR repair input mode.
 
 ## Container surface

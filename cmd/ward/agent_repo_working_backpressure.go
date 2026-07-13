@@ -2,6 +2,7 @@ package main
 
 import (
 	"context"
+	"errors"
 	"fmt"
 	"strings"
 	"time"
@@ -30,9 +31,9 @@ func newEngineerRepoWorkingBackpressureError(label, repo string, working, limit 
 }
 
 // launchRepoEngineerBackpressureCheck refuses engineer launches once the repo
-// already has too many active engineers working in it.
-func (r *Runner) launchRepoEngineerBackpressureCheck(ctx context.Context, label string, repo string) error {
-	count, err := r.activeEngineerLaunchCountForRepo(ctx, repo)
+// hits the carried issue/repo authority's tracker-aware active-engineer limit.
+func (r *Runner) launchRepoEngineerBackpressureCheck(ctx context.Context, label string, ref agentIssueRef) error {
+	count, err := r.activeEngineerLaunchCountForRepo(ctx, ref)
 	if err != nil {
 		return fmt.Errorf("%s: count repo engineer launches for backpressure: %w", label, err)
 	}
@@ -40,27 +41,46 @@ func (r *Runner) launchRepoEngineerBackpressureCheck(ctx context.Context, label 
 	if count < limit {
 		return nil
 	}
-	return newEngineerRepoWorkingBackpressureError(label, repo, count, limit)
+	return newEngineerRepoWorkingBackpressureError(label, ref.repoSlug(), count, limit)
 }
 
 // maybeLaunchRepoEngineerBackpressure applies the repo-working gate only when the
 // launch is not a print-only preview.
-func (r *Runner) maybeLaunchRepoEngineerBackpressure(ctx context.Context, label string, repo string, c *cli.Command) error {
+func (r *Runner) maybeLaunchRepoEngineerBackpressure(ctx context.Context, label string, ref agentIssueRef, c *cli.Command) error {
 	if c != nil && c.Bool("print") {
 		return nil
 	}
-	return r.launchRepoEngineerBackpressureCheck(ctx, label, repo)
+	return r.launchRepoEngineerBackpressureCheck(ctx, label, ref)
 }
 
-// activeEngineerLaunchCountForRepo counts active launches in one repo.
-// It prefers the issue thread and falls back to local cache only when reads fail.
-func (r *Runner) activeEngineerLaunchCountForRepo(ctx context.Context, repo string) (int, error) {
-	repo = strings.TrimSpace(repo)
+type repoIssueScanner interface {
+	listOpenIssueFeedByType(ctx context.Context, owner, repo string, limit int, kind string) ([]forgejoIssueRaw, error)
+}
+
+type repoIssueScanUnsupportedError struct {
+	tracker tracker
+}
+
+func (e *repoIssueScanUnsupportedError) Error() string {
+	return fmt.Sprintf("backpressure: repo issue scan is not supported yet for %s tracker", e.tracker)
+}
+
+func isRepoIssueScanUnsupported(err error) bool {
+	var unsupported *repoIssueScanUnsupportedError
+	return errors.As(err, &unsupported)
+}
+
+// activeEngineerLaunchCountForRepo counts launches with carried issue/repo authority.
+// It falls back to local cache only when the tracker cannot scan repository issues yet.
+func (r *Runner) activeEngineerLaunchCountForRepo(ctx context.Context, ref agentIssueRef) (int, error) {
+	repo := strings.TrimSpace(ref.repoSlug())
 	if repo == "" {
-		return 0, fmt.Errorf("backpressure: malformed repo %q", repo)
+		return 0, fmt.Errorf("backpressure: malformed repo %q", ref.repoSlug())
 	}
-	if count, err := r.activeEngineerLaunchCountFromIssueThread(ctx, repo); err == nil {
+	if count, err := r.activeEngineerLaunchCountFromIssueThread(ctx, ref); err == nil {
 		return count, nil
+	} else if !isRepoIssueScanUnsupported(err) {
+		return 0, err
 	}
 	running, err := r.runningEngineerContainersForRepo(ctx, repo)
 	if err != nil {
@@ -69,13 +89,22 @@ func (r *Runner) activeEngineerLaunchCountForRepo(ctx context.Context, repo stri
 	return len(running), nil
 }
 
-func (r *Runner) activeEngineerLaunchCountFromIssueThread(ctx context.Context, repo string) (int, error) {
-	owner, name, ok := strings.Cut(repo, "/")
+// activeEngineerLaunchCountFromIssueThread reads issue-thread reservations
+// through the carried ref's tracker-aware client, never by assuming Forgejo.
+func (r *Runner) activeEngineerLaunchCountFromIssueThread(ctx context.Context, ref agentIssueRef) (int, error) {
+	owner, name, ok := strings.Cut(strings.TrimSpace(ref.repoSlug()), "/")
 	if !ok || owner == "" || name == "" {
-		return 0, fmt.Errorf("backpressure: malformed repo %q", repo)
+		return 0, fmt.Errorf("backpressure: malformed repo %q", ref.repoSlug())
 	}
-	cl := r.hostForgejoClient(ctx)
-	issues, err := cl.listOpenIssueFeedByType(ctx, owner, name, directorLimitDefault(), "issues")
+	cl, err := r.hostTrackerClient(ctx, ref.trackerOrDefault(), currentAgentMode())
+	if err != nil {
+		return 0, err
+	}
+	scanner, ok := cl.(repoIssueScanner)
+	if !ok {
+		return 0, &repoIssueScanUnsupportedError{tracker: ref.trackerOrDefault()}
+	}
+	issues, err := scanner.listOpenIssueFeedByType(ctx, owner, name, directorLimitDefault(), "issues")
 	if err != nil {
 		return 0, err
 	}

@@ -60,6 +60,17 @@ func engineerRepoAndGlobalCountDockerStub(t *testing.T, repo string, repoCount, 
 	return stub
 }
 
+func stubCommandInPath(t *testing.T, name string) string {
+	t.Helper()
+	stub := filepath.Join(t.TempDir(), name)
+	script := "#!/bin/sh\nprintf '%s\\n' \"unexpected " + name + " invocation: $*\" >&2\nexit 1\n"
+	if err := os.WriteFile(stub, []byte(script), 0o755); err != nil { //nolint:gosec
+		t.Fatalf("write %s stub: %v", name, err)
+	}
+	t.Setenv("PATH", filepath.Dir(stub)+string(os.PathListSeparator)+os.Getenv("PATH"))
+	return stub
+}
+
 type issueThreadAuthorityRow struct {
 	Number   int
 	Title    string
@@ -263,7 +274,7 @@ func TestLaunchRepoEngineerBackpressureIgnoresStaleDockerWhenIssueThreadIsClear(
 	forgejoBaseURL = srv.URL
 
 	r, _, _ := bufRunner(engineerRepoAndGlobalCountDockerStub(t, "coilyco-flight-deck/ward", 0, engineerContainerLimitDefault()))
-	if err := r.launchRepoEngineerBackpressureCheck(context.Background(), "lbl", "coilyco-flight-deck/ward"); err != nil {
+	if err := r.launchRepoEngineerBackpressureCheck(context.Background(), "lbl", agentIssueRef{Owner: "coilyco-flight-deck", Repo: "ward"}); err != nil {
 		t.Fatalf("launchRepoEngineerBackpressureCheck with clear issue thread and stale docker: %v", err)
 	}
 }
@@ -315,14 +326,14 @@ func TestActiveEngineerLaunchCountIgnoresLaunchIntents(t *testing.T) {
 		t.Fatalf("writeAgentReservation: %v", err)
 	}
 
-	count, err := r.activeEngineerLaunchCountForRepo(context.Background(), "coilyco-flight-deck/ward")
+	count, err := r.activeEngineerLaunchCountForRepo(context.Background(), agentIssueRef{Owner: "coilyco-flight-deck", Repo: "ward"})
 	if err != nil {
 		t.Fatalf("activeEngineerLaunchCountForRepo: %v", err)
 	}
 	if count != 1 {
 		t.Fatalf("activeEngineerLaunchCountForRepo = %d, want 1 from issue state", count)
 	}
-	if err := r.launchRepoEngineerBackpressureCheck(context.Background(), "lbl", "coilyco-flight-deck/ward"); err != nil {
+	if err := r.launchRepoEngineerBackpressureCheck(context.Background(), "lbl", agentIssueRef{Owner: "coilyco-flight-deck", Repo: "ward"}); err != nil {
 		t.Fatalf("launchRepoEngineerBackpressureCheck should ignore launch intents, got %v", err)
 	}
 	if _, ok, _ := readAgentReservation(path); ok {
@@ -389,7 +400,7 @@ func TestActiveEngineerLaunchCountUsesIssueThreadAuthority(t *testing.T) {
 
 	t.Run("issue hold beats empty docker", func(t *testing.T) {
 		r, _, _ := bufRunner(engineerCountDockerStub(t, 0))
-		count, err := r.activeEngineerLaunchCountForRepo(context.Background(), "coilyco-flight-deck/ward")
+		count, err := r.activeEngineerLaunchCountForRepo(context.Background(), agentIssueRef{Owner: "coilyco-flight-deck", Repo: "ward"})
 		if err != nil {
 			t.Fatalf("activeEngineerLaunchCountForRepo: %v", err)
 		}
@@ -403,7 +414,7 @@ func TestActiveEngineerLaunchCountUsesIssueThreadAuthority(t *testing.T) {
 		// The issue thread says only one issue is truly reserved, so the stale
 		// Docker count must not win the guard decision.
 		rows[0].Comments = nil
-		count, err := r.activeEngineerLaunchCountForRepo(context.Background(), "coilyco-flight-deck/ward")
+		count, err := r.activeEngineerLaunchCountForRepo(context.Background(), agentIssueRef{Owner: "coilyco-flight-deck", Repo: "ward"})
 		if err != nil {
 			t.Fatalf("activeEngineerLaunchCountForRepo: %v", err)
 		}
@@ -411,4 +422,73 @@ func TestActiveEngineerLaunchCountUsesIssueThreadAuthority(t *testing.T) {
 			t.Fatalf("activeEngineerLaunchCountForRepo = %d, want 0 from clean issue state", count)
 		}
 	})
+}
+
+func TestActiveEngineerLaunchCountFallsBackSafelyForNonForgejoTrackers(t *testing.T) {
+	t.Setenv("HOME", t.TempDir())
+	oldBase := forgejoBaseURL
+	defer func() { forgejoBaseURL = oldBase }()
+	forgejoSrv := httptest.NewServer(http.HandlerFunc(func(_ http.ResponseWriter, r *http.Request) {
+		t.Fatalf("Forgejo client must not be called for non-Forgejo refs: %s %s", r.Method, r.URL.Path)
+	}))
+	defer forgejoSrv.Close()
+	forgejoBaseURL = forgejoSrv.URL
+
+	cases := []struct {
+		name string
+		ref  agentIssueRef
+		plan func(t *testing.T)
+	}{
+		{
+			name: "github",
+			ref:  agentIssueRef{Owner: "acme", Repo: "ward", Number: 77, Forge: forgeGitHub, Tracker: trackerGitHub},
+			plan: func(t *testing.T) {
+				stubCommandInPath(t, "gh")
+			},
+		},
+		{
+			name: "gitlab",
+			ref:  agentIssueRef{Owner: "acme", Repo: "ward", Number: 77, Forge: forgeGitLab, Tracker: trackerGitLab},
+		},
+		{
+			name: "shortcut",
+			ref: agentIssueRef{
+				Owner:             "acme",
+				Repo:              "ward",
+				Number:            77,
+				Tracker:           trackerShortcut,
+				URL:               "https://app.shortcut.com/acme/story/77/fix-it",
+				ShortcutWorkspace: "acme",
+			},
+			plan: func(t *testing.T) {
+				t.Setenv(shortcutTokenEnv, "secret")
+			},
+		},
+	}
+	for _, tc := range cases {
+		tc := tc
+		t.Run(tc.name, func(t *testing.T) {
+			if tc.plan != nil {
+				tc.plan(t)
+			}
+			r, _, _ := bufRunner(engineerCountDockerStub(t, 0))
+
+			count, err := r.activeEngineerLaunchCountForRepo(context.Background(), tc.ref)
+			if err != nil {
+				t.Fatalf("activeEngineerLaunchCountForRepo(%s): %v", tc.name, err)
+			}
+			if count != 0 {
+				t.Fatalf("activeEngineerLaunchCountForRepo(%s) = %d, want 0 from the safe Docker fallback", tc.name, count)
+			}
+
+			err = r.launchRepoEngineerBackpressureCheck(context.Background(), "lbl", tc.ref)
+			if err != nil {
+				t.Fatalf("launchRepoEngineerBackpressureCheck(%s) should use the safe fallback: %v", tc.name, err)
+			}
+
+			if _, err := r.activeEngineerLaunchCountFromIssueThread(context.Background(), tc.ref); !isRepoIssueScanUnsupported(err) {
+				t.Fatalf("activeEngineerLaunchCountFromIssueThread(%s) error = %v, want explicit unsupported tracker error", tc.name, err)
+			}
+		})
+	}
 }
