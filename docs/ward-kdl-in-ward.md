@@ -30,4 +30,3 @@ hand-written command.
 ## See also
 
 - [ward-kdl-surface.md](ward-kdl-surface.md) - the generated family list.
-- [ward-docker-exec.md](ward-docker-exec.md) - the `ward docker exec` leaf.

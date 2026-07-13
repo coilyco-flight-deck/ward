@@ -44,6 +44,11 @@ func run() int {
 	// canonical `ward agent <args>` machinery (ward#247, ward#282). See docs/agent.md.
 	os.Args = maybeRewriteWardedShim(os.Args)
 
+	if err := rejectDockerExecInvocation(os.Args); err != nil {
+		fmt.Fprintln(os.Stderr, "ward:", err)
+		return 1
+	}
+
 	configFlagOverride = preParseConfigFlag(os.Args)
 	if initErrorReporting() {
 		defer reportPanic()
@@ -55,10 +60,6 @@ func run() int {
 	if err := mountWardKdlExec(app, leanRunner()); err != nil {
 		fmt.Fprintln(os.Stderr, "ward: warning: ward-kdl exec mount degraded:", err)
 	}
-
-	// Graft the one mutating docker leaf - `exec`, gated to ward=true containers
-	// (ward#220) - onto the read-only docker group the guardfile mount just built.
-	graftDockerExec(app, leanRunner())
 
 	// Unknown-verb fallback: `ward <leaf>` -> `ward exec <leaf>` for a declared
 	// leaf that isn't a top-level verb. See docs/verb-fallback.md, issue #87.
@@ -114,6 +115,29 @@ func rootCommand() *cli.Command {
 			opsCommand(),
 		},
 	}
+}
+
+// rejectDockerExecInvocation keeps the public `ward docker exec` leaf out of the
+// binary while preserving the rest of the docker surface.
+func rejectDockerExecInvocation(args []string) error {
+	idx := firstSubcommandIndex(args)
+	if idx < 0 || args[idx] != "docker" {
+		return nil
+	}
+	for i := idx + 1; i < len(args); i++ {
+		tok := args[i]
+		if tok == "--" {
+			return nil
+		}
+		if strings.HasPrefix(tok, "-") {
+			continue
+		}
+		if tok == "exec" {
+			return fmt.Errorf("unknown command %q for 'ward docker'", tok)
+		}
+		break
+	}
+	return nil
 }
 
 // rootValueFlags are root-level flags whose space-form value is the next token

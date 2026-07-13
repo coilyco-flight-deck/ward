@@ -41,7 +41,7 @@ Inventory of what `ward` ships today.
 
 ## ward-kdl
 
-- The build-time authoring layer - see [ward-kdl.md](ward-kdl.md), [ward-kdl-authoring.md](ward-kdl-authoring.md), [ward-kdl-surface.md](ward-kdl-surface.md), [ward-kdl-in-ward.md](ward-kdl-in-ward.md), and [ward-docker-exec.md](ward-docker-exec.md).
+- The build-time authoring layer - see [ward-kdl.md](ward-kdl.md), [ward-kdl-authoring.md](ward-kdl-authoring.md), [ward-kdl-surface.md](ward-kdl-surface.md), and [ward-kdl-in-ward.md](ward-kdl-in-ward.md).
 - It embeds the shipped agent role catalog from [ward-kdl.role-definitions.kdl](../.ward/ward-kdl/ward-kdl.role-definitions.kdl).
 - It accepts `first input` as exec-guard sugar for `arg0`.
 - The embedded Forgejo surface includes the raw Actions log fetch leaf, runner-token mint leaf, and PR-native edit leaf.
