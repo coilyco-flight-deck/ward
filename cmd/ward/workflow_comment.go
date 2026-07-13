@@ -268,16 +268,6 @@ func workflowCommentDetail(s string) string {
 	return strings.TrimSpace(s)
 }
 
-func workflowCommentIsBacklogOutcomeHeader(header workflowCommentHeader) bool {
-	if header.Variant == "" {
-		return false
-	}
-	if header.Legacy {
-		return !workflowCommentIsLegacyWorkflowCommentVariant(header.Variant)
-	}
-	return workflowCommentIsTerminalOutcomeVariant(header.Variant)
-}
-
 func workflowCommentIsTerminalOutcomeVariant(variant string) bool {
 	switch normalizeBacklogOutcomeStatus(variant) {
 	case "done", "submitted", "merge-ready", "blocked", "failed":

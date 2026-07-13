@@ -971,15 +971,19 @@ func backlogCommentLine(ln string) string {
 // reporting ok=false when the body carries no leading marker line.
 func backlogOutcomeOfComment(body string) (backlogOutcome, bool) {
 	header, ok := parseWorkflowCommentHeader(body)
-	if !ok || !workflowCommentIsBacklogOutcomeHeader(header) {
+	if !ok {
 		return backlogOutcome{}, false
 	}
 	status := normalizeBacklogOutcomeStatus(header.Variant)
 	o := backlogOutcome{Status: "unknown"}
-	switch status {
-	case "done", "submitted", "merge-ready", "blocked", "failed":
+	switch {
+	case workflowCommentIsTerminalOutcomeVariant(header.Variant):
 		o.Status = status
 		o.Text = header.Detail
+	case !header.Legacy || workflowCommentIsLegacyWorkflowCommentVariant(header.Variant):
+		return backlogOutcome{}, false
+	default:
+		o.Text = workflowCommentDetail(header.Raw)
 	}
 	if m := backlogOutcomeRE.FindStringSubmatch(header.Detail); m != nil {
 		o.Status = normalizeBacklogOutcomeStatus(strings.ToLower(m[1]))
