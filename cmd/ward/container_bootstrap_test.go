@@ -1053,6 +1053,60 @@ func TestSurfaceScratchDir(t *testing.T) {
 	}
 }
 
+func TestEnsureScratchAlias(t *testing.T) {
+	root := t.TempDir()
+	scratch := filepath.Join(root, "gitcache", "surface-scratch")
+	if err := os.MkdirAll(scratch, 0o755); err != nil {
+		t.Fatal(err)
+	}
+
+	if err := ensureScratchAlias(scratch, scratch); err != nil {
+		t.Fatalf("same-path alias should be a no-op: %v", err)
+	}
+
+	alias := filepath.Join(root, "scratch")
+	if err := ensureScratchAlias(scratch, alias); err != nil {
+		t.Fatalf("ensureScratchAlias: %v", err)
+	}
+	if target, err := os.Readlink(alias); err != nil || target != scratch {
+		t.Fatalf("alias = %q (%v), want symlink to %s", target, err, scratch)
+	}
+	// The issue's verification probe: a write through the alias must land.
+	if err := os.WriteFile(filepath.Join(alias, "probe"), []byte("ok"), 0o600); err != nil {
+		t.Fatalf("write through alias: %v", err)
+	}
+
+	if err := ensureScratchAlias(scratch, alias); err != nil {
+		t.Fatalf("idempotent re-run: %v", err)
+	}
+
+	other := filepath.Join(root, "other")
+	if err := os.MkdirAll(other, 0o755); err != nil {
+		t.Fatal(err)
+	}
+	stale := filepath.Join(root, "stale")
+	if err := os.Symlink(other, stale); err != nil {
+		t.Fatal(err)
+	}
+	if err := ensureScratchAlias(scratch, stale); err != nil {
+		t.Fatalf("repoint stale alias: %v", err)
+	}
+	if target, _ := os.Readlink(stale); target != scratch {
+		t.Fatalf("stale alias now %q, want %s", target, scratch)
+	}
+
+	realDir := filepath.Join(root, "realdir")
+	if err := os.MkdirAll(realDir, 0o755); err != nil {
+		t.Fatal(err)
+	}
+	if err := ensureScratchAlias(scratch, realDir); err != nil {
+		t.Fatalf("existing dir alias: %v", err)
+	}
+	if fi, err := os.Lstat(realDir); err != nil || fi.Mode()&os.ModeSymlink != 0 {
+		t.Fatalf("existing real dir at the alias should be left alone (err=%v)", err)
+	}
+}
+
 func TestMakeReadOnlyTree(t *testing.T) {
 	root := t.TempDir()
 	defer func() {
