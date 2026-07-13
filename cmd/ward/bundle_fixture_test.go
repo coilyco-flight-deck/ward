@@ -20,6 +20,8 @@ const (
 	bundleAggregatePath       = "hotel.kdl"
 	bundleAggregateForgejo    = "india.kdl"
 	bundleAggregateSpecLock   = "juliet.json"
+	bundleSinglePath          = "single.kdl"
+	bundleSingleSpecLock      = "single.json"
 )
 
 func writeBundleFixture(t *testing.T) string {
@@ -212,6 +214,93 @@ topology {
 	}
 	writeBundleFixtureFile(t, dir, bundleAggregateSpecLock, string(specLock))
 	return dir
+}
+
+func writeSingleFileBundleFixture(t *testing.T) string {
+	t.Helper()
+	dir := t.TempDir()
+
+	forgejoGuardfile, err := bakedAssets.ReadFile(opsForgejoGuardfilePath)
+	if err != nil {
+		t.Fatalf("read baked ops guardfile: %v", err)
+	}
+	specLock, err := bakedAssets.ReadFile(opsForgejoSpecLockPath)
+	if err != nil {
+		t.Fatalf("read baked ops spec lock: %v", err)
+	}
+
+	body := strings.Join([]string{
+		`
+agents {
+    schema-version 2
+    defaults {
+        agent claude
+        attribution name=example-bot email=bot@example.com
+    }
+    agent claude {
+    }
+}
+`,
+		`
+roles {
+    role engineer {
+        agent claude {
+            model claude-fable-5
+            reasoning-effort medium
+        }
+        agent codex {
+            model gpt-5.4-mini
+            reasoning-effort medium
+        }
+    }
+}
+`,
+		`
+defaults {
+    agent-reservation-ttl "3h"
+    agent-reservation-recheck-max "9s"
+    agent-reap-idle "90m"
+    agent-reap-max-cpu "7.5"
+    engineer-container-limit "17"
+    engineer-open-pr-branch-limit "8"
+    director-max-parallel "13"
+    director-limit "77"
+    director-poll-interval "45s"
+    reviewer-timeout "11m"
+    config-bundle-ttl "900"
+    container-assets-ttl "3h"
+    container-read-only-extra-repo-ttl "48h"
+    container-reap-keep "12"
+    agent-workflow default="merge-remote-main" {
+    }
+}
+`,
+		`
+repos {
+    repo-authority default=forgejo {
+        trusted-owner "coilysiren"
+        repo "coilysiren/*" forge=github
+    }
+}
+`,
+		`
+topology {
+    tailnet-network "net-x"
+    tailnet-proxy "proxy-x:9050"
+    tower-host "tower-x"
+    tower-ollama-port "19090"
+    substrate-seed "/seed-x"
+    substrate-dest "/dest-x"
+    substrate-manifest "/manifest-x"
+    substrate-ttl "42"
+}
+`,
+		strings.ReplaceAll(string(forgejoGuardfile), "forgejo.swagger.v1.json", bundleSingleSpecLock),
+	}, "\n\n")
+
+	writeBundleFixtureFile(t, dir, bundleSinglePath, body)
+	writeBundleFixtureFile(t, dir, bundleSingleSpecLock, string(specLock))
+	return filepath.Join(dir, bundleSinglePath)
 }
 
 func writeBundleFixtureFile(t *testing.T, dir, name, body string) {

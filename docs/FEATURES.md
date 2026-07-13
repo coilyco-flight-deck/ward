@@ -16,6 +16,8 @@ Inventory of what `ward` ships today.
 
 - **`ward agent`** - the guarded execution layer.
 - **`warded`** - the symlinked public face.
+- `WARD_CONFIG_REF` now accepts a local absolute or relative KDL file or
+  bundle directory in addition to git-backed bundles.
 - **Agent-proxy correlation for local engineers** - opencode engineer runs now
   route through the local agent-proxy endpoint with stable ward correlation
   headers and request ids so traces join back to ward run logs.

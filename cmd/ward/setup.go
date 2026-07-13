@@ -105,8 +105,11 @@ func setupCachePath(rawRef string) string {
 	if strings.TrimSpace(rawRef) == "" {
 		return "embedded neutral default"
 	}
+	if localPath, ok, _ := resolveLocalConfigRef(rawRef); ok {
+		return localPath
+	}
 	if dir, ok := strings.CutPrefix(rawRef, "file://"); ok {
-		return dir
+		return resolvePathFromInvokeCWD(dir)
 	}
 	cr, err := parseConfigRef(rawRef)
 	if err != nil {

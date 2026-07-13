@@ -71,3 +71,22 @@ func TestRunSetupWithFixtureRef(t *testing.T) {
 		t.Errorf("validated surfaces = %q, want %q", got, setupValidatedSurfaces)
 	}
 }
+
+func TestRunSetupWithRelativeFileRef(t *testing.T) {
+	file := writeSingleFileBundleFixture(t)
+	rel, err := filepath.Rel(resolveInvokeCWD(), file)
+	if err != nil {
+		t.Fatalf("rel(%s): %v", file, err)
+	}
+	t.Setenv(wardConfigRefEnv, rel)
+	report, err := runSetup(context.Background())
+	if err != nil {
+		t.Fatalf("runSetup with relative file ref: %v", err)
+	}
+	if !strings.Contains(report.sourceSummary, "WARD_CONFIG_REF="+rel) {
+		t.Errorf("source summary = %q, want the relative file ref", report.sourceSummary)
+	}
+	if report.cachePath != file {
+		t.Errorf("cache path = %q, want %q", report.cachePath, file)
+	}
+}

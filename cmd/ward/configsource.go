@@ -148,6 +148,24 @@ func selectConfigSource() (configSource, error) {
 	}
 	// A set-but-unresolvable ref fails loud, never a silent baked fallback
 	// (docs/config-source.md).
+	if localPath, ok, err := resolveLocalConfigRef(ref); ok {
+		if err != nil {
+			return configSource{}, fmt.Errorf("%s: bundle path %s: %w", wardConfigRefEnv, localPath, err)
+		}
+		src, err := localConfigSource(localPath, ref)
+		if err != nil {
+			return configSource{}, fmt.Errorf("%s=%q: %w", wardConfigRefEnv, ref, err)
+		}
+		return src, nil
+	}
+	src, err := remoteConfigSource(ref)
+	if err != nil {
+		return configSource{}, err
+	}
+	return src, nil
+}
+
+func remoteConfigSource(ref string) (configSource, error) {
 	dir, isFile := strings.CutPrefix(ref, "file://")
 	if !isFile {
 		// The git-ref grammar (ward#654): parse, then sync through the shared
@@ -179,6 +197,93 @@ func selectConfigSource() (configSource, error) {
 	}
 	src.auditVersion = rev
 	return src, nil
+}
+
+func resolveLocalConfigRef(rawRef string) (string, bool, error) {
+	rawRef = strings.TrimSpace(rawRef)
+	if rawRef == "" {
+		return "", false, nil
+	}
+	if dir, ok := strings.CutPrefix(rawRef, "file://"); ok {
+		return resolvePathFromInvokeCWD(dir), true, nil
+	}
+	if !looksLikeLocalConfigRef(rawRef) {
+		return "", false, nil
+	}
+	localPath := resolvePathFromInvokeCWD(rawRef)
+	st, err := os.Stat(localPath)
+	if err != nil {
+		if shouldTreatAsLocalConfigRef(rawRef) {
+			return localPath, true, err
+		}
+		return "", false, nil
+	}
+	if st.IsDir() || st.Mode().IsRegular() {
+		return localPath, true, nil
+	}
+	return localPath, true, fmt.Errorf("bundle path %s is not a file or directory", localPath)
+}
+
+func shouldTreatAsLocalConfigRef(rawRef string) bool {
+	if filepath.IsAbs(rawRef) || strings.HasPrefix(rawRef, "./") || strings.HasPrefix(rawRef, "../") {
+		return true
+	}
+	return strings.EqualFold(filepath.Ext(rawRef), ".kdl")
+}
+
+func looksLikeLocalConfigRef(rawRef string) bool {
+	if shouldTreatAsLocalConfigRef(rawRef) {
+		return true
+	}
+	_, err := os.Stat(resolvePathFromInvokeCWD(rawRef))
+	return err == nil
+}
+
+func resolvePathFromInvokeCWD(p string) string {
+	p = filepath.Clean(filepath.FromSlash(strings.TrimSpace(p)))
+	if p == "." || p == "" {
+		return resolveInvokeCWD()
+	}
+	if filepath.IsAbs(p) {
+		return p
+	}
+	cwd := resolveInvokeCWD()
+	if cwd == "" {
+		cwd = "."
+	}
+	return filepath.Clean(filepath.Join(cwd, p))
+}
+
+func localConfigSource(localPath, rawRef string) (configSource, error) {
+	st, err := os.Stat(localPath)
+	if err != nil {
+		return configSource{}, err
+	}
+	var src configSource
+	if st.IsDir() {
+		src = bundleConfigSource(localPath)
+	} else {
+		src = bundleFileConfigSource(localPath)
+	}
+	src.desc = rawRef
+	revisionRoot := localPath
+	if !st.IsDir() {
+		revisionRoot = filepath.Dir(localPath)
+	}
+	rev, err := bundleRevision(revisionRoot)
+	if err == nil {
+		src.auditVersion = rev
+	}
+	return src, nil
+}
+
+func bundleFileConfigSource(file string) configSource {
+	return configSource{
+		fsys:              os.DirFS(filepath.Dir(file)),
+		execDir:           filepath.Base(file),
+		execGuardfileGlob: bundleExecGuardfileGlob,
+		execMixedDialects: true,
+	}
 }
 
 // sourceDesc renders the selected source for error text: the raw ref plus the
