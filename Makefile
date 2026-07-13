@@ -1,4 +1,4 @@
-.PHONY: help build test vet lint lint-refs lint-workflows tidy cover install ward-kdl install-tmp lock skew sync-ops-assets sync-exec-assets sync-fleet-assets sync-topology-assets sync-defaults-assets sync-role-assets build-ward-kdl build-ward-kdl-tiers build-ward-kdl-forgejo-tiers workspace agent-roster
+.PHONY: help build test vet lint lint-refs lint-workflows tidy cover install ward-kdl install-tmp lock skew sync-ops-assets sync-exec-assets sync-fleet-assets sync-topology-assets sync-defaults-assets sync-role-assets build-ward-kdl build-ward-kdl-tiers build-ward-kdl-forgejo-tiers workspace agent-roster demo-image
 
 KDL_SPECS := forgejo.coilysiren.me/coilyco-flight-deck/cli-guard/cmd/kdl-specs
 
@@ -164,6 +164,9 @@ agent-roster: ## Regenerate docs/agent-roster.md from the code roster - the bina
 	# walks the roles agentCommand() registers and prints the committed doc body.
 	# agent_roster_test.go fails the build on drift, so re-run after touching the roster.
 	go run ./cmd/ward agent roster --markdown > docs/agent-roster.md
+
+demo-image: ## Build the public demo image that runs simple workspace + substrate demos against neutral OSS defaults.
+	docker build --tag ward-demo:dev --file docker/demo/Dockerfile .
 
 test: ## Run the unit test suite.
 	go test ./...

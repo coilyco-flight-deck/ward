@@ -76,6 +76,8 @@ Inventory of what `ward` ships today.
   [container-contract.md](container-contract.md),
   [container-lifecycle.md](container-lifecycle.md), and
   [container-substrate.md](container-substrate.md).
+- Public demo image build - `ward exec demo-image` builds a neutral OSS
+  workspace + substrate walkthrough image. See [demo-image.md](demo-image.md).
 
 ## ward-kdl
 
