@@ -21,7 +21,7 @@ Inventory of what `ward` ships today.
 - Read-only Forgejo issue-comment guard.
 - Harness install hooks for claude, codex, goose, and opencode.
 - Core tracker and forge adapters do not depend on generated `ward ops` leaves.
-- Reservation freshness in director burndown.
+- Reservation freshness in director burndown and stale prelaunch reconciliation.
 - Open-PR backpressure gate.
 - Issue-scoped director dispatch.
 - Dispatch broker version carry-through. See [agent-dispatch-broker.md](agent-dispatch-broker.md).

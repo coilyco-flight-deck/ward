@@ -11,7 +11,7 @@ This page groups the on-demand operational surfaces around a run.
 - `ward agent list` - show live engineer runs, reserved launches, and capacity when the limit is known.
 - `ward agent logs` - read one run's logs.
 - `ward agent stop` - stop one run on purpose.
-- `ward agent reap` - stop wedged engineer containers by idle policy.
+- `ward agent reap` - stop wedged engineer containers by idle policy and clear stale prelaunch reservations that never became visible.
 
 ## Shared contract
 
@@ -52,7 +52,7 @@ This page groups the on-demand operational surfaces around a run.
 
 - `list` and `logs` are usually the first stop when a run seems stuck.
 - `stop` is the manual correction path.
-- `reap` is the safety net for idle engineer containers.
+- `reap` is the safety net for idle engineer containers and stale prelaunch holds.
 - none of these surfaces should surprise a caller with a write to the target
   repo.
 

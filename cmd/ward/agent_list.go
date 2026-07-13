@@ -31,6 +31,10 @@ const (
 	agentLaunchPhaseFailed    = "failed before container start"
 )
 
+// agentLaunchConfirmationTTL is the short lease for the prelaunch state machine:
+// a reservation that never becomes visible does not get the full reservation TTL.
+func agentLaunchConfirmationTTL() time.Duration { return dispatchBrokerVisibilityTimeout }
+
 type agentListCapacity struct {
 	Count       int
 	Limit       *int
@@ -361,12 +365,24 @@ func activeReservedEngineerRow(path string, now time.Time, seen map[string]bool)
 	if ref.Owner == "" || ref.Repo == "" || ref.Number <= 0 {
 		return agentRunningEngineer{}, false
 	}
-	if !reservationFresh(res.At, now, agentReservationTTL()) {
+	phase, status, phaseOK := dispatchLaunchPhaseForReservation(ref)
+	if phaseOK && phase == agentLaunchPhaseFailed {
+		return agentRunningEngineer{}, false
+	}
+	if !reservationLaunchFresh(res.At, now) {
 		return agentRunningEngineer{}, false
 	}
 	if seen[ref.String()] || seen[strings.TrimSpace(res.Container)] {
 		return agentRunningEngineer{}, false
 	}
+	return reservedEngineerRowFromReservation(ref, res, now, phase, status, phaseOK), true
+}
+
+func reservationLaunchFresh(at, now time.Time) bool {
+	return reservationFresh(at, now, agentLaunchConfirmationTTL())
+}
+
+func reservedEngineerRowFromReservation(ref agentIssueRef, res *agentReservation, now time.Time, phase, status string, phaseOK bool) agentRunningEngineer {
 	row := agentRunningEngineer{
 		Container:  emptyDefault(strings.TrimSpace(res.Container), "(reserved)"),
 		Role:       roleEngineer,
@@ -381,14 +397,14 @@ func activeReservedEngineerRow(path string, now time.Time, seen map[string]bool)
 		Phase:      agentLaunchPhaseQueued,
 		Status:     "reserved",
 	}
-	if limit, ok := agentRoleExecutionLimit(roleEngineer); ok {
-		row.ExecutionLimit = limit
-	}
-	if phase, status, ok := dispatchLaunchPhaseForReservation(ref); ok {
+	if phaseOK {
 		row.Phase = phase
 		row.Status = status
 	}
-	return row, true
+	if limit, ok := agentRoleExecutionLimit(roleEngineer); ok {
+		row.ExecutionLimit = limit
+	}
+	return row
 }
 
 func dispatchLaunchPhaseForReservation(ref agentIssueRef) (phase, status string, ok bool) {

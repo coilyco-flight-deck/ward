@@ -30,6 +30,7 @@ type dispatchHealthJSON struct {
 	Failed           int      `json:"failed"`
 	Running          int      `json:"running"`
 	RecentDispatches int      `json:"recent_dispatches"`
+	StalePrelaunch   int      `json:"stale_prelaunch"`
 	DuplicateRefs    []string `json:"duplicate_refs,omitempty"`
 	Signals          []string `json:"signals,omitempty"`
 	Warnings         []string `json:"warnings,omitempty"`
@@ -51,6 +52,7 @@ type dispatchHealthReport struct {
 	Failed           int
 	Running          int
 	RecentDispatches int
+	StalePrelaunch   int
 	DuplicateRefs    []string
 	Warnings         []string
 	Backpressure     bool
@@ -147,9 +149,14 @@ func (r *Runner) dispatchHealthSnapshot(ctx context.Context, repos []string, max
 		report.Warnings = append(report.Warnings, firstLine(err.Error()))
 		rows = nil
 	}
+	now := time.Now().UTC()
 	scope := map[string]bool{}
 	for _, repo := range repos {
 		scope[repo] = true
+	}
+	stale, serr := r.stalePrelaunchReservations(ctx, now, scope)
+	if serr != nil {
+		report.Warnings = append(report.Warnings, firstLine(serr.Error()))
 	}
 	rows = filterRunningEngineerRows(rows, scope)
 	report.Running = len(rows)
@@ -158,6 +165,7 @@ func (r *Runner) dispatchHealthSnapshot(ctx context.Context, repos []string, max
 		dispatchHealthTallyEntry(&report, e)
 	}
 	report.RecentDispatches, report.DuplicateRefs = dispatchHealthRunningSignals(rows)
+	report.StalePrelaunch = len(stale)
 	report.Backpressure = maxParallel > 0 && report.InFlight >= maxParallel && report.Queued > 0
 	report.Runaway = maxParallel > 0 && report.RecentDispatches > maxParallel*2
 	report.Signals = dispatchHealthSignals(report)
@@ -234,6 +242,9 @@ func dispatchHealthSignals(report dispatchHealthReport) []string {
 	if report.Runaway {
 		out = append(out, "runaway")
 	}
+	if report.StalePrelaunch > 0 {
+		out = append(out, "stale-prelaunch")
+	}
 	return out
 }
 
@@ -252,6 +263,7 @@ func (r dispatchHealthReport) alertKey() string {
 		fmt.Sprintf("f=%d", r.Failed),
 		fmt.Sprintf("r=%d", r.Running),
 		fmt.Sprintf("rd=%d", r.RecentDispatches),
+		fmt.Sprintf("sp=%d", r.StalePrelaunch),
 	}, r.Signals...), "|")
 }
 
@@ -270,6 +282,7 @@ func (r dispatchHealthReport) summaryLine() string {
 		fmt.Sprintf("failed=%d", r.Failed),
 		fmt.Sprintf("running=%d", r.Running),
 		fmt.Sprintf("recent=%d", r.RecentDispatches),
+		fmt.Sprintf("stale-prelaunch=%d", r.StalePrelaunch),
 	}
 	if len(r.DuplicateRefs) > 0 {
 		parts = append(parts, "double-dispatch="+strings.Join(r.DuplicateRefs, ","))
@@ -311,6 +324,7 @@ func (r dispatchHealthReport) toJSON() dispatchHealthJSON {
 		Failed:           r.Failed,
 		Running:          r.Running,
 		RecentDispatches: r.RecentDispatches,
+		StalePrelaunch:   r.StalePrelaunch,
 		DuplicateRefs:    append([]string{}, r.DuplicateRefs...),
 		Signals:          append([]string{}, r.Signals...),
 		Warnings:         append([]string{}, r.Warnings...),
