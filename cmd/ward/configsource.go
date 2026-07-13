@@ -228,9 +228,6 @@ func shouldTreatAsLocalConfigRef(rawRef string) bool {
 	if filepath.IsAbs(rawRef) || strings.HasPrefix(rawRef, "./") || strings.HasPrefix(rawRef, "../") {
 		return true
 	}
-	if strings.ContainsAny(rawRef, "/\\") {
-		return true
-	}
 	return strings.EqualFold(filepath.Ext(rawRef), ".kdl")
 }
 
