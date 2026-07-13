@@ -323,8 +323,8 @@ func reviewGateDisabledByTemporaryDefault(role string) bool {
 	return role == "engineer"
 }
 
-// headlessReflection is the headless run's closing "how it felt" retro led by a
-// WARD-OUTCOME line; its landing phrase is workflow-aware (ward#281, ward#508).
+// headlessReflection is the headless run's closing retro led by a
+// WARDED_WORKFLOW outcome line.
 func headlessReflection(ref agentIssueRef, wf workflowMode, reviewGate bool, reviewSkip string) string {
 	outcomeStatus := workflowOutcomeStatus(wf, reviewGate)
 	workflowLine := "workflow: <mode>; review summary: <summary or skip state>"
@@ -346,15 +346,15 @@ func headlessReflection(ref agentIssueRef, wf workflowMode, reviewGate bool, rev
 	return "Finally, as your very last step - only after " + landingPhrase + " - post one hypercurt " +
 		"comment on this issue. The only visible text before the collapsed block is a single machine-readable " +
 		"status line - its very first visible line, exactly one of:\n" +
-		"  `" + wardOutcomeMarker + " " + outcomeStatus + "`\n" +
-		"  `" + wardOutcomeMarker + " blocked 🛑`\n" +
-		"  `" + wardOutcomeMarker + " failed ❌`\n" +
+		"  `" + workflowOutcomeVisible(outcomeStatus) + "`\n" +
+		"  `" + workflowOutcomeVisible("blocked") + "`\n" +
+		"  `" + workflowOutcomeVisible("failed") + "`\n" +
 		"Put every other word inside one collapsed `<details><summary>details</summary>` block: the review " +
 		"summary or skip state, the workflow line (`" + workflowLine + "`), " +
 		"the short candid retrospective on how the implementation \"felt\", confidence, surprises, and follow-ups. Do not leave " +
 		"any visible prose outside that first status line. " + reviewLine + " " + headlessWorkflowFailureCommentClause(ref, wf) + " A supervising director loop " +
 		"(ward agent director) reads only that first line to classify the run, so for a normal run that completed " +
-		"its workflow it is `" + wardOutcomeMarker + " " + outcomeStatus + "`. Reserve blocked/failed for a run that genuinely could not land."
+		"its workflow it is `" + workflowOutcomeVisible(outcomeStatus) + "`. Reserve blocked/failed for a run that genuinely could not land."
 }
 
 func headlessWorkflowFailureCommentClause(ref agentIssueRef, wf workflowMode) string {
@@ -402,7 +402,7 @@ func reviewGateClause(ref agentIssueRef, wf workflowMode) string {
 			"line on stdout:\n"+
 			"  - `WARD-REVIEW: pass ...`  -> you are cleared to land. Proceed.\n"+
 			"  - `WARD-REVIEW: block ...` -> do NOT %s and do NOT merge. Post one hypercurt conclusion comment "+
-			"starting with `WARD-OUTCOME: blocked 🛑` and put the reviewer verdicts, reasons, and review summary inside its collapsed details block. The gate is fail-closed - a "+
+			"starting with `WARDED_WORKFLOW: blocked 🛑` and put the reviewer verdicts, reasons, and review summary inside its collapsed details block. The gate is fail-closed - a "+
 			"reviewer error or timeout is a block, not a pass.\n"+
 			"  - `WARD-REVIEW: advisory ...` -> only if the gate had no runnable reviewer at all. Treat that as a "+
 			"block, not a pass, and write the skip/availability summary into the conclusion comment so the issue shows "+
@@ -410,7 +410,7 @@ func reviewGateClause(ref agentIssueRef, wf workflowMode) string {
 			"%s\n"+
 			"The gate's exit code mirrors the verdict (non-zero on block), so a shell `&&` also enforces it. Do "+
 			"not skip it, and do not land on a block. If the review was intentionally skipped via `--skip-review`, "+
-			"`--skip-preflight`, or config, the final `WARD-OUTCOME` comment must say so explicitly.",
+			"`--skip-preflight`, or config, the final `WARDED_WORKFLOW` comment must say so explicitly.",
 		landing, landing, workflowTail)
 }
 
@@ -1882,7 +1882,7 @@ func preflightNoGoComment(mode containerMode, surface, reason, read string) stri
 		reason = "(no reason given)"
 	}
 	var b strings.Builder
-	visible := "WARD-STATUS: pre-flight NO-GO 🛑"
+	visible := workflowStatusVisible("pre-flight-no-go", "🛑")
 	writef(&b, "`%s` ran a pre-flight feasibility read on this issue before "+
 		"detaching a fire-and-forget run, and the agent judged it **NO-GO** - it should not be carried "+
 		"unattended until a human weighs in.\n\n", agentCmdline(mode, surface))
@@ -1929,7 +1929,7 @@ func preflightWrongRepoComment(mode containerMode, surface string, filed agentIs
 		reason = "(no reason given)"
 	}
 	var b strings.Builder
-	visible := "WARD-STATUS: pre-flight WRONG-REPO 🎯"
+	visible := workflowStatusVisible("pre-flight-wrong-repo", "🎯")
 	writef(&b, "`%s` ran a pre-flight read on this issue and judged the work "+
 		"belongs in **%s**, not here. Rather than burn cycles searching, it blind-fired a fresh "+
 		"issue there:\n\n", agentCmdline(mode, surface), filed.repoSlug())

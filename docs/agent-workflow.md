@@ -16,6 +16,10 @@ Legacy aliases `direct-main`, `direct-to-main`, `pull-requests`,
 `pull-requests-and-merge`, and `patch-only` are still accepted with warnings.
 `pr` is not accepted.
 
+The machine-readable issue-comment prefix for ward-authored workflow updates is
+`WARDED_WORKFLOW`. Legacy `WARD-*` issue-comment headers still parse on old
+threads, but new comments emit only `WARDED_WORKFLOW`.
+
 ## Review
 
 The review gate runs before a PR is opened or merged when enabled. It is a

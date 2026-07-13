@@ -653,7 +653,7 @@ func dispatchLaunchFailureCommentBody(mode containerMode, container string, req 
 			"Retry: choose another harness if the first one is down, or rerun with `--override-reservation` if the reservation is stale.",
 		mode, attempted, container, logDetail, firstLine(launchErr.Error()))
 	return agentReservationReleaseMarker + "\n" + agentNeedsRedispatchMarker + "\n" +
-		collapsedIssueComment("WARD-DISPATCH: failed ❌", "failure details", detail)
+		collapsedIssueComment(workflowDispatchFailedVisible(), "failure details", detail)
 }
 
 // dispatchLaunchDeferredCommentBody supersedes the stale reservation with a visible
@@ -675,7 +675,7 @@ func dispatchLaunchDeferredCommentBody(mode containerMode, container string, req
 			"Retry: the issue stays queued and the director will try again when a slot opens.",
 		mode, attempted, container, logDetail, firstLine(launchErr.Error()))
 	return agentReservationReleaseMarker + "\n" + agentNeedsRedispatchMarker + "\n" +
-		collapsedIssueComment("WARD-DISPATCH: deferred ⏸", "deferred details", detail)
+		collapsedIssueComment(workflowDispatchDeferredVisible(), "deferred details", detail)
 }
 
 // dispatchLaunchReservationConflictCommentBody renders the collision deferral: the
@@ -694,11 +694,11 @@ func dispatchLaunchReservationConflictCommentBody(mode containerMode, req dispat
 			"Collision: `%s`\n\n"+
 			"Nothing new is running for this dispatch, and the live run's hold is untouched. "+
 			"Retry: a `ward agent director` heartbeat sweeps this marker and redispatches once the hold "+
-			"releases - the run's terminal `WARD-OUTCOME` supersedes its reservation (ward#1149). A manual "+
+			"releases - the run's terminal `WARDED_WORKFLOW` outcome supersedes its reservation (ward#1149). A manual "+
 			"retry can pass `--override-reservation` if the collision is genuinely stale.",
 		mode, attempted, logDetail, firstLine(launchErr.Error()))
 	return agentNeedsRedispatchMarker + "\n" +
-		collapsedIssueComment("WARD-DISPATCH: deferred ⏸", "reservation-collision details", detail)
+		collapsedIssueComment(workflowDispatchDeferredVisible(), "reservation-collision details", detail)
 }
 
 // dispatchLaunchReleaseAssetsDeferredCommentBody renders the deferred comment.
@@ -720,7 +720,7 @@ func dispatchLaunchReleaseAssetsDeferredCommentBody(mode containerMode, containe
 			"Retry: the issue stays queued until the release publishes the missing platform assets, then the director can try again.",
 		mode, attempted, container, logDetail, firstLine(launchErr.Error()))
 	return agentReservationReleaseMarker + "\n" + agentNeedsRedispatchMarker + "\n" +
-		collapsedIssueComment("WARD-DISPATCH: deferred ⏸", "release-assets-not-ready details", detail)
+		collapsedIssueComment(workflowDispatchDeferredVisible(), "release-assets-not-ready details", detail)
 }
 
 // withBrokerForwardingDisabled temporarily clears the read-only surface markers so

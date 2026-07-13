@@ -1319,7 +1319,7 @@ func TestCommentFailedDispatch(t *testing.T) {
 	for _, want := range []string{
 		agentReservationReleaseMarker,
 		agentNeedsRedispatchMarker,
-		"WARD-DISPATCH: failed ❌",
+		"WARDED_WORKFLOW: dispatch-failed",
 		"Attempted harness: `codex`",
 		"Attempted run: `ward agent engineer coilyco-flight-deck/ward#689 --harness codex --skip-preflight`",
 		"Container: `engineer-codex-ward-689`",
@@ -1360,12 +1360,12 @@ func TestCommentReservationConflictDispatch(t *testing.T) {
 	}
 	for _, want := range []string{
 		agentNeedsRedispatchMarker,
-		"WARD-DISPATCH: deferred ⏸",
+		"WARDED_WORKFLOW: dispatch-deferred",
 		"reservation-collision details",
 		"Attempted harness: `codex`",
 		"Attempted run: `ward agent engineer coilyco-flight-deck/ward#927 --harness codex`",
 		"Host log: `/tmp/ward/dispatch.log`",
-		"terminal `WARD-OUTCOME` supersedes its reservation (ward#1149)",
+		"terminal `WARDED_WORKFLOW` outcome supersedes its reservation (ward#1149)",
 	} {
 		if !strings.Contains(body, want) {
 			t.Errorf("conflict comment missing %q\n%s", want, body)
@@ -1397,7 +1397,7 @@ func TestCommentDeferredDispatch(t *testing.T) {
 	for _, want := range []string{
 		agentReservationReleaseMarker,
 		agentNeedsRedispatchMarker,
-		"WARD-DISPATCH: deferred ⏸",
+		"WARDED_WORKFLOW: dispatch-deferred",
 		"Attempted harness: `codex`",
 		"Attempted run: `ward agent engineer coilyco-flight-deck/ward#902 --harness codex --skip-preflight`",
 		"Container: `engineer-codex-ward-902`",
@@ -1468,7 +1468,7 @@ func TestCommentDeferredReleaseAssetsDispatch(t *testing.T) {
 	for _, want := range []string{
 		agentReservationReleaseMarker,
 		agentNeedsRedispatchMarker,
-		"WARD-DISPATCH: deferred ⏸",
+		"WARDED_WORKFLOW: dispatch-deferred",
 		"release-assets-not-ready details",
 		"Attempted harness: `codex`",
 		"Attempted run: `ward agent engineer coilyco-flight-deck/ward#903 --harness codex --skip-preflight`",

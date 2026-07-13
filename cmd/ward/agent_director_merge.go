@@ -36,7 +36,7 @@ func agentDirectorMergeCommand() *cli.Command {
 		Name:        "merge",
 		Usage:       "Merge eligible ward-owned PRs whose issue thread authorizes director merge.",
 		ArgsUsage:   "(scope via --repo; default: the cwd git origin)",
-		Description: `merge scans open pull requests in scope and merges only the ones the ward issue thread marks as director-merge authorized: the linked issue ended with WARD-OUTCOME: merge-ready, the final comment says workflow: pull-request-and-merge, the review summary is passed, the PR is mergeable against the current base branch, and it is not salvage/draft noise. The director records the final done outcome only after the merge lands. pull-request still needs a human. See docs/agent-director.md and docs/agent-workflow.md.`,
+		Description: `merge scans open pull requests in scope and merges only the ones the ward issue thread marks as director-merge authorized: the linked issue ended with WARDED_WORKFLOW: merge-ready, the final comment says workflow: pull-request-and-merge, the review summary is passed, the PR is mergeable against the current base branch, and it is not salvage/draft noise. The director records the final done outcome only after the merge lands. pull-request still needs a human. See docs/agent-director.md and docs/agent-workflow.md.`,
 		Flags:       directorMergeFlags(),
 		Action: func(ctx context.Context, c *cli.Command) error {
 			r := newRunner()
@@ -138,13 +138,13 @@ func directorMergeConflictReasonFromComments(pr directorPullRequest, comments []
 	latest, ok := latestBacklogOutcomeComment(comments)
 	if !ok {
 		if pr.UpdatedAt.IsZero() {
-			return "PR is not mergeable against the current base branch; active worker branch with no WARD-OUTCOME yet"
+			return "PR is not mergeable against the current base branch; active worker branch with no WARDED_WORKFLOW yet"
 		}
 		age := now.Sub(pr.UpdatedAt)
 		if age >= directorMergeConflictStaleAfter {
-			return fmt.Sprintf("PR is not mergeable against the current base branch; stale worker branch with no WARD-OUTCOME yet (updated %s ago)", humanDuration(age))
+			return fmt.Sprintf("PR is not mergeable against the current base branch; stale worker branch with no WARDED_WORKFLOW yet (updated %s ago)", humanDuration(age))
 		}
-		return fmt.Sprintf("PR is not mergeable against the current base branch; active worker branch with no WARD-OUTCOME yet (updated %s ago)", humanDuration(age))
+		return fmt.Sprintf("PR is not mergeable against the current base branch; active worker branch with no WARDED_WORKFLOW yet (updated %s ago)", humanDuration(age))
 	}
 	meta := parseDirectorRunMeta(latest.Body)
 	switch strings.ToLower(strings.TrimSpace(meta.Outcome.Status)) {
@@ -159,7 +159,7 @@ func directorMergeConflictReasonFromComments(pr directorPullRequest, comments []
 	case "merge-ready":
 		return "PR is not mergeable against the current base branch; linked issue is merge-ready but the branch still conflicts with main"
 	default:
-		return fmt.Sprintf("PR is not mergeable against the current base branch; linked issue ended with WARD-OUTCOME: %s", meta.Outcome.Status)
+		return fmt.Sprintf("PR is not mergeable against the current base branch; linked issue ended with %s", workflowOutcomeVisible(meta.Outcome.Status))
 	}
 }
 
@@ -191,7 +191,7 @@ func directorMergeIssueMeta(ctx context.Context, owner, repo string, pr director
 	}
 	latest, ok := latestBacklogOutcomeComment(comments)
 	if !ok {
-		return directorRunMeta{}, "linked issue never reached a WARD-OUTCOME comment", false
+		return directorRunMeta{}, "linked issue never reached a WARDED_WORKFLOW comment", false
 	}
 	meta = parseDirectorRunMeta(latest.Body)
 	meta.CommentedBy = latest.User.Login
@@ -202,7 +202,7 @@ func directorMergeIssueMeta(ctx context.Context, owner, repo string, pr director
 	meta.Status = status.Status
 	qa, ok := latestQAVerdictComment(comments, meta.IssueRef, meta.PRRef, meta.PRHeadSHA)
 	if !ok {
-		return meta, "linked issue does not have a passing WARD-QA verdict for the current PR head SHA", false
+		return meta, "linked issue does not have a passing WARDED_WORKFLOW QA verdict for the current PR head SHA", false
 	}
 	meta.QA = qa
 	return meta, "", true
@@ -376,9 +376,9 @@ func directorMergeDecision(pr Issue, linked int, meta directorRunMeta) (ok bool,
 	status := strings.ToLower(strings.TrimSpace(meta.Outcome.Status))
 	if status != "merge-ready" {
 		if !meta.HasOutcome {
-			return false, "linked issue did not finish with a WARD-OUTCOME comment", linked, meta
+			return false, "linked issue did not finish with a WARDED_WORKFLOW outcome comment", linked, meta
 		}
-		return false, "linked issue did not finish with WARD-OUTCOME: merge-ready", linked, meta
+		return false, "linked issue did not finish with " + workflowOutcomeVisible("merge-ready"), linked, meta
 	}
 	wf := strings.TrimSpace(meta.Workflow)
 	if wf != string(workflowPullRequestAndMerge) {
@@ -438,7 +438,7 @@ func directorMergeDoneComment(prNumber int, meta directorRunMeta) string {
 		status = "<status unavailable>"
 	}
 	return fmt.Sprintf(
-		"WARD-OUTCOME: done ✅\n\n"+
+		"WARDED_WORKFLOW: done ✅\n\n"+
 			"<details><summary>details</summary>\n\n"+
 			"workflow: %s; review summary: %s\n\n"+
 			"checked head sha: %s\n"+

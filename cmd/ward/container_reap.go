@@ -813,8 +813,8 @@ func (r *Runner) releaseReservationIfUnstarted(ctx context.Context, env reapEnv)
 	fmt.Fprintf(os.Stderr, "ward container reap: released issue reservation on #%d (container exited pre-launch, did no work)\n", env.Issue)
 }
 
-// releaseReservationIfTerminalOutcome retracts the remote reservation when the run
-// ends: the terminal WARD-OUTCOME supersedes the hold, so redispatch needs no override.
+// releaseReservationIfTerminalOutcome retracts the remote reservation on run end.
+// The canonical WARDED_WORKFLOW outcome supersedes the hold and needs no override.
 func (r *Runner) releaseReservationIfTerminalOutcome(ctx context.Context, env reapEnv) {
 	if !env.Launched || env.Issue == 0 {
 		return
@@ -887,9 +887,9 @@ func terminalReservationOutcome(status string) bool {
 }
 
 func terminalReservationReleaseCommentBody(mode containerMode, container string, outcome backlogOutcome) string {
-	visible := "WARD-RESERVATION: released 🛑"
+	visible := workflowReservationReleasedVisible()
 	var b strings.Builder
-	fmt.Fprintf(&b, "Run finished with `%s %s`.\n\n", wardOutcomeMarker, outcome.Status)
+	fmt.Fprintf(&b, "Run finished with `%s`.\n\n", workflowOutcomeVisible(outcome.Status))
 	fmt.Fprintf(&b, "`ward container reap` released container `%s` (`--harness %s`): the terminal outcome supersedes the reservation, so a later redispatch no longer needs `--override-reservation`.\n", container, mode)
 	if summary := strings.TrimSpace(outcome.Text); summary != "" {
 		fmt.Fprintf(&b, "\n**Outcome summary:** %s\n", summary)
@@ -898,7 +898,7 @@ func terminalReservationReleaseCommentBody(mode containerMode, container string,
 }
 
 // commentLaunchedNoOutcomeIfNeeded marks a launched run failed when it exits with
-// no WARD-OUTCOME comment after it started and nothing residual to salvage.
+// no WARDED_WORKFLOW comment after it started and nothing residual to salvage.
 func (r *Runner) commentLaunchedNoOutcomeIfNeeded(ctx context.Context, env reapEnv) {
 	if !env.Launched || env.Issue == 0 {
 		return
@@ -915,7 +915,7 @@ func (r *Runner) commentLaunchedNoOutcomeIfNeeded(ctx context.Context, env reapE
 }
 
 // postLaunchedNoOutcomeComment marks a launched run failed when it exits with no
-// WARD-OUTCOME comment after it started and nothing residual to salvage.
+// WARDED_WORKFLOW comment after it started and nothing residual to salvage.
 func postLaunchedNoOutcomeComment(ctx context.Context, fc Tracker, env reapEnv, afterAt time.Time) error {
 	comments, err := fc.listIssueComments(ctx, env.Owner, env.Name, env.Issue)
 	if err != nil {
@@ -934,7 +934,7 @@ func postLaunchedNoOutcomeComment(ctx context.Context, fc Tracker, env reapEnv, 
 	return nil
 }
 
-// latestBacklogOutcomeCommentAfter returns the most recent WARD-OUTCOME comment at
+// latestBacklogOutcomeCommentAfter returns the most recent WARDED_WORKFLOW comment at
 // or after afterAt, if any.
 func latestBacklogOutcomeCommentAfter(comments []issueComment, afterAt time.Time) (issueComment, bool) {
 	var latest issueComment
@@ -955,11 +955,11 @@ func latestBacklogOutcomeCommentAfter(comments []issueComment, afterAt time.Time
 }
 
 // launchedNoOutcomeCommentBody renders the failure comment for a launched run that
-// exited without any WARD-OUTCOME and without residual work to reap.
+// exited without any WARDED_WORKFLOW and without residual work to reap.
 func launchedNoOutcomeCommentBody(env reapEnv) string {
 	var b strings.Builder
-	visible := "WARD-OUTCOME: failed ❌"
-	fmt.Fprintf(&b, "`ward container reap` found no residual work to salvage, but this launched run exited without a `WARD-OUTCOME` comment.\n\n")
+	visible := workflowOutcomeVisible("failed")
+	fmt.Fprintf(&b, "`ward container reap` found no residual work to salvage, but this launched run exited without a `WARDED_WORKFLOW` comment.\n\n")
 	fmt.Fprintf(&b, "- **Container:** `%s`\n", env.Container)
 	fmt.Fprintf(&b, "- **Workflow:** `%s`\n", env.Workflow.orDefault())
 	fmt.Fprintf(&b, "- **Recovery:** inspect the container log, fix the engineer seed or launch mode, and redispatch.\n")

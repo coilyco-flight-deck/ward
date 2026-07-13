@@ -296,7 +296,7 @@ func TestDispatchLaunchPhaseFromLog(t *testing.T) {
 		},
 		{
 			name: "failed",
-			body: "ward dispatch broker: director requested `ward agent engineer coilyco-flight-deck/ward#1 --harness codex`\nWARD-DISPATCH: failed ❌\n",
+			body: "ward dispatch broker: director requested `ward agent engineer coilyco-flight-deck/ward#1 --harness codex`\nWARDED_WORKFLOW: dispatch-failed\n",
 			want: agentLaunchPhaseFailed,
 		},
 	}

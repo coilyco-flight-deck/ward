@@ -60,7 +60,7 @@ A PR names its own mode: the `ward.workflow:` marker the engineer stamps into a
   the Forgejo API with the session's own credential.
 
 The `ward agent director merge` composite keeps its stricter thread-driven
-policy (WARD-OUTCOME, review, QA verdict); `ward agent pr merge` is the
+policy (`WARDED_WORKFLOW`, review, QA verdict); `ward agent pr merge` is the
 operator-driven single-PR tool under the same status and permission gates.
 
 ## See also

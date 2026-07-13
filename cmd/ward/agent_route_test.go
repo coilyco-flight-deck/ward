@@ -203,7 +203,7 @@ func TestRouteChildBody(t *testing.T) {
 func TestRouteRoutedComment(t *testing.T) {
 	child := agentIssueRef{Owner: "coilyco-flight-deck", Repo: "ward", Number: 200}
 	got := routeRoutedComment(modeClaude, child, "add the flag", "It's a CLI change.\nREPO: coilyco-flight-deck/ward - add the flag")
-	if visible := visibleLinesBeforeDetails(got); visible != "WARD-STATUS: routed 🧭" {
+	if visible := visibleLinesBeforeDetails(got); visible != "WARDED_WORKFLOW: routed 🧭" {
 		t.Fatalf("routeRoutedComment visible line = %q\n%s", visible, got)
 	}
 	for _, want := range []string{
@@ -228,7 +228,7 @@ func TestRouteRoutedComment(t *testing.T) {
 
 func TestRouteUnclearComment(t *testing.T) {
 	got := routeUnclearComment(modeClaude, "ward and cli-guard both fit", "Could be two repos.\nUNCLEAR: ward and cli-guard both fit")
-	if visible := visibleLinesBeforeDetails(got); visible != "WARD-STATUS: route unclear 🛑" {
+	if visible := visibleLinesBeforeDetails(got); visible != "WARDED_WORKFLOW: route-unclear 🛑" {
 		t.Fatalf("routeUnclearComment visible line = %q\n%s", visible, got)
 	}
 	for _, want := range []string{

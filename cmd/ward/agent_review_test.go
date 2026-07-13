@@ -103,7 +103,7 @@ func TestReviewGateClauseInSeed(t *testing.T) {
 	if !strings.Contains(pr, "watching its CI/checks") {
 		t.Errorf("pull-request seed should tell PR workflows to keep watching checks after opening the PR")
 	}
-	if !strings.Contains(pr, "WARD-OUTCOME: submitted") {
+	if !strings.Contains(pr, "WARDED_WORKFLOW: submitted") {
 		t.Errorf("pull-request seed should end with submitted, not done\n got: %s", pr)
 	}
 
@@ -118,7 +118,7 @@ func TestReviewGateClauseInSeed(t *testing.T) {
 		t.Errorf("review gate clause must tell pull-request runs to keep watching PR CI\n got: %s", pr)
 	}
 	merge := agentSeedPromptWorkflow(ref, "t", "b", "", true, nil, workflowPullRequestAndMerge, true, "")
-	if !strings.Contains(merge, "WARD-OUTCOME: merge-ready") {
+	if !strings.Contains(merge, "WARDED_WORKFLOW: merge-ready") {
 		t.Errorf("pull-request-and-merge seed should end with merge-ready, not done\n got: %s", merge)
 	}
 	if !strings.Contains(merge, "merge-ready") {
@@ -459,8 +459,8 @@ func TestReviewConclusionCommentBodyIncludesSummary(t *testing.T) {
 					Family: "codex", Verdict: reviewpanel.Pass, Reason: "looks good", Confidence: 0.91,
 				}},
 			},
-			visible: "WARD-OUTCOME: done ✅",
-			want:    []string{"WARD-OUTCOME: done", "review summary: passed: looks good"},
+			visible: "WARDED_WORKFLOW: review-pass",
+			want:    []string{"WARDED_WORKFLOW: review-pass", "review summary: passed: looks good"},
 		},
 		{
 			name: "block",
@@ -472,8 +472,8 @@ func TestReviewConclusionCommentBodyIncludesSummary(t *testing.T) {
 					Family: "codex", Verdict: reviewpanel.Block, Reason: "diff misses baseline", Confidence: 0.91,
 				}},
 			},
-			visible: "WARD-OUTCOME: blocked 🛑",
-			want:    []string{"WARD-OUTCOME: blocked", "review summary: blocked: no runnable reviewer", "codex: diff misses baseline"},
+			visible: "WARDED_WORKFLOW: review-block",
+			want:    []string{"WARDED_WORKFLOW: review-block", "review summary: blocked: no runnable reviewer", "codex: diff misses baseline"},
 		},
 		{
 			name: "skipped",
@@ -482,8 +482,8 @@ func TestReviewConclusionCommentBodyIncludesSummary(t *testing.T) {
 				Note:   "review gate skipped by --skip-review / --no-review-gate",
 				Worker: "codex",
 			},
-			visible: "WARD-OUTCOME: done ✅",
-			want:    []string{"WARD-OUTCOME: done", "review summary: skipped: review gate skipped by --skip-review / --no-review-gate"},
+			visible: "WARDED_WORKFLOW: review-pass",
+			want:    []string{"WARDED_WORKFLOW: review-pass", "review summary: skipped: review gate skipped by --skip-review / --no-review-gate"},
 		},
 	} {
 		t.Run(tc.name, func(t *testing.T) {

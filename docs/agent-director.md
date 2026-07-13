@@ -31,6 +31,10 @@ The director surface is the read-only control plane for runs.
   should stay scoped to a single decision payload.
 - sweep the merge-ready branch once CI is green.
 
+The director's machine-readable issue comments use `WARDED_WORKFLOW` as the
+canonical first line. Legacy `WARD-*` headers are still parsed on old threads,
+but new comments start with `WARDED_WORKFLOW`.
+
 The director surface is intentionally narrower than the engineer path. It is
 for supervision and landing, not for implementation.
 
