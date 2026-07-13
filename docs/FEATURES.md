@@ -22,6 +22,7 @@ Inventory of what `ward` ships today.
 - Harness install hooks for claude, codex, goose, and opencode.
 - Core tracker and forge adapters do not depend on generated `ward ops` leaves.
 - Launch-intent vs running-engineer split in list, dispatch-health, reap, and director burndown.
+- Issue-thread-backed reservations, with local sentinels and Docker labels cached.
 - Open-PR backpressure gate.
 - Issue-scoped director dispatch.
 - Dispatch broker version carry-through. See [agent-dispatch-broker.md](agent-dispatch-broker.md).

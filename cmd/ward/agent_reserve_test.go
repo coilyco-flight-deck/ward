@@ -126,65 +126,28 @@ func TestReadAgentReservationCorrupt(t *testing.T) {
 	}
 }
 
-// acquireLocalReservation must refuse a fresh hold (whose container we can't
-// disprove is running) and then take it over once --force is set.
-func TestAcquireLocalReservationConflictAndForce(t *testing.T) {
-	t.Setenv("HOME", t.TempDir())
-	r := &Runner{}
-	ref := agentIssueRef{Owner: "coilyco-flight-deck", Repo: "ward", Number: 142}
-	now := time.Date(2026, 6, 18, 12, 0, 0, 0, time.UTC)
-	path, _ := agentReservationPath(ref)
-
-	// A fresh prior hold with an empty container name (liveness unknown -> treated
-	// as still held) must block.
-	if err := writeAgentReservation(path, agentReservation{
-		Owner: ref.Owner, Repo: ref.Repo, Number: ref.Number, At: now.Add(-time.Minute),
-	}); err != nil {
-		t.Fatalf("seed prior hold: %v", err)
-	}
-	if _, err := r.acquireLocalReservation(context.Background(), "lbl", modeClaude, ref, "c1", "issue-142", now, false); err == nil {
-		t.Fatal("acquireLocalReservation: want conflict error on a fresh hold, got nil")
-	}
-	// --force reclaims it.
-	release, err := r.acquireLocalReservation(context.Background(), "lbl", modeClaude, ref, "c1", "issue-142", now, true)
-	if err != nil {
-		t.Fatalf("acquireLocalReservation --force: %v", err)
-	}
-	if got, ok, _ := readAgentReservation(path); !ok || got.Container != "c1" {
-		t.Errorf("after force the sentinel should be ours; got %+v ok=%v", got, ok)
-	}
-	release()
-	if _, ok, _ := readAgentReservation(path); ok {
-		t.Error("release should delete the sentinel")
-	}
-}
-
-// A stale prior hold (older than the TTL) is reclaimed without --force and
-// without consulting docker liveness.
-func TestAcquireLocalReservationStaleReclaim(t *testing.T) {
+// acquireLocalReservation writes the cache sentinel and release removes it. The
+// issue thread owns the blocking decision now, not the local file.
+func TestAcquireLocalReservationWritesCache(t *testing.T) {
 	t.Setenv("HOME", t.TempDir())
 	r := &Runner{}
 	ref := agentIssueRef{Owner: "coilyco-flight-deck", Repo: "ward", Number: 9}
 	now := time.Date(2026, 6, 18, 12, 0, 0, 0, time.UTC)
 	path, _ := agentReservationPath(ref)
-	if err := writeAgentReservation(path, agentReservation{
-		Owner: ref.Owner, Repo: ref.Repo, Number: ref.Number,
-		Container: "long-dead", At: now.Add(-3 * agentReservationTTL()),
-	}); err != nil {
-		t.Fatalf("seed stale hold: %v", err)
-	}
 	release, err := r.acquireLocalReservation(context.Background(), "lbl", modeClaude, ref, "fresh", "issue-9", now, false)
 	if err != nil {
-		t.Fatalf("acquireLocalReservation over stale: %v", err)
+		t.Fatalf("acquireLocalReservation: %v", err)
 	}
 	if got, _, _ := readAgentReservation(path); got == nil || got.Container != "fresh" {
-		t.Errorf("stale hold should be reclaimed; got %+v", got)
+		t.Errorf("acquireLocalReservation should write the cache; got %+v", got)
 	}
 	release()
+	if _, ok, _ := readAgentReservation(path); ok {
+		t.Fatal("release should delete the sentinel")
+	}
 }
 
-// precheckReservation refuses a fresh remote/local hold without writing a sentinel
-// (so the hold stays untaken) and --force bypasses both (ward#184 ordering).
+// precheckReservation refuses a fresh issue-thread hold and ignores stale cache.
 func TestPrecheckReservation(t *testing.T) {
 	t.Setenv("HOME", t.TempDir())
 	r := &Runner{}
@@ -222,16 +185,18 @@ func TestPrecheckReservation(t *testing.T) {
 		t.Fatalf("precheckReservation on a clean thread: want nil, got %v", err)
 	}
 
-	// A fresh local sentinel (empty container -> liveness unknown -> held) refuses
-	// even with an empty comment thread.
+	// A stale local sentinel does not block when the issue thread is clean.
 	if err := writeAgentReservation(path, agentReservation{
-		Owner: ref.Owner, Repo: ref.Repo, Number: ref.Number, At: now.Add(-time.Minute),
+		Owner: ref.Owner, Repo: ref.Repo, Number: ref.Number, At: now.Add(-3 * agentReservationTTL()),
+		Container: "long-dead",
 	}); err != nil {
-		t.Fatalf("seed local hold: %v", err)
+		t.Fatalf("seed stale cache: %v", err)
 	}
-	if err := r.precheckReservation(context.Background(), "lbl", clean, false); err == nil ||
-		!strings.Contains(err.Error(), "reserved locally") {
-		t.Fatalf("precheckReservation: want a local-reservation refusal, got %v", err)
+	if err := r.precheckReservation(context.Background(), "lbl", clean, false); err != nil {
+		t.Fatalf("precheckReservation on stale cache: want nil, got %v", err)
+	}
+	if _, ok, _ := readAgentReservation(path); ok {
+		t.Fatal("precheckReservation should clear stale cache")
 	}
 }
 
@@ -678,7 +643,7 @@ func dockerAbsentStub(t *testing.T) string {
 	return stub
 }
 
-func TestAcquireLocalReservationRefusesRunningWorkerWithoutSentinel(t *testing.T) {
+func TestAcquireLocalReservationDoesNotBlockOnRunningWorkerCache(t *testing.T) {
 	t.Setenv("HOME", t.TempDir())
 	ref := agentIssueRef{Owner: "coilyco-flight-deck", Repo: "ward", Number: 788}
 	container := "engineer-claude-ward-788"
@@ -690,14 +655,14 @@ func TestAcquireLocalReservationRefusesRunningWorkerWithoutSentinel(t *testing.T
 	if _, err := os.Stat(path); !os.IsNotExist(err) {
 		t.Fatalf("sentinel unexpectedly existed before the acquire: %v", err)
 	}
-	if _, err := r.acquireLocalReservation(context.Background(), "lbl", modeClaude, ref, container, "issue-788", time.Now().UTC(), false); err == nil {
-		t.Fatal("acquireLocalReservation accepted a live worker with no sentinel")
-	} else if !strings.Contains(err.Error(), "already has a running worker container") {
-		t.Fatalf("acquireLocalReservation error = %v, want a live-worker refusal", err)
+	release, err := r.acquireLocalReservation(context.Background(), "lbl", modeClaude, ref, container, "issue-788", time.Now().UTC(), false)
+	if err != nil {
+		t.Fatalf("acquireLocalReservation: %v", err)
 	}
-	if _, err := os.Stat(path); !os.IsNotExist(err) {
-		t.Fatalf("refusal wrote a sentinel unexpectedly: %v", err)
+	if got, ok, _ := readAgentReservation(path); !ok || got.Container != container {
+		t.Fatalf("acquireLocalReservation should write the cache, got %+v ok=%v", got, ok)
 	}
+	release()
 }
 
 func TestAcquireLocalReservationReleaseLeavesForeignSentinel(t *testing.T) {

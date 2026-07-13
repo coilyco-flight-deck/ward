@@ -21,6 +21,8 @@ This page groups the on-demand operational surfaces around a run.
   Forgejo/GitHub/GitLab/Shortcut adapters, not generated `ward ops` leaves.
 - `list`, `logs`, `stop`, and `reap` all work against a specific run or
   container identity.
+- `dispatch-health` and `list` treat the issue thread as the reservation source of
+  truth. Docker and `~/.ward` are cache inputs, not authority.
 
 ## What to remember
 
@@ -53,6 +55,7 @@ This page groups the on-demand operational surfaces around a run.
 - `list` and `logs` are usually the first stop when a run seems stuck.
 - `stop` is the manual correction path.
 - `reap` is the safety net for idle engineer containers and stale launch intents.
+- `reap` clears cache state, but the issue thread remains the canonical reservation record.
 - none of these surfaces should surprise a caller with a write to the target
   repo.
 

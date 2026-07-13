@@ -1192,7 +1192,7 @@ func backlogHasReservationComment(comments []issueComment) bool {
 }
 
 // backlogReservationState classifies reservation-only holds for the director.
-// Fresh holds wait for the reaper/TTL. Stale holds are safe to redispatch.
+// The issue thread is canonical. Fresh holds wait for the reaper/TTL, stale re-enters.
 func backlogReservationState(comments []issueComment, now time.Time, ttl time.Duration) string {
 	if _, held := freshReservationComment(comments, now, ttl); held {
 		return backlogReservationWaitingReaper
@@ -1299,8 +1299,8 @@ func (r *Runner) backlogRefreshIssue(ctx context.Context, label string, mode con
 	return nil
 }
 
-// backlogRefreshReservationStates overlays live reservation freshness onto the
-// freshly ranked ledger so stale holds re-enter the queue and fresh holds park.
+// backlogRefreshReservationStates overlays issue-thread reservation freshness onto
+// the freshly ranked ledger so stale holds re-enter the queue and fresh holds park.
 func (r *Runner) backlogRefreshReservationStates(ctx context.Context, cl Tracker, repo string, led *backlogLedger) bool {
 	changed := false
 	now := time.Now().UTC()
@@ -1326,15 +1326,34 @@ func (r *Runner) backlogRefreshReservationState(ctx context.Context, cl Tracker,
 	if !backlogRefreshReservationTracked(e) {
 		return false
 	}
-	if name := r.backlogRunningContainer(ctx, tr, e.Num); strings.TrimSpace(name) != "" {
-		return r.backlogPromoteRunningReservation(repo, now, e, name)
-	}
 	comments, err := cl.listIssueComments(ctx, tr.Owner, tr.Name, e.Num)
 	if err != nil {
 		fmt.Fprintf(os.Stderr, "backlog: note: cannot read reservation state for %s#%d (%v)\n", repo, e.Num, err)
 		return false
 	}
-	return r.backlogRefreshReservationHold(repo, e, comments, now, ttl)
+	state := backlogReservationState(comments, now, ttl)
+	switch state {
+	case backlogReservationWaitingReaper:
+		if e.State == state {
+			return false
+		}
+		e.State = state
+		e.Container = ""
+		e.DispatchedAt = ""
+		fmt.Fprintf(os.Stderr, "  %s#%d -> %s (fresh reservation still waiting for reap/TTL)\n", repo, e.Num, state)
+		return true
+	case backlogReservationSafeToRedispatch:
+		if e.State == state {
+			return false
+		}
+		e.State = state
+		e.Container = ""
+		e.DispatchedAt = ""
+		fmt.Fprintf(os.Stderr, "  %s#%d -> %s (reservation stale)\n", repo, e.Num, state)
+		return true
+	default:
+		return r.backlogRefreshReservationHold(repo, e, comments, now, ttl)
+	}
 }
 
 // backlogRedispatchSweepTracked marks the parked headless issues the ward#1149 marker
@@ -1353,13 +1372,8 @@ func backlogRedispatchSweepTracked(e *backlogEntry) bool {
 
 // backlogSweepNeedsRedispatch gives the needs-redispatch marker an owner (ward#1149):
 // an unhandled marker re-queues the parked entry, bounded by redispatchAttemptCap.
-func (r *Runner) backlogSweepNeedsRedispatch(ctx context.Context, repo string, tr targetRepo, e *backlogEntry, comments []issueComment) bool {
+func (r *Runner) backlogSweepNeedsRedispatch(_ context.Context, repo string, _ targetRepo, e *backlogEntry, comments []issueComment) bool {
 	if latestDirectorQueueSignal(comments).Kind != directorQueueSignalRedispatch {
-		return false
-	}
-	// A live engineer on the issue means the marker is already being handled: its
-	// run posts an outcome (a newer signal) when it finishes.
-	if strings.TrimSpace(r.backlogRunningContainer(ctx, tr, e.Num)) != "" {
 		return false
 	}
 	if e.RedispatchAttempts >= redispatchAttemptCap {
@@ -1400,19 +1414,8 @@ func backlogRefreshReservationTracked(e *backlogEntry) bool {
 	}
 }
 
-func (r *Runner) backlogPromoteRunningReservation(repo string, now time.Time, e *backlogEntry, name string) bool {
-	if e.State == "dispatched" && e.Container == name {
-		return false
-	}
-	e.State = "dispatched"
-	e.Container = name
-	if strings.TrimSpace(e.DispatchedAt) == "" {
-		e.DispatchedAt = now.Format(time.RFC3339)
-	}
-	fmt.Fprintf(os.Stderr, "  %s#%d -> dispatched (running container %s)\n", repo, e.Num, name)
-	return true
-}
-
+// backlogRefreshReservationHold keeps the cache aligned to the thread state.
+// The thread is canonical, and the local cache only annotates it.
 func (r *Runner) backlogRefreshReservationHold(repo string, e *backlogEntry, comments []issueComment, now time.Time, ttl time.Duration) bool {
 	state := backlogReservationState(comments, now, ttl)
 	switch state {
@@ -1422,6 +1425,7 @@ func (r *Runner) backlogRefreshReservationHold(repo string, e *backlogEntry, com
 		}
 		e.State = state
 		e.Container = ""
+		e.DispatchedAt = ""
 		fmt.Fprintf(os.Stderr, "  %s#%d -> %s (fresh reservation still waiting for reap/TTL)\n", repo, e.Num, state)
 		return true
 	case backlogReservationSafeToRedispatch:
@@ -1429,11 +1433,15 @@ func (r *Runner) backlogRefreshReservationHold(repo string, e *backlogEntry, com
 			return false
 		}
 		e.State = state
+		e.Container = ""
+		e.DispatchedAt = ""
 		fmt.Fprintf(os.Stderr, "  %s#%d -> %s (reservation stale)\n", repo, e.Num, state)
 		return true
 	default:
 		if e.State == backlogReservationWaitingReaper || e.State == backlogReservationSafeToRedispatch {
 			e.State = "queued"
+			e.Container = ""
+			e.DispatchedAt = ""
 			fmt.Fprintf(os.Stderr, "  %s#%d -> queued (reservation marker cleared)\n", repo, e.Num)
 			return true
 		}
@@ -1544,10 +1552,10 @@ func (r *Runner) backlogPollRepo(ctx context.Context, label, repo string, cl Tra
 	}
 }
 
-// backlogReconcile moves one exited dispatched entry to its outcome state; a gone
-// container with no WARDED_WORKFLOW is parked failed. Returns whether it changed.
+// backlogReconcile moves one exited dispatched entry to its outcome state.
+// The issue thread is canonical, and local container state is only a cache.
 func (r *Runner) backlogReconcile(ctx context.Context, cl Tracker, repo string, tr targetRepo, e *backlogEntry) bool {
-	if e.State != "dispatched" || r.backlogContainerRunning(ctx, tr, e) {
+	if e.State != "dispatched" {
 		return false
 	}
 	comments, cerr := cl.listIssueComments(ctx, tr.Owner, tr.Name, e.Num)
@@ -1555,8 +1563,16 @@ func (r *Runner) backlogReconcile(ctx context.Context, cl Tracker, repo string, 
 		fmt.Fprintf(os.Stderr, "backlog: note: cannot read outcome for %s#%d (%v)\n", repo, e.Num, cerr)
 		return false
 	}
+	now := time.Now().UTC()
+	if who, held := freshReservationComment(comments, now, agentReservationTTL()); held {
+		fmt.Fprintf(os.Stderr, "  %s#%d remains dispatched under the canonical issue reservation (%s)\n", repo, e.Num, who)
+		return false
+	}
 	outcome := parseBacklogOutcome(comments)
 	if outcome == nil {
+		if !prelaunchDeathRelease(comments, parseBacklogDispatchedAt(e.DispatchedAt)) {
+			return false
+		}
 		state, oc, attempts := reconcileNoOutcome(comments, parseBacklogDispatchedAt(e.DispatchedAt), e.RedispatchAttempts)
 		e.State = state
 		e.LastOutcome = oc
@@ -1623,39 +1639,6 @@ func reconcileNoOutcome(comments []issueComment, dispatchedAt time.Time, attempt
 		Text: fmt.Sprintf("container died pre-launch (smoke-test death, ward#595); re-queued for re-dispatch "+
 			"(attempt %d/%d)", attempts, redispatchAttemptCap),
 	}, attempts
-}
-
-// backlogContainerRunning reports whether a dispatched entry's container is still
-// up: by recorded name when known, else by the issue's running-container probe.
-func (r *Runner) backlogContainerRunning(ctx context.Context, repo targetRepo, e *backlogEntry) bool {
-	if r == nil || r.Runner == nil {
-		return false
-	}
-	if strings.TrimSpace(e.Container) != "" {
-		return r.containerRunning(ctx, e.Container)
-	}
-	return r.backlogRunningContainer(ctx, repo, e.Num) != ""
-}
-
-// backlogRunningContainer returns the running engineer carrying repo#num, found by
-// its ward.role/ward.repo/ward.issue labels (AND-combined), "" when none (ward#364).
-func (r *Runner) backlogRunningContainer(ctx context.Context, repo targetRepo, num int) string {
-	if r == nil || r.Runner == nil {
-		return ""
-	}
-	out, err := r.dockerCapture(ctx, "ps", "--format", "{{.Names}}",
-		"--filter", "label="+labelRole+"="+roleEngineer,
-		"--filter", "label="+labelRepo+"="+repo.slug(),
-		"--filter", fmt.Sprintf("label=%s=%d", labelIssue, num))
-	if err != nil {
-		return ""
-	}
-	for _, line := range strings.Split(string(out), "\n") {
-		if nm := strings.TrimSpace(line); nm != "" {
-			return nm
-		}
-	}
-	return ""
 }
 
 // --- printing --------------------------------------------------------------

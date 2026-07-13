@@ -17,8 +17,9 @@ This page is the durable anchor for the director's dispatch tick.
   and re-queues them ([ward#1149](https://forgejo.coilysiren.me/coilyco-flight-deck/ward/issues/1149)).
 - The sweep is bounded by the redispatch attempt cap. At the cap the entry
   parks blocked instead of looping.
-- An entry with a live engineer container, or whose newest signal is a run
-  outcome, is left alone - the marker was already handled.
+- An entry whose newest signal is a run outcome is left alone - the marker was
+  already handled. The issue thread is canonical, and local cache state only
+  follows it.
 
 ## See also
 
