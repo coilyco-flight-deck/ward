@@ -27,9 +27,12 @@ issue and dispatched against it can halt the run instead of commenting a correct
 and hoping it notices.
 
 It runs only from a director read-only surface (the dispatch broker addr is set):
-the request is forwarded to host ward, which resolves the target to a container by
-its ward.role=engineer + ward.repo + ward.issue labels and ` + "`docker stop`" + `s it via the
-same graceful path reap uses. Off a surface it errors, like a ref-mode dispatch does.
+the request is forwarded to host ward, which resolves the target through the same
+stoppability check the real stop path uses and ` + "`docker stop`" + `s it via the same
+graceful path reap uses. A ghost launch record with no running container is not
+stoppable through ` + "`ward agent stop`" + `, and ` + "`--print`" + ` reports that instead of
+pretending a label match is enough. Off a surface it errors, like a ref-mode
+dispatch does.
 
 Stop-only, engineer-only. The host broker refuses any container that is not
 ward.role=engineer (advisor / director / session are never stopped), and refuses a
@@ -38,11 +41,11 @@ ref that matches zero or more than one engineer rather than guessing.
   ward agent stop coilyco-flight-deck/ward#625   # stop the engineer carrying #625
   ward agent stop #625                           # owner/repo inferred from the cwd origin
   ward agent stop engineer-claude-ward-625       # stop by container name
-  ward agent stop #625 --print                   # resolve + show the target, stop nothing
+  ward agent stop #625 --print                   # resolve + show the stoppable target, stop nothing
 
 See docs/agent-stop.md.`,
 		Flags: []cli.Flag{
-			&cli.BoolFlag{Name: "print", Usage: "resolve + show the stop target and exit, stopping nothing"},
+			&cli.BoolFlag{Name: "print", Usage: "resolve + show the stoppable target, or report why the ref is not stoppable, and exit"},
 		},
 		Action: func(ctx context.Context, c *cli.Command) error {
 			r := newRunner()
@@ -67,10 +70,9 @@ func (r *Runner) runAgentStop(ctx context.Context, c *cli.Command) error {
 		return fmt.Errorf("ward agent stop: %w", err)
 	}
 	if c.Bool("print") {
-		writef(os.Stderr, "ward agent stop: would stop the engineer for %q (forwarded to host ward, which resolves it by ward.role=engineer labels)\n", target)
-		return nil
+		return r.forwardAgentStopToHostBroker(ctx, target, true)
 	}
-	return r.forwardAgentStopToHostBroker(ctx, target)
+	return r.forwardAgentStopToHostBroker(ctx, target, false)
 }
 
 // resolveAgentStopTarget normalizes the broker's target: an issue ref (owner/repo#N,
@@ -90,7 +92,7 @@ func (r *Runner) resolveAgentStopTarget(ctx context.Context, arg string) (string
 
 // forwardAgentStopToHostBroker sends a stop through the dispatch broker's TCP + token
 // path (ward#627); off a surface (no broker addr) it errors, like a dispatch does.
-func (r *Runner) forwardAgentStopToHostBroker(ctx context.Context, target string) error {
+func (r *Runner) forwardAgentStopToHostBroker(ctx context.Context, target string, preview bool) error {
 	addr := strings.TrimSpace(os.Getenv(envDispatchBrokerAddr))
 	if addr == "" || os.Getenv("WARD_READONLY") != "1" {
 		return fmt.Errorf("ward agent stop only works from a director read-only surface with a host "+
@@ -101,6 +103,7 @@ func (r *Runner) forwardAgentStopToHostBroker(ctx context.Context, target string
 		Action:    dispatchActionStop,
 		Target:    target,
 		Requester: strings.TrimSpace(os.Getenv("WARD_CONTAINER_NAME")),
+		Preview:   preview,
 		Token:     strings.TrimSpace(os.Getenv(envDispatchBrokerToken)),
 	}
 	// The stop handler returns the stopped container name in the response's log-path slot.
@@ -109,6 +112,10 @@ func (r *Runner) forwardAgentStopToHostBroker(ctx context.Context, target string
 		return err
 	}
 	// Captured as tool output by the surface agent, not written to the raw TTY.
+	if preview {
+		writef(os.Stderr, "ward agent stop: would stop engineer container %s on host ward\n", name)
+		return nil
+	}
 	writef(os.Stderr, "ward agent stop: stopped engineer container %s on host ward\n", name)
 	return nil
 }
