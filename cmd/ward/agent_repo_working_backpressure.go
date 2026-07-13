@@ -31,7 +31,7 @@ func newEngineerRepoWorkingBackpressureError(label, repo string, working, limit 
 }
 
 // launchRepoEngineerBackpressureCheck refuses engineer launches once the repo
-// hits the carried issue/repo authority's active-engineer limit.
+// hits the carried issue/repo authority's tracker-aware active-engineer limit.
 func (r *Runner) launchRepoEngineerBackpressureCheck(ctx context.Context, label string, ref agentIssueRef) error {
 	count, err := r.activeEngineerLaunchCountForRepo(ctx, ref)
 	if err != nil {
@@ -70,8 +70,8 @@ func isRepoIssueScanUnsupported(err error) bool {
 	return errors.As(err, &unsupported)
 }
 
-// activeEngineerLaunchCountForRepo counts active launches in one repo and
-// falls back to local cache only when the tracker cannot scan repository issues yet.
+// activeEngineerLaunchCountForRepo counts launches with carried issue/repo authority.
+// It falls back to local cache only when the tracker cannot scan repository issues yet.
 func (r *Runner) activeEngineerLaunchCountForRepo(ctx context.Context, ref agentIssueRef) (int, error) {
 	repo := strings.TrimSpace(ref.repoSlug())
 	if repo == "" {
@@ -89,6 +89,8 @@ func (r *Runner) activeEngineerLaunchCountForRepo(ctx context.Context, ref agent
 	return len(running), nil
 }
 
+// activeEngineerLaunchCountFromIssueThread reads issue-thread reservations
+// through the carried ref's tracker-aware client, never by assuming Forgejo.
 func (r *Runner) activeEngineerLaunchCountFromIssueThread(ctx context.Context, ref agentIssueRef) (int, error) {
 	owner, name, ok := strings.Cut(strings.TrimSpace(ref.repoSlug()), "/")
 	if !ok || owner == "" || name == "" {
