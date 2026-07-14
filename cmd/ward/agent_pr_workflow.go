@@ -183,14 +183,11 @@ func prWorkflowMergeExec(ctx context.Context, cl *forgejoClient, role, owner, re
 		return "", fmt.Errorf("pr merge: %s/%s#%d: %w", owner, repo, index, err)
 	}
 	head = settledHead
-	confirm := "merged-state check: merged"
-	if merged, merr := cl.PullRequestMerged(ctx, owner, repo, index); merr != nil {
-		confirm = "merged-state check unavailable: " + firstLine(merr.Error())
-	} else if !merged {
-		confirm = "merged-state check: NOT merged yet - verify on the forge"
+	if err := requirePullRequestMerged(ctx, cl, owner, repo, index, head); err != nil {
+		return "", fmt.Errorf("pr merge: %s/%s#%d: %w", owner, repo, index, err)
 	}
 	return fmt.Sprintf("merged %s/%s#%d (role %s, workflow %s, head %s, status %s); %s\n",
-		owner, repo, index, role, wf.orDefault(), head, status.Status.summary(), confirm), nil
+		owner, repo, index, role, wf.orDefault(), head, status.Status.summary(), "merged-state check: merged"), nil
 }
 
 const prWorkflowMergeSettleAttempts = 3
@@ -241,6 +238,80 @@ func forgejoMergeNeedsSettle(err error) bool {
 	}
 	msg := strings.ToLower(err.Error())
 	return strings.Contains(msg, "forgejo merge pr returned 405") && strings.Contains(msg, "please try again later")
+}
+
+type prMergePostconditionError struct {
+	Owner   string
+	Repo    string
+	Index   int
+	State   string
+	HeadSHA string
+	Merged  bool
+	Cause   error
+}
+
+func (e *prMergePostconditionError) Error() string {
+	state := strings.ToLower(strings.TrimSpace(e.State))
+	if state == "" {
+		state = "unknown"
+	}
+	head := strings.TrimSpace(e.HeadSHA)
+	if head == "" {
+		head = "<unknown>"
+	}
+	base := fmt.Sprintf("merge postcondition failed for %s/%s#%d: state %s, merged=%t, head %s",
+		e.Owner, e.Repo, e.Index, state, e.Merged, head)
+	if e.Cause != nil {
+		return base + ": " + firstLine(e.Cause.Error())
+	}
+	return base
+}
+
+func (e *prMergePostconditionError) Unwrap() error { return e.Cause }
+
+func (e *prMergePostconditionError) closedButUnmerged() bool {
+	return strings.EqualFold(strings.TrimSpace(e.State), "closed") && !e.Merged && e.Cause == nil
+}
+
+func requirePullRequestMerged(ctx context.Context, cl *forgejoClient, owner, repo string, index int, expectedHead string) error {
+	merged, err := cl.PullRequestMerged(ctx, owner, repo, index)
+	if err != nil {
+		return &prMergePostconditionError{
+			Owner:   owner,
+			Repo:    repo,
+			Index:   index,
+			State:   "unknown",
+			HeadSHA: expectedHead,
+			Cause:   err,
+		}
+	}
+	if merged {
+		return nil
+	}
+	pr, err := cl.GetPullRequest(ctx, owner, repo, index)
+	if err != nil {
+		return &prMergePostconditionError{
+			Owner:   owner,
+			Repo:    repo,
+			Index:   index,
+			State:   "unknown",
+			HeadSHA: expectedHead,
+			Merged:  false,
+			Cause:   err,
+		}
+	}
+	head := strings.TrimSpace(pr.HeadSHA())
+	if head == "" {
+		head = strings.TrimSpace(expectedHead)
+	}
+	return &prMergePostconditionError{
+		Owner:   owner,
+		Repo:    repo,
+		Index:   index,
+		State:   strings.TrimSpace(pr.State),
+		HeadSHA: head,
+		Merged:  false,
+	}
 }
 
 // prWorkflowRunsReport renders a repo's Actions runs with per-run conclusions -

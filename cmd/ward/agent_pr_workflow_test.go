@@ -108,6 +108,8 @@ func TestPRWorkflowRoleDefaultsToDirectorOnHost(t *testing.T) {
 // walks: PR read, merged-state, base branch, combined status, merge.
 type prWorkflowFakeForge struct {
 	prBody                        string
+	prState                       string
+	prStateAfterMerge             string
 	combinedState                 string
 	contextState                  string
 	combinedStateAfterMerge       string
@@ -122,6 +124,7 @@ type prWorkflowFakeForge struct {
 	mergeResponses                []int
 	statusFailureAfterMergeCalls  int
 	merged                        bool
+	markMergedOnSuccess           *bool
 	mergeCalls                    int
 	mergeDo                       string
 	mergeDeleteBranchAfterMerge   bool
@@ -132,13 +135,25 @@ func (f *prWorkflowFakeForge) server(t *testing.T) *httptest.Server {
 	t.Helper()
 	mux := http.NewServeMux()
 	mux.HandleFunc("/api/v1/repos/coilyco-flight-deck/ward/pulls/7", func(w http.ResponseWriter, _ *http.Request) {
-		_, _ = w.Write([]byte(`{"number":7,"title":"t","body":` + jsonString(f.prBody) + `,"state":"open","head":{"sha":"headsha","ref":"issue-7"},"base":{"ref":"main"}}`))
+		state := f.prState
+		if state == "" {
+			state = "open"
+		}
+		if f.merged {
+			if f.prStateAfterMerge != "" {
+				state = f.prStateAfterMerge
+			} else {
+				state = "closed"
+			}
+		}
+		_, _ = w.Write([]byte(`{"number":7,"title":"t","body":` + jsonString(f.prBody) + `,"state":"` + state + `","head":{"sha":"headsha","ref":"issue-7"},"base":{"ref":"main"}}`))
 	})
 	mux.HandleFunc("/api/v1/repos/coilyco-flight-deck/ward", func(w http.ResponseWriter, _ *http.Request) {
 		_, _ = w.Write([]byte(`{"allow_merge_commits":` + jsonBool(f.allowMergeCommits) + `,"allow_squash_merge":` + jsonBool(f.allowSquashMerge) + `,"allow_fast_forward_only_merge":` + jsonBool(f.allowFastForwardOnlyMerge) + `,"allow_rebase":` + jsonBool(f.allowRebase) + `,"allow_rebase_explicit":` + jsonBool(f.allowRebaseExplicit) + `,"default_merge_style":` + jsonString(f.defaultMergeStyle) + `,"default_delete_branch_after_merge":` + jsonBool(f.defaultDeleteBranchAfterMerge) + `}`))
 	})
 	mux.HandleFunc("/api/v1/repos/coilyco-flight-deck/ward/pulls/7/merge", func(w http.ResponseWriter, r *http.Request) {
-		if r.Method == http.MethodPost {
+		switch r.Method {
+		case http.MethodPost:
 			f.mergeCalls++
 			status := http.StatusAccepted
 			if len(f.mergeResponses) > 0 {
@@ -156,20 +171,36 @@ func (f *prWorkflowFakeForge) server(t *testing.T) *httptest.Server {
 			f.mergeDo = body.Do
 			f.mergeDeleteBranchAfterMerge = body.DeleteBranchAfterMerge
 			if status >= 200 && status < 300 {
-				f.merged = true
+				if f.prStateAfterMerge != "" {
+					f.prState = f.prStateAfterMerge
+				} else if f.markMergedOnSuccess == nil || *f.markMergedOnSuccess {
+					f.prState = "closed"
+				}
+				if f.markMergedOnSuccess == nil || *f.markMergedOnSuccess {
+					f.merged = true
+				}
 			}
 			w.WriteHeader(status)
 			if status == http.StatusMethodNotAllowed {
 				_, _ = w.Write([]byte(`{"message":"Please try again later","url":"https://forgejo.coilysiren.me/api/swagger"}`))
 			}
 			return
+		default:
+			f.mergedChecks++
+			if f.merged {
+				w.WriteHeader(http.StatusNoContent)
+				return
+			}
+			w.WriteHeader(http.StatusNotFound)
 		}
-		f.mergedChecks++
-		if f.merged {
-			w.WriteHeader(http.StatusNoContent)
+	})
+	mux.HandleFunc("/api/v1/repos/coilyco-flight-deck/ward/issues/7", func(w http.ResponseWriter, r *http.Request) {
+		if r.Method == http.MethodPatch {
+			f.prState = "open"
+			w.WriteHeader(http.StatusOK)
 			return
 		}
-		w.WriteHeader(http.StatusNotFound)
+		w.WriteHeader(http.StatusMethodNotAllowed)
 	})
 	mux.HandleFunc("/api/v1/repos/coilyco-flight-deck/ward/branches/main", func(w http.ResponseWriter, _ *http.Request) {
 		_, _ = w.Write([]byte(`{"name":"main","protected":true,"enable_status_check":true,"status_check_contexts":["test"]}`))
@@ -366,6 +397,41 @@ func TestPRWorkflowMergeExecRetriesTransient405(t *testing.T) {
 	}
 	if !strings.Contains(out, "merged coilyco-flight-deck/ward#7") {
 		t.Fatalf("merge output = %q, want merged", out)
+	}
+}
+
+// TestPRWorkflowMergeExecFailsClosedUnmergedPostcondition pins the hard fail:
+// Forgejo cannot close the PR without the merged-state proof.
+func TestPRWorkflowMergeExecFailsClosedUnmergedPostcondition(t *testing.T) {
+	markMergedOnSuccess := false
+	fake := &prWorkflowFakeForge{
+		prBody:                    "closes #6\n\nward.workflow: pull-request-and-merge\n",
+		prStateAfterMerge:         "closed",
+		combinedState:             "success",
+		contextState:              "success",
+		defaultMergeStyle:         "merge",
+		allowMergeCommits:         true,
+		allowSquashMerge:          true,
+		allowFastForwardOnlyMerge: true,
+		allowRebase:               true,
+		allowRebaseExplicit:       true,
+		mergeResponses:            []int{http.StatusMethodNotAllowed, http.StatusAccepted},
+		markMergedOnSuccess:       &markMergedOnSuccess,
+	}
+	srv := fake.server(t)
+	defer srv.Close()
+	cl := &forgejoClient{baseURL: srv.URL, token: "secret"}
+	_, err := prWorkflowMergeExec(context.Background(), cl, roleDirector, "coilyco-flight-deck", "ward", 7, "")
+	if err == nil {
+		t.Fatal("prWorkflowMergeExec: want closed-unmerged postcondition failure, got nil")
+	}
+	for _, want := range []string{"state closed", "merged=false", "head headsha"} {
+		if !strings.Contains(err.Error(), want) {
+			t.Fatalf("error = %q, want substring %q", err, want)
+		}
+	}
+	if fake.mergeCalls != 2 {
+		t.Fatalf("merge calls = %d, want 2", fake.mergeCalls)
 	}
 }
 

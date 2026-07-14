@@ -2,6 +2,7 @@ package main
 
 import (
 	"context"
+	"errors"
 	"fmt"
 	"regexp"
 	"strconv"
@@ -97,16 +98,104 @@ func (r *Runner) runDirectorMergeRepo(ctx context.Context, label string, prClien
 				label, owner, name, pr.Number, linked, meta.Workflow, meta.Review, meta.PRHeadSHA, meta.Status.summary())
 			continue
 		}
-		if err := prClient.mergePullRequestWithHead(ctx, owner, name, pr.Number, meta.PRHeadSHA); err != nil {
+		status := directorMergeStatusCheck{Status: meta.Status}
+		mergedHead, err := mergeDirectorPullRequest(ctx, prClient, owner, name, pr.Number, meta.PRHeadSHA, "", &status)
+		if err != nil {
 			return merged, skipped, fmt.Errorf("%s: merge %s/%s#%d: %w", label, owner, name, pr.Number, err)
 		}
+		meta.Status = status.Status
 		if err := recordDirectorMergeDone(ctx, issueClient, owner, name, linked, pr.Number, meta); err != nil {
 			return merged, skipped, fmt.Errorf("%s: record done for %s/%s#%d after merge: %w", label, owner, name, pr.Number, err)
 		}
 		merged++
-		_, _ = fmt.Fprintf(r.Runner.Stderr, "%s: merged %s/%s#%d (issue #%d)\n", label, owner, name, pr.Number, linked)
+		_, _ = fmt.Fprintf(r.Runner.Stderr, "%s: merged %s/%s#%d (issue #%d, head %s)\n", label, owner, name, pr.Number, linked, mergedHead)
 	}
 	return merged, skipped, nil
+}
+
+func mergeDirectorPullRequest(ctx context.Context, cl *forgejoClient, owner, repo string, index int, head, mergeStyle string, status *directorMergeStatusCheck) (string, error) {
+	mergedHead, err := mergePullRequestWithHeadAndStyleSettled(ctx, cl, owner, repo, index, head, mergeStyle, status)
+	if err != nil {
+		return "", err
+	}
+	if err := requirePullRequestMerged(ctx, cl, owner, repo, index, mergedHead); err != nil {
+		var postErr *prMergePostconditionError
+		if errors.As(err, &postErr) && postErr.closedButUnmerged() {
+			return recoverClosedUnmergedDirectorMerge(ctx, cl, owner, repo, index, mergeStyle, postErr)
+		}
+		return "", err
+	}
+	return mergedHead, nil
+}
+
+func recoverClosedUnmergedDirectorMerge(ctx context.Context, cl *forgejoClient, owner, repo string, index int, mergeStyle string, postErr *prMergePostconditionError) (string, error) {
+	if postErr == nil || !postErr.closedButUnmerged() {
+		return "", fmt.Errorf("merge postcondition failed for %s/%s#%d: %w", owner, repo, index, postErr)
+	}
+	pr, err := cl.GetPullRequest(ctx, owner, repo, index)
+	if err != nil {
+		return "", fmt.Errorf("%w; could not refresh closed PR before recovery: %w", postErr, err)
+	}
+	head, err := closedUnmergedRecoveryTarget(pr, postErr)
+	if err != nil {
+		return "", err
+	}
+	status, reason, ok := directorMergeStatusGate(ctx, cl, owner, repo, pr.Base.Ref, head)
+	if !ok {
+		return "", fmt.Errorf("%w; closed PR is no longer eligible for retry: %s", postErr, reason)
+	}
+	return retryClosedUnmergedDirectorMerge(ctx, cl, owner, repo, index, head, mergeStyle, status, postErr)
+}
+
+func closedUnmergedRecoveryTarget(pr *forgejoPullRequest, postErr *prMergePostconditionError) (head string, err error) {
+	state := strings.ToLower(strings.TrimSpace(pr.State))
+	if state != "closed" {
+		return "", fmt.Errorf("%w; expected closed PR before recovery, got state %s", postErr, emptyDefault(state, "unknown"))
+	}
+	head = pr.HeadSHA()
+	if head == "" {
+		return "", fmt.Errorf("%w; closed PR no longer exposed a head SHA", postErr)
+	}
+	if want := strings.TrimSpace(postErr.HeadSHA); want != "" && !strings.EqualFold(head, want) {
+		return "", fmt.Errorf("%w; closed PR head changed from %s to %s before recovery", postErr, want, head)
+	}
+	return head, nil
+}
+
+func retryClosedUnmergedDirectorMerge(ctx context.Context, cl *forgejoClient, owner, repo string, index int, head, mergeStyle string, status directorMergeStatusCheck, postErr *prMergePostconditionError) (string, error) {
+	if err := cl.ReopenIssue(ctx, owner, repo, index); err != nil {
+		return "", fmt.Errorf("%w; reopen before retry failed: %w", postErr, err)
+	}
+	reopened, err := cl.GetPullRequest(ctx, owner, repo, index)
+	if err != nil {
+		return "", fmt.Errorf("%w; reopened PR refresh failed: %w", postErr, err)
+	}
+	if err := validateReopenedDirectorMergeCandidate(reopened, head, postErr); err != nil {
+		return "", err
+	}
+	recoveredHead, retryErr := mergePullRequestWithHeadAndStyleSettled(ctx, cl, owner, repo, index, head, mergeStyle, &status)
+	if retryErr != nil {
+		return "", fmt.Errorf("%w; retry after reopen failed: %w", postErr, retryErr)
+	}
+	if err := requirePullRequestMerged(ctx, cl, owner, repo, index, recoveredHead); err != nil {
+		return "", fmt.Errorf("%w; retry after reopen still did not prove merged: %w", postErr, err)
+	}
+	return recoveredHead, nil
+}
+
+func validateReopenedDirectorMergeCandidate(pr *forgejoPullRequest, expectedHead string, postErr *prMergePostconditionError) error {
+	reopenedState := strings.ToLower(strings.TrimSpace(pr.State))
+	if reopenedState != "open" {
+		return fmt.Errorf("%w; reopen did not restore open state, got %s", postErr, emptyDefault(reopenedState, "unknown"))
+	}
+	reopenedHead := strings.TrimSpace(pr.HeadSHA())
+	if reopenedHead == "" {
+		return fmt.Errorf("%w; reopened PR lost its head SHA", postErr)
+	}
+	if !strings.EqualFold(reopenedHead, expectedHead) {
+		return fmt.Errorf("%w; reopened PR head changed from %s to %s", postErr, expectedHead, reopenedHead)
+	}
+	return nil
 }
 
 // directorMergeEligibility returns whether pr is the narrow, ward-owned lane.
