@@ -13,6 +13,7 @@ This page groups the on-demand operational surfaces around a run.
 - `ward agent stop` - stop one visible running engineer on purpose. Ghost
   launch records are not stoppable here.
 - `ward agent reap` - stop wedged engineer containers by idle policy and clear stale prelaunch reservations that never became visible.
+- `ward agent reservations clear` - clear the disposable reservation cache directory wholesale.
 
 ## Shared contract
 
@@ -56,14 +57,14 @@ This page groups the on-demand operational surfaces around a run.
 
 - `list` and `logs` are usually the first stop when a run seems stuck.
 - `stop` is the manual correction path for a live engineer.
-- Use `reap` or the stale-reservation cleanup path for a ghost launch record.
+- Use `reap` or `ward agent reservations clear` for a ghost launch record when the cache has gone stale.
 - `reap` is the safety net for idle engineer containers and stale launch intents.
 - `reap` clears cache state, but the issue thread remains the canonical reservation record.
 - none of these surfaces should surprise a caller with a write to the target
   repo.
 
-Manual stale reservation cleanup is documented in
-[agent-stale-reservation-cleanup.md](agent-stale-reservation-cleanup.md).
+Whole-folder reservation cache cleanup is documented in
+[agent-reservation-cache.md](agent-reservation-cache.md).
 
 ## See also
 

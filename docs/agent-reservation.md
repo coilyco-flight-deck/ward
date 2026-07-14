@@ -10,6 +10,8 @@ This page is the durable anchor for launch-time reservations.
 - It keeps the TTL and release-marker comments readable.
 - A launch intent is not a running engineer. Running capacity belongs to the
   visible container, while the launch intent is just the prelaunch lease.
+- The local cache lives under `~/.ward/agent-reservations` and is disposable.
+  `ward agent reservations clear` clears it wholesale when the cache goes stale.
 
 ## Release semantics
 

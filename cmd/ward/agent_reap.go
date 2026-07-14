@@ -13,7 +13,6 @@ import (
 	"time"
 
 	"forgejo.coilysiren.me/coilyco-flight-deck/cli-guard/cli/verb"
-	"forgejo.coilysiren.me/coilyco-flight-deck/cli-guard/pkg/config"
 	"github.com/urfave/cli/v3"
 )
 
@@ -247,11 +246,10 @@ func clearStalePrelaunchReservation(ctx context.Context, cl Tracker, label strin
 }
 
 func (r *Runner) stalePrelaunchReservations(ctx context.Context, now time.Time, scope map[string]bool) ([]stalePrelaunchReservation, error) {
-	globalDir, err := config.GlobalDir()
+	dir, err := agentReservationCacheDir()
 	if err != nil {
 		return nil, err
 	}
-	dir := filepath.Join(globalDir, agentReservationsSubdir)
 	entries, err := os.ReadDir(dir)
 	if err != nil {
 		if os.IsNotExist(err) {

@@ -1,10 +1,15 @@
 ---
-doc_goal: Document the manual stale reservation cleanup workaround without bloating the operator hub.
+doc_goal: Preserve the legacy targeted cleanup note while naming the supported whole-folder cache clear path.
 ---
 # manual stale reservation cleanup
 
+The supported emergency path is `ward agent reservations clear` or deleting
+`~/.ward/agent-reservations` wholesale. This older targeted comment cleanup note
+remains only for rare one-comment recovery cases.
+
 Use this when `ward agent list` shows a `container starting` record that still
-counts toward capacity but does not have a visible running engineer yet.
+counts toward capacity but does not have a visible running engineer yet, and
+the issue thread still needs a surgical comment fix instead of a cache clear.
 
 ## Identify it
 
@@ -41,4 +46,3 @@ Deleting the reservation comment may reduce active count without clearing every
 displayed `container starting` record. Host or broker state may still need
 [ward#1191](https://forgejo.coilysiren.me/coilyco-flight-deck/ward/issues/1191)
 and [ward#1196](https://forgejo.coilysiren.me/coilyco-flight-deck/ward/issues/1196).
-

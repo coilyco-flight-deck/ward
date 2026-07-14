@@ -48,6 +48,29 @@ func isReservationConflict(err error) bool {
 // file per reserved issue.
 const agentReservationsSubdir = "agent-reservations"
 
+// agentReservationCacheDir resolves ~/.ward/agent-reservations, the disposable
+// cache directory that holds local reservation sentinels and lock files.
+func agentReservationCacheDir() (string, error) {
+	dir, err := config.GlobalDir()
+	if err != nil {
+		return "", err
+	}
+	return filepath.Join(dir, agentReservationsSubdir), nil
+}
+
+// clearAgentReservationCacheDir removes the reservation cache directory wholesale
+// and recreates it so later launches can continue without file names.
+func clearAgentReservationCacheDir() error {
+	dir, err := agentReservationCacheDir()
+	if err != nil {
+		return err
+	}
+	if err := os.RemoveAll(dir); err != nil {
+		return err
+	}
+	return os.MkdirAll(dir, 0o700)
+}
+
 // reservationRecheckEnv overrides the ceiling (min derives as max/3); "0"/"off"/"none"
 // disables the re-check, leaning on the broker per-ref lock + pre-post check alone.
 const reservationRecheckEnv = "WARD_AGENT_RESERVE_RECHECK"
@@ -284,6 +307,18 @@ func removeAgentReservation(path string) error {
 	return nil
 }
 
+// removeAgentReservationArtifacts deletes the sentinel and its sibling lock.
+func removeAgentReservationArtifacts(path string) error {
+	if err := removeAgentReservation(path); err != nil {
+		return err
+	}
+	lock := strings.TrimSuffix(path, ".json") + ".lock"
+	if err := os.Remove(lock); err != nil && !errors.Is(err, os.ErrNotExist) {
+		return err
+	}
+	return nil
+}
+
 // hostname is the best-effort host identifier baked into a reservation.
 func hostname() string {
 	if h, err := os.Hostname(); err == nil && strings.TrimSpace(h) != "" {
@@ -357,7 +392,7 @@ func (r *Runner) precheckLocalReservation(_ context.Context, label string, ref a
 		fmt.Fprintf(os.Stderr, "%s: reservation cache note for %s at %s, but the issue thread remains authoritative\n", label, ref, path)
 		return nil
 	}
-	_ = removeAgentReservation(path)
+	_ = removeAgentReservationArtifacts(path)
 	fmt.Fprintf(os.Stderr, "%s: cleared stale reservation cache for %s at %s\n", label, ref, path)
 	return nil
 }
@@ -420,7 +455,7 @@ func removeAgentReservationIfOwned(path string, want agentReservation) (bool, er
 	if !ok || got == nil || !agentReservationMatches(got, want) {
 		return false, nil
 	}
-	return true, removeAgentReservation(path)
+	return true, removeAgentReservationArtifacts(path)
 }
 
 type agentReservationIdentity struct {
