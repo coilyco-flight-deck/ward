@@ -39,6 +39,10 @@ const (
 
 var errDispatchBrokerUnavailable = errors.New("dispatch broker unavailable")
 
+// dispatchBrokerProbeTimeout bounds the reachability check we use before
+// choosing the brokered path on a read-only surface.
+const dispatchBrokerProbeTimeout = 250 * time.Millisecond
+
 // dispatchBrokerLaunchMu serializes the process-global env override while the host
 // broker kicks off a forwarded run so one launch cannot leak into another.
 var dispatchBrokerLaunchMu sync.Mutex
@@ -1131,6 +1135,9 @@ func (r *Runner) maybeForwardAgentDispatchToHostBroker(ctx context.Context, c *c
 	if addr == "" || os.Getenv("WARD_READONLY") != "1" {
 		return false, nil
 	}
+	if !hostDispatchBrokerReachable(ctx, addr) {
+		return false, nil
+	}
 	argv, ok := brokerDispatchArgvForRole(ctx, r, c, role, mode)
 	if !ok {
 		return false, nil
@@ -1181,6 +1188,9 @@ func fireAndForgetDispatchBrokerRequest(ctx context.Context, addr string, req di
 func (r *Runner) forwardFreeformEngineerLaunchToHostBroker(ctx context.Context, c *cli.Command, mode containerMode, ref agentIssueRef) (bool, error) {
 	addr := strings.TrimSpace(os.Getenv(envDispatchBrokerAddr))
 	if addr == "" || os.Getenv("WARD_READONLY") != "1" {
+		return false, nil
+	}
+	if !hostDispatchBrokerReachable(ctx, addr) {
 		return false, nil
 	}
 	req := dispatchBrokerRequest{
@@ -1478,6 +1488,23 @@ func sendDispatchBrokerLogsRequest(ctx context.Context, addr string, req dispatc
 			return conn.Close()
 		},
 	}, nil
+}
+
+// hostDispatchBrokerReachable probes whether the advertised host dispatch broker
+// accepts TCP connections before we choose the brokered path.
+func hostDispatchBrokerReachable(ctx context.Context, addr string) bool {
+	if strings.TrimSpace(addr) == "" {
+		return false
+	}
+	probeCtx, cancel := context.WithTimeout(ctx, dispatchBrokerProbeTimeout)
+	defer cancel()
+	var d net.Dialer
+	conn, err := d.DialContext(probeCtx, "tcp", addr)
+	if err != nil {
+		return false
+	}
+	_ = conn.Close()
+	return true
 }
 
 // isCredentialBrokerReply spots the credential broker's protocol-version refusal:

@@ -743,6 +743,30 @@ func TestForwardAgentDispatchToHostBrokerSendsCanonicalRequest(t *testing.T) {
 	}
 }
 
+func TestForwardAgentDispatchToHostBrokerSkipsUnreachableBroker(t *testing.T) {
+	ln, err := net.Listen("tcp", "127.0.0.1:0")
+	if err != nil {
+		t.Fatalf("listen broker: %v", err)
+	}
+	addr := ln.Addr().String()
+	_ = ln.Close()
+
+	t.Setenv(envDispatchBrokerAddr, addr)
+	t.Setenv(envDispatchBrokerToken, "nonce-123")
+	t.Setenv("WARD_READONLY", "1")
+	t.Setenv("WARD_CONTAINER_NAME", "director-codex-host")
+	cmd := parseCommandForTest(t, agentEngineerFlags(), []string{
+		"engineer", "coilyco-flight-deck/ward#378", "--harness", "claude", "--skip-preflight", "--skip-review",
+	})
+	forwarded, err := (&Runner{}).maybeForwardAgentDispatchToHostBroker(t.Context(), cmd, "engineer", modeClaude)
+	if err != nil {
+		t.Fatalf("forward dispatch: %v", err)
+	}
+	if forwarded {
+		t.Fatal("dispatch forwarded despite an unreachable broker")
+	}
+}
+
 func TestDispatchBrokerForwardedLineIncludesLogPathWhenAvailable(t *testing.T) {
 	got := dispatchBrokerForwardedLine([]string{"engineer", "coilyco-flight-deck/ward#378", "--harness", "codex", "--ward-version", "v0.569.0"}, "/tmp/ward/dispatch.log")
 	for _, want := range []string{
@@ -903,6 +927,30 @@ func TestForwardAgentDispatchToHostBrokerAllowsRefWithoutPrompt(t *testing.T) {
 	want := []string{"advisor", "coilyco-flight-deck/ward#378", "--harness", "codex", "--thoroughness", "standard"}
 	if !reflect.DeepEqual(req.Argv, want) {
 		t.Errorf("advisor forwarded argv = %v, want %v", req.Argv, want)
+	}
+}
+
+func TestPRWorkflowForwardedSkipsUnreachableBroker(t *testing.T) {
+	ln, err := net.Listen("tcp", "127.0.0.1:0")
+	if err != nil {
+		t.Fatalf("listen broker: %v", err)
+	}
+	addr := ln.Addr().String()
+	_ = ln.Close()
+
+	t.Setenv(envDispatchBrokerAddr, addr)
+	t.Setenv(envDispatchBrokerToken, "nonce-123")
+	t.Setenv("WARD_READONLY", "1")
+	t.Setenv("WARD_CONTAINER_NAME", "director-codex-host")
+	handled, err := prWorkflowForwarded(t.Context(), &Runner{}, dispatchBrokerRequest{
+		Action: dispatchActionPRStatus,
+		Target: "coilyco-flight-deck/ward#7",
+	})
+	if err != nil {
+		t.Fatalf("prWorkflowForwarded: %v", err)
+	}
+	if handled {
+		t.Fatal("PR workflow forwarded despite an unreachable broker")
 	}
 }
 

@@ -1743,7 +1743,11 @@ func (s dispatchDockerState) blocked() (bool, string) {
 	case s.brokerAddr != "" && !s.readOnly:
 		detail = "a host dispatch broker is attached but WARD_READONLY is unset, so the broker forward was skipped and dispatch fell through to a docker client that is not installed"
 	case s.brokerAddr != "":
-		detail = "the host dispatch broker forward did not fire for this dispatch and no docker client is installed to fall back to"
+		if hostDispatchBrokerReachable(context.Background(), s.brokerAddr) {
+			detail = "the host dispatch broker forward did not fire for this dispatch and no docker client is installed to fall back to"
+		} else {
+			detail = "the advertised host dispatch broker at " + s.brokerAddr + " is unreachable, and no docker client is installed to fall back to"
+		}
 	default:
 		detail = "no host dispatch broker is attached (WARD_DISPATCH_BROKER_ADDR unset) and the image carries no docker client, so neither dispatch path is available"
 	}
