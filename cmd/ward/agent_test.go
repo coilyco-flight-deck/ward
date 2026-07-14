@@ -5,7 +5,6 @@ import (
 	"os"
 	"path/filepath"
 	"strings"
-	"sync"
 	"testing"
 	"time"
 
@@ -981,7 +980,7 @@ func TestWardEnvHeadless(t *testing.T) {
 }
 
 // ward#141/#185: goose stays first-class (in agentModes + the --harness choices); each
-// surface carries --harness, its equal --agent spelling, and the --driver alias (#660).
+// surface carries --harness and its equal --agent spelling.
 func TestAgentModesIncludeGoose(t *testing.T) {
 	found := false
 	for _, m := range agentModes {
@@ -995,8 +994,7 @@ func TestAgentModesIncludeGoose(t *testing.T) {
 	if !strings.Contains(agentHarnessChoices(), "goose") {
 		t.Errorf("--harness choices missing goose; got %q", agentHarnessChoices())
 	}
-	// Each top-level role must exist and carry --harness plus the equal --agent
-	// spelling and the deprecated --driver alias (ward#660).
+	// Each top-level role must exist and carry --harness plus the equal --agent spelling.
 	surfaces := map[string]*cli.Command{}
 	for _, c := range agentCommand().Commands {
 		surfaces[c.Name] = c
@@ -1013,14 +1011,10 @@ func TestAgentModesIncludeGoose(t *testing.T) {
 		if !commandHasFlag(cmd, "agent") {
 			t.Errorf("ward agent %s missing the --agent spelling", want)
 		}
-		if !commandHasFlag(cmd, "driver") {
-			t.Errorf("ward agent %s missing the deprecated --driver alias", want)
-		}
 	}
 }
 
-// ward#660: --harness and --agent are equal first-class spellings of the harness pick;
-// the hidden one-release --driver alias loses to either explicit first-class spelling.
+// ward#660: --harness and --agent are equal first-class spellings of the harness pick.
 func TestAgentHarnessAliasResolution(t *testing.T) {
 	for _, tc := range []struct {
 		name string
@@ -1030,9 +1024,6 @@ func TestAgentHarnessAliasResolution(t *testing.T) {
 		{"default is claude", []string{"engineer", "#1"}, modeClaude},
 		{"--harness spelling", []string{"engineer", "#1", "--harness", "codex"}, modeCodex},
 		{"--agent equal spelling", []string{"engineer", "#1", "--agent", "codex"}, modeCodex},
-		{"deprecated --driver alias", []string{"engineer", "#1", "--driver", "codex"}, modeCodex},
-		{"--harness wins over --driver", []string{"engineer", "#1", "--driver", "goose", "--harness", "codex"}, modeCodex},
-		{"--agent wins over --driver", []string{"engineer", "#1", "--driver", "goose", "--agent", "codex"}, modeCodex},
 		{"--harness and --agent agreeing is fine", []string{"engineer", "#1", "--harness", "codex", "--agent", "codex"}, modeCodex},
 	} {
 		cmd := parseCommandForTest(t, agentEngineerFlags(), tc.argv)
@@ -1051,10 +1042,6 @@ func TestAgentHarnessAliasResolution(t *testing.T) {
 		t.Errorf("conflicting --harness/--agent error = %v, want a disagree refusal", err)
 	}
 	// The invalid-value error names the spelling the caller actually used.
-	bad := parseCommandForTest(t, agentEngineerFlags(), []string{"engineer", "#1", "--driver", "warp"})
-	if _, err := agentHarness(bad); err == nil || !strings.Contains(err.Error(), "--driver") {
-		t.Errorf("invalid --driver error = %v, want it to name --driver", err)
-	}
 	badAgent := parseCommandForTest(t, agentEngineerFlags(), []string{"engineer", "#1", "--agent", "warp"})
 	if _, err := agentHarness(badAgent); err == nil || !strings.Contains(err.Error(), "--agent") {
 		t.Errorf("invalid --agent error = %v, want it to name --agent", err)
@@ -1063,14 +1050,11 @@ func TestAgentHarnessAliasResolution(t *testing.T) {
 	if _, err := agentHarness(badCanonical); err == nil || !strings.Contains(err.Error(), "--harness") {
 		t.Errorf("invalid --harness error = %v, want it to name --harness", err)
 	}
-	// Only the deprecated alias hides: --harness and --agent both show on the help.
+	// Both first-class spellings show on the help.
 	for _, f := range agentHarnessFlags() {
 		sf, ok := f.(*cli.StringFlag)
 		if !ok {
 			t.Fatalf("agentHarnessFlags returned a non-string flag: %T", f)
-		}
-		if sf.Name == "driver" && !sf.Hidden {
-			t.Error("--driver alias is visible; want it hidden (ward#660)")
 		}
 		if sf.Name == "harness" && sf.Hidden {
 			t.Error("--harness is hidden; want it visible")
@@ -1201,7 +1185,7 @@ repo-authority default=forgejo {
 }
 
 // TestOverrideReservationFlagFamily covers ward#1045: --override-reservation is the
-// spelling, --force the noticed deprecated alias, --override-capacity independent.
+// spelling and --override-capacity is independent.
 func TestOverrideReservationFlagFamily(t *testing.T) {
 	parse := func(extra ...string) *cli.Command {
 		argv := append([]string{"engineer", "coilyco-flight-deck/ward#42", "--harness", "claude"}, extra...)
@@ -1220,26 +1204,12 @@ func TestOverrideReservationFlagFamily(t *testing.T) {
 	if c := parse("--override-reservation"); c.Bool("override-capacity") {
 		t.Error("--override-reservation must never imply a capacity override")
 	}
-
-	// The deprecated alias still works and prints its notice; reset the Once so
-	// this test owns the first use.
-	forceFlagDeprecationOnce = sync.Once{}
-	var aliased bool
-	notice := captureTestStderr(t, func() {
-		aliased = overrideReservation(parse("--force"))
-	})
-	if !aliased {
-		t.Error("--force must still read as a reservation override (deprecated alias)")
-	}
-	if !strings.Contains(notice, "--force is deprecated") || !strings.Contains(notice, "--override-reservation") {
-		t.Errorf("first --force use should print the deprecation notice, got %q", notice)
-	}
 }
 
 // TestAgentSurfaceOverrideFlagVisibility covers ward#1045: on the engineer surface
-// the --override-* pair is visible and narrow, the --force alias hidden.
+// the --override-* pair is visible and narrow.
 func TestAgentSurfaceOverrideFlagVisibility(t *testing.T) {
-	for _, name := range []string{"override-reservation", "override-capacity", "force"} {
+	for _, name := range []string{"override-reservation", "override-capacity"} {
 		if !commandHasFlag(agentEngineerCommand(), name) {
 			t.Errorf("ward agent engineer missing --%s (ward#1045)", name)
 		}
@@ -1250,10 +1220,6 @@ func TestAgentSurfaceOverrideFlagVisibility(t *testing.T) {
 			continue
 		}
 		switch bf.Name {
-		case "force":
-			if !bf.Hidden {
-				t.Error("--force alias is visible; want it hidden (ward#1045)")
-			}
 		case "override-reservation", "override-capacity":
 			if bf.Hidden {
 				t.Errorf("--%s is hidden; want it visible (ward#1045)", bf.Name)

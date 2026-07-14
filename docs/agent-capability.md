@@ -5,8 +5,8 @@ doc_goal: Keep the agent-capability anchor stable after the old page was collaps
 
 This page is the durable anchor for the capability overlay comments.
 
-- It covers the role-driven host reach and its deprecated overrides.
-- It keeps the `--aws` and `--tailnet` notes anchored to one place.
+- It covers the role-driven host reach and its opt-out knob.
+- It keeps the role-driven reach and the opt-out knob anchored to one place.
 
 ## See also
 

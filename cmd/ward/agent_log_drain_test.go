@@ -70,28 +70,13 @@ func TestSweepActionsDrainsWithoutEviction(t *testing.T) {
 	}
 }
 
-// TestResolveSinkMode covers the env label + the local disk default.
+// TestResolveSinkMode covers the fixed local disk default.
 func TestResolveSinkMode(t *testing.T) {
-	cases := []struct {
-		set  string
-		want sinkMode
-	}{
-		{"", defaultSinkMode},
-		{"disk", sinkDisk},
-		{"signoz", sinkMode("signoz")},
-		{"both", sinkMode("both")},
-		{"DISK", sinkDisk},               // case-insensitive
-		{"  both  ", sinkMode("both")},   // trimmed
-		{"garbage", sinkMode("garbage")}, // labels are still surfaced, not routed
-	}
-	for _, c := range cases {
-		t.Setenv(envSinkMode, c.set)
-		if got := resolveSinkMode(); got != c.want {
-			t.Errorf("resolveSinkMode with %q = %q, want %q", c.set, got, c.want)
-		}
-	}
 	if defaultSinkMode != sinkDisk {
 		t.Error("default sink must keep the local disk archive")
+	}
+	if got := resolveSinkMode(); got != defaultSinkMode {
+		t.Errorf("resolveSinkMode() = %q, want %q", got, defaultSinkMode)
 	}
 }
 

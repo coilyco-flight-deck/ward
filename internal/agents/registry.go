@@ -14,10 +14,6 @@ import (
 	"github.com/coilyco-flight-deck/ward/internal/agentsapi"
 )
 
-// LegacyOpencodeMode is the retired roster key ward#401 renamed to "opencode";
-// Lookup keeps it as a back-compat alias. See docs/agentsapi.md.
-const LegacyOpencodeMode = "qwen"
-
 // Registry builds the name-keyed map of every harness ward drives. The key is
 // each agent's roster key (its Name / the --mode value).
 func Registry() map[string]agentsapi.Agent {
@@ -29,12 +25,8 @@ func Registry() map[string]agentsapi.Agent {
 	}
 }
 
-// Lookup resolves a --mode value to its agent, translating the legacy "qwen"
-// alias to opencode so the rename does not hard-break existing invocations.
+// Lookup resolves a --mode value to its agent.
 func Lookup(mode string) (agentsapi.Agent, bool) {
-	if mode == LegacyOpencodeMode {
-		mode = "opencode"
-	}
 	a, ok := Registry()[mode]
 	return a, ok
 }

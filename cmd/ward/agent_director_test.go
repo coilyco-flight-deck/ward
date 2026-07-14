@@ -122,7 +122,7 @@ func TestDispatchEngineerArgv(t *testing.T) {
 	if !reflect.DeepEqual(bare, wantBare) {
 		t.Errorf("bare argv = %v, want %v", bare, wantBare)
 	}
-	for _, unwanted := range []string{"--aws", "--tailnet", "--tailnet-mode", "--force", "--override-reservation", "--override-capacity", "--ward-version"} {
+	for _, unwanted := range []string{"--override-reservation", "--override-capacity", "--ward-version"} {
 		if containsArg(bare, unwanted) {
 			t.Errorf("bare argv should not carry %q: %v", unwanted, bare)
 		}
@@ -132,28 +132,27 @@ func TestDispatchEngineerArgv(t *testing.T) {
 		t.Errorf("inherited host ward-version must not be forwarded: %v", hostDefault)
 	}
 
-	// A fully-loaded dispatch forwards the resolved container intent; a resolved host-net
-	// route forwards as the consolidated --tailnet + an explicit --tailnet-mode (ward#362).
+	// A fully-loaded dispatch forwards only the explicit launch knobs.
 	full := dispatchEngineer{
 		harness: modeGoose, image: "ghcr.io/x/dev", tag: "v9", wardVersion: "v0.58.0", wardVersionSource: wardVersionSourceExplicit,
-		aws: true, hostNet: true, tsSidecar: false, overrideReservation: true,
+		overrideReservation: true,
 	}.engineerArgv(ref)
 	for _, want := range [][2]string{
 		{"--harness", "goose"}, {"--image", "ghcr.io/x/dev"}, {"--tag", "v9"},
-		{"--ward-version", "v0.58.0"}, {"--tailnet-mode", "host-net"},
+		{"--ward-version", "v0.58.0"},
 	} {
 		if !argFollowedBy(full, want[0], want[1]) {
 			t.Errorf("argv missing %s %s: %v", want[0], want[1], full)
 		}
 	}
-	for _, want := range []string{"--aws", "--tailnet", "--override-reservation", "--quiet-seed"} {
+	for _, want := range []string{"--override-reservation", "--quiet-seed"} {
 		if !containsArg(full, want) {
 			t.Errorf("argv missing %q: %v", want, full)
 		}
 	}
 	// The dispatched engineer never inherits the deprecated spelling or a
 	// capacity override (ward#1045): capacity is per-launch, not a director knob.
-	for _, unwanted := range []string{"--force", "--override-capacity"} {
+	for _, unwanted := range []string{"--override-capacity"} {
 		if containsArg(full, unwanted) {
 			t.Errorf("argv must not carry %q: %v", unwanted, full)
 		}
@@ -231,8 +230,8 @@ func TestBacklogPrintDirectorPlanIncludesCLIConfig(t *testing.T) {
 	}
 }
 
-// TestDirectorEngineerHarness covers the two-level precedence (ward#355): set
-// --engineer-harness wins; --engineer-driver remains a hidden fallback alias.
+// TestDirectorEngineerHarness covers the two-level precedence (ward#355):
+// --engineer-harness wins and falls back to the director mode otherwise.
 func TestDirectorEngineerHarness(t *testing.T) {
 	inherit := directorFlagSet(t, map[string]string{})
 	if got, err := directorEngineerHarness(inherit, modeGoose); err != nil || got != modeGoose {
@@ -241,14 +240,6 @@ func TestDirectorEngineerHarness(t *testing.T) {
 	override := directorFlagSet(t, map[string]string{"engineer-harness": "codex"})
 	if got, err := directorEngineerHarness(override, modeGoose); err != nil || got != modeCodex {
 		t.Errorf("--engineer-harness codex should override: got %q err %v", got, err)
-	}
-	alias := directorFlagSet(t, map[string]string{"engineer-driver": "codex"})
-	if got, err := directorEngineerHarness(alias, modeGoose); err != nil || got != modeCodex {
-		t.Errorf("hidden --engineer-driver codex should still resolve: got %q err %v", got, err)
-	}
-	both := directorFlagSet(t, map[string]string{"engineer-harness": "codex", "engineer-driver": "goose"})
-	if got, err := directorEngineerHarness(both, modeGoose); err != nil || got != modeCodex {
-		t.Errorf("canonical --engineer-harness should win over alias: got %q err %v", got, err)
 	}
 	bad := directorFlagSet(t, map[string]string{"engineer-harness": "nope"})
 	if _, err := directorEngineerHarness(bad, modeClaude); err == nil {
@@ -261,8 +252,8 @@ func TestDirectorEngineerHarness(t *testing.T) {
 func TestDirectorFlagsParity(t *testing.T) {
 	cmd := agentDirectorCommand()
 	for _, want := range []string{
-		"image", "tag", "ward-source", "ward-version", "aws", "tailnet", "tailnet-mode",
-		"no-pull", "print", "with-repo", "override-reservation", "force", "engineer-harness", "engineer-driver",
+		"image", "tag", "ward-source", "ward-version",
+		"no-pull", "print", "with-repo", "override-reservation", "engineer-harness",
 	} {
 		if !commandHasFlag(cmd, want) {
 			t.Errorf("ward agent director missing --%s at parity (ward#355)", want)
@@ -278,33 +269,11 @@ func TestDirectorFlagsParity(t *testing.T) {
 			if sf.Hidden {
 				t.Error("--engineer-harness is hidden; want it visible")
 			}
-		case "engineer-driver":
-			if !sf.Hidden {
-				t.Error("--engineer-driver alias is visible; want it hidden")
-			}
 		}
 	}
 	for _, unwanted := range []string{"branch", "no-preflight", "watch", "detach", "override-capacity"} {
 		if commandHasFlag(cmd, unwanted) {
 			t.Errorf("ward agent director must NOT add --%s (ward#355, ward#1045)", unwanted)
-		}
-	}
-	// The deprecated --force alias stays parseable but hidden; the first-class
-	// --override-reservation spelling is the visible one (ward#1045).
-	for _, f := range cmd.Flags {
-		bf, ok := f.(*cli.BoolFlag)
-		if !ok {
-			continue
-		}
-		switch bf.Name {
-		case "force":
-			if !bf.Hidden {
-				t.Error("--force alias is visible; want it hidden (ward#1045)")
-			}
-		case "override-reservation":
-			if bf.Hidden {
-				t.Error("--override-reservation is hidden; want it visible (ward#1045)")
-			}
 		}
 	}
 }
@@ -357,8 +326,6 @@ func TestDirectorSurfaceArgv(t *testing.T) {
 				tag:               "t1",
 				wardVersion:       "v1",
 				wardVersionSource: wardVersionSourceHost,
-				aws:               true,
-				tsSidecar:         true,
 			},
 			wardSource: "/src/ward",
 			noPull:     true,
@@ -380,16 +347,13 @@ func TestDirectorSurfaceArgv(t *testing.T) {
 				t.Errorf("surface argv missing %s %s: %v", want[0], want[1], argv)
 			}
 		}
-		for _, want := range []string{"--aws", "--tailnet", "--no-pull"} {
+		for _, want := range []string{"--no-pull"} {
 			if !containsArg(argv, want) {
 				t.Errorf("surface argv missing %q: %v", want, argv)
 			}
 		}
 		if containsArg(argv, "--ward-version") {
 			t.Errorf("surface argv must not forward an inherited host ward-version pin: %v", argv)
-		}
-		if !argFollowedBy(argv, "--tailnet-mode", "sidecar") {
-			t.Errorf("surface argv must forward the resolved sidecar mechanism as --tailnet-mode sidecar: %v", argv)
 		}
 		if containsArg(argv, "goose") {
 			t.Errorf("surface argv must not carry the engineer harness: %v", argv)

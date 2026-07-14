@@ -86,9 +86,10 @@ func TestCurrentAgentMode(t *testing.T) {
 	}{
 		{"goose", "", modeGoose},
 		{"", "codex", modeCodex},
-		{"qwen", "claude", modeOpencode}, // WARD_AGENT wins; qwen aliases to opencode
-		{"", "", modeClaude},             // unset defaults to claude
-		{"bogus", "", modeClaude},        // unrecognized defaults to claude
+		{"opencode", "claude", modeOpencode}, // WARD_AGENT wins.
+		{"qwen", "claude", modeClaude},       // deprecated spellings now fall back to WARD_MODE.
+		{"", "", modeClaude},                 // unset defaults to claude
+		{"bogus", "", modeClaude},            // unrecognized defaults to claude
 	}
 	for _, c := range cases {
 		t.Setenv("WARD_AGENT", c.agent)

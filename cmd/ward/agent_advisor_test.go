@@ -100,15 +100,10 @@ func TestAdvisorHasOneshotFlag(t *testing.T) {
 }
 
 // TestAdvisorDefaultsTailnetOn covers ward#578: the advisor's live-observe tailnet +
-// implied ~/.aws come from its role guardfile set, not a --tailnet flag default.
+// implied ~/.aws come from its role guardfile set.
 func TestAdvisorDefaultsTailnetOn(t *testing.T) {
 	cmd := parseCommandForTest(t, agentAdvisorFlags(), []string{"advisor", "coilyco-flight-deck/ward#1", "what changed?"})
-	// The role default is config, not a flag: --tailnet is now a hidden alias that
-	// defaults OFF; capability resolves off the advisor role's guardfile set.
-	if cmd.Bool("tailnet") {
-		t.Fatal("--tailnet is now a hidden deprecated alias defaulting off, not the advisor's source of tailnet (ward#578)")
-	}
-	if caps := resolveCapability(cmd, roleAdvisor); !caps.tailnet || !caps.aws {
+	if caps := resolveCapability(roleAdvisor); !caps.tailnet || !caps.aws {
 		t.Fatalf("advisor role capability = %+v, want tailnet+aws from its guardfile set", caps)
 	}
 	p, err := buildUpPlan(cmd, targetRepo{Owner: "coilyco-flight-deck", Name: "ward"}, modeClaude, roleAdvisor, t.TempDir(), t.TempDir(), nil, false)

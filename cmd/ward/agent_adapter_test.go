@@ -89,8 +89,8 @@ func TestAgentManifestCodexDialect(t *testing.T) {
 	}
 }
 
-// TestAgentManifestOpencodeDialect pins opencode's real dialect (ward#187; roster
-// key renamed from qwen by ward#401): headless [opencode run], no stream-json.
+// TestAgentManifestOpencodeDialect pins opencode's real dialect (ward#187):
+// headless [opencode run], no stream-json.
 func TestAgentManifestOpencodeDialect(t *testing.T) {
 	m, err := loadAgentManifest()
 	if err != nil {
@@ -228,13 +228,5 @@ func TestFleetSwitchesTwoWayPin(t *testing.T) {
 		if rt != containerMode(a.Name) {
 			t.Errorf("parseMode(%q) = %q, want %q", a.Name, rt, a.Name)
 		}
-	}
-
-	// qwen is a back-compat alias, not a roster member; opencode is canonical.
-	if _, ok := fleetAgent(fleet, modeQwenAlias); ok {
-		t.Errorf("fleet.generated.kdl carries a %q agent; %q is a back-compat alias, opencode is canonical", modeQwenAlias, modeQwenAlias)
-	}
-	if rt, err := parseMode(modeQwenAlias); err != nil || rt != modeOpencode {
-		t.Errorf("parseMode(%q) = %q, %v; want %q (opencode canonical)", modeQwenAlias, rt, err, modeOpencode)
 	}
 }

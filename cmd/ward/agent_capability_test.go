@@ -5,7 +5,6 @@ import (
 	"testing"
 
 	"forgejo.coilysiren.me/coilyco-flight-deck/cli-guard/pkg/fleetconfig"
-	"github.com/urfave/cli/v3"
 )
 
 // TestCapabilityGuardfilesExist pins the name constants to real files so a guardfile
@@ -58,73 +57,16 @@ func TestGuardfileInSet(t *testing.T) {
 	}
 }
 
-// TestResolveCapability covers the role default + deprecated-flag overrides and the
-// advisor's --no-tailnet full-isolation opt-out (ward#578).
+// TestResolveCapability covers the role default and the advisor's --no-tailnet
+// full-isolation opt-out (ward#578).
 func TestResolveCapability(t *testing.T) {
-	cases := []struct {
-		name        string
-		role        string
-		flags       []cli.Flag
-		argv        []string
-		wantAWS     bool
-		wantTailnet bool
-	}{
-		{
-			name:        "advisor default holds live-observe set",
-			role:        roleAdvisor,
-			flags:       agentAdvisorFlags(),
-			argv:        []string{"advisor", "o/r#1", "q"},
-			wantAWS:     true,
-			wantTailnet: true,
-		},
-		{
-			name:        "advisor --no-tailnet fully isolates",
-			role:        roleAdvisor,
-			flags:       agentAdvisorFlags(),
-			argv:        []string{"advisor", "o/r#1", "q", "--no-tailnet"},
-			wantAWS:     false,
-			wantTailnet: false,
-		},
-		{
-			name:        "advisor --no-tailnet --aws keeps the explicit aws mount",
-			role:        roleAdvisor,
-			flags:       agentAdvisorFlags(),
-			argv:        []string{"advisor", "o/r#1", "q", "--no-tailnet", "--aws"},
-			wantAWS:     true,
-			wantTailnet: false,
-		},
-		{
-			name:        "engineer default holds nothing",
-			role:        roleEngineer,
-			flags:       agentSurfaceFlags(),
-			argv:        []string{"engineer", "o/r#1"},
-			wantAWS:     false,
-			wantTailnet: false,
-		},
-		{
-			name:        "engineer --aws force-mounts aws only",
-			role:        roleEngineer,
-			flags:       agentSurfaceFlags(),
-			argv:        []string{"engineer", "o/r#1", "--aws"},
-			wantAWS:     true,
-			wantTailnet: false,
-		},
-		{
-			name:        "engineer --tailnet implies aws",
-			role:        roleEngineer,
-			flags:       agentSurfaceFlags(),
-			argv:        []string{"engineer", "o/r#1", "--tailnet"},
-			wantAWS:     true,
-			wantTailnet: true,
-		},
+	if caps := resolveCapability(roleAdvisor); !caps.aws || !caps.tailnet {
+		t.Fatalf("advisor role capability = %+v, want aws+tailnet from its guardfile set", caps)
 	}
-	for _, tc := range cases {
-		t.Run(tc.name, func(t *testing.T) {
-			cmd := parseCommandForTest(t, tc.flags, tc.argv)
-			caps := resolveCapability(cmd, tc.role)
-			if caps.aws != tc.wantAWS || caps.tailnet != tc.wantTailnet {
-				t.Errorf("resolveCapability(%s) = %+v, want aws=%v tailnet=%v", tc.role, caps, tc.wantAWS, tc.wantTailnet)
-			}
-		})
+	if caps := resolveCapability(roleEngineer); caps.aws || caps.tailnet {
+		t.Fatalf("engineer role capability = %+v, want least-access (none)", caps)
+	}
+	if caps := resolveCapabilityWithOptOut(roleAdvisor, true); caps.aws || caps.tailnet {
+		t.Fatalf("advisor opt-out capability = %+v, want least-access (none)", caps)
 	}
 }

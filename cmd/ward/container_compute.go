@@ -6,7 +6,6 @@ package main
 import (
 	"fmt"
 	"net"
-	"os"
 	"path/filepath"
 	"regexp"
 	"sort"
@@ -244,12 +243,7 @@ func (m containerMode) contextLevel() int {
 }
 
 // parseMode validates a --mode value against the embedded fleet roster.
-// qwen still aliases to opencode with a deprecation warning (ward#401).
 func parseMode(s string) (containerMode, error) {
-	if s == modeQwenAlias {
-		fmt.Fprintf(os.Stderr, "ward: --mode %s is deprecated; use --mode %s. Aliasing to %s for now.\n", modeQwenAlias, modeOpencode, modeOpencode)
-		return modeOpencode, nil
-	}
 	m, err := cachedAgentManifest()
 	if err != nil {
 		return "", err
@@ -375,7 +369,7 @@ type mountOpts struct {
 }
 
 // leastAccessMounts is the default set: cwd + assets read-only and the gitcache
-// volume. The target repo is never mounted; --aws/--ward-source are opt-ins.
+// volume. The target repo is never mounted; the optional mounts are opt-ins.
 func leastAccessMounts(hostCwd string, opts mountOpts) []mountSpec {
 	mounts := []mountSpec{
 		{Source: hostCwd, Target: containerContextMount, ReadOnly: true, Volume: false},
@@ -587,7 +581,7 @@ var configEnvKeys = map[string]string{
 	"agent.codex.model":       "WARD_CODEX_MODEL",
 	"agent.codex.effort":      "WARD_CODEX_REASONING_EFFORT",
 	"agent.codex.verbosity":   "WARD_CODEX_VERBOSITY",
-	"agent.opencode.model":    "WARD_QWEN_MODEL",
+	"agent.opencode.model":    "WARD_OPENCODE_MODEL",
 	"agent.opencode.endpoint": "WARD_OLLAMA_URL",
 }
 
@@ -905,7 +899,7 @@ func awsMountMissingWarning(awsHome string, hasCreds bool) (string, bool) {
 		"  " + awsHome + " read-only - but that dir holds no config or credentials file either.\n" +
 		"  docker mounts the missing source as an EMPTY dir, so `aws`/`ssm` calls inside the run\n" +
 		"  fail NoCredentials. Give this host an AWS identity (log into SSO, export AWS_* env, or\n" +
-		"  add ~/.aws/config|credentials with SSM read/write) so --aws actually delivers creds.\n" +
+		"  add ~/.aws/config|credentials with SSM read/write) so the opt-in mount actually delivers creds.\n" +
 		"  See docs/agent-capability.md (ward#586, ward#579).", true
 }
 

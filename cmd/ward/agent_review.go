@@ -424,7 +424,7 @@ func reviewerRunCtx(ctx context.Context, rv reviewpanel.Reviewer) agentsapi.RunC
 		AgentGID:      envOr("WARD_AGENT_GID", ""),
 		CodexEffort:   envOr("WARD_CODEX_REASONING_EFFORT", ""),
 		ClaudeEffort:  envOr("WARD_CLAUDE_REASONING_EFFORT", ""),
-		OpencodeModel: envOr("WARD_QWEN_MODEL", ""),
+		OpencodeModel: envOr("WARD_OPENCODE_MODEL", ""),
 		OllamaURL:     envOr("WARD_OLLAMA_URL", ""),
 		Log:           func(string, ...any) {},
 	}
@@ -435,7 +435,7 @@ func reviewerRunCtx(ctx context.Context, rv reviewpanel.Reviewer) agentsapi.RunC
 	case string(modeClaude):
 		rc.ClaudeModel = firstNonEmpty(rv.Model, envOr("WARD_CLAUDE_MODEL", ""))
 	case string(modeOpencode):
-		rc.OpencodeModel = firstNonEmpty(rv.Model, envOr("WARD_QWEN_MODEL", ""))
+		rc.OpencodeModel = firstNonEmpty(rv.Model, envOr("WARD_OPENCODE_MODEL", ""))
 	}
 	return rc
 }

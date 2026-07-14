@@ -356,7 +356,7 @@ func TestNamedGate(t *testing.T) {
 func TestReadBootstrapEnvDefaults(t *testing.T) {
 	for _, k := range []string{
 		"WARD_MODE", "WARD_AGENT", "WARD_CONTEXT_LEVEL", "WARD_GITCACHE", "WARD_CONTEXT_SRC",
-		"WARD_QWEN_MODEL", "WARD_OLLAMA_URL", "WARD_GIT_NAME", "WARD_GIT_EMAIL",
+		"WARD_OPENCODE_MODEL", "WARD_OLLAMA_URL", "WARD_GIT_NAME", "WARD_GIT_EMAIL",
 		"WARD_CODEX_MODEL", "WARD_CODEX_REASONING_EFFORT", "WARD_CODEX_VERBOSITY",
 		"WARD_AGENT_UID", "WARD_AGENT_GID", "WARD_AGENT_HOME", "WARD_BRANCH",
 		"WARD_ROLE", "WARD_TS_SOCKS5",
@@ -378,7 +378,7 @@ func TestReadBootstrapEnvDefaults(t *testing.T) {
 		"Agent":          e.Agent,
 		"ContextLevel":   e.ContextLevel,
 		"GitCache":       e.GitCache,
-		"QwenModel":      e.QwenModel,
+		"OpencodeModel":  e.OpencodeModel,
 		"OllamaURL":      e.OllamaURL,
 		"CodexModel":     e.CodexModel,
 		"CodexEffort":    e.CodexEffort,
@@ -395,7 +395,7 @@ func TestReadBootstrapEnvDefaults(t *testing.T) {
 		"Agent":          "claude",
 		"ContextLevel":   "2",
 		"GitCache":       "/gitcache",
-		"QwenModel":      "qwen3-coder:30b",
+		"OpencodeModel":  "qwen3-coder:30b",
 		"OllamaURL":      "http://host.docker.internal:8082/v1",
 		"CodexModel":     "gpt-5.4",
 		"CodexEffort":    "medium",
@@ -422,7 +422,7 @@ func TestReadBootstrapEnvDefaults(t *testing.T) {
 func TestReadBootstrapEnvDirectorCodexOverlay(t *testing.T) {
 	for _, k := range []string{
 		"WARD_MODE", "WARD_AGENT", "WARD_CONTEXT_LEVEL", "WARD_GITCACHE", "WARD_CONTEXT_SRC",
-		"WARD_QWEN_MODEL", "WARD_OLLAMA_URL", "WARD_GIT_NAME", "WARD_GIT_EMAIL",
+		"WARD_OPENCODE_MODEL", "WARD_OLLAMA_URL", "WARD_GIT_NAME", "WARD_GIT_EMAIL",
 		"WARD_CODEX_MODEL", "WARD_CODEX_REASONING_EFFORT", "WARD_CODEX_VERBOSITY",
 		"WARD_AGENT_UID", "WARD_AGENT_GID", "WARD_AGENT_HOME", "WARD_BRANCH",
 		"WARD_HEADLESS", "WARD_ASK", "WARD_MIRROR_NAME", "WARD_SUBSTRATE_SKIP",

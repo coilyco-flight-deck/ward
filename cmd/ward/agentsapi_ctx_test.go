@@ -32,7 +32,7 @@ func TestAgentRunCtxCarve(t *testing.T) {
 		CodexVerbosity: "low",
 		ClaudeModel:    "sonnet",
 		ClaudeEffort:   "medium",
-		QwenModel:      "qwen3-coder:30b",
+		OpencodeModel:  "qwen3-coder:30b",
 		OllamaURL:      "http://host.docker.internal:8082/v1",
 	}
 	r := &Runner{Runner: &shell.Runner{Stderr: io.Discard}}
@@ -59,10 +59,10 @@ func TestAgentRunCtxCarve(t *testing.T) {
 		t.Errorf("claude knobs = %q/%q, want %q/%q (ward#616)",
 			rc.ClaudeModel, rc.ClaudeEffort, e.ClaudeModel, e.ClaudeEffort)
 	}
-	// The qwen->opencode roster untangle is Phase 2; the carve reads the
-	// bootstrapEnv.QwenModel field into the neutral OpencodeModel today.
-	if rc.OpencodeModel != e.QwenModel {
-		t.Errorf("OpencodeModel = %q, want QwenModel %q", rc.OpencodeModel, e.QwenModel)
+	// The carve reads the bootstrapEnv.OpencodeModel field into the neutral
+	// OpencodeModel today.
+	if rc.OpencodeModel != e.OpencodeModel {
+		t.Errorf("OpencodeModel = %q, want OpencodeModel %q", rc.OpencodeModel, e.OpencodeModel)
 	}
 	if rc.OllamaURL != e.OllamaURL {
 		t.Errorf("OllamaURL = %q, want %q", rc.OllamaURL, e.OllamaURL)

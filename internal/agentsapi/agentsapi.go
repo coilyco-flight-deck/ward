@@ -20,7 +20,7 @@ type Agent interface {
 	// whether to wrap its output in the stream-json progress parser.
 	LaunchArgv(RunCtx) (argv []string, stream bool)
 	// PreflightArgv builds the host GO/NO-GO one-shot argv, plus whether one exists
-	// (codex/qwen have none).
+	// (codex/opencode have none).
 	PreflightArgv(prompt string) ([]string, bool)
 }
 

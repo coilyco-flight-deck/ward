@@ -139,23 +139,3 @@ func TestRegistryRecordMatchesManifest(t *testing.T) {
 		}
 	}
 }
-
-// TestRegistryQwenAlias pins the back-compat alias: Lookup("qwen") resolves to
-// the opencode agent so the ward#401 rename does not hard-break --mode qwen.
-func TestRegistryQwenAlias(t *testing.T) {
-	a, ok := agents.Lookup("qwen")
-	if !ok {
-		t.Fatal("Lookup(\"qwen\") must resolve via the back-compat alias")
-	}
-	if a.Name() != "opencode" {
-		t.Errorf("Lookup(\"qwen\").Name() = %q, want opencode", a.Name())
-	}
-	// parseMode aliases too, and both agree on the resolved mode.
-	m, err := parseMode("qwen")
-	if err != nil {
-		t.Fatalf("parseMode(\"qwen\"): %v", err)
-	}
-	if string(m) != a.Name() {
-		t.Errorf("parseMode(qwen) = %q but registry alias -> %q", m, a.Name())
-	}
-}

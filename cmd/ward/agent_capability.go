@@ -4,7 +4,6 @@ import (
 	"strings"
 
 	"forgejo.coilysiren.me/coilyco-flight-deck/cli-guard/pkg/fleetconfig"
-	"github.com/urfave/cli/v3"
 )
 
 // agent_capability.go resolves a startup role's host/cloud reach from the
@@ -62,36 +61,25 @@ func guardfileInSet(name string, g fleetconfig.Guardfiles) bool {
 	return false
 }
 
-// resolveCapability combines the role's config-driven capability with the deprecated
-// --aws/--tailnet overrides (ward#578). See docs/agent-capability.md.
-func resolveCapability(c *cli.Command, role string) roleCapability {
+// resolveCapability resolves the role's config-driven capability. The source of
+// truth is the embedded fleet config.
+func resolveCapability(role string) roleCapability {
 	caps := capabilityForRole(role)
-	if c.Bool("aws") {
-		caps.aws = true
-	}
-	if tailnetFlagForcesOn(c) {
-		caps.tailnet = true
-	}
-	if c.Bool("no-tailnet") {
-		// Advisor's "stay isolated" opt-out wins over the role default + a stray
-		// --tailnet: drop the tailnet and the role-granted ~/.aws (explicit --aws stands).
-		caps.tailnet = false
-		if !c.Bool("aws") {
-			caps.aws = false
-		}
-	}
 	if caps.tailnet {
 		caps.aws = true
 	}
 	return caps
 }
 
-// tailnetFlagForcesOn reports whether the deprecated flags explicitly ask for the
-// tailnet: --tailnet, or an explicit non-auto --tailnet-mode. --no-tailnet vetoes later.
-func tailnetFlagForcesOn(c *cli.Command) bool {
-	if c.Bool("tailnet") {
-		return true
+// resolveCapabilityWithOptOut resolves the role capability and applies the
+// advisor's explicit isolation opt-out.
+func resolveCapabilityWithOptOut(role string, noTailnet bool) roleCapability {
+	caps := resolveCapability(role)
+	if noTailnet {
+		// Advisor's "stay isolated" opt-out wins over the role default + a stray
+		// tailnet grant: drop the tailnet and the role-granted ~/.aws.
+		caps.tailnet = false
+		caps.aws = false
 	}
-	m := strings.TrimSpace(c.String("tailnet-mode"))
-	return c.IsSet("tailnet-mode") && m != "" && m != tailnetModeAuto
+	return caps
 }

@@ -138,11 +138,8 @@ func buildUpPlan(c *cli.Command, repo targetRepo, mode containerMode, role, cwd,
 	}
 	// Host/cloud capability is the role's guardfile set (ward#578; docs/agent-flags.md),
 	// resolved to the mechanisms ward composes; a tailnet grant implies the ~/.aws mount.
-	capab := resolveCapability(c, role)
-	hostNet, tsSidecar, err := resolveTailnetMechanism(c, runtime.GOOS, capab.tailnet)
-	if err != nil {
-		return upPlan{}, err
-	}
+	capab := resolveCapabilityWithOptOut(role, c.Bool("no-tailnet"))
+	hostNet, tsSidecar := resolveTailnetMechanism(runtime.GOOS, capab.tailnet)
 	awsHome := ""
 	if capab.aws {
 		awsHome = filepath.Join(homeDir(), ".aws")
@@ -509,7 +506,7 @@ func randHex() string {
 	return hex.EncodeToString(b)
 }
 
-// homeDir resolves the operator's home, used only for the --aws mount source.
+// homeDir resolves the operator's home, used only for the optional mount source.
 func homeDir() string {
 	if h, err := os.UserHomeDir(); err == nil {
 		return h

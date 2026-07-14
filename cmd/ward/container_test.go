@@ -436,10 +436,13 @@ func TestHostPreflightArgvParity(t *testing.T) {
 }
 
 func TestParseMode(t *testing.T) {
-	for _, ok := range []string{"claude", "codex", "opencode", "goose", "qwen"} { // qwen still parses (deprecated alias)
+	for _, ok := range []string{"claude", "codex", "opencode", "goose"} {
 		if _, err := parseMode(ok); err != nil {
 			t.Errorf("parseMode(%q) errored: %v", ok, err)
 		}
+	}
+	if _, err := parseMode("qwen"); err == nil {
+		t.Error("parseMode should reject deprecated qwen")
 	}
 	if _, err := parseMode("gpt"); err == nil {
 		t.Error("parseMode should reject unknown mode")

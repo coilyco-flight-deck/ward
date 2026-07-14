@@ -168,9 +168,9 @@ func TestPrecheckReservation(t *testing.T) {
 		t.Fatalf("precheckReservation: want a remote-reservation refusal naming the holder, got %v", err)
 	}
 
-	// --force bypasses the remote refusal.
+	// override-reservation bypasses the remote refusal.
 	if err := r.precheckReservation(context.Background(), "lbl", w, true); err != nil {
-		t.Fatalf("precheckReservation --force: want bypass, got %v", err)
+		t.Fatalf("precheckReservation override-reservation: want bypass, got %v", err)
 	}
 
 	// The precheck must NOT have written a local sentinel - it only reads.
@@ -1004,7 +1004,7 @@ func TestReservationSeedContextRender(t *testing.T) {
 			t.Errorf("render should omit %q\n got: %s", notWant, got)
 		}
 	}
-	// A nil context renders nothing (a --force path with no captured context).
+	// A nil context renders nothing (an override path with no captured context).
 	if s := (*reservationSeedContext)(nil).render(); s != "" {
 		t.Errorf("nil render should be empty, got %q", s)
 	}

@@ -633,10 +633,6 @@ func directorSurfaceArgv(contextRepo string, cfg backlogConfig) []string {
 	if v := strings.TrimSpace(cfg.wardSource); v != "" {
 		argv = append(argv, "--ward-source", v)
 	}
-	if cy.aws {
-		argv = append(argv, "--aws")
-	}
-	argv = appendTailnetArgv(argv, cy.hostNet, cy.tsSidecar)
 	if cfg.noPull {
 		argv = append(argv, "--no-pull")
 	}
