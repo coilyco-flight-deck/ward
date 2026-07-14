@@ -30,6 +30,11 @@ jobs:
 
       - name: golangci-lint
         timeout-minutes: 5
+        env:
+          TMPDIR: /tmp/ward-tmp
+          GOTMPDIR: /tmp/ward-go-tmp
+          GOCACHE: /tmp/ward-go-build
+          GOMODCACHE: /tmp/ward-go-mod
         run: golangci-lint run ./...
       - name: Alert Telegram on main failure
         if: ${{ failure() && github.ref == 'refs/heads/main' }}

@@ -49,6 +49,11 @@ jobs:
 
       - name: golangci-lint
         timeout-minutes: 5
+        env:
+          TMPDIR: /tmp/ward-tmp
+          GOTMPDIR: /tmp/ward-go-tmp
+          GOCACHE: /tmp/ward-go-build
+          GOMODCACHE: /tmp/ward-go-mod
         run: golangci-lint run ./...
 
       - name: Promote main to release (fast-forward only)
