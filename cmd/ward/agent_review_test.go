@@ -118,11 +118,11 @@ func TestReviewGateClauseInSeed(t *testing.T) {
 		t.Errorf("review gate clause must tell pull-request runs to keep watching PR CI\n got: %s", pr)
 	}
 	merge := agentSeedPromptWorkflow(ref, "t", "b", "", true, nil, workflowPullRequestAndMerge, true, "")
-	if !strings.Contains(merge, "WARDED_WORKFLOW: merge-ready") {
-		t.Errorf("pull-request-and-merge seed should end with merge-ready, not done\n got: %s", merge)
+	if !strings.Contains(merge, pullRequestWorkflowOutcomeMarker) {
+		t.Errorf("pull-request-and-merge seed should end with the PR URL marker, not done\n got: %s", merge)
 	}
-	if !strings.Contains(merge, "merge-ready") {
-		t.Errorf("pull-request-and-merge seed should name merge-ready in the landing phrase\n got: %s", merge)
+	if !strings.Contains(merge, "director merge authorization: reviewed-and-ready") {
+		t.Errorf("pull-request-and-merge seed should carry the reviewed-and-ready authorization line\n got: %s", merge)
 	}
 	if !strings.Contains(merge, "workflow: pull-request-and-merge; review summary: <summary or skip state>") {
 		t.Errorf("pull-request-and-merge seed should use the canonical workflow token in the machine-readable line\n got: %s", merge)

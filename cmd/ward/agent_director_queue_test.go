@@ -91,7 +91,15 @@ func TestDirectorQueueClassifiesRequestedStates(t *testing.T) {
 			name: "merge-ready pr",
 			kind: backlogKindPullRequest,
 			comments: []issueComment{{
-				Body:      "WARD-OUTCOME: merge-ready - review passed, handoff to director",
+				Body: strings.Join([]string{
+					"WARDED_WORKFLOW: https://forgejo.coilysiren.me/coilyco-flight-deck/ward/pulls/5",
+					"",
+					"<details><summary>details</summary>",
+					"",
+					"director merge authorization: reviewed-and-ready",
+					"",
+					"</details>",
+				}, "\n"),
 				CreatedAt: now.Add(-10 * time.Minute),
 			}},
 			wantState: directorQueueStateMergeReadyPR,
@@ -197,7 +205,15 @@ func TestRenderDirectorQueueStatusShowsNextActions(t *testing.T) {
 				CreatedAt: now.Add(-10 * time.Minute),
 			}},
 			repo + "#5": {{
-				Body:      "WARD-OUTCOME: merge-ready - review passed, handoff to director",
+				Body: strings.Join([]string{
+					"WARDED_WORKFLOW: https://forgejo.coilysiren.me/coilyco-flight-deck/ward/pulls/5",
+					"",
+					"<details><summary>details</summary>",
+					"",
+					"director merge authorization: reviewed-and-ready",
+					"",
+					"</details>",
+				}, "\n"),
 				CreatedAt: now.Add(-10 * time.Minute),
 			}},
 			repo + "#6": {{

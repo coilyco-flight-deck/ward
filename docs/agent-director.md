@@ -41,6 +41,9 @@ The director surface is the read-only control plane for runs.
 The director's machine-readable issue comments use `WARDED_WORKFLOW` as the
 canonical first line. Legacy `WARD-*` headers are still parsed on old threads,
 but new PR handoffs start with `WARDED_WORKFLOW: <fully-qualified pull request link>`.
+Review-gated `pull-request-and-merge` handoffs keep the first line as the PR URL
+and carry `director merge authorization: reviewed-and-ready` in the details
+block so the merge sweep can still recognize the ready state.
 
 The director surface is intentionally narrower than the engineer path. It is
 for supervision and landing, not for implementation.

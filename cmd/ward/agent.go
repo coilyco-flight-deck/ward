@@ -327,12 +327,17 @@ func reviewGateDisabledByTemporaryDefault(role string) bool {
 func headlessReflection(ref agentIssueRef, wf workflowMode, reviewGate bool, reviewSkip string) string {
 	outcomeStatus := workflowOutcomeStatus(wf, reviewGate)
 	workflowLine := "workflow: <mode>; review summary: <summary or skip state>"
+	mergeAuthLine := ""
 	landingPhrase := workflowLandingPhrase(ref, wf)
 	outcomeLine := workflowOutcomeVisible(outcomeStatus)
 	if canonicalWorkflow(wf.orDefault()) == workflowPullRequestAndMerge {
 		workflowLine = "workflow: pull-request-and-merge; review summary: <summary or skip state>"
+		outcomeLine = workflowOutcomeLinkMarker(ref.Forge)
+		if reviewGate {
+			mergeAuthLine = "director merge authorization: reviewed-and-ready"
+		}
 	}
-	if canonicalWorkflow(wf.orDefault()) == workflowPullRequest || (canonicalWorkflow(wf.orDefault()) == workflowPullRequestAndMerge && !reviewGate) {
+	if canonicalWorkflow(wf.orDefault()) == workflowPullRequest {
 		outcomeLine = workflowOutcomeLinkMarker(ref.Forge)
 	}
 	reviewLine := "If a review ran, read `~/.ward/review-summary.txt` and copy its exact one-line summary into the same final comment."
@@ -353,7 +358,12 @@ func headlessReflection(ref agentIssueRef, wf workflowMode, reviewGate bool, rev
 		"  `" + workflowOutcomeVisible("blocked") + "`\n" +
 		"  `" + workflowOutcomeVisible("failed") + "`\n" +
 		"Put every other word inside one collapsed `<details><summary>details</summary>` block: the review " +
-		"summary or skip state, the workflow line (`" + workflowLine + "`), " +
+		"summary or skip state" + func() string {
+		if mergeAuthLine == "" {
+			return ""
+		}
+		return ", the merge authorization line (`" + mergeAuthLine + "`)"
+	}() + ", the workflow line (`" + workflowLine + "`), " +
 		"the short candid retrospective on how the implementation \"felt\", confidence, surprises, and follow-ups. Do not leave " +
 		"any visible prose outside that first status line. " + reviewLine + " " + headlessWorkflowFailureCommentClause(ref, wf) + " A supervising director loop " +
 		"(ward agent director) reads only that first line to classify the run, so for a normal run that completed " +

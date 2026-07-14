@@ -197,6 +197,25 @@ func workflowOutcomeVisibleResult(outcome backlogOutcome) string {
 	return workflowOutcomeVisible(outcome.Status)
 }
 
+func workflowCommentFieldValue(body, prefix string) (string, bool) {
+	prefix = strings.ToLower(strings.TrimSpace(prefix))
+	if prefix == "" {
+		return "", false
+	}
+	for _, ln := range strings.Split(body, "\n") {
+		s := workflowCommentLine(ln)
+		if s == "" {
+			continue
+		}
+		lower := strings.ToLower(s)
+		if !strings.HasPrefix(lower, prefix) {
+			continue
+		}
+		return strings.TrimSpace(s[len(prefix):]), true
+	}
+	return "", false
+}
+
 // workflowReservationHeldVisible marks the reservation as held.
 func workflowReservationHeldVisible() string { return workflowCommentVisible("reservation-held") }
 

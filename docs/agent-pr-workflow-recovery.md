@@ -17,6 +17,18 @@ The director lane adds one recovery step when the closed PR is still eligible:
 If the reopened PR no longer matches the original head or is no longer green,
 ward fails loudly instead of pretending the merge landed.
 
+## Where it runs
+
+- On a **read-only director surface**, each verb forwards through the host
+  dispatch broker, and host ward re-checks the permission gate before touching
+  the forge.
+- Everywhere else, the verb runs in-process against the Forgejo API with the
+  session's own credential.
+
+The `ward agent director merge` composite keeps its stricter thread-driven
+policy (`WARDED_WORKFLOW`, review, QA verdict). `ward agent pr merge` is the
+operator-driven single-PR tool under the same gates.
+
 ## See also
 
 - [agent-pr-workflow.md](agent-pr-workflow.md) - the native PR-workflow verbs.

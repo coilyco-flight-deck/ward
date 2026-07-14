@@ -66,6 +66,15 @@ func TestWorkflowCommentParsingAcceptsLegacyCanonicalAndPRURLHeaders(t *testing.
 		{name: "legacy", body: "WARD-OUTCOME: merge-ready - review passed", want: "merge-ready"},
 		{name: "canonical", body: "WARDED_WORKFLOW: merge-ready - review passed", want: "merge-ready"},
 		{name: "pr url", body: "WARDED_WORKFLOW: https://forgejo.coilysiren.me/coilyco-flight-deck/ward/pulls/12", want: "submitted", wantURL: "https://forgejo.coilysiren.me/coilyco-flight-deck/ward/pulls/12", wantPR: 12},
+		{name: "pr url reviewed and ready", body: strings.Join([]string{
+			"WARDED_WORKFLOW: https://forgejo.coilysiren.me/coilyco-flight-deck/ward/pulls/12",
+			"",
+			"<details><summary>details</summary>",
+			"",
+			"director merge authorization: reviewed-and-ready",
+			"",
+			"</details>",
+		}, "\n"), want: "merge-ready", wantURL: "https://forgejo.coilysiren.me/coilyco-flight-deck/ward/pulls/12", wantPR: 12},
 	} {
 		t.Run(tc.name, func(t *testing.T) {
 			outcome, ok := backlogOutcomeOfComment(tc.body)
