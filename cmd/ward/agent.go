@@ -518,6 +518,18 @@ func agentSeedPromptWorkflow(ref agentIssueRef, title, body, details string, hea
 	return seed + inline
 }
 
+// gooseLandingClause makes Goose wait to declare completion until a same-repo
+// closing commit already exists.
+func gooseLandingClause(ref agentIssueRef) string {
+	return fmt.Sprintf(
+		"\n\nGoose landing rule: if this run changes files, do not emit a terminal "+
+			"completion line until the same-repo closing commit already exists in the branch "+
+			"history and the work is ready for teardown. The deterministic success path is to "+
+			"commit with `closes #%d` (or an equivalent same-repo close trailer) before teardown, "+
+			"then let the normal completion boundary fire after the commit is in place.",
+		ref.Number)
+}
+
 func seedIssueBodyParts(body string) (action, inline string) {
 	switch {
 	case body == "":
@@ -1028,6 +1040,9 @@ func (r *Runner) resolveAgentWork(ctx context.Context, c *cli.Command, mode cont
 		seedBody = issueBodyWithComments(body, comments)
 	}
 	seed := agentSeedPromptWorkflow(ref, title, seedBody, details, true, extra, wf, reviewGate, reviewSkip)
+	if mode == modeGoose {
+		seed += gooseLandingClause(ref)
+	}
 	seed += agentRunBudgetNote(roleEngineer)
 	return resolvedWork{Ref: ref, Title: title, Body: seedBody, Comments: comments, Details: details, Seed: seed, Branch: branch, ExtraRepos: extra, Workflow: wf, ReviewGate: reviewGate}, nil
 }
