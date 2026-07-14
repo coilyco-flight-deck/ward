@@ -156,7 +156,7 @@ func directorFlags() []cli.Flag {
 	flags := agentHarnessFlags()
 	flags = append(flags,
 		&cli.StringFlag{Name: "engineer-harness", Usage: "harness for the engineers the director dispatches: " + agentHarnessChoices() + " (default: inherit --harness)"},
-		&cli.StringFlag{Name: "repo", Usage: "comma-separated scope 'a/b,c/d' (default: director.default-scope from ~/.ward/config.yaml, else the cwd git origin)"},
+		&cli.StringFlag{Name: "repo", Usage: "comma-separated scope 'a/b,c/d' (default: director.default-scope from ~/.ward/config.yaml)"},
 		&cli.StringSliceFlag{Name: "org", Usage: "expand every repo an org owns into the scope (owner; repeatable), unioned with --repo and de-duped (ward#370)"},
 		&cli.StringSliceFlag{Name: "with-repo", Usage: "grant director's own session an additional writable repo to clone (owner/name; repeatable), landed under /workspace alongside the scope (ward#230)."},
 		&cli.IntFlag{Name: "max-parallel", Value: directorMaxParallelDefault(), Usage: "in-flight container cap"},
@@ -195,7 +195,7 @@ func agentDirectorCommand() *cli.Command {
 	return &cli.Command{
 		Name:      "director",
 		Usage:     "Run an attached LLM-in-the-loop heartbeat over a repo's headless lane, or one exact issue ref: poll, decide, dispatch, and surface on drain (ward#351). Engineers inherit the director's own harness by default; --engineer-harness overrides that dispatch default.",
-		ArgsUsage: "(issue ref | scope via --repo; default: the cwd git origin)",
+		ArgsUsage: "(issue ref | scope via --repo; default: director.default-scope from ~/.ward/config.yaml)",
 		Description: `director runs an attached, autonomous heartbeat over a repo's open backlog. Each
 tick it reconciles in-flight engineers (reading their WARDED_WORKFLOW comments),
 refreshes the ledger from the live backlog (ranking issues into lanes by tier/mode
@@ -401,7 +401,7 @@ func (r *Runner) emit(s string) error {
 // --- scope parsing ---------------------------------------------------------
 
 // resolveDirectorScope unions explicit --repo slugs with each --org's expansion,
-// falling back to the config default then the cwd origin (ward#370, ward#398).
+// falling back to the config default (ward#370, ward#398).
 func (r *Runner) resolveDirectorScope(ctx context.Context, c *cli.Command, label string) ([]string, error) {
 	explicit := parseScopeRepos(c.String("repo"), "")
 	orgs := dedupeSlugs(c.StringSlice("org"))
@@ -420,7 +420,7 @@ func (r *Runner) resolveDirectorScope(ctx context.Context, c *cli.Command, label
 }
 
 // resolveDirectorDefaultScope resolves the no-flag scope (ward#398): the config-stored
-// director.default-scope wins over the cwd origin. See docs/agent-director.md.
+// director.default-scope is the only implicit fallback. See docs/agent-director.md.
 func (r *Runner) resolveDirectorDefaultScope(ctx context.Context, label string) ([]string, error) {
 	cfgOrgs, cfgRepos, err := loadDirectorDefaultScope()
 	if err != nil {
@@ -437,15 +437,7 @@ func (r *Runner) resolveDirectorDefaultScope(ctx context.Context, label string) 
 		}
 		return r.filterBurndownRepos(label, repos)
 	}
-	def := ""
-	if repo, _, terr := r.resolveTarget(ctx, ""); terr == nil {
-		def = repo.slug()
-	}
-	repos := parseScopeRepos("", def)
-	if len(repos) == 0 {
-		return nil, fmt.Errorf("%s: no --repo/--org given, no director.default-scope in ~/.ward/config.yaml, and no git origin found in the current directory", label)
-	}
-	return r.filterBurndownRepos(label, repos)
+	return nil, fmt.Errorf("%s: no --repo/--org given and no director.default-scope in ~/.ward/config.yaml", label)
 }
 
 // wardGlobalConfig is the slice of ~/.ward/config.yaml ward reads today: the

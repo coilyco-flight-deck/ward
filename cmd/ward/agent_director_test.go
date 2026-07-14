@@ -462,6 +462,54 @@ func TestLoadDirectorDefaultScope(t *testing.T) {
 	})
 }
 
+func TestResolveDirectorScopeUsesConfigWithoutGitCwd(t *testing.T) {
+	home := t.TempDir()
+	t.Setenv("HOME", home)
+	t.Setenv("COILY_INVOKE_CWD", t.TempDir())
+	if err := os.MkdirAll(filepath.Join(home, ".ward"), 0o750); err != nil {
+		t.Fatalf("mkdir ~/.ward: %v", err)
+	}
+	yaml := "director:\n  default-scope: [coilyco-flight-deck, some/repo]\n"
+	if err := os.WriteFile(filepath.Join(home, ".ward", "config.yaml"), []byte(yaml), 0o600); err != nil {
+		t.Fatalf("write config: %v", err)
+	}
+
+	cmd := &cli.Command{Name: "director", Flags: directorFlags(), Action: func(context.Context, *cli.Command) error { return nil }}
+	if err := cmd.Run(t.Context(), []string{"director"}); err != nil {
+		t.Fatalf("parse director args: %v", err)
+	}
+	r := &Runner{Runner: &shell.Runner{Resolve: func(bin string) (string, error) {
+		t.Fatalf("resolveDirectorScope must not probe %q when config default-scope is present", bin)
+		return "", fmt.Errorf("unexpected binary %q", bin)
+	}}}
+	got, err := r.resolveDirectorScope(t.Context(), cmd, "ward agent director")
+	if err != nil {
+		t.Fatalf("resolveDirectorScope: %v", err)
+	}
+	want := []string{"coilyco-flight-deck", "some/repo"}
+	if !reflect.DeepEqual(got, want) {
+		t.Fatalf("resolved scope = %v, want %v", got, want)
+	}
+}
+
+func TestResolveDirectorScopeWithoutConfigDoesNotProbeGit(t *testing.T) {
+	t.Setenv("HOME", t.TempDir())
+	t.Setenv("COILY_INVOKE_CWD", t.TempDir())
+
+	cmd := &cli.Command{Name: "director", Flags: directorFlags(), Action: func(context.Context, *cli.Command) error { return nil }}
+	if err := cmd.Run(t.Context(), []string{"director"}); err != nil {
+		t.Fatalf("parse director args: %v", err)
+	}
+	r := &Runner{Runner: &shell.Runner{Resolve: func(bin string) (string, error) {
+		t.Fatalf("resolveDirectorScope must not probe %q when no scope is configured", bin)
+		return "", fmt.Errorf("unexpected binary %q", bin)
+	}}}
+	_, err := r.resolveDirectorScope(t.Context(), cmd, "ward agent director")
+	if err == nil || !strings.Contains(err.Error(), "no --repo/--org given and no director.default-scope in ~/.ward/config.yaml") {
+		t.Fatalf("resolveDirectorScope error = %v, want missing config/default-scope message", err)
+	}
+}
+
 // TestDirectorHasOrgFlag covers ward#370: director takes a repeatable --org scope flag.
 func TestDirectorHasOrgFlag(t *testing.T) {
 	if !commandHasFlag(agentDirectorCommand(), "org") {
