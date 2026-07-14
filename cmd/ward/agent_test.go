@@ -498,6 +498,21 @@ func TestAgentSeedPromptHeadlessReflection(t *testing.T) {
 	}
 }
 
+func TestGooseLandingClause(t *testing.T) {
+	ref := agentIssueRef{Owner: "coilyco-flight-deck", Repo: "ward", Number: 523}
+	got := gooseLandingClause(ref)
+	for _, want := range []string{
+		"Goose landing rule",
+		"closes #523",
+		"before teardown",
+		"terminal completion line",
+	} {
+		if !strings.Contains(got, want) {
+			t.Fatalf("gooseLandingClause missing %q\n%s", want, got)
+		}
+	}
+}
+
 func TestAgentSeedPromptPullRequestFailureCommenting(t *testing.T) {
 	ref := agentIssueRef{Owner: "coilyco-flight-deck", Repo: "ward", Number: 813}
 	pr := agentSeedPromptWorkflow(ref, "fail on PR", "do the thing", "", true, nil, workflowPullRequest, true, "")
