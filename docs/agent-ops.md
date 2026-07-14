@@ -8,7 +8,7 @@ This page groups the on-demand operational surfaces around a run.
 - `ward agent director` - the read-only supervisory lane.
 - `ward agent director queue` / `status` - the read-only queue view for stale reservations, redispatch candidates, and open PR handoffs.
 - `ward agent dispatch-health` - the dispatch pathology summary, status line feed, and alert line.
-- `ward agent list` - show running engineers, launch intents, and capacity when the limit is known.
+- `ward agent list` - show running engineers, active launch intents, cleanup-needed records, and capacity when the limit is known.
 - `ward agent logs` - read one run's logs.
 - `ward agent stop` - stop one visible running engineer on purpose. Ghost
   launch records are not stoppable here.
@@ -23,7 +23,8 @@ This page groups the on-demand operational surfaces around a run.
 - `list`, `logs`, `stop`, and `reap` all work against a specific run or
   container identity.
 - `dispatch-health` and `list` treat the issue thread as the reservation source of
-  truth. Docker and `~/.ward` are cache inputs, not authority.
+  truth. Docker and `~/.ward` are cache inputs, not authority, and both surfaces
+  exclude cleanup-needed and failed-before-start records from active capacity.
 
 ## What to remember
 
@@ -38,7 +39,7 @@ This page groups the on-demand operational surfaces around a run.
 
 ### list
 
-`list` answers "what running engineers are active right now?" and shows the known limit plus remaining slots when available. It also surfaces launch intents before their container is visible and tags each entry with the current phase.
+`list` answers "what running engineers are active right now?" and shows the known limit plus remaining slots when available. It also surfaces launch intents before their container is visible, keeps cleanup-needed and failed-before-start records visible for diagnosis, and tags each entry with the current phase.
 
 ### logs
 

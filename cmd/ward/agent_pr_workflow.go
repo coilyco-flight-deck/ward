@@ -7,6 +7,7 @@ import (
 	"os"
 	"strconv"
 	"strings"
+	"time"
 
 	"forgejo.coilysiren.me/coilyco-flight-deck/cli-guard/cli/verb"
 	"github.com/urfave/cli/v3"
@@ -177,9 +178,11 @@ func prWorkflowMergeExec(ctx context.Context, cl *forgejoClient, role, owner, re
 	if !ok {
 		return "", fmt.Errorf("pr merge: %s/%s#%d: %s", owner, repo, index, reason)
 	}
-	if err := cl.MergePullRequestWithHeadAndStyle(ctx, owner, repo, index, head, mergeStyle); err != nil {
+	settledHead, err := mergePullRequestWithHeadAndStyleSettled(ctx, cl, owner, repo, index, head, mergeStyle, &status)
+	if err != nil {
 		return "", fmt.Errorf("pr merge: %s/%s#%d: %w", owner, repo, index, err)
 	}
+	head = settledHead
 	confirm := "merged-state check: merged"
 	if merged, merr := cl.PullRequestMerged(ctx, owner, repo, index); merr != nil {
 		confirm = "merged-state check unavailable: " + firstLine(merr.Error())
@@ -188,6 +191,56 @@ func prWorkflowMergeExec(ctx context.Context, cl *forgejoClient, role, owner, re
 	}
 	return fmt.Sprintf("merged %s/%s#%d (role %s, workflow %s, head %s, status %s); %s\n",
 		owner, repo, index, role, wf.orDefault(), head, status.Status.summary(), confirm), nil
+}
+
+const prWorkflowMergeSettleAttempts = 3
+
+var prWorkflowMergeSettleDelay = 150 * time.Millisecond
+
+func mergePullRequestWithHeadAndStyleSettled(ctx context.Context, cl *forgejoClient, owner, repo string, index int, head, mergeStyle string, status *directorMergeStatusCheck) (string, error) {
+	var lastErr error
+	for attempt := 1; attempt <= prWorkflowMergeSettleAttempts; attempt++ {
+		err := cl.MergePullRequestWithHeadAndStyle(ctx, owner, repo, index, head, mergeStyle)
+		if err == nil {
+			return head, nil
+		}
+		lastErr = err
+		if !forgejoMergeNeedsSettle(err) {
+			return "", err
+		}
+		if attempt == prWorkflowMergeSettleAttempts {
+			break
+		}
+		time.Sleep(time.Duration(attempt) * prWorkflowMergeSettleDelay)
+		pr, err := cl.GetPullRequest(ctx, owner, repo, index)
+		if err != nil {
+			return "", fmt.Errorf("forgejo merge stayed on 405 after %d settle attempt(s), and the PR refresh failed: %w", attempt, err)
+		}
+		if strings.ToLower(strings.TrimSpace(pr.State)) != "open" {
+			return "", fmt.Errorf("forgejo merge stayed on 405 after %d settle attempt(s), but %s/%s#%d is now %s", attempt, owner, repo, index, pr.State)
+		}
+		head = pr.HeadSHA()
+		if head == "" {
+			return "", fmt.Errorf("forgejo merge stayed on 405 after %d settle attempt(s), and %s/%s#%d no longer exposed a head SHA", attempt, owner, repo, index)
+		}
+		nextStatus, reason, ok := directorMergeStatusGate(ctx, cl, owner, repo, pr.Base.Ref, head)
+		if !ok {
+			return "", fmt.Errorf("forgejo merge stayed on 405 after %d settle attempt(s), and the PR is no longer eligible: %s", attempt, reason)
+		}
+		*status = nextStatus
+	}
+	if status != nil {
+		return "", fmt.Errorf("forgejo merge stayed on 405 after %d settle attempt(s) while the PR remained green (%s); retry later or check the Forgejo merge queue: %w", prWorkflowMergeSettleAttempts, status.Status.summary(), lastErr)
+	}
+	return "", fmt.Errorf("forgejo merge stayed on 405 after %d settle attempt(s); retry later or check the Forgejo merge queue: %w", prWorkflowMergeSettleAttempts, lastErr)
+}
+
+func forgejoMergeNeedsSettle(err error) bool {
+	if err == nil {
+		return false
+	}
+	msg := strings.ToLower(err.Error())
+	return strings.Contains(msg, "forgejo merge pr returned 405") && strings.Contains(msg, "please try again later")
 }
 
 // prWorkflowRunsReport renders a repo's Actions runs with per-run conclusions -

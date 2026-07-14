@@ -3,14 +3,14 @@ doc_goal: Document the manual stale reservation cleanup workaround without bloat
 ---
 # manual stale reservation cleanup
 
-Use this when `ward agent list` shows a `container starting` record that still
-counts toward capacity but does not have a visible running engineer yet.
+Use this when `ward agent list` shows a `container starting` record that has
+been marked `cleanup-needed` and does not have a visible running engineer yet.
 
 ## Identify it
 
 - Run `ward agent list --json`.
-- Look for `phase: container starting`, empty `started_at`, and an expired or
-  implausibly old `budget_remaining`.
+- Look for `phase: container starting`, `status: cleanup-needed`, empty
+  `started_at`, and an expired or implausibly old `budget_remaining`.
 - Check the issue thread first for terminal evidence such as
   `WARD-OUTCOME: submitted`, `WARD-OUTCOME: merge-ready`, `WARD-OUTCOME:
   blocked`, or `WARD-OUTCOME: failed`.
@@ -41,4 +41,3 @@ Deleting the reservation comment may reduce active count without clearing every
 displayed `container starting` record. Host or broker state may still need
 [ward#1191](https://forgejo.coilysiren.me/coilyco-flight-deck/ward/issues/1191)
 and [ward#1196](https://forgejo.coilysiren.me/coilyco-flight-deck/ward/issues/1196).
-

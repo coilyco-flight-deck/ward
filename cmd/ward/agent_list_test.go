@@ -104,6 +104,9 @@ func TestAgentRunningEngineerFromInspectIncludesReservation(t *testing.T) {
 	if payload.LaunchIntents != 0 {
 		t.Fatalf("launch_intents = %d, want 0", payload.LaunchIntents)
 	}
+	if payload.CleanupNeeded != 0 || payload.FailedBefore != 0 {
+		t.Fatalf("unexpected excluded counts: cleanup=%d failed=%d", payload.CleanupNeeded, payload.FailedBefore)
+	}
 	if payload.Limit == nil || *payload.Limit != engineerContainerLimitDefault() {
 		t.Fatalf("limit = %v, want %d", payload.Limit, engineerContainerLimitDefault())
 	}
@@ -139,7 +142,7 @@ func TestAgentRunningEngineerFromInspectIncludesReservation(t *testing.T) {
 
 	human := renderAgentListHuman([]agentRunningEngineer{row})
 	for _, want := range []string{
-		"ward agent: running engineers (1/12, 11 slots free)",
+		"ward agent: active engineer launches (1/12, 11 slots free)",
 		"coilyco-gaming/factory-game-v3#18",
 		"kais-macbook-pro-2.local",
 		"issue-18",
@@ -205,18 +208,21 @@ func TestAgentListIncludesReservedLaunchPhase(t *testing.T) {
 		t.Fatalf("status = %q, want starting", row.Status)
 	}
 	payload := agentListJSONFromRows(rows)
-	if payload.Count != 0 {
-		t.Fatalf("count = %d, want 0 running engineers", payload.Count)
+	if payload.Count != 1 {
+		t.Fatalf("count = %d, want 1 active engineer launch", payload.Count)
 	}
 	if payload.LaunchIntents != 1 {
 		t.Fatalf("launch_intents = %d, want 1", payload.LaunchIntents)
+	}
+	if payload.CleanupNeeded != 0 || payload.FailedBefore != 0 {
+		t.Fatalf("unexpected excluded counts: cleanup=%d failed=%d", payload.CleanupNeeded, payload.FailedBefore)
 	}
 	if row.ReservedAt.IsZero() || !row.ReservedAt.Equal(now.Add(-time.Second)) {
 		t.Fatalf("reserved_at = %v, want %v", row.ReservedAt, now.Add(-time.Second))
 	}
 	human := renderAgentListHuman(rows)
 	for _, want := range []string{
-		"ward agent: running engineers (0/12, 12 slots free) + 1 launch intent pending",
+		"ward agent: active engineer launches (1/12, 11 slots free) + 1 launch intent pending",
 		ref.String(),
 		"phase:     container starting",
 		"status:    starting",
@@ -227,7 +233,7 @@ func TestAgentListIncludesReservedLaunchPhase(t *testing.T) {
 	}
 }
 
-func TestAgentListDropsStalePrelaunchLaunches(t *testing.T) {
+func TestAgentListMarksStalePrelaunchLaunchesCleanupNeeded(t *testing.T) {
 	t.Setenv("HOME", t.TempDir())
 	origTimeout := dispatchBrokerVisibilityTimeout
 	dispatchBrokerVisibilityTimeout = 25 * time.Millisecond
@@ -268,8 +274,97 @@ func TestAgentListDropsStalePrelaunchLaunches(t *testing.T) {
 	if err != nil {
 		t.Fatalf("agentListRows: %v", err)
 	}
-	if len(rows) != 0 {
-		t.Fatalf("rows = %d, want stale prelaunch launch to drop out of the active count", len(rows))
+	if len(rows) != 1 {
+		t.Fatalf("rows = %d, want stale prelaunch launch to stay visible for cleanup", len(rows))
+	}
+	row := rows[0]
+	if row.Status != agentLaunchStatusCleanup {
+		t.Fatalf("status = %q, want %q", row.Status, agentLaunchStatusCleanup)
+	}
+	if row.Phase != agentLaunchPhaseStarting {
+		t.Fatalf("phase = %q, want %q", row.Phase, agentLaunchPhaseStarting)
+	}
+	payload := agentListJSONFromRows(rows)
+	if payload.Count != 0 || payload.LaunchIntents != 0 {
+		t.Fatalf("payload counts = active=%d intents=%d, want 0/0", payload.Count, payload.LaunchIntents)
+	}
+	if payload.CleanupNeeded != 1 || payload.FailedBefore != 0 {
+		t.Fatalf("payload excluded counts = cleanup=%d failed=%d, want 1/0", payload.CleanupNeeded, payload.FailedBefore)
+	}
+	human := renderAgentListHuman(rows)
+	for _, want := range []string{
+		"1 cleanup-needed record",
+		"phase:     container starting",
+		"status:    cleanup-needed",
+	} {
+		if !strings.Contains(human, want) {
+			t.Fatalf("stale launch human output missing %q:\n%s", want, human)
+		}
+	}
+}
+
+func TestAgentListKeepsFailedBeforeStartRowsVisibleButExcluded(t *testing.T) {
+	t.Setenv("HOME", t.TempDir())
+	now := time.Now().UTC()
+	ref := agentIssueRef{Owner: "coilyco-flight-deck", Repo: "ward", Number: 1035}
+	resPath, err := agentReservationPath(ref)
+	if err != nil {
+		t.Fatalf("agentReservationPath: %v", err)
+	}
+	if err := writeAgentReservation(resPath, agentReservation{
+		Owner:     ref.Owner,
+		Repo:      ref.Repo,
+		Number:    ref.Number,
+		Mode:      string(modeCodex),
+		Container: "engineer-codex-ward-1035",
+		Branch:    "issue-1035",
+		Host:      "director-box",
+		At:        now.Add(-time.Second),
+	}); err != nil {
+		t.Fatalf("writeAgentReservation: %v", err)
+	}
+	dispatchDir := filepath.Join(agentLogsDir(), dispatchLogsSubdir)
+	if err := os.MkdirAll(dispatchDir, 0o755); err != nil {
+		t.Fatalf("MkdirAll dispatch logs: %v", err)
+	}
+	logPath := filepath.Join(dispatchDir, "20260710T101500Z-director-box-coilyco-flight-deck-ward-1035.log")
+	if err := os.WriteFile(logPath, []byte(
+		"ward dispatch broker: director-box requested `ward agent engineer coilyco-flight-deck/ward#1035 --harness codex`\n"+
+			"WARDED_WORKFLOW: dispatch-failed\n"), 0o644); err != nil {
+		t.Fatalf("write dispatch log: %v", err)
+	}
+
+	r := fakeEngineerVisibilityDockerRunner(t, "", 0)
+	rows, err := r.agentListRows(t.Context())
+	if err != nil {
+		t.Fatalf("agentListRows: %v", err)
+	}
+	if len(rows) != 1 {
+		t.Fatalf("rows = %d, want failed-before-start launch to stay visible for cleanup", len(rows))
+	}
+	row := rows[0]
+	if row.Status != "failed" {
+		t.Fatalf("status = %q, want failed", row.Status)
+	}
+	if row.Phase != agentLaunchPhaseFailed {
+		t.Fatalf("phase = %q, want %q", row.Phase, agentLaunchPhaseFailed)
+	}
+	payload := agentListJSONFromRows(rows)
+	if payload.Count != 0 || payload.LaunchIntents != 0 {
+		t.Fatalf("payload counts = active=%d intents=%d, want 0/0", payload.Count, payload.LaunchIntents)
+	}
+	if payload.CleanupNeeded != 0 || payload.FailedBefore != 1 {
+		t.Fatalf("payload excluded counts = cleanup=%d failed=%d, want 0/1", payload.CleanupNeeded, payload.FailedBefore)
+	}
+	human := renderAgentListHuman(rows)
+	for _, want := range []string{
+		"1 failed-before-start record",
+		"phase:     failed before container start",
+		"status:    failed",
+	} {
+		if !strings.Contains(human, want) {
+			t.Fatalf("failed launch human output missing %q:\n%s", want, human)
+		}
 	}
 }
 
