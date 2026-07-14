@@ -14,6 +14,7 @@ import (
 	"time"
 
 	"forgejo.coilysiren.me/coilyco-flight-deck/cli-guard/pkg/broker"
+	"github.com/coilyco-flight-deck/ward/internal/contracts"
 )
 
 // forgejo_ops.go is ward's core Forgejo client. Core agent paths use this
@@ -26,16 +27,7 @@ var forgejoBaseURL = "https://forgejo.coilysiren.me"
 // matching the survey/scan seams that never needed deep pagination.
 const forgejoListLimit = "50"
 
-// issueComment is one row of an issue's comment thread - just the fields the
-// reservation check needs: body (for the marker), author, and post time.
-type issueComment struct {
-	ID        int       `json:"id"`
-	Body      string    `json:"body"`
-	CreatedAt time.Time `json:"created_at"`
-	User      struct {
-		Login string `json:"login"`
-	} `json:"user"`
-}
+type issueComment = contracts.IssueComment
 
 // repoBrief is one row of an owner's repo list - the fields the task-route survey
 // and the substrate catalog read: canonical full_name, description, topics.
@@ -353,13 +345,13 @@ func (r *Runner) fetchIssueByForge(ctx context.Context, label string, f forge, m
 	}
 	ref := fmt.Sprintf("%s/%s#%d", owner, repo, number)
 	return resolveIssueWithRetry(label, ref, resolveIssueSleep, func() (*Issue, error) {
-		return cl.getIssue(ctx, owner, repo, number)
+		return cl.GetIssue(ctx, owner, repo, number)
 	})
 }
 
 // getIssue reads one issue and decodes the rendered JSON. Labels arrive as
 // objects, so they decode into a shadow field and flatten to the name list.
-func (c *forgejoClient) getIssue(ctx context.Context, owner, repo string, number int) (*Issue, error) {
+func (c *forgejoClient) GetIssue(ctx context.Context, owner, repo string, number int) (*Issue, error) {
 	var raw struct {
 		Issue
 		Labels []struct {
@@ -430,7 +422,7 @@ func (c *forgejoClient) getPullRequestMergeabilityOnce(ctx context.Context, clie
 }
 
 // listIssueComments fetches an issue's comment thread, oldest first.
-func (c *forgejoClient) listIssueComments(ctx context.Context, owner, repo string, number int) ([]issueComment, error) {
+func (c *forgejoClient) ListIssueComments(ctx context.Context, owner, repo string, number int) ([]issueComment, error) {
 	var comments []issueComment
 	if _, err := c.doJSON(ctx, http.MethodGet, []string{"repos", owner, repo, "issues", strconv.Itoa(number), "comments"}, nil, nil, false, &comments); err != nil {
 		return nil, fmt.Errorf("forgejo: list comments on %s/%s#%d: %w", owner, repo, number, err)
@@ -440,7 +432,7 @@ func (c *forgejoClient) listIssueComments(ctx context.Context, owner, repo strin
 
 // createIssue opens a new issue and returns its number. Title+body ride a
 // direct JSON request; the body is signed first (ward#155).
-func (c *forgejoClient) createIssue(ctx context.Context, owner, repo, title, body string) (int, error) {
+func (c *forgejoClient) CreateIssue(ctx context.Context, owner, repo, title, body string) (int, error) {
 	var created struct {
 		Number int `json:"number"`
 	}
@@ -452,14 +444,14 @@ func (c *forgejoClient) createIssue(ctx context.Context, owner, repo, title, bod
 }
 
 // commentIssue appends a signed comment to an existing issue.
-func (c *forgejoClient) commentIssue(ctx context.Context, owner, repo string, number int, body string) error {
+func (c *forgejoClient) CommentIssue(ctx context.Context, owner, repo string, number int, body string) error {
 	if _, err := c.doJSON(ctx, http.MethodPost, []string{"repos", owner, repo, "issues", strconv.Itoa(number), "comments"}, nil, map[string]string{"body": c.mode.signBody(body)}, true, nil); err != nil {
 		return fmt.Errorf("forgejo: comment issue %s/%s#%d: %w", owner, repo, number, err)
 	}
 	return nil
 }
 
-func (c *forgejoClient) deleteIssueComment(ctx context.Context, owner, repo string, commentID int) error {
+func (c *forgejoClient) DeleteIssueComment(ctx context.Context, owner, repo string, commentID int) error {
 	if _, err := c.doJSON(ctx, http.MethodDelete, []string{"repos", owner, repo, "issues", "comments", strconv.Itoa(commentID)}, nil, nil, true, nil); err != nil {
 		return fmt.Errorf("forgejo: delete issue comment %s/%s#%d: %w", owner, repo, commentID, err)
 	}
@@ -468,7 +460,7 @@ func (c *forgejoClient) deleteIssueComment(ctx context.Context, owner, repo stri
 
 // closeIssue flips an existing issue to the closed state (the fixed-body close
 // toggle), used by the task route flow to retire an intake record once linked.
-func (c *forgejoClient) closeIssue(ctx context.Context, owner, repo string, number int) error {
+func (c *forgejoClient) CloseIssue(ctx context.Context, owner, repo string, number int) error {
 	if _, err := c.doJSON(ctx, http.MethodPatch, []string{"repos", owner, repo, "issues", strconv.Itoa(number)}, nil, map[string]string{"state": "closed"}, true, nil); err != nil {
 		return fmt.Errorf("forgejo: close issue %s/%s#%d: %w", owner, repo, number, err)
 	}
@@ -477,14 +469,14 @@ func (c *forgejoClient) closeIssue(ctx context.Context, owner, repo string, numb
 
 // reopenIssue flips a closed issue back open (the fixed-body reopen toggle); the
 // reaper uses it to undo a `closes #N` when a granted repo failed to land (ward#291).
-func (c *forgejoClient) reopenIssue(ctx context.Context, owner, repo string, number int) error {
+func (c *forgejoClient) ReopenIssue(ctx context.Context, owner, repo string, number int) error {
 	if _, err := c.doJSON(ctx, http.MethodPatch, []string{"repos", owner, repo, "issues", strconv.Itoa(number)}, nil, map[string]string{"state": "open"}, true, nil); err != nil {
 		return fmt.Errorf("forgejo: reopen issue %s/%s#%d: %w", owner, repo, number, err)
 	}
 	return nil
 }
 
-func (c *forgejoClient) repoPullRequestsEnabled(ctx context.Context, owner, repo string) (bool, error) {
+func (c *forgejoClient) RepoPullRequestsEnabled(ctx context.Context, owner, repo string) (bool, error) {
 	var caps forgejoRepoCapabilities
 	if _, err := c.doJSON(ctx, http.MethodGet, []string{"repos", owner, repo}, nil, nil, false, &caps); err != nil {
 		return false, fmt.Errorf("forgejo: get repo %s/%s: %w", owner, repo, err)
@@ -492,7 +484,7 @@ func (c *forgejoClient) repoPullRequestsEnabled(ctx context.Context, owner, repo
 	return caps.HasPullRequests, nil
 }
 
-func (c *forgejoClient) createPullRequest(ctx context.Context, owner, repo, head, base, title, body string) (string, error) {
+func (c *forgejoClient) CreatePullRequest(ctx context.Context, owner, repo, head, base, title, body string) (string, error) {
 	token, err := c.apiToken(ctx)
 	if err != nil {
 		return "", err
@@ -567,10 +559,10 @@ func (c *forgejoClient) mergePullRequest(ctx context.Context, owner, repo string
 // mergePullRequestWithHead merges an open PR through Forgejo's merge endpoint and
 // pins the head commit the director just checked, so a stale PR head cannot land.
 func (c *forgejoClient) mergePullRequestWithHead(ctx context.Context, owner, repo string, index int, headSHA string) error {
-	return c.mergePullRequestWithHeadAndStyle(ctx, owner, repo, index, headSHA, "")
+	return c.MergePullRequestWithHeadAndStyle(ctx, owner, repo, index, headSHA, "")
 }
 
-func (c *forgejoClient) mergePullRequestWithHeadAndStyle(ctx context.Context, owner, repo string, index int, headSHA, mergeStyle string) error {
+func (c *forgejoClient) MergePullRequestWithHeadAndStyle(ctx context.Context, owner, repo string, index int, headSHA, mergeStyle string) error {
 	token, err := c.apiToken(ctx)
 	if err != nil {
 		return err
@@ -622,41 +614,13 @@ func (c *forgejoClient) mergePullRequestWithHeadAndStyle(ctx context.Context, ow
 	return nil
 }
 
-type forgejoBranch struct {
-	Name                string   `json:"name"`
-	Protected           bool     `json:"protected"`
-	EnableStatusCheck   bool     `json:"enable_status_check"`
-	StatusCheckContexts []string `json:"status_check_contexts"`
-	Commit              struct {
-		ID string `json:"id"`
-	} `json:"commit"`
-}
+type forgejoBranch = contracts.Branch
 
-type forgejoCommitCombinedStatus struct {
-	State    string                `json:"state"`
-	SHA      string                `json:"sha"`
-	Total    int                   `json:"total_count"`
-	Statuses []forgejoCommitStatus `json:"statuses"`
-}
+type forgejoCommitCombinedStatus = contracts.CommitCombinedStatus
 
-type forgejoCommitStatus struct {
-	Context string `json:"context"`
-	State   string `json:"state"`
-	// Status is where live Forgejo (gitea-compat) marshals the per-context
-	// state; effectiveState prefers whichever field the forge populated.
-	Status      string `json:"status"`
-	Description string `json:"description"`
-	TargetURL   string `json:"target_url"`
-}
+type forgejoCommitStatus = contracts.CommitStatus
 
-func (s forgejoCommitStatus) effectiveState() string {
-	if v := strings.TrimSpace(s.State); v != "" {
-		return v
-	}
-	return strings.TrimSpace(s.Status)
-}
-
-func (c *forgejoClient) getBranch(ctx context.Context, owner, repo, name string) (*forgejoBranch, error) {
+func (c *forgejoClient) GetBranch(ctx context.Context, owner, repo, name string) (*forgejoBranch, error) {
 	baseURL := strings.TrimRight(c.baseURL, "/")
 	if baseURL == "" {
 		baseURL = forgejoBaseURL
@@ -691,7 +655,7 @@ func (c *forgejoClient) getBranch(ctx context.Context, owner, repo, name string)
 	return &branch, nil
 }
 
-func (c *forgejoClient) getCommitCombinedStatus(ctx context.Context, owner, repo, sha string) (*forgejoCommitCombinedStatus, error) {
+func (c *forgejoClient) GetCommitCombinedStatus(ctx context.Context, owner, repo, sha string) (*forgejoCommitCombinedStatus, error) {
 	baseURL := strings.TrimRight(c.baseURL, "/")
 	if baseURL == "" {
 		baseURL = forgejoBaseURL
@@ -726,33 +690,9 @@ func (c *forgejoClient) getCommitCombinedStatus(ctx context.Context, owner, repo
 	return &status, nil
 }
 
-type forgejoPullRequest struct {
-	Number    int    `json:"number"`
-	Title     string `json:"title"`
-	Body      string `json:"body"`
-	State     string `json:"state"`
-	Draft     bool   `json:"draft"`
-	Mergeable bool   `json:"mergeable"`
-	HTMLURL   string `json:"html_url"`
-	Head      struct {
-		SHA string `json:"sha"`
-		Ref string `json:"ref"`
-	} `json:"head"`
-	Base struct {
-		Ref string `json:"ref"`
-	} `json:"base"`
-}
+type forgejoPullRequest = contracts.PullRequest
 
-func (pr forgejoPullRequest) ref(owner, repo string) string {
-	if pr.Number <= 0 {
-		return ""
-	}
-	return fmt.Sprintf("%s/%s#%d", owner, repo, pr.Number)
-}
-
-func (pr forgejoPullRequest) headSHA() string { return strings.TrimSpace(pr.Head.SHA) }
-
-func (c *forgejoClient) getPullRequest(ctx context.Context, owner, repo string, index int) (*forgejoPullRequest, error) {
+func (c *forgejoClient) GetPullRequest(ctx context.Context, owner, repo string, index int) (*forgejoPullRequest, error) {
 	baseURL := strings.TrimRight(c.baseURL, "/")
 	if baseURL == "" {
 		baseURL = forgejoBaseURL
@@ -807,8 +747,8 @@ func (c *forgejoClient) getPullRequestOnce(ctx context.Context, client *http.Cli
 	return &pr, false, nil
 }
 
-func (c *forgejoClient) getPullRequestContext(ctx context.Context, owner, repo string, index int) (*agentPullRequestContext, error) {
-	pr, err := c.getPullRequest(ctx, owner, repo, index)
+func (c *forgejoClient) GetPullRequestContext(ctx context.Context, owner, repo string, index int) (*agentPullRequestContext, error) {
+	pr, err := c.GetPullRequest(ctx, owner, repo, index)
 	if err != nil {
 		return nil, err
 	}
@@ -824,24 +764,24 @@ func (c *forgejoClient) getPullRequestContext(ctx context.Context, owner, repo s
 	}, nil
 }
 
-func (c *forgejoClient) listPullRequestComments(ctx context.Context, owner, repo string, number int) ([]issueComment, error) {
-	return c.listIssueComments(ctx, owner, repo, number)
+func (c *forgejoClient) ListPullRequestComments(ctx context.Context, owner, repo string, number int) ([]issueComment, error) {
+	return c.ListIssueComments(ctx, owner, repo, number)
 }
 
 // lockIssue is unsupported: Forgejo's API (gitea-1.22 compat) exposes no issue-lock
 // leaf, so the reservation road-block stays the marker comment (ward#494, docs).
-func (c *forgejoClient) lockIssue(_ context.Context, _, _ string, _ int) error {
+func (c *forgejoClient) LockIssue(_ context.Context, _, _ string, _ int) error {
 	return errForgeLockUnsupported
 }
 
 // unlockIssue mirrors lockIssue: no Forgejo API leaf, so the retract is a no-op.
-func (c *forgejoClient) unlockIssue(_ context.Context, _, _ string, _ int) error {
+func (c *forgejoClient) UnlockIssue(_ context.Context, _, _ string, _ int) error {
 	return errForgeLockUnsupported
 }
 
 // listOpenIssues reads the shared Forgejo feed for open issues.
 // pull_request:null rows stay issues; PR rows are skipped.
-func (c *forgejoClient) listOpenIssues(ctx context.Context, owner, repo string, limit int) ([]backlogIssue, error) {
+func (c *forgejoClient) ListOpenIssues(ctx context.Context, owner, repo string, limit int) ([]backlogIssue, error) {
 	raw, err := c.listOpenIssueFeed(ctx, owner, repo, limit)
 	if err != nil {
 		return nil, err
@@ -864,7 +804,7 @@ func (c *forgejoClient) listOpenIssues(ctx context.Context, owner, repo string, 
 
 // listOpenPullRequests lists a repo's open PRs via Forgejo's typed feed so
 // pagination stays scoped to PR rows.
-func (c *forgejoClient) listOpenPullRequests(ctx context.Context, owner, repo string, limit int) ([]directorPullRequest, error) {
+func (c *forgejoClient) ListOpenPullRequests(ctx context.Context, owner, repo string, limit int) ([]directorPullRequest, error) {
 	raw, err := c.listOpenIssueFeedByType(ctx, owner, repo, limit, "pulls")
 	if err != nil {
 		return nil, err
@@ -1088,7 +1028,7 @@ func (c *forgejoClient) viewIssue(ctx context.Context, owner, repo string, numbe
 	if _, err := c.doJSON(ctx, http.MethodGet, []string{"repos", owner, repo, "issues", strconv.Itoa(number)}, nil, nil, false, &raw); err != nil {
 		return nil, fmt.Errorf("forgejo: view issue %s/%s#%d: %w", owner, repo, number, err)
 	}
-	comments, err := c.listIssueComments(ctx, owner, repo, number)
+	comments, err := c.ListIssueComments(ctx, owner, repo, number)
 	if err != nil {
 		return nil, err
 	}

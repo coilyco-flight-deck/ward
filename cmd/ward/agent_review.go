@@ -140,7 +140,7 @@ func (r *Runner) postReviewConclusionComment(ctx context.Context, res reviewpane
 		return
 	}
 	cl := r.hostForgejoClient(ctx)
-	if err := cl.commentIssue(ctx, parsed.Owner, parsed.Repo, parsed.Number, reviewConclusionCommentBody(res)); err != nil {
+	if err := cl.CommentIssue(ctx, parsed.Owner, parsed.Repo, parsed.Number, reviewConclusionCommentBody(res)); err != nil {
 		writef(r.Runner.Stderr, "ward agent review: WARNING: could not post review conclusion comment on %s: %v\n", parsed, err)
 	}
 }

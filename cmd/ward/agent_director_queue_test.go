@@ -16,15 +16,15 @@ type fakeDirectorQueueClient struct {
 	comments map[string][]issueComment
 }
 
-func (f *fakeDirectorQueueClient) listOpenIssues(_ context.Context, owner, repo string, _ int) ([]backlogIssue, error) {
+func (f *fakeDirectorQueueClient) ListOpenIssues(_ context.Context, owner, repo string, _ int) ([]backlogIssue, error) {
 	return append([]backlogIssue(nil), f.issues[owner+"/"+repo]...), nil
 }
 
-func (f *fakeDirectorQueueClient) listOpenPullRequests(_ context.Context, owner, repo string, _ int) ([]directorPullRequest, error) {
+func (f *fakeDirectorQueueClient) ListOpenPullRequests(_ context.Context, owner, repo string, _ int) ([]directorPullRequest, error) {
 	return append([]directorPullRequest(nil), f.prs[owner+"/"+repo]...), nil
 }
 
-func (f *fakeDirectorQueueClient) listIssueComments(_ context.Context, owner, repo string, number int) ([]issueComment, error) {
+func (f *fakeDirectorQueueClient) ListIssueComments(_ context.Context, owner, repo string, number int) ([]issueComment, error) {
 	key := owner + "/" + repo + "#" + strconv.Itoa(number)
 	return append([]issueComment(nil), f.comments[key]...), nil
 }

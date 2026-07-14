@@ -406,34 +406,34 @@ type fakeLockForge struct {
 	listCalls    int
 }
 
-func (f *fakeLockForge) getIssue(context.Context, string, string, int) (*Issue, error) {
+func (f *fakeLockForge) GetIssue(context.Context, string, string, int) (*Issue, error) {
 	return &Issue{}, nil
 }
-func (f *fakeLockForge) listIssueComments(context.Context, string, string, int) ([]issueComment, error) {
+func (f *fakeLockForge) ListIssueComments(context.Context, string, string, int) ([]issueComment, error) {
 	f.listCalls++
 	return f.listComments, f.listErr
 }
-func (f *fakeLockForge) createIssue(context.Context, string, string, string, string) (int, error) {
+func (f *fakeLockForge) CreateIssue(context.Context, string, string, string, string) (int, error) {
 	return 0, nil
 }
-func (f *fakeLockForge) commentIssue(_ context.Context, _, _ string, _ int, body string) error {
+func (f *fakeLockForge) CommentIssue(_ context.Context, _, _ string, _ int, body string) error {
 	if f.commentErr != nil {
 		return f.commentErr
 	}
 	f.comments = append(f.comments, body)
 	return nil
 }
-func (f *fakeLockForge) deleteIssueComment(_ context.Context, _, _ string, commentID int) error {
+func (f *fakeLockForge) DeleteIssueComment(_ context.Context, _, _ string, commentID int) error {
 	f.deleted = append(f.deleted, commentID)
 	return nil
 }
-func (f *fakeLockForge) closeIssue(context.Context, string, string, int) error  { return nil }
-func (f *fakeLockForge) reopenIssue(context.Context, string, string, int) error { return nil }
-func (f *fakeLockForge) lockIssue(context.Context, string, string, int) error {
+func (f *fakeLockForge) CloseIssue(context.Context, string, string, int) error  { return nil }
+func (f *fakeLockForge) ReopenIssue(context.Context, string, string, int) error { return nil }
+func (f *fakeLockForge) LockIssue(context.Context, string, string, int) error {
 	f.locked++
 	return f.lockErr
 }
-func (f *fakeLockForge) unlockIssue(context.Context, string, string, int) error {
+func (f *fakeLockForge) UnlockIssue(context.Context, string, string, int) error {
 	f.unlocked++
 	return f.unlockErr
 }
@@ -593,10 +593,10 @@ func TestWaitForDispatchBrokerEngineerVisibilityReleasesFailedLaunchIntent(t *te
 // signal lockReservedIssue downgrades to the comment road-block (ward#494).
 func TestForgejoLockUnsupported(t *testing.T) {
 	c := &forgejoClient{}
-	if err := c.lockIssue(context.Background(), "o", "r", 1); !errors.Is(err, errForgeLockUnsupported) {
+	if err := c.LockIssue(context.Background(), "o", "r", 1); !errors.Is(err, errForgeLockUnsupported) {
 		t.Errorf("forgejo lockIssue = %v, want errForgeLockUnsupported", err)
 	}
-	if err := c.unlockIssue(context.Background(), "o", "r", 1); !errors.Is(err, errForgeLockUnsupported) {
+	if err := c.UnlockIssue(context.Background(), "o", "r", 1); !errors.Is(err, errForgeLockUnsupported) {
 		t.Errorf("forgejo unlockIssue = %v, want errForgeLockUnsupported", err)
 	}
 }

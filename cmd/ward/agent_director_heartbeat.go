@@ -394,7 +394,7 @@ func (r *Runner) directorProbeForgeHealth(ctx context.Context, label string, top
 	cl := r.hostForgejoClient(ctx)
 	pctx, cancel := context.WithTimeout(ctx, directorProbeTimeout)
 	defer cancel()
-	if _, err := cl.getIssue(pctx, ownerOf(top.repo), nameOf(top.repo), top.Num); err != nil {
+	if _, err := cl.GetIssue(pctx, ownerOf(top.repo), nameOf(top.repo), top.Num); err != nil {
 		fmt.Fprintf(os.Stderr, "%s: forge health probe failed on #%d (%v); treating the forge as degraded this tick.\n", label, top.Num, err)
 		return forgeHealthDegraded
 	}

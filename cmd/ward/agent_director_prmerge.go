@@ -20,7 +20,7 @@ func (r *Runner) directorMergeEligiblePullRequests(ctx context.Context, label st
 	}
 	for _, repo := range repos {
 		owner, name, _ := strings.Cut(repo, "/")
-		prs, lerr := prClient.listOpenPullRequests(ctx, owner, name, 50)
+		prs, lerr := prClient.ListOpenPullRequests(ctx, owner, name, 50)
 		if lerr != nil {
 			fmt.Fprintf(os.Stderr, "%s: note: cannot list pull requests in %s (%v); skipping this repo\n", label, repo, lerr)
 			continue

@@ -126,7 +126,7 @@ func (r *Runner) openPRBackpressureCount(ctx context.Context, repo string) (int,
 		return 0, fmt.Errorf("backpressure: malformed repo %q", repo)
 	}
 	cl := r.hostForgejoClient(ctx)
-	prs, err := cl.listOpenPullRequests(ctx, owner, name, openPRBackpressureQueryLimit)
+	prs, err := cl.ListOpenPullRequests(ctx, owner, name, openPRBackpressureQueryLimit)
 	if err != nil {
 		return 0, err
 	}

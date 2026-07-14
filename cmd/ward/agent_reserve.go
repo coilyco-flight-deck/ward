@@ -490,7 +490,7 @@ func (r *Runner) acquireRemoteReservation(ctx context.Context, label string, mod
 	}
 	ttl := agentReservationTTL()
 	if !override {
-		comments, lerr := cl.listIssueComments(ctx, ref.Owner, ref.Repo, ref.Number)
+		comments, lerr := cl.ListIssueComments(ctx, ref.Owner, ref.Repo, ref.Number)
 		if lerr != nil {
 			fmt.Fprintf(os.Stderr, "%s: warning: could not read issue comments to check for a remote reservation (%v); proceeding without the cross-host conflict check\n", label, lerr)
 		} else if who, held := freshReservationComment(comments, now, ttl); held {
@@ -501,7 +501,7 @@ func (r *Runner) acquireRemoteReservation(ctx context.Context, label string, mod
 	}
 	tries, perr := postReservationComment(ctx, remoteReservationPostAttempts, remoteReservationPostBackoff, reservationPostSleep,
 		func(ctx context.Context) error {
-			return cl.commentIssue(ctx, ref.Owner, ref.Repo, ref.Number,
+			return cl.CommentIssue(ctx, ref.Owner, ref.Repo, ref.Number,
 				reservationCommentBody(mode, container, hostname(), now, justification, seedCtx))
 		})
 	if perr != nil {
@@ -529,13 +529,13 @@ func (r *Runner) acquireRemoteReservation(ctx context.Context, label string, mod
 // releaseRemoteReservation retracts this run's forge road-block on a launch that dies
 // before the container is up: a release-marker comment plus a best-effort unlock (#570).
 func (r *Runner) releaseRemoteReservation(ctx context.Context, cl Tracker, label string, mode containerMode, ref agentIssueRef, container string) {
-	if err := cl.commentIssue(ctx, ref.Owner, ref.Repo, ref.Number, reservationReleaseCommentBody(mode, container, nil)); err != nil {
+	if err := cl.CommentIssue(ctx, ref.Owner, ref.Repo, ref.Number, reservationReleaseCommentBody(mode, container, nil)); err != nil {
 		fmt.Fprintf(os.Stderr, "%s: warning: could not release the remote reservation on %s (%v); a re-run may need --override-reservation until the %s TTL lapses (ward#570)\n", label, ref, err, conciseDuration(agentReservationTTL()))
 		return
 	}
 	// Retract the reservation's conversation lock (ward#494) so a retry lands on an open
 	// thread; silent on the no-lock-leaf forge (Forgejo today).
-	if err := cl.unlockIssue(ctx, ref.Owner, ref.Repo, ref.Number); err != nil && !errors.Is(err, errForgeLockUnsupported) {
+	if err := cl.UnlockIssue(ctx, ref.Owner, ref.Repo, ref.Number); err != nil && !errors.Is(err, errForgeLockUnsupported) {
 		fmt.Fprintf(os.Stderr, "%s: warning: could not unlock %s after releasing the reservation (%v) (ward#570)\n", label, ref, err)
 	}
 	deleteTransientWorkflowComments(ctx, cl, ref, time.Now().UTC())
@@ -545,7 +545,7 @@ func (r *Runner) releaseRemoteReservation(ctx context.Context, cl Tracker, label
 // lockReservedIssue seals the reserved issue best-effort, logging the outcome (locked
 // / unsupported-forge / soft-failure) and never returning an error (ward#494, docs).
 func (r *Runner) lockReservedIssue(ctx context.Context, cl Tracker, label string, ref agentIssueRef) {
-	switch err := cl.lockIssue(ctx, ref.Owner, ref.Repo, ref.Number); {
+	switch err := cl.LockIssue(ctx, ref.Owner, ref.Repo, ref.Number); {
 	case err == nil:
 		fmt.Fprintf(os.Stderr, "%s: locked issue %s conversation for the reservation window\n", label, ref)
 	case errors.Is(err, errForgeLockUnsupported):
@@ -663,7 +663,7 @@ func (r *Runner) reservationRecheckLost(ctx context.Context, cl Tracker, label s
 	fmt.Fprintf(os.Stderr, "%s: reservation re-check waiting %s before confirming %s (ward#600)\n", label, delay.Round(time.Millisecond), ref)
 	reservationRecheckSleep(delay)
 	now := time.Now().UTC()
-	comments, err := cl.listIssueComments(ctx, ref.Owner, ref.Repo, ref.Number)
+	comments, err := cl.ListIssueComments(ctx, ref.Owner, ref.Repo, ref.Number)
 	if err != nil {
 		fmt.Fprintf(os.Stderr, "%s: warning: reservation re-check could not re-read %s (%v); proceeding (ward#600)\n", label, ref, err)
 		return false, ""

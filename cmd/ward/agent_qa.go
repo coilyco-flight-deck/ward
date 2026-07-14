@@ -102,8 +102,8 @@ func (r *Runner) runAgentQA(ctx context.Context, c *cli.Command, mode containerM
 	if prErr != nil {
 		fmt.Fprintf(os.Stderr, "%s: note: could not resolve linked PR for %s (%v); QA will comment without a reviewed SHA\n", label, ref, prErr)
 	} else if foundPR && pr != nil {
-		qaCtx.PRRef = pr.ref(ref.Owner, ref.Repo)
-		qaCtx.ReviewedSHA = pr.headSHA()
+		qaCtx.PRRef = pr.Ref(ref.Owner, ref.Repo)
+		qaCtx.ReviewedSHA = pr.HeadSHA()
 	}
 	prompt = qaInspectionPrompt(prompt)
 	research := qaResearchPrompt(ref, title, issue.Body, comments, prompt, level, qaCtx)
@@ -127,7 +127,7 @@ func (r *Runner) runAgentQA(ctx context.Context, c *cli.Command, mode containerM
 	if err != nil {
 		return fmt.Errorf("%s: %w", label, err)
 	}
-	if err := cl.commentIssue(ctx, ref.Owner, ref.Repo, ref.Number, qaVerdictComment(mode, level, family, prompt, qaCtx, read)); err != nil {
+	if err := cl.CommentIssue(ctx, ref.Owner, ref.Repo, ref.Number, qaVerdictComment(mode, level, family, prompt, qaCtx, read)); err != nil {
 		return fmt.Errorf("%s: post QA verdict on %s: %w", label, ref, err)
 	}
 	fmt.Fprintf(os.Stderr, "%s: posted a QA verdict on %s - %s\n", label, ref, ref.url())
@@ -448,7 +448,7 @@ func qaParseCommentField(meta *qaCommentMeta, s string) bool {
 // returns its current Forgejo head SHA for commit-bound QA commentary.
 func (r *Runner) findLinkedPullRequest(ctx context.Context, ref agentIssueRef, _ any, _ []issueComment) (*forgejoPullRequest, bool, error) {
 	cl := r.hostForgejoClient(ctx)
-	prs, err := cl.listOpenPullRequests(ctx, ref.Owner, ref.Repo, 50)
+	prs, err := cl.ListOpenPullRequests(ctx, ref.Owner, ref.Repo, 50)
 	if err != nil {
 		return nil, false, err
 	}
@@ -461,7 +461,7 @@ func (r *Runner) findLinkedPullRequest(ctx context.Context, ref agentIssueRef, _
 		if !ok || wf != string(workflowPullRequestAndMerge) {
 			continue
 		}
-		full, err := cl.getPullRequest(ctx, ref.Owner, ref.Repo, pr.Number)
+		full, err := cl.GetPullRequest(ctx, ref.Owner, ref.Repo, pr.Number)
 		if err != nil {
 			return nil, false, err
 		}

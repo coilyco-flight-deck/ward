@@ -81,7 +81,7 @@ func (r *Runner) runDirectorMerge(ctx context.Context, c *cli.Command) error {
 
 func (r *Runner) runDirectorMergeRepo(ctx context.Context, label string, prClient *forgejoClient, issueClient Tracker, repo string, limit int, preview bool) (merged, skipped int, err error) {
 	owner, name, _ := strings.Cut(repo, "/")
-	prs, err := prClient.listOpenPullRequests(ctx, owner, name, limit)
+	prs, err := prClient.ListOpenPullRequests(ctx, owner, name, limit)
 	if err != nil {
 		return 0, 0, fmt.Errorf("%s: %w", label, err)
 	}
@@ -127,7 +127,7 @@ func directorMergeEligibility(ctx context.Context, owner, repo string, pr direct
 }
 
 func directorMergeConflictReason(ctx context.Context, owner, repo string, linked int, pr directorPullRequest, issueClient Tracker) string {
-	comments, err := issueClient.listIssueComments(ctx, owner, repo, linked)
+	comments, err := issueClient.ListIssueComments(ctx, owner, repo, linked)
 	if err != nil {
 		return "PR is not mergeable against the current base branch; rebase or merge base and resolve the conflict first"
 	}
@@ -168,20 +168,20 @@ func directorMergeIssueMeta(ctx context.Context, owner, repo string, pr director
 	if reason, ok := directorMergePullRequestGate(pr); !ok {
 		return directorRunMeta{}, reason, false
 	}
-	if _, err := issueClient.getIssue(ctx, owner, repo, linked); err != nil {
+	if _, err := issueClient.GetIssue(ctx, owner, repo, linked); err != nil {
 		return directorRunMeta{}, "could not read linked issue: " + firstLine(err.Error()), false
 	}
-	comments, err := issueClient.listIssueComments(ctx, owner, repo, linked)
+	comments, err := issueClient.ListIssueComments(ctx, owner, repo, linked)
 	if err != nil {
 		return directorRunMeta{}, "could not read linked issue comments: " + firstLine(err.Error()), false
 	}
-	prInfo, err := prClient.getPullRequest(ctx, owner, repo, pr.Number)
+	prInfo, err := prClient.GetPullRequest(ctx, owner, repo, pr.Number)
 	if err != nil {
 		return directorRunMeta{}, "could not read linked PR details: " + firstLine(err.Error()), false
 	}
 	meta.IssueRef = fmt.Sprintf("%s/%s#%d", owner, repo, linked)
 	meta.PRHeadSHA = strings.TrimSpace(prInfo.Head.SHA)
-	meta.PRRef = prInfo.ref(owner, repo)
+	meta.PRRef = prInfo.Ref(owner, repo)
 	if meta.PRHeadSHA == "" {
 		return meta, "linked PR did not expose a head SHA", false
 	}
@@ -198,7 +198,7 @@ func directorMergeIssueMeta(ctx context.Context, owner, repo string, pr director
 	meta.CommentedAt = latest.CreatedAt
 	meta.IssueRef = fmt.Sprintf("%s/%s#%d", owner, repo, linked)
 	meta.PRHeadSHA = strings.TrimSpace(prInfo.Head.SHA)
-	meta.PRRef = prInfo.ref(owner, repo)
+	meta.PRRef = prInfo.Ref(owner, repo)
 	meta.Status = status.Status
 	qa, ok := latestQAVerdictComment(comments, meta.IssueRef, meta.PRRef, meta.PRHeadSHA)
 	if !ok {
@@ -236,12 +236,12 @@ func directorMergeStatusGate(ctx context.Context, cl *forgejoClient, owner, repo
 	if baseBranch == "" {
 		return directorMergeStatusCheck{}, "linked PR did not expose a base branch", false
 	}
-	branch, err := cl.getBranch(ctx, owner, repo, baseBranch)
+	branch, err := cl.GetBranch(ctx, owner, repo, baseBranch)
 	if err != nil {
 		return directorMergeStatusCheck{}, "could not read base branch status checks: " + firstLine(err.Error()), false
 	}
 	required := normalizeDirectorRequiredContexts(branch.StatusCheckContexts)
-	combined, err := cl.getCommitCombinedStatus(ctx, owner, repo, headSHA)
+	combined, err := cl.GetCommitCombinedStatus(ctx, owner, repo, headSHA)
 	if err != nil {
 		return directorMergeStatusCheck{}, "could not read live commit status for current PR head SHA: " + firstLine(err.Error()), false
 	}
@@ -319,7 +319,7 @@ func buildDirectorMergeStatusSummary(headSHA, branch string, required []string, 
 		if ctx == "" {
 			continue
 		}
-		state := strings.ToLower(st.effectiveState())
+		state := strings.ToLower(st.EffectiveState())
 		if state == "" {
 			continue
 		}
@@ -419,7 +419,7 @@ func directorMergeQAGate(meta directorRunMeta) (reason string, ok bool) {
 // PR has actually merged to main.
 func recordDirectorMergeDone(ctx context.Context, cl Tracker, owner, repo string, linked, prNumber int, meta directorRunMeta) error {
 	body := directorMergeDoneComment(prNumber, meta)
-	return cl.commentIssue(ctx, owner, repo, linked, body)
+	return cl.CommentIssue(ctx, owner, repo, linked, body)
 }
 
 func directorMergeDoneComment(prNumber int, meta directorRunMeta) string {

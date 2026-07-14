@@ -549,7 +549,7 @@ func (r *Runner) commentReservationConflictLaunch(ctx context.Context, req dispa
 // comment: no container stop, no unlock, no release marker (ward#1149).
 func (r *Runner) commentReservationConflictDispatch(ctx context.Context, cl Tracker, mode containerMode, ref agentIssueRef, req dispatchBrokerRequest, logPath string, launchErr error) {
 	body := dispatchLaunchReservationConflictCommentBody(mode, req, logPath, launchErr)
-	if err := cl.commentIssue(ctx, ref.Owner, ref.Repo, ref.Number, body); err != nil {
+	if err := cl.CommentIssue(ctx, ref.Owner, ref.Repo, ref.Number, body); err != nil {
 		fmt.Fprintf(os.Stderr, "ward dispatch broker: could not comment reservation-collision dispatch on %s: %v\n", ref, err)
 		return
 	}
@@ -577,7 +577,7 @@ func (r *Runner) commentFailedDispatch(ctx context.Context, cl Tracker, mode con
 		container = issueScopedContainerName(req.Role, mode, targetRepo{Owner: ref.Owner, Name: ref.Repo}, ref.Number)
 	}
 	r.stopFailedDispatchContainer(ctx, mode, ref, req.Role, container)
-	if err := cl.unlockIssue(ctx, ref.Owner, ref.Repo, ref.Number); err != nil && !errors.Is(err, errForgeLockUnsupported) {
+	if err := cl.UnlockIssue(ctx, ref.Owner, ref.Repo, ref.Number); err != nil && !errors.Is(err, errForgeLockUnsupported) {
 		fmt.Fprintf(os.Stderr, "ward dispatch broker: could not unlock issue %s after failed dispatch: %v\n", ref, err)
 	}
 	deleteTransientWorkflowComments(ctx, cl, ref, time.Now().UTC())
@@ -593,7 +593,7 @@ func (r *Runner) commentDeferredDispatch(ctx context.Context, cl Tracker, mode c
 		container = issueScopedContainerName(req.Role, mode, targetRepo{Owner: ref.Owner, Name: ref.Repo}, ref.Number)
 	}
 	r.stopFailedDispatchContainer(ctx, mode, ref, req.Role, container)
-	if err := cl.unlockIssue(ctx, ref.Owner, ref.Repo, ref.Number); err != nil && !errors.Is(err, errForgeLockUnsupported) {
+	if err := cl.UnlockIssue(ctx, ref.Owner, ref.Repo, ref.Number); err != nil && !errors.Is(err, errForgeLockUnsupported) {
 		fmt.Fprintf(os.Stderr, "ward dispatch broker: could not unlock issue %s after deferred dispatch: %v\n", ref, err)
 	}
 	deleteTransientWorkflowComments(ctx, cl, ref, time.Now().UTC())
@@ -628,7 +628,7 @@ func (r *Runner) commentDeferredReleaseAssetsDispatch(ctx context.Context, cl Tr
 	if req.Role == roleEngineer {
 		container = issueScopedContainerName(req.Role, mode, targetRepo{Owner: ref.Owner, Name: ref.Repo}, ref.Number)
 	}
-	if err := cl.unlockIssue(ctx, ref.Owner, ref.Repo, ref.Number); err != nil && !errors.Is(err, errForgeLockUnsupported) {
+	if err := cl.UnlockIssue(ctx, ref.Owner, ref.Repo, ref.Number); err != nil && !errors.Is(err, errForgeLockUnsupported) {
 		fmt.Fprintf(os.Stderr, "ward dispatch broker: could not unlock issue %s after deferred release-assets-not-ready dispatch: %v\n", ref, err)
 	}
 	deleteTransientWorkflowComments(ctx, cl, ref, time.Now().UTC())

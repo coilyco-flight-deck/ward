@@ -137,7 +137,7 @@ func (r *Runner) activeEngineerLaunchCountFromIssueThread(ctx context.Context, r
 	now := time.Now().UTC()
 	active := 0
 	for _, issue := range issues {
-		comments, cerr := cl.listIssueComments(ctx, owner, name, issue.Number)
+		comments, cerr := cl.ListIssueComments(ctx, owner, name, issue.Number)
 		if cerr != nil {
 			return 0, cerr
 		}

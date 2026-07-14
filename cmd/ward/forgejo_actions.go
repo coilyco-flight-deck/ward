@@ -8,30 +8,18 @@ import (
 	"strconv"
 	"strings"
 	"time"
+
+	"github.com/coilyco-flight-deck/ward/internal/contracts"
 )
 
 // forgejo_actions.go extends ward's core Forgejo client with the Actions run
 // surface (ward#1067): list, per-run conclusion, rerun. docs/agent-pr-workflow.md.
 
-// forgejoActionRun is one row of the repo Actions run feed - the fields a
-// red/green + rerun decision reads.
-type forgejoActionRun struct {
-	ID          int64     `json:"id"`
-	IndexInRepo int64     `json:"index_in_repo"`
-	Title       string    `json:"title"`
-	Status      string    `json:"status"`
-	WorkflowID  string    `json:"workflow_id"`
-	PrettyRef   string    `json:"prettyref"`
-	CommitSHA   string    `json:"commit_sha"`
-	Event       string    `json:"event"`
-	HTMLURL     string    `json:"html_url"`
-	Started     time.Time `json:"started"`
-	Stopped     time.Time `json:"stopped"`
-}
+type forgejoActionRun = contracts.ActionRun
 
 // listActionRuns reads a repo's Actions runs, newest first; Status doubles as
 // the conclusion (success/failure/cancelled/skipped) once a run is done.
-func (c *forgejoClient) listActionRuns(ctx context.Context, owner, repo string, limit int) ([]forgejoActionRun, error) {
+func (c *forgejoClient) ListActionRuns(ctx context.Context, owner, repo string, limit int) ([]forgejoActionRun, error) {
 	if limit <= 0 {
 		limit = 20
 	}
@@ -48,7 +36,7 @@ func (c *forgejoClient) listActionRuns(ctx context.Context, owner, repo string, 
 
 // getActionRun reads one Actions run by its id (GET
 // /repos/{owner}/{repo}/actions/runs/{run_id}) for a per-run conclusion.
-func (c *forgejoClient) getActionRun(ctx context.Context, owner, repo string, runID int64) (*forgejoActionRun, error) {
+func (c *forgejoClient) GetActionRun(ctx context.Context, owner, repo string, runID int64) (*forgejoActionRun, error) {
 	var run forgejoActionRun
 	if _, err := c.doJSON(ctx, http.MethodGet, []string{"repos", owner, repo, "actions", "runs", strconv.FormatInt(runID, 10)}, nil, nil, true, &run); err != nil {
 		return nil, fmt.Errorf("forgejo: get action run %s/%s run %d: %w", owner, repo, runID, err)
@@ -62,7 +50,7 @@ var errForgeRerunUnsupported = fmt.Errorf("the Forgejo REST API on this forge ex
 
 // rerunActionRun asks the forge to rerun one Actions run; 404/405 degrades to
 // errForgeRerunUnsupported with the manual fallback. docs/agent-pr-workflow.md.
-func (c *forgejoClient) rerunActionRun(ctx context.Context, owner, repo string, runID int64) error {
+func (c *forgejoClient) RerunActionRun(ctx context.Context, owner, repo string, runID int64) error {
 	_, err := c.doJSON(ctx, http.MethodPost, []string{"repos", owner, repo, "actions", "runs", strconv.FormatInt(runID, 10), "rerun"}, nil, nil, true, nil)
 	if err == nil {
 		return nil
@@ -76,7 +64,7 @@ func (c *forgejoClient) rerunActionRun(ctx context.Context, owner, repo string, 
 
 // pullRequestMerged is the merged-state check the native merge tool confirms
 // with: GET /repos/{owner}/{repo}/pulls/{index}/merge, 204 merged / 404 not.
-func (c *forgejoClient) pullRequestMerged(ctx context.Context, owner, repo string, index int) (bool, error) {
+func (c *forgejoClient) PullRequestMerged(ctx context.Context, owner, repo string, index int) (bool, error) {
 	token, err := c.apiToken(ctx)
 	if err != nil {
 		return false, err

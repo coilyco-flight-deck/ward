@@ -259,7 +259,7 @@ func (r *Runner) backlogTriage(ctx context.Context, label string, repos []string
 // host one-shot, then write the missing tier/mode labels. Best effort.
 func (r *Runner) triageRepo(ctx context.Context, label, repo string, cl *forgejoClient, mode containerMode, limit int) {
 	owner, name, _ := strings.Cut(repo, "/")
-	issues, err := cl.listOpenIssues(ctx, owner, name, limit)
+	issues, err := cl.ListOpenIssues(ctx, owner, name, limit)
 	if err != nil {
 		fmt.Fprintf(os.Stderr, "%s: note: cannot triage %s (%v); leaving labels unchanged.\n", label, repo, err)
 		return
@@ -316,7 +316,7 @@ func (r *Runner) triageWriteLabels(ctx context.Context, label, repo string, cl *
 				}
 			}
 		}
-		if cerr := cl.commentIssue(ctx, owner, name, c.Num, triageCommentBody(c, verdicts[c.Num], tiers[c.Num], add, err)); cerr != nil {
+		if cerr := cl.CommentIssue(ctx, owner, name, c.Num, triageCommentBody(c, verdicts[c.Num], tiers[c.Num], add, err)); cerr != nil {
 			fmt.Fprintf(os.Stderr, "%s: note: cannot comment triage reasoning on %s#%d (%v); skipping.\n", label, repo, c.Num, cerr)
 		}
 	}

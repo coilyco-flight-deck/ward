@@ -25,9 +25,9 @@ type prRepairAssessment struct {
 }
 
 type prRepairForgejoClassifier interface {
-	getBranch(context.Context, string, string, string) (*forgejoBranch, error)
-	getCommitCombinedStatus(context.Context, string, string, string) (*forgejoCommitCombinedStatus, error)
-	listActionRuns(context.Context, string, string, int) ([]forgejoActionRun, error)
+	GetBranch(context.Context, string, string, string) (*forgejoBranch, error)
+	GetCommitCombinedStatus(context.Context, string, string, string) (*forgejoCommitCombinedStatus, error)
+	ListActionRuns(context.Context, string, string, int) ([]forgejoActionRun, error)
 }
 
 // classifyForgejoPRRepair classifies the next repair step for one Forgejo PR.
@@ -40,7 +40,7 @@ func classifyForgejoPRRepair(ctx context.Context, cl prRepairForgejoClassifier, 
 		assessment.Note = "PR head SHA is missing; keeping the current repair path"
 		return assessment, nil
 	}
-	headStatus, err := cl.getCommitCombinedStatus(ctx, owner, repo, headSHA)
+	headStatus, err := cl.GetCommitCombinedStatus(ctx, owner, repo, headSHA)
 	if err != nil {
 		return assessment, fmt.Errorf("classify PR repair %s/%s#%s: read head status: %w", owner, repo, headSHA, err)
 	}
@@ -49,7 +49,7 @@ func classifyForgejoPRRepair(ctx context.Context, cl prRepairForgejoClassifier, 
 		return assessment, nil
 	}
 	workflowID := latestFailedWorkflowID(headSHA, headStatus, func() ([]forgejoActionRun, error) {
-		return cl.listActionRuns(ctx, owner, repo, 20)
+		return cl.ListActionRuns(ctx, owner, repo, 20)
 	})
 	assessment.WorkflowID = workflowID
 	if workflowID == "" {
@@ -61,13 +61,13 @@ func classifyForgejoPRRepair(ctx context.Context, cl prRepairForgejoClassifier, 
 		assessment.Note = fmt.Sprintf("failing workflow %q has no local `ward exec %s` mirror in .ward/ward.yaml", workflowID, workflowID)
 		return assessment, nil
 	}
-	branch, err := cl.getBranch(ctx, owner, repo, strings.TrimSpace(pr.BaseRef))
+	branch, err := cl.GetBranch(ctx, owner, repo, strings.TrimSpace(pr.BaseRef))
 	if err != nil {
 		return assessment, fmt.Errorf("classify PR repair %s/%s#%s: read base branch: %w", owner, repo, strings.TrimSpace(pr.BaseRef), err)
 	}
 	baseSHA := strings.TrimSpace(branch.Commit.ID)
 	if baseSHA != "" {
-		baseStatus, berr := cl.getCommitCombinedStatus(ctx, owner, repo, baseSHA)
+		baseStatus, berr := cl.GetCommitCombinedStatus(ctx, owner, repo, baseSHA)
 		if berr != nil {
 			return assessment, fmt.Errorf("classify PR repair %s/%s#%s: read base status: %w", owner, repo, baseSHA, berr)
 		}
@@ -123,7 +123,7 @@ func firstFailedStatusContext(headStatus *forgejoCommitCombinedStatus) string {
 		return ""
 	}
 	for _, st := range headStatus.Statuses {
-		state := strings.ToLower(strings.TrimSpace(st.effectiveState()))
+		state := strings.ToLower(strings.TrimSpace(st.EffectiveState()))
 		if state == "" || state == "success" {
 			continue
 		}

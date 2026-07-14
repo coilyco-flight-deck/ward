@@ -828,7 +828,7 @@ type agentPullRequestContext struct {
 	RepairNote   string
 }
 
-func (pr agentPullRequestContext) summaryLine() string {
+func (pr agentPullRequestContext) SummaryLine() string {
 	parts := []string{
 		"source branch " + emptyDefault(pr.HeadRef, "(unknown)"),
 		"base branch " + emptyDefault(pr.BaseRef, "(unknown)"),
@@ -838,8 +838,8 @@ func (pr agentPullRequestContext) summaryLine() string {
 }
 
 type prContextTracker interface {
-	getPullRequestContext(context.Context, string, string, int) (*agentPullRequestContext, error)
-	listPullRequestComments(context.Context, string, string, int) ([]issueComment, error)
+	GetPullRequestContext(context.Context, string, string, int) (*agentPullRequestContext, error)
+	ListPullRequestComments(context.Context, string, string, int) ([]issueComment, error)
 }
 
 func joinNonEmptyBlocks(blocks ...string) string {
@@ -876,7 +876,7 @@ func engineerPRDetails(pr agentPullRequestContext, comments []issueComment, link
 	if pr.State != "" {
 		fmt.Fprintf(&b, "- PR state: %s\n", pr.State)
 	}
-	fmt.Fprintf(&b, "- PR summary: %s\n", pr.summaryLine())
+	fmt.Fprintf(&b, "- PR summary: %s\n", pr.SummaryLine())
 	if bucket := strings.TrimSpace(pr.RepairBucket); bucket != "" {
 		fmt.Fprintf(&b, "- PR repair bucket: %s\n", bucket)
 	}
@@ -1031,11 +1031,11 @@ func (r *Runner) resolveAgentPullRequestWork(ctx context.Context, mode container
 	if !ok {
 		return agentPullRequestContext{}, nil, nil, nil, fmt.Errorf("tracker does not expose pull request context")
 	}
-	pr, err := prc.getPullRequestContext(ctx, ref.Owner, ref.Repo, ref.Number)
+	pr, err := prc.GetPullRequestContext(ctx, ref.Owner, ref.Repo, ref.Number)
 	if err != nil {
 		return agentPullRequestContext{}, nil, nil, nil, err
 	}
-	comments, err := prc.listPullRequestComments(ctx, ref.Owner, ref.Repo, ref.Number)
+	comments, err := prc.ListPullRequestComments(ctx, ref.Owner, ref.Repo, ref.Number)
 	if err != nil {
 		writef(os.Stderr, "%s: note: could not read pull request comments on %s (%v); continuing with the PR body only\n", agentCmdline(mode, "engineer"), ref, err)
 	}
@@ -1067,7 +1067,7 @@ func (r *Runner) fetchIssue(ctx context.Context, ref agentIssueRef) (*Issue, err
 		return nil, err
 	}
 	return resolveIssueWithRetry("ward agent", ref.String(), resolveIssueSleep, func() (*Issue, error) {
-		return cl.getIssue(ctx, ref.Owner, ref.Repo, ref.Number)
+		return cl.GetIssue(ctx, ref.Owner, ref.Repo, ref.Number)
 	})
 }
 
@@ -1126,7 +1126,7 @@ func (r *Runner) fetchIssueComments(ctx context.Context, ref agentIssueRef) ([]i
 	if err != nil {
 		return nil, err
 	}
-	return cl.listIssueComments(ctx, ref.Owner, ref.Repo, ref.Number)
+	return cl.ListIssueComments(ctx, ref.Owner, ref.Repo, ref.Number)
 }
 
 // The automation-mode gate (ward#663): ward's own dispatch path only refuses an
@@ -1641,7 +1641,7 @@ func (r *Runner) handlePreflightWrongRepo(ctx context.Context, mode containerMod
 	if err != nil {
 		return err
 	}
-	number, err := signed.createIssue(ctx, target.Owner, target.Name,
+	number, err := signed.CreateIssue(ctx, target.Owner, target.Name,
 		w.Title, blindfireIssueBody(mode, surface, w, outcome.Reason))
 	if err != nil {
 		return fmt.Errorf("blind-fire issue into %s: %w", target.slug(), err)
@@ -1649,7 +1649,7 @@ func (r *Runner) handlePreflightWrongRepo(ctx context.Context, mode containerMod
 	filed := agentIssueRef{Owner: target.Owner, Repo: target.Name, Number: number, Forge: w.Ref.Forge, Tracker: w.Ref.trackerOrDefault()}
 	writef(os.Stderr, "%s: blind-fired %s - %s\n", label, filed, filed.url())
 	// Point the original issue at the freshly-filed one so the trail is visible.
-	if cerr := signed.commentIssue(ctx, w.Ref.Owner, w.Ref.Repo, w.Ref.Number,
+	if cerr := signed.CommentIssue(ctx, w.Ref.Owner, w.Ref.Repo, w.Ref.Number,
 		preflightWrongRepoComment(mode, surface, filed, outcome.Reason, read)); cerr != nil {
 		return fmt.Errorf("comment WRONG-REPO routing on %s: %w", w.Ref, cerr)
 	}
@@ -1811,7 +1811,7 @@ func (r *Runner) postPreflightNoGo(ctx context.Context, mode containerMode, surf
 	if err != nil {
 		return err
 	}
-	return cl.commentIssue(ctx, ref.Owner, ref.Repo, ref.Number, preflightNoGoComment(mode, surface, reason, read))
+	return cl.CommentIssue(ctx, ref.Owner, ref.Repo, ref.Number, preflightNoGoComment(mode, surface, reason, read))
 }
 
 // preflightNoGoMarker tags every NO-GO comment so a later pre-flight read can
@@ -2377,7 +2377,7 @@ func (r *Runner) runAgentTaskDirect(ctx context.Context, c *cli.Command, mode co
 	if err != nil {
 		return fmt.Errorf("%s: %w", label, err)
 	}
-	number, err := cl.createIssue(ctx, repo.Owner, repo.Name, title, body)
+	number, err := cl.CreateIssue(ctx, repo.Owner, repo.Name, title, body)
 	if err != nil {
 		return fmt.Errorf("%s: file issue in %s/%s: %w", label, repo.Owner, repo.Name, err)
 	}
