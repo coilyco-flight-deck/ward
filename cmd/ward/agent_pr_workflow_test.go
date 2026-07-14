@@ -110,6 +110,8 @@ type prWorkflowFakeForge struct {
 	prBody                        string
 	combinedState                 string
 	contextState                  string
+	combinedStateAfterMerge       string
+	contextStateAfterMerge        string
 	defaultMergeStyle             string
 	defaultDeleteBranchAfterMerge bool
 	allowMergeCommits             bool
@@ -117,6 +119,8 @@ type prWorkflowFakeForge struct {
 	allowFastForwardOnlyMerge     bool
 	allowRebase                   bool
 	allowRebaseExplicit           bool
+	mergeResponses                []int
+	statusFailureAfterMergeCalls  int
 	merged                        bool
 	mergeCalls                    int
 	mergeDo                       string
@@ -136,6 +140,11 @@ func (f *prWorkflowFakeForge) server(t *testing.T) *httptest.Server {
 	mux.HandleFunc("/api/v1/repos/coilyco-flight-deck/ward/pulls/7/merge", func(w http.ResponseWriter, r *http.Request) {
 		if r.Method == http.MethodPost {
 			f.mergeCalls++
+			status := http.StatusAccepted
+			if len(f.mergeResponses) > 0 {
+				status = f.mergeResponses[0]
+				f.mergeResponses = f.mergeResponses[1:]
+			}
 			var body struct {
 				Do                     string `json:"do"`
 				HeadCommitID           string `json:"head_commit_id"`
@@ -146,8 +155,13 @@ func (f *prWorkflowFakeForge) server(t *testing.T) *httptest.Server {
 			}
 			f.mergeDo = body.Do
 			f.mergeDeleteBranchAfterMerge = body.DeleteBranchAfterMerge
-			f.merged = true
-			w.WriteHeader(http.StatusOK)
+			if status >= 200 && status < 300 {
+				f.merged = true
+			}
+			w.WriteHeader(status)
+			if status == http.StatusMethodNotAllowed {
+				_, _ = w.Write([]byte(`{"message":"Please try again later","url":"https://forgejo.coilysiren.me/api/swagger"}`))
+			}
 			return
 		}
 		f.mergedChecks++
@@ -163,7 +177,13 @@ func (f *prWorkflowFakeForge) server(t *testing.T) *httptest.Server {
 	// Per-context state rides the `status` key on live Forgejo (gitea-compat),
 	// not `state` - the fake serves the live shape to pin effectiveState.
 	mux.HandleFunc("/api/v1/repos/coilyco-flight-deck/ward/commits/headsha/status", func(w http.ResponseWriter, _ *http.Request) {
-		_, _ = w.Write([]byte(`{"state":"` + f.combinedState + `","sha":"headsha","total_count":1,"statuses":[{"context":"test","status":"` + f.contextState + `"}]}`))
+		combinedState := f.combinedState
+		contextState := f.contextState
+		if f.statusFailureAfterMergeCalls > 0 && f.mergeCalls >= f.statusFailureAfterMergeCalls {
+			combinedState = f.combinedStateAfterMerge
+			contextState = f.contextStateAfterMerge
+		}
+		_, _ = w.Write([]byte(`{"state":"` + combinedState + `","sha":"headsha","total_count":1,"statuses":[{"context":"test","status":"` + contextState + `"}]}`))
 	})
 	return httptest.NewServer(mux)
 }
@@ -316,6 +336,69 @@ func TestPRWorkflowMergeExecUsesSmartDefaultStyle(t *testing.T) {
 	}
 	if fake.mergeDo != "squash" {
 		t.Fatalf("merge do = %q, want squash", fake.mergeDo)
+	}
+}
+
+// TestPRWorkflowMergeExecRetriesTransient405 pins the bounded settle loop.
+// The first 405 should retry and land once the forge accepts it.
+func TestPRWorkflowMergeExecRetriesTransient405(t *testing.T) {
+	fake := &prWorkflowFakeForge{
+		prBody:                    "closes #6\n\nward.workflow: pull-request-and-merge\n",
+		combinedState:             "success",
+		contextState:              "success",
+		defaultMergeStyle:         "merge",
+		allowMergeCommits:         true,
+		allowSquashMerge:          true,
+		allowFastForwardOnlyMerge: true,
+		allowRebase:               true,
+		allowRebaseExplicit:       true,
+		mergeResponses:            []int{http.StatusMethodNotAllowed, http.StatusAccepted},
+	}
+	srv := fake.server(t)
+	defer srv.Close()
+	cl := &forgejoClient{baseURL: srv.URL, token: "secret"}
+	out, err := prWorkflowMergeExec(context.Background(), cl, roleDirector, "coilyco-flight-deck", "ward", 7, "")
+	if err != nil {
+		t.Fatalf("prWorkflowMergeExec: %v", err)
+	}
+	if fake.mergeCalls != 2 {
+		t.Fatalf("merge calls = %d, want 2", fake.mergeCalls)
+	}
+	if !strings.Contains(out, "merged coilyco-flight-deck/ward#7") {
+		t.Fatalf("merge output = %q, want merged", out)
+	}
+}
+
+// TestPRWorkflowMergeExecExplainsLostEligibilityAfter405 pins the diagnostic
+// path when Forgejo keeps rejecting the merge and the live gate goes red.
+func TestPRWorkflowMergeExecExplainsLostEligibilityAfter405(t *testing.T) {
+	fake := &prWorkflowFakeForge{
+		prBody:                       "closes #6\n\nward.workflow: pull-request-and-merge\n",
+		combinedState:                "success",
+		contextState:                 "success",
+		combinedStateAfterMerge:      "failure",
+		contextStateAfterMerge:       "failure",
+		defaultMergeStyle:            "merge",
+		allowMergeCommits:            true,
+		allowSquashMerge:             true,
+		allowFastForwardOnlyMerge:    true,
+		allowRebase:                  true,
+		allowRebaseExplicit:          true,
+		mergeResponses:               []int{http.StatusMethodNotAllowed},
+		statusFailureAfterMergeCalls: 1,
+	}
+	srv := fake.server(t)
+	defer srv.Close()
+	cl := &forgejoClient{baseURL: srv.URL, token: "secret"}
+	_, err := prWorkflowMergeExec(context.Background(), cl, roleDirector, "coilyco-flight-deck", "ward", 7, "")
+	if err == nil {
+		t.Fatal("prWorkflowMergeExec: want diagnostic error, got nil")
+	}
+	if !strings.Contains(err.Error(), "test=failure") {
+		t.Fatalf("error = %q, want failing required context", err)
+	}
+	if fake.mergeCalls != 1 {
+		t.Fatalf("merge calls = %d, want 1", fake.mergeCalls)
 	}
 }
 
