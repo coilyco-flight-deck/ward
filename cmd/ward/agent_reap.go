@@ -311,23 +311,6 @@ func (r *Runner) runningEngineerContainers(ctx context.Context) ([]string, error
 	return parseExitedContainerNames(string(out)), nil
 }
 
-// runningEngineerContainersForRepo lists the running engineer containers for one repo.
-func (r *Runner) runningEngineerContainersForRepo(ctx context.Context, repo string) ([]string, error) {
-	repo = strings.TrimSpace(repo)
-	if repo == "" {
-		return nil, fmt.Errorf("list running engineer containers: malformed repo %q", repo)
-	}
-	out, err := r.dockerCapture(ctx, "ps", "--format", "{{.Names}}",
-		"--filter", "label="+containerLabel,
-		"--filter", "label="+labelRole+"="+roleEngineer,
-		"--filter", "label="+labelRepo+"="+repo)
-	if err != nil {
-		return nil, err
-	}
-	// parseExitedContainerNames is a plain non-blank-line splitter (name is historical).
-	return parseExitedContainerNames(string(out)), nil
-}
-
 // enforceEngineerContainerLimit refuses a new engineer launch at the OOM ceiling;
 // --override-capacity grants one loud launch past it and never stacks (ward#1045).
 func (r *Runner) enforceEngineerContainerLimit(ctx context.Context, label string, overrideCapacity bool) error {
