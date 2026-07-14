@@ -50,10 +50,10 @@ jobs:
       - name: golangci-lint
         timeout-minutes: 5
         env:
-          TMPDIR: ${{ runner.temp }}/ward-tmp
-          GOTMPDIR: ${{ runner.temp }}/ward-go-tmp
-          GOCACHE: ${{ runner.temp }}/ward-go-build
-          GOMODCACHE: ${{ runner.temp }}/ward-go-mod
+          TMPDIR: ${{ runner.tool_cache }}/ward-tmp
+          GOTMPDIR: ${{ runner.tool_cache }}/ward-go-tmp
+          GOCACHE: ${{ runner.tool_cache }}/ward-go-build
+          GOMODCACHE: ${{ runner.tool_cache }}/ward-go-mod
         run: mkdir -p "$TMPDIR" "$GOTMPDIR" "$GOCACHE" "$GOMODCACHE" && golangci-lint run ./...
 
       - name: Promote main to release (fast-forward only)
