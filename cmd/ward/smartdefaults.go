@@ -122,9 +122,9 @@ func currentSmartDefaultsWithError() (smartDefaults, error) {
 // naming the serving source in any failure (the aos#452 stale-pin attribution class).
 func loadCurrentSmartDefaults() (smartDefaults, error) {
 	defs := bakedSmartDefaults()
-	src, err := selectConfigSource()
+	src, provider, err := currentProfileSourceProvider()
 	if err == nil {
-		if defs, err = loadSmartDefaultsFrom(src); err != nil {
+		if defs, err = provider.SmartDefaults(); err != nil {
 			err = fmt.Errorf("%w [config source: %s]", err, src.sourceDesc())
 		}
 	}

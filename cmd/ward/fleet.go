@@ -14,7 +14,7 @@ import (
 // loadFleetConfig resolves ward's built-in frontier defaults over the baked
 // fleet config and fails loud only on baked drift or parse failure.
 func loadFleetConfig() (fleetconfig.Fleet, error) {
-	return loadFleetConfigFrom(coreRuntimeConfigSource())
+	return bakedProfileProvider().Fleet()
 }
 
 func loadFleetConfigFrom(src configSource) (fleetconfig.Fleet, error) {
