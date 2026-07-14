@@ -374,6 +374,9 @@ func prWorkflowForwarded(ctx context.Context, r *Runner, req dispatchBrokerReque
 	if addr == "" || os.Getenv("WARD_READONLY") != "1" {
 		return false, nil
 	}
+	if !hostDispatchBrokerReachable(ctx, addr) {
+		return false, nil
+	}
 	req.Role = prWorkflowRole()
 	req.Requester = strings.TrimSpace(os.Getenv("WARD_CONTAINER_NAME"))
 	req.Token = strings.TrimSpace(os.Getenv(envDispatchBrokerToken))

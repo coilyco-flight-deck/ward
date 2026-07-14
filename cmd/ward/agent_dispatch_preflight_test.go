@@ -1,6 +1,7 @@
 package main
 
 import (
+	"net"
 	"strings"
 	"testing"
 )
@@ -36,12 +37,6 @@ func TestDispatchDockerStateBlocked(t *testing.T) {
 			wantBlocked: true,
 			wantSubstr:  "WARD_READONLY is unset",
 		},
-		{
-			name:        "container, no client, read-only broker forward missed",
-			state:       dispatchDockerState{inContainer: true, dockerOnPath: false, brokerAddr: "host:1234", readOnly: true},
-			wantBlocked: true,
-			wantSubstr:  "forward did not fire",
-		},
 	} {
 		t.Run(tc.name, func(t *testing.T) {
 			blocked, reason := tc.state.blocked()
@@ -62,4 +57,30 @@ func TestDispatchDockerStateBlocked(t *testing.T) {
 			}
 		})
 	}
+}
+
+func TestDispatchDockerStateBlockedDistinguishesBrokerReachability(t *testing.T) {
+	t.Run("reachable broker", func(t *testing.T) {
+		ln, err := net.Listen("tcp", "127.0.0.1:0")
+		if err != nil {
+			t.Fatalf("listen broker: %v", err)
+		}
+		defer ln.Close()
+		blocked, reason := (dispatchDockerState{inContainer: true, dockerOnPath: false, brokerAddr: ln.Addr().String(), readOnly: true}).blocked()
+		if !blocked {
+			t.Fatal("blocked() = false, want true")
+		}
+		if !strings.Contains(reason, "forward did not fire") {
+			t.Fatalf("reachable-broker reason %q, want the forward-missed branch", reason)
+		}
+	})
+	t.Run("unreachable broker", func(t *testing.T) {
+		blocked, reason := (dispatchDockerState{inContainer: true, dockerOnPath: false, brokerAddr: "127.0.0.1:1", readOnly: true}).blocked()
+		if !blocked {
+			t.Fatal("blocked() = false, want true")
+		}
+		if !strings.Contains(reason, "unreachable") {
+			t.Fatalf("unreachable-broker reason %q, want the unreachable branch", reason)
+		}
+	})
 }
