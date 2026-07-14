@@ -9,8 +9,8 @@ import (
 	"forgejo.coilysiren.me/coilyco-flight-deck/cli-guard/pkg/issueref"
 )
 
-// The issue types lived in cli-guard/cli/dispatch, removed as legacy. cli-guard
-// parses a *reference* (pkg/issueref) - the issue and its forge are ward's domain.
+// ward parses issue references directly through pkg/issueref. The issue and its
+// forge are ward's domain.
 
 // Platform tags which forge an issue ref resolves against. Empty means the ref
 // was shortform, so the caller picks the forge.
