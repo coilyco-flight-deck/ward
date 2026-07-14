@@ -27,7 +27,7 @@ Inventory of what `ward` ships today.
 - Open-PR backpressure gate.
 - Issue-scoped director dispatch.
 - Dispatch broker. See [agent-dispatch-broker.md](agent-dispatch-broker.md).
-- PR-workflow tools with merge-style and delete-branch defaults. See [agent-pr-workflow.md](agent-pr-workflow.md).
+- PR-workflow tools with KDL merge-style and delete-branch defaults. See [agent-pr-workflow.md](agent-pr-workflow.md).
 - PR repair classification.
 - `ward agent` roles and workflows. See [agent.md](agent.md), [agent-roster.md](agent-roster.md), [agent-flags.md](agent-flags.md), [agent-roles.md](agent-roles.md), [agent-harnesses.md](agent-harnesses.md), [agent-lifecycle.md](agent-lifecycle.md), [agent-director.md](agent-director.md), [agent-ops.md](agent-ops.md), [agent-dispatch-health.md](agent-dispatch-health.md), [dispatch-review.md](dispatch-review.md), and [agent-workflow.md](agent-workflow.md).
 - Dispatch-health surfacing.

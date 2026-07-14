@@ -122,19 +122,31 @@ func mergeStyleList(styles []string) string {
 
 func resolveMergeStyle(requested string, settings *forgejoRepositoryMergeSettings) (string, error) {
 	requested = mergeStyleKey(requested)
-	supported := []string{"merge", "squash", "fast-forward-only", "rebase", "rebase-merge"}
 	if requested != "" {
-		if !mergeStyleSupported(requested) {
-			return "", fmt.Errorf("pr merge: merge style %q is not supported; supported styles: %s", requested, strings.Join(supported, ", "))
-		}
-		if settings != nil && !settings.styleAllowed(requested) {
-			return "", fmt.Errorf("pr merge: merge style %q is not allowed by this repository; allowed styles: %s", requested, mergeStyleList(settings.allowedMergeStyles()))
-		}
-		return requested, nil
+		return validateMergeStyleChoice(requested, settings, "merge style")
 	}
+	if defaultStyle := mergeStyleKey(prMergeStyleDefault()); defaultStyle != "" {
+		return validateMergeStyleChoice(defaultStyle, settings, "smart-defaults pr-merge-style")
+	}
+	return resolveRepositoryMergeStyle(settings)
+}
+
+func validateMergeStyleChoice(style string, settings *forgejoRepositoryMergeSettings, label string) (string, error) {
+	supported := []string{"merge", "squash", "fast-forward-only", "rebase", "rebase-merge"}
+	if !mergeStyleSupported(style) {
+		return "", fmt.Errorf("pr merge: %s %q is not supported; supported styles: %s", label, style, strings.Join(supported, ", "))
+	}
+	if settings != nil && !settings.styleAllowed(style) {
+		return "", fmt.Errorf("pr merge: %s %q is not allowed by this repository; allowed styles: %s", label, style, mergeStyleList(settings.allowedMergeStyles()))
+	}
+	return style, nil
+}
+
+func resolveRepositoryMergeStyle(settings *forgejoRepositoryMergeSettings) (string, error) {
 	if settings == nil {
 		return "", fmt.Errorf("pr merge: repository merge settings are unavailable; pass --style to choose a merge style")
 	}
+	supported := []string{"merge", "squash", "fast-forward-only", "rebase", "rebase-merge"}
 	defaultStyle := mergeStyleKey(settings.DefaultMergeStyle)
 	if defaultStyle == "" {
 		return "", fmt.Errorf("pr merge: repository default_merge_style is empty; allowed styles: %s; pass --style to choose one", mergeStyleList(settings.allowedMergeStyles()))

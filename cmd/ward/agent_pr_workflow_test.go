@@ -6,6 +6,8 @@ import (
 	"errors"
 	"net/http"
 	"net/http/httptest"
+	"os"
+	"path/filepath"
 	"strings"
 	"testing"
 )
@@ -270,6 +272,50 @@ func TestPRWorkflowMergeExecUsesRepoDefaultStyle(t *testing.T) {
 	}
 	if !fake.mergeDeleteBranchAfterMerge {
 		t.Fatalf("merge delete_branch_after_merge = %t, want true", fake.mergeDeleteBranchAfterMerge)
+	}
+}
+
+// TestPRWorkflowMergeExecUsesSmartDefaultStyle pins the KDL override path when
+// no explicit --style is passed.
+func TestPRWorkflowMergeExecUsesSmartDefaultStyle(t *testing.T) {
+	dir := t.TempDir()
+	defaultsBody := `defaults {
+    agent-reservation-ttl "3h"
+    pr-merge-style "squash"
+}`
+	reposBody := `repos {
+    repo-authority default=forgejo {
+        trusted-owner "coilyco-flight-deck"
+        repo "coilyco-flight-deck/*" forge=forgejo
+    }
+}`
+	if err := os.WriteFile(filepath.Join(dir, bundleFixtureDefaultsPath), []byte(defaultsBody), 0o644); err != nil {
+		t.Fatalf("write defaults bundle: %v", err)
+	}
+	if err := os.WriteFile(filepath.Join(dir, bundleFixtureReposPath), []byte(reposBody), 0o644); err != nil {
+		t.Fatalf("write repos bundle: %v", err)
+	}
+	t.Setenv(wardConfigRefEnv, "file://"+filepath.ToSlash(dir))
+
+	fake := &prWorkflowFakeForge{
+		prBody:                    "closes #6\n\nward.workflow: pull-request-and-merge\n",
+		combinedState:             "success",
+		contextState:              "success",
+		defaultMergeStyle:         "merge",
+		allowMergeCommits:         true,
+		allowSquashMerge:          true,
+		allowFastForwardOnlyMerge: true,
+		allowRebase:               true,
+		allowRebaseExplicit:       true,
+	}
+	srv := fake.server(t)
+	defer srv.Close()
+	cl := &forgejoClient{baseURL: srv.URL, token: "secret"}
+	if _, err := prWorkflowMergeExec(context.Background(), cl, roleDirector, "coilyco-flight-deck", "ward", 7, ""); err != nil {
+		t.Fatalf("prWorkflowMergeExec smart-default style: %v", err)
+	}
+	if fake.mergeDo != "squash" {
+		t.Fatalf("merge do = %q, want squash", fake.mergeDo)
 	}
 }
 
