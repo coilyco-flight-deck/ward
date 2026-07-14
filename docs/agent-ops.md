@@ -62,6 +62,9 @@ This page groups the on-demand operational surfaces around a run.
 - none of these surfaces should surprise a caller with a write to the target
   repo.
 
+Manual stale reservation cleanup is documented in
+[agent-stale-reservation-cleanup.md](agent-stale-reservation-cleanup.md).
+
 ## See also
 
 - [agent-director.md](agent-director.md) - the director surface itself.
