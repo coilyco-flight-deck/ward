@@ -345,7 +345,7 @@ func TestUpPlanLabels(t *testing.T) {
 }
 
 func TestLeastAccessMountsDefaultIsCwdOnly(t *testing.T) {
-	mounts := leastAccessMounts("/home/kai/projects/coilyco-bridge/agentic-os-kai", mountOpts{AssetsDir: "/tmp/ward-assets"})
+	mounts := leastAccessMounts("/home/kai/projects/coilyco-flight-deck/ward", mountOpts{AssetsDir: "/tmp/ward-assets"})
 	// The target repo must never be a host bind: only cwd + assets binds,
 	// plus the staged entrypoint file and the gitcache named volume.
 	var hostBinds []string
@@ -358,7 +358,7 @@ func TestLeastAccessMountsDefaultIsCwdOnly(t *testing.T) {
 		}
 	}
 	wantBinds := []string{
-		"/home/kai/projects/coilyco-bridge/agentic-os-kai",
+		"/home/kai/projects/coilyco-flight-deck/ward",
 		"/tmp/ward-assets",
 		filepath.Join("/tmp/ward-assets", containerEntrypointRel),
 	}
@@ -632,7 +632,7 @@ func TestWardEnvContainerMarker(t *testing.T) {
 func sampleUpPlan() upPlan {
 	repo := targetRepo{Owner: "coilyco-gaming", Name: "eco-app"}
 	return upPlan{
-		Image:       "forgejo.coilysiren.me/coilyco-flight-deck/agentic-os-full:latest",
+		Image:       imageRef(containerImageDefault, containerImageTagDefault),
 		Name:        "engineer-claude-eco-app-140",
 		Role:        roleEngineer,
 		Machine:     "deadbeef",
@@ -880,7 +880,7 @@ func TestDockerCreateArgvShape(t *testing.T) {
 		}
 	}
 	// The image is the final arg.
-	if argv[len(argv)-1] != "forgejo.coilysiren.me/coilyco-flight-deck/agentic-os-full:latest" {
+	if argv[len(argv)-1] != imageRef(containerImageDefault, containerImageTagDefault) {
 		t.Errorf("image must be the final arg, got %q", argv[len(argv)-1])
 	}
 }
@@ -1107,9 +1107,9 @@ func TestDockerRmArgv(t *testing.T) {
 
 func TestImageRef(t *testing.T) {
 	cases := []struct{ image, tag, want string }{
-		{"forgejo.coilysiren.me/coilyco-flight-deck/agentic-os", "latest", "forgejo.coilysiren.me/coilyco-flight-deck/agentic-os:latest"},
-		{"forgejo.coilysiren.me/coilyco-flight-deck/agentic-os", "", "forgejo.coilysiren.me/coilyco-flight-deck/agentic-os:latest"},
-		{"forgejo.coilysiren.me/coilyco-flight-deck/agentic-os:v1.2.3", "latest", "forgejo.coilysiren.me/coilyco-flight-deck/agentic-os:v1.2.3"},
+		{"forgejo.coilysiren.me/coilyco-flight-deck/ward", "release", "forgejo.coilysiren.me/coilyco-flight-deck/ward:release"},
+		{"forgejo.coilysiren.me/coilyco-flight-deck/ward", "", "forgejo.coilysiren.me/coilyco-flight-deck/ward:release"},
+		{"forgejo.coilysiren.me/coilyco-flight-deck/ward:v1.2.3", "release", "forgejo.coilysiren.me/coilyco-flight-deck/ward:v1.2.3"},
 		{"repo@sha256:abc", "latest", "repo@sha256:abc"},
 	}
 	for _, c := range cases {

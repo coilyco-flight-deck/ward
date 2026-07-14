@@ -169,14 +169,14 @@ func TestAdvisorFreeformInstructionsFileUsesExplicitRepoAndImageContract(t *test
 	got := out.String()
 	for _, want := range []string{
 		"repo:   coilysiren/example",
-		"docker pull forgejo.coilysiren.me/coilyco-flight-deck/agentic-os-full:latest",
+		"docker pull forgejo.coilysiren.me/coilyco-flight-deck/ward:release",
 		"--entrypoint " + containerEntrypointPath,
 	} {
 		if !strings.Contains(got, want) {
 			t.Fatalf("advisor print output missing %q\n---\n%s", want, got)
 		}
 	}
-	if strings.Contains(got, "coilyco-flight-deck/ward") {
+	if strings.Contains(got, "repo:   coilyco-flight-deck/ward") {
 		t.Fatalf("advisor print output still drifted to the cwd repo:\n%s", got)
 	}
 }
