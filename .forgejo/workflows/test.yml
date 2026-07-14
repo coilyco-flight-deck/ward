@@ -35,7 +35,7 @@ jobs:
           GOTMPDIR: ${{ runner.temp }}/ward-go-tmp
           GOCACHE: ${{ runner.temp }}/ward-go-build
           GOMODCACHE: ${{ runner.temp }}/ward-go-mod
-        run: golangci-lint run ./...
+        run: mkdir -p "$TMPDIR" "$GOTMPDIR" "$GOCACHE" "$GOMODCACHE" && golangci-lint run ./...
       - name: Alert Telegram on main failure
         if: ${{ failure() && github.ref == 'refs/heads/main' }}
         env:
