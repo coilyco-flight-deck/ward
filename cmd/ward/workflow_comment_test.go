@@ -55,14 +55,17 @@ func TestWardedWorkflowCommentVariants(t *testing.T) {
 	}
 }
 
-func TestWorkflowCommentParsingAcceptsLegacyAndCanonicalHeaders(t *testing.T) {
+func TestWorkflowCommentParsingAcceptsLegacyCanonicalAndPRURLHeaders(t *testing.T) {
 	for _, tc := range []struct {
-		name string
-		body string
-		want string
+		name    string
+		body    string
+		want    string
+		wantURL string
+		wantPR  int
 	}{
 		{name: "legacy", body: "WARD-OUTCOME: merge-ready - review passed", want: "merge-ready"},
 		{name: "canonical", body: "WARDED_WORKFLOW: merge-ready - review passed", want: "merge-ready"},
+		{name: "pr url", body: "WARDED_WORKFLOW: https://forgejo.coilysiren.me/coilyco-flight-deck/ward/pulls/12", want: "submitted", wantURL: "https://forgejo.coilysiren.me/coilyco-flight-deck/ward/pulls/12", wantPR: 12},
 	} {
 		t.Run(tc.name, func(t *testing.T) {
 			outcome, ok := backlogOutcomeOfComment(tc.body)
@@ -72,7 +75,24 @@ func TestWorkflowCommentParsingAcceptsLegacyAndCanonicalHeaders(t *testing.T) {
 			if outcome.Status != tc.want {
 				t.Fatalf("status = %q, want %q", outcome.Status, tc.want)
 			}
+			if tc.wantURL != "" && outcome.PRURL != tc.wantURL {
+				t.Fatalf("PRURL = %q, want %q", outcome.PRURL, tc.wantURL)
+			}
+			if tc.wantPR != 0 && outcome.PRNumber != tc.wantPR {
+				t.Fatalf("PRNumber = %d, want %d", outcome.PRNumber, tc.wantPR)
+			}
 		})
+	}
+}
+
+func TestWorkflowCommentParsingRejectsMalformedPRURL(t *testing.T) {
+	for _, body := range []string{
+		"WARDED_WORKFLOW: https://forgejo.coilysiren.me/coilyco-flight-deck/ward/pulls/not-a-number",
+		"WARDED_WORKFLOW: https://forgejo.coilysiren.me/coilyco-flight-deck/ward/pulls/12 extra",
+	} {
+		if outcome, ok := backlogOutcomeOfComment(body); ok {
+			t.Fatalf("backlogOutcomeOfComment(%q) parsed unexpectedly: %+v", body, outcome)
+		}
 	}
 }
 

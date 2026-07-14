@@ -545,19 +545,21 @@ func TestPostLaunchedNoOutcomeComment(t *testing.T) {
 func TestReleaseReservationIfTerminalOutcomeComment(t *testing.T) {
 	upAt := time.Date(2026, 7, 9, 12, 0, 0, 0, time.UTC)
 	for _, tc := range []struct {
-		name   string
-		status string
+		name            string
+		body            string
+		wantVisible     string
+		wantRunFinished string
 	}{
-		{name: "blocked", status: "blocked"},
-		{name: "merge-ready", status: "merge-ready"},
-		{name: "failed", status: "failed"},
-		{name: "submitted", status: "submitted"},
+		{name: "blocked", body: "WARDED_WORKFLOW: blocked 🛑\n\n<details><summary>details</summary>\n\nfinished\n\n</details>", wantVisible: "WARDED_WORKFLOW: reservation-released", wantRunFinished: "WARDED_WORKFLOW: blocked 🛑"},
+		{name: "merge-ready", body: "WARDED_WORKFLOW: merge-ready 🛑\n\n<details><summary>details</summary>\n\nfinished\n\n</details>", wantVisible: "WARDED_WORKFLOW: reservation-released", wantRunFinished: "WARDED_WORKFLOW: merge-ready"},
+		{name: "failed", body: "WARDED_WORKFLOW: failed 🛑\n\n<details><summary>details</summary>\n\nfinished\n\n</details>", wantVisible: "WARDED_WORKFLOW: reservation-released", wantRunFinished: "WARDED_WORKFLOW: failed ❌"},
+		{name: "submitted url", body: "WARDED_WORKFLOW: https://forgejo.coilysiren.me/coilyco-flight-deck/ward/pulls/1042\n\n<details><summary>details</summary>\n\nfinished\n\n</details>", wantVisible: "WARDED_WORKFLOW: reservation-released", wantRunFinished: "WARDED_WORKFLOW: https://forgejo.coilysiren.me/coilyco-flight-deck/ward/pulls/1042"},
 	} {
 		t.Run(tc.name, func(t *testing.T) {
 			fc := &fakeTerminalOutcomeTracker{
 				comments: []issueComment{
 					{ID: 99, Body: reservationCommentBody(modeGoose, "engineer-goose-ward-1042", "box", upAt.Add(-2*time.Minute), "", nil), CreatedAt: upAt.Add(-2 * time.Minute)},
-					{Body: "WARDED_WORKFLOW: " + tc.status + " 🛑\n\n<details><summary>details</summary>\n\nfinished\n\n</details>", CreatedAt: upAt.Add(time.Minute)},
+					{Body: tc.body, CreatedAt: upAt.Add(time.Minute)},
 				},
 				postAt: upAt.Add(2 * time.Minute),
 			}
@@ -579,10 +581,10 @@ func TestReleaseReservationIfTerminalOutcomeComment(t *testing.T) {
 			if fc.unlocked != 1 {
 				t.Fatalf("unlockIssue called %d times, want 1", fc.unlocked)
 			}
-			if visible := visibleLinesBeforeDetails(fc.commented[0]); visible != "WARDED_WORKFLOW: reservation-released" {
+			if visible := visibleLinesBeforeDetails(fc.commented[0]); visible != tc.wantVisible {
 				t.Fatalf("visible line = %q\n%s", visible, fc.commented[0])
 			}
-			for _, want := range []string{agentReservationReleaseMarker, "terminal outcome supersedes the reservation", "WARDED_WORKFLOW: " + tc.status} {
+			for _, want := range []string{agentReservationReleaseMarker, "terminal outcome supersedes the reservation", "Run finished with `" + tc.wantRunFinished + "`"} {
 				if !strings.Contains(fc.commented[0], want) {
 					t.Errorf("terminal release comment missing %q\n%s", want, fc.commented[0])
 				}
@@ -1757,10 +1759,10 @@ func TestNotifySalvageCarriedIssueRepoensAndComments(t *testing.T) {
 	if f.created != 0 {
 		t.Errorf("carried salvage must NOT file a standalone issue, got created=%d", f.created)
 	}
-	if visible := visibleLinesBeforeDetails(f.commentBody); visible != "WARDED_WORKFLOW: submitted" {
+	if visible := visibleLinesBeforeDetails(f.commentBody); visible != "WARDED_WORKFLOW: https://forgejo.coilysiren.me/coilyco-flight-deck/ward/pulls/716" {
 		t.Fatalf("salvage visible line = %q\n%s", visible, f.commentBody)
 	}
-	for _, want := range []string{"WARDED_WORKFLOW: submitted", "ward-salvage/ward-abc123", string(reasonConflict), "git fetch", "/pulls/716", "<details><summary>salvage details</summary>"} {
+	for _, want := range []string{"WARDED_WORKFLOW: https://forgejo.coilysiren.me/coilyco-flight-deck/ward/pulls/716", "ward-salvage/ward-abc123", string(reasonConflict), "git fetch", "/pulls/716", "<details><summary>salvage details</summary>"} {
 		if !strings.Contains(f.commentBody, want) {
 			t.Errorf("carried-issue comment missing %q\n---\n%s", want, f.commentBody)
 		}

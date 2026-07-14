@@ -25,7 +25,7 @@ The director surface is the read-only control plane for runs.
 
 - check whether an engineer is still alive.
 - read the last logs before deciding whether to re-dispatch.
-- inspect the queue/status view for stale reservations, redispatch candidates, submitted PRs, and stale-open done issues.
+- inspect the queue/status view for stale reservations, redispatch candidates, PR-open handoffs, and stale-open done issues.
 - stop a run that is definitely on the wrong ref.
 - target one issue by `owner/repo#N` or full Forgejo issue URL when the run
   should stay scoped to a single decision payload.
@@ -33,7 +33,7 @@ The director surface is the read-only control plane for runs.
 
 The director's machine-readable issue comments use `WARDED_WORKFLOW` as the
 canonical first line. Legacy `WARD-*` headers are still parsed on old threads,
-but new comments start with `WARDED_WORKFLOW`.
+but new PR handoffs start with `WARDED_WORKFLOW: <fully-qualified pull request link>`.
 
 The director surface is intentionally narrower than the engineer path. It is
 for supervision and landing, not for implementation.

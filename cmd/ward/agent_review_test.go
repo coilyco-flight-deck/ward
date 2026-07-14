@@ -103,8 +103,8 @@ func TestReviewGateClauseInSeed(t *testing.T) {
 	if !strings.Contains(pr, "watching its CI/checks") {
 		t.Errorf("pull-request seed should tell PR workflows to keep watching checks after opening the PR")
 	}
-	if !strings.Contains(pr, "WARDED_WORKFLOW: submitted") {
-		t.Errorf("pull-request seed should end with submitted, not done\n got: %s", pr)
+	if !strings.Contains(pr, pullRequestWorkflowOutcomeMarker) {
+		t.Errorf("pull-request seed should end with the PR URL marker, not done\n got: %s", pr)
 	}
 
 	branchOnly := agentSeedPromptWorkflow(ref, "t", "b", "", true, nil, workflowRemoteBranchOnly, true, "")

@@ -11,7 +11,7 @@ This page is the durable anchor for the director's dispatch tick.
 
 ## The needs-redispatch sweep
 
-- The refresh tick sweeps parked entries (submitted, merge-ready, blocked,
+- The refresh tick sweeps parked entries (PR-open, merge-ready, blocked,
   failed) whose newest thread signal is an unhandled needs-redispatch marker -
   a failed or reservation-collision forwarded dispatch, or a pre-launch death -
   and re-queues them ([ward#1149](https://forgejo.coilysiren.me/coilyco-flight-deck/ward/issues/1149)).

@@ -81,7 +81,7 @@ func TestDirectorQueueClassifiesRequestedStates(t *testing.T) {
 			name: "submitted pr",
 			kind: backlogKindPullRequest,
 			comments: []issueComment{{
-				Body:      "WARD-OUTCOME: submitted - PR opened, waiting for human merge",
+				Body:      "WARDED_WORKFLOW: https://forgejo.coilysiren.me/coilyco-flight-deck/ward/pulls/4",
 				CreatedAt: now.Add(-10 * time.Minute),
 			}},
 			wantState: directorQueueStateSubmittedPR,
@@ -193,7 +193,7 @@ func TestRenderDirectorQueueStatusShowsNextActions(t *testing.T) {
 				CreatedAt: now.Add(-10 * time.Minute),
 			}},
 			repo + "#4": {{
-				Body:      "WARD-OUTCOME: submitted - PR opened, waiting for human merge",
+				Body:      "WARDED_WORKFLOW: https://forgejo.coilysiren.me/coilyco-flight-deck/ward/pulls/4",
 				CreatedAt: now.Add(-10 * time.Minute),
 			}},
 			repo + "#5": {{

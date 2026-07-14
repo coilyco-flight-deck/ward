@@ -891,7 +891,7 @@ func terminalReservationOutcome(status string) bool {
 func terminalReservationReleaseCommentBody(mode containerMode, container string, outcome backlogOutcome) string {
 	visible := workflowReservationReleasedVisible()
 	var b strings.Builder
-	fmt.Fprintf(&b, "Run finished with `%s`.\n\n", workflowOutcomeVisible(outcome.Status))
+	fmt.Fprintf(&b, "Run finished with `%s`.\n\n", workflowOutcomeVisibleResult(outcome))
 	fmt.Fprintf(&b, "`ward container reap` released container `%s` (`--harness %s`): the terminal outcome supersedes the reservation, so a later redispatch no longer needs `--override-reservation`.\n", container, mode)
 	if summary := strings.TrimSpace(outcome.Text); summary != "" {
 		fmt.Fprintf(&b, "\n**Outcome summary:** %s\n", summary)
