@@ -67,6 +67,10 @@ func TestSmartDefaultsFromBundleSource(t *testing.T) {
         trusted-owner "coilysiren"
         repo "coilysiren/*" forge=github
     }
+    burndown default=#true {
+        repo "coilyco-flight-deck/infrastructure" #false
+        repo "coilyco-bridge/deploy" #false
+    }
 }`
 	if err := os.WriteFile(filepath.Join(dir, bundleFixtureDefaultsPath), []byte(defaultsBody), 0o644); err != nil {
 		t.Fatalf("write defaults bundle: %v", err)
@@ -110,6 +114,12 @@ func TestSmartDefaultsFromBundleSource(t *testing.T) {
 	}
 	if len(defs.agentWorkflowRepos) != 0 {
 		t.Errorf("bundle workflow overrides = %v, want none in the neutral starter", defs.agentWorkflowRepos)
+	}
+	if !defs.burndownEnabled("coilyco-flight-deck/ward") {
+		t.Error("bundle burndown default should leave ordinary repos eligible")
+	}
+	if defs.burndownEnabled("coilyco-flight-deck/infrastructure") || defs.burndownEnabled("coilyco-bridge/deploy") {
+		t.Errorf("bundle burndown exclusions = infra:%t deploy:%t, want both false", defs.burndownEnabled("coilyco-flight-deck/infrastructure"), defs.burndownEnabled("coilyco-bridge/deploy"))
 	}
 }
 

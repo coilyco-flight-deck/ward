@@ -835,6 +835,95 @@ func TestIssueScopedDirectorRefreshStaysOnOneIssue(t *testing.T) {
 	}
 }
 
+func TestDirectorScopeSkipsBurndownReposBeforeDispatch(t *testing.T) {
+	t.Setenv("HOME", t.TempDir())
+	t.Setenv("WARD_CONFIG_REF", "file://"+t.TempDir())
+
+	bundleDir := t.TempDir()
+	if err := os.WriteFile(filepath.Join(bundleDir, "defaults.kdl"), []byte("defaults {\n    agent-reservation-ttl \"3h\"\n}\n"), 0o644); err != nil {
+		t.Fatal(err)
+	}
+	if err := os.WriteFile(filepath.Join(bundleDir, "repos.kdl"), []byte(`repos {
+    repo-authority default=forgejo {
+        trusted-owner coilyco-flight-deck
+    }
+    burndown default=#true {
+        repo "coilyco-flight-deck/infrastructure" #false
+        repo "coilyco-bridge/deploy" #false
+    }
+}`), 0o644); err != nil {
+		t.Fatal(err)
+	}
+	t.Setenv("WARD_CONFIG_REF", "file://"+bundleDir)
+
+	oldBase := forgejoBaseURL
+	defer func() { forgejoBaseURL = oldBase }()
+
+	srv := httptest.NewServer(http.HandlerFunc(func(w http.ResponseWriter, r *http.Request) {
+		switch {
+		case r.Method == http.MethodGet && r.URL.Path == "/api/v1/orgs/coilyco-flight-deck/repos":
+			_ = json.NewEncoder(w).Encode([]repoBrief{
+				{Name: "ward"},
+				{Name: "infrastructure"},
+				{Name: "agentic-os"},
+			})
+		case r.Method == http.MethodGet && r.URL.Path == "/api/v1/users/coilyco-flight-deck/repos":
+			http.NotFound(w, r)
+		default:
+			t.Fatalf("unexpected request: %s %s?%s", r.Method, r.URL.Path, r.URL.RawQuery)
+		}
+	}))
+	defer srv.Close()
+	forgejoBaseURL = srv.URL
+
+	origStderr := os.Stderr
+	errR, errW, err := os.Pipe()
+	if err != nil {
+		t.Fatalf("pipe stderr: %v", err)
+	}
+	os.Stderr = errW
+	t.Cleanup(func() {
+		os.Stderr = origStderr
+	})
+
+	var got []string
+	cmd := &cli.Command{
+		Name:  "director",
+		Flags: directorFlags(),
+		Action: func(ctx context.Context, c *cli.Command) error {
+			r := &Runner{Runner: &shell.Runner{Stdout: io.Discard, Stderr: io.Discard}}
+			var err error
+			got, err = r.resolveDirectorScope(ctx, c, "ward agent director")
+			return err
+		},
+	}
+	if err := cmd.Run(t.Context(), []string{"director", "--org", "coilyco-flight-deck"}); err != nil {
+		t.Fatalf("resolveDirectorScope: %v", err)
+	}
+
+	if err := errW.Close(); err != nil {
+		t.Fatalf("close stderr pipe: %v", err)
+	}
+	logs, err := io.ReadAll(errR)
+	if err != nil {
+		t.Fatalf("read stderr pipe: %v", err)
+	}
+
+	if want := []string{"coilyco-flight-deck/ward", "coilyco-flight-deck/agentic-os"}; !reflect.DeepEqual(got, want) {
+		t.Fatalf("filtered scope = %v, want %v", got, want)
+	}
+	for _, want := range []string{
+		"burndown: skipping coilyco-flight-deck/infrastructure (filtered)",
+	} {
+		if !strings.Contains(string(logs), want) {
+			t.Fatalf("stderr %q missing %q", string(logs), want)
+		}
+	}
+	if strings.Contains(string(logs), "coilyco-bridge/deploy") {
+		t.Fatalf("stderr %q unexpectedly mentioned the unrelated repo", string(logs))
+	}
+}
+
 func TestResolveDirectorIssueRefFailsClosedAndDoesNotWiden(t *testing.T) {
 	t.Setenv("HOME", t.TempDir())
 	t.Setenv("FORGEJO_TOKEN", "secret")
