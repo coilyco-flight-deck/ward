@@ -15,27 +15,27 @@ const (
 )
 
 var wardedWorkflowCommentVariants = []string{
-	"reservation-held",
-	"reservation-released",
-	"dispatch-failed",
-	"dispatch-deferred",
-	"done",
-	"submitted",
-	"merge-ready",
-	"blocked",
-	"failed",
-	"review-pass",
-	"review-block",
-	"review-advisory",
-	"qa-pass",
-	"qa-failed",
-	"qa-blocked",
-	"routed",
-	"route-unclear",
-	"pre-flight-no-go",
-	"pre-flight-wrong-repo",
-	"reopened",
-	"triage",
+	"reservation-held",      // The run has a reservation and the container is still waiting to start.
+	"reservation-released",  // The reservation is gone and the launch slot is open again.
+	"dispatch-failed",       // The agent launch failed before the run could get underway.
+	"dispatch-deferred",     // The launch was intentionally paused instead of starting now.
+	"done",                  // The work finished and the run can be treated as complete.
+	"submitted",             // The work has been handed off as a submitted pull request.
+	"merge-ready",           // The change is ready to merge once the gate agrees.
+	"blocked",               // The run hit a blocker and cannot move forward yet.
+	"failed",                // The run ended in failure instead of landing cleanly.
+	"review-pass",           // Review checked out and the work is acceptable to proceed.
+	"review-block",          // Review found a problem that needs attention before moving on.
+	"review-advisory",       // Review shared guidance without blocking the run.
+	"qa-pass",               // QA signed off and the result looks good.
+	"qa-failed",             // QA found a failure that needs to be fixed.
+	"qa-blocked",            // QA cannot finish because something upstream is in the way.
+	"routed",                // The issue was routed to the right place for the next step.
+	"route-unclear",         // The right route was unclear and needs a human decision.
+	"pre-flight-no-go",      // Preflight said no and the launch should not continue.
+	"pre-flight-wrong-repo", // Preflight found the issue is pointed at the wrong repository.
+	"reopened",              // The issue came back open after being closed or settled.
+	"triage",                // The issue is under triage while the next action is sorted out.
 }
 
 var workflowCommentLegacyNonOutcomeVariants = map[string]struct{}{
