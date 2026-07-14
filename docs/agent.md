@@ -46,6 +46,7 @@ The old issue-slice pages are gone. The durable follow-on docs are:
 - [agent-director.md](agent-director.md)
 - [agent-ops.md](agent-ops.md)
 - [agent-workflow.md](agent-workflow.md)
+- [warded-kernel-boundary.md](warded-kernel-boundary.md)
 
 ## Quick examples
 
