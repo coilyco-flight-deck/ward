@@ -335,12 +335,9 @@ func (r *Runner) reservedEngineerRows(ctx context.Context, now time.Time, seen m
 	if err != nil {
 		return nil, err
 	}
-	entries, err := os.ReadDir(dir)
+	entries, err := readAgentReservationCacheEntries(dir)
 	if err != nil {
-		if os.IsNotExist(err) {
-			return nil, nil
-		}
-		return nil, fmt.Errorf("list reserved engineer launches: %w", err)
+		return nil, err
 	}
 	rows := make([]agentRunningEngineer, 0, len(entries))
 	for _, entry := range entries {
@@ -366,6 +363,20 @@ func (r *Runner) reservedEngineerRows(ctx context.Context, now time.Time, seen m
 		}
 	})
 	return rows, nil
+}
+
+func readAgentReservationCacheEntries(dir string) ([]os.DirEntry, error) {
+	entries, err := os.ReadDir(dir)
+	if err != nil {
+		if os.IsNotExist(err) {
+			if mkErr := os.MkdirAll(dir, 0o700); mkErr != nil {
+				return nil, fmt.Errorf("restore reservation cache dir: %w", mkErr)
+			}
+			return nil, nil
+		}
+		return nil, fmt.Errorf("list reserved engineer launches: %w", err)
+	}
+	return entries, nil
 }
 
 func activeReservedEngineerRow(ctx context.Context, r *Runner, path string, now time.Time, seen map[string]bool) (agentRunningEngineer, bool) {
