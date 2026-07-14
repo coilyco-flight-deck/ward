@@ -803,17 +803,18 @@ func latestBacklogOutcomeComment(comments []issueComment) (issueComment, bool) {
 // directorRunMeta is the small policy payload the director merge command reads
 // from a worker's final comment: workflow marker + review summary.
 type directorRunMeta struct {
-	Workflow    string
-	Review      string
-	Outcome     backlogOutcome
-	HasOutcome  bool
-	IssueRef    string
-	QA          qaCommentMeta
-	PRHeadSHA   string
-	PRRef       string
-	Status      directorMergeStatusSummary
-	CommentedBy string
-	CommentedAt time.Time
+	Workflow           string
+	Review             string
+	MergeAuthorization string
+	Outcome            backlogOutcome
+	HasOutcome         bool
+	IssueRef           string
+	QA                 qaCommentMeta
+	PRHeadSHA          string
+	PRRef              string
+	Status             directorMergeStatusSummary
+	CommentedBy        string
+	CommentedAt        time.Time
 }
 
 // latestQAVerdictComment returns the newest QA verdict comment that matches the
@@ -874,6 +875,8 @@ func parseDirectorRunMeta(body string) directorRunMeta {
 				meta.Workflow = string(canonicalWorkflow(workflowMode(strings.TrimSpace(field[len("workflow:"):]))))
 			case strings.HasPrefix(lower, "review summary:"):
 				meta.Review = strings.TrimSpace(field[len("review summary:"):])
+			case strings.HasPrefix(lower, "director merge authorization:"):
+				meta.MergeAuthorization = strings.TrimSpace(field[len("director merge authorization:"):])
 			case strings.HasPrefix(lower, "checked head sha:"):
 				meta.Status.HeadSHA = strings.TrimSpace(field[len("checked head sha:"):])
 			case strings.HasPrefix(lower, "status state:"):
@@ -921,17 +924,10 @@ func backlogOutcomeOfComment(body string) (backlogOutcome, bool) {
 	if !ok {
 		return backlogOutcome{}, false
 	}
-	o := backlogOutcome{Status: "unknown"}
-	if pr, ok := parseWorkflowOutcomePRRef(header.Variant); ok {
-		if strings.TrimSpace(header.Detail) != "" {
-			return backlogOutcome{}, false
-		}
-		o.Status = "submitted"
-		o.Text = workflowCommentDetail(pr.url())
-		o.PRURL = pr.url()
-		o.PRNumber = pr.Number
+	if o, ok := backlogOutcomeFromPRURLHeader(body, header); ok {
 		return o, true
 	}
+	o := backlogOutcome{Status: "unknown"}
 	if strings.Contains(strings.TrimSpace(header.Variant), "://") {
 		return backlogOutcome{}, false
 	}
@@ -952,6 +948,29 @@ func backlogOutcomeOfComment(body string) (backlogOutcome, bool) {
 		o.Text = workflowCommentDetail(o.Text)
 	}
 	o.Text = backlogTruncate(o.Text, 500)
+	return o, true
+}
+
+func backlogOutcomeFromPRURLHeader(body string, header workflowCommentHeader) (backlogOutcome, bool) {
+	pr, ok := parseWorkflowOutcomePRRef(header.Variant)
+	if !ok {
+		return backlogOutcome{}, false
+	}
+	if strings.TrimSpace(header.Detail) != "" {
+		return backlogOutcome{}, false
+	}
+	o := backlogOutcome{
+		Status:   "submitted",
+		Text:     workflowCommentDetail(pr.url()),
+		PRURL:    pr.url(),
+		PRNumber: pr.Number,
+	}
+	if auth, ok := workflowCommentFieldValue(body, "director merge authorization:"); ok {
+		switch strings.ToLower(strings.TrimSpace(auth)) {
+		case "reviewed-and-ready", "merge-ready":
+			o.Status = "merge-ready"
+		}
+	}
 	return o, true
 }
 

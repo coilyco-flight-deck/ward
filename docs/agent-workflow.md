@@ -7,9 +7,7 @@ doc_goal: Capture the landing-policy surface in one place so the run modes and r
 
 - `merge-remote-main` - merge to `main` and close.
 - `pull-request` - open a PR and watch it to green.
-- `pull-request-and-merge` - open a PR, wait for merge readiness, then let
-  the director merge sweep finish the landing. The machine-readable
-  `ward.workflow` marker uses the canonical `pull-request-and-merge` spelling.
+- `pull-request-and-merge` - open a PR, wait for merge readiness, then let the director merge sweep finish the landing. The machine-readable `ward.workflow` marker uses the canonical `pull-request-and-merge` spelling.
 - `remote-branch-only` - publish a branch only.
 
 Legacy aliases `direct-main`, `direct-to-main`, `pull-requests`,
@@ -18,8 +16,7 @@ Legacy aliases `direct-main`, `direct-to-main`, `pull-requests`,
 
 The machine-readable issue-comment prefix for ward-authored workflow updates is
 `WARDED_WORKFLOW`. Legacy `WARD-*` issue-comment headers still parse on old
-threads, but new PR handoffs emit `WARDED_WORKFLOW: <fully-qualified pull request link>`
-instead of the old submitted marker.
+threads, but new PR handoffs emit `WARDED_WORKFLOW: <fully-qualified pull request link>` instead of the old submitted marker. Review-gated `pull-request-and-merge` handoffs carry `director merge authorization: reviewed-and-ready` in the collapsed details so the director can still treat the run as merge-ready.
 
 ## Review
 
@@ -58,7 +55,8 @@ canonical pull request URL.
 
 This is the director-merge lane. The worker gets the PR ready, and the
 director merge sweep finishes the landing once the checks and review are
-green.
+green. The issue comment starts with the canonical PR URL and records the
+reviewed-and-ready authorization in its details block.
 The final machine-readable workflow marker uses `pull-request-and-merge`.
 
 ### remote-branch-only

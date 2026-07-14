@@ -36,7 +36,7 @@ func agentDirectorMergeCommand() *cli.Command {
 		Name:        "merge",
 		Usage:       "Merge eligible ward-owned PRs whose issue thread authorizes director merge.",
 		ArgsUsage:   "(scope via --repo; default: director.default-scope from ~/.ward/config.yaml)",
-		Description: `merge scans open pull requests in scope and merges only the ones the ward issue thread marks as director-merge authorized: the linked issue ended with WARDED_WORKFLOW: merge-ready, the final comment says workflow: pull-request-and-merge, the review summary is passed, the PR is mergeable against the current base branch, and it is not salvage/draft noise. The director records the final done outcome only after the merge lands. pull-request still needs a human. See docs/agent-director.md and docs/agent-workflow.md.`,
+		Description: `merge scans open pull requests in scope and merges only the ones the ward issue thread marks as director-merge authorized: the linked issue ended with WARDED_WORKFLOW: merge-ready or a URL-headed reviewed-and-ready handoff, the final comment says workflow: pull-request-and-merge, the review summary is passed, the PR is mergeable against the current base branch, and it is not salvage/draft noise. The director records the final done outcome only after the merge lands. pull-request still needs a human. See docs/agent-director.md and docs/agent-workflow.md.`,
 		Flags:       directorMergeFlags(),
 		Action: func(ctx context.Context, c *cli.Command) error {
 			r := newRunner()
@@ -374,7 +374,11 @@ func directorMergeDecision(pr Issue, linked int, meta directorRunMeta) (ok bool,
 		return false, "draft PRs are not merge-authorized", linked, meta
 	}
 	status := strings.ToLower(strings.TrimSpace(meta.Outcome.Status))
-	if status != "merge-ready" {
+	ready := status == "merge-ready"
+	if !ready && status == "submitted" {
+		ready = strings.EqualFold(strings.TrimSpace(meta.MergeAuthorization), "reviewed-and-ready") || strings.EqualFold(strings.TrimSpace(meta.MergeAuthorization), "merge-ready")
+	}
+	if !ready {
 		if !meta.HasOutcome {
 			return false, "linked issue did not finish with a WARDED_WORKFLOW outcome comment", linked, meta
 		}

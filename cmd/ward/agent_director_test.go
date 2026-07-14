@@ -1148,6 +1148,22 @@ func TestParseBacklogOutcome(t *testing.T) {
 			wantPRNum:  729,
 		},
 		{
+			name: "reviewed pr url leading line",
+			comments: []issueComment{{Body: strings.Join([]string{
+				"WARDED_WORKFLOW: https://forgejo.coilysiren.me/coilyco-flight-deck/ward/pulls/729",
+				"",
+				"<details><summary>details</summary>",
+				"",
+				"director merge authorization: reviewed-and-ready",
+				"",
+				"</details>",
+			}, "\n"), CreatedAt: at("2026-06-25T10:00:00Z")}},
+			wantStatus: "merge-ready",
+			wantText:   "https://forgejo.coilysiren.me/coilyco-flight-deck/ward/pulls/729",
+			wantPRURL:  "https://forgejo.coilysiren.me/coilyco-flight-deck/ward/pulls/729",
+			wantPRNum:  729,
+		},
+		{
 			name:       "merge-ready leading line",
 			comments:   []issueComment{{Body: "WARD-OUTCOME: merge-ready - review passed, handoff to director\n\nfelt calm", CreatedAt: at("2026-06-25T10:00:00Z")}},
 			wantStatus: "merge-ready",

@@ -49,9 +49,7 @@ bucket is carried into the PR repair seed and the status readout so the next
 step names the actual failure mode instead of launching another vague repair
 loop.
 
-A PR names its own mode: the `ward.workflow:` marker the engineer stamps into a
-`pull-request-and-merge` PR body. A PR without a marker is the plain
-`pull-request` lane. PR merges can also take `smart-defaults > pr-merge-style`.
+PR mode: the engineer stamps `ward.workflow:` into a `pull-request-and-merge` PR body. No marker means plain `pull-request`. The comment starts with the PR URL. Review-gated runs carry `director merge authorization: reviewed-and-ready`. PR merges can also take `smart-defaults > pr-merge-style`.
 
 ## Where it runs
 

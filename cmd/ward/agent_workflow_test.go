@@ -109,7 +109,7 @@ func TestWorkflowCarryClauseGitLabMR(t *testing.T) {
 // the PR flow and says the run is not done until the merge lands.
 func TestWorkflowCarryClausePullRequestAndMerge(t *testing.T) {
 	got := workflowCarryClause(agentIssueRef{Owner: "o", Repo: "r", Number: 17}, workflowPullRequestAndMerge)
-	for _, want := range []string{"pull request", "closes #17", "paragraph or two", "small bullet list", directorMergeWorkflowMarker, "director-merge authorized", "WARDED_WORKFLOW: merge-ready"} {
+	for _, want := range []string{"pull request", "closes #17", "paragraph or two", "small bullet list", directorMergeWorkflowMarker, "director-merge authorized", pullRequestWorkflowOutcomeMarker} {
 		if !strings.Contains(got, want) {
 			t.Errorf("pull-request-and-merge carry clause missing %q\n got: %s", want, got)
 		}
@@ -186,6 +186,12 @@ func TestAgentSeedPromptWorkflow(t *testing.T) {
 	if !strings.Contains(merge, directorMergeWorkflowMarker) {
 		t.Errorf("pull-request-and-merge seed should carry the PR-body marker\n got: %s", merge)
 	}
+	if !strings.Contains(merge, pullRequestWorkflowOutcomeMarker) {
+		t.Errorf("pull-request-and-merge seed should start with the PR URL marker\n got: %s", merge)
+	}
+	if !strings.Contains(merge, "director merge authorization: reviewed-and-ready") {
+		t.Errorf("pull-request-and-merge seed should carry the reviewed-and-ready authorization line\n got: %s", merge)
+	}
 	if !strings.Contains(merge, "workflow: pull-request-and-merge; review summary: <summary or skip state>") {
 		t.Errorf("headless reflection should include the canonical machine-readable workflow/review line\n got: %s", merge)
 	}
@@ -196,11 +202,14 @@ func TestAgentSeedPromptWorkflow(t *testing.T) {
 	if !strings.Contains(prMerge, "director-merge authorized") {
 		t.Errorf("pull-request-and-merge seed should carry the director merge lane\n got: %s", prMerge)
 	}
-	if !strings.Contains(prMerge, "WARDED_WORKFLOW: merge-ready") {
-		t.Errorf("pull-request-and-merge reflection should end with merge-ready, not done\n got: %s", prMerge)
+	if !strings.Contains(prMerge, pullRequestWorkflowOutcomeMarker) {
+		t.Errorf("pull-request-and-merge reflection should end with the PR URL marker, not done\n got: %s", prMerge)
 	}
-	if !strings.Contains(prMerge, "the engineer's final visible outcome is `WARDED_WORKFLOW: merge-ready`") {
-		t.Errorf("pull-request-and-merge reflection should announce merge-ready before done\n got: %s", prMerge)
+	if !strings.Contains(prMerge, "the engineer's final visible outcome is `WARDED_WORKFLOW: <fully-qualified pull request link>`") {
+		t.Errorf("pull-request-and-merge reflection should announce the PR URL outcome before done\n got: %s", prMerge)
+	}
+	if !strings.Contains(prMerge, "director merge authorization: reviewed-and-ready") {
+		t.Errorf("pull-request-and-merge reflection should carry the reviewed-and-ready authorization line\n got: %s", prMerge)
 	}
 	if !strings.Contains(prMerge, "the pull request is reviewed and merge-ready") {
 		t.Errorf("pull-request-and-merge reflection should require merge-ready before done\n got: %s", prMerge)
@@ -221,6 +230,9 @@ func TestAgentSeedPromptWorkflow(t *testing.T) {
 	}
 	if !strings.Contains(skipped, "workflow: pull-request-and-merge; review summary: <summary or skip state>") {
 		t.Errorf("skipped review should still use the canonical machine-readable workflow token\n got: %s", skipped)
+	}
+	if strings.Contains(skipped, "director merge authorization: reviewed-and-ready") {
+		t.Errorf("skipped review should not claim reviewed-and-ready authorization\n got: %s", skipped)
 	}
 	if !strings.Contains(skipped, "review gate skipped by ~/.ward/config.yaml default") {
 		t.Errorf("skipped review should name the skip reason explicitly\n got: %s", skipped)

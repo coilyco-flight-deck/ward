@@ -204,10 +204,10 @@ func pullRequestAndMergeCarryClause(ref agentIssueRef) string {
 		"implement on a feature branch, commit, push the branch to origin, and open a %s "+
 			"against `main` whose body carries `closes #%d` and `%s`. This run is director-merge authorized: "+
 			"%s "+
-			"the worker still opens the %s, but the engineer's final visible outcome is `"+workflowOutcomeVisible("merge-ready")+"`; "+
+			"the worker still opens the %s, but the engineer's final visible outcome is `%s`; "+
 			"the run is not done until the %s is merged and the director records the final done outcome. "+
 			"%s Keep the branch ready for merge and do not claim success early.",
-		noun, ref.Number, directorMergeWorkflowMarker, pullRequestDescriptionClause(noun), noun, noun, pullRequestCIWatchClauseFor(ref.Forge))
+		noun, ref.Number, directorMergeWorkflowMarker, pullRequestDescriptionClause(noun), noun, workflowOutcomeLinkMarker(ref.Forge), noun, pullRequestCIWatchClauseFor(ref.Forge))
 }
 
 // pullRequestDescriptionClause tells the worker to write a short useful PR body.
