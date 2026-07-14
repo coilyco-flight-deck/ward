@@ -102,15 +102,15 @@ func prWorkflowMarkerMode(body string) workflowMode {
 // prWorkflowStatusReport renders the combined CI status for one PR head: the
 // native GET /repos/{owner}/{repo}/commits/{ref}/status read (ward#1067).
 func prWorkflowStatusReport(ctx context.Context, cl *forgejoClient, owner, repo string, index int) (string, error) {
-	pr, err := cl.getPullRequest(ctx, owner, repo, index)
+	pr, err := cl.GetPullRequest(ctx, owner, repo, index)
 	if err != nil {
 		return "", err
 	}
-	head := pr.headSHA()
+	head := pr.HeadSHA()
 	if head == "" {
 		return "", fmt.Errorf("pr status: %s/%s#%d did not expose a head SHA", owner, repo, index)
 	}
-	combined, err := cl.getCommitCombinedStatus(ctx, owner, repo, head)
+	combined, err := cl.GetCommitCombinedStatus(ctx, owner, repo, head)
 	if err != nil {
 		return "", err
 	}
@@ -121,7 +121,7 @@ func prWorkflowStatusReport(ctx context.Context, cl *forgejoClient, owner, repo 
 	}
 	fmt.Fprintf(&b, "%s/%s#%d %q head %s combined status: %s\n", owner, repo, index, pr.Title, head, state)
 	for _, st := range combined.Statuses {
-		fmt.Fprintf(&b, "  %s = %s\n", st.Context, strings.ToLower(st.effectiveState()))
+		fmt.Fprintf(&b, "  %s = %s\n", st.Context, strings.ToLower(st.EffectiveState()))
 	}
 	if len(combined.Statuses) == 0 {
 		b.WriteString("  (no status contexts reported yet)\n")
@@ -144,7 +144,7 @@ func prWorkflowStatusReport(ctx context.Context, cl *forgejoClient, owner, repo 
 	}
 	// The required-context set is advisory here: the merge tool re-checks it
 	// fail-closed. A branch read failure degrades to a note, not an error.
-	if branch, berr := cl.getBranch(ctx, owner, repo, pr.Base.Ref); berr == nil {
+	if branch, berr := cl.GetBranch(ctx, owner, repo, pr.Base.Ref); berr == nil {
 		if required := normalizeDirectorRequiredContexts(branch.StatusCheckContexts); len(required) > 0 {
 			fmt.Fprintf(&b, "  required on %s: %s\n", pr.Base.Ref, strings.Join(required, ", "))
 		}
@@ -155,7 +155,7 @@ func prWorkflowStatusReport(ctx context.Context, cl *forgejoClient, owner, repo 
 // prWorkflowMergeExec merges one PR through ward's compiled client: permission
 // gate, live required-status gate, head-pinned merge, merged-state check.
 func prWorkflowMergeExec(ctx context.Context, cl *forgejoClient, role, owner, repo string, index int, mergeStyle string) (string, error) {
-	pr, err := cl.getPullRequest(ctx, owner, repo, index)
+	pr, err := cl.GetPullRequest(ctx, owner, repo, index)
 	if err != nil {
 		return "", err
 	}
@@ -163,13 +163,13 @@ func prWorkflowMergeExec(ctx context.Context, cl *forgejoClient, role, owner, re
 	if err := prWorkflowPermitted(role, wf, prOpMerge); err != nil {
 		return "", err
 	}
-	if merged, merr := cl.pullRequestMerged(ctx, owner, repo, index); merr == nil && merged {
+	if merged, merr := cl.PullRequestMerged(ctx, owner, repo, index); merr == nil && merged {
 		return fmt.Sprintf("%s/%s#%d is already merged\n", owner, repo, index), nil
 	}
 	if strings.ToLower(strings.TrimSpace(pr.State)) != "open" {
 		return "", fmt.Errorf("pr merge: %s/%s#%d is %s, not open", owner, repo, index, pr.State)
 	}
-	head := pr.headSHA()
+	head := pr.HeadSHA()
 	if head == "" {
 		return "", fmt.Errorf("pr merge: %s/%s#%d did not expose a head SHA", owner, repo, index)
 	}
@@ -177,11 +177,11 @@ func prWorkflowMergeExec(ctx context.Context, cl *forgejoClient, role, owner, re
 	if !ok {
 		return "", fmt.Errorf("pr merge: %s/%s#%d: %s", owner, repo, index, reason)
 	}
-	if err := cl.mergePullRequestWithHeadAndStyle(ctx, owner, repo, index, head, mergeStyle); err != nil {
+	if err := cl.MergePullRequestWithHeadAndStyle(ctx, owner, repo, index, head, mergeStyle); err != nil {
 		return "", fmt.Errorf("pr merge: %s/%s#%d: %w", owner, repo, index, err)
 	}
 	confirm := "merged-state check: merged"
-	if merged, merr := cl.pullRequestMerged(ctx, owner, repo, index); merr != nil {
+	if merged, merr := cl.PullRequestMerged(ctx, owner, repo, index); merr != nil {
 		confirm = "merged-state check unavailable: " + firstLine(merr.Error())
 	} else if !merged {
 		confirm = "merged-state check: NOT merged yet - verify on the forge"
@@ -193,7 +193,7 @@ func prWorkflowMergeExec(ctx context.Context, cl *forgejoClient, role, owner, re
 // prWorkflowRunsReport renders a repo's Actions runs with per-run conclusions -
 // the native list the rerun decision reads (ward#1067).
 func prWorkflowRunsReport(ctx context.Context, cl *forgejoClient, owner, repo string, limit int) (string, error) {
-	runs, err := cl.listActionRuns(ctx, owner, repo, limit)
+	runs, err := cl.ListActionRuns(ctx, owner, repo, limit)
 	if err != nil {
 		return "", err
 	}
@@ -212,11 +212,11 @@ func prWorkflowRunsReport(ctx context.Context, cl *forgejoClient, owner, repo st
 // prWorkflowRerunExec asks the forge to rerun one Actions run natively; the
 // forge-gap fallback (agentic-os#434) surfaces as a loud, actionable error.
 func prWorkflowRerunExec(ctx context.Context, cl *forgejoClient, owner, repo string, runID int64) (string, error) {
-	run, err := cl.getActionRun(ctx, owner, repo, runID)
+	run, err := cl.GetActionRun(ctx, owner, repo, runID)
 	if err != nil {
 		return "", err
 	}
-	if err := cl.rerunActionRun(ctx, owner, repo, runID); err != nil {
+	if err := cl.RerunActionRun(ctx, owner, repo, runID); err != nil {
 		return "", err
 	}
 	return fmt.Sprintf("rerun requested for %s/%s run %d (%s, was %s)\n",

@@ -706,11 +706,11 @@ func (r *Runner) fileSalvageIssue(ctx context.Context, env reapEnv, report salva
 // salvageNotifier is the Forgejo surface notifySalvage drives; *forgejoClient
 // satisfies it in production and a fake stands in for tests (ward#518).
 type salvageNotifier interface {
-	reopenIssue(ctx context.Context, owner, repo string, number int) error
-	commentIssue(ctx context.Context, owner, repo string, number int, body string) error
-	createIssue(ctx context.Context, owner, repo, title, body string) (int, error)
-	repoPullRequestsEnabled(ctx context.Context, owner, repo string) (bool, error)
-	createPullRequest(ctx context.Context, owner, repo, head, base, title, body string) (string, error)
+	ReopenIssue(ctx context.Context, owner, repo string, number int) error
+	CommentIssue(ctx context.Context, owner, repo string, number int, body string) error
+	CreateIssue(ctx context.Context, owner, repo, title, body string) (int, error)
+	RepoPullRequestsEnabled(ctx context.Context, owner, repo string) (bool, error)
+	CreatePullRequest(ctx context.Context, owner, repo, head, base, title, body string) (string, error)
 }
 
 // notifySalvage routes the salvage notice (ward#518): a carried run reopens +
@@ -720,16 +720,16 @@ func notifySalvage(ctx context.Context, fc salvageNotifier, env reapEnv, report 
 	if env.Issue != 0 {
 		// Reopen first (best-effort, idempotent) so the issue never reads "done"
 		// over unmerged work, then post the notice.
-		if rerr := fc.reopenIssue(ctx, env.Owner, env.Name, env.Issue); rerr != nil {
+		if rerr := fc.ReopenIssue(ctx, env.Owner, env.Name, env.Issue); rerr != nil {
 			fmt.Fprintf(os.Stderr, "ward container reap: could not reopen carried issue #%d: %v\n", env.Issue, rerr)
 		}
-		if cerr := fc.commentIssue(ctx, env.Owner, env.Name, env.Issue, salvageCommentBody(report)); cerr != nil {
+		if cerr := fc.CommentIssue(ctx, env.Owner, env.Name, env.Issue, salvageCommentBody(report)); cerr != nil {
 			return cerr
 		}
 		fmt.Fprintf(os.Stderr, "ward container reap: posted salvage notice to carried issue #%d\n", env.Issue)
 		return nil
 	}
-	n, err := fc.createIssue(ctx, env.Owner, env.Name, salvageIssueTitle(report), salvageIssueBody(report))
+	n, err := fc.CreateIssue(ctx, env.Owner, env.Name, salvageIssueTitle(report), salvageIssueBody(report))
 	if err != nil {
 		return err
 	}
@@ -742,7 +742,7 @@ func openSalvagePullRequest(ctx context.Context, fc salvageNotifier, env reapEnv
 		report.PullRequestUnavailable = "salvage branch was not created"
 		return report
 	}
-	enabled, err := fc.repoPullRequestsEnabled(ctx, env.Owner, env.Name)
+	enabled, err := fc.RepoPullRequestsEnabled(ctx, env.Owner, env.Name)
 	if err != nil {
 		report.PullRequestUnavailable = "could not check repo PR support: " + firstLine(err.Error())
 		return report
@@ -756,7 +756,7 @@ func openSalvagePullRequest(ctx context.Context, fc salvageNotifier, env reapEnv
 	if report.Issue != 0 {
 		body = strings.TrimRight(body, "\n") + fmt.Sprintf("\n\ncloses #%d\n", report.Issue)
 	}
-	url, err := fc.createPullRequest(ctx, env.Owner, env.Name, report.Branch, "main", title, body)
+	url, err := fc.CreatePullRequest(ctx, env.Owner, env.Name, report.Branch, "main", title, body)
 	if err != nil {
 		report.PullRequestUnavailable = "PR creation failed: " + firstLine(err.Error())
 		return report
@@ -801,13 +801,13 @@ func (r *Runner) releaseReservationIfUnstarted(ctx context.Context, env reapEnv)
 	// its error line, and the recovery step - not just "smoke-test death" (ward#609).
 	gate, _ := readGateFailure()
 	body := reservationReleaseCommentBody(containerMode(env.Mode), env.Name, gate)
-	if err := fc.commentIssue(ctx, env.Owner, env.Name, env.Issue, body); err != nil {
+	if err := fc.CommentIssue(ctx, env.Owner, env.Name, env.Issue, body); err != nil {
 		fmt.Fprintf(os.Stderr, "ward container reap: could not release issue reservation on #%d: %v\n", env.Issue, err)
 		return
 	}
 	// Retract the reservation's conversation lock (ward#494) so a retry lands on an
 	// open thread; best-effort, silent on the no-lock-leaf forge (Forgejo today).
-	if err := fc.unlockIssue(ctx, env.Owner, env.Name, env.Issue); err != nil && !errors.Is(err, errForgeLockUnsupported) {
+	if err := fc.UnlockIssue(ctx, env.Owner, env.Name, env.Issue); err != nil && !errors.Is(err, errForgeLockUnsupported) {
 		fmt.Fprintf(os.Stderr, "ward container reap: could not unlock issue #%d after release: %v\n", env.Issue, err)
 	}
 	deleteTransientWorkflowComments(ctx, fc, agentIssueRef{Owner: env.Owner, Repo: env.Name, Number: env.Issue}, time.Now().UTC())
@@ -832,7 +832,7 @@ func (r *Runner) releaseReservationIfTerminalOutcome(ctx context.Context, env re
 }
 
 func releaseReservationIfTerminalOutcomeComment(ctx context.Context, fc Tracker, env reapEnv, afterAt time.Time) error {
-	comments, err := fc.listIssueComments(ctx, env.Owner, env.Name, env.Issue)
+	comments, err := fc.ListIssueComments(ctx, env.Owner, env.Name, env.Issue)
 	if err != nil {
 		return fmt.Errorf("could not read issue comments for terminal-outcome release on #%d: %w", env.Issue, err)
 	}
@@ -851,10 +851,10 @@ func releaseReservationIfTerminalOutcomeComment(ctx context.Context, fc Tracker,
 		return nil
 	}
 	body := terminalReservationReleaseCommentBody(containerMode(env.Mode), env.Container, o)
-	if err := fc.commentIssue(ctx, env.Owner, env.Name, env.Issue, body); err != nil {
+	if err := fc.CommentIssue(ctx, env.Owner, env.Name, env.Issue, body); err != nil {
 		return fmt.Errorf("could not release terminal reservation on #%d: %w", env.Issue, err)
 	}
-	if err := fc.unlockIssue(ctx, env.Owner, env.Name, env.Issue); err != nil && !errors.Is(err, errForgeLockUnsupported) {
+	if err := fc.UnlockIssue(ctx, env.Owner, env.Name, env.Issue); err != nil && !errors.Is(err, errForgeLockUnsupported) {
 		return fmt.Errorf("could not unlock issue #%d after terminal outcome release: %w", env.Issue, err)
 	}
 	deleteTransientWorkflowComments(ctx, fc, agentIssueRef{Owner: env.Owner, Repo: env.Name, Number: env.Issue}, outcome.CreatedAt)
@@ -919,7 +919,7 @@ func (r *Runner) commentLaunchedNoOutcomeIfNeeded(ctx context.Context, env reapE
 // postLaunchedNoOutcomeComment marks a launched run failed when it exits with no
 // WARDED_WORKFLOW comment after it started and nothing residual to salvage.
 func postLaunchedNoOutcomeComment(ctx context.Context, fc Tracker, env reapEnv, afterAt time.Time) error {
-	comments, err := fc.listIssueComments(ctx, env.Owner, env.Name, env.Issue)
+	comments, err := fc.ListIssueComments(ctx, env.Owner, env.Name, env.Issue)
 	if err != nil {
 		return fmt.Errorf("could not read issue comments for no-outcome check on #%d: %w", env.Issue, err)
 	}
@@ -927,10 +927,10 @@ func postLaunchedNoOutcomeComment(ctx context.Context, fc Tracker, env reapEnv, 
 		return nil
 	}
 	body := launchedNoOutcomeCommentBody(env)
-	if err := fc.commentIssue(ctx, env.Owner, env.Name, env.Issue, body); err != nil {
+	if err := fc.CommentIssue(ctx, env.Owner, env.Name, env.Issue, body); err != nil {
 		return fmt.Errorf("could not comment launched no-outcome failure on #%d: %w", env.Issue, err)
 	}
-	if err := fc.unlockIssue(ctx, env.Owner, env.Name, env.Issue); err != nil && !errors.Is(err, errForgeLockUnsupported) {
+	if err := fc.UnlockIssue(ctx, env.Owner, env.Name, env.Issue); err != nil && !errors.Is(err, errForgeLockUnsupported) {
 		return fmt.Errorf("could not unlock issue #%d after no-outcome failure: %w", env.Issue, err)
 	}
 	return nil
@@ -1175,10 +1175,10 @@ func (r *Runner) reportUnlandedExtraRepos(ctx context.Context, env reapEnv, repo
 	}
 	// Reopen first (idempotent on an already-open issue), then comment: the issue
 	// must not read "done" while a granted repo's committed work is unreachable.
-	if rerr := fc.reopenIssue(ctx, env.Owner, env.Name, env.Issue); rerr != nil {
+	if rerr := fc.ReopenIssue(ctx, env.Owner, env.Name, env.Issue); rerr != nil {
 		fmt.Fprintf(os.Stderr, "ward container reap: could not reopen issue #%d: %v\n", env.Issue, rerr)
 	}
-	if cerr := fc.commentIssue(ctx, env.Owner, env.Name, env.Issue, unlandedExtraReposComment(env, reports)); cerr != nil {
+	if cerr := fc.CommentIssue(ctx, env.Owner, env.Name, env.Issue, unlandedExtraReposComment(env, reports)); cerr != nil {
 		fmt.Fprintf(os.Stderr, "ward container reap: could not comment un-landed granted repos on #%d: %v\n", env.Issue, cerr)
 		return
 	}

@@ -1284,7 +1284,7 @@ func (r *Runner) backlogRefreshReservationStates(ctx context.Context, cl Tracker
 
 func (r *Runner) backlogRefreshReservationState(ctx context.Context, cl Tracker, repo string, tr targetRepo, now time.Time, ttl time.Duration, e *backlogEntry) bool {
 	if backlogRedispatchSweepTracked(e) {
-		comments, err := cl.listIssueComments(ctx, tr.Owner, tr.Name, e.Num)
+		comments, err := cl.ListIssueComments(ctx, tr.Owner, tr.Name, e.Num)
 		if err != nil {
 			fmt.Fprintf(os.Stderr, "backlog: note: cannot read redispatch state for %s#%d (%v)\n", repo, e.Num, err)
 			return false
@@ -1294,7 +1294,7 @@ func (r *Runner) backlogRefreshReservationState(ctx context.Context, cl Tracker,
 	if !backlogRefreshReservationTracked(e) {
 		return false
 	}
-	comments, err := cl.listIssueComments(ctx, tr.Owner, tr.Name, e.Num)
+	comments, err := cl.ListIssueComments(ctx, tr.Owner, tr.Name, e.Num)
 	if err != nil {
 		fmt.Fprintf(os.Stderr, "backlog: note: cannot read reservation state for %s#%d (%v)\n", repo, e.Num, err)
 		return false
@@ -1526,7 +1526,7 @@ func (r *Runner) backlogReconcile(ctx context.Context, cl Tracker, repo string, 
 	if e.State != "dispatched" {
 		return false
 	}
-	comments, cerr := cl.listIssueComments(ctx, tr.Owner, tr.Name, e.Num)
+	comments, cerr := cl.ListIssueComments(ctx, tr.Owner, tr.Name, e.Num)
 	if cerr != nil {
 		fmt.Fprintf(os.Stderr, "backlog: note: cannot read outcome for %s#%d (%v)\n", repo, e.Num, cerr)
 		return false

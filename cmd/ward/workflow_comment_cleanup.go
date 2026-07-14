@@ -57,7 +57,7 @@ func deleteTransientWorkflowComments(ctx context.Context, cl Tracker, ref agentI
 	if cl == nil {
 		return
 	}
-	comments, err := cl.listIssueComments(ctx, ref.Owner, ref.Repo, ref.Number)
+	comments, err := cl.ListIssueComments(ctx, ref.Owner, ref.Repo, ref.Number)
 	if err != nil {
 		fmt.Fprintf(os.Stderr, "ward transient comment cleanup: could not read comments on %s: %v\n", ref, err)
 		return
@@ -69,7 +69,7 @@ func deleteTransientWorkflowComments(ctx context.Context, cl Tracker, ref agentI
 		if !cutoff.IsZero() && c.CreatedAt.After(cutoff) {
 			continue
 		}
-		if err := cl.deleteIssueComment(ctx, ref.Owner, ref.Repo, c.ID); err != nil && !errors.Is(err, context.Canceled) {
+		if err := cl.DeleteIssueComment(ctx, ref.Owner, ref.Repo, c.ID); err != nil && !errors.Is(err, context.Canceled) {
 			fmt.Fprintf(os.Stderr, "ward transient comment cleanup: could not delete comment %d on %s: %v\n", c.ID, ref, err)
 		}
 	}

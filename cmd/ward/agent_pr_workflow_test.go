@@ -597,7 +597,7 @@ func TestForgeRerunGapSurfacesLoudly(t *testing.T) {
 	}))
 	defer srv.Close()
 	cl := &forgejoClient{baseURL: srv.URL, token: "secret"}
-	err := cl.rerunActionRun(context.Background(), "coilyco-flight-deck", "ward", 42)
+	err := cl.RerunActionRun(context.Background(), "coilyco-flight-deck", "ward", 42)
 	if !errors.Is(err, errForgeRerunUnsupported) {
 		t.Fatalf("rerun on gap forge = %v, want errForgeRerunUnsupported", err)
 	}

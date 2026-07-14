@@ -47,7 +47,7 @@ func ghSlug(owner, repo string) string { return owner + "/" + repo }
 
 // getIssue reads one issue via REST `gh api /repos/{o}/{r}/issues/{n}` (ward#466)
 // and maps it to Issue; ToLower keeps state matching Forgejo's "open".
-func (c *githubClient) getIssue(ctx context.Context, owner, repo string, number int) (*Issue, error) {
+func (c *githubClient) GetIssue(ctx context.Context, owner, repo string, number int) (*Issue, error) {
 	out, err := c.run(ctx, "api", ghIssuePath(owner, repo, number))
 	if err != nil {
 		return nil, fmt.Errorf("github: get issue %s/%s#%d: %w", owner, repo, number, err)
@@ -93,7 +93,7 @@ type ghComment struct {
 
 // listIssueComments fetches the thread (oldest first) via REST `gh api .../comments`
 // (ward#466). --paginate + per_page=100 read a long thread whole, a short one in one hit.
-func (c *githubClient) listIssueComments(ctx context.Context, owner, repo string, number int) ([]issueComment, error) {
+func (c *githubClient) ListIssueComments(ctx context.Context, owner, repo string, number int) ([]issueComment, error) {
 	out, err := c.run(ctx, "api", "--paginate", "-f", "per_page=100",
 		ghIssuePath(owner, repo, number)+"/comments")
 	if err != nil {
@@ -125,7 +125,7 @@ func ghPullRequestPath(owner, repo string, number int) string {
 	return "/repos/" + owner + "/" + repo + "/pulls/" + strconv.Itoa(number)
 }
 
-func (c *githubClient) getPullRequestContext(ctx context.Context, owner, repo string, number int) (*agentPullRequestContext, error) {
+func (c *githubClient) GetPullRequestContext(ctx context.Context, owner, repo string, number int) (*agentPullRequestContext, error) {
 	out, err := c.run(ctx, "api", ghPullRequestPath(owner, repo, number))
 	if err != nil {
 		return nil, fmt.Errorf("github: get pull request %s/%s#%d: %w", owner, repo, number, err)
@@ -176,13 +176,13 @@ func (c *githubClient) getPullRequestContext(ctx context.Context, owner, repo st
 	}, nil
 }
 
-func (c *githubClient) listPullRequestComments(ctx context.Context, owner, repo string, number int) ([]issueComment, error) {
-	return c.listIssueComments(ctx, owner, repo, number)
+func (c *githubClient) ListPullRequestComments(ctx context.Context, owner, repo string, number int) ([]issueComment, error) {
+	return c.ListIssueComments(ctx, owner, repo, number)
 }
 
 // createIssue opens an issue (signed body via --body-file, off argv) and returns its
 // number, parsed from the issue URL gh prints.
-func (c *githubClient) createIssue(ctx context.Context, owner, repo, title, body string) (int, error) {
+func (c *githubClient) CreateIssue(ctx context.Context, owner, repo, title, body string) (int, error) {
 	path, cleanup, err := writeGitHubBody(c.mode.signBody(body))
 	if err != nil {
 		return 0, err
@@ -201,7 +201,7 @@ func (c *githubClient) createIssue(ctx context.Context, owner, repo, title, body
 }
 
 // commentIssue appends a comment; the signed body rides a --body-file.
-func (c *githubClient) commentIssue(ctx context.Context, owner, repo string, number int, body string) error {
+func (c *githubClient) CommentIssue(ctx context.Context, owner, repo string, number int, body string) error {
 	path, cleanup, err := writeGitHubBody(c.mode.signBody(body))
 	if err != nil {
 		return err
@@ -214,7 +214,7 @@ func (c *githubClient) commentIssue(ctx context.Context, owner, repo string, num
 	return nil
 }
 
-func (c *githubClient) deleteIssueComment(ctx context.Context, owner, repo string, commentID int) error {
+func (c *githubClient) DeleteIssueComment(ctx context.Context, owner, repo string, commentID int) error {
 	if _, err := c.run(ctx, "api", "-X", "DELETE", ghIssueCommentPath(owner, repo, commentID)); err != nil {
 		return fmt.Errorf("github: delete issue comment %s/%s#%d: %w", owner, repo, commentID, err)
 	}
@@ -223,7 +223,7 @@ func (c *githubClient) deleteIssueComment(ctx context.Context, owner, repo strin
 
 // closeIssue flips an issue to closed via REST PATCH (ward#466: `gh issue close`
 // would route through a GraphQL mutation; the REST state flip stays on the REST budget).
-func (c *githubClient) closeIssue(ctx context.Context, owner, repo string, number int) error {
+func (c *githubClient) CloseIssue(ctx context.Context, owner, repo string, number int) error {
 	if _, err := c.run(ctx, "api", "-X", "PATCH", ghIssuePath(owner, repo, number), "-f", "state=closed"); err != nil {
 		return fmt.Errorf("github: close issue %s/%s#%d: %w", owner, repo, number, err)
 	}
@@ -232,7 +232,7 @@ func (c *githubClient) closeIssue(ctx context.Context, owner, repo string, numbe
 
 // reopenIssue flips a closed issue back open (the reaper's undo of a `closes #N`),
 // via REST PATCH for the same rate-limit reason as closeIssue (ward#466).
-func (c *githubClient) reopenIssue(ctx context.Context, owner, repo string, number int) error {
+func (c *githubClient) ReopenIssue(ctx context.Context, owner, repo string, number int) error {
 	if _, err := c.run(ctx, "api", "-X", "PATCH", ghIssuePath(owner, repo, number), "-f", "state=open"); err != nil {
 		return fmt.Errorf("github: reopen issue %s/%s#%d: %w", owner, repo, number, err)
 	}
@@ -241,7 +241,7 @@ func (c *githubClient) reopenIssue(ctx context.Context, owner, repo string, numb
 
 // lockIssue seals the conversation via REST `PUT .../issues/{n}/lock` (ward#494); no
 // lock_reason is sent since the API's fixed set has no "in progress" value. See docs.
-func (c *githubClient) lockIssue(ctx context.Context, owner, repo string, number int) error {
+func (c *githubClient) LockIssue(ctx context.Context, owner, repo string, number int) error {
 	if _, err := c.run(ctx, "api", "-X", "PUT", ghIssuePath(owner, repo, number)+"/lock"); err != nil {
 		return fmt.Errorf("github: lock issue %s/%s#%d: %w", owner, repo, number, err)
 	}
@@ -249,7 +249,7 @@ func (c *githubClient) lockIssue(ctx context.Context, owner, repo string, number
 }
 
 // unlockIssue retracts the lock via REST `DELETE .../lock` when a reservation releases.
-func (c *githubClient) unlockIssue(ctx context.Context, owner, repo string, number int) error {
+func (c *githubClient) UnlockIssue(ctx context.Context, owner, repo string, number int) error {
 	if _, err := c.run(ctx, "api", "-X", "DELETE", ghIssuePath(owner, repo, number)+"/lock"); err != nil {
 		return fmt.Errorf("github: unlock issue %s/%s#%d: %w", owner, repo, number, err)
 	}

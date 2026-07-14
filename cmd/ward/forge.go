@@ -228,17 +228,17 @@ var errForgeLockUnsupported = errors.New("this forge's API cannot lock an issue 
 // Tracker is the forge-independent issue-thread surface for host dispatch and reaping.
 // Forgejo, GitHub, GitLab, or Shortcut.
 type Tracker interface {
-	getIssue(ctx context.Context, owner, repo string, number int) (*Issue, error)
-	listIssueComments(ctx context.Context, owner, repo string, number int) ([]issueComment, error)
-	createIssue(ctx context.Context, owner, repo, title, body string) (int, error)
-	commentIssue(ctx context.Context, owner, repo string, number int, body string) error
-	deleteIssueComment(ctx context.Context, owner, repo string, commentID int) error
-	closeIssue(ctx context.Context, owner, repo string, number int) error
-	reopenIssue(ctx context.Context, owner, repo string, number int) error
+	GetIssue(ctx context.Context, owner, repo string, number int) (*Issue, error)
+	ListIssueComments(ctx context.Context, owner, repo string, number int) ([]issueComment, error)
+	CreateIssue(ctx context.Context, owner, repo, title, body string) (int, error)
+	CommentIssue(ctx context.Context, owner, repo string, number int, body string) error
+	DeleteIssueComment(ctx context.Context, owner, repo string, commentID int) error
+	CloseIssue(ctx context.Context, owner, repo string, number int) error
+	ReopenIssue(ctx context.Context, owner, repo string, number int) error
 	// lockIssue seals the conversation against in-flight steering (ward#494), returning
 	// errForgeLockUnsupported where the API has no lock leaf; unlockIssue retracts it.
-	lockIssue(ctx context.Context, owner, repo string, number int) error
-	unlockIssue(ctx context.Context, owner, repo string, number int) error
+	LockIssue(ctx context.Context, owner, repo string, number int) error
+	UnlockIssue(ctx context.Context, owner, repo string, number int) error
 }
 
 // hostTrackerClient returns the issue-thread client for t, signing writes as mode.

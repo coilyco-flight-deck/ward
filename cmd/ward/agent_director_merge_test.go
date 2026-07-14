@@ -709,28 +709,28 @@ func TestDirectorMergeEligibilityRejectsMergeConflict(t *testing.T) {
 
 type mergeConflictTracker struct{}
 
-func (mergeConflictTracker) getIssue(context.Context, string, string, int) (*Issue, error) {
+func (mergeConflictTracker) GetIssue(context.Context, string, string, int) (*Issue, error) {
 	return &Issue{}, nil
 }
 
-func (mergeConflictTracker) listIssueComments(context.Context, string, string, int) ([]issueComment, error) {
+func (mergeConflictTracker) ListIssueComments(context.Context, string, string, int) ([]issueComment, error) {
 	return nil, context.Canceled
 }
 
-func (mergeConflictTracker) createIssue(context.Context, string, string, string, string) (int, error) {
+func (mergeConflictTracker) CreateIssue(context.Context, string, string, string, string) (int, error) {
 	return 0, nil
 }
 
-func (mergeConflictTracker) commentIssue(context.Context, string, string, int, string) error {
+func (mergeConflictTracker) CommentIssue(context.Context, string, string, int, string) error {
 	return nil
 }
-func (mergeConflictTracker) deleteIssueComment(context.Context, string, string, int) error {
+func (mergeConflictTracker) DeleteIssueComment(context.Context, string, string, int) error {
 	return nil
 }
-func (mergeConflictTracker) closeIssue(context.Context, string, string, int) error  { return nil }
-func (mergeConflictTracker) reopenIssue(context.Context, string, string, int) error { return nil }
-func (mergeConflictTracker) lockIssue(context.Context, string, string, int) error   { return nil }
-func (mergeConflictTracker) unlockIssue(context.Context, string, string, int) error { return nil }
+func (mergeConflictTracker) CloseIssue(context.Context, string, string, int) error  { return nil }
+func (mergeConflictTracker) ReopenIssue(context.Context, string, string, int) error { return nil }
+func (mergeConflictTracker) LockIssue(context.Context, string, string, int) error   { return nil }
+func (mergeConflictTracker) UnlockIssue(context.Context, string, string, int) error { return nil }
 
 func TestDirectorMergeConflictReasonFromComments(t *testing.T) {
 	now := time.Date(2026, 7, 10, 18, 0, 0, 0, time.UTC)
@@ -794,7 +794,7 @@ func TestListOpenPullRequestsReadsMergeability(t *testing.T) {
 	defer srv.Close()
 
 	cl := &forgejoClient{baseURL: srv.URL, token: "secret"}
-	prs, err := cl.listOpenPullRequests(context.Background(), "coilyco-flight-deck", "ward", 50)
+	prs, err := cl.ListOpenPullRequests(context.Background(), "coilyco-flight-deck", "ward", 50)
 	if err != nil {
 		t.Fatalf("listOpenPullRequests: %v", err)
 	}

@@ -437,33 +437,33 @@ type fakeNoOutcomeTracker struct {
 	unlocked  int
 }
 
-func (f *fakeNoOutcomeTracker) getIssue(context.Context, string, string, int) (*Issue, error) {
+func (f *fakeNoOutcomeTracker) GetIssue(context.Context, string, string, int) (*Issue, error) {
 	return nil, errors.New("fakeNoOutcomeTracker: issue lookup not implemented")
 }
 
-func (f *fakeNoOutcomeTracker) listIssueComments(context.Context, string, string, int) ([]issueComment, error) {
+func (f *fakeNoOutcomeTracker) ListIssueComments(context.Context, string, string, int) ([]issueComment, error) {
 	return append([]issueComment(nil), f.comments...), nil
 }
 
-func (f *fakeNoOutcomeTracker) createIssue(context.Context, string, string, string, string) (int, error) {
+func (f *fakeNoOutcomeTracker) CreateIssue(context.Context, string, string, string, string) (int, error) {
 	return 0, nil
 }
 
-func (f *fakeNoOutcomeTracker) commentIssue(_ context.Context, _, _ string, _ int, body string) error {
+func (f *fakeNoOutcomeTracker) CommentIssue(_ context.Context, _, _ string, _ int, body string) error {
 	f.commented = append(f.commented, body)
 	return nil
 }
 
-func (f *fakeNoOutcomeTracker) deleteIssueComment(_ context.Context, _, _ string, commentID int) error {
+func (f *fakeNoOutcomeTracker) DeleteIssueComment(_ context.Context, _, _ string, commentID int) error {
 	f.deleted = append(f.deleted, commentID)
 	return nil
 }
 
-func (f *fakeNoOutcomeTracker) closeIssue(context.Context, string, string, int) error  { return nil }
-func (f *fakeNoOutcomeTracker) reopenIssue(context.Context, string, string, int) error { return nil }
-func (f *fakeNoOutcomeTracker) lockIssue(context.Context, string, string, int) error   { return nil }
+func (f *fakeNoOutcomeTracker) CloseIssue(context.Context, string, string, int) error  { return nil }
+func (f *fakeNoOutcomeTracker) ReopenIssue(context.Context, string, string, int) error { return nil }
+func (f *fakeNoOutcomeTracker) LockIssue(context.Context, string, string, int) error   { return nil }
 
-func (f *fakeNoOutcomeTracker) unlockIssue(_ context.Context, _, _ string, _ int) error {
+func (f *fakeNoOutcomeTracker) UnlockIssue(_ context.Context, _, _ string, _ int) error {
 	f.unlocked++
 	return nil
 }
@@ -476,40 +476,40 @@ type fakeTerminalOutcomeTracker struct {
 	postAt    time.Time
 }
 
-func (f *fakeTerminalOutcomeTracker) getIssue(context.Context, string, string, int) (*Issue, error) {
+func (f *fakeTerminalOutcomeTracker) GetIssue(context.Context, string, string, int) (*Issue, error) {
 	return nil, errors.New("fakeTerminalOutcomeTracker: issue lookup not implemented")
 }
 
-func (f *fakeTerminalOutcomeTracker) listIssueComments(context.Context, string, string, int) ([]issueComment, error) {
+func (f *fakeTerminalOutcomeTracker) ListIssueComments(context.Context, string, string, int) ([]issueComment, error) {
 	return append([]issueComment(nil), f.comments...), nil
 }
 
-func (f *fakeTerminalOutcomeTracker) createIssue(context.Context, string, string, string, string) (int, error) {
+func (f *fakeTerminalOutcomeTracker) CreateIssue(context.Context, string, string, string, string) (int, error) {
 	return 0, nil
 }
 
-func (f *fakeTerminalOutcomeTracker) commentIssue(_ context.Context, _, _ string, _ int, body string) error {
+func (f *fakeTerminalOutcomeTracker) CommentIssue(_ context.Context, _, _ string, _ int, body string) error {
 	f.commented = append(f.commented, body)
 	f.comments = append(f.comments, issueComment{Body: body, CreatedAt: f.postAt})
 	return nil
 }
 
-func (f *fakeTerminalOutcomeTracker) deleteIssueComment(_ context.Context, _, _ string, commentID int) error {
+func (f *fakeTerminalOutcomeTracker) DeleteIssueComment(_ context.Context, _, _ string, commentID int) error {
 	f.deleted = append(f.deleted, commentID)
 	return nil
 }
 
-func (f *fakeTerminalOutcomeTracker) closeIssue(context.Context, string, string, int) error {
+func (f *fakeTerminalOutcomeTracker) CloseIssue(context.Context, string, string, int) error {
 	return nil
 }
-func (f *fakeTerminalOutcomeTracker) reopenIssue(context.Context, string, string, int) error {
+func (f *fakeTerminalOutcomeTracker) ReopenIssue(context.Context, string, string, int) error {
 	return nil
 }
-func (f *fakeTerminalOutcomeTracker) lockIssue(context.Context, string, string, int) error {
+func (f *fakeTerminalOutcomeTracker) LockIssue(context.Context, string, string, int) error {
 	return nil
 }
 
-func (f *fakeTerminalOutcomeTracker) unlockIssue(_ context.Context, _, _ string, _ int) error {
+func (f *fakeTerminalOutcomeTracker) UnlockIssue(_ context.Context, _, _ string, _ int) error {
 	f.unlocked++
 	return nil
 }
@@ -1701,29 +1701,29 @@ type fakeSalvageNotifier struct {
 	prBody       string
 }
 
-func (f *fakeSalvageNotifier) reopenIssue(_ context.Context, _, _ string, number int) error {
+func (f *fakeSalvageNotifier) ReopenIssue(_ context.Context, _, _ string, number int) error {
 	f.reopened = append(f.reopened, number)
 	return nil
 }
 
-func (f *fakeSalvageNotifier) commentIssue(_ context.Context, _, _ string, number int, body string) error {
+func (f *fakeSalvageNotifier) CommentIssue(_ context.Context, _, _ string, number int, body string) error {
 	f.commented = append(f.commented, number)
 	f.commentBody = body
 	return nil
 }
 
-func (f *fakeSalvageNotifier) createIssue(_ context.Context, _, _, title, body string) (int, error) {
+func (f *fakeSalvageNotifier) CreateIssue(_ context.Context, _, _, title, body string) (int, error) {
 	f.created++
 	f.createdTitle = title
 	f.createdBody = body
 	return 900, nil
 }
 
-func (f *fakeSalvageNotifier) repoPullRequestsEnabled(_ context.Context, _, _ string) (bool, error) {
+func (f *fakeSalvageNotifier) RepoPullRequestsEnabled(_ context.Context, _, _ string) (bool, error) {
 	return f.prEnabled, nil
 }
 
-func (f *fakeSalvageNotifier) createPullRequest(_ context.Context, _, _, _, _, _, body string) (string, error) {
+func (f *fakeSalvageNotifier) CreatePullRequest(_ context.Context, _, _, _, _, _, body string) (string, error) {
 	f.prBody = body
 	if f.prErr != nil {
 		return "", f.prErr

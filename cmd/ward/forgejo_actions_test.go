@@ -21,7 +21,7 @@ func TestListActionRunsReadsRunFeed(t *testing.T) {
 	}))
 	defer srv.Close()
 	cl := &forgejoClient{baseURL: srv.URL, token: "secret"}
-	runs, err := cl.listActionRuns(context.Background(), "coilyco-flight-deck", "ward", 2)
+	runs, err := cl.ListActionRuns(context.Background(), "coilyco-flight-deck", "ward", 2)
 	if err != nil {
 		t.Fatalf("listActionRuns: %v", err)
 	}
@@ -47,12 +47,12 @@ func TestPullRequestMergedStates(t *testing.T) {
 	}))
 	defer srv.Close()
 	cl := &forgejoClient{baseURL: srv.URL, token: "secret"}
-	merged, err := cl.pullRequestMerged(context.Background(), "coilyco-flight-deck", "ward", 7)
+	merged, err := cl.PullRequestMerged(context.Background(), "coilyco-flight-deck", "ward", 7)
 	if err != nil || !merged {
 		t.Fatalf("pullRequestMerged on 204 = (%v, %v), want (true, nil)", merged, err)
 	}
 	status = http.StatusNotFound
-	merged, err = cl.pullRequestMerged(context.Background(), "coilyco-flight-deck", "ward", 7)
+	merged, err = cl.PullRequestMerged(context.Background(), "coilyco-flight-deck", "ward", 7)
 	if err != nil || merged {
 		t.Fatalf("pullRequestMerged on 404 = (%v, %v), want (false, nil)", merged, err)
 	}

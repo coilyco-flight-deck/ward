@@ -103,7 +103,7 @@ type shortcutWorkflowStateRaw struct {
 	Type string `json:"type"`
 }
 
-func (c *shortcutClient) getIssue(ctx context.Context, owner, repo string, number int) (*Issue, error) {
+func (c *shortcutClient) GetIssue(ctx context.Context, owner, repo string, number int) (*Issue, error) {
 	var raw shortcutStoryRaw
 	if err := c.request(ctx, http.MethodGet, "/stories/"+strconv.Itoa(number), nil, &raw, http.StatusOK); err != nil {
 		return nil, fmt.Errorf("shortcut: get story %s/%s#%d: %w", owner, repo, number, err)
@@ -127,7 +127,7 @@ func (c *shortcutClient) getIssue(ctx context.Context, owner, repo string, numbe
 	return issue, nil
 }
 
-func (c *shortcutClient) listIssueComments(ctx context.Context, owner, repo string, number int) ([]issueComment, error) {
+func (c *shortcutClient) ListIssueComments(ctx context.Context, owner, repo string, number int) ([]issueComment, error) {
 	var raw []shortcutStoryCommentRaw
 	if err := c.request(ctx, http.MethodGet, "/stories/"+strconv.Itoa(number)+"/comments", nil, &raw, http.StatusOK); err != nil {
 		return nil, fmt.Errorf("shortcut: list comments on %s/%s#%d: %w", owner, repo, number, err)
@@ -144,7 +144,7 @@ func (c *shortcutClient) listIssueComments(ctx context.Context, owner, repo stri
 	return comments, nil
 }
 
-func (c *shortcutClient) createIssue(ctx context.Context, owner, repo, title, body string) (int, error) {
+func (c *shortcutClient) CreateIssue(ctx context.Context, owner, repo, title, body string) (int, error) {
 	stateID, err := c.shortcutCreateStateID(ctx)
 	if err != nil {
 		return 0, err
@@ -169,7 +169,7 @@ func (c *shortcutClient) createIssue(ctx context.Context, owner, repo, title, bo
 	return raw.ID, nil
 }
 
-func (c *shortcutClient) commentIssue(ctx context.Context, owner, repo string, number int, body string) error {
+func (c *shortcutClient) CommentIssue(ctx context.Context, owner, repo string, number int, body string) error {
 	req := map[string]any{"text": c.mode.signBody(body)}
 	if err := c.request(ctx, http.MethodPost, "/stories/"+strconv.Itoa(number)+"/comments", req, nil, http.StatusCreated); err != nil {
 		return fmt.Errorf("shortcut: comment story %s/%s#%d: %w", owner, repo, number, err)
@@ -177,13 +177,13 @@ func (c *shortcutClient) commentIssue(ctx context.Context, owner, repo string, n
 	return nil
 }
 
-func (c *shortcutClient) deleteIssueComment(_ context.Context, _, _ string, _ int) error {
+func (c *shortcutClient) DeleteIssueComment(_ context.Context, _, _ string, _ int) error {
 	// Shortcut exposes comment deletion, but the shared Tracker surface does not
 	// carry the parent story number here, so this adapter leaves cleanup best-effort.
 	return nil
 }
 
-func (c *shortcutClient) closeIssue(ctx context.Context, owner, repo string, number int) error {
+func (c *shortcutClient) CloseIssue(ctx context.Context, owner, repo string, number int) error {
 	stateID, err := c.shortcutStateIDForStory(ctx, number, "done")
 	if err != nil {
 		return err
@@ -194,7 +194,7 @@ func (c *shortcutClient) closeIssue(ctx context.Context, owner, repo string, num
 	return nil
 }
 
-func (c *shortcutClient) reopenIssue(ctx context.Context, owner, repo string, number int) error {
+func (c *shortcutClient) ReopenIssue(ctx context.Context, owner, repo string, number int) error {
 	stateID, err := c.shortcutStateIDForStory(ctx, number, "default")
 	if err != nil {
 		return err
@@ -205,11 +205,11 @@ func (c *shortcutClient) reopenIssue(ctx context.Context, owner, repo string, nu
 	return nil
 }
 
-func (c *shortcutClient) lockIssue(context.Context, string, string, int) error {
+func (c *shortcutClient) LockIssue(context.Context, string, string, int) error {
 	return errForgeLockUnsupported
 }
 
-func (c *shortcutClient) unlockIssue(context.Context, string, string, int) error {
+func (c *shortcutClient) UnlockIssue(context.Context, string, string, int) error {
 	return errForgeLockUnsupported
 }
 
