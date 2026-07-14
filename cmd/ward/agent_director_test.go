@@ -469,7 +469,7 @@ func TestResolveDirectorScopeUsesConfigWithoutGitCwd(t *testing.T) {
 	if err := os.MkdirAll(filepath.Join(home, ".ward"), 0o750); err != nil {
 		t.Fatalf("mkdir ~/.ward: %v", err)
 	}
-	yaml := "director:\n  default-scope: [coilyco-flight-deck, some/repo]\n"
+	yaml := "director:\n  default-scope: [coilyco-flight-deck/ward, some/repo]\n"
 	if err := os.WriteFile(filepath.Join(home, ".ward", "config.yaml"), []byte(yaml), 0o600); err != nil {
 		t.Fatalf("write config: %v", err)
 	}
@@ -486,7 +486,7 @@ func TestResolveDirectorScopeUsesConfigWithoutGitCwd(t *testing.T) {
 	if err != nil {
 		t.Fatalf("resolveDirectorScope: %v", err)
 	}
-	want := []string{"coilyco-flight-deck", "some/repo"}
+	want := []string{"coilyco-flight-deck/ward", "some/repo"}
 	if !reflect.DeepEqual(got, want) {
 		t.Fatalf("resolved scope = %v, want %v", got, want)
 	}
