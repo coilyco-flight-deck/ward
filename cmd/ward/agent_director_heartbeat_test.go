@@ -194,7 +194,7 @@ func (f *fakeDirector) summary() error                { f.summaryCalls++; return
 func TestRunDirectorLoopSmoke(t *testing.T) {
 	issue := &backlogEntry{Num: 5, Title: "actionable", Tier: "P0", Lane: "headless", State: "queued"}
 	f := &fakeDirector{list: []*backlogEntry{issue}}
-	cfg := backlogConfig{maxParallel: 2, pollInterval: time.Millisecond}
+	cfg := backlogConfig{maxParallel: 2, pollInterval: time.Millisecond, triage: true}
 
 	if err := runDirectorLoop(context.Background(), cfg, f); err != nil {
 		t.Fatalf("loop returned error: %v", err)
@@ -232,7 +232,7 @@ func TestRunDirectorLoopResumesOnRefill(t *testing.T) {
 		}
 		return true, nil
 	}
-	cfg := backlogConfig{maxParallel: 2, pollInterval: time.Millisecond}
+	cfg := backlogConfig{maxParallel: 2, pollInterval: time.Millisecond, triage: true}
 
 	if err := runDirectorLoop(context.Background(), cfg, f); err != nil {
 		t.Fatalf("loop returned error: %v", err)
@@ -253,7 +253,7 @@ func TestRunDirectorLoopResumesOnRefill(t *testing.T) {
 func TestRunDirectorLoopExitsWhenNoSurface(t *testing.T) {
 	f := &fakeDirector{list: nil} // nothing queued or in flight: drained immediately
 	f.surfaceFn = func() (bool, error) { return false, nil }
-	cfg := backlogConfig{maxParallel: 2, pollInterval: time.Millisecond}
+	cfg := backlogConfig{maxParallel: 2, pollInterval: time.Millisecond, triage: true}
 
 	if err := runDirectorLoop(context.Background(), cfg, f); err != nil {
 		t.Fatalf("loop returned error: %v", err)
@@ -308,7 +308,7 @@ func TestRunDirectorLoopKickoffNoSurfacesFirst(t *testing.T) {
 		}
 		return true, nil
 	}
-	cfg := backlogConfig{maxParallel: 2, pollInterval: time.Millisecond}
+	cfg := backlogConfig{maxParallel: 2, pollInterval: time.Millisecond, triage: true}
 
 	if err := runDirectorLoop(context.Background(), cfg, f); err != nil {
 		t.Fatalf("loop returned error: %v", err)
@@ -330,7 +330,7 @@ func TestRunDirectorLoopKickoffYesDrainsImmediately(t *testing.T) {
 	issue := &backlogEntry{Num: 5, Title: "actionable", Tier: "P0", Lane: "headless", State: "queued"}
 	f := &fakeDirector{list: []*backlogEntry{issue}}
 	f.kickoffFn = func() (bool, error) { return true, nil } // "yes": drain now
-	cfg := backlogConfig{maxParallel: 2, pollInterval: time.Millisecond}
+	cfg := backlogConfig{maxParallel: 2, pollInterval: time.Millisecond, triage: true}
 
 	if err := runDirectorLoop(context.Background(), cfg, f); err != nil {
 		t.Fatalf("loop returned error: %v", err)
@@ -347,6 +347,24 @@ func TestRunDirectorLoopKickoffYesDrainsImmediately(t *testing.T) {
 	}
 }
 
+// TestRunDirectorLoopNoTriageSkipsKickoffPrompt confirms --no-triage bypasses the
+// opening prompt and goes straight into the heartbeat.
+func TestRunDirectorLoopNoTriageSkipsKickoffPrompt(t *testing.T) {
+	issue := &backlogEntry{Num: 5, Title: "actionable", Tier: "P0", Lane: "headless", State: "queued"}
+	f := &fakeDirector{list: []*backlogEntry{issue}}
+	cfg := backlogConfig{maxParallel: 2, pollInterval: time.Millisecond, triage: false}
+
+	if err := runDirectorLoop(context.Background(), cfg, f); err != nil {
+		t.Fatalf("loop returned error: %v", err)
+	}
+	if f.kickoffCalls != 0 {
+		t.Errorf("kickoff asked %d times, want 0 when --no-triage skips the prompt", f.kickoffCalls)
+	}
+	if !reflect.DeepEqual(f.dispatched, []int{5}) {
+		t.Errorf("dispatched = %v, want [5]", f.dispatched)
+	}
+}
+
 // TestRunDirectorLoopKickoffAskedOnce confirms the gate is asked exactly once even when
 // the run surfaces, refills, resumes, and drains a second time (ward#361).
 func TestRunDirectorLoopKickoffAskedOnce(t *testing.T) {
@@ -360,7 +378,7 @@ func TestRunDirectorLoopKickoffAskedOnce(t *testing.T) {
 		}
 		return true, nil
 	}
-	cfg := backlogConfig{maxParallel: 2, pollInterval: time.Millisecond}
+	cfg := backlogConfig{maxParallel: 2, pollInterval: time.Millisecond, triage: true}
 
 	if err := runDirectorLoop(context.Background(), cfg, f); err != nil {
 		t.Fatalf("loop returned error: %v", err)
@@ -377,7 +395,7 @@ func TestRunDirectorLoopKickoffNoExitsWhenNoSurface(t *testing.T) {
 	f := &fakeDirector{list: []*backlogEntry{issue}}
 	f.kickoffFn = func() (bool, error) { return false, nil }
 	f.surfaceFn = func() (bool, error) { return false, nil } // no session available
-	cfg := backlogConfig{maxParallel: 2, pollInterval: time.Millisecond}
+	cfg := backlogConfig{maxParallel: 2, pollInterval: time.Millisecond, triage: true}
 
 	if err := runDirectorLoop(context.Background(), cfg, f); err != nil {
 		t.Fatalf("loop returned error: %v", err)
@@ -395,7 +413,7 @@ func TestRunDirectorLoopKickoffError(t *testing.T) {
 	issue := &backlogEntry{Num: 5, Title: "queued", Tier: "P0", Lane: "headless", State: "queued"}
 	f := &fakeDirector{list: []*backlogEntry{issue}}
 	f.kickoffFn = func() (bool, error) { return false, errors.New("boom") }
-	cfg := backlogConfig{maxParallel: 2, pollInterval: time.Millisecond}
+	cfg := backlogConfig{maxParallel: 2, pollInterval: time.Millisecond, triage: true}
 
 	if err := runDirectorLoop(context.Background(), cfg, f); err == nil {
 		t.Fatal("a kickoff-gate error must propagate, got nil")
