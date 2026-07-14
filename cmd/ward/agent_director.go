@@ -68,13 +68,6 @@ type rankedBacklogIssue struct {
 	URL   string
 }
 
-// backlogOutcome is the parsed WARDED_WORKFLOW status of a finished run.
-// The ledger stores explicit nonterminal PR outcomes as well as terminal ones.
-type backlogOutcome struct {
-	Status string `yaml:"status"`
-	Text   string `yaml:"text"`
-}
-
 // backlogEntry is one tracked issue in a repo's ledger.
 // It moves through queued -> dispatched -> done/submitted/merge-ready/blocked/failed.
 type backlogEntry struct {
@@ -974,8 +967,21 @@ func backlogOutcomeOfComment(body string) (backlogOutcome, bool) {
 	if !ok {
 		return backlogOutcome{}, false
 	}
-	status := normalizeBacklogOutcomeStatus(header.Variant)
 	o := backlogOutcome{Status: "unknown"}
+	if pr, ok := parseWorkflowOutcomePRRef(header.Variant); ok {
+		if strings.TrimSpace(header.Detail) != "" {
+			return backlogOutcome{}, false
+		}
+		o.Status = "submitted"
+		o.Text = workflowCommentDetail(pr.url())
+		o.PRURL = pr.url()
+		o.PRNumber = pr.Number
+		return o, true
+	}
+	if strings.Contains(strings.TrimSpace(header.Variant), "://") {
+		return backlogOutcome{}, false
+	}
+	status := normalizeBacklogOutcomeStatus(header.Variant)
 	switch {
 	case workflowCommentIsTerminalOutcomeVariant(header.Variant):
 		o.Status = status

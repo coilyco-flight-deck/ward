@@ -14,8 +14,9 @@ This page is the durable anchor for launch-time reservations.
 ## Release semantics
 
 - A release-marker comment at or after the latest reservation retracts it.
-- A terminal `WARDED_WORKFLOW` comment (done, submitted, merge-ready, blocked,
-  failed) retracts it the same way, the moment it posts ([ward#1149](https://forgejo.coilysiren.me/coilyco-flight-deck/ward/issues/1149)). A
+- A terminal `WARDED_WORKFLOW` comment (done, a canonical PR URL for PR
+  workflows, merge-ready, blocked, failed) retracts it the same way, the
+  moment it posts ([ward#1149](https://forgejo.coilysiren.me/coilyco-flight-deck/ward/issues/1149)). A
   review-driven follow-up dispatched right after a run reports out no longer
   collides with the finishing run's hold or races the reaper's release comment.
 - The reaper still posts the terminal release comment for legibility, but skips

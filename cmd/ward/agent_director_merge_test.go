@@ -270,7 +270,7 @@ func TestDirectorRunMetaParsesWorkflowAndReview(t *testing.T) {
 
 func TestDirectorMergeDecisionRejectsSkippedReview(t *testing.T) {
 	body := strings.Join([]string{
-		"WARD-OUTCOME: submitted",
+		"WARDED_WORKFLOW: https://forgejo.coilysiren.me/coilyco-flight-deck/ward/pulls/729",
 		"",
 		"<details><summary>details</summary>",
 		"",
@@ -284,6 +284,9 @@ func TestDirectorMergeDecisionRejectsSkippedReview(t *testing.T) {
 	meta := parseDirectorRunMeta(body)
 	if !meta.HasOutcome || meta.Outcome.Status != "submitted" {
 		t.Fatalf("meta outcome = %+v, want submitted", meta)
+	}
+	if meta.Outcome.PRNumber != 729 {
+		t.Fatalf("meta outcome PRNumber = %d, want 729", meta.Outcome.PRNumber)
 	}
 	if meta.Workflow != string(workflowPullRequestAndMerge) {
 		t.Fatalf("meta workflow = %q, want %q", meta.Workflow, workflowPullRequestAndMerge)

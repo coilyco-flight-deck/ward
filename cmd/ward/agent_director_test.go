@@ -1023,6 +1023,8 @@ func TestParseBacklogOutcome(t *testing.T) {
 		comments   []issueComment
 		wantStatus string
 		wantText   string
+		wantPRURL  string
+		wantPRNum  int
 		wantNil    bool
 	}{
 		{
@@ -1038,9 +1040,11 @@ func TestParseBacklogOutcome(t *testing.T) {
 		},
 		{
 			name:       "submitted leading line",
-			comments:   []issueComment{{Body: "WARD-OUTCOME: submitted - PR opened, waiting for human merge\n\nfelt calm", CreatedAt: at("2026-06-25T10:00:00Z")}},
+			comments:   []issueComment{{Body: "WARDED_WORKFLOW: https://forgejo.coilysiren.me/coilyco-flight-deck/ward/pulls/729\n\nfelt calm", CreatedAt: at("2026-06-25T10:00:00Z")}},
 			wantStatus: "submitted",
-			wantText:   "PR opened, waiting for human merge",
+			wantText:   "https://forgejo.coilysiren.me/coilyco-flight-deck/ward/pulls/729",
+			wantPRURL:  "https://forgejo.coilysiren.me/coilyco-flight-deck/ward/pulls/729",
+			wantPRNum:  729,
 		},
 		{
 			name:       "merge-ready leading line",
@@ -1102,6 +1106,9 @@ func TestParseBacklogOutcome(t *testing.T) {
 			}
 			if got.Status != c.wantStatus || got.Text != c.wantText {
 				t.Errorf("got %s/%q, want %s/%q", got.Status, got.Text, c.wantStatus, c.wantText)
+			}
+			if got.PRURL != c.wantPRURL || got.PRNumber != c.wantPRNum {
+				t.Errorf("got PRURL/PRNumber %q/%d, want %q/%d", got.PRURL, got.PRNumber, c.wantPRURL, c.wantPRNum)
 			}
 		})
 	}

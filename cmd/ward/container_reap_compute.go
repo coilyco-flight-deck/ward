@@ -321,7 +321,7 @@ func salvageCommentBody(r salvageReport) string {
 func salvageOutcomeVisible(r salvageReport) string {
 	switch {
 	case strings.TrimSpace(r.PullRequestURL) != "":
-		return workflowOutcomeVisible("submitted")
+		return workflowOutcomeVisibleURL(r.PullRequestURL)
 	case strings.TrimSpace(r.PullRequestUnavailable) != "":
 		return workflowOutcomeVisible("blocked")
 	default:

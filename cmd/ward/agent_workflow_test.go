@@ -157,8 +157,8 @@ func TestAgentSeedPromptWorkflow(t *testing.T) {
 	if !strings.Contains(pr, "pull request") || strings.Contains(pr, "merge to main, push - and close") {
 		t.Errorf("pull-request seed should carry a PR clause, not the merge-to-main fast path\n got: %s", pr)
 	}
-	if !strings.Contains(pr, "WARDED_WORKFLOW: submitted") {
-		t.Errorf("pull-request reflection should end with submitted, not done\n got: %s", pr)
+	if !strings.Contains(pr, pullRequestWorkflowOutcomeMarker) {
+		t.Errorf("pull-request reflection should end with the PR URL marker, not done\n got: %s", pr)
 	}
 	if strings.Contains(pr, "WARDED_WORKFLOW: done") {
 		t.Errorf("pull-request reflection must not ask the engineer to post done\n got: %s", pr)
@@ -216,8 +216,8 @@ func TestAgentSeedPromptWorkflow(t *testing.T) {
 	}
 
 	skipped := agentSeedPromptWorkflow(ref, "reframe ward", "do it", "", true, nil, workflowPullRequestAndMerge, false, "review gate skipped by ~/.ward/config.yaml default")
-	if !strings.Contains(skipped, "WARDED_WORKFLOW: submitted") {
-		t.Errorf("skipped review must not claim merge-ready\n got: %s", skipped)
+	if !strings.Contains(skipped, pullRequestWorkflowOutcomeMarker) {
+		t.Errorf("skipped review must keep the PR URL marker, not claim merge-ready\n got: %s", skipped)
 	}
 	if !strings.Contains(skipped, "workflow: pull-request-and-merge; review summary: <summary or skip state>") {
 		t.Errorf("skipped review should still use the canonical machine-readable workflow token\n got: %s", skipped)

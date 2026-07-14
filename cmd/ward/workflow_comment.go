@@ -74,6 +74,15 @@ type workflowCommentHeader struct {
 	Legacy  bool
 }
 
+// backlogOutcome tracks the machine-readable result of a run or cleanup pass.
+// PR workflows may carry the canonical PR URL and number alongside submitted.
+type backlogOutcome struct {
+	Status   string `yaml:"status"`
+	Text     string `yaml:"text"`
+	PRURL    string `yaml:"pr_url,omitempty"`
+	PRNumber int    `yaml:"pr_number,omitempty"`
+}
+
 type workflowCommentHeaderParser func(string) (workflowCommentHeader, bool)
 
 var workflowCommentHeaderParsers = []workflowCommentHeaderParser{
@@ -173,6 +182,17 @@ func workflowOutcomeVisible(status string) string {
 	return workflowCommentVisible(status, outcomeStatusEmoji(status))
 }
 
+func workflowOutcomeVisibleURL(prURL string) string {
+	return workflowCommentVisible(strings.TrimSpace(prURL))
+}
+
+func workflowOutcomeVisibleResult(outcome backlogOutcome) string {
+	if strings.EqualFold(strings.TrimSpace(outcome.Status), "submitted") && strings.TrimSpace(outcome.PRURL) != "" {
+		return workflowOutcomeVisibleURL(outcome.PRURL)
+	}
+	return workflowOutcomeVisible(outcome.Status)
+}
+
 func workflowReservationHeldVisible() string { return workflowCommentVisible("reservation-held") }
 func workflowReservationReleasedVisible() string {
 	return workflowCommentVisible("reservation-released")
@@ -228,8 +248,19 @@ func parseWorkflowCommentRest(rest string, legacy bool) (workflowCommentHeader, 
 		return workflowCommentHeader{}, false
 	}
 	variant, detail, _ := strings.Cut(rest, " ")
+	if strings.Contains(variant, "://") {
+		return workflowCommentHeader{Variant: strings.TrimSpace(variant), Detail: workflowCommentDetail(detail), Raw: rest, Legacy: legacy}, true
+	}
 	variant = canonicalWorkflowCommentVariant(variant)
 	return workflowCommentHeader{Variant: variant, Detail: workflowCommentDetail(detail), Raw: rest, Legacy: legacy}, true
+}
+
+func parseWorkflowOutcomePRRef(variant string) (agentIssueRef, bool) {
+	variant = strings.TrimSpace(variant)
+	if variant == "" || !strings.Contains(variant, "://") {
+		return agentIssueRef{}, false
+	}
+	return parseForgejoPullRequestRef(variant)
 }
 
 func canonicalWorkflowCommentVariant(s string) string {

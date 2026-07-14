@@ -18,7 +18,8 @@ Legacy aliases `direct-main`, `direct-to-main`, `pull-requests`,
 
 The machine-readable issue-comment prefix for ward-authored workflow updates is
 `WARDED_WORKFLOW`. Legacy `WARD-*` issue-comment headers still parse on old
-threads, but new comments emit only `WARDED_WORKFLOW`.
+threads, but new PR handoffs emit `WARDED_WORKFLOW: <fully-qualified pull request link>`
+instead of the old submitted marker.
 
 ## Review
 
@@ -50,6 +51,8 @@ visible path.
 The run opens a branch and a PR, then keeps watching until the PR is green.
 Failure comments stay on the issue, and the PR copy mirrors the actionable
 message when one already exists.
+When the PR is opened, the issue thread's workflow comment starts with the
+canonical pull request URL.
 
 ### pull-request-and-merge
 

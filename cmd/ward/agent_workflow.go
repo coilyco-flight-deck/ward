@@ -33,8 +33,14 @@ const (
 
 	// directorMergeWorkflowMarker is the PR-body marker the director sweep reads
 	// when deciding whether a ward-owned PR may be merged automatically.
-	directorMergeWorkflowMarker = "ward.workflow: pull-request-and-merge"
+	directorMergeWorkflowMarker      = "ward.workflow: pull-request-and-merge"
+	pullRequestWorkflowOutcomeMarker = "WARDED_WORKFLOW: <fully-qualified pull request link>"
 )
+
+func workflowOutcomeLinkMarker(f forge) string {
+	noun := workflowReviewNoun(f)
+	return "WARDED_WORKFLOW: <fully-qualified " + noun + " link>"
+}
 
 // orDefault collapses the "" zero value onto the default and normalizes legacy
 // aliases so every helper can read a concrete mode without each caller re-checking.
@@ -186,8 +192,8 @@ func pullRequestCarryClause(ref agentIssueRef) string {
 			"%s "+
 			"%s Do NOT push to `main` directly or merge it yourself - in the `pull-request` workflow the %s "+
 			"IS the merge gate, and the director is encouraged to merge it later if policy allows. When the %s is green, "+
-			"the engineer's final visible outcome is `"+workflowOutcomeVisible("submitted")+"`, not `done`.",
-		noun, ref.Number, pullRequestDescriptionClause(noun), pullRequestCIWatchClauseFor(ref.Forge), noun, noun)
+			"the engineer's final visible outcome is `%s`, not `done`.",
+		noun, ref.Number, pullRequestDescriptionClause(noun), pullRequestCIWatchClauseFor(ref.Forge), noun, noun, workflowOutcomeLinkMarker(ref.Forge))
 }
 
 // pullRequestAndMergeCarryClause tells the agent to open a PR and keep it merge-ready
