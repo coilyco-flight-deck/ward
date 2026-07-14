@@ -1293,11 +1293,13 @@ scrollback. Reserve an in-session subagent for read-only fan-out that only feeds
   These forward through the host dispatch broker on ward's compiled Forgejo client, gated
   by the embedded role x workflow permission table, so they keep working even when the
   ` + "`ward ops forgejo`" + ` specgen surface is stripped or rolled back (infrastructure#538).
-	- The host docker socket is mounted at ` + "`/var/run/docker.sock`" + `, so ` + "`ward agent reap`" + `
-  can list and stop stale engineer containers and a dispatched ` + "`warded #N`" + ` can spawn its
-  sibling container. If Docker access is intentionally unavailable on this surface,
-  ` + "`ward agent reap`" + ` will say reaping is unsupported here instead of pretending the socket is mounted.
-  If you hit a socket permission error, the group-grant did not reach this host's socket - see ward#319.
+- Fresh director surfaces mount the host Docker socket at ` + "`/var/run/docker.sock`" + `, so
+  ` + "`ward agent reap`" + ` can list and stop stale engineer containers and a dispatched
+  ` + "`warded #N`" + ` can spawn its sibling container. If this live surface does not have that
+  mount yet, restart ` + "`warded`" + ` so the resolved config and bind set are picked up before the
+  next launch. Until then, use the brokered cleanup command ` + "`ward agent stop <owner/repo#N>`" + `
+  from this surface. If you hit a socket permission error, the group-grant did not reach this
+  host's socket - see ward#319.
 
 You **must not**:
 

@@ -232,7 +232,14 @@ func TestAgentReapSweepReportsUnsupportedOnReadOnlyDirectorSurface(t *testing.T)
 	if err == nil {
 		t.Fatal("expected an unsupported-surface error")
 	}
-	if got := err.Error(); !strings.Contains(got, "reaping is unsupported on this read-only director surface") {
-		t.Fatalf("error = %q, want a read-only surface unsupported message", got)
+	got := err.Error()
+	for _, want := range []string{
+		"does not have the Docker socket yet",
+		"Restart warded",
+		"ward agent stop <owner/repo#N>",
+	} {
+		if !strings.Contains(got, want) {
+			t.Fatalf("error = %q, want %q", got, want)
+		}
 	}
 }
