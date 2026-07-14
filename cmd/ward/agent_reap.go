@@ -357,6 +357,14 @@ func isEngineerCapacityError(err error) bool {
 	return errors.As(err, &capErr)
 }
 
+func engineerCapacityBackpressureSummary(err error) string {
+	var capErr *engineerCapacityError
+	if errors.As(err, &capErr) {
+		return fmt.Sprintf("engineer pool full, %d/%d, not dispatched", capErr.running, capErr.limit)
+	}
+	return "engineer pool full, not dispatched"
+}
+
 // engineerReapState gathers one engineer's idle inputs: idle from its last log
 // timestamp (else its start time, catching a never-logged PID1), plus CPU. Best-effort.
 func (r *Runner) engineerReapState(ctx context.Context, name string, now time.Time) engineerReapState {

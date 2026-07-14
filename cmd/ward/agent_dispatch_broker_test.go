@@ -1520,6 +1520,28 @@ func TestCommentDeferredDispatch(t *testing.T) {
 	}
 }
 
+// TestCommentDispatchLaunchErrorReportsCapacityLocally keeps pool-full backpressure
+// on stderr only so the issue thread stays untouched.
+func TestCommentDispatchLaunchErrorReportsCapacityLocally(t *testing.T) {
+	r := &Runner{}
+	req := dispatchBrokerRequest{
+		Role: "engineer",
+		Argv: []string{"engineer", "coilyco-flight-deck/ward#902", "--harness", "codex"},
+	}
+	capacityErr := newEngineerCapacityError("ward agent engineer --harness codex", 10, 10)
+
+	stderr := captureTestStderr(t, func() {
+		r.commentDispatchLaunchError(context.Background(), req, "/tmp/ward/dispatch.log", capacityErr)
+	})
+	for _, want := range []string{
+		"ward dispatch broker: engineer pool full, 10/10, not dispatched",
+	} {
+		if !strings.Contains(stderr, want) {
+			t.Fatalf("capacity stderr missing %q: %q", want, stderr)
+		}
+	}
+}
+
 func TestStopFailedDispatchContainerStopsTheAttemptedEngineer(t *testing.T) {
 	dir := t.TempDir()
 	logPath := filepath.Join(dir, "docker.log")
