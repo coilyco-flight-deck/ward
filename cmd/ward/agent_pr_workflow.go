@@ -276,7 +276,7 @@ func agentPRMergeCommand() *cli.Command {
 		Usage:     "Merge one PR natively: embedded role x workflow gate, live status gate, head-pinned merge, merge-style selection, merged-state check.",
 		ArgsUsage: "<owner/repo#N | #N>",
 		Flags: []cli.Flag{
-			&cli.StringFlag{Name: "style", Usage: "Forgejo merge style: merge, squash, fast-forward-only, rebase, or rebase-merge (default: repo default_merge_style when allowed)"},
+			&cli.StringFlag{Name: "style", Usage: "Forgejo merge style: merge, squash, fast-forward-only, rebase, or rebase-merge (default: smart-defaults pr-merge-style when set, else repo default_merge_style when allowed)"},
 		},
 		Action: prWorkflowAction("agent.pr.merge", runAgentPRMerge),
 	}

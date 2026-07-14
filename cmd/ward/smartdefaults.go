@@ -37,6 +37,7 @@ type smartDefaults struct {
 	containerReapKeep             int
 	agentWorkflowDefault          workflowMode
 	agentWorkflowRepos            map[string]workflowMode
+	prMergeStyle                  string
 	trustedOwners                 []string
 	repoAuthorityDefault          forge
 	repoAuthorityRules            []repoAuthorityRule
@@ -432,9 +433,18 @@ func applySmartDefaultNode(defs *smartDefaults, n *kdl.Node) error { //nolint:go
 		if err := applySmartDefaultWorkflow(defs, n); err != nil {
 			return err
 		}
+	case "pr-merge-style":
+		v, err := smartDefaultsStringArg(n, "smart-defaults > pr-merge-style")
+		if err != nil {
+			return err
+		}
+		if !mergeStyleSupported(v) {
+			return fmt.Errorf("smart defaults: smart-defaults > pr-merge-style %q is not supported (want merge, squash, fast-forward-only, rebase, or rebase-merge; fail-closed)", v)
+		}
+		defs.prMergeStyle = v
 	default:
 		return unknownSmartDefaultsNode("smart-defaults body", n.Name(),
-			"agent-reservation-ttl | agent-reservation-recheck-max | agent-reap-idle | agent-reap-max-cpu | agent-image | agent-tag | engineer-container-limit | engineer-repo-working-limit | engineer-open-pr-branch-limit | director-max-parallel | director-limit | director-poll-interval | reviewer-timeout | config-bundle-ttl | container-assets-ttl | container-read-only-extra-repo-ttl | container-reap-keep | agent-workflow")
+			"agent-reservation-ttl | agent-reservation-recheck-max | agent-reap-idle | agent-reap-max-cpu | agent-image | agent-tag | engineer-container-limit | engineer-repo-working-limit | engineer-open-pr-branch-limit | director-max-parallel | director-limit | director-poll-interval | reviewer-timeout | config-bundle-ttl | container-assets-ttl | container-read-only-extra-repo-ttl | container-reap-keep | agent-workflow | pr-merge-style")
 	}
 	return nil
 }
@@ -1010,3 +1020,7 @@ func containerReadOnlyExtraRepoTTL() time.Duration {
 }
 
 func containerReapKeep() int { return currentSmartDefaults().containerReapKeep }
+
+func prMergeStyleDefault() string {
+	return strings.TrimSpace(currentSmartDefaults().prMergeStyle)
+}
