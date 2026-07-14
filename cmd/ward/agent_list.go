@@ -21,7 +21,7 @@ import (
 // agent_list.go wires `ward agent list` (alias `ps`): the director-surface read
 // path for running engineers plus launch intents.
 
-const agentListSchemaVersion = 3
+const agentListSchemaVersion = 4
 
 const (
 	agentLaunchPhaseQueued    = "broker accepted / queued"
@@ -29,6 +29,7 @@ const (
 	agentLaunchPhaseStarting  = "container starting"
 	agentLaunchPhaseRunning   = "container running"
 	agentLaunchPhaseFailed    = "failed before container start"
+	agentLaunchStatusCleanup  = "cleanup-needed"
 )
 
 // agentLaunchConfirmationTTL is the short lease for the prelaunch state machine:
@@ -49,6 +50,8 @@ type agentListJSON struct {
 	GeneratedAt   string               `json:"generated_at"`
 	Count         int                  `json:"count"`
 	LaunchIntents int                  `json:"launch_intents"`
+	CleanupNeeded int                  `json:"cleanup_needed"`
+	FailedBefore  int                  `json:"failed_before_start"`
 	Limit         *int                 `json:"limit"`
 	Remaining     *int                 `json:"remaining"`
 	AtCapacity    *bool                `json:"at_capacity"`
@@ -206,8 +209,8 @@ func (r *Runner) renderAgentList(ctx context.Context, jsonOut bool) (string, err
 	return renderAgentListHuman(rows), nil
 }
 
-// agentListRows gathers the live engineer list from docker plus reservation-backed
-// launches that have not yet reached the running container state.
+// agentListRows gathers the live engineer list and reservation-backed launches.
+// Cleanup-needed and failed-before-start records stay visible but do not count.
 func (r *Runner) agentListRows(ctx context.Context) ([]agentRunningEngineer, error) {
 	names, err := r.runningEngineerContainers(ctx)
 	if err != nil {
@@ -253,16 +256,29 @@ type agentRunningEngineer struct {
 	Status         string
 }
 
+type agentLaunchInventory struct {
+	Running         int
+	LaunchIntents   int
+	CleanupNeeded   int
+	FailedBefore    int
+	Count           int
+	Limit           *int
+	Remaining       *int
+	AtCapacity      *bool
+	CapacityUnknown bool
+}
+
 func agentListJSONFromRows(rows []agentRunningEngineer) agentListJSON {
-	running, pending := agentListRunningAndPendingCounts(rows)
-	capacity := agentListCapacityForCount(running)
+	inv := agentLaunchInventoryFromRows(rows)
 	payload := agentListJSON{
 		SchemaVersion: agentListSchemaVersion,
-		Count:         capacity.Count,
-		LaunchIntents: pending,
-		Limit:         capacity.Limit,
-		Remaining:     capacity.Remaining,
-		AtCapacity:    capacity.AtCapacity,
+		Count:         inv.Count,
+		LaunchIntents: inv.LaunchIntents,
+		CleanupNeeded: inv.CleanupNeeded,
+		FailedBefore:  inv.FailedBefore,
+		Limit:         inv.Limit,
+		Remaining:     inv.Remaining,
+		AtCapacity:    inv.AtCapacity,
 		Engineers:     make([]agentListJSONEntry, 0, len(rows)),
 	}
 	for _, row := range rows {
@@ -319,15 +335,63 @@ func agentListCapacityForCount(count int) agentListCapacity {
 	return capacity
 }
 
-func agentListRunningAndPendingCounts(rows []agentRunningEngineer) (running, pending int) {
-	for _, row := range rows {
-		if row.Phase == agentLaunchPhaseRunning {
-			running++
-			continue
-		}
-		pending++
+type agentLaunchRowKind string
+
+const (
+	agentLaunchRowRunning       agentLaunchRowKind = "running"
+	agentLaunchRowActiveIntent  agentLaunchRowKind = "active-intent"
+	agentLaunchRowCleanupNeeded agentLaunchRowKind = "cleanup-needed"
+	agentLaunchRowFailedBefore  agentLaunchRowKind = "failed-before-start"
+)
+
+func agentLaunchRowClass(row agentRunningEngineer) agentLaunchRowKind {
+	switch {
+	case row.Phase == agentLaunchPhaseRunning:
+		return agentLaunchRowRunning
+	case row.Phase == agentLaunchPhaseFailed || strings.EqualFold(strings.TrimSpace(row.Status), "failed"):
+		return agentLaunchRowFailedBefore
+	case strings.EqualFold(strings.TrimSpace(row.Status), agentLaunchStatusCleanup):
+		return agentLaunchRowCleanupNeeded
+	default:
+		return agentLaunchRowActiveIntent
 	}
-	return running, pending
+}
+
+func agentLaunchInventoryFromRows(rows []agentRunningEngineer) agentLaunchInventory {
+	inv := agentLaunchInventory{}
+	for _, row := range rows {
+		switch agentLaunchRowClass(row) {
+		case agentLaunchRowRunning:
+			inv.Running++
+			inv.Count++
+		case agentLaunchRowActiveIntent:
+			inv.LaunchIntents++
+			inv.Count++
+		case agentLaunchRowCleanupNeeded:
+			inv.CleanupNeeded++
+		case agentLaunchRowFailedBefore:
+			inv.FailedBefore++
+		}
+	}
+	capacity := agentListCapacityForCount(inv.Count)
+	inv.Limit = capacity.Limit
+	inv.Remaining = capacity.Remaining
+	inv.AtCapacity = capacity.AtCapacity
+	inv.CapacityUnknown = capacity.Unavailable
+	return inv
+}
+
+func agentLaunchInventoryFromRowsWithScope(rows []agentRunningEngineer, scope map[string]bool) agentLaunchInventory {
+	if len(scope) == 0 {
+		return agentLaunchInventoryFromRows(rows)
+	}
+	filtered := make([]agentRunningEngineer, 0, len(rows))
+	for _, row := range rows {
+		if scope[row.Repo] {
+			filtered = append(filtered, row)
+		}
+	}
+	return agentLaunchInventoryFromRows(filtered)
 }
 
 func (r *Runner) reservedEngineerRows(ctx context.Context, now time.Time, seen map[string]bool) ([]agentRunningEngineer, error) {
@@ -379,17 +443,23 @@ func activeReservedEngineerRow(path string, now time.Time, seen map[string]bool)
 	if ref.Owner == "" || ref.Repo == "" || ref.Number <= 0 {
 		return agentRunningEngineer{}, false
 	}
-	phase, status, phaseOK := dispatchLaunchPhaseForReservation(ref)
-	if phaseOK && phase == agentLaunchPhaseFailed {
-		return agentRunningEngineer{}, false
-	}
-	if !reservationLaunchFresh(res.At, now) {
-		return agentRunningEngineer{}, false
-	}
 	if seen[ref.String()] || seen[strings.TrimSpace(res.Container)] {
 		return agentRunningEngineer{}, false
 	}
-	return reservedEngineerRowFromReservation(ref, res, now, phase, status, phaseOK), true
+	phase, status, phaseOK := dispatchLaunchPhaseForReservation(ref)
+	row := reservedEngineerRowFromReservation(ref, res, now, phase, status, phaseOK)
+	return classifyActiveReservedEngineerRow(row, res, phase, phaseOK, now), true
+}
+
+func classifyActiveReservedEngineerRow(row agentRunningEngineer, res *agentReservation, phase string, phaseOK bool, now time.Time) agentRunningEngineer {
+	if phaseOK && phase == agentLaunchPhaseFailed {
+		row.Status = "failed"
+		return row
+	}
+	if !reservationLaunchFresh(res.At, now) {
+		row.Status = agentLaunchStatusCleanup
+	}
+	return row
 }
 
 func reservationLaunchFresh(at, now time.Time) bool {
@@ -694,20 +764,34 @@ func formatDuration(d time.Duration) string {
 }
 
 func renderAgentListHuman(rows []agentRunningEngineer) string {
-	running, pending := agentListRunningAndPendingCounts(rows)
-	capacity := agentListCapacityForCount(running)
+	inv := agentLaunchInventoryFromRows(rows)
 	var b strings.Builder
-	fmt.Fprintf(&b, "ward agent: running engineers %s", formatAgentListCapacity(capacity))
-	if pending > 0 {
+	capacity := agentListCapacity{Count: inv.Count, Limit: inv.Limit, Remaining: inv.Remaining, AtCapacity: inv.AtCapacity, Unavailable: inv.CapacityUnknown}
+	fmt.Fprintf(&b, "ward agent: active engineer launches %s", formatAgentListCapacity(capacity))
+	if inv.LaunchIntents > 0 {
 		noun := "launch intents"
-		if pending == 1 {
+		if inv.LaunchIntents == 1 {
 			noun = "launch intent"
 		}
-		fmt.Fprintf(&b, " + %d %s pending", pending, noun)
+		fmt.Fprintf(&b, " + %d %s pending", inv.LaunchIntents, noun)
+	}
+	if inv.CleanupNeeded > 0 {
+		noun := "records"
+		if inv.CleanupNeeded == 1 {
+			noun = "record"
+		}
+		fmt.Fprintf(&b, " + %d cleanup-needed %s", inv.CleanupNeeded, noun)
+	}
+	if inv.FailedBefore > 0 {
+		noun := "records"
+		if inv.FailedBefore == 1 {
+			noun = "record"
+		}
+		fmt.Fprintf(&b, " + %d failed-before-start %s", inv.FailedBefore, noun)
 	}
 	b.WriteString("\n")
 	if len(rows) == 0 {
-		b.WriteString("\n  no running engineers.\n")
+		b.WriteString("\n  no active engineer launches.\n")
 		return b.String()
 	}
 	for _, row := range rows {

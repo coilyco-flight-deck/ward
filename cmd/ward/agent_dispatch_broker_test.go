@@ -1510,7 +1510,7 @@ func TestCommentDispatchLaunchErrorReportsCapacityLocally(t *testing.T) {
 		r.commentDispatchLaunchError(context.Background(), req, "/tmp/ward/dispatch.log", capacityErr)
 	})
 	for _, want := range []string{
-		"ward dispatch broker: engineer pool full, 10/10, not dispatched",
+		"ward dispatch broker: engineer pool full, 10/10 active launches, not dispatched",
 	} {
 		if !strings.Contains(stderr, want) {
 			t.Fatalf("capacity stderr missing %q: %q", want, stderr)

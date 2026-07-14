@@ -15,7 +15,7 @@ import (
 	"github.com/urfave/cli/v3"
 )
 
-const agentDispatchHealthSchemaVersion = 2
+const agentDispatchHealthSchemaVersion = 3
 
 type dispatchHealthJSON struct {
 	SchemaVersion    int      `json:"schema_version"`
@@ -30,6 +30,8 @@ type dispatchHealthJSON struct {
 	Failed           int      `json:"failed"`
 	Running          int      `json:"running"`
 	LaunchIntents    int      `json:"launch_intents"`
+	CleanupNeeded    int      `json:"cleanup_needed"`
+	FailedBefore     int      `json:"failed_before_start"`
 	RecentDispatches int      `json:"recent_dispatches"`
 	StalePrelaunch   int      `json:"stale_prelaunch"`
 	DuplicateRefs    []string `json:"duplicate_refs,omitempty"`
@@ -53,6 +55,8 @@ type dispatchHealthReport struct {
 	Failed           int
 	Running          int
 	LaunchIntents    int
+	CleanupNeeded    int
+	FailedBefore     int
 	RecentDispatches int
 	StalePrelaunch   int
 	DuplicateRefs    []string
@@ -160,15 +164,20 @@ func (r *Runner) dispatchHealthSnapshot(ctx context.Context, repos []string, max
 	if serr != nil {
 		report.Warnings = append(report.Warnings, firstLine(serr.Error()))
 	}
-	rows = filterRunningEngineerRows(rows, scope)
+	inv := agentLaunchInventoryFromRowsWithScope(rows, scope)
 	runningRows := make([]agentRunningEngineer, 0, len(rows))
 	for _, row := range rows {
+		if len(scope) > 0 && !scope[row.Repo] {
+			continue
+		}
 		if row.Phase == agentLaunchPhaseRunning {
 			runningRows = append(runningRows, row)
 		}
 	}
-	report.Running = len(runningRows)
-	report.LaunchIntents = len(rows) - len(runningRows)
+	report.Running = inv.Running
+	report.LaunchIntents = inv.LaunchIntents
+	report.CleanupNeeded = inv.CleanupNeeded
+	report.FailedBefore = inv.FailedBefore
 	report.Queued, report.InFlight, report.Held = backlogLaneCounts(entries)
 	for _, e := range entries {
 		dispatchHealthTallyEntry(&report, e)
@@ -202,19 +211,6 @@ func dispatchHealthTallyEntry(report *dispatchHealthReport, e *backlogEntry) {
 	}
 }
 
-func filterRunningEngineerRows(rows []agentRunningEngineer, scope map[string]bool) []agentRunningEngineer {
-	if len(scope) == 0 {
-		return rows
-	}
-	out := make([]agentRunningEngineer, 0, len(rows))
-	for _, row := range rows {
-		if scope[row.Repo] {
-			out = append(out, row)
-		}
-	}
-	return out
-}
-
 func dispatchHealthRunningSignals(rows []agentRunningEngineer) (recent int, duplicates []string) {
 	counts := map[string]int{}
 	for _, row := range rows {
@@ -241,6 +237,9 @@ func dispatchHealthSignals(report dispatchHealthReport) []string {
 	}
 	if report.Failed > 0 {
 		out = append(out, "failed")
+	}
+	if report.CleanupNeeded > 0 || report.FailedBefore > 0 {
+		out = append(out, "stale-records")
 	}
 	if len(report.DuplicateRefs) > 0 {
 		out = append(out, "double-dispatch")
@@ -279,8 +278,8 @@ func (r dispatchHealthReport) alertKey() string {
 
 func (r dispatchHealthReport) summaryLine() string {
 	if !r.alertable() {
-		return fmt.Sprintf("dispatch-health: ok queued=%d inflight=%d held=%d submitted=%d merge-ready=%d running=%d launch-intents=%d",
-			r.Queued, r.InFlight, r.Held, r.Submitted, r.MergeReady, r.Running, r.LaunchIntents)
+		return fmt.Sprintf("dispatch-health: ok queued=%d inflight=%d held=%d submitted=%d merge-ready=%d running=%d launch-intents=%d cleanup-needed=%d failed-before-start=%d stale-prelaunch=%d",
+			r.Queued, r.InFlight, r.Held, r.Submitted, r.MergeReady, r.Running, r.LaunchIntents, r.CleanupNeeded, r.FailedBefore, r.StalePrelaunch)
 	}
 	parts := []string{
 		fmt.Sprintf("queued=%d", r.Queued),
@@ -292,6 +291,8 @@ func (r dispatchHealthReport) summaryLine() string {
 		fmt.Sprintf("failed=%d", r.Failed),
 		fmt.Sprintf("running=%d", r.Running),
 		fmt.Sprintf("launch-intents=%d", r.LaunchIntents),
+		fmt.Sprintf("cleanup-needed=%d", r.CleanupNeeded),
+		fmt.Sprintf("failed-before-start=%d", r.FailedBefore),
 		fmt.Sprintf("recent=%d", r.RecentDispatches),
 		fmt.Sprintf("stale-prelaunch=%d", r.StalePrelaunch),
 	}
@@ -335,6 +336,8 @@ func (r dispatchHealthReport) toJSON() dispatchHealthJSON {
 		Failed:           r.Failed,
 		Running:          r.Running,
 		LaunchIntents:    r.LaunchIntents,
+		CleanupNeeded:    r.CleanupNeeded,
+		FailedBefore:     r.FailedBefore,
 		RecentDispatches: r.RecentDispatches,
 		StalePrelaunch:   r.StalePrelaunch,
 		DuplicateRefs:    append([]string{}, r.DuplicateRefs...),

@@ -22,7 +22,6 @@ Inventory of what `ward` ships today.
 - Reservation and dispatch comments are cleaned up after release.
 - Harness install hooks for claude, codex, goose, and opencode.
 - Core tracker and forge adapters do not depend on generated `ward ops` leaves.
-- Launch-intent vs running-engineer split in list, dispatch-health, reap, and director burndown.
 - Issue-thread-backed reservations with local sentinels.
 - Open-PR backpressure gate.
 - Issue-scoped director dispatch.

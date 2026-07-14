@@ -25,6 +25,18 @@ func engineerCountDockerStub(t *testing.T, count int) string {
 	}
 	b.WriteString("  exit 0\n")
 	b.WriteString("fi\n")
+	b.WriteString("if [ \"$1\" = inspect ] && [ $# -eq 2 ]; then\n")
+	b.WriteString("  case \"$2\" in\n")
+	for i := 0; i < count; i++ {
+		name := fmt.Sprintf("engineer-%02d", i+1)
+		fmt.Fprintf(&b, "    %s)\n", name)
+		fmt.Fprintf(&b, "      cat <<'JSON'\n")
+		fmt.Fprintf(&b, "[{\"Name\":\"/%s\",\"Config\":{\"Labels\":{\"ward\":\"true\",\"ward.role\":\"engineer\"},\"Env\":[\"WARD_TARGET_OWNER=coilyco-flight-deck\",\"WARD_TARGET_NAME=ward\",\"WARD_TARGET_REPO=coilyco-flight-deck/ward\",\"WARD_TARGET_ISSUE=%d\",\"WARD_BRANCH=issue-%d\",\"WARD_MODE=codex\"]},\"State\":{\"Status\":\"running\",\"StartedAt\":\"2026-07-10T00:00:00Z\"}}]\n", name, i+1, i+1)
+		b.WriteString("JSON\n")
+		b.WriteString("      exit 0\n")
+	}
+	b.WriteString("  esac\n")
+	b.WriteString("fi\n")
 	b.WriteString("printf '%s\\n' \"unexpected docker args: $*\" >&2\n")
 	b.WriteString("exit 1\n")
 	if err := os.WriteFile(stub, []byte(b.String()), 0o755); err != nil { //nolint:gosec
@@ -141,7 +153,7 @@ func TestEngineerContainerLimitBelowAndAtLimit(t *testing.T) {
 		}
 		for _, want := range []string{
 			"global engineer limit is reached",
-			"running",
+			"active launches",
 			fmt.Sprintf("limit %d", limit),
 			"ward agent reap",
 		} {
