@@ -40,6 +40,10 @@ Start here when a run failed or seemed to do nothing.
   `started_at`, use the manual stale reservation cleanup path in
   [agent-stale-reservation-cleanup.md](agent-stale-reservation-cleanup.md)
   before host-side debugging.
+- if repo dispatch says the engineer limit is reached but the visible running
+  count is still below the ceiling, retry with `--override-reservation` to
+  recover stale prelaunch holds. Use `--override-capacity` only for the real
+  running-engineer ceiling.
 - if Docker says `OOMKilled=true`, treat it as host memory pressure, not a
   normal reap.
 - if `sudo` says the no new privileges flag is set, or SSH rejects a

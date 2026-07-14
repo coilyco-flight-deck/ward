@@ -21,7 +21,7 @@ type engineerRepoWorkingBackpressureError struct {
 
 func (e *engineerRepoWorkingBackpressureError) Error() string {
 	return fmt.Sprintf(
-		"%s: repo engineer limit is reached for %s: %d active engineer(s) (limit %d); wait for a run to finish before launching another engineer",
+		"%s: repo engineer limit is reached for %s: %d active engineer(s) (limit %d); pass --override-capacity to exceed real running capacity",
 		e.label, e.repo, e.working, e.limit,
 	)
 }
@@ -32,7 +32,7 @@ func newEngineerRepoWorkingBackpressureError(label, repo string, working, limit 
 
 // launchRepoEngineerBackpressureCheck refuses engineer launches once the repo
 // hits the carried issue/repo authority's tracker-aware active-engineer limit.
-func (r *Runner) launchRepoEngineerBackpressureCheck(ctx context.Context, label string, ref agentIssueRef) error {
+func (r *Runner) launchRepoEngineerBackpressureCheck(ctx context.Context, label string, ref agentIssueRef, overrideReservation bool) error {
 	count, err := r.activeEngineerLaunchCountForRepo(ctx, ref)
 	if err != nil {
 		return fmt.Errorf("%s: count repo engineer launches for backpressure: %w", label, err)
@@ -41,6 +41,7 @@ func (r *Runner) launchRepoEngineerBackpressureCheck(ctx context.Context, label 
 	if count < limit {
 		return nil
 	}
+	_ = overrideReservation
 	return newEngineerRepoWorkingBackpressureError(label, ref.repoSlug(), count, limit)
 }
 
@@ -50,7 +51,7 @@ func (r *Runner) maybeLaunchRepoEngineerBackpressure(ctx context.Context, label 
 	if c != nil && c.Bool("print") {
 		return nil
 	}
-	return r.launchRepoEngineerBackpressureCheck(ctx, label, ref)
+	return r.launchRepoEngineerBackpressureCheck(ctx, label, ref, overrideReservation(c))
 }
 
 type repoIssueScanner interface {
@@ -71,7 +72,7 @@ func isRepoIssueScanUnsupported(err error) bool {
 }
 
 // activeEngineerLaunchCountForRepo counts launches with carried issue/repo authority.
-// It falls back to local cache only when the tracker cannot scan repository issues yet.
+// It falls back to local Docker state only when the tracker cannot scan issues yet.
 func (r *Runner) activeEngineerLaunchCountForRepo(ctx context.Context, ref agentIssueRef) (int, error) {
 	repo := strings.TrimSpace(ref.repoSlug())
 	if repo == "" {
@@ -87,6 +88,31 @@ func (r *Runner) activeEngineerLaunchCountForRepo(ctx context.Context, ref agent
 		return 0, err
 	}
 	return len(running), nil
+}
+
+// runningEngineerContainersForRepo filters the live Docker engineer list down to
+// one repo when the tracker cannot provide issue-thread authority yet.
+func (r *Runner) runningEngineerContainersForRepo(ctx context.Context, repo string) ([]string, error) {
+	names, err := r.runningEngineerContainers(ctx)
+	if err != nil {
+		return nil, err
+	}
+	repo = strings.TrimSpace(repo)
+	if repo == "" {
+		return nil, nil
+	}
+	now := time.Now().UTC()
+	var out []string
+	for _, name := range names {
+		row, err := r.runningEngineerRow(ctx, now, name)
+		if err != nil {
+			continue
+		}
+		if strings.TrimSpace(row.Repo) == repo {
+			out = append(out, name)
+		}
+	}
+	return out, nil
 }
 
 // activeEngineerLaunchCountFromIssueThread reads issue-thread reservations

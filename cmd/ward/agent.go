@@ -817,8 +817,8 @@ func agentSurfaceFlags() []cli.Flag {
 		&cli.BoolFlag{Name: "no-pull", Hidden: true, Usage: "skip the image pull (use the cached local image)"},
 		// The --override-* family (ward#1045): two distinct escape hatches that never
 		// imply each other - a hold may be stale, the OOM ceiling never is.
-		&cli.BoolFlag{Name: "override-reservation", Usage: "skip the local + remote concurrency reservation checks (reclaim a stale or foreign per-issue hold); never overrides the pool ceiling"},
-		&cli.BoolFlag{Name: "force", Hidden: true, Usage: "deprecated alias for --override-reservation (ward#1045); reclaims a reservation hold only, never the pool ceiling"},
+		&cli.BoolFlag{Name: "override-reservation", Usage: "skip the local + remote reservation checks and reclaim stale prelaunch repo holds; never overrides the pool ceiling"},
+		&cli.BoolFlag{Name: "force", Hidden: true, Usage: "deprecated alias for --override-reservation (ward#1045); reclaims a reservation or stale prelaunch hold only, never the pool ceiling"},
 		&cli.BoolFlag{Name: "override-capacity", Usage: "launch exactly one engineer past the OOM pool ceiling; the ceiling counts real running containers, so exceeding it risks host thrash or OOM (ward#1045)"},
 	)
 	// The detached run gets an autonomous pre-flight before launching (ward#137).
@@ -843,12 +843,12 @@ func preflightSkipped(c *cli.Command) bool {
 // process, however many gates read the flag on the way to a launch.
 var forceFlagDeprecationOnce sync.Once
 
-// overrideReservation reads --override-reservation or its deprecated --force alias
-// (ward#1045, noticed once); it never implies --override-capacity, or vice versa.
+// overrideReservation reads --override-reservation or its deprecated --force alias.
+// It reclaims stale prelaunch holds, but never implies --override-capacity.
 func overrideReservation(c *cli.Command) bool {
 	if c.Bool("force") {
 		forceFlagDeprecationOnce.Do(func() {
-			fmt.Fprintln(os.Stderr, "ward agent: --force is deprecated; use --override-reservation (ward#1045). It reclaims a reservation hold only - launching past the pool ceiling is --override-capacity, never implied by this flag.")
+			fmt.Fprintln(os.Stderr, "ward agent: --force is deprecated; use --override-reservation (ward#1045). It reclaims a reservation or stale prelaunch hold only - launching past the pool ceiling is --override-capacity, never implied by this flag.")
 		})
 	}
 	return c.Bool("override-reservation") || c.Bool("force")
@@ -2082,7 +2082,7 @@ func (r *Runner) launchAgentContainer(ctx context.Context, c *cli.Command, mode 
 		if err := r.launchOpenPRBackpressureCheck(ctx, label, w.Ref.repoSlug(), openPRBackpressureApplies(c, w)); err != nil {
 			return err
 		}
-		if err := r.launchRepoEngineerBackpressureCheck(ctx, label, w.Ref); err != nil {
+		if err := r.launchRepoEngineerBackpressureCheck(ctx, label, w.Ref, overrideReservation(c)); err != nil {
 			return err
 		}
 		if !c.Bool("print") {
