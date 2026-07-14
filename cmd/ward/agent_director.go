@@ -464,7 +464,7 @@ func (r *Runner) resolveDirectorScope(ctx context.Context, c *cli.Command, label
 	if len(repos) == 0 {
 		return nil, fmt.Errorf("%s: --repo/--org scope resolved to no repos", label)
 	}
-	return repos, nil
+	return r.filterBurndownRepos(label, repos)
 }
 
 // resolveDirectorDefaultScope resolves the no-flag scope (ward#398): the config-stored
@@ -483,7 +483,7 @@ func (r *Runner) resolveDirectorDefaultScope(ctx context.Context, label string) 
 		if len(repos) == 0 {
 			return nil, fmt.Errorf("%s: director.default-scope resolved to no repos", label)
 		}
-		return repos, nil
+		return r.filterBurndownRepos(label, repos)
 	}
 	def := ""
 	if repo, _, terr := r.resolveTarget(ctx, ""); terr == nil {
@@ -493,7 +493,7 @@ func (r *Runner) resolveDirectorDefaultScope(ctx context.Context, label string) 
 	if len(repos) == 0 {
 		return nil, fmt.Errorf("%s: no --repo/--org given, no director.default-scope in ~/.ward/config.yaml, and no git origin found in the current directory", label)
 	}
-	return repos, nil
+	return r.filterBurndownRepos(label, repos)
 }
 
 // wardGlobalConfig is the slice of ~/.ward/config.yaml ward reads today: the
@@ -571,18 +571,7 @@ func (r *Runner) expandOrgScopes(ctx context.Context, label string, orgs []strin
 		if len(slugs) == 0 {
 			return nil, fmt.Errorf("%s: --org %q expanded to no repos (unknown org, or only archived/empty repos)", label, org)
 		}
-		kept := slugs[:0:0]
-		for _, slug := range slugs {
-			if !r.burndownEnabled(slug) {
-				fmt.Fprintf(os.Stderr, "%s: skipping %s (burndown disabled in repos.kdl)\n", label, slug)
-				continue
-			}
-			kept = append(kept, slug)
-		}
-		if len(kept) == 0 {
-			return nil, fmt.Errorf("%s: --org %q expanded to no repos (every repo has burndown disabled in repos.kdl)", label, org)
-		}
-		out = append(out, kept...)
+		out = append(out, slugs...)
 	}
 	return out, nil
 }
@@ -607,6 +596,24 @@ func parseScopeRepos(raw, def string) []string {
 		raw = def
 	}
 	return dedupeSlugs(strings.Split(raw, ","))
+}
+
+func (r *Runner) filterBurndownRepos(label string, repos []string) ([]string, error) {
+	if len(repos) == 0 {
+		return nil, nil
+	}
+	kept := repos[:0:0]
+	for _, slug := range repos {
+		if !r.burndownEnabled(slug) {
+			fmt.Fprintf(os.Stderr, "burndown: skipping %s (filtered)\n", slug)
+			continue
+		}
+		kept = append(kept, slug)
+	}
+	if len(kept) == 0 {
+		return nil, fmt.Errorf("%s: scope resolved to no repos (every repo has burndown disabled in repos.kdl)", label)
+	}
+	return kept, nil
 }
 
 // mergeScopeRepos unions the given slug lists into one de-duped, order-preserving

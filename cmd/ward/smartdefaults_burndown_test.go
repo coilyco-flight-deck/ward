@@ -31,15 +31,16 @@ const burndownAuthority = `    repo-authority default="forgejo" {
 func TestBurndownDefaultAndPerRepoOverride(t *testing.T) {
 	defs := burndownDefaults(t, "repos {\n"+burndownAuthority+`
     burndown default=#true {
-        repo "coilyco-flight-deck/infrastructure" #false
+        repo "coilyco-flight-deck/*" #false
+        repo "coilyco-flight-deck/ward" #true
     }
 }
 `)
 	if !defs.burndownEnabled("coilyco-flight-deck/ward") {
-		t.Error("a repo with no entry should fall back to the block default (#true)")
+		t.Error("an exact repo override must win over the matching glob")
 	}
 	if defs.burndownEnabled("coilyco-flight-deck/infrastructure") {
-		t.Error("an explicit #false must exclude the repo from burndown")
+		t.Error("a matching glob #false must exclude the repo from burndown")
 	}
 }
 

@@ -44,12 +44,17 @@ type smartDefaults struct {
 	repoAuthorityRules            []repoAuthorityRule
 	burndownConfigured            bool
 	burndownDefault               bool
-	burndownRepos                 map[string]bool
+	burndownRules                 []burndownRule
 }
 
 type repoAuthorityRule struct {
 	Pattern string
 	Forge   forge
+}
+
+type burndownRule struct {
+	Pattern string
+	Enabled bool
 }
 
 var smartDefaultsCache struct {
@@ -601,40 +606,42 @@ func applyBurndown(defs *smartDefaults, n *kdl.Node) error {
 	}
 	defs.burndownConfigured = true
 	defs.burndownDefault = def
-	if defs.burndownRepos == nil {
-		defs.burndownRepos = map[string]bool{}
+	if defs.burndownRules == nil {
+		defs.burndownRules = []burndownRule{}
 	}
+	seenPatterns := map[string]bool{}
 	for _, c := range n.Children().Nodes {
 		if c.Name() != "repo" {
 			return unknownSmartDefaultsNode("burndown body", c.Name(), "repo")
 		}
-		if err := applyBurndownRepo(defs, c); err != nil {
+		if err := applyBurndownRepo(defs, c, seenPatterns); err != nil {
 			return err
 		}
 	}
 	return nil
 }
 
-func applyBurndownRepo(defs *smartDefaults, c *kdl.Node) error {
+func applyBurndownRepo(defs *smartDefaults, c *kdl.Node, seenPatterns map[string]bool) error {
 	args := c.Arguments()
 	if len(args) != 2 {
-		return fmt.Errorf("smart defaults: burndown > repo expects `repo \"owner/name\" #true|#false`, got %d value(s) (fail-closed)", len(args))
+		return fmt.Errorf("smart defaults: burndown > repo expects `repo \"owner/name\"|glob #true|#false`, got %d value(s) (fail-closed)", len(args))
 	}
 	if args[0].Kind() != kdl.String {
 		return fmt.Errorf("smart defaults: burndown > repo slug must be a string (fail-closed)")
 	}
 	slug := strings.TrimSpace(args[0].String())
-	if !validRepoAuthorityPattern(slug) || strings.Contains(slug, "*") {
-		return fmt.Errorf("smart defaults: burndown > repo %q must be an exact owner/name (fail-closed)", slug)
+	if !validRepoAuthorityPattern(slug) {
+		return fmt.Errorf("smart defaults: burndown > repo %q must be owner/name or glob pattern (fail-closed)", slug)
 	}
-	if _, dup := defs.burndownRepos[slug]; dup {
+	if seenPatterns[slug] {
 		return fmt.Errorf("smart defaults: burndown > repo %q repeated (fail-closed)", slug)
 	}
 	enabled, err := smartDefaultsBoolValue(args[1], "burndown > repo "+slug)
 	if err != nil {
 		return err
 	}
-	defs.burndownRepos[slug] = enabled
+	seenPatterns[slug] = true
+	defs.burndownRules = append(defs.burndownRules, burndownRule{Pattern: slug, Enabled: enabled})
 	return nil
 }
 
@@ -644,16 +651,39 @@ func (d smartDefaults) burndownEnabled(slug string) bool {
 	if !d.burndownConfigured {
 		return true
 	}
-	if v, ok := d.burndownRepos[strings.TrimSpace(slug)]; ok {
-		return v
+	slug = strings.TrimSpace(slug)
+	bestSpecificity := -1
+	bestEnabled := d.burndownDefault
+	for _, rule := range d.burndownRules {
+		ok, err := path.Match(rule.Pattern, slug)
+		if err != nil || !ok {
+			continue
+		}
+		if specificity := repoPatternSpecificity(rule.Pattern); specificity > bestSpecificity {
+			bestSpecificity = specificity
+			bestEnabled = rule.Enabled
+		}
 	}
-	return d.burndownDefault
+	return bestEnabled
 }
 
 func validRepoAuthorityPattern(s string) bool {
 	s = strings.TrimSpace(s)
 	owner, repo, ok := strings.Cut(s, "/")
 	return ok && owner != "" && repo != "" && !strings.Contains(owner, "/") && !strings.Contains(repo, "/") && !strings.ContainsAny(s, " \t#")
+}
+
+func repoPatternSpecificity(pattern string) int {
+	score := 0
+	for _, r := range pattern {
+		switch r {
+		case '*', '?', '[':
+			continue
+		default:
+			score++
+		}
+	}
+	return score
 }
 
 func applySmartDefaultWorkflow(defs *smartDefaults, n *kdl.Node) error {
