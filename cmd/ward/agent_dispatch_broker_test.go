@@ -707,6 +707,8 @@ func TestForwardAgentDispatchToHostBrokerSendsCanonicalRequest(t *testing.T) {
 	t.Setenv(envDispatchBrokerToken, "nonce-123")
 	t.Setenv("WARD_READONLY", "1")
 	t.Setenv("WARD_CONTAINER_NAME", "director-codex-host")
+	t.Setenv(envAgentImage, "")
+	t.Setenv(envAgentTag, "")
 	cmd := parseCommandForTest(t, agentEngineerFlags(), []string{
 		"engineer", "coilyco-flight-deck/ward#378", "--harness", "claude", "--workflow", "merge-remote-main",
 		"--details", "repair after PR #357", "--skip-preflight", "--skip-review",
@@ -807,6 +809,8 @@ func TestForwardAgentDispatchToHostBrokerInheritsSurfaceHarness(t *testing.T) {
 	t.Setenv(envDispatchBrokerToken, "nonce-456")
 	t.Setenv("WARD_READONLY", "1")
 	t.Setenv("WARD_CONTAINER_NAME", "director-codex-host")
+	t.Setenv(envAgentImage, "")
+	t.Setenv(envAgentTag, "")
 	cmd := parseCommandForTest(t, agentEngineerFlags(), []string{
 		"engineer", "coilyco-flight-deck/ward#378", "--harness", "codex", "--skip-preflight", "--skip-review",
 	})
@@ -849,6 +853,8 @@ func TestForwardAgentDispatchToHostBrokerInheritsRunningDirectorHarness(t *testi
 	t.Setenv("WARD_CONTAINER_NAME", "director-codex-host")
 	t.Setenv("WARD_AGENT", "codex")
 	t.Setenv("WARD_MODE", "codex")
+	t.Setenv(envAgentImage, "")
+	t.Setenv(envAgentTag, "")
 	cmd := parseCommandForTest(t, agentEngineerFlags(), []string{
 		"engineer", "coilyco-flight-deck/ward#378", "--skip-preflight", "--skip-review",
 	})
@@ -1746,6 +1752,8 @@ workflow default=merge-remote-main {
 
 	t.Setenv(envDispatchBrokerAddr, ln.Addr().String())
 	t.Setenv("WARD_FORGEJO_BASE", forgejo.URL)
+	t.Setenv(envAgentImage, "")
+	t.Setenv(envAgentTag, "")
 
 	dockerName := issueScopedContainerName(roleEngineer, modeCodex, targetRepo{Owner: "coilyco-flight-deck", Name: "agentic-os"}, 400)
 	dockerScript := filepath.Join(t.TempDir(), "docker")

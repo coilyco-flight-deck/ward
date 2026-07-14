@@ -20,7 +20,8 @@ import (
 func gitFixture(t *testing.T, dir string, args ...string) string {
 	t.Helper()
 	argv := append([]string{"-C", dir, "-c", "user.email=t@test", "-c", "user.name=t",
-		"-c", "protocol.file.allow=always"}, args...)
+		"-c", "protocol.file.allow=always", "-c", "commit.gpgSign=false",
+		"-c", "tag.gpgSign=false", "-c", "core.editor=true"}, args...)
 	out, err := exec.Command("git", argv...).CombinedOutput()
 	if err != nil {
 		t.Fatalf("git %v: %v\n%s", args, err, out)

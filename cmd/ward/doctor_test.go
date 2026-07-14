@@ -246,7 +246,11 @@ repo-authority default=forgejo {
 func copyDoctorBundle(t *testing.T) string {
 	t.Helper()
 	src := writeBundleFixture(t)
-	dst, err := os.MkdirTemp("/dev/shm", "ward-doctor-*")
+	base := "/dev/shm"
+	if st, err := os.Stat(base); err != nil || !st.IsDir() {
+		base = ""
+	}
+	dst, err := os.MkdirTemp(base, "ward-doctor-*")
 	if err != nil {
 		t.Fatalf("copy doctor bundle tempdir: %v", err)
 	}

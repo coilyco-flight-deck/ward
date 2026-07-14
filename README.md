@@ -92,10 +92,13 @@ The agent driver, against the repo's authoritative issue thread. `warded` is a t
 warded #98               # put an engineer on issue #98, fire-and-forget
 warded engineer #98      # ...spelled out; the engineer role runs detached
 warded director --org coilyco-flight-deck   # a heartbeat that drains a backlog lane
+warded director --repo coilyco-flight-deck/ward # answer n for the session first
 warded advisor #98       # answer/triage a ref, writing no code
 ```
 
 Engineer runs are **detached**: the attach-and-watch `--watch` retired, so interactive work now lives on the [director](docs/agent-director.md) surface. New to the agent driver? [`docs/first-run.md`](docs/first-run.md) is the ordered path from zero to a verifiable `warded ... --print` dry run.
+
+For the attached director session first, run `warded director --repo owner/name` and answer `n`. When the lane is full, press Enter during the sleep offer.
 
 ## When a run breaks
 

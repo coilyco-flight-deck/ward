@@ -11,6 +11,7 @@ import (
 func TestMain(m *testing.M) {
 	for _, k := range []string{
 		"WARD_CONFIG_REF", "WARD_CONFIG_TTL",
+		envAgentImage, envAgentTag,
 		"WARD_TARGET_OWNER", "WARD_TARGET_REPO",
 	} {
 		os.Unsetenv(k)

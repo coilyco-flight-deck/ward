@@ -45,6 +45,23 @@ Review-gated `pull-request-and-merge` handoffs keep the first line as the PR URL
 and carry `director merge authorization: reviewed-and-ready` in the details
 block so the merge sweep can still recognize the ready state.
 
+## Starting interactively
+
+There is no separate public `warded surface` command. Start director and answer
+`n` at the prompt:
+
+```bash
+warded director --repo owner/name
+```
+
+```text
+kick off by draining the headless backlog now? [Y/n]
+```
+
+Enter, `y`, or any other text starts the drain immediately. When all engineer
+slots are busy, press Enter during the sleep offer to open the same read-only
+session.
+
 The director surface is intentionally narrower than the engineer path. It is
 for supervision and landing, not for implementation.
 

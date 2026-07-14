@@ -210,6 +210,9 @@ func TestRunContainerBootstrapGooseNoSessionExitsAndReaps(t *testing.T) {
 	workspaceRoot = t.TempDir()
 	t.Cleanup(func() { workspaceRoot = prevWorkspaceRoot })
 	t.Cleanup(func() { restoreWritableTree(t, workspaceRoot) })
+	prevScratchMnt := surfaceScratchMnt
+	surfaceScratchMnt = filepath.Join(t.TempDir(), "scratch")
+	t.Cleanup(func() { surfaceScratchMnt = prevScratchMnt })
 
 	base := t.TempDir()
 	seed := t.TempDir()
@@ -266,6 +269,7 @@ func TestRunContainerBootstrapGooseNoSessionExitsAndReaps(t *testing.T) {
 	t.Setenv("WARD_SMOKE_TEST_SKIP", "1")
 	t.Setenv("WARD_SUBSTRATE_SKIP", "1")
 	t.Setenv("WARD_REAP_WORK", "1")
+	t.Setenv("GIT_CONFIG_SYSTEM", filepath.Join(t.TempDir(), "gitconfig"))
 
 	var stdout bytes.Buffer
 	var runStderr bytes.Buffer

@@ -518,6 +518,18 @@ func agentSeedPromptWorkflow(ref agentIssueRef, title, body, details string, hea
 	return seed + inline
 }
 
+// gooseLandingClause makes Goose wait to declare completion until a same-repo
+// closing commit already exists.
+func gooseLandingClause(ref agentIssueRef) string {
+	return fmt.Sprintf(
+		"\n\nGoose landing rule: if this run changes files, do not emit a terminal "+
+			"completion line until the same-repo closing commit already exists in the branch "+
+			"history and the work is ready for teardown. The deterministic success path is to "+
+			"commit with `closes #%d` (or an equivalent same-repo close trailer) before teardown, "+
+			"then let the normal completion boundary fire after the commit is in place.",
+		ref.Number)
+}
+
 func seedIssueBodyParts(body string) (action, inline string) {
 	switch {
 	case body == "":
@@ -670,7 +682,7 @@ container bring-up stack plus a prompt.
   warded engineer "fix the flaky exec_gate test" # freeform -> file an issue first, then carry
   warded <role> #98 --harness <harness>       # pick another harness
   warded <role> #98 --agent <harness>        # --agent: the same pick, equal spelling
-  warded director --repo coilyco-flight-deck/ward # autonomous backlog supervisor (surfaces a read-only scope + dispatch session on drain)
+  warded director --repo coilyco-flight-deck/ward # autonomous supervisor, answer n at the startup prompt for the session first
   warded advisor #98 "what would it take to..."   # research the issue, post the answer
   warded advisor "how is the audit log written?"  # answer a freeform question inline
   ward agent engineer coilyco-flight-deck/ward#98 # the canonical spelling warded fronts
@@ -1028,6 +1040,9 @@ func (r *Runner) resolveAgentWork(ctx context.Context, c *cli.Command, mode cont
 		seedBody = issueBodyWithComments(body, comments)
 	}
 	seed := agentSeedPromptWorkflow(ref, title, seedBody, details, true, extra, wf, reviewGate, reviewSkip)
+	if mode == modeGoose {
+		seed += gooseLandingClause(ref)
+	}
 	seed += agentRunBudgetNote(roleEngineer)
 	return resolvedWork{Ref: ref, Title: title, Body: seedBody, Comments: comments, Details: details, Seed: seed, Branch: branch, ExtraRepos: extra, Workflow: wf, ReviewGate: reviewGate}, nil
 }

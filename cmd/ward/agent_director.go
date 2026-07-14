@@ -211,6 +211,10 @@ When a single issue ref or Forgejo issue URL is given, the director fetches and
 validates that exact issue before the heartbeat starts and keeps the later
 refresh loop pinned to that issue instead of widening back into the repo backlog.
 
+To start directly in the read-only session, run the same command from a terminal
+and answer n at the startup prompt instead of draining first. During a full lane,
+press Enter during the sleep offer to open the same session.
+
   warded director --repo coilyco-flight-deck/ward         # one repo
   warded director coilyco-flight-deck/ward#988            # one issue, fail-closed scope
   warded director https://forgejo.coilysiren.me/coilyco-flight-deck/ward/issues/988 # same as above
