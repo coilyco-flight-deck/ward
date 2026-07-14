@@ -844,6 +844,22 @@ func releaseReservationIfTerminalOutcomeComment(ctx context.Context, fc Tracker,
 	if !ok || !terminalReservationOutcome(o.Status) {
 		return nil
 	}
+	if strings.EqualFold(strings.TrimSpace(o.Status), "submitted") && strings.TrimSpace(o.PRURL) != "" {
+		if closed, cerr := closedUnmergedSubmittedOutcome(ctx, fc, env, o); cerr != nil {
+			return cerr
+		} else if closed {
+			body := launchedClosedUnmergedPRCommentBody(env, o)
+			if err := fc.CommentIssue(ctx, env.Owner, env.Name, env.Issue, body); err != nil {
+				return fmt.Errorf("could not comment closed-unmerged PR failure on #%d: %w", env.Issue, err)
+			}
+			if err := fc.UnlockIssue(ctx, env.Owner, env.Name, env.Issue); err != nil && !errors.Is(err, errForgeLockUnsupported) {
+				return fmt.Errorf("could not unlock issue #%d after closed-unmerged PR failure: %w", env.Issue, err)
+			}
+			deleteTransientWorkflowComments(ctx, fc, agentIssueRef{Owner: env.Owner, Repo: env.Name, Number: env.Issue}, outcome.CreatedAt)
+			fmt.Fprintf(os.Stderr, "ward container reap: released issue reservation on #%d after closed-unmerged PR %s\n", env.Issue, o.PRURL)
+			return nil
+		}
+	}
 	// A reservation newer than the outcome means a follow-up run already took the
 	// issue over; posting a release now would retract that live hold (ward#1149).
 	if reservationCommentAfter(comments, outcome.CreatedAt) {
@@ -860,6 +876,42 @@ func releaseReservationIfTerminalOutcomeComment(ctx context.Context, fc Tracker,
 	deleteTransientWorkflowComments(ctx, fc, agentIssueRef{Owner: env.Owner, Repo: env.Name, Number: env.Issue}, outcome.CreatedAt)
 	fmt.Fprintf(os.Stderr, "ward container reap: released issue reservation on #%d after terminal outcome %s\n", env.Issue, o.Status)
 	return nil
+}
+
+type pullRequestStateReader interface {
+	GetPullRequest(context.Context, string, string, int) (*forgejoPullRequest, error)
+	PullRequestMerged(context.Context, string, string, int) (bool, error)
+}
+
+func closedUnmergedSubmittedOutcome(ctx context.Context, fc Tracker, env reapEnv, outcome backlogOutcome) (bool, error) {
+	reader, ok := fc.(pullRequestStateReader)
+	if !ok {
+		return false, nil
+	}
+	if outcome.PRNumber <= 0 {
+		return false, nil
+	}
+	pr, err := reader.GetPullRequest(ctx, env.Owner, env.Name, outcome.PRNumber)
+	if err != nil {
+		return false, nil
+	}
+	if merged, merr := reader.PullRequestMerged(ctx, env.Owner, env.Name, outcome.PRNumber); merr == nil && merged {
+		return false, nil
+	}
+	return strings.EqualFold(strings.TrimSpace(pr.State), "closed"), nil
+}
+
+func launchedClosedUnmergedPRCommentBody(env reapEnv, outcome backlogOutcome) string {
+	var b strings.Builder
+	visible := workflowOutcomeVisible("failed")
+	fmt.Fprintf(&b, "`ward container reap` found a submitted pull request for this launched run, but Forgejo later closed it without merging.\n\n")
+	fmt.Fprintf(&b, "- **Container:** `%s`\n", env.Container)
+	fmt.Fprintf(&b, "- **Workflow:** `%s`\n", env.Workflow.orDefault())
+	if outcome.PRURL != "" {
+		fmt.Fprintf(&b, "- **PR:** `%s`\n", outcome.PRURL)
+	}
+	fmt.Fprintf(&b, "- **Recovery:** reopen the PR or cut a fresh run, then redispatch from the current base.\n")
+	return collapsedIssueComment(visible, "reap details", b.String())
 }
 
 // reservationCommentAfter reports whether any reservation-marker comment (not a
