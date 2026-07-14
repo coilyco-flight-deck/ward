@@ -276,9 +276,9 @@ func TestTriagePromptShape(t *testing.T) {
 	}
 }
 
-// TestDirectorTriageDefaultOn covers ward#397: startup triage is on by default, and
-// --no-triage turns it off. The run resolves triage as `triage && !no-triage`.
-func TestDirectorTriageDefaultOn(t *testing.T) {
+// TestDirectorTriageOptInWithBurndown covers the surface-first default:
+// plain director skips labels, --burndown enables them, and --no-triage skips them.
+func TestDirectorTriageOptInWithBurndown(t *testing.T) {
 	parse := func(args ...string) *cli.Command {
 		cmd := &cli.Command{Name: "director", Flags: directorFlags()}
 		if err := cmd.Run(t.Context(), append([]string{"director"}, args...)); err != nil {
@@ -286,12 +286,23 @@ func TestDirectorTriageDefaultOn(t *testing.T) {
 		}
 		return cmd
 	}
-	resolved := func(c *cli.Command) bool { return c.Bool("triage") && !c.Bool("no-triage") }
 
-	if !resolved(parse()) {
-		t.Error("startup triage should default on")
+	if directorTriageEnabled(parse()) {
+		t.Error("plain director should not run startup triage by default")
 	}
-	if resolved(parse("--no-triage")) {
-		t.Error("--no-triage should turn startup triage off")
+	if !parse("--burndown").Bool("burndown") {
+		t.Error("--burndown should enable the autonomous drain mode")
+	}
+	if !parse("--drain").Bool("burndown") {
+		t.Error("--drain should alias --burndown")
+	}
+	if !directorTriageEnabled(parse("--burndown")) {
+		t.Error("--burndown should run startup triage by default")
+	}
+	if directorTriageEnabled(parse("--burndown", "--no-triage")) {
+		t.Error("--no-triage should turn startup triage off without disabling burndown")
+	}
+	if !directorTriageEnabled(parse("--triage")) {
+		t.Error("explicit --triage should run the label pass even without burndown")
 	}
 }

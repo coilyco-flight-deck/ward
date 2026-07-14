@@ -12,8 +12,10 @@ The director surface is the read-only control plane for runs.
 - Its implicit repo scope comes from `~/.ward/config.yaml` or an explicit
   `--repo` / `--org` launch. It does not need the current directory to be a git
   repo.
-- When issue-scoped, each heartbeat refresh stays pinned to that exact issue
-  instead of rehydrating the repo backlog.
+- By default it refreshes and prints status, then opens the attached read-only
+  surface. Add `--burndown` to run the autonomous dispatch heartbeat.
+- When issue-scoped under `--burndown`, each heartbeat refresh stays pinned to
+  that exact issue instead of rehydrating the repo backlog.
 - It is the surface that hosts the merge-ready workflow for PR landings.
 - It distinguishes a fresh reservation hold from a stale one so dead runs do
   not block burndown forever.
@@ -34,6 +36,7 @@ The director surface is the read-only control plane for runs.
   should stay scoped to a single decision payload.
 - launch from any working directory when the repo scope is explicit or
   configured.
+- opt into autonomous headless dispatch with `--burndown` or `--drain`.
 - sweep the merge-ready branch once CI is green.
 - update the oldest merge-ready PR branch when open PR pressure is over cap and
   the branch still conflicts with main.
@@ -47,20 +50,16 @@ block so the merge sweep can still recognize the ready state.
 
 ## Starting interactively
 
-There is no separate public `warded surface` command. Start director and answer
-`n` at the prompt:
+There is no separate public `warded surface` command:
 
 ```bash
 warded director --repo owner/name
+warded director --burndown --repo owner/name # autonomous drain
 ```
 
-```text
-kick off by draining the headless backlog now? [Y/n]
-```
-
-Enter, `y`, or any other text starts the drain immediately. When all engineer
-slots are busy, press Enter during the sleep offer to open the same read-only
-session.
+The first form refreshes status and opens the read-only session without
+dispatching engineers. `--drain` aliases `--burndown`. During burndown, press
+Enter at the sleep offer to open the same session.
 
 The director surface is intentionally narrower than the engineer path. It is
 for supervision and landing, not for implementation.

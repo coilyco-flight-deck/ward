@@ -11,9 +11,9 @@ agent-roles {
         merge-authority pull-request-and-merge
     }
     role director {
-        tagline "Autonomously drives a repo's headless lane to drain."
+        tagline "Opens the read-only director surface. Autonomous burndown is opt-in."
         capabilities read project-management
-        modes "Attached LLM-in-the-loop heartbeat over a repo's backlog (`--repo` scope). Surfaces a read-only scope + dispatch session on drain, no ref."
+        modes "Attached read-only control surface over a repo's backlog (`--repo` scope). Use `--burndown` or `--drain` for the autonomous heartbeat."
         execution-time-limit none
         default-harness claude
         posture attached

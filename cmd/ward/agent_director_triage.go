@@ -10,8 +10,8 @@ import (
 	"strings"
 )
 
-// agent_director_triage.go is director's startup triage pass (ward#397): before the init
-// gate it labels each open issue's tier + mode. See docs/director-startup-triage.md.
+// agent_director_triage.go is director's startup triage pass (ward#397).
+// Before opt-in burndown, it labels each open issue's tier and mode.
 
 // triageBodyLimit caps how much of each issue body rides the batched judgment prompt, so
 // a 50-issue startup pass stays a single affordable one-shot.

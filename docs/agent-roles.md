@@ -40,8 +40,8 @@ and does the actual implementation work inside the container.
 The director is the supervising lane.
 
 - It can read logs and inspect the fleet.
-- It can keep a backlog moving.
-- It is the role that owns the read-only session after drain.
+- It opens the read-only session by default.
+- It can keep a backlog moving when `--burndown` or `--drain` is set.
 - It has no execution limit.
 
 ### advisor

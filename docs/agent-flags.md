@@ -15,7 +15,7 @@ doc_goal: Give a reader the canonical, code-generated tree of every ward agent c
 
 ## `ward agent director`
 
-- --harness, --agent, --engineer-harness, --repo, --org, --with-repo, --max-parallel, --triage, --no-triage, --limit, --poll-interval, --max-cycles, --dry-run, (hidden) --image, (hidden) --tag, (hidden) --ward-source, (hidden) --ward-version, (hidden) --allow-ward-downgrade, --print, --no-pull, --override-reservation
+- --harness, --agent, --engineer-harness, --repo, --org, --with-repo, --max-parallel, --burndown, --drain, --triage, --no-triage, --limit, --poll-interval, --max-cycles, --dry-run, (hidden) --image, (hidden) --tag, (hidden) --ward-source, (hidden) --ward-version, (hidden) --allow-ward-downgrade, --print, --no-pull, --override-reservation
 
 ## `ward agent director queue`
 

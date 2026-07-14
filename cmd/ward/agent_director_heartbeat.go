@@ -47,9 +47,6 @@ func (h forgeHealth) String() string {
 // directorBackend is the heartbeat's seam onto the world: the #346 ledger layer, the
 // LLM decision, the dispatch path, and the interactive surface (tests inject a fake).
 type directorBackend interface {
-	// confirmKickoff is the one-time init gate (ward#361): drainNow=true falls into the
-	// heartbeat, false surfaces first. See docs/agent-director.md.
-	confirmKickoff(ctx context.Context) (drainNow bool, err error)
 	// poll reconciles in-flight engineers against reality (reads WARD-OUTCOME).
 	poll(ctx context.Context)
 	// refresh rebuilds the ledger from the live backlog; errors are non-fatal here.
@@ -87,10 +84,10 @@ type directorBackend interface {
 	summary() error
 }
 
-// runDirectorLoop is the heartbeat: poll + reconcile, refresh, then surface (on drain)
-// or LLM-decide + dispatch, then sleep. Loops until drained, --max-cycles, or cancel.
+// runDirectorLoop is the --burndown heartbeat: poll, refresh, surface on drain,
+// dispatch selected work, then sleep until drain, --max-cycles, or cancellation.
 func runDirectorLoop(ctx context.Context, cfg backlogConfig, be directorBackend) error {
-	if stop, err := directorStartupPhase(ctx, cfg, be); err != nil || stop {
+	if stop, err := directorStartupPhase(ctx, be); err != nil || stop {
 		return err
 	}
 	for cycle := 1; ; cycle++ {
@@ -100,9 +97,9 @@ func runDirectorLoop(ctx context.Context, cfg backlogConfig, be directorBackend)
 	}
 }
 
-// directorStartupPhase does one deterministic reconcile before the init gate.
-// It skips kickoff on a drained lane, and --no-triage bypasses the prompt.
-func directorStartupPhase(ctx context.Context, cfg backlogConfig, be directorBackend) (bool, error) {
+// directorStartupPhase does one deterministic reconcile before the first dispatch tick.
+// It surfaces immediately on a drained lane.
+func directorStartupPhase(ctx context.Context, be directorBackend) (bool, error) {
 	be.poll(ctx)
 	be.refresh(ctx)
 	be.mergeEligiblePullRequests(ctx)
@@ -110,12 +107,7 @@ func directorStartupPhase(ctx context.Context, cfg backlogConfig, be directorBac
 	if queued == 0 && inflight == 0 && held == 0 {
 		return directorHandleDrain(ctx, be)
 	}
-	if !cfg.triage {
-		return false, nil
-	}
-	// One-time init gate (ward#361): ask once whether to drain now or surface first.
-	// Never re-asked per tick or on a later resume. See docs/agent-director.md.
-	return directorKickoff(ctx, be)
+	return false, nil
 }
 
 // directorHeartbeatTick runs one drain/dispatch/sleep heartbeat cycle.
@@ -166,23 +158,6 @@ func directorWait(ctx context.Context, cfg backlogConfig, be directorBackend, in
 // engineers still in flight - the tick can't schedule, the lane isn't drained. Pure.
 func directorSlotsFull(cfg backlogConfig, inflight int) bool {
 	return inflight > 0 && cfg.maxParallel-inflight <= 0
-}
-
-// directorKickoff runs the one-time init gate (ward#361): "yes" returns to drain, "no"
-// surfaces first then resumes; stop=true when that opening surface had nowhere to go.
-func directorKickoff(ctx context.Context, be directorBackend) (stop bool, err error) {
-	drainNow, err := be.confirmKickoff(ctx)
-	if err != nil {
-		return false, err
-	}
-	if drainNow {
-		return false, nil
-	}
-	ran, err := be.surface(ctx)
-	if err != nil {
-		return false, err
-	}
-	return !ran, nil
 }
 
 // directorHandleDrain reports the drained lane and surfaces an interactive session;
@@ -300,10 +275,6 @@ type liveDirector struct {
 	repos     []string
 	cfg       backlogConfig
 	healthKey string
-}
-
-func (d *liveDirector) confirmKickoff(context.Context) (bool, error) {
-	return d.r.directorConfirmKickoff(d.label), nil
 }
 
 func (d *liveDirector) poll(ctx context.Context) { d.r.backlogPoll(ctx, d.label, d.repos) }
@@ -622,33 +593,6 @@ func (r *Runner) directorSurface(ctx context.Context, label, contextRepo string,
 		return true, fmt.Errorf("%s: interactive surface session: %w", label, err)
 	}
 	return true, nil
-}
-
-// directorConfirmKickoff is the live side of the init gate (ward#361): ask once, read the
-// answer; no terminal drains (the autonomous default). See docs/agent-director.md.
-func (r *Runner) directorConfirmKickoff(label string) bool {
-	if !gateTerminalAttached() {
-		return true
-	}
-	_, _ = fmt.Fprintf(r.gateErr(), "\n%s: kick off by draining the headless backlog now? [Y/n] "+
-		"(n hands you an interactive session first; a drain can begin once you direct it) ", label)
-	line, _ := bufio.NewReader(r.gateIn()).ReadString('\n')
-	if kickoffDrainNow(line) {
-		return true
-	}
-	_, _ = fmt.Fprintf(r.gateErr(), "%s: skipping the opening drain - surfacing an interactive session first.\n", label)
-	return false
-}
-
-// kickoffDrainNow maps one operator line to the init-gate decision (ward#361): n/no
-// surfaces first; Enter/y/yes/EOF/anything else drains now (the bias to proceed). Pure.
-func kickoffDrainNow(line string) bool {
-	switch strings.ToLower(strings.TrimSpace(line)) {
-	case "n", "no":
-		return false
-	default:
-		return true
-	}
 }
 
 // directorSurfaceArgv builds the surface-session argv from director's forwarded flags.

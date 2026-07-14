@@ -24,7 +24,8 @@ import (
 func TestDirectorHelpNamesInteractiveStartup(t *testing.T) {
 	description := agentDirectorCommand().Description
 	for _, want := range []string{
-		"answer n at the startup prompt",
+		"Use --burndown to run the autonomous heartbeat",
+		"warded director --burndown --repo coilyco-flight-deck/ward",
 		"press Enter during the sleep offer",
 	} {
 		if !strings.Contains(description, want) {
@@ -33,7 +34,7 @@ func TestDirectorHelpNamesInteractiveStartup(t *testing.T) {
 	}
 
 	rootDescription := agentCommand().Description
-	if !strings.Contains(rootDescription, "answer n at the startup prompt") {
+	if !strings.Contains(rootDescription, "add --burndown when you want autonomous dispatch") {
 		t.Errorf("ward agent help should name the director interactive startup path:\n%s", rootDescription)
 	}
 }
@@ -962,7 +963,7 @@ func TestDirectorScopeSkipsBurndownReposBeforeDispatch(t *testing.T) {
 			return err
 		},
 	}
-	if err := cmd.Run(t.Context(), []string{"director", "--org", "coilyco-flight-deck"}); err != nil {
+	if err := cmd.Run(t.Context(), []string{"director", "--burndown", "--org", "coilyco-flight-deck"}); err != nil {
 		t.Fatalf("resolveDirectorScope: %v", err)
 	}
 
@@ -986,6 +987,46 @@ func TestDirectorScopeSkipsBurndownReposBeforeDispatch(t *testing.T) {
 	}
 	if strings.Contains(string(logs), "coilyco-bridge/deploy") {
 		t.Fatalf("stderr %q unexpectedly mentioned the unrelated repo", string(logs))
+	}
+}
+
+func TestDirectorPlainScopeDoesNotApplyBurndownFilter(t *testing.T) {
+	t.Setenv("HOME", t.TempDir())
+
+	bundleDir := t.TempDir()
+	if err := os.WriteFile(filepath.Join(bundleDir, "defaults.kdl"), []byte("defaults {\n    agent-reservation-ttl \"3h\"\n}\n"), 0o644); err != nil {
+		t.Fatal(err)
+	}
+	if err := os.WriteFile(filepath.Join(bundleDir, "repos.kdl"), []byte(`repos {
+    repo-authority default=forgejo {
+        trusted-owner coilyco-flight-deck
+    }
+    burndown default=#true {
+        repo "coilyco-flight-deck/infrastructure" #false
+    }
+}`), 0o644); err != nil {
+		t.Fatal(err)
+	}
+	t.Setenv("WARD_CONFIG_REF", "file://"+bundleDir)
+
+	cmd := &cli.Command{
+		Name:  "director",
+		Flags: directorFlags(),
+		Action: func(ctx context.Context, c *cli.Command) error {
+			r := &Runner{Runner: &shell.Runner{Stdout: io.Discard, Stderr: io.Discard}}
+			got, err := r.resolveDirectorScope(ctx, c, "ward agent director")
+			if err != nil {
+				return err
+			}
+			want := []string{"coilyco-flight-deck/infrastructure"}
+			if !reflect.DeepEqual(got, want) {
+				return fmt.Errorf("scope = %v, want %v", got, want)
+			}
+			return nil
+		},
+	}
+	if err := cmd.Run(t.Context(), []string{"director", "--repo", "coilyco-flight-deck/infrastructure"}); err != nil {
+		t.Fatalf("resolveDirectorScope: %v", err)
 	}
 }
 
@@ -1077,8 +1118,12 @@ func TestResolveDirectorIssueRefFailsClosedAndDoesNotWiden(t *testing.T) {
 				refArg = srv.URL + "/coilyco-flight-deck/ward/issues/6"
 			}
 
+			cmd := &cli.Command{Name: "director", Flags: directorFlags(), Action: func(context.Context, *cli.Command) error { return nil }}
+			if err := cmd.Run(t.Context(), []string{"director", "--burndown"}); err != nil {
+				t.Fatalf("parse director flags: %v", err)
+			}
 			r := &Runner{Runner: &shell.Runner{Stdout: io.Discard, Stderr: io.Discard}}
-			ref, err := r.resolveDirectorIssueRef(t.Context(), nil, "ward agent director", modeGoose, refArg)
+			ref, err := r.resolveDirectorIssueRef(t.Context(), cmd, "ward agent director", modeGoose, refArg)
 			if err == nil {
 				t.Fatalf("resolveDirectorIssueRef(%s) = %+v, want error", tc.name, ref)
 			}
@@ -1089,6 +1134,29 @@ func TestResolveDirectorIssueRefFailsClosedAndDoesNotWiden(t *testing.T) {
 				t.Fatalf("fail-closed issue scope widened to backlog: issueList=%t pullList=%t", sawIssueList, sawPullList)
 			}
 		})
+	}
+}
+
+func TestValidateDirectorIssueTargetPlainSurfaceAcceptsInteractiveIssue(t *testing.T) {
+	parse := func(args ...string) *cli.Command {
+		cmd := &cli.Command{Name: "director", Flags: directorFlags(), Action: func(context.Context, *cli.Command) error { return nil }}
+		if err := cmd.Run(t.Context(), append([]string{"director"}, args...)); err != nil {
+			t.Fatalf("parse director flags: %v", err)
+		}
+		return cmd
+	}
+	ref := agentIssueRef{Owner: "coilyco-flight-deck", Repo: "ward", Number: 6}
+	interactive := &Issue{Number: 6, Title: "interactive issue", State: "open", Labels: []string{"P1", "interactive"}}
+
+	if err := validateDirectorIssueTarget(parse(), "ward agent director", ref, interactive); err != nil {
+		t.Fatalf("plain director surface should accept an open interactive issue: %v", err)
+	}
+	if err := validateDirectorIssueTarget(parse("--burndown"), "ward agent director", ref, interactive); err == nil || !strings.Contains(err.Error(), "not headless/autonomous eligible") {
+		t.Fatalf("burndown should reject an interactive issue, got %v", err)
+	}
+	closed := &Issue{Number: 6, Title: "closed issue", State: "closed", Labels: []string{"P0", "headless"}}
+	if err := validateDirectorIssueTarget(parse(), "ward agent director", ref, closed); err == nil || !strings.Contains(err.Error(), "not open") {
+		t.Fatalf("plain director should still reject a closed issue, got %v", err)
 	}
 }
 

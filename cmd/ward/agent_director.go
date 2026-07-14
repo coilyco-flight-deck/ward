@@ -20,8 +20,8 @@ import (
 	"gopkg.in/yaml.v3"
 )
 
-// agent_director.go is `ward agent director`, the autonomous backlog-supervisor role
-// (ward#347, was backlog; ward#346, subsuming ward#310). See docs/agent-director.md.
+// agent_director.go is `ward agent director`, the read-only director surface plus
+// the opt-in autonomous backlog-supervisor role (ward#347, ward#346).
 
 // backlogLedgerSubdir is the directory under ~/.ward holding one durable per-repo
 // ledger, so a killed loop resumes from disk rather than re-deriving state.
@@ -140,6 +140,7 @@ type backlogConfig struct {
 	maxCycles    int
 	dryRun       bool
 	print        bool
+	burndown     bool
 	triage       bool
 	issueRef     *agentIssueRef
 	dispatch     dispatchEngineer
@@ -160,7 +161,8 @@ func directorFlags() []cli.Flag {
 		&cli.StringSliceFlag{Name: "org", Usage: "expand every repo an org owns into the scope (owner; repeatable), unioned with --repo and de-duped (ward#370)"},
 		&cli.StringSliceFlag{Name: "with-repo", Usage: "grant director's own session an additional writable repo to clone (owner/name; repeatable), landed under /workspace alongside the scope (ward#230)."},
 		&cli.IntFlag{Name: "max-parallel", Value: directorMaxParallelDefault(), Usage: "in-flight container cap"},
-		&cli.BoolFlag{Name: "triage", Value: true, Usage: "run the startup triage pass before the init gate: label each untriaged open issue's tier (P0-P4) + automation mode (headless/interactive/consult) to warm the headless lane (ward#397). On by default; --no-triage skips it"},
+		&cli.BoolFlag{Name: "burndown", Aliases: []string{"drain"}, Usage: "run the autonomous headless backlog burndown loop. Without this flag, director opens its read-only surface after status refresh"},
+		&cli.BoolFlag{Name: "triage", Value: true, Usage: "run the startup triage pass before burndown: label each untriaged open issue's tier (P0-P4) + automation mode (headless/interactive/consult) to warm the headless lane (ward#397). On by default for --burndown. --no-triage skips it"},
 		&cli.BoolFlag{Name: "no-triage", Usage: "skip the startup triage pass and leave existing labels untouched (ward#397)"},
 		&cli.IntFlag{Name: "limit", Value: directorLimitDefault(), Usage: "open issues read per repo per refresh"},
 		&cli.DurationFlag{Name: "poll-interval", Value: directorPollIntervalDefault(), Usage: "wait between dispatch/poll cycles"},
@@ -189,43 +191,53 @@ func directorEngineerHarness(c *cli.Command, directorMode containerMode) (contai
 	return m, nil
 }
 
+func directorTriageEnabled(c *cli.Command) bool {
+	return (c.Bool("burndown") || c.IsSet("triage")) && c.Bool("triage") && !c.Bool("no-triage")
+}
+
 // agentDirectorCommand wires `ward agent director` (audited via WrapVerb, trust-gated
 // through ownerAllowed; ward#347, was backlog). See docs/agent-director.md.
 func agentDirectorCommand() *cli.Command {
 	return &cli.Command{
 		Name:      "director",
-		Usage:     "Run an attached LLM-in-the-loop heartbeat over a repo's headless lane, or one exact issue ref: poll, decide, dispatch, and surface on drain (ward#351). Engineers inherit the director's own harness by default; --engineer-harness overrides that dispatch default.",
+		Usage:     "Open the attached director surface for a repo or one exact issue ref. Use --burndown to run the autonomous headless lane heartbeat.",
 		ArgsUsage: "(issue ref | scope via --repo; default: director.default-scope from ~/.ward/config.yaml)",
-		Description: `director runs an attached, autonomous heartbeat over a repo's open backlog. Each
-tick it reconciles in-flight engineers (reading their WARDED_WORKFLOW comments),
-refreshes the ledger from the live backlog (ranking issues into lanes by tier/mode
-labels), asks a host one-shot which queued headless issues to dispatch under
---max-parallel, dispatches the chosen set via ward's native engineer, then
-sleeps cheaply with no LLM held open. Those engineer dispatches inherit the
-director's own harness by default, and --engineer-harness explicitly overrides that
-default. When the headless lane drains - nothing queued and nothing in flight - it
-surfaces an interactive session for new direction rather than exiting, and resumes
-the heartbeat if the queue refills (ward#351).
+		Description: `director opens the attached read-only control surface for a repo's backlog. It
+refreshes the ledger from the live backlog, prints the ranked lanes, and then
+hands control to an interactive director session without dispatching engineers.
+
+Use --burndown to run the autonomous heartbeat. In that mode each tick reconciles
+in-flight engineers (reading their WARDED_WORKFLOW comments), refreshes the ledger
+from the live backlog (ranking issues into lanes by tier/mode labels), asks a host
+one-shot which queued headless issues to dispatch under --max-parallel, dispatches
+the chosen set via ward's native engineer, then sleeps cheaply with no LLM held
+open. Those engineer dispatches inherit the director's own harness by default,
+and --engineer-harness explicitly overrides that default. When the headless lane
+drains - nothing queued and nothing in flight - it surfaces an interactive session
+for new direction rather than exiting, and resumes the heartbeat if the queue
+refills (ward#351).
 
 When a single issue ref or Forgejo issue URL is given, the director fetches and
-validates that exact issue before the heartbeat starts and keeps the later
-refresh loop pinned to that issue instead of widening back into the repo backlog.
+validates that exact issue before status refresh. Under --burndown, the later
+refresh loop stays pinned to that issue instead of widening back into the repo
+backlog.
 
-To start directly in the read-only session, run the same command from a terminal
-and answer n at the startup prompt instead of draining first. During a full lane,
-press Enter during the sleep offer to open the same session.
+During a full --burndown lane, press Enter during the sleep offer to open the
+same session.
 
   warded director --repo coilyco-flight-deck/ward         # one repo
   warded director coilyco-flight-deck/ward#988            # one issue, fail-closed scope
   warded director https://forgejo.coilysiren.me/coilyco-flight-deck/ward/issues/988 # same as above
   warded director --repo a/b,c/d --max-parallel 3         # comma-separated scope
   warded director --org coilyco-flight-deck                # every repo the org owns (ward#370)
+  warded director --burndown --repo coilyco-flight-deck/ward # opt into autonomous dispatch
   warded director --dry-run                                # ranked lanes + planned dispatches, launch nothing
 
 It is attached/interactive only - there is no --detach (a detached director poses
 runaway-dispatch risk). State lives in a durable per-repo ledger under ~/.ward/backlog,
-so a killed loop resumes from disk. Only the narrow headless lane is auto-dispatched;
-interactive issues are surfaced, not launched. See docs/agent-director.md.`,
+so a killed burndown loop resumes from disk. Only the narrow headless lane is
+auto-dispatched during --burndown. Interactive issues are surfaced, not launched.
+See docs/agent-director.md.`,
 		Flags: directorFlags(),
 		// queue and merge are the read-only boundaries for ward-owned work.
 		Commands: []*cli.Command{agentDirectorQueueCommand(), agentDirectorMergeCommand()},
@@ -283,7 +295,8 @@ func (r *Runner) runAgentBacklog(ctx context.Context, c *cli.Command, mode conta
 		maxCycles:    c.Int("max-cycles"),
 		dryRun:       c.Bool("dry-run"),
 		print:        c.Bool("print"),
-		triage:       c.Bool("triage") && !c.Bool("no-triage"),
+		burndown:     c.Bool("burndown"),
+		triage:       directorTriageEnabled(c),
 		issueRef:     issueRef,
 		dispatch: dispatchEngineer{
 			harness:             engDriver,
@@ -303,9 +316,9 @@ func (r *Runner) runAgentBacklog(ctx context.Context, c *cli.Command, mode conta
 	return r.driveBacklog(ctx, label, repos, cfg)
 }
 
-// resolveDirectorIssueRef validates a single issue-scoped director target.
-// The target must be open, headless/autonomous eligible, and not already reserved.
-func (r *Runner) resolveDirectorIssueRef(ctx context.Context, _ *cli.Command, label string, mode containerMode, arg string) (agentIssueRef, error) {
+// resolveDirectorIssueRef validates a single issue-scoped director target. Plain
+// director requires open; burndown also requires headless and unreserved.
+func (r *Runner) resolveDirectorIssueRef(ctx context.Context, c *cli.Command, label string, mode containerMode, arg string) (agentIssueRef, error) {
 	ref, err := r.resolveAgentIssueRef(ctx, arg)
 	if err != nil {
 		return agentIssueRef{}, fmt.Errorf("%s: %w", label, err)
@@ -317,15 +330,11 @@ func (r *Runner) resolveDirectorIssueRef(ctx context.Context, _ *cli.Command, la
 	if err != nil {
 		return agentIssueRef{}, fmt.Errorf("%s: resolve issue %s: %w", label, ref, err)
 	}
-	if st := strings.ToLower(strings.TrimSpace(issue.State)); st != "open" {
-		return agentIssueRef{}, dispatchDeclineErr(dispatchIssueClosed, "issue-closed",
-			"%s: issue %s is %s, not open - nothing to do", label, ref, emptyDefault(st, "unknown"))
+	if err := validateDirectorIssueTarget(c, label, ref, issue); err != nil {
+		return agentIssueRef{}, err
 	}
-	tier := backlogTierOf(issue.Labels)
-	modeLabel := backlogModeOf(issue.Labels)
-	if lane := backlogLaneForLabels(tier, modeLabel); lane != "headless" {
-		return agentIssueRef{}, dispatchDeclineErr(dispatchModeCeiling, "mode-ceiling",
-			"%s: issue %s is not headless/autonomous eligible (tier=%s mode=%s)", label, ref, emptyDefault(tier, "--"), emptyDefault(modeLabel, "--"))
+	if !directorBurndownRequested(c) {
+		return ref, nil
 	}
 	comments, cerr := r.fetchIssueComments(ctx, ref)
 	if cerr != nil {
@@ -335,6 +344,27 @@ func (r *Runner) resolveDirectorIssueRef(ctx context.Context, _ *cli.Command, la
 		return agentIssueRef{}, err
 	}
 	return ref, nil
+}
+
+func directorBurndownRequested(c *cli.Command) bool {
+	return c != nil && c.Bool("burndown")
+}
+
+func validateDirectorIssueTarget(c *cli.Command, label string, ref agentIssueRef, issue *Issue) error {
+	if st := strings.ToLower(strings.TrimSpace(issue.State)); st != "open" {
+		return dispatchDeclineErr(dispatchIssueClosed, "issue-closed",
+			"%s: issue %s is %s, not open - nothing to do", label, ref, emptyDefault(st, "unknown"))
+	}
+	if !directorBurndownRequested(c) {
+		return nil
+	}
+	tier := backlogTierOf(issue.Labels)
+	modeLabel := backlogModeOf(issue.Labels)
+	if lane := backlogLaneForLabels(tier, modeLabel); lane != "headless" {
+		return dispatchDeclineErr(dispatchModeCeiling, "mode-ceiling",
+			"%s: issue %s is not headless/autonomous eligible (tier=%s mode=%s)", label, ref, emptyDefault(tier, "--"), emptyDefault(modeLabel, "--"))
+	}
+	return nil
 }
 
 // backlogTrustGate refuses the run unless every scope repo is a well-formed
@@ -376,6 +406,10 @@ func (r *Runner) driveBacklog(ctx context.Context, label string, repos []string,
 	if preview {
 		return r.backlogPrintPlanned(label, repos, cfg.maxParallel)
 	}
+	if !cfg.burndown {
+		_, err := r.directorSurface(ctx, label, repos[0], cfg)
+		return err
+	}
 	return runDirectorLoop(ctx, cfg, &liveDirector{r: r, label: label, repos: repos, cfg: cfg})
 }
 
@@ -409,8 +443,9 @@ func (r *Runner) emit(s string) error {
 func (r *Runner) resolveDirectorScope(ctx context.Context, c *cli.Command, label string) ([]string, error) {
 	explicit := parseScopeRepos(c.String("repo"), "")
 	orgs := dedupeSlugs(c.StringSlice("org"))
+	burndown := c.Bool("burndown")
 	if len(explicit) == 0 && len(orgs) == 0 {
-		return r.resolveDirectorDefaultScope(ctx, label)
+		return r.resolveDirectorDefaultScope(ctx, label, burndown)
 	}
 	expanded, err := r.expandOrgScopes(ctx, label, orgs)
 	if err != nil {
@@ -420,12 +455,15 @@ func (r *Runner) resolveDirectorScope(ctx context.Context, c *cli.Command, label
 	if len(repos) == 0 {
 		return nil, fmt.Errorf("%s: --repo/--org scope resolved to no repos", label)
 	}
-	return r.filterBurndownRepos(label, repos)
+	if burndown {
+		return r.filterBurndownRepos(label, repos)
+	}
+	return repos, nil
 }
 
 // resolveDirectorDefaultScope resolves the no-flag scope (ward#398): the config-stored
 // director.default-scope is the only implicit fallback. See docs/agent-director.md.
-func (r *Runner) resolveDirectorDefaultScope(ctx context.Context, label string) ([]string, error) {
+func (r *Runner) resolveDirectorDefaultScope(ctx context.Context, label string, burndown bool) ([]string, error) {
 	cfgOrgs, cfgRepos, err := loadDirectorDefaultScope()
 	if err != nil {
 		return nil, fmt.Errorf("%s: %w", label, err)
@@ -439,7 +477,10 @@ func (r *Runner) resolveDirectorDefaultScope(ctx context.Context, label string) 
 		if len(repos) == 0 {
 			return nil, fmt.Errorf("%s: director.default-scope resolved to no repos", label)
 		}
-		return r.filterBurndownRepos(label, repos)
+		if burndown {
+			return r.filterBurndownRepos(label, repos)
+		}
+		return repos, nil
 	}
 	return nil, fmt.Errorf("%s: no --repo/--org given and no director.default-scope in ~/.ward/config.yaml", label)
 }
@@ -1736,6 +1777,7 @@ func appendDirectorLaunchConfig(b *strings.Builder, cfg backlogConfig) error {
 	fmt.Fprintf(b, "max-parallel:    %d\n", cfg.maxParallel)
 	fmt.Fprintf(b, "poll-interval:   %s\n", cfg.pollInterval)
 	fmt.Fprintf(b, "max-cycles:      %d\n", cfg.maxCycles)
+	fmt.Fprintf(b, "burndown:        %t\n", cfg.burndown)
 	fmt.Fprintf(b, "engineer-harness: %s\n", cy.harness)
 	fmt.Fprintf(b, "image:           %s\n", imageRef(cy.image, cy.tag))
 	fmt.Fprintf(b, "ward-version:    %s\n", wardVersionLaunchLabel(cy.wardVersion, cy.wardVersionSource))

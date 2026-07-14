@@ -30,6 +30,7 @@ Inventory of what `ward` ships today.
 - PR-workflow tools with KDL defaults. See [agent-pr-workflow.md](agent-pr-workflow.md).
 - PR lifecycle close/reopen/recovery tools.
 - PR repair classification.
+- Director defaults read-only; autonomous drain needs `--burndown` / `--drain`.
 - `ward agent` roles and workflows. See [agent.md](agent.md), [agent-roster.md](agent-roster.md), [agent-flags.md](agent-flags.md), [agent-roles.md](agent-roles.md), [agent-harnesses.md](agent-harnesses.md), [agent-lifecycle.md](agent-lifecycle.md), [agent-director.md](agent-director.md), [agent-ops.md](agent-ops.md), [agent-dispatch-health.md](agent-dispatch-health.md), [dispatch-review.md](dispatch-review.md), and [agent-workflow.md](agent-workflow.md).
 - Dispatch-health surfacing.
 - PR repair input mode.
@@ -53,15 +54,11 @@ Inventory of what `ward` ships today.
 
 ## Release and docs
 
-- Two-stage release ([ward#1117](https://forgejo.coilysiren.me/coilyco-flight-deck/ward/issues/1117)): promote.yml gates every main push and fast-forwards `release` when green; release.yml runs on `release` pushes under a no-cancel concurrency queue. See [release.md](release.md).
+- Two-stage release: promote gates main and fast-forwards `release`; release runs queued. See [release.md](release.md).
 - [compat-surface.md](compat-surface.md) - release-facing provider matrix.
 - [release.md](release.md) and [release-binaries.md](release-binaries.md).
 - [homebrew-build.md](homebrew-build.md), [golangci.md](golangci.md), and [troubleshooting.md](troubleshooting.md).
 - [docs/README.md](README.md) - docs index.
-
-## What changed
-
-The inventory is grouped by durable surface instead of mirroring the old issue-slice docs.
 
 ## See also
 

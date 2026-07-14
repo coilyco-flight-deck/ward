@@ -668,7 +668,7 @@ func agentCommand() *cli.Command {
 		Description: fmt.Sprintf(`agent is the issue-carrying dispatcher (the spelling 'warded' fronts), a
 roster of startup roles (ward#347): you do not invoke a mode, you send in a
 role. Pick a role (engineer|director|advisor|qa) and --harness picks the
-harness (%s, default %s; --agent is an equal accepted spelling).
+harness (%s, default %s. --agent is an equal accepted spelling).
 A BARE REF with no role word runs the 'engineer' role - the fire-and-forget
 default. A bare #N (or N) infers the owner/repo from the cwd's git origin;
 owner/repo#N resolves through the selected repo-authority policy, and a full
@@ -682,7 +682,8 @@ container bring-up stack plus a prompt.
   warded engineer "fix the flaky exec_gate test" # freeform -> file an issue first, then carry
   warded <role> #98 --harness <harness>       # pick another harness
   warded <role> #98 --agent <harness>        # --agent: the same pick, equal spelling
-  warded director --repo coilyco-flight-deck/ward # autonomous supervisor, answer n at the startup prompt for the session first
+  warded director --repo coilyco-flight-deck/ward # read-only director surface
+  warded director --burndown --repo coilyco-flight-deck/ward # add --burndown when you want autonomous dispatch
   warded advisor #98 "what would it take to..."   # research the issue, post the answer
   warded advisor "how is the audit log written?"  # answer a freeform question inline
   ward agent engineer coilyco-flight-deck/ward#98 # the canonical spelling warded fronts
