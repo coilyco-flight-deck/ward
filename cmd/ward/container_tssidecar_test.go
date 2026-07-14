@@ -404,4 +404,4 @@ func TestTailnetTowerBadConfigRefIgnored(t *testing.T) {
 }
 
 // The buildUpPlan tailnet plumbing is covered by TestBuildUpPlanTailnet in
-// container_hostnet_test.go now the two escalations are one --tailnet flag (ward#362).
+// container_hostnet_test.go now covers the role-driven tailnet plumbing (ward#362).

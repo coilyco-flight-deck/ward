@@ -8,7 +8,6 @@ import (
 	"os"
 	"path/filepath"
 	"regexp"
-	"runtime"
 	"sort"
 	"strconv"
 	"strings"
@@ -104,9 +103,6 @@ type dispatchEngineer struct {
 	tag               string
 	wardVersion       string
 	wardVersionSource string
-	aws               bool
-	hostNet           bool
-	tsSidecar         bool
 	// overrideReservation forwards --override-reservation (ward#352, ward#1045);
 	// --override-capacity is per-launch only and never propagated by the loop.
 	overrideReservation bool
@@ -129,36 +125,8 @@ func (c dispatchEngineer) engineerArgv(ref agentIssueRef) []string {
 			argv = append(argv, "--ward-version", v)
 		}
 	}
-	if c.aws {
-		argv = append(argv, "--aws")
-	}
-	argv = appendTailnetArgv(argv, c.hostNet, c.tsSidecar)
 	if c.overrideReservation {
 		argv = append(argv, "--override-reservation")
-	}
-	return argv
-}
-
-// tailnetPlanLabel renders a resolved tailnet route for a --print plan: off, or on with
-// the concrete mechanism the platform selected (ward#362).
-func tailnetPlanLabel(hostNet, tsSidecar bool) string {
-	switch {
-	case hostNet:
-		return "on (" + tailnetModeHostNet + ")"
-	case tsSidecar:
-		return "on (" + tailnetModeSidecar + ")"
-	}
-	return "off"
-}
-
-// appendTailnetArgv forwards a resolved tailnet mechanism to a child as --tailnet plus an
-// explicit --tailnet-mode, so the child pins the same route, no re-resolving (ward#362).
-func appendTailnetArgv(argv []string, hostNet, tsSidecar bool) []string {
-	switch {
-	case hostNet:
-		return append(argv, "--tailnet", "--tailnet-mode", tailnetModeHostNet)
-	case tsSidecar:
-		return append(argv, "--tailnet", "--tailnet-mode", tailnetModeSidecar)
 	}
 	return argv
 }
@@ -188,7 +156,6 @@ func directorFlags() []cli.Flag {
 	flags := agentHarnessFlags()
 	flags = append(flags,
 		&cli.StringFlag{Name: "engineer-harness", Usage: "harness for the engineers the director dispatches: " + agentHarnessChoices() + " (default: inherit --harness)"},
-		&cli.StringFlag{Name: "engineer-driver", Hidden: true, Usage: "deprecated alias for --engineer-harness: kept one release cycle for existing callers; an explicit first-class spelling wins when both are set"},
 		&cli.StringFlag{Name: "repo", Usage: "comma-separated scope 'a/b,c/d' (default: director.default-scope from ~/.ward/config.yaml, else the cwd git origin)"},
 		&cli.StringSliceFlag{Name: "org", Usage: "expand every repo an org owns into the scope (owner; repeatable), unioned with --repo and de-duped (ward#370)"},
 		&cli.StringSliceFlag{Name: "with-repo", Usage: "grant director's own session an additional writable repo to clone (owner/name; repeatable), landed under /workspace alongside the scope (ward#230)."},
@@ -205,7 +172,6 @@ func directorFlags() []cli.Flag {
 		&cli.BoolFlag{Name: "print", Usage: "resolve director's container/harness plan + the planned dispatches and exit; launch nothing"},
 		&cli.BoolFlag{Name: "no-pull", Usage: "skip the image pull"},
 		&cli.BoolFlag{Name: "override-reservation", Usage: "propagate --override-reservation to dispatched engineers so they reclaim a stale or foreign reservation instead of deferring (ward#352, ward#1045); off by default. Never touches the pool ceiling - --override-capacity is per-launch only, not a director knob"},
-		&cli.BoolFlag{Name: "force", Hidden: true, Usage: "deprecated alias for --override-reservation (ward#1045)"},
 	)
 }
 
@@ -213,16 +179,12 @@ func directorFlags() []cli.Flag {
 // if set, else director's own --harness (the two-level precedence from ward#355).
 func directorEngineerHarness(c *cli.Command, directorMode containerMode) (containerMode, error) {
 	raw := strings.TrimSpace(c.String("engineer-harness"))
-	flag := "--engineer-harness"
-	if raw == "" && c.IsSet("engineer-driver") {
-		raw, flag = c.String("engineer-driver"), "--engineer-driver"
-	}
 	if raw == "" {
 		return directorMode, nil
 	}
 	m, err := parseMode(raw)
 	if err != nil {
-		return "", fmt.Errorf("invalid %s %q: want %s", flag, raw, agentHarnessChoices())
+		return "", fmt.Errorf("invalid --engineer-harness %q: want %s", raw, agentHarnessChoices())
 	}
 	return m, nil
 }
@@ -309,13 +271,6 @@ func (r *Runner) runAgentBacklog(ctx context.Context, c *cli.Command, mode conta
 	if err != nil {
 		return fmt.Errorf("%s: %w", label, err)
 	}
-	// Engineer dispatch forwards only the operator's EXPLICIT --tailnet, never director's
-	// role-default observe tailnet (ward#547) - mirrors the `aws` field's `c.Bool("aws")`.
-	forwardTailnet := tailnetFlagForcesOn(c) && !c.Bool("no-tailnet")
-	hostNet, tsSidecar, err := resolveTailnetMechanism(c, runtime.GOOS, forwardTailnet)
-	if err != nil {
-		return fmt.Errorf("%s: %w", label, err)
-	}
 	cfg := backlogConfig{
 		mode:         mode,
 		maxParallel:  c.Int("max-parallel"),
@@ -332,9 +287,6 @@ func (r *Runner) runAgentBacklog(ctx context.Context, c *cli.Command, mode conta
 			tag:                 c.String("tag"),
 			wardVersion:         strings.TrimSpace(c.String("ward-version")),
 			wardVersionSource:   resolveWardVersionSource(c, c.String("ward-version")),
-			aws:                 c.Bool("aws"),
-			hostNet:             hostNet,
-			tsSidecar:           tsSidecar,
 			overrideReservation: overrideReservation(c),
 		},
 		wardSource: strings.TrimSpace(c.String("ward-source")),
@@ -1768,8 +1720,6 @@ func appendDirectorLaunchConfig(b *strings.Builder, cfg backlogConfig) error {
 	if cfg.wardSource != "" {
 		fmt.Fprintf(b, "ward-source:     %s (surface session builds ward from here)\n", cfg.wardSource)
 	}
-	fmt.Fprintf(b, "aws:             %t\n", cy.aws)
-	fmt.Fprintf(b, "tailnet:         %s\n", tailnetPlanLabel(cy.hostNet, cy.tsSidecar))
 	fmt.Fprintf(b, "no-pull:         %t\n", cfg.noPull)
 	fmt.Fprintf(b, "override-reservation: %t (propagated to engineers; default defers on a reservation conflict)\n", cy.overrideReservation)
 	if len(cfg.withRepo) > 0 {

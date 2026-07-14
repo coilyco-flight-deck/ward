@@ -17,7 +17,7 @@ import (
 // (internal/agents/<name>), not scattered through core as string literals.
 var drainAgentLiterals = map[string]bool{
 	"claude": true, "codex": true, "goose": true,
-	"opencode": true, "qwen": true, "ollama": true,
+	"opencode": true, "ollama": true,
 }
 
 // drainGateAllowlist is the tiny set of core files that legitimately carry

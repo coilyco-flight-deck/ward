@@ -66,11 +66,6 @@ func TestDispatchBrokerValidatesNarrowAPI(t *testing.T) {
 	if err := validateDispatchBrokerRequest(equal); err != nil {
 		t.Errorf("--agent dispatch refused: %v", err)
 	}
-	// A pre-#660 container still writes --driver; the alias stays approved for one release.
-	alias := dispatchBrokerRequest{Role: "engineer", Argv: []string{"engineer", "coilyco-flight-deck/ward#1", "--driver", "claude"}}
-	if err := validateDispatchBrokerRequest(alias); err != nil {
-		t.Errorf("deprecated --driver dispatch refused: %v", err)
-	}
 	// --config is an approved repeatable value flag on both roles (ward#616).
 	cfg := dispatchBrokerRequest{Role: "engineer", Argv: []string{"engineer", "coilyco-flight-deck/ward#1", "--config", "agent.claude.model=sonnet"}}
 	if err := validateDispatchBrokerRequest(cfg); err != nil {
@@ -92,7 +87,7 @@ func TestDispatchBrokerValidatesStopShape(t *testing.T) {
 		{"no target", dispatchBrokerRequest{Action: "stop"}},
 		{"empty target", dispatchBrokerRequest{Action: "stop", Target: "  "}},
 		{"stop carries launch argv", dispatchBrokerRequest{Action: "stop", Target: "coilyco-flight-deck/ward#1", Argv: []string{"engineer", "x"}}},
-		{"flag target", dispatchBrokerRequest{Action: "stop", Target: "--force"}},
+		{"flag target", dispatchBrokerRequest{Action: "stop", Target: "--bogus"}},
 		{"url target", dispatchBrokerRequest{Action: "stop", Target: "https://example.com/x"}},
 		{"metachar target", dispatchBrokerRequest{Action: "stop", Target: "name;rm -rf"}},
 		{"launch carries a stop target", dispatchBrokerRequest{Role: "engineer", Argv: []string{"engineer", "coilyco-flight-deck/ward#1"}, Target: "x"}},
@@ -125,7 +120,7 @@ func TestDispatchBrokerValidatesLogsShape(t *testing.T) {
 		{"no target", dispatchBrokerRequest{Action: dispatchActionLogs}},
 		{"empty target", dispatchBrokerRequest{Action: dispatchActionLogs, Target: "  "}},
 		{"logs carries launch argv", dispatchBrokerRequest{Action: dispatchActionLogs, Target: "coilyco-flight-deck/ward#1", Argv: []string{"engineer", "x"}}},
-		{"flag target", dispatchBrokerRequest{Action: dispatchActionLogs, Target: "--force"}},
+		{"flag target", dispatchBrokerRequest{Action: dispatchActionLogs, Target: "--bogus"}},
 		{"url target", dispatchBrokerRequest{Action: dispatchActionLogs, Target: "https://example.com/x"}},
 		{"metachar target", dispatchBrokerRequest{Action: dispatchActionLogs, Target: "name;rm -rf"}},
 		{"negative tail", dispatchBrokerRequest{Action: dispatchActionLogs, Target: "engineer-claude-ward-1", Tail: -1}},
@@ -626,7 +621,7 @@ func TestBrokerEngineerArgvForwardsApprovedFlags(t *testing.T) {
 		"--repo", "coilyco-flight-deck/cli-guard",
 		"--config", "agent.claude.model=sonnet",
 		"--workflow", "merge-remote-main", "--details", "repair after PR #357",
-		"--aws", "--tailnet", "--tailnet-mode", "sidecar", "--force", "--skip-preflight",
+		"--skip-preflight",
 	})
 	got := brokerEngineerArgv(cmd, modeClaude, agentIssueRef{Owner: "coilyco-flight-deck", Repo: "ward", Number: 42})
 	for _, want := range [][]string{
@@ -638,13 +633,12 @@ func TestBrokerEngineerArgvForwardsApprovedFlags(t *testing.T) {
 		{"--config", "agent.claude.model=sonnet"},
 		{"--workflow", "merge-remote-main"},
 		{"--details", "repair after PR #357"},
-		{"--tailnet-mode", "sidecar"},
 	} {
 		if !argFollowedBy(got, want[0], want[1]) {
 			t.Errorf("forwarded argv missing %s %s: %v", want[0], want[1], got)
 		}
 	}
-	for _, want := range []string{"engineer", "coilyco-flight-deck/ward#42", "--aws", "--tailnet", "--force", "--skip-preflight"} {
+	for _, want := range []string{"engineer", "coilyco-flight-deck/ward#42", "--skip-preflight"} {
 		if !containsArg(got, want) {
 			t.Errorf("forwarded argv missing %q: %v", want, got)
 		}
@@ -666,14 +660,10 @@ func TestBrokerEngineerArgvForwardsOverrideFlags(t *testing.T) {
 			t.Errorf("forwarded argv missing %q: %v", want, got)
 		}
 	}
-	if containsArg(got, "--force") {
-		t.Errorf("forwarded argv must not rewrite the new spelling to --force: %v", got)
-	}
-
 	bare := brokerEngineerArgv(parseCommandForTest(t, agentEngineerFlags(), []string{
 		"engineer", "coilyco-flight-deck/ward#42", "--harness", "claude",
 	}), modeClaude, ref)
-	for _, unwanted := range []string{"--force", "--override-reservation", "--override-capacity"} {
+	for _, unwanted := range []string{"--override-reservation", "--override-capacity"} {
 		if containsArg(bare, unwanted) {
 			t.Errorf("bare forwarded argv must not carry %q: %v", unwanted, bare)
 		}
@@ -681,9 +671,9 @@ func TestBrokerEngineerArgvForwardsOverrideFlags(t *testing.T) {
 }
 
 // TestValidateDispatchBrokerArgvApprovesOverrideFlags covers ward#1045: the host
-// broker accepts both --override-* spellings and the deprecated --force alias.
+// broker accepts both --override-* spellings.
 func TestValidateDispatchBrokerArgvApprovesOverrideFlags(t *testing.T) {
-	if err := validateDispatchBrokerArgv("engineer", []string{"--override-reservation", "--override-capacity", "--force"}); err != nil {
+	if err := validateDispatchBrokerArgv("engineer", []string{"--override-reservation", "--override-capacity"}); err != nil {
 		t.Fatalf("validateDispatchBrokerArgv override flags: %v", err)
 	}
 }
@@ -2131,7 +2121,7 @@ func TestDispatchLogNameIsStampedAndAttributable(t *testing.T) {
 	at := time.Date(2026, 7, 1, 12, 0, 0, 0, time.UTC)
 	req := dispatchBrokerRequest{
 		Requester: "director-claude-ward-x",
-		Argv:      []string{"engineer", "coilyco-flight-deck/ward#389", "--driver", "claude"},
+		Argv:      []string{"engineer", "coilyco-flight-deck/ward#389", "--agent", "claude"},
 	}
 	got := dispatchLogName(req, at)
 	want := "20260701T120000Z-director-claude-ward-x-coilyco-flight-deck-ward-389.log"
@@ -2281,7 +2271,7 @@ func TestServedRunStdioLandsInLogNotTTY(t *testing.T) {
 	t.Setenv("HOME", t.TempDir())
 	req := dispatchBrokerRequest{
 		Requester: "director-claude-ward-1",
-		Argv:      []string{"engineer", "coilyco-flight-deck/ward#1", "--driver", "claude"},
+		Argv:      []string{"engineer", "coilyco-flight-deck/ward#1", "--agent", "claude"},
 	}
 	logf, logPath, err := openDispatchLog(req, time.Now())
 	if err != nil {

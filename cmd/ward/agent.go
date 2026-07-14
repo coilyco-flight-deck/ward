@@ -9,7 +9,6 @@ import (
 	"path/filepath"
 	"regexp"
 	"strings"
-	"sync"
 	"time"
 
 	"forgejo.coilysiren.me/coilyco-flight-deck/cli-guard/pkg/exitcode"
@@ -556,7 +555,7 @@ func agentHarnessChoices() string {
 }
 
 // agentHarnessFlags picks the harness driving a surface: --harness and --agent are
-// equal first-class spellings (ward#660), --driver a one-release hidden deprecated alias.
+// equal first-class spellings (ward#660).
 func agentHarnessFlags() []cli.Flag {
 	return []cli.Flag{
 		&cli.StringFlag{
@@ -568,12 +567,6 @@ func agentHarnessFlags() []cli.Flag {
 			Name: "agent",
 			Usage: "equal spelling for --harness (ward#660): picks the same harness, " +
 				"neither spelling is preferred",
-		},
-		&cli.StringFlag{
-			Name:   "driver",
-			Hidden: true,
-			Usage: "deprecated alias for --harness/--agent (ward#660): kept one release cycle for " +
-				"existing callers; an explicit first-class spelling wins when both are set",
 		},
 	}
 }
@@ -587,53 +580,16 @@ func configFlag() cli.Flag {
 	}
 }
 
-// Tailnet mechanism selectors for the hidden --tailnet-mode escape hatch (ward#362):
-// auto picks by platform, the other two pin a mechanism.
-const (
-	tailnetModeAuto    = "auto"     // pick by platform: host-net on Linux, sidecar on Docker Desktop
-	tailnetModeHostNet = "host-net" // force the --network=host route (ward#330)
-	tailnetModeSidecar = "sidecar"  // force the ward-tailnet SOCKS5 sidecar route (ward#349)
-)
-
-// tailnetFlags carries the deprecated --tailnet alias + the hidden --tailnet-mode
-// escape hatch (ward#362, ward#578; the role's guardfile set is the source now).
-func tailnetFlags() []cli.Flag {
-	return []cli.Flag{
-		&cli.BoolFlag{
-			Name:   "tailnet",
-			Hidden: true,
-			Usage: "deprecated (ward#578): tailnet reach is now a per-role guardfile set in ward-kdl.fleet.kdl; " +
-				"this hidden alias force-joins the tailnet for one release, auto-selecting the mechanism by platform - " +
-				"the host-network route on native Linux (ward#330), the SOCKS5 sidecar on Docker Desktop (ward#349)",
-		},
-		&cli.StringFlag{
-			Name:   "tailnet-mode",
-			Value:  tailnetModeAuto,
-			Hidden: true,
-			Usage:  "override the tailnet mechanism: auto|host-net|sidecar (default auto: pick by platform); force-joins the tailnet when set to a non-auto value (ward#362)",
-		},
-	}
-}
-
-// resolveTailnetMechanism maps a resolved tailnet want + --tailnet-mode to the
-// host-net vs sidecar mechanism (ward#362): auto picks host-net on Linux, else sidecar.
-func resolveTailnetMechanism(c *cli.Command, goos string, want bool) (hostNet, tsSidecar bool, err error) {
+// resolveTailnetMechanism maps a resolved tailnet want to the host-net vs sidecar
+// mechanism (ward#362): host-net on Linux, else sidecar.
+func resolveTailnetMechanism(goos string, want bool) (hostNet, tsSidecar bool) {
 	if !want {
-		return false, false, nil
+		return false, false
 	}
-	switch mode := strings.TrimSpace(c.String("tailnet-mode")); mode {
-	case "", tailnetModeAuto:
-		if goos == "linux" {
-			return true, false, nil
-		}
-		return false, true, nil
-	case tailnetModeHostNet:
-		return true, false, nil
-	case tailnetModeSidecar:
-		return false, true, nil
-	default:
-		return false, false, fmt.Errorf("invalid --tailnet-mode %q: want %s|%s|%s", mode, tailnetModeAuto, tailnetModeHostNet, tailnetModeSidecar)
+	if goos == "linux" {
+		return true, false
 	}
+	return false, true
 }
 
 // extraRepoGrant reads the extra-writable-repo grant under either name: engineer's --repo
@@ -643,7 +599,7 @@ func extraRepoGrant(c *cli.Command) []string {
 }
 
 // agentHarness resolves the pick to a containerMode (default claude): --harness and
-// --agent are equal spellings, --driver counts only when neither is set (ward#660).
+// --agent are equal spellings.
 func agentHarness(c *cli.Command) (containerMode, error) {
 	raw, flag := c.String("harness"), "--harness"
 	switch {
@@ -652,8 +608,6 @@ func agentHarness(c *cli.Command) (containerMode, error) {
 			c.String("harness"), c.String("agent"))
 	case !c.IsSet("harness") && c.IsSet("agent"):
 		raw, flag = c.String("agent"), "--agent"
-	case !c.IsSet("harness") && !c.IsSet("agent") && c.IsSet("driver"):
-		raw, flag = c.String("driver"), "--driver"
 	}
 	m, err := parseMode(raw)
 	if err != nil {
@@ -670,7 +624,7 @@ func surfaceDispatchMode(c *cli.Command) (containerMode, error) {
 		return "", err
 	}
 	if os.Getenv(envDispatchBrokerAddr) != "" && os.Getenv("WARD_READONLY") == "1" &&
-		!c.IsSet("harness") && !c.IsSet("agent") && !c.IsSet("driver") {
+		!c.IsSet("harness") && !c.IsSet("agent") {
 		return currentAgentMode(), nil
 	}
 	return mode, nil
@@ -692,8 +646,7 @@ func agentCommand() *cli.Command {
 		Description: fmt.Sprintf(`agent is the issue-carrying dispatcher (the spelling 'warded' fronts), a
 roster of startup roles (ward#347): you do not invoke a mode, you send in a
 role. Pick a role (engineer|director|advisor|qa) and --harness picks the
-harness (%s, default %s; --agent is an equal accepted spelling, --driver a
-deprecated alias for one release, ward#660).
+harness (%s, default %s; --agent is an equal accepted spelling).
 A BARE REF with no role word runs the 'engineer' role - the fire-and-forget
 default. A bare #N (or N) infers the owner/repo from the cwd's git origin;
 owner/repo#N resolves through the selected repo-authority policy, and a full
@@ -776,20 +729,17 @@ func agentDefaultSurfaceAction() cli.ActionFunc {
 	}
 }
 
-// agentImageFlags is the shared container image/ward-build/escalation flag block every
+// agentImageFlags is the shared container image/ward-build flag block every
 // dispatching role layers its own flags on top of (ward#355); --print stays per-role.
 func agentImageFlags() []cli.Flag {
-	// The image/ward-build/pinning group stays functional but hidden (ward#362).
-	// --aws + the tailnet route are now hidden deprecated aliases (ward#578).
 	flags := []cli.Flag{
 		&cli.StringFlag{Name: "image", Value: agentImageDefault(), Hidden: true, Sources: cli.EnvVars(envAgentImage), Usage: "dev-base image to run (env: WARD_AGENT_IMAGE)"},
 		&cli.StringFlag{Name: "tag", Value: agentTagDefault(), Hidden: true, Sources: cli.EnvVars(envAgentTag), Usage: "image tag; per-run pinning (env: WARD_AGENT_TAG)"},
 		&cli.StringFlag{Name: "ward-source", Hidden: true, Usage: "development-only: mount a local ward checkout and build ward from it instead of downloading the release"},
 		&cli.StringFlag{Name: "ward-version", Hidden: true, Sources: cli.EnvVars(envAgentVersion), Usage: "ward release the container downloads (default: this host's ward; env: WARD_AGENT_VERSION)"},
 		&cli.BoolFlag{Name: "allow-ward-downgrade", Hidden: true, Usage: "permit a --ward-version pin older than this host's ward (ships an older in-container reaper; ward#529)"},
-		&cli.BoolFlag{Name: "aws", Hidden: true, Usage: "deprecated (ward#578): the ~/.aws mount is now a per-role guardfile set (ward-kdl.aws.guardfile.kdl); this hidden alias force-mounts it read-only for one release"},
 	}
-	return append(flags, tailnetFlags()...)
+	return flags
 }
 
 // agentSurfaceFlags builds the detached launch flag set shared by the engineer,
@@ -818,7 +768,6 @@ func agentSurfaceFlags() []cli.Flag {
 		// The --override-* family (ward#1045): two distinct escape hatches that never
 		// imply each other - a hold may be stale, the OOM ceiling never is.
 		&cli.BoolFlag{Name: "override-reservation", Usage: "skip the local + remote reservation checks and reclaim stale prelaunch repo holds; never overrides the pool ceiling"},
-		&cli.BoolFlag{Name: "force", Hidden: true, Usage: "deprecated alias for --override-reservation (ward#1045); reclaims a reservation or stale prelaunch hold only, never the pool ceiling"},
 		&cli.BoolFlag{Name: "override-capacity", Usage: "launch exactly one engineer past the OOM pool ceiling; the ceiling counts real running containers, so exceeding it risks host thrash or OOM (ward#1045)"},
 	)
 	// The detached run gets an autonomous pre-flight before launching (ward#137).
@@ -839,19 +788,10 @@ func preflightSkipped(c *cli.Command) bool {
 	return c.Bool("skip-preflight") || c.Bool("no-preflight")
 }
 
-// forceFlagDeprecationOnce keeps the --force deprecation notice to one line per
-// process, however many gates read the flag on the way to a launch.
-var forceFlagDeprecationOnce sync.Once
-
-// overrideReservation reads --override-reservation or its deprecated --force alias.
-// It reclaims stale prelaunch holds, but never implies --override-capacity.
+// overrideReservation reads --override-reservation. It reclaims stale prelaunch
+// holds, but never implies --override-capacity.
 func overrideReservation(c *cli.Command) bool {
-	if c.Bool("force") {
-		forceFlagDeprecationOnce.Do(func() {
-			fmt.Fprintln(os.Stderr, "ward agent: --force is deprecated; use --override-reservation (ward#1045). It reclaims a reservation or stale prelaunch hold only - launching past the pool ceiling is --override-capacity, never implied by this flag.")
-		})
-	}
-	return c.Bool("override-reservation") || c.Bool("force")
+	return c.Bool("override-reservation")
 }
 
 // resolvedWork bundles resolveAgentWork's output: ref, title, body, comment thread
@@ -2270,7 +2210,7 @@ func (r *Runner) createDetachedViaCopy(ctx context.Context, plan upPlan, envFile
 	}
 	for _, m := range hostBindMounts(plan) {
 		if !pathExists(m.Source) {
-			continue // an unset optional bind (e.g. --aws) has no source to copy
+			continue // an unset optional bind has no source to copy
 		}
 		if cerr := r.dockerExec(ctx, "cp", m.Source+"/.", id+":"+m.Target); cerr != nil {
 			return fmt.Errorf("ward container: docker cp %s -> %s: %w", m.Source, m.Target, cerr)

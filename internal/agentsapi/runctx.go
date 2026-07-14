@@ -59,8 +59,7 @@ type RunCtx struct {
 	// Empty ClaudeModel omits --model; claude has no effort flag, so it is echo-only.
 	ClaudeModel  string
 	ClaudeEffort string
-	// OpencodeModel is the ollama-backed model the opencode config points at
-	// (bootstrapEnv.QwenModel today; the qwen->opencode untangle is Phase 2).
+	// OpencodeModel is the ollama-backed model the opencode config points at.
 	OpencodeModel string
 	// OllamaURL is the local ollama endpoint the opencode config binds.
 	OllamaURL string

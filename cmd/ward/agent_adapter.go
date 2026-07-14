@@ -15,11 +15,10 @@ import (
 // The manifest reader owns the concrete harness names and the retired alias.
 // The rest of core treats containerMode as an opaque string validated here.
 const (
-	modeClaude    containerMode = "claude"
-	modeCodex     containerMode = "codex"
-	modeOpencode  containerMode = "opencode"
-	modeGoose     containerMode = "goose"
-	modeQwenAlias               = "qwen"
+	modeClaude   containerMode = "claude"
+	modeCodex    containerMode = "codex"
+	modeOpencode containerMode = "opencode"
+	modeGoose    containerMode = "goose"
 )
 
 // agentAdapterSchemaVersion is the manifest schema this build understands.
@@ -160,9 +159,6 @@ func mustAgentAdapter(mode containerMode) agentAdapter {
 		panic(err)
 	}
 	a, ok := m.adapter(string(mode))
-	if !ok && mode == modeQwenAlias {
-		a, ok = m.adapter(string(modeOpencode))
-	}
 	if !ok {
 		panic(fmt.Errorf("agent-adapter manifest: no adapter for %q", mode))
 	}

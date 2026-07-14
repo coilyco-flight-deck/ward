@@ -7,15 +7,15 @@ doc_goal: Give a reader the canonical, code-generated tree of every ward agent c
 
 ## `ward agent`
 
-- --harness, --agent, (hidden) --driver, --workflow, (hidden) --branch, --repo, --details, --review-class, --skip-review, --no-review-gate, --github, --config, (hidden) --image, (hidden) --tag, (hidden) --ward-source, (hidden) --ward-version, (hidden) --allow-ward-downgrade, (hidden) --aws, (hidden) --tailnet, (hidden) --tailnet-mode, --print, (hidden) --no-pull, --override-reservation, (hidden) --force, --override-capacity, --skip-preflight, --no-preflight, (hidden) --skip-host-preflight, (hidden) --quiet-seed, --instructions-file, (hidden) --pr
+- --harness, --agent, --workflow, (hidden) --branch, --repo, --details, --review-class, --skip-review, --no-review-gate, --github, --config, (hidden) --image, (hidden) --tag, (hidden) --ward-source, (hidden) --ward-version, (hidden) --allow-ward-downgrade, --print, (hidden) --no-pull, --override-reservation, --override-capacity, --skip-preflight, --no-preflight, (hidden) --skip-host-preflight, (hidden) --quiet-seed, --instructions-file, (hidden) --pr
 
 ## `ward agent engineer`
 
-- --harness, --agent, (hidden) --driver, --workflow, (hidden) --branch, --repo, --details, --review-class, --skip-review, --no-review-gate, --github, --config, (hidden) --image, (hidden) --tag, (hidden) --ward-source, (hidden) --ward-version, (hidden) --allow-ward-downgrade, (hidden) --aws, (hidden) --tailnet, (hidden) --tailnet-mode, --print, (hidden) --no-pull, --override-reservation, (hidden) --force, --override-capacity, --skip-preflight, --no-preflight, (hidden) --skip-host-preflight, (hidden) --quiet-seed, --instructions-file, (hidden) --pr
+- --harness, --agent, --workflow, (hidden) --branch, --repo, --details, --review-class, --skip-review, --no-review-gate, --github, --config, (hidden) --image, (hidden) --tag, (hidden) --ward-source, (hidden) --ward-version, (hidden) --allow-ward-downgrade, --print, (hidden) --no-pull, --override-reservation, --override-capacity, --skip-preflight, --no-preflight, (hidden) --skip-host-preflight, (hidden) --quiet-seed, --instructions-file, (hidden) --pr
 
 ## `ward agent director`
 
-- --harness, --agent, (hidden) --driver, --engineer-harness, (hidden) --engineer-driver, --repo, --org, --with-repo, --max-parallel, --triage, --no-triage, --limit, --poll-interval, --max-cycles, --dry-run, (hidden) --image, (hidden) --tag, (hidden) --ward-source, (hidden) --ward-version, (hidden) --allow-ward-downgrade, (hidden) --aws, (hidden) --tailnet, (hidden) --tailnet-mode, --print, --no-pull, --override-reservation, (hidden) --force
+- --harness, --agent, --engineer-harness, --repo, --org, --with-repo, --max-parallel, --triage, --no-triage, --limit, --poll-interval, --max-cycles, --dry-run, (hidden) --image, (hidden) --tag, (hidden) --ward-source, (hidden) --ward-version, (hidden) --allow-ward-downgrade, --print, --no-pull, --override-reservation
 
 ## `ward agent director queue`
 
@@ -27,11 +27,11 @@ doc_goal: Give a reader the canonical, code-generated tree of every ward agent c
 
 ## `ward agent advisor`
 
-- --harness, --agent, (hidden) --driver, --thoroughness, --depth, --repo, --with-repo, --instructions-file, --oneshot, --answer, --config, (hidden) --image, (hidden) --tag, (hidden) --ward-source, (hidden) --ward-version, (hidden) --allow-ward-downgrade, (hidden) --aws, (hidden) --tailnet, (hidden) --tailnet-mode, --no-tailnet, --print, --no-pull
+- --harness, --agent, --thoroughness, --depth, --repo, --with-repo, --instructions-file, --oneshot, --answer, --config, (hidden) --image, (hidden) --tag, (hidden) --ward-source, (hidden) --ward-version, (hidden) --allow-ward-downgrade, --no-tailnet, --print, --no-pull
 
 ## `ward agent qa`
 
-- --harness, --agent, (hidden) --driver, --thoroughness, --depth, --config, --family, (hidden) --image, (hidden) --tag, (hidden) --ward-source, (hidden) --ward-version, (hidden) --allow-ward-downgrade, (hidden) --aws, (hidden) --tailnet, (hidden) --tailnet-mode, --print, --no-pull
+- --harness, --agent, --thoroughness, --depth, --config, --family, (hidden) --image, (hidden) --tag, (hidden) --ward-source, (hidden) --ward-version, (hidden) --allow-ward-downgrade, --print, --no-pull
 
 ## `ward agent reap`
 

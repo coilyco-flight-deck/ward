@@ -556,7 +556,7 @@ func (r *Runner) commentReservationConflictDispatch(ctx context.Context, cl Trac
 func dispatchBrokerRequestMode(req dispatchBrokerRequest) containerMode {
 	for i := 0; i+1 < len(req.Argv); i++ {
 		switch req.Argv[i] {
-		case "--harness", "--agent", "--driver":
+		case "--harness", "--agent":
 			if mode, err := parseMode(req.Argv[i+1]); err == nil {
 				return mode
 			}
@@ -1049,17 +1049,17 @@ func (r *Runner) resolveDispatchBrokerLogsSource(ctx context.Context, req dispat
 }
 
 func validateDispatchBrokerArgv(role string, tail []string) error {
-	// --config is repeatable on both roles (ward#616); --harness, its equal --agent
-	// spelling, and the pre-#660 --driver alias stay approved for skew-safety (ward#660).
-	valueFlags := map[string]bool{"--harness": true, "--agent": true, "--driver": true, "--config": true}
+	// --config is repeatable on both roles (ward#616); --harness and its equal
+	// --agent spelling stay approved for skew-safety (ward#660).
+	valueFlags := map[string]bool{"--harness": true, "--agent": true, "--config": true}
 	boolFlags := map[string]bool{"--print": true}
 	if role == "engineer" {
 		valueFlags["--workflow"] = true
 		valueFlags["--details"] = true
-		for _, f := range []string{"--image", "--tag", "--ward-version", "--branch", "--repo", "--tailnet-mode"} {
+		for _, f := range []string{"--image", "--tag", "--ward-version", "--branch", "--repo"} {
 			valueFlags[f] = true
 		}
-		for _, f := range []string{"--aws", "--tailnet", "--no-pull", "--force", "--override-reservation", "--override-capacity", "--skip-preflight", "--no-preflight", "--skip-review", "--no-review-gate", "--pr"} {
+		for _, f := range []string{"--no-pull", "--override-reservation", "--override-capacity", "--skip-preflight", "--no-preflight", "--skip-review", "--no-review-gate", "--pr"} {
 			boolFlags[f] = true
 		}
 		return validateDispatchBrokerFlags(role, tail, valueFlags, boolFlags, false)
@@ -1233,9 +1233,9 @@ func dispatchBrokerWardVersion(argv []string) string {
 }
 
 // brokerDispatchHarness returns the harness to forward into a sibling dispatch.
-// Explicit --harness/--agent/--driver wins; otherwise inherit WARD_AGENT/WARD_MODE.
+// Explicit --harness/--agent wins; otherwise inherit WARD_AGENT/WARD_MODE.
 func brokerDispatchHarness(c *cli.Command, fallback containerMode) containerMode {
-	if c.IsSet("harness") || c.IsSet("agent") || c.IsSet("driver") {
+	if c.IsSet("harness") || c.IsSet("agent") {
 		return fallback
 	}
 	return currentAgentMode()
@@ -1260,13 +1260,10 @@ func brokerEngineerArgv(c *cli.Command, mode containerMode, ref agentIssueRef) [
 	if details := strings.TrimSpace(c.String("details")); details != "" {
 		argv = append(argv, "--details", details)
 	}
-	// Forward each --override-* spelling as typed (ward#1045): the host prints the
-	// --force deprecation notice itself, and capacity never rides on reservation.
+	// Forward each --override-* spelling as typed (ward#1045); capacity never rides
+	// on reservation.
 	if c.Bool("override-reservation") {
 		argv = append(argv, "--override-reservation")
-	}
-	if c.Bool("force") {
-		argv = append(argv, "--force")
 	}
 	if c.Bool("override-capacity") {
 		argv = append(argv, "--override-capacity")
@@ -1339,7 +1336,7 @@ func appendBrokerConfigFlags(argv []string, c *cli.Command) []string {
 }
 
 func appendBrokerContainerFlags(argv []string, c *cli.Command) []string {
-	for _, name := range []string{"image", "tag", "branch", "tailnet-mode"} {
+	for _, name := range []string{"image", "tag", "branch"} {
 		if v := strings.TrimSpace(c.String(name)); c.IsSet(name) && v != "" {
 			argv = append(argv, "--"+name, v)
 		}
@@ -1350,7 +1347,7 @@ func appendBrokerContainerFlags(argv []string, c *cli.Command) []string {
 		}
 	}
 	argv = appendBrokerConfigFlags(argv, c)
-	for _, name := range []string{"aws", "tailnet", "no-pull"} {
+	for _, name := range []string{"no-pull"} {
 		if c.Bool(name) {
 			argv = append(argv, "--"+name)
 		}

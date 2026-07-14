@@ -32,7 +32,7 @@ The gate is **verb-level** - it bounds what call is expressible, not what a proc
 
 ### The agent/container surface (`ward agent`)
 
-`ward agent` fresh-clones the target into a throwaway container, seeds real host credentials (the harness login, the bot `FORGEJO_TOKEN`, `~/.aws` under `--aws`), runs the agent under `bypassPermissions` with no deny wall, and pushes to `main`. The container's isolation is the **sole** boundary ([docs/container.md](docs/container.md)). Interested in reports of:
+`ward agent` fresh-clones the target into a throwaway container, seeds real host credentials (the harness login, the bot `FORGEJO_TOKEN`, and the opt-in `~/.aws` mount), runs the agent under `bypassPermissions` with no deny wall, and pushes to `main`. The container's isolation is the **sole** boundary ([docs/container.md](docs/container.md)). Interested in reports of:
 
 - credential leakage: a seeded secret (the claude OAuth blob, codex auth, `FORGEJO_TOKEN`, `~/.aws`) reaching argv, the audit log, or an `env` dump - anywhere outside its mode-600 `--env-file` / git-credential file ([docs/agent-lifecycle.md](docs/agent-lifecycle.md))
 - container escape: a run reaching the host filesystem past the read-only cwd bind, the docker socket, or another concurrent container. Isolation is the only boundary, so an escape past the one throwaway clone is a vulnerability, not a known limitation

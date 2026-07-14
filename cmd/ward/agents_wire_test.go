@@ -118,15 +118,12 @@ func TestCredWritesSafeWithoutInjection(t *testing.T) {
 }
 
 // TestLookupAgentResolvesModes pins the Phase 3 (ward#418) data-read surface: every
-// mode resolves to its record, qwen folds to opencode, unknown falls back to claude.
+// mode resolves to its record, unknown falls back to claude.
 func TestLookupAgentResolvesModes(t *testing.T) {
 	for _, mode := range agentModes {
 		if got := lookupAgent(mode).Name(); got != string(mode) {
 			t.Errorf("lookupAgent(%s).Name() = %q, want %q", mode, got, mode)
 		}
-	}
-	if got := lookupAgent(modeQwenAlias).Name(); got != "opencode" {
-		t.Errorf("lookupAgent(qwen).Name() = %q, want opencode", got)
 	}
 	if got := lookupAgent("no-such-mode").Name(); got != "claude" {
 		t.Errorf("lookupAgent(unknown).Name() = %q, want claude fallback", got)
@@ -180,11 +177,11 @@ func TestComposeAgentContainerPerMode(t *testing.T) {
 			// TargetName drives claude's onboarding project entry; the model/url feed
 			// the opencode composer.
 			rc := r.agentRunCtx(context.Background(), bootstrapEnv{
-				Mode:       string(tc.mode),
-				AgentHome:  home,
-				TargetName: "ward",
-				QwenModel:  "qwen3-coder:30b",
-				OllamaURL:  "http://host.docker.internal:8082/v1",
+				Mode:          string(tc.mode),
+				AgentHome:     home,
+				TargetName:    "ward",
+				OpencodeModel: "qwen3-coder:30b",
+				OllamaURL:     "http://host.docker.internal:8082/v1",
 			}, nil)
 			composeAgentContainer(a, rc)
 			if _, err := os.Stat(filepath.Join(home, tc.present)); err != nil {

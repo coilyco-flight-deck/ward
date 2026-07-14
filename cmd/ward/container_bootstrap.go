@@ -28,18 +28,18 @@ import (
 // bootstrapEnv holds the entrypoint's env-var config, read once with the bash
 // defaults applied. Required vars (the bash `:?` checks) error in readBootstrapEnv.
 type bootstrapEnv struct {
-	TargetOwner  string
-	TargetName   string
-	ForgejoBase  string
-	Mode         string
-	Container    string
-	Issue        int
-	Agent        string
-	ContextLevel string
-	GitCache     string
-	ContextSrc   string
-	QwenModel    string
-	OllamaURL    string
+	TargetOwner   string
+	TargetName    string
+	ForgejoBase   string
+	Mode          string
+	Container     string
+	Issue         int
+	Agent         string
+	ContextLevel  string
+	GitCache      string
+	ContextSrc    string
+	OpencodeModel string
+	OllamaURL     string
 	// Cheapest codex posture by default (ward#379): mini model + low reasoning +
 	// verbosity, each overridable via WARD_CODEX_*. docs/agent-credentials.md.
 	CodexModel     string
@@ -147,7 +147,7 @@ func roleAgentOverride(f fleetconfig.Fleet, role, agent string) fleetconfig.Role
 // required var (the bash `: "${X:?...}"` checks). Pure given the environment.
 func readBootstrapEnv() (bootstrapEnv, error) {
 	// Defaults now source from the embedded fleet config (env > manifest, ward#416);
-	// opencode is canonical, with qwen retained only as a parser alias for compatibility.
+	// opencode is canonical.
 	fleet, ferr := loadFleetConfig()
 	if ferr != nil {
 		return bootstrapEnv{}, fmt.Errorf("load embedded fleet config for bootstrap defaults: %w", ferr)
@@ -175,8 +175,8 @@ func readBootstrapEnv() (bootstrapEnv, error) {
 		ContextSrc:   envOr("WARD_CONTEXT_SRC", "/opt/ward-context"),
 		// Precedence WARD_* env > role overlay > flat per-agent default (ward#620): the
 		// role's opencode overlay (if any) leads the fleet manifest's opencode node.
-		QwenModel: envOr("WARD_QWEN_MODEL", firstNonEmpty(opencodeOv.Model, opencode.Model)),
-		OllamaURL: envOr("WARD_OLLAMA_URL", firstNonEmpty(opencodeOv.Endpoint, opencode.Endpoint)),
+		OpencodeModel: envOr("WARD_OPENCODE_MODEL", firstNonEmpty(opencodeOv.Model, opencode.Model)),
+		OllamaURL:     envOr("WARD_OLLAMA_URL", firstNonEmpty(opencodeOv.Endpoint, opencode.Endpoint)),
 		// Cheapest codex settings (ward#379): fleet manifest's codex node, role overlay
 		// ahead of it (ward#620).
 		CodexModel:     envOr("WARD_CODEX_MODEL", firstNonEmpty(codexOv.Model, codex.Model)),
