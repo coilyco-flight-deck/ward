@@ -645,6 +645,8 @@ func sampleUpPlan() upPlan {
 		Mounts:      leastAccessMounts("/cwd", mountOpts{AssetsDir: "/a"}),
 		Interactive: true,
 		TTY:         true,
+		MemoryLimit: containerMemoryLimitDefault(),
+		MemorySwap:  "4g",
 		WardVersion: "v0.16.0",
 	}
 }
@@ -861,6 +863,8 @@ func TestDockerCreateArgvShape(t *testing.T) {
 		"--label ward.machine=deadbeef",
 		"--label ward.issue=140",
 		"--entrypoint " + containerEntrypointPath,
+		"--memory=2g",
+		"--memory-swap=4g",
 		"-it",
 		"--env-file /tmp/ward-env-xyz",
 		"-e WARD_CONTAINER_NAME=engineer-claude-eco-app-140",
@@ -923,6 +927,8 @@ func TestDockerCreateNoBindsArgv(t *testing.T) {
 		"--name engineer-claude-eco-app-140",
 		"--entrypoint " + containerEntrypointPath,
 		"-v " + containerGitcacheVol + ":" + containerGitcacheMnt, // the named volume survives
+		"--memory=2g",
+		"--memory-swap=4g",
 		"--env-file /tmp/ward-env-xyz",
 		"-e WARD_TARGET_REPO=coilyco-gaming/eco-app",
 	} {
