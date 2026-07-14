@@ -9,6 +9,9 @@ The director surface is the read-only control plane for runs.
 - It can keep a backlog moving without writing implementation code.
 - It can also run against one exact issue ref or Forgejo issue URL without
   widening into the repo backlog.
+- Its implicit repo scope comes from `~/.ward/config.yaml` or an explicit
+  `--repo` / `--org` launch. It does not need the current directory to be a git
+  repo.
 - When issue-scoped, each heartbeat refresh stays pinned to that exact issue
   instead of rehydrating the repo backlog.
 - It is the surface that hosts the merge-ready workflow for PR landings.
@@ -29,6 +32,8 @@ The director surface is the read-only control plane for runs.
 - stop a run that is definitely on the wrong ref.
 - target one issue by `owner/repo#N` or full Forgejo issue URL when the run
   should stay scoped to a single decision payload.
+- launch from any working directory when the repo scope is explicit or
+  configured.
 - sweep the merge-ready branch once CI is green.
 
 The director's machine-readable issue comments use `WARDED_WORKFLOW` as the
