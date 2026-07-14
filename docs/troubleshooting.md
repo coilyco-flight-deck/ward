@@ -12,7 +12,7 @@ Start here when a run failed or seemed to do nothing.
 - `ward exec` refused.
 - the run never landed on `main`.
 - capacity looks full even though `ward agent list` shows a ghost `container
-  starting` record.
+  starting` or `cleanup-needed` record.
 
 ## What to check
 
@@ -36,8 +36,8 @@ Start here when a run failed or seemed to do nothing.
 - if the branch exists but the merge did not happen, the issue is usually in
   workflow or review.
 - if the run vanished, the issue is usually in teardown or reap.
-- if `ward agent list --json` shows `phase: container starting` with an empty
-  `started_at`, use the manual stale reservation cleanup path in
+- if `ward agent list --json` shows `phase: container starting` with
+  `status: cleanup-needed` and an empty `started_at`, use the manual stale reservation cleanup path in
   [agent-stale-reservation-cleanup.md](agent-stale-reservation-cleanup.md)
   before host-side debugging.
 - if repo dispatch says the engineer limit is reached but the visible running

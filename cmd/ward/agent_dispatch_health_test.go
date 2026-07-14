@@ -17,11 +17,13 @@ func TestDispatchHealthReportSummaryLine(t *testing.T) {
 		Failed:           1,
 		Running:          2,
 		LaunchIntents:    1,
+		CleanupNeeded:    4,
+		FailedBefore:     2,
 		RecentDispatches: 5,
 		DuplicateRefs:    []string{"coilyco-flight-deck/ward#9×2"},
 		Backpressure:     true,
 		Runaway:          true,
-		Signals:          []string{"deferred", "failed", "double-dispatch", "backpressure", "runaway"},
+		Signals:          []string{"deferred", "failed", "stale-records", "double-dispatch", "backpressure", "runaway"},
 	}
 	line := report.summaryLine()
 	for _, want := range []string{
@@ -35,6 +37,8 @@ func TestDispatchHealthReportSummaryLine(t *testing.T) {
 		"backpressure=on",
 		"runaway=on",
 		"launch-intents=1",
+		"cleanup-needed=4",
+		"failed-before-start=2",
 	} {
 		if !strings.Contains(line, want) {
 			t.Fatalf("summary line missing %q:\n%s", want, line)
@@ -49,7 +53,7 @@ func TestDispatchHealthReportSummaryLine(t *testing.T) {
 }
 
 func TestDispatchHealthReportFlagsStalePrelaunch(t *testing.T) {
-	report := dispatchHealthReport{StalePrelaunch: 2, LaunchIntents: 3, Signals: []string{"stale-prelaunch"}}
+	report := dispatchHealthReport{StalePrelaunch: 2, LaunchIntents: 3, CleanupNeeded: 1, FailedBefore: 1, Signals: []string{"stale-prelaunch", "stale-records"}}
 	line := report.summaryLine()
 	if !strings.Contains(line, "stale-prelaunch=2") {
 		t.Fatalf("summary line missing stale-prelaunch count: %s", line)
@@ -57,7 +61,13 @@ func TestDispatchHealthReportFlagsStalePrelaunch(t *testing.T) {
 	if !strings.Contains(line, "launch-intents=3") {
 		t.Fatalf("summary line missing launch-intents count: %s", line)
 	}
+	if !strings.Contains(line, "cleanup-needed=1") || !strings.Contains(line, "failed-before-start=1") {
+		t.Fatalf("summary line missing stale record counts: %s", line)
+	}
 	if !strings.Contains(strings.Join(dispatchHealthSignals(report), ","), "stale-prelaunch") {
 		t.Fatal("stale prelaunch reservations should surface as a signal")
+	}
+	if !strings.Contains(strings.Join(dispatchHealthSignals(report), ","), "stale-records") {
+		t.Fatal("cleanup-needed or failed-before-start launches should surface as a signal")
 	}
 }

@@ -316,10 +316,19 @@ func (r *Runner) runningEngineerContainers(ctx context.Context) ([]string, error
 func (r *Runner) enforceEngineerContainerLimit(ctx context.Context, label string, overrideCapacity bool) error {
 	names, err := r.runningEngineerContainers(ctx)
 	if err != nil {
-		return fmt.Errorf("%s: count running engineer containers: %w", label, err)
+		return fmt.Errorf("%s: count active engineer launches: %w", label, err)
 	}
+	seen := make(map[string]bool, len(names))
+	for _, name := range names {
+		seen[strings.TrimSpace(name)] = true
+	}
+	rows, err := r.reservedEngineerRows(ctx, time.Now().UTC(), seen)
+	if err != nil {
+		return fmt.Errorf("%s: count active engineer launches: %w", label, err)
+	}
+	inv := agentLaunchInventoryFromRows(rows)
 	limit := engineerContainerLimitDefault()
-	count := len(names)
+	count := len(names) + inv.LaunchIntents
 	if count < limit {
 		return nil
 	}
@@ -336,20 +345,20 @@ func (r *Runner) enforceEngineerContainerLimit(ctx context.Context, label string
 // engineerCapacityError marks a launch refusal because the global engineer cap
 // is already full. It is backpressure, not a terminal launch failure.
 type engineerCapacityError struct {
-	label   string
-	running int
-	limit   int
+	label  string
+	active int
+	limit  int
 }
 
 func (e *engineerCapacityError) Error() string {
 	return fmt.Sprintf(
-		"%s: global engineer limit is reached: %d running (limit %d); wait for a run to finish, run `ward agent reap` for stale engineers, or follow docs/agent-ops.md for manual stale reservation cleanup",
-		e.label, e.running, e.limit,
+		"%s: global engineer limit is reached: %d active launches (limit %d); wait for a run to finish, run `ward agent reap` for stale engineers, or follow docs/agent-ops.md for manual stale reservation cleanup",
+		e.label, e.active, e.limit,
 	)
 }
 
-func newEngineerCapacityError(label string, running, limit int) error {
-	return &engineerCapacityError{label: label, running: running, limit: limit}
+func newEngineerCapacityError(label string, active, limit int) error {
+	return &engineerCapacityError{label: label, active: active, limit: limit}
 }
 
 func isEngineerCapacityError(err error) bool {
@@ -360,7 +369,7 @@ func isEngineerCapacityError(err error) bool {
 func engineerCapacityBackpressureSummary(err error) string {
 	var capErr *engineerCapacityError
 	if errors.As(err, &capErr) {
-		return fmt.Sprintf("engineer pool full, %d/%d, not dispatched", capErr.running, capErr.limit)
+		return fmt.Sprintf("engineer pool full, %d/%d active launches, not dispatched", capErr.active, capErr.limit)
 	}
 	return "engineer pool full, not dispatched"
 }
