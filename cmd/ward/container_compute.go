@@ -717,6 +717,8 @@ func (p upPlan) wardEnv() map[string]string { //nolint:gocyclo,cyclop
 	}
 	if p.ConfigRef != "" {
 		env[wardConfigRefEnv] = p.ConfigRef
+	} else if ref := launchConfigRef(p.Repo, p.HostCwd); ref != "" {
+		env[wardConfigRefEnv] = ref
 	}
 	if p.DispatchBrokerAddr != "" {
 		env[envDispatchBrokerAddr] = p.DispatchBrokerAddr
