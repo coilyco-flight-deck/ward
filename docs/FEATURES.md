@@ -22,9 +22,9 @@ Inventory of what `ward` ships today.
 - Reservation and dispatch comments are cleaned up after release.
 - Harness install hooks for claude, codex, goose, and opencode.
 - Core tracker and forge adapters do not depend on generated `ward ops` leaves.
-- Launch-intent vs running-engineer split in list, dispatch-health, reap, burn-down.
-- Issue-thread-backed reservations with local sentinels.
-- Open-PR backpressure gate with PR burn-down.
+- Launch-intent vs running-engineer split in list, dispatch-health, reap, and director.
+- Issue-thread-backed reservations with disposable cache and `ward agent reservations clear`.
+- Open-PR backpressure gate.
 - Issue-scoped director dispatch.
 - Dispatch broker. See [agent-dispatch-broker.md](agent-dispatch-broker.md).
 - PR-workflow tools with KDL merge-style and delete-branch defaults. See [agent-pr-workflow.md](agent-pr-workflow.md).
@@ -60,7 +60,7 @@ Inventory of what `ward` ships today.
 
 ## What changed
 
-The inventory is grouped by durable surface instead of mirroring the old issue-slice docs.
+Grouped by durable surface instead of the old issue-slice docs.
 
 ## See also
 

@@ -13,6 +13,7 @@ This page groups the on-demand operational surfaces around a run.
 - `ward agent stop` - stop one visible running engineer on purpose. Ghost
   launch records are not stoppable here.
 - `ward agent reap` - stop wedged engineer containers by idle policy and clear stale prelaunch reservations that never became visible.
+- `ward agent reservations clear` - clear the disposable reservation cache directory wholesale.
 
 ## Shared contract
 
@@ -63,8 +64,8 @@ This page groups the on-demand operational surfaces around a run.
 - none of these surfaces should surprise a caller with a write to the target
   repo.
 
-Manual stale reservation cleanup is documented in
-[agent-stale-reservation-cleanup.md](agent-stale-reservation-cleanup.md).
+Whole-folder reservation cache cleanup is documented in
+[agent-reservation-cache.md](agent-reservation-cache.md).
 
 ## See also
 

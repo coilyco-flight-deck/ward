@@ -161,6 +161,17 @@ func TestAgentListIncludesReservedLaunchPhase(t *testing.T) {
 	t.Setenv("HOME", t.TempDir())
 	now := time.Now().UTC()
 	ref := agentIssueRef{Owner: "coilyco-flight-deck", Repo: "ward", Number: 1033}
+	oldBase := forgejoBaseURL
+	defer func() { forgejoBaseURL = oldBase }()
+	srv := issueThreadAuthorityServer(t, []issueThreadAuthorityRow{{
+		Number: 1033,
+		Title:  "reserved launch",
+		Body:   "body",
+		Comments: []issueComment{
+			reservationIssueComment(reservationCommentBody(modeCodex, "engineer-codex-ward-1033", "director-box", now.Add(-time.Second), "", nil), now.Add(-time.Second)),
+		},
+	}})
+	forgejoBaseURL = srv.URL
 	resPath, err := agentReservationPath(ref)
 	if err != nil {
 		t.Fatalf("agentReservationPath: %v", err)
@@ -365,6 +376,100 @@ func TestAgentListKeepsFailedBeforeStartRowsVisibleButExcluded(t *testing.T) {
 		if !strings.Contains(human, want) {
 			t.Fatalf("failed launch human output missing %q:\n%s", want, human)
 		}
+	}
+}
+
+func TestAgentListPrunesStaleReservationCacheEntry(t *testing.T) {
+	t.Setenv("HOME", t.TempDir())
+	server := issueThreadAuthorityServer(t, []issueThreadAuthorityRow{{
+		Number: 1035,
+		Comments: []issueComment{
+			{Body: "just a normal comment", CreatedAt: time.Now().UTC()},
+		},
+	}})
+	t.Setenv("WARD_FORGEJO_BASE", server.URL)
+	r := fakeEngineerVisibilityDockerRunner(t, "", 0)
+	now := time.Now().UTC()
+	ref := agentIssueRef{Owner: "coilyco-flight-deck", Repo: "ward", Number: 1035}
+	resPath, err := agentReservationPath(ref)
+	if err != nil {
+		t.Fatalf("agentReservationPath: %v", err)
+	}
+	if err := writeAgentReservation(resPath, agentReservation{
+		Owner:     ref.Owner,
+		Repo:      ref.Repo,
+		Number:    ref.Number,
+		Mode:      string(modeCodex),
+		Container: "engineer-codex-ward-1035",
+		Branch:    "issue-1035",
+		Host:      "director-box",
+		At:        now.Add(-time.Minute),
+	}); err != nil {
+		t.Fatalf("writeAgentReservation: %v", err)
+	}
+
+	rows, err := r.agentListRows(t.Context())
+	if err != nil {
+		t.Fatalf("agentListRows: %v", err)
+	}
+	if len(rows) != 0 {
+		t.Fatalf("rows = %d, want stale reservation cache to be pruned", len(rows))
+	}
+	if _, ok, _ := readAgentReservation(resPath); ok {
+		t.Fatal("stale reservation cache entry should be removed")
+	}
+}
+
+func TestClearAgentReservationCacheDirRecreatesDirectory(t *testing.T) {
+	t.Setenv("HOME", t.TempDir())
+	dir, err := agentReservationCacheDir()
+	if err != nil {
+		t.Fatalf("agentReservationCacheDir: %v", err)
+	}
+	if err := os.MkdirAll(dir, 0o700); err != nil {
+		t.Fatalf("MkdirAll reservation cache: %v", err)
+	}
+	if err := os.WriteFile(filepath.Join(dir, "stale.json"), []byte("{}\n"), 0o600); err != nil {
+		t.Fatalf("seed stale cache: %v", err)
+	}
+	if err := os.WriteFile(filepath.Join(dir, "stale.lock"), []byte("lock"), 0o600); err != nil {
+		t.Fatalf("seed stale lock: %v", err)
+	}
+	if err := clearAgentReservationCacheDir(); err != nil {
+		t.Fatalf("clearAgentReservationCacheDir: %v", err)
+	}
+	entries, err := os.ReadDir(dir)
+	if err != nil {
+		t.Fatalf("ReadDir reservation cache: %v", err)
+	}
+	if len(entries) != 0 {
+		t.Fatalf("reservation cache directory should be recreated empty, got %d entries", len(entries))
+	}
+}
+
+func TestAgentListRecreatesMissingReservationCacheDir(t *testing.T) {
+	t.Setenv("HOME", t.TempDir())
+	dir, err := agentReservationCacheDir()
+	if err != nil {
+		t.Fatalf("agentReservationCacheDir: %v", err)
+	}
+	if err := os.RemoveAll(dir); err != nil {
+		t.Fatalf("remove reservation cache dir: %v", err)
+	}
+	if _, err := os.Stat(dir); !os.IsNotExist(err) {
+		t.Fatalf("reservation cache dir should be missing before list, got err=%v", err)
+	}
+
+	r := fakeEngineerVisibilityDockerRunner(t, "", 0)
+	rows, err := r.agentListRows(t.Context())
+	if err != nil {
+		t.Fatalf("agentListRows: %v", err)
+	}
+	if len(rows) != 0 {
+		t.Fatalf("rows = %d, want 0 after recreating empty cache dir", len(rows))
+	}
+	if _, err := os.Stat(dir); err != nil {
+		t.Fatalf("reservation cache dir should be recreated, got %v", err)
 	}
 }
 

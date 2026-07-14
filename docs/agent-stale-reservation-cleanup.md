@@ -1,10 +1,15 @@
 ---
-doc_goal: Document the manual stale reservation cleanup workaround without bloating the operator hub.
+doc_goal: Preserve the legacy targeted cleanup note while naming the supported whole-folder cache clear path.
 ---
 # manual stale reservation cleanup
 
-Use this when `ward agent list` shows a `container starting` record that has
-been marked `cleanup-needed` and does not have a visible running engineer yet.
+The supported emergency path is `ward agent reservations clear` or deleting
+`~/.ward/agent-reservations` wholesale. This older targeted comment cleanup note
+remains only for rare one-comment recovery cases.
+
+Use this when `ward agent list` shows a `container starting` record that still
+counts toward capacity but does not have a visible running engineer yet, and
+the issue thread still needs a surgical comment fix instead of a cache clear.
 
 ## Identify it
 

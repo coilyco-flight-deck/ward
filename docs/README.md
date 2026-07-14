@@ -36,6 +36,7 @@ Start here if you open `docs/` directly. The tree holds the release-era operatin
 - [agent-lifecycle.md](agent-lifecycle.md) - launch, preflight, reservation.
 - [agent-director.md](agent-director.md) - read-only director lane.
 - [agent-ops.md](agent-ops.md) - logs, stop, list, reap.
+- [agent-reservation-cache.md](agent-reservation-cache.md) - cache-only reservation cleanup.
 - [agent-dispatch-health.md](agent-dispatch-health.md) - status and alert lines.
 - [agent-dispatch-broker.md](agent-dispatch-broker.md) - brokered launch contract.
 - [agent-pr-workflow.md](agent-pr-workflow.md) - merge, status, runs, rerun.

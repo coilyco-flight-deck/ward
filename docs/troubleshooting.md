@@ -40,6 +40,10 @@ Start here when a run failed or seemed to do nothing.
   `status: cleanup-needed` and an empty `started_at`, use the manual stale reservation cleanup path in
   [agent-stale-reservation-cleanup.md](agent-stale-reservation-cleanup.md)
   before host-side debugging.
+- if `ward agent list --json` shows `phase: container starting` with an empty
+  `started_at`, clear the whole reservation cache directory with
+  `ward agent reservations clear` before host-side debugging. The directory is
+  cache-only, so wholesale deletion is safe.
 - if repo dispatch says the engineer limit is reached but the visible running
   count is still below the ceiling, retry with `--override-reservation` to
   recover stale prelaunch holds. Use `--override-capacity` only for the real
@@ -60,9 +64,8 @@ Start here when a run failed or seemed to do nothing.
 - if there is a landed branch but not main, start with workflow.
 - if the issue thread has a reservation comment, read that first.
 - if the issue thread still carries the reservation marker and the visible run
-  is not running, use the issue-comment cleanup path from
-  [agent-stale-reservation-cleanup.md](agent-stale-reservation-cleanup.md)
-  instead of deleting any host file.
+  is not running, prefer `ward agent reservations clear` over deleting a single
+  host file. The cache directory is disposable.
 
 ## See also
 
