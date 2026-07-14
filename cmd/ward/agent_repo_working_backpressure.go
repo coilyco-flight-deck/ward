@@ -13,60 +13,36 @@ import (
 // engineerRepoWorkingBackpressureError marks a launch refusal because the repo
 // already has too many active engineers.
 type engineerRepoWorkingBackpressureError struct {
-	label          string
-	repo           string
-	blocked        int
-	running        int
-	freshIntents   int
-	stalePrelaunch int
-	limit          int
+	label   string
+	repo    string
+	working int
+	limit   int
 }
 
 func (e *engineerRepoWorkingBackpressureError) Error() string {
-	var parts []string
-	parts = append(parts, fmt.Sprintf("%d running", e.running))
-	if e.freshIntents > 0 {
-		parts = append(parts, fmt.Sprintf("%d fresh launch intent(s)", e.freshIntents))
-	}
-	if e.stalePrelaunch > 0 {
-		parts = append(parts, fmt.Sprintf("%d stale prelaunch hold(s)", e.stalePrelaunch))
-	}
-	parts = append(parts, fmt.Sprintf("limit %d", e.limit))
-	hint := "pass --override-capacity to exceed real running capacity"
-	if e.stalePrelaunch > 0 {
-		hint = "pass --override-reservation to bypass stale prelaunch holds, or --override-capacity to exceed real running capacity"
-	}
 	return fmt.Sprintf(
-		"%s: repo engineer limit is reached for %s: %d active engineer(s) (%s); %s",
-		e.label, e.repo, e.blocked, strings.Join(parts, ", "), hint,
+		"%s: repo engineer limit is reached for %s: %d active engineer(s) (limit %d); pass --override-capacity to exceed real running capacity",
+		e.label, e.repo, e.working, e.limit,
 	)
 }
 
-func newEngineerRepoWorkingBackpressureError(label, repo string, blocked, running, freshIntents, stalePrelaunch, limit int) error {
-	return &engineerRepoWorkingBackpressureError{
-		label:          label,
-		repo:           repo,
-		blocked:        blocked,
-		running:        running,
-		freshIntents:   freshIntents,
-		stalePrelaunch: stalePrelaunch,
-		limit:          limit,
-	}
+func newEngineerRepoWorkingBackpressureError(label, repo string, working, limit int) error {
+	return &engineerRepoWorkingBackpressureError{label: label, repo: repo, working: working, limit: limit}
 }
 
 // launchRepoEngineerBackpressureCheck refuses engineer launches once the repo
 // hits the carried issue/repo authority's tracker-aware active-engineer limit.
 func (r *Runner) launchRepoEngineerBackpressureCheck(ctx context.Context, label string, ref agentIssueRef, overrideReservation bool) error {
-	snapshot, err := r.repoEngineerBackpressureSnapshot(ctx, ref)
+	count, err := r.activeEngineerLaunchCountForRepo(ctx, ref)
 	if err != nil {
 		return fmt.Errorf("%s: count repo engineer launches for backpressure: %w", label, err)
 	}
 	limit := engineerRepoWorkingLimitDefault()
-	blocked := snapshot.blockedCount(overrideReservation)
-	if blocked < limit {
+	if count < limit {
 		return nil
 	}
-	return newEngineerRepoWorkingBackpressureError(label, ref.repoSlug(), blocked, snapshot.Running, snapshot.freshLaunchIntents(), snapshot.StalePrelaunch, limit)
+	_ = overrideReservation
+	return newEngineerRepoWorkingBackpressureError(label, ref.repoSlug(), count, limit)
 }
 
 // maybeLaunchRepoEngineerBackpressure applies the repo-working gate only when the
@@ -96,71 +72,47 @@ func isRepoIssueScanUnsupported(err error) bool {
 }
 
 // activeEngineerLaunchCountForRepo counts launches with carried issue/repo authority.
-// It falls back to local cache only when the tracker cannot scan repository issues yet.
+// It falls back to local Docker state only when the tracker cannot scan issues yet.
 func (r *Runner) activeEngineerLaunchCountForRepo(ctx context.Context, ref agentIssueRef) (int, error) {
-	snapshot, err := r.repoEngineerBackpressureSnapshot(ctx, ref)
+	repo := strings.TrimSpace(ref.repoSlug())
+	if repo == "" {
+		return 0, fmt.Errorf("backpressure: malformed repo %q", ref.repoSlug())
+	}
+	if count, err := r.activeEngineerLaunchCountFromIssueThread(ctx, ref); err == nil {
+		return count, nil
+	} else if !isRepoIssueScanUnsupported(err) {
+		return 0, err
+	}
+	running, err := r.runningEngineerContainersForRepo(ctx, repo)
 	if err != nil {
 		return 0, err
 	}
-	return snapshot.Active, nil
+	return len(running), nil
 }
 
-type repoEngineerBackpressureSnapshot struct {
-	Active         int
-	Running        int
-	StalePrelaunch int
-}
-
-func (s repoEngineerBackpressureSnapshot) freshLaunchIntents() int {
-	fresh := s.Active - s.Running - s.StalePrelaunch
-	if fresh < 0 {
-		return 0
-	}
-	return fresh
-}
-
-func (s repoEngineerBackpressureSnapshot) blockedCount(overrideReservation bool) int {
-	blocked := s.Active
-	if !overrideReservation {
-		blocked += s.StalePrelaunch
-	}
-	if blocked < 0 {
-		return 0
-	}
-	return blocked
-}
-
-// repoEngineerBackpressureSnapshot counts the repo's current launch pressure and
-// separates visible running engineers from stale prelaunch holds.
-func (r *Runner) repoEngineerBackpressureSnapshot(ctx context.Context, ref agentIssueRef) (repoEngineerBackpressureSnapshot, error) {
-	repo := strings.TrimSpace(ref.repoSlug())
-	if repo == "" {
-		return repoEngineerBackpressureSnapshot{}, fmt.Errorf("backpressure: malformed repo %q", ref.repoSlug())
-	}
-	rows, err := r.agentListRows(ctx)
+// runningEngineerContainersForRepo filters the live Docker engineer list down to
+// one repo when the tracker cannot provide issue-thread authority yet.
+func (r *Runner) runningEngineerContainersForRepo(ctx context.Context, repo string) ([]string, error) {
+	names, err := r.runningEngineerContainers(ctx)
 	if err != nil {
-		return repoEngineerBackpressureSnapshot{}, err
+		return nil, err
 	}
-	active := 0
-	running := 0
-	for _, row := range rows {
-		if row.Repo != repo {
+	repo = strings.TrimSpace(repo)
+	if repo == "" {
+		return nil, nil
+	}
+	now := time.Now().UTC()
+	var out []string
+	for _, name := range names {
+		row, err := r.runningEngineerRow(ctx, now, name)
+		if err != nil {
 			continue
 		}
-		active++
-		if row.Phase == agentLaunchPhaseRunning {
-			running++
+		if strings.TrimSpace(row.Repo) == repo {
+			out = append(out, name)
 		}
 	}
-	stale, err := r.stalePrelaunchReservations(ctx, time.Now().UTC(), map[string]bool{repo: true})
-	if err != nil {
-		return repoEngineerBackpressureSnapshot{}, err
-	}
-	return repoEngineerBackpressureSnapshot{
-		Active:         active,
-		Running:        running,
-		StalePrelaunch: len(stale),
-	}, nil
+	return out, nil
 }
 
 // activeEngineerLaunchCountFromIssueThread reads issue-thread reservations
