@@ -514,6 +514,9 @@ type wardGlobalConfig struct {
 			Skip []string `yaml:"skip"`
 		} `yaml:"review"`
 	} `yaml:"agent"`
+	Container struct {
+		MemoryLimit string `yaml:"memory-limit"`
+	} `yaml:"container"`
 }
 
 // loadDirectorDefaultScope reads director.default-scope from ~/.ward/config.yaml,

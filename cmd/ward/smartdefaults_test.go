@@ -22,6 +22,9 @@ func TestSmartDefaultsBaked(t *testing.T) {
 	if defs.agentImage != containerImageDefault || defs.agentTag != containerImageTagDefault {
 		t.Errorf("baked agent image/tag = %q:%q, want %q:%q", defs.agentImage, defs.agentTag, containerImageDefault, containerImageTagDefault)
 	}
+	if defs.containerMemoryLimit != "2g" {
+		t.Errorf("baked container memory limit = %q, want 2g", defs.containerMemoryLimit)
+	}
 	if defs.engineerContainerLimit != 12 || defs.directorMaxParallel != 10 || defs.directorLimit != 50 || defs.containerReapKeep != 10 {
 		t.Errorf("baked defaults = %+v, want the neutral policy bundle", defs)
 	}
@@ -42,6 +45,7 @@ func TestSmartDefaultsFromBundleSource(t *testing.T) {
     agent-reap-max-cpu "7.5"
     agent-image "ghcr.io/example/ward-agent"
     agent-tag "2026.07"
+    container-memory-limit "3g"
     engineer-container-limit "17"
     engineer-repo-working-limit "3"
     engineer-open-pr-branch-limit "8"
@@ -82,6 +86,9 @@ func TestSmartDefaultsFromBundleSource(t *testing.T) {
 	}
 	if defs.agentImage != "ghcr.io/example/ward-agent" || defs.agentTag != "2026.07" {
 		t.Errorf("bundle agent image/tag = %q:%q", defs.agentImage, defs.agentTag)
+	}
+	if defs.containerMemoryLimit != "3g" {
+		t.Errorf("bundle container memory limit = %q, want 3g", defs.containerMemoryLimit)
 	}
 	if defs.engineerContainerLimit != 17 || defs.engineerRepoWorkingLimit != 3 || defs.directorMaxParallel != 13 || defs.directorLimit != 77 || defs.directorPollInterval != 45*time.Second {
 		t.Errorf("bundle director defaults = %+v", defs)

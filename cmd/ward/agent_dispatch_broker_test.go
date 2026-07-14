@@ -1611,6 +1611,7 @@ func TestRunAgentTaskDirectRoutesThroughBrokerOnReadonlySurface(t *testing.T) {
     agent-reservation-recheck-max "15s"
     agent-reap-idle "1h"
     agent-reap-max-cpu "5.0"
+    container-memory-limit "2g"
     engineer-container-limit "12"
     engineer-repo-working-limit "3"
     engineer-open-pr-branch-limit "6"

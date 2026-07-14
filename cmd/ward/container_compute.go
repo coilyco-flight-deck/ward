@@ -440,6 +440,9 @@ type upPlan struct {
 	// WardFromSource is set when --ward-source mounted a checkout: the
 	// host staging builds ward from it instead of downloading.
 	WardFromSource bool
+	// MemoryLimit and MemorySwap cap the container's cgroup memory ceiling.
+	MemoryLimit string
+	MemorySwap  string
 	// AgentArgs ride after the image as the in-container agent's argv (the
 	// entrypoint's `"$WARD_AGENT" "$@"`); empty for a bare interactive bring-up.
 	AgentArgs []string
@@ -816,6 +819,12 @@ func dockerArgvHead(verb string, p upPlan) []string {
 		argv = append(argv, "--network="+tailnetNetwork())
 	case p.HostNet:
 		argv = append(argv, "--network=host")
+	}
+	if p.MemoryLimit != "" {
+		argv = append(argv, "--memory="+p.MemoryLimit)
+	}
+	if p.MemorySwap != "" {
+		argv = append(argv, "--memory-swap="+p.MemorySwap)
 	}
 	// Map host.docker.internal to the host gateway so the surface's broker dial
 	// works on Linux too; --network=host already resolves it, so skip it there.

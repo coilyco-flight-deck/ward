@@ -167,6 +167,10 @@ func buildUpPlan(c *cli.Command, repo targetRepo, mode containerMode, role, cwd,
 	if _, err := currentContainerTopologyWithError(); err != nil {
 		return upPlan{}, err
 	}
+	memoryLimit, memorySwap, err := resolveContainerMemorySettings()
+	if err != nil {
+		return upPlan{}, err
+	}
 
 	// The director surface opts into read-only binds of the redacted agent-log drain.
 	// It also mounts the Docker socket so it can reap engineers (ward#1001).
@@ -195,6 +199,8 @@ func buildUpPlan(c *cli.Command, repo targetRepo, mode containerMode, role, cwd,
 		WardVersion:       wardVersion,
 		WardVersionSource: wardVersionSource,
 		WardFromSource:    wardSrc != "",
+		MemoryLimit:       memoryLimit,
+		MemorySwap:        memorySwap,
 		AgentArgs:         agentArgs,
 		ExtraRepos:        extra,
 		HostNet:           hostNet,
