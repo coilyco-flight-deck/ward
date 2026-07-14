@@ -40,6 +40,7 @@ Start here if you open `docs/` directly. The tree holds the release-era operatin
 - [agent-dispatch-broker.md](agent-dispatch-broker.md) - brokered launch contract.
 - [agent-pr-workflow.md](agent-pr-workflow.md) - merge, status, runs, rerun.
 - [agent-workflow.md](agent-workflow.md) - landing policy and review.
+- [warded-kernel-boundary.md](warded-kernel-boundary.md) - kernel versus edge extraction boundary.
 
 ## Container
 
