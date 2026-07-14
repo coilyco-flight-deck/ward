@@ -2,6 +2,7 @@ package main
 
 import (
 	"context"
+	"errors"
 	"fmt"
 	"io"
 	"os"
@@ -506,6 +507,9 @@ func prWorkflowForwarded(ctx context.Context, r *Runner, req dispatchBrokerReque
 	req.Token = strings.TrimSpace(os.Getenv(envDispatchBrokerToken))
 	body, err := sendDispatchBrokerListRequest(ctx, addr, req)
 	if err != nil {
+		if errors.Is(err, errDispatchBrokerUnavailable) {
+			return false, nil
+		}
 		return true, err
 	}
 	defer func() { _ = body.Close() }()

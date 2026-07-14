@@ -4,6 +4,7 @@ import (
 	"bytes"
 	"context"
 	"encoding/json"
+	"errors"
 	"fmt"
 	"io"
 	"os"
@@ -107,7 +108,13 @@ func (r *Runner) runAgentLogs(ctx context.Context, c *cli.Command) error {
 	follow := c.Bool("follow")
 
 	if addr := strings.TrimSpace(os.Getenv(envDispatchBrokerAddr)); addr != "" && os.Getenv("WARD_READONLY") == "1" {
-		return r.forwardAgentLogsToHostBroker(ctx, addr, arg, tail, follow)
+		if err := r.forwardAgentLogsToHostBroker(ctx, addr, arg, tail, follow); err != nil {
+			if !errors.Is(err, errDispatchBrokerUnavailable) {
+				return err
+			}
+		} else {
+			return nil
+		}
 	}
 	source, err := r.resolveAgentLogsSource(ctx, arg, tail, follow)
 	if err != nil {

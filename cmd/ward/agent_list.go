@@ -3,6 +3,7 @@ package main
 import (
 	"context"
 	"encoding/json"
+	"errors"
 	"fmt"
 	"io"
 	"net"
@@ -122,7 +123,13 @@ func agentListCommand() *cli.Command {
 // the director broker when the surface has one.
 func (r *Runner) runAgentList(ctx context.Context, c *cli.Command) error {
 	if addr := strings.TrimSpace(os.Getenv(envDispatchBrokerAddr)); addr != "" && os.Getenv("WARD_READONLY") == "1" {
-		return r.forwardAgentListToHostBroker(ctx, addr, c.Bool("json"))
+		if err := r.forwardAgentListToHostBroker(ctx, addr, c.Bool("json")); err != nil {
+			if !errors.Is(err, errDispatchBrokerUnavailable) {
+				return err
+			}
+		} else {
+			return nil
+		}
 	}
 	body, err := r.renderAgentList(ctx, c.Bool("json"))
 	if err != nil {
@@ -160,9 +167,7 @@ func sendDispatchBrokerListRequest(ctx context.Context, addr string, req dispatc
 	var d net.Dialer
 	conn, err := d.DialContext(ctx, "tcp", addr)
 	if err != nil {
-		return nil, fmt.Errorf("%w: the host dispatch broker did not answer at %s "+
-			"(WARD_DISPATCH_BROKER_ADDR, TCP over the docker gateway - see ward#382): %w",
-			errDispatchBrokerUnavailable, addr, err)
+		return nil, dispatchBrokerUnavailableAt(addr)
 	}
 	if err := json.NewEncoder(conn).Encode(req); err != nil {
 		_ = conn.Close()
