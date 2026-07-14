@@ -50,16 +50,24 @@ Each repo declares its verbs (and an optional `security:` policy) in [`.ward/war
 
 ## Install
 
-Install from the centralized flight-deck tap:
+Install from the release channel you prefer:
 
-```
-brew tap coilyco-flight-deck/tap https://forgejo.coilysiren.me/coilyco-flight-deck/homebrew-tap
-brew install coilyco-flight-deck/tap/ward
-```
+- **Homebrew, on macOS and Linux.**
+  ```bash
+  brew tap coilyco-flight-deck/tap https://forgejo.coilysiren.me/coilyco-flight-deck/homebrew-tap
+  brew install coilyco-flight-deck/tap/ward
+  ```
+- **Scoop, on Windows.**
+  ```powershell
+  scoop bucket add coilyco-flight-deck https://forgejo.coilysiren.me/coilyco-flight-deck/scoop-bucket
+  scoop install ward
+  ```
+- **From source.**
+  `make workspace` is the local path for ward itself. It resolves a sibling `cli-guard` checkout through `go.work`; see [docs/workspace.md](docs/workspace.md).
 
-The explicit-URL form is required because the tap lives on forgejo, not github.com. The formula installs `ward` (stamped with the release tag) plus the `warded` symlink, and nothing else. The `ward-kdl` authoring binary is **not** installed - its surfaces are already embedded in `ward`. Most adopters stop at `.ward/ward.yaml`; spec authors who need `ward-kdl` build it from a ward checkout - see [ward-kdl-authoring.md](docs/ward-kdl-authoring.md).
+The explicit-URL form is required because the tap lives on forgejo, not github.com. The Homebrew formula installs `ward` (stamped with the release tag) plus the `warded` symlink, and nothing else. The Scoop bucket installs `ward` on Windows. The `ward-kdl` authoring binary is **not** installed - its surfaces are already embedded in `ward`. Most adopters stop at `.ward/ward.yaml`; spec authors who need `ward-kdl` build it from a ward checkout - see [ward-kdl-authoring.md](docs/ward-kdl-authoring.md).
 
-**Building from source.** ward's `go.mod` pins [cli-guard][cli-guard] from `forgejo.coilysiren.me/coilyco-flight-deck/cli-guard`, so a plain `go build` needs that Forgejo host reachable and the repo public. For local development, `make workspace` resolves cli-guard from a sibling checkout through a gitignored `go.work`; see [docs/workspace.md](docs/workspace.md).
+**Building from source.** ward's `go.mod` pins [cli-guard][cli-guard] from `forgejo.coilysiren.me/coilyco-flight-deck/cli-guard`, so a plain `go build` needs that Forgejo host reachable and the repo public.
 
 Each release ships the full `ward-{darwin,linux}-{amd64,arm64}` matrix + `SHA256SUMS`. Most install via Homebrew (above); a GitHub arrival grabs a checksummed binary ([release-binaries.md](docs/release-binaries.md)).
 
