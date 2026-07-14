@@ -40,10 +40,10 @@ jobs:
       - name: golangci-lint
         timeout-minutes: 5
         env:
-          TMPDIR: /tmp/ward-tmp
-          GOTMPDIR: /tmp/ward-go-tmp
-          GOCACHE: /tmp/ward-go-build
-          GOMODCACHE: /tmp/ward-go-mod
+          TMPDIR: ${{ runner.temp }}/ward-tmp
+          GOTMPDIR: ${{ runner.temp }}/ward-go-tmp
+          GOCACHE: ${{ runner.temp }}/ward-go-build
+          GOMODCACHE: ${{ runner.temp }}/ward-go-mod
         run: golangci-lint run ./...
 
   release:
