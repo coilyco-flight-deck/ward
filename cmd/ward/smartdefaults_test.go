@@ -25,7 +25,7 @@ func TestSmartDefaultsBaked(t *testing.T) {
 	if defs.containerMemoryLimit != "2g" {
 		t.Errorf("baked container memory limit = %q, want 2g", defs.containerMemoryLimit)
 	}
-	if defs.engineerContainerLimit != 12 || defs.directorMaxParallel != 10 || defs.directorLimit != 50 || defs.containerReapKeep != 10 {
+	if defs.engineerContainerLimit != 12 || defs.engineerOpenPRBranchLimit != 6 || defs.directorMaxParallel != 10 || defs.directorLimit != 50 || defs.containerReapKeep != 10 {
 		t.Errorf("baked defaults = %+v, want the neutral policy bundle", defs)
 	}
 	if len(defs.trustedOwners) == 0 || defs.trustedOwners[0] != "coilysiren" {

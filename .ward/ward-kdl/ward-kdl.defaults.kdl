@@ -9,7 +9,7 @@ smart-defaults {
     agent-tag latest
     container-memory-limit "2g"
     engineer-container-limit "10"
-    engineer-open-pr-branch-limit "5"
+    engineer-open-pr-branch-limit "6"
     director-max-parallel "20"
     director-limit "50"
     director-poll-interval "30s"
