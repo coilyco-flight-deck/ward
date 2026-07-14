@@ -1189,6 +1189,116 @@ func TestSendDispatchBrokerLaunchRequestWaitsForResponse(t *testing.T) {
 	}
 }
 
+// TestSendDispatchBrokerLaunchRequestReportsDroppedResponse keeps a dropped launch
+// response structured and proves the broker listener still answers the next request.
+func TestSendDispatchBrokerLaunchRequestReportsDroppedResponse(t *testing.T) {
+	ln, err := net.Listen("tcp", "127.0.0.1:0")
+	if err != nil {
+		t.Fatalf("listen broker: %v", err)
+	}
+	defer ln.Close()
+
+	firstSeen := make(chan struct{})
+	secondSeen := make(chan struct{})
+	go func() {
+		conn, err := ln.Accept()
+		if err != nil {
+			return
+		}
+		func() {
+			defer conn.Close()
+			var req dispatchBrokerRequest
+			if err := json.NewDecoder(conn).Decode(&req); err != nil {
+				return
+			}
+			close(firstSeen)
+		}()
+		conn, err = ln.Accept()
+		if err != nil {
+			return
+		}
+		func() {
+			defer conn.Close()
+			var req dispatchBrokerRequest
+			if err := json.NewDecoder(conn).Decode(&req); err != nil {
+				return
+			}
+			close(secondSeen)
+			_ = json.NewEncoder(conn).Encode(dispatchBrokerResponse{OK: true, LogPath: "/tmp/ward/dispatch.log"})
+		}()
+	}()
+
+	ctx, cancel := context.WithTimeout(t.Context(), time.Second)
+	defer cancel()
+	firstDone := make(chan struct {
+		logPath string
+		err     error
+	}, 1)
+	go func() {
+		logPath, err := sendDispatchBrokerLaunchRequest(ctx, ln.Addr().String(), dispatchBrokerRequest{
+			Role:      "engineer",
+			Argv:      []string{"engineer", "coilyco-flight-deck/ward#378", "--harness", "codex"},
+			Requester: "director-codex-host",
+			Token:     "nonce-eof",
+		})
+		firstDone <- struct {
+			logPath string
+			err     error
+		}{logPath: logPath, err: err}
+	}()
+
+	select {
+	case <-firstSeen:
+	case <-time.After(2 * time.Second):
+		t.Fatal("broker never received the dropped-response request")
+	}
+	select {
+	case got := <-firstDone:
+		if got.err == nil {
+			t.Fatal("dropped-response launch unexpectedly succeeded")
+		}
+		if !strings.Contains(got.err.Error(), "host-side command exited before writing a response") {
+			t.Fatalf("error = %v, want the structured dropped-response message", got.err)
+		}
+	case <-time.After(2 * time.Second):
+		t.Fatal("dropped-response launch never returned")
+	}
+
+	secondDone := make(chan struct {
+		logPath string
+		err     error
+	}, 1)
+	go func() {
+		logPath, err := sendDispatchBrokerLaunchRequest(ctx, ln.Addr().String(), dispatchBrokerRequest{
+			Role:      "advisor",
+			Argv:      []string{"advisor", "coilyco-flight-deck/ward#379", "--harness", "codex"},
+			Requester: "director-codex-host",
+			Token:     "nonce-eof",
+		})
+		secondDone <- struct {
+			logPath string
+			err     error
+		}{logPath: logPath, err: err}
+	}()
+
+	select {
+	case <-secondSeen:
+	case <-time.After(2 * time.Second):
+		t.Fatal("broker did not answer a follow-up request after the dropped response")
+	}
+	select {
+	case got := <-secondDone:
+		if got.err != nil {
+			t.Fatalf("follow-up launch request: %v", got.err)
+		}
+		if got.logPath != "/tmp/ward/dispatch.log" {
+			t.Fatalf("follow-up log path = %q, want the broker response", got.logPath)
+		}
+	case <-time.After(2 * time.Second):
+		t.Fatal("follow-up launch never returned after the broker responded")
+	}
+}
+
 func TestDispatchBrokerEnvIsPlanLocal(t *testing.T) {
 	p := sampleUpPlan()
 	if _, ok := p.wardEnv()[envDispatchBrokerAddr]; ok {
