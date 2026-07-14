@@ -17,6 +17,7 @@ import (
 	"slices"
 	"sort"
 	"strings"
+	"sync/atomic"
 	"testing"
 	"time"
 
@@ -695,7 +696,9 @@ func TestForwardAgentDispatchToHostBrokerSendsCanonicalRequest(t *testing.T) {
 	defer ln.Close()
 
 	gotReq := make(chan dispatchBrokerRequest, 1)
+	var accepted int32
 	serveDispatchBrokerRequests(t, ln, func(conn net.Conn, req dispatchBrokerRequest) {
+		atomic.AddInt32(&accepted, 1)
 		gotReq <- req
 		_ = json.NewEncoder(conn).Encode(dispatchBrokerResponse{OK: true})
 	})
@@ -725,6 +728,9 @@ func TestForwardAgentDispatchToHostBrokerSendsCanonicalRequest(t *testing.T) {
 	want := []string{"engineer", "coilyco-flight-deck/ward#378", "--harness", "claude", "--workflow", "merge-remote-main", "--details", "repair after PR #357", "--skip-preflight", "--skip-review"}
 	if !reflect.DeepEqual(req.Argv, want) {
 		t.Errorf("forwarded argv = %v, want %v", req.Argv, want)
+	}
+	if got := atomic.LoadInt32(&accepted); got != 1 {
+		t.Fatalf("broker accepted %d connections, want 1", got)
 	}
 }
 
@@ -915,6 +921,39 @@ func TestPRWorkflowForwardedSkipsUnreachableBroker(t *testing.T) {
 	}
 	if handled {
 		t.Fatal("PR workflow forwarded despite an unreachable broker")
+	}
+}
+
+func TestPRWorkflowForwardedUsesOneBrokerRequest(t *testing.T) {
+	ln, err := net.Listen("tcp", "127.0.0.1:0")
+	if err != nil {
+		t.Fatalf("listen broker: %v", err)
+	}
+	defer ln.Close()
+
+	var accepted int32
+	serveDispatchBrokerRequests(t, ln, func(conn net.Conn, req dispatchBrokerRequest) {
+		atomic.AddInt32(&accepted, 1)
+		_ = req
+		_ = json.NewEncoder(conn).Encode(dispatchBrokerResponse{OK: true})
+	})
+
+	t.Setenv(envDispatchBrokerAddr, ln.Addr().String())
+	t.Setenv(envDispatchBrokerToken, "nonce-123")
+	t.Setenv("WARD_READONLY", "1")
+	t.Setenv("WARD_CONTAINER_NAME", "director-codex-host")
+	handled, err := prWorkflowForwarded(t.Context(), &Runner{Runner: &shell.Runner{Stdout: io.Discard}}, dispatchBrokerRequest{
+		Action: dispatchActionPRStatus,
+		Target: "coilyco-flight-deck/ward#7",
+	})
+	if err != nil {
+		t.Fatalf("prWorkflowForwarded: %v", err)
+	}
+	if !handled {
+		t.Fatal("PR workflow did not forward despite broker env")
+	}
+	if got := atomic.LoadInt32(&accepted); got != 1 {
+		t.Fatalf("broker accepted %d connections, want 1", got)
 	}
 }
 
@@ -1510,7 +1549,7 @@ func TestCommentDispatchLaunchErrorReportsCapacityLocally(t *testing.T) {
 		r.commentDispatchLaunchError(context.Background(), req, "/tmp/ward/dispatch.log", capacityErr)
 	})
 	for _, want := range []string{
-		"ward dispatch broker: engineer pool full, 10/10, not dispatched",
+		"ward dispatch broker: engineer pool full, 10/10 active launches, not dispatched",
 	} {
 		if !strings.Contains(stderr, want) {
 			t.Fatalf("capacity stderr missing %q: %q", want, stderr)

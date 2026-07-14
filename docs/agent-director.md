@@ -35,6 +35,8 @@ The director surface is the read-only control plane for runs.
 - launch from any working directory when the repo scope is explicit or
   configured.
 - sweep the merge-ready branch once CI is green.
+- update the oldest merge-ready PR branch when open PR pressure is over cap and
+  the branch still conflicts with main.
 
 The director's machine-readable issue comments use `WARDED_WORKFLOW` as the
 canonical first line. Legacy `WARD-*` headers are still parsed on old threads,

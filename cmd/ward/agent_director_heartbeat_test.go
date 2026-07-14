@@ -107,6 +107,8 @@ type fakeDirector struct {
 	summaryCalls  int
 	sleeps        int
 	mergeCalls    int
+	burnDownCalls int
+	burnDownFn    func() map[string]bool
 	// offerFn drives the ward#409 slots-full on-demand surface offer; nil defaults to the
 	// window elapsing with no keypress (false), the loop then re-polls without surfacing.
 	offerFn    func() (bool, error)
@@ -146,6 +148,14 @@ func (f *fakeDirector) poll(context.Context) {
 func (f *fakeDirector) refresh(context.Context) {}
 
 func (f *fakeDirector) mergeEligiblePullRequests(context.Context) { f.mergeCalls++ }
+
+func (f *fakeDirector) burnDownOpenPRPressure(context.Context) map[string]bool {
+	f.burnDownCalls++
+	if f.burnDownFn != nil {
+		return f.burnDownFn()
+	}
+	return nil
+}
 
 func (f *fakeDirector) entries() []*backlogEntry { return f.list }
 
@@ -188,6 +198,42 @@ func (f *fakeDirector) offerSurface(context.Context, time.Duration) (bool, error
 func (f *fakeDirector) reportDrained() error          { f.drainedCalls++; return nil }
 func (f *fakeDirector) reportMaxCycles(int, int, int) { f.maxCycleCalls++ }
 func (f *fakeDirector) summary() error                { f.summaryCalls++; return nil }
+
+func TestDirectorHeartbeatSkipsBlockedRepoPicks(t *testing.T) {
+	blocked := &backlogEntry{Num: 5, Title: "blocked", Tier: "P0", Lane: "headless", State: "queued", repo: "coilyco-flight-deck/blocked"}
+	free := &backlogEntry{Num: 6, Title: "free", Tier: "P1", Lane: "headless", State: "queued", repo: "coilyco-flight-deck/free"}
+	var gotPicks []int
+	f := &fakeDirector{
+		list: []*backlogEntry{blocked, free},
+		decideFn: func(picks []*backlogEntry, _ int) []*backlogEntry {
+			for _, p := range picks {
+				gotPicks = append(gotPicks, p.Num)
+			}
+			return picks
+		},
+		burnDownFn: func() map[string]bool {
+			return map[string]bool{"coilyco-flight-deck/blocked": true}
+		},
+	}
+	cfg := backlogConfig{maxParallel: 2, pollInterval: time.Millisecond, triage: true}
+
+	stop, err := directorHeartbeatTick(context.Background(), cfg, f, 1)
+	if err != nil {
+		t.Fatalf("heartbeat tick returned error: %v", err)
+	}
+	if stop {
+		t.Fatal("heartbeat tick stopped early; want it to keep running")
+	}
+	if !reflect.DeepEqual(gotPicks, []int{6}) {
+		t.Fatalf("picked queued issues = %v, want only the unblocked repo", gotPicks)
+	}
+	if !reflect.DeepEqual(f.dispatched, []int{6}) {
+		t.Fatalf("dispatched = %v, want only the unblocked repo", f.dispatched)
+	}
+	if f.burnDownCalls != 1 {
+		t.Fatalf("burn-down calls = %d, want 1", f.burnDownCalls)
+	}
+}
 
 // TestRunDirectorLoopSmoke is the acceptance smoke: one actionable issue dispatches,
 // reconciles its WARD-OUTCOME next tick, then drains and surfaces (does not exit).

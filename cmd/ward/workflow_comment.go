@@ -15,27 +15,27 @@ const (
 )
 
 var wardedWorkflowCommentVariants = []string{
-	"reservation-held",
-	"reservation-released",
-	"dispatch-failed",
-	"dispatch-deferred",
-	"done",
-	"submitted",
-	"merge-ready",
-	"blocked",
-	"failed",
-	"review-pass",
-	"review-block",
-	"review-advisory",
-	"qa-pass",
-	"qa-failed",
-	"qa-blocked",
-	"routed",
-	"route-unclear",
-	"pre-flight-no-go",
-	"pre-flight-wrong-repo",
-	"reopened",
-	"triage",
+	"reservation-held",      // The run has a reservation and the container is still waiting to start.
+	"reservation-released",  // The reservation is gone and the launch slot is open again.
+	"dispatch-failed",       // The agent launch failed before the run could get underway.
+	"dispatch-deferred",     // The launch was intentionally paused instead of starting now.
+	"done",                  // The work finished and the run can be treated as complete.
+	"submitted",             // The work has been handed off as a submitted pull request.
+	"merge-ready",           // The change is ready to merge once the gate agrees.
+	"blocked",               // The run hit a blocker and cannot move forward yet.
+	"failed",                // The run ended in failure instead of landing cleanly.
+	"review-pass",           // Review checked out and the work is acceptable to proceed.
+	"review-block",          // Review found a problem that needs attention before moving on.
+	"review-advisory",       // Review shared guidance without blocking the run.
+	"qa-pass",               // QA signed off and the result looks good.
+	"qa-failed",             // QA found a failure that needs to be fixed.
+	"qa-blocked",            // QA cannot finish because something upstream is in the way.
+	"routed",                // The issue was routed to the right place for the next step.
+	"route-unclear",         // The right route was unclear and needs a human decision.
+	"pre-flight-no-go",      // Preflight said no and the launch should not continue.
+	"pre-flight-wrong-repo", // Preflight found the issue is pointed at the wrong repository.
+	"reopened",              // The issue came back open after being closed or settled.
+	"triage",                // The issue is under triage while the next action is sorted out.
 }
 
 var workflowCommentLegacyNonOutcomeVariants = map[string]struct{}{
@@ -96,6 +96,7 @@ var workflowCommentHeaderParsers = []workflowCommentHeaderParser{
 	parseLegacyTriageWorkflowCommentHeader,
 }
 
+// workflowCommentVisible renders the canonical WARDED_WORKFLOW header.
 func workflowCommentVisible(variant string, detail ...string) string {
 	visible := wardedWorkflowMarker + " " + strings.TrimSpace(variant)
 	if len(detail) > 0 {
@@ -177,15 +178,18 @@ func parseLegacyTriageWorkflowCommentHeader(s string) (workflowCommentHeader, bo
 	return workflowCommentHeader{Variant: "triage", Detail: rest, Legacy: true}, true
 }
 
+// workflowOutcomeVisible renders the terminal workflow status as the visible header line.
 func workflowOutcomeVisible(status string) string {
 	status = normalizeBacklogOutcomeStatus(status)
 	return workflowCommentVisible(status, outcomeStatusEmoji(status))
 }
 
+// workflowOutcomeVisibleURL renders a pull request URL as the visible header line.
 func workflowOutcomeVisibleURL(prURL string) string {
 	return workflowCommentVisible(strings.TrimSpace(prURL))
 }
 
+// workflowOutcomeVisibleResult picks the visible header line for a backlog outcome.
 func workflowOutcomeVisibleResult(outcome backlogOutcome) string {
 	if strings.EqualFold(strings.TrimSpace(outcome.Status), "submitted") && strings.TrimSpace(outcome.PRURL) != "" {
 		return workflowOutcomeVisibleURL(outcome.PRURL)
@@ -212,11 +216,18 @@ func workflowCommentFieldValue(body, prefix string) (string, bool) {
 	return "", false
 }
 
+// workflowReservationHeldVisible marks the reservation as held.
 func workflowReservationHeldVisible() string { return workflowCommentVisible("reservation-held") }
+
+// workflowReservationReleasedVisible marks the reservation as released.
 func workflowReservationReleasedVisible() string {
 	return workflowCommentVisible("reservation-released")
 }
+
+// workflowDispatchDeferredVisible marks dispatch as deferred.
 func workflowDispatchDeferredVisible() string { return workflowCommentVisible("dispatch-deferred") }
+
+// workflowReviewVisible renders the review outcome status.
 func workflowReviewVisible(status string) string {
 	switch strings.ToLower(strings.TrimSpace(status)) {
 	case "done", "pass", "passed":
@@ -229,12 +240,18 @@ func workflowReviewVisible(status string) string {
 		return workflowCommentVisible("review-" + strings.TrimSpace(status))
 	}
 }
+
+// workflowQAVisible renders the QA verdict status with its outcome emoji.
 func workflowQAVisible(status string, emoji string) string {
 	return workflowCommentVisible("qa-"+strings.TrimSpace(status), emoji)
 }
+
+// workflowStatusVisible renders a generic workflow status with an optional detail.
 func workflowStatusVisible(status string, detail ...string) string {
 	return workflowCommentVisible(strings.TrimSpace(status), detail...)
 }
+
+// workflowReapVisible renders the reap status as a visible workflow header.
 func workflowReapVisible(status string) string {
 	return workflowCommentVisible(strings.TrimSpace(status))
 }

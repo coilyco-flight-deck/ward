@@ -412,6 +412,45 @@ func TestListOpenPullRequestsKeepsTypedPaginationWhenGenericIssuesFillFirstPage(
 	}
 }
 
+func TestUpdatePullRequestBranchRequestShape(t *testing.T) {
+	var gotToken, gotMethod, gotPath, gotQuery string
+	srv := httptest.NewServer(http.HandlerFunc(func(w http.ResponseWriter, r *http.Request) {
+		switch r.URL.Path {
+		case "/api/v1/repos/coilyco-flight-deck/ward":
+			_, _ = w.Write([]byte(`{"allow_rebase_update":true,"default_update_style":"rebase"}`))
+		case "/api/v1/repos/coilyco-flight-deck/ward/pulls/729/update":
+			gotToken = r.Header.Get("Authorization")
+			gotMethod = r.Method
+			gotPath = r.URL.Path
+			gotQuery = r.URL.RawQuery
+			if r.ContentLength != 0 {
+				t.Fatalf("content length = %d, want empty body", r.ContentLength)
+			}
+			w.WriteHeader(http.StatusAccepted)
+		default:
+			t.Fatalf("unexpected path: %s?%s", r.URL.Path, r.URL.RawQuery)
+		}
+	}))
+	defer srv.Close()
+
+	cl := &forgejoClient{baseURL: srv.URL, token: "secret"}
+	if err := cl.UpdatePullRequestBranch(context.Background(), "coilyco-flight-deck", "ward", 729, ""); err != nil {
+		t.Fatalf("UpdatePullRequestBranch: %v", err)
+	}
+	if gotToken != "token secret" {
+		t.Fatalf("auth header = %q, want token secret", gotToken)
+	}
+	if gotMethod != http.MethodPost {
+		t.Fatalf("method = %q, want POST", gotMethod)
+	}
+	if gotPath != "/api/v1/repos/coilyco-flight-deck/ward/pulls/729/update" {
+		t.Fatalf("path = %q, want update endpoint", gotPath)
+	}
+	if gotQuery != "style=rebase" {
+		t.Fatalf("query = %q, want style=rebase", gotQuery)
+	}
+}
+
 func TestFetchIssueIgnoresBadConfigRef(t *testing.T) {
 	t.Setenv(wardConfigRefEnv, "file:///definitely/not/a/ward-bundle")
 	orig := forgejoBaseURL

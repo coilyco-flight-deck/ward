@@ -2,11 +2,13 @@ package main
 
 import (
 	"context"
+	"errors"
 	"fmt"
 	"io"
 	"os"
 	"strconv"
 	"strings"
+	"time"
 
 	"forgejo.coilysiren.me/coilyco-flight-deck/cli-guard/cli/verb"
 	"github.com/urfave/cli/v3"
@@ -177,17 +179,140 @@ func prWorkflowMergeExec(ctx context.Context, cl *forgejoClient, role, owner, re
 	if !ok {
 		return "", fmt.Errorf("pr merge: %s/%s#%d: %s", owner, repo, index, reason)
 	}
-	if err := cl.MergePullRequestWithHeadAndStyle(ctx, owner, repo, index, head, mergeStyle); err != nil {
+	settledHead, err := mergePullRequestWithHeadAndStyleSettled(ctx, cl, owner, repo, index, head, mergeStyle, &status)
+	if err != nil {
 		return "", fmt.Errorf("pr merge: %s/%s#%d: %w", owner, repo, index, err)
 	}
-	confirm := "merged-state check: merged"
-	if merged, merr := cl.PullRequestMerged(ctx, owner, repo, index); merr != nil {
-		confirm = "merged-state check unavailable: " + firstLine(merr.Error())
-	} else if !merged {
-		confirm = "merged-state check: NOT merged yet - verify on the forge"
+	head = settledHead
+	if err := requirePullRequestMerged(ctx, cl, owner, repo, index, head); err != nil {
+		return "", fmt.Errorf("pr merge: %s/%s#%d: %w", owner, repo, index, err)
 	}
 	return fmt.Sprintf("merged %s/%s#%d (role %s, workflow %s, head %s, status %s); %s\n",
-		owner, repo, index, role, wf.orDefault(), head, status.Status.summary(), confirm), nil
+		owner, repo, index, role, wf.orDefault(), head, status.Status.summary(), "merged-state check: merged"), nil
+}
+
+const prWorkflowMergeSettleAttempts = 3
+
+var prWorkflowMergeSettleDelay = 150 * time.Millisecond
+
+func mergePullRequestWithHeadAndStyleSettled(ctx context.Context, cl *forgejoClient, owner, repo string, index int, head, mergeStyle string, status *directorMergeStatusCheck) (string, error) {
+	var lastErr error
+	for attempt := 1; attempt <= prWorkflowMergeSettleAttempts; attempt++ {
+		err := cl.MergePullRequestWithHeadAndStyle(ctx, owner, repo, index, head, mergeStyle)
+		if err == nil {
+			return head, nil
+		}
+		lastErr = err
+		if !forgejoMergeNeedsSettle(err) {
+			return "", err
+		}
+		if attempt == prWorkflowMergeSettleAttempts {
+			break
+		}
+		time.Sleep(time.Duration(attempt) * prWorkflowMergeSettleDelay)
+		pr, err := cl.GetPullRequest(ctx, owner, repo, index)
+		if err != nil {
+			return "", fmt.Errorf("forgejo merge stayed on 405 after %d settle attempt(s), and the PR refresh failed: %w", attempt, err)
+		}
+		if strings.ToLower(strings.TrimSpace(pr.State)) != "open" {
+			return "", fmt.Errorf("forgejo merge stayed on 405 after %d settle attempt(s), but %s/%s#%d is now %s", attempt, owner, repo, index, pr.State)
+		}
+		head = pr.HeadSHA()
+		if head == "" {
+			return "", fmt.Errorf("forgejo merge stayed on 405 after %d settle attempt(s), and %s/%s#%d no longer exposed a head SHA", attempt, owner, repo, index)
+		}
+		nextStatus, reason, ok := directorMergeStatusGate(ctx, cl, owner, repo, pr.Base.Ref, head)
+		if !ok {
+			return "", fmt.Errorf("forgejo merge stayed on 405 after %d settle attempt(s), and the PR is no longer eligible: %s", attempt, reason)
+		}
+		*status = nextStatus
+	}
+	if status != nil {
+		return "", fmt.Errorf("forgejo merge stayed on 405 after %d settle attempt(s) while the PR remained green (%s); retry later or check the Forgejo merge queue: %w", prWorkflowMergeSettleAttempts, status.Status.summary(), lastErr)
+	}
+	return "", fmt.Errorf("forgejo merge stayed on 405 after %d settle attempt(s); retry later or check the Forgejo merge queue: %w", prWorkflowMergeSettleAttempts, lastErr)
+}
+
+func forgejoMergeNeedsSettle(err error) bool {
+	if err == nil {
+		return false
+	}
+	msg := strings.ToLower(err.Error())
+	return strings.Contains(msg, "forgejo merge pr returned 405") && strings.Contains(msg, "please try again later")
+}
+
+type prMergePostconditionError struct {
+	Owner   string
+	Repo    string
+	Index   int
+	State   string
+	HeadSHA string
+	Merged  bool
+	Cause   error
+}
+
+func (e *prMergePostconditionError) Error() string {
+	state := strings.ToLower(strings.TrimSpace(e.State))
+	if state == "" {
+		state = "unknown"
+	}
+	head := strings.TrimSpace(e.HeadSHA)
+	if head == "" {
+		head = "<unknown>"
+	}
+	base := fmt.Sprintf("merge postcondition failed for %s/%s#%d: state %s, merged=%t, head %s",
+		e.Owner, e.Repo, e.Index, state, e.Merged, head)
+	if e.Cause != nil {
+		return base + ": " + firstLine(e.Cause.Error())
+	}
+	return base
+}
+
+func (e *prMergePostconditionError) Unwrap() error { return e.Cause }
+
+func (e *prMergePostconditionError) closedButUnmerged() bool {
+	return strings.EqualFold(strings.TrimSpace(e.State), "closed") && !e.Merged && e.Cause == nil
+}
+
+func requirePullRequestMerged(ctx context.Context, cl *forgejoClient, owner, repo string, index int, expectedHead string) error {
+	merged, err := cl.PullRequestMerged(ctx, owner, repo, index)
+	if err != nil {
+		return &prMergePostconditionError{
+			Owner:   owner,
+			Repo:    repo,
+			Index:   index,
+			State:   "unknown",
+			HeadSHA: expectedHead,
+			Cause:   err,
+		}
+	}
+	if merged {
+		return nil
+	}
+	pr, err := cl.GetPullRequest(ctx, owner, repo, index)
+	if err != nil {
+		return &prMergePostconditionError{
+			Owner:   owner,
+			Repo:    repo,
+			Index:   index,
+			State:   "unknown",
+			HeadSHA: expectedHead,
+			Merged:  false,
+			Cause:   err,
+		}
+	}
+	head := strings.TrimSpace(pr.HeadSHA())
+	if head == "" {
+		head = strings.TrimSpace(expectedHead)
+	}
+	return &prMergePostconditionError{
+		Owner:   owner,
+		Repo:    repo,
+		Index:   index,
+		State:   strings.TrimSpace(pr.State),
+		HeadSHA: head,
+		Merged:  false,
+	}
 }
 
 // prWorkflowRunsReport renders a repo's Actions runs with per-run conclusions -
@@ -382,6 +507,9 @@ func prWorkflowForwarded(ctx context.Context, r *Runner, req dispatchBrokerReque
 	req.Token = strings.TrimSpace(os.Getenv(envDispatchBrokerToken))
 	body, err := sendDispatchBrokerListRequest(ctx, addr, req)
 	if err != nil {
+		if errors.Is(err, errDispatchBrokerUnavailable) {
+			return false, nil
+		}
 		return true, err
 	}
 	defer func() { _ = body.Close() }()

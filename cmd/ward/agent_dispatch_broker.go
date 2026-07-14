@@ -1150,6 +1150,9 @@ func (r *Runner) maybeForwardAgentDispatchToHostBroker(ctx context.Context, c *c
 	}
 	if role == "advisor" {
 		if err := fireAndForgetDispatchBrokerRequest(ctx, addr, req); err != nil {
+			if errors.Is(err, errDispatchBrokerUnavailable) {
+				return false, nil
+			}
 			return true, err
 		}
 		displayArgv := redactDispatchBrokerArgv(argv)
@@ -1158,6 +1161,9 @@ func (r *Runner) maybeForwardAgentDispatchToHostBroker(ctx context.Context, c *c
 	}
 	logPath, err := sendDispatchBrokerRequest(ctx, addr, req)
 	if err != nil {
+		if errors.Is(err, errDispatchBrokerUnavailable) {
+			return false, nil
+		}
 		if logPath != "" {
 			return true, fmt.Errorf("%w (dispatch log: %s)", err, logPath)
 		}
@@ -1172,9 +1178,7 @@ func fireAndForgetDispatchBrokerRequest(ctx context.Context, addr string, req di
 	var d net.Dialer
 	conn, err := d.DialContext(ctx, "tcp", addr)
 	if err != nil {
-		return fmt.Errorf("%w: the host dispatch broker did not answer at %s "+
-			"(WARD_DISPATCH_BROKER_ADDR, TCP over the docker gateway - see ward#382): %w",
-			errDispatchBrokerUnavailable, addr, err)
+		return dispatchBrokerUnavailableAt(addr)
 	}
 	defer func() { _ = conn.Close() }()
 	if err := json.NewEncoder(conn).Encode(req); err != nil {
@@ -1201,6 +1205,9 @@ func (r *Runner) forwardFreeformEngineerLaunchToHostBroker(ctx context.Context, 
 	}
 	logPath, err := sendDispatchBrokerLaunchRequest(ctx, addr, req)
 	if err != nil {
+		if errors.Is(err, errDispatchBrokerUnavailable) {
+			return false, nil
+		}
 		if logPath != "" {
 			return true, fmt.Errorf("%w (dispatch log: %s)", err, logPath)
 		}
@@ -1380,11 +1387,7 @@ func sendDispatchBrokerRequest(ctx context.Context, addr string, req dispatchBro
 	var d net.Dialer
 	conn, err := d.DialContext(ctx, "tcp", addr)
 	if err != nil {
-		// Papercut #1 (ward#382): fail loud - name the transport + addr so an
-		// unreachable host dispatch broker never reads as a bare dial error.
-		return "", fmt.Errorf("%w: the host dispatch broker did not answer at %s "+
-			"(WARD_DISPATCH_BROKER_ADDR, TCP over the docker gateway - see ward#382): %w",
-			errDispatchBrokerUnavailable, addr, err)
+		return "", dispatchBrokerUnavailableAt(addr)
 	}
 	defer func() { _ = conn.Close() }()
 	if err := json.NewEncoder(conn).Encode(req); err != nil {
@@ -1411,9 +1414,7 @@ func sendDispatchBrokerLaunchRequest(ctx context.Context, addr string, req dispa
 	var d net.Dialer
 	conn, err := d.DialContext(ctx, "tcp", addr)
 	if err != nil {
-		return "", fmt.Errorf("%w: the host dispatch broker did not answer at %s "+
-			"(WARD_DISPATCH_BROKER_ADDR, TCP over the docker gateway - see ward#382): %w",
-			errDispatchBrokerUnavailable, addr, err)
+		return "", dispatchBrokerUnavailableAt(addr)
 	}
 	if err := json.NewEncoder(conn).Encode(req); err != nil {
 		_ = conn.Close()
@@ -1459,9 +1460,7 @@ func sendDispatchBrokerLogsRequest(ctx context.Context, addr string, req dispatc
 	var d net.Dialer
 	conn, err := d.DialContext(ctx, "tcp", addr)
 	if err != nil {
-		return "", nil, fmt.Errorf("%w: the host dispatch broker did not answer at %s "+
-			"(WARD_DISPATCH_BROKER_ADDR, TCP over the docker gateway - see ward#382): %w",
-			errDispatchBrokerUnavailable, addr, err)
+		return "", nil, dispatchBrokerUnavailableAt(addr)
 	}
 	if err := json.NewEncoder(conn).Encode(req); err != nil {
 		_ = conn.Close()
@@ -1505,6 +1504,12 @@ func hostDispatchBrokerReachable(ctx context.Context, addr string) bool {
 	}
 	_ = conn.Close()
 	return true
+}
+
+func dispatchBrokerUnavailableAt(addr string) error {
+	return fmt.Errorf("%w: the host dispatch broker did not answer at %s "+
+		"(WARD_DISPATCH_BROKER_ADDR, TCP over the docker gateway - see ward#382)",
+		errDispatchBrokerUnavailable, addr)
 }
 
 // isCredentialBrokerReply spots the credential broker's protocol-version refusal:

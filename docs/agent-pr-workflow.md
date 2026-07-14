@@ -18,8 +18,8 @@ director's merge and CI-status reach ([infrastructure#538](https://github.com/co
 - `ward agent pr merge <owner/repo#N> [--style STYLE]` - merge one PR:
   permission gate, live required-status gate, a merge pinned to the checked
   head commit, smart-defaults style selection when set, repo-default fallback
-  when allowed, repo-default delete-branch propagation, then the merged-state
-  check
+  when allowed, delete-branch propagation, then the merged-state
+  postcondition. Ward requires `merged: true`
   (`GET /repos/{owner}/{repo}/pulls/{index}/merge`).
 - `ward agent pr runs [owner/repo] [--limit N]` - Actions runs with per-run
   conclusions (`GET /repos/{owner}/{repo}/actions/runs`).
@@ -51,18 +51,8 @@ loop.
 
 PR mode: the engineer stamps `ward.workflow:` into a `pull-request-and-merge` PR body. No marker means plain `pull-request`. The comment starts with the PR URL. Review-gated runs carry `director merge authorization: reviewed-and-ready`. PR merges can also take `smart-defaults > pr-merge-style`.
 
-## Where it runs
-
-- On a **read-only director surface**, each verb forwards through the host
-  dispatch broker (the same TCP + token channel as `stop`/`list`/`logs`), and
-  host ward re-checks the permission gate before touching the forge - the
-  surface's own gate is advisory.
-- Everywhere else (host, engineer container), the verb runs in-process against
-  the Forgejo API with the session's own credential.
-
-The `ward agent director merge` composite keeps its stricter thread-driven
-policy (`WARDED_WORKFLOW`, review, QA verdict); `ward agent pr merge` is the
-operator-driven single-PR tool under the same status and permission gates.
+The recovery and execution-placement details live in
+[agent-pr-workflow-recovery.md](agent-pr-workflow-recovery.md).
 
 ## See also
 

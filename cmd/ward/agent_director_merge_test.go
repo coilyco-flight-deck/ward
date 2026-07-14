@@ -795,6 +795,43 @@ func TestDirectorMergeConflictReasonFromComments(t *testing.T) {
 	}
 }
 
+func TestRecoverClosedUnmergedDirectorMergeReopensAndRetries(t *testing.T) {
+	markMergedOnSuccess := true
+	fake := &prWorkflowFakeForge{
+		prBody:                    "closes #6\n\nward.workflow: pull-request-and-merge\n",
+		prState:                   "closed",
+		combinedState:             "success",
+		contextState:              "success",
+		defaultMergeStyle:         "merge",
+		allowMergeCommits:         true,
+		allowSquashMerge:          true,
+		allowFastForwardOnlyMerge: true,
+		allowRebase:               true,
+		allowRebaseExplicit:       true,
+		markMergedOnSuccess:       &markMergedOnSuccess,
+	}
+	srv := fake.server(t)
+	defer srv.Close()
+	cl := &forgejoClient{baseURL: srv.URL, token: "secret"}
+	postErr := &prMergePostconditionError{Owner: "coilyco-flight-deck", Repo: "ward", Index: 7, State: "closed", HeadSHA: "headsha"}
+	head, err := recoverClosedUnmergedDirectorMerge(context.Background(), cl, "coilyco-flight-deck", "ward", 7, "", postErr)
+	if err != nil {
+		t.Fatalf("recoverClosedUnmergedDirectorMerge: %v", err)
+	}
+	if head != "headsha" {
+		t.Fatalf("head = %q, want headsha", head)
+	}
+	if fake.mergedChecks != 1 {
+		t.Fatalf("merged-state checks = %d, want 1", fake.mergedChecks)
+	}
+	if fake.mergeCalls != 1 {
+		t.Fatalf("merge calls = %d, want 1", fake.mergeCalls)
+	}
+	if fake.prState != "closed" {
+		t.Fatalf("PR state = %q, want closed after retry lands", fake.prState)
+	}
+}
+
 func TestListOpenPullRequestsReadsMergeability(t *testing.T) {
 	srv := httptest.NewServer(http.HandlerFunc(func(w http.ResponseWriter, r *http.Request) {
 		switch r.URL.Path {
