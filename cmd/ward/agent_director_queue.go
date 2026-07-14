@@ -17,6 +17,7 @@ const (
 	directorQueueActionRedispatch     = "redispatch"
 	directorQueueActionInspectLogs    = "inspect logs"
 	directorQueueActionMergePR        = "merge PR"
+	directorQueueActionRecoverPR      = "recover PR"
 	directorQueueActionCloseDone      = "close stale-open done issue"
 	directorQueueActionWait           = "wait"
 	directorQueueStateRunning         = "running/reserved and not stale"
@@ -24,6 +25,7 @@ const (
 	directorQueueStateNeedsRedispatch = "failed dispatch needing redispatch"
 	directorQueueStateSubmittedPR     = "submitted PR awaiting merge/review"
 	directorQueueStateMergeReadyPR    = "merge-ready PR awaiting merge"
+	directorQueueStateRecoverPR       = "closed-unmerged PR recovery"
 	directorQueueStateDoneOpen        = "done-but-still-open"
 	directorQueueStateFailedRun       = "failed run"
 	directorQueueStateBlockedRun      = "blocked run"
@@ -136,12 +138,16 @@ func collectDirectorQueueItemsForRepo(ctx context.Context, cl directorQueueClien
 		return nil, fmt.Errorf("read open pull requests in %s: %w", repo, err)
 	}
 	items := make([]directorQueueItem, 0, len(issues)+len(prs))
+	openPRs := map[int]bool{}
+	for _, pr := range prs {
+		openPRs[pr.Number] = true
+	}
 	for _, issue := range issues {
 		comments, cerr := cl.ListIssueComments(ctx, owner, name, issue.Number)
 		if cerr != nil {
 			return nil, fmt.Errorf("read comments for %s#%d: %w", repo, issue.Number, cerr)
 		}
-		items = append(items, classifyDirectorQueueIssue(repo, issue, comments, now, ttl))
+		items = append(items, classifyDirectorQueueIssue(repo, issue, comments, openPRs[issue.Number], now, ttl))
 	}
 	for _, pr := range prs {
 		comments, cerr := cl.ListIssueComments(ctx, owner, name, pr.Number)
@@ -186,7 +192,7 @@ func formatDirectorQueueStatus(repos []string, items []directorQueueItem) string
 	return b.String()
 }
 
-func classifyDirectorQueueIssue(repo string, issue backlogIssue, comments []issueComment, now time.Time, ttl time.Duration) directorQueueItem {
+func classifyDirectorQueueIssue(repo string, issue backlogIssue, comments []issueComment, openPR bool, now time.Time, ttl time.Duration) directorQueueItem {
 	item := directorQueueItem{
 		Repo:   repo,
 		Number: issue.Number,
@@ -217,7 +223,7 @@ func classifyDirectorQueueIssue(repo string, issue backlogIssue, comments []issu
 		item.Note = backlogTruncate(queueCommentSummary(sig.Comment.Body), 140)
 		return item
 	case directorQueueSignalOutcome:
-		return classifyDirectorQueueOutcome(item, sig.Outcome, sig.Comment)
+		return classifyDirectorQueueOutcome(item, sig.Outcome, sig.Comment, openPR)
 	default:
 		item.State = "open / wait"
 		item.Action = directorQueueActionWait
@@ -256,7 +262,7 @@ func classifyDirectorQueuePR(repo string, pr directorPullRequest, comments []iss
 		item.Note = backlogTruncate(queueCommentSummary(sig.Comment.Body), 140)
 		return item
 	case directorQueueSignalOutcome:
-		return classifyDirectorQueueOutcome(item, sig.Outcome, sig.Comment)
+		return classifyDirectorQueueOutcome(item, sig.Outcome, sig.Comment, true)
 	default:
 		item.State = "open / wait"
 		item.Action = directorQueueActionWait
@@ -264,7 +270,7 @@ func classifyDirectorQueuePR(repo string, pr directorPullRequest, comments []iss
 	}
 }
 
-func classifyDirectorQueueOutcome(item directorQueueItem, outcome *backlogOutcome, comment issueComment) directorQueueItem {
+func classifyDirectorQueueOutcome(item directorQueueItem, outcome *backlogOutcome, comment issueComment, openPR bool) directorQueueItem {
 	if outcome == nil {
 		item.State = "open / wait"
 		item.Action = directorQueueActionWait
@@ -281,10 +287,22 @@ func classifyDirectorQueueOutcome(item directorQueueItem, outcome *backlogOutcom
 		item.Note = backlogTruncate(strings.TrimSpace(outcome.Text), 140)
 	case "submitted":
 		item.State = directorQueueStateSubmittedPR
+		if item.Kind == backlogKindPullRequest && !openPR {
+			item.State = directorQueueStateRecoverPR
+			item.Action = directorQueueActionRecoverPR
+			item.Note = "the pull request is closed but the linked issue is still submitted"
+			break
+		}
 		item.Action = directorQueueActionWait
 		item.Note = backlogTruncate(strings.TrimSpace(outcome.Text), 140)
 	case "merge-ready":
 		item.State = directorQueueStateMergeReadyPR
+		if item.Kind == backlogKindPullRequest && !openPR {
+			item.State = directorQueueStateRecoverPR
+			item.Action = directorQueueActionRecoverPR
+			item.Note = "the pull request is closed but the linked issue still says merge-ready"
+			break
+		}
 		item.Action = directorQueueActionMergePR
 		item.Note = backlogTruncate(strings.TrimSpace(outcome.Text), 140)
 	case "blocked":
@@ -371,6 +389,7 @@ func directorQueueActionSummaryOrder() []string {
 		directorQueueActionRedispatch,
 		directorQueueActionInspectLogs,
 		directorQueueActionMergePR,
+		directorQueueActionRecoverPR,
 		directorQueueActionCloseDone,
 		directorQueueActionWait,
 	}

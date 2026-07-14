@@ -48,7 +48,7 @@ func TestPRWorkflowMergeAuthorityMatrix(t *testing.T) {
 // fail-closed denial of an unknown role.
 func TestPRWorkflowReadAndRerunGates(t *testing.T) {
 	for _, role := range []string{roleEngineer, roleDirector, roleAdvisor, roleQA} {
-		for _, op := range []prWorkflowOp{prOpStatus, prOpRuns} {
+		for _, op := range []prWorkflowOp{prOpStatus, prOpRuns, prOpRecover} {
 			if err := prWorkflowPermitted(role, "", op); err != nil {
 				t.Errorf("prWorkflowPermitted(%s, %s) = %v, want allowed", role, op, err)
 			}
@@ -74,6 +74,17 @@ func TestPRWorkflowReadAndRerunGates(t *testing.T) {
 	for _, op := range []prWorkflowOp{prOpMerge, prOpStatus, prOpRuns, prOpRerun} {
 		if err := prWorkflowPermitted("session", workflowPullRequestAndMerge, op); err == nil {
 			t.Errorf("prWorkflowPermitted(session, %s) = nil, want fail-closed denial", op)
+		}
+	}
+	for _, op := range []prWorkflowOp{prOpClose, prOpReopen} {
+		if err := prWorkflowPermitted(roleDirector, workflowPullRequest, op); err != nil {
+			t.Errorf("prWorkflowPermitted(%s, pull-request, %s) = %v, want allowed", roleDirector, op, err)
+		}
+		if err := prWorkflowPermitted(roleEngineer, workflowPullRequestAndMerge, op); err != nil {
+			t.Errorf("prWorkflowPermitted(%s, pull-request-and-merge, %s) = %v, want allowed", roleEngineer, op, err)
+		}
+		if err := prWorkflowPermitted(roleAdvisor, workflowPullRequest, op); err == nil {
+			t.Errorf("prWorkflowPermitted(%s, pull-request, %s) = nil, want denied", roleAdvisor, op)
 		}
 	}
 }
@@ -108,6 +119,10 @@ func TestPRWorkflowRoleDefaultsToDirectorOnHost(t *testing.T) {
 // walks: PR read, merged-state, base branch, combined status, merge.
 type prWorkflowFakeForge struct {
 	prBody                        string
+	prState                       string
+	prHeadSHA                     string
+	prHeadRef                     string
+	prBaseRef                     string
 	combinedState                 string
 	contextState                  string
 	combinedStateAfterMerge       string
@@ -131,8 +146,39 @@ type prWorkflowFakeForge struct {
 func (f *prWorkflowFakeForge) server(t *testing.T) *httptest.Server {
 	t.Helper()
 	mux := http.NewServeMux()
-	mux.HandleFunc("/api/v1/repos/coilyco-flight-deck/ward/pulls/7", func(w http.ResponseWriter, _ *http.Request) {
-		_, _ = w.Write([]byte(`{"number":7,"title":"t","body":` + jsonString(f.prBody) + `,"state":"open","head":{"sha":"headsha","ref":"issue-7"},"base":{"ref":"main"}}`))
+	mux.HandleFunc("/api/v1/repos/coilyco-flight-deck/ward/pulls/7", func(w http.ResponseWriter, r *http.Request) {
+		switch r.Method {
+		case http.MethodGet:
+			state := f.prState
+			if state == "" {
+				state = "open"
+			}
+			headSHA := f.prHeadSHA
+			if headSHA == "" {
+				headSHA = "headsha"
+			}
+			headRef := f.prHeadRef
+			if headRef == "" {
+				headRef = "issue-7"
+			}
+			baseRef := f.prBaseRef
+			if baseRef == "" {
+				baseRef = "main"
+			}
+			_, _ = w.Write([]byte(`{"number":7,"title":"t","body":` + jsonString(f.prBody) + `,"state":"` + state + `","head":{"sha":"` + headSHA + `","ref":"` + headRef + `"},"base":{"ref":"` + baseRef + `"}}`))
+		case http.MethodPatch:
+			var body struct {
+				State string `json:"state"`
+			}
+			if err := json.NewDecoder(r.Body).Decode(&body); err != nil {
+				t.Fatalf("decode patch body: %v", err)
+			}
+			f.prState = body.State
+			w.WriteHeader(http.StatusOK)
+			_, _ = w.Write([]byte(`{"number":7}`))
+		default:
+			w.WriteHeader(http.StatusMethodNotAllowed)
+		}
 	})
 	mux.HandleFunc("/api/v1/repos/coilyco-flight-deck/ward", func(w http.ResponseWriter, _ *http.Request) {
 		_, _ = w.Write([]byte(`{"allow_merge_commits":` + jsonBool(f.allowMergeCommits) + `,"allow_squash_merge":` + jsonBool(f.allowSquashMerge) + `,"allow_fast_forward_only_merge":` + jsonBool(f.allowFastForwardOnlyMerge) + `,"allow_rebase":` + jsonBool(f.allowRebase) + `,"allow_rebase_explicit":` + jsonBool(f.allowRebaseExplicit) + `,"default_merge_style":` + jsonString(f.defaultMergeStyle) + `,"default_delete_branch_after_merge":` + jsonBool(f.defaultDeleteBranchAfterMerge) + `}`))
@@ -243,6 +289,142 @@ func TestPRWorkflowMergeExecEngineerSelfMerge(t *testing.T) {
 	}
 	if fake.mergeDo != "merge" {
 		t.Fatalf("merge do = %q, want merge", fake.mergeDo)
+	}
+}
+
+// TestPRWorkflowCloseExecDirectorClosesWithReason pins the close mutation:
+// the director can close an open PR with a reason, and the head SHA stays pinned.
+func TestPRWorkflowCloseExecDirectorClosesWithReason(t *testing.T) {
+	fake := &prWorkflowFakeForge{
+		prBody:            "closes #6\n",
+		combinedState:     "success",
+		contextState:      "success",
+		defaultMergeStyle: "merge",
+	}
+	srv := fake.server(t)
+	defer srv.Close()
+	cl := &forgejoClient{baseURL: srv.URL, token: "secret"}
+	out, err := prWorkflowCloseExec(context.Background(), cl, roleDirector, "coilyco-flight-deck", "ward", 7, "superseded by #1163", "")
+	if err != nil {
+		t.Fatalf("prWorkflowCloseExec: %v", err)
+	}
+	if fake.prState != "closed" {
+		t.Fatalf("pr state = %q, want closed", fake.prState)
+	}
+	for _, want := range []string{
+		"closed coilyco-flight-deck/ward#7",
+		"head before headsha",
+		"head after headsha",
+		"merged=false",
+		"reason: superseded by #1163",
+	} {
+		if !strings.Contains(out, want) {
+			t.Fatalf("close output %q missing %q", out, want)
+		}
+	}
+}
+
+// TestPRWorkflowCloseExecRequiresReasonOrSupersedes keeps the close verb from
+// ambiguously closing a PR without operator intent.
+func TestPRWorkflowCloseExecRequiresReasonOrSupersedes(t *testing.T) {
+	fake := &prWorkflowFakeForge{
+		prBody:            "closes #6\n",
+		combinedState:     "success",
+		contextState:      "success",
+		defaultMergeStyle: "merge",
+	}
+	srv := fake.server(t)
+	defer srv.Close()
+	cl := &forgejoClient{baseURL: srv.URL, token: "secret"}
+	_, err := prWorkflowCloseExec(context.Background(), cl, roleDirector, "coilyco-flight-deck", "ward", 7, "", "")
+	if err == nil || !strings.Contains(err.Error(), "requires a reason or superseding issue/PR reference") {
+		t.Fatalf("close without intent = %v, want explicit-reason refusal", err)
+	}
+	if fake.prState != "" {
+		t.Fatalf("close without intent mutated the PR state: %q", fake.prState)
+	}
+}
+
+// TestPRWorkflowCloseExecAcceptsBareSupersedesRef pins the same-repo ref
+// normalization path used by close requests and broker validation.
+func TestPRWorkflowCloseExecAcceptsBareSupersedesRef(t *testing.T) {
+	fake := &prWorkflowFakeForge{
+		prBody:            "closes #6\n",
+		combinedState:     "success",
+		contextState:      "success",
+		defaultMergeStyle: "merge",
+	}
+	srv := fake.server(t)
+	defer srv.Close()
+	cl := &forgejoClient{baseURL: srv.URL, token: "secret"}
+	out, err := prWorkflowCloseExec(context.Background(), cl, roleDirector, "coilyco-flight-deck", "ward", 7, "", "#1163")
+	if err != nil {
+		t.Fatalf("prWorkflowCloseExec bare supersedes: %v", err)
+	}
+	if !strings.Contains(out, "superseded by coilyco-flight-deck/ward#1163") {
+		t.Fatalf("close output = %q, want canonical superseding ref", out)
+	}
+}
+
+// TestPRWorkflowReopenExecRestoresAClosedPR pins the reopen mutation and its
+// head-pin postcondition.
+func TestPRWorkflowReopenExecRestoresAClosedPR(t *testing.T) {
+	fake := &prWorkflowFakeForge{
+		prBody:            "closes #6\n",
+		prState:           "closed",
+		combinedState:     "success",
+		contextState:      "success",
+		defaultMergeStyle: "merge",
+	}
+	srv := fake.server(t)
+	defer srv.Close()
+	cl := &forgejoClient{baseURL: srv.URL, token: "secret"}
+	out, err := prWorkflowReopenExec(context.Background(), cl, roleDirector, "coilyco-flight-deck", "ward", 7)
+	if err != nil {
+		t.Fatalf("prWorkflowReopenExec: %v", err)
+	}
+	if fake.prState != "open" {
+		t.Fatalf("pr state = %q, want open", fake.prState)
+	}
+	for _, want := range []string{
+		"reopened coilyco-flight-deck/ward#7",
+		"head before headsha",
+		"head after headsha",
+		"merged=false",
+	} {
+		if !strings.Contains(out, want) {
+			t.Fatalf("reopen output %q missing %q", out, want)
+		}
+	}
+}
+
+// TestPRWorkflowRecoverReportClosedUnmerged pins the closed-unmerged diagnosis:
+// the report names the head SHA, linked issue, and the next safe action.
+func TestPRWorkflowRecoverReportClosedUnmerged(t *testing.T) {
+	fake := &prWorkflowFakeForge{
+		prBody:            "closes #6\n",
+		prState:           "closed",
+		combinedState:     "success",
+		contextState:      "success",
+		defaultMergeStyle: "merge",
+	}
+	srv := fake.server(t)
+	defer srv.Close()
+	cl := &forgejoClient{baseURL: srv.URL, token: "secret"}
+	out, err := prWorkflowRecoverReport(context.Background(), cl, roleDirector, "coilyco-flight-deck", "ward", 7)
+	if err != nil {
+		t.Fatalf("prWorkflowRecoverReport: %v", err)
+	}
+	for _, want := range []string{
+		"state=closed",
+		"merged=false",
+		"head=headsha",
+		"linked issue=#6",
+		"next safe action: reopen the PR, then re-run status and merge",
+	} {
+		if !strings.Contains(out, want) {
+			t.Fatalf("recover output %q missing %q", out, want)
+		}
 	}
 }
 
@@ -564,6 +746,9 @@ func TestValidateDispatchBrokerPRWorkflowShapes(t *testing.T) {
 	valid := []dispatchBrokerRequest{
 		{Action: dispatchActionPRStatus, Role: roleDirector, Target: "coilyco-flight-deck/ward#7"},
 		{Action: dispatchActionPRMerge, Role: roleDirector, Target: "coilyco-flight-deck/ward#7"},
+		{Action: dispatchActionPRClose, Role: roleDirector, Target: "coilyco-flight-deck/ward#7", Reason: "superseded by #1163"},
+		{Action: dispatchActionPRReopen, Role: roleDirector, Target: "coilyco-flight-deck/ward#7"},
+		{Action: dispatchActionPRRecover, Role: roleDirector, Target: "coilyco-flight-deck/ward#7"},
 		{Action: dispatchActionCIRuns, Role: roleDirector, Target: "coilyco-flight-deck/ward", Limit: 5},
 		{Action: dispatchActionCIRerun, Role: roleDirector, Target: "coilyco-flight-deck/ward", RunID: 42},
 	}
@@ -582,6 +767,8 @@ func TestValidateDispatchBrokerPRWorkflowShapes(t *testing.T) {
 		{"no target", dispatchBrokerRequest{Action: dispatchActionPRStatus, Role: roleDirector}},
 		{"non-ref target", dispatchBrokerRequest{Action: dispatchActionPRMerge, Role: roleDirector, Target: "coilyco-flight-deck/ward"}},
 		{"out-of-scope owner", dispatchBrokerRequest{Action: dispatchActionPRMerge, Role: roleDirector, Target: "evil/ward#7"}},
+		{"close without reason", dispatchBrokerRequest{Action: dispatchActionPRClose, Role: roleDirector, Target: "coilyco-flight-deck/ward#7"}},
+		{"close invalid supersedes", dispatchBrokerRequest{Action: dispatchActionPRClose, Role: roleDirector, Target: "coilyco-flight-deck/ward#7", Reason: "superseded", Supersedes: "not a ref"}},
 		{"runs with ref target", dispatchBrokerRequest{Action: dispatchActionCIRuns, Role: roleDirector, Target: "coilyco-flight-deck/ward#7"}},
 		{"rerun without run id", dispatchBrokerRequest{Action: dispatchActionCIRerun, Role: roleDirector, Target: "coilyco-flight-deck/ward"}},
 		{"rerun out-of-scope owner", dispatchBrokerRequest{Action: dispatchActionCIRerun, Role: roleDirector, Target: "evil/ward", RunID: 1}},
@@ -637,6 +824,53 @@ func TestExecDispatchBrokerPRWorkflowMergeRoundTrip(t *testing.T) {
 	}
 	if fake.mergeDo != "squash" {
 		t.Fatalf("merge do = %q, want squash", fake.mergeDo)
+	}
+}
+
+// TestExecDispatchBrokerPRWorkflowCloseRoundTrip drives the brokered close on the
+// fake forge and verifies the close reason survives the request boundary.
+func TestExecDispatchBrokerPRWorkflowCloseRoundTrip(t *testing.T) {
+	fake := &prWorkflowFakeForge{
+		prBody:            "closes #6\n",
+		combinedState:     "success",
+		contextState:      "success",
+		defaultMergeStyle: "merge",
+	}
+	srv := fake.server(t)
+	defer srv.Close()
+	cl := &forgejoClient{baseURL: srv.URL, token: "secret"}
+	out, err := execDispatchBrokerPRWorkflowWith(context.Background(), cl, dispatchBrokerRequest{
+		Action: dispatchActionPRClose, Role: roleDirector, Target: "coilyco-flight-deck/ward#7", Reason: "superseded by #1163",
+	})
+	if err != nil {
+		t.Fatalf("brokered close: %v", err)
+	}
+	if fake.prState != "closed" || !strings.Contains(out, "reason: superseded by #1163") {
+		t.Fatalf("brokered close output = %q, prState=%q, want closed with reason", out, fake.prState)
+	}
+}
+
+// TestExecDispatchBrokerPRWorkflowRecoverRoundTrip drives the brokered recover
+// diagnosis on the fake forge and verifies the closed-unmerged report shape.
+func TestExecDispatchBrokerPRWorkflowRecoverRoundTrip(t *testing.T) {
+	fake := &prWorkflowFakeForge{
+		prBody:            "closes #6\n",
+		prState:           "closed",
+		combinedState:     "success",
+		contextState:      "success",
+		defaultMergeStyle: "merge",
+	}
+	srv := fake.server(t)
+	defer srv.Close()
+	cl := &forgejoClient{baseURL: srv.URL, token: "secret"}
+	out, err := execDispatchBrokerPRWorkflowWith(context.Background(), cl, dispatchBrokerRequest{
+		Action: dispatchActionPRRecover, Role: roleDirector, Target: "coilyco-flight-deck/ward#7",
+	})
+	if err != nil {
+		t.Fatalf("brokered recover: %v", err)
+	}
+	if !strings.Contains(out, "next safe action: reopen the PR, then re-run status and merge") {
+		t.Fatalf("brokered recover output = %q, want reopen guidance", out)
 	}
 }
 

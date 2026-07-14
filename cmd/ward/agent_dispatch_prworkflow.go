@@ -55,6 +55,24 @@ func execDispatchBrokerPRWorkflowWith(ctx context.Context, cl *forgejoClient, re
 		// The merge gate needs the PR's workflow marker, so it runs inside the
 		// executor - after the PR body is in hand, before any mutation.
 		return prWorkflowMergeExec(ctx, cl, role, ref.Owner, ref.Repo, ref.Number, req.MergeStyle)
+	case dispatchActionPRClose:
+		ref, err := parseAgentIssueRef(req.Target)
+		if err != nil {
+			return "", fmt.Errorf("dispatch broker: %s target: %w", action, err)
+		}
+		return prWorkflowCloseExec(ctx, cl, role, ref.Owner, ref.Repo, ref.Number, req.Reason, req.Supersedes)
+	case dispatchActionPRReopen:
+		ref, err := parseAgentIssueRef(req.Target)
+		if err != nil {
+			return "", fmt.Errorf("dispatch broker: %s target: %w", action, err)
+		}
+		return prWorkflowReopenExec(ctx, cl, role, ref.Owner, ref.Repo, ref.Number)
+	case dispatchActionPRRecover:
+		ref, err := parseAgentIssueRef(req.Target)
+		if err != nil {
+			return "", fmt.Errorf("dispatch broker: %s target: %w", action, err)
+		}
+		return prWorkflowRecoverReport(ctx, cl, role, ref.Owner, ref.Repo, ref.Number)
 	case dispatchActionCIRuns:
 		owner, name, _ := strings.Cut(req.Target, "/")
 		if err := prWorkflowPermitted(role, "", prOpRuns); err != nil {
@@ -98,6 +116,28 @@ func validateDispatchBrokerPRWorkflow(req dispatchBrokerRequest) error {
 	switch action {
 	case dispatchActionPRStatus, dispatchActionPRMerge:
 		return validateDispatchBrokerPRRefTarget(action, target)
+	case dispatchActionPRClose, dispatchActionPRReopen, dispatchActionPRRecover:
+		ref, err := parseAgentIssueRef(target)
+		if err != nil || ref.Owner == "" || ref.Repo == "" {
+			return fmt.Errorf("dispatch broker: %s target %q is not an owner/repo#N pull-request ref", action, target)
+		}
+		if ref.trackerOrDefault() != trackerForgejo {
+			return fmt.Errorf("dispatch broker: %s target %q is not a Forgejo ref", action, target)
+		}
+		if err := prWorkflowOwnerScope("dispatch broker: "+action, ref.Owner); err != nil {
+			return err
+		}
+		if action == dispatchActionPRClose {
+			if strings.TrimSpace(req.Reason) == "" && strings.TrimSpace(req.Supersedes) == "" {
+				return fmt.Errorf("dispatch broker: %s requires a reason or superseding issue/PR reference", action)
+			}
+			if refText := strings.TrimSpace(req.Supersedes); refText != "" {
+				if _, err := prWorkflowSupersedingRef(ref.Owner, ref.Repo, refText); err != nil {
+					return fmt.Errorf("dispatch broker: %s supersedes ref %q is not a valid issue/PR reference: %w", action, refText, err)
+				}
+			}
+		}
+		return nil
 	case dispatchActionCIRuns, dispatchActionCIRerun:
 		return validateDispatchBrokerCITarget(action, target, req)
 	}

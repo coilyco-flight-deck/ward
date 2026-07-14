@@ -20,10 +20,13 @@ import (
 type prWorkflowOp string
 
 const (
-	prOpMerge  prWorkflowOp = "merge"
-	prOpStatus prWorkflowOp = "status"
-	prOpRuns   prWorkflowOp = "runs"
-	prOpRerun  prWorkflowOp = "rerun"
+	prOpMerge   prWorkflowOp = "merge"
+	prOpClose   prWorkflowOp = "close"
+	prOpReopen  prWorkflowOp = "reopen"
+	prOpRecover prWorkflowOp = "recover"
+	prOpStatus  prWorkflowOp = "status"
+	prOpRuns    prWorkflowOp = "runs"
+	prOpRerun   prWorkflowOp = "rerun"
 )
 
 // prWorkflowRole resolves the acting role for a PR-workflow tool call: the
@@ -56,6 +59,13 @@ func prWorkflowPermitted(role string, wf workflowMode, op prWorkflowOp) error {
 	case prOpRerun:
 		if !def.Capabilities.Has(semanticCapabilityEngineering) && !def.Capabilities.Has(semanticCapabilityProjectManagement) {
 			return fmt.Errorf("pr %s: role %q holds neither engineering nor project-management - rerun is withheld", op, role)
+		}
+		return nil
+	case prOpClose, prOpReopen:
+		return prMergePermitted(def, role, wf)
+	case prOpRecover:
+		if !def.Capabilities.Has(semanticCapabilityRead) {
+			return fmt.Errorf("pr %s: role %q lacks the read capability", op, role)
 		}
 		return nil
 	case prOpMerge:
@@ -193,6 +203,177 @@ func prWorkflowMergeExec(ctx context.Context, cl *forgejoClient, role, owner, re
 		owner, repo, index, role, wf.orDefault(), head, status.Status.summary(), confirm), nil
 }
 
+func prWorkflowCloseExec(ctx context.Context, cl *forgejoClient, role, owner, repo string, index int, reason, supersedes string) (string, error) {
+	pr, err := cl.GetPullRequest(ctx, owner, repo, index)
+	if err != nil {
+		return "", err
+	}
+	wf := prWorkflowMarkerMode(pr.Body)
+	if err := prWorkflowPermitted(role, wf, prOpClose); err != nil {
+		return "", err
+	}
+	if strings.ToLower(strings.TrimSpace(pr.State)) != "open" {
+		return "", fmt.Errorf("pr close: %s/%s#%d is %s, not open", owner, repo, index, pr.State)
+	}
+	merged, err := cl.PullRequestMerged(ctx, owner, repo, index)
+	if err != nil {
+		return "", fmt.Errorf("pr close: %s/%s#%d: merged-state check failed: %w", owner, repo, index, err)
+	}
+	if merged {
+		return "", fmt.Errorf("pr close: %s/%s#%d is already merged", owner, repo, index)
+	}
+	if strings.TrimSpace(reason) == "" && strings.TrimSpace(supersedes) == "" {
+		return "", fmt.Errorf("pr close: %s/%s#%d requires a reason or superseding issue/PR reference", owner, repo, index)
+	}
+	head := pr.HeadSHA()
+	if head == "" {
+		return "", fmt.Errorf("pr close: %s/%s#%d did not expose a head SHA", owner, repo, index)
+	}
+	superseding, err := prWorkflowSupersedingRef(owner, repo, supersedes)
+	if err != nil {
+		return "", fmt.Errorf("pr close: %s/%s#%d superseding ref %q is invalid: %w", owner, repo, index, supersedes, err)
+	}
+	note := prWorkflowCloseNote(strings.TrimSpace(reason), superseding)
+	if err := cl.ClosePullRequest(ctx, owner, repo, index); err != nil {
+		return "", fmt.Errorf("pr close: %s/%s#%d: %w", owner, repo, index, err)
+	}
+	after, err := cl.GetPullRequest(ctx, owner, repo, index)
+	if err != nil {
+		return "", fmt.Errorf("pr close: %s/%s#%d: postcondition read failed: %w", owner, repo, index, err)
+	}
+	if after.HeadSHA() != head {
+		return "", fmt.Errorf("pr close: %s/%s#%d head changed from %s to %s", owner, repo, index, head, after.HeadSHA())
+	}
+	if strings.ToLower(strings.TrimSpace(after.State)) != "closed" {
+		return "", fmt.Errorf("pr close: %s/%s#%d postcondition failed: state is %s, want closed", owner, repo, index, after.State)
+	}
+	afterMerged, err := cl.PullRequestMerged(ctx, owner, repo, index)
+	if err != nil {
+		return "", fmt.Errorf("pr close: %s/%s#%d: merged-state postcondition failed: %w", owner, repo, index, err)
+	}
+	if afterMerged {
+		return "", fmt.Errorf("pr close: %s/%s#%d postcondition failed: merged-state still reports merged", owner, repo, index)
+	}
+	return fmt.Sprintf("closed %s/%s#%d (role %s, workflow %s, head before %s, head after %s, merged=%t, reason: %s)\n",
+		owner, repo, index, role, wf.orDefault(), head, after.HeadSHA(), afterMerged, note), nil
+}
+
+func prWorkflowReopenExec(ctx context.Context, cl *forgejoClient, role, owner, repo string, index int) (string, error) {
+	pr, err := cl.GetPullRequest(ctx, owner, repo, index)
+	if err != nil {
+		return "", err
+	}
+	wf := prWorkflowMarkerMode(pr.Body)
+	if err := prWorkflowPermitted(role, wf, prOpReopen); err != nil {
+		return "", err
+	}
+	if strings.ToLower(strings.TrimSpace(pr.State)) != "closed" {
+		return "", fmt.Errorf("pr reopen: %s/%s#%d is %s, not closed", owner, repo, index, pr.State)
+	}
+	merged, err := cl.PullRequestMerged(ctx, owner, repo, index)
+	if err != nil {
+		return "", fmt.Errorf("pr reopen: %s/%s#%d: merged-state check failed: %w", owner, repo, index, err)
+	}
+	if merged {
+		return "", fmt.Errorf("pr reopen: %s/%s#%d is already merged", owner, repo, index)
+	}
+	head := pr.HeadSHA()
+	if head == "" {
+		return "", fmt.Errorf("pr reopen: %s/%s#%d did not expose a head SHA", owner, repo, index)
+	}
+	if err := cl.ReopenPullRequest(ctx, owner, repo, index); err != nil {
+		return "", fmt.Errorf("pr reopen: %s/%s#%d: %w", owner, repo, index, err)
+	}
+	after, err := cl.GetPullRequest(ctx, owner, repo, index)
+	if err != nil {
+		return "", fmt.Errorf("pr reopen: %s/%s#%d: postcondition read failed: %w", owner, repo, index, err)
+	}
+	if after.HeadSHA() != head {
+		return "", fmt.Errorf("pr reopen: %s/%s#%d head changed from %s to %s", owner, repo, index, head, after.HeadSHA())
+	}
+	if strings.ToLower(strings.TrimSpace(after.State)) != "open" {
+		return "", fmt.Errorf("pr reopen: %s/%s#%d postcondition failed: state is %s, want open", owner, repo, index, after.State)
+	}
+	return fmt.Sprintf("reopened %s/%s#%d (role %s, workflow %s, head before %s, head after %s, merged=%t)\n",
+		owner, repo, index, role, wf.orDefault(), head, after.HeadSHA(), merged), nil
+}
+
+func prWorkflowRecoverReport(ctx context.Context, cl *forgejoClient, role, owner, repo string, index int) (string, error) {
+	pr, err := cl.GetPullRequest(ctx, owner, repo, index)
+	if err != nil {
+		return "", err
+	}
+	if err := prWorkflowPermitted(role, prWorkflowMarkerMode(pr.Body), prOpRecover); err != nil {
+		return "", err
+	}
+	merged, err := cl.PullRequestMerged(ctx, owner, repo, index)
+	if err != nil {
+		return "", fmt.Errorf("pr recover: %s/%s#%d: merged-state check failed: %w", owner, repo, index, err)
+	}
+	linked, ok := directorLinkedIssueNumber(pr.Body)
+	linkedText := "none"
+	if ok {
+		linkedText = fmt.Sprintf("#%d", linked)
+	}
+	next := "inspect the PR state before acting"
+	switch strings.ToLower(strings.TrimSpace(pr.State)) {
+	case "closed":
+		if merged {
+			next = "no recovery action needed - the PR is already merged"
+		} else {
+			next = "reopen the PR, then re-run status and merge"
+		}
+	case "open":
+		if merged {
+			next = "no recovery action needed - the PR is already merged"
+		} else {
+			next = "merge the PR once the required checks are green"
+		}
+	default:
+		if merged {
+			next = "no recovery action needed - the PR is already merged"
+		}
+	}
+	return fmt.Sprintf("%s/%s#%d recovery report: state=%s, merged=%t, head=%s, linked issue=%s, next safe action: %s\n",
+		owner, repo, index, strings.ToLower(strings.TrimSpace(pr.State)), merged, pr.HeadSHA(), linkedText, next), nil
+}
+
+func prWorkflowCloseNote(reason, supersedes string) string {
+	parts := make([]string, 0, 2)
+	if reason != "" {
+		parts = append(parts, reason)
+	}
+	if supersedes != "" {
+		parts = append(parts, "superseded by "+supersedes)
+	}
+	return strings.Join(parts, "; ")
+}
+
+func prWorkflowSupersedingRef(owner, repo, raw string) (string, error) {
+	raw = strings.TrimSpace(raw)
+	if raw == "" {
+		return "", nil
+	}
+	if strings.HasPrefix(raw, "#") {
+		n, err := strconv.Atoi(strings.TrimPrefix(raw, "#"))
+		if err != nil || n <= 0 {
+			return "", fmt.Errorf("not a positive issue number")
+		}
+		return fmt.Sprintf("%s/%s#%d", owner, repo, n), nil
+	}
+	if n, err := strconv.Atoi(raw); err == nil && n > 0 {
+		return fmt.Sprintf("%s/%s#%d", owner, repo, n), nil
+	}
+	ref, err := parseAgentIssueRef(raw)
+	if err != nil {
+		return "", err
+	}
+	if ref.Owner == "" || ref.Repo == "" || ref.Number <= 0 {
+		return "", fmt.Errorf("not an issue or pull request reference")
+	}
+	return ref.String(), nil
+}
+
 const prWorkflowMergeSettleAttempts = 3
 
 var prWorkflowMergeSettleDelay = 150 * time.Millisecond
@@ -283,7 +464,7 @@ func prWorkflowRerunExec(ctx context.Context, cl *forgejoClient, owner, repo str
 func agentPRCommand() *cli.Command {
 	return &cli.Command{
 		Name:  "pr",
-		Usage: "Native PR-workflow tools: merge, per-PR CI status, Actions run status, rerun - compiled ward capabilities gated by the embedded role x workflow permission table (ward#1067).",
+		Usage: "Native PR-workflow tools: close, reopen, recover, merge, per-PR CI status, Actions run status, rerun - compiled ward capabilities gated by the embedded role x workflow permission table (ward#1067).",
 		Description: `pr carries the PR-workflow management verbs as native ward code on the compiled
 Forgejo client, gated by ward's embedded role permission system - not by the
 runtime KDL specgen surface, so they keep working with the '.ward/' guardfile
@@ -295,11 +476,19 @@ the engineer self-merges under pull-request-and-merge only, and remote-branch-on
 withholds merge from everyone. Status and runs are read verbs; rerun needs an
 engineering or project-management role.
 
+Close and reopen use the same workflow-mode gate as merge, with the close verb
+requiring a reason or superseding issue/PR reference. Recover is read-only
+diagnostics for the closed-unmerged case, reporting the head SHA, linked issue,
+and the next safe action.
+
 On a read-only director surface each verb forwards through the host dispatch
 broker (the same TCP + token channel as stop/list/logs) and the host re-checks
 the permission gate; elsewhere it runs in-process against the forge API.
 
   ward agent pr status coilyco-flight-deck/ward#123   # combined CI status for the PR head
+  ward agent pr close  coilyco-flight-deck/ward#123 --reason "superseded by #1163"
+  ward agent pr reopen coilyco-flight-deck/ward#123   # reopen a closed-unmerged PR
+  ward agent pr recover coilyco-flight-deck/ward#123  # diagnose a closed-unmerged PR
   ward agent pr merge  coilyco-flight-deck/ward#123   # gate, merge pinned to the checked head, confirm merged
   ward agent pr runs   coilyco-flight-deck/ward       # Actions runs + per-run conclusion
   ward agent pr rerun  coilyco-flight-deck/ward 6778  # rerun one Actions run by id
@@ -307,6 +496,9 @@ the permission gate; elsewhere it runs in-process against the forge API.
 See docs/agent-pr-workflow.md.`,
 		Commands: []*cli.Command{
 			agentPRStatusCommand(),
+			agentPRCloseCommand(),
+			agentPRReopenCommand(),
+			agentPRRecoverCommand(),
 			agentPRMergeCommand(),
 			agentPRRunsCommand(),
 			agentPRRerunCommand(),
@@ -332,6 +524,37 @@ func agentPRMergeCommand() *cli.Command {
 			&cli.StringFlag{Name: "style", Usage: "Forgejo merge style: merge, squash, fast-forward-only, rebase, or rebase-merge (default: smart-defaults pr-merge-style when set, else repo default_merge_style when allowed)"},
 		},
 		Action: prWorkflowAction("agent.pr.merge", runAgentPRMerge),
+	}
+}
+
+func agentPRCloseCommand() *cli.Command {
+	return &cli.Command{
+		Name:      "close",
+		Usage:     "Close one PR natively with a required reason or superseding issue/PR ref.",
+		ArgsUsage: "<owner/repo#N | #N>",
+		Flags: []cli.Flag{
+			&cli.StringFlag{Name: "reason", Usage: "why the PR is being closed"},
+			&cli.StringFlag{Name: "supersedes", Usage: "superseding issue or PR reference"},
+		},
+		Action: prWorkflowAction("agent.pr.close", runAgentPRClose),
+	}
+}
+
+func agentPRReopenCommand() *cli.Command {
+	return &cli.Command{
+		Name:      "reopen",
+		Usage:     "Reopen one closed-unmerged PR natively.",
+		ArgsUsage: "<owner/repo#N | #N>",
+		Action:    prWorkflowAction("agent.pr.reopen", runAgentPRReopen),
+	}
+}
+
+func agentPRRecoverCommand() *cli.Command {
+	return &cli.Command{
+		Name:      "recover",
+		Usage:     "Diagnose one closed-unmerged PR natively.",
+		ArgsUsage: "<owner/repo#N | #N>",
+		Action:    prWorkflowAction("agent.pr.recover", runAgentPRRecover),
 	}
 }
 
@@ -459,6 +682,63 @@ func runAgentPRStatus(ctx context.Context, r *Runner, c *cli.Command) error {
 		return fmt.Errorf("%s: %w", label, err)
 	}
 	body, err := prWorkflowStatusReport(ctx, r.hostForgejoClient(ctx), ref.Owner, ref.Repo, ref.Number)
+	if err != nil {
+		return fmt.Errorf("%s: %w", label, err)
+	}
+	_, err = io.WriteString(r.Runner.Stdout, body)
+	return err
+}
+
+func runAgentPRClose(ctx context.Context, r *Runner, c *cli.Command) error {
+	const label = "ward agent pr close"
+	ref, err := r.resolveAgentPRRef(ctx, label, c.Args().First())
+	if err != nil {
+		return err
+	}
+	if handled, err := prWorkflowForwarded(ctx, r, dispatchBrokerRequest{
+		Action: dispatchActionPRClose, Target: ref.String(), Reason: c.String("reason"), Supersedes: c.String("supersedes"),
+	}); handled {
+		return err
+	}
+	body, err := prWorkflowCloseExec(ctx, r.hostForgejoClient(ctx), prWorkflowRole(), ref.Owner, ref.Repo, ref.Number, c.String("reason"), c.String("supersedes"))
+	if err != nil {
+		return fmt.Errorf("%s: %w", label, err)
+	}
+	_, err = io.WriteString(r.Runner.Stdout, body)
+	return err
+}
+
+func runAgentPRReopen(ctx context.Context, r *Runner, c *cli.Command) error {
+	const label = "ward agent pr reopen"
+	ref, err := r.resolveAgentPRRef(ctx, label, c.Args().First())
+	if err != nil {
+		return err
+	}
+	if handled, err := prWorkflowForwarded(ctx, r, dispatchBrokerRequest{
+		Action: dispatchActionPRReopen, Target: ref.String(),
+	}); handled {
+		return err
+	}
+	body, err := prWorkflowReopenExec(ctx, r.hostForgejoClient(ctx), prWorkflowRole(), ref.Owner, ref.Repo, ref.Number)
+	if err != nil {
+		return fmt.Errorf("%s: %w", label, err)
+	}
+	_, err = io.WriteString(r.Runner.Stdout, body)
+	return err
+}
+
+func runAgentPRRecover(ctx context.Context, r *Runner, c *cli.Command) error {
+	const label = "ward agent pr recover"
+	ref, err := r.resolveAgentPRRef(ctx, label, c.Args().First())
+	if err != nil {
+		return err
+	}
+	if handled, err := prWorkflowForwarded(ctx, r, dispatchBrokerRequest{
+		Action: dispatchActionPRRecover, Target: ref.String(),
+	}); handled {
+		return err
+	}
+	body, err := prWorkflowRecoverReport(ctx, r.hostForgejoClient(ctx), prWorkflowRole(), ref.Owner, ref.Repo, ref.Number)
 	if err != nil {
 		return fmt.Errorf("%s: %w", label, err)
 	}

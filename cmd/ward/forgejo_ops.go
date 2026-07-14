@@ -545,6 +545,22 @@ func (c *forgejoClient) ReopenIssue(ctx context.Context, owner, repo string, num
 	return nil
 }
 
+// ClosePullRequest flips an existing PR to closed through the PR edit endpoint.
+func (c *forgejoClient) ClosePullRequest(ctx context.Context, owner, repo string, number int) error {
+	if _, err := c.doJSON(ctx, http.MethodPatch, []string{"repos", owner, repo, "pulls", strconv.Itoa(number)}, nil, map[string]string{"state": "closed"}, true, nil); err != nil {
+		return fmt.Errorf("forgejo: close pull request %s/%s#%d: %w", owner, repo, number, err)
+	}
+	return nil
+}
+
+// ReopenPullRequest flips a closed PR back open through the PR edit endpoint.
+func (c *forgejoClient) ReopenPullRequest(ctx context.Context, owner, repo string, number int) error {
+	if _, err := c.doJSON(ctx, http.MethodPatch, []string{"repos", owner, repo, "pulls", strconv.Itoa(number)}, nil, map[string]string{"state": "open"}, true, nil); err != nil {
+		return fmt.Errorf("forgejo: reopen pull request %s/%s#%d: %w", owner, repo, number, err)
+	}
+	return nil
+}
+
 func (c *forgejoClient) RepoPullRequestsEnabled(ctx context.Context, owner, repo string) (bool, error) {
 	var caps forgejoRepoCapabilities
 	if _, err := c.doJSON(ctx, http.MethodGet, []string{"repos", owner, repo}, nil, nil, false, &caps); err != nil {

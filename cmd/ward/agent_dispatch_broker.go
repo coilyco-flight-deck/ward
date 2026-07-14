@@ -86,6 +86,12 @@ const (
 	// dispatchActionPRMerge merges one PR through ward's compiled client, gated by
 	// the embedded role x workflow permission table (ward#1067).
 	dispatchActionPRMerge = "pr-merge"
+	// dispatchActionPRClose closes one PR through ward's compiled client.
+	dispatchActionPRClose = "pr-close"
+	// dispatchActionPRReopen reopens one PR through ward's compiled client.
+	dispatchActionPRReopen = "pr-reopen"
+	// dispatchActionPRRecover diagnoses a closed-unmerged PR through ward's compiled client.
+	dispatchActionPRRecover = "pr-recover"
 	// dispatchActionCIRuns lists a repo's Actions runs with conclusions (ward#1067).
 	dispatchActionCIRuns = "ci-runs"
 	// dispatchActionCIRerun reruns one Actions run natively (ward#1067).
@@ -95,10 +101,13 @@ const (
 // prWorkflowDispatchActions is the ward#1067 action set: PR-workflow verbs the
 // broker serves natively, host-side, on ward's compiled Forgejo client.
 var prWorkflowDispatchActions = map[string]bool{
-	dispatchActionPRStatus: true,
-	dispatchActionPRMerge:  true,
-	dispatchActionCIRuns:   true,
-	dispatchActionCIRerun:  true,
+	dispatchActionPRStatus:  true,
+	dispatchActionPRMerge:   true,
+	dispatchActionPRClose:   true,
+	dispatchActionPRReopen:  true,
+	dispatchActionPRRecover: true,
+	dispatchActionCIRuns:    true,
+	dispatchActionCIRerun:   true,
 }
 
 type dispatchBrokerRequest struct {
@@ -122,6 +131,10 @@ type dispatchBrokerRequest struct {
 	Limit int `json:"limit,omitempty"`
 	// MergeStyle names the Forgejo merge style for pr-merge requests.
 	MergeStyle string `json:"merge_style,omitempty"`
+	// Reason carries the required close reason for pr-close requests.
+	Reason string `json:"reason,omitempty"`
+	// Supersedes carries the superseding issue/PR ref for pr-close requests.
+	Supersedes string `json:"supersedes,omitempty"`
 	// Token is the per-launch shared secret the surface echoes back so the host
 	// broker authenticates the dial (the TCP port has no socket file perms).
 	Token string `json:"token,omitempty"`

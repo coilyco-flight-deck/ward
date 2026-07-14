@@ -1287,9 +1287,12 @@ scrollback. Reserve an in-session subagent for read-only fan-out that only feeds
   so the no-push rule below is a convention you keep, not yet a credential boundary
   (a dispatch-only token is tracked in ward#318).
 - **PR-workflow management is native ward, not specgen** (ward#1067): ` + "`ward agent pr status <owner/repo#N>`" + `
-  reads one PR head's combined CI status, ` + "`ward agent pr merge <owner/repo#N>`" + ` merges an
-  eligible PR (head-pinned, checks-green-gated), ` + "`ward agent pr runs <owner/repo>`" + ` lists
-  Actions runs with conclusions, and ` + "`ward agent pr rerun <owner/repo> <run-id>`" + ` reruns one.
+  reads one PR head's combined CI status, ` + "`ward agent pr close <owner/repo#N> --reason TEXT`" + ` closes
+  an eligible PR with explicit intent, ` + "`ward agent pr reopen <owner/repo#N>`" + ` reopens a
+  closed-unmerged PR, ` + "`ward agent pr recover <owner/repo#N>`" + ` diagnoses the closed-unmerged
+  state, ` + "`ward agent pr merge <owner/repo#N>`" + ` merges an eligible PR (head-pinned,
+  checks-green-gated), ` + "`ward agent pr runs <owner/repo>`" + ` lists Actions runs with conclusions,
+  and ` + "`ward agent pr rerun <owner/repo> <run-id>`" + ` reruns one.
   These forward through the host dispatch broker on ward's compiled Forgejo client, gated
   by the embedded role x workflow permission table, so they keep working even when the
   ` + "`ward ops forgejo`" + ` specgen surface is stripped or rolled back (infrastructure#538).
