@@ -24,6 +24,26 @@ import (
 	"github.com/urfave/cli/v3"
 )
 
+func serveDispatchBrokerRequests(t *testing.T, ln net.Listener, handle func(net.Conn, dispatchBrokerRequest)) {
+	t.Helper()
+	go func() {
+		for {
+			conn, err := ln.Accept()
+			if err != nil {
+				return
+			}
+			func() {
+				defer conn.Close()
+				var req dispatchBrokerRequest
+				if err := json.NewDecoder(conn).Decode(&req); err != nil {
+					return
+				}
+				handle(conn, req)
+			}()
+		}
+	}()
+}
+
 func TestDispatchBrokerValidatesNarrowAPI(t *testing.T) {
 	for _, req := range []dispatchBrokerRequest{
 		{Role: "exec", Argv: []string{"exec", "test"}},
@@ -296,18 +316,11 @@ func TestForwardAgentStopSendsStopRequest(t *testing.T) {
 	defer ln.Close()
 
 	gotReq := make(chan dispatchBrokerRequest, 1)
-	go func() {
-		conn, err := ln.Accept()
-		if err != nil {
-			return
-		}
-		defer conn.Close()
-		var req dispatchBrokerRequest
-		_ = json.NewDecoder(conn).Decode(&req)
+	serveDispatchBrokerRequests(t, ln, func(conn net.Conn, req dispatchBrokerRequest) {
 		gotReq <- req
 		// Echo the stopped container name back in the log-path slot.
 		_ = json.NewEncoder(conn).Encode(dispatchBrokerResponse{OK: true, LogPath: "engineer-claude-ward-625"})
-	}()
+	})
 
 	t.Setenv(envDispatchBrokerAddr, ln.Addr().String())
 	t.Setenv(envDispatchBrokerToken, "nonce-627")
@@ -342,17 +355,10 @@ func TestForwardAgentStopPrintRequestsPreview(t *testing.T) {
 	defer ln.Close()
 
 	gotReq := make(chan dispatchBrokerRequest, 1)
-	go func() {
-		conn, err := ln.Accept()
-		if err != nil {
-			return
-		}
-		defer conn.Close()
-		var req dispatchBrokerRequest
-		_ = json.NewDecoder(conn).Decode(&req)
+	serveDispatchBrokerRequests(t, ln, func(conn net.Conn, req dispatchBrokerRequest) {
 		gotReq <- req
 		_ = json.NewEncoder(conn).Encode(dispatchBrokerResponse{OK: true, LogPath: "engineer-claude-ward-625"})
-	}()
+	})
 
 	r := &Runner{Runner: &shell.Runner{Stdout: io.Discard, Stderr: io.Discard}}
 	t.Setenv(envDispatchBrokerAddr, ln.Addr().String())
@@ -408,18 +414,11 @@ func TestForwardAgentLogsSendsLogsRequestAndRelaysBody(t *testing.T) {
 	defer ln.Close()
 
 	gotReq := make(chan dispatchBrokerRequest, 1)
-	go func() {
-		conn, err := ln.Accept()
-		if err != nil {
-			return
-		}
-		defer conn.Close()
-		var req dispatchBrokerRequest
-		_ = json.NewDecoder(conn).Decode(&req)
+	serveDispatchBrokerRequests(t, ln, func(conn net.Conn, req dispatchBrokerRequest) {
 		gotReq <- req
 		_ = json.NewEncoder(conn).Encode(dispatchBrokerResponse{OK: true, Source: "docker logs engineer-claude-ward-625 --tail 2"})
 		_, _ = io.WriteString(conn, "line-one\nline-two\n")
-	}()
+	})
 
 	r := &Runner{Runner: &shell.Runner{Stdout: &bytes.Buffer{}, Stderr: &bytes.Buffer{}}}
 	t.Setenv(envDispatchBrokerAddr, ln.Addr().String())
@@ -464,18 +463,11 @@ func TestForwardAgentListSendsListRequestAndRelaysBody(t *testing.T) {
 	defer ln.Close()
 
 	gotReq := make(chan dispatchBrokerRequest, 1)
-	go func() {
-		conn, err := ln.Accept()
-		if err != nil {
-			return
-		}
-		defer conn.Close()
-		var req dispatchBrokerRequest
-		_ = json.NewDecoder(conn).Decode(&req)
+	serveDispatchBrokerRequests(t, ln, func(conn net.Conn, req dispatchBrokerRequest) {
 		gotReq <- req
 		_ = json.NewEncoder(conn).Encode(dispatchBrokerResponse{OK: true})
 		_, _ = io.WriteString(conn, "ward agent: running engineer containers (1)\n")
-	}()
+	})
 
 	r := &Runner{Runner: &shell.Runner{Stdout: &bytes.Buffer{}, Stderr: &bytes.Buffer{}}}
 	t.Setenv(envDispatchBrokerAddr, ln.Addr().String())
@@ -703,17 +695,10 @@ func TestForwardAgentDispatchToHostBrokerSendsCanonicalRequest(t *testing.T) {
 	defer ln.Close()
 
 	gotReq := make(chan dispatchBrokerRequest, 1)
-	go func() {
-		conn, err := ln.Accept()
-		if err != nil {
-			return
-		}
-		defer conn.Close()
-		var req dispatchBrokerRequest
-		_ = json.NewDecoder(conn).Decode(&req)
+	serveDispatchBrokerRequests(t, ln, func(conn net.Conn, req dispatchBrokerRequest) {
 		gotReq <- req
 		_ = json.NewEncoder(conn).Encode(dispatchBrokerResponse{OK: true})
-	}()
+	})
 
 	t.Setenv(envDispatchBrokerAddr, ln.Addr().String())
 	t.Setenv(envDispatchBrokerToken, "nonce-123")
@@ -807,17 +792,10 @@ func TestForwardAgentDispatchToHostBrokerInheritsSurfaceHarness(t *testing.T) {
 	defer ln.Close()
 
 	gotReq := make(chan dispatchBrokerRequest, 1)
-	go func() {
-		conn, err := ln.Accept()
-		if err != nil {
-			return
-		}
-		defer conn.Close()
-		var req dispatchBrokerRequest
-		_ = json.NewDecoder(conn).Decode(&req)
+	serveDispatchBrokerRequests(t, ln, func(conn net.Conn, req dispatchBrokerRequest) {
 		gotReq <- req
 		_ = json.NewEncoder(conn).Encode(dispatchBrokerResponse{OK: true})
-	}()
+	})
 
 	t.Setenv(envDispatchBrokerAddr, ln.Addr().String())
 	t.Setenv(envDispatchBrokerToken, "nonce-456")
@@ -854,17 +832,10 @@ func TestForwardAgentDispatchToHostBrokerInheritsRunningDirectorHarness(t *testi
 	defer ln.Close()
 
 	gotReq := make(chan dispatchBrokerRequest, 1)
-	go func() {
-		conn, err := ln.Accept()
-		if err != nil {
-			return
-		}
-		defer conn.Close()
-		var req dispatchBrokerRequest
-		_ = json.NewDecoder(conn).Decode(&req)
+	serveDispatchBrokerRequests(t, ln, func(conn net.Conn, req dispatchBrokerRequest) {
 		gotReq <- req
 		_ = json.NewEncoder(conn).Encode(dispatchBrokerResponse{OK: true})
-	}()
+	})
 
 	t.Setenv(envDispatchBrokerAddr, ln.Addr().String())
 	t.Setenv(envDispatchBrokerToken, "nonce-789")
@@ -897,17 +868,10 @@ func TestForwardAgentDispatchToHostBrokerAllowsRefWithoutPrompt(t *testing.T) {
 	defer ln.Close()
 
 	gotReq := make(chan dispatchBrokerRequest, 1)
-	go func() {
-		conn, err := ln.Accept()
-		if err != nil {
-			return
-		}
-		defer conn.Close()
-		var req dispatchBrokerRequest
-		_ = json.NewDecoder(conn).Decode(&req)
+	serveDispatchBrokerRequests(t, ln, func(conn net.Conn, req dispatchBrokerRequest) {
 		gotReq <- req
 		_ = json.NewEncoder(conn).Encode(dispatchBrokerResponse{OK: true})
-	}()
+	})
 
 	t.Setenv(envDispatchBrokerAddr, ln.Addr().String())
 	t.Setenv(envDispatchBrokerToken, "nonce-789")
@@ -1008,17 +972,7 @@ func TestRunAgentAdvisorRefDispatchReturnsPromptlyViaBroker(t *testing.T) {
 	t.Setenv("WARD_READONLY", "1")
 	t.Setenv("WARD_CONTAINER_NAME", "director-codex-host")
 
-	go func() {
-		conn, err := ln.Accept()
-		if err != nil {
-			return
-		}
-		defer conn.Close()
-		var req dispatchBrokerRequest
-		if err := json.NewDecoder(conn).Decode(&req); err != nil {
-			_ = json.NewEncoder(conn).Encode(dispatchBrokerResponse{OK: false, Error: err.Error()})
-			return
-		}
+	serveDispatchBrokerRequests(t, ln, func(conn net.Conn, req dispatchBrokerRequest) {
 		if req.Token != "nonce-advisor" {
 			_ = json.NewEncoder(conn).Encode(dispatchBrokerResponse{OK: false, Error: "dispatch broker: token rejected"})
 			return
@@ -1029,7 +983,7 @@ func TestRunAgentAdvisorRefDispatchReturnsPromptlyViaBroker(t *testing.T) {
 			return
 		}
 		_ = json.NewEncoder(conn).Encode(dispatchBrokerResponse{OK: true, LogPath: logPath})
-	}()
+	})
 
 	cmd := parseCommandForTest(t, agentAdvisorFlags(), []string{
 		"advisor", "coilyco-flight-deck/ward#378", "--harness", "codex",
@@ -1104,17 +1058,10 @@ func TestForwardAgentDispatchToHostBrokerSupportsQa(t *testing.T) {
 	defer ln.Close()
 
 	gotReq := make(chan dispatchBrokerRequest, 1)
-	go func() {
-		conn, err := ln.Accept()
-		if err != nil {
-			return
-		}
-		defer conn.Close()
-		var req dispatchBrokerRequest
-		_ = json.NewDecoder(conn).Decode(&req)
+	serveDispatchBrokerRequests(t, ln, func(conn net.Conn, req dispatchBrokerRequest) {
 		gotReq <- req
 		_ = json.NewEncoder(conn).Encode(dispatchBrokerResponse{OK: true})
-	}()
+	})
 
 	t.Setenv(envDispatchBrokerAddr, ln.Addr().String())
 	t.Setenv(envDispatchBrokerToken, "nonce-qa")
@@ -1148,20 +1095,11 @@ func TestSendDispatchBrokerLaunchRequestWaitsForResponse(t *testing.T) {
 
 	gotReq := make(chan dispatchBrokerRequest, 1)
 	release := make(chan struct{})
-	go func() {
-		conn, err := ln.Accept()
-		if err != nil {
-			return
-		}
-		defer conn.Close()
-		var req dispatchBrokerRequest
-		if err := json.NewDecoder(conn).Decode(&req); err != nil {
-			return
-		}
+	serveDispatchBrokerRequests(t, ln, func(conn net.Conn, req dispatchBrokerRequest) {
 		gotReq <- req
 		<-release
 		_ = json.NewEncoder(conn).Encode(dispatchBrokerResponse{OK: true, LogPath: "/tmp/ward/dispatch.log"})
-	}()
+	})
 
 	ctx, cancel := context.WithTimeout(t.Context(), time.Second)
 	defer cancel()
@@ -1762,21 +1700,10 @@ workflow default=merge-remote-main {
 
 	gotReq := make(chan dispatchBrokerRequest, 1)
 	brokerErr := make(chan error, 1)
-	go func() {
-		conn, err := ln.Accept()
-		if err != nil {
-			brokerErr <- err
-			return
-		}
-		defer conn.Close()
-		var req dispatchBrokerRequest
-		if err := json.NewDecoder(conn).Decode(&req); err != nil {
-			brokerErr <- err
-			return
-		}
+	serveDispatchBrokerRequests(t, ln, func(conn net.Conn, req dispatchBrokerRequest) {
 		gotReq <- req
 		_ = json.NewEncoder(conn).Encode(dispatchBrokerResponse{OK: true, LogPath: "/tmp/ward/dispatch.log"})
-	}()
+	})
 
 	t.Setenv(envDispatchBrokerAddr, ln.Addr().String())
 	t.Setenv("WARD_FORGEJO_BASE", forgejo.URL)
@@ -1911,20 +1838,13 @@ func TestDispatchBrokerWrongBrokerHint(t *testing.T) {
 		t.Fatalf("listen: %v", err)
 	}
 	defer ln.Close()
-	go func() {
-		conn, err := ln.Accept()
-		if err != nil {
-			return
-		}
-		defer conn.Close()
-		var req dispatchBrokerRequest
-		_ = json.NewDecoder(conn).Decode(&req)
+	serveDispatchBrokerRequests(t, ln, func(conn net.Conn, _ dispatchBrokerRequest) {
 		// Mimic the credential broker refusing the dispatch protocol handshake.
 		_ = json.NewEncoder(conn).Encode(dispatchBrokerResponse{
 			OK:    false,
 			Error: "unsupported protocol version 0 (want 1)",
 		})
-	}()
+	})
 
 	_, err = sendDispatchBrokerRequest(t.Context(), ln.Addr().String(), dispatchBrokerRequest{Role: "engineer"})
 	if err == nil {
@@ -1943,22 +1863,13 @@ func TestForwardAgentDispatchIncludesDispatchLogOnLaunchFailure(t *testing.T) {
 		t.Fatalf("listen broker: %v", err)
 	}
 	defer ln.Close()
-	go func() {
-		conn, err := ln.Accept()
-		if err != nil {
-			return
-		}
-		defer conn.Close()
-		var req dispatchBrokerRequest
-		if err := json.NewDecoder(conn).Decode(&req); err != nil {
-			return
-		}
+	serveDispatchBrokerRequests(t, ln, func(conn net.Conn, _ dispatchBrokerRequest) {
 		_ = json.NewEncoder(conn).Encode(dispatchBrokerResponse{
 			OK:      false,
 			Error:   `Conflict. The container name "/engineer-codex-ward-786" is already in use`,
 			LogPath: "/tmp/ward-agent-logs/dispatch/20260709T083000Z-director-codex-ward-786.log",
 		})
-	}()
+	})
 
 	t.Setenv(envDispatchBrokerAddr, ln.Addr().String())
 	t.Setenv(envDispatchBrokerToken, "nonce-786")
@@ -1986,18 +1897,9 @@ func TestForwardAgentDispatchPrintsLookupCommandWhenLaunchSucceedsWithoutLogPath
 		t.Fatalf("listen broker: %v", err)
 	}
 	defer ln.Close()
-	go func() {
-		conn, err := ln.Accept()
-		if err != nil {
-			return
-		}
-		defer conn.Close()
-		var req dispatchBrokerRequest
-		if err := json.NewDecoder(conn).Decode(&req); err != nil {
-			return
-		}
+	serveDispatchBrokerRequests(t, ln, func(conn net.Conn, _ dispatchBrokerRequest) {
 		_ = json.NewEncoder(conn).Encode(dispatchBrokerResponse{OK: true})
-	}()
+	})
 
 	origStderr := os.Stderr
 	rPipe, wPipe, err := os.Pipe()
