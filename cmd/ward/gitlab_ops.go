@@ -80,7 +80,7 @@ func (c *gitlabClient) do(ctx context.Context, owner, repo, method, path string,
 	return resp, data, nil
 }
 
-func (c *gitlabClient) getIssue(ctx context.Context, owner, repo string, number int) (*Issue, error) {
+func (c *gitlabClient) GetIssue(ctx context.Context, owner, repo string, number int) (*Issue, error) {
 	resp, data, err := c.do(ctx, owner, repo, http.MethodGet, gitlabProjectPath(owner, repo)+"/issues/"+strconv.Itoa(number), nil) //nolint:bodyclose
 	if err != nil {
 		return nil, fmt.Errorf("gitlab: get issue %s/%s#%d: %w", owner, repo, number, err)
@@ -110,7 +110,7 @@ func (c *gitlabClient) getIssue(ctx context.Context, owner, repo string, number 
 	return issue, nil
 }
 
-func (c *gitlabClient) listIssueComments(ctx context.Context, owner, repo string, number int) ([]issueComment, error) {
+func (c *gitlabClient) ListIssueComments(ctx context.Context, owner, repo string, number int) ([]issueComment, error) {
 	path := gitlabProjectPath(owner, repo) + "/issues/" + strconv.Itoa(number) + "/notes?sort=asc&order_by=created_at"
 	resp, data, err := c.do(ctx, owner, repo, http.MethodGet, path, nil) //nolint:bodyclose
 	if err != nil {
@@ -144,7 +144,7 @@ func (c *gitlabClient) listIssueComments(ctx context.Context, owner, repo string
 	return out, nil
 }
 
-func (c *gitlabClient) listPullRequestComments(ctx context.Context, owner, repo string, number int) ([]issueComment, error) {
+func (c *gitlabClient) ListPullRequestComments(ctx context.Context, owner, repo string, number int) ([]issueComment, error) {
 	path := gitlabProjectPath(owner, repo) + "/merge_requests/" + strconv.Itoa(number) + "/notes?sort=asc&order_by=created_at"
 	resp, data, err := c.do(ctx, owner, repo, http.MethodGet, path, nil) //nolint:bodyclose
 	if err != nil {
@@ -178,7 +178,7 @@ func (c *gitlabClient) listPullRequestComments(ctx context.Context, owner, repo 
 	return out, nil
 }
 
-func (c *gitlabClient) getPullRequestContext(ctx context.Context, owner, repo string, number int) (*agentPullRequestContext, error) {
+func (c *gitlabClient) GetPullRequestContext(ctx context.Context, owner, repo string, number int) (*agentPullRequestContext, error) {
 	resp, data, err := c.do(ctx, owner, repo, http.MethodGet, gitlabProjectPath(owner, repo)+"/merge_requests/"+strconv.Itoa(number), nil) //nolint:bodyclose
 	if err != nil {
 		return nil, fmt.Errorf("gitlab: get merge request %s/%s!%d: %w", owner, repo, number, err)
@@ -232,7 +232,7 @@ func normalizeOpenState(s string) string {
 	}
 }
 
-func (c *gitlabClient) createIssue(ctx context.Context, owner, repo, title, body string) (int, error) {
+func (c *gitlabClient) CreateIssue(ctx context.Context, owner, repo, title, body string) (int, error) {
 	payload, err := json.Marshal(map[string]string{
 		"title":       title,
 		"description": c.mode.signBody(body),
@@ -256,7 +256,7 @@ func (c *gitlabClient) createIssue(ctx context.Context, owner, repo, title, body
 	return created.IID, nil
 }
 
-func (c *gitlabClient) commentIssue(ctx context.Context, owner, repo string, number int, body string) error {
+func (c *gitlabClient) CommentIssue(ctx context.Context, owner, repo string, number int, body string) error {
 	payload, err := json.Marshal(map[string]string{"body": c.mode.signBody(body)})
 	if err != nil {
 		return err
@@ -271,13 +271,13 @@ func (c *gitlabClient) commentIssue(ctx context.Context, owner, repo string, num
 	return nil
 }
 
-func (c *gitlabClient) deleteIssueComment(_ context.Context, _, _ string, _ int) error {
+func (c *gitlabClient) DeleteIssueComment(_ context.Context, _, _ string, _ int) error {
 	// The shared Tracker surface does not carry the parent issue IID here, so the
 	// GitLab adapter leaves comment deletion best-effort.
 	return nil
 }
 
-func (c *gitlabClient) closeIssue(ctx context.Context, owner, repo string, number int) error {
+func (c *gitlabClient) CloseIssue(ctx context.Context, owner, repo string, number int) error {
 	resp, data, err := c.do(ctx, owner, repo, http.MethodPut, gitlabProjectPath(owner, repo)+"/issues/"+strconv.Itoa(number)+"?state_event=close", nil) //nolint:bodyclose
 	if err != nil {
 		return fmt.Errorf("gitlab: close issue %s/%s#%d: %w", owner, repo, number, err)
@@ -288,7 +288,7 @@ func (c *gitlabClient) closeIssue(ctx context.Context, owner, repo string, numbe
 	return nil
 }
 
-func (c *gitlabClient) reopenIssue(ctx context.Context, owner, repo string, number int) error {
+func (c *gitlabClient) ReopenIssue(ctx context.Context, owner, repo string, number int) error {
 	resp, data, err := c.do(ctx, owner, repo, http.MethodPut, gitlabProjectPath(owner, repo)+"/issues/"+strconv.Itoa(number)+"?state_event=reopen", nil) //nolint:bodyclose
 	if err != nil {
 		return fmt.Errorf("gitlab: reopen issue %s/%s#%d: %w", owner, repo, number, err)
@@ -299,19 +299,19 @@ func (c *gitlabClient) reopenIssue(ctx context.Context, owner, repo string, numb
 	return nil
 }
 
-func (c *gitlabClient) lockIssue(context.Context, string, string, int) error {
+func (c *gitlabClient) LockIssue(context.Context, string, string, int) error {
 	return errForgeLockUnsupported
 }
 
-func (c *gitlabClient) unlockIssue(context.Context, string, string, int) error {
+func (c *gitlabClient) UnlockIssue(context.Context, string, string, int) error {
 	return errForgeLockUnsupported
 }
 
-func (c *gitlabClient) repoPullRequestsEnabled(context.Context, string, string) (bool, error) {
+func (c *gitlabClient) RepoPullRequestsEnabled(context.Context, string, string) (bool, error) {
 	return true, nil
 }
 
-func (c *gitlabClient) createPullRequest(ctx context.Context, owner, repo, head, base, title, body string) (string, error) {
+func (c *gitlabClient) CreatePullRequest(ctx context.Context, owner, repo, head, base, title, body string) (string, error) {
 	payload, err := json.Marshal(map[string]string{
 		"source_branch": head,
 		"target_branch": base,

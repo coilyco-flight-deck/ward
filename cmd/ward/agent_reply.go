@@ -142,7 +142,7 @@ func (r *Runner) postReplySingle(ctx context.Context, cl Tracker, mode container
 	if len(dropped) > 0 {
 		body = strings.TrimRight(body, "\n") + "\n\n---\n**Note:** ward dropped these fan-out targets before filing:\n\n" + renderDroppedReplySpecs(dropped)
 	}
-	if err := cl.commentIssue(ctx, ref.Owner, ref.Repo, ref.Number, replyComment(mode, level, prompt, body)); err != nil {
+	if err := cl.CommentIssue(ctx, ref.Owner, ref.Repo, ref.Number, replyComment(mode, level, prompt, body)); err != nil {
 		return fmt.Errorf("%s: post reply on %s: %w", label, ref, err)
 	}
 	fmt.Fprintf(os.Stderr, "%s: posted a %s reply on %s - %s\n", label, level.Name, ref, ref.url())
@@ -156,7 +156,7 @@ func (r *Runner) postReplyFanOut(ctx context.Context, cl Tracker, mode container
 	var upstream string
 	for i, s := range allowed {
 		body := replyChildBody(s.Body, ref, i+1, len(allowed), upstream)
-		num, cerr := cl.createIssue(ctx, s.Owner, s.Name, s.Title, body)
+		num, cerr := cl.CreateIssue(ctx, s.Owner, s.Name, s.Title, body)
 		if cerr != nil {
 			dropped = append(dropped, droppedReplySpec{Repo: s.slug(), Reason: "create failed: " + cerr.Error()})
 			fmt.Fprintf(os.Stderr, "%s: could not file child in %s: %v\n", label, s.slug(), cerr)
@@ -168,7 +168,7 @@ func (r *Runner) postReplyFanOut(ctx context.Context, cl Tracker, mode container
 		fmt.Fprintf(os.Stderr, "%s: filed child %s - %s\n", label, cref, cref.url())
 	}
 	body := fanOutIndexComment(mode, level, prompt, summary, created, dropped)
-	if err := cl.commentIssue(ctx, ref.Owner, ref.Repo, ref.Number, body); err != nil {
+	if err := cl.CommentIssue(ctx, ref.Owner, ref.Repo, ref.Number, body); err != nil {
 		return fmt.Errorf("%s: post fan-out index on %s: %w", label, ref, err)
 	}
 	fmt.Fprintf(os.Stderr, "%s: filed %d child issue(s), indexed on %s - %s\n", label, len(created), ref, ref.url())

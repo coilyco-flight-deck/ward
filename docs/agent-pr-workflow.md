@@ -18,8 +18,8 @@ director's merge and CI-status reach ([infrastructure#538](https://github.com/co
 - `ward agent pr merge <owner/repo#N> [--style STYLE]` - merge one PR:
   permission gate, live required-status gate, a merge pinned to the checked
   head commit, smart-defaults style selection when set, repo-default fallback
-  when allowed, repo-default delete-branch propagation, then the merged-state
-  check
+  when allowed, delete-branch propagation, then the merged-state
+  postcondition. Ward requires `merged: true`
   (`GET /repos/{owner}/{repo}/pulls/{index}/merge`).
 - `ward agent pr runs [owner/repo] [--limit N]` - Actions runs with per-run
   conclusions (`GET /repos/{owner}/{repo}/actions/runs`).
@@ -64,7 +64,8 @@ A PR names its own mode: the `ward.workflow:` marker the engineer stamps into a
 
 The `ward agent director merge` composite keeps its stricter thread-driven
 policy (`WARDED_WORKFLOW`, review, QA verdict); `ward agent pr merge` is the
-operator-driven single-PR tool under the same status and permission gates.
+operator-driven single-PR tool under the same gates. See
+[agent-pr-workflow-recovery.md](agent-pr-workflow-recovery.md).
 
 ## See also
 

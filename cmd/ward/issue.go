@@ -7,6 +7,7 @@ import (
 	"strings"
 
 	"forgejo.coilysiren.me/coilyco-flight-deck/cli-guard/pkg/issueref"
+	"github.com/coilyco-flight-deck/ward/internal/contracts"
 )
 
 // ward parses issue references directly through pkg/issueref. The issue and its
@@ -33,18 +34,7 @@ func (i IssueRef) String() string {
 	return fmt.Sprintf("%s/%s#%d", i.Owner, i.Repo, i.Number)
 }
 
-// Issue is the platform-neutral fetch result. GitHub and Forgejo share the same
-// JSON field names, so one struct covers both.
-type Issue struct {
-	Number int    `json:"number"`
-	Title  string `json:"title"`
-	Body   string `json:"body"`
-	State  string `json:"state"`
-	URL    string `json:"html_url"`
-	// Labels holds the issue's label names, populated by each fetcher (label
-	// JSON is objects, not strings, so json:"-"). Drives the ceiling gate.
-	Labels []string `json:"-"`
-}
+type Issue = contracts.Issue
 
 // githubIssueRefRE matches github.com issue URLs and compact refs, tolerating scheme,
 // www, .git, and trailing query/fragment. issueref.Parse does not know GitHub.

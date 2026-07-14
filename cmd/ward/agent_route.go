@@ -104,7 +104,7 @@ func (r *Runner) runAgentTaskRoute(ctx context.Context, c *cli.Command, mode con
 		return fmt.Errorf("%s: %w", label, err)
 	}
 	// 1. File the intake record - the literal ask, captured before routing.
-	intakeNum, err := cl.createIssue(ctx, inboxOwner, inboxRepo, title, routeIntakeBody(mode, taskText))
+	intakeNum, err := cl.CreateIssue(ctx, inboxOwner, inboxRepo, title, routeIntakeBody(mode, taskText))
 	if err != nil {
 		return fmt.Errorf("%s: file intake issue in %s/%s: %w", label, inboxOwner, inboxRepo, err)
 	}
@@ -129,7 +129,7 @@ func (r *Runner) runAgentTaskRoute(ctx context.Context, c *cli.Command, mode con
 
 	// 3. File the scoped child issue in the routed repo, cross-linked to intake.
 	childBody := routeChildBody(mode, taskText, outcome.Note, intake)
-	childNum, err := cl.createIssue(ctx, target.Owner, target.Name, title, childBody)
+	childNum, err := cl.CreateIssue(ctx, target.Owner, target.Name, title, childBody)
 	if err != nil {
 		return fmt.Errorf("%s: file child issue in %s: %w", label, target.slug(), err)
 	}
@@ -137,10 +137,10 @@ func (r *Runner) runAgentTaskRoute(ctx context.Context, c *cli.Command, mode con
 	fmt.Fprintf(os.Stderr, "%s: routed %s -> child %s - %s\n", label, intake, child, child.url())
 
 	// 4. Cross-link the child onto the intake record, then close the intake.
-	if cerr := cl.commentIssue(ctx, intake.Owner, intake.Repo, intake.Number, routeRoutedComment(mode, child, outcome.Note, read)); cerr != nil {
+	if cerr := cl.CommentIssue(ctx, intake.Owner, intake.Repo, intake.Number, routeRoutedComment(mode, child, outcome.Note, read)); cerr != nil {
 		return fmt.Errorf("%s: cross-link intake %s: %w", label, intake, cerr)
 	}
-	if cerr := cl.closeIssue(ctx, intake.Owner, intake.Repo, intake.Number); cerr != nil {
+	if cerr := cl.CloseIssue(ctx, intake.Owner, intake.Repo, intake.Number); cerr != nil {
 		// The child is filed and cross-linked; a failed close is cosmetic, so warn
 		// rather than strand the run.
 		fmt.Fprintf(os.Stderr, "%s: note: could not close intake %s (%v); it's cross-linked, close it by hand\n", label, intake, cerr)
@@ -202,7 +202,7 @@ func (r *Runner) resolveRouteTarget(outcome routeOutcome) (targetRepo, string, b
 // and launches nothing - the consult exit when the survey can't route confidently.
 func (r *Runner) bounceRouteToHuman(ctx context.Context, signed Tracker, label string, mode containerMode, intake agentIssueRef, reason, read string) error {
 	fmt.Fprintf(os.Stderr, "%s: route UNCLEAR for intake %s; launching nothing, leaving it open for a human.\n", label, intake)
-	if cerr := signed.commentIssue(ctx, intake.Owner, intake.Repo, intake.Number, routeUnclearComment(mode, reason, read)); cerr != nil {
+	if cerr := signed.CommentIssue(ctx, intake.Owner, intake.Repo, intake.Number, routeUnclearComment(mode, reason, read)); cerr != nil {
 		return fmt.Errorf("%s: comment UNCLEAR on %s: %w", label, intake, cerr)
 	}
 	fmt.Fprintf(os.Stderr, "%s: commented UNCLEAR on %s - %s\n", label, intake, intake.url())

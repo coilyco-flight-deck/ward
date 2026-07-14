@@ -697,24 +697,11 @@ func TestForwardAgentDispatchToHostBrokerSendsCanonicalRequest(t *testing.T) {
 
 	gotReq := make(chan dispatchBrokerRequest, 1)
 	var accepted int32
-	go func() {
-		for {
-			conn, err := ln.Accept()
-			if err != nil {
-				return
-			}
-			atomic.AddInt32(&accepted, 1)
-			go func(conn net.Conn) {
-				defer conn.Close()
-				var req dispatchBrokerRequest
-				if err := json.NewDecoder(conn).Decode(&req); err != nil {
-					return
-				}
-				gotReq <- req
-				_ = json.NewEncoder(conn).Encode(dispatchBrokerResponse{OK: true})
-			}(conn)
-		}
-	}()
+	serveDispatchBrokerRequests(t, ln, func(conn net.Conn, req dispatchBrokerRequest) {
+		atomic.AddInt32(&accepted, 1)
+		gotReq <- req
+		_ = json.NewEncoder(conn).Encode(dispatchBrokerResponse{OK: true})
+	})
 
 	t.Setenv(envDispatchBrokerAddr, ln.Addr().String())
 	t.Setenv(envDispatchBrokerToken, "nonce-123")
@@ -925,7 +912,7 @@ func TestPRWorkflowForwardedSkipsUnreachableBroker(t *testing.T) {
 	t.Setenv(envDispatchBrokerToken, "nonce-123")
 	t.Setenv("WARD_READONLY", "1")
 	t.Setenv("WARD_CONTAINER_NAME", "director-codex-host")
-	handled, err := prWorkflowForwarded(t.Context(), &Runner{Runner: &shell.Runner{Stdout: io.Discard}}, dispatchBrokerRequest{
+	handled, err := prWorkflowForwarded(t.Context(), &Runner{}, dispatchBrokerRequest{
 		Action: dispatchActionPRStatus,
 		Target: "coilyco-flight-deck/ward#7",
 	})
@@ -945,23 +932,11 @@ func TestPRWorkflowForwardedUsesOneBrokerRequest(t *testing.T) {
 	defer ln.Close()
 
 	var accepted int32
-	go func() {
-		for {
-			conn, err := ln.Accept()
-			if err != nil {
-				return
-			}
-			atomic.AddInt32(&accepted, 1)
-			go func(conn net.Conn) {
-				defer conn.Close()
-				var req dispatchBrokerRequest
-				if err := json.NewDecoder(conn).Decode(&req); err != nil {
-					return
-				}
-				_ = json.NewEncoder(conn).Encode(dispatchBrokerResponse{OK: true})
-			}(conn)
-		}
-	}()
+	serveDispatchBrokerRequests(t, ln, func(conn net.Conn, req dispatchBrokerRequest) {
+		atomic.AddInt32(&accepted, 1)
+		_ = req
+		_ = json.NewEncoder(conn).Encode(dispatchBrokerResponse{OK: true})
+	})
 
 	t.Setenv(envDispatchBrokerAddr, ln.Addr().String())
 	t.Setenv(envDispatchBrokerToken, "nonce-123")
@@ -1574,7 +1549,7 @@ func TestCommentDispatchLaunchErrorReportsCapacityLocally(t *testing.T) {
 		r.commentDispatchLaunchError(context.Background(), req, "/tmp/ward/dispatch.log", capacityErr)
 	})
 	for _, want := range []string{
-		"ward dispatch broker: engineer pool full, 10/10, not dispatched",
+		"ward dispatch broker: engineer pool full, 10/10 active launches, not dispatched",
 	} {
 		if !strings.Contains(stderr, want) {
 			t.Fatalf("capacity stderr missing %q: %q", want, stderr)

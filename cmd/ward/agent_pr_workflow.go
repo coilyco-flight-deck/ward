@@ -8,6 +8,7 @@ import (
 	"os"
 	"strconv"
 	"strings"
+	"time"
 
 	"forgejo.coilysiren.me/coilyco-flight-deck/cli-guard/cli/verb"
 	"github.com/urfave/cli/v3"
@@ -103,15 +104,15 @@ func prWorkflowMarkerMode(body string) workflowMode {
 // prWorkflowStatusReport renders the combined CI status for one PR head: the
 // native GET /repos/{owner}/{repo}/commits/{ref}/status read (ward#1067).
 func prWorkflowStatusReport(ctx context.Context, cl *forgejoClient, owner, repo string, index int) (string, error) {
-	pr, err := cl.getPullRequest(ctx, owner, repo, index)
+	pr, err := cl.GetPullRequest(ctx, owner, repo, index)
 	if err != nil {
 		return "", err
 	}
-	head := pr.headSHA()
+	head := pr.HeadSHA()
 	if head == "" {
 		return "", fmt.Errorf("pr status: %s/%s#%d did not expose a head SHA", owner, repo, index)
 	}
-	combined, err := cl.getCommitCombinedStatus(ctx, owner, repo, head)
+	combined, err := cl.GetCommitCombinedStatus(ctx, owner, repo, head)
 	if err != nil {
 		return "", err
 	}
@@ -122,7 +123,7 @@ func prWorkflowStatusReport(ctx context.Context, cl *forgejoClient, owner, repo 
 	}
 	fmt.Fprintf(&b, "%s/%s#%d %q head %s combined status: %s\n", owner, repo, index, pr.Title, head, state)
 	for _, st := range combined.Statuses {
-		fmt.Fprintf(&b, "  %s = %s\n", st.Context, strings.ToLower(st.effectiveState()))
+		fmt.Fprintf(&b, "  %s = %s\n", st.Context, strings.ToLower(st.EffectiveState()))
 	}
 	if len(combined.Statuses) == 0 {
 		b.WriteString("  (no status contexts reported yet)\n")
@@ -145,7 +146,7 @@ func prWorkflowStatusReport(ctx context.Context, cl *forgejoClient, owner, repo 
 	}
 	// The required-context set is advisory here: the merge tool re-checks it
 	// fail-closed. A branch read failure degrades to a note, not an error.
-	if branch, berr := cl.getBranch(ctx, owner, repo, pr.Base.Ref); berr == nil {
+	if branch, berr := cl.GetBranch(ctx, owner, repo, pr.Base.Ref); berr == nil {
 		if required := normalizeDirectorRequiredContexts(branch.StatusCheckContexts); len(required) > 0 {
 			fmt.Fprintf(&b, "  required on %s: %s\n", pr.Base.Ref, strings.Join(required, ", "))
 		}
@@ -156,7 +157,7 @@ func prWorkflowStatusReport(ctx context.Context, cl *forgejoClient, owner, repo 
 // prWorkflowMergeExec merges one PR through ward's compiled client: permission
 // gate, live required-status gate, head-pinned merge, merged-state check.
 func prWorkflowMergeExec(ctx context.Context, cl *forgejoClient, role, owner, repo string, index int, mergeStyle string) (string, error) {
-	pr, err := cl.getPullRequest(ctx, owner, repo, index)
+	pr, err := cl.GetPullRequest(ctx, owner, repo, index)
 	if err != nil {
 		return "", err
 	}
@@ -164,13 +165,13 @@ func prWorkflowMergeExec(ctx context.Context, cl *forgejoClient, role, owner, re
 	if err := prWorkflowPermitted(role, wf, prOpMerge); err != nil {
 		return "", err
 	}
-	if merged, merr := cl.pullRequestMerged(ctx, owner, repo, index); merr == nil && merged {
+	if merged, merr := cl.PullRequestMerged(ctx, owner, repo, index); merr == nil && merged {
 		return fmt.Sprintf("%s/%s#%d is already merged\n", owner, repo, index), nil
 	}
 	if strings.ToLower(strings.TrimSpace(pr.State)) != "open" {
 		return "", fmt.Errorf("pr merge: %s/%s#%d is %s, not open", owner, repo, index, pr.State)
 	}
-	head := pr.headSHA()
+	head := pr.HeadSHA()
 	if head == "" {
 		return "", fmt.Errorf("pr merge: %s/%s#%d did not expose a head SHA", owner, repo, index)
 	}
@@ -178,23 +179,146 @@ func prWorkflowMergeExec(ctx context.Context, cl *forgejoClient, role, owner, re
 	if !ok {
 		return "", fmt.Errorf("pr merge: %s/%s#%d: %s", owner, repo, index, reason)
 	}
-	if err := cl.mergePullRequestWithHeadAndStyle(ctx, owner, repo, index, head, mergeStyle); err != nil {
+	settledHead, err := mergePullRequestWithHeadAndStyleSettled(ctx, cl, owner, repo, index, head, mergeStyle, &status)
+	if err != nil {
 		return "", fmt.Errorf("pr merge: %s/%s#%d: %w", owner, repo, index, err)
 	}
-	confirm := "merged-state check: merged"
-	if merged, merr := cl.pullRequestMerged(ctx, owner, repo, index); merr != nil {
-		confirm = "merged-state check unavailable: " + firstLine(merr.Error())
-	} else if !merged {
-		confirm = "merged-state check: NOT merged yet - verify on the forge"
+	head = settledHead
+	if err := requirePullRequestMerged(ctx, cl, owner, repo, index, head); err != nil {
+		return "", fmt.Errorf("pr merge: %s/%s#%d: %w", owner, repo, index, err)
 	}
 	return fmt.Sprintf("merged %s/%s#%d (role %s, workflow %s, head %s, status %s); %s\n",
-		owner, repo, index, role, wf.orDefault(), head, status.Status.summary(), confirm), nil
+		owner, repo, index, role, wf.orDefault(), head, status.Status.summary(), "merged-state check: merged"), nil
+}
+
+const prWorkflowMergeSettleAttempts = 3
+
+var prWorkflowMergeSettleDelay = 150 * time.Millisecond
+
+func mergePullRequestWithHeadAndStyleSettled(ctx context.Context, cl *forgejoClient, owner, repo string, index int, head, mergeStyle string, status *directorMergeStatusCheck) (string, error) {
+	var lastErr error
+	for attempt := 1; attempt <= prWorkflowMergeSettleAttempts; attempt++ {
+		err := cl.MergePullRequestWithHeadAndStyle(ctx, owner, repo, index, head, mergeStyle)
+		if err == nil {
+			return head, nil
+		}
+		lastErr = err
+		if !forgejoMergeNeedsSettle(err) {
+			return "", err
+		}
+		if attempt == prWorkflowMergeSettleAttempts {
+			break
+		}
+		time.Sleep(time.Duration(attempt) * prWorkflowMergeSettleDelay)
+		pr, err := cl.GetPullRequest(ctx, owner, repo, index)
+		if err != nil {
+			return "", fmt.Errorf("forgejo merge stayed on 405 after %d settle attempt(s), and the PR refresh failed: %w", attempt, err)
+		}
+		if strings.ToLower(strings.TrimSpace(pr.State)) != "open" {
+			return "", fmt.Errorf("forgejo merge stayed on 405 after %d settle attempt(s), but %s/%s#%d is now %s", attempt, owner, repo, index, pr.State)
+		}
+		head = pr.HeadSHA()
+		if head == "" {
+			return "", fmt.Errorf("forgejo merge stayed on 405 after %d settle attempt(s), and %s/%s#%d no longer exposed a head SHA", attempt, owner, repo, index)
+		}
+		nextStatus, reason, ok := directorMergeStatusGate(ctx, cl, owner, repo, pr.Base.Ref, head)
+		if !ok {
+			return "", fmt.Errorf("forgejo merge stayed on 405 after %d settle attempt(s), and the PR is no longer eligible: %s", attempt, reason)
+		}
+		*status = nextStatus
+	}
+	if status != nil {
+		return "", fmt.Errorf("forgejo merge stayed on 405 after %d settle attempt(s) while the PR remained green (%s); retry later or check the Forgejo merge queue: %w", prWorkflowMergeSettleAttempts, status.Status.summary(), lastErr)
+	}
+	return "", fmt.Errorf("forgejo merge stayed on 405 after %d settle attempt(s); retry later or check the Forgejo merge queue: %w", prWorkflowMergeSettleAttempts, lastErr)
+}
+
+func forgejoMergeNeedsSettle(err error) bool {
+	if err == nil {
+		return false
+	}
+	msg := strings.ToLower(err.Error())
+	return strings.Contains(msg, "forgejo merge pr returned 405") && strings.Contains(msg, "please try again later")
+}
+
+type prMergePostconditionError struct {
+	Owner   string
+	Repo    string
+	Index   int
+	State   string
+	HeadSHA string
+	Merged  bool
+	Cause   error
+}
+
+func (e *prMergePostconditionError) Error() string {
+	state := strings.ToLower(strings.TrimSpace(e.State))
+	if state == "" {
+		state = "unknown"
+	}
+	head := strings.TrimSpace(e.HeadSHA)
+	if head == "" {
+		head = "<unknown>"
+	}
+	base := fmt.Sprintf("merge postcondition failed for %s/%s#%d: state %s, merged=%t, head %s",
+		e.Owner, e.Repo, e.Index, state, e.Merged, head)
+	if e.Cause != nil {
+		return base + ": " + firstLine(e.Cause.Error())
+	}
+	return base
+}
+
+func (e *prMergePostconditionError) Unwrap() error { return e.Cause }
+
+func (e *prMergePostconditionError) closedButUnmerged() bool {
+	return strings.EqualFold(strings.TrimSpace(e.State), "closed") && !e.Merged && e.Cause == nil
+}
+
+func requirePullRequestMerged(ctx context.Context, cl *forgejoClient, owner, repo string, index int, expectedHead string) error {
+	merged, err := cl.PullRequestMerged(ctx, owner, repo, index)
+	if err != nil {
+		return &prMergePostconditionError{
+			Owner:   owner,
+			Repo:    repo,
+			Index:   index,
+			State:   "unknown",
+			HeadSHA: expectedHead,
+			Cause:   err,
+		}
+	}
+	if merged {
+		return nil
+	}
+	pr, err := cl.GetPullRequest(ctx, owner, repo, index)
+	if err != nil {
+		return &prMergePostconditionError{
+			Owner:   owner,
+			Repo:    repo,
+			Index:   index,
+			State:   "unknown",
+			HeadSHA: expectedHead,
+			Merged:  false,
+			Cause:   err,
+		}
+	}
+	head := strings.TrimSpace(pr.HeadSHA())
+	if head == "" {
+		head = strings.TrimSpace(expectedHead)
+	}
+	return &prMergePostconditionError{
+		Owner:   owner,
+		Repo:    repo,
+		Index:   index,
+		State:   strings.TrimSpace(pr.State),
+		HeadSHA: head,
+		Merged:  false,
+	}
 }
 
 // prWorkflowRunsReport renders a repo's Actions runs with per-run conclusions -
 // the native list the rerun decision reads (ward#1067).
 func prWorkflowRunsReport(ctx context.Context, cl *forgejoClient, owner, repo string, limit int) (string, error) {
-	runs, err := cl.listActionRuns(ctx, owner, repo, limit)
+	runs, err := cl.ListActionRuns(ctx, owner, repo, limit)
 	if err != nil {
 		return "", err
 	}
@@ -213,11 +337,11 @@ func prWorkflowRunsReport(ctx context.Context, cl *forgejoClient, owner, repo st
 // prWorkflowRerunExec asks the forge to rerun one Actions run natively; the
 // forge-gap fallback (agentic-os#434) surfaces as a loud, actionable error.
 func prWorkflowRerunExec(ctx context.Context, cl *forgejoClient, owner, repo string, runID int64) (string, error) {
-	run, err := cl.getActionRun(ctx, owner, repo, runID)
+	run, err := cl.GetActionRun(ctx, owner, repo, runID)
 	if err != nil {
 		return "", err
 	}
-	if err := cl.rerunActionRun(ctx, owner, repo, runID); err != nil {
+	if err := cl.RerunActionRun(ctx, owner, repo, runID); err != nil {
 		return "", err
 	}
 	return fmt.Sprintf("rerun requested for %s/%s run %d (%s, was %s)\n",
@@ -373,6 +497,9 @@ func (r *Runner) resolveAgentPRRepo(ctx context.Context, label, arg string) (own
 func prWorkflowForwarded(ctx context.Context, r *Runner, req dispatchBrokerRequest) (bool, error) {
 	addr := strings.TrimSpace(os.Getenv(envDispatchBrokerAddr))
 	if addr == "" || os.Getenv("WARD_READONLY") != "1" {
+		return false, nil
+	}
+	if !hostDispatchBrokerReachable(ctx, addr) {
 		return false, nil
 	}
 	req.Role = prWorkflowRole()

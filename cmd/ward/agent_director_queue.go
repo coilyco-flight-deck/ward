@@ -30,9 +30,9 @@ const (
 )
 
 type directorQueueClient interface {
-	listOpenIssues(ctx context.Context, owner, repo string, limit int) ([]backlogIssue, error)
-	listOpenPullRequests(ctx context.Context, owner, repo string, limit int) ([]directorPullRequest, error)
-	listIssueComments(ctx context.Context, owner, repo string, number int) ([]issueComment, error)
+	ListOpenIssues(ctx context.Context, owner, repo string, limit int) ([]backlogIssue, error)
+	ListOpenPullRequests(ctx context.Context, owner, repo string, limit int) ([]directorPullRequest, error)
+	ListIssueComments(ctx context.Context, owner, repo string, number int) ([]issueComment, error)
 }
 
 type directorQueueItem struct {
@@ -50,7 +50,7 @@ type directorQueueItem struct {
 
 func directorQueueFlags() []cli.Flag {
 	return []cli.Flag{
-		&cli.StringFlag{Name: "repo", Usage: "comma-separated scope 'a/b,c/d' (default: director.default-scope from ~/.ward/config.yaml, else the cwd git origin)"},
+		&cli.StringFlag{Name: "repo", Usage: "comma-separated scope 'a/b,c/d' (default: director.default-scope from ~/.ward/config.yaml)"},
 		&cli.StringSliceFlag{Name: "org", Usage: "expand every repo an org owns into the scope (owner; repeatable), unioned with --repo and de-duped"},
 		&cli.IntFlag{Name: "limit", Value: directorLimitDefault(), Usage: "open issues read per repo per refresh"},
 	}
@@ -127,24 +127,24 @@ func collectDirectorQueueItems(ctx context.Context, cl directorQueueClient, repo
 }
 
 func collectDirectorQueueItemsForRepo(ctx context.Context, cl directorQueueClient, repo, owner, name string, limit int, now time.Time, ttl time.Duration) ([]directorQueueItem, error) {
-	issues, err := cl.listOpenIssues(ctx, owner, name, limit)
+	issues, err := cl.ListOpenIssues(ctx, owner, name, limit)
 	if err != nil {
 		return nil, fmt.Errorf("read open issues in %s: %w", repo, err)
 	}
-	prs, err := cl.listOpenPullRequests(ctx, owner, name, limit)
+	prs, err := cl.ListOpenPullRequests(ctx, owner, name, limit)
 	if err != nil {
 		return nil, fmt.Errorf("read open pull requests in %s: %w", repo, err)
 	}
 	items := make([]directorQueueItem, 0, len(issues)+len(prs))
 	for _, issue := range issues {
-		comments, cerr := cl.listIssueComments(ctx, owner, name, issue.Number)
+		comments, cerr := cl.ListIssueComments(ctx, owner, name, issue.Number)
 		if cerr != nil {
 			return nil, fmt.Errorf("read comments for %s#%d: %w", repo, issue.Number, cerr)
 		}
 		items = append(items, classifyDirectorQueueIssue(repo, issue, comments, now, ttl))
 	}
 	for _, pr := range prs {
-		comments, cerr := cl.listIssueComments(ctx, owner, name, pr.Number)
+		comments, cerr := cl.ListIssueComments(ctx, owner, name, pr.Number)
 		if cerr != nil {
 			return nil, fmt.Errorf("read comments for %s#%d: %w", repo, pr.Number, cerr)
 		}

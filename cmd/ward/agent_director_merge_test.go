@@ -709,28 +709,28 @@ func TestDirectorMergeEligibilityRejectsMergeConflict(t *testing.T) {
 
 type mergeConflictTracker struct{}
 
-func (mergeConflictTracker) getIssue(context.Context, string, string, int) (*Issue, error) {
+func (mergeConflictTracker) GetIssue(context.Context, string, string, int) (*Issue, error) {
 	return &Issue{}, nil
 }
 
-func (mergeConflictTracker) listIssueComments(context.Context, string, string, int) ([]issueComment, error) {
+func (mergeConflictTracker) ListIssueComments(context.Context, string, string, int) ([]issueComment, error) {
 	return nil, context.Canceled
 }
 
-func (mergeConflictTracker) createIssue(context.Context, string, string, string, string) (int, error) {
+func (mergeConflictTracker) CreateIssue(context.Context, string, string, string, string) (int, error) {
 	return 0, nil
 }
 
-func (mergeConflictTracker) commentIssue(context.Context, string, string, int, string) error {
+func (mergeConflictTracker) CommentIssue(context.Context, string, string, int, string) error {
 	return nil
 }
-func (mergeConflictTracker) deleteIssueComment(context.Context, string, string, int) error {
+func (mergeConflictTracker) DeleteIssueComment(context.Context, string, string, int) error {
 	return nil
 }
-func (mergeConflictTracker) closeIssue(context.Context, string, string, int) error  { return nil }
-func (mergeConflictTracker) reopenIssue(context.Context, string, string, int) error { return nil }
-func (mergeConflictTracker) lockIssue(context.Context, string, string, int) error   { return nil }
-func (mergeConflictTracker) unlockIssue(context.Context, string, string, int) error { return nil }
+func (mergeConflictTracker) CloseIssue(context.Context, string, string, int) error  { return nil }
+func (mergeConflictTracker) ReopenIssue(context.Context, string, string, int) error { return nil }
+func (mergeConflictTracker) LockIssue(context.Context, string, string, int) error   { return nil }
+func (mergeConflictTracker) UnlockIssue(context.Context, string, string, int) error { return nil }
 
 func TestDirectorMergeConflictReasonFromComments(t *testing.T) {
 	now := time.Date(2026, 7, 10, 18, 0, 0, 0, time.UTC)
@@ -766,6 +766,43 @@ func TestDirectorMergeConflictReasonFromComments(t *testing.T) {
 	}
 }
 
+func TestRecoverClosedUnmergedDirectorMergeReopensAndRetries(t *testing.T) {
+	markMergedOnSuccess := true
+	fake := &prWorkflowFakeForge{
+		prBody:                    "closes #6\n\nward.workflow: pull-request-and-merge\n",
+		prState:                   "closed",
+		combinedState:             "success",
+		contextState:              "success",
+		defaultMergeStyle:         "merge",
+		allowMergeCommits:         true,
+		allowSquashMerge:          true,
+		allowFastForwardOnlyMerge: true,
+		allowRebase:               true,
+		allowRebaseExplicit:       true,
+		markMergedOnSuccess:       &markMergedOnSuccess,
+	}
+	srv := fake.server(t)
+	defer srv.Close()
+	cl := &forgejoClient{baseURL: srv.URL, token: "secret"}
+	postErr := &prMergePostconditionError{Owner: "coilyco-flight-deck", Repo: "ward", Index: 7, State: "closed", HeadSHA: "headsha"}
+	head, err := recoverClosedUnmergedDirectorMerge(context.Background(), cl, "coilyco-flight-deck", "ward", 7, "", postErr)
+	if err != nil {
+		t.Fatalf("recoverClosedUnmergedDirectorMerge: %v", err)
+	}
+	if head != "headsha" {
+		t.Fatalf("head = %q, want headsha", head)
+	}
+	if fake.mergedChecks != 1 {
+		t.Fatalf("merged-state checks = %d, want 1", fake.mergedChecks)
+	}
+	if fake.mergeCalls != 1 {
+		t.Fatalf("merge calls = %d, want 1", fake.mergeCalls)
+	}
+	if fake.prState != "closed" {
+		t.Fatalf("PR state = %q, want closed after retry lands", fake.prState)
+	}
+}
+
 func TestListOpenPullRequestsReadsMergeability(t *testing.T) {
 	srv := httptest.NewServer(http.HandlerFunc(func(w http.ResponseWriter, r *http.Request) {
 		switch r.URL.Path {
@@ -794,7 +831,7 @@ func TestListOpenPullRequestsReadsMergeability(t *testing.T) {
 	defer srv.Close()
 
 	cl := &forgejoClient{baseURL: srv.URL, token: "secret"}
-	prs, err := cl.listOpenPullRequests(context.Background(), "coilyco-flight-deck", "ward", 50)
+	prs, err := cl.ListOpenPullRequests(context.Background(), "coilyco-flight-deck", "ward", 50)
 	if err != nil {
 		t.Fatalf("listOpenPullRequests: %v", err)
 	}

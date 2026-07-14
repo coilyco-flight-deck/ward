@@ -110,7 +110,7 @@ func (r *Runner) resolveAWSInjectCreds(ctx context.Context, plan *upPlan) []agen
 		blog("ward container: %v; falling back to the ~/.aws mount (ward#586)", perr)
 		return nil
 	}
-	region := r.resolveAWSRegion(ctx)
+	region := r.ResolveAWSRegion(ctx)
 	// Export succeeded: env supersedes the mount, so drop it (clearing AWSHome silences the
 	// #579 empty-mount warning - the real "no creds" signal is now an export failure).
 	plan.dropAWSMount()
@@ -120,7 +120,7 @@ func (r *Runner) resolveAWSInjectCreds(ctx context.Context, plan *upPlan) []agen
 
 // resolveAWSRegion resolves the region to inject alongside exported creds (export gives
 // none): host AWS_REGION / AWS_DEFAULT_REGION, else the configured default.
-func (r *Runner) resolveAWSRegion(ctx context.Context) string {
+func (r *Runner) ResolveAWSRegion(ctx context.Context) string {
 	if v := strings.TrimSpace(os.Getenv(awsRegionEnv)); v != "" {
 		return v
 	}

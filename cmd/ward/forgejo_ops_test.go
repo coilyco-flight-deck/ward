@@ -28,7 +28,7 @@ func TestCreateIssueBodyIsSigned(t *testing.T) {
 	defer srv.Close()
 
 	cl := &forgejoClient{baseURL: srv.URL, token: "secret", mode: modeClaude}
-	if _, err := cl.createIssue(context.Background(), "coilyco-flight-deck", "ward", "t", "raw report body"); err != nil {
+	if _, err := cl.CreateIssue(context.Background(), "coilyco-flight-deck", "ward", "t", "raw report body"); err != nil {
 		t.Fatalf("createIssue: %v", err)
 	}
 	if !strings.Contains(got["body"], agentSignatureMarker) {
@@ -46,7 +46,7 @@ func TestForgejoClientDeleteIssueComment(t *testing.T) {
 	defer srv.Close()
 
 	cl := &forgejoClient{baseURL: srv.URL, token: "secret", mode: modeClaude}
-	if err := cl.deleteIssueComment(context.Background(), "coilyco-flight-deck", "ward", 7); err != nil {
+	if err := cl.DeleteIssueComment(context.Background(), "coilyco-flight-deck", "ward", 7); err != nil {
 		t.Fatalf("deleteIssueComment: %v", err)
 	}
 }
@@ -116,7 +116,7 @@ func TestGetPullRequestRetriesEmptyBodyThenSucceeds(t *testing.T) {
 	defer srv.Close()
 
 	cl := &forgejoClient{baseURL: srv.URL, token: "secret"}
-	pr, err := cl.getPullRequest(context.Background(), "coilyco-flight-deck", "ward", 862)
+	pr, err := cl.GetPullRequest(context.Background(), "coilyco-flight-deck", "ward", 862)
 	if err != nil {
 		t.Fatalf("getPullRequest: %v", err)
 	}
@@ -137,7 +137,7 @@ func TestGetPullRequestPersistentEmptyBody(t *testing.T) {
 	defer srv.Close()
 
 	cl := &forgejoClient{baseURL: srv.URL, token: "secret"}
-	_, err := cl.getPullRequest(context.Background(), "coilyco-flight-deck", "ward", 863)
+	_, err := cl.GetPullRequest(context.Background(), "coilyco-flight-deck", "ward", 863)
 	if err == nil {
 		t.Fatal("getPullRequest: want error, got nil")
 	}
@@ -159,7 +159,7 @@ func TestGetPullRequestReadsBodyLargerThan4096(t *testing.T) {
 	defer srv.Close()
 
 	cl := &forgejoClient{baseURL: srv.URL, token: "secret"}
-	pr, err := cl.getPullRequest(context.Background(), "coilyco-flight-deck", "ward", 864)
+	pr, err := cl.GetPullRequest(context.Background(), "coilyco-flight-deck", "ward", 864)
 	if err != nil {
 		t.Fatalf("getPullRequest: %v", err)
 	}
@@ -176,7 +176,7 @@ func TestGetPullRequestReportsNotFoundWithoutRaw404(t *testing.T) {
 	defer srv.Close()
 
 	cl := &forgejoClient{baseURL: srv.URL, token: "secret"}
-	_, err := cl.getPullRequest(context.Background(), "coilyco-flight-deck", "ward", 865)
+	_, err := cl.GetPullRequest(context.Background(), "coilyco-flight-deck", "ward", 865)
 	if err == nil {
 		t.Fatal("getPullRequest: want error, got nil")
 	}
@@ -273,7 +273,7 @@ func TestForgejoGetIssueFlattensLabels(t *testing.T) {
 	defer srv.Close()
 
 	c := &forgejoClient{baseURL: srv.URL}
-	issue, err := c.getIssue(context.Background(), "coilyco-flight-deck", "agentic-os", 246)
+	issue, err := c.GetIssue(context.Background(), "coilyco-flight-deck", "agentic-os", 246)
 	if err != nil {
 		t.Fatalf("getIssue: %v", err)
 	}
@@ -333,14 +333,14 @@ func TestListOpenIssuesAndPullRequestsClassifyPullRequestNull(t *testing.T) {
 	defer srv.Close()
 
 	cl := &forgejoClient{baseURL: srv.URL, token: "secret"}
-	issues, err := cl.listOpenIssues(context.Background(), "coilyco-flight-deck", "ward", 50)
+	issues, err := cl.ListOpenIssues(context.Background(), "coilyco-flight-deck", "ward", 50)
 	if err != nil {
 		t.Fatalf("listOpenIssues: %v", err)
 	}
 	if len(issues) != 1 || issues[0].Number != 982 {
 		t.Fatalf("issues = %+v, want only the normal issue", issues)
 	}
-	prs, err := cl.listOpenPullRequests(context.Background(), "coilyco-flight-deck", "ward", 50)
+	prs, err := cl.ListOpenPullRequests(context.Background(), "coilyco-flight-deck", "ward", 50)
 	if err != nil {
 		t.Fatalf("listOpenPullRequests: %v", err)
 	}
@@ -397,7 +397,7 @@ func TestListOpenPullRequestsKeepsTypedPaginationWhenGenericIssuesFillFirstPage(
 	defer srv.Close()
 
 	cl := &forgejoClient{baseURL: srv.URL, token: "secret"}
-	prs, err := cl.listOpenPullRequests(context.Background(), "coilyco-flight-deck", "ward", 50)
+	prs, err := cl.ListOpenPullRequests(context.Background(), "coilyco-flight-deck", "ward", 50)
 	if err != nil {
 		t.Fatalf("listOpenPullRequests: %v", err)
 	}
@@ -409,6 +409,45 @@ func TestListOpenPullRequestsKeepsTypedPaginationWhenGenericIssuesFillFirstPage(
 	}
 	if typedPullFeedCalls != 1 {
 		t.Fatalf("typed pull feed calls = %d, want 1", typedPullFeedCalls)
+	}
+}
+
+func TestUpdatePullRequestBranchRequestShape(t *testing.T) {
+	var gotToken, gotMethod, gotPath, gotQuery string
+	srv := httptest.NewServer(http.HandlerFunc(func(w http.ResponseWriter, r *http.Request) {
+		switch r.URL.Path {
+		case "/api/v1/repos/coilyco-flight-deck/ward":
+			_, _ = w.Write([]byte(`{"allow_rebase_update":true,"default_update_style":"rebase"}`))
+		case "/api/v1/repos/coilyco-flight-deck/ward/pulls/729/update":
+			gotToken = r.Header.Get("Authorization")
+			gotMethod = r.Method
+			gotPath = r.URL.Path
+			gotQuery = r.URL.RawQuery
+			if r.ContentLength != 0 {
+				t.Fatalf("content length = %d, want empty body", r.ContentLength)
+			}
+			w.WriteHeader(http.StatusAccepted)
+		default:
+			t.Fatalf("unexpected path: %s?%s", r.URL.Path, r.URL.RawQuery)
+		}
+	}))
+	defer srv.Close()
+
+	cl := &forgejoClient{baseURL: srv.URL, token: "secret"}
+	if err := cl.UpdatePullRequestBranch(context.Background(), "coilyco-flight-deck", "ward", 729, ""); err != nil {
+		t.Fatalf("UpdatePullRequestBranch: %v", err)
+	}
+	if gotToken != "token secret" {
+		t.Fatalf("auth header = %q, want token secret", gotToken)
+	}
+	if gotMethod != http.MethodPost {
+		t.Fatalf("method = %q, want POST", gotMethod)
+	}
+	if gotPath != "/api/v1/repos/coilyco-flight-deck/ward/pulls/729/update" {
+		t.Fatalf("path = %q, want update endpoint", gotPath)
+	}
+	if gotQuery != "style=rebase" {
+		t.Fatalf("query = %q, want style=rebase", gotQuery)
 	}
 }
 

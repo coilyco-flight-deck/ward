@@ -217,7 +217,7 @@ func (r *Runner) guardReadOnlyIssueComment(ctx context.Context, target broker.Ta
 	if err != nil {
 		return fmt.Errorf("broker: check active engineer runs for %s: %w", ref, err)
 	}
-	comments, err := r.hostForgejoClient(ctx).listIssueComments(ctx, ref.Owner, ref.Repo, ref.Number)
+	comments, err := r.hostForgejoClient(ctx).ListIssueComments(ctx, ref.Owner, ref.Repo, ref.Number)
 	if err != nil {
 		return fmt.Errorf("broker: read issue comments for %s: %w", ref, err)
 	}

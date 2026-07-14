@@ -82,7 +82,7 @@ func TestGithubDeleteIssueComment(t *testing.T) {
 	}
 	r := &Runner{Runner: &shell.Runner{Resolve: func(string) (string, error) { return ghStub, nil }}}
 	c := &githubClient{r: r, mode: modeClaude}
-	if err := c.deleteIssueComment(context.Background(), "coilyco-flight-deck", "ward", 123); err != nil {
+	if err := c.DeleteIssueComment(context.Background(), "coilyco-flight-deck", "ward", 123); err != nil {
 		t.Fatalf("deleteIssueComment: %v", err)
 	}
 	out, err := os.ReadFile(argvFile)
@@ -109,10 +109,10 @@ func TestGithubLockUnlockIssue(t *testing.T) {
 	r := &Runner{Runner: &shell.Runner{Resolve: func(string) (string, error) { return ghStub, nil }}}
 	c := &githubClient{r: r, mode: modeClaude}
 
-	if err := c.lockIssue(context.Background(), "coilyco-flight-deck", "ward", 494); err != nil {
+	if err := c.LockIssue(context.Background(), "coilyco-flight-deck", "ward", 494); err != nil {
 		t.Fatalf("lockIssue: %v", err)
 	}
-	if err := c.unlockIssue(context.Background(), "coilyco-flight-deck", "ward", 494); err != nil {
+	if err := c.UnlockIssue(context.Background(), "coilyco-flight-deck", "ward", 494); err != nil {
 		t.Fatalf("unlockIssue: %v", err)
 	}
 	out, err := os.ReadFile(argvFile)

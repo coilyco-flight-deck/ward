@@ -80,7 +80,7 @@ func TestShortcutClientLifecycle(t *testing.T) {
 	defer srv.Close()
 
 	c := &shortcutClient{mode: modeClaude, baseURL: srv.URL + "/api/v3", token: "secret"}
-	issue, err := c.getIssue(context.Background(), "acme", "ward", 7)
+	issue, err := c.GetIssue(context.Background(), "acme", "ward", 7)
 	if err != nil {
 		t.Fatalf("getIssue: %v", err)
 	}
@@ -91,7 +91,7 @@ func TestShortcutClientLifecycle(t *testing.T) {
 		t.Fatalf("labels = %q, want bug", got)
 	}
 
-	comments, err := c.listIssueComments(context.Background(), "acme", "ward", 7)
+	comments, err := c.ListIssueComments(context.Background(), "acme", "ward", 7)
 	if err != nil {
 		t.Fatalf("listIssueComments: %v", err)
 	}
@@ -99,16 +99,16 @@ func TestShortcutClientLifecycle(t *testing.T) {
 		t.Fatalf("comments = %+v", comments)
 	}
 
-	if num, err := c.createIssue(context.Background(), "acme", "ward", "new story", "body"); err != nil || num != 8 {
+	if num, err := c.CreateIssue(context.Background(), "acme", "ward", "new story", "body"); err != nil || num != 8 {
 		t.Fatalf("createIssue = %d,%v want 8,nil", num, err)
 	}
-	if err := c.commentIssue(context.Background(), "acme", "ward", 7, "note"); err != nil {
+	if err := c.CommentIssue(context.Background(), "acme", "ward", 7, "note"); err != nil {
 		t.Fatalf("commentIssue: %v", err)
 	}
-	if err := c.closeIssue(context.Background(), "acme", "ward", 7); err != nil {
+	if err := c.CloseIssue(context.Background(), "acme", "ward", 7); err != nil {
 		t.Fatalf("closeIssue: %v", err)
 	}
-	if err := c.reopenIssue(context.Background(), "acme", "ward", 7); err != nil {
+	if err := c.ReopenIssue(context.Background(), "acme", "ward", 7); err != nil {
 		t.Fatalf("reopenIssue: %v", err)
 	}
 }
