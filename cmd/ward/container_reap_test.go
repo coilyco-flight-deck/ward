@@ -514,6 +514,22 @@ func (f *fakeTerminalOutcomeTracker) UnlockIssue(_ context.Context, _, _ string,
 	return nil
 }
 
+type fakeClosedUnmergedPRTracker struct {
+	*fakeTerminalOutcomeTracker
+	prState   string
+	merged    bool
+	prErr     error
+	mergedErr error
+}
+
+func (f *fakeClosedUnmergedPRTracker) GetPullRequest(context.Context, string, string, int) (*forgejoPullRequest, error) {
+	return &forgejoPullRequest{State: f.prState}, f.prErr
+}
+
+func (f *fakeClosedUnmergedPRTracker) PullRequestMerged(context.Context, string, string, int) (bool, error) {
+	return f.merged, f.mergedErr
+}
+
 func TestPostLaunchedNoOutcomeComment(t *testing.T) {
 	upAt := time.Date(2026, 7, 9, 12, 0, 0, 0, time.UTC)
 	fc := &fakeNoOutcomeTracker{
@@ -593,6 +609,47 @@ func TestReleaseReservationIfTerminalOutcomeComment(t *testing.T) {
 				t.Fatalf("deleted comments = %s, want [99]", got)
 			}
 		})
+	}
+}
+
+func TestReleaseReservationIfSubmittedPRClosedUnmergedCommentsFailure(t *testing.T) {
+	upAt := time.Date(2026, 7, 9, 12, 0, 0, 0, time.UTC)
+	fc := &fakeClosedUnmergedPRTracker{
+		fakeTerminalOutcomeTracker: &fakeTerminalOutcomeTracker{
+			comments: []issueComment{
+				{Body: reservationCommentBody(modeGoose, "engineer-goose-ward-1042", "box", upAt.Add(-2*time.Minute), "", nil), CreatedAt: upAt.Add(-2 * time.Minute)},
+				{Body: "WARDED_WORKFLOW: https://forgejo.coilysiren.me/coilyco-flight-deck/ward/pulls/1042\n\n<details><summary>details</summary>\n\nfinished\n\n</details>", CreatedAt: upAt.Add(time.Minute)},
+			},
+			postAt: upAt.Add(2 * time.Minute),
+		},
+		prState: "closed",
+		merged:  false,
+	}
+	env := reapEnv{
+		Owner:     "coilyco-flight-deck",
+		Name:      "ward",
+		Issue:     1042,
+		Launched:  true,
+		Mode:      "goose",
+		Container: "engineer-goose-ward-1042",
+		UpAt:      upAt.Add(-time.Minute).Format(time.RFC3339),
+	}
+	if err := releaseReservationIfTerminalOutcomeComment(t.Context(), fc, env, upAt); err != nil {
+		t.Fatalf("releaseReservationIfTerminalOutcomeComment: %v", err)
+	}
+	if len(fc.commented) != 1 {
+		t.Fatalf("commented %d times, want 1 failure comment", len(fc.commented))
+	}
+	if fc.unlocked != 1 {
+		t.Fatalf("unlockIssue called %d times, want 1", fc.unlocked)
+	}
+	if visible := visibleLinesBeforeDetails(fc.commented[0]); visible != "WARDED_WORKFLOW: failed ❌" {
+		t.Fatalf("failure visible line = %q\n%s", visible, fc.commented[0])
+	}
+	for _, want := range []string{"closed it without merging", "pr", "engineer-goose-ward-1042"} {
+		if !strings.Contains(strings.ToLower(fc.commented[0]), strings.ToLower(want)) {
+			t.Errorf("closed-unmerged comment missing %q\n%s", want, fc.commented[0])
+		}
 	}
 }
 
