@@ -1,8 +1,9 @@
 # Stage 1 of the two-stage release flow (ward#1117): every main push re-runs
 # the full check suite here, and only a green gate fast-forwards `release` to
-# that sha. release.yml then runs on the `release` push (stage 2: no re-gate,
-# tag, publish binaries, bump install channels) under a no-cancel concurrency
-# queue. main stays the integration branch; `release` is last-known-good.
+# that sha. release.yml then runs on the `release` push (stage 2: explicit
+# vet/test/lint gate on the exact release sha, then tag, publish binaries, and
+# bump install channels) under a no-cancel concurrency queue. main stays the
+# integration branch; `release` is last-known-good.
 # Bursts on main collapse to the newest sha (cancel-in-progress: true - the
 # promotion is idempotent and a newer gate supersedes an older one). The
 # promote push uses CI_RELEASE_TOKEN (real-user PAT): some Forgejo versions do

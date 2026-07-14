@@ -1,15 +1,10 @@
 # Forgejo-canonical release pipeline, stage 2 of the two-stage flow
 # (ward#1117): promote.yml gates every main push and fast-forwards the
-# `release` branch when green; this pipeline runs on `release` pushes only,
-# under a concurrency queue (cancel-in-progress: false) so promoted shas
-# release in sequence instead of overlap-and-cancel. A workflow_dispatch
-# re-fires it against the `release` ref on a missed enqueue. See
-# docs/release.md. There is no test job here: promote.yml already ran the
-# full check suite on the exact sha it fast-forwarded, so re-running it on
-# `release` only lets a flaky rerun fail an already-vouched promotion (Kai's
-# call, 2026-07-12; this retires the ward#999 front-gate copy of test.yml,
-# which still runs independently covering pull requests). Every other job
-# needs `release`, so the pipeline still blocks transitively behind the tag.
+# `release` branch when green. This workflow now re-runs vet/test/lint on the
+# exact `release` SHA before any tag, publish, or install-channel step. The
+# workflow-level concurrency queue still keeps promoted shas in order and
+# never overlap-and-cancel. A workflow_dispatch re-fires it against the
+# `release` ref on a missed enqueue. See docs/release.md.
 
 name: release
 
@@ -26,7 +21,28 @@ permissions:
   contents: write
 
 jobs:
+  test:
+    runs-on: docker
+    timeout-minutes: 10
+    container:
+      image: forgejo.coilysiren.me/coilyco-flight-deck/agentic-os:latest
+    steps:
+      - uses: actions/checkout@v6
+        with:
+          fetch-depth: 0
+
+      - name: go vet
+        run: go vet ./...
+
+      - name: go test
+        run: go test ./...
+
+      - name: golangci-lint
+        timeout-minutes: 5
+        run: golangci-lint run ./...
+
   release:
+    needs: test
     runs-on: docker
     container:
       image: forgejo.coilysiren.me/coilyco-flight-deck/agentic-os:latest
