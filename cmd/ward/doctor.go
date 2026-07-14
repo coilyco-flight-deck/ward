@@ -175,6 +175,9 @@ func validateFleetOperational(fleet fleetconfig.Fleet, allowPlaceholders bool) e
 }
 
 func validateFleetDefaultsOperational(fleet fleetconfig.Fleet, allowPlaceholders bool) error {
+	if fleet.Defaults == (fleetconfig.Defaults{}) {
+		return nil
+	}
 	if fleet.Defaults.Agent == "" {
 		return fmt.Errorf("fleet: defaults.agent is required (fail-closed)")
 	}

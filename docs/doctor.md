@@ -6,7 +6,7 @@
 
 - launch-time config source resolution.
 - smart-defaults and repo-authority policy.
-- fleet defaults and required roles.
+- fleet defaults when present and required roles.
 - guarded ops and exec bundle inputs.
 - placeholder or example values that should not survive in an operating deployment.
 - `WARD_DOCTOR_ALLOW_PLACEHOLDERS=1` permits the baked ward surface to carry its
