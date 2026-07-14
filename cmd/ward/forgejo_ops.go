@@ -52,6 +52,7 @@ type forgejoRepositoryMergeSettings struct {
 	AllowSquashMerge              bool   `json:"allow_squash_merge"`
 	AllowFastForwardOnlyMerge     bool   `json:"allow_fast_forward_only_merge"`
 	DefaultMergeStyle             string `json:"default_merge_style"`
+	DefaultUpdateStyle            string `json:"default_update_style"`
 	DefaultDeleteBranchAfterMerge bool   `json:"default_delete_branch_after_merge"`
 }
 
@@ -121,6 +122,74 @@ func resolveMergeStyle(requested string, settings *forgejoRepositoryMergeSetting
 		return validateMergeStyleChoice(defaultStyle, settings, "smart-defaults pr-merge-style")
 	}
 	return resolveRepositoryMergeStyle(settings)
+}
+
+func (r forgejoRepositoryMergeSettings) allowedUpdateStyles() []string {
+	allowed := []string{"merge"}
+	if r.AllowRebaseUpdate {
+		allowed = append(allowed, "rebase")
+	}
+	return allowed
+}
+
+func (r forgejoRepositoryMergeSettings) styleAllowedForUpdate(style string) bool {
+	switch updateStyleKey(style) {
+	case "merge":
+		return true
+	case "rebase":
+		return r.AllowRebaseUpdate
+	default:
+		return false
+	}
+}
+
+func updateStyleKey(style string) string {
+	return mergeStyleKey(style)
+}
+
+func updateStyleSupported(style string) bool {
+	switch updateStyleKey(style) {
+	case "merge", "rebase":
+		return true
+	default:
+		return false
+	}
+}
+
+func updateStyleList(styles []string) string {
+	if len(styles) == 0 {
+		return "none"
+	}
+	return strings.Join(styles, ", ")
+}
+
+func resolveUpdateStyle(requested string, settings *forgejoRepositoryMergeSettings) (string, error) {
+	requested = updateStyleKey(requested)
+	if requested != "" {
+		return validateUpdateStyleChoice(requested, settings, "update style")
+	}
+	if settings == nil {
+		return "", fmt.Errorf("pr update: repository update settings are unavailable; pass --style to choose an update style")
+	}
+	defaultStyle := updateStyleKey(settings.DefaultUpdateStyle)
+	if defaultStyle != "" {
+		return validateUpdateStyleChoice(defaultStyle, settings, "repository default_update_style")
+	}
+	if settings.AllowRebaseUpdate {
+		return "rebase", nil
+	}
+	return "merge", nil
+}
+
+func validateUpdateStyleChoice(style string, settings *forgejoRepositoryMergeSettings, label string) (string, error) {
+	supported := []string{"merge", "rebase"}
+	if !updateStyleSupported(style) {
+		return "", fmt.Errorf("pr update: %s %q is not supported; supported styles: %s", label, style, strings.Join(supported, ", "))
+	}
+	if settings != nil && !settings.styleAllowedForUpdate(style) {
+		return "", fmt.Errorf("pr update: %s %q is not allowed by this repository; allowed styles: %s", label, style, updateStyleList(settings.allowedUpdateStyles()))
+	}
+	return style, nil
 }
 
 func validateMergeStyleChoice(style string, settings *forgejoRepositoryMergeSettings, label string) (string, error) {
@@ -612,6 +681,20 @@ func (c *forgejoClient) MergePullRequestWithHeadAndStyle(ctx context.Context, ow
 		return fmt.Errorf("forgejo merge PR returned %s: %s", resp.Status, firstLine(string(data)))
 	}
 	return nil
+}
+
+func (c *forgejoClient) UpdatePullRequestBranch(ctx context.Context, owner, repo string, index int, updateStyle string) error {
+	settings, err := c.getRepository(ctx, owner, repo)
+	if err != nil {
+		return err
+	}
+	style, err := resolveUpdateStyle(updateStyle, settings)
+	if err != nil {
+		return err
+	}
+	q := url.Values{"style": {style}}
+	_, err = c.doJSON(ctx, http.MethodPost, []string{"repos", owner, repo, "pulls", strconv.Itoa(index), "update"}, q, nil, true, nil)
+	return err
 }
 
 type forgejoBranch = contracts.Branch

@@ -56,6 +56,9 @@ type directorBackend interface {
 	refresh(ctx context.Context)
 	// mergeEligiblePullRequests sweeps ward-owned PRs that satisfy the policy boundary.
 	mergeEligiblePullRequests(ctx context.Context)
+	// burnDownOpenPRPressure updates one safe PR branch when a repo is over cap and
+	// returns the repos that should stay blocked from fresh dispatch this tick.
+	burnDownOpenPRPressure(ctx context.Context) map[string]bool
 	// entries returns every tracked ledger entry across the scope.
 	entries() []*backlogEntry
 	// probeForgeHealth runs one cheap live forge read (the top candidate's issue get) so a
@@ -122,6 +125,7 @@ func directorHeartbeatTick(ctx context.Context, cfg backlogConfig, be directorBa
 	be.poll(ctx)
 	be.refresh(ctx)
 	be.mergeEligiblePullRequests(ctx)
+	blockedRepos := be.burnDownOpenPRPressure(ctx)
 
 	entries := be.entries()
 	queued, inflight, held := backlogLaneCounts(entries)
@@ -139,7 +143,7 @@ func directorHeartbeatTick(ctx context.Context, cfg backlogConfig, be directorBa
 
 	// LLM half: one host one-shot decides which queued issues to dispatch, bounded
 	// by the free-slot budget; dispatch the chosen set, then sleep cheaply.
-	if err := directorDispatchTick(ctx, cfg, be, entries, inflight); err != nil {
+	if err := directorDispatchTick(ctx, cfg, be, entries, inflight, blockedRepos); err != nil {
 		return true, err
 	}
 	if err := directorWait(ctx, cfg, be, inflight); err != nil {
@@ -203,12 +207,15 @@ func directorHandleDrain(ctx context.Context, be directorBackend) (bool, error) 
 
 // directorDispatchTick asks the LLM which queued issues to dispatch under the free-slot
 // budget and dispatches the chosen set; a no-op when no slots are free or none queued.
-func directorDispatchTick(ctx context.Context, cfg backlogConfig, be directorBackend, entries []*backlogEntry, inflight int) error {
+func directorDispatchTick(ctx context.Context, cfg backlogConfig, be directorBackend, entries []*backlogEntry, inflight int, blockedRepos map[string]bool) error {
 	avail := cfg.maxParallel - inflight
 	if avail <= 0 {
 		return nil
 	}
 	picks := backlogQueuedPicks(entries)
+	if len(blockedRepos) > 0 {
+		picks = backlogQueuedPicksWithoutRepos(picks, blockedRepos)
+	}
 	if len(picks) == 0 {
 		return nil
 	}
@@ -225,6 +232,22 @@ func directorDispatchTick(ctx context.Context, cfg backlogConfig, be directorBac
 		}
 	}
 	return nil
+}
+
+// backlogQueuedPicksWithoutRepos removes queued candidates whose repo is still under
+// PR-pressure burn-down, so the dispatcher does not launch into the same block.
+func backlogQueuedPicksWithoutRepos(picks []*backlogEntry, blockedRepos map[string]bool) []*backlogEntry {
+	if len(blockedRepos) == 0 {
+		return picks
+	}
+	out := make([]*backlogEntry, 0, len(picks))
+	for _, p := range picks {
+		if blockedRepos[p.repo] {
+			continue
+		}
+		out = append(out, p)
+	}
+	return out
 }
 
 // directorLivelockGuard force-dispatches the top candidate when a held decision sits on a
@@ -300,6 +323,17 @@ func (d *liveDirector) mergeEligiblePullRequests(ctx context.Context) {
 	if err := d.r.directorMergeEligiblePullRequests(ctx, d.label, d.repos); err != nil {
 		fmt.Fprintf(os.Stderr, "%s: note: PR merge sweep failed (%v); continuing\n", d.label, err)
 	}
+}
+
+func (d *liveDirector) burnDownOpenPRPressure(ctx context.Context) map[string]bool {
+	if d.cfg.issueRef != nil {
+		return nil
+	}
+	blocked, err := d.r.directorBurnDownOpenPRPressure(ctx, d.label, d.repos)
+	if err != nil {
+		fmt.Fprintf(os.Stderr, "%s: note: PR pressure burn-down failed (%v); continuing\n", d.label, err)
+	}
+	return blocked
 }
 
 func (d *liveDirector) entries() []*backlogEntry { return d.r.backlogScopeEntries(d.repos) }
