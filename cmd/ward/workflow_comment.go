@@ -96,6 +96,7 @@ var workflowCommentHeaderParsers = []workflowCommentHeaderParser{
 	parseLegacyTriageWorkflowCommentHeader,
 }
 
+// workflowCommentVisible renders the canonical WARDED_WORKFLOW header.
 func workflowCommentVisible(variant string, detail ...string) string {
 	visible := wardedWorkflowMarker + " " + strings.TrimSpace(variant)
 	if len(detail) > 0 {
@@ -177,15 +178,18 @@ func parseLegacyTriageWorkflowCommentHeader(s string) (workflowCommentHeader, bo
 	return workflowCommentHeader{Variant: "triage", Detail: rest, Legacy: true}, true
 }
 
+// workflowOutcomeVisible renders the terminal workflow status as the visible header line.
 func workflowOutcomeVisible(status string) string {
 	status = normalizeBacklogOutcomeStatus(status)
 	return workflowCommentVisible(status, outcomeStatusEmoji(status))
 }
 
+// workflowOutcomeVisibleURL renders a pull request URL as the visible header line.
 func workflowOutcomeVisibleURL(prURL string) string {
 	return workflowCommentVisible(strings.TrimSpace(prURL))
 }
 
+// workflowOutcomeVisibleResult picks the visible header line for a backlog outcome.
 func workflowOutcomeVisibleResult(outcome backlogOutcome) string {
 	if strings.EqualFold(strings.TrimSpace(outcome.Status), "submitted") && strings.TrimSpace(outcome.PRURL) != "" {
 		return workflowOutcomeVisibleURL(outcome.PRURL)
@@ -193,11 +197,18 @@ func workflowOutcomeVisibleResult(outcome backlogOutcome) string {
 	return workflowOutcomeVisible(outcome.Status)
 }
 
+// workflowReservationHeldVisible marks the reservation as held.
 func workflowReservationHeldVisible() string { return workflowCommentVisible("reservation-held") }
+
+// workflowReservationReleasedVisible marks the reservation as released.
 func workflowReservationReleasedVisible() string {
 	return workflowCommentVisible("reservation-released")
 }
+
+// workflowDispatchDeferredVisible marks dispatch as deferred.
 func workflowDispatchDeferredVisible() string { return workflowCommentVisible("dispatch-deferred") }
+
+// workflowReviewVisible renders the review outcome status.
 func workflowReviewVisible(status string) string {
 	switch strings.ToLower(strings.TrimSpace(status)) {
 	case "done", "pass", "passed":
@@ -210,12 +221,18 @@ func workflowReviewVisible(status string) string {
 		return workflowCommentVisible("review-" + strings.TrimSpace(status))
 	}
 }
+
+// workflowQAVisible renders the QA verdict status with its outcome emoji.
 func workflowQAVisible(status string, emoji string) string {
 	return workflowCommentVisible("qa-"+strings.TrimSpace(status), emoji)
 }
+
+// workflowStatusVisible renders a generic workflow status with an optional detail.
 func workflowStatusVisible(status string, detail ...string) string {
 	return workflowCommentVisible(strings.TrimSpace(status), detail...)
 }
+
+// workflowReapVisible renders the reap status as a visible workflow header.
 func workflowReapVisible(status string) string {
 	return workflowCommentVisible(strings.TrimSpace(status))
 }
