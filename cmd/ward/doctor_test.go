@@ -30,6 +30,29 @@ func TestRunDoctorWithValidBundle(t *testing.T) {
 	}
 }
 
+func TestRunDoctorAllowsMissingFleetDefaultsBlock(t *testing.T) {
+	dir := copyDoctorBundle(t)
+	writeBundleFixtureFile(t, dir, bundleFixtureAgentsPath, `
+agents {
+    schema-version 2
+    agent claude {
+    }
+}
+`)
+	t.Setenv(wardConfigRefEnv, "file://"+dir)
+
+	report, err := runDoctor(context.Background())
+	if err != nil {
+		t.Fatalf("runDoctor without fleet defaults block: %v; checks=%+v; exec err=%v", err, report.checks, lastCheckErr(report.checks))
+	}
+	if report.failed() {
+		t.Fatalf("runDoctor without fleet defaults block reported failure: %+v", report.checks)
+	}
+	if containsCheck(report.checks, "fleet") {
+		t.Fatalf("runDoctor without fleet defaults block still flagged fleet defaults: %+v", report.checks)
+	}
+}
+
 func TestRunDoctorWithBakedDefaultsKeepsRepoAuthorityClean(t *testing.T) {
 	t.Setenv(wardConfigRefEnv, "")
 	t.Setenv("WARD_TARGET_OWNER", "coilysiren")
