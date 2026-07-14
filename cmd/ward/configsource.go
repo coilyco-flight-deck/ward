@@ -361,12 +361,6 @@ func coilycoConfigRefFromTargetRepo(repo targetRepo, cwd string) (string, error)
 	return fmt.Sprintf("%s/%s/%s@%s//.ward", forgejoCanonicalHost(), repo.Owner, repo.Name, sha), nil
 }
 
-// coreRuntimeConfigSource is ward-owned runtime data: the baked neutral default
-// only. Core agent/container paths do not depend on WARD_CONFIG_REF parsing.
-func coreRuntimeConfigSource() configSource {
-	return bakedConfigSource()
-}
-
 // bundleRevision returns the git HEAD of dir when dir is a checkout; empty
 // string means the source is not a git repo or has no resolvable HEAD yet.
 func bundleRevision(dir string) (string, error) {

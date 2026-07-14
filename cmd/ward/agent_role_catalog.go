@@ -2,6 +2,7 @@ package main
 
 import (
 	"fmt"
+	"io/fs"
 	"strings"
 	"sync"
 	"time"
@@ -25,7 +26,14 @@ var agentRoleCatalogCache struct {
 }
 
 func loadEmbeddedAgentRoleCatalog() (agentRoleCatalog, error) {
-	b, err := bakedAssets.ReadFile(roleDefinitionsGeneratedKDLPath)
+	return bakedProfileProvider().AgentRoles()
+}
+
+func loadAgentRoleCatalogFrom(src configSource) (agentRoleCatalog, error) {
+	if src.fsys == nil {
+		return agentRoleCatalog{}, fmt.Errorf("read agent role catalog %s: no profile source available", roleDefinitionsGeneratedKDLPath)
+	}
+	b, err := fs.ReadFile(src.fsys, roleDefinitionsGeneratedKDLPath)
 	if err != nil {
 		return agentRoleCatalog{}, fmt.Errorf("read agent role catalog %s: %w", roleDefinitionsGeneratedKDLPath, err)
 	}

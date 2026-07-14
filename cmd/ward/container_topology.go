@@ -67,8 +67,7 @@ func currentContainerTopologyWithError() (containerTopology, error) {
 		return containerTopologyCache.topo, containerTopologyCache.err
 	}
 
-	src := coreRuntimeConfigSource()
-	topo, err := loadContainerTopologyFrom(src)
+	topo, err := bakedProfileProvider().Topology()
 	containerTopologyCache.initialized = true
 	containerTopologyCache.topo = topo
 	containerTopologyCache.err = err
