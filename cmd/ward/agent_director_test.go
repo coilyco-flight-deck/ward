@@ -21,6 +21,23 @@ import (
 	"github.com/urfave/cli/v3"
 )
 
+func TestDirectorHelpNamesInteractiveStartup(t *testing.T) {
+	description := agentDirectorCommand().Description
+	for _, want := range []string{
+		"answer n at the startup prompt",
+		"press Enter during the sleep offer",
+	} {
+		if !strings.Contains(description, want) {
+			t.Errorf("director help missing %q:\n%s", want, description)
+		}
+	}
+
+	rootDescription := agentCommand().Description
+	if !strings.Contains(rootDescription, "answer n at the startup prompt") {
+		t.Errorf("ward agent help should name the director interactive startup path:\n%s", rootDescription)
+	}
+}
+
 // TestDirectorDispatchDisposition covers ward#352 + ward#524: a coded per-issue decline
 // parks `failed`; a reservation conflict or a launch-time infra failure stays `queued`.
 func TestDirectorDispatchDisposition(t *testing.T) {

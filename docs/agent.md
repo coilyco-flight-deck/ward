@@ -54,13 +54,15 @@ The old issue-slice pages are gone. The durable follow-on docs are:
 warded #98
 warded engineer #98
 warded advisor #98 "what is the failure mode?"
-warded director --repo owner/name
+warded director --repo owner/name # answer n to open the session first
 warded director owner/name#98
 ```
 
 The bare ref form defaults to `engineer`. The ref can be a bare `#N`, a full
 `owner/repo#N`, a full Forgejo issue URL, or, for `director`, an issue-scoped
 positional ref.
+
+The director has no separate interactive subcommand. Start `warded director --repo owner/name` from a terminal and answer `n` at its startup prompt to open the read-only session before the first drain. During a full lane, press Enter during the sleep offer to open the same session.
 
 ## Why the docs are smaller
 

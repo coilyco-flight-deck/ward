@@ -528,7 +528,7 @@ const surfaceScratchFloorBytes = 512 * 1024 * 1024
 
 // surfaceScratchMnt is the doctrine-promised scratch path: the composed agent
 // context names it as the writable escape hatch on every surface.
-const surfaceScratchMnt = "/scratch"
+var surfaceScratchMnt = "/scratch"
 
 // surfaceScratchRoot returns the writable cache/temp root for this surface.
 // Read-only director sessions use the gitcache volume for Go verification headroom.

@@ -145,6 +145,8 @@ func TestAdvisorFreeformInstructionsFileUsesExplicitRepoAndImageContract(t *test
 	home := t.TempDir()
 	t.Setenv("HOME", home)
 	t.Setenv(wardConfigRefEnv, "file://"+writeBundleFixture(t))
+	t.Setenv(envAgentImage, "")
+	t.Setenv(envAgentTag, "")
 	t.Setenv("COILY_INVOKE_CWD", t.TempDir())
 	instructions := filepath.Join(t.TempDir(), "advisor-brief.md")
 	if err := os.WriteFile(instructions, []byte("Review the launch contract and report the mismatch."), 0o644); err != nil {
