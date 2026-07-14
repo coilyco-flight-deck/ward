@@ -1440,7 +1440,7 @@ func sendDispatchBrokerLaunchRequest(ctx context.Context, addr string, req dispa
 		return "", ctx.Err()
 	case result := <-ch:
 		if result.err != nil {
-			return "", fmt.Errorf("dispatch broker: read response from %s: %w", addr, result.err)
+			return "", launchDispatchBrokerResponseErr(addr, result.err)
 		}
 		if !result.resp.OK {
 			if isCredentialBrokerReply(result.resp.Error) {
@@ -1452,6 +1452,13 @@ func sendDispatchBrokerLaunchRequest(ctx context.Context, addr string, req dispa
 		}
 		return result.resp.LogPath, nil
 	}
+}
+
+func launchDispatchBrokerResponseErr(addr string, err error) error {
+	if errors.Is(err, io.EOF) {
+		return fmt.Errorf("dispatch broker: host-side command exited before writing a response from %s: %w", addr, err)
+	}
+	return fmt.Errorf("dispatch broker: read response from %s: %w", addr, err)
 }
 
 // sendDispatchBrokerLogsRequest sends a logs request and returns the source + body
