@@ -844,21 +844,8 @@ func releaseReservationIfTerminalOutcomeComment(ctx context.Context, fc Tracker,
 	if !ok || !terminalReservationOutcome(o.Status) {
 		return nil
 	}
-	if strings.EqualFold(strings.TrimSpace(o.Status), "submitted") && strings.TrimSpace(o.PRURL) != "" {
-		if closed, cerr := closedUnmergedSubmittedOutcome(ctx, fc, env, o); cerr != nil {
-			return cerr
-		} else if closed {
-			body := launchedClosedUnmergedPRCommentBody(env, o)
-			if err := fc.CommentIssue(ctx, env.Owner, env.Name, env.Issue, body); err != nil {
-				return fmt.Errorf("could not comment closed-unmerged PR failure on #%d: %w", env.Issue, err)
-			}
-			if err := fc.UnlockIssue(ctx, env.Owner, env.Name, env.Issue); err != nil && !errors.Is(err, errForgeLockUnsupported) {
-				return fmt.Errorf("could not unlock issue #%d after closed-unmerged PR failure: %w", env.Issue, err)
-			}
-			deleteTransientWorkflowComments(ctx, fc, agentIssueRef{Owner: env.Owner, Repo: env.Name, Number: env.Issue}, outcome.CreatedAt)
-			fmt.Fprintf(os.Stderr, "ward container reap: released issue reservation on #%d after closed-unmerged PR %s\n", env.Issue, o.PRURL)
-			return nil
-		}
+	if shouldReleaseClosedUnmergedSubmittedOutcome(ctx, fc, env, o) {
+		return releaseClosedUnmergedSubmittedOutcome(ctx, fc, env, outcome.CreatedAt, o)
 	}
 	// A reservation newer than the outcome means a follow-up run already took the
 	// issue over; posting a release now would retract that live hold (ward#1149).
@@ -883,22 +870,33 @@ type pullRequestStateReader interface {
 	PullRequestMerged(context.Context, string, string, int) (bool, error)
 }
 
-func closedUnmergedSubmittedOutcome(ctx context.Context, fc Tracker, env reapEnv, outcome backlogOutcome) (bool, error) {
-	reader, ok := fc.(pullRequestStateReader)
-	if !ok {
-		return false, nil
+func shouldReleaseClosedUnmergedSubmittedOutcome(ctx context.Context, fc Tracker, env reapEnv, outcome backlogOutcome) bool {
+	if !strings.EqualFold(strings.TrimSpace(outcome.Status), "submitted") || strings.TrimSpace(outcome.PRURL) == "" {
+		return false
 	}
-	if outcome.PRNumber <= 0 {
-		return false, nil
+	reader, ok := fc.(pullRequestStateReader)
+	if !ok || outcome.PRNumber <= 0 {
+		return false
 	}
 	pr, err := reader.GetPullRequest(ctx, env.Owner, env.Name, outcome.PRNumber)
-	if err != nil {
-		return false, nil
+	if err != nil || pr == nil || !strings.EqualFold(strings.TrimSpace(pr.State), "closed") {
+		return false
 	}
-	if merged, merr := reader.PullRequestMerged(ctx, env.Owner, env.Name, outcome.PRNumber); merr == nil && merged {
-		return false, nil
+	merged, err := reader.PullRequestMerged(ctx, env.Owner, env.Name, outcome.PRNumber)
+	return err == nil && !merged
+}
+
+func releaseClosedUnmergedSubmittedOutcome(ctx context.Context, fc Tracker, env reapEnv, outcomeAt time.Time, outcome backlogOutcome) error {
+	body := launchedClosedUnmergedPRCommentBody(env, outcome)
+	if err := fc.CommentIssue(ctx, env.Owner, env.Name, env.Issue, body); err != nil {
+		return fmt.Errorf("could not comment closed-unmerged PR failure on #%d: %w", env.Issue, err)
 	}
-	return strings.EqualFold(strings.TrimSpace(pr.State), "closed"), nil
+	if err := fc.UnlockIssue(ctx, env.Owner, env.Name, env.Issue); err != nil && !errors.Is(err, errForgeLockUnsupported) {
+		return fmt.Errorf("could not unlock issue #%d after closed-unmerged PR failure: %w", env.Issue, err)
+	}
+	deleteTransientWorkflowComments(ctx, fc, agentIssueRef{Owner: env.Owner, Repo: env.Name, Number: env.Issue}, outcomeAt)
+	fmt.Fprintf(os.Stderr, "ward container reap: released issue reservation on #%d after closed-unmerged PR %s\n", env.Issue, outcome.PRURL)
+	return nil
 }
 
 func launchedClosedUnmergedPRCommentBody(env reapEnv, outcome backlogOutcome) string {

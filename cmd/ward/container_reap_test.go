@@ -516,16 +516,18 @@ func (f *fakeTerminalOutcomeTracker) UnlockIssue(_ context.Context, _, _ string,
 
 type fakeClosedUnmergedPRTracker struct {
 	*fakeTerminalOutcomeTracker
-	prState string
-	merged  bool
+	prState   string
+	merged    bool
+	prErr     error
+	mergedErr error
 }
 
 func (f *fakeClosedUnmergedPRTracker) GetPullRequest(context.Context, string, string, int) (*forgejoPullRequest, error) {
-	return &forgejoPullRequest{State: f.prState}, nil
+	return &forgejoPullRequest{State: f.prState}, f.prErr
 }
 
 func (f *fakeClosedUnmergedPRTracker) PullRequestMerged(context.Context, string, string, int) (bool, error) {
-	return f.merged, nil
+	return f.merged, f.mergedErr
 }
 
 func TestPostLaunchedNoOutcomeComment(t *testing.T) {
