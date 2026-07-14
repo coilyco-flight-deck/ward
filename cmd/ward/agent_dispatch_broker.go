@@ -459,7 +459,11 @@ func (r *Runner) commentFailedDispatchLaunch(ctx context.Context, req dispatchBr
 // commentDispatchLaunchError routes a launch refusal to the deferred or failed
 // issue comment path after the host broker has restored its stdio.
 func (r *Runner) commentDispatchLaunchError(ctx context.Context, req dispatchBrokerRequest, logPath string, launchErr error) {
-	if isEngineerCapacityError(launchErr) || isOpenPRBackpressureError(launchErr) {
+	if isEngineerCapacityError(launchErr) {
+		fmt.Fprintf(os.Stderr, "ward dispatch broker: %s\n", engineerCapacityBackpressureSummary(launchErr))
+		return
+	}
+	if isOpenPRBackpressureError(launchErr) {
 		fmt.Fprintf(os.Stderr, "ward dispatch broker: launch deferred: %v\n", launchErr)
 		r.commentDeferredDispatchLaunch(ctx, req, logPath, launchErr)
 		return
