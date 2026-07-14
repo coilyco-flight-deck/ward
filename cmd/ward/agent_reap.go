@@ -111,7 +111,7 @@ func (r *Runner) agentReapSweep(ctx context.Context, threshold time.Duration, ma
 	names, err := r.runningEngineerContainers(ctx)
 	if err != nil {
 		if readOnly && dockerUnavailableErr(err) {
-			return fmt.Errorf("ward agent reap: reaping is unsupported on this read-only director surface because the Docker socket is unavailable: %w", err)
+			return fmt.Errorf("ward agent reap: this read-only director surface does not have the Docker socket yet. Restart warded to pick up the mount for the next launch, or use the brokered cleanup command `ward agent stop <owner/repo#N>` from this surface: %w", err)
 		}
 		return fmt.Errorf("list running engineer containers: %w", err)
 	}
@@ -205,7 +205,8 @@ func dockerUnavailableErr(err error) bool {
 }
 
 func readOnlyDockerUnavailableErr(err error) bool {
-	return strings.Contains(strings.ToLower(err.Error()), "reaping is unsupported on this read-only director surface because the docker socket is unavailable")
+	msg := strings.ToLower(err.Error())
+	return strings.Contains(msg, "does not have the docker socket yet") && strings.Contains(msg, "ward agent stop <owner/repo#n>")
 }
 
 type stalePrelaunchReservation struct {

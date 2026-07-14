@@ -287,6 +287,12 @@ func TestComposeContextReadOnlyBlock(t *testing.T) {
 	if !strings.Contains(readonly, "Codex director") {
 		t.Error("the read-only block should name the Codex-director default explicitly")
 	}
+	if !strings.Contains(readonly, "ward agent stop <owner/repo#N>") {
+		t.Error("the read-only block should name the brokered cleanup command")
+	}
+	if !strings.Contains(readonly, "restart `warded`") {
+		t.Error("the read-only block should say already-running surfaces need a restart for the socket mount")
+	}
 	// ward#320: capture-and-dispatch is an obligation, not a "may". The block must
 	// frame it imperatively.
 	if !strings.Contains(readonly, "obligation, not a") {

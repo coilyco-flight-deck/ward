@@ -34,6 +34,10 @@ This page groups the on-demand operational surfaces around a run.
 - `stop` and `reap` only target engineer containers, and `stop` refuses a
   reservation-only ghost record.
 - A run that is already finished should not be treated as a new failure.
+- Fresh read-only director surfaces mount the Docker socket for local `reap`.
+  If an already-running surface does not have that mount yet, restart
+  `warded` to pick it up. Until then, use `ward agent stop <owner/repo#N>`
+  from the surface as the supported brokered cleanup path.
 
 ## Surface map
 
