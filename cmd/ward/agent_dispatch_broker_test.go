@@ -547,7 +547,7 @@ func TestResolveDispatchBrokerLogsSourceFallsBackToLiveTranscriptWhenDockerEmpty
 	}
 	got := out.String()
 	for _, want := range []string{
-		"ward agent logs: docker logs empty; using live transcript tree from",
+		"ward agent logs: docker logs engineer-claude-ward-692 --tail 2 had no readable bytes; using live transcript tree from /home/ubuntu/.claude/projects",
 		".claude/projects",
 		`{"type":"assistant","text":"still here"}`,
 		`{"type":"assistant","text":"latest"}`,
@@ -574,7 +574,7 @@ func TestResolveDispatchBrokerLogsSourceUsesCodexTranscriptTreeWhenDockerEmpty(t
 	}
 	got := out.String()
 	for _, want := range []string{
-		"ward agent logs: docker logs empty; using live transcript tree from",
+		"ward agent logs: docker logs engineer-codex-ward-692 --tail 2 had no readable bytes; using live transcript tree from /home/ubuntu/.codex/sessions",
 		".codex/sessions",
 		`{"type":"assistant","text":"still here"}`,
 		`{"type":"assistant","text":"latest"}`,
@@ -620,6 +620,46 @@ func TestResolveDispatchBrokerLogsSourceFallsBackToArchive(t *testing.T) {
 	}
 	if got := out.String(); got != "three\n" {
 		t.Errorf("archive tail = %q, want the last line", got)
+	}
+}
+
+func TestRunAgentLogsIssueScopedArchiveEmptyExplainsSelectedSource(t *testing.T) {
+	home := t.TempDir()
+	t.Setenv("HOME", home)
+	archiveDir := filepath.Join(home, ".ward", "agent-logs", "engineer-claude-ward-692")
+	if err := os.MkdirAll(archiveDir, 0o755); err != nil {
+		t.Fatalf("mkdir archive: %v", err)
+	}
+	meta := runMeta{Container: "engineer-claude-ward-692", Repo: "coilyco-flight-deck/ward", Issue: "692", Outcome: outcomeUnknown}
+	metaBody, _ := json.Marshal(meta)
+	if err := os.WriteFile(filepath.Join(archiveDir, drainMetaFile), metaBody, 0o644); err != nil {
+		t.Fatalf("write meta: %v", err)
+	}
+	if err := os.WriteFile(filepath.Join(archiveDir, drainConsoleFile), nil, 0o644); err != nil {
+		t.Fatalf("write empty console: %v", err)
+	}
+
+	r := fakeAgentLogsDockerRunner(t, "", "", nil, "")
+	var stdout, stderr bytes.Buffer
+	r.Runner.Stdout = &stdout
+	r.Runner.Stderr = &stderr
+
+	cmd := parseCommandForTest(t, agentLogsCommand().Flags, []string{"logs", "coilyco-flight-deck/ward#692"})
+	if err := r.runAgentLogs(t.Context(), cmd); err != nil {
+		t.Fatalf("runAgentLogs: %v", err)
+	}
+
+	if got := stderr.String(); !strings.Contains(got, "ward agent logs: using archive path ") {
+		t.Fatalf("stderr = %q, want the selected archive path", got)
+	}
+	for _, want := range []string{
+		"ward agent logs: archive path ",
+		filepath.Join(archiveDir, drainConsoleFile),
+		"has no readable bytes",
+	} {
+		if !strings.Contains(stdout.String(), want) {
+			t.Fatalf("stdout = %q, want %q", stdout.String(), want)
+		}
 	}
 }
 

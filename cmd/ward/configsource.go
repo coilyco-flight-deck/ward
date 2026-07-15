@@ -61,8 +61,7 @@ func (u unionFS) ReadFile(name string) ([]byte, error) {
 	return fs.ReadFile(u.fallback, name)
 }
 
-// Baked-layout paths, named once so the runtime mount and the drift tests
-// agree.
+// Baked-layout paths are named once so the runtime mount and drift tests agree.
 const (
 	opsForgejoGuardfilePath         = "opsassets/forgejo.guardfile.generated.kdl"
 	opsForgejoSpecLockPath          = "opsassets/forgejo.swagger.lock.generated.json"

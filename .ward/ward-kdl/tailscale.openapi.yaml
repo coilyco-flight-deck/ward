@@ -2163,7 +2163,7 @@ paths:
     get:
       summary: Get policy file
       description: |
-        Retrieves the current policy file for the given tailnet; 
+        Retrieves the current policy file for the given tailnet;
         this includes the ACL along with the rules and tests that have been defined.
 
         This method can return the policy file as JSON or HuJSON, depending on the Accept header.
@@ -2486,7 +2486,7 @@ paths:
                         type: string
                         example: dave@example.com
                         description: |
-                          Specifies the user identity to test, which can be 
+                          Specifies the user identity to test, which can be
                           a [user's email address](https://tailscale.com/kb/1337/acl-syntax#reference-users),
                           a [group](https://tailscale.com/kb/1337/acl-syntax#groups),
                           a [tag](https://tailscale.com/kb/1068/acl-tags),
@@ -2497,7 +2497,7 @@ paths:
                         description: |
                           Specifies the [device posture attributes](https://tailscale.com/kb/1337/acl-syntax#proto-1)
                           as key-value pairs to use when evaluating posture conditions in access rules.
-                          You only need to use this field if the access rules contain 
+                          You only need to use this field if the access rules contain
                           [device posture conditions](https://tailscale.com/kb/1288/device-posture#device-posture-conditions).
                         additionalProperties:
                           x-additionalPropertiesName: Posture attributes
@@ -3730,7 +3730,7 @@ components:
       in: path
       name: tailnet
       description: |
-        The tailnet ID. 
+        The tailnet ID.
 
         Tailnets created before Oct 2025 can still use the legacy ID, but the Tailnet ID is the preferred identifier.
 
@@ -5446,9 +5446,9 @@ components:
         tags:
           type: array
           description: |
-            A list of tags associated to the trust credential. 
-            Auth keys created with this client must have these exact tags, or tags owned by the client's tags. 
-            Mandatory if the scopes include "devices:core" or "auth_keys". 
+            A list of tags associated to the trust credential.
+            Auth keys created with this client must have these exact tags, or tags owned by the client's tags.
+            Mandatory if the scopes include "devices:core" or "auth_keys".
 
             Only applies to OAuth clients and federated identities.
           items:
@@ -5532,7 +5532,7 @@ components:
             Identifies which of the provider's clouds to integrate with.
 
             - For CrowdStrike Falcon, it will be one of `us-1`, `us-2`, `eu-1` or `us-gov`.
-            - For Microsoft Intune, it will be one of `global` or `us-gov`. 
+            - For Microsoft Intune, it will be one of `global` or `us-gov`.
             - For Jamf Pro, Kandji and Sentinel One, it is the FQDN of your subdomain, for example `mydomain.sentinelone.net`.
             - For Kolide, this is left blank.
           example: us-1
@@ -5931,7 +5931,7 @@ components:
       description: |
         An information summary for a Service.
 
-        Each Service has a unique name within the tailnet, one IPv4 and one IPv6 address, optional comment, list of ports, 
+        Each Service has a unique name within the tailnet, one IPv4 and one IPv6 address, optional comment, list of ports,
         and optional tags.
       properties:
         name:
