@@ -630,6 +630,8 @@ jobs:
       BUCKET_REPO: coilyco-flight-deck/scoop-bucket
       MANIFEST_PATH: bucket/ward.json
     steps:
+      - uses: actions/checkout@v6
+
       - name: Write ward.json to the scoop bucket and push
         env:
           SCOOP_WRITE_TOKEN: ${{ secrets.SCOOP_WRITE_TOKEN }}

@@ -59,6 +59,15 @@ func TestReleasePipelineUsesDraftArtifacts(t *testing.T) {
 			t.Fatalf("release workflow should mention %q:\n%s", want, release)
 		}
 	}
+	scoopJob := workflowJobSection(t, release, "bump-scoop-manifest:", "Alert Telegram on main failure")
+	for _, want := range []string{
+		"actions/checkout@v6",
+		"scripts/forgejo-release-asset.sh",
+	} {
+		if !strings.Contains(scoopJob, want) {
+			t.Fatalf("bump-scoop-manifest job should mention %q:\n%s", want, scoopJob)
+		}
+	}
 
 	for _, ban := range []string{"go build -trimpath", "go mod download", "make sync-defaults-assets"} {
 		if strings.Contains(release, ban) {
@@ -99,6 +108,21 @@ func TestReleasePipelineUsesDraftArtifacts(t *testing.T) {
 			t.Fatalf("release binaries docs should mention %q:\n%s", want, binaries)
 		}
 	}
+}
+
+func workflowJobSection(t *testing.T, workflow, start, end string) string {
+	t.Helper()
+	startIdx := strings.Index(workflow, start)
+	if startIdx < 0 {
+		t.Fatalf("workflow missing %q:\n%s", start, workflow)
+	}
+	section := workflow[startIdx:]
+	if end != "" {
+		if endIdx := strings.Index(section, "\n      - name: "+end); endIdx >= 0 {
+			section = section[:endIdx]
+		}
+	}
+	return section
 }
 
 func TestPublishDraftReleaseHandles404AndIdempotentAssetRewrites(t *testing.T) {
