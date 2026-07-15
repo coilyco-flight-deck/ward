@@ -19,6 +19,7 @@
 /bin/
 /dist/
 /ward
+cmd/ward/defaultsassets/defaults.generated.kdl
 
 # mkdocs build output
 /site/

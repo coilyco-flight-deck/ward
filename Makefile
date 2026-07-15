@@ -33,7 +33,7 @@ KDL_VERSION ?= $(shell git describe --tags --always --dirty 2>/dev/null || echo 
 help: ## Print this help.
 	@awk 'BEGIN{FS=":.*?## "} /^[a-zA-Z0-9_.-]+:.*?## / {printf "  make %-12s %s\n", $$1, $$2}' $(MAKEFILE_LIST)
 
-build: ## Build all packages.
+build: sync-defaults-assets ## Build all packages.
 	go build ./...
 
 workspace: ## Write a gitignored go.work resolving cli-guard from a sibling ../cli-guard checkout (ward#326 - kills the cross-module release dance for local dev).
@@ -141,7 +141,7 @@ sync-fleet-assets: ## Mirror the dialect-2 ward-kdl.fleet.kdl into cmd/ward for 
 sync-defaults-assets: ## Mirror the canonical smart-defaults KDL into cmd/ward for embedding (ward#679).
 	# The smart-defaults bundle carries launch-selected runtime policy knobs. go:embed
 	# can't reach the sibling .ward/ward-kdl/ dir, so mirror the canonical source
-	# here as defaults.generated.kdl. defaultsassets_test.go fails the build on drift.
+	# here as an ignored build artifact. defaultsassets_test.go fails the build on drift.
 	@mkdir -p ./cmd/ward/defaultsassets
 	cp ./.ward/ward-kdl/ward-kdl.defaults.kdl ./cmd/ward/defaultsassets/defaults.generated.kdl
 
@@ -174,22 +174,22 @@ agent-flags: ## Regenerate docs/agent-flags.md from the code flag tree - the bin
 demo-image: ## Build the public demo image that runs simple workspace + substrate demos against neutral OSS defaults.
 	docker build --tag ward-demo:dev --file docker/demo/Dockerfile .
 
-test: ## Run the unit test suite.
+test: sync-defaults-assets ## Run the unit test suite.
 	go test ./...
 
-install: ## Install the ward + ward-kdl binaries into GOBIN (the Go-CLI install verb).
+install: sync-defaults-assets ## Install the ward + ward-kdl binaries into GOBIN (the Go-CLI install verb).
 	go install ./...
 
-vet: ## go vet across the tree.
+vet: sync-defaults-assets ## go vet across the tree.
 	go vet ./...
 
-lint: ## Lint with golangci-lint.
+lint: sync-defaults-assets ## Lint with golangci-lint.
 	golangci-lint run ./...
 
 tidy: ## go mod tidy.
 	go mod tidy
 
-cover: ## Unit tests with a coverage profile.
+cover: sync-defaults-assets ## Unit tests with a coverage profile.
 	go test -coverprofile=coverage.out ./...
 
 lint-refs: ## Lint issue refs in public docs (ward#446): every ref must resolve for a GitHub reader. `make lint-refs ARGS=--fix` rewrites.

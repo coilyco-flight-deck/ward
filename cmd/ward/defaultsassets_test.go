@@ -27,6 +27,8 @@ func TestDefaultsBundleParsesSplitLayout(t *testing.T) {
 
 func canonicalDefaultsBundleBytes(t *testing.T) []byte {
 	t.Helper()
+	// `.ward/ward-kdl/ward-kdl.defaults.kdl` is the authored smart-defaults
+	// source. The embedded copy is a generated build artifact that must match it.
 	b, err := os.ReadFile(filepath.Join("..", "..", ".ward", "ward-kdl", "ward-kdl.defaults.kdl"))
 	if err != nil {
 		t.Fatalf("read canonical smart defaults: %v", err)
@@ -43,7 +45,7 @@ func canonicalSmartDefaults(t *testing.T) smartDefaults {
 	return defs
 }
 
-func TestDefaultsAssetMatchesCanonicalSource(t *testing.T) {
+func TestGeneratedDefaultsAssetMatchesCanonicalSource(t *testing.T) {
 	want := canonicalDefaultsBundleBytes(t)
 	got, err := fs.ReadFile(bakedDefaultsAssets, defaultsGeneratedKDLPath)
 	if err != nil {
@@ -54,7 +56,7 @@ func TestDefaultsAssetMatchesCanonicalSource(t *testing.T) {
 	}
 }
 
-func TestBakedSmartDefaultsMatchesCanonicalSource(t *testing.T) {
+func TestBakedSmartDefaultsDerivesFromCanonicalSource(t *testing.T) {
 	want := canonicalSmartDefaults(t)
 	got := bakedSmartDefaults()
 	if !reflect.DeepEqual(got, want) {
