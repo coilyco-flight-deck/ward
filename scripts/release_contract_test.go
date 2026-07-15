@@ -46,9 +46,9 @@ func TestReleasePipelineUsesDraftArtifacts(t *testing.T) {
 		"TAG_PUSH_TOKEN",
 		"main.Version=${TAG}",
 		"scripts/publish-draft-release.sh",
+		"packages: write",
 		"SOURCE_TOKEN: ${{ github.token }}",
-		"TARGET_USER: coilyco-ops",
-		"TARGET_TOKEN: ${{ secrets.REGISTRY_TOKEN }}",
+		"TARGET_TOKEN: ${{ github.token }}",
 	} {
 		if !strings.Contains(promote, want) {
 			t.Fatalf("promote workflow should mention %q:\n%s", want, promote)

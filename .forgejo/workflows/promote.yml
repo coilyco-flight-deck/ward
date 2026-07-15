@@ -30,6 +30,7 @@ concurrency:
 
 permissions:
   contents: write
+  packages: write
 
 jobs:
   gate-and-promote:
@@ -127,8 +128,7 @@ jobs:
       - name: Publish the ward agent image alias without Docker daemon
         env:
           SOURCE_TOKEN: ${{ github.token }}
-          TARGET_USER: coilyco-ops
-          TARGET_TOKEN: ${{ secrets.REGISTRY_TOKEN }}
+          TARGET_TOKEN: ${{ github.token }}
         run: |
           set -euo pipefail
           if [ -z "${SOURCE_TOKEN:-}" ]; then
@@ -136,13 +136,12 @@ jobs:
             exit 1
           fi
           if [ -z "${TARGET_TOKEN:-}" ]; then
-            echo "::error::REGISTRY_TOKEN not set; cannot publish the ward:release image alias" >&2
+            echo "::error::github.token not set; cannot publish the ward:release image alias" >&2
             exit 1
           fi
           SOURCE_IMAGE=forgejo.coilysiren.me/coilyco-flight-deck/agentic-os:latest \
           TARGET_IMAGE=forgejo.coilysiren.me/coilyco-flight-deck/ward:release \
           SOURCE_TOKEN="$SOURCE_TOKEN" \
-          TARGET_USER="$TARGET_USER" \
           TARGET_TOKEN="$TARGET_TOKEN" \
           bash scripts/registry-copy-tag.sh
 
