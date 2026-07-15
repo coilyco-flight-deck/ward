@@ -68,6 +68,21 @@ jobs:
           TOKEN: ${{ github.token }}
         run: |
           set -euo pipefail
+          ensure_go() {
+            if command -v go >/dev/null 2>&1; then
+              current=$(go version | awk '{print $3}' | sed 's/^go//')
+              case "$current" in
+                1.26.*)
+                  echo "using preinstalled go ${current}"
+                  return 0
+                  ;;
+              esac
+            fi
+            echo "installing go ${GO_VERSION} for draft release builds"
+            curl -fsSL "https://go.dev/dl/go${GO_VERSION}.linux-amd64.tar.gz" -o /tmp/go.tar.gz
+            tar -xzf /tmp/go.tar.gz -C /usr/local
+            echo "/usr/local/go/bin" >> "$GITHUB_PATH"
+          }
           # Build once on main, then let release.yml only promote the staged
           # draft assets. This keeps the expensive matrix off the release branch
           # and turns the release push into a retag/publish step.
@@ -76,10 +91,7 @@ jobs:
             exit 1
           fi
           make sync-defaults-assets
-
-          curl -fsSL "https://go.dev/dl/go${GO_VERSION}.linux-amd64.tar.gz" -o /tmp/go.tar.gz
-          tar -xzf /tmp/go.tar.gz -C /usr/local
-          echo "/usr/local/go/bin" >> "$GITHUB_PATH"
+          ensure_go
 
           export GOPROXY=direct GOSUMDB=off CGO_ENABLED=0
           mkdir -p dist
