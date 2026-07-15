@@ -598,7 +598,7 @@ func dispatchLaunchPhaseFromLog(body string) (phase, status string, ok bool) {
 }
 
 func latestDispatchLogBodyForRef(ref agentIssueRef) (string, bool, error) {
-	path, found, err := latestDispatchLogPathForRef(ref)
+	path, found, err := latestDispatchConsolePathForRef(ref)
 	if err != nil || !found {
 		return "", false, err
 	}
@@ -607,77 +607,6 @@ func latestDispatchLogBodyForRef(ref agentIssueRef) (string, bool, error) {
 		return "", false, err
 	}
 	return string(b), true, nil
-}
-
-func latestDispatchLogPathForRef(ref agentIssueRef) (string, bool, error) {
-	dir := filepath.Join(agentLogsDir(), dispatchLogsSubdir)
-	entries, err := os.ReadDir(dir)
-	if err != nil {
-		if os.IsNotExist(err) {
-			return "", false, nil
-		}
-		return "", false, err
-	}
-	type candidate struct {
-		path string
-		mod  time.Time
-	}
-	var best candidate
-	for _, entry := range entries {
-		if entry.IsDir() || !strings.HasSuffix(entry.Name(), ".log") {
-			continue
-		}
-		path := filepath.Join(dir, entry.Name())
-		if !dispatchLogMatchesRef(path, ref) {
-			continue
-		}
-		info, err := entry.Info()
-		if err != nil {
-			continue
-		}
-		if best.path == "" || info.ModTime().After(best.mod) {
-			best = candidate{path: path, mod: info.ModTime()}
-		}
-	}
-	if best.path == "" {
-		return "", false, nil
-	}
-	return best.path, true, nil
-}
-
-func dispatchLogMatchesRef(path string, ref agentIssueRef) bool {
-	b, err := os.ReadFile(path) // #nosec G304 -- ward-derived log path under ~/.ward
-	if err != nil {
-		return false
-	}
-	return dispatchLogRef(string(b)) == ref.String()
-}
-
-func dispatchLogRef(body string) string {
-	lines := strings.Split(body, "\n")
-	for _, line := range lines {
-		line = strings.TrimSpace(line)
-		if !strings.Contains(line, "requested `ward agent ") {
-			continue
-		}
-		start := strings.Index(line, "requested `ward agent ")
-		if start < 0 {
-			continue
-		}
-		rest := line[start+len("requested `ward agent "):]
-		end := strings.Index(rest, "`")
-		if end < 0 {
-			continue
-		}
-		argv := strings.Fields(rest[:end])
-		if len(argv) < 2 {
-			continue
-		}
-		if ref, err := parseAgentIssueRef(argv[1]); err == nil {
-			return ref.String()
-		}
-	}
-	return ""
 }
 
 func (r *Runner) runningEngineerRow(ctx context.Context, now time.Time, name string) (agentRunningEngineer, error) {

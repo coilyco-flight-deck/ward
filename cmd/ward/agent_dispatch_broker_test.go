@@ -2393,6 +2393,67 @@ func TestDispatchLogNameIsStampedAndAttributable(t *testing.T) {
 	}
 }
 
+func TestDispatchArtifactPersistsMetaSummaryAndLookup(t *testing.T) {
+	t.Setenv("HOME", t.TempDir())
+	at := time.Date(2026, 7, 1, 12, 0, 0, 0, time.UTC)
+	req := dispatchBrokerRequest{
+		Requester: "director-codex-host",
+		Role:      "engineer",
+		Argv:      []string{"engineer", "coilyco-flight-deck/ward#389", "--harness", "codex"},
+	}
+	paths, logf, err := openDispatchArtifact(req, at, "deadbeef")
+	if err != nil {
+		t.Fatalf("openDispatchArtifact: %v", err)
+	}
+	if _, err := fmt.Fprintln(logf, "ward dispatch broker: launch failed: Conflict. The container name \"engineer-codex-ward-389\" is already in use"); err != nil {
+		t.Fatalf("write dispatch log: %v", err)
+	}
+	if err := logf.Close(); err != nil {
+		t.Fatalf("close dispatch log: %v", err)
+	}
+	finalizeDispatchArtifact(paths, req, paths.ConsolePath, errors.New(`Conflict. The container name "/engineer-codex-ward-389" is already in use`))
+
+	body, err := os.ReadFile(paths.MetaPath)
+	if err != nil {
+		t.Fatalf("read meta.json: %v", err)
+	}
+	if !strings.Contains(string(body), `"request_id": "deadbeef"`) {
+		t.Fatalf("meta.json missing request id:\n%s", body)
+	}
+	if !strings.Contains(string(body), `"outcome": "failed-before-container"`) {
+		t.Fatalf("meta.json missing failed outcome:\n%s", body)
+	}
+	if !strings.Contains(string(body), `"error_class": "launch-failure"`) {
+		t.Fatalf("meta.json missing error class:\n%s", body)
+	}
+	summary, err := os.ReadFile(paths.SummaryPath)
+	if err != nil {
+		t.Fatalf("read summary.md: %v", err)
+	}
+	if !strings.Contains(string(summary), "request_id: deadbeef") {
+		t.Fatalf("summary missing request id:\n%s", summary)
+	}
+	if !strings.Contains(string(summary), "already in use") {
+		t.Fatalf("summary missing failure detail:\n%s", summary)
+	}
+	if got, ok, err := latestDispatchConsolePathForRef(agentIssueRef{Owner: "coilyco-flight-deck", Repo: "ward", Number: 389}); err != nil || !ok {
+		t.Fatalf("latestDispatchConsolePathForRef: ok=%v err=%v", ok, err)
+	} else if got != paths.ConsolePath {
+		t.Fatalf("latestDispatchConsolePathForRef() = %q, want %q", got, paths.ConsolePath)
+	}
+	r := &Runner{Runner: &shell.Runner{
+		Stderr:  io.Discard,
+		Resolve: func(string) (string, error) { return "/bin/true", nil },
+	}}
+	src, err := r.resolveAgentLogsSourceForName(t.Context(), "engineer", 0, false)
+	if err != nil {
+		t.Fatalf("resolveAgentLogsSourceForName: %v", err)
+	}
+	if src.Kind != agentLogSourceFile || src.Path != paths.ConsolePath {
+		t.Fatalf("role lookup resolved %#v, want dispatch artifact %q", src, paths.ConsolePath)
+	}
+}
+
 func fakeAgentLogsDockerRunner(t *testing.T, psOut, logsOut string, cpOut []byte, wantCpSuffix string) *Runner {
 	t.Helper()
 	dir := t.TempDir()

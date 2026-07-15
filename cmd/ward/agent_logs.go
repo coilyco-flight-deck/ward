@@ -12,6 +12,7 @@ import (
 	"sort"
 	"strconv"
 	"strings"
+	"time"
 
 	"forgejo.coilysiren.me/coilyco-flight-deck/cli-guard/cli/verb"
 	"github.com/urfave/cli/v3"
@@ -183,7 +184,7 @@ func (r *Runner) resolveAgentLogsSourceForIssue(ctx context.Context, ref agentIs
 		}
 		return src, nil
 	}
-	if path, ok, err := latestDispatchLogPathForRef(ref); err != nil {
+	if path, ok, err := latestDispatchConsolePathForRef(ref); err != nil {
 		return agentLogSource{}, err
 	} else if ok {
 		if follow {
@@ -194,23 +195,39 @@ func (r *Runner) resolveAgentLogsSourceForIssue(ctx context.Context, ref agentIs
 	return agentLogSource{}, fmt.Errorf("dispatch broker: no engineer log source matches %q", ref.String())
 }
 
-// resolveAgentLogsSourceForName resolves a container name to a live engineer
-// container or a drained archive for that exact name.
 func (r *Runner) resolveAgentLogsSourceForName(ctx context.Context, name string, tail int, follow bool) (agentLogSource, error) {
 	if strings.TrimSpace(name) == "" {
 		return agentLogSource{}, fmt.Errorf("container name is empty")
 	}
 	if r.containerPresent(ctx, name) {
-		role, err := r.containerRoleLabel(ctx, name)
-		if err != nil {
-			return agentLogSource{}, fmt.Errorf("dispatch broker: refusing to read %q: could not read its %s label (%w) - "+
-				"fail-closed, only %s containers are readable", name, labelRole, err, roleEngineer)
-		}
-		if err := stopTargetGuard(name, role); err != nil {
-			return agentLogSource{}, err
-		}
-		return agentLogSource{Kind: agentLogSourceDocker, Container: name, TranscriptTree: containerTranscriptDir(containerModeFromContainerName(name)), Tail: tail, Follow: follow}, nil
+		return r.resolveAgentLogsSourceForRunningName(ctx, name, tail, follow)
 	}
+	if src, err := r.resolveArchivedAgentLogSourceForName(name, tail, follow); err != nil {
+		return agentLogSource{}, err
+	} else if src.Kind != "" {
+		return src, nil
+	}
+	if src, err := r.resolveDispatchArtifactSourceForName(name, tail, follow); err != nil {
+		return agentLogSource{}, err
+	} else if src.Kind != "" {
+		return src, nil
+	}
+	return agentLogSource{}, fmt.Errorf("dispatch broker: no engineer log source matches %q", name)
+}
+
+func (r *Runner) resolveAgentLogsSourceForRunningName(ctx context.Context, name string, tail int, follow bool) (agentLogSource, error) {
+	role, err := r.containerRoleLabel(ctx, name)
+	if err != nil {
+		return agentLogSource{}, fmt.Errorf("dispatch broker: refusing to read %q: could not read its %s label (%w) - "+
+			"fail-closed, only %s containers are readable", name, labelRole, err, roleEngineer)
+	}
+	if err := stopTargetGuard(name, role); err != nil {
+		return agentLogSource{}, err
+	}
+	return agentLogSource{Kind: agentLogSourceDocker, Container: name, TranscriptTree: containerTranscriptDir(containerModeFromContainerName(name)), Tail: tail, Follow: follow}, nil
+}
+
+func (r *Runner) resolveArchivedAgentLogSourceForName(name string, tail int, follow bool) (agentLogSource, error) {
 	if src, err := findArchivedAgentLogSourceByName(name, tail, follow, agentLogsDir(), drainConsoleFile); err != nil {
 		return agentLogSource{}, err
 	} else if src.Kind != "" {
@@ -227,7 +244,26 @@ func (r *Runner) resolveAgentLogsSourceForName(ctx context.Context, name string,
 		}
 		return src, nil
 	}
-	return agentLogSource{}, fmt.Errorf("dispatch broker: no engineer log source matches %q", name)
+	return agentLogSource{}, nil
+}
+
+func (r *Runner) resolveDispatchArtifactSourceForName(name string, tail int, follow bool) (agentLogSource, error) {
+	role := dispatchArtifactIndexableRole(name)
+	if role == "" {
+		return agentLogSource{}, nil
+	}
+	paths, ok, err := latestDispatchArtifactPathsForRole(role)
+	if err != nil {
+		return agentLogSource{}, err
+	}
+	if !ok {
+		return agentLogSource{}, nil
+	}
+	if follow {
+		return agentLogSource{}, fmt.Errorf("ward agent logs: --follow requires a live docker container for %q", name)
+	}
+	meta, _ := readDispatchArtifactMeta(paths.MetaPath)
+	return agentLogSource{Kind: agentLogSourceFile, Path: paths.ConsolePath, ArchiveMeta: runMeta{Container: meta.RequestID, Repo: meta.Repo, Issue: meta.Issue, Driver: meta.Harness, Branch: meta.Ref, Outcome: meta.Outcome}, Tail: tail, Follow: follow}, nil
 }
 
 // streamAgentLogsSource writes the chosen source to w. Live docker sources follow
@@ -433,6 +469,241 @@ func readRunMeta(path string) (runMeta, bool) {
 		return runMeta{}, false
 	}
 	return meta, true
+}
+
+// latestDispatchConsolePathForRef resolves the newest broker dispatch artifact
+// for an issue ref to its console log path.
+func latestDispatchConsolePathForRef(ref agentIssueRef) (string, bool, error) {
+	paths, ok, err := latestDispatchArtifactPathsForRef(ref)
+	if err != nil || !ok {
+		return "", ok, err
+	}
+	return paths.ConsolePath, true, nil
+}
+
+// latestDispatchArtifactPathsForRef resolves the newest broker dispatch artifact
+// directory for an issue ref.
+func latestDispatchArtifactPathsForRef(ref agentIssueRef) (dispatchArtifactPaths, bool, error) {
+	paths, ok, err := latestDispatchArtifactPathsIn(agentLogsDir(), dispatchArtifactConsoleFile, func(meta dispatchArtifactMeta, _ string) bool {
+		return meta.Ref == ref.String() || (meta.Repo == ref.repoSlug() && meta.Issue == strconv.Itoa(ref.Number))
+	})
+	if err != nil || ok {
+		return paths, ok, err
+	}
+	return latestDispatchArtifactPathsIn(agentLogsRedactedDir(), dispatchArtifactRedactedConsole, func(meta dispatchArtifactMeta, _ string) bool {
+		return meta.Ref == ref.String() || (meta.Repo == ref.repoSlug() && meta.Issue == strconv.Itoa(ref.Number))
+	})
+}
+
+// latestDispatchArtifactPathsForRole resolves the newest broker dispatch artifact
+// directory for a target role.
+func latestDispatchArtifactPathsForRole(role string) (dispatchArtifactPaths, bool, error) {
+	role = strings.TrimSpace(role)
+	paths, ok, err := latestDispatchArtifactPathsIn(agentLogsDir(), dispatchArtifactConsoleFile, func(meta dispatchArtifactMeta, _ string) bool {
+		return meta.Role == role || meta.RequesterRole == role
+	})
+	if err != nil || ok {
+		return paths, ok, err
+	}
+	return latestDispatchArtifactPathsIn(agentLogsRedactedDir(), dispatchArtifactRedactedConsole, func(meta dispatchArtifactMeta, _ string) bool {
+		return meta.Role == role || meta.RequesterRole == role
+	})
+}
+
+func latestDispatchArtifactPathsIn(root, consoleName string, pred func(dispatchArtifactMeta, string) bool) (dispatchArtifactPaths, bool, error) {
+	best, ok, err := latestDispatchArtifactPathsInDirs(root, consoleName, pred)
+	if err != nil || ok {
+		return best, ok, err
+	}
+	return latestDispatchArtifactPathsInLegacy(root, pred)
+}
+
+func latestDispatchArtifactPathsInDirs(root, consoleName string, pred func(dispatchArtifactMeta, string) bool) (dispatchArtifactPaths, bool, error) {
+	dir := filepath.Join(root, dispatchArtifactsSubdir)
+	entries, err := os.ReadDir(dir)
+	if err != nil {
+		if os.IsNotExist(err) {
+			return dispatchArtifactPaths{}, false, nil
+		}
+		return dispatchArtifactPaths{}, false, err
+	}
+	type candidate struct {
+		paths dispatchArtifactPaths
+		mod   time.Time
+	}
+	var best candidate
+	for _, entry := range entries {
+		if !entry.IsDir() {
+			continue
+		}
+		info, err := entry.Info()
+		if err != nil {
+			continue
+		}
+		base := filepath.Join(dir, entry.Name())
+		meta, ok := readDispatchArtifactMeta(filepath.Join(base, dispatchArtifactMetaFile))
+		if !ok || !pred(meta, base) {
+			continue
+		}
+		paths := dispatchArtifactPaths{
+			Dir:         base,
+			ConsolePath: filepath.Join(base, consoleName),
+			MetaPath:    filepath.Join(base, dispatchArtifactMetaFile),
+			SummaryPath: filepath.Join(base, dispatchArtifactSummaryFile),
+		}
+		if best.paths.Dir == "" || info.ModTime().After(best.mod) {
+			best = candidate{paths: paths, mod: info.ModTime()}
+		}
+	}
+	if best.paths.Dir == "" {
+		return dispatchArtifactPaths{}, false, nil
+	}
+	return best.paths, true, nil
+}
+
+func latestDispatchArtifactPathsInLegacy(root string, pred func(dispatchArtifactMeta, string) bool) (dispatchArtifactPaths, bool, error) {
+	dir := filepath.Join(root, dispatchArtifactsSubdir)
+	entries, err := os.ReadDir(dir)
+	if err != nil {
+		if os.IsNotExist(err) {
+			return dispatchArtifactPaths{}, false, nil
+		}
+		return dispatchArtifactPaths{}, false, err
+	}
+	type candidate struct {
+		paths dispatchArtifactPaths
+		mod   time.Time
+	}
+	var best candidate
+	for _, entry := range entries {
+		if entry.IsDir() || !strings.HasSuffix(entry.Name(), ".log") {
+			continue
+		}
+		info, err := entry.Info()
+		if err != nil {
+			continue
+		}
+		path := filepath.Join(dir, entry.Name())
+		meta, ok := readLegacyDispatchArtifactMeta(path)
+		if !ok || !pred(meta, path) {
+			continue
+		}
+		paths := dispatchArtifactPaths{Dir: filepath.Dir(path), ConsolePath: path}
+		if best.paths.Dir == "" || info.ModTime().After(best.mod) {
+			best = candidate{paths: paths, mod: info.ModTime()}
+		}
+	}
+	if best.paths.Dir == "" {
+		return dispatchArtifactPaths{}, false, nil
+	}
+	return best.paths, true, nil
+}
+
+// readDispatchArtifactMeta reads the broker dispatch meta.json record.
+func readDispatchArtifactMeta(path string) (dispatchArtifactMeta, bool) {
+	b, err := os.ReadFile(path) // #nosec G304 -- caller supplies a ward-derived path under ~/.ward
+	if err != nil {
+		return dispatchArtifactMeta{}, false
+	}
+	var meta dispatchArtifactMeta
+	if err := json.Unmarshal(b, &meta); err != nil {
+		return dispatchArtifactMeta{}, false
+	}
+	return meta, true
+}
+
+func readLegacyDispatchArtifactMeta(path string) (dispatchArtifactMeta, bool) {
+	b, err := os.ReadFile(path) // #nosec G304 -- caller supplies a ward-derived path under ~/.ward
+	if err != nil {
+		return dispatchArtifactMeta{}, false
+	}
+	body := string(b)
+	requester := dispatchLogRequester(body)
+	ref := dispatchLogRef(body)
+	role := dispatchLogRole(body)
+	meta := dispatchArtifactMeta{
+		Requester:     requester,
+		RequesterRole: containerNameRole(requester),
+		Role:          role,
+		Ref:           ref,
+	}
+	if parsed, err := parseAgentIssueRef(ref); err == nil {
+		meta.Repo = parsed.repoSlug()
+		meta.Issue = strconv.Itoa(parsed.Number)
+	}
+	return meta, role != "" || ref != ""
+}
+
+func dispatchLogRequester(body string) string {
+	lines := strings.Split(body, "\n")
+	for _, line := range lines {
+		line = strings.TrimSpace(line)
+		if !strings.Contains(line, " requested `ward agent ") {
+			continue
+		}
+		start := strings.Index(line, "ward dispatch broker: ")
+		if start < 0 {
+			continue
+		}
+		rest := line[start+len("ward dispatch broker: "):]
+		mid := strings.Index(rest, " requested `ward agent ")
+		if mid < 0 {
+			continue
+		}
+		return strings.TrimSpace(rest[:mid])
+	}
+	return ""
+}
+
+func dispatchLogRole(body string) string {
+	lines := strings.Split(body, "\n")
+	for _, line := range lines {
+		line = strings.TrimSpace(line)
+		if !strings.Contains(line, "requested `ward agent ") {
+			continue
+		}
+		start := strings.Index(line, "requested `ward agent ")
+		if start < 0 {
+			continue
+		}
+		rest := line[start+len("requested `ward agent "):]
+		end := strings.Index(rest, "`")
+		if end < 0 {
+			continue
+		}
+		argv := strings.Fields(rest[:end])
+		if len(argv) > 0 {
+			return argv[0]
+		}
+	}
+	return ""
+}
+
+func dispatchLogRef(body string) string {
+	lines := strings.Split(body, "\n")
+	for _, line := range lines {
+		line = strings.TrimSpace(line)
+		if !strings.Contains(line, "requested `ward agent ") {
+			continue
+		}
+		start := strings.Index(line, "requested `ward agent ")
+		if start < 0 {
+			continue
+		}
+		rest := line[start+len("requested `ward agent "):]
+		end := strings.Index(rest, "`")
+		if end < 0 {
+			continue
+		}
+		argv := strings.Fields(rest[:end])
+		if len(argv) < 2 {
+			continue
+		}
+		if ref, err := parseAgentIssueRef(argv[1]); err == nil {
+			return ref.String()
+		}
+	}
+	return ""
 }
 
 // tailBytes keeps only the last n lines of data.
