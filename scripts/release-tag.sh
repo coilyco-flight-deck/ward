@@ -66,8 +66,8 @@ if [ -z "$current_tag" ]; then
       exit 1
     fi
     case "$remote_url" in
-      https://*)
-        auth_url="https://oauth2:${tag_push_token}@${remote_url#https://}"
+      https://*|http://*)
+        auth_url="${remote_url%%://*}://oauth2:${tag_push_token}@${remote_url#*://}"
         ;;
       *)
         echo "::error::unsupported origin url for release tag push: ${remote_url}" >&2

@@ -2,6 +2,7 @@ package scripts
 
 import (
 	"bytes"
+	"fmt"
 	"io"
 	"os"
 	"os/exec"
@@ -191,6 +192,43 @@ func TestReleaseTagHelperReusesHeadTagAndBumpsNextMinor(t *testing.T) {
 	}
 }
 
+func TestReleaseTagHelperPushesToHttpAndHttpsOrigins(t *testing.T) {
+	for _, tc := range []struct {
+		name     string
+		remote   string
+		scheme   string
+		hostPath string
+	}{
+		{
+			name:     "http",
+			remote:   "http://forgejo.forgejo.svc.cluster.local/coilyco-flight-deck/ward",
+			scheme:   "http",
+			hostPath: "forgejo.forgejo.svc.cluster.local/coilyco-flight-deck/ward",
+		},
+		{
+			name:     "https",
+			remote:   "https://forgejo.coilysiren.me/coilyco-flight-deck/ward",
+			scheme:   "https",
+			hostPath: "forgejo.coilysiren.me/coilyco-flight-deck/ward",
+		},
+	} {
+		t.Run(tc.name, func(t *testing.T) {
+			token := "test-token"
+			got, pushed := runReleaseTagHelperWithRemote(t, tc.remote, token)
+			if got["new_tag"] != "v0.1.0" {
+				t.Fatalf("new_tag = %q, want v0.1.0", got["new_tag"])
+			}
+			wantAuth := tc.scheme + "://" + "oauth2:" + token + "@" + tc.hostPath
+			if !strings.Contains(pushed, wantAuth) {
+				t.Fatalf("push args = %q, want auth URL %q", pushed, wantAuth)
+			}
+			if strings.Contains(pushed, token) && !strings.Contains(pushed, wantAuth) {
+				t.Fatalf("push args leaked token unexpectedly: %q", pushed)
+			}
+		})
+	}
+}
+
 func TestPublishDraftReleaseCreatesBodyWithoutAssets(t *testing.T) {
 	srv := newDraftReleaseTestServer(t)
 	dist := t.TempDir()
@@ -247,6 +285,71 @@ func runReleaseTagHelper(t *testing.T, repo string) map[string]string {
 		t.Fatalf("release-tag.sh failed: %v\noutput: %s", err, out)
 	}
 	return parseGitHubOutputs(t, output)
+}
+
+func runReleaseTagHelperWithRemote(t *testing.T, remoteURL, token string) (map[string]string, string) {
+	t.Helper()
+	repo := t.TempDir()
+	runGit(t, repo, "init")
+	runGit(t, repo, "config", "user.email", "test@example.com")
+	runGit(t, repo, "config", "user.name", "Test User")
+	runGit(t, repo, "remote", "add", "origin", remoteURL)
+
+	writeFile(t, repo, "one.txt", "one\n")
+	runGit(t, repo, "add", "one.txt")
+	runGit(t, repo, "commit", "-m", "feat: first")
+
+	output := filepath.Join(t.TempDir(), "outputs.txt")
+	record := filepath.Join(t.TempDir(), "push.txt")
+	realGit, err := exec.LookPath("git")
+	if err != nil {
+		t.Fatalf("look up git: %v", err)
+	}
+
+	binDir := t.TempDir()
+	wrapper := filepath.Join(binDir, "git")
+	wrapperScript := fmt.Sprintf(`#!/usr/bin/env bash
+set -euo pipefail
+case "$1" in
+  push)
+    printf '%%s\n' "$*" > %q
+    exit 1
+    ;;
+  ls-remote)
+    printf 'deadbeef\t%%s\n' "${3:-}"
+    exit 0
+    ;;
+  *)
+    exec "${REAL_GIT:?}" "$@"
+    ;;
+esac
+`, record)
+	if err := os.WriteFile(wrapper, []byte(wrapperScript), 0o755); err != nil {
+		t.Fatalf("write git wrapper: %v", err)
+	}
+
+	script := filepath.Join(repoRoot(t), "scripts", "release-tag.sh")
+	cmd := exec.Command("bash", script)
+	cmd.Dir = repo
+	cmd.Env = append(os.Environ(),
+		"GITHUB_OUTPUT="+output,
+		"PATH="+binDir+":"+os.Getenv("PATH"),
+		"REAL_GIT="+realGit,
+		"TAG_PUSH_TOKEN="+token,
+	)
+	out, err := cmd.CombinedOutput()
+	if err != nil {
+		t.Fatalf("release-tag.sh with remote %s failed: %v\noutput: %s", remoteURL, err, out)
+	}
+	if strings.Contains(string(out), "secret") {
+		t.Fatalf("release-tag.sh output leaked token for remote %s: %s", remoteURL, out)
+	}
+
+	raw, err := os.ReadFile(record)
+	if err != nil {
+		t.Fatalf("read push record: %v", err)
+	}
+	return parseGitHubOutputs(t, output), strings.TrimSpace(string(raw))
 }
 
 func parseGitHubOutputs(t *testing.T, path string) map[string]string {
