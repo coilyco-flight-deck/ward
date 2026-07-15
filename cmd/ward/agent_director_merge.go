@@ -132,9 +132,6 @@ func mergeDirectorPullRequest(ctx context.Context, cl *forgejoClient, owner, rep
 	if note, ok, _ := prWorkflowAlreadyMergedOrSameTree(ctx, cl, owner, repo, index, pr.Base.Ref, head); ok {
 		return strings.TrimSpace(note), nil
 	}
-	if prHasEmptyDiff(pr) {
-		return head, nil
-	}
 	mergedHead, err := mergePullRequestWithHeadAndStyleSettled(ctx, cl, owner, repo, index, head, mergeStyle, status)
 	if err != nil {
 		return "", err

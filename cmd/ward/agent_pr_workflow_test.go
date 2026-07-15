@@ -487,9 +487,8 @@ func TestPRWorkflowMergeExecSkipsSameTreeAfterPRMerge(t *testing.T) {
 	}
 }
 
-// TestPRWorkflowMergeExecSkipsEmptyDiff pins the no-op guard: when the live PR
-// already matches the base branch, ward should avoid the Forgejo merge endpoint.
-func TestPRWorkflowMergeExecSkipsEmptyDiff(t *testing.T) {
+// TestPRWorkflowMergeExecIgnoresEmptySummaryWhenTreesDiffer pins the stale summary case.
+func TestPRWorkflowMergeExecIgnoresEmptySummaryWhenTreesDiffer(t *testing.T) {
 	fake := &prWorkflowFakeForge{
 		prBody:                    "closes #6\n\nward.workflow: pull-request-and-merge\n",
 		combinedState:             "success",
@@ -503,6 +502,11 @@ func TestPRWorkflowMergeExecSkipsEmptyDiff(t *testing.T) {
 		allowFastForwardOnlyMerge: true,
 		allowRebase:               true,
 		allowRebaseExplicit:       true,
+		branchCommitSHA:           "basesha",
+		commitTrees: map[string]string{
+			"headsha": "head-tree",
+			"basesha": "base-tree",
+		},
 	}
 	srv := fake.server(t)
 	defer srv.Close()
@@ -511,11 +515,11 @@ func TestPRWorkflowMergeExecSkipsEmptyDiff(t *testing.T) {
 	if err != nil {
 		t.Fatalf("prWorkflowMergeExec: %v", err)
 	}
-	if fake.mergeCalls != 0 {
-		t.Fatalf("merge calls = %d, want 0", fake.mergeCalls)
+	if fake.mergeCalls != 1 {
+		t.Fatalf("merge calls = %d, want 1", fake.mergeCalls)
 	}
-	if !strings.Contains(out, "already matches main") || !strings.Contains(out, "empty diff") {
-		t.Fatalf("merge output = %q, want empty-diff short circuit", out)
+	if !strings.Contains(out, "merged coilyco-flight-deck/ward#7") {
+		t.Fatalf("merge output = %q, want merge to proceed", out)
 	}
 }
 

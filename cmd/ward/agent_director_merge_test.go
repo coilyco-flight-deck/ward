@@ -938,7 +938,7 @@ func TestRecoverClosedUnmergedDirectorMergeReopensAndRetries(t *testing.T) {
 	}
 }
 
-func TestMergeDirectorPullRequestSkipsEmptyDiff(t *testing.T) {
+func TestMergeDirectorPullRequestIgnoresEmptySummaryWhenTreesDiffer(t *testing.T) {
 	fake := &prWorkflowFakeForge{
 		prBody:                    "closes #6\n\nward.workflow: pull-request-and-merge\n",
 		combinedState:             "success",
@@ -952,6 +952,11 @@ func TestMergeDirectorPullRequestSkipsEmptyDiff(t *testing.T) {
 		allowFastForwardOnlyMerge: true,
 		allowRebase:               true,
 		allowRebaseExplicit:       true,
+		branchCommitSHA:           "basesha",
+		commitTrees: map[string]string{
+			"headsha": "head-tree",
+			"basesha": "base-tree",
+		},
 	}
 	srv := fake.server(t)
 	defer srv.Close()
@@ -964,8 +969,8 @@ func TestMergeDirectorPullRequestSkipsEmptyDiff(t *testing.T) {
 	if head != "headsha" {
 		t.Fatalf("head = %q, want headsha", head)
 	}
-	if fake.mergeCalls != 0 {
-		t.Fatalf("merge calls = %d, want 0", fake.mergeCalls)
+	if fake.mergeCalls != 1 {
+		t.Fatalf("merge calls = %d, want 1", fake.mergeCalls)
 	}
 }
 
