@@ -962,9 +962,20 @@ func TestForwardAgentDispatchToHostBrokerAllowsRefWithoutPrompt(t *testing.T) {
 	gotReq := make(chan dispatchBrokerRequest, 1)
 	serveDispatchBrokerRequests(t, ln, func(conn net.Conn, req dispatchBrokerRequest) {
 		gotReq <- req
-		_ = json.NewEncoder(conn).Encode(dispatchBrokerResponse{OK: true})
+		_ = json.NewEncoder(conn).Encode(dispatchBrokerResponse{OK: true, LogPath: "/tmp/ward/dispatch.log"})
 	})
 
+	origStderr := os.Stderr
+	rPipe, wPipe, err := os.Pipe()
+	if err != nil {
+		t.Fatalf("pipe stderr: %v", err)
+	}
+	t.Cleanup(func() {
+		_ = wPipe.Close()
+		_ = rPipe.Close()
+		os.Stderr = origStderr
+	})
+	os.Stderr = wPipe
 	t.Setenv(envDispatchBrokerAddr, ln.Addr().String())
 	t.Setenv(envDispatchBrokerToken, "nonce-789")
 	t.Setenv("WARD_READONLY", "1")
@@ -983,6 +994,19 @@ func TestForwardAgentDispatchToHostBrokerAllowsRefWithoutPrompt(t *testing.T) {
 	want := []string{"advisor", "coilyco-flight-deck/ward#378", "--harness", "codex", "--thoroughness", "standard"}
 	if !reflect.DeepEqual(req.Argv, want) {
 		t.Errorf("advisor forwarded argv = %v, want %v", req.Argv, want)
+	}
+	_ = wPipe.Close()
+	var stderr bytes.Buffer
+	if _, err := io.Copy(&stderr, rPipe); err != nil {
+		t.Fatalf("read stderr: %v", err)
+	}
+	for _, want := range []string{
+		"ward dispatch broker: forwarded `ward agent advisor coilyco-flight-deck/ward#378 --harness codex --thoroughness standard` to host ward",
+		"(run output on the host at /tmp/ward/dispatch.log)",
+	} {
+		if !strings.Contains(stderr.String(), want) {
+			t.Fatalf("stderr = %q, want %q", stderr.String(), want)
+		}
 	}
 }
 
@@ -1127,7 +1151,7 @@ func TestPRWorkflowForwardedUsesOneBrokerRequest(t *testing.T) {
 }
 
 // TestRunAgentAdvisorRefDispatchReturnsPromptlyViaBroker is the director-surface
-// regression for fire-and-forget advisor ref dispatch through the broker.
+// regression for advisor ref dispatch staying prompt through the broker.
 func TestRunAgentAdvisorRefDispatchReturnsPromptlyViaBroker(t *testing.T) {
 	t.Setenv("HOME", t.TempDir())
 	t.Setenv(wardConfigRefEnv, "file://"+writeBundleFixture(t))

@@ -1256,11 +1256,14 @@ func (r *Runner) maybeForwardAgentDispatchToHostBroker(ctx context.Context, c *c
 		Token:     strings.TrimSpace(os.Getenv(envDispatchBrokerToken)),
 	}
 	if role == "advisor" {
-		if err := fireAndForgetDispatchBrokerRequest(ctx, addr, req); err != nil {
+		logPath, err := sendDispatchBrokerLaunchRequest(ctx, addr, req)
+		if err != nil {
+			if logPath != "" {
+				return true, fmt.Errorf("%w (dispatch log: %s)", err, logPath)
+			}
 			return true, err
 		}
-		displayArgv := redactDispatchBrokerArgv(argv)
-		fmt.Fprintf(os.Stderr, "ward dispatch broker: forwarded `ward agent %s` to host ward\n", displayArgv)
+		fmt.Fprintln(os.Stderr, dispatchBrokerForwardedLine(argv, logPath))
 		return true, nil
 	}
 	logPath, err := sendDispatchBrokerRequest(ctx, addr, req)
@@ -1272,19 +1275,6 @@ func (r *Runner) maybeForwardAgentDispatchToHostBroker(ctx context.Context, c *c
 	}
 	fmt.Fprintln(os.Stderr, dispatchBrokerForwardedLine(argv, logPath))
 	return true, nil
-}
-
-// fireAndForgetDispatchBrokerRequest sends one dispatch request.
-func fireAndForgetDispatchBrokerRequest(ctx context.Context, addr string, req dispatchBrokerRequest) error {
-	conn, err := dispatchBrokerDialContext(ctx, "tcp", addr)
-	if err != nil {
-		return dispatchBrokerDialDiagnostic(addr, err)
-	}
-	defer func() { _ = conn.Close() }()
-	if err := json.NewEncoder(conn).Encode(req); err != nil {
-		return fmt.Errorf("dispatch broker: send request: %w", err)
-	}
-	return nil
 }
 
 // forwardFreeformEngineerLaunchToHostBroker forwards the launch after a freshly
