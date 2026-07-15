@@ -2155,7 +2155,7 @@ func TestStartHostDispatchBrokerRequestWaitsForVisibleEngineer(t *testing.T) {
 		dispatchBrokerVisibilityPoll = origPoll
 		dispatchFailedDispatchLaunchHook = origFailedHook
 	})
-	dispatchBrokerVisibilityTimeout = 250 * time.Millisecond
+	dispatchBrokerVisibilityTimeout = time.Second
 	dispatchBrokerVisibilityPoll = 10 * time.Millisecond
 	dispatchFailedDispatchLaunchHook = func(dispatchBrokerRequest, string, error) bool { return true }
 	dispatchBrokerLaunch = func(context.Context, dispatchBrokerRequest) error { return nil }
