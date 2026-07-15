@@ -157,6 +157,9 @@ jobs:
           ref: ${{ needs.release.outputs.tag }}
           fetch-depth: 0
 
+      - name: Regenerate embedded smart-defaults asset
+        run: make sync-defaults-assets
+
       - name: Install Go
         run: |
           set -euo pipefail
