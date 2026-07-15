@@ -859,6 +859,36 @@ func TestPRWorkflowMergeExecRetriesTransient405(t *testing.T) {
 	}
 }
 
+// TestPRWorkflowMergeExecRetriesSeveralTransient405s keeps the settle window
+// wide enough for Forgejo merge-queue lag before the PR is declared stuck.
+func TestPRWorkflowMergeExecRetriesSeveralTransient405s(t *testing.T) {
+	fake := &prWorkflowFakeForge{
+		prBody:                    "closes #6\n\nward.workflow: pull-request-and-merge\n",
+		combinedState:             "success",
+		contextState:              "success",
+		defaultMergeStyle:         "merge",
+		allowMergeCommits:         true,
+		allowSquashMerge:          true,
+		allowFastForwardOnlyMerge: true,
+		allowRebase:               true,
+		allowRebaseExplicit:       true,
+		mergeResponses:            []int{http.StatusMethodNotAllowed, http.StatusMethodNotAllowed, http.StatusMethodNotAllowed, http.StatusAccepted},
+	}
+	srv := fake.server(t)
+	defer srv.Close()
+	cl := &forgejoClient{baseURL: srv.URL, token: "secret"}
+	out, err := prWorkflowMergeExec(context.Background(), cl, roleDirector, "coilyco-flight-deck", "ward", 7, "")
+	if err != nil {
+		t.Fatalf("prWorkflowMergeExec: %v", err)
+	}
+	if fake.mergeCalls != 4 {
+		t.Fatalf("merge calls = %d, want 4", fake.mergeCalls)
+	}
+	if !strings.Contains(out, "merged coilyco-flight-deck/ward#7") {
+		t.Fatalf("merge output = %q, want merged", out)
+	}
+}
+
 // TestPRWorkflowMergeExecFailsClosedUnmergedPostcondition pins the hard fail:
 // Forgejo cannot close the PR without the merged-state proof.
 func TestPRWorkflowMergeExecFailsClosedUnmergedPostcondition(t *testing.T) {

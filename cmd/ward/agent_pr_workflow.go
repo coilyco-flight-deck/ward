@@ -469,7 +469,7 @@ func prWorkflowSupersedingRef(owner, repo, raw string) (string, error) {
 	return ref.String(), nil
 }
 
-const prWorkflowMergeSettleAttempts = 3
+const prWorkflowMergeSettleAttempts = 5
 
 var prWorkflowMergeSettleDelay = 150 * time.Millisecond
 
