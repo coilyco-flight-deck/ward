@@ -1653,7 +1653,11 @@ func TestServeHostDispatchBrokerSurvivesExit125NameConflict(t *testing.T) {
 
 // Broker env stays clear until launch returns.
 func TestRunHostDispatchBrokerRequestClearsBrokerEnvWhileLaunchRuns(t *testing.T) {
-	t.Setenv("HOME", t.TempDir())
+	home := t.TempDir()
+	t.Setenv("HOME", home)
+	t.Cleanup(func() {
+		_ = os.RemoveAll(filepath.Join(home, ".ward"))
+	})
 	origReadOnly, hadReadOnly := os.LookupEnv("WARD_READONLY")
 	origAddr, hadAddr := os.LookupEnv(envDispatchBrokerAddr)
 	origToken, hadToken := os.LookupEnv(envDispatchBrokerToken)
