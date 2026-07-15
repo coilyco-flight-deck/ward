@@ -285,16 +285,84 @@ func dockerInspectStateStubDir(t *testing.T, stateJSON, envJSON string) string {
 func TestBuildRunMetaRecordsOOMKilled(t *testing.T) {
 	dir := dockerInspectStateStubDir(t,
 		`{"OOMKilled":true,"ExitCode":0}`,
-		`["WARD_TARGET_REPO=coilyco-flight-deck/ward","WARD_TARGET_ISSUE=883","WARD_MODE=codex","WARD_BRANCH=issue-883"]`,
+		`["WARD_TARGET_REPO=coilyco-flight-deck/ward","WARD_TARGET_ISSUE=883","WARD_MODE=codex","WARD_BRANCH=issue-883","WARD_AGENT_LAUNCHED=1"]`,
 	)
 	t.Setenv("PATH", dir+string(os.PathListSeparator)+os.Getenv("PATH"))
 	r := &Runner{Runner: &shell.Runner{Stderr: io.Discard, Resolve: shell.PathResolver}}
-	meta := r.buildRunMeta(t.Context(), "director-codex-vg94", "agent exited non-zero (signal: killed; docker state: OOMKilled=true); reaping anyway")
+	meta := r.buildRunMeta(t.Context(), "director-codex-vg94", "agent exited non-zero (signal: killed; docker state: OOMKilled=true); reaping anyway", []byte(`{"type":"assistant","timestamp":"2026-07-15T01:00:00Z"}`+"\n"))
 	if !meta.OOMKilled {
 		t.Fatal("buildRunMeta must carry Docker OOMKilled=true into meta.json")
 	}
 	if meta.Container != "director-codex-vg94" || meta.Repo != "coilyco-flight-deck/ward" || meta.Outcome != outcomeUnknown {
 		t.Fatalf("unexpected meta record: %+v", meta)
+	}
+}
+
+func TestCollectFrictionEvents(t *testing.T) {
+	cases := []struct {
+		name      string
+		meta      runMeta
+		console   string
+		wantCats  []string
+		wantStage []string
+	}{
+		{
+			name:    "clean landed run",
+			meta:    runMeta{Driver: string(modeCodex), Launched: true, TranscriptPresent: true},
+			console: "ward container reap: landed on main\n",
+		},
+		{
+			name:    "green pr boundary",
+			meta:    runMeta{Driver: string(modeClaude), Launched: true, TranscriptPresent: true},
+			console: "WARD-REAP: nothing to reap (workflow pull-request boundary reached: branch pushed, pull request open, and required CI checks are green)\n",
+		},
+		{
+			name:      "no transcript prelaunch failure",
+			meta:      runMeta{Driver: string(modeCodex), Launched: false, TranscriptPresent: false},
+			console:   "ward container reap: released issue reservation on #123 (container exited pre-launch, did no work)\n",
+			wantCats:  []string{"missing-transcript", "prelaunch-failure"},
+			wantStage: []string{"drain", "reap"},
+		},
+		{
+			name:      "preserved salvage branch",
+			meta:      runMeta{Driver: string(modeClaude), Launched: true, TranscriptPresent: true},
+			console:   "ward container reap: preserved work on ward-salvage/ward-abc123 (merge conflict integrating onto main)\n",
+			wantCats:  []string{"salvage-noise"},
+			wantStage: []string{"reap"},
+		},
+		{
+			name:      "unrelated extra repo residual preservation",
+			meta:      runMeta{Driver: string(modeClaude), Launched: true, TranscriptPresent: true},
+			console:   "ward container reap: preserved un-landed granted-repo work on ward-salvage/cli-guard-abc123 (coilyco-flight-deck/cli-guard)\n",
+			wantCats:  []string{"extra-repo-preservation"},
+			wantStage: []string{"reap"},
+		},
+	}
+
+	for _, tc := range cases {
+		t.Run(tc.name, func(t *testing.T) {
+			got := collectFrictionEvents(tc.meta, tc.console)
+			if len(tc.wantCats) == 0 {
+				if len(got) != 0 {
+					t.Fatalf("collectFrictionEvents(%s) = %+v, want no events", tc.name, got)
+				}
+				return
+			}
+			if len(got) != len(tc.wantCats) {
+				t.Fatalf("collectFrictionEvents(%s) = %+v, want %d event(s)", tc.name, got, len(tc.wantCats))
+			}
+			for i, ev := range got {
+				if ev.Category != tc.wantCats[i] {
+					t.Errorf("event %d category = %q, want %q", i, ev.Category, tc.wantCats[i])
+				}
+				if ev.Stage != tc.wantStage[i] {
+					t.Errorf("event %d stage = %q, want %q", i, ev.Stage, tc.wantStage[i])
+				}
+				if ev.Fingerprint == "" || ev.Evidence == "" {
+					t.Errorf("event %d missing fingerprint/evidence: %+v", i, ev)
+				}
+			}
+		})
 	}
 }
 

@@ -127,6 +127,7 @@ var metaEnvAllow = []string{
 	"WARD_CONTEXT_LEVEL",
 	"WARD_VERSION",
 	"WARD_THREAD_ID",
+	"WARD_AGENT_LAUNCHED",
 }
 
 // run outcome strings recorded in meta.json, inferred from the reaper's console
@@ -257,7 +258,7 @@ func (r *Runner) drainAgentRun(ctx context.Context, name, dir string) {
 	transcript := r.drainTranscript(ctx, name)
 
 	// Meta: safe dims from the inspected env allowlist + the inferred outcome.
-	meta := r.buildRunMeta(ctx, name, string(console))
+	meta := r.buildRunMeta(ctx, name, string(console), transcript)
 
 	r.writeDiskArtifacts(name, dir, console, transcript, meta)
 	// The redacted view rides the same disk gate. When the raw archive lands, its
@@ -387,31 +388,38 @@ func extractTranscriptFromTar(tarBytes []byte) []byte {
 }
 
 // runMeta is the small, secret-free record drained alongside console + transcript:
-// who the run was (env allowlist) and how the reaper resolved it (console markers).
+// who the run was (env allowlist), how the reaper resolved it, and friction facts.
 type runMeta struct {
-	Container string `json:"container"`
-	Repo      string `json:"repo,omitempty"`
-	Issue     string `json:"issue,omitempty"`
-	Driver    string `json:"driver,omitempty"`
-	Branch    string `json:"branch,omitempty"`
-	OOMKilled bool   `json:"OOMKilled,omitempty"`
-	Outcome   string `json:"outcome"`
+	Container         string          `json:"container"`
+	Repo              string          `json:"repo,omitempty"`
+	Issue             string          `json:"issue,omitempty"`
+	Driver            string          `json:"driver,omitempty"`
+	Branch            string          `json:"branch,omitempty"`
+	Launched          bool            `json:"launched,omitempty"`
+	TranscriptPresent bool            `json:"transcript_present,omitempty"`
+	OOMKilled         bool            `json:"OOMKilled,omitempty"`
+	Outcome           string          `json:"outcome"`
+	Friction          []frictionEvent `json:"friction,omitempty"`
 }
 
 // buildRunMeta assembles the meta record from the container's inspected env
 // (allowlisted), the inspected Docker state, and the reaper's console markers.
-func (r *Runner) buildRunMeta(ctx context.Context, name, console string) runMeta {
+func (r *Runner) buildRunMeta(ctx context.Context, name, console string, transcript []byte) runMeta {
 	env := r.inspectContainerEnv(ctx, name)
 	state, ok := r.inspectContainerState(ctx, name)
-	return runMeta{
-		Container: name,
-		Repo:      env["WARD_TARGET_REPO"],
-		Issue:     env["WARD_TARGET_ISSUE"],
-		Driver:    env["WARD_MODE"],
-		Branch:    env["WARD_BRANCH"],
-		OOMKilled: ok && state.OOMKilled,
-		Outcome:   classifyReapOutcome(console),
+	meta := runMeta{
+		Container:         name,
+		Repo:              env["WARD_TARGET_REPO"],
+		Issue:             env["WARD_TARGET_ISSUE"],
+		Driver:            env["WARD_MODE"],
+		Branch:            env["WARD_BRANCH"],
+		Launched:          env["WARD_AGENT_LAUNCHED"] == "1",
+		TranscriptPresent: len(bytes.TrimSpace(transcript)) > 0,
+		OOMKilled:         ok && state.OOMKilled,
+		Outcome:           classifyReapOutcome(console),
 	}
+	meta.Friction = collectFrictionEvents(meta, console)
+	return meta
 }
 
 // inspectContainerEnv reads the container's Config.Env and returns ONLY the
