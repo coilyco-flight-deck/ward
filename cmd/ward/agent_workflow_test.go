@@ -261,6 +261,24 @@ func TestAgentSeedPromptWorkflow(t *testing.T) {
 	}
 }
 
+func TestAgentSeedPromptWorkflowUsesCarriedIssueRefForPRContinuations(t *testing.T) {
+	prRef := agentIssueRef{Owner: "coilyco-flight-deck", Repo: "ward", Number: 1293, Forge: forgeForgejo, MergeRequest: true}
+	carryRef := agentIssueRef{Owner: "coilyco-flight-deck", Repo: "ward", Number: 1224, Forge: forgeForgejo}
+	got := agentSeedPromptWorkflowWithCarry(prRef, carryRef, "repair the replacement PR", "work it", "", true, nil, workflowPullRequestAndMerge, true, "")
+	for _, want := range []string{
+		"closes #1224",
+		"Carried issue number: 1224.",
+		"ward.workflow: pull-request-and-merge",
+	} {
+		if !strings.Contains(got, want) {
+			t.Fatalf("PR continuation prompt missing %q\n%s", want, got)
+		}
+	}
+	if strings.Contains(got, "closes #1293") {
+		t.Fatalf("PR continuation prompt must not close the PR number itself\n%s", got)
+	}
+}
+
 // TestWorkflowEnvAndLabels pins the container plumbing for WARD_WORKFLOW
 // and ward.workflow labels; merge-remote-main leaves both untouched (ward#508).
 func TestWorkflowEnvAndLabels(t *testing.T) {

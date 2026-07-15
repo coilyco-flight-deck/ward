@@ -343,30 +343,39 @@ func prWorkflowRecoverReport(ctx context.Context, cl *forgejoClient, role, owner
 	}
 	linked, ok := directorLinkedIssueNumber(pr.Body)
 	linkedText := "none"
+	linkedState := ""
 	if ok {
 		linkedText = fmt.Sprintf("#%d", linked)
-	}
-	next := "inspect the PR state before acting"
-	switch strings.ToLower(strings.TrimSpace(pr.State)) {
-	case "closed":
-		if merged {
-			next = "no recovery action needed - the PR is already merged"
-		} else {
-			next = "reopen the PR, then re-run status and merge"
-		}
-	case "open":
-		if merged {
-			next = "no recovery action needed - the PR is already merged"
-		} else {
-			next = "merge the PR once the required checks are green"
-		}
-	default:
-		if merged {
-			next = "no recovery action needed - the PR is already merged"
+		if issue, ierr := cl.GetIssue(ctx, owner, repo, linked); ierr == nil {
+			linkedState = strings.ToLower(strings.TrimSpace(issue.State))
 		}
 	}
+	next := prWorkflowRecoverNextAction(strings.ToLower(strings.TrimSpace(pr.State)), merged, ok, linkedState, linked)
 	return fmt.Sprintf("%s/%s#%d recovery report: state=%s, merged=%t, head=%s, linked issue=%s, next safe action: %s\n",
 		owner, repo, index, strings.ToLower(strings.TrimSpace(pr.State)), merged, pr.HeadSHA(), linkedText, next), nil
+}
+
+func prWorkflowRecoverNextAction(state string, merged bool, linkedOK bool, linkedState string, linked int) string {
+	if merged && linkedOK && linkedState == "open" {
+		return fmt.Sprintf("the PR is merged, but the carried issue #%d is still open; repair the carried issue trailer or close the issue by hand", linked)
+	}
+	switch state {
+	case "closed":
+		if merged {
+			return "no recovery action needed - the PR is already merged"
+		}
+		return "reopen the PR, then re-run status and merge"
+	case "open":
+		if merged {
+			return "no recovery action needed - the PR is already merged"
+		}
+		return "merge the PR once the required checks are green"
+	default:
+		if merged {
+			return "no recovery action needed - the PR is already merged"
+		}
+		return "inspect the PR state before acting"
+	}
 }
 
 func prWorkflowCloseNote(reason, supersedes string) string {

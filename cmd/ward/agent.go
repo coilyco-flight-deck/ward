@@ -478,6 +478,12 @@ func agentSeedPrompt(ref agentIssueRef, title, body, details string, headless bo
 // agentSeedPromptWorkflow is agentSeedPrompt with an explicit workflow mode (carry
 // clause + landing phrase shift with it, ward#508) + a reviewGate toggle (ward#134).
 func agentSeedPromptWorkflow(ref agentIssueRef, title, body, details string, headless bool, extra []targetRepo, wf workflowMode, reviewGate bool, reviewSkip string) string {
+	return agentSeedPromptWorkflowWithCarry(ref, ref, title, body, details, headless, extra, wf, reviewGate, reviewSkip)
+}
+
+// agentSeedPromptWorkflowWithCarry lets PR continuations keep their PR identity
+// in the display line while emitting close trailers for the carried issue.
+func agentSeedPromptWorkflowWithCarry(ref, carry agentIssueRef, title, body, details string, headless bool, extra []targetRepo, wf workflowMode, reviewGate bool, reviewSkip string) string {
 	title = strings.TrimSpace(title)
 	if title == "" {
 		title = "(untitled)"
@@ -493,7 +499,7 @@ func agentSeedPromptWorkflow(ref agentIssueRef, title, body, details string, hea
 		"Work on %s %s %s (%q).\n\n"+
 			"URL: %s\n\n"+
 			"%s\n\n%s\n\n%s Then carry it end to end per your container doctrine - %s",
-		forgeDisplayName(ref.Forge), kind, ref, title, ref.url(), carryIssueBanner(ref), cloneAnchorLine(ref), action, workflowCarryClause(ref, wf))
+		forgeDisplayName(ref.Forge), kind, ref, title, ref.url(), carryIssueBanner(carry), cloneAnchorLine(ref), action, workflowCarryClause(carry, wf))
 	if details = strings.TrimSpace(details); details != "" {
 		seed += fmt.Sprintf(
 			"\n\nOperator note (added at dispatch via --details; treat it as authoritative and "+
@@ -510,12 +516,12 @@ func agentSeedPromptWorkflow(ref agentIssueRef, title, body, details string, hea
 	// Before landing, a headless run must clear the review gate (ward#134).
 	// Remote-branch-only skips it because that workflow lands nothing else.
 	if headless && reviewGate && wf.orDefault() != workflowRemoteBranchOnly {
-		seed += "\n\n" + reviewGateClause(ref, wf)
+		seed += "\n\n" + reviewGateClause(carry, wf)
 	}
 	// A headless run detaches unwatched, so it closes with a retrospective comment -
 	// the only voice it leaves behind; the landing phrase tracks the workflow (#281, #508).
 	if headless {
-		seed += "\n\n" + headlessReflection(ref, wf, reviewGate && wf.orDefault() != workflowRemoteBranchOnly, reviewSkip)
+		seed += "\n\n" + headlessReflection(carry, wf, reviewGate && wf.orDefault() != workflowRemoteBranchOnly, reviewSkip)
 	}
 	return seed + inline
 }
@@ -966,6 +972,7 @@ func (r *Runner) resolveAgentWork(ctx context.Context, c *cli.Command, mode cont
 	var comments []issueComment
 	var cerr error
 	branch := ""
+	carryRef := ref
 	if ref.MergeRequest { //nolint:nestif
 		pr, prComments, prLinkedIssue, prLinkedComments, perr := r.resolveAgentPullRequestWork(ctx, mode, ref)
 		if perr != nil {
@@ -997,6 +1004,15 @@ func (r *Runner) resolveAgentWork(ctx context.Context, c *cli.Command, mode cont
 		comments = prComments
 		branch = strings.TrimSpace(pr.HeadRef)
 		details = joinNonEmptyBlocks(engineerPRDetails(pr, comments, prLinkedIssue, prLinkedComments), details)
+		if prLinkedIssue != nil && prLinkedIssue.Number > 0 {
+			carryRef = agentIssueRef{
+				Owner:   ref.Owner,
+				Repo:    ref.Repo,
+				Number:  prLinkedIssue.Number,
+				Forge:   ref.Forge,
+				Tracker: ref.trackerOrDefault(),
+			}
+		}
 	} else {
 		if issueErr != nil {
 			return resolvedWork{}, fmt.Errorf("%s: resolve issue %s: %w", label, ref, issueErr)
@@ -1045,9 +1061,9 @@ func (r *Runner) resolveAgentWork(ctx context.Context, c *cli.Command, mode cont
 	if !ref.MergeRequest {
 		seedBody = issueBodyWithComments(body, comments)
 	}
-	seed := agentSeedPromptWorkflow(ref, title, seedBody, details, true, extra, wf, reviewGate, reviewSkip)
+	seed := agentSeedPromptWorkflowWithCarry(ref, carryRef, title, seedBody, details, true, extra, wf, reviewGate, reviewSkip)
 	if mode == modeGoose {
-		seed += gooseLandingClause(ref)
+		seed += gooseLandingClause(carryRef)
 	}
 	seed += agentRunBudgetNote(roleEngineer)
 	return resolvedWork{Ref: ref, Title: title, Body: seedBody, Comments: comments, Details: details, Seed: seed, Branch: branch, ExtraRepos: extra, Workflow: wf, ReviewGate: reviewGate}, nil

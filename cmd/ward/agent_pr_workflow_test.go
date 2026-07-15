@@ -552,6 +552,40 @@ func TestPRWorkflowRecoverReportClosedUnmerged(t *testing.T) {
 	}
 }
 
+// TestPRWorkflowRecoverReportHighlightsMergedOpenLinkedIssue pins the repair path
+// for an already-merged PR whose wrong trailer left the carried issue open.
+func TestPRWorkflowRecoverReportHighlightsMergedOpenLinkedIssue(t *testing.T) {
+	srv := httptest.NewServer(http.HandlerFunc(func(w http.ResponseWriter, r *http.Request) {
+		switch r.URL.Path {
+		case "/api/v1/repos/coilyco-flight-deck/ward/pulls/7":
+			_, _ = w.Write([]byte(`{"number":7,"title":"repair branch","body":"closes #6\n","state":"closed","head":{"sha":"headsha","ref":"issue-7"},"base":{"ref":"main"}}`))
+		case "/api/v1/repos/coilyco-flight-deck/ward/pulls/7/merge":
+			w.WriteHeader(http.StatusNoContent)
+		case "/api/v1/repos/coilyco-flight-deck/ward/issues/6":
+			_, _ = w.Write([]byte(`{"number":6,"title":"carried issue","body":"body","state":"open","html_url":"https://f/issues/6"}`))
+		default:
+			t.Fatalf("unexpected path: %s", r.URL.Path)
+		}
+	}))
+	defer srv.Close()
+
+	cl := &forgejoClient{baseURL: srv.URL, token: "secret"}
+	out, err := prWorkflowRecoverReport(context.Background(), cl, roleDirector, "coilyco-flight-deck", "ward", 7)
+	if err != nil {
+		t.Fatalf("prWorkflowRecoverReport: %v", err)
+	}
+	for _, want := range []string{
+		"merged=true",
+		"linked issue=#6",
+		"the PR is merged, but the carried issue #6 is still open",
+		"repair the carried issue trailer or close the issue by hand",
+	} {
+		if !strings.Contains(out, want) {
+			t.Fatalf("recover output %q missing %q", out, want)
+		}
+	}
+}
+
 // TestPRWorkflowMergeExecExplicitSquash pins the explicit style path.
 func TestPRWorkflowMergeExecExplicitSquash(t *testing.T) {
 	fake := &prWorkflowFakeForge{
