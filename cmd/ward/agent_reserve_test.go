@@ -1081,29 +1081,44 @@ func TestLaunchPreflightSeedContext(t *testing.T) {
 		Included:     []reservationThreadEntry{{Author: "kai", At: now}},
 		DispatchedAt: now,
 	}
-	got := launchPreflightSeedContext(sc, preflightOutcome{Verdict: verdictGo}, "GO\n\ncarry it")
-	for _, want := range []string{
-		"----- launch pre-flight -----",
-		"host pre-flight: passed",
-		"checked: trusted owner and issue/ref resolution -> passed",
-		"reservation re-check: passed",
-		"reservation state: held",
-		"resolved launch context:",
-		"coilyco-flight-deck/ward#1335",
-		"branch `issue-1335`",
-		"workflow `pull-request-and-merge`",
-		"pre-flight read:",
-		"GO",
-		"carry it",
-		"----- end launch pre-flight -----",
-	} {
-		if !strings.Contains(got, want) {
-			t.Fatalf("launch pre-flight seed missing %q\n got: %s", want, got)
+	t.Run("normal launch defers the re-check result", func(t *testing.T) {
+		got := launchPreflightSeedContext(sc, preflightOutcome{Verdict: verdictGo}, "GO\n\ncarry it")
+		for _, want := range []string{
+			"----- launch pre-flight -----",
+			"host pre-flight: passed",
+			"checked: trusted owner and issue/ref resolution -> passed",
+			"reservation re-check: deferred",
+			"reservation state: held",
+			"resolved launch context:",
+			"coilyco-flight-deck/ward#1335",
+			"branch `issue-1335`",
+			"workflow `pull-request-and-merge`",
+			"pre-flight read:",
+			"GO",
+			"carry it",
+			"----- end launch pre-flight -----",
+		} {
+			if !strings.Contains(got, want) {
+				t.Fatalf("launch pre-flight seed missing %q\n got: %s", want, got)
+			}
 		}
-	}
-	if strings.Contains(got, "host dispatch broker") {
-		t.Fatalf("launch pre-flight seed should not contain broker-only logs:\n%s", got)
-	}
+		if strings.Contains(got, "reservation re-check: passed") {
+			t.Fatalf("launch pre-flight seed should not claim a future re-check result:\n%s", got)
+		}
+		if strings.Contains(got, "host dispatch broker") {
+			t.Fatalf("launch pre-flight seed should not contain broker-only logs:\n%s", got)
+		}
+	})
+
+	t.Run("skip-preflight still defers the re-check result", func(t *testing.T) {
+		got := launchPreflightSeedContext(sc, preflightOutcome{Verdict: verdictUnknown}, "skipping reservation re-check (--skip-preflight)")
+		if !strings.Contains(got, "reservation re-check: deferred") {
+			t.Fatalf("skip-preflight launch seed missing deferred re-check status:\n%s", got)
+		}
+		if strings.Contains(got, "reservation re-check: passed") {
+			t.Fatalf("skip-preflight launch seed must not claim the re-check passed:\n%s", got)
+		}
+	})
 }
 
 // TestBuildReservationSeedContextPartition pins the included-vs-stripped split: it

@@ -2036,7 +2036,7 @@ func launchPreflightSeedContext(sc *reservationSeedContext, verdict preflightOut
 	writef(&b, "host pre-flight: %s\n", launchPreflightVerdictLabel(verdict.Verdict))
 	if sc != nil {
 		writef(&b, "checked: trusted owner and issue/ref resolution -> passed\n")
-		writef(&b, "reservation re-check: passed\n")
+		writef(&b, "reservation re-check: deferred\n")
 		writef(&b, "reservation state: %s\n", orNoneLabel(sc.Reservation))
 		writef(&b, "resolved launch context:\n%s", sc.body())
 	}
