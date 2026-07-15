@@ -402,7 +402,6 @@ func (r *Runner) handleHostDispatchBrokerLaunch(ctx context.Context, req dispatc
 				finalizeDispatchArtifact(paths, req, paths.ConsolePath, resultErr)
 				finalized = true
 			}
-			done <- dispatchBrokerLaunchResult{logPath: paths.ConsolePath, err: resultErr}
 		}
 		if !restored {
 			restore()
@@ -412,6 +411,7 @@ func (r *Runner) handleHostDispatchBrokerLaunch(ctx context.Context, req dispatc
 			finalizeDispatchArtifact(paths, req, paths.ConsolePath, resultErr)
 		}
 		dispatchStdioRestoreHook()
+		done <- dispatchBrokerLaunchResult{logPath: paths.ConsolePath, err: resultErr}
 	}()
 	if lock != nil {
 		lock.Lock()
@@ -419,7 +419,7 @@ func (r *Runner) handleHostDispatchBrokerLaunch(ctx context.Context, req dispatc
 	}
 	if err := r.dispatchBrokerOpenPRBackpressureCheck(ctx, req, agentCmdline(dispatchBrokerRequestMode(req), req.Role)); err != nil {
 		resultErr = err
-		r.finishDispatchBrokerLaunchFailure(ctx, req, paths, restore, &restored, &finalized, err, true, done)
+		r.finishDispatchBrokerLaunchFailure(ctx, req, paths, restore, &restored, &finalized, err, true)
 		return
 	}
 	launchCtx := withDispatchLaunchReservationTracking(ctx)
@@ -429,34 +429,34 @@ func (r *Runner) handleHostDispatchBrokerLaunch(ctx context.Context, req dispatc
 	}); err != nil {
 		if isPartialLaunchError(err) {
 			resultErr = err
-			r.finishDispatchBrokerLaunchFailure(ctx, req, paths, restore, &restored, &finalized, err, false, done)
+			r.finishDispatchBrokerLaunchFailure(ctx, req, paths, restore, &restored, &finalized, err, false)
 			return
 		}
 		resultErr = err
-		r.finishDispatchBrokerLaunchFailure(ctx, req, paths, restore, &restored, &finalized, err, true, done)
+		r.finishDispatchBrokerLaunchFailure(ctx, req, paths, restore, &restored, &finalized, err, true)
 		return
 	}
-	if !r.maybeHandleDispatchBrokerEngineerVisibility(ctx, req, paths, restore, &restored, &finalized, done) {
+	if err := r.maybeHandleDispatchBrokerEngineerVisibility(ctx, req, paths, restore, &restored, &finalized); err != nil {
+		resultErr = err
 		return
 	}
 	fmt.Fprintf(os.Stderr, "ward dispatch broker: launch completed\n")
 	finalizeDispatchArtifact(paths, req, paths.ConsolePath, nil)
 	finalized = true
-	done <- dispatchBrokerLaunchResult{logPath: paths.ConsolePath, err: nil}
 }
 
-func (r *Runner) maybeHandleDispatchBrokerEngineerVisibility(ctx context.Context, req dispatchBrokerRequest, paths dispatchArtifactPaths, restore func(), restored, finalized *bool, done chan<- dispatchBrokerLaunchResult) bool {
+func (r *Runner) maybeHandleDispatchBrokerEngineerVisibility(ctx context.Context, req dispatchBrokerRequest, paths dispatchArtifactPaths, restore func(), restored, finalized *bool) error {
 	if dispatchAction(req.Action) != dispatchActionLaunch || req.Role != roleEngineer {
-		return true
+		return nil
 	}
 	if err := r.waitForDispatchBrokerEngineerVisibility(ctx, req); err != nil {
-		r.finishDispatchBrokerLaunchFailure(ctx, req, paths, restore, restored, finalized, err, true, done)
-		return false
+		r.finishDispatchBrokerLaunchFailure(ctx, req, paths, restore, restored, finalized, err, true)
+		return err
 	}
-	return true
+	return nil
 }
 
-func (r *Runner) finishDispatchBrokerLaunchFailure(ctx context.Context, req dispatchBrokerRequest, paths dispatchArtifactPaths, restore func(), restored, finalized *bool, err error, notify bool, done chan<- dispatchBrokerLaunchResult) {
+func (r *Runner) finishDispatchBrokerLaunchFailure(ctx context.Context, req dispatchBrokerRequest, paths dispatchArtifactPaths, restore func(), restored, finalized *bool, err error, notify bool) {
 	if !*restored {
 		restore()
 		*restored = true
@@ -467,7 +467,6 @@ func (r *Runner) finishDispatchBrokerLaunchFailure(ctx context.Context, req disp
 	}
 	finalizeDispatchArtifact(paths, req, paths.ConsolePath, err)
 	*finalized = true
-	done <- dispatchBrokerLaunchResult{logPath: paths.ConsolePath, err: err}
 }
 
 func dispatchBrokerPanicError(stage string, p any) error {
