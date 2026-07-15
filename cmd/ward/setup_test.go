@@ -17,6 +17,7 @@ func TestSetupCommandRegistered(t *testing.T) {
 func TestSetupCommandDescriptionMentionsLocalConfigPath(t *testing.T) {
 	desc := setupCommand().Description
 	for _, want := range []string{
+		"creates a minimal first-run ~/.ward/config.yaml",
 		"Point `WARD_CONFIG_REF` at the local setup output directly",
 		"`/path/to/ward-config.kdl`",
 		"`file:///path/to/ward-config.kdl`",
@@ -28,6 +29,8 @@ func TestSetupCommandDescriptionMentionsLocalConfigPath(t *testing.T) {
 }
 
 func TestRunSetupWithUnsetRef(t *testing.T) {
+	home := t.TempDir()
+	t.Setenv("HOME", home)
 	t.Setenv(wardConfigRefEnv, "")
 	t.Setenv("WARD_TARGET_OWNER", "")
 	t.Setenv("WARD_TARGET_REPO", "")
@@ -48,9 +51,31 @@ func TestRunSetupWithUnsetRef(t *testing.T) {
 	if got := strings.Join(report.validatedSurfaces, ", "); got != setupValidatedSurfaces {
 		t.Errorf("validated surfaces = %q, want %q", got, setupValidatedSurfaces)
 	}
+	wantConfig := filepath.Join(home, ".ward", "config.yaml")
+	if report.localConfigPath != wantConfig {
+		t.Errorf("local config path = %q, want %q", report.localConfigPath, wantConfig)
+	}
+	if !report.localConfigCreated {
+		t.Error("local config was not created on first setup")
+	}
+	body, err := os.ReadFile(wantConfig)
+	if err != nil {
+		t.Fatalf("read generated config: %v", err)
+	}
+	got := string(body)
+	if !strings.Contains(got, setupPlaceholderScope) {
+		t.Errorf("generated config = %q, want placeholder scope %q", got, setupPlaceholderScope)
+	}
+	if strings.Contains(got, "secret") || strings.Contains(got, "opaque") {
+		t.Errorf("generated config = %q, want no secrets or opaque ids", got)
+	}
+	if !strings.Contains(report.nextStep, "restart warded") {
+		t.Errorf("next step = %q, want restart guidance", report.nextStep)
+	}
 }
 
 func TestRunSetupRejectsMalformedRef(t *testing.T) {
+	t.Setenv("HOME", t.TempDir())
 	t.Setenv(wardConfigRefEnv, "not-a-resolvable-ref")
 	if _, err := runSetup(context.Background()); err == nil {
 		t.Fatal("runSetup with malformed ref: want a loud config-source error")
@@ -60,6 +85,7 @@ func TestRunSetupRejectsMalformedRef(t *testing.T) {
 }
 
 func TestRunSetupWithFixtureRef(t *testing.T) {
+	t.Setenv("HOME", t.TempDir())
 	dir := writeBundleFixture(t)
 	gitFixture(t, dir, "init", "-b", "main", ".")
 	gitFixture(t, dir, "add", ".")
@@ -140,6 +166,7 @@ wrap ward-kdl ops forgejo {
 }
 
 func TestRunSetupWithRelativeFileRef(t *testing.T) {
+	t.Setenv("HOME", t.TempDir())
 	file := writeSingleFileBundleFixture(t)
 	rel, err := filepath.Rel(resolveInvokeCWD(), file)
 	if err != nil {

@@ -37,6 +37,10 @@ warded engineer #98 --print
 4. confirm the chosen harness.
 5. drop `--print` only after the command shape looks right.
 
+If you are starting from a fresh host-local setup, run `ward setup` once to
+create `~/.ward/config.yaml`, replace the placeholder scope, and restart
+`warded` before the next launch.
+
 ## What not to expect
 
 - this page is not the full launch reference.

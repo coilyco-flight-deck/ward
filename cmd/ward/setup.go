@@ -7,28 +7,37 @@ import (
 	"path/filepath"
 	"strings"
 
+	"forgejo.coilysiren.me/coilyco-flight-deck/cli-guard/pkg/config"
 	"github.com/urfave/cli/v3"
 )
 
 const setupValidatedSurfaces = "ops, exec, fleet, smart defaults"
+const setupPlaceholderScope = "example-owner/example-repo"
+const setupNextStep = "replace the placeholder scope in ~/.ward/config.yaml and restart warded"
 
 type setupReport struct {
-	sourceSummary     string
-	resolvedSHA       string
-	cachePath         string
-	validatedSurfaces []string
-	phasePlan         string
+	sourceSummary      string
+	resolvedSHA        string
+	cachePath          string
+	validatedSurfaces  []string
+	phasePlan          string
+	localConfigPath    string
+	localConfigCreated bool
+	nextStep           string
 }
 
 func setupCommand() *cli.Command {
 	return &cli.Command{
 		Name:  "setup",
-		Usage: "Warm and validate runtime config surfaces.",
+		Usage: "Bootstrap ~/.ward/config.yaml and validate runtime config surfaces.",
 		Description: strings.Join([]string{
 			"setup is the cache warmer / config doctor for the selected runtime",
 			"config source. It pre-bakes and validates config surfaces without building or",
 			"replacing the ward binary, and it is not a hidden prerequisite for normal ward",
 			"commands.",
+			"",
+			"It also creates a minimal first-run ~/.ward/config.yaml with placeholder",
+			"values when the file is missing.",
 			"",
 			"Point `WARD_CONFIG_REF` at the local setup output directly when you want a",
 			"file form, for example `/path/to/ward-config.kdl` or `file:///path/to/ward-config.kdl`.",
@@ -52,7 +61,15 @@ func runSetup(ctx context.Context) (setupReport, error) {
 	report := setupReport{
 		validatedSurfaces: []string{"ops", "exec", "fleet", "smart defaults"},
 		phasePlan:         "config source -> auth/credential checks (stub) -> cache warm -> surface compile -> host integration checks (stub)",
+		nextStep:          setupNextStep,
 	}
+
+	cfgPath, created, err := ensureLocalSetupConfig()
+	if err != nil {
+		return report, err
+	}
+	report.localConfigPath = cfgPath
+	report.localConfigCreated = created
 
 	rawRef := strings.TrimSpace(os.Getenv(wardConfigRefEnv))
 	src, err := selectConfigSource()
@@ -92,6 +109,35 @@ func runSetup(ctx context.Context) (setupReport, error) {
 	}
 
 	return report, nil
+}
+
+func ensureLocalSetupConfig() (string, bool, error) {
+	path, err := config.GlobalConfigPath()
+	if err != nil {
+		return "", false, err
+	}
+	if err := os.MkdirAll(filepath.Dir(path), 0o755); err != nil {
+		return "", false, fmt.Errorf("setup config dir: %w", err)
+	}
+	if _, err := os.Stat(path); err == nil {
+		return path, false, nil
+	} else if !os.IsNotExist(err) {
+		return "", false, fmt.Errorf("setup config stat %s: %w", path, err)
+	}
+	body := []byte(setupLocalConfigYAML())
+	if err := os.WriteFile(path, body, 0o600); err != nil {
+		return "", false, fmt.Errorf("setup config write %s: %w", path, err)
+	}
+	return path, true, nil
+}
+
+func setupLocalConfigYAML() string {
+	return strings.TrimSpace(`# ward first setup config.
+# Replace the placeholder scope before using warded director without --repo.
+director:
+  default-scope:
+    - `+setupPlaceholderScope+`
+`) + "\n"
 }
 
 func setupCompileRoot() *cli.Command {
@@ -166,4 +212,14 @@ func printSetupReport(report setupReport) {
 	_, _ = fmt.Fprintf(os.Stdout, "ward setup: phases: %s\n", report.phasePlan)
 	_, _ = fmt.Fprintf(os.Stdout, "ward setup: source=%s; sha=%s; cache=%s; validated=%s\n",
 		report.sourceSummary, report.resolvedSHA, report.cachePath, strings.Join(report.validatedSurfaces, ", "))
+	if strings.TrimSpace(report.localConfigPath) != "" {
+		status := "present"
+		if report.localConfigCreated {
+			status = "created"
+		}
+		_, _ = fmt.Fprintf(os.Stdout, "ward setup: config=%s (%s)\n", report.localConfigPath, status)
+	}
+	if strings.TrimSpace(report.nextStep) != "" {
+		_, _ = fmt.Fprintf(os.Stdout, "ward setup: next step: %s\n", report.nextStep)
+	}
 }
