@@ -124,7 +124,7 @@ jobs:
             done )
           bash scripts/publish-draft-release.sh
 
-      - name: Publish the ward agent image alias
+      - name: Publish the ward agent image alias without Docker daemon
         env:
           TOKEN: ${{ secrets.CI_RELEASE_TOKEN }}
         run: |
@@ -133,14 +133,10 @@ jobs:
             echo "::error::CI_RELEASE_TOKEN not set; cannot publish the ward:release image alias" >&2
             exit 1
           fi
-          source_image=forgejo.coilysiren.me/coilyco-flight-deck/agentic-os:latest
-          target_image=forgejo.coilysiren.me/coilyco-flight-deck/ward:release
-          echo "$TOKEN" | docker login forgejo.coilysiren.me -u oauth2 --password-stdin
-          docker pull "$source_image"
-          docker tag "$source_image" "$target_image"
-          docker push "$target_image"
-          docker manifest inspect "$target_image" >/dev/null
-          echo "published ${target_image} from ${source_image}"
+          SOURCE_IMAGE=forgejo.coilysiren.me/coilyco-flight-deck/agentic-os:latest \
+          TARGET_IMAGE=forgejo.coilysiren.me/coilyco-flight-deck/ward:release \
+          TOKEN="$TOKEN" \
+          bash scripts/registry-copy-tag.sh
 
       - name: Promote main to release (fast-forward only)
         env:

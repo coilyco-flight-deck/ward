@@ -3,6 +3,8 @@ package scripts
 import (
 	"bytes"
 	"io"
+	"net/http"
+	"net/http/httptest"
 	"os"
 	"os/exec"
 	"path/filepath"
@@ -11,9 +13,6 @@ import (
 	"strings"
 	"sync"
 	"testing"
-
-	"net/http"
-	"net/http/httptest"
 )
 
 func repoRoot(t *testing.T) string {
@@ -52,12 +51,21 @@ func TestReleasePipelineUsesDraftArtifacts(t *testing.T) {
 		}
 	}
 	for _, want := range []string{
+		"scripts/registry-copy-tag.sh",
+	} {
+		if !strings.Contains(promote, want) {
+			t.Fatalf("promote workflow should mention %q:\n%s", want, promote)
+		}
+	}
+	for _, ban := range []string{
+		"docker login forgejo.coilysiren.me",
+		"docker pull \"$source_image\"",
 		"docker tag \"$source_image\" \"$target_image\"",
 		"docker push \"$target_image\"",
 		"docker manifest inspect \"$target_image\" >/dev/null",
 	} {
-		if !strings.Contains(promote, want) {
-			t.Fatalf("promote workflow should mention %q:\n%s", want, promote)
+		if strings.Contains(promote, ban) {
+			t.Fatalf("promote workflow should not rely on daemon-bound alias publish %q:\n%s", ban, promote)
 		}
 	}
 
@@ -138,6 +146,94 @@ func TestReleasePipelineUsesDraftArtifacts(t *testing.T) {
 	} {
 		if !strings.Contains(binaries, want) {
 			t.Fatalf("release binaries docs should mention %q:\n%s", want, binaries)
+		}
+	}
+}
+
+func TestRegistryCopyTagPublishesManifestWithoutDockerDaemon(t *testing.T) {
+	const (
+		sourceBody = `{"schemaVersion":2,"mediaType":"application/vnd.oci.image.index.v1+json","manifests":[{"mediaType":"application/vnd.oci.image.manifest.v1+json","digest":"sha256:1111111111111111111111111111111111111111111111111111111111111111","size":123,"platform":{"architecture":"amd64","os":"linux"}}]}`
+		targetBody = sourceBody
+	)
+
+	var (
+		putSeen bool
+		gotAuth []string
+		mu      sync.Mutex
+	)
+
+	srv := httptest.NewServer(http.HandlerFunc(func(w http.ResponseWriter, r *http.Request) {
+		mu.Lock()
+		gotAuth = append(gotAuth, r.Header.Get("Authorization"))
+		mu.Unlock()
+		if user, pass, ok := r.BasicAuth(); !ok || user != "oauth2" || pass != "secret" {
+			w.WriteHeader(http.StatusUnauthorized)
+			return
+		}
+		switch {
+		case r.Method == http.MethodGet && r.URL.Path == "/v2/coilyco-flight-deck/agentic-os/manifests/latest":
+			w.Header().Set("Content-Type", "application/vnd.oci.image.index.v1+json")
+			w.WriteHeader(http.StatusOK)
+			_, _ = io.WriteString(w, sourceBody)
+		case r.Method == http.MethodPut && r.URL.Path == "/v2/coilyco-flight-deck/ward/manifests/release":
+			body, err := io.ReadAll(r.Body)
+			if err != nil {
+				t.Fatalf("read PUT body: %v", err)
+			}
+			mu.Lock()
+			putSeen = true
+			mu.Unlock()
+			if string(body) != sourceBody {
+				t.Fatalf("PUT body = %q, want source manifest", body)
+			}
+			if got := r.Header.Get("Content-Type"); got != "application/vnd.oci.image.index.v1+json" {
+				t.Fatalf("PUT content-type = %q, want manifest index", got)
+			}
+			w.WriteHeader(http.StatusCreated)
+		case r.Method == http.MethodGet && r.URL.Path == "/v2/coilyco-flight-deck/ward/manifests/release":
+			mu.Lock()
+			seen := putSeen
+			mu.Unlock()
+			if !seen {
+				w.WriteHeader(http.StatusNotFound)
+				return
+			}
+			w.Header().Set("Content-Type", "application/vnd.oci.image.index.v1+json")
+			w.WriteHeader(http.StatusOK)
+			_, _ = io.WriteString(w, targetBody)
+		default:
+			w.WriteHeader(http.StatusNotFound)
+		}
+	}))
+	defer srv.Close()
+
+	u := strings.TrimPrefix(srv.URL, "http://")
+	script := filepath.Join(repoRoot(t), "scripts", "registry-copy-tag.sh")
+	cmd := exec.Command("bash", script)
+	cmd.Dir = repoRoot(t)
+	cmd.Env = append(os.Environ(),
+		"SOURCE_IMAGE="+u+"/coilyco-flight-deck/agentic-os:latest",
+		"TARGET_IMAGE="+u+"/coilyco-flight-deck/ward:release",
+		"TOKEN=secret",
+		"REGISTRY_SCHEME=http",
+	)
+	out, err := cmd.CombinedOutput()
+	if err != nil {
+		t.Fatalf("registry-copy-tag.sh failed: %v\noutput: %s", err, out)
+	}
+	mu.Lock()
+	seen := putSeen
+	auths := append([]string(nil), gotAuth...)
+	defer mu.Unlock()
+	if !seen {
+		t.Fatal("registry-copy-tag.sh did not publish the target manifest")
+	}
+	if len(auths) < 3 {
+		t.Fatalf("expected auth on source, target, and verify requests; got %d requests", len(auths))
+	}
+	for i, auth := range auths {
+		if !strings.HasPrefix(auth, "Basic ") {
+			t.Fatalf("request %d missing basic auth header: %q", i, auth)
 		}
 	}
 }
