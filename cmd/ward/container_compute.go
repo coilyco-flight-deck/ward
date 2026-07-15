@@ -6,10 +6,13 @@ package main
 import (
 	"fmt"
 	"net"
+	"os"
+	"os/exec"
 	"path/filepath"
 	"regexp"
 	"sort"
 	"strings"
+	"sync"
 
 	"forgejo.coilysiren.me/coilyco-flight-deck/cli-guard/pkg/fleetconfig"
 	"github.com/urfave/cli/v3"
@@ -627,7 +630,7 @@ func parseConfigOverrides(entries []string) (map[string]string, error) {
 	return out, nil
 }
 
-func resolveLaunchConfigEnv(configEntries []string) (map[string]string, error) {
+func resolveLaunchConfigEnv(configEntries []string, cwd string) (map[string]string, error) {
 	configEnv, err := parseConfigOverrides(configEntries)
 	if err != nil {
 		return nil, err
@@ -640,7 +643,7 @@ func resolveLaunchConfigEnv(configEntries []string) (map[string]string, error) {
 	if err != nil {
 		return nil, fmt.Errorf("load selected fleet attribution: %w", err)
 	}
-	configEnv = addFleetAttributionConfigEnv(configEnv, fleet)
+	configEnv = addFleetAttributionConfigEnv(configEnv, fleet, cwd)
 	// Validate the staged container-topology bundle once here so a malformed live
 	// bundle fails before launch, while a missing optional file still falls back.
 	if _, err := currentContainerTopologyWithError(); err != nil {
@@ -650,17 +653,97 @@ func resolveLaunchConfigEnv(configEntries []string) (map[string]string, error) {
 }
 
 // addFleetAttributionConfigEnv projects the selected fleet's commit identity into
-// the explicit bootstrap env vars so containers do not fall back to baked defaults.
-func addFleetAttributionConfigEnv(env map[string]string, fleet fleetconfig.Fleet) map[string]string {
+// the explicit bootstrap env vars, falling back to git config before the placeholder.
+func addFleetAttributionConfigEnv(env map[string]string, fleet fleetconfig.Fleet, cwd string) map[string]string {
 	if env == nil {
 		env = map[string]string{}
 	}
 	attribution := fleet.Defaults.Attribution
-	if strings.TrimSpace(env["WARD_GIT_NAME"]) == "" && strings.TrimSpace(attribution.Name) != "" {
-		env["WARD_GIT_NAME"] = attribution.Name
+	if strings.TrimSpace(env["WARD_GIT_NAME"]) == "" {
+		env["WARD_GIT_NAME"] = resolveLaunchGitIdentity(cwd, attribution.Name, "user.name")
 	}
-	if strings.TrimSpace(env["WARD_GIT_EMAIL"]) == "" && strings.TrimSpace(attribution.Email) != "" {
-		env["WARD_GIT_EMAIL"] = attribution.Email
+	if strings.TrimSpace(env["WARD_GIT_EMAIL"]) == "" {
+		env["WARD_GIT_EMAIL"] = resolveLaunchGitIdentity(cwd, attribution.Email, "user.email")
+	}
+	if containsExamplePlaceholder(env["WARD_GIT_NAME"]) || containsExamplePlaceholder(env["WARD_GIT_EMAIL"]) {
+		warnLaunchGitIdentityPlaceholder(env["WARD_GIT_NAME"], env["WARD_GIT_EMAIL"])
+	}
+	return env
+}
+
+var launchGitIdentityPlaceholderWarnOnce sync.Once
+
+func warnLaunchGitIdentityPlaceholder(name, email string) {
+	launchGitIdentityPlaceholderWarnOnce.Do(func() {
+		writef(os.Stderr, "ward container: launch git identity still uses the baked placeholder %q <%s>; set git user.name/user.email or WARD_GIT_* to replace it\n",
+			strings.TrimSpace(name), strings.TrimSpace(email))
+	})
+}
+
+// resolveLaunchGitIdentity prefers a real fleet attribution, then repo-local git
+// config, then global git config, and finally keeps the baked placeholder.
+func resolveLaunchGitIdentity(cwd, fallback, key string) string {
+	if v := strings.TrimSpace(fallback); v != "" && !containsExamplePlaceholder(v) {
+		return v
+	}
+	if v := strings.TrimSpace(gitConfigValue(cwd, false, key)); v != "" {
+		return v
+	}
+	if v := strings.TrimSpace(gitConfigValue("", true, key)); v != "" {
+		return v
+	}
+	return strings.TrimSpace(fallback)
+}
+
+// gitConfigValue reads one git config key from the requested scope.
+func gitConfigValue(cwd string, global bool, key string) string {
+	var argv []string
+	switch {
+	case global:
+		argv = []string{"config", "--global", "--get", key}
+	case strings.TrimSpace(cwd) != "":
+		argv = []string{"-C", cwd, "config", "--local", "--get", key}
+	default:
+		return ""
+	}
+	out, err := exec.Command("git", argv...).CombinedOutput()
+	if err != nil {
+		return ""
+	}
+	return strings.TrimSpace(string(out))
+}
+
+// launchEnvAllowlist copies the safe non-secret host context into the container
+// launch env while keeping the raw host env default-denied.
+func launchEnvAllowlist() map[string]string {
+	env := map[string]string{}
+	for _, key := range []string{
+		"TERM",
+		"COLORTERM",
+		"LANG",
+		"TZ",
+		"NO_COLOR",
+		"CLICOLOR",
+		"CLICOLOR_FORCE",
+	} {
+		if v := strings.TrimSpace(os.Getenv(key)); v != "" {
+			env[key] = v
+		}
+	}
+	for _, raw := range os.Environ() {
+		key, value, ok := strings.Cut(raw, "=")
+		if !ok || !strings.HasPrefix(key, "LC_") {
+			continue
+		}
+		if value = strings.TrimSpace(value); value != "" {
+			env[key] = value
+		}
+	}
+	if _, ok := env["TERM"]; !ok {
+		env["TERM"] = "xterm-256color"
+	}
+	if _, ok := env["COLORTERM"]; !ok {
+		env["COLORTERM"] = "truecolor"
 	}
 	return env
 }
@@ -720,10 +803,6 @@ func (p upPlan) wardEnv() map[string]string { //nolint:gocyclo,cyclop
 		"WARD_MIRROR_NAME":    p.Repo.mirrorName(),
 		"WARD_VERSION":        p.WardVersion,
 		"WARD_VERSION_SOURCE": wardVersionLaunchLabel(p.WardVersion, p.WardVersionSource),
-		// Terminal color: a bare TERM with no COLORTERM makes the in-container agent
-		// downgrade its palette to ~mono; advertise 256-color + truecolor for color.
-		"TERM":      "xterm-256color",
-		"COLORTERM": "truecolor",
 		// Substrate (reference repos warmed regardless of target). The entrypoint
 		// has matching fallback defaults, so these keep the contract one-sourced.
 		"WARD_SUBSTRATE_SEED":     envOrBundleOr("WARD_SUBSTRATE_SEED", topo.SubstrateSeed, containerSubstrateSeed),
@@ -948,8 +1027,13 @@ func awsMountMissingWarning(awsHome string, hasCreds bool) (string, bool) {
 // appendEnvAndImage appends the WARD_* env, the --env-file, the image, and the agent
 // argv - the tail both builders share. The token rides --env-file, never inlined.
 func appendEnvAndImage(argv []string, p upPlan, envFilePath string) []string {
-	for _, k := range sortedKeys(p.wardEnv()) {
-		argv = append(argv, "-e", k+"="+p.wardEnv()[k])
+	env := p.wardEnv()
+	launchEnv := launchEnvAllowlist()
+	for _, k := range sortedKeys(env) {
+		argv = append(argv, "-e", k+"="+env[k])
+	}
+	for _, k := range sortedKeys(launchEnv) {
+		argv = append(argv, "-e", k+"="+launchEnv[k])
 	}
 	if envFilePath != "" {
 		argv = append(argv, "--env-file", envFilePath)

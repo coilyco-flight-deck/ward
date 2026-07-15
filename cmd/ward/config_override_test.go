@@ -116,11 +116,75 @@ func TestAddFleetAttributionConfigEnv(t *testing.T) {
 			Attribution: fleetconfig.Attribution{Name: "coilyco-ops", Email: "coilyco-ops@coilysiren.me"},
 		},
 	}
-	env := addFleetAttributionConfigEnv(map[string]string{"WARD_GIT_NAME": "manual-bot"}, fleet)
+	env := addFleetAttributionConfigEnv(map[string]string{"WARD_GIT_NAME": "manual-bot"}, fleet, "")
 	if got := env["WARD_GIT_NAME"]; got != "manual-bot" {
 		t.Errorf("WARD_GIT_NAME = %q, want manual-bot", got)
 	}
 	if got := env["WARD_GIT_EMAIL"]; got != "coilyco-ops@coilysiren.me" {
 		t.Errorf("WARD_GIT_EMAIL = %q, want coilyco-ops@coilysiren.me", got)
 	}
+}
+
+func TestAddFleetAttributionConfigEnvGitPrecedence(t *testing.T) {
+	t.Setenv("HOME", t.TempDir())
+	t.Setenv("GIT_CONFIG_NOSYSTEM", "1")
+
+	repo := t.TempDir()
+	runGit(t, repo, "init")
+	runGit(t, repo, "config", "user.name", "repo user")
+	runGit(t, repo, "config", "user.email", "repo@example.com")
+	runGit(t, repo, "config", "--global", "user.name", "global user")
+	runGit(t, repo, "config", "--global", "user.email", "global@example.com")
+
+	fleet := fleetconfig.Fleet{
+		Defaults: fleetconfig.Defaults{
+			Attribution: fleetconfig.Attribution{Name: "example-bot", Email: "bot@example.com"},
+		},
+	}
+	t.Run("explicit env wins", func(t *testing.T) {
+		env := addFleetAttributionConfigEnv(map[string]string{
+			"WARD_GIT_NAME":  "manual-bot",
+			"WARD_GIT_EMAIL": "manual@example.com",
+		}, fleet, repo)
+		if got := env["WARD_GIT_NAME"]; got != "manual-bot" {
+			t.Fatalf("WARD_GIT_NAME = %q, want manual-bot", got)
+		}
+		if got := env["WARD_GIT_EMAIL"]; got != "manual@example.com" {
+			t.Fatalf("WARD_GIT_EMAIL = %q, want manual@example.com", got)
+		}
+	})
+	t.Run("fleet attribution wins over git config", func(t *testing.T) {
+		fleet := fleetconfig.Fleet{
+			Defaults: fleetconfig.Defaults{
+				Attribution: fleetconfig.Attribution{Name: "coilyco-ops", Email: "coilyco-ops@coilysiren.me"},
+			},
+		}
+		env := addFleetAttributionConfigEnv(map[string]string{}, fleet, repo)
+		if got := env["WARD_GIT_NAME"]; got != "coilyco-ops" {
+			t.Fatalf("WARD_GIT_NAME = %q, want coilyco-ops", got)
+		}
+		if got := env["WARD_GIT_EMAIL"]; got != "coilyco-ops@coilysiren.me" {
+			t.Fatalf("WARD_GIT_EMAIL = %q, want coilyco-ops@coilysiren.me", got)
+		}
+	})
+	t.Run("git config fills placeholder fleet attribution", func(t *testing.T) {
+		env := addFleetAttributionConfigEnv(map[string]string{}, fleet, repo)
+		if got := env["WARD_GIT_NAME"]; got != "repo user" {
+			t.Fatalf("WARD_GIT_NAME = %q, want repo user", got)
+		}
+		if got := env["WARD_GIT_EMAIL"]; got != "repo@example.com" {
+			t.Fatalf("WARD_GIT_EMAIL = %q, want repo@example.com", got)
+		}
+	})
+	t.Run("global config fills when local is absent", func(t *testing.T) {
+		globalOnly := t.TempDir()
+		runGit(t, globalOnly, "init")
+		env := addFleetAttributionConfigEnv(map[string]string{}, fleet, globalOnly)
+		if got := env["WARD_GIT_NAME"]; got != "global user" {
+			t.Fatalf("WARD_GIT_NAME = %q, want global user", got)
+		}
+		if got := env["WARD_GIT_EMAIL"]; got != "global@example.com" {
+			t.Fatalf("WARD_GIT_EMAIL = %q, want global@example.com", got)
+		}
+	})
 }

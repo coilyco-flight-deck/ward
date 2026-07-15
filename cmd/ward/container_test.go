@@ -916,6 +916,8 @@ func TestSweepStaleLaunchEnvFiles(t *testing.T) {
 }
 
 func TestDockerCreateArgvShape(t *testing.T) {
+	t.Setenv("TERM", "xterm-256color")
+	t.Setenv("COLORTERM", "truecolor")
 	argv := dockerCreateArgv(sampleUpPlan(), "/tmp/ward-env-xyz")
 	joined := strings.Join(argv, " ")
 
@@ -954,6 +956,51 @@ func TestDockerCreateArgvShape(t *testing.T) {
 	// The image is the final arg.
 	if argv[len(argv)-1] != "forgejo.coilysiren.me/coilyco-flight-deck/agentic-os-full:latest" {
 		t.Errorf("image must be the final arg, got %q", argv[len(argv)-1])
+	}
+}
+
+func TestDockerCreateArgvLaunchEnvAllowlist(t *testing.T) {
+	t.Setenv("TERM", "screen-256color")
+	t.Setenv("COLORTERM", "24bit")
+	t.Setenv("LANG", "en_US.UTF-8")
+	t.Setenv("LC_ALL", "en_GB.UTF-8")
+	t.Setenv("LC_TIME", "de_DE.UTF-8")
+	t.Setenv("TZ", "UTC")
+	t.Setenv("NO_COLOR", "1")
+	t.Setenv("CLICOLOR", "1")
+	t.Setenv("CLICOLOR_FORCE", "0")
+	t.Setenv("WARD_TOKEN", "dont-pass")
+	t.Setenv("WARD_GIT_NAME", "host-bot")
+	t.Setenv("WARD_GIT_EMAIL", "host@example.com")
+	t.Setenv("FORGEJO_TOKEN", "dont-pass")
+	t.Setenv("AWS_SECRET_ACCESS_KEY", "dont-pass")
+
+	joined := strings.Join(dockerCreateArgv(sampleUpPlan(), ""), " ")
+	for _, want := range []string{
+		"-e TERM=screen-256color",
+		"-e COLORTERM=24bit",
+		"-e LANG=en_US.UTF-8",
+		"-e LC_ALL=en_GB.UTF-8",
+		"-e LC_TIME=de_DE.UTF-8",
+		"-e TZ=UTC",
+		"-e NO_COLOR=1",
+		"-e CLICOLOR=1",
+		"-e CLICOLOR_FORCE=0",
+	} {
+		if !strings.Contains(joined, want) {
+			t.Errorf("docker argv missing allowed env %q\n got: %s", want, joined)
+		}
+	}
+	for _, denied := range []string{
+		"WARD_TOKEN=dont-pass",
+		"WARD_GIT_NAME=host-bot",
+		"WARD_GIT_EMAIL=host@example.com",
+		"FORGEJO_TOKEN=dont-pass",
+		"AWS_SECRET_ACCESS_KEY=dont-pass",
+	} {
+		if strings.Contains(joined, denied) {
+			t.Errorf("docker argv leaked denied env %q\n got: %s", denied, joined)
+		}
 	}
 }
 
