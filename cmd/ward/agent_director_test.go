@@ -676,6 +676,107 @@ func TestRefreshBacklogLedger(t *testing.T) {
 	}
 }
 
+type closedIssueRefreshTracker struct {
+	issues   map[int]*Issue
+	comments map[int][]issueComment
+}
+
+func (f *closedIssueRefreshTracker) GetIssue(_ context.Context, _, _ string, number int) (*Issue, error) {
+	if issue, ok := f.issues[number]; ok {
+		return issue, nil
+	}
+	return nil, fmt.Errorf("missing issue %d", number)
+}
+
+func (f *closedIssueRefreshTracker) ListIssueComments(_ context.Context, _, _ string, number int) ([]issueComment, error) {
+	return append([]issueComment(nil), f.comments[number]...), nil
+}
+
+func (f *closedIssueRefreshTracker) CreateIssue(context.Context, string, string, string, string) (int, error) {
+	return 0, fmt.Errorf("not implemented")
+}
+
+func (f *closedIssueRefreshTracker) CommentIssue(context.Context, string, string, int, string) error {
+	return fmt.Errorf("not implemented")
+}
+
+func (f *closedIssueRefreshTracker) DeleteIssueComment(context.Context, string, string, int) error {
+	return fmt.Errorf("not implemented")
+}
+
+func (f *closedIssueRefreshTracker) CloseIssue(context.Context, string, string, int) error {
+	return fmt.Errorf("not implemented")
+}
+
+func (f *closedIssueRefreshTracker) ReopenIssue(context.Context, string, string, int) error {
+	return fmt.Errorf("not implemented")
+}
+
+func (f *closedIssueRefreshTracker) LockIssue(context.Context, string, string, int) error {
+	return fmt.Errorf("not implemented")
+}
+
+func (f *closedIssueRefreshTracker) UnlockIssue(context.Context, string, string, int) error {
+	return fmt.Errorf("not implemented")
+}
+
+func TestBacklogRefreshClosedIssueStates(t *testing.T) {
+	r := &Runner{}
+	led := &backlogLedger{Repo: "a/b", Issues: map[string]*backlogEntry{
+		"5": {Num: 5, Kind: backlogKindIssue, Lane: "headless", State: "safe-to-redispatch"},
+		"6": {Num: 6, Kind: backlogKindIssue, Lane: "headless", State: "queued"},
+		"7": {Num: 7, Kind: backlogKindIssue, Lane: "headless", State: backlogReservationWaitingReaper},
+	}}
+	tracker := &closedIssueRefreshTracker{
+		issues: map[int]*Issue{
+			5: {Number: 5, State: "closed"},
+			6: {Number: 6, State: "open"},
+			7: {Number: 7, State: "closed"},
+		},
+	}
+
+	if got := r.backlogRefreshClosedIssueStates(context.Background(), tracker, "a/b", led); !got {
+		t.Fatal("closed issue refresh should report a change")
+	}
+
+	if e := led.Issues["5"]; e == nil || e.State != "blocked" || e.LastOutcome == nil || e.LastOutcome.Status != "issue-closed" {
+		t.Fatalf("closed stale issue should be blocked, got %+v", e)
+	}
+	if e := led.Issues["6"]; e == nil || e.State != "queued" {
+		t.Fatalf("open stale issue should stay queued, got %+v", e)
+	}
+	if e := led.Issues["7"]; e == nil || e.State != backlogReservationWaitingReaper {
+		t.Fatalf("fresh reservation should stay waiting-reaper, got %+v", e)
+	}
+}
+
+func TestBacklogPrintPlannedSkipsBlockedClosedIssue(t *testing.T) {
+	t.Setenv("HOME", t.TempDir())
+
+	led := &backlogLedger{Repo: "a/b", Issues: map[string]*backlogEntry{
+		"5": {Num: 5, Kind: backlogKindIssue, Lane: "headless", State: "blocked", Title: "closed stale issue", Tier: "P0"},
+		"6": {Num: 6, Kind: backlogKindIssue, Lane: "headless", State: "queued", Title: "open queued issue", Tier: "P1"},
+	}}
+	if err := saveBacklogLedger(led); err != nil {
+		t.Fatalf("saveBacklogLedger: %v", err)
+	}
+
+	var out bytes.Buffer
+	r := &Runner{Runner: &shell.Runner{Stdout: &out}}
+	if err := r.backlogPrintPlanned("ward agent director", []string{"a/b"}, 2); err != nil {
+		t.Fatalf("backlogPrintPlanned: %v", err)
+	}
+	got := out.String()
+	if strings.Contains(got, "closed stale issue") {
+		t.Fatalf("dry-run output should skip blocked closed issues:\n%s", got)
+	}
+	for _, want := range []string{"open queued issue", "ward agent engineer a/b#6"} {
+		if !strings.Contains(got, want) {
+			t.Fatalf("dry-run output missing %q:\n%s", want, got)
+		}
+	}
+}
+
 // TestBacklogRefreshUsesForgejoTokenForPrivateRepos covers the director startup
 // refresh path for private Forgejo repos.
 func TestBacklogRefreshUsesForgejoTokenForPrivateRepos(t *testing.T) {
@@ -733,6 +834,10 @@ func TestBacklogRefreshReservationStates(t *testing.T) {
 			_ = json.NewEncoder(w).Encode([]map[string]any{
 				{"body": agentReservationMarker + "\nreserved", "created_at": stale, "user": map[string]any{"login": "coilyco-ops"}},
 			})
+		case r.URL.Path == "/api/v1/repos/coilyco-flight-deck/ward/issues/11":
+			_ = json.NewEncoder(w).Encode(map[string]any{"number": 11, "state": "open"})
+		case r.URL.Path == "/api/v1/repos/coilyco-flight-deck/ward/issues/12":
+			_ = json.NewEncoder(w).Encode(map[string]any{"number": 12, "state": "open"})
 		default:
 			t.Fatalf("unexpected path: %s?%s", r.URL.Path, r.URL.RawQuery)
 		}

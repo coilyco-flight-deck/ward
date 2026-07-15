@@ -1290,6 +1290,7 @@ func (r *Runner) backlogRefreshRepo(ctx context.Context, cl *forgejoClient, labe
 	}
 	refreshBacklogLedger(led, rankBacklogIssues(combineOpenBacklogIssues(issues, prBacklog)))
 	_ = r.backlogRefreshReservationStates(ctx, cl, repo, led)
+	_ = r.backlogRefreshClosedIssueStates(ctx, cl, repo, led)
 	if serr := saveBacklogLedger(led); serr != nil {
 		return fmt.Errorf("%s: %w", label, serr)
 	}
@@ -1324,6 +1325,11 @@ func (r *Runner) backlogRefreshIssue(ctx context.Context, label string, mode con
 		Labels: append([]string(nil), issue.Labels...),
 		URL:    issue.URL,
 	}}))
+	if backlogClosedIssueState(issue.State) {
+		if e := led.Issues[strconv.Itoa(ref.Number)]; e != nil {
+			_ = backlogRefreshClosedIssueEntry(ref.repoSlug(), e)
+		}
+	}
 	if err := saveBacklogLedger(led); err != nil {
 		return fmt.Errorf("%s: %w", label, err)
 	}
@@ -1385,6 +1391,63 @@ func (r *Runner) backlogRefreshReservationState(ctx context.Context, cl Tracker,
 	default:
 		return r.backlogRefreshReservationHold(repo, e, comments, now, ttl)
 	}
+}
+
+// backlogRefreshClosedIssueStates removes closed issue rows from dispatchable
+// headless states without disturbing open stale reservations.
+func (r *Runner) backlogRefreshClosedIssueStates(ctx context.Context, cl Tracker, repo string, led *backlogLedger) bool {
+	changed := false
+	tr := targetRepo{Owner: ownerOf(repo), Name: nameOf(repo)}
+	for _, e := range led.Issues {
+		if r.backlogRefreshClosedIssueState(ctx, cl, repo, tr, e) {
+			changed = true
+		}
+	}
+	return changed
+}
+
+func (r *Runner) backlogRefreshClosedIssueState(ctx context.Context, cl Tracker, repo string, tr targetRepo, e *backlogEntry) bool {
+	if backlogKindOf(e.Kind) != backlogKindIssue || e.Lane != "headless" {
+		return false
+	}
+	switch e.State {
+	case "queued", backlogReservationSafeToRedispatch:
+	default:
+		return false
+	}
+	issue, err := cl.GetIssue(ctx, tr.Owner, tr.Name, e.Num)
+	if err != nil {
+		fmt.Fprintf(os.Stderr, "backlog: note: cannot read issue state for %s#%d (%v)\n", repo, e.Num, err)
+		return false
+	}
+	if strings.EqualFold(strings.TrimSpace(issue.State), "open") {
+		return false
+	}
+	return backlogRefreshClosedIssueEntry(repo, e)
+}
+
+func backlogClosedIssueState(state string) bool {
+	return strings.EqualFold(strings.TrimSpace(state), "closed")
+}
+
+func backlogRefreshClosedIssueEntry(repo string, e *backlogEntry) bool {
+	if backlogKindOf(e.Kind) != backlogKindIssue || e.Lane != "headless" {
+		return false
+	}
+	switch e.State {
+	case "queued", backlogReservationSafeToRedispatch:
+	default:
+		return false
+	}
+	e.State = "blocked"
+	e.Container = ""
+	e.DispatchedAt = ""
+	e.LastOutcome = &backlogOutcome{
+		Status: "issue-closed",
+		Text:   "issue is closed; remove the stale reservation or cleanup metadata before redispatching",
+	}
+	fmt.Fprintf(os.Stderr, "  %s#%d -> blocked (issue is closed)\n", repo, e.Num)
+	return true
 }
 
 // backlogRedispatchSweepTracked marks the parked headless issues the ward#1149 marker
