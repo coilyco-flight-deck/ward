@@ -4,11 +4,14 @@ set -euo pipefail
 : "${SOURCE_IMAGE:?missing SOURCE_IMAGE}"
 : "${TARGET_IMAGE:?missing TARGET_IMAGE}"
 
-REGISTRY_USER="${REGISTRY_USER:-oauth2}"
 REGISTRY_SCHEME="${REGISTRY_SCHEME:-https}"
+SOURCE_USER="${SOURCE_USER:-${REGISTRY_USER:-oauth2}}"
+TARGET_USER="${TARGET_USER:-${REGISTRY_USER:-oauth2}}"
 SOURCE_TOKEN="${SOURCE_TOKEN:-${TOKEN:-}}"
 TARGET_TOKEN="${TARGET_TOKEN:-${TOKEN:-}}"
 
+: "${SOURCE_USER:?missing SOURCE_USER or REGISTRY_USER}"
+: "${TARGET_USER:?missing TARGET_USER or REGISTRY_USER}"
 : "${SOURCE_TOKEN:?missing SOURCE_TOKEN or TOKEN}"
 : "${TARGET_TOKEN:?missing TARGET_TOKEN or TOKEN}"
 
@@ -62,7 +65,7 @@ cleanup() {
 trap cleanup EXIT
 
 source_code=$(curl -sS -o "$source_body" -D "$source_headers" -w '%{http_code}' \
-  -u "${REGISTRY_USER}:${SOURCE_TOKEN}" \
+  -u "${SOURCE_USER}:${SOURCE_TOKEN}" \
   -H "Accept: ${accept_header}" \
   "$fetch_url")
 if [ "$source_code" != "200" ]; then
@@ -78,7 +81,7 @@ fi
 
 push_code=$(curl -sS -o "$target_body" -w '%{http_code}' \
   -X PUT \
-  -u "${REGISTRY_USER}:${TARGET_TOKEN}" \
+  -u "${TARGET_USER}:${TARGET_TOKEN}" \
   -H "Content-Type: ${content_type}" \
   --data-binary @"$source_body" \
   "$push_url")
@@ -95,7 +98,7 @@ esac
 verify_body=$(mktemp)
 trap 'rm -f "$source_headers" "$source_body" "$target_body" "$verify_body"' EXIT
 verify_code=$(curl -sS -o "$verify_body" -w '%{http_code}' \
-  -u "${REGISTRY_USER}:${TARGET_TOKEN}" \
+  -u "${TARGET_USER}:${TARGET_TOKEN}" \
   -H "Accept: ${accept_header}" \
   "$push_url")
 if [ "$verify_code" != "200" ]; then

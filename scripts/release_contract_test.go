@@ -47,6 +47,7 @@ func TestReleasePipelineUsesDraftArtifacts(t *testing.T) {
 		"main.Version=${TAG}",
 		"scripts/publish-draft-release.sh",
 		"SOURCE_TOKEN: ${{ github.token }}",
+		"TARGET_USER: coilyco-ops",
 		"TARGET_TOKEN: ${{ secrets.REGISTRY_TOKEN }}",
 	} {
 		if !strings.Contains(promote, want) {
@@ -169,11 +170,13 @@ func TestRegistryCopyTagPublishesManifestWithoutDockerDaemon(t *testing.T) {
 		mu.Lock()
 		gotAuth = append(gotAuth, r.Header.Get("Authorization"))
 		mu.Unlock()
+		wantUser := "coilyco-ops"
 		wantPass := "target-secret"
 		if r.Method == http.MethodGet && r.URL.Path == "/v2/coilyco-flight-deck/agentic-os/manifests/latest" {
+			wantUser = "oauth2"
 			wantPass = "source-secret"
 		}
-		if user, pass, ok := r.BasicAuth(); !ok || user != "oauth2" || pass != wantPass {
+		if user, pass, ok := r.BasicAuth(); !ok || user != wantUser || pass != wantPass {
 			w.WriteHeader(http.StatusUnauthorized)
 			return
 		}
@@ -222,6 +225,7 @@ func TestRegistryCopyTagPublishesManifestWithoutDockerDaemon(t *testing.T) {
 		"SOURCE_IMAGE="+u+"/coilyco-flight-deck/agentic-os:latest",
 		"TARGET_IMAGE="+u+"/coilyco-flight-deck/ward:release",
 		"SOURCE_TOKEN=source-secret",
+		"TARGET_USER=coilyco-ops",
 		"TARGET_TOKEN=target-secret",
 		"REGISTRY_SCHEME=http",
 	)

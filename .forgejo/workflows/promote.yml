@@ -127,6 +127,7 @@ jobs:
       - name: Publish the ward agent image alias without Docker daemon
         env:
           SOURCE_TOKEN: ${{ github.token }}
+          TARGET_USER: coilyco-ops
           TARGET_TOKEN: ${{ secrets.REGISTRY_TOKEN }}
         run: |
           set -euo pipefail
@@ -141,6 +142,7 @@ jobs:
           SOURCE_IMAGE=forgejo.coilysiren.me/coilyco-flight-deck/agentic-os:latest \
           TARGET_IMAGE=forgejo.coilysiren.me/coilyco-flight-deck/ward:release \
           SOURCE_TOKEN="$SOURCE_TOKEN" \
+          TARGET_USER="$TARGET_USER" \
           TARGET_TOKEN="$TARGET_TOKEN" \
           bash scripts/registry-copy-tag.sh
 
