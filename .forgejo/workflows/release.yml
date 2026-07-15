@@ -655,13 +655,16 @@ jobs:
             exit 1
           fi
           VER="${TAG#v}"
-          # Read the two windows hashes from the .sha256 sidecars the draft
-          # promotion job uploaded
-          # uploaded (bare digest per asset, the scoop autoupdate contract, ward#561).
-          # pipefail matters: a failed sidecar fetch must abort, not hash an empty body.
-          dl="$FORGEJO_BASE_URL/${WARD_REPO}/releases/download/${TAG}"
-          amd64_hash=$(curl -fsSL "${dl}/ward-windows-amd64.exe.sha256" | tr -d '[:space:]')
-          arm64_hash=$(curl -fsSL "${dl}/ward-windows-arm64.exe.sha256" | tr -d '[:space:]')
+          # Resolve the sidecar assets through the release API, then read the
+          # asset bodies. That keeps Scoop on the raw 64-hex digest even if the
+          # public download route hands back metadata JSON instead of the file
+          # body.
+          amd64_hash=$(RELEASE_TAG="$TAG" ASSET_NAME=ward-windows-amd64.exe.sha256 \
+            FORGEJO_API="$FORGEJO_BASE_URL/api/v1/repos/${WARD_REPO}" \
+            bash scripts/forgejo-release-asset.sh | tr -d '[:space:]')
+          arm64_hash=$(RELEASE_TAG="$TAG" ASSET_NAME=ward-windows-arm64.exe.sha256 \
+            FORGEJO_API="$FORGEJO_BASE_URL/api/v1/repos/${WARD_REPO}" \
+            bash scripts/forgejo-release-asset.sh | tr -d '[:space:]')
           for h in "$amd64_hash" "$arm64_hash"; do
             if ! printf '%s' "$h" | grep -Eq '^[0-9a-f]{64}$'; then
               echo "::error::sidecar digest '${h}' is not a 64-hex sha256; refusing to write manifest" >&2

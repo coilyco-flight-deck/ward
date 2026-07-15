@@ -37,6 +37,8 @@ Ward releases are Forgejo-canonical and two-stage ([ward#1117](https://forgejo.c
   `release`.
 - Ward publishes immutable version tags and checksums, not moving `release` or
   `latest` aliases.
+- the Scoop manifest job reads the `.sha256` sidecar asset body from the
+  release API, not the asset metadata JSON.
 - the install channel update should follow the release, not invent a second
   release story.
 

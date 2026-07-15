@@ -53,6 +53,7 @@ func TestReleasePipelineUsesDraftArtifacts(t *testing.T) {
 		"draft-${{ github.sha }}",
 		"promote-draft-assets",
 		"fetched ${name} from ${DRAFT_TAG}",
+		"scripts/forgejo-release-asset.sh",
 	} {
 		if !strings.Contains(release, want) {
 			t.Fatalf("release workflow should mention %q:\n%s", want, release)
@@ -136,6 +137,39 @@ func TestPublishDraftReleaseHandles404AndIdempotentAssetRewrites(t *testing.T) {
 	}
 	if got := srv.count("DELETE /api/v1/repos/coilyco-flight-deck/ward/releases/99/assets/1"); got != 1 {
 		t.Fatalf("second publish should replace the existing asset once, delete count = %d", got)
+	}
+}
+
+func TestForgejoReleaseAssetHelperReadsRawAssetBody(t *testing.T) {
+	srv := newReleaseAssetTestServer(t)
+	script := filepath.Join(repoRoot(t), "scripts", "forgejo-release-asset.sh")
+	cmd := exec.Command("bash", script)
+	cmd.Dir = repoRoot(t)
+	cmd.Env = append(os.Environ(),
+		"RELEASE_TAG=v9.9.9",
+		"ASSET_NAME=ward-windows-amd64.exe.sha256",
+		"FORGEJO_API="+srv.URL+"/api/v1/repos/coilyco-flight-deck/ward",
+		"TOKEN=secret",
+	)
+	out, err := cmd.CombinedOutput()
+	if err != nil {
+		t.Fatalf("forgejo-release-asset.sh failed: %v\noutput: %s", err, out)
+	}
+	got := strings.TrimSpace(string(out))
+	if got != strings.Repeat("a", 64) {
+		t.Fatalf("asset body = %q, want raw 64-hex digest", got)
+	}
+	if got := srv.count("GET /api/v1/repos/coilyco-flight-deck/ward/releases/tags/v9.9.9"); got != 1 {
+		t.Fatalf("release lookup count = %d, want 1", got)
+	}
+	if got := srv.count("GET /api/v1/repos/coilyco-flight-deck/ward/releases/99/assets?per_page=100"); got != 1 {
+		t.Fatalf("asset list count = %d, want 1", got)
+	}
+	if got := srv.count("GET /api/v1/repos/coilyco-flight-deck/ward/releases/99/assets/7"); got != 1 {
+		t.Fatalf("asset body fetch count = %d, want 1", got)
+	}
+	if got := srv.count("GET /api/v1/repos/coilyco-flight-deck/ward/releases/download/v9.9.9/ward-windows-amd64.exe.sha256"); got != 0 {
+		t.Fatalf("direct download path should stay unused, count = %d", got)
 	}
 }
 
@@ -269,4 +303,64 @@ func (s *draftReleaseTestServer) handleDraftReleaseAssetDelete(w http.ResponseWr
 		delete(s.assets, "SHA256SUMS")
 	}
 	w.WriteHeader(http.StatusNoContent)
+}
+
+type releaseAssetTestServer struct {
+	*httptest.Server
+	mu     sync.Mutex
+	counts map[string]int
+}
+
+func newReleaseAssetTestServer(t *testing.T) *releaseAssetTestServer {
+	t.Helper()
+	s := &releaseAssetTestServer{
+		counts: make(map[string]int),
+	}
+	mux := http.NewServeMux()
+	mux.HandleFunc("/api/v1/repos/coilyco-flight-deck/ward/releases/tags/v9.9.9", s.handleReleaseByTag)
+	mux.HandleFunc("/api/v1/repos/coilyco-flight-deck/ward/releases/99/assets", s.handleReleaseAssets)
+	mux.HandleFunc("/api/v1/repos/coilyco-flight-deck/ward/releases/99/assets/7", s.handleReleaseAssetBody)
+	mux.HandleFunc("/api/v1/repos/coilyco-flight-deck/ward/releases/download/v9.9.9/ward-windows-amd64.exe.sha256", s.handleReleaseDownloadMetadata)
+	s.Server = httptest.NewServer(mux)
+	t.Cleanup(s.Close)
+	return s
+}
+
+func (s *releaseAssetTestServer) count(key string) int {
+	s.mu.Lock()
+	defer s.mu.Unlock()
+	return s.counts[key]
+}
+
+func (s *releaseAssetTestServer) record(r *http.Request) {
+	key := r.Method + " " + r.URL.Path
+	if r.URL.RawQuery != "" {
+		key += "?" + r.URL.RawQuery
+	}
+	s.mu.Lock()
+	s.counts[key]++
+	s.mu.Unlock()
+}
+
+func (s *releaseAssetTestServer) handleReleaseByTag(w http.ResponseWriter, r *http.Request) {
+	s.record(r)
+	_, _ = w.Write([]byte(`{"id":99,"tag_name":"v9.9.9","draft":false}`))
+}
+
+func (s *releaseAssetTestServer) handleReleaseAssets(w http.ResponseWriter, r *http.Request) {
+	s.record(r)
+	_, _ = w.Write([]byte(`[
+		{"id":7,"name":"ward-windows-amd64.exe.sha256"},
+		{"id":8,"name":"ward-windows-arm64.exe.sha256"}
+	]`))
+}
+
+func (s *releaseAssetTestServer) handleReleaseAssetBody(w http.ResponseWriter, r *http.Request) {
+	s.record(r)
+	_, _ = w.Write([]byte(strings.Repeat("a", 64)))
+}
+
+func (s *releaseAssetTestServer) handleReleaseDownloadMetadata(w http.ResponseWriter, r *http.Request) {
+	s.record(r)
+	_, _ = w.Write([]byte(`{"id":7,"name":"ward-windows-amd64.exe.sha256","browser_download_url":"https://forgejo.example/attachments/7","type":"attachment"}`))
 }
