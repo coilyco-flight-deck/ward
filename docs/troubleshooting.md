@@ -35,6 +35,9 @@ Start here when a run failed or seemed to do nothing.
   credentials or harness startup.
 - if the branch exists but the merge did not happen, the issue is usually in
   workflow or review.
+- if a `promote.yml` run on `main` fails in `go test` or another check but a
+  later main push promotes successfully, treat the earlier failure as
+  transient/superseded unless you can reproduce it on the current head.
 - if the run vanished, the issue is usually in teardown or reap.
 - if `ward agent list --json` shows `phase: container starting` with
   `status: cleanup-needed` and an empty `started_at`, use the manual stale reservation cleanup path in
