@@ -196,7 +196,7 @@ func readBootstrapEnv() (bootstrapEnv, error) {
 		Role:              role,
 		AgentUID:          envOr("WARD_AGENT_UID", "1000"),
 		AgentGID:          envOr("WARD_AGENT_GID", "1000"),
-		AgentHome:         envOr("WARD_AGENT_HOME", "/home/ubuntu"),
+		AgentHome:         envOr("WARD_AGENT_HOME", "/home/ubuntu/.ward"),
 		MirrorName:        os.Getenv("WARD_MIRROR_NAME"),
 		Branch:            os.Getenv("WARD_BRANCH"),
 		Headless:          os.Getenv("WARD_HEADLESS") == "1",

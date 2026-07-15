@@ -407,7 +407,7 @@ func TestReadBootstrapEnvDefaults(t *testing.T) {
 		"GitUserName":    "example-bot",
 		"GitUserEmail":   "bot@example.com",
 		"AgentUID":       "1000",
-		"AgentHome":      "/home/ubuntu",
+		"AgentHome":      "/home/ubuntu/.ward",
 		"ForgejoHost":    "forgejo.coilysiren.me",
 		"WardVersion":    "",
 	}

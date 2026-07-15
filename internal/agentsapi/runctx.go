@@ -35,6 +35,7 @@ type RunCtx struct {
 	// Ctx carries the launch deadline so Exec calls need no separate argument.
 	Ctx context.Context
 	// AgentHome is the agent user's HOME, the root of every config/cred write.
+	// Ward now defaults this to the single ~/.ward state home inside the container.
 	AgentHome string
 	// TargetName is the target repo's short name; the clone lives at
 	// /workspace/<TargetName> (onboarding seeds its project entry).

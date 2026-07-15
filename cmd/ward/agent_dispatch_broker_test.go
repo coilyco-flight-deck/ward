@@ -547,7 +547,7 @@ func TestResolveDispatchBrokerLogsSourceFallsBackToLiveTranscriptWhenDockerEmpty
 	}
 	got := out.String()
 	for _, want := range []string{
-		"ward agent logs: docker logs engineer-claude-ward-692 --tail 2 had no readable bytes; using live transcript tree from /home/ubuntu/.claude/projects",
+		"ward agent logs: docker logs engineer-claude-ward-692 --tail 2 had no readable bytes; using live transcript tree from /home/ubuntu/.ward/.claude/projects",
 		".claude/projects",
 		`{"type":"assistant","text":"still here"}`,
 		`{"type":"assistant","text":"latest"}`,
@@ -574,7 +574,7 @@ func TestResolveDispatchBrokerLogsSourceUsesCodexTranscriptTreeWhenDockerEmpty(t
 	}
 	got := out.String()
 	for _, want := range []string{
-		"ward agent logs: docker logs engineer-codex-ward-692 --tail 2 had no readable bytes; using live transcript tree from /home/ubuntu/.codex/sessions",
+		"ward agent logs: docker logs engineer-codex-ward-692 --tail 2 had no readable bytes; using live transcript tree from /home/ubuntu/.ward/.codex/sessions",
 		".codex/sessions",
 		`{"type":"assistant","text":"still here"}`,
 		`{"type":"assistant","text":"latest"}`,
@@ -2636,6 +2636,10 @@ func fakeAgentLogsDockerRunner(t *testing.T, psOut, logsOut string, cpOut []byte
 		"want_cp_suffix=" + shellQuote(wantCpSuffix) + "\n" +
 		"if [ \"$1\" = ps ] && [ \"$2\" = -a ]; then\n" +
 		"  printf '%s' " + shellQuote(psOut) + "\n" +
+		"  exit 0\n" +
+		"fi\n" +
+		"if [ \"$1\" = inspect ] && [ \"$2\" = --format ] && [ \"$3\" = '{{json .Config.Env}}' ]; then\n" +
+		"  printf '%s' " + shellQuote(`["WARD_AGENT_HOME=/home/ubuntu/.ward"]`) + "\n" +
 		"  exit 0\n" +
 		"fi\n" +
 		"if [ \"$1\" = logs ]; then\n" +

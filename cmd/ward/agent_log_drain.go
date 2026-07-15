@@ -31,24 +31,35 @@ const agentLogsSubdir = "agent-logs"
 // (ward#526): a SEPARATE tree the surface binds so raw logs never mount. See docs.
 const agentLogsRedactedSubdir = "agent-logs-redacted"
 
-// containerTranscriptDir returns the harness live transcript tree path.
-// Claude uses ~/.claude/projects. Codex uses ~/.codex/sessions.
-const (
-	containerClaudeTranscriptDir = "/home/ubuntu/.claude/projects"
-	containerCodexTranscriptDir  = "/home/ubuntu/.codex/sessions"
-)
-
-func containerTranscriptDir(mode containerMode) string {
+// containerTranscriptDir returns the harness live transcript tree path rooted
+// at the agent home, with a legacy fallback for older containers.
+func containerTranscriptDir(agentHome string, mode containerMode) string {
+	if strings.TrimSpace(agentHome) == "" {
+		agentHome = "/home/ubuntu"
+	}
 	switch mode {
 	case modeClaude:
-		return containerClaudeTranscriptDir
+		return filepath.Join(agentHome, ".claude", "projects")
 	case modeCodex:
-		return containerCodexTranscriptDir
+		return filepath.Join(agentHome, ".codex", "sessions")
 	case modeOpencode, modeGoose:
 		return ""
 	default:
 		return ""
 	}
+}
+
+func (r *Runner) containerTranscriptTree(ctx context.Context, name string) string {
+	mode := containerModeFromContainerName(name)
+	if mode == "" {
+		return ""
+	}
+	return containerTranscriptDir(r.containerAgentHome(ctx, name), mode)
+}
+
+func (r *Runner) containerAgentHome(ctx context.Context, name string) string {
+	env := r.inspectContainerEnv(ctx, name)
+	return strings.TrimSpace(env["WARD_AGENT_HOME"])
 }
 
 // drained artifact filenames inside ~/.ward/agent-logs/<slug>/.
@@ -179,6 +190,7 @@ var metaEnvAllow = []string{
 	"WARD_CONTEXT_LEVEL",
 	"WARD_VERSION",
 	"WARD_THREAD_ID",
+	"WARD_AGENT_HOME",
 	"WARD_AGENT_LAUNCHED",
 }
 
@@ -381,7 +393,7 @@ func (r *Runner) dockerLogsCombined(ctx context.Context, name string) []byte {
 // drainTranscript `docker cp`s the transcript tree out as a tar and returns the
 // concatenated jsonl. An absent tree (goose/opencode/unknown) returns nil.
 func (r *Runner) drainTranscript(ctx context.Context, name string) []byte {
-	tree := containerTranscriptDir(containerModeFromContainerName(name))
+	tree := r.containerTranscriptTree(ctx, name)
 	if strings.TrimSpace(tree) == "" {
 		return nil
 	}

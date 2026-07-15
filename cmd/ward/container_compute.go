@@ -798,6 +798,7 @@ func (p upPlan) wardEnv() map[string]string { //nolint:gocyclo,cyclop
 		"WARD_HARNESS":        string(p.Mode),
 		"WARD_CONTEXT_LEVEL":  fmt.Sprintf("%d", rec.ContextLevel),
 		"WARD_AGENT":          rec.Binary,
+		"WARD_AGENT_HOME":     "/home/ubuntu/.ward",
 		"WARD_GITCACHE":       containerGitcacheMnt,
 		"WARD_CONTEXT_SRC":    containerContextMount,
 		"WARD_MIRROR_NAME":    p.Repo.mirrorName(),

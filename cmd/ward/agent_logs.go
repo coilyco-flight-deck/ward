@@ -201,7 +201,7 @@ func (r *Runner) resolveAgentLogsSourceForIssue(ctx context.Context, ref agentIs
 		if err != nil {
 			return agentLogSource{}, err
 		}
-		return agentLogSource{Kind: agentLogSourceDocker, Container: name, TranscriptTree: containerTranscriptDir(containerModeFromContainerName(name)), Tail: tail, Follow: follow}, nil
+		return agentLogSource{Kind: agentLogSourceDocker, Container: name, TranscriptTree: r.containerTranscriptTree(ctx, name), Tail: tail, Follow: follow}, nil
 	}
 	if src, err := findArchivedAgentLogSourceByIssue(ref, tail, follow, agentLogsDir(), drainConsoleFile, "archive path"); err != nil {
 		return agentLogSource{}, err
@@ -259,7 +259,7 @@ func (r *Runner) resolveAgentLogsSourceForRunningName(ctx context.Context, name 
 	if err := stopTargetGuard(name, role); err != nil {
 		return agentLogSource{}, err
 	}
-	return agentLogSource{Kind: agentLogSourceDocker, Container: name, TranscriptTree: containerTranscriptDir(containerModeFromContainerName(name)), Tail: tail, Follow: follow}, nil
+	return agentLogSource{Kind: agentLogSourceDocker, Container: name, TranscriptTree: r.containerTranscriptTree(ctx, name), Tail: tail, Follow: follow}, nil
 }
 
 func (r *Runner) resolveArchivedAgentLogSourceForName(name string, tail int, follow bool) (agentLogSource, error) {
