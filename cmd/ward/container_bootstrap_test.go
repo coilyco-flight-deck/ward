@@ -1037,6 +1037,8 @@ func TestPrepareScratchSpaceLowBudget(t *testing.T) {
 		t.Fatal("prepareScratchSpace should refuse a low-budget scratch root")
 	}
 	for _, want := range []string{
+		"⚠️",
+		"Docker resource constraint",
 		scratch,
 		"focused Go verification",
 		"recommended cache/temp location",

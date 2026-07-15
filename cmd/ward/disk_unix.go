@@ -24,6 +24,6 @@ func surfaceScratchBudgetError(scratchDir string) error {
 	if free >= surfaceScratchFloorBytes {
 		return nil
 	}
-	return fmt.Errorf("prepare scratch/cache root %s: only %s free of %s; need at least %s for focused Go verification; recommended cache/temp location is %s (Go cache root %s)",
+	return fmt.Errorf("⚠️ Docker resource constraint for %s: only %s free of %s; need at least %s for focused Go verification; recommended cache/temp location is %s (Go cache root %s)",
 		scratchDir, diskBytes(free), diskBytes(total), diskBytes(surfaceScratchFloorBytes), scratchDir, surfaceScratchGoCacheDir(scratchDir))
 }
