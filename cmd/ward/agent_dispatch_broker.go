@@ -12,13 +12,11 @@ import (
 	"io"
 	"net"
 	"os"
-	"path/filepath"
 	"regexp"
 	"strings"
 	"sync"
 	"time"
 
-	"forgejo.coilysiren.me/coilyco-flight-deck/cli-guard/pkg/config"
 	"forgejo.coilysiren.me/coilyco-flight-deck/cli-guard/pkg/version"
 	"github.com/urfave/cli/v3"
 )
@@ -229,7 +227,7 @@ func dispatchRefLock(ref string) *sync.Mutex {
 }
 
 // dispatchLogsSubdir is the per-host dir under ~/.ward/agent-logs (agentLogsDir)
-// holding one file per forwarded run, sibling to the drained-container archives.
+// that groups one directory-backed artifact per forwarded request.
 const dispatchLogsSubdir = "dispatch"
 
 // startHostDispatchBroker serves validated dispatch requests until ctx ends. It
@@ -353,10 +351,13 @@ func (r *Runner) startHostDispatchBrokerRequest(ctx context.Context, req dispatc
 	if ref, err := parseAgentIssueRef(req.Argv[1]); err == nil {
 		lock = dispatchRefLock(ref.String())
 	}
-	logf, logPath, err := openDispatchLog(req, time.Now())
+	paths, logf, err := openDispatchArtifact(req, time.Now(), newDispatchBrokerRequestID())
 	if err != nil {
 		return "", fmt.Errorf("dispatch broker: open run log: %w", err)
 	}
+	logPath := paths.ConsolePath
+	writeDispatchArtifactInitial(paths, req)
+	_, _ = fmt.Fprintf(logf, "ward dispatch broker: request id: %s\n", paths.RequestID)
 	_, _ = fmt.Fprintf(logf, "ward dispatch broker: %s requested `ward agent %s`\n",
 		emptyDefault(req.Requester, "unknown-container"), redactDispatchBrokerArgv(req.Argv))
 	if v := dispatchBrokerWardVersion(req.Argv); v != "" {
@@ -371,7 +372,7 @@ func (r *Runner) startHostDispatchBrokerRequest(ctx context.Context, req dispatc
 	restore := redirectStdioToLog(logf)
 	started := make(chan struct{})
 	done := make(chan dispatchBrokerLaunchResult, 1)
-	go r.handleHostDispatchBrokerLaunch(ctx, req, logPath, logf, restore, lock, started, done)
+	go r.handleHostDispatchBrokerLaunch(ctx, req, paths, logf, restore, lock, started, done)
 	if req.Role == roleAdvisor {
 		return waitForDispatchBrokerLaunchStart(ctx, logPath, started)
 	}
@@ -383,23 +384,33 @@ type dispatchBrokerLaunchResult struct {
 	err     error
 }
 
-func (r *Runner) handleHostDispatchBrokerLaunch(ctx context.Context, req dispatchBrokerRequest, logPath string, logf *os.File, restore func(), lock *sync.Mutex, started chan struct{}, done chan<- dispatchBrokerLaunchResult) {
+//nolint:funlen // the dispatch launch branches are the artifact contract
+func (r *Runner) handleHostDispatchBrokerLaunch(ctx context.Context, req dispatchBrokerRequest, paths dispatchArtifactPaths, logf *os.File, restore func(), lock *sync.Mutex, started chan struct{}, done chan<- dispatchBrokerLaunchResult) {
 	restored := false
+	finalized := false
+	resultErr := error(nil)
 	defer func() {
 		if p := recover(); p != nil {
-			err := dispatchBrokerPanicError("launch worker", p)
+			resultErr = dispatchBrokerPanicError("launch worker", p)
 			if !restored {
 				restore()
 				restored = true
 			}
 			dispatchFailedDispatchLaunchStartHook()
-			r.commentDispatchLaunchError(ctx, req, logPath, err)
-			done <- dispatchBrokerLaunchResult{logPath: logPath, err: err}
+			r.commentDispatchLaunchError(ctx, req, paths.ConsolePath, resultErr)
+			if !finalized {
+				finalizeDispatchArtifact(paths, req, paths.ConsolePath, resultErr)
+				finalized = true
+			}
+			done <- dispatchBrokerLaunchResult{logPath: paths.ConsolePath, err: resultErr}
 		}
 		if !restored {
 			restore()
 		}
 		_ = logf.Close()
+		if !finalized {
+			finalizeDispatchArtifact(paths, req, paths.ConsolePath, resultErr)
+		}
 		dispatchStdioRestoreHook()
 	}()
 	if lock != nil {
@@ -407,11 +418,14 @@ func (r *Runner) handleHostDispatchBrokerLaunch(ctx context.Context, req dispatc
 		defer lock.Unlock()
 	}
 	if err := r.dispatchBrokerOpenPRBackpressureCheck(ctx, req, agentCmdline(dispatchBrokerRequestMode(req), req.Role)); err != nil {
+		resultErr = err
 		restore()
 		restored = true
 		dispatchFailedDispatchLaunchStartHook()
-		r.commentDispatchLaunchError(ctx, req, logPath, err)
-		done <- dispatchBrokerLaunchResult{logPath: logPath, err: err}
+		r.commentDispatchLaunchError(ctx, req, paths.ConsolePath, err)
+		finalizeDispatchArtifact(paths, req, paths.ConsolePath, err)
+		finalized = true
+		done <- dispatchBrokerLaunchResult{logPath: paths.ConsolePath, err: err}
 		return
 	}
 	launchCtx := withDispatchLaunchReservationTracking(ctx)
@@ -419,25 +433,33 @@ func (r *Runner) handleHostDispatchBrokerLaunch(ctx context.Context, req dispatc
 		close(started)
 		return dispatchBrokerLaunch(launchCtx, req)
 	}); err != nil {
+		resultErr = err
 		restore()
 		restored = true
 		dispatchFailedDispatchLaunchStartHook()
-		r.commentDispatchLaunchError(ctx, req, logPath, err)
-		done <- dispatchBrokerLaunchResult{logPath: logPath, err: err}
+		r.commentDispatchLaunchError(ctx, req, paths.ConsolePath, err)
+		finalizeDispatchArtifact(paths, req, paths.ConsolePath, err)
+		finalized = true
+		done <- dispatchBrokerLaunchResult{logPath: paths.ConsolePath, err: err}
 		return
 	}
 	if dispatchAction(req.Action) == dispatchActionLaunch && req.Role == roleEngineer {
 		if err := r.waitForDispatchBrokerEngineerVisibility(ctx, req); err != nil {
+			resultErr = err
 			restore()
 			restored = true
 			dispatchFailedDispatchLaunchStartHook()
-			r.commentDispatchLaunchError(ctx, req, logPath, err)
-			done <- dispatchBrokerLaunchResult{logPath: logPath, err: err}
+			r.commentDispatchLaunchError(ctx, req, paths.ConsolePath, err)
+			finalizeDispatchArtifact(paths, req, paths.ConsolePath, err)
+			finalized = true
+			done <- dispatchBrokerLaunchResult{logPath: paths.ConsolePath, err: err}
 			return
 		}
 	}
 	fmt.Fprintf(os.Stderr, "ward dispatch broker: launch completed\n")
-	done <- dispatchBrokerLaunchResult{logPath: logPath, err: nil}
+	finalizeDispatchArtifact(paths, req, paths.ConsolePath, nil)
+	finalized = true
+	done <- dispatchBrokerLaunchResult{logPath: paths.ConsolePath, err: nil}
 }
 
 func dispatchBrokerPanicError(stage string, p any) error {
@@ -964,32 +986,6 @@ func selectSingleEngineerTarget(action, target string, names []string) (string, 
 // selectSingleStopTarget keeps the ward#627 stop wording stable.
 func selectSingleStopTarget(target string, names []string) (string, error) {
 	return selectSingleEngineerTarget("stop", target, names)
-}
-
-// openDispatchLog creates ~/.ward/agent-logs/dispatch and opens the per-dispatch
-// log file for req, stamped at now so re-dispatches of the same ref don't collide.
-func openDispatchLog(req dispatchBrokerRequest, now time.Time) (*os.File, string, error) {
-	dir := filepath.Join(agentLogsDir(), dispatchLogsSubdir)
-	if err := os.MkdirAll(dir, 0o755); err != nil {
-		return nil, "", err
-	}
-	path := filepath.Join(dir, dispatchLogName(req, now))
-	f, err := os.OpenFile(path, os.O_CREATE|os.O_WRONLY|os.O_APPEND, 0o644) // #nosec G304 -- ward-derived path under ~/.ward
-	if err != nil {
-		return nil, "", err
-	}
-	return f, path, nil
-}
-
-// dispatchLogName builds a filesystem-safe per-dispatch basename: a UTC stamp (sortable,
-// distinct re-dispatches) plus a requester + ref slug (attributable). Pure, for testing.
-func dispatchLogName(req dispatchBrokerRequest, now time.Time) string {
-	ref := ""
-	if len(req.Argv) >= 2 {
-		ref = req.Argv[1]
-	}
-	slug := config.SanitizeSlug(emptyDefault(req.Requester, "unknown") + "-" + ref)
-	return fmt.Sprintf("%s-%s.log", now.UTC().Format("20060102T150405Z"), slug)
 }
 
 // redirectStdioToLog swaps process os.Stdout/os.Stderr to logf for one served run (read

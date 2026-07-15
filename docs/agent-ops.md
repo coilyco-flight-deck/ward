@@ -1,5 +1,5 @@
 ---
-doc_goal: Collapse the operational run surface into one page that covers the read-only director lane, logs, stop, list, and reap without scattering the operator contract across issue slices.
+doc_goal: Keep the operational run surface on one page.
 ---
 # ward agent ops
 
@@ -9,7 +9,7 @@ This page groups the on-demand operational surfaces around a run.
 - `ward agent director queue` / `status` - the read-only queue view for stale reservations, redispatch candidates, open PR handoffs, and closed-unmerged PR recovery.
 - `ward agent dispatch-health` - the dispatch pathology summary, status line feed, and alert line.
 - `ward agent list` - show running engineers, active launch intents, cleanup-needed records, and capacity when the limit is known.
-- `ward agent logs` - read one run's logs.
+- `ward agent logs` - read one run's logs or the newest dispatch artifact.
 - `ward agent stop` - stop one visible running engineer on purpose. Ghost
   launch records are not stoppable here.
 - `ward agent reap` - stop wedged engineer containers by idle policy and clear stale prelaunch reservations that never became visible.
@@ -32,6 +32,7 @@ This page groups the on-demand operational surfaces around a run.
 - `logs` prefers the live container, then falls back to the drained archive.
 - `logs` falls back to the harness-specific live transcript tree when `docker
   logs` is empty, then to the drained archive.
+- broker dispatch artifacts live under `~/.ward/agent-logs/dispatch/` and use the same issue/ref lookup path.
 - `stop` and `reap` only target engineer containers, and `stop` refuses a
   reservation-only ghost record.
 - A run that is already finished should not be treated as a new failure.
@@ -65,8 +66,7 @@ This page groups the on-demand operational surfaces around a run.
 - Use `reap` or the stale-reservation cleanup path for a ghost launch record.
 - `reap` is the safety net for idle engineer containers and stale launch intents.
 - `reap` clears cache state, but the issue thread remains the canonical reservation record.
-- none of these surfaces should surprise a caller with a write to the target
-  repo.
+- none of these surfaces should surprise the caller with a write to the target repo.
 
 Whole-folder reservation cache cleanup is documented in
 [agent-reservation-cache.md](agent-reservation-cache.md).

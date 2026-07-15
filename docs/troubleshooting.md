@@ -17,6 +17,8 @@ Start here when a run failed or seemed to do nothing.
 ## What to check
 
 - `~/.ward/agent-logs/<container>/`.
+- `~/.ward/agent-logs/dispatch/` for brokered launch failures and host-wrapper
+  evidence.
 - the reservation comment on the issue.
 - the preflight or trust gate that blocked the launch.
 - if the issue is already terminal, stale reservation cleanup is not the fix.
