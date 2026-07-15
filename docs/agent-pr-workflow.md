@@ -29,6 +29,8 @@ When a PR repair path is failing, ward prints a concrete bucket first: `ci-parit
 
 A PR names its own mode: the `ward.workflow:` marker the engineer stamps into a `pull-request-and-merge` PR body. A PR without a marker is the plain `pull-request` lane. PR merges can also take `smart-defaults > pr-merge-style`. `ward agent pr recover` treats `state: closed`, `merged: false` as recovery and points to the next safe action.
 
+If the live PR already has an empty diff against `main`, ward treats that as an already-landed no-op and skips the Forgejo merge endpoint instead of provoking a 500 on a stale PR object.
+
 ## Where it runs
 
 - On a read-only director surface, each verb forwards through the host dispatch broker, and host ward re-checks the permission gate before touching the forge.

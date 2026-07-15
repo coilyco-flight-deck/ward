@@ -194,6 +194,10 @@ func prWorkflowMergeExec(ctx context.Context, cl *forgejoClient, role, owner, re
 	if !ok {
 		return "", fmt.Errorf("pr merge: %s/%s#%d: %s", owner, repo, index, reason)
 	}
+	if prHasEmptyDiff(pr) {
+		return fmt.Sprintf("pr merge: %s/%s#%d already matches %s (empty diff); no Forgejo merge endpoint call needed\n",
+			owner, repo, index, pr.Base.Ref), nil
+	}
 	settledHead, err := mergePullRequestWithHeadAndStyleSettled(ctx, cl, owner, repo, index, head, mergeStyle, &status)
 	if err != nil {
 		return "", fmt.Errorf("pr merge: %s/%s#%d: %w", owner, repo, index, err)
@@ -204,6 +208,13 @@ func prWorkflowMergeExec(ctx context.Context, cl *forgejoClient, role, owner, re
 	}
 	return fmt.Sprintf("merged %s/%s#%d (role %s, workflow %s, head %s, status %s); %s\n",
 		owner, repo, index, role, wf.orDefault(), head, status.Status.summary(), "merged-state check: merged"), nil
+}
+
+func prHasEmptyDiff(pr *forgejoPullRequest) bool {
+	if pr == nil {
+		return false
+	}
+	return pr.Additions == 0 && pr.Deletions == 0
 }
 
 func prWorkflowCloseExec(ctx context.Context, cl *forgejoClient, role, owner, repo string, index int, reason, supersedes string) (string, error) {

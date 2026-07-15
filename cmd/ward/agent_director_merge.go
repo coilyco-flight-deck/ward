@@ -114,6 +114,13 @@ func (r *Runner) runDirectorMergeRepo(ctx context.Context, label string, prClien
 }
 
 func mergeDirectorPullRequest(ctx context.Context, cl *forgejoClient, owner, repo string, index int, head, mergeStyle string, status *directorMergeStatusCheck) (string, error) {
+	pr, err := cl.GetPullRequest(ctx, owner, repo, index)
+	if err != nil {
+		return "", err
+	}
+	if prHasEmptyDiff(pr) {
+		return head, nil
+	}
 	mergedHead, err := mergePullRequestWithHeadAndStyleSettled(ctx, cl, owner, repo, index, head, mergeStyle, status)
 	if err != nil {
 		return "", err

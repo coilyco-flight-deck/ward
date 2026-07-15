@@ -107,6 +107,8 @@ type PullRequest struct {
 	State     string `json:"state"`
 	Draft     bool   `json:"draft"`
 	Mergeable bool   `json:"mergeable"`
+	Additions int    `json:"additions"`
+	Deletions int    `json:"deletions"`
 	HTMLURL   string `json:"html_url"`
 	Head      struct {
 		SHA string `json:"sha"`

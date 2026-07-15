@@ -8,6 +8,7 @@ import (
 	"net/http/httptest"
 	"os"
 	"path/filepath"
+	"strconv"
 	"strings"
 	"testing"
 )
@@ -123,6 +124,9 @@ type prWorkflowFakeForge struct {
 	prHeadSHA                     string
 	prHeadRef                     string
 	prBaseRef                     string
+	prAdditions                   int
+	prDeletions                   int
+	prDiffKnown                   bool
 	prStateAfterMerge             string
 	combinedState                 string
 	contextState                  string
@@ -167,7 +171,13 @@ func (f *prWorkflowFakeForge) server(t *testing.T) *httptest.Server {
 			if baseRef == "" {
 				baseRef = "main"
 			}
-			_, _ = w.Write([]byte(`{"number":7,"title":"t","body":` + jsonString(f.prBody) + `,"state":"` + state + `","head":{"sha":"` + headSHA + `","ref":"` + headRef + `"},"base":{"ref":"` + baseRef + `"}}`))
+			additions := 1
+			deletions := 1
+			if f.prDiffKnown {
+				additions = f.prAdditions
+				deletions = f.prDeletions
+			}
+			_, _ = w.Write([]byte(`{"number":7,"title":"t","body":` + jsonString(f.prBody) + `,"state":"` + state + `","additions":` + strconv.Itoa(additions) + `,"deletions":` + strconv.Itoa(deletions) + `,"head":{"sha":"` + headSHA + `","ref":"` + headRef + `"},"base":{"ref":"` + baseRef + `"}}`))
 		case http.MethodPatch:
 			var body struct {
 				State string `json:"state"`
@@ -286,6 +296,9 @@ func TestPRWorkflowMergeExecEngineerSelfMerge(t *testing.T) {
 		prBody:                    "closes #6\n\nward.workflow: pull-request-and-merge\n",
 		combinedState:             "success",
 		contextState:              "success",
+		prDiffKnown:               true,
+		prAdditions:               1,
+		prDeletions:               1,
 		defaultMergeStyle:         "merge",
 		allowMergeCommits:         true,
 		allowSquashMerge:          true,
@@ -308,6 +321,38 @@ func TestPRWorkflowMergeExecEngineerSelfMerge(t *testing.T) {
 	}
 	if fake.mergeDo != "merge" {
 		t.Fatalf("merge do = %q, want merge", fake.mergeDo)
+	}
+}
+
+// TestPRWorkflowMergeExecSkipsEmptyDiff pins the no-op guard: when the live PR
+// already matches the base branch, ward should avoid the Forgejo merge endpoint.
+func TestPRWorkflowMergeExecSkipsEmptyDiff(t *testing.T) {
+	fake := &prWorkflowFakeForge{
+		prBody:                    "closes #6\n\nward.workflow: pull-request-and-merge\n",
+		combinedState:             "success",
+		contextState:              "success",
+		prDiffKnown:               true,
+		prAdditions:               0,
+		prDeletions:               0,
+		defaultMergeStyle:         "merge",
+		allowMergeCommits:         true,
+		allowSquashMerge:          true,
+		allowFastForwardOnlyMerge: true,
+		allowRebase:               true,
+		allowRebaseExplicit:       true,
+	}
+	srv := fake.server(t)
+	defer srv.Close()
+	cl := &forgejoClient{baseURL: srv.URL, token: "secret"}
+	out, err := prWorkflowMergeExec(context.Background(), cl, roleEngineer, "coilyco-flight-deck", "ward", 7, "")
+	if err != nil {
+		t.Fatalf("prWorkflowMergeExec: %v", err)
+	}
+	if fake.mergeCalls != 0 {
+		t.Fatalf("merge calls = %d, want 0", fake.mergeCalls)
+	}
+	if !strings.Contains(out, "already matches main") || !strings.Contains(out, "empty diff") {
+		t.Fatalf("merge output = %q, want empty-diff short circuit", out)
 	}
 }
 

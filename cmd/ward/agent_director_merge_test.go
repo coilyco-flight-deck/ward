@@ -832,6 +832,37 @@ func TestRecoverClosedUnmergedDirectorMergeReopensAndRetries(t *testing.T) {
 	}
 }
 
+func TestMergeDirectorPullRequestSkipsEmptyDiff(t *testing.T) {
+	fake := &prWorkflowFakeForge{
+		prBody:                    "closes #6\n\nward.workflow: pull-request-and-merge\n",
+		combinedState:             "success",
+		contextState:              "success",
+		prDiffKnown:               true,
+		prAdditions:               0,
+		prDeletions:               0,
+		defaultMergeStyle:         "merge",
+		allowMergeCommits:         true,
+		allowSquashMerge:          true,
+		allowFastForwardOnlyMerge: true,
+		allowRebase:               true,
+		allowRebaseExplicit:       true,
+	}
+	srv := fake.server(t)
+	defer srv.Close()
+	cl := &forgejoClient{baseURL: srv.URL, token: "secret"}
+	status := &directorMergeStatusCheck{}
+	head, err := mergeDirectorPullRequest(context.Background(), cl, "coilyco-flight-deck", "ward", 7, "headsha", "", status)
+	if err != nil {
+		t.Fatalf("mergeDirectorPullRequest: %v", err)
+	}
+	if head != "headsha" {
+		t.Fatalf("head = %q, want headsha", head)
+	}
+	if fake.mergeCalls != 0 {
+		t.Fatalf("merge calls = %d, want 0", fake.mergeCalls)
+	}
+}
+
 func TestListOpenPullRequestsReadsMergeability(t *testing.T) {
 	srv := httptest.NewServer(http.HandlerFunc(func(w http.ResponseWriter, r *http.Request) {
 		switch r.URL.Path {
