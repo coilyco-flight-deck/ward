@@ -39,7 +39,7 @@ Three roles, keyed on the role word and the argument type (`docs/agent.md`):
   work, but **cannot push this clone** - capture-and-dispatch is an obligation, not a "may".
   ward#353 folded the old standalone `architect` role into this surface. `docs/agent-director.md`,
   `docs/agent-surface.md`.
-- **`advisor`** - answers, writes no code (a ref comments, freeform answers inline).
+- **`qa`** - inspects a candidate and writes a structured verdict comment.
 
 **What read-only enforces** (the director's surface): a composed restriction block, the git credential
 helper dropped, the `origin` push URL repointed to a dead `no-push://` target, a `pre-push`

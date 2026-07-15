@@ -39,9 +39,9 @@ quiet build/test is not killed mid-work (an engineer commits and pushes, unlike
 an architect, so a false kill has a real cost). The guard only ever spares: an
 unreadable CPU still reaps on idle alone.
 
-Only ward.role=engineer is targeted. Interactive roles (director / advisor /
-session) are idle by design - sitting at a prompt is normal, not wedged - and are
-left untouched.
+Only ward.role=engineer is targeted. Interactive and inspection roles (director /
+qa / session) are idle by design - sitting at a prompt is normal, not wedged -
+and are left untouched.
 
 Authored here; the fleet rollout (a launchd timer or a converged daemon) is an
 ansible role in infrastructure, per the authoring-vs-rollout split. The old

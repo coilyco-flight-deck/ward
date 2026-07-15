@@ -1000,7 +1000,7 @@ func TestAgentModesIncludeGoose(t *testing.T) {
 	for _, c := range agentCommand().Commands {
 		surfaces[c.Name] = c
 	}
-	for _, want := range []string{"engineer", "director", "advisor"} {
+	for _, want := range []string{"engineer", "director", "qa"} {
 		cmd, ok := surfaces[want]
 		if !ok {
 			t.Errorf("ward agent missing %q role", want)
@@ -1143,7 +1143,7 @@ func TestAgentImageFlagsCarryEnvSources(t *testing.T) {
 		"surface":  agentSurfaceFlags(),
 		"scratch":  agentScratchFlags(),
 		"engineer": agentEngineerCommand().Flags,
-		"advisor":  agentAdvisorCommand().Flags,
+		"qa":       agentQACommand().Flags,
 	}
 	for name, flags := range sets {
 		seen := map[string]bool{}

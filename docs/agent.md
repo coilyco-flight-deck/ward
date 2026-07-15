@@ -57,7 +57,6 @@ The old issue-slice pages are gone. The durable follow-on docs are:
 ```bash
 warded #98
 warded engineer #98
-warded advisor #98 "what is the failure mode?"
 warded director --repo owner/name # open the read-only surface
 warded director --burndown --repo owner/name # autonomously drain headless work
 warded director owner/name#98

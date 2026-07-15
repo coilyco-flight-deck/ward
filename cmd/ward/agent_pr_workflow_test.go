@@ -30,8 +30,6 @@ func TestPRWorkflowMergeAuthorityMatrix(t *testing.T) {
 		{roleEngineer, workflowPullRequestAndMerge, true},
 		{roleEngineer, workflowRemoteBranchOnly, false},
 		{roleEngineer, workflowDirectToMain, false},
-		{roleAdvisor, workflowPullRequest, false},
-		{roleAdvisor, workflowPullRequestAndMerge, false},
 		{roleQA, workflowPullRequest, false},
 		{roleQA, workflowPullRequestAndMerge, false},
 	}
@@ -49,7 +47,7 @@ func TestPRWorkflowMergeAuthorityMatrix(t *testing.T) {
 // TestPRWorkflowReadAndRerunGates pins the non-merge gates, including the
 // fail-closed denial of an unknown role.
 func TestPRWorkflowReadAndRerunGates(t *testing.T) {
-	for _, role := range []string{roleEngineer, roleDirector, roleAdvisor, roleQA} {
+	for _, role := range []string{roleEngineer, roleDirector, roleQA} {
 		for _, op := range []prWorkflowOp{prOpStatus, prOpRuns, prOpRecover} {
 			if err := prWorkflowPermitted(role, "", op); err != nil {
 				t.Errorf("prWorkflowPermitted(%s, %s) = %v, want allowed", role, op, err)
@@ -62,7 +60,6 @@ func TestPRWorkflowReadAndRerunGates(t *testing.T) {
 	}{
 		{roleEngineer, true},
 		{roleDirector, true},
-		{roleAdvisor, false},
 		{roleQA, false},
 	} {
 		err := prWorkflowPermitted(tc.role, "", prOpRerun)
@@ -85,8 +82,8 @@ func TestPRWorkflowReadAndRerunGates(t *testing.T) {
 		if err := prWorkflowPermitted(roleEngineer, workflowPullRequestAndMerge, op); err != nil {
 			t.Errorf("prWorkflowPermitted(%s, pull-request-and-merge, %s) = %v, want allowed", roleEngineer, op, err)
 		}
-		if err := prWorkflowPermitted(roleAdvisor, workflowPullRequest, op); err == nil {
-			t.Errorf("prWorkflowPermitted(%s, pull-request, %s) = nil, want denied", roleAdvisor, op)
+		if err := prWorkflowPermitted(roleQA, workflowPullRequest, op); err == nil {
+			t.Errorf("prWorkflowPermitted(%s, pull-request, %s) = nil, want denied", roleQA, op)
 		}
 	}
 }
@@ -1325,7 +1322,7 @@ func TestValidateDispatchBrokerPRWorkflowShapes(t *testing.T) {
 }
 
 // TestExecDispatchBrokerPRWorkflowGatesRerunByRole pins the host-side re-check:
-// the broker denies an advisor rerun before any forge call.
+// the broker denies a QA rerun before any forge call.
 func TestExecDispatchBrokerPRWorkflowGatesRerunByRole(t *testing.T) {
 	srv := httptest.NewServer(http.HandlerFunc(func(http.ResponseWriter, *http.Request) {
 		t.Fatal("denied rerun must not reach the forge")
@@ -1333,10 +1330,10 @@ func TestExecDispatchBrokerPRWorkflowGatesRerunByRole(t *testing.T) {
 	defer srv.Close()
 	cl := &forgejoClient{baseURL: srv.URL, token: "secret"}
 	_, err := execDispatchBrokerPRWorkflowWith(context.Background(), cl, dispatchBrokerRequest{
-		Action: dispatchActionCIRerun, Role: roleAdvisor, Target: "coilyco-flight-deck/ward", RunID: 42,
+		Action: dispatchActionCIRerun, Role: roleQA, Target: "coilyco-flight-deck/ward", RunID: 42,
 	})
 	if err == nil || !strings.Contains(err.Error(), "rerun is withheld") {
-		t.Fatalf("advisor rerun = %v, want role denial", err)
+		t.Fatalf("qa rerun = %v, want role denial", err)
 	}
 }
 
@@ -1431,10 +1428,6 @@ func TestAgentRoleCatalogParsesMergeAuthority(t *testing.T) {
 	if got := cat.Definitions[roleDirector].MergeAuthority; len(got) != 2 {
 		t.Errorf("director merge authority = %v, want pull-request + pull-request-and-merge", got)
 	}
-	if got := cat.Definitions[roleAdvisor].MergeAuthority; len(got) != 0 {
-		t.Errorf("advisor merge authority = %v, want none", got)
-	}
-
 	bad := `agent-roles {
     role engineer {
         tagline "t"

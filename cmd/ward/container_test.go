@@ -300,18 +300,6 @@ agents {
 	}
 }
 
-func TestAdvisorResearchPlanUsesIssueScope(t *testing.T) {
-	ref := agentIssueRef{Owner: "coilyco-flight-deck", Repo: "ward", Number: 818, Forge: forgeForgejo}
-	base := upPlan{Mode: modeClaude, Repo: targetRepo{Owner: ref.Owner, Name: ref.Repo}, Machine: "deadbeef"}
-	got := advisorResearchPlan(base, ref)
-	if want := "advisor-claude-ward-818"; got.Name != want {
-		t.Fatalf("advisor research name = %q, want %q", got.Name, want)
-	}
-	if other := advisorResearchPlan(upPlan{Mode: modeClaude, Repo: base.Repo, Machine: "beadfeed"}, ref); other.Name != got.Name {
-		t.Fatalf("advisor research name must be issue-scoped, got %q and %q", other.Name, got.Name)
-	}
-}
-
 func TestEngineerContainerNameIsRepoIssueUnique(t *testing.T) {
 	repo := targetRepo{Owner: "coilyco-flight-deck", Name: "ward"}
 	// The engineer name is unique by repo+issue, no random suffix (ward#364): the
@@ -361,14 +349,14 @@ func TestUpPlanLabels(t *testing.T) {
 			t.Errorf("engineer labels %q missing %q", got, want)
 		}
 	}
-	// An issueless run (advisor here): no ward.issue label, role defaults absent -> session.
-	adv := upPlan{Role: roleAdvisor, Mode: modeCodex, Repo: repo, Machine: "beadfeed"}
-	got = strings.Join(adv.labels(), " ")
+	// An issueless session: no ward.issue label, role defaults absent -> session.
+	sess := upPlan{Role: roleSession, Mode: modeCodex, Repo: repo, Machine: "beadfeed"}
+	got = strings.Join(sess.labels(), " ")
 	if strings.Contains(got, "ward.issue") {
 		t.Errorf("issueless run must not carry a ward.issue label: %q", got)
 	}
-	if !strings.Contains(got, "ward.role=advisor") || !strings.Contains(got, "ward.driver=codex") {
-		t.Errorf("advisor labels %q missing role/driver", got)
+	if !strings.Contains(got, "ward.role=session") || !strings.Contains(got, "ward.driver=codex") {
+		t.Errorf("session labels %q missing role/driver", got)
 	}
 	qa := upPlan{Role: roleQA, Mode: modeGoose, Repo: repo, Machine: "cafefeed"}
 	got = strings.Join(qa.labels(), " ")
@@ -968,7 +956,6 @@ func TestDockerCreateArgvOOMScoreAdjByRole(t *testing.T) {
 		{name: "engineer", role: roleEngineer, wantArg: "--oom-score-adj=250"},
 		{name: "director", role: roleDirector, wantArg: "--oom-score-adj=-250"},
 		{name: "session", role: roleSession, wantArg: "--oom-score-adj=-250"},
-		{name: "advisor", role: roleAdvisor},
 	}
 	for _, tc := range cases {
 		t.Run(tc.name, func(t *testing.T) {

@@ -23,13 +23,11 @@ func TestCapabilityGuardfilesExist(t *testing.T) {
 	}
 }
 
-// TestCapabilityForRole covers ward#578 + ward#547: advisor and director both hold
-// the live-observe set; engineer/qa/session/unknown fall through to least-access.
+// TestCapabilityForRole covers ward#578 + ward#547: director holds the
+// live-observe set; engineer/qa/session/unknown fall through to least-access.
 func TestCapabilityForRole(t *testing.T) {
-	for _, role := range []string{roleAdvisor, roleDirector} {
-		if caps := capabilityForRole(role); !caps.aws || !caps.tailnet {
-			t.Errorf("%s capability = %+v, want aws+tailnet from its guardfile set", role, caps)
-		}
+	if caps := capabilityForRole(roleDirector); !caps.aws || !caps.tailnet {
+		t.Errorf("%s capability = %+v, want aws+tailnet from its guardfile set", roleDirector, caps)
 	}
 	for _, role := range []string{roleEngineer, roleQA, roleSession, "nonexistent"} {
 		if caps := capabilityForRole(role); caps.aws || caps.tailnet {
@@ -57,16 +55,16 @@ func TestGuardfileInSet(t *testing.T) {
 	}
 }
 
-// TestResolveCapability covers the role default and the advisor's --no-tailnet
-// full-isolation opt-out (ward#578).
+// TestResolveCapability covers the role default and full-isolation opt-out
+// path (ward#578).
 func TestResolveCapability(t *testing.T) {
-	if caps := resolveCapability(roleAdvisor); !caps.aws || !caps.tailnet {
-		t.Fatalf("advisor role capability = %+v, want aws+tailnet from its guardfile set", caps)
+	if caps := resolveCapability(roleDirector); !caps.aws || !caps.tailnet {
+		t.Fatalf("director role capability = %+v, want aws+tailnet from its guardfile set", caps)
 	}
 	if caps := resolveCapability(roleEngineer); caps.aws || caps.tailnet {
 		t.Fatalf("engineer role capability = %+v, want least-access (none)", caps)
 	}
-	if caps := resolveCapabilityWithOptOut(roleAdvisor, true); caps.aws || caps.tailnet {
-		t.Fatalf("advisor opt-out capability = %+v, want least-access (none)", caps)
+	if caps := resolveCapabilityWithOptOut(roleDirector, true); caps.aws || caps.tailnet {
+		t.Fatalf("director opt-out capability = %+v, want least-access (none)", caps)
 	}
 }

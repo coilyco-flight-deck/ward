@@ -284,7 +284,7 @@ func dispatchArtifactErrorClass(err error) string {
 
 func dispatchArtifactIndexableRole(role string) string {
 	switch strings.TrimSpace(role) {
-	case roleEngineer, roleAdvisor, roleQA, roleDirector:
+	case roleEngineer, roleQA, roleDirector:
 		return strings.TrimSpace(role)
 	default:
 		return ""

@@ -35,7 +35,7 @@ pretending a label match is enough. Off a surface it errors, like a ref-mode
 dispatch does.
 
 Stop-only, engineer-only. The host broker refuses any container that is not
-ward.role=engineer (advisor / director / session are never stopped), and refuses a
+ward.role=engineer (director / qa / session are never stopped), and refuses a
 ref that matches zero or more than one engineer rather than guessing.
 
   ward agent stop coilyco-flight-deck/ward#625   # stop the engineer carrying #625

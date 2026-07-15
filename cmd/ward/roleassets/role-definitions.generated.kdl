@@ -19,14 +19,6 @@ agent-roles {
         posture attached
         merge-authority pull-request pull-request-and-merge
     }
-    role advisor {
-        tagline "Answers without writing code."
-        capabilities read
-        modes "A ref researches the issue and posts the answer as a comment. Freeform text answers inline."
-        execution-time-limit "60m"
-        default-harness claude
-        posture no-code
-    }
     role qa {
         tagline "Inspects a candidate and posts a structured verdict comment."
         capabilities read

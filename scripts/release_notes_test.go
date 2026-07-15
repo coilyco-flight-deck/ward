@@ -85,7 +85,7 @@ func TestBreakingFromBodyFooter(t *testing.T) {
 
 func TestVerdictFeaturesAndFixes(t *testing.T) {
 	out := run(t,
-		record("a1b2c3d", "feat(advisor): fan research into per-repo issues")+
+		record("a1b2c3d", "feat(agent): fan research into per-repo issues")+
 			record("m1n2o3p", "fix(mirror): backfill tags"),
 		"--prev", "v0.241.0", "--new", "v0.242.0")
 	if !strings.Contains(out, "**Maybe.**") {

@@ -33,8 +33,6 @@ func TestRoleOverlayResolvesModelEffort(t *testing.T) {
 		{"director", "claude-opus-4-8[1m]", "high", "gpt-5.5", "high"},
 		// engineer: cheaper/faster model at the same medium effort (parallel fan-out).
 		{"engineer", "claude-fable-5", "medium", "gpt-5.4-mini", "medium"},
-		// advisor mirrors the director overlay for both supported frontier agents.
-		{"advisor", "claude-opus-4-8[1m]", "high", "gpt-5.5", "high"},
 		// an unknown/empty role carries no overlay: the flat default stands.
 		{"", "", "", "gpt-5.4", "medium"},
 	}

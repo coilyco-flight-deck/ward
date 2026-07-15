@@ -22,7 +22,7 @@ import (
 )
 
 // agent_dispatch_broker.go wires ward#378: director surfaces ask host ward to
-// launch sibling engineer/advisor runs. TCP transport + token gate: ward#391.
+// launch sibling engineer and QA runs. TCP transport + token gate: ward#391.
 
 const (
 	// envDispatchBrokerAddr carries host.docker.internal:<port> the surface dials;
@@ -94,8 +94,6 @@ var dispatchBrokerLaunch = func(ctx context.Context, req dispatchBrokerRequest) 
 	switch req.Role {
 	case "engineer":
 		return agentEngineerCommand().Run(ctx, req.Argv)
-	case "advisor":
-		return agentAdvisorCommand().Run(ctx, req.Argv)
 	case "qa":
 		return agentQACommand().Run(ctx, req.Argv)
 	default:
@@ -112,7 +110,7 @@ var dispatchBrokerVisibilityTimeout = 10 * time.Second
 var dispatchBrokerVisibilityPoll = 100 * time.Millisecond
 
 const (
-	// dispatchActionLaunch is the default action: launch a sibling engineer/advisor
+	// dispatchActionLaunch is the default action: launch a sibling engineer/QA
 	// run. An empty Action normalizes to it, keeping older launch requests byte-compatible.
 	dispatchActionLaunch = "launch"
 	// dispatchActionStop is the targeted control action (ward#627): docker-stop one
@@ -362,7 +360,6 @@ func (r *Runner) startHostDispatchBrokerRequest(ctx context.Context, req dispatc
 	if err != nil {
 		return "", fmt.Errorf("dispatch broker: open run log: %w", err)
 	}
-	logPath := paths.ConsolePath
 	writeDispatchArtifactInitial(paths, req)
 	_, _ = fmt.Fprintf(logf, "ward dispatch broker: request id: %s\n", paths.RequestID)
 	_, _ = fmt.Fprintf(logf, "ward dispatch broker: %s requested `ward agent %s`\n",
@@ -380,9 +377,6 @@ func (r *Runner) startHostDispatchBrokerRequest(ctx context.Context, req dispatc
 	started := make(chan struct{})
 	done := make(chan dispatchBrokerLaunchResult, 1)
 	go r.handleHostDispatchBrokerLaunch(ctx, req, paths, logf, restore, lock, started, done)
-	if req.Role == roleAdvisor {
-		return waitForDispatchBrokerLaunchStart(ctx, logPath, started)
-	}
 	return waitForDispatchBrokerLaunchResult(ctx, done)
 }
 
@@ -482,15 +476,6 @@ func dispatchBrokerPanicError(stage string, p any) error {
 		return fmt.Errorf("dispatch broker: %s request failure: %v", stage, p)
 	}
 	return fmt.Errorf("dispatch broker: %s panicked: %v", stage, p)
-}
-
-func waitForDispatchBrokerLaunchStart(ctx context.Context, logPath string, started <-chan struct{}) (string, error) {
-	select {
-	case <-started:
-		return logPath, nil
-	case <-ctx.Done():
-		return "", ctx.Err()
-	}
 }
 
 func waitForDispatchBrokerLaunchResult(ctx context.Context, done <-chan dispatchBrokerLaunchResult) (string, error) {
@@ -908,7 +893,7 @@ func (r *Runner) resolveEngineerStopTarget(ctx context.Context, target string) (
 		return "", serr
 	}
 	// Otherwise a container name: it must be a running container, and its role is
-	// re-checked fail-closed below (never an advisor/director/session).
+	// re-checked fail-closed below (never a director/session).
 	if !r.containerRunning(ctx, target) {
 		return "", fmt.Errorf("dispatch broker: no running container named %q to stop", target)
 	}
@@ -983,7 +968,7 @@ func stopTargetGuard(name, role string) error {
 			"fail-closed, only %s containers are stoppable", name, labelRole, roleEngineer)
 	default:
 		return fmt.Errorf("dispatch broker: refusing to stop %q: it is a %q container, not an engineer - "+
-			"stop only targets %s (advisor/director/session are never stopped)", name, role, roleEngineer)
+			"stop only targets %s (director/session are never stopped)", name, role, roleEngineer)
 	}
 }
 
@@ -1104,13 +1089,13 @@ func validateDispatchBrokerList(req dispatchBrokerRequest) error {
 }
 
 // validateDispatchBrokerLaunch is the launch-request shape (the original narrow API):
-// an engineer/advisor role, an argv led by that role, and an issue ref (ward#378).
+// an engineer/QA role, an argv led by that role, and an issue ref (ward#378).
 func validateDispatchBrokerLaunch(req dispatchBrokerRequest) error {
 	if req.Target != "" {
 		return fmt.Errorf("dispatch broker: launch takes no stop target, got %q", req.Target)
 	}
-	if req.Role != "engineer" && req.Role != "advisor" && req.Role != "qa" {
-		return fmt.Errorf("dispatch broker: role %q refused (allowed: engineer, advisor, qa)", req.Role)
+	if req.Role != "engineer" && req.Role != "qa" {
+		return fmt.Errorf("dispatch broker: role %q refused (allowed: engineer, qa)", req.Role)
 	}
 	if len(req.Argv) == 0 || req.Argv[0] != req.Role {
 		return fmt.Errorf("dispatch broker: argv must begin with role %q", req.Role)
@@ -1226,8 +1211,6 @@ func brokerDispatchArgvForRole(ctx context.Context, r *Runner, c *cli.Command, r
 	switch role {
 	case "engineer":
 		return brokerEngineerArgv(c, mode, ref), true
-	case "advisor":
-		return brokerAdvisorArgv(c, mode, ref), true
 	case "qa":
 		return brokerQaArgv(c, mode, ref), true
 	default:
@@ -1254,17 +1237,6 @@ func (r *Runner) maybeForwardAgentDispatchToHostBroker(ctx context.Context, c *c
 		Argv:      argv,
 		Requester: strings.TrimSpace(os.Getenv("WARD_CONTAINER_NAME")),
 		Token:     strings.TrimSpace(os.Getenv(envDispatchBrokerToken)),
-	}
-	if role == "advisor" {
-		logPath, err := sendDispatchBrokerLaunchRequest(ctx, addr, req)
-		if err != nil {
-			if logPath != "" {
-				return true, fmt.Errorf("%w (dispatch log: %s)", err, logPath)
-			}
-			return true, err
-		}
-		fmt.Fprintln(os.Stderr, dispatchBrokerForwardedLine(argv, logPath))
-		return true, nil
 	}
 	logPath, err := sendDispatchBrokerRequest(ctx, addr, req)
 	if err != nil {
@@ -1388,19 +1360,6 @@ func brokerEngineerArgv(c *cli.Command, mode containerMode, ref agentIssueRef) [
 	if c.Bool("print") {
 		argv = append(argv, "--print")
 	}
-	return argv
-}
-
-func brokerAdvisorArgv(c *cli.Command, mode containerMode, ref agentIssueRef) []string {
-	argv := []string{"advisor", ref.String(), "--harness", string(brokerDispatchHarness(c, mode))}
-	if lvl := strings.TrimSpace(c.String("thoroughness")); lvl != "" {
-		argv = append(argv, "--thoroughness", lvl)
-	}
-	argv = appendBrokerConfigFlags(argv, c)
-	if c.Bool("print") {
-		argv = append(argv, "--print")
-	}
-	argv = append(argv, c.Args().Tail()...)
 	return argv
 }
 

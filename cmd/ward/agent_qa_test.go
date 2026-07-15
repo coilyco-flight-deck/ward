@@ -8,9 +8,9 @@ import (
 
 func TestQAPromptIncludesInspectionBrief(t *testing.T) {
 	ref := agentIssueRef{Owner: "coilyco-flight-deck", Repo: "ward", Number: 812}
-	level, err := parseReplyThoroughness("standard")
+	level, err := parseQAThoroughness("standard")
 	if err != nil {
-		t.Fatalf("parseReplyThoroughness: %v", err)
+		t.Fatalf("parseQAThoroughness: %v", err)
 	}
 	ctx := qaLaunchContext{
 		IssueRef:       ref.String(),

@@ -34,7 +34,7 @@ func agentQAFlags() []cli.Flag {
 		&cli.StringFlag{
 			Name:    "thoroughness",
 			Aliases: []string{"depth"},
-			Value:   defaultReplyThoroughness,
+			Value:   defaultQAThoroughness,
 			Usage:   "ref mode: how hard to inspect: quick|standard|deep (deeper gets a longer timeout)",
 		},
 		configFlag(),
@@ -143,7 +143,7 @@ func (r *Runner) validateQAInputs(ctx context.Context, c *cli.Command, label str
 	}
 	prompt := strings.TrimSpace(strings.Join(c.Args().Tail(), " "))
 
-	level, err := parseReplyThoroughness(c.String("thoroughness"))
+	level, err := parseQAThoroughness(c.String("thoroughness"))
 	if err != nil {
 		return agentIssueRef{}, "", qaThoroughness{}, "", fmt.Errorf("%s: %w", label, err)
 	}
@@ -159,8 +159,6 @@ func (r *Runner) validateQAInputs(ctx context.Context, c *cli.Command, label str
 	}
 	return ref, prompt, level, family, nil
 }
-
-type qaThoroughness = replyThoroughness
 
 // qaInspectionPrompt gives ref-mode QA runs their default brief from the issue
 // itself, while still letting a caller append extra framing when needed.
@@ -224,7 +222,7 @@ func (r *Runner) captureQAResearch(ctx context.Context, c *cli.Command, mode con
 	defer func() { _ = r.runDockerSilenced(ctx, true, "rm", "-f", plan.Name) }()
 
 	fmt.Fprintf(os.Stderr, "%s: inspecting %s at %s depth in a fresh container (dig up to %s)...\n\n", label, ref, level.Name, level.Timeout)
-	rctx, cancel := context.WithTimeout(ctx, level.Timeout+containerResearchSetupBudget)
+	rctx, cancel := context.WithTimeout(ctx, level.Timeout+containerInspectionSetupTime)
 	defer cancel()
 	out, cerr := r.captureDockerSilenced(rctx, dockerCreateArgv(plan, envFile)...)
 	read := strings.TrimSpace(out)

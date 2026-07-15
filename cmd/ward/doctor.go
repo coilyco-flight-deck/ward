@@ -200,7 +200,7 @@ func validateFleetDefaultsOperational(fleet fleetconfig.Fleet, allowPlaceholders
 }
 
 func validateFleetRolesOperational(fleet fleetconfig.Fleet) error {
-	requiredRoles := map[string]bool{"engineer": true, "director": true, "advisor": true}
+	requiredRoles := map[string]bool{"engineer": true, "director": true}
 	seenRoles := map[string]bool{}
 	for _, role := range fleet.Roles {
 		seenRoles[role.Name] = true
@@ -211,7 +211,7 @@ func validateFleetRolesOperational(fleet fleetconfig.Fleet) error {
 		}
 	}
 	for _, role := range fleet.Roles {
-		if (role.Name == "director" || role.Name == "advisor") && len(role.Guardfiles.List) == 0 && role.Guardfiles.Prefix == "" {
+		if role.Name == "director" && len(role.Guardfiles.List) == 0 && role.Guardfiles.Prefix == "" {
 			return fmt.Errorf("fleet: role %q needs at least one guardfile binding (fail-closed)", role.Name)
 		}
 	}

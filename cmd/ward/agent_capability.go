@@ -72,12 +72,12 @@ func resolveCapability(role string) roleCapability {
 }
 
 // resolveCapabilityWithOptOut resolves the role capability and applies the
-// advisor's explicit isolation opt-out.
+// explicit isolation opt-out.
 func resolveCapabilityWithOptOut(role string, noTailnet bool) roleCapability {
 	caps := resolveCapability(role)
 	if noTailnet {
-		// Advisor's "stay isolated" opt-out wins over the role default + a stray
-		// tailnet grant: drop the tailnet and the role-granted ~/.aws.
+		// "Stay isolated" wins over the role default + a stray tailnet grant:
+		// drop the tailnet and the role-granted ~/.aws.
 		caps.tailnet = false
 		caps.aws = false
 	}

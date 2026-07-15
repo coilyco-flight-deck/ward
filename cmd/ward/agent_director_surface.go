@@ -114,7 +114,7 @@ func (r *Runner) prepareScratchPlan(ctx context.Context, c *cli.Command, mode co
 		return upPlan{}, func() {}, fmt.Errorf("%s: %w", label, err)
 	}
 	// Trust gate: a bypassPermissions clone of private code, so only act on an owner
-	// in the trusted-owner set - the same gate the engineer + advisor roles apply.
+	// in the trusted-owner set - the same gate the engineer role applies.
 	if !r.ownerAllowed(repo.Owner) {
 		return upPlan{}, func() {}, r.untrustedOwnerErr(label, repo.Owner)
 	}

@@ -142,7 +142,7 @@ func buildUpPlan(c *cli.Command, repo targetRepo, mode containerMode, role, cwd,
 		awsHome = filepath.Join(homeDir(), ".aws")
 	}
 	// extraRepoGrant reads the --repo grant on the agent surfaces and --with-repo on
-	// advisor/director (ward#280, ward#362; docs/container-multi-repo.md).
+	// director (ward#280, ward#362; docs/container-multi-repo.md).
 	extra, err := parseExtraRepos(extraRepoGrant(c), repo)
 	if err != nil {
 		return upPlan{}, err

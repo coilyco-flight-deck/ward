@@ -68,6 +68,7 @@ func TestDispatchBrokerValidatesNarrowAPI(t *testing.T) {
 		{Role: "engineer", Argv: []string{"exec", "test"}},
 		{Role: "advisor", Argv: []string{"advisor"}},
 		{Role: "advisor", Argv: []string{"advisor", "write me a poem"}},
+		{Role: "advisor", Argv: []string{"advisor", "coilyco-flight-deck/ward#1", "--harness", "goose"}},
 		{Role: "engineer", Argv: []string{"engineer", "coilyco-flight-deck/ward#1", "--ward-source", "/tmp/ward"}},
 		{Role: "engineer", Argv: []string{"engineer", "coilyco-flight-deck/ward#1", "bad\x00arg"}},
 	} {
@@ -83,21 +84,9 @@ func TestDispatchBrokerValidatesNarrowAPI(t *testing.T) {
 	if err := validateDispatchBrokerRequest(pr); err != nil {
 		t.Errorf("valid engineer PR dispatch refused: %v", err)
 	}
-	advisor := dispatchBrokerRequest{Role: "advisor", Argv: []string{"advisor", "coilyco-flight-deck/ward#1", "--harness", "goose", "what changed?"}}
-	if err := validateDispatchBrokerRequest(advisor); err != nil {
-		t.Errorf("valid advisor dispatch refused: %v", err)
-	}
 	qa := dispatchBrokerRequest{Role: "qa", Argv: []string{"qa", "coilyco-flight-deck/ward#1", "--harness", "claude", "inspect the branch"}}
 	if err := validateDispatchBrokerRequest(qa); err != nil {
 		t.Errorf("valid qa dispatch refused: %v", err)
-	}
-	noPromptAdvisor := dispatchBrokerRequest{Role: "advisor", Argv: []string{"advisor", "coilyco-flight-deck/ward#1", "--thoroughness", "deep"}}
-	if err := validateDispatchBrokerRequest(noPromptAdvisor); err != nil {
-		t.Errorf("advisor dispatch without an explicit prompt refused: %v", err)
-	}
-	bareAdvisor := dispatchBrokerRequest{Role: "advisor", Argv: []string{"advisor", "coilyco-flight-deck/ward#1"}}
-	if err := validateDispatchBrokerRequest(bareAdvisor); err != nil {
-		t.Errorf("bare advisor issue-ref dispatch refused: %v", err)
 	}
 	// --agent is an equal first-class spelling of --harness (ward#660).
 	equal := dispatchBrokerRequest{Role: "engineer", Argv: []string{"engineer", "coilyco-flight-deck/ward#1", "--agent", "claude"}}
@@ -213,12 +202,12 @@ func TestDispatchBrokerValidatesListShape(t *testing.T) {
 }
 
 // TestStopTargetGuardEngineerOnly is the ward#627 handler guard: only an engineer is
-// stoppable; advisor/director/session are refused by role, and an empty role closed.
+// stoppable; director/qa/session are refused by role, and an empty role closed.
 func TestStopTargetGuardEngineerOnly(t *testing.T) {
 	if err := stopTargetGuard("engineer-claude-ward-625", roleEngineer); err != nil {
 		t.Errorf("engineer target refused: %v", err)
 	}
-	for _, role := range []string{roleAdvisor, roleDirector, roleSession} {
+	for _, role := range []string{roleDirector, roleQA, roleSession} {
 		err := stopTargetGuard("some-"+role+"-box", role)
 		if err == nil {
 			t.Errorf("role %q was not refused", role)
@@ -971,64 +960,6 @@ func TestForwardAgentDispatchToHostBrokerInheritsRunningDirectorHarness(t *testi
 	}
 }
 
-func TestForwardAgentDispatchToHostBrokerAllowsRefWithoutPrompt(t *testing.T) {
-	ln, err := net.Listen("tcp", "127.0.0.1:0")
-	if err != nil {
-		t.Fatalf("listen broker: %v", err)
-	}
-	defer ln.Close()
-
-	gotReq := make(chan dispatchBrokerRequest, 1)
-	serveDispatchBrokerRequests(t, ln, func(conn net.Conn, req dispatchBrokerRequest) {
-		gotReq <- req
-		_ = json.NewEncoder(conn).Encode(dispatchBrokerResponse{OK: true, LogPath: "/tmp/ward/dispatch.log"})
-	})
-
-	origStderr := os.Stderr
-	rPipe, wPipe, err := os.Pipe()
-	if err != nil {
-		t.Fatalf("pipe stderr: %v", err)
-	}
-	t.Cleanup(func() {
-		_ = wPipe.Close()
-		_ = rPipe.Close()
-		os.Stderr = origStderr
-	})
-	os.Stderr = wPipe
-	t.Setenv(envDispatchBrokerAddr, ln.Addr().String())
-	t.Setenv(envDispatchBrokerToken, "nonce-789")
-	t.Setenv("WARD_READONLY", "1")
-	t.Setenv("WARD_CONTAINER_NAME", "director-codex-host")
-	cmd := parseCommandForTest(t, agentAdvisorFlags(), []string{
-		"advisor", "coilyco-flight-deck/ward#378", "--harness", "codex",
-	})
-	forwarded, err := (&Runner{}).maybeForwardAgentDispatchToHostBroker(t.Context(), cmd, "advisor", modeCodex)
-	if err != nil {
-		t.Fatalf("forward advisor dispatch: %v", err)
-	}
-	if !forwarded {
-		t.Fatal("advisor dispatch did not forward despite broker env")
-	}
-	req := <-gotReq
-	want := []string{"advisor", "coilyco-flight-deck/ward#378", "--harness", "codex", "--thoroughness", "standard"}
-	if !reflect.DeepEqual(req.Argv, want) {
-		t.Errorf("advisor forwarded argv = %v, want %v", req.Argv, want)
-	}
-	_ = wPipe.Close()
-	var stderr bytes.Buffer
-	if _, err := io.Copy(&stderr, rPipe); err != nil {
-		t.Fatalf("read stderr: %v", err)
-	}
-	for _, want := range []string{
-		"ward dispatch broker: forwarded `ward agent advisor coilyco-flight-deck/ward#378 --harness codex --thoroughness standard` to host ward",
-		"(run output on the host at /tmp/ward/dispatch.log)",
-	} {
-		if !strings.Contains(stderr.String(), want) {
-			t.Fatalf("stderr = %q, want %q", stderr.String(), want)
-		}
-	}
-}
-
 func TestPRWorkflowForwardedReportsUnreachableBroker(t *testing.T) {
 	ln, err := net.Listen("tcp", "127.0.0.1:0")
 	if err != nil {
@@ -1169,138 +1100,6 @@ func TestPRWorkflowForwardedUsesOneBrokerRequest(t *testing.T) {
 	}
 }
 
-// TestRunAgentAdvisorRefDispatchReturnsPromptlyViaBroker is the director-surface
-// regression for advisor ref dispatch staying prompt through the broker.
-func TestRunAgentAdvisorRefDispatchReturnsPromptlyViaBroker(t *testing.T) {
-	t.Setenv("HOME", t.TempDir())
-	t.Setenv(wardConfigRefEnv, "file://"+writeBundleFixture(t))
-	r := &Runner{}
-
-	ln, err := net.Listen("tcp", "127.0.0.1:0")
-	if err != nil {
-		t.Fatalf("listen broker: %v", err)
-	}
-	defer ln.Close()
-
-	started := make(chan struct{})
-	release := make(chan struct{})
-	done := make(chan struct{})
-	restored := make(chan struct{})
-	origLaunch := dispatchBrokerLaunch
-	origRestoreHook := dispatchStdioRestoreHook
-	t.Cleanup(func() {
-		dispatchBrokerLaunch = origLaunch
-		defer func() { dispatchStdioRestoreHook = origRestoreHook }()
-		select {
-		case <-restored:
-		case <-time.After(30 * time.Second):
-			t.Fatal("broker launch never restored stdio after release")
-		}
-	})
-	dispatchStdioRestoreHook = func() {
-		select {
-		case <-restored:
-		default:
-			close(restored)
-		}
-	}
-	dispatchBrokerLaunch = func(_ context.Context, req dispatchBrokerRequest) error {
-		if req.Role != "advisor" {
-			t.Errorf("launch role = %q, want advisor", req.Role)
-		}
-		select {
-		case <-started:
-		default:
-			close(started)
-		}
-		<-release
-		close(done)
-		return nil
-	}
-
-	t.Setenv(envDispatchBrokerAddr, ln.Addr().String())
-	t.Setenv(envDispatchBrokerToken, "nonce-advisor")
-	t.Setenv("WARD_READONLY", "1")
-	t.Setenv("WARD_CONTAINER_NAME", "director-codex-host")
-
-	serveDispatchBrokerRequests(t, ln, func(conn net.Conn, req dispatchBrokerRequest) {
-		if req.Token != "nonce-advisor" {
-			_ = json.NewEncoder(conn).Encode(dispatchBrokerResponse{OK: false, Error: "dispatch broker: token rejected"})
-			return
-		}
-		logPath, err := r.startHostDispatchBrokerRequest(t.Context(), req)
-		if err != nil {
-			_ = json.NewEncoder(conn).Encode(dispatchBrokerResponse{OK: false, Error: err.Error()})
-			return
-		}
-		_ = json.NewEncoder(conn).Encode(dispatchBrokerResponse{OK: true, LogPath: logPath})
-	})
-
-	cmd := parseCommandForTest(t, agentAdvisorFlags(), []string{
-		"advisor", "coilyco-flight-deck/ward#378", "--harness", "codex",
-	})
-	returned := make(chan error, 1)
-	go func() {
-		returned <- r.runAgentAdvisor(t.Context(), cmd, modeCodex)
-	}()
-
-	select {
-	case err := <-returned:
-		if err != nil {
-			t.Fatalf("runAgentAdvisor returned an error: %v", err)
-		}
-	case <-time.After(500 * time.Millisecond):
-		t.Fatal("runAgentAdvisor blocked instead of returning after broker launch")
-	}
-	select {
-	case <-started:
-	case <-time.After(2 * time.Second):
-		t.Fatal("broker launch never started")
-	}
-	select {
-	case <-done:
-		t.Fatal("broker launch finished before release; the test no longer proves fire-and-forget")
-	default:
-	}
-	close(release)
-	select {
-	case <-done:
-	case <-time.After(2 * time.Second):
-		t.Fatal("broker launch never finished after release")
-	}
-}
-
-// TestRunAgentAdvisorFreeformStaysLocal proves the broker env does not hijack the
-// intentionally synchronous freeform advisor path.
-func TestRunAgentAdvisorFreeformStaysLocal(t *testing.T) {
-	t.Setenv("HOME", t.TempDir())
-	t.Setenv(envDispatchBrokerAddr, "127.0.0.1:12345")
-	t.Setenv(envDispatchBrokerToken, "nonce-freeform")
-	t.Setenv("WARD_READONLY", "1")
-	t.Setenv(wardConfigRefEnv, "file://"+writeBundleFixture(t))
-	t.Setenv("WARD_TARGET_OWNER", "coilysiren")
-	t.Setenv("WARD_TARGET_REPO", "coilysiren/example")
-	stubContainerBootstrapStage(t)
-
-	origLaunch := dispatchBrokerLaunch
-	t.Cleanup(func() { dispatchBrokerLaunch = origLaunch })
-	called := false
-	dispatchBrokerLaunch = func(_ context.Context, _ dispatchBrokerRequest) error {
-		called = true
-		return nil
-	}
-
-	cmd := parseCommandForTest(t, agentAdvisorFlags(), []string{
-		"advisor", "how is the audit log written?", "--repo", "coilysiren/example", "--print",
-	})
-	if err := (&Runner{}).runAgentAdvisor(t.Context(), cmd, modeCodex); err != nil {
-		t.Fatalf("runAgentAdvisor freeform path: %v", err)
-	}
-	if called {
-		t.Fatal("freeform advisor unexpectedly forwarded through the dispatch broker")
-	}
-}
-
 func TestForwardAgentDispatchToHostBrokerSupportsQa(t *testing.T) {
 	ln, err := net.Listen("tcp", "127.0.0.1:0")
 	if err != nil {
@@ -1360,8 +1159,8 @@ func TestSendDispatchBrokerLaunchRequestWaitsForResponse(t *testing.T) {
 	}, 1)
 	go func() {
 		logPath, err := sendDispatchBrokerLaunchRequest(ctx, ln.Addr().String(), dispatchBrokerRequest{
-			Role:      "advisor",
-			Argv:      []string{"advisor", "coilyco-flight-deck/ward#378", "--harness", "codex"},
+			Role:      "qa",
+			Argv:      []string{"qa", "coilyco-flight-deck/ward#378", "--harness", "codex"},
 			Requester: "director-codex-host",
 			Token:     "nonce-adv",
 		})
@@ -1476,8 +1275,8 @@ func TestSendDispatchBrokerLaunchRequestReportsDroppedResponse(t *testing.T) {
 	}, 1)
 	go func() {
 		logPath, err := sendDispatchBrokerLaunchRequest(ctx, ln.Addr().String(), dispatchBrokerRequest{
-			Role:      "advisor",
-			Argv:      []string{"advisor", "coilyco-flight-deck/ward#379", "--harness", "codex"},
+			Role:      "qa",
+			Argv:      []string{"qa", "coilyco-flight-deck/ward#379", "--harness", "codex"},
 			Requester: "director-codex-host",
 			Token:     "nonce-eof",
 		})
@@ -1736,8 +1535,8 @@ func TestRunHostDispatchBrokerRequestClearsBrokerEnvWhileLaunchRuns(t *testing.T
 	}
 
 	req := dispatchBrokerRequest{
-		Role: "advisor",
-		Argv: []string{"advisor", "coilyco-flight-deck/ward#795", "--harness", "codex"},
+		Role: "qa",
+		Argv: []string{"qa", "coilyco-flight-deck/ward#795", "--harness", "codex"},
 	}
 	go func() {
 		gotLogPath, err := (&Runner{}).startHostDispatchBrokerRequest(t.Context(), req)
@@ -2603,7 +2402,7 @@ func TestDispatchLogNameIsStampedAndAttributable(t *testing.T) {
 		t.Errorf("dispatchLogName() = %q, want %q", got, want)
 	}
 	// A requester-less request still yields a sane, collision-free basename.
-	bare := dispatchLogName(dispatchBrokerRequest{Argv: []string{"advisor"}}, at)
+	bare := dispatchLogName(dispatchBrokerRequest{Argv: []string{"qa"}}, at)
 	if !strings.HasPrefix(bare, "20260701T120000Z-unknown") || !strings.HasSuffix(bare, ".log") {
 		t.Errorf("requester-less dispatchLogName() = %q, want stamped unknown-*.log", bare)
 	}

@@ -183,7 +183,7 @@ func shellQuote(s string) string { return "'" + strings.ReplaceAll(s, "'", `'\''
 func tailnetPlan() upPlan {
 	p := sampleUpPlan()
 	p.TSSidecar = true
-	p.Role = roleAdvisor
+	p.Role = roleDirector
 	return p
 }
 

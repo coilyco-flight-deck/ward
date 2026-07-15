@@ -227,7 +227,6 @@ type containerMode string
 // loop, not a container, but its surface container runs as roleDirector (ward#353).
 const (
 	roleEngineer = "engineer"
-	roleAdvisor  = "advisor"
 	roleQA       = "qa"
 	roleOps      = "ops"
 	roleAdmin    = "admin"
@@ -332,7 +331,7 @@ func safeRepoName(repo targetRepo) string {
 }
 
 // issueScopedContainerName builds the issue-scoped container name shape:
-// <role>-<driver>-<repo>-<N>. Engineer and issue-scoped advisor runs use it.
+// <role>-<driver>-<repo>-<N>. Engineer and issue-scoped runs use it.
 func issueScopedContainerName(role string, mode containerMode, repo targetRepo, issue int) string {
 	return fmt.Sprintf("%s-%s-%s-%d", role, mode, safeRepoName(repo), issue)
 }
@@ -414,7 +413,7 @@ func dockerSockMount() mountSpec {
 type upPlan struct {
 	Image string
 	Name  string
-	// Role leads the name + the ward.role label (engineer/advisor/session).
+	// Role leads the name + the ward.role label (engineer/qa/session).
 	Role string
 	// ConfigRole resolves the per-role model/effort overlay in-container (WARD_ROLE,
 	// ward#620): the capability role, not the `session` label the director surface wears.
@@ -435,8 +434,8 @@ type upPlan struct {
 	// TTY allocates a pseudo-terminal (-t), auto-detected: true only with a real
 	// terminal, since docker rejects -t against non-terminal stdin. See docs.
 	TTY bool
-	// Capture marks an attached foreground run ward reads stdout back from (the
-	// one-shot advisor research): streams stdout, attaches no stdin (ward#411, #606).
+	// Capture marks an attached foreground run ward reads stdout back from:
+	// streams stdout, attaches no stdin (ward#411, #606).
 	Capture bool
 	// WardVersion pins the ward release the entrypoint downloads (matches the
 	// launcher); "dev" or "" tells the entrypoint to resolve the latest release.
@@ -456,7 +455,7 @@ type upPlan struct {
 	// WARD_HEADLESS=1; set by the detached `ward agent engineer` run.
 	Headless bool
 	// Ask runs the in-container agent one-shot, attached (claude -p plain, no
-	// stream-json); exports WARD_ASK=1, set by `ward agent advisor`'s freeform mode.
+	// stream-json); exports WARD_ASK=1 for one-shot attached runs.
 	Ask bool
 	// ExtraRepos are additional writable repos this run was granted to clone +
 	// operate against (--repo, ward#230); see docs/container-multi-repo.md.

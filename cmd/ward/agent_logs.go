@@ -261,7 +261,7 @@ func (r *Runner) resolveAgentLogsSourceForRunningName(ctx context.Context, name 
 		// readable
 	default:
 		return agentLogSource{}, fmt.Errorf("dispatch broker: refusing to read %q: it is a %q container, not a readable agent - "+
-			"logs only target %s and %s (advisor/session are never read here)", name, role, roleEngineer, roleDirector)
+			"logs only target %s and %s (session containers are never read here)", name, role, roleEngineer, roleDirector)
 	}
 	return agentLogSource{Kind: agentLogSourceDocker, Container: name, TranscriptTree: r.containerTranscriptTree(ctx, name), Tail: tail, Follow: follow}, nil
 }

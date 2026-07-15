@@ -32,7 +32,7 @@ Start here if you open `docs/` directly. The tree holds the release-era operatin
 - [agent.md](agent.md) - entrypoint.
 - [agent-roster.md](agent-roster.md) - generated roster.
 - [agent-flags.md](agent-flags.md) - generated flag tree.
-- [agent-roles.md](agent-roles.md) - engineer, director, advisor, qa.
+- [agent-roles.md](agent-roles.md) - engineer, director, qa.
 - [agent-harnesses.md](agent-harnesses.md) - claude, codex, goose, opencode.
 - [agent-lifecycle.md](agent-lifecycle.md) - launch, preflight, reservation.
 - [agent-check-placement.md](agent-check-placement.md) - broker/pre-flight guard matrix.

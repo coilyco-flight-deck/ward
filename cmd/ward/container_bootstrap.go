@@ -52,7 +52,7 @@ type bootstrapEnv struct {
 	ClaudeEffort string
 	GitUserName  string
 	GitUserEmail string
-	// Role is the run's config role (WARD_ROLE, ward#620): director/engineer/advisor,
+	// Role is the run's config role (WARD_ROLE, ward#620): director/engineer/qa,
 	// keying the per-role model/effort overlay resolved below. Empty means no overlay.
 	Role       string
 	AgentUID   string
@@ -969,7 +969,7 @@ func (r *Runner) cloneExtraRepo(ctx context.Context, e bootstrapEnv, repo target
 		switch {
 		case isDir(mirror):
 			if ttl > 0 && !substrateMirrorStale(mirror, int64(ttl.Seconds()), time.Now()) {
-				blog("extra-repo: cached mirror fresh %s/%s (advisor TTL %s)", repo.Owner, repo.Name, ttl)
+				blog("extra-repo: cached mirror fresh %s/%s (read-only TTL %s)", repo.Owner, repo.Name, ttl)
 			} else {
 				blog("extra-repo: refreshing cached mirror %s/%s", repo.Owner, repo.Name)
 				if uerr := r.Runner.Exec(ctx, "git", "-C", mirror, "remote", "update", "--prune"); uerr != nil {
@@ -1276,7 +1276,7 @@ merge - you do not sit on it, poll it, or wait for it to report back.
 
 **Prefer a sibling dispatch over an in-session subagent.** When the work is
 delegable - a design proposal, a research dig, an implementation - reach for a sibling
-warded run (` + "`warded advisor #N`" + ` to design or research, ` + "`warded engineer #N`" + ` to build)
+warded run (` + "`warded director owner/repo#N`" + ` to scope follow-up work, ` + "`warded engineer #N`" + ` to build)
 before an in-session subagent. The sibling lands a durable, attributable artifact on
 the canonical surface (the issue thread, a pushed commit) that outlives this session,
 and the next run can read it. A subagent's output dies in this conversation's

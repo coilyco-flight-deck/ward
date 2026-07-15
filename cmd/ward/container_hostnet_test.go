@@ -142,13 +142,6 @@ func TestBuildUpPlanTailnet(t *testing.T) {
 		t.Error("director role should imply the ~/.aws mount")
 	}
 
-	// Advisor can opt out.
-	if p := run(roleAdvisor, []string{"--no-tailnet"}); p.HostNet || p.TSSidecar {
-		t.Errorf("--no-tailnet must keep the plan isolated: HostNet=%v TSSidecar=%v", p.HostNet, p.TSSidecar)
-	} else if hasAWSMount(p) {
-		t.Error("--no-tailnet should keep ~/.aws out of the plan")
-	}
-
 	// Engineer stays least-access.
 	if p := run(roleEngineer, nil); p.HostNet || p.TSSidecar || hasAWSMount(p) {
 		t.Errorf("engineer default: HostNet=%v TSSidecar=%v aws-mounted=%v, want all false", p.HostNet, p.TSSidecar, hasAWSMount(p))

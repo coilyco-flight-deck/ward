@@ -46,22 +46,9 @@ fleet {
                 reasoning-effort medium
             }
         }
-        // director mirrors advisor's live-observe set (aws + tailnet, ward#547); its
+        // director owns the live-observe set (aws + tailnet, ward#547); its
         // heartbeat wants the strongest model at 1M context (ward#620).
         role director {
-            guardfiles ward-kdl.aws.guardfile.kdl ward-kdl.tailscale.guardfile.kdl
-            agent claude {
-                model "claude-opus-4-8[1m]"
-                reasoning-effort high
-            }
-            agent codex {
-                model gpt-5.5
-                reasoning-effort high
-            }
-        }
-        // advisor does live-observe research: the aws SSM read + the tailnet route.
-        // `advisor --no-tailnet` opts a rare isolated run back out.
-        role advisor {
             guardfiles ward-kdl.aws.guardfile.kdl ward-kdl.tailscale.guardfile.kdl
             agent claude {
                 model "claude-opus-4-8[1m]"

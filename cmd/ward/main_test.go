@@ -241,7 +241,7 @@ func TestCanonicalWardExe(t *testing.T) {
 	}
 }
 
-// TestCanonicalWardExeFallback covers the host advisor break (ward#393): a `warded` shim
+// TestCanonicalWardExeFallback covers the host dispatch break (ward#393): a `warded` shim
 // with no sibling `ward` resolves via the allow-list, then PATH, never back to the shim.
 func TestCanonicalWardExeFallback(t *testing.T) {
 	shimDir, err := filepath.EvalSymlinks(t.TempDir())

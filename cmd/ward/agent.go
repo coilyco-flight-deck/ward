@@ -628,7 +628,7 @@ func resolveTailnetMechanism(goos string, want bool) (hostNet, tsSidecar bool) {
 }
 
 // extraRepoGrant reads the extra-writable-repo grant under either name: engineer's --repo
-// or advisor/director's own --with-repo (ward#362 dropped the alias; nil-safe).
+// or director's own --with-repo (ward#362 dropped the alias; nil-safe).
 func extraRepoGrant(c *cli.Command) []string {
 	return append(append([]string{}, c.StringSlice("repo")...), c.StringSlice("with-repo")...)
 }
@@ -691,7 +691,7 @@ func agentCommand() *cli.Command {
 		Before: smartDefaultsGuard("ward agent"),
 		Description: fmt.Sprintf(`agent is the issue-carrying dispatcher (the spelling 'warded' fronts), a
 roster of startup roles (ward#347): you do not invoke a mode, you send in a
-role. Pick a role (engineer|director|advisor|qa) and --harness picks the
+role. Pick a role (engineer|director|qa) and --harness picks the
 harness (%s, default %s. --agent is an equal accepted spelling).
 A BARE REF with no role word runs the 'engineer' role - the fire-and-forget
 default. A bare #N (or N) infers the owner/repo from the cwd's git origin;
@@ -708,8 +708,6 @@ container bring-up stack plus a prompt.
   warded <role> #98 --agent <harness>        # --agent: the same pick, equal spelling
   warded director --repo coilyco-flight-deck/ward # read-only director surface
   warded director --burndown --repo coilyco-flight-deck/ward # add --burndown when you want autonomous dispatch
-  warded advisor #98 "what would it take to..."   # research the issue, post the answer
-  warded advisor "how is the audit log written?"  # answer a freeform question inline
   ward agent engineer coilyco-flight-deck/ward#98 # the canonical spelling warded fronts
   ward agent #98 --print                      # resolve + show the plan, run nothing
 
@@ -724,7 +722,6 @@ trusted owner.`, agentHarnessChoices(), defaultAgentMode()),
 		Commands: []*cli.Command{
 			agentEngineerCommand(),
 			agentDirectorCommand(),
-			agentAdvisorCommand(),
 			agentQACommand(),
 			// roster is a self-describe verb, not a startup role: it prints the
 			// flat list of the roles above (ward#348). See docs/agent-roster.md.
@@ -2225,8 +2222,8 @@ func (r *Runner) launchAgentContainer(ctx context.Context, c *cli.Command, mode 
 	return nil
 }
 
-// prelaunchDispatch runs the shared pre-`docker create` steps for the advisor/director
-// paths: the ward-tailnet ready-up (create-if-absent; ward#597), the sweep, the pull.
+// prelaunchDispatch runs the shared pre-`docker create` steps for dispatch paths:
+// the ward-tailnet ready-up (create-if-absent; ward#597), the sweep, the pull.
 func (r *Runner) prelaunchDispatch(ctx context.Context, c *cli.Command, plan upPlan, label string) error {
 	if err := r.preflightTailnet(ctx, plan); err != nil {
 		return err

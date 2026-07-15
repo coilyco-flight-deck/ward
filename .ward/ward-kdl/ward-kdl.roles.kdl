@@ -15,13 +15,6 @@ agent-roles {
         default-harness claude
         posture attached
     }
-    role advisor {
-        tagline "Answers without writing code."
-        capabilities read
-        modes "A ref researches the issue and posts the answer as a comment. Freeform text answers inline."
-        default-harness claude
-        posture no-code
-    }
     role qa {
         tagline "Inspects a candidate and posts a structured verdict comment."
         capabilities read

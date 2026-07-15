@@ -7,8 +7,8 @@ import (
 	"testing"
 )
 
-// catalogContextRepos reads the repo-local catalog.dependsOn into read-only context
-// grants, de-duplicated and in declared order (ward#573; was advisor-only, ward#566).
+// catalogContextRepos reads repo-local catalog.dependsOn into read-only context
+// grants, de-duplicated in declared order (ward#573, ward#566).
 func TestCatalogContextRepos(t *testing.T) {
 	root := t.TempDir()
 	wardDir := filepath.Join(root, ".ward")

@@ -38,10 +38,10 @@ func TestAgentRosterCommandRegistered(t *testing.T) {
 }
 
 // TestEmbeddedAgentRoleCatalogDefinesShippedRoster proves the embedded role KDL
-// parses to the shipped four-role roster.
+// parses to the shipped role roster.
 func TestEmbeddedAgentRoleCatalogDefinesShippedRoster(t *testing.T) {
 	cat := mustEmbeddedAgentRoleCatalog()
-	for _, role := range []string{"engineer", "director", "advisor", "qa"} {
+	for _, role := range []string{"engineer", "director", "qa"} {
 		def, ok := cat.Definitions[role]
 		if !ok {
 			t.Fatalf("embedded catalog missing role %q", role)
@@ -61,7 +61,7 @@ func TestEmbeddedAgentRoleCatalogDefinesShippedRoster(t *testing.T) {
 			t.Errorf("role %q has an empty tagline, capabilities, or modes column", r.Role)
 		}
 	}
-	for _, role := range []string{"engineer", "director", "advisor", "qa"} {
+	for _, role := range []string{"engineer", "director", "qa"} {
 		if !got[role] {
 			t.Errorf("roster missing the %q role; got %v", role, rosterRoleNames(rows))
 		}
@@ -145,7 +145,7 @@ func TestAgentRoleDefinitionsUseSelectedBundleCatalog(t *testing.T) {
 	if err != nil {
 		t.Fatalf("agentRoleDefinitions: %v", err)
 	}
-	for _, role := range []string{roleEngineer, roleDirector, roleAdvisor, "qa"} {
+	for _, role := range []string{roleEngineer, roleDirector, "qa"} {
 		if got := defs[role].DefaultHarness; got != string(modeCodex) {
 			t.Fatalf("role %q default harness = %q, want %q", role, got, modeCodex)
 		}
@@ -190,7 +190,6 @@ func TestAgentRosterDefaultPrintsRoster(t *testing.T) {
 		"the startup-role roster",
 		"warded engineer - Implements a ticket end to end.",
 		"capabilities: read + engineering",
-		"warded advisor - Answers without writing code.",
 		"warded qa - Inspects a candidate and posts a structured verdict comment.",
 		"ward agent roster", // the launch-hint footer
 	} {

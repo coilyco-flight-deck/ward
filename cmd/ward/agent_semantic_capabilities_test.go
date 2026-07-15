@@ -7,7 +7,6 @@ func TestSemanticCapabilitiesForRole(t *testing.T) {
 		role string
 		want string
 	}{
-		{roleAdvisor, "read"},
 		{roleQA, "read"},
 		{roleDirector, "read + project-management"},
 		{roleEngineer, "read + engineering"},
@@ -25,7 +24,7 @@ func TestSemanticCapabilitiesForRole(t *testing.T) {
 }
 
 func TestSemanticCapabilitiesCompose(t *testing.T) {
-	base := semanticCapabilitiesForRole(roleAdvisor)
+	base := semanticCapabilitiesForRole(roleQA)
 	got := semanticCapabilitiesCompose(base, semanticCapabilityEngineering, semanticCapabilityProjectManagement)
 	if want := "read + project-management + engineering"; got.String() != want {
 		t.Fatalf("compose = %q, want %q", got.String(), want)
@@ -56,7 +55,6 @@ func TestAgentRosterRowsRenderCapabilities(t *testing.T) {
 	want := map[string]string{
 		"engineer": "read + engineering",
 		"director": "read + project-management",
-		"advisor":  "read",
 		"qa":       "read",
 	}
 	for _, row := range rows {

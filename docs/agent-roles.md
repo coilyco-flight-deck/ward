@@ -1,15 +1,14 @@
 ---
-doc_goal: Collapse the role roster into one durable page that names the four startup roles and the contracts that make them distinct.
+doc_goal: Collapse the role roster into one durable page that names the three startup roles and the contracts that make them distinct.
 ---
 # ward agent roles
 
-`ward agent` has four startup roles.
+`ward agent` has three startup roles.
 
 Their definitions live in ward-owned embedded role-definition KDL, with fleet
 config acting only as an overlay.
 - `engineer` - implements a ticket end to end and detaches.
 - `director` - supervises the backlog and surfaces a read-only session.
-- `advisor` - answers questions and writes no code.
 - `qa` - inspects a run or branch and posts a structured verdict comment.
 - Each startup role carries a shipped execution limit, except `director`, which
   stays interactive and has none.
@@ -20,7 +19,6 @@ only controls which host-side capabilities a role can use.
 
 - `engineer` is the only role that carries implementation work.
 - `director` is the only role that owns the read-only surface.
-- `advisor` is the only role whose job is response and triage.
 - `qa` is opt-in and writes verdicts, not code.
 
 ## Role details
@@ -44,15 +42,6 @@ The director is the supervising lane.
 - It can keep a backlog moving when `--burndown` or `--drain` is set.
 - It has no execution limit.
 
-### advisor
-
-The advisor answers without changing implementation state.
-
-- It posts comments or a structured reply.
-- It is useful for triage and design questions.
-- It does not land code.
-- Its shipped execution limit is 60 minutes.
-
 ### qa
 
 The QA role is a light-weight inspection pass.
@@ -68,7 +57,6 @@ The role is the first noun after `warded` or `ward agent`.
 
 - `warded #98` means engineer.
 - `warded director --repo owner/name`, `warded director owner/repo#98`, and `warded director #98` mean the supervisory lane with repo, issue, or current-checkout scope.
-- `warded advisor #98` means the answer-only path.
 - `warded qa #98` means structured inspection.
 
 ## See also

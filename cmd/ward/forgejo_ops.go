@@ -409,7 +409,7 @@ func apiPath(segments []string) string {
 }
 
 // fetchIssueByForge GETs an issue from the selected forge and decodes it into
-// Issue, the advisor-path resolve seam sharing the dispatch retry (ward#497).
+// Issue, the agent-path resolve seam sharing the dispatch retry (ward#497).
 func (r *Runner) fetchIssueByForge(ctx context.Context, label string, f forge, mode containerMode, owner, repo string, number int) (*Issue, error) {
 	cl, err := r.hostTrackerClient(ctx, trackerFromForge(f), mode)
 	if err != nil {

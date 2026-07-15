@@ -13,14 +13,14 @@ import (
 )
 
 // ward#353 collapsed `architect` into the director's surface phase: the roster is now
-// engineer/director/advisor/qa, and `warded architect` errors as an unknown command.
+// engineer/director/qa, and `warded architect` errors as an unknown command.
 func TestArchitectRoleCollapsedIntoDirectorSurface(t *testing.T) {
 	surfaces := map[string]bool{}
 	for _, c := range agentCommand().Commands {
 		surfaces[c.Name] = true
 	}
-	// The roster is exactly the four roles (plus the roster meta verb).
-	for _, want := range []string{"engineer", "director", "advisor", "qa"} {
+	// The roster is exactly the product roles (plus meta verbs).
+	for _, want := range []string{"engineer", "director", "qa"} {
 		if !surfaces[want] {
 			t.Errorf("ward agent missing %q role; got %v", want, surfaces)
 		}

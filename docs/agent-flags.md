@@ -20,9 +20,6 @@ doc_goal: Give a reader the canonical, code-generated tree of every ward agent c
 ## `ward agent director merge`
 
 - --repo, --org, --limit, --dry-run, --print
-## `ward agent advisor`
-
-- --harness, --agent, --thoroughness, --depth, --repo, --with-repo, --instructions-file, --oneshot, --answer, --config, (hidden) --image, (hidden) --tag, (hidden) --ward-source, (hidden) --ward-version, (hidden) --allow-ward-downgrade, --no-tailnet, --print, --no-pull
 ## `ward agent qa`
 
 - --harness, --agent, --thoroughness, --depth, --config, --family, (hidden) --image, (hidden) --tag, (hidden) --ward-source, (hidden) --ward-version, (hidden) --allow-ward-downgrade, --print, --no-pull
