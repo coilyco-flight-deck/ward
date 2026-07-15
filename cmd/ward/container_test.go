@@ -959,6 +959,35 @@ func TestDockerCreateArgvShape(t *testing.T) {
 	}
 }
 
+func TestDockerCreateArgvOOMScoreAdjByRole(t *testing.T) {
+	cases := []struct {
+		name    string
+		role    string
+		wantArg string
+	}{
+		{name: "engineer", role: roleEngineer, wantArg: "--oom-score-adj=250"},
+		{name: "director", role: roleDirector, wantArg: "--oom-score-adj=-250"},
+		{name: "session", role: roleSession, wantArg: "--oom-score-adj=-250"},
+		{name: "advisor", role: roleAdvisor},
+	}
+	for _, tc := range cases {
+		t.Run(tc.name, func(t *testing.T) {
+			p := sampleUpPlan()
+			p.Role = tc.role
+			joined := strings.Join(dockerCreateArgv(p, ""), " ")
+			if tc.wantArg != "" {
+				if !strings.Contains(joined, tc.wantArg) {
+					t.Fatalf("docker argv missing %q\n got: %s", tc.wantArg, joined)
+				}
+				return
+			}
+			if strings.Contains(joined, "--oom-score-adj=") {
+				t.Fatalf("role %q must not get an oom-score override\n got: %s", tc.role, joined)
+			}
+		})
+	}
+}
+
 func TestDockerCreateArgvLaunchEnvAllowlist(t *testing.T) {
 	t.Setenv("TERM", "screen-256color")
 	t.Setenv("COLORTERM", "24bit")

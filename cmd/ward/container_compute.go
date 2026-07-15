@@ -941,12 +941,28 @@ func dockerArgvHead(verb string, p upPlan) []string {
 	if p.MemorySwap != "" {
 		argv = append(argv, "--memory-swap="+p.MemorySwap)
 	}
+	// Under memory pressure Docker's OOM killer should shed engineer work first,
+	// then leave director surfaces above the default container priority.
+	if oomScoreAdj, ok := dockerOOMScoreAdj(p.Role); ok {
+		argv = append(argv, "--oom-score-adj="+oomScoreAdj)
+	}
 	// Map host.docker.internal to the host gateway so the surface's broker dial
 	// works on Linux too; --network=host already resolves it, so skip it there.
 	if p.DispatchBrokerAddr != "" && !p.HostNet {
 		argv = append(argv, "--add-host", containerHostGateway+":host-gateway")
 	}
 	return argv
+}
+
+func dockerOOMScoreAdj(role string) (string, bool) {
+	switch role {
+	case roleEngineer:
+		return "250", true
+	case roleDirector, roleSession:
+		return "-250", true
+	default:
+		return "", false
+	}
 }
 
 // proxyBoxAttached reports whether the standing box is among the space-separated
