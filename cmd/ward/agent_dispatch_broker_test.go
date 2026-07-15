@@ -1524,10 +1524,13 @@ func TestDispatchBrokerTokenGate(t *testing.T) {
 	}
 }
 
-func TestDispatchBrokerPanicErrorClassifiesDockerNameConflictAsRequestFailure(t *testing.T) {
-	err := dispatchBrokerPanicError("launch worker", errors.New(`Conflict. The container name "/engineer-codex-ward-786" is already in use`))
+func TestDispatchBrokerPanicErrorClassifiesExit125NameConflictAsRequestFailure(t *testing.T) {
+	err := dispatchBrokerPanicError("launch worker", errors.New(`exit status 125: Conflict. The container name "/engineer-codex-ward-786" is already in use`))
 	if !strings.Contains(err.Error(), "request failure") {
 		t.Fatalf("panic error = %q, want a request failure classification", err)
+	}
+	if !strings.Contains(err.Error(), "exit status 125") {
+		t.Fatalf("panic error = %q, want the exit-125 signal", err)
 	}
 	if !strings.Contains(err.Error(), "already in use") {
 		t.Fatalf("panic error = %q, want the underlying Docker conflict", err)
@@ -1561,9 +1564,9 @@ func TestDispatchPartialLaunchErrorClassifiesAsPartialLaunch(t *testing.T) {
 	}
 }
 
-// TestServeHostDispatchBrokerSurvivesFailedLaunch keeps the listener alive after
-// a request panics with a Docker name-conflict-shaped failure.
-func TestServeHostDispatchBrokerSurvivesFailedLaunch(t *testing.T) {
+// TestServeHostDispatchBrokerSurvivesExit125NameConflict keeps the listener alive
+// after a brokered launch hits Docker's duplicate-name exit-125 refusal.
+func TestServeHostDispatchBrokerSurvivesExit125NameConflict(t *testing.T) {
 	t.Setenv("HOME", t.TempDir())
 	t.Setenv("FORGEJO_TOKEN", "broker-token")
 
@@ -1586,7 +1589,7 @@ func TestServeHostDispatchBrokerSurvivesFailedLaunch(t *testing.T) {
 	dispatchFailedDispatchLaunchHook = func(dispatchBrokerRequest, string, error) bool { return true }
 	dispatchBrokerLaunch = func(context.Context, dispatchBrokerRequest) error {
 		if launches.Add(1) == 1 {
-			panic(errors.New(`Conflict. The container name "/engineer-codex-ward-786" is already in use`))
+			panic(errors.New(`exit status 125: Conflict. The container name "/engineer-codex-ward-786" is already in use`))
 		}
 		return nil
 	}
@@ -1600,6 +1603,12 @@ func TestServeHostDispatchBrokerSurvivesFailedLaunch(t *testing.T) {
 	})
 	if first.OK {
 		t.Fatal("failed launch unexpectedly returned OK")
+	}
+	if !strings.Contains(first.Error, "request failure") {
+		t.Fatalf("first response error = %q, want a launch request failure classification", first.Error)
+	}
+	if !strings.Contains(first.Error, "exit status 125") {
+		t.Fatalf("first response error = %q, want the exit-125 failure detail", first.Error)
 	}
 	if !strings.Contains(first.Error, "already in use") {
 		t.Fatalf("failed launch error = %q, want Docker name conflict", first.Error)
