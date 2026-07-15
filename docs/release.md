@@ -12,6 +12,8 @@ Ward releases are Forgejo-canonical and two-stage ([ward#1117](https://forgejo.c
   draft assets to the public version, and updates install channels under a
   no-cancel concurrency queue: promoted shas release in sequence, never
   overlap-and-cancel.
+- `promote.yml` also refreshes the `ward:release` container image alias before
+  promotion, and `release.yml` verifies that alias resolves before it publishes.
 - The pipeline stages the release on `main` and promotes the prebuilt assets on
   `release`, rather than rebuilding them twice.
 - The GitHub mirror stays a front door, not the source of truth.

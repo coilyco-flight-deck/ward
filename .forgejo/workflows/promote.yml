@@ -57,7 +57,7 @@ jobs:
         run: mkdir -p "$TMPDIR" "$GOTMPDIR" "$GOCACHE" "$GOMODCACHE" && make lint
 
       - id: tag
-        uses: coilysiren/agentic-os/actions/tag-bump@main
+        run: bash scripts/release-tag-bump.sh
 
       - name: Build and publish draft release artifacts
         env:
@@ -119,6 +119,24 @@ jobs:
               sha256sum "$f" | awk '{print $1}' > "${f}.sha256"
             done )
           bash scripts/publish-draft-release.sh
+
+      - name: Publish the ward agent image alias
+        env:
+          TOKEN: ${{ secrets.CI_RELEASE_TOKEN }}
+        run: |
+          set -euo pipefail
+          if [ -z "${TOKEN:-}" ]; then
+            echo "::error::CI_RELEASE_TOKEN not set; cannot publish the ward:release image alias" >&2
+            exit 1
+          fi
+          source_image=forgejo.coilysiren.me/coilyco-flight-deck/agentic-os:latest
+          target_image=forgejo.coilysiren.me/coilyco-flight-deck/ward:release
+          echo "$TOKEN" | docker login forgejo.coilysiren.me -u oauth2 --password-stdin
+          docker pull "$source_image"
+          docker tag "$source_image" "$target_image"
+          docker push "$target_image"
+          docker manifest inspect "$target_image" >/dev/null
+          echo "published ${target_image} from ${source_image}"
 
       - name: Promote main to release (fast-forward only)
         env:

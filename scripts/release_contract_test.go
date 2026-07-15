@@ -40,9 +40,18 @@ func TestReleasePipelineUsesDraftArtifacts(t *testing.T) {
 
 	for _, want := range []string{
 		"draft-${{ github.sha }}",
-		"tag-bump@main",
+		"scripts/release-tag-bump.sh",
 		"main.Version=${TAG}",
 		"scripts/publish-draft-release.sh",
+	} {
+		if !strings.Contains(promote, want) {
+			t.Fatalf("promote workflow should mention %q:\n%s", want, promote)
+		}
+	}
+	for _, want := range []string{
+		"docker tag \"$source_image\" \"$target_image\"",
+		"docker push \"$target_image\"",
+		"docker manifest inspect \"$target_image\" >/dev/null",
 	} {
 		if !strings.Contains(promote, want) {
 			t.Fatalf("promote workflow should mention %q:\n%s", want, promote)
@@ -54,6 +63,23 @@ func TestReleasePipelineUsesDraftArtifacts(t *testing.T) {
 		"promote-draft-assets",
 		"fetched ${name} from ${DRAFT_TAG}",
 		"scripts/forgejo-release-asset.sh",
+	} {
+		if !strings.Contains(release, want) {
+			t.Fatalf("release workflow should mention %q:\n%s", want, release)
+		}
+	}
+	for _, ban := range []string{
+		"coilysiren/agentic-os/actions/tag-bump@main",
+		"coilysiren/agentic-os/actions/create-release@main",
+	} {
+		if strings.Contains(promote, ban) || strings.Contains(release, ban) {
+			t.Fatalf("release workflows should not use external action %q", ban)
+		}
+	}
+	for _, want := range []string{
+		"scripts/release-tag-bump.sh",
+		"scripts/forgejo-create-release.sh",
+		"docker manifest inspect \"$image\" >/dev/null 2>&1",
 	} {
 		if !strings.Contains(release, want) {
 			t.Fatalf("release workflow should mention %q:\n%s", want, release)

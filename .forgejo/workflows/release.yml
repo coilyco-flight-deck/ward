@@ -34,7 +34,16 @@ jobs:
           fetch-depth: 0
 
       - id: tag
-        uses: coilysiren/agentic-os/actions/tag-bump@main
+        run: bash scripts/release-tag-bump.sh
+
+      - name: Verify the ward agent image alias resolves
+        run: |
+          set -euo pipefail
+          image=forgejo.coilysiren.me/coilyco-flight-deck/ward:release
+          if ! docker manifest inspect "$image" >/dev/null 2>&1; then
+            echo "::error::default agent image ${image} does not resolve; promote must publish it first" >&2
+            exit 1
+          fi
 
       - id: notes
         if: ${{ steps.tag.outputs.new_tag != '' }}
@@ -71,14 +80,15 @@ jobs:
             echo "WARD_RELEASE_NOTES_EOF"
           } >> "$GITHUB_OUTPUT"
 
-      - id: create
+      - name: Create the draft Forgejo release
         if: ${{ steps.tag.outputs.new_tag != '' }}
-        uses: coilysiren/agentic-os/actions/create-release@main
-        with:
-          tag: ${{ steps.tag.outputs.new_tag }}
-          name: ${{ steps.tag.outputs.new_tag }}
-          body: ${{ steps.notes.outputs.body }}
-          draft: true
+        env:
+          FORGEJO_API: https://forgejo.coilysiren.me/api/v1/repos/coilyco-flight-deck/ward
+          RELEASE_BODY: ${{ steps.notes.outputs.body }}
+          RELEASE_NAME: ${{ steps.tag.outputs.new_tag }}
+          RELEASE_TAG: ${{ steps.tag.outputs.new_tag }}
+          TOKEN: ${{ github.token }}
+        run: bash scripts/forgejo-create-release.sh
 
       - name: Alert Telegram on main failure
         if: ${{ failure() && github.ref == 'refs/heads/release' }}
