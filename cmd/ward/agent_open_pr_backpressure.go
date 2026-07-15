@@ -23,7 +23,7 @@ type openPRBackpressureError struct {
 func (e *openPRBackpressureError) Error() string {
 	return fmt.Sprintf(
 		"%s: open PR backpressure is engaged: %d open PR branch(es) (limit %d); "+
-			"continue with --branch on an existing PR or wait for the queue to drain",
+			"continue with an existing PR ref like owner/repo!N, or --branch on an existing PR branch, or wait for the queue to drain",
 		e.label, e.openPRs, e.limit,
 	)
 }
@@ -52,7 +52,7 @@ func openPRBackpressureApplies(c *cli.Command, w resolvedWork) bool {
 }
 
 // dispatchBrokerLaunchHasContinuationBranch reports whether the launch argv is
-// already continuing an existing PR branch rather than creating fresh work.
+// already continuing existing PR work rather than creating fresh work.
 func dispatchBrokerLaunchHasContinuationBranch(argv []string) bool {
 	for i := 0; i < len(argv); i++ {
 		switch argv[i] {
@@ -62,6 +62,11 @@ func dispatchBrokerLaunchHasContinuationBranch(argv []string) bool {
 			if i+1 < len(argv) && strings.TrimSpace(argv[i+1]) != "" {
 				return true
 			}
+		}
+	}
+	if len(argv) >= 2 {
+		if ref, err := parseAgentIssueRef(argv[1]); err == nil && ref.MergeRequest {
+			return true
 		}
 	}
 	return false

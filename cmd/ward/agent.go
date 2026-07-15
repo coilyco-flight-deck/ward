@@ -772,8 +772,8 @@ func agentSurfaceFlags() []cli.Flag {
 	flags = append(flags,
 		// --workflow picks the landing policy (ward#508).
 		workflowFlag(),
-		// --branch is hidden (ward#362): the issue-<N> default is the intelligent choice.
-		&cli.StringFlag{Name: "branch", Hidden: true, Usage: "feature branch to create inside the clone (default: issue-<N>)"},
+		// --branch remains a supported continuation escape hatch for existing PR work.
+		&cli.StringFlag{Name: "branch", Usage: "feature branch to create inside the clone (default: issue-<N>); use it to continue an existing PR branch explicitly"},
 		&cli.StringSliceFlag{Name: "repo", Usage: "grant the agent an additional writable repo to clone + operate against (owner/name; repeatable). Cloned as a full feature copy under /workspace alongside the issue's repo (ward#230, ward#280)."},
 		&cli.StringFlag{Name: "details", Usage: "extra operator instructions woven into the seeded prompt + pre-flight read (overrides the issue text on conflict)"},
 		// --review-class tiers the pre-landing review panel and rides in as

@@ -7,11 +7,11 @@ doc_goal: Give a reader the canonical, code-generated tree of every ward agent c
 
 ## `ward agent`
 
-- --harness, --agent, --workflow, (hidden) --branch, --repo, --details, --review-class, --skip-review, --no-review-gate, --github, --config, (hidden) --image, (hidden) --tag, (hidden) --ward-source, (hidden) --ward-version, (hidden) --allow-ward-downgrade, --print, (hidden) --no-pull, --override-reservation, --override-capacity, --skip-preflight, --no-preflight, (hidden) --skip-host-preflight, (hidden) --quiet-seed, --instructions-file, (hidden) --pr
+- --harness, --agent, --workflow, --branch, --repo, --details, --review-class, --skip-review, --no-review-gate, --github, --config, (hidden) --image, (hidden) --tag, (hidden) --ward-source, (hidden) --ward-version, (hidden) --allow-ward-downgrade, --print, (hidden) --no-pull, --override-reservation, --override-capacity, --skip-preflight, --no-preflight, (hidden) --skip-host-preflight, (hidden) --quiet-seed, --instructions-file, (hidden) --pr
 
 ## `ward agent engineer`
 
-- --harness, --agent, --workflow, (hidden) --branch, --repo, --details, --review-class, --skip-review, --no-review-gate, --github, --config, (hidden) --image, (hidden) --tag, (hidden) --ward-source, (hidden) --ward-version, (hidden) --allow-ward-downgrade, --print, (hidden) --no-pull, --override-reservation, --override-capacity, --skip-preflight, --no-preflight, (hidden) --skip-host-preflight, (hidden) --quiet-seed, --instructions-file, (hidden) --pr
+- --harness, --agent, --workflow, --branch, --repo, --details, --review-class, --skip-review, --no-review-gate, --github, --config, (hidden) --image, (hidden) --tag, (hidden) --ward-source, (hidden) --ward-version, (hidden) --allow-ward-downgrade, --print, (hidden) --no-pull, --override-reservation, --override-capacity, --skip-preflight, --no-preflight, (hidden) --skip-host-preflight, (hidden) --quiet-seed, --instructions-file, (hidden) --pr
 
 ## `ward agent director`
 

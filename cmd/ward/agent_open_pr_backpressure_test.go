@@ -31,6 +31,7 @@ func TestDispatchBrokerLaunchHasContinuationBranch(t *testing.T) {
 		want bool
 	}{
 		{"none", []string{"engineer", "coilyco-flight-deck/ward#1"}, false},
+		{"pr-ref", []string{"engineer", "coilyco-flight-deck/ward!1"}, true},
 		{"branch", []string{"engineer", "coilyco-flight-deck/ward#1", "--branch", "repair/branch"}, true},
 		{"pr", []string{"engineer", "coilyco-flight-deck/ward#1", "--pr"}, true},
 	} {
@@ -85,6 +86,9 @@ func TestLaunchOpenPRBackpressureCheck(t *testing.T) {
 	}
 	if got := err.Error(); got == "" || !containsAll(got, []string{"7 open PR branch", "limit 6"}) {
 		t.Fatalf("backpressure error = %q", got)
+	}
+	if got := err.Error(); !containsAll(got, []string{"owner/repo!N", "--branch"}) {
+		t.Fatalf("backpressure error should mention documented continuation forms, got %q", got)
 	}
 	if err := r.launchOpenPRBackpressureCheck(context.Background(), "ward agent engineer", "coilyco-flight-deck/ward", true); err != nil {
 		t.Fatalf("launchOpenPRBackpressureCheck() with continuation branch = %v", err)
