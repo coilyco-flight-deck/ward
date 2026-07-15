@@ -1,25 +1,16 @@
 package main
 
 import (
-	"os"
-	"path/filepath"
 	"strings"
 	"testing"
 	"time"
 )
 
 func TestAgentRunBudgetNote(t *testing.T) {
-	dir := writeBundleFixture(t)
-	if err := os.WriteFile(filepath.Join(dir, bundleFixtureDefaultsPath), []byte(`
-defaults {
-    agent-reservation-ttl "3h"
-}
-`), 0o644); err != nil {
-		t.Fatalf("override bundle defaults: %v", err)
-	}
-	t.Setenv(wardConfigRefEnv, "file://"+dir)
+	t.Setenv(wardConfigRefEnv, "file://"+writeBundleFixture(t))
 	note := agentRunBudgetNote(roleEngineer)
-	for _, want := range []string{"Run budget", "execution limit: 90m", "reservation TTL: 3h"} {
+	wantTTL := conciseDuration(agentReservationTTL())
+	for _, want := range []string{"Run budget", "execution limit: 90m", "reservation TTL: " + wantTTL} {
 		if !strings.Contains(note, want) {
 			t.Fatalf("budget note missing %q\n got: %s", want, note)
 		}

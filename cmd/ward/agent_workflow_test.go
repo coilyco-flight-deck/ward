@@ -315,7 +315,6 @@ func TestWorkflowEnvAndLabels(t *testing.T) {
 func TestAgentWorkflowSmartDefaults(t *testing.T) {
 	dir := t.TempDir()
 	defaultsBody := `defaults {
-    agent-reservation-ttl "3h"
 }
 workflow default="merge-remote-main" {
     repo "coilyco-flight-deck/ward" workflow="pull-request-and-merge"

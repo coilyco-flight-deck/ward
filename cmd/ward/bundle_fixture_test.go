@@ -7,6 +7,7 @@ import (
 	"path/filepath"
 	"strings"
 	"testing"
+	"time"
 )
 
 const (
@@ -76,28 +77,6 @@ roles {
     }
 }
 `,
-		bundleFixtureDefaultsPath: `
-defaults {
-    agent-reservation-ttl "3h"
-    agent-reservation-recheck-max "9s"
-    agent-reap-idle "90m"
-    agent-reap-max-cpu "7.5"
-    container-memory-limit "3g"
-    engineer-container-limit "17"
-    engineer-repo-working-limit "3"
-    engineer-open-pr-branch-limit "8"
-    director-max-parallel "13"
-    director-limit "77"
-    director-poll-interval "45s"
-    reviewer-timeout "11m"
-    config-bundle-ttl "900"
-    container-assets-ttl "3h"
-    container-read-only-extra-repo-ttl "48h"
-    container-reap-keep "12"
-    agent-workflow default="merge-remote-main" {
-    }
-}
-`,
 		bundleFixtureReposPath: `
 repos {
     repo-authority default=forgejo {
@@ -150,6 +129,22 @@ topology {
 		execIndex++
 		files[fmt.Sprintf("exec/%02d.kdl", execIndex)] = string(src)
 	}
+	files[bundleFixtureDefaultsPath] = canonicalSmartDefaultsBlock(t, func(defs *smartDefaults) {
+		defs.reservationRecheckDefaultMax = 9 * time.Second
+		defs.agentReapIdleDefault = 90 * time.Minute
+		defs.agentReapMaxCPUDefault = 7.5
+		defs.containerMemoryLimit = "3g"
+		defs.engineerContainerLimit = 17
+		defs.engineerOpenPRBranchLimit = 8
+		defs.directorMaxParallel = 13
+		defs.directorLimit = 77
+		defs.directorPollInterval = 45 * time.Second
+		defs.reviewerTimeout = 11 * time.Minute
+		defs.configBundleTTL = 15 * time.Minute
+		defs.containerAssetsTTL = 3 * time.Hour
+		defs.containerReadOnlyExtraRepoTTL = 48 * time.Hour
+		defs.containerReapKeep = 12
+	})
 
 	for name, body := range files {
 		writeBundleFixtureFile(t, dir, name, body)
@@ -184,10 +179,10 @@ roles {
 }
 `),
 		strings.TrimSpace(`
-defaults {
-    agent-reservation-ttl "2h"
-    agent-reservation-recheck-max "9s"
-}
+` + canonicalSmartDefaultsBlock(t, func(defs *smartDefaults) {
+			defs.agentReservationTTL = 2 * time.Hour
+			defs.reservationRecheckDefaultMax = 9 * time.Second
+		}) + `
 `),
 		strings.TrimSpace(`
 repos {
@@ -257,27 +252,22 @@ roles {
     }
 }
 `,
-		`
-defaults {
-    agent-reservation-ttl "3h"
-    agent-reservation-recheck-max "9s"
-    agent-reap-idle "90m"
-    agent-reap-max-cpu "7.5"
-    container-memory-limit "3g"
-    engineer-container-limit "17"
-    engineer-open-pr-branch-limit "8"
-    director-max-parallel "13"
-    director-limit "77"
-    director-poll-interval "45s"
-    reviewer-timeout "11m"
-    config-bundle-ttl "900"
-    container-assets-ttl "3h"
-    container-read-only-extra-repo-ttl "48h"
-    container-reap-keep "12"
-    agent-workflow default="merge-remote-main" {
-    }
-}
-`,
+		canonicalSmartDefaultsBlock(t, func(defs *smartDefaults) {
+			defs.reservationRecheckDefaultMax = 9 * time.Second
+			defs.agentReapIdleDefault = 90 * time.Minute
+			defs.agentReapMaxCPUDefault = 7.5
+			defs.containerMemoryLimit = "3g"
+			defs.engineerContainerLimit = 17
+			defs.engineerOpenPRBranchLimit = 8
+			defs.directorMaxParallel = 13
+			defs.directorLimit = 77
+			defs.directorPollInterval = 45 * time.Second
+			defs.reviewerTimeout = 11 * time.Minute
+			defs.configBundleTTL = 15 * time.Minute
+			defs.containerAssetsTTL = 3 * time.Hour
+			defs.containerReadOnlyExtraRepoTTL = 48 * time.Hour
+			defs.containerReapKeep = 12
+		}),
 		`
 repos {
     repo-authority default=forgejo {
@@ -315,4 +305,81 @@ func writeBundleFixtureFile(t *testing.T, dir, name, body string) {
 	if err := os.WriteFile(full, []byte(strings.TrimSpace(body)+"\n"), 0o644); err != nil {
 		t.Fatalf("write %s: %v", name, err)
 	}
+}
+
+func canonicalSmartDefaultsBlock(t *testing.T, mutate func(*smartDefaults)) string {
+	t.Helper()
+	defs := canonicalSmartDefaults(t)
+	if mutate != nil {
+		mutate(&defs)
+	}
+	return renderSmartDefaultsBlock(defs)
+}
+
+func renderSmartDefaultsBlock(defs smartDefaults) string {
+	var b strings.Builder
+	b.WriteString("defaults")
+	b.WriteString(" {\n")
+	if defs.agentReservationTTL > 0 {
+		fmt.Fprintf(&b, "    agent-reservation-ttl %q\n", conciseDuration(defs.agentReservationTTL))
+	}
+	if defs.reservationRecheckDefaultMax > 0 {
+		fmt.Fprintf(&b, "    agent-reservation-recheck-max %q\n", conciseDuration(defs.reservationRecheckDefaultMax))
+	}
+	if defs.agentReapIdleDefault > 0 {
+		fmt.Fprintf(&b, "    agent-reap-idle %q\n", conciseDuration(defs.agentReapIdleDefault))
+	}
+	if defs.agentReapMaxCPUDefault > 0 {
+		fmt.Fprintf(&b, "    agent-reap-max-cpu %q\n", fmt.Sprintf("%g", defs.agentReapMaxCPUDefault))
+	}
+	if defs.agentImage != "" {
+		fmt.Fprintf(&b, "    agent-image %q\n", defs.agentImage)
+	}
+	if defs.agentTag != "" {
+		fmt.Fprintf(&b, "    agent-tag %q\n", defs.agentTag)
+	}
+	if defs.containerMemoryLimit != "" {
+		fmt.Fprintf(&b, "    container-memory-limit %q\n", defs.containerMemoryLimit)
+	}
+	if defs.engineerContainerLimit > 0 {
+		fmt.Fprintf(&b, "    engineer-container-limit %q\n", fmt.Sprintf("%d", defs.engineerContainerLimit))
+	}
+	if defs.engineerRepoWorkingLimit > 0 {
+		fmt.Fprintf(&b, "    engineer-repo-working-limit %q\n", fmt.Sprintf("%d", defs.engineerRepoWorkingLimit))
+	}
+	if defs.engineerOpenPRBranchLimit > 0 {
+		fmt.Fprintf(&b, "    engineer-open-pr-branch-limit %q\n", fmt.Sprintf("%d", defs.engineerOpenPRBranchLimit))
+	}
+	if defs.directorMaxParallel > 0 {
+		fmt.Fprintf(&b, "    director-max-parallel %q\n", fmt.Sprintf("%d", defs.directorMaxParallel))
+	}
+	if defs.directorLimit > 0 {
+		fmt.Fprintf(&b, "    director-limit %q\n", fmt.Sprintf("%d", defs.directorLimit))
+	}
+	if defs.directorPollInterval > 0 {
+		fmt.Fprintf(&b, "    director-poll-interval %q\n", conciseDuration(defs.directorPollInterval))
+	}
+	if defs.reviewerTimeout > 0 {
+		fmt.Fprintf(&b, "    reviewer-timeout %q\n", conciseDuration(defs.reviewerTimeout))
+	}
+	if defs.configBundleTTL > 0 {
+		fmt.Fprintf(&b, "    config-bundle-ttl %q\n", conciseDuration(defs.configBundleTTL))
+	}
+	if defs.containerAssetsTTL > 0 {
+		fmt.Fprintf(&b, "    container-assets-ttl %q\n", conciseDuration(defs.containerAssetsTTL))
+	}
+	if defs.containerReadOnlyExtraRepoTTL > 0 {
+		fmt.Fprintf(&b, "    container-read-only-extra-repo-ttl %q\n", conciseDuration(defs.containerReadOnlyExtraRepoTTL))
+	}
+	if defs.containerReapKeep > 0 {
+		fmt.Fprintf(&b, "    container-reap-keep %q\n", fmt.Sprintf("%d", defs.containerReapKeep))
+	}
+	if defs.agentWorkflowDefault != "" {
+		fmt.Fprintf(&b, "    agent-workflow default=%s {\n    }\n", defs.agentWorkflowDefault)
+	}
+	if defs.prMergeStyle != "" {
+		fmt.Fprintf(&b, "    pr-merge-style %q\n", defs.prMergeStyle)
+	}
+	b.WriteString("}\n")
+	return b.String()
 }

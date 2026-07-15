@@ -2021,24 +2021,9 @@ func TestRunAgentTaskDirectRoutesThroughBrokerOnReadonlySurface(t *testing.T) {
 	t.Setenv("WARD_CONTAINER_NAME", "director-codex-host")
 
 	bundleDir := t.TempDir()
-	defaultsBody := `defaults {
-    agent-reservation-ttl "3h"
-    agent-reservation-recheck-max "15s"
-    agent-reap-idle "1h"
-    agent-reap-max-cpu "5.0"
-    container-memory-limit "2g"
-    engineer-container-limit "12"
-    engineer-repo-working-limit "3"
-    engineer-open-pr-branch-limit "6"
-    director-max-parallel "10"
-    director-limit "50"
-    director-poll-interval "30s"
-    reviewer-timeout "8m"
-    config-bundle-ttl "600s"
-    container-assets-ttl "1h"
-    container-read-only-extra-repo-ttl "24h"
-    container-reap-keep "10"
-}
+	defaultsBody := canonicalSmartDefaultsBlock(t, func(defs *smartDefaults) {
+		defs.directorMaxParallel = 10
+	}) + `
 workflow default=merge-remote-main {
 }
 `

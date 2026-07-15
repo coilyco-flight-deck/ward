@@ -132,10 +132,6 @@ func TestParseAgentIssueRef(t *testing.T) {
 
 func TestParseAgentIssueRefUsesRepoAuthorityPolicy(t *testing.T) {
 	dir := t.TempDir()
-	defaultsBody := `defaults {
-    agent-reservation-ttl "3h"
-}
-`
 	reposBody := `repos {
     repo-authority default=forgejo {
         trusted-owner "coilysiren"
@@ -144,9 +140,6 @@ func TestParseAgentIssueRefUsesRepoAuthorityPolicy(t *testing.T) {
         repo "coilyco-flight-deck/*" forge=forgejo
     }
 }`
-	if err := os.WriteFile(filepath.Join(dir, bundleFixtureDefaultsPath), []byte(defaultsBody), 0o644); err != nil {
-		t.Fatalf("write defaults bundle: %v", err)
-	}
 	if err := os.WriteFile(filepath.Join(dir, bundleFixtureReposPath), []byte(reposBody), 0o644); err != nil {
 		t.Fatalf("write repos bundle: %v", err)
 	}
@@ -550,10 +543,6 @@ func TestOwnerAllowed(t *testing.T) {
 
 func TestResolveAgentIssueRefUsesRepoAuthorityPolicy(t *testing.T) {
 	dir := t.TempDir()
-	defaultsBody := `defaults {
-    agent-reservation-ttl "3h"
-}
-`
 	reposBody := `repos {
     repo-authority default=forgejo {
         trusted-owner "coilysiren"
@@ -562,9 +551,6 @@ func TestResolveAgentIssueRefUsesRepoAuthorityPolicy(t *testing.T) {
         repo "coilyco-flight-deck/*" forge=forgejo
     }
 }`
-	if err := os.WriteFile(filepath.Join(dir, bundleFixtureDefaultsPath), []byte(defaultsBody), 0o644); err != nil {
-		t.Fatalf("write defaults bundle: %v", err)
-	}
 	if err := os.WriteFile(filepath.Join(dir, bundleFixtureReposPath), []byte(reposBody), 0o644); err != nil {
 		t.Fatalf("write repos bundle: %v", err)
 	}
@@ -1177,7 +1163,6 @@ func TestAgentImageFlagsCarryEnvSources(t *testing.T) {
 func TestAgentImageFlagsUseSmartDefaults(t *testing.T) {
 	dir := t.TempDir()
 	defaultsBody := `smart-defaults {
-    agent-reservation-ttl "3h"
     agent-image "ghcr.io/example/ward-agent"
     agent-tag "2026.07"
 }

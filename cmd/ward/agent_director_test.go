@@ -762,9 +762,6 @@ func TestDirectorIssueScopeUsesOnlyTheReferencedIssue(t *testing.T) {
 	t.Setenv("FORGEJO_TOKEN", "secret")
 
 	bundleDir := t.TempDir()
-	if err := os.WriteFile(filepath.Join(bundleDir, "defaults.kdl"), []byte("defaults {\n    agent-reservation-ttl \"3h\"\n}\n"), 0o644); err != nil {
-		t.Fatal(err)
-	}
 	if err := os.WriteFile(filepath.Join(bundleDir, "repos.kdl"), []byte("repos {\n  repo-authority default=forgejo {\n    trusted-owner coilyco-flight-deck\n  }\n}\n"), 0o644); err != nil {
 		t.Fatal(err)
 	}
@@ -906,9 +903,6 @@ func TestDirectorScopeSkipsBurndownReposBeforeDispatch(t *testing.T) {
 	t.Setenv("WARD_CONFIG_REF", "file://"+t.TempDir())
 
 	bundleDir := t.TempDir()
-	if err := os.WriteFile(filepath.Join(bundleDir, "defaults.kdl"), []byte("defaults {\n    agent-reservation-ttl \"3h\"\n}\n"), 0o644); err != nil {
-		t.Fatal(err)
-	}
 	if err := os.WriteFile(filepath.Join(bundleDir, "repos.kdl"), []byte(`repos {
     repo-authority default=forgejo {
         trusted-owner coilyco-flight-deck
@@ -994,9 +988,6 @@ func TestDirectorPlainScopeDoesNotApplyBurndownFilter(t *testing.T) {
 	t.Setenv("HOME", t.TempDir())
 
 	bundleDir := t.TempDir()
-	if err := os.WriteFile(filepath.Join(bundleDir, "defaults.kdl"), []byte("defaults {\n    agent-reservation-ttl \"3h\"\n}\n"), 0o644); err != nil {
-		t.Fatal(err)
-	}
 	if err := os.WriteFile(filepath.Join(bundleDir, "repos.kdl"), []byte(`repos {
     repo-authority default=forgejo {
         trusted-owner coilyco-flight-deck
@@ -1035,9 +1026,6 @@ func TestResolveDirectorIssueRefFailsClosedAndDoesNotWiden(t *testing.T) {
 	t.Setenv("FORGEJO_TOKEN", "secret")
 
 	bundleDir := t.TempDir()
-	if err := os.WriteFile(filepath.Join(bundleDir, "defaults.kdl"), []byte("defaults {\n    agent-reservation-ttl \"3h\"\n}\n"), 0o644); err != nil {
-		t.Fatal(err)
-	}
 	if err := os.WriteFile(filepath.Join(bundleDir, "repos.kdl"), []byte("repos {\n  repo-authority default=forgejo {\n    trusted-owner coilyco-flight-deck\n  }\n}\n"), 0o644); err != nil {
 		t.Fatal(err)
 	}

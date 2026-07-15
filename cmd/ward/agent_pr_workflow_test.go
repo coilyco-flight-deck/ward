@@ -791,7 +791,6 @@ func TestPRWorkflowMergeExecUsesRepoDefaultStyle(t *testing.T) {
 func TestPRWorkflowMergeExecUsesSmartDefaultStyle(t *testing.T) {
 	dir := t.TempDir()
 	defaultsBody := `defaults {
-    agent-reservation-ttl "3h"
     pr-merge-style "squash"
 }`
 	reposBody := `repos {

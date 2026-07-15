@@ -143,7 +143,7 @@ func TestConfigBundleTTL(t *testing.T) {
 		}
 	}
 	if got := configBundleTTL(env("")); got != 600*time.Second {
-		t.Errorf("default TTL = %v, want 600s", got)
+		t.Errorf("default TTL = %v, want %v", got, configBundleTTLDefault())
 	}
 	if got := configBundleTTL(env("30")); got != 30*time.Second {
 		t.Errorf("TTL(30) = %v, want 30s", got)
@@ -152,7 +152,7 @@ func TestConfigBundleTTL(t *testing.T) {
 		t.Errorf("TTL(0) = %v, want 0", got)
 	}
 	if got := configBundleTTL(env("junk")); got != 600*time.Second {
-		t.Errorf("TTL(junk) = %v, want the 600s default", got)
+		t.Errorf("TTL(junk) = %v, want the default %v", got, configBundleTTLDefault())
 	}
 }
 
