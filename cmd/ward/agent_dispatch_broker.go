@@ -593,7 +593,9 @@ func (r *Runner) commentFailedDispatch(ctx context.Context, cl Tracker, mode con
 	if req.Role == roleEngineer {
 		container = issueScopedContainerName(req.Role, mode, targetRepo{Owner: ref.Owner, Name: ref.Repo}, ref.Number)
 	}
-	r.stopFailedDispatchContainer(ctx, mode, ref, req.Role, container)
+	if !isDockerNameConflictError(launchErr) {
+		r.stopFailedDispatchContainer(ctx, mode, ref, req.Role, container)
+	}
 	if err := cl.UnlockIssue(ctx, ref.Owner, ref.Repo, ref.Number); err != nil && !errors.Is(err, errForgeLockUnsupported) {
 		fmt.Fprintf(os.Stderr, "ward dispatch broker: could not unlock issue %s after failed dispatch: %v\n", ref, err)
 	}
@@ -636,6 +638,16 @@ func (r *Runner) stopFailedDispatchContainer(ctx context.Context, mode container
 		return
 	}
 	fmt.Fprintf(os.Stderr, "ward dispatch broker: stopped failed dispatch container %s\n", name)
+}
+
+// isDockerNameConflictError spots Docker's duplicate-name refusal.
+// The live container already owns the name, so the failure handler must not stop it.
+func isDockerNameConflictError(err error) bool {
+	if err == nil {
+		return false
+	}
+	msg := strings.ToLower(err.Error())
+	return strings.Contains(msg, "container name") && strings.Contains(msg, "already in use")
 }
 
 // commentDeferredReleaseAssetsDispatch clears the stale reservation after a

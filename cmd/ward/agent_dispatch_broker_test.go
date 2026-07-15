@@ -1582,6 +1582,51 @@ func TestCommentFailedDispatch(t *testing.T) {
 	}
 }
 
+// TestCommentFailedDispatchSkipsStopOnDockerNameConflict keeps the live container intact.
+// Docker's duplicate-name refusal must not stop the existing run.
+func TestCommentFailedDispatchSkipsStopOnDockerNameConflict(t *testing.T) {
+	dir := t.TempDir()
+	logPath := filepath.Join(dir, "docker.log")
+	script := filepath.Join(dir, "docker")
+	body := "#!/bin/sh\n" +
+		"printf '%s\\n' \"$*\" >> \"" + logPath + "\"\n" +
+		"exit 0\n"
+	if err := os.WriteFile(script, []byte(body), 0o755); err != nil { //nolint:gosec
+		t.Fatalf("write fake docker: %v", err)
+	}
+
+	r := &Runner{Runner: &shell.Runner{
+		Stdout:  &bytes.Buffer{},
+		Stderr:  &bytes.Buffer{},
+		Resolve: func(string) (string, error) { return script, nil },
+	}}
+	ref := agentIssueRef{Owner: "coilyco-flight-deck", Repo: "ward", Number: 689}
+	f := &fakeLockForge{
+		listComments: []issueComment{
+			{ID: 11, Body: reservationCommentBody(modeCodex, "engineer-codex-ward-689", "host", time.Now().Add(-time.Minute), "", nil), CreatedAt: time.Now().Add(-time.Minute)},
+		},
+	}
+	req := dispatchBrokerRequest{
+		Role: "engineer",
+		Argv: []string{"engineer", ref.String(), "--harness", "codex", "--skip-preflight"},
+	}
+
+	r.commentFailedDispatch(context.Background(), f, modeCodex, ref, req, "/tmp/ward/dispatch.log", errors.New(`Conflict. The container name "/engineer-codex-ward-689" is already in use`))
+
+	if f.unlocked != 1 {
+		t.Fatalf("unlockIssue called %d times, want 1", f.unlocked)
+	}
+	if len(f.comments) != 0 {
+		t.Fatalf("commentIssue called %d times, want 0", len(f.comments))
+	}
+	if got := fmt.Sprintf("%v", f.deleted); got != "[11]" {
+		t.Fatalf("deleted comments = %s, want [11]", got)
+	}
+	if _, err := os.Stat(logPath); !os.IsNotExist(err) {
+		t.Fatalf("docker stop was invoked for the conflict case, log = %q", readFile(t, logPath))
+	}
+}
+
 // TestCommentReservationConflictDispatch pins ward#1149: a collision defers without
 // touching the live hold (no release marker, no unlock) and leaves the sweep signal.
 func TestCommentReservationConflictDispatch(t *testing.T) {
