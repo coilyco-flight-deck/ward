@@ -179,8 +179,8 @@ func prWorkflowMergeExec(ctx context.Context, cl *forgejoClient, role, owner, re
 	if err := prWorkflowPermitted(role, wf, prOpMerge); err != nil {
 		return "", err
 	}
-	if merged, merr := cl.PullRequestMerged(ctx, owner, repo, index); merr == nil && merged {
-		return fmt.Sprintf("%s/%s#%d is already merged\n", owner, repo, index), nil
+	if note, ok, merr := prWorkflowAlreadyMergedOrSameTree(ctx, cl, owner, repo, index, pr.Base.Ref, pr.HeadSHA()); merr == nil && ok {
+		return note, nil
 	}
 	if strings.ToLower(strings.TrimSpace(pr.State)) != "open" {
 		return "", fmt.Errorf("pr merge: %s/%s#%d is %s, not open", owner, repo, index, pr.State)
@@ -210,6 +210,59 @@ func prWorkflowMergeExec(ctx context.Context, cl *forgejoClient, role, owner, re
 	}
 	return fmt.Sprintf("merged %s/%s#%d (role %s, workflow %s, head %s, status %s); %s\n",
 		owner, repo, index, role, wf.orDefault(), head, status.Status.summary(), "merged-state check: merged"), nil
+}
+
+func prWorkflowAlreadyMergedOrSameTree(ctx context.Context, cl *forgejoClient, owner, repo string, index int, baseRef, headSHA string) (string, bool, error) {
+	merged, err := cl.PullRequestMerged(ctx, owner, repo, index)
+	if err != nil {
+		return "", false, err
+	}
+	if merged {
+		return fmt.Sprintf("%s/%s#%d already merged, no action\n", owner, repo, index), true, nil
+	}
+	headSHA = strings.TrimSpace(headSHA)
+	if headSHA == "" {
+		return "", false, nil
+	}
+	if note, ok := prWorkflowSameTreeNoAction(ctx, cl, owner, repo, index, baseRef, headSHA); ok {
+		return note, true, nil
+	}
+	return "", false, nil
+}
+
+func prWorkflowSameTreeNoAction(ctx context.Context, cl *forgejoClient, owner, repo string, index int, baseRef, headSHA string) (string, bool) {
+	baseSHA, ok := prWorkflowBaseCommitSHA(ctx, cl, owner, repo, baseRef)
+	if !ok || baseSHA == "" || strings.EqualFold(baseSHA, headSHA) {
+		return "", false
+	}
+	headTree, ok := prWorkflowCommitTreeSHA(ctx, cl, owner, repo, headSHA)
+	if !ok || headTree == "" {
+		return "", false
+	}
+	baseTree, ok := prWorkflowCommitTreeSHA(ctx, cl, owner, repo, baseSHA)
+	if !ok {
+		return "", false
+	}
+	if headTree == baseTree {
+		return fmt.Sprintf("%s/%s#%d already merged, no action\n", owner, repo, index), true
+	}
+	return "", false
+}
+
+func prWorkflowBaseCommitSHA(ctx context.Context, cl *forgejoClient, owner, repo, baseRef string) (string, bool) {
+	branch, err := cl.GetBranch(ctx, owner, repo, strings.TrimSpace(baseRef))
+	if err != nil {
+		return "", false
+	}
+	return strings.TrimSpace(branch.Commit.ID), true
+}
+
+func prWorkflowCommitTreeSHA(ctx context.Context, cl *forgejoClient, owner, repo, sha string) (string, bool) {
+	tree, err := cl.GetCommitTreeSHA(ctx, owner, repo, sha)
+	if err != nil {
+		return "", false
+	}
+	return tree, true
 }
 
 func prHasEmptyDiff(pr *forgejoPullRequest) bool {

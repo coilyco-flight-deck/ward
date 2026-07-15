@@ -173,6 +173,8 @@ type prWorkflowFakeForge struct {
 	allowFastForwardOnlyMerge     bool
 	allowRebase                   bool
 	allowRebaseExplicit           bool
+	branchCommitSHA               string
+	commitTrees                   map[string]string
 	mergeResponses                []int
 	statusFailureAfterMergeCalls  int
 	merged                        bool
@@ -333,7 +335,25 @@ func (f *prWorkflowFakeForge) server(t *testing.T) *httptest.Server {
 		}
 	})
 	mux.HandleFunc("/api/v1/repos/coilyco-flight-deck/ward/branches/main", func(w http.ResponseWriter, _ *http.Request) {
-		_, _ = w.Write([]byte(`{"name":"main","protected":true,"enable_status_check":true,"status_check_contexts":["test"]}`))
+		commitID := f.branchCommitSHA
+		if commitID == "" {
+			commitID = "basesha"
+		}
+		_, _ = w.Write([]byte(`{"name":"main","protected":true,"enable_status_check":true,"status_check_contexts":["test"],"commit":{"id":` + jsonString(commitID) + `}}`))
+	})
+	mux.HandleFunc("/api/v1/repos/coilyco-flight-deck/ward/commits/", func(w http.ResponseWriter, r *http.Request) {
+		sha := strings.TrimPrefix(r.URL.Path, "/api/v1/repos/coilyco-flight-deck/ward/commits/")
+		if sha == "" {
+			w.WriteHeader(http.StatusNotFound)
+			return
+		}
+		tree := sha
+		if f.commitTrees != nil {
+			if got, ok := f.commitTrees[sha]; ok {
+				tree = got
+			}
+		}
+		_, _ = w.Write([]byte(`{"tree":{"sha":` + jsonString(tree) + `}}`))
 	})
 	// Per-context state rides the `status` key on live Forgejo (gitea-compat),
 	// not `state` - the fake serves the live shape to pin effectiveState.
@@ -407,6 +427,63 @@ func TestPRWorkflowMergeExecEngineerSelfMerge(t *testing.T) {
 	}
 	if fake.mergeDo != "merge" {
 		t.Fatalf("merge do = %q, want merge", fake.mergeDo)
+	}
+}
+
+// TestPRWorkflowMergeExecAlreadyMergedNoAction pins the merged-state shortcut:
+// once Forgejo reports the PR merged, ward must stop without touching the merge endpoint.
+func TestPRWorkflowMergeExecAlreadyMergedNoAction(t *testing.T) {
+	fake := &prWorkflowFakeForge{
+		prBody:            "closes #6\n\nward.workflow: pull-request-and-merge\n",
+		combinedState:     "success",
+		contextState:      "success",
+		defaultMergeStyle: "merge",
+		allowMergeCommits: true,
+		merged:            true,
+	}
+	srv := fake.server(t)
+	defer srv.Close()
+	cl := &forgejoClient{baseURL: srv.URL, token: "secret"}
+	out, err := prWorkflowMergeExec(context.Background(), cl, roleEngineer, "coilyco-flight-deck", "ward", 7, "")
+	if err != nil {
+		t.Fatalf("prWorkflowMergeExec: %v", err)
+	}
+	if fake.mergeCalls != 0 {
+		t.Fatalf("merge calls = %d, want 0", fake.mergeCalls)
+	}
+	if !strings.Contains(out, "already merged, no action") {
+		t.Fatalf("merge output = %q, want already-merged no-op", out)
+	}
+}
+
+// TestPRWorkflowMergeExecSkipsSameTreeAfterPRMerge pins the tree-equality
+// fallback: if the PR head tree is already in main, the worker must not merge again.
+func TestPRWorkflowMergeExecSkipsSameTreeAfterPRMerge(t *testing.T) {
+	fake := &prWorkflowFakeForge{
+		prBody:            "closes #6\n\nward.workflow: pull-request-and-merge\n",
+		prState:           "open",
+		combinedState:     "success",
+		contextState:      "success",
+		defaultMergeStyle: "merge",
+		allowMergeCommits: true,
+		branchCommitSHA:   "basesha",
+		commitTrees: map[string]string{
+			"headsha": "tree-sha",
+			"basesha": "tree-sha",
+		},
+	}
+	srv := fake.server(t)
+	defer srv.Close()
+	cl := &forgejoClient{baseURL: srv.URL, token: "secret"}
+	out, err := prWorkflowMergeExec(context.Background(), cl, roleEngineer, "coilyco-flight-deck", "ward", 7, "")
+	if err != nil {
+		t.Fatalf("prWorkflowMergeExec: %v", err)
+	}
+	if fake.mergeCalls != 0 {
+		t.Fatalf("merge calls = %d, want 0", fake.mergeCalls)
+	}
+	if !strings.Contains(out, "already merged, no action") {
+		t.Fatalf("merge output = %q, want already-merged no-op", out)
 	}
 }
 

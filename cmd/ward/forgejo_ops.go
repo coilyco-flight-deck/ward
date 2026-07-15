@@ -56,6 +56,12 @@ type forgejoRepositoryMergeSettings struct {
 	DefaultDeleteBranchAfterMerge bool   `json:"default_delete_branch_after_merge"`
 }
 
+type forgejoRepoCommit struct {
+	Tree struct {
+		SHA string `json:"sha"`
+	} `json:"tree"`
+}
+
 func (r forgejoRepositoryMergeSettings) allowedMergeStyles() []string {
 	allowed := make([]string, 0, 5)
 	if r.AllowMergeCommits {
@@ -752,6 +758,44 @@ func (c *forgejoClient) GetBranch(ctx context.Context, owner, repo, name string)
 		return nil, fmt.Errorf("forgejo: parse branch %s/%s@%s from %s after %d byte(s): %s: %w", owner, repo, name, resp.Status, len(data), responseSnippet(data), err)
 	}
 	return &branch, nil
+}
+
+func (c *forgejoClient) GetCommitTreeSHA(ctx context.Context, owner, repo, sha string) (string, error) {
+	baseURL := strings.TrimRight(c.baseURL, "/")
+	if baseURL == "" {
+		baseURL = forgejoBaseURL
+	}
+	token, err := c.apiToken(ctx)
+	if err != nil {
+		return "", err
+	}
+	endpoint := fmt.Sprintf("%s/api/v1/repos/%s/%s/commits/%s", baseURL, url.PathEscape(owner), url.PathEscape(repo), url.PathEscape(strings.TrimSpace(sha)))
+	req, err := http.NewRequestWithContext(ctx, http.MethodGet, endpoint, nil)
+	if err != nil {
+		return "", err
+	}
+	req.Header.Set("Authorization", "token "+token)
+	req.Header.Set("Accept", "application/json")
+	resp, err := (&http.Client{Timeout: 30 * time.Second}).Do(req)
+	if err != nil {
+		return "", err
+	}
+	defer func() { _ = resp.Body.Close() }()
+	data, readErr := io.ReadAll(resp.Body)
+	if readErr != nil {
+		return "", fmt.Errorf("forgejo: read commit %s/%s@%s from %s: %w", owner, repo, sha, resp.Status, readErr)
+	}
+	if resp.StatusCode < 200 || resp.StatusCode >= 300 {
+		return "", fmt.Errorf("forgejo get commit returned %s after %d byte(s): %s", resp.Status, len(data), firstLine(string(data)))
+	}
+	var commit forgejoRepoCommit
+	if err := json.Unmarshal(data, &commit); err != nil {
+		return "", fmt.Errorf("forgejo: parse commit %s/%s@%s from %s after %d byte(s): %s: %w", owner, repo, sha, resp.Status, len(data), responseSnippet(data), err)
+	}
+	if tree := strings.TrimSpace(commit.Tree.SHA); tree != "" {
+		return tree, nil
+	}
+	return "", fmt.Errorf("forgejo: commit %s/%s@%s did not expose a tree SHA", owner, repo, sha)
 }
 
 func (c *forgejoClient) GetCommitCombinedStatus(ctx context.Context, owner, repo, sha string) (*forgejoCommitCombinedStatus, error) {
