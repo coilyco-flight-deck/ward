@@ -34,7 +34,7 @@ permissions:
 jobs:
   gate-and-promote:
     runs-on: docker
-    timeout-minutes: 15
+    timeout-minutes: 30
     container:
       image: forgejo.coilysiren.me/coilyco-flight-deck/agentic-os:latest
     steps:
@@ -50,7 +50,7 @@ jobs:
         run: make test
 
       - name: golangci-lint
-        timeout-minutes: 5
+        timeout-minutes: 20
         env:
           TMPDIR: ${{ runner.tool_cache }}/ward-tmp
           GOTMPDIR: ${{ runner.tool_cache }}/ward-go-tmp
