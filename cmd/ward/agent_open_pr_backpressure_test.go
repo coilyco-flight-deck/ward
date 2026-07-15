@@ -95,6 +95,77 @@ func TestLaunchOpenPRBackpressureCheck(t *testing.T) {
 	}
 }
 
+func TestDispatchBrokerOpenPRBackpressureCheck(t *testing.T) {
+	oldBase := forgejoBaseURL
+	defer func() { forgejoBaseURL = oldBase }()
+
+	mux := http.NewServeMux()
+	mux.HandleFunc("/api/v1/repos/coilyco-flight-deck/ward/issues", func(w http.ResponseWriter, r *http.Request) {
+		if r.URL.Query().Get("type") != "pulls" {
+			t.Fatalf("unexpected issue feed query: %s", r.URL.RawQuery)
+		}
+		rows := make([]map[string]any, 0, 7)
+		for i := 1; i <= 7; i++ {
+			rows = append(rows, map[string]any{
+				"number":       i,
+				"title":        "PR",
+				"body":         "body",
+				"state":        "open",
+				"html_url":     "https://forgejo.example/coilyco-flight-deck/ward/pulls/1",
+				"pull_request": map[string]any{"url": "https://forgejo.example/coilyco-flight-deck/ward/pulls/1"},
+				"labels":       []map[string]any{},
+			})
+		}
+		_ = json.NewEncoder(w).Encode(rows)
+	})
+	for i := 1; i <= 7; i++ {
+		i := i
+		mux.HandleFunc("/api/v1/repos/coilyco-flight-deck/ward/pulls/"+strconv.Itoa(i), func(w http.ResponseWriter, _ *http.Request) {
+			_ = json.NewEncoder(w).Encode(map[string]any{"mergeable": true})
+		})
+	}
+	srv := httptest.NewServer(mux)
+	defer srv.Close()
+	forgejoBaseURL = srv.URL
+
+	r := &Runner{}
+	freshReq := dispatchBrokerRequest{
+		Role: "engineer",
+		Argv: []string{"engineer", "coilyco-flight-deck/ward#1", "--harness", "claude"},
+	}
+	if err := r.dispatchBrokerOpenPRBackpressureCheck(context.Background(), freshReq, "ward agent engineer"); err == nil {
+		t.Fatal("dispatchBrokerOpenPRBackpressureCheck() on a fresh launch = nil, want backpressure")
+	} else if !isOpenPRBackpressureError(err) {
+		t.Fatalf("dispatchBrokerOpenPRBackpressureCheck() error = %T %v, want open-PR backpressure", err, err)
+	}
+
+	for _, tc := range []struct {
+		name string
+		req  dispatchBrokerRequest
+	}{
+		{
+			name: "branch continuation",
+			req: dispatchBrokerRequest{
+				Role: "engineer",
+				Argv: []string{"engineer", "coilyco-flight-deck/ward#1", "--harness", "claude", "--branch", "repair/branch"},
+			},
+		},
+		{
+			name: "pr continuation",
+			req: dispatchBrokerRequest{
+				Role: "engineer",
+				Argv: []string{"engineer", "coilyco-flight-deck/ward#1", "--harness", "claude", "--pr"},
+			},
+		},
+	} {
+		t.Run(tc.name, func(t *testing.T) {
+			if err := r.dispatchBrokerOpenPRBackpressureCheck(context.Background(), tc.req, "ward agent engineer"); err != nil {
+				t.Fatalf("dispatchBrokerOpenPRBackpressureCheck() with continuation = %v", err)
+			}
+		})
+	}
+}
+
 func containsAll(s string, want []string) bool {
 	for _, w := range want {
 		if !strings.Contains(s, w) {
