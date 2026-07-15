@@ -3,10 +3,14 @@ set -euo pipefail
 
 : "${SOURCE_IMAGE:?missing SOURCE_IMAGE}"
 : "${TARGET_IMAGE:?missing TARGET_IMAGE}"
-: "${TOKEN:?missing TOKEN}"
 
 REGISTRY_USER="${REGISTRY_USER:-oauth2}"
 REGISTRY_SCHEME="${REGISTRY_SCHEME:-https}"
+SOURCE_TOKEN="${SOURCE_TOKEN:-${TOKEN:-}}"
+TARGET_TOKEN="${TARGET_TOKEN:-${TOKEN:-}}"
+
+: "${SOURCE_TOKEN:?missing SOURCE_TOKEN or TOKEN}"
+: "${TARGET_TOKEN:?missing TARGET_TOKEN or TOKEN}"
 
 accept_header='application/vnd.oci.image.index.v1+json, application/vnd.docker.distribution.manifest.list.v2+json, application/vnd.oci.image.manifest.v1+json, application/vnd.docker.distribution.manifest.v2+json'
 
@@ -58,7 +62,7 @@ cleanup() {
 trap cleanup EXIT
 
 source_code=$(curl -sS -o "$source_body" -D "$source_headers" -w '%{http_code}' \
-  -u "${REGISTRY_USER}:${TOKEN}" \
+  -u "${REGISTRY_USER}:${SOURCE_TOKEN}" \
   -H "Accept: ${accept_header}" \
   "$fetch_url")
 if [ "$source_code" != "200" ]; then
@@ -74,7 +78,7 @@ fi
 
 push_code=$(curl -sS -o "$target_body" -w '%{http_code}' \
   -X PUT \
-  -u "${REGISTRY_USER}:${TOKEN}" \
+  -u "${REGISTRY_USER}:${TARGET_TOKEN}" \
   -H "Content-Type: ${content_type}" \
   --data-binary @"$source_body" \
   "$push_url")
@@ -91,7 +95,7 @@ esac
 verify_body=$(mktemp)
 trap 'rm -f "$source_headers" "$source_body" "$target_body" "$verify_body"' EXIT
 verify_code=$(curl -sS -o "$verify_body" -w '%{http_code}' \
-  -u "${REGISTRY_USER}:${TOKEN}" \
+  -u "${REGISTRY_USER}:${TARGET_TOKEN}" \
   -H "Accept: ${accept_header}" \
   "$push_url")
 if [ "$verify_code" != "200" ]; then

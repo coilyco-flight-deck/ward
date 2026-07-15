@@ -126,16 +126,22 @@ jobs:
 
       - name: Publish the ward agent image alias without Docker daemon
         env:
-          TOKEN: ${{ secrets.CI_RELEASE_TOKEN }}
+          SOURCE_TOKEN: ${{ github.token }}
+          TARGET_TOKEN: ${{ secrets.CI_RELEASE_TOKEN }}
         run: |
           set -euo pipefail
-          if [ -z "${TOKEN:-}" ]; then
+          if [ -z "${SOURCE_TOKEN:-}" ]; then
+            echo "::error::github.token not set; cannot read the source agentic-os image alias" >&2
+            exit 1
+          fi
+          if [ -z "${TARGET_TOKEN:-}" ]; then
             echo "::error::CI_RELEASE_TOKEN not set; cannot publish the ward:release image alias" >&2
             exit 1
           fi
           SOURCE_IMAGE=forgejo.coilysiren.me/coilyco-flight-deck/agentic-os:latest \
           TARGET_IMAGE=forgejo.coilysiren.me/coilyco-flight-deck/ward:release \
-          TOKEN="$TOKEN" \
+          SOURCE_TOKEN="$SOURCE_TOKEN" \
+          TARGET_TOKEN="$TARGET_TOKEN" \
           bash scripts/registry-copy-tag.sh
 
       - name: Promote main to release (fast-forward only)

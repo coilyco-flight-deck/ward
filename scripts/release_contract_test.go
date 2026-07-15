@@ -167,7 +167,11 @@ func TestRegistryCopyTagPublishesManifestWithoutDockerDaemon(t *testing.T) {
 		mu.Lock()
 		gotAuth = append(gotAuth, r.Header.Get("Authorization"))
 		mu.Unlock()
-		if user, pass, ok := r.BasicAuth(); !ok || user != "oauth2" || pass != "secret" {
+		wantPass := "target-secret"
+		if r.Method == http.MethodGet && r.URL.Path == "/v2/coilyco-flight-deck/agentic-os/manifests/latest" {
+			wantPass = "source-secret"
+		}
+		if user, pass, ok := r.BasicAuth(); !ok || user != "oauth2" || pass != wantPass {
 			w.WriteHeader(http.StatusUnauthorized)
 			return
 		}
@@ -215,7 +219,8 @@ func TestRegistryCopyTagPublishesManifestWithoutDockerDaemon(t *testing.T) {
 	cmd.Env = append(os.Environ(),
 		"SOURCE_IMAGE="+u+"/coilyco-flight-deck/agentic-os:latest",
 		"TARGET_IMAGE="+u+"/coilyco-flight-deck/ward:release",
-		"TOKEN=secret",
+		"SOURCE_TOKEN=source-secret",
+		"TARGET_TOKEN=target-secret",
 		"REGISTRY_SCHEME=http",
 	)
 	out, err := cmd.CombinedOutput()
