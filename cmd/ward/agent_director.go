@@ -195,6 +195,116 @@ func directorTriageEnabled(c *cli.Command) bool {
 	return (c.Bool("burndown") || c.IsSet("triage")) && c.Bool("triage") && !c.Bool("no-triage")
 }
 
+type directorStartupStep struct {
+	Category string
+	Detail   string
+}
+
+var directorStartupStepStyle = map[string]string{
+	"inventory": "36;1",
+	"preview":   "90;1",
+	"refresh":   "34;1",
+	"surface":   "32;1",
+	"heartbeat": "35;1",
+	"triage":    "33;1",
+}
+
+func (r *Runner) directorStartupColors() bool {
+	return terminalAttached() && r != nil && r.Runner != nil && r.Runner.Stdout == os.Stdout && r.Runner.Stderr == os.Stderr
+}
+
+func directorStartupCategoryLabel(category string, color bool) string {
+	category = strings.TrimSpace(category)
+	if category == "" {
+		category = "action"
+	}
+	label := strings.ToUpper(category) + ":"
+	if !color {
+		return label
+	}
+	if style, ok := directorStartupStepStyle[strings.ToLower(category)]; ok {
+		return "\x1b[" + style + "m" + label + "\x1b[0m"
+	}
+	return "\x1b[1m" + label + "\x1b[0m"
+}
+
+func directorStartupBanner(label string, steps []directorStartupStep, color bool) string {
+	var b strings.Builder
+	fmt.Fprintf(&b, "\n%s startup:\n\n", label)
+	for i, step := range steps {
+		if i > 0 {
+			b.WriteByte('\n')
+		}
+		fmt.Fprintf(&b, "  %-12s %s\n", directorStartupCategoryLabel(step.Category, color), step.Detail)
+	}
+	b.WriteByte('\n')
+	return b.String()
+}
+
+func directorStartupSteps(repos []string, cfg backlogConfig, preview bool) []directorStartupStep {
+	var steps []directorStartupStep
+	if len(repos) > 0 {
+		steps = append(steps, directorStartupStep{
+			Category: "inventory",
+			Detail:   "print the current backlog snapshot for " + strings.Join(repos, ", "),
+		})
+	}
+	if cfg.triage && !preview && cfg.issueRef == nil {
+		steps = append(steps, directorStartupStep{
+			Category: "triage",
+			Detail:   "label untriaged issues before the loop starts",
+		})
+	}
+	if directorNeedsLiveBacklog(cfg) {
+		detail := "refresh the live backlog before opening the surface"
+		if cfg.issueRef != nil {
+			detail = "refresh the live record for " + cfg.issueRef.String() + " before opening the surface"
+		}
+		steps = append(steps, directorStartupStep{
+			Category: "refresh",
+			Detail:   detail,
+		})
+	}
+	switch {
+	case preview:
+		steps = append(steps, directorStartupStep{
+			Category: "preview",
+			Detail:   "render the plan without launching anything",
+		})
+	case cfg.burndown:
+		steps = append(steps, directorStartupStep{
+			Category: "heartbeat",
+			Detail:   "enter the autonomous backlog loop",
+		})
+	default:
+		steps = append(steps, directorStartupStep{
+			Category: "surface",
+			Detail:   "open the read-only director session",
+		})
+	}
+	return steps
+}
+
+func (r *Runner) backlogPrintStartup(label string, repos []string, cfg backlogConfig, preview bool) error {
+	return r.emit(directorStartupBanner(label, directorStartupSteps(repos, cfg, preview), r.directorStartupColors()))
+}
+
+func (r *Runner) backlogLaunchAfterStatus(ctx context.Context, label string, repos []string, cfg backlogConfig, preview bool) error {
+	if cfg.print {
+		if err := r.backlogPrintDirectorPlan(label, repos, cfg); err != nil {
+			return err
+		}
+	}
+	if preview {
+		return r.backlogPrintPlanned(label, repos, cfg.maxParallel)
+	}
+	if !cfg.burndown {
+		_, err := r.directorSurface(ctx, label, repos[0], cfg)
+		return err
+	}
+	return runDirectorLoop(ctx, cfg, &liveDirector{r: r, label: label, repos: repos, cfg: cfg})
+}
+
 // agentDirectorCommand wires `ward agent director` (audited via WrapVerb, trust-gated
 // through ownerAllowed; ward#347, was backlog). See docs/agent-director.md.
 func agentDirectorCommand() *cli.Command {
@@ -387,6 +497,9 @@ func (r *Runner) backlogTrustGate(label string, repos []string) error {
 func (r *Runner) driveBacklog(ctx context.Context, label string, repos []string, cfg backlogConfig) error {
 	// --print and --dry-run are both launch-nothing previews, so neither triggers triage.
 	preview := cfg.dryRun || cfg.print
+	if err := r.backlogPrintStartup(label, repos, cfg, preview); err != nil {
+		return err
+	}
 	if cfg.triage && !preview && cfg.issueRef == nil {
 		r.backlogTriage(ctx, label, repos, cfg.mode, cfg.limit)
 	}
@@ -398,21 +511,7 @@ func (r *Runner) driveBacklog(ctx context.Context, label string, repos []string,
 	if err := r.backlogPrintStatus(repos); err != nil {
 		return err
 	}
-	// --print additionally renders director's own container/harness plan (the harness split,
-	// the image pin, the forwarded flags) before the planned dispatches (ward#355).
-	if cfg.print {
-		if err := r.backlogPrintDirectorPlan(label, repos, cfg); err != nil {
-			return err
-		}
-	}
-	if preview {
-		return r.backlogPrintPlanned(label, repos, cfg.maxParallel)
-	}
-	if !cfg.burndown {
-		_, err := r.directorSurface(ctx, label, repos[0], cfg)
-		return err
-	}
-	return runDirectorLoop(ctx, cfg, &liveDirector{r: r, label: label, repos: repos, cfg: cfg})
+	return r.backlogLaunchAfterStatus(ctx, label, repos, cfg, preview)
 }
 
 // directorNeedsLiveBacklog reports whether startup needs to enumerate the live backlog

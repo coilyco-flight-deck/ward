@@ -60,6 +60,38 @@ func TestDirectorNeedsLiveBacklog(t *testing.T) {
 	}
 }
 
+func TestDirectorStartupBannerPlain(t *testing.T) {
+	steps := []directorStartupStep{
+		{Category: "inventory", Detail: "print the current backlog snapshot"},
+		{Category: "refresh", Detail: "refresh the live backlog before opening the surface"},
+		{Category: "surface", Detail: "open the read-only director session"},
+	}
+	got := directorStartupBanner("ward agent director", steps, false)
+	for _, want := range []string{
+		"ward agent director startup:",
+		"INVENTORY:",
+		"REFRESH:",
+		"SURFACE:",
+		"print the current backlog snapshot",
+		"refresh the live backlog before opening the surface",
+		"open the read-only director session",
+	} {
+		if !strings.Contains(got, want) {
+			t.Fatalf("startup banner missing %q:\n%s", want, got)
+		}
+	}
+	if strings.Contains(got, "\x1b[") {
+		t.Fatalf("plain startup banner should not contain ANSI escapes:\n%s", got)
+	}
+}
+
+func TestDirectorStartupBannerColorsCategories(t *testing.T) {
+	got := directorStartupCategoryLabel("refresh", true)
+	if !strings.Contains(got, "\x1b[34;1mREFRESH:\x1b[0m") {
+		t.Fatalf("colored refresh label = %q, want cyan bold ANSI", got)
+	}
+}
+
 // TestDirectorDispatchDisposition covers ward#352 + ward#524: a coded per-issue decline
 // parks `failed`; a reservation conflict or a launch-time infra failure stays `queued`.
 func TestDirectorDispatchDisposition(t *testing.T) {
