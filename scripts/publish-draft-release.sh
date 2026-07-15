@@ -5,6 +5,7 @@ set -euo pipefail
 : "${FORGEJO_API:?missing FORGEJO_API}"
 : "${TOKEN:?missing TOKEN}"
 : "${DIST_DIR:=dist}"
+: "${RELEASE_NAME:=${DRAFT_TAG}}"
 
 rel_json=""
 create_json=""
@@ -42,11 +43,12 @@ resolve_draft_release_id() {
   esac
 
   if [ -z "${rel_id:-}" ]; then
-    payload=$(DRAFT_TAG="$DRAFT_TAG" node -e '
+    payload=$(DRAFT_TAG="$DRAFT_TAG" RELEASE_NAME="$RELEASE_NAME" RELEASE_BODY="${RELEASE_BODY:-}" node -e '
       process.stdout.write(JSON.stringify({
         tag_name: process.env.DRAFT_TAG,
-        name: process.env.DRAFT_TAG,
+        name: process.env.RELEASE_NAME,
         draft: true,
+        body: process.env.RELEASE_BODY || "",
       }));
     ')
     create_code=$(curl -sS -o "$create_json" -w '%{http_code}' \
@@ -79,24 +81,26 @@ resolve_draft_release_id() {
 
 resolve_draft_release_id
 
-existing=$(curl -fsSL -H "Authorization: token ${TOKEN}" \
-  "${FORGEJO_API}/releases/${rel_id}/assets?per_page=100" || echo '[]')
+if [ -d "$DIST_DIR" ]; then
+  existing=$(curl -fsSL -H "Authorization: token ${TOKEN}" \
+    "${FORGEJO_API}/releases/${rel_id}/assets?per_page=100" || echo '[]')
 
-for name in $(cd "$DIST_DIR" && ls); do
-  old=$(printf '%s' "$existing" | ASSET="$name" node -e '
-    const a = JSON.parse(require("fs").readFileSync(0, "utf8") || "[]");
-    const m = (a || []).find(x => x.name === process.env.ASSET);
-    if (m) process.stdout.write(String(m.id));
-  ')
-  if [ -n "$old" ]; then
-    curl -fsSL -X DELETE -H "Authorization: token ${TOKEN}" \
-      "${FORGEJO_API}/releases/${rel_id}/assets/${old}" || true
-  fi
-  curl -fsSL -X POST -H "Authorization: token ${TOKEN}" \
-    -H "Content-Type: application/octet-stream" \
-    --data-binary @"${DIST_DIR}/${name}" \
-    "${FORGEJO_API}/releases/${rel_id}/assets?name=${name}"
-  echo "uploaded ${name} to draft ${DRAFT_TAG}"
-done
+  for name in $(cd "$DIST_DIR" && ls); do
+    old=$(printf '%s' "$existing" | ASSET="$name" node -e '
+      const a = JSON.parse(require("fs").readFileSync(0, "utf8") || "[]");
+      const m = (a || []).find(x => x.name === process.env.ASSET);
+      if (m) process.stdout.write(String(m.id));
+    ')
+    if [ -n "$old" ]; then
+      curl -fsSL -X DELETE -H "Authorization: token ${TOKEN}" \
+        "${FORGEJO_API}/releases/${rel_id}/assets/${old}" || true
+    fi
+    curl -fsSL -X POST -H "Authorization: token ${TOKEN}" \
+      -H "Content-Type: application/octet-stream" \
+      --data-binary @"${DIST_DIR}/${name}" \
+      "${FORGEJO_API}/releases/${rel_id}/assets?name=${name}"
+    echo "uploaded ${name} to draft ${DRAFT_TAG}"
+  done
+fi
 
 echo "published draft release ${DRAFT_TAG} with the full matrix + SHA256SUMS"

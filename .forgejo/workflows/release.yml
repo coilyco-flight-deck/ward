@@ -3,7 +3,8 @@
 # succeeds. This workflow promotes the exact released SHA without rebuilding it:
 # tag, retag the draft assets, publish, and update install channels in a queued
 # order. A workflow_dispatch re-fires it against the `release` ref on a missed
-# enqueue. See docs/release.md.
+# enqueue. See docs/release.md. Tag selection and release creation now use
+# repo-local helpers so a shared-action fetch timeout cannot block setup.
 
 name: release
 
@@ -34,7 +35,9 @@ jobs:
           fetch-depth: 0
 
       - id: tag
-        run: bash scripts/release-tag-bump.sh
+        env:
+          TAG_PUSH_TOKEN: ${{ github.token }}
+        run: bash scripts/release-tag.sh
 
       - name: Verify the ward agent image alias resolves
         run: |
@@ -55,9 +58,9 @@ jobs:
           FALLBACK: ${{ steps.tag.outputs.changelog }}
         run: |
           set -euo pipefail
-          # Reshape tag-bump's raw `git log` changelog into user-facing,
+          # Reshape the tag helper's raw `git log` changelog into user-facing,
           # categorised notes (ward#486, docs/release-notes.md). Same range
-          # tag-bump uses (previous_tag..HEAD, HEAD == the released SHA); a
+          # the tag helper uses (previous_tag..HEAD, HEAD == the released SHA); a
           # missing previous_tag (first release) degrades to HEAD. On any
           # failure fall back to the raw changelog, never an empty body.
           if [ -n "$PREV_TAG" ]; then range="${PREV_TAG}..HEAD"; else range="HEAD"; fi
@@ -83,12 +86,13 @@ jobs:
       - name: Create the draft Forgejo release
         if: ${{ steps.tag.outputs.new_tag != '' }}
         env:
+          DRAFT_TAG: ${{ steps.tag.outputs.new_tag }}
           FORGEJO_API: https://forgejo.coilysiren.me/api/v1/repos/coilyco-flight-deck/ward
-          RELEASE_BODY: ${{ steps.notes.outputs.body }}
-          RELEASE_NAME: ${{ steps.tag.outputs.new_tag }}
-          RELEASE_TAG: ${{ steps.tag.outputs.new_tag }}
           TOKEN: ${{ github.token }}
-        run: bash scripts/forgejo-create-release.sh
+          RELEASE_NAME: ${{ steps.tag.outputs.new_tag }}
+          RELEASE_BODY: ${{ steps.notes.outputs.body }}
+          DIST_DIR: ${{ runner.temp }}/ward-release-empty
+        run: mkdir -p "$DIST_DIR" && bash scripts/publish-draft-release.sh
 
       - name: Alert Telegram on main failure
         if: ${{ failure() && github.ref == 'refs/heads/release' }}

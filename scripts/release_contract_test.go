@@ -1,6 +1,8 @@
 package scripts
 
 import (
+	"bytes"
+	"io"
 	"os"
 	"os/exec"
 	"path/filepath"
@@ -40,7 +42,8 @@ func TestReleasePipelineUsesDraftArtifacts(t *testing.T) {
 
 	for _, want := range []string{
 		"draft-${{ github.sha }}",
-		"scripts/release-tag-bump.sh",
+		"scripts/release-tag.sh",
+		"TAG_PUSH_TOKEN",
 		"main.Version=${TAG}",
 		"scripts/publish-draft-release.sh",
 	} {
@@ -63,6 +66,9 @@ func TestReleasePipelineUsesDraftArtifacts(t *testing.T) {
 		"promote-draft-assets",
 		"fetched ${name} from ${DRAFT_TAG}",
 		"scripts/forgejo-release-asset.sh",
+		"scripts/release-tag.sh",
+		"TAG_PUSH_TOKEN",
+		"scripts/publish-draft-release.sh",
 	} {
 		if !strings.Contains(release, want) {
 			t.Fatalf("release workflow should mention %q:\n%s", want, release)
@@ -77,8 +83,8 @@ func TestReleasePipelineUsesDraftArtifacts(t *testing.T) {
 		}
 	}
 	for _, want := range []string{
-		"scripts/release-tag-bump.sh",
-		"scripts/forgejo-create-release.sh",
+		"scripts/release-tag.sh",
+		"scripts/publish-draft-release.sh",
 		"docker manifest inspect \"$image\" >/dev/null 2>&1",
 	} {
 		if !strings.Contains(release, want) {
@@ -134,6 +140,141 @@ func TestReleasePipelineUsesDraftArtifacts(t *testing.T) {
 			t.Fatalf("release binaries docs should mention %q:\n%s", want, binaries)
 		}
 	}
+}
+
+func TestReleaseTagHelperReusesHeadTagAndBumpsNextMinor(t *testing.T) {
+	repo := t.TempDir()
+	runGit(t, repo, "init")
+	runGit(t, repo, "config", "user.email", "test@example.com")
+	runGit(t, repo, "config", "user.name", "Test User")
+
+	writeFile(t, repo, "one.txt", "one\n")
+	runGit(t, repo, "add", "one.txt")
+	runGit(t, repo, "commit", "-m", "feat: first")
+	runGit(t, repo, "tag", "v0.1.0")
+
+	writeFile(t, repo, "two.txt", "two\n")
+	runGit(t, repo, "add", "two.txt")
+	runGit(t, repo, "commit", "-m", "fix: second")
+	runGit(t, repo, "tag", "v0.2.0")
+
+	got := runReleaseTagHelper(t, repo)
+	if got["new_tag"] != "v0.2.0" {
+		t.Fatalf("head-tagged new_tag = %q, want v0.2.0", got["new_tag"])
+	}
+	if got["previous_tag"] != "v0.1.0" {
+		t.Fatalf("head-tagged previous_tag = %q, want v0.1.0", got["previous_tag"])
+	}
+	if got["new_version"] != "0.2.0" {
+		t.Fatalf("head-tagged new_version = %q, want 0.2.0", got["new_version"])
+	}
+	if !strings.Contains(got["changelog"], "fix: second") {
+		t.Fatalf("head-tagged changelog = %q, want second commit subject", got["changelog"])
+	}
+
+	writeFile(t, repo, "three.txt", "three\n")
+	runGit(t, repo, "add", "three.txt")
+	runGit(t, repo, "commit", "-m", "feat: third")
+
+	got = runReleaseTagHelper(t, repo)
+	if got["new_tag"] != "v0.3.0" {
+		t.Fatalf("untagged new_tag = %q, want v0.3.0", got["new_tag"])
+	}
+	if got["previous_tag"] != "v0.2.0" {
+		t.Fatalf("untagged previous_tag = %q, want v0.2.0", got["previous_tag"])
+	}
+	if got["new_version"] != "0.3.0" {
+		t.Fatalf("untagged new_version = %q, want 0.3.0", got["new_version"])
+	}
+	if !strings.Contains(got["changelog"], "feat: third") {
+		t.Fatalf("untagged changelog = %q, want third commit subject", got["changelog"])
+	}
+}
+
+func TestPublishDraftReleaseCreatesBodyWithoutAssets(t *testing.T) {
+	srv := newDraftReleaseTestServer(t)
+	dist := t.TempDir()
+
+	script := filepath.Join(repoRoot(t), "scripts", "publish-draft-release.sh")
+	cmd := exec.Command("bash", script)
+	cmd.Dir = repoRoot(t)
+	cmd.Env = append(os.Environ(),
+		"DRAFT_TAG=draft-testsha",
+		"FORGEJO_API="+srv.URL+"/api/v1/repos/coilyco-flight-deck/ward",
+		"TOKEN=secret",
+		"DIST_DIR="+dist,
+		"RELEASE_BODY=release body from helper",
+	)
+	out, err := cmd.CombinedOutput()
+	if err != nil {
+		t.Fatalf("publish-draft-release.sh body-only failed: %v\noutput: %s", err, out)
+	}
+	if got := srv.count("POST /api/v1/repos/coilyco-flight-deck/ward/releases"); got != 1 {
+		t.Fatalf("body-only create count = %d, want 1", got)
+	}
+	if got := srv.count("POST /api/v1/repos/coilyco-flight-deck/ward/releases/99/assets?name=README"); got != 0 {
+		t.Fatalf("body-only asset upload count = %d, want 0", got)
+	}
+	if !strings.Contains(srv.lastCreateBody, `"body":"release body from helper"`) {
+		t.Fatalf("body-only create payload = %q, want release body", srv.lastCreateBody)
+	}
+}
+
+func runGit(t *testing.T, dir string, args ...string) {
+	t.Helper()
+	cmd := exec.Command("git", args...)
+	cmd.Dir = dir
+	if out, err := cmd.CombinedOutput(); err != nil {
+		t.Fatalf("git %v failed: %v\noutput: %s", args, err, out)
+	}
+}
+
+func writeFile(t *testing.T, dir, name, body string) {
+	t.Helper()
+	if err := os.WriteFile(filepath.Join(dir, name), []byte(body), 0o600); err != nil {
+		t.Fatalf("write %s: %v", name, err)
+	}
+}
+
+func runReleaseTagHelper(t *testing.T, repo string) map[string]string {
+	t.Helper()
+	output := filepath.Join(t.TempDir(), "outputs.txt")
+	script := filepath.Join(repoRoot(t), "scripts", "release-tag.sh")
+	cmd := exec.Command("bash", script)
+	cmd.Dir = repo
+	cmd.Env = append(os.Environ(), "GITHUB_OUTPUT="+output)
+	if out, err := cmd.CombinedOutput(); err != nil {
+		t.Fatalf("release-tag.sh failed: %v\noutput: %s", err, out)
+	}
+	return parseGitHubOutputs(t, output)
+}
+
+func parseGitHubOutputs(t *testing.T, path string) map[string]string {
+	t.Helper()
+	raw, err := os.ReadFile(path)
+	if err != nil {
+		t.Fatalf("read outputs %s: %v", path, err)
+	}
+	out := make(map[string]string)
+	lines := bytes.Split(bytes.TrimRight(raw, "\n"), []byte("\n"))
+	for i := 0; i < len(lines); i++ {
+		line := string(lines[i])
+		if strings.Contains(line, "<<") {
+			parts := strings.SplitN(line, "<<", 2)
+			key, marker := parts[0], parts[1]
+			var buf []string
+			for i++; i < len(lines) && string(lines[i]) != marker; i++ {
+				buf = append(buf, string(lines[i]))
+			}
+			out[key] = strings.Join(buf, "\n")
+			continue
+		}
+		key, val, found := strings.Cut(line, "=")
+		if found {
+			out[key] = val
+		}
+	}
+	return out
 }
 
 func workflowJobSection(t *testing.T, workflow, start, end string) string {
@@ -242,10 +383,11 @@ func TestForgejoReleaseAssetHelperReadsRawAssetBody(t *testing.T) {
 
 type draftReleaseTestServer struct {
 	*httptest.Server
-	mu       sync.Mutex
-	counts   map[string]int
-	released bool
-	assets   map[string]int
+	mu             sync.Mutex
+	counts         map[string]int
+	released       bool
+	assets         map[string]int
+	lastCreateBody string
 }
 
 func newDraftReleaseTestServer(t *testing.T) *draftReleaseTestServer {
@@ -298,6 +440,10 @@ func (s *draftReleaseTestServer) handleDraftReleases(w http.ResponseWriter, r *h
 		w.WriteHeader(http.StatusMethodNotAllowed)
 		return
 	}
+	body, _ := io.ReadAll(r.Body)
+	s.mu.Lock()
+	s.lastCreateBody = string(body)
+	s.mu.Unlock()
 	s.mu.Lock()
 	s.released = true
 	s.mu.Unlock()

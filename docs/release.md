@@ -35,6 +35,8 @@ Ward releases are Forgejo-canonical and two-stage ([ward#1117](https://forgejo.c
 - every step blocks behind the promote gate on `main`: a push whose vet, test,
   or lint checks fail promotes nothing, and the release push only publishes the
   already-vouched sha.
+- the tag and release creation steps run from repo-local helpers, so a transient
+  fetch timeout in the shared actions repo cannot block release setup.
 - the published binaries are built once on `main` and then retagged on
   `release`.
 - Ward publishes immutable version tags and checksums, not moving `release` or
