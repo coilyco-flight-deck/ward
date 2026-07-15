@@ -19,6 +19,7 @@ harness, and lands work through the selected workflow.
 - launch-time preflight.
 - reservation and audit.
 - landing policy.
+- the check-placement matrix in [agent-check-placement.md](agent-check-placement.md).
 
 ## Mental model
 

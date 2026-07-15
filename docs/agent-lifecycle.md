@@ -23,6 +23,14 @@ The launch path is short and explicit.
 - The run writes one auditable trail, not a silent shell session.
 - `--print` shows the launch without starting it.
 
+## Check placement
+
+See [agent-check-placement.md](agent-check-placement.md) for the current broker-time vs pre-flight matrix.
+
+- The driftable guards - reservation conflict, open-PR pressure, branch-state / continuation shape, and capacity - are re-read at launch time so queued work does not start against stale state.
+- The broker handles request-shape and transport gating before the launch is forwarded.
+- The pre-flight owns the issue-facing refusal path, the trust gate, and the host-side probes that can still fail after the queue wait.
+
 ## Credentials and context
 
 Host-side credentials are resolved before the container starts. The run then

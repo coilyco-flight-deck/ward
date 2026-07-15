@@ -19,6 +19,7 @@ when the run is read-only or otherwise brokered.
 - keeping a newer caller from silently falling back to a stale host default.
 - making the launch version visible before the engineer container starts.
 - keeping brokered dispatch separate from harness install.
+- carrying the request-shape checks that happen before a launch is forwarded, and feeding the driftable rows in [agent-check-placement.md](agent-check-placement.md) back through the host launch path.
 
 ## See also
 

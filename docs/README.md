@@ -35,6 +35,7 @@ Start here if you open `docs/` directly. The tree holds the release-era operatin
 - [agent-roles.md](agent-roles.md) - engineer, director, advisor, qa.
 - [agent-harnesses.md](agent-harnesses.md) - claude, codex, goose, opencode.
 - [agent-lifecycle.md](agent-lifecycle.md) - launch, preflight, reservation.
+- [agent-check-placement.md](agent-check-placement.md) - broker/pre-flight guard matrix.
 - [agent-director.md](agent-director.md) - read-only director lane.
 - [agent-ops.md](agent-ops.md) - logs, stop, list, reap.
 - [agent-reservation-cache.md](agent-reservation-cache.md) - cache-only reservation cleanup.
