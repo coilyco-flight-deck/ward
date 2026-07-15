@@ -2,6 +2,7 @@ package main
 
 import (
 	"context"
+	"os"
 	"path/filepath"
 	"strings"
 	"testing"
@@ -83,6 +84,56 @@ func TestRunSetupWithFixtureRef(t *testing.T) {
 	}
 	if got := strings.Join(report.validatedSurfaces, ", "); got != setupValidatedSurfaces {
 		t.Errorf("validated surfaces = %q, want %q", got, setupValidatedSurfaces)
+	}
+}
+
+func TestRunSetupAllowsOptionalPlaceholderValues(t *testing.T) {
+	dir := writeBundleFixture(t)
+	agentsPath := filepath.Join(dir, bundleFixtureAgentsPath)
+	b, err := os.ReadFile(agentsPath)
+	if err != nil {
+		t.Fatalf("read %s: %v", agentsPath, err)
+	}
+	if !strings.Contains(string(b), "example-bot") || !strings.Contains(string(b), "bot@example.com") {
+		t.Fatalf("fixture lost the optional placeholder attribution:\n%s", b)
+	}
+	t.Setenv(wardConfigRefEnv, "file://"+dir)
+
+	report, err := runSetup(context.Background())
+	if err != nil {
+		t.Fatalf("runSetup with optional placeholder values: %v; checks=%+v", err, report)
+	}
+}
+
+func TestRunSetupRejectsRequiredOpsPlaceholderSentinel(t *testing.T) {
+	dir := writeBundleFixture(t)
+	writeBundleFixtureFile(t, dir, bundleFixtureForgejoPath, `
+wrap ward-kdl ops forgejo {
+    spec golf.json
+    base-url (placeholder)"git.example.com/api/v1"
+    auth header-token {
+        header Authorization
+        prefix "token "
+        value ssm "/coilyco/forgejo/api-token"
+    }
+    restrict owner matches coilyco*
+    can get repo
+}
+`)
+	t.Setenv(wardConfigRefEnv, "file://"+dir)
+
+	report, err := runSetup(context.Background())
+	if err == nil {
+		t.Fatalf("runSetup with required placeholder sentinel passed; report=%+v", report)
+	}
+	for _, want := range []string{
+		"setup surface compile: ops",
+		bundleFixtureForgejoPath,
+		"placeholder sentinel survived at wrap > base-url",
+	} {
+		if !strings.Contains(err.Error(), want) {
+			t.Fatalf("error %q does not contain %q", err, want)
+		}
 	}
 }
 

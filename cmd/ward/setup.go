@@ -73,6 +73,11 @@ func runSetup(ctx context.Context) (setupReport, error) {
 		report.cachePath = setupCachePath(rawRef)
 	}
 
+	if strings.TrimSpace(src.desc) != "" {
+		if err := validateForgejoOpsOperational(src, false); err != nil {
+			return report, fmt.Errorf("setup surface compile: ops: %w", err)
+		}
+	}
 	if _, err := buildForgejoOpsFrom(src); err != nil {
 		return report, fmt.Errorf("setup surface compile: ops: %w", err)
 	}
