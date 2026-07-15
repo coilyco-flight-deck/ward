@@ -258,6 +258,8 @@ func dispatchArtifactOutcome(err error) string {
 		return "deferred-reservation-conflict"
 	case isEngineerCapacityError(err):
 		return "deferred-capacity"
+	case isPartialLaunchError(err):
+		return "partial-launch"
 	default:
 		return "failed-before-container"
 	}
@@ -273,6 +275,8 @@ func dispatchArtifactErrorClass(err error) string {
 		return "reservation-conflict"
 	case isEngineerCapacityError(err):
 		return "engineer-capacity"
+	case isPartialLaunchError(err):
+		return "partial-launch"
 	default:
 		return "launch-failure"
 	}

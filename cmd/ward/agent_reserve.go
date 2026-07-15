@@ -329,19 +329,19 @@ func hostname() string {
 
 // reserveIssue acquires the issue-thread reservation first, then refreshes the local
 // cache. Remote failure rolls the local intent back. Local failure retracts it.
-func (r *Runner) reserveIssue(ctx context.Context, label string, mode containerMode, ref agentIssueRef, container, branch, justification string, seedCtx *reservationSeedContext, override bool, skipPreflight bool) (func(), error) {
+func (r *Runner) reserveIssue(ctx context.Context, label string, mode containerMode, ref agentIssueRef, container, branch, justification string, seedCtx *reservationSeedContext, override bool, skipPreflight bool) (func(), error, error) {
 	now := time.Now().UTC()
 	fmt.Fprintf(os.Stderr, "%s: reservation start for %s (container=%s branch=%s override-reservation=%t)\n", label, ref, container, branch, override)
-	releaseRemote, err := r.acquireRemoteReservation(ctx, label, mode, ref, container, justification, seedCtx, now, override, skipPreflight)
+	releaseRemote, partialLaunch, err := r.acquireRemoteReservation(ctx, label, mode, ref, container, justification, seedCtx, now, override, skipPreflight)
 	if err != nil {
 		fmt.Fprintf(os.Stderr, "%s: reservation remote acquire failed for %s: %v\n", label, ref, err)
-		return nil, err
+		return func() {}, nil, err
 	}
 	releaseLocal, err := r.acquireLocalReservation(ctx, label, mode, ref, container, branch, now, override)
 	if err != nil {
 		fmt.Fprintf(os.Stderr, "%s: reservation local acquire failed for %s: %v\n", label, ref, err)
 		releaseRemote()
-		return nil, err
+		return func() {}, nil, err
 	}
 	fmt.Fprintf(os.Stderr, "%s: reservation acquired for %s\n", label, ref)
 	return func() {
@@ -349,7 +349,7 @@ func (r *Runner) reserveIssue(ctx context.Context, label string, mode containerM
 			releaseRemote()
 		}
 		releaseLocal()
-	}, nil
+	}, partialLaunch, nil
 }
 
 // precheckReservation runs reserveIssue's read-only refusal half ahead of the LLM
@@ -517,19 +517,20 @@ const reservationWarnToken = "remote reservation NOT posted"
 
 // acquireRemoteReservation refuses on a fresh reservation comment unless overridden.
 // It posts one and returns a release to roll it back.
-func (r *Runner) acquireRemoteReservation(ctx context.Context, label string, mode containerMode, ref agentIssueRef, container, justification string, seedCtx *reservationSeedContext, now time.Time, override bool, skipPreflight bool) (func(), error) {
+func (r *Runner) acquireRemoteReservation(ctx context.Context, label string, mode containerMode, ref agentIssueRef, container, justification string, seedCtx *reservationSeedContext, now time.Time, override bool, skipPreflight bool) (func(), error, error) {
 	cl, err := r.hostTrackerClient(ctx, ref.trackerOrDefault(), mode)
 	if err != nil {
 		warnRemoteReservationLost(label, ref, fmt.Sprintf("could not build the %s client: %v", ref.trackerOrDefault(), err))
-		return func() {}, nil
+		return func() {}, nil, nil
 	}
+	var partialLaunch error
 	ttl := agentReservationTTL()
 	if !override {
 		comments, lerr := cl.ListIssueComments(ctx, ref.Owner, ref.Repo, ref.Number)
 		if lerr != nil {
 			fmt.Fprintf(os.Stderr, "%s: warning: could not read issue comments to check for a remote reservation (%v); proceeding without the cross-host conflict check\n", label, lerr)
 		} else if who, held := freshReservationComment(comments, now, ttl); held {
-			return nil, newReservationConflict(
+			return func() {}, nil, newReservationConflict(
 				"%s: issue %s is already reserved remotely (%s); wait for it to finish or pass --override-reservation to override",
 				label, ref, who)
 		}
@@ -541,6 +542,7 @@ func (r *Runner) acquireRemoteReservation(ctx context.Context, label string, mod
 		})
 	if perr != nil {
 		warnRemoteReservationLost(label, ref, fmt.Sprintf("post failed after %d attempt(s): %v", tries, perr))
+		partialLaunch = newDispatchPartialLaunchError(ref, container, perr)
 	}
 	// Seal the conversation against in-flight steering (ward#494); best-effort, so a
 	// forge with no lock API or a lock failure never fails the reservation.
@@ -551,14 +553,14 @@ func (r *Runner) acquireRemoteReservation(ctx context.Context, label string, mod
 		if lost, winner := r.reservationRecheckLost(ctx, cl, label, ref, container, skipPreflight); lost {
 			// Leave our comment to lapse at the TTL (a release marker would free the
 			// winner too) and refuse so only the winner proceeds (ward#600).
-			return nil, newReservationConflict(
+			return func() {}, nil, newReservationConflict(
 				"%s: issue %s went to a concurrent run (%s) on a jittered re-check; this run yields (ward#600)",
 				label, ref, winner)
 		}
 	}
 	// The release reuses this same client to retract the comment + lock if the launch
 	// fails downstream (ward#570).
-	return func() { r.releaseRemoteReservation(ctx, cl, label, mode, ref, container) }, nil
+	return func() { r.releaseRemoteReservation(ctx, cl, label, mode, ref, container) }, partialLaunch, nil
 }
 
 // releaseRemoteReservation retracts this run's forge road-block on a launch that dies

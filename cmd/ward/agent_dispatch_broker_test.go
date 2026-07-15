@@ -1494,6 +1494,33 @@ func TestDispatchBrokerPanicErrorClassifiesDockerNameConflictAsRequestFailure(t 
 	}
 }
 
+func TestDispatchPartialLaunchErrorClassifiesAsPartialLaunch(t *testing.T) {
+	err := newDispatchPartialLaunchError(
+		agentIssueRef{Owner: "coilyco-flight-deck", Repo: "ward", Number: 1360},
+		"engineer-codex-ward-1360",
+		errors.New("reservation comment failed"),
+	)
+	if isEngineerCapacityError(err) {
+		t.Fatal("partial-launch error must not classify as engineer capacity backpressure")
+	}
+	if got := dispatchArtifactOutcome(err); got != "partial-launch" {
+		t.Fatalf("artifact outcome = %q, want partial-launch", got)
+	}
+	if got := dispatchArtifactErrorClass(err); got != "partial-launch" {
+		t.Fatalf("artifact error class = %q, want partial-launch", got)
+	}
+	for _, want := range []string{
+		"partial-launch for coilyco-flight-deck/ward#1360",
+		"engineer-codex-ward-1360",
+		"reservation comment failed",
+		"re-post the reservation comment or stop and re-dispatch engineer-codex-ward-1360",
+	} {
+		if !strings.Contains(err.Error(), want) {
+			t.Fatalf("partial-launch error missing %q:\n%s", want, err.Error())
+		}
+	}
+}
+
 // TestServeHostDispatchBrokerSurvivesFailedLaunch keeps the listener alive after
 // a request panics with a Docker name-conflict-shaped failure.
 func TestServeHostDispatchBrokerSurvivesFailedLaunch(t *testing.T) {

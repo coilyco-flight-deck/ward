@@ -5,6 +5,8 @@ import (
 	"errors"
 	"fmt"
 	"io"
+	"net/http"
+	"net/http/httptest"
 	"os"
 	"reflect"
 	"strings"
@@ -776,6 +778,58 @@ func TestPostReservationComment(t *testing.T) {
 			t.Fatalf("clamps: tries=%d calls=%d err=%v", tries, calls, err)
 		}
 	})
+}
+
+// TestReserveIssueReportsPartialLaunchWhenReservationCommentPostFails keeps the
+// reservation-post warning actionable once the launch continues past it.
+func TestReserveIssueReportsPartialLaunchWhenReservationCommentPostFails(t *testing.T) {
+	t.Setenv("HOME", t.TempDir())
+	t.Setenv(reservationRecheckEnv, "0")
+
+	mux := http.NewServeMux()
+	mux.HandleFunc("/api/v1/repos/coilyco-flight-deck/ward/issues/1360/comments", func(w http.ResponseWriter, r *http.Request) {
+		switch r.Method {
+		case http.MethodGet:
+			_, _ = w.Write([]byte(`[]`))
+		case http.MethodPost:
+			w.WriteHeader(http.StatusInternalServerError)
+			_, _ = w.Write([]byte(`reservation post failed`))
+		default:
+			w.WriteHeader(http.StatusMethodNotAllowed)
+		}
+	})
+	srv := httptest.NewServer(mux)
+	defer srv.Close()
+
+	origForgejoBase := forgejoBaseURL
+	forgejoBaseURL = srv.URL
+	t.Cleanup(func() { forgejoBaseURL = origForgejoBase })
+
+	r := &Runner{}
+	ref := agentIssueRef{Owner: "coilyco-flight-deck", Repo: "ward", Number: 1360}
+	release, partial, err := r.reserveIssue(context.Background(), "ward agent engineer", modeCodex, ref, "engineer-codex-ward-1360", "issue-1360", "", nil, false, false)
+	if err != nil {
+		t.Fatalf("reserveIssue: %v", err)
+	}
+	if release == nil {
+		t.Fatal("reserveIssue returned a nil release func")
+	}
+	if partial == nil {
+		t.Fatal("reserveIssue did not report a partial-launch notice")
+	}
+	if !isPartialLaunchError(partial) {
+		t.Fatalf("partial notice = %T %v, want a partial-launch error", partial, partial)
+	}
+	for _, want := range []string{
+		ref.String(),
+		"engineer-codex-ward-1360",
+		"reservation-held marker",
+		"re-post the reservation comment or stop and re-dispatch engineer-codex-ward-1360",
+	} {
+		if !strings.Contains(partial.Error(), want) {
+			t.Fatalf("partial-launch notice missing %q:\n%s", want, partial.Error())
+		}
+	}
 }
 
 func TestReservationCommentBodyHasMarker(t *testing.T) {

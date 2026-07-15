@@ -419,13 +419,7 @@ func (r *Runner) handleHostDispatchBrokerLaunch(ctx context.Context, req dispatc
 	}
 	if err := r.dispatchBrokerOpenPRBackpressureCheck(ctx, req, agentCmdline(dispatchBrokerRequestMode(req), req.Role)); err != nil {
 		resultErr = err
-		restore()
-		restored = true
-		dispatchFailedDispatchLaunchStartHook()
-		r.commentDispatchLaunchError(ctx, req, paths.ConsolePath, err)
-		finalizeDispatchArtifact(paths, req, paths.ConsolePath, err)
-		finalized = true
-		done <- dispatchBrokerLaunchResult{logPath: paths.ConsolePath, err: err}
+		r.finishDispatchBrokerLaunchFailure(ctx, req, paths, restore, &restored, &finalized, err, true, done)
 		return
 	}
 	launchCtx := withDispatchLaunchReservationTracking(ctx)
@@ -433,33 +427,47 @@ func (r *Runner) handleHostDispatchBrokerLaunch(ctx context.Context, req dispatc
 		close(started)
 		return dispatchBrokerLaunch(launchCtx, req)
 	}); err != nil {
-		resultErr = err
-		restore()
-		restored = true
-		dispatchFailedDispatchLaunchStartHook()
-		r.commentDispatchLaunchError(ctx, req, paths.ConsolePath, err)
-		finalizeDispatchArtifact(paths, req, paths.ConsolePath, err)
-		finalized = true
-		done <- dispatchBrokerLaunchResult{logPath: paths.ConsolePath, err: err}
-		return
-	}
-	if dispatchAction(req.Action) == dispatchActionLaunch && req.Role == roleEngineer {
-		if err := r.waitForDispatchBrokerEngineerVisibility(ctx, req); err != nil {
+		if isPartialLaunchError(err) {
 			resultErr = err
-			restore()
-			restored = true
-			dispatchFailedDispatchLaunchStartHook()
-			r.commentDispatchLaunchError(ctx, req, paths.ConsolePath, err)
-			finalizeDispatchArtifact(paths, req, paths.ConsolePath, err)
-			finalized = true
-			done <- dispatchBrokerLaunchResult{logPath: paths.ConsolePath, err: err}
+			r.finishDispatchBrokerLaunchFailure(ctx, req, paths, restore, &restored, &finalized, err, false, done)
 			return
 		}
+		resultErr = err
+		r.finishDispatchBrokerLaunchFailure(ctx, req, paths, restore, &restored, &finalized, err, true, done)
+		return
+	}
+	if !r.maybeHandleDispatchBrokerEngineerVisibility(ctx, req, paths, restore, &restored, &finalized, done) {
+		return
 	}
 	fmt.Fprintf(os.Stderr, "ward dispatch broker: launch completed\n")
 	finalizeDispatchArtifact(paths, req, paths.ConsolePath, nil)
 	finalized = true
 	done <- dispatchBrokerLaunchResult{logPath: paths.ConsolePath, err: nil}
+}
+
+func (r *Runner) maybeHandleDispatchBrokerEngineerVisibility(ctx context.Context, req dispatchBrokerRequest, paths dispatchArtifactPaths, restore func(), restored, finalized *bool, done chan<- dispatchBrokerLaunchResult) bool {
+	if dispatchAction(req.Action) != dispatchActionLaunch || req.Role != roleEngineer {
+		return true
+	}
+	if err := r.waitForDispatchBrokerEngineerVisibility(ctx, req); err != nil {
+		r.finishDispatchBrokerLaunchFailure(ctx, req, paths, restore, restored, finalized, err, true, done)
+		return false
+	}
+	return true
+}
+
+func (r *Runner) finishDispatchBrokerLaunchFailure(ctx context.Context, req dispatchBrokerRequest, paths dispatchArtifactPaths, restore func(), restored, finalized *bool, err error, notify bool, done chan<- dispatchBrokerLaunchResult) {
+	if !*restored {
+		restore()
+		*restored = true
+	}
+	if notify {
+		dispatchFailedDispatchLaunchStartHook()
+		r.commentDispatchLaunchError(ctx, req, paths.ConsolePath, err)
+	}
+	finalizeDispatchArtifact(paths, req, paths.ConsolePath, err)
+	*finalized = true
+	done <- dispatchBrokerLaunchResult{logPath: paths.ConsolePath, err: err}
 }
 
 func dispatchBrokerPanicError(stage string, p any) error {
@@ -566,6 +574,10 @@ func (r *Runner) commentFailedDispatchLaunch(ctx context.Context, req dispatchBr
 // commentDispatchLaunchError routes a launch refusal to the deferred or failed
 // issue comment path after the host broker has restored its stdio.
 func (r *Runner) commentDispatchLaunchError(ctx context.Context, req dispatchBrokerRequest, logPath string, launchErr error) {
+	if isPartialLaunchError(launchErr) {
+		fmt.Fprintf(os.Stderr, "ward dispatch broker: %v\n", launchErr)
+		return
+	}
 	if isEngineerCapacityError(launchErr) {
 		fmt.Fprintf(os.Stderr, "ward dispatch broker: %s\n", engineerCapacityBackpressureSummary(launchErr))
 		return

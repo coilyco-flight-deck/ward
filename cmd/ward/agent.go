@@ -2070,6 +2070,7 @@ func (r *Runner) launchAgentContainer(ctx context.Context, c *cli.Command, mode 
 	// the comment so a pre-launch-gate death self-documents on the thread (ward#609).
 	seedCtx := buildReservationSeedContext(w, plan, time.Now().UTC())
 	var release func()
+	var partialLaunch error
 	if err := r.withAgentRepoLaunchLock(w.Ref.repoSlug(), func() error {
 		if err := r.launchOpenPRBackpressureCheck(ctx, label, w.Ref.repoSlug(), openPRBackpressureApplies(c, w)); err != nil {
 			return err
@@ -2084,7 +2085,7 @@ func (r *Runner) launchAgentContainer(ctx context.Context, c *cli.Command, mode 
 		}
 		return r.withAgentReservationLock(ref, func() error {
 			var reserveErr error
-			release, reserveErr = r.reserveIssue(ctx, label, mode, ref, plan.Name, plan.Branch, justification, seedCtx, overrideReservation(c), plan.SkipPreflight)
+			release, partialLaunch, reserveErr = r.reserveIssue(ctx, label, mode, ref, plan.Name, plan.Branch, justification, seedCtx, overrideReservation(c), plan.SkipPreflight)
 			if reserveErr == nil && dispatchLaunchReservationTracking(ctx) {
 				registerDispatchLaunchReservationRelease(ref, release)
 			}
@@ -2149,6 +2150,9 @@ func (r *Runner) launchAgentContainer(ctx context.Context, c *cli.Command, mode 
 		// In-container dispatch skips it - the waiter would die with its own reaped
 		// container - and leans on the next sweep's idempotent drain instead.
 		r.spawnDrainWaiter(plan.Name)
+	}
+	if partialLaunch != nil {
+		return partialLaunch
 	}
 	return nil
 }

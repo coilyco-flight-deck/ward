@@ -417,7 +417,11 @@ func (r *Runner) partialLaunchState(ctx context.Context, row agentRunningEnginee
 }
 
 func partialLaunchRemediation(row agentRunningEngineer) string {
-	return fmt.Sprintf("issue %s is missing the reservation-held marker; re-post the reservation comment or stop and re-dispatch %s", emptyDefault(row.Ref, "the run"), emptyDefault(row.Container, "the container"))
+	ref, err := parseAgentIssueRef(row.Ref)
+	if err != nil {
+		return fmt.Sprintf("issue %s is missing the reservation-held marker; re-post the reservation comment or stop and re-dispatch %s", emptyDefault(row.Ref, "the run"), emptyDefault(row.Container, "the container"))
+	}
+	return partialLaunchRemediationText(ref, row.Container)
 }
 
 func agentLaunchInventoryFromRows(rows []agentRunningEngineer) agentLaunchInventory {
