@@ -444,6 +444,16 @@ func (r *Runner) containerStartedAt(ctx context.Context, name string) (time.Time
 	return parseDockerInspectTime(string(out))
 }
 
+// containerFinishedAt reads a container's finish time via `docker inspect`; ok is
+// false on any error or an unparseable/not-yet-finished value.
+func (r *Runner) containerFinishedAt(ctx context.Context, name string) (time.Time, bool) {
+	out, err := r.dockerCapture(ctx, "inspect", "-f", "{{.State.FinishedAt}}", name)
+	if err != nil {
+		return time.Time{}, false
+	}
+	return parseDockerInspectTime(string(out))
+}
+
 // containerCPUPercent reads a container's instantaneous %CPU via a one-shot
 // `docker stats`; ok is false when the reading is missing or unparseable.
 func (r *Runner) containerCPUPercent(ctx context.Context, name string) (float64, bool) {

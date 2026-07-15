@@ -590,7 +590,7 @@ func (r *Runner) liveContainerAssetDirs(ctx context.Context) (map[string]bool, b
 }
 
 // sweepStaleContainers host-side-reclaims exited ward containers' writable layers
-// before a run, keeping the recent containerReapKeep (docs/container-cleanup.md).
+// before a run, keeping the recent containerReapTTL (docs/container-cleanup.md).
 func (r *Runner) sweepStaleContainers(ctx context.Context) {
 	out, err := r.dockerCapture(ctx, dockerExitedListArgv()...)
 	if err != nil {
@@ -602,12 +602,17 @@ func (r *Runner) sweepStaleContainers(ctx context.Context) {
 	if len(exited) == 0 {
 		return
 	}
-	stale := staleContainersToReap(string(out), containerReapKeep())
+	containers := make([]exitedContainerSnapshot, 0, len(exited))
+	for _, name := range exited {
+		finishedAt, ok := r.containerFinishedAt(ctx, name)
+		containers = append(containers, exitedContainerSnapshot{Name: name, FinishedAt: finishedAt, HasFinish: ok})
+	}
+	stale := staleContainersToReap(time.Now(), containers, containerReapTTL())
 
-	// Drain EVERY exited run idempotently (ward#510) then reclaim the past-keep tail,
+	// Drain EVERY exited run idempotently (ward#510) then reclaim the past-TTL tail,
 	// drained-first so the rm never takes an un-drained log (ward#363).
 	if len(stale) > 0 {
-		writef(os.Stderr, "ward container: reclaiming %d exited ward container(s) past the keep-%d window (ward#272)\n", len(stale), containerReapKeep())
+		writef(os.Stderr, "ward container: reclaiming %d exited ward container(s) past the %s window (ward#272)\n", len(stale), conciseDuration(containerReapTTL()))
 		writef(os.Stderr, "ward container: containers being removed: %s\n", strings.Join(stale, ", "))
 	}
 	if rmErr := r.drainStaleContainers(ctx, exited, stale); rmErr != nil {

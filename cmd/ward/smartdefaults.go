@@ -35,7 +35,7 @@ type smartDefaults struct {
 	configBundleTTL               time.Duration
 	containerAssetsTTL            time.Duration
 	containerReadOnlyExtraRepoTTL time.Duration
-	containerReapKeep             int
+	containerReapTTL              time.Duration
 	agentWorkflowDefault          workflowMode
 	agentWorkflowRepos            map[string]workflowMode
 	prMergeStyle                  string
@@ -462,12 +462,12 @@ func applySmartDefaultNode(defs *smartDefaults, n *kdl.Node) error { //nolint:go
 			return err
 		}
 		defs.containerReadOnlyExtraRepoTTL = v
-	case "container-reap-keep":
-		v, err := smartDefaultsIntArg(n, "smart-defaults > container-reap-keep")
+	case "container-reap-ttl":
+		v, err := smartDefaultsDurationArg(n, "smart-defaults > container-reap-ttl")
 		if err != nil {
 			return err
 		}
-		defs.containerReapKeep = v
+		defs.containerReapTTL = v
 	case "agent-workflow":
 		if err := applySmartDefaultWorkflow(defs, n); err != nil {
 			return err
@@ -483,7 +483,7 @@ func applySmartDefaultNode(defs *smartDefaults, n *kdl.Node) error { //nolint:go
 		defs.prMergeStyle = v
 	default:
 		return unknownSmartDefaultsNode("smart-defaults body", n.Name(),
-			"agent-reservation-ttl | agent-reservation-recheck-max | agent-reap-idle | agent-reap-max-cpu | agent-image | agent-tag | container-memory-limit | engineer-container-limit | engineer-repo-working-limit | engineer-open-pr-branch-limit | director-max-parallel | director-limit | director-poll-interval | reviewer-timeout | config-bundle-ttl | container-assets-ttl | container-read-only-extra-repo-ttl | container-reap-keep | agent-workflow | pr-merge-style")
+			"agent-reservation-ttl | agent-reservation-recheck-max | agent-reap-idle | agent-reap-max-cpu | agent-image | agent-tag | container-memory-limit | engineer-container-limit | engineer-repo-working-limit | engineer-open-pr-branch-limit | director-max-parallel | director-limit | director-poll-interval | reviewer-timeout | config-bundle-ttl | container-assets-ttl | container-read-only-extra-repo-ttl | container-reap-ttl | agent-workflow | pr-merge-style")
 	}
 	return nil
 }
@@ -1097,7 +1097,7 @@ func containerReadOnlyExtraRepoTTL() time.Duration {
 	return currentSmartDefaults().containerReadOnlyExtraRepoTTL
 }
 
-func containerReapKeep() int { return currentSmartDefaults().containerReapKeep }
+func containerReapTTL() time.Duration { return currentSmartDefaults().containerReapTTL }
 
 func prMergeStyleDefault() string {
 	return strings.TrimSpace(currentSmartDefaults().prMergeStyle)

@@ -13,6 +13,7 @@ import (
 	"sort"
 	"strings"
 	"sync"
+	"time"
 
 	"forgejo.coilysiren.me/coilyco-flight-deck/cli-guard/pkg/fleetconfig"
 	"github.com/urfave/cli/v3"
@@ -1139,17 +1140,30 @@ func parseExitedContainerNames(psOutput string) []string {
 	return names
 }
 
-// staleContainersToReap returns the exited-container names past the keep window
-// (newest first, as `docker ps` lists them); blanks ignored, keep-or-fewer is nil.
-func staleContainersToReap(psOutput string, keep int) []string {
-	names := parseExitedContainerNames(psOutput)
-	if keep < 0 {
-		keep = 0
+// exitedContainerSnapshot is the minimal data needed to decide whether one
+// stopped container has aged past the retention window.
+type exitedContainerSnapshot struct {
+	Name       string
+	FinishedAt time.Time
+	HasFinish  bool
+}
+
+// staleContainersToReap returns the exited-container names older than the TTL.
+// Containers with an unreadable finish time are skipped best-effort.
+func staleContainersToReap(now time.Time, containers []exitedContainerSnapshot, ttl time.Duration) []string {
+	if ttl < 0 {
+		ttl = 0
 	}
-	if len(names) <= keep {
-		return nil
+	var stale []string
+	for _, c := range containers {
+		if !c.HasFinish {
+			continue
+		}
+		if now.Sub(c.FinishedAt) >= ttl {
+			stale = append(stale, c.Name)
+		}
 	}
-	return names[keep:]
+	return stale
 }
 
 // dockerRmArgv builds `docker rm <names...>` (no -f: the sweep targets only

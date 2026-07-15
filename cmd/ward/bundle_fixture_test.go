@@ -148,7 +148,7 @@ topology {
 		defs.configBundleTTL = 15 * time.Minute
 		defs.containerAssetsTTL = 3 * time.Hour
 		defs.containerReadOnlyExtraRepoTTL = 48 * time.Hour
-		defs.containerReapKeep = 12
+		defs.containerReapTTL = 48 * time.Hour
 	})
 
 	for name, body := range files {
@@ -271,7 +271,7 @@ roles {
 			defs.configBundleTTL = 15 * time.Minute
 			defs.containerAssetsTTL = 3 * time.Hour
 			defs.containerReadOnlyExtraRepoTTL = 48 * time.Hour
-			defs.containerReapKeep = 12
+			defs.containerReapTTL = 48 * time.Hour
 		}),
 		`
 repos {
@@ -384,8 +384,8 @@ func renderSmartDefaultsBlock(defs smartDefaults) string {
 	if defs.containerReadOnlyExtraRepoTTL > 0 {
 		fmt.Fprintf(&b, "    container-read-only-extra-repo-ttl %q\n", conciseDuration(defs.containerReadOnlyExtraRepoTTL))
 	}
-	if defs.containerReapKeep > 0 {
-		fmt.Fprintf(&b, "    container-reap-keep %q\n", fmt.Sprintf("%d", defs.containerReapKeep))
+	if defs.containerReapTTL > 0 {
+		fmt.Fprintf(&b, "    container-reap-ttl %q\n", conciseDuration(defs.containerReapTTL))
 	}
 	if defs.agentWorkflowDefault != "" {
 		fmt.Fprintf(&b, "    agent-workflow default=%s {\n    }\n", defs.agentWorkflowDefault)

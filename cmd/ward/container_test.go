@@ -1214,28 +1214,38 @@ func TestDockerExitedListArgv(t *testing.T) {
 }
 
 func TestStaleContainersToReap(t *testing.T) {
-	// `docker ps` lists newest first; the sweep keeps the leading `keep` for
-	// post-mortem and returns the older tail for removal.
-	const ps = "ward-c-newest\nward-c-2\nward-c-3\nward-c-oldest\n"
+	now := time.Date(2026, 7, 15, 12, 0, 0, 0, time.UTC)
+	ttl := 48 * time.Hour
 	cases := []struct {
 		name string
-		in   string
-		keep int
+		in   []exitedContainerSnapshot
+		ttl  time.Duration
 		want []string
 	}{
-		{"keeps newest, reaps tail", ps, 2, []string{"ward-c-3", "ward-c-oldest"}},
-		{"keep covers all", ps, 4, nil},
-		{"keep exceeds count", ps, 10, nil},
-		{"keep zero reaps all", "ward-a\nward-b\n", 0, []string{"ward-a", "ward-b"}},
-		{"negative keep clamps to zero", "ward-a\n", -3, []string{"ward-a"}},
-		{"blank lines ignored", "\nward-a\n\n  \nward-b\n", 1, []string{"ward-b"}},
-		{"empty input", "", 2, nil},
+		{"reaps containers older than ttl", []exitedContainerSnapshot{
+			{Name: "ward-c-newest", FinishedAt: now.Add(-2 * time.Hour), HasFinish: true},
+			{Name: "ward-c-2", FinishedAt: now.Add(-24 * time.Hour), HasFinish: true},
+			{Name: "ward-c-3", FinishedAt: now.Add(-48 * time.Hour), HasFinish: true},
+			{Name: "ward-c-oldest", FinishedAt: now.Add(-72 * time.Hour), HasFinish: true},
+		}, ttl, []string{"ward-c-3", "ward-c-oldest"}},
+		{"fresh containers stay", []exitedContainerSnapshot{
+			{Name: "ward-a", FinishedAt: now.Add(-10 * time.Hour), HasFinish: true},
+			{Name: "ward-b", FinishedAt: now.Add(-20 * time.Hour), HasFinish: true},
+		}, ttl, nil},
+		{"ttl zero reaps all finished containers", []exitedContainerSnapshot{
+			{Name: "ward-a", FinishedAt: now.Add(-time.Hour), HasFinish: true},
+			{Name: "ward-b", FinishedAt: now.Add(-2 * time.Hour), HasFinish: true},
+		}, 0, []string{"ward-a", "ward-b"}},
+		{"unreadable finish is skipped", []exitedContainerSnapshot{
+			{Name: "ward-a", FinishedAt: now.Add(-72 * time.Hour), HasFinish: true},
+			{Name: "ward-b", HasFinish: false},
+		}, ttl, []string{"ward-a"}},
 	}
 	for _, c := range cases {
 		t.Run(c.name, func(t *testing.T) {
-			got := staleContainersToReap(c.in, c.keep)
+			got := staleContainersToReap(now, c.in, c.ttl)
 			if strings.Join(got, ",") != strings.Join(c.want, ",") {
-				t.Errorf("staleContainersToReap(keep=%d) = %v, want %v", c.keep, got, c.want)
+				t.Errorf("staleContainersToReap(ttl=%s) = %v, want %v", c.ttl, got, c.want)
 			}
 		})
 	}

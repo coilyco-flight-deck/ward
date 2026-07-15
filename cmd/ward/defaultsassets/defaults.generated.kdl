@@ -18,7 +18,7 @@ smart-defaults {
     config-bundle-ttl "600s"
     container-assets-ttl "1h"
     container-read-only-extra-repo-ttl "24h"
-    container-reap-keep "10"
+    container-reap-ttl "48h"
     agent-workflow default=merge-remote-main {
 
     }

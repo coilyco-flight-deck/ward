@@ -44,7 +44,7 @@ func TestSmartDefaultsFromBundleSource(t *testing.T) {
     config-bundle-ttl "900"
     container-assets-ttl "3h"
     container-read-only-extra-repo-ttl "48h"
-    container-reap-keep "12"
+    container-reap-ttl "48h"
     agent-workflow default="merge-remote-main" {
     }
     pr-merge-style "squash"
@@ -91,7 +91,7 @@ func TestSmartDefaultsFromBundleSource(t *testing.T) {
 	if defs.reviewerTimeout != 11*time.Minute || defs.configBundleTTL != 15*time.Minute {
 		t.Errorf("bundle duration defaults = %+v", defs)
 	}
-	if defs.containerAssetsTTL != 3*time.Hour || defs.containerReadOnlyExtraRepoTTL != 48*time.Hour || defs.containerReapKeep != 12 {
+	if defs.containerAssetsTTL != 3*time.Hour || defs.containerReadOnlyExtraRepoTTL != 48*time.Hour || defs.containerReapTTL != 48*time.Hour {
 		t.Errorf("bundle container defaults = %+v", defs)
 	}
 	if defs.agentWorkflowDefault != workflowDirectToMain {
