@@ -77,7 +77,7 @@ func bakedSmartDefaults() smartDefaults {
 		engineerContainerLimit:        12,
 		engineerRepoWorkingLimit:      3,
 		engineerOpenPRBranchLimit:     6,
-		directorMaxParallel:           10,
+		directorMaxParallel:           6,
 		directorLimit:                 50,
 		directorPollInterval:          30 * time.Second,
 		reviewerTimeout:               8 * time.Minute,

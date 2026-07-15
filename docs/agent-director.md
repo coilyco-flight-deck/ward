@@ -14,6 +14,7 @@ The director surface is the read-only control plane for runs.
   repo.
 - By default it refreshes and prints status, then opens the attached read-only
   surface. Add `--burndown` to run the autonomous dispatch heartbeat.
+- The bundled burndown default is `--max-parallel 6`, which keeps a normal two-repo interactive lane near six in-flight engineers without bypassing the repo and memory guardrails.
 - When issue-scoped under `--burndown`, each heartbeat refresh stays pinned to
   that exact issue instead of rehydrating the repo backlog.
 - It is the surface that hosts the merge-ready workflow for PR landings.
