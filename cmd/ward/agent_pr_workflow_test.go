@@ -1113,11 +1113,115 @@ func TestPRWorkflowStatusReportRendersCombinedStatus(t *testing.T) {
 	}
 }
 
+func TestPRWorkflowStatusJSONCarriesRunsAndLogHooks(t *testing.T) {
+	mux := http.NewServeMux()
+	mux.HandleFunc("/api/v1/repos/coilyco-flight-deck/ward/pulls/7", func(w http.ResponseWriter, _ *http.Request) {
+		_, _ = w.Write([]byte(`{"number":7,"title":"status branch","body":"closes #6","state":"open","draft":false,"mergeable":true,"head":{"sha":"headsha","ref":"issue-7"},"base":{"ref":"main"}}`))
+	})
+	mux.HandleFunc("/api/v1/repos/coilyco-flight-deck/ward/branches/main", func(w http.ResponseWriter, _ *http.Request) {
+		_, _ = w.Write([]byte(`{"name":"main","protected":true,"enable_status_check":true,"status_check_contexts":["test"],"commit":{"id":"basesha"}}`))
+	})
+	mux.HandleFunc("/api/v1/repos/coilyco-flight-deck/ward/commits/headsha/status", func(w http.ResponseWriter, _ *http.Request) {
+		_, _ = w.Write([]byte(`{"state":"failure","sha":"headsha","total_count":1,"statuses":[{"context":"test","status":"failure","description":"failed","target_url":"https://forgejo.coilysiren.me/coilyco-flight-deck/ward/actions/runs/77/jobs/3/attempt/1/logs"}]}`))
+	})
+	mux.HandleFunc("/api/v1/repos/coilyco-flight-deck/ward/actions/runs", func(w http.ResponseWriter, _ *http.Request) {
+		_, _ = w.Write([]byte(`{"workflow_runs":[{"id":77,"index_in_repo":11,"title":"test","status":"failure","workflow_id":"test.yml","prettyref":"#7","commit_sha":"headsha","event":"pull_request","html_url":"https://forgejo.coilysiren.me/coilyco-flight-deck/ward/actions/runs/77"}]}`))
+	})
+	mux.HandleFunc("/api/v1/repos/coilyco-flight-deck/ward/actions/runs/77/jobs/3/attempt/1/logs", func(w http.ResponseWriter, _ *http.Request) {
+		_, _ = w.Write([]byte("log line one\nlog line two\n"))
+	})
+	srv := httptest.NewServer(mux)
+	defer srv.Close()
+
+	cl := &forgejoClient{baseURL: srv.URL, token: "secret"}
+	body, err := prWorkflowStatusJSONReport(context.Background(), cl, "coilyco-flight-deck", "ward", 7)
+	if err != nil {
+		t.Fatalf("prWorkflowStatusJSONReport: %v", err)
+	}
+	var st prCIStatus
+	if err := json.Unmarshal([]byte(body), &st); err != nil {
+		t.Fatalf("unmarshal status JSON: %v", err)
+	}
+	if st.Status.Required != "failure" || st.Status.Combined != "failure" {
+		t.Fatalf("status = %+v, want failure snapshot", st.Status)
+	}
+	if st.NextAction != "fetch_logs" {
+		t.Fatalf("next action = %q, want fetch_logs", st.NextAction)
+	}
+	if st.Status.LatestRunConclusion != "failure" {
+		t.Fatalf("latest run conclusion = %q, want failure", st.Status.LatestRunConclusion)
+	}
+	if len(st.LatestRuns) != 1 || st.LatestRuns[0].ID != 77 {
+		t.Fatalf("latest runs = %+v, want one matching run", st.LatestRuns)
+	}
+	if len(st.LogHooks) == 0 || !st.LogHooks[0].Available || st.LogHooks[0].RunID != 77 {
+		t.Fatalf("log hooks = %+v, want an available hook for run 77", st.LogHooks)
+	}
+	if len(st.Contexts) == 0 || st.Contexts[0].RunID != 77 || st.Contexts[0].LogHook == nil || !st.Contexts[0].LogHook.Available {
+		t.Fatalf("context = %+v, want run-linked log hook", st.Contexts)
+	}
+	logs, err := prWorkflowLogsDirect(context.Background(), cl, "coilyco-flight-deck", "ward", 7, "test")
+	if err != nil {
+		t.Fatalf("prWorkflowLogsDirect: %v", err)
+	}
+	if !strings.Contains(logs, "log line one") || !strings.Contains(logs, "log line two") {
+		t.Fatalf("logs = %q, want raw body", logs)
+	}
+}
+
+func TestPRWorkflowStatusJSONSurfacesMissingRequiredContexts(t *testing.T) {
+	mux := http.NewServeMux()
+	mux.HandleFunc("/api/v1/repos/coilyco-flight-deck/ward/pulls/8", func(w http.ResponseWriter, _ *http.Request) {
+		_, _ = w.Write([]byte(`{"number":8,"title":"pending branch","body":"closes #6","state":"open","draft":false,"mergeable":true,"head":{"sha":"headsha8","ref":"issue-8"},"base":{"ref":"main"}}`))
+	})
+	mux.HandleFunc("/api/v1/repos/coilyco-flight-deck/ward/branches/main", func(w http.ResponseWriter, _ *http.Request) {
+		_, _ = w.Write([]byte(`{"name":"main","protected":true,"enable_status_check":true,"status_check_contexts":["test","lint"],"commit":{"id":"basesha"}}`))
+	})
+	mux.HandleFunc("/api/v1/repos/coilyco-flight-deck/ward/commits/headsha8/status", func(w http.ResponseWriter, _ *http.Request) {
+		_, _ = w.Write([]byte(`{"state":"pending","sha":"headsha8","total_count":1,"statuses":[{"context":"test","status":"success","description":"passed","target_url":"https://forgejo.coilysiren.me/coilyco-flight-deck/ward/actions/runs/78"}]}`))
+	})
+	mux.HandleFunc("/api/v1/repos/coilyco-flight-deck/ward/actions/runs", func(w http.ResponseWriter, _ *http.Request) {
+		_, _ = w.Write([]byte(`{"workflow_runs":[{"id":78,"index_in_repo":12,"title":"test","status":"success","workflow_id":"test.yml","prettyref":"#8","commit_sha":"headsha8","event":"pull_request","html_url":"https://forgejo.coilysiren.me/coilyco-flight-deck/ward/actions/runs/78"}]}`))
+	})
+	srv := httptest.NewServer(mux)
+	defer srv.Close()
+
+	cl := &forgejoClient{baseURL: srv.URL, token: "secret"}
+	body, err := prWorkflowStatusJSONReport(context.Background(), cl, "coilyco-flight-deck", "ward", 8)
+	if err != nil {
+		t.Fatalf("prWorkflowStatusJSONReport: %v", err)
+	}
+	var st prCIStatus
+	if err := json.Unmarshal([]byte(body), &st); err != nil {
+		t.Fatalf("unmarshal status JSON: %v", err)
+	}
+	if st.Status.Required != "pending" {
+		t.Fatalf("required status = %q, want pending", st.Status.Required)
+	}
+	if len(st.PendingContexts) != 1 || st.PendingContexts[0] != "lint" {
+		t.Fatalf("pending contexts = %+v, want missing required lint", st.PendingContexts)
+	}
+	found := false
+	for _, ctx := range st.Contexts {
+		if ctx.Name == "lint" && ctx.Required && ctx.State == "pending" && !ctx.Available {
+			found = true
+			break
+		}
+	}
+	if !found {
+		t.Fatalf("contexts = %+v, want synthetic pending lint context", st.Contexts)
+	}
+	if st.NextAction != "wait" {
+		t.Fatalf("next action = %q, want wait", st.NextAction)
+	}
+}
+
 // TestValidateDispatchBrokerPRWorkflowShapes pins the broker request gate for
 // the ward#1067 actions.
 func TestValidateDispatchBrokerPRWorkflowShapes(t *testing.T) {
 	valid := []dispatchBrokerRequest{
 		{Action: dispatchActionPRStatus, Role: roleDirector, Target: "coilyco-flight-deck/ward#7"},
+		{Action: dispatchActionPRLogs, Role: roleDirector, Target: "coilyco-flight-deck/ward#7"},
 		{Action: dispatchActionPRMerge, Role: roleDirector, Target: "coilyco-flight-deck/ward#7"},
 		{Action: dispatchActionPRClose, Role: roleDirector, Target: "coilyco-flight-deck/ward#7", Reason: "superseded by #1163"},
 		{Action: dispatchActionPRReopen, Role: roleDirector, Target: "coilyco-flight-deck/ward#7"},

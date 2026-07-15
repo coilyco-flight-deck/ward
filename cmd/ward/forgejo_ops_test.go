@@ -66,7 +66,7 @@ func TestForgejoClientGetRawStreamsPlainBody(t *testing.T) {
 	defer srv.Close()
 
 	cl := &forgejoClient{baseURL: srv.URL, token: "secret"}
-	body, err := cl.getRaw(context.Background(), []string{"repos", "coilyco-flight-deck", "ward", "actions", "runs", "123", "jobs", "456", "attempt", "7", "logs"}, "text/plain")
+	body, err := cl.getRaw(context.Background(), []string{"repos", "coilyco-flight-deck", "ward", "actions", "runs", "123", "jobs", "456", "attempt", "7", "logs"})
 	if err != nil {
 		t.Fatalf("getRaw: %v", err)
 	}
@@ -89,7 +89,7 @@ func TestForgejoClientGetRawReportsStatus(t *testing.T) {
 	defer srv.Close()
 
 	cl := &forgejoClient{baseURL: srv.URL, token: "secret"}
-	body, err := cl.getRaw(context.Background(), []string{"repos", "coilyco-flight-deck", "ward", "actions", "runs", "123", "jobs", "456", "attempt", "7", "logs"}, "text/plain")
+	body, err := cl.getRaw(context.Background(), []string{"repos", "coilyco-flight-deck", "ward", "actions", "runs", "123", "jobs", "456", "attempt", "7", "logs"})
 	if err == nil {
 		t.Fatal("getRaw: want error, got nil")
 	}

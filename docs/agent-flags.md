@@ -50,6 +50,12 @@ doc_goal: Give a reader the canonical, code-generated tree of every ward agent c
 ## `ward agent pr`
 
 - No direct flags.
+## `ward agent pr wait`
+
+- --timeout, --interval, --head, --json
+## `ward agent pr logs`
+
+- --context
 ## `ward agent pr close`
 
 - --reason, --supersedes

@@ -2,6 +2,7 @@ package main
 
 import (
 	"context"
+	"encoding/json"
 	"fmt"
 	"io"
 	"os"
@@ -10,6 +11,7 @@ import (
 	"time"
 
 	"forgejo.coilysiren.me/coilyco-flight-deck/cli-guard/cli/verb"
+	"forgejo.coilysiren.me/coilyco-flight-deck/cli-guard/pkg/exitcode"
 	"github.com/urfave/cli/v3"
 )
 
@@ -25,6 +27,7 @@ const (
 	prOpReopen  prWorkflowOp = "reopen"
 	prOpRecover prWorkflowOp = "recover"
 	prOpStatus  prWorkflowOp = "status"
+	prOpLogs    prWorkflowOp = "logs"
 	prOpRuns    prWorkflowOp = "runs"
 	prOpRerun   prWorkflowOp = "rerun"
 )
@@ -55,7 +58,7 @@ func prWorkflowPermitted(role string, wf workflowMode, op prWorkflowOp) error {
 
 func prWorkflowPermittedForDefinition(def agentRoleDefinition, role string, wf workflowMode, op prWorkflowOp) error {
 	switch op {
-	case prOpStatus, prOpRuns, prOpRecover:
+	case prOpStatus, prOpLogs, prOpRuns, prOpRecover:
 		return prWorkflowReadPermitted(def, role, op)
 	case prOpRerun:
 		return prWorkflowRerunPermitted(def, role, op)
@@ -115,57 +118,15 @@ func prWorkflowMarkerMode(body string) workflowMode {
 
 // --- shared executors (direct CLI path + host dispatch-broker handler) ---
 
-// prWorkflowStatusReport renders the combined CI status for one PR head: the
-// native GET /repos/{owner}/{repo}/commits/{ref}/status read (ward#1067).
+// prWorkflowStatusReport renders the compact CI snapshot for one PR head.
 func prWorkflowStatusReport(ctx context.Context, cl *forgejoClient, owner, repo string, index int) (string, error) {
-	pr, err := cl.GetPullRequest(ctx, owner, repo, index)
-	if err != nil {
-		return "", err
-	}
-	head := pr.HeadSHA()
-	if head == "" {
-		return "", fmt.Errorf("pr status: %s/%s#%d did not expose a head SHA", owner, repo, index)
-	}
-	combined, err := cl.GetCommitCombinedStatus(ctx, owner, repo, head)
-	if err != nil {
-		return "", err
-	}
-	var b strings.Builder
-	state := strings.ToLower(strings.TrimSpace(combined.State))
-	if state == "" {
-		state = "unknown"
-	}
-	fmt.Fprintf(&b, "%s/%s#%d %q head %s combined status: %s\n", owner, repo, index, pr.Title, head, state)
-	for _, st := range combined.Statuses {
-		fmt.Fprintf(&b, "  %s = %s\n", st.Context, strings.ToLower(st.EffectiveState()))
-	}
-	if len(combined.Statuses) == 0 {
-		b.WriteString("  (no status contexts reported yet)\n")
-	}
-	if strings.ToLower(strings.TrimSpace(combined.State)) != "success" {
-		prCtx := agentPullRequestContext{
-			State:        strings.TrimSpace(pr.State),
-			Title:        strings.TrimSpace(pr.Title),
-			Body:         strings.TrimSpace(pr.Body),
-			URL:          strings.TrimSpace(pr.HTMLURL),
-			HeadSHA:      head,
-			HeadRef:      strings.TrimSpace(pr.Head.Ref),
-			BaseRef:      strings.TrimSpace(pr.Base.Ref),
-			Mergeability: fmt.Sprintf("mergeable=%t", pr.Mergeable),
-		}
-		if assessment, aerr := classifyForgejoPRRepair(ctx, cl, owner, repo, prCtx); aerr == nil && assessment.Bucket != "" {
-			fmt.Fprintf(&b, "  repair bucket: %s\n", assessment.Bucket)
-			fmt.Fprintf(&b, "  repair note: %s\n", assessment.Note)
-		}
-	}
-	// The required-context set is advisory here: the merge tool re-checks it
-	// fail-closed. A branch read failure degrades to a note, not an error.
-	if branch, berr := cl.GetBranch(ctx, owner, repo, pr.Base.Ref); berr == nil {
-		if required := normalizeDirectorRequiredContexts(branch.StatusCheckContexts); len(required) > 0 {
-			fmt.Fprintf(&b, "  required on %s: %s\n", pr.Base.Ref, strings.Join(required, ", "))
-		}
-	}
-	return b.String(), nil
+	body, err := prCIStatusFetch(ctx, cl, owner, repo, index, "", false)
+	return body, err
+}
+
+func prWorkflowStatusJSONReport(ctx context.Context, cl *forgejoClient, owner, repo string, index int) (string, error) {
+	body, err := prCIStatusFetch(ctx, cl, owner, repo, index, "", true)
+	return body, err
 }
 
 // prWorkflowMergeExec merges one PR through ward's compiled client: permission
@@ -642,8 +603,8 @@ bundle absent or rolled back (infrastructure#538).
 Merge authority is keyed to the workflow-mode model in the embedded role
 catalog: the director merges under pull-request and pull-request-and-merge,
 the engineer self-merges under pull-request-and-merge only, and remote-branch-only
-withholds merge from everyone. Status and runs are read verbs; rerun needs an
-engineering or project-management role.
+withholds merge from everyone. Status, logs, and runs are read verbs; rerun
+needs an engineering or project-management role.
 
 Close and reopen use the same workflow-mode gate as merge, with the close verb
 requiring a reason or superseding issue/PR reference. Recover is read-only
@@ -655,6 +616,8 @@ broker (the same TCP + token channel as stop/list/logs) and the host re-checks
 the permission gate; elsewhere it runs in-process against the forge API.
 
   ward agent pr status coilyco-flight-deck/ward#123   # combined CI status for the PR head
+  ward agent pr wait   coilyco-flight-deck/ward#123   # wait for the current head to turn green
+  ward agent pr logs   coilyco-flight-deck/ward#123   # follow the built-in log hook for a context
   ward agent pr close  coilyco-flight-deck/ward#123 --reason "superseded by #1163"
   ward agent pr reopen coilyco-flight-deck/ward#123   # reopen a closed-unmerged PR
   ward agent pr recover coilyco-flight-deck/ward#123  # diagnose a closed-unmerged PR
@@ -665,6 +628,8 @@ the permission gate; elsewhere it runs in-process against the forge API.
 See docs/agent-pr-workflow.md.`,
 		Commands: []*cli.Command{
 			agentPRStatusCommand(),
+			agentPRWaitCommand(),
+			agentPRLogsCommand(),
 			agentPRCloseCommand(),
 			agentPRReopenCommand(),
 			agentPRRecoverCommand(),
@@ -678,9 +643,39 @@ See docs/agent-pr-workflow.md.`,
 func agentPRStatusCommand() *cli.Command {
 	return &cli.Command{
 		Name:      "status",
-		Usage:     "Read one PR head's combined CI status natively (GET /repos/{owner}/{repo}/commits/{ref}/status).",
+		Usage:     "Read one PR head's structured CI status natively (combined, required, runs, log hooks).",
 		ArgsUsage: "<owner/repo#N | #N>",
-		Action:    prWorkflowAction("agent.pr.status", runAgentPRStatus),
+		Flags: []cli.Flag{
+			&cli.BoolFlag{Name: "json", Usage: "emit the structured status object as JSON"},
+		},
+		Action: prWorkflowAction("agent.pr.status", runAgentPRStatus),
+	}
+}
+
+func agentPRWaitCommand() *cli.Command {
+	return &cli.Command{
+		Name:      "wait",
+		Usage:     "Poll the PR status object until the required status is green, then exit.",
+		ArgsUsage: "<owner/repo#N | #N>",
+		Flags: []cli.Flag{
+			&cli.DurationFlag{Name: "timeout", Value: 30 * time.Minute, Usage: "maximum wait time (0 means one status read)"},
+			&cli.DurationFlag{Name: "interval", Value: 15 * time.Second, Usage: "poll interval while waiting"},
+			&cli.StringFlag{Name: "head", Usage: "fail fast if the live PR head diverges from this SHA"},
+			&cli.BoolFlag{Name: "json", Usage: "emit the final status object as JSON"},
+		},
+		Action: prWorkflowAction("agent.pr.wait", runAgentPRWait),
+	}
+}
+
+func agentPRLogsCommand() *cli.Command {
+	return &cli.Command{
+		Name:      "logs",
+		Usage:     "Follow the status object's log hook without manually mapping PR -> commit -> run -> job.",
+		ArgsUsage: "<owner/repo#N | #N>",
+		Flags: []cli.Flag{
+			&cli.StringFlag{Name: "context", Usage: "status context to read logs for (defaults to the first failing context)"},
+		},
+		Action: prWorkflowAction("agent.pr.logs", runAgentPRLogs),
 	}
 }
 
@@ -842,20 +837,241 @@ func runAgentPRStatus(ctx context.Context, r *Runner, c *cli.Command) error {
 	if err != nil {
 		return err
 	}
-	if handled, err := prWorkflowForwarded(ctx, r, dispatchBrokerRequest{
-		Action: dispatchActionPRStatus, Target: ref.String(),
-	}); handled {
-		return err
-	}
 	if err := prWorkflowPermitted(prWorkflowRole(), "", prOpStatus); err != nil {
 		return fmt.Errorf("%s: %w", label, err)
 	}
-	body, err := prWorkflowStatusReport(ctx, r.hostForgejoClient(ctx), ref.Owner, ref.Repo, ref.Number)
+	body, err := prWorkflowStatusBody(ctx, r, ref, c.Bool("json"))
 	if err != nil {
 		return fmt.Errorf("%s: %w", label, err)
 	}
 	_, err = io.WriteString(r.Runner.Stdout, body)
 	return err
+}
+
+func runAgentPRWait(ctx context.Context, r *Runner, c *cli.Command) error {
+	const label = "ward agent pr wait"
+	ref, err := r.resolveAgentPRRef(ctx, label, c.Args().First())
+	if err != nil {
+		return err
+	}
+	if err := prWorkflowPermitted(prWorkflowRole(), "", prOpStatus); err != nil {
+		return fmt.Errorf("%s: %w", label, err)
+	}
+	return prWorkflowWait(ctx, r, label, ref, c.Duration("timeout"), c.Duration("interval"), strings.TrimSpace(c.String("head")), c.Bool("json"))
+}
+
+func prWorkflowWait(ctx context.Context, r *Runner, label string, ref agentIssueRef, timeout, interval time.Duration, pinnedHead string, jsonOut bool) error {
+	if interval <= 0 {
+		interval = 15 * time.Second
+	}
+	if timeout <= 0 {
+		status, err := prWorkflowReadStatusSnapshot(ctx, r, ref, pinnedHead)
+		if err != nil {
+			return fmt.Errorf("%s: %w", label, err)
+		}
+		body := prWorkflowStatusSnapshotBody(status, jsonOut)
+		return prWorkflowWaitOneShot(r, label, status, body)
+	}
+	deadline := time.Now().Add(timeout)
+	previousHead := ""
+	for {
+		status, err := prWorkflowReadStatusSnapshot(ctx, r, ref, pinnedHead)
+		if err != nil {
+			return fmt.Errorf("%s: %w", label, err)
+		}
+		body := prWorkflowStatusSnapshotBody(status, jsonOut)
+		nextHead, done, err := prWorkflowWaitHandleSnapshot(r, label, status, body, jsonOut, previousHead)
+		previousHead = nextHead
+		if done || err != nil {
+			return err
+		}
+		if time.Now().After(deadline) {
+			_, _ = io.WriteString(r.Runner.Stdout, body)
+			return exitcode.New(124, "timeout", fmt.Errorf("%s: timed out after %s", label, timeout), "")
+		}
+		if err := prWorkflowWaitPause(ctx, deadline, interval); err != nil {
+			return err
+		}
+	}
+}
+
+func prWorkflowWaitHandleSnapshot(r *Runner, label string, status *prCIStatus, body string, jsonOut bool, previousHead string) (string, bool, error) {
+	if status.Status.HeadMismatch {
+		_, _ = io.WriteString(r.Runner.Stdout, body)
+		return status.Head.SHA, true, exitcode.New(1, "head-mismatch", fmt.Errorf("%s: live head %s no longer matches pinned %s", label, shortHead(status.Head.SHA), shortHead(status.Status.PinnedHead)), "")
+	}
+	if previousHead != "" && !strings.EqualFold(previousHead, status.Head.SHA) && !jsonOut {
+		_, _ = fmt.Fprintf(r.Runner.Stdout, "%s head changed from %s to %s; resetting poll state\n", status.Repo, shortHead(previousHead), shortHead(status.Head.SHA))
+	}
+	switch status.Status.Required {
+	case "success":
+		_, err := io.WriteString(r.Runner.Stdout, body)
+		return status.Head.SHA, true, err
+	case "failure", "error", "cancelled", "skipped":
+		_, _ = io.WriteString(r.Runner.Stdout, body)
+		return status.Head.SHA, true, exitcode.New(1, "pr-ci-red", fmt.Errorf("%s: required status is %s", label, status.Status.Required), "")
+	default:
+		if !jsonOut {
+			_, _ = fmt.Fprintln(r.Runner.Stdout, prCIStatusReadOnlyWaitLine(status))
+		}
+		return status.Head.SHA, false, nil
+	}
+}
+
+func prWorkflowWaitOneShot(r *Runner, label string, status *prCIStatus, body string) error {
+	_, _ = io.WriteString(r.Runner.Stdout, body)
+	switch status.Status.Required {
+	case "success":
+		return nil
+	case "failure", "error", "cancelled", "skipped":
+		return exitcode.New(1, "pr-ci-red", fmt.Errorf("%s: required status is %s", label, status.Status.Required), "")
+	default:
+		return exitcode.New(124, "timeout", fmt.Errorf("%s: one-shot status read ended while still pending", label), "")
+	}
+}
+
+func prWorkflowWaitPause(ctx context.Context, deadline time.Time, interval time.Duration) error {
+	sleep := interval
+	if remaining := time.Until(deadline); remaining > 0 && remaining < sleep {
+		sleep = remaining
+	}
+	timer := time.NewTimer(sleep)
+	defer timer.Stop()
+	select {
+	case <-ctx.Done():
+		return ctx.Err()
+	case <-timer.C:
+		return nil
+	}
+}
+
+func runAgentPRLogs(ctx context.Context, r *Runner, c *cli.Command) error {
+	const label = "ward agent pr logs"
+	ref, err := r.resolveAgentPRRef(ctx, label, c.Args().First())
+	if err != nil {
+		return err
+	}
+	if err := prWorkflowPermitted(prWorkflowRole(), "", prOpLogs); err != nil {
+		return fmt.Errorf("%s: %w", label, err)
+	}
+	body, err := prWorkflowLogsBody(ctx, r, ref, c.String("context"))
+	if err != nil {
+		return fmt.Errorf("%s: %w", label, err)
+	}
+	_, err = io.WriteString(r.Runner.Stdout, body)
+	return err
+}
+
+func prWorkflowStatusBody(ctx context.Context, r *Runner, ref agentIssueRef, jsonOut bool) (string, error) {
+	if handled, body, err := prWorkflowForwardedBody(ctx, dispatchBrokerRequest{
+		Action: dispatchActionPRStatus, Target: ref.String(), Format: map[bool]string{true: "json", false: ""}[jsonOut],
+	}); handled {
+		return body, err
+	}
+	if jsonOut {
+		return prWorkflowStatusJSONReport(ctx, r.hostForgejoClient(ctx), ref.Owner, ref.Repo, ref.Number)
+	}
+	return prWorkflowStatusReport(ctx, r.hostForgejoClient(ctx), ref.Owner, ref.Repo, ref.Number)
+}
+
+func prWorkflowStatusBodyWithHead(ctx context.Context, cl *forgejoClient, owner, repo string, index int, pinnedHead string, jsonOut bool) (string, error) {
+	st, err := buildPRCIStatus(ctx, cl, owner, repo, index, pinnedHead)
+	if err != nil {
+		return "", err
+	}
+	return prWorkflowStatusSnapshotBody(st, jsonOut), nil
+}
+
+func prWorkflowReadStatusSnapshot(ctx context.Context, r *Runner, ref agentIssueRef, pinnedHead string) (*prCIStatus, error) {
+	if handled, body, err := prWorkflowForwardedBody(ctx, dispatchBrokerRequest{
+		Action: dispatchActionPRStatus, Target: ref.String(), Format: "json", Head: pinnedHead,
+	}); handled {
+		if err != nil {
+			return nil, err
+		}
+		var st prCIStatus
+		if uerr := json.Unmarshal([]byte(body), &st); uerr != nil {
+			return nil, fmt.Errorf("ward agent pr status: decode forwarded JSON: %w", uerr)
+		}
+		return &st, nil
+	}
+	st, err := buildPRCIStatus(ctx, r.hostForgejoClient(ctx), ref.Owner, ref.Repo, ref.Number, pinnedHead)
+	if err != nil {
+		return nil, err
+	}
+	return st, nil
+}
+
+func prWorkflowStatusSnapshotBody(st *prCIStatus, jsonOut bool) string {
+	if jsonOut {
+		body, _ := prCIStatusMarshalJSON(st)
+		return body
+	}
+	return prCIStatusText(st)
+}
+
+func prWorkflowForwardedBody(ctx context.Context, req dispatchBrokerRequest) (bool, string, error) {
+	addr := strings.TrimSpace(os.Getenv(envDispatchBrokerAddr))
+	if addr == "" || os.Getenv("WARD_READONLY") != "1" {
+		return false, "", nil
+	}
+	if err := probeHostDispatchBroker(ctx, addr); err != nil {
+		return true, "", err
+	}
+	req.Role = prWorkflowRole()
+	req.Requester = strings.TrimSpace(os.Getenv("WARD_CONTAINER_NAME"))
+	req.Token = strings.TrimSpace(os.Getenv(envDispatchBrokerToken))
+	body, err := sendDispatchBrokerListRequest(ctx, addr, req)
+	if err != nil {
+		return true, "", err
+	}
+	defer func() { _ = body.Close() }()
+	data, err := io.ReadAll(body)
+	if err != nil {
+		return true, "", fmt.Errorf("ward agent pr: relay host output: %w", err)
+	}
+	return true, string(data), nil
+}
+
+func prWorkflowLogsBody(ctx context.Context, r *Runner, ref agentIssueRef, contextName string) (string, error) {
+	if handled, body, err := prWorkflowForwardedBody(ctx, dispatchBrokerRequest{
+		Action: dispatchActionPRLogs, Target: ref.String(), Context: contextName,
+	}); handled {
+		return body, err
+	}
+	return prWorkflowLogsDirect(ctx, r.hostForgejoClient(ctx), ref.Owner, ref.Repo, ref.Number, contextName)
+}
+
+func prWorkflowLogsDirect(ctx context.Context, cl *forgejoClient, owner, repo string, index int, contextName string) (string, error) {
+	st, err := buildPRCIStatus(ctx, cl, owner, repo, index, "")
+	if err != nil {
+		return "", err
+	}
+	hook, herr := prCIStatusSelectLogHook(st, contextName)
+	if herr != nil {
+		return "", herr
+	}
+	if !hook.Available {
+		return "", fmt.Errorf("pr logs: %s", emptyDefault(hook.Reason, "log hook unavailable"))
+	}
+	segments := prCIStatusLogSegments(owner, repo, hook)
+	body, err := cl.getRaw(ctx, segments)
+	if err != nil {
+		return "", err
+	}
+	return string(body), nil
+}
+
+func prCIStatusLogSegments(owner, repo string, hook prCILogHook) []string {
+	job := hook.JobName
+	if strings.TrimSpace(job) == "" {
+		job = "0"
+	}
+	attempt := hook.Attempt
+	if attempt <= 0 {
+		attempt = 1
+	}
+	return []string{"repos", owner, repo, "actions", "runs", strconv.FormatInt(hook.RunID, 10), "jobs", job, "attempt", strconv.Itoa(attempt), "logs"}
 }
 
 func runAgentPRClose(ctx context.Context, r *Runner, c *cli.Command) error {

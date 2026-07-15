@@ -456,7 +456,7 @@ func (r *Runner) runForgejoActionsLogs(ctx context.Context, cmd *cli.Command) er
 		return fmt.Errorf("ward ops forgejo actions logs: owner %q is out of scope; restricted to %s* owners", owner, brokerOwnerPrefix)
 	}
 	cl := r.hostForgejoClient(ctx)
-	body, err := cl.getRaw(ctx, []string{"repos", owner, repo, "actions", "runs", run, "jobs", job, "attempt", attempt, "logs"}, "text/plain")
+	body, err := cl.getRaw(ctx, []string{"repos", owner, repo, "actions", "runs", run, "jobs", job, "attempt", attempt, "logs"})
 	if err != nil {
 		return err
 	}

@@ -124,6 +124,8 @@ const (
 	dispatchActionLogs = "logs"
 	// dispatchActionPRStatus reads one PR head's combined CI status natively (ward#1067).
 	dispatchActionPRStatus = "pr-status"
+	// dispatchActionPRLogs reads one PR CI log stream through the native status hook.
+	dispatchActionPRLogs = "pr-logs"
 	// dispatchActionPRMerge merges one PR through ward's compiled client, gated by
 	// the embedded role x workflow permission table (ward#1067).
 	dispatchActionPRMerge = "pr-merge"
@@ -143,6 +145,7 @@ const (
 // broker serves natively, host-side, on ward's compiled Forgejo client.
 var prWorkflowDispatchActions = map[string]bool{
 	dispatchActionPRStatus:  true,
+	dispatchActionPRLogs:    true,
 	dispatchActionPRMerge:   true,
 	dispatchActionPRClose:   true,
 	dispatchActionPRReopen:  true,
@@ -176,6 +179,10 @@ type dispatchBrokerRequest struct {
 	Reason string `json:"reason,omitempty"`
 	// Supersedes carries the superseding issue/PR ref for pr-close requests.
 	Supersedes string `json:"supersedes,omitempty"`
+	// Context names a PR status/log context for follow-up requests.
+	Context string `json:"context,omitempty"`
+	// Head pins a PR status request to a specific head SHA when wait wants fail-fast.
+	Head string `json:"head,omitempty"`
 	// Token is the per-launch shared secret the surface echoes back so the host
 	// broker authenticates the dial (the TCP port has no socket file perms).
 	Token string `json:"token,omitempty"`

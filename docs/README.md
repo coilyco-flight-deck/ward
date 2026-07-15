@@ -40,7 +40,8 @@ Start here if you open `docs/` directly. The tree holds the release-era operatin
 - [agent-reservation-cache.md](agent-reservation-cache.md) - cache-only reservation cleanup.
 - [agent-dispatch-health.md](agent-dispatch-health.md) - status and alert lines.
 - [agent-dispatch-broker.md](agent-dispatch-broker.md) - brokered launch contract.
-- [agent-pr-workflow.md](agent-pr-workflow.md) - merge, status, runs, rerun.
+- [agent-pr-workflow.md](agent-pr-workflow.md) - merge, status, wait, logs, runs, rerun.
+- [agent-pr-status-object.md](agent-pr-status-object.md) - PR/CI status object, wait primitive, log hooks, examples.
 - [agent-workflow.md](agent-workflow.md) - landing policy and review.
 - [warded-kernel-boundary.md](warded-kernel-boundary.md) - kernel versus edge extraction boundary.
 

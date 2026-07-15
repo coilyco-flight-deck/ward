@@ -327,8 +327,7 @@ func (c *forgejoClient) doJSON(ctx context.Context, method string, segments []st
 }
 
 // getRaw GETs one Forgejo endpoint and returns the body without JSON decoding.
-// Callers use this for text/plain and other opaque bodies.
-func (c *forgejoClient) getRaw(ctx context.Context, segments []string, accept string) ([]byte, error) {
+func (c *forgejoClient) getRaw(ctx context.Context, segments []string) ([]byte, error) {
 	token, err := c.apiToken(ctx)
 	if err != nil {
 		return nil, err
@@ -338,9 +337,7 @@ func (c *forgejoClient) getRaw(ctx context.Context, segments []string, accept st
 		return nil, err
 	}
 	req.Header.Set("Authorization", "token "+token)
-	if accept != "" {
-		req.Header.Set("Accept", accept)
-	}
+	req.Header.Set("Accept", "text/plain")
 	resp, err := (&http.Client{Timeout: 30 * time.Second}).Do(req)
 	if err != nil {
 		return nil, err

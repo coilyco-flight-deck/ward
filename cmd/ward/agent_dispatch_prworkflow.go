@@ -45,6 +45,7 @@ type prWorkflowDispatchExecutor func(context.Context, *forgejoClient, dispatchBr
 
 var prWorkflowDispatchExecutors = map[string]prWorkflowDispatchExecutor{
 	dispatchActionPRStatus:  execDispatchBrokerPRStatus,
+	dispatchActionPRLogs:    execDispatchBrokerPRLogs,
 	dispatchActionPRMerge:   execDispatchBrokerPRMerge,
 	dispatchActionPRClose:   execDispatchBrokerPRClose,
 	dispatchActionPRReopen:  execDispatchBrokerPRReopen,
@@ -61,7 +62,22 @@ func execDispatchBrokerPRStatus(ctx context.Context, cl *forgejoClient, req disp
 	if err := prWorkflowPermitted(strings.TrimSpace(req.Role), "", prOpStatus); err != nil {
 		return "", fmt.Errorf("dispatch broker: %w", err)
 	}
-	return prWorkflowStatusReport(ctx, cl, ref.Owner, ref.Repo, ref.Number)
+	body, err := prWorkflowStatusBodyWithHead(ctx, cl, ref.Owner, ref.Repo, ref.Number, strings.TrimSpace(req.Head), strings.EqualFold(strings.TrimSpace(req.Format), "json"))
+	if err != nil {
+		return "", err
+	}
+	return body, nil
+}
+
+func execDispatchBrokerPRLogs(ctx context.Context, cl *forgejoClient, req dispatchBrokerRequest) (string, error) {
+	ref, err := parseAgentIssueRef(req.Target)
+	if err != nil {
+		return "", fmt.Errorf("dispatch broker: %s target: %w", dispatchActionPRLogs, err)
+	}
+	if err := prWorkflowPermitted(strings.TrimSpace(req.Role), "", prOpLogs); err != nil {
+		return "", fmt.Errorf("dispatch broker: %w", err)
+	}
+	return prWorkflowLogsDirect(ctx, cl, ref.Owner, ref.Repo, ref.Number, strings.TrimSpace(req.Context))
 }
 
 func execDispatchBrokerPRMerge(ctx context.Context, cl *forgejoClient, req dispatchBrokerRequest) (string, error) {
@@ -150,7 +166,7 @@ func validateDispatchBrokerPRWorkflowShape(action string, req dispatchBrokerRequ
 func validateDispatchBrokerPRWorkflowTarget(action string, req dispatchBrokerRequest) error {
 	target := strings.TrimSpace(req.Target)
 	switch action {
-	case dispatchActionPRStatus, dispatchActionPRMerge:
+	case dispatchActionPRStatus, dispatchActionPRLogs, dispatchActionPRMerge:
 		return validateDispatchBrokerPRRefTarget(action, target)
 	case dispatchActionPRClose, dispatchActionPRReopen, dispatchActionPRRecover:
 		return validateDispatchBrokerPRLifecycleTarget(action, target, req)
