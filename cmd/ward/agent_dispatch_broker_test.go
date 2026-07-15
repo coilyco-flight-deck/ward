@@ -1777,6 +1777,10 @@ func TestRunHostDispatchBrokerRequestClearsBrokerEnvWhileLaunchRuns(t *testing.T
 			time.Sleep(10 * time.Millisecond)
 		}
 	}
+	dispatchDir := filepath.Dir(logPath)
+	if err := os.RemoveAll(dispatchDir); err != nil {
+		t.Fatalf("remove dispatch artifact dir %s: %v", dispatchDir, err)
+	}
 }
 
 // TestRunHostDispatchBrokerRequestReturnsStructuredLaunchFailure locks the host side
