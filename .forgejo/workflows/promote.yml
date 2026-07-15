@@ -14,6 +14,8 @@
 # the promote push URL - the push then lands as the internal Actions user,
 # whose pushes Forgejo deliberately never enqueues workflows for. With it off,
 # the push authenticates as the PAT user and stage 2 fires (ward#1117).
+# The tag helper and release creation now run from local scripts so a transient
+# shared-action fetch cannot block the pipeline setup.
 
 name: promote
 
@@ -57,7 +59,9 @@ jobs:
         run: mkdir -p "$TMPDIR" "$GOTMPDIR" "$GOCACHE" "$GOMODCACHE" && make lint
 
       - id: tag
-        uses: coilysiren/agentic-os/actions/tag-bump@main
+        env:
+          TAG_PUSH_TOKEN: ${{ github.token }}
+        run: bash scripts/release-tag.sh
 
       - name: Build and publish draft release artifacts
         env:
