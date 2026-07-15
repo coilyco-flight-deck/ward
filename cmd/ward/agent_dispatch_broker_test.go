@@ -1781,9 +1781,13 @@ func TestRunHostDispatchBrokerRequestClearsBrokerEnvWhileLaunchRuns(t *testing.T
 			time.Sleep(10 * time.Millisecond)
 		}
 	}
-	dispatchDir := filepath.Dir(logPath)
+	dispatchDir := filepath.Join(agentLogsDir(), dispatchArtifactsSubdir)
 	if err := os.RemoveAll(dispatchDir); err != nil {
 		t.Fatalf("remove dispatch artifact dir %s: %v", dispatchDir, err)
+	}
+	redactedDispatchDir := filepath.Join(agentLogsRedactedDir(), dispatchArtifactsSubdir)
+	if err := os.RemoveAll(redactedDispatchDir); err != nil {
+		t.Fatalf("remove redacted dispatch artifact dir %s: %v", redactedDispatchDir, err)
 	}
 }
 
