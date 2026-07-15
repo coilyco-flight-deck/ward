@@ -205,6 +205,9 @@ func TestParseAgentIssueRefForge(t *testing.T) {
 	if !pr.MergeRequest || pr.Forge != forgeForgejo || pr.Tracker != trackerForgejo {
 		t.Errorf("forgejo PR ref parsed to %+v, want Forgejo PR", pr)
 	}
+	if got, want := pr.String(), "coilyco-flight-deck/ward!98"; got != want {
+		t.Errorf("forgejo PR ref string = %q, want %q", got, want)
+	}
 	if pr.URL != "" {
 		t.Errorf("bare PR ref should not preserve a URL, got %q", pr.URL)
 	}

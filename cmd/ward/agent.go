@@ -37,7 +37,11 @@ type agentIssueRef struct {
 }
 
 func (r agentIssueRef) String() string {
-	return fmt.Sprintf("%s/%s#%d", r.Owner, r.Repo, r.Number)
+	sep := "#"
+	if r.MergeRequest {
+		sep = "!"
+	}
+	return fmt.Sprintf("%s/%s%s%d", r.Owner, r.Repo, sep, r.Number)
 }
 
 // repoSlug renders the owner/repo pair without the issue number.

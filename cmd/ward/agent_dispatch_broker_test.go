@@ -695,6 +695,25 @@ func TestBrokerEngineerArgvForwardsApprovedFlags(t *testing.T) {
 	}
 }
 
+func TestBrokerEngineerArgvPreservesPullRequestRefs(t *testing.T) {
+	cmd := parseCommandForTest(t, agentEngineerFlags(), []string{
+		"engineer", "coilyco-flight-deck/ward!42",
+		"--harness", "claude",
+		"--print",
+	})
+	ref := agentIssueRef{Owner: "coilyco-flight-deck", Repo: "ward", Number: 42, MergeRequest: true}
+	got := brokerEngineerArgv(cmd, modeClaude, ref)
+	if !containsArg(got, "coilyco-flight-deck/ward!42") {
+		t.Fatalf("brokered argv should preserve PR refs, got %v", got)
+	}
+	if dispatchBrokerLaunchHasContinuationBranch(got) == false {
+		t.Fatalf("brokered argv should be treated as continuation work, got %v", got)
+	}
+	if !containsArg(got, "--print") {
+		t.Fatalf("brokered argv should preserve --print, got %v", got)
+	}
+}
+
 // TestBrokerEngineerArgvForwardsOverrideFlags covers ward#1045: each --override-*
 // spelling forwards as typed, and neither flag rides in uninvited.
 func TestBrokerEngineerArgvForwardsOverrideFlags(t *testing.T) {
