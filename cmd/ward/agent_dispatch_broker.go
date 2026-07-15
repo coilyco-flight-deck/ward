@@ -237,7 +237,14 @@ func (r *Runner) serveHostDispatchBroker(ctx context.Context, ln net.Listener, r
 }
 
 func (r *Runner) handleHostDispatchBrokerConn(ctx context.Context, conn net.Conn, requester, token string) {
-	defer func() { _ = conn.Close() }()
+	defer func() {
+		if p := recover(); p != nil {
+			err := dispatchBrokerPanicError("request handler", p)
+			fmt.Fprintf(os.Stderr, "ward dispatch broker: %v\n", err)
+			writeDispatchBrokerResponse(conn, "", err)
+		}
+		_ = conn.Close()
+	}()
 	var req dispatchBrokerRequest
 	if err := json.NewDecoder(conn).Decode(&req); err != nil {
 		writeDispatchBrokerResponse(conn, "", fmt.Errorf("decode request: %w", err))
@@ -336,6 +343,16 @@ type dispatchBrokerLaunchResult struct {
 func (r *Runner) handleHostDispatchBrokerLaunch(ctx context.Context, req dispatchBrokerRequest, logPath string, logf *os.File, restore func(), lock *sync.Mutex, started chan struct{}, done chan<- dispatchBrokerLaunchResult) {
 	restored := false
 	defer func() {
+		if p := recover(); p != nil {
+			err := dispatchBrokerPanicError("launch worker", p)
+			if !restored {
+				restore()
+				restored = true
+			}
+			dispatchFailedDispatchLaunchStartHook()
+			r.commentDispatchLaunchError(ctx, req, logPath, err)
+			done <- dispatchBrokerLaunchResult{logPath: logPath, err: err}
+		}
 		if !restored {
 			restore()
 		}
@@ -378,6 +395,14 @@ func (r *Runner) handleHostDispatchBrokerLaunch(ctx context.Context, req dispatc
 	}
 	fmt.Fprintf(os.Stderr, "ward dispatch broker: launch completed\n")
 	done <- dispatchBrokerLaunchResult{logPath: logPath, err: nil}
+}
+
+func dispatchBrokerPanicError(stage string, p any) error {
+	msg := strings.ToLower(fmt.Sprint(p))
+	if strings.Contains(msg, "exit status 125") || (strings.Contains(msg, "container name") && strings.Contains(msg, "already in use")) {
+		return fmt.Errorf("dispatch broker: %s request failure: %v", stage, p)
+	}
+	return fmt.Errorf("dispatch broker: %s panicked: %v", stage, p)
 }
 
 func waitForDispatchBrokerLaunchStart(ctx context.Context, logPath string, started <-chan struct{}) (string, error) {

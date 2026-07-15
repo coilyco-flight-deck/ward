@@ -45,6 +45,23 @@ func serveDispatchBrokerRequests(t *testing.T, ln net.Listener, handle func(net.
 	}()
 }
 
+func roundTripDispatchBrokerRequest(t *testing.T, addr string, req dispatchBrokerRequest) dispatchBrokerResponse {
+	t.Helper()
+	conn, err := net.Dial("tcp", addr)
+	if err != nil {
+		t.Fatalf("dial broker %s: %v", addr, err)
+	}
+	defer conn.Close()
+	if err := json.NewEncoder(conn).Encode(req); err != nil {
+		t.Fatalf("encode request: %v", err)
+	}
+	var resp dispatchBrokerResponse
+	if err := json.NewDecoder(conn).Decode(&resp); err != nil {
+		t.Fatalf("decode response: %v", err)
+	}
+	return resp
+}
+
 func TestDispatchBrokerValidatesNarrowAPI(t *testing.T) {
 	for _, req := range []dispatchBrokerRequest{
 		{Role: "exec", Argv: []string{"exec", "test"}},
@@ -1358,6 +1375,73 @@ func TestDispatchBrokerTokenGate(t *testing.T) {
 				t.Errorf("error = %q, want contains %q", resp.Error, tc.wantSub)
 			}
 		})
+	}
+}
+
+func TestDispatchBrokerPanicErrorClassifiesDockerNameConflictAsRequestFailure(t *testing.T) {
+	err := dispatchBrokerPanicError("launch worker", errors.New(`Conflict. The container name "/engineer-codex-ward-786" is already in use`))
+	if !strings.Contains(err.Error(), "request failure") {
+		t.Fatalf("panic error = %q, want a request failure classification", err)
+	}
+	if !strings.Contains(err.Error(), "already in use") {
+		t.Fatalf("panic error = %q, want the underlying Docker conflict", err)
+	}
+}
+
+// TestServeHostDispatchBrokerSurvivesFailedLaunch keeps the listener alive after
+// a request panics with a Docker name-conflict-shaped failure.
+func TestServeHostDispatchBrokerSurvivesFailedLaunch(t *testing.T) {
+	t.Setenv("HOME", t.TempDir())
+	t.Setenv("FORGEJO_TOKEN", "broker-token")
+
+	ln, err := net.Listen("tcp", "127.0.0.1:0")
+	if err != nil {
+		t.Fatalf("listen: %v", err)
+	}
+	ctx, cancel := context.WithCancel(t.Context())
+	t.Cleanup(cancel)
+
+	origLaunch := dispatchBrokerLaunch
+	origFailedHook := dispatchFailedDispatchLaunchHook
+	t.Cleanup(func() {
+		dispatchBrokerLaunch = origLaunch
+		dispatchFailedDispatchLaunchHook = origFailedHook
+		_ = ln.Close()
+	})
+
+	var launches atomic.Int32
+	dispatchFailedDispatchLaunchHook = func(dispatchBrokerRequest, string, error) bool { return true }
+	dispatchBrokerLaunch = func(context.Context, dispatchBrokerRequest) error {
+		if launches.Add(1) == 1 {
+			panic(errors.New(`Conflict. The container name "/engineer-codex-ward-786" is already in use`))
+		}
+		return nil
+	}
+
+	go (&Runner{}).serveHostDispatchBroker(ctx, ln, "director-box", "secret")
+
+	first := roundTripDispatchBrokerRequest(t, ln.Addr().String(), dispatchBrokerRequest{
+		Role:  "engineer",
+		Argv:  []string{"engineer", "coilyco-flight-deck/ward#786", "--harness", "codex", "--pr"},
+		Token: "secret",
+	})
+	if first.OK {
+		t.Fatal("failed launch unexpectedly returned OK")
+	}
+	if !strings.Contains(first.Error, "already in use") {
+		t.Fatalf("failed launch error = %q, want Docker name conflict", first.Error)
+	}
+
+	second := roundTripDispatchBrokerRequest(t, ln.Addr().String(), dispatchBrokerRequest{
+		Role:  "nope",
+		Argv:  []string{"nope"},
+		Token: "secret",
+	})
+	if second.OK {
+		t.Fatal("validation failure unexpectedly returned OK")
+	}
+	if !strings.Contains(second.Error, "refused") {
+		t.Fatalf("second response = %q, want a live broker refusal", second.Error)
 	}
 }
 
