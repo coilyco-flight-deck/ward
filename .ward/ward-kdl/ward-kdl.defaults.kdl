@@ -3,9 +3,7 @@ smart-defaults {
     agent-reservation-recheck-max "15s"
     agent-reap-idle "1h"
     agent-reap-max-cpu "5.0"
-    // The dev-base image and tag the `ward agent` container launches use when
-    // no env override or per-run flag pins them.
-    agent-image "forgejo.coilysiren.me/coilyco-flight-deck/agentic-os"
+    agent-image "forgejo.coilysiren.me/coilyco-flight-deck/agentic-os" // this needs to move into a ward repo hosted image ASAP
     agent-tag release
     container-memory-limit "2g"
     engineer-container-limit "10"
@@ -21,8 +19,4 @@ smart-defaults {
     agent-workflow default=merge-remote-main {
 
     }
-}
-repo-authority default=forgejo {
-    trusted-owner coilysiren
-    repo "coilysiren/*" forge=github
 }
