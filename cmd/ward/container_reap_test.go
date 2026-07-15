@@ -1021,9 +1021,9 @@ func TestReapTargetTreeLandedWithOnlyProvenanceArtifactDoesNotSalvage(t *testing
 	}
 }
 
-// TestReapTargetTreeResidualOnlyRunWithoutCloseRefSalvages is the ward#515 regression:
-// a residual-only carried run (reaper commit, subject + trailer, NO closes) salvages.
-func TestReapTargetTreeResidualOnlyRunWithoutCloseRefSalvages(t *testing.T) {
+// TestReapTargetTreeResidualOnlyRunWithoutCloseRefRepairs is the ward#515 regression:
+// a residual-only carried run (reaper commit, subject + trailer, NO closes) repairs.
+func TestReapTargetTreeResidualOnlyRunWithoutCloseRefRepairs(t *testing.T) {
 	origin := t.TempDir()
 	runGit(t, origin, "init", "--bare", "-b", "main")
 	work := t.TempDir()
@@ -1059,21 +1059,26 @@ func TestReapTargetTreeResidualOnlyRunWithoutCloseRefSalvages(t *testing.T) {
 		"ward-container: residual goose work on coilyco-flight-deck/infrastructure\n\nCo-Authored-By: Goose <goose@ward.agent>")
 
 	r := &Runner{Runner: &shell.Runner{Resolve: shell.PathResolver}}
-	// Token empty: salvage preserves the branch but files no issue (logged, not fatal).
 	env := reapEnv{Owner: "coilyco-flight-deck", Name: "infrastructure", Base: "https://forgejo.coilysiren.me", Mode: "goose", Issue: 427, Launched: true, Workflow: workflowDirectToMain}
 	if err := r.reapTargetTree(t.Context(), work, env, false); err != nil {
-		t.Fatalf("reapTargetTree salvaging a close-refless residual-only run: %v", err)
+		t.Fatalf("reapTargetTree repairing a close-refless residual-only run: %v", err)
 	}
 
-	// The carried issue was never closed, so the residual commit must NOT have
-	// advanced canonical main: origin/main still points at the baseline.
-	if got := mustGitRev(t, origin, "main"); got != baseline {
-		t.Fatalf("a residual-only run without closes #427 must not land on main: origin main=%s baseline=%s", got, baseline)
+	// The carried issue was missing a close trailer, so the repaired residual
+	// work must land on main and carry the trailer.
+	if got := mustGitRev(t, origin, "main"); got == baseline {
+		t.Fatalf("a residual-only run without closes #427 must land on main, but origin main stayed at baseline %s", got)
 	}
-	// The work is preserved on a salvage branch instead.
-	out, _ := exec.Command("git", "-C", origin, "branch", "--list", salvageBranchPrefix+"*").CombinedOutput()
-	if strings.TrimSpace(string(out)) == "" {
-		t.Fatal("a close-refless residual-only run must be preserved on a salvage branch")
+	out, err := exec.Command("git", "-C", work, "log", "-1", "--format=%B").CombinedOutput()
+	if err != nil {
+		t.Fatalf("read repaired residual commit: %v\n%s", err, string(out))
+	}
+	if !strings.Contains(strings.ToLower(string(out)), "closes #427") {
+		t.Fatalf("repaired residual-only run must add closes #427:\n%s", string(out))
+	}
+	branchOut, _ := exec.Command("git", "-C", origin, "branch", "--list", salvageBranchPrefix+"*").CombinedOutput()
+	if strings.TrimSpace(string(branchOut)) != "" {
+		t.Fatalf("a repaired residual-only run must not create a salvage branch, got: %q", string(branchOut))
 	}
 }
 
@@ -1415,6 +1420,58 @@ func TestReapTargetTreeRepairsResidualCommitCloseRef(t *testing.T) {
 	}
 }
 
+// Goose residual close-trailer repair regression.
+func TestReapTargetTreeCommittedResidualWithoutCloseRefRepairsAndLands(t *testing.T) {
+	origin := t.TempDir()
+	runGit(t, origin, "init", "--bare", "-b", "main")
+	work := t.TempDir()
+	runGit(t, work, "init", "-b", "main")
+	runGit(t, work, "config", "user.email", "test@example.com")
+	runGit(t, work, "config", "user.name", "Test User")
+	runGitCommitAt(t, work, "2026-07-08T11:00:00Z", "base.txt", "base\n", "base")
+	runGit(t, work, "remote", "add", "origin", origin)
+	runGit(t, work, "push", "origin", "main")
+	runGit(t, work, "update-ref", "refs/remotes/origin/main", "HEAD")
+	baseline := mustGitRev(t, work, "origin/main")
+
+	prov := runProvenance{
+		RunID:        "engineer-goose-ward-714",
+		Repo:         "coilyco-flight-deck/ward",
+		Issue:        714,
+		ReservedAt:   "2026-07-08T11:05:00Z",
+		BaselineMain: baseline,
+	}
+	provData, err := json.Marshal(prov)
+	if err != nil {
+		t.Fatal(err)
+	}
+	if err := os.WriteFile(filepath.Join(work, runProvenanceFile), provData, 0o644); err != nil {
+		t.Fatal(err)
+	}
+
+	runGitCommitAt(t, work, "2026-07-08T11:10:00Z", "feature.txt", "feature\n", "goose residual work")
+
+	r := &Runner{Runner: &shell.Runner{Resolve: shell.PathResolver}}
+	env := reapEnv{Owner: "coilyco-flight-deck", Name: "ward", Base: "https://forgejo.coilysiren.me", Mode: "goose", Issue: 714, Launched: true, Workflow: workflowDirectToMain}
+	if err := r.reapTargetTree(t.Context(), work, env, false); err != nil {
+		t.Fatalf("reapTargetTree repairing committed residual work: %v", err)
+	}
+	if got, want := mustGitRev(t, origin, "main"), mustGitRev(t, work, "HEAD"); got != want {
+		t.Fatalf("committed residual Goose run must land on main: origin main=%s work HEAD=%s", got, want)
+	}
+	out, err := exec.Command("git", "-C", work, "log", "-1", "--format=%B").CombinedOutput()
+	if err != nil {
+		t.Fatalf("read repaired commit: %v\n%s", err, string(out))
+	}
+	if !strings.Contains(strings.ToLower(string(out)), "closes #714") {
+		t.Fatalf("committed residual work must gain closes #714 before landing:\n%s", string(out))
+	}
+	out, _ = exec.Command("git", "-C", origin, "branch", "--list", salvageBranchPrefix+"*").CombinedOutput()
+	if strings.TrimSpace(string(out)) != "" {
+		t.Fatalf("committed residual work must not create a salvage branch, got: %q", string(out))
+	}
+}
+
 func TestRepairClosingReferenceCreatesEmptyCommitForMultiCommitShape(t *testing.T) {
 	repo := t.TempDir()
 	runGit(t, repo, "init", "-b", "main")
@@ -1475,29 +1532,34 @@ func TestReapTargetTreeEstablishesMainOnEmptyRepo(t *testing.T) {
 	if got, want := mustGitRev(t, remote, "main"), mustGitRev(t, work, "HEAD"); got != want {
 		t.Fatalf("establish-main must push HEAD as the new default branch: remote main=%s, work HEAD=%s", got, want)
 	}
-	out, _ := exec.Command("git", "-C", remote, "branch", "--list", salvageBranchPrefix+"*").CombinedOutput()
-	if strings.TrimSpace(string(out)) != "" {
-		t.Fatalf("a clean empty-repo run must not create a salvage branch, got: %q", string(out))
+	branchOut, _ := exec.Command("git", "-C", remote, "branch", "--list", salvageBranchPrefix+"*").CombinedOutput()
+	if strings.TrimSpace(string(branchOut)) != "" {
+		t.Fatalf("a clean empty-repo run must not create a salvage branch, got: %q", string(branchOut))
 	}
 }
 
-// TestReapTargetTreeEmptyRepoMissingCloseRefSalvages is the guard half of ward#599:
-// an empty-repo run whose committed work omits its closing reference still salvages.
-func TestReapTargetTreeEmptyRepoMissingCloseRefSalvages(t *testing.T) {
+// Empty-repo close-trailer repair regression.
+func TestReapTargetTreeEmptyRepoMissingCloseRefRepairs(t *testing.T) {
 	remote, work := initEmptyRepoRun(t, "server.py", "print('hi')\n", "build reddit-mcp (no closing ref)")
 
 	r := &Runner{Runner: &shell.Runner{Resolve: shell.PathResolver}}
-	// Token empty: salvage preserves the branch but files no issue (logged, not fatal).
 	env := reapEnv{Owner: "coilyco-flight-deck", Name: "reddit-mcp", Base: "https://forgejo.coilysiren.me", Mode: "claude", Issue: 599, Launched: true, Workflow: workflowDirectToMain}
 	if err := r.reapTargetTree(t.Context(), work, env, true); err != nil {
-		t.Fatalf("reapTargetTree salvaging a close-refless empty-repo run: %v", err)
+		t.Fatalf("reapTargetTree repairing a close-refless empty-repo run: %v", err)
 	}
-	if refExists(t.Context(), r, work) {
-		t.Fatal("a salvaged run must NOT establish main on the empty repo")
+	if got, want := mustGitRev(t, remote, "main"), mustGitRev(t, work, "HEAD"); got != want {
+		t.Fatalf("empty-repo repair must land HEAD as main: remote main=%s work HEAD=%s", got, want)
 	}
-	out, _ := exec.Command("git", "-C", remote, "branch", "--list", salvageBranchPrefix+"*").CombinedOutput()
-	if strings.TrimSpace(string(out)) == "" {
-		t.Fatal("a close-refless empty-repo run must be preserved on a salvage branch")
+	out, err := exec.Command("git", "-C", work, "log", "-1", "--format=%B").CombinedOutput()
+	if err != nil {
+		t.Fatalf("read repaired empty-repo commit: %v\n%s", err, string(out))
+	}
+	if !strings.Contains(strings.ToLower(string(out)), "closes #599") {
+		t.Fatalf("empty-repo repair must add closes #599 before landing:\n%s", string(out))
+	}
+	branchOut, _ := exec.Command("git", "-C", remote, "branch", "--list", salvageBranchPrefix+"*").CombinedOutput()
+	if strings.TrimSpace(string(branchOut)) != "" {
+		t.Fatalf("a repaired empty-repo run must not create a salvage branch, got: %q", string(branchOut))
 	}
 }
 
