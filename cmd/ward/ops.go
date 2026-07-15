@@ -165,11 +165,8 @@ func loadForgejoGuardfileNodeFrom(src configSource) (*bundleKDLFile, *kdl.Node, 
 	if err != nil {
 		return nil, nil, err
 	}
-	file, node, err := findMergedBundleNode(files, "top-level `wrap ward-kdl ops forgejo` block", func(n *kdl.Node) bool {
-		if !wrapNodeMatchesPath(n, "ward-kdl", "ops", "forgejo") && !wrapNodeMatchesPath(n, "ward", "ops", "forgejo") {
-			return false
-		}
-		return n.GetChild("exec") == nil
+	file, node, err := findMergedBundleNode(files, "top-level `wrap ops forgejo` block", func(n *kdl.Node) bool {
+		return wrapNodeMatchesPath(n, "ops", "forgejo") && n.GetChild("inherit") == nil && n.GetChild("exec") == nil
 	})
 	if err != nil {
 		return nil, nil, err
