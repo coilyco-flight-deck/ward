@@ -567,6 +567,10 @@ func activeReservedEngineerRow(ctx context.Context, r *Runner, path string, now 
 }
 
 func reservationCacheEngineerRow(ctx context.Context, r *Runner, path string, ref agentIssueRef, res *agentReservation, now time.Time) (agentRunningEngineer, bool) {
+	if r.reservationCacheShouldPruneArchivedRun(ref) {
+		_ = removeAgentReservationArtifacts(path)
+		return agentRunningEngineer{}, false
+	}
 	phase, status, phaseOK := dispatchLaunchPhaseForReservation(ref)
 	row := reservedEngineerRowFromReservation(ref, res, now, phase, status, phaseOK)
 	if phaseOK && phase == agentLaunchPhaseFailed {
@@ -606,6 +610,26 @@ func reservationCacheEngineerRow(ctx context.Context, r *Runner, path string, re
 		return agentRunningEngineer{}, false
 	}
 	return row, true
+}
+
+func (r *Runner) reservationCacheShouldPruneArchivedRun(ref agentIssueRef) bool {
+	meta, ok, err := latestArchivedEngineerRunMetaForIssue(ref)
+	if err != nil || !ok {
+		return false
+	}
+	return archivedEngineerRunSupersedesReservation(meta)
+}
+
+func archivedEngineerRunSupersedesReservation(meta runMeta) bool {
+	if strings.EqualFold(strings.TrimSpace(meta.Outcome), outcomePushedMain) {
+		return true
+	}
+	switch strings.ToLower(strings.TrimSpace(meta.Summary.NormalizedOutcome)) {
+	case "landed-main", "pr-green", "preserved-salvage-branch", "standalone-salvage-branch":
+		return true
+	default:
+		return false
+	}
 }
 
 func reservationCacheRowHeld(ctx context.Context, cl Tracker, ref agentIssueRef, now time.Time) (bool, error) {

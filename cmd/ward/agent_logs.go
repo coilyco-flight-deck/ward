@@ -510,6 +510,62 @@ func readRunMeta(path string) (runMeta, bool) {
 	return meta, true
 }
 
+// latestArchivedEngineerRunMetaForIssue resolves the newest drained engineer run
+// for an issue so callers can tell when a reservation has already been superseded.
+func latestArchivedEngineerRunMetaForIssue(ref agentIssueRef) (runMeta, bool, error) {
+	meta, ok, err := latestArchivedEngineerRunMetaIn(agentLogsDir(), ref)
+	if err != nil || ok {
+		return meta, ok, err
+	}
+	return latestArchivedEngineerRunMetaIn(agentLogsRedactedDir(), ref)
+}
+
+func latestArchivedEngineerRunMetaIn(root string, ref agentIssueRef) (runMeta, bool, error) {
+	entries, err := os.ReadDir(root)
+	if err != nil {
+		if os.IsNotExist(err) {
+			return runMeta{}, false, nil
+		}
+		return runMeta{}, false, err
+	}
+	var best runMeta
+	var bestMod time.Time
+	for _, entry := range entries {
+		meta, mod, ok := archivedEngineerRunMetaCandidate(root, entry, ref)
+		if !ok {
+			continue
+		}
+		if bestMod.IsZero() || mod.After(bestMod) {
+			best = meta
+			bestMod = mod
+		}
+	}
+	if bestMod.IsZero() {
+		return runMeta{}, false, nil
+	}
+	return best, true, nil
+}
+
+func archivedEngineerRunMetaCandidate(root string, entry os.DirEntry, ref agentIssueRef) (runMeta, time.Time, bool) {
+	if entry == nil || !entry.IsDir() {
+		return runMeta{}, time.Time{}, false
+	}
+	name := entry.Name()
+	if !strings.HasPrefix(name, roleEngineer+"-") {
+		return runMeta{}, time.Time{}, false
+	}
+	metaPath := filepath.Join(root, name, drainMetaFile)
+	meta, ok := readRunMeta(metaPath)
+	if !ok || meta.Repo != ref.repoSlug() || meta.Issue != strconv.Itoa(ref.Number) {
+		return runMeta{}, time.Time{}, false
+	}
+	info, err := entry.Info()
+	if err != nil {
+		return runMeta{}, time.Time{}, false
+	}
+	return meta, info.ModTime(), true
+}
+
 // latestDispatchConsolePathForRef resolves the newest broker dispatch artifact
 // for an issue ref to its console log path.
 func latestDispatchConsolePathForRef(ref agentIssueRef) (string, bool, error) {

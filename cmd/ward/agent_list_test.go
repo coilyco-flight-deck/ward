@@ -2,6 +2,7 @@ package main
 
 import (
 	"encoding/json"
+	"fmt"
 	"io"
 	"os"
 	"path/filepath"
@@ -380,6 +381,86 @@ func TestAgentListKeepsFailedBeforeStartRowsVisibleButExcluded(t *testing.T) {
 	} {
 		if !strings.Contains(human, want) {
 			t.Fatalf("failed launch human output missing %q:\n%s", want, human)
+		}
+	}
+}
+
+func TestAgentListPrunesFailedBeforeStartRowAfterSuccessfulDrain(t *testing.T) {
+	t.Setenv("HOME", t.TempDir())
+	now := time.Now().UTC()
+	ref := agentIssueRef{Owner: "coilyco-flight-deck", Repo: "ward", Number: 1037}
+	resPath, err := agentReservationPath(ref)
+	if err != nil {
+		t.Fatalf("agentReservationPath: %v", err)
+	}
+	if err := writeAgentReservation(resPath, agentReservation{
+		Owner:     ref.Owner,
+		Repo:      ref.Repo,
+		Number:    ref.Number,
+		Mode:      string(modeCodex),
+		Container: "engineer-codex-ward-1037",
+		Branch:    "issue-1037",
+		Host:      "director-box",
+		At:        now.Add(-time.Minute),
+	}); err != nil {
+		t.Fatalf("writeAgentReservation: %v", err)
+	}
+	paths, logf, err := openDispatchArtifact(dispatchBrokerRequest{
+		Requester: "director-box",
+		Role:      roleEngineer,
+		Argv:      []string{"engineer", ref.String(), "--harness", string(modeCodex)},
+	}, now.Add(-2*time.Minute), "req-1037")
+	if err != nil {
+		t.Fatalf("openDispatchArtifact: %v", err)
+	}
+	if _, err := fmt.Fprintln(logf, "WARDED_WORKFLOW: dispatch-failed"); err != nil {
+		t.Fatalf("write dispatch log: %v", err)
+	}
+	if err := logf.Close(); err != nil {
+		t.Fatalf("close dispatch log: %v", err)
+	}
+	finalizeDispatchArtifact(paths, dispatchBrokerRequest{
+		Requester: "director-box",
+		Role:      roleEngineer,
+		Argv:      []string{"engineer", ref.String(), "--harness", string(modeCodex)},
+	}, paths.ConsolePath, fmt.Errorf("launch failed before container start"))
+
+	archiveDir := filepath.Join(agentLogsDir(), "engineer-codex-ward-1037")
+	if err := os.MkdirAll(archiveDir, 0o755); err != nil {
+		t.Fatalf("MkdirAll archive dir: %v", err)
+	}
+	if err := writeJSONAtomic(filepath.Join(archiveDir, drainMetaFile), runMeta{
+		Container: "engineer-codex-ward-1037",
+		Repo:      ref.repoSlug(),
+		Issue:     strconv.Itoa(ref.Number),
+		Outcome:   outcomePushedMain,
+		Summary: runSummary{
+			NormalizedOutcome: "landed-main",
+		},
+	}, 0o644); err != nil {
+		t.Fatalf("write archive meta: %v", err)
+	}
+
+	r := fakeEngineerVisibilityDockerRunner(t, "", 0)
+	rows, err := r.agentListRows(t.Context())
+	if err != nil {
+		t.Fatalf("agentListRows: %v", err)
+	}
+	if len(rows) != 0 {
+		t.Fatalf("rows = %d, want successful drain to prune the stale launch row", len(rows))
+	}
+	if _, ok, err := readAgentReservation(resPath); err != nil {
+		t.Fatalf("readAgentReservation: %v", err)
+	} else if ok {
+		t.Fatal("successful archived run should clear the stale reservation cache entry")
+	}
+	report := r.dispatchHealthSnapshot(t.Context(), []string{ref.repoSlug()}, directorMaxParallelDefault())
+	if report.FailedBefore != 0 {
+		t.Fatalf("failed-before-start = %d, want 0 after successful drain", report.FailedBefore)
+	}
+	for _, signal := range report.Signals {
+		if signal == "stale-records" {
+			t.Fatalf("dispatch-health still surfaced stale-records: %+v", report.Signals)
 		}
 	}
 }
