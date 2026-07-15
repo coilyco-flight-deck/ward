@@ -262,6 +262,110 @@ func TestPickMetaEnvAllowlistOnly(t *testing.T) {
 	}
 }
 
+func TestNormalizeRunSummaryOutcome(t *testing.T) {
+	cases := []struct {
+		name           string
+		meta           runMeta
+		env            map[string]string
+		signals        runSummarySignals
+		wantOutcome    string
+		wantConfidence string
+	}{
+		{
+			name:           "landed-main",
+			meta:           runMeta{Launched: true, TranscriptPresent: true, Outcome: outcomePushedMain},
+			env:            map[string]string{"WARD_WORKFLOW": "merge-remote-main"},
+			wantOutcome:    "landed-main",
+			wantConfidence: "high",
+		},
+		{
+			name: "pr-green",
+			meta: runMeta{Launched: true, TranscriptPresent: true, Outcome: outcomeNothing},
+			env:  map[string]string{"WARD_WORKFLOW": string(workflowPullRequest)},
+			signals: runSummarySignals{
+				WardOutcomeComment: true,
+				ChecksGreen:        true,
+			},
+			wantOutcome:    "pr-green",
+			wantConfidence: "high",
+		},
+		{
+			name: "blocked",
+			meta: runMeta{Launched: true, TranscriptPresent: true, Outcome: outcomeUnknown},
+			signals: runSummarySignals{
+				WardOutcomeComment: true,
+				LatestOutcome:      backlogOutcome{Status: "blocked", Text: "blocked: reviewer request"},
+			},
+			wantOutcome:    "blocked",
+			wantConfidence: "high",
+		},
+		{
+			name: "salvage",
+			meta: runMeta{Launched: true, TranscriptPresent: true, Outcome: outcomeSalvage},
+			signals: runSummarySignals{
+				PreservedBranch: "ward-salvage/ward-abc123",
+			},
+			wantOutcome:    "preserved-salvage-branch",
+			wantConfidence: "high",
+		},
+		{
+			name:           "prelaunch-no-transcript",
+			meta:           runMeta{Launched: false, TranscriptPresent: false, Outcome: outcomeUnknown},
+			wantOutcome:    "prelaunch-failure",
+			wantConfidence: "high",
+		},
+	}
+	for _, tc := range cases {
+		t.Run(tc.name, func(t *testing.T) {
+			gotOutcome, gotConfidence := normalizeRunSummaryOutcome(tc.meta, tc.env, tc.signals)
+			if gotOutcome != tc.wantOutcome {
+				t.Fatalf("normalized outcome = %q, want %q", gotOutcome, tc.wantOutcome)
+			}
+			if gotConfidence != tc.wantConfidence {
+				t.Fatalf("outcome confidence = %q, want %q", gotConfidence, tc.wantConfidence)
+			}
+		})
+	}
+}
+
+func TestWriteDiskArtifactsAddsRunSummaryFooter(t *testing.T) {
+	home := t.TempDir()
+	t.Setenv("HOME", home)
+	name := "engineer-codex-ward-526"
+	dir := filepath.Join(t.TempDir(), "archive")
+	console := []byte("boot\nward container reap: landed on main\n")
+	meta := runMeta{
+		Container: name,
+		Outcome:   outcomePushedMain,
+		Summary: runSummary{
+			SchemaVersion:     runSummarySchemaVersion,
+			Workflow:          string(workflowPullRequest),
+			NormalizedOutcome: "pr-green",
+			Artifacts: runSummaryArtifacts{
+				Transcript: filepath.Join(agentLogsDir(), name, drainTranscriptFile),
+			},
+		},
+	}
+
+	r := &Runner{}
+	r.writeDiskArtifacts(name, dir, console, nil, meta)
+
+	rawConsole, err := os.ReadFile(filepath.Join(dir, drainConsoleFile))
+	if err != nil {
+		t.Fatalf("read console.log: %v", err)
+	}
+	if !strings.Contains(string(rawConsole), "WARD-RUN-SUMMARY: outcome=pr-green") {
+		t.Fatalf("console.log missing structured footer:\n%s", rawConsole)
+	}
+	rawMeta, err := os.ReadFile(filepath.Join(dir, drainMetaFile))
+	if err != nil {
+		t.Fatalf("read meta.json: %v", err)
+	}
+	if !strings.Contains(string(rawMeta), `"summary"`) || !strings.Contains(string(rawMeta), `"schema_version": 1`) {
+		t.Fatalf("meta.json missing summary block:\n%s", rawMeta)
+	}
+}
+
 func dockerInspectStateStubDir(t *testing.T, stateJSON, envJSON string) string {
 	t.Helper()
 	dir := t.TempDir()
