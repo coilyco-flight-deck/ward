@@ -3,10 +3,10 @@
 # Forgejo pushes run the same checks GitHub does. The GitHub file is the source; edit
 # it (or both), then run `make lint-workflows ARGS=--fix`. See docs/workflow-mirror.md.
 # Security: no untrusted github.event.* reaches run blocks; all commands are static.
-# PR-only on purpose: promote.yml runs the same checks on push to main (and
-# release.yml re-runs them on `release`, ward#1117), so a main trigger here would
-# start a second copy of the same job in the same second, on the same runner,
-# against the same checkout. That race reddened main while the sibling job went green.
+# PR-only on purpose: promote.yml runs the same checks on push to main, so a
+# main trigger here would start a second copy of the same job in the same
+# second, on the same runner, against the same checkout. That race reddened
+# main while the sibling job went green.
 
 name: test
 

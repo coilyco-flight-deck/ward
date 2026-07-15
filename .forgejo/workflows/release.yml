@@ -1,10 +1,9 @@
-# Forgejo-canonical release pipeline, stage 2 of the two-stage flow
-# (ward#1117): promote.yml gates every main push and fast-forwards the
-# `release` branch when green. This workflow now re-runs vet/test/lint on the
-# exact `release` SHA before any tag, publish, or install-channel step. The
-# workflow-level concurrency queue still keeps promoted shas in order and
-# never overlap-and-cancel. A workflow_dispatch re-fires it against the
-# `release` ref on a missed enqueue. See docs/release.md.
+# Forgejo-canonical release pipeline. promote.yml gates every main push and
+# fast-forwards the `release` branch when green. This workflow publishes the
+# exact promoted `release` SHA without re-running vet/test/lint, then tags,
+# publishes, and updates install channels in a queued order. A
+# workflow_dispatch re-fires it against the `release` ref on a missed enqueue.
+# See docs/release.md.
 
 name: release
 
@@ -21,33 +20,7 @@ permissions:
   contents: write
 
 jobs:
-  test:
-    runs-on: docker
-    timeout-minutes: 10
-    container:
-      image: forgejo.coilysiren.me/coilyco-flight-deck/agentic-os:latest
-    steps:
-      - uses: actions/checkout@v6
-        with:
-          fetch-depth: 0
-
-      - name: go vet
-        run: go vet ./...
-
-      - name: go test
-        run: go test ./...
-
-      - name: golangci-lint
-        timeout-minutes: 5
-        env:
-          TMPDIR: ${{ runner.tool_cache }}/ward-tmp
-          GOTMPDIR: ${{ runner.tool_cache }}/ward-go-tmp
-          GOCACHE: ${{ runner.tool_cache }}/ward-go-build
-          GOMODCACHE: ${{ runner.tool_cache }}/ward-go-mod
-        run: mkdir -p "$TMPDIR" "$GOTMPDIR" "$GOCACHE" "$GOMODCACHE" && golangci-lint run ./...
-
   release:
-    needs: test
     runs-on: docker
     container:
       image: forgejo.coilysiren.me/coilyco-flight-deck/agentic-os:latest

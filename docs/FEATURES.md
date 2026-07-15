@@ -54,7 +54,7 @@ Inventory of what `ward` ships today.
 
 ## Release and docs
 
-- Two-stage release: promote gates main and fast-forwards `release`; release runs queued. See [release.md](release.md).
+- Two-stage release: promote gates main and fast-forwards `release`; release publishes the promoted sha on a queue. See [release.md](release.md).
 - [compat-surface.md](compat-surface.md) - release-facing provider matrix.
 - [release.md](release.md) and [release-binaries.md](release-binaries.md).
 - [homebrew-build.md](homebrew-build.md), [golangci.md](golangci.md), and [troubleshooting.md](troubleshooting.md).
