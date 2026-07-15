@@ -11,6 +11,7 @@ import (
 	"sort"
 	"strings"
 
+	"forgejo.coilysiren.me/coilyco-flight-deck/cli-guard/pkg/fleetconfig"
 	"github.com/urfave/cli/v3"
 )
 
@@ -482,8 +483,8 @@ type upPlan struct {
 	// AWSHome is the aws capability's fallback ~/.aws bind source; a good host cred export
 	// drops the mount and clears this, else it arms the #579 creds-less warning (ward#586).
 	AWSHome string
-	// ConfigEnv are the resolved `--config` overrides as WARD_* env keys (ward#616),
-	// merged into wardEnv so the in-container envOr resolves them over the fleet default.
+	// ConfigEnv are resolved config-derived WARD_* env keys: selected fleet attribution
+	// plus `--config` overrides (ward#616), applied over the baked default in wardEnv.
 	ConfigEnv map[string]string
 }
 
@@ -623,6 +624,44 @@ func parseConfigOverrides(entries []string) (map[string]string, error) {
 		out[env] = value
 	}
 	return out, nil
+}
+
+func resolveLaunchConfigEnv(configEntries []string) (map[string]string, error) {
+	configEnv, err := parseConfigOverrides(configEntries)
+	if err != nil {
+		return nil, err
+	}
+	_, provider, err := currentProfileSourceProvider()
+	if err != nil {
+		return nil, err
+	}
+	fleet, err := provider.Fleet()
+	if err != nil {
+		return nil, fmt.Errorf("load selected fleet attribution: %w", err)
+	}
+	configEnv = addFleetAttributionConfigEnv(configEnv, fleet)
+	// Validate the staged container-topology bundle once here so a malformed live
+	// bundle fails before launch, while a missing optional file still falls back.
+	if _, err := currentContainerTopologyWithError(); err != nil {
+		return nil, err
+	}
+	return configEnv, nil
+}
+
+// addFleetAttributionConfigEnv projects the selected fleet's commit identity into
+// the explicit bootstrap env vars so containers do not fall back to baked defaults.
+func addFleetAttributionConfigEnv(env map[string]string, fleet fleetconfig.Fleet) map[string]string {
+	if env == nil {
+		env = map[string]string{}
+	}
+	attribution := fleet.Defaults.Attribution
+	if strings.TrimSpace(env["WARD_GIT_NAME"]) == "" && strings.TrimSpace(attribution.Name) != "" {
+		env["WARD_GIT_NAME"] = attribution.Name
+	}
+	if strings.TrimSpace(env["WARD_GIT_EMAIL"]) == "" && strings.TrimSpace(attribution.Email) != "" {
+		env["WARD_GIT_EMAIL"] = attribution.Email
+	}
+	return env
 }
 
 // correlationEnv renders the stable, non-secret run envelope that the agent

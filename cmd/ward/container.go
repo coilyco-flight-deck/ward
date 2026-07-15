@@ -153,15 +153,9 @@ func buildUpPlan(c *cli.Command, repo targetRepo, mode containerMode, role, cwd,
 	// The catalog.dependsOn read-only context set is NOT resolved here: the host cwd may
 	// not be the target repo, so the container resolves it from the fresh clone (ward#580).
 
-	// Repeatable `--config` overrides ride in as WARD_* env (ward#616); an unknown key
-	// fails loud here, before any container spins. c.StringSlice is nil-safe when unset.
-	configEnv, err := parseConfigOverrides(c.StringSlice("config"))
+	// Config-source env resolution fails loud here before any container spins.
+	configEnv, err := resolveLaunchConfigEnv(c.StringSlice("config"))
 	if err != nil {
-		return upPlan{}, err
-	}
-	// Validate the staged container-topology bundle once here so a malformed live
-	// bundle fails before launch, while a missing optional file still falls back.
-	if _, err := currentContainerTopologyWithError(); err != nil {
 		return upPlan{}, err
 	}
 	memoryLimit, memorySwap, err := resolveContainerMemorySettings()

@@ -259,6 +259,47 @@ func TestBuildUpPlanDirectorUsesDictatableSuffix(t *testing.T) {
 	}
 }
 
+func TestBuildUpPlanExportsSelectedFleetAttribution(t *testing.T) {
+	dir := writeBundleFixture(t)
+	writeBundleFixtureFile(t, dir, bundleFixtureAgentsPath, `
+agents {
+    schema-version 2
+    defaults {
+        agent codex
+        attribution name=coilyco-ops email=coilyco-ops@coilysiren.me
+    }
+    agent claude {
+    }
+    agent codex {
+    }
+}
+`)
+	t.Setenv(wardConfigRefEnv, "file://"+dir)
+
+	var got upPlan
+	probe := &cli.Command{
+		Name:  "probe",
+		Flags: tailnetProbeFlags(),
+		Action: func(_ context.Context, c *cli.Command) error {
+			p, err := buildUpPlan(c, targetRepo{Owner: "o", Name: "r"}, modeClaude, roleSession, t.TempDir(), t.TempDir(), nil, false)
+			if err != nil {
+				return err
+			}
+			got = p
+			return nil
+		},
+	}
+	if err := probe.Run(context.Background(), []string{"probe"}); err != nil {
+		t.Fatalf("probe run: %v", err)
+	}
+
+	env := got.wardEnv()
+	if env["WARD_GIT_NAME"] != "coilyco-ops" || env["WARD_GIT_EMAIL"] != "coilyco-ops@coilysiren.me" {
+		t.Fatalf("wardEnv git attribution = <%s %s>, want <coilyco-ops coilyco-ops@coilysiren.me>",
+			env["WARD_GIT_NAME"], env["WARD_GIT_EMAIL"])
+	}
+}
+
 func TestAdvisorResearchPlanUsesIssueScope(t *testing.T) {
 	ref := agentIssueRef{Owner: "coilyco-flight-deck", Repo: "ward", Number: 818, Forge: forgeForgejo}
 	base := upPlan{Mode: modeClaude, Repo: targetRepo{Owner: ref.Owner, Name: ref.Repo}, Machine: "deadbeef"}

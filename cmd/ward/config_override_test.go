@@ -3,6 +3,7 @@ package main
 import (
 	"testing"
 
+	"forgejo.coilysiren.me/coilyco-flight-deck/cli-guard/pkg/fleetconfig"
 	"github.com/coilyco-flight-deck/ward/internal/agentsapi"
 )
 
@@ -97,5 +98,20 @@ func TestWardEnvMergesConfigOverrides(t *testing.T) {
 	env := p.wardEnv()
 	if got := env["WARD_CLAUDE_MODEL"]; got != "sonnet" {
 		t.Errorf("wardEnv WARD_CLAUDE_MODEL = %q, want %q", got, "sonnet")
+	}
+}
+
+func TestAddFleetAttributionConfigEnv(t *testing.T) {
+	fleet := fleetconfig.Fleet{
+		Defaults: fleetconfig.Defaults{
+			Attribution: fleetconfig.Attribution{Name: "coilyco-ops", Email: "coilyco-ops@coilysiren.me"},
+		},
+	}
+	env := addFleetAttributionConfigEnv(map[string]string{"WARD_GIT_NAME": "manual-bot"}, fleet)
+	if got := env["WARD_GIT_NAME"]; got != "manual-bot" {
+		t.Errorf("WARD_GIT_NAME = %q, want manual-bot", got)
+	}
+	if got := env["WARD_GIT_EMAIL"]; got != "coilyco-ops@coilysiren.me" {
+		t.Errorf("WARD_GIT_EMAIL = %q, want coilyco-ops@coilysiren.me", got)
 	}
 }
