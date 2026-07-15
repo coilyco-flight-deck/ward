@@ -20,7 +20,7 @@ import (
 // agent_list.go wires `ward agent list` (alias `ps`): the director-surface read
 // path for running engineers plus launch intents.
 
-const agentListSchemaVersion = 4
+const agentListSchemaVersion = 5
 
 const (
 	agentLaunchPhaseQueued    = "broker accepted / queued"
@@ -29,6 +29,7 @@ const (
 	agentLaunchPhaseRunning   = "container running"
 	agentLaunchPhaseFailed    = "failed before container start"
 	agentLaunchStatusCleanup  = "cleanup-needed"
+	agentLaunchStatusPartial  = "partial-launch"
 )
 
 // agentLaunchConfirmationTTL is the short lease for the prelaunch state machine:
@@ -48,6 +49,7 @@ type agentListJSON struct {
 	SchemaVersion int                  `json:"schema_version"`
 	GeneratedAt   string               `json:"generated_at"`
 	Count         int                  `json:"count"`
+	PartialLaunch int                  `json:"partial_launch"`
 	LaunchIntents int                  `json:"launch_intents"`
 	CleanupNeeded int                  `json:"cleanup_needed"`
 	FailedBefore  int                  `json:"failed_before_start"`
@@ -75,6 +77,7 @@ type agentListJSONEntry struct {
 	BudgetExpiresAt string `json:"budget_expires_at"`
 	Phase           string `json:"phase"`
 	Status          string `json:"status"`
+	Remediation     string `json:"remediation,omitempty"`
 }
 
 type agentDockerInspectContainer struct {
@@ -250,6 +253,7 @@ func (r *Runner) agentListRows(ctx context.Context) ([]agentRunningEngineer, err
 		return nil, err
 	}
 	rows = append(rows, pending...)
+	rows = r.annotatePartialLaunchRows(ctx, now, rows)
 	return rows, nil
 }
 
@@ -268,10 +272,12 @@ type agentRunningEngineer struct {
 	ExecutionLimit time.Duration
 	Phase          string
 	Status         string
+	Remediation    string
 }
 
 type agentLaunchInventory struct {
 	Running         int
+	PartialLaunch   int
 	LaunchIntents   int
 	CleanupNeeded   int
 	FailedBefore    int
@@ -287,6 +293,7 @@ func agentListJSONFromRows(rows []agentRunningEngineer) agentListJSON {
 	payload := agentListJSON{
 		SchemaVersion: agentListSchemaVersion,
 		Count:         inv.Count,
+		PartialLaunch: inv.PartialLaunch,
 		LaunchIntents: inv.LaunchIntents,
 		CleanupNeeded: inv.CleanupNeeded,
 		FailedBefore:  inv.FailedBefore,
@@ -324,6 +331,7 @@ func (r agentRunningEngineer) toJSON() agentListJSONEntry {
 		BudgetExpiresAt: formatJSONTime(expiresAt),
 		Phase:           emptyDefault(r.Phase, "-"),
 		Status:          r.Status,
+		Remediation:     r.Remediation,
 	}
 }
 
@@ -371,6 +379,47 @@ func agentLaunchRowClass(row agentRunningEngineer) agentLaunchRowKind {
 	}
 }
 
+func (r *Runner) annotatePartialLaunchRows(ctx context.Context, now time.Time, rows []agentRunningEngineer) []agentRunningEngineer {
+	for i := range rows {
+		if rows[i].Phase != agentLaunchPhaseRunning {
+			continue
+		}
+		partial, remediation, err := r.partialLaunchState(ctx, rows[i], now)
+		if err != nil || !partial {
+			continue
+		}
+		rows[i].Status = agentLaunchStatusPartial
+		rows[i].Remediation = remediation
+	}
+	return rows
+}
+
+func (r *Runner) partialLaunchState(ctx context.Context, row agentRunningEngineer, now time.Time) (bool, string, error) {
+	ref, err := parseAgentIssueRef(row.Ref)
+	if err != nil {
+		return false, "", nil //nolint:nilerr // non-issue rows cannot be partial-launch records
+	}
+	if ref.Owner == "" || ref.Repo == "" || ref.Number <= 0 {
+		return false, "", nil
+	}
+	cl, cerr := r.hostTrackerClient(ctx, ref.trackerOrDefault(), containerMode(strings.TrimSpace(row.Harness)))
+	if cerr != nil {
+		return false, "", cerr
+	}
+	comments, cerr := cl.ListIssueComments(ctx, ref.Owner, ref.Repo, ref.Number)
+	if cerr != nil {
+		return false, "", cerr
+	}
+	if _, held := freshReservationComment(comments, now, agentReservationTTL()); held {
+		return false, "", nil
+	}
+	return true, partialLaunchRemediation(row), nil
+}
+
+func partialLaunchRemediation(row agentRunningEngineer) string {
+	return fmt.Sprintf("issue %s is missing the reservation-held marker; re-post the reservation comment or stop and re-dispatch %s", emptyDefault(row.Ref, "the run"), emptyDefault(row.Container, "the container"))
+}
+
 func agentLaunchInventoryFromRows(rows []agentRunningEngineer) agentLaunchInventory {
 	inv := agentLaunchInventory{}
 	for _, row := range rows {
@@ -378,6 +427,9 @@ func agentLaunchInventoryFromRows(rows []agentRunningEngineer) agentLaunchInvent
 		case agentLaunchRowRunning:
 			inv.Running++
 			inv.Count++
+			if strings.EqualFold(strings.TrimSpace(row.Status), agentLaunchStatusPartial) {
+				inv.PartialLaunch++
+			}
 		case agentLaunchRowActiveIntent:
 			inv.LaunchIntents++
 			inv.Count++
@@ -761,52 +813,90 @@ func formatDuration(d time.Duration) string {
 func renderAgentListHuman(rows []agentRunningEngineer) string {
 	inv := agentLaunchInventoryFromRows(rows)
 	var b strings.Builder
-	capacity := agentListCapacity{Count: inv.Count, Limit: inv.Limit, Remaining: inv.Remaining, AtCapacity: inv.AtCapacity, Unavailable: inv.CapacityUnknown}
-	fmt.Fprintf(&b, "ward agent: active engineer launches %s", formatAgentListCapacity(capacity))
-	if inv.LaunchIntents > 0 {
-		noun := "launch intents"
-		if inv.LaunchIntents == 1 {
-			noun = "launch intent"
-		}
-		fmt.Fprintf(&b, " + %d %s pending", inv.LaunchIntents, noun)
-	}
-	if inv.CleanupNeeded > 0 {
-		noun := "records"
-		if inv.CleanupNeeded == 1 {
-			noun = "record"
-		}
-		fmt.Fprintf(&b, " + %d cleanup-needed %s", inv.CleanupNeeded, noun)
-	}
-	if inv.FailedBefore > 0 {
-		noun := "records"
-		if inv.FailedBefore == 1 {
-			noun = "record"
-		}
-		fmt.Fprintf(&b, " + %d failed-before-start %s", inv.FailedBefore, noun)
-	}
+	appendAgentListHeader(&b, inv)
 	b.WriteString("\n")
 	if len(rows) == 0 {
 		b.WriteString("\n  no active engineer launches.\n")
 		return b.String()
 	}
 	for _, row := range rows {
-		fmt.Fprintf(&b, "\n  %s\n", emptyDefault(row.Container, "(unknown container)"))
-		fmt.Fprintf(&b, "    ref:       %s\n", emptyDefault(row.Ref, "-"))
-		fmt.Fprintf(&b, "    harness:   %s\n", emptyDefault(row.Harness, "-"))
-		fmt.Fprintf(&b, "    repo:      %s\n", emptyDefault(row.Repo, "-"))
-		fmt.Fprintf(&b, "    issue:     %s\n", emptyDefault(row.Issue, "-"))
-		fmt.Fprintf(&b, "    branch:    %s\n", emptyDefault(row.Branch, "-"))
-		fmt.Fprintf(&b, "    host:      %s\n", emptyDefault(row.Host, "-"))
-		fmt.Fprintf(&b, "    reserved:  %s\n", emptyDefault(formatJSONTime(row.ReservedAt), "-"))
-		fmt.Fprintf(&b, "    started:   %s\n", emptyDefault(formatJSONTime(row.StartedAt), "-"))
-		fmt.Fprintf(&b, "    age:       %s\n", emptyDefault(formatDuration(row.Age), "-"))
-		if budget := agentRunBudgetSummary(row.Role, row.Age); budget != "" {
-			fmt.Fprintf(&b, "    budget:    %s\n", budget)
-		}
-		fmt.Fprintf(&b, "    phase:     %s\n", emptyDefault(row.Phase, "-"))
-		fmt.Fprintf(&b, "    status:    %s\n", emptyDefault(row.Status, "-"))
+		appendAgentListRow(&b, row)
 	}
 	return b.String()
+}
+
+func appendAgentListHeader(b *strings.Builder, inv agentLaunchInventory) {
+	capacity := agentListCapacity{Count: inv.Count, Limit: inv.Limit, Remaining: inv.Remaining, AtCapacity: inv.AtCapacity, Unavailable: inv.CapacityUnknown}
+	fmt.Fprintf(b, "ward agent: active engineer launches %s", formatAgentListCapacity(capacity))
+	appendAgentListLaunchIntents(b, inv.LaunchIntents)
+	appendAgentListCleanupNeeded(b, inv.CleanupNeeded)
+	appendAgentListPartialLaunch(b, inv.PartialLaunch)
+	appendAgentListFailedBefore(b, inv.FailedBefore)
+}
+
+func appendAgentListLaunchIntents(b *strings.Builder, count int) {
+	if count <= 0 {
+		return
+	}
+	noun := "launch intents"
+	if count == 1 {
+		noun = "launch intent"
+	}
+	fmt.Fprintf(b, " + %d %s pending", count, noun)
+}
+
+func appendAgentListCleanupNeeded(b *strings.Builder, count int) {
+	if count <= 0 {
+		return
+	}
+	noun := "records"
+	if count == 1 {
+		noun = "record"
+	}
+	fmt.Fprintf(b, " + %d cleanup-needed %s", count, noun)
+}
+
+func appendAgentListPartialLaunch(b *strings.Builder, count int) {
+	if count <= 0 {
+		return
+	}
+	noun := "launches"
+	if count == 1 {
+		noun = "launch"
+	}
+	fmt.Fprintf(b, " + %d partial %s", count, noun)
+}
+
+func appendAgentListFailedBefore(b *strings.Builder, count int) {
+	if count <= 0 {
+		return
+	}
+	noun := "records"
+	if count == 1 {
+		noun = "record"
+	}
+	fmt.Fprintf(b, " + %d failed-before-start %s", count, noun)
+}
+
+func appendAgentListRow(b *strings.Builder, row agentRunningEngineer) {
+	fmt.Fprintf(b, "\n  %s\n", emptyDefault(row.Container, "(unknown container)"))
+	fmt.Fprintf(b, "    ref:       %s\n", emptyDefault(row.Ref, "-"))
+	fmt.Fprintf(b, "    harness:   %s\n", emptyDefault(row.Harness, "-"))
+	fmt.Fprintf(b, "    repo:      %s\n", emptyDefault(row.Repo, "-"))
+	fmt.Fprintf(b, "    issue:     %s\n", emptyDefault(row.Issue, "-"))
+	fmt.Fprintf(b, "    branch:    %s\n", emptyDefault(row.Branch, "-"))
+	fmt.Fprintf(b, "    host:      %s\n", emptyDefault(row.Host, "-"))
+	fmt.Fprintf(b, "    reserved:  %s\n", emptyDefault(formatJSONTime(row.ReservedAt), "-"))
+	fmt.Fprintf(b, "    started:   %s\n", emptyDefault(formatJSONTime(row.StartedAt), "-"))
+	fmt.Fprintf(b, "    age:       %s\n", emptyDefault(formatDuration(row.Age), "-"))
+	if budget := agentRunBudgetSummary(row.Role, row.Age); budget != "" {
+		fmt.Fprintf(b, "    budget:    %s\n", budget)
+	}
+	fmt.Fprintf(b, "    phase:     %s\n", emptyDefault(row.Phase, "-"))
+	fmt.Fprintf(b, "    status:    %s\n", emptyDefault(row.Status, "-"))
+	if strings.TrimSpace(row.Remediation) != "" {
+		fmt.Fprintf(b, "    remediation: %s\n", row.Remediation)
+	}
 }
 
 func formatAgentListCapacity(capacity agentListCapacity) string {

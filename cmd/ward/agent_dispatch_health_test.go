@@ -71,3 +71,17 @@ func TestDispatchHealthReportFlagsStalePrelaunch(t *testing.T) {
 		t.Fatal("cleanup-needed or failed-before-start launches should surface as a signal")
 	}
 }
+
+func TestDispatchHealthReportFlagsPartialLaunch(t *testing.T) {
+	report := dispatchHealthReport{Running: 1, PartialLaunch: 1, Signals: []string{"partial-launch"}}
+	line := report.summaryLine()
+	if !strings.Contains(line, "partial-launch=1") {
+		t.Fatalf("summary line missing partial-launch count: %s", line)
+	}
+	if !strings.Contains(strings.Join(dispatchHealthSignals(report), ","), "partial-launch") {
+		t.Fatal("partial launches should surface as a signal")
+	}
+	if !report.alertable() {
+		t.Fatal("partial launches should make the report alertable")
+	}
+}

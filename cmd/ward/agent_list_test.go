@@ -2,11 +2,15 @@ package main
 
 import (
 	"encoding/json"
+	"io"
 	"os"
 	"path/filepath"
+	"strconv"
 	"strings"
 	"testing"
 	"time"
+
+	"forgejo.coilysiren.me/coilyco-flight-deck/cli-guard/cli/shell"
 )
 
 func TestAgentRunningEngineerFromInspectIncludesReservation(t *testing.T) {
@@ -379,6 +383,77 @@ func TestAgentListKeepsFailedBeforeStartRowsVisibleButExcluded(t *testing.T) {
 	}
 }
 
+func TestAgentListMarksPartialLaunchWhenReservationMarkerIsMissing(t *testing.T) {
+	t.Setenv("HOME", t.TempDir())
+	now := time.Now().UTC()
+	ref := agentIssueRef{Owner: "coilyco-flight-deck", Repo: "ward", Number: 1036}
+	srv := issueThreadAuthorityServer(t, []issueThreadAuthorityRow{{
+		Number: 1036,
+		Title:  "missing marker",
+		Body:   "body",
+		Comments: []issueComment{
+			{Body: "just a normal comment", CreatedAt: now.Add(-time.Second)},
+		},
+	}})
+	t.Setenv("WARD_FORGEJO_BASE", srv.URL)
+	resPath, err := agentReservationPath(ref)
+	if err != nil {
+		t.Fatalf("agentReservationPath: %v", err)
+	}
+	if err := writeAgentReservation(resPath, agentReservation{
+		Owner:     ref.Owner,
+		Repo:      ref.Repo,
+		Number:    ref.Number,
+		Mode:      string(modeCodex),
+		Container: "engineer-codex-ward-1036",
+		Branch:    "issue-1036",
+		Host:      "director-box",
+		At:        now.Add(-time.Second),
+	}); err != nil {
+		t.Fatalf("writeAgentReservation: %v", err)
+	}
+	r := fakeEngineerRunningDockerRunner(t, now.Add(-time.Second).Format(time.RFC3339Nano))
+	rows, err := r.agentListRows(t.Context())
+	if err != nil {
+		t.Fatalf("agentListRows: %v", err)
+	}
+	if len(rows) != 1 {
+		t.Fatalf("rows = %d, want 1 running engineer", len(rows))
+	}
+	row := rows[0]
+	if row.Status != agentLaunchStatusPartial {
+		t.Fatalf("status = %q, want %q", row.Status, agentLaunchStatusPartial)
+	}
+	if row.Remediation == "" {
+		t.Fatal("partial launch row should carry remediation")
+	}
+	for _, want := range []string{
+		ref.String(),
+		"engineer-codex-ward-1036",
+		"reservation-held marker",
+	} {
+		if !strings.Contains(row.Remediation, want) {
+			t.Fatalf("remediation missing %q: %s", want, row.Remediation)
+		}
+	}
+	payload := agentListJSONFromRows(rows)
+	if payload.PartialLaunch != 1 || payload.Count != 1 {
+		t.Fatalf("payload counts = partial=%d count=%d, want 1/1", payload.PartialLaunch, payload.Count)
+	}
+	human := renderAgentListHuman(rows)
+	for _, want := range []string{
+		"1 partial launch",
+		ref.repoSlug(),
+		strconv.Itoa(ref.Number),
+		"engineer-codex-ward-1036",
+		"remediation: issue " + ref.String(),
+	} {
+		if !strings.Contains(human, want) {
+			t.Fatalf("human output missing %q:\n%s", want, human)
+		}
+	}
+}
+
 func TestAgentListPrunesStaleReservationCacheEntry(t *testing.T) {
 	t.Setenv("HOME", t.TempDir())
 	server := issueThreadAuthorityServer(t, []issueThreadAuthorityRow{{
@@ -508,6 +583,32 @@ func TestDispatchLaunchPhaseFromLog(t *testing.T) {
 			}
 		})
 	}
+}
+
+func fakeEngineerRunningDockerRunner(t *testing.T, startedAt string) *Runner {
+	t.Helper()
+	dir := t.TempDir()
+	script := filepath.Join(dir, "docker")
+	body := "#!/bin/sh\n" +
+		"if [ \"$1\" = ps ]; then\n" +
+		"  printf '%s\\n' engineer-codex-ward-1036\n" +
+		"  exit 0\n" +
+		"fi\n" +
+		"if [ \"$1\" = inspect ] && [ \"$2\" = engineer-codex-ward-1036 ]; then\n" +
+		"  cat <<'JSON'\n" +
+		"[{\"Name\":\"/engineer-codex-ward-1036\",\"Config\":{\"Labels\":{\"ward\":\"true\",\"ward.role\":\"engineer\",\"ward.driver\":\"codex\",\"ward.repo\":\"coilyco-flight-deck/ward\",\"ward.issue\":\"1036\"},\"Env\":[\"WARD_TARGET_OWNER=coilyco-flight-deck\",\"WARD_TARGET_NAME=ward\",\"WARD_TARGET_REPO=coilyco-flight-deck/ward\",\"WARD_TARGET_ISSUE=1036\",\"WARD_BRANCH=issue-1036\",\"WARD_MODE=codex\"]},\"State\":{\"Status\":\"running\",\"StartedAt\":\"" + startedAt + "\"}}]\n" +
+		"JSON\n" +
+		"  exit 0\n" +
+		"fi\n" +
+		"printf '%s\\n' \"unexpected docker args: $*\" >&2\n" +
+		"exit 1\n"
+	if err := os.WriteFile(script, []byte(body), 0o700); err != nil { // #nosec G306 -- test fixture
+		t.Fatalf("write fake docker: %v", err)
+	}
+	return &Runner{Runner: &shell.Runner{
+		Stderr:  io.Discard,
+		Resolve: func(_ string) (string, error) { return script, nil },
+	}}
 }
 
 func TestFormatAgentListCapacityNotesUnavailableSource(t *testing.T) {

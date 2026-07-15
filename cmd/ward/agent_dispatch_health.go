@@ -15,7 +15,7 @@ import (
 	"github.com/urfave/cli/v3"
 )
 
-const agentDispatchHealthSchemaVersion = 3
+const agentDispatchHealthSchemaVersion = 4
 
 type dispatchHealthJSON struct {
 	SchemaVersion    int      `json:"schema_version"`
@@ -29,6 +29,7 @@ type dispatchHealthJSON struct {
 	Deferred         int      `json:"deferred"`
 	Failed           int      `json:"failed"`
 	Running          int      `json:"running"`
+	PartialLaunch    int      `json:"partial_launch"`
 	LaunchIntents    int      `json:"launch_intents"`
 	CleanupNeeded    int      `json:"cleanup_needed"`
 	FailedBefore     int      `json:"failed_before_start"`
@@ -54,6 +55,7 @@ type dispatchHealthReport struct {
 	Deferred         int
 	Failed           int
 	Running          int
+	PartialLaunch    int
 	LaunchIntents    int
 	CleanupNeeded    int
 	FailedBefore     int
@@ -175,6 +177,7 @@ func (r *Runner) dispatchHealthSnapshot(ctx context.Context, repos []string, max
 		}
 	}
 	report.Running = inv.Running
+	report.PartialLaunch = inv.PartialLaunch
 	report.LaunchIntents = inv.LaunchIntents
 	report.CleanupNeeded = inv.CleanupNeeded
 	report.FailedBefore = inv.FailedBefore
@@ -250,6 +253,9 @@ func dispatchHealthSignals(report dispatchHealthReport) []string {
 	if report.Runaway {
 		out = append(out, "runaway")
 	}
+	if report.PartialLaunch > 0 {
+		out = append(out, "partial-launch")
+	}
 	if report.StalePrelaunch > 0 {
 		out = append(out, "stale-prelaunch")
 	}
@@ -270,6 +276,7 @@ func (r dispatchHealthReport) alertKey() string {
 		fmt.Sprintf("d=%d", r.Deferred),
 		fmt.Sprintf("f=%d", r.Failed),
 		fmt.Sprintf("r=%d", r.Running),
+		fmt.Sprintf("pl=%d", r.PartialLaunch),
 		fmt.Sprintf("li=%d", r.LaunchIntents),
 		fmt.Sprintf("rd=%d", r.RecentDispatches),
 		fmt.Sprintf("sp=%d", r.StalePrelaunch),
@@ -278,8 +285,8 @@ func (r dispatchHealthReport) alertKey() string {
 
 func (r dispatchHealthReport) summaryLine() string {
 	if !r.alertable() {
-		return fmt.Sprintf("dispatch-health: ok queued=%d inflight=%d held=%d submitted=%d merge-ready=%d running=%d launch-intents=%d cleanup-needed=%d failed-before-start=%d stale-prelaunch=%d",
-			r.Queued, r.InFlight, r.Held, r.Submitted, r.MergeReady, r.Running, r.LaunchIntents, r.CleanupNeeded, r.FailedBefore, r.StalePrelaunch)
+		return fmt.Sprintf("dispatch-health: ok queued=%d inflight=%d held=%d submitted=%d merge-ready=%d running=%d partial-launch=%d launch-intents=%d cleanup-needed=%d failed-before-start=%d stale-prelaunch=%d",
+			r.Queued, r.InFlight, r.Held, r.Submitted, r.MergeReady, r.Running, r.PartialLaunch, r.LaunchIntents, r.CleanupNeeded, r.FailedBefore, r.StalePrelaunch)
 	}
 	parts := []string{
 		fmt.Sprintf("queued=%d", r.Queued),
@@ -290,6 +297,7 @@ func (r dispatchHealthReport) summaryLine() string {
 		fmt.Sprintf("deferred=%d", r.Deferred),
 		fmt.Sprintf("failed=%d", r.Failed),
 		fmt.Sprintf("running=%d", r.Running),
+		fmt.Sprintf("partial-launch=%d", r.PartialLaunch),
 		fmt.Sprintf("launch-intents=%d", r.LaunchIntents),
 		fmt.Sprintf("cleanup-needed=%d", r.CleanupNeeded),
 		fmt.Sprintf("failed-before-start=%d", r.FailedBefore),
@@ -335,6 +343,7 @@ func (r dispatchHealthReport) toJSON() dispatchHealthJSON {
 		Deferred:         r.Deferred,
 		Failed:           r.Failed,
 		Running:          r.Running,
+		PartialLaunch:    r.PartialLaunch,
 		LaunchIntents:    r.LaunchIntents,
 		CleanupNeeded:    r.CleanupNeeded,
 		FailedBefore:     r.FailedBefore,
