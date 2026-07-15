@@ -163,10 +163,8 @@ func agentRoleDefinitions() (map[string]agentRoleDefinition, error) {
 	return agentRoleDefinitionsFromFleet(fleet)
 }
 
-// agentMetaCommands are agent subcommands that are NOT startup roles.
-
-// Meta verbs include roster, flags, reap, reservations, stop/list, logs, pr,
-// dispatch-health, and review.
+// agentMetaCommands are agent subcommands that are NOT startup roles, including
+// reservations.
 var agentMetaCommands = map[string]bool{"roster": true, "flags": true, "reap": true, "reservations": true, "stop": true, "list": true, "logs": true, "dispatch-health": true, "review": true, "pr": true}
 
 // agentRosterRow is one rendered roster entry: the role, its tagline, its modes, and

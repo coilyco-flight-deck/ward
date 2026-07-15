@@ -15,7 +15,6 @@ import (
 	"time"
 
 	"forgejo.coilysiren.me/coilyco-flight-deck/cli-guard/cli/verb"
-	"forgejo.coilysiren.me/coilyco-flight-deck/cli-guard/pkg/config"
 	"github.com/urfave/cli/v3"
 )
 
@@ -401,17 +400,13 @@ func agentLaunchInventoryFromRowsWithScope(rows []agentRunningEngineer, scope ma
 
 func (r *Runner) reservedEngineerRows(ctx context.Context, now time.Time, seen map[string]bool) ([]agentRunningEngineer, error) {
 	_ = ctx
-	globalDir, err := config.GlobalDir()
+	dir, err := agentReservationCacheDir()
 	if err != nil {
 		return nil, err
 	}
-	dir := filepath.Join(globalDir, agentReservationsSubdir)
-	entries, err := os.ReadDir(dir)
+	entries, err := readAgentReservationCacheEntries(dir)
 	if err != nil {
-		if os.IsNotExist(err) {
-			return nil, nil
-		}
-		return nil, fmt.Errorf("list reserved engineer launches: %w", err)
+		return nil, err
 	}
 	rows := make([]agentRunningEngineer, 0, len(entries))
 	for _, entry := range entries {
@@ -419,7 +414,7 @@ func (r *Runner) reservedEngineerRows(ctx context.Context, now time.Time, seen m
 			continue
 		}
 		path := filepath.Join(dir, entry.Name())
-		if row, ok := activeReservedEngineerRow(path, now, seen); ok {
+		if row, ok := activeReservedEngineerRow(ctx, r, path, now, seen); ok {
 			rows = append(rows, row)
 			seen[row.Ref] = true
 		}
@@ -439,7 +434,21 @@ func (r *Runner) reservedEngineerRows(ctx context.Context, now time.Time, seen m
 	return rows, nil
 }
 
-func activeReservedEngineerRow(path string, now time.Time, seen map[string]bool) (agentRunningEngineer, bool) {
+func readAgentReservationCacheEntries(dir string) ([]os.DirEntry, error) {
+	entries, err := os.ReadDir(dir)
+	if err != nil {
+		if os.IsNotExist(err) {
+			if mkErr := os.MkdirAll(dir, 0o700); mkErr != nil {
+				return nil, fmt.Errorf("restore reservation cache dir: %w", mkErr)
+			}
+			return nil, nil
+		}
+		return nil, fmt.Errorf("list reserved engineer launches: %w", err)
+	}
+	return entries, nil
+}
+
+func activeReservedEngineerRow(ctx context.Context, r *Runner, path string, now time.Time, seen map[string]bool) (agentRunningEngineer, bool) {
 	res, ok, err := readAgentReservation(path)
 	if err != nil || !ok || res == nil {
 		return agentRunningEngineer{}, false
@@ -451,20 +460,62 @@ func activeReservedEngineerRow(path string, now time.Time, seen map[string]bool)
 	if seen[ref.String()] || seen[strings.TrimSpace(res.Container)] {
 		return agentRunningEngineer{}, false
 	}
-	phase, status, phaseOK := dispatchLaunchPhaseForReservation(ref)
-	row := reservedEngineerRowFromReservation(ref, res, now, phase, status, phaseOK)
-	return classifyActiveReservedEngineerRow(row, res, phase, phaseOK, now), true
+	row, ok := reservationCacheEngineerRow(ctx, r, path, ref, res, now)
+	if !ok {
+		return agentRunningEngineer{}, false
+	}
+	return row, true
 }
 
-func classifyActiveReservedEngineerRow(row agentRunningEngineer, res *agentReservation, phase string, phaseOK bool, now time.Time) agentRunningEngineer {
+func reservationCacheEngineerRow(ctx context.Context, r *Runner, path string, ref agentIssueRef, res *agentReservation, now time.Time) (agentRunningEngineer, bool) {
+	phase, status, phaseOK := dispatchLaunchPhaseForReservation(ref)
+	row := reservedEngineerRowFromReservation(ref, res, now, phase, status, phaseOK)
 	if phaseOK && phase == agentLaunchPhaseFailed {
 		row.Status = "failed"
-		return row
+		return row, true
 	}
 	if !reservationLaunchFresh(res.At, now) {
+		if phaseOK {
+			row.Status = agentLaunchStatusCleanup
+			return row, true
+		}
+		cl, cerr := r.hostTrackerClient(ctx, ref.trackerOrDefault(), containerMode(strings.TrimSpace(res.Mode)))
+		if cerr != nil {
+			return row, true
+		}
+		held, cerr := reservationCacheRowHeld(ctx, cl, ref, now)
+		if cerr != nil {
+			return row, true
+		}
+		if !held {
+			_ = removeAgentReservationArtifacts(path)
+			return agentRunningEngineer{}, false
+		}
 		row.Status = agentLaunchStatusCleanup
+		return row, true
 	}
-	return row
+	cl, cerr := r.hostTrackerClient(ctx, ref.trackerOrDefault(), containerMode(strings.TrimSpace(res.Mode)))
+	if cerr != nil {
+		return row, true
+	}
+	held, cerr := reservationCacheRowHeld(ctx, cl, ref, now)
+	if cerr != nil {
+		return row, true
+	}
+	if !held {
+		_ = removeAgentReservationArtifacts(path)
+		return agentRunningEngineer{}, false
+	}
+	return row, true
+}
+
+func reservationCacheRowHeld(ctx context.Context, cl Tracker, ref agentIssueRef, now time.Time) (bool, error) {
+	comments, err := cl.ListIssueComments(ctx, ref.Owner, ref.Repo, ref.Number)
+	if err != nil {
+		return false, err
+	}
+	_, held := freshReservationComment(comments, now, agentReservationTTL())
+	return held, nil
 }
 
 func reservationLaunchFresh(at, now time.Time) bool {

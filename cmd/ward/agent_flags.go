@@ -41,7 +41,7 @@ func renderAgentFlagsMarkdown(b *strings.Builder, cmd *cli.Command, path []strin
 		return
 	}
 	fmt.Fprintf(b, "## `%s`\n\n", strings.Join(path, " "))
-	fmt.Fprintf(b, "- %s\n\n", agentFlagTreeLine(cmd.Flags))
+	fmt.Fprintf(b, "- %s\n", agentFlagTreeLine(cmd.Flags))
 	for _, child := range cmd.Commands {
 		nextPath := append(append([]string{}, path...), child.Name)
 		renderAgentFlagsMarkdown(b, child, nextPath)
