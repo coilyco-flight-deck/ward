@@ -67,6 +67,16 @@ func TestReleasePipelineUsesDraftArtifacts(t *testing.T) {
 	}
 
 	for _, want := range []string{
+		"::warning::SCOOP_WRITE_TOKEN not set; skipping scoop manifest bump",
+		"::warning::push of ${MANIFEST_PATH} to ${BUCKET_REPO} failed; skipping scoop manifest bump",
+		"::warning::bucket ${BUCKET_REPO} main does not serve ${VER} after push; skipping scoop manifest bump follow-up",
+	} {
+		if !strings.Contains(release, want) {
+			t.Fatalf("release workflow should soft-fail scoop updates with %q:\n%s", want, release)
+		}
+	}
+
+	for _, want := range []string{
 		"builds the binary",
 		"matrix once",
 		"retags the already-built",
@@ -75,6 +85,10 @@ func TestReleasePipelineUsesDraftArtifacts(t *testing.T) {
 		if !strings.Contains(docs, want) {
 			t.Fatalf("release docs should mention %q:\n%s", want, docs)
 		}
+	}
+
+	if !strings.Contains(docs, "the Scoop bucket bump is best-effort") {
+		t.Fatalf("release docs should mention best-effort Scoop policy:\n%s", docs)
 	}
 
 	for _, want := range []string{

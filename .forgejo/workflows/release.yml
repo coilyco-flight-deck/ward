@@ -644,15 +644,13 @@ jobs:
           # checkver reads the Forgejo releases.atom), so the manifest is written where
           # scoop reads it, not the GitHub mirror. See docs/release.md.
           # Push auth is an explicit Actions secret, mirroring bump-tap-formula's
-          # TAP_WRITE_TOKEN: one rotatable, visible credential. Guard up front so a
-          # missing secret fails loudly HERE (a red bump job on an otherwise green
-          # release) rather than letting the manifest silently freeze - the exact
-          # silent-lag failure this issue fixes, and the ward#237 tap lesson. The
-          # release itself is already published by the jobs above; only this bump
-          # goes red, so Kai provisions the secret once and re-releases.
+          # TAP_WRITE_TOKEN: one rotatable, visible credential. Unlike the tap,
+          # the scoop bucket is a best-effort install channel side effect, so a
+          # missing secret warns and leaves the Forgejo release green instead of
+          # turning the release red on an external bucket sync.
           if [ -z "${SCOOP_WRITE_TOKEN:-}" ]; then
-            echo "::error::SCOOP_WRITE_TOKEN not set; cannot push scoop manifest. Set it in ward -> Settings -> Actions -> Secrets (scope: push to ${BUCKET_REPO}). See docs/release.md." >&2
-            exit 1
+            echo "::warning::SCOOP_WRITE_TOKEN not set; skipping scoop manifest bump for ${BUCKET_REPO}. See docs/release.md." >&2
+            exit 0
           fi
           VER="${TAG#v}"
           # Resolve the sidecar assets through the release API, then read the
@@ -735,8 +733,8 @@ jobs:
           # rather than stalling the manifest behind a green release.
           push_url="https://coilysiren:${SCOOP_WRITE_TOKEN}@forgejo.coilysiren.me/${BUCKET_REPO}.git"
           if ! git push "$push_url" HEAD:main; then
-            echo "::error::push of ${MANIFEST_PATH} to ${BUCKET_REPO} failed; SCOOP_WRITE_TOKEN is likely missing, rotated, or lacks push scope (see docs/release.md)" >&2
-            exit 1
+            echo "::warning::push of ${MANIFEST_PATH} to ${BUCKET_REPO} failed; skipping scoop manifest bump (see docs/release.md)" >&2
+            exit 0
           fi
 
           # Read the bucket back and confirm main now serves ${VER}. Catches a push
@@ -744,8 +742,8 @@ jobs:
           # masquerade as a green release (the ward#237 acceptance, applied to scoop).
           published=$(curl -fsSL "$FORGEJO_BASE_URL/$BUCKET_REPO/raw/branch/main/$MANIFEST_PATH" || true)
           if ! printf '%s' "$published" | grep -q "\"version\": \"${VER}\""; then
-            echo "::error::bucket ${BUCKET_REPO} main does not serve ${VER} after push; scoop manifest bump did not land" >&2
-            exit 1
+            echo "::warning::bucket ${BUCKET_REPO} main does not serve ${VER} after push; skipping scoop manifest bump follow-up" >&2
+            exit 0
           fi
           echo "bucket ${BUCKET_REPO} scoop manifest bumped to ${TAG}"
       - name: Alert Telegram on main failure
