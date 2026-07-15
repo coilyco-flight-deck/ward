@@ -1161,6 +1161,9 @@ func TestPRWorkflowStatusJSONCarriesRunsAndLogHooks(t *testing.T) {
 	if len(st.LogHooks) == 0 || !st.LogHooks[0].Available || st.LogHooks[0].RunID != 77 {
 		t.Fatalf("log hooks = %+v, want an available hook for run 77", st.LogHooks)
 	}
+	if st.LogHooks[0].DisplayRunIndex != 77 {
+		t.Fatalf("log hook display run = %d, want 77", st.LogHooks[0].DisplayRunIndex)
+	}
 	if len(st.Contexts) == 0 || st.Contexts[0].RunID != 77 || st.Contexts[0].LogHook == nil || !st.Contexts[0].LogHook.Available {
 		t.Fatalf("context = %+v, want run-linked log hook", st.Contexts)
 	}
@@ -1170,6 +1173,66 @@ func TestPRWorkflowStatusJSONCarriesRunsAndLogHooks(t *testing.T) {
 	}
 	if !strings.Contains(logs, "log line one") || !strings.Contains(logs, "log line two") {
 		t.Fatalf("logs = %q, want raw body", logs)
+	}
+}
+
+func TestPRWorkflowStatusJSONRejectsPlaceholderLogHooks(t *testing.T) {
+	mux := http.NewServeMux()
+	mux.HandleFunc("/api/v1/repos/coilyco-flight-deck/ward/pulls/1388", func(w http.ResponseWriter, _ *http.Request) {
+		_, _ = w.Write([]byte(`{"number":1388,"title":"status mismatch branch","body":"closes #1388","state":"open","draft":false,"mergeable":true,"head":{"sha":"headsha1388","ref":"issue-1388"},"base":{"ref":"main"}}`))
+	})
+	mux.HandleFunc("/api/v1/repos/coilyco-flight-deck/ward/branches/main", func(w http.ResponseWriter, _ *http.Request) {
+		_, _ = w.Write([]byte(`{"name":"main","protected":true,"enable_status_check":true,"status_check_contexts":["test / test (pull_request)"],"commit":{"id":"basesha1388"}}`))
+	})
+	mux.HandleFunc("/api/v1/repos/coilyco-flight-deck/ward/commits/headsha1388/status", func(w http.ResponseWriter, _ *http.Request) {
+		_, _ = w.Write([]byte(`{"state":"failure","sha":"headsha1388","total_count":1,"statuses":[{"context":"test / test (pull_request)","status":"failure","description":"failed","target_url":"https://forgejo.coilysiren.me/coilyco-flight-deck/ward/actions/runs/2209/jobs/0/attempt/1/logs"}]}`))
+	})
+	mux.HandleFunc("/api/v1/repos/coilyco-flight-deck/ward/actions/runs", func(w http.ResponseWriter, _ *http.Request) {
+		_, _ = w.Write([]byte(`{"workflow_runs":[{"id":8470,"index_in_repo":2209,"title":"test","status":"failure","workflow_id":"test.yml","prettyref":"#1388","commit_sha":"headsha1388","event":"pull_request","html_url":"https://forgejo.coilysiren.me/coilyco-flight-deck/ward/actions/runs/8470"}]}`))
+	})
+	srv := httptest.NewServer(mux)
+	defer srv.Close()
+
+	cl := &forgejoClient{baseURL: srv.URL, token: "secret"}
+	body, err := prWorkflowStatusJSONReport(context.Background(), cl, "coilyco-flight-deck", "ward", 1388)
+	if err != nil {
+		t.Fatalf("prWorkflowStatusJSONReport: %v", err)
+	}
+	var st prCIStatus
+	if err := json.Unmarshal([]byte(body), &st); err != nil {
+		t.Fatalf("unmarshal status JSON: %v", err)
+	}
+	if len(st.LatestRuns) != 1 || st.LatestRuns[0].ID != 8470 || st.LatestRuns[0].Index != 2209 {
+		t.Fatalf("latest runs = %+v, want api id 8470 with display index 2209", st.LatestRuns)
+	}
+	if st.Status.Required != "failure" || st.NextAction != "repair_pr" {
+		t.Fatalf("status = %+v, want failure without an executable hook", st.Status)
+	}
+	if len(st.LogHooks) != 1 {
+		t.Fatalf("log hooks = %+v, want one placeholder hook", st.LogHooks)
+	}
+	hook := st.LogHooks[0]
+	if hook.Available {
+		t.Fatalf("log hook = %+v, want unavailable", hook)
+	}
+	if hook.DisplayRunIndex != 2209 {
+		t.Fatalf("log hook display_run_index = %d, want 2209", hook.DisplayRunIndex)
+	}
+	if hook.RunID != 0 {
+		t.Fatalf("log hook run_id = %d, want 0 for an unavailable hook", hook.RunID)
+	}
+	if !strings.Contains(hook.Reason, "placeholder") {
+		t.Fatalf("log hook reason = %q, want placeholder rejection", hook.Reason)
+	}
+	if len(st.Contexts) == 0 || st.Contexts[0].RunID != 8470 || st.Contexts[0].LogHook == nil || st.Contexts[0].LogHook.Available {
+		t.Fatalf("context = %+v, want an unavailable hook tied to the real run id", st.Contexts)
+	}
+	logs, err := prWorkflowLogsDirect(context.Background(), cl, "coilyco-flight-deck", "ward", 1388, "test / test (pull_request)")
+	if err == nil || !strings.Contains(err.Error(), "placeholder") {
+		t.Fatalf("prWorkflowLogsDirect error = %v, want placeholder rejection", err)
+	}
+	if logs != "" {
+		t.Fatalf("logs = %q, want no body for an unavailable hook", logs)
 	}
 }
 

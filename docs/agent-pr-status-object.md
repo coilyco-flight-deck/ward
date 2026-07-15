@@ -14,7 +14,7 @@ doc_goal: Describe the agent-shaped PR/CI status object, wait primitive, and log
 - `contexts` - per-context state with run/job/log hook joins when available.
 - `failing_contexts` / `pending_contexts` - compact lists for wait and text output.
 - `latest_runs` - Actions runs filtered to the current head SHA.
-- `log_hooks` - direct follow-up hooks for `ci.log.read`.
+- `log_hooks` - direct follow-up hooks for `ci.log.read`, with `display_run_index` for the forge UI index when it differs from the executable `run_id`.
 - `repair` - current repair bucket and note when Ward can classify one.
 - `next_action` - `wait`, `fetch_logs`, `repair_pr`, `rebase_or_refresh`, `merge`, `blocked`, or `none`.
 
@@ -29,7 +29,7 @@ doc_goal: Describe the agent-shaped PR/CI status object, wait primitive, and log
 
 ## Logs
 
-`ward agent pr logs <owner/repo#N> [--context NAME]` uses the same snapshot to jump to the matching CI log stream. It keeps the run id, job name, and attempt inside the object so agents do not have to rebuild the PR -> commit -> run -> job mapping by hand.
+`ward agent pr logs <owner/repo#N> [--context NAME]` uses the same snapshot to jump to the matching CI log stream. It keeps the executable run id, display run index, job id, and attempt inside the object so agents do not have to rebuild the PR -> commit -> run -> job mapping by hand. When the forge only exposes a placeholder job id, the hook stays unavailable instead of advertising a URL that will 404.
 
 ## Examples
 

@@ -9,7 +9,7 @@ doc_goal: Describe the native PR-workflow tools (merge, per-PR CI status, Action
 
 - `ward agent pr status <owner/repo#N> [--json]` - per-PR structured CI status with combined status, required status, latest runs, and log hooks.
 - `ward agent pr wait <owner/repo#N> [--timeout D] [--interval D] [--head SHA] [--json]` - poll the same status object until the required status turns green.
-- `ward agent pr logs <owner/repo#N> [--context NAME]` - follow the status object's log hook for the chosen context or the first failing one.
+- `ward agent pr logs <owner/repo#N> [--context NAME]` - follow the status object's executable log hook for the chosen context or the first failing one; unavailable placeholder hooks stay blocked instead of 404ing.
 - `ward agent pr close <owner/repo#N> --reason TEXT [--supersedes REF]` - close one PR with explicit intent, head-pinned and postcondition checked.
 - `ward agent pr reopen <owner/repo#N>` - reopen one closed-unmerged PR with the same head-pinned postcondition check.
 - `ward agent pr recover <owner/repo#N>` - diagnose a closed-unmerged PR and report the head SHA, linked issue, and next safe action.

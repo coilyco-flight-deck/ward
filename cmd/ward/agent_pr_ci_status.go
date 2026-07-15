@@ -77,15 +77,16 @@ type prCIStatusRun struct {
 }
 
 type prCILogHook struct {
-	Capability string `json:"capability"`
-	Available  bool   `json:"available"`
-	Repo       string `json:"repo"`
-	RunID      int64  `json:"run_id,omitempty"`
-	Context    string `json:"context,omitempty"`
-	JobName    string `json:"job_name,omitempty"`
-	Attempt    int    `json:"attempt,omitempty"`
-	URL        string `json:"url,omitempty"`
-	Reason     string `json:"reason,omitempty"`
+	Capability      string `json:"capability"`
+	Available       bool   `json:"available"`
+	Repo            string `json:"repo"`
+	DisplayRunIndex int64  `json:"display_run_index,omitempty"`
+	RunID           int64  `json:"run_id,omitempty"`
+	Context         string `json:"context,omitempty"`
+	JobName         string `json:"job_name,omitempty"`
+	Attempt         int    `json:"attempt,omitempty"`
+	URL             string `json:"url,omitempty"`
+	Reason          string `json:"reason,omitempty"`
 }
 
 type prCIRepair struct {
@@ -167,9 +168,8 @@ func prCIStatusContexts(statuses []forgejoCommitStatus, required []string, runs 
 			Description: strings.TrimSpace(st.Description),
 			TargetURL:   strings.TrimSpace(st.TargetURL),
 		}
-		if run, ok := prCIStatusMatchRun(norm, runs); ok {
+		if run, ok := prCIStatusResolveRun(norm, ctx.TargetURL, runs); ok {
 			ctx.RunID = run.ID
-			ctx.JobName = prCIWorkflowJobName(run.WorkflowID)
 			if hook, hok := prCILogHookFromStatus(owner, repo, ctx, run, ctx.TargetURL); hok {
 				ctx.Available = hook.Available
 				ctx.LogHook = &hook
@@ -476,57 +476,24 @@ func prCIWorkflowMatchesContext(workflowID, contextName string) bool {
 	return workflowName == contextName
 }
 
-func prCIWorkflowJobName(workflowID string) string {
-	workflowID = strings.TrimSpace(workflowID)
-	if workflowID == "" {
-		return ""
-	}
-	return filepath.Base(workflowID)
-}
-
 func prCILogHookFromStatus(owner, repo string, ctx prCIStatusContext, run prCIStatusRun, targetURL string) (prCILogHook, bool) {
 	hook := prCILogHook{
-		Capability: "ci.log.read",
-		Repo:       owner + "/" + repo,
-		Context:    ctx.Name,
-		URL:        strings.TrimSpace(targetURL),
+		Capability:      "ci.log.read",
+		Repo:            owner + "/" + repo,
+		Context:         ctx.Name,
+		URL:             strings.TrimSpace(targetURL),
+		DisplayRunIndex: run.Index,
 	}
 	if hook.URL == "" && strings.TrimSpace(run.URL) != "" {
 		hook.URL = strings.TrimSpace(run.URL)
 	}
-	if run.ID > 0 {
-		hook.RunID = run.ID
-	}
-	if run.WorkflowID != "" {
-		hook.JobName = prCIWorkflowJobName(run.WorkflowID)
-	}
 	if parsed, ok := prCILogHookParse(targetURL); ok {
-		hook.RunID = parsed.RunID
-		hook.JobName = parsed.JobName
-		hook.Attempt = parsed.Attempt
-		hook.Available = true
-		hook.URL = parsed.URL
-		return hook, true
+		return prCILogHookFromParsedTarget(hook, parsed, run), true
 	}
 	if parsed, ok := prCILogHookParse(run.URL); ok {
-		hook.RunID = parsed.RunID
-		hook.JobName = parsed.JobName
-		hook.Attempt = parsed.Attempt
-		hook.Available = true
-		hook.URL = parsed.URL
-		return hook, true
+		return prCILogHookFromParsedRunURL(hook, parsed, run), true
 	}
-	if run.ID > 0 {
-		hook.Available = false
-		hook.Reason = "target URL did not expose a run/job/attempt path"
-		return hook, true
-	}
-	if ctx.TargetURL != "" {
-		hook.Available = false
-		hook.Reason = "no matching run id was found for this context"
-		return hook, true
-	}
-	return hook, false
+	return prCILogHookFromFallback(hook, ctx, run)
 }
 
 func prCILogHookParse(raw string) (prCILogHook, bool) {
@@ -547,13 +514,86 @@ func prCILogHookParse(raw string) (prCILogHook, bool) {
 		}
 	}
 	return prCILogHook{
-		Capability: "ci.log.read",
-		Available:  true,
-		RunID:      runID,
-		JobName:    jobName,
-		Attempt:    attempt,
-		URL:        raw,
+		Capability:      "ci.log.read",
+		Available:       true,
+		DisplayRunIndex: runID,
+		JobName:         jobName,
+		Attempt:         attempt,
+		URL:             raw,
 	}, true
+}
+
+func prCILogTargetRunIndex(raw string) int64 {
+	hook, ok := prCILogHookParse(raw)
+	if !ok {
+		return 0
+	}
+	return hook.DisplayRunIndex
+}
+
+func prCIStatusResolveRun(contextName, targetURL string, runs []prCIStatusRun) (prCIStatusRun, bool) {
+	if run, ok := prCIStatusMatchRun(contextName, runs); ok {
+		return run, true
+	}
+	if run, ok := prCIStatusMatchRunIndex(prCILogTargetRunIndex(targetURL), runs); ok {
+		return run, true
+	}
+	return prCIStatusRun{}, false
+}
+
+func prCIStatusMatchRunIndex(runIndex int64, runs []prCIStatusRun) (prCIStatusRun, bool) {
+	if runIndex <= 0 {
+		return prCIStatusRun{}, false
+	}
+	for _, run := range runs {
+		if run.Index == runIndex {
+			return run, true
+		}
+	}
+	return prCIStatusRun{}, false
+}
+
+func prCILogHookFromParsedTarget(hook prCILogHook, parsed prCILogHook, run prCIStatusRun) prCILogHook {
+	return prCILogHookFromParsedExecutable(hook, parsed, run, "target URL")
+}
+
+func prCILogHookFromParsedRunURL(hook prCILogHook, parsed prCILogHook, run prCIStatusRun) prCILogHook {
+	return prCILogHookFromParsedExecutable(hook, parsed, run, "run URL")
+}
+
+func prCILogHookFromParsedExecutable(hook prCILogHook, parsed prCILogHook, run prCIStatusRun, source string) prCILogHook {
+	hook.DisplayRunIndex = parsed.DisplayRunIndex
+	hook.JobName = parsed.JobName
+	hook.Attempt = parsed.Attempt
+	hook.URL = parsed.URL
+	if hook.JobName == "" || hook.JobName == "0" {
+		hook.Reason = source + " job placeholder is not executable"
+		return hook
+	}
+	if hook.Attempt <= 0 {
+		hook.Reason = source + " attempt is not executable"
+		return hook
+	}
+	if run.ID <= 0 {
+		hook.Reason = "no matching run id was found for this context"
+		return hook
+	}
+	hook.RunID = run.ID
+	hook.Available = true
+	return hook
+}
+
+func prCILogHookFromFallback(hook prCILogHook, ctx prCIStatusContext, run prCIStatusRun) (prCILogHook, bool) {
+	if run.ID > 0 {
+		hook.DisplayRunIndex = run.Index
+		hook.Reason = "target URL did not expose a run/job/attempt path"
+		return hook, true
+	}
+	if ctx.TargetURL != "" {
+		hook.Reason = "no matching run id was found for this context"
+		return hook, true
+	}
+	return hook, false
 }
 
 func prCIStatusSelectLogHook(st *prCIStatus, contextName string) (prCILogHook, error) {
@@ -662,7 +702,15 @@ func prCIStatusAppendContextLines(b *strings.Builder, contexts []prCIStatusConte
 func prCIStatusAppendHookLines(b *strings.Builder, hooks []prCILogHook) {
 	for _, hook := range hooks {
 		if hook.Available {
+			if hook.DisplayRunIndex > 0 && hook.DisplayRunIndex != hook.RunID {
+				prCIStatusAppendLine(b, "  log: %s context=%s run=%d display_run=%d job=%s attempt=%d\n", hook.Capability, hook.Context, hook.RunID, hook.DisplayRunIndex, emptyDefault(hook.JobName, "(unknown)"), hook.Attempt)
+				continue
+			}
 			prCIStatusAppendLine(b, "  log: %s context=%s run=%d job=%s attempt=%d\n", hook.Capability, hook.Context, hook.RunID, emptyDefault(hook.JobName, "(unknown)"), hook.Attempt)
+			continue
+		}
+		if hook.DisplayRunIndex > 0 {
+			prCIStatusAppendLine(b, "  log: %s context=%s unavailable (%s) display_run=%d\n", hook.Capability, hook.Context, emptyDefault(hook.Reason, "not enough data"), hook.DisplayRunIndex)
 			continue
 		}
 		prCIStatusAppendLine(b, "  log: %s context=%s unavailable (%s)\n", hook.Capability, hook.Context, emptyDefault(hook.Reason, "not enough data"))
